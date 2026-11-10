@@ -1,8 +1,6 @@
-use std::{
-    env, io,
-    io::{Read, Write},
-    path::Path,
-};
+mod input;
+
+use std::{env, io, io::Write, path::Path};
 
 fn main() {
     if let Err(error) = run() {
@@ -28,18 +26,10 @@ fn run() -> io::Result<()> {
             let offset = parse_number(&offset)?;
             let length = parse_number(&length)?;
             let mut document = cfb::open(path)?;
-            let mut bytes = Vec::new();
-            document
-                .open_stream(Path::new(&stream))?
-                .read_to_end(&mut bytes)?;
-            let end = offset
-                .checked_add(length)
-                .filter(|&end| end <= bytes.len())
-                .ok_or_else(|| {
-                    io::Error::new(io::ErrorKind::InvalidInput, "range exceeds stream")
-                })?;
+            let bytes = input::read_stream(&mut document, Path::new(&stream))?;
+            let selected = input::range(&bytes, offset, length)?;
             let mut output = io::BufWriter::new(io::stdout().lock());
-            for (line, chunk) in bytes[offset..end].chunks(16).enumerate() {
+            for (line, chunk) in selected.chunks(16).enumerate() {
                 write!(output, "0x{:08x}  ", offset + line * 16)?;
                 for i in 0..16 {
                     if let Some(byte) = chunk.get(i) {
@@ -103,8 +93,7 @@ fn run() -> io::Result<()> {
     let mut document = cfb::open(path)?;
     let mut output = io::BufWriter::new(io::stdout().lock());
     if command.as_deref() == Some(std::ffi::OsStr::new("strings")) {
-        let mut bytes = Vec::new();
-        document.open_stream("/Maps")?.read_to_end(&mut bytes)?;
+        let bytes = input::read_stream(&mut document, "/Maps")?;
         writeln!(
             output,
             "UTF-16LE candidates in /Maps (offsets are relative to the stream):"
