@@ -84,3 +84,38 @@ Ghidra 12.1.2、默认分析配置，在上述 AfCore 摘要下：
 REA 确认 SHA-256 为
 `48cbd921972d12156119d524f9c3923225fd30795e33c22c65c87db3a6c89aca`，x86 PE。
 这是后续分析候选，不能仅凭名称认定包含上述 COM 类。
+
+## SystemCore 的 ObjectStream 类关联
+
+在上述 SystemCore 摘要、Ghidra 12.1.2 下，类 GUID 候选位于分析地址
+`0x100fb260`（文件偏移 `0xfa660`）。REA 交叉引用证据
+`ev_efeb1d4e85360e41d9f53d78363df48cf8a6f063588e478154df680efecc8712`
+返回 `0x10001d10`、`0x1006f00b`、`0x1006f1c3`。
+
+对首处交叉引用所属函数 `FUN_100014c0` 的反编译证据
+`ev_845e266ceb8c06b86b1dde87fb2aaf73875c73cff5ef3043a46df66d0d2880d6`
+显示连续初始化：
+
+```text
+_DAT_101306ac = &DAT_100fb260;
+_DAT_101306b0 = L"ObjectStream";
+_DAT_101306b4 = allocation(0xc);
+*_DAT_101306b4 = ClassFactory<ObjectStream>::vftable;
+```
+
+`FUN_1006f1b0` 的反编译证据
+`ev_74745e5b4bfe1e020a313f10512bd4c71e808a6d54cc34f84bf76ab4de92e74b`
+还显示将该 GUID 的四个 DWORD 写入输出参数。这些证据支持该类标识与
+SystemCore 的 ObjectStream 实现相对应；尚未确认其 MXD 磁盘编码。
+
+恢复的名称清单（REA retained evidence
+`ev_c57049e0d6375af478fa8cbbb09fedbaf0d1bd64b6f9000997c44fa1c7e9d391`）
+含 `IObjectStream2::vftable`，地址 `0x100ff678`；
+`ObjectStream::vftable` 出现在 `0x100ff6dc`、`0x100ff6f4`、`0x100ff70c`、
+`0x100ff724`、`0x100ff788`、`0x100ff794`。
+应先核对接口槽位及调整 thunk，再追踪 LoadObject、版本和字符串读取实现，
+不能只按名称或槽位次序推断格式。
+
+本次 REA 名称清单超过 MCP 单次响应大小，已按工具建议保留完整 Evidence，
+连同反编译记录导出到忽略的 `temp/arcgis/systemcore-snapshot.json`。
+AfCore 记录位于 `temp/arcgis/afcore-snapshot.json`。两处会话均已关闭。
