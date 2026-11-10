@@ -18,6 +18,25 @@ cargo run -- hex 'map.mxd' /Maps 0x860 96
 
 制作对照样本、记录流内偏移和脱敏的方法见研究记录中的“对照样本采集流程”。目前尚不能识别 MXD 版本或转换工程。
 
+## Python 接口
+
+需要 Python 3.8 或更高版本及 Rust 工具链。在项目根目录安装：
+
+```sh
+python -m pip install .
+```
+
+```python
+from pathlib import Path
+import mxd2qgz
+
+path = Path("map.mxd")
+streams = mxd2qgz.inspect(path)  # [(流路径, 字节数), ...]
+maps = mxd2qgz.read_stream(path, "/Maps")  # bytes
+```
+
+接口只读取 OLE 数据流，不解析图层或生成 QGIS 工程。文件或流不存在时会抛出 Python 的 `OSError` 子类。构建可分发的 wheel 可运行 `maturin build --release`。
+
 ## 后续工作
 
 1. 构造内容可控的多个 MXD 样本，比较数据流，验证对象边界、类型及版本差异。

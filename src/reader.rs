@@ -138,7 +138,7 @@ mod tests {
         let mut reader = Reader::new(&[0x78, 0x56, 0x34, 0x12, 9]);
         assert_eq!(reader.read_u32_le().unwrap(), 0x12345678);
         assert_eq!(reader.read_bytes(1).unwrap(), &[9]);
-        assert_eq!(reader.read_bytes(0).unwrap(), &[]);
+        assert_eq!(reader.read_bytes(0).unwrap(), b"");
         assert_eq!(reader.position(), 5);
     }
 

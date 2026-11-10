@@ -2,3 +2,6 @@
 
 pub mod model;
 pub mod reader;
+
+#[cfg(feature = "python")]
+mod python;

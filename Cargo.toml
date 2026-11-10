@@ -3,5 +3,12 @@ name = "mxd2qgz"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[features]
+python = ["dep:pyo3"]
+
 [dependencies]
 cfb = "0.7.3"
+pyo3 = { version = "0.27.2", optional = true }

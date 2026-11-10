@@ -1,0 +1,13 @@
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "mxd2qgz"
+version = "0.1.0"
+requires-python = ">=3.8"
+description = "Experimental tools for investigating ArcMap MXD files"
+readme = "README.md"
+
+[tool.maturin]
+features = ["python", "pyo3/extension-module"]
