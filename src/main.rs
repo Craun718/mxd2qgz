@@ -16,6 +16,32 @@ fn run() -> io::Result<()> {
     let mut args = env::args_os().skip(1);
     let command = args.next();
     let path = args.next();
+    if command.as_deref() == Some(std::ffi::OsStr::new("compare")) {
+        let other = args.next();
+        let stream = args.next();
+        if let (Some(path), Some(other), Some(stream), None) = (path, other, stream, args.next()) {
+            let mut first = cfb::open(path)?;
+            let mut second = cfb::open(other)?;
+            let left = input::read_stream(&mut first, Path::new(&stream))?;
+            let right = input::read_stream(&mut second, Path::new(&stream))?;
+            let mut output = io::BufWriter::new(io::stdout().lock());
+            writeln!(
+                output,
+                "Stream {}: {} vs {} bytes",
+                Path::new(&stream).display(),
+                left.len(),
+                right.len()
+            )?;
+            for (start, end) in differing_ranges(&left, &right) {
+                writeln!(output, "0x{start:08x}..0x{end:08x}")?;
+            }
+            return output.flush();
+        }
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "usage: mxd2qgz compare <first.mxd> <second.mxd> <stream>",
+        ));
+    }
     if command.as_deref() == Some(std::ffi::OsStr::new("hex")) {
         let stream = args.next();
         let offset = args.next();
@@ -86,7 +112,7 @@ fn run() -> io::Result<()> {
     {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "usage: mxd2qgz <inspect|strings> <file.mxd> | extract <file.mxd> <stream> <output> | hex <file.mxd> <stream> <offset> <length>",
+            "usage: mxd2qgz <inspect|strings> <file.mxd> | compare <first.mxd> <second.mxd> <stream> | extract <file.mxd> <stream> <output> | hex <file.mxd> <stream> <offset> <length>",
         ));
     }
     let path = Path::new(path.as_ref().unwrap());
@@ -108,6 +134,23 @@ fn run() -> io::Result<()> {
         writeln!(output, "{:>10}  {}", entry.len(), entry.path().display())?;
     }
     output.flush()
+}
+
+// Compare equal stream offsets, including any unmatched tail. Ranges are half-open.
+fn differing_ranges(left: &[u8], right: &[u8]) -> Vec<(usize, usize)> {
+    let mut ranges = Vec::new();
+    let mut start = None;
+    for offset in 0..left.len().max(right.len()) {
+        if left.get(offset) != right.get(offset) {
+            start.get_or_insert(offset);
+        } else if let Some(begin) = start.take() {
+            ranges.push((begin, offset));
+        }
+    }
+    if let Some(begin) = start {
+        ranges.push((begin, left.len().max(right.len())));
+    }
+    ranges
 }
 
 fn parse_number(value: &std::ffi::OsStr) -> io::Result<usize> {
@@ -153,7 +196,15 @@ fn utf16_candidates(bytes: &[u8]) -> Vec<(usize, String)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_number, utf16_candidates};
+    use super::{differing_ranges, parse_number, utf16_candidates};
+
+    #[test]
+    fn compares_equal_offsets_and_unmatched_tails() {
+        assert_eq!(differing_ranges(b"", b""), vec![]);
+        assert_eq!(differing_ranges(b"abcd", b"abcd"), vec![]);
+        assert_eq!(differing_ranges(b"abcd", b"axcyz"), vec![(1, 2), (3, 5)]);
+        assert_eq!(differing_ranges(b"abc", b"a"), vec![(1, 3)]);
+    }
 
     #[test]
     fn parses_decimal_and_hex_offsets() {
