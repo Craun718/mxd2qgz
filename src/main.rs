@@ -18,6 +18,25 @@ fn run() -> io::Result<()> {
     let mut args = env::args_os().skip(1);
     let command = args.next();
     let path = args.next();
+    if command.as_deref() == Some(std::ffi::OsStr::new("extract")) {
+        let stream = args.next();
+        let output = args.next();
+        if let (Some(path), Some(stream), Some(output), None) = (path, stream, output, args.next())
+        {
+            let mut document = cfb::open(path)?;
+            let mut source = document.open_stream(Path::new(&stream))?;
+            let mut destination = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(output)?;
+            io::copy(&mut source, &mut destination)?;
+            return Ok(());
+        }
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "usage: mxd2qgz extract <file.mxd> <stream> <output>",
+        ));
+    }
     if !matches!(
         command.as_deref().and_then(|s| s.to_str()),
         Some("inspect" | "strings")
@@ -26,7 +45,7 @@ fn run() -> io::Result<()> {
     {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "usage: mxd2qgz <inspect|strings> <file.mxd>",
+            "usage: mxd2qgz <inspect|strings> <file.mxd> | extract <file.mxd> <stream> <output>",
         ));
     }
     let path = Path::new(path.as_ref().unwrap());
