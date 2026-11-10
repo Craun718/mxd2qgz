@@ -58,3 +58,29 @@ CAB 清单另包含 `SystemCore.dll`、`MappingCore.dll`、`MappingCoreLib.dll`�
 
 通用 `Reader` 的 UTF-16LE 读取要求调用者显式传入字节数，不读取长度前缀，
 不去除终止符，也不意味着 MXD 使用统一的字符串规则。
+
+## AfCore 创建对象流的原生调用证据
+
+Ghidra 12.1.2、默认分析配置，在上述 AfCore 摘要下：
+
+- `search_procedures("ObjectStream")` 返回零匹配；这只说明已恢复函数名中
+  没有匹配，不能证明对象流实现不存在。
+- `search_procedures("CreateMemoryStream")` 定位 `0x10058310`。
+  反编译证据 `ev_82fb7be463919c44d46862d08ea99eab0d618e0d084822eed2cd37744c8e799b`
+  显示调用 `CreateStreamOnHGlobal`、`AfCreateInstance`、`OleRun`、
+  `QueryInterface`，随后通过虚表 `+0x38` 的间接调用连接流。
+- `AfCreateInstance` 所用类标识地址 `0x1025e970`，16 字节为
+  `d0313704cfa7d1118bd1080009ee4e41`，按 Windows GUID 布局解码为
+  `043731d0-a7cf-11d1-8bd1-080009ee4e41`。
+- `QueryInterface` 所用接口标识地址 `0x1026c8dc`，16 字节为
+  `a75ba4186612d11186ad0000f8751720`，按同一布局解码为
+  `18a45ba7-1266-11d1-86ad-0000f8751720`。
+
+以上地址是 AfCore 的分析虚拟地址，**不是 MXD 流内偏移**。虚表连接调用的
+语义来自调用上下文，仍需实现或接口对应关系进一步核对；这里没有读取 MXD。
+下一步沿类标识定位 COM 类工厂及持久化实现。
+
+已从同一 CAB 提取 `SystemCore.dll.017F52BF_20D0_487A_A583_436DA6406CFF`，
+REA 确认 SHA-256 为
+`48cbd921972d12156119d524f9c3923225fd30795e33c22c65c87db3a6c89aca`，x86 PE。
+这是后续分析候选，不能仅凭名称认定包含上述 COM 类。
