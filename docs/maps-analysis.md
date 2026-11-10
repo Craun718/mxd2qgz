@@ -1,5 +1,8 @@
 # MXD /Maps 初步研究
 
+目标软件、程序集身份和原生读取实现的研究入口见
+[ArcGIS 运行库研究](arcgis-runtime-analysis.md)。程序集版本与 MXD 保存版本分别记录，不能互相替代。
+
 样本大小为 1089536 字节，大小和摘要可用 `wc -c` 和 `sha256sum` 复核；SHA-256 为 `a9b01dfc4fb1dba3db19d53e1f852249862c84570bf2270bd0fff9236daadabf`。外层 `/Maps` 为 152941 字节，`/Preview` 为 180054 字节，`/Version` 为 20 字节。偏移均相对于对应流。原样本和提取数据不纳入仓库。
 
 ## 观察与假设
