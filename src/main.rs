@@ -18,6 +18,57 @@ fn run() -> io::Result<()> {
     let mut args = env::args_os().skip(1);
     let command = args.next();
     let path = args.next();
+    if command.as_deref() == Some(std::ffi::OsStr::new("hex")) {
+        let stream = args.next();
+        let offset = args.next();
+        let length = args.next();
+        if let (Some(path), Some(stream), Some(offset), Some(length), None) =
+            (path, stream, offset, length, args.next())
+        {
+            let offset = parse_number(&offset)?;
+            let length = parse_number(&length)?;
+            let mut document = cfb::open(path)?;
+            let mut bytes = Vec::new();
+            document
+                .open_stream(Path::new(&stream))?
+                .read_to_end(&mut bytes)?;
+            let end = offset
+                .checked_add(length)
+                .filter(|&end| end <= bytes.len())
+                .ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidInput, "range exceeds stream")
+                })?;
+            let mut output = io::BufWriter::new(io::stdout().lock());
+            for (line, chunk) in bytes[offset..end].chunks(16).enumerate() {
+                write!(output, "0x{:08x}  ", offset + line * 16)?;
+                for i in 0..16 {
+                    if let Some(byte) = chunk.get(i) {
+                        write!(output, "{byte:02x} ")?;
+                    } else {
+                        write!(output, "   ")?;
+                    }
+                }
+                write!(output, " |")?;
+                for &byte in chunk {
+                    write!(
+                        output,
+                        "{}",
+                        if byte.is_ascii_graphic() || byte == b' ' {
+                            byte as char
+                        } else {
+                            '.'
+                        }
+                    )?;
+                }
+                writeln!(output, "|")?;
+            }
+            return output.flush();
+        }
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "usage: mxd2qgz hex <file.mxd> <stream> <offset> <length>",
+        ));
+    }
     if command.as_deref() == Some(std::ffi::OsStr::new("extract")) {
         let stream = args.next();
         let output = args.next();
@@ -45,7 +96,7 @@ fn run() -> io::Result<()> {
     {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "usage: mxd2qgz <inspect|strings> <file.mxd> | extract <file.mxd> <stream> <output>",
+            "usage: mxd2qgz <inspect|strings> <file.mxd> | extract <file.mxd> <stream> <output> | hex <file.mxd> <stream> <offset> <length>",
         ));
     }
     let path = Path::new(path.as_ref().unwrap());
@@ -68,6 +119,18 @@ fn run() -> io::Result<()> {
         writeln!(output, "{:>10}  {}", entry.len(), entry.path().display())?;
     }
     output.flush()
+}
+
+fn parse_number(value: &std::ffi::OsStr) -> io::Result<usize> {
+    let value = value
+        .to_str()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid number"))?;
+    let parsed = if let Some(hex) = value.strip_prefix("0x") {
+        usize::from_str_radix(hex, 16)
+    } else {
+        value.parse()
+    };
+    parsed.map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid number"))
 }
 
 fn utf16_candidates(bytes: &[u8]) -> Vec<(usize, String)> {
@@ -101,7 +164,14 @@ fn utf16_candidates(bytes: &[u8]) -> Vec<(usize, String)> {
 
 #[cfg(test)]
 mod tests {
-    use super::utf16_candidates;
+    use super::{parse_number, utf16_candidates};
+
+    #[test]
+    fn parses_decimal_and_hex_offsets() {
+        assert_eq!(parse_number("0x10".as_ref()).unwrap(), 16);
+        assert_eq!(parse_number("16".as_ref()).unwrap(), 16);
+        assert!(parse_number("-1".as_ref()).is_err());
+    }
 
     #[test]
     fn extracts_unicode_on_both_alignments_with_stream_offsets() {

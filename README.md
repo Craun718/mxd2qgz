@@ -1,6 +1,6 @@
 # mxd2qgz
 
-面向 ArcMap MXD 到 QGIS 工程转换的实验工具。目前处于 MXD 格式研究阶段，**尚不能生成 QGZ**。
+面向 ArcMap MXD 到 QGIS 工程转换的实验工具。目前处于 MXD 格式研究阶段。
 
 ## 使用
 
@@ -10,9 +10,10 @@
 cargo run -- inspect 'map.mxd'
 cargo run -- strings 'map.mxd'
 cargo run -- extract 'map.mxd' /Maps maps.bin
+cargo run -- hex 'map.mxd' /Maps 0x860 96
 ```
 
-`inspect` 列出 OLE 容器的数据流和字节数；`strings` 扫描 `/Maps` 中两种对齐方式的 UTF-16LE 候选字符串，并输出相对于该流的十六进制偏移。扫描不是对象解析，可能存在乱码、截断或误报，不能据此判断图层数量、完整路径或坐标系。`extract` 导出指定数据流，不会覆盖已有文件。
+`inspect` 列出 OLE 容器的数据流和字节数；`strings` 扫描 `/Maps` 中两种对齐方式的 UTF-16LE 候选字符串，并输出相对于该流的十六进制偏移。扫描不是对象解析，可能存在乱码、截断或误报，不能据此判断图层数量、完整路径或坐标系。`extract` 导出指定数据流，不会覆盖已有文件。`hex` 查看指定流的字节范围，偏移和长度支持十进制或 `0x` 十六进制，范围超出流时返回错误。研究记录见 [docs/maps-analysis.md](docs/maps-analysis.md)。
 
 ## 后续工作
 
