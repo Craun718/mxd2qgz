@@ -1,0 +1,3 @@
+[submodule "third_party/ForestRight"]
+	path = third_party/ForestRight
+	url = https://gitea.gxrs.net/ruyangJiang/ForestRight.git
