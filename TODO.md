@@ -25,6 +25,7 @@
   - [x] 核对 10.1 托管 IObjectStream 方法顺序，记录 LoadObject 和版本属性的 x86 槽位候选及跨版本限制，见 `docs/arcgis-runtime-analysis.md`。
   - [x] 在 Ghidra 12.1.4 中核对 10.8 接口 GUID、构造后的实际虚表及 IUnknown 转发；定位读流入口，见 `docs/arcgis-runtime-analysis.md`。
   - [x] 对照 10.8 原生读写分支，确认局部空头、类标识和键，提供显式版本的对象头读取器及合成边界测试；尚未接入 `/Maps`。
+  - [x] 实现显式 10.8 `/Maps` 数量和首对象头的前缀读取器，拒绝异常数量并保留未知尾部；不解析对象体，不应用于 10.1。
   - [ ] 追踪持久化接口、替换分支和错误分支，核对对象体边界、`/Maps` 起点及跨版本适用范围。
     - [x] 从 PageLayout.dll 实际文档读取链确认分流格式的 `/Maps:0x00` 数量及 `0x04` 首对象入口；记录 Mx Document 优先分支和跨流复用 ObjectStream，见 `docs/maps-analysis.md`。对象体、引用表生命周期和版本适用性仍未闭环。
     - [x] 确认 SetStream 不重置引用表、对象体之前登记、析构释放、普通/VariantStream 分支的接口 GUID 及局部 HRESULT；缺失引用与新对象不能只靠键区分。完整对象体、替换、失败恢复及版本适用性仍未知。
