@@ -2,6 +2,8 @@
 
 后续 GUID → 注册 → PageLayout.dll 类工厂 → 实际 Open/GetVersionInfo 和
 Version 流入口的证据见 [MapDocument 原生入口](mapdocument-native.md)。
+版本 IID 实现者、引用表跨流作用域及错误分支见
+[ObjectStream 上下文补充](object-context-native.md)。
 下文“尚未定位”是历史调查的状态，不代表后续调查没有进展。
 
 ## 目标身份与证据（2026-11-10）

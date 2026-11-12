@@ -16,6 +16,7 @@
     - [x] 从 10.8 注册清单定位 PageLayout.dll，闭合类工厂、QI、最终虚表及 Open/GetVersionInfo；区分 Build Number 与 Version 流，见 `docs/mapdocument-native.md`。
     - [x] 定位 Version 局部读取及有符号 short 比较，记录未检查 HRESULT 的调用分支；尚未确认字符串编码、尾部或版本映射。
     - [ ] 核对 AfCore 版本 IID 的实现者及完整 Version 读写规则。
+      - [x] 解码版本 IID 并闭合至 SystemCore ObjectStream 的内存属性虚表；属性来源和磁盘版本映射仍未知，见 `docs/object-context-native.md`。
 - [ ] 使用 REA 分析坐标系读取逻辑，验证 `/Maps` 中投影文本候选的长度和作用范围。
 - [ ] 读取 OLE 容器中的 `/Version`、`/Maps` 等数据流并识别 MXD 版本。
 - [ ] 使用 REA 分析对象的序列化和读取逻辑，确定对象边界、类型标识和引用关系；记录证据及适用版本。
@@ -24,6 +25,7 @@
   - [x] 对照 10.8 原生读写分支，确认局部空头、类标识和键，提供显式版本的对象头读取器及合成边界测试；尚未接入 `/Maps`。
   - [ ] 追踪持久化接口、替换分支和错误分支，核对对象体边界、`/Maps` 起点及跨版本适用范围。
     - [x] 从 PageLayout.dll 实际文档读取链确认分流格式的 `/Maps:0x00` 数量及 `0x04` 首对象入口；记录 Mx Document 优先分支和跨流复用 ObjectStream，见 `docs/maps-analysis.md`。对象体、引用表生命周期和版本适用性仍未闭环。
+    - [x] 确认 SetStream 不重置引用表、对象体之前登记、析构释放、普通/VariantStream 分支的接口 GUID 及局部 HRESULT；缺失引用与新对象不能只靠键区分。完整对象体、替换、失败恢复及版本适用性仍未知。
 - [ ] 解析长度前缀字符串、对象属性和对象引用，并验证 UTF-16LE、空字符串及非 ASCII 字符的处理。
   - [x] 用 REA 确认 10.8 AfCore String::Read/Write 的字节长度、终止零和不严格短读行为，区分原生行为与 Rust 安全子集；见 `docs/native-strings.md`。
   - [x] 实现显式 10.8 调用点的严格字符串读取器，覆盖空值、中文、代理对、非法编码、全部截断、资源限制和失败游标；未接入 MXD 字段解析。
