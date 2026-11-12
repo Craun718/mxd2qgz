@@ -278,3 +278,123 @@ IUnknown 转发方式已相互对应。方法名仍结合先前 10.1 托管声�
 本次 27 条 REA 记录已随关闭会话保存至忽略目录中的
 `temp/arcgis/systemcore-10_8-headers-snapshot.json`；不提交原生 DLL、
 提取流或完整诊断输出。公开复核依据是本文的目标摘要、分析配置、入口地址及证据 ID。
+
+## /Version 原生读取入口调查（2026-11-12）
+
+本轮只补充静态研究，不修改解析接口或 CLI。结果为**部分推进**：
+已定位版本辅助函数及其一个原生调用者，但没有把文档打开、版本查询与
+OLE `/Version` 的实际读写连接起来，不能据此实现版本识别。
+
+### 目标身份与复核环境
+
+目标均来自前述 Desktop 10.8 安装包；REA 6.8.0、Ghidra 12.1.4、
+默认自动分析，分析配置摘要仍为
+`e763201e522a4b123fb330eede09834c44ddf2bb90702e50eea219801be95539`。
+本轮本地检查各 DLL 的 `VS_FIXEDFILEINFO`，文件版本及产品版本均为
+10.8.0.12790。这是 DLL 身份信息，不是 MXD 保存版本。
+
+| DLL（省略 CAB 文件键后缀） | SHA-256 | 版本结构的 DLL 文件偏移 |
+| --- | --- | --- |
+| MappingCore.dll | `48b93d5aa9e3681f19e76564a6e42a7ce4cf951770e62699d2ee0893f14b1248` | `0x247e88` |
+| MappingCoreLib.dll | `268a84465970808f50c7ca6ed014c98bca7019db4377caf5008394b860398838` | `0x144738` |
+| AfCore.dll | `560be16e0a99b9de4599f8241c421bddf0dcc8b26509f584074dea53b0ac4aae` | `0x2ae888` |
+| Map.dll | `40592a416cd5891e86749026b44e9fdd0480c619c9c7f94f737faf924013f6e3` | `0x130820` |
+
+下文 `0x100...`、`0x101...`、`0x102...` 均为**所属 DLL 的分析虚拟地址**，
+`+0x10` 为接口虚表槽偏移，均不是 MXD 流内偏移。
+
+### 原生静态观察
+
+1. MappingCore 中 `search_procedures("MapDocument|Version", regex)`
+   只返回版本命名空间映射导入和两个 `ChangeVersion` 方法，证据
+   `ev_0679dc1523cce0202856a26f38be5ff07ed79032a2c2934b33a984eb20542524`。
+   `MapDocument` 字符串位于 `0x101dd3fc`，其交叉引用为 `0x1000f0b0`，证据
+   `ev_1a6363e6a73ba3813064441bec1a60dc9e52dfaf8816024aac674e4061c0f985`。
+   该地址的指令是 `PUSH 0x101dd3fc`，Ghidra 未把它归属到已分析函数，证据
+   `ev_efcbf140f67898c4a7a4d5d690c95562ab3723a0b887c599188fd80135bb48b5`。
+   周围字节及全局地址 `0x1024a1d8` 的引用分别见
+   `ev_0624edd5dfc49136efa65b2cea44ba6ad39d2d17ea2d10f8a5f0e6bb25c5ff38`、
+   `ev_fe9eabc95b98d086018e13ea30be817b4270f3eaeb518e3d08f746c0cebcc53d`。
+   这些只支持全局字符串初始化/清理的线索，没有定位到 MapDocument 类工厂或打开实现。
+2. MappingCoreLib 导入 `AfStreamGetDocumentVersion` 与
+   `AfStreamGetSaveVersion`，证据
+   `ev_044a8bf8644d95a6fed4ab02b16a339dbdf0ed02e425531dc80c1d746f6e45db`。
+   两个实际调用点为 `0x10082f61`、`0x10082f6f`，均属于
+   `PersistedPrepareResult::Save`（`0x10082f30`），反编译证据
+   `ev_c007acd408b72b9ab59bc12721f854cf79508b0a328551899a83084483dcab4e`。
+   它把查询得到的枚举传入保存版本表查询，再以 `AfStreamWrite` 向传入流
+   写入 2 字节局部值，随后写其他成员和对象。未观察到它打开 `/Version`；
+   不能把这里的 2 字节值认定为版本流尾部字段。
+3. AfCore 的 `AfStreamGetDocumentVersion` 位于 `0x100070d0`，反编译证据
+   `ev_03be041d12eb6a60f2e1569c1bd744da2cea8616244b66600fd32884ff0b6b23`。
+   汇编证据
+   `ev_85b78354bdff5ea3d39db4e2353b377e319f1c7d5d8a767459d5edfe69267efb`
+   显示：输出局部值初始化为 `0xb`；传入指针非空时，以地址
+   `0x1025cc40` 处的 IID 查询接口；查询成功后通过虚表 `+0x10`
+   调用，仅传入接口指针与局部值地址，最后释放接口并返回该值。
+   空指针或 QueryInterface 失败会保留默认值；后续接口调用的 HRESULT
+   未参与分支判断。本轮未解码该 IID，也未核对该枚举的同版本定义。
+   **反编译类型限制：** 伪代码把该间接调用显示为 `IStream::Write`，
+   但汇编没有传入 Write 所需的长度和已写字节数参数；必须保留为未知接口方法，
+   不能据伪代码的类型标注声称它写入磁盘流。
+4. AfCore 的 `AfStreamGetSaveVersion` 位于 `0x10007160`，证据
+   `ev_bfadab2cf3d9f416bdae212eba94dd7d89523e6b88382f0c9851ac320c2791b1`。
+   该函数没有读流：表指针非空且 short 参数非零时，根据传入枚举与
+   `short 参数 - 1` 的有符号比较选择 short 表项，否则返回 `-1`。
+   这说明此函数用于调用方传入的版本表选择，不能证明 `/Version` 的编码。
+
+### 有边界的搜索结果与推断
+
+- MappingCore 已初始化映像中，UTF-16LE `Version` 加终止零的字节搜索
+  只命中 `.rsrc` 的两处后缀，证据
+  `ev_aa2fa2dd87425024535400bda137b97c5e48f6839c89fe18fe2d34e130e83eba`。
+  这不排除动态构造流名、间接调用或其他编码。
+- MappingCoreLib 的同一字节搜索命中 `.rdata` 的 `0x100eda0e`、
+  `0x100ee73a` 和两处资源后缀，证据
+  `ev_7288d82da1091c13f9da1a3bcacb834861279d00f86e8c92e1a6430f79170839`。
+  字符串清单证据
+  `ev_51e368301fedd37f51569dc7d0625cdc0e945c70d2fa69e0c2491efc3ef09be9`
+  显示前两处分别位于 `TilePackageVersion`（`0x100ed9f8`）
+  和 `currentVersion`（`0x100ee72c`）内部，不能当作 OLE 流名。
+  这两个后缀地址的精确交叉引用为空；不代表完整字符串或动态访问没有引用。
+- 扩展检查同一安装包的 Map.dll，函数名及字符串搜索证据为
+  `ev_dc13fc61aa397a255f6f8d0ef493270987fb47e78ff2d3178780438303cc4e28`、
+  `ev_1f6663990a64a51c2d595aec887d6b0952373b1841d97c437034f2a263cf23f5`。
+  已恢复名称中未找到 MapDocument 打开/查询实现；版本相关命中含上述
+  AfCore 导入、TilePackageVersion 和 PackageVersion，未建立 `/Version` 关联。
+
+以上负结果均受 Ghidra 名称恢复、已定义字符串及静态引用覆盖范围限制。
+**推断：** 已定位的版本辅助函数消费内存接口或版本表，真正的文档版本流
+解码应在其上游或另一实现中；尚未确定具体 DLL，不能仅凭名称指定归属。
+
+### 样本辅助核对、未知项及下一入口
+
+仓库参考样本身份及与历史样本的区别见
+[样本记录](maps-analysis.md)。本轮复核参考样本 `/Version`：
+
+| `/Version` 流内半开区间 | 字节观察 | 目前可作的判断 |
+| --- | --- | --- |
+| `0x00..0x04` | `0a 00 00 00` | 小端值 10；长度前缀仍是假设 |
+| `0x04..0x0e` | `31 00 30 00 2e 00 31 00 00 00` | 可按 UTF-16LE 解码为 `10.1` 和终止零；实际解码器及终止符规则未知 |
+| `0x0e..0x14` | `13 00 db 08 00 00` | 6 字节未知数据；字段划分、符号性及含义未确认 |
+
+当前没有原生 `/Version` 读写分支证据，故长度计量单位、是否包含终止符、
+空字符串、非 ASCII 编码、尾部字段、短读和非法长度的错误处理均未验证。
+不能以 10.8 的内存枚举、局部对象版本或 DLL 产品版本解释 `10.1` 候选，
+也不能把尾部任意拆成整数后赋予保存版本含义。
+
+下一轮先从已知托管 `MapDocumentClass.Open`（`0x06004511`）和
+`GetVersionInfo`（`0x0600451e`）的类/接口 GUID 入手，核对 10.8 安装注册
+或类工厂与实际虚表，定位真正的原生入口；再沿 OLE OpenStream/CreateStream
+与读写帮助函数确认 `/Version`。另一条具体入口是 AfCore `0x1025cc40`
+的 IID 及其实现者，需要追踪谁设置文档版本属性。找到读写实现后逐一核对
+长度、编码、终止符、尾部和错误分支，再考虑版本读取实现。
+
+旧 AfCore 快照因分析配置不匹配被 REA 拒绝导入，本轮已按工具提示从原 DLL
+重新分析，未将旧记录当成本轮证据。新记录分别保存在忽略的
+`temp/arcgis/` 下 `mappingcore-version[-followup]-snapshot.json`、
+`mappingcorelib-version[-followup]-snapshot.json`、`afcore-version-snapshot.json`
+及 `map-version-snapshot.json`，会话均已关闭。这些记录仅保留本地；
+不提交 DLL、样本、提取流或完整诊断输出。
+
+未运行 ArcMap 或 QGIS，未人工核对源工程或转换结果，未验证跨版本兼容性。
