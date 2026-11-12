@@ -1,5 +1,5 @@
 use mxd2qgz::reader::Reader;
-use mxd2qgz::version_stream::{VersionLayout10_8, read_layout_10_8};
+use mxd2qgz::version_stream::{CompatibilityBranch10_8, VersionLayout10_8, read_layout_10_8};
 use std::io::ErrorKind;
 
 fn encoded(text: &str) -> Vec<u8> {
@@ -25,6 +25,7 @@ fn reads_confirmed_prefix_and_reports_unknown_tail() {
         VersionLayout10_8 {
             text: "10.1".into(),
             compatibility_short: 0x13,
+            compatibility_branch: CompatibilityBranch10_8::Eleven,
             remaining_bytes: 2,
         }
     );
@@ -40,7 +41,30 @@ fn preserves_every_short_bit_pattern_and_optional_empty_tail() {
         let mut reader = Reader::new(&bytes);
         let parsed = read_layout_10_8(&mut reader, 1024).unwrap();
         assert_eq!(parsed.compatibility_short, value);
+        let expected = if value < 0x12 {
+            CompatibilityBranch10_8::Three
+        } else {
+            CompatibilityBranch10_8::Eleven
+        };
+        assert_eq!(parsed.compatibility_branch, expected);
         assert_eq!(parsed.remaining_bytes, 0);
+        assert_eq!(reader.remaining(), 0);
+    }
+}
+
+#[test]
+fn maps_the_confirmed_signed_comparison_boundaries() {
+    for (value, expected) in [
+        (0x11_i16, CompatibilityBranch10_8::Three),
+        (0x12, CompatibilityBranch10_8::Eleven),
+        (0x13, CompatibilityBranch10_8::Eleven),
+    ] {
+        let mut bytes = encoded("10.1");
+        bytes.extend(value.to_le_bytes());
+        let mut reader = Reader::new(&bytes);
+        let parsed = read_layout_10_8(&mut reader, 1024).unwrap();
+        assert_eq!(parsed.compatibility_short, value);
+        assert_eq!(parsed.compatibility_branch, expected);
         assert_eq!(reader.remaining(), 0);
     }
 }

@@ -7,12 +7,23 @@ use crate::native_string::read_string_10_8;
 use crate::reader::Reader;
 use std::io;
 
+/// `/Version` short 在 10.8 原生读取器中产生的两个输出分支。
+///
+/// 变体名只表示原生函数的输出值；不声称其跨版本兼容语义已经闭环。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompatibilityBranch10_8 {
+    Three,
+    Eleven,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VersionLayout10_8 {
     /// 未经解释的候选文本；不能当作 MXD 保存版本。
     pub text: String,
-    /// 保留全部位模式的有符号 short；原生代码仅与 0x12 比较，语义未闭环。
+    /// 保留全部位模式的有符号 short；映射语义仍待验证。
     pub compatibility_short: i16,
+    /// 按原生有符号比较得到的输出分支：小于 `0x12` 为 3，否则为 `0x0b`。
+    pub compatibility_branch: CompatibilityBranch10_8,
     /// short 之后未读取的字节数，保持位置供后续诊断。
     pub remaining_bytes: usize,
 }
@@ -28,9 +39,15 @@ pub fn read_layout_10_8(
     let mut trial = reader.clone();
     let text = read_string_10_8(&mut trial, max_text_bytes)?;
     let compatibility_short = i16::from_le_bytes(trial.read_bytes(2)?.try_into().unwrap());
+    let compatibility_branch = if compatibility_short < 0x12 {
+        CompatibilityBranch10_8::Three
+    } else {
+        CompatibilityBranch10_8::Eleven
+    };
     let result = VersionLayout10_8 {
         text,
         compatibility_short,
+        compatibility_branch,
         remaining_bytes: trial.remaining(),
     };
     *reader = trial;
