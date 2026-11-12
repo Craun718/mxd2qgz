@@ -13,7 +13,7 @@
 | 03 | 部分 | Version 调用点、字符串和 short 比较已确认；完整写入、尾部及文本到保存版本的映射未知 |
 | 03 补充 | 部分推进 | 显式 10.8 `/Version` 前缀严格读取器已实现；仍不识别版本，未覆盖原生短读、写入规则或跨版本 |
 | 04–05 | 未实现 | 没有足够证据自动识别版本，因此未接入 inspect |
-| 06 | 部分 | 跨流引用表、提前登记、析构释放和局部 HRESULT；替换分支、失败恢复、VariantStream 完整规则仍未知 |
+| 06 | 部分推进 | 10.8 VariantStream 已知值前缀读取器已实现；对象分支、对象体、引用表、替换分支、失败恢复及跨版本规则仍未知 |
 | 07 | 部分推进 | 显式 10.8 `/Maps` 数量和首对象头读取器已实现；对象体属性及 CRS 文本规则待定 |
 | 08 | 部分 | 严格 AfCore 字符串子集及测试已实现；未接入具体 MXD 属性字段 |
 | 09–16 | 未实现 | 依赖可靠版本、对象体边界、Map/Layer/连接/CRS 具体持久化规则 |
@@ -52,6 +52,9 @@ QGIS 为本机 `4.2.3-Belém do Pará`（40203，开发版本标记 exported）�
   API 的测试默认忽略；`cargo fmt --check` 通过。
 - 本轮新增 `/Maps` 根前缀读取器后：`cargo test` 54 项通过，1 项需要 QGIS
   API 的测试默认忽略；该读取器只暴露库 API，未接入 CLI。
+- 本轮新增显式 10.8 Variant 前缀读取器后：`cargo test` 60 项通过，1 项需要
+  QGIS API 的测试默认忽略；`cargo fmt --check` 通过。该读取器只暴露库 API，
+  未接入 CLI，也未在 ArcMap/QGIS 人工验证。
 - `cargo test --test qgis qgis_api -- --ignored --nocapture`：显式 API 测试 1 项通过。
 - `cargo test --all-features`：含 Python feature 编译，54 项通过，1 项默认忽略；
   这不是 Python wheel 安装测试，Python inspect/read_stream 的签名与实现未改。
