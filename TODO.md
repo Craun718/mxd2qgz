@@ -13,6 +13,9 @@
 - [ ] 使用 REA 分析版本读取逻辑，验证 `/Version` 中 `10.1` 候选及其余字段。
   - [x] 调查 10.8 MappingCore/MappingCoreLib 版本入口，沿 AfCore 核对版本辅助函数及局部保存调用；补记参考样本身份和版本流字节，见 `docs/arcgis-runtime-analysis.md` 的“/Version 原生读取入口调查”。这些函数尚未关联到 OLE `/Version`。
   - [ ] 由 MapDocument 类/接口 GUID 定位原生 Open/GetVersionInfo，追踪实际版本流读写；核对长度、编码、终止符、尾部及错误分支，验证与 `10.1` 候选的关系。
+    - [x] 从 10.8 注册清单定位 PageLayout.dll，闭合类工厂、QI、最终虚表及 Open/GetVersionInfo；区分 Build Number 与 Version 流，见 `docs/mapdocument-native.md`。
+    - [x] 定位 Version 局部读取及有符号 short 比较，记录未检查 HRESULT 的调用分支；尚未确认字符串编码、尾部或版本映射。
+    - [ ] 核对 AfCore 版本 IID 的实现者及完整 Version 读写规则。
 - [ ] 使用 REA 分析坐标系读取逻辑，验证 `/Maps` 中投影文本候选的长度和作用范围。
 - [ ] 读取 OLE 容器中的 `/Version`、`/Maps` 等数据流并识别 MXD 版本。
 - [ ] 使用 REA 分析对象的序列化和读取逻辑，确定对象边界、类型标识和引用关系；记录证据及适用版本。
