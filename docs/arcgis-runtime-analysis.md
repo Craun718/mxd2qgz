@@ -52,6 +52,14 @@ CAB 清单另包含 `SystemCore.dll`、`MappingCore.dll`、`MappingCoreLib.dll`�
 
 ## 尚未验证
 
+2026-11-12 尝试通过 REA `open_binary` 分析已提取的 MappingCore 时，
+返回 `provider_unavailable`，未产生反编译证据。诊断报告当前 Ghidra 为
+12.2，而连接的 REA 仅接受 12.1.x（核验版本 12.1.4）；配置使用 Java
+21.0.12.1，而提供程序要求完整的 64 位 JDK 25 或更新版本。
+这是分析环境兼容性阻塞，不是目标 DLL 或 MXD 格式的结论。
+后续须对齐 REA 支持的 Ghidra 版本和其启动环境中的 Java，再继续版本读取研究；
+本次未修改工具配置，也未验证 `/Version` 字段。
+
 - 尚未取得原生 MXD 读取函数的反编译结论；不得将 10.8 的潜在规则直接应用于 10.1。
 - `/Version` 其余字段、投影文本的归属、对象流的边界和引用编码仍未知。
 - 未在 ArcMap 或 QGIS 中人工打开并核对转换结果；当前没有转换结果。
