@@ -75,6 +75,28 @@ AfCore 帮助函数，不能仿照此处忽略错误。它不解析字符串文�
 也没有消费其后的 4 字节。因此 `/Version` 的 `10.1` 候选不是已证实的完整
 版本标识；尾部字段和完整读写规则仍未知。
 
+## 10.8 `/Version` 局部读取器边界
+
+2026-11-12 复核同一 PageLayout.dll 时，`0x10076ef0` 的伪代码证据为
+`ev_f3aa0828a1fb50411ce9079a56adfe24453570e47e785e59753a62a0d0b6ceb1`。
+该函数成功打开存储后以 `STGM_READ` 打开 `Version`，连接 ObjectStream，
+按顺序调用 AfCore String::Read 和 2 字节 AfStreamRead。随后把有符号 short
+与 `0x12` 比较：小于 `0x12` 输出 3，否则保留初值 `0xb`。此前读取入口证据
+`ev_802ad4e215adfe29d537f35a827084e9cd51a7085912f448e4058593e45e70e0`
+与汇编 `ev_28b0043bf0ce322ea26d7f53f0b517f209899601fba6d3c576e877716ab27056`
+仍是对应来源。`0x10077160` 的复核伪代码
+`ev_f08acf3293184c3a38aec67e8b0aa8d3c3862bf615a5641bfef8d3de72c07281`
+说明文档信息加载前会先用该函数产生的 short 值建立分支。
+
+`src/version_stream.rs::read_layout_10_8` 只实现上述成功路径的严格子集：
+完整读取 AfCore 字符串和 2 字节 short，保留 short 位模式和 short 后剩余字节；
+失败时不推进游标，也不把文本映射为保存版本。它与原生分支有两点有意差异：
+原生不检查两个读取调用的 HRESULT，AfCore 短读行为也未纳入 Rust 安全子集；
+Rust 读取器在 short 截断时回到起点。尾部字段、String/short 的版本语义、
+写入规则、缺失流、短读恢复和跨版本兼容性仍未闭环。本轮 Ghidra 字符串清单
+中 `Version` 文本只报告一个直接引用；这不能证明保存侧一定没有动态创建或
+复制该流，不能据此断言完整写入规则。未执行 ArcMap，也没有人工验证。
+
 ## 未解决与保存
 
 AfCore `0x1025cc40` 的版本 IID 实现者尚未核对；String::Read/Write 的长度和

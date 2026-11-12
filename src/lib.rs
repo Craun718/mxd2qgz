@@ -6,6 +6,7 @@ pub mod object_stream;
 pub mod qgis;
 pub mod reader;
 pub mod source_path;
+pub mod version_stream;
 
 #[cfg(feature = "python")]
 mod python;

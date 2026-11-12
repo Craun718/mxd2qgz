@@ -20,6 +20,7 @@
       - [x] 解码版本 IID 并闭合至 SystemCore ObjectStream 的内存属性虚表；属性来源和磁盘版本映射仍未知，见 `docs/object-context-native.md`。
 - [ ] 使用 REA 分析坐标系读取逻辑，验证 `/Maps` 中投影文本候选的长度和作用范围。
 - [ ] 读取 OLE 容器中的 `/Version`、`/Maps` 等数据流并识别 MXD 版本。
+  - [x] 实现显式 10.8 `/Version` 前缀的严格读取器，保留候选文本、有符号 short 位模式和尾部位置；不识别版本，写入规则和跨版本兼容性仍未知。
 - [ ] 使用 REA 分析对象的序列化和读取逻辑，确定对象边界、类型标识和引用关系；记录证据及适用版本。
   - [x] 核对 10.1 托管 IObjectStream 方法顺序，记录 LoadObject 和版本属性的 x86 槽位候选及跨版本限制，见 `docs/arcgis-runtime-analysis.md`。
   - [x] 在 Ghidra 12.1.4 中核对 10.8 接口 GUID、构造后的实际虚表及 IUnknown 转发；定位读流入口，见 `docs/arcgis-runtime-analysis.md`。
