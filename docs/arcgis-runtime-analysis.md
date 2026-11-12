@@ -127,3 +127,41 @@ SystemCore 的 ObjectStream 实现相对应；尚未确认其 MXD 磁盘编码�
 本次 REA 名称清单超过 MCP 单次响应大小，已按工具建议保留完整 Evidence，
 连同反编译记录导出到忽略的 `temp/arcgis/systemcore-snapshot.json`。
 AfCore 记录位于 `temp/arcgis/afcore-snapshot.json`。两处会话均已关闭。
+
+## ObjectStream 接口槽位候选（2026-11-12）
+
+本次 REA `inspect_managed_members` 证据
+`ev_cb3ddc1fe730389583d98ed2d7511c9f494b92893fedd3c386d624b92d4b677b`
+来自上述 System 10.1.0.0 程序集，MVID 为
+`4d0ea07a-333e-4626-b241-5525c1190e58`。选中的 `IObjectStream`
+（类型 token `0x02000085`）含 18 个方法，均无托管方法体。
+元数据顺序的前 11 项为 `RemoteRead` 至 `Clone`；其后为：
+
+| 方法 | 方法 token | 参数 → 返回值（REA 签名表示） | x86 虚表偏移候选 |
+| --- | --- | --- | --- |
+| set_Stream | `0x060001ff` | `class:36` → `void` | `+0x38` |
+| get_Stream | `0x06000200` | 无 → `class:36` | `+0x3c` |
+| SaveObject | `0x06000201` | `object` → `void` | `+0x40` |
+| LoadObject | `0x06000202` | `valuetype:45&`, `object` → `object` | `+0x44` |
+| ReplaceObject | `0x06000203` | `object` → `void` | `+0x48` |
+| set_Version | `0x06000204` | `string` → `void` | `+0x4c` |
+| get_Version | `0x06000205` | 无 → `string` | `+0x50` |
+
+**观察：** `ObjectStreamClass` 另声明 `set_DocumentVersion`
+（`0x060001f2`）和 `get_DocumentVersion`（`0x060001f3`），而所选
+`IObjectStream` 方法清单没有这两项。请求同时选择了 `IObjectStream2`，
+返回的类型清单仅有 `ObjectStreamClass` 和 `IObjectStream`；不能据此给
+10.8 原生 `IObjectStream2::vftable` 标注方法名。签名中的数字保留工具
+返回的 TypeDefOrRefOrSpec 编码，尚未将 `valuetype:45` 认定为具体类型。
+
+**推断：** 表中偏移按三个 IUnknown 槽、每槽四字节并延续元数据顺序计算。
+`set_Stream` 的 `+0x38` 与 AfCore 创建流时的间接调用相符，支持沿该位置
+继续查找；但 10.1 托管声明和 10.8 原生实现跨版本，且尚未核对接口 GUID、
+调整 thunk 和实际虚表内容，因此这些偏移仅为查找候选，不能视为原生入口
+已确认。`Version` 和 `DocumentVersion` 的接口属性不证明 `/Version`
+数据流的字段意义或编码。
+
+**未解决：** 本次 `binary_session` 再次报告原生提供程序不兼容
+（Ghidra 12.2 / Java 21），未启动新的原生分析，也未运行 ArcMap 或 QGIS。
+下一步在兼容环境中先核对接口 GUID 与虚表，沿 `LoadObject`、`Version`
+和 `DocumentVersion` 的实现追踪实际读流调用及错误分支，再验证样本字节。
