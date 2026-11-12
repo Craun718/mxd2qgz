@@ -54,6 +54,9 @@ SystemCore 的局部对象头读写证据及独立读取器见
 
 ## 10.8 文档打开中的 Maps 根入口（2026-11-12）
 
+AfCore String::Read/Write 的独立原生证据见 [字符串规则](native-strings.md)。
+这不把本文 WKT 或其他候选统一解释为此类字符串。
+
 目标身份与 MapDocument 的类工厂、实际虚表见
 [原生入口](mapdocument-native.md)。以下地址属于同摘要的 PageLayout.dll。
 REA `0x10011550`（`ev_9794900b58d1cd642637022e99be42d1524352ee0613d819df448e0f4b75a729`）
