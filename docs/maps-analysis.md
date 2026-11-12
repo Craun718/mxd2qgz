@@ -51,3 +51,32 @@ SystemCore 的局部对象头读写证据及独立读取器见
 该证据来自 Desktop 10.8 DLL，不对应本文样本的任何已确认 `/Maps` 起点；
 尚未证明 10.1 样本使用相同规则。现有流内偏移观察及未知状态不变，
 未将字符串候选用作对象边界，未将读取器接入 MXD 解析或版本识别。
+
+## 10.8 文档打开中的 Maps 根入口（2026-11-12）
+
+目标身份与 MapDocument 的类工厂、实际虚表见
+[原生入口](mapdocument-native.md)。以下地址属于同摘要的 PageLayout.dll。
+REA `0x10011550`（`ev_9794900b58d1cd642637022e99be42d1524352ee0613d819df448e0f4b75a729`）
+调用后端 `0x10076020`（`ev_8e5180ecc8c998c7ba7447c87c68e3bab72b0cbe3abfaa47ec1e3edeacf6cafd`），
+取得 IStorage 后进入 `0x10075370`（`ev_7b8c0b102b6f23bb47cee0774bb27e6663dc7fd444944a6ca365f46f4b38922d`）。
+
+静态观察：该函数首先尝试 `Mx Document` 流；成功时走另一种头部和对象读取
+路径。该流打开失败才进入分流格式，先调用 `0x1007b6e0` 处理 DrawingDefaults，
+再 OpenStream `Maps`，将同一个 ObjectStream 连接到此底层流。
+从 `/Maps` 流内 `0x00` 读 4 字节有符号数量；正数时循环调用对象流虚表
+`+0x44`，请求 IUnknown，非空对象加入集合。首个对象读取起点因此是该分支的
+`/Maps:0x04`，并非靠字符串扫描寻找。对象循环结束后再读一个 4 字节值，
+并将同一个 ObjectStream 转接到 PageLayout，之后转接 View。
+
+这一观察只确认容器分支和对象加载调用位置，**没有确认每个对象的语义或长度**。
+对象体没有可用的通用长度，未知类不能跳过。对象表是否在 SetStream 时保留、
+DrawingDefaults 引用对后续对象的影响、版本属性的来源和错误分支还需要 SystemCore
+核对，不能据此在每个流边界新建引用表。
+
+原生代码在这些 4 字节 IStream::Read 后检查 HRESULT，但未看到读取字节数必须
+等于请求数的比较；不能认为 S_FALSE 短读已被拒绝。负数量不进入循环，尚未证明
+其是合法空集合，Rust 未来实现应将异常数量明确报告并加资源限制。
+
+没有把此 10.8 根入口应用到参考样本的 10.1 候选；没有确定地图、图层、CRS 或
+投影文本候选的对象归属。`/Maps` 外层控制字段和对象体仍不能自动完整遍历。
+完整原生证据保存在忽略目录 `temp/arcgis/pagelayout-mapdocument-snapshot.json`。
