@@ -97,6 +97,46 @@ Rust 读取器在 short 截断时回到起点。尾部字段、String/short 的�
 中 `Version` 文本只报告一个直接引用；这不能证明保存侧一定没有动态创建或
 复制该流，不能据此断言完整写入规则。未执行 ArcMap，也没有人工验证。
 
+## Save/SaveAs 与 `/Version` 写入追踪（2026-11-12）
+
+本轮继续使用同一 PageLayout.dll 摘要、REA 6.8.0、Ghidra 12.1.4 和配置摘要
+`e763201e522a4b123fb330eede09834c44ddf2bb90702e50eea219801be95539`。
+地址仍是 DLL 虚拟地址；`+0x24`、`+0x10`、`+0x14` 是对象或接口的内存偏移。
+以下只描述静态反编译观察，未执行 ArcMap。关键函数的 dossier 保留后，
+Ghidra 值流本身仍有截断或间接调用覆盖限制，不能据此宣称穷尽所有执行路径。
+
+| 观察 | 证据 |
+| --- | --- |
+| Save 入口 `0x10016c80`：状态检查后调用 `StgOpenStorage`，第 5 个整数参数为 `0x10012`；随后调用 `0x10016390`。可选择预览分支 `0x10013f10(...,300,200)` 加 `0x100163e0`，或走 `0x10017a20`。之后按顺序调用 `0x10016520`、`0x100168d0` 和 IStorage `+0x24(1)`，再做后续状态更新 | 完整 dossier `ev_2d8e0ad153e9a14fe8b9a93a36dcb2400cd073f8334ce839e00a8c7a58e303b6`；摘要 `ev_4d73d1a508412f185d3a17f6c23745d0dbbfb446b411bed13dbd2fd95d84e126` |
+| SaveAs 入口 `0x10017190`：确认目标扩展名为 `.MXD` 且路径非空。已有内部接口返回 `0xb` 时，复制 `.MXD` 源文件后用 `StgOpenStorage(...,0x10012,...)`；否则用 `StgCreateDocfile(...,0x1012,...)`。其后的保存序列与 Save 相同，最终也调用 `0x10016520`、`0x100168d0` 和 IStorage `+0x24(1)` | 完整 dossier `ev_d738d68f9da7bc8f33e69f6c4a63d206f1c05144446f8914f68b102553c657c0` |
+| `0x10016520` 打开或创建名为 `Mx Document Version Info` 的流：先写 `DAT_1009f0ac` 处的 4 字节，再写 `Build Number = "10.8.0.12790"`，最后经 `0x10018540` 写属性对象。这不是 `/Version` 流写入器 | 完整 dossier `ev_c0ae7d1449aefcf0d3b4516ff6764158a56a3eb3f6c648a86bab14d9f39e686a` |
+| 主文档保存 `0x100168d0`：创建 `DAT_10089120` 对应的 ObjectStream，把其文档版本内存属性初始化为 `0xb`；调用文档对象 `+0x14` 的虚表 `+0x10`。设置当前时间和文件名后，再经 `+0x10` 把该 ObjectStream 和 `0xb` 交给保存接口。静态伪代码未见 `Version` 字符串，也未看见显式创建 `/Version` 流 | 完整 dossier `ev_3c33c427dd1e46c7f6857fcaa889982cd2d7590336dee75aae691f79a9517c40`；Save 前段的有界值追踪 `ev_bcd4fbe3c9dc3316aafa7762514d65ccc60c74dac5a3d31b064916e2e7c067eb` 仅覆盖这一部分，作辅助证据 |
+
+这些事实可以区分两条记录：`Mx Document Version Info` 是 GetVersionInfo
+消费的 Build Number 属性流，`/Version` 是局部读取器消费的字符串加 short 流。
+不能把 Build Number、DLL 文件版本或 ObjectStream 内存属性 `0xb` 直接当成
+`/Version` 文本或其 short 字段的写入值。
+
+保存侧的版本映射仍未闭合。`0x100168d0` 只把 ObjectStream 内存属性初始化为
+`0xb`；文档对象随后可能改写该属性，而重写点、`/Version` 的创建者、short
+来源、尾部 4 字节来源和 Write 分支都未确认。SystemCore `0x1006f8f0` 仍是
+ObjectStream 写对象入口，不是 `/Version` 创建点；该排除证据为
+`ev_0204a2898d0f59486fe8de521744a0aa514290bd220f22ca213d7183b73ffd63`。
+SystemCore 的字符串工作流未见裸 `Version` 流名，证据
+`ev_6d22e789ed79a4ec53cd714a9002b9569492419180fe224f7cd56a031a08569c`；
+这受已恢复字符串和静态引用覆盖限制，不能升级为“保存侧没有该名称”。
+AfCore `0x10009870` 和 `0x1005c760` 的候选映射证据分别为
+`ev_a6be15cc94169075e6cd56c16cbf334ee67fee474a5272ba1605c016df671bed`、
+`ev_edcdf23c4750cb76371f40ed4cd592dc31260d011c795b52b656a7b281041fb2`，
+只说明 document version 到 save short 的机制存在；它们尚未连接 MXD
+`/Version`。PageLayout 中 `0x10069230`、`0x10054f20` 也是低置信候选，
+本轮未展开，只保留待排查状态。
+
+因此本轮不修改 Rust 版本 API，也不推断 `/Version` 完整布局。下一步应沿
+文档对象 `+0x14` 的虚表、`0x100168d0` 传入的 `0xb` 和 IStorage `+0x24`
+之后的提交路径继续追踪，优先找到 `/Version` 流名、String::Write、short
+写入和尾部数据的实际写入者；若仍无闭环，不得用默认版本补齐解析输出。
+
 ## 未解决与保存
 
 AfCore `0x1025cc40` 的版本 IID 实现者尚未核对；String::Read/Write 的长度和
