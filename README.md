@@ -37,6 +37,15 @@ maps = mxd2qgz.read_stream(path, "/Maps")  # bytes
 
 接口只读取 OLE 数据流，不解析图层或生成 QGIS 工程。文件或流不存在时会抛出 Python 的 `OSError` 子类。构建可分发的 wheel 可运行 `maturin build --release`。
 
+## Rust 构造模型输出
+
+Rust 库提供 `qgis::to_qgs` 和 `qgis::write_project`，可从调用者构造的
+`model::Map` 生成 QGS/QGZ，支持单数据框、分组、顺序、可见性、Shapefile 路径、
+EPSG:4326/3857 与主画布范围。输出默认不覆盖已有文件，断链保留并诊断；
+多数据框和不支持的数据源明确报错。此接口尚未连接 MXD 解析，CLI 没有
+`convert`，Python 接口不变。调用示例、限制、QGIS 4.2.3 基准和 API 验证见
+[输出合同](docs/qgis-output.md)。API 加载通过，人工目视验收未完成。
+
 ## 后续工作
 
 1. 使用 REA 追踪原生文档打开、版本和对象持久化实现，确定对象边界、类型及版本差异；可控样本可辅助核对。

@@ -3,7 +3,9 @@
 pub mod model;
 pub mod native_string;
 pub mod object_stream;
+pub mod qgis;
 pub mod reader;
+pub mod source_path;
 
 #[cfg(feature = "python")]
 mod python;
