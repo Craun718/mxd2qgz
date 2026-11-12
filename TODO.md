@@ -40,6 +40,8 @@
 
 ## QGZ 生成
 
+- [x] 依据官方资料和本机 QGIS 4.2.3 API 生成脱敏最小 QGS/QGZ、CRS XML 及合成点数据基准；版本、摘要、复现方法及验收边界见 `docs/qgis-output.md`。
+
 - [ ] 实现 `convert` 命令，读取 MXD 并输出 QGZ。
 - [ ] 将中间模型映射为 QGIS 工程、图层树、图层顺序和可见性。
 - [ ] 转换 Shapefile 数据源路径，处理相对路径、绝对路径和缺失文件。

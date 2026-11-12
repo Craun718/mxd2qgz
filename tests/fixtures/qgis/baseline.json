@@ -1,0 +1,22 @@
+{
+  "qgis_version": "4.2.3-Belém do Pará",
+  "qgis_version_int": 40203,
+  "qgis_dev_version": "exported",
+  "qt": "6.12.0",
+  "pyqt": "6.12.0",
+  "qgz_members": [
+    "minimal.qgs",
+    "rkRUyT_styles.db"
+  ],
+  "synthetic_features": [
+    [
+      1,
+      2
+    ],
+    [
+      3,
+      4
+    ]
+  ],
+  "sanitization": "Only saveUser, saveUserFull and projectMetadata/author replaced"
+}
