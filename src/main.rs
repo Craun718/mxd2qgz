@@ -170,21 +170,39 @@ fn utf16_candidates(bytes: &[u8]) -> Vec<(usize, String)> {
     for alignment in 0..2 {
         let mut start = alignment;
         let mut units = Vec::new();
-        for offset in (alignment..bytes.len().saturating_sub(1)).step_by(2) {
+        let mut offset = alignment;
+        while offset < bytes.len().saturating_sub(1) {
             let unit = u16::from_le_bytes([bytes[offset], bytes[offset + 1]]);
-            let printable = char::from_u32(unit as u32)
-                .is_some_and(|ch| !ch.is_control() && !ch.is_whitespace() || ch == ' ');
+            // Decode a surrogate pair as one scalar while retaining byte offsets.
+            // An unpaired surrogate ends a candidate instead of inserting U+FFFD.
+            let pair = if (0xd800..=0xdbff).contains(&unit) {
+                bytes.get(offset + 2..).and_then(|tail| {
+                    let low = u16::from_le_bytes(tail.get(..2)?.try_into().ok()?);
+                    (0xdc00..=0xdfff).contains(&low).then_some(low)
+                })
+            } else {
+                None
+            };
+            let scalar = pair.map_or(unit as u32, |low| {
+                0x10000 + (((unit as u32 - 0xd800) << 10) | (low as u32 - 0xdc00))
+            });
+            let printable = char::from_u32(scalar)
+                .is_some_and(|ch| (!ch.is_control() && !ch.is_whitespace()) || ch == ' ');
             if printable {
                 if units.is_empty() {
                     start = offset;
                 }
                 units.push(unit);
+                if let Some(low) = pair {
+                    units.push(low);
+                }
             } else {
                 if units.len() >= 4 {
                     result.push((start, String::from_utf16_lossy(&units)));
                 }
                 units.clear();
             }
+            offset += if pair.is_some() { 4 } else { 2 };
         }
         if units.len() >= 4 {
             result.push((start, String::from_utf16_lossy(&units)));
@@ -221,5 +239,41 @@ mod tests {
         }
         data.extend_from_slice(&[0, 0]);
         assert!(utf16_candidates(&data).contains(&(1, "矢量2.gdb".into())));
+    }
+
+    #[test]
+    fn candidates_preserve_surrogate_pairs_on_both_alignments() {
+        for alignment in 0..2 {
+            let mut data = vec![0; alignment];
+            data.extend("地图😀图层".encode_utf16().flat_map(u16::to_le_bytes));
+            data.extend_from_slice(&[0, 0, 0xff]);
+            assert!(utf16_candidates(&data).contains(&(alignment, "地图😀图层".into())));
+        }
+    }
+
+    #[test]
+    fn malformed_surrogates_split_candidates_without_replacement() {
+        for invalid in [vec![0xd800], vec![0xdc00], vec![0xd800, 0xd800]] {
+            let units: Vec<u16> = "abcd"
+                .encode_utf16()
+                .chain(invalid)
+                .chain("efgh".encode_utf16())
+                .chain([0])
+                .collect();
+            let bytes: Vec<_> = units.iter().flat_map(|unit| unit.to_le_bytes()).collect();
+            let candidates = utf16_candidates(&bytes);
+            assert!(candidates.contains(&(0, "abcd".into())));
+            assert!(candidates.contains(&((units.len() - 5) * 2, "efgh".into())));
+            assert!(
+                candidates
+                    .iter()
+                    .all(|(_, value)| !value.contains('\u{fffd}'))
+            );
+        }
+        let mut bytes: Vec<_> = "abcd".encode_utf16().flat_map(u16::to_le_bytes).collect();
+        bytes.extend_from_slice(&[0x00, 0xd8, 0xff]);
+        assert!(utf16_candidates(&bytes).contains(&(0, "abcd".into())));
+        assert!(utf16_candidates(&[]).is_empty());
+        assert!(utf16_candidates(&[0xff]).is_empty());
     }
 }
