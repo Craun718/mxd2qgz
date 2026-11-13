@@ -2,6 +2,12 @@
 
 面向 ArcMap MXD 到 QGIS 工程转换的实验工具。目前处于 MXD 格式研究阶段。
 
+## 适配目标
+
+适配目标为 **ArcMap 10.1**，与旧版软件保持一致。后续 REA 研究、MXD 解析实现和源工程人工验收均以 10.1 为基准。已有 10.8 原生研究及显式 10.8 读取器保留原版本范围，需经 10.1 原生实现复核后才能用于目标版本；当前尚未验证 10.1 转换能力。
+
+本机安装介质目录为 `/home/gxrs/下载/arcmap10.1/ar10.1`，Desktop 安装入口为 `Desktop/setup.msi`，配套载荷为 `Desktop/Setup1.cab` 和 `Desktop/Setup2.cab`。已读取 `Desktop/Setup.ini`：`ProductName=ArcGIS 10.1 for Desktop`、`ProductVersion=10.1.3035`、`ProductLanguage=English`。这些是安装配置声明；提取 DLL 后仍需逐个核对文件版本、身份和摘要，尚未安装或进行 ArcMap 人工验证。安装介质仅作为本地研究来源，不纳入仓库。
+
 ## 使用
 
 需要 Rust 工具链。运行：
