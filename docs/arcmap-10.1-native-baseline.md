@@ -32,7 +32,7 @@ REA 6.8.0 的 `inspect_native_exports` 对上述五个已核对文件的 PE 导�
 
 ## 未解决事项
 
-基线建立时没有比较函数实现，也没有验证任何 10.1 的对象头、字符串、Version 或 `/Maps` 规则；随后开展的局部对照见下节。10.8 研究结论和读取器仍只标注 10.8。完整文档打开链、类 GUID、虚表、错误处理、版本字段及跨版本差异均待确认。ArcMap 10.1 与 QGIS 的人工打开和视觉核对均未进行。
+基线建立时没有比较函数实现，也没有验证任何 10.1 的对象头、字符串、Version 或 `/Maps` 规则；随后开展的局部对照见下节。10.8 研究结论和读取器仍只标注 10.8。文档打开链主干、ObjectStream 写出器、String 短读边界与 Version 流对象身份已局部闭合（见 2026-11-14 各节），但类描述表的运行时消费者、对象错误恢复、Version 写入路径的流归属及各 GUID 语义仍待确认。ArcMap 10.1 与 QGIS 的人工打开和视觉核对均未进行。
 
 ## 10.1 Version 局部读取和构建号（2026-11-13）
 
@@ -109,3 +109,56 @@ SystemCore 其他 IID 匹配分支的构造与虚表复核见下节。保存版�
 - `0x47a3f0` 的输出初值为 5；获取构建号属性成功时还会解析构建号并有条件地输出 3，否则在相应分支按 short 小于 `0x12` 输出 3（`ev_a74bbb9c6bea13321e4037134ac0e56150d621e72aeacd06cf85b48654666599`）。该条件涉及独立的 Build Number 属性，不能仅凭 Version short 建立完整版本映射。
 - 独立使用 pefile 检查 ArcMap.exe 自身英文字符串资源：ID `0x14d/0x173/0x186/0xe804/0x193` 分别是 `8.3/9.0/9.2/10.0/10.1`；`0x11a` 却是打印错误文本。由于保存代码使用的句柄可能指向本地化资源模块，不能把 exe 表中的 `0x11a` 文本当成所有运行环境的实际输出，也不能猜测为某个版本号。资源候选仅为静态信息，资源句柄在目标运行环境中尚未确认。
 - AfCore `ESRILocale::LoadLocalizedRes` 将传入模块的 `.exe` 或 `.ocx` 扩展名改为 `.dll`，取文件名并加 `Res` 前缀，再交给 `LoadLocalizedResFromFile`（`ev_a6659937223baa1554cbad185f9e04ccc46546738ac2ca7361796c1b1f02978d`）。后者在组合后的语言标识为 `0x409` 时直接返回空句柄，否则按配置目录查找并加载文件（`ev_0eed7e47f87c4c4d5d5a0f1857e7238a9a485ea71bc538abe41ee911fa27a54a`、汇编 `ev_b3119126fa317cb4bdcac528256891bdaeda8813c4e74e49b0241554b50f5afc`）。调用方随后在空句柄时回退到传入模块；但尚未在运行时确认该模块句柄、语言标识和 ID 3 的写出文本。证据包 `temp/arcgis/arcmap101-version-localization.json` 含本机路径。
+
+## 10.1 SystemCore 类工厂与虚表闭合（2026-11-14）
+
+复核 SystemCore.dll 的 SHA-256 与基线一致；REA / Ghidra 12.2 静态分析，证据包为忽略目录 `temp/arcgis/arcmap101-systemcore-factory-followup.json`，含本机路径，分享前须脱敏。会话期间出现分析实例切换到其他 DLL 的情况，以下仅引用 subject 与摘要核对为本文件的证据；未运行目标软件。
+
+- `DllGetClassObject` 导出（0x800413b0）为对 0x80054220 的尾跳转（`ev_72cc5e294270d5f702c819cb619a4400ec321c0cf5ec8c6fd8777ebe24ef5793`）。后者按步长 0x34 遍历 0x800a4280 类表：每项 `+0x00` 为 CLSID 指针、`+0x08` 为工厂对象指针，以 CLSID 指针为零终止，命中时调用工厂虚表槽 0，未命中返回 `0x80040111`（`ev_82318213f921ead5f6a4a34f0e960ccd2eb51a156b9188edd3ef806dcac04c51`、`ev_ed7580eb757e6973147f02cc2da794f5cc6bfdf01f5ca0c86ce43b40116a5582`）。静态映像中工厂槽全为零（`ev_1c68cada82430b3ebc0571cb7c98419461ee0c3bbab1a8d98dba4e6a3361ea5c`），故静态可见条目只有项 0（CLSID `4287b5d9-32d2-11d2-a29a-080009b6f22b`，`ev_f9223e805d39b112622311e47d9985e295d145a8a28d1cfd324b077f0150b7f3`），激活工厂由运行时登记填充；登记扫描代码 0x80054290..0x800545fb 的寄存器全局恢复不完整，写入者未闭合。
+- CLSID `043731d0-a7cf-11d1-8bd1-080009ee4e41` 全库唯一命中于 0x80070f80，创建调用点 0x7ffcef40 经 AfCore 导入 `AfCreateInstance`（导入槽 0x8006b070，导入名经 PE 导入表核对）以 ctx 0x17、IID_IUnknown 创建对象，成功后 OleRun 并查询 `18a45ba7-...`（`ev_63a255855bc517caa6aca0414c58e0782b538375acf5029784cdaf7edfd56b43`）。该 CLSID 不出现在 0x800a4280 类表；构造入口 0x80047930 的唯一静态引用是 0x8007d7a0 类描述表条目 0 的 `+0x18` 槽（`ev_9b240b7855fa0f93fed236c94ab124cd27214d1c56f384d3e9b7cbe69a1f51be`、`ev_a7b9e608902d71acae08c230b7c7d88fa53ddb59c68e7a55cb7ffd25c3c7810e`）。AfCreateInstance 如何到达该表属 AfCore 内部，本轮未闭合，不能据此断言完整工厂分发链。
+- ObjectStream 主虚表 0x800710dc 实读 104 字节与既有 24 槽记录一致（`ev_e3256e591cd21f77043ec3732f288089728824d491e309c4bf9004892cfa3673`）。新反编译：`+0x0c`（0x7ffcf520）在底层流为空时返回 `0x80004005`，否则对该流全参透传 AfStreamRead（`ev_a4e60f15b9a0d9399c7d1d66d983df29756fc3d4a9e178f137dd6bc64248e38f`）；`+0x20`（0x7ffcf630）与 `+0x28`（0x7ffcf690）分别转发底层流虚表 `+0x20`/`+0x28`（`ev_8f5250f64bcd9d720c065492f8bb09bb505532323138ff7ded86a935b9567179`、`ev_9202a7908527df4281fe408344ae6afbb3981eab8edf0426f4b002c12878d682`）；按标准 IStream 布局后者对应 Seek、前者对应 Commit，此命名是推断。`+0x3c`（0x7ffcf770）输出内部流指针并 AddRef（`ev_244ca166a80eae6e1cede2ca81a2ba7d2fa5ff23b7a6ff96d4bd7db17718dec9`）。
+- 虚表 `+0x40`（0x7ffcf7e0）为对象写出器：向底层流写 16 字节对象 GUID，查表命中则写 4 字节既有键，未命中则 AddRef、经 0x7ffdab10 登记并写 4 字节新键（键计数位于对象 `+0x2c`），随后按 IPersistStream（`+0x18`）或 VariantStream（0x1c 字节包装，虚表 0x80071220，`+0x10`）分派对象体保存（`ev_712934fb8673085a577b9d13451ea046039ec935f94d82ac582b9fbebffdb051`）。写序与读分支 0x7ffcff70 对称；这闭合了 10.8 与 10.1 均悬置的「GUID+键由哪个槽位写出」问题（10.1 范围）。空对象参数时写 16 字节零 GUID 作为结束标记。
+- 虚表 `+0x04/+0x08` 槽值的汇编核对显示 0x80003340 属无关的 libcurl HTTP 类、0x80000370 为 std::vector 式插入实现（`ev_0789d9fe745089f3c651aaef5dd13319455fb96a427c1746b5a4e5dec1120e06`、`ev_8f4bc42bab609673c72e2f7c2d911c843ca272a373c1e1972053cf5ad08d8c28`），疑为 Ghidra 函数边界误并入，不代表对象流行为。
+- IDocumentVersion 虚表 0x80071140 实读与既有记录一致（`ev_7cd0c1cee1b3c1fd3c9c17d8d639370ca193e5d7d9ad16cb2f94c62537f6b2ba`）。
+
+仍未闭合：0x8007d7a0 类描述表的运行时消费者（AfCore 内部）、类表激活写入者、虚表 `+0x10`-`+0x1c`/`+0x30`-`+0x38`/`+0x50`/`+0x58` 逐槽语义、`+0x20`/`+0x28` 的方法名推断。0x7ffcff70 的读取量与错误分支维持对象体文档的既有证据，本轮未重新取证。全部结论为静态观察，未运行 ArcMap 10.1，未做人工目视验收。
+
+## 10.1 Version 流对象身份与文档打开链（2026-11-14）
+
+再次核对 PageLayout.dll 与 AfCore.dll 的 SHA-256 与基线表一致。REA 6.8.0 / Ghidra 12.2 静态分析，地址仅绑定上述 10.1.0.3035 文件；证据包为忽略目录 `temp/arcgis/arcmap101-version-stream-identity.json`，含本机路径，分享前须脱敏。PDB 加载状态未知，间接调用未覆盖，未运行目标软件。
+
+- PageLayout `0x7b70a8e0` 使用的类 GUID `043731d0-a7cf-11d1-8bd1-080009ee4e41` 在 AfCore 中只有一处数据 0x68c6bde4，唯一静态引用来自 `0x68a7c040`：该函数执行 `AfCreateInstance(CLSID, NULL, 0x17, IID_IUnknown)`、OleRun、再以 `18a45ba7-1266-11d1-86ad-0000f8751720` 查询接口——与 PageLayout `0x7b6a7030` 请求的 IID 相同（`ev_1133e1222d4a92fd290ed66b770f5fdd2f48a2a5ea9a94c680e4e355969d2f54`、`ev_a2ef8f1e…`、`ev_8bd46eea…`）。`AfCreateInstance`（`0x68a77660`）经 FactoryCache 或 `CoCreateInstance` 取得类工厂后调用其 CreateInstance（`ev_e82e11d6…`、`ev_9f3477cc…`、`ev_e847d5ae…`）。PageLayout 侧据此可在不依赖 SystemCore 类表的情况下到达该对象；SystemCore 类表项映射仍未闭合。
+- AfCore `CreateMemoryStream`（`0x68a7bad0`）在 `CreateStreamOnHGlobal` 后用同一创建函数取得该对象并以接口 +0x38 连接新 IStream，确认 +0x38 为底层流连接槽位（`ev_b7b16c04…`）；PageLayout 的 Version 读取经该对象转发到底层流并调用导出 `String::Read`。字符串 `MapDocumentPackager` 在 AfCore 中仅为 Ghidra 符号字符串候选，未建立与该 CLSID 的绑定。
+- PageLayout `0x7b7098b0` 调用 `StgOpenStorage` 后进入 `0x7b708d00`。本次取得完整伪代码（`ev_8207418e…`），此前「反编译截断」的记录不再成立。主干为：打开 `Mx Document`，首个 4 字节 int 大于 1 时返回错误 `-0x7fffbffb`；第二个 4 字节写入输出参数；对象流 +0x38 连接后按 4 字节计数循环以 IID_IUnknown 调用 +0x44 加载对象；随后按 GUID `dd94d76a-6d83-11d0-87ec-080009ec732a` 重连、读字符串、按 `dd94d76b-6d83-11d0-87ec-080009ec732a` 读 2 字节 short，为 0 时结束。short 非零分支继续按 `387bc1d1-543f-11d1-885e-0000f87808ee` 与 `2ab49820-9406-11d0-87ef-080009ec732a` 读取，并创建 CLSID `558c4e63-3f11-11d1-885e-0000f87808ee` 查询到前者。`Maps` 存储按 map 循环加载对象，随后打开 `PageLayout` 存储，同样按 dd94d76a/b 处理，其中 2 字节计数大于 2 时拒绝。这些 GUID 的接口语义与对象身份仍未闭合，不能据 GUID 名称推断字段含义。
+- AfCore `0x68a7c1d0` 以 `ecc43c55-0148-4ec1-bf87-b9a183c5dc98` 查询输入接口，与既有 IDocumentVersion 判定一致，此处为汇编复核（`ev_0f8f2ce3…`）。
+
+上述闭合仅是静态身份与调用链，不证明 Version 全部字节规则；`Mx Document` 前两个 4 字节字段、对象错误恢复、Version 写入路径仍未闭合。ArcMap 10.1 与 QGIS 的人工目视检查未进行。
+
+## 10.1 AfCore String 流转发与写入调用者（2026-11-14）
+
+证据来源：REA（Ghidra 12.2）对 ArcMap 10.1.0.3035 提取文件的静态汇编/伪代码分析；输入哈希 AfCore `031858c4…cc47c17`、PageLayout `ba9e71f4…8de9d69f` 与「适配目标」登记一致。证据包：`temp/arcgis/arcmap101-afcore-string-forwarding.json`。以下均为静态结论，未经软件内人工验证。
+
+### String::Read / String::Write 的流转发
+- `String::Read`（0x68ab46f0）与 `String::Write`（0x68ab4680）的 stream 参数即调用方传入的 IStream COM 对象：读走 vtbl+0x0c、写走 vtbl+0x10（`ev_76ae0975fe419888dda3be7cdc4c54f8a8f41712f1ef1a19adb991a755dbb9d9`、`ev_99c7d298b3dfb63012a9da350b69078b53f82ba9f4670af3bdba995f384083cf`）。二者内部不调用 AfStreamRead/AfStreamWrite；到磁盘/命名流的跳转发生在 IStream 实现对象内部。
+- String::Write 的长度前缀取自数据指针前 4 字节（wchar 计数），写入 cb = len*2+2 字节；第一写失败即返回，第二写 HRESULT 仅作返回值、不分支（`ev_99c7d298…`）。10.1 反汇编未见 10.8 记录中的 `cb & 0x7fffffff` 掩码，该说法标记为 10.8 特有/待复核。
+
+### 短读边界（汇编确认）
+- String::Read 先读 4 字节长度并 malloc(length)；第二次 Read 后只要 pcb>0 即把整个缓冲赋给输出——不检查 pcb==length、不校验终止零；长度 0、pcb 为空或分配失败返回 `0x80004005`（`ev_76ae0975…`）。原生行为比 `read_string_10_1` 严格读取器宽松：声明长度与实际不符时原生仍接受（尾部为残留内容）。Rust 侧报错为有意收紧，不是原生等价，需保持标注。
+
+### 两族导出格式不可混用
+- `String::Read/Write`（成员函数）：长度字段 = wchar 计数；Write 缓冲 = len*2+2 字节。
+- `ReadString`（0x68a7b7a0）/ `WriteString`（0x68a7b800，自由函数）：长度字段 = 字符计数；缓冲 = count*2+2 字节（含终止零）；WriteString 空串跳过缓冲写（`ev_ae657f051921b5f59b069929f99553da525d417ccce1eab2ac769a2f73bee733`、`ev_fce7373c04463df6484e33423febb5ec82c83b573cdc31de9378aa9453f61d3b`）。
+- 消费面：SystemCore 导入 ReadString/WriteString（ord 0x7c/0x7d）与 AfStreamRead/AfStreamWrite；PageLayout 不导入 ReadString/WriteString，字符串 IO 全走 String::Read/Write（`ev_a5191394…`、`ev_a961ccb6…`）。
+
+### AfCore 内部调用者
+- Ghidra 已解析直接调用（关系覆盖 complete，仅限非间接）：String::Write 仅 0x68a7cb50；String::Read 仅 0x68a7c6a0（`ev_4b1628fad48828db6b7f03b25159102eed7f28c3ba172487b4c08d92604c1b0b`、`ev_a7b0d2d9110eff62928b1a78b94e032f8c5014e298303fe62eb5851e56406ab7`）。间接/计算调用不在覆盖范围内，不得据此断言「仅此二处」。
+
+### PageLayout 0x7b6be580 保存序列复核
+- 签名 (this, IStream*, int)：写 2 字节标记 → SaveObject×2 → 写 4 字节元素数并循环 `String::Write`（同一传入 IStream）→ 一串标量 IStream::Write → 一次 AfStreamWrite → 枚举器循环 SaveObject（`ev_09065cfaca07782ec295b88687f3dbda5e35cc1f91dfc16eda4f4d8a67fe5e12`）。序列不含 Version 头部字段，与 MXD Version 头无关，维持排除。
+- 唯一已解析调用者 0x7b6c6be0，为 this 指针调整转发桩（`ev_492b2687915a948ff8b642d7130f27dcf9429961905900a105bd0148f6624480`、`ev_9f132fd1a0107372c05edee3311520aac57f38bb7ff5d9fa38bd27b8babca8bb`）。
+- 流身份（connect slot / 命名流）静态不可判定：函数只操作传入 IStream，slot 名在其上游；12 处计算调用未解析（`ev_655fb739…`）。维持「传入 IStream，由上游决定」的结论。
+
+### 未解决问题
+- 0x7b6be580 上游的流命名/槽位归属（需运行时观察）。
+- 10.1 是否存在带 cb 掩码的其他写路径（AfStreamWrite 0x68a84850 本体未逐条复核）。
+- AfCore 内 0x68a7cb50 / 0x68a7c6a0 的所属功能未展开。

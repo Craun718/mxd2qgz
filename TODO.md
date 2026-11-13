@@ -12,10 +12,14 @@
 - [ ] 使用 REA 追踪 10.1 文档打开、Version 读写及 ObjectStream 持久化调用链，逐项复核现有 10.8 结论，记录相同点、差异和未知项。
   - [x] 核对 10.1 PageLayout 的 Version 局部读取、一个静态调用者及独立构建号流；与 10.8 对照发现默认输出差异，完整调用链和格式仍未闭合，见 [原生文件基线](docs/arcmap-10.1-native-baseline.md#101-version-局部读取和构建号2026-11-13)。
   - [x] 核对 10.1 AfCore 的 String 读写导出及其局部短读行为，区分另一组 ReadString/WriteString；Version 流对象转发和写入调用者仍待确认。
+  - [x] 闭合文档打开与保存调用点：MapDocument 类工厂链（CLSID `2fe5e68e-3da5-4bda-baf1-103c55115a1c`，运行期构建类表）与两条静态打开链汇合于主读取器 `0x7b708d00`；ArcMap 命令层经同一 CLSID 跨模块创建实例，MFC 路径串接 Version 头读取 `0x4764d0`；SaveObject/LoadObject 为 AfCore 跨模块导出，对象头写出仍在 AfCore 内部未闭合，见 [研究记录](docs/arcmap-10.1-document-open-save.md)。
   - [x] 实现显式 10.1 AfCore String 普通写出布局的严格读取子集，并覆盖构造输入和异常；未连接 MXD 字段，原生短读与磁盘流转发未验证。
-  - [ ] 10.1 SystemCore 已定位接口 GUID 的查询和匹配分支；继续闭合类工厂、构造后虚表和读流转发。
-    - [x] 确认 ObjectStream 构造后虚表、局部读流转发、内存版本属性和对象头加载分支；类表映射、Version 流实例身份和对象体仍未闭合，见 [研究记录](docs/arcmap-10.1-native-baseline.md#101-objectstream-构造转发和局部对象头2026-11-13)。
-    - [x] 实现显式 10.1 严格对象头读取器并测试截断、未知类和键；不接入 MXD，不模拟原生短读。
+  - [x] 闭合 AfCore String 读写的流转发与短读边界：两函数直接走调用方 IStream 虚表（读 +0x0c、写 +0x10），短读不检查完成量与终止零；确认两族导出格式不可混用，10.1 未见 10.8 记录的 cb 掩码（待复核），见 [研究记录](docs/arcmap-10.1-native-baseline.md#101-afcore-string-流转发与写入调用者2026-11-14)。
+  - [x] 闭合 Version 流对象身份：CLSID `043731d0` 经 AfCore `AfCreateInstance`→FactoryCache/CoCreateInstance 创建，+0x38 为底层流连接槽位；复核 `0x7b708d00` 主干（Mx Document/Maps/PageLayout 存储及四个接口 GUID），与 [文档打开链](docs/arcmap-10.1-document-open-save.md) 汇合，见 [研究记录](docs/arcmap-10.1-native-baseline.md#101-version-流对象身份与文档打开链2026-11-14)。各 GUID 语义、对象错误恢复与 Version 写入路径仍开放。
+- [x] 10.1 SystemCore 已定位接口 GUID 的查询和匹配分支；继续闭合类工厂、构造后虚表和读流转发。
+  - [x] 确认 ObjectStream 构造后虚表、局部读流转发、内存版本属性和对象头加载分支；类表映射、Version 流实例身份和对象体仍未闭合，见 [研究记录](docs/arcmap-10.1-native-baseline.md#101-objectstream-构造转发和局部对象头2026-11-13)。
+  - [x] 实现显式 10.1 严格对象头读取器并测试截断、未知类和键；不接入 MXD，不模拟原生短读。
+  - [x] 闭合 DllGetClassObject 类表遍历（静态工厂槽全零、运行时登记框架）、ObjectStream 虚表读转发槽位及 +0x40 对象写出器（GUID→查表→键→IPersistStream/VariantStream 分派，与读分支对称）；类描述表的运行时消费者在 AfCore 内部仍未闭合，见 [研究记录](docs/arcmap-10.1-native-baseline.md#101-systemcore-类工厂与虚表闭合2026-11-14)。
 - [x] 依据 10.1 原生证据实现相应读取规则及正常、异常输入测试；经核对再复用现有实现，保持版本范围显式。
   - [x] 复核 VariantStream：10.8 严格子集的全部规则在 10.1 逐项成立（VARTYPE 表、字符串 n*2+2、对象分支不支持）；另发现独立的 Variant::Read/Write 类方法序列化器（字符串含终止零、支持更多 VARTYPE），字段归属未闭合前不得混用，见 [研究记录](docs/arcmap-10.1-variant-stream.md)。
   - [x] 按上述 10.1 证据实现 `/Maps` 根前缀读取器与 ProjectedCoordinateSystem 对象体读取器：独立实现、入口版本显式，负数与超限额拒绝、逐前缀截断与失败游标纳入健壮性覆盖，尾部值保留原始位模式；不解析对象体、未接入 MXD 解析；仓库参考样本逐字节吻合仅为辅助观察（详见「MXD 解析」节对应条目）。
