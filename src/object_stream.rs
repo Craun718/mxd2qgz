@@ -1,6 +1,5 @@
 //! ArcGIS Desktop 10.8 对象流的局部读取规则。
 //!
-//! 证据见 docs/arcgis-runtime-analysis.md。调用者必须先确定版本和对象起点；
 //! 此模块不定位 MXD 对象，不确定对象体长度，也不将规则推广至 10.1。
 
 use crate::reader::Reader;

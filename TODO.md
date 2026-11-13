@@ -7,43 +7,41 @@
 ## 10.1 目标对齐（优先）
 
 - [x] 明确 ArcMap 10.1 为适配基准，记录本地安装介质及 `Setup.ini` 声明的 `10.1.3035`。
-- [ ] 从 10.1 安装介质提取原生研究文件，记录文件版本、身份、摘要及来源；优先定位 PageLayout、SystemCore、AfCore 和 MappingCore 相关模块。
+- [x] 从 10.1 安装介质提取原生研究文件，记录文件版本、身份、摘要及来源；定位 PageLayout、SystemCore、AfCore、MappingCore 和 MappingCoreLib，见 [10.1 原生文件基线](docs/arcmap-10.1-native-baseline.md)。CAB 条目已复核，MSI 组件和安装目录映射仍未知。
+- [x] 用 REA 定位类工厂、版本辅助函数和 PageLayout 字符串引用入口；尚未证明 10.1 完整调用链或读取规则。
 - [ ] 使用 REA 追踪 10.1 文档打开、Version 读写及 ObjectStream 持久化调用链，逐项复核现有 10.8 结论，记录相同点、差异和未知项。
 - [ ] 依据 10.1 原生证据实现相应读取规则及正常、异常输入测试；经核对再复用现有实现，保持版本范围显式。
 - [ ] 在 ArcMap 10.1 中人工检查源工程，并与 QGIS 输出对比，记录实际软件版本和结果；当前未验证。
-
-分阶段提交、依赖及验收门槛见 [实施路线](docs/implementation-roadmap.md)。路线编号不表示功能已完成，以下勾选以实际证据和验收结果为准。
-本轮逐阶段结果、证据缺口和人工未验证项见 [验收状态](docs/verification-status.md)。
 
 - [x] 建立 35 步提交路线，明确原生证据、实现测试与人工验收的区别；核对基线 24 项测试及格式检查通过。
 
 ## MXD 解析
 
-- [x] 添加固定版本的 ForestRight 研究子模块，核对托管 DLL 身份并定位原生运行库研究入口，见 `docs/arcgis-runtime-analysis.md`。
+- [x] 添加固定版本的 ForestRight 研究子模块，核对托管 DLL 身份并定位原生运行库研究入口。
 
 - [ ] 使用 REA 分析版本读取逻辑，验证 `/Version` 中 `10.1` 候选及其余字段。
-  - [x] 调查 10.8 MappingCore/MappingCoreLib 版本入口，沿 AfCore 核对版本辅助函数及局部保存调用；补记参考样本身份和版本流字节，见 `docs/arcgis-runtime-analysis.md` 的“/Version 原生读取入口调查”。这些函数尚未关联到 OLE `/Version`。
+  - [x] 调查 10.8 MappingCore/MappingCoreLib 版本入口，沿 AfCore 核对版本辅助函数及局部保存调用；补记参考样本身份和版本流字节，这些函数尚未关联到 OLE `/Version`。
   - [ ] 由 MapDocument 类/接口 GUID 定位原生 Open/GetVersionInfo，追踪实际版本流读写；核对长度、编码、终止符、尾部及错误分支，验证与 `10.1` 候选的关系。
-    - [x] 从 10.8 注册清单定位 PageLayout.dll，闭合类工厂、QI、最终虚表及 Open/GetVersionInfo；区分 Build Number 与 Version 流，见 `docs/mapdocument-native.md`。
+    - [x] 从 10.8 注册清单定位 PageLayout.dll，闭合类工厂、QI、最终虚表及 Open/GetVersionInfo；区分 Build Number 与 Version 流。
     - [x] 定位 Version 局部读取及有符号 short 比较，记录未检查 HRESULT 的调用分支；尚未确认字符串编码、尾部或版本映射。
-    - [x] 追踪 10.8 Save/SaveAs、`Mx Document Version Info` 写入器和主文档 ObjectStream 保存调用；`/Version` 写入者、short 与尾部来源仍未知，见 `docs/mapdocument-native.md`。
+    - [x] 追踪 10.8 Save/SaveAs、`Mx Document Version Info` 写入器和主文档 ObjectStream 保存调用；`/Version` 写入者、short 与尾部来源仍未知。
     - [ ] 核对 AfCore 版本 IID 的实现者及完整 Version 读写规则。
-      - [x] 解码版本 IID 并闭合至 SystemCore ObjectStream 的内存属性虚表；属性来源和磁盘版本映射仍未知，见 `docs/object-context-native.md`。
+      - [x] 解码版本 IID 并闭合至 SystemCore ObjectStream 的内存属性虚表；属性来源和磁盘版本映射仍未知。
 - [ ] 使用 REA 分析坐标系读取逻辑，验证 `/Maps` 中投影文本候选的长度和作用范围。
 - [ ] 读取 OLE 容器中的 `/Version`、`/Maps` 等数据流并识别 MXD 版本。
   - [x] 实现显式 10.8 `/Version` 前缀的严格读取器，保留候选文本、有符号 short 位模式和尾部位置；不识别版本，写入规则和跨版本兼容性仍未知。
 - [ ] 使用 REA 分析对象的序列化和读取逻辑，确定对象边界、类型标识和引用关系；记录证据及适用版本。
-  - [x] 核对 10.1 托管 IObjectStream 方法顺序，记录 LoadObject 和版本属性的 x86 槽位候选及跨版本限制，见 `docs/arcgis-runtime-analysis.md`。
-  - [x] 在 Ghidra 12.1.4 中核对 10.8 接口 GUID、构造后的实际虚表及 IUnknown 转发；定位读流入口，见 `docs/arcgis-runtime-analysis.md`。
+  - [x] 核对 10.1 托管 IObjectStream 方法顺序，记录 LoadObject 和版本属性的 x86 槽位候选及跨版本限制。
+  - [x] 在 Ghidra 12.1.4 中核对 10.8 接口 GUID、构造后的实际虚表及 IUnknown 转发；定位读流入口。
   - [x] 对照 10.8 原生读写分支，确认局部空头、类标识和键，提供显式版本的对象头读取器及合成边界测试；尚未接入 `/Maps`。
   - [x] 实现显式 10.8 `/Maps` 数量和首对象头的前缀读取器，拒绝异常数量并保留未知尾部；不解析对象体，不应用于 10.1。
   - [ ] 追踪持久化接口、替换分支和错误分支，核对对象体边界、`/Maps` 起点及跨版本适用范围。
-    - [x] 从 PageLayout.dll 实际文档读取链确认分流格式的 `/Maps:0x00` 数量及 `0x04` 首对象入口；记录 Mx Document 优先分支和跨流复用 ObjectStream，见 `docs/maps-analysis.md`。对象体、引用表生命周期和版本适用性仍未闭环。
+    - [x] 从 PageLayout.dll 实际文档读取链确认分流格式的 `/Maps:0x00` 数量及 `0x04` 首对象入口；记录 Mx Document 优先分支和跨流复用 ObjectStream。对象体、引用表生命周期和版本适用性仍未闭环。
     - [x] 确认 SetStream 不重置引用表、对象体之前登记、析构释放、普通/VariantStream 分支的接口 GUID 及局部 HRESULT；缺失引用与新对象不能只靠键区分。完整对象体、替换、失败恢复及版本适用性仍未知。
-  - [x] 用 REA 确认 10.8 VariantStream 已知 VARTYPE 的固定宽度分支和字符串 `n * 2 + 2` 布局，见 `docs/variant-stream.md`；对象分支、对象体和引用表仍未闭环。
+  - [x] 用 REA 确认 10.8 VariantStream 已知 VARTYPE 的固定宽度分支和字符串 `n * 2 + 2` 布局；对象分支、对象体和引用表仍未闭环。
   - [x] 实现显式 10.8 Variant 前缀读取器，覆盖固定宽度位模式、字符串边界、失败游标和显式对象分支错误；未接入 MXD 解析。
 - [ ] 解析长度前缀字符串、对象属性和对象引用，并验证 UTF-16LE、空字符串及非 ASCII 字符的处理。
-  - [x] 用 REA 确认 10.8 AfCore String::Read/Write 的字节长度、终止零和不严格短读行为，区分原生行为与 Rust 安全子集；见 `docs/native-strings.md`。
+  - [x] 用 REA 确认 10.8 AfCore String::Read/Write 的字节长度、终止零和不严格短读行为，区分原生行为与 Rust 安全子集。
   - [x] 实现显式 10.8 调用点的严格字符串读取器，覆盖空值、中文、代理对、非法编码、全部截断、资源限制和失败游标；未接入 MXD 字段解析。
   - [ ] 接入已确认字段归属、对象属性和其他版本；Version 完整规则仍未知。
 - [ ] 解析数据框、图层树、图层顺序、图层可见性和数据源连接信息。
@@ -57,8 +55,6 @@
 - [ ] 将 MXD 解析结果转换为中间模型，并结合 REA 证据及软件中的人工检查核对图层树和属性。
 
 ## QGZ 生成
-
-- [x] 依据官方资料和本机 QGIS 4.2.3 API 生成脱敏最小 QGS/QGZ、CRS XML 及合成点数据基准；版本、摘要、复现方法及验收边界见 `docs/qgis-output.md`。
 
 - [ ] 实现 `convert` 命令，读取 MXD 并输出 QGZ。
 - [ ] 将中间模型映射为 QGIS 工程、图层树、图层顺序和可见性。
@@ -80,7 +76,7 @@
 
 ## 验证
 
-- [x] 独立输出层新增 14 项自动测试；总计 43 项通过，1 项 QGIS API 测试默认忽略，显式运行后通过。本机 QGIS 4.2.3 加载构造 QGS/QGZ：2 层有效、1 层断链保留；人工视觉仍未验证。见 `docs/qgis-output.md`。
+- [x] 独立输出层新增 14 项自动测试；总计 43 项通过，1 项 QGIS API 测试默认忽略，显式运行后通过。本机 QGIS 4.2.3 加载构造 QGS/QGZ：2 层有效、1 层断链保留；人工视觉仍未验证。
 
 - [x] UTF-16LE 候选扫描保留合法代理对；覆盖两种对齐、孤立代理项、奇数字节尾和空输入。这仅验证扫描器，不代表 MXD 字符串规则已确定。
 

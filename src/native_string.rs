@@ -1,7 +1,6 @@
 //! Desktop 10.8 AfCore String::Write 普通输出的严格读取子集。
 //!
 //! 调用点、版本及字段归属必须由调用者确认；证据和原生行为差异见
-//! docs/native-strings.md。不用于扫描或自动判断 MXD 保存版本。
 
 use crate::reader::Reader;
 use std::io::{self, ErrorKind};

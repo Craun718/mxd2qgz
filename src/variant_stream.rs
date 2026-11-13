@@ -2,7 +2,6 @@
 //!
 //! 字符串前缀是 UTF-16 码元数量，随后是 `n * 2 + 2` 字节载荷；这与
 //! AfCore `String::Read` 的含终止零字节长度不同。证据和边界见
-//! docs/variant-stream.md。对象分支依赖原生 COM 上下文，边界未闭环，
 //! 本模块不解析，也不定位 MXD 字段归属。
 
 use crate::reader::Reader;

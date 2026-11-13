@@ -6,7 +6,9 @@
 
 适配目标为 **ArcMap 10.1**，与旧版软件保持一致。后续 REA 研究、MXD 解析实现和源工程人工验收均以 10.1 为基准。已有 10.8 原生研究及显式 10.8 读取器保留原版本范围，需经 10.1 原生实现复核后才能用于目标版本；当前尚未验证 10.1 转换能力。
 
-本机安装介质目录为 `/home/gxrs/下载/arcmap10.1/ar10.1`，Desktop 安装入口为 `Desktop/setup.msi`，配套载荷为 `Desktop/Setup1.cab` 和 `Desktop/Setup2.cab`。已读取 `Desktop/Setup.ini`：`ProductName=ArcGIS 10.1 for Desktop`、`ProductVersion=10.1.3035`、`ProductLanguage=English`。这些是安装配置声明；提取 DLL 后仍需逐个核对文件版本、身份和摘要，尚未安装或进行 ArcMap 人工验证。安装介质仅作为本地研究来源，不纳入仓库。
+本机安装介质目录为 `/home/gxrs/下载/arcmap10.1/ar10.1`，Desktop 安装入口为 `Desktop/setup.msi`，配套载荷为 `Desktop/Setup1.cab` 和 `Desktop/Setup2.cab`。已读取 `Desktop/Setup.ini`：`ProductName=ArcGIS 10.1 for Desktop`、`ProductVersion=10.1.3035`、`ProductLanguage=English`。这些是安装配置声明；尚未安装或进行 ArcMap 人工验证。安装介质仅作为本地研究来源，不纳入仓库。
+
+已从 `Setup1.cab` 提取并核对五个原生 DLL 的自身版本、身份声明和摘要，并定位初步 REA 入口；细节和未解决事项见 [10.1 原生文件基线](docs/arcmap-10.1-native-baseline.md)。
 
 ## 使用
 
@@ -20,9 +22,8 @@ cargo run -- compare 'before.mxd' 'after.mxd' /Maps
 cargo run -- hex 'map.mxd' /Maps 0x860 96
 ```
 
-`inspect` 列出 OLE 容器的数据流和字节数；`strings` 扫描 `/Maps` 中两种对齐方式的 UTF-16LE 候选字符串，并输出相对于该流的十六进制偏移。扫描不是对象解析，可能存在乱码、截断或误报，不能据此判断图层数量、完整路径或坐标系。`extract` 导出指定数据流，不会覆盖已有文件。`hex` 查看指定流的字节范围，偏移和长度支持十进制或 `0x` 十六进制，范围超出流时返回错误。`compare` 比较两个文件中指定流的相同偏移，输出不同字节的半开区间及流长度；插入或删除字节会使后续数据错位，差异区间不表示对象边界。研究记录见 [docs/maps-analysis.md](docs/maps-analysis.md)。
-
-研究以 REA 对目标软件实现和运行行为的分析为主；可控对照样本仅作辅助证据。记录流内偏移和脱敏的方法见研究记录中的“对照样本采集流程”。目前尚不能识别 MXD 版本或转换工程。分阶段提交和验收门槛见 [实施路线](docs/implementation-roadmap.md)。
+`inspect` 列出 OLE 容器的数据流和字节数；`strings` 扫描 `/Maps` 中两种对齐方式的 UTF-16LE 候选字符串，并输出相对于该流的十六进制偏移。扫描不是对象解析，可能存在乱码、截断或误报，不能据此判断图层数量、完整路径或坐标系。`extract` 导出指定数据流，不会覆盖已有文件。`hex` 查看指定流的字节范围，偏移和长度支持十进制或 `0x` 十六进制，范围超出流时返回错误。`compare` 比较两个文件中指定流的相同偏移，输出不同字节的半开区间及流长度；插入或删除字节会使后续数据错位，差异区间不表示对象边界。
+研究以 REA 对目标软件实现和运行行为的分析为主；可控对照样本仅作辅助证据。记录流内偏移和脱敏的方法见研究记录中的“对照样本采集流程”。
 
 ## Python 接口
 
@@ -49,8 +50,7 @@ Rust 库提供 `qgis::to_qgs` 和 `qgis::write_project`，可从调用者构造�
 `model::Map` 生成 QGS/QGZ，支持单数据框、分组、顺序、可见性、Shapefile 路径、
 EPSG:4326/3857 与主画布范围。输出默认不覆盖已有文件，断链保留并诊断；
 多数据框和不支持的数据源明确报错。此接口尚未连接 MXD 解析，CLI 没有
-`convert`，Python 接口不变。调用示例、限制、QGIS 4.2.3 基准和 API 验证见
-[输出合同](docs/qgis-output.md)。API 加载通过，人工目视验收未完成。
+`convert`，Python 接口不变。API 加载通过，人工目视验收未完成。
 
 ## 后续工作
 
