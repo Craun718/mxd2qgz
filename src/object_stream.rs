@@ -1,6 +1,6 @@
-//! ArcGIS Desktop 10.8 对象流的局部读取规则。
+//! ArcGIS Desktop 10.1 和 10.8 对象流的局部读取规则。
 //!
-//! 此模块不定位 MXD 对象，不确定对象体长度，也不将规则推广至 10.1。
+//! 此模块不定位 MXD 对象，也不确定对象体长度。
 
 use crate::reader::Reader;
 use std::io;
@@ -20,6 +20,18 @@ pub enum ObjectHeader {
 /// 返回后的位置仅是对象头末尾：已有键对应引用，新键后面仍有未知长度的对象体。
 /// 不检查键的唯一性或类标识是否注册，也不加载任何 COM 对象。
 pub fn read_header_10_8(reader: &mut Reader<'_>) -> io::Result<ObjectHeader> {
+    read_header(reader)
+}
+
+/// 从已确定的 10.1 ObjectStream 对象起点读取严格对象头，失败时不推进游标。
+///
+/// 此安全子集要求完整输入；原生短读行为、对象体和引用语义尚未闭合。
+/// 未知类标识及键原样保留，调用者须自行确认对象起点及版本。
+pub fn read_header_10_1(reader: &mut Reader<'_>) -> io::Result<ObjectHeader> {
+    read_header(reader)
+}
+
+fn read_header(reader: &mut Reader<'_>) -> io::Result<ObjectHeader> {
     let mut trial = reader.clone();
     let class_id: [u8; 16] = trial.read_bytes(16)?.try_into().unwrap();
     let header = if class_id == [0; 16] {

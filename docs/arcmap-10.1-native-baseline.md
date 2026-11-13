@@ -63,3 +63,14 @@ REA 6.8.0 的 `inspect_native_exports` 对上述五个已核对文件的 PE 导�
 复核 SystemCore.dll 的 SHA-256 与上表一致。REA 6.8.0 / Ghidra 12.1.4 搜索 10.8 研究记录中的接口 GUID `18a45ba7-1266-11d1-86ad-0000f8751720` 的内存字节，在已加载块找到 `0x80070fb0` 和 `0x8007123c` 两处（`ev_712f93100d5351914d87edbed5ae74d2b31b3dee650382be3b65875b4cd0e22c`）。静态引用分别指向 `0x7ffcef90` 和 `0x7ffcf3f7`（`ev_9a6535d653026afef9108d944ad6981796d5706292b49f3888a8b7e6c9307fab`、`ev_2ae2363dfa066dc275fe3a1384eb403b281f37d1f890f3ada28d64259564ab3b`）。
 
 反编译 `ev_9f7b307745651c16e84d3acce94d1db216033768f5e8bf496b45d2999c3e2e28` 显示前者所在函数创建实例并用该 GUID 查询接口；`ev_6c3bc7a592db323f0f4a39001ab7e65f95f1d2871297c61897bb3e36c5556fc5` 显示后者所在函数对该 GUID 的匹配分支返回对象基址 `+0x10` 的指针。仅凭这两处尚不能确定对象身份、构造后的实际虚表、SetStream、读取转发或持久化规则；还需追踪类工厂和构造过程。静态引用可能遗漏间接访问。证据包在忽略目录 `temp/arcgis/arcmap101-systemcore-guid-evidence.json`，包含本机路径，分享前需脱敏。
+
+## 10.1 ObjectStream 构造、转发和局部对象头（2026-11-13）
+
+再次核对五个文件 SHA-256 均与上表一致。以下为 REA 6.8.0 / Ghidra 静态分析，地址和结论仅绑定上表 10.1.0.3035 文件；证据包为忽略目录 `temp/arcgis/arcmap101-systemcore-followup.json` 和 `temp/arcgis/arcmap101-pagelayout-followup.json`，含本机路径。无目标软件运行观察，PDB 加载状态未知。
+
+- SystemCore `0x80047930` 分配对象并调用 `0x7ffcf030` 构造（`ev_9bc60c6f4ec67af8bb83aa60f0c84497fc7c9d972d26646171497ee9711e1d93`、`ev_1c033973c9ad90c7195b2bfcb5c9b3e5c7ec2271ae350ed0f452e7f96d68d972`）。构造函数在基址 `+0x10` 写入虚表 `0x800710dc`，在 `+0x14` 写入 `0x80071140`，并把基址 `+0x54` 初始化为 5。此前 GUID 匹配分支返回基址 `+0x10`。`DllGetClassObject` 跳至 `0x80054220`，后者遍历类表并间接调用工厂；尚未把该类表项与构造入口完全闭合。
+- 静态映像中 `0x800710dc + 0x0c` 指向 `0x7ffcf520`：该函数对接口指针 `+0x10` 的底层流调用 `AfStreamRead`，流为空时返回错误（`ev_c92caa49d5ae7b26e9b882b07f09ee7343cef079bbbfb9136bf30a2f8ad24084`）。`0x80071140` 的 `+0x0c` 和 `+0x10` 分别指向 `0x7ffd0610`、`0x7ffd0630`，写入和读取接口指针 `+0x40`，即基址 `+0x54`；这只是内存属性，不证明磁盘版本映射（`ev_9bdf4e90472f1cab336dd2150f277f949c61b3a9df84b37aba2848585c22d2f6`、`ev_2d3a8eb592c8597a227bfe3e74c588d52da6a754ee6c7d649de00977fa09e059`）。
+- 接口虚表 `+0x44` 指向 `0x7ffcff70`（`ev_9de2daa6a8b5b655f72ff271eb5264acc7ae71b76a574db85f3567e44c6d0162`）：从底层流请求 16 字节 GUID，与零 GUID 比较；非零时请求 4 字节键，查询对象表，未命中时创建实例、登记并进入普通或 VariantStream 持久化分支。局部结构与既有 10.8 对象头研究一致；读取量未严格检查，具体失败恢复、替换分支及对象体边界尚未知。析构 `0x7ffcf200` 遍历两张表并释放对象（`ev_ec7a972576ac3aeacffee0a2c5915759a49608f1bde254b83d9f6056f0d1a7f1`）。
+- PageLayout `0x7b70a8e0` 使用类 GUID `043731d0-a7cf-11d1-8bd1-080009ee4e41` 创建流对象、调用接口 `+0x38` 连接 Version 流，再经该对象调用 String::Read，直接从底层流读取 short（`ev_1e02d5298f0482880a788a40d804effcee0ea0bcd35375ce75bd60c9bec5d13c`）。同一 GUID 也出现在 SystemCore `0x7ffcef40` 的创建调用；但类表映射、连接槽位及实例身份仍须闭合，不能据此认定 Version 流全部字节规则。`0x7b7098b0` 在打开存储后调用 `0x7b708d00`；后者大型反编译的值流被截断，完整文档打开和写入路径仍待逐分支复核。
+
+`object_stream::read_header_10_1` 仅对调用者已确认的对象起点提供严格完整读取：零 GUID 消耗 16 字节，否则保留原始 GUID 与 4 字节键；未知对象体不读取，失败不推进游标。与原生可能接受的短读不同；固定宽度没有外部长度字段，偏移溢出由 `Reader` 的检查保护。它不接入 `/Maps`，不识别未知类或引用，更不证明转换能力。ArcMap 10.1 和 QGIS 的源工程/转换结果目视对照仍未进行。

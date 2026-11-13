@@ -1,6 +1,40 @@
-use mxd2qgz::object_stream::{ObjectHeader, read_header_10_8};
+use mxd2qgz::object_stream::{ObjectHeader, read_header_10_1, read_header_10_8};
 use mxd2qgz::reader::Reader;
 use std::io::ErrorKind;
+
+#[test]
+fn desktop_10_1_headers_preserve_unknown_data_and_fail_transactionally() {
+    let mut bytes = vec![0xa5];
+    bytes.extend_from_slice(&[0; 16]);
+    bytes.extend_from_slice(&[1, 2, 3, 4]);
+    let mut reader = Reader::new(&bytes);
+    reader.read_bytes(1).unwrap();
+    assert_eq!(read_header_10_1(&mut reader).unwrap(), ObjectHeader::Null);
+    assert_eq!(reader.read_bytes(4).unwrap(), &[1, 2, 3, 4]);
+
+    let class_id = [0xff; 16];
+    let mut bytes = vec![0xa5];
+    bytes.extend_from_slice(&class_id);
+    bytes.extend_from_slice(&u32::MAX.to_le_bytes());
+    bytes.extend_from_slice(b"unknown body");
+    for available in 0..20 {
+        let mut reader = Reader::new(&bytes[..1 + available]);
+        reader.read_bytes(1).unwrap();
+        let error = read_header_10_1(&mut reader).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::UnexpectedEof);
+        assert_eq!(reader.position(), 1);
+    }
+    let mut reader = Reader::new(&bytes);
+    reader.read_bytes(1).unwrap();
+    assert_eq!(
+        read_header_10_1(&mut reader).unwrap(),
+        ObjectHeader::Object {
+            class_id,
+            key: u32::MAX
+        }
+    );
+    assert_eq!(reader.read_bytes(12).unwrap(), b"unknown body");
+}
 
 #[test]
 fn null_header_leaves_the_following_field_unread() {
