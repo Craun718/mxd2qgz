@@ -57,3 +57,9 @@ REA 6.8.0 的 `inspect_native_exports` 对上述五个已核对文件的 PE 导�
 上述 `String` 局部逻辑与 Git 历史 `7326c98:docs/native-strings.md` 所记 10.8 分支相似，支持进一步核对严格读取子集，但不证明全部字段、全部版本或异常输入兼容。`Version` 写入调用者、ObjectStream 转发、short 和尾部依然未知；不能据此识别 MXD 版本。未运行 ArcMap，未做人工验收。
 
 `native_string::read_string_10_1` 为明确调用点提供普通写出布局的严格安全子集：限制资源、检查完整长度、UTF-16 和终止零，失败时保持游标。它拒绝原生函数可能接受的短读及提前零；合成测试不证明任何 MXD 字段或软件兼容性，也未接入 Version 流。
+
+## 10.1 SystemCore 接口候选（2026-11-13）
+
+复核 SystemCore.dll 的 SHA-256 与上表一致。REA 6.8.0 / Ghidra 12.1.4 搜索 10.8 研究记录中的接口 GUID `18a45ba7-1266-11d1-86ad-0000f8751720` 的内存字节，在已加载块找到 `0x80070fb0` 和 `0x8007123c` 两处（`ev_712f93100d5351914d87edbed5ae74d2b31b3dee650382be3b65875b4cd0e22c`）。静态引用分别指向 `0x7ffcef90` 和 `0x7ffcf3f7`（`ev_9a6535d653026afef9108d944ad6981796d5706292b49f3888a8b7e6c9307fab`、`ev_2ae2363dfa066dc275fe3a1384eb403b281f37d1f890f3ada28d64259564ab3b`）。
+
+反编译 `ev_9f7b307745651c16e84d3acce94d1db216033768f5e8bf496b45d2999c3e2e28` 显示前者所在函数创建实例并用该 GUID 查询接口；`ev_6c3bc7a592db323f0f4a39001ab7e65f95f1d2871297c61897bb3e36c5556fc5` 显示后者所在函数对该 GUID 的匹配分支返回对象基址 `+0x10` 的指针。仅凭这两处尚不能确定对象身份、构造后的实际虚表、SetStream、读取转发或持久化规则；还需追踪类工厂和构造过程。静态引用可能遗漏间接访问。证据包在忽略目录 `temp/arcgis/arcmap101-systemcore-guid-evidence.json`，包含本机路径，分享前需脱敏。
