@@ -44,4 +44,14 @@ REA 6.8.0 的 `inspect_native_exports` 对上述五个已核对文件的 PE 导�
 
 与 Git 历史 `c17b324:docs/mapdocument-native.md` 记录的 10.8 `0x10076ef0` 比较，两者局部顺序均为打开 `Version`、`String::Read`、读 2 字节、以有符号 short 比较 `0x12`，且小于阈值时输出 3；**默认输出不同**：10.1 为 5，10.8 为 `0xb`。这只是局部静态行为对照，不证明字符串的 10.1 字节布局、字段语义或两版本文件兼容。10.8 亦有单独的 `Mx Document Version Info` 构建号写入分支，写入 `10.8.0.12790`。
 
-尚未确认 10.1 的 `String::Read` 实现、`Version` 写入者、short 和尾部来源、完整错误及短读行为、实际版本映射或接口归属；不得据此把已有 10.8 读取器应用于 10.1。未在 ArcMap 10.1 或 QGIS 中人工验证。
+此时尚未确认 10.1 的 `String::Read` 实现（后续复核见下节）、`Version` 写入者、short 和尾部来源、完整错误及短读行为、实际版本映射或接口归属；不得据此把已有 10.8 读取器应用于 10.1。未在 ArcMap 10.1 或 QGIS 中人工验证。
+
+## 10.1 AfCore 字符串函数（2026-11-13）
+
+后续复核 AfCore.dll 的 SHA-256 与上表一致；REA 6.8.0 / Ghidra 12.1.4。导出表 `ev_f4c633d630f11595222bc5b5740eb493a0518c3f5a8ae101a8ac076fcb659f6e` 将 `String::Read` 和 `String::Write` 分别定位到 `0x68ab46f0` 和 `0x68ab4680`。证据包位于忽略目录 `temp/arcgis/arcmap101-afcore-strings-evidence.json`，包含本机路径，分享前需脱敏。
+
+- `String::Read`（`ev_09d2a18062449c0bafef450a9fad8523558c7387560e0f26ac74ef561334f01f`）先请求 4 字节作为长度；返回值非负且读取量与长度均非零时按长度分配，再读同样字节数，返回值非负且读取量非零时赋值。它未检查两次读取是否完成请求，也未显式检查长度偶数或末尾零。PageLayout 上节的 Version 分支调用了此导出，但中间流对象的读行为仍需确认。
+- `String::Write`（`ev_0fece9ecedc0df634a797a98e560cfb96cfc5a063ce911573357779071bedb1b`）计算 `cb = n * 2 + 2`，写入 4 字节 `cb & 0x7fffffff`，再写 `cb` 字节；普通输出包含两字节终止零。算术溢出及掩码不应作为安全读取规则。
+- 另有独立的 `ReadString` / `WriteString` 导出（分别为 `ev_8c6838cc7ff0770ea71ca4c9b2fc323da53c2a405967a0d7fdcecc7fbf1e4222`、`ev_be0ffb257d439103a9cfe48ba6c6ca183132976c2dd2ec720f2a627f5f99cedf`），其长度处理不同；不可仅按字符串名称把两组函数当成相同格式。
+
+上述 `String` 局部逻辑与 Git 历史 `7326c98:docs/native-strings.md` 所记 10.8 分支相似，支持进一步核对严格读取子集，但不证明全部字段、全部版本或异常输入兼容。`Version` 写入调用者、ObjectStream 转发、short 和尾部依然未知；不能据此识别 MXD 版本。未运行 ArcMap，未做人工验收。
