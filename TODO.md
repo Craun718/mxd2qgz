@@ -31,6 +31,8 @@
     - [x] 追踪 10.8 Save/SaveAs、`Mx Document Version Info` 写入器和主文档 ObjectStream 保存调用；`/Version` 写入者、short 与尾部来源仍未知。
     - [ ] 核对 AfCore 版本 IID 的实现者及完整 Version 读写规则。
       - [x] 解码版本 IID 并闭合至 SystemCore ObjectStream 的内存属性虚表；属性来源和磁盘版本映射仍未知。
+      - [x] 在 10.1 复核 AfCore 查询的 IID 和 SystemCore 五个实现类的构造、虚表及属性访问，排查 PageLayout 的 String::Write 候选；证据与范围见 [研究记录](docs/arcmap-10.1-native-baseline.md#101-版本接口实现及保存分支复核2026-11-13)。
+      - [x] 从 10.1 ArcMap.exe 定位 Version 写入与读取、六项 short 映射及条件计数字段；实现严格头部读写并覆盖合成边界，保留未知尾部和人工验证缺口，见 [后续研究](docs/arcmap-10.1-native-baseline.md#101-arcmap-version-头部读取与写入2026-11-13)。
 - [ ] 使用 REA 分析坐标系读取逻辑，验证 `/Maps` 中投影文本候选的长度和作用范围。
 - [ ] 读取 OLE 容器中的 `/Version`、`/Maps` 等数据流并识别 MXD 版本。
   - [x] 实现显式 10.8 `/Version` 前缀的严格读取器，保留候选文本、有符号 short 位模式和尾部位置；不识别版本，写入规则和跨版本兼容性仍未知。

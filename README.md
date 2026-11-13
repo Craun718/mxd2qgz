@@ -14,6 +14,8 @@ Rust 库的 `native_string::read_string_10_1` 可读取 10.1 AfCore `String::Wri
 
 `object_stream::read_header_10_1` 可在调用者已确认的对象起点严格读取局部对象头，并保留未知类标识与键；它不定位对象、不解析对象体，也尚未接入 MXD 解析。具体证据和短读限制见上述基线。
 
+`version_stream::read_arcmap_header_10_1` 严格读取 ArcMap 10.1 的 Version 头部：文本、有符号 short 及条件出现的对象流表计数，并保留未识别的尾部；`write_arcmap_header_10_1` 根据明确提供的保存索引、文本和对象计数构造头部。它们不模拟原生短读，也不读取完整 MXD。原生证据及适用边界见上述基线。
+
 ## 使用
 
 需要 Rust 工具链。运行：
