@@ -55,3 +55,5 @@ REA 6.8.0 的 `inspect_native_exports` 对上述五个已核对文件的 PE 导�
 - 另有独立的 `ReadString` / `WriteString` 导出（分别为 `ev_8c6838cc7ff0770ea71ca4c9b2fc323da53c2a405967a0d7fdcecc7fbf1e4222`、`ev_be0ffb257d439103a9cfe48ba6c6ca183132976c2dd2ec720f2a627f5f99cedf`），其长度处理不同；不可仅按字符串名称把两组函数当成相同格式。
 
 上述 `String` 局部逻辑与 Git 历史 `7326c98:docs/native-strings.md` 所记 10.8 分支相似，支持进一步核对严格读取子集，但不证明全部字段、全部版本或异常输入兼容。`Version` 写入调用者、ObjectStream 转发、short 和尾部依然未知；不能据此识别 MXD 版本。未运行 ArcMap，未做人工验收。
+
+`native_string::read_string_10_1` 为明确调用点提供普通写出布局的严格安全子集：限制资源、检查完整长度、UTF-16 和终止零，失败时保持游标。它拒绝原生函数可能接受的短读及提前零；合成测试不证明任何 MXD 字段或软件兼容性，也未接入 Version 流。

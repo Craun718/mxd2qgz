@@ -10,6 +10,8 @@
 
 已从 `Setup1.cab` 提取并核对五个原生 DLL 的自身版本、身份声明和摘要，并定位初步 REA 入口；细节和未解决事项见 [10.1 原生文件基线](docs/arcmap-10.1-native-baseline.md)。
 
+Rust 库的 `native_string::read_string_10_1` 可读取 10.1 AfCore `String::Write` 普通输出的严格子集；调用者须先确认字段使用该布局。它尚未接入 MXD 解析，也不识别版本。
+
 ## 使用
 
 需要 Rust 工具链。运行：

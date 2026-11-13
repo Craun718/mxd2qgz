@@ -1,6 +1,6 @@
-//! Desktop 10.8 AfCore String::Write 普通输出的严格读取子集。
+//! Desktop 10.1 与 10.8 AfCore String::Write 普通输出的严格读取子集。
 //!
-//! 调用点、版本及字段归属必须由调用者确认；证据和原生行为差异见
+//! 调用点、版本及字段归属必须由调用者确认。
 
 use crate::reader::Reader;
 use std::io::{self, ErrorKind};
@@ -10,6 +10,17 @@ use std::io::{self, ErrorKind};
 /// 拒绝原生代码未严格检查的短读、非法编码及提前零；失败时保持游标不变。
 /// 错误位置相对于传入 Reader，调用方需另外记录流和对象身份。
 pub fn read_string_10_8(reader: &mut Reader<'_>, max_bytes: usize) -> io::Result<String> {
+    read_writer_subset(reader, max_bytes)
+}
+
+/// 读取 10.1 AfCore String::Write 的普通输出子集。
+///
+/// 这是严格安全子集，不能模拟原生短读行为，也不证明 MXD 字段归属。
+pub fn read_string_10_1(reader: &mut Reader<'_>, max_bytes: usize) -> io::Result<String> {
+    read_writer_subset(reader, max_bytes)
+}
+
+fn read_writer_subset(reader: &mut Reader<'_>, max_bytes: usize) -> io::Result<String> {
     let start = reader.position();
     let invalid = |reason: &str| {
         io::Error::new(

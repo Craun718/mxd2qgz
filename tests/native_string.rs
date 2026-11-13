@@ -1,4 +1,7 @@
-use mxd2qgz::{native_string::read_string_10_8, reader::Reader};
+use mxd2qgz::{
+    native_string::{read_string_10_1, read_string_10_8},
+    reader::Reader,
+};
 use std::io::ErrorKind;
 
 fn encoded(text: &str) -> Vec<u8> {
@@ -102,4 +105,46 @@ fn child_region_cannot_borrow_a_terminator_from_its_sibling() {
     );
     assert_eq!(child.position(), 0);
     assert_eq!(parent.read_u16_le().unwrap(), 0);
+}
+
+#[test]
+fn version_10_1_writer_subset_and_invalid_inputs() {
+    for text in ["", "10.1", "地图", "😀𠀀"] {
+        let bytes = encoded(text);
+        let mut reader = Reader::new(&bytes);
+        assert_eq!(
+            read_string_10_1(&mut reader, bytes.len() - 4).unwrap(),
+            text
+        );
+        assert_eq!(reader.position(), bytes.len());
+        for end in 0..bytes.len() {
+            let mut reader = Reader::new(&bytes[..end]);
+            assert_eq!(
+                read_string_10_1(&mut reader, 1024).unwrap_err().kind(),
+                ErrorKind::UnexpectedEof
+            );
+            assert_eq!(reader.position(), 0);
+        }
+    }
+    for bytes in [
+        vec![0, 0, 0, 0],
+        vec![3, 0, 0, 0],
+        vec![2, 0, 0, 0, 1, 0],
+        vec![4, 0, 0, 0, 0, 0xd8, 0, 0],
+        u32::MAX.to_le_bytes().to_vec(),
+    ] {
+        let mut reader = Reader::new(&bytes);
+        assert_eq!(
+            read_string_10_1(&mut reader, 1024).unwrap_err().kind(),
+            ErrorKind::InvalidData
+        );
+        assert_eq!(reader.position(), 0);
+    }
+    let bytes = encoded("地图");
+    let mut reader = Reader::new(&bytes);
+    assert_eq!(
+        read_string_10_1(&mut reader, 5).unwrap_err().kind(),
+        ErrorKind::InvalidData
+    );
+    assert_eq!(reader.position(), 0);
 }
