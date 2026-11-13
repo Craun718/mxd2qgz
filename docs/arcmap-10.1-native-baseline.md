@@ -162,3 +162,82 @@ SystemCore 其他 IID 匹配分支的构造与虚表复核见下节。保存版�
 - 0x7b6be580 上游的流命名/槽位归属（需运行时观察）。
 - 10.1 是否存在带 cb 掩码的其他写路径（AfStreamWrite 0x68a84850 本体未逐条复核）。
 - AfCore 内 0x68a7cb50 / 0x68a7c6a0 的所属功能未展开。
+
+## 10.1 Version 写入路径与写入调用者（2026-11-14）
+
+证据来源：REA 6.8.0 / Ghidra 12.2 对 ArcMap 10.1.0.3035（SHA-256 `1fb79eee…c5af97`，与「适配目标」登记一致）的静态反编译/调用关系分析；会话期间多次出现分析实例切换到其他 DLL 的情况，以下仅引用 subject 核对为 ArcMap.exe 的证据。全部为静态结论，未运行 ArcMap 10.1，未做人工目视验收。地址为该静态映像虚拟地址。
+
+### 触发时机与调用链（逐级 xrefs）
+- 写入器为既有记录的保存入口 `0x466fb0`。Ghidra `procedure_callers`（关系覆盖 complete，仅限已解析直接调用）显示其唯一直接调用者为 MFC 序列化函数 `0x47a740`（`ev_bbb3c9e9572240c6a4301294c8632d3cfb190b76ac26702e48bdbc0036c60fd5`）；`xrefs` 对 `0x466fb0` 返回同一调用点 `0x47a7c9`（`ev_92d139616b6002cd01209eff8f89fb1d121a5d53cf4768e98651bbef530db428`）。
+- `0x47a740` 反编译确认为 `CDocument::Serialize` 覆写（CArchive 参数、AFX_MODULE_STATE/BeginWaitCursor）：按 `CArchive` 标志位分支——存盘标志置位时先 `COleDocument::Serialize` 再调用 `0x466fb0`（失败返回 0 时报错并 `AfxThrowFileException`），随后 `AfMainFrame::SerializeDockViewState`；装载分支则调用读取入口 `0x4764d0`（`ev_d51c4bdecf63a6d8fb20e7503e68dc54ea1bd619e05925fe90b1947c8ac092df`）。因此 Save 与 SaveAs 共用同一条 MFC `CDocument::Serialize` 路径，区别只在上游 CArchive 的文件对象；该上游（MFC OnSaveDocument 及命令层）本轮未展开。
+- `0x47a740` 为虚函数覆写，Ghidra 无已解析直接调用者（`ev_e3c3014a19a51c24bd3bf7f0c83faa8e17cf7db3e1a8acacba1abded3bd8c427`），实际经 MFC Serialize 虚表分发；间接分发不在静态覆盖内。
+
+### 写入函数内部的版本头部（反编译复核）
+- `0x466fb0` 在存盘分支开头将 `local_150` 置 5，经虚调用 `(*(code**)(*in_ECX + 0x14c))(in_ECX, &local_150)` 请求版本索引；随后把该索引传给文档版本追踪对象（`(*local_16c + 0xc)(local_16c, local_150)`）（`ev_f5a988ce0a6025194d77c71ddd5b8d1259af71e5412cce061b04758224917ed0`，证据经 `inspect_analysis_view` 从保留证据 `ev_f5a988ce0a6025194d77c71ddd5b8d1259af71e5412cce061b04758224917ed0` 复核；0x466fb0 完整伪代码副本在本机 `/tmp/466fb0.c`，未入库。
+- 版本索引经对象流 `QueryInterface` 连接 `Version` 流（`CArchive::CreateStream(param_1, L"Version", …)`）后：`String::Write` 写按索引选择的资源文本（0/1/2/3/4/其他 → `0x14d/0x173/0x186/0x11a/0xe804/0x193`），`AfStreamGetSaveVersion(local_150, 6, &DAT_0054bfb4)` 取 short 并 `AfStreamWrite` 2 字节；索引大于 0 时在当前位置记 4 字节零占位（先前 `Seek(…,1,…)` 记录位置于 `local_10c`）。这与 2026-11-13 节的汇编记录完全一致，此处为反编译交叉复核。
+
+### 条件计数字段回填时机
+- 索引大于 0 时，保存序列末尾回到记录位置：`local_160->lpVtbl->Seek(local_160, local_10c, local_108, 0, 0)` 后向 Version 流回写 4 字节（伪代码显示回写值为 `local_f4`，其写路径中未见重新赋值，仅初始化为 0；汇编回填序列 `0x46bfe4..0x46c07c` 的实际取值来源仍以 2026-11-13 节汇编记录为准，本轮未重新取证）。索引大于 3 时，随后创建并写入 `DocumentDatabase` 流。
+- 版本索引由 `+0x14c` 虚槽提供、初值 5，其运行时取值（用户在保存对话框选择的版本）未在目标软件中验证；资源句柄仍依赖 `ESRILocale::LoadLocalizedRes`（见 2026-11-13 节），本轮未复核。
+
+### 与读路径的对称性
+- 读入口 `0x4764d0` 与写入口 `0x466fb0` 均由同一 `0x47a740` 按 CArchive 方向分发，构成 Save/Load 对称对；两者均通过 `CArchive::CreateStream` 打开 `Version` 命名流，写入顺序（String 文本 → short → 条件 4 字节占位/回填）与读取顺序（String::Read → 有符号 short（上限 `0x13`）→ short 大于 `0x0b` 时读 4 字节）逐字段对应。读侧的 4 字节传给对象流 `+0x54(-1, value)`，写侧回填使用对象流 `+0x5c` 语义（2026-11-13 记录）；两个槽位的具体语义仍未闭合。
+
+### 仍开放的问题
+- `0x47a740` 上游：MFC `OnSaveDocument`/`OnOpenDocument` 及命令层到该虚函数的完整分发链未展开（间接虚调用不在静态覆盖内）。
+- `+0x14c` 虚槽的运行时版本索引来源与取值（SaveAs 版本选择 UI）未验证。
+- 条件 4 字节回填的实际值来源（`local_f4`）与对象流 `+0x5c`/`+0x54` 槽位语义未闭合。
+- 写入路径的所有分支（错误、旧版兼容）未逐条复核；全部结论未经 ArcMap 10.1 运行验证。
+
+## 10.1 SystemCore 类描述表运行时消费者（2026-11-14）
+
+复核 SystemCore.dll 的 SHA-256 与基线一致（`f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`，文件 `/tmp/mxd-arcgis101-align2/SystemCore.dll.017F52BF_20D0_487A_A583_436DA6406CFF`）；REA / Ghidra 12.2 静态分析。地址只绑定该文件。会话多次出现分析实例切换到其他 DLL（PageLayout、ArcMap.exe）的情况，与既往记录一致；每次调用均核对 subject 摘要，非本文件的输出不作为证据引用。未运行目标软件。
+
+### 0x800a4280 表的全部已解析访问者（xrefs 反查）
+
+对类描述表基址 0x800a4280 的 `xrefs` 共 13 处（`ev_3a6e707cb40b7f5238f101767962d5b087fd66b4891f7c5cba2130288ff3e940`），全部位于 SystemCore 内部；归类如下：
+
+1. **查表消费（DllGetClassObject 链）**：0x80054223、0x800542be、0x800542e4、0x8005431a、0x80054351、0x80054388、0x800543bc、0x800543ec、0x8005447d、0x800544b3 均在 0x80054220（DllGetClassObject 实体）及其相邻函数体内，即既有记录的按 CLSID 查表分发（0x80054220 反编译复核 `ev_624e979f1ba7a85f0a0d4036d05bb2d6a6cc26bc816561253a3eb398f998afcd`，与既有记录一致）。
+2. **DllCanUnloadNow**：0x80054607 位于导出 `DllCanUnloadNow`（thunk 0x800413f0）目标 0x80054600 的表遍历体内。0x80054600 反编译（`ev_624e979f…` 同批）显示：对表中每项检查 +0x24 字段非零时按工厂虚表槽 0 创建实例（GUID 参数 0x8006ca90，输出实例指针），成功后调用实例虚表 +0x0c、+0x08 两槽（按 COM 惯例推断为 Release 类调用，命名是推断），最后返回 `DAT_800aa420 > 0`——全局计数决定模块可否卸载。
+3. **CRT 清理**：0x80065600 为 `Unwind_80065600`（Ghidra 命名），唯一动作是调用 0x80053240 并传表基址 0x800a4280（`ev_624e979f…` 同批）。0x80053240 将参数指向的 12 个 4 字节字段逐一清零，其中 +0x08 字段非零时先调用其虚表 +0x08 槽（推断为 Release/析构）；这是进程退出时对表头对象组的析构清理，不是查表消费。
+4. **登记/注销区间**：0x8006a4f9 位于表遍历/登记代码 0x80054290..0x800545fb 一带之外的一处代码尾部（详见下），0x80054290 起的遍历本身不直接引用 0x800a4280，而是遍历 `PTR_u_ComponentCategoryManager_800a4284`（表基址前一个指针槽）指向的另一张登记表 `DAT_800a4290`。
+
+### 关键闭合：0x800a4280 类表与 0x800a4284「ComponentCategoryManager」表的分工
+
+- 0x800a4280 类表静态实读 64 字节：仅前两项 `+0x00` 有值（0x8006df54、0x8006ddf4，应为 CLSID 指针；对应工厂指针 +0x08 等后续字段为全零），第三项起 CLSID 指针为零、即表尾终止（`ev_a436fb3e9b312513e925fce742ad36f13f904f2c6c55c36bc3125733819a14f7`）。这与既有「静态工厂槽全零、运行时登记填充」记录一致：静态可见仅 2 个条目，工厂指针留给运行时。
+- 0x800a4284 的符号名 `ComponentCategoryManager` 来自 Ghidra 的类型/符号信息（PDB SystemCore.pdb 加载状态未知，名称是候选）。以 0x800a4284 为界区分两张相邻表：0x800a4280 是 CLSID→工厂的激活表（DllGetClassObject / DllCanUnloadNow 消费），0x800a4290 起步长 0x34 的表是**注册表登记描述表**（DllRegisterServer/DllUnregisterServer 消费），两者不是同一张表。此前悬置的「登记扫描代码 0x80054290..0x800545fb 写入者」由此闭合其身份。
+- 步长 0x34 的巧合解释了此前把两个区间混为一谈的可能：0x80054220 激活遍历与 0x80054290 登记遍历均按 0x34 步进，但基址不同（0x800a4280 vs 0x800a4290）。
+
+### 登记与注销入口（导出闭环）
+
+- `esriDllRegisterServer`（0x800413d0，thunk → 0x80054290）与 `esriDllUnregisterServer`（0x800413e0，thunk → 0x80054440）为 PE 导出（`ev_f2444d14d6946bda8809d81b61c6c2e655a5469a243f4ac658f7a7ce4158c529`）；`DllRegisterServer`（0x800413c0）是独立函数非 thunk。0x800413d0/0x80054290 反编译（`ev_06847b6cc6ba9350a38e9737c1444f5611ff83a113337f6290831d758a52e8ef`）：
+  - 遍历 0x800a4290 登记表（步长 0x34，以条目 +0x28（puVar5+10）为零终止）。每项 `+0x20`（puVar5[8]）为「已注册」标志：非零时跳过注册、仅做注销辅助。
+  - 注册分支：`FUN_800548d0(puVar5[-4], puVar5[-3], puVar5[7])` 写注册表（`wsprintfW(L"%s.%s", L"esriSystem")` 拼接 ProgID、RegSetValueExW 写 HKEY_CLASSES_ROOT 路径，反编译显示为 ProgID、CLSID\{...}、版本化子键等多次写；wsprintfW 部分格式参数在伪代码中被省略，具体键名以字符串候选记）；随后对 5 组描述符调用 `FUN_800540e0`——每次经 `AfCreateInstance(GUID 0x8006c37c, NULL, ctx 0x17, IID 0x8006c36c, &obj)` 创建对象并调用虚表 +0x14 槽（推断为组件类别注册，命名是推断）；`puVar5[6]` 非零时 `FUN_800550a0` 写 `CLSID\{...}\ExtendedErrors`（默认值 ProgID 或 "Error Lookup Service"）。
+  - 注销（0x80054440）结构对称：`puVar5[8]` 非零（已注册）时经同一 AfCreateInstance 对象调用虚表 +0x10 槽（`(**(code**)(*obj+0x10))(obj, piVar6, uVar7)`，uVar7 = (1, uVar2)），并调用 `FUN_80054180`（同 AfCreateInstance、虚表 +0x18 槽）替代 0x800540e0 做逐项反注册；`FUN_80054db0(wchar_t*, IID*)` 经 `ProgIDFromCLSID` 取 ProgID、截断首个 `.` 前缀后调用 `FUN_80054f20`，返回值决定是否继续。
+  - `puVar5[8] == 0`（未注册）分支在注销路径中调用 `FUN_80053ff0`：AfCreateInstance 同上，构造 `{locale 0x409, 字符串}` 参数调用虚表 +0x0c 槽——与注册路径 0x800540e0 的 +0x14/+0x18 槽位区分。
+- **结论（证据等级：静态闭合）**：登记来源是 PE 导出 `esriDllRegisterServer` 在安装/注册时被外部调用（regsvr32 式流程或安装器，运行时调用方未验证），逐条写注册表并经 AfCore 创建组件类别管理对象做类别登记；它**不写** 0x800a4280 激活表——激活表的工厂指针填充者仍未闭合。DllGetClassObject 的激活查表与 DllRegisterServer 的注册表登记是两条独立消费链。
+
+### 0x8006a4f9 尾部引用
+
+0x8006a4f0 实读 32 字节：`push 0x80053240; push 0x800a4280(6a 68 6a 34 68 80 0a 42 80 对应立即数序列按小端拆解)`，随后 `call -0xf35` 与 `ret`（`ev_e2bad61614a50c77e05510b2404b2874374c4674fce7ecae5408606a074c035b`）。该片段以 0x800a4280 表基址和 0x80053240 清理函数为立即数压栈后调用某函数——与 0x80065600 的 `Unwind_80065600 → 0x80053240(&PTR_DAT_800a4280)` 结构一致，判定为 CRT atexit/初始化器注册：把「以 0x800a4280 清理」登记进退出例程表。0x8006a4f9 是 call 指令的操作数位置，不是独立查表消费。该片段所属外层函数入口与调用时机未进一步闭合（候选：CRT 全局析构注册）。
+
+### 表生命周期小结
+
+1. **构造**：0x800a4280 静态含 2 个 CLSID 指针与全零工厂槽；0x800a4290 登记描述表静态填充完整（否则 DllRegisterServer 无从遍历）。
+2. **激活填充**：运行时某处向 0x800a4280 表项 +0x08 写工厂指针——本轮仍未见写入者；候选包括 DllMain（0x8005b7d0 附近片段含 `push 0x8008ea68` 调用，字节 `ev_f94a243caa3289e10e97fff51d6a2f1ea93245233d7f9292e61bc5dce338328e`，未反编译确证）。**开放**。
+3. **激活消费**：DllGetClassObject（外部 COM 请求，含 AfCore FactoryCache 经 CoCreateInstance 的间接路径）与 DllCanUnloadNow（遍历并实例化探测 + 全局计数 DAT_800aa420）。
+4. **登记消费**：esriDllRegisterServer / esriDllUnregisterServer（仅安装/卸载时被外部调用，不影响 ArcMap 运行时查表）。
+5. **析构**：CRT 清理（0x80065600 Unwind、0x8006a4f0 注册片段）经 0x80053240 清零表头对象组。
+
+### AfCreateInstance 与文档打开链的衔接（复核）
+
+注册路径的 0x800540e0/0x80054180/0x80053ff0/0x80054440 均以 `AfCreateInstance(&DAT_8006c37c, NULL, 0x17, &DAT_8006c36c, &obj)` 创建同一辅助对象再按槽位分派——与既有文档打开链中「AfCreateInstance(ctx 0x17, IID_IUnknown) 经 FactoryCache/CoCreateInstance」的机制一致；0x8006c37c/0x8006c36c 两个 GUID 的身份未闭合（候选：组件类别管理器及其接口 IID）。
+
+### 仍未闭合
+
+- 0x800a4280 激活表工厂指针的运行时写入者（DllMain 为候选，未确证）。
+- DAT_800aa420 全局计数的增减位置（DllCanUnloadNow 语义的另一侧）。
+- 0x8006c37c / 0x8006c36c GUID 身份与该 AfCreateInstance 辅助对象的类名。
+- 0x800548d0 各注册表键名的完整格式参数（反编译中 wsprintfW 参数被省略）。
+- `DllRegisterServer`（0x800413c0，非 thunk）本体未反编译。
+- 全部结论为静态观察，未运行 ArcMap 10.1 安装/注册流程，未做人工目视验收。
