@@ -10,6 +10,7 @@
 - [x] 从 10.1 安装介质提取原生研究文件，记录文件版本、身份、摘要及来源；定位 PageLayout、SystemCore、AfCore、MappingCore 和 MappingCoreLib，见 [10.1 原生文件基线](docs/arcmap-10.1-native-baseline.md)。CAB 条目已复核，MSI 组件和安装目录映射仍未知。
 - [x] 用 REA 定位类工厂、版本辅助函数和 PageLayout 字符串引用入口；尚未证明 10.1 完整调用链或读取规则。
 - [ ] 使用 REA 追踪 10.1 文档打开、Version 读写及 ObjectStream 持久化调用链，逐项复核现有 10.8 结论，记录相同点、差异和未知项。
+  - [x] 核对 10.1 PageLayout 的 Version 局部读取、一个静态调用者及独立构建号流；与 10.8 对照发现默认输出差异，完整调用链和格式仍未闭合，见 [原生文件基线](docs/arcmap-10.1-native-baseline.md#101-version-局部读取和构建号2026-11-13)。
 - [ ] 依据 10.1 原生证据实现相应读取规则及正常、异常输入测试；经核对再复用现有实现，保持版本范围显式。
 - [ ] 在 ArcMap 10.1 中人工检查源工程，并与 QGIS 输出对比，记录实际软件版本和结果；当前未验证。
 
