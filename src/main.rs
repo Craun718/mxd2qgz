@@ -1,3 +1,5 @@
+use mxd2qgz::mxd_version;
+
 mod input;
 
 use std::{env, io, io::Write, path::Path};
@@ -104,6 +106,41 @@ fn run() -> io::Result<()> {
             "usage: mxd2qgz extract <file.mxd> <stream> <output>",
         ));
     }
+    if command.as_deref() == Some(std::ffi::OsStr::new("version")) {
+        if let (Some(path), None) = (path, args.next()) {
+            let mut document = cfb::open(&path)?;
+            let bytes = input::read_stream(&mut document, "/Version").map_err(|error| {
+                io::Error::new(
+                    error.kind(),
+                    format!(
+                        "无法读取 {} 的 /Version 数据流：{error}",
+                        Path::new(&path).display()
+                    ),
+                )
+            })?;
+            let report = mxd_version::identify_version(&bytes)?;
+            let mut output = io::BufWriter::new(io::stdout().lock());
+            writeln!(output, "Stream /Version: {} bytes", bytes.len())?;
+            writeln!(output, "Branch: {}", report.branch.description())?;
+            writeln!(output, "Text: {:?}", report.text)?;
+            writeln!(
+                output,
+                "Compatibility short: {}",
+                report.compatibility_short
+            )?;
+            match report.object_count {
+                Some(count) => writeln!(output, "Object count: {count}")?,
+                None => writeln!(output, "Object count: none")?,
+            }
+            writeln!(output, "Remaining bytes: {}", report.remaining_bytes)?;
+            writeln!(output, "Note: {}", report.note)?;
+            return output.flush();
+        }
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "usage: mxd2qgz version <file.mxd>",
+        ));
+    }
     if !matches!(
         command.as_deref().and_then(|s| s.to_str()),
         Some("inspect" | "strings")
@@ -112,7 +149,7 @@ fn run() -> io::Result<()> {
     {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "usage: mxd2qgz <inspect|strings> <file.mxd> | compare <first.mxd> <second.mxd> <stream> | extract <file.mxd> <stream> <output> | hex <file.mxd> <stream> <offset> <length>",
+            "usage: mxd2qgz <inspect|strings> <file.mxd> | version <file.mxd> | compare <first.mxd> <second.mxd> <stream> | extract <file.mxd> <stream> <output> | hex <file.mxd> <stream> <offset> <length>",
         ));
     }
     let path = Path::new(path.as_ref().unwrap());

@@ -16,6 +16,12 @@ Rust 库的 `native_string::read_string_10_1` 可读取 10.1 AfCore `String::Wri
 
 `version_stream::read_arcmap_header_10_1` 严格读取 ArcMap 10.1 的 Version 头部：文本、有符号 short 及条件出现的对象流表计数，并保留未识别的尾部；`write_arcmap_header_10_1` 根据明确提供的保存索引、文本和对象计数构造头部。它们不模拟原生短读，也不读取完整 MXD。原生证据及适用边界见上述基线。
 
+`maps_stream::read_root_prefix_10_1` 可在调用者已确认的 10.1 分流 `/Maps` 起点严格读取 4 字节有符号数量、首个对象头和循环后的 4 字节尾部值（保留原始位模式），拒绝负数及超过限额的数量，尾部值之后的字节保留为未知尾部；它不识别版本、不解析对象体、不读取完整对象循环，也尚未接入 MXD 解析。写侧与读侧证据及适用边界见 [10.1 对象体持久化分支与 /Maps 起点](docs/arcmap-10.1-object-body.md)。
+
+`spatial_reference::read_projected_coordinate_system_10_1` 可在调用者已确认的 ProjectedCoordinateSystem 对象头之后按原生 Load 的版本分支严格读取对象体：保存版本、ASCII WKT、四个域字符串与垂向标志、精度标志与十个 double 均原样保留，版本大于 7 拒绝。它不定位对象、不解释 WKT 之外字段的语义，也尚未接入 MXD 解析。证据及开放问题见 [10.1 空间参考持久化](docs/arcmap-10.1-spatial-reference.md)。
+
+`map_object::read_map_prefix_10_1` 可在调用者已确认的 Map 对象头之后严格读取 10.1 Map 对象体的已确认前缀：版本 short（大于 51 拒绝）、两个 AfCore String 布局的名称字符串、嵌套空间参考对象（ProjectedCoordinateSystem 分派，全零 GUID 视为空引用标记）；第 5 步起的字段保留为未知尾部。它不读取图层循环，也尚未接入 MXD 解析。证据及开放问题见 [10.1 Map 对象结构](docs/arcmap-10.1-map-object.md)。
+
 ## 使用
 
 需要 Rust 工具链。运行：
@@ -23,12 +29,13 @@ Rust 库的 `native_string::read_string_10_1` 可读取 10.1 AfCore `String::Wri
 ```sh
 cargo run -- inspect 'map.mxd'
 cargo run -- strings 'map.mxd'
+cargo run -- version 'map.mxd'
 cargo run -- extract 'map.mxd' /Maps maps.bin
 cargo run -- compare 'before.mxd' 'after.mxd' /Maps
 cargo run -- hex 'map.mxd' /Maps 0x860 96
 ```
 
-`inspect` 列出 OLE 容器的数据流和字节数；`strings` 扫描 `/Maps` 中两种对齐方式的 UTF-16LE 候选字符串，并输出相对于该流的十六进制偏移。扫描不是对象解析，可能存在乱码、截断或误报，不能据此判断图层数量、完整路径或坐标系。`extract` 导出指定数据流，不会覆盖已有文件。`hex` 查看指定流的字节范围，偏移和长度支持十进制或 `0x` 十六进制，范围超出流时返回错误。`compare` 比较两个文件中指定流的相同偏移，输出不同字节的半开区间及流长度；插入或删除字节会使后续数据错位，差异区间不表示对象边界。
+`inspect` 列出 OLE 容器的数据流和字节数；`strings` 扫描 `/Maps` 中两种对齐方式的 UTF-16LE 候选字符串，并输出相对于该流的十六进制偏移。扫描不是对象解析，可能存在乱码、截断或误报，不能据此判断图层数量、完整路径或坐标系。`extract` 导出指定数据流，不会覆盖已有文件。`hex` 查看指定流的字节范围，偏移和长度支持十进制或 `0x` 十六进制，范围超出流时返回错误。`compare` 比较两个文件中指定流的相同偏移，输出不同字节的半开区间及流长度；插入或删除字节会使后续数据错位，差异区间不表示对象边界。`version` 读取 `/Version` 并按 ArcMap 10.1 头部规则与已知文本、short 集合输出识别候选，10.1 规则不满足时改报 10.8 局部布局候选；全部结果都是候选，资源文本映射未经运行时确认，未在目标软件中验证。
 研究以 REA 对目标软件实现和运行行为的分析为主；可控对照样本仅作辅助证据。记录流内偏移和脱敏的方法见研究记录中的“对照样本采集流程”。
 
 ## Python 接口
