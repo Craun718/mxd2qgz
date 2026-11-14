@@ -108,9 +108,10 @@ enum ReaderKind {
     AoiBookmark10_1,
     FeatureBookmark10_1,
     LegendPrefix10_1,
+    FeatureLayerSuccessor10_1,
 }
 
-fn all_kinds() -> [ReaderKind; 28] {
+fn all_kinds() -> [ReaderKind; 29] {
     [
         ReaderKind::NativeString10_1,
         ReaderKind::NativeString10_8,
@@ -140,6 +141,7 @@ fn all_kinds() -> [ReaderKind; 28] {
         ReaderKind::AoiBookmark10_1,
         ReaderKind::FeatureBookmark10_1,
         ReaderKind::LegendPrefix10_1,
+        ReaderKind::FeatureLayerSuccessor10_1,
     ]
 }
 
@@ -223,8 +225,9 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
         }
         ReaderKind::FeatureLayerPrefix10_1 => {
             // 版本 34 + 双名称 + 可见性 0xFFFF + 两个未知 short + 空标记数据源
-            // + 空标记渲染器 + +0x144 原样 GUID：AfterDataSourceGuid 停止且无
-            // 剩余字节。
+            // + 空标记渲染器 + +0x144 原样 GUID + 最小后继段（IHyperlink 计数
+            // 0 + IColor 空标记 + 空串 ×2 + int32 + FieldInfo 计数 0）：
+            // Successor(FieldInfoLoopCompleted) 停止且无剩余字节。
             let mut bytes = 34_u16.to_le_bytes().to_vec();
             bytes.extend(encoded("层"));
             bytes.extend(encoded(""));
@@ -234,6 +237,16 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
             bytes.extend([0_u8; 16]); // 数据源：空标记
             bytes.extend([0_u8; 16]); // 渲染器：空标记
             bytes.extend([0x5A; 16]); // +0x144 GUID
+            bytes.extend(encoded("")); // +0x154 空串（语义未定）
+            bytes.extend(0_f64.to_le_bytes());
+            bytes.extend(0_f64.to_le_bytes());
+            bytes.extend(0_i16.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes()); // IHyperlink 计数 0
+            bytes.extend([0_u8; 16]); // IColor：空标记
+            bytes.extend(encoded(""));
+            bytes.extend(encoded(""));
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes()); // FieldInfo 计数 0
             bytes
         }
         ReaderKind::FdoGraphicsLayerPrefix10_1 => {
@@ -249,6 +262,16 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
             layer.extend([0_u8; 16]); // 数据源：空标记
             layer.extend([0_u8; 16]); // 渲染器：空标记
             layer.extend([0x5A; 16]); // GUID
+            layer.extend(encoded("")); // +0x154 空串（语义未定）
+            layer.extend(0_f64.to_le_bytes());
+            layer.extend(0_f64.to_le_bytes());
+            layer.extend(0_i16.to_le_bytes());
+            layer.extend(0_i32.to_le_bytes()); // IHyperlink 计数 0
+            layer.extend([0_u8; 16]); // IColor：空标记
+            layer.extend(encoded(""));
+            layer.extend(encoded(""));
+            layer.extend(0_i32.to_le_bytes());
+            layer.extend(0_i32.to_le_bytes()); // FieldInfo 计数 0
             let mut bytes = 11_u16.to_le_bytes().to_vec();
             bytes.extend(3_i32.to_le_bytes());
             bytes.extend(0xFFFF_u16.to_le_bytes());
@@ -412,6 +435,42 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
         }
         ReaderKind::VariantString10_8 => value_bytes(8, &bstr_payload_bytes("地图")),
         ReaderKind::VariantFixed10_8 => value_bytes(5, &[0; 8]),
+        ReaderKind::FeatureLayerSuccessor10_1 => {
+            // 样本形态的最小后继段：标量段 + IHyperlink 计数 0 + IColor 空标
+            // 记 + 空串 ×2 + int32 + FieldInfo 计数 1（条目名 + FieldInfo 新
+            // 对象：版本 4 体含 NumericFormat 新对象嵌套）；循环完整消费。
+            let mut bytes = encoded("BSM"); // +0x154
+            bytes.extend(0_f64.to_le_bytes());
+            bytes.extend(0_f64.to_le_bytes());
+            bytes.extend(0_i16.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes()); // IHyperlink 计数 0
+            bytes.extend([0_u8; 16]); // IColor：空标记
+            bytes.extend(encoded(""));
+            bytes.extend(encoded(""));
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(1_i32.to_le_bytes()); // FieldInfo 计数 1
+            bytes.extend(encoded("OBJECTID")); // 条目名（版本 34 > 5）
+            bytes.extend(mxd2qgz::layers::feature_layer_tail::FIELD_INFO_CLASS_ID);
+            bytes.extend(41_u32.to_le_bytes());
+            bytes.extend(4_u16.to_le_bytes()); // FI 版本
+            bytes.extend(0xFFFF_u16.to_le_bytes()); // -0x16
+            bytes.extend(0_u16.to_le_bytes()); // -0x14（版本 >1）
+            bytes.extend(encoded("OBJECTID")); // 别名
+            bytes.extend(mxd2qgz::layers::feature_layer_tail::NUMERIC_FORMAT_CLASS_ID);
+            bytes.extend(42_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes()); // NF 版本
+            for value in [0_i32, 0, 0, 12] {
+                bytes.extend(value.to_le_bytes()); // NF int32 ×4
+            }
+            for value in [0_i16; 3] {
+                bytes.extend(value.to_le_bytes()); // NF short ×3
+            }
+            bytes.extend((-1_i16).to_le_bytes()); // -0x18（版本 >2）
+            bytes.extend((-1_i32).to_le_bytes()); // -0x1c
+            bytes.extend(0_i16.to_le_bytes()); // -0x8（版本 >3）
+            bytes.extend(0_i16.to_le_bytes()); // -0x6
+            bytes
+        }
     }
 }
 
@@ -499,6 +558,15 @@ fn try_read(kind: ReaderKind, reader: &mut Reader<'_>) -> io::Result<()> {
         }
         ReaderKind::VariantString10_8 | ReaderKind::VariantFixed10_8 => {
             read_value_10_8(reader, u32::MAX).map(|_| ())
+        }
+        ReaderKind::FeatureLayerSuccessor10_1 => {
+            mxd2qgz::layers::feature_layer_tail::read_feature_layer_successor_10_1(
+                reader,
+                34,
+                1024,
+                &mut RefTable10_1::new(),
+            )
+            .map(|_| ())
         }
     }
 }

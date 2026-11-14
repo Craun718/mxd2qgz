@@ -13,6 +13,7 @@ use mxd2qgz::layers::feature_layer::{
     WorkspaceNameStop10_1, read_feature_class_name_body_10_1, read_feature_layer_prefix_10_1,
     read_workspace_name_body_10_1,
 };
+use mxd2qgz::layers::feature_layer_tail::SuccessorStop10_1;
 use mxd2qgz::objects::dataset_name::{FEATURE_DATASET_NAME_CLASS_ID, TOPOLOGY_NAME_CLASS_ID};
 use mxd2qgz::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
 use mxd2qgz::storage::object_stream::{ObjectHeader, read_header_10_1};
@@ -134,6 +135,7 @@ fn sample_prefix_bytes(tail: &[u8]) -> Vec<u8> {
     let mut renderer = entry_bytes(&SIMPLE_RENDERER_CLASS_ID, 35);
     renderer.extend(simple_renderer_body_v1());
     renderer.extend([0_u8; 16]); // +0x144 原样 GUID（样本形态：16 零）
+    renderer.extend(successor_tail());
     let mut bytes = layer_prefix_bytes(
         SAMPLE_VERSION,
         SAMPLE_NAME,
@@ -146,12 +148,30 @@ fn sample_prefix_bytes(tail: &[u8]) -> Vec<u8> {
     bytes
 }
 
-/// 空数据源 + 空渲染器 + GUID 的最短完整链（停止点 AfterDataSourceGuid 恰在
-/// 输入末尾）。
+/// 最小合法后继字段段（样本形态的空形态）：IHyperlink 计数 0 + IColor 空
+/// 标记 + 空串 ×2 + int32 0 + FieldInfo 计数 0。FeatureLayer 版本 >5 时才
+/// 有条目名字段，计数 0 无条目。
+fn successor_tail() -> Vec<u8> {
+    let mut bytes = encoded(""); // +0x154 空串（语义未定）
+    bytes.extend(0_f64.to_le_bytes()); // +0x158
+    bytes.extend(0_f64.to_le_bytes()); // +0x160
+    bytes.extend(0_i16.to_le_bytes()); // +0x168
+    bytes.extend(0_i32.to_le_bytes()); // IHyperlink 计数 0
+    bytes.extend([0_u8; 16]); // IColor：空标记
+    bytes.extend(encoded("")); // +0x1a8 空串
+    bytes.extend(encoded("")); // +0x184 空串
+    bytes.extend(0_i32.to_le_bytes()); // +0x188
+    bytes.extend(0_i32.to_le_bytes()); // FieldInfo 计数 0
+    bytes
+}
+
+/// 空数据源 + 空渲染器 + GUID + 最小后继段的最短完整链（停止点
+/// Successor(FieldInfoLoopCompleted) 恰在输入末尾）。
 fn minimal_full_chain(tail: &[u8]) -> Vec<u8> {
     let mut bytes = layer_prefix_bytes(SAMPLE_VERSION, "层", "", [0; 3], &[0_u8; 16], b"");
     bytes.extend([0_u8; 16]); // 渲染器：空标记
     bytes.extend([0x6A; 16]); // +0x144 原样 GUID
+    bytes.extend(successor_tail());
     bytes.extend_from_slice(tail);
     bytes
 }
@@ -251,8 +271,11 @@ fn reads_sample_chain_with_workspace_and_stops_at_renderer() {
     assert_eq!(simple_renderer.version, 1);
     assert_eq!(simple_renderer.stop, None);
     assert_eq!(parsed.guid_after_renderer, Some([0_u8; 16]));
-    assert_eq!(parsed.stop, FeatureLayerStop10_1::AfterDataSourceGuid);
-    // 停止点 = 渲染器体 + GUID 之后（尾部 4 字节保留）。
+    assert_eq!(
+        parsed.stop,
+        FeatureLayerStop10_1::Successor(SuccessorStop10_1::FieldInfoLoopCompleted)
+    );
+    // 停止点 = 渲染器体 + GUID + 后继段之后（尾部 4 字节保留）。
     assert_eq!(reader.position(), bytes.len() - 4);
     assert_eq!(parsed.remaining_bytes, 4);
     // 成功提交：FCN、WS 与 SimpleRenderer 的键均登记。
@@ -271,7 +294,10 @@ fn reads_guid_after_null_renderer_and_stops() {
         read_feature_layer_prefix_10_1(&mut reader, 1024, &mut RefTable10_1::new()).unwrap();
     assert_eq!(parsed.renderer, Some(RendererSlot10_1::Null));
     assert_eq!(parsed.guid_after_renderer, Some([0x6A; 16]));
-    assert_eq!(parsed.stop, FeatureLayerStop10_1::AfterDataSourceGuid);
+    assert_eq!(
+        parsed.stop,
+        FeatureLayerStop10_1::Successor(SuccessorStop10_1::FieldInfoLoopCompleted)
+    );
     assert_eq!(parsed.remaining_bytes, 4);
     assert_eq!(reader.position(), bytes.len() - 4);
 }
@@ -528,6 +554,7 @@ fn reads_version_boundaries_zero_and_34() {
         let mut bytes = layer_prefix_bytes(version, "图层", "", [0; 3], &[0_u8; 16], b"");
         bytes.extend([0_u8; 16]); // 渲染器：空标记
         bytes.extend([0x6A; 16]); // GUID
+        bytes.extend(successor_tail());
         let mut reader = Reader::new(&bytes);
         let parsed =
             read_feature_layer_prefix_10_1(&mut reader, 1024, &mut RefTable10_1::new()).unwrap();
@@ -537,7 +564,11 @@ fn reads_version_boundaries_zero_and_34() {
             DataSource10_1::Null,
             "version={version}"
         );
-        assert_eq!(parsed.stop, FeatureLayerStop10_1::AfterDataSourceGuid);
+        assert_eq!(
+            parsed.stop,
+            FeatureLayerStop10_1::Successor(SuccessorStop10_1::FieldInfoLoopCompleted),
+            "version={version}"
+        );
         assert_eq!(parsed.remaining_bytes, 0, "version={version}");
         assert_eq!(reader.position(), bytes.len(), "version={version}");
     }
@@ -583,6 +614,7 @@ fn reads_visibility_bit_patterns_with_interpretation_helper() {
         );
         bytes.extend([0_u8; 16]); // 渲染器：空标记
         bytes.extend([0x6A; 16]); // GUID
+        bytes.extend(successor_tail());
         let mut reader = Reader::new(&bytes);
         let parsed =
             read_feature_layer_prefix_10_1(&mut reader, 1024, &mut RefTable10_1::new()).unwrap();
@@ -641,6 +673,7 @@ fn reads_new_feature_class_name_and_commits_registration() {
         &[0_u8; 16],
     );
     second_bytes.extend([0x6A; 16]); // +0x144 GUID
+    second_bytes.extend(successor_tail());
     let mut second_reader = Reader::new(&second_bytes);
     let second = read_feature_layer_prefix_10_1(&mut second_reader, 1024, &mut table).unwrap();
     assert_eq!(
@@ -650,10 +683,10 @@ fn reads_new_feature_class_name_and_commits_registration() {
             key: SAMPLE_FCN_KEY,
         }
     );
-    // 回引无体：渲染器空标记与 GUID 照常读取。
+    // 回引无体：渲染器空标记、GUID 与后继段照常读取。
     assert_eq!(
         second.stop,
-        FeatureLayerStop10_1::AfterDataSourceGuid,
+        FeatureLayerStop10_1::Successor(SuccessorStop10_1::FieldInfoLoopCompleted),
         "回引数据源不阻塞后续槽位"
     );
     assert_eq!(second_reader.position(), second_bytes.len());
@@ -679,6 +712,7 @@ fn reads_back_reference_with_previously_registered_key() {
         &[0_u8; 16],
     );
     bytes.extend([0x6A; 16]); // GUID
+    bytes.extend(successor_tail());
     bytes.extend(b"tail");
     let mut reader = Reader::new(&bytes);
     let parsed = read_feature_layer_prefix_10_1(&mut reader, 1024, &mut table).unwrap();
@@ -689,7 +723,10 @@ fn reads_back_reference_with_previously_registered_key() {
             key: SAMPLE_FCN_KEY,
         }
     );
-    assert_eq!(parsed.stop, FeatureLayerStop10_1::AfterDataSourceGuid);
+    assert_eq!(
+        parsed.stop,
+        FeatureLayerStop10_1::Successor(SuccessorStop10_1::FieldInfoLoopCompleted)
+    );
     assert_eq!(parsed.remaining_bytes, 4);
     assert_eq!(reader.position(), bytes.len() - 4);
     assert_eq!(table.len(), 1, "回引不得新增登记");

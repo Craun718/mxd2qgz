@@ -68,10 +68,8 @@
 //!
 //! 样本对位（辅助观察，不作测试依赖）：`temp/r6-maps.bin` `0x3ed..0x602`
 //! 逐字段吻合（见研究记录字段序表）；SimpleRenderer 体终结于 `0x5b0`，其
-//! 后 FeatureLayer 的 `+0x144` GUID（16 零）、String「BSM」、double ×2、
-//! short、IHyperlink 计数 0、IColor 空标记、String ×2、int32 依次对位，
-//! 到 `0x602` 的 `{A2BAAE2C-…}` 计数循环（FieldInfo 族）之前——该循环及
-//! 其后的类不在本模块范围。
+//! 后 FeatureLayer 的后继字段段（本模块 [`read_feature_layer_successor_10_1`]）
+//! 经第八轮闭合至 FieldInfo 计数循环，样本 `0x5b0..0xafe` 逐字节吻合。
 //!
 //! 调用约定：调用者先用 [`crate::storage::object_stream::read_header_10_1`] 读取对象
 //! 头并比对类常量，从对象头之后的位置调用各 `read_*_body_10_1`；本模块不
@@ -99,6 +97,27 @@
 //! - 第三轮研究文档 IID 表中 `{F3435802-…}` 的 Data2 误记为 5799，经本轮
 //!   二进制字节与类型库双重复核应为 **5779**（与 SimpleRenderer CLSID 同
 //!   Data2），研究记录已更正。
+//!
+//! 后继字段段（第八轮闭合，见文末 [`read_feature_layer_successor_10_1`]）
+//! 的未解决问题：
+//! - IHyperlink 循环（请求 IID `{3036D35D-…}`，第五轮类型库定名）的
+//!   Hyperlink 族 coclass 体未闭合（样本计数恒 0，无字节佐证），新对象即
+//!   停止；
+//! - INumberFormat 槽（`{7E4F470D-…}`）只闭合 NumericFormat 一类；
+//!   PercentageFormat/FractionFormat/RateFormat 等同族体未闭合（新对象即
+//!   停止）；
+//! - 后继段各标量的业务语义未定性：+0x154 字符串（样本「BSM」，字段名样
+//!   候选）、+0x158/+0x160 double（样本 0.0）、+0x168 short、+0x1a8/+0x184
+//!   字符串（样本空串）、+0x188 int32 均原样保留；FieldInfo 的 -0x16
+//!   （可见性 VARIANT_BOOL 候选，样本 OBJECTID 0xFFFF/BSM 0x0000）、-0x14、
+//!   -0x18/-0x1c（样本 -1/-1）、-0x8/-0x6（样本 0/-1 或 0/0）与
+//!   NumericFormat 的 int32 ×4/short ×3（样本 0/0/0/12 与 0/6/0/12 +
+//!   0/0/0）同样未定性；
+//! - FieldInfo 循环条目名「样本恒与别名同文」为观察，二者分歧场景未见样
+//!   本；
+//! - FieldInfo 循环之后的 ALPC 槽（请求 IID `{1D5849F2-…}`）、short
+//!   +0x1bc、FeatureIDSet（`{D5BB4B87-…}`）槽、选择集 ID 数组等后续字段
+//!   未闭合，读取器在循环完成处停止。
 
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -1011,6 +1030,518 @@ pub fn read_simple_renderer_body_10_1(
         label,
         rotation_tail,
         size_tail,
+        stop,
+        remaining_bytes,
+    };
+    *table = staged_table;
+    *reader = trial;
+    Ok(result)
+}
+
+/// FieldInfo 类标识（CLSID）的 16 字节内存序。
+///
+/// GUID 字符串形式 `{A2BAAE2D-969B-11D2-AE77-080009EC732A}`。证据：
+/// esri.clsid 声明（模块 Layer.dll，progID FieldInfo）；Layer.dll GetClassID
+/// `0x7865b4e0` 经 0x11D2969BA2BAAE2D / 0x2A73EC09000877AE 两个 8 字节立即
+/// 数写出（IPersistStream 虚表 `0x7866dd58` 槽 +0x0c 经调整器 thunk
+/// `0x7865b8f0` 指向）；样本 `/Maps:0x61c` 起 14 个 FieldInfo 对象头逐字节
+/// 相同（键 41..58 中的 FieldInfo 部分）。
+pub const FIELD_INFO_CLASS_ID: [u8; 16] = [
+    0x2d, 0xae, 0xba, 0xa2, 0x9b, 0x96, 0xd2, 0x11, 0xae, 0x77, 0x08, 0x00, 0x09, 0xec, 0x73, 0x2a,
+];
+
+/// NumericFormat 类标识（CLSID）的 16 字节内存序。
+///
+/// GUID 字符串形式 `{7E4F4719-8E54-11D2-AAD8-000000000000}`。证据：
+/// esri.clsid 声明（模块 SystemCore.dll）与 esriSystem 类型库 coclass #212；
+/// SystemCore.dll GetClassID `0x7ffce470` 写出（0x11D28E547E4F4719 /
+/// 0x000000000000D8AA 立即数，IPersistStream 虚表 `0x80070ec4` 槽 +0x0c 经
+/// thunk `0x7ffcea60` 指向）；样本 `/Maps:0x64c` 起的嵌套对象头逐字节相同。
+pub const NUMERIC_FORMAT_CLASS_ID: [u8; 16] = [
+    0x19, 0x47, 0x4f, 0x7e, 0x54, 0x8e, 0xd2, 0x11, 0xaa, 0xd8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+];
+
+/// FieldInfo::Load 接受的最大版本：`4 < (short)ver` 有符号比较；样本 14 个
+/// 实例全为 4。证据：Layer.dll `0x7865b520`。
+const MAX_FIELD_INFO_VERSION: i16 = 4;
+
+/// NumericFormat::Load 接受的最大版本：`1 < (short)ver`；样本 4 个实例全为
+/// 1。证据：SystemCore.dll `0x7ffce4b0`。
+const MAX_NUMERIC_FORMAT_VERSION: i16 = 1;
+
+/// NumericFormat（SystemCore.dll `0x7ffce4b0`）体的已确认字段。
+///
+/// 体长恒 24 字节（short 版本 + int32 ×4 + short ×3），无嵌套对象、无字符
+/// 串，无停止点：要么完整消费，要么失败（截断/版本超限）。各 int32/short
+/// 语义未定（样本形态 0/0/0/12 与 0/6/0/12 + 0/0/0；数值格式化对齐/位数
+/// 候选）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct NumericFormatBody10_1 {
+    /// 对象头键（样本 42/53/55/57）。
+    ///
+    /// 解析成功时该键已按原生语义登记进调用者的登记表。
+    pub key: u32,
+    /// 体首 short 版本（样本 1）；>1 原生拒绝。
+    pub version: u16,
+    /// int32 ×4 → obj-0x1c/-0x18/-0x14/-0x10（样本 OBJECTID 条目 0/0/0/12，
+    /// XZBZ/YZBZ/ZZBZ 条目 0/6/0/12），语义未定，原样保留。
+    pub int32s: [i32; 4],
+    /// short ×3 → obj-0xc/-0xa/-0x8（样本全 0），语义未定，原样保留。
+    pub shorts: [i16; 3],
+}
+
+/// 从对象头之后的位置读取 10.1 NumericFormat 对象体，失败时不推进游标、不
+/// 修改登记表。
+///
+/// 起点约定：调用者已读取对象头、比对 [`NUMERIC_FORMAT_CLASS_ID`] 并取得键
+/// `key`。证据：SystemCore.dll 10.1.0.3035 `0x7ffce4b0`（Load）与
+/// `0x7ffce590`（Save，对称：写版本表恒 1 + 同序字段）。
+pub fn read_numeric_format_body_10_1(
+    reader: &mut Reader<'_>,
+    table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<NumericFormatBody10_1> {
+    let _ = table; // 无嵌套对象，登记表仅在签名上保持一致
+    let mut trial = reader.clone();
+    let entry_offset = trial.position();
+
+    // ① short 版本（`1 < ver` 有符号拒绝）。
+    let version = read_version_short(
+        &mut trial,
+        MAX_NUMERIC_FORMAT_VERSION,
+        "NumericFormat",
+        entry_offset,
+    )?;
+    // ② int32 ×4。
+    let mut int32s = [0_i32; 4];
+    for slot in int32s.iter_mut() {
+        *slot = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+    }
+    // ③ short ×3。
+    let mut shorts = [0_i16; 3];
+    for slot in shorts.iter_mut() {
+        *slot = trial.read_u16_le()? as i16;
+    }
+
+    let result = NumericFormatBody10_1 {
+        key,
+        version,
+        int32s,
+        shorts,
+    };
+    *reader = trial;
+    Ok(result)
+}
+
+/// FieldInfo 体内 INumberFormat 槽位（请求 IID `{7E4F470D-…}`）条目的分类
+/// 结果。
+#[derive(Debug, Clone, PartialEq)]
+pub enum NumberFormatSlot10_1 {
+    /// 16 字节全零类标识：空引用，无键、无对象体（样本 10/14 条目）。
+    Null,
+    /// 键已见：回引条目，无对象体。类标识原样保留、不校验。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 NumericFormat 对象（类标识经 [`NUMERIC_FORMAT_CLASS_ID`] 校验）：
+    /// 已解析体。
+    NumericFormat(Box<NumericFormatBody10_1>),
+}
+
+/// FieldInfo 体读取的停止原因。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FieldInfoStop10_1 {
+    /// INumberFormat 槽的新对象类标识不是 NumericFormat（PercentageFormat/
+    /// FractionFormat/RateFormat 等同族体未闭合）：游标回退到该槽位起点，
+    /// 版本 >2/版本 >3 的尾段不可达。
+    NumberFormatUnsupported { class_id: [u8; 16], key: u32 },
+}
+
+/// FieldInfo（Layer.dll `0x7865b520`）体的已确认字段。
+///
+/// 字段序：① short 版本（`4 < ver` 有符号拒绝；样本 4）→ ② short →
+/// obj-0x16（无条件；样本 OBJECTID 0xFFFF、BSM 0x0000，可见性候选）→
+/// ③ 版本 >1：short → obj-0x14（样本 0）→ ④ String 别名 → obj-0x10（样本
+/// 与循环条目名同文）→ ⑤ LoadObject(INumberFormat `{7E4F470D-…}`) →
+/// obj-0xc → ⑥ 版本 >2：short → obj-0x18 + int32 → obj-0x1c（样本 -1/-1）
+/// → ⑦ 版本 >3：short → obj-0x8 + short → obj-0x6（样本 0/-1 或 0/0）。
+/// Save `0x7865b660` 对称（写版本表 docVersion→4；docVersion≥1 才写 ③、
+/// >2 写 ⑥、>3 写 ⑦——读侧门在 10.1 docVersion 下逐段一致）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct FieldInfoBody10_1 {
+    /// 对象头键（样本 41..58 中的 FieldInfo 部分）。
+    ///
+    /// 解析成功时该键已按原生语义登记进调用者的登记表。
+    pub key: u32,
+    /// 体首 short 版本（样本 4）；有符号比较 >4 拒绝。
+    pub version: u16,
+    /// short → obj-0x16 的原始位模式（可见性 VARIANT_BOOL 候选；样本
+    /// OBJECTID 0xFFFF=可见、BSM 0x0000=隐藏）。语义未定，原样保留。
+    pub short_16: i16,
+    /// 版本 >1 的 short → obj-0x14（样本 0），语义未定。`None` = 版本 ≤1。
+    pub short_14: Option<i16>,
+    /// String 别名 → obj-0x10（样本与条目名同文；别名候选）。
+    pub alias: String,
+    /// INumberFormat 槽（请求 IID `{7E4F470D-…}`=INumberFormat）分类。
+    pub number_format: NumberFormatSlot10_1,
+    /// 版本 >2 的 short → obj-0x18（样本 -1），语义未定。`None` = 版本 ≤2
+    /// 或前置停止未读取。
+    pub short_18: Option<i16>,
+    /// 版本 >2 的 int32 → obj-0x1c（样本 -1），语义未定。`None` = 版本 ≤2
+    /// 或前置停止未读取。
+    pub int32_1c: Option<i32>,
+    /// 版本 >3 的 short ×2 → obj-0x8/obj-0x6（样本 0/-1 或 0/0），语义未
+    /// 定。`None` = 版本 ≤3 或前置停止未读取。
+    pub tail_shorts: Option<[i16; 2]>,
+    /// 停止原因；`None` = 体已完整消费。
+    pub stop: Option<FieldInfoStop10_1>,
+}
+
+/// 从对象头之后的位置读取 10.1 FieldInfo 对象体，失败时不推进游标、不修改
+/// 登记表。
+///
+/// 起点约定：调用者已读取对象头、比对 [`FIELD_INFO_CLASS_ID`] 并取得键
+/// `key`。INumberFormat 槽的新对象类标识非 NumericFormat 时是成功停止（停
+/// 止原因携带类标识与键，游标回退到该槽位起点、该键不保留）；截断与版本
+/// 超限为错误。
+pub fn read_field_info_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<FieldInfoBody10_1> {
+    let mut trial = reader.clone();
+    let entry_offset = trial.position();
+
+    // ① 版本 short（有符号 >4 拒绝）。
+    let version = read_version_short(
+        &mut trial,
+        MAX_FIELD_INFO_VERSION,
+        "FieldInfo",
+        entry_offset,
+    )?;
+    // ② short → obj-0x16。
+    let short_16 = trial.read_u16_le()? as i16;
+    // ③ 版本 >1：short → obj-0x14。
+    let short_14 = if (version as i16) > 1 {
+        Some(trial.read_u16_le()? as i16)
+    } else {
+        None
+    };
+    // ④ String 别名 → obj-0x10。
+    let alias = read_string_10_1(&mut trial, max_bytes)?;
+
+    // ⑤ INumberFormat 槽：新对象仅支持 NumericFormat，其余为停止点（回退
+    //    到槽位起点、不保留该键）。
+    let slot_offset = trial.position();
+    let saved_table = table.clone();
+    let mut staged_table = table.clone();
+    let (number_format, stop) = match read_object_entry_10_1(&mut trial, &mut staged_table)? {
+        ObjectEntry10_1::Null => (NumberFormatSlot10_1::Null, None),
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            (NumberFormatSlot10_1::BackReference { class_id, key }, None)
+        }
+        ObjectEntry10_1::NewObject { class_id, key } if class_id == NUMERIC_FORMAT_CLASS_ID => {
+            let body = read_numeric_format_body_10_1(&mut trial, &mut staged_table, key)?;
+            (NumberFormatSlot10_1::NumericFormat(Box::new(body)), None)
+        }
+        ObjectEntry10_1::NewObject { class_id, key } => {
+            let stop = FieldInfoStop10_1::NumberFormatUnsupported { class_id, key };
+            trial = reposition_to(reader, slot_offset);
+            staged_table = saved_table;
+            (NumberFormatSlot10_1::Null, Some(stop))
+        }
+    };
+
+    // ⑥⑦ 版本 >2 / 版本 >3 的尾段（前置停止时不读取）。
+    let (mut short_18, mut int32_1c, mut tail_shorts) = (None, None, None);
+    if stop.is_none() && (version as i16) > 2 {
+        short_18 = Some(trial.read_u16_le()? as i16);
+        int32_1c = Some(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
+        if (version as i16) > 3 {
+            let a = trial.read_u16_le()? as i16;
+            let b = trial.read_u16_le()? as i16;
+            tail_shorts = Some([a, b]);
+        }
+    }
+
+    let result = FieldInfoBody10_1 {
+        key,
+        version,
+        short_16,
+        short_14,
+        alias,
+        number_format,
+        short_18,
+        int32_1c,
+        tail_shorts,
+        stop,
+    };
+    *table = staged_table;
+    *reader = trial;
+    Ok(result)
+}
+
+/// FieldInfo 计数循环的单个条目。
+///
+/// FeatureLayer::Load（`0x6f6e9940`，汇编 `0x6f6e9c91`: `CMP word ptr
+/// [ESP+0x20],5`/`JLE`）在架构版本 >5 时先读条目名字符串、≤5 时从要素类模
+/// 式接口推导名字（流内无名字段，读取器保留 `None`）；随后加载 FieldInfo
+/// 对象并在「名字与对象都非空」时经 this+0x1d0 接口虚表 +0x18 登记。
+#[derive(Debug, Clone, PartialEq)]
+pub struct FieldInfoLoopEntry10_1 {
+    /// 条目名（样本为字段名同文串）。`None` = FeatureLayer 版本 ≤5（流内
+    /// 无名字段）或前置停止未读取。
+    pub name: Option<String>,
+    /// FieldInfo 对象条目分类。
+    pub slot: FieldInfoEntry10_1,
+}
+
+/// FieldInfo 计数循环条目的对象分类。
+#[derive(Debug, Clone, PartialEq)]
+pub enum FieldInfoEntry10_1 {
+    /// 16 字节全零类标识：空引用，无键、无对象体。
+    Null,
+    /// 键已见：回引条目，无对象体。类标识原样保留、不校验。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 FieldInfo 对象（类标识经 [`FIELD_INFO_CLASS_ID`] 校验）：已解析体
+    /// （体内停止经 `FieldInfoBody10_1::stop` 传播）。
+    FieldInfo(Box<FieldInfoBody10_1>),
+}
+
+/// IHyperlink 计数循环（请求 IID `{3036D35D-…}`）条目的分类结果。
+///
+/// Hyperlink 族 coclass 体未闭合（样本计数恒 0，无字节佐证），新对象即停
+/// 止，故无「已解析」变体。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HyperlinkSlot10_1 {
+    /// 16 字节全零类标识：空引用，无键、无对象体。
+    Null,
+    /// 键已见：回引条目，无对象体。类标识原样保留、不校验。
+    BackReference { class_id: [u8; 16], key: u32 },
+}
+
+/// FeatureLayer 后继字段段（渲染器槽 +0x144 GUID 之后）读取的停止原因。
+///
+/// 全部为「成功停止」：游标停在最深可闭合点，剩余字节原样保留。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SuccessorStop10_1 {
+    /// FieldInfo 计数循环完整消费（样本形态）。其后为 ALPC
+    ///（请求 IID `{1D5849F2-…}`）槽位等未闭合字段，在此停止。
+    FieldInfoLoopCompleted,
+    /// IHyperlink 循环第 `index` 条（0 起）为新对象（Hyperlink 族 coclass
+    /// 体未闭合）：游标回退到该条目对象头起点，其后条目不可达。
+    HyperlinkNewObject {
+        class_id: [u8; 16],
+        key: u32,
+        index: usize,
+    },
+    /// IColor 槽（请求 IID `{20CD40B0-…}`）的新对象类标识不是 RgbColor：
+    /// 游标回退到该槽位起点，其后的字符串段不可达。
+    ColorUnsupported { class_id: [u8; 16], key: u32 },
+    /// FieldInfo 循环第 `index` 条（0 起）的新对象类标识不是 FieldInfo：
+    /// 游标回退到该条目对象头起点，其后条目不可达。
+    FieldInfoEntryUnsupported {
+        class_id: [u8; 16],
+        key: u32,
+        index: usize,
+    },
+    /// 某 FieldInfo 体内的停止（游标停在其 INumberFormat 槽位起点）。
+    FieldInfoBody(FieldInfoStop10_1),
+}
+
+/// FeatureLayer::Load（`0x6f6e9940`）渲染器槽 +0x144 GUID 之后的后继字段段
+/// 已确认前缀。
+///
+/// 字段序（全部来自 10.1.0.3035 FeatureLayer.dll 反编译，样本
+/// `0x5b0..0xafe` 逐字节吻合；对象内存偏移为反编译槽位）：
+/// ① String → obj+0x154 → ② double → obj+0x158 → ③ double → obj+0x160 →
+/// ④ short → obj+0x168 → ⑤ int32 计数 + 循环 LoadObject(IHyperlink
+/// `{3036D35D-…}`)（每项仅 LoadObject + 数组入集辅助 `0x6f701ad0`，无其他
+/// 流读取）→ ⑥ LoadObject(IColor `{20CD40B0-…}`) → ⑦ String → obj+0x1a8 →
+/// ⑧ String → obj+0x184 → ⑨ int32 → obj+0x188 → ⑩ int32 FieldInfo 计数 +
+/// 循环 [（版本 >5）String 条目名 + LoadObject(IFieldInfo
+/// `{A2BAAE2C-…}`)]。中间的 `FUN_6f6e0c00`（+0x144 GUID 后）与循环前后的
+/// 虚调用/QI/数组辅助（`0x6f701ad0`/`0x6f6dd210`/`0x6f6acc10`/`0x6f6c8100`）
+/// 经反编译核对均不读流，无流内字节。
+#[derive(Debug, Clone, PartialEq)]
+pub struct FeatureLayerSuccessor10_1 {
+    /// String → obj+0x154（样本「BSM」；语义未定，字段名样字符串候选）。
+    pub string_154: String,
+    /// double → obj+0x158（样本 0.0），语义未定。
+    pub double_158: f64,
+    /// double → obj+0x160（样本 0.0），语义未定。
+    pub double_160: f64,
+    /// short → obj+0x168（样本 0），语义未定。
+    pub short_168: i16,
+    /// IHyperlink 循环声明计数（样本 0）。负数原生不进循环，原样保留。
+    pub hyperlink_count: i32,
+    /// IHyperlink 循环已消费条目（按流内顺序）。
+    pub hyperlinks: Vec<HyperlinkSlot10_1>,
+    /// IColor 槽（请求 IID `{20CD40B0-…}`）分类；新对象仅支持 RgbColor。
+    pub color: ColorSlot10_1,
+    /// String → obj+0x1a8（样本空串），语义未定。
+    pub string_1a8: String,
+    /// String → obj+0x184（样本空串），语义未定。
+    pub string_184: String,
+    /// int32 → obj+0x188（样本 0），语义未定。
+    pub int32_188: i32,
+    /// FieldInfo 循环声明计数（样本 14）。负数原生不进循环，原样保留。
+    pub field_info_count: i32,
+    /// FieldInfo 循环已消费条目（按流内顺序）。
+    pub field_infos: Vec<FieldInfoLoopEntry10_1>,
+    /// 停止原因（恒有：本读取器始终在最深可闭合点停止）。
+    pub stop: SuccessorStop10_1,
+    /// 停止点之后剩余的字节数（相对传入 Reader 窗口）。
+    pub remaining_bytes: usize,
+}
+
+/// 从渲染器槽 +0x144 原样 GUID 之后的位置读取 10.1 FeatureLayer 后继字段
+/// 段，失败时不推进游标、不修改登记表。
+///
+/// 起点约定：调用者已读取 +0x144 的 16 字节 GUID（`fl_version` 为
+/// FeatureLayer 体首的架构版本，用于 FieldInfo 条目名的版本 >5 门）。
+/// IHyperlink 循环与 FieldInfo 循环的新对象、IColor 槽非 RgbColor 新对象、
+/// FieldInfo 体内未知 NumericFormat 族对象均为成功停止（游标回退到该条目/
+/// 槽位起点，该键不保留；FieldInfo 体内停止传播为
+/// [`SuccessorStop10_1::FieldInfoBody`]，游标停在内层停止点）。截断、版本
+/// 超限、字符串超限为错误（游标与登记表不动）。
+pub fn read_feature_layer_successor_10_1(
+    reader: &mut Reader<'_>,
+    fl_version: u16,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<FeatureLayerSuccessor10_1> {
+    let mut trial = reader.clone();
+
+    // ①-④ 标量段：String +0x154、double ×2、short +0x168。
+    let string_154 = read_string_10_1(&mut trial, max_bytes)?;
+    let double_158 = trial.read_f64_le()?;
+    let double_160 = trial.read_f64_le()?;
+    let short_168 = trial.read_u16_le()? as i16;
+
+    // 登记表副本：循环与槽位登记先发生在副本上，整体成功才随外层提交。
+    let mut staged_table = table.clone();
+
+    // ⑤ IHyperlink 计数循环：新对象为停止点（Hyperlink 族体未闭合）。
+    let hyperlink_count = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+    let mut hyperlinks = Vec::new();
+    let mut stop = None;
+    for index in 0..hyperlink_count.max(0) as usize {
+        let item_offset = trial.position();
+        let pre_item_table = staged_table.clone();
+        match read_object_entry_10_1(&mut trial, &mut staged_table)? {
+            ObjectEntry10_1::Null => hyperlinks.push(HyperlinkSlot10_1::Null),
+            ObjectEntry10_1::BackReference { class_id, key } => {
+                hyperlinks.push(HyperlinkSlot10_1::BackReference { class_id, key });
+            }
+            ObjectEntry10_1::NewObject { class_id, key } => {
+                stop = Some(SuccessorStop10_1::HyperlinkNewObject {
+                    class_id,
+                    key,
+                    index,
+                });
+                trial = reposition_to(reader, item_offset);
+                staged_table = pre_item_table;
+            }
+        }
+        if stop.is_some() {
+            break;
+        }
+    }
+
+    // ⑥ IColor 槽：新对象仅支持 RgbColor，其余为停止点。
+    let mut color = ColorSlot10_1::Null;
+    if stop.is_none() {
+        let slot_offset = trial.position();
+        let pre_slot_table = staged_table.clone();
+        match read_object_entry_10_1(&mut trial, &mut staged_table)? {
+            ObjectEntry10_1::Null => color = ColorSlot10_1::Null,
+            ObjectEntry10_1::BackReference { class_id, key } => {
+                color = ColorSlot10_1::BackReference { class_id, key };
+            }
+            ObjectEntry10_1::NewObject { class_id, key } if class_id == RGB_COLOR_CLASS_ID => {
+                color = ColorSlot10_1::RgbColor(Box::new(read_rgb_color_body_10_1(
+                    &mut trial,
+                    &mut staged_table,
+                    key,
+                )?));
+            }
+            ObjectEntry10_1::NewObject { class_id, key } => {
+                stop = Some(SuccessorStop10_1::ColorUnsupported { class_id, key });
+                trial = reposition_to(reader, slot_offset);
+                staged_table = pre_slot_table;
+            }
+        }
+    }
+
+    // ⑦-⑨ 字符串段与 int32 +0x188（前置停止时不读取）。
+    let mut string_1a8 = String::new();
+    let mut string_184 = String::new();
+    let mut int32_188 = 0;
+    let mut field_info_count = 0;
+    let mut field_infos = Vec::new();
+    if stop.is_none() {
+        string_1a8 = read_string_10_1(&mut trial, max_bytes)?;
+        string_184 = read_string_10_1(&mut trial, max_bytes)?;
+        int32_188 = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+
+        // ⑩ FieldInfo 计数循环：条目 = [（版本 >5）String 名 + FieldInfo
+        //    对象]。原生架构版本 ≤5 的名字从要素类模式接口推导，流内无名字
+        //    段（汇编 `0x6f6e9c91` 门）。
+        field_info_count = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+        for index in 0..field_info_count.max(0) as usize {
+            let name = if fl_version > 5 {
+                Some(read_string_10_1(&mut trial, max_bytes)?)
+            } else {
+                None
+            };
+            let item_offset = trial.position();
+            let pre_item_table = staged_table.clone();
+            let slot = match read_object_entry_10_1(&mut trial, &mut staged_table)? {
+                ObjectEntry10_1::Null => FieldInfoEntry10_1::Null,
+                ObjectEntry10_1::BackReference { class_id, key } => {
+                    FieldInfoEntry10_1::BackReference { class_id, key }
+                }
+                ObjectEntry10_1::NewObject { class_id, key } if class_id == FIELD_INFO_CLASS_ID => {
+                    let body =
+                        read_field_info_body_10_1(&mut trial, max_bytes, &mut staged_table, key)?;
+                    if let Some(inner) = body.stop {
+                        stop = Some(SuccessorStop10_1::FieldInfoBody(inner));
+                    }
+                    FieldInfoEntry10_1::FieldInfo(Box::new(body))
+                }
+                ObjectEntry10_1::NewObject { class_id, key } => {
+                    stop = Some(SuccessorStop10_1::FieldInfoEntryUnsupported {
+                        class_id,
+                        key,
+                        index,
+                    });
+                    trial = reposition_to(reader, item_offset);
+                    staged_table = pre_item_table;
+                    FieldInfoEntry10_1::Null
+                }
+            };
+            field_infos.push(FieldInfoLoopEntry10_1 { name, slot });
+            if stop.is_some() {
+                break;
+            }
+        }
+    }
+    let stop = stop.unwrap_or(SuccessorStop10_1::FieldInfoLoopCompleted);
+
+    let remaining_bytes = trial.remaining();
+    let result = FeatureLayerSuccessor10_1 {
+        string_154,
+        double_158,
+        double_160,
+        short_168,
+        hyperlink_count,
+        hyperlinks,
+        color,
+        string_1a8,
+        string_184,
+        int32_188,
+        field_info_count,
+        field_infos,
         stop,
         remaining_bytes,
     };

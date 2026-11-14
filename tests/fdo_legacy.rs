@@ -38,8 +38,8 @@ fn entry_bytes(class_id: &[u8; 16], key: u32) -> Vec<u8> {
     bytes
 }
 
-/// 合成 FeatureLayer 体（到渲染器空标记 + GUID 的完整前缀链，与
-/// `fdo_graphics_layer` 测试同构）。
+/// 合成 FeatureLayer 体（到渲染器空标记 + GUID + 最小后继段的完整前缀链，
+/// 与 `fdo_graphics_layer` 测试同构）。
 fn feature_layer_body(name: &str) -> Vec<u8> {
     let mut bytes = 34_u16.to_le_bytes().to_vec();
     bytes.extend(encoded(name));
@@ -50,6 +50,16 @@ fn feature_layer_body(name: &str) -> Vec<u8> {
     bytes.extend([0_u8; 16]); // 数据源：空标记
     bytes.extend([0_u8; 16]); // 渲染器：空标记
     bytes.extend([0x6A; 16]); // +0x144 GUID
+    bytes.extend(encoded("")); // +0x154 空串（语义未定）
+    bytes.extend(0_f64.to_le_bytes()); // +0x158
+    bytes.extend(0_f64.to_le_bytes()); // +0x160
+    bytes.extend(0_i16.to_le_bytes()); // +0x168
+    bytes.extend(0_i32.to_le_bytes()); // IHyperlink 计数 0
+    bytes.extend([0_u8; 16]); // IColor：空标记
+    bytes.extend(encoded("")); // +0x1a8
+    bytes.extend(encoded("")); // +0x184
+    bytes.extend(0_i32.to_le_bytes()); // +0x188
+    bytes.extend(0_i32.to_le_bytes()); // FieldInfo 计数 0
     bytes
 }
 
@@ -209,8 +219,8 @@ fn version_gates_skip_later_fields() {
 
 #[test]
 fn associated_layer_feature_layer_stops_inside_its_body() {
-    // ILayer 槽新 FeatureLayer：解析前缀后在 AfterDataSourceGuid 停止，旧体
-    // 后续槽位不可达；键保留登记（对象头已消费）。
+    // ILayer 槽新 FeatureLayer：解析前缀（含后继段）后在 FieldInfoLoopCompleted
+    // 停止，旧体后续槽位不可达；键保留登记（对象头已消费）。
     let mut bytes = legacy_head(1, "旧层");
     bytes.extend(entry_bytes(&FEATURE_LAYER_CLASS_ID, 77));
     bytes.extend(feature_layer_body("关联层"));
@@ -225,7 +235,9 @@ fn associated_layer_feature_layer_stops_inside_its_body() {
     assert_eq!(
         parsed.stop,
         Some(LegacyFdoStop10_1::AssociatedLayerBodyStopped {
-            layer_stop: FeatureLayerStop10_1::AfterDataSourceGuid
+            layer_stop: FeatureLayerStop10_1::Successor(
+                mxd2qgz::layers::feature_layer_tail::SuccessorStop10_1::FieldInfoLoopCompleted,
+            )
         })
     );
     assert_eq!(
