@@ -352,6 +352,10 @@ fn simple_marker_symbol_stops_at_unknown_main_color() {
             key: 44,
         })
     );
+    assert_eq!(
+        sms.key, 36,
+        "停止路径结构体 key 保持 SMS 自身键，不被颜色条目键阴影"
+    );
     assert!(
         matches!(sms.color, ColorSlot10_1::Null),
         "未知颜色类条目回退，槽位值不保留"
@@ -383,6 +387,7 @@ fn simple_marker_symbol_stops_at_unknown_outline_color() {
             key: 44,
         })
     );
+    assert_eq!(sms.key, 36, "轮廓停止路径结构体 key 保持 SMS 自身键");
     assert_eq!(sms.size, Some(6.0), "首个颜色与标量段已消费并保留");
     assert_eq!(sms.int32_b, Some(13));
     assert_eq!(sms.rotate_short, None, "前置停止不读版本 short 尾段");

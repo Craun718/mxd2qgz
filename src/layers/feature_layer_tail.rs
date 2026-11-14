@@ -399,9 +399,17 @@ pub fn read_simple_marker_symbol_body_10_1(
                 key,
             )?))
         }
-        ObjectEntry10_1::NewObject { class_id, key } => {
+        ObjectEntry10_1::NewObject {
+            class_id,
+            key: entry_key,
+        } => {
             // 未知颜色类：回退到槽位起点并停止（不保留该键）。
-            let stop = SimpleMarkerSymbolStop10_1::ColorUnsupported { class_id, key };
+            // entry_key 是颜色条目自身的键，仅用于停止诊断；
+            // 结构体的 key 字段必须保持函数参数传入的 SMS 自身键。
+            let stop = SimpleMarkerSymbolStop10_1::ColorUnsupported {
+                class_id,
+                key: entry_key,
+            };
             trial = reposition_to(reader, slot_offset);
             staged_table = saved_table;
             let result = SimpleMarkerSymbolPrefix10_1 {
@@ -453,9 +461,17 @@ pub fn read_simple_marker_symbol_body_10_1(
             )?)),
             None,
         ),
-        ObjectEntry10_1::NewObject { class_id, key } => {
+        ObjectEntry10_1::NewObject {
+            class_id,
+            key: entry_key,
+        } => {
             // 轮廓色槽停止：游标回退到该槽位起点（首色与标量段保留）。
-            let stop = SimpleMarkerSymbolStop10_1::OutlineColorUnsupported { class_id, key };
+            // entry_key 是颜色条目自身的键（诊断用）；臂外结构体的 key
+            // 字段取函数参数传入的 SMS 自身键，不受此解构影响。
+            let stop = SimpleMarkerSymbolStop10_1::OutlineColorUnsupported {
+                class_id,
+                key: entry_key,
+            };
             trial = reposition_to(reader, outline_offset);
             staged_table = pre_outline_table;
             (ColorSlot10_1::Null, Some(stop))
