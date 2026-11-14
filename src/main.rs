@@ -1,4 +1,4 @@
-use mxd2qgz::mxd_version;
+use mxd2qgz::{mxd_maps, mxd_version};
 
 mod input;
 
@@ -141,6 +141,78 @@ fn run() -> io::Result<()> {
             "usage: mxd2qgz version <file.mxd>",
         ));
     }
+    if command.as_deref() == Some(std::ffi::OsStr::new("parse")) {
+        if let (Some(path), None) = (path, args.next()) {
+            let mut document = cfb::open(&path)?;
+            let maps = input::read_stream(&mut document, "/Maps").map_err(|error| {
+                io::Error::new(
+                    error.kind(),
+                    format!(
+                        "无法读取 {} 的 /Maps 数据流：{error}",
+                        Path::new(&path).display()
+                    ),
+                )
+            })?;
+            let report = mxd_maps::parse_maps_10_1(&maps)?;
+            let mut output = io::BufWriter::new(io::stdout().lock());
+            writeln!(output, "Document: {}", Path::new(&path).display())?;
+            writeln!(output, "Stream /Maps: {} bytes", maps.len())?;
+            // 版本候选仅作参考输出；识别失败不阻断 /Maps 解析报告。
+            match input::read_stream(&mut document, "/Version") {
+                Ok(bytes) => match mxd_version::identify_version(&bytes) {
+                    Ok(candidate) => writeln!(
+                        output,
+                        "Version candidate: {:?} ({})",
+                        candidate.text,
+                        candidate.branch.description()
+                    )?,
+                    Err(error) => writeln!(output, "Version candidate: 识别失败（{error}）")?,
+                },
+                Err(_) => writeln!(output, "Version candidate: /Version 数据流不可读")?,
+            }
+            writeln!(output, "Frame count candidate: {}", report.count)?;
+            for frame in &report.map.frames {
+                write!(
+                    output,
+                    "Frame: name={:?} secondary_name={:?} crs=",
+                    frame.name, frame.secondary_name
+                )?;
+                match &frame.crs {
+                    Some(crs) => writeln!(output, "WKT {} bytes", crs.definition.len())?,
+                    None => writeln!(output, "none")?,
+                }
+                if let Some(crs) = &frame.crs {
+                    writeln!(output, "CRS definition: {}", crs.definition)?;
+                }
+                for unknown in &frame.unknown_fields {
+                    writeln!(
+                        output,
+                        "Unknown: stream={} offset=0x{:x} bytes={}",
+                        unknown.stream,
+                        unknown.offset,
+                        unknown.bytes.len()
+                    )?;
+                }
+            }
+            for unknown in &report.map.unknown_fields {
+                writeln!(
+                    output,
+                    "Unknown: stream={} offset=0x{:x} bytes={}",
+                    unknown.stream,
+                    unknown.offset,
+                    unknown.bytes.len()
+                )?;
+            }
+            for note in &report.diagnostics {
+                writeln!(output, "Note: {note}")?;
+            }
+            return output.flush();
+        }
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "usage: mxd2qgz parse <file.mxd>",
+        ));
+    }
     if !matches!(
         command.as_deref().and_then(|s| s.to_str()),
         Some("inspect" | "strings")
@@ -149,7 +221,7 @@ fn run() -> io::Result<()> {
     {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "usage: mxd2qgz <inspect|strings> <file.mxd> | version <file.mxd> | compare <first.mxd> <second.mxd> <stream> | extract <file.mxd> <stream> <output> | hex <file.mxd> <stream> <offset> <length>",
+            "usage: mxd2qgz <inspect|strings> <file.mxd> | version <file.mxd> | parse <file.mxd> | compare <first.mxd> <second.mxd> <stream> | extract <file.mxd> <stream> <output> | hex <file.mxd> <stream> <offset> <length>",
         ));
     }
     let path = Path::new(path.as_ref().unwrap());

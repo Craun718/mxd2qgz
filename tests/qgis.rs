@@ -41,6 +41,7 @@ fn map() -> Map {
         name: Some("构造 <&> \"'\n工程".into()),
         frames: vec![DataFrame {
             name: "主框".into(),
+            secondary_name: None,
             children: vec![
                 LayerNode::Group(LayerGroup {
                     name: "组 <&> \"'\t\n".into(),

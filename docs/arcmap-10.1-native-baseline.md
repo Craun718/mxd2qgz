@@ -241,3 +241,75 @@ SystemCore 其他 IID 匹配分支的构造与虚表复核见下节。保存版�
 - 0x800548d0 各注册表键名的完整格式参数（反编译中 wsprintfW 参数被省略）。
 - `DllRegisterServer`（0x800413c0，非 thunk）本体未反编译。
 - 全部结论为静态观察，未运行 ArcMap 10.1 安装/注册流程，未做人工目视验收。
+
+## 10.1 Version 流对象接口 GUID 语义考证（2026-11-14）
+
+本节闭合「10.1 Version 流对象身份与文档打开链（2026-11-14）」遗留的 GUID 语义问题：主干
+`0x7b708d00` 读取的四个接口 GUID、Version 流对象创建/QI 涉及的各 CLSID/IID 分别对应什么
+类型。证据分两路：REA（Ghidra 12.2）对 PageLayout.dll（SHA-256 `ba9e71f4…8de9d69f`，
+与基线一致）的反编译与常量读取；以及 10.1 安装介质（Setup1.cab，SHA-256
+`6833035af901b4b46fe508485cdd5d26534bc27630c512f8bf87c5db417ddfe3`）内 `.olb` 类型库
+的确定性解析。适用版本仅 10.1.0.3035。
+
+### 工具与文件身份（偏离记录）
+
+- 类型库名称解析未走 REA：用 wine 11.21（`winegcc -b i386-windows` 编译的自写小工具
+  `tlbdump.c`，调用 `LoadTypeLibEx` 枚举类型名/GUID/typekind）解析从 `.olb` PE 资源中
+  提取的 TYPELIB 数据。这属于普通工具观察，不是 REA 证据；名称↔GUID 绑定来自文件内
+  静态数据，解析是确定性的，但 wine 的 OLE 实现与 Windows 原生可能有差异。工具与
+  dump 输出在 `/tmp/mxd-arcgis101-guiddocs/wine/`（含本机路径，分享前须脱敏）。
+- 类型库文件 SHA-256（`.olb` 为 PE 原文件，`.big.tlb` 为提取的 TYPELIB 资源数据）：
+
+| 文件（Setup1.cab 提取） | .olb SHA-256 | .big.tlb SHA-256 |
+| --- | --- | --- |
+| esriSystem.olb.392FE3A8_65C9_4463_A15B_89F00F8F3FE8 | `6e9e90b8ee3f2618e7fd5c76a0096eac9c61f634809f79f21307047d124dbb92` | `0f3bc6496f2665cd6b03fa0071c0077f3b6fdab8f96c8b80f02beec36d7ad7a8` |
+| esriCarto.olb.392FE3A8_65C9_4463_A15B_89F00F8F3FE8 | `b95e4a043c5776c41cee5601be0400a77a61cb1f4475b8bd2a5c43f4893cc51c` | `8a70f4094c85b966ce0b0129ad7fa3d9562269c73f87e4f70cbc78c75775b578` |
+| esriOutput.olb.392FE3A8_65C9_4463_A15B_89F00F8F3FE8 | `9bd64325b27a302846048ab41e310df8b789aaa22476ad3424ae08f4fe830c83` | `9ee7476bf1085084c78920c8f48a02ed96e2c8a8a6fef97736ccc55c84540973` |
+
+- 方法校验记录：本轮早期对 MSFT 类型库二进制结构的手工解析曾得到两个错误候选
+  （043731d0→「IVariantStreamIO」、2ab49820→「IPageLayout」），均因记录对齐/字段偏移
+  误判；经 `LoadTypeLibEx` 权威解析推翻（正确绑定见下表）。手工解析 MSFT 内部表不可
+  作为语义证据，仅可用于定位。
+
+### 逐 GUID 结论
+
+typekind：3 = TKIND_INTERFACE（接口 IID），5 = TKIND_COCLASS（组件类 CLSID）。
+「主干数据地址」指 PageLayout.dll 静态映像中该 GUID 常量的位置（`read_bytes` 证据）。
+
+| GUID | 类型库名称（typekind） | 语义（在 0x7b708d00 打开链中的角色） | 主干数据地址 | 置信度 |
+| --- | --- | --- | --- | --- |
+| `043731d0-a7cf-11d1-8bd1-080009ee4e41` | esriSystem **ObjectStream**（5） | Version 流对象的组件类 CLSID：`FUN_7b6a6ea0` 以 ctx 0x17 创建（即此前记录的「Version 流对象」），随后 +0x38 连接 `Mx Document` 流、+0x44 按 IID 加载对象 | `0x7b71cf54`（`ev_1a2982126ad6003f54d1e164cc538e68b9bd085d030d5c078e5aa9b25bff1775`）；ArcMap.exe `0x15348c` | 确认（类型库 + 既有创建链行为证据） |
+| `18a45ba7-1266-11d1-86ad-0000f8751720` | esriSystem **IObjectStream**（3） | ObjectStream 组件类的主接口：AfCore `0x68a7c040` 创建 043731d0 后 QI 此 IID，PageLayout `0x7b6a7030` 请求同一 IID；即「Version 流对象」对外暴露的对象流读写接口 | SystemCore 数据 `0xbf9b0/0xbfc3c`（QI 分支，见 2026-11-13 节）；ArcMap.exe `0x153c48` | 确认（类型库 + 既有 QI 行为） |
+| `ecc43c55-0148-4ec1-bf87-b9a183c5dc98` | esriSystem **IDocumentVersion**（3） | 文档版本接口：AfCore `get_DocumentVersion` 内部 QI 此 IID（既有行为证据）；与 2026-11-14 节 AfCore `0x68a7c1d0` 汇编复核一致 | ArcMap.exe `0x15349c/0x153e54` | 确认（类型库 + 行为证据双重） |
+| `dd94d76a-6d83-11d0-87ec-080009ec732a` | esriCarto **IPageLayout**（3） | 布局接口：对象流 +0x44 按此 IID 加载页面对象（`Mx Document` 分支与 `PageLayout` 存储两处），随后 `FUN_7b6c4490` 读名字符串 | `0x7b71fed4`（`ev_33debe16c2b062a953e9f6400489d74616ad8247d72a8beab7f907ca4ff99219`） | 确认（类型库 + 主干反编译，`ev_2740f60e…`） |
+| `dd94d76b-6d83-11d0-87ec-080009ec732a` | esriCarto **IActiveView**（3） | 活动视图接口：读 2 字节 short 后按此 IID 加载活动视图对象（`FUN_7b6a7850` 存入输出） | `0x7b71fec4`（`ev_895a36f00837edfca2a3f6877d00bf3ef17240b0c858805ec9a772862a530cc3`） | 确认（同上） |
+| `387bc1d1-543f-11d1-885e-0000f87808ee` | esriOutput **IPaper**（3） | 纸张设置接口：short 非零的打印设置分支按此 IID 加载纸张对象；`FUN_7b70e800`（0x7b70e800）创建 558c4e63 后 QI 的目标也是此 IID（`DAT_7b721678`） | `0x7b7207cc`（`ev_c41b61c86a1e342d216d51365351dcec6c8e69964752a70da7c9683a21d9af50`）、`0x7b721678`（`ev_9354fbde58dcce79e1d28c392f7de363d46610d5f4fdcf67834363aaf71d8f0d`） | 确认（类型库 + `FUN_7b70e800` 反编译 `ev_a4b557cf…`） |
+| `2ab49820-9406-11d0-87ef-080009ec732a` | esriOutput **IPrinter**（3） | 打印机接口：同一打印设置分支按此 IID 加载打印机对象（`FUN_7b70ea70` 存入输出）。定义于 esriOutput，另被 7 个类型库引用（esriArcGlobe/ArcMapUI/ArcScene/Carto/Controls/OutputExtensions/OutputUI） | `0x7b7207dc`（`ev_b2564889019cce52c2a2b99601445564b688630f28e59922a4a3b366fd237d95`）；PageLayout.dll 数据 `0x8f3dc`、ArcMap.exe `0x153b18/0x153cd8` | 确认（类型库 + 主干反编译） |
+| `558c4e63-3f11-11d1-885e-0000f87808ee` | **不在任何类型库**（79 个 .olb 全部 wine 解析均无） | `FUN_7b70e800`：`AfCreateInstance(0x7b7207ec=558c4e63, NULL, 0x17, IID_IUnknown)` → `OleRun` → QI `387bc1d1`（IPaper）。即一个未登记于类型库、对外提供 IPaper 的内部组件类（候选：打印纸张设置的内部实现类；与 esriOutput 已登记 coclass `Paper`（`e28c4e63-3f55-11d1-885e-0000f87808ee`）同属 `885e-0000f87808ee` GUID 家族，疑为同族内部/早期变体） | `0x7b7207ec`（`ev_704691ce4b0cd1e75bd0b9fde03acfc638f9489dbd57b056d28ee21a12fae5b9`）；PageLayout.dll `0x8f3ec`、ArcMap.exe `0x153b28`（紧邻 2ab49820/IPrinter） | **候选**（创建与 QI 行为已证；类名/ProgID 未闭合） |
+| `8f2b6061-ab00-11d2-87f4-0000f8751720` | esriSystem **Array**（5） | 数组组件类 CLSID：主干开头 `FUN_7b6a6f10(&local_30, 0x7b71df1c=8f2b6061, 0, 0x17)` 创建；`Mx Document` 循环内对每个按 IID_IUnknown 加载的对象调用其虚表 +0x14（按 COM 惯例推断为 IArray::Add，槽位名是推断）。语义：加载对象的收集容器（对象引用表载体候选） | `0x7b71df1c`（`ev_bb04b4bb7acd4f32477001ac38123945ba122a290e713da2f85ca029a66df26d`） | 确认（类型库）；+0x14 槽位语义为推断 |
+| `00000000-0000-0000-c000-000000000046` | （标准 IID_IUnknown） | `Mx Document`/`Maps` 对象循环中 +0x44 加载对象所用的 IID（`DAT_7b71c76c`）；`FUN_7b70e800` 的 AfCreateInstance 输出接口 | `0x7b71c76c`（`ev_c9e321bca2c23df23c84cadd42fa553b6be3ea64113b4ad3eb7e834272785ee3`）、`0x7b71d15c`（`ev_f3d25eac162952237f698fd1650c42cad852e6050158acea0f02ac4a93f5e155`） | 确认 |
+
+主干 `0x7b708d00` 完整伪代码证据：`ev_744a97894df9c8f6499aad01f15d9b12cc21c2fe5f620713a7a1f805b93a298f`/
+`ev_2740f60e148d6285bc016fafae2c0d61b39fc28a90bf52a45e19bde2f7ce63a7`；
+`FUN_7b70e800`：`ev_4d9173c8f48cc45565bf7027879cd807e1dbbbfaa346a8ed6ecad2d0e734674b`/
+`ev_a4b557cfa3527572bd02113abb9e580021855c2d5b476bc2ae210652bad6b6c9`。
+
+### 与既有记录的衔接
+
+- 「Version 流对象身份」节中「创建 043731d0 后 QI 18a45ba7」现可读作：创建 esriSystem
+  coclass **ObjectStream** 并取其 **IObjectStream** 接口；「Version 流对象」即 ObjectStream
+  组件实例（IVariantStream 家族的 IO 封装），不再是匿名对象。
+- 主干 short 非零分支读取的 387bc1d1/2ab49820 现可读作：文档级**打印设置**（IPaper/IPrinter
+  两个对象的持久化），其对象体序列化格式不在本节范围。
+- `Mx Document` 分支按 dd94d76a 读字符串、dd94d76b 读 short 的两步可读作：加载
+  **IPageLayout** 对象（附名字符串）与 **IActiveView** 对象（2 字节标记）。
+
+### 未解决事项
+
+- `558c4e63` 的类名/ProgID/注册表登记内容（不在类型库；需安装介质外证据或运行时观察）。
+- IPaper/IPrinter/IPageLayout/IActiveView 对象体的持久化字段（对象流 +0x44 加载后的
+  字节布局）未展开；本节只闭合 IID 语义，不证明任何字段布局。
+- Array 虚表 +0x14 槽位（Add 推断）与对象引用表的运行时行为未验证。
+- 类型库解析经 wine 11.21 OLE 实现完成，未在 Windows 原生 `LoadTypeLibEx` 下复核；
+  名称↔GUID 绑定为文件内静态数据，风险低但非零。
+- 全部为静态结论；未运行 ArcMap 10.1，未做人工目视验收。

@@ -9,17 +9,20 @@
 - [x] 明确 ArcMap 10.1 为适配基准，记录本地安装介质及 `Setup.ini` 声明的 `10.1.3035`。
 - [x] 从 10.1 安装介质提取原生研究文件，记录文件版本、身份、摘要及来源；定位 PageLayout、SystemCore、AfCore、MappingCore 和 MappingCoreLib，见 [10.1 原生文件基线](docs/arcmap-10.1-native-baseline.md)。CAB 条目已复核，MSI 组件和安装目录映射仍未知。
 - [x] 用 REA 定位类工厂、版本辅助函数和 PageLayout 字符串引用入口；尚未证明 10.1 完整调用链或读取规则。
-- [ ] 使用 REA 追踪 10.1 文档打开、Version 读写及 ObjectStream 持久化调用链，逐项复核现有 10.8 结论，记录相同点、差异和未知项。
+- [x] 使用 REA 追踪 10.1 文档打开、Version 读写及 ObjectStream 持久化调用链，逐项复核现有 10.8 结论，记录相同点、差异和未知项；各链已闭合至可记录的静态边界，遗留开放项（MFC 命令层上游分发、`+0x14c` 版本索引运行时来源、激活表工厂指针写入者、`558c4e63` 类名、EH 展开动态验证等）见各子项与研究记录，全部未经 ArcMap 10.1 运行验证。
   - [x] 核对 10.1 PageLayout 的 Version 局部读取、一个静态调用者及独立构建号流；与 10.8 对照发现默认输出差异，完整调用链和格式仍未闭合，见 [原生文件基线](docs/arcmap-10.1-native-baseline.md#101-version-局部读取和构建号2026-11-13)。
   - [x] 核对 10.1 AfCore 的 String 读写导出及其局部短读行为，区分另一组 ReadString/WriteString；Version 流对象转发和写入调用者仍待确认。
   - [x] 闭合文档打开与保存调用点：MapDocument 类工厂链（CLSID `2fe5e68e-3da5-4bda-baf1-103c55115a1c`，运行期构建类表）与两条静态打开链汇合于主读取器 `0x7b708d00`；ArcMap 命令层经同一 CLSID 跨模块创建实例，MFC 路径串接 Version 头读取 `0x4764d0`；SaveObject/LoadObject 为 AfCore 跨模块导出，对象头写出仍在 AfCore 内部未闭合，见 [研究记录](docs/arcmap-10.1-document-open-save.md)。
   - [x] 实现显式 10.1 AfCore String 普通写出布局的严格读取子集，并覆盖构造输入和异常；未连接 MXD 字段，原生短读与磁盘流转发未验证。
   - [x] 闭合 AfCore String 读写的流转发与短读边界：两函数直接走调用方 IStream 虚表（读 +0x0c、写 +0x10），短读不检查完成量与终止零；确认两族导出格式不可混用，10.1 未见 10.8 记录的 cb 掩码（待复核），见 [研究记录](docs/arcmap-10.1-native-baseline.md#101-afcore-string-流转发与写入调用者2026-11-14)。
-  - [x] 闭合 Version 流对象身份：CLSID `043731d0` 经 AfCore `AfCreateInstance`→FactoryCache/CoCreateInstance 创建，+0x38 为底层流连接槽位；复核 `0x7b708d00` 主干（Mx Document/Maps/PageLayout 存储及四个接口 GUID），与 [文档打开链](docs/arcmap-10.1-document-open-save.md) 汇合，见 [研究记录](docs/arcmap-10.1-native-baseline.md#101-version-流对象身份与文档打开链2026-11-14)。各 GUID 语义、对象错误恢复与 Version 写入路径仍开放。
+  - [x] 闭合 Version 流对象身份：CLSID `043731d0` 经 AfCore `AfCreateInstance`→FactoryCache/CoCreateInstance 创建，+0x38 为底层流连接槽位；复核 `0x7b708d00` 主干（Mx Document/Maps/PageLayout 存储及四个接口 GUID），与 [文档打开链](docs/arcmap-10.1-document-open-save.md) 汇合，见 [研究记录](docs/arcmap-10.1-native-baseline.md#101-version-流对象身份与文档打开链2026-11-14)。各 GUID 语义、对象错误恢复与 Version 写入路径的闭合见后续条目。
+  - [x] 闭合各 GUID 语义（类型库 `LoadTypeLibEx` 解析 + 主干行为双证据，纠正此前手工解析的 IVariantStreamIO/IPageLayout 误判）：`043731d0` 为 esriSystem coclass **ObjectStream**（主接口 IObjectStream `18a45ba7`），主干四接口为 IDocumentVersion/IPageLayout/IActiveView 与打印设置分支 IPaper/IPrinter，另证 Array 收集容器与未登记候选 `558c4e63`（对外提供 IPaper 的内部组件类，类名未闭合）；仅闭合 IID 语义，各对象体字段布局不在其内，见 [研究记录](docs/arcmap-10.1-native-baseline.md#101-version-流对象接口-guid-语义考证2026-11-14)。
+  - [x] 闭合 Version 写入路径与触发链：写入器 `0x466fb0` 的唯一直接调用者为 MFC `CDocument::Serialize` 覆写 `0x47a740`，Save/SaveAs 共用同一路径，读写经同一函数按 CArchive 方向对称分发；上游 MFC 命令层分发、`+0x14c` 版本索引运行时来源与 4 字节回填取值仍开放，见 [研究记录](docs/arcmap-10.1-native-baseline.md#101-version-写入路径与写入调用者2026-11-14)。
+  - [x] 闭合对象读取错误恢复：主读取器 `0x7b708d00` 全部失败分支汇入收尾块（逆序释放、输出参数仅成功时写），引用表不回滚、残留键由 ObjectStream 析构统一释放，任何读取失败使文档打开整体失败、无跳过坏对象分支；EH 展开为静态推断，见 [研究记录](docs/arcmap-10.1-object-body.md#101-对象读取错误恢复分支2026-11-14)。
 - [x] 10.1 SystemCore 已定位接口 GUID 的查询和匹配分支；继续闭合类工厂、构造后虚表和读流转发。
   - [x] 确认 ObjectStream 构造后虚表、局部读流转发、内存版本属性和对象头加载分支；类表映射、Version 流实例身份和对象体仍未闭合，见 [研究记录](docs/arcmap-10.1-native-baseline.md#101-objectstream-构造转发和局部对象头2026-11-13)。
   - [x] 实现显式 10.1 严格对象头读取器并测试截断、未知类和键；不接入 MXD，不模拟原生短读。
-  - [x] 闭合 DllGetClassObject 类表遍历（静态工厂槽全零、运行时登记框架）、ObjectStream 虚表读转发槽位及 +0x40 对象写出器（GUID→查表→键→IPersistStream/VariantStream 分派，与读分支对称）；类描述表的运行时消费者在 AfCore 内部仍未闭合，见 [研究记录](docs/arcmap-10.1-native-baseline.md#101-systemcore-类工厂与虚表闭合2026-11-14)。
+  - [x] 闭合 DllGetClassObject 类表遍历（静态工厂槽全零、运行时登记框架）、ObjectStream 虚表读转发槽位及 +0x40 对象写出器（GUID→查表→键→IPersistStream/VariantStream 分派，与读分支对称）；类描述表的运行时消费者已闭合于 SystemCore 内部（激活表 13 处访问者：查表分发、DllCanUnloadNow 探测、CRT 清理；并区分 0x800a4290 组件类别登记表与 esriDllRegisterServer 的分工），激活表工厂指针的运行时写入者仍开放，见 [研究记录](docs/arcmap-10.1-native-baseline.md#101-systemcore-类描述表运行时消费者2026-11-14)。
 - [x] 依据 10.1 原生证据实现相应读取规则及正常、异常输入测试；经核对再复用现有实现，保持版本范围显式。
   - [x] 复核 VariantStream：10.8 严格子集的全部规则在 10.1 逐项成立（VARTYPE 表、字符串 n*2+2、对象分支不支持）；另发现独立的 Variant::Read/Write 类方法序列化器（字符串含终止零、支持更多 VARTYPE），字段归属未闭合前不得混用，见 [研究记录](docs/arcmap-10.1-variant-stream.md)。
   - [x] 按上述 10.1 证据实现 `/Maps` 根前缀读取器与 ProjectedCoordinateSystem 对象体读取器：独立实现、入口版本显式，负数与超限额拒绝、逐前缀截断与失败游标纳入健壮性覆盖，尾部值保留原始位模式；不解析对象体、未接入 MXD 解析；仓库参考样本逐字节吻合仅为辅助观察（详见「MXD 解析」节对应条目）。
@@ -64,7 +67,12 @@
 - [ ] 解析数据框、图层树、图层顺序、图层可见性和数据源连接信息。
   - [x] 复核 10.1 反编译产物，闭合 Map::Load 各步骤的请求 IID 与版本分支、GroupLayer 完整字段序（版本≤12、计数循环、可见性 <2 默认 0xffff、≥11 ExtraSafeReadObject 分支）、FeatureLayer 头部段（版本≤34、+0x144 原样 16 字节 GUID）；第 5/9 步元素类语义、FeatureLayer 后段与 Save 方向仍开放，见 [研究记录](docs/arcmap-10.1-map-object.md)。
   - [x] 实现显式 10.1 Map 对象体已确认前缀读取器（版本≤51、双名称、嵌套空间参考含 PCS 分派与空引用标记），样本「新建数据框」前缀逐字节吻合；第 5 步起的字段保留为未知尾部，等待字段序与图层体研究闭合后再扩展。
+  - [x] 闭合 10.1 Map 图层列表与 Save 写侧：读侧 count + 每项[16 位标志 1/2/3 + ILayer 对象（2/3 带 8 字节体积前缀）] + 4 字节活动图层索引，写侧 `FUN_794033a0`（标志 1=SaveObject、2/3=ExtraSafeWriteObject 按 docVersion，10.1 写 2）；样本 `0x274` 起 6 条目逐字节闭合（FDOGraphicsLayer 标志 1 内嵌 FeatureLayer 键 32、回引用条目 A=20 无体、活动索引 -1 @`0x16fb4`）；ExtraSafeRead/WriteObject 8 字节前缀语义、CompositeGraphicsLayer::Load（版本≤6、11 元素组、名称、子图层循环 String+ILayer）与 Map::Save 主体顺序同步闭合；FeatureLayer::Load 中后段（数据源 FCN+IName、+0x144 GUID={6ADB9601-…}、3036D35D 计数循环）字段序闭合。`FE3115E9`/`EE53528B` 两循环与键 1619..2101 簇归属仍开放，见 [研究记录](docs/arcmap-10.1-map-object.md#mapsave-方向extrasafe-前缀与图层列表样本闭合2026-11-14-第四轮)。
 - [ ] 解析地图坐标系、图层坐标系和显示范围。
+  - [x] 用 REA 闭合 Map::Load 空间参考分支：请求 IID `{4434D680-…}`（ISpatialReference 候选）、空引用零 GUID 标记、PCS 类分派由流内类标识决定；补全后继序列 `FUN_794035f0`（ver≥0x17 计数+short 1/2/3+`{34C20002-…}` 对象+尾部索引）与旧版 `FUN_794038a0`（ver 0x11 拒绝、双集合布局），见 [研究记录](docs/arcmap-10.1-map-object.md)。
+  - [x] 用样本字节闭合范围载体：Envelope 对象 `{30707212-…}` 体 = short 3 + 4 double `[XMin,YMin,XMax,YMax]` + int32 0 + 内嵌空间参考（PCS 体）或对 Map SR 的键回引；图层坐标系宿主于图层体 Envelope 第 4 段（样本 25/25 一致），修正此前「紧邻 32 字节」定位，见 [空间参考记录](docs/arcmap-10.1-spatial-reference.md)。
+  - [x] 确认地图显示范围为 Map::Load 第 5 步循环后的原样 32 字节 WKSEnvelope（4 double，非对象，写入 +0x230 接口 +0xe0），随后两个 int32（-0x40 接口 +0x38/+0x40）；字段序 [XMin,YMin,XMax,YMax] 与样本流内定位仍为候选。
+  - [ ] WKSEnvelope 样本定位、Envelope 两个实例的语义、Envelope/PCS Save 方向、FeatureLayer 装入 Envelope 的 LoadObject 归因仍未闭合；需另一 MXD 样本或写方向取证。
 - [ ] 处理未知对象、未知版本、截断数据、非法长度及循环引用。
   - [x] 建立跨读取器健壮性测试：全部严格读取器入口的逐前缀截断、失败游标不变与重读一致、超大长度/限额溢出边界、未知类标识与键原样保留、VARTYPE 全空间穷举及非递归有界完成。仅验证读取器自身契约，不代表 MXD 格式规则已验证；循环引用待对象引用编码确定后覆盖。
 
@@ -73,6 +81,7 @@
 - [x] 定义地图、数据框、图层组和图层的数据结构，保存层级、顺序和可见性。
 - [x] 定义数据源、坐标系和显示范围的数据结构，保留无法识别的字段及其位置。
 - [ ] 将 MXD 解析结果转换为中间模型，并结合 REA 证据核对图层树和属性；软件中的人工检查见下方人工验收。
+  - [x] 新增 `parse` 命令（`mxd_maps` 模块）接入显式 10.1 读取器：`/Maps` 根前缀（数量、首对象头、尾部原始值）与 Map 对象体已确认前缀（版本 ≤51、双名称、嵌套 PCS）填充中间模型 `Map`/`DataFrame`（数据框名称、第二名称、WKT 定义）；无论数量多少最多解析首个对象——对象循环边界未闭合，其余数据框、图层、范围与已确认前缀之后的字节全部保留为未知字段并输出诊断，PCS 域字符串/标志/double 不写入模型。仓库参考样本前缀逐项吻合仅为辅助观察；单元测试覆盖合成正常与异常输入（截断、负数量、非 Map/非 PCS 类、限额、空头），仅验证代码自身契约，未在 ArcMap 10.1 或 QGIS 中人工目视验证。
 
 ## QGZ 生成
 
@@ -107,6 +116,7 @@
 - [x] 使用合成 OLE 容器端到端验证五个诊断命令、中文文件名、导出防覆盖、缺失流、非法参数、越界范围及截断容器。此项不验证 MXD 格式或转换结果。
 - [x] 覆盖显式 10.1 `/Maps` 根前缀读取器与 10.1 ProjectedCoordinateSystem 对象体读取器：全前缀逐字节截断、失败游标不变与重读一致、限额与超大长度、版本分支与拒绝边界、原始位模式保留；robustness 集中清单增至 11 个读取器入口。仅验证读取器自身契约，不代表 MXD 格式规则已验证。
 - [x] 覆盖 10.1 Map 对象体前缀读取器：版本边界、双名称顺序与空名称 6 字节模式、空引用标记、未知嵌套类拒绝、逐字节截断扫描、限额边界与嵌套 PCS 限额转发；robustness 集中清单增至 12 个入口。仅验证读取器自身契约，不代表 MXD 格式规则已验证。
+- [x] 覆盖 `parse` 命令接线（`mxd_maps`）：模型填充（双名称、WKT）、数量 0/正数、全零空头、非 Map/非 PCS 类拒绝、已确认前缀内逐字节截断整体失败与尾部区域截断缩短、负数量与限额拒绝，以及合成 OLE 容器端到端（含 /Version 缺失诊断与负数量错误）。仅验证接线自身契约，不代表 MXD 格式规则已验证，未在目标软件中人工验证。
 - [ ] 为二进制读取、对象引用、字符串解码和异常输入添加测试。
   - [x] 覆盖整数及浮点读取的全部截断长度、失败后重试、浮点特殊位模式和嵌套范围隔离；遍历全部 UTF-16 单码元及补充平面边界，核对非法代理项和非零偏移错误位置。
   - [ ] 在确定对象引用编码后，覆盖缺失引用、重复标识及循环引用。

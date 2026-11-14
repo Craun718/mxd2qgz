@@ -3,6 +3,7 @@
 pub mod map_object;
 pub mod maps_stream;
 pub mod model;
+pub mod mxd_maps;
 pub mod mxd_version;
 pub mod native_string;
 pub mod object_stream;

@@ -190,20 +190,140 @@ PageLayout `0x7b708d00`（基线已见其存在；本轮补 ASCII 流名证据 `
 - **可见性**：样本首个 FeatureLayer 体（`/Maps:0x2aa` 版本=34，名称「龙安镇人民政府工作底图用界址点」，第二名称「Shapefile 要素类」）在两名称后第一个 int16 = **0xFFFF @/Maps:0x2f0**，即 `obj+0x128`，VARIANT_BOOL 布尔——0xFFFF 是 VARIANT_TRUE，与"该图层可见"一致（证据：确定的，代码偏移 + 样本值互证）。GroupLayer 对应候选为名称后第一个 int16（obj+0xa0）；其余两个 short 语义未定性（候选的）。
 - **数据源连接链**：FeatureLayer 体内嵌 **FeatureClassName**（`198846d0-…`，样本 @0x2f6 键 33，体首 short=2 后接要素类名字符串）→ 其后出现 **WorkspaceName**（`5a350011-…`，样本首现 @0x370 键 34），体内含工作空间描述字符串；样本可见 `..\22.界址点`（相对路径）与 `Shapefile Data`（工作空间类型描述）等字符串（敏感路径，公开前脱敏）。承载类归属：FeatureClassName/WorkspaceName 声明于 GdbCore.dll（esri.clsid.xml），ShapefileWorkspaceFactory 声明于 ShapefileFDB.dll（工厂，不随 MXD 持久化）。写入接口：与所有 /Maps 对象一致，经 ObjectStream 的普通持久化分支（对象体由各对象 IPersistStream::Save 写出，本轮未逐类分析 Save）。
 
+## 坐标系与显示范围字段闭合（2026-11-14 第三轮）
+
+对应 TODO「MXD 解析」第 67 行「解析地图坐标系、图层坐标系和显示范围」。证据来源：REA 6.9.0 / Ghidra 12.2 静态分析 Map.dll 与 FeatureLayer.dll（均 10.1.0.3035，SHA 见上文与本节文件身份），地址为静态映像 VA；样本字节定位用 `/tmp/r3-maps.bin`（SHA-256 `9852c0e2…8129b49`，偏移为 /Maps 流内偏移）。证据包：`temp/arcgis/arcmap101-map-cr-extent-evidence.json`（50 条，含本机路径，分享前脱敏）。两份 DLL 在本轮先后打开、由本轮关闭；未运行目标软件。未解决的问题见文末更新。
+
+### Map::Load 空间参考分支复核与补全（证据：确定的）
+
+Map::Load `0x793ff4d0` 第 4 步（嵌套空间参考对象）及其后继序列复核（接上文第二轮表）：
+
+- 嵌套空间参考对象的请求 IID 数据在 Map.dll `DAT_79481cc0`，16 字节 `80d63444 daf4d111 bca60000 f875bcce` = `{4434D680-F4DA-11D1-BCA6-0000F875BCCE}`（`ev_38787b6f…`；该值即公开 ArcObjects 的 ISpatialReference IID，名称按 SDK 惯例标注，二进制只给字节）。对象类身份仍由流内 16 字节类标识决定（样本 `{2A626700-…}` PCS，键 30）；16 字节零类标识为空对象标记（SystemCore ObjectStream +0x44 既有证据，本节未重复取证）。PCS/GCS/Unknown 分派发生在类表创建层，Map.dll 本体不按 GUID 分派。
+- 加载成功后 SR 对象指针存 `param_1+0x148`（对象内存，非流字段）；随后 `FUN_794035f0((void *)(param_1-0x68), pIVar10, ver)`：
+  - **ver ≥ 0x17（样本 51 走此支）**：`AfStreamRead(4)` 计数 → 逐项 `AfStreamRead(2)` short → short==1 时 `LoadObject(DAT_79485a18)`，short==2/3 时 `ExtraSafeReadObject(DAT_79485a18)`（short 为其他值直接终止该轮）；循环后 `FUN_7940d240` + `AfStreamRead(4)` 尾部 int32（0≤idx<count 时 `FUN_794199f0`）。`DAT_79485a18` = `{34C20002-4D3C-11D0-92D8-00805F7C28B0}`（`ev_3cf51834…`）。样本对照：`/Maps:0x274` = `06 00 00 00`（计数 6）、`0x278` = `01 00`（short 1）、`0x27a` 起对象头 `{34B2EF83-F4AC-11D1-A245-080009B6F22B}` 键 31（类名候选 FDOGraphicsLayer，见上文类清单）。此支语义候选：图形/注记层集合 + 活动项索引，未逐对象定性。
+  - **ver < 0x17**：`FUN_794038a0`（`ev_75a919e6…`）：ver==0x11 直接拒绝 `0x80004005`；int32 计数 + 循环（ver<0x11 用 `LoadObject(DAT_79485a18)`、≥0x11 用 `ExtraSafeReadObject(DAT_79485a18)`）→ `FUN_7940d240` → 第二个 int32 计数 + 循环 `LoadObject(DAT_79485a18)` → `FUN_7940d240` → 尾部 int32（≥-1 时 `FUN_794199f0`）。即旧版为「两个同类集合 + 尾部索引」。
+- 其后继序列（补全第二轮表顺序）：`LoadObject(DAT_79487fe0)`，`DAT_79487fe0` = `{34B2EF81-F4AC-11D1-A245-080009B6F22B}`（`ev_064600bd…`，与 FDOGraphicsLayer CLSID 同族、末字节不同——请求 IID ≠ CLSID 的又一例）→ ver∈[0x16,0x1b] 时 `FUN_79403ec0` → int32 计数 + 循环 `LoadObject(DAT_79481a84)`（= `{FE3115E9-ED6C-11D0-8683-0000F8751720}`，`ev_ba5dfb60…`）→ **WKSEnvelope 32 字节原样读**（见下小节）→ int32 → `(param_1-0x40)` 子接口 +0x38 → int32 → +0x40 → `LoadObject(DAT_79481580)`（= `{1B077914-38C5-11D0-92D2-00805F7C28B0}`，`ev_fea0fc68…`）→ int32 计数 + 循环 `LoadObject(DAT_794815a0)`（= `{EE53528B-41C9-11D1-880A-080009EC732A}`，`ev_1f04d598…`），每项经 `FUN_7941c760` 以 `DAT_79488d18` 查询后加入集合；`DAT_79488d18` = `{3036D35F-EDE5-11D0-87FE-080009EC732A}`（`ev_583d538d…`；16 字节 `5fd33630 e5edd011 87fe0800 09ec732a`，2026-11-14 第四轮从文件字节复核，比 FeatureLayer.dll 计数循环 IID `3036D35D` 大 2）。据此第二轮表第 9 步「图层序列候选」的请求 IID 闭合：`{EE53528B…}`；第 5 步循环 IID 闭合：`{FE3115E9…}`。
+
+Map::Load 其余分支的请求 IID 字节本轮一并解码（名称均按 SDK 惯例标注为候选）：`DAT_79482c08`=`{4BA33331-D55F-11D1-8882-0000F877762D}`（ver<0xb 循环，`ev_2099fb0c…`）、`DAT_79488300`=`{FFC6B179-E3EC-11D3-A096-00C04F6BC626}`（ver≥0xb 循环，`ev_f5fc03ef…`）、`DAT_79487e40`=`{9273BB60-C611-11D2-BD08-0000F875BCCE}`（ver 0xc/0xd 与 >0xd 循环，`ev_ea2dc20c…`）、`DAT_79487e60`=`{1C352F3F-298E-11D3-9F4F-00C04F6BC619}`（尾部 ver≥4 LoadObject，`ev_58c7c40f…`）、`DAT_79487fc0`=`{E4240307-DD41-11D2-B868-00600802E603}`（函数尾 LoadObject，`ev_4b165f9f…`）、`DAT_79487fd0`=`{E4240309-DD41-11D2-B868-00600802E603}`（>0xf 分支，与上者同族）、`DAT_79488470`=`{8C439003-14EC-11D2-A27E-080009B6F22B}`（ver 0x13..0x16 与 ≥0x13 分支）、`DAT_79488050`=`{E265C5B5-4513-4BB4-B280-27B03AAE5957}`（>0x16 分支）、`DAT_79488460`=`{E6BDAA75-4D35-11D0-98BE-00805F7CED21}`（≥0x22 分支；比 Map CLSID `E6BDAA76` 小 1，即 IMap 接口候选）、`DAT_79487fa0`=`{40A9E885-5533-11D0-98BE-00805F7CED21}`（≥0x22 分支）、`DAT_79480bbc`=`{00000000-0000-0000-C000-000000000046}`=IID_IUnknown（≥0x23 else 计数循环）。
+
+### 地图显示范围（WKSEnvelope，证据：确定的）
+
+- Map::Load 在第 5 步计数循环之后、两个 int32 之前，先在栈上 `WKSEnvelope::WKSEnvelope(local_a0)` 构造再 `AfStreamRead(pIVar10, local_a0, 0x20)` **原样读 32 字节**（非嵌套对象，无类标识）；经 `param_1+0x230` 子接口虚表 `+0xe0` 槽写入（`map_load_real.c` 第 175-179 行语义）。这是数据框的显示范围字段：4 个 double、36 字节流内位置固定，不随版本分支。
+- 字段序：4 个 double 按 `[XMin, YMin, XMax, YMax]` 候选。直接字节证据来自同布局的 Envelope 对象（下节）：25 例全部满足第 1<第 3、第 2<第 4 值且呈「大-小-大-小」交替，若按 `[XMin,XMax,YMin,YMax]` 解读则自相矛盾；`WKSEnvelope` 类型名来自反编译类型推断，标注候选。
+- 样本定位（候选的）：`/Maps:0x24f64` 起 4 double = `37392944.2840, 2520083.2851, 37394230.5290, 2520951.8351`，随后两个 int32 = `9, 9`，再后为对象头 `{1C352F3F-…}` 键 2178——与「包络 32 字节 → int32 → int32 → LoadObject」的结构吻合；但首个 FeatureLayer 体（键 32）之外的对象边界未逐段闭合，不能排除该四 double 属于某图层体。数据并集的整值包络 `37357978.0/2493328.0/37424022.0/2551672.0`（如 `/Maps:0x24306` 起，Envelope 键 2149 体内，共 4 处）是某对象持久化的「全图范围」，不是本字段。
+
+### Envelope 对象：图层范围与图层坐标系的载体（证据：确定的）
+
+- 类身份：`{30707212-52D5-11D0-A8F2-00608C85EDE5}`，esri.clsid.xml 声明 Geometry.dll 模块类名 `Envelope`（安装配置声明见上文；清单存于 `temp/arcgis/arcmap101-map-object-evidence.json`，样本 25 处命中，`temp/r3/sample_guid_resolved.json` 会话产物）。
+- Envelope 对象体布局（样本 25/25 逐字节一致，Geometry.dll 本体本轮未反编译，布局为样本侧观察）：
+  1. short 版本 = 3；
+  2. 4 × double：`[XMin, YMin, XMax, YMax]`（8 字节非对齐紧排）；
+  3. int32 = 0（样本恒零；语义未定性，候选 Z/M 域标志）；
+  4. 嵌套空间参考对象：内嵌（16 字节类标识 + 4 字节键 + PCS 体，布局同上文 Geometry.dll 保存方法）**或** 20 字节回引用（16 字节类标识 + 4 字节既有键，不跟对象体）。
+- 样本对照：25 个 Envelope 的键为 74, 80, 151, 216, 258, 1603, 1609, 1667, 1672, 1724, 1730, 1782, 1788, 1840, 1846, 1923, 1929, 2001, 2007, 2073, 2079, 2149, 2155, 2182, 2183。其中 10 个内嵌 PCS 体（Envelope 键 80, 151, 216, 1609, 1672, 1730, 1788, 1846, 1929, 2079，其后紧随 10 个新 PCS 对象：键 81, 152, 217, 1610, 1673, 1731, 1789, 1847, 1930, 2080），其余 15 个（键 74, 258, 1603, 1667, 1724, 1782, 1840, 1923, 2001, 2007, 2073, 2149, 2155, 2182, 2183）的嵌套段为 20 字节回引用，目标均为 Map 的 PCS 对象（键 30）。
+- 由此修正上文空间参考文档的定位观察：「空间参考对象头之前紧邻 32 字节恰为 4 个 double」应精确为：**范围 4 double 属于紧邻的 Envelope 对象体，其结构为 `03 00` + 32 字节包络 + `00 00 00 00` + 空间参考头/回引**，包络头（16 字节 `{30707212-…}` + 4 字节键）在四 double 之前 22 字节处。
+- **图层坐标系字段的位置与读取规则（问题闭合）**：FeatureLayer 体不直接持久化坐标系字段；图层坐标系作为图层体内 **Envelope（范围）对象的第 4 段嵌套空间参考**持久化——内嵌 PCS 体（Geometry.dll 布局：short 版本 + WKT 长度 + ANSI WKT + 4 个域字符串 + 1 字节零 + 2 字节标志 + 7 double + 3 double）或对 Map 空间参考对象的键回引。样本归属：首 FeatureLayer（键 32，注释内层，体 `0x2aa..0x2d2c`）含 3 个 Envelope——键 74 @`0xedd`（回引 30）、键 80 @`0x122b`（内嵌 SR 81）、键 151 @`0x2872`（内嵌 SR 152）；FeatureLayer 键 158（体 `0x2d5e..0x42c6`）含 Envelope 216 @`0x3f44`（内嵌 SR 217）；FeatureLayer 键 218 体含 Envelope 258 @`0x4e74`（回引 30）。两个 Envelope 的语义（候选：数据全范围 vs 当前/显示范围）、同 CRS 时内嵌/回引的选择规则、以及每层 Envelope 数量差异（1..3 个）的成因未闭合。
+
+### FeatureLayer::Load 请求 IID 字节表（证据：确定的；接口名未确认）
+
+FeatureLayer.dll（SHA-256 `2baf8706…98bb60`）`0x6f6e9940` 反编译中全部 `LoadObject`/集合循环的 IID 数据（`/tmp/r3/featurelayer_load.c` + 本轮 `read_bytes`）：
+
+| 数据地址 | IID 字节解码 | 反编译位置 |
+| --- | --- | --- |
+| `DAT_6f7a98cc` | `{40A9E884-5533-11D0-98BE-00805F7CED21}` | 数据源连接之后的首个 LoadObject |
+| `DAT_6f7ac2a4` | `{3036D35D-EDE5-11D0-87FE-080009EC732A}` | 计数循环（与 Map 图层集合 QI `{3036D35F…}` 同族、末字节差 2，见 2026-11-14 第四轮修正） |
+| `DAT_6f7aaf98` | `{20CD40B0-8F3D-11D0-8590-0800091A2A72}` | 计数循环后的 LoadObject |
+| `DAT_6f7ab098` | `{A2BAAE2C-969B-11D2-AE77-080009EC732A}` | 计数循环（比 FieldInfo CLSID `A2BAAE2D` 小 1） |
+| `DAT_6f7adda4` | `{1D5849F2-0D33-11D1-A26F-080009B6F22B}` | LoadObject（比 AnnotateLayerPropertiesCollection CLSID `1D5849F3` 小 1） |
+| `DAT_6f7ac380` | `{D5BB4B87-E0A1-11D2-9F4D-00C04F6BC78E}` | LoadObject（比 FeatureIDSet CLSID `D5BB4B88` 小 1） |
+| `DAT_6f7aafb8` | `{19F85377-1387-11D3-B89C-00600802E603}` | ver≥2 LoadObject |
+| `DAT_6f7aaf28` | `{4BA33331-D55F-11D1-8882-0000F877762D}` | ver≥4 LoadObject（与 Map ver<0xb 循环同值） |
+| `DAT_6f7adc24` | `{311C2EE2-DA65-11D2-8A54-000000000000}` | ver>6 计数循环 |
+| `DAT_6f7aa4bc` | `{1B077914-38C5-11D0-92D2-00805F7C28B0}` | ver≥8 与 ver≥0xe 各一次（与 Map 步骤 8/≥0x22 分支同值） |
+| `DAT_6f7a97dc` | `{F3435802-5799-11D0-98BF-00805F7CED21}` | ver≥0xd LoadObject（比 SimpleRenderer CLSID `F3435801` 大 1） |
+| `DAT_6f7ada24` | `{1714D59B-FB22-11D1-94A2-080009EEBECB}` | ver≥0x11 LoadObject |
+| `DAT_6f7ab7a8` | `{A62B9EC2-5C52-4B98-B116-5EA341D4AF6D}` | ver≥0x19 LoadObject |
+| `DAT_6f7adab4` | `{F6CBA4A3-BC48-47BC-9F15-2A561B9E6C71}` | ver≥0x1d LoadObject |
+| `DAT_6f7adad4` | `{BD724B95-018F-4367-9883-9560D92293A7}` | ver≥0x1e LoadObject |
+| `DAT_6f7adde4` | `{E720618B-99A9-46D7-AA6B-507898E1EA90}` | ver==0x1f 与 ver>0x20 LoadObject |
+
+「CLSID±1」的 IID 候选关系仅作线索（esri 类库常见「CLSID n、主接口 n±1」布局），接口身份未确认。FeatureLayer::Load 反编译的头部段与中后段之间，样本中段（渲染器/字段信息/标注集合等对象序列）与反编译字段的逐字节对位未完成；两个 Envelope 对象由哪个 LoadObject 装入未闭合（开放问题）。
+
+## Map::Save 方向、ExtraSafe 前缀与图层列表样本闭合（2026-11-14 第四轮）
+
+对应 TODO「解析数据框、图层树、图层顺序、图层可见性和数据源连接信息」：把第三轮标为候选的 `FUN_794035f0` 集合升级为样本逐条目闭合，并闭合 Save 写侧与 `ExtraSafeReadObject`/`ExtraSafeWriteObject` 前缀语义。证据：REA 6.9.0 / Ghidra 12.2 复用会话（Map.dll，SHA-256 `1c0675cc…`，会话开工前已由其他轮打开，本轮直接复用、未关闭）；AfCore.dll 与 AnnoLayer.dll 用本机 pyghidra（Ghidra 12.2 + JDK 25，`/tmp/r3/venv`，项目 `/tmp/r3/ghproj_afcore`、`/tmp/r3/ghproj_anno`）。本轮新提取 AnnoLayer.dll（`Setup1.cab` 条目 `6BF03936_…`，版本 10.1.0.3035，SHA-256 `b487f3e0dc0e70dbc4b75f72eb6dcd8d5521eb422dbea6e3b2e201489a2d33a5`）与 LabelPlacement.dll（10.1.0.3035，SHA-256 `8415f63c1889e269ba6ae585538f601130c20cef02e4556e875a52217d35ea3d`），仅做字节扫描与 RTTI 定位，未反编译其函数体。样本偏移为 `/tmp/r3-maps.bin` 流内偏移。全部为静态观察，未运行目标软件。
+
+### Map.dll ImageBase 与 IAT（证据：确定的）
+
+Map.dll PE ImageBase = `0x793a0000`（pefile 复核），AfCore 导入经 IAT 解析：`0x79480030`=`AfStreamRead(PAJ)`、`0x79480040`=`SaveObject(IUnknown*, IStream*, int)`、`0x79480048`=`LoadObject`、`0x794801e4`=`ExtraSafeReadObject`、`0x794801e8`=`ExtraSafeWriteObject`（AfCore 导出表序号 1170/1171：读 `0x68a7be60`、写 `0x68a7bd70`）。第三轮已载的 `DAT_79480da4`=1、`DAT_79480da8`=2（short 静态值，文件字节复核）。
+
+### ExtraSafeReadObject / ExtraSafeWriteObject（证据：确定的；闭合未解决事项 4）
+
+AfCore `ExtraSafeReadObject(0x68a7be60)`：先 `IStream::Read` **8 字节前缀 `[A:int32][B:int32]`**；`A==0 && B==0` 时返回 1（调用方按"空条目"跳过）；否则 `LoadObject`（16 字节类标识 + 4 字节键 + 对象体，与普通嵌套对象完全同布局），之后 `Seek(0, SEEK_CUR)` 取实际终点，仅当 `B != 0` 时强同步（Seek 回 `前缀后位置 + B`）。即前缀不改变对象体布局：**B=0 表示信任 LoadObject 自封闭**，B≠0 是"预期体积"恢复路径。流内布局与 GroupLayer ≥0xb 分支观察一致。
+
+AfCore `ExtraSafeWriteObject(0x68a7bd70)`：`Seek(0,SEEK_CUR)` 记起点 → 写 8 字节零占位 → `SaveObject`（16 字节 GUID + 键 + 未登记对象的体）→ 记终点 → 回写占位为 `[A][B]`，样本中观察到 `[A=对象总体积（头 20 字节+体）][B=0]`（占位补丁的逐字段语义以反编译为准，样本只给出观察值）。
+
+### Map::Save 主体顺序（0x79401850，证据：确定的）
+
+Map.dll `FUN_79401850` 为 Map 的 Save 主体（写侧，与 Load 逐段对称）：AfStreamGetDocumentVersion/AfStreamGetSaveVersion 写 2 字节版本 → `String::Write(+0x160)`、`String::Write(+0x164)` → `SaveObject(+0x148)`（空间参考）→ **图层列表写侧**（docVersion==0 走 `FUN_7940cd80` 旧双集合 + 索引；否则 `FUN_794033a0`）→ `SaveObject(+0xf8)`（基本图形层对象）→ `int32(+0x130) 计数 + 循环 SaveObject(+0x12c 数组)` → WKSEnvelope 32 字节（取自 `param_1+0x230` 子接口 +0xdc）→ 两个 int32（子接口 +0x34/+0x3c）→ `SaveObject(+0x168)` → `int32(+0x174) + 循环 SaveObject(+0x170 数组)` → 两个 `0xFFFF` short → 之后与 Load 的版本分支字段逐段对应（+0x19c/+0x200/+0x264 等）。Map::Save 尾段（transformations 循环之后的字段）未逐项展开（开放）。
+
+图层列表写侧 `FUN_794033a0`：写 `*(+0x154)` 图层数组计数 → 每图层写 **2 字节标志** 再写对象：走 `SaveObject` 的条目标志取静态值 `DAT_79480da4`=1；走 `ExtraSafeWriteObject` 的条目标志在 docVersion<4 时写 2、否则写 3（10.1 的 docVersion=3 → 样本全部为 2，与观察一致）；图层指针为空时标志取 `DAT_79480da8`=2。哪一状态使图层走标志 1 的 SaveObject 路径未逐分支定性（候选：每轮先行调用的 `FUN_794199f0` 相关状态）。循环后写 4 字节活动图层索引（`local_2c` 初值 -1，匹配 `*+0x164` 或 `FUN_79419150` 判定时记录当前序号）。`FUN_7940cd80`（docVersion==0 旧路径）：按 `+0x150/+0x154` 数组写 `ExtraSafeWriteObject` 循环 → 第二个 int32 计数 + `SaveObject` 循环 → 尾部 4 字节索引。
+
+读侧 `FUN_794035f0`（第三轮已载）补全：图层对象经 `FUN_79410040` 加入 Map——该函数对入参图层查询一个"子图层枚举"接口（虚表 +0xc 取计数、+0x10 按 index 取项）并**递归加入子图层**，再经 `FUN_7940fe80`/`FUN_79410140` 完成其余登记（槽位语义未逐项定性）；数组 `+0x150`、计数 `+0x154`，尾部 int32 由 `FUN_794199f0` 设置活动图层。标志为其他值时读侧返回 `0x80004005`（汇编 `0x794036b2`：`CMP AX,1/2/3`，其余 `MOV EAX,0x80004005`）。
+
+### 样本图层列表逐条目闭合（证据：确定的）
+
+`/tmp/r3-maps.bin` 按上述结构完整解析（流内偏移）：
+
+| 位置 | 字节/结构 | 内容 |
+| --- | --- | --- |
+| `0x274` | `06 00 00 00` | 图层计数 = 6 |
+| `0x278` | 标志 `01 00` | 条目 1：`LoadObject` → `0x27a` FDOGraphicsLayer `{34B2EF83-…}` 键 31，体 `0x28e..0x2d22`；体 = `0b 00`（版本 11）+ `03 00 00 00` + `ff ff` + **内嵌 FeatureLayer 对象**（`0x296` 键 32，体 `0x2aa..0x2d22`）——注记层把其关联要素层作为体内嵌套对象持久化（候选的：FDOGraphicsLayer::Load 本体在 AnnoLayer.dll，本轮未反编译，字段语义按字节观察） |
+| `0x2d22` | 标志 `02 00` + 前缀 `[14 00 00 00][00 00 00 00]` | 条目 2：`ExtraSafeReadObject` → `0x2d2c` FeatureLayer CLSID + 键 32 **回引用（A=20=仅头，无体）**，命中键 32 既有对象 |
+| `0x2d40` | 标志 `02 00` + 前缀 `[72 15 00 00][0]` | 条目 3：FeatureLayer 键 158，体 `0x2d5e..0x42bc`（A=5490=头 20+体 5470） |
+| `0x42bc` | 标志 `02 00` + 前缀 `[f6 0c 00 00][0]` | 条目 4：FeatureLayer 键 218，体 `0x42da..0x4fbc`（A=3324） |
+| `0x4fbc` | 标志 `02 00` + 前缀 `[dd f5 00 00][0]` | 条目 5：RasterLayer `{D02371C9-…}` 键 259，体约 `0x4fd6..0x145a3`（A=62941） |
+| `0x145a3` | 标志 `02 00` + 前缀 `[09 2a 00 00][0]` | 条目 6：RasterLayer 键 1544，体 `0x145c1..0x16fb4`（A=10761） |
+| `0x16fb4` | `ff ff ff ff` | 活动图层索引 = -1（无活动图层） |
+| `0x16fba` | CompositeGraphicsLayer `{9646BB83-…}` 键 1553 | `LoadObject(DAT_79487fe0={34B2EF81-…})` 装入的 **+0xf8 基本图形层**，体 `0x16fce..` |
+
+条目体积 A 与下一标志位置的差值逐条吻合（A = 16 字节 CLSID + 4 字节键 + 体），条目 2 的 A=20 且无体直接证明"回引用条目只写头"。由此第三轮的"图形/注记层集合候选"升级：**该结构即 Map 的图层列表（含绘制顺序）+ 活动图层索引**，图层树由「GroupLayer 子图层循环 + 注记层内嵌要素层 + 基本图形层子图层循环」三者构成。
+
+### CompositeGraphicsLayer::Load（0x6f6b2100，证据：确定的）
+
+FeatureLayer.dll `0x6f6b2100`（RTTI `.?AVCompositeGraphicsLayer@@` → COL `0x6f7b4624` → 虚表 `0x6f7aa318` +0x14；`ExtraSafeReadObject` 的 FeatureLayer.dll 唯一调用点 `0x6f7113da` 属 GroupLayer::Load，反证此函数走普通 `LoadObject`）：short 版本（>6 拒绝）→ **int32 元素组计数 + 每组[int32 元素计数 + 循环 `LoadObject(DAT_6f7aa4fc)`]**（元素对象入组，`DAT_6f7aa4fc` 字节未解码）→ `String::Read(+0x20)`（图形层名称）→ short ×3（+0x34/+0x36/+0x38）→ double ×2（+0x24/+0x2c）→ long/int32 → `LoadObject(DAT_6f7aa58c)` → 版本>1 时 double + int32 → **int32 子图层计数 + 每项[String::Read + `LoadObject(DAT_6f7aa4ec={34C20002-…} ILayer)`]**（子图层树）→ 尾段未逐项展开。
+
+样本对照（`0x16fce` 起）：版本 6 ✓；元素组计数 11、11 组元素计数全 0（44 字节零）✓；名称 `<默认> `（长度 10，0x17000）✓；后续 short/double 与函数序一致；子图层计数 = 1 @`0x17052`，子图层 = String「MZD1 」（`0x1705e`）+ FeatureLayer 键 1555 @`0x1706e`（名称「MZD1 」，即注记组对应的要素层）。其后 FeatureLayer 键 1619..2101（`0x187d2..0x23508`）的归属（候选：键 1555 体内 `DAT_6f7ac2a4={3036D35D-…}` 计数循环，计数候选 50 @`0x187ce`）未闭合（开放）。
+
+### fe3115e9 / ee53528b 两循环的跨 DLL 成员扫描（证据：确定的；语义仍开放）
+
+对 Map/FeatureLayer/Layer/RasterLayer/AnnoLayer/LabelPlacement/GdbCore/AfCore 八个 10.1.0.3035 文件做 16 字节原样扫描：`{FE3115E9-…}` 仅存在于 Map.dll（2 处，即 `DAT_79481a84` 及另一处）、`{EE53528B-…}` 仅存在于 Map.dll（1 处 = `DAT_794815a0`）、`{3036D35F-…}` 仅存在于 Map.dll（2 处）。这些请求 IID 的实现类不在上述 8 个模块的数据段中（LabelPlacement.dll 含 `ee535289` 1 处，不含 `ee53528b`），按「接口常量归属实现 DLL」的惯例，两循环的元素类语义仍开放；样本中两循环的流内定位（CGL 体尾之后、WKSEnvelope 之前与之后）未逐字节闭合，计数是否为 0 未验证。
+
+### FeatureLayer::Load 中后段补全（证据：确定的；接第三轮 IID 表）
+
+`0x6f6e9940` 字段序（接头部段）：数据源段 = `FUN_6f6e94e0`（内含 `LoadObject(DAT_6f7aaf28={4BA33331-…} IDatasetName 候选)` 装入 FeatureClassName 至 `+0x290` 并对名称做 **`ConvertToFullPath` 相对路径展开**）→ `LoadObject(DAT_6f7a98cc={40A9E884-…} IName 候选)` 装入工作空间名称对象 → **原样 16 字节 GUID → +0x144** → `String::Read(+0x154)` → double +0x158、double +0x160 → short +0x168 → **int32 计数 + 循环 `LoadObject(DAT_6f7ac2a4={3036D35D-…})`** → `LoadObject(DAT_6f7aaf98={20CD40B0-…})` → String +0x1a8、String +0x184、long +0x188 → 后续为渲染器/标注/字段信息等大量版本分支（`featurelayer_load.c` 162 行以后，未逐项展开）。
+
+样本首 FeatureLayer（键 32）对位：FeatureClassName 体 `0x30a..0x370` = `02 00` + String（长度 32，`0x30e`，字节与图层名同文）+ 0x330..0x370 字段；WorkspaceName 体 `0x384..0x3d6` = `01 00`（版本 1）+ String「..\22.界址点」（长度 20，`0x386`，敏感路径公开前脱敏）+ int32 `2`（`0x39e`）+ String「Shapefile Data」（长度 30，`0x3a4`）+ 16 字节零；**+0x144 原样 GUID = `{6ADB9601-5CA0-11D1-AA81-00C04FA33A15}`（`0x3d6`）**——与 WorkspaceName CLSID `5A350011-…AA82` 同族（`aa81` 对 `aa82`），候选为数据源类型/工厂标识，语义未定性；其后 `15 00 00 00`（`0x3e6`）与 SimpleRenderer 键 35 @`0x3ed`（体首版本 3，内嵌 SimpleMarkerSymbol 键 36 @`0x403`）衔接。GdbCore 反编译 `0x709a9c90`（short≤3 + int32 + String + String + int32 + int32 + 版本分支 String ×2）与 709a9000（short≤2 + int32 长度 + 原样字节块 + `LoadObject(DAT_70ac9080)` + ver>1 String/int32）分别候选为 WorkspaceName/DatasetName 家族的 Load，但字段序与样本 WorkspaceName 体（ver=1 无首个 int32）不完全对位，归属开放。
+
 ## 证据与复现
 
-- 证据包：`temp/arcgis/arcmap101-map-object-evidence.json`（文件身份、关键地址、PageLayout 类表全 21 条、esri.clsid.xml 五模块清单、样本 GUID 归属 67 项、Map Load 虚表候选、元数据）。
-- 关键反编译文本（会话临时目录 `/tmp/r3/`，未入库）：`map_load_real.c`（Map::Load 0x793ff4d0）、`grouplayer_load.c`、`featurelayer_load.c`、`init_decompile.c`（PageLayout 填表 0x7b71a350）、`f7b708d00.c`（/Maps 根入口）。
+- 证据包：`temp/arcgis/arcmap101-map-object-evidence.json`（文件身份、关键地址、PageLayout 类表全 21 条、esri.clsid.xml 五模块清单、样本 GUID 归属 67 项、Map Load 虚表候选、元数据）；2026-11-14 第三轮新增 `temp/arcgis/arcmap101-map-cr-extent-evidence.json`（Map.dll/FeatureLayer.dll 请求 IID 字节、FUN_794035f0/794038a0 反编译、50 条记录）。
+- 关键反编译文本（会话临时目录 `/tmp/r3/`，未入库）：`map_load_real.c`（Map::Load 0x793ff4d0）、`map_load_fresh.c`（同函数 2026-11-14 复核副本）、`grouplayer_load.c`、`featurelayer_load.c`、`init_decompile.c`（PageLayout 填表 0x7b71a350）、`f7b708d00.c`（/Maps 根入口）、`r4_map_funcs/f794035f0.c`（图层列表读侧）、`annolayer_work/cgl_load_6f6b2100.c`（CompositeGraphicsLayer::Load）、`afcore_extrasafe/f68a7be60.c`、`f68a7bd70.c`（ExtraSafeRead/WriteObject）。
 - 复现要点：`mxd2qgz extract temp/测试底图.mxd Maps /tmp/r3-maps.bin` 后按上文偏移核对；Ghidra 侧按"RTTI TypeDescriptor → COL(+12 引用 TD) → 虚表−4 引用 COL → IPersistStream 槽 +0x14"定位任意 Esri 类的 Load。
 
 ## 未解决事项
 
-1. Map::Load 第 5 步计数序列（IID `DAT_79481a84`）与第 9 步循环（IID `DAT_794815a0`，加入集合）的元素类语义未逐对象定性；第 10 步嵌套头（ObjectStream +0x44）之后的对象身份、第 12 步两个计数循环与第 13 步版本分支字段的语义未展开。样本仅 1 个数据框，无法用字节区分第 5/9 步。
+1. Map::Load 第 5 步计数序列（IID `{FE3115E9…}`，2026-11-14 解码）与第 9 步循环（IID `{EE53528B…}`，集合 QI `{3036D35F…}`，2026-11-14 第四轮字节修正）的元素类语义未逐对象定性；第 10 步嵌套头（ObjectStream +0x44）之后的对象身份、第 12 步两个计数循环与第 13 步版本分支字段的语义未展开。样本仅 1 个数据框，无法用字节区分第 5/9 步。
 2. GroupLayer 三个 short（+0xa0/+0xa2/+0xa4）与三个 short（≥9 段 +0xf2/+0xf4 等）语义未定性；可见性结论锚定 FeatureLayer（+0x128）与 GroupLayer（+0xbc，版本分支明确）；参考样本无组图层，GroupLayer 版本分支无字节佐证。
 3. FeatureLayer +0x144 的 16 字节原样 GUID 语义未定性；FeatureLayer 第 5 步之后的渲染/标注字段未展开。
-4. `ExtraSafeReadObject`（GroupLayer ≥11 分支）与 `LoadObject` 的差异未展开；Map/图层各类的 Save 方向未按类分析。
+4. `ExtraSafeReadObject`（GroupLayer ≥11 分支）与 `LoadObject` 的差异未展开；Map/图层各类的 Save 方向未按类分析。（2026-11-14 第四轮更新：两者差异已闭合——ExtraSafeReadObject 多读 8 字节 `[A][B]` 前缀、对象体布局不变；Map::Save 主体顺序与图层列表写侧已闭合，见第四轮小节；各图层类自己的 Save 未按类展开。）
 5. MxTools.dll 263/264 条类表的逐条 CLSID 清单未从二进制恢复（全局构造填充，Ghidra 未恢复填表代码）；现以 esri.clsid.xml 声明为准，已用 PageLayout 21/21 全量比对与条目数 263↔264 佐证。
 6. esri.clsid.xml 的"模块名"与实际工厂宿主存在差异（Map 声明 Map.dll 但 MappingCoreLib/PageLayout 等亦含相关字节）；清单使用时以"类身份 = CLSID+名称"为准，模块归属仅作线索。
 7. `Mx Document` 新格式分支（`0x7b708d00` 前段）未逐行复核。
 8. /Version 尾部计数 2267 与 /Maps 对象图对象数的对应关系未建立。
 9. 全部结论为静态反编译观察；ArcMap 10.1 与 QGIS 的人工打开与目视核对均未进行，不声称已验证。
+10. （2026-11-14）`FUN_794035f0`/`FUN_794038a0` 两个图形/注记层集合的元素类语义、short 1/2/3 分支语义与尾部索引含义未定性；`DAT_79485a18`=`{34C20002-…}`、`DAT_79487fe0`=`{34B2EF81-…}`、`DAT_79481580`=`{1B077914-…}` 等请求 IID 的接口身份未确认。
+11. （2026-11-14）WKSEnvelope 32 字节（显示范围）在样本中的流内定位为候选（`0x24f64`），首个 FeatureLayer 体之外的对象边界未逐段闭合；`WKSEnvelope` 4 double 的 `[XMin,YMin,XMax,YMax]` 序依据 Envelope 同布局证据，未从 Map.dll 写出方向直接取证。
+12. （2026-11-14）Envelope 对象体布局为样本侧观察（25/25 一致），Geometry.dll 的 Envelope Load/Save 本体未反编译；第 4 段后的 int32 0 语义未定性。两个 Envelope 由 FeatureLayer::Load 的哪个 LoadObject 装入未闭合；FeatureLayer 头部段（反编译）与样本中段（渲染器/标注对象序列）的逐字节对位未完成。
+13. （2026-11-14 第四轮）`{FE3115E9-…}`/`{EE53528B-…}` 两循环（及集合 QI `{3036D35F-…}`）的实现类不在已扫描的 8 个 10.1 DLL 数据段中，元素类语义开放；两循环在样本中的流内定位与计数（疑似 0）未逐字节闭合。FeatureLayer 键 1619..2101 簇的归属（候选：键 1555 体内 `3036D35D` 计数循环，计数候选 50 @`0x187ce`）未闭合。
+14. （2026-11-14 第四轮）图层列表写侧标志 1（SaveObject 路径）的触发状态未逐分支定性；`FUN_79410040` 子图层枚举接口与 `FUN_7940fe80/79410140` 登记的槽位语义未逐项定性；FDOGraphicsLayer::Load 本体（AnnoLayer.dll）未反编译，其体内字段（`0b 00 / 03 00 00 00 / ff ff`）语义按字节观察。Map::Save 尾段（transformations 循环之后）未逐项展开。`+0x144` GUID `{6ADB9601-…}` 语义未定性。

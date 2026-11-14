@@ -56,6 +56,17 @@
 - `0x25074` 起有一段 `01 00` + 4 字节长度 447 + ASCII 文本 `GEOGTRAN["NAD_1927_To_NAD_1983_NADCON",GEOGCS[...NAD_1927...],GEOGCS[...NAD_1983...],METHOD["NADCON"],...]`；该文本前后成对出现 16 字节 `{D661941C-DA8A-11d3-9F60-00C04F6BDD7F}`（身份未确认）。
 - 流末尾在零填充后以 4 字节 `01 00 00 00` 结束，与 10.8 研究记录的「对象循环结束后再读一个 4 字节值」结构位置一致。
 
+## 坐标系字段的宿主与 Map 侧分支闭合（2026-11-14）
+
+对应 TODO「MXD 解析」第 67 行。证据来源：REA 6.9.0 / Ghidra 12.2 静态分析 Map.dll（SHA-256 `1c0675cc…34b1bb8`）与 FeatureLayer.dll（`2baf8706…298bb60`，均 10.1.0.3035），样本 `/tmp/r3-maps.bin`（SHA-256 `9852c0e2…8129b49`）字节对照；偏移为 /Maps 流内偏移。证据包 `temp/arcgis/arcmap101-map-cr-extent-evidence.json`（含本机路径，分享前脱敏）。未运行目标软件；详细字段序见 [Map 对象体文档](arcmap-10.1-map-object.md) 2026-11-14 节。
+
+- **Map 对象体的空间参考读取分支补全**：Map::Load（`0x793ff4d0`）读取嵌套空间参考对象时请求 IID 数据 `DAT_79481cc0` = `{4434D680-F4DA-11D1-BCA6-0000F875BCCE}`（公开 ArcObjects 的 ISpatialReference IID；名称按 SDK 惯例标注）。对象类身份由流内类标识决定（PCS `{2A626700-…}` 等），Map.dll 不自行按 GUID 分派；16 字节零类标识 = 空对象标记（既有 SystemCore 证据）。PCS 内部布局（short 保存版本 + WKT 长度 + ANSI WKT + 4 域字符串 + 1 字节零 + 2 字节标志 + 7 double + 3 double）维持上节证据，本轮以样本首对象（`0x44..0x274`，560 字节）逐字节复核一致。
+- **对上节定位观察的精确化**：上节「每处空间参考对象头之前紧邻 32 字节，恰为 4 个 double」应修正为：该 32 字节属于紧邻的 **Envelope 对象**（`{30707212-52D5-11D0-A8F2-00608C85EDE5}`，esri.clsid.xml 类名 `Envelope`，Geometry.dll）体的一段，完整结构为 `short 3` + 4 double `[XMin, YMin, XMax, YMax]` + `int32 0` + 空间参考嵌套头/回引；Envelope 头（16 字节类标识 + 4 字节键）在四 double 前 22 字节。样本 25 个 Envelope（键 74..2183）逐字节一致；上节列出的 11 处 PCS 对象头全部位于某 Envelope 体内或紧随其后。
+- **图层坐标系的宿主（本轮闭合）**：FeatureLayer 体不直接持久化坐标系字段；图层坐标系 = 图层体内 Envelope（范围）对象第 4 段的嵌套空间参考——内嵌 PCS 体或 20 字节回引用（16 字节类标识 + 4 字节既有键，ObjectStream 引用语义，样本中最常见目标是 Map 的 PCS 键 30）。同名 CRS 时的内嵌/回引选择规则未闭合（样本中回引与内嵌并存）。
+- **写出方向（未变，维持开放）**：Envelope 与 PCS 的 Save 本体本轮未反编译；上节 Geometry.dll PCS 保存方法（`0x719d3690`）证据仍适用于 PCS 体布局。「地图对象体与图层对象体触发空间参考子对象写出的调用点未定位」仍开放，但宿主结构已明确（Map: 第 4 步嵌套对象；图层: Envelope 体内嵌/回引）。
+- **Map 显示范围**：Map::Load 在第 5 步计数循环后原样读 32 字节 WKSEnvelope（4 double，非对象），写入 `+0x230` 子接口 `+0xe0` 槽；随后两个 int32 写入 `-0x40` 子接口 `+0x38`/`+0x40`。字段序 `[XMin, YMin, XMax, YMax]` 为候选（依据 Envelope 同布局的 25 例排序证据）。样本定位候选 `0x24f64`，未闭合。
+- 上节未解决事项中「`{34B2EF83-F4AC-11D1-A245-080009B6F22B}` 类身份未确认」更新：esri.clsid.xml 声明其为 AnnoLayer.dll 的 FDOGraphicsLayer（维持候选的），样本内出现 1 次（`0x27a`，键 31，Map 对象体内图形/注记层集合首项）。
+
 ## 与 10.8 记录的对照
 
 Git 历史 `c17b324:docs/maps-analysis.md` 记录 10.8 历史样本 `/Maps:0x46..0x4a` 为 4 字节长度 455、`0x4a` 起 ASCII `PROJCS[`；本轮 10.1 参考样本在完全相同的偏移观察到相同值。两样本是不同文件，偏移一致只说明首 Map 对象体中空间参考子对象的序列化位置稳定，不能将 10.8 偏移迁移到其他 10.1 文件。本轮原生证据来自 10.1.0.3035 的 Geometry.dll，未与 10.8 DLL 做函数级对照。

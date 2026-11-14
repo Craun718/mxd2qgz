@@ -127,3 +127,77 @@ fn rejects_truncated_ole_containers_without_panicking() {
         failure(fixture.run(&["strings", "truncated.mxd"]));
     }
 }
+
+/// 构造显式 10.1 已确认前缀布局的合成 `/Maps` 字节；与单元测试的构造
+/// 依据相同（AfCore String 布局、版本 51、版本 6 PCS 体），集成测试与
+/// 库内测试无法互相引用，按同一证据独立构造。
+fn maps_stream_10_1() -> Vec<u8> {
+    use mxd2qgz::map_object::MAP_CLASS_ID;
+    use mxd2qgz::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
+
+    /// AfCore String::Write 布局：u32 字节长度前缀 + 含终止零的 UTF-16LE。
+    fn encoded(text: &str) -> Vec<u8> {
+        let payload: Vec<_> = text
+            .encode_utf16()
+            .chain([0])
+            .flat_map(u16::to_le_bytes)
+            .collect();
+        let mut bytes = (payload.len() as u32).to_le_bytes().to_vec();
+        bytes.extend(payload);
+        bytes
+    }
+
+    let wkt = "PROJCS[\"CGCS2000_3_Degree_GK_Zone_37\",AUTHORITY[\"EPSG\",\"4490\"]]";
+    let mut bytes = 1_i32.to_le_bytes().to_vec(); // 数据框数量候选
+    bytes.extend(MAP_CLASS_ID);
+    bytes.extend(0x2a_u32.to_le_bytes()); // 首对象头键
+    bytes.extend(51_u16.to_le_bytes()); // Map 架构版本
+    bytes.extend(encoded("新建数据框"));
+    bytes.extend(encoded("")); // 第二名称：6 字节空名称模式
+    bytes.extend(PROJECTED_COORDINATE_SYSTEM_CLASS_ID);
+    bytes.extend(0x1e_u32.to_le_bytes()); // PCS 对象头键
+    bytes.extend(6_u16.to_le_bytes()); // PCS 保存版本
+    bytes.extend((wkt.len() as u32).to_le_bytes());
+    bytes.extend(wkt.as_bytes());
+    for _ in 0..4 {
+        bytes.extend(0_u32.to_le_bytes()); // 空域字符串
+    }
+    bytes.push(0x00); // 垂向域标志
+    bytes.extend(0x0001_u16.to_le_bytes()); // 精度标志
+    for value in [1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 0.001, 0.001, 0.001] {
+        bytes.extend(value.to_le_bytes()); // 7+3 个 double（语义未确认）
+    }
+    bytes.extend_from_slice(&[0xaa, 0xbb, 0xcc]); // 已确认前缀之后的未知尾部
+    bytes
+}
+
+/// 在 Fixture 临时目录创建仅含一个数据流的 OLE 容器（Fixture Drop 时清理）。
+fn stream_fixture(root: &std::path::Path, name: &str, stream: &[u8]) -> std::path::PathBuf {
+    let path = root.join(name);
+    let mut document = cfb::create(&path).unwrap();
+    document
+        .create_stream("/Maps")
+        .unwrap()
+        .write_all(stream)
+        .unwrap();
+    path
+}
+
+#[test]
+fn parse_reports_confirmed_fields_with_diagnostics_on_synthetic_maps() {
+    // 合成流不含 /Version 数据流：parse 应输出候选缺失诊断而不失败。
+    let fixture = Fixture::new();
+    let path = stream_fixture(&fixture.0, "正常.mxd", &maps_stream_10_1());
+    let output = success(fixture.run(&["parse", path.file_name().unwrap().to_str().unwrap()]));
+    assert!(output.contains("Frame count candidate: 1"), "{output}");
+    assert!(output.contains("新建数据框"), "{output}");
+    assert!(output.contains("PROJCS["), "{output}");
+    assert!(output.contains("Unknown: stream=/Maps"), "{output}");
+    assert!(output.contains("Version candidate:"), "{output}");
+    assert!(output.contains("Note: "), "{output}");
+
+    // 异常输入：数量为负时返回明确错误。
+    let bad = stream_fixture(&fixture.0, "负数.mxd", &(-1_i32).to_le_bytes().to_vec());
+    let stderr = failure(fixture.run(&["parse", bad.file_name().unwrap().to_str().unwrap()]));
+    assert!(stderr.contains("error:"), "{stderr}");
+}

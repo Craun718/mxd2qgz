@@ -19,6 +19,9 @@ pub struct Map {
 #[derive(Debug, Clone, PartialEq)]
 pub struct DataFrame {
     pub name: String,
+    /// 源数据框的第二名称字段（10.1 Map::Load 第 3 步确认）；没有该字段
+    /// 证据的解析路径保留为 `None`。
+    pub secondary_name: Option<String>,
     /// Children in source order; no rendering order is assumed.
     pub children: Vec<LayerNode>,
     pub crs: Option<CoordinateSystem>,
