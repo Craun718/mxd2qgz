@@ -19,11 +19,17 @@
 //! `tests/object_refs.rs`；本清单把条目分类入口纳入统一的截断与游标共性。
 
 use mxd2qgz::composite_graphics::read_composite_graphics_layer_prefix_10_1;
+use mxd2qgz::dataset_name::{read_feature_dataset_name_body_10_1, read_topology_name_body_10_1};
+use mxd2qgz::element_collection::read_element_collection_10_1;
 use mxd2qgz::envelope::read_envelope_10_1;
+use mxd2qgz::fdo_legacy::read_fdo_graphics_layer_legacy_prefix_10_1;
 use mxd2qgz::feature_layer::read_feature_layer_prefix_10_1;
 use mxd2qgz::group_layer::read_group_layer_prefix_10_1;
 use mxd2qgz::layer_list::read_layer_list_10_1;
 use mxd2qgz::map_object::{read_map_prefix_10_1, read_map_suffix_10_1};
+use mxd2qgz::map_surround::{
+    read_aoi_bookmark_10_1, read_feature_bookmark_10_1, read_legend_prefix_10_1,
+};
 use mxd2qgz::maps_stream::{read_root_prefix_10_1, read_root_prefix_10_8};
 use mxd2qgz::native_string::{read_string_10_1, read_string_10_8};
 use mxd2qgz::object_refs::{RefTable10_1, read_object_entry_10_1};
@@ -90,9 +96,17 @@ enum ReaderKind {
     ObjectEntry10_1,
     VariantString10_8,
     VariantFixed10_8,
+    SimpleRendererBody10_1,
+    ElementCollectionBody10_1,
+    FeatureDatasetNameBody10_1,
+    TopologyNameBody10_1,
+    FdoLegacyPrefix10_1,
+    AoiBookmark10_1,
+    FeatureBookmark10_1,
+    LegendPrefix10_1,
 }
 
-fn all_kinds() -> [ReaderKind; 20] {
+fn all_kinds() -> [ReaderKind; 28] {
     [
         ReaderKind::NativeString10_1,
         ReaderKind::NativeString10_8,
@@ -114,6 +128,14 @@ fn all_kinds() -> [ReaderKind; 20] {
         ReaderKind::ObjectEntry10_1,
         ReaderKind::VariantString10_8,
         ReaderKind::VariantFixed10_8,
+        ReaderKind::SimpleRendererBody10_1,
+        ReaderKind::ElementCollectionBody10_1,
+        ReaderKind::FeatureDatasetNameBody10_1,
+        ReaderKind::TopologyNameBody10_1,
+        ReaderKind::FdoLegacyPrefix10_1,
+        ReaderKind::AoiBookmark10_1,
+        ReaderKind::FeatureBookmark10_1,
+        ReaderKind::LegendPrefix10_1,
     ]
 }
 
@@ -289,6 +311,101 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
             bytes.extend(7_u32.to_le_bytes());
             bytes
         }
+        ReaderKind::SimpleRendererBody10_1 => {
+            // 版本 1 最小体：三槽位空标记 + short + 双空串 + int32（版本 ≤2
+            // 无 RotationRenderer/SizeRenderer 尾段）。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend([0_u8; 16]); // ISymbol 槽：空标记
+            bytes.extend([0_u8; 16]); // ILegendGroup 槽：空标记
+            bytes.extend([0_u8; 16]); // ILegendItem 槽：空标记
+            bytes.extend(0_i16.to_le_bytes());
+            bytes.extend(encoded(""));
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(encoded(""));
+            bytes
+        }
+        ReaderKind::ElementCollectionBody10_1 => {
+            // 版本 4 + 计数 0（样本 FDO 槽位键 86 的 6 字节形态）。
+            let mut bytes = 4_u16.to_le_bytes().to_vec();
+            bytes.extend(0_i32.to_le_bytes());
+            bytes
+        }
+        ReaderKind::FeatureDatasetNameBody10_1 => {
+            // 版本 1 + 四空串 + 标志 0 + IWorkspaceName 槽的 WorkspaceName 新
+            // 对象（头 + 版本 1 体：三空串 + 空 IPropertySet + 标志 0 + int32）。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            for _ in 0..4 {
+                bytes.extend(encoded(""));
+            }
+            bytes.push(0); // 标志 0：无工厂 CLSID 段
+            bytes.extend(mxd2qgz::feature_layer::WORKSPACE_NAME_CLASS_ID);
+            bytes.extend(60_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes()); // WS 版本
+            for _ in 0..3 {
+                bytes.extend(encoded(""));
+            }
+            bytes.extend([0_u8; 16]); // IPropertySet：空标记
+            bytes.push(0); // 工厂标志 0
+            bytes.extend(0_i32.to_le_bytes()); // 尾随 int32
+            bytes
+        }
+        ReaderKind::TopologyNameBody10_1 => {
+            // 版本 1 + 两空串 + IDatasetName 槽空标记。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(encoded(""));
+            bytes.extend(encoded(""));
+            bytes.extend([0_u8; 16]);
+            bytes
+        }
+        ReaderKind::FdoLegacyPrefix10_1 => {
+            // 版本 0：旧加载器字段 1-11（版本 ≥2/≥3 的字段无门），四个接口槽
+            // 均空标记，收尾即旧体完整终结。
+            let mut bytes = 0_u16.to_le_bytes().to_vec();
+            bytes.extend(encoded("")); // String
+            bytes.extend(0_i16.to_le_bytes());
+            bytes.extend(0_i16.to_le_bytes());
+            bytes.extend(0_f64.to_le_bytes());
+            bytes.extend(0_f64.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_i16.to_le_bytes());
+            for _ in 0..4 {
+                bytes.extend([0_u8; 16]); // ILayer/ISR/IEC2/IName 槽：空标记
+            }
+            bytes
+        }
+        ReaderKind::AoiBookmark10_1 => {
+            // 版本 1 + 空 IEnvelope + 空名称。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend([0_u8; 16]);
+            bytes.extend(encoded(""));
+            bytes
+        }
+        ReaderKind::FeatureBookmark10_1 => {
+            // 版本 1 + int32 + 空 IName + 名称。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes.extend(encoded(""));
+            bytes
+        }
+        ReaderKind::LegendPrefix10_1 => {
+            // Legend 版本 1 + 共同前缀版本 1（版本 short + 空名称 + 关联地图
+            // 空标记）：ILegendFormat 空标记 + 空标题 + 版本 1 旧遗留 double
+            // ×2 + short ×4 + ILegendItem 计数 0；版本 <3/4/5 的尾段无门。
+            let mut bytes = 1_u16.to_le_bytes().to_vec(); // Legend 版本
+            bytes.extend(1_u16.to_le_bytes()); // 共同前缀版本
+            bytes.extend(encoded("")); // 名称
+            bytes.extend([0_u8; 16]); // 关联地图：空标记
+            bytes.extend([0_u8; 16]); // ILegendFormat：空标记
+            bytes.extend(encoded("")); // 标题
+            bytes.extend(0_f64.to_le_bytes()); // 版本 1 旧遗留段
+            bytes.extend(0_f64.to_le_bytes());
+            for _ in 0..4 {
+                bytes.extend(0_u16.to_le_bytes()); // short ×3 + 集合接口 short
+            }
+            bytes.extend(0_i32.to_le_bytes()); // ILegendItem 计数 0
+            bytes
+        }
         ReaderKind::VariantString10_8 => value_bytes(8, &bstr_payload_bytes("地图")),
         ReaderKind::VariantFixed10_8 => value_bytes(5, &[0; 8]),
     }
@@ -338,6 +455,43 @@ fn try_read(kind: ReaderKind, reader: &mut Reader<'_>) -> io::Result<()> {
         // 路径不得修改登记表（该性质由 object_refs 单元测试单独断言）。
         ReaderKind::ObjectEntry10_1 => {
             read_object_entry_10_1(reader, &mut RefTable10_1::new()).map(|_| ())
+        }
+        ReaderKind::SimpleRendererBody10_1 => {
+            mxd2qgz::feature_layer_tail::read_simple_renderer_body_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+                35,
+            )
+            .map(|_| ())
+        }
+        ReaderKind::ElementCollectionBody10_1 => {
+            mxd2qgz::element_collection::read_element_collection_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+            )
+            .map(|_| ())
+        }
+        ReaderKind::FeatureDatasetNameBody10_1 => {
+            read_feature_dataset_name_body_10_1(reader, 1024, &mut RefTable10_1::new(), 59)
+                .map(|_| ())
+        }
+        ReaderKind::TopologyNameBody10_1 => {
+            read_topology_name_body_10_1(reader, 1024, &mut RefTable10_1::new(), 60).map(|_| ())
+        }
+        ReaderKind::FdoLegacyPrefix10_1 => {
+            read_fdo_graphics_layer_legacy_prefix_10_1(reader, 1024, &mut RefTable10_1::new())
+                .map(|_| ())
+        }
+        ReaderKind::AoiBookmark10_1 => {
+            read_aoi_bookmark_10_1(reader, 1024, &mut RefTable10_1::new()).map(|_| ())
+        }
+        ReaderKind::FeatureBookmark10_1 => {
+            read_feature_bookmark_10_1(reader, 1024, &mut RefTable10_1::new()).map(|_| ())
+        }
+        ReaderKind::LegendPrefix10_1 => {
+            read_legend_prefix_10_1(reader, 1024, &mut RefTable10_1::new()).map(|_| ())
         }
         ReaderKind::VariantString10_8 | ReaderKind::VariantFixed10_8 => {
             read_value_10_8(reader, u32::MAX).map(|_| ())

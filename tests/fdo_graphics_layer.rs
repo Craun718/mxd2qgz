@@ -5,8 +5,8 @@
 //! 体 `/Maps:0x28e..0x2d22`），不依赖样本文件；样本对位是辅助观察。
 
 use mxd2qgz::fdo_graphics_layer::{
-    AssociatedLayer10_1, FDO_GRAPHICS_LAYER_CLASS_ID, FdoGraphicsLayerStop10_1,
-    read_fdo_graphics_layer_prefix_10_1,
+    AssociatedLayer10_1, ElementCollectionSlot10_1, FDO_GRAPHICS_LAYER_CLASS_ID,
+    FdoGraphicsLayerStop10_1, read_fdo_graphics_layer_prefix_10_1,
 };
 use mxd2qgz::feature_layer::{
     FEATURE_CLASS_NAME_CLASS_ID, FEATURE_LAYER_CLASS_ID, FeatureLayerStop10_1,
@@ -169,7 +169,7 @@ fn null_and_back_reference_associated_layers_advance_to_element_collection() {
     assert_eq!(parsed.associated_layer, AssociatedLayer10_1::Null);
     assert_eq!(
         parsed.element_collection,
-        Some(mxd2qgz::object_refs::ObjectEntry10_1::Null)
+        Some(ElementCollectionSlot10_1::Null)
     );
     let delegated = parsed.delegated_layer.expect("委派体应解析");
     assert_eq!(delegated.name, "注记层");

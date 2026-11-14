@@ -72,6 +72,11 @@ use crate::composite_graphics::{
 };
 use crate::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
 use crate::layer_list::{LayerList10_1, LayerListStop, class_id_hex, read_layer_list_10_1};
+use crate::map_surround::{
+    AOI_BOOKMARK_CLASS_ID, AoiBookmark10_1, FEATURE_BOOKMARK_CLASS_ID, FeatureBookmark10_1,
+    LEGEND_CLASS_ID, LegendPrefix10_1, LegendStop10_1, read_aoi_bookmark_10_1,
+    read_feature_bookmark_10_1, read_legend_prefix_10_1,
+};
 use crate::native_string::read_string_10_1;
 use crate::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::object_stream::{ObjectHeader, read_header_10_1};
@@ -188,22 +193,39 @@ impl MapSuffixStop {
                  对象头之后"
             ),
             Self::MapSurroundBody { index, offset, .. } => format!(
-                "MapSurround 条目 {index}（offset 0x{offset:x}）为新对象：体无外部长度\
-                 且元素类没有读取器，停止"
+                "MapSurround 条目 {index}（offset 0x{offset:x}）为新对象且未被读取器\
+                 整体消费（类没有读取器，或 Legend 体内停止/解析失败），停止"
             ),
             Self::EnvelopeObjectBody { offset, .. } => format!(
                 "IEnvelope 槽位对象（offset 0x{offset:x}）为新对象且未被 Envelope 读取\
                  器整体消费（非 Envelope 类或解析失败）：体无外部长度，停止"
             ),
             Self::BookmarkBody { index, offset, .. } => format!(
-                "书签条目 {index}（offset 0x{offset:x}）为新对象：体无外部长度且读取器\
-                 未接入，停止"
+                "书签条目 {index}（offset 0x{offset:x}）为新对象且未被读取器整体消费\
+                （类没有读取器或解析失败），停止"
             ),
             Self::AfterBookmarks => "书签循环之后字段未闭合（两个 0xFFFF short 等与 \
                 Map::Load 第 10/11 步对位未定），到此为止，其后保留为未知尾部"
                 .to_string(),
         }
     }
+}
+
+/// MapSurround 循环条目中已整体消费的元素体。
+#[derive(Debug, Clone, PartialEq)]
+pub enum MapSurroundElement10_1 {
+    /// Legend 已确认前缀（Legend 前缀读取器在 ILegendFormat / ILegendItem
+    /// 新对象等体内停止点停止时 `stop` 携带原因；此时后缀循环不继续）。
+    Legend(Box<LegendPrefix10_1>),
+}
+
+/// 书签循环条目中已整体消费的元素体（两类书签体字段序完全闭合）。
+#[derive(Debug, Clone, PartialEq)]
+pub enum BookmarkElement10_1 {
+    /// AOIBookmark 体（位置包络 + 名称）。
+    AoiBookmark(Box<AoiBookmark10_1>),
+    /// FeatureBookmark 体（int32 + IName 条目 + 名称）。
+    FeatureBookmark(Box<FeatureBookmark10_1>),
 }
 
 /// Map 对象体后缀序列（图层列表起，书签循环止）的解析结果。
@@ -225,6 +247,9 @@ pub struct MapSuffix10_1 {
     pub map_surround_count: Option<i32>,
     /// 已消费的 MapSurround 条目（按流内顺序）。
     pub map_surrounds: Vec<ObjectSlot10_1>,
+    /// MapSurround 条目中已整体消费的元素体（与 [`Self::map_surrounds`]
+    /// 下标对齐；未知类或解析失败为 `None`，后缀在该条目停止）。
+    pub map_surround_parsed: Vec<Option<MapSurroundElement10_1>>,
     /// WKSEnvelope 显示范围（到达时）。
     pub extent: Option<WksEnvelope10_1>,
     /// WKSEnvelope 起点偏移（诊断用）。
@@ -241,6 +266,9 @@ pub struct MapSuffix10_1 {
     pub bookmark_count: Option<i32>,
     /// 已消费的书签条目（按流内顺序）。
     pub bookmarks: Vec<ObjectSlot10_1>,
+    /// 书签条目中已整体消费的元素体（与 [`Self::bookmarks`] 下标对齐；
+    /// 未知类或解析失败为 `None`，后缀在该条目停止）。
+    pub bookmark_parsed: Vec<Option<BookmarkElement10_1>>,
     /// 停止原因（恒有：书签循环之后也属停止点）。
     pub stop: MapSuffixStop,
     /// 停止点之后剩余的字节数。
@@ -456,6 +484,7 @@ pub fn read_map_suffix_10_1(
     let mut base_graphics_layer_parsed = None;
     let mut map_surround_count = None;
     let mut map_surrounds = Vec::new();
+    let mut map_surround_parsed = Vec::new();
     let mut extent = None;
     let mut extent_offset = None;
     let mut raw_int32_pair = None;
@@ -463,6 +492,7 @@ pub fn read_map_suffix_10_1(
     let mut envelope_object_parsed = None;
     let mut bookmark_count = None;
     let mut bookmarks = Vec::new();
+    let mut bookmark_parsed = Vec::new();
 
     if stop.is_none() {
         // 2. 基本图形层对象（SaveObject(+0xf8)，请求 IID {34B2EF81-…}）。
@@ -494,20 +524,41 @@ pub fn read_map_suffix_10_1(
 
     if stop.is_none() {
         // 3. MapSurround 计数 + 循环（请求 IID {FE3115E9-…}；样本计数 0）。
+        //    Legend 新对象经 map_surround 读取器解析其已确认前缀；体完整消费
+        //    时循环继续，其余类或体内停止在该条目处停止。
         let count = read_loop_count(&mut trial, "MapSurround", max_bytes)?;
         map_surround_count = Some(count);
         for index in 0..usize::try_from(count).expect("计数已确认为非负") {
             let offset = trial.position();
             let entry = read_object_entry_10_1(&mut trial, &mut trial_table)?;
+            let mut parsed_element = None;
+            let mut fully_consumed = false;
+            if let ObjectEntry10_1::NewObject { class_id, .. } = &entry {
+                if *class_id == LEGEND_CLASS_ID {
+                    if let Ok(prefix) =
+                        read_legend_prefix_10_1(&mut trial, max_bytes, &mut trial_table)
+                    {
+                        fully_consumed = prefix.stop == LegendStop10_1::Completed;
+                        parsed_element = Some(MapSurroundElement10_1::Legend(Box::new(prefix)));
+                    }
+                }
+            }
+            let new_object = match &entry {
+                ObjectEntry10_1::NewObject { class_id, key } => Some((*class_id, *key)),
+                _ => None,
+            };
+            map_surround_parsed.push(parsed_element);
             map_surrounds.push(ObjectSlot10_1 { offset, entry });
-            if let ObjectEntry10_1::NewObject { class_id, key } = entry {
-                stop = Some(MapSuffixStop::MapSurroundBody {
-                    index,
-                    offset,
-                    class_id,
-                    key,
-                });
-                break;
+            if !fully_consumed {
+                if let Some((class_id, key)) = new_object {
+                    stop = Some(MapSuffixStop::MapSurroundBody {
+                        index,
+                        offset,
+                        class_id,
+                        key,
+                    });
+                    break;
+                }
             }
         }
     }
@@ -568,21 +619,47 @@ pub fn read_map_suffix_10_1(
     }
 
     if stop.is_none() {
-        // 7. 书签计数 + 循环（请求 IID {EE53528B-…}；样本计数 0）。
+        // 7. 书签计数 + 循环（请求 IID {EE53528B-…}；样本计数 0）。AOI 与
+        //    Feature 书签的新对象体字段序完全闭合，读取成功即循环继续；其余
+        //    类或解析失败在该条目处停止。
         let count = read_loop_count(&mut trial, "书签", max_bytes)?;
         bookmark_count = Some(count);
         for index in 0..usize::try_from(count).expect("计数已确认为非负") {
             let offset = trial.position();
             let entry = read_object_entry_10_1(&mut trial, &mut trial_table)?;
+            let mut parsed_element = None;
+            if let ObjectEntry10_1::NewObject { class_id, .. } = &entry {
+                if *class_id == AOI_BOOKMARK_CLASS_ID {
+                    if let Ok(body) =
+                        read_aoi_bookmark_10_1(&mut trial, max_bytes, &mut trial_table)
+                    {
+                        parsed_element = Some(BookmarkElement10_1::AoiBookmark(Box::new(body)));
+                    }
+                } else if *class_id == FEATURE_BOOKMARK_CLASS_ID {
+                    if let Ok(body) =
+                        read_feature_bookmark_10_1(&mut trial, max_bytes, &mut trial_table)
+                    {
+                        parsed_element = Some(BookmarkElement10_1::FeatureBookmark(Box::new(body)));
+                    }
+                }
+            }
+            let new_object = match &entry {
+                ObjectEntry10_1::NewObject { class_id, key } => Some((*class_id, *key)),
+                _ => None,
+            };
+            let consumed = parsed_element.is_some();
+            bookmark_parsed.push(parsed_element);
             bookmarks.push(ObjectSlot10_1 { offset, entry });
-            if let ObjectEntry10_1::NewObject { class_id, key } = entry {
-                stop = Some(MapSuffixStop::BookmarkBody {
-                    index,
-                    offset,
-                    class_id,
-                    key,
-                });
-                break;
+            if !consumed {
+                if let Some((class_id, key)) = new_object {
+                    stop = Some(MapSuffixStop::BookmarkBody {
+                        index,
+                        offset,
+                        class_id,
+                        key,
+                    });
+                    break;
+                }
             }
         }
     }
@@ -596,6 +673,7 @@ pub fn read_map_suffix_10_1(
         base_graphics_layer_parsed,
         map_surround_count,
         map_surrounds,
+        map_surround_parsed,
         extent,
         extent_offset,
         raw_int32_pair,
@@ -603,6 +681,7 @@ pub fn read_map_suffix_10_1(
         envelope_object_parsed,
         bookmark_count,
         bookmarks,
+        bookmark_parsed,
         stop,
         remaining_bytes: trial.remaining(),
     };

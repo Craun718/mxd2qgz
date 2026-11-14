@@ -27,13 +27,14 @@
 //!    FeatureClassName → 读取其完整已确认体（见下）；新对象且类标识非
 //!    FeatureClassName → 不支持（对象体无外部长度字段，无法跳过）；
 //! 6. 嵌套 LoadObject（请求 IID `{40A9E884-5533-11D0-98BE-00805F7CED21}`=
-//!    IFeatureRenderer，第五轮类型库考证）：空标记/回引 → 继续；新对象 →
-//!    渲染器体未闭合（SimpleRenderer 等，Layer.dll 族），本读取器读取其
-//!    对象头后停止；
-//! 7. 渲染器槽位为空标记/回引时：原样 16 字节 GUID → obj+0x144（非对象
-//!    头）。其后字段（String、double ×2、short、`{3036D35D}` 计数循环等）
-//!    在样本中存在与 RTM 3035 反编译不可调和的差异（开放项，见模块文档
-//!    「未解决问题」），一律保留为剩余字节。
+//!    IFeatureRenderer，第五轮类型库考证）：空标记/回引 → 继续；新对象且
+//!    类标识为 SimpleRenderer → 读取其闭合体（feature_layer_tail 模块：含
+//!    SimpleMarkerSymbol/RgbColor/LegendGroup/LegendClass 嵌套链）；其他
+//!    渲染器类 → 体未闭合，读取对象头后停止；
+//! 7. 渲染器槽位为空标记/回引/完整消费的 SimpleRenderer 体时：原样 16 字节
+//!    GUID → obj+0x144（非对象头）。其后字段（String、double ×2、short、
+//!    `{3036D35D}` 计数循环等）在样本中存在与 RTM 3035 反编译不可调和的差
+//!    异（开放项，见模块文档「未解决问题」），一律保留为剩余字节。
 //!
 //! ## FeatureClassName 体（GdbCore.dll `0x709b5080`，2026-11-14 第六轮闭合）
 //!
@@ -105,14 +106,25 @@
 //!   止，其后字节全部保留，不得解释；
 //! - FCN 体内 int32 ×2、WorkspaceName 体内 int32、各 String 的业务语义未
 //!   定性（类型描述/数据集名为按内容候选），原样保留；
-//! - IDatasetName / ITopologyName 槽的新对象体字段序未闭合（读取到对象头
-//!   即停止）；
+//! - IDatasetName / ITopologyName 槽的 FeatureDatasetName / TopologyName
+//!   体已由 `dataset_name` 模块闭合并接入选择子分派（样本两选择子全 0，
+//!   布局无字节佐证）；其他 IDatasetName 实现类（UnknownDatasetName 等）
+//!   在对象头处停止；
 //! - 可见性之外两个 short（obj+0x12a/+0x12c）语义未定，原样保留；
 //! - FeatureLayer 版本比较的符号性未闭合（本读取器按无符号解释，较可能的
 //!   有符号原生更严）；
 //! - 回引条目不校验类标识：样本证据（如 `/Maps:0x2d2c` 对键 32 的回引头）
 //!   表明回引头会重复被引对象的类标识，类标识原样保留、由调用者比对。
 
+use crate::dataset_name::{
+    FEATURE_DATASET_NAME_CLASS_ID, FeatureDatasetNameBody10_1, FeatureDatasetNameStop10_1,
+    TOPOLOGY_NAME_CLASS_ID, TopologyNameBody10_1, TopologyNameStop10_1,
+    read_feature_dataset_name_body_10_1, read_topology_name_body_10_1,
+};
+use crate::feature_layer_tail::{
+    SIMPLE_RENDERER_CLASS_ID, SimpleRendererPrefix10_1, SimpleRendererStop10_1,
+    read_simple_renderer_body_10_1,
+};
 use crate::native_string::read_string_10_1;
 use crate::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::reader::Reader;
@@ -235,30 +247,69 @@ pub enum WorkspaceNameEntry10_1 {
     Unsupported { class_id: [u8; 16], key: u32 },
 }
 
+/// FeatureClassName 体内 IDatasetName 槽位（选择子 !=0，请求 IID
+/// `{89E75917-…}`）的分类结果。
+#[derive(Debug, Clone, PartialEq)]
+pub enum DatasetNameEntry10_1 {
+    /// 16 字节全零类标识：空引用，无键、无对象体。
+    Null,
+    /// 键已见：回引条目，无对象体。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 FeatureDatasetName 对象（类标识经 [`FEATURE_DATASET_NAME_CLASS_ID`]
+    /// 校验）：已读取其闭合体（dataset_name 模块）；体内停止时经
+    /// [`FeatureClassNameStop10_1::DatasetNameBodyStopped`] 携带原因。
+    NewObject(Box<FeatureDatasetNameBody10_1>),
+    /// 新对象但类标识不是 FeatureDatasetName（UnknownDatasetName、
+    /// FeatureClassName 自身等其他 IDatasetName 实现类未闭合）：停止点，
+    /// 游标回退到该对象头起点。
+    Unsupported { class_id: [u8; 16], key: u32 },
+}
+
+/// FeatureClassName 体版本 >1 第二选择子非 0 的 ITopologyName 槽位（请求
+/// IID `{505B6FDD-…}`）分类结果。
+#[derive(Debug, Clone, PartialEq)]
+pub enum TopologyNameEntry10_1 {
+    /// 16 字节全零类标识：空引用，无键、无对象体。
+    Null,
+    /// 键已见：回引条目，无对象体。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 TopologyName 对象（类标识经 [`TOPOLOGY_NAME_CLASS_ID`] 校验）：
+    /// 已读取其闭合体；体内停止时经
+    /// [`FeatureClassNameStop10_1::TopologyNameBodyStopped`] 携带原因。
+    NewObject(Box<TopologyNameBody10_1>),
+    /// 新对象但类标识不是 TopologyName：停止点，游标回退到该对象头起点。
+    Unsupported { class_id: [u8; 16], key: u32 },
+}
+
 /// FeatureClassName 体第 7 步选择子的两个分支。
 #[derive(Debug, Clone, PartialEq)]
 pub enum FeatureClassNameNested10_1 {
     /// 选择子 ==0：IWorkspaceName 槽（样本分支）。
     WorkspaceName(WorkspaceNameEntry10_1),
-    /// 选择子 !=0：IDatasetName 槽（请求 IID `{89E75917-…}`）。新对象体未
-    /// 闭合，为停止点。
-    DatasetName(ObjectEntry10_1),
+    /// 选择子 !=0：IDatasetName 槽（请求 IID `{89E75917-…}`）。
+    DatasetName(DatasetNameEntry10_1),
 }
 
 /// FeatureClassName 体读取的停止原因。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FeatureClassNameStop10_1 {
-    /// 选择子 !=0 分支的 IDatasetName 槽新对象体（字段序未闭合）：其后
-    /// 的版本 >1 选择子不可达。
+    /// 选择子 !=0 分支的 IDatasetName 槽新对象类标识不是
+    /// FeatureDatasetName：其后 的版本 >1 选择子不可达。
     DatasetNameNewObject { class_id: [u8; 16], key: u32 },
+    /// 选择子 !=0 分支的 FeatureDatasetName 体自身的停止点（原因透传，
+    /// 见 [`FeatureDatasetNameStop10_1`]）。
+    DatasetNameBodyStopped(FeatureDatasetNameStop10_1),
     /// IWorkspaceName 槽的新对象类标识不是 WorkspaceName（体未知）。
     WorkspaceNameUnsupported { class_id: [u8; 16], key: u32 },
     /// WorkspaceName 体内 IPropertySet 槽的新对象体（见
     /// [`WorkspaceNameStop10_1`]）。
     WorkspacePropertySetNewObject { class_id: [u8; 16], key: u32 },
     /// 版本 >1 且第二选择子非 0：ITopologyName 槽（请求 IID
-    /// `{505B6FDD-…}`）的新对象体（字段序未闭合）。
+    /// `{505B6FDD-…}`）的新对象类标识不是 TopologyName。
     TopologyNameNewObject { class_id: [u8; 16], key: u32 },
+    /// 版本 >1 且第二选择子非 0：ITopologyName 槽的 TopologyName 体自身的
+    /// 停止点（原因透传，见 [`TopologyNameStop10_1`]）。
+    TopologyNameBodyStopped(TopologyNameStop10_1),
 }
 
 /// FeatureClassName（GdbCore.dll `0x709b5080`）体的已确认字段。
@@ -290,9 +341,10 @@ pub struct FeatureClassNamePrefix10_1 {
     pub nested: FeatureClassNameNested10_1,
     /// 版本 >1 的第二选择子。`None` = 版本 <=1，或因前置停止未读取。
     pub version1_selector: Option<u16>,
-    /// 第二选择子非 0 时的 ITopologyName 槽分类；新对象 = 停止点。
-    /// `None` = 未读取（版本 <=1、前置停止或选择子为 0）。
-    pub topology_slot: Option<ObjectEntry10_1>,
+    /// 第二选择子非 0 时的 ITopologyName 槽分类；新对象非 TopologyName 类
+    /// 或 TopologyName 体内停止 = 停止点。`None` = 未读取（版本 <=1、前置
+    /// 停止或选择子为 0）。
+    pub topology_slot: Option<TopologyNameEntry10_1>,
     /// 停止原因；`None` = 体已完整消费（样本形态：两选择子均为 0）。
     pub stop: Option<FeatureClassNameStop10_1>,
 }
@@ -314,6 +366,24 @@ pub enum DataSource10_1 {
     BackReference { class_id: [u8; 16], key: u32 },
 }
 
+/// FeatureLayer 体渲染器槽位（请求 IID `{40A9E884-…}`=IFeatureRenderer）
+/// 的分类结果。
+#[derive(Debug, Clone, PartialEq)]
+pub enum RendererSlot10_1 {
+    /// 16 字节全零类标识：空引用，无键、无对象体。
+    Null,
+    /// 键已见：回引条目，无对象体。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 SimpleRenderer 对象（类标识经 [`SIMPLE_RENDERER_CLASS_ID`] 校验）：
+    /// 已读取其闭合体（feature_layer_tail 模块：SimpleMarkerSymbol、
+    /// RgbColor、LegendGroup、LegendClass 嵌套链）；体内停止时经
+    /// [`FeatureLayerStop10_1::RendererBody`] 携带原因。
+    SimpleRenderer(Box<SimpleRendererPrefix10_1>),
+    /// 新对象但类标识不是 SimpleRenderer（其他渲染器类体未闭合）：停止点，
+    /// 游标回退到该对象头起点。
+    Unsupported { class_id: [u8; 16], key: u32 },
+}
+
 /// FeatureLayer 体读取的停止原因（本读取器为「已确认前缀」语义：始终在最
 /// 深可闭合点停止并返回成功）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -321,9 +391,12 @@ pub enum FeatureLayerStop10_1 {
     /// 数据源 FeatureClassName 体内（含 WorkspaceName 体）的停止点。
     DataSource(FeatureClassNameStop10_1),
     /// 数据源之后的首个嵌套对象（请求 IID `{40A9E884-…}`=IFeatureRenderer）
-    /// 为新对象：渲染器体（SimpleRenderer 等）字段序未闭合，读取对象头后
-    /// 停止。
+    /// 为新对象且类标识不是 SimpleRenderer（其他渲染器类体未闭合）：读取
+    /// 对象头后停止。
     RendererNewObject { class_id: [u8; 16], key: u32 },
+    /// 渲染器槽的 SimpleRenderer 体自身的停止点（原因透传，见
+    /// [`SimpleRendererStop10_1`]）：游标停在其停止点。
+    RendererBody(SimpleRendererStop10_1),
     /// +0x144 原样 16 字节 GUID 之后：其后字段在样本中与 RTM 3035 反编译
     /// 不可调和（归因开放，见模块文档「未解决问题」），全部保留为剩余字节。
     AfterDataSourceGuid,
@@ -359,11 +432,10 @@ pub struct FeatureLayerPrefix10_1 {
     /// [`DataSource10_1`]）。
     pub data_source: DataSource10_1,
     /// 数据源之后的首个嵌套对象槽（请求 IID `{40A9E884-…}`=
-    /// IFeatureRenderer）分类；新对象为停止点。`None` = 因数据源体内停止
-    /// 未读取。
-    pub renderer: Option<ObjectEntry10_1>,
-    /// 渲染器槽位为空标记/回引时读取的 +0x144 原样 16 字节 GUID。
-    /// `None` = 未到达。
+    /// IFeatureRenderer）分类。`None` = 因数据源体内停止未读取。
+    pub renderer: Option<RendererSlot10_1>,
+    /// 渲染器槽位为空标记/回引/完整消费的 SimpleRenderer 体时读取的
+    /// +0x144 原样 16 字节 GUID。`None` = 未到达。
     pub guid_after_renderer: Option<[u8; 16]>,
     /// 停止原因（恒有：本读取器始终在最深可闭合点停止）。
     pub stop: FeatureLayerStop10_1,
@@ -572,14 +644,37 @@ pub fn read_feature_class_name_body_10_1(
             }),
         }
     } else {
-        // IDatasetName 槽:新对象体未闭合 → 停止并回退到槽位起点。
+        // IDatasetName 槽：新 FeatureDatasetName 对象读取其闭合体（dataset_name
+        // 模块）；其他类停止并回退到槽位起点。
         let entry = read_object_entry_10_1(&mut trial, &mut staged_table)?;
-        if let ObjectEntry10_1::NewObject { class_id, key } = entry {
-            stop = Some(FeatureClassNameStop10_1::DatasetNameNewObject { class_id, key });
-            trial = reposition_to(reader, slot_offset);
-            staged_table = saved_table.clone();
-        }
-        FeatureClassNameNested10_1::DatasetName(entry)
+        let slot = match entry {
+            ObjectEntry10_1::Null => DatasetNameEntry10_1::Null,
+            ObjectEntry10_1::BackReference { class_id, key } => {
+                DatasetNameEntry10_1::BackReference { class_id, key }
+            }
+            ObjectEntry10_1::NewObject { class_id, key }
+                if class_id == FEATURE_DATASET_NAME_CLASS_ID =>
+            {
+                let body = read_feature_dataset_name_body_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged_table,
+                    key,
+                )?;
+                if let Some(inner) = body.stop {
+                    stop = Some(FeatureClassNameStop10_1::DatasetNameBodyStopped(inner));
+                }
+                DatasetNameEntry10_1::NewObject(Box::new(body))
+            }
+            ObjectEntry10_1::NewObject { class_id, key } => {
+                // 非 FeatureDatasetName 类：体未知且无外部长度，停止并回退。
+                stop = Some(FeatureClassNameStop10_1::DatasetNameNewObject { class_id, key });
+                trial = reposition_to(reader, slot_offset);
+                staged_table = saved_table.clone();
+                DatasetNameEntry10_1::Unsupported { class_id, key }
+            }
+        };
+        FeatureClassNameNested10_1::DatasetName(slot)
     };
 
     // 8. 版本 >1 的第二选择子(前置停止时不读取)。
@@ -592,12 +687,34 @@ pub fn read_feature_class_name_body_10_1(
             // 此前已消费的对象(如 WorkspaceName 体)的登记不受本槽位回退影响。
             let pre_topology_table = staged_table.clone();
             let entry = read_object_entry_10_1(&mut trial, &mut staged_table)?;
-            if let ObjectEntry10_1::NewObject { class_id, key } = entry {
-                stop = Some(FeatureClassNameStop10_1::TopologyNameNewObject { class_id, key });
-                trial = reposition_to(reader, topo_offset);
-                staged_table = pre_topology_table;
-            }
-            topology_slot = Some(entry);
+            let slot = match entry {
+                ObjectEntry10_1::Null => TopologyNameEntry10_1::Null,
+                ObjectEntry10_1::BackReference { class_id, key } => {
+                    TopologyNameEntry10_1::BackReference { class_id, key }
+                }
+                ObjectEntry10_1::NewObject { class_id, key }
+                    if class_id == TOPOLOGY_NAME_CLASS_ID =>
+                {
+                    let body = read_topology_name_body_10_1(
+                        &mut trial,
+                        max_bytes,
+                        &mut staged_table,
+                        key,
+                    )?;
+                    if let Some(inner) = body.stop {
+                        stop = Some(FeatureClassNameStop10_1::TopologyNameBodyStopped(inner));
+                    }
+                    TopologyNameEntry10_1::NewObject(Box::new(body))
+                }
+                ObjectEntry10_1::NewObject { class_id, key } => {
+                    // 非 TopologyName 类：体未知且无外部长度，停止并回退。
+                    stop = Some(FeatureClassNameStop10_1::TopologyNameNewObject { class_id, key });
+                    trial = reposition_to(reader, topo_offset);
+                    staged_table = pre_topology_table;
+                    TopologyNameEntry10_1::Unsupported { class_id, key }
+                }
+            };
+            topology_slot = Some(slot);
         }
     }
 
@@ -714,7 +831,8 @@ pub fn read_feature_layer_prefix_10_1(
     };
 
     // 6. 渲染器槽位（请求 IID {40A9E884-…}=IFeatureRenderer）：仅当数据源
-    //    已完整消费（含 FCN 体内无停止）时到达。
+    //    已完整消费（含 FCN 体内无停止）时到达。新 SimpleRenderer 对象读取
+    //    其闭合体；其他渲染器类在对象头处停止。
     let mut renderer = None;
     let mut guid_after_renderer = None;
     let stop = match fcn_stop {
@@ -723,17 +841,39 @@ pub fn read_feature_layer_prefix_10_1(
             let slot_offset = trial.position();
             let saved_table = staged_table.clone();
             let entry = read_object_entry_10_1(&mut trial, &mut staged_table)?;
-            renderer = Some(entry);
-            match entry {
-                ObjectEntry10_1::NewObject { class_id, key } => {
-                    // 渲染器体字段序未闭合：读取对象头后停止并回退到槽位起点
-                    //（体未知且无外部长度；回退到对象头起点的停止不保留该
-                    // 键，与 GroupLayer/CGL 读取器的回退语义一致）。
-                    trial = reposition_to(reader, slot_offset);
-                    staged_table = saved_table;
-                    FeatureLayerStop10_1::RendererNewObject { class_id, key }
+            let mut renderer_stop = None;
+            let slot = match entry {
+                ObjectEntry10_1::Null => RendererSlot10_1::Null,
+                ObjectEntry10_1::BackReference { class_id, key } => {
+                    RendererSlot10_1::BackReference { class_id, key }
                 }
-                ObjectEntry10_1::Null | ObjectEntry10_1::BackReference { .. } => {
+                ObjectEntry10_1::NewObject { class_id, key }
+                    if class_id == SIMPLE_RENDERER_CLASS_ID =>
+                {
+                    let body = read_simple_renderer_body_10_1(
+                        &mut trial,
+                        max_bytes,
+                        &mut staged_table,
+                        key,
+                    )?;
+                    if let Some(inner) = body.stop {
+                        renderer_stop = Some(FeatureLayerStop10_1::RendererBody(inner));
+                    }
+                    RendererSlot10_1::SimpleRenderer(Box::new(body))
+                }
+                ObjectEntry10_1::NewObject { class_id, key } => {
+                    // 其他渲染器类：体未知且无外部长度，回退到槽位起点（不
+                    // 保留该键），其后字段不可达。
+                    staged_table = saved_table;
+                    trial = reposition_to(reader, slot_offset);
+                    renderer_stop = Some(FeatureLayerStop10_1::RendererNewObject { class_id, key });
+                    RendererSlot10_1::Unsupported { class_id, key }
+                }
+            };
+            renderer = Some(slot);
+            match renderer_stop {
+                Some(stop) => stop,
+                None => {
                     // 7. +0x144 原样 16 字节 GUID（非对象头）。其后字段与样本
                     //    存在不可调和差异（开放项），读到 GUID 即停止。
                     guid_after_renderer =

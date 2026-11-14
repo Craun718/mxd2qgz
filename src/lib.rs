@@ -1,12 +1,17 @@
 //! Format-independent representation of a map and its unresolved input data.
 
 pub mod composite_graphics;
+pub mod dataset_name;
+pub mod element_collection;
 pub mod envelope;
 pub mod fdo_graphics_layer;
+pub mod fdo_legacy;
 pub mod feature_layer;
+pub mod feature_layer_tail;
 pub mod group_layer;
 pub mod layer_list;
 pub mod map_object;
+pub mod map_surround;
 pub mod maps_stream;
 pub mod model;
 pub mod mxd_maps;

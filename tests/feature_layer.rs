@@ -6,11 +6,12 @@
 //! （`samples/测试底图.mxd` /Maps 首个 FeatureLayer：键 32，体 `0x2aa` 起），
 //! 不依赖样本文件本身；样本对位是辅助观察。
 
+use mxd2qgz::dataset_name::{FEATURE_DATASET_NAME_CLASS_ID, TOPOLOGY_NAME_CLASS_ID};
 use mxd2qgz::feature_layer::{
-    DataSource10_1, FEATURE_CLASS_NAME_CLASS_ID, FEATURE_LAYER_CLASS_ID,
-    FeatureClassNameNested10_1, FeatureClassNameStop10_1, FeatureLayerStop10_1, Visibility10_1,
-    WORKSPACE_NAME_CLASS_ID, WorkspaceNameEntry10_1, WorkspaceNameStop10_1,
-    read_feature_class_name_body_10_1, read_feature_layer_prefix_10_1,
+    DataSource10_1, DatasetNameEntry10_1, FEATURE_CLASS_NAME_CLASS_ID, FEATURE_LAYER_CLASS_ID,
+    FeatureClassNameNested10_1, FeatureClassNameStop10_1, FeatureLayerStop10_1, RendererSlot10_1,
+    TopologyNameEntry10_1, Visibility10_1, WORKSPACE_NAME_CLASS_ID, WorkspaceNameEntry10_1,
+    WorkspaceNameStop10_1, read_feature_class_name_body_10_1, read_feature_layer_prefix_10_1,
     read_workspace_name_body_10_1,
 };
 use mxd2qgz::object_refs::{ObjectEntry10_1, RefTable10_1};
@@ -111,21 +112,38 @@ fn layer_prefix_bytes(
     bytes
 }
 
+/// 最小合法 SimpleRenderer 体（版本 1）：三个槽位空标记 + short + 双空串 +
+/// int32。版本 1 ≤2 无 RotationRenderer/SizeRenderer 尾段。
+fn simple_renderer_body_v1() -> Vec<u8> {
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend([0_u8; 16]); // ISymbol 槽：空标记
+    bytes.extend([0_u8; 16]); // ILegendGroup 槽：空标记
+    bytes.extend([0_u8; 16]); // ILegendItem 槽：空标记
+    bytes.extend(0_i16.to_le_bytes());
+    bytes.extend(encoded(""));
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(encoded(""));
+    bytes
+}
+
 /// 样本镜像的完整已确认链：FCN（新对象，头 + 体）→ 渲染器槽位（SimpleRenderer
-/// 新对象头 + 键）→ 未知尾部。前缀终点 = 渲染器对象头之后。
+/// 新对象头 + 版本 1 最小体）→ +0x144 GUID → 未知尾部。
 fn sample_prefix_bytes(tail: &[u8]) -> Vec<u8> {
     let mut data_source = entry_bytes(&FEATURE_CLASS_NAME_CLASS_ID, SAMPLE_FCN_KEY);
     data_source.extend(feature_class_name_body());
     let mut renderer = entry_bytes(&SIMPLE_RENDERER_CLASS_ID, 35);
-    renderer.extend_from_slice(tail);
-    layer_prefix_bytes(
+    renderer.extend(simple_renderer_body_v1());
+    renderer.extend([0_u8; 16]); // +0x144 原样 GUID（样本形态：16 零）
+    let mut bytes = layer_prefix_bytes(
         SAMPLE_VERSION,
         SAMPLE_NAME,
         SAMPLE_SECONDARY_NAME,
         [0xFFFF, 0x0000, 0x0000],
         &data_source,
         &renderer,
-    )
+    );
+    bytes.extend_from_slice(tail);
+    bytes
 }
 
 /// 空数据源 + 空渲染器 + GUID 的最短完整链（停止点 AfterDataSourceGuid 恰在
@@ -224,22 +242,24 @@ fn reads_sample_chain_with_workspace_and_stops_at_renderer() {
     );
     assert_eq!(ws.trailing_int32, Some(0));
     assert_eq!(ws.stop, None);
-    // 停止点：渲染器槽位的 SimpleRenderer 新对象（体未知，游标在其头之后）。
-    assert_eq!(
-        parsed.stop,
-        FeatureLayerStop10_1::RendererNewObject {
-            class_id: SIMPLE_RENDERER_CLASS_ID,
-            key: 35
-        }
-    );
-    assert_eq!(parsed.guid_after_renderer, None);
-    // 停止点 = 渲染器对象头起点（其键保留登记，体未消费）。
-    assert_eq!(reader.position(), bytes.len() - 4 - 20);
-    assert_eq!(parsed.remaining_bytes, 24);
-    // 成功提交：FCN 与 WS 的键已登记；渲染器新对象按回退语义不保留登记。
+    // 渲染器槽位：SimpleRenderer 新对象按 feature_layer_tail 分派读取其闭合
+    // 体（版本 1 最小体），随后 +0x144 GUID 读取后到达开放区停止。
+    let Some(RendererSlot10_1::SimpleRenderer(simple_renderer)) = &parsed.renderer else {
+        panic!("渲染器槽位应解析 SimpleRenderer 体：{:?}", parsed.renderer);
+    };
+    assert_eq!(simple_renderer.key, 35);
+    assert_eq!(simple_renderer.version, 1);
+    assert_eq!(simple_renderer.stop, None);
+    assert_eq!(parsed.guid_after_renderer, Some([0_u8; 16]));
+    assert_eq!(parsed.stop, FeatureLayerStop10_1::AfterDataSourceGuid);
+    // 停止点 = 渲染器体 + GUID 之后（尾部 4 字节保留）。
+    assert_eq!(reader.position(), bytes.len() - 4);
+    assert_eq!(parsed.remaining_bytes, 4);
+    // 成功提交：FCN、WS 与 SimpleRenderer 的键均登记。
     assert!(table.contains(SAMPLE_FCN_KEY));
     assert!(table.contains(SAMPLE_WS_KEY));
-    assert_eq!(table.len(), 2);
+    assert!(table.contains(35));
+    assert_eq!(table.len(), 3);
 }
 
 #[test]
@@ -249,7 +269,7 @@ fn reads_guid_after_null_renderer_and_stops() {
     let mut reader = Reader::new(&bytes);
     let parsed =
         read_feature_layer_prefix_10_1(&mut reader, 1024, &mut RefTable10_1::new()).unwrap();
-    assert_eq!(parsed.renderer, Some(ObjectEntry10_1::Null));
+    assert_eq!(parsed.renderer, Some(RendererSlot10_1::Null));
     assert_eq!(parsed.guid_after_renderer, Some([0x6A; 16]));
     assert_eq!(parsed.stop, FeatureLayerStop10_1::AfterDataSourceGuid);
     assert_eq!(parsed.remaining_bytes, 4);
@@ -330,7 +350,7 @@ fn dataset_name_selector_branch_stops_at_new_object() {
     };
     assert_eq!(
         *entry,
-        ObjectEntry10_1::NewObject {
+        DatasetNameEntry10_1::Unsupported {
             class_id: [0xC7; 16],
             key: 88
         }
@@ -373,6 +393,79 @@ fn topology_selector_branch_stops_at_new_object() {
         })
     );
     assert_eq!(reader.position(), bytes.len() - b"opaque".len() - 20);
+}
+
+#[test]
+fn dataset_name_selector_reads_feature_dataset_name_body() {
+    // 选择子 !=0 分支：IDatasetName 槽的 FeatureDatasetName 新对象读取其闭合
+    // 体（dataset_name 模块：版本 1 + 四字符串 + 标志 + WorkspaceName 体）；
+    // 体完整消费后 FCN 的版本 >1 选择子照常读取。
+    let mut fdn = 1_u16.to_le_bytes().to_vec();
+    fdn.extend(encoded("数据集"));
+    fdn.extend(encoded(""));
+    fdn.extend(encoded("FD"));
+    fdn.extend(encoded("DS"));
+    fdn.push(1); // 标志
+    fdn.extend(entry_bytes(&WORKSPACE_NAME_CLASS_ID, 60));
+    fdn.extend(workspace_name_body());
+    let mut body = 2_u16.to_le_bytes().to_vec();
+    body.extend(encoded("类"));
+    body.extend(encoded(""));
+    body.extend(encoded("T"));
+    body.extend(encoded("D"));
+    body.extend(0_i32.to_le_bytes());
+    body.extend(0_i32.to_le_bytes());
+    body.extend(1_u16.to_le_bytes()); // 选择子 1 → IDatasetName 槽
+    body.extend(entry_bytes(&FEATURE_DATASET_NAME_CLASS_ID, 59));
+    body.extend(&fdn);
+    body.extend(0_u16.to_le_bytes()); // 版本 >1 选择子 0
+    let mut reader = Reader::new(&body);
+    let parsed =
+        read_feature_class_name_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 58).unwrap();
+    let FeatureClassNameNested10_1::DatasetName(DatasetNameEntry10_1::NewObject(fdn_parsed)) =
+        &parsed.nested
+    else {
+        panic!("选择子 1 应解析 FeatureDatasetName 体：{:?}", parsed.nested);
+    };
+    assert_eq!(fdn_parsed.key, 59);
+    assert_eq!(fdn_parsed.version, 1);
+    assert_eq!(fdn_parsed.string_a, "数据集");
+    assert_eq!(fdn_parsed.flag, 1);
+    assert!(fdn_parsed.stop.is_none(), "样本形态的 FDN 体应完整消费");
+    assert_eq!(parsed.version1_selector, Some(0));
+    assert_eq!(parsed.topology_slot, None);
+    assert_eq!(parsed.stop, None);
+    assert_eq!(reader.remaining(), 0);
+}
+
+#[test]
+fn topology_selector_reads_topology_name_body() {
+    // 版本 >1 且第二选择子非 0：ITopologyName 槽的 TopologyName 新对象读取
+    // 其闭合体（版本 1 + 两字符串 + IDatasetName 槽空标记）。
+    let mut tn = 1_u16.to_le_bytes().to_vec();
+    tn.extend(encoded("拓扑"));
+    tn.extend(encoded(""));
+    tn.extend([0_u8; 16]); // IDatasetName 槽：空标记
+    let mut body = feature_class_name_body();
+    body.truncate(body.len() - 2);
+    body.extend(5_u16.to_le_bytes()); // 第二选择子 5
+    body.extend(entry_bytes(&TOPOLOGY_NAME_CLASS_ID, 99));
+    body.extend(&tn);
+    let mut reader = Reader::new(&body);
+    let parsed =
+        read_feature_class_name_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 58).unwrap();
+    let Some(TopologyNameEntry10_1::NewObject(tn_parsed)) = &parsed.topology_slot else {
+        panic!(
+            "第二选择子应解析 TopologyName 体：{:?}",
+            parsed.topology_slot
+        );
+    };
+    assert_eq!(tn_parsed.key, 99);
+    assert_eq!(tn_parsed.version, 1);
+    assert_eq!(tn_parsed.string_a, "拓扑");
+    assert!(tn_parsed.stop.is_none());
+    assert_eq!(parsed.stop, None);
+    assert_eq!(reader.remaining(), 0);
 }
 
 #[test]
@@ -532,9 +625,9 @@ fn reads_new_feature_class_name_and_commits_registration() {
     ));
     assert!(table.contains(SAMPLE_FCN_KEY));
     assert!(table.contains(SAMPLE_WS_KEY));
-    // 停止点 = 渲染器对象头起点（SimpleRenderer 新对象，体未消费）。
-    assert_eq!(first_reader.position(), bytes.len() - 20);
-    assert_eq!(first.remaining_bytes, 20);
+    // 停止点 = SimpleRenderer 体 + GUID 之后（tail 为空，完整消费）。
+    assert_eq!(first_reader.position(), bytes.len());
+    assert_eq!(first.remaining_bytes, 0);
 
     // 第二读换用回引形态的独立字节流：回引头之后接渲染器空标记与 GUID
     //（真实流中回引后不会重复出现被引对象的体，直接复用首读字节会把体首
@@ -564,7 +657,11 @@ fn reads_new_feature_class_name_and_commits_registration() {
         "回引数据源不阻塞后续槽位"
     );
     assert_eq!(second_reader.position(), second_bytes.len());
-    assert_eq!(table.len(), 2, "回引不重复登记");
+    assert_eq!(
+        table.len(),
+        3,
+        "回引不重复登记（首读已登记 FCN/WS/SimpleRenderer 三键）"
+    );
 }
 
 #[test]
@@ -641,14 +738,14 @@ fn rejects_every_truncated_prefix_without_advancing() {
     // 染器对象头。任何截断都必须失败、不推进游标、不修改登记表，且重读得
     // 到相同错误类别。
     let full = sample_prefix_bytes(b"");
-    // 前缀终点 = 渲染器对象头起点（其前的全部字段为已确认区）。
-    let prefix_length = full.len() - 20;
+    // 前缀终点 = 输入末尾（SimpleRenderer 体与 GUID 均为已确认区）。
+    let prefix_length = full.len();
     assert!(prefix_length > 180, "完整输入应覆盖所有字段区域");
     // 边界情形：恰好在前缀末尾截断是合法完整输入（停止点即输入末尾）。
     let mut boundary = Reader::new(&full);
     let mut table = RefTable10_1::new();
     let parsed = read_feature_layer_prefix_10_1(&mut boundary, 1024, &mut table).unwrap();
-    assert_eq!(parsed.remaining_bytes, 20);
+    assert_eq!(parsed.remaining_bytes, 0);
     assert_eq!(boundary.position(), prefix_length);
     assert!(table.contains(SAMPLE_FCN_KEY));
     for end in 0..full.len() {
@@ -782,8 +879,8 @@ fn reads_feature_layer_header_then_prefix_in_full_chain() {
         parsed.data_source,
         DataSource10_1::FeatureClassName(_)
     ));
-    // 停止点 = 渲染器对象头起点：其后 20 字节头与 4 字节尾部均未消费。
-    assert_eq!(parsed.remaining_bytes, 24);
-    assert_eq!(reader.position(), bytes.len() - 24);
-    assert_eq!(reader.read_bytes(24).unwrap()[20..], b"tail"[..]);
+    // 停止点 = SimpleRenderer 体 + GUID 之后：其后 4 字节尾部未消费。
+    assert_eq!(parsed.remaining_bytes, 4);
+    assert_eq!(reader.position(), bytes.len() - 4);
+    assert_eq!(reader.read_bytes(4).unwrap(), b"tail");
 }

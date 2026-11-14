@@ -22,11 +22,6 @@ const SHORTS: [u16; 3] = [0x1234, 0x0001, 0x8000];
 const DOUBLES: [f64; 2] = [1.5, -0.25];
 /// 预置进登记表的既有键：命中即回引。
 const SEEN_KEY: u32 = 7;
-/// SimpleRenderer 类标识 {F3435801-5779-11D0-98BF-00805F7CED21}（esri.clsid
-/// 声明；样本 /Maps:0x3ed 渲染器槽位对象头，第六轮对位）。
-const SIMPLE_RENDERER_CLASS_ID: [u8; 16] = [
-    0x01, 0x58, 0x43, 0xf3, 0x79, 0x57, 0xd0, 0x11, 0x98, 0xbf, 0x00, 0x80, 0x5f, 0x7c, 0xed, 0x21,
-];
 
 /// AfCore String::Write 布局：u32 字节长度前缀 + 含终止零的 UTF-16LE。
 fn encoded(text: &str) -> Vec<u8> {
@@ -719,7 +714,13 @@ fn plain_child_feature_layer_prefix_stops_the_loop_inside_body() {
     body.extend(0_u16.to_le_bytes());
     body.extend(0_u16.to_le_bytes());
     body.extend([0_u8; 16]); // 数据源：空标记
-    body.extend(SIMPLE_RENDERER_CLASS_ID.to_vec()); // 渲染器新对象（未知类）
+    // 渲染器槽：非 SimpleRenderer 的合成类标识（其他渲染器类体未闭合，
+    // FeatureLayer 前缀读取器在其对象头处停止）。
+    let unknown_renderer_class = [
+        0x3c, 0x92, 0xf1, 0x48, 0x20, 0xb6, 0x4c, 0xb9, 0x9e, 0x05, 0x31, 0xd8, 0x7a, 0x2e, 0xc4,
+        0x66,
+    ];
+    body.extend_from_slice(&unknown_renderer_class);
     body.extend(35_u32.to_le_bytes());
     body.extend(b"opaque"); // 渲染器未知体之后的未知区
     let header = entry_bytes(FEATURE_LAYER_CLASS_ID, 31);
@@ -749,7 +750,7 @@ fn plain_child_feature_layer_prefix_stops_the_loop_inside_body() {
     assert_eq!(
         fl.stop,
         FeatureLayerStop10_1::RendererNewObject {
-            class_id: SIMPLE_RENDERER_CLASS_ID,
+            class_id: unknown_renderer_class,
             key: 35
         }
     );

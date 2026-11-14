@@ -76,6 +76,10 @@
 //! （颜色/符号槽位按请求 IID 类型库考证，业务含义候选）未在非样本版本实
 //! 证；全部结论未运行 ArcMap 验证。
 
+use crate::element_collection::{
+    ELEMENT_COLLECTION_CLASS_ID, ElementCollection10_1, ElementCollectionStop10_1,
+    read_element_collection_10_1,
+};
 use crate::feature_layer::{
     FEATURE_LAYER_CLASS_ID, FeatureLayerPrefix10_1, FeatureLayerStop10_1,
     read_feature_layer_prefix_10_1,
@@ -112,9 +116,22 @@ pub enum AssociatedLayer10_1 {
     FeatureLayer(Box<FeatureLayerPrefix10_1>),
 }
 
-/// Load 第 5 步 IElementCollection2 槽位的分类结果（新对象一律为停止点：
-/// ElementCollection 体布局未闭合）。
-pub type ElementCollectionSlot10_1 = ObjectEntry10_1;
+/// Load 第 5 步 IElementCollection2 槽位的分类结果。
+#[derive(Debug, Clone, PartialEq)]
+pub enum ElementCollectionSlot10_1 {
+    /// 16 字节全零类标识：空引用，无键、无对象体。
+    Null,
+    /// 键已见：回引条目，无对象体。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 ElementCollection 对象（类标识经 [`ELEMENT_COLLECTION_CLASS_ID`]
+    /// 校验）：已读取其闭合体（element_collection 模块）；元素循环在新对象
+    /// 元素处停止时经 [`FdoGraphicsLayerStop10_1::ElementCollectionStopped`]
+    /// 携带原因，游标停在其停止点。
+    ElementCollection(Box<ElementCollection10_1>),
+    /// 新对象但类标识不是 ElementCollection（体未知且无外部长度）：停止点，
+    /// 游标回退到该对象头起点、该键不登记。
+    Unsupported { class_id: [u8; 16], key: u32 },
+}
 
 /// 已确认前缀的停止原因；本读取器对任何成功输入都返回停止原因（见模块文
 /// 档「本读取器的可达范围」）。
@@ -136,9 +153,13 @@ pub enum FdoGraphicsLayerStop10_1 {
     /// 关联图层前缀读取失败（版本超限、数据源类不支持、截断等）：游标与登
     /// 记表回退到该对象头起点，条目保留未知。
     AssociatedLayerFailed { reason: String },
-    /// IElementCollection2 槽新对象（含 ElementCollection 类：体布局仅样本
-    /// 观察，未闭合）：游标回退到该对象头起点。
+    /// IElementCollection2 槽新对象类标识不是 ElementCollection：游标回退到
+    /// 该对象头起点。
     ElementCollectionNewObject { class_id: [u8; 16], key: u32 },
+    /// IElementCollection2 槽的 ElementCollection 体在元素循环的新对象元素
+    /// 处停止（原因透传，见 [`ElementCollectionStop10_1`]）：游标停在其停
+    /// 止点，其后步骤不可达。
+    ElementCollectionStopped(ElementCollectionStop10_1),
     /// 委派子对象体（this+0xbc，无对象头）按 FeatureLayer 字段序解析成功：
     /// 委派体剩余无外部长度，本读取器停止在其前缀停止点。
     DelegatedLayerBodyStopped { layer_stop: FeatureLayerStop10_1 },
@@ -169,9 +190,14 @@ impl FdoGraphicsLayerStop10_1 {
                 format!("关联要素图层前缀解析失败（{reason}），体保留未知")
             }
             Self::ElementCollectionNewObject { class_id, key } => format!(
-                "IElementCollection2 槽新对象（键 {key}，类标识 {}）：ElementCollection\
-                 体布局未闭合，游标回退到该对象头起点",
+                "IElementCollection2 槽新对象（键 {key}，类标识 {}）不是 \
+                 ElementCollection：体未知且无外部长度，游标回退到该对象头起点",
                 crate::layer_list::class_id_hex(class_id)
+            ),
+            Self::ElementCollectionStopped(stop) => format!(
+                "IElementCollection2 槽的 ElementCollection 体在其元素循环停止点\
+                 停止：{}",
+                stop.describe()
             ),
             Self::DelegatedLayerBodyStopped { .. } => {
                 "委派子对象体（this+0xbc，无对象头）在其 FeatureLayer 前缀停止点\
@@ -321,19 +347,41 @@ pub fn read_fdo_graphics_layer_prefix_10_1(
         }
     };
 
-    // 5. IElementCollection2 槽位（仅当关联图层槽无新对象体时到达）。
+    // 5. IElementCollection2 槽位（仅当关联图层槽无新对象体时到达）。新
+    //    ElementCollection 对象读取其闭合体（element_collection 模块）；其他
+    //    类停止并回退到槽位起点。
     let mut element_collection = None;
     if stop.is_none() {
         let slot_offset = trial.position();
         let saved_table = trial_table.clone();
         let entry = read_object_entry_10_1(&mut trial, &mut trial_table)?;
-        element_collection = Some(entry);
-        if let ObjectEntry10_1::NewObject { class_id, key } = entry {
-            // ElementCollection 体布局未闭合（Layer.dll 未反编译）：任何新对
-            // 象（含 ElementCollection 类）都按未知体停止，回退到对象头起点。
-            trial_table = saved_table;
-            trial = reposition(&origin, entry_offset, slot_offset);
-            stop = Some(FdoGraphicsLayerStop10_1::ElementCollectionNewObject { class_id, key });
+        let mut slot_stop = None;
+        let slot = match entry {
+            ObjectEntry10_1::Null => ElementCollectionSlot10_1::Null,
+            ObjectEntry10_1::BackReference { class_id, key } => {
+                ElementCollectionSlot10_1::BackReference { class_id, key }
+            }
+            ObjectEntry10_1::NewObject { class_id, key: _ }
+                if class_id == ELEMENT_COLLECTION_CLASS_ID =>
+            {
+                let body = read_element_collection_10_1(&mut trial, max_bytes, &mut trial_table)?;
+                slot_stop = body
+                    .stop
+                    .clone()
+                    .map(FdoGraphicsLayerStop10_1::ElementCollectionStopped);
+                ElementCollectionSlot10_1::ElementCollection(Box::new(body))
+            }
+            ObjectEntry10_1::NewObject { class_id, key } => {
+                trial_table = saved_table;
+                trial = reposition(&origin, entry_offset, slot_offset);
+                slot_stop =
+                    Some(FdoGraphicsLayerStop10_1::ElementCollectionNewObject { class_id, key });
+                ElementCollectionSlot10_1::Unsupported { class_id, key }
+            }
+        };
+        element_collection = Some(slot);
+        if let Some(reason) = slot_stop {
+            stop = Some(reason);
         }
     }
 
