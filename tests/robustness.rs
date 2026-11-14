@@ -108,9 +108,18 @@ enum ReaderKind {
     AoiBookmark10_1,
     FeatureBookmark10_1,
     LegendPrefix10_1,
+    CoreColorBody10_1,
+    CmykColorBody10_1,
+    ColorSlot10_1,
+    SimpleLineSymbolBody10_1,
+    SimpleFillSymbolBody10_1,
+    MarkerLineSymbolBody10_1,
+    CartographicLineSymbolBody10_1,
+    HashLineSymbolBody10_1,
+    DisplaySymbolSlot10_1,
 }
 
-fn all_kinds() -> [ReaderKind; 28] {
+fn all_kinds() -> [ReaderKind; 37] {
     [
         ReaderKind::NativeString10_1,
         ReaderKind::NativeString10_8,
@@ -140,6 +149,15 @@ fn all_kinds() -> [ReaderKind; 28] {
         ReaderKind::AoiBookmark10_1,
         ReaderKind::FeatureBookmark10_1,
         ReaderKind::LegendPrefix10_1,
+        ReaderKind::CoreColorBody10_1,
+        ReaderKind::CmykColorBody10_1,
+        ReaderKind::ColorSlot10_1,
+        ReaderKind::SimpleLineSymbolBody10_1,
+        ReaderKind::SimpleFillSymbolBody10_1,
+        ReaderKind::MarkerLineSymbolBody10_1,
+        ReaderKind::CartographicLineSymbolBody10_1,
+        ReaderKind::HashLineSymbolBody10_1,
+        ReaderKind::DisplaySymbolSlot10_1,
     ]
 }
 
@@ -410,6 +428,140 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
             bytes.extend(0_i32.to_le_bytes()); // ILegendItem 计数 0
             bytes
         }
+        ReaderKind::CoreColorBody10_1 => {
+            // 共享 Color 核心（版本 1/1，flag==0）：short ×2 + byte +
+            // double ×3 + byte ×2。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.push(0);
+            for value in [1.0_f64, 2.0, 3.0] {
+                bytes.extend(value.to_le_bytes());
+            }
+            bytes.push(0);
+            bytes.push(0xFF);
+            bytes
+        }
+        ReaderKind::CmykColorBody10_1 => {
+            // CmykColor 版本 4（无串分支）：short + byte ×2 + int32 + byte ×2。
+            let mut bytes = 4_u16.to_le_bytes().to_vec();
+            bytes.push(0);
+            bytes.push(0);
+            bytes.extend(0x1234_5678_u32.to_le_bytes());
+            bytes.push(0x21);
+            bytes.push(0x43);
+            bytes
+        }
+        ReaderKind::ColorSlot10_1 => {
+            // 颜色槽位：RgbColor 新对象（头 + 版本 1 体，flag==0）。
+            let mut bytes = mxd2qgz::layers::feature_layer_tail::RGB_COLOR_CLASS_ID.to_vec();
+            bytes.extend(37_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.push(0);
+            for value in [1.0_f64, 2.0, 3.0] {
+                bytes.extend(value.to_le_bytes());
+            }
+            bytes.push(0);
+            bytes.push(0xFF);
+            bytes
+        }
+        ReaderKind::SimpleLineSymbolBody10_1 => {
+            // SimpleLineSymbol 版本 1：空颜色槽 + double + int32 ×3。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend([0_u8; 16]); // IColor：空标记
+            bytes.extend(2.0_f64.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes
+        }
+        ReaderKind::SimpleFillSymbolBody10_1 => {
+            // SimpleFillSymbol 版本 1：轮廓与填充色槽空标记 + int32 ×3。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend([0_u8; 16]); // ISymbol：空标记
+            bytes.extend([0_u8; 16]); // IColor：空标记
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes
+        }
+        ReaderKind::MarkerLineSymbolBody10_1 => {
+            // MarkerLineSymbol 版本 2：byte + double + 三槽空标记 + int32 ×2
+            // + byte + double + 尾段 int32 ×2 + double。
+            let mut bytes = 2_u16.to_le_bytes().to_vec();
+            bytes.push(0);
+            bytes.extend(1.0_f64.to_le_bytes());
+            for _ in 0..3 {
+                bytes.extend([0_u8; 16]); // IMarkerSymbol/ITemplate/ILineDecoration：空标记
+            }
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.push(0);
+            bytes.extend(0.0_f64.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0.0_f64.to_le_bytes());
+            bytes
+        }
+        ReaderKind::CartographicLineSymbolBody10_1 => {
+            // CartographicLineSymbol 版本 1：int32 ×2 + double + byte +
+            // double + 颜色槽与两候选槽空标记 + int32 ×2 + byte + double ×2。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(1.0_f64.to_le_bytes());
+            bytes.push(0);
+            bytes.extend(2.0_f64.to_le_bytes());
+            for _ in 0..3 {
+                bytes.extend([0_u8; 16]); // IColor/ITemplate/ILineDecoration：空标记
+            }
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.push(0);
+            bytes.extend(0.0_f64.to_le_bytes());
+            bytes.extend(0.0_f64.to_le_bytes());
+            bytes
+        }
+        ReaderKind::HashLineSymbolBody10_1 => {
+            // HashLineSymbol 版本 1：double + int32 ×2 + double + byte +
+            // double + 四槽空标记 + int32 ×2 + byte + double ×2。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(1.0_f64.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(2.0_f64.to_le_bytes());
+            bytes.push(0);
+            bytes.extend(3.0_f64.to_le_bytes());
+            for _ in 0..4 {
+                bytes.extend([0_u8; 16]); // ISymbol/IColor/ITemplate/ILineDecoration：空标记
+            }
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.push(0);
+            bytes.extend(0.0_f64.to_le_bytes());
+            bytes.extend(0.0_f64.to_le_bytes());
+            bytes
+        }
+        ReaderKind::DisplaySymbolSlot10_1 => {
+            // 符号槽位：SimpleMarkerSymbol 新对象（头 + 版本 1 最小体：双
+            // 颜色槽空标记 + 标量段）。
+            let mut bytes =
+                mxd2qgz::layers::feature_layer_tail::SIMPLE_MARKER_SYMBOL_CLASS_ID.to_vec();
+            bytes.extend(36_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend([0_u8; 16]); // 主色：空标记
+            bytes.extend(6.0_f64.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(13_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            for value in [0.0_f64; 3] {
+                bytes.extend(value.to_le_bytes());
+            }
+            bytes.push(1);
+            bytes.extend(1.0_f64.to_le_bytes());
+            bytes.extend([0_u8; 16]); // 轮廓色：空标记
+            bytes
+        }
         ReaderKind::VariantString10_8 => value_bytes(8, &bstr_payload_bytes("地图")),
         ReaderKind::VariantFixed10_8 => value_bytes(5, &[0; 8]),
     }
@@ -496,6 +648,82 @@ fn try_read(kind: ReaderKind, reader: &mut Reader<'_>) -> io::Result<()> {
         }
         ReaderKind::LegendPrefix10_1 => {
             read_legend_prefix_10_1(reader, 1024, &mut RefTable10_1::new()).map(|_| ())
+        }
+        ReaderKind::CoreColorBody10_1 => mxd2qgz::display_color::read_core_color_body_10_1(
+            reader,
+            &mut RefTable10_1::new(),
+            91,
+            "X",
+        )
+        .map(|_| ()),
+        ReaderKind::CmykColorBody10_1 => mxd2qgz::display_color::read_cmyk_color_body_10_1(
+            reader,
+            1024,
+            &mut RefTable10_1::new(),
+            92,
+        )
+        .map(|_| ()),
+        ReaderKind::ColorSlot10_1 => {
+            mxd2qgz::display_color::read_color_slot_10_1(reader, 1024, &mut RefTable10_1::new())
+                .map(|_| ())
+        }
+        ReaderKind::SimpleLineSymbolBody10_1 => {
+            mxd2qgz::display_symbol::read_simple_line_symbol_body_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+                21,
+            )
+            .map(|_| ())
+        }
+        ReaderKind::SimpleFillSymbolBody10_1 => {
+            mxd2qgz::display_symbol::read_simple_fill_symbol_body_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+                22,
+                mxd2qgz::display_symbol::MAX_SYMBOL_NESTING_DEPTH,
+            )
+            .map(|_| ())
+        }
+        ReaderKind::MarkerLineSymbolBody10_1 => {
+            mxd2qgz::display_symbol::read_marker_line_symbol_body_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+                23,
+                mxd2qgz::display_symbol::MAX_SYMBOL_NESTING_DEPTH,
+            )
+            .map(|_| ())
+        }
+        ReaderKind::CartographicLineSymbolBody10_1 => {
+            mxd2qgz::display_symbol::read_cartographic_line_symbol_body_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+                24,
+                mxd2qgz::display_symbol::MAX_SYMBOL_NESTING_DEPTH,
+            )
+            .map(|_| ())
+        }
+        ReaderKind::HashLineSymbolBody10_1 => {
+            mxd2qgz::display_symbol::read_hash_line_symbol_body_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+                25,
+                mxd2qgz::display_symbol::MAX_SYMBOL_NESTING_DEPTH,
+            )
+            .map(|_| ())
+        }
+        ReaderKind::DisplaySymbolSlot10_1 => {
+            mxd2qgz::display_symbol::read_display_symbol_slot_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+                mxd2qgz::display_symbol::MAX_SYMBOL_NESTING_DEPTH,
+            )
+            .map(|_| ())
         }
         ReaderKind::VariantString10_8 | ReaderKind::VariantFixed10_8 => {
             read_value_10_8(reader, u32::MAX).map(|_| ())

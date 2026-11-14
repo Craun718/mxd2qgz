@@ -1,5 +1,7 @@
 //! Format-independent representation of a map and its unresolved input data.
 
+pub mod display_color;
+pub mod display_symbol;
 pub mod layers;
 pub mod maps;
 pub mod model;
