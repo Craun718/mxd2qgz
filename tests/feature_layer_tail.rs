@@ -814,3 +814,566 @@ fn renderer_error_positions_are_body_relative() {
     );
     assert_eq!(error.kind(), ErrorKind::InvalidData);
 }
+
+// ---------------------------------------------------------------------------
+// 第八轮：FeatureLayer 后继字段段（FieldInfo/NumericFormat/后继段读取器）。
+// 字段序证据见 docs/arcmap-10.1-featurelayer-tail.md 第八轮（Layer.dll
+// FieldInfo::Load 0x7865b520、SystemCore.dll NumericFormat::Load 0x7ffce4b0、
+// FeatureLayer.dll FL::Load 0x6f6e9940 后继段）；样本 0x5b0..0xafe 逐字节
+// 吻合为辅助观察。全部为合成输入契约测试。
+// ---------------------------------------------------------------------------
+
+use mxd2qgz::layers::feature_layer_tail::{
+    FIELD_INFO_CLASS_ID, FieldInfoEntry10_1, FieldInfoStop10_1, HyperlinkSlot10_1,
+    NUMERIC_FORMAT_CLASS_ID, NumberFormatSlot10_1, SuccessorStop10_1,
+    read_feature_layer_successor_10_1, read_field_info_body_10_1, read_numeric_format_body_10_1,
+};
+
+/// NumericFormat 体（版本 1）：int32 ×4 + short ×3，无嵌套对象。
+fn numeric_format_body(int32s: [i32; 4]) -> Vec<u8> {
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    for value in int32s {
+        bytes.extend(value.to_le_bytes());
+    }
+    for value in [0_i16; 3] {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes
+}
+
+/// FieldInfo 体（版本 4）：short ×2（-0x16/-0x14）+ 别名串 + INumberFormat
+/// 槽（`number_format` 字节：空标记 / 回引头 / NumericFormat 新对象头+体）+
+/// 尾段 short/int32/short/short。
+fn field_info_body_v4(alias: &str, number_format: &[u8]) -> Vec<u8> {
+    let mut bytes = 4_u16.to_le_bytes().to_vec();
+    bytes.extend(0xFFFF_u16.to_le_bytes()); // -0x16（可见性候选）
+    bytes.extend(0_u16.to_le_bytes()); // -0x14（版本 >1）
+    bytes.extend(string_bytes(alias));
+    bytes.extend_from_slice(number_format);
+    bytes.extend((-1_i16).to_le_bytes()); // -0x18（版本 >2）
+    bytes.extend((-1_i32).to_le_bytes()); // -0x1c
+    bytes.extend(0_i16.to_le_bytes()); // -0x8（版本 >3）
+    bytes.extend(0_i16.to_le_bytes()); // -0x6
+    bytes
+}
+
+#[test]
+fn successor_class_id_constants_match_documented_clsids() {
+    // FieldInfo {A2BAAE2D-969B-11D2-AE77-080009EC732A}（esri.clsid 声明 +
+    // Layer.dll GetClassID 0x7865b4e0 立即数写出 + 样本 14 个对象头）与
+    // NumericFormat {7E4F4719-8E54-11D2-AAD8-000000000000}（esri.clsid 声明
+    // + SystemCore.dll GetClassID 0x7ffce470 立即数写出 + 样本嵌套对象头）。
+    assert_eq!(
+        FIELD_INFO_CLASS_ID,
+        [
+            0x2d, 0xae, 0xba, 0xa2, 0x9b, 0x96, 0xd2, 0x11, 0xae, 0x77, 0x08, 0x00, 0x09, 0xec,
+            0x73, 0x2a
+        ]
+    );
+    assert_eq!(
+        NUMERIC_FORMAT_CLASS_ID,
+        [
+            0x19, 0x47, 0x4f, 0x7e, 0x54, 0x8e, 0xd2, 0x11, 0xaa, 0xd8, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00
+        ]
+    );
+}
+
+#[test]
+fn numeric_format_reads_body_and_preserves_values() {
+    // 样本形态：OBJECTID 条目 int32 0/0/0/12，XZBZ 条目 0/6/0/12，short 全 0。
+    for int32s in [[0, 0, 0, 12], [0, 6, 0, 12]] {
+        let mut bytes = numeric_format_body(int32s);
+        bytes[0] = 1; // 版本位（numeric_format_body 已写 1，此处保持）
+        let mut reader = Reader::new(&bytes);
+        let body =
+            read_numeric_format_body_10_1(&mut reader, &mut RefTable10_1::new(), 42).unwrap();
+        assert_eq!(body.key, 42);
+        assert_eq!(body.version, 1);
+        assert_eq!(body.int32s, int32s);
+        assert_eq!(body.shorts, [0, 0, 0]);
+        assert_eq!(reader.remaining(), 0);
+    }
+}
+
+#[test]
+fn numeric_format_rejects_out_of_range_versions_without_advancing() {
+    for version in [2_u16, 0x8000, 0xFFFF] {
+        let mut bytes = version.to_le_bytes().to_vec();
+        bytes.extend([0_u8; 22]);
+        let mut reader = Reader::new(&bytes);
+        let position = reader.position();
+        let mut table = table_with_keys(&[9]);
+        assert!(
+            read_numeric_format_body_10_1(&mut reader, &mut table, 5).is_err(),
+            "版本 {version:#x} 应拒绝"
+        );
+        assert_eq!(reader.position(), position, "失败不得推进游标");
+        assert!(table.contains(9), "失败不得修改登记表");
+    }
+}
+
+#[test]
+fn field_info_reads_version_4_body_with_numeric_format_nested() {
+    // 样本 OBJECTID 条目形态：别名与条目名同文、NumericFormat 新对象（键 42）
+    // 嵌套、尾段 -1/-1/0/0；FieldInfo 与 NumericFormat 两键登记。
+    let mut nested = NUMERIC_FORMAT_CLASS_ID.to_vec();
+    nested.extend(42_u32.to_le_bytes());
+    nested.extend(numeric_format_body([0, 0, 0, 12]));
+    let bytes = field_info_body_v4("OBJECTID", &nested);
+    let mut reader = Reader::new(&bytes);
+    // 体读取器的键登记发生在调用者的条目分类（read_object_entry_10_1）：
+    // 预先登记键 41 模拟该会话状态。
+    let mut table = table_with_keys(&[41]);
+    let body = read_field_info_body_10_1(&mut reader, 1024, &mut table, 41).unwrap();
+    assert_eq!(body.key, 41);
+    assert_eq!(body.version, 4);
+    assert_eq!(body.short_16, -1);
+    assert_eq!(body.short_14, Some(0));
+    assert_eq!(body.alias, "OBJECTID");
+    let NumberFormatSlot10_1::NumericFormat(nf) = &body.number_format else {
+        panic!("嵌套应为 NumericFormat：{:?}", body.number_format);
+    };
+    assert_eq!(nf.key, 42);
+    assert_eq!(nf.int32s, [0, 0, 0, 12]);
+    assert_eq!(body.short_18, Some(-1));
+    assert_eq!(body.int32_1c, Some(-1));
+    assert_eq!(body.tail_shorts, Some([0, 0]));
+    assert_eq!(body.stop, None);
+    assert_eq!(reader.remaining(), 0);
+    assert!(table.contains(41));
+    assert!(table.contains(42));
+    assert_eq!(table.len(), 2);
+}
+
+#[test]
+fn field_info_reads_null_number_format_and_version_branches() {
+    // 版本 3：-0x14 读取、别名、空标记槽、-0x18/-0x1c 读取、-0x8/-0x6 缺席
+    //（`3 < ver` 为假）；版本 1：-0x14 缺席、尾段全部缺席。
+    let mut v3 = 3_u16.to_le_bytes().to_vec();
+    v3.extend(0_u16.to_le_bytes()); // -0x16
+    v3.extend(7_u16.to_le_bytes()); // -0x14（版本 >1）
+    v3.extend(string_bytes("别名"));
+    push_null_marker(&mut v3); // INumberFormat：空标记
+    v3.extend(2_i16.to_le_bytes()); // -0x18
+    v3.extend(3_i32.to_le_bytes()); // -0x1c
+    let mut reader = Reader::new(&v3);
+    let body = read_field_info_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 9).unwrap();
+    assert_eq!(body.version, 3);
+    assert_eq!(body.short_14, Some(7));
+    assert_eq!(body.number_format, NumberFormatSlot10_1::Null);
+    assert_eq!((body.short_18, body.int32_1c), (Some(2), Some(3)));
+    assert_eq!(body.tail_shorts, None, "版本 3 无 -0x8/-0x6 段");
+    assert_eq!(body.stop, None);
+    assert_eq!(reader.remaining(), 0);
+
+    let mut v1 = 1_u16.to_le_bytes().to_vec();
+    v1.extend(0xFFFF_u16.to_le_bytes()); // -0x16
+    v1.extend(string_bytes(""));
+    push_null_marker(&mut v1);
+    let mut reader = Reader::new(&v1);
+    let body = read_field_info_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 10).unwrap();
+    assert_eq!(body.short_14, None, "版本 1 无 -0x14 段");
+    assert_eq!(body.tail_shorts, None);
+    assert_eq!(reader.remaining(), 0);
+}
+
+#[test]
+fn field_info_rejects_out_of_range_versions_without_advancing() {
+    // 原生 `4 < (short)ver` 拒绝；负值位模式一并拒绝（较原生更严）。
+    for version in [5_u16, 0x8000, 0xFFFF] {
+        let mut bytes = version.to_le_bytes().to_vec();
+        bytes.extend([0_u8; 8]);
+        let mut reader = Reader::new(&bytes);
+        let position = reader.position();
+        let mut table = table_with_keys(&[9]);
+        assert!(
+            read_field_info_body_10_1(&mut reader, 1024, &mut table, 5).is_err(),
+            "版本 {version:#x} 应拒绝"
+        );
+        assert_eq!(reader.position(), position, "失败不得推进游标");
+        assert!(table.contains(9), "失败不得修改登记表");
+    }
+}
+
+#[test]
+fn field_info_truncation_scan_keeps_cursor_and_table() {
+    let mut nested = NUMERIC_FORMAT_CLASS_ID.to_vec();
+    nested.extend(42_u32.to_le_bytes());
+    nested.extend(numeric_format_body([0, 0, 0, 12]));
+    let bytes = field_info_body_v4("BSM", &nested);
+    for cut in 0..bytes.len() {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let position = reader.position();
+        let mut table = table_with_keys(&[7]);
+        assert!(
+            read_field_info_body_10_1(&mut reader, 1024, &mut table, 8).is_err(),
+            "截断 {cut} 应失败"
+        );
+        assert_eq!(reader.position(), position, "截断 {cut} 不得推进游标");
+        assert!(
+            table.contains(7) && table.len() == 1,
+            "截断 {cut} 不得修改登记表"
+        );
+    }
+    // 完整输入成功且完整消费。
+    let mut reader = Reader::new(&bytes);
+    assert!(read_field_info_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 8).is_ok());
+    assert_eq!(reader.remaining(), 0);
+}
+
+#[test]
+fn field_info_stops_at_unknown_number_format_class() {
+    // 嵌套槽新对象类标识非 NumericFormat（PercentageFormat 等同族未闭合）：
+    // 游标回退到槽位起点，键不保留，版本尾段不可达（槽位占位字节随剩余
+    // 保留——停止点之后无真实尾段，占位即未知对象体开头）。
+    let mut slot = RGB_COLOR_CLASS_ID.to_vec();
+    slot.extend(55_u32.to_le_bytes());
+    slot.extend([0_u8; 8]); // 未知体的占位
+    let bytes = field_info_body_v4("X", &slot);
+    // 槽位起点 = 版本 2 + -0x16 2 + -0x14 2 + 别名字符串。
+    let slot_offset = 2 + 2 + 2 + string_bytes("X").len();
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let body = read_field_info_body_10_1(&mut reader, 1024, &mut table, 41).unwrap();
+    assert_eq!(
+        body.stop,
+        Some(FieldInfoStop10_1::NumberFormatUnsupported {
+            class_id: RGB_COLOR_CLASS_ID,
+            key: 55,
+        })
+    );
+    assert_eq!(body.number_format, NumberFormatSlot10_1::Null);
+    assert_eq!(body.short_18, None, "停止点后的尾段不可达");
+    assert_eq!(reader.position(), slot_offset, "游标回退到槽位起点");
+    assert!(!table.contains(55), "停止回退不保留该键");
+}
+
+/// 后继段 +0x154..+0x188 前缀：标量段 + IHyperlink 计数 `hyperlink_count`
+/// 及其条目字节 `hyperlink_entries` + IColor 槽字节 `color_slot` + 字符串段。
+fn successor_prefix(hyperlink_count: i32, hyperlink_entries: &[u8], color_slot: &[u8]) -> Vec<u8> {
+    let mut bytes = string_bytes("BSM"); // +0x154
+    bytes.extend(0_f64.to_le_bytes()); // +0x158
+    bytes.extend(0_f64.to_le_bytes()); // +0x160
+    bytes.extend(0_i16.to_le_bytes()); // +0x168
+    bytes.extend(hyperlink_count.to_le_bytes());
+    bytes.extend_from_slice(hyperlink_entries);
+    bytes.extend_from_slice(color_slot);
+    bytes.extend(string_bytes("")); // +0x1a8
+    bytes.extend(string_bytes("")); // +0x184
+    bytes.extend(0_i32.to_le_bytes()); // +0x188
+    bytes
+}
+
+/// 最小完整后继段（两计数 0 形态），循环完整消费即停止。
+fn successor_minimal() -> Vec<u8> {
+    let mut bytes = successor_prefix(0, b"", &[0_u8; 16]);
+    bytes.extend(0_i32.to_le_bytes()); // FieldInfo 计数 0
+    bytes
+}
+
+#[test]
+fn successor_reads_minimal_segment_and_completes_field_info_loop() {
+    let bytes = successor_minimal();
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let result = read_feature_layer_successor_10_1(&mut reader, 34, 1024, &mut table).unwrap();
+    assert_eq!(result.string_154, "BSM");
+    assert_eq!((result.double_158, result.double_160), (0.0, 0.0));
+    assert_eq!(result.short_168, 0);
+    assert_eq!(result.hyperlink_count, 0);
+    assert!(result.hyperlinks.is_empty());
+    assert_eq!(result.color, ColorSlot10_1::Null);
+    assert_eq!(result.string_1a8, "");
+    assert_eq!(result.string_184, "");
+    assert_eq!(result.int32_188, 0);
+    assert_eq!(result.field_info_count, 0);
+    assert!(result.field_infos.is_empty());
+    assert_eq!(result.stop, SuccessorStop10_1::FieldInfoLoopCompleted);
+    assert_eq!(result.remaining_bytes, 0);
+    assert_eq!(reader.remaining(), 0);
+    assert!(table.is_empty(), "计数 0 无登记");
+}
+
+#[test]
+fn successor_reads_sample_shaped_field_info_loop() {
+    // 样本形态两条目：条目名 + FieldInfo 新对象（一条嵌 NumericFormat 新对
+    // 象，一条空标记）；名字与 FieldInfo/NumericFormat 键登记。
+    let mut nested = NUMERIC_FORMAT_CLASS_ID.to_vec();
+    nested.extend(42_u32.to_le_bytes());
+    nested.extend(numeric_format_body([0, 0, 0, 12]));
+    let mut bytes = successor_prefix(0, b"", &[0_u8; 16]);
+    bytes.extend(2_i32.to_le_bytes()); // FieldInfo 计数 2
+    bytes.extend(string_bytes("OBJECTID"));
+    push_entry_header(&mut bytes, &FIELD_INFO_CLASS_ID, 41);
+    bytes.extend(field_info_body_v4("OBJECTID", &nested));
+    bytes.extend(string_bytes("BSM"));
+    push_entry_header(&mut bytes, &FIELD_INFO_CLASS_ID, 43);
+    bytes.extend(field_info_body_v4("BSM", &[0_u8; 16])); // 空标记嵌套
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let result = read_feature_layer_successor_10_1(&mut reader, 34, 1024, &mut table).unwrap();
+    assert_eq!(result.field_info_count, 2);
+    assert_eq!(result.field_infos.len(), 2);
+    assert_eq!(result.field_infos[0].name.as_deref(), Some("OBJECTID"));
+    let FieldInfoEntry10_1::FieldInfo(first) = &result.field_infos[0].slot else {
+        panic!("条目 0 应为 FieldInfo：{:?}", result.field_infos[0].slot);
+    };
+    assert_eq!(first.key, 41);
+    assert!(matches!(
+        first.number_format,
+        NumberFormatSlot10_1::NumericFormat(_)
+    ));
+    assert_eq!(result.field_infos[1].name.as_deref(), Some("BSM"));
+    let FieldInfoEntry10_1::FieldInfo(second) = &result.field_infos[1].slot else {
+        panic!("条目 1 应为 FieldInfo：{:?}", result.field_infos[1].slot);
+    };
+    assert_eq!(second.number_format, NumberFormatSlot10_1::Null);
+    assert_eq!(result.stop, SuccessorStop10_1::FieldInfoLoopCompleted);
+    assert_eq!(result.remaining_bytes, 0);
+    assert_eq!(table.len(), 3, "FieldInfo ×2 + NumericFormat ×1 登记");
+    assert!(table.contains(41) && table.contains(42) && table.contains(43));
+}
+
+#[test]
+fn successor_skips_entry_names_at_architecture_version_five_and_below() {
+    // 架构版本 ≤5：条目名由原生从要素类模式接口推导，流内无名字段；读取器
+    // 跳过名字直接读条目头（汇编门 0x6f6e9c91）。
+    let mut bytes = successor_prefix(0, b"", &[0_u8; 16]);
+    bytes.extend(1_i32.to_le_bytes()); // FieldInfo 计数 1
+    push_entry_header(&mut bytes, &FIELD_INFO_CLASS_ID, 41);
+    bytes.extend(field_info_body_v4("别名", &[0_u8; 16]));
+    for version in [0_u16, 5] {
+        let mut probe = Reader::new(&bytes);
+        // 每次迭代用独立登记表（键登记会让第二次读分类为回引、跳过体）。
+        let mut table = RefTable10_1::new();
+        let result =
+            read_feature_layer_successor_10_1(&mut probe, version, 1024, &mut table).unwrap();
+        assert_eq!(result.field_infos.len(), 1, "version={version}");
+        assert_eq!(result.field_infos[0].name, None, "version={version}");
+        assert_eq!(result.stop, SuccessorStop10_1::FieldInfoLoopCompleted);
+        assert_eq!(probe.remaining(), 0, "version={version}");
+    }
+    // 版本 6 起名字在流内：同一字节流会把「别名」串误读为名字并把对象头错
+    // 位——用带名字的完整形态验证版本 6 读取名字。
+    let mut with_name = successor_prefix(0, b"", &[0_u8; 16]);
+    with_name.extend(1_i32.to_le_bytes()); // FieldInfo 计数 1
+    with_name.extend(string_bytes("名字"));
+    push_entry_header(&mut with_name, &FIELD_INFO_CLASS_ID, 41);
+    with_name.extend(field_info_body_v4("别名", &[0_u8; 16]));
+    let mut probe = Reader::new(&with_name);
+    let mut table6 = RefTable10_1::new();
+    let result = read_feature_layer_successor_10_1(&mut probe, 6, 1024, &mut table6).unwrap();
+    assert_eq!(result.field_infos[0].name.as_deref(), Some("名字"));
+    assert_eq!(probe.remaining(), 0);
+}
+
+#[test]
+fn successor_stops_at_hyperlink_new_object() {
+    // IHyperlink 循环新对象（Hyperlink 族体未闭合）：游标回退到条目头起点、
+    // 键不保留，其后 IColor 槽与字符串段不可达。
+    let mut entries = Vec::new();
+    push_entry_header(&mut entries, &RGB_COLOR_CLASS_ID, 61);
+    let mut bytes = successor_prefix(1, &entries, &[0_u8; 16]);
+    // 条目头起点 = 标量段（+0x154 串 + double ×2 + short）+ 计数 4。
+    let header_offset = string_bytes("BSM").len() + 8 + 8 + 2 + 4;
+    bytes.extend(string_bytes("不可达"));
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let result = read_feature_layer_successor_10_1(&mut reader, 34, 1024, &mut table).unwrap();
+    assert_eq!(
+        result.stop,
+        SuccessorStop10_1::HyperlinkNewObject {
+            class_id: RGB_COLOR_CLASS_ID,
+            key: 61,
+            index: 0,
+        }
+    );
+    assert_eq!(result.hyperlinks, Vec::<HyperlinkSlot10_1>::new());
+    assert_eq!(result.field_infos, Vec::new(), "停止点后循环不可达");
+    assert!(!table.contains(61), "停止回退不保留该键");
+    // 游标停在条目对象头起点（剩余 = 头 20 + 不可达尾部）。
+    assert_eq!(
+        result.remaining_bytes,
+        bytes.len() - header_offset,
+        "游标回退到条目头起点"
+    );
+}
+
+#[test]
+fn successor_stops_at_unsupported_color() {
+    // IColor 槽新对象非 RgbColor：游标回退到槽位起点，字符串段不可达。
+    let mut slot = Vec::new();
+    push_entry_header(&mut slot, &LEGEND_GROUP_CLASS_ID, 62);
+    let mut bytes = successor_prefix(0, b"", &slot);
+    // 槽位起点 = 标量段（+0x154 串 + double ×2 + short）+ IHyperlink 计数 4。
+    let slot_offset = string_bytes("BSM").len() + 8 + 8 + 2 + 4;
+    bytes.extend(string_bytes("不可达"));
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let result = read_feature_layer_successor_10_1(&mut reader, 34, 1024, &mut table).unwrap();
+    assert_eq!(
+        result.stop,
+        SuccessorStop10_1::ColorUnsupported {
+            class_id: LEGEND_GROUP_CLASS_ID,
+            key: 62,
+        }
+    );
+    assert!(matches!(result.color, ColorSlot10_1::Null), "未知颜色回退");
+    assert_eq!(result.field_infos, Vec::new(), "停止点后字符串段不可达");
+    assert_eq!(result.remaining_bytes, bytes.len() - slot_offset);
+    assert!(!table.contains(62));
+}
+
+#[test]
+fn successor_stops_at_unsupported_field_info_entry() {
+    // FieldInfo 循环条目新对象类标识非 FieldInfo：游标回退到条目头起点、
+    // 键不保留；已读条目名保留在该条目记录中。
+    let mut bytes = successor_prefix(0, b"", &[0_u8; 16]);
+    bytes.extend(1_i32.to_le_bytes()); // FieldInfo 计数 1
+    bytes.extend(string_bytes("名字"));
+    let header_offset = bytes.len();
+    push_entry_header(&mut bytes, &RGB_COLOR_CLASS_ID, 63);
+    bytes.extend(string_bytes("不可达"));
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let result = read_feature_layer_successor_10_1(&mut reader, 34, 1024, &mut table).unwrap();
+    assert_eq!(
+        result.stop,
+        SuccessorStop10_1::FieldInfoEntryUnsupported {
+            class_id: RGB_COLOR_CLASS_ID,
+            key: 63,
+            index: 0,
+        }
+    );
+    assert_eq!(result.field_infos.len(), 1);
+    assert_eq!(result.field_infos[0].name.as_deref(), Some("名字"));
+    assert!(matches!(
+        result.field_infos[0].slot,
+        FieldInfoEntry10_1::Null
+    ));
+    assert_eq!(result.remaining_bytes, bytes.len() - header_offset);
+    assert!(!table.contains(63));
+}
+
+#[test]
+fn successor_stops_inside_field_info_body_at_unknown_number_format() {
+    // FieldInfo 体内嵌套停止传播为 Successor(FieldInfoBody)，游标停在内层
+    // 槽位起点；FieldInfo 本体键保留（对象头已消费）。
+    let mut bytes = successor_prefix(0, b"", &[0_u8; 16]);
+    bytes.extend(1_i32.to_le_bytes()); // FieldInfo 计数 1
+    bytes.extend(string_bytes("OBJECTID"));
+    push_entry_header(&mut bytes, &FIELD_INFO_CLASS_ID, 41);
+    bytes.extend(4_u16.to_le_bytes());
+    bytes.extend(0xFFFF_u16.to_le_bytes());
+    bytes.extend(0_u16.to_le_bytes());
+    bytes.extend(string_bytes("OBJECTID"));
+    let slot_offset = bytes.len();
+    push_entry_header(&mut bytes, &RGB_COLOR_CLASS_ID, 64);
+    bytes.extend(string_bytes("不可达"));
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let result = read_feature_layer_successor_10_1(&mut reader, 34, 1024, &mut table).unwrap();
+    assert_eq!(
+        result.stop,
+        SuccessorStop10_1::FieldInfoBody(FieldInfoStop10_1::NumberFormatUnsupported {
+            class_id: RGB_COLOR_CLASS_ID,
+            key: 64,
+        })
+    );
+    let FieldInfoEntry10_1::FieldInfo(body) = &result.field_infos[0].slot else {
+        panic!("条目应为 FieldInfo");
+    };
+    assert_eq!(
+        body.stop,
+        Some(FieldInfoStop10_1::NumberFormatUnsupported {
+            class_id: RGB_COLOR_CLASS_ID,
+            key: 64,
+        })
+    );
+    assert_eq!(result.remaining_bytes, bytes.len() - slot_offset);
+    assert!(table.contains(41), "FieldInfo 键保留（对象头已消费）");
+    assert!(!table.contains(64), "嵌套未知键不保留");
+}
+
+#[test]
+fn successor_truncation_scan_keeps_cursor_and_table() {
+    // 样本形态整链逐字节截断：全部失败、不 panic、游标不动、登记表不变。
+    let mut nested = NUMERIC_FORMAT_CLASS_ID.to_vec();
+    nested.extend(42_u32.to_le_bytes());
+    nested.extend(numeric_format_body([0, 0, 0, 12]));
+    let mut bytes = successor_prefix(0, b"", &[0_u8; 16]);
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(string_bytes("OBJECTID"));
+    push_entry_header(&mut bytes, &FIELD_INFO_CLASS_ID, 41);
+    bytes.extend(field_info_body_v4("OBJECTID", &nested));
+    for cut in 0..bytes.len() {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let position = reader.position();
+        let mut table = table_with_keys(&[7]);
+        assert!(
+            read_feature_layer_successor_10_1(&mut reader, 34, 1024, &mut table).is_err(),
+            "截断 {cut} 应失败"
+        );
+        assert_eq!(reader.position(), position, "截断 {cut} 不得推进游标");
+        assert!(
+            table.contains(7) && table.len() == 1,
+            "截断 {cut} 不得修改登记表"
+        );
+    }
+}
+
+#[test]
+fn successor_negative_counts_skip_loops_and_are_preserved() {
+    // 负数计数原生不进循环（有符号比较），原样保留；随后字段照常读取。
+    let mut bytes = string_bytes("");
+    bytes.extend(0_f64.to_le_bytes());
+    bytes.extend(0_f64.to_le_bytes());
+    bytes.extend(0_i16.to_le_bytes());
+    bytes.extend((-3_i32).to_le_bytes()); // IHyperlink 计数 -3
+    push_null_marker(&mut bytes);
+    bytes.extend(string_bytes(""));
+    bytes.extend(string_bytes(""));
+    bytes.extend((-7_i32).to_le_bytes()); // +0x188
+    bytes.extend((-2_i32).to_le_bytes()); // FieldInfo 计数 -2
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let result = read_feature_layer_successor_10_1(&mut reader, 34, 1024, &mut table).unwrap();
+    assert_eq!(result.hyperlink_count, -3);
+    assert_eq!(result.int32_188, -7);
+    assert_eq!(result.field_info_count, -2);
+    assert_eq!(result.stop, SuccessorStop10_1::FieldInfoLoopCompleted);
+    assert_eq!(reader.remaining(), 0);
+}
+
+#[test]
+fn successor_back_references_pass_through_loops() {
+    // 预登记键后，IHyperlink 循环与 FieldInfo 循环的条目分类为回引（无体），
+    // 不新增登记。
+    let mut entries = Vec::new();
+    push_entry_header(&mut entries, &FIELD_INFO_CLASS_ID, 80); // 回引
+    let mut bytes = successor_prefix(1, &entries, &[0_u8; 16]);
+    bytes.extend(1_i32.to_le_bytes()); // FieldInfo 计数 1
+    bytes.extend(string_bytes("字段"));
+    push_entry_header(&mut bytes, &FIELD_INFO_CLASS_ID, 80); // 回引
+    let mut reader = Reader::new(&bytes);
+    let mut table = table_with_keys(&[80]);
+    let result = read_feature_layer_successor_10_1(&mut reader, 34, 1024, &mut table).unwrap();
+    assert_eq!(
+        result.hyperlinks,
+        vec![HyperlinkSlot10_1::BackReference {
+            class_id: FIELD_INFO_CLASS_ID,
+            key: 80,
+        }]
+    );
+    assert_eq!(result.field_infos.len(), 1);
+    assert_eq!(
+        result.field_infos[0].slot,
+        FieldInfoEntry10_1::BackReference {
+            class_id: FIELD_INFO_CLASS_ID,
+            key: 80,
+        }
+    );
+    assert_eq!(result.stop, SuccessorStop10_1::FieldInfoLoopCompleted);
+    assert_eq!(table.len(), 1, "回引不新增登记");
+}

@@ -294,6 +294,7 @@ fn parse_first_frame(
                 if let Some(note) = note {
                     diagnostics.push(format!("条目 {}：{note}", entry.index + 1));
                 }
+                feature_layer_successor_note(prefix, entry.index, diagnostics);
                 let source = feature_layer_source(prefix, entry.index, diagnostics);
                 Some(LayerNode::Layer(Layer {
                     name: prefix.name.clone(),
@@ -325,6 +326,7 @@ fn parse_first_frame(
                             prefix.short_field,
                             associated.stop
                         ));
+                        feature_layer_successor_note(associated, entry.index, diagnostics);
                         let source = feature_layer_source(associated, entry.index, diagnostics);
                         if let Some(delegated) = &prefix.delegated_layer {
                             diagnostics.push(format!(
@@ -641,6 +643,29 @@ fn variant_bool_to_model(raw: u16, what: &str) -> (bool, Option<String>) {
             )),
         ),
     }
+}
+
+/// 追加 FeatureLayer 后继字段段（+0x144 GUID 之后，第八轮闭合至 FieldInfo
+/// 计数循环）的消费诊断；仅记录停止点与 FieldInfo 条目数，不解释语义。
+fn feature_layer_successor_note(
+    prefix: &crate::layers::feature_layer::FeatureLayerPrefix10_1,
+    entry_index: usize,
+    diagnostics: &mut Vec<String>,
+) {
+    let Some(successor) = &prefix.successor else {
+        return;
+    };
+    diagnostics.push(format!(
+        "条目 {}：渲染器槽后的后继字段段已消费至 {:?} 停止（FieldInfo 循环声明 {} 条、\
+         已消费 {} 条；IHyperlink 循环声明 {} 条；+0x154 字符串 {:?} 不解释语义），\
+         其后字节保留未知",
+        entry_index + 1,
+        successor.stop,
+        successor.field_info_count,
+        successor.field_infos.len(),
+        successor.hyperlink_count,
+        successor.string_154,
+    ));
 }
 
 /// 由 FeatureLayer 前缀构造数据源模型项与诊断（FCN 名称 → connection，
@@ -1209,6 +1234,16 @@ mod tests {
         fl_body.extend(0_u16.to_le_bytes()); // 版本 >1 选择子 0
         fl_body.extend([0_u8; 16]); // 渲染器槽：空标记
         fl_body.extend([0x6A; 16]); // +0x144 GUID
+        fl_body.extend(encoded("")); // +0x154 空串（语义未定）
+        fl_body.extend(0_f64.to_le_bytes()); // +0x158
+        fl_body.extend(0_f64.to_le_bytes()); // +0x160
+        fl_body.extend(0_i16.to_le_bytes()); // +0x168
+        fl_body.extend(0_i32.to_le_bytes()); // IHyperlink 计数 0
+        fl_body.extend([0_u8; 16]); // IColor：空标记
+        fl_body.extend(encoded("")); // +0x1a8
+        fl_body.extend(encoded("")); // +0x184
+        fl_body.extend(0_i32.to_le_bytes()); // +0x188
+        fl_body.extend(0_i32.to_le_bytes()); // FieldInfo 计数 0
         fl_body.extend([0xaa, 0xaa]); // 体前缀之后的未解析剩余（A 界内）
 
         let mut suffix = 2_i32.to_le_bytes().to_vec(); // 图层列表计数

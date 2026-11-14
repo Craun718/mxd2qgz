@@ -32,9 +32,12 @@
 //!    SimpleMarkerSymbol/RgbColor/LegendGroup/LegendClass 嵌套链）；其他
 //!    渲染器类 → 体未闭合，读取对象头后停止；
 //! 7. 渲染器槽位为空标记/回引/完整消费的 SimpleRenderer 体时：原样 16 字节
-//!    GUID → obj+0x144（非对象头）。其后字段（String、double ×2、short、
-//!    `{3036D35D}` 计数循环等）在样本中存在与 RTM 3035 反编译不可调和的差
-//!    异（开放项，见模块文档「未解决问题」），一律保留为剩余字节。
+//!    GUID → obj+0x144（非对象头），随后进入后继字段段（第八轮闭合，见
+//!    feature_layer_tail 模块 [`SuccessorStop10_1`]）：String → obj+0x154、
+//!    double ×2 → obj+0x158/+0x160、short → obj+0x168、IHyperlink
+//!    `{3036D35D}` 计数循环、IColor `{20CD40B0}` 槽、String ×2 →
+//!    obj+0x1a8/+0x184、int32 → obj+0x188、FieldInfo `{A2BAAE2C}` 计数循
+//!    环，在循环后的 ALPC 等未闭合槽位处停止。
 //!
 //! ## FeatureClassName 体（GdbCore.dll `0x709b5080`，2026-11-14 第六轮闭合）
 //!
@@ -96,14 +99,14 @@
 //! 个 FeatureLayer——对象头 @`0x296` 类标识与本模块常量逐字节相同（键
 //! 32）；体 @`0x2aa` 起与上述字段序逐字段吻合，数据源链
 //! FCN(33)→WorkspaceName(34) 全部闭合到 `/Maps:0x3eb`，渲染器槽位
-//! SimpleRenderer(35) @`0x3ed` 为停止点。样本吻合为辅助观察。
+//! SimpleRenderer(35) @`0x3ed` 闭合到 `0x5b0`，后继字段段 `0x5b0..0xafe`
+//! 逐字节吻合（第八轮）。样本吻合为辅助观察。
 //!
 //! 未解决问题（详见证据文档「未解决事项」）：
-//! - FeatureLayer 的 +0x144 原样 16 字节 GUID 语义未定性；其后的字段在样
-//!   本 11 层中与 RTM 3035 反编译存在不可调和差异（TODO「FeatureLayer
-//!   Save 写侧新证据归因仍开放」：工作假设样本由某 10.1 服务包保存，
-//!   `/Version` 文本不区分 SP，未验证）——本读取器读到 +0x144 GUID 后停
-//!   止，其后字节全部保留，不得解释；
+//! - FeatureLayer 的 +0x144 原样 16 字节 GUID 语义未定性（样本恒 16 零，
+//!   非零形态未见过）；「样本与 RTM 3035 不可调和」的旧提法已由归因取证轮
+//!   撤销（系 WorkspaceName 体边界与渲染器槽位的双层误读），其后字段段已
+//!   闭合至 FieldInfo 计数循环；
 //! - FCN 体内 int32 ×2、WorkspaceName 体内 int32、各 String 的业务语义未
 //!   定性（类型描述/数据集名为按内容候选），原样保留；
 //! - IDatasetName / ITopologyName 槽的 FeatureDatasetName / TopologyName
@@ -117,8 +120,8 @@
 //!   表明回引头会重复被引对象的类标识，类标识原样保留、由调用者比对。
 
 use crate::layers::feature_layer_tail::{
-    SIMPLE_RENDERER_CLASS_ID, SimpleRendererPrefix10_1, SimpleRendererStop10_1,
-    read_simple_renderer_body_10_1,
+    SIMPLE_RENDERER_CLASS_ID, SimpleRendererPrefix10_1, SimpleRendererStop10_1, SuccessorStop10_1,
+    read_feature_layer_successor_10_1, read_simple_renderer_body_10_1,
 };
 use crate::objects::dataset_name::{
     FEATURE_DATASET_NAME_CLASS_ID, FeatureDatasetNameBody10_1, FeatureDatasetNameStop10_1,
@@ -397,9 +400,11 @@ pub enum FeatureLayerStop10_1 {
     /// 渲染器槽的 SimpleRenderer 体自身的停止点（原因透传，见
     /// [`SimpleRendererStop10_1`]）：游标停在其停止点。
     RendererBody(SimpleRendererStop10_1),
-    /// +0x144 原样 16 字节 GUID 之后：其后字段在样本中与 RTM 3035 反编译
-    /// 不可调和（归因开放，见模块文档「未解决问题」），全部保留为剩余字节。
-    AfterDataSourceGuid,
+    /// 渲染器槽之后的后继字段段（+0x144 GUID 后的 String/double/short、
+    /// IHyperlink 循环、IColor 槽、String ×2/int32、FieldInfo 计数循环）的
+    /// 停止点（原因透传，见 feature_layer_tail 的 [`SuccessorStop10_1`]）：
+    /// 游标停在其停止点。
+    Successor(SuccessorStop10_1),
 }
 
 /// 10.1 FeatureLayer::Load（`0x6f6e9940`）已确认前缀的解析结果。
@@ -437,6 +442,9 @@ pub struct FeatureLayerPrefix10_1 {
     /// 渲染器槽位为空标记/回引/完整消费的 SimpleRenderer 体时读取的
     /// +0x144 原样 16 字节 GUID。`None` = 未到达。
     pub guid_after_renderer: Option<[u8; 16]>,
+    /// +0x144 GUID 之后的后继字段段（第八轮闭合至 FieldInfo 计数循环，见
+    /// feature_layer_tail 模块）。`None` = 因数据源/渲染器体内停止未到达。
+    pub successor: Option<crate::layers::feature_layer_tail::FeatureLayerSuccessor10_1>,
     /// 停止原因（恒有：本读取器始终在最深可闭合点停止）。
     pub stop: FeatureLayerStop10_1,
     /// 停止点之后剩余的字节数。
@@ -835,6 +843,7 @@ pub fn read_feature_layer_prefix_10_1(
     //    其闭合体；其他渲染器类在对象头处停止。
     let mut renderer = None;
     let mut guid_after_renderer = None;
+    let mut successor_result = None;
     let stop = match fcn_stop {
         Some(stop) => FeatureLayerStop10_1::DataSource(stop),
         None => {
@@ -874,11 +883,20 @@ pub fn read_feature_layer_prefix_10_1(
             match renderer_stop {
                 Some(stop) => stop,
                 None => {
-                    // 7. +0x144 原样 16 字节 GUID（非对象头）。其后字段与样本
-                    //    存在不可调和差异（开放项），读到 GUID 即停止。
+                    // 7. +0x144 原样 16 字节 GUID（非对象头），随后进入后继
+                    //    字段段（第八轮闭合至 FieldInfo 计数循环；其后 ALPC
+                    //    等槽位未闭合，读取器在后继段的停止点停止）。
                     guid_after_renderer =
                         Some(trial.read_bytes(16)?.try_into().expect("固定 16 字节"));
-                    FeatureLayerStop10_1::AfterDataSourceGuid
+                    let successor = read_feature_layer_successor_10_1(
+                        &mut trial,
+                        version,
+                        max_bytes,
+                        &mut staged_table,
+                    )?;
+                    let stop = FeatureLayerStop10_1::Successor(successor.stop);
+                    successor_result = Some(successor);
+                    stop
                 }
             }
         }
@@ -894,6 +912,7 @@ pub fn read_feature_layer_prefix_10_1(
         data_source,
         renderer,
         guid_after_renderer,
+        successor: successor_result,
         stop,
         remaining_bytes: trial.remaining(),
     };

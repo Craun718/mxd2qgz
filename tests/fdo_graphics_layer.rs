@@ -41,7 +41,7 @@ fn entry_bytes(class_id: &[u8; 16], key: u32) -> Vec<u8> {
     bytes
 }
 
-/// 合成 FeatureLayer 体（到渲染器空标记 + GUID 的完整前缀链）。
+/// 合成 FeatureLayer 体（到渲染器空标记 + GUID + 最小后继段的完整前缀链）。
 fn feature_layer_body(name: &str) -> Vec<u8> {
     let mut bytes = 34_u16.to_le_bytes().to_vec();
     bytes.extend(encoded(name));
@@ -52,11 +52,21 @@ fn feature_layer_body(name: &str) -> Vec<u8> {
     bytes.extend([0_u8; 16]); // 数据源：空标记
     bytes.extend([0_u8; 16]); // 渲染器：空标记
     bytes.extend([0x6A; 16]); // +0x144 GUID
+    bytes.extend(encoded("")); // +0x154 空串（语义未定）
+    bytes.extend(0_f64.to_le_bytes()); // +0x158
+    bytes.extend(0_f64.to_le_bytes()); // +0x160
+    bytes.extend(0_i16.to_le_bytes()); // +0x168
+    bytes.extend(0_i32.to_le_bytes()); // IHyperlink 计数 0
+    bytes.extend([0_u8; 16]); // IColor：空标记
+    bytes.extend(encoded("")); // +0x1a8
+    bytes.extend(encoded("")); // +0x184
+    bytes.extend(0_i32.to_le_bytes()); // +0x188
+    bytes.extend(0_i32.to_le_bytes()); // FieldInfo 计数 0
     bytes
 }
 
 /// 样本镜像的 FDO 体前段：版本 11 + int32 3 + short 0xFFFF + 关联 FeatureLayer
-/// （头 + 体）——读取器在其前缀停止点（AfterDataSourceGuid）停止。
+/// （头 + 体）——读取器在其前缀停止点（后继段 FieldInfoLoopCompleted）停止。
 fn sample_associated_chain() -> Vec<u8> {
     let mut bytes = SAMPLE_VERSION.to_le_bytes().to_vec();
     bytes.extend(3_i32.to_le_bytes());
@@ -96,11 +106,18 @@ fn reads_associated_layer_prefix_and_stops_inside_its_body() {
         panic!("关联图层应为 FeatureLayer：{:?}", parsed.associated_layer);
     };
     assert_eq!(layer.name, SAMPLE_NAME);
-    assert_eq!(layer.stop, FeatureLayerStop10_1::AfterDataSourceGuid);
+    assert_eq!(
+        layer.stop,
+        FeatureLayerStop10_1::Successor(
+            mxd2qgz::layers::feature_layer_tail::SuccessorStop10_1::FieldInfoLoopCompleted
+        )
+    );
     assert_eq!(
         parsed.stop,
         FdoGraphicsLayerStop10_1::AssociatedLayerBodyStopped {
-            layer_stop: FeatureLayerStop10_1::AfterDataSourceGuid
+            layer_stop: FeatureLayerStop10_1::Successor(
+                mxd2qgz::layers::feature_layer_tail::SuccessorStop10_1::FieldInfoLoopCompleted,
+            )
         }
     );
     assert_eq!(parsed.element_collection, None);
@@ -176,7 +193,9 @@ fn null_and_back_reference_associated_layers_advance_to_element_collection() {
     assert_eq!(
         parsed.stop,
         FdoGraphicsLayerStop10_1::DelegatedLayerBodyStopped {
-            layer_stop: FeatureLayerStop10_1::AfterDataSourceGuid
+            layer_stop: FeatureLayerStop10_1::Successor(
+                mxd2qgz::layers::feature_layer_tail::SuccessorStop10_1::FieldInfoLoopCompleted,
+            )
         }
     );
     assert_eq!(reader.position(), head.len());

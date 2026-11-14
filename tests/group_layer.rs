@@ -639,7 +639,7 @@ fn rejects_over_limit_name_lengths_before_reading_or_allocating() {
 
 /// 合成 FeatureLayer 子图层体（与 tests/feature_layer.rs 的样本镜像同构）：
 /// 版本 34 + 双名称 + short ×3 + 空标记数据源 + 空标记渲染器 + 16 字节
-/// GUID——前缀读取器在 GUID 之后停止，体恰好被完整覆盖。
+/// GUID + 最小后继段——前缀读取器在后继段停止点停止，体恰好被完整覆盖。
 fn child_feature_layer_body(name: &str) -> Vec<u8> {
     let mut bytes = 34_u16.to_le_bytes().to_vec();
     bytes.extend(encoded(name));
@@ -650,6 +650,16 @@ fn child_feature_layer_body(name: &str) -> Vec<u8> {
     bytes.extend([0_u8; 16]); // 数据源：空标记
     bytes.extend([0_u8; 16]); // 渲染器：空标记
     bytes.extend([0x6A; 16]); // +0x144 原样 GUID
+    bytes.extend(encoded("")); // +0x154 空串（语义未定）
+    bytes.extend(0_f64.to_le_bytes()); // +0x158
+    bytes.extend(0_f64.to_le_bytes()); // +0x160
+    bytes.extend(0_i16.to_le_bytes()); // +0x168
+    bytes.extend(0_i32.to_le_bytes()); // IHyperlink 计数 0
+    bytes.extend([0_u8; 16]); // IColor：空标记
+    bytes.extend(encoded("")); // +0x1a8
+    bytes.extend(encoded("")); // +0x184
+    bytes.extend(0_i32.to_le_bytes()); // +0x188
+    bytes.extend(0_i32.to_le_bytes()); // FieldInfo 计数 0
     bytes
 }
 
@@ -689,7 +699,12 @@ fn extra_safe_child_feature_layer_prefix_is_parsed_and_skipped_to_bound() {
         panic!("子图层前缀应分派为 FeatureLayer：{child_prefix:?}");
     };
     assert_eq!(fl.name, "子层A");
-    assert_eq!(fl.stop, FeatureLayerStop10_1::AfterDataSourceGuid);
+    assert_eq!(
+        fl.stop,
+        FeatureLayerStop10_1::Successor(
+            mxd2qgz::layers::feature_layer_tail::SuccessorStop10_1::FieldInfoLoopCompleted
+        )
+    );
     // 循环继续：第 2 条目按回引分类，随后正常读到 ExtensionHelper 停止。
     assert_eq!(
         parsed.children[1],
