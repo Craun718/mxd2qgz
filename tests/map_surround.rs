@@ -5,15 +5,15 @@
 //! 测试只覆盖代码自身契约（合成正常/异常输入），不代表格式已验证，未在
 //! 目标软件或样本中核对。
 
-use mxd2qgz::envelope::ENVELOPE_CLASS_ID;
-use mxd2qgz::map_surround::{
+use mxd2qgz::maps::map_surround::{
     AOI_BOOKMARK_CLASS_ID, BookmarkEnvelopeEntry10_1, BookmarkNameEntry10_1,
     FEATURE_BOOKMARK_CLASS_ID, LEGEND_CLASS_ID, LEGEND_FORMAT_CLASS_ID, LegendFormatEntry10_1,
     LegendStop10_1, MapBackReference10_1, read_aoi_bookmark_10_1, read_feature_bookmark_10_1,
     read_legend_prefix_10_1, read_map_surround_common_prefix_10_1,
 };
-use mxd2qgz::object_refs::RefTable10_1;
-use mxd2qgz::reader::Reader;
+use mxd2qgz::objects::envelope::ENVELOPE_CLASS_ID;
+use mxd2qgz::storage::object_refs::RefTable10_1;
+use mxd2qgz::stream::reader::Reader;
 use std::io::ErrorKind;
 
 /// AfCore String 布局：4 字节长度（UTF-16LE 字节数含终止零）+ 编码 + 终止零。
@@ -374,7 +374,7 @@ fn legend_reads_full_version_five_body() {
     assert_eq!(legend.items.len(), 2);
     assert_eq!(
         legend.items[0].entry,
-        mxd2qgz::object_refs::ObjectEntry10_1::Null
+        mxd2qgz::storage::object_refs::ObjectEntry10_1::Null
     );
     assert_eq!(legend.tail_short_1, Some(0x0708));
     assert_eq!(legend.tail_short_2, Some(0x090A));

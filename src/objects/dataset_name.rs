@@ -35,9 +35,9 @@
 //!    FCN 四字符串家族类推为候选：名称/第二名称/类型描述/数据集名）；
 //! 3. 1 字节标志 → obj+0x1c（原生按 bool 存储，语义未定，原样保留）；
 //! 4. LoadObject（请求 IID 与 FCN 选择子 ==0 分支同值 = IWorkspaceName）
-//!    → obj+0x20；条目经 [`crate::object_refs::read_object_entry_10_1`]
+//!    → obj+0x20；条目经 [`crate::storage::object_refs::read_object_entry_10_1`]
 //!    分类，新对象且类标识为 WorkspaceName 时读取其已闭合体（复用
-//!    [`crate::feature_layer::read_workspace_name_body_10_1`]，第六轮）。
+//!    [`crate::layers::feature_layer::read_workspace_name_body_10_1`]，第六轮）。
 //!
 //! ## TopologyName 体（本轮闭合）
 //!
@@ -66,14 +66,14 @@
 //! 位停止，第二选择子不可达）。**两个新对象体在样本中均未出现，本模块全部
 //! 布局结论无样本字节佐证，仅有反编译一手证据**；单元测试全部使用合成输入。
 //!
-//! 调用约定：与 [`crate::feature_layer`] 一致——调用者先用
-//! [`crate::object_stream::read_header_10_1`] 读取对象头、比对类标识常量并
+//! 调用约定：与 [`crate::layers::feature_layer`] 一致——调用者先用
+//! [`crate::storage::object_stream::read_header_10_1`] 读取对象头、比对类标识常量并
 //! 取得键，从对象头之后的位置传入 Reader；本模块不重复读取对象头。嵌套条目
 //! 登记 先于对象体解析是原生语义；为满足「失败不修改登记表」，分类与登记
 //! 先发生在调用者登记表的副本上，全部成功后才整体提交。
 //!
 //! 这是仅覆盖上述已闭合字段的严格安全子集：长度/偏移/溢出经
-//! [`crate::reader::Reader`] 检查；版本超出 0..=1（含负值位模式，较原生
+//! [`crate::stream::reader::Reader`] 检查；版本超出 0..=1（含负值位模式，较原生
 //! 有符号比较更严）拒绝；未知选择子语义不存在（原生只区分零/非零）；首个
 //! 未闭合字段（槽位新对象非预期类、WorkspaceName 体内 PropertySet 新对象）
 //! 处停止并保留剩余；任何失败不推进调用者游标、不修改登记表。未接入 MXD
@@ -92,13 +92,13 @@
 //! - 版本 0 分支无字节佐证（原生接受，Save 恒写 1）；
 //! - 全部结论为静态观察，未经目标软件运行验证。
 
-use crate::feature_layer::{
+use crate::layers::feature_layer::{
     WORKSPACE_NAME_CLASS_ID, WorkspaceNamePrefix10_1, WorkspaceNameStop10_1,
     read_workspace_name_body_10_1,
 };
-use crate::native_string::read_string_10_1;
-use crate::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
-use crate::reader::Reader;
+use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use crate::stream::native_string::read_string_10_1;
+use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
 /// FeatureDatasetName / TopologyName::Load 接受的最大版本：汇编
@@ -137,7 +137,7 @@ pub enum WorkspaceNameSlot10_1 {
     /// 16 字节全零类标识：空引用，无键、无对象体。
     Null,
     /// 键已见：回引条目，无对象体。类标识原样保留、不校验（回引头重复
-    /// 被引对象的类标识，见 [`crate::feature_layer`] 模块文档）。
+    /// 被引对象的类标识，见 [`crate::layers::feature_layer`] 模块文档）。
     BackReference { class_id: [u8; 16], key: u32 },
     /// 新对象且类标识为 WorkspaceName：已读取其闭合体（第六轮读取器）；
     /// 体内停止时携带原因。
@@ -227,12 +227,12 @@ pub struct TopologyNameBody10_1 {
 /// 从对象头之后的位置读取 10.1 FeatureDatasetName 对象体，失败时不推进
 /// 游标、不修改登记表。
 ///
-/// 起点约定：调用者已用 [`crate::object_stream::read_header_10_1`] 读取对象
+/// 起点约定：调用者已用 [`crate::storage::object_stream::read_header_10_1`] 读取对象
 /// 头、比对 [`FEATURE_DATASET_NAME_CLASS_ID`] 并取得键 `key`，从对象头之后的
 /// 位置传入 Reader。字段序与证据见模块文档。
 ///
 /// `max_bytes` 是资源限额：应用于四个字符串的声明长度（与
-/// [`crate::feature_layer::read_feature_layer_prefix_10_1`] 同口径），并原样
+/// [`crate::layers::feature_layer::read_feature_layer_prefix_10_1`] 同口径），并原样
 /// 转发给嵌套 WorkspaceName 体；`usize::MAX` 表示不额外设限。
 ///
 /// IWorkspaceName 槽的新对象非 WorkspaceName 类、或 WorkspaceName 体内

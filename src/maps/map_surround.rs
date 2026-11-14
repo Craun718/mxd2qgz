@@ -11,8 +11,8 @@
 //! 字节佐证**；本模块只能用合成输入测试，不得声称样本验证。循环结构本身
 //! （int32 计数 + 每元素普通 `LoadObject`，20 字节对象头 + 体，无 ExtraSafe
 //! 8 字节前缀）与 `map_object::read_map_suffix_10_1` 现有骨架逐条吻合，
-//! 衔接点为 [`crate::map_object::MapSuffixStop::MapSurroundBody`] 与
-//! [`crate::map_object::MapSuffixStop::BookmarkBody`] 携带的流内类标识
+//! 衔接点为 [`crate::maps::map_object::MapSuffixStop::MapSurroundBody`] 与
+//! [`crate::maps::map_object::MapSuffixStop::BookmarkBody`] 携带的流内类标识
 //! （按 CLSID 分派到本模块各读取器）。
 //!
 //! ## 循环结构（Map::Load `0x793ff4d0` / Map::Save `0x79401850`，确定的）
@@ -93,7 +93,7 @@
 //! Save（虚表槽 `0x793df010` → `0x793da650`）逐段对称（含 `0xFFFF` short、
 //! int32 计数 + 循环 SaveObject 条目）。
 //!
-//! 调用约定与事务性：调用者已用 [`crate::object_stream::read_header_10_1`]
+//! 调用约定与事务性：调用者已用 [`crate::storage::object_stream::read_header_10_1`]
 //! 读取对象头、比对相应 `*_CLASS_ID` 常量确认类身份，从对象头之后的位置
 //! 传入 Reader；本模块不重复读取对象头。全部字段在 trial 游标与 trial
 //! 登记表上读取，完整成功（含停止点返回）才一并提交；任何错误既不推进
@@ -109,10 +109,10 @@
 //! 未逐类反编译；共同前缀版本 0/1（docVersion 83..93 写 2）无门字段差异
 //! 之外的字节佐证。
 
-use crate::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
-use crate::native_string::read_string_10_1;
-use crate::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
-use crate::reader::Reader;
+use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
+use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use crate::stream::native_string::read_string_10_1;
+use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
 /// AOIBookmark（空间书签）类标识（CLSID）的 16 字节内存序。
@@ -201,7 +201,7 @@ pub enum BookmarkEnvelopeEntry10_1 {
     /// 键已在本会话登记：20 字节回引条目，其后没有对象体。
     BackReference { class_id: [u8; 16], key: u32 },
     /// 未见过的新键且类标识为 Envelope：已读取完整 Envelope 对象体
-    /// （[`crate::envelope`] 覆盖全部版本分支，整体消费）。
+    /// （[`crate::objects::envelope`] 覆盖全部版本分支，整体消费）。
     Envelope { key: u32, body: Envelope10_1 },
 }
 
@@ -261,7 +261,7 @@ pub enum LegendFormatEntry10_1 {
 pub struct LegendItemEntry10_1 {
     /// 条目头起点偏移（相对传入 Reader 的底层字节）。
     pub offset: usize,
-    /// 经 [`crate::object_refs`] 分类的条目。
+    /// 经 [`crate::storage::object_refs`] 分类的条目。
     pub entry: ObjectEntry10_1,
 }
 

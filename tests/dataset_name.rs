@@ -7,14 +7,14 @@
 //! 样本中 FCN 选择子恒为 0（WorkspaceName 分支），本模块覆盖的分支仅由
 //! 反编译证据支撑。
 
-use mxd2qgz::dataset_name::{
+use mxd2qgz::layers::feature_layer::WORKSPACE_NAME_CLASS_ID;
+use mxd2qgz::objects::dataset_name::{
     DatasetNameSlot10_1, FEATURE_DATASET_NAME_CLASS_ID, FeatureDatasetNameStop10_1,
     TOPOLOGY_NAME_CLASS_ID, TopologyNameStop10_1, WorkspaceNameSlot10_1,
     read_feature_dataset_name_body_10_1, read_topology_name_body_10_1,
 };
-use mxd2qgz::feature_layer::WORKSPACE_NAME_CLASS_ID;
-use mxd2qgz::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
-use mxd2qgz::reader::Reader;
+use mxd2qgz::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use mxd2qgz::stream::reader::Reader;
 use std::io::ErrorKind;
 
 /// 合成 FeatureDatasetName 对象键。
@@ -104,7 +104,10 @@ fn topology_prefix(version: u16) -> (Vec<u8>, usize) {
 fn read_fdn_entry(
     bytes: &[u8],
     table: &mut RefTable10_1,
-) -> std::io::Result<(u32, mxd2qgz::dataset_name::FeatureDatasetNameBody10_1)> {
+) -> std::io::Result<(
+    u32,
+    mxd2qgz::objects::dataset_name::FeatureDatasetNameBody10_1,
+)> {
     let mut reader = Reader::new(bytes);
     match read_object_entry_10_1(&mut reader, table)? {
         ObjectEntry10_1::NewObject { class_id, key }
@@ -121,7 +124,7 @@ fn read_fdn_entry(
 fn read_tn_entry(
     bytes: &[u8],
     table: &mut RefTable10_1,
-) -> std::io::Result<(u32, mxd2qgz::dataset_name::TopologyNameBody10_1)> {
+) -> std::io::Result<(u32, mxd2qgz::objects::dataset_name::TopologyNameBody10_1)> {
     let mut reader = Reader::new(bytes);
     match read_object_entry_10_1(&mut reader, table)? {
         ObjectEntry10_1::NewObject { class_id, key } if class_id == TOPOLOGY_NAME_CLASS_ID => {

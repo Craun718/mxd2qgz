@@ -6,7 +6,7 @@
 //! 输入，仅验证读取器自身契约（正常/异常/截断/事务性），不代表 MXD 格式已
 //! 验证，未在目标软件中核对。
 
-use mxd2qgz::feature_layer_tail::{
+use mxd2qgz::layers::feature_layer_tail::{
     ColorSlot10_1, LEGEND_CLASS_CLASS_ID, LEGEND_GROUP_CLASS_ID, LegendClassEntry10_1,
     LegendClassStop10_1, LegendGroupSlot10_1, LegendGroupStop10_1, RGB_COLOR_CLASS_ID,
     SIMPLE_MARKER_SYMBOL_CLASS_ID, SIMPLE_RENDERER_CLASS_ID, SimpleMarkerSymbolStop10_1,
@@ -14,8 +14,8 @@ use mxd2qgz::feature_layer_tail::{
     read_legend_group_body_10_1, read_rgb_color_body_10_1, read_simple_marker_symbol_body_10_1,
     read_simple_renderer_body_10_1,
 };
-use mxd2qgz::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
-use mxd2qgz::reader::Reader;
+use mxd2qgz::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use mxd2qgz::stream::reader::Reader;
 use std::io::ErrorKind;
 
 /// AfCore String 布局：4 字节长度（UTF-16LE 字节数含终止零）+ 编码 + 终止零。

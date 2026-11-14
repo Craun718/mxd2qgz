@@ -1,8 +1,8 @@
-use mxd2qgz::maps_stream::{
+use mxd2qgz::maps::maps_stream::{
     MapsRootPrefix10_1, MapsRootPrefix10_8, read_root_prefix_10_1, read_root_prefix_10_8,
 };
-use mxd2qgz::object_stream::ObjectHeader;
-use mxd2qgz::reader::Reader;
+use mxd2qgz::storage::object_stream::ObjectHeader;
+use mxd2qgz::stream::reader::Reader;
 use std::io::ErrorKind;
 
 fn encoded_root(count: i32, class_byte: u8) -> Vec<u8> {

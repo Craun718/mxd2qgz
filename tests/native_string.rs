@@ -1,4 +1,4 @@
-use mxd2qgz::{
+use mxd2qgz::stream::{
     native_string::{read_string_10_1, read_string_10_8},
     reader::Reader,
 };

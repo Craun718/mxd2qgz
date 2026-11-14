@@ -1,10 +1,10 @@
-use mxd2qgz::element_collection::{
+use mxd2qgz::objects::element_collection::{
     ELEMENT_COLLECTION_CLASS_ID, ELEMENT_REQUEST_INTERFACE_ID, ElementCollectionBody10_1,
     ElementCollectionStop10_1, ElementEntry10_1, read_element_collection_10_1,
 };
-use mxd2qgz::object_refs::RefTable10_1;
-use mxd2qgz::object_stream::{ObjectHeader, read_header_10_1};
-use mxd2qgz::reader::Reader;
+use mxd2qgz::storage::object_refs::RefTable10_1;
+use mxd2qgz::storage::object_stream::{ObjectHeader, read_header_10_1};
+use mxd2qgz::stream::reader::Reader;
 use std::io::ErrorKind;
 
 /// 样本 FDO 槽位 ElementCollection 的对象键（`/Maps:0x1608` 头，体

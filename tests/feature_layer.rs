@@ -6,17 +6,17 @@
 //! （`samples/测试底图.mxd` /Maps 首个 FeatureLayer：键 32，体 `0x2aa` 起），
 //! 不依赖样本文件本身；样本对位是辅助观察。
 
-use mxd2qgz::dataset_name::{FEATURE_DATASET_NAME_CLASS_ID, TOPOLOGY_NAME_CLASS_ID};
-use mxd2qgz::feature_layer::{
+use mxd2qgz::layers::feature_layer::{
     DataSource10_1, DatasetNameEntry10_1, FEATURE_CLASS_NAME_CLASS_ID, FEATURE_LAYER_CLASS_ID,
     FeatureClassNameNested10_1, FeatureClassNameStop10_1, FeatureLayerStop10_1, RendererSlot10_1,
     TopologyNameEntry10_1, Visibility10_1, WORKSPACE_NAME_CLASS_ID, WorkspaceNameEntry10_1,
     WorkspaceNameStop10_1, read_feature_class_name_body_10_1, read_feature_layer_prefix_10_1,
     read_workspace_name_body_10_1,
 };
-use mxd2qgz::object_refs::{ObjectEntry10_1, RefTable10_1};
-use mxd2qgz::object_stream::{ObjectHeader, read_header_10_1};
-use mxd2qgz::reader::Reader;
+use mxd2qgz::objects::dataset_name::{FEATURE_DATASET_NAME_CLASS_ID, TOPOLOGY_NAME_CLASS_ID};
+use mxd2qgz::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
+use mxd2qgz::storage::object_stream::{ObjectHeader, read_header_10_1};
+use mxd2qgz::stream::reader::Reader;
 use std::io::ErrorKind;
 
 /// 样本 FeatureLayer 对象键（`/Maps:0x2a6`）。

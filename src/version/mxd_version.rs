@@ -5,8 +5,8 @@
 //! 失败时回退显式 10.8 局部布局。所有结果都是候选，未经 ArcMap 或 QGIS 中
 //! 的软件验证，不能据此声明文件的实际保存版本或转换能力。
 
-use crate::reader::Reader;
-use crate::version_stream::{read_arcmap_header_10_1, read_layout_10_8};
+use crate::stream::reader::Reader;
+use crate::version::version_stream::{read_arcmap_header_10_1, read_layout_10_8};
 use std::io;
 
 /// 文本读取资源上限（含终止零、不含 4 字节长度前缀），避免对超长流做无界解码。

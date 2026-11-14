@@ -1,6 +1,7 @@
 //! 独立的构造模型输出层，不读取 MXD，也不推断源格式语义。
 
-use crate::{model::*, source_path};
+use crate::model::*;
+use crate::output::source_path;
 use std::fmt::Write as _;
 use std::io::{self, ErrorKind, Seek, Write};
 use std::path::Path;
@@ -111,9 +112,9 @@ impl Builder<'_> {
         self.unknown(&crs.unknown_fields, location);
         let definition = crs.definition.trim();
         let supported = if definition.eq_ignore_ascii_case("EPSG:4326") {
-            Some(include_str!("../tests/fixtures/qgis/epsg4326.xml"))
+            Some(include_str!("../../tests/fixtures/qgis/epsg4326.xml"))
         } else if definition.eq_ignore_ascii_case("EPSG:3857") {
-            Some(include_str!("../tests/fixtures/qgis/epsg3857.xml"))
+            Some(include_str!("../../tests/fixtures/qgis/epsg3857.xml"))
         } else {
             None
         };

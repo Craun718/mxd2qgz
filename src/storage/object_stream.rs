@@ -2,7 +2,7 @@
 //!
 //! 此模块不定位 MXD 对象，也不确定对象体长度。
 
-use crate::reader::Reader;
+use crate::stream::reader::Reader;
 use std::io;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

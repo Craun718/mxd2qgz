@@ -1,4 +1,4 @@
-use mxd2qgz::reader::Reader;
+use mxd2qgz::stream::reader::Reader;
 use std::io::ErrorKind;
 
 #[test]

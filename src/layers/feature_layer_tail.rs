@@ -73,9 +73,9 @@
 //! 到 `0x602` 的 `{A2BAAE2C-…}` 计数循环（FieldInfo 族）之前——该循环及
 //! 其后的类不在本模块范围。
 //!
-//! 调用约定：调用者先用 [`crate::object_stream::read_header_10_1`] 读取对象
+//! 调用约定：调用者先用 [`crate::storage::object_stream::read_header_10_1`] 读取对象
 //! 头并比对类常量，从对象头之后的位置调用各 `read_*_body_10_1`；本模块不
-//! 重复读取对象头。嵌套条目用 [`crate::object_refs::read_object_entry_10_1`]
+//! 重复读取对象头。嵌套条目用 [`crate::storage::object_refs::read_object_entry_10_1`]
 //! 分类并登记（登记先于对象体解析是原生语义；为满足「失败不修改登记表」，
 //! 全部登记发生在调用者登记表的副本上，成功后整体提交）。槽位新对象类标识
 //! 未知时读取器在该槽位起点停止并回退（不保留该键，与 feature_layer 渲染
@@ -100,9 +100,9 @@
 //!   二进制字节与类型库双重复核应为 **5779**（与 SimpleRenderer CLSID 同
 //!   Data2），研究记录已更正。
 
-use crate::native_string::read_string_10_1;
-use crate::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
-use crate::reader::Reader;
+use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use crate::stream::native_string::read_string_10_1;
+use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
 /// SimpleRenderer::Load 接受的最大版本：`3 < (short)ver` 有符号比较；样本 3。

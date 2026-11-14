@@ -9,7 +9,7 @@
 //! 器 `FUN_6b197dc0`**（调用点 `0x6b1955f2`，参数 `(this-0x54, 流, 版本)`，
 //! 直接返回其结果）；**版本 ==4 → 探测函数 `FUN_6b198420`**，探测真 → 旧
 //! 加载器 + 一个丢弃的 `String::Read`（IAT `0x6b1aa114`），假 → 主分支
-//! （版本 5..=11，见 [`crate::fdo_graphics_layer`]）。
+//! （版本 5..=11，见 [`crate::layers::fdo_graphics_layer`]）。
 //!
 //! ## 旧加载器 `FUN_6b197dc0` 字段序（版本 0..=3）
 //!
@@ -92,19 +92,19 @@
 //!
 //! 全部结论为静态反编译证据，未运行目标软件；样本对位仅为辅助观察。
 
-use crate::fdo_graphics_layer::AssociatedLayer10_1;
-use crate::feature_layer::{
+use crate::layers::fdo_graphics_layer::AssociatedLayer10_1;
+use crate::layers::feature_layer::{
     FEATURE_CLASS_NAME_CLASS_ID, FEATURE_LAYER_CLASS_ID, FeatureClassNamePrefix10_1,
     FeatureClassNameStop10_1, FeatureLayerStop10_1, read_feature_class_name_body_10_1,
     read_feature_layer_prefix_10_1,
 };
-use crate::native_string::read_string_10_1;
-use crate::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
-use crate::reader::Reader;
-use crate::spatial_reference::{
+use crate::objects::spatial_reference::{
     PROJECTED_COORDINATE_SYSTEM_CLASS_ID, ProjectedCoordinateSystem10_1,
     read_projected_coordinate_system_10_1,
 };
+use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use crate::stream::native_string::read_string_10_1;
+use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
 /// 旧加载器接受的最大版本：主 Load 分发 `CMP AX,3; JG` 有符号比较，≤3 进
@@ -197,7 +197,7 @@ impl LegacyFdoStop10_1 {
             Self::AssociatedLayerUnsupported { class_id, key } => format!(
                 "旧加载器 ILayer 槽新对象（键 {key}）类标识 {} 不是 \
                  FeatureLayer：体未知且无外部长度，游标回退到该对象头起点",
-                crate::layer_list::class_id_hex(class_id)
+                crate::layers::layer_list::class_id_hex(class_id)
             ),
             Self::AssociatedLayerFailed { reason } => {
                 format!("旧加载器关联要素图层前缀解析失败（{reason}），体保留未知")
@@ -205,17 +205,17 @@ impl LegacyFdoStop10_1 {
             Self::SpatialReferenceUnsupported { class_id, key } => format!(
                 "旧加载器 ISpatialReference 槽新对象（键 {key}）类标识 {} 不是投影\
                  坐标系：体未知且无外部长度，游标回退到该对象头起点",
-                crate::layer_list::class_id_hex(class_id)
+                crate::layers::layer_list::class_id_hex(class_id)
             ),
             Self::ElementCollectionNewObject { class_id, key } => format!(
                 "旧加载器 IElementCollection2 槽新对象（键 {key}，类标识 {}）：\
                  ElementCollection 体布局未闭合，游标回退到该对象头起点",
-                crate::layer_list::class_id_hex(class_id)
+                crate::layers::layer_list::class_id_hex(class_id)
             ),
             Self::DataSourceUnsupported { class_id, key } => format!(
                 "旧加载器 IName 槽新对象（键 {key}）类标识 {} 不是 \
                  FeatureClassName：体未知且无外部长度，游标回退到该对象头起点",
-                crate::layer_list::class_id_hex(class_id)
+                crate::layers::layer_list::class_id_hex(class_id)
             ),
             Self::DataSourceStopped { stop } => {
                 format!(
@@ -229,12 +229,12 @@ impl LegacyFdoStop10_1 {
             Self::RendererNewObject { class_id, key } => format!(
                 "旧加载器 IFeatureRenderer 槽新对象（键 {key}，类标识 {}）：渲染器\
                  体未闭合，游标回退到该对象头起点",
-                crate::layer_list::class_id_hex(class_id)
+                crate::layers::layer_list::class_id_hex(class_id)
             ),
             Self::ColorNewObject { class_id, key } => format!(
                 "旧加载器 IColor 槽新对象（键 {key}，类标识 {}）：颜色体未闭合，\
                  游标回退到该对象头起点",
-                crate::layer_list::class_id_hex(class_id)
+                crate::layers::layer_list::class_id_hex(class_id)
             ),
         }
     }
@@ -299,11 +299,11 @@ pub struct LegacyFdoGraphicsLayerPrefix10_1 {
 /// 从版本 short 起读取 10.1 FDOGraphicsLayer 旧加载器（`FUN_6b197dc0`）
 /// 的已确认字段。
 ///
-/// 起点约定：调用者已用 [`crate::object_stream::read_header_10_1`] 读取对象
+/// 起点约定：调用者已用 [`crate::storage::object_stream::read_header_10_1`] 读取对象
 /// 头、确认类标识为 FDOGraphicsLayer，并把 Reader 定位在对象体起点（版本
 /// short 处）。版本分发由调用者按主 Load 语义决定：本函数只接受 0..=3；
 /// 版本 4 的探测分支（`FUN_6b198420`，见模块文档）未展开，显式拒绝；版
-/// 本 ≥5 属主分支（[`crate::fdo_graphics_layer`]）。负值位模式一并拒绝
+/// 本 ≥5 属主分支（[`crate::layers::fdo_graphics_layer`]）。负值位模式一并拒绝
 /// （原生有符号分发会进旧加载器，负值版本无业务意义，较原生更严）。
 ///
 /// `max_bytes` 是资源限额，原样转发给全部 String 与嵌套体读取器（约束其

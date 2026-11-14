@@ -1,8 +1,8 @@
 //! `/Version` 识别候选的合成边界测试和仓库参考样本的辅助观察对照。
 //!
 //! 全部结果都是候选归类，不构成 ArcMap 或 QGIS 中的软件验证。
-use mxd2qgz::mxd_version::{MAX_TEXT_BYTES, MxdVersionBranch, identify_version};
-use mxd2qgz::version_stream::write_arcmap_header_10_1;
+use mxd2qgz::version::mxd_version::{MAX_TEXT_BYTES, MxdVersionBranch, identify_version};
+use mxd2qgz::version::version_stream::write_arcmap_header_10_1;
 use std::ffi::OsStr;
 use std::io::Read;
 use std::io::Write;

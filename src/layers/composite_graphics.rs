@@ -42,7 +42,7 @@
 //!     再读 short、版本 >=5 的 double ×2（→ +0xbc/+0xc4）；这些字段本读
 //!     取器不消费，保留为未知尾部。
 //!
-//! 停止语义（与 [`crate::map_object`] 的设计差异及理由）：map_object 对未
+//! 停止语义（与 [`crate::maps::map_object`] 的设计差异及理由）：map_object 对未
 //! 知嵌套类直接报错，因为其后没有同序字段可继续；本模块面对的嵌套对象
 //! （元素、条目 ILayer、ElementCollection 等）之后仍有已确认字段，而新对
 //! 象体没有外部长度字段、无法跳过——报错会丢弃已解析前缀。因此本读取器
@@ -50,7 +50,7 @@
 //! 返回已解析字段 + 剩余字节数 + 停止原因
 //! [`CompositeGraphicsLayerStop10_1`]，不因未知嵌套类报错中断。
 //!
-//! 调用约定：调用者先用 [`crate::object_stream::read_header_10_1`] 读取对象
+//! 调用约定：调用者先用 [`crate::storage::object_stream::read_header_10_1`] 读取对象
 //! 头并比对 [`COMPOSITE_GRAPHICS_LAYER_CLASS_ID`]，从对象头之后的位置调用
 //! [`read_composite_graphics_layer_prefix_10_1`]；本模块不重复读取对象头。
 //!
@@ -78,9 +78,9 @@
 //! FeatureLayer 体结束边界的逐字节对位未完成（第五轮「未解决事项」3）。
 //! 人工目视验收未做，不声称已验证。
 
-use crate::native_string::read_string_10_1;
-use crate::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
-use crate::reader::Reader;
+use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use crate::stream::native_string::read_string_10_1;
+use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
 /// CompositeGraphicsLayer::Load 接受的最大版本：原生 `ver < 7`（有符号），
@@ -247,7 +247,7 @@ pub struct CompositeGraphicsLayerPrefix10_1 {
 
 /// 从对象头之后的位置读取 10.1 CompositeGraphicsLayer 对象体的已确认前缀。
 ///
-/// 起点约定：调用者已用 [`crate::object_stream::read_header_10_1`] 读取对象
+/// 起点约定：调用者已用 [`crate::storage::object_stream::read_header_10_1`] 读取对象
 /// 头、比对 [`COMPOSITE_GRAPHICS_LAYER_CLASS_ID`] 确认类身份，并从对象头之
 /// 后的位置传入 Reader；本函数不重复读取对象头。字段序与证据见模块文档。
 ///

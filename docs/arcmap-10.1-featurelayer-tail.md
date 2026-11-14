@@ -3,7 +3,7 @@
 记录日期：2026-11-14。对应 TODO「MXD 解析」节开放项中的「越过条目 1 需渲染器
 /LegendGroup/FieldInfo/EditTemplate 等约 30 类尾段链闭合」——本轮闭合链条第一
 环（SimpleRenderer 及其嵌套的符号、颜色、图例组、图例类共 5 类）。全部为静态
-反编译观察，未运行 ArcMap，未做任何人工目视验收；实现见 `src/feature_layer_tail.rs`
+反编译观察，未运行 ArcMap，未做任何人工目视验收；实现见 `src/layers/feature_layer_tail.rs`
 （模块文档含同源字段表）。
 
 ## 样本边界（先声明）

@@ -6,12 +6,12 @@
 //! docs/arcmap-10.1-map-object.md 第四轮与本次 hex 复核，属辅助观察，不是
 //! 目标软件执行验证）。
 
-use mxd2qgz::composite_graphics::{
+use mxd2qgz::layers::composite_graphics::{
     COMPOSITE_GRAPHICS_LAYER_CLASS_ID, CompositeGraphicsLayerStop10_1, ConsumedEntry10_1,
     ElementGroup10_1, SubLayerEntry10_1, read_composite_graphics_layer_prefix_10_1,
 };
-use mxd2qgz::object_refs::RefTable10_1;
-use mxd2qgz::reader::Reader;
+use mxd2qgz::storage::object_refs::RefTable10_1;
+use mxd2qgz::stream::reader::Reader;
 use std::io::ErrorKind;
 
 /// 样本 ElementCollection 类标识（第 7 步嵌套对象，{CE8F3972-E9BE-11D1-

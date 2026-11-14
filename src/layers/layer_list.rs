@@ -9,7 +9,7 @@
 //! 跳过），否则 `LoadObject`，`B!=0` 时原生 Seek 到「前缀后位置 + B」强同步。
 //! 标志为其他值时原生返回 `0x80004005`（汇编 `0x794036b2`：`CMP AX,1/2/3`）。
 //! 循环后读 int32 活动图层索引（写侧初值 -1，样本 -1 @/Maps:0x16fb4）。
-//! 条目分类（新对象/回引/空标记）经 [`crate::object_refs`] 的会话键登记表。
+//! 条目分类（新对象/回引/空标记）经 [`crate::storage::object_refs`] 的会话键登记表。
 //!
 //! 样本逐条目闭合（`samples/测试底图.mxd` /Maps 导出，辅助观察）：0x274 计数 6；
 //! 0x278 标志 1 FDOGraphicsLayer 键 31；0x2d22 标志 2 前缀 [20][0] 回引键 32；
@@ -76,20 +76,20 @@
 //!   写 2），本读取器按相同路径处理并原样保留标志值；
 //! - 图层列表元素的业务语义（绘制顺序、图层树展开方式）不在本模块范围。
 
-use crate::composite_graphics::read_composite_graphics_layer_prefix_10_1;
-use crate::fdo_graphics_layer::{
+use crate::layers::composite_graphics::read_composite_graphics_layer_prefix_10_1;
+use crate::layers::fdo_graphics_layer::{
     FDO_GRAPHICS_LAYER_CLASS_ID, FdoGraphicsLayerPrefix10_1, read_fdo_graphics_layer_prefix_10_1,
 };
-use crate::feature_layer::read_feature_layer_prefix_10_1;
-use crate::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
-use crate::reader::Reader;
+use crate::layers::feature_layer::read_feature_layer_prefix_10_1;
+use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
 // 类标识常量由归属模块定义（证据注释见各模块），此处重导出仅为保持本模块
 // 既有引用路径（mxd_maps / 测试）稳定，避免双源。
-pub use crate::composite_graphics::COMPOSITE_GRAPHICS_LAYER_CLASS_ID;
-pub use crate::feature_layer::FEATURE_LAYER_CLASS_ID;
-pub use crate::group_layer::GROUP_LAYER_CLASS_ID;
+pub use crate::layers::composite_graphics::COMPOSITE_GRAPHICS_LAYER_CLASS_ID;
+pub use crate::layers::feature_layer::FEATURE_LAYER_CLASS_ID;
+pub use crate::layers::group_layer::GROUP_LAYER_CLASS_ID;
 
 /// 标志 1：普通 `LoadObject` 条目（无 ExtraSafe 前缀）。
 const FLAG_LOAD_OBJECT: u16 = 1;
@@ -116,13 +116,15 @@ pub fn class_id_hex(class_id: &[u8; 16]) -> String {
 pub enum LayerBodyPrefix10_1 {
     /// FeatureLayer 体前缀（名称、第二名称、可见性、数据源 FCN/WorkspaceName
     /// 链、渲染器槽位或 +0x144 GUID 停止）。
-    FeatureLayer(Box<crate::feature_layer::FeatureLayerPrefix10_1>),
+    FeatureLayer(Box<crate::layers::feature_layer::FeatureLayerPrefix10_1>),
     /// GroupLayer 体前缀（名称、三个 short、两个 double、子图层循环、可见性
     /// 等版本条件字段，到首个不可闭合字段为止）。
-    GroupLayer(Box<crate::group_layer::GroupLayerPrefix10_1>),
+    GroupLayer(Box<crate::layers::group_layer::GroupLayerPrefix10_1>),
     /// CompositeGraphicsLayer 体前缀（元素组、名称、标量组、子图层循环，到
     /// 首个不可闭合字段为止）。
-    CompositeGraphicsLayer(Box<crate::composite_graphics::CompositeGraphicsLayerPrefix10_1>),
+    CompositeGraphicsLayer(
+        Box<crate::layers::composite_graphics::CompositeGraphicsLayerPrefix10_1>,
+    ),
     /// FDOGraphicsLayer 体前缀（版本、int32/short 标量、关联要素图层
     /// ILayer 槽、IElementCollection2 槽、委派 FeatureLayer 体，第六轮闭合）。
     FdoGraphicsLayer(Box<FdoGraphicsLayerPrefix10_1>),
@@ -140,7 +142,9 @@ impl LayerBodyPrefix10_1 {
             Self::GroupLayer(prefix) => &prefix.name,
             Self::CompositeGraphicsLayer(prefix) => &prefix.name,
             Self::FdoGraphicsLayer(prefix) => match &prefix.associated_layer {
-                crate::fdo_graphics_layer::AssociatedLayer10_1::FeatureLayer(layer) => &layer.name,
+                crate::layers::fdo_graphics_layer::AssociatedLayer10_1::FeatureLayer(layer) => {
+                    &layer.name
+                }
                 _ => prefix
                     .delegated_layer
                     .as_ref()
@@ -156,7 +160,7 @@ impl LayerBodyPrefix10_1 {
 pub enum LayerEntryObject {
     /// ExtraSafe 前缀 `A==0 && B==0`：空条目，无对象头、无对象体（原生返回 1 并跳过）。
     Empty,
-    /// 实际读取的对象条目，经 [`crate::object_refs`] 分类（空标记 / 回引 / 新对象）。
+    /// 实际读取的对象条目，经 [`crate::storage::object_refs`] 分类（空标记 / 回引 / 新对象）。
     Entry(ObjectEntry10_1),
 }
 
@@ -485,14 +489,14 @@ fn read_entry(
 }
 
 /// 按类标识分派新对象体的已确认前缀解析（组图层子图层递归共用，见
-/// [`crate::group_layer`]）。
+/// [`crate::layers::group_layer`]）。
 ///
 /// 只有已实现读取器覆盖的类参与分派；其余类返回 `Ok(None)`（体按未知
 /// 处理）。解析失败不作为整条列表的错误（见调用点注释），由调用者按有界
 /// 跳过降级。各读取器均为「前缀停止」语义：返回 Ok 时游标停在其已确认
 /// 前缀终点或首个不可闭合字段处（容器类读取器把游标回退到该字段起点），
 /// 剩余体字节由调用者按条目边界跳过。`depth` 是组图层递归深度（GroupLayer
-/// 套 GroupLayer 时经 [`crate::group_layer`] 递增，超过其安全限额后组图层
+/// 套 GroupLayer 时经 [`crate::layers::group_layer`] 递增，超过其安全限额后组图层
 /// 类不再分派）。
 pub(crate) fn parse_body_prefix(
     trial: &mut Reader<'_>,
@@ -507,7 +511,7 @@ pub(crate) fn parse_body_prefix(
         ))))
     } else if class_id == GROUP_LAYER_CLASS_ID {
         Ok(Some(LayerBodyPrefix10_1::GroupLayer(Box::new(
-            crate::group_layer::read_group_layer_prefix_with_depth_10_1(
+            crate::layers::group_layer::read_group_layer_prefix_with_depth_10_1(
                 trial,
                 max_bytes,
                 trial_table,

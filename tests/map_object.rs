@@ -1,16 +1,16 @@
-use mxd2qgz::layer_list::{
+use mxd2qgz::layers::layer_list::{
     BodyBoundBasis, COMPOSITE_GRAPHICS_LAYER_CLASS_ID, FEATURE_LAYER_CLASS_ID,
     GROUP_LAYER_CLASS_ID, LayerEntryObject, LayerListStop, read_layer_list_10_1,
 };
-use mxd2qgz::map_object::{
+use mxd2qgz::maps::map_object::{
     MAP_CLASS_ID, MapSuffixStop, read_map_prefix_10_1, read_map_suffix_10_1,
 };
-use mxd2qgz::object_refs::{ObjectEntry10_1, RefTable10_1};
-use mxd2qgz::object_stream::{ObjectHeader, read_header_10_1};
-use mxd2qgz::reader::Reader;
-use mxd2qgz::spatial_reference::{
+use mxd2qgz::objects::spatial_reference::{
     PROJECTED_COORDINATE_SYSTEM_CLASS_ID, ProjectedCoordinateSystem10_1,
 };
+use mxd2qgz::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
+use mxd2qgz::storage::object_stream::{ObjectHeader, read_header_10_1};
+use mxd2qgz::stream::reader::Reader;
 use std::io::ErrorKind;
 
 /// 样本记载的 Map 架构版本（`/Maps:0x18`）。

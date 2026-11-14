@@ -139,7 +139,7 @@ Load `0x7095e5c0` 字段序（Save `0x7095e550` 对称；汇编核对）：
 由此：本轮两个新对象体的字段序**仅有反编译一手证据，无样本字节佐证**；
 `dataset_name` 读取器的全部单元测试使用合成输入。
 
-## 实现接线（src/dataset_name.rs、tests/dataset_name.rs）
+## 实现接线（src/objects/dataset_name.rs、tests/dataset_name.rs）
 
 - 新模块 `dataset_name`（`lib.rs` 已声明，本轮未改共享文件）：
   - `FEATURE_DATASET_NAME_CLASS_ID` / `TOPOLOGY_NAME_CLASS_ID` 常量（证据

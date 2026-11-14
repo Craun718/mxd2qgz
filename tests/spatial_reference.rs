@@ -1,11 +1,9 @@
-use mxd2qgz::{
-    object_stream::{ObjectHeader, read_header_10_1},
-    reader::Reader,
-    spatial_reference::{
-        PROJECTED_COORDINATE_SYSTEM_CLASS_ID, ProjectedCoordinateSystem10_1,
-        read_projected_coordinate_system_10_1,
-    },
+use mxd2qgz::objects::spatial_reference::{
+    PROJECTED_COORDINATE_SYSTEM_CLASS_ID, ProjectedCoordinateSystem10_1,
+    read_projected_coordinate_system_10_1,
 };
+use mxd2qgz::storage::object_stream::{ObjectHeader, read_header_10_1};
+use mxd2qgz::stream::reader::Reader;
 use std::io::ErrorKind;
 
 /// 参考样本记载的 7 个域 double（语义未确认，按证据文档原样引用）。

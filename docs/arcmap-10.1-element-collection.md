@@ -149,7 +149,7 @@ FeatureLayer 体起点 `0x1622`（版本 short 34），与第六轮 FDO 字段�
   若调用者在此槽分派本读取器，样本字节可被完整消费（6 字节，无停止点）。
   接线属共享文件改动，留待后续统一处理。
 
-## 实现（见 src/element_collection.rs、tests/element_collection.rs）
+## 实现（见 src/objects/element_collection.rs、tests/element_collection.rs）
 
 - `read_element_collection_10_1`：版本有符号 >4 拒绝、负值位模式一并拒绝
   （较原生更严：原生负值落入旧加载器）；版本 0..3 按旧三循环布局、版本 4

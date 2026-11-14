@@ -1,7 +1,7 @@
 //! `object_refs` 对象条目分类的合成与仓库参考样本回归测试。
 
-use mxd2qgz::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
-use mxd2qgz::reader::Reader;
+use mxd2qgz::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use mxd2qgz::stream::reader::Reader;
 use std::io::Read;
 
 fn entry_bytes(class_id: [u8; 16], key: u32) -> Vec<u8> {

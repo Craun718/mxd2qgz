@@ -85,10 +85,10 @@
 //! 样本对位（`/Maps:0x384..0x3eb`）逐字段吻合：版本 1、路径、空串、
 //! 「Shapefile Data」、空标记、标志 1、工厂 CLSID、int32 0。
 //!
-//! 调用约定：调用者先用 [`crate::object_stream::read_header_10_1`] 读取对象
+//! 调用约定：调用者先用 [`crate::storage::object_stream::read_header_10_1`] 读取对象
 //! 头并比对 [`FEATURE_LAYER_CLASS_ID`]，从对象头之后的位置调用
 //! [`read_feature_layer_prefix_10_1`]；本模块不重复读取对象头。嵌套条目用
-//! [`crate::object_refs::read_object_entry_10_1`] 分类：登记先于对象体解析
+//! [`crate::storage::object_refs::read_object_entry_10_1`] 分类：登记先于对象体解析
 //! 是原生语义；为满足「失败不修改登记表」，分类与登记先发生在调用者登记表
 //! 的副本上，全部成功后才整体提交。
 //!
@@ -116,18 +116,18 @@
 //! - 回引条目不校验类标识：样本证据（如 `/Maps:0x2d2c` 对键 32 的回引头）
 //!   表明回引头会重复被引对象的类标识，类标识原样保留、由调用者比对。
 
-use crate::dataset_name::{
+use crate::layers::feature_layer_tail::{
+    SIMPLE_RENDERER_CLASS_ID, SimpleRendererPrefix10_1, SimpleRendererStop10_1,
+    read_simple_renderer_body_10_1,
+};
+use crate::objects::dataset_name::{
     FEATURE_DATASET_NAME_CLASS_ID, FeatureDatasetNameBody10_1, FeatureDatasetNameStop10_1,
     TOPOLOGY_NAME_CLASS_ID, TopologyNameBody10_1, TopologyNameStop10_1,
     read_feature_dataset_name_body_10_1, read_topology_name_body_10_1,
 };
-use crate::feature_layer_tail::{
-    SIMPLE_RENDERER_CLASS_ID, SimpleRendererPrefix10_1, SimpleRendererStop10_1,
-    read_simple_renderer_body_10_1,
-};
-use crate::native_string::read_string_10_1;
-use crate::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
-use crate::reader::Reader;
+use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use crate::stream::native_string::read_string_10_1;
+use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
 /// FeatureLayer::Load 接受的最大架构版本：>0x22（34）直接拒绝；样本值 34。
@@ -208,7 +208,7 @@ pub struct WorkspaceNamePrefix10_1 {
     /// 对象头键（样本 34 @`/Maps:0x380`）。
     ///
     /// 解析成功时该键已按原生语义登记进调用者的登记表（登记先于对象体解
-    /// 析，见 [`crate::object_refs`]）。
+    /// 析，见 [`crate::storage::object_refs`]）。
     pub key: u32,
     /// 体首 int16 版本（样本 1）；>1 原生拒绝。
     pub version: u16,
@@ -461,7 +461,7 @@ impl FeatureLayerPrefix10_1 {
 /// 从对象头之后的位置读取 10.1 WorkspaceName 对象体，失败时不推进游标、
 /// 不修改登记表。
 ///
-/// 起点约定：调用者已用 [`crate::object_stream::read_header_10_1`] 读取对
+/// 起点约定：调用者已用 [`crate::storage::object_stream::read_header_10_1`] 读取对
 /// 象头、比对 [`WORKSPACE_NAME_CLASS_ID`] 并取得键 `key`，从对象头之后的位
 /// 置传入 Reader。字段序与证据见模块文档。在 IPropertySet 新对象处停止是
 /// 成功返回（停止原因 [`WorkspaceNameStop10_1`]）；截断、版本超限、字符串
@@ -741,7 +741,7 @@ pub fn read_feature_class_name_body_10_1(
 /// 从对象头之后的位置读取 10.1 FeatureLayer 对象体的已确认前缀，失败时不
 /// 推进游标、不修改登记表。
 ///
-/// 起点约定：调用者已用 [`crate::object_stream::read_header_10_1`] 读取对象
+/// 起点约定：调用者已用 [`crate::storage::object_stream::read_header_10_1`] 读取对象
 /// 头、比对 [`FEATURE_LAYER_CLASS_ID`] 确认类身份，并从对象头之后的位置传
 /// 入 Reader；本函数不重复读取对象头。字段序与证据见模块文档。
 ///
@@ -749,7 +749,7 @@ pub fn read_feature_class_name_body_10_1(
 /// 各字符串）的声明长度（含终止零、不含 4 字节前缀），在任何读取与分配之
 /// 前检查；`usize::MAX` 表示不额外设限，此时超长流按短读失败。
 ///
-/// 数据源条目经 [`crate::object_refs::read_object_entry_10_1`] 分类并登记：
+/// 数据源条目经 [`crate::storage::object_refs::read_object_entry_10_1`] 分类并登记：
 /// 16 零字节为空引用；键已见为回引（无体）；新对象且类标识为
 /// FeatureClassName 时读取其完整已确认体（体内的嵌套停止传播为本读取器的
 /// [`FeatureLayerStop10_1::DataSource`] 成功停止）；其他类标识返回

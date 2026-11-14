@@ -60,7 +60,7 @@
 //!
 //! ## 本读取器的可达范围
 //!
-//! 步骤 4/6 的两个 FeatureLayer 体由 [`crate::feature_layer`] 的前缀读取器
+//! 步骤 4/6 的两个 FeatureLayer 体由 [`crate::layers::feature_layer`] 的前缀读取器
 //! 分派解析：关联图层体（步骤 4）在其停止点（渲染器新对象 / +0x144 GUID /
 //! 数据源体内停止）之后无法继续——本读取器随之停止（步骤 5 起不可达）。
 //! 仅当关联图层槽为空标记/回引时才推进到步骤 5/6；委派体（步骤 6）同样
@@ -76,16 +76,16 @@
 //! （颜色/符号槽位按请求 IID 类型库考证，业务含义候选）未在非样本版本实
 //! 证；全部结论未运行 ArcMap 验证。
 
-use crate::element_collection::{
-    ELEMENT_COLLECTION_CLASS_ID, ElementCollection10_1, ElementCollectionStop10_1,
-    read_element_collection_10_1,
-};
-use crate::feature_layer::{
+use crate::layers::feature_layer::{
     FEATURE_LAYER_CLASS_ID, FeatureLayerPrefix10_1, FeatureLayerStop10_1,
     read_feature_layer_prefix_10_1,
 };
-use crate::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
-use crate::reader::Reader;
+use crate::objects::element_collection::{
+    ELEMENT_COLLECTION_CLASS_ID, ElementCollection10_1, ElementCollectionStop10_1,
+    read_element_collection_10_1,
+};
+use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
 /// FDOGraphicsLayer::Load 接受的最大版本：汇编 `CMP AX,0xb; JG` 有符号比
@@ -179,7 +179,7 @@ impl FdoGraphicsLayerStop10_1 {
             Self::AssociatedLayerUnsupported { class_id, key } => format!(
                 "ILayer 槽新对象（键 {key}）类标识 {} 不是 FeatureLayer：体未知且\
                  无外部长度，游标回退到该对象头起点",
-                crate::layer_list::class_id_hex(class_id)
+                crate::layers::layer_list::class_id_hex(class_id)
             ),
             Self::AssociatedLayerBodyStopped { .. } => {
                 "关联要素图层体在其前缀停止点停止：其体剩余无外部长度，本读取器\
@@ -192,7 +192,7 @@ impl FdoGraphicsLayerStop10_1 {
             Self::ElementCollectionNewObject { class_id, key } => format!(
                 "IElementCollection2 槽新对象（键 {key}，类标识 {}）不是 \
                  ElementCollection：体未知且无外部长度，游标回退到该对象头起点",
-                crate::layer_list::class_id_hex(class_id)
+                crate::layers::layer_list::class_id_hex(class_id)
             ),
             Self::ElementCollectionStopped(stop) => format!(
                 "IElementCollection2 槽的 ElementCollection 体在其元素循环停止点\
@@ -238,7 +238,7 @@ pub struct FdoGraphicsLayerPrefix10_1 {
 
 /// 从对象头之后的位置读取 10.1 FDOGraphicsLayer 对象体的已确认前缀。
 ///
-/// 起点约定：调用者已用 [`crate::object_stream::read_header_10_1`] 读取对象
+/// 起点约定：调用者已用 [`crate::storage::object_stream::read_header_10_1`] 读取对象
 /// 头、比对 [`FDO_GRAPHICS_LAYER_CLASS_ID`] 确认类身份，并从对象头之后的位
 /// 置传入 Reader；本函数不重复读取对象头。字段序与证据见模块文档。
 ///

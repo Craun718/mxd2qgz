@@ -16,7 +16,7 @@
 //!    上限 12。反编译的符号性未在文档闭合，本读取器按无符号解释，负值位
 //!    模式（0x8000..）一并拒绝，较原生更严（与 map_object、
 //!    spatial_reference 的版本处理一致）；
-//! 2. AfCore String 名称 → obj+0x9c（[`crate::native_string::read_string_10_1`]）；
+//! 2. AfCore String 名称 → obj+0x9c（[`crate::stream::native_string::read_string_10_1`]）；
 //! 3. int16 ×3 → +0xa0/+0xa2/+0xa4（+0xa0 为可见性「候选」，语义未定，
 //!    原样保留）；
 //! 4. double ×2 → +0xa8/+0xb0；
@@ -45,7 +45,7 @@
 //!     时先于这些字段出现且必须停止，版本 <5 时它们的版本条件又不满足，
 //!     因此对任何版本都不可达，不进入解析结果。
 //!
-//! 停止语义（与 [`crate::map_object`] 的设计差异及理由）：map_object 对
+//! 停止语义（与 [`crate::maps::map_object`] 的设计差异及理由）：map_object 对
 //! 未知嵌套类直接报错，因为其后没有同序字段可继续；本模块面对的嵌套对象
 //! （子图层、IEnvelope）之后仍有已确认字段，而新对象体没有外部长度字段、
 //! 无法跳过——报错会丢弃已解析前缀。因此本读取器是「已确认前缀」语义：
@@ -57,7 +57,7 @@
 //!
 //! ## 子图层递归（2026-11-14 第六轮接入）
 //!
-//! 子图层新对象体经 [`crate::layer_list::parse_body_prefix`] 类分派解析已
+//! 子图层新对象体经 [`crate::layers::layer_list::parse_body_prefix`] 类分派解析已
 //! 确认前缀（FeatureLayer / GroupLayer / CompositeGraphicsLayer /
 //! FDOGraphicsLayer；组图层套组图层经同一分派递归，深度限额见
 //! [`MAX_RECURSION_DEPTH`]，非原生限制）。版本 >=11 的 ExtraSafe 条目解析
@@ -68,7 +68,7 @@
 //! 参考样本无组图层，子图层条目的分派行为无样本字节佐证，仅 ExtraSafe
 //! `[A][B]` 布局有 /Maps 图层列表的逐条目吻合（第四轮）。
 //!
-//! 调用约定：调用者先用 [`crate::object_stream::read_header_10_1`] 读取对象
+//! 调用约定：调用者先用 [`crate::storage::object_stream::read_header_10_1`] 读取对象
 //! 头并比对 [`GROUP_LAYER_CLASS_ID`]，从对象头之后的位置调用
 //! [`read_group_layer_prefix_10_1`]；本模块不重复读取对象头。
 //!
@@ -85,10 +85,10 @@
 //! ExtensionHelper 与尾部 LayerMasking/`FUN_6f6c8100` 未展开（后者反编译
 //! 无参数、按不消费流处理，未验证）。
 
-use crate::layer_list::LayerBodyPrefix10_1;
-use crate::native_string::read_string_10_1;
-use crate::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
-use crate::reader::Reader;
+use crate::layers::layer_list::LayerBodyPrefix10_1;
+use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use crate::stream::native_string::read_string_10_1;
+use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
 /// GroupLayer::Load 接受的最大架构版本：>12（0x0c）原生拒绝 0x80004005。
@@ -251,7 +251,7 @@ pub struct GroupLayerPrefix10_1 {
 
 /// 从对象头之后的位置读取 10.1 GroupLayer 对象体的已确认前缀。
 ///
-/// 起点约定：调用者已用 [`crate::object_stream::read_header_10_1`] 读取对象
+/// 起点约定：调用者已用 [`crate::storage::object_stream::read_header_10_1`] 读取对象
 /// 头、比对 [`GROUP_LAYER_CLASS_ID`] 确认类身份，并从对象头之后的位置传入
 /// Reader；本函数不重复读取对象头。字段序与证据见模块文档。
 ///
@@ -363,7 +363,7 @@ pub(crate) fn read_group_layer_prefix_with_depth_10_1(
                         // 整个体按未知跳过。
                         let mut parsed = None;
                         if depth < MAX_RECURSION_DEPTH {
-                            match crate::layer_list::parse_body_prefix(
+                            match crate::layers::layer_list::parse_body_prefix(
                                 &mut trial,
                                 class_id,
                                 max_bytes,
@@ -443,7 +443,7 @@ pub(crate) fn read_group_layer_prefix_with_depth_10_1(
                         // ChildLayerBody）；类无读取器或解析失败时回退登记表
                         // 与游标到该对象头起点，在此停止（ChildNewObject）。
                         let dispatch = if depth < MAX_RECURSION_DEPTH {
-                            crate::layer_list::parse_body_prefix(
+                            crate::layers::layer_list::parse_body_prefix(
                                 &mut trial,
                                 class_id,
                                 max_bytes,

@@ -6,7 +6,7 @@
 //! 吻合（版本 6：WKT 455 字节、4 个空域字符串、垂向标志 0x00、标志 0x0001、
 //! 7+3 个 double）。
 //!
-//! 调用约定：调用者先用 [`crate::object_stream::read_header_10_1`] 读取对象
+//! 调用约定：调用者先用 [`crate::storage::object_stream::read_header_10_1`] 读取对象
 //! 头，比对 [`PROJECTED_COORDINATE_SYSTEM_CLASS_ID`] 确认类标识后，从对象头
 //! 之后的位置调用读取器；本模块不重复读取对象头。
 //!
@@ -29,7 +29,7 @@
 //! 节栈缓冲且反编译未见长度上限检查（潜在原生缺陷），本读取器保留
 //! `max_bytes` 资源限额。
 
-use crate::reader::Reader;
+use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
 /// ProjectedCoordinateSystem 类标识（CLSID）的 16 字节内存序。

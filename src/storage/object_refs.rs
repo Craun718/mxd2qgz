@@ -13,8 +13,8 @@
 //! 对象区分——未见过键一律按新对象分类，这是有意保留的原生语义。全部为
 //! 静态证据，未经目标软件运行验证。
 
-use crate::object_stream::{ObjectHeader, read_header_10_1};
-use crate::reader::Reader;
+use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
+use crate::stream::reader::Reader;
 use std::collections::HashMap;
 use std::io;
 

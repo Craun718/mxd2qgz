@@ -13,8 +13,8 @@
 //! 本模块不能推断地图数量之外的完整图层树；每个读取器仅适用于调用者已
 //! 确认的对应版本。
 
-use crate::object_stream::{ObjectHeader, read_header_10_1, read_header_10_8};
-use crate::reader::Reader;
+use crate::storage::object_stream::{ObjectHeader, read_header_10_1, read_header_10_8};
+use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
 #[derive(Debug, Clone, PartialEq, Eq)]

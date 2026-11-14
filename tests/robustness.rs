@@ -18,26 +18,30 @@
 //! 引用、重复标识与缺失引用的语义覆盖见 `src/object_refs.rs` 与
 //! `tests/object_refs.rs`；本清单把条目分类入口纳入统一的截断与游标共性。
 
-use mxd2qgz::composite_graphics::read_composite_graphics_layer_prefix_10_1;
-use mxd2qgz::dataset_name::{read_feature_dataset_name_body_10_1, read_topology_name_body_10_1};
-use mxd2qgz::element_collection::read_element_collection_10_1;
-use mxd2qgz::envelope::read_envelope_10_1;
-use mxd2qgz::fdo_legacy::read_fdo_graphics_layer_legacy_prefix_10_1;
-use mxd2qgz::feature_layer::read_feature_layer_prefix_10_1;
-use mxd2qgz::group_layer::read_group_layer_prefix_10_1;
-use mxd2qgz::layer_list::read_layer_list_10_1;
-use mxd2qgz::map_object::{read_map_prefix_10_1, read_map_suffix_10_1};
-use mxd2qgz::map_surround::{
+use mxd2qgz::layers::composite_graphics::read_composite_graphics_layer_prefix_10_1;
+use mxd2qgz::layers::fdo_legacy::read_fdo_graphics_layer_legacy_prefix_10_1;
+use mxd2qgz::layers::feature_layer::read_feature_layer_prefix_10_1;
+use mxd2qgz::layers::group_layer::read_group_layer_prefix_10_1;
+use mxd2qgz::layers::layer_list::read_layer_list_10_1;
+use mxd2qgz::maps::map_object::{read_map_prefix_10_1, read_map_suffix_10_1};
+use mxd2qgz::maps::map_surround::{
     read_aoi_bookmark_10_1, read_feature_bookmark_10_1, read_legend_prefix_10_1,
 };
-use mxd2qgz::maps_stream::{read_root_prefix_10_1, read_root_prefix_10_8};
-use mxd2qgz::native_string::{read_string_10_1, read_string_10_8};
-use mxd2qgz::object_refs::{RefTable10_1, read_object_entry_10_1};
-use mxd2qgz::object_stream::{ObjectHeader, read_header_10_1, read_header_10_8};
-use mxd2qgz::reader::Reader;
-use mxd2qgz::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
-use mxd2qgz::variant_stream::{VariantValue10_8, read_value_10_8};
-use mxd2qgz::version_stream::{read_arcmap_header_10_1, read_layout_10_1, read_layout_10_8};
+use mxd2qgz::maps::maps_stream::{read_root_prefix_10_1, read_root_prefix_10_8};
+use mxd2qgz::objects::dataset_name::{
+    read_feature_dataset_name_body_10_1, read_topology_name_body_10_1,
+};
+use mxd2qgz::objects::element_collection::read_element_collection_10_1;
+use mxd2qgz::objects::envelope::read_envelope_10_1;
+use mxd2qgz::objects::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
+use mxd2qgz::storage::object_refs::{RefTable10_1, read_object_entry_10_1};
+use mxd2qgz::storage::object_stream::{ObjectHeader, read_header_10_1, read_header_10_8};
+use mxd2qgz::stream::native_string::{read_string_10_1, read_string_10_8};
+use mxd2qgz::stream::reader::Reader;
+use mxd2qgz::stream::variant_stream::{VariantValue10_8, read_value_10_8};
+use mxd2qgz::version::version_stream::{
+    read_arcmap_header_10_1, read_layout_10_1, read_layout_10_8,
+};
 use std::io::{self, ErrorKind};
 
 /// 构造 AfCore String::Write 布局的合法输入：u32 字节长度前缀 + 含终止零的 UTF-16LE。
@@ -248,7 +252,7 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
             let mut bytes = 11_u16.to_le_bytes().to_vec();
             bytes.extend(3_i32.to_le_bytes());
             bytes.extend(0xFFFF_u16.to_le_bytes());
-            bytes.extend(mxd2qgz::feature_layer::FEATURE_LAYER_CLASS_ID);
+            bytes.extend(mxd2qgz::layers::feature_layer::FEATURE_LAYER_CLASS_ID);
             bytes.extend(32_u32.to_le_bytes());
             bytes.extend(&layer);
             bytes
@@ -338,7 +342,7 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
                 bytes.extend(encoded(""));
             }
             bytes.push(0); // 标志 0：无工厂 CLSID 段
-            bytes.extend(mxd2qgz::feature_layer::WORKSPACE_NAME_CLASS_ID);
+            bytes.extend(mxd2qgz::layers::feature_layer::WORKSPACE_NAME_CLASS_ID);
             bytes.extend(60_u32.to_le_bytes());
             bytes.extend(1_u16.to_le_bytes()); // WS 版本
             for _ in 0..3 {
@@ -432,7 +436,7 @@ fn try_read(kind: ReaderKind, reader: &mut Reader<'_>) -> io::Result<()> {
             read_feature_layer_prefix_10_1(reader, 1024, &mut RefTable10_1::new()).map(|_| ())
         }
         ReaderKind::FdoGraphicsLayerPrefix10_1 => {
-            mxd2qgz::fdo_graphics_layer::read_fdo_graphics_layer_prefix_10_1(
+            mxd2qgz::layers::fdo_graphics_layer::read_fdo_graphics_layer_prefix_10_1(
                 reader,
                 1024,
                 &mut RefTable10_1::new(),
@@ -457,7 +461,7 @@ fn try_read(kind: ReaderKind, reader: &mut Reader<'_>) -> io::Result<()> {
             read_object_entry_10_1(reader, &mut RefTable10_1::new()).map(|_| ())
         }
         ReaderKind::SimpleRendererBody10_1 => {
-            mxd2qgz::feature_layer_tail::read_simple_renderer_body_10_1(
+            mxd2qgz::layers::feature_layer_tail::read_simple_renderer_body_10_1(
                 reader,
                 1024,
                 &mut RefTable10_1::new(),
@@ -466,7 +470,7 @@ fn try_read(kind: ReaderKind, reader: &mut Reader<'_>) -> io::Result<()> {
             .map(|_| ())
         }
         ReaderKind::ElementCollectionBody10_1 => {
-            mxd2qgz::element_collection::read_element_collection_10_1(
+            mxd2qgz::objects::element_collection::read_element_collection_10_1(
                 reader,
                 1024,
                 &mut RefTable10_1::new(),

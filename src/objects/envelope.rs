@@ -22,7 +22,7 @@
 //!    bit7(0x80) → 再追加 2 个 double（M 域候选），Z 在 M 前；
 //! 4. 仅版本 3：LoadObject 空间参考子对象（请求 IID
 //!    `{4434D680-F4DA-11D1-BCA6-0000F875BCCE}`，与 Map::Load 第 4 步同值）。
-//!    条目经 [`crate::object_refs::read_object_entry_10_1`] 分类：全零类标识
+//!    条目经 [`crate::storage::object_refs::read_object_entry_10_1`] 分类：全零类标识
 //!    → 空引用；键已见 → 20 字节回引（无体）；新键且类标识为投影坐标系 →
 //!    读嵌套 PCS 体；新键非投影坐标系 → 不支持（嵌套体无外部长度字段，
 //!    无法跳过）。
@@ -30,7 +30,7 @@
 //! 写侧恒写版本 3 完整布局（Save 写静态常量 3，不走 AfStreamGetSaveVersion
 //! 版本表）；读侧按 1/2/3 分支兼容旧版——与 PCS 读写结论同构。
 //!
-//! 调用约定：调用者已用 [`crate::object_stream::read_header_10_1`] 读取对象
+//! 调用约定：调用者已用 [`crate::storage::object_stream::read_header_10_1`] 读取对象
 //! 头并比对 [`ENVELOPE_CLASS_ID`] 确认类身份，从对象头之后的位置传入
 //! Reader；本模块不重复读取对象头。图层坐标系宿主于图层体 Envelope 的第
 //! 4 段嵌套空间参考（证据文档「Envelope 对象」节），字段归属由调用者负责。
@@ -62,14 +62,14 @@
 //! 拒绝，与 map_object 的版本处理一致）；嵌套空间参考仅支持投影坐标系，
 //! GeographicCoordinateSystem / UnknownCoordinateSystem 等其他空间参考类
 //! 无样本与分派证据；回引与新对象在流内不可局部区分（沿用
-//! [`crate::object_refs`] 的登记表语义）。
+//! [`crate::storage::object_refs`] 的登记表语义）。
 
-use crate::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
-use crate::reader::Reader;
-use crate::spatial_reference::{
+use crate::objects::spatial_reference::{
     PROJECTED_COORDINATE_SYSTEM_CLASS_ID, ProjectedCoordinateSystem10_1,
     read_projected_coordinate_system_10_1,
 };
+use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
 /// Envelope 类标识（CLSID）的 16 字节内存序（Data1-3 小端、Data4 原序）。
@@ -87,7 +87,7 @@ pub const ENVELOPE_CLASS_ID: [u8; 16] = [
 ///
 /// 分类完全依赖调用者传入的登记表状态：回引与新对象条目在流内同构、不可
 /// 局部区分，空表会把实际的回引字节按新对象分类（沿用
-/// [`crate::object_refs`] 保留的原生语义）。Load 侧请求 IID
+/// [`crate::storage::object_refs`] 保留的原生语义）。Load 侧请求 IID
 /// `{4434D680-F4DA-11D1-BCA6-0000F875BCCE}`（与 Map::Load 第 4 步同值），
 /// 对象类身份由流内 16 字节类标识决定。
 #[derive(Debug, Clone, PartialEq)]
@@ -159,7 +159,7 @@ pub struct Envelope10_1 {
 
 /// 从对象头之后的位置读取 10.1 Envelope 对象体的严格子集。
 ///
-/// 起点约定：调用者已用 [`crate::object_stream::read_header_10_1`] 读取
+/// 起点约定：调用者已用 [`crate::storage::object_stream::read_header_10_1`] 读取
 /// Envelope 对象头、比对 [`ENVELOPE_CLASS_ID`] 确认类身份，并从对象头之后
 /// 的位置传入 Reader；本函数不重复读取对象头。字段序与证据见模块文档。
 ///
@@ -168,7 +168,7 @@ pub struct Envelope10_1 {
 /// 在任何读取与分配之前检查），`usize::MAX` 表示不额外设限。
 ///
 /// `table` 是跨流共享的已见键登记表（对应原生 ObjectStream 读表）：
-/// 嵌套空间参考条目经 [`crate::object_refs::read_object_entry_10_1`] 分类，
+/// 嵌套空间参考条目经 [`crate::storage::object_refs::read_object_entry_10_1`] 分类，
 /// 新键在嵌套对象体读取之前登记到表的试读副本上，调用整体成功才一并提交；
 /// 任何失败既不推进游标、也不修改调用者的登记表。
 ///

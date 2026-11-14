@@ -21,13 +21,13 @@
 //! 前缀 = 含 UTF-16LE 终止零的字节数 n*2+2。样本「新建数据框」前缀 12
 //! （5 字 ×2 + 终止零 2），空名称前缀 2（仅终止零，即文档强调的 6 字节
 //! `02 00 00 00 00 00` 模式，勿误读为 int32 计数）。与
-//! [`crate::native_string::read_string_10_1`] 的布局一致，名称读取据此
+//! [`crate::stream::native_string::read_string_10_1`] 的布局一致，名称读取据此
 //! 接入该严格读取器。
 //!
 //! ## 后缀序列（`read_map_suffix_10_1`；Save `0x79401850` 与 Load 对称段）
 //!
 //! 前缀之后依次：**图层列表**（读侧 `FUN_794035f0` ver≥0x17，见
-//! [`crate::layer_list`]）→ 基本图形层对象（SaveObject(+0xf8)，请求 IID
+//! [`crate::layers::layer_list`]）→ 基本图形层对象（SaveObject(+0xf8)，请求 IID
 //! `{34B2EF81-…}`；样本为 CompositeGraphicsLayer 键 1553 @/Maps:0x16fba）→
 //! int32 计数 + 循环（MapSurround，请求 IID `{FE3115E9-…}`；样本计数 0
 //! @/Maps:0x24f60）→ **WKSEnvelope 32 字节**（`[XMin,YMin,XMax,YMax]`，写方向
@@ -38,7 +38,7 @@
 //! 的对位未闭合（文档「未解决事项（第五轮新增）」第 1 条），一律保留为未知
 //! 尾部，不读取。
 //!
-//! 调用约定：调用者先用 [`crate::object_stream::read_header_10_1`] 读取
+//! 调用约定：调用者先用 [`crate::storage::object_stream::read_header_10_1`] 读取
 //! Map 对象头并比对 [`MAP_CLASS_ID`]，从对象头之后的位置调用
 //! [`read_map_prefix_10_1`]；本模块不重复读取对象头。后缀读取器同样从对象体
 //! 起点接收 Reader（内部重读前缀以登记嵌套空间参考键并定位图层列表），
@@ -66,25 +66,25 @@
 //! [`read_map_suffix_10_1`] 内注释（样本 16 字节 + 紧随计数 0 与文档计数偏移
 //! 0x24f9c 互证；任务摘要曾按 20 字节解读，与样本 0x24fa0=0xffff 矛盾）。
 
-use crate::composite_graphics::{
+use crate::layers::composite_graphics::{
     COMPOSITE_GRAPHICS_LAYER_CLASS_ID, CompositeGraphicsLayerPrefix10_1,
     read_composite_graphics_layer_prefix_10_1,
 };
-use crate::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
-use crate::layer_list::{LayerList10_1, LayerListStop, class_id_hex, read_layer_list_10_1};
-use crate::map_surround::{
+use crate::layers::layer_list::{LayerList10_1, LayerListStop, class_id_hex, read_layer_list_10_1};
+use crate::maps::map_surround::{
     AOI_BOOKMARK_CLASS_ID, AoiBookmark10_1, FEATURE_BOOKMARK_CLASS_ID, FeatureBookmark10_1,
     LEGEND_CLASS_ID, LegendPrefix10_1, LegendStop10_1, read_aoi_bookmark_10_1,
     read_feature_bookmark_10_1, read_legend_prefix_10_1,
 };
-use crate::native_string::read_string_10_1;
-use crate::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
-use crate::object_stream::{ObjectHeader, read_header_10_1};
-use crate::reader::Reader;
-use crate::spatial_reference::{
+use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
+use crate::objects::spatial_reference::{
     PROJECTED_COORDINATE_SYSTEM_CLASS_ID, ProjectedCoordinateSystem10_1,
     read_projected_coordinate_system_10_1,
 };
+use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
+use crate::stream::native_string::read_string_10_1;
+use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
 /// Map::Load 接受的最大架构版本：>0x33（51）直接拒绝；样本值 51。
@@ -112,7 +112,7 @@ pub struct WksEnvelope10_1 {
 pub struct ObjectSlot10_1 {
     /// 对象头起点偏移（相对传入 Reader 的底层字节）。
     pub offset: usize,
-    /// 经 [`crate::object_refs`] 分类的对象条目（空标记 / 回引 / 新对象）。
+    /// 经 [`crate::storage::object_refs`] 分类的对象条目（空标记 / 回引 / 新对象）。
     pub entry: ObjectEntry10_1,
 }
 
@@ -316,7 +316,7 @@ pub struct MapPrefix10_1 {
 
 /// 从对象头之后的位置读取 10.1 Map 对象体的已确认前缀，失败时不推进游标。
 ///
-/// 起点约定：调用者已用 [`crate::object_stream::read_header_10_1`] 读取
+/// 起点约定：调用者已用 [`crate::storage::object_stream::read_header_10_1`] 读取
 /// Map 对象头、比对 [`MAP_CLASS_ID`] 确认类身份，并从对象头之后的位置传
 /// 入 Reader；本函数不重复读取对象头。字段序与证据见模块文档。
 ///
@@ -437,7 +437,7 @@ fn read_map_prefix_inner(
 ///   图层体同样预留集成点）。空标记与回引条目只消耗对象头，继续；
 /// - 书签循环之后的字段未闭合，正常终点即停止（[`MapSuffixStop::AfterBookmarks`]）。
 ///
-/// IEnvelope 槽位的空标记消费 **16 字节**（沿用 [`crate::object_stream`]
+/// IEnvelope 槽位的空标记消费 **16 字节**（沿用 [`crate::storage::object_stream`]
 /// S_FALSE 约定）。注意与任务摘要的 20 字节解读不同：样本 `/Maps:0x24f8c` 起
 /// 有 20 个零字节，其后 `0x24fa0` 为 `ff ff`；若空标记消费 20 字节，书签计数
 /// 将位于 0x24fa0 且读出 0xffff（65535 个书签），与样本无书签及证据文档

@@ -2,7 +2,7 @@
 //!
 //! 调用点、版本及字段归属必须由调用者确认。
 
-use crate::reader::Reader;
+use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
 /// 读取包含终止零的字节长度前缀字符串，资源上限包含终止零、不包含前缀。

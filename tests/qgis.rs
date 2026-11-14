@@ -1,4 +1,6 @@
-use mxd2qgz::{model::*, qgis::*, source_path};
+use mxd2qgz::model::*;
+use mxd2qgz::output::qgis::*;
+use mxd2qgz::output::source_path;
 use roxmltree::Document;
 use std::fs;
 use std::io::{ErrorKind, Read};

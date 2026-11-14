@@ -6,7 +6,7 @@
 
 **样本边界（先声明）**：仓库参考样本 `samples/测试底图.mxd` 的
 MapSurround 循环计数（`/Maps:0x24f60`）与书签循环计数（`0x24f9c`）均为
-0。本文全部结论**无样本字节佐证**；实现（`src/map_surround.rs`）只能用
+0。本文全部结论**无样本字节佐证**；实现（`src/layers/map_surround.rs`）只能用
 合成输入测试，不得声称样本验证。样本中能核对的只有循环结构本身（计数 0
 即循环体为空），该部分与 `map_object::read_map_suffix_10_1` 现有骨架一致。
 
@@ -180,7 +180,7 @@ SaveObject 条目、恒写 −0xe8、docVersion≠0 写 −0xe6、docVersion≥5
 Load ver=5 读全部尾段，读写一致（ver/docVersion 桥接经版本表闭合，无
 错位）。
 
-## 七、实现（src/map_surround.rs，仅合成输入测试）
+## 七、实现（src/layers/map_surround.rs，仅合成输入测试）
 
 - `read_map_surround_common_prefix_10_1`：共同前缀（版本仅接受 0..=3，
   较原生更严并注明；IMap 槽新对象报不支持——真实流恒为回引）。

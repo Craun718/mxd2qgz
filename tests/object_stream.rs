@@ -1,5 +1,5 @@
-use mxd2qgz::object_stream::{ObjectHeader, read_header_10_1, read_header_10_8};
-use mxd2qgz::reader::Reader;
+use mxd2qgz::storage::object_stream::{ObjectHeader, read_header_10_1, read_header_10_8};
+use mxd2qgz::stream::reader::Reader;
 use std::io::ErrorKind;
 
 #[test]

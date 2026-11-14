@@ -1,5 +1,5 @@
-use mxd2qgz::reader::Reader;
-use mxd2qgz::version_stream::{
+use mxd2qgz::stream::reader::Reader;
+use mxd2qgz::version::version_stream::{
     CompatibilityBranch10_1, CompatibilityBranch10_8, VersionLayout10_8, read_arcmap_header_10_1,
     read_layout_10_1, read_layout_10_8, write_arcmap_header_10_1,
 };

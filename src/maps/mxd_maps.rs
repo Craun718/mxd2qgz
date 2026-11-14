@@ -3,17 +3,17 @@
 //! 本模块是显式 10.1 读取器与 [`crate::model`] 中间模型的接线层，仅调用
 //! 以下已确认读取器，不新增任何字段解释：
 //!
-//! - [`crate::maps_stream::read_root_prefix_10_1`]：4 字节有符号数量、首个
+//! - [`crate::maps::maps_stream::read_root_prefix_10_1`]：4 字节有符号数量、首个
 //!   对象头、循环后的 4 字节尾部原始值（证据：`docs/arcmap-10.1-object-body.md`）；
-//! - [`crate::object_stream::read_header_10_1`]：Map 对象头；
-//! - [`crate::map_object::read_map_prefix_10_1`]：Map 对象体已确认前缀
+//! - [`crate::storage::object_stream::read_header_10_1`]：Map 对象头；
+//! - [`crate::maps::map_object::read_map_prefix_10_1`]：Map 对象体已确认前缀
 //!   （架构版本 short、双名称字符串、嵌套空间参考对象）；
-//! - [`crate::spatial_reference::read_projected_coordinate_system_10_1`]：
+//! - [`crate::objects::spatial_reference::read_projected_coordinate_system_10_1`]：
 //!   ProjectedCoordinateSystem 对象体（经 Map 前缀读取器内部调用）；
-//! - [`crate::map_object::read_map_suffix_10_1`]：Map 对象体后缀序列
+//! - [`crate::maps::map_object::read_map_suffix_10_1`]：Map 对象体后缀序列
 //!   （图层列表 → 基本图形层 → MapSurround 循环 → WKSEnvelope → 两个
 //!   int32 → IEnvelope → 书签循环，到书签循环为止，其后保留为未知尾部；
-//!   内部经 [`crate::layer_list::read_layer_list_10_1`] 读取图层列表）。
+//!   内部经 [`crate::layers::layer_list::read_layer_list_10_1`] 读取图层列表）。
 //!
 //! 模型填充规则（仅已确认字段）：
 //!
@@ -24,7 +24,7 @@
 //!   未确认，不写入模型，仅在诊断中说明）；
 //! - WKSEnvelope 到达时 → `DataFrame.extent`（`[XMin,YMin,XMax,YMax]`，
 //!   写方向确定）；未到达时保留 `None` 并在诊断中说明原因；
-//! - 图层条目经 [`crate::layer_list`] 的类分派解析出体前缀时构造
+//! - 图层条目经 [`crate::layers::layer_list`] 的类分派解析出体前缀时构造
 //!   [`LayerNode`](crate::model::LayerNode)（FeatureLayer → 名称/第二名称/
 //!   可见性/数据源链；FDOGraphicsLayer → 以其关联要素图层的名称/可见性/
 //!   数据源构造节点（第六轮），委派注记图层只进诊断；GroupLayer → 名称/
@@ -51,18 +51,22 @@
 //! 解析结果与诊断都是候选观察：单元测试仅验证代码自身契约，解析规则未在
 //! ArcMap 10.1 或 QGIS 中人工目视验证；通过解析不代表 MXD 格式已验证。
 
-use crate::fdo_graphics_layer::AssociatedLayer10_1;
-use crate::feature_layer::{DataSource10_1, FeatureClassNameNested10_1, WorkspaceNameEntry10_1};
-use crate::layer_list::{LayerBodyPrefix10_1, LayerEntryObject, LayerList10_1};
-use crate::map_object::{MAP_CLASS_ID, ObjectSlot10_1, read_map_prefix_10_1, read_map_suffix_10_1};
-use crate::maps_stream::read_root_prefix_10_1;
+use crate::layers::fdo_graphics_layer::AssociatedLayer10_1;
+use crate::layers::feature_layer::{
+    DataSource10_1, FeatureClassNameNested10_1, WorkspaceNameEntry10_1,
+};
+use crate::layers::layer_list::{LayerBodyPrefix10_1, LayerEntryObject, LayerList10_1};
+use crate::maps::map_object::{
+    MAP_CLASS_ID, ObjectSlot10_1, read_map_prefix_10_1, read_map_suffix_10_1,
+};
+use crate::maps::maps_stream::read_root_prefix_10_1;
 use crate::model::{
     CoordinateSystem, DataFrame, DataSource, Extent, Layer, LayerGroup, LayerNode, Map,
     UnknownField,
 };
-use crate::object_refs::{ObjectEntry10_1, RefTable10_1};
-use crate::object_stream::{ObjectHeader, read_header_10_1};
-use crate::reader::Reader;
+use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
+use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
+use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
 /// 数据框数量限额：进入对象循环前拒绝超过该值的数量，避免按异常数量申请解析工作。
@@ -102,7 +106,7 @@ pub struct MapsParseReport10_1 {
 ///
 /// 输入须是 OLE `/Maps` 数据流的完整字节；解析失败返回明确错误且不返回
 /// 部分模型。这是显式 10.1 解析路径，不识别 MXD 版本（版本候选请配合
-/// `version` 命令或 [`crate::mxd_version::identify_version`] 使用）。
+/// `version` 命令或 [`crate::version::mxd_version::identify_version`] 使用）。
 pub fn parse_maps_10_1(maps: &[u8]) -> io::Result<MapsParseReport10_1> {
     parse_maps_10_1_with_limits(maps, MAX_MAP_COUNT, MAX_FIELD_BYTES)
 }
@@ -380,14 +384,15 @@ fn parse_first_frame(
                 let mut group_children = Vec::new();
                 for child in &prefix.children {
                     match child {
-                        crate::group_layer::GroupChildEntry10_1::ParsedNewObject {
-                            parsed, ..
+                        crate::layers::group_layer::GroupChildEntry10_1::ParsedNewObject {
+                            parsed,
+                            ..
                         } => {
                             if let Some(node) = body_prefix_node(parsed, entry.index, diagnostics) {
                                 group_children.push(node);
                             }
                         }
-                        crate::group_layer::GroupChildEntry10_1::SkippedNewObject {
+                        crate::layers::group_layer::GroupChildEntry10_1::SkippedNewObject {
                             parsed: Some(parsed),
                             ..
                         } => {
@@ -523,11 +528,16 @@ fn parse_first_frame(
             parsed.coords[3],
             parsed.attribute_flags.unwrap_or(0),
             match &parsed.spatial_reference {
-                Some(crate::envelope::SpatialReferenceEntry10_1::Null) => "空引用标记".to_string(),
-                Some(crate::envelope::SpatialReferenceEntry10_1::BackReference { key, .. }) =>
-                    format!("回引（键 {key}）"),
-                Some(crate::envelope::SpatialReferenceEntry10_1::Projected { key, .. }) =>
-                    format!("内嵌 PCS（键 {key}）"),
+                Some(crate::objects::envelope::SpatialReferenceEntry10_1::Null) =>
+                    "空引用标记".to_string(),
+                Some(crate::objects::envelope::SpatialReferenceEntry10_1::BackReference {
+                    key,
+                    ..
+                }) => format!("回引（键 {key}）"),
+                Some(crate::objects::envelope::SpatialReferenceEntry10_1::Projected {
+                    key,
+                    ..
+                }) => format!("内嵌 PCS（键 {key}）"),
                 None => "该版本分支无此段".to_string(),
             }
         ));
@@ -636,7 +646,7 @@ fn variant_bool_to_model(raw: u16, what: &str) -> (bool, Option<String>) {
 /// 由 FeatureLayer 前缀构造数据源模型项与诊断（FCN 名称 → connection，
 /// WorkspaceName 路径 → path；均为已确认字段，语义见 feature_layer 模块）。
 fn feature_layer_source(
-    prefix: &crate::feature_layer::FeatureLayerPrefix10_1,
+    prefix: &crate::layers::feature_layer::FeatureLayerPrefix10_1,
     entry_index: usize,
     diagnostics: &mut Vec<String>,
 ) -> Option<DataSource> {
@@ -654,7 +664,7 @@ fn feature_layer_source(
                         match ws.factory_class_id {
                             Some(class_id) => format!(
                                 "，工厂 CLSID {}（原样保留）",
-                                crate::layer_list::class_id_hex(&class_id)
+                                crate::layers::layer_list::class_id_hex(&class_id)
                             ),
                             None => String::new(),
                         },
@@ -761,12 +771,15 @@ fn body_prefix_node(
             let mut children = Vec::new();
             for child in &group.children {
                 match child {
-                    crate::group_layer::GroupChildEntry10_1::ParsedNewObject { parsed, .. } => {
+                    crate::layers::group_layer::GroupChildEntry10_1::ParsedNewObject {
+                        parsed,
+                        ..
+                    } => {
                         if let Some(node) = body_prefix_node(parsed, entry_index, diagnostics) {
                             children.push(node);
                         }
                     }
-                    crate::group_layer::GroupChildEntry10_1::SkippedNewObject {
+                    crate::layers::group_layer::GroupChildEntry10_1::SkippedNewObject {
                         parsed: Some(parsed),
                         ..
                     } => {
@@ -812,7 +825,7 @@ fn push_slot_diagnostics(slots: &[ObjectSlot10_1], label: &str, diagnostics: &mu
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
+    use crate::objects::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
     use std::io::ErrorKind;
 
     /// 样本首个 PCS 对象键（`/Maps:0x30` 键 30）；键值原样保留，不参与分派。
@@ -1022,15 +1035,15 @@ mod tests {
         // 条目 2：回引（同键命中登记表）。
         assert!(matches!(
             list.entries[1].object,
-            crate::layer_list::LayerEntryObject::Entry(
-                crate::object_refs::ObjectEntry10_1::BackReference { key: 51, .. }
+            crate::layers::layer_list::LayerEntryObject::Entry(
+                crate::storage::object_refs::ObjectEntry10_1::BackReference { key: 51, .. }
             )
         ));
         assert_eq!(list.entries[1].body, None);
         // 条目 3：空条目。
         assert!(matches!(
             list.entries[2].object,
-            crate::layer_list::LayerEntryObject::Empty
+            crate::layers::layer_list::LayerEntryObject::Empty
         ));
         // 条目 4：标志 1 新对象 → 列表停止。
         assert_eq!(list.entries[3].flag, 1);
@@ -1077,7 +1090,7 @@ mod tests {
         // 计数不读取，体保留为未知尾部。
         let mut suffix = 0_i32.to_le_bytes().to_vec();
         suffix.extend((-1_i32).to_le_bytes());
-        suffix.extend(crate::layer_list::COMPOSITE_GRAPHICS_LAYER_CLASS_ID);
+        suffix.extend(crate::layers::layer_list::COMPOSITE_GRAPHICS_LAYER_CLASS_ID);
         suffix.extend(1553_u32.to_le_bytes());
         suffix.extend([0x55; 8]);
         let mut body = frame_body("框", "", "PROJCS[\"X\"]");
@@ -1138,7 +1151,7 @@ mod tests {
         cgl_body.extend(0_i32.to_le_bytes()); // 子图层计数 0
         let mut suffix = 0_i32.to_le_bytes().to_vec();
         suffix.extend((-1_i32).to_le_bytes());
-        suffix.extend(crate::layer_list::COMPOSITE_GRAPHICS_LAYER_CLASS_ID);
+        suffix.extend(crate::layers::layer_list::COMPOSITE_GRAPHICS_LAYER_CLASS_ID);
         suffix.extend(1553_u32.to_le_bytes());
         suffix.extend(&cgl_body);
         suffix.extend([0x77; 4]); // CGL 未展开尾段（后缀停止点之后的未知字节）
@@ -1173,7 +1186,7 @@ mod tests {
         fl_body.extend(0xFFFF_u16.to_le_bytes()); // 可见性 VARIANT_TRUE
         fl_body.extend(0_u16.to_le_bytes());
         fl_body.extend(0_u16.to_le_bytes());
-        fl_body.extend(crate::feature_layer::FEATURE_CLASS_NAME_CLASS_ID);
+        fl_body.extend(crate::layers::feature_layer::FEATURE_CLASS_NAME_CLASS_ID);
         fl_body.extend(78_u32.to_le_bytes()); // FCN 键
         fl_body.extend(2_u16.to_le_bytes()); // FCN 版本（样本 02）
         fl_body.extend(encoded("JZD")); // 要素类名
@@ -1183,7 +1196,7 @@ mod tests {
         fl_body.extend(1_i32.to_le_bytes());
         fl_body.extend(1_i32.to_le_bytes());
         fl_body.extend(0_u16.to_le_bytes()); // 选择子 0 → WS 槽
-        fl_body.extend(crate::feature_layer::WORKSPACE_NAME_CLASS_ID);
+        fl_body.extend(crate::layers::feature_layer::WORKSPACE_NAME_CLASS_ID);
         fl_body.extend(79_u32.to_le_bytes()); // WS 键
         fl_body.extend(1_u16.to_le_bytes()); // WS 版本
         fl_body.extend(encoded("..\\data")); // 路径
@@ -1203,14 +1216,14 @@ mod tests {
         suffix.extend(2_u16.to_le_bytes());
         suffix.extend((20 + fl_body.len() as u32).to_le_bytes());
         suffix.extend(0_u32.to_le_bytes());
-        suffix.extend(crate::layer_list::FEATURE_LAYER_CLASS_ID);
+        suffix.extend(crate::layers::layer_list::FEATURE_LAYER_CLASS_ID);
         suffix.extend(77_u32.to_le_bytes());
         suffix.extend(&fl_body);
         // 条目 2：标志 2 + 前缀 [A=20][B=0] + FL 头（键 77 → 回引，无体）。
         suffix.extend(2_u16.to_le_bytes());
         suffix.extend(20_u32.to_le_bytes());
         suffix.extend(0_u32.to_le_bytes());
-        suffix.extend(crate::layer_list::FEATURE_LAYER_CLASS_ID);
+        suffix.extend(crate::layers::layer_list::FEATURE_LAYER_CLASS_ID);
         suffix.extend(77_u32.to_le_bytes());
         suffix.extend((-1_i32).to_le_bytes()); // 活动图层索引
         suffix.extend([0_u8; 16]); // 基本图形层：空标记

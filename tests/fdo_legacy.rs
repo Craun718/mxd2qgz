@@ -5,18 +5,18 @@
 //! 两个读取器均无样本字节佐证（样本 FDO 版本 11、元素计数 0），合成输入
 //! 按反编译字段序构造，不依赖样本文件。
 
-use mxd2qgz::fdo_graphics_layer::AssociatedLayer10_1;
-use mxd2qgz::fdo_legacy::{
+use mxd2qgz::layers::fdo_graphics_layer::AssociatedLayer10_1;
+use mxd2qgz::layers::fdo_legacy::{
     FDO_GRAPHICS_SUBLAYER_CLASS_ID, LegacyDataSource10_1, LegacyFdoStop10_1,
     LegacySpatialReferenceSlot10_1, read_fdo_graphics_layer_legacy_prefix_10_1,
     read_fdo_graphics_sublayer_10_1,
 };
-use mxd2qgz::feature_layer::{
+use mxd2qgz::layers::feature_layer::{
     FEATURE_CLASS_NAME_CLASS_ID, FEATURE_LAYER_CLASS_ID, FeatureLayerStop10_1,
 };
-use mxd2qgz::object_refs::{ObjectEntry10_1, RefTable10_1};
-use mxd2qgz::reader::Reader;
-use mxd2qgz::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
+use mxd2qgz::objects::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
+use mxd2qgz::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
+use mxd2qgz::stream::reader::Reader;
 use std::io::ErrorKind;
 
 /// AfCore String::Write 布局的合法输入。

@@ -4,15 +4,15 @@
 //! `0x6b1955a0`，第六轮）。合成输入按样本字节布局构造（样本条目 1：键 31，
 //! 体 `/Maps:0x28e..0x2d22`），不依赖样本文件；样本对位是辅助观察。
 
-use mxd2qgz::fdo_graphics_layer::{
+use mxd2qgz::layers::fdo_graphics_layer::{
     AssociatedLayer10_1, ElementCollectionSlot10_1, FDO_GRAPHICS_LAYER_CLASS_ID,
     FdoGraphicsLayerStop10_1, read_fdo_graphics_layer_prefix_10_1,
 };
-use mxd2qgz::feature_layer::{
+use mxd2qgz::layers::feature_layer::{
     FEATURE_CLASS_NAME_CLASS_ID, FEATURE_LAYER_CLASS_ID, FeatureLayerStop10_1,
 };
-use mxd2qgz::object_refs::RefTable10_1;
-use mxd2qgz::reader::Reader;
+use mxd2qgz::storage::object_refs::RefTable10_1;
+use mxd2qgz::stream::reader::Reader;
 use std::io::ErrorKind;
 
 /// 样本内嵌 FeatureLayer 键（`/Maps:0x2a6`）。
@@ -190,7 +190,7 @@ fn null_and_back_reference_associated_layers_advance_to_element_collection() {
     bytes.extend(0xFFFF_u16.to_le_bytes());
     bytes.extend(entry_bytes(&FEATURE_LAYER_CLASS_ID, SAMPLE_LAYER_KEY)); // 回引
     bytes.extend(entry_bytes(
-        &mxd2qgz::composite_graphics::COMPOSITE_GRAPHICS_LAYER_CLASS_ID, // 任意类
+        &mxd2qgz::layers::composite_graphics::COMPOSITE_GRAPHICS_LAYER_CLASS_ID, // 任意类
         86,
     ));
     bytes.extend(b"opaque");
@@ -206,7 +206,7 @@ fn null_and_back_reference_associated_layers_advance_to_element_collection() {
     assert_eq!(
         parsed.stop,
         FdoGraphicsLayerStop10_1::ElementCollectionNewObject {
-            class_id: mxd2qgz::composite_graphics::COMPOSITE_GRAPHICS_LAYER_CLASS_ID,
+            class_id: mxd2qgz::layers::composite_graphics::COMPOSITE_GRAPHICS_LAYER_CLASS_ID,
             key: 86
         }
     );

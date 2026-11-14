@@ -1,4 +1,5 @@
-use mxd2qgz::{mxd_maps, mxd_version};
+use mxd2qgz::maps::mxd_maps;
+use mxd2qgz::version::mxd_version;
 
 mod input;
 

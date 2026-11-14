@@ -3,8 +3,8 @@
 //! 原生入口先调用 AfCore String::Read，再从同一个底层流读取 2 字节。
 //! 读取器是严格安全子集，保留无法确认的后续数据，不模拟原生短读。
 
-use crate::native_string::{read_string_10_1, read_string_10_8};
-use crate::reader::Reader;
+use crate::stream::native_string::{read_string_10_1, read_string_10_8};
+use crate::stream::reader::Reader;
 use std::io;
 
 /// 10.1 局部读取分支的输出值，不代表完整版本映射。

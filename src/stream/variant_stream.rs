@@ -4,7 +4,7 @@
 //! AfCore `String::Read` 的含终止零字节长度不同。证据和边界见
 //! 本模块不解析，也不定位 MXD 字段归属。
 
-use crate::reader::Reader;
+use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
 /// 保留 VariantStream 已确认分支的原始读取结果。

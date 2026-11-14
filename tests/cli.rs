@@ -132,8 +132,8 @@ fn rejects_truncated_ole_containers_without_panicking() {
 /// 依据相同（AfCore String 布局、版本 51、版本 6 PCS 体），集成测试与
 /// 库内测试无法互相引用，按同一证据独立构造。
 fn maps_stream_10_1() -> Vec<u8> {
-    use mxd2qgz::map_object::MAP_CLASS_ID;
-    use mxd2qgz::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
+    use mxd2qgz::maps::map_object::MAP_CLASS_ID;
+    use mxd2qgz::objects::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
 
     /// AfCore String::Write 布局：u32 字节长度前缀 + 含终止零的 UTF-16LE。
     fn encoded(text: &str) -> Vec<u8> {
@@ -243,7 +243,8 @@ fn parse_merges_version_candidates_into_report() {
     // /Version 命中已知三元组（10.1/19 → 保存索引 5）：parse 输出并入全部
     // 候选字段（与 version 命令同一识别逻辑），全部为候选，未经验证。
     let fixture = Fixture::new();
-    let version = mxd2qgz::version_stream::write_arcmap_header_10_1(5, "10.1", Some(42)).unwrap();
+    let version =
+        mxd2qgz::version::version_stream::write_arcmap_header_10_1(5, "10.1", Some(42)).unwrap();
     let path = stream_fixture_with_version(
         &fixture.0,
         "带版本.mxd",

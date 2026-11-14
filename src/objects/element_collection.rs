@@ -85,8 +85,8 @@
 //! 态写 4）；元素类（TextElement 等）体未闭合；负计数原生按空集合成功、
 //! 本读取器拒绝（较原生更严）；全部结论未运行 ArcMap 验证。
 
-use crate::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
-use crate::reader::Reader;
+use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
 /// ElementCollection::Load 接受的最大版本：反编译 `4 < (short)版本` 有符号
@@ -204,7 +204,7 @@ impl ElementCollectionStop10_1 {
             } => format!(
                 "元素 {index}（键 {key}，类标识 {}）为新对象：元素体布局未闭合且无外部长\
                  度，游标回退到该元素对象头起点",
-                crate::layer_list::class_id_hex(class_id)
+                crate::layers::layer_list::class_id_hex(class_id)
             ),
         }
     }
@@ -234,7 +234,7 @@ pub struct ElementCollection10_1 {
 
 /// 从对象头之后的位置读取 10.1 ElementCollection 对象体的严格子集。
 ///
-/// 起点约定：调用者已用 [`crate::object_stream::read_header_10_1`] 读取对象
+/// 起点约定：调用者已用 [`crate::storage::object_stream::read_header_10_1`] 读取对象
 /// 头、比对 [`ELEMENT_COLLECTION_CLASS_ID`] 确认类身份，并从对象头之后的位
 /// 置传入 Reader；本函数不重复读取对象头。字段序与证据见模块文档。
 ///

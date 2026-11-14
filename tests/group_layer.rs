@@ -6,14 +6,14 @@
 //! 「A=头 20 字节+体的总体积」有 /Maps 图层列表（Map 图层循环）的逐条目
 //! 吻合（第四轮），仅作布局佐证。
 
-use mxd2qgz::feature_layer::{FEATURE_LAYER_CLASS_ID, FeatureLayerStop10_1};
-use mxd2qgz::group_layer::{
+use mxd2qgz::layers::feature_layer::{FEATURE_LAYER_CLASS_ID, FeatureLayerStop10_1};
+use mxd2qgz::layers::group_layer::{
     ConsumedEntry10_1, GROUP_LAYER_CLASS_ID, GroupChildEntry10_1, GroupLayerStop10_1,
     read_group_layer_prefix_10_1,
 };
-use mxd2qgz::layer_list::LayerBodyPrefix10_1 as LayerBodyPrefix;
-use mxd2qgz::object_refs::RefTable10_1;
-use mxd2qgz::reader::Reader;
+use mxd2qgz::layers::layer_list::LayerBodyPrefix10_1 as LayerBodyPrefix;
+use mxd2qgz::storage::object_refs::RefTable10_1;
+use mxd2qgz::stream::reader::Reader;
 use std::io::ErrorKind;
 
 /// 合成输入固定使用的名称后三个 short（语义未定性，取可辨识值）。
