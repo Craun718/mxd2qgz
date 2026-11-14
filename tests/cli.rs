@@ -167,19 +167,48 @@ fn maps_stream_10_1() -> Vec<u8> {
     for value in [1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 0.001, 0.001, 0.001] {
         bytes.extend(value.to_le_bytes()); // 7+3 个 double（语义未确认）
     }
-    bytes.extend_from_slice(&[0xaa, 0xbb, 0xcc]); // 已确认前缀之后的未知尾部
+    // 后缀链（与样本同构的最小完整链；样本值见证据文档）：
+    bytes.extend(0_i32.to_le_bytes()); // 图层列表计数 0
+    bytes.extend((-1_i32).to_le_bytes()); // 活动图层索引（样本 -1）
+    bytes.extend([0_u8; 16]); // 基本图形层：空标记
+    bytes.extend(0_i32.to_le_bytes()); // MapSurround 计数（样本 0）
+    for value in [37392944.284_f64, 2520083.2851, 37394230.529, 2520951.8351] {
+        bytes.extend(value.to_le_bytes()); // WKSEnvelope（样本值）
+    }
+    bytes.extend(9_i32.to_le_bytes()); // 两个 int32（样本 9、9）
+    bytes.extend(9_i32.to_le_bytes());
+    bytes.extend([0_u8; 16]); // IEnvelope：空标记
+    bytes.extend(0_i32.to_le_bytes()); // 书签计数（样本 0）
+    bytes.extend_from_slice(&[0xaa, 0xbb, 0xcc]); // 书签循环之后的未知尾部
     bytes
 }
 
 /// 在 Fixture 临时目录创建仅含一个数据流的 OLE 容器（Fixture Drop 时清理）。
 fn stream_fixture(root: &std::path::Path, name: &str, stream: &[u8]) -> std::path::PathBuf {
+    stream_fixture_with_version(root, name, stream, None)
+}
+
+/// 创建含 /Maps 与可选 /Version 数据流的 OLE 容器。
+fn stream_fixture_with_version(
+    root: &std::path::Path,
+    name: &str,
+    maps: &[u8],
+    version: Option<&[u8]>,
+) -> std::path::PathBuf {
     let path = root.join(name);
     let mut document = cfb::create(&path).unwrap();
     document
         .create_stream("/Maps")
         .unwrap()
-        .write_all(stream)
+        .write_all(maps)
         .unwrap();
+    if let Some(bytes) = version {
+        document
+            .create_stream("/Version")
+            .unwrap()
+            .write_all(bytes)
+            .unwrap();
+    }
     path
 }
 
@@ -193,11 +222,60 @@ fn parse_reports_confirmed_fields_with_diagnostics_on_synthetic_maps() {
     assert!(output.contains("新建数据框"), "{output}");
     assert!(output.contains("PROJCS["), "{output}");
     assert!(output.contains("Unknown: stream=/Maps"), "{output}");
+    // /Version 缺失：按 version 命令同样的诊断措辞输出，parse 不失败。
     assert!(output.contains("Version candidate:"), "{output}");
+    assert!(output.contains("无法读取"), "{output}");
+    assert!(output.contains("/Version"), "{output}");
+    // 后缀链输出：图层列表、活动索引与显示范围（候选观察）。
+    assert!(output.contains("Layer count candidate: 0"), "{output}");
+    assert!(output.contains("Active layer index: -1"), "{output}");
+    assert!(output.contains("Extent: xmin=37392944.284"), "{output}");
     assert!(output.contains("Note: "), "{output}");
 
     // 异常输入：数量为负时返回明确错误。
     let bad = stream_fixture(&fixture.0, "负数.mxd", &(-1_i32).to_le_bytes().to_vec());
     let stderr = failure(fixture.run(&["parse", bad.file_name().unwrap().to_str().unwrap()]));
     assert!(stderr.contains("error:"), "{stderr}");
+}
+
+#[test]
+fn parse_merges_version_candidates_into_report() {
+    // /Version 命中已知三元组（10.1/19 → 保存索引 5）：parse 输出并入全部
+    // 候选字段（与 version 命令同一识别逻辑），全部为候选，未经验证。
+    let fixture = Fixture::new();
+    let version = mxd2qgz::version_stream::write_arcmap_header_10_1(5, "10.1", Some(42)).unwrap();
+    let path = stream_fixture_with_version(
+        &fixture.0,
+        "带版本.mxd",
+        &maps_stream_10_1(),
+        Some(&version),
+    );
+    let output = success(fixture.run(&["parse", path.file_name().unwrap().to_str().unwrap()]));
+    assert!(output.contains("Version candidate: \"10.1\""), "{output}");
+    assert!(
+        output.contains("Version branch: ArcMap 10.1 头部规则匹配候选"),
+        "{output}"
+    );
+    assert!(
+        output.contains("Version compatibility short: 19"),
+        "{output}"
+    );
+    assert!(output.contains("Version object count: 42"), "{output}");
+    assert!(
+        output.contains("Version save index candidate: 5"),
+        "{output}"
+    );
+    assert!(output.contains("Version remaining bytes: 0"), "{output}");
+    assert!(output.contains("Version note: "), "{output}");
+
+    // /Version 存在但两种布局都无法识别：输出识别失败诊断，parse 仍成功。
+    let broken = stream_fixture_with_version(
+        &fixture.0,
+        "坏版本.mxd",
+        &maps_stream_10_1(),
+        Some(&[0xff; 32]),
+    );
+    let output = success(fixture.run(&["parse", broken.file_name().unwrap().to_str().unwrap()]));
+    assert!(output.contains("Version candidate: 识别失败"), "{output}");
+    assert!(output.contains("Frame count candidate: 1"), "{output}");
 }

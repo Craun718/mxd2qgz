@@ -1,5 +1,10 @@
 //! Format-independent representation of a map and its unresolved input data.
 
+pub mod composite_graphics;
+pub mod envelope;
+pub mod feature_layer;
+pub mod group_layer;
+pub mod layer_list;
 pub mod map_object;
 pub mod maps_stream;
 pub mod model;

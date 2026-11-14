@@ -20,9 +20,17 @@ Rust 库的 `native_string::read_string_10_1` 可读取 10.1 AfCore `String::Wri
 
 `spatial_reference::read_projected_coordinate_system_10_1` 可在调用者已确认的 ProjectedCoordinateSystem 对象头之后按原生 Load 的版本分支严格读取对象体：保存版本、ASCII WKT、四个域字符串与垂向标志、精度标志与十个 double 均原样保留，版本大于 7 拒绝。它不定位对象、不解释 WKT 之外字段的语义，已由 `map_object::read_map_prefix_10_1` 的嵌套空间参考读取接入 `parse` 命令（WKT 写入中间模型，其余字段不写入）。证据及开放问题见 [10.1 空间参考持久化](docs/arcmap-10.1-spatial-reference.md)。
 
-`map_object::read_map_prefix_10_1` 可在调用者已确认的 Map 对象头之后严格读取 10.1 Map 对象体的已确认前缀：版本 short（大于 51 拒绝）、两个 AfCore String 布局的名称字符串、嵌套空间参考对象（ProjectedCoordinateSystem 分派，全零 GUID 视为空引用标记）；第 5 步起的字段保留为未知尾部。它不读取图层循环，已由 `mxd_maps::parse_maps_10_1` 接入 `parse` 命令。证据及开放问题见 [10.1 Map 对象结构](docs/arcmap-10.1-map-object.md)。
+`map_object::read_map_prefix_10_1` 可在调用者已确认的 Map 对象头之后严格读取 10.1 Map 对象体的已确认前缀：版本 short（大于 51 拒绝）、两个 AfCore String 布局的名称字符串、嵌套空间参考对象（ProjectedCoordinateSystem 分派，全零 GUID 视为空引用标记）。证据及开放问题见 [10.1 Map 对象结构](docs/arcmap-10.1-map-object.md)。
 
-`mxd_maps::parse_maps_10_1` 把上述显式 10.1 读取器接入中间模型：数据框名称与第二名称、嵌套 PCS 的 ASCII WKT 写入 `model::Map`/`model::DataFrame` 的已确认字段；对象循环边界未闭合，无论数量多少最多解析首个 Map 对象，其余数据框、图层、显示范围、工程名称与已确认前缀之后的字节全部保留为未知字段并在诊断中说明；PCS 域字符串、标志与 double 已解析但语义未确认，不写入模型。解析结果是候选观察，未在 ArcMap 10.1 或 QGIS 中人工目视验证。
+`layer_list::read_layer_list_10_1` 严格读取 Map 图层列表（Map.dll `FUN_794035f0`，架构版本 ≥0x17）：int32 计数、逐条目 int16 标志 1/2/3（其他值原生拒绝）、ExtraSafe 8 字节 `[A][B]` 前缀（`A==0&&B==0` 为空条目；`B≠0` 按原生 Seek 同步到前缀后+B，`B==0` 按「体长 = A−20」的写侧观察推定跳过）、条目经 `object_refs` 键登记表分类、循环后 int32 活动图层索引。新对象体按流内类标识分派给 FeatureLayer / GroupLayer / CompositeGraphicsLayer 的前缀读取器，其余类（如 FDOGraphicsLayer、RasterLayer）按有界未知保留；标志 1 新对象体无外部长度，在首个此类条目停止。`map_object::read_map_suffix_10_1` 继而读取后缀序列：基本图形层槽位（CompositeGraphicsLayer 前缀）、MapSurround 计数循环、WKSEnvelope 32 字节显示范围（`[XMin,YMin,XMax,YMax]`，写方向确定）、两个 int32、IEnvelope 槽位（Envelope 读取器整体消费）、书签计数循环，到书签循环为止，其后保留未知尾部。A 前缀推定、空标记消费长度等开放项见上述文档。
+
+`feature_layer::read_feature_layer_prefix_10_1` 严格读取 FeatureLayer 对象体的已确认前缀（FeatureLayer.dll `0x6f6e9940` 头部段）：版本 short（大于 34 拒绝）、双名称、VARIANT_BOOL 可见性（非规范位模式原样保留）、嵌套数据源（空标记 / 回引 / FeatureClassName 前缀：short + 要素类名）。FeatureClassName 体中段（含 WorkspaceName 路径）与 `+0x144` GUID 之后的字段未闭合，一律保留为剩余字节。样本首个 FeatureLayer 前缀逐字段吻合（辅助观察）。
+
+`group_layer::read_group_layer_prefix_10_1` 与 `composite_graphics::read_composite_graphics_layer_prefix_10_1` 分别严格读取 GroupLayer（版本 ≤12：名称、short×3、double×2、子图层循环（<11 普通 / ≥11 ExtraSafe）、版本条件的可见性与嵌套对象）与 CompositeGraphicsLayer（版本 ≤6：元素组循环、名称、标量组、子图层循环 `[String + ILayer]` 带条目尾段）的已确认前缀，在首个不可闭合字段处停止并保留剩余；字段序按反编译一手证据实现，修正了研究文档表格的三处出入（嵌套对象门 `2 < ver`、CGL 第 6 步三个 int32、子图层条目尾段）。
+
+`envelope::read_envelope_10_1` 严格读取 Envelope 对象体（Geometry.dll Save `0x71869da0` / Load `0x71869b60` 反编译）：版本 1/2/3 分支（版本 0 证据未覆盖、显式拒绝）、32 字节 `[XMin,YMin,XMax,YMax]`（写方向确定）、int32 标志低字节 bit6/bit7 追加的 Z/M double 对、版本 3 的嵌套空间参考（16 零空标记 / 键回引 / 内嵌 PCS 体）。
+
+`mxd_maps::parse_maps_10_1` 把上述显式 10.1 读取器接入中间模型：数据框名称与第二名称、嵌套 PCS 的 ASCII WKT 写入 `model::Map`/`model::DataFrame`；图层条目经类分派解析出体前缀时按条目顺序填充 `children`（FeatureLayer 名称/可见性/数据源要素类名、GroupLayer 名称/可见性；回引条目命中已解析键时复用同对象节点），WKSEnvelope 到达时填充 `extent`；活动图层索引与各对象槽位进诊断与报告，被跳过的体剩余按条目保留为未知字段。对象循环边界未闭合，无论数量多少最多解析首个 Map 对象；仓库参考样本在图层列表条目 1（FDOGraphicsLayer，标志 1、AnnoLayer.dll 未反编译）按原生语义停止，显示范围与其后内容保留为未知并在诊断中说明。解析结果是候选观察，未在 ArcMap 10.1 或 QGIS 中人工目视验证。
 
 ## 使用
 
@@ -38,7 +46,7 @@ cargo run -- compare 'before.mxd' 'after.mxd' /Maps
 cargo run -- hex 'map.mxd' /Maps 0x860 96
 ```
 
-`inspect` 列出 OLE 容器的数据流和字节数；`strings` 扫描 `/Maps` 中两种对齐方式的 UTF-16LE 候选字符串，并输出相对于该流的十六进制偏移。扫描不是对象解析，可能存在乱码、截断或误报，不能据此判断图层数量、完整路径或坐标系。`extract` 导出指定数据流，不会覆盖已有文件。`hex` 查看指定流的字节范围，偏移和长度支持十进制或 `0x` 十六进制，范围超出流时返回错误。`compare` 比较两个文件中指定流的相同偏移，输出不同字节的半开区间及流长度；插入或删除字节会使后续数据错位，差异区间不表示对象边界。`version` 读取 `/Version` 并按 ArcMap 10.1 头部规则与已知文本、short 集合输出识别候选，并按静态闭合的「文本↔保存索引↔short」映射（见 10.1 原生基线 2026-11-14 节）给出候选保存索引（即 esriArcGISVersion 枚举值）；文本与 short 须命中同一索引才给出候选，索引 3（9.3）因资源文本异常无法由文本命中，未知文本不映射为 9.3。10.1 规则不满足时改报 10.8 局部布局候选；全部结果都是候选，映射未经运行时确认，未在目标软件中验证。`parse` 读取 `/Maps` 并按显式 10.1 已确认前缀填充中间模型：输出数据框数量候选、首个数据框的名称/第二名称/CRS WKT、未知字节的流内偏移与长度及逐条诊断；对象循环未闭合，最多解析首个对象，解析失败（负数量、非 Map 首对象、截断等）返回明确错误而不输出部分模型。解析结果未在目标软件中验证，不能据此判断图层树或转换能力。
+`inspect` 列出 OLE 容器的数据流和字节数；`strings` 扫描 `/Maps` 中两种对齐方式的 UTF-16LE 候选字符串，并输出相对于该流的十六进制偏移。扫描不是对象解析，可能存在乱码、截断或误报，不能据此判断图层数量、完整路径或坐标系。`extract` 导出指定数据流，不会覆盖已有文件。`hex` 查看指定流的字节范围，偏移和长度支持十进制或 `0x` 十六进制，范围超出流时返回错误。`compare` 比较两个文件中指定流的相同偏移，输出不同字节的半开区间及流长度；插入或删除字节会使后续数据错位，差异区间不表示对象边界。`version` 读取 `/Version` 并按 ArcMap 10.1 头部规则与已知文本、short 集合输出识别候选，并按静态闭合的「文本↔保存索引↔short」映射（见 10.1 原生基线 2026-11-14 节）给出候选保存索引（即 esriArcGISVersion 枚举值）；文本与 short 须命中同一索引才给出候选，索引 3（9.3）因资源文本异常无法由文本命中，未知文本不映射为 9.3。10.1 规则不满足时改报 10.8 局部布局候选；全部结果都是候选，映射未经运行时确认，未在目标软件中验证。`parse` 读取 `/Maps` 并按显式 10.1 已确认前缀与后缀填充中间模型：输出 `/Version` 识别候选、数据框数量候选、首个数据框的名称/第二名称/CRS WKT、图层列表条目（标志、前缀、分类、键、体前缀）与活动图层索引、显示范围（到达时）、未知字节的流内偏移与长度及逐条诊断；对象循环未闭合，最多解析首个对象，样本在图层列表条目 1（FDOGraphicsLayer）停止，解析失败（负数量、非 Map 首对象、截断等）返回明确错误而不输出部分模型。解析结果未在目标软件中验证，不能据此判断图层树或转换能力。
 研究以 REA 对目标软件实现和运行行为的分析为主；可控对照样本仅作辅助证据。记录流内偏移和脱敏的方法见研究记录中的“对照样本采集流程”。
 
 ## Python 接口

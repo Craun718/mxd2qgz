@@ -2,7 +2,11 @@ use mxd2qgz::{mxd_maps, mxd_version};
 
 mod input;
 
-use std::{env, io, io::Write, path::Path};
+use std::{
+    env, io,
+    io::{Read, Seek, Write},
+    path::Path,
+};
 
 fn main() {
     if let Err(error) = run() {
@@ -158,24 +162,37 @@ fn run() -> io::Result<()> {
                     ),
                 )
             })?;
-            let report = mxd_maps::parse_maps_10_1(&maps)?;
+            let mut report = mxd_maps::parse_maps_10_1(&maps)?;
+            // /Version 识别候选并入报告与输出：复用 version 命令的识别逻辑；
+            // /Version 缺失或识别失败按同样诊断输出，不使 parse 失败。
+            report.version_candidates = version_candidate_lines(&mut document, &path);
             let mut output = io::BufWriter::new(io::stdout().lock());
             writeln!(output, "Document: {}", Path::new(&path).display())?;
             writeln!(output, "Stream /Maps: {} bytes", maps.len())?;
-            // 版本候选仅作参考输出；识别失败不阻断 /Maps 解析报告。
-            match input::read_stream(&mut document, "/Version") {
-                Ok(bytes) => match mxd_version::identify_version(&bytes) {
-                    Ok(candidate) => writeln!(
-                        output,
-                        "Version candidate: {:?} ({})",
-                        candidate.text,
-                        candidate.branch.description()
-                    )?,
-                    Err(error) => writeln!(output, "Version candidate: 识别失败（{error}）")?,
-                },
-                Err(_) => writeln!(output, "Version candidate: /Version 数据流不可读")?,
+            for line in &report.version_candidates {
+                writeln!(output, "{line}")?;
             }
             writeln!(output, "Frame count candidate: {}", report.count)?;
+            if let Some(list) = &report.layer_list {
+                writeln!(output, "Layer count candidate: {}", list.count)?;
+                for entry in &list.entries {
+                    writeln!(
+                        output,
+                        "Layer entry {}/{}: {}",
+                        entry.index + 1,
+                        list.count,
+                        entry.describe()
+                    )?;
+                }
+                // 活动图层索引放报告不放模型；候选观察，未经目标软件验证。
+                match list.active_index {
+                    Some(index) => writeln!(output, "Active layer index: {index}")?,
+                    None => writeln!(
+                        output,
+                        "Active layer index: none（图层列表中途停止，见诊断）"
+                    )?,
+                }
+            }
             for frame in &report.map.frames {
                 write!(
                     output,
@@ -188,6 +205,14 @@ fn run() -> io::Result<()> {
                 }
                 if let Some(crs) = &frame.crs {
                     writeln!(output, "CRS definition: {}", crs.definition)?;
+                }
+                match &frame.extent {
+                    Some(extent) => writeln!(
+                        output,
+                        "Extent: xmin={} ymin={} xmax={} ymax={}",
+                        extent.xmin, extent.ymin, extent.xmax, extent.ymax
+                    )?,
+                    None => writeln!(output, "Extent: none（后缀未到达 WKSEnvelope，见诊断）")?,
                 }
                 for unknown in &frame.unknown_fields {
                     writeln!(
@@ -248,6 +273,51 @@ fn run() -> io::Result<()> {
         writeln!(output, "{:>10}  {}", entry.len(), entry.path().display())?;
     }
     output.flush()
+}
+
+/// 读取 /Version 并按 version 命令的识别逻辑生成候选摘要行，供 parse 命令
+/// 并入报告与输出。
+///
+/// /Version 缺失或识别失败按 version 命令同样的诊断措辞输出（缺失时附
+/// parse 不因此失败的说明），全部结果都是候选，未经目标软件验证。
+fn version_candidate_lines<F: Read + Seek>(
+    document: &mut cfb::CompoundFile<F>,
+    path: &std::ffi::OsStr,
+) -> Vec<String> {
+    let displayed = Path::new(path).display();
+    match input::read_stream(document, "/Version") {
+        Ok(bytes) => match mxd_version::identify_version(&bytes) {
+            Ok(report) => {
+                let mut lines = vec![
+                    format!("Version candidate: {:?}", report.text),
+                    format!("Version branch: {}", report.branch.description()),
+                    format!(
+                        "Version compatibility short: {}",
+                        report.compatibility_short
+                    ),
+                ];
+                match report.object_count {
+                    Some(count) => lines.push(format!("Version object count: {count}")),
+                    None => lines.push("Version object count: none".to_string()),
+                }
+                match report.candidate_save_index {
+                    Some(index) => lines.push(format!("Version save index candidate: {index}")),
+                    None => lines.push("Version save index candidate: none".to_string()),
+                }
+                lines.push(format!(
+                    "Version remaining bytes: {}",
+                    report.remaining_bytes
+                ));
+                lines.push(format!("Version note: {}", report.note));
+                lines
+            }
+            Err(error) => vec![format!("Version candidate: 识别失败（{error}）")],
+        },
+        Err(error) => vec![format!(
+            "Version candidate: 无法读取 {displayed} 的 /Version 数据流：{error}\
+             （parse 不因此失败）"
+        )],
+    }
 }
 
 // Compare equal stream offsets, including any unmatched tail. Ranges are half-open.

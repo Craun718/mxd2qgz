@@ -1,4 +1,11 @@
-use mxd2qgz::map_object::{MAP_CLASS_ID, read_map_prefix_10_1};
+use mxd2qgz::layer_list::{
+    BodyBoundBasis, COMPOSITE_GRAPHICS_LAYER_CLASS_ID, FEATURE_LAYER_CLASS_ID,
+    GROUP_LAYER_CLASS_ID, LayerEntryObject, LayerListStop, read_layer_list_10_1,
+};
+use mxd2qgz::map_object::{
+    MAP_CLASS_ID, MapSuffixStop, read_map_prefix_10_1, read_map_suffix_10_1,
+};
+use mxd2qgz::object_refs::{ObjectEntry10_1, RefTable10_1};
 use mxd2qgz::object_stream::{ObjectHeader, read_header_10_1};
 use mxd2qgz::reader::Reader;
 use mxd2qgz::spatial_reference::{
@@ -427,4 +434,569 @@ fn reads_map_header_then_prefix_in_full_chain() {
         }
         other_header => panic!("PCS 对象头不应为 Null：{other_header:?}"),
     }
+}
+
+// —— 图层列表与 Map 后缀序列（10.1）——
+// 合成字节按证据文档独立构造（集成测试与库内测试无法互相引用）：
+// 标志 1/2/3、ExtraSafe 前缀 [A][B]、A 观察推定的有界跳过、B 原生同步、
+// 空条目、回引、活动索引与各停止点。仓库样本的逐条目对照见
+// src/layer_list.rs 模块文档（样本吻合为辅助观察；样本在条目 1 的标志 1
+// 新对象体处停止是预期行为——FDOGraphicsLayer 体未反编译、读取器未接入）。
+
+/// 对象头字节：16 字节类标识 + 4 字节键。
+fn object_header(class_id: &[u8; 16], key: u32) -> Vec<u8> {
+    let mut bytes = class_id.to_vec();
+    bytes.extend(key.to_le_bytes());
+    bytes
+}
+
+/// 样本条目 1 的 FDOGraphicsLayer 类标识（/Maps:0x27a，键 31；类名归属候选）。
+fn fdo_graphics_layer_class_id() -> [u8; 16] {
+    [
+        0x83, 0xef, 0xb2, 0x34, 0xac, 0xf4, 0xd1, 0x11, 0xa2, 0x45, 0x08, 0x00, 0x09, 0xb6, 0xf2,
+        0x2b,
+    ]
+}
+
+#[test]
+fn layer_list_class_id_constants_match_documented_guids() {
+    // 集成点常量的字节复核（内存序：Data1-3 小端、Data4 原序）：
+    // FeatureLayer {E663A651-8AAD-11D0-BEC7-00805F7C4268}（样本 /Maps:0x296 键 32）；
+    // GroupLayer {EDAD6647-1810-11D1-86AE-0000F8751720}（FeatureLayer.dll RTTI）；
+    // CompositeGraphicsLayer {9646BB83-9512-11D2-A2F6-080009B6F22B}
+    //（样本 /Maps:0x16fba 键 1553，Map 基本图形层）。
+    assert_eq!(
+        FEATURE_LAYER_CLASS_ID,
+        [
+            0x51, 0xa6, 0x63, 0xe6, 0xad, 0x8a, 0xd0, 0x11, 0xbe, 0xc7, 0x00, 0x80, 0x5f, 0x7c,
+            0x42, 0x68,
+        ]
+    );
+    assert_eq!(
+        GROUP_LAYER_CLASS_ID,
+        [
+            0x47, 0x66, 0xad, 0xed, 0x10, 0x18, 0xd1, 0x11, 0x86, 0xae, 0x00, 0x00, 0xf8, 0x75,
+            0x17, 0x20,
+        ]
+    );
+    assert_eq!(
+        COMPOSITE_GRAPHICS_LAYER_CLASS_ID,
+        [
+            0x83, 0xbb, 0x46, 0x96, 0x12, 0x95, 0xd2, 0x11, 0xa2, 0xf6, 0x08, 0x00, 0x09, 0xb6,
+            0xf2, 0x2b,
+        ]
+    );
+}
+
+#[test]
+fn layer_list_reads_flags_prefixes_backref_empty_and_active_index() {
+    let unknown_class = [0x99_u8; 16];
+    let mut bytes = 3_i32.to_le_bytes().to_vec();
+    // 条目 0：标志 2，前缀 [A=28][B=0]，未知类新对象键 51，体 8 字节（A-20）。
+    bytes.extend(2_u16.to_le_bytes());
+    bytes.extend(28_u32.to_le_bytes());
+    bytes.extend(0_u32.to_le_bytes());
+    bytes.extend(object_header(&unknown_class, 51));
+    bytes.extend([0xee_u8; 8]);
+    // 条目 1：标志 2，前缀 [20][0]，对键 51 的回引（无体；样本条目 2 同构）。
+    bytes.extend(2_u16.to_le_bytes());
+    bytes.extend(20_u32.to_le_bytes());
+    bytes.extend(0_u32.to_le_bytes());
+    bytes.extend(object_header(&unknown_class, 51));
+    // 条目 2：标志 3，前缀 [0][0]：空条目（原生返回 1 并跳过）。
+    bytes.extend(3_u16.to_le_bytes());
+    bytes.extend(0_u32.to_le_bytes());
+    bytes.extend(0_u32.to_le_bytes());
+    // 活动图层索引 + 未知尾部。
+    bytes.extend(2_i32.to_le_bytes());
+    bytes.extend(b"tail");
+
+    let mut table = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let list = read_layer_list_10_1(&mut reader, 1024, &mut table).unwrap();
+
+    assert_eq!(list.count, 3);
+    assert_eq!(list.stop, None);
+    assert_eq!(list.active_index, Some(2));
+    assert_eq!(list.remaining_bytes, 4);
+    assert_eq!(reader.position(), bytes.len() - 4);
+    // 条目 0：新对象（返回前已登记），体按 A 推定有界跳过。
+    let first = &list.entries[0];
+    assert_eq!(first.flag, 2);
+    assert_eq!(first.prefix, Some((28, 0)));
+    assert_eq!(first.offset, 4);
+    assert!(matches!(
+        first.object,
+        LayerEntryObject::Entry(ObjectEntry10_1::NewObject { key: 51, .. })
+    ));
+    let body = first.body.expect("未知类新对象应有有界体");
+    assert_eq!(body.len, 8);
+    assert_eq!(body.offset, 4 + 2 + 8 + 20);
+    assert_eq!(body.basis, BodyBoundBasis::PrefixAInference);
+    // 条目 1：同键回引，无体。
+    let second = &list.entries[1];
+    assert_eq!(second.offset, 42);
+    assert!(matches!(
+        second.object,
+        LayerEntryObject::Entry(ObjectEntry10_1::BackReference { key: 51, .. })
+    ));
+    assert_eq!(second.body, None);
+    // 条目 2：空条目（前缀原样保留）。
+    assert_eq!(list.entries[2].object, LayerEntryObject::Empty);
+    assert_eq!(list.entries[2].prefix, Some((0, 0)));
+    assert_eq!(list.entries[2].offset, 72);
+    assert!(table.contains(51));
+    assert_eq!(table.len(), 1);
+}
+
+#[test]
+fn layer_list_b_prefix_seeks_natively_and_rejects_backward_sync() {
+    let class_id = [0x77_u8; 16];
+    // B=30：跳到「前缀后位置 + 30」（原生 Seek，确定行为）；头 20 + 体 10。
+    let mut bytes = 1_i32.to_le_bytes().to_vec();
+    bytes.extend(2_u16.to_le_bytes());
+    bytes.extend(1_u32.to_le_bytes()); // A 原样保留，B!=0 时不参与跳过
+    bytes.extend(30_u32.to_le_bytes());
+    bytes.extend(object_header(&class_id, 9));
+    bytes.extend([0xdd_u8; 10]);
+    bytes.extend(7_i32.to_le_bytes()); // 活动索引
+    let mut reader = Reader::new(&bytes);
+    let list = read_layer_list_10_1(&mut reader, 1024, &mut RefTable10_1::new()).unwrap();
+    assert_eq!(list.active_index, Some(7));
+    assert_eq!(list.entries[0].prefix, Some((1, 30)));
+    let body = list.entries[0].body.expect("B!=0 应按原生同步跳过");
+    assert_eq!(body.len, 10);
+    assert_eq!(body.basis, BodyBoundBasis::NativeSeek);
+    assert_eq!(reader.remaining(), 0);
+
+    // B=10 < 头 20：同步终点早于对象头终点（原生 Seek 允许倒退，本子集拒绝）。
+    let mut backward = 1_i32.to_le_bytes().to_vec();
+    backward.extend(2_u16.to_le_bytes());
+    backward.extend(1_u32.to_le_bytes());
+    backward.extend(10_u32.to_le_bytes());
+    backward.extend(object_header(&class_id, 9));
+    backward.extend(b"junk");
+    let mut reader = Reader::new(&backward);
+    let error = read_layer_list_10_1(&mut reader, 1024, &mut RefTable10_1::new()).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert!(error.to_string().contains("早于当前位置"), "{error}");
+    assert_eq!(reader.position(), 0);
+}
+
+#[test]
+fn layer_list_flag1_new_object_stops_after_header() {
+    // 与仓库样本条目 1 同构（/Maps:0x278 标志 1 + FDOGraphicsLayer 键 31）：
+    // 停止点在对象头之后（键已登记、体起点即停止点），活动索引不读取。
+    // 样本在此停止是预期行为：FDOGraphicsLayer 体未反编译、读取器未接入。
+    let class_id = fdo_graphics_layer_class_id();
+    let mut bytes = 2_i32.to_le_bytes().to_vec();
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(object_header(&class_id, 31));
+    // 样本体首字节形态（版本 11 + int32 3 + 0xffff，不解释）。
+    bytes.extend([0x0b, 0x00, 0x03, 0x00, 0x00, 0x00, 0xff, 0xff]);
+    bytes.extend(0_i32.to_le_bytes()); // 不会读到的活动索引
+
+    let mut table = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let list = read_layer_list_10_1(&mut reader, 1024, &mut table).unwrap();
+
+    assert_eq!(list.entries.len(), 1);
+    assert_eq!(list.active_index, None);
+    assert_eq!(
+        list.stop,
+        Some(LayerListStop::Flag1NewObjectBody {
+            index: 0,
+            offset: 4,
+            class_id,
+            key: 31,
+        })
+    );
+    // 游标停在对象头之后：体与后续条目保留在 remaining 中。
+    assert_eq!(reader.position(), 4 + 2 + 20);
+    assert_eq!(list.remaining_bytes, bytes.len() - reader.position());
+    // 键 31 已登记（登记先于对象体解析，与原生一致）。
+    assert!(table.contains(31));
+}
+
+#[test]
+fn layer_list_rejects_invalid_flags_negative_counts_and_over_limit_counts() {
+    let class_id = [0x99_u8; 16];
+    // 标志 0/4/0xffff：原生 0x80004005（汇编 0x794036b2 CMP AX,1/2/3）。
+    for flag in [0_u16, 4, 0xffff] {
+        let mut bytes = 1_i32.to_le_bytes().to_vec();
+        bytes.extend(flag.to_le_bytes());
+        bytes.extend(object_header(&class_id, 7));
+        let mut table = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        let error = read_layer_list_10_1(&mut reader, 1024, &mut table).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::InvalidData, "flag={flag}");
+        assert!(error.to_string().contains("0x80004005"), "{error}");
+        assert_eq!(reader.position(), 0, "flag={flag}");
+        assert!(table.is_empty(), "flag={flag}");
+    }
+    // 负计数：原生仅按有符号比较跳过循环，负数语义未知，这里显式拒绝。
+    let negative = (-1_i32).to_le_bytes().to_vec();
+    let mut reader = Reader::new(&negative);
+    let error = read_layer_list_10_1(&mut reader, 1024, &mut RefTable10_1::new()).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert!(error.to_string().contains("负数"), "{error}");
+    assert_eq!(reader.position(), 0);
+    // 超限计数：预检在任何条目读取之前拒绝。
+    let huge = i32::MAX.to_le_bytes().to_vec();
+    let mut reader = Reader::new(&huge);
+    let error = read_layer_list_10_1(&mut reader, 1024, &mut RefTable10_1::new()).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert!(error.to_string().contains("限额"), "{error}");
+    assert_eq!(reader.position(), 0);
+}
+
+#[test]
+fn layer_list_truncation_and_table_changes_are_transactional() {
+    let unknown_class = [0x99_u8; 16];
+    let mut full = 1_i32.to_le_bytes().to_vec();
+    full.extend(2_u16.to_le_bytes());
+    full.extend(28_u32.to_le_bytes());
+    full.extend(0_u32.to_le_bytes());
+    full.extend(object_header(&unknown_class, 51));
+    full.extend([0xee_u8; 8]);
+    full.extend(5_i32.to_le_bytes());
+    full.extend(b"tail");
+    // 逐字节截断到列表自身终点（活动索引末尾）为止：截断进入列表内部的任何
+    // 长度都必须失败、不推进游标、不修改登记表；其后的未知尾部不属于列表。
+    let list_end = full.len() - 4;
+    for end in 0..list_end {
+        let mut table = RefTable10_1::new();
+        table.register(999);
+        let mut reader = Reader::new(&full[..end]);
+        assert!(
+            read_layer_list_10_1(&mut reader, 1024, &mut table).is_err(),
+            "end={end}"
+        );
+        assert_eq!(reader.position(), 0, "end={end}");
+        assert_eq!(table.len(), 1, "end={end}");
+        assert!(table.contains(999), "end={end}");
+        assert!(!table.contains(51), "end={end}");
+    }
+    // 恰好截到列表终点是合法完整输入（未知尾部为空）。
+    let mut table = RefTable10_1::new();
+    let mut reader = Reader::new(&full[..list_end]);
+    let list = read_layer_list_10_1(&mut reader, 1024, &mut table).unwrap();
+    assert_eq!(list.remaining_bytes, 0);
+    // 完整输入成功：键登记在成功路径提交。
+    let mut table = RefTable10_1::new();
+    let mut reader = Reader::new(&full);
+    assert!(read_layer_list_10_1(&mut reader, 1024, &mut table).is_ok());
+    assert!(table.contains(51));
+}
+
+/// Map 对象体（样本布局前缀 + 完整后缀链）：返回字节与 WKSEnvelope 起点。
+fn map_body_with_full_suffix(wkt: &str) -> (Vec<u8>, usize) {
+    let mut bytes = sample_prefix_bytes(wkt, b"");
+    bytes.extend(0_i32.to_le_bytes()); // 图层列表计数 0
+    bytes.extend((-1_i32).to_le_bytes()); // 活动图层索引（样本 -1）
+    bytes.extend([0_u8; 16]); // 基本图形层：空标记
+    bytes.extend(0_i32.to_le_bytes()); // MapSurround 计数（样本 0）
+    let extent_offset = bytes.len();
+    for value in [1.5_f64, 2.5, 3.5, 4.5] {
+        bytes.extend(value.to_le_bytes()); // WKSEnvelope
+    }
+    bytes.extend(9_i32.to_le_bytes()); // 两个 int32（第二个用 -3 验证顺序）
+    bytes.extend((-3_i32).to_le_bytes());
+    bytes.extend([0_u8; 16]); // IEnvelope：空标记
+    bytes.extend(0_i32.to_le_bytes()); // 书签计数（样本 0）
+    (bytes, extent_offset)
+}
+
+#[test]
+fn map_suffix_reads_chain_to_bookmark_loop_and_fills_extent() {
+    let (bytes, extent_offset) = map_body_with_full_suffix("PROJCS[\"x\"]");
+    let mut table = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let suffix = read_map_suffix_10_1(&mut reader, 1024, &mut table).unwrap();
+
+    assert_eq!(suffix.stop, MapSuffixStop::AfterBookmarks);
+    assert_eq!(suffix.remaining_bytes, 0);
+    assert_eq!(reader.position(), bytes.len());
+    assert_eq!(suffix.layer_list.count, 0);
+    assert_eq!(suffix.layer_list.active_index, Some(-1));
+    // 基本图形层与 IEnvelope 槽位为空标记（16 零字节；IEnvelope 槽位的 16 字节
+    // 消费依据见 map_object 模块文档——样本 0x24f8c 的 20 个零含书签计数 0）。
+    assert!(matches!(
+        suffix.base_graphics_layer.unwrap().entry,
+        ObjectEntry10_1::Null
+    ));
+    assert_eq!(suffix.map_surround_count, Some(0));
+    assert_eq!(suffix.map_surrounds, []);
+    let extent = suffix.extent.expect("完整链应到达 WKSEnvelope");
+    assert_eq!(
+        (extent.xmin, extent.ymin, extent.xmax, extent.ymax),
+        (1.5, 2.5, 3.5, 4.5)
+    );
+    assert_eq!(suffix.extent_offset, Some(extent_offset));
+    assert_eq!(suffix.raw_int32_pair, Some((9, -3)));
+    assert!(matches!(
+        suffix.envelope_object.unwrap().entry,
+        ObjectEntry10_1::Null
+    ));
+    assert_eq!(suffix.bookmark_count, Some(0));
+    assert_eq!(suffix.bookmarks, []);
+    // 前缀嵌套 PCS 键（样本键 30）已由后缀读取器登记进共享表。
+    assert!(table.contains(SAMPLE_PCS_KEY));
+}
+
+#[test]
+fn map_suffix_shared_table_resolves_slot_back_references() {
+    // 基本图形层、IEnvelope 与书签条目写成对前缀 PCS 键 30 的回引（样本中
+    // Envelope 对 Map 空间参考的回引同构）：经共享登记表分类为回引，链路
+    // 继续到书签循环之后。
+    let mut bytes = sample_prefix_bytes("PROJCS[\"x\"]", b"");
+    bytes.extend(0_i32.to_le_bytes()); // 图层列表计数 0
+    bytes.extend((-1_i32).to_le_bytes()); // 活动索引
+    bytes.extend(object_header(
+        &PROJECTED_COORDINATE_SYSTEM_CLASS_ID,
+        SAMPLE_PCS_KEY,
+    ));
+    bytes.extend(0_i32.to_le_bytes()); // MapSurround 计数 0
+    for value in [1.5_f64, 2.5, 3.5, 4.5] {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes.extend(9_i32.to_le_bytes());
+    bytes.extend(9_i32.to_le_bytes());
+    bytes.extend(object_header(&[0x88; 16], SAMPLE_PCS_KEY)); // IEnvelope 回引
+    bytes.extend(1_i32.to_le_bytes()); // 书签计数 1
+    bytes.extend(object_header(&[0x77; 16], SAMPLE_PCS_KEY)); // 书签条目回引
+    bytes.extend(b"tail");
+
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let suffix = read_map_suffix_10_1(&mut reader, 1024, &mut table).unwrap();
+
+    assert_eq!(suffix.stop, MapSuffixStop::AfterBookmarks);
+    assert_eq!(suffix.remaining_bytes, 4);
+    assert!(matches!(
+        suffix.base_graphics_layer.unwrap().entry,
+        ObjectEntry10_1::BackReference { key, .. } if key == SAMPLE_PCS_KEY
+    ));
+    assert!(matches!(
+        suffix.envelope_object.unwrap().entry,
+        ObjectEntry10_1::BackReference { key, .. } if key == SAMPLE_PCS_KEY
+    ));
+    assert_eq!(suffix.bookmarks.len(), 1);
+    assert!(matches!(
+        suffix.bookmarks[0].entry,
+        ObjectEntry10_1::BackReference { key, .. } if key == SAMPLE_PCS_KEY
+    ));
+    assert_eq!(suffix.extent.unwrap().xmin, 1.5);
+}
+
+#[test]
+fn map_suffix_stops_at_each_unwired_new_object_slot() {
+    let prefix_and_empty_list = |bytes: &mut Vec<u8>| {
+        bytes.extend(0_i32.to_le_bytes()); // 图层列表计数 0
+        bytes.extend((-1_i32).to_le_bytes()); // 活动索引
+    };
+    // (a) 基本图形层新对象（CompositeGraphicsLayer，样本 0x16fba 键 1553 同款）。
+    let mut bytes = sample_prefix_bytes("PROJCS[\"x\"]", b"");
+    prefix_and_empty_list(&mut bytes);
+    let slot_offset = bytes.len();
+    bytes.extend(object_header(&COMPOSITE_GRAPHICS_LAYER_CLASS_ID, 1553));
+    bytes.extend([0x55; 16]); // 未接入读取器的体 + 后续字段
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let suffix = read_map_suffix_10_1(&mut reader, 1024, &mut table).unwrap();
+    assert_eq!(
+        suffix.stop,
+        MapSuffixStop::BaseGraphicsLayerBody {
+            offset: slot_offset,
+            class_id: COMPOSITE_GRAPHICS_LAYER_CLASS_ID,
+            key: 1553,
+        }
+    );
+    assert_eq!(suffix.map_surround_count, None);
+    assert_eq!(suffix.extent, None);
+    assert_eq!(reader.position(), slot_offset + 20);
+    assert_eq!(suffix.remaining_bytes, 16);
+    assert!(table.contains(1553));
+
+    // (b) MapSurround 条目新对象：计数后首条目即停止，WKSEnvelope 不读取。
+    let mut bytes = sample_prefix_bytes("PROJCS[\"x\"]", b"");
+    prefix_and_empty_list(&mut bytes);
+    bytes.extend([0_u8; 16]); // 基本图形层空标记
+    bytes.extend(1_i32.to_le_bytes()); // MapSurround 计数 1
+    let slot_offset = bytes.len();
+    bytes.extend(object_header(&[0x66; 16], 5));
+    bytes.extend([0x77; 8]);
+    let mut reader = Reader::new(&bytes);
+    let suffix = read_map_suffix_10_1(&mut reader, 1024, &mut RefTable10_1::new()).unwrap();
+    assert_eq!(
+        suffix.stop,
+        MapSuffixStop::MapSurroundBody {
+            index: 0,
+            offset: slot_offset,
+            class_id: [0x66; 16],
+            key: 5,
+        }
+    );
+    assert_eq!(suffix.map_surround_count, Some(1));
+    assert_eq!(suffix.extent, None);
+
+    // (c) IEnvelope 槽位新对象：WKSEnvelope 已到达，书签计数不读取。
+    let mut bytes = sample_prefix_bytes("PROJCS[\"x\"]", b"");
+    prefix_and_empty_list(&mut bytes);
+    bytes.extend([0_u8; 16]); // 基本图形层空标记
+    bytes.extend(0_i32.to_le_bytes()); // MapSurround 计数 0
+    for value in [1.5_f64, 2.5, 3.5, 4.5] {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes.extend(9_i32.to_le_bytes());
+    bytes.extend(9_i32.to_le_bytes());
+    let slot_offset = bytes.len();
+    bytes.extend(object_header(&[0x5a; 16], 6));
+    bytes.extend([0x88; 4]);
+    let mut reader = Reader::new(&bytes);
+    let suffix = read_map_suffix_10_1(&mut reader, 1024, &mut RefTable10_1::new()).unwrap();
+    assert_eq!(
+        suffix.stop,
+        MapSuffixStop::EnvelopeObjectBody {
+            offset: slot_offset,
+            class_id: [0x5a; 16],
+            key: 6,
+        }
+    );
+    assert_eq!(suffix.extent.map(|e| e.xmax), Some(3.5));
+    assert_eq!(suffix.bookmark_count, None);
+
+    // (d) 书签条目新对象：最后阶段停止，extent 与计数均已到达。
+    let mut bytes = sample_prefix_bytes("PROJCS[\"x\"]", b"");
+    prefix_and_empty_list(&mut bytes);
+    bytes.extend([0_u8; 16]);
+    bytes.extend(0_i32.to_le_bytes());
+    for value in [1.5_f64, 2.5, 3.5, 4.5] {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes.extend(9_i32.to_le_bytes());
+    bytes.extend(9_i32.to_le_bytes());
+    bytes.extend([0_u8; 16]); // IEnvelope 空标记
+    bytes.extend(1_i32.to_le_bytes()); // 书签计数 1
+    let slot_offset = bytes.len();
+    bytes.extend(object_header(&[0x3c; 16], 8));
+    bytes.extend(b"tail");
+    let mut reader = Reader::new(&bytes);
+    let suffix = read_map_suffix_10_1(&mut reader, 1024, &mut RefTable10_1::new()).unwrap();
+    assert_eq!(
+        suffix.stop,
+        MapSuffixStop::BookmarkBody {
+            index: 0,
+            offset: slot_offset,
+            class_id: [0x3c; 16],
+            key: 8,
+        }
+    );
+    assert_eq!(suffix.extent.map(|e| e.ymin), Some(2.5));
+    assert_eq!(suffix.bookmark_count, Some(1));
+    assert_eq!(suffix.remaining_bytes, 4);
+}
+
+#[test]
+fn map_suffix_propagates_layer_list_flag1_stop() {
+    // 样本行为镜像：图层列表首条目即标志 1 新对象（FDOGraphicsLayer 键 31），
+    // 后缀在图层列表内停止，基本图形层等后续阶段均未到达。
+    let class_id = fdo_graphics_layer_class_id();
+    let mut bytes = sample_prefix_bytes("PROJCS[\"x\"]", b"");
+    bytes.extend(6_i32.to_le_bytes()); // 图层列表计数（样本 6）
+    bytes.extend(1_u16.to_le_bytes()); // 标志 1（样本条目 1）
+    bytes.extend(object_header(&class_id, 31));
+    bytes.extend([0xab; 32]); // 未解释体
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let suffix = read_map_suffix_10_1(&mut reader, 1024, &mut table).unwrap();
+
+    assert_eq!(
+        suffix.stop,
+        MapSuffixStop::LayerListFlag1Body {
+            index: 0,
+            offset: bytes.len() - 32 - 22,
+            class_id,
+            key: 31,
+        }
+    );
+    assert_eq!(suffix.base_graphics_layer, None);
+    assert_eq!(suffix.extent, None);
+    assert_eq!(suffix.remaining_bytes, 32);
+    // 前缀 PCS 键与停止条目的键都已登记（成功路径提交 trial 表）。
+    assert!(table.contains(SAMPLE_PCS_KEY));
+    assert!(table.contains(31));
+}
+
+#[test]
+fn map_suffix_rejects_negative_loop_counts_transactionally() {
+    // MapSurround 计数 -1：整体失败，游标与登记表不变。
+    let mut bytes = sample_prefix_bytes("PROJCS[\"x\"]", b"");
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend((-1_i32).to_le_bytes());
+    bytes.extend([0_u8; 16]);
+    bytes.extend((-1_i32).to_le_bytes()); // MapSurround 计数为负
+    bytes.extend([0xff; 8]);
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let error = read_map_suffix_10_1(&mut reader, 1024, &mut table).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert!(error.to_string().contains("负数"), "{error}");
+    assert_eq!(reader.position(), 0);
+    assert!(table.is_empty());
+
+    // 书签计数 -1：失败回滚包括前缀 PCS 键的登记。
+    let mut bytes = sample_prefix_bytes("PROJCS[\"x\"]", b"");
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend((-1_i32).to_le_bytes());
+    bytes.extend([0_u8; 16]);
+    bytes.extend(0_i32.to_le_bytes());
+    for value in [1.5_f64, 2.5, 3.5, 4.5] {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes.extend(9_i32.to_le_bytes());
+    bytes.extend(9_i32.to_le_bytes());
+    bytes.extend([0_u8; 16]);
+    bytes.extend((-1_i32).to_le_bytes()); // 书签计数为负
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let error = read_map_suffix_10_1(&mut reader, 1024, &mut table).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert!(error.to_string().contains("负数"), "{error}");
+    assert_eq!(reader.position(), 0);
+    assert!(!table.contains(SAMPLE_PCS_KEY), "失败不得提交登记表");
+}
+
+#[test]
+fn map_suffix_truncation_is_transactional() {
+    // 逐字节截断完整后缀链：任何截断都必须失败、不推进游标、不修改登记表。
+    let (bytes, _) = map_body_with_full_suffix("PROJCS[\"x\"]");
+    for end in 0..bytes.len() {
+        let mut reader = Reader::new(&bytes[..end]);
+        let mut table = RefTable10_1::new();
+        assert!(
+            read_map_suffix_10_1(&mut reader, 1024, &mut table).is_err(),
+            "end={end}"
+        );
+        assert_eq!(reader.position(), 0, "end={end}");
+        assert!(table.is_empty(), "end={end}");
+    }
+    // 完整输入成功。
+    let mut reader = Reader::new(&bytes);
+    assert!(read_map_suffix_10_1(&mut reader, 1024, &mut RefTable10_1::new()).is_ok());
+}
+
+#[test]
+fn map_suffix_prechecks_loop_counts_against_limit() {
+    // MapSurround 计数 1000 × 最小条目 16 字节 > max_bytes 1024：预检拒绝。
+    let mut bytes = sample_prefix_bytes("PROJCS[\"x\"]", b"");
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend((-1_i32).to_le_bytes());
+    bytes.extend([0_u8; 16]);
+    bytes.extend(1000_i32.to_le_bytes());
+    let mut reader = Reader::new(&bytes);
+    let error = read_map_suffix_10_1(&mut reader, 1024, &mut RefTable10_1::new()).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert!(error.to_string().contains("限额"), "{error}");
+    assert_eq!(reader.position(), 0);
 }

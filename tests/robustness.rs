@@ -18,7 +18,12 @@
 //! 引用、重复标识与缺失引用的语义覆盖见 `src/object_refs.rs` 与
 //! `tests/object_refs.rs`；本清单把条目分类入口纳入统一的截断与游标共性。
 
-use mxd2qgz::map_object::read_map_prefix_10_1;
+use mxd2qgz::composite_graphics::read_composite_graphics_layer_prefix_10_1;
+use mxd2qgz::envelope::read_envelope_10_1;
+use mxd2qgz::feature_layer::read_feature_layer_prefix_10_1;
+use mxd2qgz::group_layer::read_group_layer_prefix_10_1;
+use mxd2qgz::layer_list::read_layer_list_10_1;
+use mxd2qgz::map_object::{read_map_prefix_10_1, read_map_suffix_10_1};
 use mxd2qgz::maps_stream::{read_root_prefix_10_1, read_root_prefix_10_8};
 use mxd2qgz::native_string::{read_string_10_1, read_string_10_8};
 use mxd2qgz::object_refs::{RefTable10_1, read_object_entry_10_1};
@@ -73,6 +78,12 @@ enum ReaderKind {
     MapsRoot10_8,
     MapsRoot10_1,
     MapPrefix10_1,
+    MapSuffix10_1,
+    LayerList10_1,
+    FeatureLayerPrefix10_1,
+    GroupLayerPrefix10_1,
+    CompositeGraphicsPrefix10_1,
+    Envelope10_1,
     ObjectHeader10_1,
     ObjectHeader10_8,
     ObjectEntry10_1,
@@ -80,7 +91,7 @@ enum ReaderKind {
     VariantFixed10_8,
 }
 
-fn all_kinds() -> [ReaderKind; 13] {
+fn all_kinds() -> [ReaderKind; 19] {
     [
         ReaderKind::NativeString10_1,
         ReaderKind::NativeString10_8,
@@ -90,6 +101,12 @@ fn all_kinds() -> [ReaderKind; 13] {
         ReaderKind::MapsRoot10_8,
         ReaderKind::MapsRoot10_1,
         ReaderKind::MapPrefix10_1,
+        ReaderKind::MapSuffix10_1,
+        ReaderKind::LayerList10_1,
+        ReaderKind::FeatureLayerPrefix10_1,
+        ReaderKind::GroupLayerPrefix10_1,
+        ReaderKind::CompositeGraphicsPrefix10_1,
+        ReaderKind::Envelope10_1,
         ReaderKind::ObjectHeader10_1,
         ReaderKind::ObjectHeader10_8,
         ReaderKind::ObjectEntry10_1,
@@ -142,6 +159,99 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
             bytes.extend(wkt);
             bytes
         }
+        ReaderKind::MapSuffix10_1 => {
+            // 版本 51 + 双名称 + 空间参考空标记 + 图层列表（计数 0 + 活动索引
+            // -1）+ 空标记基本图形层 + MapSurround 计数 0 + WKSEnvelope + 两个
+            // int32 + 空标记 IEnvelope + 书签计数 0：后缀在 AfterBookmarks
+            // 停止且无剩余字节。
+            let mut bytes = 51_u16.to_le_bytes().to_vec();
+            bytes.extend(encoded("框"));
+            bytes.extend(encoded(""));
+            bytes.extend([0_u8; 16]); // 空间参考：空标记
+            bytes.extend(0_i32.to_le_bytes()); // 图层列表计数 0
+            bytes.extend((-1_i32).to_le_bytes()); // 活动图层索引
+            bytes.extend([0_u8; 16]); // 基本图形层：空标记
+            bytes.extend(0_i32.to_le_bytes()); // MapSurround 计数
+            for value in [1.0_f64, 2.0, 3.0, 4.0] {
+                bytes.extend(value.to_le_bytes()); // WKSEnvelope
+            }
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend([0_u8; 16]); // IEnvelope：空标记
+            bytes.extend(0_i32.to_le_bytes()); // 书签计数
+            bytes
+        }
+        ReaderKind::LayerList10_1 => {
+            // 计数 1 + 标志 2 前缀 [A=20][B=0] + 新对象头（未知类，A 推定跳过
+            // 0 字节）+ 活动索引：无停止点，完整消费。
+            let mut bytes = 1_i32.to_le_bytes().to_vec();
+            bytes.extend(2_u16.to_le_bytes());
+            bytes.extend(20_u32.to_le_bytes());
+            bytes.extend(0_u32.to_le_bytes());
+            bytes.extend([0xa5_u8; 16]);
+            bytes.extend(7_u32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes()); // 活动图层索引
+            bytes
+        }
+        ReaderKind::FeatureLayerPrefix10_1 => {
+            // 版本 34 + 双名称 + 可见性 0xFFFF + 两个未知 short + 空标记数据源。
+            let mut bytes = 34_u16.to_le_bytes().to_vec();
+            bytes.extend(encoded("层"));
+            bytes.extend(encoded(""));
+            bytes.extend(0xFFFF_u16.to_le_bytes());
+            bytes.extend(0_u16.to_le_bytes());
+            bytes.extend(0_u16.to_le_bytes());
+            bytes.extend([0_u8; 16]); // 数据源：空标记
+            bytes
+        }
+        ReaderKind::GroupLayerPrefix10_1 => {
+            // 版本 4：名称 + short ×3 + double ×2 + 子图层计数 0 + 可见性
+            // 0xFFFF + 空标记嵌套对象（版本 >2）+ >=4 的 double → 版本 <5 无
+            // ExtensionHelper，尾段停止点恰在样本末尾。
+            let mut bytes = 4_u16.to_le_bytes().to_vec();
+            bytes.extend(encoded("组"));
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(2_u16.to_le_bytes());
+            bytes.extend(3_u16.to_le_bytes());
+            bytes.extend(1.0_f64.to_le_bytes());
+            bytes.extend(2.0_f64.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes()); // 子图层计数 0
+            bytes.extend(0xFFFF_u16.to_le_bytes()); // 可见性 VARIANT_TRUE
+            bytes.extend([0_u8; 16]); // 嵌套对象：空标记
+            bytes.extend(9.0_f64.to_le_bytes()); // >=4 的 double
+            bytes
+        }
+        ReaderKind::CompositeGraphicsPrefix10_1 => {
+            // 版本 6：元素组计数 0 + 名称 + short ×3 + double ×2 + int32 ×3 +
+            // 空标记嵌套对象 + 版本 >1 的 double+int32 + 子图层计数 0 → 尾段
+            // 停止点恰在样本末尾。
+            let mut bytes = 6_u16.to_le_bytes().to_vec();
+            bytes.extend(0_i32.to_le_bytes()); // 元素组计数 0
+            bytes.extend(encoded("G"));
+            bytes.extend(0xffff_u16.to_le_bytes());
+            bytes.extend(0xffff_u16.to_le_bytes());
+            bytes.extend(0_u16.to_le_bytes());
+            bytes.extend(0_f64.to_le_bytes());
+            bytes.extend(0_f64.to_le_bytes());
+            bytes.extend(3_i32.to_le_bytes());
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend([0_u8; 16]); // 嵌套对象：空标记
+            bytes.extend(0_f64.to_le_bytes()); // 版本 >1：double
+            bytes.extend(0_i32.to_le_bytes()); // 版本 >1：int32
+            bytes.extend(0_i32.to_le_bytes()); // 子图层计数 0
+            bytes
+        }
+        ReaderKind::Envelope10_1 => {
+            // 版本 3：4 double + int32 0（无 Z/M 追加段）+ 空标记空间参考。
+            let mut bytes = 3_u16.to_le_bytes().to_vec();
+            for value in [1.0_f64, 2.0, 3.0, 4.0] {
+                bytes.extend(value.to_le_bytes());
+            }
+            bytes.extend(0_u32.to_le_bytes());
+            bytes.extend([0_u8; 16]); // 空间参考：空标记
+            bytes
+        }
         ReaderKind::ObjectHeader10_1 | ReaderKind::ObjectHeader10_8 => {
             let mut bytes = vec![0xa5_u8; 16];
             bytes.extend(7_u32.to_le_bytes());
@@ -168,6 +278,25 @@ fn try_read(kind: ReaderKind, reader: &mut Reader<'_>) -> io::Result<()> {
         ReaderKind::MapsRoot10_8 => read_root_prefix_10_8(reader, 16).map(|_| ()),
         ReaderKind::MapsRoot10_1 => read_root_prefix_10_1(reader, 16).map(|_| ()),
         ReaderKind::MapPrefix10_1 => read_map_prefix_10_1(reader, 1024).map(|_| ()),
+        ReaderKind::MapSuffix10_1 => {
+            read_map_suffix_10_1(reader, 1024, &mut RefTable10_1::new()).map(|_| ())
+        }
+        ReaderKind::LayerList10_1 => {
+            read_layer_list_10_1(reader, 1024, &mut RefTable10_1::new()).map(|_| ())
+        }
+        ReaderKind::FeatureLayerPrefix10_1 => {
+            read_feature_layer_prefix_10_1(reader, 1024, &mut RefTable10_1::new()).map(|_| ())
+        }
+        ReaderKind::GroupLayerPrefix10_1 => {
+            read_group_layer_prefix_10_1(reader, 1024, &mut RefTable10_1::new()).map(|_| ())
+        }
+        ReaderKind::CompositeGraphicsPrefix10_1 => {
+            read_composite_graphics_layer_prefix_10_1(reader, 1024, &mut RefTable10_1::new())
+                .map(|_| ())
+        }
+        ReaderKind::Envelope10_1 => {
+            read_envelope_10_1(reader, 1024, &mut RefTable10_1::new()).map(|_| ())
+        }
         ReaderKind::ObjectHeader10_1 => read_header_10_1(reader).map(|_| ()),
         ReaderKind::ObjectHeader10_8 => read_header_10_8(reader).map(|_| ()),
         // 条目分类在空表上进行：完整输入（新键）会被登记，截断前缀的失败
@@ -292,6 +421,52 @@ fn non_eof_failures_leave_the_cursor_local_and_repeatable() {
             value_bytes(13, &[1, 2, 3, 4]),
             ErrorKind::Unsupported,
             "Variant 对象分支",
+        ),
+        (
+            ReaderKind::LayerList10_1,
+            i32::MAX.to_le_bytes().to_vec(),
+            ErrorKind::InvalidData,
+            "图层列表计数超限",
+        ),
+        (
+            ReaderKind::LayerList10_1,
+            (-1_i32).to_le_bytes().to_vec(),
+            ErrorKind::InvalidData,
+            "图层列表负计数",
+        ),
+        (
+            ReaderKind::LayerList10_1,
+            [
+                1_i32.to_le_bytes().as_slice(),
+                4_u16.to_le_bytes().as_slice(),
+            ]
+            .concat(),
+            ErrorKind::InvalidData,
+            "图层列表非法标志",
+        ),
+        (
+            ReaderKind::FeatureLayerPrefix10_1,
+            35_u16.to_le_bytes().to_vec(),
+            ErrorKind::InvalidData,
+            "FeatureLayer 版本超限",
+        ),
+        (
+            ReaderKind::Envelope10_1,
+            4_u16.to_le_bytes().to_vec(),
+            ErrorKind::InvalidData,
+            "Envelope 版本超限",
+        ),
+        (
+            ReaderKind::GroupLayerPrefix10_1,
+            13_u16.to_le_bytes().to_vec(),
+            ErrorKind::InvalidData,
+            "GroupLayer 版本超限",
+        ),
+        (
+            ReaderKind::CompositeGraphicsPrefix10_1,
+            7_u16.to_le_bytes().to_vec(),
+            ErrorKind::InvalidData,
+            "CGL 版本超限",
         ),
     ];
     for (kind, bytes, expected, label) in cases {

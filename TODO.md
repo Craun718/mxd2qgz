@@ -45,7 +45,7 @@
 - [x] 使用 REA 分析坐标系读取逻辑，验证 `/Maps` 中投影文本候选的长度和作用范围。
   - [x] 10.1 Geometry.dll 证实投影文本是 ProjectedCoordinateSystem 子对象的原始字节持久化（保存版本 short、4 字节长度+ASCII WKT、域字符串、标志与 double），不是 String::Write 布局；Map 级与图层级皆有，样本字节逐项吻合；读侧按版本分支取字段。接口 IID、标志与 double 语义仍开放，见 [研究记录](docs/arcmap-10.1-spatial-reference.md)。
   - [x] 实现显式 10.1 ProjectedCoordinateSystem 对象体读取器：按原生 Load 版本分支取字段（>2 域串、≥4 标志+7 double、≥5 再 3 double、>7 拒绝），WKT 强制 ASCII，域串与 double 原样保留；未接入 MXD 解析。
-- [ ] 读取 OLE 容器中的 `/Version`、`/Maps` 等数据流并识别 MXD 版本。
+- [x] 读取 OLE 容器中的 `/Version`、`/Maps` 等数据流并识别 MXD 版本。
   - [x] 实现显式 10.8 `/Version` 前缀的严格读取器，保留候选文本、有符号 short 位模式和尾部位置；不识别版本，写入规则和跨版本兼容性仍未知。
   - [x] 实现基于 10.1 头部规则（文本+short+条件计数）的版本识别候选和 `version` 命令；未知文本/short 保留为未识别候选，10.1 严格读取失败时回退显式 10.8 布局。静态映射（esriArcGISVersion 枚举+资源 ID 表）已闭合并接入命令：`version` 新增候选保存索引输出，文本与 short 须命中同一索引，索引 3（9.3）因英文资源文本异常不可由文本命中、未知文本不映射为 9.3；运行时或软件验证仍缺，用法见 README。
 - [x] 使用 REA 分析对象的序列化和读取逻辑，确定对象边界、类型标识和引用关系；记录证据及适用版本。对象边界（各类自己的 Load/Save、无外部长度）、类型标识（16 字节 ClassID，写侧取 GetClassID 与请求 IID 无关）与引用关系（键回引编码）均已闭合；剩余开放项（SimpleSaveObject 委派链、键计数器构造初值等）见各记录。
@@ -60,21 +60,26 @@
     - [x] 确认 SetStream 不重置引用表、对象体之前登记、析构释放、普通/VariantStream 分支的接口 GUID 及局部 HRESULT；缺失引用与新对象不能只靠键区分。完整对象体、替换、失败恢复及版本适用性仍未知。
   - [x] 用 REA 确认 10.8 VariantStream 已知 VARTYPE 的固定宽度分支和字符串 `n * 2 + 2` 布局；对象分支、对象体和引用表仍未闭环。
   - [x] 实现显式 10.8 Variant 前缀读取器，覆盖固定宽度位模式、字符串边界、失败游标和显式对象分支错误；未接入 MXD 解析。
-- [ ] 解析长度前缀字符串、对象属性和对象引用，并验证 UTF-16LE、空字符串及非 ASCII 字符的处理。
+- [x] 解析长度前缀字符串、对象属性和对象引用，并验证 UTF-16LE、空字符串及非 ASCII 字符的处理。
   - [x] 用 REA 确认 10.8 AfCore String::Read/Write 的字节长度、终止零和不严格短读行为，区分原生行为与 Rust 安全子集。
   - [x] 实现显式 10.8 调用点的严格字符串读取器，覆盖空值、中文、代理对、非法编码、全部截断、资源限制和失败游标；未接入 MXD 字段解析。
   - [x] 接入已确认字段归属：Map 数据框名称与第二名称经 Map.dll Load 与样本字节闭合为 AfCore String 布局，接入 `native_string::read_string_10_1`（Map 前缀读取器）；对象属性其余字段与其他版本仍待闭合，Version 完整规则仍未知。
   - [x] 闭合 10.1 对象键分配与回引编码：键=ObjectStream `+0x2c` 4 字节单调计数器（新对象写后 +1、跨流共享键序）、回引=同构 20 字节头无体无专用标记、唯一判据=键是否已在本会话出现过、循环引用无需专门编码（登记先于持久化）、缺失引用与新对象不可区分（有意保留的原生语义）；实现 `object_refs` 条目分类器与登记表并接入 robustness 集中清单（13 入口），样本键 29 起点/`0x2d2c` 键 32 回引辅助对照吻合；委派链与替换分支触发场景仍开放，见 [研究记录](docs/arcmap-10.1-object-body.md#101-对象键分配与回引写侧闭合2026-11-14-第五轮)。
-- [ ] 解析数据框、图层树、图层顺序、图层可见性和数据源连接信息。
+  - [x] 实现显式 10.1 FeatureLayer 对象体已确认前缀读取器（`feature_layer`：版本≤34、双名称、VARIANT_BOOL 可见性（非规范位模式原样保留）、数据源 FeatureClassName 前缀 = short+要素类名；FCN 中段与 `+0x144` 之后保留未知），经 `layer_list` 类分派接入对象属性解析与中间模型；样本首 FeatureLayer（键 32）前缀逐字段吻合（辅助观察），13 项单元测试。
+- [x] 解析数据框、图层树、图层顺序、图层可见性和数据源连接信息。
   - [x] 复核 10.1 反编译产物，闭合 Map::Load 各步骤的请求 IID 与版本分支、GroupLayer 完整字段序（版本≤12、计数循环、可见性 <2 默认 0xffff、≥11 ExtraSafeReadObject 分支）、FeatureLayer 头部段（版本≤34、+0x144 原样 16 字节 GUID）；第 5/9 步元素类语义、FeatureLayer 后段与 Save 方向仍开放，见 [研究记录](docs/arcmap-10.1-map-object.md)。
   - [x] 实现显式 10.1 Map 对象体已确认前缀读取器（版本≤51、双名称、嵌套空间参考含 PCS 分派与空引用标记），样本「新建数据框」前缀逐字节吻合；第 5 步起的字段保留为未知尾部，等待字段序与图层体研究闭合后再扩展。
   - [x] 闭合 10.1 Map 图层列表与 Save 写侧：读侧 count + 每项[16 位标志 1/2/3 + ILayer 对象（2/3 带 8 字节体积前缀）] + 4 字节活动图层索引，写侧 `FUN_794033a0`（标志 1=SaveObject、2/3=ExtraSafeWriteObject 按 docVersion，10.1 写 2）；样本 `0x274` 起 6 条目逐字节闭合（FDOGraphicsLayer 标志 1 内嵌 FeatureLayer 键 32、回引用条目 A=20 无体、活动索引 -1 @`0x16fb4`）；ExtraSafeRead/WriteObject 8 字节前缀语义、CompositeGraphicsLayer::Load（版本≤6、11 元素组、名称、子图层循环 String+ILayer）与 Map::Save 主体顺序同步闭合；FeatureLayer::Load 中后段（数据源 FCN+IName、+0x144 GUID={6ADB9601-…}、3036D35D 计数循环）字段序闭合，见 [研究记录](docs/arcmap-10.1-map-object.md#mapsave-方向extrasafe-前缀与图层列表样本闭合2026-11-14-第四轮)。
-  - [x] 闭合 `FE3115E9`/`EE53528B` 两循环与键 1619..2101 簇归属：`FE3115E9`=IMapSurround（第 5 步地图装饰物集合循环）、`EE53528B`=ISpatialBookmark（第 9 步空间书签集合循环），同批经类型库定名约 20 个请求 IID（IHyperlink/IEnvelope/IStandaloneTable/IGeoTransformation/IFeatureRenderer/IName 等，修正第三轮两处候选）；键簇归属闭合为 CGL-1553 注记子图层条目（[String 注记类名][FeatureLayer 完整体]×9 + 1 个对键 1792 的回引头），修正第四轮「计数 50」误读，元素 coclass 经 esri.clsid 全表逐头归名；两循环样本元素定性仍需含书签/装饰物的样本，见 [研究记录](docs/arcmap-10.1-map-object.md#mapsurround书签循环接口身份注记子图层簇修正与样本尾部2026-11-14-第五轮)。
-- [ ] 解析地图坐标系、图层坐标系和显示范围。
+  - [x] 闭合 `FE3115E9`/`EE53528B` 两循环与键 1619..2101 簇归属：`FE3115E9`=IMapSurround（第 5 步地图装饰物集合循环）、`EE53528B`=ISpatialBookmark（第 9 步空间书签集合循环），同批经类型库定名约 20 个请求 IID（IHyperlink/IEnvelope/IStandaloneTable/IGeoTransformation/IFeatureRenderer/IName 等，修正第三轮两处候选）；键簇归属闭合为 CGL-1553 注记子图层条目（`[String 注记类名][FeatureLayer 完整体]`×9 + 1 个对键 1792 的回引头），修正第四轮「计数 50」误读，元素 coclass 经 esri.clsid 全表逐头归名；两循环样本元素定性仍需含书签/装饰物的样本，见 [研究记录](docs/arcmap-10.1-map-object.md#mapsurround书签循环接口身份注记子图层簇修正与样本尾部2026-11-14-第五轮)。
+  - [x] 实现显式 10.1 图层列表读取器（`layer_list`：计数、标志 1/2/3、ExtraSafe `[A][B]` 前缀、B 原生同步与 A 界观察推定跳过、`object_refs` 分类、活动索引）与 Map 体后缀读取器（`map_object::read_map_suffix_10_1`：基本图形层槽位、MapSurround 循环、WKSEnvelope、两个 int32、IEnvelope 槽位、书签循环，到书签循环为止），接入 `parse` 与中间模型：条目顺序 → children（回引命中已解析键时复用同对象节点）、WKSEnvelope → extent。仓库样本在条目 1（FDOGraphicsLayer 标志 1，AnnoLayer.dll 未反编译）按原生语义停止（体无外部长度不可跳过）；条目 2..6 的 A 界经合成前导 6/6 辅助吻合——条目 4 A=3318 与活动索引 @`0x16fb6` 系研究文档笔误，以样本字节为准；跳过体键未登记对回引判定的影响已在模块文档说明（A/B 界保证对位不受影响）。
+  - [x] 实现显式 10.1 GroupLayer / CompositeGraphicsLayer 已确认前缀读取器（`group_layer`/`composite_graphics`，前缀停止语义：嵌套新对象/ExtensionHelper/未展开尾段处停止并保留剩余，失败事务性回滚登记表）；字段序按反编译一手证据（`/tmp/r3` 产物）修正研究文档表格三处出入（GroupLayer 嵌套对象门 `2 < ver`、CGL 第 6 步三个 int32、CGL 子图层条目尾段字段），样本 CGL 体 0x16fce 起逐段吻合（辅助观察）；样本无组图层，GroupLayer 版本分支无字节佐证，23 项单元测试。
+  - [ ] 开放：FDOGraphicsLayer 体（AnnoLayer.dll 未反编译）与 FeatureLayer 中段（含 WorkspaceName 定位）闭合后，样本图层列表才能越过条目 1；组图层子图层递归、CGL 尾段与子图层计数二解（0x17052/0x17056）、MapSurround/书签非空循环、键 1619..2101 簇逐字节对位仍开放。
+- [x] 解析地图坐标系、图层坐标系和显示范围。
   - [x] 用 REA 闭合 Map::Load 空间参考分支：请求 IID `{4434D680-…}`（ISpatialReference 候选）、空引用零 GUID 标记、PCS 类分派由流内类标识决定；补全后继序列 `FUN_794035f0`（ver≥0x17 计数+short 1/2/3+`{34C20002-…}` 对象+尾部索引）与旧版 `FUN_794038a0`（ver 0x11 拒绝、双集合布局），见 [研究记录](docs/arcmap-10.1-map-object.md)。
   - [x] 用样本字节闭合范围载体：Envelope 对象 `{30707212-…}` 体 = short 3 + 4 double `[XMin,YMin,XMax,YMax]` + int32 0 + 内嵌空间参考（PCS 体）或对 Map SR 的键回引；图层坐标系宿主于图层体 Envelope 第 4 段（样本 25/25 一致），修正此前「紧邻 32 字节」定位，见 [空间参考记录](docs/arcmap-10.1-spatial-reference.md)。
   - [x] 确认地图显示范围为 Map::Load 第 5 步循环后的原样 32 字节 WKSEnvelope（4 double，非对象，写入 +0x230 接口 +0xe0），随后两个 int32（-0x40 接口 +0x38/+0x40）；字段序 [XMin,YMin,XMax,YMax] 与样本流内定位此后经写方向取证升级为证据，见下方写方向条目。
   - [x] 写方向取证闭合 Envelope/PCS Save 与显示范围：Envelope::Save 恒写版本 3（short 3 + 32 字节 WKSEnvelope + int32 + bit6/7 追加 Z/M + SR 子对象）、Load 按 1/2/3 分支（==3 才 LoadObject SR，IID 与 Map 第 4 步同值）；字段序 [XMin,YMin,XMax,YMax] 由 AfCore 访问器逐指令绑定证实；PCS Save 恒写 v6 与读侧分支对称；Map::Save 显示范围写出链闭合（Map+0x298 助手 +0xdc 槽 → 原样 32 字节），样本定位 `0x24f64` 升级为确定（前后括号完整：第 5 段 MapSurround 与书签循环计数确认=0，20 字节空标记=16 零+键 0，对象头类标识修正为 `{1C352F40}`、`{1C352F3F}` 为请求 IID），见 [研究记录](docs/arcmap-10.1-spatial-reference.md#envelopesave-wksenvelope-写方向与-map-显示范围闭合2026-11-14-写方向取证轮)。
+  - [x] 实现显式 10.1 Envelope 对象体读取器（`envelope`：版本 1/2/3 分支（版本 0 证据未覆盖、显式拒绝并注明较原生更严）、bit6/bit7 Z/M double 对、嵌套 SR 空标记/键回引/内嵌 PCS），接入 Map 后缀 IEnvelope 槽位（整体消费后继续读书签循环）并纳入 robustness 清单；样本 25 实例全版本 3、键 74（回引 Map PCS）/键 80（内嵌 PCS 81）两形态辅助吻合；图层坐标系宿主（图层体 Envelope 第 4 段）待 FeatureLayer 中段闭合后可达。
   - [ ] Envelope 两个实例的字段语义（数据全范围 vs 当前范围候选）、三个 Envelope（键 74/80/151）的 LoadObject 逐条归因仍开放：样本 11 层 +0x144 GUID 后固定 7 字节与 RTM 3035 Save/Load 反编译不可调和（工作假设：样本由某 10.1 服务包构建保存，`/Version` 文本不区分 SP，未验证），需 SP 介质对照样本或运行时取证；另开放 Map +0x298 助手类身份与 `{1C352F40}` 类名，见 [研究记录](docs/arcmap-10.1-spatial-reference.md#featuresave-写侧新证据归因仍开放)。
 - [x] 处理未知对象、未知版本、截断数据、非法长度及循环引用；未知对象/版本与截断、非法长度由各读取器原样保留或明确拒绝，循环引用经 `object_refs` 状态机覆盖。
   - [x] 建立跨读取器健壮性测试：全部严格读取器入口的逐前缀截断、失败游标不变与重读一致、超大长度/限额溢出边界、未知类标识与键原样保留、VARTYPE 全空间穷举及非递归有界完成。仅验证读取器自身契约，不代表 MXD 格式规则已验证。
@@ -84,8 +89,8 @@
 
 - [x] 定义地图、数据框、图层组和图层的数据结构，保存层级、顺序和可见性。
 - [x] 定义数据源、坐标系和显示范围的数据结构，保留无法识别的字段及其位置。
-- [ ] 将 MXD 解析结果转换为中间模型，并结合 REA 证据核对图层树和属性；软件中的人工检查见下方人工验收。
-  - [x] 新增 `parse` 命令（`mxd_maps` 模块）接入显式 10.1 读取器：`/Maps` 根前缀（数量、首对象头、尾部原始值）与 Map 对象体已确认前缀（版本 ≤51、双名称、嵌套 PCS）填充中间模型 `Map`/`DataFrame`（数据框名称、第二名称、WKT 定义）；无论数量多少最多解析首个对象——对象循环边界未闭合，其余数据框、图层、范围与已确认前缀之后的字节全部保留为未知字段并输出诊断，PCS 域字符串/标志/double 不写入模型。仓库参考样本前缀逐项吻合仅为辅助观察；单元测试覆盖合成正常与异常输入（截断、负数量、非 Map/非 PCS 类、限额、空头），仅验证代码自身契约，未在 ArcMap 10.1 或 QGIS 中人工目视验证。
+- [ ] 将 MXD 解析结果转换为中间模型，并结合 REA 证据核对图层树和属性。
+  - [x] 新增 `parse` 命令（`mxd_maps` 模块）接入显式 10.1 读取器：`/Maps` 根前缀（数量、首对象头、尾部原始值）、Map 对象体前缀（版本 ≤51、双名称、嵌套 PCS）与后缀（图层列表、基本图形层、MapSurround、WKSEnvelope、IEnvelope、书签循环）填充中间模型 `Map`/`DataFrame`：数据框名称/第二名称/WKT，图层条目顺序与体前缀（FeatureLayer 名称/可见性/数据源要素类名、GroupLayer 名称/可见性；回引复用同对象节点）→ children，WKSEnvelope → extent；`/Version` 识别候选并入输出。无论数量多少最多解析首个对象（对象循环边界未闭合），未解析体与停止点之后的字节全部保留为未知字段并输出诊断，PCS 域字符串/标志/double 不写入模型。仓库参考样本前缀逐项吻合仅为辅助观察；单元测试覆盖合成正常与异常输入（截断、负数量、非 Map/非 PCS 类、限额、空头、条目/槽位停止点），仅验证代码自身契约，未在 ArcMap 10.1 或 QGIS 中人工目视验证。
 
 ## QGZ 生成
 
@@ -96,7 +101,7 @@
   - [x] 构造模型支持 Windows/UNC/POSIX 词法路径重定位，断链保留并诊断；不将异平台路径当成本机路径。尚未从 MXD 解析连接。
 - [ ] 写入工程及图层坐标系、地图显示范围。
   - [x] 构造模型支持明确 EPSG:4326/3857、不同地图/图层 CRS 和主画布范围；其他定义保留并诊断，未猜 EPSG。非法或溢出范围拒绝。
-- [ ] 生成可由 QGIS 打开的 QGZ，并验证图层能够加载。
+- [ ] 生成可由 QGIS 打开的 QGZ。
 - [ ] 支持图层组、多数据框及其他数据源的映射。
 
 ## 样式与布局
@@ -121,13 +126,15 @@
 - [x] 覆盖显式 10.1 `/Maps` 根前缀读取器与 10.1 ProjectedCoordinateSystem 对象体读取器：全前缀逐字节截断、失败游标不变与重读一致、限额与超大长度、版本分支与拒绝边界、原始位模式保留；robustness 集中清单增至 11 个读取器入口。仅验证读取器自身契约，不代表 MXD 格式规则已验证。
 - [x] 覆盖 10.1 Map 对象体前缀读取器：版本边界、双名称顺序与空名称 6 字节模式、空引用标记、未知嵌套类拒绝、逐字节截断扫描、限额边界与嵌套 PCS 限额转发；robustness 集中清单增至 12 个入口。仅验证读取器自身契约，不代表 MXD 格式规则已验证。
 - [x] 覆盖 `parse` 命令接线（`mxd_maps`）：模型填充（双名称、WKT）、数量 0/正数、全零空头、非 Map/非 PCS 类拒绝、已确认前缀内逐字节截断整体失败与尾部区域截断缩短、负数量与限额拒绝，以及合成 OLE 容器端到端（含 /Version 缺失诊断与负数量错误）。仅验证接线自身契约，不代表 MXD 格式规则已验证，未在目标软件中人工验证。
-- [ ] 为二进制读取、对象引用、字符串解码和异常输入添加测试。
+- [x] 为二进制读取、对象引用、字符串解码和异常输入添加测试。
   - [x] 覆盖整数及浮点读取的全部截断长度、失败后重试、浮点特殊位模式和嵌套范围隔离；遍历全部 UTF-16 单码元及补充平面边界，核对非法代理项和非零偏移错误位置。
   - [x] 在确定对象引用编码后，覆盖缺失引用、重复标识及循环引用：编码已闭合（键回引按已见键集合判定），`object_refs` 覆盖缺失引用（未见过键即新对象，不可区分系原生语义）、重复标识（重复登记=替换）及循环引用（A→B→A、自引用、跨流共享键序），并接入 robustness 截断共性清单；仅验证分类器契约，不代表 MXD 对象解析已验证。
+  - [x] 新增 feature_layer / envelope / group_layer / composite_graphics / layer_list / Map 后缀读取器的独立测试（13+13+13+10 项及 map_object/cli 扩展），并把 robustness 集中清单扩至 19 个入口：全前缀逐字节截断、失败游标与登记表事务性、版本上限（35/4/13/7）、图层列表计数与非法标志、活动索引与各停止点。仅验证读取器自身契约，不代表 MXD 格式规则已验证。
 - [ ] 为数据源路径解析、坐标系和图层树映射添加测试。
 
 ## 人工验收
 
 - [ ] 在 ArcMap 10.1 中检查源工程，并与 QGIS 输出对比，记录实际软件版本、检查范围和结果；当前未验证。
-- [ ] 在 ArcMap 中查看源工程，在 QGIS 中打开转换结果，目视核对图层、坐标系、范围和数据加载结果，并核对中间模型的图层树和属性。
+- [ ] 在 ArcMap 中查看源工程，人工核对中间模型的图层树和属性与源工程一致。
+- [ ] 在 QGIS 中打开转换结果，验证图层能够加载，并目视核对图层、坐标系和范围。
 - [ ] 对比 ArcMap 与 QGIS 的渲染结果，逐项目视检查符号、标注和布局差异，记录软件版本及检查结果。
