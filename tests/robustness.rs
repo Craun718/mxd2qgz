@@ -108,9 +108,12 @@ enum ReaderKind {
     AoiBookmark10_1,
     FeatureBookmark10_1,
     LegendPrefix10_1,
+    LegendClassFormatBody10_1,
+    HorizontalLegendItemBody10_1,
+    EditTemplateBody10_1,
 }
 
-fn all_kinds() -> [ReaderKind; 28] {
+fn all_kinds() -> [ReaderKind; 31] {
     [
         ReaderKind::NativeString10_1,
         ReaderKind::NativeString10_8,
@@ -140,6 +143,9 @@ fn all_kinds() -> [ReaderKind; 28] {
         ReaderKind::AoiBookmark10_1,
         ReaderKind::FeatureBookmark10_1,
         ReaderKind::LegendPrefix10_1,
+        ReaderKind::LegendClassFormatBody10_1,
+        ReaderKind::HorizontalLegendItemBody10_1,
+        ReaderKind::EditTemplateBody10_1,
     ]
 }
 
@@ -410,6 +416,58 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
             bytes.extend(0_i32.to_le_bytes()); // ILegendItem 计数 0
             bytes
         }
+        ReaderKind::LegendClassFormatBody10_1 => {
+            // 版本 2 + 四个对象槽全空标记 + double ×2（版本 >1 段）。
+            let mut bytes = 2_u16.to_le_bytes().to_vec();
+            for _ in 0..4 {
+                bytes.extend([0_u8; 16]);
+            }
+            bytes.extend(1.5_f64.to_le_bytes());
+            bytes.extend((-2.5_f64).to_le_bytes());
+            bytes
+        }
+        ReaderKind::HorizontalLegendItemBody10_1 => {
+            // 条目版本 1 + int32 + 基类版本 3 + ILayer 空标记 + short ×4 +
+            // ITextSymbol 空标记 + int32 + short + ITextSymbol 空标记 +
+            // ILegendClassFormat 空标记 + short ×2 + ≥2 组（short、short、
+            // String、String、short）+ INumberFormat 空标记（对象槽全空标记，
+            // 与集中清单的空登记表相容）。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(0x0102_0304_u32.to_le_bytes());
+            bytes.extend(3_u16.to_le_bytes());
+            bytes.extend([0_u8; 16]); // ILayer
+            for value in [1_u16, 2, 3, 4] {
+                bytes.extend(value.to_le_bytes());
+            }
+            bytes.extend([0_u8; 16]); // ITextSymbol
+            bytes.extend(7_i32.to_le_bytes());
+            bytes.extend(8_u16.to_le_bytes());
+            bytes.extend([0_u8; 16]); // ITextSymbol
+            bytes.extend([0_u8; 16]); // ILegendClassFormat
+            bytes.extend(9_u16.to_le_bytes());
+            bytes.extend(10_u16.to_le_bytes());
+            bytes.extend(11_u16.to_le_bytes());
+            bytes.extend(12_u16.to_le_bytes());
+            bytes.extend(encoded(" ("));
+            bytes.extend(encoded(")"));
+            bytes.extend(13_u16.to_le_bytes());
+            bytes.extend([0_u8; 16]); // INumberFormat
+            bytes
+        }
+        ReaderKind::EditTemplateBody10_1 => {
+            // 版本 2 + 双名称 + 16 字节 GUID + 计数 1 的 [String 键][Variant
+            // BSTR 值] + 版本 ≥2 的第三 String。
+            let mut bytes = 2_u16.to_le_bytes().to_vec();
+            bytes.extend(encoded("模板"));
+            bytes.extend(encoded(""));
+            bytes.extend([0x5A; 16]);
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend(encoded("字段"));
+            bytes.extend(8_u16.to_le_bytes());
+            bytes.extend(encoded("默认"));
+            bytes.extend(encoded("点"));
+            bytes
+        }
         ReaderKind::VariantString10_8 => value_bytes(8, &bstr_payload_bytes("地图")),
         ReaderKind::VariantFixed10_8 => value_bytes(5, &[0; 8]),
     }
@@ -496,6 +554,33 @@ fn try_read(kind: ReaderKind, reader: &mut Reader<'_>) -> io::Result<()> {
         }
         ReaderKind::LegendPrefix10_1 => {
             read_legend_prefix_10_1(reader, 1024, &mut RefTable10_1::new()).map(|_| ())
+        }
+        ReaderKind::LegendClassFormatBody10_1 => {
+            mxd2qgz::layers::legend_format::read_legend_class_format_body_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+                61,
+            )
+            .map(|_| ())
+        }
+        ReaderKind::HorizontalLegendItemBody10_1 => {
+            mxd2qgz::layers::legend_item::read_horizontal_legend_item_body_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+                62,
+            )
+            .map(|_| ())
+        }
+        ReaderKind::EditTemplateBody10_1 => {
+            mxd2qgz::layers::edit_template::read_edit_template_body_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+                63,
+            )
+            .map(|_| ())
         }
         ReaderKind::VariantString10_8 | ReaderKind::VariantFixed10_8 => {
             read_value_10_8(reader, u32::MAX).map(|_| ())
