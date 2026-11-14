@@ -9,6 +9,11 @@ use std::io::ErrorKind;
 const MAP_PCS_KEY: u32 = 30;
 /// 样本首个图层体内嵌新 PCS 的键（Envelope 键 80 体尾内嵌键 81）。
 const NESTED_PCS_KEY: u32 = 81;
+/// 样本键 74 的宿主（归因取证轮，静态证据）：LabelEngineLayerProperties
+/// 键 60 体内，装载者 LabelPlacement.dll `FUN_785468c0` 第 4 个 LoadObject
+/// （IEnvelope）；键 80 则为 FeatureLayer 32 版本 ≥0xf 槽（成员 +0x1f4）。
+/// 测试仅镜像样本键 74 的字节形态，不依赖宿主结论。
+const SAMPLE_ENVELOPE_KEY: u32 = 74;
 /// 合成包络坐标，保持写方向序的次序关系（d0<d2、d1<d3）。
 const COORDS: [f64; 4] = [10.0, 20.0, 30.0, 40.0];
 /// Z 域候选 double 对（合成值，与 M 域取值区分以钉住流内顺序）。
@@ -520,7 +525,7 @@ fn reads_envelope_header_then_body_in_full_chain() {
         f64::from_le_bytes([0x8c, 0x73, 0x46, 0x54, 0x57, 0x76, 0x43, 0x41]),
     ];
     let mut bytes = ENVELOPE_CLASS_ID.to_vec();
-    bytes.extend(74_u32.to_le_bytes());
+    bytes.extend(SAMPLE_ENVELOPE_KEY.to_le_bytes());
     bytes.extend(envelope_prefix(3, &sample_coords));
     push_attribute_flags(&mut bytes, 0);
     push_entry_header(
@@ -537,7 +542,7 @@ fn reads_envelope_header_then_body_in_full_chain() {
         panic!("Envelope 对象头不应为 Null：{header:?}");
     };
     assert_eq!(class_id, ENVELOPE_CLASS_ID);
-    assert_eq!(key, 74);
+    assert_eq!(key, SAMPLE_ENVELOPE_KEY);
     let parsed = read_envelope_10_1(&mut reader, 1024, &mut table).unwrap();
     assert_eq!(parsed.version, 3);
     assert_eq!(parsed.coords, sample_coords);

@@ -44,13 +44,19 @@
 //!
 //! 新对象体按流内类标识分派给已实现读取器解析已确认前缀（见
 //! [`parse_body_prefix`]）：FeatureLayer → `feature_layer`、GroupLayer →
-//! `group_layer`、CompositeGraphicsLayer → `composite_graphics`。
-//! FDOGraphicsLayer（`{34B2EF83-…}`，AnnoLayer.dll，Load 未反编译）与
-//! RasterLayer 等其余类没有读取器，体整体按有界未知跳过。体前缀解析失败
+//! `group_layer`、CompositeGraphicsLayer → `composite_graphics`、
+//! FDOGraphicsLayer → `fdo_graphics_layer`（2026-11-14 第六轮闭合，
+//! AnnoLayer.dll `0x6b1955a0`，样本条目 1 的类）。RasterLayer 等其余类没
+//! 有读取器，体整体按有界未知跳过。体前缀解析失败
 //! （版本超限、嵌套类不支持等）不使整条列表失败：按有界未知降级并在条目
 //! 上保留失败原因；真实截断仍会因有界跳过超出流长度而整体失败。标志 1 的
 //! 新对象体解析出前缀后游标停在前缀终点（体剩余无外部长度，列表停止）；
 //! 未解析出前缀时停在对象头之后。
+//!
+//! FDOGraphicsLayer 条目（样本条目 1，标志 1）解析出前缀后，其两个内嵌
+//! FeatureLayer 体（关联图层 + 委派注记图层）各自的剩余仍无外部长度，列表
+//! 照样停在该条目——越过该条目需要 FeatureLayer 渲染器/字段信息等尾段链
+//! 的逐类闭合（开放，见 `docs/arcmap-10.1-map-object.md` 第六轮）。
 //!
 //! ## 跳过体键未登记对回引判定的影响
 //!
@@ -71,8 +77,10 @@
 //! - 图层列表元素的业务语义（绘制顺序、图层树展开方式）不在本模块范围。
 
 use crate::composite_graphics::read_composite_graphics_layer_prefix_10_1;
+use crate::fdo_graphics_layer::{
+    FDO_GRAPHICS_LAYER_CLASS_ID, FdoGraphicsLayerPrefix10_1, read_fdo_graphics_layer_prefix_10_1,
+};
 use crate::feature_layer::read_feature_layer_prefix_10_1;
-use crate::group_layer::read_group_layer_prefix_10_1;
 use crate::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::reader::Reader;
 use std::io::{self, ErrorKind};
@@ -106,7 +114,8 @@ pub fn class_id_hex(class_id: &[u8; 16]) -> String {
 /// 字段仍为未知（有 A 前缀的条目按范围跳过，见 [`UnknownBodyRange`]）。
 #[derive(Debug, Clone, PartialEq)]
 pub enum LayerBodyPrefix10_1 {
-    /// FeatureLayer 体前缀（名称、第二名称、可见性、数据源 FCN 前缀）。
+    /// FeatureLayer 体前缀（名称、第二名称、可见性、数据源 FCN/WorkspaceName
+    /// 链、渲染器槽位或 +0x144 GUID 停止）。
     FeatureLayer(Box<crate::feature_layer::FeatureLayerPrefix10_1>),
     /// GroupLayer 体前缀（名称、三个 short、两个 double、子图层循环、可见性
     /// 等版本条件字段，到首个不可闭合字段为止）。
@@ -114,15 +123,30 @@ pub enum LayerBodyPrefix10_1 {
     /// CompositeGraphicsLayer 体前缀（元素组、名称、标量组、子图层循环，到
     /// 首个不可闭合字段为止）。
     CompositeGraphicsLayer(Box<crate::composite_graphics::CompositeGraphicsLayerPrefix10_1>),
+    /// FDOGraphicsLayer 体前缀（版本、int32/short 标量、关联要素图层
+    /// ILayer 槽、IElementCollection2 槽、委派 FeatureLayer 体，第六轮闭合）。
+    FdoGraphicsLayer(Box<FdoGraphicsLayerPrefix10_1>),
 }
 
 impl LayerBodyPrefix10_1 {
     /// 体前缀内的图层名称（诊断与模型填充用）。
+    ///
+    /// FDOGraphicsLayer 自身无名称字段：取关联要素图层（ILayer 槽）的名称，
+    /// 关联槽为空/回引时取委派子对象（注记要素图层）的名称，两者皆无时为
+    /// 空串。
     pub fn layer_name(&self) -> &str {
         match self {
             Self::FeatureLayer(prefix) => &prefix.name,
             Self::GroupLayer(prefix) => &prefix.name,
             Self::CompositeGraphicsLayer(prefix) => &prefix.name,
+            Self::FdoGraphicsLayer(prefix) => match &prefix.associated_layer {
+                crate::fdo_graphics_layer::AssociatedLayer10_1::FeatureLayer(layer) => &layer.name,
+                _ => prefix
+                    .delegated_layer
+                    .as_ref()
+                    .map(|layer| layer.name.as_str())
+                    .unwrap_or(""),
+            },
         }
     }
 }
@@ -411,11 +435,11 @@ fn read_entry(
             } else {
                 None
             };
-            // 类分派：FeatureLayer / GroupLayer / CompositeGraphicsLayer 的新对
-            // 象体先解析已确认前缀（各读取器事务性：失败不推进游标、不改登
-            // 记表），再按条目边界跳过前缀之后的剩余字节。FDOGraphicsLayer
-            // （AnnoLayer.dll）等其余类没有读取器，体整体按未知处理。
-            let dispatch = parse_body_prefix(trial, *class_id, max_bytes, trial_table);
+            // 类分派：FeatureLayer / GroupLayer / CompositeGraphicsLayer /
+            // FDOGraphicsLayer 的新对象体先解析已确认前缀（各读取器事务
+            // 性：失败不推进游标、不改登记表），再按条目边界跳过前缀之后
+            // 的剩余字节。RasterLayer 等其余类没有读取器，体整体按未知处理。
+            let dispatch = parse_body_prefix(trial, *class_id, max_bytes, trial_table, 0);
             match dispatch {
                 Ok(prefix_result) => parsed = prefix_result,
                 Err(error) => {
@@ -460,18 +484,22 @@ fn read_entry(
     })
 }
 
-/// 按类标识分派新对象体的已确认前缀解析。
+/// 按类标识分派新对象体的已确认前缀解析（组图层子图层递归共用，见
+/// [`crate::group_layer`]）。
 ///
-/// 只有三个已实现读取器覆盖的类参与分派；其余类返回 `Ok(None)`（体按未知
+/// 只有已实现读取器覆盖的类参与分派；其余类返回 `Ok(None)`（体按未知
 /// 处理）。解析失败不作为整条列表的错误（见调用点注释），由调用者按有界
-/// 跳过降级。三个读取器均为「前缀停止」语义：返回 Ok 时游标停在其已确认
+/// 跳过降级。各读取器均为「前缀停止」语义：返回 Ok 时游标停在其已确认
 /// 前缀终点或首个不可闭合字段处（容器类读取器把游标回退到该字段起点），
-/// 剩余体字节由调用者按条目边界跳过。
-fn parse_body_prefix(
+/// 剩余体字节由调用者按条目边界跳过。`depth` 是组图层递归深度（GroupLayer
+/// 套 GroupLayer 时经 [`crate::group_layer`] 递增，超过其安全限额后组图层
+/// 类不再分派）。
+pub(crate) fn parse_body_prefix(
     trial: &mut Reader<'_>,
     class_id: [u8; 16],
     max_bytes: usize,
     trial_table: &mut RefTable10_1,
+    depth: u32,
 ) -> io::Result<Option<LayerBodyPrefix10_1>> {
     if class_id == FEATURE_LAYER_CLASS_ID {
         Ok(Some(LayerBodyPrefix10_1::FeatureLayer(Box::new(
@@ -479,11 +507,20 @@ fn parse_body_prefix(
         ))))
     } else if class_id == GROUP_LAYER_CLASS_ID {
         Ok(Some(LayerBodyPrefix10_1::GroupLayer(Box::new(
-            read_group_layer_prefix_10_1(trial, max_bytes, trial_table)?,
+            crate::group_layer::read_group_layer_prefix_with_depth_10_1(
+                trial,
+                max_bytes,
+                trial_table,
+                depth,
+            )?,
         ))))
     } else if class_id == COMPOSITE_GRAPHICS_LAYER_CLASS_ID {
         Ok(Some(LayerBodyPrefix10_1::CompositeGraphicsLayer(Box::new(
             read_composite_graphics_layer_prefix_10_1(trial, max_bytes, trial_table)?,
+        ))))
+    } else if class_id == FDO_GRAPHICS_LAYER_CLASS_ID {
+        Ok(Some(LayerBodyPrefix10_1::FdoGraphicsLayer(Box::new(
+            read_fdo_graphics_layer_prefix_10_1(trial, max_bytes, trial_table)?,
         ))))
     } else {
         Ok(None)

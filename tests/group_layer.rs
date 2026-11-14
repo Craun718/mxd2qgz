@@ -6,10 +6,12 @@
 //! 「A=头 20 字节+体的总体积」有 /Maps 图层列表（Map 图层循环）的逐条目
 //! 吻合（第四轮），仅作布局佐证。
 
+use mxd2qgz::feature_layer::{FEATURE_LAYER_CLASS_ID, FeatureLayerStop10_1};
 use mxd2qgz::group_layer::{
     ConsumedEntry10_1, GROUP_LAYER_CLASS_ID, GroupChildEntry10_1, GroupLayerStop10_1,
     read_group_layer_prefix_10_1,
 };
+use mxd2qgz::layer_list::LayerBodyPrefix10_1 as LayerBodyPrefix;
 use mxd2qgz::object_refs::RefTable10_1;
 use mxd2qgz::reader::Reader;
 use std::io::ErrorKind;
@@ -20,6 +22,11 @@ const SHORTS: [u16; 3] = [0x1234, 0x0001, 0x8000];
 const DOUBLES: [f64; 2] = [1.5, -0.25];
 /// 预置进登记表的既有键：命中即回引。
 const SEEN_KEY: u32 = 7;
+/// SimpleRenderer 类标识 {F3435801-5779-11D0-98BF-00805F7CED21}（esri.clsid
+/// 声明；样本 /Maps:0x3ed 渲染器槽位对象头，第六轮对位）。
+const SIMPLE_RENDERER_CLASS_ID: [u8; 16] = [
+    0x01, 0x58, 0x43, 0xf3, 0x79, 0x57, 0xd0, 0x11, 0x98, 0xbf, 0x00, 0x80, 0x5f, 0x7c, 0xed, 0x21,
+];
 
 /// AfCore String::Write 布局：u32 字节长度前缀 + 含终止零的 UTF-16LE。
 fn encoded(text: &str) -> Vec<u8> {
@@ -263,7 +270,8 @@ fn stops_at_new_child_object_below_version_eleven() {
         GroupLayerStop10_1::ChildNewObject {
             index: 1,
             class_id: [0x33; 16],
-            key: 21
+            key: 21,
+            note: None
         }
     );
     assert_eq!(parsed.children.len(), 1);
@@ -328,7 +336,8 @@ fn extra_safe_entries_empty_back_reference_and_bounded_skip() {
                 key: 22,
                 declared_total: 25,
                 body_offset,
-                body_length: 5
+                body_length: 5,
+                parsed: None
             },
         ]
     );
@@ -389,7 +398,8 @@ fn extra_safe_b_sync_overrides_a_skip() {
             key: 22,
             declared_total: 30,
             body_offset: 2 + encoded("图层组").len() + 6 + 16 + 4 + 8 + 20,
-            body_length: 10
+            body_length: 10,
+            parsed: None
         }]
     );
     // 同步后可见性/嵌套/double 正常读取、ExtensionHelper 停止：证明 B 同步
@@ -417,7 +427,8 @@ fn extra_safe_b_sync_overrides_a_skip() {
             key: 23,
             declared_total: 40,
             body_offset: 2 + encoded("图层组").len() + 6 + 16 + 4 + 8 + 20,
-            body_length: 20
+            body_length: 20,
+            parsed: None
         }
     );
     // B=30 把游标拉回后，可见性/嵌套从 B 目标处的字节重新读取。
@@ -629,4 +640,154 @@ fn rejects_over_limit_name_lengths_before_reading_or_allocating() {
         ErrorKind::UnexpectedEof
     );
     assert_eq!(reader.position(), 0);
+}
+
+/// 合成 FeatureLayer 子图层体（与 tests/feature_layer.rs 的样本镜像同构）：
+/// 版本 34 + 双名称 + short ×3 + 空标记数据源 + 空标记渲染器 + 16 字节
+/// GUID——前缀读取器在 GUID 之后停止，体恰好被完整覆盖。
+fn child_feature_layer_body(name: &str) -> Vec<u8> {
+    let mut bytes = 34_u16.to_le_bytes().to_vec();
+    bytes.extend(encoded(name));
+    bytes.extend(encoded(""));
+    bytes.extend(0xFFFF_u16.to_le_bytes());
+    bytes.extend(0_u16.to_le_bytes());
+    bytes.extend(0_u16.to_le_bytes());
+    bytes.extend([0_u8; 16]); // 数据源：空标记
+    bytes.extend([0_u8; 16]); // 渲染器：空标记
+    bytes.extend([0x6A; 16]); // +0x144 原样 GUID
+    bytes
+}
+
+#[test]
+fn extra_safe_child_feature_layer_prefix_is_parsed_and_skipped_to_bound() {
+    // 版本 >=11：ExtraSafe 子图层的 FeatureLayer 体先经类分派解析前缀（名称
+    // 进入记录），剩余按 A 界跳过，循环继续到下一个条目（回引）。
+    let body = child_feature_layer_body("子层A");
+    let mut first = extra_safe_prefix(20 + body.len() as u32, 0);
+    first.extend(entry_bytes(FEATURE_LAYER_CLASS_ID, 31));
+    first.extend(&body);
+    let mut second = extra_safe_prefix(20, 0);
+    second.extend(entry_bytes(FEATURE_LAYER_CLASS_ID, 31)); // 回引（键已见）
+    let children = child_region(2, &[first, second]);
+    let bytes = group_body(11, "图层组", &children, 0xffff, &[0; 16], 1.0, b"tail");
+    let mut table = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let parsed = read_group_layer_prefix_10_1(&mut reader, 1024, &mut table).unwrap();
+    assert_eq!(parsed.children.len(), 2);
+    let GroupChildEntry10_1::SkippedNewObject {
+        class_id,
+        key,
+        declared_total,
+        body_length,
+        parsed: child_prefix,
+        ..
+    } = &parsed.children[0]
+    else {
+        panic!("首条目应为 SkippedNewObject：{:?}", parsed.children[0]);
+    };
+    assert_eq!(*class_id, FEATURE_LAYER_CLASS_ID);
+    assert_eq!(*key, 31);
+    assert_eq!(*declared_total, 20 + body.len() as u32);
+    // 前缀恰好覆盖整个体：A 界跳过量为 0。
+    assert_eq!(*body_length, 0, "A 界减去前缀覆盖后的剩余应为 0");
+    let Some(LayerBodyPrefix::FeatureLayer(fl)) = child_prefix.as_deref() else {
+        panic!("子图层前缀应分派为 FeatureLayer：{child_prefix:?}");
+    };
+    assert_eq!(fl.name, "子层A");
+    assert_eq!(fl.stop, FeatureLayerStop10_1::AfterDataSourceGuid);
+    // 循环继续：第 2 条目按回引分类，随后正常读到 ExtensionHelper 停止。
+    assert_eq!(
+        parsed.children[1],
+        GroupChildEntry10_1::BackReference {
+            class_id: FEATURE_LAYER_CLASS_ID,
+            key: 31
+        }
+    );
+    assert_eq!(parsed.stop, GroupLayerStop10_1::ExtensionHelperNotExpanded);
+    assert!(table.contains(31));
+}
+
+#[test]
+fn plain_child_feature_layer_prefix_stops_the_loop_inside_body() {
+    // 版本 <11：普通子图层条目的 FeatureLayer 新对象经类分派解析出前缀——
+    // 子图层体剩余无外部长度，循环停止在（fake 的）渲染器新对象处；子图层
+    // 记录为 ParsedNewObject，键保留登记（其对象头已消费）。
+    let mut body = 34_u16.to_le_bytes().to_vec();
+    body.extend(encoded("子层B"));
+    body.extend(encoded(""));
+    body.extend(0xFFFF_u16.to_le_bytes());
+    body.extend(0_u16.to_le_bytes());
+    body.extend(0_u16.to_le_bytes());
+    body.extend([0_u8; 16]); // 数据源：空标记
+    body.extend(SIMPLE_RENDERER_CLASS_ID.to_vec()); // 渲染器新对象（未知类）
+    body.extend(35_u32.to_le_bytes());
+    body.extend(b"opaque"); // 渲染器未知体之后的未知区
+    let header = entry_bytes(FEATURE_LAYER_CLASS_ID, 31);
+    let children = child_region(1, &[vec![header, body.clone()].concat()]);
+    let bytes = group_body(10, "图层组", &children, 0xffff, &[0; 16], 1.0, b"");
+    let mut table = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let parsed = read_group_layer_prefix_10_1(&mut reader, 1024, &mut table).unwrap();
+    assert_eq!(
+        parsed.stop,
+        GroupLayerStop10_1::ChildLayerBody { index: 0 },
+        "循环应停在子图层体的前缀停止点"
+    );
+    let GroupChildEntry10_1::ParsedNewObject {
+        class_id,
+        parsed: child_prefix,
+        ..
+    } = &parsed.children[0]
+    else {
+        panic!("子图层应为 ParsedNewObject：{:?}", parsed.children[0]);
+    };
+    assert_eq!(*class_id, FEATURE_LAYER_CLASS_ID);
+    let LayerBodyPrefix::FeatureLayer(fl) = child_prefix.as_ref() else {
+        panic!("子图层前缀应分派为 FeatureLayer");
+    };
+    assert_eq!(fl.name, "子层B");
+    assert_eq!(
+        fl.stop,
+        FeatureLayerStop10_1::RendererNewObject {
+            class_id: SIMPLE_RENDERER_CLASS_ID,
+            key: 35
+        }
+    );
+    // 停止点 = 子图层体内渲染器对象头起点（FeatureLayer 前缀读取器的回退
+    // 语义）：组图层头(2+12+6+16) + 计数 4 + 子图层头 20 + FL 前缀
+    //（2+12+6+6+16）。
+    let stop_offset =
+        2 + encoded("图层组").len() + 6 + 16 + 4 + 20 + (2 + encoded("子层B").len() + 6 + 6 + 16);
+    assert_eq!(reader.position(), stop_offset);
+    assert!(table.contains(31), "已消费的子图层对象头键保留登记");
+}
+
+#[test]
+fn plain_child_with_dispatch_failure_rolls_back_with_note() {
+    // 版本 <11：FeatureLayer 子图层前缀解析失败（版本 99 超限）→ 回退到对
+    // 象头起点停止，停止原因携带失败说明，键不登记。
+    let mut body = 99_u16.to_le_bytes().to_vec(); // 超出 FeatureLayer 上限 34
+    body.extend(encoded("坏子层"));
+    let header = entry_bytes(FEATURE_LAYER_CLASS_ID, 31);
+    let children = child_region(1, &[vec![header, body].concat()]);
+    let bytes = group_body(10, "图层组", &children, 0xffff, &[0; 16], 1.0, b"");
+    let mut table = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let parsed = read_group_layer_prefix_10_1(&mut reader, 1024, &mut table).unwrap();
+    let GroupLayerStop10_1::ChildNewObject {
+        index,
+        note: Some(note),
+        ..
+    } = parsed.stop
+    else {
+        panic!(
+            "解析失败应回退为 ChildNewObject 且携带说明：{:?}",
+            parsed.stop
+        );
+    };
+    assert_eq!(index, 0);
+    assert!(note.contains("版本"), "{note}");
+    let header_start = 2 + encoded("图层组").len() + 6 + 16 + 4;
+    assert_eq!(reader.position(), header_start, "回退到子图层对象头起点");
+    assert!(!table.contains(31));
 }

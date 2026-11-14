@@ -55,6 +55,19 @@
 //! 头后 A-20 字节按未知体范围记录并继续；A 与 B 的同步位置冲突时以反编译
 //! 证实的 B 同步为准。
 //!
+//! ## 子图层递归（2026-11-14 第六轮接入）
+//!
+//! 子图层新对象体经 [`crate::layer_list::parse_body_prefix`] 类分派解析已
+//! 确认前缀（FeatureLayer / GroupLayer / CompositeGraphicsLayer /
+//! FDOGraphicsLayer；组图层套组图层经同一分派递归，深度限额见
+//! [`MAX_RECURSION_DEPTH`]，非原生限制）。版本 >=11 的 ExtraSafe 条目解析
+//! 前缀后把剩余按 A 界跳过、循环继续；版本 <11 的普通条目解析成功时游标
+//! 停在子图层体的前缀停止点并停止循环（体剩余无外部长度，见
+//! [`GroupLayerStop10_1::ChildLayerBody`]），类无读取器或解析失败时回退到
+//! 该对象头起点停止（[`GroupLayerStop10_1::ChildNewObject`]）。证据范围：
+//! 参考样本无组图层，子图层条目的分派行为无样本字节佐证，仅 ExtraSafe
+//! `[A][B]` 布局有 /Maps 图层列表的逐条目吻合（第四轮）。
+//!
 //! 调用约定：调用者先用 [`crate::object_stream::read_header_10_1`] 读取对象
 //! 头并比对 [`GROUP_LAYER_CLASS_ID`]，从对象头之后的位置调用
 //! [`read_group_layer_prefix_10_1`]；本模块不重复读取对象头。
@@ -72,6 +85,7 @@
 //! ExtensionHelper 与尾部 LayerMasking/`FUN_6f6c8100` 未展开（后者反编译
 //! 无参数、按不消费流处理，未验证）。
 
+use crate::layer_list::LayerBodyPrefix10_1;
 use crate::native_string::read_string_10_1;
 use crate::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::reader::Reader;
@@ -82,6 +96,11 @@ const MAX_ARCHITECTURE_VERSION: u16 = 12;
 
 /// 嵌套对象头体积：16 字节类标识 + 4 字节键。
 const OBJECT_HEADER_BYTES: u32 = 20;
+
+/// 子图层递归解析的最大深度（Rust 侧防栈溢出的安全限额，非原生限制：原生
+/// 按 C++ 递归无显式上限；每层至少消费 22 字节，超深输入在本读取器内按未
+/// 知体跳过/停止处理）。
+const MAX_RECURSION_DEPTH: u32 = 64;
 
 /// GroupLayer 类标识（CLSID）的 16 字节内存序（Data1-3 小端、Data4 原序）。
 ///
@@ -104,7 +123,7 @@ pub enum ConsumedEntry10_1 {
 }
 
 /// 子图层条目的分类记录（字段序第 5 步的循环）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum GroupChildEntry10_1 {
     /// ExtraSafe 前缀 `[A=0][B=0]` 的空条目（仅版本 >=11 出现）：原生
     /// `ExtraSafeReadObject` 返回 1，调用方跳过。
@@ -113,9 +132,10 @@ pub enum GroupChildEntry10_1 {
     Null,
     /// 回引条目：无对象体。
     BackReference { class_id: [u8; 16], key: u32 },
-    /// 版本 >=11 ExtraSafe 条目内的新对象：头已分类，头后 `A-20` 字节按未
-    /// 知体范围跳过并记录（读侧原生不消费 A，A 的体积语义是写侧观察，见
-    /// 模块文档）。
+    /// 版本 >=11 ExtraSafe 条目内的新对象：头已分类，体先经类分派解析已确
+    /// 认前缀（`parsed`），再把剩余按 `A-20` 字节未知体范围跳过（读侧原生
+    /// 不消费 A，A 的体积语义是写侧观察，见模块文档；类无读取器或解析失败
+    /// 时 `parsed` 为 `None`、整个体按未知跳过）。
     SkippedNewObject {
         class_id: [u8; 16],
         key: u32,
@@ -123,21 +143,37 @@ pub enum GroupChildEntry10_1 {
         declared_total: u32,
         /// 未知体范围在传入 Reader 窗口内的起始偏移。
         body_offset: usize,
-        /// 未知体范围的字节长度（= A - 20）。
+        /// 未知体范围的字节长度（= A - 20 减去已解析前缀覆盖的部分）。
         body_length: usize,
+        /// 经类分派解析出的体前缀（2026-11-14 第六轮接入递归）。
+        parsed: Option<Box<LayerBodyPrefix10_1>>,
+    },
+    /// 版本 <11 普通条目的新对象经类分派解析出前缀：子图层体剩余无外部长
+    /// 度，读取器停在其前缀停止点（循环无法继续，见停止原因
+    /// [`GroupLayerStop10_1::ChildLayerBody`]）。
+    ParsedNewObject {
+        class_id: [u8; 16],
+        key: u32,
+        parsed: Box<LayerBodyPrefix10_1>,
     },
 }
 
 /// 已确认前缀的停止原因；本读取器对任何成功输入都返回停止原因（见模块文档）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GroupLayerStop10_1 {
-    /// 版本 <11 的子图层循环中出现新对象：其体没有外部长度字段，本读取器
-    /// 无法消费。`index` 为条目序号（0 起）；游标回退到该对象头起点。
+    /// 版本 <11 的子图层循环中出现新对象且无对应读取器或前缀解析失败：其
+    /// 体没有外部长度字段，本读取器无法消费。`index` 为条目序号（0 起）；
+    /// 游标与登记表回退到该对象头起点；`note` 为解析失败时的原因（无读取
+    /// 器时为 `None`）。
     ChildNewObject {
         index: usize,
         class_id: [u8; 16],
         key: u32,
+        note: Option<String>,
     },
+    /// 版本 <11 的子图层新对象经类分派解析出前缀：子图层体剩余无外部长度，
+    /// 循环无法继续，读取器停在其前缀停止点。
+    ChildLayerBody { index: usize },
     /// 版本 >2 的嵌套对象（IEnvelope 候选）是新对象：停止并回退到其头起点。
     NestedNewObject { class_id: [u8; 16], key: u32 },
     /// 版本 >=5 的 `ExtensionHelper::LoadExtensions` 未展开：其流消费布局
@@ -152,9 +188,19 @@ impl GroupLayerStop10_1 {
     /// 停止原因的固定说明（供诊断直接输出）。
     pub fn describe(&self) -> String {
         match self {
-            Self::ChildNewObject { index, .. } => format!(
-                "子图层条目 {index} 为新对象：其体没有外部长度字段，无法消费，游标\
-                 回退到该对象头起点"
+            Self::ChildNewObject { index, note, .. } => match note {
+                None => format!(
+                    "子图层条目 {index} 为新对象且无对应读取器：其体没有外部长度字段，\
+                     无法消费，游标回退到该对象头起点"
+                ),
+                Some(note) => format!(
+                    "子图层条目 {index} 的新对象前缀解析失败（{note}），体按未知保留，\
+                     游标回退到该对象头起点"
+                ),
+            },
+            Self::ChildLayerBody { index } => format!(
+                "子图层条目 {index} 的新对象经类分派解析出前缀：子图层体剩余无外部\
+                 长度，循环无法继续，读取器停在其前缀停止点"
             ),
             Self::NestedNewObject { .. } => {
                 "版本 >2 的嵌套对象（IEnvelope 候选）为新对象：停止并回退到其头起点".to_string()
@@ -225,6 +271,17 @@ pub fn read_group_layer_prefix_10_1(
     max_bytes: usize,
     table: &mut RefTable10_1,
 ) -> io::Result<GroupLayerPrefix10_1> {
+    read_group_layer_prefix_with_depth_10_1(reader, max_bytes, table, 0)
+}
+
+/// 带递归深度的内部实现：深度超过 [`MAX_RECURSION_DEPTH`] 时子图层新对象
+/// 不再做类分派（按未知体处理），防栈溢出（非原生限制，见常量文档）。
+pub(crate) fn read_group_layer_prefix_with_depth_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: u32,
+) -> io::Result<GroupLayerPrefix10_1> {
     let entry_offset = reader.position();
     // 入口克隆：Reader 没有随机定位原语，B 同步与停止回退都用「入口克隆 +
     // 前向读取」把游标重定位到窗口内绝对偏移；所有目标都在入口之后。
@@ -290,24 +347,53 @@ pub fn read_group_layer_prefix_10_1(
                     }
                     ObjectEntry10_1::NewObject { class_id, key } => {
                         // A 的体积语义是写侧观察（读侧原生不消费 A）：A>=20 时
-                        // 头后 A-20 字节按未知体范围记录并继续；A<20 与写侧不
-                        // 变量矛盾，按本读取器报错。
+                        // 体按「前缀终点到 A 界」有界处理；A<20 与写侧不变量
+                        // 矛盾，按本读取器报错。
                         if a < OBJECT_HEADER_BYTES {
                             return Err(invalid(format!(
                                 "ExtraSafe 子图层条目 offset 0x{prefix_offset:x}: 前缀 A={a} \
                                  小于对象头 {OBJECT_HEADER_BYTES} 字节，无法用作有界跳过"
                             )));
                         }
-                        let body_length = (a - OBJECT_HEADER_BYTES) as usize;
+                        let full_body_length = (a - OBJECT_HEADER_BYTES) as usize;
                         let body_offset = trial.position();
-                        // 未知体范围必须完整落在输入内（否则按缺短读失败）。
-                        trial.read_bytes(body_length)?;
+                        // 类分派递归（第六轮接入）：体前缀先解析（组图层套组
+                        // 图层经同一分派递归，深度受 MAX_RECURSION_DEPTH 限
+                        // 制），再把剩余按 A 界跳过；解析失败或类无读取器时
+                        // 整个体按未知跳过。
+                        let mut parsed = None;
+                        if depth < MAX_RECURSION_DEPTH {
+                            match crate::layer_list::parse_body_prefix(
+                                &mut trial,
+                                class_id,
+                                max_bytes,
+                                &mut trial_table,
+                                depth + 1,
+                            ) {
+                                Ok(prefix_result) => parsed = prefix_result.map(Box::new),
+                                // 解析失败（截断、版本超限等）：真实截断会在
+                                // A 界跳过时因超出流长度整体失败；内容不支持
+                                // 则整个体按未知跳过，条目边界不受影响。
+                                Err(_) => {}
+                            }
+                        }
+                        if trial.position() > body_offset + full_body_length {
+                            return Err(invalid(format!(
+                                "ExtraSafe 子图层条目 offset 0x{prefix_offset:x}: 体前缀终点\
+                                 超出 A={a} 界定的条目边界，前缀解析与 A 界矛盾"
+                            )));
+                        }
+                        // 未知体范围（前缀终点到 A 界）必须完整落在输入内（否则
+                        // 按缺短读失败）；记录的是实际跳过的剩余长度。
+                        let remaining_skip = body_offset + full_body_length - trial.position();
+                        trial.read_bytes(remaining_skip)?;
                         children.push(GroupChildEntry10_1::SkippedNewObject {
                             class_id,
                             key,
                             declared_total: a,
                             body_offset,
-                            body_length,
+                            body_length: remaining_skip,
+                            parsed,
                         });
                     }
                 }
@@ -350,18 +436,64 @@ pub fn read_group_layer_prefix_10_1(
                         children.push(GroupChildEntry10_1::BackReference { class_id, key });
                     }
                     ObjectEntry10_1::NewObject { class_id, key } => {
-                        // 新对象体没有外部长度字段，本读取器无法消费：回退登记
-                        // 与游标到该对象头起点，在此停止，不报错（见模块文档的
-                        // 停止语义）。
-                        trial_table = saved_table;
-                        trial = reposition(&origin, entry_offset, item_offset, limit)
-                            .expect("回退目标在停止前的已读位置，必在窗口内");
-                        stop = Some(GroupLayerStop10_1::ChildNewObject {
-                            index,
-                            class_id,
-                            key,
-                        });
-                        break 'children;
+                        // 新对象体没有外部长度字段。先经类分派解析已确认前缀
+                        //（2026-11-14 第六轮接入递归，替代原先一律回退的行
+                        // 为）：解析成功时游标停在其停止点并记录
+                        // ParsedNewObject（循环无法继续——见停止原因
+                        // ChildLayerBody）；类无读取器或解析失败时回退登记表
+                        // 与游标到该对象头起点，在此停止（ChildNewObject）。
+                        let dispatch = if depth < MAX_RECURSION_DEPTH {
+                            crate::layer_list::parse_body_prefix(
+                                &mut trial,
+                                class_id,
+                                max_bytes,
+                                &mut trial_table,
+                                depth + 1,
+                            )
+                        } else {
+                            Ok(None)
+                        };
+                        match dispatch {
+                            Ok(Some(prefix)) => {
+                                children.push(GroupChildEntry10_1::ParsedNewObject {
+                                    class_id,
+                                    key,
+                                    parsed: Box::new(prefix),
+                                });
+                                stop = Some(GroupLayerStop10_1::ChildLayerBody { index });
+                                break 'children;
+                            }
+                            Ok(None) => {
+                                trial_table = saved_table;
+                                trial = reposition(&origin, entry_offset, item_offset, limit)
+                                    .expect("回退目标在停止前的已读位置，必在窗口内");
+                                stop = Some(GroupLayerStop10_1::ChildNewObject {
+                                    index,
+                                    class_id,
+                                    key,
+                                    note: None,
+                                });
+                                break 'children;
+                            }
+                            Err(error) if error.kind() == ErrorKind::UnexpectedEof => {
+                                // 截断向上传播为错误（保持「截断输入必须失败」
+                                // 的读取器契约）。
+                                return Err(error);
+                            }
+                            Err(error) => {
+                                // 内容性失败：回退并停止，原因进诊断。
+                                trial_table = saved_table;
+                                trial = reposition(&origin, entry_offset, item_offset, limit)
+                                    .expect("回退目标在停止前的已读位置，必在窗口内");
+                                stop = Some(GroupLayerStop10_1::ChildNewObject {
+                                    index,
+                                    class_id,
+                                    key,
+                                    note: Some(error.to_string()),
+                                });
+                                break 'children;
+                            }
+                        }
                     }
                 }
             }

@@ -81,6 +81,7 @@ enum ReaderKind {
     MapSuffix10_1,
     LayerList10_1,
     FeatureLayerPrefix10_1,
+    FdoGraphicsLayerPrefix10_1,
     GroupLayerPrefix10_1,
     CompositeGraphicsPrefix10_1,
     Envelope10_1,
@@ -91,7 +92,7 @@ enum ReaderKind {
     VariantFixed10_8,
 }
 
-fn all_kinds() -> [ReaderKind; 19] {
+fn all_kinds() -> [ReaderKind; 20] {
     [
         ReaderKind::NativeString10_1,
         ReaderKind::NativeString10_8,
@@ -104,6 +105,7 @@ fn all_kinds() -> [ReaderKind; 19] {
         ReaderKind::MapSuffix10_1,
         ReaderKind::LayerList10_1,
         ReaderKind::FeatureLayerPrefix10_1,
+        ReaderKind::FdoGraphicsLayerPrefix10_1,
         ReaderKind::GroupLayerPrefix10_1,
         ReaderKind::CompositeGraphicsPrefix10_1,
         ReaderKind::Envelope10_1,
@@ -194,7 +196,9 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
             bytes
         }
         ReaderKind::FeatureLayerPrefix10_1 => {
-            // 版本 34 + 双名称 + 可见性 0xFFFF + 两个未知 short + 空标记数据源。
+            // 版本 34 + 双名称 + 可见性 0xFFFF + 两个未知 short + 空标记数据源
+            // + 空标记渲染器 + +0x144 原样 GUID：AfterDataSourceGuid 停止且无
+            // 剩余字节。
             let mut bytes = 34_u16.to_le_bytes().to_vec();
             bytes.extend(encoded("层"));
             bytes.extend(encoded(""));
@@ -202,6 +206,29 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
             bytes.extend(0_u16.to_le_bytes());
             bytes.extend(0_u16.to_le_bytes());
             bytes.extend([0_u8; 16]); // 数据源：空标记
+            bytes.extend([0_u8; 16]); // 渲染器：空标记
+            bytes.extend([0x5A; 16]); // +0x144 GUID
+            bytes
+        }
+        ReaderKind::FdoGraphicsLayerPrefix10_1 => {
+            // 版本 11 + int32 + short + 关联 FeatureLayer（头 + 前缀体，其数据
+            // 源与渲染器均为空标记、含 GUID）：AssociatedLayerBodyStopped 停止
+            // 且无剩余字节。
+            let mut layer = 34_u16.to_le_bytes().to_vec();
+            layer.extend(encoded("注记"));
+            layer.extend(encoded(""));
+            layer.extend(0xFFFF_u16.to_le_bytes());
+            layer.extend(0_u16.to_le_bytes());
+            layer.extend(0_u16.to_le_bytes());
+            layer.extend([0_u8; 16]); // 数据源：空标记
+            layer.extend([0_u8; 16]); // 渲染器：空标记
+            layer.extend([0x5A; 16]); // GUID
+            let mut bytes = 11_u16.to_le_bytes().to_vec();
+            bytes.extend(3_i32.to_le_bytes());
+            bytes.extend(0xFFFF_u16.to_le_bytes());
+            bytes.extend(mxd2qgz::feature_layer::FEATURE_LAYER_CLASS_ID);
+            bytes.extend(32_u32.to_le_bytes());
+            bytes.extend(&layer);
             bytes
         }
         ReaderKind::GroupLayerPrefix10_1 => {
@@ -286,6 +313,14 @@ fn try_read(kind: ReaderKind, reader: &mut Reader<'_>) -> io::Result<()> {
         }
         ReaderKind::FeatureLayerPrefix10_1 => {
             read_feature_layer_prefix_10_1(reader, 1024, &mut RefTable10_1::new()).map(|_| ())
+        }
+        ReaderKind::FdoGraphicsLayerPrefix10_1 => {
+            mxd2qgz::fdo_graphics_layer::read_fdo_graphics_layer_prefix_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+            )
+            .map(|_| ())
         }
         ReaderKind::GroupLayerPrefix10_1 => {
             read_group_layer_prefix_10_1(reader, 1024, &mut RefTable10_1::new()).map(|_| ())

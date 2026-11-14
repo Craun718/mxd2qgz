@@ -108,12 +108,165 @@ AfCore 访问器导出逐指令绑定：`?XMin@WKSEnvelope` (0x68abe9d0) 读 +0x
 
 **归因开放项（更新第三轮第 12 条）**：样本 11 个 FeatureLayer 体在 +0x144 GUID（`{6ADB9601-…}`）之后均为固定 7 字节 `15 00 00 00 00 00 00` 且紧跟 SimpleRenderer 头（键 32 @0x3ed）；而 RTM 3035 反编译的 Save 在 GUID 后写 `String::Write(+0x154)`（AfCore `String::Write` 0x68ab4680 已反编译，cb=len\*2+2 恒为偶）+ 两个 double + short（≥22 字节），Load 侧同为无条件读——与样本不可调和。旁证：渲染器在样本体内位置（+0x143）与 Load 的 >0xd 版本门位置亦不符。工作假设为样本由 10.1 某服务包构建保存（/Version 串不区分 SP），未验证；三个 Envelope（键 74/80/151）由哪个 LoadObject 装入、两个 Envelope 的字段语义（数据全范围 vs 当前范围候选）因此仍开放。Envelope 对象体本身的读写布局（Geometry.dll 本轮闭合）不受此影响。
 
+> **[2026-11-14 归因轮更正：本节「不可调和」异常已消解，撤销。]** 旧锚点的 16 字节是
+> WorkspaceName 体第⑦步的工作空间工厂 CLSID `{A06ADB96-…}`（ShapefileWorkspaceFactory，
+> 位于 `0x3d7..0x3e7`，旧读法起点提前 1 字节才得到畸形的 `{6ADB9601-5CA0-D1D9-…}`）；
+> 「7 字节」= 工厂 CLSID 末字节 + WS 尾随 int32 + FCN 版本>1 选择子；SimpleRenderer 紧随其
+> 后是 FL::Load 数据源段后的**渲染器槽**（`{40A9E884}`=IFeatureRenderer），真正的 +0x144
+> 原样 GUID 在渲染器体之后且样本中为 **16 零字节**，其后字段与 RTM 反编译逐字节一致。
+> SP 工作假设不再必要。逐字段证据见
+> [下文归因轮](#envelope-归因闭合0x144-异常消解与-map-显示范围助手身份2026-11-14-归因取证轮)。
+
 ### 未解决事项（本轮新增/更新）
 
 - Map `+0x298` 显示范围助手对象的类身份未闭合；`{1C352F40}` 键 2178 对象类名未确认（书签类候选）。
 - Envelope int32（attribute-awareness 候选）与 Z/M 追加段语义按结构命名，未经目标软件行为验证。
 - FeatureLayer +0x154 字段 7 字节异常、渲染器位置矛盾、Envelope 的 LoadObject 归因如上，均开放。
 - 本轮仍未运行 ArcMap/QGIS，人工目视检查未进行；不得声称已验证。
+
+> **[2026-11-14 归因轮更正：]** 上条中「+0x154 字段 7 字节异常、渲染器位置矛盾」已消解（见
+> 上节更正与下文归因轮）；`{1C352F40}` 类名经 esri.clsid.xml 确认为 **IlluminationProps**
+> （照明属性，esriCarto 族；请求 IID `{1C352F3F}` 在 esriCarto 类型库命中 IIlluminationProps），
+> 「书签类候选」撤销——样本无书签，键 2178 对象是 Map 尾部的照明属性对象。Map `+0x298`
+> 助手身份升级为「IEnvelope 持有者」（见下文归因轮）。
+
+## Envelope 归因闭合、+0x144 异常消解与 Map 显示范围助手身份（2026-11-14 归因取证轮）
+
+对应 TODO「MXD 解析」第 83 行（Envelope 两实例字段语义、键 74/80/151 的 LoadObject
+逐条归因、+0x144 GUID 后 7 字节与 RTM 3035 不可调和、Map `+0x298` 助手身份、
+`{1C352F40}` 类名）。证据：静态 REA（pyghidra 3.2.0 + Ghidra 12.2 + JDK 25，本地）+
+样本字节逐字段对照 + 类名/IID 查证（`esri.clsid.ecfg` 解出的 `esri.clsid.xml` 全表
+10675 类、`/tmp/mxd-arcgis101-guiddocs/wine/` 的 esri\*.olb 类型库 dump）。证据包
+`temp/arcgis/arcmap101-envelope-attribution-evidence.json`（含本机路径，分享前脱敏）。
+全部为静态取证，未运行目标软件，未在 ArcMap/QGIS 中人工检查。
+
+### 文件身份（本轮新增/复核）
+
+| 文件 | 来源与摘要 | 版本 |
+| --- | --- | --- |
+| LabelPlacement.dll | 本轮从 `Setup1.cab` 条目 `LabelPlacement.dll.6BF03936_…` 新提取（此前各轮未登记），SHA-256 `8415f63c1889e269ba6ae585538f601130c20cef02e4556e875a52217d35ea3d`，ImageBase `0x78530000` | 10.1.0.3035 |
+| FeatureLayer.dll | 沿用 `temp/arcgis101-bin/featurelayerdll/` 既有提取物，SHA-256 `2baf8706…98bb60` | 10.1.0.3035 |
+| GdbCore.dll | 沿用第六轮登记（SHA-256 `ba5d8f5d…39ca1c4`）；本轮独立反编译复核与第六轮结论一致 | 10.1.0.3035 |
+
+样本为 `samples/测试底图.mxd` 的 `/Maps` 导出 `temp/ea-round/maps.bin`（152941 字节，
+SHA-256 `fc0149f1…eacfe`，与写方向轮 sanitized 导出同源同摘要），偏移为流内偏移。
+
+### +0x144「7 字节不可调和」异常消解（结论：异常为误读，撤销）
+
+旧异常由两层误读叠加（第五轮已把 `{40A9E884}` 更正为 IFeatureRenderer，但写字轮的
+字节走查未回传该更正）：
+
+1. **WorkspaceName 体边界**：WSN::Load `0x70a27950`（GdbCore，GetClassID `0x70a27910`
+   写 `{5A350011}`）字段序 = short 版本(≤1) → String(+0x20) → String(+0x24) →
+   String(+0x28) → LoadObject(IPropertySet 族 `{F0BA6ABC}`，样本 16 零空标记) →
+   1 字节标志(样本 1) → 标志非 0 时**原样 16 字节工作空间工厂 CLSID** → int32(+0x38)。
+   样本 `0x3d7..0x3e7` 即该工厂 CLSID = `{A06ADB96-D95C-11D1-AA81-00C04FA33A15}`
+   （esri.clsid.xml：**ShapefileWorkspaceFactory**）；旧读法把起点定在 `0x3d6`（提前
+   1 字节），得到 Data3=0xD1D9 的畸形 `{6ADB9601-5CA0-D1D9-…}`，并把工厂 CLSID 末字节
+   `15`、WS 尾随 int32 0、FCN 版本>1 选择子 short 0（`0x3e7..0x3ed`）拼成「固定 7 字节」。
+   FCN::Load `0x709b5080` 与第六轮结论一致（三字符串中第二为空串、int32×2、选择子、
+   版本>1 第二选择子），体界 `0x30a..0x3ed` 逐字段吻合。
+2. **渲染器槽位置**：FL::Load `0x6f6e9940` 数据源段后的 `LoadObject(DAT_6f7a98cc=
+   {40A9E884}=IFeatureRenderer)` 槽就是样本 SimpleRenderer（键 35 @`0x3ed`，体 =
+   `0x6f724cf0→0x6f722b70`：short 版本(≤3) → ISymbol `{F3435802-5779}` → ILegendGroup
+   `{167C5E9F}` → ILegendItem `{52AA5BC0}` → …）。渲染器位置与 >0xd 版本门「矛盾」
+   系把 FL 本体另一 ISymbol 槽（选择符号，ver>0xd）当成了渲染器。
+
+**真 +0x144 锚点字节核对（四个图层体，逐字段）**：渲染器体之后依次为 +0x144 原样
+16 字节 GUID（**样本全部为 16 零字节**）→ String(+0x154)（字段名样字符串）→
+double(+0x158)/double(+0x160) → short(+0x168) → IHyperlink 计数 → IColor 槽
+（`{20CD40B0}`，样本 16 零空标记）→ String(+0x1a8)/String(+0x184)（样本空串）→
+int32(+0x188) → FieldInfo 计数 + 循环 [String + LoadObject(IFieldInfo `{A2BAAE2C}`)]：
+
+| 图层 | +0x144 GUID @ | String(+0x154) | double×2 | FieldInfo 计数 @（实际条目） |
+| --- | --- | --- | --- | --- |
+| 层 32（shapefile） | `0x5b0`（全零） | `BSM` | 0.0/0.0 | `0x602`=14（14 条 ✓） |
+| 层 158（FileGDB） | `0x303b`（全零） | `ZDDM` | 0.0/0.0 | `0x308f`=29（29 条 ✓） |
+| 层 218（shapefile） | `0x45e9`（全零） | `DJZQDM` | 0.0/0.0 | `0x4641`=8（8 条 ✓） |
+| 簇层 1555（注记） | `0x17525`（全零） | `BSM` | 0.0/0.0 | `0x17577`=14（14 条 ✓） |
+
+计数与流内实际 FieldInfo 对象数（剔除体内嵌 NumericFormat）逐一吻合。**样本与
+RTM 3035 反编译完全可调和，「样本由某 10.1 服务包构建」工作假设不再必要，撤销**
+（无法追溯历史保存环境，但已无任何未解分歧支撑它）。遗留：+0x144 GUID 非零形态
+未在样本出现，语义仍开放。
+
+### FeatureLayer 的两个 IEnvelope 槽位（汇编绑定）
+
+FL::Load `0x6f6e9940` 有且仅有两处以 `{1B077914-38C5-11D0-92D2-00805F7C28B0}`
+（esriGeometry 类型库命中 **IEnvelope**）为请求 IID 的 LoadObject：
+
+| 槽 | 版本门（汇编） | 成员（汇编） | Save 侧对应 |
+| --- | --- | --- | --- |
+| Envelope #1 | `>8`（`0x6f6ea569`: CMP/JLE） | `+0x1b4`（`0x6f6ea579`: LEA ESI,[EBX+0x1b4]） | SaveObject(+0x1b4) |
+| Envelope #2 | `≥0xf`（`0x6f6ea845`: CMP/JL） | `+0x1f4`（`0x6f6ea8ae`: LEA ESI,[EBX+0x1f4]） | SaveObject(+0x1f4) |
+
+样本 11 个 FeatureLayer 体（版本均 0x22）：#1 槽全部为 16 零空标记（对应区间无
+Envelope 对象头，扫描级观察）；#2 槽承载实际 Envelope。
+
+### LabelEngineLayerProperties 的第三个 Envelope 装载点（LabelPlacement.dll）
+
+LELP（CLSID `{01004145-…}`）IPersistStream 虚表 `0x7857cb0c` 槽5 Load `0x78547760`
+→ `FUN_785468c0`，字段序：short 版本(≤7) → 标量/String 组 → LoadObject(ITextSymbol
+`{A80B5E91}`) → LoadObject(IBasicOverposterLayerProperties `{3141F2FB}`) →
+LoadObject(IAnnotationVBScriptEngine `{AA157206}`) → **LoadObject(IEnvelope
+DAT_7857cb4c=`{1B077914}`)** → double×2/long×2 → [版本>2：LoadObject(IGraphicsContainer
+`{D09411D1}`)] → 版本尾段。即注记/标注类属性对象自带一个 Envelope 槽。
+
+### 三个 Envelope 的逐条归因（闭合）
+
+| Envelope | @偏移 | 装载者（证据绑定） | 宿主 | 值特征 |
+| --- | --- | --- | --- | --- |
+| 键 74 | `0xedd` | LELP::Load `FUN_785468c0` 第 4 个 LoadObject（IEnvelope） | LELP 键 60（FL 32 的 ALPC 槽 `+0x1cc` 内，ALPC 键 59） | 界址点数据全集范围（约 65km，候选：注记类范围） |
+| 键 80 | `0x122b` | FL::Load `0x6f6e9940` Envelope #2（ver≥0xf，成员 `+0x1f4`） | FeatureLayer 32 本体 | 严格内含于 Map 显示范围的紧窗口；XMin 与层 158 值相同到毫米级（视图派生） |
+| 键 151 | `0x2872` | FDO 第 6 步委派注记 FeatureLayer 体（`0x1622..`）内同族 ver≥0xf 槽（前置 `[short][int32]` 模式与 FL #2 槽一致） | FDOGraphicsLayer 键 31 的委派体（体自身 Load 函数未定位，成员偏移未定） | ≈ Map 显示范围 |
+
+全样本 25 个 Envelope 的宿主分布：LELP 槽 10 个（74、1603、1667、1724、1782、
+1840、1923、2001、2073、2149）；FL #2 槽 12 个（80、151、216、258 及簇 9 体的第二
+Envelope 1609/1672/1730/1788/1846/1929/2007/2079/2155）；Map 尾簇 2 个（2182/2183，
+IlluminationProps 2178 之后的 LELP 族结构内，值恰为 Map 显示范围——Map 自身第 8 步
+IEnvelope 槽（SaveObject(+0x168)）在样本为空标记，不承载它们）。
+
+### 字段语义（候选保留，提法更正）
+
+原「数据全范围 vs 当前范围」二选一提法作废——两槽值呈「视图相交范围 ↔ 数据范围」
+混合分布：
+
+- FL `+0x1b4`（ver>8）：样本全空标记，无值证据，语义开放。
+- FL `+0x1f4`（ver≥0xf）：层 32/158/216 与簇体第二 Envelope 多为紧贴显示窗口的范围
+  （层 32 XMin 37392987.7829 与层 158 的 37392987.7828 相同到毫米级 ⇒ 视图派生而非
+  数据派生），但层 218 的 258 为 59km×52km 宽数据范围。候选：图层实际绘制/缓存范围
+  （显示窗口与数据相交；未绘制层回退宽范围）。缺成员命名证据（类型库成员级 dump）
+  与绘制路径调用取证，保持候选。
+- LELP Envelope 槽：簇体首 Envelope 多为共享数据范围（1667=1724=1840=2073 同值；
+  1782/1923/2001/2149 同整值范围），层 32 的 74 为全集范围，簇层 1 的 1603 反而为
+  1.4km 小范围。候选：注记类范围，同上未验证。
+
+### Map +0x298 显示范围助手身份（升级：接口闭合）
+
+Map 基址 `+0x298` 助手的惰性创建链（`FUN_793fdfd0→793fdcc0`，既有证据）内以
+`{1B077914}` 做 QI；本轮经 esriGeometry 类型库确认该 IID = **IEnvelope** ⇒ 该成员是
+**IEnvelope 持有者**（Map 的显示范围包络对象），其 `+0xdc`（取 WKSEnvelope 出参）/
+`+0xe0`（写回）/`+0x18`（写空间参考）槽即 IEnvelope 方法族（+0xdc/+0xe0 相邻 get/put
+对）。coclass 归属静态仍未闭合：最合理候选为 Geometry.dll Envelope CoClass
+`{30707212}`（样本同簇流内对象正是该类），但 QI 源对象与 vtable 匹配未取证，保留开放。
+
+### SP 介质检查（结果：无）
+
+`/home/gxrs/下载/arcmap10.1/ar10.1/` 仅有 RTM DVD；`*sp1*` 命中的
+`DotNet35/dotnetfx35sp1.exe` 为 .NET Framework 3.5 SP1，LicenseManager solaris/linux
+的 `kb_patchid.txt` 为 FlexNet 工具文件，均与 ArcGIS 10.1 服务包无关。随异常消解，
+SP 介质对照需求一并撤销。
+
+### 本轮未解决事项
+
+- +0x144 原样 GUID 语义（样本恒全零，非零形态未见过）；FCN/WS 各 String 业务语义。
+- FL `+0x1b4` 槽语义（样本无值）；`+0x1f4`/LELP 槽成员命名（需类型库成员级 dump
+  或绘制路径取证）。
+- 委派注记 FeatureLayer 体（FDO 第 6 步）自身 Load 函数与成员偏移；渲染器体尾段
+  （RotationRenderer/SizeRenderer）与 EditTemplate 族逐类闭合。
+- `{97D5B914-FB22-11D1-94A2-080009EEBECB}`（FL 版本>0x10 槽）未在既有 olb dump 命中。
+- Map 尾簇（IlluminationProps 之后的 LELP 族与 2182/2183 宿主链）逐字节对位。
+- 全部静态取证，未人工验证。
 
 ## 与 10.8 记录的对照
 
@@ -125,6 +278,6 @@ Git 历史 `c17b324:docs/maps-analysis.md` 记录 10.8 历史样本 `/Maps:0x46.
 - 保存方法中 `pe_hvcoordsys_to_string` 与 `_ext` 的选择条件基于未解析寄存器，条件来源未闭合；读取方法 `0x719babf0`、`0x719bae60`、`0x719ea140` 等域读写子函数未展开。
 - 读取方法 4 字节长度未见缓冲上限检查（反编译视图），是否真实缺陷未核实；`Ordinal_149` 导入的归属模块未确认。
 - 7 个域 double 与 3 个尾随 double 的语义未解释；`DAT_71a66f20` 缺省值未读取。
-- Map 对象体与图层对象体触发空间参考子对象写出的调用点未定位；Map 级范围字段未定位。`{34B2EF83-F4AC-11D1-A245-080009B6F22B}`、`{D661941C-DA8A-11d3-9F60-00C04F6BDD7F}` 的类身份未确认；GEOGTRAN 文本的写出者未定位。
+- Map 对象体与图层对象体触发空间参考子对象写出的调用点未定位；Map 级范围字段未定位。`{34B2EF83-F4AC-11D1-A245-080009B6F22B}`、`{D661941C-DA8A-11d3-9F60-00C04F6BDD7F}` 的类身份未确认；GEOGTRAN 文本的写出者未定位。[更新：Map 级范围字段已由写方向轮闭合（`0x24f64`）；`{34B2EF83}` 经第六轮与 AnnoLayer GetClassID `0x6b195e60` 证实为 FDOGraphicsLayer；`{D661941C}` 仍开放。]
 - 两个 `pe.dll` 条目（10.1.0.679）与 Desktop 10.1.0.3035 的组件版本关系未核对。
 - 本轮未运行 ArcMap；10.1 源工程在 ArcMap 中与转换结果在 QGIS 中的人工目视检查均未进行。上述布局不构成转换能力，也不得声称已经验证。

@@ -2,6 +2,7 @@
 
 pub mod composite_graphics;
 pub mod envelope;
+pub mod fdo_graphics_layer;
 pub mod feature_layer;
 pub mod group_layer;
 pub mod layer_list;

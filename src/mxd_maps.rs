@@ -26,11 +26,15 @@
 //!   写方向确定）；未到达时保留 `None` 并在诊断中说明原因；
 //! - 图层条目经 [`crate::layer_list`] 的类分派解析出体前缀时构造
 //!   [`LayerNode`](crate::model::LayerNode)（FeatureLayer → 名称/第二名称/
-//!   可见性/数据源 FeatureClassName 要素类名；GroupLayer → 名称/可见性），
-//!   按条目顺序进入 `children`（绘制顺序候选）；回引条目命中先前已解析键
-//!   时复用同对象节点。CompositeGraphicsLayer 图形层、未解析体与解析失败
-//!   的条目不构造节点，体剩余/整段未解析体按条目保留为数据框未知字段，
-//!   停止点之后的全部字节保留为尾部未知字段；
+//!   可见性/数据源链；FDOGraphicsLayer → 以其关联要素图层的名称/可见性/
+//!   数据源构造节点（第六轮），委派注记图层只进诊断；GroupLayer → 名称/
+//!   可见性与经类分派递归的子图层节点），按条目顺序进入 `children`（绘制
+//!   顺序候选）；回引条目命中先前已解析键时复用同对象节点。数据源链
+//!   （FeatureClassName → WorkspaceName，GdbCore.dll 两个 Load 已闭合，第
+//!   六轮）填充 `connection`（要素类名）与 `path`（工作空间路径，语义候选）；
+//!   CompositeGraphicsLayer 图形层、未解析体与解析失败的条目不构造节点，
+//!   体剩余/整段未解析体按条目保留为数据框未知字段，停止点之后的全部字节
+//!   保留为尾部未知字段；
 //! - 活动图层索引与各对象槽位只进诊断与报告
 //!   （[`MapsParseReport10_1::layer_list`]）；
 //! - 工程名称、其余数据框对象与根尾部值之后的字段没有已确认证据，保留为
@@ -47,7 +51,8 @@
 //! 解析结果与诊断都是候选观察：单元测试仅验证代码自身契约，解析规则未在
 //! ArcMap 10.1 或 QGIS 中人工目视验证；通过解析不代表 MXD 格式已验证。
 
-use crate::feature_layer::DataSource10_1;
+use crate::fdo_graphics_layer::AssociatedLayer10_1;
+use crate::feature_layer::{DataSource10_1, FeatureClassNameNested10_1, WorkspaceNameEntry10_1};
 use crate::layer_list::{LayerBodyPrefix10_1, LayerEntryObject, LayerList10_1};
 use crate::map_object::{MAP_CLASS_ID, ObjectSlot10_1, read_map_prefix_10_1, read_map_suffix_10_1};
 use crate::maps_stream::read_root_prefix_10_1;
@@ -285,40 +290,75 @@ fn parse_first_frame(
                 if let Some(note) = note {
                     diagnostics.push(format!("条目 {}：{note}", entry.index + 1));
                 }
-                let source = match &prefix.data_source {
-                    DataSource10_1::FeatureClassName(fcn) => {
-                        diagnostics.push(format!(
-                            "条目 {}：数据源 FeatureClassName 前缀（键 {}）→ connection={:?}；\
-                             工作空间路径位于 FCN 体未闭合中段，不写入模型",
-                            entry.index + 1,
-                            fcn.key,
-                            fcn.feature_class_name
-                        ));
-                        Some(DataSource {
-                            provider: None,
-                            path: None,
-                            connection: Some(fcn.feature_class_name.clone()),
-                            unknown_fields: Vec::new(),
-                        })
-                    }
-                    DataSource10_1::Null => None,
-                    DataSource10_1::BackReference { key, .. } => {
-                        diagnostics.push(format!(
-                            "条目 {}：数据源为回引条目（键 {key}），无体可解析，source 保留为 None",
-                            entry.index + 1
-                        ));
-                        None
-                    }
-                };
+                let source = feature_layer_source(prefix, entry.index, diagnostics);
                 Some(LayerNode::Layer(Layer {
                     name: prefix.name.clone(),
                     visible,
                     source,
-                    // 图层坐标系宿主为图层体内 Envelope（中段未闭合），保留为 None。
+                    // 图层坐标系宿主为图层体内 Envelope（尾段未闭合），保留为 None。
                     crs: None,
                     extent: None,
                     unknown_fields: Vec::new(),
                 }))
+            }
+            Some(LayerBodyPrefix10_1::FdoGraphicsLayer(prefix)) => {
+                // FDO 注记图层：以关联要素图层（ILayer 槽）的名称/可见性/数
+                // 源构造节点；委派注记图层只进诊断（第六轮）。
+                match &prefix.associated_layer {
+                    AssociatedLayer10_1::FeatureLayer(associated) => {
+                        let (visible, note) =
+                            variant_bool_to_model(associated.visibility_raw, "可见性");
+                        if let Some(note) = note {
+                            diagnostics.push(format!("条目 {}：{note}", entry.index + 1));
+                        }
+                        diagnostics.push(format!(
+                            "条目 {}：FDOGraphicsLayer（版本 {}，int32={}，short=0x{:04x}）关\
+                             联要素图层前缀已解析；其体在 {:?} 处停止，ElementCollection2 槽\
+                             起的字段不可达",
+                            entry.index + 1,
+                            prefix.version,
+                            prefix.int32_field,
+                            prefix.short_field,
+                            associated.stop
+                        ));
+                        let source = feature_layer_source(associated, entry.index, diagnostics);
+                        if let Some(delegated) = &prefix.delegated_layer {
+                            diagnostics.push(format!(
+                                "条目 {}：委派注记图层（无对象头，按 FeatureLayer 字段序）前\
+                                 缀：名称 {:?}，第二名称 {:?}；其体剩余未解析（{} 字节），\
+                                 不构造节点",
+                                entry.index + 1,
+                                delegated.name,
+                                delegated.secondary_name,
+                                delegated.remaining_bytes
+                            ));
+                        }
+                        Some(LayerNode::Layer(Layer {
+                            name: associated.name.clone(),
+                            visible,
+                            source,
+                            crs: None,
+                            extent: None,
+                            unknown_fields: Vec::new(),
+                        }))
+                    }
+                    other => {
+                        let slot = match other {
+                            AssociatedLayer10_1::Null => "空标记".to_string(),
+                            AssociatedLayer10_1::BackReference { key, .. } => {
+                                format!("回引（键 {key}）")
+                            }
+                            AssociatedLayer10_1::FeatureLayer(_) => unreachable!("上方已匹配"),
+                        };
+                        diagnostics.push(format!(
+                            "条目 {}：FDOGraphicsLayer（版本 {}）关联要素图层槽为 {slot}，无前\
+                             缀可填充；委派体与尾段保留未知",
+                            entry.index + 1,
+                            prefix.version
+                        ));
+                        None
+                    }
+                }
             }
             Some(LayerBodyPrefix10_1::GroupLayer(prefix)) => {
                 let (visible, note) = match prefix.visibility {
@@ -335,15 +375,42 @@ fn parse_first_frame(
                 if let Some(note) = note {
                     diagnostics.push(note);
                 }
+                // 子图层递归（第六轮接入）：经类分派解析出前缀的子图层构造
+                // 节点（回引子图层暂不在此复用——跨层键到节点的映射未建立）。
+                let mut group_children = Vec::new();
+                for child in &prefix.children {
+                    match child {
+                        crate::group_layer::GroupChildEntry10_1::ParsedNewObject {
+                            parsed, ..
+                        } => {
+                            if let Some(node) = body_prefix_node(parsed, entry.index, diagnostics) {
+                                group_children.push(node);
+                            }
+                        }
+                        crate::group_layer::GroupChildEntry10_1::SkippedNewObject {
+                            parsed: Some(parsed),
+                            ..
+                        } => {
+                            if let Some(node) = body_prefix_node(parsed, entry.index, diagnostics) {
+                                group_children.push(node);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
                 diagnostics.push(format!(
-                    "条目 {}：组图层子图层循环未完全解析（子图层体读取器按类分派，\
-                     递归未接入），children 保留为空",
-                    entry.index + 1
+                    "条目 {}：组图层子图层声明 {} 个，已消费 {} 条，其中 {} 条经类分派解析\
+                     出前缀并填充 children；解析失败的子图层体与尾段保留未知（无组图层样\
+                     本，分派行为无字节佐证）",
+                    entry.index + 1,
+                    prefix.child_count,
+                    prefix.children.len(),
+                    group_children.len()
                 ));
                 Some(LayerNode::Group(LayerGroup {
                     name: prefix.name.clone(),
                     visible,
-                    children: Vec::new(),
+                    children: group_children,
                     unknown_fields: Vec::new(),
                 }))
             }
@@ -528,8 +595,8 @@ fn parse_first_frame(
     } else {
         diagnostics.push(format!(
             "图层树已按条目顺序填充 {} 个节点：节点仅含各体前缀读取器的已确认字段\
-             （FeatureLayer 名称/可见性/数据源要素类名、GroupLayer 名称/可见性），\
-             其余字段保留为空或未知",
+             （FeatureLayer/FDOGraphicsLayer 名称/可见性/数据源链（要素类名 + 工作空间路\
+             径）、GroupLayer 名称/可见性/子图层递归），其余字段保留为空或未知",
             children.len()
         ));
     }
@@ -563,6 +630,169 @@ fn variant_bool_to_model(raw: u16, what: &str) -> (bool, Option<String>) {
                  （COM 惯例，原生比较语义未取证）"
             )),
         ),
+    }
+}
+
+/// 由 FeatureLayer 前缀构造数据源模型项与诊断（FCN 名称 → connection，
+/// WorkspaceName 路径 → path；均为已确认字段，语义见 feature_layer 模块）。
+fn feature_layer_source(
+    prefix: &crate::feature_layer::FeatureLayerPrefix10_1,
+    entry_index: usize,
+    diagnostics: &mut Vec<String>,
+) -> Option<DataSource> {
+    match &prefix.data_source {
+        DataSource10_1::FeatureClassName(fcn) => {
+            let (path, workspace_note) = match &fcn.nested {
+                FeatureClassNameNested10_1::WorkspaceName(WorkspaceNameEntry10_1::NewObject(
+                    ws,
+                )) => {
+                    let note = format!(
+                        "工作空间（键 {}）：路径 {:?}，类型描述 {:?}{}{}",
+                        ws.key,
+                        ws.path,
+                        ws.type_description,
+                        match ws.factory_class_id {
+                            Some(class_id) => format!(
+                                "，工厂 CLSID {}（原样保留）",
+                                crate::layer_list::class_id_hex(&class_id)
+                            ),
+                            None => String::new(),
+                        },
+                        if ws.stop.is_some() {
+                            "；IPropertySet 槽新对象处停止，标志及之后字段未读取"
+                        } else {
+                            ""
+                        }
+                    );
+                    (Some(ws.path.clone()), Some(note))
+                }
+                FeatureClassNameNested10_1::WorkspaceName(_) => {
+                    (None, Some("工作空间槽为空标记/回引，无路径".to_string()))
+                }
+                FeatureClassNameNested10_1::DatasetName(_) => (
+                    None,
+                    Some("选择子 !=0 的 IDatasetName 分支：槽位保留未知".to_string()),
+                ),
+            };
+            if let Some(note) = workspace_note {
+                diagnostics.push(format!("条目 {}：{note}", entry_index + 1));
+            }
+            diagnostics.push(format!(
+                "条目 {}：数据源 FeatureClassName（键 {}，版本 {}）：类型描述 {:?}，数据集名 \
+                 {:?}，int32 对 ({}, {})；connection=要素类名，path=工作空间路径（均不解释\
+                 语义）",
+                entry_index + 1,
+                fcn.key,
+                fcn.version,
+                fcn.type_description,
+                fcn.dataset_name,
+                fcn.int32_a,
+                fcn.int32_b
+            ));
+            Some(DataSource {
+                provider: None,
+                path,
+                connection: Some(fcn.name.clone()),
+                unknown_fields: Vec::new(),
+            })
+        }
+        DataSource10_1::Null => None,
+        DataSource10_1::BackReference { key, .. } => {
+            diagnostics.push(format!(
+                "条目 {}：数据源为回引条目（键 {key}），无体可解析，source 保留为 None",
+                entry_index + 1
+            ));
+            None
+        }
+    }
+}
+
+/// 由体前缀构造图层节点（组图层子图层递归共用；仅已确认字段）。
+///
+/// 返回 `None` 的情况与图层列表条目级填充一致：CompositeGraphicsLayer 无对应
+/// 节点类型、FDO 关联槽无前缀等，只保留诊断。
+fn body_prefix_node(
+    prefix: &LayerBodyPrefix10_1,
+    entry_index: usize,
+    diagnostics: &mut Vec<String>,
+) -> Option<LayerNode> {
+    match prefix {
+        LayerBodyPrefix10_1::FeatureLayer(fl) => {
+            let (visible, note) = variant_bool_to_model(fl.visibility_raw, "可见性");
+            if let Some(note) = note {
+                diagnostics.push(note);
+            }
+            let source = feature_layer_source(fl, entry_index, diagnostics);
+            Some(LayerNode::Layer(Layer {
+                name: fl.name.clone(),
+                visible,
+                source,
+                crs: None,
+                extent: None,
+                unknown_fields: Vec::new(),
+            }))
+        }
+        LayerBodyPrefix10_1::FdoGraphicsLayer(fdo) => match &fdo.associated_layer {
+            AssociatedLayer10_1::FeatureLayer(associated) => {
+                let (visible, note) = variant_bool_to_model(associated.visibility_raw, "可见性");
+                if let Some(note) = note {
+                    diagnostics.push(note);
+                }
+                let source = feature_layer_source(associated, entry_index, diagnostics);
+                Some(LayerNode::Layer(Layer {
+                    name: associated.name.clone(),
+                    visible,
+                    source,
+                    crs: None,
+                    extent: None,
+                    unknown_fields: Vec::new(),
+                }))
+            }
+            _ => None,
+        },
+        LayerBodyPrefix10_1::GroupLayer(group) => {
+            let (visible, note) = match group.visibility {
+                Some(raw) => variant_bool_to_model(raw, "可见性"),
+                None => (true, None),
+            };
+            if let Some(note) = note {
+                diagnostics.push(note);
+            }
+            let mut children = Vec::new();
+            for child in &group.children {
+                match child {
+                    crate::group_layer::GroupChildEntry10_1::ParsedNewObject { parsed, .. } => {
+                        if let Some(node) = body_prefix_node(parsed, entry_index, diagnostics) {
+                            children.push(node);
+                        }
+                    }
+                    crate::group_layer::GroupChildEntry10_1::SkippedNewObject {
+                        parsed: Some(parsed),
+                        ..
+                    } => {
+                        if let Some(node) = body_prefix_node(parsed, entry_index, diagnostics) {
+                            children.push(node);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Some(LayerNode::Group(LayerGroup {
+                name: group.name.clone(),
+                visible,
+                children,
+                unknown_fields: Vec::new(),
+            }))
+        }
+        LayerBodyPrefix10_1::CompositeGraphicsLayer(cgl) => {
+            diagnostics.push(format!(
+                "条目 {}：CompositeGraphicsLayer（名称 {:?}）为图形层，中间模型没有对应\
+                 节点类型，仅保留诊断",
+                entry_index + 1,
+                cgl.name
+            ));
+            None
+        }
     }
 }
 
@@ -933,7 +1163,8 @@ mod tests {
     #[test]
     fn layer_entries_with_parsed_prefixes_fill_children_in_order() {
         // 条目 1：标志 2 的 FeatureLayer 新对象（A 界）：体前缀（版本 34、双名
-        // 称、可见性 0xFFFF、FCN 数据源）解析后，剩余 2 字节按 A 界跳过；
+        // 称、可见性 0xFFFF、FCN 数据源全链——含 WorkspaceName 体与版本 >1
+        // 选择子）解析后，剩余 2 字节按 A 界跳过；
         // 条目 2：对同一键的回引 → 复用条目 1 的节点（原生同一对象的再现）。
         // 两个节点按条目顺序进入 children（绘制顺序候选）。
         let mut fl_body = (34_u16).to_le_bytes().to_vec();
@@ -944,8 +1175,27 @@ mod tests {
         fl_body.extend(0_u16.to_le_bytes());
         fl_body.extend(crate::feature_layer::FEATURE_CLASS_NAME_CLASS_ID);
         fl_body.extend(78_u32.to_le_bytes()); // FCN 键
-        fl_body.extend(2_u16.to_le_bytes()); // FCN 前缀 short（样本 02）
+        fl_body.extend(2_u16.to_le_bytes()); // FCN 版本（样本 02）
         fl_body.extend(encoded("JZD")); // 要素类名
+        fl_body.extend(encoded("")); // 空第二名称
+        fl_body.extend(encoded("Shapefile 要素类")); // 类型描述
+        fl_body.extend(encoded("Shape")); // 数据集名
+        fl_body.extend(1_i32.to_le_bytes());
+        fl_body.extend(1_i32.to_le_bytes());
+        fl_body.extend(0_u16.to_le_bytes()); // 选择子 0 → WS 槽
+        fl_body.extend(crate::feature_layer::WORKSPACE_NAME_CLASS_ID);
+        fl_body.extend(79_u32.to_le_bytes()); // WS 键
+        fl_body.extend(1_u16.to_le_bytes()); // WS 版本
+        fl_body.extend(encoded("..\\data")); // 路径
+        fl_body.extend(encoded("")); // 空第二路径
+        fl_body.extend(encoded("Shapefile Data")); // 类型描述
+        fl_body.extend([0_u8; 16]); // IPropertySet 槽：空标记
+        fl_body.push(1); // 工厂标志
+        fl_body.extend([0x96; 16]); // 工厂 CLSID（原样）
+        fl_body.extend(0_i32.to_le_bytes()); // 尾随 int32
+        fl_body.extend(0_u16.to_le_bytes()); // 版本 >1 选择子 0
+        fl_body.extend([0_u8; 16]); // 渲染器槽：空标记
+        fl_body.extend([0x6A; 16]); // +0x144 GUID
         fl_body.extend([0xaa, 0xaa]); // 体前缀之后的未解析剩余（A 界内）
 
         let mut suffix = 2_i32.to_le_bytes().to_vec(); // 图层列表计数
