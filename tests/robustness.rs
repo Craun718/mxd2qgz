@@ -14,13 +14,14 @@
 //! 已经验证；它们只刻画合成输入上的实现性质，格式结论仍以原生研究记录
 //! 为准。底层 `reader::Reader` 原语的同等性质已由 `tests/reader.rs` 与
 //! `src/reader.rs` 单元测试覆盖，此处仅在超大长度一节触及公共原语，不重复。
-//! 循环引用依赖尚未实现的对象体与引用表编码，待对象引用编码确定后覆盖
-//! （TODO「自动验证」节）；当前仅在注释中说明并在顺序读取测试中证明
-//! 现有读取器结构上不递归。
+//! 对象引用编码已由 10.1 原生研究闭合（键回引按已见键集合判定），循环
+//! 引用、重复标识与缺失引用的语义覆盖见 `src/object_refs.rs` 与
+//! `tests/object_refs.rs`；本清单把条目分类入口纳入统一的截断与游标共性。
 
 use mxd2qgz::map_object::read_map_prefix_10_1;
 use mxd2qgz::maps_stream::{read_root_prefix_10_1, read_root_prefix_10_8};
 use mxd2qgz::native_string::{read_string_10_1, read_string_10_8};
+use mxd2qgz::object_refs::{RefTable10_1, read_object_entry_10_1};
 use mxd2qgz::object_stream::{ObjectHeader, read_header_10_1, read_header_10_8};
 use mxd2qgz::reader::Reader;
 use mxd2qgz::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
@@ -74,11 +75,12 @@ enum ReaderKind {
     MapPrefix10_1,
     ObjectHeader10_1,
     ObjectHeader10_8,
+    ObjectEntry10_1,
     VariantString10_8,
     VariantFixed10_8,
 }
 
-fn all_kinds() -> [ReaderKind; 12] {
+fn all_kinds() -> [ReaderKind; 13] {
     [
         ReaderKind::NativeString10_1,
         ReaderKind::NativeString10_8,
@@ -90,6 +92,7 @@ fn all_kinds() -> [ReaderKind; 12] {
         ReaderKind::MapPrefix10_1,
         ReaderKind::ObjectHeader10_1,
         ReaderKind::ObjectHeader10_8,
+        ReaderKind::ObjectEntry10_1,
         ReaderKind::VariantString10_8,
         ReaderKind::VariantFixed10_8,
     ]
@@ -144,6 +147,11 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
             bytes.extend(7_u32.to_le_bytes());
             bytes
         }
+        ReaderKind::ObjectEntry10_1 => {
+            let mut bytes = vec![0xa5_u8; 16];
+            bytes.extend(7_u32.to_le_bytes());
+            bytes
+        }
         ReaderKind::VariantString10_8 => value_bytes(8, &bstr_payload_bytes("地图")),
         ReaderKind::VariantFixed10_8 => value_bytes(5, &[0; 8]),
     }
@@ -162,6 +170,11 @@ fn try_read(kind: ReaderKind, reader: &mut Reader<'_>) -> io::Result<()> {
         ReaderKind::MapPrefix10_1 => read_map_prefix_10_1(reader, 1024).map(|_| ()),
         ReaderKind::ObjectHeader10_1 => read_header_10_1(reader).map(|_| ()),
         ReaderKind::ObjectHeader10_8 => read_header_10_8(reader).map(|_| ()),
+        // 条目分类在空表上进行：完整输入（新键）会被登记，截断前缀的失败
+        // 路径不得修改登记表（该性质由 object_refs 单元测试单独断言）。
+        ReaderKind::ObjectEntry10_1 => {
+            read_object_entry_10_1(reader, &mut RefTable10_1::new()).map(|_| ())
+        }
         ReaderKind::VariantString10_8 | ReaderKind::VariantFixed10_8 => {
             read_value_10_8(reader, u32::MAX).map(|_| ())
         }

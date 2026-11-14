@@ -67,6 +67,54 @@
 - **Map 显示范围**：Map::Load 在第 5 步计数循环后原样读 32 字节 WKSEnvelope（4 double，非对象），写入 `+0x230` 子接口 `+0xe0` 槽；随后两个 int32 写入 `-0x40` 子接口 `+0x38`/`+0x40`。字段序 `[XMin, YMin, XMax, YMax]` 为候选（依据 Envelope 同布局的 25 例排序证据）。样本定位候选 `0x24f64`，未闭合。
 - 上节未解决事项中「`{34B2EF83-F4AC-11D1-A245-080009B6F22B}` 类身份未确认」更新：esri.clsid.xml 声明其为 AnnoLayer.dll 的 FDOGraphicsLayer（维持候选的），样本内出现 1 次（`0x27a`，键 31，Map 对象体内图形/注记层集合首项）。
 
+## Envelope::Save、WKSEnvelope 写方向与 Map 显示范围闭合（2026-11-14 写方向取证轮）
+
+对应 TODO「MXD 解析」第 75 行。本轮走写方向：在 Geometry.dll 反编译 Envelope 的 IPersistStream Save/Load 本体，AfCore 反编译 WKSEnvelope 结构访问器，Map.dll 反编译 Map::Save 的显示范围段，与样本 /Maps 字节对照闭合流内定位。证据包 `temp/arcgis/arcmap101-envelope-save-evidence.json`（含本机路径，分享前脱敏）。全部为静态取证，未运行目标软件。
+
+### 文件身份
+
+Geometry.dll 本轮从 `Setup1.cab` 重新提取到 `temp/arcgis101-bin/geometrydll/`，SHA-256 `c57d154f207ee249adc69136574cf274771370ff93a15eb0be5682ce828f0d47`、PE VS_FIXEDFILEINFO 10.1.0.3035、ImageBase 0x717e0000，与 2026-11-13 轮记录一致；其全量反编译产物（2026-11-13 轮,13392 个函数文件）按同一 SHA-256 与 analysis digest 复用。Map.dll（`1c0675cc…4b1bb8`）与 FeatureLayer.dll（`2baf8706…98bb60`）从同一 cab 提取核对，均为 10.1.0.3035。样本换用 `samples/测试底图.mxd`（提交 5393274 脱敏版，/Maps SHA-256 `fc0149f1…acfe`，152941 字节）：流长与原 `temp/测试底图.mxd` 导出（`9852c0e2…29b49`）相同、清洗仅替换路径字符串内容，本文所有流内偏移在两份导出中逐字节一致（渲染器等个别字节内容除外，见下）。
+
+### Envelope::Save 与 Load 本体（证据：确定的）
+
+类身份：Envelope CoClass 构造 `0x7186a640` 装配 26 个内嵌接口虚表（IGeometry5/IEnvelope3/IEnvelope4/IEnvelopeGEN/IArea/…/IBGLShape），WKSEnvelope 结构内嵌于 CoClass+0x78、空间参考指针 CoClass+0xA4、Z/M 域源对象指针 CoClass+0x98；RTTI TD `0x71a67570`（`.?AVEnvelope@ESRI@@`）共 26 个 COL。持久化接口为构造第 0x10 槽（字节 0x40，反编译未命名）的虚表 `0x71a1587c`，其 GetClassID 槽 `0x71864170` 写死 CLSID 字节 `{30707212-52D5-11D0-A8F2-00608C85EDE5}`，IsDirty `0x719d3220` 恒返 0，GetSizeMax `0x71869ee0` 返 0x22。
+
+- **Save `0x71869da0`**（反编译+汇编逐条核对）写入顺序：
+  1. short 版本 = **静态常量 3**（`DAT_71a11ea4`，不走 AfStreamGetSaveVersion 表）；
+  2. 32 字节：栈上调 AfCore 导出 `WKSEnvelope::QueryCoords`（thiscall，this=CoClass+0x78），四个出参按序连续 `AfStreamWrite(…,0x20)`；
+  3. int32：`this+0xc` 子接口虚表 +0xc 槽返回值（RTTI 命名 IAttributeAwareness 候选，语义未定）；
+  4. 该 int32 低字节 bit6(0x40) → 追加 2 个 double（取 `[this+0x58]+8` 与 `+0x20`，Z 域候选）；bit7(0x80) → 追加 2 个 double（取 `[this+0x58]+0` 与 `+0x18`，M 域候选）；
+  5. `SaveObject(this+0x64, stream, fClearDirty)` 写出空间参考子对象/回引。
+- **Load `0x71869b60`**：short 版本 >3 拒绝（`FUN_719f1570(0x80004005,0x1c4,…)`）；版本 ==1 只读 32 字节（无 int32、无 SR）；版本 2/3 读 32 字节 + int32，int32 非零时调 `this+0xc` 接口 +0x10 槽，低字节 bit6/bit7 各读 0x10 字节 Z/M；**版本 ==3 才 LoadObject**，请求 IID `DAT_71a15a10` = `{4434D680-F4DA-11D1-BCA6-0000F875BCCE}`（与 Map::Load 第 4 步同值）。
+- 写侧恒写版本 3 完整布局，读侧按 1/2/3 分支——与既有 PCS 结论同构。样本 25 个 Envelope 全部版本 3、int32=0（无 Z/M 追加段），与写侧分支一致。
+
+### WKSEnvelope 字段序（证据：确定的，写方向）
+
+AfCore 访问器导出逐指令绑定：`?XMin@WKSEnvelope` (0x68abe9d0) 读 +0x00、YMin (0x68abea70) 读 +0x08、XMax (0x68abea20) 读 +0x10、YMax (0x68abeac0) 读 +0x18；`WKSEnvelope::QueryCoords` 导出 1722 (0x68abf530) 的四个出参即 +0x00/+0x08/+0x10/+0x18（NaN 时四个出参均写 `DAT_68ccb760` = 4.94e-324）。Envelope::Save 将 QueryCoords 出参连续写出，故 **流内 32 字节序 = [XMin, YMin, XMax, YMax]**，样本 25 例 d0<d2、d1<d3 相容。第三轮该字段序的「候选」升级为写方向证据。
+
+### Map 显示范围（WKSEnvelope）写出与样本定位（闭合）
+
+- Map::Save `0x79401850`：栈上构造 WKSEnvelope → 调 `*(Map+0x298)` 子接口虚表 +0xdc 槽填充该结构 → `AfStreamWrite(stream,&wks,0x20)` 原样 32 字节（Map::Save 的 this 为 Map+0x68 的 IPersistStream 子接口，+0x230 即 Map 基址 +0x298；IPersistStream 虚表 `0x794874a4` 由构造 `0x793e2820` 写入 Map+0x68 证实）。字段序经上述 WKSEnvelope 结构证据确定。
+- Map::Load 对称：`AfStreamRead`（IAT 0x794801fc，导入签名即 `PAUIStream@@PAUWKSEnvelope@@KPAK`）读 0x20 字节入栈结构后调 +0xe0 槽写入同一子对象；该子对象还在 +0x18 槽接收空间参考指针。`Map+0x298` 由构造置零、析构 `FUN_793e3a80` 释放、`FUN_793f3aa0` 置换、`FUN_793e1820/793ef8c0` 读取、`FUN_793fdfd0→793fdcc0` 惰性创建（创建路径对 `{1B077914-38C5-11D0-92D2-00805F7C28B0}` 做 QI，同类对象亦以 +0xdc 槽取 WKSEnvelope 出参并用 XMin/XMax/YMin/YMax/PutCoords/Width/Height 运算）。**该助手类的类身份静态未闭合**（开放）。
+- **样本流内定位闭合（原候选 `0x24f64` 升级为确定）**：`/Maps:0x24f64` 4 double = `37392944.2840, 2520083.2851, 37394230.5290, 2520951.8351`，前后结构逐字节吻合 Map::Save 尾段：`0x24f60` int32=0（第 5 段 `{FE3115E9}` 循环计数，第四轮开放项确认=0）→ WKSEnvelope 32B → int32=9、int32=9 → `0x24f8c..0x24f9f` 20 字节零（SaveObject(+0x168) 空标记 = 16 零类标识 + 键 0）→ `0x24f9c` int32=0（`{EE53528B}` 循环计数，同样确认=0）→ `0x24fa0` `ff ff` → short=0 → double=5537.0（+0x200）→ short=0 → 对象头 `{1C352F40-298E-11D3-9F4F-00C04F6BC619}` 键 2178。第四轮「对象头 {1C352F3F} 键 2178」应修正为类标识 **{1C352F40}**（其 +1 关系：请求 IID `{1C352F3F}` = DAT_79487e60）。该对象体内含键 2182/2183 两个 Envelope（`0x252f2`/`0x25340`），值与显示范围完全相同——空间书签类候选，类名未确认。
+
+### PCS Save 方向（复核，无新证据）
+
+`0x719d3690` 写侧恒输出 v6 完整布局（版本 short、WKT、4 域串、1 字节零、标志+7 double、3 double，均 2026-11-13 证据），读侧 `0x719d3230` 按 1/2/4/5/6 分支兼容旧版本——读写对称成立，本轮未发现新分歧。
+
+### FeatureLayer::Save（0x6f6eb1b0，写侧新证据；归因仍开放）
+
+虚表 `0x6f7acfb0` 槽[6]（槽[3] GetClassID `0x6f6ec450` 写 `{E663A651-8AAD-11D0-BEC7-00805F7C4268}` 证实类归属）。SaveObject 成员序列（本机汇编/伪代码核对，全清单见证据包）：`+0x140`（Load 侧 `{40A9E884}` 结果，样本=WorkspaceName 键 34）→ 16 字节原样 GUID `+0x144` → `String(+0x154)/double(+0x158)/double(+0x160)/short(+0x168)` → `int32(+0x178)+循环 SaveObject(+0x174)` → `SaveObject(+0x1b8)`（Load 侧 `{20CD40B0}` asm 0x6f6e9b5c 存 +0x1b8）→ `String(+0x1a8)/String(+0x184)+int32(+0x188)` → `(+0x1d0) 计数+[String::Write(名)+SaveObject]` → `SaveObject(+0x1cc)`（= ALPC，Load `{1D5849F2}`，样本键 59 @0xafe）→ `short(+0x1bc)` → `SaveObject(+0x1dc)`（= FeatureIDSet 家族，Load `{D5BB4B87}`，样本键 75 @0xf63）→ 选择集 ID 数组 → `SaveObject(+0x218)` → … → `SaveObject(-0x84)`（Load ≥0x1e `{BD724B95}`→-0x7c，两函数 this 差 8）→ `SaveObject(+0x2f4)`（Load >0x20 `{E720618B}`）→ `short(+0x2ca)` → 末个 SaveObject。数据源段 `FUN_6f6e94e0`（Load）/`FUN_6f6eaf70`（Save）承载 FeatureClassName（其体内嵌 WorkspaceName）。
+
+**归因开放项（更新第三轮第 12 条）**：样本 11 个 FeatureLayer 体在 +0x144 GUID（`{6ADB9601-…}`）之后均为固定 7 字节 `15 00 00 00 00 00 00` 且紧跟 SimpleRenderer 头（键 32 @0x3ed）；而 RTM 3035 反编译的 Save 在 GUID 后写 `String::Write(+0x154)`（AfCore `String::Write` 0x68ab4680 已反编译，cb=len\*2+2 恒为偶）+ 两个 double + short（≥22 字节），Load 侧同为无条件读——与样本不可调和。旁证：渲染器在样本体内位置（+0x143）与 Load 的 >0xd 版本门位置亦不符。工作假设为样本由 10.1 某服务包构建保存（/Version 串不区分 SP），未验证；三个 Envelope（键 74/80/151）由哪个 LoadObject 装入、两个 Envelope 的字段语义（数据全范围 vs 当前范围候选）因此仍开放。Envelope 对象体本身的读写布局（Geometry.dll 本轮闭合）不受此影响。
+
+### 未解决事项（本轮新增/更新）
+
+- Map `+0x298` 显示范围助手对象的类身份未闭合；`{1C352F40}` 键 2178 对象类名未确认（书签类候选）。
+- Envelope int32（attribute-awareness 候选）与 Z/M 追加段语义按结构命名，未经目标软件行为验证。
+- FeatureLayer +0x154 字段 7 字节异常、渲染器位置矛盾、Envelope 的 LoadObject 归因如上，均开放。
+- 本轮仍未运行 ArcMap/QGIS，人工目视检查未进行；不得声称已验证。
+
 ## 与 10.8 记录的对照
 
 Git 历史 `c17b324:docs/maps-analysis.md` 记录 10.8 历史样本 `/Maps:0x46..0x4a` 为 4 字节长度 455、`0x4a` 起 ASCII `PROJCS[`；本轮 10.1 参考样本在完全相同的偏移观察到相同值。两样本是不同文件，偏移一致只说明首 Map 对象体中空间参考子对象的序列化位置稳定，不能将 10.8 偏移迁移到其他 10.1 文件。本轮原生证据来自 10.1.0.3035 的 Geometry.dll，未与 10.8 DLL 做函数级对照。

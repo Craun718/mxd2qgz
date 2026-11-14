@@ -44,6 +44,10 @@ fn six_save_indices_recognize_the_static_table_candidates() {
         assert_eq!(report.compatibility_short, *short);
         assert_eq!(report.object_count, count);
         assert_eq!(report.remaining_bytes, 0);
+        // 本循环文本统一为 "10.1"，只有索引 5（short 19）构成同一三元组；
+        // 其余组合（含 "10.1"+short 16 的索引 3）各自已知但不配对，
+        // 不得给出候选索引，尤其不得把 "10.1"+16 映射为 9.3。
+        assert_eq!(report.candidate_save_index, (index == 5).then_some(5));
         assert!(report.note.contains("未经运行时确认"));
         assert!(report.note.contains("未在目标软件中验证"));
     }
@@ -54,6 +58,8 @@ fn six_save_indices_recognize_the_static_table_candidates() {
         assert_eq!(report.branch, MxdVersionBranch::ArcMap10_1KnownCandidate);
         assert_eq!(report.compatibility_short, 19);
         assert_eq!(report.object_count, Some(7));
+        // 截断后的位模式组合（"10.1"+19）仍命中 Current 三元组。
+        assert_eq!(report.candidate_save_index, Some(5));
     }
 }
 
@@ -261,9 +267,10 @@ fn version_command_reports_synthetic_stream_fields() {
     assert!(stdout.contains("Text: \"10.1\""), "{stdout}");
     assert!(stdout.contains("Compatibility short: 19"), "{stdout}");
     assert!(stdout.contains("Object count: 42"), "{stdout}");
+    assert!(stdout.contains("Save index candidate: 5"), "{stdout}");
     assert!(stdout.contains("Remaining bytes: 0"), "{stdout}");
     assert!(
-        stdout.contains("Note: 文本与 short 都落在 ArcMap 10.1 静态候选集合"),
+        stdout.contains("Note: 文本与 short 命中静态候选映射"),
         "{stdout}"
     );
     assert!(stdout.contains("未在目标软件中验证"), "{stdout}");

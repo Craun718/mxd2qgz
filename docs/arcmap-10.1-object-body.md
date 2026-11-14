@@ -465,3 +465,119 @@ EH 处理器调用的两个辅助函数身份与展开的动态验证；
 异常重试时 ObjectStream 残留键的行为；集合 Release 释放 Map 的
 逐类闭合；10.8 侧主读取器失败路径的对应实现；ArcMap.exe 上层
 对失败的呈现方式；全部结论未经运行验证。
+
+## 10.1 对象键分配与回引写侧闭合（2026-11-14 第五轮）
+
+研究目标：闭合 TODO 开放的「对象键的分配规则」「回引在流中的表示」「能否从流本身区分回引与新对象」
+「循环引用编码」。证据来源分两路：AfCore.dll 经 REA 6.9.0 / Ghidra 12.2 共享会话分析（subject=
+`temp/arcgis101-bin/AfCore.dll.017F52BF_20D0_487A_A583_436DA6406CFF`，SHA-256 `031858c4…cc47c17`
+开工前与基线一致；证据 `ev_c67bc79f…`（SaveObject 伪代码）、`ev_30b78320…`（SimpleSaveObject 伪代码）、
+`ev_3ba50a88…`（SimpleSaveObject 全指令），证据包导出为
+`temp/arcgis/arcmap101-objref-keys-evidence.json`（92 条，含既有轮次记录与本机路径，分享前脱敏）；
+SystemCore.dll 与 ArcMap.exe 用本机 pyghidra（Ghidra 12.2 + JDK 25，复用项目 `/tmp/r3/ghproj_sc`、
+新建 `/tmp/r5/ghproj_arcmap`，反编译/汇编产物在会话临时目录 `/tmp/r5/sc_work/`、
+`/tmp/r5/arcmap_maps_region.txt`，未入库；SystemCore/ArcMap 输入与既有记录同摘要）。SystemCore 写出器
+`0x7ffcf7e0` 的既有证据 `ev_712934fb…`（`temp/arcgis/arcmap101-systemcore-factory-followup.json`）本轮以
+新鲜反编译复核，结论一致并补齐键写细节。样本字节核对用 `/tmp/r3-maps.bin`（SHA-256 `9852c0e2…8129b49`，
+偏移为 /Maps 流内偏移）。全部为静态观察，未运行 ArcMap，未人工验证。
+
+### AfCore 导出 SaveObject / LoadObject（证据：确定的）
+
+- `SaveObject(IUnknown*, IStream*, int)` 导出 1844 @`0x68a7b640`：薄包装，SEH 安装后调
+  `StrmUtil::SimpleSaveObject(param_1, param_2, param_3, 1)`（`ev_c67bc79f…`）。
+- `LoadObject(IUnknown**, const GUID&, IStream*, IUnknown*)` 导出 1545 @`0x68a7b6d0`：调
+  `0x68a7b490`（既有记录的「16 字节 GUID 读取+AfCreateInstance」内核辅助）后若输出非空再调
+  `0x68a7b530`（本地反编译 `/tmp/r5/af_work/f68a7b6d0.c`；后一函数语义未展开，开放）。
+- `StrmUtil::SimpleSaveObject(IUnknown* obj, IStream* stm, int fClearDirty, int writeHeader)`
+  （`0x68a7af70`，`ev_30b78320…`/`ev_3ba50a88…`）通用保存器：`obj==0` 时直接
+  `IStream::Write(stm, 16 字节零, 16)`（终止/空标记）；普通 IPersistStream 路径
+  （汇编 `0x68a7b43f..0x68a7b476`）为 `GetClassID` → **`IStream::Write(stm, &clsid, 16, 0)`**
+  （`writeHeader!=0` 时）→ **`pPersistStream->Save(stm, fClearDirty)`**（虚表 `+0x18`，
+  `stm` 原样传入）——该分支**不写键**。IPersistVariant 路径按变体类型 0xd/9 递归并以
+  0x1c 字节 VariantStream 包装分派。辅助 `0x68a7c1d0/0x7c240/0x7c0f0/0x7c160/0x7c320/0x7c390`
+  为 fastcall QI 包装，所查 IID 与分支间的槽位链未逐条闭合（开放，见文末）。
+
+### ObjectStream 写出器（虚表 `+0x40` = `0x7ffcf7e0`）逐分支闭合（证据：确定的）
+
+以新鲜反编译复核 `ev_712934fb…`（`/tmp/r5/sc_work/f7ffcf7e0.c`），键写细节首次闭合：
+
+1. **空对象**（参数 0）：写 **16 字节零** 到底流，返回（与读侧全零 GUID→S_FALSE 对偶）。
+2. 取对象 ClassID 后 `AfStreamWrite(底流, ClassID, 16)` 写 16 字节 GUID。
+3. `FUN_7ffd0850(对象指针, &键)` 查**写表**（键哈希＝指针 4 字节按 `*0x21` 混合；
+   节点 `[0]`=对象、`[1]`=键、`[2]`=链、`[3]`=哈希）：命中（已有对象）→
+   `AfStreamWrite(底流, &旧键, 4)`，**只写 4 字节键、不写体**，调试日志
+   `"\tReference %ld\n"`（`this+0x48` 非零时）。
+4. 未命中（新对象）→ `FUN_7ffdab10(ObjectStream+0x14, 对象指针, *(ObjectStream+0x2c))`
+   插入写表（对象→当前键），`AfStreamWrite(底流, ObjectStream+0x2c, 4)` **写当前计数值作键**，
+   然后 `*(ObjectStream+0x2c) += 1`（**先写后增**）；再分派对象体：
+   `pPersistStream->Save(ObjectStream 自身, 1)`（虚表 `+0x18`）或 0x1c 字节
+   VariantStream 包装（`0x80071220`，槽 `+0x10` 对偶读侧 Load）。调试日志
+   `"%s \t-- %-60s \t-- %s\n"`（CLSID/InprocServer32/ProgID，`this+0x48` 非零时）。
+
+### 键分配规则（闭合，一句话）
+
+**键 = ObjectStream 对象 `+0x2c` 处的 4 字节单调计数器：新对象写入当前值作键、写后 +1；
+计数器随 ObjectStream 实例生存，不按流重置（`SetStream 0x7ffcf7a0` 不清表不清计数，既有证据），
+因此同一文档保存/打开会话内全部流共享一个键序。** 样本 /Maps 键序 29..2183（Map=29、CRS=30、
+FDOGraphicsLayer=31、FeatureLayer=32 等）与 /Version 尾部计数 2267（见下）相互印证；构造器
+反编译未见对 `+0x2c` 的显式清零，初值 0 属推断（开放）。
+
+### 两张表与计数器布局修正（证据：确定的；修正既有记录）
+
+- 写表基址 `ObjectStream+0x14`（`FUN_7ffdab10` 参数 `param_1+5`），元素数 `+0x18`
+  （插入成功时 `param_1[1]++`）；读表基址 `+0x20`（读分支 `0x7ffd0950` 参数 `this+0x20`），
+  元素数 `+0x24`。**`+0x2c` 是键计数器，不是桶数组**——修正本文 2026-11-13 节
+  「析构遍历两张表（计数在 +0x24/+0x30，桶数组在 +0x2c/+0x38）」的记录：该记录出自
+  Ghidra 局部名混叠，本轮以写出器与 `FUN_7ffd05d0` 的直接指令证据为准。
+- `+0x5c`（`0x7ffd05d0`）= `GetCount(select, &out)`：`out==0 → 0x80004003`；
+  `select==0 → *out = *(this+0x18)`（写表元素数），否则 `*out = *(this+0x24)`（读表元素数）。
+  **ArcMap 保存序列末尾用 `+0x5c(0,&v)` 回填 /Version 的 4 字节计数**（既有记录），
+  故 **/Version 尾部计数 = 本次保存会话写表登记的对象总数 = 键计数器终值** ——
+  「/Version 尾部计数 2267 与 /Maps 对象图对象数的对应关系」由此闭合（逐对象核验未做，
+  样本扫描因部分内部类 GUID 不在 esri.clsid 表只逐头命中部分键，见 open）。
+- `+0x54`（`0x7ffd0550`）= `EnsureCapacity(this, select_word, count)`：
+  `count/10`（0x66666667 magic 除法）为桶数下限、`max(17, …)`，`FUN_7ffd07b0` 重建桶数组
+  并按旧链 rehash；`select==0` 选写表（`+0x14`）否则读表（`+0x20`）；**恒返回 0、
+  不写任何输出参数**（汇编 `/tmp/r5/sc_work/asm_report.json`）。
+
+### 回引的流内表示与「能否从流区分」（闭合）
+
+回引条目 = 与首现对象完全同构的 **20 字节前缀（16 字节 GUID + 4 字节既有键），无对象体、
+无任何专用标记**（写侧第 3 步 + 样本 `0x2d2c` 条目 A=20 无体既有证据 + 样本符号回引
+`0x17465`/`0x18bd1`/`0x24977`（键 2139）多例）。**流本身不能只靠局部字节区分回引与新对象：
+唯一判据是键是否已在本 ObjectStream 会话（跨全部流）出现过**——读者 `0x7ffcff70` 查表命中→
+仅 QI 不读体、未命中→按新对象读体。循环引用因此无需专门编码：先登记后持久化（既有证据）
+使祖先/自身引用天然表示为键回引；Rust 侧解析器必须维护「已见键集合」状态机。
+新对象与回引写出的 GUID 均为对象 ClassID，与请求 IID 无关（写侧取 `GetClassID`）。
+
+### SimpleSaveObject 与写出器的委派关系（开放）
+
+顶层对象经 AfCore `SaveObject` 保存时键必然被写出（样本首对象 GUID 后即键 29），而
+SimpleSaveObject 的普通分支不写键——委派必经其对 ObjectStream 目标流的专用分支
+（`FUN_68a7c1d0` QI 成功后的 `0x68a7b01b..` 路径），但该路径各 QI 的 IID 与最终到达
+`+0x40` 的槽位链未逐条闭合；普通分支与 ObjectStream 场景的互斥关系属静态推断。
+
+### /Maps 尾部 4 字节（指令级闭合；对既有结论的精化）
+
+ArcMap.exe 保存函数写点 `0x4699cd..0x4699f1` + `0x469a0a`（本机 pyghidra 局部反汇编
+`/tmp/r5/arcmap_maps_region.txt`；`0x4699a2` 取文档对象 `+0x190` 的流对象、`0x4699e0`
+`call [vtbl+0x54]`）：调用后 `MOVSX ECX, word ptr [EBP-0x14]` → `CMP ECX,-1` → `SETZ DL` →
+`AfStreamWrite(流, &flag, 4)`。即 **尾部 4 字节 = `((int16)输出 == -1) ? 1 : 0`**。但 10.1
+SystemCore 的 `+0x54` 槽（`0x7ffd0550`）是 EnsureCapacity：**恒返回 0、不写任何输出参数**，
+`[EBP-0x14]` 在写点前无任何写入指令——故该 `-1` 实际来自栈残留（静态推断，开放：不排除
+`+0x190` 处是其他包装对象其 `+0x54` 语义为写输出的 getter）。读侧对偶已闭合：打开入口
+`0x4764d0` 把 /Version 的 4 字节计数传给 `+0x54(-1, v)` = `EnsureCapacity(读表, max(17, v/10))`
+——**/Maps（与 /Version）尾部 4 字节的消费者语义 = ObjectStream 读表容量提示**；样本 /Maps
+尾 4 字节 @`0x25569` = `01 00 00 00`，即提示 17 桶。写侧 10.1 实际只会产出 0 或 1。
+
+## 未解决事项（第五轮新增）
+
+- SimpleSaveObject 对 ObjectStream 目标流的委派链：`FUN_68a7c1d0` 等 6 个 fastcall QI 包装
+  所查 IID、ObjectStream 分支（`0x68a7b01b..`）各槽位语义、到 `+0x40` 的确切到达路径。
+- `+0x2c` 键计数器的构造初始化（反编译未见显式清零，初值 0 为推断）。
+- `+0x190` 处保存侧流对象的类身份与其 `+0x54` 槽在运行时的实际行为（栈残留 -1 的来源）。
+- `LoadObject` 导出的第二辅助 `0x68a7b530` 语义；`FUN_7ffd0850` 的表指针来源寄存器（ESI）
+  在写者内的设置指令未逐条核对（伪代码层级）。
+- 写表按对象指针哈希：同一对象跨 SetStream 后保存必然命中（键回引），跨文档不适用；
+  替换分支（`FUN_7ffdab10` 返回 1）在写侧的触发场景未核。
+- 全部结论为静态观察；ArcMap 10.1 与 QGIS 的人工打开与目视核对均未进行，不声称已验证。

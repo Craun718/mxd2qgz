@@ -6,6 +6,7 @@ pub mod model;
 pub mod mxd_maps;
 pub mod mxd_version;
 pub mod native_string;
+pub mod object_refs;
 pub mod object_stream;
 pub mod qgis;
 pub mod reader;

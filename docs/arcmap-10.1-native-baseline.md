@@ -313,3 +313,52 @@ typekind：3 = TKIND_INTERFACE（接口 IID），5 = TKIND_COCLASS（组件类 C
 - 类型库解析经 wine 11.21 OLE 实现完成，未在 Windows 原生 `LoadTypeLibEx` 下复核；
   名称↔GUID 绑定为文件内静态数据，风险低但非零。
 - 全部为静态结论；未运行 ArcMap 10.1，未做人工目视验收。
+
+## 10.1 磁盘版本映射、属性来源与回填取值（2026-11-14）
+
+本节闭合此前开放的三项：六项 short 与实际版本的对应（磁盘版本映射）、保存版本索引（CMxDoc vtable `+0x14c`）的运行时来源、写入路径 4 字节回填的取值来源；并给出资源文本映射和 PageLayout 默认输出差异的静态解释。方法：REA（MCP 会话，Ghidra 12.2）对 ArcMap.exe 与 AfCore.dll 的静态反编译、字节读取与字节模式搜索；类型库枚举解析用 wine（`LoadTypeLibEx`，自写 `enumdump.c`，winegcc `-b i386-windows` 编译）——后者是普通工具观察，不是 REA 证据；枚举成员名与值的绑定来自文件内静态数据，wine OLE 实现与 Windows 原生可能有差异。本轮从介质重新提取 `ArcMap.exe.E97001B0_1E76_4BE8_B51F_269775FE0A80` 到本机 `temp/arcgis101-bin/arcmapexe/`，SHA-256 `1fb79eee6b442bd61c44dd3d0864ddfff06b1df882ddc59fb87380bb3ec5af97`、PE x86、版本资源 10.1.0.3035，与「适配目标」一致；AfCore.dll（`031858c4…cc47c17`）复核一致。地址为静态映像虚拟地址，只绑定上述摘要。证据包 `temp/arcgis/arcmap101-version-mapping-evidence.json`（89 条记录，含本机路径，分享前须脱敏）。全部为静态结论，未运行目标软件，未做人工目视验收。
+
+### esriArcGISVersion 枚举与磁盘版本映射（闭合）
+
+esriSystem 类型库中的枚举 `esriArcGISVersion`（GUID `73ABEA55-3BC9-47D4-95C1-DEFA1924DE26`，typekind=0）经 `LoadTypeLibEx` 枚举成员值。10.1 侧文件 `esriSystem.olb.392FE3A8_65C9_4463_A15B_89F00F8F3FE8` 的 `.big.tlb`（SHA-256 `0f3bc6496f2665cd6b03fa0071c0077f3b6fdab8f96c8b80f02beec36d7ad7a8`，即「Version 流对象接口 GUID 语义考证」节表格中登记的同一文件）给出 7 个成员：`83=0、90=1、92=2、93=3、10=4、101=5、Current=5`。10.8 侧对照：从 `temp/arcgis/unpacked/Desktop/SetupFiles/Data1.cab` 提取同名 `.olb`（SHA-256 `9bfe98117d3e6d5f58b608f54e0a115831725cea10c4afd66a36ac723f7804d9`，pefile 版本资源 10.8.0.12790），直接对 `.olb` 枚举得 13 个成员：`83=0、90=1、92=2、93=3、10=4、101=5、103=6、104=7、105=8、106=9、107=10、108=11(0xB)、Current=11(0xB)`（注意无 10.2 成员）。这把保存代码中的「版本索引」确认为 `esriArcGISVersion` 枚举值。
+
+结合既有写入器记录（`0x466fb0`：索引经 `AfStreamGetSaveVersion(index, 6, &DAT_0054bfb4)` 取 short，本轮重读表 `ev_a423e3a57bef01d05e4c258e48ec026dc7282bedff9ddd7be793981fd352d1c0` 仍为 `[10,13,14,16,18,19]`），磁盘版本映射闭合为：
+
+| 索引 = esriArcGISVersion | 英文资源文本 | 磁盘 short |
+| --- | --- | --- |
+| 0（83） | `8.3`（ID `0x14d`） | 10 |
+| 1（90） | `9.0`（ID `0x173`） | 13 |
+| 2（92） | `9.2`（ID `0x186`） | 14 |
+| 3（93） | 见资源节（ID `0x11a`，英文回退为打印错误文本） | 16 |
+| 4（10） | `10.0`（ID `0xe804`） | 18 |
+| 5（101 = Current） | `10.1`（ID `0x193`） | 19 |
+
+索引超过 5 时 short 回退到末项 19（AfStreamGetSaveVersion 截断，既有记录），此时文本走 default 分支仍为 `0x193`。仓库参考样本（文本 `10.1`、short 19）与索引 5 一致。10.1 只能按上表写出六档；10.8 增补的枚举 6..11 在 10.1 写入表中无对应项。读侧判定（`0x4764d0` 上限 `0x13`、`0x47a3f0`/PageLayout `0x7b70a8e0` 的 short `<0x12 → 3`）中输出的 3 与 5 即枚举 `93` 与 `101`（10.8 侧为 `93` 与 `108`），这同时解释了「PageLayout `0x7b70a8e0` 默认输出 5 与 10.8 默认 `0xb` 的差异」：两版读函数在 short ≥ `0x12` 时输出**当时的 Current 枚举值**（10.1 = 5，10.8 = 11），short `<0x12` 时输出 3（93）。
+
+### 保存版本索引的运行时来源（闭合到内存字段；UI 侧未追踪）
+
+- CMxDoc（MFC 文档类，Ghidra 符号 `CMxDoc::vftable` = `0x54c294`）虚表 `+0x14c` 槽实读为 `0x47f580`（`ev_2e3210162c5e5e1ee96d16a20616d3d38fcf7198e64a21de252083e6b335ccde`）；`0x47f580` 反编译（`ev_08f6962abef50ec633dc35af711b2f24d1a6241774475f9a7059be6432795a80`）在 `this+0x1a4` 为空时返回 `0x80004005`，否则对 `*(this+0x1a4)+0x124` 的虚表 `+0x10` 调用并传输出参数——即保存入口 `0x466fb0` 里 `local_150` 初值 5、经该槽取版本的调用。
+- CMxDoc 构造函数 `0x462630`（`ev_84b1aad779f3d0f7e69b228d54131277e6d96b28fd28519c21051b2368a09f7c`）：`+0x1a0` 存自 `CWinApp+0x160` 的 AfApp 对象；`operator_new(0x150)` 后调用 `FUN_00423bd0(*(this+0x1a0), 2, GetControllingUnknown(this))`，返回值存入 `+0x1a4`（Ghidra 对该字段后续调用显示符号 `AfDoc::FlagAsLoadedFromCommandLine`，字段类型名为 AfDoc）。构造函数内的 `+0x1a4` 写入是全 .text 唯一一处 `mov [reg+0x1a4]`（搜索证据 `ev_b9b76fd23c2b8343f7054ab8e6dca2d29646212489d39d0a2b9d23852c428398`）。
+- AfDoc 构造完成函数 `FUN_00423bd0`（伪代码 `ev_589f8fbb1f75b235649fcb1959cf73bea162cbd618f32916d2b354934071ab13`、汇编 `ev_2c0448126b7315837c916d3e75fd393663e71be10e346380e82e0373644c9a5a`）按 PDB 符号写入一整排子接口虚表（`+0xe4 IMxDocument` … `+0x10c IMapDocument`、`+0x110 IDocumentInfo`、`+0x114 IDocumentInfo2/3`、`+0x118 IDocumentPreview`、`+0x124 IDocumentVersion`、`+0x128 IStateVersion`；随后第二遍以最终虚表覆写），汇编确认最终 `+0x124 = 0x545e40`，并在 `0x424000` 执行 `MOV dword [edx+0x14c], 5`——**AfDoc 版本字段初始化为 5（esriArcGISVersion101 = Current）**。
+- 接口虚表 `0x545e40`（`ev_31e5563ae7c372c7cfa7a6b73007156f5c767c20cd0043680254e907a9ae8a3e`）槽 `+0x10 = 0x42b140`：`*out = *(this+0x28)`——this 即 `AfDoc+0x124`，故读取 `AfDoc+0x14c`（`ev_3c7701856b29120332c451583757a2c3c59ec120b55190e6ccbbcc81a8ca378e`）；槽 `+0x0c = 0x42b120`：`*(this+0x28) = arg`——put 版本字段（`ev_eb80159a91e6e4f1b2eccf9a1780fc07d2f2a0659736ee1152f1928fa2be5a21`）。`procedure_callers` 对 `0x42b120` 无已解析直接调用者（`ev_ffba9722f3f615586e1e3769961eebde25e7f58f0c4b412fa12fd19a758e2137`），即版本字段随后续变化只能经虚调用（如 SaveAs 版本选择）发生；UI 到 put 的间接路径本轮未追踪。
+- 静态可见结论：新建文档的保存索引恒为 5（10.1），写 `/Version` 文本 `10.1`、short 19、条件计数与 `DocumentDatabase`（索引 >3）全部生效；「打开旧版本文档后字段是否被 put 改写」未见静态写入者（读入口 `0x4764d0`/`0x47a3f0` 只做 3/5 判定，未观察对 `AfDoc+0x14c` 的写），按现有证据候选为「保持初值 5，即保存即升级为 10.1」。此候选未经目标软件验证。
+- 此前 SystemCore 五个流实现类的 IDocumentVersion 内存属性同样初始化为 5，与本节「默认 = Current」模式一致；它们是流侧内存属性，不参与本节 CMxDoc/AfDoc 链。
+
+### 写入路径 4 字节回填取值（闭合）
+
+回填汇编 `0x46bfc0..0x46c090`（字节证据 `ev_bb455b7080a15f118db3cfbd2b69167fd7253c210cdbb4b3693aff29d4d8183e`；该地址属 `FUN_00466fb0` 主体，`ev_140456d17e339c12c52049c4e022361ea08b43b3c82619612fa6df868f288e79`）手工解码确认：恢复 Seek 位置后，`mov eax,[ebp-0x158]`（对象流，保存入口内以 CLSID `043731d0-a7cf-11d1-8bd1-080009ee4e41` 创建，数据 `0x554e8c` 读出 `ev_9fd3084698f0175593cecf3aee5f9b6c858bb3b6a1f8543ff4b32d51a8a49e4f`）→ `mov edx,[ecx+0x5c]` → `call edx`，参数 `(this, 0, lea [ebp-0xf0])`——即既有 SystemCore 记录的 `+0x5c(0, &value)`「写侧表计数字段」读取；随后 `push 0; push 4; lea eax,[ebp-0xf0]; push eax; mov ecx,[ebp-0x105c]; push ecx; call [0x541168]`——IAT `0x541168` 经既有导入转储核对为 `?AfStreamWrite@@YAJPAUIStream@@PBJKPAK@Z`（hint 637；`0x541160 = AfStreamRead`、`0x541164 = SaveObject` 与既有记录吻合）。**结论：4 字节回填 = 对象流写侧对象引用表的键计数（键计数在对象 `+0x2c`，`+0x40` 写出器每登记一个新键递增），即本次保存序列中 SaveObject 登记的不同对象个数**；读侧对称地把该值传 `+0x54(-1, value)` 作读表容量预估（既有记录）。参考样本计数字段 2267 即该语义下的对象键计数候选。伪代码中 `local_f4`「未见重新赋值」由此闭合：赋值发生在被调的 `+0x5c` 内经输出指针写入，反编译未建模。
+
+### 资源文本映射（英文回退闭合；本地化模块未验证）
+
+- 保存入口按索引调用 AfCore 导入 `String::LoadStringW(this, id, DAT_0058a690)`（导入清单证据 `ev_ebc2ec80da2ddfdf750a29fdf7e47798e3e3ae65aacdec45754cb86cb9fd7938`）；AfCore 侧 `String::LoadStringW`（序号 1548，`0x68ab56e0`，`ev_8787c54ae4cb15d4608638225322df71ba87da0e03c84651c1d105dac6410b90`）就是 Win32 `::LoadStringW(传入模块句柄, id, …)`（带缓冲增长重试），无语言回退逻辑。
+- `DAT_0058a690` 初值为零（`ev_a172e3e8295ec19342c12cee33b590fe2ca5837fd8cebe7e194d7d068141c3bb`），全 .text 唯一写入者 `0x455c10`（`ev_f351653da2c39b81d3e2f5173c16f1a5d87f219a79d46cb4267487c8778c03d0`）：`DAT_0058a690 = ESRILocale::LoadLocalizedRes(this+0x44)`，空句柄时回退为 `this+0x44`（AfApp 的模块句柄）——与既有本地化节一致：英文（`0x409`）环境直接用 ArcMap.exe 自身资源表。
+- pefile 实读 ArcMap.exe 英文字符串表：ID `0x14d/0x173/0x186/0xe804/0x193` 分别为 `8.3/9.0/9.2/10.0/10.1`，而 **ID `0x11a`（282）为 `An unexpected error occured while printing the document.`**；全字符串表中不存在任何 `9.3` 形式文本；两个 cab（Setup1/Setup2）均无 `ResArcMap.dll`。即：英文回退环境下按索引 3（esriArcGISVersion93）保存会写出该打印错误文本——这是静态证据支持的 Esri 资源表异常候选；本地化语言包模块中该 ID 的实际文本未验证。读侧版本识别若遇到该文本应按未知处理，不得映射为 9.3。
+
+### 未解决事项
+
+- SaveAs 版本选择 UI 到 `IDocumentVersion::put_DocumentVersion`（`0x42b120`）的间接调用路径未追踪（虚调用不在静态覆盖内）。
+- 打开旧版本文档后 `AfDoc+0x14c` 是否被改写、再次保存的实际版本取值未验证（静态候选：保持初值 5）。
+- 索引 3 的 `0x11a` 文本在本地化安装（含 ResArcMap.dll 语言包）中的实际值未验证；英文回退文本为打印错误文本（资源异常候选）。
+- `AfDoc+0x150` 之后与保存无直接关系的字段、`IStateVersion`（`+0x128`）语义未展开。
+- 10.8 侧结论（枚举 6..11、Current=0xB）仅绑定从 10.8 安装包提取的 esriSystem.olb（10.8.0.12790），未复核 10.8 ArcMap.exe/PageLayout 代码；类型库解析经 wine，未在 Windows 原生复核。
+- 全部结论为静态观察，未运行 ArcMap 10.1/10.8，未做人工目视验收。

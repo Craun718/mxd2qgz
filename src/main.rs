@@ -132,6 +132,11 @@ fn run() -> io::Result<()> {
                 Some(count) => writeln!(output, "Object count: {count}")?,
                 None => writeln!(output, "Object count: none")?,
             }
+            // 候选保存索引即 esriArcGISVersion 枚举值；静态映射候选，未经目标软件验证。
+            match report.candidate_save_index {
+                Some(index) => writeln!(output, "Save index candidate: {index}")?,
+                None => writeln!(output, "Save index candidate: none")?,
+            }
             writeln!(output, "Remaining bytes: {}", report.remaining_bytes)?;
             writeln!(output, "Note: {}", report.note)?;
             return output.flush();

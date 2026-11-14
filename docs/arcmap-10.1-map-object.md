@@ -327,3 +327,112 @@ FeatureLayer.dll `0x6f6b2100`（RTTI `.?AVCompositeGraphicsLayer@@` → COL `0x6
 12. （2026-11-14）Envelope 对象体布局为样本侧观察（25/25 一致），Geometry.dll 的 Envelope Load/Save 本体未反编译；第 4 段后的 int32 0 语义未定性。两个 Envelope 由 FeatureLayer::Load 的哪个 LoadObject 装入未闭合；FeatureLayer 头部段（反编译）与样本中段（渲染器/标注对象序列）的逐字节对位未完成。
 13. （2026-11-14 第四轮）`{FE3115E9-…}`/`{EE53528B-…}` 两循环（及集合 QI `{3036D35F-…}`）的实现类不在已扫描的 8 个 10.1 DLL 数据段中，元素类语义开放；两循环在样本中的流内定位与计数（疑似 0）未逐字节闭合。FeatureLayer 键 1619..2101 簇的归属（候选：键 1555 体内 `3036D35D` 计数循环，计数候选 50 @`0x187ce`）未闭合。
 14. （2026-11-14 第四轮）图层列表写侧标志 1（SaveObject 路径）的触发状态未逐分支定性；`FUN_79410040` 子图层枚举接口与 `FUN_7940fe80/79410140` 登记的槽位语义未逐项定性；FDOGraphicsLayer::Load 本体（AnnoLayer.dll）未反编译，其体内字段（`0b 00 / 03 00 00 00 / ff ff`）语义按字节观察。Map::Save 尾段（transformations 循环之后）未逐项展开。`+0x144` GUID `{6ADB9601-…}` 语义未定性。
+
+## MapSurround/书签循环接口身份、注记子图层簇修正与样本尾部（2026-11-14 第五轮）
+
+对应 TODO 开放的「`FE3115E9`/`EE53528B` 两循环与键 1619..2101 簇归属」及 /Maps 尾部值语义。
+证据分三路：① 10.1 类型库名称解析沿用「Version 流对象接口 GUID 语义考证」节的 wine
+`LoadTypeLibEx` dump（`/tmp/mxd-arcgis101-guiddocs/wine/dump*.txt`，全部 79 个 .olb，本轮未重新
+解析，仅检索既有输出）；② 完整类表 `esri.clsid.xml`（`/tmp/r3/ecfg/x/`，10608 条 progID）用于
+样本字节逐头归名；③ 本机 pyghidra（Ghidra 12.2 + JDK 25）对 ArcMap.exe 保存函数写点的局部
+反汇编（`/tmp/r5/arcmap_maps_region.txt`，项目 `/tmp/r5/ghproj_arcmap`，未入库）。样本
+`/tmp/r3-maps.bin`（SHA-256 `9852c0e2…8129b49`）偏移为 /Maps 流内偏移。全部为静态观察，
+未运行 ArcMap，未人工验证。类型库名称↔GUID 绑定为文件内静态数据（与上轮同置信度：确认），
+「接口在某字段中的语义角色」为反编译+字节互证，逐条标注。
+
+### 开放接口身份一次闭合（类型库 typekind=3，证据：确认（类型库）；字段角色：反编译+样本）
+
+| GUID | 类型库名称 | 在字段序中的角色（标注） |
+| --- | --- | --- |
+| `FE3115E9-ED6C-11D0-8683-0000F8751720` | **IMapSurround** | Map::Load 第 5 步循环请求 IID：地图装饰物（图例/比例尺/指北针等）集合；Save 侧 `+0x130/+0x12c` 数组（第四轮）即 MapSurround 列表 |
+| `EE53528B-41C9-11D1-880A-080009EC732A` | **ISpatialBookmark** | 第 9 步循环请求 IID：空间书签集合（`IMapBookmarks`=`EE53528F`） |
+| `3036D35F-EDE5-11D0-87FE-080009EC732A` | **IFeatureBookmark** | 第 9 步逐项 QI/入集（`FUN_7941c760`+`DAT_79488d18`）的目标接口 |
+| `3036D35D-EDE5-11D0-87FE-080009EC732A` | **IHyperlink** | FeatureLayer::Load 计数循环（第三轮 IID 表 `DAT_6f7ac2a4`） |
+| `1B077914-38C5-11D0-92D2-00805F7C28B0` | **IEnvelope**（非 IGeometry） | Map::Load 第 8 步与 FeatureLayer ver≥8/≥0xe 的 LoadObject；样本内对应 Envelope 类对象头 |
+| `FFC6B179-E3EC-11D3-A096-00C04F6BC626` | **IStandaloneTable** | 第 12 步 ≥0xb 计数循环（`DAT_79488300`）：独立表集合（`ITableCollection`=`7D931EAB`） |
+| `9273BB60-C611-11D2-BD08-0000F875BCCE` | **IGeoTransformation** | 第 13 步链 0xc/0xd/>0xd 循环（`DAT_79487e40`）：坐标转换对象 |
+| `1C352F3F-298E-11D3-9F4F-00C04F6BC619` | **IIlluminationProps** | 尾部 ver≥4 LoadObject（`DAT_79487e60`）；样本流内对象 coclass 为 `{1C352F40-298E-11D3-9F4F-00C04F6BC619}`（esri.clsid 名 IlluminationProps），键 2178 @`0x24fb2` |
+| `8C439003-14EC-11D2-A27E-080009B6F22B` | **IAnnotateMap** | ver 0x13..0x16 与 ≥0x13 LoadObject（`DAT_79488470`）：标注引擎对象 |
+| `4BA33331-D55F-11D1-8882-0000F877762D` | **IName** | ver<0xb 计数循环（`DAT_79482c08`）与 FeatureLayer 数据源段（`DAT_6f7aaf28`），修正第三轮「IDatasetName 候选」 |
+| `40A9E884-5533-11D0-98BE-00805F7CED21` | **IFeatureRenderer** | FeatureLayer 数据源段后 LoadObject（`DAT_6f7a98cc`），修正「IName 候选」 |
+| `40A9E885-5533-11D0-98BE-00805F7CED21` | **IFeatureLayer** | Map ≥0x22 分支（`DAT_79487fa0`） |
+| `E4240307-DD41-11D2-B868-00600802E603` | **IBorder** | 函数尾 LoadObject（`DAT_79487fc0`） |
+| `E4240309-DD41-11D2-B868-00600802E603` | **IBackground** | >0xf 分支（`DAT_79487fd0`） |
+| `20CD40B0-8F3D-11D0-8590-0800091A2A72` | **IColor** | FeatureLayer 计数循环后 LoadObject（`DAT_6f7aaf98`） |
+| `311C2EE2-DA65-11D2-8A54-000000000000` | **IRelationshipClassName** | FeatureLayer ver>6 计数循环（`DAT_6f7adc24`） |
+| `19F85377-1387-11D3-B89C-00600802E603` | **IDisplayFilter** | FeatureLayer ver≥2 |
+| `A62B9EC2-5C52-4B98-B116-5EA341D4AF6D` | **IDisplayExpressionProperties** | FeatureLayer ver≥0x19；样本内实现类 DisplayExpressionProperties（esri.clsid 名） |
+| `F6CBA4A3-BC48-47BC-9F15-2A561B9E6C71` | **ITimeReference** | FeatureLayer ver≥0x1d |
+| `BD724B95-018F-4367-9883-9560D92293A7` | **ITimeExtent** | FeatureLayer ver≥0x1e |
+| `E720618B-99A9-46D7-AA6B-507898E1EA90` | **IHotLinkExpressionProperties** | FeatureLayer ver==0x1f 与 >0x20 |
+| `34C20002-4D3C-11D0-92D8-00805F7C28B0` | **ILayer** | `DAT_79485a18`/CGL 子图层循环，候选转确认 |
+
+第 5 步＝MapSurround 集合循环、第 9 步＝空间书签集合循环（含 IFeatureBookmark 特化入集）
+由此闭合到接口层；**两循环元素的具体 coclass 由流内 16 字节类标识决定，样本未见非空实例**
+（样本定位仍开放，见下），元素类语义的最终定性需含书签/装饰物的样本。
+
+### 键 1619..2101 簇归属修正（证据：确定的；修正第四轮两处误读）
+
+- **「计数候选 50 @`0x187ce`」系误读**：该 4 字节是注记类名字符串 `"JZD1 注记 2"` 的 UTF-16
+  字符 `'2'`（`32 00`）+ 终止符（`00 00`），非循环计数。
+- 簇实为 **CGL-1553（`0x16fba`）子图层循环的注记类条目**，条目模式＝
+  `[String 注记类名][FeatureLayer 完整体]`：字符串形如 `"JZD1 注记 2"`…`"JZD1 注记 10"`
+  （String::Read 布局，cb=20/22 等可变），紧跟 FeatureLayer 对象头。观测 9 个 FeatureLayer 头：
+  键 1555（`0x1706e`，首条目，名 `"JZD1"`）、1619（`0x187d2`）、1676、1734、1792、1875、1953、
+  2024、2101（`0x23508`），键距 57–58；另有一个对键 1792 的 **FeatureLayer 回引头** @`0x1dcba`
+  （20 字节无体，位于某元素体内，属写侧「同对象复引」实例）。
+- 每单元体构成（逐头归名，esri.clsid.xml 全表）：FeatureClassName+WorkspaceName（数据源）、
+  SimpleRenderer+符号族（MultiLayerMarkerSymbol `7914E5FF`、CharacterMarkerSymbol `7914E600`、
+  SimpleFill/SimpleLine/SimpleMarker、RgbColor）、OLE StdFont、LegendGroup+LegendClass（内含对
+  既有符号键的回引）、FieldInfo 数组（含 NumericFormat 子对象）、
+  AnnotateLayerPropertiesCollection→LabelEngineLayerProperties→TextSymbol→BasicOverposterLayerProperties
+  →LineLabelPosition→LineLabelPlacementPriorities→PointPlacementPriorities→
+  AnnotationVBScriptEngine→Envelope→FeatureIDSet→EditTemplate（`{B9357037-34C7-…}`，
+  esri.clsid 名 EditTemplate，体内 SimpleMarkerSymbol/RgbColor）→Envelope（对 Map PCS 键 30 的
+  回引或内嵌 PCS）→UID→DisplayExpressionProperties（或 ElementCollection `{CE8F3972}`）→
+  ElementCollection 元素集合（TextElement+TextSymbol+SimpleTextPath 布局字节+Polyline 引线，
+  Polyline=`{30707210-…}`，与 Envelope `{30707212-…}` 相邻异类， Polyline 体含点坐标 double 对，
+  内含对 PCS 键 30 的回引）。
+- 簇后段（`0x24fb2` 起）：IlluminationProps（`{1C352F40}`，键 2178）→ NADCONTransformation
+  （键 2179 + 对 2179 的回引）→ BasicOverposterProperties（键 2180）→ RgbColor（2181）→
+  Envelope（2182，PCS 回引 30）→ Envelope（2183，PCS 回引 30）→ 纯标量区（`0x25396..0x25569`，
+  无任何对象头）→ 尾 4 字节。**这些对象与 Map::Load 后继步骤（第 5 步 MapSurround 计数、
+  WKSEnvelope、第 8 步 IEnvelope、第 9 步书签等）的逐字节对位仍未闭合**；候选包括 CGL 体尾
+  （`DAT_6f7aa48c`/`DAT_6f7aa4ec` 装载）与 Map::Load 第 8 步（Envelope-2182/2183 之一为
+  IEnvelope 候选）。样本仅 1 个数据框、无书签/装饰物，第 5/9 步计数（候选 0）未验证。
+
+### /Maps 尾部 4 字节（写侧指令级闭合）
+
+ArcMap.exe 保存函数 `0x4699cd..0x4699f1`：`LEA EDX,[EBP-0x14]; PUSH EDX; PUSH EAX(流对象);
+call [vtbl+0x54]` → `MOVSX ECX, word [EBP-0x14]` → `CMP ECX,-1` → `SETZ DL` →
+`AfStreamWrite(流, &flag, 4)`（int 变体重载 IAT `0x5411d0`）。SystemCore `+0x54`
+（`0x7ffd0550`）实际为 `EnsureCapacity(this, select_word, count)`：恒返 0、不写输出参数
+（汇编 `/tmp/r5/sc_work/asm_report.json`）；故 `MOVSX` 读到的 `-1` 来自栈残留（静态推断）。
+读侧消费已闭合：打开入口把 /Version 的 4 字节计数传 `+0x54(-1, v)` 作读表容量提示
+（`max(17, v/10)` 桶），/Maps 尾部 4 字节同构。样本 /Maps 尾 4 字节 @`0x25569` = `01 00 00 00`。
+详见 [对象体记录](arcmap-10.1-object-body.md#maps-尾部-4-字节指令级闭合对既有结论的精化)。
+
+### 本轮方法与身份补充
+
+- 本轮新提取 `Map.dll.6BF03936_8AC4_4632_8FB2_A6A34A19655A` 至
+  `temp/arcgis101-bin/mapdll/`：1242112 字节，SHA-256 `1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`
+  （与第四轮记录一致），pefile 读 PE x86、ImageBase `0x793a0000`、VS_FIXEDFILEINFO
+  `10.1.0.3035`。本轮 Map.dll 本体未新增反编译（两循环接口身份来自类型库、循环代码沿用
+  `/tmp/r3/map_load_real.c` 既有产物）；后续 Map::Save 尾段展开可直接使用该文件。
+
+## 未解决事项（第五轮新增）
+
+1. 两循环在样本中的流内定位与计数：CGL 体尾、`0x25340` 后纯标量区（~467 字节）与
+   Map::Load 第 5–13 步的对位未闭合；第 10 步嵌套对象（ObjectStream `+0x44`）在样本尾部
+   未定位（未见 16 字节零头或类头）。
+2. 第 5 步（MapSurround）与第 9 步（书签）元素的 coclass 集合：需含书签/装饰物的 MXD 样本
+   或写方向取证；样本计数疑似 0 未验证。
+3. CGL-1553 子图层条目的尾字段（`short×3+double×2+int×2+LoadObject+double`，CGL::Load
+   `0x6f6b2100` 已有）与单元 FL 体结束边界的逐字节对位；子图层计数的准确值与流内位置
+   （`0x17052` 值 1 与 `0x17056` 值 10 二解，未裁决）。
+4. `0x24fb2` 起尾段对象（IlluminationProps/NADCON/BasicOverposter/Envelope×2）的宿主
+   （CGL 尾 vs Map::Load 步骤）未定性；`DAT_6f7aa48c`/`DAT_6f7aa4ec` 请求 IID 的类型库名称
+   未解码。
+5. TextSymbol 体内 4 处 `{SimpleTextPath 布局}`（键位恒 0，无键）的持久化机制（非 ObjectStream
+   键路径的内嵌对象候选）未展开。
+6. 全部结论为静态观察；ArcMap 10.1 与 QGIS 的人工打开与目视核对均未进行，不声称已验证。
