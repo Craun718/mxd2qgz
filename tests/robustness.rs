@@ -21,6 +21,7 @@
 use mxd2qgz::layers::composite_graphics::read_composite_graphics_layer_prefix_10_1;
 use mxd2qgz::layers::fdo_legacy::read_fdo_graphics_layer_legacy_prefix_10_1;
 use mxd2qgz::layers::feature_layer::read_feature_layer_prefix_10_1;
+use mxd2qgz::layers::feature_layer_tail::RGB_COLOR_CLASS_ID;
 use mxd2qgz::layers::group_layer::read_group_layer_prefix_10_1;
 use mxd2qgz::layers::layer_list::read_layer_list_10_1;
 use mxd2qgz::maps::map_object::{read_map_prefix_10_1, read_map_suffix_10_1};
@@ -31,8 +32,12 @@ use mxd2qgz::maps::maps_stream::{read_root_prefix_10_1, read_root_prefix_10_8};
 use mxd2qgz::objects::dataset_name::{
     read_feature_dataset_name_body_10_1, read_topology_name_body_10_1,
 };
-use mxd2qgz::objects::element_collection::read_element_collection_10_1;
+use mxd2qgz::objects::element_body::{
+    LINE_ELEMENT_CLASS_ID, MARKER_ELEMENT_CLASS_ID, TEXT_ELEMENT_CLASS_ID, TEXT_SYMBOL_CLASS_ID,
+    read_element_body_of_class_10_1,
+};
 use mxd2qgz::objects::envelope::read_envelope_10_1;
+use mxd2qgz::objects::property_set::read_property_set_10_1;
 use mxd2qgz::objects::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
 use mxd2qgz::storage::object_refs::{RefTable10_1, read_object_entry_10_1};
 use mxd2qgz::storage::object_stream::{ObjectHeader, read_header_10_1, read_header_10_8};
@@ -108,9 +113,13 @@ enum ReaderKind {
     AoiBookmark10_1,
     FeatureBookmark10_1,
     LegendPrefix10_1,
+    PropertySetBody10_1,
+    TextElementBody10_1,
+    MarkerElementBody10_1,
+    LineElementBody10_1,
 }
 
-fn all_kinds() -> [ReaderKind; 28] {
+fn all_kinds() -> [ReaderKind; 32] {
     [
         ReaderKind::NativeString10_1,
         ReaderKind::NativeString10_8,
@@ -140,6 +149,10 @@ fn all_kinds() -> [ReaderKind; 28] {
         ReaderKind::AoiBookmark10_1,
         ReaderKind::FeatureBookmark10_1,
         ReaderKind::LegendPrefix10_1,
+        ReaderKind::PropertySetBody10_1,
+        ReaderKind::TextElementBody10_1,
+        ReaderKind::MarkerElementBody10_1,
+        ReaderKind::LineElementBody10_1,
     ]
 }
 
@@ -412,6 +425,124 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
         }
         ReaderKind::VariantString10_8 => value_bytes(8, &bstr_payload_bytes("地图")),
         ReaderKind::VariantFixed10_8 => value_bytes(5, &[0; 8]),
+        ReaderKind::PropertySetBody10_1 => {
+            // 样本实例 1 的体形态（键 1547 @/Maps 0x147f9）：版本 1 + 计数 1
+            // + 键 "DATABASE" + VT_BSTR 路径值。样本对位见研究文档。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend(encoded("DATABASE"));
+            bytes.extend(value_bytes(8, &encoded("D:\\g")));
+            bytes
+        }
+        ReaderKind::TextElementBody10_1 => {
+            // 样本 TextElement 体形态（键 1613 @/Maps 0x18551）：版本 8 + EP
+            // 前缀（版本 6）+ 文本 + 布尔 + TextSymbol 新对象（版本 4，双
+            // RgbColor）+ ……到 ISymbol #2 空标记为止（后续槽位留空标记使读取
+            // 完整消费，见 element_body 测试的停止点形态）。
+            let mut bytes = 8_u16.to_le_bytes().to_vec();
+            bytes.extend(6_u16.to_le_bytes());
+            bytes.extend(encoded(""));
+            bytes.extend(encoded("文本"));
+            bytes.extend(value_bytes(0, &[]));
+            bytes.extend(0xffff_u16.to_le_bytes());
+            bytes.extend(5393_f64.to_le_bytes());
+            bytes.extend(6_i32.to_le_bytes());
+            bytes.extend(encoded("T35"));
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend(TEXT_SYMBOL_CLASS_ID);
+            bytes.extend(1614_u32.to_le_bytes());
+            bytes.extend(4_u16.to_le_bytes());
+            bytes.extend(RGB_COLOR_CLASS_ID);
+            bytes.extend(1615_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.push(0);
+            for value in [1.0_f64; 3] {
+                bytes.extend(value.to_le_bytes());
+            }
+            bytes.push(0);
+            bytes.push(0);
+            bytes.extend((-1_i32).to_le_bytes());
+            bytes.extend(3_i32.to_le_bytes());
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.push(0);
+            bytes.push(0);
+            for value in [0.0_f64; 3] {
+                bytes.extend(value.to_le_bytes());
+            }
+            bytes.extend(13_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(RGB_COLOR_CLASS_ID);
+            bytes.extend(1616_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.push(0);
+            for value in [0.0_f64; 3] {
+                bytes.extend(value.to_le_bytes());
+            }
+            bytes.push(0);
+            bytes.push(0);
+            bytes.extend(0_f64.to_le_bytes());
+            bytes.extend(0_f64.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_f64.to_le_bytes());
+            bytes.extend(100_f64.to_le_bytes());
+            bytes.extend(100_f64.to_le_bytes());
+            bytes.push(1);
+            bytes.extend(0_f64.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(90_f64.to_le_bytes());
+            bytes.push(1);
+            bytes.extend(TEXT_SYMBOL_CLASS_ID);
+            bytes.extend([0_u8; 16]);
+            bytes.extend([0_u8; 16]);
+            bytes.extend(encoded("T35"));
+            bytes.extend(8_f64.to_le_bytes());
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend(1.5_f64.to_le_bytes());
+            bytes.extend([0_u8; 16]); // ISymbol #2 空标记
+            bytes.extend([0_u8; 16]); // IFontDisp 空标记
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(TEXT_SYMBOL_CLASS_ID);
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend([0_u8; 16]); // IGeometry 空标记
+            bytes.extend((-1_i32).to_le_bytes());
+            bytes.extend((-1_i32).to_le_bytes());
+            bytes
+        }
+        ReaderKind::MarkerElementBody10_1 => {
+            // 版本 3：EP 前缀 + 符号/几何空标记 + int32 + 32 字节。
+            let mut bytes = 3_u16.to_le_bytes().to_vec();
+            bytes.extend(6_u16.to_le_bytes());
+            bytes.extend(encoded(""));
+            bytes.extend(encoded("文本"));
+            bytes.extend(value_bytes(0, &[]));
+            bytes.extend(0xffff_u16.to_le_bytes());
+            bytes.extend(5393_f64.to_le_bytes());
+            bytes.extend(6_i32.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes.extend([0_u8; 16]);
+            bytes.extend(5_i32.to_le_bytes());
+            bytes.extend([0xa5_u8; 32]);
+            bytes
+        }
+        ReaderKind::LineElementBody10_1 => {
+            // 版本 3：EP 前缀 + 符号/几何空标记 + int32 + int16。
+            let mut bytes = 3_u16.to_le_bytes().to_vec();
+            bytes.extend(6_u16.to_le_bytes());
+            bytes.extend(encoded(""));
+            bytes.extend(encoded("文本"));
+            bytes.extend(value_bytes(0, &[]));
+            bytes.extend(0xffff_u16.to_le_bytes());
+            bytes.extend(5393_f64.to_le_bytes());
+            bytes.extend(6_i32.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes.extend([0_u8; 16]);
+            bytes.extend(5_i32.to_le_bytes());
+            bytes.extend(7_u16.to_le_bytes());
+            bytes
+        }
     }
 }
 
@@ -500,6 +631,30 @@ fn try_read(kind: ReaderKind, reader: &mut Reader<'_>) -> io::Result<()> {
         ReaderKind::VariantString10_8 | ReaderKind::VariantFixed10_8 => {
             read_value_10_8(reader, u32::MAX).map(|_| ())
         }
+        ReaderKind::PropertySetBody10_1 => {
+            read_property_set_10_1(reader, 1024, &mut RefTable10_1::new()).map(|_| ())
+        }
+        ReaderKind::TextElementBody10_1 => read_element_body_of_class_10_1(
+            &TEXT_ELEMENT_CLASS_ID,
+            reader,
+            1024,
+            &mut RefTable10_1::new(),
+        )
+        .map(|_| ()),
+        ReaderKind::MarkerElementBody10_1 => read_element_body_of_class_10_1(
+            &MARKER_ELEMENT_CLASS_ID,
+            reader,
+            1024,
+            &mut RefTable10_1::new(),
+        )
+        .map(|_| ()),
+        ReaderKind::LineElementBody10_1 => read_element_body_of_class_10_1(
+            &LINE_ELEMENT_CLASS_ID,
+            reader,
+            1024,
+            &mut RefTable10_1::new(),
+        )
+        .map(|_| ()),
     }
 }
 

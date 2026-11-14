@@ -1,0 +1,689 @@
+//! 10.1 元素类对象体（TextElement/MarkerElement/LineElement/TextSymbol）与
+//! ElementProperties 共同前缀读取器的单元测试。
+//!
+//! 合成输入的字段序按 `docs/arcmap-10.1-element-bodies.md` 的反编译证据构造；
+//! TextElement 全链（含 TextSymbol 到 ISymbol #2 停止点）另经仓库参考样本
+//! /Maps 流首例（键 1613 @`0x18551`）逐字节对位复核（研究文档「样本对位」
+//! 节，手工复核，非测试依赖）。仅验证读取器自身契约，不代表 MXD 格式规则已
+//! 验证，未经目标软件人工检查。
+
+use mxd2qgz::layers::feature_layer_tail::RGB_COLOR_CLASS_ID;
+use mxd2qgz::objects::element_body::{
+    CustomProperty10_1, LINE_ELEMENT_CLASS_ID, MARKER_ELEMENT_CLASS_ID, NestedEntry10_1,
+    TEXT_ELEMENT_CLASS_ID, TEXT_SYMBOL_CLASS_ID, read_element_body_of_class_10_1,
+    read_line_element_body_10_1, read_text_element_body_10_1, read_text_symbol_body_10_1,
+};
+use mxd2qgz::objects::property_set::PropertyValue10_1;
+use mxd2qgz::storage::object_refs::RefTable10_1;
+use mxd2qgz::stream::reader::Reader;
+use std::io::ErrorKind;
+
+/// AfCore String::Write 布局：u32 字节长度前缀（含终止零）+ UTF-16LE。
+fn encoded(text: &str) -> Vec<u8> {
+    let payload: Vec<_> = text
+        .encode_utf16()
+        .chain([0])
+        .flat_map(u16::to_le_bytes)
+        .collect();
+    let mut bytes = (payload.len() as u32).to_le_bytes().to_vec();
+    bytes.extend(payload);
+    bytes
+}
+
+/// Variant 值：u16 VARTYPE + 载荷。
+fn value_bytes(value_type: u16, payload: &[u8]) -> Vec<u8> {
+    value_type
+        .to_le_bytes()
+        .into_iter()
+        .chain(payload.iter().copied())
+        .collect()
+}
+
+/// 16 字节对象头：类标识 + 键。
+fn entry(class_id: &[u8; 16], key: u32) -> Vec<u8> {
+    let mut bytes = class_id.to_vec();
+    bytes.extend(key.to_le_bytes());
+    bytes
+}
+
+/// 16 字节空标记。
+fn null_entry() -> Vec<u8> {
+    [0_u8; 16].to_vec()
+}
+
+/// RgbColor 体（flag 0 分支，31 字节）：双版本 1 + flag 0 + 3 double + 2 字节。
+fn rgb_body(doubles: [f64; 3]) -> Vec<u8> {
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.push(0);
+    for value in doubles {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes.push(0);
+    bytes.push(0);
+    bytes
+}
+
+/// ElementProperties 前缀（版本 6 路径，样本形态）：双 String + VT_EMPTY +
+/// int16 + double + int32。
+fn ep_prefix(version: u16) -> Vec<u8> {
+    let mut bytes = version.to_le_bytes().to_vec();
+    bytes.extend(encoded(""));
+    bytes.extend(encoded("文本"));
+    if version < 2 {
+        bytes.extend(0_i32.to_le_bytes());
+    }
+    if version < 4 {
+        // LoadObject 槽位：本组装器统一附加空标记（回引/新对象场景见
+        // element_properties_custom_property_slot_stop）。
+        bytes.extend(null_entry());
+        return bytes;
+    }
+    bytes.extend(value_bytes(0, &[]));
+    if version > 2 {
+        bytes.extend(0xffff_u16.to_le_bytes());
+    }
+    if version > 4 {
+        bytes.extend(5393_f64.to_le_bytes());
+    }
+    if version > 5 {
+        bytes.extend(6_i32.to_le_bytes());
+    }
+    bytes
+}
+
+/// TextSymbol 体前缀（版本 4 路径，样本形态）：字段 1..=13，随后由调用者按
+/// 需附加 ISymbol #2 槽位。
+fn ts_prefix(version: u16) -> Vec<u8> {
+    // 本函数返回不含槽位的版本骨架（字段 1），IColor #1 槽位由组装函数附加。
+    version.to_le_bytes().to_vec()
+}
+
+#[test]
+fn constants_match_esri_clsid_and_memory_order() {
+    assert_eq!(
+        TEXT_ELEMENT_CLASS_ID,
+        [
+            0xd3, 0x34, 0x40, 0x20, 0xea, 0xf6, 0xd0, 0x11, 0x83, 0xad, 0x08, 0x00, 0x09, 0xb9,
+            0x96, 0xcc
+        ]
+    );
+    assert_eq!(
+        MARKER_ELEMENT_CLASS_ID,
+        [
+            0x12, 0xd7, 0x0f, 0x53, 0x0c, 0xef, 0xd0, 0x11, 0x83, 0xa0, 0x08, 0x00, 0x09, 0xb9,
+            0x96, 0xcc
+        ]
+    );
+    assert_eq!(
+        LINE_ELEMENT_CLASS_ID,
+        [
+            0xe1, 0xfb, 0xb7, 0x8a, 0x71, 0xd8, 0xd0, 0x11, 0x83, 0x89, 0x08, 0x00, 0x09, 0xb9,
+            0x96, 0xcc
+        ]
+    );
+    assert_eq!(
+        TEXT_SYMBOL_CLASS_ID,
+        [
+            0x74, 0x3e, 0x5a, 0xb6, 0x93, 0x29, 0xd1, 0x11, 0x9a, 0x43, 0x00, 0x80, 0xc7, 0xec,
+            0x5c, 0x96
+        ]
+    );
+    assert_eq!(
+        RGB_COLOR_CLASS_ID,
+        [
+            0x96, 0xc4, 0xe9, 0x7e, 0x23, 0xd1, 0xd0, 0x11, 0x83, 0x83, 0x08, 0x00, 0x09, 0xb9,
+            0x96, 0xcc
+        ]
+    );
+}
+
+/// 构造样本形态的完整 TextElement 体（到 TextSymbol 的 ISymbol #2 新对象为
+/// 止）——字段序与仓库样本键 1613 @`0x18551` 逐字节同构（值可不同）。
+fn sample_shaped_te_body() -> Vec<u8> {
+    let mut bytes = 8_u16.to_le_bytes().to_vec(); // TE 版本 8
+    bytes.extend(ep_prefix(6)); // EP 版本 6：名称空、类型「文本」、VT_EMPTY、FFFF、5393.0、6
+    bytes.extend(encoded("T35")); // 文本
+    bytes.extend(1_i32.to_le_bytes()); // 布尔 int32
+    // ITextSymbol 槽：TextSymbol 新对象（键 1614 形态）
+    bytes.extend(entry(&TEXT_SYMBOL_CLASS_ID, 1614));
+    // TextSymbol 体（版本 4）
+    bytes.extend(ts_prefix(4));
+    // 字段 2：IColor #1 = RgbColor 新对象
+    bytes.extend(entry(&RGB_COLOR_CLASS_ID, 1615));
+    bytes.extend(rgb_body([
+        56.547_017_615_341_03,
+        76.899_433_471_346_26,
+        68.103_444_271_380_82,
+    ]));
+    // 字段 3..6：int32 ×3、byte ×2、double ×3、int32 ×2
+    bytes.extend((-1_i32).to_le_bytes());
+    bytes.extend(3_i32.to_le_bytes());
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.push(0);
+    bytes.push(0);
+    for value in [0.0_f64; 3] {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes.extend(13_i32.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    // 字段 7：IColor #2 = RgbColor 新对象（全 0）
+    bytes.extend(entry(&RGB_COLOR_CLASS_ID, 1616));
+    bytes.extend(rgb_body([0.0; 3]));
+    // 字段 8：double ×2、int32 ×2、double ×3、byte、double、int32、double、byte
+    bytes.extend(0_f64.to_le_bytes());
+    bytes.extend(0_f64.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(0_f64.to_le_bytes());
+    bytes.extend(100_f64.to_le_bytes());
+    bytes.extend(100_f64.to_le_bytes());
+    bytes.push(1);
+    bytes.extend(0_f64.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(90_f64.to_le_bytes());
+    bytes.push(1);
+    // 字段 9：16 字节原样 GUID（样本 = TextSymbol 自身 CLSID）
+    bytes.extend(TEXT_SYMBOL_CLASS_ID);
+    // 字段 10：ITextPath 空标记；字段 11：ISymbol #1 空标记
+    bytes.extend(null_entry());
+    bytes.extend(null_entry());
+    // 字段 12：String（与外层文本相同）；字段 13：double、int32、double
+    bytes.extend(encoded("T35"));
+    bytes.extend(8_f64.to_le_bytes());
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(1.5_f64.to_le_bytes());
+    // 字段 14：ISymbol #2 = 未知类新对象（停止点）
+    bytes.extend(entry(
+        &[
+            0x03, 0xe6, 0x14, 0x79, 0x92, 0xc8, 0xd0, 0x11, 0x8b, 0xb6, 0x08, 0x00, 0x09, 0xee,
+            0x4e, 0x41,
+        ],
+        1593,
+    ));
+    bytes
+}
+
+#[test]
+fn text_element_sample_shaped_body_stops_at_symbol2() {
+    let body = sample_shaped_te_body();
+    let mut reader = Reader::new(&body);
+    let parsed = read_element_body_of_class_10_1(
+        &TEXT_ELEMENT_CLASS_ID,
+        &mut reader,
+        1024,
+        &mut RefTable10_1::new(),
+    )
+    .unwrap();
+    let mxd2qgz::objects::element_body::ElementBody10_1::TextElement(te) = parsed else {
+        panic!("应为 TextElement 体");
+    };
+    assert_eq!(te.version, 8);
+    let props = te.properties.as_ref().unwrap();
+    assert_eq!(props.version, 6);
+    assert_eq!(props.name, "");
+    assert_eq!(props.type_description, "文本");
+    assert_eq!(
+        props.custom_property,
+        CustomProperty10_1::Variant(PropertyValue10_1::Empty)
+    );
+    assert_eq!(props.extra_short, Some(0xffff));
+    assert_eq!(props.reference_scale, Some(5393.0));
+    assert_eq!(props.tail_int32, Some(6));
+    assert_eq!(te.text, "T35");
+    assert_eq!(te.raw_bool_int32, 1);
+    let symbol = te.symbol.as_ref().expect("TextSymbol 体应已消费");
+    assert_eq!(symbol.version, 4);
+    let mxd2qgz::objects::element_body::ColorSlot10_1::RgbColor { key, .. } = &symbol.color1 else {
+        panic!("颜色槽 #1 应为 RgbColor");
+    };
+    assert_eq!(*key, 1615);
+    let mxd2qgz::objects::element_body::ColorSlot10_1::RgbColor { key, .. } = &symbol.color2 else {
+        panic!("颜色槽 #2 应为 RgbColor");
+    };
+    assert_eq!(*key, 1616);
+    assert_eq!(symbol.ints_1, [-1, 3, 1]);
+    assert_eq!(symbol.doubles_2, [0.0, 100.0, 100.0]);
+    assert_eq!(symbol.double_4, 90.0);
+    assert_eq!(symbol.raw_path_clsid, TEXT_SYMBOL_CLASS_ID);
+    assert_eq!(symbol.text_path, NestedEntry10_1::Null);
+    assert_eq!(symbol.symbol1, NestedEntry10_1::Null);
+    assert_eq!(symbol.name_string, "T35");
+    assert_eq!(symbol.double_5, 8.0);
+    assert_eq!(symbol.int_4, 1);
+    assert_eq!(symbol.double_6, 1.5);
+    // 停止点 = ISymbol #2 新对象：游标恰在其对象头起点，键未登记。
+    let stop = symbol.stop.as_ref().expect("应停止于 ISymbol #2");
+    assert!(stop.describe().contains("ISymbol"));
+    let consumed = body.len() - symbol.remaining_bytes;
+    assert_eq!(
+        consumed,
+        body.len() - 20,
+        "停止点恰在末尾 20 字节对象头起点"
+    );
+    assert_eq!(reader.position(), consumed);
+}
+
+#[test]
+fn text_element_registry_covers_consumed_keys_only() {
+    let body = sample_shaped_te_body();
+    let mut table = RefTable10_1::new();
+    let mut reader = Reader::new(&body);
+    read_element_body_of_class_10_1(&TEXT_ELEMENT_CLASS_ID, &mut reader, 1024, &mut table).unwrap();
+    // 已消费键：TextSymbol 1614 + RgbColor 1615/1616；停止点键 1593 不登记。
+    assert!(table.contains(1614));
+    assert!(table.contains(1615));
+    assert!(table.contains(1616));
+    assert!(!table.contains(1593));
+}
+
+#[test]
+fn text_element_versions_follow_native_gate() {
+    // 版本 0..=9 接受（==9 按 8+尾加块，无独立字段差异直至版本门）；10 与负
+    // 值位模式拒绝。
+    for version in [0_u16, 1, 7, 8, 9] {
+        let mut bytes = version.to_le_bytes().to_vec();
+        bytes.extend(ep_prefix(version.min(6)));
+        bytes.extend(encoded("x"));
+        bytes.extend(0_i32.to_le_bytes());
+        bytes.extend(null_entry()); // ITextSymbol 空标记
+        bytes.extend(null_entry()); // IGeometry 空标记
+        if version > 2 {
+            bytes.extend(0_i32.to_le_bytes());
+        }
+        if version > 3 {
+            bytes.extend(0_i32.to_le_bytes());
+        }
+        if version == 7 {
+            // 三槽空标记 + double + int32 + double。
+            bytes.extend(null_entry());
+            bytes.extend(null_entry());
+            bytes.extend(null_entry());
+            bytes.extend(0_f64.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_f64.to_le_bytes());
+        }
+        if version == 9 {
+            bytes.extend(null_entry());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend([0_u8; 32]);
+        }
+        let mut reader = Reader::new(&bytes);
+        let parsed = read_element_body_of_class_10_1(
+            &TEXT_ELEMENT_CLASS_ID,
+            &mut reader,
+            1024,
+            &mut RefTable10_1::new(),
+        )
+        .unwrap_or_else(|error| panic!("版本 {version} 应接受: {error}"));
+        let mxd2qgz::objects::element_body::ElementBody10_1::TextElement(te) = parsed else {
+            panic!("应为 TextElement");
+        };
+        assert!(te.stop.is_none(), "版本 {version} 应完整消费");
+        assert_eq!(reader.position(), bytes.len());
+    }
+    for version in [10_u16, 0x8000, 0xffff] {
+        let bytes = version.to_le_bytes().to_vec();
+        let mut reader = Reader::new(&bytes);
+        let error = read_element_body_of_class_10_1(
+            &TEXT_ELEMENT_CLASS_ID,
+            &mut reader,
+            1024,
+            &mut RefTable10_1::new(),
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::InvalidData, "version={version:#x}");
+        assert_eq!(reader.position(), 0);
+    }
+}
+
+#[test]
+fn element_properties_prefix_version_gates() {
+    // 版本 <2：双 String + 遗留 int32 + LoadObject 槽（空标记）；无 >2/>4/>5
+    // 字段。TE 版本恒 8（EP 之前的字段序见 text_element_versions 测试）。
+    let mut bytes = 8_u16.to_le_bytes().to_vec();
+    bytes.extend(1_u16.to_le_bytes()); // EP 版本 1
+    bytes.extend(encoded("a"));
+    bytes.extend(encoded("b"));
+    bytes.extend((-7_i32).to_le_bytes());
+    bytes.extend(null_entry());
+    bytes.extend(encoded("t"));
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(null_entry());
+    bytes.extend(null_entry());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    let mut reader = Reader::new(&bytes);
+    let body = read_text_element_body_10_1(&mut reader, 1024, &mut RefTable10_1::new()).unwrap();
+    let props = body.properties.as_ref().unwrap();
+    assert_eq!(props.legacy_int32, Some(-7));
+    assert_eq!(
+        props.custom_property,
+        CustomProperty10_1::ObjectSlot(NestedEntry10_1::Null)
+    );
+    assert_eq!(props.extra_short, None);
+    assert_eq!(body.remaining_bytes, 0);
+
+    // 版本 4：Variant 路径 + int16（无 >4/>5）。
+    let mut bytes = 8_u16.to_le_bytes().to_vec();
+    bytes.extend(4_u16.to_le_bytes()); // EP 版本 4
+    bytes.extend(encoded(""));
+    bytes.extend(encoded(""));
+    bytes.extend(value_bytes(3, &9_i32.to_le_bytes()));
+    bytes.extend(2_u16.to_le_bytes());
+    bytes.extend(encoded("t"));
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(null_entry());
+    bytes.extend(null_entry());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    let mut reader = Reader::new(&bytes);
+    let body = read_text_element_body_10_1(&mut reader, 1024, &mut RefTable10_1::new()).unwrap();
+    let props = body.properties.as_ref().unwrap();
+    assert_eq!(
+        props.custom_property,
+        CustomProperty10_1::Variant(PropertyValue10_1::Raw4(9_i32.to_le_bytes()))
+    );
+    assert_eq!(props.extra_short, Some(2));
+    assert_eq!(props.reference_scale, None);
+
+    // EP 版本 7 拒绝（原生有符号 >6）；负值一并拒绝。
+    for version in [7_u16, 0x8000] {
+        let mut bytes = 8_u16.to_le_bytes().to_vec();
+        bytes.extend(version.to_le_bytes());
+        let mut reader = Reader::new(&bytes);
+        let error = read_text_element_body_10_1(&mut reader, 1024, &mut RefTable10_1::new());
+        assert!(error.is_err(), "version={version}");
+    }
+}
+
+#[test]
+fn element_properties_custom_property_slot_stop() {
+    // 版本 3：槽位 CustomProperty 为新对象 → 停止，游标回退到该槽起点，键不
+    // 登记；之后字段（int16）结构性未消费。
+    let mut bytes = 8_u16.to_le_bytes().to_vec();
+    bytes.extend(3_u16.to_le_bytes()); // EP 版本 3（槽位路径）
+    bytes.extend(encoded(""));
+    bytes.extend(encoded(""));
+    bytes.extend(entry(&TEXT_SYMBOL_CLASS_ID, 99)); // CustomProperty 新对象
+    bytes.extend(0xaaaa_u16.to_le_bytes()); // 未消费
+    let mut table = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let body = read_text_element_body_10_1(&mut reader, 1024, &mut table).unwrap();
+    assert!(body.properties.is_none());
+    let stop = body.stop.as_ref().expect("应停止于 CustomProperty 槽");
+    assert!(matches!(
+        stop,
+        mxd2qgz::objects::element_body::ElementBodyStop10_1::PropertiesCustomProperty {
+            key: 99,
+            ..
+        }
+    ));
+    // 游标在槽对象头起点（TE 版本 + EP 版本 + 双 String）：2 + 2 + 6 + 6 = 16。
+    assert_eq!(reader.position(), 16);
+    assert!(!table.contains(99));
+}
+
+#[test]
+fn text_symbol_color_slot_unknown_class_stops() {
+    // 颜色槽 #1 为非 RgbColor 新对象：停止于该槽起点，键不登记。
+    let mut bytes = 4_u16.to_le_bytes().to_vec();
+    bytes.extend(entry(&[0xa5; 16], 77));
+    let mut table = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let body = read_text_symbol_body_10_1(&mut reader, 1024, &mut table).unwrap();
+    let stop = body.stop.as_ref().expect("应停止于颜色槽");
+    assert!(stop.describe().contains("IColor"));
+    assert_eq!(reader.position(), 2);
+    assert!(!table.contains(77));
+}
+
+#[test]
+fn marker_and_line_element_bodies_consume_fully() {
+    // MarkerElement 版本 3：EP + 符号/几何空标记 + int32 + 32 字节。
+    let mut bytes = 3_u16.to_le_bytes().to_vec();
+    bytes.extend(ep_prefix(6));
+    bytes.extend(null_entry());
+    bytes.extend(null_entry());
+    bytes.extend(5_i32.to_le_bytes());
+    bytes.extend([0xa5_u8; 32]);
+    let mut reader = Reader::new(&bytes);
+    let parsed = read_element_body_of_class_10_1(
+        &MARKER_ELEMENT_CLASS_ID,
+        &mut reader,
+        1024,
+        &mut RefTable10_1::new(),
+    )
+    .unwrap();
+    let mxd2qgz::objects::element_body::ElementBody10_1::MarkerElement(me) = parsed else {
+        panic!("应为 MarkerElement");
+    };
+    assert!(me.stop.is_none());
+    assert_eq!(me.tail_int32, Some(5));
+    assert_eq!(me.raw_envelope, Some([0xa5; 32]));
+    assert_eq!(reader.position(), bytes.len());
+
+    // LineElement 版本 3：EP + 符号/几何空标记 + int32 + int16。
+    let mut bytes = 3_u16.to_le_bytes().to_vec();
+    bytes.extend(ep_prefix(6));
+    bytes.extend(null_entry());
+    bytes.extend(null_entry());
+    bytes.extend(6_i32.to_le_bytes());
+    bytes.extend(7_u16.to_le_bytes());
+    let mut reader = Reader::new(&bytes);
+    let parsed = read_element_body_of_class_10_1(
+        &LINE_ELEMENT_CLASS_ID,
+        &mut reader,
+        1024,
+        &mut RefTable10_1::new(),
+    )
+    .unwrap();
+    let mxd2qgz::objects::element_body::ElementBody10_1::LineElement(le) = parsed else {
+        panic!("应为 LineElement");
+    };
+    assert!(le.stop.is_none());
+    assert_eq!(le.tail_int32, Some(6));
+    assert_eq!(le.tail_short, Some(7));
+    assert_eq!(reader.position(), bytes.len());
+
+    // 版本 2：无 32 字节/int16 尾段。
+    let mut bytes = 2_u16.to_le_bytes().to_vec();
+    bytes.extend(ep_prefix(6));
+    bytes.extend(null_entry());
+    bytes.extend(null_entry());
+    bytes.extend(5_i32.to_le_bytes());
+    let mut reader = Reader::new(&bytes);
+    let parsed = read_line_element_body_10_1(&mut reader, 1024, &mut RefTable10_1::new()).unwrap();
+    assert!(parsed.stop.is_none());
+    assert_eq!(parsed.tail_short, None);
+    assert_eq!(reader.position(), bytes.len());
+}
+
+#[test]
+fn marker_line_version_gate_rejects() {
+    for class in [MARKER_ELEMENT_CLASS_ID, LINE_ELEMENT_CLASS_ID] {
+        for version in [4_u16, 0xfffe] {
+            let bytes = version.to_le_bytes().to_vec();
+            let mut reader = Reader::new(&bytes);
+            let error = read_element_body_of_class_10_1(
+                &class,
+                &mut reader,
+                1024,
+                &mut RefTable10_1::new(),
+            )
+            .unwrap_err();
+            assert_eq!(error.kind(), ErrorKind::InvalidData, "version={version:#x}");
+            assert_eq!(reader.position(), 0);
+        }
+    }
+}
+
+#[test]
+fn dispatcher_rejects_unknown_element_class() {
+    let bytes = vec![0xa5_u8; 32];
+    let mut reader = Reader::new(&bytes);
+    let error =
+        read_element_body_of_class_10_1(&[0xaa; 16], &mut reader, 1024, &mut RefTable10_1::new())
+            .unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::Unsupported);
+    assert_eq!(reader.position(), 0);
+    assert_eq!(reader.remaining(), bytes.len());
+}
+
+#[test]
+fn truncation_leaves_cursor_and_registry_unchanged() {
+    // TextElement 样本形态全前缀截断：失败、游标不推进、重读一致、登记表不
+    // 变（含已部分消费路径）。
+    let body = sample_shaped_te_body();
+    let baseline = {
+        let mut table = RefTable10_1::new();
+        let mut reader = Reader::new(&body);
+        read_element_body_of_class_10_1(&TEXT_ELEMENT_CLASS_ID, &mut reader, 1024, &mut table)
+            .unwrap();
+        table.len()
+    };
+    assert_eq!(baseline, 3);
+    for end in 0..body.len() {
+        let mut table = RefTable10_1::new();
+        table.register(1);
+        let mut reader = Reader::new(&body[..end]);
+        let first =
+            read_element_body_of_class_10_1(&TEXT_ELEMENT_CLASS_ID, &mut reader, 1024, &mut table);
+        assert!(first.is_err(), "end={end}");
+        assert_eq!(reader.position(), 0, "end={end}");
+        let second =
+            read_element_body_of_class_10_1(&TEXT_ELEMENT_CLASS_ID, &mut reader, 1024, &mut table);
+        assert_eq!(
+            first.unwrap_err().kind(),
+            second.unwrap_err().kind(),
+            "end={end}"
+        );
+        // 失败路径只保留预登记键。
+        assert_eq!(table.len(), 1, "end={end}");
+        assert!(table.contains(1), "end={end}");
+    }
+}
+
+#[test]
+fn marker_line_truncation_is_transactional() {
+    let mut body = 3_u16.to_le_bytes().to_vec();
+    body.extend(ep_prefix(6));
+    body.extend(null_entry());
+    body.extend(null_entry());
+    body.extend(5_i32.to_le_bytes());
+    body.extend(7_u16.to_le_bytes());
+    for end in 0..body.len() {
+        let mut reader = Reader::new(&body[..end]);
+        let first = read_line_element_body_10_1(&mut reader, 1024, &mut RefTable10_1::new());
+        assert!(first.is_err(), "end={end}");
+        assert_eq!(reader.position(), 0, "end={end}");
+        let second = read_line_element_body_10_1(&mut reader, 1024, &mut RefTable10_1::new());
+        assert_eq!(first.unwrap_err().kind(), second.unwrap_err().kind());
+    }
+}
+
+#[test]
+fn text_symbol_tail_version_fields() {
+    // 版本 4：v>1 short + v≥3 GUID + v≥4 short 全读；版本 3：无 v≥4 short；
+    // 版本 1：无 short/GUID；版本 0：同 1。
+    for (version, tail_len) in [(4_usize, 20), (3, 18), (1, 0), (0, 0)] {
+        let mut bytes = (version as u16).to_le_bytes().to_vec();
+        bytes.extend(null_entry()); // IColor #1 空标记
+        bytes.extend((-1_i32).to_le_bytes());
+        bytes.extend(3_i32.to_le_bytes());
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.push(0);
+        bytes.push(0);
+        for value in [0.0_f64; 3] {
+            bytes.extend(value.to_le_bytes());
+        }
+        bytes.extend(13_i32.to_le_bytes());
+        bytes.extend(0_i32.to_le_bytes());
+        bytes.extend(null_entry()); // IColor #2 空标记
+        bytes.extend(0_f64.to_le_bytes());
+        bytes.extend(0_f64.to_le_bytes());
+        bytes.extend(0_i32.to_le_bytes());
+        bytes.extend(0_i32.to_le_bytes());
+        for value in [0.0_f64; 3] {
+            bytes.extend(value.to_le_bytes());
+        }
+        bytes.push(1);
+        bytes.extend(0_f64.to_le_bytes());
+        bytes.extend(0_i32.to_le_bytes());
+        bytes.extend(0_f64.to_le_bytes());
+        bytes.push(1);
+        bytes.extend([0_u8; 16]); // 原样 GUID（零 = 默认路径）
+        bytes.extend(null_entry()); // ITextPath 空标记
+        bytes.extend(null_entry()); // ISymbol #1 空标记
+        bytes.extend(encoded("x"));
+        bytes.extend(0_f64.to_le_bytes());
+        bytes.extend(0_i32.to_le_bytes());
+        bytes.extend(0_f64.to_le_bytes());
+        bytes.extend(null_entry()); // ISymbol #2 空标记
+        bytes.extend(null_entry()); // IFontDisp 空标记
+        bytes.extend(vec![0xa5_u8; tail_len]);
+        let mut reader = Reader::new(&bytes);
+        let body = read_text_symbol_body_10_1(&mut reader, 1024, &mut RefTable10_1::new())
+            .unwrap_or_else(|error| panic!("版本 {version} 应接受: {error}"));
+        assert!(body.stop.is_none(), "版本 {version} 应完整消费");
+        assert_eq!(reader.position(), bytes.len(), "版本 {version}");
+    }
+    // 版本 5 拒绝。
+    let bytes = 5_u16.to_le_bytes().to_vec();
+    let mut reader = Reader::new(&bytes);
+    assert!(read_text_symbol_body_10_1(&mut reader, 1024, &mut RefTable10_1::new()).is_err());
+}
+
+#[test]
+fn back_reference_slots_are_classified_without_bodies() {
+    // 回引槽位：20 字节无体，读取器继续消费后续字段。
+    let mut bytes = 8_u16.to_le_bytes().to_vec();
+    bytes.extend(ep_prefix(6));
+    bytes.extend(encoded("x"));
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(entry(&TEXT_SYMBOL_CLASS_ID, 10)); // 符号槽回引
+    bytes.extend(null_entry()); // IGeometry 空标记
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    let mut table = RefTable10_1::new();
+    table.register(10);
+    let mut reader = Reader::new(&bytes);
+    let parsed =
+        read_element_body_of_class_10_1(&TEXT_ELEMENT_CLASS_ID, &mut reader, 1024, &mut table)
+            .unwrap();
+    let mxd2qgz::objects::element_body::ElementBody10_1::TextElement(te) = parsed else {
+        panic!("应为 TextElement");
+    };
+    assert!(te.symbol.is_none(), "回引槽无 TextSymbol 体");
+    assert!(te.stop.is_none());
+    assert_eq!(te.geometry, NestedEntry10_1::Null);
+    assert_eq!(reader.position(), bytes.len());
+    assert_eq!(table.len(), 1);
+}
+
+#[test]
+fn string_limit_rejects_without_advancing() {
+    // 文本 String 声明超限额：在分配前拒绝。
+    let mut bytes = 8_u16.to_le_bytes().to_vec();
+    bytes.extend(ep_prefix(6));
+    bytes.extend((u32::MAX - 1).to_le_bytes());
+    let mut reader = Reader::new(&bytes);
+    let error = read_text_element_body_10_1(&mut reader, 16, &mut RefTable10_1::new()).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert_eq!(reader.position(), 0);
+}
+
+#[test]
+fn io_errors_propagate_on_empty_input() {
+    let mut reader = Reader::new(&[]);
+    for class in [
+        TEXT_ELEMENT_CLASS_ID,
+        MARKER_ELEMENT_CLASS_ID,
+        LINE_ELEMENT_CLASS_ID,
+    ] {
+        let error =
+            read_element_body_of_class_10_1(&class, &mut reader, 1024, &mut RefTable10_1::new())
+                .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::UnexpectedEof);
+    }
+}
