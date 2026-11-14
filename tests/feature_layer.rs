@@ -15,7 +15,7 @@ use mxd2qgz::layers::feature_layer::{
 };
 use mxd2qgz::layers::feature_layer_tail::SuccessorStop10_1;
 use mxd2qgz::objects::dataset_name::{FEATURE_DATASET_NAME_CLASS_ID, TOPOLOGY_NAME_CLASS_ID};
-use mxd2qgz::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
+use mxd2qgz::storage::object_refs::RefTable10_1;
 use mxd2qgz::storage::object_stream::{ObjectHeader, read_header_10_1};
 use mxd2qgz::stream::reader::Reader;
 use std::io::ErrorKind;
@@ -250,7 +250,10 @@ fn reads_sample_chain_with_workspace_and_stops_at_renderer() {
     assert_eq!(ws.path, "..\\22.界址点");
     assert_eq!(ws.secondary_path, "");
     assert_eq!(ws.type_description, "Shapefile Data");
-    assert_eq!(ws.property_set, ObjectEntry10_1::Null);
+    assert_eq!(
+        ws.property_set,
+        mxd2qgz::layers::feature_layer::PropertySetSlot10_1::Null
+    );
     assert_eq!(ws.factory_flag, Some(1));
     assert_eq!(
         ws.factory_class_id,
@@ -920,4 +923,141 @@ fn reads_feature_layer_header_then_prefix_in_full_chain() {
     assert_eq!(parsed.remaining_bytes, 4);
     assert_eq!(reader.position(), bytes.len() - 4);
     assert_eq!(reader.read_bytes(4).unwrap(), b"tail");
+}
+
+// ---------------------------------------------------------------------------
+// 接线轮：WorkspaceName 的 IPropertySet 槽接入 read_property_set_10_1
+// （`docs/arcmap-10.1-property-set.md` 建议接入点；样本两实例 1547/2027 为
+// 该形态）。正常路径 + PropertySet 体内部失败的事务性。
+// ---------------------------------------------------------------------------
+
+/// PropertySet 体（样本实例 2 形态，键 2027）：版本 1 + 计数 1 + 键
+/// "DATABASE" + VT_BSTR 路径值。
+fn property_set_body() -> Vec<u8> {
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(encoded("DATABASE"));
+    bytes.extend(8_u16.to_le_bytes()); // VT_BSTR
+    bytes.extend(encoded("D:\\g"));
+    bytes
+}
+
+/// WorkspaceName 体，IPropertySet 槽为 PropertySet 新对象（键 2027）。
+fn workspace_name_body_with_property_set() -> Vec<u8> {
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(encoded("..\\22.界址点"));
+    bytes.extend(encoded(""));
+    bytes.extend(encoded("Shapefile Data"));
+    bytes.extend(entry_bytes(
+        &mxd2qgz::objects::property_set::PROPERTY_SET_CLASS_ID,
+        2027,
+    ));
+    bytes.extend(property_set_body());
+    bytes.push(1); // 工厂标志
+    bytes.extend([0xa5_u8; 16]); // 工厂 CLSID（原样保留）
+    bytes.extend(0_i32.to_le_bytes());
+    bytes
+}
+
+#[test]
+fn workspace_property_set_new_object_parses_body_and_completes() {
+    // 正常路径：IPropertySet 槽为 PropertySet 新对象 → 体整体解析（版本 +
+    // 计数 + [键名 + VT_BSTR 值]），其后的工厂标志/CLSID/int32 可达——样本
+    // FCN 第二实例（键 2026 链）在该槽停止的分段由此推进到第二选择子。
+    let mut data_source = entry_bytes(&FEATURE_CLASS_NAME_CLASS_ID, SAMPLE_FCN_KEY);
+    let mut fcn = 2_u16.to_le_bytes().to_vec();
+    fcn.extend(encoded(SAMPLE_NAME));
+    fcn.extend(encoded(""));
+    fcn.extend(encoded("Shapefile 要素类"));
+    fcn.extend(encoded("Shape"));
+    fcn.extend(1_i32.to_le_bytes());
+    fcn.extend(1_i32.to_le_bytes());
+    fcn.extend(0_u16.to_le_bytes()); // 选择子 0 → IWorkspaceName 槽
+    fcn.extend(entry_bytes(&WORKSPACE_NAME_CLASS_ID, SAMPLE_WS_KEY));
+    fcn.extend(workspace_name_body_with_property_set());
+    fcn.extend(0_u16.to_le_bytes()); // 版本 >1 选择子 0（接线前不可达）
+    data_source.extend(&fcn);
+    data_source.extend([0_u8; 16]); // 渲染器槽：空标记
+    // WS 体闭合后 FL 继续读 +0x144 GUID 与后继段：补最小后继段（两计数 0）。
+    let mut tail = [0x6A_u8; 16].to_vec(); // +0x144 原样 GUID
+    tail.extend(encoded("")); // +0x154
+    tail.extend(0_f64.to_le_bytes());
+    tail.extend(0_f64.to_le_bytes());
+    tail.extend(0_i16.to_le_bytes()); // +0x168
+    tail.extend(0_i32.to_le_bytes()); // IHyperlink 计数 0
+    tail.extend([0_u8; 16]); // IColor 槽：空标记
+    tail.extend(encoded("")); // +0x1a8
+    tail.extend(encoded("")); // +0x184
+    tail.extend(0_i32.to_le_bytes()); // +0x188
+    tail.extend(0_i32.to_le_bytes()); // FieldInfo 计数 0
+    let bytes = layer_prefix_bytes(SAMPLE_VERSION, "层", "", [0; 3], &data_source, &tail);
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let parsed = read_feature_layer_prefix_10_1(&mut reader, 1024, &mut table).unwrap();
+    let DataSource10_1::FeatureClassName(fcn) = &parsed.data_source else {
+        panic!("FCN 应已解析");
+    };
+    let FeatureClassNameNested10_1::WorkspaceName(WorkspaceNameEntry10_1::NewObject(ws)) =
+        &fcn.nested
+    else {
+        panic!("WS 应已解析");
+    };
+    assert_eq!(ws.stop, None, "PropertySet 体闭合后 WS 体完整消费");
+    let mxd2qgz::layers::feature_layer::PropertySetSlot10_1::PropertySet(body) = &ws.property_set
+    else {
+        panic!("槽位应为 PropertySet 体：{:?}", ws.property_set);
+    };
+    assert_eq!(body.count, 1);
+    assert_eq!(body.entries[0].key, "DATABASE");
+    assert_eq!(
+        body.entries[0].value,
+        mxd2qgz::objects::property_set::PropertyValue10_1::String("D:\\g".to_string())
+    );
+    // 其后字段可达：工厂标志 + CLSID + int32，FCN 选择子 0，渲染器空标记。
+    assert_eq!(ws.factory_flag, Some(1));
+    assert_eq!(ws.factory_class_id, Some([0xa5; 16]));
+    assert_eq!(ws.trailing_int32, Some(0));
+    assert_eq!(fcn.version1_selector, Some(0));
+    assert_eq!(parsed.renderer, Some(RendererSlot10_1::Null));
+    // PropertySet 新对象键 2027 登记（经会话登记表）；FL 推进至后继段终点。
+    assert!(table.contains(2027));
+    assert_eq!(
+        parsed.stop,
+        FeatureLayerStop10_1::Successor(SuccessorStop10_1::FieldInfoLoopCompleted)
+    );
+}
+
+#[test]
+fn workspace_property_set_truncated_body_fails_without_advancing() {
+    // 异常路径：PropertySet 体被截断 → 整体失败（错误传播，事务性回滚由调
+    // 用者 trial 保证），游标不动。构造含截断 PropertySet 体的 FCN。
+    let mut fcn = 2_u16.to_le_bytes().to_vec();
+    fcn.extend(encoded(SAMPLE_NAME));
+    fcn.extend(encoded(""));
+    fcn.extend(encoded("Shapefile 要素类"));
+    fcn.extend(encoded("Shape"));
+    fcn.extend(1_i32.to_le_bytes());
+    fcn.extend(1_i32.to_le_bytes());
+    fcn.extend(0_u16.to_le_bytes());
+    fcn.extend(entry_bytes(&WORKSPACE_NAME_CLASS_ID, SAMPLE_WS_KEY));
+    // WS 体到 IPropertySet 槽为止（版本 + 三串）。
+    let mut ws = 1_u16.to_le_bytes().to_vec();
+    ws.extend(encoded("..\\22.界址点"));
+    ws.extend(encoded(""));
+    ws.extend(encoded("Shapefile Data"));
+    ws.extend(entry_bytes(
+        &mxd2qgz::objects::property_set::PROPERTY_SET_CLASS_ID,
+        2027,
+    ));
+    ws.extend(&property_set_body()[..5]); // 截断的 PropertySet 体
+    fcn.extend(&ws);
+    fcn.extend(0_u16.to_le_bytes());
+    let mut data_source = entry_bytes(&FEATURE_CLASS_NAME_CLASS_ID, SAMPLE_FCN_KEY);
+    data_source.extend(&fcn);
+    let bytes = layer_prefix_bytes(SAMPLE_VERSION, "层", "", [0; 3], &data_source, b"");
+    let mut reader = Reader::new(&bytes);
+    let error = read_feature_layer_prefix_10_1(&mut reader, 1024, &mut RefTable10_1::new())
+        .expect_err("截断的 PropertySet 体应失败");
+    assert_eq!(error.kind(), ErrorKind::InvalidData, "{error}");
+    assert_eq!(reader.position(), 0, "失败不得推进游标");
 }

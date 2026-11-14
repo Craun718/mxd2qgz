@@ -7,7 +7,8 @@
 //! 节，手工复核，非测试依赖）。仅验证读取器自身契约，不代表 MXD 格式规则已
 //! 验证，未经目标软件人工检查。
 
-use mxd2qgz::layers::feature_layer_tail::RGB_COLOR_CLASS_ID;
+use mxd2qgz::objects::display_color::{ColorBody10_1, ColorSlot10_1, RGB_COLOR_CLASS_ID};
+use mxd2qgz::objects::display_symbol::{DisplaySymbolSlot10_1, SIMPLE_FILL_SYMBOL_CLASS_ID};
 use mxd2qgz::objects::element_body::{
     CustomProperty10_1, LINE_ELEMENT_CLASS_ID, MARKER_ELEMENT_CLASS_ID, NestedEntry10_1,
     TEXT_ELEMENT_CLASS_ID, TEXT_SYMBOL_CLASS_ID, read_element_body_of_class_10_1,
@@ -193,19 +194,59 @@ fn sample_shaped_te_body() -> Vec<u8> {
     bytes.extend(8_f64.to_le_bytes());
     bytes.extend(1_i32.to_le_bytes());
     bytes.extend(1.5_f64.to_le_bytes());
-    // 字段 14：ISymbol #2 = 未知类新对象（停止点）
-    bytes.extend(entry(
-        &[
-            0x03, 0xe6, 0x14, 0x79, 0x92, 0xc8, 0xd0, 0x11, 0x8b, 0xb6, 0x08, 0x00, 0x09, 0xee,
-            0x4e, 0x41,
-        ],
-        1593,
-    ));
+    // 字段 14：ISymbol #2 = 未知类新对象（停止点）。接线轮起样本真实类
+    // {7914E603}（SimpleFillSymbol）已闭合并整体解析——见
+    // text_element_parses_sample_shaped_symbol2_simple_fill_symbol；本函数
+    // 用合成未知类固定「体恰在符号槽 #2 头起点停止」的既有分段语义。
+    bytes.extend(entry(&UNCLOSED_SYMBOL_CLASS_ID, 1593));
     bytes
 }
 
+/// 合成的未闭合符号类（区别于样本真实类 {7914E603}）。
+const UNCLOSED_SYMBOL_CLASS_ID: [u8; 16] = [0x61; 16];
+
+/// SimpleFillSymbol 体（版本 1，样本真实类 {7914E603} 的接线形态）：
+/// 轮廓槽空标记 + 填充色 RgbColor（键 1600）+ int32 ×3。
+fn simple_fill_symbol_body() -> Vec<u8> {
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(null_entry()); // ISymbol 轮廓槽
+    bytes.extend(entry(&RGB_COLOR_CLASS_ID, 1600));
+    bytes.extend(rgb_body([1.0, 2.0, 3.0]));
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes
+}
+
+/// 样本形态 TextElement 体 + ISymbol #2 = SimpleFillSymbol 新对象（接线轮
+/// 闭合后的推进形态）：符号 #2 体整体解析后 TextSymbol 继续到 IFontDisp
+/// 空标记与版本门尾段，TextElement 继续到几何槽与尾段。
+fn sample_shaped_te_body_with_fill_symbol() -> Vec<u8> {
+    let mut bytes = sample_shaped_te_body_with_symbol2_header();
+    // ISymbol #2：SimpleFillSymbol 新对象（键 1593，样本键形态）
+    bytes.extend(entry(&SIMPLE_FILL_SYMBOL_CLASS_ID, 1593));
+    bytes.extend(simple_fill_symbol_body());
+    // TextSymbol 字段 15：IFontDisp 空标记；字段 16：版本门尾段（4 = 2+16+2）
+    bytes.extend(null_entry());
+    bytes.extend(0x8601_u16.to_le_bytes());
+    bytes.extend(TEXT_SYMBOL_CLASS_ID);
+    bytes.extend(0xf264_u16.to_le_bytes());
+    // TextElement 字段 6：IGeometry 空标记；字段 7：版本 >2/>3 的双 int32
+    bytes.extend(null_entry());
+    bytes.extend((-1_i32).to_le_bytes());
+    bytes.extend((-1_i32).to_le_bytes());
+    bytes
+}
+
+/// sample_shaped_te_body 去掉 ISymbol #2 头之后的公共前缀（用于接线形态）。
+fn sample_shaped_te_body_with_symbol2_header() -> Vec<u8> {
+    let body = sample_shaped_te_body();
+    // 末尾 20 字节为 ISymbol #2 对象头（未知类合成形态），截去。
+    body[..body.len() - 20].to_vec()
+}
+
 #[test]
-fn text_element_sample_shaped_body_stops_at_symbol2() {
+fn text_element_sample_shaped_body_stops_at_unclosed_symbol2() {
     let body = sample_shaped_te_body();
     let mut reader = Reader::new(&body);
     let parsed = read_element_body_of_class_10_1(
@@ -234,14 +275,22 @@ fn text_element_sample_shaped_body_stops_at_symbol2() {
     assert_eq!(te.raw_bool_int32, 1);
     let symbol = te.symbol.as_ref().expect("TextSymbol 体应已消费");
     assert_eq!(symbol.version, 4);
-    let mxd2qgz::objects::element_body::ColorSlot10_1::RgbColor { key, .. } = &symbol.color1 else {
+    let ColorSlot10_1::Color {
+        body: ColorBody10_1::Rgb(color_body),
+        ..
+    } = &symbol.color1
+    else {
         panic!("颜色槽 #1 应为 RgbColor");
     };
-    assert_eq!(*key, 1615);
-    let mxd2qgz::objects::element_body::ColorSlot10_1::RgbColor { key, .. } = &symbol.color2 else {
+    assert_eq!(color_body.key, 1615);
+    let ColorSlot10_1::Color {
+        body: ColorBody10_1::Rgb(color_body),
+        ..
+    } = &symbol.color2
+    else {
         panic!("颜色槽 #2 应为 RgbColor");
     };
-    assert_eq!(*key, 1616);
+    assert_eq!(color_body.key, 1616);
     assert_eq!(symbol.ints_1, [-1, 3, 1]);
     assert_eq!(symbol.doubles_2, [0.0, 100.0, 100.0]);
     assert_eq!(symbol.double_4, 90.0);
@@ -686,4 +735,101 @@ fn io_errors_propagate_on_empty_input() {
                 .unwrap_err();
         assert_eq!(error.kind(), ErrorKind::UnexpectedEof);
     }
+}
+
+// ---------------------------------------------------------------------------
+// 接线轮：TextSymbol 的 ISymbol #2 槽接入对象层符号槽位分派的增量测试
+// （`docs/arcmap-10.1-display-tails.md` 建议接入点；样本真实类 {7914E603} =
+// SimpleFillSymbol 体已闭合）。正常路径 + 未知类停止 + 嵌套停止透传。
+// ---------------------------------------------------------------------------
+
+#[test]
+fn text_element_parses_sample_shaped_symbol2_simple_fill_symbol() {
+    // 样本键 1613 形态 + ISymbol #2 = SimpleFillSymbol 新对象（样本真实类
+    // {7914E603}）：符号 #2 体整体解析（嵌套 RgbColor 键登记），TextSymbol
+    // 推进到 IFontDisp 空标记与版本门尾段，TextElement 推进到几何槽与尾段
+    // ——此前「停止于符号 #2 头起点」的分段由本测试的完整消费证明已推进。
+    let body = sample_shaped_te_body_with_fill_symbol();
+    let mut table = RefTable10_1::new();
+    let mut reader = Reader::new(&body);
+    let parsed =
+        read_element_body_of_class_10_1(&TEXT_ELEMENT_CLASS_ID, &mut reader, 1024, &mut table)
+            .unwrap();
+    let mxd2qgz::objects::element_body::ElementBody10_1::TextElement(te) = parsed else {
+        panic!("应为 TextElement 体");
+    };
+    assert_eq!(te.stop, None, "全部字段应完整消费");
+    assert_eq!(reader.position(), body.len());
+    let symbol = te.symbol.as_ref().expect("TextSymbol 体应已消费");
+    assert!(symbol.stop.is_none(), "TextSymbol 体应完整消费");
+    // 符号 #2 为 SimpleFillSymbol 体（轮廓空标记 + 填充色 + 标量段）。
+    let DisplaySymbolSlot10_1::SimpleFillSymbol(fill) = &symbol.symbol2 else {
+        panic!("符号 #2 应为 SimpleFillSymbol：{:?}", symbol.symbol2);
+    };
+    assert_eq!(fill.key, 1593);
+    assert!(fill.stop.is_none());
+    assert!(
+        matches!(
+            fill.color,
+            Some(ColorSlot10_1::Color {
+                body: ColorBody10_1::Rgb(_),
+                ..
+            })
+        ),
+        "填充色应为 RgbColor 体"
+    );
+    // 字段 15/16（接线前未达）：IFontDisp 空标记 + 版本门尾段。
+    assert_eq!(symbol.font, NestedEntry10_1::Null);
+    assert_eq!(symbol.tail_short_1, Some(0x8601));
+    assert_eq!(symbol.tail_path_clsid, Some(TEXT_SYMBOL_CLASS_ID));
+    assert_eq!(symbol.tail_short_2, Some(0xf264));
+    // 已消费键：TextSymbol 1614 + RgbColor ×3（1615/1616/1600）+
+    // SimpleFillSymbol 1593。
+    for key in [1614_u32, 1615, 1616, 1600, 1593] {
+        assert!(table.contains(key), "键 {key} 应登记");
+    }
+    assert_eq!(table.len(), 5);
+}
+
+#[test]
+fn text_symbol_symbol2_nested_stop_propagates() {
+    // 嵌套停止：符号 #2 为 SimpleFillSymbol 且其轮廓槽为未知类 → 符号体在
+    // 内层槽位停止 → TextSymbol 以 SymbolSlotNested 透传，后续字段不可达。
+    let unknown = [0x67_u8; 16];
+    let mut bytes = sample_shaped_te_body_with_symbol2_header();
+    bytes.extend(entry(&SIMPLE_FILL_SYMBOL_CLASS_ID, 1593));
+    bytes.extend(1_u16.to_le_bytes()); // SFS 版本
+    bytes.extend(entry(&unknown, 1601)); // 轮廓槽：未知类
+    bytes.extend(encoded("不可达"));
+    let mut table = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let parsed =
+        read_element_body_of_class_10_1(&TEXT_ELEMENT_CLASS_ID, &mut reader, 1024, &mut table)
+            .unwrap();
+    let mxd2qgz::objects::element_body::ElementBody10_1::TextElement(te) = parsed else {
+        panic!("应为 TextElement 体");
+    };
+    let symbol = te.symbol.as_ref().unwrap();
+    match &symbol.stop {
+        Some(mxd2qgz::objects::element_body::ElementBodyStop10_1::SymbolSlotNested {
+            slot,
+            reason: _,
+        }) => {
+            assert_eq!(*slot, "ISymbol 符号槽 #2");
+            // 分派把嵌套体内停止归约为 NestedIncomplete（携带 SFS 自身的类
+            // 标识与键）；未知轮廓条目的键见 SFS 体自身的 stop 字段。
+            let DisplaySymbolSlot10_1::SimpleFillSymbol(fill) = &symbol.symbol2 else {
+                panic!("符号 #2 应为 SimpleFillSymbol");
+            };
+            assert!(fill.stop.is_some(), "SFS 体应带内部停止");
+        }
+        other => panic!("应为 SymbolSlotNested 透传，得到 {other:?}"),
+    }
+    // 游标停在内层轮廓槽起点：SFS 头 20 + 版本 2。
+    assert_eq!(
+        reader.position(),
+        bytes.len() - 20 - encoded("不可达").len()
+    );
+    assert!(table.contains(1593), "SFS 键已登记（对象头已消费）");
+    assert!(!table.contains(1601), "嵌套未知键不保留");
 }

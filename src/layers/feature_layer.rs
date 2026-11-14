@@ -128,6 +128,9 @@ use crate::objects::dataset_name::{
     TOPOLOGY_NAME_CLASS_ID, TopologyNameBody10_1, TopologyNameStop10_1,
     read_feature_dataset_name_body_10_1, read_topology_name_body_10_1,
 };
+use crate::objects::property_set::{
+    PROPERTY_SET_CLASS_ID, PropertySet10_1, read_property_set_10_1,
+};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
@@ -200,9 +203,26 @@ pub enum Visibility10_1 {
 /// WorkspaceName 体读取的停止原因（体内在首个不可闭合处停止，非错误）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkspaceNameStop10_1 {
-    /// IPropertySet 槽位的新对象体（PropertySet 类字段序未闭合）：其后
-    /// 的标志、工厂 CLSID 与 int32 不可达。
+    /// IPropertySet 槽位的新对象类标识非 PropertySet（其余 IPropertySet 实现
+    /// 类体未闭合）：其后的标志、工厂 CLSID 与 int32 不可达。
     PropertySetNewObject { class_id: [u8; 16], key: u32 },
+}
+
+/// WorkspaceName 体内 IPropertySet 槽位（请求 IID `{F0BA6ABC-…}`）的分类
+/// 结果（接线轮接入 [`read_property_set_10_1`]）。
+#[derive(Debug, Clone, PartialEq)]
+pub enum PropertySetSlot10_1 {
+    /// 16 字节全零类标识：空引用，无键、无对象体。
+    Null,
+    /// 键已见：回引条目，无对象体。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 PropertySet 对象（类标识经 [`PROPERTY_SET_CLASS_ID`] 校验）：已读
+    /// 取其闭合体（版本、计数、[键名 String + 值 Variant] 循环）。
+    PropertySet(Box<PropertySet10_1>),
+    /// 新对象但类标识非 PropertySet（其余实现类体未闭合）：停止点，游标回
+    /// 退到该对象头起点、该键不保留（见
+    /// [`WorkspaceNameStop10_1::PropertySetNewObject`]）。
+    Unsupported { class_id: [u8; 16], key: u32 },
 }
 
 /// WorkspaceName（GdbCore.dll `0x70a27950`）体的已确认字段。
@@ -221,8 +241,9 @@ pub struct WorkspaceNamePrefix10_1 {
     pub secondary_path: String,
     /// 类型描述字符串（→ obj+0x28；样本「Shapefile Data」）。
     pub type_description: String,
-    /// IPropertySet 槽位（请求 IID `{F0BA6ABC-…}`）分类；新对象 = 停止点。
-    pub property_set: ObjectEntry10_1,
+    /// IPropertySet 槽位（请求 IID `{F0BA6ABC-…}`）分类；新对象为 PropertySet
+    /// 类时读取其闭合体，其余类为停止点。
+    pub property_set: PropertySetSlot10_1,
     /// 1 字节工厂标志（样本 1）。`None` = 在其之前已停止。
     pub factory_flag: Option<u8>,
     /// 标志非 0 时原样读取的 16 字节工作空间工厂 CLSID（样本
@@ -471,9 +492,10 @@ impl FeatureLayerPrefix10_1 {
 ///
 /// 起点约定：调用者已用 [`crate::storage::object_stream::read_header_10_1`] 读取对
 /// 象头、比对 [`WORKSPACE_NAME_CLASS_ID`] 并取得键 `key`，从对象头之后的位
-/// 置传入 Reader。字段序与证据见模块文档。在 IPropertySet 新对象处停止是
-/// 成功返回（停止原因 [`WorkspaceNameStop10_1`]）；截断、版本超限、字符串
-/// 超限为错误。
+/// 置传入 Reader。字段序与证据见模块文档。IPropertySet 槽新对象且类标识为
+/// PropertySet 时读取其闭合体（接线轮接入，样本两实例即该形态）；其余类新
+/// 对象处停止是成功返回（停止原因 [`WorkspaceNameStop10_1`]）；截断、版本
+/// 超限、字符串超限为错误。
 pub fn read_workspace_name_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -503,38 +525,50 @@ pub fn read_workspace_name_body_10_1(
     let secondary_path = read_string_10_1(&mut trial, max_bytes)?;
     let type_description = read_string_10_1(&mut trial, max_bytes)?;
 
-    // 5. IPropertySet 槽位(请求 IID {F0BA6ABC-…});新对象体未闭合 → 停止。
+    // 5. IPropertySet 槽位(请求 IID {F0BA6ABC-…}):新对象且类标识为
+    //    PropertySet 时读取其闭合体(接线轮接入,样本两实例为该形态);其余
+    //    类体未闭合 → 停止并回退。
     let slot_offset = trial.position();
     let saved_table = table.clone();
     let mut staged_table = table.clone();
-    let property_set = read_object_entry_10_1(&mut trial, &mut staged_table)?;
-    let (factory_flag, factory_class_id, trailing_int32, stop) = match property_set {
-        ObjectEntry10_1::NewObject { class_id, key } => {
-            let stop = WorkspaceNameStop10_1::PropertySetNewObject { class_id, key };
-            (None, None, None, Some(stop))
+    let mut stop = None;
+    let property_set = match read_object_entry_10_1(&mut trial, &mut staged_table)? {
+        ObjectEntry10_1::Null => PropertySetSlot10_1::Null,
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            PropertySetSlot10_1::BackReference { class_id, key }
         }
-        ObjectEntry10_1::Null | ObjectEntry10_1::BackReference { .. } => {
-            // 6. 1 字节工厂标志。
-            let flag = trial.read_bytes(1)?[0];
-            // 7. 标志非 0:原样 16 字节工作空间工厂 CLSID(原生经
-            //    AfCreateInstance 创建,读取器不创建实例,原样保留)。
-            let factory_class_id = if flag != 0 {
-                Some(trial.read_bytes(16)?.try_into().expect("固定 16 字节"))
-            } else {
-                None
-            };
-            // 8. 尾随 int32。
-            let trailing = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
-            (Some(flag), factory_class_id, Some(trailing), None)
+        ObjectEntry10_1::NewObject { class_id, key: _ } if class_id == PROPERTY_SET_CLASS_ID => {
+            // 接线:PropertySet 体(版本 + 计数 + [键名 String + 值 Variant]
+            // 循环)整体消费;失败不推进游标、不修改登记表(读取器自身事务性)。
+            let body = read_property_set_10_1(&mut trial, max_bytes, &mut staged_table)?;
+            PropertySetSlot10_1::PropertySet(Box::new(body))
+        }
+        ObjectEntry10_1::NewObject { class_id, key } => {
+            // 其余 IPropertySet 实现类:该对象体未闭合、无法跳过,游标与登记
+            // 表回退到槽位起点(回退到对象头起点的停止不保留该键——与
+            // GroupLayer/CGL 读取器的回退语义一致)。
+            stop = Some(WorkspaceNameStop10_1::PropertySetNewObject { class_id, key });
+            trial = reposition_to(reader, slot_offset);
+            staged_table = saved_table;
+            PropertySetSlot10_1::Unsupported { class_id, key }
         }
     };
-    if stop.is_some() {
-        // 在 IPropertySet 新对象处停止:该对象体未闭合、无法跳过,游标与登
-        // 记表回退到槽位起点(回退到对象头起点的停止不保留该键——与
-        // GroupLayer/CGL 读取器的回退语义一致)。
-        trial = reposition_to(reader, slot_offset);
-        staged_table = saved_table;
-    }
+    let (factory_flag, factory_class_id, trailing_int32) = if stop.is_none() {
+        // 6. 1 字节工厂标志。
+        let flag = trial.read_bytes(1)?[0];
+        // 7. 标志非 0:原样 16 字节工作空间工厂 CLSID(原生经
+        //    AfCreateInstance 创建,读取器不创建实例,原样保留)。
+        let factory_class_id = if flag != 0 {
+            Some(trial.read_bytes(16)?.try_into().expect("固定 16 字节"))
+        } else {
+            None
+        };
+        // 8. 尾随 int32。
+        let trailing = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+        (Some(flag), factory_class_id, Some(trailing))
+    } else {
+        (None, None, None)
+    };
 
     let result = WorkspaceNamePrefix10_1 {
         key,

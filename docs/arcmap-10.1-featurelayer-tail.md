@@ -277,3 +277,41 @@ FieldInfo 计数 14 @`0x602` → 14 条目（每条 = String 条目名 + `{A2BAA
   版本分支字段未闭合（下一环）；样本 11 层中其余 10 个 FeatureLayer 体的后继段未逐一
   走查（层 32 已覆盖全部分支形态：两槽空标记、嵌套 NumericFormat 与空标记并存）；
 - 全部结论为静态取证，未运行 ArcMap 10.1，未人工目视验收；样本对位为辅助观察。
+
+
+## 接线轮（2026-11-15）
+
+研究结论无改动；本节记录接入点落位、目录修正与样本停止点对比。
+
+- 目录修正：RgbColor 体读取器及 `RGB_COLOR_CLASS_ID` 移入
+  `src/objects/display_color.rs`，SimpleMarkerSymbol 体读取器及其类标识移
+  入 `src/objects/display_symbol.rs`（消除 B 轮两模块移入 objects 后残留的
+  objects→layers 依赖倒置）；两常量在本模块保留 `pub use` 重导出，内部调
+  用点改为调对象层函数。
+- ISymbol 槽接线（display-tails 建议接入点）：`read_simple_renderer_body_10_1`
+  与 `read_legend_class_body_10_1` 的 ISymbol 槽改调
+  `objects::display_symbol::read_display_symbol_slot_10_1`——六类闭合符号
+  （SMS + 五类线条/填充）整体解析，未知符号类维持停止回退；嵌套停止新增
+  `SymbolNested` 变体透传（`SymbolBody` 保留 SMS 原语义）。
+- IColor 槽接线：SMS 双色槽（display-symbol 内）与
+  `read_feature_layer_successor_10_1` 的 IColor 槽改调
+  `objects::display_color::read_color_slot_10_1`；五类闭合颜色整体解析，
+  未知颜色类维持 `ColorUnsupported`/`SuccessorStop10_1::ColorUnsupported`
+  停止（槽位字段停止时记 `Null`，与原语义一致）。
+- ILegendClassFormat 槽接线（legend-tails 建议接入点）：LegendClass 的该槽
+  新对象且类标识为 LegendClassFormat 时接
+  `read_legend_class_format_body_10_1`，体内停止以新增
+  `LegendClassStop10_1::FormatBody` 透传；其余类维持
+  `FormatNewObject` 停止（槽位字段改为 `LegendClassFormatSlot10_1` 枚举，
+  未闭合类记 `Unsupported`）。
+- 测试：tests/feature_layer_tail.rs 增至 48 项（新增接线正常路径、嵌套停
+  止透传、后继段 CmykColor 解析等 5 项；原 43 项在更新类型/签名后全部保
+  持通过，样本形态分段无回退）。
+- **样本停止点不变**：`parse samples/测试底图.mxd` 仍停在流内 0xafe
+  （`Successor(FieldInfoLoopCompleted)`，剩余 150127 字节）。原因：0xafe 处
+  是后继段之后的 ALPC 槽（请求 IID `{1D5849F2-…}`）新对象（流内类
+  `{1D5849F3-0D33-11D2-A26F-080009B6F22B}`，键 59）——该 coclass 体未闭合
+  且无外部长度，本轮四族接入点全部位于其后方（键 76/146 的 EditTemplate、
+  键 1547 的 PropertySet、键 1612 起的元素簇、键 2026 链的第二 FCN），在
+  ALPC 槽闭合前不可达。样本分段的既有验证（渲染器链 `0x3ed..0x5b0`、后继
+  段 `0x5b0..0xafe`）全部保持。

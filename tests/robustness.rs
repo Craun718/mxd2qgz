@@ -21,7 +21,6 @@
 use mxd2qgz::layers::composite_graphics::read_composite_graphics_layer_prefix_10_1;
 use mxd2qgz::layers::fdo_legacy::read_fdo_graphics_layer_legacy_prefix_10_1;
 use mxd2qgz::layers::feature_layer::read_feature_layer_prefix_10_1;
-use mxd2qgz::layers::feature_layer_tail::RGB_COLOR_CLASS_ID;
 use mxd2qgz::layers::group_layer::read_group_layer_prefix_10_1;
 use mxd2qgz::layers::layer_list::read_layer_list_10_1;
 use mxd2qgz::maps::map_object::{read_map_prefix_10_1, read_map_suffix_10_1};
@@ -31,6 +30,10 @@ use mxd2qgz::maps::map_surround::{
 use mxd2qgz::maps::maps_stream::{read_root_prefix_10_1, read_root_prefix_10_8};
 use mxd2qgz::objects::dataset_name::{
     read_feature_dataset_name_body_10_1, read_topology_name_body_10_1,
+};
+use mxd2qgz::objects::display_color::{RGB_COLOR_CLASS_ID, read_rgb_color_body_10_1};
+use mxd2qgz::objects::display_symbol::{
+    SIMPLE_MARKER_SYMBOL_CLASS_ID, read_simple_marker_symbol_body_10_1,
 };
 use mxd2qgz::objects::element_body::{
     LINE_ELEMENT_CLASS_ID, MARKER_ELEMENT_CLASS_ID, TEXT_ELEMENT_CLASS_ID, TEXT_SYMBOL_CLASS_ID,
@@ -130,9 +133,12 @@ enum ReaderKind {
     TextElementBody10_1,
     MarkerElementBody10_1,
     LineElementBody10_1,
+    RgbColorBody10_1,
+    SimpleMarkerSymbolBody10_1,
+    TextSymbolBody10_1,
 }
 
-fn all_kinds() -> [ReaderKind; 45] {
+fn all_kinds() -> [ReaderKind; 48] {
     [
         ReaderKind::NativeString10_1,
         ReaderKind::NativeString10_8,
@@ -179,6 +185,9 @@ fn all_kinds() -> [ReaderKind; 45] {
         ReaderKind::TextElementBody10_1,
         ReaderKind::MarkerElementBody10_1,
         ReaderKind::LineElementBody10_1,
+        ReaderKind::RgbColorBody10_1,
+        ReaderKind::SimpleMarkerSymbolBody10_1,
+        ReaderKind::TextSymbolBody10_1,
     ]
 }
 
@@ -495,7 +504,7 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
         }
         ReaderKind::ColorSlot10_1 => {
             // 颜色槽位：RgbColor 新对象（头 + 版本 1 体，flag==0）。
-            let mut bytes = mxd2qgz::layers::feature_layer_tail::RGB_COLOR_CLASS_ID.to_vec();
+            let mut bytes = RGB_COLOR_CLASS_ID.to_vec();
             bytes.extend(37_u32.to_le_bytes());
             bytes.extend(1_u16.to_le_bytes());
             bytes.extend(1_u16.to_le_bytes());
@@ -587,8 +596,7 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
         ReaderKind::DisplaySymbolSlot10_1 => {
             // 符号槽位：SimpleMarkerSymbol 新对象（头 + 版本 1 最小体：双
             // 颜色槽空标记 + 标量段）。
-            let mut bytes =
-                mxd2qgz::layers::feature_layer_tail::SIMPLE_MARKER_SYMBOL_CLASS_ID.to_vec();
+            let mut bytes = SIMPLE_MARKER_SYMBOL_CLASS_ID.to_vec();
             bytes.extend(36_u32.to_le_bytes());
             bytes.extend(1_u16.to_le_bytes());
             bytes.extend([0_u8; 16]); // 主色：空标记
@@ -812,6 +820,104 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
             bytes.extend(7_u16.to_le_bytes());
             bytes
         }
+        ReaderKind::RgbColorBody10_1 => {
+            // RgbColor 版本 1/1（flag==0，样本三实例同构）：short ×2 + byte +
+            // double ×3 + byte ×2。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.push(0);
+            for value in [1.0_f64, 2.0, 3.0] {
+                bytes.extend(value.to_le_bytes());
+            }
+            bytes.push(0);
+            bytes.push(0xFF);
+            bytes
+        }
+        ReaderKind::SimpleMarkerSymbolBody10_1 => {
+            // SMS 版本 1 最小体（接线轮移入 display_symbol）：双 IColor 空标
+            // 记 + 标量段（颜色槽经五类颜色分派，空标记不消耗深度）。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend([0_u8; 16]); // 主色：空标记
+            bytes.extend(6.0_f64.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(13_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            for value in [0.0_f64; 3] {
+                bytes.extend(value.to_le_bytes());
+            }
+            bytes.push(1);
+            bytes.extend(1.0_f64.to_le_bytes());
+            bytes.extend([0_u8; 16]); // 轮廓色：空标记
+            bytes
+        }
+        ReaderKind::TextSymbolBody10_1 => {
+            // TextSymbol 版本 4（样本 TextElement 符号槽的流内类，接线轮符号
+            // 槽 #2 经对象层符号分派）：双 RgbColor 新对象 + 全部标量组 +
+            // 原样 GUID + 双空标记 + 串 + 标量组 + SimpleFillSymbol 新对象
+            // （#2 分派）+ IFontDisp 空标记 + 版本门尾段。
+            let rgb = |key: u32| {
+                let mut bytes = RGB_COLOR_CLASS_ID.to_vec();
+                bytes.extend(key.to_le_bytes());
+                bytes.extend(1_u16.to_le_bytes());
+                bytes.extend(1_u16.to_le_bytes());
+                bytes.push(0);
+                for value in [0.0_f64; 3] {
+                    bytes.extend(value.to_le_bytes());
+                }
+                bytes.push(0);
+                bytes.push(0);
+                bytes
+            };
+            let mut bytes = 4_u16.to_le_bytes().to_vec();
+            bytes.extend(&rgb(1615)); // IColor #1
+            bytes.extend((-1_i32).to_le_bytes());
+            bytes.extend(3_i32.to_le_bytes());
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.push(0);
+            bytes.push(0);
+            for value in [0.0_f64; 3] {
+                bytes.extend(value.to_le_bytes());
+            }
+            bytes.extend(13_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(&rgb(1616)); // IColor #2
+            for value in [0.0_f64; 2] {
+                bytes.extend(value.to_le_bytes());
+            }
+            for value in [0_i32; 2] {
+                bytes.extend(value.to_le_bytes());
+            }
+            for value in [0.0_f64; 3] {
+                bytes.extend(value.to_le_bytes());
+            }
+            bytes.push(1);
+            bytes.extend(0_f64.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(90_f64.to_le_bytes());
+            bytes.push(1);
+            bytes.extend(TEXT_SYMBOL_CLASS_ID); // 原样 GUID
+            bytes.extend([0_u8; 16]); // ITextPath
+            bytes.extend([0_u8; 16]); // ISymbol #1
+            bytes.extend(encoded("T35"));
+            bytes.extend(8_f64.to_le_bytes());
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend(1.5_f64.to_le_bytes());
+            // ISymbol #2：SimpleFillSymbol 新对象（体：轮廓空标记 + 填充色
+            // 空标记 + int32 ×3）。
+            bytes.extend(mxd2qgz::objects::display_symbol::SIMPLE_FILL_SYMBOL_CLASS_ID);
+            bytes.extend(1593_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes.extend([0_u8; 16]);
+            for value in [0_i32; 3] {
+                bytes.extend(value.to_le_bytes());
+            }
+            bytes.extend([0_u8; 16]); // IFontDisp
+            bytes.extend(1_u16.to_le_bytes()); // 版本 >1
+            bytes.extend(TEXT_SYMBOL_CLASS_ID); // 版本 ≥3 GUID
+            bytes.extend(1_u16.to_le_bytes()); // 版本 ≥4
+            bytes
+        }
     }
 }
 
@@ -897,26 +1003,32 @@ fn try_read(kind: ReaderKind, reader: &mut Reader<'_>) -> io::Result<()> {
         ReaderKind::LegendPrefix10_1 => {
             read_legend_prefix_10_1(reader, 1024, &mut RefTable10_1::new()).map(|_| ())
         }
-        ReaderKind::CoreColorBody10_1 => mxd2qgz::display_color::read_core_color_body_10_1(
-            reader,
-            &mut RefTable10_1::new(),
-            91,
-            "X",
-        )
-        .map(|_| ()),
-        ReaderKind::CmykColorBody10_1 => mxd2qgz::display_color::read_cmyk_color_body_10_1(
+        ReaderKind::CoreColorBody10_1 => {
+            mxd2qgz::objects::display_color::read_core_color_body_10_1(
+                reader,
+                &mut RefTable10_1::new(),
+                91,
+                "X",
+            )
+            .map(|_| ())
+        }
+        ReaderKind::CmykColorBody10_1 => {
+            mxd2qgz::objects::display_color::read_cmyk_color_body_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+                92,
+            )
+            .map(|_| ())
+        }
+        ReaderKind::ColorSlot10_1 => mxd2qgz::objects::display_color::read_color_slot_10_1(
             reader,
             1024,
             &mut RefTable10_1::new(),
-            92,
         )
         .map(|_| ()),
-        ReaderKind::ColorSlot10_1 => {
-            mxd2qgz::display_color::read_color_slot_10_1(reader, 1024, &mut RefTable10_1::new())
-                .map(|_| ())
-        }
         ReaderKind::SimpleLineSymbolBody10_1 => {
-            mxd2qgz::display_symbol::read_simple_line_symbol_body_10_1(
+            mxd2qgz::objects::display_symbol::read_simple_line_symbol_body_10_1(
                 reader,
                 1024,
                 &mut RefTable10_1::new(),
@@ -925,51 +1037,51 @@ fn try_read(kind: ReaderKind, reader: &mut Reader<'_>) -> io::Result<()> {
             .map(|_| ())
         }
         ReaderKind::SimpleFillSymbolBody10_1 => {
-            mxd2qgz::display_symbol::read_simple_fill_symbol_body_10_1(
+            mxd2qgz::objects::display_symbol::read_simple_fill_symbol_body_10_1(
                 reader,
                 1024,
                 &mut RefTable10_1::new(),
                 22,
-                mxd2qgz::display_symbol::MAX_SYMBOL_NESTING_DEPTH,
+                mxd2qgz::objects::display_symbol::MAX_SYMBOL_NESTING_DEPTH,
             )
             .map(|_| ())
         }
         ReaderKind::MarkerLineSymbolBody10_1 => {
-            mxd2qgz::display_symbol::read_marker_line_symbol_body_10_1(
+            mxd2qgz::objects::display_symbol::read_marker_line_symbol_body_10_1(
                 reader,
                 1024,
                 &mut RefTable10_1::new(),
                 23,
-                mxd2qgz::display_symbol::MAX_SYMBOL_NESTING_DEPTH,
+                mxd2qgz::objects::display_symbol::MAX_SYMBOL_NESTING_DEPTH,
             )
             .map(|_| ())
         }
         ReaderKind::CartographicLineSymbolBody10_1 => {
-            mxd2qgz::display_symbol::read_cartographic_line_symbol_body_10_1(
+            mxd2qgz::objects::display_symbol::read_cartographic_line_symbol_body_10_1(
                 reader,
                 1024,
                 &mut RefTable10_1::new(),
                 24,
-                mxd2qgz::display_symbol::MAX_SYMBOL_NESTING_DEPTH,
+                mxd2qgz::objects::display_symbol::MAX_SYMBOL_NESTING_DEPTH,
             )
             .map(|_| ())
         }
         ReaderKind::HashLineSymbolBody10_1 => {
-            mxd2qgz::display_symbol::read_hash_line_symbol_body_10_1(
+            mxd2qgz::objects::display_symbol::read_hash_line_symbol_body_10_1(
                 reader,
                 1024,
                 &mut RefTable10_1::new(),
                 25,
-                mxd2qgz::display_symbol::MAX_SYMBOL_NESTING_DEPTH,
+                mxd2qgz::objects::display_symbol::MAX_SYMBOL_NESTING_DEPTH,
             )
             .map(|_| ())
         }
         ReaderKind::DisplaySymbolSlot10_1 => {
-            mxd2qgz::display_symbol::read_display_symbol_slot_10_1(
+            mxd2qgz::objects::display_symbol::read_display_symbol_slot_10_1(
                 reader,
                 1024,
                 &mut RefTable10_1::new(),
-                mxd2qgz::display_symbol::MAX_SYMBOL_NESTING_DEPTH,
+                mxd2qgz::objects::display_symbol::MAX_SYMBOL_NESTING_DEPTH,
             )
             .map(|_| ())
         }
@@ -1036,6 +1148,21 @@ fn try_read(kind: ReaderKind, reader: &mut Reader<'_>) -> io::Result<()> {
             &mut RefTable10_1::new(),
         )
         .map(|_| ()),
+        ReaderKind::RgbColorBody10_1 => {
+            read_rgb_color_body_10_1(reader, &mut RefTable10_1::new(), 93).map(|_| ())
+        }
+        ReaderKind::SimpleMarkerSymbolBody10_1 => {
+            read_simple_marker_symbol_body_10_1(reader, 1024, &mut RefTable10_1::new(), 94)
+                .map(|_| ())
+        }
+        ReaderKind::TextSymbolBody10_1 => {
+            mxd2qgz::objects::element_body::read_text_symbol_body_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+            )
+            .map(|_| ())
+        }
     }
 }
 

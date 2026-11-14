@@ -7,17 +7,17 @@
 //! 异常/截断/事务性/嵌套深度），不代表 MXD 格式已验证，未在目标软件中
 //! 核对。
 
-use mxd2qgz::display_color::{
+use mxd2qgz::objects::display_color::{
     CMYK_COLOR_CLASS_ID, ColorSlot10_1, RGB_COLOR_CLASS_ID, read_color_slot_10_1,
 };
-use mxd2qgz::display_symbol::{
+use mxd2qgz::objects::display_symbol::{
     CARTOGRAPHIC_LINE_SYMBOL_CLASS_ID, HASH_LINE_SYMBOL_CLASS_ID, MARKER_LINE_SYMBOL_CLASS_ID,
     MAX_SYMBOL_NESTING_DEPTH, SIMPLE_FILL_SYMBOL_CLASS_ID, SIMPLE_LINE_SYMBOL_CLASS_ID,
-    SymbolStop10_1, read_cartographic_line_symbol_body_10_1, read_display_symbol_slot_10_1,
+    SIMPLE_MARKER_SYMBOL_CLASS_ID, SimpleMarkerSymbolStop10_1, SymbolStop10_1,
+    read_cartographic_line_symbol_body_10_1, read_display_symbol_slot_10_1,
     read_hash_line_symbol_body_10_1, read_marker_line_symbol_body_10_1,
     read_simple_fill_symbol_body_10_1, read_simple_line_symbol_body_10_1,
 };
-use mxd2qgz::layers::feature_layer_tail::SIMPLE_MARKER_SYMBOL_CLASS_ID;
 use mxd2qgz::storage::object_refs::RefTable10_1;
 use mxd2qgz::stream::reader::Reader;
 use std::io::ErrorKind;
@@ -112,7 +112,9 @@ fn simple_line_symbol_full_body_and_nested_colors() {
         ColorSlot10_1::Color { class_id, body } => {
             assert_eq!(*class_id, RGB_COLOR_CLASS_ID);
             match body {
-                mxd2qgz::display_color::ColorBody10_1::Rgb(body) => assert_eq!(body.key, 37),
+                mxd2qgz::objects::display_color::ColorBody10_1::Rgb(body) => {
+                    assert_eq!(body.key, 37)
+                }
                 other => panic!("期望 Rgb 体，得到 {other:?}"),
             }
         }
@@ -137,7 +139,7 @@ fn simple_line_symbol_full_body_and_nested_colors() {
         result.color,
         ColorSlot10_1::Color {
             class_id: CMYK_COLOR_CLASS_ID,
-            body: mxd2qgz::display_color::ColorBody10_1::Cmyk(_)
+            body: mxd2qgz::objects::display_color::ColorBody10_1::Cmyk(_)
         }
     ));
     assert_eq!(result.stop, None);
@@ -160,7 +162,10 @@ fn simple_line_symbol_unknown_color_stops_at_slot() {
             class_id,
             key,
         }) => {
-            assert_eq!(kind, mxd2qgz::display_symbol::DisplaySlotKind10_1::Color);
+            assert_eq!(
+                kind,
+                mxd2qgz::objects::display_symbol::DisplaySlotKind10_1::Color
+            );
             assert_eq!(class_id, unknown);
             assert_eq!(key, 700);
         }
@@ -240,7 +245,7 @@ fn simple_fill_symbol_nests_line_symbol_outline() {
     )
     .unwrap();
     match &result.outline {
-        mxd2qgz::display_symbol::DisplaySymbolSlot10_1::SimpleLineSymbol(body) => {
+        mxd2qgz::objects::display_symbol::DisplaySymbolSlot10_1::SimpleLineSymbol(body) => {
             assert_eq!(body.key, 21);
             assert_eq!(body.width, Some(4.0));
             assert_eq!(body.stop, None);
@@ -285,14 +290,14 @@ fn simple_fill_symbol_unknown_outline_stops() {
     .unwrap();
     assert!(matches!(
         result.outline,
-        mxd2qgz::display_symbol::DisplaySymbolSlot10_1::Unsupported { key: 800, .. }
+        mxd2qgz::objects::display_symbol::DisplaySymbolSlot10_1::Unsupported { key: 800, .. }
     ));
     assert_eq!(result.color, None);
     assert_eq!(result.style, None);
     assert!(matches!(
         result.stop,
         Some(SymbolStop10_1::Slot {
-            kind: mxd2qgz::display_symbol::DisplaySlotKind10_1::Symbol,
+            kind: mxd2qgz::objects::display_symbol::DisplaySlotKind10_1::Symbol,
             key: 800,
             ..
         })
@@ -332,15 +337,15 @@ fn marker_line_symbol_versions_and_unclosed_slots() {
     assert_eq!(result.double_20d4, 10.0);
     assert_eq!(
         result.marker_symbol,
-        mxd2qgz::display_symbol::DisplaySymbolSlot10_1::Null
+        mxd2qgz::objects::display_symbol::DisplaySymbolSlot10_1::Null
     );
     assert_eq!(
         result.template,
-        Some(mxd2qgz::display_symbol::DisplaySymbolSlot10_1::Null)
+        Some(mxd2qgz::objects::display_symbol::DisplaySymbolSlot10_1::Null)
     );
     assert_eq!(
         result.line_decoration,
-        Some(mxd2qgz::display_symbol::DisplaySymbolSlot10_1::Null)
+        Some(mxd2qgz::objects::display_symbol::DisplaySymbolSlot10_1::Null)
     );
     assert_eq!(result.int32_2094, Some(4));
     assert_eq!(result.double_208c, Some(6.0));
@@ -396,7 +401,7 @@ fn marker_line_symbol_versions_and_unclosed_slots() {
     assert!(matches!(
         result.stop,
         Some(SymbolStop10_1::Slot {
-            kind: mxd2qgz::display_symbol::DisplaySlotKind10_1::Template,
+            kind: mxd2qgz::objects::display_symbol::DisplaySlotKind10_1::Template,
             key: 900,
             ..
         })
@@ -448,7 +453,7 @@ fn marker_line_symbol_nests_marker_symbol() {
     )
     .unwrap();
     match &result.marker_symbol {
-        mxd2qgz::display_symbol::DisplaySymbolSlot10_1::SimpleMarkerSymbol(body) => {
+        mxd2qgz::objects::display_symbol::DisplaySymbolSlot10_1::SimpleMarkerSymbol(body) => {
             assert_eq!(body.key, 36);
             assert_eq!(body.stop, None);
         }
@@ -495,7 +500,7 @@ fn cartographic_line_symbol_full_body_and_truncation() {
     assert!(matches!(&result.color, Some(ColorSlot10_1::Color { .. })));
     assert_eq!(
         result.template,
-        Some(mxd2qgz::display_symbol::DisplaySymbolSlot10_1::Null)
+        Some(mxd2qgz::objects::display_symbol::DisplaySymbolSlot10_1::Null)
     );
     assert_eq!(result.int32_10fc, Some(3));
     assert_eq!(result.double_1054, Some(1.0));
@@ -568,7 +573,7 @@ fn hash_line_symbol_full_body_and_nested_symbol() {
     )
     .unwrap();
     match &result.symbol {
-        Some(mxd2qgz::display_symbol::DisplaySymbolSlot10_1::SimpleLineSymbol(body)) => {
+        Some(mxd2qgz::objects::display_symbol::DisplaySymbolSlot10_1::SimpleLineSymbol(body)) => {
             assert_eq!(body.key, 22);
             assert_eq!(body.width, Some(5.0));
         }
@@ -607,7 +612,7 @@ fn slot_dispatcher_reports_unsupported_and_depth_limit() {
     match read_display_symbol_slot_10_1(&mut reader, 1024, &mut table, MAX_SYMBOL_NESTING_DEPTH)
         .unwrap()
     {
-        mxd2qgz::display_symbol::DisplaySymbolSlot10_1::Unsupported { class_id, key } => {
+        mxd2qgz::objects::display_symbol::DisplaySymbolSlot10_1::Unsupported { class_id, key } => {
             assert_eq!(class_id, unknown);
             assert_eq!(key, 910);
         }
@@ -680,7 +685,7 @@ fn slot_dispatcher_reports_unsupported_and_depth_limit() {
     .unwrap();
     assert!(matches!(
         slot,
-        mxd2qgz::display_symbol::DisplaySymbolSlot10_1::SimpleFillSymbol(_)
+        mxd2qgz::objects::display_symbol::DisplaySymbolSlot10_1::SimpleFillSymbol(_)
     ));
     assert_eq!(reader.position(), bytes.len());
 }
@@ -719,17 +724,11 @@ fn sms_stop_propagates_as_nested_incomplete() {
     )
     .unwrap();
     match &result.marker_symbol {
-        mxd2qgz::display_symbol::DisplaySymbolSlot10_1::SimpleMarkerSymbol(body) => {
-            // 停止原因携带未知颜色条的类标识与键（该条目键 920）。注意：前轮
-            // feature_layer_tail 的 SMS 首色槽停止路径中，体结构 `key` 字段被
-            // 阴影为颜色条键（已知问题，见研究记录），本测试不断言该字段。
+        mxd2qgz::objects::display_symbol::DisplaySymbolSlot10_1::SimpleMarkerSymbol(body) => {
+            // 停止原因携带未知颜色条的类标识与键（该条目键 920）。
             assert!(body.stop.is_some(), "SMS 应在其颜色槽停止");
             match body.stop {
-                Some(
-                    mxd2qgz::layers::feature_layer_tail::SimpleMarkerSymbolStop10_1::ColorUnsupported {
-                        class_id, key,
-                    },
-                ) => {
+                Some(SimpleMarkerSymbolStop10_1::ColorUnsupported { class_id, key }) => {
                     assert_eq!(class_id, unknown);
                     assert_eq!(key, 920);
                 }

@@ -6,11 +6,11 @@
 //! 全部使用合成输入，仅验证读取器自身契约（正常/异常/截断/事务性），不
 //! 代表 MXD 格式已验证，未在目标软件中核对。
 
-use mxd2qgz::display_color::{
+use mxd2qgz::objects::display_color::{
     CMYK_COLOR_CLASS_ID, ColorBody10_1, ColorSlot10_1, GRAY_COLOR_CLASS_ID, HLS_COLOR_CLASS_ID,
-    HSV_COLOR_CLASS_ID, read_cmyk_color_body_10_1, read_color_slot_10_1, read_core_color_body_10_1,
+    HSV_COLOR_CLASS_ID, RGB_COLOR_CLASS_ID, read_cmyk_color_body_10_1, read_color_slot_10_1,
+    read_core_color_body_10_1, read_rgb_color_body_10_1,
 };
-use mxd2qgz::layers::feature_layer_tail::{RGB_COLOR_CLASS_ID, read_rgb_color_body_10_1};
 use mxd2qgz::storage::object_refs::RefTable10_1;
 use mxd2qgz::stream::reader::Reader;
 use std::io::ErrorKind;
@@ -317,7 +317,7 @@ fn unknown_color_class_rolls_back_cursor_and_key() {
 
 #[test]
 fn rgb_slot_matches_direct_rgb_reader() {
-    // 槽位分派与 feature_layer_tail 直读 RgbColor 的结果一致（同构佐证）。
+    // 槽位分派与 RgbColor 直读的结果一致（同构佐证）。
     let mut bytes = Vec::new();
     push_entry(&mut bytes, &RGB_COLOR_CLASS_ID, 37);
     bytes.extend(&core_color_body(0));

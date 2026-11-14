@@ -152,15 +152,22 @@
 //! MarkerElement/LineElement 无样本字节佐证，布局结论仅有反编译一手证据，
 //! 单元测试全部使用合成输入。
 //!
-//! ## 与 element_collection 的分派衔接（建议接入点，本轮不改其既有停止语义）
+//! ## 与 element_collection 的分派衔接（接线轮已接入）
 //!
 //! [`read_element_body_of_class_10_1`] 按类标识分派：命中 TextElement/
 //! MarkerElement/LineElement 时读取对应体；其他类标识返回
-//! [`ErrorKind::Unsupported`]，调用方维持既有停止点语义（游标回退到该元素对
-//! 象头起点、键不登记）。体内嵌套新对象停止点经返回值透传（游标停在该嵌套
-//! 对象头起点、该键不登记，已消费字段与登记保持提交）；
-//! `fdo_graphics_layer` 的 ElementCollection 槽及 `element_collection` 的元
-//! 素循环接线属共享文件改动，留待后续统一处理。
+//! [`ErrorKind::Unsupported`]，`element_collection` 的元素循环对该错误维持
+//! 既有停止点语义（游标回退到该元素对象头起点、键不登记）。闭合元素体的
+//! 嵌套停止经返回值透传（游标停在该嵌套对象头起点、该键不登记，已消费字
+//! 段与登记保持提交），元素循环以
+//! [`crate::objects::element_collection::ElementCollectionStop10_1::
+//! ElementBodyIncomplete`] 停止并携带原因。本轮接线：符号槽 #2 经
+//! [`crate::objects::display_symbol`] 分派、IColor 槽经
+//! [`crate::objects::display_color`] 分派（TextSymbol 的 ITextPath/
+//! ISymbol #1/IFontDisp 与 TextElement 的 IGeometry 等仍仅分类）；TextSymbol
+//! 体内的嵌套停止上抛为 TextElement 的停止原因（原实现未透传，见
+//! [`read_text_element_body_10_1`] 内注释）。`fdo_graphics_layer` 的
+//! ElementCollection 槽已在前轮接入 element_collection。
 //!
 //! 调用约定与事务性：调用者已用 [`crate::storage::object_stream::read_header_10_1`]
 //! 读取对象头并分类（新对象已登记），从对象头之后的位置传入 Reader；本模块
@@ -176,8 +183,10 @@
 //! 槽无样本佐证；MarkerElement 32 字节尾块、TextElement 版本 7/9 精确块无样
 //! 本佐证；全部结论未运行目标软件验证。
 
-use crate::layers::feature_layer_tail::{
-    RGB_COLOR_CLASS_ID, RgbColorBody10_1, read_rgb_color_body_10_1,
+use crate::objects::display_color::read_color_slot_10_1;
+use crate::objects::display_symbol::{
+    DisplaySlotKind10_1, DisplaySymbolSlot10_1, MAX_SYMBOL_NESTING_DEPTH, SymbolStop10_1,
+    read_display_symbol_slot_10_1, slot_stop_10_1,
 };
 use crate::objects::property_set::{PropertyValue10_1, read_variant_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
@@ -279,6 +288,14 @@ pub enum ElementBodyStop10_1 {
         /// 槽位说明（ITextPath/ISymbol/IFontDisp 候选）。
         slot: &'static str,
     },
+    /// TextSymbol 符号槽 #2 为本轮闭合的 DisplayCore 同族符号且其体内出现
+    /// 嵌套停止（原因透传）：游标停在内层停止点，已消费字段保持提交。
+    SymbolSlotNested {
+        /// 槽位说明（ISymbol 符号槽 #2）。
+        slot: &'static str,
+        /// 内层符号体的停止原因。
+        reason: SymbolStop10_1,
+    },
     /// ElementProperties 前缀 CustomProperty 槽的新对象（透传）。
     PropertiesCustomProperty {
         offset: usize,
@@ -310,6 +327,10 @@ impl ElementBodyStop10_1 {
                 "TextSymbol 体 {slot}（offset 0x{offset:x}）为新对象（类 {}，键 {key}）：该类\
                  体未闭合，游标回退到该对象头起点",
                 class_id_hex(class_id)
+            ),
+            Self::SymbolSlotNested { slot, reason } => format!(
+                "TextSymbol 体 {slot} 的已闭合符号体内出现嵌套停止：{reason:?}；游标停在\
+                 内层停止点，已消费字段保持提交"
             ),
             Self::PropertiesCustomProperty {
                 offset,
@@ -483,16 +504,11 @@ enum PrefixOutcome10_1 {
     Stopped(ElementBodyStop10_1),
 }
 
-/// TextSymbol 体内一个 IColor 槽的分类结果。
-#[derive(Debug, Clone, PartialEq)]
-pub enum ColorSlot10_1 {
-    /// 16 字节全零类标识：空引用标记。
-    Null,
-    /// 键已登记：20 字节回引条目，无体。
-    BackReference { class_id: [u8; 16], key: u32 },
-    /// RgbColor 新对象：体经 [`read_rgb_color_body_10_1`] 整体消费。
-    RgbColor { key: u32, body: RgbColorBody10_1 },
-}
+/// TextSymbol 体内一个 IColor 槽的分类结果：接线轮起为对象层
+/// [`crate::objects::display_color::ColorSlot10_1`] 的等价重导出（五类闭合
+/// 颜色经 [`read_color_slot_10_1`] 整体解析，未知颜色类为 `Unsupported`
+/// 变体、由本模块映射为停止原因）。
+pub use crate::objects::display_color::ColorSlot10_1;
 
 /// 10.1 TextSymbol（DisplayCore `0x6ebd0a60`）的已确认前缀（TextElement 符
 /// 号槽的流内体）。
@@ -543,9 +559,11 @@ pub struct TextSymbolBody10_1 {
     pub int_4: i32,
     /// double（this-0x204；样本 1.5）。
     pub double_6: f64,
-    /// ISymbol 符号槽 #2（仅分类；样本 {7914E603} 新对象 = 停止点，不出现在
-    /// 本枚举）。
-    pub symbol2: NestedEntry10_1,
+    /// ISymbol 符号槽 #2（接线轮起经 [`read_display_symbol_slot_10_1`] 分派：
+    /// SimpleMarkerSymbol 与本轮闭合的 DisplayCore 同族符号解析为对应体变
+    /// 体；样本为 {7914E603} SimpleFillSymbol 新对象；未知符号类不出现在本
+    /// 字段——映射为停止原因，字段保持 `Null`）。
+    pub symbol2: DisplaySymbolSlot10_1,
     /// IFontDisp 字体槽（仅分类；样本 StdFont 新对象，位于停止点之后未达）。
     pub font: NestedEntry10_1,
     /// 版本 >1 的 int16 原样位模式（this-0x4e4；样本 0x8601，位于停止点之后
@@ -740,29 +758,22 @@ fn read_classified_slot<'a>(
     }
 }
 
-/// 读取一个 IColor 槽：空标记/回引分类；RgbColor 新对象经
-/// [`read_rgb_color_body_10_1`] 整体消费；其他类新对象 = 停止点。
+/// 读取一个 IColor 槽：经 [`read_color_slot_10_1`] 分派（五类闭合颜色整体
+/// 解析）；未知颜色类新对象 = 停止点（分派内部已回退游标、登记表不保留该
+/// 键，本函数映射为停止原因并返回 `None`）。
 fn read_color_slot<'a>(
     trial: &mut Reader<'a>,
+    max_bytes: usize,
     trial_table: &mut RefTable10_1,
-    origin: &Reader<'a>,
-    start: usize,
     stop: &mut Option<ElementBodyStop10_1>,
 ) -> io::Result<Option<ColorSlot10_1>> {
     let slot_offset = trial.position();
-    let saved_table = trial_table.clone();
-    match read_object_entry_10_1(trial, trial_table)? {
-        ObjectEntry10_1::Null => Ok(Some(ColorSlot10_1::Null)),
-        ObjectEntry10_1::BackReference { class_id, key } => {
-            Ok(Some(ColorSlot10_1::BackReference { class_id, key }))
-        }
-        ObjectEntry10_1::NewObject { class_id, key } if class_id == RGB_COLOR_CLASS_ID => {
-            let body = read_rgb_color_body_10_1(trial, trial_table, key)?;
-            Ok(Some(ColorSlot10_1::RgbColor { key, body }))
-        }
-        ObjectEntry10_1::NewObject { class_id, key } => {
-            *trial_table = saved_table;
-            *trial = rewind(origin, start, slot_offset);
+    match read_color_slot_10_1(trial, max_bytes, trial_table)? {
+        // 空标记/回引/五类闭合颜色体：分派已提交，原样返回。
+        slot @ (ColorSlot10_1::Null
+        | ColorSlot10_1::BackReference { .. }
+        | ColorSlot10_1::Color { .. }) => Ok(Some(slot)),
+        ColorSlot10_1::Unsupported { class_id, key } => {
             *stop = Some(ElementBodyStop10_1::NestedObjectNotClosed {
                 slot: "IColor 颜色槽",
                 offset: slot_offset,
@@ -771,6 +782,48 @@ fn read_color_slot<'a>(
             });
             Ok(None)
         }
+    }
+}
+
+/// 读取一个 ISymbol 类槽位（TextSymbol 符号槽 #2）：经
+/// [`read_display_symbol_slot_10_1`] 分派（SimpleMarkerSymbol 与本轮闭合的
+/// DisplayCore 同族符号整体解析）；未知符号类新对象 = 停止点；闭合符号体
+/// 内的嵌套停止透传为 [`ElementBodyStop10_1::SymbolSlotNested`]。
+fn read_symbol_slot<'a>(
+    trial: &mut Reader<'a>,
+    max_bytes: usize,
+    trial_table: &mut RefTable10_1,
+    slot: &'static str,
+    stop: &mut Option<ElementBodyStop10_1>,
+) -> io::Result<DisplaySymbolSlot10_1> {
+    let slot_offset = trial.position();
+    match read_display_symbol_slot_10_1(trial, max_bytes, trial_table, MAX_SYMBOL_NESTING_DEPTH)? {
+        DisplaySymbolSlot10_1::Unsupported { class_id, key } => {
+            // 未知符号类：分派内部已回退到槽位起点、登记表不保留该键。
+            *stop = Some(ElementBodyStop10_1::NestedObjectNotClosed {
+                slot,
+                offset: slot_offset,
+                class_id,
+                key,
+            });
+            Ok(DisplaySymbolSlot10_1::Null)
+        }
+        other_closed @ (DisplaySymbolSlot10_1::SimpleMarkerSymbol(_)
+        | DisplaySymbolSlot10_1::SimpleLineSymbol(_)
+        | DisplaySymbolSlot10_1::SimpleFillSymbol(_)
+        | DisplaySymbolSlot10_1::MarkerLineSymbol(_)
+        | DisplaySymbolSlot10_1::CartographicLineSymbol(_)
+        | DisplaySymbolSlot10_1::HashLineSymbol(_)) => {
+            // 闭合符号体的嵌套停止透传（游标停在其停止点，已消费字段保持）。
+            if let Some(inner) = slot_stop_10_1(&other_closed, DisplaySlotKind10_1::Symbol) {
+                *stop = Some(ElementBodyStop10_1::SymbolSlotNested {
+                    slot,
+                    reason: inner,
+                });
+            }
+            Ok(other_closed)
+        }
+        other => Ok(other),
     }
 }
 
@@ -805,10 +858,10 @@ pub fn read_text_symbol_body_10_1(
 
     let mut stop = None;
 
-    // 2. 颜色槽 #1。
+    // 2. 颜色槽 #1（五类闭合颜色经对象层颜色槽位分派）。
     let mut color1 = ColorSlot10_1::Null;
     if stop.is_none() {
-        match read_color_slot(&mut trial, &mut trial_table, &origin, start, &mut stop)? {
+        match read_color_slot(&mut trial, max_bytes, &mut trial_table, &mut stop)? {
             Some(slot) => color1 = slot,
             None => {}
         }
@@ -830,7 +883,7 @@ pub fn read_text_symbol_body_10_1(
     let mut raw_path_clsid = [0_u8; 16];
     let mut text_path = NestedEntry10_1::Null;
     let mut symbol1 = NestedEntry10_1::Null;
-    let mut symbol2 = NestedEntry10_1::Null;
+    let mut symbol2 = DisplaySymbolSlot10_1::Null;
     let mut font = NestedEntry10_1::Null;
     let mut tail_short_1 = None;
     let mut tail_path_clsid = None;
@@ -853,8 +906,8 @@ pub fn read_text_symbol_body_10_1(
         for slot in &mut ints_2 {
             *slot = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
         }
-        // 7. 颜色槽 #2。
-        match read_color_slot(&mut trial, &mut trial_table, &origin, start, &mut stop)? {
+        // 7. 颜色槽 #2（同一颜色槽位分派）。
+        match read_color_slot(&mut trial, max_bytes, &mut trial_table, &mut stop)? {
             Some(slot) => color2 = slot,
             None => {}
         }
@@ -914,18 +967,16 @@ pub fn read_text_symbol_body_10_1(
         double_5 = trial.read_f64_le()?;
         int_4 = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
         double_6 = trial.read_f64_le()?;
-        // 14. ISymbol 符号槽 #2（仅分类；样本 {7914E603} 新对象 = 停止点）。
-        match read_classified_slot(
+        // 14. ISymbol 符号槽 #2：经对象层符号槽位分派（接线；样本
+        //     {7914E603} = SimpleFillSymbol，体已闭合并整体消费；未知符号类
+        //     维持停止回退语义）。
+        symbol2 = read_symbol_slot(
             &mut trial,
+            max_bytes,
             &mut trial_table,
-            &origin,
-            start,
             "ISymbol 符号槽 #2",
             &mut stop,
-        )? {
-            Some(entry) => symbol2 = entry,
-            None => {}
-        }
+        )?;
     }
 
     // 15/16. IFontDisp 槽与版本门尾段（#2 停止时结构性未达）。
@@ -1059,6 +1110,16 @@ pub fn read_text_element_body_10_1(
                         return Err(invalid(format!("TextSymbol 符号体读取失败：{error}")));
                     }
                 };
+                // 符号体内的嵌套停止上抛为 TextElement 的停止原因（游标已停
+                // 在其内层停止点）。原实现未透传：样本恰在符号槽 #2 的 20 字
+                // 节对象头停止，外层重读同一头恰好对位；接线轮闭合符号 #2 体
+                // 后该头不再停留，必须传播否则外层会在符号体剩余字节上错位
+                // 解析。
+                if stop.is_none() {
+                    if let Some(reason) = body.stop.clone() {
+                        stop = Some(reason);
+                    }
+                }
                 symbol = Some(body);
             }
             ObjectEntry10_1::NewObject { class_id, key } => {

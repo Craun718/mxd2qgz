@@ -1,3 +1,4 @@
+use mxd2qgz::objects::element_body::TEXT_ELEMENT_CLASS_ID;
 use mxd2qgz::objects::element_collection::{
     ELEMENT_COLLECTION_CLASS_ID, ELEMENT_REQUEST_INTERFACE_ID, ElementCollectionBody10_1,
     ElementCollectionStop10_1, ElementEntry10_1, read_element_collection_10_1,
@@ -18,6 +19,18 @@ const SAMPLE_TEXT_ELEMENT_CLASS_ID: [u8; 16] = [
 ];
 /// 合成元素条目的类标识（区别于真实 TextElement，用于普通停止分支）。
 const SYNTHETIC_ELEMENT_CLASS_ID: [u8; 16] = [0xa5; 16];
+
+/// AfCore String::Write 布局：u32 字节长度前缀（含终止零）+ UTF-16LE。
+fn encoded(text: &str) -> Vec<u8> {
+    let payload: Vec<_> = text
+        .encode_utf16()
+        .chain([0])
+        .flat_map(u16::to_le_bytes)
+        .collect();
+    let mut bytes = (payload.len() as u32).to_le_bytes().to_vec();
+    bytes.extend(payload);
+    bytes
+}
 
 /// 追加对象条目头（16 字节类标识 + 4 字节键；回引与新对象同构）。
 fn push_entry_header(bytes: &mut Vec<u8>, class_id: &[u8; 16], key: u32) {
@@ -135,16 +148,34 @@ fn reads_version_four_interleaved_null_and_back_reference_elements() {
     assert!(table.contains(210));
 }
 
+/// 最小完整 TextElement 体（版本 8）：EP 前缀（版本 6，VT_EMPTY）+ 空文本
+/// + 布尔 int32 + 符号槽/几何槽空标记 + 版本 >2/>3 的双 int32 -1。
+fn minimal_text_element_body() -> Vec<u8> {
+    let mut bytes = 8_u16.to_le_bytes().to_vec();
+    bytes.extend(6_u16.to_le_bytes()); // EP 版本
+    bytes.extend(encoded(""));
+    bytes.extend(encoded(""));
+    bytes.extend([0, 0]); // VT_EMPTY
+    bytes.extend(0xffff_u16.to_le_bytes());
+    bytes.extend(5393_f64.to_le_bytes());
+    bytes.extend(6_i32.to_le_bytes());
+    bytes.extend(encoded("")); // 文本
+    bytes.extend(0_i32.to_le_bytes()); // 布尔
+    bytes.extend([0_u8; 16]); // ITextSymbol 槽：空标记
+    bytes.extend([0_u8; 16]); // IGeometry 槽：空标记
+    bytes.extend((-1_i32).to_le_bytes());
+    bytes.extend((-1_i32).to_le_bytes());
+    bytes
+}
+
 #[test]
-fn stops_at_new_element_object_and_rolls_back_slot_registration() {
-    // 新对象元素（样本形态：首元素即 TextElement 新对象，@/Maps:0x18537 键
-    // 1612）：元素体布局未闭合且无外部长度，读取器在元素对象头起点停止，
-    // 该键不进入登记表；此前元素的消费与登记保持提交。第二个用例验证「停
-    // 止点之前的回引元素」仍按回引用（登记未被误回滚）。
-    for (class_id, key) in [
-        (&SAMPLE_TEXT_ELEMENT_CLASS_ID, 1612_u32),
-        (&SYNTHETIC_ELEMENT_CLASS_ID, 3001),
-    ] {
+fn stops_at_unknown_element_and_parses_closed_text_element() {
+    // 未知元素类的新对象（接线前样本形态：首元素即 TextElement 新对象，
+    // @/Maps:0x18537 键 1612——接线轮起该真实类已闭合并整体解析，见下半用
+    // 例）：元素体布局未闭合且无外部长度，读取器在元素对象头起点停止，该
+    // 键不进入登记表；此前元素的消费与登记保持提交。闭合的 TextElement 新
+    // 对象解析其体并继续循环（后续回引元素照常消费）。
+    for (class_id, key) in [(&SYNTHETIC_ELEMENT_CLASS_ID, 3001)] {
         let mut table = RefTable10_1::new();
         table.register(210);
         let mut bytes = prefix(4, 3);
@@ -193,6 +224,132 @@ fn stops_at_new_element_object_and_rolls_back_slot_registration() {
         assert_eq!(again.stop, parsed.stop);
         assert_eq!(again.body, parsed.body);
     }
+
+    // 闭合元素类（样本真实形态 TextElement）：体整体解析后循环继续。
+    let mut table = RefTable10_1::new();
+    table.register(210);
+    let mut bytes = prefix(4, 2);
+    push_entry_header(&mut bytes, &TEXT_ELEMENT_CLASS_ID, 1612); // 元素 0：TextElement 新对象
+    bytes.extend(minimal_text_element_body());
+    push_i32(&mut bytes, 1);
+    push_i32(&mut bytes, 2);
+    push_i32(&mut bytes, 3);
+    push_entry_header(&mut bytes, &SAMPLE_TEXT_ELEMENT_CLASS_ID, 210); // 元素 1：回引
+    push_i32(&mut bytes, 4);
+    push_i32(&mut bytes, 5);
+    push_i32(&mut bytes, -6);
+    let mut reader = Reader::new(&bytes);
+    let parsed = read_element_collection_10_1(&mut reader, usize::MAX, &mut table).unwrap();
+    assert_eq!(parsed.count, 2);
+    assert_eq!(parsed.stop, None, "闭合元素体解析后循环完成");
+    let ElementCollectionBody10_1::Interleaved { slots } = &parsed.body else {
+        panic!("版本 4 应为交错布局");
+    };
+    assert_eq!(slots.len(), 2);
+    let mxd2qgz::objects::element_collection::ElementEntry10_1::TextElement(te) = &slots[0].entry
+    else {
+        panic!("元素 0 应为 TextElement 体：{:?}", slots[0].entry);
+    };
+    assert!(te.stop.is_none(), "TextElement 体完整消费");
+    assert_eq!(slots[0].values, [1, 2, 3]);
+    assert!(matches!(
+        slots[1].entry,
+        mxd2qgz::objects::element_collection::ElementEntry10_1::BackReference { key: 210, .. }
+    ));
+    assert_eq!(slots[1].values, [4, 5, -6]);
+    assert_eq!(reader.remaining(), 0);
+    // 元素对象键与其体内嵌套对象的键（EP 的 CustomProperty 为 VT_EMPTY，无
+    // 嵌套对象键）均登记。
+    assert!(table.contains(1612));
+    assert!(table.contains(210));
+    assert_eq!(table.len(), 2);
+}
+
+#[test]
+fn text_element_body_internal_stop_stops_collection() {
+    // 嵌套停止：闭合元素类的体在其内部槽位停止（此处 TextSymbol 的符号槽
+    // #2 为未知类）→ 集合以 ElementBodyIncomplete 停止，游标停在内层停止
+    // 点，元素键已登记，其后的交错 int32 不可达。
+    let mut bytes = prefix(4, 1);
+    push_entry_header(&mut bytes, &TEXT_ELEMENT_CLASS_ID, 1612);
+    bytes.extend(8_u16.to_le_bytes()); // TE 版本
+    bytes.extend(6_u16.to_le_bytes()); // EP 版本
+    bytes.extend(encoded(""));
+    bytes.extend(encoded(""));
+    bytes.extend([0, 0]); // VT_EMPTY
+    bytes.extend(0xffff_u16.to_le_bytes());
+    bytes.extend(5393_f64.to_le_bytes());
+    bytes.extend(6_i32.to_le_bytes());
+    bytes.extend(encoded("")); // 文本
+    bytes.extend(0_i32.to_le_bytes()); // 布尔
+    // ITextSymbol 槽：TextSymbol 新对象（键 1614），体按字段序推进到符号槽
+    // #2：版本 4 + IColor #1 空标记 + int32 ×3 + byte ×2 + double ×3 +
+    // int32 ×2 + IColor #2 空标记 + 字段 8 标量组 + 原样 GUID + ITextPath/
+    // ISymbol #1 空标记 + 空串 + double/int32/double。
+    bytes.extend(mxd2qgz::objects::element_body::TEXT_SYMBOL_CLASS_ID);
+    bytes.extend(1614_u32.to_le_bytes());
+    bytes.extend(4_u16.to_le_bytes());
+    bytes.extend([0_u8; 16]); // IColor #1
+    bytes.extend((-1_i32).to_le_bytes());
+    bytes.extend(3_i32.to_le_bytes());
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.push(0);
+    bytes.push(0);
+    for value in [0.0_f64; 3] {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes.extend(13_i32.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend([0_u8; 16]); // IColor #2
+    for value in [0.0_f64; 2] {
+        bytes.extend(value.to_le_bytes());
+    }
+    for value in [0_i32; 2] {
+        bytes.extend(value.to_le_bytes());
+    }
+    for value in [0.0_f64; 3] {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes.push(1);
+    bytes.extend(0_f64.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(90_f64.to_le_bytes());
+    bytes.push(1);
+    bytes.extend(mxd2qgz::objects::element_body::TEXT_SYMBOL_CLASS_ID); // 原样 GUID
+    bytes.extend([0_u8; 16]); // ITextPath
+    bytes.extend([0_u8; 16]); // ISymbol #1
+    bytes.extend(encoded("")); // String
+    bytes.extend(8_f64.to_le_bytes());
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(1.5_f64.to_le_bytes());
+    let stop_offset = bytes.len();
+    bytes.extend([0x99_u8; 16]); // ISymbol #2：未知类（TextSymbol 在此停止）
+    bytes.extend(b"unreachable");
+    let mut reader = Reader::new(&bytes);
+    let parsed = read_element_collection_10_1(&mut reader, usize::MAX, &mut RefTable10_1::new())
+        .unwrap_or_else(|error| panic!("元素体内部停止应为成功返回：{error}"));
+    assert_eq!(parsed.count, 1);
+    let ElementCollectionStop10_1::ElementBodyIncomplete {
+        index, key, reason, ..
+    } = parsed.stop.clone().expect("应停止于元素体内部")
+    else {
+        panic!("应为 ElementBodyIncomplete：{:?}", parsed.stop);
+    };
+    assert_eq!(index, 0);
+    assert_eq!(key, 1612);
+    assert!(reason.describe().contains("ISymbol"), "{reason:?}");
+    // 游标停在内层符号槽 #2 头起点（TE 头 20 之后到该处的全部字节已消费）。
+    assert_eq!(reader.position(), stop_offset);
+    assert_eq!(parsed.remaining_bytes, bytes.len() - stop_offset);
+    // 元素对象键已随解析登记（登记先于持久化），TextSymbol 键同样登记；
+    // 未知符号键不保留。
+    let mut table = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let again = read_element_collection_10_1(&mut reader, usize::MAX, &mut table).unwrap();
+    assert_eq!(again.stop, parsed.stop, "同输入重读得到相同停止点");
+    assert!(table.contains(1612), "元素键登记");
+    assert!(table.contains(1614), "TextSymbol 键登记");
+    assert_eq!(table.len(), 2, "未知符号键不保留");
 }
 
 #[test]
@@ -277,7 +434,7 @@ fn legacy_layout_stops_at_new_element_without_consuming_int32_groups() {
     let mut bytes = 3_u16.to_le_bytes().to_vec();
     bytes.extend(2_i32.to_le_bytes());
     let slot_offset = bytes.len();
-    push_entry_header(&mut bytes, &SAMPLE_TEXT_ELEMENT_CLASS_ID, 1612); // 新对象。
+    push_entry_header(&mut bytes, &SYNTHETIC_ELEMENT_CLASS_ID, 1612); // 新对象（合成未闭合类）。
     // 后续字节（不会被消费）。
     push_i32(&mut bytes, 1);
     let mut reader = Reader::new(&bytes);
@@ -287,7 +444,7 @@ fn legacy_layout_stops_at_new_element_without_consuming_int32_groups() {
         parsed.stop,
         Some(ElementCollectionStop10_1::ElementBodyNotClosed {
             index: 0,
-            class_id: SAMPLE_TEXT_ELEMENT_CLASS_ID,
+            class_id: SYNTHETIC_ELEMENT_CLASS_ID,
             key: 1612,
         })
     );
@@ -472,7 +629,7 @@ fn slot_entry_classification_depends_on_table_state() {
     // 同一字节序列在已登记键的表下按回引用（20 字节无体），在空表下按新对
     // 象停止（游标回退到元素对象头起点、键不登记）。
     let mut bytes = prefix(4, 1);
-    push_entry_header(&mut bytes, &SAMPLE_TEXT_ELEMENT_CLASS_ID, 210);
+    push_entry_header(&mut bytes, &SYNTHETIC_ELEMENT_CLASS_ID, 210);
     push_i32(&mut bytes, 5);
     push_i32(&mut bytes, 6);
     push_i32(&mut bytes, 7);

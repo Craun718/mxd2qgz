@@ -7,12 +7,17 @@
 //! 验证，未在目标软件中核对。
 
 use mxd2qgz::layers::feature_layer_tail::{
-    ColorSlot10_1, LEGEND_CLASS_CLASS_ID, LEGEND_GROUP_CLASS_ID, LegendClassEntry10_1,
+    LEGEND_CLASS_CLASS_ID, LEGEND_GROUP_CLASS_ID, LegendClassEntry10_1, LegendClassFormatSlot10_1,
     LegendClassStop10_1, LegendGroupSlot10_1, LegendGroupStop10_1, RGB_COLOR_CLASS_ID,
-    SIMPLE_MARKER_SYMBOL_CLASS_ID, SIMPLE_RENDERER_CLASS_ID, SimpleMarkerSymbolStop10_1,
-    SimpleRendererStop10_1, SymbolSlot10_1, read_legend_class_body_10_1,
-    read_legend_group_body_10_1, read_rgb_color_body_10_1, read_simple_marker_symbol_body_10_1,
+    SIMPLE_MARKER_SYMBOL_CLASS_ID, SIMPLE_RENDERER_CLASS_ID, SimpleRendererStop10_1,
+    SymbolSlot10_1, read_legend_class_body_10_1, read_legend_group_body_10_1,
     read_simple_renderer_body_10_1,
+};
+use mxd2qgz::layers::legend_format::LEGEND_CLASS_FORMAT_CLASS_ID;
+use mxd2qgz::objects::display_color::{ColorBody10_1, ColorSlot10_1, read_rgb_color_body_10_1};
+use mxd2qgz::objects::display_symbol::{
+    SIMPLE_LINE_SYMBOL_CLASS_ID, SimpleMarkerSymbolStop10_1,
+    SymbolStop10_1 as DisplaySymbolStop10_1, read_simple_marker_symbol_body_10_1,
 };
 use mxd2qgz::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use mxd2qgz::stream::reader::Reader;
@@ -288,13 +293,16 @@ fn simple_marker_symbol_reads_full_body_version_two() {
     let bytes = sms_body_v2();
     let mut reader = Reader::new(&bytes);
     let mut table = RefTable10_1::new();
-    let sms = read_simple_marker_symbol_body_10_1(&mut reader, &mut table, 36).unwrap();
+    let sms = read_simple_marker_symbol_body_10_1(&mut reader, 1024, &mut table, 36).unwrap();
     assert_eq!(sms.key, 36);
     assert_eq!(sms.version, 2);
     assert!(
         matches!(
             &sms.color,
-            ColorSlot10_1::RgbColor(body) if body.key == 37 && body.doubles == Some([1.0, 2.0, 3.0])
+            ColorSlot10_1::Color {
+                body: ColorBody10_1::Rgb(body),
+                ..
+            } if body.key == 37 && body.doubles == Some([1.0, 2.0, 3.0])
         ),
         "主色应为 RgbColor 新对象"
     );
@@ -308,7 +316,10 @@ fn simple_marker_symbol_reads_full_body_version_two() {
     assert!(
         matches!(
             &sms.outline_color,
-            Some(ColorSlot10_1::RgbColor(body)) if body.key == 38
+            Some(ColorSlot10_1::Color {
+                body: ColorBody10_1::Rgb(body),
+                ..
+            }) if body.key == 38
         ),
         "轮廓色应为 RgbColor 新对象"
     );
@@ -328,8 +339,8 @@ fn simple_marker_symbol_version_one_omits_rotate_short() {
     bytes[0] = 1; // 版本 1：体更短（少尾 short）
     bytes.truncate(bytes.len() - 2);
     let mut reader = Reader::new(&bytes);
-    let sms =
-        read_simple_marker_symbol_body_10_1(&mut reader, &mut RefTable10_1::new(), 36).unwrap();
+    let sms = read_simple_marker_symbol_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 36)
+        .unwrap();
     assert_eq!(sms.version, 1);
     assert_eq!(sms.rotate_short, None, "版本 ≤1 不读尾 short");
     assert_eq!(sms.stop, None);
@@ -344,7 +355,7 @@ fn simple_marker_symbol_stops_at_unknown_main_color() {
     bytes.extend([0xEE_u8; 8]);
     let mut reader = Reader::new(&bytes);
     let mut table = table_with_keys(&[36]);
-    let sms = read_simple_marker_symbol_body_10_1(&mut reader, &mut table, 36).unwrap();
+    let sms = read_simple_marker_symbol_body_10_1(&mut reader, 1024, &mut table, 36).unwrap();
     assert_eq!(
         sms.stop,
         Some(SimpleMarkerSymbolStop10_1::ColorUnsupported {
@@ -378,8 +389,8 @@ fn simple_marker_symbol_stops_at_unknown_outline_color() {
     bytes[class_start..class_start + 16].copy_from_slice(&LEGEND_CLASS_CLASS_ID);
     bytes[class_start + 16..class_start + 20].copy_from_slice(&44_u32.to_le_bytes());
     let mut reader = Reader::new(&bytes);
-    let sms =
-        read_simple_marker_symbol_body_10_1(&mut reader, &mut RefTable10_1::new(), 36).unwrap();
+    let sms = read_simple_marker_symbol_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 36)
+        .unwrap();
     assert_eq!(
         sms.stop,
         Some(SimpleMarkerSymbolStop10_1::OutlineColorUnsupported {
@@ -402,7 +413,7 @@ fn simple_marker_symbol_truncation_scan_keeps_cursor() {
         let mut reader = Reader::new(&bytes[..cut]);
         let mut table = RefTable10_1::new();
         assert!(
-            read_simple_marker_symbol_body_10_1(&mut reader, &mut table, 36).is_err(),
+            read_simple_marker_symbol_body_10_1(&mut reader, 1024, &mut table, 36).is_err(),
             "截断到 {cut} 字节应失败"
         );
         assert_eq!(reader.position(), 0, "截断失败不得推进游标（cut={cut}）");
@@ -425,7 +436,7 @@ fn legend_class_reads_full_body_and_back_reference_symbol() {
     ));
     assert_eq!(lc.label, "");
     assert_eq!(lc.description, "");
-    assert_eq!(lc.format, ObjectEntry10_1::Null);
+    assert_eq!(lc.format, LegendClassFormatSlot10_1::Null);
     assert_eq!(lc.int32_1c, Some(-1));
     assert_eq!(lc.stop, None);
     assert_eq!(reader.remaining(), 0);
@@ -467,11 +478,11 @@ fn legend_class_stops_at_format_new_object() {
     );
     assert_eq!(
         lc.format,
-        ObjectEntry10_1::NewObject {
+        LegendClassFormatSlot10_1::Unsupported {
             class_id: RGB_COLOR_CLASS_ID,
             key: 45,
         },
-        "条目分类保留，游标与登记表回退"
+        "未知格式类以 Unsupported 分类保留，游标与登记表回退"
     );
     assert_eq!(lc.int32_1c, None, "停止点后的 int32 不可达");
     assert_eq!(reader.position(), 2 + 16 + 6 + 6, "游标回退到格式槽起点");
@@ -1381,4 +1392,200 @@ fn successor_back_references_pass_through_loops() {
     );
     assert_eq!(result.stop, SuccessorStop10_1::FieldInfoLoopCompleted);
     assert_eq!(table.len(), 1, "回引不新增登记");
+}
+
+// ---------------------------------------------------------------------------
+// 接线轮：渲染器/图例类/后继段接入对象层颜色与符号槽位分派的增量测试。
+// ISymbol 槽与 IColor 槽按 `docs/arcmap-10.1-display-tails.md` 的建议接入点
+// 改调 `objects::display_symbol::read_display_symbol_slot_10_1` 与
+// `objects::display_color::read_color_slot_10_1`；ILegendClassFormat 槽按
+// `docs/arcmap-10.1-legend-tails.md` 接 `legend_format` 体读取器。全部为合
+// 成输入契约测试（正常/未知类停止/嵌套停止透传/截断）。
+// ---------------------------------------------------------------------------
+
+/// SimpleLineSymbol 体（版本 1）：颜色槽为 RgbColor 新对象（键 61）+ 标量段。
+fn simple_line_symbol_body_with_rgb() -> Vec<u8> {
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    push_entry_header(&mut bytes, &RGB_COLOR_CLASS_ID, 61);
+    bytes.extend(rgb_color_body(0));
+    bytes.extend(2.5_f64.to_le_bytes()); // 宽度候选
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes
+}
+
+#[test]
+fn simple_renderer_parses_closed_line_symbol_slot() {
+    // 正常路径：ISymbol 槽为本轮闭合的 SimpleLineSymbol 新对象 → 整体解析
+    // （嵌套 RgbColor 键登记），渲染器继续消费 LegendGroup 槽与标量段。
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    push_entry_header(&mut bytes, &SIMPLE_LINE_SYMBOL_CLASS_ID, 60);
+    bytes.extend(simple_line_symbol_body_with_rgb());
+    push_null_marker(&mut bytes); // ILegendGroup 槽
+    push_null_marker(&mut bytes); // ILegendItem 槽
+    bytes.extend(0_i16.to_le_bytes());
+    bytes.extend(string_bytes(""));
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(string_bytes(""));
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let body = read_simple_renderer_body_10_1(&mut reader, usize::MAX, &mut table, 35).unwrap();
+    assert!(matches!(
+        &body.symbol,
+        SymbolSlot10_1::SimpleLineSymbol(line) if line.key == 60 && line.width == Some(2.5)
+    ));
+    assert!(body.legend_group.is_some(), "符号体完整后组槽可达");
+    assert_eq!(body.stop, None);
+    assert_eq!(body.remaining_bytes, 0);
+    assert_eq!(reader.remaining(), 0);
+    assert!(table.contains(60) && table.contains(61), "符号与颜色键登记");
+}
+
+#[test]
+fn simple_renderer_nested_symbol_stop_propagates() {
+    // 嵌套停止：SimpleLineSymbol 体内颜色槽为未知类 → 符号体在其槽位停止 →
+    // 渲染器以 SymbolNested 透传，游标停在内层槽位起点，组槽不可达。
+    let unknown = [0x3d_u8; 16];
+    let mut line = 1_u16.to_le_bytes().to_vec();
+    push_entry_header(&mut line, &unknown, 70);
+    line.extend(2.5_f64.to_le_bytes()); // 停止后不可达
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    push_entry_header(&mut bytes, &SIMPLE_LINE_SYMBOL_CLASS_ID, 60);
+    bytes.extend(&line);
+    bytes.extend(string_bytes("不可达"));
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let body = read_simple_renderer_body_10_1(&mut reader, usize::MAX, &mut table, 35).unwrap();
+    match body.stop {
+        Some(SimpleRendererStop10_1::SymbolNested(DisplaySymbolStop10_1::NestedIncomplete {
+            class_id,
+            key,
+        })) => {
+            // 分派把嵌套体内停止归约为 NestedIncomplete（携带闭合符号自身的
+            // 类标识与键）；未知颜色条目键 70 见嵌套体自身的 stop 字段。
+            assert_eq!(class_id, SIMPLE_LINE_SYMBOL_CLASS_ID);
+            assert_eq!(key, 60);
+        }
+        other => panic!("应为 SymbolNested 透传，得到 {other:?}"),
+    }
+    assert!(matches!(
+        &body.symbol,
+        SymbolSlot10_1::SimpleLineSymbol(line) if line.stop.is_some()
+    ));
+    assert!(body.legend_group.is_none(), "停止点后的槽位不可达");
+    // 游标停在内层颜色槽起点：渲染器版本 2 + 符号头 20 + 线符号版本 2。
+    assert_eq!(reader.position(), 2 + 20 + 2);
+    assert!(table.contains(60), "符号键已登记（对象头已消费）");
+    assert!(!table.contains(70), "未知颜色键不保留");
+}
+
+#[test]
+fn legend_class_parses_legend_class_format_body() {
+    // 正常路径：ILegendClassFormat 槽为 LegendClassFormat 新对象（键 50，版
+    // 本 2 + 四空槽 + double ×2）→ 整体解析，版本 >1 的 int32 可达。
+    let mut bytes = 2_u16.to_le_bytes().to_vec();
+    push_null_marker(&mut bytes); // ISymbol 槽
+    bytes.extend(string_bytes(""));
+    bytes.extend(string_bytes(""));
+    push_entry_header(&mut bytes, &LEGEND_CLASS_FORMAT_CLASS_ID, 50);
+    bytes.extend(2_u16.to_le_bytes()); // LCF 体版本 2
+    for _ in 0..4 {
+        push_null_marker(&mut bytes);
+    }
+    bytes.extend(1.5_f64.to_le_bytes());
+    bytes.extend((-2.5_f64).to_le_bytes());
+    bytes.extend((-7_i32).to_le_bytes()); // 版本 >1 的 int32
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let lc = read_legend_class_body_10_1(&mut reader, usize::MAX, &mut table, 40).unwrap();
+    let LegendClassFormatSlot10_1::Format(format) = &lc.format else {
+        panic!("格式槽应为 LegendClassFormat 体：{:?}", lc.format);
+    };
+    assert_eq!(format.key, 50);
+    assert_eq!(format.version, 2);
+    assert_eq!(format.patch_doubles, Some([1.5, -2.5]));
+    assert_eq!(lc.int32_1c, Some(-7), "格式体完整消费后 int32 可达");
+    assert_eq!(lc.stop, None);
+    assert_eq!(reader.remaining(), 0);
+    assert!(table.contains(50), "格式对象键登记");
+}
+
+#[test]
+fn legend_class_format_body_stop_propagates() {
+    // 嵌套停止：LegendClassFormat 体首个对象槽为未知类新对象 → 格式体在其
+    // 槽位停止 → LegendClass 以 FormatBody 透传，游标停在内层槽位起点。
+    let unknown = [0x41_u8; 16];
+    let mut bytes = 2_u16.to_le_bytes().to_vec();
+    push_null_marker(&mut bytes);
+    bytes.extend(string_bytes(""));
+    bytes.extend(string_bytes(""));
+    let format_offset = bytes.len();
+    push_entry_header(&mut bytes, &LEGEND_CLASS_FORMAT_CLASS_ID, 50);
+    bytes.extend(2_u16.to_le_bytes()); // LCF 体版本 2
+    push_entry_header(&mut bytes, &unknown, 71); // 格式体槽 0：未知类
+    bytes.extend(string_bytes("不可达"));
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let lc = read_legend_class_body_10_1(&mut reader, usize::MAX, &mut table, 40).unwrap();
+    match lc.stop {
+        Some(LegendClassStop10_1::FormatBody(
+            mxd2qgz::layers::legend_format::LegendClassFormatStop10_1::SlotUnsupported {
+                index,
+                class_id,
+                key,
+            },
+        )) => {
+            assert_eq!(index, 0);
+            assert_eq!(class_id, unknown);
+            assert_eq!(key, 71);
+        }
+        other => panic!("应为 FormatBody 透传，得到 {other:?}"),
+    }
+    assert!(matches!(
+        &lc.format,
+        LegendClassFormatSlot10_1::Format(body) if body.stop.is_some()
+    ));
+    assert_eq!(lc.int32_1c, None, "嵌套停止后 int32 不可达");
+    // 游标停在内层槽位起点：LCF 头 20 + LCF 版本 2 之后。
+    assert_eq!(reader.position(), format_offset + 20 + 2);
+    assert!(table.contains(50), "格式对象键已登记");
+    assert!(!table.contains(71), "嵌套未知键不保留");
+}
+
+#[test]
+fn successor_parses_cmyk_color_slot() {
+    // 正常路径：后继段 IColor 槽为 CmykColor 新对象（键 65，版本 4 无串分
+    // 支）→ 整体解析，字符串段可达。
+    let mut bytes = string_bytes("BSM"); // +0x154
+    bytes.extend(0_f64.to_le_bytes()); // +0x158
+    bytes.extend(0_f64.to_le_bytes()); // +0x160
+    bytes.extend(0_i16.to_le_bytes()); // +0x168
+    bytes.extend(0_i32.to_le_bytes()); // IHyperlink 计数 0
+    // IColor 槽：CmykColor 新对象（键 65，版本 4 无串分支）。
+    bytes.extend(mxd2qgz::objects::display_color::CMYK_COLOR_CLASS_ID);
+    bytes.extend(65_u32.to_le_bytes());
+    bytes.extend(4_u16.to_le_bytes());
+    bytes.push(0);
+    bytes.push(0);
+    bytes.extend(0x0302_0100_u32.to_le_bytes());
+    bytes.push(0x21);
+    bytes.push(0x43);
+    bytes.extend(string_bytes("")); // +0x1a8
+    bytes.extend(string_bytes("")); // +0x184
+    bytes.extend(0_i32.to_le_bytes()); // +0x188
+    bytes.extend(0_i32.to_le_bytes()); // FieldInfo 计数 0
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let result = read_feature_layer_successor_10_1(&mut reader, 34, 1024, &mut table).unwrap();
+    assert!(matches!(
+        &result.color,
+        ColorSlot10_1::Color {
+            class_id,
+            body: ColorBody10_1::Cmyk(_)
+        } if *class_id == mxd2qgz::objects::display_color::CMYK_COLOR_CLASS_ID
+    ));
+    assert_eq!(result.stop, SuccessorStop10_1::FieldInfoLoopCompleted);
+    assert!(table.contains(65));
+    assert_eq!(reader.remaining(), 0);
 }

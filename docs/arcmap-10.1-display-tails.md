@@ -197,14 +197,16 @@ GetClassID `0x6eb53c30`。
 
 ## 实现与测试
 
-- `src/display_color.rs`：共享核心读取器 `read_core_color_body_10_1`、
-  `read_cmyk_color_body_10_1`（版本 0..=4 全分支如实覆盖）与五类颜色槽位
-  分派 `read_color_slot_10_1`（RgbColor 委托前轮
-  `feature_layer_tail::read_rgb_color_body_10_1`）。
-- `src/display_symbol.rs`：五类符号体读取器与符号槽位分派
-  `read_display_symbol_slot_10_1`（嵌套深度限额 16 为防栈溢出的读取器自身
-  限额，非原生限制）；ITemplate/ILineDecoration 候选槽新对象（coclass 体
-  未闭合）为停止点并回退到槽位起点。
+- `src/objects/display_color.rs`（接线轮自 src 根级移入）：共享核心读取器
+  `read_core_color_body_10_1`、`read_cmyk_color_body_10_1`（版本 0..=4 全
+  分支如实覆盖）与五类颜色槽位分派 `read_color_slot_10_1`；RgbColor 体读
+  取器 `read_rgb_color_body_10_1` 接线轮自 `feature_layer_tail` 移入本模块
+  （消除 objects→layers 依赖倒置）。
+- `src/objects/display_symbol.rs`（接线轮自 src 根级移入）：五类符号体读
+  取器与符号槽位分派 `read_display_symbol_slot_10_1`（嵌套深度限额 16 为
+  防栈溢出的读取器自身限额，非原生限制）；SimpleMarkerSymbol 体读取器接
+  线轮自 `feature_layer_tail` 移入本模块。ITemplate/ILineDecoration 候选槽
+  新对象（coclass 体未闭合）为停止点并回退到槽位起点。
 - 版本 short 一律按原生有符号比较设上限并拒绝负值位模式（较原生更严，
   与既有读取器一致）；未知字节原样保留（含取补字节的流内位模式）、截断
   与非法长度明确报错、失败游标与登记表不推进（trial 副本整体提交）。
@@ -213,8 +215,32 @@ GetClassID `0x6eb53c30`。
   体、CmykColor 体、颜色槽位、五个符号体、符号槽位），覆盖逐字节截断、
   失败游标不变与重读一致、限额与版本拒绝。`cargo fmt --check` 与
   `cargo test` 全过（27 个测试目标，338 项 + 1 项默认忽略）。
-- **未接入** `parse` 命令、中间模型与任何既有分派链；`feature_layer_tail.rs`
-  本轮未改动。
+- **本轮未接入** `parse` 命令、中间模型与任何既有分派链；`feature_layer_tail.rs`
+  本轮未改动（接线轮状态见下节）。
+
+## 接线轮（2026-11-15）
+
+研究结论无改动；本节只记录接入点落位与目录修正。
+
+- 目录分层修正：两模块自 `src/` 根级移入 `src/objects/`；`read_rgb_color_body_10_1`
+  及 `RGB_COLOR_CLASS_ID` 自 `feature_layer_tail.rs` 移入
+  `src/objects/display_color.rs`，SimpleMarkerSymbol 体读取器及其类标识同
+  步移入 `src/objects/display_symbol.rs`（否则移入 objects 后仍存在
+  objects→layers 依赖倒置）——原「发现的既有问题」归属文件随之变为
+  `src/objects/display_symbol.rs`（该 key 阴影问题已由提交 954794d 修复）。
+  两常量在 `feature_layer_tail` 保留 `pub use` 重导出，调用方与测试同步更
+  新到新路径。
+- 按本记录「建议接入点」接线：`feature_layer_tail` 的 SimpleRenderer 与
+  LegendClass 的 ISymbol 槽改调 `read_display_symbol_slot_10_1`（未知符号
+  类维持停止回退语义，新增 `SymbolNested` 停止变体透传嵌套停止）；SMS 双
+  IColor 槽、后继字段段 IColor 槽改调 `read_color_slot_10_1`（五类闭合颜
+  色整体解析，未知类维持 `ColorUnsupported`/`ColorUnsupported` 停止）；
+  TextSymbol 的 ISymbol #2 槽改调符号分派（样本 {7914E603} = SimpleFillSymbol，
+  体解析后 TextSymbol 推进到 IFontDisp 槽）。SMS 体读取器签名新增
+  `max_bytes` 参数（CmykColor 串分支限额转发）。
+- robustness 集中清单 37 → **48 个入口**（新增 RgbColor 体、SMS 体、
+  TextSymbol 体三个直读入口）。样本解析停止点不变（0xafe，见
+  featurelayer-tail 接线轮）。
 
 ## 建议接入点
 

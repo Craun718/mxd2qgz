@@ -1,15 +1,17 @@
-//! ArcMap 10.1 DisplayCore.dll 简单线条/填充符号族（SimpleLineSymbol/
+//! ArcMap 10.1 DisplayCore.dll 简单符号族（SimpleMarkerSymbol/SimpleLineSymbol/
 //! SimpleFillSymbol/MarkerLineSymbol/CartographicLineSymbol/HashLineSymbol）
-//! 对象体的严格读取子集。
+//! 对象体的严格读取子集与符号槽位分派。
 //!
-//! 证据来源：`docs/arcmap-10.1-display-tails.md`（2026-11-15 本轮研究记录）。
-//! 全部字段序来自 DisplayCore.dll 10.1.0.3035（SHA-256 `9b3e61f9…a926e4d2`，
-//! 复用前轮提取件 temp/agent-fl-tail/）的静态反编译；类身份经 RTTI 类型描述
-//! 符 → COL → 虚表 → GetClassID 立即数逐类确认，读写两侧对称闭合。
+//! 证据来源：`docs/arcmap-10.1-display-tails.md`（2026-11-15 本轮研究记录）与
+//! `docs/arcmap-10.1-featurelayer-tail.md` 第七轮（SimpleMarkerSymbol）。全部
+//! 字段序来自 DisplayCore.dll 10.1.0.3035（SHA-256 `9b3e61f9…a926e4d2`，复用
+//! 前轮提取件 temp/agent-fl-tail/）的静态反编译；类身份经 RTTI 类型描述符 →
+//! COL → 虚表 → GetClassID 立即数逐类确认，读写两侧对称闭合。
 //!
 //! **重要边界：仓库参考样本 `samples/测试底图.mxd` 只含 SimpleMarkerSymbol
-//! 实例（前轮闭合），本模块五类符号无样本字节佐证**；只能用合成输入测试，
-//! 不得声称样本验证。
+//! 实例（第七轮闭合，原实现位于 `feature_layer_tail`，接线轮移入本模块），
+//! 本模块其余五类符号无样本字节佐证**；只能用合成输入测试，不得声称样本
+//! 验证。
 //!
 //! ## 字段序（Load 实体 / Save 实体逐字段对称）
 //!
@@ -73,18 +75,18 @@
 //! Template `{41093A71}`、LineDecoration `{533D88F5}`——**这两个 coclass
 //! 的对象体未闭合**，槽内新对象一律为停止点（空标记与回引可消费）。
 //!
-//! ## 槽位分派（建议接入点）
+//! ## 槽位分派（对象层共享入口）
 //!
 //! [`read_display_symbol_slot_10_1`] 把一个对象条目按流内类标识分派到
-//! SimpleMarkerSymbol（前轮 `feature_layer_tail`）与本模块五类符号。这是
-//! `feature_layer_tail` 中 SimpleRenderer 的 ISymbol 槽、LegendClass 的
-//! ISymbol 槽（`SymbolUnsupported`/`LegendClassStop10_1::SymbolUnsupported`
-//! 停止点）的替换接入点——该文件本轮不动，由其所有者决定是否接线。
-//! 符号可嵌套符号（如 SimpleFillSymbol 轮廓槽内常见线符号），分派带深度
-//! 参数：超过 [`MAX_SYMBOL_NESTING_DEPTH`] 报 `ErrorKind::InvalidInput`
-//! （防栈溢出的读取器自身限额，非原生限制；原生对嵌套深度无静态检查）。
-//! 颜色槽经 [`crate::display_color::read_color_slot_10_1`] 分派（五类颜色
-//! 全部闭合）。
+//! SimpleMarkerSymbol（第七轮）与本模块五类符号。这是各宿主（SimpleRenderer
+//! 的 ISymbol 槽、LegendClass 的 ISymbol 槽、SimpleFillSymbol 轮廓槽、
+//! TextSymbol 的 ISymbol #2 槽等）共用的符号槽分派入口：未知符号类在分派
+//! 内部回退到槽位起点并返回 [`DisplaySymbolSlot10_1::Unsupported`]，调用者
+//! 据此维持停止语义。符号可嵌套符号（如 SimpleFillSymbol 轮廓槽内常见线符
+//! 号），分派带深度参数：超过 [`MAX_SYMBOL_NESTING_DEPTH`] 报
+//! `ErrorKind::InvalidInput`（防栈溢出的读取器自身限额，非原生限制；原生对
+//! 嵌套深度无静态检查）。颜色槽经 [`crate::objects::display_color::
+//! read_color_slot_10_1`] 分派（五类颜色全部闭合）。
 //!
 //! 调用约定：调用者先用 [`crate::storage::object_stream::read_header_10_1`]
 //! 读取对象头并比对类常量，从对象头之后的位置调用各 `read_*_body_10_1`；
@@ -100,11 +102,7 @@
 //! 的副作用仅确认不读流；ITemplate/ILineDecoration 槽的 coclass 体未闭合；
 //! 全部结论为静态观察，未经目标软件运行验证，样本无字节佐证。
 
-use crate::display_color::{ColorSlot10_1, read_color_slot_10_1};
-use crate::layers::feature_layer_tail::{
-    SIMPLE_MARKER_SYMBOL_CLASS_ID, SimpleMarkerSymbolPrefix10_1,
-    read_simple_marker_symbol_body_10_1,
-};
+use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
@@ -112,11 +110,25 @@ use std::io::{self, ErrorKind};
 /// 线条/填充符号实体版本上限：`1 < ver` 有符号拒绝（四类共用；样本无实例）。
 const MAX_SYMBOL_VERSION: i16 = 1;
 
-/// MarkerLineSymbol 实体版本上限：`2 < ver` 有符号拒绝；Save 恒写 2。
-const MAX_MARKER_LINE_VERSION: i16 = 2;
+/// SimpleMarkerSymbol::Load 接受的最大版本：`2 < (short)ver` 有符号拒绝；
+/// 样本 2。证据：DisplayCore.dll 实体 Load `0x6ebbefa0`（第七轮记录）。
+const MAX_SIMPLE_MARKER_VERSION: i16 = 2;
 
 /// 符号槽位分派的最大嵌套深度（防栈溢出的读取器自身限额，非原生限制）。
 pub const MAX_SYMBOL_NESTING_DEPTH: usize = 16;
+
+/// SimpleMarkerSymbol 类标识（CLSID）的 16 字节内存序。
+///
+/// GUID 字符串形式 `{7914E5FE-C892-11D0-8BB6-080009EE4E41}`。证据：
+/// esri.clsid.ecfg 声明（模块 DisplayCore.dll）；DisplayCore.dll GetClassID
+/// `0x6ebbf310` 写出；样本 `/Maps:0x403`（SimpleRenderer 体内 ISymbol 槽，
+/// 键 36）与 LegendClass 体内的回引头逐字节相同（辅助观察）。
+pub const SIMPLE_MARKER_SYMBOL_CLASS_ID: [u8; 16] = [
+    0xfe, 0xe5, 0x14, 0x79, 0x92, 0xc8, 0xd0, 0x11, 0x8b, 0xb6, 0x08, 0x00, 0x09, 0xee, 0x4e, 0x41,
+];
+
+/// MarkerLineSymbol 实体版本上限：`2 < ver` 有符号拒绝；Save 恒写 2。
+const MAX_MARKER_LINE_VERSION: i16 = 2;
 
 /// SimpleLineSymbol 类标识（CLSID）的 16 字节内存序。
 ///
@@ -241,8 +253,9 @@ pub enum SymbolStop10_1 {
 }
 
 /// 归约符号类槽位的停止：`Unsupported` → 本体槽位停止；嵌套体含 `stop` →
-/// 嵌套未完整停止；其余无停止。
-fn symbol_slot_stop(
+/// 嵌套未完整停止；其余无停止。`kind` 为调用者槽位的类别（进入停止原因）。
+/// 公开给宿主（渲染器/图例类/元素体）在分派后透传停止原因。
+pub fn slot_stop_10_1(
     slot: &DisplaySymbolSlot10_1,
     kind: DisplaySlotKind10_1,
 ) -> Option<SymbolStop10_1> {
@@ -302,6 +315,149 @@ fn color_slot_stop(color: &ColorSlot10_1) -> Option<SymbolStop10_1> {
         }),
         _ => None,
     }
+}
+
+/// SimpleMarkerSymbol 体的停止原因。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimpleMarkerSymbolStop10_1 {
+    /// 首个 IColor 槽的新对象类标识不在五类闭合颜色集合（同族未知颜色类）：
+    /// 游标回退到该槽位起点，其后的标量字段不可达。
+    ColorUnsupported { class_id: [u8; 16], key: u32 },
+    /// 第二个 IColor 槽（轮廓色）同类停止；首个颜色与标量段已消费。
+    OutlineColorUnsupported { class_id: [u8; 16], key: u32 },
+}
+
+/// SimpleMarkerSymbol（DisplayCore.dll `0x6ebbefa0`，第七轮闭合）体的已确认
+/// 字段。
+#[derive(Debug, Clone, PartialEq)]
+pub struct SimpleMarkerSymbolPrefix10_1 {
+    /// 对象头键（样本 36）。
+    pub key: u32,
+    /// 体首 short 版本（样本 2）；有符号比较 >2 拒绝。
+    pub version: u16,
+    /// IColor 槽（主色）：空标记 / 回引 / 五类闭合颜色体 / 不支持停止。
+    pub color: ColorSlot10_1,
+    /// double → obj-0x6c（样本 6.0；尺寸候选）。`None` = 首色槽停止。
+    pub size: Option<f64>,
+    /// int32 → obj-0x70（样本 0），语义未定。
+    pub int32_a: Option<i32>,
+    /// int32 → obj-0xcc（样本 13；marker 样式候选），语义未定。
+    pub int32_b: Option<i32>,
+    /// int32 → obj-0xc4（样本 0），语义未定。
+    pub int32_c: Option<i32>,
+    /// double ×3 → obj-100/-0x5c/-0x54（样本 0/0/0；X/Y 偏移候选）。
+    pub doubles: Option<[f64; 3]>,
+    /// 1 字节 → obj-0x44（样本 1），语义未定。
+    pub byte_flag: Option<u8>,
+    /// double → obj-0x4c（样本 1.0；比例候选）。
+    pub double_ratio: Option<f64>,
+    /// 第二个 IColor 槽（轮廓色）。`None` = 在其之前已停止。
+    pub outline_color: Option<ColorSlot10_1>,
+    /// 版本 >1 的 short → obj-0xb4（样本 0xFFFF）。`None` = 版本 ≤1 或前置
+    /// 停止未读取。
+    pub rotate_short: Option<i16>,
+    /// 停止原因；`None` = 体已完整消费。
+    pub stop: Option<SimpleMarkerSymbolStop10_1>,
+}
+
+/// 从对象头之后的位置读取 10.1 SimpleMarkerSymbol 对象体，失败时不推进游
+/// 标、不修改登记表。
+///
+/// 起点约定：调用者已读取对象头、比对 [`SIMPLE_MARKER_SYMBOL_CLASS_ID`] 并
+/// 取得键 `key`。两个 IColor 槽经 [`read_color_slot_10_1`] 分派（五类闭合
+/// 颜色全部解析；接线轮起对象层共享，原实现位于 `feature_layer_tail`），
+/// 新对象类标识不在闭合集合时是成功停止（停止原因携带类标识与键，游标回
+/// 退到该槽位起点）；截断与版本超限为错误。
+pub fn read_simple_marker_symbol_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<SimpleMarkerSymbolPrefix10_1> {
+    let mut trial = reader.clone();
+    let entry_offset = trial.position();
+    let mut staged_table = table.clone();
+
+    // 1. 版本 short（有符号 >2 拒绝）。
+    let version = read_version_short(
+        &mut trial,
+        MAX_SIMPLE_MARKER_VERSION,
+        "SimpleMarkerSymbol",
+        entry_offset,
+    )?;
+
+    // 2. 首个 IColor 槽（主色）：五类闭合颜色经分派整体解析；未知颜色类
+    //    由分派内部回退到槽位起点、登记表不保留该键，此处映射为本体停止。
+    let (color, stop) = match read_color_slot_10_1(&mut trial, max_bytes, &mut staged_table)? {
+        ColorSlot10_1::Unsupported { class_id, key } => (
+            ColorSlot10_1::Null,
+            Some(SimpleMarkerSymbolStop10_1::ColorUnsupported { class_id, key }),
+        ),
+        other => (other, None),
+    };
+
+    // 3-8. 标量段：double、int32 ×3、double ×3、byte、double（前置停止时不
+    //       读取）。
+    let mut size = None;
+    let mut int32_a = None;
+    let mut int32_b = None;
+    let mut int32_c = None;
+    let mut doubles = None;
+    let mut byte_flag = None;
+    let mut double_ratio = None;
+    let mut outline_color = None;
+    let mut rotate_short = None;
+    let mut stop = stop;
+    if stop.is_none() {
+        size = Some(trial.read_f64_le()?);
+        int32_a = Some(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
+        int32_b = Some(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
+        int32_c = Some(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
+        let mut values = [0_f64; 3];
+        for slot in values.iter_mut() {
+            *slot = trial.read_f64_le()?;
+        }
+        doubles = Some(values);
+        byte_flag = Some(trial.read_bytes(1)?[0]);
+        double_ratio = Some(trial.read_f64_le()?);
+
+        // 9. 第二个 IColor 槽（轮廓色）：同一分派；停止时首个颜色与标量段
+        //    已消费并保留，游标停在该槽位起点。
+        outline_color = Some(
+            match read_color_slot_10_1(&mut trial, max_bytes, &mut staged_table)? {
+                ColorSlot10_1::Unsupported { class_id, key } => {
+                    stop =
+                        Some(SimpleMarkerSymbolStop10_1::OutlineColorUnsupported { class_id, key });
+                    ColorSlot10_1::Null
+                }
+                other => other,
+            },
+        );
+
+        // 10. 版本 >1 的 short（前置停止时不读取）。
+        if stop.is_none() && (version as i16) > 1 {
+            rotate_short = Some(trial.read_u16_le()? as i16);
+        }
+    }
+
+    let result = SimpleMarkerSymbolPrefix10_1 {
+        key,
+        version,
+        color,
+        size,
+        int32_a,
+        int32_b,
+        int32_c,
+        doubles,
+        byte_flag,
+        double_ratio,
+        outline_color,
+        rotate_short,
+        stop,
+    };
+    *table = staged_table;
+    *reader = trial;
+    Ok(result)
 }
 
 /// SimpleLineSymbol（DisplayCore.dll `0x6ebbced0`）体的已确认字段。
@@ -425,7 +581,7 @@ pub fn read_simple_fill_symbol_body_10_1(
     )?;
     // ② ISymbol 槽（轮廓线符号候选）。
     let outline = read_display_symbol_slot_10_1(&mut trial, max_bytes, &mut staged, depth - 1)?;
-    let mut stop = symbol_slot_stop(&outline, DisplaySlotKind10_1::Symbol);
+    let mut stop = slot_stop_10_1(&outline, DisplaySlotKind10_1::Symbol);
     // ③ IColor 槽 + ④-⑦ 标量段（前置停止时不读取）。
     let mut color = None;
     let mut style = None;
@@ -522,7 +678,7 @@ pub fn read_marker_line_symbol_body_10_1(
     // ④ IMarkerSymbol 槽（⑤ `FUN_6eb68fc0` 无流内字节，跳过）。
     let marker_symbol =
         read_display_symbol_slot_10_1(&mut trial, max_bytes, &mut staged, depth - 1)?;
-    let mut stop = symbol_slot_stop(&marker_symbol, DisplaySlotKind10_1::MarkerSymbol);
+    let mut stop = slot_stop_10_1(&marker_symbol, DisplaySlotKind10_1::MarkerSymbol);
     // ⑥⑦ ITemplate / ILineDecoration 候选槽（coclass 体未闭合）。
     let mut template = None;
     let mut line_decoration = None;
@@ -794,7 +950,7 @@ pub fn read_hash_line_symbol_body_10_1(
         &mut staged,
         depth - 1,
     )?);
-    let mut stop = symbol_slot_stop(symbol.as_ref().unwrap(), DisplaySlotKind10_1::Symbol);
+    let mut stop = slot_stop_10_1(symbol.as_ref().unwrap(), DisplaySlotKind10_1::Symbol);
     // ⑨ IColor 槽（⑩ `FUN_6eb406f0` 无流内字节，跳过）。
     let mut color = None;
     if stop.is_none() {
@@ -924,7 +1080,7 @@ pub fn read_display_symbol_slot_10_1(
             }
             let slot = if class_id == SIMPLE_MARKER_SYMBOL_CLASS_ID {
                 DisplaySymbolSlot10_1::SimpleMarkerSymbol(Box::new(
-                    read_simple_marker_symbol_body_10_1(&mut trial, &mut staged, key)?,
+                    read_simple_marker_symbol_body_10_1(&mut trial, max_bytes, &mut staged, key)?,
                 ))
             } else if class_id == SIMPLE_LINE_SYMBOL_CLASS_ID {
                 DisplaySymbolSlot10_1::SimpleLineSymbol(Box::new(

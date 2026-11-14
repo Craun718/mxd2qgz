@@ -374,7 +374,7 @@ fn legend_reads_full_version_five_body() {
     assert_eq!(legend.items.len(), 2);
     assert_eq!(
         legend.items[0].entry,
-        mxd2qgz::storage::object_refs::ObjectEntry10_1::Null
+        mxd2qgz::maps::map_surround::LegendItemSlot10_1::Null
     );
     assert_eq!(legend.tail_short_1, Some(0x0708));
     assert_eq!(legend.tail_short_2, Some(0x090A));
@@ -596,4 +596,124 @@ fn class_id_constants_match_documented_clsids() {
             0x17, 0x20
         ]
     );
+}
+
+// ---------------------------------------------------------------------------
+// 接线轮：Legend 条目循环接入 HorizontalLegendItem 体读取器
+// （`docs/arcmap-10.1-legend-tails.md` 建议接入点）。样本无 Legend 实例，
+// 全部为合成输入契约测试。
+// ---------------------------------------------------------------------------
+
+/// HorizontalLegendItem 最小完整体（条目版本 1 + int32 + 基类版本 1：ILayer
+/// 空标记 + short ×4 + ITextSymbol 空标记 + int32 + short + ITextSymbol 空标
+/// 记 + ILegendClassFormat 空标记 + short ×2；基类版本 1 无 ≥2 组与
+/// INumberFormat 槽）。
+fn horizontal_legend_item_body() -> Vec<u8> {
+    let mut bytes = 1_u16.to_le_bytes().to_vec(); // 条目版本
+    bytes.extend(0x0102_0304_u32.to_le_bytes()); // int32 → 对象 -8
+    bytes.extend(1_u16.to_le_bytes()); // 基类版本 1
+    bytes.extend([0_u8; 16]); // ILayer：空标记
+    for value in [1_u16, 2, 3, 4] {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes.extend([0_u8; 16]); // ITextSymbol
+    bytes.extend(7_i32.to_le_bytes());
+    bytes.extend(8_u16.to_le_bytes());
+    bytes.extend([0_u8; 16]); // ITextSymbol
+    bytes.extend([0_u8; 16]); // ILegendClassFormat：空标记
+    bytes.extend(9_u16.to_le_bytes());
+    bytes.extend(10_u16.to_le_bytes());
+    bytes
+}
+
+#[test]
+fn legend_parses_horizontal_legend_item_entry() {
+    // 正常路径：ILegendItem 条目为 HorizontalLegendItem 新对象 → 体整体解析
+    // （Renderers + LayerLib BaseLegendItem 字段序），循环继续到尾段。
+    let mut bytes = 5_u16.to_le_bytes().to_vec();
+    bytes.extend(common_prefix_bytes(3, "图例", Some(9)));
+    push_null_marker(&mut bytes); // ILegendFormat：空标记
+    bytes.extend(string_bytes("标题"));
+    for value in [0_u16; 3] {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes.extend(0xFFFF_u16.to_le_bytes());
+    bytes.extend(1_i32.to_le_bytes());
+    let item_offset = bytes.len();
+    bytes.extend(mxd2qgz::layers::legend_item::HORIZONTAL_LEGEND_ITEM_CLASS_ID);
+    bytes.extend(20_u32.to_le_bytes());
+    bytes.extend(horizontal_legend_item_body());
+    // 版本 ≥3/≥4 尾 short 与 ≥5 尾组（Legend 版本 5）。
+    bytes.extend(0x0708_u16.to_le_bytes());
+    bytes.extend(0x090A_u16.to_le_bytes());
+    for value in [0x0B0C_u16, 0x0D0E, 0x0F10] {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes.extend(4.5_f64.to_le_bytes());
+
+    let mut reader = Reader::new(&bytes);
+    let mut table = table_with_keys(&[9]);
+    let legend = read_legend_prefix_10_1(&mut reader, usize::MAX, &mut table).unwrap();
+    assert_eq!(legend.stop, LegendStop10_1::Completed);
+    assert_eq!(legend.item_count, 1);
+    assert_eq!(legend.items.len(), 1);
+    assert_eq!(legend.items[0].offset, item_offset);
+    let mxd2qgz::maps::map_surround::LegendItemSlot10_1::HorizontalLegendItem(item) =
+        &legend.items[0].entry
+    else {
+        panic!(
+            "条目应为 HorizontalLegendItem 体：{:?}",
+            legend.items[0].entry
+        );
+    };
+    assert_eq!(item.key, 20);
+    assert_eq!(item.version, 1);
+    assert_eq!(item.base_version, 1);
+    assert!(item.stop.is_none());
+    assert_eq!(legend.tail_short_1, Some(0x0708), "条目体完整后尾段可达");
+    assert_eq!(legend.tail_group.map(|group| group.value), Some(4.5));
+    assert!(table.contains(20), "条目键登记");
+    assert_eq!(reader.position(), bytes.len());
+}
+
+#[test]
+fn legend_horizontal_legend_item_internal_stop_propagates() {
+    // 嵌套停止：HorizontalLegendItem 体的 ILayer 槽为未知类新对象 → 条目体
+    // 在其槽位停止 → Legend 以 LegendItemBodyIncomplete 透传，游标停在内层
+    // 槽位起点，尾段不可达。
+    let unknown = [0x77_u8; 16];
+    let mut bytes = 5_u16.to_le_bytes().to_vec();
+    bytes.extend(common_prefix_bytes(3, "图例", Some(9)));
+    push_null_marker(&mut bytes);
+    bytes.extend(string_bytes("标题"));
+    for value in [0_u16; 3] {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes.extend(0xFFFF_u16.to_le_bytes());
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(mxd2qgz::layers::legend_item::HORIZONTAL_LEGEND_ITEM_CLASS_ID);
+    bytes.extend(21_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes()); // 条目版本
+    bytes.extend(0x0102_0304_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes()); // 基类版本
+    let stop_offset = bytes.len();
+    push_entry_header(&mut bytes, &unknown, 30); // ILayer 槽：未知类
+    bytes.extend(string_bytes("不可达"));
+    let mut reader = Reader::new(&bytes);
+    let mut table = table_with_keys(&[9]);
+    let legend = read_legend_prefix_10_1(&mut reader, usize::MAX, &mut table).unwrap();
+    let LegendStop10_1::LegendItemBodyIncomplete { index, reason } = &legend.stop else {
+        panic!("应为 LegendItemBodyIncomplete：{:?}", legend.stop);
+    };
+    assert_eq!(*index, 0);
+    assert!(
+        format!("{reason:?}").contains("layer(ILayer)"),
+        "{reason:?}"
+    );
+    // 游标停在内层 ILayer 槽起点：条目头 20 + 条目版本 2 + int32 4 + 基类
+    // 版本 2。
+    assert_eq!(reader.position(), stop_offset);
+    assert!(legend.tail_short_1.is_none(), "停止后不读版本门尾段");
+    assert!(table.contains(21), "条目键登记（对象头已消费）");
+    assert!(!table.contains(30), "嵌套未知键不保留");
 }

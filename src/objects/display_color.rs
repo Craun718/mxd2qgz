@@ -1,14 +1,15 @@
-//! ArcMap 10.1 DisplayCore.dll 颜色族（CmykColor/HsvColor/GrayColor/HlsColor，
-//! 含 RgbColor 同构核心）对象体的严格读取子集。
+//! ArcMap 10.1 DisplayCore.dll 颜色族（RgbColor/HsvColor/GrayColor/HlsColor/
+//! CmykColor）对象体的严格读取子集。
 //!
-//! 证据来源：`docs/arcmap-10.1-display-tails.md`（2026-11-15 本轮研究记录）。
-//! 全部字段序来自 DisplayCore.dll 10.1.0.3035（SHA-256 `9b3e61f9…a926e4d2`，
-//! 复用前轮提取件 temp/agent-fl-tail/）的静态反编译；接口身份经 RTTI 类型
-//! 描述符 → 完整对象定位符（COL）→ 虚表 → GetClassID 立即数逐类确认。
+//! 证据来源：`docs/arcmap-10.1-display-tails.md`（2026-11-15 本轮研究记录）与
+//! `docs/arcmap-10.1-featurelayer-tail.md` 第七轮（RgbColor）。全部字段序来自
+//! DisplayCore.dll 10.1.0.3035（SHA-256 `9b3e61f9…a926e4d2`，复用前轮提取件
+//! temp/agent-fl-tail/）的静态反编译；接口身份经 RTTI 类型描述符 → 完整对象
+//! 定位符（COL）→ 虚表 → GetClassID 立即数逐类确认。
 //!
-//! **重要边界：仓库参考样本 `samples/测试底图.mxd` 只含 RgbColor 实例
-//! （键 37/38/154，前轮已闭合于 `feature_layer_tail`），本模块新增的四类
-//! 颜色无样本字节佐证**；只能用合成输入测试，不得声称样本验证。
+//! **样本边界：仓库参考样本 `samples/测试底图.mxd` 只含 RgbColor 实例
+//! （键 37/38/154），本模块其余四类颜色无样本字节佐证**；只能用合成输入测
+//! 试，不得声称样本验证。
 //!
 //! ## 共享 Color 核心（HsvColor/GrayColor/HlsColor 与 RgbColor 同构）
 //!
@@ -35,7 +36,8 @@
 //! HlsColor `0x6eb365d0`/RgbColor `0x6eb3d8f0`）恒写版本 1（`DAT_6ec0b330`/
 //! `0b338`/`0b334`/`0b318`）后进入共享核心 Save `0x6eb35470`（版本常量
 //! `DAT_6ec0b33c`=1），经虚表 +0x38/+0x20 取值对称写出。RgbColor 的字段
-//! 归属由前轮记录闭合（`feature_layer_tail` 模块）；本模块的
+//! 归属由第七轮记录闭合（原实现位于 `feature_layer_tail`，接线轮移入本模
+//! 块以消除 objects→layers 依赖倒置）；本模块的
 //! [`read_core_color_body_10_1`] 覆盖同构的 HsvColor/GrayColor/HlsColor。
 //!
 //! ## CmykColor（版本分支与四类不同）
@@ -57,14 +59,13 @@
 //! 写侧来源（历史版本兼容分支）。GetClassID 写出 `{7EE9C497-…}`
 //! （`0x6eb34a70`，经槽 `0x6eb34f10` thunk 调用）。
 //!
-//! ## 槽位分派（建议接入点）
+//! ## 槽位分派（对象层共享入口）
 //!
 //! [`read_color_slot_10_1`] 把一个对象条目（20 字节头）按流内类标识分派到
-//! 上述五类（RgbColor 委托 `feature_layer_tail::read_rgb_color_body_10_1`）。
-//! 这是 `feature_layer_tail` 中 SimpleMarkerSymbol 两个 IColor 槽
-//! （`ColorUnsupported` 停止点）的替换接入点：该文件本轮不动，由其所有者
-//! 决定是否接线。未知颜色类在此回退到槽位起点并返回
-//! [`ColorSlot10_1::Unsupported`]（登记表不保留该键）。
+//! 上述五类颜色。这是各宿主（SimpleMarkerSymbol 双色槽、各类符号体颜色槽、
+//! FeatureLayer 后继段 IColor 槽等）共用的颜色槽分派入口：五类颜色全部闭
+//! 合，未知颜色类在此回退到槽位起点并返回 [`ColorSlot10_1::Unsupported`]
+//! （登记表不保留该键），调用者据此维持停止语义。
 //!
 //! 调用约定：调用者先用 [`crate::storage::object_stream::read_header_10_1`]
 //! 读取对象头并比对类常量，从对象头之后的位置调用各读取器；本模块不重复
@@ -78,9 +79,6 @@
 //! 可见性标志候选）、`this−8`/`this−7` 两字节语义、CmykColor 版本 ≥2 的
 //! byte/String/short 字段语义，均为候选；全部结论未经目标软件运行验证。
 
-/// RgbColor 类标识重导出（前轮闭合于 `feature_layer_tail`，槽位分派共用）。
-pub use crate::layers::feature_layer_tail::RGB_COLOR_CLASS_ID;
-use crate::layers::feature_layer_tail::{RgbColorBody10_1, read_rgb_color_body_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
@@ -91,6 +89,22 @@ const MAX_CORE_COLOR_VERSION: i16 = 1;
 
 /// CmykColor 实体版本上限：`4 < ver` 拒绝；Save 恒写 4（`DAT_6ec0b340`）。
 const MAX_CMYK_VERSION: i16 = 4;
+
+/// RgbColor 两个版本 short 的上限：各 `1 < ver` 拒绝；样本 1/1。
+///
+/// 与共享核心上限同值：RgbColor 实体与 Color 核心的版本 short 各自有符号
+/// `1 < ver` 拒绝（第七轮证据，DisplayCore.dll `0x6eb3d8b0`/`0x6eb35310`）。
+const MAX_RGB_COLOR_VERSION: i16 = 1;
+
+/// RgbColor 类标识（CLSID）的 16 字节内存序。
+///
+/// GUID 字符串形式 `{7EE9C496-D123-11D0-8383-080009B996CC}`。证据：
+/// esri.clsid.ecfg 声明（模块 DisplayCore.dll）；DisplayCore.dll GetClassID
+/// `0x6eb3d930` 写出；样本三实例（键 37 @`0x419`、38 @`0x481`、154 @
+/// `0x2c0b`）对象头逐字节相同（辅助观察）。
+pub const RGB_COLOR_CLASS_ID: [u8; 16] = [
+    0x96, 0xc4, 0xe9, 0x7e, 0x23, 0xd1, 0xd0, 0x11, 0x83, 0x83, 0x08, 0x00, 0x09, 0xb9, 0x96, 0xcc,
+];
 
 /// CmykColor 类标识（CLSID）的 16 字节内存序。
 ///
@@ -152,6 +166,94 @@ fn read_version_short(
     Ok(version)
 }
 
+/// RgbColor（DisplayCore.dll `0x6eb3d8b0` + `0x6eb35310`）体的已确认字段。
+///
+/// 体长取决于分支标志：flag==0 为 31 字节（short ×2 + byte + double ×3 +
+/// byte ×2），flag!=0 为 13 字节（short ×2 + byte + int32 + byte ×2）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct RgbColorBody10_1 {
+    /// 对象头键（样本 37/38/154）。
+    ///
+    /// 解析成功时该键已按原生语义登记进调用者的登记表。
+    pub key: u32,
+    /// 实体 Load `0x6eb3d8b0` 首个 short 版本（样本 1）；>1 原生拒绝。
+    pub version_outer: u16,
+    /// Color 核心 `0x6eb35310` 的第二个 short 版本（样本 1）；>1 原生拒绝。
+    pub version_inner: u16,
+    /// 1 字节分支标志（样本 0）：==0 走 3 个 double 分支，!=0 走 4 字节
+    /// CMYK 分支（原生经 Color 虚表 +0x1c 装载）。
+    pub branch_flag: u8,
+    /// flag==0 分支的 3 个 double（原生经 Color 虚表 +0x34 装载；样本
+    /// 37 ≈ 96.68/-20.42/87.37，语义未定，原样保留）。
+    pub doubles: Option<[f64; 3]>,
+    /// flag!=0 分支的 4 字节 CMYK 位模式（样本无实例，分支已按反编译闭合）。
+    pub cmyk_raw: Option<u32>,
+    /// 倒数第 2 字节（→ 内存 this-8；样本 0），语义未定。
+    pub trailing_byte: u8,
+    /// 末字节的原样位模式（→ 内存 this-7，原生按 `0xff - 流内字节` 取补
+    /// 装载；样本 0，即内存值 0xff）。语义未定（透明度候选）。
+    pub complement_byte_raw: u8,
+}
+
+/// 从对象头之后的位置读取 10.1 RgbColor 对象体，失败时不推进游标、不修改
+/// 登记表。
+///
+/// 起点约定：调用者已读取对象头、比对 [`RGB_COLOR_CLASS_ID`] 并取得键
+/// `key`。RgbColor 体全部为标量（无嵌套对象、无字符串），无停止点：要么
+/// 完整消费，要么失败（截断 / 版本超限）。
+pub fn read_rgb_color_body_10_1(
+    reader: &mut Reader<'_>,
+    table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<RgbColorBody10_1> {
+    let _ = table; // RgbColor 无嵌套对象，登记表仅在签名上保持一致
+    let mut trial = reader.clone();
+    let entry_offset = trial.position();
+    let invalid = |reason: String| {
+        io::Error::new(
+            ErrorKind::InvalidData,
+            format!("RgbColor 对象体 offset 0x{entry_offset:x}: {reason}"),
+        )
+    };
+
+    // ① 实体版本 short（`1 < ver` 拒绝）。
+    let version_outer =
+        read_version_short(&mut trial, MAX_RGB_COLOR_VERSION, "RgbColor", entry_offset)
+            .map_err(|e| invalid(e.to_string()))?;
+    // ② Color 核心版本 short（同上限）。
+    let version_inner =
+        read_version_short(&mut trial, MAX_RGB_COLOR_VERSION, "RgbColor", entry_offset)
+            .map_err(|e| invalid(e.to_string()))?;
+    // ③ 1 字节分支标志。
+    let branch_flag = trial.read_bytes(1)?[0];
+    // ④ 分支：==0 → 3 个 double；!=0 → 4 字节 CMYK。
+    let (doubles, cmyk_raw) = if branch_flag == 0 {
+        let mut values = [0_f64; 3];
+        for slot in values.iter_mut() {
+            *slot = trial.read_f64_le()?;
+        }
+        (Some(values), None)
+    } else {
+        (None, Some(trial.read_u32_le()?))
+    };
+    // ⑤⑥ 尾随两个 1 字节字段（后者原生按补码装载，读取器保留流内位模式）。
+    let trailing_byte = trial.read_bytes(1)?[0];
+    let complement_byte_raw = trial.read_bytes(1)?[0];
+
+    let result = RgbColorBody10_1 {
+        key,
+        version_outer,
+        version_inner,
+        branch_flag,
+        doubles,
+        cmyk_raw,
+        trailing_byte,
+        complement_byte_raw,
+    };
+    *reader = trial;
+    Ok(result)
+}
+
 /// HsvColor/GrayColor/HlsColor（及同构 RgbColor）共享 Color 核心的已确认
 /// 字段。体长固定：flag==0 为 29 字节（short ×2 + byte + double ×3 +
 /// byte ×2），flag!=0 为 9 字节（short ×2 + byte + int32 + byte ×2）。
@@ -186,9 +288,8 @@ pub struct CoreColorBody10_1 {
 /// 起点约定：调用者已读取对象头、比对 [`HSV_COLOR_CLASS_ID`] /
 /// [`GRAY_COLOR_CLASS_ID`] / [`HLS_COLOR_CLASS_ID`] 并取得键 `key`；`what`
 /// 为错误消息中的类名。体全部为标量（无嵌套对象、无字符串），要么完整
-/// 消费，要么失败（截断 / 版本超限）。RgbColor 优先用
-/// `feature_layer_tail::read_rgb_color_body_10_1`（字段归属更完整），二者
-/// 流内布局一致。
+/// 消费，要么失败（截断 / 版本超限）。RgbColor 同构布局由
+/// [`read_rgb_color_body_10_1`] 覆盖（字段归属按第七轮记录）。
 pub fn read_core_color_body_10_1(
     reader: &mut Reader<'_>,
     table: &mut RefTable10_1,
@@ -345,10 +446,10 @@ pub fn read_cmyk_color_body_10_1(
     Ok(result)
 }
 
-/// 颜色族对象体的分类结果（RgbColor 委托前轮读取器）。
+/// 颜色族对象体的分类结果（五类颜色全部闭合）。
 #[derive(Debug, Clone, PartialEq)]
 pub enum ColorBody10_1 {
-    /// RgbColor（样本三实例，前轮闭合于 `feature_layer_tail`）。
+    /// RgbColor（样本三实例，第七轮闭合）。
     Rgb(Box<RgbColorBody10_1>),
     /// HsvColor/GrayColor/HlsColor 共享核心布局；`class_id` 区分具体类
     /// （流内布局一致，仅虚槽语义不同）。

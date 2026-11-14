@@ -74,9 +74,12 @@
 //! 名），按本读取器语义在元素对象头起点停止。
 //!
 //! 这是仅覆盖上述分支的严格安全子集：要求完整输入，任何失败不推进调用者
-//! 游标、不修改登记表；元素循环中的新对象（元素体布局未闭合、无外部长
-//! 度）是唯一停止点，游标回退到该元素对象头起点。未接入 MXD 解析主链，
-//! 人工目视验收未做，不得声称已验证。
+//! 游标、不修改登记表。元素循环中的新对象按类标识分派（接线轮）：闭合元
+//! 素类（TextElement/MarkerElement/LineElement）整体解析其体，未知元素类
+//! 是停止点并回退到该元素对象头起点；闭合元素体的嵌套停止上抛为
+//! [`ElementCollectionStop10_1::ElementBodyIncomplete`]（游标停在内层停止
+//! 点，元素键保留）。未接入 MXD 解析主链，人工目视验收未做，不得声称已
+//! 验证。
 //!
 //! 未解决问题（详见证据文档）：每元素 3 个 int32 的业务语义未定性（候选
 //! 元素放置/绘制次序数据）；adjustor-20 接口虚表 +0x0c 的加集方法与
@@ -85,6 +88,9 @@
 //! 态写 4）；元素类（TextElement 等）体未闭合；负计数原生按空集合成功、
 //! 本读取器拒绝（较原生更严）；全部结论未运行 ArcMap 验证。
 
+use crate::objects::element_body::{
+    ElementBody10_1, ElementBodyStop10_1, read_element_body_of_class_10_1,
+};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
@@ -128,21 +134,42 @@ pub const ELEMENT_REQUEST_INTERFACE_ID: [u8; 16] = [
 
 /// 已确认可继续的元素条目形态。
 ///
-/// 新对象条目（未见过键 + 任意类标识）不是本枚举的变体：元素对象体布局
-/// 未闭合且无外部长度字段，读取器在其对象头起点停止（见
-/// [`ElementCollectionStop10_1`]）。回引条目 20 字节无体；空标记按对象头
-/// 读取器的 S_FALSE 约定仅消耗 16 字节、无键。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// 新对象条目（未见过键 + 任意类标识）按流内类标识分派：接线轮起
+/// TextElement/MarkerElement/LineElement（`element_body` 模块闭合）解析为
+/// 对应体变体；其余类不是本枚举的变体——元素对象体布局未闭合且无外部长
+/// 度字段，读取器在其对象头起点停止（见 [`ElementCollectionStop10_1`]）。
+/// 回引条目 20 字节无体；空标记按对象头读取器的 S_FALSE 约定仅消耗 16 字
+/// 节、无键。
+#[derive(Debug, Clone, PartialEq)]
 pub enum ElementEntry10_1 {
     /// 16 字节全零类标识：空引用标记（原生把空元素指针传入加集方法）。
     Null,
     /// 键已在本会话登记过：20 字节回引条目，无对象体。
     BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 TextElement 对象：已解析其体（体内嵌套停止经
+    /// [`ElementCollectionStop10_1::ElementBodyIncomplete`] 上抛）。
+    TextElement(Box<crate::objects::element_body::TextElementBody10_1>),
+    /// 新 MarkerElement 对象：已解析其体。
+    MarkerElement(Box<crate::objects::element_body::MarkerElementBody10_1>),
+    /// 新 LineElement 对象：已解析其体。
+    LineElement(Box<crate::objects::element_body::LineElementBody10_1>),
+}
+
+impl ElementEntry10_1 {
+    /// 已解析元素体内的嵌套停止原因；`None` = 空标记/回引或体已完整消费。
+    pub fn body_stop(&self) -> Option<&ElementBodyStop10_1> {
+        match self {
+            Self::Null | Self::BackReference { .. } => None,
+            Self::TextElement(body) => body.stop.as_ref(),
+            Self::MarkerElement(body) => body.stop.as_ref(),
+            Self::LineElement(body) => body.stop.as_ref(),
+        }
+    }
 }
 
 /// 版本 4 主分支的单个元素槽：条目与其后交错的 3 个 int32（原样保留，语
 /// 义未定性）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct InterleavedElement10_1 {
     /// 元素条目（空标记或回引；新对象到达即停止，不出现在本结构中）。
     pub entry: ElementEntry10_1,
@@ -191,6 +218,20 @@ pub enum ElementCollectionStop10_1 {
         /// 停止元素的对象键（未登记）。
         key: u32,
     },
+    /// 接线轮新增：停止元素为闭合元素类（TextElement/MarkerElement/
+    /// LineElement）且其体内出现嵌套停止（原因透传，见
+    /// [`ElementBodyStop10_1`]）。游标停在其内层停止点；该元素的对象键已按
+    /// 原生语义登记（登记先于持久化），此前元素条目已消费。
+    ElementBodyIncomplete {
+        /// 停止元素在声明计数中的下标（0 起）。
+        index: usize,
+        /// 元素的类标识（原样保留）。
+        class_id: [u8; 16],
+        /// 元素的对象键（已登记）。
+        key: u32,
+        /// 元素体内的嵌套停止原因。
+        reason: ElementBodyStop10_1,
+    },
 }
 
 impl ElementCollectionStop10_1 {
@@ -204,6 +245,16 @@ impl ElementCollectionStop10_1 {
             } => format!(
                 "元素 {index}（键 {key}，类标识 {}）为新对象：元素体布局未闭合且无外部长\
                  度，游标回退到该元素对象头起点",
+                crate::layers::layer_list::class_id_hex(class_id)
+            ),
+            Self::ElementBodyIncomplete {
+                index,
+                class_id,
+                key,
+                reason,
+            } => format!(
+                "元素 {index}（键 {key}，类标识 {}）体在嵌套停止点停止：{reason:?}；游标停\
+                 在内层停止点，其后元素不可达",
                 crate::layers::layer_list::class_id_hex(class_id)
             ),
         }
@@ -323,6 +374,7 @@ pub fn read_element_collection_10_1(
                 &mut trial_table,
                 &origin,
                 start,
+                max_bytes,
                 index,
                 &mut stop,
             )?;
@@ -346,6 +398,7 @@ pub fn read_element_collection_10_1(
                 &mut trial_table,
                 &origin,
                 start,
+                max_bytes,
                 index,
                 &mut stop,
             )?;
@@ -393,30 +446,84 @@ pub fn read_element_collection_10_1(
     Ok(result)
 }
 
-/// 读取一个元素条目并分类；新对象条目是停止点。
+/// 读取一个元素条目并分类；未知元素类的新对象条目是停止点。
 ///
-/// 空标记与回引用条目消费后返回 `Some`；新对象条目把 `stop` 置为
-/// [`ElementCollectionStop10_1::ElementBodyNotClosed`]，把 trial 游标与
-/// trial 登记表回退到该元素对象头起点（该键不登记），返回 `None`。截断
-/// 等读取失败原样向上传播（整体事务性由调用者的 trial 副本保证）。
+/// 空标记与回引用条目消费后返回 `Some`；新对象条目按类标识分派：接线轮起
+/// TextElement/MarkerElement/LineElement 经
+/// [`read_element_body_of_class_10_1`] 解析其体（对象键已由条目分类登记，
+/// 原生「登记先于持久化」语义），体内嵌套停止把
+/// [`ElementCollectionStop10_1::ElementBodyIncomplete`] 写入 `stop` 并返回
+/// `None`（游标停在内层停止点，集合循环终止）；其余类把
+/// [`ElementCollectionStop10_1::ElementBodyNotClosed`] 写入 `stop`，trial 游
+/// 标与 trial 登记表回退到该元素对象头起点（该键不登记），返回 `None`。
+/// 体读取失败（截断等）原样向上传播（整体事务性由调用者的 trial 副本保证）。
 fn read_stoppable_entry<'a>(
     trial: &mut Reader<'a>,
     trial_table: &mut RefTable10_1,
     origin: &Reader<'a>,
     start: usize,
+    max_bytes: usize,
     index: usize,
     stop: &mut Option<ElementCollectionStop10_1>,
 ) -> io::Result<Option<ElementEntry10_1>> {
     let slot_offset = trial.position();
     let saved_table = trial_table.clone();
-    match read_object_entry_10_1(trial, trial_table)? {
-        ObjectEntry10_1::Null => Ok(Some(ElementEntry10_1::Null)),
+    let entry = read_object_entry_10_1(trial, trial_table)?;
+    let (class_id, key) = match &entry {
+        ObjectEntry10_1::Null => return Ok(Some(ElementEntry10_1::Null)),
         ObjectEntry10_1::BackReference { class_id, key } => {
-            Ok(Some(ElementEntry10_1::BackReference { class_id, key }))
+            return Ok(Some(ElementEntry10_1::BackReference {
+                class_id: *class_id,
+                key: *key,
+            }));
         }
-        ObjectEntry10_1::NewObject { class_id, key } => {
-            // 元素体布局未闭合（TextElement 等类无读取器）且无外部长度：
-            // 停止并回退到该元素对象头起点，撤销本次键登记。
+        ObjectEntry10_1::NewObject {
+            class_id: id,
+            key: k,
+        } => (*id, *k),
+    };
+    // 新对象：按类标识分派闭合元素体；其他类维持未知类停止回退语义。
+    let parsed = read_element_body_of_class_10_1(&class_id, trial, max_bytes, trial_table);
+    match parsed {
+        Ok(ElementBody10_1::TextElement(body)) => {
+            if let Some(reason) = body.stop.clone() {
+                *stop = Some(ElementCollectionStop10_1::ElementBodyIncomplete {
+                    index,
+                    class_id,
+                    key,
+                    reason,
+                });
+                return Ok(None);
+            }
+            Ok(Some(ElementEntry10_1::TextElement(body)))
+        }
+        Ok(ElementBody10_1::MarkerElement(body)) => {
+            if let Some(reason) = body.stop.clone() {
+                *stop = Some(ElementCollectionStop10_1::ElementBodyIncomplete {
+                    index,
+                    class_id,
+                    key,
+                    reason,
+                });
+                return Ok(None);
+            }
+            Ok(Some(ElementEntry10_1::MarkerElement(body)))
+        }
+        Ok(ElementBody10_1::LineElement(body)) => {
+            if let Some(reason) = body.stop.clone() {
+                *stop = Some(ElementCollectionStop10_1::ElementBodyIncomplete {
+                    index,
+                    class_id,
+                    key,
+                    reason,
+                });
+                return Ok(None);
+            }
+            Ok(Some(ElementEntry10_1::LineElement(body)))
+        }
+        Err(error) if error.kind() == ErrorKind::Unsupported => {
+            // 未知元素类：体布局未闭合（TextElement 等类无读取器）且无外部
+            // 长度：停止并回退到该元素对象头起点，撤销本次键登记。
             *trial_table = saved_table;
             *trial = reposition(origin, start, slot_offset);
             *stop = Some(ElementCollectionStop10_1::ElementBodyNotClosed {
@@ -426,6 +533,7 @@ fn read_stoppable_entry<'a>(
             });
             Ok(None)
         }
+        Err(error) => Err(error),
     }
 }
 

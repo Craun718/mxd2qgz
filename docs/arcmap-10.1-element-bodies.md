@@ -223,3 +223,33 @@ IGeometry 槽，读取器未达。MarkerElement/LineElement 无样本字节佐�
    （较原生更严，写侧不产）。版本 0 与 EP 版本 1..5 的门字段差异按反编译实
    现，无样本。
 9. 全部结论为静态观察；未运行 ArcMap 10.1，未在 QGIS 中核对，不声称已验证。
+
+
+## 接线轮（2026-11-15）
+
+研究结论无改动；本节记录接入点落位与一处实现修正。
+
+- 「建议接入点」第 1 条已接线：`element_collection::read_stoppable_entry`
+  的元素循环对新对象条目按类标识改调 `read_element_body_of_class_10_1`
+  （`ElementEntry10_1` 增 TextElement/MarkerElement/LineElement 体变体）；
+  其他类维持既有 Unsupported 停止回退语义；闭合元素体的嵌套停止以新增
+  `ElementCollectionStop10_1::ElementBodyIncomplete` 上抛（游标停在内层停
+  止点，元素键按「登记先于持久化」保留；体读取失败向上传播，事务性由调
+  用者 trial 保证）。第 2 条（`fdo_graphics_layer` 的 ElementCollection 槽）
+  前轮已接入，无需改动。
+- TextSymbol 槽接线（display-tails 建议接入点在本类的落位）：ISymbol #2
+  槽改调 `objects::display_symbol::read_display_symbol_slot_10_1`（样本
+  {7914E603} = SimpleFillSymbol 体整体解析，TextSymbol 推进到 IFontDisp 槽
+  与版本门尾段）；双 IColor 槽改调 `objects::display_color::
+  read_color_slot_10_1`（五类闭合颜色整体解析）。ITextPath/ISymbol #1/
+  IFontDisp/IGeometry 槽维持仅分类。
+- 实现修正：TextElement 读取器原先不透传 TextSymbol 体的嵌套停止（样本恰
+  在符号槽 #2 的 20 字节对象头停止，外层重读同一头恰好对位，故前轮未见
+  异常）；符号 #2 体闭合后该头不再停留，必须在
+  `read_text_element_body_10_1` 中把符号体的停止上抛为 TextElement 的停止
+  原因，否则外层会在符号体剩余字节上错位解析。修正随本轮接线一并落地并
+  以测试固定。
+- 样本层面：16 个 TextElement 实例及注记簇（键 1619..2101）位于当前解析
+  停止点（0xafe，ALPC 槽）之后的未闭合区域，本轮不可达——接线效果以合成
+  测试为准（TextElement 全链推进到 IFontDisp 尾段、元素循环解析 TextElement
+  后继续等），样本停止点对比见 featurelayer-tail 接线轮。

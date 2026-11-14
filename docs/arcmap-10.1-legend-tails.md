@@ -178,7 +178,7 @@ XZBZ/JZDLX/BDCDYBSM/Ring）][Variant 值：BSTR 空 ×8、I4 0、R8 0.0 ×3]、
 以合成等价字节固定该对位。**对位为辅助观察，不替代目标软件运行验证**；
 宿主槽位（实例前的 `02 00 01 00 00 00` 尾段）未定名。
 
-## 接入点建议（本轮未接线，共享文件未动）
+## 接入点建议（原记录；接线轮落位见文末）
 
 - `feature_layer_tail`（LegendClass::Load 第 ⑤ 步 ILegendClassFormat 槽，
   样本空标记处）：新对象且类标识为 LegendClassFormat 时接
@@ -189,6 +189,27 @@ XZBZ/JZDLX/BDCDYBSM/Ring）][Variant 值：BSTR 空 ×8、I4 0、R8 0.0 ×3]、
   第 10 步 ILegendClassFormat 槽同样接第一类读取器。
 - FeatureLayer 后继字段链的 EditTemplate 宿主槽（样本对位存在，槽位归属
   未闭合）：待后继字段链闭合后接 `read_edit_template_body_10_1`。
+
+## 接线轮（2026-11-15）
+
+研究结论无改动；本节记录接入点落位。
+
+- 上述第 1、2 条已接线：`feature_layer_tail::read_legend_class_body_10_1`
+  的 ILegendClassFormat 槽新对象且类标识为 LegendClassFormat 时接
+  `read_legend_class_format_body_10_1`（体内停止透传，新增
+  `LegendClassStop10_1::FormatBody`；其余类维持停止回退，槽位字段改
+  `LegendClassFormatSlot10_1` 枚举）；`map_surround::read_legend_prefix_10_1`
+  的 ILegendItem 条目循环按 CLSID 分派 HorizontalLegendItem（体内停止以
+  新增 `LegendStop10_1::LegendItemBodyIncomplete` 透传，其余类维持
+  `LegendItemBody` 停止）。HorizontalLegendItem 体第 10 步的
+  ILegendClassFormat 槽在 `legend_item` 模块内本已接第一类读取器。
+- 上述第 3 条（EditTemplate 宿主槽）仍未接线：宿主槽位（FeatureLayer 后继
+  字段链的哪个成员）未闭合，样本 10 实例全部位于当前解析停止点（0xafe）
+  之后的未闭合区域——ALPC 槽闭合前不可达，接线无从落位。
+- 测试：tests/map_surround.rs 增至 22 项（新增 HorizontalLegendItem 条目解
+  析与体内停止透传 2 项）；tests/feature_layer_tail.rs 新增 LegendClass 格
+  式槽正常路径与嵌套停止 2 项。样本无 Legend/格式实例，停止点不变（见
+  featurelayer-tail 接线轮）。
 
 ## 实现与测试（自身契约，不代表格式已验证）
 

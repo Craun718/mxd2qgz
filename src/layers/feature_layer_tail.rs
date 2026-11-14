@@ -45,7 +45,8 @@
 //!    分支标志：==0 → 3 个 double（经 Color 虚表 +0x34 装载，样本三实例
 //!    flag 均 0）；!=0 → 4 字节 CMYK（虚表 +0x1c）→ ④ 1 字节 → ⑤ 1 字节
 //!    （内存值按 `0xff - 流内字节` 取补）。flag==0 分支体长 31 字节，与样本
-//!    三实例（键 37/38/154）逐字节吻合。
+//!    三实例（键 37/38/154）逐字节吻合。实现（[`RGB_COLOR_CLASS_ID`]、体
+//!    读取器）接线轮移入 [`crate::objects::display_color`]，此处仅重导出。
 //! 4. **LegendGroup**（Layer.dll 10.1.0.3035，SHA-256 与既有基线一致，
 //!    IPersistStream 虚表 `0x7866fa3c` 槽 +0x14 = Load `0x78665cc0`，Save
 //!    `0x78665e20`；GetClassID `0x78665c80` 写出
@@ -81,16 +82,19 @@
 //! 为外层停止原因，游标停在内层停止点（与 feature_layer 的
 //! `DataSource` 停止传播语义一致）。
 //!
-//! 未解决问题（详见研究记录「未解决事项」）：
+//! 未解决问题（详见研究记录「未解决事项」；接线轮更新）：
 //! - ILegendItem 槽（`{52AA5BC0-…}`）的 coclass 体未闭合（样本为空标记，
 //! 无字节佐证），新对象即停止；
-//! - ILegendClassFormat 槽（`{52AA5BC2-…}`）coclass 体未闭合（样本空标
-//! 记），LegendClass 在此停止；
-//! - ISymbol 槽只闭合 SimpleMarkerSymbol 一类；SimpleLineSymbol /
-//!   SimpleFillSymbol / MultiLayerMarkerSymbol 等同族体未闭合（新对象即停
-//!   止）；
-//! - IColor 槽只闭合 RgbColor；CmykColor/HlsColor/HsvColor/GrayColor 同族
-//!   体未闭合（新对象即停止）；
+//! - ILegendClassFormat 槽（`{52AA5BC2-…}`）：LegendClassFormat 体已闭合
+//! （`legend_format` 模块，接线轮接入），其余 ILegendClassFormat 实现类新
+//! 对象维持停止；样本该槽为空标记；
+//! - ISymbol 槽：SimpleMarkerSymbol 与本轮闭合的 DisplayCore 同族
+//! （SimpleLineSymbol/Fill、MarkerLine/CartographicLine/HashLine，接线轮
+//! 经 [`crate::objects::display_symbol`] 分派）整体解析；MultiLayer 等
+//! 其余符号类新对象维持停止；
+//! - IColor 槽：五类闭合颜色（RgbColor/HsvColor/HlsColor/GrayColor/
+//! CmykColor）经 [`crate::objects::display_color`] 分派整体解析（接线轮
+//! 接入）；其余颜色类新对象维持停止；
 //! - RotationRenderer/SizeRenderer 的「3D 随机旋转上下限」double ×6 中前
 //!   3 个样本为 0、后 3 个为 360.0，语义为候选（对称写侧 getter 未逐个定
 //!   名）；各 int32/String 的业务命名（style 候选等）按内容推断；
@@ -119,19 +123,31 @@
 //!   +0x1bc、FeatureIDSet（`{D5BB4B87-…}`）槽、选择集 ID 数组等后续字段
 //!   未闭合，读取器在循环完成处停止。
 
+use crate::layers::legend_format::{
+    LEGEND_CLASS_FORMAT_CLASS_ID, LegendClassFormatBody10_1, LegendClassFormatStop10_1,
+    read_legend_class_format_body_10_1,
+};
+use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
+use crate::objects::display_symbol::{
+    MAX_SYMBOL_NESTING_DEPTH, SimpleMarkerSymbolStop10_1, SymbolStop10_1,
+    read_display_symbol_slot_10_1, slot_stop_10_1,
+};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
+/// ISymbol 类槽位（请求 IID `{F3435802-…}`）条目的分类结果。
+///
+/// 接线轮起为对象层 [`crate::objects::display_symbol::DisplaySymbolSlot10_1`]
+/// 的等价重导出：SimpleMarkerSymbol（第七轮）与 SimpleLineSymbol/Fill、
+/// MarkerLine/CartographicLine/HashLine（本轮闭合的 DisplayCore 同族）新对
+/// 象均解析为对应体变体；未知符号类为 `Unsupported` 变体（分派内部回退到
+/// 槽位起点、登记表不保留该键），由宿主映射为各自的停止原因。
+pub use crate::objects::display_symbol::DisplaySymbolSlot10_1 as SymbolSlot10_1;
+
 /// SimpleRenderer::Load 接受的最大版本：`3 < (short)ver` 有符号比较；样本 3。
 const MAX_SIMPLE_RENDERER_VERSION: i16 = 3;
-
-/// SimpleMarkerSymbol::Load 接受的最大版本：`2 < (short)ver`；样本 2。
-const MAX_SYMBOL_VERSION: i16 = 2;
-
-/// RgbColor 两个版本 short 的上限：各 `1 < ver` 拒绝；样本 1/1。
-const MAX_COLOR_VERSION: i16 = 1;
 
 /// LegendGroup::Load 接受的最大版本：`3 < (short)ver`；样本 3。
 const MAX_LEGEND_GROUP_VERSION: i16 = 3;
@@ -150,25 +166,12 @@ pub const SIMPLE_RENDERER_CLASS_ID: [u8; 16] = [
     0x01, 0x58, 0x43, 0xf3, 0x79, 0x57, 0xd0, 0x11, 0x98, 0xbf, 0x00, 0x80, 0x5f, 0x7c, 0xed, 0x21,
 ];
 
-/// SimpleMarkerSymbol 类标识（CLSID）的 16 字节内存序。
-///
-/// GUID 字符串形式 `{7914E5FE-C892-11D0-8BB6-080009EE4E41}`。证据：
-/// esri.clsid.ecfg 声明（模块 DisplayCore.dll）；DisplayCore.dll GetClassID
-/// `0x6ebbf310` 写出；样本 `/Maps:0x403`（SimpleRenderer 体内 ISymbol 槽，
-/// 键 36）与 LegendClass 体内的回引头逐字节相同。
-pub const SIMPLE_MARKER_SYMBOL_CLASS_ID: [u8; 16] = [
-    0xfe, 0xe5, 0x14, 0x79, 0x92, 0xc8, 0xd0, 0x11, 0x8b, 0xb6, 0x08, 0x00, 0x09, 0xee, 0x4e, 0x41,
-];
-
-/// RgbColor 类标识（CLSID）的 16 字节内存序。
-///
-/// GUID 字符串形式 `{7EE9C496-D123-11D0-8383-080009B996CC}`。证据：
-/// esri.clsid.ecfg 声明（模块 DisplayCore.dll）；DisplayCore.dll GetClassID
-/// `0x6eb3d930` 写出；样本三实例（键 37 @`0x419`、38 @`0x481`、154 @
-/// `0x2c0b`）对象头逐字节相同。
-pub const RGB_COLOR_CLASS_ID: [u8; 16] = [
-    0x96, 0xc4, 0xe9, 0x7e, 0x23, 0xd1, 0xd0, 0x11, 0x83, 0x83, 0x08, 0x00, 0x09, 0xb9, 0x96, 0xcc,
-];
+pub use crate::objects::display_color::RGB_COLOR_CLASS_ID;
+/// SimpleMarkerSymbol 与 RgbColor 两类标识（CLSID）现由对象层颜色/符号模块
+/// 定义（接线轮移入 [`crate::objects::display_color`] 与
+/// [`crate::objects::display_symbol`]，消除 objects→layers 依赖倒置）；此处
+/// 重导出保持本模块既有引用路径（feature_layer / 测试）稳定，避免双源。
+pub use crate::objects::display_symbol::SIMPLE_MARKER_SYMBOL_CLASS_ID;
 
 /// LegendGroup 类标识（CLSID）的 16 字节内存序。
 ///
@@ -221,301 +224,9 @@ fn read_version_short(
     Ok(version)
 }
 
-/// RgbColor（DisplayCore.dll `0x6eb3d8b0` + `0x6eb35310`）体的已确认字段。
-///
-/// 体长取决于分支标志：flag==0 为 31 字节（short ×2 + byte + double ×3 +
-/// byte ×2），flag!=0 为 13 字节（short ×2 + byte + int32 + byte ×2）。
-#[derive(Debug, Clone, PartialEq)]
-pub struct RgbColorBody10_1 {
-    /// 对象头键（样本 37/38/154）。
-    ///
-    /// 解析成功时该键已按原生语义登记进调用者的登记表。
-    pub key: u32,
-    /// 实体 Load `0x6eb3d8b0` 首个 short 版本（样本 1）；>1 原生拒绝。
-    pub version_outer: u16,
-    /// Color 核心 `0x6eb35310` 的第二个 short 版本（样本 1）；>1 原生拒绝。
-    pub version_inner: u16,
-    /// 1 字节分支标志（样本 0）：==0 走 3 个 double 分支，!=0 走 4 字节
-    /// CMYK 分支（原生经 Color 虚表 +0x1c 装载）。
-    pub branch_flag: u8,
-    /// flag==0 分支的 3 个 double（原生经 Color 虚表 +0x34 装载；样本
-    /// 37 ≈ 96.68/-20.42/87.37，语义未定，原样保留）。
-    pub doubles: Option<[f64; 3]>,
-    /// flag!=0 分支的 4 字节 CMYK 位模式（样本无实例，分支已按反编译闭合）。
-    pub cmyk_raw: Option<u32>,
-    /// 倒数第 2 字节（→ 内存 this-8；样本 0），语义未定。
-    pub trailing_byte: u8,
-    /// 末字节的原样位模式（→ 内存 this-7，原生按 `0xff - 流内字节` 取补
-    /// 装载；样本 0，即内存值 0xff）。语义未定（透明度候选）。
-    pub complement_byte_raw: u8,
-}
-
-/// 从对象头之后的位置读取 10.1 RgbColor 对象体，失败时不推进游标、不修改
-/// 登记表。
-///
-/// 起点约定：调用者已读取对象头、比对 [`RGB_COLOR_CLASS_ID`] 并取得键
-/// `key`。RgbColor 体全部为标量（无嵌套对象、无字符串），无停止点：要么
-/// 完整消费，要么失败（截断 / 版本超限）。
-pub fn read_rgb_color_body_10_1(
-    reader: &mut Reader<'_>,
-    table: &mut RefTable10_1,
-    key: u32,
-) -> io::Result<RgbColorBody10_1> {
-    let _ = table; // RgbColor 无嵌套对象，登记表仅在签名上保持一致
-    let mut trial = reader.clone();
-    let entry_offset = trial.position();
-    let invalid = |reason: String| {
-        io::Error::new(
-            ErrorKind::InvalidData,
-            format!("RgbColor 对象体 offset 0x{entry_offset:x}: {reason}"),
-        )
-    };
-
-    // ① 实体版本 short（`1 < ver` 拒绝）。
-    let version_outer = read_version_short(&mut trial, MAX_COLOR_VERSION, "RgbColor", entry_offset)
-        .map_err(|e| invalid(e.to_string()))?;
-    // ② Color 核心版本 short（同上限）。
-    let version_inner = read_version_short(&mut trial, MAX_COLOR_VERSION, "RgbColor", entry_offset)
-        .map_err(|e| invalid(e.to_string()))?;
-    // ③ 1 字节分支标志。
-    let branch_flag = trial.read_bytes(1)?[0];
-    // ④ 分支：==0 → 3 个 double；!=0 → 4 字节 CMYK。
-    let (doubles, cmyk_raw) = if branch_flag == 0 {
-        let mut values = [0_f64; 3];
-        for slot in values.iter_mut() {
-            *slot = trial.read_f64_le()?;
-        }
-        (Some(values), None)
-    } else {
-        (None, Some(trial.read_u32_le()?))
-    };
-    // ⑤⑥ 尾随两个 1 字节字段（后者原生按补码装载，读取器保留流内位模式）。
-    let trailing_byte = trial.read_bytes(1)?[0];
-    let complement_byte_raw = trial.read_bytes(1)?[0];
-
-    let result = RgbColorBody10_1 {
-        key,
-        version_outer,
-        version_inner,
-        branch_flag,
-        doubles,
-        cmyk_raw,
-        trailing_byte,
-        complement_byte_raw,
-    };
-    *reader = trial;
-    Ok(result)
-}
-
-/// IColor 槽位（请求 IID `{20CD40B0-…}`）条目的分类结果。
-#[derive(Debug, Clone, PartialEq)]
-pub enum ColorSlot10_1 {
-    /// 16 字节全零类标识：空引用，无键、无对象体。
-    Null,
-    /// 键已见：回引条目，无对象体。类标识原样保留、不校验（回引头会重复
-    /// 被引对象的类标识，见 object_refs 模块文档）。
-    BackReference { class_id: [u8; 16], key: u32 },
-    /// 新 RgbColor 对象（类标识经 [`RGB_COLOR_CLASS_ID`] 校验）：已解析体。
-    RgbColor(Box<RgbColorBody10_1>),
-}
-
-/// SimpleMarkerSymbol（DisplayCore.dll `0x6ebbefa0`）体的停止原因。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SimpleMarkerSymbolStop10_1 {
-    /// 首个 IColor 槽的新对象类标识不是 RgbColor（同族 CmykColor 等体未闭
-    /// 合）：游标回退到该槽位起点，其后的标量字段不可达。
-    ColorUnsupported { class_id: [u8; 16], key: u32 },
-    /// 第二个 IColor 槽（轮廓色）同类停止；首个颜色与标量段已消费。
-    OutlineColorUnsupported { class_id: [u8; 16], key: u32 },
-}
-
-/// SimpleMarkerSymbol 体的已确认字段。
-#[derive(Debug, Clone, PartialEq)]
-pub struct SimpleMarkerSymbolPrefix10_1 {
-    /// 对象头键（样本 36）。
-    pub key: u32,
-    /// 体首 short 版本（样本 2）；有符号比较 >2 拒绝。
-    pub version: u16,
-    /// IColor 槽（主色）：空标记 / 回引 / RgbColor 体 / 不支持停止。
-    pub color: ColorSlot10_1,
-    /// double → obj-0x6c（样本 6.0；尺寸候选）。`None` = 首色槽停止。
-    pub size: Option<f64>,
-    /// int32 → obj-0x70（样本 0），语义未定。
-    pub int32_a: Option<i32>,
-    /// int32 → obj-0xcc（样本 13；marker 样式候选），语义未定。
-    pub int32_b: Option<i32>,
-    /// int32 → obj-0xc4（样本 0），语义未定。
-    pub int32_c: Option<i32>,
-    /// double ×3 → obj-100/-0x5c/-0x54（样本 0/0/0；X/Y 偏移候选）。
-    pub doubles: Option<[f64; 3]>,
-    /// 1 字节 → obj-0x44（样本 1），语义未定。
-    pub byte_flag: Option<u8>,
-    /// double → obj-0x4c（样本 1.0；比例候选）。
-    pub double_ratio: Option<f64>,
-    /// 第二个 IColor 槽（轮廓色）。`None` = 在其之前已停止。
-    pub outline_color: Option<ColorSlot10_1>,
-    /// 版本 >1 的 short → obj-0xb4（样本 0xFFFF）。`None` = 版本 ≤1 或前置
-    /// 停止未读取。
-    pub rotate_short: Option<i16>,
-    /// 停止原因；`None` = 体已完整消费。
-    pub stop: Option<SimpleMarkerSymbolStop10_1>,
-}
-
-/// 从对象头之后的位置读取 10.1 SimpleMarkerSymbol 对象体，失败时不推进游
-/// 标、不修改登记表。
-///
-/// 起点约定：调用者已读取对象头、比对 [`SIMPLE_MARKER_SYMBOL_CLASS_ID`] 并
-/// 取得键 `key`。两个 IColor 槽的新对象类标识非 RgbColor 时是成功停止（停
-/// 止原因携带类标识与键，游标回退到该槽位起点）；截断与版本超限为错误。
-pub fn read_simple_marker_symbol_body_10_1(
-    reader: &mut Reader<'_>,
-    table: &mut RefTable10_1,
-    key: u32,
-) -> io::Result<SimpleMarkerSymbolPrefix10_1> {
-    let mut trial = reader.clone();
-    let entry_offset = trial.position();
-
-    // 1. 版本 short（有符号 >2 拒绝）。
-    let version = read_version_short(
-        &mut trial,
-        MAX_SYMBOL_VERSION,
-        "SimpleMarkerSymbol",
-        entry_offset,
-    )?;
-
-    // 2. 首个 IColor 槽（主色）。
-    let slot_offset = trial.position();
-    let saved_table = table.clone();
-    let mut staged_table = table.clone();
-    let color = match read_object_entry_10_1(&mut trial, &mut staged_table)? {
-        ObjectEntry10_1::Null => ColorSlot10_1::Null,
-        ObjectEntry10_1::BackReference { class_id, key } => {
-            ColorSlot10_1::BackReference { class_id, key }
-        }
-        ObjectEntry10_1::NewObject { class_id, key } if class_id == RGB_COLOR_CLASS_ID => {
-            ColorSlot10_1::RgbColor(Box::new(read_rgb_color_body_10_1(
-                &mut trial,
-                &mut staged_table,
-                key,
-            )?))
-        }
-        ObjectEntry10_1::NewObject {
-            class_id,
-            key: entry_key,
-        } => {
-            // 未知颜色类：回退到槽位起点并停止（不保留该键）。
-            // entry_key 是颜色条目自身的键，仅用于停止诊断；
-            // 结构体的 key 字段必须保持函数参数传入的 SMS 自身键。
-            let stop = SimpleMarkerSymbolStop10_1::ColorUnsupported {
-                class_id,
-                key: entry_key,
-            };
-            trial = reposition_to(reader, slot_offset);
-            staged_table = saved_table;
-            let result = SimpleMarkerSymbolPrefix10_1 {
-                key,
-                version,
-                color: ColorSlot10_1::Null,
-                size: None,
-                int32_a: None,
-                int32_b: None,
-                int32_c: None,
-                doubles: None,
-                byte_flag: None,
-                double_ratio: None,
-                outline_color: None,
-                rotate_short: None,
-                stop: Some(stop),
-            };
-            *table = staged_table;
-            *reader = trial;
-            return Ok(result);
-        }
-    };
-
-    // 3-8. 标量段：double、int32 ×3、double ×3、byte、double。
-    let size = trial.read_f64_le()?;
-    let int32_a = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
-    let int32_b = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
-    let int32_c = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
-    let mut doubles = [0_f64; 3];
-    for slot in doubles.iter_mut() {
-        *slot = trial.read_f64_le()?;
-    }
-    let byte_flag = trial.read_bytes(1)?[0];
-    let double_ratio = trial.read_f64_le()?;
-
-    // 9. 第二个 IColor 槽（轮廓色）。
-    let outline_offset = trial.position();
-    let pre_outline_table = staged_table.clone();
-    let (outline_color, stop) = match read_object_entry_10_1(&mut trial, &mut staged_table)? {
-        ObjectEntry10_1::Null => (ColorSlot10_1::Null, None),
-        ObjectEntry10_1::BackReference { class_id, key } => {
-            (ColorSlot10_1::BackReference { class_id, key }, None)
-        }
-        ObjectEntry10_1::NewObject { class_id, key } if class_id == RGB_COLOR_CLASS_ID => (
-            ColorSlot10_1::RgbColor(Box::new(read_rgb_color_body_10_1(
-                &mut trial,
-                &mut staged_table,
-                key,
-            )?)),
-            None,
-        ),
-        ObjectEntry10_1::NewObject {
-            class_id,
-            key: entry_key,
-        } => {
-            // 轮廓色槽停止：游标回退到该槽位起点（首色与标量段保留）。
-            // entry_key 是颜色条目自身的键（诊断用）；臂外结构体的 key
-            // 字段取函数参数传入的 SMS 自身键，不受此解构影响。
-            let stop = SimpleMarkerSymbolStop10_1::OutlineColorUnsupported {
-                class_id,
-                key: entry_key,
-            };
-            trial = reposition_to(reader, outline_offset);
-            staged_table = pre_outline_table;
-            (ColorSlot10_1::Null, Some(stop))
-        }
-    };
-
-    // 10. 版本 >1 的 short。
-    let rotate_short = if stop.is_none() && (version as i16) > 1 {
-        Some(trial.read_u16_le()? as i16)
-    } else {
-        None
-    };
-
-    let result = SimpleMarkerSymbolPrefix10_1 {
-        key,
-        version,
-        color,
-        size: Some(size),
-        int32_a: Some(int32_a),
-        int32_b: Some(int32_b),
-        int32_c: Some(int32_c),
-        doubles: Some(doubles),
-        byte_flag: Some(byte_flag),
-        double_ratio: Some(double_ratio),
-        outline_color: Some(outline_color),
-        rotate_short,
-        stop,
-    };
-    *table = staged_table;
-    *reader = trial;
-    Ok(result)
-}
-
-/// ISymbol 槽位（请求 IID `{F3435802-…}`）条目的分类结果。
-#[derive(Debug, Clone, PartialEq)]
-pub enum SymbolSlot10_1 {
-    /// 16 字节全零类标识：空引用。
-    Null,
-    /// 键已见：回引条目（样本 LegendClass 体内对 SimpleMarkerSymbol 键 36
-    /// 的回引头），类标识原样保留。
-    BackReference { class_id: [u8; 16], key: u32 },
-    /// 新 SimpleMarkerSymbol 对象：已解析体（体内停止经 `stop` 传播）。
-    SimpleMarkerSymbol(Box<SimpleMarkerSymbolPrefix10_1>),
-}
+/// IColor 类槽位（请求 IID `{20CD40B0-…}`）条目的分类结果见模块顶部的
+/// [`crate::objects::display_color::ColorSlot10_1`] 重导出（五类闭合颜色，
+/// 未知类为 `Unsupported` 变体，由宿主映射为停止原因）。
 
 /// RotationRenderer::Load（LayerLib.dll `0x786f7e40`）的尾段字段。
 #[derive(Debug, Clone, PartialEq)]
@@ -549,11 +260,16 @@ pub struct SizeRendererTail10_1 {
 /// SimpleRenderer 体读取的停止原因。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SimpleRendererStop10_1 {
-    /// ISymbol 槽的新对象类标识不是 SimpleMarkerSymbol（SimpleLineSymbol 等
-    /// 同族体未闭合）：游标回退到该槽位起点。
+    /// ISymbol 槽的新对象类标识不在闭合符号集合（DisplayCore 同族之外）：
+    /// 游标回退到该槽位起点（由符号槽分派内部完成）。
     SymbolUnsupported { class_id: [u8; 16], key: u32 },
-    /// SimpleMarkerSymbol 体内的停止（游标停在其停止点，已闭合前缀保留）。
+    /// ISymbol 槽 SimpleMarkerSymbol 体内的停止（游标停在其停止点，已闭合
+    /// 前缀保留）。
     SymbolBody(SimpleMarkerSymbolStop10_1),
+    /// ISymbol 槽为本轮闭合的 SimpleLineSymbol/Fill、MarkerLine/
+    /// CartographicLine/HashLine 等符号且其体内出现嵌套停止（原因透传，
+    /// 游标停在其停止点，已闭合字段保留）。
+    SymbolNested(SymbolStop10_1),
     /// ILegendGroup 槽的新对象类标识不是 LegendGroup：游标回退到该槽位起点。
     LegendGroupUnsupported { class_id: [u8; 16], key: u32 },
     /// LegendGroup 体内的停止（游标停在其停止点）。
@@ -661,14 +377,37 @@ pub struct LegendGroupPrefix10_1 {
 /// ISymbol 槽或 ILegendClassFormat 槽的新对象在 LegendClass 体内的停止原因。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LegendClassStop10_1 {
-    /// ISymbol 槽的新对象类标识不是 SimpleMarkerSymbol（同族体未闭合）：
-    /// 游标回退到该槽位起点。
+    /// ISymbol 槽的新对象类标识不在闭合符号集合：游标回退到该槽位起点
+    /// （由符号槽分派内部完成）。
     SymbolUnsupported { class_id: [u8; 16], key: u32 },
     /// ISymbol 槽 SimpleMarkerSymbol 体内的停止（游标停在其停止点）。
     SymbolBody(SimpleMarkerSymbolStop10_1),
-    /// ILegendClassFormat 槽的新对象（coclass 体未闭合，样本为空标记）：
-    /// 游标回退到该槽位起点，版本 >1 的 int32 不可达。
+    /// ISymbol 槽为本轮闭合的 DisplayCore 同族符号且其体内出现嵌套停止
+    /// （原因透传，游标停在其停止点）。
+    SymbolNested(SymbolStop10_1),
+    /// ILegendClassFormat 槽的新对象类标识非 LegendClassFormat：游标回退到
+    /// 该槽位起点，版本 >1 的 int32 不可达。
     FormatNewObject { class_id: [u8; 16], key: u32 },
+    /// ILegendClassFormat 槽的 LegendClassFormat 体自身停止（原因透传，游标
+    /// 停在其停止点）。
+    FormatBody(LegendClassFormatStop10_1),
+}
+
+/// ILegendClassFormat 槽位（请求 IID `{52AA5BC2-…}`）条目的分类结果
+/// （接线轮接入 [`read_legend_class_format_body_10_1`]）。
+#[derive(Debug, Clone, PartialEq)]
+pub enum LegendClassFormatSlot10_1 {
+    /// 16 字节全零类标识：空引用，无键、无对象体（样本形态）。
+    Null,
+    /// 键已见：回引条目，无对象体。类标识原样保留、不校验。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 LegendClassFormat 对象（类标识经 [`LEGEND_CLASS_FORMAT_CLASS_ID`]
+    /// 校验）：已读取其闭合体（体内停止经 [`LegendClassStop10_1::FormatBody`]
+    /// 传播）。
+    Format(Box<LegendClassFormatBody10_1>),
+    /// 新对象但类标识非 LegendClassFormat（其余 ILegendClassFormat 实现类体
+    /// 未闭合）：停止点，游标已回退到该槽位起点、该键不保留。
+    Unsupported { class_id: [u8; 16], key: u32 },
 }
 
 /// LegendClass（Layer.dll `0x78663560`）体的已确认字段。
@@ -687,7 +426,7 @@ pub struct LegendClassPrefix10_1 {
     pub description: String,
     /// ILegendClassFormat 槽（请求 IID `{52AA5BC2-…}`）分类；新对象为停止
     /// 点。
-    pub format: ObjectEntry10_1,
+    pub format: LegendClassFormatSlot10_1,
     /// 版本 >1 的 int32 → obj+0x1c（样本 -1）。`None` = 版本 ≤1 或前置停止。
     pub int32_1c: Option<i32>,
     /// 停止原因；`None` = 体已完整消费。
@@ -698,8 +437,11 @@ pub struct LegendClassPrefix10_1 {
 /// 修改登记表。
 ///
 /// 起点约定：调用者已读取对象头、比对 [`LEGEND_CLASS_CLASS_ID`] 并取得键。
-/// ISymbol 槽新对象仅支持 SimpleMarkerSymbol；ILegendClassFormat 槽新对象为
-/// 停止点（回退到槽位起点）；体内停止成功返回。
+/// ISymbol 槽经 [`read_display_symbol_slot_10_1`] 分派（SimpleMarkerSymbol
+/// 与本轮闭合的 DisplayCore 同族符号整体解析，未知符号类由分派内部回退到
+/// 槽位起点）；ILegendClassFormat 槽新对象且类标识为 LegendClassFormat 时
+/// 读取其闭合体（[`read_legend_class_format_body_10_1`]），其余类为停止点
+/// （回退到槽位起点）；体内停止成功返回。
 pub fn read_legend_class_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -712,29 +454,42 @@ pub fn read_legend_class_body_10_1(
     //    有符号语义 ver > 1）。
     let version = trial.read_u16_le()?;
 
-    // 2. ISymbol 槽（请求 IID {F3435802-…}）。
-    let slot_offset = trial.position();
-    let saved_table = table.clone();
+    // 2. ISymbol 槽（请求 IID {F3435802-…}）：对象层符号槽位分派。
     let mut staged_table = table.clone();
     let mut stop = None;
-    let symbol = match read_object_entry_10_1(&mut trial, &mut staged_table)? {
-        ObjectEntry10_1::Null => SymbolSlot10_1::Null,
-        ObjectEntry10_1::BackReference { class_id, key } => {
+    let symbol = match read_display_symbol_slot_10_1(
+        &mut trial,
+        max_bytes,
+        &mut staged_table,
+        MAX_SYMBOL_NESTING_DEPTH,
+    )? {
+        SymbolSlot10_1::Null => SymbolSlot10_1::Null,
+        SymbolSlot10_1::BackReference { class_id, key } => {
             SymbolSlot10_1::BackReference { class_id, key }
         }
-        ObjectEntry10_1::NewObject { class_id, key }
-            if class_id == SIMPLE_MARKER_SYMBOL_CLASS_ID =>
-        {
-            let sms = read_simple_marker_symbol_body_10_1(&mut trial, &mut staged_table, key)?;
+        SymbolSlot10_1::SimpleMarkerSymbol(sms) => {
             if let Some(inner) = sms.stop {
                 stop = Some(LegendClassStop10_1::SymbolBody(inner));
             }
-            SymbolSlot10_1::SimpleMarkerSymbol(Box::new(sms))
+            SymbolSlot10_1::SimpleMarkerSymbol(sms)
         }
-        ObjectEntry10_1::NewObject { class_id, key } => {
+        other_closed @ (SymbolSlot10_1::SimpleLineSymbol(_)
+        | SymbolSlot10_1::SimpleFillSymbol(_)
+        | SymbolSlot10_1::MarkerLineSymbol(_)
+        | SymbolSlot10_1::CartographicLineSymbol(_)
+        | SymbolSlot10_1::HashLineSymbol(_)) => {
+            // 本轮闭合符号：体内嵌套停止透传（游标停在其停止点）。
+            if let Some(inner) = slot_stop_10_1(
+                &other_closed,
+                crate::objects::display_symbol::DisplaySlotKind10_1::Symbol,
+            ) {
+                stop = Some(LegendClassStop10_1::SymbolNested(inner));
+            }
+            other_closed
+        }
+        SymbolSlot10_1::Unsupported { class_id, key } => {
+            // 未知符号类：分派内部已回退到槽位起点、登记表未保留该键。
             stop = Some(LegendClassStop10_1::SymbolUnsupported { class_id, key });
-            trial = reposition_to(reader, slot_offset);
-            staged_table = saved_table.clone();
             SymbolSlot10_1::Null
         }
     };
@@ -742,19 +497,42 @@ pub fn read_legend_class_body_10_1(
     // 3-5. 标签、描述与 ILegendClassFormat 槽（前置停止时不读取）。
     let mut label = String::new();
     let mut description = String::new();
-    let mut format = ObjectEntry10_1::Null;
+    let mut format = LegendClassFormatSlot10_1::Null;
     let mut int32_1c = None;
     if stop.is_none() {
         label = read_string_10_1(&mut trial, max_bytes)?;
         description = read_string_10_1(&mut trial, max_bytes)?;
         let format_offset = trial.position();
         let pre_format_table = staged_table.clone();
-        format = read_object_entry_10_1(&mut trial, &mut staged_table)?;
-        if let ObjectEntry10_1::NewObject { class_id, key } = format {
-            stop = Some(LegendClassStop10_1::FormatNewObject { class_id, key });
-            trial = reposition_to(reader, format_offset);
-            staged_table = pre_format_table;
-        }
+        format = match read_object_entry_10_1(&mut trial, &mut staged_table)? {
+            ObjectEntry10_1::Null => LegendClassFormatSlot10_1::Null,
+            ObjectEntry10_1::BackReference { class_id, key } => {
+                LegendClassFormatSlot10_1::BackReference { class_id, key }
+            }
+            ObjectEntry10_1::NewObject { class_id, key }
+                if class_id == LEGEND_CLASS_FORMAT_CLASS_ID =>
+            {
+                // 接线：LegendClassFormat 体闭合，整体消费（体内停止透传）。
+                let body = read_legend_class_format_body_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged_table,
+                    key,
+                )?;
+                if let Some(inner) = body.stop {
+                    stop = Some(LegendClassStop10_1::FormatBody(inner));
+                }
+                LegendClassFormatSlot10_1::Format(Box::new(body))
+            }
+            ObjectEntry10_1::NewObject { class_id, key } => {
+                // 其余 ILegendClassFormat 实现类体未闭合：回退到槽位起点并停
+                // 止（该键不保留），版本 >1 的 int32 不可达。
+                stop = Some(LegendClassStop10_1::FormatNewObject { class_id, key });
+                trial = reposition_to(reader, format_offset);
+                staged_table = pre_format_table;
+                LegendClassFormatSlot10_1::Unsupported { class_id, key }
+            }
+        };
         // 6. 版本 >1 的 int32。
         if stop.is_none() && (version as i16) > 1 {
             int32_1c = Some(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
@@ -880,10 +658,12 @@ pub fn read_legend_group_body_10_1(
 /// 头、比对 [`SIMPLE_RENDERER_CLASS_ID`] 并取得键 `key`。`max_bytes` 应用于
 /// 全部字符串（含嵌套 LegendGroup/LegendClass 体内字符串）的声明长度。
 ///
-/// ISymbol 槽新对象仅支持 SimpleMarkerSymbol，ILegendGroup 槽仅支持
-/// LegendGroup，ILegendItem 槽新对象为停止点（三者均回退到槽位起点、不保
-/// 留该键）；嵌套体内的停止传播为本读取器停止原因，游标停在内层停止点。
-/// 截断、版本超限、字符串超限为错误（游标与登记表不动）。
+/// ISymbol 槽经 [`read_display_symbol_slot_10_1`] 分派（SimpleMarkerSymbol
+/// 与本轮闭合的 DisplayCore 同族符号整体解析，未知符号类由分派内部回退到
+/// 槽位起点），ILegendGroup 槽仅支持 LegendGroup，ILegendItem 槽新对象为停
+/// 止点（后两者均回退到槽位起点、不保留该键）；嵌套体内的停止传播为本读取
+/// 器停止原因，游标停在内层停止点。截断、版本超限、字符串超限为错误（游
+/// 标与登记表不动）。
 pub fn read_simple_renderer_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -901,28 +681,42 @@ pub fn read_simple_renderer_body_10_1(
         entry_offset,
     )?;
 
-    // 2. ISymbol 槽（请求 IID {F3435802-…}）。
-    let symbol_offset = trial.position();
+    // 2. ISymbol 槽（请求 IID {F3435802-…}）：对象层符号槽位分派。
     let mut staged_table = table.clone();
     let mut stop = None;
-    let symbol = match read_object_entry_10_1(&mut trial, &mut staged_table)? {
-        ObjectEntry10_1::Null => SymbolSlot10_1::Null,
-        ObjectEntry10_1::BackReference { class_id, key } => {
+    let symbol = match read_display_symbol_slot_10_1(
+        &mut trial,
+        max_bytes,
+        &mut staged_table,
+        MAX_SYMBOL_NESTING_DEPTH,
+    )? {
+        SymbolSlot10_1::Null => SymbolSlot10_1::Null,
+        SymbolSlot10_1::BackReference { class_id, key } => {
             SymbolSlot10_1::BackReference { class_id, key }
         }
-        ObjectEntry10_1::NewObject { class_id, key }
-            if class_id == SIMPLE_MARKER_SYMBOL_CLASS_ID =>
-        {
-            let sms = read_simple_marker_symbol_body_10_1(&mut trial, &mut staged_table, key)?;
+        SymbolSlot10_1::SimpleMarkerSymbol(sms) => {
             if let Some(inner) = sms.stop {
                 stop = Some(SimpleRendererStop10_1::SymbolBody(inner));
             }
-            SymbolSlot10_1::SimpleMarkerSymbol(Box::new(sms))
+            SymbolSlot10_1::SimpleMarkerSymbol(sms)
         }
-        ObjectEntry10_1::NewObject { class_id, key } => {
+        other_closed @ (SymbolSlot10_1::SimpleLineSymbol(_)
+        | SymbolSlot10_1::SimpleFillSymbol(_)
+        | SymbolSlot10_1::MarkerLineSymbol(_)
+        | SymbolSlot10_1::CartographicLineSymbol(_)
+        | SymbolSlot10_1::HashLineSymbol(_)) => {
+            // 本轮闭合符号：体内嵌套停止透传（游标停在其停止点）。
+            if let Some(inner) = slot_stop_10_1(
+                &other_closed,
+                crate::objects::display_symbol::DisplaySlotKind10_1::Symbol,
+            ) {
+                stop = Some(SimpleRendererStop10_1::SymbolNested(inner));
+            }
+            other_closed
+        }
+        SymbolSlot10_1::Unsupported { class_id, key } => {
+            // 未知符号类：分派内部已回退到槽位起点、登记表未保留该键。
             stop = Some(SimpleRendererStop10_1::SymbolUnsupported { class_id, key });
-            trial = reposition_to(reader, symbol_offset);
-            staged_table = table.clone();
             SymbolSlot10_1::Null
         }
     };
@@ -1464,28 +1258,16 @@ pub fn read_feature_layer_successor_10_1(
         }
     }
 
-    // ⑥ IColor 槽：新对象仅支持 RgbColor，其余为停止点。
+    // ⑥ IColor 槽：五类闭合颜色经对象层颜色槽位分派整体解析；未知颜色类
+    //    为停止点（分派内部回退到槽位起点、登记表不保留该键）。
     let mut color = ColorSlot10_1::Null;
     if stop.is_none() {
-        let slot_offset = trial.position();
-        let pre_slot_table = staged_table.clone();
-        match read_object_entry_10_1(&mut trial, &mut staged_table)? {
-            ObjectEntry10_1::Null => color = ColorSlot10_1::Null,
-            ObjectEntry10_1::BackReference { class_id, key } => {
-                color = ColorSlot10_1::BackReference { class_id, key };
-            }
-            ObjectEntry10_1::NewObject { class_id, key } if class_id == RGB_COLOR_CLASS_ID => {
-                color = ColorSlot10_1::RgbColor(Box::new(read_rgb_color_body_10_1(
-                    &mut trial,
-                    &mut staged_table,
-                    key,
-                )?));
-            }
-            ObjectEntry10_1::NewObject { class_id, key } => {
+        match read_color_slot_10_1(&mut trial, max_bytes, &mut staged_table)? {
+            ColorSlot10_1::Unsupported { class_id, key } => {
                 stop = Some(SuccessorStop10_1::ColorUnsupported { class_id, key });
-                trial = reposition_to(reader, slot_offset);
-                staged_table = pre_slot_table;
+                color = ColorSlot10_1::Null;
             }
+            other => color = other,
         }
     }
 

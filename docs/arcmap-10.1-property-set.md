@@ -172,3 +172,24 @@ ASCII+终止零；其余 VARTYPE、空串键、计数 0、版本 0 均无样本�
    内联（样本 2/2），未出现该 coclass 对象头；若其他上下文出现其对象头，
    需另行闭合。
 7. 全部结论为静态观察；未运行 ArcMap 10.1，未在 QGIS 中核对，不声称已验证。
+
+
+## 接线轮（2026-11-15）
+
+研究结论无改动；本节记录接入点落位。
+
+- 「槽位消费者建议接入点」已接线：`feature_layer::read_workspace_name_body_10_1`
+  的 IPropertySet 槽新对象且类标识命中 `PROPERTY_SET_CLASS_ID` 时改调
+  `read_property_set_10_1`（版本、计数、[键名 String + 值 Variant] 循环整
+  体消费，其后的工厂标志/工厂 CLSID/int32 可达）；其余类维持
+  `WorkspaceNameStop10_1::PropertySetNewObject` 停止回退。槽位字段改
+  `PropertySetSlot10_1` 枚举（`Null`/`BackReference`/`PropertySet`/
+  `Unsupported`），`dataset_name`/`feature_layer` 的停止原因传播链语义不
+  变（`FeatureClassNameStop10_1::WorkspacePropertySetNewObject` 仅承载未
+  闭合类的停止）。
+- 测试：tests/feature_layer.rs 增至 24 项（新增 PropertySet 槽正常路径
+  ——WS 体完整消费、工厂字段与 FCN 第二选择子可达——与截断体失败事务性
+  2 项）。样本层面：首个 FeatureLayer 的 WS 槽为空标记（不受影响）；样本
+  两实例（键 1547 @`0x147e5`、2027 @`0x219a0`）位于当前解析停止点
+  （0xafe，ALPC 槽）之后的未闭合区域，本轮不可达——接线后可达性的兑现以
+  合成测试为准，样本停止点对比见 featurelayer-tail 接线轮。
