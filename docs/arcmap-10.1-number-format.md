@@ -302,3 +302,24 @@ Scientific 版本 2 int32/版本 1 短体（后续字节不消费）/版本 3 �
    CustomNumber 0；含版本 0 是否合法出现亦无证据）无样本字节。
 6. 全部结论为静态取证；未运行 ArcMap 10.1，未人工目视验收，不声称已验
    证。
+
+### 接线轮落位（整合接线轮，2026-11-15）
+
+「九类分派接入建议」1-4 已落位（建议 5 的样本回归同步完成）：
+
+- **feature_layer_tail.rs**：`pub use` 重导出清单追加五常量、五读取器与五
+  Body 类型；`NumberFormatSlot10_1` 追加 `CurrencyFormat`/`LatLonFormat`/
+  `AngleFormat`/`ScientificFormat`/`CustomNumberFormat` 五变体（Box 载体与
+  既有四类一致）；`read_field_info_body_10_1` 分派追加五 match 臂，读取器
+  直接作槽位分派目标（成功=整体消费、失败=停止点回退语义不变）；
+  CustomNumber 臂沿用 Rate 臂的同一 `max_bytes` 限额传参；
+  `FieldInfoStop10_1::NumberFormatUnsupported` 注释改为九类闭合后语义
+  （「体未研究」列举移除）。
+- **测试**：`tests/feature_layer_tail.rs` 新增五变体槽级分派用例（各取合
+  法形态、FieldInfo 版本门尾段可达断言）；未知类停止用例以 RgbColor 保持
+  覆盖（九类之外的实现类语义不变）。
+- **robustness**（建议 4）：五读取器入口并入 `tests/robustness.rs` 集中清
+  单。
+- **样本回归**（建议 5）：样本槽仅含 NumericFormat（本轮全流扫描 0 命中
+  复核），接线后 `parse samples/测试底图.mxd` 停止点不变（`0x155a`）。
+  `cargo fmt --check` 与全量 `cargo test` 绿；未声称运行验证。

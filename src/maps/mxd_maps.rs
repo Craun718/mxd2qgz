@@ -744,9 +744,15 @@ fn annotate_chain_note(
                 format!("ITextSymbol 槽为回引（键 {key}）")
             }
         };
+        // LELP 体内的停止（接线轮起 typed 槽链可达 ⑰ BOLP 体等，停止原因
+        // 透传；风格循 TextSymbol 体内停止的 {:?} 透传）。
+        let lelp_stop_note = match &lelp.stop {
+            Some(reason) => format!("；LELP 体内停止：{reason:?}"),
+            None => String::new(),
+        };
         diagnostics.push(format!(
             "条目 {}：标注属性集合（键 {}）条目 LELP（键 {}，版本 {}）：表达式 {:?}、\
-             标注类名 {:?}；{}；条目键 {}",
+             标注类名 {:?}；{}{}；条目键 {}",
             entry_index + 1,
             alpc.key,
             lelp.key,
@@ -754,6 +760,7 @@ fn annotate_chain_note(
             lelp.expression,
             lelp.name,
             text_symbol_note,
+            lelp_stop_note,
             match entry.entry_key {
                 Some(k) => format!("{k}"),
                 None => "未读（LELP 体内停止）".to_string(),
