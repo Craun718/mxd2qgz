@@ -2,6 +2,7 @@
 
 pub mod annotate_props;
 pub mod composite_graphics;
+pub mod dep_tail;
 pub mod edit_template;
 pub mod fdo_graphics_layer;
 pub mod fdo_legacy;
