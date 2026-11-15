@@ -1589,3 +1589,487 @@ fn successor_parses_cmyk_color_slot() {
     assert!(table.contains(65));
     assert_eq!(reader.remaining(), 0);
 }
+
+// ===== 第九轮：FieldInfo 循环之后的延续段（ALPC/LELP/FeatureIDSet/扩展段
+// （EditTemplate 宿主）/TimeData 族）。原生证据见
+// docs/arcmap-10.1-featurelayer-tail.md「第九轮」。 =====
+
+mod tail_continuation {
+    use super::*;
+    use mxd2qgz::layers::annotate_props::{
+        ANNOTATE_PROPS_COLLECTION_CLASS_ID, AlpcEntrySlot10_1, AnnotatePropsStop10_1,
+        EDIT_TEMPLATE_MANAGER_CLASS_ID, EditTemplateManagerStop10_1, LABEL_ENGINE_PROPS_CLASS_ID,
+        LelpStop10_1, read_annotate_props_collection_body_10_1,
+        read_edit_template_manager_body_10_1, read_label_engine_props_body_10_1,
+    };
+    use mxd2qgz::layers::edit_template::EDIT_TEMPLATE_CLASS_ID;
+    use mxd2qgz::layers::feature_id_set::{FEATURE_ID_SET_CLASS_ID, read_feature_id_set_body_10_1};
+    use mxd2qgz::layers::feature_layer_tail::{
+        AnnotatePropsSlot10_1, FeatureIdSetSlot10_1, LayerExtension10_1, RefSlot10_1,
+    };
+
+    /// TextSymbol 类标识（CLSID）字节（样本键 61 对象头，仅用于合成测试）。
+    const TEXT_SYMBOL_CLASS_ID: [u8; 16] = [
+        0x74, 0x3e, 0x5a, 0xb6, 0x93, 0x29, 0xd1, 0x11, 0x9a, 0x43, 0x00, 0x80, 0xc7, 0xec, 0x5c,
+        0x96,
+    ];
+
+    /// FeatureLayer 后继段到 FieldInfo 循环为止的前缀（样本形态）。
+    fn successor_prefix() -> Vec<u8> {
+        let mut b = Vec::new();
+        b.extend(string_bytes("BSM"));
+        b.extend(0_f64.to_le_bytes()); // +0x158
+        b.extend(0_f64.to_le_bytes()); // +0x160
+        b.extend(0_i16.to_le_bytes()); // +0x168
+        b.extend(0_i32.to_le_bytes()); // IHyperlink 计数
+        push_null_marker(&mut b); // IColor 槽
+        b.extend(string_bytes("")); // +0x1a8
+        b.extend(string_bytes("")); // +0x184
+        b.extend(0_i32.to_le_bytes()); // +0x188
+        b.extend(0_i32.to_le_bytes()); // FieldInfo 计数 0
+        b
+    }
+
+    /// LabelEngineLayerProperties 体（版本 7）：标量段取样本形态；四槽 +
+    /// 容器槽默认空标记，ITextSymbol 槽可注入新对象头（停止点形态）。
+    fn lelp_body_v7(symbol_slot: Option<(&[u8; 16], u32)>) -> Vec<u8> {
+        let mut b = Vec::new();
+        b.extend(7_i16.to_le_bytes()); // 版本 7
+        b.extend(string_bytes("[JZDH]")); // ② 串 1（表达式候选）
+        b.extend((-1_i16).to_le_bytes()); // ③ short -0x74
+        // ④ 版本 ≤1 的 short：版本 7 不写
+        b.extend(0_f64.to_le_bytes()); // ⑤ double -0x54
+        b.extend(0_i32.to_le_bytes()); // ⑥ int32 -0x60
+        b.extend((-1_i16).to_le_bytes()); // ⑦ short -0x5c
+        b.extend(0_i16.to_le_bytes()); // ⑧ short -0x4c
+        b.extend((-1_i16).to_le_bytes()); // ⑨ short -0x4a
+        b.extend(0_i32.to_le_bytes()); // ⑩ int32 -0x80
+        b.extend(0_f64.to_le_bytes()); // ⑪ double -0x34
+        b.extend(0_f64.to_le_bytes()); // ⑫ double -0x3c
+        b.extend((-1_i16).to_le_bytes()); // ⑬ short -0x48
+        b.extend(string_bytes("默认")); // ⑭ 串 2（标注类名候选）
+        b.extend(string_bytes("")); // ⑮ 串 3
+        match symbol_slot {
+            Some((class_id, key)) => push_entry_header(&mut b, class_id, key),
+            None => push_null_marker(&mut b),
+        }
+        push_null_marker(&mut b); // ⑰ 过摄属性槽
+        push_null_marker(&mut b); // ⑱ 表达式引擎槽
+        push_null_marker(&mut b); // ⑲ Envelope 槽
+        b.extend(0_f64.to_le_bytes()); // ⑳ double -0x24
+        b.extend(0_f64.to_le_bytes()); // ㉑ double -0x1c
+        b.extend(0_i32.to_le_bytes()); // ㉒ int32 -0x14
+        b.extend(0_i32.to_le_bytes()); // ㉓ int32 -0x2c
+        push_null_marker(&mut b); // ㉔ 容器槽（版本 >2）
+        b.extend(0_i16.to_le_bytes()); // ㉕ short -0x46（版本 ≥4）
+        b.extend(0_i32.to_le_bytes()); // ㉖ int32 -0x7c（版本 ≥5）
+        b
+    }
+
+    /// LELP 体中 ITextSymbol 槽的偏移（版本 7 形态的字节长度表）。
+    fn lelp_symbol_slot_offset() -> usize {
+        let mut n = 2; // 版本
+        n += string_bytes("[JZDH]").len() + 2;
+        n += 8 + 4 + 2 + 2 + 2 + 4 + 8 + 8 + 2;
+        n += string_bytes("默认").len() + string_bytes("").len();
+        n
+    }
+
+    /// EditTemplate 体（版本 2）：名称 T1、空串 B、16 字节 GUID、1 项
+    /// [F1 → BSTR "x"]、尾串 点。
+    fn edit_template_body() -> Vec<u8> {
+        let mut b = Vec::new();
+        b.extend(2_i16.to_le_bytes());
+        b.extend(string_bytes("T1"));
+        b.extend(string_bytes(""));
+        b.extend(0x1122_3344_5566_7788_u64.to_le_bytes());
+        b.extend(0x9900_1122_3344_5566_u64.to_le_bytes());
+        b.extend(1_i32.to_le_bytes());
+        b.extend(string_bytes("F1"));
+        b.extend(8_i16.to_le_bytes()); // VT_BSTR
+        b.extend(string_bytes("x"));
+        b.extend(string_bytes("点"));
+        b
+    }
+
+    /// EditTemplateManager 体（版本 2）：1 个 EditTemplate 条目 + 尾字节。
+    fn edit_template_manager_body(et_key: u32) -> Vec<u8> {
+        let mut b = Vec::new();
+        b.extend(2_i16.to_le_bytes());
+        b.extend(1_i32.to_le_bytes());
+        push_entry_header(&mut b, &EDIT_TEMPLATE_CLASS_ID, et_key);
+        b.extend(edit_template_body());
+        b.push(0x00); // 版本 ≥2 尾字节
+        b
+    }
+
+    #[test]
+    fn successor_tail_consumes_alpc_lelp_and_stops_at_text_symbol_slot() {
+        // 样本形态：ALPC（键 59，版本 2，1 条目）→ LELP（键 60，版本 7）
+        // → ITextSymbol 槽 TextSymbol 新对象（键 61）= 停止点。
+        let mut b = successor_prefix();
+        push_entry_header(&mut b, &ANNOTATE_PROPS_COLLECTION_CLASS_ID, 59);
+        b.extend(2_i16.to_le_bytes()); // ALPC 版本 2
+        b.extend(1_i32.to_le_bytes()); // ALPC 计数 1
+        push_entry_header(&mut b, &LABEL_ENGINE_PROPS_CLASS_ID, 60);
+        let lelp_body_start = b.len();
+        b.extend(lelp_body_v7(Some((&TEXT_SYMBOL_CLASS_ID, 61))));
+        let text_symbol_slot = lelp_body_start + lelp_symbol_slot_offset();
+
+        let mut reader = Reader::new(&b);
+        let mut table = RefTable10_1::new();
+        let result = read_feature_layer_successor_10_1(&mut reader, 34, 1024, &mut table).unwrap();
+        assert_eq!(
+            result.stop,
+            SuccessorStop10_1::AnnotatePropsBody(AnnotatePropsStop10_1::LelpBody(
+                LelpStop10_1::SymbolSlotUnsupported {
+                    class_id: TEXT_SYMBOL_CLASS_ID,
+                    key: 61,
+                }
+            ))
+        );
+        // ALPC/LELP 体前缀已解析；TextSymbol 键已回退；游标停在槽位起点。
+        assert!(table.contains(59));
+        assert!(table.contains(60));
+        assert!(!table.contains(61));
+        assert_eq!(reader.remaining(), b.len() - text_symbol_slot);
+        match &result.annotate_props {
+            Some(AnnotatePropsSlot10_1::Collection(body)) => {
+                assert_eq!(body.key, 59);
+                assert_eq!(body.version, 2);
+                assert_eq!(body.count, 1);
+                assert_eq!(body.entries.len(), 1);
+                assert!(matches!(
+                    body.entries[0].slot,
+                    AlpcEntrySlot10_1::LabelEngineProps(_)
+                ));
+                // 条目键未读（LELP 体内停止）。
+                assert_eq!(body.entries[0].entry_key, None);
+            }
+            other => panic!("ALPC 槽分类不符：{other:?}"),
+        }
+    }
+
+    #[test]
+    fn successor_tail_full_path_through_edit_template_extension_to_completion() {
+        // 合成完整链：ALPC 空条目 → short → FIDSet → 选择集 → IDisplayFilter
+        // → … → 扩展段（ETM+EditTemplate）→ … → TimeData 族 → 终段 short。
+        let mut b = successor_prefix();
+        // ALPC：版本 2、计数 0、尾 int32。
+        push_entry_header(&mut b, &ANNOTATE_PROPS_COLLECTION_CLASS_ID, 59);
+        b.extend(2_i16.to_le_bytes());
+        b.extend(0_i32.to_le_bytes());
+        b.extend(0_i32.to_le_bytes()); // 尾 int32
+        b.extend((-1_i16).to_le_bytes()); // short +0x1bc
+        // FIDSet（键 75，版本 1，计数 0）。
+        push_entry_header(&mut b, &FEATURE_ID_SET_CLASS_ID, 75);
+        b.extend(1_i16.to_le_bytes());
+        b.extend(0_i32.to_le_bytes());
+        b.extend(0_i32.to_le_bytes()); // 选择集计数 0
+        b.extend(2_i16.to_le_bytes()); // short +0x1fe
+        push_null_marker(&mut b); // IDisplayFilter 槽
+        b.extend(0_i16.to_le_bytes());
+        b.extend(0_i16.to_le_bytes());
+        b.extend(0_i16.to_le_bytes());
+        b.extend(0_i32.to_le_bytes()); // +0x22c
+        push_null_marker(&mut b); // IName 槽
+        b.extend(0_i32.to_le_bytes()); // 关系类计数 0
+        b.extend(string_bytes("")); // String +0x18c
+        push_null_marker(&mut b); // Envelope 槽 1
+        b.extend(0_i32.to_le_bytes()); // 范围计数 0
+        // 扩展段：1 条 ETM（尺寸声明 = 头 + 体）。
+        b.extend(1_i32.to_le_bytes());
+        let etm_segment = {
+            let mut s = Vec::new();
+            push_entry_header(&mut s, &EDIT_TEMPLATE_MANAGER_CLASS_ID, 76);
+            s.extend(edit_template_manager_body(77));
+            s
+        };
+        b.extend((etm_segment.len() as i64).to_le_bytes());
+        b.extend_from_slice(&etm_segment);
+        b.extend(1.5_f64.to_le_bytes()); // double +0x1e8
+        push_null_marker(&mut b); // ISymbol 槽
+        b.extend(0_i16.to_le_bytes()); // short +0x12e
+        b.extend(0_i32.to_le_bytes()); // int32 +0x1f0
+        push_null_marker(&mut b); // Envelope 槽 2
+        push_null_marker(&mut b); // IUID 槽
+        b.extend(string_bytes("")); // String +0x28c
+        b.extend(0_i16.to_le_bytes()); // short +0x1d8
+        b.extend(0_f64.to_le_bytes()); // double +0x290
+        b.extend(0_f64.to_le_bytes()); // double +0x298
+        b.extend(0_i16.to_le_bytes()); // short +0x1da
+        b.extend(0_i32.to_le_bytes()); // int32 +0x244
+        b.extend(0_i16.to_le_bytes()); // short +0x1be
+        b.extend(0_i32.to_le_bytes()); // PreJoin 计数 0
+        b.extend(0_i32.to_le_bytes()); // int32 +0x2c0
+        b.extend(0_i16.to_le_bytes());
+        b.extend(0_i16.to_le_bytes());
+        b.extend(0_i16.to_le_bytes());
+        for _ in 0..4 {
+            b.extend(string_bytes(""));
+        }
+        push_null_marker(&mut b); // 表达式属性槽
+        b.extend(0_i16.to_le_bytes()); // short +0x300
+        for _ in 0..3 {
+            b.extend(string_bytes(""));
+        }
+        // TimeData（版本 2）：short、空槽、尾 short。
+        b.extend(2_i16.to_le_bytes());
+        b.extend(0_i16.to_le_bytes());
+        push_null_marker(&mut b);
+        b.extend(0_i16.to_le_bytes());
+        // TimeTable（版本 1）：String ×4 + 空槽。
+        b.extend(1_i16.to_le_bytes());
+        for _ in 0..4 {
+            b.extend(string_bytes(""));
+        }
+        push_null_marker(&mut b);
+        // TimeDimension（版本 1）：String ×2。
+        b.extend(1_i16.to_le_bytes());
+        b.extend(string_bytes(""));
+        b.extend(string_bytes(""));
+        // TimeDisplay（版本 1）：short、double、int32、double、int32。
+        b.extend(1_i16.to_le_bytes());
+        b.extend(0_i16.to_le_bytes());
+        b.extend(0_f64.to_le_bytes());
+        b.extend(0_i32.to_le_bytes());
+        b.extend(0_f64.to_le_bytes());
+        b.extend(0_i32.to_le_bytes());
+        push_null_marker(&mut b); // {E720618B} 槽（版本 >0x20）
+        b.extend(0_i16.to_le_bytes()); // short +0x2ca（版本 >0x21）
+
+        let mut reader = Reader::new(&b);
+        let mut table = RefTable10_1::new();
+        let result = read_feature_layer_successor_10_1(&mut reader, 34, 4096, &mut table).unwrap();
+        assert_eq!(result.stop, SuccessorStop10_1::TailCompleted);
+        assert_eq!(reader.remaining(), 0);
+        assert!(table.contains(59));
+        assert!(table.contains(75));
+        assert!(table.contains(76));
+        assert!(table.contains(77));
+        assert!(matches!(
+            &result.feature_id_set,
+            Some(FeatureIdSetSlot10_1::FeatureIdSet(body)) if body.count == 0
+        ));
+        assert!(matches!(result.display_filter, Some(RefSlot10_1::Null)));
+        assert_eq!(result.shorts_21c_220_21e, Some([0, 0, 0]));
+        assert_eq!(result.extension_count, Some(1));
+        match &result.extensions[0] {
+            LayerExtension10_1::EditTemplateManager(etm) => {
+                assert_eq!(etm.key, 76);
+                assert_eq!(etm.version, 2);
+                assert_eq!(etm.count, 1);
+                assert_eq!(etm.tail_byte, Some(0));
+                match &etm.entries[0] {
+                    mxd2qgz::layers::annotate_props::EtmEntry10_1::EditTemplate(et) => {
+                        assert_eq!(et.key, 77);
+                        assert_eq!(et.name, "T1");
+                        assert_eq!(et.fields.len(), 1);
+                        assert_eq!(et.tail_string.as_deref(), Some("点"));
+                    }
+                    other => panic!("EditTemplate 条目分类不符：{other:?}"),
+                }
+            }
+        }
+        assert!(result.time_data.is_some());
+        assert!(result.time_table_definition.is_some());
+        assert!(result.time_dimension_definition.is_some());
+        assert!(result.time_data_display.is_some());
+        assert_eq!(result.short_2ca, Some(0));
+    }
+
+    #[test]
+    fn alpc_body_version_gate_and_entry_stop_rollback() {
+        // 版本 3 → 拒绝（有符号比较 >2）。
+        let mut b = Vec::new();
+        b.extend(3_i16.to_le_bytes());
+        b.extend(0_i32.to_le_bytes());
+        let mut reader = Reader::new(&b);
+        let mut table = RefTable10_1::new();
+        let err =
+            read_annotate_props_collection_body_10_1(&mut reader, 64, &mut table, 59).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::InvalidData);
+        assert_eq!(reader.remaining(), b.len());
+
+        // 条目非 LELP 新对象 → 成功停止 + 回退 + 键不保留。
+        let mut b = Vec::new();
+        b.extend(2_i16.to_le_bytes());
+        b.extend(1_i32.to_le_bytes());
+        push_entry_header(&mut b, &RGB_COLOR_CLASS_ID, 90);
+        b.extend(rgb_color_body(0));
+        let mut reader = Reader::new(&b);
+        let mut table = RefTable10_1::new();
+        let body =
+            read_annotate_props_collection_body_10_1(&mut reader, 256, &mut table, 59).unwrap();
+        assert_eq!(
+            body.stop,
+            Some(AnnotatePropsStop10_1::EntryUnsupported {
+                class_id: RGB_COLOR_CLASS_ID,
+                key: 90,
+                index: 0,
+            })
+        );
+        assert!(!table.contains(90));
+        assert_eq!(reader.remaining(), b.len() - 6); // 游标停在条目头起点
+    }
+
+    #[test]
+    fn lelp_body_version_gate_and_truncation_sweep() {
+        // 版本 8 → 拒绝。
+        let mut b = Vec::new();
+        b.extend(8_i16.to_le_bytes());
+        let mut reader = Reader::new(&b);
+        let mut table = RefTable10_1::new();
+        assert!(read_label_engine_props_body_10_1(&mut reader, 64, &mut table, 60).is_err());
+        assert_eq!(reader.remaining(), b.len());
+
+        // 完整体（版本 7，槽全空）逐字节截断扫描：任何截断都失败且不推进。
+        let full = lelp_body_v7(None);
+        for cut in 0..full.len() {
+            let mut reader = Reader::new(&full[..cut]);
+            let mut table = RefTable10_1::new();
+            assert!(
+                read_label_engine_props_body_10_1(&mut reader, 64, &mut table, 60).is_err(),
+                "截断到 {cut} 字节应失败"
+            );
+            assert_eq!(reader.remaining(), cut, "截断扫描 {cut}：游标不得推进");
+        }
+        // 完整体成功。
+        let mut reader = Reader::new(&full);
+        let mut table = RefTable10_1::new();
+        let body = read_label_engine_props_body_10_1(&mut reader, 64, &mut table, 60).unwrap();
+        assert_eq!(body.stop, None);
+        assert_eq!(body.version, 7);
+        assert_eq!(body.expression, "[JZDH]");
+        assert_eq!(body.name, "默认");
+        assert!(body.short_ver1.is_none()); // 版本 7 不读 ④
+        assert!(body.short_ver6.is_none()); // 版本 ≠6
+        assert_eq!(reader.remaining(), 0);
+    }
+
+    #[test]
+    fn feature_id_set_body_contract() {
+        // 正常：版本 1、计数 2、两个 ID。
+        let mut b = Vec::new();
+        b.extend(1_i16.to_le_bytes());
+        b.extend(2_i32.to_le_bytes());
+        b.extend(10_i32.to_le_bytes());
+        b.extend((-3_i32).to_le_bytes());
+        let mut reader = Reader::new(&b);
+        let mut table = RefTable10_1::new();
+        let body = read_feature_id_set_body_10_1(&mut reader, &mut table, 75).unwrap();
+        assert_eq!(body.version, 1);
+        assert_eq!(body.ids, vec![10, -3]);
+        assert_eq!(reader.remaining(), 0);
+
+        // 版本 2 → 拒绝；负版本位模式 → 拒绝（较原生更严）。
+        for version in [2_i16, -1_i16] {
+            let mut b = Vec::new();
+            b.extend(version.to_le_bytes());
+            let mut reader = Reader::new(&b);
+            let mut table = RefTable10_1::new();
+            assert!(read_feature_id_set_body_10_1(&mut reader, &mut table, 75).is_err());
+            assert_eq!(reader.remaining(), b.len());
+        }
+        // 负计数 → 原生语义跳过循环（不报错），原样保留。
+        let mut b = Vec::new();
+        b.extend(1_i16.to_le_bytes());
+        b.extend((-5_i32).to_le_bytes());
+        let mut reader = Reader::new(&b);
+        let mut table = RefTable10_1::new();
+        let body = read_feature_id_set_body_10_1(&mut reader, &mut table, 75).unwrap();
+        assert_eq!(body.count, -5);
+        assert!(body.ids.is_empty());
+        assert_eq!(reader.remaining(), 0);
+        // 截断扫描。
+        let full = {
+            let mut b = Vec::new();
+            b.extend(1_i16.to_le_bytes());
+            b.extend(1_i32.to_le_bytes());
+            b.extend(7_i32.to_le_bytes());
+            b
+        };
+        for cut in 0..full.len() {
+            let mut reader = Reader::new(&full[..cut]);
+            let mut table = RefTable10_1::new();
+            assert!(read_feature_id_set_body_10_1(&mut reader, &mut table, 75).is_err());
+            assert_eq!(reader.remaining(), cut);
+        }
+    }
+
+    #[test]
+    fn edit_template_manager_contract_and_extension_mismatch() {
+        // 正常体 + 版本门。
+        let body = edit_template_manager_body(77);
+        let mut reader = Reader::new(&body);
+        let mut table = RefTable10_1::new();
+        let parsed =
+            read_edit_template_manager_body_10_1(&mut reader, 256, &mut table, 76).unwrap();
+        assert_eq!(parsed.version, 2);
+        assert_eq!(parsed.stop, None);
+        assert_eq!(parsed.entries.len(), 1);
+        assert_eq!(reader.remaining(), 0);
+
+        let mut over = Vec::new();
+        over.extend(3_i16.to_le_bytes());
+        let mut reader = Reader::new(&over);
+        let mut table = RefTable10_1::new();
+        assert!(read_edit_template_manager_body_10_1(&mut reader, 256, &mut table, 76).is_err());
+
+        // 循环条目非 EditTemplate → 停止 + 回退。
+        let mut b = Vec::new();
+        b.extend(2_i16.to_le_bytes());
+        b.extend(1_i32.to_le_bytes());
+        push_entry_header(&mut b, &RGB_COLOR_CLASS_ID, 90);
+        b.extend(rgb_color_body(0));
+        let mut reader = Reader::new(&b);
+        let mut table = RefTable10_1::new();
+        let parsed =
+            read_edit_template_manager_body_10_1(&mut reader, 256, &mut table, 76).unwrap();
+        assert_eq!(
+            parsed.stop,
+            Some(EditTemplateManagerStop10_1::EntryUnsupported {
+                class_id: RGB_COLOR_CLASS_ID,
+                key: 90,
+                index: 0,
+            })
+        );
+        assert!(!table.contains(90));
+
+        // 扩展段尺寸声明与实际消费不一致 → 显式错误（事务性回退）。
+        let mut b = successor_prefix();
+        push_entry_header(&mut b, &ANNOTATE_PROPS_COLLECTION_CLASS_ID, 59);
+        b.extend(2_i16.to_le_bytes());
+        b.extend(0_i32.to_le_bytes());
+        b.extend(0_i32.to_le_bytes());
+        b.extend(0_i16.to_le_bytes());
+        push_entry_header(&mut b, &FEATURE_ID_SET_CLASS_ID, 75);
+        b.extend(1_i16.to_le_bytes());
+        b.extend(0_i32.to_le_bytes());
+        b.extend(0_i32.to_le_bytes());
+        b.extend(0_i16.to_le_bytes());
+        push_null_marker(&mut b);
+        b.extend(0_i16.to_le_bytes());
+        b.extend(0_i16.to_le_bytes());
+        b.extend(0_i16.to_le_bytes());
+        b.extend(0_i32.to_le_bytes());
+        push_null_marker(&mut b);
+        b.extend(0_i32.to_le_bytes());
+        b.extend(string_bytes(""));
+        push_null_marker(&mut b);
+        b.extend(0_i32.to_le_bytes());
+        b.extend(1_i32.to_le_bytes()); // 扩展计数 1
+        let mut etm = Vec::new();
+        push_entry_header(&mut etm, &EDIT_TEMPLATE_MANAGER_CLASS_ID, 76);
+        etm.extend(edit_template_manager_body(77));
+        b.extend((etm.len() as i64 + 5).to_le_bytes()); // 尺寸多声明 5 字节
+        b.extend_from_slice(&etm);
+        let mut reader = Reader::new(&b);
+        let mut table = RefTable10_1::new();
+        let err = read_feature_layer_successor_10_1(&mut reader, 34, 4096, &mut table).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::InvalidData);
+        // 事务性：登记表与游标都不动。
+        assert!(!table.contains(59));
+        assert_eq!(reader.remaining(), b.len());
+    }
+}

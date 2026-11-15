@@ -315,3 +315,207 @@ FieldInfo 计数 14 @`0x602` → 14 条目（每条 = String 条目名 + `{A2BAA
   键 1547 的 PropertySet、键 1612 起的元素簇、键 2026 链的第二 FCN），在
   ALPC 槽闭合前不可达。样本分段的既有验证（渲染器链 `0x3ed..0x5b0`、后继
   段 `0x5b0..0xafe`）全部保持。
+
+## 第九轮：ALPC 环、FeatureIDSet、图层扩展段（EditTemplate 宿主裁决）与 TimeData 族（2026-11-15）
+
+对应第八轮遗留开放项「FieldInfo 循环之后的 ALPC 槽、short +0x1bc、FeatureIDSet 槽、
+选择集 ID 数组及更深的版本分支字段未闭合」。本轮闭合：ALPC/
+LabelEngineLayerProperties（LELP）/EditTemplateManager（ETM）/FeatureIDSet 四类体、
+FeatureLayer::Load 后继段从 ALPC 槽到版本 >0x21 门 `short(+0x2ca)` 的全部剩余字段
+（含版本 0x1c..0x1f 分支与 TimeData 族四段），并裁决 **EditTemplate 宿主**：宿主 =
+后继段图层扩展段中的 EditTemplateManager（LayerLib.dll `ExtensionHelper::
+LoadExtensions` 装载），第八轮「键序 75→76 → `SaveObject(+0x218)` 槽」假设撤销。
+实现：`src/layers/annotate_props.rs`（ALPC/LELP/ETM）、`src/layers/feature_id_set.rs`、
+`src/layers/feature_layer_tail.rs`（后继段延续，在 `read_feature_layer_successor_10_1`
+内原位扩展）。
+
+### 方法与文件身份
+
+- 本机 pyghidra（Ghidra + JDK 25）工程副本：FeatureLayer.dll 复用
+  temp/agent-fl-tail2/ghproj 复制工程的原始分析副本（/tmp/r3/ghproj_fl 的再复制），
+  LabelPlacement.dll 新建工程（temp/ 下既有提取物复制，SHA-256 `8415f63c…35ea3d`，
+  pefile 复核 10.1.0.3035，ImageBase 0x78530000），LayerLib.dll 新建工程
+  （temp/agent-fl-tail/ 既有提取物），DisplayCore.dll 新建工程（temp/agent-fl-tail/
+  既有提取物，本轮 analyze）。全部为工程副本，未打开主检出区工程锁。
+- 样本字节：temp/r6-maps.bin 副本（152941 字节，SHA-256 `fc0149f1…acfe`），逐字节
+  走查脚本在 temp/agent-fl-tail3/（本轮工作副本，含全部闭合段的走查器）。
+- 类名/IID：esri.clsid 全表（temp/agent-fl-tail/ecfg/）、esriCarto 类型库 dump。
+  全部静态取证，未运行目标软件，未人工目视验收。
+
+### ALPC 体（LabelPlacement.dll `0x78531be0`，证据：确定的）
+
+类身份三方互证：esri.clsid 声明 `{1D5849F3-0D33-11D2-A26F-080009B6F22B}`（progID
+AnnotateLayerPropertiesCollection，esriCarto coclass）；GetClassID `0x78531ba0` 以
+两个 8 字节立即数写出该 CLSID；样本 `/Maps:0xafe` 头（键 59）逐字节相同。请求 IID
+`{1D5849F2-…}`（FL::Load `DAT_6f7adda4`）= IAnnotateLayerPropertiesCollection。
+注：LabelPlacement.dll 内本类无 RTTI COL，定位经 GetClassID 立即数 + 子 IID
+`{01004142-…}` 引用 + Load 形状（版本+计数+循环）三线合证。
+
+| # | 字段 | 版本门 | 样本 |
+| --- | --- | --- | --- |
+| ① | int16 版本 | `2 < (short)ver` 拒绝 | 2 |
+| ② | int32 计数 | 恒有（负数原生不进循环） | 1 |
+| ③ | 循环 [LoadObject(IAnnotateLayerProperties) + （版本 ≥2）int32 条目键] | 条目键版本 ≥2 | 1 条：LELP 新对象（键 60）；条目键未读（LELP 体内停止） |
+| ④ | int32 尾 int32 | 版本 ≥2 | 未达（停止在前） |
+
+### LELP 体（LabelPlacement.dll `0x785468c0`，证据：确定的）
+
+类身份：esri.clsid 声明 `{01004145-0D1C-11D2-A26F-080009B6F22B}`（progID
+LabelEngineLayerProperties）；样本 `/Maps:0xb18` 头（键 60）逐字节相同
+（LabelPlacement 实现类 GetClassID 为常量拷贝形，代码无立即数）。
+
+| # | 字段 | 版本门 | 对象偏移 | 样本 |
+| --- | --- | --- | --- | --- |
+| ① | int16 版本 | `7 < (short)ver` 拒绝 | — | 7 |
+| ② | String | 恒有 | -0x78 | `[JZDH]`（标注表达式候选） |
+| ③ | short | 恒有 | -0x74 | -1 |
+| ④ | short | 版本 ≤1 | — | 版本 7 不读 |
+| ⑤ | double | 恒有 | -0x54 | 0.0 |
+| ⑥ | int32 | 恒有 | -0x60 | 0 |
+| ⑦⑧⑨ | short ×3 | 恒有 | -0x5c/-0x4c/-0x4a | -1/0/-1 |
+| ⑩ | int32 | 恒有 | -0x80 | 0 |
+| ⑪⑫ | double ×2 | 恒有 | -0x34/-0x3c | 0.0/0.0 |
+| ⑬ | short | 恒有 | -0x48 | -1 |
+| ⑭ | String | 恒有 | -0x68 | `默认`（标注类名候选） |
+| ⑮ | String | 恒有 | -0x64 | 空串 |
+| ⑯ | LoadObject(ITextSymbol `{A80B5E91-…}`) | 恒有 | 槽 | **TextSymbol 新对象（键 61）= 样本停止点** |
+| ⑰ | LoadObject(IBasicOverposterLayerProperties `{3141F2FB-…}`) | 恒有 | 槽 | 未达 |
+| ⑱ | LoadObject(IAnnotationExpressionEngine `{AA157206-…}`) | 恒有 | 槽 | 未达 |
+| ⑲ | LoadObject(IEnvelope `{1B077914-…}`) | 恒有 | 槽 | 未达（归因轮证据：键 74 = 本槽 Envelope） |
+| ⑳㉑ | double ×2 | 恒有 | -0x24/-0x1c | 未达 |
+| ㉒㉓ | int32 ×2 | 恒有 | -0x14/-0x2c | 未达 |
+| ㉔ | LoadObject(IGraphicsContainer `{D09411D1-…}`) | 版本 >2 | 槽 | 未达 |
+| ㉕ | short | 版本 ≥4 | -0x46 | 未达 |
+| ㉖ | int32 | 版本 ≥5 | -0x7c | 未达 |
+| ㉗ | short | 版本 ==6 | — | 版本 7 不读 |
+
+### FeatureIDSet 体（FeatureLayer.dll `0x6f6d97d0`，证据：确定的）
+
+类身份：esri.clsid 声明 `{D5BB4B88-E0A1-11D2-9F4D-00C04F6BC78E}`（progID
+FeatureIDSet，**实现模块 = FeatureLayer.dll**，与宿主同 DLL；CLSID 数据常量
+`0x6f7ac390` 紧邻请求 IID 常量 `0x6f7ac380`）；样本 `/Maps:0xf63` 头（键 75）逐
+字节相同。Load 经类描述块（函数三连 + IID + CLSID）定位，Save `0x6f6d9880` 对称
+互证。字段序：① int16 版本（`1 < (short)ver` 有符号拒绝；样本 1）→ ② int32 计数
+（负数原生不进循环；样本 0）→ ③ count × int32（要素 OID，逐元素读）。体长 6 字
+节，样本消费 0xf63..0xf7c。
+
+### FeatureLayer 后继段延续字段序（`0x6f6e9940`，证据：确定的）
+
+FieldInfo 循环之后（版本门均伪代码复核，关键门另有写侧对照；ver = FeatureLayer
+体版本，样本 34=0x22）：
+
+| # | 字段 | 版本门 | 对象偏移 | 样本偏移（层 32） |
+| --- | --- | --- | --- | --- |
+| ⑪ | LoadObject(ALPC `{1D5849F2-…}`) | 恒有 | +0x1cc | `0xafe`（键 59） |
+| ⑫ | short | 恒有 | +0x1bc | —（停止点后未定位） |
+| ⑬ | LoadObject(FeatureIDSet `{D5BB4B87-…}`) | 恒有 | +0x1dc | `0xf63`（键 75） |
+| ⑭ | int32 选择集计数 + count×int32（原生单次整块读；负数跳过） | 恒有 | — | `0xf7d`（0） |
+| ⑮ | short | 恒有 | +0x1fe | `0xf81`（0xFFFF） |
+| ⑯ | LoadObject(IDisplayFilter `{19F85377-…}`) | 版本 ≥2 | +0x218 | `0xf83`（空标记） |
+| ⑰ | short ×3 | 版本 ≥3 | +0x21c/+0x220/+0x21e | `0xf93`（0,0,0） |
+| ⑱ | int32 | 版本 ≥0xc | +0x22c | `0xf99`（0） |
+| ⑲ | LoadObject(IName `{4BA33331-…}`) | 版本 ≥4 | +0x230 | `0xf9d`（空标记） |
+| ⑳ | int32 关系类计数 + 循环 LoadObject({311C2EE2-…}=IRelationshipClassName) | 版本 >6 | — | `0xfad`（0） |
+| ㉑ | String | 版本 ≥8 | +0x18c | `0xfb1`（cb=2 空串） |
+| ㉒ | LoadObject(IEnvelope `{1B077914-…}`) | 版本 >8 | 槽 | `0xfb7`（空标记） |
+| ㉓ | int32 范围计数 + count×int32（逐元素读） | 版本 >9 | — | `0xfc7`（0） |
+| ㉔ | **图层扩展段**（LayerLib.dll `ExtensionHelper::LoadExtensions` `0x786c22e0`：[int32 计数][每条 int64 尺寸 + 对象头 + 体]；未知类按尺寸 Seek 跳过） | 版本 ≥0xb | +0x26c | `0xfcb`（1 条：EditTemplateManager，尺寸 387） |
+| ㉕ | double | 版本 ≥0xd | +0x1e8 | —（停止点后） |
+| ㉖ | LoadObject(ISymbol `{F3435802-…}`) | 版本 >0xd | 槽 | —（停止点后） |
+| ㉗ | short + int32 | 版本 >0xe | +0x12e/+0x1f0 | —（停止点后） |
+| ㉘ | LoadObject(IEnvelope) | 版本 >0xe | 槽 | —（停止点后） |
+| ㉙ | LoadObject(IUID `{1714D59B-…}`) | 版本 >0x10 | 槽 | —（停止点后） |
+| ㉚ | String | 版本 ≥0x12 | +0x28c | —（停止点后） |
+| ㉛ | short（==0x12/0x13 临时 short；≥0x13 的 +0x1d8） | 见门 | +0x1d8 | —（停止点后） |
+| ㉜ | double ×2 | 版本 ≥0x14 | +0x290/+0x298 | —（停止点后） |
+| ㉝ | short | 版本 ≥0x15 | +0x1da | —（停止点后） |
+| ㉞ | int32 | 版本 ≥0x16 | +0x244 | —（停止点后） |
+| ㉟ | short | 版本 ≥0x17 | +0x1be | —（停止点后） |
+| ㊱ | CInternalLayerBase::ReadPreJoinDefExpressions（LayerLib.dll `0x786c5d30`：int32 计数 + count×[String+String]） | 版本 >0x17 | -0xa8 段 | —（停止点后） |
+| ㊲ | int32 + short ×3 | 版本 ≥0x19 | +0x2c0/+0x2c4/+0x2c6/+0x2c8 | —（停止点后） |
+| ㊳ | String ×4 | 版本 ≥0x19 | +0x2cc/+0x2d0/+0x2d4/+0x2d8 | —（停止点后） |
+| ㊴ | LoadObject({A62B9EC2-…}=IDisplayExpressionProperties) | 版本 >0x19 | 槽 | —（停止点后） |
+| ㊵ | short + String ×3 | 版本 >0x1a | +0x300/+0x304/+0x308/+0x30c | —（停止点后） |
+| ㊶ | TimeData 族四段（LayerLib.dll `0x7870d8b0`/`0x7870df80`/`0x7870e250`/`0x7870f6c0`，本轮闭合：TimeData 版本 ≤2 short+short+槽+（≥2）short；TimeTable 版本 ≤1 String×4+槽；TimeDimension 版本 ≤1 String×2；TimeDisplay 版本 ≤1 short+double+int32+double+int32） | 版本 ≥0x20 | -0x68/-0x80/-0x58/-0x48 段 | —（停止点后） |
+| ㊷ | LoadObject({E720618B-…}=IHotLinkExpressionProperties) | 版本 >0x20 | 槽 | —（停止点后） |
+| ㊸ | short | 版本 >0x21 | +0x2ca | —（停止点后） |
+
+版本 0x1c..0x1f 分支（`0x1b < ver && ver < 0x20`，10.1 docVersion 不写）：short +
+String ×4 + short + double + int32（→ -0x62/-0x78/-0x74/-0x70/-0x6c/-0x44/-0x40/
+-0x38）→ 版本 ≥0x1d LoadObject({F6CBA4A3-…}=ITimeReference)、版本 ≥0x1e
+LoadObject({BD724B95-…}=ITimeExtent)、版本 ==0x1f LoadObject({E720618B-…})。字段
+序静态闭合，无样本字节佐证（实现按门接入、槽位新对象为停止点并注明）。
+
+中间的 `FUN_6f6e0c00`（+0x144 GUID 后）、`FUN_6f6c8100`、`FUN_6f6acc10`、
+`FUN_6f701ad0`、`FUN_6f6dd210`、`FUN_6f6fd550`（MakeBSTR+QI）、`FUN_6f7025b0`/
+`FUN_6f6df550`（选择集刷新）经反编译核对均不读流，无流内字节。
+
+### EditTemplate 宿主裁决（撤销 +0x218 假设；证据：确定的）
+
+- **扩展段格式**（LayerLib.dll `ExtensionHelper::LoadExtensions` `0x786c22e0`，
+  FeatureLayer.dll 导入）：[int32 计数][每条 [int64 尺寸][16 字节 CLSID][4 字节
+  键][体]]。已知类由 CLSID 建实例后调 IPersistStream::Load；未知类按尺寸
+  `IStream::Seek` 整体跳过。尺寸字段 = 「类标识+键+体」全段字节数（不含尺寸字
+  段本身；样本条目：声明 387，头 20 + 体 367 恰等）。对称 SaveExtensions。
+- **EditTemplateManager 体**（FeatureLayer.dll `0x6f6d0a80`；GetClassID
+  `0x6f6d0a50` 写出 `{A0162E85-E170-4B10-A370-CEE08D8D4B8C}`；esri.clsid 声明
+  progID EditTemplateManager；esriCarto coclass）：① int16 版本（`2 < (short)ver`
+  拒绝；样本 2）→ ② int32 计数 → ③ 循环 LoadObject(IEditTemplate
+  `{0952F6C1-…}`；样本 = EditTemplate 新对象，键 76 @`0xfed`) → ④ 版本 ≥2：
+  1 字节（样本 0x00）。Save `0x6f6d0bc0` 对称（版本表按 docVer 查询）。
+- 样本对位：扩展段 @`0xfcb` = 计数 1、尺寸 387、CLSID {A0162E85} @`0xfd7`、体
+  `0xfe7..`（版本 2、计数 1、EditTemplate 键 76、尾字节 0x00），逐字节吻合。
+- **结论**：样本 10 个 EditTemplate 实例（键 76/146/1605/…）的宿主 = 所在图层
+  FeatureLayer 后继段图层扩展段中的 EditTemplateManager。第八轮「键序 75→76 →
+  紧随 FeatureIDSet 的 SaveObject(+0x218) 槽」假设撤销：该槽（⑯）请求 IID
+  `{19F85377-…}`=IDisplayFilter，样本空标记。实例前的 `02 00 01 00 00 00` 尾段
+  = ETM 体首（版本 2 + 计数 1），未定名问题闭合。
+- 接线：`annotate_props::read_edit_template_manager_body_10_1` 循环内接
+  `edit_template::read_edit_template_body_10_1`（既有读取器，无停止点）。
+
+### 样本对位（辅助观察）与实现接线
+
+- `0xafe..0xb8e` 逐字节吻合（temp/agent-fl-tail3/ 走查脚本全链走查；ALPC 头+
+  版本+计数 → LELP 头+版本 7 全标量段 → ITextSymbol 槽头）。停止点 = LELP ⑯ 槽
+  TextSymbol `{B65A3E74-2993-11D1-9A43-0080C7EC5C96}` 新对象（键 61，对象头
+  @`0xb7a`、体起点 @`0xb8e`）。`cargo run -- parse samples/测试底图.mxd` 停止点
+  由 `0xafe`（剩余 150127 字节）推进到 **`0xb7a`**（剩余 150003 字节），停止原因
+  `Successor(AnnotatePropsBody(LelpBody(SymbolSlotUnsupported)))`。
+- `0xf63..0xfe6` 段（FIDSet、选择集、IDisplayFilter/IName/Envelope 空标记、关系
+  类计数 0、String、范围计数 0、扩展段头）由走查脚本独立证实（读取器在 TextSymbol
+  槽停止，暂不可达；TextSymbol 闭合后可达）。
+- 实现：`feature_layer_tail::read_feature_layer_successor_10_1` 原位扩展（⑪-㊸
+  全部门接入）；`SuccessorStop10_1` 扩展（TailCompleted/FeatureIdSetUnsupported/
+  DisplayFilterUnsupported/NameUnsupported/RelationshipClassUnsupported/
+  EnvelopeUnsupported/LayerExtensionUnsupported/EditTemplateManagerBody/
+  SymbolSlotUnsupported/UidUnsupported/ExpressionPropsUnsupported/
+  LegacyTimeSlotUnsupported/TimeSlotUnsupported；FieldInfoLoopCompleted 保留为
+  「延续段流耗尽/ALPC 槽头非 ALPC」的兼容语义——停止点与第八轮一致，仅停止原因
+  不再细分，既有调用方断言兼容）；`annotate_props` 三读取器与 `feature_id_set`
+  读取器（trial 游标 + 暂存登记表，槽位未知类回退不保留键；ETM 尺寸声明与实际
+  消费不一致为显式错误——原生不校验，注明较严）。
+- tests/feature_layer_tail.rs 48 → 54 项（新增 tail_continuation 模块 6 项：样
+  本形态停止、全链合成消费、ALPC/LELP/FeatureIDSet/ETM 契约、截断扫描、尺寸不
+  一致事务性）。tests/robustness.rs 未动；`src/maps/`、`src/objects/` 未动
+  （`mxd_maps` 的延续段诊断输出与 robustness 集中清单接入点留给整合轮：
+  `read_annotate_props_collection_body_10_1`、`read_label_engine_props_body_10_1`、
+  `read_edit_template_manager_body_10_1`、`read_feature_id_set_body_10_1` 与后继
+  段新停止变体均已随 `read_feature_layer_successor_10_1` 自动生效，无需额外接线）。
+
+### 本轮未解决事项
+
+- **TextSymbol 体未闭合**（DisplayCore.dll；CLSID `{B65A3E74-…}` 数据常量
+  `0x6ec167a8`、GetClassID 实体 `0x6ebd08e0` 与调整器 thunk `0x6ebe5bfb` 已定
+  位，但 IPersistStream 虚表在本轮静态检索中无指针可达路径——无立即数三方互
+  证形、无 RTTI COL 引用其 TD `0x6ec3e5dc`）：样本停止点即此（键 61）。其后
+  的 BOLP（`{EE535289-…}`，LabelPlacement.dll，CLSID 常量 `0x7857a814`，实现
+  函数未定位）、标注表达式引擎族、LELP ⑲/㉔ 槽 Envelope/IGraphicsContainer
+  实现类、㉖ ISymbol 槽、㉘/㉙ Envelope/IUID 实现类、㊴/㊷ 表达式属性族、
+  TimeData 族槽实现类均在停止点之后，体未闭合（读取器新对象即停止）。
+- 版本 0x1c..0x1f 分支与 TimeData 族仅有反编译证据，无样本字节佐证（样本 34 走
+  ≥0x20 门，0x1c..0x1f 分支不可达）。
+- ALPC/LELP/ETM/FeatureIDSet 各标量与字符串的业务语义为候选（标注表达式、类
+  名、OID 等），原样保留；ETM 尾字节（样本 0x00）语义未定。
+- LELP 条目键（ALPC ③ 的 int32）与 ALPC 尾 int32 在样本中未达（LELP 体内停
+  止），字段序仅有反编译证据。
+- 全部结论为静态取证，未运行 ArcMap 10.1，未人工目视验收；样本对位为辅助观察。
