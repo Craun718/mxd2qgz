@@ -236,3 +236,183 @@ MarkerElement IPoint 与 LineElement IGeometry 槽维持仅分类（样本 0 实
 样本 16 实例位于 CGL 图形集合（流内偏移在本轮样本停止点之后），接线不改变
 当前样本停止点；`read_polyline_body_10_1` 与类分派入口已入 robustness 集中
 清单。
+
+## 第二轮落位：Polygon/Point/Multipoint 记录布局闭合与 Path 族「持久化不存在」结论（2026-11-15）
+
+本轮在上一轮工程副本（同一临时目录内独立命名工程，Open 副本不共享锁）
+继续取证；全部结论为**静态反编译/汇编核对 + 机械字节扫描**，未运行
+ArcMap。样本 0 实例的类全部由合成测试覆盖，不声称样本验证。不写本机绝对
+路径。
+
+### 类身份复核（esri.clsid 表）
+
+- `30707211-52D5-11D0-A8F2-00608C85EDE5` = **Path**（progID `Path`，非
+  Polygon）；Polygon/Point/Multipoint = `00A5CB42/41/40-52DA-11D0-…`。上轮
+  同族表与 esri.clsid 声明一致，本轮以全表 XML 复核维持。
+- CLSID 常量独立字节扫描（不经 Ghidra，直读 PE 节表换算 VA）：Polyline
+  `0x71a1187c`、Multipoint `0x71a1186c`、Polygon `0x71a125f8`、Point
+  `0x71a13a78`、Path `0x71a131d0`，各唯一命中。
+- RTTI TD 名称串（独立字节扫描）：`.?AVPolygon@ESRI@@`、`.?AVPoint@ESRI@@`、
+  `.?AVMultipoint@ESRI@@`、`.?AVPath@ESRI@@`、`.?AVRing@ESRI@@`、
+  `.?AVLine@ESRI@@`、`.?AVBezierCurve@ESRI@@`、`.?AVEllipticArc@ESRI@@` 均
+  唯一命中并锚定对应虚表；`.?AVPolyBase@ESRI@@`（共享基类，见下）唯一命中；
+  **`.?AVCircularArc@ESRI@@` 与 `.?AVCircularArc@@` 两种命名形态均未命中**
+  （维持「虚表未定位」）。
+
+### Polygon：与 Polyline 完全同构（证据：确定的）
+
+- Polygon 持久化虚表 `0x71a220d4` 的 Load/Save 槽 = `0x7192db20` /
+  `0x7192dcb0`（与 Polyline 同函数，上轮已证，本轮虚表槽直读复核）。
+- **解析器为同一函数**：`ESRI::ShapePolyline::vftable`（基址 `0x71a245e4`）
+  与 `ESRI::ShapePolygon::vftable`（基址 `0x71a244ac`）的 `+0x94` 槽直读均
+  为 `0x7197fc50`。导入入口 `0x7192c950` 按几何类目（4 = Polygon）构造
+  `ShapePolygon` 栈对象（标记 5），解析逻辑与 Polyline 分支共用同一代码：
+  字段布局、空几何（4 字节、回填标记按分支取 3/5）、负计数拒
+  `0x80040253`、**点数 1 拒 `0x80040221`（无条件尾部检查，不分区分类别）**
+  完全一致。
+- 上轮「Polygon 带环方向等差异属内核解析器形状分支」的候选：本轮反编译
+  证实**记录布局层面无环方向处理**——多环即「环数 A + 环起始数组（每环首
+  点序号）+ 点序」，与折线路径同构；环方向/闭合等语义属几何内核移交链（静
+  态未定位），不在记录字节内。
+- 包装字段序（版本 ≤2、声明长度、版本 >1 的 LoadObject ISpatialReference）
+  与 Save 的固定版本常量 `02 00` 全部与 Polyline 相同（同一函数）。
+
+### Point：记录布局（Load `0x7191c1a0` → 导入 `0x7191bd30`；反编译逐行核对，
+确定的；样本 0 实例）
+
+- wrapper 变体：版本门同 Polyline（有符号 >2 拒 `0x80004005`；S_FALSE 空
+  流捷径同样存在、读取器不实现）；**声明长度 > `0x50` 直接拒
+  `0x80004005`**（80 字节栈缓冲，无符号比较）；内嵌接口在对象 `+0x40` 槽
+  （持久化 this−0x8 视角，虚表 `0x71a20fbc`），导入 = `+0x18` 槽
+  `0x71906090`（薄转发，补写标志 0）→ `+0x38` 槽 `0x7191bd30`。版本 >1 的
+  LoadObject ISpatialReference 段与 Polyline 相同（IID `DAT_71a15a10`）。
+- Save `0x7191c2b0`：版本常量 `0x71a11e54` 字节 `02 00`（本轮直读），导出
+  对称（`+0x10` 查尺寸、`+0x24` 填充、写长度与记录、SaveObject 空间参考）。
+- 记录布局（小端；坐标 < −1e38 原生钳位 `DAT_71a66f20`，读取器原样保留；
+  无包络、无路径概念，X/Y 直接读自记录）：
+
+| 类型字（全字匹配） | 声明长度 | 字段 |
+| --- | --- | --- |
+| 恰 0 | 4 | 空点（原生 `*consumed = 4`） |
+| 恰 1 | 20 | f64 X（偏移 4）+ f64 Y（偏移 12） |
+| 恰 9 | 28 | + f64 Z（偏移 20） |
+| 恰 0xb | 36 | + f64 Z + f64 M（偏移 28） |
+| 恰 0x15 | 28 | + f64 M（偏移 20） |
+| 低字节 0x34 且 `& 0x2f000000` == 0 | 20 + 8·Z位 + 8·M位 + 4·ID位 | X + Y + 可选 Z（`0x80000000`）+ 可选 M（`0x40000000`）+ 可选 ID（`0x10000000`，u32） |
+
+- 掩码说明：`0x2f000000` = 0x01000000/0x02000000/0x04000000/0x08000000/
+  0x20000000，**不含** `0x10000000`——ID 段可达（初判误读为不可达，复核反
+  编译后更正）。恰值 1/9/0xb/0x15 带高位即落默认分支（低字节 ≠ 0x34 拒）。
+- 读取器较原生更严的三点：声明长度与布局常量严格相等（原生允许死空间尾
+  随）、空点恰 4 字节、其余类型字同拒 `0x8004020a`。
+
+### Multipoint：记录布局（Load `0x718ff9c0` → 导入 `0x71906590`；反编译逐
+行核对，确定的；样本 0 实例）
+
+- wrapper 变体（malloc 版，原生无长度上限）：内嵌接口在对象 `+0x3c` 槽
+  （持久化 this−0x20 视角，虚表 `0x71a1ffa4`），导入 = `+0x18` 槽
+  `0x71906090` → `+0x38` 槽 `0x71906590`。版本门与 LoadObject 段同
+  Polyline；Save `0x718ffb50` 版本常量 `0x71a11e58` 字节 `02 00`。
+- 记录布局按**类型字低字节** switch（高标志位按全字判别）：
+
+| 低字节 | 声明长度 | 字段 |
+| --- | --- | --- |
+| 0 | 4 | 空点集（原生完全不读内容、consumed 不回写；读取器要求恰 4 较原生更严） |
+| 1/9/0xb/0x15/0x34 | 20 + 8·Z + 8·M + 4·ID | f64 X（偏移 4）+ f64 Y（偏移 12）；Z 段 ⇔ 恰为 9/0xb 或 `0x80000000` 位；M 段 ⇔ 恰为 0x15/0xb 或 `0x40000000` 位；ID（u32）⇔ `0x10000000` 位；判别按全字（如 `0x40000009` = 有 M 无 Z） |
+| 8/0x12/0x14/0x1c/0x35 | 40 + 16N + (16+8N)·Z + (16+8N)·M + 4N·ID | 4×f64 包络（偏移 4）+ int32 点数 N（偏移 36）+ N×(f64,f64)（偏移 40）+ Z 段（16 字节 min/max 对 + 每点 f64）⇔ 恰为 0x14/0x12 或 `0x80000000` 位 + M 段 ⇔ 恰为 0x1c/0x12 或 `0x40000000` 位 + 每点 u32 ID ⇔ `0x10000000` 位；段序 Z → M → ID |
+
+- 单点型包络为写侧退化形 `(x, y, x, y)`（`WKSEnvelope::PutCoords` 四参同
+  值）；多点型为完整 min/max。其余低字节原生拒 `0x8004020a`。
+- 读取器较原生更严的三点：声明长度严格相等（空点集恰 4）；多点型点数负位
+  模式拒绝（原生静默跳过建点继续读尾随段，无显式错误）；长度算术用 u64
+  防溢出。
+
+### Path/Ring/Line/BezierCurve/EllipticArc：流内持久化不存在（结论，非缺口；
+本轮更正上轮表）
+
+- 上轮表的「Load」列（`0x719089e0` 等）反编译为 **GetClassID 形态函数**
+  （判空 `0x80004003` → movq 双 8 字节复制本类 CLSID 常量 → S_OK，不读
+  流）；「Save 空桩 `0x71973ab0`」为其所在**类身份虚表**尾槽。该虚表形状
+  `[QI、共享 AddRef 0x719f1550、共享 Release 0x718de060、类名 getter
+  （L"Path"/L"Ring"/L"Line"…）@+0x0c、私有槽 @+0x10、GetClassID movq
+  @+0x14、空桩 @+0x18、…]` 与 Polyline 主虚表 `0x71a228c4` 同族（非持久
+  化虚表）。
+- 全镜像（.rdata + .data）4 字节扫描：五类 movq-GetClassID 各仅出现 1 次
+  （位置即类身份虚表 +0x14 槽）——不存在持久化形状虚表（无第二处以 movq
+  居 +0x0c 位）。
+- 构造器逐指令核对（Path `0x719091f0` 一族 5 处、Ring `0x71961d70`、Line
+  `0x718da350`）：只安装类身份 + 能力接口虚表（两阶段覆写），**无任何持久
+  化虚表安装点**。Polyline/Polygon 共享的基类持久化虚表 `0x71a2173c`（COL
+  → TD `.?AVPolyBase@ESRI@@`，GetClassID = purecall `0x719f36fe`，Load/
+  Save = `0x7192db20`/`0x7192dcb0`）从未被这三族构造器安装——「两类共用
+  Load/Save」的解释即派生类覆写 GetClassID 而继承 PolyBase 持久化实现。
+- 结论：五类**不实现 IPersistStream**（构造性不存在），从不独立出现在流内
+  （样本 0 实例两轮一致）；段仅以标志 `0x20000000` 变体的描述条目存在，而
+  该标志 Load 路径恒不可达。上轮「Save 空桩」解读作废，按本节更正；未解决
+  事项 4 相应闭合（CircularArc 维持未定位）。
+
+### 实现落位（src/objects/geometry.rs、tests/geometry.rs）
+
+- 新入口：`read_geometry_body_10_1(class_id, …) -> GeometryBody10_1`（四类
+  枚举 `Polyline/Polygon/Point/Multipoint`）；`read_polygon_body_10_1`、
+  `read_point_body_10_1`、`read_multipoint_body_10_1` 显式 10.1 入口；常量
+  `POLYGON_CLASS_ID`/`POINT_CLASS_ID`/`MULTIPOINT_CLASS_ID`。
+- 兼容入口 `read_geometry_body_of_class_10_1`（返回具体
+  `PolylineBody10_1`）**签名与行为不变**：`element_body.rs` 的 IGeometry 槽
+  接线点按 Polyline 类标识调用并取具体类型，签名变更属整合轮；其余类错误
+  文案改为提示类型化入口。`PolylineRecord10_1` 变为共享 `ShapeRecord10_1`
+  的类型别名（既有调用不受影响）。
+- 共享组件：版本门（`MAX_GEOMETRY_VERSION` ≤ 2 有符号，负位模式一并拒）、
+  声明长度门（`max_bytes` 先限额后读取）、嵌套空间参考段（Null/回引/新键
+  投影坐标系，其余 Unsupported 整体回滚——四类同语义）；Point 另有 `0x50`
+  wrapper 门（同原生 `0x80004005`）。
+- 测试（tests/geometry.rs 13 → 24 项）：三个新 CLSID 常量逐字节、Polygon
+  多环（环数 2 + 起始 `[0, 3]` + 5 点）往返、空几何与共享门（单点/长度/版
+  本）、兼容入口仍仅路由 Polyline、Point 类型字表（8 例含 ID 段）、空点与
+  拒绝（死空间、未知类型、掩码位、`0x50` 门）、Point 全前缀截断事务性、
+  Multipoint 单点型 4 例（含 `0x40000009` 全字判别与 ID 位）、多点型 4 例
+  （类型 8、`0x14` +Z、`0x12` +Z+M、`0x10000008` +ID）、空点集与拒绝（低字
+  节 0 死空间、未知低字节、负点数、长度不一致）、类型化分派四类路由与未知
+  类回滚。
+- `cargo fmt --check`、`cargo test`（493 项）全绿；既有 13 项 Polyline 测
+  试与 robustness/element_body 集中清单不改动、不回退。
+
+### 样本复核（全流重扫）
+
+/Maps 流（152,941 字节）以独立脚本重扫 12 个几何类 CLSID：Polyline 16 实
+例（16 处对象头偏移与上轮表逐一相同）、Envelope 25 实例、Polygon/Point/
+Multipoint/Path/Ring/Line/BezierCurve/EllipticArc/CircularArc/MultiPatch 均
+**0 实例**。本轮新增的三个读取器（Polygon/Point/Multipoint）无字节佐证，
+全部由合成测试覆盖，不得声称样本验证。
+
+### 接线建议（本轮不改共享文件，供整合轮）
+
+1. `element_body.rs` 的 `read_geometry_slot`（TextElement 第 6 字段）当前在
+   分派前先比对 `POLYLINE_CLASS_ID`。切换为类型化入口
+   `read_geometry_body_10_1`：`GeometryBody10_1` 四变体分别入
+   `GeometrySlot10_1`（建议新增 `Polygon`/`Point`/`Multipoint` 槽变体），
+   未知类维持 `NestedObjectNotClosed` 停止回退语义。
+2. MarkerElement 的 IPoint 槽与 LineElement 的 IGeometry 槽样本 0 实例；若
+   接入 Point 分派，注意其体无停止点、错误上抛语义与 Polyline 一致。
+3. `tests/robustness.rs` 集中清单建议补 `read_polygon_body_10_1`/
+   `read_point_body_10_1`/`read_multipoint_body_10_1`/
+   `read_geometry_body_10_1` 四入口（试探性输入 → 明确错误）。
+
+### 未解决事项（本轮更新，承接上轮清单）
+
+1. 记录类型值语义（shape 类别 ↔ esriGeometryType 映射；Point/Multipoint 的
+   0x34/0x35 等标记）仍为反编译观察候选——新增三类的类型字同样原样保留不
+   校验（与原生一致）。
+2. 版本 0/1、S_FALSE 捷径无样本佐证（读取器版本 0/1 按「记录 + 无空间参
+   考」处理，S_FALSE 不实现）——四类同。
+3. 折线/多边形可选段（Z/M/段描述/附加数组）Load 路径恒不可达；Point/
+   Multipoint 类型字高标志位的 Z/M/ID 段已按反编译闭合（合成测试覆盖），
+   亦无样本佐证。
+4. （原第 4 项部分闭合）Point/Polygon/Multipoint 记录布局已闭合；Path/
+   Ring/Line/BezierCurve/EllipticArc 的流内持久化按「构造性不存在」闭合；
+   CircularArc 虚表与 RTTI 名称维持未定位。
+5. 几何内核移交链（环方向、起始合法性校验等内核语义）静态未定位。
+6. < −1e38 坐标钳位未实现（原样保留位模式）——四类同。
+7. 嵌套空间参考仅支持投影坐标系——四类同。
+8. Polygon/Point/Multipoint 布局证据为静态反编译（确定的），样本 0 实例：
+   合成测试覆盖；未运行 ArcMap 10.1，未在 QGIS 中核对，不声称已验证。
