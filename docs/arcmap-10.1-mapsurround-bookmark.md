@@ -6,7 +6,7 @@
 
 **样本边界（先声明）**：仓库参考样本 `samples/测试底图.mxd` 的
 MapSurround 循环计数（`/Maps:0x24f60`）与书签循环计数（`0x24f9c`）均为
-0。本文全部结论**无样本字节佐证**；实现（`src/layers/map_surround.rs`）只能用
+0。本文全部结论**无样本字节佐证**；实现（接线轮后位于 `src/maps/map_surround.rs`）只能用
 合成输入测试，不得声称样本验证。样本中能核对的只有循环结构本身（计数 0
 即循环体为空），该部分与 `map_object::read_map_suffix_10_1` 现有骨架一致。
 
@@ -180,7 +180,7 @@ SaveObject 条目、恒写 −0xe8、docVersion≠0 写 −0xe6、docVersion≥5
 Load ver=5 读全部尾段，读写一致（ver/docVersion 桥接经版本表闭合，无
 错位）。
 
-## 七、实现（src/layers/map_surround.rs，仅合成输入测试）
+## 七、实现（src/maps/map_surround.rs，仅合成输入测试）
 
 - `read_map_surround_common_prefix_10_1`：共同前缀（版本仅接受 0..=3，
   较原生更严并注明；IMap 槽新对象报不支持——真实流恒为回引）。
@@ -215,3 +215,14 @@ Load ver=5 读全部尾段，读写一致（ver/docVersion 桥接经版本表闭
    `FUN_7941c760` 的集合语义未逐项定性（不影响流内布局）。
 8. 全部结论为静态观察；ArcMap 10.1 与 QGIS 的人工打开与目视核对均未
    进行，不声称已验证。
+
+## 九、接线补记（2026-11-15）
+
+第七节「未接入 `parse`/`map_object`」已作废：第七轮接线已把本模块接入
+`map_object::read_map_suffix_10_1` 的 MapSurround/书签两循环——循环条目按
+流内类标识分派（AOI/Feature 书签体经本模块读取器整体解析，Legend 走
+`read_legend_prefix_10_1`）；同日接线轮再在 Legend 条目循环按 CLSID 分派
+HorizontalLegendItem 体（`legend_format` 读取器，新增
+`LegendItemBodyIncomplete` 停止变体透传嵌套停止）。样本两循环计数均为 0，
+样本层面仍无字节佐证；开放项 2/3/5 状态不变（开放项 5 的 IName 槽已列入
+TODO 体未闭合类族清单）。模块测试现为 22 项（接线新增 2 项）。

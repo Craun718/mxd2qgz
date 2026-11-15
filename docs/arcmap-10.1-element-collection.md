@@ -175,7 +175,8 @@ FeatureLayer 体起点 `0x1622`（版本 short 34），与第六轮 FDO 字段�
 2. `AfStreamGetSaveVersion` 版本表 `0x7866d9c4`（`02 00 04 00`）的内部映射
    未逐指令展开；「docVersion 0 → 旧布局版本号」的对应为观察推断。
 3. 元素类（TextElement 等）体未闭合：样本非空实例在首元素对象头处停止；
-   闭合需 TextElement/TextSymbol 链（第五轮已列其符号族构成）。
+   闭合需 TextElement/TextSymbol 链（第五轮已列其符号族构成）。〔补记
+   2026-11-15：本条已闭合，见文末「接线与元素体闭合补记」。〕
 4. 版本 0 与负值位模式的接受策略较原生更严/更宽的取舍：版本 0 与 1/2 同码
    路径故接受；负值位模式原生可落入旧加载器，本读取器拒绝（同
    fdo_graphics_layer 的处理）。
@@ -184,3 +185,24 @@ FeatureLayer 体起点 `0x1622`（版本 short 34），与第六轮 FDO 字段�
 6. REA 共享服务器单活动程序的限制：本轮深度分析在本机 pyghidra 完成（与前
    几轮同环境）；后续如需复核，按「方法与环境」复现即可。
 7. 全部结论为静态观察；未运行 ArcMap 10.1，未在 QGIS 中核对，不声称已验证。
+
+## 接线与元素体闭合补记（2026-11-15）
+
+上文两处表述随后续轮次作废，补记以免误读：
+
+- 「可达性」条的「该读取器把『新 ElementCollection 对象』实现为回退停止
+  点，本轮未改动其代码」与「接线属共享文件改动，留待后续统一处理」均已
+  作废：第七轮接线已把第 5 步 IElementCollection2 槽新对象且类标识命中
+  `ELEMENT_COLLECTION_CLASS_ID` 时改调本模块读取器读取闭合体
+  （`ElementCollectionSlot10_1::ElementCollection`，样本字节可被完整消
+  费）；同日接线轮再把元素循环的新对象元素按类标识分派 `element_body`
+  读取器（TextElement/MarkerElement/LineElement 体整体解析，未知类维持
+  元素头回退停止，嵌套停止经 `ElementBodyIncomplete` 透传）。可达性结论
+  本身不变：该槽位于关联 FeatureLayer 体停止点之后（该停止点已自上文
+  `0x3ed` 渲染器槽推进至 `0xafe` ALPC 槽，键 86 @`0x1608` 在其后方），
+  样本上第 5 步仍结构性不可达。
+- 「未解决事项」第 3 条（元素类体未闭合）已闭合：TextElement/TextSymbol/
+  MarkerElement/LineElement 体见 docs/arcmap-10.1-element-bodies.md（含
+  样本对位与接线轮小节）；其余开放项（IGeometry/Polyline 体、
+  IPersistStream 槽位归属等）见该记录与 TODO。本模块测试现为 12 项
+  （元素体分派新增 1 项）。

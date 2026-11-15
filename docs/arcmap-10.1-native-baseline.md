@@ -56,7 +56,7 @@ REA 6.8.0 的 `inspect_native_exports` 对上述五个已核对文件的 PE 导�
 
 上述 `String` 局部逻辑与 Git 历史 `7326c98:docs/native-strings.md` 所记 10.8 分支相似，支持进一步核对严格读取子集，但不证明全部字段、全部版本或异常输入兼容。`Version` 写入调用者、ObjectStream 转发、short 和尾部依然未知；不能据此识别 MXD 版本。未运行 ArcMap，未做人工验收。
 
-`native_string::read_string_10_1` 为明确调用点提供普通写出布局的严格安全子集：限制资源、检查完整长度、UTF-16 和终止零，失败时保持游标。它拒绝原生函数可能接受的短读及提前零；合成测试不证明任何 MXD 字段或软件兼容性，也未接入 Version 流。
+`native_string::read_string_10_1` 为明确调用点提供普通写出布局的严格安全子集：限制资源、检查完整长度、UTF-16 和终止零，失败时保持游标。它拒绝原生函数可能接受的短读及提前零；合成测试不证明任何 MXD 字段或软件兼容性。〔补记 2026-11-15：本段末「也未接入 Version 流」已过时——`version_stream::read_arcmap_header_10_1` 的头部文本即经本读取器族（`read_string_10_1`）读取，10.8 布局读取器（`read_layout_10_8`）经 `read_string_10_8` 同源；`version` 命令经其接入 `/Version`，Map 数据框名称读取接入见「MXD 解析」相关条目。〕
 
 ## 10.1 SystemCore 接口候选（2026-11-13）
 

@@ -9,6 +9,8 @@ pub mod element_body;
 pub mod element_collection;
 pub mod envelope;
 pub mod geometry;
+pub mod hyperlink;
+pub mod number_format;
 pub mod property_set;
 pub mod spatial_reference;
 pub mod workspace_name;

@@ -4,8 +4,9 @@
 featurelayer-tail.md「未解决事项」）中的「SimpleLine/FillSymbol 等同族、
 CmykColor 等颜色族未闭合」——本轮闭合 DisplayCore.dll「简单符号与颜色族」
 10 个 coclass 的 Load/Save 字段序（5 个目标类 + 同族 HlsColor 与三个线条
-符号），并实现显式 10.1 严格读取器（`src/display_symbol.rs`、
-`src/display_color.rs`，未接入任何既有分派链）。全部为静态反编译观察，
+符号），并实现显式 10.1 严格读取器（今位于 `src/objects/display_symbol.rs`、
+`src/objects/display_color.rs`；本轮未接入任何既有分派链，接入见下文
+「接线轮（2026-11-15）」节）。全部为静态反编译观察，
 未运行 ArcMap，未做人工目视验收；**仓库参考样本 `samples/测试底图.mxd`
 本轮闭合的 10 类均无实例（样本只含 SimpleMarkerSymbol 与 RgbColor，前轮
 已闭合），全部结论无样本字节佐证**，先例见 docs/arcmap-10.1-dataset-name.md。
