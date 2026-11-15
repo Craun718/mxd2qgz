@@ -21,12 +21,17 @@
 use mxd2qgz::layers::annotate_props::{
     ANNOTATE_PROPS_COLLECTION_CLASS_ID, EDIT_TEMPLATE_MANAGER_CLASS_ID,
     LABEL_ENGINE_PROPS_CLASS_ID, read_annotate_props_collection_body_10_1,
-    read_edit_template_manager_body_10_1, read_label_engine_props_body_10_1,
+    read_annotation_vbscript_engine_body_10_1, read_bolp_body_10_1,
+    read_display_expression_props_prefix_10_1, read_edit_template_manager_body_10_1,
+    read_hot_link_expression_props_body_10_1, read_label_engine_props_body_10_1,
+    read_line_label_placement_priorities_body_10_1, read_line_label_position_body_10_1,
+    read_point_placement_priorities_body_10_1,
 };
 use mxd2qgz::layers::composite_graphics::read_composite_graphics_layer_prefix_10_1;
 use mxd2qgz::layers::fdo_legacy::read_fdo_graphics_layer_legacy_prefix_10_1;
 use mxd2qgz::layers::feature_id_set::{FEATURE_ID_SET_CLASS_ID, read_feature_id_set_body_10_1};
 use mxd2qgz::layers::feature_layer::read_feature_layer_prefix_10_1;
+use mxd2qgz::layers::feature_layer_tail::{UID_CLASS_ID, read_uid_body_10_1};
 use mxd2qgz::layers::group_layer::read_group_layer_prefix_10_1;
 use mxd2qgz::layers::layer_list::read_layer_list_10_1;
 use mxd2qgz::maps::map_object::{read_map_prefix_10_1, read_map_suffix_10_1};
@@ -55,14 +60,21 @@ use mxd2qgz::objects::element_body::{
 };
 use mxd2qgz::objects::envelope::read_envelope_10_1;
 use mxd2qgz::objects::geometry::{
-    POLYLINE_CLASS_ID, read_geometry_body_of_class_10_1, read_polyline_body_10_1,
+    POLYLINE_CLASS_ID, read_geometry_body_10_1, read_geometry_body_of_class_10_1,
+    read_multipoint_body_10_1, read_point_body_10_1, read_polygon_body_10_1,
+    read_polyline_body_10_1,
 };
 use mxd2qgz::objects::hyperlink::{HYPERLINK_CLASS_ID, read_hyperlink_body_10_1};
 use mxd2qgz::objects::number_format::{
-    FRACTION_FORMAT_CLASS_ID, NUMERIC_FORMAT_CLASS_ID, PERCENTAGE_FORMAT_CLASS_ID,
-    RATE_FORMAT_CLASS_ID, read_fraction_format_body_10_1, read_numeric_format_body_10_1,
-    read_percentage_format_body_10_1, read_rate_format_body_10_1,
+    ANGLE_FORMAT_CLASS_ID, CURRENCY_FORMAT_CLASS_ID, CUSTOM_NUMBER_FORMAT_CLASS_ID,
+    FRACTION_FORMAT_CLASS_ID, LATLON_FORMAT_CLASS_ID, NUMERIC_FORMAT_CLASS_ID,
+    PERCENTAGE_FORMAT_CLASS_ID, RATE_FORMAT_CLASS_ID, SCIENTIFIC_FORMAT_CLASS_ID,
+    read_angle_format_body_10_1, read_currency_format_body_10_1,
+    read_custom_number_format_body_10_1, read_fraction_format_body_10_1,
+    read_latlon_format_body_10_1, read_numeric_format_body_10_1, read_percentage_format_body_10_1,
+    read_rate_format_body_10_1, read_scientific_format_body_10_1,
 };
+use mxd2qgz::objects::ole_font::{read_std_font_body_10_1, read_std_picture_body_10_1};
 use mxd2qgz::objects::property_set::read_property_set_10_1;
 use mxd2qgz::objects::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
 use mxd2qgz::storage::object_refs::{RefTable10_1, read_object_entry_10_1};
@@ -188,9 +200,31 @@ enum ReaderKind {
     FractionFormatBody10_1,
     RateFormatBody10_1,
     HyperlinkBody10_1,
+    // —— 整合接线轮扩充（E：StdFont/StdPicture 体；F：BOLP 族/引擎/UID/
+    //    HLEP/DEP 前缀；G：Polygon/Point/Multipoint 体 + 类型化分派；
+    //    H：数值格式同族五类）——
+    StdFontBody10_1,
+    StdPictureBody10_1,
+    BolpBody10_1,
+    LineLabelPositionBody10_1,
+    LineLabelPlacementPrioritiesBody10_1,
+    PointPlacementPrioritiesBody10_1,
+    VbscriptEngineBody10_1,
+    UidBody10_1,
+    HotLinkExpressionPropsBody10_1,
+    DisplayExpressionPropsPrefix10_1,
+    PolygonBody10_1,
+    PointBody10_1,
+    MultipointBody10_1,
+    GeometryBody10_1,
+    CurrencyFormatBody10_1,
+    LatLonFormatBody10_1,
+    AngleFormatBody10_1,
+    ScientificFormatBody10_1,
+    CustomNumberFormatBody10_1,
 }
 
-fn all_kinds() -> [ReaderKind; 74] {
+fn all_kinds() -> [ReaderKind; 93] {
     [
         ReaderKind::NativeString10_1,
         ReaderKind::NativeString10_8,
@@ -270,6 +304,28 @@ fn all_kinds() -> [ReaderKind; 74] {
         ReaderKind::FractionFormatBody10_1,
         ReaderKind::RateFormatBody10_1,
         ReaderKind::HyperlinkBody10_1,
+        // 整合接线轮：E（StdFont/StdPicture 体）+ F（BOLP 族/引擎/UID/HLEP/
+        // DEP 前缀）+ G（Polygon/Point/Multipoint 体 + 类型化分派）+ H（数值
+        // 格式同族五类）。
+        ReaderKind::StdFontBody10_1,
+        ReaderKind::StdPictureBody10_1,
+        ReaderKind::BolpBody10_1,
+        ReaderKind::LineLabelPositionBody10_1,
+        ReaderKind::LineLabelPlacementPrioritiesBody10_1,
+        ReaderKind::PointPlacementPrioritiesBody10_1,
+        ReaderKind::VbscriptEngineBody10_1,
+        ReaderKind::UidBody10_1,
+        ReaderKind::HotLinkExpressionPropsBody10_1,
+        ReaderKind::DisplayExpressionPropsPrefix10_1,
+        ReaderKind::PolygonBody10_1,
+        ReaderKind::PointBody10_1,
+        ReaderKind::MultipointBody10_1,
+        ReaderKind::GeometryBody10_1,
+        ReaderKind::CurrencyFormatBody10_1,
+        ReaderKind::LatLonFormatBody10_1,
+        ReaderKind::AngleFormatBody10_1,
+        ReaderKind::ScientificFormatBody10_1,
+        ReaderKind::CustomNumberFormatBody10_1,
     ]
 }
 
@@ -1304,6 +1360,172 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
             bytes.extend(0_i32.to_le_bytes());
             bytes
         }
+        // —— 整合接线轮：E 轮 StdFont/StdPicture 体 ——
+        ReaderKind::StdFontBody10_1 => {
+            // 样本首例形态（键 68 @0xd6c）：版本 1 + charset 134 + flags 0 +
+            // weight 400 + 字号 CY.lo 120000 + 名字 4 字节（GBK「宋体」）。
+            [
+                0x01_u8, 0x86, 0x00, 0x00, 0x90, 0x01, 0xc0, 0xd4, 0x01, 0x00, 0x04, 0xcb, 0xce,
+                0xcc, 0xe5,
+            ]
+            .to_vec()
+        }
+        ReaderKind::StdPictureBody10_1 => {
+            // 头形态：魔数 0x746c + 第二字 0 + 声明 0（空图合法形态）。
+            let mut bytes = 0x746c_u16.to_le_bytes().to_vec();
+            bytes.extend(0_u16.to_le_bytes());
+            bytes.extend(0_u32.to_le_bytes());
+            bytes
+        }
+        // —— 整合接线轮：F 轮 BOLP 族 / 引擎 / UID / HLEP / DEP 前缀 ——
+        ReaderKind::BolpBody10_1 => {
+            // 三槽全空标记的最小完整体：20B 标量前缀 + 槽 1/2 空 + 槽间 16B
+            // + 槽 3 空 + 44B 尾段（count 0 / double / int / String cb=0 /
+            // int / 20B 未定名块）。
+            let mut bytes = 0_i16.to_le_bytes().to_vec();
+            for _ in 0..3 {
+                bytes.extend(0_i16.to_le_bytes());
+            }
+            for _ in 0..3 {
+                bytes.extend(0_i32.to_le_bytes());
+            }
+            bytes.extend([0_u8; 16]); // 槽 1 LLP 空标记
+            bytes.extend([0_u8; 16]); // 槽 2 LLPP 空标记
+            bytes.extend(0_i16.to_le_bytes()); // 槽间块
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_f64.to_le_bytes());
+            bytes.extend(0_i16.to_le_bytes());
+            bytes.extend([0_u8; 16]); // 槽 3 PPP 空标记
+            bytes.extend(0_i32.to_le_bytes()); // 尾段 count 0
+            bytes.extend(0_f64.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_u32.to_le_bytes()); // String cb=0（空 BSTR）
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(1_i32.to_le_bytes()); // 20B 未定名块
+            bytes.extend(2_i32.to_le_bytes());
+            bytes.extend(0_f64.to_le_bytes());
+            bytes.extend(0_i16.to_le_bytes());
+            bytes.extend((-1_i16).to_le_bytes());
+            bytes
+        }
+        ReaderKind::LineLabelPositionBody10_1 => {
+            // 版本 2 满形态：short ×11 + double + 尾 short。
+            let mut bytes = 2_u16.to_le_bytes().to_vec();
+            for _ in 0..11 {
+                bytes.extend(0_i16.to_le_bytes());
+            }
+            bytes.extend(0_f64.to_le_bytes());
+            bytes.extend(0_i16.to_le_bytes());
+            bytes
+        }
+        ReaderKind::LineLabelPlacementPrioritiesBody10_1 => {
+            // 版本 1 + int32 ×15。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            for _ in 0..15 {
+                bytes.extend(0_i32.to_le_bytes());
+            }
+            bytes
+        }
+        ReaderKind::PointPlacementPrioritiesBody10_1 => {
+            // 版本 1 + int32 ×8。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            for _ in 0..8 {
+                bytes.extend(0_i32.to_le_bytes());
+            }
+            bytes
+        }
+        ReaderKind::VbscriptEngineBody10_1 => {
+            // 版本 2 满形态：short。
+            let mut bytes = 2_u16.to_le_bytes().to_vec();
+            bytes.extend((-1_i16).to_le_bytes());
+            bytes
+        }
+        ReaderKind::UidBody10_1 => {
+            // 样本形态 A：版本 1 + 标志 1 + GUID。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.push(1);
+            bytes.extend([0xa5_u8; 16]);
+            bytes
+        }
+        ReaderKind::HotLinkExpressionPropsBody10_1 => {
+            // 样本形态：版本 1 + String cb=2（空串）+ short + 16B 零块。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(2_u32.to_le_bytes());
+            bytes.extend(0_u16.to_le_bytes());
+            bytes.extend((-1_i16).to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes
+        }
+        ReaderKind::DisplayExpressionPropsPrefix10_1 => {
+            // 样本形态前缀：版本 1 + String "[x]" + short + 引擎槽空标记
+            //（前缀读取器读到引擎槽后即成功返回）。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(encoded("[x]"));
+            bytes.extend((-1_i16).to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes
+        }
+        // —— 整合接线轮：G 轮 Polygon/Point/Multipoint 体 + 类型化分派 ——
+        ReaderKind::PolygonBody10_1 => {
+            // 与 Polyline 同构：版本 1（无空间参考段）+ 类型 0 空几何记录。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(4_u32.to_le_bytes());
+            bytes.extend(0_u32.to_le_bytes());
+            bytes
+        }
+        ReaderKind::PointBody10_1 => {
+            // 版本 1 + 声明 4 + 类型字 0（空点恰 4 字节）。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(4_u32.to_le_bytes());
+            bytes.extend(0_u32.to_le_bytes());
+            bytes
+        }
+        ReaderKind::MultipointBody10_1 => {
+            // 版本 1 + 声明 4 + 类型字低字节 0（空点集恰 4 字节）。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(4_u32.to_le_bytes());
+            bytes.extend(0_u32.to_le_bytes());
+            bytes
+        }
+        ReaderKind::GeometryBody10_1 => {
+            // 类型化分派入口：同一 Polyline 最小体。
+            sample(ReaderKind::PolylineBody10_1)
+        }
+        // —— 整合接线轮：H 轮数值格式同族五类 ——
+        ReaderKind::CurrencyFormatBody10_1 => {
+            // 恒 2 字节体（short 版本）。
+            1_u16.to_le_bytes().to_vec()
+        }
+        ReaderKind::LatLonFormatBody10_1 => {
+            // 版本 4 满形态：short ×4 + 内嵌 NumericFormat 核心 + short。
+            let mut bytes = 4_u16.to_le_bytes().to_vec();
+            for _ in 0..4 {
+                bytes.extend(0_i16.to_le_bytes());
+            }
+            bytes.extend(&sample(ReaderKind::NumericFormatBody10_1));
+            bytes.extend(0_i16.to_le_bytes());
+            bytes
+        }
+        ReaderKind::AngleFormatBody10_1 => {
+            // 版本 3 满形态：short + 内嵌核心 + short。
+            let mut bytes = 3_u16.to_le_bytes().to_vec();
+            bytes.extend(0_i16.to_le_bytes());
+            bytes.extend(&sample(ReaderKind::NumericFormatBody10_1));
+            bytes.extend(0_i16.to_le_bytes());
+            bytes
+        }
+        ReaderKind::ScientificFormatBody10_1 => {
+            // 版本 2 满形态：int32。
+            let mut bytes = 2_u16.to_le_bytes().to_vec();
+            bytes.extend(6_i32.to_le_bytes());
+            bytes
+        }
+        ReaderKind::CustomNumberFormatBody10_1 => {
+            // 版本 1 + String 格式串。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(encoded("0.000"));
+            bytes
+        }
     }
 }
 
@@ -1729,6 +1951,74 @@ fn try_read(kind: ReaderKind, reader: &mut Reader<'_>) -> io::Result<()> {
         }
         ReaderKind::HyperlinkBody10_1 => {
             read_hyperlink_body_10_1(reader, 1024, &mut RefTable10_1::new(), 80).map(|_| ())
+        }
+        // —— 整合接线轮：E 轮 StdFont/StdPicture 体 ——
+        ReaderKind::StdFontBody10_1 => read_std_font_body_10_1(reader, 1024).map(|_| ()),
+        ReaderKind::StdPictureBody10_1 => read_std_picture_body_10_1(reader, 1024).map(|_| ()),
+        // —— 整合接线轮：F 轮 BOLP 族 / 引擎 / UID / HLEP / DEP 前缀 ——
+        ReaderKind::BolpBody10_1 => {
+            read_bolp_body_10_1(reader, 1024, &mut RefTable10_1::new(), 46).map(|_| ())
+        }
+        ReaderKind::LineLabelPositionBody10_1 => {
+            read_line_label_position_body_10_1(reader, 1024, &mut RefTable10_1::new(), 47)
+                .map(|_| ())
+        }
+        ReaderKind::LineLabelPlacementPrioritiesBody10_1 => {
+            read_line_label_placement_priorities_body_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+                48,
+            )
+            .map(|_| ())
+        }
+        ReaderKind::PointPlacementPrioritiesBody10_1 => {
+            read_point_placement_priorities_body_10_1(reader, 1024, &mut RefTable10_1::new(), 49)
+                .map(|_| ())
+        }
+        ReaderKind::VbscriptEngineBody10_1 => {
+            read_annotation_vbscript_engine_body_10_1(reader, 1024, &mut RefTable10_1::new(), 50)
+                .map(|_| ())
+        }
+        ReaderKind::UidBody10_1 => read_uid_body_10_1(reader, 51).map(|_| ()),
+        ReaderKind::HotLinkExpressionPropsBody10_1 => {
+            read_hot_link_expression_props_body_10_1(reader, 1024, &mut RefTable10_1::new(), 52)
+                .map(|_| ())
+        }
+        ReaderKind::DisplayExpressionPropsPrefix10_1 => {
+            read_display_expression_props_prefix_10_1(reader, 1024, &mut RefTable10_1::new(), 53)
+                .map(|_| ())
+        }
+        // —— 整合接线轮：G 轮 Polygon/Point/Multipoint 体 + 类型化分派 ——
+        ReaderKind::PolygonBody10_1 => {
+            read_polygon_body_10_1(reader, 1024, &mut RefTable10_1::new()).map(|_| ())
+        }
+        ReaderKind::PointBody10_1 => {
+            read_point_body_10_1(reader, 1024, &mut RefTable10_1::new()).map(|_| ())
+        }
+        ReaderKind::MultipointBody10_1 => {
+            read_multipoint_body_10_1(reader, 1024, &mut RefTable10_1::new()).map(|_| ())
+        }
+        ReaderKind::GeometryBody10_1 => {
+            read_geometry_body_10_1(&POLYLINE_CLASS_ID, reader, 1024, &mut RefTable10_1::new())
+                .map(|_| ())
+        }
+        // —— 整合接线轮：H 轮数值格式同族五类 ——
+        ReaderKind::CurrencyFormatBody10_1 => {
+            read_currency_format_body_10_1(reader, &mut RefTable10_1::new(), 54).map(|_| ())
+        }
+        ReaderKind::LatLonFormatBody10_1 => {
+            read_latlon_format_body_10_1(reader, &mut RefTable10_1::new(), 55).map(|_| ())
+        }
+        ReaderKind::AngleFormatBody10_1 => {
+            read_angle_format_body_10_1(reader, &mut RefTable10_1::new(), 56).map(|_| ())
+        }
+        ReaderKind::ScientificFormatBody10_1 => {
+            read_scientific_format_body_10_1(reader, &mut RefTable10_1::new(), 57).map(|_| ())
+        }
+        ReaderKind::CustomNumberFormatBody10_1 => {
+            read_custom_number_format_body_10_1(reader, 1024, &mut RefTable10_1::new(), 58)
+                .map(|_| ())
         }
     }
 }

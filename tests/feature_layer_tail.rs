@@ -1041,6 +1041,108 @@ fn field_info_number_format_slot_dispatches_four_variants() {
 }
 
 #[test]
+fn field_info_number_format_slot_dispatches_five_more_variants() {
+    // 接线轮：INumberFormat 槽扩为 esriSystem 同族九类全分派——Currency/
+    // LatLon/Angle/Scientific/CustomNumber 五类新臂（证据与落位步骤见
+    // docs/arcmap-10.1-number-format.md「九类分派接入建议」；五类样本
+    // 0 实例，合成输入）。各变体取合法形态，FieldInfo 尾段必须可达。
+    use mxd2qgz::layers::feature_layer_tail::{
+        ANGLE_FORMAT_CLASS_ID, CURRENCY_FORMAT_CLASS_ID, CUSTOM_NUMBER_FORMAT_CLASS_ID,
+        LATLON_FORMAT_CLASS_ID, SCIENTIFIC_FORMAT_CLASS_ID,
+    };
+
+    // Currency：恒 2 字节体（short 版本）。
+    let mut currency = CURRENCY_FORMAT_CLASS_ID.to_vec();
+    currency.extend(83_u32.to_le_bytes());
+    currency.extend(1_u16.to_le_bytes());
+    let body_bytes = field_info_body_v4("C", &currency);
+    let mut reader = Reader::new(&body_bytes);
+    let mut table = table_with_keys(&[41]);
+    let body = read_field_info_body_10_1(&mut reader, 1024, &mut table, 41).unwrap();
+    assert_eq!(body.stop, None);
+    let NumberFormatSlot10_1::CurrencyFormat(c) = &body.number_format else {
+        panic!("Currency 分类不符：{:?}", body.number_format);
+    };
+    assert_eq!(c.key, 83);
+    assert_eq!(body.tail_shorts, Some([0, 0]), "槽位整体消费后续段可达");
+    assert_eq!(reader.remaining(), 0);
+    assert!(table.contains(41) && table.contains(83));
+
+    // LatLon 版本 1 短体：short ×4（版本 ≤1 无 ④⑤⑥ 段）。
+    let mut latlon = LATLON_FORMAT_CLASS_ID.to_vec();
+    latlon.extend(84_u32.to_le_bytes());
+    latlon.extend(1_u16.to_le_bytes());
+    latlon.extend(0_i16.to_le_bytes());
+    latlon.extend(0_i16.to_le_bytes());
+    let body_bytes = field_info_body_v4("L", &latlon);
+    let mut reader = Reader::new(&body_bytes);
+    let mut table = table_with_keys(&[41]);
+    let body = read_field_info_body_10_1(&mut reader, 1024, &mut table, 41).unwrap();
+    assert_eq!(body.stop, None);
+    let NumberFormatSlot10_1::LatLonFormat(l) = &body.number_format else {
+        panic!("LatLon 分类不符：{:?}", body.number_format);
+    };
+    assert_eq!(l.key, 84);
+    assert_eq!(l.numeric, None);
+    assert_eq!(body.tail_shorts, Some([0, 0]));
+    assert_eq!(reader.remaining(), 0);
+
+    // Angle 版本 1 短体：short ×2（版本 ≤1 无核心与 ④）。
+    let mut angle = ANGLE_FORMAT_CLASS_ID.to_vec();
+    angle.extend(85_u32.to_le_bytes());
+    angle.extend(1_u16.to_le_bytes());
+    angle.extend(0_i16.to_le_bytes());
+    let body_bytes = field_info_body_v4("A", &angle);
+    let mut reader = Reader::new(&body_bytes);
+    let mut table = table_with_keys(&[41]);
+    let body = read_field_info_body_10_1(&mut reader, 1024, &mut table, 41).unwrap();
+    assert_eq!(body.stop, None);
+    let NumberFormatSlot10_1::AngleFormat(a) = &body.number_format else {
+        panic!("Angle 分类不符：{:?}", body.number_format);
+    };
+    assert_eq!(a.key, 85);
+    assert_eq!(a.numeric, None);
+    assert_eq!(body.tail_shorts, Some([0, 0]));
+    assert_eq!(reader.remaining(), 0);
+
+    // Scientific 版本 2 满形态：int32。
+    let mut scientific = SCIENTIFIC_FORMAT_CLASS_ID.to_vec();
+    scientific.extend(86_u32.to_le_bytes());
+    scientific.extend(2_u16.to_le_bytes());
+    scientific.extend(6_i32.to_le_bytes());
+    let body_bytes = field_info_body_v4("S", &scientific);
+    let mut reader = Reader::new(&body_bytes);
+    let mut table = table_with_keys(&[41]);
+    let body = read_field_info_body_10_1(&mut reader, 1024, &mut table, 41).unwrap();
+    assert_eq!(body.stop, None);
+    let NumberFormatSlot10_1::ScientificFormat(s) = &body.number_format else {
+        panic!("Scientific 分类不符：{:?}", body.number_format);
+    };
+    assert_eq!(s.key, 86);
+    assert_eq!(s.int32_08, Some(6));
+    assert_eq!(body.tail_shorts, Some([0, 0]));
+    assert_eq!(reader.remaining(), 0);
+
+    // CustomNumber 版本 1：String 格式串（max_bytes 限额沿用 Rate 臂传参）。
+    let mut custom = CUSTOM_NUMBER_FORMAT_CLASS_ID.to_vec();
+    custom.extend(87_u32.to_le_bytes());
+    custom.extend(1_u16.to_le_bytes());
+    custom.extend(string_bytes("0.000"));
+    let body_bytes = field_info_body_v4("U", &custom);
+    let mut reader = Reader::new(&body_bytes);
+    let mut table = table_with_keys(&[41]);
+    let body = read_field_info_body_10_1(&mut reader, 1024, &mut table, 41).unwrap();
+    assert_eq!(body.stop, None);
+    let NumberFormatSlot10_1::CustomNumberFormat(u) = &body.number_format else {
+        panic!("CustomNumber 分类不符：{:?}", body.number_format);
+    };
+    assert_eq!(u.key, 87);
+    assert_eq!(body.tail_shorts, Some([0, 0]));
+    assert_eq!(reader.remaining(), 0);
+    assert!(table.contains(41) && table.contains(87));
+}
+
+#[test]
 fn field_info_reads_null_number_format_and_version_branches() {
     // 版本 3：-0x14 读取、别名、空标记槽、-0x18/-0x1c 读取、-0x8/-0x6 缺席
     //（`3 < ver` 为假）；版本 1：-0x14 缺席、尾段全部缺席。
