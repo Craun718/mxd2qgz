@@ -126,14 +126,20 @@
 //!   宿主）与更深的版本门字段已按本轮字段序接入：未闭合槽位为成功停止
 //!   （样本停止点 = LELP ⑯ ITextSymbol 槽的 TextSymbol 新对象，键 61，
 //!   游标停在其体起点）。样本 0xafe..0xb8e 逐字节吻合；
-//! - LELP ⑰ BasicOverposterLayerProperties 等标注族实现类与 TimeData 族槽
-//!   位实现类未闭合（新对象即停止）；LELP ⑯ TextSymbol 体已接线（样本停
-//!   止点随之推进至 TextSymbol 体内 IFontDisp 槽，OLE StdFont 体未闭合）。
+//! - LELP ⑰ BOLP 族与 ⑱ 引擎体已闭合（annotate_props 第十轮）；后继段
+//!   ㉖ ISymbol/㉘ Envelope/㉙ UID/㊴ DEP 前缀/㊷ HLEP 槽第十轮接入整体
+//!   解析；扩展段格式按样本修正（[尺寸][CLSID][体]，无键）；TimeData 族
+//!   槽位实现类未闭合（新对象即停止）；LELP ⑯ TextSymbol 体已接线（样本
+//!   停止点在 TextSymbol 体内 IFontDisp 槽，OLE StdFont 体未闭合）。
 
 use crate::layers::annotate_props::{
     ANNOTATE_PROPS_COLLECTION_CLASS_ID, AnnotatePropsBody10_1, AnnotatePropsStop10_1,
+    DISPLAY_EXPRESSION_PROPS_CLASS_ID, DisplayExpressionPropsPrefix10_1,
     EDIT_TEMPLATE_MANAGER_CLASS_ID, EditTemplateManagerBody10_1, EditTemplateManagerStop10_1,
-    read_annotate_props_collection_body_10_1, read_edit_template_manager_body_10_1,
+    EnvelopeSlot10_1, HOT_LINK_EXPRESSION_PROPS_CLASS_ID, HotLinkExpressionPropsBody10_1,
+    read_annotate_props_collection_body_10_1, read_display_expression_props_prefix_10_1,
+    read_edit_template_manager_body_10_1, read_hot_link_expression_props_body_10_1,
+    read_stream_string_10_1,
 };
 use crate::layers::feature_id_set::{
     FEATURE_ID_SET_CLASS_ID, FeatureIdSetBody10_1, read_feature_id_set_body_10_1,
@@ -145,7 +151,7 @@ use crate::layers::legend_format::{
 use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
 use crate::objects::display_symbol::{
     MAX_SYMBOL_NESTING_DEPTH, SimpleMarkerSymbolStop10_1, SymbolStop10_1,
-    read_display_symbol_slot_10_1, read_symbol_slot_full_10_1, slot_full_stop_10_1,
+    read_symbol_slot_full_10_1, slot_full_stop_10_1,
 };
 use crate::objects::hyperlink::{HYPERLINK_CLASS_ID, HyperlinkBody10_1, read_hyperlink_body_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
@@ -1205,6 +1211,13 @@ pub enum SuccessorStop10_1 {
     },
     /// 某 FieldInfo 体内的停止（游标停在其 INumberFormat 槽位起点）。
     FieldInfoBody(FieldInfoStop10_1),
+    /// ㉖ ISymbol 槽为全闭合符号族成员且其体内出现嵌套停止（原因透传，
+    /// 游标停在其停止点）。
+    SymbolNested(SymbolStop10_1),
+    /// ㊴ 槽为 DisplayExpressionProperties 且其已闭合前缀（版本、表达式
+    /// 字符串、int16、引擎槽）消费完毕：游标停在其未闭合尾段起点（样本
+    /// `0x155a`，尾段 126 字节原样保留）。
+    ExpressionPropsBody,
 }
 
 /// FeatureLayer::Load（`0x6f6e9940`）渲染器槽 +0x144 GUID 之后的后继字段段
@@ -1319,16 +1332,17 @@ pub struct FeatureLayerSuccessor10_1 {
     pub extensions: Vec<LayerExtension10_1>,
     /// ㉕ double → obj+0x1e8（版本 ≥0xd；样本未达），语义未定。
     pub double_1e8: Option<f64>,
-    /// ㉖ ISymbol 槽（请求 IID `{F3435802-…}`）分类（版本 >0xd）。
-    pub symbol: Option<SymbolSlot10_1>,
+    /// ㉖ ISymbol 槽（请求 IID `{F3435802-…}`）分类（版本 >0xd；第十轮起
+    /// 全闭合符号集，嵌套停止经 `stop` 的 `SymbolNested` 透传）。
+    pub symbol: Option<SymbolSlotFull10_1>,
     /// ㉗ short → obj+0x12e（版本 >0xe），语义未定。
     pub short_12e: Option<i16>,
     /// ㉗ int32 → obj+0x1f0（版本 >0xe），语义未定。
     pub int32_1f0: Option<i32>,
-    /// ㉘ IEnvelope 槽 2 分类（版本 >0xe）。
-    pub envelope_2: Option<RefSlot10_1>,
-    /// ㉙ IUID 槽分类（版本 >0x10）。
-    pub uid: Option<RefSlot10_1>,
+    /// ㉘ IEnvelope 槽 2 分类（版本 >0xe；第十轮起 Envelope 新对象整体解析）。
+    pub envelope_2: Option<EnvelopeSlot10_1>,
+    /// ㉙ IUID 槽分类（版本 >0x10；第十轮起 UID 新对象整体解析）。
+    pub uid: Option<UidSlot10_1>,
     /// ㉚ String → obj+0x28c（版本 ≥0x12），语义未定。
     pub string_28c: Option<String>,
     /// ㉛ short → obj+0x1d8（版本 ≥0x13），语义未定。
@@ -1343,8 +1357,9 @@ pub struct FeatureLayerSuccessor10_1 {
     pub int32_244: Option<i32>,
     /// ㉟ short → obj+0x1be（版本 ≥0x17；样本未达），语义未定。
     pub short_1be: Option<i16>,
-    /// ㊱ PreJoinDefExpressions 对（样本未达）。
-    pub pre_join_pairs: Vec<(String, String)>,
+    /// ㊱ PreJoinDefExpressions 块（版本 >0x17；第十轮按样本补 6 字节保留
+    /// 头）。前置停止时 `None`。
+    pub pre_join: Option<PreJoinBlock10_1>,
     /// ㊲ int32 → obj+0x2c0（版本 ≥0x19），语义未定。
     pub int32_2c0: Option<i32>,
     /// ㊲ short ×3 → obj+0x2c4/+0x2c6/+0x2c8（版本 ≥0x19），语义未定。
@@ -1352,8 +1367,9 @@ pub struct FeatureLayerSuccessor10_1 {
     /// ㊳ String ×4 → obj+0x2cc/+0x2d0/+0x2d4/+0x2d8（版本 ≥0x19），语义
     /// 未定。
     pub strings_2cc_2d0_2d4_2d8: Option<[String; 4]>,
-    /// ㊴ {A62B9EC2} 槽分类（版本 >0x19）。
-    pub expression_props: Option<RefSlot10_1>,
+    /// ㊴ {A62B9EC2} 槽分类（版本 >0x19；第十轮起 DisplayExpressionProperties
+    /// 已闭合前缀整体解析，尾段停止经 `stop` 的 `ExpressionPropsBody`）。
+    pub expression_props: Option<ExpressionPropsSlot10_1>,
     /// ㊵ short → obj+0x300（版本 >0x1a），语义未定。
     pub short_300: Option<i16>,
     /// ㊵ String ×3 → obj+0x304/+0x308/+0x30c（版本 >0x1a），语义未定。
@@ -1369,8 +1385,8 @@ pub struct FeatureLayerSuccessor10_1 {
     pub time_dimension_definition: Option<TimeDimensionDefinitionBody10_1>,
     /// ㊶ TimeDataDisplay 段（版本 ≥0x20）。
     pub time_data_display: Option<TimeDataDisplayBody10_1>,
-    /// ㊷ {E720618B} 槽分类（版本 >0x20；10.1 恒写 34 → 不写）。
-    pub hot_link_expression_props: Option<RefSlot10_1>,
+    /// ㊷ {E720618B} 槽分类（版本 >0x20；第十轮起 HLEP 新对象整体解析）。
+    pub hot_link_expression_props: Option<HotLinkSlot10_1>,
     /// ㊸ short → obj+0x2ca（版本 >0x21；样本未达），语义未定。
     pub short_2ca: Option<i16>,
     /// 停止原因（恒有：本读取器始终在最深可闭合点停止）。
@@ -1412,6 +1428,88 @@ pub enum FeatureIdSetSlot10_1 {
     FeatureIdSet(Box<FeatureIdSetBody10_1>),
 }
 
+/// ㉙ IUID 槽条目分类。
+#[derive(Debug, Clone, PartialEq)]
+pub enum UidSlot10_1 {
+    /// 空引用。
+    Null,
+    /// 回引条目。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 UID 对象：已解析体（无停止点）。
+    Uid(Box<UidBody10_1>),
+}
+
+/// UID（SystemCore.dll，GetClassID `0x7fff8ca0` 写出
+/// `{78FF7FA1-FB2F-11D1-94A2-080009EEBECB}`）体的样本结构字段。
+///
+/// 证据：样本结构(样本 `/Maps:0x14bd..0x14d0` 等 13 实例逐字节,两种形态:
+/// `[ver=1][flag=1][LELP CLSID]` 与 `[ver=2][flag=0][零 GUID]`)+ GetClassID
+/// 与工厂定位旁证;Load 实体未唯一定位(UID 类持久化经基类虚调用转发,
+/// 证据注于研究记录)。字段序:① int16 版本(样本 1/2,无门,原样保留)→
+/// ② u8(样本 1 = 携带 GUID、0 = 零值,语义候选)→ ③ 16 字节 GUID(样本 =
+/// 所在 LELP 的 CLSID;零值实例全零),原样保留。
+#[derive(Debug, Clone, PartialEq)]
+pub struct UidBody10_1 {
+    /// 对象头键(样本 82)。
+    pub key: u32,
+    /// 体首 short 版本(样本 1/2;无反编译证据,不设上限)。
+    pub version: u16,
+    /// u8 标志(样本 1/0;语义候选),原样保留。
+    pub flag: u8,
+    /// 16 字节 GUID(样本 = LELP CLSID / 全零),原样保留。
+    pub guid: [u8; 16],
+}
+
+/// ㊴ {A62B9EC2}=IDisplayExpressionProperties 槽条目分类。
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExpressionPropsSlot10_1 {
+    /// 空引用。
+    Null,
+    /// 回引条目。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 DisplayExpressionProperties 对象:已解析的闭合前缀(版本/表达式
+    /// 串/int16/引擎槽);其未闭合尾段经
+    /// [`SuccessorStop10_1::ExpressionPropsBody`] 停止。
+    Display(Box<DisplayExpressionPropsPrefix10_1>),
+}
+
+/// ㊷ {E720618B}=IHotLinkExpressionProperties 槽条目分类。
+#[derive(Debug, Clone, PartialEq)]
+pub enum HotLinkSlot10_1 {
+    /// 空引用。
+    Null,
+    /// 回引条目。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 HotLinkExpressionProperties 对象:已解析体(样本结构)。
+    Body(Box<HotLinkExpressionPropsBody10_1>),
+}
+
+/// UID 类标识(CLSID)的 16 字节内存序。
+///
+/// GUID `{78FF7FA1-FB2F-11D1-94A2-080009EEBECB}`。证据:SystemCore.dll
+/// GetClassID `0x7fff8ca0` 立即数写出;样本 `/Maps:0x14a9` 头(键 82)等
+/// 13 实例逐字节相同。
+pub const UID_CLASS_ID: [u8; 16] = [
+    0xa1, 0x7f, 0xff, 0x78, 0x2f, 0xfb, 0xd1, 0x11, 0x94, 0xa2, 0x08, 0x00, 0x09, 0xee, 0xbe, 0xcb,
+];
+
+/// 从对象头之后的位置读取 10.1 UID 体(证据:样本结构,见 [`UidBody10_1`])。
+/// 失败时不推进游标、不修改登记表。
+pub fn read_uid_body_10_1(reader: &mut Reader<'_>, key: u32) -> io::Result<UidBody10_1> {
+    let mut trial = reader.clone();
+    let version = trial.read_u16_le()?;
+    let flag = trial.read_bytes(1)?[0];
+    let mut guid = [0u8; 16];
+    guid.copy_from_slice(trial.read_bytes(16)?);
+    *reader = trial;
+    Ok(UidBody10_1 {
+        key,
+        version,
+        flag,
+        guid,
+    })
+}
+
 /// ㉔ 图层扩展段（LayerLib.dll `ExtensionHelper::LoadExtensions`）的条目。
 #[derive(Debug, Clone, PartialEq)]
 pub enum LayerExtension10_1 {
@@ -1435,6 +1533,19 @@ pub struct LegacyTailScalars10_1 {
     pub double_40: f64,
     /// int32（→ -0x38），语义未定。
     pub int32_38: i32,
+}
+
+/// ㊱ PreJoinDefExpressions 块（LayerLib.dll `0x786c5d30` + 第十轮样本保留
+/// 头）的已确认字段。
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreJoinBlock10_1 {
+    /// int32 计数(样本 0)。负数/零不进循环,原样保留。
+    pub count: i32,
+    /// 计数后 6 字节保留头(样本全零;FL 反编译无对应读取,归属未决),
+    /// 原样保留。
+    pub reserved: [u8; 6],
+    /// 计数 × [String + String](样本未达)。
+    pub pairs: Vec<(String, String)>,
 }
 
 /// TimeData 段（LayerLib.dll `0x7870d8b0`，版本 ≤2）的已确认字段。
@@ -1653,7 +1764,7 @@ pub fn read_feature_layer_successor_10_1(
     let mut short_1da = None;
     let mut int32_244 = None;
     let mut short_1be = None;
-    let mut pre_join_pairs = Vec::new();
+    let mut pre_join = None;
     let mut int32_2c0 = None;
     let mut shorts_2c4_2c6_2c8 = None;
     let mut strings_2cc_2d0_2d4_2d8 = None;
@@ -1887,9 +1998,14 @@ pub fn read_feature_layer_successor_10_1(
         }
 
         // ㉔ 图层扩展段（版本 ≥0xb；LayerLib.dll ExtensionHelper::
-        //    LoadExtensions 格式）。EditTemplateManager 体本轮闭合
-        //    （EditTemplate 宿主）；其余类为停止点（回退到该条目 [int64
-        //    尺寸] 字段起点，该条目整体不消费）。
+        //    LoadExtensions 格式，第十轮按样本 `0xfcb..0x116a` 修正：每条 =
+        //    [int64 尺寸][16 字节 CLSID][体]，**无对象键**（ExtensionHelper
+        //    直接按 CLSID 实例化，不经对象流登记；尺寸 = 体字节数，不含
+        //    CLSID 与尺寸字段本身——样本声明 387、体 0xfe7..0x116a 恰 387）。
+        //    第九轮「[CLSID][键][体]、尺寸覆盖三者」的记录撤销。已知类
+        //    EditTemplateManager 体读取（键参数恒 0，扩展段无键）；其余类
+        //    为停止点（回退到该条目 [int64 尺寸] 字段起点，该条目整体不
+        //    消费）。
         if stop.is_none() && (fl_version as i16) >= 0xb {
             let count = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
             extension_count = Some(count);
@@ -1897,66 +2013,39 @@ pub fn read_feature_layer_successor_10_1(
                 let entry_offset = trial.position();
                 let pre_entry_table = staged_table.clone();
                 let size = i64::from_le_bytes(trial.read_bytes(8)?.try_into().unwrap());
-                let header = read_object_entry_10_1(&mut trial, &mut staged_table)?;
-                match header {
-                    ObjectEntry10_1::Null => {
-                        // 尺寸声明之后紧跟 16 字节全零类标识：原生按
-                        // CLSID 语义读，此处不可能出现空标记布局；按未
-                        // 闭合停止处理（防静默错位）。
-                        stop = Some(SuccessorStop10_1::LayerExtensionUnsupported {
-                            class_id: [0u8; 16],
-                            size,
-                        });
-                        trial = reposition_to(reader, entry_offset);
-                        staged_table = pre_entry_table;
+                // 16 字节 CLSID（无键；全零类标识按未闭合停止，防静默错位）。
+                let mut class_id = [0u8; 16];
+                class_id.copy_from_slice(trial.read_bytes(16)?);
+                if class_id == EDIT_TEMPLATE_MANAGER_CLASS_ID {
+                    // 体长 = 声明尺寸（不含 CLSID）。object_start 从 CLSID
+                    // 之后起算；ETM 体读取键参数恒 0（扩展段无 ObjectStream
+                    // 键）。
+                    let object_start = trial.position();
+                    let body = read_edit_template_manager_body_10_1(
+                        &mut trial,
+                        max_bytes,
+                        &mut staged_table,
+                        0,
+                    )?;
+                    let consumed = trial.position() - object_start;
+                    if consumed != usize::try_from(size).unwrap_or(usize::MAX) {
+                        // 尺寸字段与实际消费不一致：原生不校验（已
+                        // 知类不使用尺寸），显式报错较严（防静默
+                        // 错位）；错误整体回退。
+                        return Err(io::Error::new(
+                            ErrorKind::InvalidData,
+                            format!(
+                                "EditTemplateManager 扩展条目 offset 0x{entry_offset:x}: \
+                                 声明尺寸 {size} 与实际消费 {consumed} 不一致（原生不校验，\
+                                 本读取器显式拒绝）"
+                            ),
+                        ));
                     }
-                    ObjectEntry10_1::BackReference { class_id, key } => {
-                        // 回引条目无体：原生扩展段每条都带完整对象头+
-                        // 体，回引布局与 ExtensionHelper 实现不符，按未
-                        // 闭合停止。
-                        stop =
-                            Some(SuccessorStop10_1::LayerExtensionUnsupported { class_id, size });
-                        let _ = key;
-                        trial = reposition_to(reader, entry_offset);
-                        staged_table = pre_entry_table;
-                    }
-                    ObjectEntry10_1::NewObject { class_id, key }
-                        if class_id == EDIT_TEMPLATE_MANAGER_CLASS_ID =>
-                    {
-                        // 尺寸字段语义（样本扩展条目：声明 387，头+体恰为
-                        // 387 字节）：覆盖 [类标识][键][体] 整段，不含其前
-                        // 的 [int64 尺寸] 字段本身。object_start 从尺寸字段
-                        // 之后（对象头之前）起算。
-                        let object_start = entry_offset + 8;
-                        let body = read_edit_template_manager_body_10_1(
-                            &mut trial,
-                            max_bytes,
-                            &mut staged_table,
-                            key,
-                        )?;
-                        let consumed = trial.position() - object_start;
-                        if consumed != usize::try_from(size).unwrap_or(usize::MAX) {
-                            // 尺寸字段与实际消费不一致：原生不校验（已
-                            // 知类不使用尺寸），显式报错较严（防静默
-                            // 错位）；错误整体回退。
-                            return Err(io::Error::new(
-                                ErrorKind::InvalidData,
-                                format!(
-                                    "EditTemplateManager 扩展条目 offset 0x{entry_offset:x}: \
-                                     声明尺寸 {size} 与实际消费 {consumed} 不一致（原生不校验，\
-                                     本读取器显式拒绝）"
-                                ),
-                            ));
-                        }
-                        extensions.push(LayerExtension10_1::EditTemplateManager(Box::new(body)));
-                    }
-                    ObjectEntry10_1::NewObject { class_id, key } => {
-                        stop =
-                            Some(SuccessorStop10_1::LayerExtensionUnsupported { class_id, size });
-                        let _ = key;
-                        trial = reposition_to(reader, entry_offset);
-                        staged_table = pre_entry_table;
-                    }
+                    extensions.push(LayerExtension10_1::EditTemplateManager(Box::new(body)));
+                } else {
+                    stop = Some(SuccessorStop10_1::LayerExtensionUnsupported { class_id, size });
+                    trial = reposition_to(reader, entry_offset);
+                    staged_table = pre_entry_table;
                 }
                 if stop.is_some() {
                     break;
@@ -1969,33 +2058,67 @@ pub fn read_feature_layer_successor_10_1(
             double_1e8 = Some(trial.read_f64_le()?);
         }
 
-        // ㉖ ISymbol 槽（请求 IID {F3435802-…}，版本 >0xd）：符号族分派，
-        //    未知类为停止点（分派内部已回退）。
+        // ㉖ ISymbol 槽（请求 IID {F3435802-…}，版本 >0xd）：符号全闭合集
+        //    分派（第十轮切换；样本该槽 = SimpleMarkerSymbol 新对象键 77，
+        //    体含嵌套 RgbColor ×2 整体解析）。未知类为停止点（分派内部已
+        //    回退）；闭合符号体内嵌套停止经 SymbolNested 透传。
         if stop.is_none() && (fl_version as i16) > 0xd {
-            match read_display_symbol_slot_10_1(
+            match read_symbol_slot_full_10_1(
                 &mut trial,
                 max_bytes,
                 &mut staged_table,
                 MAX_SYMBOL_NESTING_DEPTH,
             )? {
-                SymbolSlot10_1::Unsupported { class_id, key } => {
+                SymbolSlotFull10_1::Unsupported { class_id, key } => {
                     stop = Some(SuccessorStop10_1::SymbolSlotUnsupported { class_id, key });
-                    symbol = Some(SymbolSlot10_1::Null);
+                    symbol = Some(SymbolSlotFull10_1::Null);
                 }
-                other => symbol = Some(other),
+                SymbolSlotFull10_1::SimpleMarkerSymbol(sms) => {
+                    if sms.stop.is_some() {
+                        stop = Some(SuccessorStop10_1::SymbolNested(
+                            SymbolStop10_1::NestedIncomplete {
+                                class_id: SIMPLE_MARKER_SYMBOL_CLASS_ID,
+                                key: sms.key,
+                            },
+                        ));
+                    }
+                    symbol = Some(SymbolSlotFull10_1::SimpleMarkerSymbol(sms));
+                }
+                other => {
+                    if let Some(inner) = slot_full_stop_10_1(
+                        &other,
+                        crate::objects::display_symbol::DisplaySlotKind10_1::Symbol,
+                    ) {
+                        stop = Some(SuccessorStop10_1::SymbolNested(inner));
+                    }
+                    symbol = Some(other);
+                }
             }
         }
 
-        // ㉗-㉙ 版本 >0xe：short +0x12e、int32 +0x1f0、IEnvelope 槽 2。
+        // ㉗-㉙ 版本 >0xe：short +0x12e、int32 +0x1f0、IEnvelope 槽 2（第十
+        //    轮起 Envelope 新对象经对象层读取器整体解析——样本该槽 = Envelope
+        //    新对象键 80,体内嵌套投影坐标系键 81 整体消费;嵌套非投影坐标系
+        //    为硬错误向上传播）。
         if stop.is_none() && (fl_version as i16) > 0xe {
             short_12e = Some(trial.read_u16_le()? as i16);
             int32_1f0 = Some(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
             let slot_offset = trial.position();
             let pre_slot_table = staged_table.clone();
             match read_object_entry_10_1(&mut trial, &mut staged_table)? {
-                ObjectEntry10_1::Null => envelope_2 = Some(RefSlot10_1::Null),
+                ObjectEntry10_1::Null => envelope_2 = Some(EnvelopeSlot10_1::Null),
                 ObjectEntry10_1::BackReference { class_id, key } => {
-                    envelope_2 = Some(RefSlot10_1::BackReference { class_id, key });
+                    envelope_2 = Some(EnvelopeSlot10_1::BackReference { class_id, key });
+                }
+                ObjectEntry10_1::NewObject { class_id, key: _ }
+                    if class_id == crate::objects::envelope::ENVELOPE_CLASS_ID =>
+                {
+                    let body = crate::objects::envelope::read_envelope_10_1(
+                        &mut trial,
+                        max_bytes,
+                        &mut staged_table,
+                    )?;
+                    envelope_2 = Some(EnvelopeSlot10_1::Envelope(Box::new(body)));
                 }
                 ObjectEntry10_1::NewObject { class_id, key } => {
                     stop = Some(SuccessorStop10_1::EnvelopeUnsupported {
@@ -2005,33 +2128,41 @@ pub fn read_feature_layer_successor_10_1(
                     });
                     trial = reposition_to(reader, slot_offset);
                     staged_table = pre_slot_table;
-                    envelope_2 = Some(RefSlot10_1::Null);
+                    envelope_2 = Some(EnvelopeSlot10_1::Null);
                 }
             }
         }
 
-        // ㉙ IUID 槽（请求 IID {1714D59B-…}，版本 >0x10）。
+        // ㉙ IUID 槽（请求 IID {1714D59B-…}，版本 >0x10；第十轮起 UID 新
+        // 对象整体解析——样本该槽 = UID 新对象键 82,体 [int16 版本][u8]
+        // [GUID 16],值指向所在 LELP 的 CLSID;零值实例 ver=2、flag=0、全零
+        // GUID)。
         if stop.is_none() && (fl_version as i16) > 0x10 {
             let slot_offset = trial.position();
             let pre_slot_table = staged_table.clone();
             match read_object_entry_10_1(&mut trial, &mut staged_table)? {
-                ObjectEntry10_1::Null => uid = Some(RefSlot10_1::Null),
+                ObjectEntry10_1::Null => uid = Some(UidSlot10_1::Null),
                 ObjectEntry10_1::BackReference { class_id, key } => {
-                    uid = Some(RefSlot10_1::BackReference { class_id, key });
+                    uid = Some(UidSlot10_1::BackReference { class_id, key });
+                }
+                ObjectEntry10_1::NewObject { class_id, key } if class_id == UID_CLASS_ID => {
+                    let body = read_uid_body_10_1(&mut trial, key)?;
+                    uid = Some(UidSlot10_1::Uid(Box::new(body)));
                 }
                 ObjectEntry10_1::NewObject { class_id, key } => {
                     stop = Some(SuccessorStop10_1::UidUnsupported { class_id, key });
                     trial = reposition_to(reader, slot_offset);
                     staged_table = pre_slot_table;
-                    uid = Some(RefSlot10_1::Null);
+                    uid = Some(UidSlot10_1::Null);
                 }
             }
         }
 
         // ㉚-㊱ 版本门标量段（≥0x12 / ==0x12||0x13 / ≥0x13 / ≥0x14 / ≥0x15 /
-        //    ≥0x16 / ≥0x17）。
+        //    ≥0x16 / ≥0x17）。String +0x28c 经 BSTR 空语义（样本 cb=0，第十轮
+        //    修正：read_string_10_1 拒绝 cb<2 会在此误停）。
         if stop.is_none() && (fl_version as i16) >= 0x12 {
-            string_28c = Some(read_string_10_1(&mut trial, max_bytes)?);
+            string_28c = Some(read_stream_string_10_1(&mut trial, max_bytes)?);
             if (fl_version as i16) == 0x12 || (fl_version as i16) == 0x13 {
                 // 原生读 2 字节入临时（丢弃）。
                 let _ = trial.read_u16_le()?;
@@ -2055,16 +2186,28 @@ pub fn read_feature_layer_successor_10_1(
         }
 
         // ㊱ PreJoinDefExpressions（版本 >0x17；LayerLib.dll
-        //    `0x786c5d30`：int32 计数 + count × [String + String]）。
+        //    `0x786c5d30`：int32 计数 + count × [String + String]）。第十轮
+        //    样本修正：计数之后、Pairs 之前存在 6 个保留字节（样本
+        //    `0x14f2..0x14f8` 全零；FL 反编译在该处无读取，归属未决——可能
+        //    为 CInternalLayerBase 成员头部或反编译遗漏的短读取；读取器原
+        //    样消费以对位样本，样本仅见证 count=0 形态）。
         if stop.is_none() && (fl_version as i16) > 0x17 {
             let count = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+            let mut reserved = [0u8; 6];
+            reserved.copy_from_slice(trial.read_bytes(6)?);
+            let mut pairs = Vec::new();
             if count > 0 {
                 for _ in 0..count as usize {
                     let first = read_string_10_1(&mut trial, max_bytes)?;
                     let second = read_string_10_1(&mut trial, max_bytes)?;
-                    pre_join_pairs.push((first, second));
+                    pairs.push((first, second));
                 }
             }
+            pre_join = Some(PreJoinBlock10_1 {
+                count,
+                reserved,
+                pairs,
+            });
         }
 
         // ㊲㊳ 版本 ≥0x19 标量块。
@@ -2081,20 +2224,36 @@ pub fn read_feature_layer_successor_10_1(
             strings_2cc_2d0_2d4_2d8 = Some([s1, s2, s3, s4]);
         }
 
-        // ㊴ {A62B9EC2} 槽（版本 >0x19；新对象 = 停止点）。
+        // ㊴ {A62B9EC2} 槽（版本 >0x19；第十轮起 DisplayExpressionProperties
+        //    新对象整体解析其已闭合前缀（版本/表达式串/int16/引擎槽,样本键
+        //    83、"[BSM]"、引擎键 84),尾段未闭合 → ExpressionPropsBody 停止,
+        //    游标停在前缀尾(样本 0x155a);其余类维持停止回退)。
         if stop.is_none() && (fl_version as i16) > 0x19 {
             let slot_offset = trial.position();
             let pre_slot_table = staged_table.clone();
             match read_object_entry_10_1(&mut trial, &mut staged_table)? {
-                ObjectEntry10_1::Null => expression_props = Some(RefSlot10_1::Null),
+                ObjectEntry10_1::Null => expression_props = Some(ExpressionPropsSlot10_1::Null),
                 ObjectEntry10_1::BackReference { class_id, key } => {
-                    expression_props = Some(RefSlot10_1::BackReference { class_id, key });
+                    expression_props =
+                        Some(ExpressionPropsSlot10_1::BackReference { class_id, key });
+                }
+                ObjectEntry10_1::NewObject { class_id, key }
+                    if class_id == DISPLAY_EXPRESSION_PROPS_CLASS_ID =>
+                {
+                    let prefix = read_display_expression_props_prefix_10_1(
+                        &mut trial,
+                        max_bytes,
+                        &mut staged_table,
+                        key,
+                    )?;
+                    expression_props = Some(ExpressionPropsSlot10_1::Display(Box::new(prefix)));
+                    stop = Some(SuccessorStop10_1::ExpressionPropsBody);
                 }
                 ObjectEntry10_1::NewObject { class_id, key } => {
                     stop = Some(SuccessorStop10_1::ExpressionPropsUnsupported { class_id, key });
                     trial = reposition_to(reader, slot_offset);
                     staged_table = pre_slot_table;
-                    expression_props = Some(RefSlot10_1::Null);
+                    expression_props = Some(ExpressionPropsSlot10_1::Null);
                 }
             }
         }
@@ -2306,21 +2465,37 @@ pub fn read_feature_layer_successor_10_1(
             }
         }
 
-        // ㊷ {E720618B} 槽（版本 >0x20；10.1 恒写 34 → 不达；新对象 = 停止
-        //    点）。注意：读侧 ==0x1f 的同名槽属 0x1c..0x1f 分支（见上）。
+        // ㊷ {E720618B} 槽（版本 >0x20；第十轮起 HotLinkExpressionProperties
+        //    新对象整体解析——样本该槽 = HLEP 新对象键 85;实现函数未定位,
+        //    体字段序为样本结构,证据注于类型文档;其余类维持停止回退)。
+        //    注意：读侧 ==0x1f 的同名槽属 0x1c..0x1f 分支（见上）。
         if stop.is_none() && (fl_version as i16) > 0x20 {
             let slot_offset = trial.position();
             let pre_slot_table = staged_table.clone();
             match read_object_entry_10_1(&mut trial, &mut staged_table)? {
-                ObjectEntry10_1::Null => hot_link_expression_props = Some(RefSlot10_1::Null),
+                ObjectEntry10_1::Null => {
+                    hot_link_expression_props = Some(HotLinkSlot10_1::Null);
+                }
                 ObjectEntry10_1::BackReference { class_id, key } => {
-                    hot_link_expression_props = Some(RefSlot10_1::BackReference { class_id, key });
+                    hot_link_expression_props =
+                        Some(HotLinkSlot10_1::BackReference { class_id, key });
+                }
+                ObjectEntry10_1::NewObject { class_id, key }
+                    if class_id == HOT_LINK_EXPRESSION_PROPS_CLASS_ID =>
+                {
+                    let body = read_hot_link_expression_props_body_10_1(
+                        &mut trial,
+                        max_bytes,
+                        &mut staged_table,
+                        key,
+                    )?;
+                    hot_link_expression_props = Some(HotLinkSlot10_1::Body(Box::new(body)));
                 }
                 ObjectEntry10_1::NewObject { class_id, key } => {
                     stop = Some(SuccessorStop10_1::ExpressionPropsUnsupported { class_id, key });
                     trial = reposition_to(reader, slot_offset);
                     staged_table = pre_slot_table;
-                    hot_link_expression_props = Some(RefSlot10_1::Null);
+                    hot_link_expression_props = Some(HotLinkSlot10_1::Null);
                 }
             }
         }
@@ -2377,7 +2552,7 @@ pub fn read_feature_layer_successor_10_1(
         short_1da,
         int32_244,
         short_1be,
-        pre_join_pairs,
+        pre_join,
         int32_2c0,
         shorts_2c4_2c6_2c8,
         strings_2cc_2d0_2d4_2d8,
