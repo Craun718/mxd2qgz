@@ -61,10 +61,12 @@
 //!   体已由元素体轮闭合（`objects::element_body::read_text_symbol_body_
 //!   10_1`），接线轮接入本槽整体解析；体内 ITextPath/ISymbol/IFontDisp 槽
 //!   未闭合实现类仍为透传停止点（样本停止点在接线后位于 TextSymbol 体内）；
-//! - LELP ⑰ BasicOverposterLayerProperties（`{EE535289-…}`，LabelPlacement
-//!   .dll，CLSID 数据常量 `0x7857a814`）体未闭合（无 COL、无代码立即数，
-//!   实现函数未定位）；⑱ 标注表达式引擎族、⑲/㉔ Envelope 与
-//!   IGraphicsContainer 实现类体未闭合（样本对应槽位在停止点之后未达）；
+//! - LELP ⑰ BasicOverposterLayerProperties（`{EE535289-…}`）体第十轮闭合
+//!   （含 LineLabelPosition/LineLabelPlacementPriorities/PointPlacementPriorities
+//!   三个嵌套槽实现类；BOLP 自身 Load 未唯一定位，字段序为样本结构+局部
+//!   反编译佐证，见 `BolpBody10_1` 文档）；⑱ AnnotationVBScriptEngine 体
+//!   第十轮闭合（`0x785361d0`）；⑲ Envelope 体为对象层已闭合读取器；
+//!   ㉔ IGraphicsContainer 实现类体未闭合（样本空标记）；
 //! - ALPC/ETM/LELP 各标量与字符串的业务语义为候选（表达式、标注类名、
 //!   可见性等），未经目标软件行为验证；
 //! - ETM ④ 的 1 字节（样本 0x00，布尔候选）语义未定；
@@ -180,6 +182,13 @@ pub enum LelpStop10_1 {
     EnvelopeSlotUnsupported { class_id: [u8; 16], key: u32 },
     /// ㉔ IGraphicsContainer 槽（版本 >2）的新对象类标识未闭合。
     ContainerSlotUnsupported { class_id: [u8; 16], key: u32 },
+    /// ⑰ BOLP 体内部停止（原因透传，游标停在其停止点；槽键按「登记先于
+    /// 持久化」保留）。
+    OverposterBody(BolpStop10_1),
+    /// ⑲ Envelope 体内部错误不属于本枚举（嵌套空间参考非投影坐标系为
+    /// 硬错误，向上传播）；本变体保留供未来扩展。
+    #[allow(dead_code)]
+    EnvelopeBody,
 }
 
 /// LELP ⑯ ITextSymbol 槽（请求 IID `{A80B5E91-…}`）条目的分类结果（接线轮
@@ -302,10 +311,15 @@ pub struct LelpBody10_1 {
     /// ⑯ ITextSymbol 槽的分类（接线轮起 TextSymbol 新对象整体解析，见
     /// [`LelpTextSymbolSlot10_1`]；体内停止经 `stop` 透传）。
     pub text_symbol: LelpTextSymbolSlot10_1,
-    /// ⑰-⑲ 三个 LoadObject 槽（Overposter/ExpressionEngine/Envelope）的
-    /// 分类；新对象仅空标记/回引可消费，未闭合类为停止点（对应槽字段记
-    /// `Null`，原因见 `stop`）。
-    pub slots: [ObjectEntry10_1; 3],
+    /// ⑰ 槽分类（第十轮起 BOLP 新对象整体解析，见 [`BolpSlot10_1`]；体
+    /// 内停止经 `stop` 透传）。
+    pub overposter: BolpSlot10_1,
+    /// ⑱ 槽分类（第十轮起 AnnotationVBScriptEngine 新对象整体解析，见
+    /// [`ExpressionEngineSlot10_1`]）。
+    pub engine: ExpressionEngineSlot10_1,
+    /// ⑲ 槽分类（第十轮起 Envelope 新对象经对象层读取器整体解析，体内含
+    /// 嵌套空间参考，见 [`EnvelopeSlot10_1`]）。
+    pub envelope: EnvelopeSlot10_1,
     /// ⑳ double → -0x24（样本未达），语义未定。前置停止时 `None`。
     pub double_24: Option<f64>,
     /// ㉑ double → -0x1c。前置停止时 `None`。
@@ -379,27 +393,15 @@ pub fn read_label_engine_props_body_10_1(
     //    止回退（游标回退到槽位起点、键不保留）。样本槽即 TextSymbol 新对
     //    象（键 61），接线后样本停止点推进至 TextSymbol 体内。
     let mut text_symbol = LelpTextSymbolSlot10_1::Null;
-    // ⑰-⑲ 三个 LoadObject 槽（Overposter/ExpressionEngine/Envelope；新对
-    //    象非空标记类 = 停止点，回退到槽位起点）。
-    let mut slots = [
-        ObjectEntry10_1::Null,
-        ObjectEntry10_1::Null,
-        ObjectEntry10_1::Null,
-    ];
-    let slot_stops: [fn([u8; 16], u32) -> LelpStop10_1; 3] = [
-        |c, k| LelpStop10_1::OverposterSlotUnsupported {
-            class_id: c,
-            key: k,
-        },
-        |c, k| LelpStop10_1::ExpressionSlotUnsupported {
-            class_id: c,
-            key: k,
-        },
-        |c, k| LelpStop10_1::EnvelopeSlotUnsupported {
-            class_id: c,
-            key: k,
-        },
-    ];
+    // ⑰-⑲ 三个 LoadObject 槽(第十轮起按类分派整体解析;新对象类标识未
+    //    闭合时仍为停止点,回退到槽位起点):
+    //    ⑰ BOLP({EE535289-…})→ read_bolp_body_10_1,体内停止透传;
+    //    ⑱ AnnotationVBScriptEngine({AA157207-…})→ 4/6 字节体;
+    //    ⑲ Envelope({30707212-…})→ 对象层 read_envelope_10_1(体内嵌套
+    //      空间参考,非投影坐标系为硬错误向上传播,无停止点)。
+    let mut overposter = BolpSlot10_1::Null;
+    let mut engine = ExpressionEngineSlot10_1::Null;
+    let mut envelope = EnvelopeSlot10_1::Null;
     if stop.is_none() {
         let slot_offset = trial.position();
         let pre_slot_table = staged_table.clone();
@@ -422,20 +424,83 @@ pub fn read_label_engine_props_body_10_1(
             }
         }
     }
-    for i in 0..3 {
-        if stop.is_some() {
-            break;
-        }
+    // ⑰ BOLP 槽。
+    if stop.is_none() {
         let slot_offset = trial.position();
         let pre_slot_table = staged_table.clone();
-        let entry = read_object_entry_10_1(&mut trial, &mut staged_table)?;
-        match entry {
+        match read_object_entry_10_1(&mut trial, &mut staged_table)? {
+            ObjectEntry10_1::Null => {}
+            ObjectEntry10_1::BackReference { class_id, key } => {
+                overposter = BolpSlot10_1::BackReference { class_id, key };
+            }
+            ObjectEntry10_1::NewObject { class_id, key }
+                if class_id == BASIC_OVERPOSTER_LAYER_PROPS_CLASS_ID =>
+            {
+                let body = read_bolp_body_10_1(&mut trial, max_bytes, &mut staged_table, key)?;
+                if let Some(inner) = body.stop.clone() {
+                    stop = Some(LelpStop10_1::OverposterBody(inner));
+                }
+                overposter = BolpSlot10_1::Bolp(Box::new(body));
+            }
             ObjectEntry10_1::NewObject { class_id, key } => {
-                stop = Some(slot_stops[i](class_id, key));
+                stop = Some(LelpStop10_1::OverposterSlotUnsupported { class_id, key });
                 trial = reposition_to(reader, slot_offset);
                 staged_table = pre_slot_table;
             }
-            other => slots[i] = other,
+        }
+    }
+    // ⑱ 表达式引擎槽。
+    if stop.is_none() {
+        let slot_offset = trial.position();
+        let pre_slot_table = staged_table.clone();
+        match read_object_entry_10_1(&mut trial, &mut staged_table)? {
+            ObjectEntry10_1::Null => {}
+            ObjectEntry10_1::BackReference { class_id, key } => {
+                engine = ExpressionEngineSlot10_1::BackReference { class_id, key };
+            }
+            ObjectEntry10_1::NewObject { class_id, key }
+                if class_id == ANNOTATION_VBSCRIPT_ENGINE_CLASS_ID =>
+            {
+                let body = read_annotation_vbscript_engine_body_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged_table,
+                    key,
+                )?;
+                engine = ExpressionEngineSlot10_1::VbscriptEngine(Box::new(body));
+            }
+            ObjectEntry10_1::NewObject { class_id, key } => {
+                stop = Some(LelpStop10_1::ExpressionSlotUnsupported { class_id, key });
+                trial = reposition_to(reader, slot_offset);
+                staged_table = pre_slot_table;
+            }
+        }
+    }
+    // ⑲ Envelope 槽(对象层读取器:体内含嵌套空间参考,仅投影坐标系;
+    //   其余嵌套类为硬错误向上传播——较原生「无法跳过未知体」语义一致)。
+    if stop.is_none() {
+        let slot_offset = trial.position();
+        let pre_slot_table = staged_table.clone();
+        match read_object_entry_10_1(&mut trial, &mut staged_table)? {
+            ObjectEntry10_1::Null => {}
+            ObjectEntry10_1::BackReference { class_id, key } => {
+                envelope = EnvelopeSlot10_1::BackReference { class_id, key };
+            }
+            ObjectEntry10_1::NewObject { class_id, key: _ }
+                if class_id == crate::objects::envelope::ENVELOPE_CLASS_ID =>
+            {
+                let body = crate::objects::envelope::read_envelope_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged_table,
+                )?;
+                envelope = EnvelopeSlot10_1::Envelope(Box::new(body));
+            }
+            ObjectEntry10_1::NewObject { class_id, key } => {
+                stop = Some(LelpStop10_1::EnvelopeSlotUnsupported { class_id, key });
+                trial = reposition_to(reader, slot_offset);
+                staged_table = pre_slot_table;
+            }
         }
     }
 
@@ -496,7 +561,9 @@ pub fn read_label_engine_props_body_10_1(
         name,
         string_b,
         text_symbol,
-        slots,
+        overposter,
+        engine,
+        envelope,
         double_24,
         double_1c,
         int32_14,
@@ -710,6 +777,751 @@ pub fn read_edit_template_manager_body_10_1(
         stop,
     };
     *table = staged_table;
+    *reader = trial;
+    Ok(result)
+}
+
+// ---------------------------------------------------------------------------
+// 第十轮:BOLP 族(BasicOverposterLayerProperties 及其三个嵌套槽实现类)、
+// 标注表达式引擎族与表达式属性族。
+//
+// 证据来源:`docs/arcmap-10.1-featurelayer-tail.md` 第十轮(2026-11-15)。
+// 全部为 LabelPlacement.dll 10.1.0.3035(工程副本 /tmp/f-lelp-gh/ghproj_lp,
+// 本机 pyghidra)静态反编译 + 样本 `temp/r6-maps.bin` `0xda3..0x155a` 逐字节
+// 对位;定位链与证据强度逐类标注于各读取器文档注释。
+// ---------------------------------------------------------------------------
+
+/// BasicOverposterLayerProperties 类标识(CLSID)的 16 字节内存序。
+///
+/// GUID 字符串形式 `{EE535289-41C9-11D1-880A-080009EC732A}`。证据:esri.clsid
+/// 声明(progID BasicOverposterLayerProperties,模块 LabelPlacement.dll);
+/// GetClassID `0x7853d360`(立即数写出,常量 `0x7857a814`);RTTI TD
+/// `.?AVBasicOverposterLayerProperties@@`(0x7858dd20)及 10 个接口 vftable
+/// COL 簇(.rdata 0x785810c8..0x78581190);样本 `/Maps:0xda3` 头(键 69)
+/// 逐字节相同。
+pub const BASIC_OVERPOSTER_LAYER_PROPS_CLASS_ID: [u8; 16] = [
+    0x89, 0x52, 0x53, 0xee, 0xc9, 0x41, 0xd1, 0x11, 0x88, 0x0a, 0x08, 0x00, 0x09, 0xec, 0x73, 0x2a,
+];
+
+/// LineLabelPosition 类标识(CLSID,与 ILineLabelPosition IID 同值)的 16
+/// 字节内存序。
+///
+/// GUID `{2442958C-D711-11D2-9F41-00C04F6BC6A5}`。证据:esri.clsid 声明;
+/// GetClassID `0x7855afb0`(常量拷贝形,常量 `0x7857b02c`);样本
+/// `/Maps:0xdcb` 头(键 70)逐字节相同。
+pub const LINE_LABEL_POSITION_CLASS_ID: [u8; 16] = [
+    0x8c, 0x95, 0x42, 0x24, 0x11, 0xd7, 0xd2, 0x11, 0x9f, 0x41, 0x00, 0xc0, 0x4f, 0x6b, 0xc6, 0xa5,
+];
+
+/// LineLabelPlacementPriorities 类标识(CLSID)的 16 字节内存序。
+///
+/// GUID `{261A4377-D9D5-11D2-A806-CC9F870BCD5A}`。证据:esri.clsid 声明;
+/// GetClassID `0x7855add0`;样本 `/Maps:0xe01` 头(键 71)逐字节相同。
+pub const LINE_LABEL_PLACEMENT_PRIORITIES_CLASS_ID: [u8; 16] = [
+    0x77, 0x43, 0x1a, 0x26, 0xd5, 0xd9, 0xd2, 0x11, 0xa8, 0x06, 0xcc, 0x9f, 0x87, 0x0b, 0xcd, 0x5a,
+];
+
+/// PointPlacementPriorities 类标识(CLSID)的 16 字节内存序。
+///
+/// GUID `{261A4372-D9D5-11D2-A806-CC9F870BCD5A}`。证据:esri.clsid 声明;
+/// GetClassID `0x7856d690`;样本 `/Maps:0xe63` 头(键 72)逐字节相同。
+pub const POINT_PLACEMENT_PRIORITIES_CLASS_ID: [u8; 16] = [
+    0x72, 0x43, 0x1a, 0x26, 0xd5, 0xd9, 0xd2, 0x11, 0xa8, 0x06, 0xcc, 0x9f, 0x87, 0x0b, 0xcd, 0x5a,
+];
+
+/// AnnotationVBScriptEngine 类标识(CLSID)的 16 字节内存序。
+///
+/// GUID `{AA157207-E079-11D2-9F48-00C04F6BC6A5}`。证据:esri.clsid 声明;
+/// GetClassID `0x78535ae0`(常量拷贝形,常量 `0x78579f60`);名字 getter
+/// `0x78535520` 返回 `L"AnnotationVBScriptEngine"`;样本 `/Maps:0xec5` 头
+/// (键 73)逐字节相同。
+pub const ANNOTATION_VBSCRIPT_ENGINE_CLASS_ID: [u8; 16] = [
+    0x07, 0x72, 0x15, 0xaa, 0x79, 0xe0, 0xd2, 0x11, 0x9f, 0x48, 0x00, 0xc0, 0x4f, 0x6b, 0xc6, 0xa5,
+];
+
+/// HotLinkExpressionProperties 类标识(CLSID)的 16 字节内存序。
+///
+/// GUID `{1B848B0F-5E87-4948-841A-86201FACD925}`。证据:esri.clsid 声明;
+/// GetClassID `0x78540500`(常量 `0x7857b7e0`);名字 getter `0x785404f0`
+/// 返回 `L"HotLinkExpressionProperties"`;样本 `/Maps:0x15d8` 头(键 85)
+/// 逐字节相同。
+pub const HOT_LINK_EXPRESSION_PROPS_CLASS_ID: [u8; 16] = [
+    0x0f, 0x8b, 0x84, 0x1b, 0x87, 0x5e, 0x48, 0x49, 0x84, 0x1a, 0x86, 0x20, 0x1f, 0xac, 0xd9, 0x25,
+];
+
+/// DisplayExpressionProperties 类标识(CLSID)的 16 字节内存序。
+///
+/// GUID `{D75C6301-C05A-484C-A7BD-AE82E5E1FC75}`。证据:esri.clsid 声明
+/// (模块 FeatureLayer.dll);样本 `/Maps:0x151a` 头(键 83)逐字节相同
+/// (FeatureLayer.dll 侧 GetClassID/Load 未定位,证据为样本结构)。
+pub const DISPLAY_EXPRESSION_PROPS_CLASS_ID: [u8; 16] = [
+    0x01, 0x63, 0x5c, 0xd7, 0x5a, 0xc0, 0x48, 0x4c, 0xa7, 0xbd, 0xae, 0x82, 0xe5, 0xe1, 0xfc, 0x75,
+];
+
+/// LineLabelPosition(`0x7855b4e0`)体的已确认字段。
+///
+/// 证据:确定的。定位链:GetClassID `0x7855afb0`(常量拷贝)→ 名字 getter
+/// `0x7855afa0`(`L"LineLabelPosition"`)→ IPersistStream 适配虚表
+/// `0x7857d0f0` 槽 +0x14 = 转发调整器 `0x7855b7b0` → Load `0x7855b4e0`;
+/// Save `0x7855b650`(槽 +0x18 经 `0x7855b810`)逐字段对称互证。字段序:
+/// ① int16 版本(`2 < ver` 有符号拒绝 `0x7fffbffb`;样本 2)→ ② int16 ×11
+/// → ③ double → ④ 版本 ≥2:int16。样本 11 个 short =
+/// [-1,0,0,0,0,-1,0,0,-1,0,0]、double 0.0、尾 short 0(布尔开关候选)。
+#[derive(Debug, Clone, PartialEq)]
+pub struct LineLabelPositionBody10_1 {
+    /// 对象头键(样本 70)。
+    pub key: u32,
+    /// 体首 short 版本(样本 2);有符号 >2 拒绝(较原生更严:负值一并拒绝)。
+    pub version: u16,
+    /// 11 个 int16(位置开关候选;样本 -1/0 混合,原样保留)。
+    pub shorts: [i16; 11],
+    /// double(样本 0.0),语义未定。
+    pub double: f64,
+    /// 版本 ≥2 的尾 int16(样本 0)。`None` = 版本 ≤1。
+    pub tail_short: Option<i16>,
+}
+
+/// LineLabelPlacementPriorities(`0x7855ae10`)体的已确认字段。
+///
+/// 证据:确定的。定位链:GetClassID `0x7855add0` → Load `0x7855ae10`
+/// (GetClassID +0x40 邻位,含 15 次 int32 读取循环)。字段序:① int16
+/// 版本(`1 < ver` 拒绝 `0x7fffbffb`;样本 1)→ ② int32 ×15(3×5 优先级
+/// 网格候选;样本 [0,3,3,3, 0,0,3,3,3, 0,0,3,3,3,0],原样保留)。
+#[derive(Debug, Clone, PartialEq)]
+pub struct LineLabelPlacementPrioritiesBody10_1 {
+    /// 对象头键(样本 71)。
+    pub key: u32,
+    /// 体首 short 版本(样本 1);有符号 >1 拒绝。
+    pub version: u16,
+    /// 15 个 int32,原样保留。
+    pub ints: [i32; 15],
+}
+
+/// PointPlacementPriorities(`0x7856d920`)体的已确认字段。
+///
+/// 证据:确定的。定位链:GetClassID `0x7856d690` → Load `0x7856d920`
+/// (+0x290 邻位,含 8 次 int32 读取循环)。字段序:① int16 版本(`1 < ver`
+/// 拒绝;样本 1)→ ② int32 ×8(方向优先级候选;样本
+/// [2,2,1,2,2,3,3,3],原样保留)。
+#[derive(Debug, Clone, PartialEq)]
+pub struct PointPlacementPrioritiesBody10_1 {
+    /// 对象头键(样本 72)。
+    pub key: u32,
+    /// 体首 short 版本(样本 1);有符号 >1 拒绝。
+    pub version: u16,
+    /// 8 个 int32,原样保留。
+    pub ints: [i32; 8],
+}
+
+/// AnnotationVBScriptEngine(`0x785361d0`)体的已确认字段。
+///
+/// 证据:确定的。定位链:GetClassID `0x78535ae0` → IPersistStream 适配虚表
+/// `0x7857a1fc` 槽 +0x18 = Load `0x785361d0`、+0x1c = Save `0x78536240`
+/// (对称,写静态常量 2)。字段序:① int16 版本(`2 < ver` → `0x80004005`;
+/// 样本 2)→ ② 版本 ≥2:int16 → this+0xc(样本 -1,原样保留)。
+#[derive(Debug, Clone, PartialEq)]
+pub struct AnnotationVbscriptEngineBody10_1 {
+    /// 对象头键(样本 73)。
+    pub key: u32,
+    /// 体首 short 版本(样本 2);有符号 >2 拒绝(较原生更严:负值一并拒绝)。
+    pub version: u16,
+    /// 版本 ≥2 的 int16(样本 -1),语义未定。`None` = 版本 ≤1。
+    pub short: Option<i16>,
+}
+
+/// HotLinkExpressionProperties 体(实现函数未定位)的样本结构字段。
+///
+/// 证据:样本结构(样本 `/Maps:0x15ec..0x1606` 逐字节)+ 构造函数
+/// `0x78540560` 成员形状(String、short 0xffff、int)旁证;Load 未定位
+/// (QI `0x785406d0` 仅两个接口,无 IPersistStream 形 vtable,负证据见研究
+/// 记录)。字段序:① int16 版本(样本 1)→ ② String(样本空串)→
+/// ③ int16(样本 -1)→ ④ 16 字节原样块(样本全零;GUID 候选)。
+#[derive(Debug, Clone, PartialEq)]
+pub struct HotLinkExpressionPropsBody10_1 {
+    /// 对象头键(样本 85)。
+    pub key: u32,
+    /// 体首 short 版本(样本 1);无反编译证据,不设上限。
+    pub version: u16,
+    /// String(样本空串;热链接表达式候选)。
+    pub string: String,
+    /// int16(样本 -1),语义未定。
+    pub short: i16,
+    /// 16 字节原样块(样本全零),语义未定。
+    pub guid_block: [u8; 16],
+}
+
+/// BOLP 槽间 16 字节标量块(槽 2 与槽 3 之间;`0x7853d3a0` 槽间读序
+/// [int16][int32][double][int16] 佐证;样本全零,语义未定)。
+#[derive(Debug, Clone, PartialEq)]
+pub struct BolpBetweenBlock10_1 {
+    /// int16(样本 0)。
+    pub short_a: i16,
+    /// int32(样本 0)。
+    pub int_a: i32,
+    /// double(样本 0.0)。
+    pub double: f64,
+    /// int16(样本 0)。
+    pub short_b: i16,
+}
+
+/// BOLP 体尾段(样本 `0xe99..0xec5` 共 44 字节;`0x7853d3a0` 尾读序
+/// [int32 计数][计数 × double][double][int32][String][int32] 佐证前 24
+/// 字节,计数 0 时无 double;其后 20 字节块读序未定名,原样保留)。
+#[derive(Debug, Clone, PartialEq)]
+pub struct BolpTail10_1 {
+    /// int32 计数(样本 0)。负数/零不进循环,原样保留。
+    pub count: i32,
+    /// 计数 × double(样本计数 0 → 空)。
+    pub doubles: Vec<f64>,
+    /// double(样本 0.0)。
+    pub double: f64,
+    /// int32(样本 0)。
+    pub int_a: i32,
+    /// String(样本 cb=0 空串;BSTR 空语义,无终止零载荷)。
+    pub string: String,
+    /// int32(样本 0)。
+    pub int_b: i32,
+    /// 20 字节未定名块:int32 ×2(样本 1、2)+ double(样本 0.0)+
+    /// int16 ×2(样本 0、-1),原样保留。
+    pub block_int_a: i32,
+    pub block_int_b: i32,
+    pub block_double: f64,
+    pub block_short_a: i16,
+    pub block_short_b: i16,
+}
+
+/// BOLP 体读取的停止原因(全部为「成功停止」)。
+#[derive(Debug, Clone, PartialEq)]
+pub enum BolpStop10_1 {
+    /// 槽 1 的新对象类标识非 LineLabelPosition:游标回退到该槽位起点。
+    LabelPositionSlotUnsupported { class_id: [u8; 16], key: u32 },
+    /// 槽 2/槽 3 的新对象类标识非对应 Priorities 类:游标回退到该槽位
+    /// 起点;`which` 0 = Line 槽、1 = Point 槽。
+    PrioritiesSlotUnsupported {
+        class_id: [u8; 16],
+        key: u32,
+        which: u8,
+    },
+}
+
+/// BOLP 槽 1(ILineLabelPosition)条目分类。
+#[derive(Debug, Clone, PartialEq)]
+pub enum LineLabelPositionSlot10_1 {
+    /// 16 字节全零类标识:空引用。
+    Null,
+    /// 键已见:回引条目,无对象体。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 LineLabelPosition 对象:已解析体。
+    Body(Box<LineLabelPositionBody10_1>),
+}
+
+/// BOLP 槽 2/槽 3(ILineLabelPlacementPriorities / IPointPlacementPriorities)
+/// 条目分类。
+#[derive(Debug, Clone, PartialEq)]
+pub enum PlacementPrioritiesSlot10_1 {
+    /// 空引用。
+    Null,
+    /// 回引条目。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 LineLabelPlacementPriorities 对象(槽 2)。
+    Line(Box<LineLabelPlacementPrioritiesBody10_1>),
+    /// 新 PointPlacementPriorities 对象(槽 3)。
+    Point(Box<PointPlacementPrioritiesBody10_1>),
+}
+
+/// BasicOverposterLayerProperties 体的已确认字段。
+///
+/// 证据:样本结构(样本键 69 体 `0xdb7..0xec5` 共 270 字节逐字节对位)+ 部分反编
+/// 译佐证(`0x7853d3a0` = LabelPlacement.dll 内唯一经 LoadObject 引用
+/// ILineLabelPosition2 `{2442958B}`/ILineLabelPlacementPriorities2
+/// `{261A4376}`/IPointPlacementPriorities2 `{261A4371}` 的函数,位于 BOLP
+/// GetClassID +0x40 邻位;其标量前缀读序 [int16][int16×3][int32×3]、槽间
+/// [int16][int32][double][int16] 与尾段读序与本读取器一致,但函数归属未
+/// 证实,且其无条件尾段(计数循环/double/int32/String/int32)与样本版本
+/// 行为不吻合——见研究记录「BOLP::Load 未定位」节)。字段序(样本逐字
+/// 节对位):① 20 字节标量前缀([int16][int16×3][int32×3],语义候选)→
+/// ② 槽 LineLabelPosition → ③ 槽 LineLabelPlacementPriorities → ④ 16 字
+/// 节标量块 → ⑤ 槽 PointPlacementPriorities → ⑥ 44 字节尾段。
+#[derive(Debug, Clone, PartialEq)]
+pub struct BolpBody10_1 {
+    /// 对象头键(样本 69)。
+    pub key: u32,
+    /// 前缀首 int16(样本 0;版本候选,原样保留,无门)。
+    pub version: u16,
+    /// 前缀 int16 ×3(样本 0、0、0),语义未定。
+    pub shorts: [i16; 3],
+    /// 前缀 int32 ×3(样本 0、3、1),语义未定。
+    pub ints: [i32; 3],
+    /// 槽 1 LineLabelPosition 分类(样本键 70 已解析体)。
+    pub label_position: LineLabelPositionSlot10_1,
+    /// 槽 2 LineLabelPlacementPriorities 分类(样本键 71)。
+    pub priorities_line: PlacementPrioritiesSlot10_1,
+    /// 槽间 16 字节标量块(样本全零)。
+    pub between: BolpBetweenBlock10_1,
+    /// 槽 3 PointPlacementPriorities 分类(样本键 72)。
+    pub priorities_point: PlacementPrioritiesSlot10_1,
+    /// 尾段 44 字节(样本值见 [`BolpTail10_1`])。
+    pub tail: BolpTail10_1,
+    /// 停止原因;`None` = 体已完整消费(样本形态)。
+    pub stop: Option<BolpStop10_1>,
+}
+
+/// 读取 AfCore String::Read 布局的字符串,允许 cb=0 的空串。
+///
+/// 与 [`crate::stream::native_string::read_string_10_1`](写方向 String::
+/// Write 布局,恒含终止零,cb≥2)不同:UID/BOLP 尾段/表达式属性等调用
+/// 点经 OleAut BSTR 语义写入,空 BSTR 的流内 cb=0、无载荷(样本
+/// `/Maps:0x14d0` 与 BOLP 尾段 cb=0 佐证)。cb 奇数为错误;cb≥2 时仍要求
+/// 终止零。
+pub(crate) fn read_stream_string_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+) -> io::Result<String> {
+    let start = reader.position();
+    let invalid = |reason: &str| {
+        io::Error::new(
+            ErrorKind::InvalidData,
+            format!("流字符串 offset 0x{start:x}: {reason}"),
+        )
+    };
+    let mut trial = reader.clone();
+    let length = usize::try_from(trial.read_u32_le()?).map_err(|_| invalid("长度非法"))?;
+    if length == 0 {
+        *reader = trial;
+        return Ok(String::new());
+    }
+    if length < 2 || length % 2 != 0 {
+        return Err(invalid("非零长度必须为含终止零的偶数字节数"));
+    }
+    if length > max_bytes {
+        return Err(invalid("长度超过调用者资源限额"));
+    }
+    let bytes = trial.read_bytes(length)?;
+    if bytes[length - 2..] != [0, 0] {
+        return Err(invalid("缺少末尾终止零"));
+    }
+    let value = Reader::new(&bytes[..length - 2])
+        .read_utf16_le(length - 2)
+        .map_err(|_| invalid("非法 UTF-16LE 内容"))?;
+    *reader = trial;
+    Ok(value)
+}
+
+/// 从对象头之后的位置读取 10.1 LineLabelPosition 体(证据:确定的,见
+/// 结构体文档)。失败时不推进游标、不修改登记表。
+pub fn read_line_label_position_body_10_1(
+    reader: &mut Reader<'_>,
+    _max_bytes: usize,
+    _table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<LineLabelPositionBody10_1> {
+    let mut trial = reader.clone();
+    let entry_offset = trial.position();
+    let version = read_version_short(&mut trial, 2, "LineLabelPosition", entry_offset)?;
+    let mut shorts = [0i16; 11];
+    for slot in &mut shorts {
+        *slot = trial.read_u16_le()? as i16;
+    }
+    let double = trial.read_f64_le()?;
+    let tail_short = if version >= 2 {
+        Some(trial.read_u16_le()? as i16)
+    } else {
+        None
+    };
+    *reader = trial;
+    Ok(LineLabelPositionBody10_1 {
+        key,
+        version,
+        shorts,
+        double,
+        tail_short,
+    })
+}
+
+/// 从对象头之后的位置读取 10.1 LineLabelPlacementPriorities 体(证据:
+/// 确定的)。失败时不推进游标、不修改登记表。
+pub fn read_line_label_placement_priorities_body_10_1(
+    reader: &mut Reader<'_>,
+    _max_bytes: usize,
+    _table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<LineLabelPlacementPrioritiesBody10_1> {
+    let mut trial = reader.clone();
+    let entry_offset = trial.position();
+    let version = read_version_short(&mut trial, 1, "LineLabelPlacementPriorities", entry_offset)?;
+    let mut ints = [0i32; 15];
+    for slot in &mut ints {
+        *slot = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+    }
+    *reader = trial;
+    Ok(LineLabelPlacementPrioritiesBody10_1 { key, version, ints })
+}
+
+/// 从对象头之后的位置读取 10.1 PointPlacementPriorities 体(证据:确定
+/// 的)。失败时不推进游标、不修改登记表。
+pub fn read_point_placement_priorities_body_10_1(
+    reader: &mut Reader<'_>,
+    _max_bytes: usize,
+    _table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<PointPlacementPrioritiesBody10_1> {
+    let mut trial = reader.clone();
+    let entry_offset = trial.position();
+    let version = read_version_short(&mut trial, 1, "PointPlacementPriorities", entry_offset)?;
+    let mut ints = [0i32; 8];
+    for slot in &mut ints {
+        *slot = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+    }
+    *reader = trial;
+    Ok(PointPlacementPrioritiesBody10_1 { key, version, ints })
+}
+
+/// 从对象头之后的位置读取 10.1 AnnotationVBScriptEngine 体(证据:确定
+/// 的)。失败时不推进游标、不修改登记表。
+pub fn read_annotation_vbscript_engine_body_10_1(
+    reader: &mut Reader<'_>,
+    _max_bytes: usize,
+    _table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<AnnotationVbscriptEngineBody10_1> {
+    let mut trial = reader.clone();
+    let entry_offset = trial.position();
+    let version = read_version_short(&mut trial, 2, "AnnotationVBScriptEngine", entry_offset)?;
+    let short = if version >= 2 {
+        Some(trial.read_u16_le()? as i16)
+    } else {
+        None
+    };
+    *reader = trial;
+    Ok(AnnotationVbscriptEngineBody10_1 {
+        key,
+        version,
+        short,
+    })
+}
+
+/// 从对象头之后的位置读取 10.1 HotLinkExpressionProperties 体(证据:样
+/// 本结构,见结构体文档)。失败时不推进游标、不修改登记表。
+pub fn read_hot_link_expression_props_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    _table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<HotLinkExpressionPropsBody10_1> {
+    let mut trial = reader.clone();
+    let version = trial.read_u16_le()?;
+    let string = read_stream_string_10_1(&mut trial, max_bytes)?;
+    let short = trial.read_u16_le()? as i16;
+    let mut guid_block = [0u8; 16];
+    guid_block.copy_from_slice(trial.read_bytes(16)?);
+    *reader = trial;
+    Ok(HotLinkExpressionPropsBody10_1 {
+        key,
+        version,
+        string,
+        short,
+        guid_block,
+    })
+}
+
+/// ⑰ IBasicOverposterLayerProperties 槽条目分类。
+#[derive(Debug, Clone, PartialEq)]
+pub enum BolpSlot10_1 {
+    /// 空引用。
+    Null,
+    /// 回引条目。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 BasicOverposterLayerProperties 对象:已解析体(体内停止经
+    /// [] 透传)。
+    Bolp(Box<BolpBody10_1>),
+}
+
+/// ⑲ IEnvelope 槽条目分类。
+#[derive(Debug, Clone, PartialEq)]
+pub enum EnvelopeSlot10_1 {
+    /// 空引用。
+    Null,
+    /// 回引条目。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 Envelope 对象:已解析体(对象层读取器,体内含嵌套空间参考;
+    /// 嵌套非投影坐标系为硬错误向上传播,无停止点)。
+    Envelope(Box<crate::objects::envelope::Envelope10_1>),
+}
+
+/// IAnnotationExpressionEngine 槽条目分类(⑱ 与 DisplayExpressionProperties
+/// 体内共用)。
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExpressionEngineSlot10_1 {
+    /// 空引用。
+    Null,
+    /// 回引条目。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 AnnotationVBScriptEngine 对象:已解析体。
+    VbscriptEngine(Box<AnnotationVbscriptEngineBody10_1>),
+    /// 新对象但类标识未闭合:停止点,游标已回退到槽位起点、键不保留。
+    Unsupported { class_id: [u8; 16], key: u32 },
+}
+
+/// DisplayExpressionProperties 体前缀(样本 `0x152e..0x155a`;实现函数未
+/// 定位,证据为样本结构)的已确认字段。字段序:① int16 版本(样本 1)→
+/// ② String(样本 `[BSM]`,显示表达式候选)→ ③ int16(样本 -1)→
+/// ④ IAnnotationExpressionEngine 槽(样本 AnnotationVBScriptEngine 键 84)。
+/// 其后尾段(样本 `0x155a..0x15d8` 共 126 字节)字段序未闭合,读取器在该
+/// 处成功停止(由宿主传播为停止原因)。
+#[derive(Debug, Clone, PartialEq)]
+pub struct DisplayExpressionPropsPrefix10_1 {
+    /// 对象头键(样本 83)。
+    pub key: u32,
+    /// 体首 short 版本(样本 1);无反编译证据,不设上限。
+    pub version: u16,
+    /// String(样本 `[BSM]`)。
+    pub string: String,
+    /// int16(样本 -1),语义未定。
+    pub short: i16,
+    /// 引擎槽分类。
+    pub engine: ExpressionEngineSlot10_1,
+}
+
+/// 从对象头之后的位置读取 10.1 DisplayExpressionProperties 体前缀,读到
+/// 尾段起点即成功返回(尾段未闭合,由调用者停止)。失败时不推进游标、
+/// 不修改登记表。
+pub fn read_display_expression_props_prefix_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<DisplayExpressionPropsPrefix10_1> {
+    let mut trial = reader.clone();
+    let version = trial.read_u16_le()?;
+    let string = read_stream_string_10_1(&mut trial, max_bytes)?;
+    let short = trial.read_u16_le()? as i16;
+    let mut staged = table.clone();
+    let slot_offset = trial.position();
+    let mut engine = ExpressionEngineSlot10_1::Null;
+    match read_object_entry_10_1(&mut trial, &mut staged)? {
+        ObjectEntry10_1::Null => {}
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            engine = ExpressionEngineSlot10_1::BackReference { class_id, key };
+        }
+        ObjectEntry10_1::NewObject { class_id, key }
+            if class_id == ANNOTATION_VBSCRIPT_ENGINE_CLASS_ID =>
+        {
+            let body =
+                read_annotation_vbscript_engine_body_10_1(&mut trial, max_bytes, &mut staged, key)?;
+            engine = ExpressionEngineSlot10_1::VbscriptEngine(Box::new(body));
+        }
+        ObjectEntry10_1::NewObject { class_id, key } => {
+            engine = ExpressionEngineSlot10_1::Unsupported { class_id, key };
+            trial = reposition_to(reader, slot_offset);
+            staged = table.clone();
+        }
+    }
+    *table = staged;
+    *reader = trial;
+    Ok(DisplayExpressionPropsPrefix10_1 {
+        key,
+        version,
+        string,
+        short,
+        engine,
+    })
+}
+
+/// 从对象头之后的位置读取 10.1 BasicOverposterLayerProperties 体,失败时
+/// 不推进游标、不修改登记表。
+///
+/// 起点约定:调用者已读取对象头、比对
+/// [`BASIC_OVERPOSTER_LAYER_PROPS_CLASS_ID`] 并取得键 `key`。三个子槽的
+/// 新对象按类标识分派(LineLabelPosition / LineLabelPlacementPriorities /
+/// PointPlacementPriorities),其余类为成功停止(游标回退到该槽位起点、
+/// 键不保留),停止经 [`BolpStop10_1`] 传播。
+pub fn read_bolp_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<BolpBody10_1> {
+    let mut trial = reader.clone();
+    // ① 20 字节标量前缀(读序按 0x7853d3a0:[int16][int16 ×3][int32 ×3];
+    //   语义候选,原样保留,无版本门——函数归属未证实)。
+    let version = trial.read_u16_le()? as i16;
+    let mut shorts = [0i16; 3];
+    for slot in &mut shorts {
+        *slot = trial.read_u16_le()? as i16;
+    }
+    let mut ints = [0i32; 3];
+    for slot in &mut ints {
+        *slot = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+    }
+
+    let mut staged = table.clone();
+    let mut stop = None;
+
+    // ② 槽 1 LineLabelPosition。
+    let mut label_position = LineLabelPositionSlot10_1::Null;
+    {
+        let slot_offset = trial.position();
+        let pre = staged.clone();
+        match read_object_entry_10_1(&mut trial, &mut staged)? {
+            ObjectEntry10_1::Null => {}
+            ObjectEntry10_1::BackReference { class_id, key } => {
+                label_position = LineLabelPositionSlot10_1::BackReference { class_id, key };
+            }
+            ObjectEntry10_1::NewObject { class_id, key }
+                if class_id == LINE_LABEL_POSITION_CLASS_ID =>
+            {
+                let body =
+                    read_line_label_position_body_10_1(&mut trial, max_bytes, &mut staged, key)?;
+                label_position = LineLabelPositionSlot10_1::Body(Box::new(body));
+            }
+            ObjectEntry10_1::NewObject { class_id, key } => {
+                stop = Some(BolpStop10_1::LabelPositionSlotUnsupported { class_id, key });
+                trial = reposition_to(reader, slot_offset);
+                staged = pre;
+            }
+        }
+    }
+
+    // ③ 槽 2 LineLabelPlacementPriorities。
+    let mut priorities_line = PlacementPrioritiesSlot10_1::Null;
+    if stop.is_none() {
+        let slot_offset = trial.position();
+        let pre = staged.clone();
+        match read_object_entry_10_1(&mut trial, &mut staged)? {
+            ObjectEntry10_1::Null => {}
+            ObjectEntry10_1::BackReference { class_id, key } => {
+                priorities_line = PlacementPrioritiesSlot10_1::BackReference { class_id, key };
+            }
+            ObjectEntry10_1::NewObject { class_id, key }
+                if class_id == LINE_LABEL_PLACEMENT_PRIORITIES_CLASS_ID =>
+            {
+                let body = read_line_label_placement_priorities_body_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged,
+                    key,
+                )?;
+                priorities_line = PlacementPrioritiesSlot10_1::Line(Box::new(body));
+            }
+            ObjectEntry10_1::NewObject { class_id, key } => {
+                stop = Some(BolpStop10_1::PrioritiesSlotUnsupported {
+                    class_id,
+                    key,
+                    which: 0,
+                });
+                trial = reposition_to(reader, slot_offset);
+                staged = pre;
+            }
+        }
+    }
+
+    // ④ 槽间 16 字节标量块。
+    let mut between = BolpBetweenBlock10_1 {
+        short_a: 0,
+        int_a: 0,
+        double: 0.0,
+        short_b: 0,
+    };
+    if stop.is_none() {
+        between = BolpBetweenBlock10_1 {
+            short_a: trial.read_u16_le()? as i16,
+            int_a: i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()),
+            double: trial.read_f64_le()?,
+            short_b: trial.read_u16_le()? as i16,
+        };
+    }
+
+    // ⑤ 槽 3 PointPlacementPriorities。
+    let mut priorities_point = PlacementPrioritiesSlot10_1::Null;
+    if stop.is_none() {
+        let slot_offset = trial.position();
+        let pre = staged.clone();
+        match read_object_entry_10_1(&mut trial, &mut staged)? {
+            ObjectEntry10_1::Null => {}
+            ObjectEntry10_1::BackReference { class_id, key } => {
+                priorities_point = PlacementPrioritiesSlot10_1::BackReference { class_id, key };
+            }
+            ObjectEntry10_1::NewObject { class_id, key }
+                if class_id == POINT_PLACEMENT_PRIORITIES_CLASS_ID =>
+            {
+                let body = read_point_placement_priorities_body_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged,
+                    key,
+                )?;
+                priorities_point = PlacementPrioritiesSlot10_1::Point(Box::new(body));
+            }
+            ObjectEntry10_1::NewObject { class_id, key } => {
+                stop = Some(BolpStop10_1::PrioritiesSlotUnsupported {
+                    class_id,
+                    key,
+                    which: 1,
+                });
+                trial = reposition_to(reader, slot_offset);
+                staged = pre;
+            }
+        }
+    }
+
+    // ⑥ 尾段 44 字节([int32 计数][计数 × double][double][int32][String]
+    //   [int32] + 20 字节未定名块;String 经 BSTR 空语义,cb=0 无载荷)。
+    let mut tail = BolpTail10_1 {
+        count: 0,
+        doubles: Vec::new(),
+        double: 0.0,
+        int_a: 0,
+        string: String::new(),
+        int_b: 0,
+        block_int_a: 0,
+        block_int_b: 0,
+        block_double: 0.0,
+        block_short_a: 0,
+        block_short_b: 0,
+    };
+    if stop.is_none() {
+        let count = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+        let mut doubles = Vec::new();
+        for _ in 0..count.max(0) {
+            doubles.push(trial.read_f64_le()?);
+        }
+        let double = trial.read_f64_le()?;
+        let int_a = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+        let string = read_stream_string_10_1(&mut trial, max_bytes)?;
+        let int_b = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+        let block_int_a = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+        let block_int_b = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+        let block_double = trial.read_f64_le()?;
+        let block_short_a = trial.read_u16_le()? as i16;
+        let block_short_b = trial.read_u16_le()? as i16;
+        tail = BolpTail10_1 {
+            count,
+            doubles,
+            double,
+            int_a,
+            string,
+            int_b,
+            block_int_a,
+            block_int_b,
+            block_double,
+            block_short_a,
+            block_short_b,
+        };
+    }
+
+    let result = BolpBody10_1 {
+        key,
+        version: version as u16,
+        shorts,
+        ints,
+        label_position,
+        priorities_line,
+        between,
+        priorities_point,
+        tail,
+        stop,
+    };
+    *table = staged;
     *reader = trial;
     Ok(result)
 }
