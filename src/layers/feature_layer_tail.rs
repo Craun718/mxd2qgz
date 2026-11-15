@@ -144,7 +144,7 @@ use crate::layers::legend_format::{
 use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
 use crate::objects::display_symbol::{
     MAX_SYMBOL_NESTING_DEPTH, SimpleMarkerSymbolStop10_1, SymbolStop10_1,
-    read_display_symbol_slot_10_1, read_symbol_slot_full_10_1, slot_full_stop_10_1, slot_stop_10_1,
+    read_display_symbol_slot_10_1, read_symbol_slot_full_10_1, slot_full_stop_10_1,
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;

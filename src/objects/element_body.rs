@@ -161,13 +161,16 @@
 //! 嵌套停止经返回值透传（游标停在该嵌套对象头起点、该键不登记，已消费字
 //! 段与登记保持提交），元素循环以
 //! [`crate::objects::element_collection::ElementCollectionStop10_1::
-//! ElementBodyIncomplete`] 停止并携带原因。本轮接线：符号槽 #2 经
-//! [`crate::objects::display_symbol`] 分派、IColor 槽经
-//! [`crate::objects::display_color`] 分派（TextSymbol 的 ITextPath/
-//! ISymbol #1/IFontDisp 与 TextElement 的 IGeometry 等仍仅分类）；TextSymbol
-//! 体内的嵌套停止上抛为 TextElement 的停止原因（原实现未透传，见
-//! [`read_text_element_body_10_1`] 内注释）。`fdo_graphics_layer` 的
-//! ElementCollection 槽已在前轮接入 element_collection。
+//! ElementBodyIncomplete`] 停止并携带原因。接线轮起：符号槽 #2 经
+//! [`crate::objects::display_symbol::read_symbol_slot_full_10_1`] 全闭合集
+//! 分派、IColor 槽经 [`crate::objects::display_color`] 分派、TextElement 的
+//! IGeometry 槽经 [`crate::objects::geometry::read_geometry_body_of_class_
+//! 10_1`] 类分派（Polyline 体整体解析，样本 16 实例原全部停在该槽；证据：
+//! docs/arcmap-10.1-geometry.md「接线建议」）；TextSymbol 的 ITextPath/
+//! ISymbol #1/IFontDisp 仍仅分类；TextSymbol 体内的嵌套停止上抛为
+//! TextElement 的停止原因（原实现未透传，见 [`read_text_element_body_10_1`]
+//! 内注释）。`fdo_graphics_layer` 的 ElementCollection 槽已在前轮接入
+//! element_collection。
 //!
 //! 调用约定与事务性：调用者已用 [`crate::storage::object_stream::read_header_10_1`]
 //! 读取对象头并分类（新对象已登记），从对象头之后的位置传入 Reader；本模块
@@ -187,6 +190,9 @@ use crate::objects::display_color::read_color_slot_10_1;
 use crate::objects::display_symbol::{
     DisplaySlotKind10_1, MAX_SYMBOL_NESTING_DEPTH, SymbolSlotFull10_1, SymbolStop10_1,
     read_symbol_slot_full_10_1, slot_full_stop_10_1,
+};
+use crate::objects::geometry::{
+    POLYLINE_CLASS_ID, PolylineBody10_1, read_geometry_body_of_class_10_1,
 };
 use crate::objects::property_set::{PropertyValue10_1, read_variant_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
@@ -262,6 +268,19 @@ pub enum NestedEntry10_1 {
     Null,
     /// 键已在本会话登记过：20 字节回引条目，无对象体。
     BackReference { class_id: [u8; 16], key: u32 },
+}
+
+/// IGeometry 类槽位条目的分类结果（接线轮起 Polyline 经几何类分派整体解
+/// 析，证据：docs/arcmap-10.1-geometry.md「接线建议」）。
+#[derive(Debug, Clone, PartialEq)]
+pub enum GeometrySlot10_1 {
+    /// 16 字节全零类标识：空引用，无键、无对象体。
+    Null,
+    /// 键已见：回引条目，无对象体。类标识原样保留、不校验。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 Polyline 对象（类标识经 [`POLYLINE_CLASS_ID`] 校验）：已解析体。
+    /// 体读取要么完整成功、要么错误上抛（无体内停止点，见 geometry 模块）。
+    Polyline(Box<PolylineBody10_1>),
 }
 
 /// 元素体内的嵌套新对象停止点（非错误：已消费部分有效）。
@@ -595,9 +614,11 @@ pub struct TextElementBody10_1 {
     pub raw_bool_int32: i32,
     /// ITextSymbol 符号槽（第 5 字段）：TextSymbol 新对象的体（类分派）。
     pub symbol: Option<TextSymbolBody10_1>,
-    /// IGeometry 文本几何槽（第 6 字段）：仅分类（新对象 = 停止点，不出现在
-    /// 本枚举）。
-    pub geometry: NestedEntry10_1,
+    /// IGeometry 文本几何槽（第 6 字段）：接线轮起经
+    /// [`crate::objects::geometry::read_geometry_body_of_class_10_1`] 类分派
+    /// ——Polyline 新对象整体解析其体（记录定长、空间参考段可闭合，无停止
+    /// 点）；其余几何类维持既有停止语义（见 `stop`）。
+    pub geometry: GeometrySlot10_1,
     /// 版本 >2 的 int32（this+0x2a；Save 恒写 -1）。
     pub tail_int32_1: Option<i32>,
     /// 版本 >3 的 int32（this+0x2b；Save 恒写 -1）。
@@ -838,6 +859,49 @@ fn read_symbol_slot<'a>(
             Ok(other_closed)
         }
         other => Ok(other),
+    }
+}
+
+/// 读取一个 IGeometry 类槽位（TextElement 第 6 字段）：接线轮起经
+/// [`read_geometry_body_of_class_10_1`] 类分派（Polyline 整体解析，形态仿
+/// [`read_color_slot`]/[`read_symbol_slot`]）；其余几何类新对象 = 停止点
+/// （分派对其返回 `Unsupported`，本函数映射为停止原因并回退游标、登记表
+/// 不保留该键）；Polyline 体自身错误上抛（含体内空间参考未知类，与
+/// envelope 嵌套语义一致，见 geometry 研究文档「接线建议」3）。
+fn read_geometry_slot<'a>(
+    trial: &mut Reader<'a>,
+    max_bytes: usize,
+    trial_table: &mut RefTable10_1,
+    origin: &Reader<'a>,
+    start: usize,
+    slot: &'static str,
+    stop: &mut Option<ElementBodyStop10_1>,
+) -> io::Result<Option<GeometrySlot10_1>> {
+    let slot_offset = trial.position();
+    let saved_table = trial_table.clone();
+    match read_object_entry_10_1(trial, trial_table)? {
+        ObjectEntry10_1::Null => Ok(Some(GeometrySlot10_1::Null)),
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            Ok(Some(GeometrySlot10_1::BackReference { class_id, key }))
+        }
+        ObjectEntry10_1::NewObject { class_id, key: _ } if class_id == POLYLINE_CLASS_ID => {
+            // 键已由条目分类登记（登记先于持久化）；Polyline 体无停止点，
+            // 完整成功才提交（失败不推进游标、登记表由调用方 trial 语义保
+            // 护；错误上抛即整体失败）。
+            let body = read_geometry_body_of_class_10_1(&class_id, trial, max_bytes, trial_table)?;
+            Ok(Some(GeometrySlot10_1::Polyline(Box::new(body))))
+        }
+        ObjectEntry10_1::NewObject { class_id, key } => {
+            *trial_table = saved_table;
+            *trial = rewind(origin, start, slot_offset);
+            *stop = Some(ElementBodyStop10_1::NestedObjectNotClosed {
+                slot,
+                offset: slot_offset,
+                class_id,
+                key,
+            });
+            Ok(None)
+        }
     }
 }
 
@@ -1098,7 +1162,7 @@ pub fn read_text_element_body_10_1(
     let mut text = String::new();
     let mut raw_bool_int32 = 0;
     let mut symbol = None;
-    let mut geometry = NestedEntry10_1::Null;
+    let mut geometry = GeometrySlot10_1::Null;
     let mut tail_int32_1 = None;
     let mut tail_int32_2 = None;
     let mut decoration_block = None;
@@ -1150,9 +1214,12 @@ pub fn read_text_element_body_10_1(
     }
 
     if stop.is_none() {
-        // 6. LoadObject(IGeometry)：仅分类（样本 Polyline 新对象 = 停止点）。
-        match read_classified_slot(
+        // 6. LoadObject(IGeometry)：接线轮起 Polyline 经几何类分派整体解析
+        //    （样本 16 实例全为 Polyline 新对象，原停止点全部消除）；其余几
+        //    何类维持既有停止语义。
+        match read_geometry_slot(
             &mut trial,
+            max_bytes,
             &mut trial_table,
             &origin,
             start,
