@@ -537,3 +537,119 @@ IFontDisp 槽 OLE StdFont `{0BE35203-8F91-11CE-9DE3-00AA004BB851}` 新对象
 外，仍未闭合）。`mxd_maps` 诊断同步透传（标注环逐条诊断 + IHyperlink 消费
 计数）；FieldInfo INumberFormat 槽四类分派与后继段 IHyperlink 循环接体的落
 位记录见 number-format/hyperlink 两文档文末。
+
+
+## 第十轮：BOLP 族闭合、后继段 ㉖㉘㉙㊴㊷ 槽接线与扩展段格式修正（2026-11-15）
+
+对应第九轮遗留「BOLP 实现函数未定位、标注表达式引擎族、LELP ⑲/㉔、㉖ ISymbol、
+㉘/㉙ Envelope/IUID、㊴/㊷ 表达式属性族」。本轮闭合：LineLabelPosition、
+LineLabelPlacementPriorities、PointPlacementPriorities、AnnotationVBScriptEngine、
+BasicOverposterLayerProperties（样本结构）、UID、HotLinkExpressionProperties
+（样本结构）、DisplayExpressionProperties 体前缀（样本结构）；后继段 ㉖㉘㉙㊴㊷
+五槽接入按类分派；扩展段条目格式按样本修正（撤销第九轮「[CLSID][键][体]」）。
+实现：`src/layers/annotate_props.rs`（BOLP 族/引擎/DEP 前缀/HLEP 读取器与
+LELP ⑰⑱⑲ 槽分派）、`src/layers/feature_layer_tail.rs`（㉖㉘㉙㊴㊷ 槽分派、
+扩展段修正、㉚ String cb=0）。
+
+### 方法与文件身份
+
+- 本机 pyghidra（Ghidra + JDK 25）工程副本：/tmp/f-lelp-gh/{ghproj_lp,ghproj_fl,
+  ghproj_sc}（LabelPlacement/FeatureLayer/SystemCore，均 10.1.0.3035）+
+  ghproj_llb（LayerLib，ReadPreJoinDefExpressions 裁决用）。LabelPlacement
+  工程为新鲜导入 + analyzeAll（功能数 2933）。
+- 样本字节：temp/r6-maps.bin（SHA-256 与第九轮同源）；逐字节走查脚本
+  temp/agent-f-lelp/walk_round10.py（0xd8f..0x155a 全链 OK）。
+- 类名/IID：esri.clsid 全表。全部静态取证，未运行目标软件，未人工目视验收。
+
+### 各类闭合结论与定位链
+
+| 类 | CLSID | Load | 证据强度 | 样本对位 |
+| --- | --- | --- | --- | --- |
+| LineLabelPosition | {2442958C-D711-11D2-9F41-00C04F6BC6A5} | 0x7855b4e0（转发调整器 0x7855b7b0 → IPersistStream 适配虚表 0x7857d0f0 槽 +0x14；Save 0x7855b650 对称） | 确定的 | 键 70 @0xdcb：ver 2、11 short [-1,0,0,0,0,-1,0,0,-1,0,0]、d 0.0、尾 0 |
+| LineLabelPlacementPriorities | {261A4377-D9D5-11D2-A806-CC9F870BCD5A} | 0x7855ae10（GetClassID +0x40 邻位，15×int32 循环） | 确定的 | 键 71 @0xe01：ver 1、ints [0,3,3,3,0,0,3,3,3,0,0,3,3,3,0] |
+| PointPlacementPriorities | {261A4372-D9D5-11D2-A806-CC9F870BCD5A} | 0x7856d920（+0x290 邻位，8×int32 循环） | 确定的 | 键 72 @0xe63：ver 1、ints [2,2,1,2,2,3,3,3] |
+| AnnotationVBScriptEngine | {AA157207-E079-11D2-9F48-00C04F6BC6A5} | 0x785361d0（适配虚表 0x7857a1fc 槽 +0x18；Save 0x78536240 写常量 2） | 确定的 | 键 73 @0xec5：ver 2、short -1 |
+| BasicOverposterLayerProperties | {EE535289-41C9-11D1-880A-080009EC732A} | **未唯一定位**（见下） | 样本结构 + 0x7853d3a0 局部佐证 | 键 69 @0xda3：体 0xdb7..0xec5 共 270 字节 |
+| UID | {78FF7FA1-FB2F-11D1-94A2-080009EEBECB}（SystemCore，GetClassID 0x7fff8ca0） | 未唯一定位（持久化经基类虚调用转发 0x7ffcdb00→虚表槽） | 样本结构 | 键 82 @0x14a9 等 13 实例：ver+flag+GUID 19 字节 |
+| HotLinkExpressionProperties | {1B848B0F-5E87-4948-841A-86201FACD925}（GetClassID 0x78540500） | 未定位（QI 0x785406d0 仅两接口） | 样本结构 + 构造 0x78540560 成员形状 | 键 85 @0x15d8：ver 1、String 空、short -1、16B 零 |
+| DisplayExpressionProperties | {D75C6301-C05A-484C-A7BD-AE82E5E1FC75}（FeatureLayer.dll） | 未定位 | 样本结构（前缀） | 键 83 @0x151a：ver 1、"[BSM]"、-1、引擎键 84 |
+
+### BOLP::Load 未定位（负证据清单）与字段序
+
+第九轮「无 COL/立即数」部分撤销：BOLP 存在 RTTI（TD
+`.?AVBasicOverposterLayerProperties@@` @0x7858dd20，COL 簇
+0x785810c8..0x78581190），但 vftable 均不含标准 IPersistStream 形
+（GetClassID 仅一处引用，4+ 槽形）。Load 定位负证据：全 .text 仅 15 个函数
+调用 AfCore!LoadObject（FF 15 直接与寄存器间接全查），无一为 BOLP；三个嵌套
+槽的「2 后缀」接口 IID（{2442958B}/{261A4376}/{261A4371}）仅被 0x7853d3a0
+（GetClassID +0x40 邻位）经 LoadObject 引用，但其无条件尾段（计数循环/
+double/int32/String/int32 在三槽之间与之后）与样本不符，函数归属未证实。
+字段序（样本逐字节对位）：① 20B 标量前缀 [i16][i16×3][i32×3]
+（样本 0,0,0,0 / 0,3,1）→ ② 槽 LLP → ③ 槽 LLPP → ④ 16B 标量块
+[i16][i32][f64][i16]（0x7853d3a0 槽间读序佐证；样本全零）→ ⑤ 槽 PPP →
+⑥ 44B 尾段（0x7853d3a0 尾读序 [count][count×f64][f64][i32][String cb=0]
+[i32] = 前 24B + 未定名 20B 块 [i32 1][i32 2][f64 0.0][i16 0][i16 -1]）。
+
+### 扩展段格式修正（第九轮记录撤销）
+
+样本条目 `0xfcb..0x116a`：[int32 计数=1][int64 尺寸=387][CLSID 16 字节][体
+387 字节]，**无对象键**——ExtensionHelper 直接按 CLSID 实例化，不经对象流
+登记；尺寸 = 体字节数（0xfe7..0x116a 恰 387）。第九轮「[CLSID][键][体]、
+尺寸覆盖三者」撤销（其合成测试自洽但与样本不符：按其格式读 ETM 键 65538、
+体 ver=0、count=垃圾）。ETM 体（键参数恒 0）：ver 2、count 1、ET 条目
+（CLSID {377035B9} @0xfed、键 76 @0xffd、体 @0x1001..0x1169：ver 2、名称
+「龙安镇人民政府工作底图用界址点」、空串、GUID {2A8B3331-…}、12 对字段
+默认值、String「点」）、尾字节 **0x01**（第九轮「样本 0x00」修正）。
+
+### 其他样本修正
+
+- ALPC 条目键 = 0、尾 int32 = **1**（第九轮文档「样本 0」修正）；FL short
+  +0x1bc = **0**（第九轮模块文档「样本 0xFFFF」修正——该值仅见于合成输入）。
+- FL ㊱ PreJoinDefExpressions：计数（=0）之后存在 **6 个零字节**
+  （0x14f2..0x14f8）才接 ㊲ int32(+0x2c0)=0；LayerLib
+  ReadPreJoinDefExpressions 反编译仅 [count][count×[String+String]]，FL
+  反编译 ㊱→㊲ 间无读取——6 字节归属未决，读取器按「计数 + 6 字节保留头」
+  原样消费（PreJoinBlock10_1.reserved）。
+- FL ㊲ shorts = **[-1, 0, -1]**（+0x2c4/06/08 @0x14fc..0x1502）；㊳ String ×4
+  = 4 个 cb=2 空串 @0x1502..0x151a；㊴ DEP 键 83 @0x151a；DEP 前缀
+  [ver 1]["[BSM]"][short -1][引擎键 84 @0x1542] 止于 **0x155a**（其后
+  0x155a..0x15d8 = DEP 尾段 126 字节未闭合）。
+- ㉖ ISymbol 槽 = SMS 新对象键 77 @0x1172（体含 RgbColor 78/79）；㉗ short
+  = -1、int32 = 1；㉘ Envelope 键 80 @0x122b（体 ver 3、内嵌新 PCS 键 81，
+  PCS 体 @0x1279..0x14a9 由空间参考轮读取器闭合）；㉙ UID 键 82 @0x14a9；
+  ㉚ String +0x28c = **cb=0 空 BSTR**（读取器新增允许 cb=0 的流字符串布局；
+  read_string_10_1 的 cb≥2 契约不变）；㉛ short = 2。
+
+### 实现接线与停止点
+
+- `annotate_props.rs`：新增 7 常量、8 体结构、7 读取器（BOLP/LLP/LLPP/
+  PPP/引擎/HLEP/DEP 前缀）与 BolpSlot10_1/EnvelopeSlot10_1/
+  ExpressionEngineSlot10_1 槽枚举；LelpBody ⑰⑱⑲ 三槽由 [ObjectEntry10_1;3]
+  改为 typed 槽；LelpStop10_1 新增 OverposterBody(…) 透传。
+- `feature_layer_tail.rs`：扩展段修正（无键 + 尺寸=体长一致性校验保持）；
+  ㉖ 槽切 read_symbol_slot_full_10_1（嵌套停止 SymbolNested）；㉘ 槽接
+  read_envelope_10_1；㉙ 槽 UidSlot10_1 分派；㊴ 槽 DEP 前缀 + 新停止
+  ExpressionPropsBody（游标停在前缀尾）；㊷ 槽 HLEP 分派；㉚ String 允许
+  cb=0。
+- 测试：tests/feature_layer_tail.rs 57 → 67 项（扩展段格式修正 2 处、
+  full-path ㉖㉘㉙ 槽升级为真实新对象、round10 模块 8 项：BOLP 样本形态/
+  槽未知类停止/版本门/引擎/HLEP/UID 双形态/DEP 前缀/LELP 分派与透传/
+  扩展段样本形态）。tests/robustness.rs 未动。
+- **样本停止点不变：0xd6c**（TextSymbol 体内 IFontDisp 槽 OLE StdFont
+  新对象，归另一 agent；StdFont 闭合后本轮接线才可达）。0xd6c 之后链条由
+  走查脚本 temp/agent-f-lelp/walk_round10.py 前向对位：0xd8f..0x155a 全链
+  逐字节吻合（TextSymbol 字段 16 → BOLP 族 → 引擎 → Envelope → LELP ⑳-㉖
+  → ALPC 尾 → FIDSet → … → 扩展段 → ㉕-㊴ DEP 前缀）。
+
+### 本轮未解决事项
+
+- BOLP::Load、UID::Load、HLEP::Load/Save、DEP::Load 实现函数未唯一定位
+  （负证据清单见研究记录）；对应字段序为样本结构证据（BOLP 另有 0x7853d3a0
+  局部佐证）。
+- FL ㊱ 计数后 6 字节归属未决；㊲ shorts [-1,0,-1] 与各标量语义未定。
+- DEP 尾段（0x155a..0x15d8，126 字节）结构未闭合——读取器新停止点；
+  其后的 ㊵/㊶/㊷/㊸ 样本归属需 DEP 尾段闭合后确认（0x15d8 处样本头形似
+  ㊷ HLEP，但按 10.1 写侧顺序 ㊷ 应在 ㊶ TimeData 之后，归属存疑）。
+- SimpleTextParser（{D7099B91}，DisplayCore.dll）体未闭合：样本 28 处命中
+  均为 TextSymbol 字段 16b 的原样 GUID（非对象头），无对象头实例佐证。
+- 全部结论为静态取证与样本辅助对位，未运行 ArcMap 10.1，未人工目视验收。
