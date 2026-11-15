@@ -1599,14 +1599,16 @@ mod tail_continuation {
     use mxd2qgz::layers::annotate_props::{
         ANNOTATE_PROPS_COLLECTION_CLASS_ID, AlpcEntrySlot10_1, AnnotatePropsStop10_1,
         EDIT_TEMPLATE_MANAGER_CLASS_ID, EditTemplateManagerStop10_1, LABEL_ENGINE_PROPS_CLASS_ID,
-        LelpStop10_1, read_annotate_props_collection_body_10_1,
+        LelpStop10_1, LelpTextSymbolSlot10_1, read_annotate_props_collection_body_10_1,
         read_edit_template_manager_body_10_1, read_label_engine_props_body_10_1,
     };
     use mxd2qgz::layers::edit_template::EDIT_TEMPLATE_CLASS_ID;
     use mxd2qgz::layers::feature_id_set::{FEATURE_ID_SET_CLASS_ID, read_feature_id_set_body_10_1};
     use mxd2qgz::layers::feature_layer_tail::{
-        AnnotatePropsSlot10_1, FeatureIdSetSlot10_1, LayerExtension10_1, RefSlot10_1,
+        AnnotatePropsSlot10_1, FeatureIdSetSlot10_1, FeatureLayerSuccessor10_1, LayerExtension10_1,
+        RefSlot10_1,
     };
+    use mxd2qgz::objects::element_body::ElementBodyStop10_1;
 
     /// TextSymbol 类标识（CLSID）字节（样本键 61 对象头，仅用于合成测试）。
     const TEXT_SYMBOL_CLASS_ID: [u8; 16] = [
@@ -1630,9 +1632,8 @@ mod tail_continuation {
         b
     }
 
-    /// LabelEngineLayerProperties 体（版本 7）：标量段取样本形态；四槽 +
-    /// 容器槽默认空标记，ITextSymbol 槽可注入新对象头（停止点形态）。
-    fn lelp_body_v7(symbol_slot: Option<(&[u8; 16], u32)>) -> Vec<u8> {
+    /// LabelEngineLayerProperties 体（版本 7）⑯ 槽之前的标量段前缀。
+    fn lelp_body_v7_prefix() -> Vec<u8> {
         let mut b = Vec::new();
         b.extend(7_i16.to_le_bytes()); // 版本 7
         b.extend(string_bytes("[JZDH]")); // ② 串 1（表达式候选）
@@ -1649,6 +1650,13 @@ mod tail_continuation {
         b.extend((-1_i16).to_le_bytes()); // ⑬ short -0x48
         b.extend(string_bytes("默认")); // ⑭ 串 2（标注类名候选）
         b.extend(string_bytes("")); // ⑮ 串 3
+        b
+    }
+
+    /// LabelEngineLayerProperties 体（版本 7）：标量段取样本形态；⑯ 槽可注
+    /// 入新对象头（停止点形态），⑰ 起默认空标记。
+    fn lelp_body_v7(symbol_slot: Option<(&[u8; 16], u32)>) -> Vec<u8> {
+        let mut b = lelp_body_v7_prefix();
         match symbol_slot {
             Some((class_id, key)) => push_entry_header(&mut b, class_id, key),
             None => push_null_marker(&mut b),
@@ -1664,6 +1672,58 @@ mod tail_continuation {
         b.extend(0_i16.to_le_bytes()); // ㉕ short -0x46（版本 ≥4）
         b.extend(0_i32.to_le_bytes()); // ㉖ int32 -0x7c（版本 ≥5）
         b
+    }
+
+    /// TextSymbol 体（版本 4）：槽位默认空标记 + 标量段样本形态；IFontDisp
+    /// 槽可注入新对象头（接线轮停止点形态）。返回（字节，IFontDisp 槽对
+    /// 象头在返回字节内的偏移）。
+    fn text_symbol_body_v4(font_slot: Option<(&[u8; 16], u32)>) -> (Vec<u8>, usize) {
+        let mut b = Vec::new();
+        b.extend(4_u16.to_le_bytes()); // 版本 4
+        push_null_marker(&mut b); // 颜色槽 #1
+        for value in [0_i32; 3] {
+            b.extend(value.to_le_bytes()); // int32 ×3
+        }
+        b.extend([0_u8; 2]); // byte ×2
+        for value in [0_f64; 3] {
+            b.extend(value.to_le_bytes()); // double ×3
+        }
+        for value in [0_i32; 2] {
+            b.extend(value.to_le_bytes()); // int32 ×2
+        }
+        push_null_marker(&mut b); // 颜色槽 #2
+        for value in [0_f64; 2] {
+            b.extend(value.to_le_bytes()); // ⑧ double ×2
+        }
+        for value in [0_i32; 2] {
+            b.extend(value.to_le_bytes()); // ⑧ int32 ×2
+        }
+        for value in [0_f64; 3] {
+            b.extend(value.to_le_bytes()); // ⑧ double ×3
+        }
+        b.push(0); // ⑧ byte
+        b.extend(0_f64.to_le_bytes()); // ⑧ double
+        b.extend(0_i32.to_le_bytes()); // ⑧ int32
+        b.extend(0_f64.to_le_bytes()); // ⑧ double
+        b.push(0); // ⑧ byte
+        b.extend([0x11_u8; 16]); // ⑨ 原样 GUID
+        push_null_marker(&mut b); // ⑩ ITextPath 槽
+        push_null_marker(&mut b); // ⑪ ISymbol 槽 #1
+        b.extend(string_bytes("")); // ⑫ String
+        b.extend(0_f64.to_le_bytes()); // ⑬ double
+        b.extend(0_i32.to_le_bytes()); // ⑬ int32
+        b.extend(0_f64.to_le_bytes()); // ⑬ double
+        push_null_marker(&mut b); // ⑭ ISymbol 槽 #2
+        let font_slot_offset = b.len();
+        match font_slot {
+            Some((class_id, key)) => push_entry_header(&mut b, class_id, key),
+            None => push_null_marker(&mut b),
+        }
+        // 版本门尾段：>1 short、≥3 GUID、≥4 short。
+        b.extend(0_u16.to_le_bytes());
+        b.extend([0x22_u8; 16]);
+        b.extend(0_u16.to_le_bytes());
+        (b, font_slot_offset)
     }
 
     /// LELP 体中 ITextSymbol 槽的偏移（版本 7 形态的字节长度表）。
@@ -1704,16 +1764,17 @@ mod tail_continuation {
     }
 
     #[test]
-    fn successor_tail_consumes_alpc_lelp_and_stops_at_text_symbol_slot() {
-        // 样本形态：ALPC（键 59，版本 2，1 条目）→ LELP（键 60，版本 7）
-        // → ITextSymbol 槽 TextSymbol 新对象（键 61）= 停止点。
+    fn successor_tail_consumes_alpc_lelp_and_stops_at_unknown_symbol_slot() {
+        // ⑯ 槽为 TextSymbol 之外的实现类（合成类标识）新对象：维持停止回退
+        // 语义（键不保留、游标停在该槽位对象头起点）。
+        let unknown = [0x66_u8; 16];
         let mut b = successor_prefix();
         push_entry_header(&mut b, &ANNOTATE_PROPS_COLLECTION_CLASS_ID, 59);
         b.extend(2_i16.to_le_bytes()); // ALPC 版本 2
         b.extend(1_i32.to_le_bytes()); // ALPC 计数 1
         push_entry_header(&mut b, &LABEL_ENGINE_PROPS_CLASS_ID, 60);
         let lelp_body_start = b.len();
-        b.extend(lelp_body_v7(Some((&TEXT_SYMBOL_CLASS_ID, 61))));
+        b.extend(lelp_body_v7(Some((&unknown, 61))));
         let text_symbol_slot = lelp_body_start + lelp_symbol_slot_offset();
 
         let mut reader = Reader::new(&b);
@@ -1723,12 +1784,11 @@ mod tail_continuation {
             result.stop,
             SuccessorStop10_1::AnnotatePropsBody(AnnotatePropsStop10_1::LelpBody(
                 LelpStop10_1::SymbolSlotUnsupported {
-                    class_id: TEXT_SYMBOL_CLASS_ID,
+                    class_id: unknown,
                     key: 61,
                 }
             ))
         );
-        // ALPC/LELP 体前缀已解析；TextSymbol 键已回退；游标停在槽位起点。
         assert!(table.contains(59));
         assert!(table.contains(60));
         assert!(!table.contains(61));
@@ -1743,9 +1803,77 @@ mod tail_continuation {
                     body.entries[0].slot,
                     AlpcEntrySlot10_1::LabelEngineProps(_)
                 ));
-                // 条目键未读（LELP 体内停止）。
                 assert_eq!(body.entries[0].entry_key, None);
             }
+            other => panic!("ALPC 槽分类不符：{other:?}"),
+        }
+    }
+
+    #[test]
+    fn successor_tail_parses_text_symbol_body_and_stops_at_font_slot() {
+        // 样本形态接线轮推进：ALPC（键 59）→ LELP（键 60）→ ⑯ ITextSymbol
+        // 槽 TextSymbol 新对象（键 61，整体解析）→ 体 IFontDisp 槽未知类新
+        // 对象（键 62）= 透传停止点（体内键保留、游标停在内层对象头起点）。
+        // 证据：display-symbols-round2 第一节（TextSymbol 虚表归属）+ 元素体
+        // 轮 TextSymbol 体闭合（element_body::read_text_symbol_body_10_1）。
+        let font_class_id = [0x77_u8; 16];
+        let (text_symbol_body, font_slot_offset) = text_symbol_body_v4(Some((&font_class_id, 62)));
+        let mut b = successor_prefix();
+        push_entry_header(&mut b, &ANNOTATE_PROPS_COLLECTION_CLASS_ID, 59);
+        b.extend(2_i16.to_le_bytes());
+        b.extend(1_i32.to_le_bytes());
+        push_entry_header(&mut b, &LABEL_ENGINE_PROPS_CLASS_ID, 60);
+        b.extend(lelp_body_v7_prefix());
+        let text_symbol_header_offset = b.len();
+        push_entry_header(&mut b, &TEXT_SYMBOL_CLASS_ID, 61);
+        b.extend_from_slice(&text_symbol_body);
+        let font_slot = text_symbol_header_offset + 20 + font_slot_offset;
+
+        let mut reader = Reader::new(&b);
+        let mut table = RefTable10_1::new();
+        let result = read_feature_layer_successor_10_1(&mut reader, 34, 4096, &mut table).unwrap();
+        assert_eq!(
+            result.stop,
+            SuccessorStop10_1::AnnotatePropsBody(AnnotatePropsStop10_1::LelpBody(
+                LelpStop10_1::TextSymbolBody {
+                    key: 61,
+                    reason: ElementBodyStop10_1::NestedObjectNotClosed {
+                        slot: "IFontDisp 字体槽",
+                        offset: font_slot,
+                        class_id: font_class_id,
+                        key: 62,
+                    },
+                }
+            ))
+        );
+        // TextSymbol 键按原生「登记先于持久化」语义保留；字体类键未登记。
+        assert!(table.contains(59));
+        assert!(table.contains(60));
+        assert!(table.contains(61));
+        assert!(!table.contains(62));
+        assert_eq!(reader.remaining(), b.len() - font_slot);
+        // LELP 体的 ⑯ 槽分类携带 TextSymbol 体；ALPC 条目键未读（LELP 体内
+        // 停止）。
+        match &result.annotate_props {
+            Some(AnnotatePropsSlot10_1::Collection(body)) => match &body.entries[0].slot {
+                AlpcEntrySlot10_1::LabelEngineProps(lelp) => match &lelp.text_symbol {
+                    LelpTextSymbolSlot10_1::TextSymbol(ts) => {
+                        assert_eq!(ts.version, 4);
+                        assert!(ts.stop.is_some());
+                    }
+                    other => panic!("TextSymbol 槽分类不符：{other:?}"),
+                },
+                other => panic!("ALPC 条目分类不符：{other:?}"),
+            },
+            other => panic!("ALPC 槽分类不符：{other:?}"),
+        }
+        assert_eq!(body_entry_key_of(&result), None);
+    }
+
+    /// ALPC 首条目的条目键（供透传停止断言复用）。
+    fn body_entry_key_of(result: &FeatureLayerSuccessor10_1) -> Option<i32> {
+        match &result.annotate_props {
+            Some(AnnotatePropsSlot10_1::Collection(body)) => body.entries[0].entry_key,
             other => panic!("ALPC 槽分类不符：{other:?}"),
         }
     }

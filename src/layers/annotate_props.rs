@@ -31,8 +31,10 @@
 //!    LoadObject（IGraphicsContainer `{D09411D1-…}`）→ ㉕ 版本 ≥4：short
 //!    （-0x46）→ ㉖ 版本 ≥5：int32（-0x7c）→ ㉗ 版本 ==6：short。
 //!    样本：版本 7，串 1 = `[JZDH]`（标注表达式候选）、串 2 = `默认`（标注
-//!    类名候选）、串 3 空，槽数据依次为 TextSymbol 新对象（键 61，未闭合 =
-//!    停止点）、其后槽位未达。⑤-⑬/⑳-㉓ 各标量业务语义未定，原样保留。
+//!    类名候选）、串 3 空，槽数据依次为 TextSymbol 新对象（键 61，接线轮起
+//!    经 [`read_text_symbol_body_10_1`] 整体解析，体内停止经
+//!    [`LelpStop10_1::TextSymbolBody`] 透传）、其后槽位在样本停止点之后未
+//!    达。⑤-⑬/⑳-㉓ 各标量业务语义未定，原样保留。
 //! 3. **EditTemplateManager**（FeatureLayer.dll，Load `0x6f6d0a80`、Save
 //!    `0x6f6d0bc0` 对称，GetClassID `0x6f6d0a50` 写出 CLSID
 //!    `{A0162E85-E170-4B10-A370-CEE08D8D4B8C}`；esri.clsid 声明；样本经
@@ -55,10 +57,10 @@
 //! 为外层停止原因，游标停在内层停止点。
 //!
 //! 未解决问题（详见研究记录「未解决事项」）：
-//! - LELP ⑯ ITextSymbol 槽：TextSymbol（`{B65A3E74-…}`，DisplayCore.dll，
-//!   GetClassID 实体 `0x6ebd08e0` 经调整器 thunk `0x6ebe5bfb` 可达，但其
-//!   IPersistStream 虚表在本轮静态检索中无指针/RTTI COL 可达路径）体未闭
-//!   合——样本该槽即 TextSymbol 新对象（键 61），是当前样本停止点；
+//! - LELP ⑯ ITextSymbol 槽：TextSymbol（`{B65A3E74-…}`，DisplayCore.dll）
+//!   体已由元素体轮闭合（`objects::element_body::read_text_symbol_body_
+//!   10_1`），接线轮接入本槽整体解析；体内 ITextPath/ISymbol/IFontDisp 槽
+//!   未闭合实现类仍为透传停止点（样本停止点在接线后位于 TextSymbol 体内）；
 //! - LELP ⑰ BasicOverposterLayerProperties（`{EE535289-…}`，LabelPlacement
 //!   .dll，CLSID 数据常量 `0x7857a814`）体未闭合（无 COL、无代码立即数，
 //!   实现函数未定位）；⑱ 标注表达式引擎族、⑲/㉔ Envelope 与
@@ -70,6 +72,9 @@
 //!   目视验收。
 
 use crate::layers::edit_template::{EDIT_TEMPLATE_CLASS_ID, read_edit_template_body_10_1};
+use crate::objects::element_body::{
+    ElementBodyStop10_1, TEXT_SYMBOL_CLASS_ID, TextSymbolBody10_1, read_text_symbol_body_10_1,
+};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
@@ -152,10 +157,20 @@ fn read_version_short(
 }
 
 /// LELP 体读取的停止原因（全部为「成功停止」：游标停在停止点）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// 接线轮起 TextSymbol 体会经类分派整体解析，其体内停止透传为本枚举新变
+/// 体（携带体类型故不再 `Copy`/`Eq`，仅 `Clone`/`PartialEq`）。
+#[derive(Debug, Clone, PartialEq)]
 pub enum LelpStop10_1 {
-    /// ⑯ ITextSymbol 槽的新对象类标识未闭合（TextSymbol 族等）：游标回退
-    /// 到该槽位起点，其后的槽位与标量不可达。样本停止点（键 61）。
+    /// ⑯ ITextSymbol 槽的 TextSymbol（`{B65A3E74-…}`）体内部出现停止（原因
+    /// 透传，见 [`ElementBodyStop10_1`]）：游标停在内层停止点，槽键已按原
+    /// 生「登记先于持久化」语义保留；⑰ 及其后的槽位与标量不可达。
+    TextSymbolBody {
+        key: u32,
+        reason: ElementBodyStop10_1,
+    },
+    /// ⑯ ITextSymbol 槽的新对象类标识未闭合（TextSymbol 之外的实现类）：
+    /// 游标回退到该槽位起点，其后的槽位与标量不可达。
     SymbolSlotUnsupported { class_id: [u8; 16], key: u32 },
     /// ⑰ IBasicOverposterLayerProperties 槽的新对象类标识未闭合。
     OverposterSlotUnsupported { class_id: [u8; 16], key: u32 },
@@ -167,8 +182,22 @@ pub enum LelpStop10_1 {
     ContainerSlotUnsupported { class_id: [u8; 16], key: u32 },
 }
 
-/// ALPC 体读取的停止原因。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// LELP ⑯ ITextSymbol 槽（请求 IID `{A80B5E91-…}`）条目的分类结果（接线轮
+/// 起 TextSymbol 新对象整体解析；证据：`docs/arcmap-10.1-display-symbols-
+/// round2.md` 第一节虚表归属复核、元素体轮 TextSymbol 字段序闭合）。
+#[derive(Debug, Clone, PartialEq)]
+pub enum LelpTextSymbolSlot10_1 {
+    /// 16 字节全零类标识：空引用，无键、无对象体。
+    Null,
+    /// 键已见：回引条目，无对象体。类标识原样保留、不校验。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 TextSymbol 对象（类标识经 [`TEXT_SYMBOL_CLASS_ID`] 校验）：已解析
+    /// 体（体内停止经 [`LelpStop10_1::TextSymbolBody`] 透传；键已登记）。
+    TextSymbol(Box<TextSymbolBody10_1>),
+}
+
+/// AnnotateLayerPropertiesCollection 体读取的停止原因。
+#[derive(Debug, Clone, PartialEq)]
 pub enum AnnotatePropsStop10_1 {
     /// ③ 循环第 `index` 条（0 起）的新对象类标识不是
     /// LabelEngineLayerProperties：游标回退到该条目对象头起点，条目键与
@@ -270,9 +299,13 @@ pub struct LelpBody10_1 {
     pub name: String,
     /// ⑮ String（样本空串）。
     pub string_b: String,
-    /// ⑯-⑲ 四个 LoadObject 槽的分类；新对象仅空标记/回引可消费，未闭合类
-    /// 为停止点（对应槽字段记 `Null`，原因见 `stop`）。
-    pub slots: [ObjectEntry10_1; 4],
+    /// ⑯ ITextSymbol 槽的分类（接线轮起 TextSymbol 新对象整体解析，见
+    /// [`LelpTextSymbolSlot10_1`]；体内停止经 `stop` 透传）。
+    pub text_symbol: LelpTextSymbolSlot10_1,
+    /// ⑰-⑲ 三个 LoadObject 槽（Overposter/ExpressionEngine/Envelope）的
+    /// 分类；新对象仅空标记/回引可消费，未闭合类为停止点（对应槽字段记
+    /// `Null`，原因见 `stop`）。
+    pub slots: [ObjectEntry10_1; 3],
     /// ⑳ double → -0x24（样本未达），语义未定。前置停止时 `None`。
     pub double_24: Option<f64>,
     /// ㉑ double → -0x1c。前置停止时 `None`。
@@ -336,19 +369,24 @@ pub fn read_label_engine_props_body_10_1(
     let mut staged_table = table.clone();
     let mut stop = None;
 
-    // ⑯-⑲ 四个 LoadObject 槽（顺序：TextSymbol/Overposter/ExpressionEngine/
-    //    Envelope；新对象非空标记类 = 停止点，回退到槽位起点）。
+    // ⑯ ITextSymbol 槽（接线轮接入 TextSymbol 体分派；证据：
+    //    docs/arcmap-10.1-display-symbols-round2.md 第一节 TextSymbol 虚表归
+    //    属复核 + docs/arcmap-10.1-element-bodies.md TextSymbol 体字段序闭合，
+    //    读取器 read_text_symbol_body_10_1）：新对象且类标识为 TextSymbol
+    //    （`{B65A3E74-…}`）时整体解析其体——键已由条目分类按原生「登记先于
+    //    持久化」语义登记，体内停止透传为 [`LelpStop10_1::TextSymbolBody`]
+    //    （游标停在内层停止点，⑰ 起不可达）；其余 ITextSymbol 实现类维持停
+    //    止回退（游标回退到槽位起点、键不保留）。样本槽即 TextSymbol 新对
+    //    象（键 61），接线后样本停止点推进至 TextSymbol 体内。
+    let mut text_symbol = LelpTextSymbolSlot10_1::Null;
+    // ⑰-⑲ 三个 LoadObject 槽（Overposter/ExpressionEngine/Envelope；新对
+    //    象非空标记类 = 停止点，回退到槽位起点）。
     let mut slots = [
         ObjectEntry10_1::Null,
         ObjectEntry10_1::Null,
         ObjectEntry10_1::Null,
-        ObjectEntry10_1::Null,
     ];
-    let slot_stops: [fn([u8; 16], u32) -> LelpStop10_1; 4] = [
-        |c, k| LelpStop10_1::SymbolSlotUnsupported {
-            class_id: c,
-            key: k,
-        },
+    let slot_stops: [fn([u8; 16], u32) -> LelpStop10_1; 3] = [
         |c, k| LelpStop10_1::OverposterSlotUnsupported {
             class_id: c,
             key: k,
@@ -362,7 +400,29 @@ pub fn read_label_engine_props_body_10_1(
             key: k,
         },
     ];
-    for i in 0..4 {
+    if stop.is_none() {
+        let slot_offset = trial.position();
+        let pre_slot_table = staged_table.clone();
+        match read_object_entry_10_1(&mut trial, &mut staged_table)? {
+            ObjectEntry10_1::Null => {}
+            ObjectEntry10_1::BackReference { class_id, key } => {
+                text_symbol = LelpTextSymbolSlot10_1::BackReference { class_id, key };
+            }
+            ObjectEntry10_1::NewObject { class_id, key } if class_id == TEXT_SYMBOL_CLASS_ID => {
+                let body = read_text_symbol_body_10_1(&mut trial, max_bytes, &mut staged_table)?;
+                if let Some(reason) = body.stop.clone() {
+                    stop = Some(LelpStop10_1::TextSymbolBody { key, reason });
+                }
+                text_symbol = LelpTextSymbolSlot10_1::TextSymbol(Box::new(body));
+            }
+            ObjectEntry10_1::NewObject { class_id, key } => {
+                stop = Some(LelpStop10_1::SymbolSlotUnsupported { class_id, key });
+                trial = reposition_to(reader, slot_offset);
+                staged_table = pre_slot_table;
+            }
+        }
+    }
+    for i in 0..3 {
         if stop.is_some() {
             break;
         }
@@ -435,6 +495,7 @@ pub fn read_label_engine_props_body_10_1(
         short_48,
         name,
         string_b,
+        text_symbol,
         slots,
         double_24,
         double_1c,
@@ -502,7 +563,7 @@ pub fn read_annotate_props_collection_body_10_1(
                     &mut staged_table,
                     key,
                 )?;
-                if let Some(inner) = body.stop {
+                if let Some(inner) = body.stop.clone() {
                     stop = Some(AnnotatePropsStop10_1::LelpBody(inner));
                 }
                 entry.slot = AlpcEntrySlot10_1::LabelEngineProps(Box::new(body));

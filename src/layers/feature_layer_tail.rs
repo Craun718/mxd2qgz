@@ -1145,8 +1145,10 @@ pub enum HyperlinkSlot10_1 {
 
 /// FeatureLayer 后继字段段（渲染器槽 +0x144 GUID 之后）读取的停止原因。
 ///
-/// 全部为「成功停止」：游标停在最深可闭合点，剩余字节原样保留。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// 全部为「成功停止」：游标停在最深可闭合点，剩余字节原样保留。接线轮起
+/// 标注环体内 TextSymbol 体停止透传携带体类型（`AnnotatePropsBody` 变体不
+/// 再 `Copy`/`Eq`，仅 `Clone`/`PartialEq`）。
+#[derive(Debug, Clone, PartialEq)]
 pub enum SuccessorStop10_1 {
     /// 后继段完整消费（读取器当前位置即 FeatureLayer 对象体语义终点）。
     /// 10.1 写侧对称序列的最后一个字段为 `short(+0x2ca)`（读侧版本 >0x21
@@ -1707,7 +1709,7 @@ pub fn read_feature_layer_successor_10_1(
                         &mut staged_table,
                         key,
                     )?;
-                    if let Some(inner) = body.stop {
+                    if let Some(inner) = body.stop.clone() {
                         stop = Some(SuccessorStop10_1::AnnotatePropsBody(inner));
                     }
                     annotate_props = Some(AnnotatePropsSlot10_1::Collection(Box::new(body)));

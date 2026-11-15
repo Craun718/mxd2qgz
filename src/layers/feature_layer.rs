@@ -309,8 +309,9 @@ pub enum RendererSlot10_1 {
 }
 
 /// FeatureLayer 体读取的停止原因（本读取器为「已确认前缀」语义：始终在最
-/// 深可闭合点停止并返回成功）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// 深可闭合点停止并返回成功）。接线轮起后继段停止透传携带标注环/体类型，
+/// 不再 `Copy`/`Eq`（仅 `Clone`/`PartialEq`）。
+#[derive(Debug, Clone, PartialEq)]
 pub enum FeatureLayerStop10_1 {
     /// 数据源 FeatureClassName 体内（含 WorkspaceName 体）的停止点。
     DataSource(FeatureClassNameStop10_1),
@@ -718,7 +719,7 @@ pub fn read_feature_layer_prefix_10_1(
                         max_bytes,
                         &mut staged_table,
                     )?;
-                    let stop = FeatureLayerStop10_1::Successor(successor.stop);
+                    let stop = FeatureLayerStop10_1::Successor(successor.stop.clone());
                     successor_result = Some(successor);
                     stop
                 }
