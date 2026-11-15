@@ -649,3 +649,16 @@ FeatureLayer 体）。停止点由接线前的 `NestedNewObject`（键 1554）�
 3. 尾段 `DAT_6f7aa48c`={ISpatialReference} 槽、`FUN_6f6b3100` 与第 10 条
    尾段未展开（既有）。
 4. 全部结论为静态观察；未运行 ArcMap 10.1，未人工目视验收，不声称已验证。
+
+## 接线轮落位（2026-11-15）
+
+第 7 步同模式的两处遗留分派已落位（`composite_graphics.rs`）：第 2 步元素
+循环条目与第 9 步条目尾段嵌套对象（请求 IID `DAT_6f7aa58c`）新对象类标识为
+`{CE8F3972}` ElementCollection 时经 `read_element_collection_10_1` 整体解
+析——第 2 步入新 `ElementEntry10_1::Collection` 变体（体内停止透传
+`ElementCollectionIncomplete { group, index, key, reason }`）；第 9 步尾段
+入 `SubLayerTailSlot10_1` 与新字段 `tail_nested_collection`（体内停止透传
+`SubLayerTailCollectionIncomplete { index, key, reason }`；体完整消费后版本
+>1 尾随 double 照读）。其余类（含条目 ILayer 的 FeatureLayer）维持既有停
+止回退。样本在该区域不可达（本轮停止点 0xd6c 在 TextSymbol 体内），合成测
+试覆盖两路径（含体内停止透传与键登记保留）。

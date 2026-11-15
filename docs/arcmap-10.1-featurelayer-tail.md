@@ -519,3 +519,21 @@ LoadObject({BD724B95-…}=ITimeExtent)、版本 ==0x1f LoadObject({E720618B-…}
 - LELP 条目键（ALPC ③ 的 int32）与 ALPC 尾 int32 在样本中未达（LELP 体内停
   止），字段序仅有反编译证据。
 - 全部结论为静态取证，未运行 ArcMap 10.1，未人工目视验收；样本对位为辅助观察。
+
+### 接线轮（2026-11-15，第二轮：TextSymbol 体分派）
+
+第九轮遗留的 LELP ⑯ ITextSymbol 槽已接体：新对象类标识为 TextSymbol
+（`{B65A3E74-…}`）时经 `element_body::read_text_symbol_body_10_1` 整体解析
+（`annotate_props.rs` 新 `LelpTextSymbolSlot10_1` 槽枚举与
+`LelpStop10_1::TextSymbolBody { key, reason }` 透传变体；槽键按「登记先于
+持久化」保留）；其余 ITextSymbol 实现类维持 `SymbolSlotUnsupported` 停止回
+退。停止链携带体类型，`SuccessorStop10_1`/`FeatureLayerStop10_1` 去
+`Copy`/`Eq`。样本重走：停止点 0xb7a（LELP 槽 TextSymbol 头，余 150003 字
+节）推进至 **0xd6c**（余 149505 字节，+498），新停止 = TextSymbol 体内
+IFontDisp 槽 OLE StdFont `{0BE35203-8F91-11CE-9DE3-00AA004BB851}` 新对象
+（键 68；GUID 由诊断 class_id 字节 [3,82,227,11,145,143,206,17,157,227,0,170,0,75,184,81]
+按内存序解码）——与第九轮「虚表静态不可达」的 TextSymbol 体未闭合判断吻合（体
+字段序已由元素体轮闭合并接线，字体槽实现类 OLE StdFont 在 DisplayCore 之
+外，仍未闭合）。`mxd_maps` 诊断同步透传（标注环逐条诊断 + IHyperlink 消费
+计数）；FieldInfo INumberFormat 槽四类分派与后继段 IHyperlink 循环接体的落
+位记录见 number-format/hyperlink 两文档文末。

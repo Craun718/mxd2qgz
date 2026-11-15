@@ -224,3 +224,15 @@ LoadObject ISpatialReference 空引用）。
    UnknownCoordinateSystem 等无样本与分派证据。
 8. 全部结论为静态观察；未运行 ArcMap 10.1，未在 QGIS 中核对，不声称已验
    证。
+
+## 接线轮落位（2026-11-15）
+
+「接线建议」1 已落位：`element_body::read_text_element_body_10_1` 第 6 字段
+IGeometry 槽改经 `read_geometry_body_of_class_10_1` 类分派（新
+`GeometrySlot10_1` 槽枚举，Polyline 体整体解析入 `Polyline` 变体；其余几何
+类维持 `NestedObjectNotClosed` 停止回退）。Polyline 体内空间参考未知类按建
+议 3 保持硬错误上抛（分派前先比对 Polyline 类标识，不特判）。建议 2 照办：
+MarkerElement IPoint 与 LineElement IGeometry 槽维持仅分类（样本 0 实例）。
+样本 16 实例位于 CGL 图形集合（流内偏移在本轮样本停止点之后），接线不改变
+当前样本停止点；`read_polyline_body_10_1` 与类分派入口已入 robustness 集中
+清单。

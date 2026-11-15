@@ -131,3 +131,12 @@ Fraction 10 字节体与版本 2 拒绝、Rate 版本 2 满形态（double+中�
    LatLonFormat `{7E4F471D}`、AngleFormat `{7E4F471E}`、ScientificFormat
    `{7E4F471F}`、CustomNumberFormat `{7E4F4722}`）体未研究。
 4. 全部结论为静态取证；未运行 ArcMap 10.1，未人工目视验收，不声称已验证。
+
+## 接线轮落位（2026-11-15）
+
+迁移建议已落位：`feature_layer_tail` 的 NumericFormat 类标识/体结构/读取器
+副本删除，改为自本模块 `pub use` 重导出（既有调用方与测试零改动）；FieldInfo
+体 ⑤ INumberFormat 槽分派扩为 NumericFormat/PercentageFormat/FractionFormat/
+RateFormat 四类（三变体读取器直接作为槽位分派目标，满形态完整消费，其余
+esriSystem 同族类维持 `NumberFormatUnsupported` 停止）。样本槽仅含
+NumericFormat，样本行为不变；四读取器已入 robustness 集中清单。
