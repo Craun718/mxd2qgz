@@ -416,3 +416,27 @@ Multipoint/Path/Ring/Line/BezierCurve/EllipticArc/CircularArc/MultiPatch 均
 7. 嵌套空间参考仅支持投影坐标系——四类同。
 8. Polygon/Point/Multipoint 布局证据为静态反编译（确定的），样本 0 实例：
    合成测试覆盖；未运行 ArcMap 10.1，未在 QGIS 中核对，不声称已验证。
+
+## 接线轮落位（整合接线轮，2026-11-15）
+
+「接线建议」1、2 已落位：
+
+- **TextElement IGeometry 槽四类分派**（建议 1）：`element_body.rs`
+  `read_geometry_slot` 自 Polyline 类标识比对改经
+  `read_geometry_body_10_1` 类型化分派，`GeometrySlot10_1` 新增
+  `Polygon`/`Point`/`Multipoint` 三变体；闭合四类之外的几何类维持
+  `NestedObjectNotClosed` 停止回退（游标回槽对象头起点、键不登记——回退
+  语义在槽位层按类集合守卫，不依赖分派入口的 `Unsupported` 错误路径）。
+  四类体自身错误上抛（含体内空间参考未知类）按建议 3 保持不变。
+- **LineElement IGeometry 槽**（建议 2 延伸）：与 TextElement 共用同一
+  `read_geometry_slot`/`GeometrySlot10_1`（同请求 IID，样本 0 实例）。
+- **MarkerElement IPoint 槽**（建议 2 裁决：接入）：Point 布局已闭合，接
+  `read_point_body_10_1` 单类分派（新 `PointSlot10_1` 槽枚举；体无停止点、
+  错误上抛语义与 Polyline 一致）；其余实现类停止回退。样本 0 实例，接线
+  契约由合成测试固定。
+- **robustness**（建议 3）：`read_polygon_body_10_1`/`read_point_body_10_1`
+  /`read_multipoint_body_10_1`/`read_geometry_body_10_1` 四入口并入
+  `tests/robustness.rs` 集中清单。
+- 样本重走：停止点维持 `0x155a`；16 处 Polyline 实例位于 CGL 图形集合
+  （流内偏移在当前样本停止点之后），接线不改变样本行为。`cargo fmt
+  --check` 与全量 `cargo test` 绿；未声称运行验证。

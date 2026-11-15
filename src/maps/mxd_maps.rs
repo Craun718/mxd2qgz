@@ -667,6 +667,43 @@ fn feature_layer_successor_note(
         successor.hyperlinks.len(),
         successor.string_154,
     ));
+    // ㊴ DisplayExpressionProperties 已闭合前缀消费完毕的停止（接线轮起样本
+    //   可达）：透传前缀内容与未闭合尾段说明，字段风格循既有诊断。
+    if successor.stop == crate::layers::feature_layer_tail::SuccessorStop10_1::ExpressionPropsBody {
+        let engine_note = match &successor.expression_props {
+            Some(crate::layers::feature_layer_tail::ExpressionPropsSlot10_1::Display(prefix)) => {
+                format!(
+                    "版本 {}、表达式 {:?}、int16 {}、引擎槽 {}",
+                    prefix.version,
+                    prefix.string,
+                    prefix.short,
+                    match &prefix.engine {
+                        crate::layers::annotate_props::ExpressionEngineSlot10_1::VbscriptEngine(
+                            engine,
+                        ) => format!("AnnotationVBScriptEngine（键 {}）", engine.key),
+                        crate::layers::annotate_props::ExpressionEngineSlot10_1::BackReference {
+                            key,
+                            ..
+                        } => format!("回引（键 {key}）"),
+                        crate::layers::annotate_props::ExpressionEngineSlot10_1::Null => {
+                            "空标记".to_string()
+                        }
+                        crate::layers::annotate_props::ExpressionEngineSlot10_1::Unsupported {
+                            key,
+                            ..
+                        } => format!("未知类（键 {key}，槽前停止）"),
+                    }
+                )
+            }
+            _ => "槽位形态非 Display 新对象（与停止原因不一致，原样透传）".to_string(),
+        };
+        diagnostics.push(format!(
+            "条目 {}：㊴ DisplayExpressionProperties（esri.clsid 声明）已闭合前缀消费完毕\
+             （{}）；其未闭合尾段（字段序未取证）及其后字节保留未知，游标停在尾段起点",
+            entry_index + 1,
+            engine_note,
+        ));
+    }
     // 标注环（ALPC/LELP/TextSymbol 链）的已解析内容与停止点（接线轮起
     // TextSymbol 体解析推进，停止点深入其体内；字段风格循既有诊断）。
     annotate_chain_note(successor, entry_index, diagnostics);
@@ -707,9 +744,15 @@ fn annotate_chain_note(
                 format!("ITextSymbol 槽为回引（键 {key}）")
             }
         };
+        // LELP 体内的停止（接线轮起 typed 槽链可达 ⑰ BOLP 体等，停止原因
+        // 透传；风格循 TextSymbol 体内停止的 {:?} 透传）。
+        let lelp_stop_note = match &lelp.stop {
+            Some(reason) => format!("；LELP 体内停止：{reason:?}"),
+            None => String::new(),
+        };
         diagnostics.push(format!(
             "条目 {}：标注属性集合（键 {}）条目 LELP（键 {}，版本 {}）：表达式 {:?}、\
-             标注类名 {:?}；{}；条目键 {}",
+             标注类名 {:?}；{}{}；条目键 {}",
             entry_index + 1,
             alpc.key,
             lelp.key,
@@ -717,6 +760,7 @@ fn annotate_chain_note(
             lelp.expression,
             lelp.name,
             text_symbol_note,
+            lelp_stop_note,
             match entry.entry_key {
                 Some(k) => format!("{k}"),
                 None => "未读（LELP 体内停止）".to_string(),

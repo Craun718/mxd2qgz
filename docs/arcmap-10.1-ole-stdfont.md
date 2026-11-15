@@ -250,3 +250,31 @@ JPEG `0x653a3162(&0x6537a0d8)`、增强元文件 Save `0x653a0cab` |
   IFontDisp 槽类分派接线、版本门尾段样本对位（更正 0x8601 误读）；样本停止
   点 `0xd6c`→`0xda3`。Rust 改动经 `cargo fmt --check` 与全量 `cargo test`
   绿；未声称运行验证。
+
+## 接线轮落位（整合接线轮，2026-11-15）
+
+「接线建议」1、2 已落位：
+
+- **display_symbol.rs IPicture 槽**（建议 1）：PictureMarkerSymbol 四处
+  IPicture 槽（图像类型 3 / 历史版本 <4 / 版本 ≤6 / 版本 ≥7 空串分支）改经
+  新 `StdPictureSlot10_1` 槽枚举与 `read_std_picture_slot_10_1` 分派——
+  StdPicture 新对象整体解析 `read_std_picture_body_10_1`（体无停止点；回退
+  语义仿 `read_unclosed_slot_10_1`），其余实现类维持停止回退。IMarker
+  Background/IPictureFillSymbol/IColorRamp 槽维持 `UnclosedSlot10_1` 停止语
+  义不变。样本 0 实例，接线契约由 `tests/display_symbol.rs` 新增合成用例固
+  定（类型 3 StdPicture 内联解析 + 未知类停止回退）。
+- **CharacterMarkerSymbol 字体槽**（建议 2）：`font_slot_v3`（v<3）与
+  `font_slot_v5`（v>3 重写门）改经新 `StdFontSlot10_1` 槽枚举与
+  `read_std_font_slot_10_1` 分派（StdFont 解析、其余类停止回退，与
+  TextSymbol 字体槽一致）。槽后宿主续读字节按本轮「接线建议」2 的单实例观
+  测与 display_symbol 轮字段序（int32 ×2 + short_10c + 字体描述符段）由既有
+  读取器继续闭合——合成用例验证 v<3/v>3 两形态的 StdFont 内联解析后宿主尾
+  段可达；16 处样本实例位于图层条目 2..6 渲染器链（当前样本停止点之后），
+  接线不改变样本停止点，样本内推进无从观察（如实标注）。
+- **robustness**（建议 3）：`read_std_font_body_10_1`/`read_std_picture_body
+  _10_1` 并入 `tests/robustness.rs` 集中清单（截断扫描/游标/限额矩阵）；
+  IFontDisp 槽三分支维持 `tests/ole_font.rs` 槽级用例覆盖（槽读取器为模块
+  私有，不单列入集中清单）。
+- 样本重走：停止点维持 `0x155a`（DEP 尾段，见 featurelayer-tail 文档接线轮
+  节）；本轮接线不改变样本行为。`cargo fmt --check` 与全量 `cargo test`
+  绿；未声称运行验证。

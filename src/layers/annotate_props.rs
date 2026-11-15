@@ -799,6 +799,17 @@ pub fn read_edit_template_manager_body_10_1(
 /// `.?AVBasicOverposterLayerProperties@@`(0x7858dd20)及 10 个接口 vftable
 /// COL 簇(.rdata 0x785810c8..0x78581190);样本 `/Maps:0xda3` 头(键 69)
 /// 逐字节相同。
+///
+/// 别名注记(接线轮 2026-11-15 核对):StdFont 轮(ole-stdfont 文档)曾把同
+/// 一流内对象(键 69 @0xda3,LELP ⑰ 槽)的停止诊断解码为
+/// `{C9EE5352-D141-11D1-880A-080009EC732A}`。接线轮以主检出
+/// `temp/agent-fl-tail/ecfg/esri.clsid.xml` 全表(11348 项)复核:`C9EE5352`
+/// 零命中;BasicOverposter 族仅 BasicOverposter `{3141F2FC-38E2-11D1-8809-…}`、
+/// BasicOverposterProperties `{E0C73D56-6C88-498C-B77C-…}` 与本类
+/// `{EE535289-…}` 三条。同键同偏移的字节与本常量逐位吻合,且现行解析已按本
+/// 常量从 0xda3 连续消费 BOLP 体与三槽至 0x151a——E 轮诊断的 GUID 文本为同
+/// 一字节序列的错位解码,维持 F 轮命名 BasicOverposterLayerProperties,不再
+/// 另立常量。
 pub const BASIC_OVERPOSTER_LAYER_PROPS_CLASS_ID: [u8; 16] = [
     0x89, 0x52, 0x53, 0xee, 0xc9, 0x41, 0xd1, 0x11, 0x88, 0x0a, 0x08, 0x00, 0x09, 0xec, 0x73, 0x2a,
 ];
@@ -851,11 +862,18 @@ pub const HOT_LINK_EXPRESSION_PROPS_CLASS_ID: [u8; 16] = [
 
 /// DisplayExpressionProperties 类标识(CLSID)的 16 字节内存序。
 ///
-/// GUID `{D75C6301-C05A-484C-A7BD-AE82E5E1FC75}`。证据:esri.clsid 声明
-/// (模块 FeatureLayer.dll);样本 `/Maps:0x151a` 头(键 83)逐字节相同
+/// GUID 字符串形式 `{D75C6301-C05A-484C-A7BD-AE82E5E1FC75}`。证据:esri.clsid
+/// 声明(模块 FeatureLayer.dll);样本 `/Maps:0x151a` 头(键 83)逐字节相同
 /// (FeatureLayer.dll 侧 GetClassID/Load 未定位,证据为样本结构)。
+///
+/// 接线轮更正(2026-11-15):第十轮落位时本常量第 7/8 字节(第三 GUID 字段的
+/// LE 对)误写作 `0x48, 0x4c`(即 `{…-C05A-4C48-…}`),与 esri.clsid 声明及样
+/// 本头不一致,导致后继段 ㊴ 槽的类比对永不命中、样本停在 DEP 对象头。现按
+/// esri.clsid 声明(GUID 第三字段 0x484C → LE 字节 `0x4c, 0x48`)与样本
+/// `0x151a` 头逐字节(`01 63 5c d7 5a c0 4c 48 a7 bd ae 82 e5 e1 fc 75`)
+/// 更正;此前经本常量构造的合成输入不受影响(输入与常量同源)。
 pub const DISPLAY_EXPRESSION_PROPS_CLASS_ID: [u8; 16] = [
-    0x01, 0x63, 0x5c, 0xd7, 0x5a, 0xc0, 0x48, 0x4c, 0xa7, 0xbd, 0xae, 0x82, 0xe5, 0xe1, 0xfc, 0x75,
+    0x01, 0x63, 0x5c, 0xd7, 0x5a, 0xc0, 0x4c, 0x48, 0xa7, 0xbd, 0xae, 0x82, 0xe5, 0xe1, 0xfc, 0x75,
 ];
 
 /// LineLabelPosition(`0x7855b4e0`)体的已确认字段。

@@ -898,10 +898,15 @@ pub const FIELD_INFO_CLASS_ID: [u8; 16] = [
 /// 该模块本轮闭合 PercentageFormat/FractionFormat/RateFormat 三变体，
 /// FieldInfo 槽分派随之扩为四类）。既有引用路径（本模块、测试）不变。
 pub use crate::objects::number_format::{
-    FRACTION_FORMAT_CLASS_ID, FractionFormatBody10_1, NUMERIC_FORMAT_CLASS_ID,
-    NumericFormatBody10_1, PERCENTAGE_FORMAT_CLASS_ID, PercentageFormatBody10_1,
-    RATE_FORMAT_CLASS_ID, RateFormatBody10_1, read_fraction_format_body_10_1,
-    read_numeric_format_body_10_1, read_percentage_format_body_10_1, read_rate_format_body_10_1,
+    ANGLE_FORMAT_CLASS_ID, AngleFormatBody10_1, CURRENCY_FORMAT_CLASS_ID,
+    CUSTOM_NUMBER_FORMAT_CLASS_ID, CurrencyFormatBody10_1, CustomNumberFormatBody10_1,
+    FRACTION_FORMAT_CLASS_ID, FractionFormatBody10_1, LATLON_FORMAT_CLASS_ID, LatLonFormatBody10_1,
+    NUMERIC_FORMAT_CLASS_ID, NumericFormatBody10_1, PERCENTAGE_FORMAT_CLASS_ID,
+    PercentageFormatBody10_1, RATE_FORMAT_CLASS_ID, RateFormatBody10_1, SCIENTIFIC_FORMAT_CLASS_ID,
+    ScientificFormatBody10_1, read_angle_format_body_10_1, read_currency_format_body_10_1,
+    read_custom_number_format_body_10_1, read_fraction_format_body_10_1,
+    read_latlon_format_body_10_1, read_numeric_format_body_10_1, read_percentage_format_body_10_1,
+    read_rate_format_body_10_1, read_scientific_format_body_10_1,
 };
 
 /// FieldInfo::Load 接受的最大版本：`4 < (short)ver` 有符号比较；样本 14 个
@@ -909,7 +914,8 @@ pub use crate::objects::number_format::{
 const MAX_FIELD_INFO_VERSION: i16 = 4;
 
 /// FieldInfo 体内 INumberFormat 槽位（请求 IID `{7E4F470D-…}`）条目的分类
-/// 结果。
+/// 结果（接线轮起为 esriSystem 同族九类全分派，证据：
+/// docs/arcmap-10.1-number-format.md「九类分派接入建议」）。
 #[derive(Debug, Clone, PartialEq)]
 pub enum NumberFormatSlot10_1 {
     /// 16 字节全零类标识：空引用，无键、无对象体（样本 10/14 条目）。
@@ -926,15 +932,28 @@ pub enum NumberFormatSlot10_1 {
     FractionFormat(Box<FractionFormatBody10_1>),
     /// 新 RateFormat 对象（体含版本 >1 的 NumericFormat 内嵌核心与 String）。
     RateFormat(Box<RateFormatBody10_1>),
+    /// 新 CurrencyFormat 对象（恒 2 字节体，无嵌套；样本 0 实例，合成测试
+    /// 覆盖；证据：docs/arcmap-10.1-number-format.md「同族五类闭合」）。
+    CurrencyFormat(Box<CurrencyFormatBody10_1>),
+    /// 新 LatLonFormat 对象（体含版本 ≥3 的 NumericFormat 内嵌核心；样本
+    /// 0 实例）。
+    LatLonFormat(Box<LatLonFormatBody10_1>),
+    /// 新 AngleFormat 对象（体含版本 ≥2 的 NumericFormat 内嵌核心；样本
+    /// 0 实例）。
+    AngleFormat(Box<AngleFormatBody10_1>),
+    /// 新 ScientificFormat 对象（体为 short + int32 分支形态；样本 0 实例）。
+    ScientificFormat(Box<ScientificFormatBody10_1>),
+    /// 新 CustomNumberFormat 对象（体为 short 版本 + 格式串；样本 0 实例）。
+    CustomNumberFormat(Box<CustomNumberFormatBody10_1>),
 }
 
 /// FieldInfo 体读取的停止原因。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FieldInfoStop10_1 {
-    /// INumberFormat 槽的新对象类标识不在四类闭合集合（esriSystem 同族其余
-    /// 类，如 CurrencyFormat/LatLonFormat/AngleFormat/ScientificFormat/
-    /// CustomNumberFormat，体未研究）：游标回退到该槽位起点，版本 >2/版本
-    /// >3 的尾段不可达。
+    /// INumberFormat 槽的新对象类标识不在九类闭合集合（esriSystem 同族之外
+    /// 的实现类）：游标回退到该槽位起点，版本 >2/版本 >3 的尾段不可达。
+    /// （原注释列举的 Currency/LatLon/Angle/Scientific/CustomNumber 五类已
+    /// 于接线轮闭合分派，不再落入本停止。）
     NumberFormatUnsupported { class_id: [u8; 16], key: u32 },
 }
 
@@ -1012,11 +1031,13 @@ pub fn read_field_info_body_10_1(
     // ④ String 别名 → obj-0x10。
     let alias = read_string_10_1(&mut trial, max_bytes)?;
 
-    // ⑤ INumberFormat 槽：接线轮起为同族四类分派（NumericFormat 既有 +
-    //    Percentage/Fraction/Rate 三变体，证据与迁移建议见
-    //    docs/arcmap-10.1-number-format.md「实现」节）；其余 esriSystem 同
-    //    族类维持停止点（回退到槽位起点、不保留该键）。各读取器失败路径
-    //    只有整体报错（体内无停止点），事务性由 trial 游标/登记表保证。
+    // ⑤ INumberFormat 槽：接线轮起为 esriSystem 同族九类全分派
+    //    （Numeric/Percentage/Fraction/Rate 既有 + Currency/LatLon/Angle/
+    //    Scientific/CustomNumber 五类，证据与落位步骤见
+    //    docs/arcmap-10.1-number-format.md「九类分派接入建议」）；清单之外
+    //    的实现类维持停止点（回退到槽位起点、不保留该键）。各读取器失败路
+    //    径只有整体报错（体内无停止点），事务性由 trial 游标/登记表保证；
+    //    CustomNumber 沿用 Rate 臂的同一 max_bytes 限额传参（约束格式串）。
     let slot_offset = trial.position();
     let saved_table = table.clone();
     let mut staged_table = table.clone();
@@ -1040,6 +1061,32 @@ pub fn read_field_info_body_10_1(
         ObjectEntry10_1::NewObject { class_id, key } if class_id == RATE_FORMAT_CLASS_ID => {
             let body = read_rate_format_body_10_1(&mut trial, max_bytes, &mut staged_table, key)?;
             (NumberFormatSlot10_1::RateFormat(Box::new(body)), None)
+        }
+        ObjectEntry10_1::NewObject { class_id, key } if class_id == CURRENCY_FORMAT_CLASS_ID => {
+            let body = read_currency_format_body_10_1(&mut trial, &mut staged_table, key)?;
+            (NumberFormatSlot10_1::CurrencyFormat(Box::new(body)), None)
+        }
+        ObjectEntry10_1::NewObject { class_id, key } if class_id == LATLON_FORMAT_CLASS_ID => {
+            let body = read_latlon_format_body_10_1(&mut trial, &mut staged_table, key)?;
+            (NumberFormatSlot10_1::LatLonFormat(Box::new(body)), None)
+        }
+        ObjectEntry10_1::NewObject { class_id, key } if class_id == ANGLE_FORMAT_CLASS_ID => {
+            let body = read_angle_format_body_10_1(&mut trial, &mut staged_table, key)?;
+            (NumberFormatSlot10_1::AngleFormat(Box::new(body)), None)
+        }
+        ObjectEntry10_1::NewObject { class_id, key } if class_id == SCIENTIFIC_FORMAT_CLASS_ID => {
+            let body = read_scientific_format_body_10_1(&mut trial, &mut staged_table, key)?;
+            (NumberFormatSlot10_1::ScientificFormat(Box::new(body)), None)
+        }
+        ObjectEntry10_1::NewObject { class_id, key }
+            if class_id == CUSTOM_NUMBER_FORMAT_CLASS_ID =>
+        {
+            let body =
+                read_custom_number_format_body_10_1(&mut trial, max_bytes, &mut staged_table, key)?;
+            (
+                NumberFormatSlot10_1::CustomNumberFormat(Box::new(body)),
+                None,
+            )
         }
         ObjectEntry10_1::NewObject { class_id, key } => {
             let stop = FieldInfoStop10_1::NumberFormatUnsupported { class_id, key };

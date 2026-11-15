@@ -652,4 +652,39 @@ double/int32/String/int32 在三槽之间与之后）与样本不符，函数归
   ㊷ HLEP，但按 10.1 写侧顺序 ㊷ 应在 ㊶ TimeData 之后，归属存疑）。
 - SimpleTextParser（{D7099B91}，DisplayCore.dll）体未闭合：样本 28 处命中
   均为 TextSymbol 字段 16b 的原样 GUID（非对象头），无对象头实例佐证。
+
+### 接线轮落位（整合接线轮，2026-11-15）
+
+- **{C9EE5352} 定名核对（ole-stdfont 轮遗留）**：以主检出
+  `temp/agent-fl-tail/ecfg/esri.clsid.xml` 全表（11348 项）复核——
+  `C9EE5352` 零命中；BasicOverposter 族仅 BasicOverposter
+  `{3141F2FC-38E2-11D1-8809-…}`、BasicOverposterProperties
+  `{E0C73D56-6C88-498C-B77C-…}` 与 BOLP `{EE535289-41C9-11D1-880A-…}`
+  三条。StdFont 轮把同流内对象（键 69 @`0xda3`，LELP ⑰ 槽）诊断为
+  `{C9EE5352-D141-11D1-880A-080009EC732A}`，与本轮样本字节
+  （`89 52 53 ee c9 41 d1 11 …`，即 `{EE535289-…}` 内存序）错位——同键同
+  偏移、同 `880A-080009EC732A` 族尾，且现行解析已按 BOLP 常量自 `0xda3`
+  连续消费至 `0x151a`。**裁决：维持本轮命名
+  BasicOverposterLayerProperties**，E 轮 GUID 文本为同字节序列的错位解码
+  ；别名核对注记已补入 `annotate_props.rs` 常量注释，不另立常量。
+- **DEP 常量字节更正（本轮接线发现的转录笔误）**：第十轮落位的
+  `DISPLAY_EXPRESSION_PROPS_CLASS_ID` 第 7/8 字节（GUID 第三字段 LE 对）
+  误写作 `48 4c`（即 `{…-C05A-4C48-…}`），与 esri.clsid 声明（484C）及样
+  本 `0x151a` 头逐字节不符，致 ㊴ 槽类比对永不命中、样本停在 DEP 对象头
+  `0x151a`（`ExpressionPropsUnsupported`）。接线轮按两处证据更正为
+  `4c 48`（第十轮文档「样本 `/Maps:0x151a` 头逐字节相同」的声明自本轮起
+  才成立；经旧常量构造的合成输入与常量同源故未暴露）。
+- **样本重走**：停止点 `0x151a` → **`0x155a`**（+64：DEP 头 20 + 前缀
+  版本/表达式串/short 20 + 引擎槽 24），新停止 =
+  `SuccessorStop10_1::ExpressionPropsBody`（DEP 已闭合前缀消费完毕，尾段
+  `0x155a..0x15d8` 126 字节保留未知）——即本轮「未解决事项」预告的预期
+  停止点。`mxd_maps` 诊断对 `ExpressionPropsBody` 透传前缀内容（版本、表
+  达式、int16、引擎槽键 84）与未闭合尾段说明；LELP 体内停止原因同步透传
+  （风格循既有 `{:?}`）。
+- **robustness**：BOLP/LLP/LLPP/PPP/引擎/UID/HLEP/DEP 前缀八读取器入口并
+  入 `tests/robustness.rs` 集中清单（第七至十轮报告的「新读取器入口」全
+  数落账）。
+- ㊷ 槽未知类的停止原因沿用 `ExpressionPropsUnsupported` 变体名为既有实现
+  （命名与槽位不符属历史遗留，本轮不改既有行为）。`cargo fmt --check` 与
+  全量 `cargo test` 绿；未声称运行验证。
 - 全部结论为静态取证与样本辅助对位，未运行 ArcMap 10.1，未人工目视验收。
