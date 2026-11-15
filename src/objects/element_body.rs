@@ -102,12 +102,16 @@
 //! 14. LoadObject（ISymbol）→ 符号槽 #2（仅分类；样本为 `{7914E603-C892-
 //!     11D0-8BB6-080009EE4E41}` 新对象键 1593，体未闭合 = 停止点）；
 //! 15. LoadObject（IID `{BEF6E002-A874-101A-8BBA-00AA00300CAB}` = IFontDisp）
-//!     → 字体槽（仅分类；样本为 OLE StdFont `{0BE35203-8F91-11CE-9DE3-
-//!     00AA004BB851}` 新对象键 1617，位于停止点之后未达）；
+//!     → 字体槽（本轮起 StdFont `{0BE35203-8F91-11CE-9DE3-00AA004BB851}`
+//!     新对象整体解析——oleaut32 2.40.4275 OleFontImpl 持久化格式 + 样本 37
+//!     处逐字节互证，证据 docs/arcmap-10.1-ole-stdfont.md；其余实现类维持
+//!     停止回退）；
 //! 16. 版本 >1：int16 → this-0x4e4；版本 ≥3：16 字节原样 GUID（与零 GUID 比
 //!     较，非零走附加处理；零时取内置默认 `{D7099B91-E298-499E-9757-
 //!     72BB39E55CF3}`，常量 `0x6ec15a94`）；版本 ≥4：int16 → this-0x384
-//!     （-900）。样本版本 4 全读（位于停止点之后未达）。
+//!     （Save 侧常量 -900）。样本版本 4 全读（StdFont 体闭合后可达：尾段实
+//!     测 short 0x0000/0xFFFF、GUID `{D7099B91-…}`、尾 short 0x0000，读侧
+//!     语义未定）。
 //!
 //! 第五轮「TextSymbol 体内键位恒 0 的内嵌 SimpleTextPath」现象在本轮重新归
 //! 因：字段 9 的 16 字节是**原样 GUID 字段**（非对象头、无键），样本值为
@@ -181,10 +185,12 @@
 //! 未接入 MXD 解析主链，人工目视验收未做，不得声称已验证。
 //!
 //! 未解决问题（详见研究文档「开放项」）：各标量字段业务语义未定性；
-//! IGeometry/IMarkerSymbol/ILineSymbol/ISymbol/ITextPath/IFontDisp 槽的实现
-//! 类体未闭合；TextSymbol 版本门尾段（>1 short、≥3 GUID、≥4 short）与字体
-//! 槽无样本佐证；MarkerElement 32 字节尾块、TextElement 版本 7/9 精确块无样
-//! 本佐证；全部结论未运行目标软件验证。
+//! IGeometry/IMarkerSymbol/ILineSymbol/ISymbol/ITextPath 槽的实现类体未闭
+//! 合（IFontDisp 槽的 StdFont 实现类本轮已闭合，证据
+//! docs/arcmap-10.1-ole-stdfont.md；该槽其余实现类仍为停止回退）；
+//! TextSymbol 版本门尾段（>1 short、≥3 GUID、≥4 short）StdFont 体闭合后样
+//! 本可达、位模式原样保留（读侧语义未定）；MarkerElement 32 字节尾块、
+//! TextElement 版本 7/9 精确块无样本佐证；全部结论未运行目标软件验证。
 
 use crate::objects::display_color::read_color_slot_10_1;
 use crate::objects::display_symbol::{
@@ -194,6 +200,7 @@ use crate::objects::display_symbol::{
 use crate::objects::geometry::{
     POLYLINE_CLASS_ID, PolylineBody10_1, read_geometry_body_of_class_10_1,
 };
+use crate::objects::ole_font::{STDFONT_CLASS_ID, StdFontBody10_1, read_std_font_body_10_1};
 use crate::objects::property_set::{PropertyValue10_1, read_variant_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -281,6 +288,22 @@ pub enum GeometrySlot10_1 {
     /// 新 Polyline 对象（类标识经 [`POLYLINE_CLASS_ID`] 校验）：已解析体。
     /// 体读取要么完整成功、要么错误上抛（无体内停止点，见 geometry 模块）。
     Polyline(Box<PolylineBody10_1>),
+}
+
+/// IFontDisp 类槽位条目的分类结果（本轮起 StdFont 经
+/// [`crate::objects::ole_font::read_std_font_body_10_1`] 整体解析，证据：
+/// docs/arcmap-10.1-ole-stdfont.md；其余实现类维持停止回退，字段保持
+/// `Null`）。
+#[derive(Debug, Clone, PartialEq)]
+pub enum FontSlot10_1 {
+    /// 16 字节全零类标识：空引用，无键、无对象体。
+    Null,
+    /// 键已见：回引条目，无对象体。类标识原样保留、不校验。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 StdFont 对象（类标识经 [`STDFONT_CLASS_ID`] 校验）：已解析体。
+    /// 体读取要么完整成功、要么错误上抛（无体内停止点：体不含嵌套对象条
+    /// 目，见 ole_font 模块）。其余实现类不落入本变体。
+    StdFont(Box<StdFontBody10_1>),
 }
 
 /// 元素体内的嵌套新对象停止点（非错误：已消费部分有效）。
@@ -583,15 +606,18 @@ pub struct TextSymbolBody10_1 {
     /// 体；样本为 {7914E603} SimpleFillSymbol 新对象；未知符号类不出现在本
     /// 字段——映射为停止原因，字段保持 `Null`）。
     pub symbol2: SymbolSlotFull10_1,
-    /// IFontDisp 字体槽（仅分类；样本 StdFont 新对象，位于停止点之后未达）。
-    pub font: NestedEntry10_1,
-    /// 版本 >1 的 int16 原样位模式（this-0x4e4；样本 0x8601，位于停止点之后
-    /// 未达）。
+    /// IFontDisp 字体槽（本轮起经 [`read_font_slot`] 类分派：StdFont 新对
+    /// 象解析为 [`FontSlot10_1::StdFont`] 体变体（样本 37 处 StdFont 全为该
+    /// 类，证据 docs/arcmap-10.1-ole-stdfont.md）；未知字体类不出现在本字
+    /// 段——映射为停止原因，字段保持 `Null`）。
+    pub font: FontSlot10_1,
+    /// 版本 >1 的 int16 原样位模式（this-0x4e4；StdFont 体闭合后样本可达
+    /// ：TextSymbol 字体槽语境观测 0x0000/0xFFFF，语义未定）。
     pub tail_short_1: Option<u16>,
-    /// 版本 ≥3 的 16 字节原样 GUID（与零 GUID 比较选路径；样本位于停止点之
-    /// 后未达）。
+    /// 版本 ≥3 的 16 字节原样 GUID（与零 GUID 比较选路径；样本观测内置默
+    /// 认 `{D7099B91-E298-499E-9757-72BB39E55CF3}`）。
     pub tail_path_clsid: Option<[u8; 16]>,
-    /// 版本 ≥4 的 int16 原样位模式（this-0x384）。
+    /// 版本 ≥4 的 int16 原样位模式（this-0x384；样本观测 0x0000）。
     pub tail_short_2: Option<u16>,
     /// 停止原因；`None` = 本读取器覆盖的字段全部消费（版本门尾段读毕）。
     pub stop: Option<ElementBodyStop10_1>,
@@ -779,6 +805,49 @@ fn read_classified_slot<'a>(
     }
 }
 
+/// 读取一个 IFontDisp 类槽位（TextSymbol 第 15 字段）：本轮起经类分派——
+/// StdFont 新对象（`{0BE35203-…}`）由 [`read_std_font_body_10_1`] 整体解析
+/// 为 [`FontSlot10_1::StdFont`]（体不含嵌套对象条目，无停止点；体自身错误
+/// 上抛即整体失败，与 Polyline 几何体语义一致）；其余实现类新对象 = 停止点
+/// （回退游标、登记表不保留该键、字段保持 `Null`）。证据：
+/// docs/arcmap-10.1-ole-stdfont.md。
+fn read_font_slot<'a>(
+    trial: &mut Reader<'a>,
+    max_bytes: usize,
+    trial_table: &mut RefTable10_1,
+    origin: &Reader<'a>,
+    start: usize,
+    slot: &'static str,
+    stop: &mut Option<ElementBodyStop10_1>,
+) -> io::Result<FontSlot10_1> {
+    let slot_offset = trial.position();
+    let saved_table = trial_table.clone();
+    match read_object_entry_10_1(trial, trial_table)? {
+        ObjectEntry10_1::Null => Ok(FontSlot10_1::Null),
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            Ok(FontSlot10_1::BackReference { class_id, key })
+        }
+        ObjectEntry10_1::NewObject { class_id, key: _ } if class_id == STDFONT_CLASS_ID => {
+            // 键已由条目分类按原生「登记先于持久化」语义登记；体无停止点，
+            // 完整成功才提交（失败不推进游标、登记表由调用方 trial 语义保
+            // 护；错误上抛即整体失败）。
+            let body = read_std_font_body_10_1(trial, max_bytes)?;
+            Ok(FontSlot10_1::StdFont(Box::new(body)))
+        }
+        ObjectEntry10_1::NewObject { class_id, key } => {
+            *trial_table = saved_table;
+            *trial = rewind(origin, start, slot_offset);
+            *stop = Some(ElementBodyStop10_1::NestedObjectNotClosed {
+                slot,
+                offset: slot_offset,
+                class_id,
+                key,
+            });
+            Ok(FontSlot10_1::Null)
+        }
+    }
+}
+
 /// 读取一个 IColor 槽：经 [`read_color_slot_10_1`] 分派（五类闭合颜色整体
 /// 解析）；未知颜色类新对象 = 停止点（分派内部已回退游标、登记表不保留该
 /// 键，本函数映射为停止原因并返回 `None`）。
@@ -962,7 +1031,7 @@ pub fn read_text_symbol_body_10_1(
     let mut text_path = NestedEntry10_1::Null;
     let mut symbol1 = NestedEntry10_1::Null;
     let mut symbol2 = SymbolSlotFull10_1::Null;
-    let mut font = NestedEntry10_1::Null;
+    let mut font = FontSlot10_1::Null;
     let mut tail_short_1 = None;
     let mut tail_path_clsid = None;
     let mut tail_short_2 = None;
@@ -1059,16 +1128,19 @@ pub fn read_text_symbol_body_10_1(
 
     // 15/16. IFontDisp 槽与版本门尾段（#2 停止时结构性未达）。
     if stop.is_none() {
-        match read_classified_slot(
+        match read_font_slot(
             &mut trial,
+            max_bytes,
             &mut trial_table,
             &origin,
             start,
             "IFontDisp 字体槽",
             &mut stop,
-        )? {
-            Some(entry) => font = entry,
-            None => {}
+        ) {
+            Ok(slot) => font = slot,
+            Err(error) => {
+                return Err(invalid(format!("IFontDisp 字体槽读取失败：{error}")));
+            }
         }
     }
     if stop.is_none() {

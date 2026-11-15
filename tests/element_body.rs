@@ -10,9 +10,10 @@
 use mxd2qgz::objects::display_color::{ColorBody10_1, ColorSlot10_1, RGB_COLOR_CLASS_ID};
 use mxd2qgz::objects::display_symbol::{SIMPLE_FILL_SYMBOL_CLASS_ID, SymbolSlotFull10_1};
 use mxd2qgz::objects::element_body::{
-    CustomProperty10_1, GeometrySlot10_1, LINE_ELEMENT_CLASS_ID, MARKER_ELEMENT_CLASS_ID,
-    NestedEntry10_1, TEXT_ELEMENT_CLASS_ID, TEXT_SYMBOL_CLASS_ID, read_element_body_of_class_10_1,
-    read_line_element_body_10_1, read_text_element_body_10_1, read_text_symbol_body_10_1,
+    CustomProperty10_1, FontSlot10_1, GeometrySlot10_1, LINE_ELEMENT_CLASS_ID,
+    MARKER_ELEMENT_CLASS_ID, NestedEntry10_1, TEXT_ELEMENT_CLASS_ID, TEXT_SYMBOL_CLASS_ID,
+    read_element_body_of_class_10_1, read_line_element_body_10_1, read_text_element_body_10_1,
+    read_text_symbol_body_10_1,
 };
 use mxd2qgz::objects::geometry::POLYLINE_CLASS_ID;
 use mxd2qgz::objects::property_set::PropertyValue10_1;
@@ -815,7 +816,7 @@ fn text_element_parses_sample_shaped_symbol2_simple_fill_symbol() {
         "填充色应为 RgbColor 体"
     );
     // 字段 15/16（接线前未达）：IFontDisp 空标记 + 版本门尾段。
-    assert_eq!(symbol.font, NestedEntry10_1::Null);
+    assert_eq!(symbol.font, FontSlot10_1::Null);
     assert_eq!(symbol.tail_short_1, Some(0x8601));
     assert_eq!(symbol.tail_path_clsid, Some(TEXT_SYMBOL_CLASS_ID));
     assert_eq!(symbol.tail_short_2, Some(0xf264));
