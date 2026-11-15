@@ -11,7 +11,6 @@ use mxd2qgz::objects::display_color::{
     CMYK_COLOR_CLASS_ID, ColorSlot10_1, RGB_COLOR_CLASS_ID, read_color_slot_10_1,
 };
 use mxd2qgz::objects::display_symbol::{
-    CARTOGRAPHIC_LINE_SYMBOL_CLASS_ID, HASH_LINE_SYMBOL_CLASS_ID, MARKER_LINE_SYMBOL_CLASS_ID,
     MAX_SYMBOL_NESTING_DEPTH, SIMPLE_FILL_SYMBOL_CLASS_ID, SIMPLE_LINE_SYMBOL_CLASS_ID,
     SIMPLE_MARKER_SYMBOL_CLASS_ID, SimpleMarkerSymbolStop10_1, SymbolStop10_1,
     read_cartographic_line_symbol_body_10_1, read_display_symbol_slot_10_1,
@@ -341,11 +340,11 @@ fn marker_line_symbol_versions_and_unclosed_slots() {
     );
     assert_eq!(
         result.template,
-        Some(mxd2qgz::objects::display_symbol::DisplaySymbolSlot10_1::Null)
+        Some(mxd2qgz::objects::display_symbol::DecorationSlot10_1::Null)
     );
     assert_eq!(
         result.line_decoration,
-        Some(mxd2qgz::objects::display_symbol::DisplaySymbolSlot10_1::Null)
+        Some(mxd2qgz::objects::display_symbol::DecorationSlot10_1::Null)
     );
     assert_eq!(result.int32_2094, Some(4));
     assert_eq!(result.double_208c, Some(6.0));
@@ -465,7 +464,7 @@ fn marker_line_symbol_nests_marker_symbol() {
 
 #[test]
 fn cartographic_line_symbol_full_body_and_truncation() {
-    let mut make = || {
+    let make = || {
         let mut bytes = 1_u16.to_le_bytes().to_vec();
         bytes.extend(1_i32.to_le_bytes());
         bytes.extend(2_i32.to_le_bytes());
@@ -500,7 +499,7 @@ fn cartographic_line_symbol_full_body_and_truncation() {
     assert!(matches!(&result.color, Some(ColorSlot10_1::Color { .. })));
     assert_eq!(
         result.template,
-        Some(mxd2qgz::objects::display_symbol::DisplaySymbolSlot10_1::Null)
+        Some(mxd2qgz::objects::display_symbol::DecorationSlot10_1::Null)
     );
     assert_eq!(result.int32_10fc, Some(3));
     assert_eq!(result.double_1054, Some(1.0));
@@ -774,4 +773,1252 @@ fn direct_reader_calls_stay_transactional_on_the_table() {
     assert_eq!(error.kind(), ErrorKind::UnexpectedEof);
     assert_eq!(reader.position(), 0);
     assert!(table.is_empty());
+}
+// ===== 第二轮闭合类（docs/arcmap-10.1-display-symbols-round2.md）=====
+//
+// 全部为合成输入：样本 0 实例（无字节佐证），只验证读取器自身契约。
+
+use mxd2qgz::objects::display_symbol::{
+    DecorationSlot10_1, GRADIENT_FILL_SYMBOL_CLASS_ID, LINE_DECORATION_CLASS_ID,
+    SIMPLE_LINE_DECORATION_ELEMENT_CLASS_ID, SymbolSlotFull10_1, TEMPLATE_CLASS_ID,
+    UnclosedSlot10_1, read_arrow_marker_symbol_body_10_1, read_character_marker_symbol_body_10_1,
+    read_dot_density_fill_symbol_body_10_1, read_gradient_fill_symbol_body_10_1,
+    read_line_decoration_body_10_1, read_line_fill_symbol_body_10_1,
+    read_marker_fill_symbol_body_10_1, read_multi_layer_fill_symbol_body_10_1,
+    read_multi_layer_line_symbol_body_10_1, read_multi_layer_marker_symbol_body_10_1,
+    read_picture_line_symbol_body_10_1, read_picture_marker_symbol_body_10_1,
+    read_simple_line_decoration_element_body_10_1, read_symbol_slot_full_10_1,
+    read_template_body_10_1,
+};
+
+/// 追加 4 字节计数（int32 LE）。
+fn push_count(bytes: &mut Vec<u8>, count: i32) {
+    bytes.extend(count.to_le_bytes());
+}
+
+/// 追加 String（原生 4 字节长度[含终止零] + UTF-16LE 数据 + 终止零）。
+fn push_string(bytes: &mut Vec<u8>, text: &str) {
+    let raw: Vec<u8> = text.encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+    bytes.extend(((raw.len() + 2) as u32).to_le_bytes());
+    bytes.extend_from_slice(&raw);
+    bytes.extend_from_slice(&[0, 0]);
+}
+
+#[test]
+fn template_body_full_consumption_and_limits() {
+    // 版本 1 + double 间隔 + 2 个 16 字节标记：完整消费。
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(2.5_f64.to_le_bytes());
+    push_count(&mut bytes, 2);
+    bytes.extend(1.0_f64.to_le_bytes());
+    bytes.extend(90.0_f64.to_le_bytes());
+    bytes.extend(2.0_f64.to_le_bytes());
+    bytes.extend(45.0_f64.to_le_bytes());
+    let mut reader = Reader::new(&bytes);
+    let result = read_template_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 71).unwrap();
+    assert_eq!(result.key, 71);
+    assert_eq!(result.version, 1);
+    assert_eq!(result.interval, 2.5);
+    assert_eq!(result.mark_count, 2);
+    assert_eq!(result.marks, [[1.0, 90.0], [2.0, 45.0]]);
+    assert_eq!(reader.position(), bytes.len());
+
+    // 版本 2 拒绝；负计数拒绝；超限计数拒绝；逐字节截断事务性。
+    let mut bytes = 2_u16.to_le_bytes().to_vec();
+    bytes.extend(0.0_f64.to_le_bytes());
+    push_count(&mut bytes, 0);
+    let mut reader = Reader::new(&bytes);
+    let error =
+        read_template_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 1).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert_eq!(reader.position(), 0);
+
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(0.0_f64.to_le_bytes());
+    push_count(&mut bytes, -1);
+    let mut reader = Reader::new(&bytes);
+    let error =
+        read_template_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 1).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert_eq!(reader.position(), 0);
+
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(0.0_f64.to_le_bytes());
+    push_count(&mut bytes, 3);
+    bytes.extend([0_u8; 16]);
+    let mut reader = Reader::new(&bytes);
+    let error = read_template_body_10_1(&mut reader, 2, &mut RefTable10_1::new(), 1).unwrap_err();
+    assert_eq!(
+        error.kind(),
+        ErrorKind::InvalidData,
+        "计数超 max_bytes 限额"
+    );
+
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(1.0_f64.to_le_bytes());
+    push_count(&mut bytes, 1);
+    bytes.extend([1_u8; 16]);
+    for end in 0..bytes.len() {
+        let mut reader = Reader::new(&bytes[..end]);
+        let first = read_template_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 1);
+        assert!(first.is_err(), "end={end}");
+        assert_eq!(reader.position(), 0, "end={end}");
+    }
+}
+
+#[test]
+fn line_decoration_nests_element_and_stops_on_unknown() {
+    // 版本 1 + 1 个 SimpleLineDecorationElement（键 81，符号槽为空标记，
+    // 2 个位置 double）：完整消费。
+    let mut element = 1_u16.to_le_bytes().to_vec();
+    element.push(1);
+    element.push(0);
+    element.push(1);
+    element.extend(0_i16.to_le_bytes());
+    push_null(&mut element);
+    push_count(&mut element, 2);
+    element.extend(0.25_f64.to_le_bytes());
+    element.extend(0.75_f64.to_le_bytes());
+
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    push_count(&mut bytes, 1);
+    push_entry(&mut bytes, &SIMPLE_LINE_DECORATION_ELEMENT_CLASS_ID, 81);
+    bytes.extend(&element);
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let result =
+        read_line_decoration_body_10_1(&mut reader, 1024, &mut table, 80, MAX_SYMBOL_NESTING_DEPTH)
+            .unwrap();
+    assert_eq!(result.element_count, 1);
+    assert_eq!(result.elements.len(), 1);
+    match &result.elements[0] {
+        mxd2qgz::objects::display_symbol::LineDecorationElement10_1::Element(body) => {
+            assert_eq!(body.key, 81);
+            assert_eq!(body.short_14, 0);
+            assert_eq!(body.positions.as_deref(), Some(&[0.25, 0.75][..]));
+            assert_eq!(body.stop, None);
+        }
+        other => panic!("期望嵌套元素体，得到 {other:?}"),
+    }
+    assert_eq!(result.stop, None);
+    assert_eq!(reader.position(), bytes.len());
+    assert!(table.contains(81));
+
+    // 元素为未知 ILineDecorationElement 实现类：停止于该条目起点，键不保留。
+    let unknown = [0xa7_u8; 16];
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    push_count(&mut bytes, 2);
+    push_null(&mut bytes); // 首条目空标记可消费
+    push_entry(&mut bytes, &unknown, 901);
+    bytes.push(0xFF); // 不得被消费
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let result =
+        read_line_decoration_body_10_1(&mut reader, 1024, &mut table, 82, MAX_SYMBOL_NESTING_DEPTH)
+            .unwrap();
+    assert_eq!(result.elements.len(), 2);
+    assert_eq!(
+        result.elements[0],
+        mxd2qgz::objects::display_symbol::LineDecorationElement10_1::Null
+    );
+    assert!(matches!(
+        result.elements[1],
+        mxd2qgz::objects::display_symbol::LineDecorationElement10_1::Unsupported { key: 901, .. }
+    ));
+    match result.stop {
+        Some(SymbolStop10_1::Slot {
+            kind,
+            class_id,
+            key,
+        }) => {
+            assert_eq!(
+                kind,
+                mxd2qgz::objects::display_symbol::DisplaySlotKind10_1::LineDecorationElement
+            );
+            assert_eq!(class_id, unknown);
+            assert_eq!(key, 901);
+        }
+        other => panic!("期望 Slot 停止，得到 {other:?}"),
+    }
+    // 游标停在未知条目起点：版本(2)+计数(4)+空标记(16) 之后。
+    assert_eq!(reader.position(), 2 + 4 + 16);
+    assert!(table.is_empty());
+}
+
+#[test]
+fn sldelem_symbol_slot_stop_keeps_prefix() {
+    // 符号槽未知类：停止于槽位起点，位置数组不可达。
+    let unknown = [0x3c_u8; 16];
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.push(1);
+    bytes.push(0);
+    bytes.push(0);
+    bytes.extend(2_i16.to_le_bytes());
+    push_entry(&mut bytes, &unknown, 910);
+    bytes.extend(1.0_f64.to_le_bytes()); // 不得被消费
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let result = read_simple_line_decoration_element_body_10_1(
+        &mut reader,
+        1024,
+        &mut table,
+        85,
+        MAX_SYMBOL_NESTING_DEPTH,
+    )
+    .unwrap();
+    assert_eq!(result.byte_18, 1);
+    assert_eq!(result.short_14, 2);
+    assert!(matches!(
+        result.symbol,
+        Some(SymbolSlotFull10_1::Unsupported { key: 910, .. })
+    ));
+    assert_eq!(result.positions, None);
+    assert!(result.stop.is_some());
+    assert_eq!(reader.position(), 2 + 3 + 2);
+    assert!(table.is_empty());
+}
+
+#[test]
+fn multi_layer_line_symbol_layers_arrays_and_strings() {
+    // 版本 2：1 个 SimpleLineSymbol 层（键 22）+ int 数组 + 串数组。
+    let mut layer = 1_u16.to_le_bytes().to_vec();
+    push_null(&mut layer);
+    layer.extend(4.0_f64.to_le_bytes());
+    layer.extend(0_i32.to_le_bytes());
+    layer.extend(0_i32.to_le_bytes());
+    layer.extend(0_i32.to_le_bytes());
+
+    let mut bytes = 2_u16.to_le_bytes().to_vec();
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(2_i32.to_le_bytes());
+    push_count(&mut bytes, 1);
+    push_entry(&mut bytes, &SIMPLE_LINE_SYMBOL_CLASS_ID, 22);
+    bytes.extend(&layer);
+    push_count(&mut bytes, 7);
+    push_count(&mut bytes, 9);
+    push_string(&mut bytes, "层");
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let result = read_multi_layer_line_symbol_body_10_1(
+        &mut reader,
+        1024,
+        &mut table,
+        60,
+        MAX_SYMBOL_NESTING_DEPTH,
+    )
+    .unwrap();
+    assert_eq!(result.version, 2);
+    assert_eq!(result.int32_c4, 1);
+    assert_eq!(result.int32_bc, 2);
+    assert_eq!(result.layer_count, 1);
+    assert!(matches!(
+        &result.layers[0],
+        SymbolSlotFull10_1::SimpleLineSymbol(body) if body.width == Some(4.0)
+    ));
+    assert_eq!(result.ints_60.as_deref(), Some(&[7][..]));
+    assert_eq!(result.ints_4c.as_deref(), Some(&[9][..]));
+    assert_eq!(result.strings.as_deref(), Some(&["层".to_string()][..]));
+    assert_eq!(result.stop, None);
+    assert_eq!(reader.position(), bytes.len());
+    assert!(table.contains(22));
+
+    // 版本 1：无串段（流内不存在），数组仍消费。
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    push_count(&mut bytes, 0);
+    let mut reader = Reader::new(&bytes);
+    let result = read_multi_layer_line_symbol_body_10_1(
+        &mut reader,
+        1024,
+        &mut RefTable10_1::new(),
+        61,
+        MAX_SYMBOL_NESTING_DEPTH,
+    )
+    .unwrap();
+    assert_eq!(result.strings, None);
+    assert_eq!(result.ints_60.as_deref(), Some(&[][..]));
+    assert_eq!(result.stop, None);
+    assert_eq!(reader.position(), bytes.len());
+
+    // 未知层符号类：停止于该层条目起点，数组与串不可达。
+    let unknown = [0xb1_u8; 16];
+    let mut bytes = 2_u16.to_le_bytes().to_vec();
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    push_count(&mut bytes, 1);
+    push_entry(&mut bytes, &unknown, 911);
+    bytes.push(0);
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let result = read_multi_layer_line_symbol_body_10_1(
+        &mut reader,
+        1024,
+        &mut table,
+        62,
+        MAX_SYMBOL_NESTING_DEPTH,
+    )
+    .unwrap();
+    assert!(matches!(
+        &result.layers[0],
+        SymbolSlotFull10_1::Unsupported { key: 911, .. }
+    ));
+    assert_eq!(result.ints_60, None);
+    assert_eq!(result.strings, None);
+    assert!(result.stop.is_some());
+    assert_eq!(reader.position(), 2 + 4 + 4 + 4);
+    assert!(table.is_empty());
+}
+
+#[test]
+fn multi_layer_marker_symbol_v3_full_body() {
+    // 版本 3：颜色空标记 + ISymbol 空标记 + 1 个 SMS 层（键 36）+ 数组 +
+    // MarkerBackground 空标记 + 串。
+    let mut bytes = 3_u16.to_le_bytes().to_vec();
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(2_i32.to_le_bytes());
+    for value in [1.0_f64, 2.0, 3.0, 4.0] {
+        bytes.extend(value.to_le_bytes());
+    }
+    push_null(&mut bytes); // IColor
+    bytes.extend(5_i32.to_le_bytes());
+    bytes.extend(6.0_f64.to_le_bytes());
+    push_null(&mut bytes); // ISymbol
+    push_count(&mut bytes, 1);
+    push_entry(&mut bytes, &SIMPLE_MARKER_SYMBOL_CLASS_ID, 36);
+    bytes.extend(&sms_body_v1());
+    push_count(&mut bytes, 1);
+    push_count(&mut bytes, 2);
+    push_null(&mut bytes); // IMarkerBackground
+    push_string(&mut bytes, "T");
+
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let result = read_multi_layer_marker_symbol_body_10_1(
+        &mut reader,
+        1024,
+        &mut table,
+        70,
+        MAX_SYMBOL_NESTING_DEPTH,
+    )
+    .unwrap();
+    assert_eq!(result.version, 3);
+    assert_eq!(result.color, Some(ColorSlot10_1::Null));
+    assert_eq!(result.int32_34, Some(5));
+    assert_eq!(result.double_24, Some(6.0));
+    assert_eq!(result.symbol, Some(SymbolSlotFull10_1::Null));
+    assert_eq!(result.layer_count, 1);
+    assert!(matches!(
+        &result.layers[0],
+        SymbolSlotFull10_1::SimpleMarkerSymbol(_)
+    ));
+    assert_eq!(result.ints_a8.as_deref(), Some(&[1][..]));
+    assert_eq!(result.ints_94.as_deref(), Some(&[2][..]));
+    assert_eq!(result.marker_background, Some(UnclosedSlot10_1::Null));
+    assert_eq!(result.strings.as_deref(), Some(&["T".to_string()][..]));
+    assert_eq!(result.stop, None);
+    assert_eq!(reader.position(), bytes.len());
+    assert!(table.contains(36));
+
+    // 版本 2：MarkerBackground 槽存在但无串段。
+    let mut bytes = 2_u16.to_le_bytes().to_vec();
+    for _ in 0..2 {
+        bytes.extend(0_i32.to_le_bytes());
+    }
+    for _ in 0..4 {
+        bytes.extend(0.0_f64.to_le_bytes());
+    }
+    push_null(&mut bytes);
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(0.0_f64.to_le_bytes());
+    push_null(&mut bytes);
+    push_count(&mut bytes, 0);
+    push_null(&mut bytes); // IMarkerBackground
+    let mut reader = Reader::new(&bytes);
+    let result = read_multi_layer_marker_symbol_body_10_1(
+        &mut reader,
+        1024,
+        &mut RefTable10_1::new(),
+        71,
+        MAX_SYMBOL_NESTING_DEPTH,
+    )
+    .unwrap();
+    assert_eq!(result.strings, None);
+    assert!(result.marker_background.is_some());
+    assert_eq!(result.stop, None);
+    assert_eq!(reader.position(), bytes.len());
+
+    // 版本 4 拒绝。
+    let bytes = 4_u16.to_le_bytes().to_vec();
+    let mut reader = Reader::new(&bytes);
+    let error = read_multi_layer_marker_symbol_body_10_1(
+        &mut reader,
+        1024,
+        &mut RefTable10_1::new(),
+        1,
+        MAX_SYMBOL_NESTING_DEPTH,
+    )
+    .unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert_eq!(reader.position(), 0);
+}
+
+#[test]
+fn multi_layer_fill_symbol_layers_and_strings() {
+    // 版本 2：颜色 + 1 个 SimpleFillSymbol 层（键 21，轮廓与填充色空标记）
+    // + 数组 + 串。
+    let mut layer = 1_u16.to_le_bytes().to_vec();
+    push_null(&mut layer);
+    push_null(&mut layer);
+    for _ in 0..3 {
+        layer.extend(0_i32.to_le_bytes());
+    }
+
+    let mut bytes = 2_u16.to_le_bytes().to_vec();
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(2_i32.to_le_bytes());
+    push_null(&mut bytes); // IColor
+    push_count(&mut bytes, 1);
+    push_entry(&mut bytes, &SIMPLE_FILL_SYMBOL_CLASS_ID, 21);
+    bytes.extend(&layer);
+    push_count(&mut bytes, 4);
+    push_count(&mut bytes, 5);
+    push_string(&mut bytes, "");
+
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let result = read_multi_layer_fill_symbol_body_10_1(
+        &mut reader,
+        1024,
+        &mut table,
+        72,
+        MAX_SYMBOL_NESTING_DEPTH,
+    )
+    .unwrap();
+    assert_eq!(result.color, Some(ColorSlot10_1::Null));
+    assert_eq!(result.layer_count, 1);
+    assert!(matches!(
+        &result.layers[0],
+        SymbolSlotFull10_1::SimpleFillSymbol(body) if body.stop.is_none()
+    ));
+    assert_eq!(result.ints_50.as_deref(), Some(&[4][..]));
+    assert_eq!(result.ints_3c.as_deref(), Some(&[5][..]));
+    assert_eq!(result.strings.as_deref(), Some(&[String::new()][..]));
+    assert_eq!(result.stop, None);
+    assert_eq!(reader.position(), bytes.len());
+    assert!(table.contains(21));
+}
+
+#[test]
+fn character_marker_symbol_version_gates() {
+    // 版本 4：颜色空标记 + 标量 + 字体描述符（v≥3）+ 第二字体槽空标记
+    // （v>3）；无 v<3 字体对象槽。
+    let mut bytes = 4_u16.to_le_bytes().to_vec();
+    push_null(&mut bytes); // IColor
+    bytes.extend(1_i32.to_le_bytes());
+    for value in [10.0_f64, 1.0, 2.0, 90.0, 3.0, 4.0] {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes.extend(7_i32.to_le_bytes());
+    bytes.extend(8_i32.to_le_bytes());
+    bytes.extend(1_i16.to_le_bytes()); // v>1 short
+    push_string(&mut bytes, "Arial"); // v≥3 字体名
+    for value in [16_i32, 700, 0, 0] {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes.extend(0_i16.to_le_bytes());
+    bytes.extend(204_i16.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(1_i32.to_le_bytes());
+    push_null(&mut bytes); // v>3 第二 IFontDisp 槽
+
+    let mut reader = Reader::new(&bytes);
+    let result =
+        read_character_marker_symbol_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 75)
+            .unwrap();
+    assert_eq!(result.version, 4);
+    assert_eq!(result.color, Some(ColorSlot10_1::Null));
+    assert_eq!(result.double_9c, 90.0);
+    assert_eq!(result.font_slot_v3, None, "版本 ≥3 无 v<3 字体对象槽");
+    assert_eq!(result.int32_124, Some(7));
+    assert_eq!(result.int32_11c, Some(8));
+    assert_eq!(result.short_10c, Some(1));
+    assert_eq!(result.font_name.as_deref(), Some("Arial"));
+    assert_eq!(result.font_ints_a, Some([16, 700, 0, 0]));
+    assert_eq!(result.font_shorts, Some([0, 204]));
+    assert_eq!(result.font_ints_b, Some([0, 1]));
+    assert_eq!(result.font_slot_v5, Some(UnclosedSlot10_1::Null));
+    assert_eq!(result.stop, None);
+    assert_eq!(reader.position(), bytes.len());
+
+    // 版本 2：v<3 字体对象槽存在（空标记）；两个 int32 与 short 恒有；
+    // 无字体描述符（≥3 不成立）；无第二槽（v>3 不成立）。
+    let mut bytes = 2_u16.to_le_bytes().to_vec();
+    push_null(&mut bytes);
+    bytes.extend(0_i32.to_le_bytes());
+    for _ in 0..6 {
+        bytes.extend(0.0_f64.to_le_bytes());
+    }
+    push_null(&mut bytes); // v<3 IFontDisp 槽
+    bytes.extend(3_i32.to_le_bytes());
+    bytes.extend(4_i32.to_le_bytes());
+    bytes.extend(1_i16.to_le_bytes());
+    let mut reader = Reader::new(&bytes);
+    let result =
+        read_character_marker_symbol_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 76)
+            .unwrap();
+    assert_eq!(result.font_slot_v3, Some(UnclosedSlot10_1::Null));
+    assert_eq!(result.int32_124, Some(3));
+    assert_eq!(result.int32_11c, Some(4));
+    assert_eq!(result.short_10c, Some(1));
+    assert_eq!(result.font_name, None);
+    assert_eq!(result.font_slot_v5, None);
+    assert_eq!(result.stop, None);
+    assert_eq!(reader.position(), bytes.len());
+
+    // 版本 1：v<3 字体对象槽存在（实现类未闭合，以未知类停止）。
+    let unknown = [0xf0_u8; 16];
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    push_null(&mut bytes);
+    bytes.extend(0_i32.to_le_bytes());
+    for _ in 0..6 {
+        bytes.extend(0.0_f64.to_le_bytes());
+    }
+    push_entry(&mut bytes, &unknown, 920);
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let result = read_character_marker_symbol_body_10_1(&mut reader, 1024, &mut table, 77).unwrap();
+    assert_eq!(result.font_slot_v3, None);
+    assert!(matches!(
+        result.stop,
+        Some(SymbolStop10_1::Slot {
+            kind: mxd2qgz::objects::display_symbol::DisplaySlotKind10_1::Font,
+            key: 920,
+            ..
+        })
+    ));
+    assert_eq!(reader.position(), 2 + 16 + 4 + 48);
+    assert!(table.is_empty());
+}
+
+#[test]
+fn picture_marker_symbol_v9_type_branches() {
+    // 类型 1（路径 String + double）+ 共享尾段。
+    let mut bytes = 9_u16.to_le_bytes().to_vec();
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    push_string(&mut bytes, "pic.png");
+    bytes.extend(0.5_f64.to_le_bytes());
+    for _ in 0..3 {
+        push_null(&mut bytes); // IColor ×3
+    }
+    for value in [1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0] {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(2_i32.to_le_bytes());
+    bytes.push(1);
+    bytes.extend(0_i16.to_le_bytes());
+    for _ in 0..3 {
+        bytes.extend(0_i16.to_le_bytes());
+    }
+    let mut reader = Reader::new(&bytes);
+    let result =
+        read_picture_marker_symbol_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 90)
+            .unwrap();
+    match &result.image {
+        mxd2qgz::objects::display_symbol::PictureImage10_1::V9 {
+            image_type,
+            aux_int32,
+            payload,
+        } => {
+            assert_eq!(*image_type, 1);
+            assert_eq!(*aux_int32, 0);
+            match payload {
+                Some(mxd2qgz::objects::display_symbol::PictureImagePayload10_1::Path {
+                    path,
+                    double_value,
+                }) => {
+                    assert_eq!(path, "pic.png");
+                    assert_eq!(*double_value, 0.5);
+                }
+                other => panic!("期望 Path 载荷，得到 {other:?}"),
+            }
+        }
+        other => panic!("期望 V9 图像块，得到 {other:?}"),
+    }
+    assert_eq!(
+        result.colors,
+        [
+            Some(ColorSlot10_1::Null),
+            Some(ColorSlot10_1::Null),
+            Some(ColorSlot10_1::Null)
+        ]
+    );
+    assert_eq!(result.doubles, Some([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]));
+    assert_eq!(result.stop, None);
+    assert_eq!(reader.position(), bytes.len());
+
+    // 类型 2（int32 N=5 + 5 字节位图数据）。
+    let mut bytes = 9_u16.to_le_bytes().to_vec();
+    bytes.extend(2_i32.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(5_i32.to_le_bytes());
+    bytes.extend_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD, 0xEE]);
+    push_null(&mut bytes);
+    push_null(&mut bytes);
+    push_null(&mut bytes);
+    for value in [1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0] {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(2_i32.to_le_bytes());
+    bytes.push(1);
+    bytes.extend(0_i16.to_le_bytes());
+    for _ in 0..3 {
+        bytes.extend(0_i16.to_le_bytes());
+    }
+    let mut reader = Reader::new(&bytes);
+    let result =
+        read_picture_marker_symbol_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 91)
+            .unwrap();
+    match &result.image {
+        mxd2qgz::objects::display_symbol::PictureImage10_1::V9 {
+            payload:
+                Some(mxd2qgz::objects::display_symbol::PictureImagePayload10_1::Blob { size, data }),
+            ..
+        } => {
+            assert_eq!(*size, 5);
+            assert_eq!(data.as_deref(), Some(&[0xAA, 0xBB, 0xCC, 0xDD, 0xEE][..]));
+        }
+        other => panic!("期望 Blob 载荷，得到 {other:?}"),
+    }
+
+    // 类型 2 且 N=0：无流内数据字节。
+    let mut bytes = 9_u16.to_le_bytes().to_vec();
+    bytes.extend(2_i32.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    push_null(&mut bytes);
+    push_null(&mut bytes);
+    push_null(&mut bytes);
+    for value in [1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0] {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(2_i32.to_le_bytes());
+    bytes.push(1);
+    bytes.extend(0_i16.to_le_bytes());
+    for _ in 0..3 {
+        bytes.extend(0_i16.to_le_bytes());
+    }
+    let mut reader = Reader::new(&bytes);
+    let result =
+        read_picture_marker_symbol_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 92)
+            .unwrap();
+    match &result.image {
+        mxd2qgz::objects::display_symbol::PictureImage10_1::V9 {
+            payload:
+                Some(mxd2qgz::objects::display_symbol::PictureImagePayload10_1::Blob { size, data }),
+            ..
+        } => {
+            assert_eq!(*size, 0);
+            assert_eq!(*data, None);
+        }
+        other => panic!("期望空 Blob 载荷，得到 {other:?}"),
+    }
+
+    // 类型 4 拒绝。
+    let mut bytes = 9_u16.to_le_bytes().to_vec();
+    bytes.extend(4_i32.to_le_bytes());
+    let mut reader = Reader::new(&bytes);
+    let error =
+        read_picture_marker_symbol_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 93)
+            .unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert_eq!(reader.position(), 0);
+
+    // 类型 3 槽位为未知实现类：停止于槽位起点（载荷 None）。
+    let unknown = [0x77_u8; 16];
+    let mut bytes = 9_u16.to_le_bytes().to_vec();
+    bytes.extend(3_i32.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    push_entry(&mut bytes, &unknown, 930);
+    bytes.push(0);
+    let mut reader = Reader::new(&bytes);
+    let result =
+        read_picture_marker_symbol_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 94)
+            .unwrap();
+    match &result.image {
+        mxd2qgz::objects::display_symbol::PictureImage10_1::V9 { payload, .. } => {
+            assert_eq!(*payload, None)
+        }
+        other => panic!("期望 V9 图像块，得到 {other:?}"),
+    }
+    assert!(result.stop.is_some());
+    assert_eq!(reader.position(), 2 + 4 + 4);
+}
+
+#[test]
+fn picture_marker_symbol_legacy_paths() {
+    // 版本 8：String（非空 → double）→ 颜色 ×3 → 标量 → short ×3 → blob。
+    let mut bytes = 8_u16.to_le_bytes().to_vec();
+    push_string(&mut bytes, "pic");
+    bytes.extend(1.5_f64.to_le_bytes());
+    for _ in 0..3 {
+        push_null(&mut bytes);
+    }
+    for _ in 0..6 {
+        bytes.extend(0.0_f64.to_le_bytes());
+    }
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.push(1); // v>1 byte
+    bytes.extend(0_i16.to_le_bytes()); // v>2 short
+    for _ in 0..3 {
+        bytes.extend(0_i16.to_le_bytes()); // v>4 short ×3
+    }
+    bytes.extend(3_i32.to_le_bytes()); // v8 blob 尺寸
+    bytes.extend_from_slice(&[1, 2, 3]);
+    let mut reader = Reader::new(&bytes);
+    let result =
+        read_picture_marker_symbol_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 95)
+            .unwrap();
+    match &result.image {
+        mxd2qgz::objects::display_symbol::PictureImage10_1::Legacy(legacy) => {
+            assert_eq!(legacy.path.as_deref(), Some("pic"));
+            assert_eq!(legacy.path_double, Some(1.5));
+            assert_eq!(legacy.picture_a, None, "版本 ≥4 无第一槽");
+            assert_eq!(legacy.picture_b, None, "路径非空无第二槽");
+            assert_eq!(legacy.blob_size, Some(3));
+            assert_eq!(legacy.blob_data.as_deref(), Some(&[1, 2, 3][..]));
+        }
+        other => panic!("期望历史图像块，得到 {other:?}"),
+    }
+    assert_eq!(result.stop, None);
+    assert_eq!(reader.position(), bytes.len());
+
+    // 版本 2：无 String 段（v≥7 才有）；第一槽（v<4）与第二槽（v≤6）为空
+    // 标记；无 short ×3（v>4 不成立）；无 blob。
+    let mut bytes = 2_u16.to_le_bytes().to_vec();
+    push_null(&mut bytes);
+    push_null(&mut bytes);
+    for _ in 0..3 {
+        push_null(&mut bytes);
+    }
+    for _ in 0..6 {
+        bytes.extend(0.0_f64.to_le_bytes());
+    }
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.push(1);
+    bytes.extend(0_i16.to_le_bytes());
+    let mut reader = Reader::new(&bytes);
+    let result =
+        read_picture_marker_symbol_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 96)
+            .unwrap();
+    match &result.image {
+        mxd2qgz::objects::display_symbol::PictureImage10_1::Legacy(legacy) => {
+            assert_eq!(legacy.picture_a, Some(UnclosedSlot10_1::Null));
+            assert_eq!(legacy.picture_b, Some(UnclosedSlot10_1::Null));
+            assert_eq!(legacy.path, None);
+            assert_eq!(legacy.blob_size, None);
+        }
+        other => panic!("期望历史图像块，得到 {other:?}"),
+    }
+    assert_eq!(result.stop, None);
+    // 版本 2 不读 short_134（v>2 门），流止于 141−2。
+    assert_eq!(reader.position(), bytes.len() - 2);
+
+    // 版本 10 拒绝。
+    let bytes = 10_u16.to_le_bytes().to_vec();
+    let mut reader = Reader::new(&bytes);
+    let error =
+        read_picture_marker_symbol_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 1)
+            .unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert_eq!(reader.position(), 0);
+}
+
+#[test]
+fn picture_line_symbol_slot_and_fill_family_bodies() {
+    // PictureLineSymbol：图像填充槽空标记完整消费。
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.push(1);
+    bytes.extend(2.0_f64.to_le_bytes());
+    bytes.extend(3.0_f64.to_le_bytes());
+    push_null(&mut bytes);
+    let mut reader = Reader::new(&bytes);
+    let result =
+        read_picture_line_symbol_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 100)
+            .unwrap();
+    assert_eq!(result.byte_30, 1);
+    assert_eq!(result.picture_fill_symbol, Some(UnclosedSlot10_1::Null));
+    assert_eq!(result.stop, None);
+    assert_eq!(reader.position(), bytes.len());
+
+    // 图像填充槽未知类：停止于槽位起点。
+    let unknown = [0x19_u8; 16];
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.push(0);
+    bytes.extend(0.0_f64.to_le_bytes());
+    bytes.extend(0.0_f64.to_le_bytes());
+    push_entry(&mut bytes, &unknown, 940);
+    let mut reader = Reader::new(&bytes);
+    let result =
+        read_picture_line_symbol_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 101)
+            .unwrap();
+    assert_eq!(result.picture_fill_symbol, None);
+    assert!(matches!(
+        result.stop,
+        Some(SymbolStop10_1::Slot {
+            kind: mxd2qgz::objects::display_symbol::DisplaySlotKind10_1::PictureFillSymbol,
+            key: 940,
+            ..
+        })
+    ));
+    assert_eq!(reader.position(), 2 + 1 + 8 + 8);
+
+    // LineFillSymbol：颜色空标记 + 双 ISymbol 槽（SimpleLineSymbol 键 22 与
+    // 空标记）+ 标量段。
+    let mut nested = 1_u16.to_le_bytes().to_vec();
+    push_null(&mut nested);
+    nested.extend(5.0_f64.to_le_bytes());
+    nested.extend(0_i32.to_le_bytes());
+    nested.extend(0_i32.to_le_bytes());
+    nested.extend(0_i32.to_le_bytes());
+
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    push_null(&mut bytes);
+    push_entry(&mut bytes, &SIMPLE_LINE_SYMBOL_CLASS_ID, 22);
+    bytes.extend(&nested);
+    push_null(&mut bytes);
+    for value in [1.0_f64, 2.0, 3.0] {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes.extend(4_i32.to_le_bytes());
+    bytes.extend(5_i32.to_le_bytes());
+    let mut reader = Reader::new(&bytes);
+    let result = read_line_fill_symbol_body_10_1(
+        &mut reader,
+        1024,
+        &mut RefTable10_1::new(),
+        102,
+        MAX_SYMBOL_NESTING_DEPTH,
+    )
+    .unwrap();
+    assert!(matches!(
+        result.symbol_a,
+        Some(SymbolSlotFull10_1::SimpleLineSymbol(_))
+    ));
+    assert_eq!(result.symbol_b, Some(SymbolSlotFull10_1::Null));
+    assert_eq!(result.doubles, Some([1.0, 2.0, 3.0]));
+    assert_eq!(result.stop, None);
+    assert_eq!(reader.position(), bytes.len());
+
+    // MarkerFillSymbol：int32 + double ×4 + 颜色 + 双 ISymbol 槽 + 标量。
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(1_i32.to_le_bytes());
+    for value in [1.0_f64, 2.0, 3.0, 4.0] {
+        bytes.extend(value.to_le_bytes());
+    }
+    push_null(&mut bytes);
+    push_null(&mut bytes);
+    push_null(&mut bytes);
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(2_i32.to_le_bytes());
+    bytes.extend(45.0_f64.to_le_bytes());
+    let mut reader = Reader::new(&bytes);
+    let result = read_marker_fill_symbol_body_10_1(
+        &mut reader,
+        1024,
+        &mut RefTable10_1::new(),
+        103,
+        MAX_SYMBOL_NESTING_DEPTH,
+    )
+    .unwrap();
+    assert_eq!(result.color, Some(ColorSlot10_1::Null));
+    assert_eq!(result.symbol_a, Some(SymbolSlotFull10_1::Null));
+    assert_eq!(result.symbol_b, Some(SymbolSlotFull10_1::Null));
+    assert_eq!(result.int32s, Some([1, 2]));
+    assert_eq!(result.double_c, Some(45.0));
+    assert_eq!(result.stop, None);
+    assert_eq!(reader.position(), bytes.len());
+
+    // GradientFillSymbol：色带空标记 + 颜色 + 符号 + 标量，完整消费。
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    push_null(&mut bytes);
+    push_null(&mut bytes);
+    push_null(&mut bytes);
+    bytes.extend(30.0_f64.to_le_bytes());
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(0.5_f64.to_le_bytes());
+    for _ in 0..3 {
+        bytes.extend(0_i32.to_le_bytes());
+    }
+    let mut reader = Reader::new(&bytes);
+    let result = read_gradient_fill_symbol_body_10_1(
+        &mut reader,
+        1024,
+        &mut RefTable10_1::new(),
+        104,
+        MAX_SYMBOL_NESTING_DEPTH,
+    )
+    .unwrap();
+    assert_eq!(result.color_ramp, Some(UnclosedSlot10_1::Null));
+    assert_eq!(result.stop, None);
+    assert_eq!(reader.position(), bytes.len());
+
+    // 色带未知类：停止于槽位起点。
+    let unknown = [0x5f_u8; 16];
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    push_entry(&mut bytes, &unknown, 950);
+    bytes.push(0);
+    let mut reader = Reader::new(&bytes);
+    let result = read_gradient_fill_symbol_body_10_1(
+        &mut reader,
+        1024,
+        &mut RefTable10_1::new(),
+        105,
+        MAX_SYMBOL_NESTING_DEPTH,
+    )
+    .unwrap();
+    assert_eq!(result.color_ramp, None);
+    assert_eq!(result.color, None);
+    assert!(matches!(
+        result.stop,
+        Some(SymbolStop10_1::Slot {
+            kind: mxd2qgz::objects::display_symbol::DisplaySlotKind10_1::ColorRamp,
+            key: 950,
+            ..
+        })
+    ));
+    assert_eq!(reader.position(), 2);
+}
+
+#[test]
+fn arrow_marker_symbol_short_and_color_stop() {
+    // 版本 2：颜色空标记 + 标量 + 尾 short（流内位模式原样保留）。
+    let mut bytes = 2_u16.to_le_bytes().to_vec();
+    push_null(&mut bytes);
+    for value in [1.0_f64, 2.0, 3.0] {
+        bytes.extend(value.to_le_bytes());
+    }
+    for value in [1_i32, 2, 3] {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes.extend(4.0_f64.to_le_bytes());
+    bytes.extend(5.0_f64.to_le_bytes());
+    bytes.extend(0x0102_u16.to_le_bytes());
+    let mut reader = Reader::new(&bytes);
+    let result =
+        read_arrow_marker_symbol_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 110)
+            .unwrap();
+    assert_eq!(result.color, Some(ColorSlot10_1::Null));
+    assert_eq!(result.double_8c, 1.0);
+    assert_eq!(result.short_c4, Some(0x0102));
+    assert_eq!(result.stop, None);
+    assert_eq!(reader.position(), bytes.len());
+
+    // 版本 1：无尾 short。
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    push_null(&mut bytes);
+    for _ in 0..3 {
+        bytes.extend(0.0_f64.to_le_bytes());
+    }
+    for _ in 0..3 {
+        bytes.extend(0_i32.to_le_bytes());
+    }
+    for _ in 0..2 {
+        bytes.extend(0.0_f64.to_le_bytes());
+    }
+    let mut reader = Reader::new(&bytes);
+    let result =
+        read_arrow_marker_symbol_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 111)
+            .unwrap();
+    assert_eq!(result.short_c4, None);
+    assert_eq!(result.stop, None);
+    assert_eq!(reader.position(), bytes.len());
+
+    // 版本 3 拒绝。
+    let bytes = 3_u16.to_le_bytes().to_vec();
+    let mut reader = Reader::new(&bytes);
+    let error = read_arrow_marker_symbol_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 1)
+        .unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert_eq!(reader.position(), 0);
+
+    // 颜色槽未知类：停止于槽位起点（标量不可达）。
+    let unknown = [0xd3_u8; 16];
+    let mut bytes = 2_u16.to_le_bytes().to_vec();
+    push_entry(&mut bytes, &unknown, 960);
+    bytes.push(0);
+    let mut reader = Reader::new(&bytes);
+    let result =
+        read_arrow_marker_symbol_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 112)
+            .unwrap();
+    assert!(matches!(
+        result.color,
+        Some(ColorSlot10_1::Unsupported { key: 960, .. })
+    ));
+    assert!(result.stop.is_some());
+    assert_eq!(reader.position(), 2);
+}
+
+#[test]
+fn dot_density_fill_symbol_markers_values_and_color() {
+    // 版本 1：颜色 + 符号空标记 + 标量 + 2 个 SMS 标记（键 36/37）+ 值数组
+    // + 尾颜色。
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.push(1);
+    bytes.extend(2.0_f64.to_le_bytes());
+    bytes.push(0);
+    push_null(&mut bytes);
+    push_null(&mut bytes);
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(2_i32.to_le_bytes());
+    bytes.extend(3_i32.to_le_bytes());
+    bytes.extend(4.0_f64.to_le_bytes());
+    bytes.push(1);
+    push_count(&mut bytes, 2);
+    push_entry(&mut bytes, &SIMPLE_MARKER_SYMBOL_CLASS_ID, 36);
+    bytes.extend(&sms_body_v1());
+    push_entry(&mut bytes, &SIMPLE_MARKER_SYMBOL_CLASS_ID, 37);
+    bytes.extend(&sms_body_v1());
+    push_count(&mut bytes, 2);
+    push_count(&mut bytes, 0);
+    push_null(&mut bytes);
+
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let result = read_dot_density_fill_symbol_body_10_1(
+        &mut reader,
+        1024,
+        &mut table,
+        120,
+        MAX_SYMBOL_NESTING_DEPTH,
+    )
+    .unwrap();
+    assert_eq!(result.marker_count, 2);
+    assert_eq!(result.markers.len(), 2);
+    assert_eq!(result.values.as_deref(), Some(&[2, 0][..]));
+    assert_eq!(result.color_b, Some(ColorSlot10_1::Null));
+    assert_eq!(result.stop, None);
+    assert_eq!(reader.position(), bytes.len());
+    assert!(table.contains(36) && table.contains(37));
+
+    // 标记数组内未知类：停止于该条目起点，值数组与尾颜色不可达。
+    let unknown = [0xe4_u8; 16];
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.push(0);
+    bytes.extend(0.0_f64.to_le_bytes());
+    bytes.push(0);
+    push_null(&mut bytes);
+    push_null(&mut bytes);
+    for _ in 0..3 {
+        bytes.extend(0_i32.to_le_bytes());
+    }
+    bytes.extend(0.0_f64.to_le_bytes());
+    bytes.push(0);
+    push_count(&mut bytes, 1);
+    push_entry(&mut bytes, &unknown, 970);
+    bytes.push(0);
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let result = read_dot_density_fill_symbol_body_10_1(
+        &mut reader,
+        1024,
+        &mut table,
+        121,
+        MAX_SYMBOL_NESTING_DEPTH,
+    )
+    .unwrap();
+    assert!(matches!(
+        &result.markers[0],
+        SymbolSlotFull10_1::Unsupported { key: 970, .. }
+    ));
+    assert_eq!(result.values, None);
+    assert_eq!(result.color_b, None);
+    assert!(result.stop.is_some());
+    // 游标停在未知标记条目起点：2+1+8+1+16+16+12+8+1+4 之后。
+    assert_eq!(reader.position(), 2 + 1 + 8 + 1 + 16 + 16 + 12 + 8 + 1 + 4);
+    assert!(table.is_empty());
+}
+
+#[test]
+fn full_dispatcher_resolves_new_classes_and_stops_unknown() {
+    // 全闭合入口直接分派 GradientFillSymbol（对象条目头 + 体版本 + 体）。
+    let mut bytes = Vec::new();
+    push_entry(&mut bytes, &GRADIENT_FILL_SYMBOL_CLASS_ID, 985);
+    bytes.extend(1_u16.to_le_bytes());
+    push_null(&mut bytes);
+    push_null(&mut bytes);
+    push_null(&mut bytes);
+    bytes.extend(0.0_f64.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(0.0_f64.to_le_bytes());
+    for _ in 0..3 {
+        bytes.extend(0_i32.to_le_bytes());
+    }
+    let mut reader = Reader::new(&bytes);
+    let slot = read_symbol_slot_full_10_1(
+        &mut reader,
+        1024,
+        &mut RefTable10_1::new(),
+        MAX_SYMBOL_NESTING_DEPTH,
+    )
+    .unwrap();
+    assert!(matches!(slot, SymbolSlotFull10_1::GradientFillSymbol(_)));
+    assert_eq!(reader.position(), bytes.len());
+
+    // 未知类回退 + Unsupported。
+    let unknown = [0xcc_u8; 16];
+    let mut bytes = Vec::new();
+    push_entry(&mut bytes, &unknown, 980);
+    bytes.extend([0x22_u8; 4]);
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    match read_symbol_slot_full_10_1(&mut reader, 1024, &mut table, MAX_SYMBOL_NESTING_DEPTH)
+        .unwrap()
+    {
+        SymbolSlotFull10_1::Unsupported { class_id, key } => {
+            assert_eq!(class_id, unknown);
+            assert_eq!(key, 980);
+        }
+        other => panic!("期望 Unsupported，得到 {other:?}"),
+    }
+    assert_eq!(reader.position(), 0);
+    assert!(table.is_empty());
+}
+
+#[test]
+fn full_dispatcher_nests_template_and_line_decoration() {
+    // Template 体（无嵌套对象）与 LineDecoration（内嵌元素）经全闭合入口
+    // 相邻消费（对应 MarkerLine 的模板槽 + 装饰槽序）。
+    let template_body = {
+        let mut bytes = 1_u16.to_le_bytes().to_vec();
+        bytes.extend(1.0_f64.to_le_bytes());
+        push_count(&mut bytes, 1);
+        bytes.extend(0.5_f64.to_le_bytes());
+        bytes.extend(0.0_f64.to_le_bytes());
+        bytes
+    };
+    let mut element = 1_u16.to_le_bytes().to_vec();
+    element.push(0);
+    element.push(0);
+    element.push(0);
+    element.extend(0_i16.to_le_bytes());
+    push_null(&mut element);
+    push_count(&mut element, 0);
+
+    let mut bytes = Vec::new();
+    push_entry(&mut bytes, &TEMPLATE_CLASS_ID, 140);
+    bytes.extend(&template_body);
+    push_entry(&mut bytes, &LINE_DECORATION_CLASS_ID, 141);
+    bytes.extend(1_u16.to_le_bytes()); // 体版本
+    push_count(&mut bytes, 1);
+    push_entry(&mut bytes, &SIMPLE_LINE_DECORATION_ELEMENT_CLASS_ID, 142);
+    bytes.extend(&element);
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+
+    let template =
+        read_symbol_slot_full_10_1(&mut reader, 1024, &mut table, MAX_SYMBOL_NESTING_DEPTH)
+            .unwrap();
+    match &template {
+        SymbolSlotFull10_1::Template(body) => {
+            assert_eq!(body.key, 140);
+            assert_eq!(body.marks, [[0.5, 0.0]]);
+        }
+        other => panic!("期望 Template 体，得到 {other:?}"),
+    }
+
+    let decoration =
+        read_symbol_slot_full_10_1(&mut reader, 1024, &mut table, MAX_SYMBOL_NESTING_DEPTH)
+            .unwrap();
+    match &decoration {
+        SymbolSlotFull10_1::LineDecoration(body) => {
+            assert_eq!(body.key, 141);
+            assert_eq!(body.elements.len(), 1);
+            assert!(body.stop.is_none());
+        }
+        other => panic!("期望 LineDecoration 体，得到 {other:?}"),
+    }
+    assert_eq!(reader.position(), bytes.len());
+    for key in [140_u32, 141, 142] {
+        assert!(table.contains(key), "键 {key} 应已登记");
+    }
+}
+
+#[test]
+fn marker_line_body_parses_closed_template_and_decoration_slots() {
+    // MarkerLineSymbol（第一轮体）的 ITemplate/ILineDecoration 槽在本轮起
+    // 按类分派：槽内 Template/LineDecoration 新对象整体解析。
+    let template_body = {
+        let mut bytes = 1_u16.to_le_bytes().to_vec();
+        bytes.extend(1.0_f64.to_le_bytes());
+        push_count(&mut bytes, 1);
+        bytes.extend(0.5_f64.to_le_bytes());
+        bytes.extend(0.0_f64.to_le_bytes());
+        bytes
+    };
+    let mut element = 1_u16.to_le_bytes().to_vec();
+    element.push(0);
+    element.push(0);
+    element.push(0);
+    element.extend(0_i16.to_le_bytes());
+    push_null(&mut element);
+    push_count(&mut element, 0);
+
+    let mut bytes = 2_u16.to_le_bytes().to_vec();
+    bytes.push(0);
+    bytes.extend(1.0_f64.to_le_bytes());
+    push_null(&mut bytes); // IMarkerSymbol
+    push_entry(&mut bytes, &TEMPLATE_CLASS_ID, 150);
+    bytes.extend(&template_body);
+    push_entry(&mut bytes, &LINE_DECORATION_CLASS_ID, 151);
+    bytes.extend(1_u16.to_le_bytes()); // 体版本
+    push_count(&mut bytes, 1);
+    push_entry(&mut bytes, &SIMPLE_LINE_DECORATION_ELEMENT_CLASS_ID, 152);
+    bytes.extend(&element);
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(2_i32.to_le_bytes());
+    bytes.push(0);
+    bytes.extend(3.0_f64.to_le_bytes());
+    bytes.extend(4_i32.to_le_bytes());
+    bytes.extend(5_i32.to_le_bytes());
+    bytes.extend(6.0_f64.to_le_bytes());
+
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let result = read_marker_line_symbol_body_10_1(
+        &mut reader,
+        1024,
+        &mut table,
+        130,
+        MAX_SYMBOL_NESTING_DEPTH,
+    )
+    .unwrap();
+    match &result.template {
+        Some(DecorationSlot10_1::Template(body)) => {
+            assert_eq!(body.key, 150);
+            assert_eq!(body.marks, [[0.5, 0.0]]);
+        }
+        other => panic!("期望 Template 槽体，得到 {other:?}"),
+    }
+    match &result.line_decoration {
+        Some(DecorationSlot10_1::LineDecoration(body)) => {
+            assert_eq!(body.key, 151);
+            assert_eq!(body.elements.len(), 1);
+        }
+        other => panic!("期望 LineDecoration 槽体，得到 {other:?}"),
+    }
+    assert_eq!(result.int32_2134, Some(1));
+    assert_eq!(result.int32_2094, Some(4));
+    assert_eq!(result.double_208c, Some(6.0));
+    assert_eq!(result.stop, None);
+    assert_eq!(reader.position(), bytes.len());
+    for key in [150_u32, 151, 152] {
+        assert!(table.contains(key), "键 {key} 应已登记");
+    }
 }
