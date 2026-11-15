@@ -5,7 +5,11 @@
 
 use mxd2qgz::objects::envelope::SpatialReferenceEntry10_1;
 use mxd2qgz::objects::geometry::{
-    POLYLINE_CLASS_ID, PolylineBody10_1, read_geometry_body_of_class_10_1, read_polyline_body_10_1,
+    GeometryBody10_1, MULTIPOINT_CLASS_ID, MultipointBody10_1, MultipointRecord10_1,
+    POINT_CLASS_ID, POLYGON_CLASS_ID, POLYLINE_CLASS_ID, PointBody10_1, PointRecord10_1,
+    PolylineBody10_1, read_geometry_body_10_1, read_geometry_body_of_class_10_1,
+    read_multipoint_body_10_1, read_point_body_10_1, read_polygon_body_10_1,
+    read_polyline_body_10_1,
 };
 use mxd2qgz::objects::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
 use mxd2qgz::storage::object_refs::RefTable10_1;
@@ -363,11 +367,654 @@ fn dispatch_closes_polyline_and_rejects_other_geometry_classes() {
     assert_eq!(body.version, 2);
     assert_eq!(reader.position(), bytes.len());
 
-    // 同族未开放类：Unsupported，游标与登记表不动。
+    // 非闭合类：Unsupported，游标与登记表不动（本测试用非几何 CLSID 字节；
+    // Polygon/Point/Multipoint 已闭合，见类型化分派测试）。
     let mut reader = Reader::new(&bytes);
     let other = [0xa5; 16];
     let error =
         read_geometry_body_of_class_10_1(&other, &mut reader, usize::MAX, &mut table).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::Unsupported);
+    assert_eq!(reader.position(), 0);
+    assert!(table.is_empty());
+}
+
+// ============================================================
+// 第二轮：Polygon / Point / Multipoint（样本 0 实例，全部合成输入）
+// ============================================================
+
+/// 类标识常量逐字节复核（esri.clsid 声明 + .rdata 常量独立字节扫描唯一命中，
+/// 内存序 = Data1-3 小端 + Data4 原序）。
+#[test]
+fn polygon_point_multipoint_class_ids_match_documented_guids() {
+    assert_eq!(
+        POLYGON_CLASS_ID,
+        [
+            0x42, 0xcb, 0xa5, 0x00, 0xda, 0x52, 0xd0, 0x11, 0xa8, 0xf2, 0x00, 0x60, 0x8c, 0x85,
+            0xed, 0xe5,
+        ]
+    );
+    assert_eq!(
+        POINT_CLASS_ID,
+        [
+            0x41, 0xcb, 0xa5, 0x00, 0xda, 0x52, 0xd0, 0x11, 0xa8, 0xf2, 0x00, 0x60, 0x8c, 0x85,
+            0xed, 0xe5,
+        ]
+    );
+    assert_eq!(
+        MULTIPOINT_CLASS_ID,
+        [
+            0x40, 0xcb, 0xa5, 0x00, 0xda, 0x52, 0xd0, 0x11, 0xa8, 0xf2, 0x00, 0x60, 0x8c, 0x85,
+            0xed, 0xe5,
+        ]
+    );
+}
+
+/// 构造 Polyline/Polygon 共享布局的记录字节（类型 + 包络 + 路径/环数 + 点数 +
+/// 起始数组 + 点集），期望值与输入同源（按位相等）。
+fn shape_record_bytes(
+    kind: u32,
+    envelope: &[f64; 4],
+    starts: &[u32],
+    points: &[[f64; 2]],
+) -> Vec<u8> {
+    let mut bytes = kind.to_le_bytes().to_vec();
+    for value in envelope {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes.extend((starts.len() as u32).to_le_bytes());
+    bytes.extend((points.len() as u32).to_le_bytes());
+    for start in starts {
+        bytes.extend(start.to_le_bytes());
+    }
+    for [x, y] in points {
+        bytes.extend(x.to_le_bytes());
+        bytes.extend(y.to_le_bytes());
+    }
+    bytes
+}
+
+#[test]
+fn polygon_multi_ring_record_round_trips() {
+    // 多环 Polygon：环数 2、环起始 [0, 3]、5 个点（第二环 3 点闭合三角）。
+    // 证据：ShapePolygon 与 ShapePolyline 的解析槽同为 0x7197fc50，布局一致；
+    // 样本 0 实例，纯合成输入。
+    let starts = [0_u32, 3];
+    let points = [
+        [10.0, 20.0],
+        [30.0, 20.0],
+        [30.0, 40.0],
+        [10.0, 20.0],
+        [50.0, 20.0],
+    ];
+    let envelope = [10.0, 20.0, 50.0, 40.0];
+    let record = shape_record_bytes(5, &envelope, &starts, &points);
+    let bytes = body_with(2, &record, &[0_u8; 16]);
+    let mut table = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let body = read_polygon_body_10_1(&mut reader, usize::MAX, &mut table).unwrap();
+    assert_eq!(body.version, 2);
+    assert_eq!(body.record.kind, 5);
+    assert_eq!(body.record.envelope, envelope);
+    assert_eq!(body.record.path_starts, starts);
+    assert_eq!(body.record.points, points);
+    assert_eq!(
+        body.spatial_reference,
+        Some(SpatialReferenceEntry10_1::Null)
+    );
+    // 恰好消费全部字节。
+    assert_eq!(reader.position(), bytes.len());
+    assert!(table.is_empty());
+}
+
+#[test]
+fn polygon_empty_geometry_and_shared_gates() {
+    // 空几何（恰 4 字节、类型 0）+ 版本 1 无空间参考段（共享解析器对 Polygon
+    // 分支回填标记 5，读取器不关心回填值）。
+    let bytes = body_with(1, &0_u32.to_le_bytes(), b"tail");
+    let mut table = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let body = read_polygon_body_10_1(&mut reader, usize::MAX, &mut table).unwrap();
+    assert_eq!(body.record.kind, 0);
+    assert!(body.record.points.is_empty());
+    assert_eq!(body.spatial_reference, None);
+    assert_eq!(reader.read_bytes(4).unwrap(), b"tail");
+
+    // 与 Polyline 共享解析器的同型拒绝：单点（0x80040221）、长度不一致、
+    // 版本门（含负位模式）。
+    let single = shape_record_bytes(5, &COORDS, &[0], &[[10.0, 20.0]]);
+    let bytes = body_with(2, &single, &[]);
+    let mut reader = Reader::new(&bytes);
+    let error = read_polygon_body_10_1(&mut reader, usize::MAX, &mut table).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert_eq!(reader.position(), 0);
+
+    let mut record = shape_record_bytes(5, &COORDS, &[0], &POINTS);
+    record.pop();
+    let bytes = body_with(2, &record, &[]);
+    let mut reader = Reader::new(&bytes);
+    let error = read_polygon_body_10_1(&mut reader, usize::MAX, &mut table).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert_eq!(reader.position(), 0);
+
+    for version in [3_u16, 0x8000] {
+        let record = shape_record_bytes(5, &COORDS, &[0], &POINTS);
+        let bytes = body_with(version, &record, &[]);
+        let mut reader = Reader::new(&bytes);
+        let error = read_polygon_body_10_1(&mut reader, usize::MAX, &mut table).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::InvalidData, "版本 {version}");
+        assert_eq!(reader.position(), 0);
+    }
+}
+
+#[test]
+fn legacy_dispatch_entry_still_routes_only_polyline() {
+    // 兼容入口契约：签名/行为不变——Polygon 返回 Unsupported 且不推进游标；
+    // 切换到类型化入口属整合轮工作（element_body.rs 为共享文件，本轮不动）。
+    let record = shape_record_bytes(5, &COORDS, &[0], &POINTS);
+    let bytes = body_with(2, &record, &[0_u8; 16]);
+    let mut table = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let error =
+        read_geometry_body_of_class_10_1(&POLYGON_CLASS_ID, &mut reader, usize::MAX, &mut table)
+            .unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::Unsupported);
+    assert_eq!(reader.position(), 0);
+    assert!(table.is_empty());
+}
+
+/// 构造 Point 记录字节（类型字 + X + Y + 可选 Z/M/ID）。
+fn point_record_bytes(
+    kind: u32,
+    x: f64,
+    y: f64,
+    z: Option<f64>,
+    m: Option<f64>,
+    id: Option<u32>,
+) -> Vec<u8> {
+    let mut bytes = kind.to_le_bytes().to_vec();
+    bytes.extend(x.to_le_bytes());
+    bytes.extend(y.to_le_bytes());
+    // 段序：Z → M → ID（ID 仅低字节 0x34 变体的 0x10000000 位可达）。
+    if let Some(value) = z {
+        bytes.extend(value.to_le_bytes());
+    }
+    if let Some(value) = m {
+        bytes.extend(value.to_le_bytes());
+    }
+    if let Some(value) = id {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes
+}
+
+#[test]
+fn point_kind_table_round_trips() {
+    // 类型字接受清单（全字匹配 + 低字节 0x34 变体）与期望长度（反编译表，
+    // 样本 0 实例）：1=20、9=28(+Z)、0xb=36(+Z+M)、0x15=28(+M)、
+    // 0x34 家族 = 20 + 8·Z位 + 8·M位 + 4·ID位（0x10000000 不在 0x2f000000
+    // 掩码内，ID 段可达）。
+    let cases: [(u32, usize, Option<f64>, Option<f64>, Option<u32>); 8] = [
+        (1, 20, None, None, None),
+        (9, 28, Some(3.5), None, None),
+        (0xb, 36, Some(3.5), Some(-1.25), None),
+        (0x15, 28, None, Some(-1.25), None),
+        (0x34, 20, None, None, None),
+        (0x8000_0034, 28, Some(3.5), None, None),
+        (0xC000_0034, 36, Some(3.5), Some(-1.25), None),
+        (0xD000_0034, 40, Some(3.5), Some(-1.25), Some(7)),
+    ];
+    for (kind, len, z, m, id) in cases {
+        let record = point_record_bytes(kind, 1.5, 2.5, z, m, id);
+        assert_eq!(record.len(), len, "类型字 0x{kind:08x} 布局长度");
+        let bytes = body_with(1, &record, b"tail");
+        let mut table = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        let body = read_point_body_10_1(&mut reader, usize::MAX, &mut table).unwrap();
+        assert_eq!(body.record.kind, kind, "类型字 0x{kind:08x}");
+        assert_eq!(body.record.x, Some(1.5));
+        assert_eq!(body.record.y, Some(2.5));
+        assert_eq!(body.record.z, z, "类型字 0x{kind:08x} Z");
+        assert_eq!(body.record.m, m, "类型字 0x{kind:08x} M");
+        assert_eq!(body.record.id, id, "类型字 0x{kind:08x} ID");
+        assert_eq!(body.spatial_reference, None);
+        assert_eq!(reader.read_bytes(4).unwrap(), b"tail");
+    }
+}
+
+#[test]
+fn point_empty_record_and_rejections() {
+    // 空点：恰 4 字节、类型字恰 0（原生 `if (uVar2 == 0)`，consumed = 4）。
+    let bytes = body_with(1, &0_u32.to_le_bytes(), b"tail");
+    let mut table = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let body = read_point_body_10_1(&mut reader, usize::MAX, &mut table).unwrap();
+    assert_eq!(
+        body.record,
+        PointRecord10_1 {
+            kind: 0,
+            x: None,
+            y: None,
+            z: None,
+            m: None,
+            id: None,
+        }
+    );
+    assert_eq!(reader.read_bytes(4).unwrap(), b"tail");
+
+    // 长度 4 但类型非 0：原生会继续读 X/Y（越界未定义行为），本读取器拒绝。
+    let bytes = body_with(1, &1_u32.to_le_bytes(), &[]);
+    let mut reader = Reader::new(&bytes);
+    let error = read_point_body_10_1(&mut reader, usize::MAX, &mut table).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert_eq!(reader.position(), 0);
+
+    // 声明长度与布局不一致（死空间）：类型 1 恰 20，构造 21。
+    let mut record = point_record_bytes(1, 1.0, 2.0, None, None, None);
+    record.push(0);
+    let bytes = body_with(1, &record, &[]);
+    let mut reader = Reader::new(&bytes);
+    let error = read_point_body_10_1(&mut reader, usize::MAX, &mut table).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert_eq!(reader.position(), 0);
+
+    // 未知类型字（原生 0x8004020a 同拒）。
+    for kind in [2_u32, 0x1000_0001, 0x1234_5678] {
+        let record = point_record_bytes(kind, 1.0, 2.0, None, None, None);
+        let bytes = body_with(1, &record, &[]);
+        let mut reader = Reader::new(&bytes);
+        let error = read_point_body_10_1(&mut reader, usize::MAX, &mut table).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::InvalidData, "类型字 0x{kind:08x}");
+        assert_eq!(reader.position(), 0);
+    }
+
+    // 低字节 0x34 但含 0x2f000000 掩码位（= 0x01000000/0x02000000/
+    // 0x04000000/0x08000000/0x20000000，不含 0x10000000 ID 位）：原生默认
+    // 分支的门同拒。
+    let record = point_record_bytes(0x2000_0034, 1.0, 2.0, None, None, None);
+    let bytes = body_with(1, &record, &[]);
+    let mut reader = Reader::new(&bytes);
+    let error = read_point_body_10_1(&mut reader, usize::MAX, &mut table).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert_eq!(reader.position(), 0);
+
+    // ID 位可达（0x10000000 不在掩码内）：0x1000_0034 = X + Y + ID，恰 24 字节。
+    let record = point_record_bytes(0x1000_0034, 1.0, 2.0, None, None, Some(5));
+    assert_eq!(record.len(), 24);
+    let bytes = body_with(1, &record, b"tail");
+    let mut reader = Reader::new(&bytes);
+    let body = read_point_body_10_1(&mut reader, usize::MAX, &mut table).unwrap();
+    assert_eq!(body.record.id, Some(5));
+    assert_eq!(body.record.z, None);
+    assert_eq!(reader.read_bytes(4).unwrap(), b"tail");
+
+    // wrapper 原生长度门：声明长度 > 0x50 拒 0x80004005（80 字节栈缓冲）。
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(0x51_u32.to_le_bytes());
+    bytes.extend([0_u8; 0x51]);
+    let mut reader = Reader::new(&bytes);
+    let error = read_point_body_10_1(&mut reader, usize::MAX, &mut table).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert_eq!(reader.position(), 0);
+}
+
+#[test]
+fn point_body_truncation_is_transactional() {
+    // 版本 2 + 类型 1 记录 + 16 字节空标记的全前缀截断：失败不推进游标、不
+    // 修改登记表（既有键保留）。
+    let record = point_record_bytes(1, 1.5, 2.5, None, None, None);
+    let bytes = body_with(2, &record, &[0_u8; 16]);
+    let mut table = RefTable10_1::new();
+    table.register(7);
+    for end in 0..bytes.len() {
+        let mut table = table.clone();
+        let mut reader = Reader::new(&bytes[..end]);
+        assert!(
+            read_point_body_10_1(&mut reader, usize::MAX, &mut table).is_err(),
+            "前缀长度 {end} 应失败"
+        );
+        assert_eq!(reader.position(), 0, "前缀长度 {end}");
+        assert_eq!(table.len(), 1);
+        assert!(table.contains(7));
+    }
+}
+
+/// 构造 Multipoint 单点型记录字节（类型字 + X + Y + 可选 Z/M/ID）。
+fn multipoint_single_record_bytes(
+    kind: u32,
+    x: f64,
+    y: f64,
+    z: Option<f64>,
+    m: Option<f64>,
+    id: Option<u32>,
+) -> Vec<u8> {
+    let mut bytes = kind.to_le_bytes().to_vec();
+    bytes.extend(x.to_le_bytes());
+    bytes.extend(y.to_le_bytes());
+    if let Some(value) = z {
+        bytes.extend(value.to_le_bytes());
+    }
+    if let Some(value) = m {
+        bytes.extend(value.to_le_bytes());
+    }
+    if let Some(value) = id {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes
+}
+
+#[test]
+fn multipoint_single_kinds_round_trip() {
+    // 单点型（低字节 1/9/0xb/0x15/0x34）：Z/M/ID 存在性按全字判别（原生语
+    // 义）。0x40000009 验证「类型字带高位后恰值 9 的 Z 不再隐含」；带 ID 位
+    // 的 0x34 + ID 位验证 ID 段读取（Multipoint 无 0x2f000000 门，与 Point 的掩码门不同）。
+    let cases: [(u32, usize, Option<f64>, Option<f64>, Option<u32>); 4] = [
+        (1, 20, None, None, None),
+        (9, 28, Some(6.0), None, None),
+        (0x4000_0009, 28, None, Some(-2.0), None),
+        (0x9000_0034, 32, Some(6.0), None, Some(9)),
+    ];
+    for (kind, len, z, m, id) in cases {
+        let record = multipoint_single_record_bytes(kind, 1.25, 3.75, z, m, id);
+        assert_eq!(record.len(), len, "类型字 0x{kind:08x} 布局长度");
+        let bytes = body_with(1, &record, b"tail");
+        let mut table = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        let body: MultipointBody10_1 =
+            read_multipoint_body_10_1(&mut reader, usize::MAX, &mut table).unwrap();
+        match &body.record {
+            MultipointRecord10_1::Single {
+                kind: got,
+                x,
+                y,
+                z: gz,
+                m: gm,
+                id: gid,
+            } => {
+                assert_eq!(*got, kind);
+                assert_eq!((*x, *y), (1.25, 3.75));
+                assert_eq!(*gz, z);
+                assert_eq!(*gm, m);
+                assert_eq!(*gid, id);
+            }
+            other => panic!("类型字 0x{kind:08x} 应解析为 Single: {other:?}"),
+        }
+        assert_eq!(reader.read_bytes(4).unwrap(), b"tail");
+    }
+}
+
+/// 构造 Multipoint 多点型记录字节（类型字 + 包络 + 点数 + 点集 + 段序
+/// Z → M → ID）。
+fn multipoint_multi_record_bytes(
+    kind: u32,
+    envelope: &[f64; 4],
+    points: &[[f64; 2]],
+    z: Option<([f64; 2], &[f64])>,
+    m: Option<([f64; 2], &[f64])>,
+    ids: Option<&[u32]>,
+) -> Vec<u8> {
+    let mut bytes = kind.to_le_bytes().to_vec();
+    for value in envelope {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes.extend((points.len() as u32).to_le_bytes());
+    for [x, y] in points {
+        bytes.extend(x.to_le_bytes());
+        bytes.extend(y.to_le_bytes());
+    }
+    if let Some((range, values)) = z {
+        bytes.extend(range[0].to_le_bytes());
+        bytes.extend(range[1].to_le_bytes());
+        for value in values {
+            bytes.extend(value.to_le_bytes());
+        }
+    }
+    if let Some((range, values)) = m {
+        bytes.extend(range[0].to_le_bytes());
+        bytes.extend(range[1].to_le_bytes());
+        for value in values {
+            bytes.extend(value.to_le_bytes());
+        }
+    }
+    if let Some(values) = ids {
+        for value in values {
+            bytes.extend(value.to_le_bytes());
+        }
+    }
+    bytes
+}
+
+#[test]
+fn multipoint_multi_kinds_round_trip() {
+    // 多点型（低字节 8/0x12/0x14/0x1c/0x35）：期望长度 = 40 + 16N + 尾随段
+    // （Z/M 各 16+8N、ID 4N），段序 Z → M → ID。
+    let envelope = [10.0, 20.0, 30.0, 40.0];
+
+    // 类型 8、3 点、无尾随段：40 + 48 = 88。
+    let points = [[10.0, 20.0], [30.0, 40.0], [20.0, 30.0]];
+    let record = multipoint_multi_record_bytes(8, &envelope, &points, None, None, None);
+    assert_eq!(record.len(), 88);
+    let bytes = body_with(2, &record, &[0_u8; 16]);
+    let mut table = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let body = read_multipoint_body_10_1(&mut reader, usize::MAX, &mut table).unwrap();
+    match &body.record {
+        MultipointRecord10_1::Multi {
+            kind,
+            envelope: env,
+            points: pts,
+            z_range,
+            m_range,
+            point_id,
+            ..
+        } => {
+            assert_eq!(*kind, 8);
+            assert_eq!(*env, envelope);
+            assert_eq!(pts, &points);
+            assert_eq!(*z_range, None);
+            assert_eq!(*m_range, None);
+            assert!(point_id.is_empty());
+        }
+        other => panic!("类型 8 应解析为 Multi: {other:?}"),
+    }
+    assert_eq!(
+        body.spatial_reference,
+        Some(SpatialReferenceEntry10_1::Null)
+    );
+    assert_eq!(reader.position(), bytes.len());
+
+    // 类型 0x14（Z 隐含）、2 点：40 + 32 + (16+16) = 104。
+    let two = [[10.0, 20.0], [30.0, 40.0]];
+    let record = multipoint_multi_record_bytes(
+        0x14,
+        &envelope,
+        &two,
+        Some(([0.0, 9.0], &[1.0, 2.0])),
+        None,
+        None,
+    );
+    assert_eq!(record.len(), 104);
+    let bytes = body_with(1, &record, &[]);
+    let mut reader = Reader::new(&bytes);
+    let body = read_multipoint_body_10_1(&mut reader, usize::MAX, &mut table).unwrap();
+    match &body.record {
+        MultipointRecord10_1::Multi {
+            z_range,
+            point_z,
+            m_range,
+            point_m,
+            point_id,
+            ..
+        } => {
+            assert_eq!(*z_range, Some([0.0, 9.0]));
+            assert_eq!(point_z, &[1.0, 2.0]);
+            assert_eq!(*m_range, None);
+            assert!(point_m.is_empty());
+            assert!(point_id.is_empty());
+        }
+        other => panic!("类型 0x14 应解析为 Multi: {other:?}"),
+    }
+    assert_eq!(reader.position(), bytes.len());
+
+    // 类型 0x12（Z、M 皆隐含）、1 点：40 + 16 + (16+8) + (16+8) = 104。
+    let one = [[7.0, 8.0]];
+    let record = multipoint_multi_record_bytes(
+        0x12,
+        &envelope,
+        &one,
+        Some(([1.0, 1.0], &[2.0])),
+        Some(([3.0, 3.0], &[4.0])),
+        None,
+    );
+    assert_eq!(record.len(), 104);
+    let bytes = body_with(1, &record, &[]);
+    let mut reader = Reader::new(&bytes);
+    let body = read_multipoint_body_10_1(&mut reader, usize::MAX, &mut table).unwrap();
+    match &body.record {
+        MultipointRecord10_1::Multi {
+            z_range,
+            point_z,
+            m_range,
+            point_m,
+            ..
+        } => {
+            assert_eq!(*z_range, Some([1.0, 1.0]));
+            assert_eq!(point_z, &[2.0]);
+            assert_eq!(*m_range, Some([3.0, 3.0]));
+            assert_eq!(point_m, &[4.0]);
+        }
+        other => panic!("类型 0x12 应解析为 Multi: {other:?}"),
+    }
+
+    // 类型 8 | 0x10000000（ID 位）、1 点：40 + 16 + 4 = 60（高位标志对多点
+    // 型有效；与 Point 不同，Multipoint 无 0x2f000000 门）。
+    let record =
+        multipoint_multi_record_bytes(0x1000_0008, &envelope, &one, None, None, Some(&[42]));
+    assert_eq!(record.len(), 60);
+    let bytes = body_with(1, &record, &[]);
+    let mut reader = Reader::new(&bytes);
+    let body = read_multipoint_body_10_1(&mut reader, usize::MAX, &mut table).unwrap();
+    match &body.record {
+        MultipointRecord10_1::Multi { point_id, .. } => assert_eq!(point_id, &[42]),
+        other => panic!("类型 0x10000008 应解析为 Multi: {other:?}"),
+    }
+    assert_eq!(reader.position(), bytes.len());
+}
+
+#[test]
+fn multipoint_empty_record_and_rejections() {
+    // 空点集：原生只看类型字低字节（switch(uVar1 & 0xff) case 0）且完全不读
+    // 内容；读取器要求恰 4 字节（较原生更严），类型字原样保留（0x300 验证
+    // 「只看低字节」语义）。
+    let bytes = body_with(1, &0x300_u32.to_le_bytes(), b"tail");
+    let mut table = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let body = read_multipoint_body_10_1(&mut reader, usize::MAX, &mut table).unwrap();
+    assert_eq!(body.record, MultipointRecord10_1::Empty { kind: 0x300 });
+    assert_eq!(reader.read_bytes(4).unwrap(), b"tail");
+
+    // 低字节 0 但声明长度 > 4：原生接受（内容不读），本读取器拒绝死空间。
+    let mut record = 0x300_u32.to_le_bytes().to_vec();
+    record.extend([0_u8; 4]);
+    let bytes = body_with(1, &record, &[]);
+    let mut reader = Reader::new(&bytes);
+    let error = read_multipoint_body_10_1(&mut reader, usize::MAX, &mut table).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert_eq!(reader.position(), 0);
+
+    // 未知低字节（原生 0x8004020a 同拒）。
+    let record = multipoint_single_record_bytes(2, 1.0, 2.0, None, None, None);
+    let bytes = body_with(1, &record, &[]);
+    let mut reader = Reader::new(&bytes);
+    let error = read_multipoint_body_10_1(&mut reader, usize::MAX, &mut table).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert_eq!(reader.position(), 0);
+
+    // 多点型负点数：原生静默跳过建点（无显式错误），本读取器拒绝（较原生更
+    // 严，与折线解析器 0x80040253 对齐）。
+    let mut record = 8_u32.to_le_bytes().to_vec();
+    for value in COORDS {
+        record.extend(value.to_le_bytes());
+    }
+    record.extend(0xFFFF_FFFF_u32.to_le_bytes());
+    let bytes = body_with(1, &record, &[]);
+    let mut reader = Reader::new(&bytes);
+    let error = read_multipoint_body_10_1(&mut reader, usize::MAX, &mut table).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert_eq!(reader.position(), 0);
+
+    // 多点型长度不一致（类型 8、1 点：40 + 16 = 56，构造 55）。
+    let record = multipoint_multi_record_bytes(8, &COORDS, &[[10.0, 20.0]], None, None, None);
+    let mut truncated = record.clone();
+    truncated.pop();
+    let bytes = body_with(1, &truncated, &[]);
+    let mut reader = Reader::new(&bytes);
+    let error = read_multipoint_body_10_1(&mut reader, usize::MAX, &mut table).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert_eq!(reader.position(), 0);
+    let _ = record;
+}
+
+#[test]
+fn typed_dispatch_routes_all_four_classes_and_rejects_unknown() {
+    // 四类最小体经类型化入口路由到对应变体；未知类 Unsupported 且整体回滚。
+    let mut table = RefTable10_1::new();
+
+    // Polyline：样本键 1618 形态。
+    let polyline = sample_shaped_body();
+    let mut reader = Reader::new(&polyline);
+    match read_geometry_body_10_1(&POLYLINE_CLASS_ID, &mut reader, usize::MAX, &mut table).unwrap()
+    {
+        GeometryBody10_1::Polyline(body) => {
+            assert_eq!(body.version, 2);
+            assert_eq!(body.record.kind, 3);
+        }
+        other => panic!("Polyline 应路由到 Polyline 变体: {other:?}"),
+    }
+    assert_eq!(reader.position(), polyline.len());
+
+    // Polygon：单环 + 版本 1。
+    let polygon = body_with(1, &shape_record_bytes(5, &COORDS, &[0], &POINTS), b"tail");
+    let mut reader = Reader::new(&polygon);
+    match read_geometry_body_10_1(&POLYGON_CLASS_ID, &mut reader, usize::MAX, &mut table).unwrap() {
+        GeometryBody10_1::Polygon(body) => assert_eq!(body.record.kind, 5),
+        other => panic!("Polygon 应路由到 Polygon 变体: {other:?}"),
+    }
+    assert_eq!(reader.read_bytes(4).unwrap(), b"tail");
+
+    // Point：类型 1。
+    let point = body_with(
+        1,
+        &point_record_bytes(1, 1.0, 2.0, None, None, None),
+        b"tail",
+    );
+    let mut reader = Reader::new(&point);
+    match read_geometry_body_10_1(&POINT_CLASS_ID, &mut reader, usize::MAX, &mut table).unwrap() {
+        GeometryBody10_1::Point(PointBody10_1 {
+            record: PointRecord10_1 { kind, .. },
+            ..
+        }) => assert_eq!(kind, 1),
+        other => panic!("Point 应路由到 Point 变体: {other:?}"),
+    }
+    assert_eq!(reader.read_bytes(4).unwrap(), b"tail");
+
+    // Multipoint：空点集。
+    let multipoint = body_with(1, &0_u32.to_le_bytes(), b"tail");
+    let mut reader = Reader::new(&multipoint);
+    match read_geometry_body_10_1(&MULTIPOINT_CLASS_ID, &mut reader, usize::MAX, &mut table)
+        .unwrap()
+    {
+        GeometryBody10_1::Multipoint(MultipointBody10_1 {
+            record: MultipointRecord10_1::Empty { .. },
+            ..
+        }) => {}
+        other => panic!("Multipoint 应路由到 Multipoint 变体: {other:?}"),
+    }
+    assert_eq!(reader.read_bytes(4).unwrap(), b"tail");
+
+    // 未知类：Unsupported，游标与登记表不动。
+    let unknown = [0xa5; 16];
+    let mut reader = Reader::new(&polyline);
+    let error = read_geometry_body_10_1(&unknown, &mut reader, usize::MAX, &mut table).unwrap_err();
     assert_eq!(error.kind(), ErrorKind::Unsupported);
     assert_eq!(reader.position(), 0);
     assert!(table.is_empty());
