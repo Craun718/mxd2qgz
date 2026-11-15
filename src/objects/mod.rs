@@ -11,6 +11,7 @@ pub mod envelope;
 pub mod geometry;
 pub mod hyperlink;
 pub mod number_format;
+pub mod ole_font;
 pub mod property_set;
 pub mod spatial_reference;
 pub mod workspace_name;
