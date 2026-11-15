@@ -17,15 +17,23 @@
 //!    生更严；
 //! 2. int32 元素组计数（原生按有符号比较，<=0 不迭代）+ 每组
 //!    [int32 元素计数（同样有符号比较）+ 每元素一个嵌套对象（请求 IID
-//!    `DAT_6f7aa4fc`，字节未解码）]；
+//!    `DAT_6f7aa4fc`={9B001319} IElement，esriCarto 类型库定名）]；
 //! 3. AfCore String 名称 → obj+0x20；
 //! 4. int16 ×3 → +0x34/+0x36/+0x38；
 //! 5. double ×2 → +0x24/+0x2c；
 //! 6. int32 ×3 → +0x4c、+0x50、读入局部变量。[文档节摘要有误：反编译为
 //!    连续三个 int32，第三个读入局部变量后未见消费；样本 `/Maps:0x17024`
 //!    起的 `3,1,1` 与其后对象头逐字节印证这一布局]；
-//! 7. 嵌套对象 ×1（请求 IID `DAT_6f7aa58c`，字节未解码）→ +0x1c。样本中
-//!    该对象是 ElementCollection `{CE8F3972-E9BE-11D1-A232-080009B6F22B}`；
+//! 7. 嵌套对象 ×1（请求 IID `DAT_6f7aa58c`={CE8F3971} IElementCollection，
+//!    esriCarto 类型库定名，2026-11-15）→ +0x1c。样本中该对象是
+//!    ElementCollection `{CE8F3972-E9BE-11D1-A232-080009B6F22B}` coclass
+//!    （请求 IID 与 coclass CLSID 同族 ±1）。新对象按类标识分派：与
+//!    [`ELEMENT_COLLECTION_CLASS_ID`] 相同时经
+//!    [`crate::objects::element_collection::read_element_collection_10_1`]
+//!    整体解析其体（体内停止透传为
+//!    [`CompositeGraphicsLayerStop10_1::NestedCollectionIncomplete`]，游标
+//!    停在内层停止点，键保留登记；体完整消费则继续第 8 步）；其余类维持
+//!    未知类停止回退（[`CompositeGraphicsLayerStop10_1::NestedNewObject`]）；
 //! 8. 版本 >1：double → +0x54 + int32（读入局部变量）；
 //! 9. [反编译此处调用 `FUN_6f6b3100()`，无参数——流对象是本函数局部变量，
 //!    按不消费流处理，未验证] int32 子图层计数（有符号比较，<=0 不迭代）
@@ -54,30 +62,34 @@
 //! 头并比对 [`COMPOSITE_GRAPHICS_LAYER_CLASS_ID`]，从对象头之后的位置调用
 //! [`read_composite_graphics_layer_prefix_10_1`]；本模块不重复读取对象头。
 //!
-//! 样本核对（辅助观察，非测试依赖）：`samples/测试底图.mxd` 的 `/Maps`
-//! 导出中，对象头 @`0x16fba` 类标识与本常量逐字节相同、键 1553；体
-//! @`0x16fce` 起逐段吻合：版本 6、元素组计数 11 且组内计数全 0（44 字节
-//! 零）、名称 `<默认>`（长度 10，@`0x17000`）、short
+//! 样本核对（辅助观察，非测试依赖；2026-11-15 分派接线后重走）：`samples/
+//! 测试底图.mxd` 的 `/Maps` 导出中，对象头 @`0x16fba` 类标识与本常量逐字节
+//! 相同、键 1553；体 @`0x16fce` 起逐段吻合：版本 6、元素组计数 11 且组内
+//! 计数全 0（44 字节零）、名称 `<默认>`（长度 10，@`0x17000`）、short
 //! `0xffff/0xffff/0x0000`（@`0x1700e`）、double `0.0/0.0`（@`0x17014`）、
 //! 三个 int32 `3,1,1`（@`0x17024`）、第 7 步对象头 @`0x17030` 为
-//! ElementCollection 键 1554（新对象，本读取器在此停止）。停止点之后的
-//! 人工观察：子图层计数存在 `0x17052`=1 与 `0x17056`=10 二解未裁决（第五
-//! 轮「未解决事项」3；按 `0x17056`=10 读时，`0x1705a` 起 String
-//! `JZD1 注记` 恰好终结于 FeatureLayer 对象头 @`0x1706e` 键 1555、体版本
-//! 34、名称 `JZD1`，链条自洽；按 `0x17052`=1 读则该 String 非法——本读取
-//! 器按反编译字段序消费、计数原样保留，不做裁决）；文档第四节转录的条目
-//! 名「MZD1 」与当前样本字节不符（实际为 `JZD1 注记`）。本次核对基于
-//! 2026-11-14 的样本导出（与第四轮研究副本在 CGL 区域外有 157 字节字符
-//! 串差异；CGL 区域内逐字节一致）。样本吻合为辅助观察，未在目标软件中
-//! 验证。
+//! ElementCollection 键 1554（新对象，经分派整体解析：体 = 版本 4 + 计数
+//! 0 共 6 字节，@`0x17044..0x1704a`，完整消费、无停止）→ 第 8 步 double+
+//! int32（@`0x1704a`）→ 第 9 步子图层计数 @`0x17056` = 10（样本字节支持
+//! 第六轮裁决：`0x17052` 的 1 是第 8 步 int32）→ 条目 1 = String `JZD1 注
+//! 记`（@`0x1705a`，16 字节声明）+ FeatureLayer 对象头 @`0x1706e` 键 1555
+//! 新对象——本读取器在此停止（`SubLayerNewObject`，条目 ILayer 槽不分派
+//! FeatureLayer 体）。文档第四节转录的条目名「MZD1 」与当前样本字节不符
+//! （实际为 `JZD1 注记`）。本次核对基于 2026-11-14 的样本导出（与第四轮
+//! 研究副本在 CGL 区域外有 157 字节字符串差异；CGL 区域内逐字节一致）。
+//! 样本吻合为辅助观察，未在目标软件中验证。
 //!
-//! 未解决问题：`DAT_6f7aa4fc`/`DAT_6f7aa58c`/`DAT_6f7aa48c` 的请求 IID
-//! 字节未解码；子图层计数二解未裁决（见上）；第 6 步第三个 int32、第 8
-//! 步 int32、条目尾段字段的语义未定性；`FUN_6f6b3100` 与尾段未展开；版
-//! 本 short 符号性未闭合（本读取器按无符号更严处理）；条目尾段与单元
-//! FeatureLayer 体结束边界的逐字节对位未完成（第五轮「未解决事项」3）。
-//! 人工目视验收未做，不声称已验证。
+//! 未解决问题：第 2 步元素循环与第 9 步条目尾段嵌套对象（同请求 IID
+//! `DAT_6f7aa58c`）未做 ElementCollection 分派（本读取器只在第 7 步分
+//! 派）；第 6 步第三个 int32、第 8 步 int32、条目尾段字段的语义未定性；
+//! `FUN_6f6b3100` 与尾段未展开；版本 short 符号性未闭合（本读取器按无符
+//! 号更严处理）；条目尾段与单元 FeatureLayer 体结束边界的逐字节对位未完
+//! 成（第五轮「未解决事项」3）。人工目视验收未做，不声称已验证。
 
+use crate::objects::element_collection::{
+    ELEMENT_COLLECTION_CLASS_ID, ElementCollection10_1, ElementCollectionStop10_1,
+    read_element_collection_10_1,
+};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
@@ -107,7 +119,6 @@ pub enum ConsumedEntry10_1 {
     /// 键已在此前登记：回引条目，其后没有对象体。
     BackReference { class_id: [u8; 16], key: u32 },
 }
-
 /// 一个元素组（字段序第 2 步循环）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ElementGroup10_1 {
@@ -143,7 +154,7 @@ pub struct SubLayerEntry10_1 {
 }
 
 /// 已确认前缀的停止原因；本读取器对任何成功输入都返回停止原因（见模块文档）。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum CompositeGraphicsLayerStop10_1 {
     /// 元素组循环（第 2 步）中的新元素对象：其体没有外部长度字段，本读取
     /// 器无法消费。`group`/`index` 为组序号与组内序号（0 起）；游标回退到
@@ -154,9 +165,18 @@ pub enum CompositeGraphicsLayerStop10_1 {
         class_id: [u8; 16],
         key: u32,
     },
-    /// 第 7 步嵌套对象（`DAT_6f7aa58c`；样本为 ElementCollection）是新对象：
-    /// 停止并回退到其头起点。
+    /// 第 7 步嵌套对象（请求 IID `DAT_6f7aa58c`={CE8F3971} IElementCollection，
+    /// 类型库定名，2026-11-15）为 ElementCollection（`{CE8F3972}` coclass）
+    /// 以外的类：其体没有外部长度字段，本读取器无法消费。停止并回退到其对
+    /// 象头起点（该键不保留登记）。
     NestedNewObject { class_id: [u8; 16], key: u32 },
+    /// 第 7 步嵌套对象是 ElementCollection 且其体内出现停止（原因透传，见
+    /// [`ElementCollectionStop10_1`]）。游标停在内层停止点；该嵌套对象的键
+    /// 已按原生语义登记（登记先于持久化）；第 8 步起的后续字段不可达。
+    NestedCollectionIncomplete {
+        key: u32,
+        reason: ElementCollectionStop10_1,
+    },
     /// 子图层条目的 ILayer 新对象：停止并回退到其头起点；`name` 为已消费的
     /// 条目字符串（该条目不进入 [`CompositeGraphicsLayerPrefix10_1::sublayers`]）。
     SubLayerNewObject {
@@ -186,10 +206,14 @@ impl CompositeGraphicsLayerStop10_1 {
                  无法消费，游标回退到该对象头起点"
             ),
             Self::NestedNewObject { .. } => {
-                "第 7 步嵌套对象（DAT_6f7aa58c；样本为 ElementCollection）为新对象：\
-                 停止并回退到其头起点"
+                "第 7 步嵌套对象（DAT_6f7aa58c=IElementCollection；样本为 ElementCollection \
+                 coclass）为其他类的新对象：停止并回退到其头起点"
                     .to_string()
             }
+            Self::NestedCollectionIncomplete { key, reason } => format!(
+                "第 7 步嵌套 ElementCollection（键 {key}）体在内部停止点停止：{reason:?}；\
+                 游标停在内层停止点，其后字段不可达"
+            ),
             Self::SubLayerNewObject { index, .. } => format!(
                 "子图层条目 {index} 的 ILayer 为新对象：停止并回退到其头起点（该条目\
                  的名称字符串已消费但不入列表）"
@@ -227,10 +251,18 @@ pub struct CompositeGraphicsLayerPrefix10_1 {
     pub int32_50: u32,
     /// 第 6 步第三个 int32：反编译读入局部变量后未见消费；样本 1。
     pub int32_local: u32,
-    /// 第 7 步嵌套对象（`DAT_6f7aa58c` → +0x1c）分类。`None` 表示该对象是
-    /// 新对象（停止原因
-    /// [`CompositeGraphicsLayerStop10_1::NestedNewObject`]）。
+    /// 第 7 步嵌套对象（`DAT_6f7aa58c` → +0x1c）分类。当该对象是
+    /// ElementCollection 新对象时本字段为 `None`（体解析进
+    /// [`CompositeGraphicsLayerPrefix10_1::nested_1c_collection`]）；其余分
+    /// 类照旧；新对象（非 ElementCollection）是停止原因
+    /// [`CompositeGraphicsLayerStop10_1::NestedNewObject`]。
     pub nested_1c: Option<ConsumedEntry10_1>,
+    /// 第 7 步嵌套对象为 ElementCollection（`{CE8F3972}`）新对象时的已解析
+    /// 体（对象键已登记；体内停止经停止原因
+    /// [`CompositeGraphicsLayerStop10_1::NestedCollectionIncomplete`] 上
+    /// 报，本字段仍携带到停止点为止的体）。`None` = 该槽是空标记/回引/其
+    /// 他类新对象（后者触发停止）。
+    pub nested_1c_collection: Option<ElementCollection10_1>,
     /// 版本 >1 的 double（→ +0x54）与 int32（局部变量）。
     pub after_version1: Option<(f64, u32)>,
     /// 子图层计数的原始位模式；原生按有符号比较，<=0 不迭代。样本中存在
@@ -342,6 +374,7 @@ pub fn read_composite_graphics_layer_prefix_10_1(
     let mut int32_50 = 0;
     let mut int32_local = 0;
     let mut nested_1c = None;
+    let mut nested_1c_collection = None;
     let mut after_version1 = None;
     let mut sublayer_count = 0;
     let mut sublayers = Vec::new();
@@ -364,7 +397,10 @@ pub fn read_composite_graphics_layer_prefix_10_1(
         int32_50 = trial.read_u32_le()?;
         int32_local = trial.read_u32_le()?;
 
-        // 7. 嵌套对象（DAT_6f7aa58c → +0x1c；样本为 ElementCollection）。
+        // 7. 嵌套对象（DAT_6f7aa58c={CE8F3971} IElementCollection → +0x1c；
+        //    样本为 ElementCollection {CE8F3972} coclass）。新对象按类标识
+        //    分派：ElementCollection 整体解析其体并透传体内停止；其余类维
+        //    持未知类停止回退语义。
         let header_offset = trial.position();
         let saved_table = trial_table.clone();
         let entry = read_object_entry_10_1(&mut trial, &mut trial_table)?;
@@ -372,6 +408,23 @@ pub fn read_composite_graphics_layer_prefix_10_1(
             ObjectEntry10_1::Null => nested_1c = Some(ConsumedEntry10_1::Null),
             ObjectEntry10_1::BackReference { class_id, key } => {
                 nested_1c = Some(ConsumedEntry10_1::BackReference { class_id, key });
+            }
+            ObjectEntry10_1::NewObject { class_id, key }
+                if class_id == ELEMENT_COLLECTION_CLASS_ID =>
+            {
+                // ElementCollection 体读取器是严格事务子集（失败不推进其入
+                // 参游标/登记表）；键已由条目分类登记（登记先于持久化），
+                // 解析成功（含体内停止）即保留登记。体内停止透传为新停止变
+                // 体，游标停在内层停止点；体完整消费则继续第 8 步。
+                let collection =
+                    read_element_collection_10_1(&mut trial, max_bytes, &mut trial_table)?;
+                if let Some(reason) = collection.stop.clone() {
+                    stop = Some(CompositeGraphicsLayerStop10_1::NestedCollectionIncomplete {
+                        key,
+                        reason,
+                    });
+                }
+                nested_1c_collection = Some(collection);
             }
             ObjectEntry10_1::NewObject { class_id, key } => {
                 trial_table = saved_table;
@@ -501,6 +554,7 @@ pub fn read_composite_graphics_layer_prefix_10_1(
         int32_50,
         int32_local,
         nested_1c,
+        nested_1c_collection,
         after_version1,
         sublayer_count,
         sublayers,

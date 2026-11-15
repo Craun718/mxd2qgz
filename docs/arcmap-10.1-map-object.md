@@ -589,3 +589,63 @@ LabelEngineLayerProperties「键 0」型命中属体内嵌原始对象（同 Sim
 7. MapSurround/书签非空循环：样本计数仍为 0，本轮未开展元素类静态闭合（请求 IID 语义
    已由第五轮闭合，coclass 体未动）。
 8. 全部结论为静态观察；未运行 ArcMap 10.1，未在 QGIS 中核对，不声称已验证。
+
+## CGL 第 7 步嵌套对象分派与请求 IID 定名（2026-11-15）
+
+对应第五轮「未解决事项」3/4 与第六轮 CGL 停止点推进。证据：① 请求 IID 字
+节解码沿用本文件既有惯例（FeatureLayer.dll 文件字节直读，偏移按节表换算）；
+② 类型库定名沿用 wine `LoadTypeLibEx` dump（`/tmp` 会话目录既有输出，本轮
+仅检索）；③ 实现为本机 pyghidra 复核过的既有反编译产物（`cgl_load_6f6b2100.c`，
+未重新反编译）。样本 `temp/r6-maps.bin`（152941 字节，SHA-256 `fc0149f1…`）
+偏移为 /Maps 流内偏移。全部为静态观察，未运行 ArcMap，未人工验证。
+
+### 请求 IID 定名（类型库 typekind=3，证据：确认（类型库））
+
+| 数据地址 | IID | 类型库名称 | 在 CGL::Load `0x6f6b2100` 中的角色 |
+| --- | --- | --- | --- |
+| `DAT_6f7aa58c` | `{CE8F3971-E9BE-11D1-A232-080009B6F22B}` | **IElementCollection** | 第 7 步嵌套对象与第 9 步条目尾段嵌套对象（→ +0x1c / +0x94）；样本第 7 步对象头 coclass `{CE8F3972}` ElementCollection（请求 IID 与 CLSID 同族 ±1，与 FieldInfo↔A2BAAE2C 同模式） |
+| `DAT_6f7aa4fc` | `{9B001319-9ED7-11D0-859E-0800091A2A72}` | **IElement** | 第 2 步元素组循环的元素条目（与 ElementCollection 自身元素循环的请求 IID 同值） |
+| `DAT_6f7aa48c` | `{4434D680-F4DA-11D1-BCA6-0000F875BCCE}` | **ISpatialReference** | 尾段版本 ≥2 嵌套对象（→ +0x3c） |
+
+第五轮未解决事项 4 的「`DAT_6f7aa48c`/`DAT_6f7aa4ec` 请求 IID 未解码」由此
+闭合其一（`DAT_6f7aa4ec`={34C20002} ILayer 已于第五轮定名）。
+
+### 实现：第 7 步按类标识分派（src/layers/composite_graphics.rs）
+
+- 第 7 步新对象类标识与 `{CE8F3972}` ElementCollection 相同时，调
+  `objects::element_collection::read_element_collection_10_1` 整体解析其
+  体：键保留登记（登记先于持久化）、体入前缀结果新字段
+  `nested_1c_collection`、体内停止透传为新停止变体
+  `NestedCollectionIncomplete { key, reason }`（游标停在内层停止点，其后
+  字段不可达）；体完整消费则继续第 8 步。
+- 其余类（含第 2 步元素、第 9 步条目 ILayer 与条目尾段嵌套对象）维持既有
+  「未知类新对象 = 停止回退」语义不变；第 2 步元素循环与第 9 步条目尾段
+  的同 IID 槽位本轮不做分派（样本未及）。
+- ElementCollection 体读取失败（截断/版本超限/负计数）整体报错，trial 事
+  务性保证调用者游标与登记表不动。
+
+### 样本 CGL 区域接线后重走（辅助观察，2026-11-14 导出 `r6-maps.bin`）
+
+CGL 体 `0x16fce` 起逐段推进：版本 6 → 11 组全零 → 名称 `<默认>` → short
+×3 → double ×2 → int32 3/1/1 → **第 7 步 ElementCollection 键 1554
+（`0x17030`）体 = 版本 4 + 计数 0（`0x17044..0x1704a`，6 字节）完整消费、
+无停止** → 第 8 步 double 0.0 + int32 1（`0x1704a`，即第六轮裁决中
+`0x17052`=1 的归属）→ 第 9 步子图层计数 **10** @`0x17056` → 条目 1 =
+String `JZD1 注记`（`0x1705a`，16 字节声明）→ **FeatureLayer 键 1555 对象
+头 @`0x1706e` 新对象停止**（`SubLayerNewObject`，条目 ILayer 槽不分派
+FeatureLayer 体）。停止点由接线前的 `NestedNewObject`（键 1554）推进到
+`SubLayerNewObject`（键 1555），前进 `0x44` 字节；键 1554 已登记、1555 未
+登记。回归测试 `tests/composite_graphics.rs` 样本走查用例固化该推进（测试
+内联读取仓库样本，属辅助观察对照，非目标软件执行验证）。
+
+### 本节未解决事项
+
+1. 第 2 步元素循环与第 9 步条目尾段嵌套对象（同请求 IID IElementCollection）
+   的分派未做；条目尾段与单元 FeatureLayer 体结束边界的逐字节对位仍未完成
+   （第五轮未解决事项 3 余项）。
+2. 第 9 步 10 个条目中其余 9 个（条目 2..10，含一个对键 1792 的回引）未接
+   线走查；`SubLayerNewObject` 之后的 FeatureLayer 体推进依赖既有 FL 停止
+   链（`0xafe` 之后 ALPC 槽等，见 featurelayer-tail 文档）。
+3. 尾段 `DAT_6f7aa48c`={ISpatialReference} 槽、`FUN_6f6b3100` 与第 10 条
+   尾段未展开（既有）。
+4. 全部结论为静态观察；未运行 ArcMap 10.1，未人工目视验收，不声称已验证。

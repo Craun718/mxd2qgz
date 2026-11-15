@@ -26,6 +26,9 @@ const FEATURE_LAYER_CLASS_ID: [u8; 16] = [
 /// 预置进登记表的既有键：命中即回引。
 const SEEN_KEY: u32 = 5;
 
+/// 合成测试用的未知元素类标识（非任何闭合元素类）。
+const UNKNOWN_CLASS_ID: [u8; 16] = [0xa5; 16];
+
 /// AfCore String::Write 布局：u32 字节长度前缀 + 含终止零的 UTF-16LE。
 fn encoded(text: &str) -> Vec<u8> {
     let payload: Vec<_> = text
@@ -129,11 +132,11 @@ fn composite_graphics_layer_class_id_constant_matches_documented_guid() {
 }
 
 #[test]
-fn reads_sample_layout_prefix_and_stops_at_element_collection() {
-    // 镜像样本 /Maps:0x16fce..0x17030 的已确认段：版本 6、11 组全零、名称
-    // `<默认>`、short 0xffff/0xffff/0、double 0/0、int32 3/1/1，随后第 7 步
-    // 对象头是 ElementCollection 键 1554——新对象，本读取器在此停止。其后
-    // 字节（样本中另有子图层计数二解区，见模块文档）只作未知区参与断言。
+fn dispatches_element_collection_nested_object_and_continues() {
+    // 第 7 步对象头为 ElementCollection（{CE8F3972}）键 1554 且体可完整消
+    // 费（版本 4 + 计数 0，样本 /Maps:0x17030 形态）：整体解析其体、保留键
+    // 登记、继续第 8 步（样本推进到第 9 步子图层条目的 FeatureLayer 停止，
+    // 见下方样本走查测试）。
     let group_region = {
         let mut bytes = 11_u32.to_le_bytes().to_vec();
         for _ in 0..11 {
@@ -143,9 +146,17 @@ fn reads_sample_layout_prefix_and_stops_at_element_collection() {
     };
     let mut ec = ELEMENT_COLLECTION_CLASS_ID.to_vec();
     ec.extend(1554_u32.to_le_bytes());
-    ec.extend(b"opaque-collection-body");
-    let bytes = cgl_body(6, &group_region, "<默认>", &ec, b"sublayer-junk", b"tail");
-    let header_start = 2 + group_region.len() + encoded("<默认>").len() + 6 + 16 + 12;
+    // ElementCollection 体：版本 4 + 计数 0（样本 @0x17044..0x1704a）。
+    ec.extend(4_u16.to_le_bytes());
+    ec.extend(0_u32.to_le_bytes());
+    let mut sublayers = 1_u32.to_le_bytes().to_vec();
+    sublayers.extend(encoded("JZD1 注记"));
+    let mut fl_header = FEATURE_LAYER_CLASS_ID.to_vec();
+    fl_header.extend(1555_u32.to_le_bytes());
+    sublayers.extend(&fl_header);
+    let mut bytes = cgl_body(6, &group_region, "<默认>", &ec, &sublayers, b"");
+    bytes.extend(b"opaque-feature-layer");
+    let header_start = bytes.len() - fl_header.len() - b"opaque-feature-layer".len();
     let mut table = RefTable10_1::new();
     let mut reader = Reader::new(&bytes);
     let parsed = read_composite_graphics_layer_prefix_10_1(&mut reader, 1024, &mut table).unwrap();
@@ -168,22 +179,99 @@ fn reads_sample_layout_prefix_and_stops_at_element_collection() {
         (parsed.int32_4c, parsed.int32_50, parsed.int32_local),
         (3, 1, 1)
     );
-    // 新对象停止：第 7 步字段为 None，其后字段保持默认。
+    // 第 7 步分派：条目分类为 None（体入专用字段）、体完整消费、键登记。
     assert_eq!(parsed.nested_1c, None);
-    assert_eq!(parsed.after_version1, None);
-    assert_eq!(parsed.sublayer_count, 0);
+    let collection = parsed.nested_1c_collection.as_ref().expect("应含解析体");
+    assert_eq!(collection.version, 4);
+    assert_eq!(collection.count, 0);
+    assert_eq!(collection.stop, None, "样本形态体完整消费");
+    assert!(table.contains(1554), "新对象键保留登记");
+    // 推进到第 8 步之后：版本 >1 的 double+int32 已读，随后子图层条目 1 的
+    // ILayer（FeatureLayer 键 1555）为新对象——停止并回退到该头起点。
+    assert_eq!(parsed.after_version1, Some((0.5, 9)));
+    assert_eq!(parsed.sublayer_count, 1);
     assert!(parsed.sublayers.is_empty());
     assert_eq!(
         parsed.stop,
-        CompositeGraphicsLayerStop10_1::NestedNewObject {
-            class_id: ELEMENT_COLLECTION_CLASS_ID,
-            key: 1554
+        CompositeGraphicsLayerStop10_1::SubLayerNewObject {
+            index: 0,
+            name: "JZD1 注记".to_string(),
+            class_id: FEATURE_LAYER_CLASS_ID,
+            key: 1555
         }
     );
     assert_eq!(parsed.remaining_bytes, bytes.len() - header_start);
-    assert_eq!(reader.position(), header_start, "游标回退到对象头起点");
-    assert!(!table.contains(1554), "未消费的新键不得登记");
-    assert!(table.is_empty());
+    assert_eq!(reader.position(), header_start);
+    assert!(!table.contains(1555));
+}
+
+#[test]
+fn propagates_element_collection_body_stop_keeping_key() {
+    // 第 7 步 ElementCollection 体内部停止（版本 4 + 计数 1 + 未闭合元素
+    // 类的新对象头）：透传 NestedCollectionIncomplete，游标停在内层停止点
+    // （元素对象头起点），嵌套键已登记；其后字段不可达。
+    let mut ec = ELEMENT_COLLECTION_CLASS_ID.to_vec();
+    ec.extend(1554_u32.to_le_bytes());
+    ec.extend(4_u16.to_le_bytes());
+    ec.extend(1_u32.to_le_bytes());
+    let mut element = UNKNOWN_CLASS_ID.to_vec();
+    element.extend(70_u32.to_le_bytes());
+    ec.extend(&element);
+    ec.extend(b"unreachable-body");
+    let bytes = cgl_body(6, &group_region(&[]), "<默认>", &ec, b"", b"tail");
+    // 版本 2 + 组区 4 + 名称 14 + short 6 + double 16 + int32 12 + 嵌套头
+    // 20 + 体 6 = 80 = 元素对象头起点（内层停止点）。
+    let stop_offset = 2 + 4 + encoded("<默认>").len() + 6 + 16 + 12 + 20 + 6;
+    let mut table = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let parsed = read_composite_graphics_layer_prefix_10_1(&mut reader, 1024, &mut table).unwrap();
+    let collection = parsed
+        .nested_1c_collection
+        .as_ref()
+        .expect("应携带到停止点为止的体");
+    assert_eq!(collection.count, 1);
+    let CompositeGraphicsLayerStop10_1::NestedCollectionIncomplete { key, reason } = &parsed.stop
+    else {
+        panic!("应为 NestedCollectionIncomplete，实际 {:?}", parsed.stop);
+    };
+    assert_eq!(*key, 1554);
+    match reason {
+        mxd2qgz::objects::element_collection::ElementCollectionStop10_1::ElementBodyNotClosed {
+            index,
+            class_id,
+            key: element_key,
+        } => {
+            assert_eq!(*index, 0);
+            assert_eq!(*class_id, UNKNOWN_CLASS_ID);
+            assert_eq!(*element_key, 70);
+        }
+        other => panic!("内层应为元素体未闭合停止，实际 {other:?}"),
+    }
+    assert!(table.contains(1554), "嵌套键已登记（登记先于持久化）");
+    assert!(!table.contains(70), "未消费的元素键不登记");
+    assert_eq!(parsed.after_version1, None, "其后字段不可达");
+    assert_eq!(reader.position(), stop_offset, "游标停在内层停止点");
+    assert_eq!(parsed.remaining_bytes, bytes.len() - stop_offset);
+}
+
+#[test]
+fn element_collection_reader_failure_is_transactional() {
+    // 第 7 步 ElementCollection 体非法（版本 5 >4 原生拒绝）：整体报错，
+    // 调用者游标与登记表不动（trial 事务性）。
+    let mut ec = ELEMENT_COLLECTION_CLASS_ID.to_vec();
+    ec.extend(1554_u32.to_le_bytes());
+    ec.extend(5_u16.to_le_bytes());
+    ec.extend(0_u32.to_le_bytes());
+    let mut bytes = cgl_body(6, &group_region(&[]), "<默认>", &ec, b"", b"tail");
+    bytes.extend(b"opaque");
+    let mut table = RefTable10_1::new();
+    table.register(42);
+    let mut reader = Reader::new(&bytes);
+    assert!(read_composite_graphics_layer_prefix_10_1(&mut reader, 1024, &mut table).is_err());
+    assert_eq!(reader.position(), 0, "失败路径不推进调用者游标");
+    assert_eq!(table.len(), 1, "失败路径不修改登记表");
+    assert!(table.contains(42));
+    assert!(!table.contains(1554));
 }
 
 #[test]
@@ -620,4 +708,76 @@ fn rejects_over_limit_string_lengths_before_reading_or_allocating() {
         ErrorKind::UnexpectedEof
     );
     assert_eq!(reader.position(), 0);
+}
+
+#[test]
+fn sample_basemap_cgl_body_advances_to_sublayer_feature_layer_stop() {
+    // 仓库参考样本的辅助观察回归对照（非目标软件执行验证）：/Maps 导出中
+    // CGL 对象头 @0x16fba 键 1553，体 @0x16fce 起。分派接线后的预期推进：
+    // 第 7 步 ElementCollection 键 1554 体（版本 4 + 计数 0）完整消费 →
+    // 第 8 步 double+int32 → 第 9 步子图层计数 10 @0x17056（第六轮裁决）→
+    // 条目 1 = String `JZD1 注记` + FeatureLayer 键 1555 头 @0x1706e 新对
+    // 象停止。偏移与键来自 docs/arcmap-10.1-map-object.md 第四/六轮与本轮
+    // hex 复核。
+    use std::io::Read as _;
+
+    let mut document = cfb::open("samples/测试底图.mxd").unwrap();
+    let mut maps = Vec::new();
+    document
+        .open_stream("/Maps")
+        .unwrap()
+        .read_to_end(&mut maps)
+        .unwrap();
+    let body_offset = 0x16fce_usize;
+    let mut table = RefTable10_1::new();
+    let mut reader = Reader::new(&maps[body_offset..]);
+    let parsed = read_composite_graphics_layer_prefix_10_1(&mut reader, 0x10000, &mut table)
+        .expect("样本 CGL 体应可解析到停止点");
+    assert_eq!(parsed.version, 6);
+    assert_eq!(parsed.group_count, 11);
+    assert_eq!(
+        parsed.element_groups,
+        vec![
+            ElementGroup10_1 {
+                declared_count: 0,
+                elements: Vec::new()
+            };
+            11
+        ]
+    );
+    assert_eq!(parsed.name, "<默认>");
+    assert_eq!(parsed.shorts, [0xffff, 0xffff, 0x0000]);
+    assert_eq!(parsed.doubles, [0.0, 0.0]);
+    assert_eq!(
+        (parsed.int32_4c, parsed.int32_50, parsed.int32_local),
+        (3, 1, 1)
+    );
+    // 第 7 步分派：ElementCollection 键 1554，体完整消费（版本 4、计数 0）。
+    assert_eq!(parsed.nested_1c, None);
+    let collection = parsed
+        .nested_1c_collection
+        .as_ref()
+        .expect("样本第 7 步为 ElementCollection");
+    assert_eq!(collection.version, 4);
+    assert_eq!(collection.count, 0);
+    assert_eq!(collection.stop, None);
+    assert!(table.contains(1554));
+    // 第 8 步 + 第 9 步计数（第六轮裁决：0x17052=1 是第 8 步 int32，计数在
+    // 0x17056=10）。
+    assert_eq!(parsed.after_version1, Some((0.0, 1)));
+    assert_eq!(parsed.sublayer_count, 10);
+    assert!(parsed.sublayers.is_empty());
+    assert_eq!(
+        parsed.stop,
+        CompositeGraphicsLayerStop10_1::SubLayerNewObject {
+            index: 0,
+            name: "JZD1 注记".to_string(),
+            class_id: FEATURE_LAYER_CLASS_ID,
+            key: 1555
+        }
+    );
+    // 停止点 = 0x1706e（FeatureLayer 头起点）。
+    assert_eq!(reader.position(), 0x1706e - body_offset);
+    assert_eq!(parsed.remaining_bytes, maps.len() - 0x1706e);
+    assert!(!table.contains(1555));
 }
