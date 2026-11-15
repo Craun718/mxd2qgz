@@ -127,48 +127,38 @@
   - [x] Geometry.dll Polyline 对象体闭合（记录布局与同族骨架，16/16 样本对位，`src/objects/geometry.rs`），见 [研究记录](docs/arcmap-10.1-geometry.md)。
   - [x] Hyperlink 族体（coclass Hyperlink 与 FeatureHyperlink）与 INumberFormat 三变体（Percentage/Fraction/RateFormat）闭合；CGL 第 7 步嵌套对象按类标识分派 ElementCollection；全目标 476 项测试，见 [Hyperlink 记录](docs/arcmap-10.1-hyperlink.md)、[NumberFormat 记录](docs/arcmap-10.1-number-format.md) 与 [map-object 记录](docs/arcmap-10.1-map-object.md)。
   - [x] 整合接线轮九处接线（2026-11-15）：LELP ⑯ 槽接 TextSymbol 体（`annotate_props`，停止透传新变体）、SimpleRenderer/LegendClass/TextSymbol 三处 ISymbol 槽切 `read_symbol_slot_full_10_1` 全量分派（第一轮闭合类行为逐值不变）、TextElement IGeometry 槽接 `objects::geometry` 分派、FieldInfo INumberFormat 槽扩四类分派（NumericFormat 读取器去重为 objects 层单份）、FL 后继段 IHyperlink 循环接 Hyperlink 体、CGL 第 2/9 步嵌套对象按第 7 步同模式接 ElementCollection、`mxd_maps` 标注环逐条诊断、robustness 集中清单 48→74 入口；482 项测试全绿，样本停止点 0xb7a→0xd6c（+498 字节）。
-  - [x] 定位样本中的 OLE StdFont 停止点 `0xd6c`（键 68）。
-  - [ ] 闭合 OLE StdFont `{0BE35203-8F91-11CE-9DE3-00AA004BB851}` 体（OLE 标准类体未研究且无外部长度不可跳过）。
-  - [x] 走查脚本独立证实 `0xf63..0xfe6` 段（FIDSet/选择集/显示过滤器/扩展段头）。
-  - [ ] 解除 StdFont 阻塞后解析 `0xf63..0xfe6` 段（样本当前不可达）。
-  - [ ] 解除 StdFont 阻塞后解析 ALPC 条目键与尾部 int32（样本当前不可达）。
+  - [x] 闭合 OLE StdFont `{0BE35203-…}` 体（版本/charset/标志位包/weight/字号 CY/ANSI 名字；样本 37/37 逐字节对位；10.1 介质内 MS 原生 oleaut32 2.40.4275 反编译为 B 级证据，与运行时 OS 版本的差异如实标注）；IFontDisp 槽接线后停止点 0xd6c→0xda3，TextSymbol 版本门尾段样本对位（尾 short 0、内置默认 TextPath GUID、尾 short 0），更正「tail_short_1=0x8601」旧误读为 StdFont 体前两字节，见 [研究记录](docs/arcmap-10.1-ole-stdfont.md)。
+  - [x] 闭合 OLE StdPicture 体（魔数 0x746c/长度+图像数据，解码器分派原样保留；样本 0 实例，反编译+合成测试）。
+  - [x] 第十轮全流清点停止点后方未闭合 coclass（偏移/键/计数清单，证据驱动闭合优先级），见 [研究记录](docs/arcmap-10.1-featurelayer-tail.md)。
+  - [x] 闭合 BOLP 体（样本结构级证据 `0xdb7..0xec5`；Load 未唯一定位的负证据如实落档；`{C9EE5352}` 裁决为错位解码，实际 `{EE535289-41C9-…}`）。
+  - [x] 闭合 LineLabelPosition/LineLabelPlacementPriorities/PointPlacementPriorities/AnnotationVBScriptEngine 四类（反编译「确定的」+样本逐字节吻合）。
+  - [x] 闭合 UID/HLEP 体与 DisplayExpressionProperties 前缀（样本结构+局部佐证）。
+  - [x] 修正图层扩展段格式：条目=[尺寸][CLSID][体] 无键（撤销第九轮格式）；样本修正 ETM 尾字节 0x01、ALPC 尾 int32=1、`short+0x1bc`=0、㊲ shorts=[-1,0,-1]。
+  - [x] 闭合 Geometry Polygon/Point/Multipoint 记录布局（确定的；0 样本合成测试）；裁决 Path/Ring/Line/BezierCurve/EllipticArc **不实现 IPersistStream**（全镜像扫描+构造器核对，「Save 空桩」旧提法撤销）；PolyBase 基类共享 Load/Save 机制，见 [研究记录](docs/arcmap-10.1-geometry.md)。
+  - [x] 闭合 INumberFormat 同族五类（CurrencyFormat 体仅版本 short；LatLon/Angle 内嵌核心独立槽，Angle 原生不检查核心返回值、读取器更严；Scientific/CustomNumber；`.rdata` 静态 CLSID 复制与虚位移调整器两新形态），见 [研究记录](docs/arcmap-10.1-number-format.md)。
+  - [x] 第二轮整合接线：更正 `DISPLAY_EXPRESSION_PROPS_CLASS_ID` 转录笔误（`48 4c`↔`4c 48`，笔误使 DEP 槽永不命中）、FieldInfo 槽 4-way→9-way 分派、TextElement IGeometry 四类分派与 MarkerElement IPoint 接 Point、CharacterMarker 字体槽接 StdFont、PictureMarker 四处 IPicture 槽接 StdPicture、`mxd_maps` DEP/LELP 停止链诊断、robustness 集中清单 74→93 入口；534 项测试全绿，样本停止点 0xd6c→0x151a→0x155a。
+  - [x] 走查脚本独立证实 `0xf63..0xfe6` 段（FIDSet/选择集/显示过滤器/扩展段头），第十轮接线后样本连续消费至 `0x155a`；ALPC 条目键/尾 int32 已解析（样本修正 ALPC 尾 int32=1）。
   - 其余开放项按类别逐项单列，每项职责单一；闭合路径注于类别，出处见各研究文档：
     - 体未闭合类族（逐个反编译闭合对象体或分支）：
-      - [ ] BOLP（`{EE535289}`，LabelPlacement.dll）体——LELP 之后的标注实现类，实现函数未定位。
-      - [ ] 标注表达式引擎族体（LELP 之后的同族条目，位于样本停止点后方）。
-      - [ ] LELP ⑲/㉔ 槽 Envelope/IGraphicsContainer 实现类体。
-      - [ ] LELP ㉖ 槽 ISymbol 其余实现类体。
-      - [ ] LELP ㉘/㉙ 槽 Envelope/IUID 实现类体。
-      - [ ] LELP ㊴/㊷ 槽表达式属性族与 TimeData 族实现类体。
-      - [ ] Geometry Point 记录块内部布局。
-      - [ ] Geometry Polygon 记录块内部布局。
-      - [ ] Geometry Multipoint 记录块内部布局。
-      - [ ] Geometry Path 记录块内部布局。
-      - [ ] Geometry Path 等「Save 空桩」类的持久化虚表归属（候选）。
-      - [ ] Geometry Ring 记录块内部布局。
-      - [ ] Geometry BezierCurve 记录块内部布局。
-      - [ ] Geometry EllipticArc 记录块内部布局。
-      - [ ] Geometry Line 记录块内部布局。
-      - [ ] Geometry CircularArc 记录块内部布局。
-      - [ ] INumberFormat CurrencyFormat `{7E4F471A}` 体。
-      - [ ] INumberFormat LatLonFormat `{7E4F471D}` 体。
-      - [ ] INumberFormat AngleFormat `{7E4F471E}` 体。
-      - [ ] INumberFormat ScientificFormat `{7E4F471F}` 体。
-      - [ ] INumberFormat CustomNumberFormat `{7E4F4722}` 体。
+      - [ ] DEP 尾段 `0x155a..0x15d8`（126 字节）字段序取证——**当前样本停止点**。
+      - [ ] `0x15d8` 对象头归属（形似 HLEP，写侧顺序应在 ㊶ 后，存疑）。
+      - [ ] 其余标注表达式引擎实现类体（样本为 AnnotationVBScriptEngine，已闭合）。
+      - [ ] LELP ㉔ 槽 IGraphicsContainer 实现类体（⑲ Envelope 已闭合接线）。
+      - [ ] LELP ㉖ 槽 ISymbol 17 闭合类之外的实现类体。
+      - [ ] TimeData 族槽实现类体（㊷ DEP/HLEP 前缀已闭合）。
+      - [ ] Geometry CircularArc 持久化虚表定位（Path/Ring/Line/BezierCurve/EllipticArc 已裁决不实现 IPersistStream）。
       - [ ] SimpleTextPath 体。
       - [ ] Callout/背景族体。
       - [ ] IMarkerBackground（MultiLayerMarker v≥2）实现类体。
       - [ ] IColorRamp 族（GradientFill）实现类体。
       - [ ] IPicture（PictureMarker v9 类型 3 等）实现类体。
       - [ ] IPictureFillSymbol（`{D842B082}`）实现类体。
-      - [ ] StdPicture 体（IPicture 槽常见实现，DisplayCore 之外；StdFont 见上方阻塞项）。
       - [ ] 元素体版本 ==7 装饰块。
       - [ ] 元素体版本 ==9 尾加块。
       - [ ] IBorder 槽实现类体。
       - [ ] IBackground 槽实现类体。
       - [ ] IShadow 槽实现类体。
       - [ ] ISpatialReference 槽实现类体。
-      - [ ] TextSymbol 版本门尾段（v>1/v≥3/v≥4 字段；无字节佐证；IFontDisp 槽 StdFont 体见上方阻塞项）。
       - [ ] IDatasetName 槽 UnknownDatasetName 实现类体。
       - [ ] IDatasetName 槽 GeometricNetworkName 实现类体。
       - [ ] IDatasetName 槽 RelationshipClassName 实现类体。
@@ -224,14 +214,14 @@
       - [ ] FDO 旧加载器接口槽业务语义。
       - [ ] ALPC 标量与字符串业务语义（标注表达式、类名、OID 等）。
       - [ ] LELP 标量与字符串业务语义（标注表达式、类名、OID 等）。
-      - [ ] ETM 标量与字符串业务语义（标注表达式、类名、OID 等；尾字节 0x00 未定）。
+      - [ ] ETM 标量与字符串业务语义（标注表达式、类名、OID 等；尾字节样本 0x01）。
       - [ ] FeatureIDSet 标量与字符串业务语义（标注表达式、类名、OID 等）。
       - [ ] 定性 Hyperlink 字段业务语义中的 esriHyperlinkType 值序。
       - [ ] 区分 Hyperlink ② 与 Type 字段。
       - [ ] 区分 Hyperlink ③ 与热链字段。
-      - [ ] 定性 NumberFormat 三变体的标量字段语义。
-      - [ ] 定性 NumberFormat 三变体的 String 字段语义。
-      - [ ] 验证 Percentage/Rate「同槽升级」候选。
+      - [ ] 定性 NumberFormat 九类的标量字段语义。
+      - [ ] 定性 NumberFormat 九类的 String 字段语义。
+      - [ ] 验证 Percentage/Rate「同槽升级」与 LatLon/Angle 独立槽核心形态（样本 0 实例）。
       - [ ] Geometry 记录类型值的枚举映射语义（内部 shape 类别 vs esriGeometryType）。
       - [ ] Geometry 内核移交链（+0xc8 内嵌指针虚表 +0x1cc 槽）运行期装配定位。
       - [ ] FDO 版本 4 探测三依赖定位。
@@ -260,8 +250,12 @@
       - [ ] display 两轮闭合的颜色族（样本 0 实例）。
       - [ ] Hyperlink 版本 0 短体。
       - [ ] Hyperlink 循环空标记/回引形态。
-      - [ ] NumberFormat 短体形态。
-      - [ ] NumberFormat「同槽升级」。
+      - [ ] NumberFormat 短体形态（九类全族）。
+      - [ ] NumberFormat「同槽升级」与 LatLon/Angle 独立槽核心形态。
+      - [ ] Angle 原生忽略核心失败的容错路径（读取器较严）。
+      - [ ] StdPicture 第二字语义与解码器分派（样本 0 实例）。
+      - [ ] OLE 字体持久化跨 oleaut32 版本稳定性（介质 2.40.4275 vs 运行时 OS 版本）。
+      - [ ] BOLP/UID/HLEP/DEP 前缀的样本结构级证据升级（Load 反编译唯一定位）。
       - [ ] Geometry 版本 0/1。
       - [ ] Geometry S_FALSE 捷径分支。
       - [ ] 后继段版本 0x1c..0x1f 分支。
@@ -364,6 +358,7 @@
   - [x] 第七轮新增模块测试并扩充 robustness 集中清单至 28 个入口：feature_layer_tail（25 项：五类常量、样本形态全链、版本拒绝、各停止点游标与登记表事务性、截断扫描、限额）、map_surround（20 项）、fdo_legacy（20 项）、dataset_name（12 项）、element_collection（11 项）；集中清单新增 SimpleRenderer 体、ElementCollection 体、FeatureDatasetName/TopologyName 体、FDO 旧加载器前缀、AOI/Feature 书签与 Legend 前缀共 8 个入口的统一截断扫描。仅验证读取器自身契约，不代表 MXD 格式规则已验证。
 - [x] 为构造模型的数据源路径重定位、坐标系处理和图层树映射添加测试（`tests/qgis.rs` 14 项通过 + 1 项 QGIS API 测试默认忽略、显式运行后通过）：词法路径重定位与断链诊断、歧义 URI/根逃逸拒绝、CRS 仅识别 EPSG:4326/3857 其余保留并诊断、树序/勾选/XML 往返与确定性标识、非法范围与溢出拒绝。仅覆盖输出层与构造模型自身契约；MXD 侧接入（`convert`）未实现，真实数据源路径与坐标系规则未在目标软件验证。
 - [x] 并行四轮研究 + 整合接线轮新增模块测试并扩充 robustness 集中清单 48 → 74 个入口（ALPC/LELP/ETM/FeatureIDSet 四体、符号族第二轮 14 直读入口与全量分派、Polyline 体与 geometry 类分派、数字格式四类与 Hyperlink 体、CGL 三处嵌套分派）；全仓 482 项测试全绿（基线 476 +6），`cargo fmt --check` 干净；样本 `parse` 停止点 0xafe→0xb7a→0xd6c。仅验证读取器自身契约，不代表 MXD 格式规则已验证。
+- [x] 第二轮并行四轮 + 整合接线轮新增模块测试并扩充 robustness 集中清单 74 → 93 个入口（StdFont/StdPicture 体与槽、BOLP/标注三族/UID/HLEP/DEP 前缀、Polygon/Point/Multipoint 体与 typed 分派、数字格式五类、CharacterMarker 字体槽与 PictureMarker IPicture 槽）；全仓 534 项测试全绿（基线 523 +11，另清理合并遗留 unused import/needless mut/unreachable 告警），`cargo fmt --check` 干净；样本 `parse` 停止点 0xd6c→0x151a→0x155a。仅验证读取器自身契约，不代表 MXD 格式规则已验证。
 
 ## 人工验收
 
