@@ -685,8 +685,7 @@ fn annotate_chain_note(
         return;
     };
     for entry in &alpc.entries {
-        let crate::layers::annotate_props::AlpcEntrySlot10_1::LabelEngineProps(lelp) =
-            &entry.slot
+        let crate::layers::annotate_props::AlpcEntrySlot10_1::LabelEngineProps(lelp) = &entry.slot
         else {
             continue;
         };
@@ -702,7 +701,9 @@ fn annotate_chain_note(
             crate::layers::annotate_props::LelpTextSymbolSlot10_1::Null => {
                 "ITextSymbol 槽为空标记".to_string()
             }
-            crate::layers::annotate_props::LelpTextSymbolSlot10_1::BackReference { key, .. } => {
+            crate::layers::annotate_props::LelpTextSymbolSlot10_1::BackReference {
+                key, ..
+            } => {
                 format!("ITextSymbol 槽为回引（键 {key}）")
             }
         };
