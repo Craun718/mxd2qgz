@@ -119,10 +119,24 @@
 //!   0/0/0）同样未定性；
 //! - FieldInfo 循环条目名「样本恒与别名同文」为观察，二者分歧场景未见样
 //!   本；
-//! - FieldInfo 循环之后的 ALPC 槽（请求 IID `{1D5849F2-…}`）、short
-//!   +0x1bc、FeatureIDSet（`{D5BB4B87-…}`）槽、选择集 ID 数组等后续字段
-//!   未闭合，读取器在循环完成处停止。
+//! - FieldInfo 循环之后的 ALPC 环（第九轮闭合：ALPC/LELP/ETM 体与
+//!   FeatureIDSet 体，`annotate_props`/`feature_id_set` 模块）、short
+//!   +0x1bc、FeatureIDSet 槽、选择集 ID 数组、图层扩展段（EditTemplate
+//!   宿主）与更深的版本门字段已按本轮字段序接入：未闭合槽位为成功停止
+//!   （样本停止点 = LELP ⑯ ITextSymbol 槽的 TextSymbol 新对象，键 61，
+//!   游标停在其体起点）。样本 0xafe..0xb8e 逐字节吻合；
+//! - LELP ⑰ BasicOverposterLayerProperties 等标注族实现类、TextSymbol 体
+//!   （DisplayCore.dll，虚表静态不可达）与 TimeData 族槽位实现类未闭合
+//!   （新对象即停止）。
 
+use crate::layers::annotate_props::{
+    ANNOTATE_PROPS_COLLECTION_CLASS_ID, AnnotatePropsBody10_1, AnnotatePropsStop10_1,
+    EDIT_TEMPLATE_MANAGER_CLASS_ID, EditTemplateManagerBody10_1, EditTemplateManagerStop10_1,
+    read_annotate_props_collection_body_10_1, read_edit_template_manager_body_10_1,
+};
+use crate::layers::feature_id_set::{
+    FEATURE_ID_SET_CLASS_ID, FeatureIdSetBody10_1, read_feature_id_set_body_10_1,
+};
 use crate::layers::legend_format::{
     LEGEND_CLASS_FORMAT_CLASS_ID, LegendClassFormatBody10_1, LegendClassFormatStop10_1,
     read_legend_class_format_body_10_1,
@@ -1134,9 +1148,68 @@ pub enum HyperlinkSlot10_1 {
 /// 全部为「成功停止」：游标停在最深可闭合点，剩余字节原样保留。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SuccessorStop10_1 {
-    /// FieldInfo 计数循环完整消费（样本形态）。其后为 ALPC
-    ///（请求 IID `{1D5849F2-…}`）槽位等未闭合字段，在此停止。
+    /// 后继段完整消费（读取器当前位置即 FeatureLayer 对象体语义终点）。
+    /// 10.1 写侧对称序列的最后一个字段为 `short(+0x2ca)`（读侧版本 >0x21
+    /// 门），其后无流内字段。
+    TailCompleted,
+    /// FieldInfo 计数循环后的延续段因流耗尽无法开始（ALPC 槽对象头 16 字
+    /// 节都读不满），或 ALPC 槽头类标识不是
+    /// AnnotateLayerPropertiesCollection（游标均回退/停在循环终点；后者与
+    /// 既有调用方断言兼容，停止原因不再细分）。
     FieldInfoLoopCompleted,
+    /// ALPC 体内的停止（游标停在其停止点）。
+    AnnotatePropsBody(AnnotatePropsStop10_1),
+    /// FeatureIDSet 槽的新对象类标识不是 FeatureIDSet：游标回退到该槽位
+    /// 起点。
+    FeatureIdSetUnsupported { class_id: [u8; 16], key: u32 },
+    /// IDisplayFilter 槽（`{19F85377-…}`，版本 ≥2）的新对象类标识未闭合
+    /// （样本空标记）：游标回退到该槽位起点，其后的 3 short 段不可达。
+    /// 此前「该槽为 EditTemplate 宿主」的假设已撤销（宿主 = 图层扩展段的
+    /// EditTemplateManager）。
+    DisplayFilterUnsupported { class_id: [u8; 16], key: u32 },
+    /// IName 槽（`{4BA33331-…}`，版本 ≥4）的新对象类标识未闭合。
+    NameUnsupported { class_id: [u8; 16], key: u32 },
+    /// 关系类循环第 `index` 条（`{311C2EE2-…}`，版本 >6）的新对象类标识
+    /// 未闭合。
+    RelationshipClassUnsupported {
+        class_id: [u8; 16],
+        key: u32,
+        index: usize,
+    },
+    /// IEnvelope 槽（`{1B077914-…}`）的新对象类标识未闭合；`which` 为槽位
+    /// 序（0 = 版本 >8 槽，1 = 版本 >0xe 槽）。Envelope 体本身未在 src/
+    /// 闭合（样本两槽均空标记）。
+    EnvelopeUnsupported {
+        class_id: [u8; 16],
+        key: u32,
+        which: u8,
+    },
+    /// 图层扩展段（版本 ≥0xb）某条目的类标识未闭合：游标回退到该条目
+    /// `[int64 尺寸]` 字段起点（该条目整体不消费），其后的 double +0x1e8
+    /// 等不可达。
+    LayerExtensionUnsupported { class_id: [u8; 16], size: i64 },
+    /// 扩展条目为 EditTemplateManager 但体内停止（游标停在其停止点）。
+    EditTemplateManagerBody(EditTemplateManagerStop10_1),
+    /// ISymbol 槽（`{F3435802-…}`，版本 >0xd）经符号族分派后的未闭合类。
+    SymbolSlotUnsupported { class_id: [u8; 16], key: u32 },
+    /// IUID 槽（`{1714D59B-…}`，版本 >0x10）的新对象类标识未闭合。
+    UidUnsupported { class_id: [u8; 16], key: u32 },
+    /// `{A62B9EC2-…}`（版本 >0x19）的新对象类标识未闭合。
+    ExpressionPropsUnsupported { class_id: [u8; 16], key: u32 },
+    /// 版本 0x1c..0x1f 分支（10.1 不写）的槽位新对象类标识未闭合；`which`
+    /// 为槽序（0 = `{F6CBA4A3-…}`，1 = `{BD724B95-…}`，2 = `{E720618B-…}`）。
+    LegacyTimeSlotUnsupported {
+        class_id: [u8; 16],
+        key: u32,
+        which: u8,
+    },
+    /// TimeData 族（版本 ≥0x20）槽位的新对象类标识未闭合；`which` 为槽序
+    /// （0 = TimeData，1 = TimeTable）。
+    TimeSlotUnsupported {
+        class_id: [u8; 16],
+        key: u32,
+        which: u8,
+    },
     /// IHyperlink 循环第 `index` 条（0 起）为新对象（Hyperlink 族 coclass
     /// 体未闭合）：游标回退到该条目对象头起点，其后条目不可达。
     HyperlinkNewObject {
@@ -1162,16 +1235,47 @@ pub enum SuccessorStop10_1 {
 /// 已确认前缀。
 ///
 /// 字段序（全部来自 10.1.0.3035 FeatureLayer.dll 反编译，样本
-/// `0x5b0..0xafe` 逐字节吻合；对象内存偏移为反编译槽位）：
+/// `0x5b0..0xb8e` 逐字节吻合；对象内存偏移为反编译槽位）：
 /// ① String → obj+0x154 → ② double → obj+0x158 → ③ double → obj+0x160 →
 /// ④ short → obj+0x168 → ⑤ int32 计数 + 循环 LoadObject(IHyperlink
 /// `{3036D35D-…}`)（每项仅 LoadObject + 数组入集辅助 `0x6f701ad0`，无其他
 /// 流读取）→ ⑥ LoadObject(IColor `{20CD40B0-…}`) → ⑦ String → obj+0x1a8 →
 /// ⑧ String → obj+0x184 → ⑨ int32 → obj+0x188 → ⑩ int32 FieldInfo 计数 +
 /// 循环 [（版本 >5）String 条目名 + LoadObject(IFieldInfo
-/// `{A2BAAE2C-…}`)]。中间的 `FUN_6f6e0c00`（+0x144 GUID 后）与循环前后的
-/// 虚调用/QI/数组辅助（`0x6f701ad0`/`0x6f6dd210`/`0x6f6acc10`/`0x6f6c8100`）
-/// 经反编译核对均不读流，无流内字节。
+/// `{A2BAAE2C-…}`)] → ⑪ LoadObject(ALPC `{1D5849F2-…}`，第九轮闭合体) →
+/// ⑫ short → obj+0x1bc → ⑬ LoadObject(FeatureIDSet `{D5BB4B87-…}`) →
+/// ⑭ int32 选择集计数 + count × int32（原生单次整块读）→ ⑮ short →
+/// obj+0x1fe → ⑯ LoadObject(IDisplayFilter `{19F85377-…}`，版本 ≥2) →
+/// ⑰ short ×3 → obj+0x21c/+0x220/+0x21e（版本 ≥3）→ ⑱ int32 → obj+0x22c
+/// （版本 ≥0xc）→ ⑲ LoadObject(IName `{4BA33331-…}`，版本 ≥4) → ⑳ int32
+/// 关系类计数 + 循环 LoadObject({311C2EE2-…})（版本 >6）→ ㉑ String →
+/// obj+0x18c（版本 ≥8）→ ㉒ LoadObject(IEnvelope `{1B077914-…}`，版本 >8)
+/// → ㉓ int32 范围计数 + count × int32（版本 >9，逐元素读）→ ㉔ 图层扩展段
+/// （版本 ≥0xb；LayerLib.dll `ExtensionHelper::LoadExtensions` 格式：
+/// [int32 计数][每条 int64 尺寸 + 16 字节 CLSID + 体]；EditTemplateManager
+/// 体在本轮闭合，EditTemplate 宿主即此）→ ㉕ double → obj+0x1e8（版本
+/// ≥0xd）→ ㉖ LoadObject(ISymbol `{F3435802-…}`，版本 >0xd) → ㉗ short →
+/// obj+0x12e + int32 → obj+0x1f0（版本 >0xe）→ ㉘ LoadObject(IEnvelope，
+/// 版本 >0xe) → ㉙ LoadObject(IUID `{1714D59B-…}`，版本 >0x10) → ㉚ String
+/// → obj+0x28c（版本 ≥0x12）→ ㉛ short → obj+0x1d8（版本 ≥0x13）→ ㉜
+/// double ×2 → obj+0x290/+0x298（版本 ≥0x14）→ ㉝ short → obj+0x1da（版本
+/// ≥0x15）→ ㉞ int32 → obj+0x244（版本 ≥0x16）→ ㉟ short → obj+0x1be（版本
+/// ≥0x17）→ ㊱ CInternalLayerBase::ReadPreJoinDefExpressions（LayerLib.dll
+/// `0x786c5d30`：int32 计数 + count × [String + String]，版本 >0x17）→
+/// ㊲ int32 → obj+0x2c0 + short ×3（版本 ≥0x19）→ ㊳ String ×4 →
+/// obj+0x2cc/+0x2d0/+0x2d4/+0x2d8（版本 ≥0x19）→ ㊴ LoadObject({A62B9EC2-…}
+/// ，版本 >0x19) → ㊵ short → obj+0x300 + String ×3（版本 >0x1a）→ ㊶
+/// TimeData 族四段（版本 ≥0x20；LayerLib.dll `0x7870d8b0`/`0x7870df80`/
+/// `0x7870e250`/`0x7870f6c0`，本轮闭合）→ ㊷ LoadObject({E720618B-…}，版本
+/// >0x20) → ㊸ short → obj+0x2ca（版本 >0x21）。
+/// 中间的 `FUN_6f6e0c00`（+0x144 GUID 后）、`FUN_6f6c8100`、`FUN_6f6acc10`、
+/// `FUN_6f701ad0`、`FUN_6f6dd210`、`FUN_6f6fd550`、`FUN_6f7025b0`（选择集
+/// 刷新路径）经反编译核对均不读流，无流内字节。
+///
+/// 版本 0x1c..0x1f 分支（`{F6CBA4A3}/{BD724B95}/{E720618B}` 槽 + 标量块，
+/// 10.1 docVersion 不写）：字段序已静态闭合但无样本字节佐证，实现按门
+/// `0x1c ≤ ver ≤ 0x1f` 接入、槽位新对象为停止点（[`SuccessorStop10_1::
+/// LegacyTimeSlotUnsupported`]），并注明较原生更严的负值版本拒绝。
 #[derive(Debug, Clone, PartialEq)]
 pub struct FeatureLayerSuccessor10_1 {
     /// String → obj+0x154（样本「BSM」；语义未定，字段名样字符串候选）。
@@ -1198,10 +1302,215 @@ pub struct FeatureLayerSuccessor10_1 {
     pub field_info_count: i32,
     /// FieldInfo 循环已消费条目（按流内顺序）。
     pub field_infos: Vec<FieldInfoLoopEntry10_1>,
+    /// ⑪ ALPC 槽（请求 IID `{1D5849F2-…}`）分类；新对象仅支持
+    /// AnnotateLayerPropertiesCollection。前置停止时 `None`。
+    pub annotate_props: Option<AnnotatePropsSlot10_1>,
+    /// ⑫ short → obj+0x1bc（样本 0xFFFF），语义未定。前置停止时 `None`。
+    pub short_1bc: Option<i16>,
+    /// ⑬ FeatureIDSet 槽分类。前置停止时 `None`。
+    pub feature_id_set: Option<FeatureIdSetSlot10_1>,
+    /// ⑭ 选择集 ID 计数（样本 0）。负数原生不进循环，原样保留。前置停止
+    /// 时 `None`。
+    pub selection_id_count: Option<i32>,
+    /// ⑭ 已消费的选择集 ID（原生单次整块读 count × int32）。
+    pub selection_ids: Vec<i32>,
+    /// ⑮ short → obj+0x1fe（样本 -1），语义未定。前置停止时 `None`。
+    pub short_1fe: Option<i16>,
+    /// ⑯ IDisplayFilter 槽分类（版本 ≥2）。前置停止/版本不足时 `None`。
+    pub display_filter: Option<RefSlot10_1>,
+    /// ⑰ short ×3 → obj+0x21c/+0x220/+0x21e（版本 ≥3；样本 0/0/0），语义
+    /// 未定。前置停止/版本不足时 `None`。
+    pub shorts_21c_220_21e: Option<[i16; 3]>,
+    /// ⑱ int32 → obj+0x22c（版本 ≥0xc；样本 0），语义未定。
+    pub int32_22c: Option<i32>,
+    /// ⑲ IName 槽分类（版本 ≥4）。前置停止/版本不足时 `None`。
+    pub name: Option<RefSlot10_1>,
+    /// ⑳ 关系类循环声明计数（版本 >6；样本 0）。负数原生不进循环。
+    pub relationship_class_count: Option<i32>,
+    /// ⑳ 已消费的关系类槽位条目。
+    pub relationship_classes: Vec<RefSlot10_1>,
+    /// ㉑ String → obj+0x18c（版本 ≥8；样本 cb=2 空串），语义未定。
+    pub string_18c: Option<String>,
+    /// ㉒ IEnvelope 槽分类（版本 >8；样本空标记）。
+    pub envelope_1: Option<RefSlot10_1>,
+    /// ㉓ 范围计数（版本 >9；样本 0）。负数原生不进循环。
+    pub range_count: Option<i32>,
+    /// ㉓ 已消费的范围 int32（逐元素读）。
+    pub range_ids: Vec<i32>,
+    /// ㉔ 图层扩展段声明计数（版本 ≥0xb；样本 1）。负数原生不进循环。
+    pub extension_count: Option<i32>,
+    /// ㉔ 已消费的扩展条目（按流内顺序）。
+    pub extensions: Vec<LayerExtension10_1>,
+    /// ㉕ double → obj+0x1e8（版本 ≥0xd；样本未达），语义未定。
+    pub double_1e8: Option<f64>,
+    /// ㉖ ISymbol 槽（请求 IID `{F3435802-…}`）分类（版本 >0xd）。
+    pub symbol: Option<SymbolSlot10_1>,
+    /// ㉗ short → obj+0x12e（版本 >0xe），语义未定。
+    pub short_12e: Option<i16>,
+    /// ㉗ int32 → obj+0x1f0（版本 >0xe），语义未定。
+    pub int32_1f0: Option<i32>,
+    /// ㉘ IEnvelope 槽 2 分类（版本 >0xe）。
+    pub envelope_2: Option<RefSlot10_1>,
+    /// ㉙ IUID 槽分类（版本 >0x10）。
+    pub uid: Option<RefSlot10_1>,
+    /// ㉚ String → obj+0x28c（版本 ≥0x12），语义未定。
+    pub string_28c: Option<String>,
+    /// ㉛ short → obj+0x1d8（版本 ≥0x13），语义未定。
+    pub short_1d8: Option<i16>,
+    /// ㉜ double → obj+0x290（版本 ≥0x14），语义未定。
+    pub double_290: Option<f64>,
+    /// ㉜ double → obj+0x298（版本 ≥0x14），语义未定。
+    pub double_298: Option<f64>,
+    /// ㉝ short → obj+0x1da（版本 ≥0x15），语义未定。
+    pub short_1da: Option<i16>,
+    /// ㉞ int32 → obj+0x244（版本 ≥0x16），语义未定。
+    pub int32_244: Option<i32>,
+    /// ㉟ short → obj+0x1be（版本 ≥0x17；样本未达），语义未定。
+    pub short_1be: Option<i16>,
+    /// ㊱ PreJoinDefExpressions 对（样本未达）。
+    pub pre_join_pairs: Vec<(String, String)>,
+    /// ㊲ int32 → obj+0x2c0（版本 ≥0x19），语义未定。
+    pub int32_2c0: Option<i32>,
+    /// ㊲ short ×3 → obj+0x2c4/+0x2c6/+0x2c8（版本 ≥0x19），语义未定。
+    pub shorts_2c4_2c6_2c8: Option<[i16; 3]>,
+    /// ㊳ String ×4 → obj+0x2cc/+0x2d0/+0x2d4/+0x2d8（版本 ≥0x19），语义
+    /// 未定。
+    pub strings_2cc_2d0_2d4_2d8: Option<[String; 4]>,
+    /// ㊴ {A62B9EC2} 槽分类（版本 >0x19）。
+    pub expression_props: Option<RefSlot10_1>,
+    /// ㊵ short → obj+0x300（版本 >0x1a），语义未定。
+    pub short_300: Option<i16>,
+    /// ㊵ String ×3 → obj+0x304/+0x308/+0x30c（版本 >0x1a），语义未定。
+    pub strings_304_308_30c: Option<[String; 3]>,
+    /// ㊶ 版本 0x1c..0x1f 分支标量块（short + String ×4 + short + double +
+    /// int32；10.1 不写，无样本佐证；本轮静态闭合）。仅该版本区间读取。
+    pub legacy_scalars: Option<LegacyTailScalars10_1>,
+    /// ㊶ TimeData 段（版本 ≥0x20；样本未达），本轮闭合。
+    pub time_data: Option<TimeDataBody10_1>,
+    /// ㊶ TimeTableDefinition 段（版本 ≥0x20）。
+    pub time_table_definition: Option<TimeTableDefinitionBody10_1>,
+    /// ㊶ TimeDimensionDefinition 段（版本 ≥0x20）。
+    pub time_dimension_definition: Option<TimeDimensionDefinitionBody10_1>,
+    /// ㊶ TimeDataDisplay 段（版本 ≥0x20）。
+    pub time_data_display: Option<TimeDataDisplayBody10_1>,
+    /// ㊷ {E720618B} 槽分类（版本 >0x20；10.1 恒写 34 → 不写）。
+    pub hot_link_expression_props: Option<RefSlot10_1>,
+    /// ㊸ short → obj+0x2ca（版本 >0x21；样本未达），语义未定。
+    pub short_2ca: Option<i16>,
     /// 停止原因（恒有：本读取器始终在最深可闭合点停止）。
     pub stop: SuccessorStop10_1,
     /// 停止点之后剩余的字节数（相对传入 Reader 窗口）。
     pub remaining_bytes: usize,
+}
+
+/// 通用「仅空标记/回引可消费」槽位的分类结果（第九轮延续段的标量段之间的
+/// LoadObject 槽）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RefSlot10_1 {
+    /// 16 字节全零类标识：空引用，无键、无对象体。
+    Null,
+    /// 键已见：回引条目，无对象体。类标识原样保留、不校验。
+    BackReference { class_id: [u8; 16], key: u32 },
+}
+
+/// ⑪ ALPC 槽（请求 IID `{1D5849F2-…}`）的分类结果。
+#[derive(Debug, Clone, PartialEq)]
+pub enum AnnotatePropsSlot10_1 {
+    /// 空标记（原生 LoadObject 对空引用返回空集合候选）。
+    Null,
+    /// 回引条目。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 AnnotateLayerPropertiesCollection 对象：已解析体（体内停止经
+    /// `body.stop` 传播为 [`SuccessorStop10_1::AnnotatePropsBody`]）。
+    Collection(Box<AnnotatePropsBody10_1>),
+}
+
+/// ⑬ FeatureIDSet 槽（请求 IID `{D5BB4B87-…}`）的分类结果。
+#[derive(Debug, Clone, PartialEq)]
+pub enum FeatureIdSetSlot10_1 {
+    /// 空标记。
+    Null,
+    /// 回引条目。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 FeatureIDSet 对象：已解析体（无停止点）。
+    FeatureIdSet(Box<FeatureIdSetBody10_1>),
+}
+
+/// ㉔ 图层扩展段（LayerLib.dll `ExtensionHelper::LoadExtensions`）的条目。
+#[derive(Debug, Clone, PartialEq)]
+pub enum LayerExtension10_1 {
+    /// EditTemplateManager（`{A0162E85-…}`）：已解析体（EditTemplate 宿主；
+    /// 体内停止经 `body.stop` 以
+    /// [`SuccessorStop10_1::EditTemplateManagerBody`] 传播）。
+    EditTemplateManager(Box<EditTemplateManagerBody10_1>),
+}
+
+/// 版本 0x1c..0x1f 分支的标量块（10.1 docVersion 不写；本轮静态闭合，无样
+/// 本字节佐证）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct LegacyTailScalars10_1 {
+    /// short（→ -0x62），语义未定。
+    pub short_62: i16,
+    /// String ×4（→ -0x78/-0x74/-0x70/-0x6c），语义未定。
+    pub strings: [String; 4],
+    /// short（→ -0x44），语义未定。
+    pub short_44: i16,
+    /// double（→ -0x40），语义未定。
+    pub double_40: f64,
+    /// int32（→ -0x38），语义未定。
+    pub int32_38: i32,
+}
+
+/// TimeData 段（LayerLib.dll `0x7870d8b0`，版本 ≤2）的已确认字段。
+#[derive(Debug, Clone, PartialEq)]
+pub struct TimeDataBody10_1 {
+    /// 体首 short 版本（有符号 >2 拒绝；负值位模式一并拒绝，较原生更严）。
+    pub version: u16,
+    /// short（→ this+6），语义未定。
+    pub short_a: i16,
+    /// LoadObject 槽（请求 IID `DAT_78721e70`；新对象 = 停止点）。
+    pub slot: RefSlot10_1,
+    /// 版本 ≥2 的 short（→ this+8），语义未定。
+    pub tail_short: Option<i16>,
+}
+
+/// TimeTableDefinition 段（LayerLib.dll `0x7870df80`，版本 ≤1）的已确认
+/// 字段。
+#[derive(Debug, Clone, PartialEq)]
+pub struct TimeTableDefinitionBody10_1 {
+    /// 体首 short 版本（有符号 >1 拒绝；负值位模式一并拒绝）。
+    pub version: u16,
+    /// String ×4（→ this+8/+0xc/+0x10/+0x14；时间字段名候选），语义未定。
+    pub strings: [String; 4],
+    /// LoadObject 槽（请求 IID `DAT_78721e80`；新对象 = 停止点）。
+    pub slot: RefSlot10_1,
+}
+
+/// TimeDimensionDefinition 段（LayerLib.dll `0x7870e250`，版本 ≤1）的已
+/// 确认字段。
+#[derive(Debug, Clone, PartialEq)]
+pub struct TimeDimensionDefinitionBody10_1 {
+    /// 体首 short 版本（有符号 >1 拒绝；负值位模式一并拒绝）。
+    pub version: u16,
+    /// String ×2（→ this+4/+8；时间维度名/格式候选），语义未定。
+    pub strings: [String; 2],
+}
+
+/// TimeDataDisplay 段（LayerLib.dll `0x7870f6c0`，版本 ≤1）的已确认字段。
+#[derive(Debug, Clone, PartialEq)]
+pub struct TimeDataDisplayBody10_1 {
+    /// 体首 short 版本（有符号 >1 拒绝；负值位模式一并拒绝）。
+    pub version: u16,
+    /// short（→ this+4），语义未定。
+    pub short_a: i16,
+    /// double（→ this+8），语义未定。
+    pub double_a: f64,
+    /// int32（→ this+0x10），语义未定。
+    pub int_a: i32,
+    /// double（→ this+0x18），语义未定。
+    pub double_b: f64,
+    /// int32（→ this+0x20），语义未定。
+    pub int_b: i32,
 }
 
 /// 从渲染器槽 +0x144 原样 GUID 之后的位置读取 10.1 FeatureLayer 后继字段
@@ -1324,7 +1633,719 @@ pub fn read_feature_layer_successor_10_1(
             }
         }
     }
-    let stop = stop.unwrap_or(SuccessorStop10_1::FieldInfoLoopCompleted);
+    // ⑪-㊸ FieldInfo 循环之后的延续段（第九轮闭合）。流已耗尽（ALPC 槽
+    //    对象头 16 字节无法完整读取）时保留第八轮「循环完成」停止语义；
+    //    对象头可读后的中途截断一律报错（整体回退，与同读取器前段语义
+    //    一致）。
+    let mut annotate_props = None;
+    let mut short_1bc = None;
+    let mut feature_id_set = None;
+    let mut selection_id_count = None;
+    let mut selection_ids = Vec::new();
+    let mut short_1fe = None;
+    let mut display_filter = None;
+    let mut shorts_21c_220_21e = None;
+    let mut int32_22c = None;
+    let mut name = None;
+    let mut relationship_class_count = None;
+    let mut relationship_classes = Vec::new();
+    let mut string_18c = None;
+    let mut envelope_1 = None;
+    let mut range_count = None;
+    let mut range_ids = Vec::new();
+    let mut extension_count = None;
+    let mut extensions = Vec::new();
+    let mut double_1e8 = None;
+    let mut symbol = None;
+    let mut short_12e = None;
+    let mut int32_1f0 = None;
+    let mut envelope_2 = None;
+    let mut uid = None;
+    let mut string_28c = None;
+    let mut short_1d8 = None;
+    let mut double_290 = None;
+    let mut double_298 = None;
+    let mut short_1da = None;
+    let mut int32_244 = None;
+    let mut short_1be = None;
+    let mut pre_join_pairs = Vec::new();
+    let mut int32_2c0 = None;
+    let mut shorts_2c4_2c6_2c8 = None;
+    let mut strings_2cc_2d0_2d4_2d8 = None;
+    let mut expression_props = None;
+    let mut short_300 = None;
+    let mut strings_304_308_30c = None;
+    let mut legacy_scalars = None;
+    let mut time_data = None;
+    let mut time_table_definition = None;
+    let mut time_dimension_definition = None;
+    let mut time_data_display = None;
+    let mut hot_link_expression_props = None;
+    let mut short_2ca = None;
+    if stop.is_none() {
+        if trial.remaining() < 16 {
+            // 流在此结束：ALPC 槽对象头不可读，保留「循环完成」停止。
+            stop = Some(SuccessorStop10_1::FieldInfoLoopCompleted);
+        } else {
+            // ⑪ ALPC 槽（请求 IID {1D5849F2-…}）：新对象仅支持
+            //    AnnotateLayerPropertiesCollection。
+            let slot_offset = trial.position();
+            let pre_slot_table = staged_table.clone();
+            match read_object_entry_10_1(&mut trial, &mut staged_table)? {
+                ObjectEntry10_1::Null => {
+                    annotate_props = Some(AnnotatePropsSlot10_1::Null);
+                }
+                ObjectEntry10_1::BackReference { class_id, key } => {
+                    annotate_props = Some(AnnotatePropsSlot10_1::BackReference { class_id, key });
+                }
+                ObjectEntry10_1::NewObject { class_id, key }
+                    if class_id == ANNOTATE_PROPS_COLLECTION_CLASS_ID =>
+                {
+                    let body = read_annotate_props_collection_body_10_1(
+                        &mut trial,
+                        max_bytes,
+                        &mut staged_table,
+                        key,
+                    )?;
+                    if let Some(inner) = body.stop {
+                        stop = Some(SuccessorStop10_1::AnnotatePropsBody(inner));
+                    }
+                    annotate_props = Some(AnnotatePropsSlot10_1::Collection(Box::new(body)));
+                }
+                ObjectEntry10_1::NewObject { class_id, key } => {
+                    // ALPC 槽头不是 AnnotateLayerPropertiesCollection：游标
+                    // 回退到槽位起点（该键不保留），并按第八轮「FieldInfo
+                    // 循环完成、其后对象未闭合」语义停止（停止点相同，仅
+                    // 停止原因不区分「对象流后续内容」与「未知标注类」，
+                    // 与既有调用方断言兼容）。
+                    stop = Some(SuccessorStop10_1::FieldInfoLoopCompleted);
+                    let _ = (class_id, key);
+                    trial = reposition_to(reader, slot_offset);
+                    staged_table = pre_slot_table;
+                    annotate_props = Some(AnnotatePropsSlot10_1::Null);
+                }
+            }
+
+            // ⑫ short +0x1bc（前置停止时不读取）。
+            if stop.is_none() {
+                short_1bc = Some(trial.read_u16_le()? as i16);
+
+                // ⑬ FeatureIDSet 槽（请求 IID {D5BB4B87-…}）。
+                let slot_offset = trial.position();
+                let pre_slot_table = staged_table.clone();
+                match read_object_entry_10_1(&mut trial, &mut staged_table)? {
+                    ObjectEntry10_1::Null => {
+                        feature_id_set = Some(FeatureIdSetSlot10_1::Null);
+                    }
+                    ObjectEntry10_1::BackReference { class_id, key } => {
+                        feature_id_set =
+                            Some(FeatureIdSetSlot10_1::BackReference { class_id, key });
+                    }
+                    ObjectEntry10_1::NewObject { class_id, key }
+                        if class_id == FEATURE_ID_SET_CLASS_ID =>
+                    {
+                        let body =
+                            read_feature_id_set_body_10_1(&mut trial, &mut staged_table, key)?;
+                        feature_id_set = Some(FeatureIdSetSlot10_1::FeatureIdSet(Box::new(body)));
+                    }
+                    ObjectEntry10_1::NewObject { class_id, key } => {
+                        stop = Some(SuccessorStop10_1::FeatureIdSetUnsupported { class_id, key });
+                        trial = reposition_to(reader, slot_offset);
+                        staged_table = pre_slot_table;
+                        feature_id_set = Some(FeatureIdSetSlot10_1::Null);
+                    }
+                }
+            }
+        }
+    }
+
+    // ⑭-㊸ 后续段（ALPC 槽完整消费且无前置停止时才继续；此处之后的中途
+    //    截断一律报错——对象流一旦进入本段即长度确定）。
+    if stop.is_none() && short_1bc.is_some() {
+        // ⑭ 选择集 ID：int32 计数 + count × int32（原生单次整块读；
+        //    负计数原生跳过，原样保留）。
+        let count = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+        selection_id_count = Some(count);
+        if count > 0 {
+            let total = usize::try_from(count)
+                .ok()
+                .and_then(|c| c.checked_mul(4))
+                .ok_or_else(|| {
+                    io::Error::new(
+                        ErrorKind::InvalidData,
+                        format!(
+                            "选择集 ID 计数 {count} × 4 溢出（offset 0x{:x}）",
+                            trial.position()
+                        ),
+                    )
+                })?;
+            let raw = trial.read_bytes(total)?;
+            for chunk in raw.chunks_exact(4) {
+                selection_ids.push(i32::from_le_bytes(chunk.try_into().unwrap()));
+            }
+        }
+
+        // ⑮ short +0x1fe。
+        short_1fe = Some(trial.read_u16_le()? as i16);
+
+        // ⑯ IDisplayFilter 槽（请求 IID {19F85377-…}，版本 ≥2）。此前
+        //    「EditTemplate 宿主」假设撤销：样本该槽为空标记；新对象类为
+        //    停止点。
+        if (fl_version as i16) >= 2 {
+            let slot_offset = trial.position();
+            let pre_slot_table = staged_table.clone();
+            match read_object_entry_10_1(&mut trial, &mut staged_table)? {
+                ObjectEntry10_1::Null => display_filter = Some(RefSlot10_1::Null),
+                ObjectEntry10_1::BackReference { class_id, key } => {
+                    display_filter = Some(RefSlot10_1::BackReference { class_id, key });
+                }
+                ObjectEntry10_1::NewObject { class_id, key } => {
+                    stop = Some(SuccessorStop10_1::DisplayFilterUnsupported { class_id, key });
+                    trial = reposition_to(reader, slot_offset);
+                    staged_table = pre_slot_table;
+                    display_filter = Some(RefSlot10_1::Null);
+                }
+            }
+        }
+
+        // ⑰-⑲ 版本门标量段与 IName 槽。
+        if stop.is_none() && (fl_version as i16) >= 3 {
+            let a = trial.read_u16_le()? as i16;
+            let b = trial.read_u16_le()? as i16;
+            let c = trial.read_u16_le()? as i16;
+            shorts_21c_220_21e = Some([a, b, c]);
+        }
+        if stop.is_none() && (fl_version as i16) >= 0xc {
+            int32_22c = Some(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
+        }
+        if stop.is_none() && (fl_version as i16) >= 4 {
+            let slot_offset = trial.position();
+            let pre_slot_table = staged_table.clone();
+            match read_object_entry_10_1(&mut trial, &mut staged_table)? {
+                ObjectEntry10_1::Null => name = Some(RefSlot10_1::Null),
+                ObjectEntry10_1::BackReference { class_id, key } => {
+                    name = Some(RefSlot10_1::BackReference { class_id, key });
+                }
+                ObjectEntry10_1::NewObject { class_id, key } => {
+                    stop = Some(SuccessorStop10_1::NameUnsupported { class_id, key });
+                    trial = reposition_to(reader, slot_offset);
+                    staged_table = pre_slot_table;
+                    name = Some(RefSlot10_1::Null);
+                }
+            }
+        }
+
+        // ⑳ 关系类计数 + 循环（版本 >6；新对象 = 停止点）。
+        if stop.is_none() && (fl_version as i16) > 6 {
+            let count = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+            relationship_class_count = Some(count);
+            for index in 0..count.max(0) as usize {
+                let slot_offset = trial.position();
+                let pre_slot_table = staged_table.clone();
+                match read_object_entry_10_1(&mut trial, &mut staged_table)? {
+                    ObjectEntry10_1::Null => relationship_classes.push(RefSlot10_1::Null),
+                    ObjectEntry10_1::BackReference { class_id, key } => {
+                        relationship_classes.push(RefSlot10_1::BackReference { class_id, key });
+                    }
+                    ObjectEntry10_1::NewObject { class_id, key } => {
+                        stop = Some(SuccessorStop10_1::RelationshipClassUnsupported {
+                            class_id,
+                            key,
+                            index,
+                        });
+                        trial = reposition_to(reader, slot_offset);
+                        staged_table = pre_slot_table;
+                        break;
+                    }
+                }
+                if stop.is_some() {
+                    break;
+                }
+            }
+        }
+
+        // ㉑ String +0x18c（版本 ≥8；写侧恒写，10.1 与读侧门一致）。
+        if stop.is_none() && (fl_version as i16) >= 8 {
+            string_18c = Some(read_string_10_1(&mut trial, max_bytes)?);
+        }
+
+        // ㉒ IEnvelope 槽（版本 >8；Envelope 体未在 src/ 闭合，新对象 =
+        //    停止点；样本空标记）。
+        if stop.is_none() && (fl_version as i16) > 8 {
+            let slot_offset = trial.position();
+            let pre_slot_table = staged_table.clone();
+            match read_object_entry_10_1(&mut trial, &mut staged_table)? {
+                ObjectEntry10_1::Null => envelope_1 = Some(RefSlot10_1::Null),
+                ObjectEntry10_1::BackReference { class_id, key } => {
+                    envelope_1 = Some(RefSlot10_1::BackReference { class_id, key });
+                }
+                ObjectEntry10_1::NewObject { class_id, key } => {
+                    stop = Some(SuccessorStop10_1::EnvelopeUnsupported {
+                        class_id,
+                        key,
+                        which: 0,
+                    });
+                    trial = reposition_to(reader, slot_offset);
+                    staged_table = pre_slot_table;
+                    envelope_1 = Some(RefSlot10_1::Null);
+                }
+            }
+        }
+
+        // ㉓ 范围计数 + 逐元素 int32（版本 >9；负计数原生跳过）。
+        if stop.is_none() && (fl_version as i16) > 9 {
+            let count = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+            range_count = Some(count);
+            for _ in 0..count.max(0) as usize {
+                range_ids.push(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
+            }
+        }
+
+        // ㉔ 图层扩展段（版本 ≥0xb；LayerLib.dll ExtensionHelper::
+        //    LoadExtensions 格式）。EditTemplateManager 体本轮闭合
+        //    （EditTemplate 宿主）；其余类为停止点（回退到该条目 [int64
+        //    尺寸] 字段起点，该条目整体不消费）。
+        if stop.is_none() && (fl_version as i16) >= 0xb {
+            let count = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+            extension_count = Some(count);
+            for _ in 0..count.max(0) as usize {
+                let entry_offset = trial.position();
+                let pre_entry_table = staged_table.clone();
+                let size = i64::from_le_bytes(trial.read_bytes(8)?.try_into().unwrap());
+                let header = read_object_entry_10_1(&mut trial, &mut staged_table)?;
+                match header {
+                    ObjectEntry10_1::Null => {
+                        // 尺寸声明之后紧跟 16 字节全零类标识：原生按
+                        // CLSID 语义读，此处不可能出现空标记布局；按未
+                        // 闭合停止处理（防静默错位）。
+                        stop = Some(SuccessorStop10_1::LayerExtensionUnsupported {
+                            class_id: [0u8; 16],
+                            size,
+                        });
+                        trial = reposition_to(reader, entry_offset);
+                        staged_table = pre_entry_table;
+                    }
+                    ObjectEntry10_1::BackReference { class_id, key } => {
+                        // 回引条目无体：原生扩展段每条都带完整对象头+
+                        // 体，回引布局与 ExtensionHelper 实现不符，按未
+                        // 闭合停止。
+                        stop =
+                            Some(SuccessorStop10_1::LayerExtensionUnsupported { class_id, size });
+                        let _ = key;
+                        trial = reposition_to(reader, entry_offset);
+                        staged_table = pre_entry_table;
+                    }
+                    ObjectEntry10_1::NewObject { class_id, key }
+                        if class_id == EDIT_TEMPLATE_MANAGER_CLASS_ID =>
+                    {
+                        // 尺寸字段语义（样本扩展条目：声明 387，头+体恰为
+                        // 387 字节）：覆盖 [类标识][键][体] 整段，不含其前
+                        // 的 [int64 尺寸] 字段本身。object_start 从尺寸字段
+                        // 之后（对象头之前）起算。
+                        let object_start = entry_offset + 8;
+                        let body = read_edit_template_manager_body_10_1(
+                            &mut trial,
+                            max_bytes,
+                            &mut staged_table,
+                            key,
+                        )?;
+                        let consumed = trial.position() - object_start;
+                        if consumed != usize::try_from(size).unwrap_or(usize::MAX) {
+                            // 尺寸字段与实际消费不一致：原生不校验（已
+                            // 知类不使用尺寸），显式报错较严（防静默
+                            // 错位）；错误整体回退。
+                            return Err(io::Error::new(
+                                ErrorKind::InvalidData,
+                                format!(
+                                    "EditTemplateManager 扩展条目 offset 0x{entry_offset:x}: \
+                                     声明尺寸 {size} 与实际消费 {consumed} 不一致（原生不校验，\
+                                     本读取器显式拒绝）"
+                                ),
+                            ));
+                        }
+                        extensions.push(LayerExtension10_1::EditTemplateManager(Box::new(body)));
+                    }
+                    ObjectEntry10_1::NewObject { class_id, key } => {
+                        stop =
+                            Some(SuccessorStop10_1::LayerExtensionUnsupported { class_id, size });
+                        let _ = key;
+                        trial = reposition_to(reader, entry_offset);
+                        staged_table = pre_entry_table;
+                    }
+                }
+                if stop.is_some() {
+                    break;
+                }
+            }
+        }
+
+        // ㉕ double +0x1e8（版本 ≥0xd）。
+        if stop.is_none() && (fl_version as i16) >= 0xd {
+            double_1e8 = Some(trial.read_f64_le()?);
+        }
+
+        // ㉖ ISymbol 槽（请求 IID {F3435802-…}，版本 >0xd）：符号族分派，
+        //    未知类为停止点（分派内部已回退）。
+        if stop.is_none() && (fl_version as i16) > 0xd {
+            match read_display_symbol_slot_10_1(
+                &mut trial,
+                max_bytes,
+                &mut staged_table,
+                MAX_SYMBOL_NESTING_DEPTH,
+            )? {
+                SymbolSlot10_1::Unsupported { class_id, key } => {
+                    stop = Some(SuccessorStop10_1::SymbolSlotUnsupported { class_id, key });
+                    symbol = Some(SymbolSlot10_1::Null);
+                }
+                other => symbol = Some(other),
+            }
+        }
+
+        // ㉗-㉙ 版本 >0xe：short +0x12e、int32 +0x1f0、IEnvelope 槽 2。
+        if stop.is_none() && (fl_version as i16) > 0xe {
+            short_12e = Some(trial.read_u16_le()? as i16);
+            int32_1f0 = Some(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
+            let slot_offset = trial.position();
+            let pre_slot_table = staged_table.clone();
+            match read_object_entry_10_1(&mut trial, &mut staged_table)? {
+                ObjectEntry10_1::Null => envelope_2 = Some(RefSlot10_1::Null),
+                ObjectEntry10_1::BackReference { class_id, key } => {
+                    envelope_2 = Some(RefSlot10_1::BackReference { class_id, key });
+                }
+                ObjectEntry10_1::NewObject { class_id, key } => {
+                    stop = Some(SuccessorStop10_1::EnvelopeUnsupported {
+                        class_id,
+                        key,
+                        which: 1,
+                    });
+                    trial = reposition_to(reader, slot_offset);
+                    staged_table = pre_slot_table;
+                    envelope_2 = Some(RefSlot10_1::Null);
+                }
+            }
+        }
+
+        // ㉙ IUID 槽（请求 IID {1714D59B-…}，版本 >0x10）。
+        if stop.is_none() && (fl_version as i16) > 0x10 {
+            let slot_offset = trial.position();
+            let pre_slot_table = staged_table.clone();
+            match read_object_entry_10_1(&mut trial, &mut staged_table)? {
+                ObjectEntry10_1::Null => uid = Some(RefSlot10_1::Null),
+                ObjectEntry10_1::BackReference { class_id, key } => {
+                    uid = Some(RefSlot10_1::BackReference { class_id, key });
+                }
+                ObjectEntry10_1::NewObject { class_id, key } => {
+                    stop = Some(SuccessorStop10_1::UidUnsupported { class_id, key });
+                    trial = reposition_to(reader, slot_offset);
+                    staged_table = pre_slot_table;
+                    uid = Some(RefSlot10_1::Null);
+                }
+            }
+        }
+
+        // ㉚-㊱ 版本门标量段（≥0x12 / ==0x12||0x13 / ≥0x13 / ≥0x14 / ≥0x15 /
+        //    ≥0x16 / ≥0x17）。
+        if stop.is_none() && (fl_version as i16) >= 0x12 {
+            string_28c = Some(read_string_10_1(&mut trial, max_bytes)?);
+            if (fl_version as i16) == 0x12 || (fl_version as i16) == 0x13 {
+                // 原生读 2 字节入临时（丢弃）。
+                let _ = trial.read_u16_le()?;
+            }
+            if (fl_version as i16) >= 0x13 {
+                short_1d8 = Some(trial.read_u16_le()? as i16);
+            }
+            if (fl_version as i16) >= 0x14 {
+                double_290 = Some(trial.read_f64_le()?);
+                double_298 = Some(trial.read_f64_le()?);
+            }
+            if (fl_version as i16) >= 0x15 {
+                short_1da = Some(trial.read_u16_le()? as i16);
+            }
+            if (fl_version as i16) >= 0x16 {
+                int32_244 = Some(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
+            }
+            if (fl_version as i16) >= 0x17 {
+                short_1be = Some(trial.read_u16_le()? as i16);
+            }
+        }
+
+        // ㊱ PreJoinDefExpressions（版本 >0x17；LayerLib.dll
+        //    `0x786c5d30`：int32 计数 + count × [String + String]）。
+        if stop.is_none() && (fl_version as i16) > 0x17 {
+            let count = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+            if count > 0 {
+                for _ in 0..count as usize {
+                    let first = read_string_10_1(&mut trial, max_bytes)?;
+                    let second = read_string_10_1(&mut trial, max_bytes)?;
+                    pre_join_pairs.push((first, second));
+                }
+            }
+        }
+
+        // ㊲㊳ 版本 ≥0x19 标量块。
+        if stop.is_none() && (fl_version as i16) >= 0x19 {
+            int32_2c0 = Some(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
+            let a = trial.read_u16_le()? as i16;
+            let b = trial.read_u16_le()? as i16;
+            let c = trial.read_u16_le()? as i16;
+            shorts_2c4_2c6_2c8 = Some([a, b, c]);
+            let s1 = read_string_10_1(&mut trial, max_bytes)?;
+            let s2 = read_string_10_1(&mut trial, max_bytes)?;
+            let s3 = read_string_10_1(&mut trial, max_bytes)?;
+            let s4 = read_string_10_1(&mut trial, max_bytes)?;
+            strings_2cc_2d0_2d4_2d8 = Some([s1, s2, s3, s4]);
+        }
+
+        // ㊴ {A62B9EC2} 槽（版本 >0x19；新对象 = 停止点）。
+        if stop.is_none() && (fl_version as i16) > 0x19 {
+            let slot_offset = trial.position();
+            let pre_slot_table = staged_table.clone();
+            match read_object_entry_10_1(&mut trial, &mut staged_table)? {
+                ObjectEntry10_1::Null => expression_props = Some(RefSlot10_1::Null),
+                ObjectEntry10_1::BackReference { class_id, key } => {
+                    expression_props = Some(RefSlot10_1::BackReference { class_id, key });
+                }
+                ObjectEntry10_1::NewObject { class_id, key } => {
+                    stop = Some(SuccessorStop10_1::ExpressionPropsUnsupported { class_id, key });
+                    trial = reposition_to(reader, slot_offset);
+                    staged_table = pre_slot_table;
+                    expression_props = Some(RefSlot10_1::Null);
+                }
+            }
+        }
+
+        // ㊵ 版本 >0x1a：short +0x300 + String ×3。
+        if stop.is_none() && (fl_version as i16) > 0x1a {
+            short_300 = Some(trial.read_u16_le()? as i16);
+            let s1 = read_string_10_1(&mut trial, max_bytes)?;
+            let s2 = read_string_10_1(&mut trial, max_bytes)?;
+            let s3 = read_string_10_1(&mut trial, max_bytes)?;
+            strings_304_308_30c = Some([s1, s2, s3]);
+        }
+
+        // ㊶ 版本 0x1c..0x1f 分支（10.1 docVersion 不写；本轮静态闭合，
+        //    无样本字节佐证）：标量块 + 三个时间族槽（新对象 = 停止点）。
+        if stop.is_none() && (fl_version as i16) >= 0x1c && (fl_version as i16) < 0x20 {
+            let legacy_short = trial.read_u16_le()? as i16;
+            let l1 = read_string_10_1(&mut trial, max_bytes)?;
+            let l2 = read_string_10_1(&mut trial, max_bytes)?;
+            let l3 = read_string_10_1(&mut trial, max_bytes)?;
+            let l4 = read_string_10_1(&mut trial, max_bytes)?;
+            let legacy_short2 = trial.read_u16_le()? as i16;
+            let legacy_double = trial.read_f64_le()?;
+            let legacy_int = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+            legacy_scalars = Some(LegacyTailScalars10_1 {
+                short_62: legacy_short,
+                strings: [l1, l2, l3, l4],
+                short_44: legacy_short2,
+                double_40: legacy_double,
+                int32_38: legacy_int,
+            });
+            for which in 0u8..3 {
+                let slot_offset = trial.position();
+                let pre_slot_table = staged_table.clone();
+                match read_object_entry_10_1(&mut trial, &mut staged_table)? {
+                    ObjectEntry10_1::Null => {}
+                    ObjectEntry10_1::BackReference { class_id, key } => {
+                        let _ = (class_id, key);
+                    }
+                    ObjectEntry10_1::NewObject { class_id, key } => {
+                        stop = Some(SuccessorStop10_1::LegacyTimeSlotUnsupported {
+                            class_id,
+                            key,
+                            which,
+                        });
+                        trial = reposition_to(reader, slot_offset);
+                        staged_table = pre_slot_table;
+                        break;
+                    }
+                }
+                if stop.is_some() {
+                    break;
+                }
+            }
+        }
+
+        // ㊶ TimeData 族四段（版本 ≥0x20；LayerLib.dll `0x7870d8b0` 等，
+        //    本轮闭合；槽位新对象 = 停止点）。
+        if stop.is_none() && (fl_version as i16) >= 0x20 {
+            let entry_offset = trial.position();
+            let version = trial.read_u16_le()?;
+            let signed = version as i16;
+            if signed > 2 || signed < 0 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    format!(
+                        "TimeData 对象段 offset 0x{entry_offset:x}: 版本 {version} 超出 \
+                         TimeData::LoadTimeData 接受范围（有符号比较 >2 拒绝；负值位模式\
+                         一并拒绝）"
+                    ),
+                ));
+            }
+            let short_a = trial.read_u16_le()? as i16;
+            let mut time_slot = RefSlot10_1::Null;
+            {
+                let slot_offset = trial.position();
+                let pre_slot_table = staged_table.clone();
+                match read_object_entry_10_1(&mut trial, &mut staged_table)? {
+                    ObjectEntry10_1::Null => {}
+                    ObjectEntry10_1::BackReference { class_id, key } => {
+                        time_slot = RefSlot10_1::BackReference { class_id, key };
+                    }
+                    ObjectEntry10_1::NewObject { class_id, key } => {
+                        stop = Some(SuccessorStop10_1::TimeSlotUnsupported {
+                            class_id,
+                            key,
+                            which: 0,
+                        });
+                        trial = reposition_to(reader, slot_offset);
+                        staged_table = pre_slot_table;
+                    }
+                }
+            }
+            let mut tail_short = None;
+            if stop.is_none() && signed >= 2 {
+                tail_short = Some(trial.read_u16_le()? as i16);
+            }
+            if stop.is_none() {
+                time_data = Some(TimeDataBody10_1 {
+                    version,
+                    short_a,
+                    slot: time_slot,
+                    tail_short,
+                });
+            }
+
+            // TimeTableDefinition（版本 ≤1；String ×4 + 槽）。
+            if stop.is_none() {
+                let entry_offset = trial.position();
+                let version = trial.read_u16_le()?;
+                let signed = version as i16;
+                if signed > 1 || signed < 0 {
+                    return Err(io::Error::new(
+                        ErrorKind::InvalidData,
+                        format!(
+                            "TimeTableDefinition 对象段 offset 0x{entry_offset:x}: 版本 {version} \
+                             超出 TimeTableDefinition::LoadTimeTableDefinition 接受范围\
+                             （有符号比较 >1 拒绝；负值位模式一并拒绝）"
+                        ),
+                    ));
+                }
+                let s1 = read_string_10_1(&mut trial, max_bytes)?;
+                let s2 = read_string_10_1(&mut trial, max_bytes)?;
+                let s3 = read_string_10_1(&mut trial, max_bytes)?;
+                let s4 = read_string_10_1(&mut trial, max_bytes)?;
+                let mut slot = RefSlot10_1::Null;
+                let slot_offset = trial.position();
+                let pre_slot_table = staged_table.clone();
+                match read_object_entry_10_1(&mut trial, &mut staged_table)? {
+                    ObjectEntry10_1::Null => {}
+                    ObjectEntry10_1::BackReference { class_id, key } => {
+                        slot = RefSlot10_1::BackReference { class_id, key };
+                    }
+                    ObjectEntry10_1::NewObject { class_id, key } => {
+                        stop = Some(SuccessorStop10_1::TimeSlotUnsupported {
+                            class_id,
+                            key,
+                            which: 1,
+                        });
+                        trial = reposition_to(reader, slot_offset);
+                        staged_table = pre_slot_table;
+                    }
+                }
+                if stop.is_none() {
+                    time_table_definition = Some(TimeTableDefinitionBody10_1 {
+                        version,
+                        strings: [s1, s2, s3, s4],
+                        slot,
+                    });
+                }
+            }
+
+            // TimeDimensionDefinition（版本 ≤1；String ×2）。
+            if stop.is_none() {
+                let entry_offset = trial.position();
+                let version = trial.read_u16_le()?;
+                let signed = version as i16;
+                if signed > 1 || signed < 0 {
+                    return Err(io::Error::new(
+                        ErrorKind::InvalidData,
+                        format!(
+                            "TimeDimensionDefinition 对象段 offset 0x{entry_offset:x}: 版本 \
+                             {version} 超出 TimeDimensionDefinition::LoadTimeDimensionDefinition \
+                             接受范围（有符号比较 >1 拒绝；负值位模式一并拒绝）"
+                        ),
+                    ));
+                }
+                let s1 = read_string_10_1(&mut trial, max_bytes)?;
+                let s2 = read_string_10_1(&mut trial, max_bytes)?;
+                if stop.is_none() {
+                    time_dimension_definition = Some(TimeDimensionDefinitionBody10_1 {
+                        version,
+                        strings: [s1, s2],
+                    });
+                }
+            }
+
+            // TimeDataDisplay（版本 ≤1；short + double + int32 + double +
+            // int32）。
+            if stop.is_none() {
+                let entry_offset = trial.position();
+                let version = trial.read_u16_le()?;
+                let signed = version as i16;
+                if signed > 1 || signed < 0 {
+                    return Err(io::Error::new(
+                        ErrorKind::InvalidData,
+                        format!(
+                            "TimeDataDisplay 对象段 offset 0x{entry_offset:x}: 版本 {version} \
+                             超出 TimeDataDisplay::LoadTimeDataDisplay 接受范围（有符号比较 \
+                             >1 拒绝；负值位模式一并拒绝）"
+                        ),
+                    ));
+                }
+                let short_a = trial.read_u16_le()? as i16;
+                let double_a = trial.read_f64_le()?;
+                let int_a = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+                let double_b = trial.read_f64_le()?;
+                let int_b = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+                if stop.is_none() {
+                    time_data_display = Some(TimeDataDisplayBody10_1 {
+                        version,
+                        short_a,
+                        double_a,
+                        int_a,
+                        double_b,
+                        int_b,
+                    });
+                }
+            }
+        }
+
+        // ㊷ {E720618B} 槽（版本 >0x20；10.1 恒写 34 → 不达；新对象 = 停止
+        //    点）。注意：读侧 ==0x1f 的同名槽属 0x1c..0x1f 分支（见上）。
+        if stop.is_none() && (fl_version as i16) > 0x20 {
+            let slot_offset = trial.position();
+            let pre_slot_table = staged_table.clone();
+            match read_object_entry_10_1(&mut trial, &mut staged_table)? {
+                ObjectEntry10_1::Null => hot_link_expression_props = Some(RefSlot10_1::Null),
+                ObjectEntry10_1::BackReference { class_id, key } => {
+                    hot_link_expression_props = Some(RefSlot10_1::BackReference { class_id, key });
+                }
+                ObjectEntry10_1::NewObject { class_id, key } => {
+                    stop = Some(SuccessorStop10_1::ExpressionPropsUnsupported { class_id, key });
+                    trial = reposition_to(reader, slot_offset);
+                    staged_table = pre_slot_table;
+                    hot_link_expression_props = Some(RefSlot10_1::Null);
+                }
+            }
+        }
+
+        // ㊸ short +0x2ca（版本 >0x21；样本 34 → 不达）。
+        if stop.is_none() && (fl_version as i16) > 0x21 {
+            short_2ca = Some(trial.read_u16_le()? as i16);
+        }
+    }
+    let stop = stop.unwrap_or(SuccessorStop10_1::TailCompleted);
 
     let remaining_bytes = trial.remaining();
     let result = FeatureLayerSuccessor10_1 {
@@ -1340,6 +2361,51 @@ pub fn read_feature_layer_successor_10_1(
         int32_188,
         field_info_count,
         field_infos,
+        annotate_props,
+        short_1bc,
+        feature_id_set,
+        selection_id_count,
+        selection_ids,
+        short_1fe,
+        display_filter,
+        shorts_21c_220_21e,
+        int32_22c,
+        name,
+        relationship_class_count,
+        relationship_classes,
+        string_18c,
+        envelope_1,
+        range_count,
+        range_ids,
+        extension_count,
+        extensions,
+        double_1e8,
+        symbol,
+        short_12e,
+        int32_1f0,
+        envelope_2,
+        uid,
+        string_28c,
+        short_1d8,
+        double_290,
+        double_298,
+        short_1da,
+        int32_244,
+        short_1be,
+        pre_join_pairs,
+        int32_2c0,
+        shorts_2c4_2c6_2c8,
+        strings_2cc_2d0_2d4_2d8,
+        expression_props,
+        short_300,
+        strings_304_308_30c,
+        legacy_scalars,
+        time_data,
+        time_table_definition,
+        time_dimension_definition,
+        time_data_display,
+        hot_link_expression_props,
+        short_2ca,
         stop,
         remaining_bytes,
     };
