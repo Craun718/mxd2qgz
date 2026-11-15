@@ -140,3 +140,165 @@ Fraction 10 字节体与版本 2 拒绝、Rate 版本 2 满形态（double+中�
 RateFormat 四类（三变体读取器直接作为槽位分派目标，满形态完整消费，其余
 esriSystem 同族类维持 `NumberFormatUnsupported` 停止）。样本槽仅含
 NumericFormat，样本行为不变；四读取器已入 robustness 集中清单。
+
+## 同族五类闭合（2026-11-15）
+
+本轮闭合 esriSystem 同族其余五类：CurrencyFormat `{7E4F471A}`、LatLonFormat
+`{7E4F471D}`、AngleFormat `{7E4F471E}`、ScientificFormat `{7E4F471F}`、
+CustomNumberFormat `{7E4F4722}`。全部为静态取证（本机 pyghidra，Ghidra 12.2
++ JDK 25，打开第九/杂项轮工程副本并逐锚复核：NumericFormat/Percentage 四锚
+与上文表格逐项一致），未运行 ArcMap 10.1，未人工验证。样本
+`samples/测试底图.mxd` 全文件（全部流）按 16 字节 CLSID 内存序原样字节扫描，
+五类 **0 命中**（NumericFormat 138 命中、Percentage/Fraction/Rate 同为 0，
+与上文一致），即五类**无样本字节佐证**，字段序全部来自反编译。地址均为
+SystemCore.dll 10.1.0.3035（SHA 与文件身份同上文）静态映像 VA；类身份证据
+补充：五类 CLSID 在 `esri.clsid.ecfg`（本轮以解码表复核）均声明于
+`<Module name="SystemCore.dll" progIDPrefix="esriSystem">` 下。
+
+### 定位链（同判据 [C]==0 且 [C+0xc]==TD；TD=RTTI 名字符串 VA-8，名形
+`.?AV<类名>@@`）
+
+| 变体 | RTTI TD | 首 COL | 虚表 | +0x0c GetClassID | +0x14 Load | +0x18 Save | 证据 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CurrencyFormat | `0x800a5f40` | `0x800808c4` | `0x8006e294` | `0x7ffbb850` | `0x7ffbbbc0` | `0x7ffbbc00` | 确定的 |
+| LatLonFormat | `0x800a64a0` | `0x80082114` | `0x80070250` | `0x7ffca1a0` | `0x7ffca1e0` | `0x7ffca2c0` | 确定的 |
+| AngleFormat | `0x800a59a0` | `0x8007edf8` | `0x8006d37c` | `0x7ffb3360` | `0x7ffb33a0` | `0x7ffb3430` | 确定的 |
+| ScientificFormat | `0x800a6aa8` | `0x80083e34` | `0x80072540` | `0x7ffda3f0` | `0x7ffda430` | `0x7ffda4a0` | 确定的 |
+| CustomNumberFormat | `0x800a5f60` | `0x800809ec` | `0x8006e3cc` | `0x7ffbbdd0` | `0x7ffbc4d0` | `0x7ffbc520` | 确定的 |
+
+与既有四变体的两点实现差异（均逐槽复核确认）：
+
+- GetClassID 写出形态：五类均不从指令立即数写 CLSID，而是从 .rdata 静态
+  16 字节复制（两段 8 字节）：Currency `0x8006e2dc`/`0x8006e2e4`、LatLon
+  `0x800702b0`/`0x800702b8`、Angle `0x8006d3f8`/`0x8006d400`、Scientific
+  `0x80072570`/`0x80072578`、CustomNumber `0x8006e404`/`0x8006e40c`；字节
+  逐一读出，分别为 `1a474f7e…`/`1d474f7e…`/`1e474f7e…`/`1f474f7e…`/
+  `22474f7e…` + `548ed211aad8000000000000`，与 esri.clsid 声明一致。
+- this 调整器形态：五类虚表槽为 `mov ecx,[esp+4]; sub ecx,[ecx-4];
+  mov [esp+4],ecx; jmp rel32`（虚位移从对象读，非 imm8）；Load/Save 实体
+  由末尾 `jmp` 解出（上表）。Percentage 锚的同名链逐槽复核与上文一致。
+
+### 字段序（Load 反编译 + 关键分支指令级复核；证据：确定的）
+
+**CurrencyFormat::Load `0x7ffbbbc0`**（`(short)ver < 2` 方可通过）：
+
+| # | 字段 | 版本门 | 对象偏移 |
+| --- | --- | --- | --- |
+| ① | int16 版本 | 恒有（>1 拒绝） | — |
+
+体止于版本 short（2 字节），无任何其他字段。
+
+**LatLonFormat::Load `0x7ffca1e0`**（`4 < (short)ver` 有符号拒绝）：
+
+| # | 字段 | 版本门 | 对象偏移 |
+| --- | --- | --- | --- |
+| ① | int16 版本 | 恒有（>4 拒绝） | — |
+| ② | short | 恒有 | this-0x2c |
+| ③ | short | 恒有 | this-0x2a |
+| ④ | short + short | 版本 >1（≥2） | this-0xc / this-0xa（≤1 时原生置内存默认 -1/-1，流内无字段） |
+| ⑤ | NumericFormat::Load(`0x7ffce4b0`) 内嵌核心 | 版本 >2（≥3） | this-0x38（独立槽，非同槽升级；返回值受检，失败即 Load 失败） |
+| ⑥ | short | 版本 >3（≥4） | this-0x8 |
+
+**AngleFormat::Load `0x7ffb33a0`**（`3 < (short)ver` 有符号拒绝）：
+
+| # | 字段 | 版本门 | 对象偏移 |
+| --- | --- | --- | --- |
+| ① | int16 版本 | 恒有（>3 拒绝） | — |
+| ② | short | 恒有 | this-0xc |
+| ③ | NumericFormat::Load 内嵌核心 | 版本 >1（≥2） | this-0x10（独立槽；**原生不检查返回值**（指令级核实：`CALL 0x7ffce4b0` 后无 TEST/JL 检查），核心失败后继续读本函数 ④；读取器按严格子集改为整体失败，较原生更严） |
+| ④ | short | 版本 >2（≥3） | this-0xa |
+
+**ScientificFormat::Load `0x7ffda430`**（`2 < (short)ver` 有符号拒绝）：
+
+| # | 字段 | 版本门 | 对象偏移 |
+| --- | --- | --- | --- |
+| ① | int16 版本 | 恒有（>2 拒绝） | — |
+| ② | int32 | 版本 ≥2 | this-0x8（版本 ≤1 原生置内存默认 6，流内无字段；精度候选） |
+
+**CustomNumberFormat::Load `0x7ffbc4d0`**（`1 < (short)ver` 有符号拒绝）：
+
+| # | 字段 | 版本门 | 对象偏移 |
+| --- | --- | --- | --- |
+| ① | int16 版本 | 恒有（>1 拒绝） | — |
+| ② | AfCore String::Read | 恒有 | this-0x8（自定义格式串候选） |
+
+CustomNumberFormat ② 与 RateFormat ③ 为**同一 IAT 项**
+`0x8006b1f0`（AfCore.dll `?Read@String@@QAEJPAUIStream@@@Z`，导入表逐一
+解析复核），与仓库既有 `read_string_10_1` 覆盖的写侧布局同源。
+
+**核心升级形态归属（逐类核实，未类推）**：内嵌 NumericFormat 核心仅
+LatLon（版本 ≥3，this-0x38 独立槽，受检）与 Angle（版本 ≥2，this-0x10 独
+立槽，**原生不受检**）两类有；Currency/Scientific/CustomNumber **无核心**
+（反编译无 `0x7ffce4b0` 调用）；Percentage（同槽 this-0xc）/Rate（同槽
+this-0x14）沿用上文既有结论。LatLon/Angle 的核心是**独立槽**而非
+Percentage/Rate 那种「同槽升级」。
+
+### Save 侧（写方向互证；版本常量/表字节均已读出核对）
+
+| 变体 | Save 实体 | 版本常量/表 | 常量值/表内容 | 形态 |
+| --- | --- | --- | --- | --- |
+| CurrencyFormat | `0x7ffbbc00` | `DAT_8006d208` | 1 | 仅 short |
+| LatLonFormat | `0x7ffca2c0` | `DAT_8006d104` 表 | (3, 3, 4) | short + ②③ + ④ + NumericFormat::Save + 文档版本 ≥2 时 ⑥ |
+| AngleFormat | `0x7ffb3430` | `DAT_8006d20c` 表 | (2, 2, 2, 2, 3) | short + ② + NumericFormat::Save + 文档版本 ≥4 时 ④ |
+| ScientificFormat | `0x7ffda4a0` | `DAT_8006d0c8` | 2 | short + int32 |
+| CustomNumberFormat | `0x7ffbc520` | `DAT_8006d204` | 1 | short + String::Write |
+
+LatLon/Angle 的 Save 经 `AfStreamGetSaveVersion(文档版本, 表长, 表)`
+（AfCore.dll 导入，签名由符号名解析）查表写版本，与上文四变体的静态常量
+写法不同；表最小值（3 / 2）不低于各自内嵌核心的读侧版本门（3 / 2），写
+侧恒为含核心的满形态，与读侧版本门一致。**表的索引/封顶语义未反编译**：
+仅确认调用形态与表字节，按文档版本取值的规则（含越界封顶行为）是候选而
+非结论。
+
+### 实现（src/objects/number_format.rs 扩展）
+
+五个类标识常量（`CURRENCY_FORMAT_CLASS_ID` 等）与五个体读取器
+（`read_currency_format_body_10_1`/`read_latlon_format_body_10_1`/
+`read_angle_format_body_10_1`/`read_scientific_format_body_10_1`/
+`read_custom_number_format_body_10_1`），严格事务子集（失败不推进游标、
+不修改登记表；CustomNumber 的 String 受 `max_bytes` 限额）。与原生的已知
+偏离（均在读取器文档注明）：负值版本位模式拒绝（较原生更严）；Angle 的
+核心 Load 失败从「原生忽略继续」改为整体失败（较原生更严，不模拟容错路
+径）；LatLon ④ 的内存默认 -1/-1 与 Scientific ② 的内存默认 6 是对象内存
+状态，不在流内，读取结果以 `Option::None` 表示。
+
+### 测试（tests/number_format.rs，10 → 19 项）
+
+新增九项：类标识字节互证扩五类；Currency 2 字节体/空输入截断/版本 2 与负
+值拒绝；LatLon 版本 4 满形态/版本 3·2·1 分支停止点/版本 5 与负值拒绝/逐
+前缀截断事务性；Angle 版本 3·2·1 分支/版本 4 与负值拒绝/截断扫描；
+Scientific 版本 2 int32/版本 1 短体（后续字节不消费）/版本 3 与负值拒绝/
+截断扫描；CustomNumber 版本 1 含中文格式串/版本 2 与负值拒绝/max_bytes
+限额/截断扫描。全部为合成输入（样本 0 实例），通过不代表 MXD 格式已验证。
+
+### 九类分派接入建议（写给整合轮；本不改 src/layers/）
+
+1. `feature_layer_tail` 的 `pub use` 重导出清单追加五常量、五读取器（及
+   五个 Body 类型，如 `NumberFormatSlot10_1` 枚举需要）。
+2. `NumberFormatSlot10_1` 追加五变体：`CurrencyFormat`/`LatLonFormat`/
+   `AngleFormat`/`ScientificFormat`/`CustomNumberFormat`（Box 载体与既有
+   四类一致）；`read_object_entry_10_1` 分派处追加五个 match 臂，读取器
+   直接作槽位分派目标——语义不变（成功=整体消费、失败=停止点回退）；
+   `max_bytes` 沿用 RateFormat 臂的同一限额传参（CustomNumber 用）。
+3. `FieldInfoStop10_1::NumberFormatUnsupported` 的文档注释目前列举「其余
+   esriSystem 同族类（Currency/LatLon/Angle/Scientific/CustomNumber，体
+   未研究）」，接线后应改为九类闭合、列举移除（注释级修改）。
+4. robustness 集中清单同步补入五读取器入口。
+5. 样本 `samples/测试底图.mxd` 槽仅含 NumericFormat（本轮全流扫描 0 命中
+   复核），接线不改变样本行为，可直接以样本回归核对。
+
+### 未解决事项
+
+1. 五类全部标量/String 字段的业务语义未定性（经纬度换算参数、角度格式、
+   科学计数参数、自定义格式串等均为候选）。
+2. LatLon ④ 的 -1/-1 与 Scientific ② 的 6 为内存默认的推断（反编译立即
+   数写出，无样本佐证流内形态）；LatLon/Angle 内嵌核心的独立槽布局仅反
+   编译证据。
+3. LatLon/Angle Save 版本表的索引/封顶语义未反编译；`esriArcGISVersion`
+   文档版本枚举值与产品版本的对应未确认。
+4. Angle 原生忽略核心 Load 失败的容错路径（继续读 ④）未在读取器中模拟；
+   若真实流出现核心截断，读取器比原生严格。
+5. 短体形态（Currency 0、LatLon 0..2、Angle 0..1、Scientific 0..1、
+   CustomNumber 0；含版本 0 是否合法出现亦无证据）无样本字节。
+6. 全部结论为静态取证；未运行 ArcMap 10.1，未人工目视验收，不声称已验
+   证。
