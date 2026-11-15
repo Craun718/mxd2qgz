@@ -3,6 +3,7 @@
 //! 自 src 根级移入，消除 objects→layers 依赖倒置）。各自对应独立的证据文档。
 
 pub mod dataset_name;
+pub mod dataset_name_more;
 pub mod display_color;
 pub mod display_symbol;
 pub mod element_body;
