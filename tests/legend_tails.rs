@@ -436,7 +436,7 @@ fn legend_item_stops_at_unsupported_layer_slot() {
 
 #[test]
 fn legend_item_class_format_unsupported_class_rolls_back() {
-    let mut bytes = with_header(
+    let bytes = with_header(
         &HORIZONTAL_LEGEND_ITEM_CLASS_ID,
         77,
         &legend_item_bytes(1, 3, false, true),
@@ -927,7 +927,7 @@ fn object_entry_classification_uses_registered_keys() {
     bytes.extend([0_u8; 16]);
     // 槽内放一个已见键的回引（非本读取器场景，仅验证分类一致性）。
     let mut table = table_with_keys(&[42]);
-    let mut entry = with_header(&EDIT_TEMPLATE_CLASS_ID, 42, &bytes);
+    let entry = with_header(&EDIT_TEMPLATE_CLASS_ID, 42, &bytes);
     let mut reader = Reader::new(&entry);
     let classified =
         mxd2qgz::storage::object_refs::read_object_entry_10_1(&mut reader, &mut table).unwrap();

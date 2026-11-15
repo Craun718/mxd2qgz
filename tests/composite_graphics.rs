@@ -861,7 +861,7 @@ fn element_collection_inner_stop_propagates_from_element_loop() {
     // 第 2 步 ElementCollection 体在内部未知元素处停止：透传为
     // ElementCollectionIncomplete（键按「登记先于持久化」保留，游标停在内
     // 层停止点，组内后继条目不可达）。
-    let collection_body_offset = 2 + 4; // 体 = 版本 + 计数之后
+    let _collection_body_offset = 2 + 4; // 体 = 版本 + 计数之后
     let mut collection_body = 4_u16.to_le_bytes().to_vec();
     collection_body.extend(1_u32.to_le_bytes()); // 元素计数 1
     let unknown_header_offset = collection_body.len();

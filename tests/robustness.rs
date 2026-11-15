@@ -19,19 +19,17 @@
 //! `tests/object_refs.rs`；本清单把条目分类入口纳入统一的截断与游标共性。
 
 use mxd2qgz::layers::annotate_props::{
-    ANNOTATE_PROPS_COLLECTION_CLASS_ID, EDIT_TEMPLATE_MANAGER_CLASS_ID,
-    LABEL_ENGINE_PROPS_CLASS_ID, read_annotate_props_collection_body_10_1,
-    read_annotation_vbscript_engine_body_10_1, read_bolp_body_10_1,
-    read_display_expression_props_prefix_10_1, read_edit_template_manager_body_10_1,
-    read_hot_link_expression_props_body_10_1, read_label_engine_props_body_10_1,
-    read_line_label_placement_priorities_body_10_1, read_line_label_position_body_10_1,
-    read_point_placement_priorities_body_10_1,
+    read_annotate_props_collection_body_10_1, read_annotation_vbscript_engine_body_10_1,
+    read_bolp_body_10_1, read_display_expression_props_prefix_10_1,
+    read_edit_template_manager_body_10_1, read_hot_link_expression_props_body_10_1,
+    read_label_engine_props_body_10_1, read_line_label_placement_priorities_body_10_1,
+    read_line_label_position_body_10_1, read_point_placement_priorities_body_10_1,
 };
 use mxd2qgz::layers::composite_graphics::read_composite_graphics_layer_prefix_10_1;
 use mxd2qgz::layers::fdo_legacy::read_fdo_graphics_layer_legacy_prefix_10_1;
-use mxd2qgz::layers::feature_id_set::{FEATURE_ID_SET_CLASS_ID, read_feature_id_set_body_10_1};
+use mxd2qgz::layers::feature_id_set::read_feature_id_set_body_10_1;
 use mxd2qgz::layers::feature_layer::read_feature_layer_prefix_10_1;
-use mxd2qgz::layers::feature_layer_tail::{UID_CLASS_ID, read_uid_body_10_1};
+use mxd2qgz::layers::feature_layer_tail::read_uid_body_10_1;
 use mxd2qgz::layers::group_layer::read_group_layer_prefix_10_1;
 use mxd2qgz::layers::layer_list::read_layer_list_10_1;
 use mxd2qgz::maps::map_object::{read_map_prefix_10_1, read_map_suffix_10_1};
@@ -44,15 +42,7 @@ use mxd2qgz::objects::dataset_name::{
 };
 use mxd2qgz::objects::display_color::{RGB_COLOR_CLASS_ID, read_rgb_color_body_10_1};
 use mxd2qgz::objects::display_symbol::{
-    ARROW_MARKER_SYMBOL_CLASS_ID, CARTOGRAPHIC_LINE_SYMBOL_CLASS_ID,
-    CHARACTER_MARKER_SYMBOL_CLASS_ID, DOT_DENSITY_FILL_SYMBOL_CLASS_ID,
-    GRADIENT_FILL_SYMBOL_CLASS_ID, HASH_LINE_SYMBOL_CLASS_ID, LINE_DECORATION_CLASS_ID,
-    LINE_FILL_SYMBOL_CLASS_ID, MARKER_FILL_SYMBOL_CLASS_ID, MARKER_LINE_SYMBOL_CLASS_ID,
-    MULTI_LAYER_FILL_SYMBOL_CLASS_ID, MULTI_LAYER_LINE_SYMBOL_CLASS_ID,
-    MULTI_LAYER_MARKER_SYMBOL_CLASS_ID, PICTURE_LINE_SYMBOL_CLASS_ID,
-    PICTURE_MARKER_SYMBOL_CLASS_ID, SIMPLE_LINE_DECORATION_ELEMENT_CLASS_ID,
-    SIMPLE_MARKER_SYMBOL_CLASS_ID, TEMPLATE_CLASS_ID, read_simple_marker_symbol_body_10_1,
-    read_symbol_slot_full_10_1,
+    SIMPLE_MARKER_SYMBOL_CLASS_ID, read_simple_marker_symbol_body_10_1, read_symbol_slot_full_10_1,
 };
 use mxd2qgz::objects::element_body::{
     LINE_ELEMENT_CLASS_ID, MARKER_ELEMENT_CLASS_ID, TEXT_ELEMENT_CLASS_ID, TEXT_SYMBOL_CLASS_ID,
@@ -64,11 +54,8 @@ use mxd2qgz::objects::geometry::{
     read_multipoint_body_10_1, read_point_body_10_1, read_polygon_body_10_1,
     read_polyline_body_10_1,
 };
-use mxd2qgz::objects::hyperlink::{HYPERLINK_CLASS_ID, read_hyperlink_body_10_1};
+use mxd2qgz::objects::hyperlink::read_hyperlink_body_10_1;
 use mxd2qgz::objects::number_format::{
-    ANGLE_FORMAT_CLASS_ID, CURRENCY_FORMAT_CLASS_ID, CUSTOM_NUMBER_FORMAT_CLASS_ID,
-    FRACTION_FORMAT_CLASS_ID, LATLON_FORMAT_CLASS_ID, NUMERIC_FORMAT_CLASS_ID,
-    PERCENTAGE_FORMAT_CLASS_ID, RATE_FORMAT_CLASS_ID, SCIENTIFIC_FORMAT_CLASS_ID,
     read_angle_format_body_10_1, read_currency_format_body_10_1,
     read_custom_number_format_body_10_1, read_fraction_format_body_10_1,
     read_latlon_format_body_10_1, read_numeric_format_body_10_1, read_percentage_format_body_10_1,

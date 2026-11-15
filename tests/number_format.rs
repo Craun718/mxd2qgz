@@ -6,7 +6,7 @@ use mxd2qgz::objects::number_format::{
     CUSTOM_NUMBER_FORMAT_CLASS_ID, CurrencyFormatBody10_1, CustomNumberFormatBody10_1,
     FRACTION_FORMAT_CLASS_ID, FractionFormatBody10_1, LATLON_FORMAT_CLASS_ID, LatLonFormatBody10_1,
     NUMERIC_FORMAT_CLASS_ID, NumericFormatBody10_1, PERCENTAGE_FORMAT_CLASS_ID,
-    PercentageFormatBody10_1, RATE_FORMAT_CLASS_ID, RateFormatBody10_1, SCIENTIFIC_FORMAT_CLASS_ID,
+    PercentageFormatBody10_1, RATE_FORMAT_CLASS_ID, SCIENTIFIC_FORMAT_CLASS_ID,
     ScientificFormatBody10_1, read_angle_format_body_10_1, read_currency_format_body_10_1,
     read_custom_number_format_body_10_1, read_fraction_format_body_10_1,
     read_latlon_format_body_10_1, read_numeric_format_body_10_1, read_percentage_format_body_10_1,

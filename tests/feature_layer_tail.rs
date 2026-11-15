@@ -10,7 +10,7 @@ use mxd2qgz::layers::feature_layer_tail::{
     LEGEND_CLASS_CLASS_ID, LEGEND_GROUP_CLASS_ID, LegendClassEntry10_1, LegendClassFormatSlot10_1,
     LegendClassStop10_1, LegendGroupSlot10_1, LegendGroupStop10_1, RGB_COLOR_CLASS_ID,
     SIMPLE_MARKER_SYMBOL_CLASS_ID, SIMPLE_RENDERER_CLASS_ID, SimpleRendererStop10_1,
-    SymbolSlot10_1, SymbolSlotFull10_1, read_legend_class_body_10_1, read_legend_group_body_10_1,
+    SymbolSlotFull10_1, read_legend_class_body_10_1, read_legend_group_body_10_1,
     read_simple_renderer_body_10_1,
 };
 use mxd2qgz::layers::legend_format::LEGEND_CLASS_FORMAT_CLASS_ID;
@@ -1813,14 +1813,8 @@ fn successor_parses_cmyk_color_slot() {
 // docs/arcmap-10.1-featurelayer-tail.md「第九轮」。 =====
 
 mod tail_continuation {
-    use mxd2qgz::layers::annotate_props::{
-        BASIC_OVERPOSTER_LAYER_PROPS_CLASS_ID, BolpSlot10_1, BolpStop10_1,
-        DISPLAY_EXPRESSION_PROPS_CLASS_ID, EnvelopeSlot10_1, ExpressionEngineSlot10_1,
-        HOT_LINK_EXPRESSION_PROPS_CLASS_ID, LINE_LABEL_PLACEMENT_PRIORITIES_CLASS_ID,
-        LINE_LABEL_POSITION_CLASS_ID, POINT_PLACEMENT_PRIORITIES_CLASS_ID, read_bolp_body_10_1,
-        read_display_expression_props_prefix_10_1, read_hot_link_expression_props_body_10_1,
-    };
-    use mxd2qgz::layers::feature_layer_tail::{UID_CLASS_ID, read_uid_body_10_1};
+    use mxd2qgz::layers::annotate_props::EnvelopeSlot10_1;
+    use mxd2qgz::layers::feature_layer_tail::UID_CLASS_ID;
 
     use super::*;
     use mxd2qgz::layers::annotate_props::{
@@ -1832,8 +1826,8 @@ mod tail_continuation {
     use mxd2qgz::layers::edit_template::EDIT_TEMPLATE_CLASS_ID;
     use mxd2qgz::layers::feature_id_set::{FEATURE_ID_SET_CLASS_ID, read_feature_id_set_body_10_1};
     use mxd2qgz::layers::feature_layer_tail::{
-        AnnotatePropsSlot10_1, ExpressionPropsSlot10_1, FeatureIdSetSlot10_1,
-        FeatureLayerSuccessor10_1, HotLinkSlot10_1, LayerExtension10_1, RefSlot10_1, UidSlot10_1,
+        AnnotatePropsSlot10_1, FeatureIdSetSlot10_1, FeatureLayerSuccessor10_1, LayerExtension10_1,
+        RefSlot10_1,
     };
     use mxd2qgz::objects::element_body::ElementBodyStop10_1;
 
@@ -2472,15 +2466,14 @@ mod tail_continuation {
         use super::*;
         use mxd2qgz::layers::annotate_props::{
             BASIC_OVERPOSTER_LAYER_PROPS_CLASS_ID, BolpSlot10_1, BolpStop10_1,
-            DISPLAY_EXPRESSION_PROPS_CLASS_ID, ExpressionEngineSlot10_1,
-            HOT_LINK_EXPRESSION_PROPS_CLASS_ID, LINE_LABEL_PLACEMENT_PRIORITIES_CLASS_ID,
+            ExpressionEngineSlot10_1, LINE_LABEL_PLACEMENT_PRIORITIES_CLASS_ID,
             LINE_LABEL_POSITION_CLASS_ID, POINT_PLACEMENT_PRIORITIES_CLASS_ID,
             read_annotation_vbscript_engine_body_10_1, read_bolp_body_10_1,
             read_display_expression_props_prefix_10_1, read_hot_link_expression_props_body_10_1,
             read_line_label_placement_priorities_body_10_1, read_line_label_position_body_10_1,
             read_point_placement_priorities_body_10_1,
         };
-        use mxd2qgz::layers::feature_layer_tail::{UID_CLASS_ID, read_uid_body_10_1};
+        use mxd2qgz::layers::feature_layer_tail::read_uid_body_10_1;
 
         /// BOLP 体(样本形态,键 69):20B 前缀 + 三槽 + 槽间块 + 44B 尾段。
         fn bolp_body_sample() -> Vec<u8> {
@@ -2587,7 +2580,7 @@ mod tail_continuation {
 
         #[test]
         fn bolp_slot_unknown_class_stops_and_rolls_back() {
-            let mut b = bolp_body_sample();
+            let b = bolp_body_sample();
             // 槽 1 改为未知类新对象:整体停止 + 回退到该槽起点。
             let unknown = [0x66_u8; 16];
             let slot_offset = 20; // 前缀后
@@ -2611,18 +2604,18 @@ mod tail_continuation {
 
         #[test]
         fn label_position_version_gate_rejects_over_two() {
-            let mut b = 3_i16.to_le_bytes().to_vec();
+            let b = 3_i16.to_le_bytes().to_vec();
             let mut reader = Reader::new(&b);
             let mut table = RefTable10_1::new();
             assert!(read_line_label_position_body_10_1(&mut reader, 1024, &mut table, 1).is_err());
             // LLPP / PPP 版本 >1 拒绝。
-            let mut b2 = 2_i16.to_le_bytes().to_vec();
+            let b2 = 2_i16.to_le_bytes().to_vec();
             let mut reader2 = Reader::new(&b2);
             assert!(
                 read_line_label_placement_priorities_body_10_1(&mut reader2, 1024, &mut table, 1)
                     .is_err()
             );
-            let mut b3 = 2_i16.to_le_bytes().to_vec();
+            let b3 = 2_i16.to_le_bytes().to_vec();
             let mut reader3 = Reader::new(&b3);
             assert!(
                 read_point_placement_priorities_body_10_1(&mut reader3, 1024, &mut table, 1)
@@ -2642,7 +2635,7 @@ mod tail_continuation {
             assert_eq!(body.short, Some(-1));
             assert_eq!(reader.remaining(), 0);
             // 版本 >2 拒绝。
-            let mut over = 3_i16.to_le_bytes().to_vec();
+            let over = 3_i16.to_le_bytes().to_vec();
             let mut reader2 = Reader::new(&over);
             assert!(
                 read_annotation_vbscript_engine_body_10_1(&mut reader2, 1024, &mut table, 73)
@@ -2676,7 +2669,7 @@ mod tail_continuation {
             a.push(1);
             a.extend_from_slice(&LABEL_ENGINE_PROPS_CLASS_ID);
             let mut reader = Reader::new(&a);
-            let mut table = RefTable10_1::new();
+            let _table = RefTable10_1::new();
             let body = read_uid_body_10_1(&mut reader, 82).unwrap();
             assert_eq!(body.key, 82);
             assert_eq!(body.version, 1);
@@ -2957,14 +2950,11 @@ mod tail_continuation {
             assert_eq!(result.stop, SuccessorStop10_1::TailCompleted);
             assert_eq!(reader.remaining(), 0);
             assert_eq!(result.extension_count, Some(1));
-            match &result.extensions[0] {
-                LayerExtension10_1::EditTemplateManager(etm) => {
-                    assert_eq!(etm.key, 0); // 扩展段无键
-                    assert_eq!(etm.version, 2);
-                    assert_eq!(etm.tail_byte, Some(1)); // 样本 0x01
-                }
-                other => panic!("扩展条目分类不符：{other:?}"),
-            }
+            // LayerExtension10_1 当前仅 EditTemplateManager 一个变体，单变体枚举可无条件解构。
+            let LayerExtension10_1::EditTemplateManager(etm) = &result.extensions[0];
+            assert_eq!(etm.key, 0); // 扩展段无键
+            assert_eq!(etm.version, 2);
+            assert_eq!(etm.tail_byte, Some(1)); // 样本 0x01
             // ㉚ String cb=0 已消费(其后字段可达 → TailCompleted 已证)。
             assert_eq!(result.string_28c, Some(String::new()));
             assert!(!table.contains(76)); // ETM 无键不登记

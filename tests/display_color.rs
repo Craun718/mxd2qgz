@@ -74,7 +74,7 @@ fn cmyk_body(version: u16, with_string: bool, with_core: bool) -> Vec<u8> {
 
 #[test]
 fn core_color_body_parses_both_branches_and_keeps_bit_patterns() {
-    for class_id in [HSV_COLOR_CLASS_ID, GRAY_COLOR_CLASS_ID, HLS_COLOR_CLASS_ID] {
+    for _class_id in [HSV_COLOR_CLASS_ID, GRAY_COLOR_CLASS_ID, HLS_COLOR_CLASS_ID] {
         for flag in [0_u8, 1] {
             let body = core_color_body(flag);
             let mut reader = Reader::new(&body);
@@ -263,7 +263,7 @@ fn color_slot_dispatches_all_five_closed_classes() {
         assert!(table.contains(300));
     }
     // 空标记与回引原样返回。
-    let mut bytes = [0_u8; 16].to_vec();
+    let bytes = [0_u8; 16].to_vec();
     let mut reader = Reader::new(&bytes);
     assert_eq!(
         read_color_slot_10_1(&mut reader, 1024, &mut RefTable10_1::new()).unwrap(),
@@ -307,7 +307,7 @@ fn unknown_color_class_rolls_back_cursor_and_key() {
     assert_eq!(table.len(), 1, "未知键不保留");
     assert!(table.contains(7));
     // 回退后槽位字节可重读：同一输入换 Null 头验证对位不受影响。
-    let mut bytes = [0_u8; 16].to_vec();
+    let bytes = [0_u8; 16].to_vec();
     let mut reader = Reader::new(&bytes);
     assert_eq!(
         read_color_slot_10_1(&mut reader, 1024, &mut RefTable10_1::new()).unwrap(),
