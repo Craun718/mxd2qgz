@@ -185,8 +185,8 @@
 
 use crate::objects::display_color::read_color_slot_10_1;
 use crate::objects::display_symbol::{
-    DisplaySlotKind10_1, DisplaySymbolSlot10_1, MAX_SYMBOL_NESTING_DEPTH, SymbolStop10_1,
-    read_display_symbol_slot_10_1, slot_stop_10_1,
+    DisplaySlotKind10_1, MAX_SYMBOL_NESTING_DEPTH, SymbolSlotFull10_1, SymbolStop10_1,
+    read_symbol_slot_full_10_1, slot_full_stop_10_1,
 };
 use crate::objects::property_set::{PropertyValue10_1, read_variant_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
@@ -563,7 +563,7 @@ pub struct TextSymbolBody10_1 {
     /// SimpleMarkerSymbol 与本轮闭合的 DisplayCore 同族符号解析为对应体变
     /// 体；样本为 {7914E603} SimpleFillSymbol 新对象；未知符号类不出现在本
     /// 字段——映射为停止原因，字段保持 `Null`）。
-    pub symbol2: DisplaySymbolSlot10_1,
+    pub symbol2: SymbolSlotFull10_1,
     /// IFontDisp 字体槽（仅分类；样本 StdFont 新对象，位于停止点之后未达）。
     pub font: NestedEntry10_1,
     /// 版本 >1 的 int16 原样位模式（this-0x4e4；样本 0x8601，位于停止点之后
@@ -785,20 +785,21 @@ fn read_color_slot<'a>(
     }
 }
 
-/// 读取一个 ISymbol 类槽位（TextSymbol 符号槽 #2）：经
-/// [`read_display_symbol_slot_10_1`] 分派（SimpleMarkerSymbol 与本轮闭合的
-/// DisplayCore 同族符号整体解析）；未知符号类新对象 = 停止点；闭合符号体
-/// 内的嵌套停止透传为 [`ElementBodyStop10_1::SymbolSlotNested`]。
+/// 读取一个 ISymbol 类槽位（TextSymbol 符号槽 #2）：接线轮起经
+/// [`read_symbol_slot_full_10_1`] 全闭合集分派（第一轮 Simple 族 + 第二轮
+/// MultiLayer/装饰等 17 类整体解析，证据：docs/arcmap-10.1-display-symbols-
+/// round2.md 第五节宿主切换）；未知符号类新对象 = 停止点；闭合符号体内的
+/// 嵌套停止透传为 [`ElementBodyStop10_1::SymbolSlotNested`]。
 fn read_symbol_slot<'a>(
     trial: &mut Reader<'a>,
     max_bytes: usize,
     trial_table: &mut RefTable10_1,
     slot: &'static str,
     stop: &mut Option<ElementBodyStop10_1>,
-) -> io::Result<DisplaySymbolSlot10_1> {
+) -> io::Result<SymbolSlotFull10_1> {
     let slot_offset = trial.position();
-    match read_display_symbol_slot_10_1(trial, max_bytes, trial_table, MAX_SYMBOL_NESTING_DEPTH)? {
-        DisplaySymbolSlot10_1::Unsupported { class_id, key } => {
+    match read_symbol_slot_full_10_1(trial, max_bytes, trial_table, MAX_SYMBOL_NESTING_DEPTH)? {
+        SymbolSlotFull10_1::Unsupported { class_id, key } => {
             // 未知符号类：分派内部已回退到槽位起点、登记表不保留该键。
             *stop = Some(ElementBodyStop10_1::NestedObjectNotClosed {
                 slot,
@@ -806,16 +807,29 @@ fn read_symbol_slot<'a>(
                 class_id,
                 key,
             });
-            Ok(DisplaySymbolSlot10_1::Null)
+            Ok(SymbolSlotFull10_1::Null)
         }
-        other_closed @ (DisplaySymbolSlot10_1::SimpleMarkerSymbol(_)
-        | DisplaySymbolSlot10_1::SimpleLineSymbol(_)
-        | DisplaySymbolSlot10_1::SimpleFillSymbol(_)
-        | DisplaySymbolSlot10_1::MarkerLineSymbol(_)
-        | DisplaySymbolSlot10_1::CartographicLineSymbol(_)
-        | DisplaySymbolSlot10_1::HashLineSymbol(_)) => {
+        other_closed @ (SymbolSlotFull10_1::SimpleMarkerSymbol(_)
+        | SymbolSlotFull10_1::SimpleLineSymbol(_)
+        | SymbolSlotFull10_1::SimpleFillSymbol(_)
+        | SymbolSlotFull10_1::MarkerLineSymbol(_)
+        | SymbolSlotFull10_1::CartographicLineSymbol(_)
+        | SymbolSlotFull10_1::HashLineSymbol(_)
+        | SymbolSlotFull10_1::Template(_)
+        | SymbolSlotFull10_1::LineDecoration(_)
+        | SymbolSlotFull10_1::MultiLayerLineSymbol(_)
+        | SymbolSlotFull10_1::MultiLayerMarkerSymbol(_)
+        | SymbolSlotFull10_1::MultiLayerFillSymbol(_)
+        | SymbolSlotFull10_1::CharacterMarkerSymbol(_)
+        | SymbolSlotFull10_1::PictureMarkerSymbol(_)
+        | SymbolSlotFull10_1::PictureLineSymbol(_)
+        | SymbolSlotFull10_1::ArrowMarkerSymbol(_)
+        | SymbolSlotFull10_1::LineFillSymbol(_)
+        | SymbolSlotFull10_1::MarkerFillSymbol(_)
+        | SymbolSlotFull10_1::GradientFillSymbol(_)
+        | SymbolSlotFull10_1::DotDensityFillSymbol(_)) => {
             // 闭合符号体的嵌套停止透传（游标停在其停止点，已消费字段保持）。
-            if let Some(inner) = slot_stop_10_1(&other_closed, DisplaySlotKind10_1::Symbol) {
+            if let Some(inner) = slot_full_stop_10_1(&other_closed, DisplaySlotKind10_1::Symbol) {
                 *stop = Some(ElementBodyStop10_1::SymbolSlotNested {
                     slot,
                     reason: inner,
@@ -883,7 +897,7 @@ pub fn read_text_symbol_body_10_1(
     let mut raw_path_clsid = [0_u8; 16];
     let mut text_path = NestedEntry10_1::Null;
     let mut symbol1 = NestedEntry10_1::Null;
-    let mut symbol2 = DisplaySymbolSlot10_1::Null;
+    let mut symbol2 = SymbolSlotFull10_1::Null;
     let mut font = NestedEntry10_1::Null;
     let mut tail_short_1 = None;
     let mut tail_path_clsid = None;

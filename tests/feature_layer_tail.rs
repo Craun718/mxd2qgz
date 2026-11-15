@@ -10,7 +10,7 @@ use mxd2qgz::layers::feature_layer_tail::{
     LEGEND_CLASS_CLASS_ID, LEGEND_GROUP_CLASS_ID, LegendClassEntry10_1, LegendClassFormatSlot10_1,
     LegendClassStop10_1, LegendGroupSlot10_1, LegendGroupStop10_1, RGB_COLOR_CLASS_ID,
     SIMPLE_MARKER_SYMBOL_CLASS_ID, SIMPLE_RENDERER_CLASS_ID, SimpleRendererStop10_1,
-    SymbolSlot10_1, read_legend_class_body_10_1, read_legend_group_body_10_1,
+    SymbolSlot10_1, SymbolSlotFull10_1, read_legend_class_body_10_1, read_legend_group_body_10_1,
     read_simple_renderer_body_10_1,
 };
 use mxd2qgz::layers::legend_format::LEGEND_CLASS_FORMAT_CLASS_ID;
@@ -432,7 +432,7 @@ fn legend_class_reads_full_body_and_back_reference_symbol() {
     assert_eq!(lc.version, 2);
     assert!(matches!(
         &lc.symbol,
-        SymbolSlot10_1::BackReference { key: 36, .. }
+        SymbolSlotFull10_1::BackReference { key: 36, .. }
     ));
     assert_eq!(lc.label, "");
     assert_eq!(lc.description, "");
@@ -508,7 +508,7 @@ fn legend_group_reads_full_body_with_nested_legend_class() {
             assert_eq!(lc.key, 40);
             assert!(matches!(
                 &lc.symbol,
-                SymbolSlot10_1::BackReference { key: 36, .. }
+                SymbolSlotFull10_1::BackReference { key: 36, .. }
             ));
         }
         other => panic!("应为嵌套 LegendClass，得到 {other:?}"),
@@ -644,7 +644,7 @@ fn simple_renderer_reads_full_body_sample_shape() {
     assert_eq!(body.key, 35);
     assert_eq!(body.version, 3);
     assert!(
-        matches!(&body.symbol, SymbolSlot10_1::SimpleMarkerSymbol(sms) if sms.key == 36),
+        matches!(&body.symbol, SymbolSlotFull10_1::SimpleMarkerSymbol(sms) if sms.key == 36),
         "符号槽应为 SimpleMarkerSymbol 新对象"
     );
     match &body.legend_group {
@@ -718,7 +718,10 @@ fn simple_renderer_stops_at_unknown_symbol() {
             key: 48,
         })
     );
-    assert!(matches!(body.symbol, SymbolSlot10_1::Null), "未知符号回退");
+    assert!(
+        matches!(body.symbol, SymbolSlotFull10_1::Null),
+        "未知符号回退"
+    );
     assert!(body.legend_group.is_none(), "停止点后的槽位不可达");
     assert_eq!(body.rotation_tail, None);
     assert_eq!(reader.position(), 2, "游标回退到符号槽起点");
@@ -1433,7 +1436,7 @@ fn simple_renderer_parses_closed_line_symbol_slot() {
     let body = read_simple_renderer_body_10_1(&mut reader, usize::MAX, &mut table, 35).unwrap();
     assert!(matches!(
         &body.symbol,
-        SymbolSlot10_1::SimpleLineSymbol(line) if line.key == 60 && line.width == Some(2.5)
+        SymbolSlotFull10_1::SimpleLineSymbol(line) if line.key == 60 && line.width == Some(2.5)
     ));
     assert!(body.legend_group.is_some(), "符号体完整后组槽可达");
     assert_eq!(body.stop, None);
@@ -1471,7 +1474,7 @@ fn simple_renderer_nested_symbol_stop_propagates() {
     }
     assert!(matches!(
         &body.symbol,
-        SymbolSlot10_1::SimpleLineSymbol(line) if line.stop.is_some()
+        SymbolSlotFull10_1::SimpleLineSymbol(line) if line.stop.is_some()
     ));
     assert!(body.legend_group.is_none(), "停止点后的槽位不可达");
     // 游标停在内层颜色槽起点：渲染器版本 2 + 符号头 20 + 线符号版本 2。

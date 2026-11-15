@@ -8,7 +8,7 @@
 //! 验证，未经目标软件人工检查。
 
 use mxd2qgz::objects::display_color::{ColorBody10_1, ColorSlot10_1, RGB_COLOR_CLASS_ID};
-use mxd2qgz::objects::display_symbol::{DisplaySymbolSlot10_1, SIMPLE_FILL_SYMBOL_CLASS_ID};
+use mxd2qgz::objects::display_symbol::{SIMPLE_FILL_SYMBOL_CLASS_ID, SymbolSlotFull10_1};
 use mxd2qgz::objects::element_body::{
     CustomProperty10_1, LINE_ELEMENT_CLASS_ID, MARKER_ELEMENT_CLASS_ID, NestedEntry10_1,
     TEXT_ELEMENT_CLASS_ID, TEXT_SYMBOL_CLASS_ID, read_element_body_of_class_10_1,
@@ -763,7 +763,7 @@ fn text_element_parses_sample_shaped_symbol2_simple_fill_symbol() {
     let symbol = te.symbol.as_ref().expect("TextSymbol 体应已消费");
     assert!(symbol.stop.is_none(), "TextSymbol 体应完整消费");
     // 符号 #2 为 SimpleFillSymbol 体（轮廓空标记 + 填充色 + 标量段）。
-    let DisplaySymbolSlot10_1::SimpleFillSymbol(fill) = &symbol.symbol2 else {
+    let SymbolSlotFull10_1::SimpleFillSymbol(fill) = &symbol.symbol2 else {
         panic!("符号 #2 应为 SimpleFillSymbol：{:?}", symbol.symbol2);
     };
     assert_eq!(fill.key, 1593);
@@ -818,7 +818,7 @@ fn text_symbol_symbol2_nested_stop_propagates() {
             assert_eq!(*slot, "ISymbol 符号槽 #2");
             // 分派把嵌套体内停止归约为 NestedIncomplete（携带 SFS 自身的类
             // 标识与键）；未知轮廓条目的键见 SFS 体自身的 stop 字段。
-            let DisplaySymbolSlot10_1::SimpleFillSymbol(fill) = &symbol.symbol2 else {
+            let SymbolSlotFull10_1::SimpleFillSymbol(fill) = &symbol.symbol2 else {
                 panic!("符号 #2 应为 SimpleFillSymbol");
             };
             assert!(fill.stop.is_some(), "SFS 体应带内部停止");

@@ -144,7 +144,7 @@ use crate::layers::legend_format::{
 use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
 use crate::objects::display_symbol::{
     MAX_SYMBOL_NESTING_DEPTH, SimpleMarkerSymbolStop10_1, SymbolStop10_1,
-    read_display_symbol_slot_10_1, slot_stop_10_1,
+    read_display_symbol_slot_10_1, read_symbol_slot_full_10_1, slot_full_stop_10_1, slot_stop_10_1,
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -159,6 +159,13 @@ use std::io::{self, ErrorKind};
 /// 象均解析为对应体变体；未知符号类为 `Unsupported` 变体（分派内部回退到
 /// 槽位起点、登记表不保留该键），由宿主映射为各自的停止原因。
 pub use crate::objects::display_symbol::DisplaySymbolSlot10_1 as SymbolSlot10_1;
+
+/// 全闭合 ISymbol 类槽位（请求 IID `{F3435802-…}`）条目的分类结果。
+///
+/// 接线轮起 SimpleRenderer/LegendClass 宿主切换到
+/// [`crate::objects::display_symbol::read_symbol_slot_full_10_1`]（第二轮闭
+/// 合类递归解析；第一轮闭合类停止语义不变），槽位字段类型随切换重导出。
+pub use crate::objects::display_symbol::SymbolSlotFull10_1;
 
 /// SimpleRenderer::Load 接受的最大版本：`3 < (short)ver` 有符号比较；样本 3。
 const MAX_SIMPLE_RENDERER_VERSION: i16 = 3;
@@ -303,7 +310,7 @@ pub struct SimpleRendererPrefix10_1 {
     /// 体首 short 版本（样本 3）；有符号比较 >3 拒绝。
     pub version: u16,
     /// ISymbol 槽（请求 IID `{F3435802-…}`）结果。
-    pub symbol: SymbolSlot10_1,
+    pub symbol: SymbolSlotFull10_1,
     /// ILegendGroup 槽（请求 IID `{167C5E9F-…}`）结果。`None` = 前置停止。
     pub legend_group: Option<LegendGroupSlot10_1>,
     /// ILegendItem 槽（请求 IID `{52AA5BC0-…}`）分类；新对象为停止点。
@@ -433,7 +440,7 @@ pub struct LegendClassPrefix10_1 {
     /// 限，仅按 ver>1 门分支。
     pub version: u16,
     /// ISymbol 槽（请求 IID `{F3435802-…}`）结果。
-    pub symbol: SymbolSlot10_1,
+    pub symbol: SymbolSlotFull10_1,
     /// String 标签（样本空串）。
     pub label: String,
     /// String 描述（样本空串）。
@@ -451,10 +458,11 @@ pub struct LegendClassPrefix10_1 {
 /// 修改登记表。
 ///
 /// 起点约定：调用者已读取对象头、比对 [`LEGEND_CLASS_CLASS_ID`] 并取得键。
-/// ISymbol 槽经 [`read_display_symbol_slot_10_1`] 分派（SimpleMarkerSymbol
-/// 与本轮闭合的 DisplayCore 同族符号整体解析，未知符号类由分派内部回退到
-/// 槽位起点）；ILegendClassFormat 槽新对象且类标识为 LegendClassFormat 时
-/// 读取其闭合体（[`read_legend_class_format_body_10_1`]），其余类为停止点
+/// ISymbol 槽经 [`read_symbol_slot_full_10_1`] 全闭合集分派（接线轮切换，
+/// 证据：docs/arcmap-10.1-display-symbols-round2.md 第五节宿主切换——第一
+/// 轮闭合类停止语义不变、第二轮闭合类获得递归解析，未知符号类由分派内部
+/// 回退到槽位起点）；ILegendClassFormat 槽新对象且类标识为 LegendClassFormat
+/// 时读取其闭合体（[`read_legend_class_format_body_10_1`]），其余类为停止点
 /// （回退到槽位起点）；体内停止成功返回。
 pub fn read_legend_class_body_10_1(
     reader: &mut Reader<'_>,
@@ -468,43 +476,45 @@ pub fn read_legend_class_body_10_1(
     //    有符号语义 ver > 1）。
     let version = trial.read_u16_le()?;
 
-    // 2. ISymbol 槽（请求 IID {F3435802-…}）：对象层符号槽位分派。
+    // 2. ISymbol 槽（请求 IID {F3435802-…}）：对象层全闭合符号槽位分派。
+    //    SimpleMarkerSymbol 体的停止沿用第一轮 `SymbolBody` 变体；其余闭合
+    //    符号（第一轮 SimpleLine/Fill、MarkerLine/CartographicLine/HashLine
+    //    与第二轮 MultiLayer/装饰族）体的嵌套停止统一经 `slot_full_stop_
+    //    10_1` 归约为 `SymbolNested`（第一轮两入口归约同型，行为不变）。
     let mut staged_table = table.clone();
     let mut stop = None;
-    let symbol = match read_display_symbol_slot_10_1(
+    let symbol = match read_symbol_slot_full_10_1(
         &mut trial,
         max_bytes,
         &mut staged_table,
         MAX_SYMBOL_NESTING_DEPTH,
     )? {
-        SymbolSlot10_1::Null => SymbolSlot10_1::Null,
-        SymbolSlot10_1::BackReference { class_id, key } => {
-            SymbolSlot10_1::BackReference { class_id, key }
+        SymbolSlotFull10_1::Null => SymbolSlotFull10_1::Null,
+        SymbolSlotFull10_1::BackReference { class_id, key } => {
+            SymbolSlotFull10_1::BackReference { class_id, key }
         }
-        SymbolSlot10_1::SimpleMarkerSymbol(sms) => {
+        SymbolSlotFull10_1::SimpleMarkerSymbol(sms) => {
+            // 第一轮闭合类的停止沿用原 `SymbolBody` 变体（行为保真）。
             if let Some(inner) = sms.stop {
                 stop = Some(LegendClassStop10_1::SymbolBody(inner));
             }
-            SymbolSlot10_1::SimpleMarkerSymbol(sms)
+            SymbolSlotFull10_1::SimpleMarkerSymbol(sms)
         }
-        other_closed @ (SymbolSlot10_1::SimpleLineSymbol(_)
-        | SymbolSlot10_1::SimpleFillSymbol(_)
-        | SymbolSlot10_1::MarkerLineSymbol(_)
-        | SymbolSlot10_1::CartographicLineSymbol(_)
-        | SymbolSlot10_1::HashLineSymbol(_)) => {
-            // 本轮闭合符号：体内嵌套停止透传（游标停在其停止点）。
-            if let Some(inner) = slot_stop_10_1(
+        SymbolSlotFull10_1::Unsupported { class_id, key } => {
+            // 未知符号类：分派内部已回退到槽位起点、登记表不保留该键。
+            stop = Some(LegendClassStop10_1::SymbolUnsupported { class_id, key });
+            SymbolSlotFull10_1::Null
+        }
+        other_closed => {
+            // 其余闭合符号：体内嵌套停止透传（游标停在其停止点）；第一轮闭
+            // 合类的归约结果与原 [`slot_stop_10_1`] 逐值一致。
+            if let Some(inner) = slot_full_stop_10_1(
                 &other_closed,
                 crate::objects::display_symbol::DisplaySlotKind10_1::Symbol,
             ) {
                 stop = Some(LegendClassStop10_1::SymbolNested(inner));
             }
             other_closed
-        }
-        SymbolSlot10_1::Unsupported { class_id, key } => {
-            // 未知符号类：分派内部已回退到槽位起点、登记表未保留该键。
-            stop = Some(LegendClassStop10_1::SymbolUnsupported { class_id, key });
-            SymbolSlot10_1::Null
         }
     };
 
@@ -698,40 +708,40 @@ pub fn read_simple_renderer_body_10_1(
     // 2. ISymbol 槽（请求 IID {F3435802-…}）：对象层符号槽位分派。
     let mut staged_table = table.clone();
     let mut stop = None;
-    let symbol = match read_display_symbol_slot_10_1(
+    let symbol = match read_symbol_slot_full_10_1(
         &mut trial,
         max_bytes,
         &mut staged_table,
         MAX_SYMBOL_NESTING_DEPTH,
     )? {
-        SymbolSlot10_1::Null => SymbolSlot10_1::Null,
-        SymbolSlot10_1::BackReference { class_id, key } => {
-            SymbolSlot10_1::BackReference { class_id, key }
+        SymbolSlotFull10_1::Null => SymbolSlotFull10_1::Null,
+        SymbolSlotFull10_1::BackReference { class_id, key } => {
+            SymbolSlotFull10_1::BackReference { class_id, key }
         }
-        SymbolSlot10_1::SimpleMarkerSymbol(sms) => {
+        SymbolSlotFull10_1::SimpleMarkerSymbol(sms) => {
+            // 第一轮闭合类的停止沿用原 `SymbolBody` 变体（行为保真）。
             if let Some(inner) = sms.stop {
                 stop = Some(SimpleRendererStop10_1::SymbolBody(inner));
             }
-            SymbolSlot10_1::SimpleMarkerSymbol(sms)
+            SymbolSlotFull10_1::SimpleMarkerSymbol(sms)
         }
-        other_closed @ (SymbolSlot10_1::SimpleLineSymbol(_)
-        | SymbolSlot10_1::SimpleFillSymbol(_)
-        | SymbolSlot10_1::MarkerLineSymbol(_)
-        | SymbolSlot10_1::CartographicLineSymbol(_)
-        | SymbolSlot10_1::HashLineSymbol(_)) => {
-            // 本轮闭合符号：体内嵌套停止透传（游标停在其停止点）。
-            if let Some(inner) = slot_stop_10_1(
+        SymbolSlotFull10_1::Unsupported { class_id, key } => {
+            // 未知符号类：分派内部已回退到槽位起点、登记表未保留该键。
+            stop = Some(SimpleRendererStop10_1::SymbolUnsupported { class_id, key });
+            SymbolSlotFull10_1::Null
+        }
+        other_closed => {
+            // 其余闭合符号（第一轮 SimpleLine/Fill、MarkerLine/
+            // CartographicLine/HashLine 与第二轮 MultiLayer/装饰族）：体内嵌
+            // 套停止透传（游标停在其停止点）；第一轮闭合类的归约结果与原
+            // [`slot_stop_10_1`] 逐值一致。
+            if let Some(inner) = slot_full_stop_10_1(
                 &other_closed,
                 crate::objects::display_symbol::DisplaySlotKind10_1::Symbol,
             ) {
                 stop = Some(SimpleRendererStop10_1::SymbolNested(inner));
             }
             other_closed
-        }
-        SymbolSlot10_1::Unsupported { class_id, key } => {
-            // 未知符号类：分派内部已回退到槽位起点、登记表未保留该键。
-            stop = Some(SimpleRendererStop10_1::SymbolUnsupported { class_id, key });
-            SymbolSlot10_1::Null
         }
     };
 
