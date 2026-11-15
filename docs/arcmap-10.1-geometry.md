@@ -1,0 +1,226 @@
+# ArcMap 10.1 Geometry.dll 几何 coclass 对象体（Polyline 记录布局与同族骨架）
+
+记录日期：2026-11-15。对应 TODO「MXD 解析」节开放项「TextElement 的
+IGeometry 槽实现类（Polyline 等）体未闭合」。全部结论为**静态反编译/汇编核
+对 + 样本字节对照**，未运行 ArcMap，未做人工目视验收；样本吻合仅作辅助观
+察。不写本机绝对路径。
+
+## 方法与环境
+
+- **Geometry.dll**（Setup1.cab 条目 `Geometry.dll.F84366F9_C0B7_4267_A16E_...`，
+  复制自既有提取物）：2,890,752 字节，SHA-256
+  `c57d154f207ee249adc69136574cf274771370ff93a15eb0be5682ce828f0d47`，
+  ImageBase `0x717e0000`，pefile 复核 FileVersion **10.1.0.3035**。节区：
+  `.text 0x1000..0x22f15c`、`.rdata 0x230000`。
+- 深度分析在本机 pyghidra（Ghidra 12.2 + JDK 25）完成；分析工程为临时目
+  录内独立命名工程（未入库），Open 副本不共享锁。地址均为 PE 10.1.0.3035
+  静态映像 VA。定位链的前半段（CLSID 常量 → 立即数引用 → movq GetClassID
+  形态 → RTTI TD→COL→虚表锚定）以 pefile + 段字节扫描机械完成，Ghidra 反
+  编译复核 Load/Save/导入器。REA MCP 未使用（并行研究约定）。
+- 样本为第六轮导出的 /Maps 流（152,941 字节，流内偏移，见
+  element-collection 文档）。注意：该流注记簇之后区域含数据源路径，本轮仅
+  读取几何对象字节，未把该区域写入任何入库文件。
+- 类名/接口名：esri.clsid 全表（Geometry.dll 模块）与 wine `LoadTypeLibEx`
+  类型库 dump（esriGeometry，仅检索）。
+
+## 定位链（证据：确定的）
+
+esri.clsid 表声明 → CLSID 常量 → 代码引用 → RTTI TD→COL→虚表 →
+GetClassID movq 复制 → Load/Save，逐环闭环：
+
+| 环节 | 地址 | 证据 |
+| --- | --- | --- |
+| esri.clsid 声明 | 模块 Geometry.dll，progID `esriGeometry.Polyline` | 全表 XML |
+| CLSID 常量 | `.rdata 0x71a1187c`（16 字节 `{30707210-52D5-11D0-A8F2-00608C85EDE5}`） | 字节扫描唯一命中 |
+| RTTI TD | `0x71a6a6a4`，名称串 `.?AVPolyline@ESRI@@`（TD 基址 = 名称 −8） | 字节扫描 |
+| COL | `0x71a3d128`（`[C]==0` 且 `[C+0xc]==TD`） | 字节核对 |
+| 主虚表 | `0x71a228c4`（虚表 −4 处为 COL 指针），槽系 `[QI 0x7193f390, AddRef 0x719f1550, Release 0x718de060, 析构 0x71942f90, 类名 getter 0x7193f340（返回 UTF-16 "Polyline" @0x71a1ab30）, GetClassID 0x7193f350 @+0x14 非标准位, 空桩 0x71973ab0]` | 与 element-bodies 轮「七槽主虚表」族同构；GetClassID 位于 +0x14，按该判据**排除**为持久化虚表 |
+| 持久化虚表 | `0x71a22bd4`：`[QI 0x719b9720, AddRef 0x719b9700, Release 0x719ce220, GetClassID 0x719402d0 @+0x0c, IsDirty 0x719d3220 @+0x10, Load 0x7192db20 @+0x14, Save 0x7192dcb0 @+0x18, GetSizeMax 0x7191c370 @+0x1c]` | GetClassID movq 复制常量 `0x71a1187c`（0x719402da 处 `f3 0f 7e 05` 形态）；IsDirty/GetSizeMax 与 Envelope 持久化虚表共享同一函数（spatial-reference 轮的「恒返 0」「返 0x22」互证）；构造器 `0x71943290` 把 `0x71a22bd4` 装到对象 `+0x2c` 槽（`0x719432c8`） |
+| GetClassID | `0x719402d0`：读参数指针判空（`0x80004003`）后 `movq` 双 8 字节复制常量到出参，`xor eax,eax` 返回 S_OK | 反编译 9 行 |
+
+排除的假象：`0x71a116b8` 一带的「九槽全 .text」扫描命中是常量紧邻虚表区
+造成的形状误报；全家族复核统一采用「COL 锚定虚表 + +0x0c 槽函数体内含
+CLSID 常量引用」双条件（见下同族表）。
+
+## 包装字段序（Load `0x7192db20`，反编译逐行核对；证据：确定的）
+
+载入者签名 `Load(this, IStream*)`，`this` 为持久化接口视角（对象基址
++0x2c）。AfCore 导入名经 IAT 解析（`?AfStreamRead@@YAJPAUIStream@@PAFKPAK@Z`
+等）：
+
+1. 先调 `this+0x30` 接口虚表 `+0x14` 槽（实参 `&this+0x30`）——集合清理
+   （候选 RemoveAll，不读流；与 ElementCollection::Load 的 adjustor 清理同
+   构）；
+2. `AfStreamRead(stream, &版本, 2, NULL)`：int16 版本 short。返回值 < 0 失
+   整体失败；**返回 1（S_FALSE）时原生走「空流」捷径**：调 `this−0x1c` 接
+   口 `+0x20` 槽（实参 `&this−0x1c`）后原样返回 1（样本未覆盖，本读取器不
+   实现）；`(short)版本 > 2` 拒绝——经 `FUN_719f1570(0x80004005, 0x1c4, 0,
+   0, DAT_71a1135c)` 记录后返回，**有符号比较**（负值位模式原生通过，读取
+   器一并拒绝，较原生更严）；
+3. `AfStreamRead(stream, &声明长度, 4, &实读)`：int32 声明长度；
+4. `malloc(声明长度)`：NULL 时经 `FUN_719f1570(0x8007000e, 0x10f, …)` 记
+   录失败（原生**无长度上限**，本读取器以 max_bytes 设限，较原生更严）；
+5. `AfStreamRead(stream, 缓冲, 声明长度, &实读)`：整块读入；
+6. `this−0x8` 接口（对象 `+0x24` 槽，虚表 `0x71a22b7c`）`+0x38` 槽：
+   `Import(this−0x8, 标志 0x100, &实读, 缓冲)` —— 记录字节块导入；
+7. 释放缓冲（`FUN_718b2ea0`）；
+8. **版本 > 1**：`FUN_718ae2a0` 读侧装载 + AfCore `LoadObject(IUnknown**,
+   const GUID&, IStream*, IUnknown*)`，请求 IID `DAT_71a15a10` =
+   `{4434D680-F4DA-11D1-BCA6-0000F875BCCE}`（ISpatialReference；与 Map::Load
+   第 4 步、Envelope 版本 3 槽同值），结果存 `this−0x1c` 接口 `+0x18` 槽；
+   装载失败时该槽写空并清理后失败返回。
+
+Save（`0x7192dcb0`，反编译核对）：`AfStreamGetDocumentVersion` →
+`AfStreamWrite(stream, 常量 0x71a11e50, 2, NULL)` 写 **2 字节固定 `02 00`**
+（不走 AfStreamGetSaveVersion 版本表，10.1 恒写版本 2）→ `this−0x8` 接口
+`+0x10` 槽查询导出尺寸 → `malloc` → `+0x34` 槽填充（标志 = docVer > 1 ?
+`0x400` : 0）→ `AfStreamWrite` 写 int32 长度 → 写记录字节 → 释放 →
+SaveObject 空间参考。与 Load 版本 2 路径逐字段对称。
+
+## 记录字节块内部布局（ShapePolyline::Parse `0x7197fc50`；证据：确定的）
+
+`this−0x8` 接口 `+0x38` 槽（`0x7192c950`）构造 `ESRI::ShapePolyline` 栈对
+象（对象 `+0x10` 写自身类型标记 **3**；对象类目为 Polygon 时改构造
+`ESRI::ShapePolygon`，标记 **5**），以其虚表 `+0x94` 槽（`0x7197fc50`）解
+析缓冲区，再经对象 `+0xc8` 内嵌指针的虚表 `+0x1cc` 槽移交几何内核（内核虚
+表运行期装配，静态未定位）。解析前标志经 `& 0xfffffeff` 清除 `0x100` 位
+→ **读路径标志恒 0**。布局（小端，`param_4` 为缓冲基址，`int*` 索引）：
+
+| 偏移 | 字段 | 解析行为 |
+| --- | --- | --- |
+| 0 | int32 类型 | 存入 shape 对象 +0x14；**0 = 空几何**：清空、类型回填 3（Polygon 分支 5）、`*consumed = 4`、返回 S_OK（记录仅 4 字节）；其他值不校验（存什么算什么） |
+| 4 | 4×f64 包络 | `WKSEnvelope::PutCoords(env, [4],[12],[20],[28])` = (XMin, YMin, XMax, YMax)，与 Envelope::Save 字段序同源 |
+| 36 | int32 路径数 A | < 0 返回 `0x80040253` |
+| 40 | int32 点数 B | < 0 返回 `0x80040253`；**B == 1 返回 `0x80040221`**（折线至少两点） |
+| 44 | A×int32 | 路径起始点序号数组 |
+| 44+4A | B×(f64,f64) | 二维点坐标（16 字节/点） |
+
+长度自洽性：`44 + 4A + 16B` 恰为记录声明长度（样本 16/16：44+4+32=80）。
+原生**不校验**该一致性（计数越界即未定义行为），读取器显式校验拒绝，较原
+生更严。可选段（读路径标志恒 0 不可达，仅反编译记录）：标志 `0x80000000` →
+Z 域 min/max 对（0x10 字节）+ 每点 Z（8B）；`0x40000000` → M 域对 + 每点
+M；`0x20000000` → 段描述数组（`int32 计数` + 每条目 `int32 类型`（1 = Line、
+4 = CircularArc、5 = BezierCurve）+ 段参数，按对象槽 `+0x14`/`+0x1ec`/`+0xe4`
+分派）；`0x10000000` → 每点 4 字节附加数组。 memcpy 重指针算术
+（`starts A×4 → points B×16 → Z 16+8B → M 16+8B`）与逐字段读取相互印证。
+坐标 < −1e38 时原生钳位为 `DAT_71a66f20` 占位值（读侧仅在标志置位分支执
+行），读取器原样保留位模式不钳位。
+
+**Path/segment 子对象结论**：Polyline 记录是长度前缀的内联紧凑格式，流内
+**没有** Path/Line/CircularArc/BezierCurve 独立对象头（全流 CLSID 扫描 0
+实例）；段仅以「段描述数组条目」形态存在于标志 `0x20000000` 变体中，而该
+标志在 Load 路径恒不可达。Path/segment 的 IPersistStream 体在样本中无事可
+做，按「样本实际出现」为零不闭合（见下同族表）。
+
+## 同族类（wrapper 骨架闭合；记录内部布局未开放）
+
+同一 wrapper 骨架由族内多类共享（定位链同法，条件：COL 锚定虚表 +
+`+0x0c` 槽函数体内含本类 CLSID 常量引用）：
+
+| 类 | CLSID（esri.clsid 声明 Geometry.dll） | 持久化虚表 | GetClassID | Load | Save | IsDirty | 证据强度 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Polyline | `{30707210-52D5-11D0-A8F2-00608C85EDE5}` | `0x71a22bd4` | `0x719402d0` | `0x7192db20` | `0x7192dcb0` | `0x719d3220`（共享恒 0） | **确定**（反编译 + 样本 16/16） |
+| Polygon | `{00A5CB42-52DA-11D0-A8F2-00608C85EDE5}` | `0x71a220d4` | `0x7193b170` | **同 Polyline `0x7192db20`** | **同 `0x7192dcb0`** | `0x719d3220` | **确定**（Load/Save 与 Polyline 同函数；记录布局无样本） |
+| Point | `{00A5CB41-52DA-11D0-A8F2-00608C85EDE5}` | `0x71a21010` | `0x71915540` | `0x7191c1a0`（栈缓冲变体：声明长度 > 0x50 直接返回 `0x80004005`；导入槽 `+0x18` 非 `+0x38`） | `0x7191c2b0` | `0x719d3220` | 确定（反编译） |
+| Multipoint | `{00A5CB40-52DA-11D0-A8F2-00608C85EDE5}` | `0x71a2010c` | `0x718ff700` | `0x718ff9c0`（malloc 变体，导入槽 `+0x18`） | `0x718ffb50` | `0x719d3220` | 确定（反编译） |
+| Path | `{30707211-52D5-11D0-A8F2-00608C85EDE5}` | `0x71a203bc`（候选） | `0x719089d0` | `0x719089e0` | 空桩 `0x71973ab0` | `0x71909270`（非共享） | 候选（Save 空桩 + IsDirty 非共享标记，类身份证据弱） |
+| Ring | `{B9BC6BCE-7891-11D0-82F4-0000F8034032}` | `0x71a2394c`（候选） | `0x7195e100` | `0x7195e110` | 空桩 | 非共享 | 候选 |
+| BezierCurve | `{C8970BDC-B15B-11D1-A2D3-0000F8775FBF}` | `0x71a12944`（候选） | `0x717fea50` | `0x717fea60` | 空桩 | `0x718551c0`（与 EllipticArc 共享） | 候选 |
+| EllipticArc | `{E54925BB-16D9-11D2-AA7A-00C04FA37BA4}` | `0x71a14c14`（候选） | `0x7184cba0` | `0x7184cbb0` | 空桩 | `0x718551c0` | 候选 |
+| Line | `{6F4E63E0-5AB4-11D0-A8F6-00608C85EDE5}` | `0x71a1ea10`（候选） | `0x718d4de0` | `0x718d4df0` | 空桩 | `0x718da300` | 候选 |
+| CircularArc | `{CD3A614E-BC4B-11D0-8303-0000F8034032}` | 未定位 | movq 站点 `0x717e8d73` 一带 | — | — | — | RTTI 名称串未在两种命名形态中命中，未继续 |
+
+「Save 空桩」类的解读（候选）：段/路径类从不独立持久化（嵌在 Polyline/
+Polygon 记录内），其 IPersistStream::Save 可能从不被调用，留空桩合理——但
+这一解释未验证。各族记录字节块内部差异（Point 无路径数组、Polygon 带环
+方向等）属内核解析器形状分支，样本仅覆盖 Polyline，故本读取器仅分派
+Polyline，其余类返回 Unsupported。
+
+## 样本对位（辅助观察）
+
+/Maps 全流 Geometry.dll 模块 CLSID 扫描：**Polyline 16 实例**（键 1618、
+1855、1862、1868、1874、1940、1946、1952、2017、2023、2088、2094、2100、
+2165、2171、2177；对象头 @`0x18724`、`0x1dc0c`、`0x1ded9`、`0x1e13a`、
+`0x1e39b`、`0x1fb2b`、`0x1fd90`、`0x1fff5`、`0x2155f`、`0x217c4`、
+`0x22f8e`、`0x231f3`、`0x23458`、`0x249c2`、`0x24c27`、`0x24e8c`）、
+Envelope 25 实例（已由 spatial-reference/envelope 轮闭合）、其余几何类 0
+实例。
+
+16/16 实例逐字节走查（走查脚本在 temp，未入库）全部吻合：版本 2、声明长
+度 80、记录 = 类型 3 + 包络（水平引线：Y0=Y1，包络四角即两点）+ 路径数 1
++ 点数 2 + 路径起始 `[0]` + 2 个二维点，其后 16 字节全零空标记（版本 2
+LoadObject ISpatialReference 空引用）。
+
+实例 1（键 1618 @`0x18724`）之后的流内锚点：
+
+| 偏移 | 内容 | 互证 |
+| --- | --- | --- |
+| `0x1879e` | int32 0、int32 −1 | TextElement::Load 尾段（字段 7 版本 >2、字段 8 版本 >3）；−1 与 TextElement::Save「恒写 −1」一致 |
+| `0x187a6` | int32 ×3 = (34, −1, 0) | ElementCollection 版本 4 每元素交错值（各实例该值不同，−1/0 恒定） |
+| `0x187b2` | f64 5393.0 + String `cb=20` `"JZD1 注记 2"` | 容器级注记类块（实例 2 @`0x1dc9a` 同构：5000.0 + `"JZD1 注记 6"`）；归属容器层，非本读取器范围 |
+| `0x187d2` | FeatureLayer `{E663A651-8AAD-11D0-BEC7-00805F7C4268}` 键 1619 对象头 | 下一容器条目（esri.clsid 声明 progID `FeatureLayer`） |
+
+第二实例链（TextElement 键 1850 @`0x1da39`，Polyline 键 1855
+@`0x1dc0c`）同构互证；Polyline 记录解析值与 envelope 边界完全一致（点的
+包络）。
+
+## 实现（src/objects/geometry.rs、tests/geometry.rs）
+
+- `read_geometry_body_of_class_10_1(class_id, reader, max_bytes, table)`：
+  类分派入口（调用者已读对象头并登记新键）；仅 Polyline 闭合，其余几何类
+  返回 Unsupported（游标不推进、登记表不修改）。
+- `read_polyline_body_10_1`：版本 ≤2（有符号 >2 拒绝 `0x80004005`，负值一
+  并拒绝较原生更严）→ int32 声明长度（先限额 `max_bytes` 后读取，原生无
+  上限较原生更严）→ 记录块在 `read_region` 有界子窗口上解析（截断显式报
+  错）→ 版本 >1 的 LoadObject 空间参考条目（Null/回引/新键投影坐标系复用
+  `spatial_reference` 读取器；其余类 Unsupported——嵌套体无外部长度字段，
+  与 envelope 读取器同语义）。
+- `read_polyline_record_10_1`：类型 0 空几何（恰 4 字节，类型非 0 拒绝较
+  原生更严）或 `44 + 4×路径数 + 16×点数` 严格闭合（不一致拒绝较原生更
+  严）；点数 1 拒绝（原生 `0x80040221` 同拒）；路径起始与点坐标原样保留
+  位模式。
+- 事务性：trial 游标 + trial 登记表，完整成功才提交；空间参考新键登记先
+  于嵌套体解析（登记先于持久化的读侧对偶），失败整体回滚。
+- 测试（13 项）：类标识常量逐字节、样本键 1618 记录块字节形态镜像（期望
+  值从同一 fixture 解码保证按位相等）、合成记录往返、空几何、版本 1 无空
+  间参考段、回引/新键 PCS 嵌套、版本门与负值位模式、max_bytes 限额、全前
+  缀截断事务性、长度/计数一致性、未知嵌套类回滚、分派闭合与未开放类拒
+  绝。
+
+## 接线建议（本轮不改共享文件，供整合轮）
+
+1. `src/objects/element_body.rs` 的 `read_text_element_body_10_1` 第 6 字段
+   「IGeometry 文本几何槽」现为 `read_classified_slot` 仅分类（新对象 = 停
+   止点，样本 16 实例全部停在此）。建议改走
+   `objects::geometry::read_geometry_body_of_class_10_1` 分派（形态参照同
+   文件的 `read_color_slot`/`read_symbol_slot` 辅助函数）：Polyline 整体解
+   析（无停止点，记录定长、空间参考段可闭合）；其他几何类维持既有停止语
+   义（`ElementBodyStop10_1::NestedObjectNotClosed`，游标回退到槽对象头起
+   点、键不登记）。
+2. MarkerElement 的 IPoint 槽与 LineElement 的 IGeometry 槽样本 0 实例，
+   建议维持仅分类，待同族记录布局闭合后再接入同一分派。
+3. Polyline 嵌套空间参考为非投影坐标系新对象时按 envelope 读取器同语义返
+   Unsupported 硬错误（整元素体失败、游标登记表均不提交）而非元素停止
+   点——与既有 envelope 嵌套语义一致，整合轮无需特判。
+4. 停止点类型无需新增：Polyline 体读取要么完整成功、要么错误上抛，无样本
+   内停止点。
+
+## 未解决事项（开放项单列）
+
+1. 记录类型值的语义：内部 shape 类别（ShapePolyline 标记 3、ShapePolygon
+   5、0 空几何）与 esriGeometryType 枚举（类型库存在该枚举但 dump 未含成
+   员值）的映射仅候选；读取器原样保留不校验（与原生一致）。
+2. 版本 0/1、AfStreamRead S_FALSE 捷径（返回 1 的「空流」分支）无样本佐
+   证；读取器版本 0/1 按「记录 + 无空间参考」处理，S_FALSE 不实现。
+3. 可选段（Z/M/段描述/每点附加数组）在 Load 路径恒不可达（标志恒 0），仅
+   反编译记录；Save 侧标志 `0x400`（docVer > 1）的导出差异未展开。
+4. Point/Polygon/Multipoint/Path/Ring/BezierCurve/EllipticArc/Line/
+   CircularArc 的记录字节块内部布局未开放；Path 等「Save 空桩」类的持久
+   化虚表归属为候选。
+5. 几何内核移交链（对象 `+0xc8` 内嵌指针虚表 `+0x1cc` 槽）运行期装配，静
+   态未定位；内核侧语义（路径起始的合法性校验等）未核。
+6. < −1e38 坐标的原生钳位（`DAT_71a66f20`）未在读取器中实现（原样保留）。
+7. 嵌套空间参考仅支持投影坐标系；GeographicCoordinateSystem、
+   UnknownCoordinateSystem 等无样本与分派证据。
+8. 全部结论为静态观察；未运行 ArcMap 10.1，未在 QGIS 中核对，不声称已验
+   证。
