@@ -966,6 +966,80 @@ fn field_info_reads_version_4_body_with_numeric_format_nested() {
 }
 
 #[test]
+fn field_info_number_format_slot_dispatches_four_variants() {
+    // 接线轮：INumberFormat 槽四类分派（NumericFormat 既有 +
+    // Percentage/Fraction/Rate 三变体；证据与迁移建议见
+    // docs/arcmap-10.1-number-format.md「实现」节）。各变体取满形态，
+    // FieldInfo 尾段必须可达（槽位整体消费）。
+    use mxd2qgz::layers::feature_layer_tail::{
+        FRACTION_FORMAT_CLASS_ID, PERCENTAGE_FORMAT_CLASS_ID, RATE_FORMAT_CLASS_ID,
+    };
+
+    // Percentage 版本 2 满形态：short ② + 内嵌 NumericFormat 核心。
+    let mut percentage = PERCENTAGE_FORMAT_CLASS_ID.to_vec();
+    percentage.extend(80_u32.to_le_bytes());
+    percentage.extend(2_u16.to_le_bytes());
+    percentage.extend(3_i16.to_le_bytes());
+    percentage.extend(numeric_format_body([0, 0, 0, 12]));
+    let body_bytes = field_info_body_v4("P", &percentage);
+    let mut reader = Reader::new(&body_bytes);
+    // 键 41 由调用者的条目分类预先登记（与既有 NumericFormat 用例同约定）。
+    let mut table = table_with_keys(&[41]);
+    let body = read_field_info_body_10_1(&mut reader, 1024, &mut table, 41).unwrap();
+    assert_eq!(body.stop, None);
+    let NumberFormatSlot10_1::PercentageFormat(p) = &body.number_format else {
+        panic!("Percentage 分类不符：{:?}", body.number_format);
+    };
+    assert_eq!(p.key, 80);
+    assert_eq!(p.version, 2);
+    assert_eq!(p.numeric.as_ref().unwrap().int32s, [0, 0, 0, 12]);
+    assert_eq!(body.tail_shorts, Some([0, 0]), "槽位整体消费后续段可达");
+    assert_eq!(reader.remaining(), 0);
+    assert!(table.contains(41) && table.contains(80));
+
+    // Fraction 版本 1 满形态：int32 ×2。
+    let mut fraction = FRACTION_FORMAT_CLASS_ID.to_vec();
+    fraction.extend(81_u32.to_le_bytes());
+    fraction.extend(1_u16.to_le_bytes());
+    fraction.extend(7_i32.to_le_bytes());
+    fraction.extend((-2_i32).to_le_bytes());
+    let body_bytes = field_info_body_v4("F", &fraction);
+    let mut reader = Reader::new(&body_bytes);
+    let mut table = table_with_keys(&[41]);
+    let body = read_field_info_body_10_1(&mut reader, 1024, &mut table, 41).unwrap();
+    assert_eq!(body.stop, None);
+    let NumberFormatSlot10_1::FractionFormat(f) = &body.number_format else {
+        panic!("Fraction 分类不符：{:?}", body.number_format);
+    };
+    assert_eq!(f.key, 81);
+    assert_eq!((f.int32_10, f.int32_0c), (7, -2));
+    assert_eq!(body.tail_shorts, Some([0, 0]));
+    assert_eq!(reader.remaining(), 0);
+
+    // Rate 版本 2 满形态：double + String + 内嵌 NumericFormat 核心。
+    let mut rate = RATE_FORMAT_CLASS_ID.to_vec();
+    rate.extend(82_u32.to_le_bytes());
+    rate.extend(2_u16.to_le_bytes());
+    rate.extend(1.5_f64.to_le_bytes());
+    rate.extend(string_bytes("米每秒"));
+    rate.extend(numeric_format_body([1, 2, 3, 4]));
+    let body_bytes = field_info_body_v4("R", &rate);
+    let mut reader = Reader::new(&body_bytes);
+    let mut table = table_with_keys(&[41]);
+    let body = read_field_info_body_10_1(&mut reader, 1024, &mut table, 41).unwrap();
+    assert_eq!(body.stop, None);
+    let NumberFormatSlot10_1::RateFormat(r) = &body.number_format else {
+        panic!("Rate 分类不符：{:?}", body.number_format);
+    };
+    assert_eq!(r.key, 82);
+    assert_eq!(r.double_14, 1.5);
+    assert_eq!(r.string_0c, "米每秒");
+    assert_eq!(r.numeric.as_ref().unwrap().int32s, [1, 2, 3, 4]);
+    assert_eq!(body.tail_shorts, Some([0, 0]));
+    assert_eq!(reader.remaining(), 0);
+}
+
+#[test]
 fn field_info_reads_null_number_format_and_version_branches() {
     // 版本 3：-0x14 读取、别名、空标记槽、-0x18/-0x1c 读取、-0x8/-0x6 缺席
     //（`3 < ver` 为假）；版本 1：-0x14 缺席、尾段全部缺席。
@@ -1217,6 +1291,44 @@ fn successor_stops_at_hyperlink_new_object() {
         bytes.len() - header_offset,
         "游标回退到条目头起点"
     );
+}
+
+#[test]
+fn successor_hyperlink_loop_parses_hyperlink_bodies_inline() {
+    // 接线轮：IHyperlink 循环条目 Hyperlink（{3036D35E-…}）新对象经
+    // objects::hyperlink 体读取器整体解析（证据：docs/arcmap-10.1-hyperlink.md
+    // 「接线建议」）；样本计数恒 0，本测试为合成输入契约。两个条目
+    // （新对象 + 空标记）后循环继续，IColor/FieldInfo 段照常可达。
+    use mxd2qgz::objects::hyperlink::HYPERLINK_CLASS_ID;
+
+    let mut entries = Vec::new();
+    push_entry_header(&mut entries, &HYPERLINK_CLASS_ID, 80);
+    entries.extend(1_u16.to_le_bytes()); // Hyperlink 版本 1
+    entries.extend(0_i32.to_le_bytes()); // ② type（语义未定）
+    entries.extend(string_bytes("https://example.invalid/a")); // ③ 链接候选
+    entries.extend(0_i32.to_le_bytes()); // ④ 尾 int32
+    push_null_marker(&mut entries); // 第二条目：空标记
+
+    let mut bytes = successor_prefix(2, &entries, &[0_u8; 16]);
+    // 之后只有 FieldInfo 计数 0、无延续段字节：循环完成、ALPC 槽头不可读。
+    bytes.extend(0_i32.to_le_bytes());
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let result = read_feature_layer_successor_10_1(&mut reader, 34, 1024, &mut table).unwrap();
+    assert_eq!(result.stop, SuccessorStop10_1::FieldInfoLoopCompleted);
+    assert_eq!(result.hyperlink_count, 2);
+    assert_eq!(result.hyperlinks.len(), 2);
+    match &result.hyperlinks[0] {
+        HyperlinkSlot10_1::Hyperlink(body) => {
+            assert_eq!(body.key, 80);
+            assert_eq!(body.version, 1);
+            assert_eq!(body.link, "https://example.invalid/a");
+        }
+        other => panic!("条目 0 应为 Hyperlink 体：{other:?}"),
+    }
+    assert!(matches!(result.hyperlinks[1], HyperlinkSlot10_1::Null));
+    assert!(table.contains(80));
+    assert!(matches!(result.color, ColorSlot10_1::Null));
 }
 
 #[test]
