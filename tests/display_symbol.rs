@@ -780,15 +780,15 @@ fn direct_reader_calls_stay_transactional_on_the_table() {
 
 use mxd2qgz::objects::display_symbol::{
     DecorationSlot10_1, GRADIENT_FILL_SYMBOL_CLASS_ID, LINE_DECORATION_CLASS_ID,
-    SIMPLE_LINE_DECORATION_ELEMENT_CLASS_ID, SymbolSlotFull10_1, TEMPLATE_CLASS_ID,
-    UnclosedSlot10_1, read_arrow_marker_symbol_body_10_1, read_character_marker_symbol_body_10_1,
-    read_dot_density_fill_symbol_body_10_1, read_gradient_fill_symbol_body_10_1,
-    read_line_decoration_body_10_1, read_line_fill_symbol_body_10_1,
-    read_marker_fill_symbol_body_10_1, read_multi_layer_fill_symbol_body_10_1,
-    read_multi_layer_line_symbol_body_10_1, read_multi_layer_marker_symbol_body_10_1,
-    read_picture_line_symbol_body_10_1, read_picture_marker_symbol_body_10_1,
-    read_simple_line_decoration_element_body_10_1, read_symbol_slot_full_10_1,
-    read_template_body_10_1,
+    SIMPLE_LINE_DECORATION_ELEMENT_CLASS_ID, StdFontSlot10_1, StdPictureSlot10_1,
+    SymbolSlotFull10_1, TEMPLATE_CLASS_ID, UnclosedSlot10_1, read_arrow_marker_symbol_body_10_1,
+    read_character_marker_symbol_body_10_1, read_dot_density_fill_symbol_body_10_1,
+    read_gradient_fill_symbol_body_10_1, read_line_decoration_body_10_1,
+    read_line_fill_symbol_body_10_1, read_marker_fill_symbol_body_10_1,
+    read_multi_layer_fill_symbol_body_10_1, read_multi_layer_line_symbol_body_10_1,
+    read_multi_layer_marker_symbol_body_10_1, read_picture_line_symbol_body_10_1,
+    read_picture_marker_symbol_body_10_1, read_simple_line_decoration_element_body_10_1,
+    read_symbol_slot_full_10_1, read_template_body_10_1,
 };
 
 /// 追加 4 字节计数（int32 LE）。
@@ -1247,7 +1247,7 @@ fn character_marker_symbol_version_gates() {
     assert_eq!(result.font_ints_a, Some([16, 700, 0, 0]));
     assert_eq!(result.font_shorts, Some([0, 204]));
     assert_eq!(result.font_ints_b, Some([0, 1]));
-    assert_eq!(result.font_slot_v5, Some(UnclosedSlot10_1::Null));
+    assert_eq!(result.font_slot_v5, Some(StdFontSlot10_1::Null));
     assert_eq!(result.stop, None);
     assert_eq!(reader.position(), bytes.len());
 
@@ -1267,7 +1267,7 @@ fn character_marker_symbol_version_gates() {
     let result =
         read_character_marker_symbol_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 76)
             .unwrap();
-    assert_eq!(result.font_slot_v3, Some(UnclosedSlot10_1::Null));
+    assert_eq!(result.font_slot_v3, Some(StdFontSlot10_1::Null));
     assert_eq!(result.int32_124, Some(3));
     assert_eq!(result.int32_11c, Some(4));
     assert_eq!(result.short_10c, Some(1));
@@ -1519,8 +1519,8 @@ fn picture_marker_symbol_legacy_paths() {
             .unwrap();
     match &result.image {
         mxd2qgz::objects::display_symbol::PictureImage10_1::Legacy(legacy) => {
-            assert_eq!(legacy.picture_a, Some(UnclosedSlot10_1::Null));
-            assert_eq!(legacy.picture_b, Some(UnclosedSlot10_1::Null));
+            assert_eq!(legacy.picture_a, Some(StdPictureSlot10_1::Null));
+            assert_eq!(legacy.picture_b, Some(StdPictureSlot10_1::Null));
             assert_eq!(legacy.path, None);
             assert_eq!(legacy.blob_size, None);
         }
@@ -2021,4 +2021,199 @@ fn marker_line_body_parses_closed_template_and_decoration_slots() {
     for key in [150_u32, 151, 152] {
         assert!(table.contains(key), "键 {key} 应已登记");
     }
+}
+
+// ---------------------------------------------------------------------------
+// 整合接线轮：CharacterMarkerSymbol 字体槽与 PictureMarkerSymbol IPicture 槽
+// 接 OLE StdFont/StdPicture 分派（`docs/arcmap-10.1-ole-stdfont.md`「接线建
+// 议」1/2；样本 16 处 StdFont 在 CharacterMarker 字体槽语境、StdPicture 样本
+// 0 实例——接线契约由合成测试固定）。
+// ---------------------------------------------------------------------------
+
+/// StdFont 体（ole_font 轮样本首例形态）：版本 1 + charset 134 + flags 0 +
+/// weight 400 + 字号 120000 + 名字 4 字节（GBK「宋体」）。
+fn std_font_body() -> Vec<u8> {
+    [
+        0x01, 0x86, 0x00, 0x00, 0x90, 0x01, 0xc0, 0xd4, 0x01, 0x00, 0x04, 0xcb, 0xce, 0xcc, 0xe5,
+    ]
+    .to_vec()
+}
+
+/// StdPicture 体（空图合法形态）：魔数 0x746c + 第二字 0 + 声明 0。
+fn std_picture_body() -> Vec<u8> {
+    let mut bytes = 0x746c_u16.to_le_bytes().to_vec();
+    bytes.extend(0_u16.to_le_bytes());
+    bytes.extend(0_u32.to_le_bytes());
+    bytes
+}
+
+#[test]
+fn character_marker_font_slot_v3_parses_stdfont_inline() {
+    // 版本 2（<3）：v<3 IFontDisp 槽 = StdFont 新对象；槽位整体消费后宿主
+    // 续读字段可达（int32 ×2 + short），体完整消费无停止。
+    use mxd2qgz::objects::display_symbol::StdFontSlot10_1;
+    use mxd2qgz::objects::ole_font::STDFONT_CLASS_ID;
+    let mut bytes = 2_u16.to_le_bytes().to_vec();
+    push_null(&mut bytes); // IColor 槽
+    bytes.extend(0_i32.to_le_bytes()); // int32 → this−0xc0
+    for _ in 0..6 {
+        bytes.extend(0.0_f64.to_le_bytes());
+    }
+    push_entry(&mut bytes, &STDFONT_CLASS_ID, 76); // v<3 IFontDisp 槽
+    bytes.extend(std_font_body());
+    bytes.extend(3_i32.to_le_bytes());
+    bytes.extend(4_i32.to_le_bytes());
+    bytes.extend(1_i16.to_le_bytes());
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let result = read_character_marker_symbol_body_10_1(&mut reader, 1024, &mut table, 75).unwrap();
+    let StdFontSlot10_1::StdFont(font) = result.font_slot_v3.expect("槽位应存在") else {
+        panic!("v<3 字体槽应为 StdFont 体");
+    };
+    assert_eq!(font.charset, Some(134));
+    assert_eq!(result.int32_124, Some(3), "槽位整体消费后续段可达");
+    assert_eq!(result.font_slot_v5, None);
+    assert_eq!(result.stop, None);
+    assert_eq!(reader.position(), bytes.len());
+    assert!(table.contains(76), "StdFont 键已登记");
+}
+
+#[test]
+fn character_marker_font_slot_v5_parses_stdfont_inline() {
+    // 版本 4（>3）：字体描述符段之后的第二 IFontDisp 槽 = StdFont 新对象，
+    // 体完整消费（样本 16 处 StdFont 的宿主语境为 v≤3/v>3 两类字体槽；本
+    // 用例取 v>3 重写门）。
+    use mxd2qgz::objects::display_symbol::StdFontSlot10_1;
+    use mxd2qgz::objects::ole_font::STDFONT_CLASS_ID;
+    let mut bytes = 4_u16.to_le_bytes().to_vec();
+    push_null(&mut bytes); // IColor 槽
+    bytes.extend(0_i32.to_le_bytes()); // int32 → this−0xc0
+    for _ in 0..6 {
+        bytes.extend(0.0_f64.to_le_bytes());
+    }
+    bytes.extend(7_i32.to_le_bytes());
+    bytes.extend(8_i32.to_le_bytes());
+    bytes.extend(1_i16.to_le_bytes()); // v>1 short
+    push_string(&mut bytes, "Arial"); // v≥3 字体名
+    for value in [16_i32, 700, 0, 0] {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes.extend(0_i16.to_le_bytes());
+    bytes.extend(204_i16.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(1_i32.to_le_bytes());
+    push_entry(&mut bytes, &STDFONT_CLASS_ID, 77); // v>3 第二 IFontDisp 槽
+    bytes.extend(std_font_body());
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let result = read_character_marker_symbol_body_10_1(&mut reader, 1024, &mut table, 75).unwrap();
+    let StdFontSlot10_1::StdFont(font) = result.font_slot_v5.expect("槽位应存在") else {
+        panic!("v>3 字体槽应为 StdFont 体");
+    };
+    assert_eq!(font.weight, 400);
+    assert_eq!(result.stop, None);
+    assert_eq!(reader.position(), bytes.len());
+    assert!(table.contains(77));
+}
+
+#[test]
+fn character_marker_font_slot_unknown_class_stops() {
+    // 字体槽未知实现类：停止回退到槽位起点、键不保留（与 TextSymbol 字体
+    // 槽语义一致）。
+    let unknown = [0x77_u8; 16];
+    let mut bytes = 2_u16.to_le_bytes().to_vec();
+    push_null(&mut bytes); // IColor 槽
+    bytes.extend(0_i32.to_le_bytes()); // int32 → this−0xc0
+    for _ in 0..6 {
+        bytes.extend(0.0_f64.to_le_bytes());
+    }
+    let slot_offset = bytes.len();
+    push_entry(&mut bytes, &unknown, 76); // v<3 IFontDisp 槽未知类
+    bytes.extend([0_u8; 8]); // 占位
+    let mut reader = Reader::new(&bytes);
+    let result =
+        read_character_marker_symbol_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 75)
+            .unwrap();
+    assert_eq!(result.font_slot_v3, None, "未知类不出现在字段中");
+    assert_eq!(
+        result.stop,
+        Some(SymbolStop10_1::Slot {
+            kind: mxd2qgz::objects::display_symbol::DisplaySlotKind10_1::Font,
+            class_id: unknown,
+            key: 76,
+        })
+    );
+    assert_eq!(reader.position(), slot_offset, "游标回退到槽位起点");
+}
+
+#[test]
+fn picture_marker_type3_slot_parses_stdpicture_inline() {
+    // 版本 9 图像类型 3：IPicture 槽 = StdPicture 新对象；槽位整体消费后
+    // 共享尾段（IColor ×3 等）可达。
+    use mxd2qgz::objects::display_symbol::{
+        PictureImage10_1, PictureImagePayload10_1, StdPictureSlot10_1,
+    };
+    use mxd2qgz::objects::ole_font::STDPICTURE_CLASS_ID;
+    let mut bytes = 9_u16.to_le_bytes().to_vec();
+    bytes.extend(3_i32.to_le_bytes()); // 图像类型 3
+    bytes.extend(0_i32.to_le_bytes()); // aux int32
+    push_entry(&mut bytes, &STDPICTURE_CLASS_ID, 96); // IPicture 槽
+    bytes.extend(std_picture_body());
+    for _ in 0..3 {
+        push_null(&mut bytes); // IColor ×3
+    }
+    for _ in 0..6 {
+        bytes.extend(0.0_f64.to_le_bytes());
+    }
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.push(0_u8); // byte
+    bytes.extend(0_i16.to_le_bytes());
+    for _ in 0..3 {
+        bytes.extend(0_i16.to_le_bytes());
+    }
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let result = read_picture_marker_symbol_body_10_1(&mut reader, 1024, &mut table, 95).unwrap();
+    let PictureImage10_1::V9 {
+        image_type,
+        payload,
+        ..
+    } = &result.image
+    else {
+        panic!("期望 V9 图像块");
+    };
+    assert_eq!(*image_type, 3);
+    let PictureImagePayload10_1::Picture(StdPictureSlot10_1::StdPicture(picture)) =
+        payload.as_ref().expect("类型 3 应有载荷")
+    else {
+        panic!("IPicture 槽应为 StdPicture 体");
+    };
+    assert_eq!(picture.data_size, 0, "空图合法形态");
+    assert_eq!(result.stop, None, "槽位整体消费后续段可达");
+    assert_eq!(reader.position(), bytes.len());
+    assert!(table.contains(96));
+}
+
+#[test]
+fn picture_marker_legacy_picture_slot_unknown_class_stops() {
+    // 版本 <4 的第一个 IPicture 槽未知实现类：停止回退到槽位起点。
+    let unknown = [0x88_u8; 16];
+    let mut bytes = 3_u16.to_le_bytes().to_vec(); // 版本 3（<4：第一个槽）
+    let slot_offset = bytes.len();
+    push_entry(&mut bytes, &unknown, 96);
+    bytes.extend([0_u8; 8]); // 占位
+    let mut reader = Reader::new(&bytes);
+    let result =
+        read_picture_marker_symbol_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 95)
+            .unwrap();
+    assert_eq!(
+        result.stop,
+        Some(SymbolStop10_1::Slot {
+            kind: mxd2qgz::objects::display_symbol::DisplaySlotKind10_1::Picture,
+            class_id: unknown,
+            key: 96,
+        })
+    );
+    assert_eq!(reader.position(), slot_offset);
 }

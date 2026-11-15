@@ -229,6 +229,10 @@
 //! 结论为静态观察，未经目标软件运行验证，样本无字节佐证。
 
 use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
+use crate::objects::ole_font::{
+    STDFONT_CLASS_ID, STDPICTURE_CLASS_ID, StdFontBody10_1, StdPictureBody10_1,
+    read_std_font_body_10_1, read_std_picture_body_10_1,
+};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
@@ -1997,6 +2001,135 @@ fn read_unclosed_slot_10_1(
     }
 }
 
+/// IFontDisp 类槽位条目（StdFont 分派形态；CharacterMarkerSymbol 字体槽 v≤3
+/// / v>3 重写门共用）。
+///
+/// 接线轮起 StdFont 新对象（`{0BE35203-…}`，OLE oleaut32 系统类）经
+/// [`read_std_font_body_10_1`] 整体解析（体不含嵌套对象条目、无停止点；体
+/// 自身错误上抛即宿主符号体整体失败，与 TextSymbol 字体槽语义一致）；其余
+/// 实现类新对象维持停止回退（游标停在槽位起点、键不登记）。证据：
+/// docs/arcmap-10.1-ole-stdfont.md「接线建议」2（样本 16 处「ESRI Default
+/// Marker」StdFont 位于本槽语境）。
+#[derive(Debug, Clone, PartialEq)]
+pub enum StdFontSlot10_1 {
+    /// 16 字节全零类标识：空引用。
+    Null,
+    /// 键已见：回引条目，无对象体。类标识原样保留、不校验。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 StdFont 对象（类标识经 [`STDFONT_CLASS_ID`] 校验）：已解析体。
+    StdFont(Box<StdFontBody10_1>),
+}
+
+/// 读取一个 IFontDisp 类槽位（StdFont 分派形态），返回 `(槽位, 停止)`。
+///
+/// StdFont 新对象整体解析；其余实现类新对象 = 停止点（回退语义与
+/// [`read_unclosed_slot_10_1`] 相同）。
+fn read_std_font_slot_10_1(
+    trial: &mut Reader<'_>,
+    max_bytes: usize,
+    staged: &mut RefTable10_1,
+    kind: DisplaySlotKind10_1,
+) -> io::Result<(Option<StdFontSlot10_1>, Option<SymbolStop10_1>)> {
+    let origin = trial.clone();
+    let saved = staged.clone();
+    let mut forward = trial.clone();
+    let entry = read_object_entry_10_1(&mut forward, staged)?;
+    match entry {
+        ObjectEntry10_1::Null => {
+            *trial = forward;
+            Ok((Some(StdFontSlot10_1::Null), None))
+        }
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            *trial = forward;
+            Ok((Some(StdFontSlot10_1::BackReference { class_id, key }), None))
+        }
+        ObjectEntry10_1::NewObject { class_id, key: _ } if class_id == STDFONT_CLASS_ID => {
+            // 键已由条目分类按「登记先于持久化」语义登记进 staged；体无停
+            // 止点，完整成功才提交——失败上抛时本函数不回写 trial/staged，
+            // 由宿主体读取器的外层 trial 语义保证整体不提交。max_bytes 约
+            // 束 StdFont 名字声明长度（`read_std_font_body_10_1` 契约）。
+            let body = read_std_font_body_10_1(&mut forward, max_bytes)?;
+            *trial = forward;
+            Ok((Some(StdFontSlot10_1::StdFont(Box::new(body))), None))
+        }
+        ObjectEntry10_1::NewObject { class_id, key } => {
+            *trial = origin;
+            *staged = saved;
+            Ok((
+                None,
+                Some(SymbolStop10_1::Slot {
+                    kind,
+                    class_id,
+                    key,
+                }),
+            ))
+        }
+    }
+}
+
+/// IPicture 类槽位条目（StdPicture 分派形态；PictureMarkerSymbol 四处
+/// IPicture 槽共用）。
+///
+/// 接线轮起 StdPicture 新对象（`{0BE35204-…}`，OLE oleaut32 系统类）经
+/// [`read_std_picture_body_10_1`] 整体解析（体无停止点）；其余实现类新对
+/// 象维持停止回退。证据：docs/arcmap-10.1-ole-stdfont.md「接线建议」1
+/// （样本 0 实例，接线契约由合成测试固定）。
+#[derive(Debug, Clone, PartialEq)]
+pub enum StdPictureSlot10_1 {
+    /// 16 字节全零类标识：空引用。
+    Null,
+    /// 键已见：回引条目，无对象体。类标识原样保留、不校验。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 StdPicture 对象（类标识经 [`STDPICTURE_CLASS_ID`] 校验）：已解析
+    /// 体（图像数据原样保留，不解释格式）。
+    StdPicture(Box<StdPictureBody10_1>),
+}
+
+/// 读取一个 IPicture 类槽位（StdPicture 分派形态），返回 `(槽位, 停止)`。
+fn read_std_picture_slot_10_1(
+    trial: &mut Reader<'_>,
+    max_bytes: usize,
+    staged: &mut RefTable10_1,
+    kind: DisplaySlotKind10_1,
+) -> io::Result<(Option<StdPictureSlot10_1>, Option<SymbolStop10_1>)> {
+    let origin = trial.clone();
+    let saved = staged.clone();
+    let mut forward = trial.clone();
+    let entry = read_object_entry_10_1(&mut forward, staged)?;
+    match entry {
+        ObjectEntry10_1::Null => {
+            *trial = forward;
+            Ok((Some(StdPictureSlot10_1::Null), None))
+        }
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            *trial = forward;
+            Ok((
+                Some(StdPictureSlot10_1::BackReference { class_id, key }),
+                None,
+            ))
+        }
+        ObjectEntry10_1::NewObject { class_id, key: _ } if class_id == STDPICTURE_CLASS_ID => {
+            // 键登记与提交语义同 read_std_font_slot_10_1；max_bytes 约束
+            // StdPicture 图像数据声明长度。
+            let body = read_std_picture_body_10_1(&mut forward, max_bytes)?;
+            *trial = forward;
+            Ok((Some(StdPictureSlot10_1::StdPicture(Box::new(body))), None))
+        }
+        ObjectEntry10_1::NewObject { class_id, key } => {
+            *trial = origin;
+            *staged = saved;
+            Ok((
+                None,
+                Some(SymbolStop10_1::Slot {
+                    kind,
+                    class_id,
+                    key,
+                }),
+            ))
+        }
+    }
+}
+
 /// 读取一个符号槽并按调用者槽位的类别归约停止原因（`Unsupported` → 本类
 /// 槽位停止；嵌套体停止 → 嵌套未完整）。供 MultiLayer 层数组、LineFill/
 /// MarkerFill 的多符号槽等循环使用，经全闭合类入口
@@ -2777,9 +2910,9 @@ pub struct CharacterMarkerSymbolBody10_1 {
     /// double → this−0x8c，语义未定。
     pub double_8c: f64,
     /// 版本 <3 的 IFontDisp 槽（请求 IID `{BEF6E002-A874-101A-8BBA-…}`，
-    /// Save 槽 this−0xbc；实现类 OLE StdFont 未闭合 = 停止）。`None` =
-    /// 版本 ≥3 或前置停止。
-    pub font_slot_v3: Option<UnclosedSlot10_1>,
+    /// Save 槽 this−0xbc；接线轮起 StdFont 分派，其余实现类 = 停止）。
+    /// `None` = 版本 ≥3 或前置停止。
+    pub font_slot_v3: Option<StdFontSlot10_1>,
     /// int32 → this−0x124，语义未定。`None` = 前置停止。
     pub int32_124: Option<i32>,
     /// int32 → this−0x11c，语义未定。`None` = 前置停止。
@@ -2799,9 +2932,9 @@ pub struct CharacterMarkerSymbolBody10_1 {
     /// 版本 ≥3 的 int32 ×2（语义候选 StrikeThrough/尺寸变体，未定）。
     /// `None` = 版本 <3 或前置停止。
     pub font_ints_b: Option<[i32; 2]>,
-    /// 版本 >3 的第二 IFontDisp 槽（Save 恒写同槽 this−0xbc 重写；实现类
-    /// 未闭合 = 停止）。`None` = 版本 ≤3 或前置停止。
-    pub font_slot_v5: Option<UnclosedSlot10_1>,
+    /// 版本 >3 的第二 IFontDisp 槽（Save 恒写同槽 this−0xbc 重写；接线轮起
+    /// StdFont 分派，其余实现类 = 停止）。`None` = 版本 ≤3 或前置停止。
+    pub font_slot_v5: Option<StdFontSlot10_1>,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<SymbolStop10_1>,
 }
@@ -2857,10 +2990,14 @@ pub fn read_character_marker_symbol_body_10_1(
         double_9c = trial.read_f64_le()?;
         double_94 = trial.read_f64_le()?;
         double_8c = trial.read_f64_le()?;
-        // ⑩ 版本 <3 的 IFontDisp 槽。
+        // ⑩ 版本 <3 的 IFontDisp 槽（接线轮起 StdFont 分派，其余类停止）。
         if (version as i16) < 3 {
-            let (slot, inner) =
-                read_unclosed_slot_10_1(&mut trial, &mut staged, DisplaySlotKind10_1::Font)?;
+            let (slot, inner) = read_std_font_slot_10_1(
+                &mut trial,
+                max_bytes,
+                &mut staged,
+                DisplaySlotKind10_1::Font,
+            )?;
             font_slot_v3 = slot;
             if let Some(inner) = inner {
                 stop = Some(inner);
@@ -2890,8 +3027,12 @@ pub fn read_character_marker_symbol_body_10_1(
             font_ints_b = Some([b1, b2]);
         }
         if version as i16 > 3 {
-            let (slot, inner) =
-                read_unclosed_slot_10_1(&mut trial, &mut staged, DisplaySlotKind10_1::Font)?;
+            let (slot, inner) = read_std_font_slot_10_1(
+                &mut trial,
+                max_bytes,
+                &mut staged,
+                DisplaySlotKind10_1::Font,
+            )?;
             font_slot_v5 = slot;
             if let Some(inner) = inner {
                 stop = Some(inner);
@@ -2934,19 +3075,19 @@ pub enum PictureImagePayload10_1 {
     /// （反汇编核实 `0x6eb7a7b5`/`0x6eb7a7de`：尺寸即首 int32，条件读取）。
     Blob { size: u32, data: Option<Vec<u8>> },
     /// 类型 3：LoadObject（IPicture `{7BF80980-BF32-101A-8BBB-…}` → 槽
-    /// this−0x88；实现类未闭合 = 停止）。
-    Picture(UnclosedSlot10_1),
+    /// this−0x88；接线轮起 StdPicture 分派，其余实现类 = 停止）。
+    Picture(StdPictureSlot10_1),
 }
 
 /// PictureMarkerSymbol 图像块的版本 ≤8 历史路径分类结果。
 #[derive(Debug, Clone, PartialEq)]
 pub struct PictureImageLegacy10_1 {
-    /// 版本 <4 的第一个 IPicture 槽（请求 IID `{7BF80980}`）。`None` =
-    /// 版本 ≥4、槽位停止或未达。
-    pub picture_a: Option<UnclosedSlot10_1>,
-    /// 版本 ≤6 的第二个 IPicture 槽；版本 ≥7 且路径串为空时同样读此槽。
-    /// `None` = 版本 ≥7 且路径非空、槽位停止或未达。
-    pub picture_b: Option<UnclosedSlot10_1>,
+    /// 版本 <4 的第一个 IPicture 槽（请求 IID `{7BF80980}`；接线轮起
+    /// StdPicture 分派）。`None` = 版本 ≥4、槽位停止或未达。
+    pub picture_a: Option<StdPictureSlot10_1>,
+    /// 版本 ≤6 的第二个 IPicture 槽；版本 ≥7 且路径串为空时同样读此槽
+    /// （StdPicture 分派）。`None` = 版本 ≥7 且路径非空、槽位停止或未达。
+    pub picture_b: Option<StdPictureSlot10_1>,
     /// 版本 ≥7 的 String（图像路径候选）；版本 ≤6 为空。`None` = 前置停止。
     pub path: Option<String>,
     /// 版本 ≥7 且路径非空时的 double（→ +0xf8）。`None` = 前置停止或路径空。
@@ -3064,8 +3205,12 @@ pub fn read_picture_marker_symbol_body_10_1(
                 Some(PictureImagePayload10_1::Blob { size, data })
             }
             _ => {
-                let (slot, inner) =
-                    read_unclosed_slot_10_1(&mut trial, &mut staged, DisplaySlotKind10_1::Picture)?;
+                let (slot, inner) = read_std_picture_slot_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged,
+                    DisplaySlotKind10_1::Picture,
+                )?;
                 if let Some(inner) = inner {
                     stop = Some(inner);
                 }
@@ -3092,16 +3237,24 @@ pub fn read_picture_marker_symbol_body_10_1(
         if version <= 6 {
             // 版本 <4：第一个 IPicture 槽。
             if version < 4 {
-                let (slot, inner) =
-                    read_unclosed_slot_10_1(&mut trial, &mut staged, DisplaySlotKind10_1::Picture)?;
+                let (slot, inner) = read_std_picture_slot_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged,
+                    DisplaySlotKind10_1::Picture,
+                )?;
                 if let Some(inner) = inner {
                     stop = Some(inner);
                 }
                 legacy.picture_a = slot;
             }
             if stop.is_none() {
-                let (slot, inner) =
-                    read_unclosed_slot_10_1(&mut trial, &mut staged, DisplaySlotKind10_1::Picture)?;
+                let (slot, inner) = read_std_picture_slot_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged,
+                    DisplaySlotKind10_1::Picture,
+                )?;
                 if let Some(inner) = inner {
                     stop = Some(inner);
                 }
@@ -3112,8 +3265,12 @@ pub fn read_picture_marker_symbol_body_10_1(
             let path = read_string_10_1(&mut trial, max_bytes)?;
             legacy.path = Some(path.clone());
             if path.is_empty() {
-                let (slot, inner) =
-                    read_unclosed_slot_10_1(&mut trial, &mut staged, DisplaySlotKind10_1::Picture)?;
+                let (slot, inner) = read_std_picture_slot_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged,
+                    DisplaySlotKind10_1::Picture,
+                )?;
                 if let Some(inner) = inner {
                     stop = Some(inner);
                 }
