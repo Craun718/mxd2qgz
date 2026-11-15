@@ -11,11 +11,13 @@ use mxd2qgz::objects::display_color::{ColorBody10_1, ColorSlot10_1, RGB_COLOR_CL
 use mxd2qgz::objects::display_symbol::{SIMPLE_FILL_SYMBOL_CLASS_ID, SymbolSlotFull10_1};
 use mxd2qgz::objects::element_body::{
     CustomProperty10_1, FontSlot10_1, GeometrySlot10_1, LINE_ELEMENT_CLASS_ID,
-    MARKER_ELEMENT_CLASS_ID, NestedEntry10_1, TEXT_ELEMENT_CLASS_ID, TEXT_SYMBOL_CLASS_ID,
-    read_element_body_of_class_10_1, read_line_element_body_10_1, read_text_element_body_10_1,
-    read_text_symbol_body_10_1,
+    MARKER_ELEMENT_CLASS_ID, NestedEntry10_1, PointSlot10_1, TEXT_ELEMENT_CLASS_ID,
+    TEXT_SYMBOL_CLASS_ID, read_element_body_of_class_10_1, read_line_element_body_10_1,
+    read_marker_element_body_10_1, read_text_element_body_10_1, read_text_symbol_body_10_1,
 };
-use mxd2qgz::objects::geometry::POLYLINE_CLASS_ID;
+use mxd2qgz::objects::geometry::{
+    MULTIPOINT_CLASS_ID, POINT_CLASS_ID, POLYGON_CLASS_ID, POLYLINE_CLASS_ID,
+};
 use mxd2qgz::objects::property_set::PropertyValue10_1;
 use mxd2qgz::storage::object_refs::RefTable10_1;
 use mxd2qgz::stream::reader::Reader;
@@ -745,6 +747,207 @@ fn text_element_geometry_slot_parses_polyline_body_inline() {
         other => panic!("IGeometry 槽应为 Polyline 体：{other:?}"),
     }
     assert_eq!(table.len(), 2, "符号回引 10 + Polyline 新键 11 登记");
+}
+
+#[test]
+fn text_element_geometry_slot_dispatches_four_geometry_classes() {
+    // 整合接线轮：IGeometry 槽自 Polyline 专用扩为四类类型化分派（证据：
+    // docs/arcmap-10.1-geometry.md「第二轮落位」接线建议 1）。Polyline 见上
+    // 一用例；此处逐类构造独立元素体（TextElement 仅有一个 IGeometry 槽）：
+    // Polygon 同 Polyline 最小形态、Point 取类型字 1（XY）、Multipoint 取
+    // 低字节 0 空点集。三类样本 0 实例，合成输入固定契约。
+    for (class_id, key, body, label) in [
+        (
+            &POLYGON_CLASS_ID,
+            11_u32,
+            {
+                let mut b = 1_u16.to_le_bytes().to_vec(); // 版本 1
+                b.extend(4_u32.to_le_bytes()); // 记录声明长度 4
+                b.extend(0_u32.to_le_bytes()); // 类型 0 空几何
+                b
+            },
+            "Polygon",
+        ),
+        (
+            &POINT_CLASS_ID,
+            12,
+            {
+                let mut b = 1_u16.to_le_bytes().to_vec(); // 版本 1
+                b.extend(20_u32.to_le_bytes()); // 记录声明长度 20
+                b.extend(1_u32.to_le_bytes()); // 类型字 1（XY）
+                b.extend(1.5_f64.to_le_bytes()); // X
+                b.extend((-2.5_f64).to_le_bytes()); // Y
+                b
+            },
+            "Point",
+        ),
+        (
+            &MULTIPOINT_CLASS_ID,
+            13,
+            {
+                let mut b = 1_u16.to_le_bytes().to_vec(); // 版本 1
+                b.extend(4_u32.to_le_bytes()); // 记录声明长度 4
+                b.extend(0_u32.to_le_bytes()); // 低字节 0 空点集
+                b
+            },
+            "Multipoint",
+        ),
+    ] {
+        let mut bytes = 8_u16.to_le_bytes().to_vec();
+        bytes.extend(ep_prefix(6));
+        bytes.extend(encoded("x"));
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend(entry(&TEXT_SYMBOL_CLASS_ID, 10)); // 符号槽回引
+        bytes.extend(entry(class_id, key)); // IGeometry 新对象
+        bytes.extend(body);
+        bytes.extend(0_i32.to_le_bytes()); // 版本 >2 尾 int32
+        bytes.extend(0_i32.to_le_bytes()); // 版本 >3 尾 int32
+        let mut table = RefTable10_1::new();
+        table.register(10);
+        let mut reader = Reader::new(&bytes);
+        let parsed = read_text_element_body_10_1(&mut reader, 1024, &mut table).unwrap();
+        assert!(parsed.stop.is_none(), "{label}");
+        assert_eq!(parsed.remaining_bytes, 0, "{label}");
+        match (&parsed.geometry, label) {
+            (GeometrySlot10_1::Polygon(body), "Polygon") => {
+                assert_eq!(body.version, 1);
+                assert!(body.record.points.is_empty());
+                assert!(body.spatial_reference.is_none());
+            }
+            (GeometrySlot10_1::Point(body), "Point") => {
+                assert_eq!(body.version, 1);
+                assert_eq!((body.record.x, body.record.y), (Some(1.5), Some(-2.5)));
+            }
+            (GeometrySlot10_1::Multipoint(body), "Multipoint") => {
+                assert_eq!(body.version, 1);
+                assert!(matches!(
+                    body.record,
+                    mxd2qgz::objects::geometry::MultipointRecord10_1::Empty { kind: 0 }
+                ));
+            }
+            other => panic!("{label} 槽分类不符：{other:?}"),
+        }
+        assert_eq!(table.len(), 2, "{label}: 回引 10 + 新键登记");
+    }
+}
+
+#[test]
+fn text_element_geometry_slot_unknown_class_still_stops() {
+    // 整合接线轮：闭合四类之外的几何类（合成未知标识）维持既有停止语义
+    // ——游标回退到槽对象头起点、键不登记、版本门尾段不可达。
+    let unknown = [0x44_u8; 16];
+    let mut bytes = 8_u16.to_le_bytes().to_vec();
+    bytes.extend(ep_prefix(6));
+    bytes.extend(encoded("x"));
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(entry(&TEXT_SYMBOL_CLASS_ID, 10)); // 符号槽回引
+    let slot_offset = bytes.len();
+    bytes.extend(entry(&unknown, 11)); // IGeometry 未知几何类新对象
+    bytes.extend([0_u8; 8]); // 未知体占位
+    let mut table = RefTable10_1::new();
+    table.register(10);
+    let mut reader = Reader::new(&bytes);
+    let parsed = read_text_element_body_10_1(&mut reader, 1024, &mut table).unwrap();
+    match parsed.stop {
+        Some(mxd2qgz::objects::element_body::ElementBodyStop10_1::NestedObjectNotClosed {
+            class_id,
+            key,
+            ..
+        }) => {
+            assert_eq!(class_id, unknown);
+            assert_eq!(key, 11);
+        }
+        other => panic!("应停在未知几何类槽位：{other:?}"),
+    }
+    assert!(!table.contains(11), "停止回退不保留该键");
+    assert_eq!(reader.position(), slot_offset, "游标回退到槽对象头起点");
+}
+
+#[test]
+fn marker_element_point_slot_parses_point_body_inline() {
+    // 整合接线轮：MarkerElement 的 IPoint 槽接 Point 分派（证据：
+    // docs/arcmap-10.1-geometry.md「第二轮落位」接线建议 2；样本 0 实例）。
+    // Point 取类型字 1（XY），槽后版本门尾段可达 = 槽位整体消费。
+    let mut bytes = 2_u16.to_le_bytes().to_vec(); // 版本 2（>1：尾 int32；>2：32 字节块）
+    bytes.extend(ep_prefix(6));
+    bytes.extend(entry(&MARKER_ELEMENT_CLASS_ID, 20)); // IMarkerSymbol 槽回引
+    bytes.extend(entry(&POINT_CLASS_ID, 21)); // IPoint Point 新对象
+    bytes.extend(1_u16.to_le_bytes()); // Point 版本 1
+    bytes.extend(20_u32.to_le_bytes()); // 记录声明长度 20
+    bytes.extend(1_u32.to_le_bytes()); // 类型字 1（XY）
+    bytes.extend(3.0_f64.to_le_bytes()); // X
+    bytes.extend(4.0_f64.to_le_bytes()); // Y
+    bytes.extend(7_i32.to_le_bytes()); // 版本 >1 尾 int32
+    let mut table = RefTable10_1::new();
+    table.register(20);
+    let mut reader = Reader::new(&bytes);
+    let parsed = read_marker_element_body_10_1(&mut reader, 1024, &mut table).unwrap();
+    assert!(parsed.stop.is_none());
+    assert_eq!(parsed.remaining_bytes, 0);
+    match parsed.geometry {
+        PointSlot10_1::Point(body) => {
+            assert_eq!(body.version, 1);
+            assert_eq!((body.record.x, body.record.y), (Some(3.0), Some(4.0)));
+            assert!(body.spatial_reference.is_none());
+        }
+        other => panic!("IPoint 槽应为 Point 体：{other:?}"),
+    }
+    assert_eq!(parsed.tail_int32, Some(7), "槽位整体消费后续段可达");
+    assert_eq!(table.len(), 2, "符号回引 20 + Point 新键 21");
+}
+
+#[test]
+fn marker_element_point_slot_unknown_class_stops() {
+    // IPoint 槽未知实现类：停止回退到槽起点、键不保留。
+    let unknown = [0x55_u8; 16];
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(ep_prefix(6));
+    let slot_offset = bytes.len();
+    bytes.extend(entry(&unknown, 21)); // IPoint 未知类新对象
+    bytes.extend([0_u8; 8]); // 占位
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let parsed = read_marker_element_body_10_1(&mut reader, 1024, &mut table).unwrap();
+    match parsed.stop {
+        Some(mxd2qgz::objects::element_body::ElementBodyStop10_1::NestedObjectNotClosed {
+            class_id,
+            key,
+            ..
+        }) => {
+            assert_eq!(class_id, unknown);
+            assert_eq!(key, 21);
+        }
+        other => panic!("应停在未知 IPoint 实现类槽位：{other:?}"),
+    }
+    assert!(!table.contains(21));
+    assert_eq!(reader.position(), slot_offset);
+}
+
+#[test]
+fn line_element_geometry_slot_parses_polyline_body_inline() {
+    // 整合接线轮：LineElement 的 IGeometry 槽与 TextElement 同经四类类型化
+    // 分派（样本 0 实例；Polyline 最小形态）。
+    let mut bytes = 1_u16.to_le_bytes().to_vec(); // 版本 1（无版本门尾段）
+    bytes.extend(ep_prefix(6));
+    bytes.extend(entry(&LINE_ELEMENT_CLASS_ID, 30)); // ILineSymbol 槽回引
+    bytes.extend(entry(&POLYLINE_CLASS_ID, 31)); // IGeometry Polyline 新对象
+    bytes.extend(1_u16.to_le_bytes()); // Polyline 版本 1
+    bytes.extend(4_u32.to_le_bytes()); // 记录声明长度 4
+    bytes.extend(0_u32.to_le_bytes()); // 类型 0 空几何
+    let mut table = RefTable10_1::new();
+    table.register(30);
+    let mut reader = Reader::new(&bytes);
+    let parsed = read_line_element_body_10_1(&mut reader, 1024, &mut table).unwrap();
+    assert!(parsed.stop.is_none());
+    assert_eq!(parsed.remaining_bytes, 0);
+    match parsed.geometry {
+        GeometrySlot10_1::Polyline(body) => {
+            assert_eq!(body.version, 1);
+            assert!(body.record.points.is_empty());
+        }
+        other => panic!("IGeometry 槽应为 Polyline 体：{other:?}"),
+    }
+    assert_eq!(table.len(), 2, "符号回引 30 + Polyline 新键 31");
 }
 
 #[test]

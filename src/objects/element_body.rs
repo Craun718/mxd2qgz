@@ -167,10 +167,12 @@
 //! [`crate::objects::element_collection::ElementCollectionStop10_1::
 //! ElementBodyIncomplete`] 停止并携带原因。接线轮起：符号槽 #2 经
 //! [`crate::objects::display_symbol::read_symbol_slot_full_10_1`] 全闭合集
-//! 分派、IColor 槽经 [`crate::objects::display_color`] 分派、TextElement 的
-//! IGeometry 槽经 [`crate::objects::geometry::read_geometry_body_of_class_
-//! 10_1`] 类分派（Polyline 体整体解析，样本 16 实例原全部停在该槽；证据：
-//! docs/arcmap-10.1-geometry.md「接线建议」）；TextSymbol 的 ITextPath/
+//! 分派、IColor 槽经 [`crate::objects::display_color`] 分派、TextElement 与
+//! LineElement 的 IGeometry 槽经 [`crate::objects::geometry::
+//! read_geometry_body_10_1`] 四类类型化分派（Polyline/Polygon/Point/
+//! Multipoint 体整体解析，样本 16 实例原全部停在 TextElement 该槽；证据：
+//! docs/arcmap-10.1-geometry.md「接线建议」与「第二轮落位」）、MarkerElement
+//! 的 IPoint 槽经 [`read_point_slot`] Point 分派；TextSymbol 的 ITextPath/
 //! ISymbol #1/IFontDisp 仍仅分类；TextSymbol 体内的嵌套停止上抛为
 //! TextElement 的停止原因（原实现未透传，见 [`read_text_element_body_10_1`]
 //! 内注释）。`fdo_graphics_layer` 的 ElementCollection 槽已在前轮接入
@@ -198,7 +200,8 @@ use crate::objects::display_symbol::{
     read_symbol_slot_full_10_1, slot_full_stop_10_1,
 };
 use crate::objects::geometry::{
-    POLYLINE_CLASS_ID, PolylineBody10_1, read_geometry_body_of_class_10_1,
+    GeometryBody10_1, MULTIPOINT_CLASS_ID, POINT_CLASS_ID, POLYGON_CLASS_ID, POLYLINE_CLASS_ID,
+    PointBody10_1, PolylineBody10_1, read_geometry_body_10_1, read_point_body_10_1,
 };
 use crate::objects::ole_font::{STDFONT_CLASS_ID, StdFontBody10_1, read_std_font_body_10_1};
 use crate::objects::property_set::{PropertyValue10_1, read_variant_10_1};
@@ -277,17 +280,40 @@ pub enum NestedEntry10_1 {
     BackReference { class_id: [u8; 16], key: u32 },
 }
 
-/// IGeometry 类槽位条目的分类结果（接线轮起 Polyline 经几何类分派整体解
-/// 析，证据：docs/arcmap-10.1-geometry.md「接线建议」）。
+/// IGeometry 类槽位条目的分类结果（接线轮起经几何类型化分派整体解析
+/// Polyline/Polygon/Point/Multipoint 四类，证据：
+/// docs/arcmap-10.1-geometry.md「接线建议」与「第二轮落位」）。
 #[derive(Debug, Clone, PartialEq)]
 pub enum GeometrySlot10_1 {
     /// 16 字节全零类标识：空引用，无键、无对象体。
     Null,
     /// 键已见：回引条目，无对象体。类标识原样保留、不校验。
     BackReference { class_id: [u8; 16], key: u32 },
-    /// 新 Polyline 对象（类标识经 [`POLYLINE_CLASS_ID`] 校验）：已解析体。
-    /// 体读取要么完整成功、要么错误上抛（无体内停止点，见 geometry 模块）。
+    /// 新 Polyline 对象（类标识经 [`crate::objects::geometry::
+    /// POLYLINE_CLASS_ID`] 校验）：已解析体。体读取要么完整成功、要么错误
+    /// 上抛（无体内停止点，见 geometry 模块；样本 16 实例佐证）。
     Polyline(Box<PolylineBody10_1>),
+    /// 新 Polygon 对象（与 Polyline 共享解析器；样本 0 实例，合成测试覆盖）。
+    Polygon(Box<crate::objects::geometry::PolygonBody10_1>),
+    /// 新 Point 对象（样本 0 实例，合成测试覆盖）。
+    Point(Box<PointBody10_1>),
+    /// 新 Multipoint 对象（样本 0 实例，合成测试覆盖）。
+    Multipoint(Box<crate::objects::geometry::MultipointBody10_1>),
+}
+
+/// IPoint 类槽位条目的分类结果（MarkerElement 几何槽；接线轮起 Point 新对
+/// 象整体解析——该槽请求 IID `{1B077915-38C5-11D0-92D2-…}`，流内实现类为
+/// Point；其余几何类维持停止回退。证据：docs/arcmap-10.1-geometry.md「接线
+/// 建议」2 的 Point 体无停止点、错误上抛语义与 Polyline 一致）。
+#[derive(Debug, Clone, PartialEq)]
+pub enum PointSlot10_1 {
+    /// 16 字节全零类标识：空引用，无键、无对象体。
+    Null,
+    /// 键已见：回引条目，无对象体。类标识原样保留、不校验。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 Point 对象（类标识经 [`POINT_CLASS_ID`] 校验）：已解析体。体读取
+    /// 要么完整成功、要么错误上抛（无体内停止点）。其余实现类不落入本变体。
+    Point(Box<PointBody10_1>),
 }
 
 /// IFontDisp 类槽位条目的分类结果（本轮起 StdFont 经
@@ -641,9 +667,11 @@ pub struct TextElementBody10_1 {
     /// ITextSymbol 符号槽（第 5 字段）：TextSymbol 新对象的体（类分派）。
     pub symbol: Option<TextSymbolBody10_1>,
     /// IGeometry 文本几何槽（第 6 字段）：接线轮起经
-    /// [`crate::objects::geometry::read_geometry_body_of_class_10_1`] 类分派
-    /// ——Polyline 新对象整体解析其体（记录定长、空间参考段可闭合，无停止
-    /// 点）；其余几何类维持既有停止语义（见 `stop`）。
+    /// [`crate::objects::geometry::read_geometry_body_10_1`] 四类类型化分派
+    /// ——Polyline/Polygon/Point/Multipoint 新对象整体解析其体（记录定长、
+    /// 空间参考段可闭合，无停止点；本轮自 Polyline 专用扩展，样本 16 实例
+    /// 全为 Polyline，其余三类合成测试覆盖）；其余几何类维持既有停止语义
+    /// （见 `stop`）。
     pub geometry: GeometrySlot10_1,
     /// 版本 >2 的 int32（this+0x2a；Save 恒写 -1）。
     pub tail_int32_1: Option<i32>,
@@ -698,8 +726,10 @@ pub struct MarkerElementBody10_1 {
     pub properties: Option<ElementPropertiesPrefix10_1>,
     /// IMarkerSymbol 符号槽（仅分类，新对象 = 停止点）。
     pub symbol: NestedEntry10_1,
-    /// IPoint 几何槽（仅分类，新对象 = 停止点）。
-    pub geometry: NestedEntry10_1,
+    /// IPoint 几何槽（接线轮起经 [`read_point_slot`] 类分派：Point 新对象
+    /// 整体解析其体（无停止点）；其余实现类映射为停止原因，字段保持
+    /// `Null`。样本 0 实例，接线契约由合成测试固定）。
+    pub geometry: PointSlot10_1,
     /// 版本 >1 的 int32（this+0x26）。
     pub tail_int32: Option<i32>,
     /// 版本 >2 的 32 字节原样读取（this+0x2b；WKSEnvelope 候选）。
@@ -720,8 +750,9 @@ pub struct LineElementBody10_1 {
     pub properties: Option<ElementPropertiesPrefix10_1>,
     /// ILineSymbol 符号槽（仅分类，新对象 = 停止点）。
     pub symbol: NestedEntry10_1,
-    /// IGeometry 几何槽（仅分类，新对象 = 停止点）。
-    pub geometry: NestedEntry10_1,
+    /// IGeometry 几何槽（接线轮起与 TextElement 同经四类类型化分派：
+    /// [`GeometrySlot10_1`]；其余几何类映射为停止原因。样本 0 实例）。
+    pub geometry: GeometrySlot10_1,
     /// 版本 >1 的 int32（this+0x23）。
     pub tail_int32: Option<i32>,
     /// 版本 >2 的 int16（this+0x24）。
@@ -931,12 +962,14 @@ fn read_symbol_slot<'a>(
     }
 }
 
-/// 读取一个 IGeometry 类槽位（TextElement 第 6 字段）：接线轮起经
-/// [`read_geometry_body_of_class_10_1`] 类分派（Polyline 整体解析，形态仿
-/// [`read_color_slot`]/[`read_symbol_slot`]）；其余几何类新对象 = 停止点
-/// （分派对其返回 `Unsupported`，本函数映射为停止原因并回退游标、登记表
-/// 不保留该键）；Polyline 体自身错误上抛（含体内空间参考未知类，与
-/// envelope 嵌套语义一致，见 geometry 研究文档「接线建议」3）。
+/// 读取一个 IGeometry 类槽位：接线轮起对闭合四类经
+/// [`crate::objects::geometry::read_geometry_body_10_1`] 类型化分派整体解
+/// 析（Polyline/Polygon/Point/Multipoint，形态仿
+/// [`read_color_slot`]/[`read_symbol_slot`]；整合轮自 Polyline 专用扩展，
+/// 证据：docs/arcmap-10.1-geometry.md「第二轮落位」接线建议 1）；清单之外
+/// 的几何类新对象维持既有停止语义（映射为停止原因并回退游标、登记表不留
+/// 该键）；四类体自身错误上抛（含体内空间参考未知类，与 envelope 嵌套语义
+/// 一致，见 geometry 研究文档「接线建议」3）。
 fn read_geometry_slot<'a>(
     trial: &mut Reader<'a>,
     max_bytes: usize,
@@ -953,12 +986,22 @@ fn read_geometry_slot<'a>(
         ObjectEntry10_1::BackReference { class_id, key } => {
             Ok(Some(GeometrySlot10_1::BackReference { class_id, key }))
         }
-        ObjectEntry10_1::NewObject { class_id, key: _ } if class_id == POLYLINE_CLASS_ID => {
-            // 键已由条目分类登记（登记先于持久化）；Polyline 体无停止点，
+        ObjectEntry10_1::NewObject { class_id, key: _ }
+            if class_id == POLYLINE_CLASS_ID
+                || class_id == POLYGON_CLASS_ID
+                || class_id == POINT_CLASS_ID
+                || class_id == MULTIPOINT_CLASS_ID =>
+        {
+            // 键已由条目分类登记（登记先于持久化）；四类几何体无停止点，
             // 完整成功才提交（失败不推进游标、登记表由调用方 trial 语义保
             // 护；错误上抛即整体失败）。
-            let body = read_geometry_body_of_class_10_1(&class_id, trial, max_bytes, trial_table)?;
-            Ok(Some(GeometrySlot10_1::Polyline(Box::new(body))))
+            let body = read_geometry_body_10_1(&class_id, trial, max_bytes, trial_table)?;
+            Ok(Some(match body {
+                GeometryBody10_1::Polyline(body) => GeometrySlot10_1::Polyline(Box::new(body)),
+                GeometryBody10_1::Polygon(body) => GeometrySlot10_1::Polygon(Box::new(body)),
+                GeometryBody10_1::Point(body) => GeometrySlot10_1::Point(Box::new(body)),
+                GeometryBody10_1::Multipoint(body) => GeometrySlot10_1::Multipoint(Box::new(body)),
+            }))
         }
         ObjectEntry10_1::NewObject { class_id, key } => {
             *trial_table = saved_table;
@@ -970,6 +1013,48 @@ fn read_geometry_slot<'a>(
                 key,
             });
             Ok(None)
+        }
+    }
+}
+
+/// 读取一个 IPoint 类槽位（MarkerElement 第 4 字段）：接线轮起经
+/// [`read_point_body_10_1`] 类分派——Point 新对象整体解析（体无停止点、错
+/// 误上抛语义与 Polyline 一致）；其余实现类新对象 = 停止点（回退游标、登记
+/// 表不保留该键、字段保持 `Null`）。证据：
+/// docs/arcmap-10.1-geometry.md「第二轮落位」接线建议 2（样本 0 实例，接线
+/// 契约由合成测试固定）。
+fn read_point_slot<'a>(
+    trial: &mut Reader<'a>,
+    max_bytes: usize,
+    trial_table: &mut RefTable10_1,
+    origin: &Reader<'a>,
+    start: usize,
+    slot: &'static str,
+    stop: &mut Option<ElementBodyStop10_1>,
+) -> io::Result<PointSlot10_1> {
+    let slot_offset = trial.position();
+    let saved_table = trial_table.clone();
+    match read_object_entry_10_1(trial, trial_table)? {
+        ObjectEntry10_1::Null => Ok(PointSlot10_1::Null),
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            Ok(PointSlot10_1::BackReference { class_id, key })
+        }
+        ObjectEntry10_1::NewObject { class_id, key: _ } if class_id == POINT_CLASS_ID => {
+            // 键已由条目分类登记（登记先于持久化）；Point 体无停止点，完整
+            // 成功才提交（失败不推进游标、登记表由调用方 trial 语义保护）。
+            let body = read_point_body_10_1(trial, max_bytes, trial_table)?;
+            Ok(PointSlot10_1::Point(Box::new(body)))
+        }
+        ObjectEntry10_1::NewObject { class_id, key } => {
+            *trial_table = saved_table;
+            *trial = rewind(origin, start, slot_offset);
+            *stop = Some(ElementBodyStop10_1::NestedObjectNotClosed {
+                slot,
+                offset: slot_offset,
+                class_id,
+                key,
+            });
+            Ok(PointSlot10_1::Null)
         }
     }
 }
@@ -1432,7 +1517,7 @@ pub fn read_marker_element_body_10_1(
 
     // 3. IMarkerSymbol 符号槽；4. IPoint 几何槽；5. 版本门尾段。
     let mut symbol = NestedEntry10_1::Null;
-    let mut geometry = NestedEntry10_1::Null;
+    let mut geometry = PointSlot10_1::Null;
     let mut tail_int32 = None;
     let mut raw_envelope = None;
 
@@ -1450,17 +1535,15 @@ pub fn read_marker_element_body_10_1(
         }
     }
     if stop.is_none() {
-        match read_classified_slot(
+        geometry = read_point_slot(
             &mut trial,
+            max_bytes,
             &mut trial_table,
             &origin,
             start,
             "IPoint 几何槽",
             &mut stop,
-        )? {
-            Some(entry) => geometry = entry,
-            None => {}
-        }
+        )?;
     }
     if stop.is_none() {
         if version > 1 {
@@ -1522,7 +1605,7 @@ pub fn read_line_element_body_10_1(
 
     // 3. ILineSymbol 符号槽；4. IGeometry 几何槽；5. 版本门尾段。
     let mut symbol = NestedEntry10_1::Null;
-    let mut geometry = NestedEntry10_1::Null;
+    let mut geometry = GeometrySlot10_1::Null;
     let mut tail_int32 = None;
     let mut tail_short = None;
 
@@ -1540,15 +1623,16 @@ pub fn read_line_element_body_10_1(
         }
     }
     if stop.is_none() {
-        match read_classified_slot(
+        match read_geometry_slot(
             &mut trial,
+            max_bytes,
             &mut trial_table,
             &origin,
             start,
             "IGeometry 几何槽",
             &mut stop,
         )? {
-            Some(entry) => geometry = entry,
+            Some(slot) => geometry = slot,
             None => {}
         }
     }
