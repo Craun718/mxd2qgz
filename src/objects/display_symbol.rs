@@ -1,19 +1,27 @@
-//! ArcMap 10.1 DisplayCore.dll 简单符号族（SimpleMarkerSymbol/SimpleLineSymbol/
-//! SimpleFillSymbol/MarkerLineSymbol/CartographicLineSymbol/HashLineSymbol）
-//! 对象体的严格读取子集与符号槽位分派。
+//! ArcMap 10.1 DisplayCore.dll 符号族对象体的严格读取子集与符号槽位分派。
 //!
-//! 证据来源：`docs/arcmap-10.1-display-tails.md`（2026-11-15 本轮研究记录）与
-//! `docs/arcmap-10.1-featurelayer-tail.md` 第七轮（SimpleMarkerSymbol）。全部
-//! 字段序来自 DisplayCore.dll 10.1.0.3035（SHA-256 `9b3e61f9…a926e4d2`，复用
-//! 前轮提取件 temp/agent-fl-tail/）的静态反编译；类身份经 RTTI 类型描述符 →
-//! COL → 虚表 → GetClassID 立即数逐类确认，读写两侧对称闭合。
+//! 第一轮（`docs/arcmap-10.1-display-tails.md`）闭合 SimpleMarkerSymbol/
+//! SimpleLineSymbol/SimpleFillSymbol/MarkerLineSymbol/CartographicLineSymbol/
+//! HashLineSymbol 六类；第二轮（`docs/arcmap-10.1-display-symbols-round2.md`）
+//! 闭合 MultiLayerLine/MultiLayerMarker/MultiLayerFill/CharacterMarker/
+//! PictureMarker/PictureLine/ArrowMarker/LineFill/MarkerFill/GradientFill/
+//! DotDensityFill 十一类符号与 Template/LineDecoration/SimpleLineDecorationElement
+//! 三个装饰 coclass。
+//!
+//! 证据来源：上述两份研究记录。全部字段序来自 DisplayCore.dll 10.1.0.3035
+//! （SHA-256 `9b3e61f9…a926e4d2`，复用前轮提取件 temp/agent-fl-tail/）的静态
+//! 反编译；类身份经 RTTI 类型描述符 → 完整对象定位符（COL，判据 `[C]==0` 且
+//! `[C+0xc]==TD`）→ 虚表 → GetClassID 立即数逐类确认（虚表/实体地址见各读取
+//! 器文档），读写两侧对称闭合；接口定名经 esriDisplay 类型库 dump 复核
+//! （ITemplate `{7914E5F4}`、ILineDecoration `{533D88F0}`、
+//! ILineDecorationElement `{533D88F2}`、IMarkerBackground `{AE41E4F0}`、
+//! IColorRamp `{BEB87091}`、IFontDisp/IPicture 为 OLE 标准接口）。
 //!
 //! **重要边界：仓库参考样本 `samples/测试底图.mxd` 只含 SimpleMarkerSymbol
-//! 实例（第七轮闭合，原实现位于 `feature_layer_tail`，接线轮移入本模块），
-//! 本模块其余五类符号无样本字节佐证**；只能用合成输入测试，不得声称样本
-//! 验证。
+//! 与 RgbColor 实例；本模块第二轮闭合的全部类无样本字节佐证**；只能用合成
+//! 输入测试，不得声称样本验证。
 //!
-//! ## 字段序（Load 实体 / Save 实体逐字段对称）
+//! ## 第一轮六类字段序（详见 docs/arcmap-10.1-display-tails.md）
 //!
 //! - **SimpleLineSymbol**（IPersistStream 虚表 `0x6ec15498`，Load thunk
 //!   `0x6ebbda20` → 实体 `0x6ebbced0`，Save `0x6ebbd9f0` → `0x6ebbcfc0`，
@@ -38,12 +46,11 @@
 //!   （`this−0x20d4`）→ ④ LoadObject（IMarkerSymbol `{E6BDAA7C-…}`
 //!   `DAT_6ec0ca3c`，Save 槽 `this−0x20e0`）→ ⑤ `FUN_6eb68fc0`（本内
 //!   释放/重建辅助，反编译无 AfStreamRead，无流内字节）→ ⑥ LoadObject
-//!   （`{7914E5F4-…}`，ITemplate 候选，Save 槽 `this−0x20cc`）→
-//!   ⑦ LoadObject（`{533D88F0-…}`，ILineDecoration 候选，Save 槽
-//!   `this−0x20c8`）→ ⑧⑨ int32 ×2（`this−0x2134`/`this−0x212c`）→
-//!   ⑩ byte（`this−0x20ac`）→ ⑪ double（`this−0x20a4`）→ ⑫ 版本 ≥2：
-//!   int32 ×2（`this−0x2094`/`this−0x2090`）+ double（`this−0x208c`）。
-//!   Save 恒写版本 2（含 ⑫）。
+//!   （ITemplate，Save 槽 `this−0x20cc`；第二轮起 Template 体闭合）→
+//!   ⑦ LoadObject（ILineDecoration，Save 槽 `this−0x20c8`；同上）→
+//!   ⑧⑨ int32 ×2（`this−0x2134`/`this−0x212c`）→ ⑩ byte（`this−0x20ac`）→
+//!   ⑪ double（`this−0x20a4`）→ ⑫ 版本 ≥2：int32 ×2（`this−0x2094`/
+//!   `this−0x2090`）+ double（`this−0x208c`）。Save 恒写版本 2（含 ⑫）。
 //! - **CartographicLineSymbol**（虚表 `0x6ec11ca8`，Load `0x6eb99e80` →
 //!   `0x6eb99140`，Save `0x6eb99e00` → `0x6eb99330`，GetClassID
 //!   `0x6eb99100`，版本常量 `DAT_6ec0b27c`=1）：
@@ -51,10 +58,9 @@
 //!   ④ double（`this−0x109c`）→ ⑤ byte（`this−0x1094`）→ ⑥ double
 //!   （`this−0x108c`）→ ⑦ LoadObject（IColor → Save 槽 `this−0x10ac`）→
 //!   ⑧ `FUN_6eb406f0`（不读流 → bool `this−0x104c`）→ ⑨ LoadObject
-//!   （`{7914E5F4-…}` ITemplate 候选 → `this−0x1084`）→ ⑩ LoadObject
-//!   （`{533D88F0-…}` ILineDecoration 候选 → `this−0x107c`）→
-//!   ⑪⑫ int32 ×2（`this−0x10fc`/`−0x10f4`）→ ⑬ byte（`this−0x1060`）→
-//!   ⑭⑮ double ×2（`this−0x105c`/`−0x1054`）。
+//!   （ITemplate → `this−0x1084`）→ ⑩ LoadObject（ILineDecoration →
+//!   `this−0x107c`）→ ⑪⑫ int32 ×2（`this−0x10fc`/`−0x10f4`）→
+//!   ⑬ byte（`this−0x1060`）→ ⑭⑮ double ×2（`this−0x105c`/`−0x1054`）。
 //! - **HashLineSymbol**（虚表 `0x6ec0e0b8`，Load `0x6eb56f30` →
 //!   `0x6eb554a0`，Save `0x6eb56e90` → `0x6eb556d0`，GetClassID
 //!   `0x6eb53c30`，版本常量 `DAT_6ec0b2f4`=1）：
@@ -63,27 +69,144 @@
 //!   （`this−0x20fc`）→ ⑦ double（`this−0x20f4`）→ ⑧ LoadObject（ISymbol
 //!   `{F3435802-…}`，Save 槽 `this−0x20e4`）→ ⑨ LoadObject（IColor，Save
 //!   槽 `this−0x211c`）→ ⑩ `FUN_6eb406f0`（不读流 → bool `this−0x2094`）→
-//!   ⑪ LoadObject（`{7914E5F4-…}` ITemplate 候选 → `this−0x20ec`）→
-//!   ⑫ LoadObject（`{533D88F0-…}` ILineDecoration 候选 → `this−0x20e8`）→
-//!   ⑬⑭ int32 ×2（`this−0x217c`/`−0x2174`）→ ⑮ byte（`this−0x20a4`）→
-//!   ⑯⑰ double ×2（`this−0x209c`/`−0x210c`）。
+//!   ⑪ LoadObject（ITemplate → `this−0x20ec`）→ ⑫ LoadObject
+//!   （ILineDecoration → `this−0x20e8`）→ ⑬⑭ int32 ×2（`this−0x217c`/
+//!   `−0x2174`）→ ⑮ byte（`this−0x20a4`）→ ⑯⑰ double ×2（`this−0x209c`/
+//!   `−0x210c`）。
+//!
+//! ## 第二轮各类字段序（详见 docs/arcmap-10.1-display-symbols-round2.md）
+//!
+//! 下列「helper」指 `FUN_6eb406f0`（Simple 族共享）或 `FUN_6eb68fc0`
+//! （MultiLayer/DotDensity 层数组重建辅助），反编译确认无 AfStreamRead、
+//! 无流内字节。`±count` 循环长度为流内 int32，读取器以 `max_bytes` 设循环
+//! 上限（读取器自身限额，非原生限制；原生按流失败自然终止）。
+//!
+//! - **MultiLayerLineSymbol**（虚表 `0x6ec0f410`，Load `0x6eb68280`，Save
+//!   `0x6eb68610`，GetClassID `0x6eb67350`，Save 版本表 `DAT_6ec0b2c4`，
+//!   10.1 写 2）：short 版本（>2 拒绝）→ int32（−0xc4）→ int32（−0xbc）→
+//!   count → count × LoadObject（ILineSymbol `{E6BDAA7D}`，Save 槽 −0x74
+//!   数组）→ count × int32（Save 槽 −0x60 数组）→ count × int32（Save 槽
+//!   −0x4c 数组）→ 版本 <2 无串段（内存补空串）；版本 ≥2 count × String
+//!   （Save 槽 −0x38 向量）。
+//! - **MultiLayerMarkerSymbol**（虚表 `0x6ec0f754`，Load `0x6eb6b010`，Save
+//!   `0x6eb6b3d0`，GetClassID `0x6eb691c0`，Save 版本表 `DAT_6ec0b2b8`，
+//!   10.1 写 3）：short 版本（>3 拒绝）→ int32（−0x10c）→ int32（−0x104）→
+//!   double ×4（−0x5c/−0x44/−0x54/−0x4c）→ LoadObject（IColor → Save 槽
+//!   −0x3c）→ int32（−0x34）→ double（−0x24）→ LoadObject（ISymbol → Save
+//!   槽 −0x30）→ count → count × LoadObject（IMarkerSymbol `{E6BDAA7C}`，
+//!   Save 槽 −0xbc 数组）→ count × int32（−0xa8）→ count × int32（−0x94）→
+//!   版本 ≥2 LoadObject（IMarkerBackground `{AE41E4F0}` → Save 槽 −0xc）→
+//!   版本 <3 无串段；版本 ≥3 count × String（Save 槽 −0x80 向量）。
+//! - **MultiLayerFillSymbol**（虚表 `0x6ec0f0fc`，Load `0x6eb65af0`，Save
+//!   `0x6eb65e60`，GetClassID `0x6eb64d00`，Save 版本表 `DAT_6ec0b2d0`，
+//!   10.1 写 2）：short 版本（>2 拒绝）→ int32（−0xb4）→ int32（−0xac）→
+//!   LoadObject（IColor → Save 槽 −0xc）→ count → count × LoadObject
+//!   （IFillSymbol `{E6BDAA7E}`，Save 槽 −0x64 数组）→ count × int32
+//!   （−0x50）→ count × int32（−0x3c）→ 版本 <2 无串段；版本 ≥2 count ×
+//!   String（−0x28 向量）。
+//! - **CharacterMarkerSymbol**（虚表 `0x6ec11fa0`，Load `0x6eb9b150`，Save
+//!   `0x6eb9b5b0`，GetClassID `0x6eb9b9b0`，Save 版本表 `DAT_6ec0b270`，
+//!   10.1 写 4）：short 版本（>4 拒绝）→ LoadObject（IColor → 槽 −0xc4）→
+//!   helper（不读流）→ int32（−0xc0）→ double ×5（−0xb4/−0xac/−0xa4/−0x9c/
+//!   −0x94/−0x8c 计六，见记录）→ 版本 <3 LoadObject（IFontDisp
+//!   `{BEF6E002}` → Save 槽 −0xbc）→ int32（−0x124）→ int32（−0x11c）→
+//!   版本 >1 short（−0x10c；装载后内存槽被
+//!   `Symbol::GetDefaultRotateWithTransformValue` 覆盖，流内值读取即弃——
+//!   反汇编核实 `0x6eb3edde..0x6eb3edf0` 同型）→ 版本 ≥3 String + int32 ×4
+//!   + short ×2 + int32 ×2（字体描述符，Save 由 −0xbc 字体对象取值回写）→
+//!   版本 >3 再 LoadObject（IFontDisp → 同 Save 槽 −0xbc 重写）。
+//! - **PictureMarkerSymbol**（虚表 `0x6ec10738`，Load `0x6eb7a650`，Save
+//!   `0x6eb7ab00`，GetClassID `0x6eb77da0`，Save 版本表 `DAT_6ec0b29c`，
+//!   10.1 写 9）：short 版本（>9 拒绝）。版本 ≤8 走历史路径
+//!   `FUN_6eb7d750`：版本 ≤6 时（版本 <4 LoadObject（IPicture）→）LoadObject
+//!   （IPicture `{7BF80980}`）；版本 ≥7 String +（串空 → LoadObject(IPicture)
+//!   /串非空 → double）→ LoadObject（IColor）×3 → double ×6 → int32 ×2 →
+//!   版本 >1 byte → 版本 >2 short → 版本 >4 short ×3 → 版本 ==6 String +
+//!   byte + double → 版本 >7（v8）int32 N +（N≠0 时 N 字节位图数据）。
+//!   版本 ==9：int32 图像类型（1/2/3，越界拒绝 `0x80004005`）→ int32 →
+//!   类型 1：String + double；类型 2：int32 N +（N≠0 时 N 字节，反汇编核实
+//!   `0x6eb7a7b5`/`0x6eb7a7de` 尺寸来源）→ 类型 3：LoadObject（IPicture）；
+//!   之后 LoadObject（IColor）×3 → double ×6 → int32 ×2 → byte → short →
+//!   short ×3。
+//! - **PictureLineSymbol**（虚表 `0x6ec10344`，Load `0x6eb77250`，Save
+//!   `0x6eb77300`，GetClassID `0x6eb76160`，版本常量 `DAT_6ec0b2a8`=1）：
+//!   short 版本（>1 拒绝）→ byte（−0x30）→ double（−0x2c）→ double
+//!   （−0x24）→ LoadObject（IPictureFillSymbol `{D842B081}` → Save 槽
+//!   −0x14；实现类 PictureFillSymbol 未闭合 = 停止点）。
+//! - **ArrowMarkerSymbol**（虚表 `0x6ec0c9dc`，Load `0x6eb3ec40`，Save
+//!   `0x6eb3ee10`，GetClassID `0x6eb3ef60`，版本常量 `DAT_6ec0b314`=2）：
+//!   short 版本（>2 拒绝）→ LoadObject（IColor → 槽 −0x40）→ helper（不读
+//!   流）→ double ×3（−0x8c/−0x7c/−0x6c）→ int32 ×3（−0x64/−0xdc/−0xd4）→
+//!   double ×2（−0x2c/−0x24）→ 版本 ≥2 short（−0xc4；读取即弃，同上 quirk，
+//!   Save 恒写槽内默认值）。
+//! - **LineFillSymbol**（虚表 `0x6ec0e72c`，Load `0x6eb5e390`，Save
+//!   `0x6eb5e4e0`，GetClassID `0x6eb5caf0`，版本常量 `DAT_6ec0b2e8`=1）：
+//!   short 版本（>1 拒绝）→ LoadObject（IColor → 槽 −0x6c）→ LoadObject
+//!   （ISymbol → Save 槽 −0x74）→ LoadObject（ISymbol → Save 槽 −0x70）→
+//!   double ×3（−0x64/−0x5c/−0x54）→ int32 ×2（−0xc4/−0xbc）。
+//! - **MarkerFillSymbol**（虚表 `0x6ec0e9fc`，Load `0x6eb606c0`，Save
+//!   `0x6eb60850`，GetClassID `0x6eb5f3b0`，版本常量 `DAT_6ec0b2e4`=1）：
+//!   short 版本（>1 拒绝）→ int32（−0x7c）→ double ×4（−0x74/−0x6c/−0x64/
+//!   −0x5c）→ LoadObject（IColor → Save 槽 −0x34）→ LoadObject（ISymbol →
+//!   Save 槽 −0x80）→ LoadObject（ISymbol → Save 槽 −0x30）→ int32 ×2
+//!   （−0xd4/−0xcc）→ double（−0xc）。
+//! - **GradientFillSymbol**（虚表 `0x6ec0dd5c`，Load `0x6eb52710`，Save
+//!   `0x6eb52870`，GetClassID `0x6eb50b90`，版本常量 `DAT_6ec0b2f8`=1）：
+//!   short 版本（>1 拒绝）→ LoadObject（IColorRamp `{BEB87091}` → 槽
+//!   −0x4c；实现类（RandomColorRamp 等）未闭合 = 停止点）→ LoadObject
+//!   （IColor → Save 槽 −0x34）→ LoadObject（ISymbol → Save 槽 −0x30）→
+//!   double（−0x44）→ int32（−0x2c）→ double（−0x24）→ int32 ×3（−0xc/
+//!   −0x9c/−0x94）。
+//! - **DotDensityFillSymbol**（虚表 `0x6ec0da18`，Load `0x6eb4ded0`，Save
+//!   `0x6eb4e180`，GetClassID `0x6eb4de90`，版本常量 `DAT_6ec0b2fc`=1）：
+//!   short 版本（>1 拒绝）→ byte（−0x34）→ double（−0x3c）→ byte（−0x28）→
+//!   LoadObject（IColor → Save 槽 −0x54）→ LoadObject（ISymbol → Save 槽
+//!   −0x58）→ int32 ×3（−0xd4/−0xcc/−0x1c）→ double（−0x44）→ byte
+//!   （−0x27）→ count → count × LoadObject（IMarkerSymbol，Save 槽 −0x7c
+//!   数组；Save 侧倒序写出，Load 顺序消费）→ count × int32（−0x68）→
+//!   LoadObject（IColor → Save 槽 −0x50）。
+//! - **Template**（虚表 `0x6ec1114c`，Load `0x6eb87ad0`，Save `0x6eb87bb0`，
+//!   GetClassID `0x6eb87aa0`，版本常量 `DAT_6ec0b280`=1）：short 版本
+//!   （>1 拒绝）→ double（−0x94，间隔候选）→ count → count × 16 字节
+//!   （2 double/标记：位置+角度候选；Save 槽 −0x88 数组）。
+//! - **LineDecoration**（虚表 `0x6ec0e4e4`，Load `0x6eb5c640`，Save
+//!   `0x6eb5c740`，GetClassID `0x6eb5c0a0`，版本常量 `DAT_6ec0b2ec`=1）：
+//!   short 版本（>1 拒绝）→ count → count × LoadObject
+//!   （ILineDecorationElement `{533D88F2}` → 集合 −0x1c；实现类
+//!   SimpleLineDecorationElement 闭合，其余 = 停止点）。
+//! - **SimpleLineDecorationElement**（虚表 `0x6ec10d54`，Load `0x6eb84120`，
+//!   Save `0x6eb84270`，GetClassID `0x6eb840e0`，版本常量 `DAT_6ec0b290`=1）：
+//!   short 版本（>1 拒绝）→ byte ×3（−0x18/−0x17/−0x16）→ short（−0x14）→
+//!   LoadObject（ISymbol → Save 槽 −0x24；标记符号候选）→ count → count ×
+//!   double（−0x40 集合，位置候选）。
 //!
 //! LoadObject 槽的写入目标多数被 Ghidra 反编译隐藏（`FUN_6eb32c80` 辅助），
 //! 槽归属以 Save 侧 `SaveObject(this+槽位)` 序对称印证；请求 IID 直接读自
-//! 反编译引用的数据地址。`{7914E5F4}`/`{533D88F0}` 的接口名（ITemplate/
-//! ILineDecoration 候选）未经类型库定名；esri.clsid 同族 coclass 为
-//! Template `{41093A71}`、LineDecoration `{533D88F5}`——**这两个 coclass
-//! 的对象体未闭合**，槽内新对象一律为停止点（空标记与回引可消费）。
+//! 反编译引用的数据地址并经类型库 dump 定名。
 //!
 //! ## 槽位分派（对象层共享入口）
 //!
-//! [`read_display_symbol_slot_10_1`] 把一个对象条目按流内类标识分派到
-//! SimpleMarkerSymbol（第七轮）与本模块五类符号。这是各宿主（SimpleRenderer
-//! 的 ISymbol 槽、LegendClass 的 ISymbol 槽、SimpleFillSymbol 轮廓槽、
-//! TextSymbol 的 ISymbol #2 槽等）共用的符号槽分派入口：未知符号类在分派
-//! 内部回退到槽位起点并返回 [`DisplaySymbolSlot10_1::Unsupported`]，调用者
-//! 据此维持停止语义。符号可嵌套符号（如 SimpleFillSymbol 轮廓槽内常见线符
-//! 号），分派带深度参数：超过 [`MAX_SYMBOL_NESTING_DEPTH`] 报
+//! 本模块有两个按类分派的符号槽入口：
+//!
+//! - [`read_display_symbol_slot_10_1`]（第一轮闭合集：SimpleMarkerSymbol 与
+//!   SimpleLine/SimpleFill/MarkerLine/CartographicLine/HashLine 五类）——
+//!   既有宿主（SimpleRenderer/LegendClass 的 ISymbol 槽、TextSymbol 的
+//!   ISymbol #2 槽等）的现有入口，接口保持稳定（其返回枚举与停止归约
+//!   [`slot_stop_10_1`] 不变）。
+//! - [`read_symbol_slot_full_10_1`]（全部闭合类）——第二轮起的对象层入口：
+//!   第二轮闭合体的全部嵌套符号槽（MultiLayer 层槽、点密度标记数组、
+//!   LineDecoration 元素符号槽、LineFill/MarkerFill 双符号槽等）经它分派；
+//!   停止归约 [`slot_full_stop_10_1`]。既有宿主在整合轮切换到本入口后即得
+//!   第二轮符号的递归解析（未知类仍以 `Unsupported` 停止，语义不变）。
+//!
+//! 第一轮闭合体的内部嵌套槽仍经第一轮入口解析（其闭合集以第一轮为界——
+//! 例如经本入口嵌套的 SimpleFillSymbol，其轮廓槽只识别第一轮符号类）；
+//! Template/LineDecoration 槽经本模块装饰槽分派 [`read_decoration_slot_10_1`]
+//! 按类闭合。IFontDisp/IPicture/IColorRamp/IMarkerBackground/IPictureFillSymbol
+//! 槽的实现类未闭合，仅分类空标记与回引，新对象 = 停止点。
+//!
+//! 符号可嵌套符号（如 SimpleFillSymbol 轮廓槽内常见线符号、MultiLayer 层
+//! 槽），分派带深度参数：超过 [`MAX_SYMBOL_NESTING_DEPTH`] 报
 //! `ErrorKind::InvalidInput`（防栈溢出的读取器自身限额，非原生限制；原生对
 //! 嵌套深度无静态检查）。颜色槽经 [`crate::objects::display_color::
 //! read_color_slot_10_1`] 分派（五类颜色全部闭合）。
@@ -97,13 +220,17 @@
 //! 体内已闭合前缀的嵌套停止传播为本体停止原因（游标停在内层停止点，已
 //! 闭合字段保留）。
 //!
-//! 未解决问题（详见研究记录开放项）：各 int32/double/byte 的业务语义全部
-//! 未定名（样式/宽度等按符号学惯例推断）；`FUN_6eb406f0`/`FUN_6eb68fc0`
-//! 的副作用仅确认不读流；ITemplate/ILineDecoration 槽的 coclass 体未闭合；
-//! 全部结论为静态观察，未经目标软件运行验证，样本无字节佐证。
+//! 未解决问题（详见两份研究记录开放项）：各标量字段的业务语义全部未定名；
+//! `FUN_6eb406f0`/`FUN_6eb68fc0` 的副作用仅确认不读流；三处
+//! 「装载后槽被 GetDefaultRotateWithTransformValue 覆盖」的 short（Arrow/
+//! Character/PictureMarker）读侧丢弃语义为反汇编级观察（不影响流内字节）；
+//! MultiLayer 各 int 数组与字符串的业务语义、字体描述符八字段与 IFontDisp
+//! 接口属性的对应、Template 标记 16 字节的两 double 归属，均为候选；全部
+//! 结论为静态观察，未经目标软件运行验证，样本无字节佐证。
 
 use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
@@ -129,6 +256,159 @@ pub const SIMPLE_MARKER_SYMBOL_CLASS_ID: [u8; 16] = [
 
 /// MarkerLineSymbol 实体版本上限：`2 < ver` 有符号拒绝；Save 恒写 2。
 const MAX_MARKER_LINE_VERSION: i16 = 2;
+
+/// MultiLayerLineSymbol 实体版本上限：`2 < ver` 有符号拒绝；Save 版本表
+/// `DAT_6ec0b2c4`（docVer 0..4 → 1,1,1,1,2），10.1 写 2。
+const MAX_MULTI_LAYER_LINE_VERSION: i16 = 2;
+
+/// MultiLayerMarkerSymbol 实体版本上限：`3 < ver` 有符号拒绝；Save 版本表
+/// `DAT_6ec0b2b8`（docVer 0..4 → 2,2,2,2,3），10.1 写 3。
+const MAX_MULTI_LAYER_MARKER_VERSION: i16 = 3;
+
+/// MultiLayerFillSymbol 实体版本上限：`2 < ver` 有符号拒绝；Save 版本表
+/// `DAT_6ec0b2d0`（docVer 0..4 → 1,1,1,1,2），10.1 写 2。
+const MAX_MULTI_LAYER_FILL_VERSION: i16 = 2;
+
+/// CharacterMarkerSymbol 实体版本上限：`4 < ver` 有符号拒绝；Save 版本表
+/// `DAT_6ec0b270`（docVer 0..5 → …,4），10.1 写 4。
+const MAX_CHARACTER_MARKER_VERSION: i16 = 4;
+
+/// PictureMarkerSymbol 实体版本上限：`9 < ver` 有符号拒绝；Save 版本表
+/// `DAT_6ec0b29c`（docVer 0..5 → 4,4,4,5,8,9），10.1 写 9。
+const MAX_PICTURE_MARKER_VERSION: i16 = 9;
+
+/// ArrowMarkerSymbol 实体版本上限：`2 < ver` 有符号拒绝；版本常量
+/// `DAT_6ec0b314`=2（Save 恒写 2，含尾部 short）。
+const MAX_ARROW_MARKER_VERSION: i16 = 2;
+
+/// MultiLayerLineSymbol 类标识（CLSID）的 16 字节内存序。
+///
+/// GUID 字符串形式 `{7914E5FA-C892-11D0-8BB6-080009EE4E41}`。证据：
+/// esri.clsid 声明（DisplayCore.dll）；GetClassID `0x6eb67350` 写出（IPersistStream
+/// 虚表 `0x6ec0f410` 槽 +0x0c）。样本中无实例，无字节佐证。
+pub const MULTI_LAYER_LINE_SYMBOL_CLASS_ID: [u8; 16] = [
+    0xfa, 0xe5, 0x14, 0x79, 0x92, 0xc8, 0xd0, 0x11, 0x8b, 0xb6, 0x08, 0x00, 0x09, 0xee, 0x4e, 0x41,
+];
+
+/// MultiLayerMarkerSymbol 类标识（CLSID）的 16 字节内存序。
+///
+/// GUID 字符串形式 `{7914E5FF-C892-11D0-8BB6-080009EE4E41}`。证据：
+/// esri.clsid 声明；GetClassID `0x6eb691c0` 写出（虚表 `0x6ec0f754`）。样本中
+/// 无实例，无字节佐证。
+pub const MULTI_LAYER_MARKER_SYMBOL_CLASS_ID: [u8; 16] = [
+    0xff, 0xe5, 0x14, 0x79, 0x92, 0xc8, 0xd0, 0x11, 0x8b, 0xb6, 0x08, 0x00, 0x09, 0xee, 0x4e, 0x41,
+];
+
+/// MultiLayerFillSymbol 类标识（CLSID）的 16 字节内存序。
+///
+/// GUID 字符串形式 `{7914E604-C892-11D0-8BB6-080009EE4E41}`。证据：
+/// esri.clsid 声明；GetClassID `0x6eb64d00` 写出（虚表 `0x6ec0f0fc`）。样本中
+/// 无实例，无字节佐证。
+pub const MULTI_LAYER_FILL_SYMBOL_CLASS_ID: [u8; 16] = [
+    0x04, 0xe6, 0x14, 0x79, 0x92, 0xc8, 0xd0, 0x11, 0x8b, 0xb6, 0x08, 0x00, 0x09, 0xee, 0x4e, 0x41,
+];
+
+/// CharacterMarkerSymbol 类标识（CLSID）的 16 字节内存序。
+///
+/// GUID 字符串形式 `{7914E600-C892-11D0-8BB6-080009EE4E41}`。证据：
+/// esri.clsid 声明；GetClassID `0x6eb9b9b0` 写出（虚表 `0x6ec11fa0`）。样本中
+/// 无实例，无字节佐证。
+pub const CHARACTER_MARKER_SYMBOL_CLASS_ID: [u8; 16] = [
+    0x00, 0xe6, 0x14, 0x79, 0x92, 0xc8, 0xd0, 0x11, 0x8b, 0xb6, 0x08, 0x00, 0x09, 0xee, 0x4e, 0x41,
+];
+
+/// PictureMarkerSymbol 类标识（CLSID）的 16 字节内存序。
+///
+/// GUID 字符串形式 `{7914E602-C892-11D0-8BB6-080009EE4E41}`。证据：
+/// esri.clsid 声明；GetClassID `0x6eb77da0` 写出（虚表 `0x6ec10738`）。样本中
+/// 无实例，无字节佐证。
+pub const PICTURE_MARKER_SYMBOL_CLASS_ID: [u8; 16] = [
+    0x02, 0xe6, 0x14, 0x79, 0x92, 0xc8, 0xd0, 0x11, 0x8b, 0xb6, 0x08, 0x00, 0x09, 0xee, 0x4e, 0x41,
+];
+
+/// PictureLineSymbol 类标识（CLSID）的 16 字节内存序。
+///
+/// GUID 字符串形式 `{22C8C5A1-84FC-11D4-834D-0080C79F0371}`。证据：
+/// esri.clsid 声明；GetClassID `0x6eb76160` 写出（虚表 `0x6ec10344`）。样本中
+/// 无实例，无字节佐证。
+pub const PICTURE_LINE_SYMBOL_CLASS_ID: [u8; 16] = [
+    0xa1, 0xc5, 0xc8, 0x22, 0xfc, 0x84, 0xd4, 0x11, 0x83, 0x4d, 0x00, 0x80, 0xc7, 0x9f, 0x03, 0x71,
+];
+
+/// ArrowMarkerSymbol 类标识（CLSID）的 16 字节内存序。
+///
+/// GUID 字符串形式 `{88539431-E06E-11D1-B277-0000F878229E}`。证据：
+/// esri.clsid 声明；GetClassID `0x6eb3ef60` 写出（虚表 `0x6ec0c9dc`）。样本中
+/// 无实例，无字节佐证。
+pub const ARROW_MARKER_SYMBOL_CLASS_ID: [u8; 16] = [
+    0x31, 0x94, 0x53, 0x88, 0x6e, 0xe0, 0xd1, 0x11, 0xb2, 0x77, 0x00, 0x00, 0xf8, 0x78, 0x22, 0x9e,
+];
+
+/// LineFillSymbol 类标识（CLSID）的 16 字节内存序。
+///
+/// GUID 字符串形式 `{7914E606-C892-11D0-8BB6-080009EE4E41}`。证据：
+/// esri.clsid 声明；GetClassID `0x6eb5caf0` 写出（虚表 `0x6ec0e72c`）。样本中
+/// 无实例，无字节佐证。
+pub const LINE_FILL_SYMBOL_CLASS_ID: [u8; 16] = [
+    0x06, 0xe6, 0x14, 0x79, 0x92, 0xc8, 0xd0, 0x11, 0x8b, 0xb6, 0x08, 0x00, 0x09, 0xee, 0x4e, 0x41,
+];
+
+/// MarkerFillSymbol 类标识（CLSID）的 16 字节内存序。
+///
+/// GUID 字符串形式 `{7914E608-C892-11D0-8BB6-080009EE4E41}`。证据：
+/// esri.clsid 声明；GetClassID `0x6eb5f3b0` 写出（虚表 `0x6ec0e9fc`）。样本中
+/// 无实例，无字节佐证。
+pub const MARKER_FILL_SYMBOL_CLASS_ID: [u8; 16] = [
+    0x08, 0xe6, 0x14, 0x79, 0x92, 0xc8, 0xd0, 0x11, 0x8b, 0xb6, 0x08, 0x00, 0x09, 0xee, 0x4e, 0x41,
+];
+
+/// GradientFillSymbol 类标识（CLSID）的 16 字节内存序。
+///
+/// GUID 字符串形式 `{7914E609-C892-11D0-8BB6-080009EE4E41}`。证据：
+/// esri.clsid 声明；GetClassID `0x6eb50b90` 写出（虚表 `0x6ec0dd5c`）。样本中
+/// 无实例，无字节佐证。
+pub const GRADIENT_FILL_SYMBOL_CLASS_ID: [u8; 16] = [
+    0x09, 0xe6, 0x14, 0x79, 0x92, 0xc8, 0xd0, 0x11, 0x8b, 0xb6, 0x08, 0x00, 0x09, 0xee, 0x4e, 0x41,
+];
+
+/// DotDensityFillSymbol 类标识（CLSID）的 16 字节内存序。
+///
+/// GUID 字符串形式 `{9A1EBA10-CDF9-11D3-81EB-0080C79F0371}`。证据：
+/// esri.clsid 声明；GetClassID `0x6eb4de90` 写出（虚表 `0x6ec0da18`）。样本中
+/// 无实例，无字节佐证。
+pub const DOT_DENSITY_FILL_SYMBOL_CLASS_ID: [u8; 16] = [
+    0x10, 0xba, 0x1e, 0x9a, 0xf9, 0xcd, 0xd3, 0x11, 0x81, 0xeb, 0x00, 0x80, 0xc7, 0x9f, 0x03, 0x71,
+];
+
+/// Template 类标识（CLSID）的 16 字节内存序。
+///
+/// GUID 字符串形式 `{41093A71-CCE1-11D0-BFAA-0080C7E24280}`。证据：
+/// esri.clsid 声明（DisplayCore.dll）；GetClassID `0x6eb87aa0` 写出（虚表
+/// `0x6ec1114c`）；反编译立即数互证。请求接口 ITemplate `{7914E5F4}` 经
+/// esriDisplay 类型库 dump 定名。样本中无实例，无字节佐证。
+pub const TEMPLATE_CLASS_ID: [u8; 16] = [
+    0x71, 0x3a, 0x09, 0x41, 0xe1, 0xcc, 0xd0, 0x11, 0xbf, 0xaa, 0x00, 0x80, 0xc7, 0xe2, 0x42, 0x80,
+];
+
+/// LineDecoration 类标识（CLSID）的 16 字节内存序。
+///
+/// GUID 字符串形式 `{533D88F5-0A1A-11D2-B27F-0000F878229E}`。证据：
+/// esri.clsid 声明；GetClassID `0x6eb5c0a0` 写出（虚表 `0x6ec0e4e4`）；反编译
+/// 立即数互证。请求接口 ILineDecoration `{533D88F0}` 经类型库 dump 定名。
+/// 样本中无实例，无字节佐证。
+pub const LINE_DECORATION_CLASS_ID: [u8; 16] = [
+    0xf5, 0x88, 0x3d, 0x53, 0x1a, 0x0a, 0xd2, 0x11, 0xb2, 0x7f, 0x00, 0x00, 0xf8, 0x78, 0x22, 0x9e,
+];
+
+/// SimpleLineDecorationElement 类标识（CLSID）的 16 字节内存序。
+///
+/// GUID 字符串形式 `{533D88F3-0A1A-11D2-B27F-0000F878229E}`。证据：
+/// esri.clsid 声明；GetClassID `0x6eb840e0` 写出（虚表 `0x6ec10d54`）；反编译
+/// 立即数互证。默认元素接口 ILineDecorationElement `{533D88F2}` 经类型库
+/// dump 定名。样本中无实例，无字节佐证。
+pub const SIMPLE_LINE_DECORATION_ELEMENT_CLASS_ID: [u8; 16] = [
+    0xf3, 0x88, 0x3d, 0x53, 0x1a, 0x0a, 0xd2, 0x11, 0xb2, 0x7f, 0x00, 0x00, 0xf8, 0x78, 0x22, 0x9e,
+];
 
 /// SimpleLineSymbol 类标识（CLSID）的 16 字节内存序。
 ///
@@ -225,16 +505,33 @@ fn read_i32_le(trial: &mut Reader<'_>) -> io::Result<i32> {
 /// 槽位在体字段序中的类别（停止原因与诊断用）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DisplaySlotKind10_1 {
-    /// ISymbol 槽（SimpleFillSymbol 轮廓、HashLineSymbol 首槽）。
+    /// ISymbol 槽（SimpleFillSymbol 轮廓、HashLineSymbol 首槽、
+    /// SimpleLineDecorationElement 符号槽等）。
     Symbol,
-    /// IMarkerSymbol 槽（MarkerLineSymbol 首槽）。
+    /// IMarkerSymbol 槽（MarkerLineSymbol 首槽、DotDensityFillSymbol 点数组）。
     MarkerSymbol,
     /// IColor 槽（各符号的颜色槽）。
     Color,
-    /// `{7914E5F4}` ITemplate 候选槽（coclass 体未闭合，新对象即停止）。
+    /// ITemplate 槽（MarkerLine/CartographicLine/HashLine）。
     Template,
-    /// `{533D88F0}` ILineDecoration 候选槽（coclass 体未闭合，新对象即停止）。
+    /// ILineDecoration 槽（同上三类）。
     LineDecoration,
+    /// ILineSymbol 槽（MultiLayerLineSymbol 层数组）。
+    LineSymbol,
+    /// IFillSymbol 槽（MultiLayerFillSymbol 层数组）。
+    FillSymbol,
+    /// IColorRamp 槽（GradientFillSymbol；实现类未闭合，新对象 = 停止）。
+    ColorRamp,
+    /// IFontDisp 槽（CharacterMarkerSymbol 字体槽；实现类未闭合 = 停止）。
+    Font,
+    /// IMarkerBackground 槽（MultiLayerMarkerSymbol 版本 ≥2；实现类未闭合）。
+    MarkerBackground,
+    /// IPicture 槽（PictureMarkerSymbol 图像类型 3 / 历史路径；实现类未闭合）。
+    Picture,
+    /// IPictureFillSymbol 槽（PictureLineSymbol；实现类未闭合 = 停止）。
+    PictureFillSymbol,
+    /// ILineDecorationElement 槽（LineDecoration 元素数组）。
+    LineDecorationElement,
 }
 
 /// 符号体读取的停止原因。
@@ -626,10 +923,10 @@ pub struct MarkerLineSymbolBody10_1 {
     /// IMarkerSymbol 槽（请求 IID `{E6BDAA7C-…}`）。
     pub marker_symbol: DisplaySymbolSlot10_1,
     /// `{7914E5F4}` ITemplate 候选槽；新对象 coclass 体未闭合 = `None` 停止。
-    pub template: Option<DisplaySymbolSlot10_1>,
+    pub template: Option<DecorationSlot10_1>,
     /// `{533D88F0}` ILineDecoration 候选槽；新对象 coclass 体未闭合 = `None`
     /// 停止。`None` 亦表示前置停止未读取。
-    pub line_decoration: Option<DisplaySymbolSlot10_1>,
+    pub line_decoration: Option<DecorationSlot10_1>,
     /// int32 → this−0x2134，语义未定。`None` = 前置停止。
     pub int32_2134: Option<i32>,
     /// int32 → this−0x212c，语义未定。`None` = 前置停止。
@@ -683,15 +980,22 @@ pub fn read_marker_line_symbol_body_10_1(
     let mut template = None;
     let mut line_decoration = None;
     if stop.is_none() {
-        let (slot, inner) =
-            read_unclosed_object_slot_10_1(&mut trial, &mut staged, DisplaySlotKind10_1::Template)?;
+        let (slot, inner) = read_decoration_slot_10_1(
+            &mut trial,
+            max_bytes,
+            &mut staged,
+            depth,
+            DisplaySlotKind10_1::Template,
+        )?;
         template = slot;
         if let Some(inner) = inner {
             stop = Some(inner);
         } else {
-            let (slot, inner) = read_unclosed_object_slot_10_1(
+            let (slot, inner) = read_decoration_slot_10_1(
                 &mut trial,
+                max_bytes,
                 &mut staged,
+                depth,
                 DisplaySlotKind10_1::LineDecoration,
             )?;
             line_decoration = slot;
@@ -763,9 +1067,9 @@ pub struct CartographicLineSymbolBody10_1 {
     /// 标量段先于颜色槽，保留 defensive 语义）。
     pub color: Option<ColorSlot10_1>,
     /// `{7914E5F4}` ITemplate 候选槽；新对象 = `None` 停止。
-    pub template: Option<DisplaySymbolSlot10_1>,
+    pub template: Option<DecorationSlot10_1>,
     /// `{533D88F0}` ILineDecoration 候选槽；新对象 = `None` 停止。
-    pub line_decoration: Option<DisplaySymbolSlot10_1>,
+    pub line_decoration: Option<DecorationSlot10_1>,
     /// int32 → this−0x10fc，语义未定。`None` = 前置停止。
     pub int32_10fc: Option<i32>,
     /// int32 → this−0x10f4，语义未定。`None` = 前置停止。
@@ -817,15 +1121,22 @@ pub fn read_cartographic_line_symbol_body_10_1(
     let mut template = None;
     let mut line_decoration = None;
     if stop.is_none() {
-        let (slot, inner) =
-            read_unclosed_object_slot_10_1(&mut trial, &mut staged, DisplaySlotKind10_1::Template)?;
+        let (slot, inner) = read_decoration_slot_10_1(
+            &mut trial,
+            max_bytes,
+            &mut staged,
+            depth,
+            DisplaySlotKind10_1::Template,
+        )?;
         template = slot;
         if let Some(inner) = inner {
             stop = Some(inner);
         } else {
-            let (slot, inner) = read_unclosed_object_slot_10_1(
+            let (slot, inner) = read_decoration_slot_10_1(
                 &mut trial,
+                max_bytes,
                 &mut staged,
+                depth,
                 DisplaySlotKind10_1::LineDecoration,
             )?;
             line_decoration = slot;
@@ -894,9 +1205,9 @@ pub struct HashLineSymbolBody10_1 {
     /// IColor 槽（Save 槽 this−0x211c）。`None` = 前置停止。
     pub color: Option<ColorSlot10_1>,
     /// `{7914E5F4}` ITemplate 候选槽；新对象 = `None` 停止。
-    pub template: Option<DisplaySymbolSlot10_1>,
+    pub template: Option<DecorationSlot10_1>,
     /// `{533D88F0}` ILineDecoration 候选槽；新对象 = `None` 停止。
-    pub line_decoration: Option<DisplaySymbolSlot10_1>,
+    pub line_decoration: Option<DecorationSlot10_1>,
     /// int32 → this−0x217c，语义未定。`None` = 前置停止。
     pub int32_217c: Option<i32>,
     /// int32 → this−0x2174，语义未定。`None` = 前置停止。
@@ -963,15 +1274,22 @@ pub fn read_hash_line_symbol_body_10_1(
     let mut template = None;
     let mut line_decoration = None;
     if stop.is_none() {
-        let (slot, inner) =
-            read_unclosed_object_slot_10_1(&mut trial, &mut staged, DisplaySlotKind10_1::Template)?;
+        let (slot, inner) = read_decoration_slot_10_1(
+            &mut trial,
+            max_bytes,
+            &mut staged,
+            depth,
+            DisplaySlotKind10_1::Template,
+        )?;
         template = slot;
         if let Some(inner) = inner {
             stop = Some(inner);
         } else {
-            let (slot, inner) = read_unclosed_object_slot_10_1(
+            let (slot, inner) = read_decoration_slot_10_1(
                 &mut trial,
+                max_bytes,
                 &mut staged,
+                depth,
                 DisplaySlotKind10_1::LineDecoration,
             )?;
             line_decoration = slot;
@@ -1044,9 +1362,11 @@ pub enum DisplaySymbolSlot10_1 {
 
 /// 从当前位置读取一个符号类槽位对象条目并按类标识分派。
 ///
-/// 支持的闭合类：SimpleMarkerSymbol（前轮）与 SimpleLineSymbol/
+/// 支持的闭合类：SimpleMarkerSymbol（前轮）、SimpleLineSymbol/
 /// SimpleFillSymbol/MarkerLineSymbol/CartographicLineSymbol/HashLineSymbol
-/// （本模块）。新对象类未知时回退到槽位起点并返回
+/// （第一轮）与 Template/LineDecoration/MultiLayer 三族/CharacterMarker/
+/// PictureMarker/PictureLine/ArrowMarker/LineFill/MarkerFill/GradientFill/
+/// DotDensityFill（第二轮）。新对象类未知时回退到槽位起点并返回
 /// [`DisplaySymbolSlot10_1::Unsupported`]。`depth` 为剩余允许嵌套层数：为 0
 /// 时报 `ErrorKind::InvalidInput`（防栈溢出的读取器自身限额，非原生限制）。
 /// 全部过程在 trial 游标与 trial 登记表上进行，任何失败不推进调用者游标、
@@ -1137,35 +1457,532 @@ pub fn read_display_symbol_slot_10_1(
     Ok(result)
 }
 
-/// 读取 ITemplate 候选 / ILineDecoration 候选槽：空标记与回引可消费；新对象
-///（coclass 体未闭合）回退到槽位起点、不保留该键，以停止原因返回。
+/// 全闭合符号类槽位条目（第二轮起的对象层共享入口）。
+///
+/// 相比 [`DisplaySymbolSlot10_1`]（第一轮闭合集，供 SimpleRenderer/
+/// LegendClass/TextSymbol 等既有宿主保持接口稳定）扩展第二轮闭合类：嵌套
+/// 的新类符号（MultiLayer 层槽、点密度标记数组、装饰元素符号槽等）在本
+/// 入口下整体解析。未知符号类回退到槽位起点并返回
+/// [`SymbolSlotFull10_1::Unsupported`]。既有宿主在整合轮切换到本入口即可
+/// 获得第二轮符号的递归解析。
+#[derive(Debug, Clone, PartialEq)]
+pub enum SymbolSlotFull10_1 {
+    /// 16 字节全零类标识：空引用。
+    Null,
+    /// 键已见：回引条目，无对象体。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 SimpleMarkerSymbol 对象（第一轮）。
+    SimpleMarkerSymbol(Box<SimpleMarkerSymbolPrefix10_1>),
+    /// 新 SimpleLineSymbol 对象（第一轮）。
+    SimpleLineSymbol(Box<SimpleLineSymbolBody10_1>),
+    /// 新 SimpleFillSymbol 对象（第一轮；轮廓槽经第一轮入口解析）。
+    SimpleFillSymbol(Box<SimpleFillSymbolBody10_1>),
+    /// 新 MarkerLineSymbol 对象（第一轮）。
+    MarkerLineSymbol(Box<MarkerLineSymbolBody10_1>),
+    /// 新 CartographicLineSymbol 对象（第一轮）。
+    CartographicLineSymbol(Box<CartographicLineSymbolBody10_1>),
+    /// 新 HashLineSymbol 对象（第一轮）。
+    HashLineSymbol(Box<HashLineSymbolBody10_1>),
+    /// 新 Template 对象（第二轮）。
+    Template(Box<TemplateBody10_1>),
+    /// 新 LineDecoration 对象（第二轮）。
+    LineDecoration(Box<LineDecorationBody10_1>),
+    /// 新 MultiLayerLineSymbol 对象。
+    MultiLayerLineSymbol(Box<MultiLayerLineSymbolBody10_1>),
+    /// 新 MultiLayerMarkerSymbol 对象。
+    MultiLayerMarkerSymbol(Box<MultiLayerMarkerSymbolBody10_1>),
+    /// 新 MultiLayerFillSymbol 对象。
+    MultiLayerFillSymbol(Box<MultiLayerFillSymbolBody10_1>),
+    /// 新 CharacterMarkerSymbol 对象。
+    CharacterMarkerSymbol(Box<CharacterMarkerSymbolBody10_1>),
+    /// 新 PictureMarkerSymbol 对象。
+    PictureMarkerSymbol(Box<PictureMarkerSymbolBody10_1>),
+    /// 新 PictureLineSymbol 对象。
+    PictureLineSymbol(Box<PictureLineSymbolBody10_1>),
+    /// 新 ArrowMarkerSymbol 对象。
+    ArrowMarkerSymbol(Box<ArrowMarkerSymbolBody10_1>),
+    /// 新 LineFillSymbol 对象。
+    LineFillSymbol(Box<LineFillSymbolBody10_1>),
+    /// 新 MarkerFillSymbol 对象。
+    MarkerFillSymbol(Box<MarkerFillSymbolBody10_1>),
+    /// 新 GradientFillSymbol 对象。
+    GradientFillSymbol(Box<GradientFillSymbolBody10_1>),
+    /// 新 DotDensityFillSymbol 对象。
+    DotDensityFillSymbol(Box<DotDensityFillSymbolBody10_1>),
+    /// 新对象但类标识不在闭合集合：游标已回退到该槽位起点、登记表未保留
+    /// 该键（读取器内部完成回退，调用者据此停止）。
+    Unsupported { class_id: [u8; 16], key: u32 },
+}
+
+/// 归约全闭合符号类槽位的停止（语义同 [`slot_stop_10_1`]，覆盖第二轮闭合
+/// 类）：`Unsupported` → 本体槽位停止；嵌套体含 `stop` → 嵌套未完整停止；
+/// 其余无停止。`kind` 为调用者槽位的类别。
+pub fn slot_full_stop_10_1(
+    slot: &SymbolSlotFull10_1,
+    kind: DisplaySlotKind10_1,
+) -> Option<SymbolStop10_1> {
+    match slot {
+        SymbolSlotFull10_1::Unsupported { class_id, key } => Some(SymbolStop10_1::Slot {
+            kind,
+            class_id: *class_id,
+            key: *key,
+        }),
+        SymbolSlotFull10_1::SimpleMarkerSymbol(body) => {
+            body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
+                class_id: SIMPLE_MARKER_SYMBOL_CLASS_ID,
+                key: body.key,
+            })
+        }
+        SymbolSlotFull10_1::SimpleLineSymbol(body) => {
+            body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
+                class_id: SIMPLE_LINE_SYMBOL_CLASS_ID,
+                key: body.key,
+            })
+        }
+        SymbolSlotFull10_1::SimpleFillSymbol(body) => {
+            body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
+                class_id: SIMPLE_FILL_SYMBOL_CLASS_ID,
+                key: body.key,
+            })
+        }
+        SymbolSlotFull10_1::MarkerLineSymbol(body) => {
+            body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
+                class_id: MARKER_LINE_SYMBOL_CLASS_ID,
+                key: body.key,
+            })
+        }
+        SymbolSlotFull10_1::CartographicLineSymbol(body) => {
+            body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
+                class_id: CARTOGRAPHIC_LINE_SYMBOL_CLASS_ID,
+                key: body.key,
+            })
+        }
+        SymbolSlotFull10_1::HashLineSymbol(body) => {
+            body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
+                class_id: HASH_LINE_SYMBOL_CLASS_ID,
+                key: body.key,
+            })
+        }
+        SymbolSlotFull10_1::Template(_) => None,
+        SymbolSlotFull10_1::LineDecoration(body) => {
+            body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
+                class_id: LINE_DECORATION_CLASS_ID,
+                key: body.key,
+            })
+        }
+        SymbolSlotFull10_1::MultiLayerLineSymbol(body) => {
+            body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
+                class_id: MULTI_LAYER_LINE_SYMBOL_CLASS_ID,
+                key: body.key,
+            })
+        }
+        SymbolSlotFull10_1::MultiLayerMarkerSymbol(body) => {
+            body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
+                class_id: MULTI_LAYER_MARKER_SYMBOL_CLASS_ID,
+                key: body.key,
+            })
+        }
+        SymbolSlotFull10_1::MultiLayerFillSymbol(body) => {
+            body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
+                class_id: MULTI_LAYER_FILL_SYMBOL_CLASS_ID,
+                key: body.key,
+            })
+        }
+        SymbolSlotFull10_1::CharacterMarkerSymbol(body) => {
+            body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
+                class_id: CHARACTER_MARKER_SYMBOL_CLASS_ID,
+                key: body.key,
+            })
+        }
+        SymbolSlotFull10_1::PictureMarkerSymbol(body) => {
+            body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
+                class_id: PICTURE_MARKER_SYMBOL_CLASS_ID,
+                key: body.key,
+            })
+        }
+        SymbolSlotFull10_1::PictureLineSymbol(body) => {
+            body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
+                class_id: PICTURE_LINE_SYMBOL_CLASS_ID,
+                key: body.key,
+            })
+        }
+        SymbolSlotFull10_1::ArrowMarkerSymbol(body) => {
+            body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
+                class_id: ARROW_MARKER_SYMBOL_CLASS_ID,
+                key: body.key,
+            })
+        }
+        SymbolSlotFull10_1::LineFillSymbol(body) => {
+            body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
+                class_id: LINE_FILL_SYMBOL_CLASS_ID,
+                key: body.key,
+            })
+        }
+        SymbolSlotFull10_1::MarkerFillSymbol(body) => {
+            body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
+                class_id: MARKER_FILL_SYMBOL_CLASS_ID,
+                key: body.key,
+            })
+        }
+        SymbolSlotFull10_1::GradientFillSymbol(body) => {
+            body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
+                class_id: GRADIENT_FILL_SYMBOL_CLASS_ID,
+                key: body.key,
+            })
+        }
+        SymbolSlotFull10_1::DotDensityFillSymbol(body) => {
+            body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
+                class_id: DOT_DENSITY_FILL_SYMBOL_CLASS_ID,
+                key: body.key,
+            })
+        }
+        SymbolSlotFull10_1::Null | SymbolSlotFull10_1::BackReference { .. } => None,
+    }
+}
+
+/// 从当前位置读取一个符号类槽位对象条目并按类标识分派到全部闭合类
+/// （第一轮六类 + SimpleMarkerSymbol + 第二轮十四类）。
+///
+/// 调用约定与事务性同 [`read_display_symbol_slot_10_1`]：空标记与回引原样
+/// 返回；新对象类未知时回退到槽位起点并返回
+/// [`SymbolSlotFull10_1::Unsupported`]；`depth` 为剩余允许嵌套层数（0 时报
+/// `ErrorKind::InvalidInput`，防栈溢出的读取器自身限额，非原生限制）。
+/// 全部过程在 trial 游标与 trial 登记表上进行，任何失败不推进调用者游标、
+/// 不修改登记表。
+///
+/// 第一轮闭合体（SimpleFillSymbol/MarkerLine/CartographicLine/HashLine）的
+/// 内部嵌套槽仍经第一轮入口 [`read_display_symbol_slot_10_1`] 解析（其闭
+/// 合集以第一轮为界）；第二轮闭合体的嵌套槽经本入口解析。
+pub fn read_symbol_slot_full_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<SymbolSlotFull10_1> {
+    let origin = reader.clone();
+    let mut trial = reader.clone();
+    let mut staged = table.clone();
+    let entry = read_object_entry_10_1(&mut trial, &mut staged)?;
+    let result = match entry {
+        ObjectEntry10_1::Null => SymbolSlotFull10_1::Null,
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            SymbolSlotFull10_1::BackReference { class_id, key }
+        }
+        ObjectEntry10_1::NewObject { class_id, key } => {
+            if depth == 0 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidInput,
+                    format!(
+                        "符号槽位 offset 0x{:x}: 嵌套深度超过读取器限额 \
+                         {MAX_SYMBOL_NESTING_DEPTH}（防栈溢出，非原生限制）",
+                        origin.position()
+                    ),
+                ));
+            }
+            let slot = if class_id == SIMPLE_MARKER_SYMBOL_CLASS_ID {
+                SymbolSlotFull10_1::SimpleMarkerSymbol(Box::new(
+                    read_simple_marker_symbol_body_10_1(&mut trial, max_bytes, &mut staged, key)?,
+                ))
+            } else if class_id == SIMPLE_LINE_SYMBOL_CLASS_ID {
+                SymbolSlotFull10_1::SimpleLineSymbol(Box::new(read_simple_line_symbol_body_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged,
+                    key,
+                )?))
+            } else if class_id == SIMPLE_FILL_SYMBOL_CLASS_ID {
+                SymbolSlotFull10_1::SimpleFillSymbol(Box::new(read_simple_fill_symbol_body_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged,
+                    key,
+                    depth,
+                )?))
+            } else if class_id == MARKER_LINE_SYMBOL_CLASS_ID {
+                SymbolSlotFull10_1::MarkerLineSymbol(Box::new(read_marker_line_symbol_body_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged,
+                    key,
+                    depth,
+                )?))
+            } else if class_id == CARTOGRAPHIC_LINE_SYMBOL_CLASS_ID {
+                SymbolSlotFull10_1::CartographicLineSymbol(Box::new(
+                    read_cartographic_line_symbol_body_10_1(
+                        &mut trial,
+                        max_bytes,
+                        &mut staged,
+                        key,
+                        depth,
+                    )?,
+                ))
+            } else if class_id == HASH_LINE_SYMBOL_CLASS_ID {
+                SymbolSlotFull10_1::HashLineSymbol(Box::new(read_hash_line_symbol_body_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged,
+                    key,
+                    depth,
+                )?))
+            } else if class_id == TEMPLATE_CLASS_ID {
+                SymbolSlotFull10_1::Template(Box::new(read_template_body_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged,
+                    key,
+                )?))
+            } else if class_id == LINE_DECORATION_CLASS_ID {
+                SymbolSlotFull10_1::LineDecoration(Box::new(read_line_decoration_body_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged,
+                    key,
+                    depth - 1,
+                )?))
+            } else if class_id == MULTI_LAYER_LINE_SYMBOL_CLASS_ID {
+                SymbolSlotFull10_1::MultiLayerLineSymbol(Box::new(
+                    read_multi_layer_line_symbol_body_10_1(
+                        &mut trial,
+                        max_bytes,
+                        &mut staged,
+                        key,
+                        depth,
+                    )?,
+                ))
+            } else if class_id == MULTI_LAYER_MARKER_SYMBOL_CLASS_ID {
+                SymbolSlotFull10_1::MultiLayerMarkerSymbol(Box::new(
+                    read_multi_layer_marker_symbol_body_10_1(
+                        &mut trial,
+                        max_bytes,
+                        &mut staged,
+                        key,
+                        depth,
+                    )?,
+                ))
+            } else if class_id == MULTI_LAYER_FILL_SYMBOL_CLASS_ID {
+                SymbolSlotFull10_1::MultiLayerFillSymbol(Box::new(
+                    read_multi_layer_fill_symbol_body_10_1(
+                        &mut trial,
+                        max_bytes,
+                        &mut staged,
+                        key,
+                        depth,
+                    )?,
+                ))
+            } else if class_id == CHARACTER_MARKER_SYMBOL_CLASS_ID {
+                SymbolSlotFull10_1::CharacterMarkerSymbol(Box::new(
+                    read_character_marker_symbol_body_10_1(
+                        &mut trial,
+                        max_bytes,
+                        &mut staged,
+                        key,
+                    )?,
+                ))
+            } else if class_id == PICTURE_MARKER_SYMBOL_CLASS_ID {
+                SymbolSlotFull10_1::PictureMarkerSymbol(Box::new(
+                    read_picture_marker_symbol_body_10_1(&mut trial, max_bytes, &mut staged, key)?,
+                ))
+            } else if class_id == PICTURE_LINE_SYMBOL_CLASS_ID {
+                SymbolSlotFull10_1::PictureLineSymbol(Box::new(read_picture_line_symbol_body_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged,
+                    key,
+                )?))
+            } else if class_id == ARROW_MARKER_SYMBOL_CLASS_ID {
+                SymbolSlotFull10_1::ArrowMarkerSymbol(Box::new(read_arrow_marker_symbol_body_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged,
+                    key,
+                )?))
+            } else if class_id == LINE_FILL_SYMBOL_CLASS_ID {
+                SymbolSlotFull10_1::LineFillSymbol(Box::new(read_line_fill_symbol_body_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged,
+                    key,
+                    depth,
+                )?))
+            } else if class_id == MARKER_FILL_SYMBOL_CLASS_ID {
+                SymbolSlotFull10_1::MarkerFillSymbol(Box::new(read_marker_fill_symbol_body_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged,
+                    key,
+                    depth,
+                )?))
+            } else if class_id == GRADIENT_FILL_SYMBOL_CLASS_ID {
+                SymbolSlotFull10_1::GradientFillSymbol(Box::new(
+                    read_gradient_fill_symbol_body_10_1(
+                        &mut trial,
+                        max_bytes,
+                        &mut staged,
+                        key,
+                        depth,
+                    )?,
+                ))
+            } else if class_id == DOT_DENSITY_FILL_SYMBOL_CLASS_ID {
+                SymbolSlotFull10_1::DotDensityFillSymbol(Box::new(
+                    read_dot_density_fill_symbol_body_10_1(
+                        &mut trial,
+                        max_bytes,
+                        &mut staged,
+                        key,
+                        depth,
+                    )?,
+                ))
+            } else {
+                // 未知符号类：回退到槽位起点，不保留该键。
+                *reader = origin;
+                return Ok(SymbolSlotFull10_1::Unsupported { class_id, key });
+            };
+            slot
+        }
+    };
+    *reader = trial;
+    *table = staged;
+    Ok(result)
+}
+
+/// ITemplate / ILineDecoration 槽位条目的分类结果（第二轮起按类分派）。
+#[derive(Debug, Clone, PartialEq)]
+pub enum DecorationSlot10_1 {
+    /// 16 字节全零类标识：空引用。
+    Null,
+    /// 键已见：回引条目，无对象体。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 Template 对象（体闭合；`0x6eb87ad0`）。
+    Template(Box<TemplateBody10_1>),
+    /// 新 LineDecoration 对象（体闭合；`0x6eb5c640`；体内元素槽停止经其
+    /// `stop` 传播为嵌套未完整）。
+    LineDecoration(Box<LineDecorationBody10_1>),
+}
+
+/// 读取 ITemplate / ILineDecoration 槽（MarkerLine/CartographicLine/HashLine
+/// 三类共用的槽位）：空标记与回引可消费；新对象按类分派——Template/
+/// LineDecoration 体已闭合则解析其体，其余实现类回退到槽位起点、不保留该
+/// 键，以停止原因返回。
 ///
 /// 返回 `(槽位, 停止)`：停止非 `None` 时槽位为 `None`（新对象的类标识与键
 /// 在停止原因中）。`staged` 为调用者（体读取器）的 trial 登记表；回退时
-/// 一并恢复，任何失败不修改登记表。
-fn read_unclosed_object_slot_10_1(
+/// 一并恢复，任何失败不修改登记表。`depth` 供嵌套体使用（Template 体无嵌
+/// 套对象；LineDecoration → 元素 → 符号槽逐层下钻）。
+fn read_decoration_slot_10_1(
     trial: &mut Reader<'_>,
+    max_bytes: usize,
     staged: &mut RefTable10_1,
+    depth: usize,
     kind: DisplaySlotKind10_1,
-) -> io::Result<(Option<DisplaySymbolSlot10_1>, Option<SymbolStop10_1>)> {
+) -> io::Result<(Option<DecorationSlot10_1>, Option<SymbolStop10_1>)> {
     let origin = trial.clone();
-    let mut forward = trial.clone();
     let saved = staged.clone();
+    let mut forward = trial.clone();
     let entry = read_object_entry_10_1(&mut forward, staged)?;
     match entry {
         ObjectEntry10_1::Null => {
             *trial = forward;
-            Ok((Some(DisplaySymbolSlot10_1::Null), None))
+            Ok((Some(DecorationSlot10_1::Null), None))
         }
         ObjectEntry10_1::BackReference { class_id, key } => {
             *trial = forward;
             Ok((
-                Some(DisplaySymbolSlot10_1::BackReference { class_id, key }),
+                Some(DecorationSlot10_1::BackReference { class_id, key }),
                 None,
             ))
         }
         ObjectEntry10_1::NewObject { class_id, key } => {
-            // coclass 体未闭合：回退游标并丢弃该键登记。
+            if depth == 0 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidInput,
+                    format!(
+                        "装饰槽位 offset 0x{:x}: 嵌套深度超过读取器限额 \
+                         {MAX_SYMBOL_NESTING_DEPTH}（防栈溢出，非原生限制）",
+                        origin.position()
+                    ),
+                ));
+            }
+            if class_id == TEMPLATE_CLASS_ID {
+                let body = read_template_body_10_1(&mut forward, max_bytes, staged, key)?;
+                *trial = forward;
+                Ok((Some(DecorationSlot10_1::Template(Box::new(body))), None))
+            } else if class_id == LINE_DECORATION_CLASS_ID {
+                let body = read_line_decoration_body_10_1(
+                    &mut forward,
+                    max_bytes,
+                    staged,
+                    key,
+                    depth - 1,
+                )?;
+                let slot = DecorationSlot10_1::LineDecoration(Box::new(body));
+                // 体内容嵌套停止（元素槽未知类）以嵌套未完整原因传播；游标
+                // 停在内层停止点（forward 已推进）。
+                let stop = match &slot {
+                    DecorationSlot10_1::LineDecoration(b) => {
+                        b.stop.map(|_| SymbolStop10_1::NestedIncomplete {
+                            class_id: LINE_DECORATION_CLASS_ID,
+                            key,
+                        })
+                    }
+                    _ => None,
+                };
+                *trial = forward;
+                Ok((Some(slot), stop))
+            } else {
+                // 未知装饰实现类：回退游标并丢弃该键登记。
+                *trial = origin;
+                *staged = saved;
+                Ok((
+                    None,
+                    Some(SymbolStop10_1::Slot {
+                        kind,
+                        class_id,
+                        key,
+                    }),
+                ))
+            }
+        }
+    }
+}
+
+/// 实现类未闭合的槽位条目（IFontDisp `{BEF6E002-…}` / IPicture
+/// `{7BF80980-…}` / IColorRamp `{BEB87091-…}` / IMarkerBackground
+/// `{AE41E4F0-…}` / IPictureFillSymbol `{D842B081-…}`）：仅分类空标记与
+/// 回引，新对象一律为停止点（实现类族体未闭合，见研究记录开放项）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnclosedSlot10_1 {
+    /// 16 字节全零类标识：空引用。
+    Null,
+    /// 键已见：回引条目，无对象体。类标识原样保留、不校验。
+    BackReference { class_id: [u8; 16], key: u32 },
+}
+
+/// 读取一个实现类未闭合的槽位条目，返回 `(槽位, 停止)`。
+///
+/// 新对象（类标识不在闭合集合）时槽位为 `None`、停止原因携带该类标识与
+/// 键：游标回退到槽位起点、登记表不保留该键（读取器内部完成回退）。
+fn read_unclosed_slot_10_1(
+    trial: &mut Reader<'_>,
+    staged: &mut RefTable10_1,
+    kind: DisplaySlotKind10_1,
+) -> io::Result<(Option<UnclosedSlot10_1>, Option<SymbolStop10_1>)> {
+    let origin = trial.clone();
+    let saved = staged.clone();
+    let mut forward = trial.clone();
+    let entry = read_object_entry_10_1(&mut forward, staged)?;
+    match entry {
+        ObjectEntry10_1::Null => {
+            *trial = forward;
+            Ok((Some(UnclosedSlot10_1::Null), None))
+        }
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            *trial = forward;
+            Ok((
+                Some(UnclosedSlot10_1::BackReference { class_id, key }),
+                None,
+            ))
+        }
+        ObjectEntry10_1::NewObject { class_id, key } => {
             *trial = origin;
             *staged = saved;
             Ok((
@@ -1178,4 +1995,1830 @@ fn read_unclosed_object_slot_10_1(
             ))
         }
     }
+}
+
+/// 读取一个符号槽并按调用者槽位的类别归约停止原因（`Unsupported` → 本类
+/// 槽位停止；嵌套体停止 → 嵌套未完整）。供 MultiLayer 层数组、LineFill/
+/// MarkerFill 的多符号槽等循环使用，经全闭合类入口
+/// [`read_symbol_slot_full_10_1`] 分派。
+fn read_symbol_slot_with_kind_10_1(
+    trial: &mut Reader<'_>,
+    max_bytes: usize,
+    staged: &mut RefTable10_1,
+    depth: usize,
+    kind: DisplaySlotKind10_1,
+) -> io::Result<(SymbolSlotFull10_1, Option<SymbolStop10_1>)> {
+    let slot = read_symbol_slot_full_10_1(trial, max_bytes, staged, depth)?;
+    let stop = slot_full_stop_10_1(&slot, kind);
+    Ok((slot, stop))
+}
+
+/// 读取流内 int32 循环长度并以 `max_bytes` 设上限（读取器自身限额，非原生
+/// 限制；原生按流失败自然终止，限额同时约束预分配）。负值位模式一并拒绝
+/// （较原生更严，长度非负）。
+fn read_loop_count_10_1(
+    trial: &mut Reader<'_>,
+    max_bytes: usize,
+    what: &str,
+    entry_offset: usize,
+) -> io::Result<u32> {
+    let raw = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+    if raw < 0 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("{what} 对象体 offset 0x{entry_offset:x}: 循环长度 {raw} 为负值位模式"),
+        ));
+    }
+    let count = raw as u32;
+    if count as usize > max_bytes {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!(
+                "{what} 对象体 offset 0x{entry_offset:x}: 循环长度 {count} 超过 \
+                 读取器 max_bytes 限额 {max_bytes}（读取器自身限额，非原生限制）"
+            ),
+        ));
+    }
+    Ok(count)
+}
+
+/// 读取 count × int32（循环长度已由 [`read_loop_count_10_1`] 验证）。
+fn read_i32_vec(trial: &mut Reader<'_>, count: u32) -> io::Result<Vec<i32>> {
+    let mut values = Vec::with_capacity((count as usize).min(4096));
+    for _ in 0..count {
+        values.push(read_i32_le(trial)?);
+    }
+    Ok(values)
+}
+
+/// 读取 count × String（循环长度已验证；每串声明长度受 `max_bytes` 约束）。
+fn read_string_vec(
+    trial: &mut Reader<'_>,
+    max_bytes: usize,
+    count: u32,
+) -> io::Result<Vec<String>> {
+    let mut values = Vec::with_capacity((count as usize).min(4096));
+    for _ in 0..count {
+        values.push(read_string_10_1(trial, max_bytes)?);
+    }
+    Ok(values)
+}
+
+/// 读取 PictureMarker 的位图块尺寸（int32；负值与超过 `max_bytes` 的尺寸
+/// 拒绝——读取器自身限额，非原生限制）。
+fn read_blob_size(
+    trial: &mut Reader<'_>,
+    max_bytes: usize,
+    entry_offset: usize,
+) -> io::Result<u32> {
+    let raw = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+    if raw < 0 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!(
+                "PictureMarkerSymbol 对象体 offset 0x{entry_offset:x}: 位图尺寸 {raw} 为负值位模式"
+            ),
+        ));
+    }
+    let size = raw as u32;
+    if size as usize > max_bytes {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!(
+                "PictureMarkerSymbol 对象体 offset 0x{entry_offset:x}: 位图尺寸 {size} \
+                 超过读取器 max_bytes 限额 {max_bytes}（读取器自身限额，非原生限制）"
+            ),
+        ));
+    }
+    Ok(size)
+}
+
+/// 读取位图块数据：size==0 时无流内字节（`None`）；size>0 时消费 size 字节
+/// 原样保留（截断报错）。
+fn read_blob_data(trial: &mut Reader<'_>, size: u32) -> io::Result<Option<Vec<u8>>> {
+    if size == 0 {
+        return Ok(None);
+    }
+    let data = trial.read_bytes(size as usize)?.to_vec();
+    Ok(Some(data))
+}
+
+/// Template（DisplayCore.dll `0x6eb87ad0`）体的已确认字段。
+#[derive(Debug, Clone, PartialEq)]
+pub struct TemplateBody10_1 {
+    /// 对象头键（样本中无实例）。
+    pub key: u32,
+    /// 体首 short 版本；>1 原生拒绝（版本常量 `DAT_6ec0b280`=1）。
+    pub version: u16,
+    /// double → this−0x94（间隔候选，语义未定）。
+    pub interval: f64,
+    /// 流内 int32 循环长度（标记数候选）。
+    pub mark_count: u32,
+    /// count × 16 字节（每标记 2 个 double：位置 + 角度候选，语义未定；
+    /// Save 槽 this−0x88 数组）。
+    pub marks: Vec<[f64; 2]>,
+}
+
+/// 从对象头之后的位置读取 10.1 Template 对象体，失败时不推进游标、不修改
+/// 登记表。
+///
+/// 起点约定：调用者已读取对象头、比对 [`TEMPLATE_CLASS_ID`] 并取得键
+/// `key`。体全部为标量，无停止点：要么完整消费，要么失败（截断 / 版本
+/// 超限 / 负或超限计数）。
+pub fn read_template_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<TemplateBody10_1> {
+    let _ = table; // Template 体无嵌套对象，登记表仅在签名上保持一致
+    let mut trial = reader.clone();
+    let entry_offset = trial.position();
+
+    let version = read_version_short(&mut trial, MAX_SYMBOL_VERSION, "Template", entry_offset)?;
+    let interval = trial.read_f64_le()?;
+    let mark_count = read_loop_count_10_1(&mut trial, max_bytes, "Template", entry_offset)?;
+    let mut marks = Vec::with_capacity((mark_count as usize).min(4096));
+    for _ in 0..mark_count {
+        let a = trial.read_f64_le()?;
+        let b = trial.read_f64_le()?;
+        marks.push([a, b]);
+    }
+
+    *reader = trial;
+    Ok(TemplateBody10_1 {
+        key,
+        version,
+        interval,
+        mark_count,
+        marks,
+    })
+}
+
+/// LineDecoration 元素数组中的单条目分类结果。
+#[derive(Debug, Clone, PartialEq)]
+pub enum LineDecorationElement10_1 {
+    /// 16 字节全零类标识：空引用。
+    Null,
+    /// 键已见：回引条目，无对象体。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 SimpleLineDecorationElement 对象（闭合体；体内停止经其 `stop`
+    /// 传播）。
+    Element(Box<SimpleLineDecorationElementBody10_1>),
+    /// 新对象但类标识不是 SimpleLineDecorationElement：游标已回退到该条目
+    /// 起点、登记表未保留该键。
+    Unsupported { class_id: [u8; 16], key: u32 },
+}
+
+/// LineDecoration（DisplayCore.dll `0x6eb5c640`）体的已确认字段。
+#[derive(Debug, Clone, PartialEq)]
+pub struct LineDecorationBody10_1 {
+    /// 对象头键（样本中无实例）。
+    pub key: u32,
+    /// 体首 short 版本；>1 原生拒绝（版本常量 `DAT_6ec0b2ec`=1）。
+    pub version: u16,
+    /// 流内 int32 循环长度（元素数候选）。
+    pub element_count: u32,
+    /// count × LoadObject（ILineDecorationElement `{533D88F2-…}` → 集合
+    /// this−0x1c）：仅 SimpleLineDecorationElement 体闭合，其余类 = 停止
+    /// （游标停在停止条目起点，已解析条目保留）。
+    pub elements: Vec<LineDecorationElement10_1>,
+    /// 停止原因；`None` = 体已完整消费。
+    pub stop: Option<SymbolStop10_1>,
+}
+
+/// 从对象头之后的位置读取 10.1 LineDecoration 对象体，失败时不推进游标、
+/// 不修改登记表。
+///
+/// 起点约定：调用者已读取对象头、比对 [`LINE_DECORATION_CLASS_ID`] 并取得
+/// 键 `key`。元素条目新对象且类标识为 SimpleLineDecorationElement 时递归
+/// 解析其体（符号槽经 [`read_display_symbol_slot_10_1`] 分派）；其余新类
+/// 是成功停止（游标停在该条目起点，其后条目不可达）。`depth` 为嵌套限额。
+pub fn read_line_decoration_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+    depth: usize,
+) -> io::Result<LineDecorationBody10_1> {
+    let mut trial = reader.clone();
+    let entry_offset = trial.position();
+    let mut staged = table.clone();
+
+    let version = read_version_short(
+        &mut trial,
+        MAX_SYMBOL_VERSION,
+        "LineDecoration",
+        entry_offset,
+    )?;
+    let element_count =
+        read_loop_count_10_1(&mut trial, max_bytes, "LineDecoration", entry_offset)?;
+    let mut elements = Vec::with_capacity((element_count as usize).min(4096));
+    let mut stop = None;
+    for _ in 0..element_count {
+        let origin = trial.clone();
+        let saved = staged.clone();
+        let mut forward = trial.clone();
+        let entry = read_object_entry_10_1(&mut forward, &mut staged)?;
+        let item = match entry {
+            ObjectEntry10_1::Null => LineDecorationElement10_1::Null,
+            ObjectEntry10_1::BackReference { class_id, key } => {
+                LineDecorationElement10_1::BackReference { class_id, key }
+            }
+            ObjectEntry10_1::NewObject { class_id, key } => {
+                if class_id == SIMPLE_LINE_DECORATION_ELEMENT_CLASS_ID {
+                    if depth == 0 {
+                        return Err(io::Error::new(
+                            ErrorKind::InvalidInput,
+                            format!(
+                                "LineDecoration 元素槽 offset 0x{:x}: 嵌套深度超过 \
+                                 读取器限额 {MAX_SYMBOL_NESTING_DEPTH}（防栈溢出，非原生限制）",
+                                origin.position()
+                            ),
+                        ));
+                    }
+                    let body = read_simple_line_decoration_element_body_10_1(
+                        &mut forward,
+                        max_bytes,
+                        &mut staged,
+                        key,
+                        depth - 1,
+                    )?;
+                    let item = LineDecorationElement10_1::Element(Box::new(body));
+                    // 体内容嵌套停止（其符号槽）→ 本层停止传播，循环中止。
+                    if let LineDecorationElement10_1::Element(b) = &item {
+                        if b.stop.is_some() {
+                            stop = Some(SymbolStop10_1::NestedIncomplete {
+                                class_id: SIMPLE_LINE_DECORATION_ELEMENT_CLASS_ID,
+                                key,
+                            });
+                        }
+                    }
+                    item
+                } else {
+                    // 其余 ILineDecorationElement 实现类体未闭合：回退该条目
+                    // 并停止。
+                    forward = origin;
+                    staged = saved;
+                    stop = Some(SymbolStop10_1::Slot {
+                        kind: DisplaySlotKind10_1::LineDecorationElement,
+                        class_id,
+                        key,
+                    });
+                    LineDecorationElement10_1::Unsupported { class_id, key }
+                }
+            }
+        };
+        elements.push(item);
+        trial = forward;
+        if stop.is_some() {
+            break;
+        }
+    }
+
+    *table = staged;
+    *reader = trial;
+    Ok(LineDecorationBody10_1 {
+        key,
+        version,
+        element_count,
+        elements,
+        stop,
+    })
+}
+
+/// SimpleLineDecorationElement（DisplayCore.dll `0x6eb84120`）体的已确认
+/// 字段。
+#[derive(Debug, Clone, PartialEq)]
+pub struct SimpleLineDecorationElementBody10_1 {
+    /// 对象头键（样本中无实例）。
+    pub key: u32,
+    /// 体首 short 版本；>1 原生拒绝（版本常量 `DAT_6ec0b290`=1）。
+    pub version: u16,
+    /// byte → this−0x18，语义未定。
+    pub byte_18: u8,
+    /// byte → this−0x17，语义未定。
+    pub byte_17: u8,
+    /// byte → this−0x16，语义未定。
+    pub byte_16: u8,
+    /// short → this−0x14，语义未定。
+    pub short_14: i16,
+    /// ISymbol 槽（Save 槽 this−0x24；标记符号候选）经
+    /// [`read_display_symbol_slot_10_1`] 分派。`None` = 槽位停止。
+    pub symbol: Option<SymbolSlotFull10_1>,
+    /// 流内 int32 循环长度（位置数候选）。
+    pub position_count: u32,
+    /// count × double（→ this−0x40 集合，位置候选）。`None` = 符号槽停止。
+    pub positions: Option<Vec<f64>>,
+    /// 停止原因；`None` = 体已完整消费。
+    pub stop: Option<SymbolStop10_1>,
+}
+
+/// 从对象头之后的位置读取 10.1 SimpleLineDecorationElement 对象体，失败时
+/// 不推进游标、不修改登记表。
+///
+/// 起点约定：调用者已读取对象头、比对
+/// [`SIMPLE_LINE_DECORATION_ELEMENT_CLASS_ID`] 并取得键 `key`。符号槽未知
+/// 类或嵌套体停止时其后的位置数组不可达（成功停止，游标停在停止点）。
+/// `depth` 为嵌套限额。
+pub fn read_simple_line_decoration_element_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+    depth: usize,
+) -> io::Result<SimpleLineDecorationElementBody10_1> {
+    let mut trial = reader.clone();
+    let entry_offset = trial.position();
+    let mut staged = table.clone();
+
+    let version = read_version_short(
+        &mut trial,
+        MAX_SYMBOL_VERSION,
+        "SimpleLineDecorationElement",
+        entry_offset,
+    )?;
+    let byte_18 = trial.read_bytes(1)?[0];
+    let byte_17 = trial.read_bytes(1)?[0];
+    let byte_16 = trial.read_bytes(1)?[0];
+    let short_14 = trial.read_u16_le()? as i16;
+    // ISymbol 槽（经符号类分派；⑤ 请求 IID `{F3435802}`）。
+    let (symbol, stop) = read_symbol_slot_with_kind_10_1(
+        &mut trial,
+        max_bytes,
+        &mut staged,
+        depth - 1,
+        DisplaySlotKind10_1::Symbol,
+    )?;
+    let mut position_count = 0;
+    let mut positions = None;
+    if stop.is_none() {
+        position_count = read_loop_count_10_1(
+            &mut trial,
+            max_bytes,
+            "SimpleLineDecorationElement",
+            entry_offset,
+        )?;
+        let mut values = Vec::with_capacity((position_count as usize).min(4096));
+        for _ in 0..position_count {
+            values.push(trial.read_f64_le()?);
+        }
+        positions = Some(values);
+    }
+
+    *table = staged;
+    *reader = trial;
+    Ok(SimpleLineDecorationElementBody10_1 {
+        key,
+        version,
+        byte_18,
+        byte_17,
+        byte_16,
+        short_14,
+        symbol: Some(symbol),
+        position_count,
+        positions,
+        stop,
+    })
+}
+
+/// MultiLayerLineSymbol（DisplayCore.dll `0x6eb68280`）体的已确认字段。
+#[derive(Debug, Clone, PartialEq)]
+pub struct MultiLayerLineSymbolBody10_1 {
+    /// 对象头键（样本中无实例）。
+    pub key: u32,
+    /// 体首 short 版本；>2 原生拒绝（Save 版本表 `DAT_6ec0b2c4`，10.1 写 2）。
+    pub version: u16,
+    /// int32 → this−0xc4，语义未定。
+    pub int32_c4: i32,
+    /// int32 → this−0xbc，语义未定。
+    pub int32_bc: i32,
+    /// 流内 int32 循环长度（层数候选）。
+    pub layer_count: u32,
+    /// count × LoadObject（ILineSymbol `{E6BDAA7D-…}`，Save 槽 this−0x74
+    /// 数组）经 [`read_display_symbol_slot_10_1`] 分派。未知层符号类 = 停止
+    /// （游标停在该层条目起点，已解析层保留，其后数组/串段不可达）。
+    pub layers: Vec<SymbolSlotFull10_1>,
+    /// count × int32（Save 槽 this−0x60 数组，语义未定）。`None` = 前置停止。
+    pub ints_60: Option<Vec<i32>>,
+    /// count × int32（Save 槽 this−0x4c 数组，语义未定）。`None` = 前置停止。
+    pub ints_4c: Option<Vec<i32>>,
+    /// 版本 ≥2 的 count × String（Save 槽 this−0x38 向量，语义未定）；
+    /// 版本 <2 无流内串段（原生内存补空串）。`None` = 前置停止。
+    pub strings: Option<Vec<String>>,
+    /// 停止原因；`None` = 体已完整消费。
+    pub stop: Option<SymbolStop10_1>,
+}
+
+/// 从对象头之后的位置读取 10.1 MultiLayerLineSymbol 对象体，失败时不推进
+/// 游标、不修改登记表。
+///
+/// 起点约定：调用者已读取对象头、比对 [`MULTI_LAYER_LINE_SYMBOL_CLASS_ID`]
+/// 并取得键 `key`。层槽新对象未知类或嵌套体停止时为成功停止（游标停在该
+/// 层条目起点）。版本 <2 的串段在流内不存在（原生补空串），读取器如实不
+/// 消费字节。`depth` 为嵌套限额。
+pub fn read_multi_layer_line_symbol_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+    depth: usize,
+) -> io::Result<MultiLayerLineSymbolBody10_1> {
+    let mut trial = reader.clone();
+    let entry_offset = trial.position();
+    let mut staged = table.clone();
+
+    let version = read_version_short(
+        &mut trial,
+        MAX_MULTI_LAYER_LINE_VERSION,
+        "MultiLayerLineSymbol",
+        entry_offset,
+    )?;
+    let int32_c4 = read_i32_le(&mut trial)?;
+    let int32_bc = read_i32_le(&mut trial)?;
+    let layer_count =
+        read_loop_count_10_1(&mut trial, max_bytes, "MultiLayerLineSymbol", entry_offset)?;
+    let mut layers = Vec::with_capacity((layer_count as usize).min(4096));
+    let mut stop = None;
+    for _ in 0..layer_count {
+        let (slot, inner) = read_symbol_slot_with_kind_10_1(
+            &mut trial,
+            max_bytes,
+            &mut staged,
+            depth - 1,
+            DisplaySlotKind10_1::LineSymbol,
+        )?;
+        layers.push(slot);
+        if let Some(inner) = inner {
+            stop = Some(inner);
+            break;
+        }
+    }
+    let mut ints_60 = None;
+    let mut ints_4c = None;
+    let mut strings = None;
+    if stop.is_none() {
+        ints_60 = Some(read_i32_vec(&mut trial, layer_count)?);
+        ints_4c = Some(read_i32_vec(&mut trial, layer_count)?);
+        if version as i16 >= 2 {
+            strings = Some(read_string_vec(&mut trial, max_bytes, layer_count)?);
+        }
+    }
+
+    *table = staged;
+    *reader = trial;
+    Ok(MultiLayerLineSymbolBody10_1 {
+        key,
+        version,
+        int32_c4,
+        int32_bc,
+        layer_count,
+        layers,
+        ints_60,
+        ints_4c,
+        strings,
+        stop,
+    })
+}
+
+/// MultiLayerMarkerSymbol（DisplayCore.dll `0x6eb6b010`）体的已确认字段。
+#[derive(Debug, Clone, PartialEq)]
+pub struct MultiLayerMarkerSymbolBody10_1 {
+    /// 对象头键（样本中无实例）。
+    pub key: u32,
+    /// 体首 short 版本；>3 原生拒绝（Save 版本表 `DAT_6ec0b2b8`，10.1 写 3）。
+    pub version: u16,
+    /// int32 → this−0x10c，语义未定。
+    pub int32_10c: i32,
+    /// int32 → this−0x104，语义未定。
+    pub int32_104: i32,
+    /// double → this−0x5c，语义未定（尺寸候选）。
+    pub double_5c: f64,
+    /// double → this−0x44，语义未定。
+    pub double_44: f64,
+    /// double → this−0x54，语义未定。
+    pub double_54: f64,
+    /// double → this−0x4c，语义未定。
+    pub double_4c: f64,
+    /// IColor 槽（Save 槽 this−0x3c）。`None` = 前置停止。
+    pub color: Option<ColorSlot10_1>,
+    /// int32 → this−0x34，语义未定。`None` = 前置停止。
+    pub int32_34: Option<i32>,
+    /// double → this−0x24，语义未定。`None` = 前置停止。
+    pub double_24: Option<f64>,
+    /// ISymbol 槽（Save 槽 this−0x30，语义候选）。`None` = 前置停止。
+    pub symbol: Option<SymbolSlotFull10_1>,
+    /// 流内 int32 循环长度（层数候选）。
+    pub layer_count: u32,
+    /// count × LoadObject（IMarkerSymbol `{E6BDAA7C-…}`，Save 槽 this−0xbc
+    /// 数组）。未知层符号类 = 停止。
+    pub layers: Vec<SymbolSlotFull10_1>,
+    /// count × int32（Save 槽 this−0xa8 数组）。`None` = 前置停止。
+    pub ints_a8: Option<Vec<i32>>,
+    /// count × int32（Save 槽 this−0x94 数组）。`None` = 前置停止。
+    pub ints_94: Option<Vec<i32>>,
+    /// 版本 ≥2 的 IMarkerBackground 槽（请求 IID `{AE41E4F0-DDE7-11D3-…}`，
+    /// Save 槽 this−0xc；实现类未闭合 = 停止）。`None` = 版本 <2 或前置停止。
+    pub marker_background: Option<UnclosedSlot10_1>,
+    /// 版本 ≥3 的 count × String（Save 槽 this−0x7c 向量）；版本 <3 无流内
+    /// 串段。`None` = 前置停止。
+    pub strings: Option<Vec<String>>,
+    /// 停止原因；`None` = 体已完整消费。
+    pub stop: Option<SymbolStop10_1>,
+}
+
+/// 从对象头之后的位置读取 10.1 MultiLayerMarkerSymbol 对象体，失败时不推进
+/// 游标、不修改登记表。
+///
+/// 起点约定：调用者已读取对象头、比对
+/// [`MULTI_LAYER_MARKER_SYMBOL_CLASS_ID`] 并取得键 `key`。版本 ≥2 的
+/// IMarkerBackground 槽新对象（实现类未闭合）为成功停止（其后的串段不可
+/// 达）；层槽停止传播。`depth` 为嵌套限额。
+pub fn read_multi_layer_marker_symbol_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+    depth: usize,
+) -> io::Result<MultiLayerMarkerSymbolBody10_1> {
+    let mut trial = reader.clone();
+    let entry_offset = trial.position();
+    let mut staged = table.clone();
+
+    let version = read_version_short(
+        &mut trial,
+        MAX_MULTI_LAYER_MARKER_VERSION,
+        "MultiLayerMarkerSymbol",
+        entry_offset,
+    )?;
+    let int32_10c = read_i32_le(&mut trial)?;
+    let int32_104 = read_i32_le(&mut trial)?;
+    let double_5c = trial.read_f64_le()?;
+    let double_44 = trial.read_f64_le()?;
+    let double_54 = trial.read_f64_le()?;
+    let double_4c = trial.read_f64_le()?;
+    // ⑧ IColor 槽（请求 IID `{20CD40B0}`）。
+    let color = Some(read_color_slot_10_1(&mut trial, max_bytes, &mut staged)?);
+    let mut stop = color_slot_stop(color.as_ref().unwrap());
+    let mut int32_34 = None;
+    let mut double_24 = None;
+    let mut symbol = None;
+    let mut layer_count = 0;
+    let mut layers = Vec::new();
+    let mut ints_a8 = None;
+    let mut ints_94 = None;
+    let mut marker_background = None;
+    let mut strings = None;
+    if stop.is_none() {
+        int32_34 = Some(read_i32_le(&mut trial)?);
+        double_24 = Some(trial.read_f64_le()?);
+        // ⑪ ISymbol 槽（请求 IID `{F3435802}`）。
+        let (slot, inner) = read_symbol_slot_with_kind_10_1(
+            &mut trial,
+            max_bytes,
+            &mut staged,
+            depth - 1,
+            DisplaySlotKind10_1::Symbol,
+        )?;
+        symbol = Some(slot);
+        stop = inner;
+    }
+    if stop.is_none() {
+        layer_count = read_loop_count_10_1(
+            &mut trial,
+            max_bytes,
+            "MultiLayerMarkerSymbol",
+            entry_offset,
+        )?;
+        for _ in 0..layer_count {
+            let (slot, inner) = read_symbol_slot_with_kind_10_1(
+                &mut trial,
+                max_bytes,
+                &mut staged,
+                depth - 1,
+                DisplaySlotKind10_1::MarkerSymbol,
+            )?;
+            layers.push(slot);
+            if let Some(inner) = inner {
+                stop = Some(inner);
+                break;
+            }
+        }
+    }
+    if stop.is_none() {
+        ints_a8 = Some(read_i32_vec(&mut trial, layer_count)?);
+        ints_94 = Some(read_i32_vec(&mut trial, layer_count)?);
+        if version as i16 >= 2 {
+            let (slot, inner) = read_unclosed_slot_10_1(
+                &mut trial,
+                &mut staged,
+                DisplaySlotKind10_1::MarkerBackground,
+            )?;
+            marker_background = slot;
+            if let Some(inner) = inner {
+                stop = Some(inner);
+            }
+        }
+    }
+    if stop.is_none() && version as i16 >= 3 {
+        strings = Some(read_string_vec(&mut trial, max_bytes, layer_count)?);
+    }
+
+    *table = staged;
+    *reader = trial;
+    Ok(MultiLayerMarkerSymbolBody10_1 {
+        key,
+        version,
+        int32_10c,
+        int32_104,
+        double_5c,
+        double_44,
+        double_54,
+        double_4c,
+        color,
+        int32_34,
+        double_24,
+        symbol,
+        layer_count,
+        layers,
+        ints_a8,
+        ints_94,
+        marker_background,
+        strings,
+        stop,
+    })
+}
+
+/// MultiLayerFillSymbol（DisplayCore.dll `0x6eb65af0`）体的已确认字段。
+#[derive(Debug, Clone, PartialEq)]
+pub struct MultiLayerFillSymbolBody10_1 {
+    /// 对象头键（样本中无实例）。
+    pub key: u32,
+    /// 体首 short 版本；>2 原生拒绝（Save 版本表 `DAT_6ec0b2d0`，10.1 写 2）。
+    pub version: u16,
+    /// int32 → this−0xb4，语义未定。
+    pub int32_b4: i32,
+    /// int32 → this−0xac，语义未定。
+    pub int32_ac: i32,
+    /// IColor 槽（Save 槽 this−0xc）。`None` = 前置停止。
+    pub color: Option<ColorSlot10_1>,
+    /// 流内 int32 循环长度（层数候选）。
+    pub layer_count: u32,
+    /// count × LoadObject（IFillSymbol `{E6BDAA7E-…}`，Save 槽 this−0x64
+    /// 数组）经 [`read_display_symbol_slot_10_1`] 分派。未知层符号类 = 停止。
+    pub layers: Vec<SymbolSlotFull10_1>,
+    /// count × int32（Save 槽 this−0x50 数组）。`None` = 前置停止。
+    pub ints_50: Option<Vec<i32>>,
+    /// count × int32（Save 槽 this−0x3c 数组）。`None` = 前置停止。
+    pub ints_3c: Option<Vec<i32>>,
+    /// 版本 ≥2 的 count × String（Save 槽 this−0x28 向量）；版本 <2 无流内
+    /// 串段。`None` = 前置停止。
+    pub strings: Option<Vec<String>>,
+    /// 停止原因；`None` = 体已完整消费。
+    pub stop: Option<SymbolStop10_1>,
+}
+
+/// 从对象头之后的位置读取 10.1 MultiLayerFillSymbol 对象体，失败时不推进
+/// 游标、不修改登记表。
+///
+/// 起点约定：调用者已读取对象头、比对
+/// [`MULTI_LAYER_FILL_SYMBOL_CLASS_ID`] 并取得键 `key`。层槽未知类或嵌套体
+/// 停止时为成功停止。`depth` 为嵌套限额。
+pub fn read_multi_layer_fill_symbol_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+    depth: usize,
+) -> io::Result<MultiLayerFillSymbolBody10_1> {
+    let mut trial = reader.clone();
+    let entry_offset = trial.position();
+    let mut staged = table.clone();
+
+    let version = read_version_short(
+        &mut trial,
+        MAX_MULTI_LAYER_FILL_VERSION,
+        "MultiLayerFillSymbol",
+        entry_offset,
+    )?;
+    let int32_b4 = read_i32_le(&mut trial)?;
+    let int32_ac = read_i32_le(&mut trial)?;
+    let color = Some(read_color_slot_10_1(&mut trial, max_bytes, &mut staged)?);
+    let mut stop = color_slot_stop(color.as_ref().unwrap());
+    let mut layer_count = 0;
+    let mut layers = Vec::new();
+    let mut ints_50 = None;
+    let mut ints_3c = None;
+    let mut strings = None;
+    if stop.is_none() {
+        layer_count =
+            read_loop_count_10_1(&mut trial, max_bytes, "MultiLayerFillSymbol", entry_offset)?;
+        for _ in 0..layer_count {
+            let (slot, inner) = read_symbol_slot_with_kind_10_1(
+                &mut trial,
+                max_bytes,
+                &mut staged,
+                depth - 1,
+                DisplaySlotKind10_1::FillSymbol,
+            )?;
+            layers.push(slot);
+            if let Some(inner) = inner {
+                stop = Some(inner);
+                break;
+            }
+        }
+    }
+    if stop.is_none() {
+        ints_50 = Some(read_i32_vec(&mut trial, layer_count)?);
+        ints_3c = Some(read_i32_vec(&mut trial, layer_count)?);
+        if version as i16 >= 2 {
+            strings = Some(read_string_vec(&mut trial, max_bytes, layer_count)?);
+        }
+    }
+
+    *table = staged;
+    *reader = trial;
+    Ok(MultiLayerFillSymbolBody10_1 {
+        key,
+        version,
+        int32_b4,
+        int32_ac,
+        color,
+        layer_count,
+        layers,
+        ints_50,
+        ints_3c,
+        strings,
+        stop,
+    })
+}
+
+/// CharacterMarkerSymbol（DisplayCore.dll `0x6eb9b150`）体的已确认字段。
+#[derive(Debug, Clone, PartialEq)]
+pub struct CharacterMarkerSymbolBody10_1 {
+    /// 对象头键（样本中无实例）。
+    pub key: u32,
+    /// 体首 short 版本；>4 原生拒绝（Save 版本表 `DAT_6ec0b270`，10.1 写 4）。
+    pub version: u16,
+    /// IColor 槽（→ this−0xc4）。`None` = 前置停止。
+    pub color: Option<ColorSlot10_1>,
+    /// int32 → this−0xc0，语义未定。
+    pub int32_c0: i32,
+    /// double → this−0xb4，语义未定（尺寸候选）。
+    pub double_b4: f64,
+    /// double → this−0xac，语义未定（X 偏移候选）。
+    pub double_ac: f64,
+    /// double → this−0xa4，语义未定（Y 偏移候选）。
+    pub double_a4: f64,
+    /// double → this−0x9c，语义未定（角度候选）。
+    pub double_9c: f64,
+    /// double → this−0x94，语义未定。
+    pub double_94: f64,
+    /// double → this−0x8c，语义未定。
+    pub double_8c: f64,
+    /// 版本 <3 的 IFontDisp 槽（请求 IID `{BEF6E002-A874-101A-8BBA-…}`，
+    /// Save 槽 this−0xbc；实现类 OLE StdFont 未闭合 = 停止）。`None` =
+    /// 版本 ≥3 或前置停止。
+    pub font_slot_v3: Option<UnclosedSlot10_1>,
+    /// int32 → this−0x124，语义未定。`None` = 前置停止。
+    pub int32_124: Option<i32>,
+    /// int32 → this−0x11c，语义未定。`None` = 前置停止。
+    pub int32_11c: Option<i32>,
+    /// 版本 >1 的 short → this−0x10c（读取后原生内存槽被
+    /// `Symbol::GetDefaultRotateWithTransformValue` 覆盖，流内值读取即弃；
+    /// 反汇编同 ArrowMarker）。`None` = 版本 ≤1 或前置停止。
+    pub short_10c: Option<i16>,
+    /// 版本 ≥3 的 String（字体名候选）。`None` = 版本 <3 或前置停止。
+    pub font_name: Option<String>,
+    /// 版本 ≥3 的 int32 ×4（字体描述符，语义候选 Size/Bold/Italic/
+    /// Underline 顺序未定）。`None` = 版本 <3 或前置停止。
+    pub font_ints_a: Option<[i32; 4]>,
+    /// 版本 ≥3 的 short ×2（语义候选 Weight/Charset 顺序未定）。
+    /// `None` = 版本 <3 或前置停止。
+    pub font_shorts: Option<[i16; 2]>,
+    /// 版本 ≥3 的 int32 ×2（语义候选 StrikeThrough/尺寸变体，未定）。
+    /// `None` = 版本 <3 或前置停止。
+    pub font_ints_b: Option<[i32; 2]>,
+    /// 版本 >3 的第二 IFontDisp 槽（Save 恒写同槽 this−0xbc 重写；实现类
+    /// 未闭合 = 停止）。`None` = 版本 ≤3 或前置停止。
+    pub font_slot_v5: Option<UnclosedSlot10_1>,
+    /// 停止原因；`None` = 体已完整消费。
+    pub stop: Option<SymbolStop10_1>,
+}
+
+/// 从对象头之后的位置读取 10.1 CharacterMarkerSymbol 对象体，失败时不推进
+/// 游标、不修改登记表。
+///
+/// 起点约定：调用者已读取对象头、比对
+/// [`CHARACTER_MARKER_SYMBOL_CLASS_ID`] 并取得键 `key`。颜色槽 / 字体槽
+/// （版本 <3 或 >3）新对象未知类为成功停止。版本分支（<3 字体对象 /
+/// ≥3 字体描述符 / >3 字体对象重写）按反编译如实覆盖。
+pub fn read_character_marker_symbol_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<CharacterMarkerSymbolBody10_1> {
+    let mut trial = reader.clone();
+    let entry_offset = trial.position();
+    let mut staged = table.clone();
+
+    let version = read_version_short(
+        &mut trial,
+        MAX_CHARACTER_MARKER_VERSION,
+        "CharacterMarkerSymbol",
+        entry_offset,
+    )?;
+    // ② IColor 槽（请求 IID `{20CD40B0}` → this−0xc4）。
+    let color = Some(read_color_slot_10_1(&mut trial, max_bytes, &mut staged)?);
+    let mut stop = color_slot_stop(color.as_ref().unwrap());
+    // ③ helper 不读流；④-⑨ 标量段（颜色槽停止时不可达）。
+    let mut int32_c0 = 0;
+    let mut double_b4 = 0.0;
+    let mut double_ac = 0.0;
+    let mut double_a4 = 0.0;
+    let mut double_9c = 0.0;
+    let mut double_94 = 0.0;
+    let mut double_8c = 0.0;
+    let mut font_slot_v3 = None;
+    let mut int32_124 = None;
+    let mut int32_11c = None;
+    let mut short_10c = None;
+    let mut font_name = None;
+    let mut font_ints_a = None;
+    let mut font_shorts = None;
+    let mut font_ints_b = None;
+    let mut font_slot_v5 = None;
+    if stop.is_none() {
+        int32_c0 = read_i32_le(&mut trial)?;
+        double_b4 = trial.read_f64_le()?;
+        double_ac = trial.read_f64_le()?;
+        double_a4 = trial.read_f64_le()?;
+        double_9c = trial.read_f64_le()?;
+        double_94 = trial.read_f64_le()?;
+        double_8c = trial.read_f64_le()?;
+        // ⑩ 版本 <3 的 IFontDisp 槽。
+        if (version as i16) < 3 {
+            let (slot, inner) =
+                read_unclosed_slot_10_1(&mut trial, &mut staged, DisplaySlotKind10_1::Font)?;
+            font_slot_v3 = slot;
+            if let Some(inner) = inner {
+                stop = Some(inner);
+            }
+        }
+    }
+    if stop.is_none() {
+        int32_124 = Some(read_i32_le(&mut trial)?);
+        int32_11c = Some(read_i32_le(&mut trial)?);
+        if version as i16 > 1 {
+            // short 读取后原生覆盖内存槽（GetDefaultRotateWithTransformValue），
+            // 流内位模式原样保留。
+            short_10c = Some(trial.read_u16_le()? as i16);
+        }
+        if version as i16 >= 3 {
+            font_name = Some(read_string_10_1(&mut trial, max_bytes)?);
+            let mut a = [0_i32; 4];
+            for slot in a.iter_mut() {
+                *slot = read_i32_le(&mut trial)?;
+            }
+            font_ints_a = Some(a);
+            let s1 = trial.read_u16_le()? as i16;
+            let s2 = trial.read_u16_le()? as i16;
+            font_shorts = Some([s1, s2]);
+            let b1 = read_i32_le(&mut trial)?;
+            let b2 = read_i32_le(&mut trial)?;
+            font_ints_b = Some([b1, b2]);
+        }
+        if version as i16 > 3 {
+            let (slot, inner) =
+                read_unclosed_slot_10_1(&mut trial, &mut staged, DisplaySlotKind10_1::Font)?;
+            font_slot_v5 = slot;
+            if let Some(inner) = inner {
+                stop = Some(inner);
+            }
+        }
+    }
+
+    *table = staged;
+    *reader = trial;
+    Ok(CharacterMarkerSymbolBody10_1 {
+        key,
+        version,
+        color,
+        int32_c0,
+        double_b4,
+        double_ac,
+        double_a4,
+        double_9c,
+        double_94,
+        double_8c,
+        font_slot_v3,
+        int32_124,
+        int32_11c,
+        short_10c,
+        font_name,
+        font_ints_a,
+        font_shorts,
+        font_ints_b,
+        font_slot_v5,
+        stop,
+    })
+}
+
+/// PictureMarkerSymbol 图像块的版本 9 分类结果。
+#[derive(Debug, Clone, PartialEq)]
+pub enum PictureImagePayload10_1 {
+    /// 类型 1：String（图像路径候选）+ double（→ this−0xac）。
+    Path { path: String, double_value: f64 },
+    /// 类型 2：int32 N（全局内存块尺寸候选）；N≠0 时其后 N 字节原始数据
+    /// （反汇编核实 `0x6eb7a7b5`/`0x6eb7a7de`：尺寸即首 int32，条件读取）。
+    Blob { size: u32, data: Option<Vec<u8>> },
+    /// 类型 3：LoadObject（IPicture `{7BF80980-BF32-101A-8BBB-…}` → 槽
+    /// this−0x88；实现类未闭合 = 停止）。
+    Picture(UnclosedSlot10_1),
+}
+
+/// PictureMarkerSymbol 图像块的版本 ≤8 历史路径分类结果。
+#[derive(Debug, Clone, PartialEq)]
+pub struct PictureImageLegacy10_1 {
+    /// 版本 <4 的第一个 IPicture 槽（请求 IID `{7BF80980}`）。`None` =
+    /// 版本 ≥4、槽位停止或未达。
+    pub picture_a: Option<UnclosedSlot10_1>,
+    /// 版本 ≤6 的第二个 IPicture 槽；版本 ≥7 且路径串为空时同样读此槽。
+    /// `None` = 版本 ≥7 且路径非空、槽位停止或未达。
+    pub picture_b: Option<UnclosedSlot10_1>,
+    /// 版本 ≥7 的 String（图像路径候选）；版本 ≤6 为空。`None` = 前置停止。
+    pub path: Option<String>,
+    /// 版本 ≥7 且路径非空时的 double（→ +0xf8）。`None` = 前置停止或路径空。
+    pub path_double: Option<f64>,
+    /// 版本 ==6 的第二个 String。`None` = 版本 ≠6 或前置停止。
+    pub string6: Option<String>,
+    /// 版本 ==6 的 byte。`None` = 版本 ≠6 或前置停止。
+    pub byte6: Option<u8>,
+    /// 版本 ==6 的 double（→ +0xf8）。`None` = 版本 ≠6 或前置停止。
+    pub double6: Option<f64>,
+    /// 版本 >7（v8）的 int32 N（位图数据尺寸候选）。`None` = 版本 ≤7 或
+    /// 前置停止。
+    pub blob_size: Option<u32>,
+    /// 版本 8 的 N 字节原始数据（N≠0 时存在）。`None` = N==0、版本 ≤7 或
+    /// 前置停止。
+    pub blob_data: Option<Vec<u8>>,
+}
+
+/// PictureMarkerSymbol 图像块（版本分支收拢）。
+#[derive(Debug, Clone, PartialEq)]
+pub enum PictureImage10_1 {
+    /// 版本 9 的图像块：int32 图像类型（1/2/3，越界拒绝 `0x80004005`）→
+    /// int32（→ this−0x10）→ 类型分支载荷。载荷为 `None` = 类型 3 的
+    /// IPicture 槽停止（游标停在槽位起点）。
+    V9 {
+        image_type: u32,
+        aux_int32: i32,
+        payload: Option<PictureImagePayload10_1>,
+    },
+    /// 版本 ≤8 的历史路径（各版本门如实覆盖）。
+    Legacy(Box<PictureImageLegacy10_1>),
+}
+
+/// PictureMarkerSymbol（DisplayCore.dll `0x6eb7a650`）体的已确认字段。
+#[derive(Debug, Clone, PartialEq)]
+pub struct PictureMarkerSymbolBody10_1 {
+    /// 对象头键（样本中无实例）。
+    pub key: u32,
+    /// 体首 short 版本；>9 原生拒绝（Save 版本表 `DAT_6ec0b29c`，10.1 写 9）。
+    pub version: u16,
+    /// 图像块（版本 9 分支 / 版本 ≤8 历史路径）。体内槽位停止时保留已读
+    /// 前缀（`stop` 携带原因）。
+    pub image: PictureImage10_1,
+    /// IColor 槽 ×3（Save 侧三连 SaveObject；语义候选填充/透明/背景色）。
+    /// 第 i 项为 `None` = 在该槽停止或未达。
+    pub colors: [Option<ColorSlot10_1>; 3],
+    /// double ×6（→ this−0xdc/−0xc4/−0xbc/−0xb4/−0xd4/−0xcc，语义未定）。
+    /// `None` = 前置停止。
+    pub doubles: Option<[f64; 6]>,
+    /// int32 ×2（→ this−0x14c/−0x144，语义未定）。`None` = 前置停止。
+    pub int32s: Option<[i32; 2]>,
+    /// byte → this−0x48（bool，语义未定）。`None` = 前置停止。
+    pub byte_48: Option<u8>,
+    /// short → this−0x134（读取后原生内存槽被
+    /// `Symbol::GetDefaultRotateWithTransformValue` 覆盖，流内值读取即弃）。
+    /// `None` = 前置停止。
+    pub short_134: Option<i16>,
+    /// short ×3 → this−0x20/−0x1e/−0x1c，语义未定。`None` = 前置停止。
+    pub shorts: Option<[i16; 3]>,
+    /// 停止原因；`None` = 体已完整消费。
+    pub stop: Option<SymbolStop10_1>,
+}
+
+/// 从对象头之后的位置读取 10.1 PictureMarkerSymbol 对象体，失败时不推进
+/// 游标、不修改登记表。
+///
+/// 起点约定：调用者已读取对象头、比对
+/// [`PICTURE_MARKER_SYMBOL_CLASS_ID`] 并取得键 `key`。版本 ≤8 走历史路径
+/// （`FUN_6eb7d750`，各版本门如实覆盖），版本 ==9 走图像类型分支；IPicture
+/// 槽实现类未闭合 = 停止点，颜色槽未知类 = 停止。位图 blob 尺寸以
+/// `max_bytes` 设上限（读取器自身限额，非原生限制）。
+pub fn read_picture_marker_symbol_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<PictureMarkerSymbolBody10_1> {
+    let mut trial = reader.clone();
+    let entry_offset = trial.position();
+    let mut staged = table.clone();
+    let invalid = |reason: String| {
+        io::Error::new(
+            ErrorKind::InvalidData,
+            format!("PictureMarkerSymbol 对象体 offset 0x{entry_offset:x}: {reason}"),
+        )
+    };
+
+    let version = read_version_short(
+        &mut trial,
+        MAX_PICTURE_MARKER_VERSION,
+        "PictureMarkerSymbol",
+        entry_offset,
+    )?;
+    let mut stop = None;
+
+    // 图像块：版本 ≤8 历史路径 / 版本 9 分支。槽位停止记入 `stop`，共享
+    // 尾段与附属段跳过（游标停在停止点）。
+    let mut image = if version == 9 {
+        let image_type_raw = read_i32_le(&mut trial)?;
+        if ![1, 2, 3].contains(&image_type_raw) {
+            return Err(invalid(format!(
+                "图像类型 {image_type_raw} 不在 1/2/3（原生拒绝 0x80004005）"
+            )));
+        }
+        let aux_int32 = read_i32_le(&mut trial)?;
+        let payload = match image_type_raw {
+            1 => {
+                let path = read_string_10_1(&mut trial, max_bytes)?;
+                let double_value = trial.read_f64_le()?;
+                Some(PictureImagePayload10_1::Path { path, double_value })
+            }
+            2 => {
+                let size = read_blob_size(&mut trial, max_bytes, entry_offset)?;
+                let data = read_blob_data(&mut trial, size)?;
+                Some(PictureImagePayload10_1::Blob { size, data })
+            }
+            _ => {
+                let (slot, inner) =
+                    read_unclosed_slot_10_1(&mut trial, &mut staged, DisplaySlotKind10_1::Picture)?;
+                if let Some(inner) = inner {
+                    stop = Some(inner);
+                }
+                slot.map(PictureImagePayload10_1::Picture)
+            }
+        };
+        PictureImage10_1::V9 {
+            image_type: image_type_raw as u32,
+            aux_int32,
+            payload,
+        }
+    } else {
+        let mut legacy = PictureImageLegacy10_1 {
+            picture_a: None,
+            picture_b: None,
+            path: None,
+            path_double: None,
+            string6: None,
+            byte6: None,
+            double6: None,
+            blob_size: None,
+            blob_data: None,
+        };
+        if version <= 6 {
+            // 版本 <4：第一个 IPicture 槽。
+            if version < 4 {
+                let (slot, inner) =
+                    read_unclosed_slot_10_1(&mut trial, &mut staged, DisplaySlotKind10_1::Picture)?;
+                if let Some(inner) = inner {
+                    stop = Some(inner);
+                }
+                legacy.picture_a = slot;
+            }
+            if stop.is_none() {
+                let (slot, inner) =
+                    read_unclosed_slot_10_1(&mut trial, &mut staged, DisplaySlotKind10_1::Picture)?;
+                if let Some(inner) = inner {
+                    stop = Some(inner);
+                }
+                legacy.picture_b = slot;
+            }
+        } else {
+            // 版本 ≥7：String +（串空 → IPicture 槽 / 串非空 → double）。
+            let path = read_string_10_1(&mut trial, max_bytes)?;
+            legacy.path = Some(path.clone());
+            if path.is_empty() {
+                let (slot, inner) =
+                    read_unclosed_slot_10_1(&mut trial, &mut staged, DisplaySlotKind10_1::Picture)?;
+                if let Some(inner) = inner {
+                    stop = Some(inner);
+                }
+                legacy.picture_b = slot;
+            } else {
+                legacy.path_double = Some(trial.read_f64_le()?);
+            }
+        }
+        PictureImage10_1::Legacy(Box::new(legacy))
+    };
+
+    // 共享尾段：IColor ×3 → double ×6 → int32 ×2 → byte → short → short ×3
+    //（图像槽已停止时全部跳过）。
+    let mut colors = [None, None, None];
+    for color_slot in colors.iter_mut() {
+        if stop.is_some() {
+            break;
+        }
+        let slot = read_color_slot_10_1(&mut trial, max_bytes, &mut staged)?;
+        let inner = color_slot_stop(&slot);
+        *color_slot = Some(slot);
+        if let Some(inner) = inner {
+            stop = Some(inner);
+        }
+    }
+    let mut doubles = None;
+    let mut int32s = None;
+    let mut byte_48 = None;
+    let mut short_134 = None;
+    let mut shorts = None;
+    if stop.is_none() {
+        let mut values = [0_f64; 6];
+        for slot in values.iter_mut() {
+            *slot = trial.read_f64_le()?;
+        }
+        doubles = Some(values);
+        let a = read_i32_le(&mut trial)?;
+        let b = read_i32_le(&mut trial)?;
+        int32s = Some([a, b]);
+        // 尾段版本门：版本 9 恒有；历史路径 byte >1、short >2、short ×3 >4。
+        if version == 9 || version > 1 {
+            byte_48 = Some(trial.read_bytes(1)?[0]);
+        }
+        if version == 9 || version > 2 {
+            short_134 = Some(trial.read_u16_le()? as i16);
+        }
+        if version == 9 || version > 4 {
+            let s1 = trial.read_u16_le()? as i16;
+            let s2 = trial.read_u16_le()? as i16;
+            let s3 = trial.read_u16_le()? as i16;
+            shorts = Some([s1, s2, s3]);
+        }
+    }
+
+    // 版本 ≤8 的图像附属段（历史路径，位于共享尾段之后）：版本 ==6 的
+    // String + byte + double；版本 >7（v8）的 int32 N +（N≠0 时 N 字节）。
+    if stop.is_none() && version <= 8 {
+        if let PictureImage10_1::Legacy(legacy) = &mut image {
+            if version == 6 {
+                legacy.string6 = Some(read_string_10_1(&mut trial, max_bytes)?);
+                legacy.byte6 = Some(trial.read_bytes(1)?[0]);
+                legacy.double6 = Some(trial.read_f64_le()?);
+            }
+            if version > 7 {
+                let size = read_blob_size(&mut trial, max_bytes, entry_offset)?;
+                legacy.blob_size = Some(size);
+                legacy.blob_data = read_blob_data(&mut trial, size)?;
+            }
+        }
+    }
+
+    *table = staged;
+    *reader = trial;
+    Ok(PictureMarkerSymbolBody10_1 {
+        key,
+        version,
+        image,
+        colors,
+        doubles,
+        int32s,
+        byte_48,
+        short_134,
+        shorts,
+        stop,
+    })
+}
+
+/// PictureLineSymbol（DisplayCore.dll `0x6eb77250`）体的已确认字段。
+#[derive(Debug, Clone, PartialEq)]
+pub struct PictureLineSymbolBody10_1 {
+    /// 对象头键（样本中无实例）。
+    pub key: u32,
+    /// 体首 short 版本；>1 原生拒绝（版本常量 `DAT_6ec0b2a8`=1）。
+    pub version: u16,
+    /// byte → this−0x30（bool，语义未定）。
+    pub byte_30: u8,
+    /// double → this−0x2c，语义未定。
+    pub double_2c: f64,
+    /// double → this−0x24，语义未定。
+    pub double_24: f64,
+    /// IPictureFillSymbol 槽（请求 IID `{D842B081-330C-11D2-…}`，Save 槽
+    /// this−0x14；实现类 PictureFillSymbol 未闭合 = 停止）。
+    /// `None` = 槽位停止。
+    pub picture_fill_symbol: Option<UnclosedSlot10_1>,
+    /// 停止原因；`None` = 体已完整消费。
+    pub stop: Option<SymbolStop10_1>,
+}
+
+/// 从对象头之后的位置读取 10.1 PictureLineSymbol 对象体，失败时不推进游标、
+/// 不修改登记表。
+///
+/// 起点约定：调用者已读取对象头、比对 [`PICTURE_LINE_SYMBOL_CLASS_ID`] 并
+/// 取得键 `key`。图像填充符号槽新对象（实现类未闭合）为成功停止。
+pub fn read_picture_line_symbol_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<PictureLineSymbolBody10_1> {
+    let _ = max_bytes; // 体无字符串字段；图像填充槽未闭合，不消费字节
+    let mut trial = reader.clone();
+    let entry_offset = trial.position();
+    let mut staged = table.clone();
+
+    let version = read_version_short(
+        &mut trial,
+        MAX_SYMBOL_VERSION,
+        "PictureLineSymbol",
+        entry_offset,
+    )?;
+    let byte_30 = trial.read_bytes(1)?[0];
+    let double_2c = trial.read_f64_le()?;
+    let double_24 = trial.read_f64_le()?;
+    let (slot, stop) = read_unclosed_slot_10_1(
+        &mut trial,
+        &mut staged,
+        DisplaySlotKind10_1::PictureFillSymbol,
+    )?;
+
+    *table = staged;
+    *reader = trial;
+    Ok(PictureLineSymbolBody10_1 {
+        key,
+        version,
+        byte_30,
+        double_2c,
+        double_24,
+        picture_fill_symbol: slot,
+        stop,
+    })
+}
+
+/// ArrowMarkerSymbol（DisplayCore.dll `0x6eb3ec40`）体的已确认字段。
+#[derive(Debug, Clone, PartialEq)]
+pub struct ArrowMarkerSymbolBody10_1 {
+    /// 对象头键（样本中无实例）。
+    pub key: u32,
+    /// 体首 short 版本；>2 原生拒绝（版本常量 `DAT_6ec0b314`=2）。
+    pub version: u16,
+    /// IColor 槽（→ this−0x40）。`None` = 前置停止。
+    pub color: Option<ColorSlot10_1>,
+    /// double → this−0x8c，语义未定（尺寸候选）。
+    pub double_8c: f64,
+    /// double → this−0x7c，语义未定（宽度候选）。
+    pub double_7c: f64,
+    /// double → this−0x6c，语义未定（长度候选）。
+    pub double_6c: f64,
+    /// int32 → this−0x64，语义未定（样式候选）。
+    pub int32_64: i32,
+    /// int32 → this−0xdc，语义未定。
+    pub int32_dc: i32,
+    /// int32 → this−0xd4，语义未定。
+    pub int32_d4: i32,
+    /// double → this−0x2c，语义未定。
+    pub double_2c: f64,
+    /// double → this−0x24，语义未定。
+    pub double_24: f64,
+    /// 版本 ≥2 的 short → this−0xc4。读取后原生内存槽被
+    /// `Symbol::GetDefaultRotateWithTransformValue` 覆盖（反汇编
+    /// `0x6eb3edde..0x6eb3edf0`：读入 → 无条件覆写，流内值读取即弃），
+    /// Save 恒写版本 2 并写槽内默认值。读取器保留流内位模式。`None` =
+    /// 版本 ≤1 或前置停止。
+    pub short_c4: Option<i16>,
+    /// 停止原因；`None` = 体已完整消费。
+    pub stop: Option<SymbolStop10_1>,
+}
+
+/// 从对象头之后的位置读取 10.1 ArrowMarkerSymbol 对象体，失败时不推进游标、
+/// 不修改登记表。
+///
+/// 起点约定：调用者已读取对象头、比对 [`ARROW_MARKER_SYMBOL_CLASS_ID`] 并
+/// 取得键 `key`。颜色槽新对象未知类为成功停止（标量段不可达）。
+pub fn read_arrow_marker_symbol_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<ArrowMarkerSymbolBody10_1> {
+    let mut trial = reader.clone();
+    let entry_offset = trial.position();
+    let mut staged = table.clone();
+
+    let version = read_version_short(
+        &mut trial,
+        MAX_ARROW_MARKER_VERSION,
+        "ArrowMarkerSymbol",
+        entry_offset,
+    )?;
+    let color = Some(read_color_slot_10_1(&mut trial, max_bytes, &mut staged)?);
+    let stop = color_slot_stop(color.as_ref().unwrap());
+    // ③ helper 不读流；④-⑪ 标量段。
+    let mut double_8c = 0.0;
+    let mut double_7c = 0.0;
+    let mut double_6c = 0.0;
+    let mut int32_64 = 0;
+    let mut int32_dc = 0;
+    let mut int32_d4 = 0;
+    let mut double_2c = 0.0;
+    let mut double_24 = 0.0;
+    let mut short_c4 = None;
+    if stop.is_none() {
+        double_8c = trial.read_f64_le()?;
+        double_7c = trial.read_f64_le()?;
+        double_6c = trial.read_f64_le()?;
+        int32_64 = read_i32_le(&mut trial)?;
+        int32_dc = read_i32_le(&mut trial)?;
+        int32_d4 = read_i32_le(&mut trial)?;
+        double_2c = trial.read_f64_le()?;
+        double_24 = trial.read_f64_le()?;
+        if version as i16 >= 2 {
+            short_c4 = Some(trial.read_u16_le()? as i16);
+        }
+    }
+
+    *table = staged;
+    *reader = trial;
+    Ok(ArrowMarkerSymbolBody10_1 {
+        key,
+        version,
+        color,
+        double_8c,
+        double_7c,
+        double_6c,
+        int32_64,
+        int32_dc,
+        int32_d4,
+        double_2c,
+        double_24,
+        short_c4,
+        stop,
+    })
+}
+
+/// LineFillSymbol（DisplayCore.dll `0x6eb5e390`）体的已确认字段。
+#[derive(Debug, Clone, PartialEq)]
+pub struct LineFillSymbolBody10_1 {
+    /// 对象头键（样本中无实例）。
+    pub key: u32,
+    /// 体首 short 版本；>1 原生拒绝（版本常量 `DAT_6ec0b2e8`=1）。
+    pub version: u16,
+    /// IColor 槽（→ this−0x6c，语义候选：线颜色）。`None` = 前置停止。
+    pub color: Option<ColorSlot10_1>,
+    /// ISymbol 槽 #1（Save 槽 this−0x74，语义候选：填充线符号）。
+    /// `None` = 前置停止。
+    pub symbol_a: Option<SymbolSlotFull10_1>,
+    /// ISymbol 槽 #2（Save 槽 this−0x70，语义候选：轮廓符号）。
+    /// `None` = 前置停止。
+    pub symbol_b: Option<SymbolSlotFull10_1>,
+    /// double ×3（→ this−0x64/−0x5c/−0x54，语义候选角度/偏移/间隔）。
+    /// `None` = 前置停止。
+    pub doubles: Option<[f64; 3]>,
+    /// int32 → this−0xc4，语义未定。`None` = 前置停止。
+    pub int32_c4: Option<i32>,
+    /// int32 → this−0xbc，语义未定。`None` = 前置停止。
+    pub int32_bc: Option<i32>,
+    /// 停止原因；`None` = 体已完整消费。
+    pub stop: Option<SymbolStop10_1>,
+}
+
+/// 从对象头之后的位置读取 10.1 LineFillSymbol 对象体，失败时不推进游标、
+/// 不修改登记表。
+///
+/// 起点约定：调用者已读取对象头、比对 [`LINE_FILL_SYMBOL_CLASS_ID`] 并取得
+/// 键 `key`。两个 ISymbol 槽与颜色槽未知类或嵌套体停止时为成功停止。
+/// `depth` 为嵌套限额。
+pub fn read_line_fill_symbol_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+    depth: usize,
+) -> io::Result<LineFillSymbolBody10_1> {
+    let mut trial = reader.clone();
+    let entry_offset = trial.position();
+    let mut staged = table.clone();
+
+    let version = read_version_short(
+        &mut trial,
+        MAX_SYMBOL_VERSION,
+        "LineFillSymbol",
+        entry_offset,
+    )?;
+    let color = Some(read_color_slot_10_1(&mut trial, max_bytes, &mut staged)?);
+    let mut stop = color_slot_stop(color.as_ref().unwrap());
+    let mut symbol_a = None;
+    let mut symbol_b = None;
+    let mut doubles = None;
+    let mut int32_c4 = None;
+    let mut int32_bc = None;
+    for field in 0..2usize {
+        if stop.is_some() {
+            break;
+        }
+        let (slot, inner) = read_symbol_slot_with_kind_10_1(
+            &mut trial,
+            max_bytes,
+            &mut staged,
+            depth - 1,
+            DisplaySlotKind10_1::Symbol,
+        )?;
+        if field == 0 {
+            symbol_a = Some(slot);
+        } else {
+            symbol_b = Some(slot);
+        }
+        stop = inner;
+    }
+    if stop.is_none() {
+        let mut values = [0_f64; 3];
+        for slot in values.iter_mut() {
+            *slot = trial.read_f64_le()?;
+        }
+        doubles = Some(values);
+        int32_c4 = Some(read_i32_le(&mut trial)?);
+        int32_bc = Some(read_i32_le(&mut trial)?);
+    }
+
+    *table = staged;
+    *reader = trial;
+    Ok(LineFillSymbolBody10_1 {
+        key,
+        version,
+        color,
+        symbol_a,
+        symbol_b,
+        doubles,
+        int32_c4,
+        int32_bc,
+        stop,
+    })
+}
+
+/// MarkerFillSymbol（DisplayCore.dll `0x6eb606c0`）体的已确认字段。
+#[derive(Debug, Clone, PartialEq)]
+pub struct MarkerFillSymbolBody10_1 {
+    /// 对象头键（样本中无实例）。
+    pub key: u32,
+    /// 体首 short 版本；>1 原生拒绝（版本常量 `DAT_6ec0b2e4`=1）。
+    pub version: u16,
+    /// int32 → this−0x7c（样式候选），语义未定。
+    pub int32_7c: i32,
+    /// double → this−0x74，语义未定（X 间隔候选）。
+    pub double_74: f64,
+    /// double → this−0x6c，语义未定（Y 间隔候选）。
+    pub double_6c: f64,
+    /// double → this−0x64，语义未定（X 偏移候选）。
+    pub double_64: f64,
+    /// double → this−0x5c，语义未定（Y 偏移候选）。
+    pub double_5c: f64,
+    /// IColor 槽（Save 槽 this−0x34，语义候选：标记底色）。`None` = 前置停止。
+    pub color: Option<ColorSlot10_1>,
+    /// ISymbol 槽 #1（Save 槽 this−0x80，语义候选：标记符号）。`None` =
+    /// 前置停止。
+    pub symbol_a: Option<SymbolSlotFull10_1>,
+    /// ISymbol 槽 #2（Save 槽 this−0x30，语义候选：轮廓符号）。`None` =
+    /// 前置停止。
+    pub symbol_b: Option<SymbolSlotFull10_1>,
+    /// int32 ×2（→ this−0xd4/−0xcc，语义未定）。`None` = 前置停止。
+    pub int32s: Option<[i32; 2]>,
+    /// double → this−0xc，语义未定（网格角候选）。`None` = 前置停止。
+    pub double_c: Option<f64>,
+    /// 停止原因；`None` = 体已完整消费。
+    pub stop: Option<SymbolStop10_1>,
+}
+
+/// 从对象头之后的位置读取 10.1 MarkerFillSymbol 对象体，失败时不推进游标、
+/// 不修改登记表。
+///
+/// 起点约定：调用者已读取对象头、比对 [`MARKER_FILL_SYMBOL_CLASS_ID`] 并
+/// 取得键 `key`。颜色/双符号槽未知类或嵌套体停止时为成功停止。`depth` 为
+/// 嵌套限额。
+pub fn read_marker_fill_symbol_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+    depth: usize,
+) -> io::Result<MarkerFillSymbolBody10_1> {
+    let mut trial = reader.clone();
+    let entry_offset = trial.position();
+    let mut staged = table.clone();
+
+    let version = read_version_short(
+        &mut trial,
+        MAX_SYMBOL_VERSION,
+        "MarkerFillSymbol",
+        entry_offset,
+    )?;
+    let int32_7c = read_i32_le(&mut trial)?;
+    let double_74 = trial.read_f64_le()?;
+    let double_6c = trial.read_f64_le()?;
+    let double_64 = trial.read_f64_le()?;
+    let double_5c = trial.read_f64_le()?;
+    let color = Some(read_color_slot_10_1(&mut trial, max_bytes, &mut staged)?);
+    let mut stop = color_slot_stop(color.as_ref().unwrap());
+    let mut symbol_a = None;
+    let mut symbol_b = None;
+    let mut int32s = None;
+    let mut double_c = None;
+    for field in 0..2usize {
+        if stop.is_some() {
+            break;
+        }
+        let (slot, inner) = read_symbol_slot_with_kind_10_1(
+            &mut trial,
+            max_bytes,
+            &mut staged,
+            depth - 1,
+            DisplaySlotKind10_1::Symbol,
+        )?;
+        if field == 0 {
+            symbol_a = Some(slot);
+        } else {
+            symbol_b = Some(slot);
+        }
+        stop = inner;
+    }
+    if stop.is_none() {
+        let a = read_i32_le(&mut trial)?;
+        let b = read_i32_le(&mut trial)?;
+        int32s = Some([a, b]);
+        double_c = Some(trial.read_f64_le()?);
+    }
+
+    *table = staged;
+    *reader = trial;
+    Ok(MarkerFillSymbolBody10_1 {
+        key,
+        version,
+        int32_7c,
+        double_74,
+        double_6c,
+        double_64,
+        double_5c,
+        color,
+        symbol_a,
+        symbol_b,
+        int32s,
+        double_c,
+        stop,
+    })
+}
+
+/// GradientFillSymbol（DisplayCore.dll `0x6eb52710`）体的已确认字段。
+#[derive(Debug, Clone, PartialEq)]
+pub struct GradientFillSymbolBody10_1 {
+    /// 对象头键（样本中无实例）。
+    pub key: u32,
+    /// 体首 short 版本；>1 原生拒绝（版本常量 `DAT_6ec0b2f8`=1）。
+    pub version: u16,
+    /// IColorRamp 槽（请求 IID `{BEB87091-C0B4-11D0-8379-…}` → this−0x4c；
+    /// 实现类 RandomColorRamp 等未闭合 = 停止）。`None` = 槽位停止。
+    pub color_ramp: Option<UnclosedSlot10_1>,
+    /// IColor 槽（Save 槽 this−0x34，语义候选：渐变起色）。`None` = 前置停止。
+    pub color: Option<ColorSlot10_1>,
+    /// ISymbol 槽（Save 槽 this−0x30，语义候选：轮廓符号）。`None` = 前置停止。
+    pub symbol: Option<SymbolSlotFull10_1>,
+    /// double → this−0x44（角度候选），语义未定。`None` = 前置停止。
+    pub double_44: Option<f64>,
+    /// int32 → this−0x2c（样式候选），语义未定。`None` = 前置停止。
+    pub int32_2c: Option<i32>,
+    /// double → this−0x24（间隔候选），语义未定。`None` = 前置停止。
+    pub double_24: Option<f64>,
+    /// int32 ×3（→ this−0xc/−0x9c/−0x94，语义未定）。`None` = 前置停止。
+    pub int32s: Option<[i32; 3]>,
+    /// 停止原因；`None` = 体已完整消费。
+    pub stop: Option<SymbolStop10_1>,
+}
+
+/// 从对象头之后的位置读取 10.1 GradientFillSymbol 对象体，失败时不推进游标、
+/// 不修改登记表。
+///
+/// 起点约定：调用者已读取对象头、比对 [`GRADIENT_FILL_SYMBOL_CLASS_ID`] 并
+/// 取得键 `key`。色带槽（实现类族未闭合）/颜色槽/符号槽新对象未知类为成功
+/// 停止。`depth` 为嵌套限额。
+pub fn read_gradient_fill_symbol_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+    depth: usize,
+) -> io::Result<GradientFillSymbolBody10_1> {
+    let _ = depth; // 色带槽无嵌套下钻（未闭合槽位不解析体）
+    let mut trial = reader.clone();
+    let entry_offset = trial.position();
+    let mut staged = table.clone();
+
+    let version = read_version_short(
+        &mut trial,
+        MAX_SYMBOL_VERSION,
+        "GradientFillSymbol",
+        entry_offset,
+    )?;
+    // ② IColorRamp 槽（实现类族未闭合：仅分类空标记与回引）。
+    let (ramp_slot, ramp_stop) =
+        read_unclosed_slot_10_1(&mut trial, &mut staged, DisplaySlotKind10_1::ColorRamp)?;
+    let color_ramp = ramp_slot;
+    let mut stop = ramp_stop;
+    let mut color = None;
+    let mut symbol = None;
+    let mut double_44 = None;
+    let mut int32_2c = None;
+    let mut double_24 = None;
+    let mut int32s = None;
+    if stop.is_none() {
+        color = Some(read_color_slot_10_1(&mut trial, max_bytes, &mut staged)?);
+        stop = color_slot_stop(color.as_ref().unwrap());
+    }
+    if stop.is_none() {
+        let (slot, inner) = read_symbol_slot_with_kind_10_1(
+            &mut trial,
+            max_bytes,
+            &mut staged,
+            depth - 1,
+            DisplaySlotKind10_1::Symbol,
+        )?;
+        symbol = Some(slot);
+        stop = inner;
+    }
+    if stop.is_none() {
+        double_44 = Some(trial.read_f64_le()?);
+        int32_2c = Some(read_i32_le(&mut trial)?);
+        double_24 = Some(trial.read_f64_le()?);
+        let a = read_i32_le(&mut trial)?;
+        let b = read_i32_le(&mut trial)?;
+        let c = read_i32_le(&mut trial)?;
+        int32s = Some([a, b, c]);
+    }
+
+    *table = staged;
+    *reader = trial;
+    Ok(GradientFillSymbolBody10_1 {
+        key,
+        version,
+        color_ramp,
+        color,
+        symbol,
+        double_44,
+        int32_2c,
+        double_24,
+        int32s,
+        stop,
+    })
+}
+
+/// DotDensityFillSymbol（DisplayCore.dll `0x6eb4ded0`）体的已确认字段。
+#[derive(Debug, Clone, PartialEq)]
+pub struct DotDensityFillSymbolBody10_1 {
+    /// 对象头键（样本中无实例）。
+    pub key: u32,
+    /// 体首 short 版本；>1 原生拒绝（版本常量 `DAT_6ec0b2fc`=1）。
+    pub version: u16,
+    /// byte → this−0x34（bool，语义未定）。
+    pub byte_34: u8,
+    /// double → this−0x3c，语义未定（点尺寸候选）。
+    pub double_3c: f64,
+    /// byte → this−0x28（bool，语义未定）。
+    pub byte_28: u8,
+    /// IColor 槽 #1（Save 槽 this−0x54，语义候选：点色）。`None` = 前置停止。
+    pub color_a: Option<ColorSlot10_1>,
+    /// ISymbol 槽（Save 槽 this−0x58，语义候选：轮廓符号）。`None` = 前置停止。
+    pub symbol: Option<SymbolSlotFull10_1>,
+    /// int32 → this−0xd4，语义未定。
+    pub int32_d4: i32,
+    /// int32 → this−0xcc，语义未定。
+    pub int32_cc: i32,
+    /// int32 → this−0x1c，语义未定。
+    pub int32_1c: i32,
+    /// double → this−0x44，语义未定。
+    pub double_44: f64,
+    /// byte → this−0x27（bool，语义未定）。
+    pub byte_27: u8,
+    /// 流内 int32 循环长度（点标记数候选；Save 侧标记倒序写出、顺序读取）。
+    pub marker_count: u32,
+    /// count × LoadObject（IMarkerSymbol `{E6BDAA7C-…}`，Save 槽 this−0x7c
+    /// 数组）经 [`read_display_symbol_slot_10_1`] 分派。未知标记符号类 = 停止。
+    pub markers: Vec<SymbolSlotFull10_1>,
+    /// count × int32（Save 槽 this−0x68 数组，点值候选）。`None` = 前置停止。
+    pub values: Option<Vec<i32>>,
+    /// IColor 槽 #2（Save 槽 this−0x50，语义候选：轮廓/背景色）。
+    /// `None` = 前置停止。
+    pub color_b: Option<ColorSlot10_1>,
+    /// 停止原因；`None` = 体已完整消费。
+    pub stop: Option<SymbolStop10_1>,
+}
+
+/// 从对象头之后的位置读取 10.1 DotDensityFillSymbol 对象体，失败时不推进
+/// 游标、不修改登记表。
+///
+/// 起点约定：调用者已读取对象头、比对
+/// [`DOT_DENSITY_FILL_SYMBOL_CLASS_ID`] 并取得键 `key`。颜色/符号槽未知类
+/// 或标记数组内嵌套停止时为成功停止（标记数组游标停在停止条目起点，其
+/// 后值数组与尾颜色不可达）。`depth` 为嵌套限额。
+pub fn read_dot_density_fill_symbol_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+    depth: usize,
+) -> io::Result<DotDensityFillSymbolBody10_1> {
+    let mut trial = reader.clone();
+    let entry_offset = trial.position();
+    let mut staged = table.clone();
+
+    let version = read_version_short(
+        &mut trial,
+        MAX_SYMBOL_VERSION,
+        "DotDensityFillSymbol",
+        entry_offset,
+    )?;
+    let byte_34 = trial.read_bytes(1)?[0];
+    let double_3c = trial.read_f64_le()?;
+    let byte_28 = trial.read_bytes(1)?[0];
+    let color_a = Some(read_color_slot_10_1(&mut trial, max_bytes, &mut staged)?);
+    let mut stop = color_slot_stop(color_a.as_ref().unwrap());
+    let mut symbol = None;
+    let mut int32_d4 = 0;
+    let mut int32_cc = 0;
+    let mut int32_1c = 0;
+    let mut double_44 = 0.0;
+    let mut byte_27 = 0;
+    let mut marker_count = 0;
+    let mut markers = Vec::new();
+    let mut values = None;
+    let mut color_b = None;
+    if stop.is_none() {
+        let (slot, inner) = read_symbol_slot_with_kind_10_1(
+            &mut trial,
+            max_bytes,
+            &mut staged,
+            depth - 1,
+            DisplaySlotKind10_1::Symbol,
+        )?;
+        symbol = Some(slot);
+        stop = inner;
+    }
+    if stop.is_none() {
+        // ⑦-⑪ 标量段（→ this−0xd4/−0xcc/−0x1c/−0x44/−0x27）。
+        int32_d4 = read_i32_le(&mut trial)?;
+        int32_cc = read_i32_le(&mut trial)?;
+        int32_1c = read_i32_le(&mut trial)?;
+        double_44 = trial.read_f64_le()?;
+        byte_27 = trial.read_bytes(1)?[0];
+        marker_count =
+            read_loop_count_10_1(&mut trial, max_bytes, "DotDensityFillSymbol", entry_offset)?;
+        for _ in 0..marker_count {
+            let (slot, inner) = read_symbol_slot_with_kind_10_1(
+                &mut trial,
+                max_bytes,
+                &mut staged,
+                depth - 1,
+                DisplaySlotKind10_1::MarkerSymbol,
+            )?;
+            markers.push(slot);
+            if let Some(inner) = inner {
+                stop = Some(inner);
+                break;
+            }
+        }
+    }
+    if stop.is_none() {
+        values = Some(read_i32_vec(&mut trial, marker_count)?);
+        color_b = Some(read_color_slot_10_1(&mut trial, max_bytes, &mut staged)?);
+        stop = color_slot_stop(color_b.as_ref().unwrap());
+    }
+
+    *table = staged;
+    *reader = trial;
+    Ok(DotDensityFillSymbolBody10_1 {
+        key,
+        version,
+        byte_34,
+        double_3c,
+        byte_28,
+        color_a,
+        symbol,
+        int32_d4,
+        int32_cc,
+        int32_1c,
+        double_44,
+        byte_27,
+        marker_count,
+        markers,
+        values,
+        color_b,
+        stop,
+    })
 }
