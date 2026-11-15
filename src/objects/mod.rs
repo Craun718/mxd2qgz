@@ -8,6 +8,7 @@ pub mod display_symbol;
 pub mod element_body;
 pub mod element_collection;
 pub mod envelope;
+pub mod geometry;
 pub mod property_set;
 pub mod spatial_reference;
 pub mod workspace_name;
