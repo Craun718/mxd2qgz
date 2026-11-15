@@ -2,17 +2,21 @@
 //! 数据集名称分支、属性集、元素类体与 DisplayCore 颜色/简单符号族（接线轮
 //! 自 src 根级移入，消除 objects→layers 依赖倒置）。各自对应独立的证据文档。
 
+pub mod callout_background;
+pub mod color_ramp;
 pub mod dataset_name;
 pub mod dataset_name_more;
 pub mod display_color;
 pub mod display_symbol;
 pub mod element_body;
 pub mod element_collection;
+pub mod element_decor;
 pub mod envelope;
 pub mod geometry;
 pub mod hyperlink;
 pub mod number_format;
 pub mod ole_font;
+pub mod picture_fill_symbol;
 pub mod property_set;
 pub mod spatial_reference;
 pub mod spatial_reference_slots;
