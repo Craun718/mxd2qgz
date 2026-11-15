@@ -103,13 +103,14 @@
 //!   Data2），研究记录已更正。
 //!
 //! 后继字段段（第八轮闭合，见文末 [`read_feature_layer_successor_10_1`]）
-//! 的未解决问题：
-//! - IHyperlink 循环（请求 IID `{3036D35D-…}`，第五轮类型库定名）的
-//!   Hyperlink 族 coclass 体未闭合（样本计数恒 0，无字节佐证），新对象即
-//!   停止；
-//! - INumberFormat 槽（`{7E4F470D-…}`）只闭合 NumericFormat 一类；
-//!   PercentageFormat/FractionFormat/RateFormat 等同族体未闭合（新对象即
-//!   停止）；
+//! 的未解决问题（接线轮更新）：
+//! - IHyperlink 循环（请求 IID `{3036D35D-…}`，第五轮类型库定名）：Hyperlink
+//!   体已由 D 轮闭合（`objects::hyperlink`），接线轮起循环条目按类标识分派
+//!   整体解析；其余 IHyperlink 实现类维持停止（样本计数恒 0，接线后样本行
+//!   为不变）；
+//! - INumberFormat 槽（`{7E4F470D-…}`）接线轮起为四类分派（NumericFormat
+//!   既有 + Percentage/Fraction/Rate，`objects::number_format` 重导出消除双
+//!   份副本）；esriSystem 同族其余类未研究（新对象即停止）；
 //! - 后继段各标量的业务语义未定性：+0x154 字符串（样本「BSM」，字段名样
 //!   候选）、+0x158/+0x160 double（样本 0.0）、+0x168 short、+0x1a8/+0x184
 //!   字符串（样本空串）、+0x188 int32 均原样保留；FieldInfo 的 -0x16
@@ -125,9 +126,9 @@
 //!   宿主）与更深的版本门字段已按本轮字段序接入：未闭合槽位为成功停止
 //!   （样本停止点 = LELP ⑯ ITextSymbol 槽的 TextSymbol 新对象，键 61，
 //!   游标停在其体起点）。样本 0xafe..0xb8e 逐字节吻合；
-//! - LELP ⑰ BasicOverposterLayerProperties 等标注族实现类、TextSymbol 体
-//!   （DisplayCore.dll，虚表静态不可达）与 TimeData 族槽位实现类未闭合
-//!   （新对象即停止）。
+//! - LELP ⑰ BasicOverposterLayerProperties 等标注族实现类与 TimeData 族槽
+//!   位实现类未闭合（新对象即停止）；LELP ⑯ TextSymbol 体已接线（样本停
+//!   止点随之推进至 TextSymbol 体内 IFontDisp 槽，OLE StdFont 体未闭合）。
 
 use crate::layers::annotate_props::{
     ANNOTATE_PROPS_COLLECTION_CLASS_ID, AnnotatePropsBody10_1, AnnotatePropsStop10_1,
@@ -144,8 +145,9 @@ use crate::layers::legend_format::{
 use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
 use crate::objects::display_symbol::{
     MAX_SYMBOL_NESTING_DEPTH, SimpleMarkerSymbolStop10_1, SymbolStop10_1,
-    read_display_symbol_slot_10_1, slot_stop_10_1,
+    read_display_symbol_slot_10_1, read_symbol_slot_full_10_1, slot_full_stop_10_1,
 };
+use crate::objects::hyperlink::{HYPERLINK_CLASS_ID, HyperlinkBody10_1, read_hyperlink_body_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
@@ -159,6 +161,13 @@ use std::io::{self, ErrorKind};
 /// 象均解析为对应体变体；未知符号类为 `Unsupported` 变体（分派内部回退到
 /// 槽位起点、登记表不保留该键），由宿主映射为各自的停止原因。
 pub use crate::objects::display_symbol::DisplaySymbolSlot10_1 as SymbolSlot10_1;
+
+/// 全闭合 ISymbol 类槽位（请求 IID `{F3435802-…}`）条目的分类结果。
+///
+/// 接线轮起 SimpleRenderer/LegendClass 宿主切换到
+/// [`crate::objects::display_symbol::read_symbol_slot_full_10_1`]（第二轮闭
+/// 合类递归解析；第一轮闭合类停止语义不变），槽位字段类型随切换重导出。
+pub use crate::objects::display_symbol::SymbolSlotFull10_1;
 
 /// SimpleRenderer::Load 接受的最大版本：`3 < (short)ver` 有符号比较；样本 3。
 const MAX_SIMPLE_RENDERER_VERSION: i16 = 3;
@@ -303,7 +312,7 @@ pub struct SimpleRendererPrefix10_1 {
     /// 体首 short 版本（样本 3）；有符号比较 >3 拒绝。
     pub version: u16,
     /// ISymbol 槽（请求 IID `{F3435802-…}`）结果。
-    pub symbol: SymbolSlot10_1,
+    pub symbol: SymbolSlotFull10_1,
     /// ILegendGroup 槽（请求 IID `{167C5E9F-…}`）结果。`None` = 前置停止。
     pub legend_group: Option<LegendGroupSlot10_1>,
     /// ILegendItem 槽（请求 IID `{52AA5BC0-…}`）分类；新对象为停止点。
@@ -433,7 +442,7 @@ pub struct LegendClassPrefix10_1 {
     /// 限，仅按 ver>1 门分支。
     pub version: u16,
     /// ISymbol 槽（请求 IID `{F3435802-…}`）结果。
-    pub symbol: SymbolSlot10_1,
+    pub symbol: SymbolSlotFull10_1,
     /// String 标签（样本空串）。
     pub label: String,
     /// String 描述（样本空串）。
@@ -451,10 +460,11 @@ pub struct LegendClassPrefix10_1 {
 /// 修改登记表。
 ///
 /// 起点约定：调用者已读取对象头、比对 [`LEGEND_CLASS_CLASS_ID`] 并取得键。
-/// ISymbol 槽经 [`read_display_symbol_slot_10_1`] 分派（SimpleMarkerSymbol
-/// 与本轮闭合的 DisplayCore 同族符号整体解析，未知符号类由分派内部回退到
-/// 槽位起点）；ILegendClassFormat 槽新对象且类标识为 LegendClassFormat 时
-/// 读取其闭合体（[`read_legend_class_format_body_10_1`]），其余类为停止点
+/// ISymbol 槽经 [`read_symbol_slot_full_10_1`] 全闭合集分派（接线轮切换，
+/// 证据：docs/arcmap-10.1-display-symbols-round2.md 第五节宿主切换——第一
+/// 轮闭合类停止语义不变、第二轮闭合类获得递归解析，未知符号类由分派内部
+/// 回退到槽位起点）；ILegendClassFormat 槽新对象且类标识为 LegendClassFormat
+/// 时读取其闭合体（[`read_legend_class_format_body_10_1`]），其余类为停止点
 /// （回退到槽位起点）；体内停止成功返回。
 pub fn read_legend_class_body_10_1(
     reader: &mut Reader<'_>,
@@ -468,43 +478,45 @@ pub fn read_legend_class_body_10_1(
     //    有符号语义 ver > 1）。
     let version = trial.read_u16_le()?;
 
-    // 2. ISymbol 槽（请求 IID {F3435802-…}）：对象层符号槽位分派。
+    // 2. ISymbol 槽（请求 IID {F3435802-…}）：对象层全闭合符号槽位分派。
+    //    SimpleMarkerSymbol 体的停止沿用第一轮 `SymbolBody` 变体；其余闭合
+    //    符号（第一轮 SimpleLine/Fill、MarkerLine/CartographicLine/HashLine
+    //    与第二轮 MultiLayer/装饰族）体的嵌套停止统一经 `slot_full_stop_
+    //    10_1` 归约为 `SymbolNested`（第一轮两入口归约同型，行为不变）。
     let mut staged_table = table.clone();
     let mut stop = None;
-    let symbol = match read_display_symbol_slot_10_1(
+    let symbol = match read_symbol_slot_full_10_1(
         &mut trial,
         max_bytes,
         &mut staged_table,
         MAX_SYMBOL_NESTING_DEPTH,
     )? {
-        SymbolSlot10_1::Null => SymbolSlot10_1::Null,
-        SymbolSlot10_1::BackReference { class_id, key } => {
-            SymbolSlot10_1::BackReference { class_id, key }
+        SymbolSlotFull10_1::Null => SymbolSlotFull10_1::Null,
+        SymbolSlotFull10_1::BackReference { class_id, key } => {
+            SymbolSlotFull10_1::BackReference { class_id, key }
         }
-        SymbolSlot10_1::SimpleMarkerSymbol(sms) => {
+        SymbolSlotFull10_1::SimpleMarkerSymbol(sms) => {
+            // 第一轮闭合类的停止沿用原 `SymbolBody` 变体（行为保真）。
             if let Some(inner) = sms.stop {
                 stop = Some(LegendClassStop10_1::SymbolBody(inner));
             }
-            SymbolSlot10_1::SimpleMarkerSymbol(sms)
+            SymbolSlotFull10_1::SimpleMarkerSymbol(sms)
         }
-        other_closed @ (SymbolSlot10_1::SimpleLineSymbol(_)
-        | SymbolSlot10_1::SimpleFillSymbol(_)
-        | SymbolSlot10_1::MarkerLineSymbol(_)
-        | SymbolSlot10_1::CartographicLineSymbol(_)
-        | SymbolSlot10_1::HashLineSymbol(_)) => {
-            // 本轮闭合符号：体内嵌套停止透传（游标停在其停止点）。
-            if let Some(inner) = slot_stop_10_1(
+        SymbolSlotFull10_1::Unsupported { class_id, key } => {
+            // 未知符号类：分派内部已回退到槽位起点、登记表不保留该键。
+            stop = Some(LegendClassStop10_1::SymbolUnsupported { class_id, key });
+            SymbolSlotFull10_1::Null
+        }
+        other_closed => {
+            // 其余闭合符号：体内嵌套停止透传（游标停在其停止点）；第一轮闭
+            // 合类的归约结果与原 [`slot_stop_10_1`] 逐值一致。
+            if let Some(inner) = slot_full_stop_10_1(
                 &other_closed,
                 crate::objects::display_symbol::DisplaySlotKind10_1::Symbol,
             ) {
                 stop = Some(LegendClassStop10_1::SymbolNested(inner));
             }
             other_closed
-        }
-        SymbolSlot10_1::Unsupported { class_id, key } => {
-            // 未知符号类：分派内部已回退到槽位起点、登记表未保留该键。
-            stop = Some(LegendClassStop10_1::SymbolUnsupported { class_id, key });
-            SymbolSlot10_1::Null
         }
     };
 
@@ -698,40 +710,40 @@ pub fn read_simple_renderer_body_10_1(
     // 2. ISymbol 槽（请求 IID {F3435802-…}）：对象层符号槽位分派。
     let mut staged_table = table.clone();
     let mut stop = None;
-    let symbol = match read_display_symbol_slot_10_1(
+    let symbol = match read_symbol_slot_full_10_1(
         &mut trial,
         max_bytes,
         &mut staged_table,
         MAX_SYMBOL_NESTING_DEPTH,
     )? {
-        SymbolSlot10_1::Null => SymbolSlot10_1::Null,
-        SymbolSlot10_1::BackReference { class_id, key } => {
-            SymbolSlot10_1::BackReference { class_id, key }
+        SymbolSlotFull10_1::Null => SymbolSlotFull10_1::Null,
+        SymbolSlotFull10_1::BackReference { class_id, key } => {
+            SymbolSlotFull10_1::BackReference { class_id, key }
         }
-        SymbolSlot10_1::SimpleMarkerSymbol(sms) => {
+        SymbolSlotFull10_1::SimpleMarkerSymbol(sms) => {
+            // 第一轮闭合类的停止沿用原 `SymbolBody` 变体（行为保真）。
             if let Some(inner) = sms.stop {
                 stop = Some(SimpleRendererStop10_1::SymbolBody(inner));
             }
-            SymbolSlot10_1::SimpleMarkerSymbol(sms)
+            SymbolSlotFull10_1::SimpleMarkerSymbol(sms)
         }
-        other_closed @ (SymbolSlot10_1::SimpleLineSymbol(_)
-        | SymbolSlot10_1::SimpleFillSymbol(_)
-        | SymbolSlot10_1::MarkerLineSymbol(_)
-        | SymbolSlot10_1::CartographicLineSymbol(_)
-        | SymbolSlot10_1::HashLineSymbol(_)) => {
-            // 本轮闭合符号：体内嵌套停止透传（游标停在其停止点）。
-            if let Some(inner) = slot_stop_10_1(
+        SymbolSlotFull10_1::Unsupported { class_id, key } => {
+            // 未知符号类：分派内部已回退到槽位起点、登记表未保留该键。
+            stop = Some(SimpleRendererStop10_1::SymbolUnsupported { class_id, key });
+            SymbolSlotFull10_1::Null
+        }
+        other_closed => {
+            // 其余闭合符号（第一轮 SimpleLine/Fill、MarkerLine/
+            // CartographicLine/HashLine 与第二轮 MultiLayer/装饰族）：体内嵌
+            // 套停止透传（游标停在其停止点）；第一轮闭合类的归约结果与原
+            // [`slot_stop_10_1`] 逐值一致。
+            if let Some(inner) = slot_full_stop_10_1(
                 &other_closed,
                 crate::objects::display_symbol::DisplaySlotKind10_1::Symbol,
             ) {
                 stop = Some(SimpleRendererStop10_1::SymbolNested(inner));
             }
             other_closed
-        }
-        SymbolSlot10_1::Unsupported { class_id, key } => {
-            // 未知符号类：分派内部已回退到槽位起点、登记表未保留该键。
-            stop = Some(SimpleRendererStop10_1::SymbolUnsupported { class_id, key });
-            SymbolSlot10_1::Null
         }
     };
 
@@ -874,88 +886,21 @@ pub const FIELD_INFO_CLASS_ID: [u8; 16] = [
     0x2d, 0xae, 0xba, 0xa2, 0x9b, 0x96, 0xd2, 0x11, 0xae, 0x77, 0x08, 0x00, 0x09, 0xec, 0x73, 0x2a,
 ];
 
-/// NumericFormat 类标识（CLSID）的 16 字节内存序。
-///
-/// GUID 字符串形式 `{7E4F4719-8E54-11D2-AAD8-000000000000}`。证据：
-/// esri.clsid 声明（模块 SystemCore.dll）与 esriSystem 类型库 coclass #212；
-/// SystemCore.dll GetClassID `0x7ffce470` 写出（0x11D28E547E4F4719 /
-/// 0x000000000000D8AA 立即数，IPersistStream 虚表 `0x80070ec4` 槽 +0x0c 经
-/// thunk `0x7ffcea60` 指向）；样本 `/Maps:0x64c` 起的嵌套对象头逐字节相同。
-pub const NUMERIC_FORMAT_CLASS_ID: [u8; 16] = [
-    0x19, 0x47, 0x4f, 0x7e, 0x54, 0x8e, 0xd2, 0x11, 0xaa, 0xd8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-];
+/// INumberFormat 族四类标识与体读取器：接线轮起为对象层
+/// [`crate::objects::number_format`] 的重导出（消除第八轮的 NumericFormat
+/// 双份副本，证据与迁移建议见 docs/arcmap-10.1-number-format.md「实现」节；
+/// 该模块本轮闭合 PercentageFormat/FractionFormat/RateFormat 三变体，
+/// FieldInfo 槽分派随之扩为四类）。既有引用路径（本模块、测试）不变。
+pub use crate::objects::number_format::{
+    FRACTION_FORMAT_CLASS_ID, FractionFormatBody10_1, NUMERIC_FORMAT_CLASS_ID,
+    NumericFormatBody10_1, PERCENTAGE_FORMAT_CLASS_ID, PercentageFormatBody10_1,
+    RATE_FORMAT_CLASS_ID, RateFormatBody10_1, read_fraction_format_body_10_1,
+    read_numeric_format_body_10_1, read_percentage_format_body_10_1, read_rate_format_body_10_1,
+};
 
 /// FieldInfo::Load 接受的最大版本：`4 < (short)ver` 有符号比较；样本 14 个
 /// 实例全为 4。证据：Layer.dll `0x7865b520`。
 const MAX_FIELD_INFO_VERSION: i16 = 4;
-
-/// NumericFormat::Load 接受的最大版本：`1 < (short)ver`；样本 4 个实例全为
-/// 1。证据：SystemCore.dll `0x7ffce4b0`。
-const MAX_NUMERIC_FORMAT_VERSION: i16 = 1;
-
-/// NumericFormat（SystemCore.dll `0x7ffce4b0`）体的已确认字段。
-///
-/// 体长恒 24 字节（short 版本 + int32 ×4 + short ×3），无嵌套对象、无字符
-/// 串，无停止点：要么完整消费，要么失败（截断/版本超限）。各 int32/short
-/// 语义未定（样本形态 0/0/0/12 与 0/6/0/12 + 0/0/0；数值格式化对齐/位数
-/// 候选）。
-#[derive(Debug, Clone, PartialEq)]
-pub struct NumericFormatBody10_1 {
-    /// 对象头键（样本 42/53/55/57）。
-    ///
-    /// 解析成功时该键已按原生语义登记进调用者的登记表。
-    pub key: u32,
-    /// 体首 short 版本（样本 1）；>1 原生拒绝。
-    pub version: u16,
-    /// int32 ×4 → obj-0x1c/-0x18/-0x14/-0x10（样本 OBJECTID 条目 0/0/0/12，
-    /// XZBZ/YZBZ/ZZBZ 条目 0/6/0/12），语义未定，原样保留。
-    pub int32s: [i32; 4],
-    /// short ×3 → obj-0xc/-0xa/-0x8（样本全 0），语义未定，原样保留。
-    pub shorts: [i16; 3],
-}
-
-/// 从对象头之后的位置读取 10.1 NumericFormat 对象体，失败时不推进游标、不
-/// 修改登记表。
-///
-/// 起点约定：调用者已读取对象头、比对 [`NUMERIC_FORMAT_CLASS_ID`] 并取得键
-/// `key`。证据：SystemCore.dll 10.1.0.3035 `0x7ffce4b0`（Load）与
-/// `0x7ffce590`（Save，对称：写版本表恒 1 + 同序字段）。
-pub fn read_numeric_format_body_10_1(
-    reader: &mut Reader<'_>,
-    table: &mut RefTable10_1,
-    key: u32,
-) -> io::Result<NumericFormatBody10_1> {
-    let _ = table; // 无嵌套对象，登记表仅在签名上保持一致
-    let mut trial = reader.clone();
-    let entry_offset = trial.position();
-
-    // ① short 版本（`1 < ver` 有符号拒绝）。
-    let version = read_version_short(
-        &mut trial,
-        MAX_NUMERIC_FORMAT_VERSION,
-        "NumericFormat",
-        entry_offset,
-    )?;
-    // ② int32 ×4。
-    let mut int32s = [0_i32; 4];
-    for slot in int32s.iter_mut() {
-        *slot = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
-    }
-    // ③ short ×3。
-    let mut shorts = [0_i16; 3];
-    for slot in shorts.iter_mut() {
-        *slot = trial.read_u16_le()? as i16;
-    }
-
-    let result = NumericFormatBody10_1 {
-        key,
-        version,
-        int32s,
-        shorts,
-    };
-    *reader = trial;
-    Ok(result)
-}
 
 /// FieldInfo 体内 INumberFormat 槽位（请求 IID `{7E4F470D-…}`）条目的分类
 /// 结果。
@@ -968,14 +913,22 @@ pub enum NumberFormatSlot10_1 {
     /// 新 NumericFormat 对象（类标识经 [`NUMERIC_FORMAT_CLASS_ID`] 校验）：
     /// 已解析体。
     NumericFormat(Box<NumericFormatBody10_1>),
+    /// 新 PercentageFormat 对象（接线轮起同族四类分派；体含版本 ≥2 的
+    /// NumericFormat 内嵌核心；证据：docs/arcmap-10.1-number-format.md）。
+    PercentageFormat(Box<PercentageFormatBody10_1>),
+    /// 新 FractionFormat 对象（恒 10 字节体，无嵌套）。
+    FractionFormat(Box<FractionFormatBody10_1>),
+    /// 新 RateFormat 对象（体含版本 >1 的 NumericFormat 内嵌核心与 String）。
+    RateFormat(Box<RateFormatBody10_1>),
 }
 
 /// FieldInfo 体读取的停止原因。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FieldInfoStop10_1 {
-    /// INumberFormat 槽的新对象类标识不是 NumericFormat（PercentageFormat/
-    /// FractionFormat/RateFormat 等同族体未闭合）：游标回退到该槽位起点，
-    /// 版本 >2/版本 >3 的尾段不可达。
+    /// INumberFormat 槽的新对象类标识不在四类闭合集合（esriSystem 同族其余
+    /// 类，如 CurrencyFormat/LatLonFormat/AngleFormat/ScientificFormat/
+    /// CustomNumberFormat，体未研究）：游标回退到该槽位起点，版本 >2/版本
+    /// >3 的尾段不可达。
     NumberFormatUnsupported { class_id: [u8; 16], key: u32 },
 }
 
@@ -1053,8 +1006,11 @@ pub fn read_field_info_body_10_1(
     // ④ String 别名 → obj-0x10。
     let alias = read_string_10_1(&mut trial, max_bytes)?;
 
-    // ⑤ INumberFormat 槽：新对象仅支持 NumericFormat，其余为停止点（回退
-    //    到槽位起点、不保留该键）。
+    // ⑤ INumberFormat 槽：接线轮起为同族四类分派（NumericFormat 既有 +
+    //    Percentage/Fraction/Rate 三变体，证据与迁移建议见
+    //    docs/arcmap-10.1-number-format.md「实现」节）；其余 esriSystem 同
+    //    族类维持停止点（回退到槽位起点、不保留该键）。各读取器失败路径
+    //    只有整体报错（体内无停止点），事务性由 trial 游标/登记表保证。
     let slot_offset = trial.position();
     let saved_table = table.clone();
     let mut staged_table = table.clone();
@@ -1066,6 +1022,18 @@ pub fn read_field_info_body_10_1(
         ObjectEntry10_1::NewObject { class_id, key } if class_id == NUMERIC_FORMAT_CLASS_ID => {
             let body = read_numeric_format_body_10_1(&mut trial, &mut staged_table, key)?;
             (NumberFormatSlot10_1::NumericFormat(Box::new(body)), None)
+        }
+        ObjectEntry10_1::NewObject { class_id, key } if class_id == PERCENTAGE_FORMAT_CLASS_ID => {
+            let body = read_percentage_format_body_10_1(&mut trial, &mut staged_table, key)?;
+            (NumberFormatSlot10_1::PercentageFormat(Box::new(body)), None)
+        }
+        ObjectEntry10_1::NewObject { class_id, key } if class_id == FRACTION_FORMAT_CLASS_ID => {
+            let body = read_fraction_format_body_10_1(&mut trial, &mut staged_table, key)?;
+            (NumberFormatSlot10_1::FractionFormat(Box::new(body)), None)
+        }
+        ObjectEntry10_1::NewObject { class_id, key } if class_id == RATE_FORMAT_CLASS_ID => {
+            let body = read_rate_format_body_10_1(&mut trial, max_bytes, &mut staged_table, key)?;
+            (NumberFormatSlot10_1::RateFormat(Box::new(body)), None)
         }
         ObjectEntry10_1::NewObject { class_id, key } => {
             let stop = FieldInfoStop10_1::NumberFormatUnsupported { class_id, key };
@@ -1133,20 +1101,28 @@ pub enum FieldInfoEntry10_1 {
 
 /// IHyperlink 计数循环（请求 IID `{3036D35D-…}`）条目的分类结果。
 ///
-/// Hyperlink 族 coclass 体未闭合（样本计数恒 0，无字节佐证），新对象即停
-/// 止，故无「已解析」变体。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Hyperlink 体已由 D 轮闭合（`objects::hyperlink`），接线轮起循环条目按
+/// 类标识分派整体解析（携带体类型故不再 `Copy`/`Eq`，仅 `Clone`/
+/// `PartialEq`）；其余 IHyperlink 实现类（样本外）维持停止回退。
+#[derive(Debug, Clone, PartialEq)]
 pub enum HyperlinkSlot10_1 {
     /// 16 字节全零类标识：空引用，无键、无对象体。
     Null,
     /// 键已见：回引条目，无对象体。类标识原样保留、不校验。
     BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 Hyperlink 对象（接线轮起类标识经 [`HYPERLINK_CLASS_ID`] 校验时整
+    /// 体解析其体；体内无停止点，失败路径只有整体报错，键已由条目分类登
+    /// 记。证据：docs/arcmap-10.1-hyperlink.md「接线建议」；样本计数恒 0，
+    /// 接线后样本行为不变，仅合成输入覆盖）。
+    Hyperlink(Box<HyperlinkBody10_1>),
 }
 
 /// FeatureLayer 后继字段段（渲染器槽 +0x144 GUID 之后）读取的停止原因。
 ///
-/// 全部为「成功停止」：游标停在最深可闭合点，剩余字节原样保留。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// 全部为「成功停止」：游标停在最深可闭合点，剩余字节原样保留。接线轮起
+/// 标注环体内 TextSymbol 体停止透传携带体类型（`AnnotatePropsBody` 变体不
+/// 再 `Copy`/`Eq`，仅 `Clone`/`PartialEq`）。
+#[derive(Debug, Clone, PartialEq)]
 pub enum SuccessorStop10_1 {
     /// 后继段完整消费（读取器当前位置即 FeatureLayer 对象体语义终点）。
     /// 10.1 写侧对称序列的最后一个字段为 `short(+0x2ca)`（读侧版本 >0x21
@@ -1552,6 +1528,15 @@ pub fn read_feature_layer_successor_10_1(
             ObjectEntry10_1::BackReference { class_id, key } => {
                 hyperlinks.push(HyperlinkSlot10_1::BackReference { class_id, key });
             }
+            // 接线轮：Hyperlink coclass（{3036D35E-…}，C++ FeatureHyperlink）
+            // 新对象整体解析其体（证据与接入方式见
+            // docs/arcmap-10.1-hyperlink.md「接线建议」——与 FieldInfo 条目
+            // 分派同构；体内无停止点，失败即整体报错；键已登记）。其余类维
+            // 持既有停止回退。
+            ObjectEntry10_1::NewObject { class_id, key } if class_id == HYPERLINK_CLASS_ID => {
+                let body = read_hyperlink_body_10_1(&mut trial, max_bytes, &mut staged_table, key)?;
+                hyperlinks.push(HyperlinkSlot10_1::Hyperlink(Box::new(body)));
+            }
             ObjectEntry10_1::NewObject { class_id, key } => {
                 stop = Some(SuccessorStop10_1::HyperlinkNewObject {
                     class_id,
@@ -1707,7 +1692,7 @@ pub fn read_feature_layer_successor_10_1(
                         &mut staged_table,
                         key,
                     )?;
-                    if let Some(inner) = body.stop {
+                    if let Some(inner) = body.stop.clone() {
                         stop = Some(SuccessorStop10_1::AnnotatePropsBody(inner));
                     }
                     annotate_props = Some(AnnotatePropsSlot10_1::Collection(Box::new(body)));

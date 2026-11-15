@@ -378,7 +378,7 @@ pub fn read_fdo_graphics_layer_legacy_prefix_10_1(
                 match read_feature_layer_prefix_10_1(&mut trial, max_bytes, &mut trial_table) {
                     Ok(prefix) => {
                         stop = Some(LegacyFdoStop10_1::AssociatedLayerBodyStopped {
-                            layer_stop: prefix.stop,
+                            layer_stop: prefix.stop.clone(),
                         });
                         AssociatedLayer10_1::FeatureLayer(Box::new(prefix))
                     }

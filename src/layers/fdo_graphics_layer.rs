@@ -320,7 +320,7 @@ pub fn read_fdo_graphics_layer_prefix_10_1(
             match read_feature_layer_prefix_10_1(&mut trial, max_bytes, &mut trial_table) {
                 Ok(prefix) => {
                     stop = Some(FdoGraphicsLayerStop10_1::AssociatedLayerBodyStopped {
-                        layer_stop: prefix.stop,
+                        layer_stop: prefix.stop.clone(),
                     });
                     AssociatedLayer10_1::FeatureLayer(Box::new(prefix))
                 }
@@ -394,7 +394,7 @@ pub fn read_fdo_graphics_layer_prefix_10_1(
         match read_feature_layer_prefix_10_1(&mut trial, max_bytes, &mut trial_table) {
             Ok(prefix) => {
                 stop = Some(FdoGraphicsLayerStop10_1::DelegatedLayerBodyStopped {
-                    layer_stop: prefix.stop,
+                    layer_stop: prefix.stop.clone(),
                 });
                 delegated_layer = Some(Box::new(prefix));
             }

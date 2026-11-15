@@ -18,8 +18,14 @@
 //! 引用、重复标识与缺失引用的语义覆盖见 `src/object_refs.rs` 与
 //! `tests/object_refs.rs`；本清单把条目分类入口纳入统一的截断与游标共性。
 
+use mxd2qgz::layers::annotate_props::{
+    ANNOTATE_PROPS_COLLECTION_CLASS_ID, EDIT_TEMPLATE_MANAGER_CLASS_ID,
+    LABEL_ENGINE_PROPS_CLASS_ID, read_annotate_props_collection_body_10_1,
+    read_edit_template_manager_body_10_1, read_label_engine_props_body_10_1,
+};
 use mxd2qgz::layers::composite_graphics::read_composite_graphics_layer_prefix_10_1;
 use mxd2qgz::layers::fdo_legacy::read_fdo_graphics_layer_legacy_prefix_10_1;
+use mxd2qgz::layers::feature_id_set::{FEATURE_ID_SET_CLASS_ID, read_feature_id_set_body_10_1};
 use mxd2qgz::layers::feature_layer::read_feature_layer_prefix_10_1;
 use mxd2qgz::layers::group_layer::read_group_layer_prefix_10_1;
 use mxd2qgz::layers::layer_list::read_layer_list_10_1;
@@ -33,13 +39,30 @@ use mxd2qgz::objects::dataset_name::{
 };
 use mxd2qgz::objects::display_color::{RGB_COLOR_CLASS_ID, read_rgb_color_body_10_1};
 use mxd2qgz::objects::display_symbol::{
-    SIMPLE_MARKER_SYMBOL_CLASS_ID, read_simple_marker_symbol_body_10_1,
+    ARROW_MARKER_SYMBOL_CLASS_ID, CARTOGRAPHIC_LINE_SYMBOL_CLASS_ID,
+    CHARACTER_MARKER_SYMBOL_CLASS_ID, DOT_DENSITY_FILL_SYMBOL_CLASS_ID,
+    GRADIENT_FILL_SYMBOL_CLASS_ID, HASH_LINE_SYMBOL_CLASS_ID, LINE_DECORATION_CLASS_ID,
+    LINE_FILL_SYMBOL_CLASS_ID, MARKER_FILL_SYMBOL_CLASS_ID, MARKER_LINE_SYMBOL_CLASS_ID,
+    MULTI_LAYER_FILL_SYMBOL_CLASS_ID, MULTI_LAYER_LINE_SYMBOL_CLASS_ID,
+    MULTI_LAYER_MARKER_SYMBOL_CLASS_ID, PICTURE_LINE_SYMBOL_CLASS_ID,
+    PICTURE_MARKER_SYMBOL_CLASS_ID, SIMPLE_LINE_DECORATION_ELEMENT_CLASS_ID,
+    SIMPLE_MARKER_SYMBOL_CLASS_ID, TEMPLATE_CLASS_ID, read_simple_marker_symbol_body_10_1,
+    read_symbol_slot_full_10_1,
 };
 use mxd2qgz::objects::element_body::{
     LINE_ELEMENT_CLASS_ID, MARKER_ELEMENT_CLASS_ID, TEXT_ELEMENT_CLASS_ID, TEXT_SYMBOL_CLASS_ID,
     read_element_body_of_class_10_1,
 };
 use mxd2qgz::objects::envelope::read_envelope_10_1;
+use mxd2qgz::objects::geometry::{
+    POLYLINE_CLASS_ID, read_geometry_body_of_class_10_1, read_polyline_body_10_1,
+};
+use mxd2qgz::objects::hyperlink::{HYPERLINK_CLASS_ID, read_hyperlink_body_10_1};
+use mxd2qgz::objects::number_format::{
+    FRACTION_FORMAT_CLASS_ID, NUMERIC_FORMAT_CLASS_ID, PERCENTAGE_FORMAT_CLASS_ID,
+    RATE_FORMAT_CLASS_ID, read_fraction_format_body_10_1, read_numeric_format_body_10_1,
+    read_percentage_format_body_10_1, read_rate_format_body_10_1,
+};
 use mxd2qgz::objects::property_set::read_property_set_10_1;
 use mxd2qgz::objects::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
 use mxd2qgz::storage::object_refs::{RefTable10_1, read_object_entry_10_1};
@@ -136,9 +159,38 @@ enum ReaderKind {
     RgbColorBody10_1,
     SimpleMarkerSymbolBody10_1,
     TextSymbolBody10_1,
+    // —— 接线轮扩充（A：标注环/要素 ID 集；B：符号族第二轮 14 直读入口 +
+    //    全闭合槽分派；C：几何体与类分派；D：数值格式三变体 + NumericFormat
+    //    迁移路径 + Hyperlink 体）——
+    AnnotatePropsBody10_1,
+    LabelEnginePropsBody10_1,
+    EditTemplateManagerBody10_1,
+    FeatureIdSetBody10_1,
+    TemplateBody10_1,
+    LineDecorationBody10_1,
+    SimpleLineDecorationElementBody10_1,
+    MultiLayerLineSymbolBody10_1,
+    MultiLayerMarkerSymbolBody10_1,
+    MultiLayerFillSymbolBody10_1,
+    CharacterMarkerSymbolBody10_1,
+    PictureMarkerSymbolBody10_1,
+    PictureLineSymbolBody10_1,
+    ArrowMarkerSymbolBody10_1,
+    LineFillSymbolBody10_1,
+    MarkerFillSymbolBody10_1,
+    GradientFillSymbolBody10_1,
+    DotDensityFillSymbolBody10_1,
+    SymbolSlotFull10_1,
+    PolylineBody10_1,
+    GeometryBodyOfClass10_1,
+    NumericFormatBody10_1,
+    PercentageFormatBody10_1,
+    FractionFormatBody10_1,
+    RateFormatBody10_1,
+    HyperlinkBody10_1,
 }
 
-fn all_kinds() -> [ReaderKind; 48] {
+fn all_kinds() -> [ReaderKind; 74] {
     [
         ReaderKind::NativeString10_1,
         ReaderKind::NativeString10_8,
@@ -188,10 +240,73 @@ fn all_kinds() -> [ReaderKind; 48] {
         ReaderKind::RgbColorBody10_1,
         ReaderKind::SimpleMarkerSymbolBody10_1,
         ReaderKind::TextSymbolBody10_1,
+        // A 轮：标注环三体 + FeatureIDSet 体。
+        ReaderKind::AnnotatePropsBody10_1,
+        ReaderKind::LabelEnginePropsBody10_1,
+        ReaderKind::EditTemplateManagerBody10_1,
+        ReaderKind::FeatureIdSetBody10_1,
+        // B 轮：符号族第二轮 14 直读入口 + 全闭合槽分派。
+        ReaderKind::TemplateBody10_1,
+        ReaderKind::LineDecorationBody10_1,
+        ReaderKind::SimpleLineDecorationElementBody10_1,
+        ReaderKind::MultiLayerLineSymbolBody10_1,
+        ReaderKind::MultiLayerMarkerSymbolBody10_1,
+        ReaderKind::MultiLayerFillSymbolBody10_1,
+        ReaderKind::CharacterMarkerSymbolBody10_1,
+        ReaderKind::PictureMarkerSymbolBody10_1,
+        ReaderKind::PictureLineSymbolBody10_1,
+        ReaderKind::ArrowMarkerSymbolBody10_1,
+        ReaderKind::LineFillSymbolBody10_1,
+        ReaderKind::MarkerFillSymbolBody10_1,
+        ReaderKind::GradientFillSymbolBody10_1,
+        ReaderKind::DotDensityFillSymbolBody10_1,
+        ReaderKind::SymbolSlotFull10_1,
+        // C 轮：Polyline 体 + 几何类分派。
+        ReaderKind::PolylineBody10_1,
+        ReaderKind::GeometryBodyOfClass10_1,
+        // D 轮：数值格式三变体 + NumericFormat（objects 层迁移路径）+ Hyperlink 体。
+        ReaderKind::NumericFormatBody10_1,
+        ReaderKind::PercentageFormatBody10_1,
+        ReaderKind::FractionFormatBody10_1,
+        ReaderKind::RateFormatBody10_1,
+        ReaderKind::HyperlinkBody10_1,
     ]
 }
 
 /// 每个读取器一个确定合法的完整输入；完整输入必须被接受并完整消费。
+/// LELP 体（版本 7）的最小完整形态：全部标量段 + 四槽与容器槽空标记 +
+/// 版本门尾段，完整消费（零停止）。字节序与 `tests/feature_layer_tail.rs`
+/// 的 `lelp_body_v7(None)` 同构（标量取零值）。
+fn lelp_body_v7_sample() -> Vec<u8> {
+    let mut bytes = 7_u16.to_le_bytes().to_vec();
+    bytes.extend(encoded(""));
+    bytes.extend(0_i16.to_le_bytes()); // ③ short -0x74
+    // ④ 版本 ≤1 的 short：版本 7 不写。
+    bytes.extend(0_f64.to_le_bytes()); // ⑤ double -0x54
+    bytes.extend(0_i32.to_le_bytes()); // ⑥ int32 -0x60
+    bytes.extend(0_i16.to_le_bytes()); // ⑦ short -0x5c
+    bytes.extend(0_i16.to_le_bytes()); // ⑧ short -0x4c
+    bytes.extend(0_i16.to_le_bytes()); // ⑨ short -0x4a
+    bytes.extend(0_i32.to_le_bytes()); // ⑩ int32 -0x80
+    bytes.extend(0_f64.to_le_bytes()); // ⑪ double -0x34
+    bytes.extend(0_f64.to_le_bytes()); // ⑫ double -0x3c
+    bytes.extend(0_i16.to_le_bytes()); // ⑬ short -0x48
+    bytes.extend(encoded("")); // ⑭ 串 2
+    bytes.extend(encoded("")); // ⑮ 串 3
+    bytes.extend([0_u8; 16]); // ⑯ ITextSymbol 槽（空标记）
+    bytes.extend([0_u8; 16]); // ⑰ Overposter 槽
+    bytes.extend([0_u8; 16]); // ⑱ 表达式引擎槽
+    bytes.extend([0_u8; 16]); // ⑲ Envelope 槽
+    bytes.extend(0_f64.to_le_bytes()); // ⑳ double -0x24
+    bytes.extend(0_f64.to_le_bytes()); // ㉑ double -0x1c
+    bytes.extend(0_i32.to_le_bytes()); // ㉒ int32 -0x14
+    bytes.extend(0_i32.to_le_bytes()); // ㉓ int32 -0x2c
+    bytes.extend([0_u8; 16]); // ㉔ 容器槽（版本 >2）
+    bytes.extend(0_i16.to_le_bytes()); // ㉕ short -0x46（版本 ≥4）
+    bytes.extend(0_i32.to_le_bytes()); // ㉖ int32 -0x7c（版本 ≥5）
+    bytes
+}
+
 fn sample(kind: ReaderKind) -> Vec<u8> {
     match kind {
         ReaderKind::NativeString10_1 | ReaderKind::NativeString10_8 => encoded("地图😀"),
@@ -918,6 +1033,277 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
             bytes.extend(1_u16.to_le_bytes()); // 版本 ≥4
             bytes
         }
+        // —— A 轮：标注环三体 + FeatureIDSet 体（计数 0 最小合法形态）——
+        ReaderKind::AnnotatePropsBody10_1 => {
+            // 版本 2 + 计数 0 + 尾 int32。
+            let mut bytes = 2_u16.to_le_bytes().to_vec();
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes
+        }
+        ReaderKind::LabelEnginePropsBody10_1 => lelp_body_v7_sample(),
+        ReaderKind::EditTemplateManagerBody10_1 => {
+            // 版本 2 + 计数 0 + 版本 ≥2 尾字节。
+            let mut bytes = 2_u16.to_le_bytes().to_vec();
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.push(0);
+            bytes
+        }
+        ReaderKind::FeatureIdSetBody10_1 => {
+            // 版本 1 + 计数 0。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(0_i32.to_le_bytes());
+            bytes
+        }
+        // —— B 轮：符号族第二轮直读入口（最小合法形态，全部完整消费）——
+        ReaderKind::TemplateBody10_1 => {
+            // 版本 1 + double 间隔 + 计数 0。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(2.5_f64.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes
+        }
+        ReaderKind::LineDecorationBody10_1 => {
+            // 版本 1 + 元素计数 0。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(0_i32.to_le_bytes());
+            bytes
+        }
+        ReaderKind::SimpleLineDecorationElementBody10_1 => {
+            // 版本 1 + byte ×3 + short + ISymbol 空标记 + 位置计数 0。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend([1_u8, 0, 1]);
+            bytes.extend(0_i16.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes.extend(0_i32.to_le_bytes());
+            bytes
+        }
+        ReaderKind::MultiLayerLineSymbolBody10_1 => {
+            // 版本 1：标量 + 层计数 0 + 数组计数 0 ×2；版本 <2 无串段。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes
+        }
+        ReaderKind::MultiLayerMarkerSymbolBody10_1 => {
+            // 版本 1：标量 + 颜色/符号空标记 + 层计数 0 + 数组 0 ×2；无背景
+            // 槽（v≥2）与串段（v≥3）。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            for _ in 0..4 {
+                bytes.extend(0_f64.to_le_bytes());
+            }
+            bytes.extend([0_u8; 16]); // IColor
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_f64.to_le_bytes());
+            bytes.extend([0_u8; 16]); // ISymbol
+            // 层计数 0：同时界定 ⑭⑮ 两个 int32 数组（无独立计数）。
+            bytes.extend(0_i32.to_le_bytes());
+            bytes
+        }
+        ReaderKind::MultiLayerFillSymbolBody10_1 => {
+            // 版本 1：标量 + 颜色空标记 + 层计数 0 + 数组 0 ×2；版本 <2 无串。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            // 层计数 0：同时界定 ⑦⑧ 两个 int32 数组（无独立计数）。
+            bytes.extend(0_i32.to_le_bytes());
+            bytes
+        }
+        ReaderKind::CharacterMarkerSymbolBody10_1 => {
+            // 版本 1：颜色空标记 + 标量 + v<3 的 IFontDisp 对象槽（空标记）；
+            // v>1 的 short 与 v≥3 描述符、v>3 第二槽均不出现。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend([0_u8; 16]);
+            bytes.extend(0_i32.to_le_bytes());
+            for _ in 0..6 {
+                bytes.extend(0_f64.to_le_bytes());
+            }
+            bytes.extend([0_u8; 16]); // v<3 IFontDisp 槽
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes
+        }
+        ReaderKind::PictureMarkerSymbolBody10_1 => {
+            // 版本 9 类型 2 且 N=0（无流内位图字节）+ 共享尾段。
+            let mut bytes = 9_u16.to_le_bytes().to_vec();
+            bytes.extend(2_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes()); // N=0
+            for _ in 0..3 {
+                bytes.extend([0_u8; 16]); // IColor ×3
+            }
+            for _ in 0..6 {
+                bytes.extend(0_f64.to_le_bytes());
+            }
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.push(1);
+            bytes.extend(0_i16.to_le_bytes());
+            for _ in 0..3 {
+                bytes.extend(0_i16.to_le_bytes());
+            }
+            bytes
+        }
+        ReaderKind::PictureLineSymbolBody10_1 => {
+            // 版本 1 + byte + double ×2 + IPictureFillSymbol 空标记。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.push(1);
+            bytes.extend(2.0_f64.to_le_bytes());
+            bytes.extend(3.0_f64.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes
+        }
+        ReaderKind::ArrowMarkerSymbolBody10_1 => {
+            // 版本 1：颜色空标记 + 标量（v>1 无尾 short）。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend([0_u8; 16]);
+            for _ in 0..3 {
+                bytes.extend(0_f64.to_le_bytes());
+            }
+            for _ in 0..3 {
+                bytes.extend(0_i32.to_le_bytes());
+            }
+            for _ in 0..2 {
+                bytes.extend(0_f64.to_le_bytes());
+            }
+            bytes
+        }
+        ReaderKind::LineFillSymbolBody10_1 => {
+            // 版本 1：颜色空标记 + 双 ISymbol 槽空标记 + 标量段。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend([0_u8; 16]);
+            bytes.extend([0_u8; 16]);
+            bytes.extend([0_u8; 16]);
+            for _ in 0..3 {
+                bytes.extend(0_f64.to_le_bytes());
+            }
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes
+        }
+        ReaderKind::MarkerFillSymbolBody10_1 => {
+            // 版本 1：int32 + double ×4 + 颜色/双 ISymbol 空标记 + 标量。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(0_i32.to_le_bytes());
+            for _ in 0..4 {
+                bytes.extend(0_f64.to_le_bytes());
+            }
+            bytes.extend([0_u8; 16]);
+            bytes.extend([0_u8; 16]);
+            bytes.extend([0_u8; 16]);
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(45.0_f64.to_le_bytes());
+            bytes
+        }
+        ReaderKind::GradientFillSymbolBody10_1 => {
+            // 版本 1：色带/颜色/符号空标记 + 标量段。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend([0_u8; 16]);
+            bytes.extend([0_u8; 16]);
+            bytes.extend([0_u8; 16]);
+            bytes.extend(30.0_f64.to_le_bytes());
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend(0.5_f64.to_le_bytes());
+            for _ in 0..3 {
+                bytes.extend(0_i32.to_le_bytes());
+            }
+            bytes
+        }
+        ReaderKind::DotDensityFillSymbolBody10_1 => {
+            // 版本 1：颜色 + 符号空标记 + 标量 + 标记计数 0 + 值计数 0 + 尾颜色。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.push(1);
+            bytes.extend(2.0_f64.to_le_bytes());
+            bytes.push(0);
+            bytes.extend([0_u8; 16]);
+            bytes.extend([0_u8; 16]);
+            for _ in 0..3 {
+                bytes.extend(0_i32.to_le_bytes());
+            }
+            bytes.extend(4.0_f64.to_le_bytes());
+            bytes.push(1);
+            // 标记计数 0（无独立计数字段）：值为空数组，随后尾颜色空标记。
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes
+        }
+        ReaderKind::SymbolSlotFull10_1 => {
+            // 全闭合槽位：SimpleMarkerSymbol 新对象（头 + 版本 1 最小体）。
+            let mut bytes = SIMPLE_MARKER_SYMBOL_CLASS_ID.to_vec();
+            bytes.extend(36_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend([0_u8; 16]); // 主色：空标记
+            bytes.extend(6.0_f64.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(13_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            for value in [0.0_f64; 3] {
+                bytes.extend(value.to_le_bytes());
+            }
+            bytes.push(1);
+            bytes.extend(1.0_f64.to_le_bytes());
+            bytes.extend([0_u8; 16]); // 轮廓色：空标记
+            bytes
+        }
+        // —— C 轮：几何体 + 类分派 ——
+        ReaderKind::PolylineBody10_1 => {
+            // 版本 1（无空间参考段）+ 类型 0 空几何记录（4 字节）。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(4_u32.to_le_bytes());
+            bytes.extend(0_u32.to_le_bytes());
+            bytes
+        }
+        ReaderKind::GeometryBodyOfClass10_1 => {
+            // 类分派入口：同一 Polyline 最小体（类标识为 Polyline 常量）。
+            sample(ReaderKind::PolylineBody10_1)
+        }
+        // —— D 轮：数值格式 + Hyperlink 体 ——
+        ReaderKind::NumericFormatBody10_1 => {
+            // 版本 1 + int32 ×4 + short ×3。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            for value in [0_i32; 4] {
+                bytes.extend(value.to_le_bytes());
+            }
+            for value in [0_i16; 3] {
+                bytes.extend(value.to_le_bytes());
+            }
+            bytes
+        }
+        ReaderKind::PercentageFormatBody10_1 => {
+            // 版本 2 满形态：short + 内嵌 NumericFormat 核心（同键无对象头）。
+            let mut bytes = 2_u16.to_le_bytes().to_vec();
+            bytes.extend(3_i16.to_le_bytes());
+            bytes.extend(&sample(ReaderKind::NumericFormatBody10_1));
+            bytes
+        }
+        ReaderKind::FractionFormatBody10_1 => {
+            // 版本 1 + int32 ×2（恒 10 字节体）。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(7_i32.to_le_bytes());
+            bytes.extend((-2_i32).to_le_bytes());
+            bytes
+        }
+        ReaderKind::RateFormatBody10_1 => {
+            // 版本 2 满形态：double + String + 内嵌核心。
+            let mut bytes = 2_u16.to_le_bytes().to_vec();
+            bytes.extend(1.5_f64.to_le_bytes());
+            bytes.extend(encoded("米每秒"));
+            bytes.extend(&sample(ReaderKind::NumericFormatBody10_1));
+            bytes
+        }
+        ReaderKind::HyperlinkBody10_1 => {
+            // 版本 1 满体：int32 + String + int32。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(encoded("链接"));
+            bytes.extend(0_i32.to_le_bytes());
+            bytes
+        }
     }
 }
 
@@ -1162,6 +1548,187 @@ fn try_read(kind: ReaderKind, reader: &mut Reader<'_>) -> io::Result<()> {
                 &mut RefTable10_1::new(),
             )
             .map(|_| ())
+        }
+        // —— 接线轮扩充读取器 ——
+        ReaderKind::AnnotatePropsBody10_1 => {
+            read_annotate_props_collection_body_10_1(reader, 1024, &mut RefTable10_1::new(), 59)
+                .map(|_| ())
+        }
+        ReaderKind::LabelEnginePropsBody10_1 => {
+            read_label_engine_props_body_10_1(reader, 1024, &mut RefTable10_1::new(), 60)
+                .map(|_| ())
+        }
+        ReaderKind::EditTemplateManagerBody10_1 => {
+            read_edit_template_manager_body_10_1(reader, 1024, &mut RefTable10_1::new(), 76)
+                .map(|_| ())
+        }
+        ReaderKind::FeatureIdSetBody10_1 => {
+            read_feature_id_set_body_10_1(reader, &mut RefTable10_1::new(), 75).map(|_| ())
+        }
+        ReaderKind::TemplateBody10_1 => mxd2qgz::objects::display_symbol::read_template_body_10_1(
+            reader,
+            1024,
+            &mut RefTable10_1::new(),
+            71,
+        )
+        .map(|_| ()),
+        ReaderKind::LineDecorationBody10_1 => {
+            mxd2qgz::objects::display_symbol::read_line_decoration_body_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+                80,
+                mxd2qgz::objects::display_symbol::MAX_SYMBOL_NESTING_DEPTH,
+            )
+            .map(|_| ())
+        }
+        ReaderKind::SimpleLineDecorationElementBody10_1 => {
+            mxd2qgz::objects::display_symbol::read_simple_line_decoration_element_body_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+                81,
+                mxd2qgz::objects::display_symbol::MAX_SYMBOL_NESTING_DEPTH,
+            )
+            .map(|_| ())
+        }
+        ReaderKind::MultiLayerLineSymbolBody10_1 => {
+            mxd2qgz::objects::display_symbol::read_multi_layer_line_symbol_body_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+                60,
+                mxd2qgz::objects::display_symbol::MAX_SYMBOL_NESTING_DEPTH,
+            )
+            .map(|_| ())
+        }
+        ReaderKind::MultiLayerMarkerSymbolBody10_1 => {
+            mxd2qgz::objects::display_symbol::read_multi_layer_marker_symbol_body_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+                70,
+                mxd2qgz::objects::display_symbol::MAX_SYMBOL_NESTING_DEPTH,
+            )
+            .map(|_| ())
+        }
+        ReaderKind::MultiLayerFillSymbolBody10_1 => {
+            mxd2qgz::objects::display_symbol::read_multi_layer_fill_symbol_body_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+                72,
+                mxd2qgz::objects::display_symbol::MAX_SYMBOL_NESTING_DEPTH,
+            )
+            .map(|_| ())
+        }
+        ReaderKind::CharacterMarkerSymbolBody10_1 => {
+            mxd2qgz::objects::display_symbol::read_character_marker_symbol_body_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+                75,
+            )
+            .map(|_| ())
+        }
+        ReaderKind::PictureMarkerSymbolBody10_1 => {
+            mxd2qgz::objects::display_symbol::read_picture_marker_symbol_body_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+                90,
+            )
+            .map(|_| ())
+        }
+        ReaderKind::PictureLineSymbolBody10_1 => {
+            mxd2qgz::objects::display_symbol::read_picture_line_symbol_body_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+                100,
+            )
+            .map(|_| ())
+        }
+        ReaderKind::ArrowMarkerSymbolBody10_1 => {
+            mxd2qgz::objects::display_symbol::read_arrow_marker_symbol_body_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+                110,
+            )
+            .map(|_| ())
+        }
+        ReaderKind::LineFillSymbolBody10_1 => {
+            mxd2qgz::objects::display_symbol::read_line_fill_symbol_body_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+                102,
+                mxd2qgz::objects::display_symbol::MAX_SYMBOL_NESTING_DEPTH,
+            )
+            .map(|_| ())
+        }
+        ReaderKind::MarkerFillSymbolBody10_1 => {
+            mxd2qgz::objects::display_symbol::read_marker_fill_symbol_body_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+                103,
+                mxd2qgz::objects::display_symbol::MAX_SYMBOL_NESTING_DEPTH,
+            )
+            .map(|_| ())
+        }
+        ReaderKind::GradientFillSymbolBody10_1 => {
+            mxd2qgz::objects::display_symbol::read_gradient_fill_symbol_body_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+                104,
+                mxd2qgz::objects::display_symbol::MAX_SYMBOL_NESTING_DEPTH,
+            )
+            .map(|_| ())
+        }
+        ReaderKind::DotDensityFillSymbolBody10_1 => {
+            mxd2qgz::objects::display_symbol::read_dot_density_fill_symbol_body_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+                120,
+                mxd2qgz::objects::display_symbol::MAX_SYMBOL_NESTING_DEPTH,
+            )
+            .map(|_| ())
+        }
+        ReaderKind::SymbolSlotFull10_1 => read_symbol_slot_full_10_1(
+            reader,
+            1024,
+            &mut RefTable10_1::new(),
+            mxd2qgz::objects::display_symbol::MAX_SYMBOL_NESTING_DEPTH,
+        )
+        .map(|_| ()),
+        ReaderKind::PolylineBody10_1 => {
+            read_polyline_body_10_1(reader, 1024, &mut RefTable10_1::new()).map(|_| ())
+        }
+        ReaderKind::GeometryBodyOfClass10_1 => read_geometry_body_of_class_10_1(
+            &POLYLINE_CLASS_ID,
+            reader,
+            1024,
+            &mut RefTable10_1::new(),
+        )
+        .map(|_| ()),
+        ReaderKind::NumericFormatBody10_1 => {
+            read_numeric_format_body_10_1(reader, &mut RefTable10_1::new(), 42).map(|_| ())
+        }
+        ReaderKind::PercentageFormatBody10_1 => {
+            read_percentage_format_body_10_1(reader, &mut RefTable10_1::new(), 43).map(|_| ())
+        }
+        ReaderKind::FractionFormatBody10_1 => {
+            read_fraction_format_body_10_1(reader, &mut RefTable10_1::new(), 44).map(|_| ())
+        }
+        ReaderKind::RateFormatBody10_1 => {
+            read_rate_format_body_10_1(reader, 1024, &mut RefTable10_1::new(), 45).map(|_| ())
+        }
+        ReaderKind::HyperlinkBody10_1 => {
+            read_hyperlink_body_10_1(reader, 1024, &mut RefTable10_1::new(), 80).map(|_| ())
         }
     }
 }

@@ -657,15 +657,72 @@ fn feature_layer_successor_note(
     };
     diagnostics.push(format!(
         "条目 {}：渲染器槽后的后继字段段已消费至 {:?} 停止（FieldInfo 循环声明 {} 条、\
-         已消费 {} 条；IHyperlink 循环声明 {} 条；+0x154 字符串 {:?} 不解释语义），\
-         其后字节保留未知",
+         已消费 {} 条；IHyperlink 循环声明 {} 条、已消费 {} 条；+0x154 字符串 {:?} 不解释\
+         语义），其后字节保留未知",
         entry_index + 1,
         successor.stop,
         successor.field_info_count,
         successor.field_infos.len(),
         successor.hyperlink_count,
+        successor.hyperlinks.len(),
         successor.string_154,
     ));
+    // 标注环（ALPC/LELP/TextSymbol 链）的已解析内容与停止点（接线轮起
+    // TextSymbol 体解析推进，停止点深入其体内；字段风格循既有诊断）。
+    annotate_chain_note(successor, entry_index, diagnostics);
+}
+
+/// 标注环诊断：ALPC 槽为已解析集合时逐条列出 LELP 表达式/类名与 TextSymbol
+/// 体形态；均为已确认字段，业务语义不解释。
+fn annotate_chain_note(
+    successor: &crate::layers::feature_layer_tail::FeatureLayerSuccessor10_1,
+    entry_index: usize,
+    diagnostics: &mut Vec<String>,
+) {
+    let Some(crate::layers::feature_layer_tail::AnnotatePropsSlot10_1::Collection(alpc)) =
+        &successor.annotate_props
+    else {
+        return;
+    };
+    for entry in &alpc.entries {
+        let crate::layers::annotate_props::AlpcEntrySlot10_1::LabelEngineProps(lelp) = &entry.slot
+        else {
+            continue;
+        };
+        let text_symbol_note = match &lelp.text_symbol {
+            crate::layers::annotate_props::LelpTextSymbolSlot10_1::TextSymbol(body) => format!(
+                "ITextSymbol 槽 TextSymbol 体（版本 {}）已解析{}",
+                body.version,
+                match &body.stop {
+                    Some(reason) => format!("，体内停止：{reason:?}"),
+                    None => "（体完整消费）".to_string(),
+                }
+            ),
+            crate::layers::annotate_props::LelpTextSymbolSlot10_1::Null => {
+                "ITextSymbol 槽为空标记".to_string()
+            }
+            crate::layers::annotate_props::LelpTextSymbolSlot10_1::BackReference {
+                key, ..
+            } => {
+                format!("ITextSymbol 槽为回引（键 {key}）")
+            }
+        };
+        diagnostics.push(format!(
+            "条目 {}：标注属性集合（键 {}）条目 LELP（键 {}，版本 {}）：表达式 {:?}、\
+             标注类名 {:?}；{}；条目键 {}",
+            entry_index + 1,
+            alpc.key,
+            lelp.key,
+            lelp.version,
+            lelp.expression,
+            lelp.name,
+            text_symbol_note,
+            match entry.entry_key {
+                Some(k) => format!("{k}"),
+                None => "未读（LELP 体内停止）".to_string(),
+            }
+        ));
+    }
 }
 
 /// 由 FeatureLayer 前缀构造数据源模型项与诊断（FCN 名称 → connection，

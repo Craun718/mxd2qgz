@@ -8,8 +8,10 @@
 
 use mxd2qgz::layers::composite_graphics::{
     COMPOSITE_GRAPHICS_LAYER_CLASS_ID, CompositeGraphicsLayerStop10_1, ConsumedEntry10_1,
-    ElementGroup10_1, SubLayerEntry10_1, read_composite_graphics_layer_prefix_10_1,
+    ElementEntry10_1, ElementGroup10_1, SubLayerEntry10_1, SubLayerTailSlot10_1,
+    read_composite_graphics_layer_prefix_10_1,
 };
+use mxd2qgz::objects::element_collection::ElementCollectionStop10_1;
 use mxd2qgz::storage::object_refs::RefTable10_1;
 use mxd2qgz::stream::reader::Reader;
 use std::io::ErrorKind;
@@ -353,11 +355,11 @@ fn element_groups_classify_null_and_back_references_and_skip_negative_counts() {
             ElementGroup10_1 {
                 declared_count: 2,
                 elements: vec![
-                    ConsumedEntry10_1::Null,
-                    ConsumedEntry10_1::BackReference {
+                    ElementEntry10_1::Null,
+                    ElementEntry10_1::BackReference {
                         class_id: [0xa5; 16],
-                        key: SEEN_KEY
-                    }
+                        key: SEEN_KEY,
+                    },
                 ]
             },
             ElementGroup10_1 {
@@ -466,7 +468,8 @@ fn reads_sublayer_items_with_tail_fields() {
                 tail_shorts: [1, 2, 3],
                 tail_doubles: [8.5, -9.5],
                 tail_int32s: [4, 5],
-                tail_nested: Some(ConsumedEntry10_1::Null),
+                tail_nested: Some(SubLayerTailSlot10_1::Null),
+                tail_nested_collection: None,
                 tail_double: Some(-1.75),
             },
             SubLayerEntry10_1 {
@@ -475,10 +478,11 @@ fn reads_sublayer_items_with_tail_fields() {
                 tail_shorts: [1, 2, 3],
                 tail_doubles: [8.5, -9.5],
                 tail_int32s: [4, 5],
-                tail_nested: Some(ConsumedEntry10_1::BackReference {
+                tail_nested: Some(SubLayerTailSlot10_1::BackReference {
                     class_id: [0xa5; 16],
-                    key: SEEN_KEY
+                    key: SEEN_KEY,
                 }),
+                tail_nested_collection: None,
                 tail_double: Some(-1.75),
             },
         ]
@@ -780,4 +784,125 @@ fn sample_basemap_cgl_body_advances_to_sublayer_feature_layer_stop() {
     assert_eq!(reader.position(), 0x1706e - body_offset);
     assert_eq!(parsed.remaining_bytes, maps.len() - 0x1706e);
     assert!(!table.contains(1555));
+}
+
+#[test]
+fn element_loop_and_sublayer_tail_dispatch_element_collections_inline() {
+    // 接线轮：第 2 步元素条目与第 9 步条目尾段嵌套对象按类标识分派
+    // ElementCollection 体（与第 7 步同模式；落位记录见 map-object.md 文末
+    // 「接线轮」节）。体取样本第 7 步形态：版本 4 + 计数 0（6 字节完整消
+    // 费，无体内停止）；尾段体完整消费后版本 >1 的尾随 double 可达。
+    let collection_body = {
+        let mut b = 4_u16.to_le_bytes().to_vec();
+        b.extend(0_u32.to_le_bytes());
+        b
+    };
+    let element_entry = {
+        let mut e = entry_bytes(ELEMENT_COLLECTION_CLASS_ID, 90);
+        e.extend_from_slice(&collection_body);
+        e
+    };
+    let tail_entry = {
+        let mut e = entry_bytes(ELEMENT_COLLECTION_CLASS_ID, 91);
+        e.extend_from_slice(&collection_body);
+        e
+    };
+    let groups = group_region(&[(1, &[element_entry])]);
+    let items = [SubLayerItem {
+        name: "JZD1 注记",
+        layer_entry: vec![0_u8; 16], // ILayer 空标记
+        tail_nested_entry: tail_entry,
+    }];
+    let bytes = cgl_body(
+        2,
+        &groups,
+        "<默认>",
+        &[0_u8; 16],
+        &sublayer_region(2, &items),
+        b"",
+    );
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    table.register(SEEN_KEY);
+    let parsed = read_composite_graphics_layer_prefix_10_1(&mut reader, 1024, &mut table).unwrap();
+    // 两处体整体消费、无体内停止：游标停在第 10 步尾段（TailNotExpanded）。
+    assert!(matches!(
+        parsed.stop,
+        CompositeGraphicsLayerStop10_1::TailNotExpanded
+    ));
+    assert_eq!(parsed.element_groups.len(), 1);
+    match &parsed.element_groups[0].elements[0] {
+        ElementEntry10_1::Collection(collection) => {
+            assert_eq!(collection.stop, None);
+            assert_eq!(collection.count, 0);
+        }
+        other => panic!("元素条目应为 ElementCollection 体：{other:?}"),
+    }
+    match &parsed.sublayers[0].tail_nested {
+        Some(SubLayerTailSlot10_1::Collection { key }) => assert_eq!(*key, 91),
+        other => panic!("尾段槽应为 Collection 分类：{other:?}"),
+    }
+    let body = parsed.sublayers[0].tail_nested_collection.as_ref().unwrap();
+    assert_eq!(body.stop, None);
+    assert_eq!(
+        parsed.sublayers[0].tail_double,
+        Some(-1.75),
+        "体完整消费后版本 >1 的尾随 double 可达"
+    );
+    assert!(table.contains(90) && table.contains(91));
+    assert_eq!(
+        parsed.remaining_bytes, 0,
+        "尾段为空，读取器在 TailNotExpanded 停止"
+    );
+}
+
+#[test]
+fn element_collection_inner_stop_propagates_from_element_loop() {
+    // 第 2 步 ElementCollection 体在内部未知元素处停止：透传为
+    // ElementCollectionIncomplete（键按「登记先于持久化」保留，游标停在内
+    // 层停止点，组内后继条目不可达）。
+    let collection_body_offset = 2 + 4; // 体 = 版本 + 计数之后
+    let mut collection_body = 4_u16.to_le_bytes().to_vec();
+    collection_body.extend(1_u32.to_le_bytes()); // 元素计数 1
+    let unknown_header_offset = collection_body.len();
+    collection_body.extend(entry_bytes(UNKNOWN_CLASS_ID, 99)); // 体内停止点
+    let element_entry = {
+        let mut e = entry_bytes(ELEMENT_COLLECTION_CLASS_ID, 90);
+        e.extend_from_slice(&collection_body);
+        e
+    };
+    let groups = group_region(&[(1, &[element_entry])]);
+    let bytes = cgl_body(
+        2,
+        &groups,
+        "<默认>",
+        &[0_u8; 16],
+        &sublayer_region(2, &[]),
+        b"",
+    );
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    table.register(SEEN_KEY);
+    let parsed = read_composite_graphics_layer_prefix_10_1(&mut reader, 1024, &mut table).unwrap();
+    // 外层停止原因携带键 90 与内层原因（未知元素键 99，内层未登记）。
+    assert_eq!(
+        parsed.stop,
+        CompositeGraphicsLayerStop10_1::ElementCollectionIncomplete {
+            group: 0,
+            index: 0,
+            key: 90,
+            reason: ElementCollectionStop10_1::ElementBodyNotClosed {
+                index: 0,
+                class_id: UNKNOWN_CLASS_ID,
+                key: 99,
+            },
+        }
+    );
+    // 游标停在内层未知元素对象头起点：传入 Reader 自体首起（对象头由调用
+    // 者消费）：版本(2) + 组计数(4) + 组内计数(4) + 条目头(20) + 体内偏移。
+    let entry_offset = 2 + 4 + 4 + 20;
+    assert_eq!(reader.position(), entry_offset + unknown_header_offset);
+    // 内层键 99 不登记；外层 ElementCollection 键 90 已登记。
+    assert!(table.contains(90));
+    assert!(!table.contains(99));
 }

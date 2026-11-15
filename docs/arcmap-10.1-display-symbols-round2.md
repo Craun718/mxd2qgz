@@ -392,3 +392,16 @@ double（+0x18c / 局部 / +0xf8）→ 版本 >7（v8）int32 N +（N≠0 时 N 
   节）。
 - 全部结论为静态反编译观察，未经 ArcMap 10.1 运行验证；样本对位无从谈起
   （无实例），人工目视验收未做。
+
+## 接线轮落位（2026-11-15）
+
+第五节建议的宿主切换已落位：`feature_layer_tail` 的 SimpleRenderer 与
+LegendClass、`element_body` 的 TextSymbol ISymbol 槽 #2 三处调用由
+`read_display_symbol_slot_10_1` 切至 `read_symbol_slot_full_10_1`
+（SimpleRenderer/LegendClass 槽字段类型随切为 `SymbolSlotFull10_1` 并自
+`feature_layer_tail` 重导出；FL 后继段 ㉖ ISymbol 槽维持第一轮入口，本轮范
+围外）。第一轮闭合类停止语义逐值不变（SimpleMarkerSymbol 体停止仍归约宿主
+`SymbolBody` 变体，其余经 `slot_full_stop_10_1` 归约 `SymbolNested`）；第二
+轮闭合符号在宿主槽获得递归解析。样本三类 ISymbol 槽当前仅含第一轮闭合类，
+样本行为不变（停止点仍 0xd6c）。第五节 14 直读入口与本轮 `read_symbol_
+slot_full_10_1` 已入 tests/robustness.rs 集中清单（74 入口）。

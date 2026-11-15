@@ -8,12 +8,13 @@
 //! 验证，未经目标软件人工检查。
 
 use mxd2qgz::objects::display_color::{ColorBody10_1, ColorSlot10_1, RGB_COLOR_CLASS_ID};
-use mxd2qgz::objects::display_symbol::{DisplaySymbolSlot10_1, SIMPLE_FILL_SYMBOL_CLASS_ID};
+use mxd2qgz::objects::display_symbol::{SIMPLE_FILL_SYMBOL_CLASS_ID, SymbolSlotFull10_1};
 use mxd2qgz::objects::element_body::{
-    CustomProperty10_1, LINE_ELEMENT_CLASS_ID, MARKER_ELEMENT_CLASS_ID, NestedEntry10_1,
-    TEXT_ELEMENT_CLASS_ID, TEXT_SYMBOL_CLASS_ID, read_element_body_of_class_10_1,
+    CustomProperty10_1, GeometrySlot10_1, LINE_ELEMENT_CLASS_ID, MARKER_ELEMENT_CLASS_ID,
+    NestedEntry10_1, TEXT_ELEMENT_CLASS_ID, TEXT_SYMBOL_CLASS_ID, read_element_body_of_class_10_1,
     read_line_element_body_10_1, read_text_element_body_10_1, read_text_symbol_body_10_1,
 };
+use mxd2qgz::objects::geometry::POLYLINE_CLASS_ID;
 use mxd2qgz::objects::property_set::PropertyValue10_1;
 use mxd2qgz::storage::object_refs::RefTable10_1;
 use mxd2qgz::stream::reader::Reader;
@@ -705,9 +706,44 @@ fn back_reference_slots_are_classified_without_bodies() {
     };
     assert!(te.symbol.is_none(), "回引槽无 TextSymbol 体");
     assert!(te.stop.is_none());
-    assert_eq!(te.geometry, NestedEntry10_1::Null);
+    assert_eq!(te.geometry, GeometrySlot10_1::Null);
     assert_eq!(reader.position(), bytes.len());
     assert_eq!(table.len(), 1);
+}
+
+#[test]
+fn text_element_geometry_slot_parses_polyline_body_inline() {
+    // 接线轮：IGeometry 槽 Polyline 新对象经几何类分派整体解析（样本 16 实
+    // 例原全部停在该槽；证据：docs/arcmap-10.1-geometry.md「接线建议」）。
+    // 体取版本 1 最小形态（4 字节类型 0 空几何记录、无空间参考段）。
+    let mut bytes = 8_u16.to_le_bytes().to_vec();
+    bytes.extend(ep_prefix(6));
+    bytes.extend(encoded("x"));
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(entry(&TEXT_SYMBOL_CLASS_ID, 10)); // 符号槽回引
+    bytes.extend(entry(&POLYLINE_CLASS_ID, 11)); // IGeometry Polyline 新对象
+    bytes.extend(1_u16.to_le_bytes()); // Polyline 版本 1
+    bytes.extend(4_u32.to_le_bytes()); // 记录声明长度 4
+    bytes.extend(0_u32.to_le_bytes()); // 记录：类型 0 空几何
+    bytes.extend(0_i32.to_le_bytes()); // 版本 >2 尾 int32
+    bytes.extend(0_i32.to_le_bytes()); // 版本 >3 尾 int32
+    let mut table = RefTable10_1::new();
+    table.register(10);
+    let mut reader = Reader::new(&bytes);
+    let parsed = read_text_element_body_10_1(&mut reader, 1024, &mut table).unwrap();
+    assert!(parsed.stop.is_none());
+    assert_eq!(parsed.remaining_bytes, 0);
+    assert_eq!(reader.position(), bytes.len());
+    match parsed.geometry {
+        GeometrySlot10_1::Polyline(body) => {
+            assert_eq!(body.version, 1);
+            assert_eq!(body.record.kind, 0);
+            assert!(body.record.points.is_empty());
+            assert!(body.spatial_reference.is_none());
+        }
+        other => panic!("IGeometry 槽应为 Polyline 体：{other:?}"),
+    }
+    assert_eq!(table.len(), 2, "符号回引 10 + Polyline 新键 11 登记");
 }
 
 #[test]
@@ -763,7 +799,7 @@ fn text_element_parses_sample_shaped_symbol2_simple_fill_symbol() {
     let symbol = te.symbol.as_ref().expect("TextSymbol 体应已消费");
     assert!(symbol.stop.is_none(), "TextSymbol 体应完整消费");
     // 符号 #2 为 SimpleFillSymbol 体（轮廓空标记 + 填充色 + 标量段）。
-    let DisplaySymbolSlot10_1::SimpleFillSymbol(fill) = &symbol.symbol2 else {
+    let SymbolSlotFull10_1::SimpleFillSymbol(fill) = &symbol.symbol2 else {
         panic!("符号 #2 应为 SimpleFillSymbol：{:?}", symbol.symbol2);
     };
     assert_eq!(fill.key, 1593);
@@ -818,7 +854,7 @@ fn text_symbol_symbol2_nested_stop_propagates() {
             assert_eq!(*slot, "ISymbol 符号槽 #2");
             // 分派把嵌套体内停止归约为 NestedIncomplete（携带 SFS 自身的类
             // 标识与键）；未知轮廓条目的键见 SFS 体自身的 stop 字段。
-            let DisplaySymbolSlot10_1::SimpleFillSymbol(fill) = &symbol.symbol2 else {
+            let SymbolSlotFull10_1::SimpleFillSymbol(fill) = &symbol.symbol2 else {
                 panic!("符号 #2 应为 SimpleFillSymbol");
             };
             assert!(fill.stop.is_some(), "SFS 体应带内部停止");

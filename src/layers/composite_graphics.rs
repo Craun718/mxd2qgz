@@ -79,12 +79,14 @@
 //! 研究副本在 CGL 区域外有 157 字节字符串差异；CGL 区域内逐字节一致）。
 //! 样本吻合为辅助观察，未在目标软件中验证。
 //!
-//! 未解决问题：第 2 步元素循环与第 9 步条目尾段嵌套对象（同请求 IID
-//! `DAT_6f7aa58c`）未做 ElementCollection 分派（本读取器只在第 7 步分
-//! 派）；第 6 步第三个 int32、第 8 步 int32、条目尾段字段的语义未定性；
-//! `FUN_6f6b3100` 与尾段未展开；版本 short 符号性未闭合（本读取器按无符
-//! 号更严处理）；条目尾段与单元 FeatureLayer 体结束边界的逐字节对位未完
-//! 成（第五轮「未解决事项」3）。人工目视验收未做，不声称已验证。
+//! 未解决问题（接线轮更新）：第 2 步元素循环与第 9 步条目尾段嵌套对象已
+//! 接入 ElementCollection 分派（第 7 步同模式，体内停止透传
+//! `ElementCollectionIncomplete`/`SubLayerTailCollectionIncomplete`，落位记
+//! 录见 docs/arcmap-10.1-map-object.md 文末「接线轮」节）；第 6 步第三个
+//! int32、第 8 步 int32、条目尾段字段的语义未定性；`FUN_6f6b3100` 与尾段
+//! 未展开；版本 short 符号性未闭合（本读取器按无符号更严处理）；条目尾段
+//! 与单元 FeatureLayer 体结束边界的逐字节对位未完成（第五轮「未解决事项」
+//! 3）。人工目视验收未做，不声称已验证。
 
 use crate::objects::element_collection::{
     ELEMENT_COLLECTION_CLASS_ID, ElementCollection10_1, ElementCollectionStop10_1,
@@ -120,14 +122,31 @@ pub enum ConsumedEntry10_1 {
     BackReference { class_id: [u8; 16], key: u32 },
 }
 /// 一个元素组（字段序第 2 步循环）。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ElementGroup10_1 {
     /// 组内元素计数的原始位模式；原生按有符号比较，<=0 不迭代。
     pub declared_count: u32,
     /// 已成功分类的元素条目；触发
     /// [`CompositeGraphicsLayerStop10_1::ElementNewObject`] 停止的元素不
     /// 记录，该组整体不记录。
-    pub elements: Vec<ConsumedEntry10_1>,
+    pub elements: Vec<ElementEntry10_1>,
+}
+
+/// 第 2 步元素组循环单个条目（请求 IID `DAT_6f7aa4fc`={9B001319} IElement）
+/// 的分类结果（接线轮起 ElementCollection 新对象按类标识整体解析其体，与
+/// 第 7 步同模式；落位记录见 docs/arcmap-10.1-map-object.md 文末「接线轮」
+/// 节）。
+#[derive(Debug, Clone, PartialEq)]
+pub enum ElementEntry10_1 {
+    /// 16 字节全零类标识：空引用，无键、无对象体。
+    Null,
+    /// 键已见：回引条目，无对象体。类标识原样保留、不校验。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 ElementCollection 对象（类标识经 [`ELEMENT_COLLECTION_CLASS_ID`]
+    /// 校验）：已解析体；体内停止经
+    /// [`CompositeGraphicsLayerStop10_1::ElementCollectionIncomplete`] 透
+    /// 传（键按「登记先于持久化」语义保留，游标停在内层停止点）。
+    Collection(Box<ElementCollection10_1>),
 }
 
 /// 一个子图层条目（字段序第 9 步循环）。
@@ -143,14 +162,39 @@ pub struct SubLayerEntry10_1 {
     pub tail_doubles: [f64; 2],
     /// 条目尾段 int32 ×2（→ +0x7c/+0x80），语义未定性。
     pub tail_int32s: [u32; 2],
-    /// 条目尾段嵌套对象（`DAT_6f7aa58c` → +0x94）。`None` 表示本读取器在
-    /// 该对象处停止（见停止原因
-    /// [`CompositeGraphicsLayerStop10_1::SubLayerTailNewObject`]），此时
-    /// `tail_double` 亦为 `None`。
-    pub tail_nested: Option<ConsumedEntry10_1>,
+    /// 条目尾段嵌套对象（`DAT_6f7aa58c` → +0x94）分类（接线轮起
+    /// ElementCollection 新对象整体解析，体入
+    /// [`SubLayerEntry10_1::tail_nested_collection`]）。`None` 表示本读取器
+    /// 在该对象处停止（见停止原因
+    /// [`CompositeGraphicsLayerStop10_1::SubLayerTailNewObject`] 或
+    /// [`CompositeGraphicsLayerStop10_1::SubLayerTailCollectionIncomplete`]），
+    /// 此时 `tail_double` 亦为 `None`。
+    pub tail_nested: Option<SubLayerTailSlot10_1>,
+    /// 条目尾段嵌套对象为 ElementCollection（`{CE8F3972}`）新对象时的已解
+    /// 析体（键已登记；体内停止经
+    /// [`CompositeGraphicsLayerStop10_1::SubLayerTailCollectionIncomplete`]
+    /// 上报，本字段仍携带到停止点为止的体）。`None` = 该槽是空标记/回引/
+    /// 其他类新对象。
+    pub tail_nested_collection: Option<ElementCollection10_1>,
     /// 版本 >1 的尾随 double（→ +0x88）。`None` = 版本 <=1，或本条目在尾
     /// 段嵌套对象处停止。
     pub tail_double: Option<f64>,
+}
+
+/// 子图层条目尾段嵌套对象（`DAT_6f7aa58c` → +0x94）的分类结果（接线轮起
+/// ElementCollection 新对象按类标识整体解析其体，与第 7 步同模式）。
+#[derive(Debug, Clone, PartialEq)]
+pub enum SubLayerTailSlot10_1 {
+    /// 16 字节全零类标识：空引用，无键、无对象体。
+    Null,
+    /// 键已见：回引条目，无对象体。类标识原样保留、不校验。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 ElementCollection 对象（类标识经 [`ELEMENT_COLLECTION_CLASS_ID`]
+    /// 校验）：体解析进
+    /// [`SubLayerEntry10_1::tail_nested_collection`]；体内停止经
+    /// [`CompositeGraphicsLayerStop10_1::SubLayerTailCollectionIncomplete`]
+    /// 透传。本变体在槽位字段记 `None`（与第 7 步 `nested_1c` 同约定）。
+    Collection { key: u32 },
 }
 
 /// 已确认前缀的停止原因；本读取器对任何成功输入都返回停止原因（见模块文档）。
@@ -185,12 +229,30 @@ pub enum CompositeGraphicsLayerStop10_1 {
         class_id: [u8; 16],
         key: u32,
     },
-    /// 子图层条目尾段嵌套对象（`DAT_6f7aa58c`）是新对象：该条目以部分消费
-    /// 状态记录（`tail_nested`/`tail_double` 为 `None`），游标回退到其头起点。
+    /// 子图层条目尾段嵌套对象（`DAT_6f7aa58c`）是新对象且类标识非
+    /// ElementCollection：该条目以部分消费状态记录（`tail_nested`/
+    /// `tail_double` 为 `None`），游标回退到其头起点。
     SubLayerTailNewObject {
         index: usize,
         class_id: [u8; 16],
         key: u32,
+    },
+    /// 子图层条目尾段 ElementCollection 体（接线轮起类分派解析）内部出现
+    /// 停止（原因透传，见 [`ElementCollectionStop10_1`]）：游标停在内层停
+    /// 止点，条目键已登记，版本 >1 的尾随 double 不可达。
+    SubLayerTailCollectionIncomplete {
+        index: usize,
+        key: u32,
+        reason: ElementCollectionStop10_1,
+    },
+    /// 第 2 步元素循环中的 ElementCollection 体（接线轮起类分派解析）内部
+    /// 出现停止（原因透传）：游标停在内层停止点，键已登记；`group`/`index`
+    /// 为组序号与组内序号（0 起），其后条目与组不可达。
+    ElementCollectionIncomplete {
+        group: usize,
+        index: usize,
+        key: u32,
+        reason: ElementCollectionStop10_1,
     },
     /// 子图层循环之后的尾段（第 10 条）未逐项展开：反编译可见其后的 int32、
     /// ILayer 族嵌套对象与版本分支 String/double，本读取器不消费。
@@ -219,8 +281,22 @@ impl CompositeGraphicsLayerStop10_1 {
                  的名称字符串已消费但不入列表）"
             ),
             Self::SubLayerTailNewObject { index, .. } => format!(
-                "子图层条目 {index} 的尾段嵌套对象为新对象：条目以部分消费状态记录，\
-                 游标回退到其头起点"
+                "子图层条目 {index} 的尾段嵌套对象为新对象（类标识非 \
+                 ElementCollection）：条目以部分消费状态记录，\
+                 游标回退到其对象头起点"
+            ),
+            Self::SubLayerTailCollectionIncomplete { index, key, reason } => format!(
+                "子图层条目 {index} 的尾段 ElementCollection（键 {key}）体在内部停止点停止：\
+                 {reason:?}；游标停在内层停止点，版本 >1 的尾随 double 与其后条目不可达"
+            ),
+            Self::ElementCollectionIncomplete {
+                group,
+                index,
+                key,
+                reason,
+            } => format!(
+                "元素组 {group} 条目 {index} 的 ElementCollection（键 {key}）体在内部停止点停止：\
+                 {reason:?}；游标停在内层停止点，其后条目与组不可达"
             ),
             Self::TailNotExpanded => {
                 "子图层循环之后的尾段未逐项展开：本读取器不消费，保守停止".to_string()
@@ -337,9 +413,36 @@ pub fn read_composite_graphics_layer_prefix_10_1(
                     let saved_table = trial_table.clone();
                     let entry = read_object_entry_10_1(&mut trial, &mut trial_table)?;
                     match entry {
-                        ObjectEntry10_1::Null => elements.push(ConsumedEntry10_1::Null),
+                        ObjectEntry10_1::Null => elements.push(ElementEntry10_1::Null),
                         ObjectEntry10_1::BackReference { class_id, key } => {
-                            elements.push(ConsumedEntry10_1::BackReference { class_id, key });
+                            elements.push(ElementEntry10_1::BackReference { class_id, key });
+                        }
+                        ObjectEntry10_1::NewObject { class_id, key }
+                            if class_id == ELEMENT_COLLECTION_CLASS_ID =>
+                        {
+                            // 接线轮：ElementCollection 新对象整体解析其体
+                            // （与第 7 步同模式；键已由条目分类按「登记先于
+                            // 持久化」语义登记，体内停止透传为新停止变体，
+                            // 游标停在内层停止点，其后条目不可达）。
+                            let collection = read_element_collection_10_1(
+                                &mut trial,
+                                max_bytes,
+                                &mut trial_table,
+                            )?;
+                            if let Some(reason) = collection.stop.clone() {
+                                stop = Some(
+                                    CompositeGraphicsLayerStop10_1::ElementCollectionIncomplete {
+                                        group,
+                                        index,
+                                        key,
+                                        reason,
+                                    },
+                                );
+                            }
+                            elements.push(ElementEntry10_1::Collection(Box::new(collection)));
+                            if stop.is_some() {
+                                break 'groups;
+                            }
                         }
                         ObjectEntry10_1::NewObject { class_id, key } => {
                             // 新元素体没有外部长度字段，本读取器无法消费：回退
@@ -487,25 +590,65 @@ pub fn read_composite_graphics_layer_prefix_10_1(
                     for slot in &mut tail_int32s {
                         *slot = trial.read_u32_le()?;
                     }
-                    // 条目尾段嵌套对象（DAT_6f7aa58c → +0x94）。
+                    // 条目尾段嵌套对象（DAT_6f7aa58c → +0x94）：接线轮起
+                    // ElementCollection 新对象按类分派整体解析（与第 7 步同
+                    // 模式；键登记先于持久化，体内停止透传）。
                     let tail_header_offset = trial.position();
                     let saved_table = trial_table.clone();
                     let entry = read_object_entry_10_1(&mut trial, &mut trial_table)?;
-                    let (tail_nested, tail_double) = match entry {
+                    let (tail_nested, tail_nested_collection, tail_double) = match entry {
                         ObjectEntry10_1::Null => {
                             let tail_double = read_tail_double(&mut trial, version)?;
-                            (Some(ConsumedEntry10_1::Null), tail_double)
+                            (Some(SubLayerTailSlot10_1::Null), None, tail_double)
                         }
                         ObjectEntry10_1::BackReference { class_id, key } => {
                             let tail_double = read_tail_double(&mut trial, version)?;
                             (
-                                Some(ConsumedEntry10_1::BackReference { class_id, key }),
+                                Some(SubLayerTailSlot10_1::BackReference { class_id, key }),
+                                None,
                                 tail_double,
                             )
                         }
+                        ObjectEntry10_1::NewObject { class_id, key }
+                            if class_id == ELEMENT_COLLECTION_CLASS_ID =>
+                        {
+                            // 键已由条目分类登记；体完整消费则继续条目循环
+                            // （含版本 >1 尾随 double），体内停止透传为新停
+                            // 止变体（游标停在内层停止点，尾随 double 不可
+                            // 达，条目由下方公共块记录）。
+                            let collection = read_element_collection_10_1(
+                                &mut trial,
+                                max_bytes,
+                                &mut trial_table,
+                            )?;
+                            match collection.stop.clone() {
+                                Some(reason) => {
+                                    stop = Some(
+                                        CompositeGraphicsLayerStop10_1::SubLayerTailCollectionIncomplete {
+                                            index,
+                                            key,
+                                            reason,
+                                        },
+                                    );
+                                    (
+                                        Some(SubLayerTailSlot10_1::Collection { key }),
+                                        Some(collection),
+                                        None,
+                                    )
+                                }
+                                None => {
+                                    let tail_double = read_tail_double(&mut trial, version)?;
+                                    (
+                                        Some(SubLayerTailSlot10_1::Collection { key }),
+                                        Some(collection),
+                                        tail_double,
+                                    )
+                                }
+                            }
+                        }
                         ObjectEntry10_1::NewObject { class_id, key } => {
-                            // 新对象体不可消费：条目以部分消费状态记录，回退并
-                            // 停止。
+                            // 其余新对象体不可消费：条目以部分消费状态记录，
+                            // 回退并停止。
                             trial_table = saved_table;
                             trial = reposition(&origin, entry_offset, tail_header_offset, limit)
                                 .expect("回退目标在停止前的已读位置，必在窗口内");
@@ -521,11 +664,28 @@ pub fn read_composite_graphics_layer_prefix_10_1(
                                 tail_doubles,
                                 tail_int32s,
                                 tail_nested: None,
+                                tail_nested_collection: None,
                                 tail_double: None,
                             });
                             break 'sublayers;
                         }
                     };
+                    if stop.is_some() {
+                        // ElementCollection 体内停止：条目以「体解析到停止点
+                        // 为止」的状态记录（尾随 double 不可达），其后条目不
+                        // 可达。
+                        sublayers.push(SubLayerEntry10_1 {
+                            name: item_name,
+                            layer,
+                            tail_shorts,
+                            tail_doubles,
+                            tail_int32s,
+                            tail_nested,
+                            tail_nested_collection,
+                            tail_double: None,
+                        });
+                        break 'sublayers;
+                    }
                     sublayers.push(SubLayerEntry10_1 {
                         name: item_name,
                         layer,
@@ -533,6 +693,7 @@ pub fn read_composite_graphics_layer_prefix_10_1(
                         tail_doubles,
                         tail_int32s,
                         tail_nested,
+                        tail_nested_collection,
                         tail_double,
                     });
                 }

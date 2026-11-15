@@ -95,3 +95,12 @@
 3. IHyperlink 循环条目的空标记（16 字节零）与回引形态按 ObjectStream 通用
    语义处理，无 Hyperlink 特有字节佐证。
 4. 全部结论为静态取证；未运行 ArcMap 10.1，未人工目视验收，不声称已验证。
+
+## 接线轮落位（2026-11-15）
+
+接线建议已落位：`read_feature_layer_successor_10_1` 第 ⑤ 步 IHyperlink 计数
+循环条目为 `NewObject { class_id, key }` 且类标识为 `HYPERLINK_CLASS_ID` 时
+调 `read_hyperlink_body_10_1` 整体解析（循环继续；其余类维持
+`HyperlinkNewObject` 停止回退）。`HyperlinkSlot10_1` 新增
+`Hyperlink(Box<HyperlinkBody10_1>)` 变体并去 `Copy`/`Eq`（循 D 轮提示）。
+样本计数恒 0，接线后样本行为不变（仅合成测试覆盖，robustness 清单已收）。

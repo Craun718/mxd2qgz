@@ -10,7 +10,7 @@ use mxd2qgz::layers::feature_layer_tail::{
     LEGEND_CLASS_CLASS_ID, LEGEND_GROUP_CLASS_ID, LegendClassEntry10_1, LegendClassFormatSlot10_1,
     LegendClassStop10_1, LegendGroupSlot10_1, LegendGroupStop10_1, RGB_COLOR_CLASS_ID,
     SIMPLE_MARKER_SYMBOL_CLASS_ID, SIMPLE_RENDERER_CLASS_ID, SimpleRendererStop10_1,
-    SymbolSlot10_1, read_legend_class_body_10_1, read_legend_group_body_10_1,
+    SymbolSlot10_1, SymbolSlotFull10_1, read_legend_class_body_10_1, read_legend_group_body_10_1,
     read_simple_renderer_body_10_1,
 };
 use mxd2qgz::layers::legend_format::LEGEND_CLASS_FORMAT_CLASS_ID;
@@ -432,7 +432,7 @@ fn legend_class_reads_full_body_and_back_reference_symbol() {
     assert_eq!(lc.version, 2);
     assert!(matches!(
         &lc.symbol,
-        SymbolSlot10_1::BackReference { key: 36, .. }
+        SymbolSlotFull10_1::BackReference { key: 36, .. }
     ));
     assert_eq!(lc.label, "");
     assert_eq!(lc.description, "");
@@ -508,7 +508,7 @@ fn legend_group_reads_full_body_with_nested_legend_class() {
             assert_eq!(lc.key, 40);
             assert!(matches!(
                 &lc.symbol,
-                SymbolSlot10_1::BackReference { key: 36, .. }
+                SymbolSlotFull10_1::BackReference { key: 36, .. }
             ));
         }
         other => panic!("应为嵌套 LegendClass，得到 {other:?}"),
@@ -644,7 +644,7 @@ fn simple_renderer_reads_full_body_sample_shape() {
     assert_eq!(body.key, 35);
     assert_eq!(body.version, 3);
     assert!(
-        matches!(&body.symbol, SymbolSlot10_1::SimpleMarkerSymbol(sms) if sms.key == 36),
+        matches!(&body.symbol, SymbolSlotFull10_1::SimpleMarkerSymbol(sms) if sms.key == 36),
         "符号槽应为 SimpleMarkerSymbol 新对象"
     );
     match &body.legend_group {
@@ -718,7 +718,10 @@ fn simple_renderer_stops_at_unknown_symbol() {
             key: 48,
         })
     );
-    assert!(matches!(body.symbol, SymbolSlot10_1::Null), "未知符号回退");
+    assert!(
+        matches!(body.symbol, SymbolSlotFull10_1::Null),
+        "未知符号回退"
+    );
     assert!(body.legend_group.is_none(), "停止点后的槽位不可达");
     assert_eq!(body.rotation_tail, None);
     assert_eq!(reader.position(), 2, "游标回退到符号槽起点");
@@ -960,6 +963,80 @@ fn field_info_reads_version_4_body_with_numeric_format_nested() {
     assert!(table.contains(41));
     assert!(table.contains(42));
     assert_eq!(table.len(), 2);
+}
+
+#[test]
+fn field_info_number_format_slot_dispatches_four_variants() {
+    // 接线轮：INumberFormat 槽四类分派（NumericFormat 既有 +
+    // Percentage/Fraction/Rate 三变体；证据与迁移建议见
+    // docs/arcmap-10.1-number-format.md「实现」节）。各变体取满形态，
+    // FieldInfo 尾段必须可达（槽位整体消费）。
+    use mxd2qgz::layers::feature_layer_tail::{
+        FRACTION_FORMAT_CLASS_ID, PERCENTAGE_FORMAT_CLASS_ID, RATE_FORMAT_CLASS_ID,
+    };
+
+    // Percentage 版本 2 满形态：short ② + 内嵌 NumericFormat 核心。
+    let mut percentage = PERCENTAGE_FORMAT_CLASS_ID.to_vec();
+    percentage.extend(80_u32.to_le_bytes());
+    percentage.extend(2_u16.to_le_bytes());
+    percentage.extend(3_i16.to_le_bytes());
+    percentage.extend(numeric_format_body([0, 0, 0, 12]));
+    let body_bytes = field_info_body_v4("P", &percentage);
+    let mut reader = Reader::new(&body_bytes);
+    // 键 41 由调用者的条目分类预先登记（与既有 NumericFormat 用例同约定）。
+    let mut table = table_with_keys(&[41]);
+    let body = read_field_info_body_10_1(&mut reader, 1024, &mut table, 41).unwrap();
+    assert_eq!(body.stop, None);
+    let NumberFormatSlot10_1::PercentageFormat(p) = &body.number_format else {
+        panic!("Percentage 分类不符：{:?}", body.number_format);
+    };
+    assert_eq!(p.key, 80);
+    assert_eq!(p.version, 2);
+    assert_eq!(p.numeric.as_ref().unwrap().int32s, [0, 0, 0, 12]);
+    assert_eq!(body.tail_shorts, Some([0, 0]), "槽位整体消费后续段可达");
+    assert_eq!(reader.remaining(), 0);
+    assert!(table.contains(41) && table.contains(80));
+
+    // Fraction 版本 1 满形态：int32 ×2。
+    let mut fraction = FRACTION_FORMAT_CLASS_ID.to_vec();
+    fraction.extend(81_u32.to_le_bytes());
+    fraction.extend(1_u16.to_le_bytes());
+    fraction.extend(7_i32.to_le_bytes());
+    fraction.extend((-2_i32).to_le_bytes());
+    let body_bytes = field_info_body_v4("F", &fraction);
+    let mut reader = Reader::new(&body_bytes);
+    let mut table = table_with_keys(&[41]);
+    let body = read_field_info_body_10_1(&mut reader, 1024, &mut table, 41).unwrap();
+    assert_eq!(body.stop, None);
+    let NumberFormatSlot10_1::FractionFormat(f) = &body.number_format else {
+        panic!("Fraction 分类不符：{:?}", body.number_format);
+    };
+    assert_eq!(f.key, 81);
+    assert_eq!((f.int32_10, f.int32_0c), (7, -2));
+    assert_eq!(body.tail_shorts, Some([0, 0]));
+    assert_eq!(reader.remaining(), 0);
+
+    // Rate 版本 2 满形态：double + String + 内嵌 NumericFormat 核心。
+    let mut rate = RATE_FORMAT_CLASS_ID.to_vec();
+    rate.extend(82_u32.to_le_bytes());
+    rate.extend(2_u16.to_le_bytes());
+    rate.extend(1.5_f64.to_le_bytes());
+    rate.extend(string_bytes("米每秒"));
+    rate.extend(numeric_format_body([1, 2, 3, 4]));
+    let body_bytes = field_info_body_v4("R", &rate);
+    let mut reader = Reader::new(&body_bytes);
+    let mut table = table_with_keys(&[41]);
+    let body = read_field_info_body_10_1(&mut reader, 1024, &mut table, 41).unwrap();
+    assert_eq!(body.stop, None);
+    let NumberFormatSlot10_1::RateFormat(r) = &body.number_format else {
+        panic!("Rate 分类不符：{:?}", body.number_format);
+    };
+    assert_eq!(r.key, 82);
+    assert_eq!(r.double_14, 1.5);
+    assert_eq!(r.string_0c, "米每秒");
+    assert_eq!(r.numeric.as_ref().unwrap().int32s, [1, 2, 3, 4]);
+    assert_eq!(body.tail_shorts, Some([0, 0]));
+    assert_eq!(reader.remaining(), 0);
 }
 
 #[test]
@@ -1217,6 +1294,44 @@ fn successor_stops_at_hyperlink_new_object() {
 }
 
 #[test]
+fn successor_hyperlink_loop_parses_hyperlink_bodies_inline() {
+    // 接线轮：IHyperlink 循环条目 Hyperlink（{3036D35E-…}）新对象经
+    // objects::hyperlink 体读取器整体解析（证据：docs/arcmap-10.1-hyperlink.md
+    // 「接线建议」）；样本计数恒 0，本测试为合成输入契约。两个条目
+    // （新对象 + 空标记）后循环继续，IColor/FieldInfo 段照常可达。
+    use mxd2qgz::objects::hyperlink::HYPERLINK_CLASS_ID;
+
+    let mut entries = Vec::new();
+    push_entry_header(&mut entries, &HYPERLINK_CLASS_ID, 80);
+    entries.extend(1_u16.to_le_bytes()); // Hyperlink 版本 1
+    entries.extend(0_i32.to_le_bytes()); // ② type（语义未定）
+    entries.extend(string_bytes("https://example.invalid/a")); // ③ 链接候选
+    entries.extend(0_i32.to_le_bytes()); // ④ 尾 int32
+    push_null_marker(&mut entries); // 第二条目：空标记
+
+    let mut bytes = successor_prefix(2, &entries, &[0_u8; 16]);
+    // 之后只有 FieldInfo 计数 0、无延续段字节：循环完成、ALPC 槽头不可读。
+    bytes.extend(0_i32.to_le_bytes());
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let result = read_feature_layer_successor_10_1(&mut reader, 34, 1024, &mut table).unwrap();
+    assert_eq!(result.stop, SuccessorStop10_1::FieldInfoLoopCompleted);
+    assert_eq!(result.hyperlink_count, 2);
+    assert_eq!(result.hyperlinks.len(), 2);
+    match &result.hyperlinks[0] {
+        HyperlinkSlot10_1::Hyperlink(body) => {
+            assert_eq!(body.key, 80);
+            assert_eq!(body.version, 1);
+            assert_eq!(body.link, "https://example.invalid/a");
+        }
+        other => panic!("条目 0 应为 Hyperlink 体：{other:?}"),
+    }
+    assert!(matches!(result.hyperlinks[1], HyperlinkSlot10_1::Null));
+    assert!(table.contains(80));
+    assert!(matches!(result.color, ColorSlot10_1::Null));
+}
+
+#[test]
 fn successor_stops_at_unsupported_color() {
     // IColor 槽新对象非 RgbColor：游标回退到槽位起点，字符串段不可达。
     let mut slot = Vec::new();
@@ -1433,7 +1548,7 @@ fn simple_renderer_parses_closed_line_symbol_slot() {
     let body = read_simple_renderer_body_10_1(&mut reader, usize::MAX, &mut table, 35).unwrap();
     assert!(matches!(
         &body.symbol,
-        SymbolSlot10_1::SimpleLineSymbol(line) if line.key == 60 && line.width == Some(2.5)
+        SymbolSlotFull10_1::SimpleLineSymbol(line) if line.key == 60 && line.width == Some(2.5)
     ));
     assert!(body.legend_group.is_some(), "符号体完整后组槽可达");
     assert_eq!(body.stop, None);
@@ -1471,7 +1586,7 @@ fn simple_renderer_nested_symbol_stop_propagates() {
     }
     assert!(matches!(
         &body.symbol,
-        SymbolSlot10_1::SimpleLineSymbol(line) if line.stop.is_some()
+        SymbolSlotFull10_1::SimpleLineSymbol(line) if line.stop.is_some()
     ));
     assert!(body.legend_group.is_none(), "停止点后的槽位不可达");
     // 游标停在内层颜色槽起点：渲染器版本 2 + 符号头 20 + 线符号版本 2。
@@ -1599,14 +1714,16 @@ mod tail_continuation {
     use mxd2qgz::layers::annotate_props::{
         ANNOTATE_PROPS_COLLECTION_CLASS_ID, AlpcEntrySlot10_1, AnnotatePropsStop10_1,
         EDIT_TEMPLATE_MANAGER_CLASS_ID, EditTemplateManagerStop10_1, LABEL_ENGINE_PROPS_CLASS_ID,
-        LelpStop10_1, read_annotate_props_collection_body_10_1,
+        LelpStop10_1, LelpTextSymbolSlot10_1, read_annotate_props_collection_body_10_1,
         read_edit_template_manager_body_10_1, read_label_engine_props_body_10_1,
     };
     use mxd2qgz::layers::edit_template::EDIT_TEMPLATE_CLASS_ID;
     use mxd2qgz::layers::feature_id_set::{FEATURE_ID_SET_CLASS_ID, read_feature_id_set_body_10_1};
     use mxd2qgz::layers::feature_layer_tail::{
-        AnnotatePropsSlot10_1, FeatureIdSetSlot10_1, LayerExtension10_1, RefSlot10_1,
+        AnnotatePropsSlot10_1, FeatureIdSetSlot10_1, FeatureLayerSuccessor10_1, LayerExtension10_1,
+        RefSlot10_1,
     };
+    use mxd2qgz::objects::element_body::ElementBodyStop10_1;
 
     /// TextSymbol 类标识（CLSID）字节（样本键 61 对象头，仅用于合成测试）。
     const TEXT_SYMBOL_CLASS_ID: [u8; 16] = [
@@ -1630,9 +1747,8 @@ mod tail_continuation {
         b
     }
 
-    /// LabelEngineLayerProperties 体（版本 7）：标量段取样本形态；四槽 +
-    /// 容器槽默认空标记，ITextSymbol 槽可注入新对象头（停止点形态）。
-    fn lelp_body_v7(symbol_slot: Option<(&[u8; 16], u32)>) -> Vec<u8> {
+    /// LabelEngineLayerProperties 体（版本 7）⑯ 槽之前的标量段前缀。
+    fn lelp_body_v7_prefix() -> Vec<u8> {
         let mut b = Vec::new();
         b.extend(7_i16.to_le_bytes()); // 版本 7
         b.extend(string_bytes("[JZDH]")); // ② 串 1（表达式候选）
@@ -1649,6 +1765,13 @@ mod tail_continuation {
         b.extend((-1_i16).to_le_bytes()); // ⑬ short -0x48
         b.extend(string_bytes("默认")); // ⑭ 串 2（标注类名候选）
         b.extend(string_bytes("")); // ⑮ 串 3
+        b
+    }
+
+    /// LabelEngineLayerProperties 体（版本 7）：标量段取样本形态；⑯ 槽可注
+    /// 入新对象头（停止点形态），⑰ 起默认空标记。
+    fn lelp_body_v7(symbol_slot: Option<(&[u8; 16], u32)>) -> Vec<u8> {
+        let mut b = lelp_body_v7_prefix();
         match symbol_slot {
             Some((class_id, key)) => push_entry_header(&mut b, class_id, key),
             None => push_null_marker(&mut b),
@@ -1664,6 +1787,58 @@ mod tail_continuation {
         b.extend(0_i16.to_le_bytes()); // ㉕ short -0x46（版本 ≥4）
         b.extend(0_i32.to_le_bytes()); // ㉖ int32 -0x7c（版本 ≥5）
         b
+    }
+
+    /// TextSymbol 体（版本 4）：槽位默认空标记 + 标量段样本形态；IFontDisp
+    /// 槽可注入新对象头（接线轮停止点形态）。返回（字节，IFontDisp 槽对
+    /// 象头在返回字节内的偏移）。
+    fn text_symbol_body_v4(font_slot: Option<(&[u8; 16], u32)>) -> (Vec<u8>, usize) {
+        let mut b = Vec::new();
+        b.extend(4_u16.to_le_bytes()); // 版本 4
+        push_null_marker(&mut b); // 颜色槽 #1
+        for value in [0_i32; 3] {
+            b.extend(value.to_le_bytes()); // int32 ×3
+        }
+        b.extend([0_u8; 2]); // byte ×2
+        for value in [0_f64; 3] {
+            b.extend(value.to_le_bytes()); // double ×3
+        }
+        for value in [0_i32; 2] {
+            b.extend(value.to_le_bytes()); // int32 ×2
+        }
+        push_null_marker(&mut b); // 颜色槽 #2
+        for value in [0_f64; 2] {
+            b.extend(value.to_le_bytes()); // ⑧ double ×2
+        }
+        for value in [0_i32; 2] {
+            b.extend(value.to_le_bytes()); // ⑧ int32 ×2
+        }
+        for value in [0_f64; 3] {
+            b.extend(value.to_le_bytes()); // ⑧ double ×3
+        }
+        b.push(0); // ⑧ byte
+        b.extend(0_f64.to_le_bytes()); // ⑧ double
+        b.extend(0_i32.to_le_bytes()); // ⑧ int32
+        b.extend(0_f64.to_le_bytes()); // ⑧ double
+        b.push(0); // ⑧ byte
+        b.extend([0x11_u8; 16]); // ⑨ 原样 GUID
+        push_null_marker(&mut b); // ⑩ ITextPath 槽
+        push_null_marker(&mut b); // ⑪ ISymbol 槽 #1
+        b.extend(string_bytes("")); // ⑫ String
+        b.extend(0_f64.to_le_bytes()); // ⑬ double
+        b.extend(0_i32.to_le_bytes()); // ⑬ int32
+        b.extend(0_f64.to_le_bytes()); // ⑬ double
+        push_null_marker(&mut b); // ⑭ ISymbol 槽 #2
+        let font_slot_offset = b.len();
+        match font_slot {
+            Some((class_id, key)) => push_entry_header(&mut b, class_id, key),
+            None => push_null_marker(&mut b),
+        }
+        // 版本门尾段：>1 short、≥3 GUID、≥4 short。
+        b.extend(0_u16.to_le_bytes());
+        b.extend([0x22_u8; 16]);
+        b.extend(0_u16.to_le_bytes());
+        (b, font_slot_offset)
     }
 
     /// LELP 体中 ITextSymbol 槽的偏移（版本 7 形态的字节长度表）。
@@ -1704,16 +1879,17 @@ mod tail_continuation {
     }
 
     #[test]
-    fn successor_tail_consumes_alpc_lelp_and_stops_at_text_symbol_slot() {
-        // 样本形态：ALPC（键 59，版本 2，1 条目）→ LELP（键 60，版本 7）
-        // → ITextSymbol 槽 TextSymbol 新对象（键 61）= 停止点。
+    fn successor_tail_consumes_alpc_lelp_and_stops_at_unknown_symbol_slot() {
+        // ⑯ 槽为 TextSymbol 之外的实现类（合成类标识）新对象：维持停止回退
+        // 语义（键不保留、游标停在该槽位对象头起点）。
+        let unknown = [0x66_u8; 16];
         let mut b = successor_prefix();
         push_entry_header(&mut b, &ANNOTATE_PROPS_COLLECTION_CLASS_ID, 59);
         b.extend(2_i16.to_le_bytes()); // ALPC 版本 2
         b.extend(1_i32.to_le_bytes()); // ALPC 计数 1
         push_entry_header(&mut b, &LABEL_ENGINE_PROPS_CLASS_ID, 60);
         let lelp_body_start = b.len();
-        b.extend(lelp_body_v7(Some((&TEXT_SYMBOL_CLASS_ID, 61))));
+        b.extend(lelp_body_v7(Some((&unknown, 61))));
         let text_symbol_slot = lelp_body_start + lelp_symbol_slot_offset();
 
         let mut reader = Reader::new(&b);
@@ -1723,12 +1899,11 @@ mod tail_continuation {
             result.stop,
             SuccessorStop10_1::AnnotatePropsBody(AnnotatePropsStop10_1::LelpBody(
                 LelpStop10_1::SymbolSlotUnsupported {
-                    class_id: TEXT_SYMBOL_CLASS_ID,
+                    class_id: unknown,
                     key: 61,
                 }
             ))
         );
-        // ALPC/LELP 体前缀已解析；TextSymbol 键已回退；游标停在槽位起点。
         assert!(table.contains(59));
         assert!(table.contains(60));
         assert!(!table.contains(61));
@@ -1743,9 +1918,77 @@ mod tail_continuation {
                     body.entries[0].slot,
                     AlpcEntrySlot10_1::LabelEngineProps(_)
                 ));
-                // 条目键未读（LELP 体内停止）。
                 assert_eq!(body.entries[0].entry_key, None);
             }
+            other => panic!("ALPC 槽分类不符：{other:?}"),
+        }
+    }
+
+    #[test]
+    fn successor_tail_parses_text_symbol_body_and_stops_at_font_slot() {
+        // 样本形态接线轮推进：ALPC（键 59）→ LELP（键 60）→ ⑯ ITextSymbol
+        // 槽 TextSymbol 新对象（键 61，整体解析）→ 体 IFontDisp 槽未知类新
+        // 对象（键 62）= 透传停止点（体内键保留、游标停在内层对象头起点）。
+        // 证据：display-symbols-round2 第一节（TextSymbol 虚表归属）+ 元素体
+        // 轮 TextSymbol 体闭合（element_body::read_text_symbol_body_10_1）。
+        let font_class_id = [0x77_u8; 16];
+        let (text_symbol_body, font_slot_offset) = text_symbol_body_v4(Some((&font_class_id, 62)));
+        let mut b = successor_prefix();
+        push_entry_header(&mut b, &ANNOTATE_PROPS_COLLECTION_CLASS_ID, 59);
+        b.extend(2_i16.to_le_bytes());
+        b.extend(1_i32.to_le_bytes());
+        push_entry_header(&mut b, &LABEL_ENGINE_PROPS_CLASS_ID, 60);
+        b.extend(lelp_body_v7_prefix());
+        let text_symbol_header_offset = b.len();
+        push_entry_header(&mut b, &TEXT_SYMBOL_CLASS_ID, 61);
+        b.extend_from_slice(&text_symbol_body);
+        let font_slot = text_symbol_header_offset + 20 + font_slot_offset;
+
+        let mut reader = Reader::new(&b);
+        let mut table = RefTable10_1::new();
+        let result = read_feature_layer_successor_10_1(&mut reader, 34, 4096, &mut table).unwrap();
+        assert_eq!(
+            result.stop,
+            SuccessorStop10_1::AnnotatePropsBody(AnnotatePropsStop10_1::LelpBody(
+                LelpStop10_1::TextSymbolBody {
+                    key: 61,
+                    reason: ElementBodyStop10_1::NestedObjectNotClosed {
+                        slot: "IFontDisp 字体槽",
+                        offset: font_slot,
+                        class_id: font_class_id,
+                        key: 62,
+                    },
+                }
+            ))
+        );
+        // TextSymbol 键按原生「登记先于持久化」语义保留；字体类键未登记。
+        assert!(table.contains(59));
+        assert!(table.contains(60));
+        assert!(table.contains(61));
+        assert!(!table.contains(62));
+        assert_eq!(reader.remaining(), b.len() - font_slot);
+        // LELP 体的 ⑯ 槽分类携带 TextSymbol 体；ALPC 条目键未读（LELP 体内
+        // 停止）。
+        match &result.annotate_props {
+            Some(AnnotatePropsSlot10_1::Collection(body)) => match &body.entries[0].slot {
+                AlpcEntrySlot10_1::LabelEngineProps(lelp) => match &lelp.text_symbol {
+                    LelpTextSymbolSlot10_1::TextSymbol(ts) => {
+                        assert_eq!(ts.version, 4);
+                        assert!(ts.stop.is_some());
+                    }
+                    other => panic!("TextSymbol 槽分类不符：{other:?}"),
+                },
+                other => panic!("ALPC 条目分类不符：{other:?}"),
+            },
+            other => panic!("ALPC 槽分类不符：{other:?}"),
+        }
+        assert_eq!(body_entry_key_of(&result), None);
+    }
+
+    /// ALPC 首条目的条目键（供透传停止断言复用）。
+    fn body_entry_key_of(result: &FeatureLayerSuccessor10_1) -> Option<i32> {
+        match &result.annotate_props {
+            Some(AnnotatePropsSlot10_1::Collection(body)) => body.entries[0].entry_key,
             other => panic!("ALPC 槽分类不符：{other:?}"),
         }
     }
