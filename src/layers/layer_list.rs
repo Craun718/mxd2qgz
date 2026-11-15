@@ -102,10 +102,10 @@ const OBJECT_HEADER_BYTES: usize = 20;
 /// 单个条目的最小字节数：2 字节标志 + 8 字节全零前缀（ExtraSafe 空条目）。
 const MIN_ENTRY_BYTES: usize = 10;
 
-/// 类标识的 32 字符小写十六进制串（诊断用；Windows 磁盘字节顺序原样转换）。
-pub fn class_id_hex(class_id: &[u8; 16]) -> String {
-    class_id.iter().map(|byte| format!("{byte:02x}")).collect()
-}
+/// 类标识的 32 字符小写十六进制串（诊断用）：实现移至
+/// [`crate::storage::class_id_hex`]（消除 objects→layers 依赖倒置），此处保
+/// 留原名重导出。
+pub use crate::storage::class_id_hex;
 
 /// 新对象体经类分派解析出的已确认前缀。
 ///

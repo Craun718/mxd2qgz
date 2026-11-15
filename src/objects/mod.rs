@@ -10,3 +10,4 @@ pub mod element_collection;
 pub mod envelope;
 pub mod property_set;
 pub mod spatial_reference;
+pub mod workspace_name;

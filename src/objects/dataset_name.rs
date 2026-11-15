@@ -37,7 +37,7 @@
 //! 4. LoadObject（请求 IID 与 FCN 选择子 ==0 分支同值 = IWorkspaceName）
 //!    → obj+0x20；条目经 [`crate::storage::object_refs::read_object_entry_10_1`]
 //!    分类，新对象且类标识为 WorkspaceName 时读取其已闭合体（复用
-//!    [`crate::layers::feature_layer::read_workspace_name_body_10_1`]，第六轮）。
+//!    [`crate::objects::workspace_name::read_workspace_name_body_10_1`]，第六轮）。
 //!
 //! ## TopologyName 体（本轮闭合）
 //!
@@ -92,7 +92,7 @@
 //! - 版本 0 分支无字节佐证（原生接受，Save 恒写 1）；
 //! - 全部结论为静态观察，未经目标软件运行验证。
 
-use crate::layers::feature_layer::{
+use crate::objects::workspace_name::{
     WORKSPACE_NAME_CLASS_ID, WorkspaceNamePrefix10_1, WorkspaceNameStop10_1,
     read_workspace_name_body_10_1,
 };

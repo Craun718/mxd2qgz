@@ -203,3 +203,12 @@ Load `0x7095e5c0` 字段序（Save `0x7095e550` 对称；汇编核对）：
   （样本对位）。项目缓存 `/tmp/r3/ghproj_gdbcore`（会话临时目录，未入库）。
 - 原始 MXD 样本与诊断输出可能包含敏感路径；本记录中的合成路径与样本
   字符串已检查，公开分享前仍需复核脱敏。
+
+## 接线轮（2026-11-15 补记）
+
+开放项第 5 条已闭合：FCN 读取器两槽位停止点 → 本模块读取器的分派随第
+七轮实现接入 `feature_layer`——新 FeatureDatasetName / TopologyName 对象
+且类标识命中时分别改调 `read_feature_dataset_name_body_10_1` /
+`read_topology_name_body_10_1`（体内停止透传，其余类维持
+`DatasetNameNewObject` / `TopologyNameNewObject` 停止回退）。「实现接线」
+节的「未接线」说明与开放项第 5 条就此作废；其余开放项不受影响。

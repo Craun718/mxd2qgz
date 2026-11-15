@@ -86,6 +86,18 @@ impl<'a> Reader<'a> {
         let bytes: [u8; 4] = self.read_bytes(4)?.try_into().unwrap();
         Ok(u32::from_le_bytes(bytes))
     }
+
+    /// Roll the cursor back to an absolute offset reached earlier through this
+    /// reader (stop-point rollback; `Reader` has no random-access primitive, so
+    /// this clones and forward-reads; the target is always within the window
+    /// already consumed).
+    pub(crate) fn reposition_to(&self, target: usize) -> Reader<'a> {
+        let mut positioned = self.clone();
+        positioned
+            .read_bytes(target - self.offset)
+            .expect("回退目标在停止前的已读位置，必在窗口内");
+        positioned
+    }
 }
 
 #[cfg(test)]

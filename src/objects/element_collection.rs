@@ -245,7 +245,7 @@ impl ElementCollectionStop10_1 {
             } => format!(
                 "元素 {index}（键 {key}，类标识 {}）为新对象：元素体布局未闭合且无外部长\
                  度，游标回退到该元素对象头起点",
-                crate::layers::layer_list::class_id_hex(class_id)
+                crate::storage::class_id_hex(class_id)
             ),
             Self::ElementBodyIncomplete {
                 index,
@@ -255,7 +255,7 @@ impl ElementCollectionStop10_1 {
             } => format!(
                 "元素 {index}（键 {key}，类标识 {}）体在嵌套停止点停止：{reason:?}；游标停\
                  在内层停止点，其后元素不可达",
-                crate::layers::layer_list::class_id_hex(class_id)
+                crate::storage::class_id_hex(class_id)
             ),
         }
     }
