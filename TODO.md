@@ -45,7 +45,7 @@
 - [x] 依据 10.1 原生证据实现相应读取规则及正常、异常输入测试；经核对再复用现有实现，保持版本范围显式。
   - [x] 复核 VariantStream：10.8 严格子集的全部规则在 10.1 逐项成立（VARTYPE 表、字符串 n*2+2、对象分支不支持）；另发现独立的 Variant::Read/Write 类方法序列化器（字符串含终止零、支持更多 VARTYPE），见 [研究记录](docs/arcmap-10.1-variant-stream.md)。
   - [x] 确认 PropertySet 值序列化器使用 `Variant::Read` 而非 VariantStream（见对象序列化条目）。
-  - [ ] 闭合 `Variant::Read`/`Variant::Write` 与 VariantStream 的其余字段归属区分（未闭合前不得混用）。
+  - [x] 闭合 `Variant::Read`/`Variant::Write` 与 VariantStream 的判别式区分（头部 14 零字节保留段、VT_CY/ERROR/I1/UI2/UI4 支持差异、标量 BSTR cb 含零 vs 数组元素 n*2+2、SafeArray、default 返回码等；调用点归属已证 PropertySet 键名+值=类方法族；两族读取器维持分立不得混用），见 [研究记录](docs/arcmap-10.1-variant-propertyset-slots.md)；MXD 逐字段归属确认另列「语义定性」开放项。
   - [x] 按上述 10.1 证据实现 `/Maps` 根前缀读取器与 ProjectedCoordinateSystem 对象体读取器：独立实现、入口版本显式，负数与超限额拒绝、逐前缀截断与失败游标纳入健壮性覆盖，尾部值保留原始位模式；不解析对象体；`/Maps` 根前缀已接入 `parse`，PCS 字段接入见「MXD 解析」坐标系条目；仓库参考样本逐字节吻合仅为辅助观察。
 - [x] 建立 35 步提交路线，明确原生证据、实现测试与人工验收的区别；核对基线 24 项测试及格式检查通过。
 
@@ -73,9 +73,9 @@
 - [ ] 运行时验证 `/Version` 索引输出。
 - [x] 使用 REA 分析坐标系读取逻辑，验证 `/Maps` 中投影文本候选的长度和作用范围。
   - [x] 10.1 Geometry.dll 证实投影文本是 ProjectedCoordinateSystem 子对象的原始字节持久化（保存版本 short、4 字节长度+ASCII WKT、域字符串、标志与 double），不是 String::Write 布局；Map 级与图层级皆有，样本字节逐项吻合；读侧按版本分支取字段。接口 IID、标志与 double 语义仍开放，见 [研究记录](docs/arcmap-10.1-spatial-reference.md)。
-  - [ ] 闭合 ProjectedCoordinateSystem 的接口 IID。
-  - [ ] 定性 ProjectedCoordinateSystem 的标志字段语义。
-  - [ ] 定性 ProjectedCoordinateSystem 的 double 字段语义。
+  - [x] 闭合 ProjectedCoordinateSystem 的接口 IID：持久化虚表 `0x71a29ccc` 实现的是 esriGeometry 自定义接口 ISRPersistStream `{E88C7DB0-9E84-11D2-BD00-0000F875BCCE}`（类型库定名+常量全镜像唯一+QI 处理器五环证据）；UnknownCoordinateSystem 例外，仅实现普通 IPersistStream，见 [研究记录](docs/arcmap-10.1-pcs-geometry-slots.md)。
+  - [x] 定性 ProjectedCoordinateSystem 的标志字段语义：流内 u16=`SgCoordRefGetPrecision()>>6&1`，1=64 位高精度网格、0=32 位或无（sg.dll 逐指令绑定；样本 0x0001 吻合）。
+  - [x] 定性 ProjectedCoordinateSystem 的 double 字段语义：7 个=XY/Z/M 假原点+比例因子，尾随 3 个=XY/Z/M 容差（ISpatialReferenceTolerance 槽绑定；默认公式 max(0.001/单位因子, 2.0/scale) 复现样本 3×0.001）；域串更正为 u32 字节长+UTF-16LE 原样（旧「ANSI 转码」系误读）；垂向段布局闭合（写侧恒写标志 0），见 [研究记录](docs/arcmap-10.1-pcs-geometry-slots.md)。
   - [x] 实现显式 10.1 ProjectedCoordinateSystem 对象体读取器：按原生 Load 版本分支取字段（>2 域串、≥4 标志+7 double、≥5 再 3 double、>7 拒绝），WKT 强制 ASCII，域串与 double 原样保留；已由 Map 前缀读取器调用。
   - [ ] 将 ProjectedCoordinateSystem 对象体字段（域字符串、标志、double）接入中间模型。
 - [x] 读取 OLE 容器中的 `/Version`、`/Maps` 等数据流并识别 MXD 版本。
@@ -138,66 +138,67 @@
   - [x] 闭合 INumberFormat 同族五类（CurrencyFormat 体仅版本 short；LatLon/Angle 内嵌核心独立槽，Angle 原生不检查核心返回值、读取器更严；Scientific/CustomNumber；`.rdata` 静态 CLSID 复制与虚位移调整器两新形态），见 [研究记录](docs/arcmap-10.1-number-format.md)。
   - [x] 第二轮整合接线：更正 `DISPLAY_EXPRESSION_PROPS_CLASS_ID` 转录笔误（`48 4c`↔`4c 48`，笔误使 DEP 槽永不命中）、FieldInfo 槽 4-way→9-way 分派、TextElement IGeometry 四类分派与 MarkerElement IPoint 接 Point、CharacterMarker 字体槽接 StdFont、PictureMarker 四处 IPicture 槽接 StdPicture、`mxd_maps` DEP/LELP 停止链诊断、robustness 集中清单 74→93 入口；534 项测试全绿，样本停止点 0xd6c→0x151a→0x155a。
   - [x] 走查脚本独立证实 `0xf63..0xfe6` 段（FIDSet/选择集/显示过滤器/扩展段头），第十轮接线后样本连续消费至 `0x155a`；ALPC 条目键/尾 int32 已解析（样本修正 ALPC 尾 int32=1）。
+  - [x] 第三轮并行七轮研究+整合接线（2026-11-16）：七组开放族闭合 55 项（A 停止点后方/DEP 裁决+TimeData 族、B IDatasetName 槽族含两类不可持久化裁决、C Legend/MapSurround 全族、D Variant-PropertySet 八分支含四处旧记录修正、E Save 写侧六表+三重交互闭合、F PCS IID/语义+GCS/Unknown 体+CircularArc 裁决、G DisplayCore 槽族含两项负证据裁决），新读取器模块 10 个；整合接线 17 处+element_body ==7/==9+property_set 9|13 两段落位（重叠实现按基准裁决保留一份），robustness 集中清单 93→137 入口，全仓 649 项测试全绿；样本停止点 `0x155a`→`0x1622`（DEP 体完整消费→EC@0x1608 完整消费→委派体数据源未知类 `{75E10086}` 按原生回退语义停止）；新研究文档七份（docs/arcmap-10.1-{dep-tail,dataset-name-slots,legend-family,variant-propertyset-slots,save-side,pcs-geometry-slots,display-slots-round3}.md）；全部静态取证，未在目标软件人工验证。
+  - [ ] 接线 FCN 自身 `{198846D0}` 在 IDatasetName 槽内递归嵌套 FeatureClassName 的分派（需 layers 层自递归+深度限额；B 轮六类已接入 TopologyName/FCN 选择子槽，此嵌套形态未接，见 dataset-name-slots 记录接线建议）。
   - 其余开放项按类别逐项单列，每项职责单一；闭合路径注于类别，出处见各研究文档：
     - 体未闭合类族（逐个反编译闭合对象体或分支）：
-      - [ ] DEP 尾段 `0x155a..0x15d8`（126 字节）字段序取证——**当前样本停止点**。
-      - [ ] `0x15d8` 对象头归属（形似 HLEP，写侧顺序应在 ㊶ 后，存疑）。
+      - [x] 裁决「DEP 尾段」不存在：DisplayExpressionProperties 实现在 FeatureLayer.dll 定位（RTTI→COL→虚表→GetClassID 三方互证），体=版本≤1+String+int16+引擎槽四项完结无尾段；样本 `0x155a..0x15d8` 实为 FL 后继段 ㊵+㊶，逐字节走查断言通过；第十轮「GetClassID/Load 未定位」撤销，见 [研究记录](docs/arcmap-10.1-dep-tail.md)。
+      - [x] 闭合 `0x15d8` 对象头归属：=㊷ HotLinkExpressionProperties（键 85），键序与读写两侧一致，疑点撤销；㊵@0x155a/㊶四段@0x156e..0x15d7/㊸@0x1606/EC 头@0x1608 全分解吻合。
       - [ ] 其余标注表达式引擎实现类体（样本为 AnnotationVBScriptEngine，已闭合）。
-      - [ ] LELP ㉔ 槽 IGraphicsContainer 实现类体（⑲ Envelope 已闭合接线）。
-      - [ ] LELP ㉖ 槽 ISymbol 17 闭合类之外的实现类体。
-      - [ ] TimeData 族槽实现类体（㊷ DEP/HLEP 前缀已闭合）。
-      - [ ] Geometry CircularArc 持久化虚表定位（Path/Ring/Line/BezierCurve/EllipticArc 已裁决不实现 IPersistStream）。
-      - [ ] SimpleTextPath 体。
-      - [ ] Callout/背景族体。
-      - [ ] IMarkerBackground（MultiLayerMarker v≥2）实现类体。
-      - [ ] IColorRamp 族（GradientFill）实现类体。
-      - [ ] IPicture（PictureMarker v9 类型 3 等）实现类体。
-      - [ ] IPictureFillSymbol（`{D842B082}`）实现类体。
-      - [ ] 元素体版本 ==7 装饰块。
-      - [ ] 元素体版本 ==9 尾加块。
-      - [ ] IBorder 槽实现类体。
-      - [ ] IBackground 槽实现类体。
-      - [ ] IShadow 槽实现类体。
-      - [ ] ISpatialReference 槽实现类体。
-      - [ ] IDatasetName 槽 UnknownDatasetName 实现类体。
-      - [ ] IDatasetName 槽 GeometricNetworkName 实现类体。
-      - [ ] IDatasetName 槽 RelationshipClassName 实现类体。
-      - [ ] IDatasetName 槽 TableName 实现类体。
-      - [ ] IDatasetName 槽其余实现类（上述之外）。
-      - [ ] FeatureBookmark 的 IName 槽实现类体（分布未观察，见 mapsurround 记录）。
-      - [ ] FDOGraphicsLayer 版本 4 探测分支（三依赖未闭合，见「语义定性」类）。
+      - [ ] LELP ㉔ 槽 IGraphicsContainer 实现类体（部分闭合：请求 IID 更正为 esriCarto IGraphicsContainer `{D09411D1-4BB4-…}`，旧记录第二 GUID 系笔误；样本槽位=空标记；实现者候选在 afcore 等未反编译模块，负证据落档，见 [研究记录](docs/arcmap-10.1-dep-tail.md)）。
+      - [ ] LELP ㉖ 槽 ISymbol 17 闭合类之外的实现类体（负证据清单落档；`read_symbol_slot_full_10_1` 缺 TextSymbol 分派的缺口已由整合轮补齐，见 [研究记录](docs/arcmap-10.1-dep-tail.md)）。
+      - [x] 闭合 TimeData 族槽实现类体：TimeReference `{EFB2E7DB}`/TimeExtent `{5DC783DE}`/Time `{E1721810}`/TimeZoneInfo `{78FAD5F1}` 四类全在 SystemCore.dll，RTTI→COL→虚表→GetClassID 三方互证，Load/Save 字段序闭合；样本槽位全空标记，无字节佐证，见 [研究记录](docs/arcmap-10.1-dep-tail.md)。
+      - [x] 裁决 Geometry CircularArc 不实现 IPersistStream（构造性不存在）：实现类为 C++ 类 `ESRI::Arc`（此前 `.?AVCircularArc` RTTI 扫描不命中的原因），QI 的 21 个 IID 无任何持久化接口、构造器无持久化虚表安装；与族内其余五类同判，族内无遗留，见 [研究记录](docs/arcmap-10.1-pcs-geometry-slots.md)。
+      - [x] 裁决 SimpleTextPath 不实现 IPersistStream（全层级虚表无持久化形状表，流内不可出现；BezierTextPath、ColorRampElements 同判；TextPath 以原样 CLSID 字段+运行期实例化承载，TextSymbol 内置默认 GUID 定名 SimpleTextParser），见 [研究记录](docs/arcmap-10.1-display-slots-round3.md)。
+      - [x] 闭合 Callout/背景族体：BalloonCallout `{C8D09ED2}`/LineCallout `{C8D09ED3}`/SimpleLineCallout `{FA37B822}`/MarkerTextBackground `{C5C02D50}` 四类版本≤1 字段序闭合，Save 对称互证；样本 0 实例，见 [研究记录](docs/arcmap-10.1-display-slots-round3.md)。
+      - [x] 闭合 IMarkerBackground（MultiLayerMarker v≥2）实现类体：esri.clsid 全表唯一候选=MarkerTextBackground（体同上）。
+      - [x] 闭合 IColorRamp 族实现类体：Random `{BEB87094}`/MultiPart `{BEB87099}`（含 Load 门 ≥2 / Save 门 docVer≥4 不对称观察）/Preset `{BEB8709A}`/Algorithmic `{BEB8709B}` 四类，见 [研究记录](docs/arcmap-10.1-display-slots-round3.md)。
+      - [x] 裁决 IPicture 实现类族=OLE StdPicture 一种：IPicture IID 在 DisplayCore 仅 LoadObject 请求与消费方 QI 两处，三模块无 StdPicture CLSID 常量，esri.clsid 无实现 IPicture 的 Esri coclass；既有 StdPicture 闭合+本轮负证据闭合。
+      - [x] 闭合 IPictureFillSymbol `{D842B082}`（PictureFillSymbol）体：版本≤8 全分支（Save 版本表 [3,3,3,4,7,8] 恒写 8；类型 1 路径/2 位图块/3 IPicture 分支；≤7 旧路径全字段序），见 [研究记录](docs/arcmap-10.1-display-slots-round3.md)。
+      - [x] 闭合元素体版本 ==7 装饰块：CartoXProvider TextElement::Load 指令级复核=LoadObject(IBorder/IBackground/IShadow)+double+int32+double；槽实现类=SymbolBorder/SymbolBackground/SymbolShadow（本轮闭合）。
+      - [x] 闭合元素体版本 ==9 尾加块：==8 后追加 LoadObject(ISpatialReference)+int32→+0x4d+32 字节→+0x53；Save 版本表 docVer 0→6、≥1→8（10.1 恒写 8）。
+      - [x] 闭合 IBorder 槽实现类体：SymbolBorder `{A5D0F017}`（GraphicElements.dll，版本≤2：double+ILineSymbol 槽+short+≥2 double）。
+      - [x] 闭合 IBackground 槽实现类体：SymbolBackground `{1BAA33E9-E13B-11D2-B868-00600802E603}`（esri.clsid 后缀经表原文与 DLL 常量双重核对更正）。
+      - [x] 闭合 IShadow 槽实现类体：SymbolShadow `{A8861E66}`（版本≤1：IFillSymbol 槽+short+double×2）。
+      - [x] 闭合 ISpatialReference 槽实现类体：GCS `{A6A87A80-…}`（版本表 [3,4,7,7]；体=版本+WKT+域串+垂向段+范围 double（NaN→重建 [-180,180]）+版本分支+容差）与 UnknownCoordinateSystem `{B286C06B-…}`（版本表 [1,1,3]；体=版本+4 个 AfCore String 串（第 2/3 串同写 +0x4c 的写侧怪癖）+double 段+容差），PCS 既有；见 [研究记录](docs/arcmap-10.1-pcs-geometry-slots.md)。
+      - [x] 裁决 IDatasetName 槽 UnknownDatasetName 与 TableName 不可持久化：GdbCore 内 CLSID 数据全镜像无代码写出、虚表 Load 位空实现（原生无体可闭合，MXD 流出现即无法装载，读取器按停止点处理），见 [研究记录](docs/arcmap-10.1-dataset-name-slots.md)。
+      - [x] 闭合 IDatasetName 槽 GeometricNetworkName `{F452B4D2}` 体：版本+String×3+IDatasetName 槽+装载通知，Save 恒写 1 读写对称。
+      - [x] 闭合 IDatasetName 槽 RelationshipClassName `{311C2EE1}` 体：版本+String×3+int32×2+short×2+选择子（0→IWorkspaceName 槽/非 0→IDatasetName 槽+通知），Save 对称。
+      - [x] 闭合 IDatasetName 槽其余实现类（GdbCore 范围）：MemoryRelationshipClassName `{6DBA211B}`/QueryTableName `{793873DE}`（版本门无符号，0 被原生拒绝）/RelQueryTableName `{DAB3EE10}`/DBTableName `{4C9307B2}`（无版本字段）四类体闭合；方法学修正：RTTI BCDD 数组会产生伪 COL，候选虚表必须以 GetClassID 反编译写出 CLSID 收尾；FeatureQueryName/TableQueryName（IPersistVariant 形态）与 ObjectClassName 及其他模块实现另列开放项，见 [研究记录](docs/arcmap-10.1-dataset-name-slots.md)。
+      - [ ] FeatureBookmark 的 IName 槽实现类体（部分闭合：装载后对名称对象 QI IFeatureClass `{D4803EE6}`，成功写 this+8 失败软置空；实现类分布仍未观察——样本 0 书签，见 legend-family 记录第十节）。
+      - [x] 闭合 FDOGraphicsLayer 版本 4 探测分支：三依赖降为两项并全部定位闭合（整流绝对 0 访问成立单独已足；IObjectStream QI 门控主流键读、分支 B 经返回接口读键且前后无条件 Seek 复位）；「不实现」结论维持，见 [研究记录](docs/arcmap-10.1-save-side.md)。
+      - [ ] 委派注记图层数据源类 `{75E10086-4226-42AC-AFEC-CBB9B748F847}`（键 87）coclass 定位与体——**当前样本停止点**（FDO 第 6 步委派体 @0x1622 数据源槽非 FeatureClassName，按原生回退语义整体回退）。
+      - [ ] FeatureQueryName/TableQueryName 的 IVariantStream 体（GdbCore，IPersistVariant 形态，主虚表 +0x14 GetIDType 写出各自 CLSID）。
+      - [ ] ObjectClassName 实现类 RTTI 定位（GdbCore 静态未找到）。
     - 符号与 Legend 族（逐个反编译闭合）：
-      - [ ] LegendFormat 体。
-      - [ ] ILegendItem 实现类体（HorizontalBarLegendItem 等）。
+      - [x] 闭合 LegendFormat 体 `{7A3F91E5}`（Map.dll，真实 IPS 虚表在位移 0xb4 的 COL 后；9 段字段序：版本 [1,1,1,1,1,2] 恒写 2+short+ITextSymbol 槽+int32+double×11+ILinePatch 槽+IAreaPatch 槽+short+[≥2]double×2，Load/Save 对称），见 [研究记录](docs/arcmap-10.1-legend-family.md)。
+      - [x] 闭合 ILegendItem 实现类体：HorizontalBarLegendItem `{2B65D211}`（条目版本→BaseLegendItem→int32→double×2）、NestedLegendItem `{2B65D212}`（→int32→double→IFillSymbol 槽→ILineSymbol 槽→short×3→int32）、VerticalLegendItem `{A9401A48}`（流内布局与 HorizontalLegendItem 逐字节同序）；四实现类经 LayerLib BaseLegendItem::Load 的四条 IAT 引用定位穷尽，见 [研究记录](docs/arcmap-10.1-legend-family.md)。
       - [x] 证明 Scalebar/ScaleText/MarkerNorthArrow/MapTitle 的共同前缀为其 Load 首段。
-      - [ ] 反编译 Scalebar 体。
-      - [ ] 反编译 ScaleText 体。
-      - [ ] 反编译 MarkerNorthArrow 体。
-      - [ ] 反编译 MapTitle 体。
-      - [ ] 逐类反编译四个 Scalebar 子类尾段。
+      - [x] 闭合 Scalebar 体 `{7A3F91DB}`：真实 Load `0x794460b0`（IPS 虚表位移 0x1b4）；自身 short 恒写 1→共同前缀→标量长段→三个 OLE IFont 槽（流内 StdFont，既有 ole_font 可消费）→uint32/String/4×int32→IFont→uint32。
+      - [x] 闭合 ScaleText 体 `{7A3F91DC}`：版本门 >3 拒绝（表 [2,2,2,3] 恒写 3）；≥2 段含 ITextElement `{204034D2}` 主槽与 INumberFormat 槽；≥3 格式串。
+      - [x] 闭合 MarkerNorthArrow 体 `{7A3F91DD}`：两级版本（基类 NorthArrow 门 >4，表 [3,3,3,3,3,4]；自身恒写 2）；≥2 主槽=IMarkerElement `{530FD711}`（<2 旧分支 10.1 不可达）。
+      - [x] 闭合 MapTitle 体 `{7A3F91DF}`：=自身版本 short（恒写 1）+共同前缀，无派生字段。
+      - [x] 闭合四个 Scalebar 子类尾段：Hollow/Alternating/DoubleAlternating 共享 Load（SingleDivision 独立）；层级=自身 short→基类段（版本表 [3,3,3,3,4,6] 恒写 6：共同前缀+标量+ITextSymbol 槽×2+INumberFormat 槽）→中段（short+double+IFillSymbol 槽）→共享尾段（short≤2+ILineSymbol 槽×2+double×2+int32×2），Load/Save 对称。
       - [x] 确认 Legend 尾段读取器在 ILinePatch/IAreaPatch 新对象处停止（见 legend-tails 记录）。
-      - [ ] ILinePatch 实现类体。
-      - [ ] IAreaPatch 实现类体。
+      - [x] 闭合 ILinePatch/IAreaPatch 实现类体：LinePatch `{2066267F}`/AreaPatch `{2066267E}` 共享同一对 IPersistStream 实现（Layer.dll，版本表 [2,2,3] 恒写 3；IGeometry 形状槽——LinePatch 预期 Polyline、AreaPatch 预期 Polygon——+String+[≥2]short），区别仅对象头 CLSID。
+      - 方法学修正（C 轮，见 legend-family 记录）：mapsurround-bookmark 记录把装饰物族 identity 虚表 +0x14 槽误标为 Load 的三处实为 GetClassID；`/tmp/r3/clsid_table_101.json` 仅部分提取不能当全表用。
     - Variant/PropertySet 分支（反编译或逐指令复核）：
-      - [ ] `Variant::Read` 对象分支（VT_DISPATCH/UNKNOWN 的类 GUID 语义）。
-      - [ ] `Variant::Read` bool=false 的 Seek 分支。
+      - [x] 闭合 `Variant::Read` 对象分支：9/13 臂调导出 LoadObject（先 QI ESRI 上下文接口，命中走带键 ObjectStream 路径——顺带闭合 variant-stream 文档「10.8 所述入口 QI 上下文分支在 10.1 未定位」）；普通路径读 16 字节类 GUID，**==零 GUID→S_OK 且出参保持 NULL，非零→AfCreateInstance**（旧 variant-stream 文档分支方向系笔误，已在其自身记录修正）；非零体由对象自身持久化方法消费，通用边界静态不存在（开放）。
+      - [x] 闭合 `Variant::Read` bool=false 的 Seek 分支：Seek(+14, STREAM_SEEK_CUR) 且返回值不检查——语义为 14 字节保留头部跳过，与 Write 侧写 14 零字节严格互证（旧「版本定位」表述修正）。
       - [x] 在反编译中观察到 PropertySet 数组（0x2000）分支。
-      - [ ] 逐指令复核 PropertySet 数组（0x2000）分支（无样本）。
-      - [ ] PropertySet 对象（9/13）分支（依赖无键 LoadObject 的对象边界）。
-      - [ ] PropertySetProperty `{5B6D2B14}` 体（未反编译）。
-      - [x] 确认 SystemCore 本地 `Variant::Read` 的签名、字符串分支与 Load 调用点。
-      - [ ] 逐 VARTYPE 对照 SystemCore 本地 `Variant::Read` 副本。
-      - [x] 按对称性推断 `Variant::Write`（`0x68a7cb50`）的字段序。
-      - [ ] 逐段反编译 `Variant::Write`（`0x68a7cb50`）验证推断。
-      - [x] 确认 PropertySet AddRef/Save thunk 转跳目标相同且不影响字段序。
-      - [ ] 解释 PropertySet AddRef/Save thunk 转跳目标相同的原因（见 property-set 记录开放项 5）。
+      - [x] 逐指令复核 PropertySet 数组（0x2000）分支：分发键 vt&0xdfff，[计数:4][元素]，SafeArrayCreate（lLbound 两路径显式清零）+批量定宽读/逐元素全局 ReadString，IAT 序号全部坐实；无样本，Rust 读取器维持显式 Unsupported（正确，无需实现）。
+      - [x] 闭合 PropertySet 对象（9/13）分支=LoadObject 路径；零 GUID 空对象 `[9/13:2][16×00]` 共 18 字节子集已实现并接入 property_set（PropertyValue10_1::NullObject），非零 GUID 维持 Unsupported。
+      - [x] 裁决 PropertySetProperty `{5B6D2B14}` 无流体：CLSID 常量唯一命中+RTTI 派出五子对象虚表判别，无 IPersistStream/IVariantStream——SystemCore 内不存在可反编译的流对象体，MXD 内以内联键值承载（样本 2/2）；旧文档猜测的虚表 +0x14 槽值实为 COL 区数据。
+      - [x] 确认 SystemCore 「本地 `Variant::Read`」实为 IAT 导入 AfCore `?Read@Variant@@`（0x7ffd3f00/0x7ffd3f90 为 VariantInit→AfCore 调用包装）：**不存在静态链接副本，AfCore 逐分支分析对 PropertySet 值即权威**（旧「本地编译副本」说法修正，property-set 记录开放项 1 就此闭合）；签名/字符串分支/Load 调用点的历史确认在该前提下仍有效。
+      - [x] 逐段反编译 `Variant::Write`（`0x68a7cb50`）验证推断：[vt:2]、bool=false 写 14 零、标量 BSTR=String::Write、数组=计数+批量/逐元素、9/13=SaveObject→SimpleSaveObject（空对象 16 零）、default 返回 0x80004005/数组 0x80070057——与 Read 完全对称，按对称性推断的字段序全部成立。
+      - [x] 裁决 PropertySet AddRef/Save thunk 转跳目标**本不相同**（AddRef→共享 AddRef 实现两级 adjustor；Save→仅单级 adjustor）：旧记录「转跳目标相同」系相邻 thunk 张冠李戴，不影响虚表槽位归属与 Load/Save 字段序（property-set 记录开放项 5 以此闭合；旧条目「确认目标相同」随之撤销）。
     - Save 写侧（反编译闭合写出链）：
-      - [ ] FeatureLayer Save 归因。
-      - [ ] FDOGraphicsLayer Save 委派写出。
-      - [ ] FDOGraphicsSublayer Save 版本表逐条目展开。
-      - [ ] EditTemplate 版本表前四档「不写任何字节」与无外部长度体的读侧交互（10.1 不可达）。
+      - [x] 闭合 FeatureLayer Save 归因：IPersistStream 虚表 `0x6f7acfb0` 槽 +0x18=`0x6f6eb1b0`（虚表连读+与 Load 38 步字段序逐段对称）；版本表 `DAT_6f767d24`=[17,22,23,25,34,34] 恒写 34、无 FFFF 档；字段序 38 步完整闭合，新发现 docVer 0/1/2/3 四档降级截断阶梯（体止于㉘/㉞/㉟/㊳）、docVer<4 且 +0x188==3 写向专用降级分支、范围 ID 序列负数游程编码（段尾 ID 取负），见 [研究记录](docs/arcmap-10.1-save-side.md)。
+      - [x] 闭合 FDOGraphicsLayer Save 委派写出（AnnoLayer `0x6b195b90` 逐指令）：版本表 [5,11]→int32/short→SaveObject(+0xec 关联图层/+0x11c 元素集合)→[this+0xbc] 虚表 +0x18=聚合 FeatureLayer 的 Save 内联写出无对象头→docVer==0 提前返回→版本 11 尾段（元素循环每元素=FDOGraphicsSublayer::Save 内联）；第七轮「按对称性推定」升级为逐指令证据。
+      - [x] 闭合 FDOGraphicsSublayer Save 版本表逐条目展开（`0x6b1a1c40`，表 [0xFFFF,2]）：docVer 0（8.3）整类不写、≥1→2；读侧 v1 专属 short 无写侧对应=兼容遗留（10.1 任何档不产版本 1）；补全两个 String 成员槽位（+0x68/+0x50）。
+      - [x] 闭合 EditTemplate 版本表前四档「不写任何字节」读侧交互（静态，三重证据）：ET::Save 表 [-1,-1,-1,-1,2]→docVer≤3 写 0 字节，但宿主 ETM::Save 表 [-1,-1,-1,-1,1,2]→docVer≤3 在模板循环前整类返回（ET::Save 的 FFFF 分支实际不可达）；`ExtensionHelper::SaveExtensions` 无 docVer 门、条目=[计数][int64 尺寸][CLSID][体]（尺寸=体字节数）；`LoadExtensions` 对已知类且尺寸==0 条目不调 Load——0 字节体被读侧安全跳过，「无外部长度」难题在扩展段不存在（唯一带外部长度的区域），Rust 读取器无需改动。
       - [x] 观察推断「docVersion 0 → 旧布局版本号」，并由符号族第二轮印证表项为直接读数。
-      - [ ] 提取 AfCore 的 `AfStreamGetSaveVersion` 版本表并闭合内部映射。
+      - [x] 提取 AfCore `AfStreamGetSaveVersion`（`0x68a847f0`）版本表并闭合内部映射：null/N==0→−1；N−1<docVer→table[N−1]（截断末项）；否则 table[docVer]；负 docVer 原生越界读（Rust 封装拒绝）；`AfStreamGetDocumentVersion 0x68a84760` 缺省 5；六表提取落 `src/version/save_version_table.rs`（Map [22,29,30,31,45,51]/FL [17,22,23,25,34,34]/ETM [-1,-1,-1,-1,1,2]/ET [-1,-1,-1,-1,2]/FDO [5,11]/FDO 子层 [-1,2]，样本值逐一吻合）。
     - 语义定性（类型库成员级命名或运行取证；读取器对未定性字段原样保留）：
       - [ ] 颜色与符号标量字段业务语义（DisplayCore 两轮各类，按内容候选标注）。
       - [x] 确定符号族三处 short（ArrowMarker ⑫/CharacterMarker ⑭/PictureMarker v9 ⑨ 与历史路径 +0x70）的流内布局。
@@ -224,12 +225,17 @@
       - [ ] 验证 Percentage/Rate「同槽升级」与 LatLon/Angle 独立槽核心形态（样本 0 实例）。
       - [ ] Geometry 记录类型值的枚举映射语义（内部 shape 类别 vs esriGeometryType）。
       - [ ] Geometry 内核移交链（+0xc8 内嵌指针虚表 +0x1cc 槽）运行期装配定位。
-      - [ ] FDO 版本 4 探测三依赖定位。
-      - [ ] FDO「Map 架构版本 9」历史布局解读。
+      - [x] 闭合 FDO 版本 4 探测依赖：三依赖降为两项并逐指令定位（整流绝对 0 访问成立；IObjectStream QI `{18A45BA7}` 门控主流键读、分支 B 经返回接口读键）；三处旧记录修正（第七轮「从返回接口读」系误记、「分支 B 不复位」撤销——汇编在 ==9 比较前无条件 Seek(P)、探测真条件=两探测槽至少一空）；分支 A ≠4 路径为死分支，「不实现」结论维持，见 [研究记录](docs/arcmap-10.1-save-side.md)。
+      - [x] 闭合 FDO「Map 架构版本 9」历史布局解读（静态）：Map::Save 版本表 [22,29,30,31,45,51]→10.1 可写最小 Map 架构版本=22（8.3），版本 9 只可能来自 pre-8.3 文档；与 FDO 表 [5,11] 互证 FDO v4=8.3 之前布局（legacy+收尾 String）；分支 B 两种根前缀（带/不带 int32 计数）闭合；「9 对应哪个具体产品版本」10.1 二进制不可证，保持开放。
       - [ ] `{7453C805}` 未定名 IID。
       - [ ] `{DBCA59AC}` 未定名 IID。
       - [ ] `{97D5B914}` 未定名 IID。
       - [ ] 其余未定名 IID（上述之外）。
+      - [ ] 定性 B 轮 IDatasetName 六类标量/String 字段与五条请求 IID 业务语义（`{4BA33331}`/`{2E060684}`/`{FDFEBD93}`/`{F7AD47D1}`/`{4434D680}`，OleDB 尾段族类型库定名未做），见 [研究记录](docs/arcmap-10.1-dataset-name-slots.md)。
+      - [ ] 定性 C 轮装饰物族（Scalebar 族/MarkerNorthArrow/MapTitle/LegendFormat/LegendItem 三类/Patch 两类）标量字段业务语义；ScaleLine 族三个共同前缀调用者（`0x793c8990`/`0x7943b2f0`/`0x79448500`）未反编译。
+      - [ ] 定性 F 轮 PCS/GCS/Unknown 域串与 Unknown 四串业务语义及填充来源；ISRPersistStream slot8（恒 0x38）成员名；GCS `对象+0xac` 非零守卫语义；容差公式 pe/sg 数值推导链，见 [研究记录](docs/arcmap-10.1-pcs-geometry-slots.md)。
+      - [ ] 定性 G 轮 RandomColorRamp 读即弃 int32、PictureFillSymbol 读后即弃 double×2、MultiPart 读写门不对称等反编译级观察（与 round2 三处 short quirk 同族），见 [研究记录](docs/arcmap-10.1-display-slots-round3.md)。
+      - [ ] 裁决 FL 后继段 ㊱ 计数后 6 零字节归属：A 轮走查（计数+6 保留字节模型断言通过）与 E 轮写侧（零残差、称「边界错位不存在保留字节」）两轮证据矛盾，样本字节两种分解均走通，需写侧汇编逐字节重走裁决（整合轮维持已验证消费模型未改）。
     - 样本无佐证分支（待真实样本或运行取证升级为证据）：
       - [x] 确认 FCN 的 FeatureDatasetName 与 TopologyName 选择子在样本 11 处全为 0。
       - [ ] 解析 FCN 的 FeatureDatasetName 选择子。
@@ -359,6 +365,7 @@
 - [x] 为构造模型的数据源路径重定位、坐标系处理和图层树映射添加测试（`tests/qgis.rs` 14 项通过 + 1 项 QGIS API 测试默认忽略、显式运行后通过）：词法路径重定位与断链诊断、歧义 URI/根逃逸拒绝、CRS 仅识别 EPSG:4326/3857 其余保留并诊断、树序/勾选/XML 往返与确定性标识、非法范围与溢出拒绝。仅覆盖输出层与构造模型自身契约；MXD 侧接入（`convert`）未实现，真实数据源路径与坐标系规则未在目标软件验证。
 - [x] 并行四轮研究 + 整合接线轮新增模块测试并扩充 robustness 集中清单 48 → 74 个入口（ALPC/LELP/ETM/FeatureIDSet 四体、符号族第二轮 14 直读入口与全量分派、Polyline 体与 geometry 类分派、数字格式四类与 Hyperlink 体、CGL 三处嵌套分派）；全仓 482 项测试全绿（基线 476 +6），`cargo fmt --check` 干净；样本 `parse` 停止点 0xafe→0xb7a→0xd6c。仅验证读取器自身契约，不代表 MXD 格式规则已验证。
 - [x] 第二轮并行四轮 + 整合接线轮新增模块测试并扩充 robustness 集中清单 74 → 93 个入口（StdFont/StdPicture 体与槽、BOLP/标注三族/UID/HLEP/DEP 前缀、Polygon/Point/Multipoint 体与 typed 分派、数字格式五类、CharacterMarker 字体槽与 PictureMarker IPicture 槽）；全仓 534 项测试全绿（基线 523 +11，另清理合并遗留 unused import/needless mut/unreachable 告警），`cargo fmt --check` 干净；样本 `parse` 停止点 0xd6c→0x151a→0x155a。仅验证读取器自身契约，不代表 MXD 格式规则已验证。
+- [x] 第三轮并行七轮 + 整合接线轮新增模块测试并扩充 robustness 集中清单 93 → 137 个入口（TimeData 族 5、dataset_name 槽族 7、patch/LegendItem 族/MapSurround 族 17、variant_object_branch 1、GCS/Unknown 2、ColorRamp/Callout/PictureFill/元素装饰 18 等）；十一个新读取器模块各自带模块内测试（截断/事务性/版本门矩阵），全仓 649 项测试全绿，`cargo fmt --check` 干净；样本 `parse` 停止点 0x155a→0x1622。仅验证读取器自身契约，不代表 MXD 格式规则已验证。
 
 ## 人工验收
 
