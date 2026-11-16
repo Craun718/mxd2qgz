@@ -138,7 +138,7 @@
   - [x] 闭合 INumberFormat 同族五类（CurrencyFormat 体仅版本 short；LatLon/Angle 内嵌核心独立槽，Angle 原生不检查核心返回值、读取器更严；Scientific/CustomNumber；`.rdata` 静态 CLSID 复制与虚位移调整器两新形态），见 [研究记录](docs/arcmap-10.1-number-format.md)。
   - [x] 第二轮整合接线：更正 `DISPLAY_EXPRESSION_PROPS_CLASS_ID` 转录笔误（`48 4c`↔`4c 48`，笔误使 DEP 槽永不命中）、FieldInfo 槽 4-way→9-way 分派、TextElement IGeometry 四类分派与 MarkerElement IPoint 接 Point、CharacterMarker 字体槽接 StdFont、PictureMarker 四处 IPicture 槽接 StdPicture、`mxd_maps` DEP/LELP 停止链诊断、robustness 集中清单 74→93 入口；534 项测试全绿，样本停止点 0xd6c→0x151a→0x155a。
   - [x] 走查脚本独立证实 `0xf63..0xfe6` 段（FIDSet/选择集/显示过滤器/扩展段头），第十轮接线后样本连续消费至 `0x155a`；ALPC 条目键/尾 int32 已解析（样本修正 ALPC 尾 int32=1）。
-  - [x] 第三轮并行七轮研究+整合接线（2026-11-16）：七组开放族闭合 55 项（A 停止点后方/DEP 裁决+TimeData 族、B IDatasetName 槽族含两类不可持久化裁决、C Legend/MapSurround 全族、D Variant-PropertySet 八分支含四处旧记录修正、E Save 写侧六表+三重交互闭合、F PCS IID/语义+GCS/Unknown 体+CircularArc 裁决、G DisplayCore 槽族含两项负证据裁决），新读取器模块 10 个；整合接线 17 处+element_body ==7/==9+property_set 9|13 两段落位（重叠实现按基准裁决保留一份），robustness 集中清单 93→137 入口，全仓 649 项测试全绿；样本停止点 `0x155a`→`0x1622`（DEP 体完整消费→EC@0x1608 完整消费→委派体数据源未知类 `{75E10086}` 按原生回退语义停止）；新研究文档七份（docs/arcmap-10.1-{dep-tail,dataset-name-slots,legend-family,variant-propertyset-slots,save-side,pcs-geometry-slots,display-slots-round3}.md）；全部静态取证，未在目标软件人工验证。
+  - [x] 第三轮并行七轮研究+整合接线（2026-11-16）：七组开放族闭合 55 项（A 停止点后方/DEP 裁决+TimeData 族、B IDatasetName 槽族含两类不可持久化裁决、C Legend/MapSurround 全族、D Variant-PropertySet 八分支含四处旧记录修正、E Save 写侧六表+三重交互闭合、F PCS IID/语义+GCS/Unknown 体+CircularArc 裁决、G DisplayCore 槽族含两项负证据裁决），新读取器模块 10 个；整合接线 17 处+element_body ==7/==9+property_set 9|13 两段落位（重叠实现按基准裁决保留一份），robustness 集中清单 93→137 入口，全仓 649 项测试全绿；样本停止点 `0x155a`→`0x1622`（DEP 体完整消费→EC@0x1608 完整消费→委派体数据源未支持类 `{75E10086}` 的对象头位于 0x166c，本项目读取器回退至委派体起点 0x1622）；新研究文档七份（docs/arcmap-10.1-{dep-tail,dataset-name-slots,legend-family,variant-propertyset-slots,save-side,pcs-geometry-slots,display-slots-round3}.md）；全部静态取证，未在目标软件人工验证。
   - [ ] 接线 FCN 自身 `{198846D0}` 在 IDatasetName 槽内递归嵌套 FeatureClassName 的分派（需 layers 层自递归+深度限额；B 轮六类已接入 TopologyName/FCN 选择子槽，此嵌套形态未接，见 dataset-name-slots 记录接线建议）。
   - 其余开放项按类别逐项单列，每项职责单一；闭合路径注于类别，出处见各研究文档：
     - 体未闭合类族（逐个反编译闭合对象体或分支）：
@@ -167,7 +167,7 @@
       - [x] 闭合 IDatasetName 槽其余实现类（GdbCore 范围）：MemoryRelationshipClassName `{6DBA211B}`/QueryTableName `{793873DE}`（版本门无符号，0 被原生拒绝）/RelQueryTableName `{DAB3EE10}`/DBTableName `{4C9307B2}`（无版本字段）四类体闭合；方法学修正：RTTI BCDD 数组会产生伪 COL，候选虚表必须以 GetClassID 反编译写出 CLSID 收尾；FeatureQueryName/TableQueryName（IPersistVariant 形态）与 ObjectClassName 及其他模块实现另列开放项，见 [研究记录](docs/arcmap-10.1-dataset-name-slots.md)。
       - [ ] FeatureBookmark 的 IName 槽实现类体（部分闭合：装载后对名称对象 QI IFeatureClass `{D4803EE6}`，成功写 this+8 失败软置空；实现类分布仍未观察——样本 0 书签，见 legend-family 记录第十节）。
       - [x] 闭合 FDOGraphicsLayer 版本 4 探测分支：三依赖降为两项并全部定位闭合（整流绝对 0 访问成立单独已足；IObjectStream QI 门控主流键读、分支 B 经返回接口读键且前后无条件 Seek 复位）；「不实现」结论维持，见 [研究记录](docs/arcmap-10.1-save-side.md)。
-      - [ ] 委派注记图层数据源类 `{75E10086-4226-42AC-AFEC-CBB9B748F847}`（键 87）coclass 定位与体——**当前样本停止点**（FDO 第 6 步委派体 @0x1622 数据源槽非 FeatureClassName，按原生回退语义整体回退）。
+      - [ ] 委派注记图层数据源类 `{75E10086-4226-42AC-AFEC-CBB9B748F847}`（键 87）coclass 定位与体——**当前样本停止点**（FDO 第 6 步委派体起于 0x1622，数据源槽对象头位于 0x166c；该类非读取器支持的 FeatureClassName，本项目读取器将委派体整体回退至 0x1622）。
       - [ ] FeatureQueryName/TableQueryName 的 IVariantStream 体（GdbCore，IPersistVariant 形态，主虚表 +0x14 GetIDType 写出各自 CLSID）。
       - [ ] ObjectClassName 实现类 RTTI 定位（GdbCore 静态未找到）。
     - 符号与 Legend 族（逐个反编译闭合）：
