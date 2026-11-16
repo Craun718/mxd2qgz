@@ -482,42 +482,57 @@ fn read_dataset_name_object_10_1(
 /// 读取并分类一个 IDatasetName 槽（请求 IID `{89E75917-…}`）：空引用/回引
 /// 原样返回；新对象命中七类时分派（嵌套体停止透传为 `Nested`）；其余类为
 /// 停止点并回退到槽位起点。`stop_out` 带出停止原因（无停止时为 `None`）。
-fn read_dataset_name_slot_10_1(
+///
+/// B 轮接线起为本模块与 `dataset_name` / `layers::feature_layer`（FCN ⑦
+/// 选择子 !=0 槽）共用的统一分派入口（七类含 FeatureDatasetName，与第六轮
+/// 读取器的 FeatureDatasetName 臂互斥不复读）。
+pub fn read_dataset_name_slot_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
     stop_out: &mut Option<DatasetNameMoreStop10_1>,
 ) -> io::Result<DatasetNameMoreSlot10_1> {
-    let at_slot = reader.clone();
-    let saved_table = table.clone();
-    let mut staged_table = table.clone();
-    match read_object_entry_10_1(reader, &mut staged_table)? {
-        ObjectEntry10_1::Null => Ok(DatasetNameMoreSlot10_1::Null),
-        ObjectEntry10_1::BackReference { class_id, key } => {
-            *table = staged_table;
-            Ok(DatasetNameMoreSlot10_1::BackReference { class_id, key })
-        }
-        ObjectEntry10_1::NewObject { class_id, key } => {
-            let known = class_id == FEATURE_DATASET_NAME_CLASS_ID
-                || class_id == GEOMETRIC_NETWORK_NAME_CLASS_ID
-                || class_id == RELATIONSHIP_CLASS_NAME_CLASS_ID
-                || class_id == MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID
-                || class_id == QUERY_TABLE_NAME_CLASS_ID
-                || class_id == REL_QUERY_TABLE_NAME_CLASS_ID
-                || class_id == DB_TABLE_NAME_CLASS_ID;
-            if !known {
-                *table = saved_table;
-                *reader = at_slot;
-                *stop_out = Some(DatasetNameMoreStop10_1::SlotUnsupported { class_id, key });
-                return Ok(DatasetNameMoreSlot10_1::Unsupported { class_id, key });
+    // 整体事务：入口克隆 trial 游标与暂存登记表，成功返回（含停止）才提交；
+    // 任何失败（截断、嵌套体错误）与未知类回退路径都不推进调用者游标、
+    // 不修改登记表。
+    let mut trial = reader.clone();
+    let mut staged = table.clone();
+    let result = (|| -> io::Result<DatasetNameMoreSlot10_1> {
+        let saved_table = staged.clone();
+        match read_object_entry_10_1(&mut trial, &mut staged)? {
+            ObjectEntry10_1::Null => Ok(DatasetNameMoreSlot10_1::Null),
+            ObjectEntry10_1::BackReference { class_id, key } => {
+                Ok(DatasetNameMoreSlot10_1::BackReference { class_id, key })
             }
-            let (body, stop) =
-                read_dataset_name_object_10_1(reader, max_bytes, &mut staged_table, class_id, key)?;
-            *table = staged_table;
-            *stop_out = stop;
-            Ok(DatasetNameMoreSlot10_1::Body(body))
+            ObjectEntry10_1::NewObject { class_id, key } => {
+                let known = class_id == FEATURE_DATASET_NAME_CLASS_ID
+                    || class_id == GEOMETRIC_NETWORK_NAME_CLASS_ID
+                    || class_id == RELATIONSHIP_CLASS_NAME_CLASS_ID
+                    || class_id == MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID
+                    || class_id == QUERY_TABLE_NAME_CLASS_ID
+                    || class_id == REL_QUERY_TABLE_NAME_CLASS_ID
+                    || class_id == DB_TABLE_NAME_CLASS_ID;
+                if !known {
+                    staged = saved_table;
+                    trial = reader.clone();
+                    *stop_out = Some(DatasetNameMoreStop10_1::SlotUnsupported { class_id, key });
+                    return Ok(DatasetNameMoreSlot10_1::Unsupported { class_id, key });
+                }
+                let (body, stop) = read_dataset_name_object_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged,
+                    class_id,
+                    key,
+                )?;
+                *stop_out = stop;
+                Ok(DatasetNameMoreSlot10_1::Body(body))
+            }
         }
-    }
+    })()?;
+    *reader = trial;
+    *table = staged;
+    Ok(result)
 }
 
 /// 读取并分类一个 IWorkspaceName 槽（请求 IID `{FADD975C-…}`）：新对象为

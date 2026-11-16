@@ -81,7 +81,7 @@
 //! `samples/测试底图.mxd` 中四类 0 实例，全部结论无样本字节佐证，单元测试
 //! 仅合成输入，不代表原生已验证。
 
-use crate::objects::display_color::{ColorSlot10_1, RGB_COLOR_CLASS_ID, read_color_slot_10_1};
+use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
 use crate::objects::display_symbol::{DisplaySlotKind10_1, SymbolStop10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -576,6 +576,7 @@ fn nested_ramp_stop(slot: &ColorRampSlot10_1) -> Option<SymbolStop10_1> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::objects::display_color::RGB_COLOR_CLASS_ID;
 
     /// 构造对象条目字节：16 字节类标识 + u32 键。
     fn entry(class_id: &[u8; 16], key: u32) -> Vec<u8> {

@@ -451,10 +451,16 @@ fn dataset_name_selector_reads_feature_dataset_name_body() {
     let mut reader = Reader::new(&body);
     let parsed =
         read_feature_class_name_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 58).unwrap();
-    let FeatureClassNameNested10_1::DatasetName(DatasetNameEntry10_1::NewObject(fdn_parsed)) =
+    let FeatureClassNameNested10_1::DatasetName(DatasetNameEntry10_1::NewObject(body_parsed)) =
         &parsed.nested
     else {
         panic!("选择子 1 应解析 FeatureDatasetName 体：{:?}", parsed.nested);
+    };
+    // B 轮接线后该槽为七类统一体：FeatureDatasetName 走 FeatureDataset 变体。
+    let mxd2qgz::objects::dataset_name_more::DatasetNameMoreBody10_1::FeatureDataset(fdn_parsed) =
+        &**body_parsed
+    else {
+        panic!("FeatureDatasetName 新对象应映射为 FeatureDataset 变体：{body_parsed:?}");
     };
     assert_eq!(fdn_parsed.key, 59);
     assert_eq!(fdn_parsed.version, 1);

@@ -127,10 +127,11 @@
 //!   （样本停止点 = LELP ⑯ ITextSymbol 槽的 TextSymbol 新对象，键 61，
 //!   游标停在其体起点）。样本 0xafe..0xb8e 逐字节吻合；
 //! - LELP ⑰ BOLP 族与 ⑱ 引擎体已闭合（annotate_props 第十轮）；后继段
-//!   ㉖ ISymbol/㉘ Envelope/㉙ UID/㊴ DEP 前缀/㊷ HLEP 槽第十轮接入整体
+//!   ㉖ ISymbol/㉘ Envelope/㉙ UID/㊴ DEP 完整体/㊷ HLEP 槽第十轮接入整体
 //!   解析；扩展段格式按样本修正（[尺寸][CLSID][体]，无键）；TimeData 族
-//!   槽位实现类未闭合（新对象即停止）；LELP ⑯ TextSymbol 体已接线（样本
-//!   停止点在 TextSymbol 体内 IFontDisp 槽，OLE StdFont 体未闭合）。
+//!   槽位 A 轮起接 dep_tail 族读取器（TimeReference/TimeExtent 新对象整
+//!   体解析，未知类停止）；LELP ⑯ TextSymbol 体已接线（样本停止点在
+//!   TextSymbol 体内 IFontDisp 槽，OLE StdFont 体未闭合）。
 
 use crate::layers::annotate_props::{
     ANNOTATE_PROPS_COLLECTION_CLASS_ID, AnnotatePropsBody10_1, AnnotatePropsStop10_1,
@@ -140,6 +141,10 @@ use crate::layers::annotate_props::{
     read_annotate_props_collection_body_10_1, read_display_expression_props_prefix_10_1,
     read_edit_template_manager_body_10_1, read_hot_link_expression_props_body_10_1,
     read_stream_string_10_1,
+};
+use crate::layers::dep_tail::{
+    TIME_EXTENT_CLASS_ID, TIME_REFERENCE_CLASS_ID, TimeExtentSlot10_1, TimeReferenceSlot10_1,
+    read_time_data_family_10_1, read_time_extent_body_10_1, read_time_reference_body_10_1,
 };
 use crate::layers::feature_id_set::{
     FEATURE_ID_SET_CLASS_ID, FeatureIdSetBody10_1, read_feature_id_set_body_10_1,
@@ -1261,10 +1266,6 @@ pub enum SuccessorStop10_1 {
     /// ㉖ ISymbol 槽为全闭合符号族成员且其体内出现嵌套停止（原因透传，
     /// 游标停在其停止点）。
     SymbolNested(SymbolStop10_1),
-    /// ㊴ 槽为 DisplayExpressionProperties 且其已闭合前缀（版本、表达式
-    /// 字符串、int16、引擎槽）消费完毕：游标停在其未闭合尾段起点（样本
-    /// `0x155a`，尾段 126 字节原样保留）。
-    ExpressionPropsBody,
 }
 
 /// FeatureLayer::Load（`0x6f6e9940`）渲染器槽 +0x144 GUID 之后的后继字段段
@@ -1414,8 +1415,9 @@ pub struct FeatureLayerSuccessor10_1 {
     /// ㊳ String ×4 → obj+0x2cc/+0x2d0/+0x2d4/+0x2d8（版本 ≥0x19），语义
     /// 未定。
     pub strings_2cc_2d0_2d4_2d8: Option<[String; 4]>,
-    /// ㊴ {A62B9EC2} 槽分类（版本 >0x19；第十轮起 DisplayExpressionProperties
-    /// 已闭合前缀整体解析，尾段停止经 `stop` 的 `ExpressionPropsBody`）。
+    /// ㊴ {A62B9EC2} 槽分类（版本 >0x19；A 轮起 DisplayExpressionProperties
+    /// 完整体解析——体在表达式引擎槽处完结，无尾段，证据
+    /// docs/arcmap-10.1-dep-tail.md 第一节；其余类维持停止回退）。
     pub expression_props: Option<ExpressionPropsSlot10_1>,
     /// ㊵ short → obj+0x300（版本 >0x1a），语义未定。
     pub short_300: Option<i16>,
@@ -1424,14 +1426,19 @@ pub struct FeatureLayerSuccessor10_1 {
     /// ㊶ 版本 0x1c..0x1f 分支标量块（short + String ×4 + short + double +
     /// int32；10.1 不写，无样本佐证；本轮静态闭合）。仅该版本区间读取。
     pub legacy_scalars: Option<LegacyTailScalars10_1>,
-    /// ㊶ TimeData 段（版本 ≥0x20；样本未达），本轮闭合。
-    pub time_data: Option<TimeDataBody10_1>,
-    /// ㊶ TimeTableDefinition 段（版本 ≥0x20）。
-    pub time_table_definition: Option<TimeTableDefinitionBody10_1>,
+    /// ㊶ TimeData 段（版本 ≥0x20；A 轮起接 dep_tail 族读取器，槽位新对象
+    /// 为 TimeReference 时整体解析）。
+    pub time_data: Option<crate::layers::dep_tail::TimeDataSegment10_1>,
+    /// ㊶ TimeTableDefinition 段（版本 ≥0x20；ITimeExtent 槽接 dep_tail）。
+    pub time_table_definition: Option<crate::layers::dep_tail::TimeTableSegment10_1>,
     /// ㊶ TimeDimensionDefinition 段（版本 ≥0x20）。
-    pub time_dimension_definition: Option<TimeDimensionDefinitionBody10_1>,
+    pub time_dimension_definition: Option<crate::layers::dep_tail::TimeDimensionSegment10_1>,
     /// ㊶ TimeDataDisplay 段（版本 ≥0x20）。
-    pub time_data_display: Option<TimeDataDisplayBody10_1>,
+    pub time_data_display: Option<crate::layers::dep_tail::TimeDisplaySegment10_1>,
+    /// ㊶ 版本 0x1c..0x1f 分支的时间族槽（A 轮起 ITimeReference/ITimeExtent
+    /// 槽接 dep_tail 体读取器；10.1 docVersion 不写该分支，无样本佐证）。
+    /// 仅该版本区间读取。
+    pub legacy_time_slots: Option<LegacyTimeSlots10_1>,
     /// ㊷ {E720618B} 槽分类（版本 >0x20；第十轮起 HLEP 新对象整体解析）。
     pub hot_link_expression_props: Option<HotLinkSlot10_1>,
     /// ㊸ short → obj+0x2ca（版本 >0x21；样本未达），语义未定。
@@ -1514,9 +1521,9 @@ pub enum ExpressionPropsSlot10_1 {
     Null,
     /// 回引条目。
     BackReference { class_id: [u8; 16], key: u32 },
-    /// 新 DisplayExpressionProperties 对象:已解析的闭合前缀(版本/表达式
-    /// 串/int16/引擎槽);其未闭合尾段经
-    /// [`SuccessorStop10_1::ExpressionPropsBody`] 停止。
+    /// 新 DisplayExpressionProperties 对象：完整体（版本/表达式串/int16/
+    /// 引擎槽——A 轮裁决 DEP::Load 读流序列仅此四项，体在引擎槽处完结，
+    /// 见 docs/arcmap-10.1-dep-tail.md 第一节；不再产生体内停止）。
     Display(Box<DisplayExpressionPropsPrefix10_1>),
 }
 
@@ -1595,56 +1602,21 @@ pub struct PreJoinBlock10_1 {
     pub pairs: Vec<(String, String)>,
 }
 
-/// TimeData 段（LayerLib.dll `0x7870d8b0`，版本 ≤2）的已确认字段。
+/// 版本 0x1c..0x1f 分支的时间族槽（A 轮起接 dep_tail 槽位分派；10.1
+/// docVersion 不写该分支，字段序仅有反编译证据，无样本字节佐证）。
+///
+/// 槽序按 FL::Load 反编译的三个 LoadObject 请求 IID
+/// （`DAT_6f7adab4`={F6CBA4A3}=ITimeReference、`DAT_6f7adad4`={BD724B95}=
+/// ITimeExtent、`DAT_6f7adde4`={E720618B}，见 docs/arcmap-10.1-dep-tail.md
+/// 第四节）；前两槽的新对象命中 TimeReference/TimeExtent 时整体解析其体，
+/// 第三槽（{E720618B}）维持新对象停止（其闭合读取器属 ㊷ 槽语境，本分支
+/// 不接线）。
 #[derive(Debug, Clone, PartialEq)]
-pub struct TimeDataBody10_1 {
-    /// 体首 short 版本（有符号 >2 拒绝；负值位模式一并拒绝，较原生更严）。
-    pub version: u16,
-    /// short（→ this+6），语义未定。
-    pub short_a: i16,
-    /// LoadObject 槽（请求 IID `DAT_78721e70`；新对象 = 停止点）。
-    pub slot: RefSlot10_1,
-    /// 版本 ≥2 的 short（→ this+8），语义未定。
-    pub tail_short: Option<i16>,
-}
-
-/// TimeTableDefinition 段（LayerLib.dll `0x7870df80`，版本 ≤1）的已确认
-/// 字段。
-#[derive(Debug, Clone, PartialEq)]
-pub struct TimeTableDefinitionBody10_1 {
-    /// 体首 short 版本（有符号 >1 拒绝；负值位模式一并拒绝）。
-    pub version: u16,
-    /// String ×4（→ this+8/+0xc/+0x10/+0x14；时间字段名候选），语义未定。
-    pub strings: [String; 4],
-    /// LoadObject 槽（请求 IID `DAT_78721e80`；新对象 = 停止点）。
-    pub slot: RefSlot10_1,
-}
-
-/// TimeDimensionDefinition 段（LayerLib.dll `0x7870e250`，版本 ≤1）的已
-/// 确认字段。
-#[derive(Debug, Clone, PartialEq)]
-pub struct TimeDimensionDefinitionBody10_1 {
-    /// 体首 short 版本（有符号 >1 拒绝；负值位模式一并拒绝）。
-    pub version: u16,
-    /// String ×2（→ this+4/+8；时间维度名/格式候选），语义未定。
-    pub strings: [String; 2],
-}
-
-/// TimeDataDisplay 段（LayerLib.dll `0x7870f6c0`，版本 ≤1）的已确认字段。
-#[derive(Debug, Clone, PartialEq)]
-pub struct TimeDataDisplayBody10_1 {
-    /// 体首 short 版本（有符号 >1 拒绝；负值位模式一并拒绝）。
-    pub version: u16,
-    /// short（→ this+4），语义未定。
-    pub short_a: i16,
-    /// double（→ this+8），语义未定。
-    pub double_a: f64,
-    /// int32（→ this+0x10），语义未定。
-    pub int_a: i32,
-    /// double（→ this+0x18），语义未定。
-    pub double_b: f64,
-    /// int32（→ this+0x20），语义未定。
-    pub int_b: i32,
+pub struct LegacyTimeSlots10_1 {
+    /// ㊀ {F6CBA4A3}=ITimeReference 槽分类。
+    pub time_reference: Option<crate::layers::dep_tail::TimeReferenceSlot10_1>,
+    /// ㊁ {BD724B95}=ITimeExtent 槽分类。
+    pub time_extent: Option<crate::layers::dep_tail::TimeExtentSlot10_1>,
 }
 
 /// 从渲染器槽 +0x144 原样 GUID 之后的位置读取 10.1 FeatureLayer 后继字段
@@ -1819,6 +1791,7 @@ pub fn read_feature_layer_successor_10_1(
     let mut short_300 = None;
     let mut strings_304_308_30c = None;
     let mut legacy_scalars = None;
+    let mut legacy_time_slots_field = None;
     let mut time_data = None;
     let mut time_table_definition = None;
     let mut time_dimension_definition = None;
@@ -2271,10 +2244,10 @@ pub fn read_feature_layer_successor_10_1(
             strings_2cc_2d0_2d4_2d8 = Some([s1, s2, s3, s4]);
         }
 
-        // ㊴ {A62B9EC2} 槽（版本 >0x19；第十轮起 DisplayExpressionProperties
-        //    新对象整体解析其已闭合前缀（版本/表达式串/int16/引擎槽,样本键
-        //    83、"[BSM]"、引擎键 84),尾段未闭合 → ExpressionPropsBody 停止,
-        //    游标停在前缀尾(样本 0x155a);其余类维持停止回退)。
+        // ㊴ {A62B9EC2} 槽（版本 >0x19；A 轮起 DisplayExpressionProperties
+        //    完整体解析：体 = 版本/表达式串/int16/引擎槽，引擎槽后即 FL ㊵
+        //    字段（docs/arcmap-10.1-dep-tail.md 第一节「体在 ④ 完结，无任何
+        //    后继字段」）；其余类维持停止回退）。
         if stop.is_none() && (fl_version as i16) > 0x19 {
             let slot_offset = trial.position();
             let pre_slot_table = staged_table.clone();
@@ -2294,7 +2267,6 @@ pub fn read_feature_layer_successor_10_1(
                         key,
                     )?;
                     expression_props = Some(ExpressionPropsSlot10_1::Display(Box::new(prefix)));
-                    stop = Some(SuccessorStop10_1::ExpressionPropsBody);
                 }
                 ObjectEntry10_1::NewObject { class_id, key } => {
                     stop = Some(SuccessorStop10_1::ExpressionPropsUnsupported { class_id, key });
@@ -2314,8 +2286,11 @@ pub fn read_feature_layer_successor_10_1(
             strings_304_308_30c = Some([s1, s2, s3]);
         }
 
-        // ㊶ 版本 0x1c..0x1f 分支（10.1 docVersion 不写；本轮静态闭合，
-        //    无样本字节佐证）：标量块 + 三个时间族槽（新对象 = 停止点）。
+        // ㊶ 版本 0x1c..0x1f 分支（10.1 docVersion 不写；静态闭合，无样本
+        //    字节佐证）：标量块 + 三个时间族槽。A 轮起 ITimeReference/
+        //    ITimeExtent 槽接 dep_tail 体读取器（槽序 = Load 请求 IID 序，
+        //    见 [`LegacyTimeSlots10_1`]）；其余类与第三槽（{E720618B}）的新
+        //    对象维持停止回退。
         if stop.is_none() && (fl_version as i16) >= 0x1c && (fl_version as i16) < 0x20 {
             let legacy_short = trial.read_u16_le()? as i16;
             let l1 = read_string_10_1(&mut trial, max_bytes)?;
@@ -2332,7 +2307,113 @@ pub fn read_feature_layer_successor_10_1(
                 double_40: legacy_double,
                 int32_38: legacy_int,
             });
-            for which in 0u8..3 {
+            let mut legacy_time_slots = LegacyTimeSlots10_1 {
+                time_reference: None,
+                time_extent: None,
+            };
+            // 槽 0：{F6CBA4A3}=ITimeReference。
+            {
+                let slot_offset = trial.position();
+                let pre_slot_table = staged_table.clone();
+                match read_object_entry_10_1(&mut trial, &mut staged_table)? {
+                    ObjectEntry10_1::Null => {}
+                    ObjectEntry10_1::BackReference { class_id, key } => {
+                        legacy_time_slots.time_reference =
+                            Some(TimeReferenceSlot10_1::BackReference { class_id, key });
+                    }
+                    ObjectEntry10_1::NewObject { class_id, key }
+                        if class_id == TIME_REFERENCE_CLASS_ID =>
+                    {
+                        let body = read_time_reference_body_10_1(
+                            &mut trial,
+                            max_bytes,
+                            &mut staged_table,
+                            key,
+                        )?;
+                        // ITimeZoneInfo 槽的未知类：游标停在该内层槽位
+                        // 起点，后续字段不可达（dep_tail 体读取器语义）。
+                        // 停止原因携带内层未知类标识。
+                        if let crate::layers::dep_tail::TimeZoneInfoSlot10_1::Unsupported {
+                            class_id: inner_class,
+                            key: inner_key,
+                        } = body.zone_info
+                        {
+                            stop = Some(SuccessorStop10_1::LegacyTimeSlotUnsupported {
+                                class_id: inner_class,
+                                key: inner_key,
+                                which: 0,
+                            });
+                        }
+                        legacy_time_slots.time_reference =
+                            Some(TimeReferenceSlot10_1::Body(Box::new(body)));
+                    }
+                    ObjectEntry10_1::NewObject { class_id, key } => {
+                        stop = Some(SuccessorStop10_1::LegacyTimeSlotUnsupported {
+                            class_id,
+                            key,
+                            which: 0,
+                        });
+                        trial = reposition_to(reader, slot_offset);
+                        staged_table = pre_slot_table;
+                    }
+                }
+            }
+            // 槽 1：{BD724B95}=ITimeExtent（前置停止时不读取）。
+            if stop.is_none() {
+                let slot_offset = trial.position();
+                let pre_slot_table = staged_table.clone();
+                match read_object_entry_10_1(&mut trial, &mut staged_table)? {
+                    ObjectEntry10_1::Null => {}
+                    ObjectEntry10_1::BackReference { class_id, key } => {
+                        legacy_time_slots.time_extent =
+                            Some(TimeExtentSlot10_1::BackReference { class_id, key });
+                    }
+                    ObjectEntry10_1::NewObject { class_id, key }
+                        if class_id == TIME_EXTENT_CLASS_ID =>
+                    {
+                        let body = read_time_extent_body_10_1(
+                            &mut trial,
+                            max_bytes,
+                            &mut staged_table,
+                            key,
+                        )?;
+                        // 体内子槽（ITime/ITimeReference）的未知类：游标
+                        // 停在该内层槽位起点（dep_tail 体读取器语义）；停止
+                        // 原因携带内层未知类标识与键。
+                        if let Some(inner) = body.stop.clone() {
+                            let (class_id, key) = match inner {
+                                crate::layers::dep_tail::TimeExtentStop10_1::TimeSlot {
+                                    class_id,
+                                    key,
+                                    ..
+                                } => (class_id, key),
+                                crate::layers::dep_tail::TimeExtentStop10_1::ReferenceSlot {
+                                    class_id,
+                                    key,
+                                } => (class_id, key),
+                            };
+                            stop = Some(SuccessorStop10_1::LegacyTimeSlotUnsupported {
+                                class_id,
+                                key,
+                                which: 1,
+                            });
+                        }
+                        legacy_time_slots.time_extent =
+                            Some(TimeExtentSlot10_1::Body(Box::new(body)));
+                    }
+                    ObjectEntry10_1::NewObject { class_id, key } => {
+                        stop = Some(SuccessorStop10_1::LegacyTimeSlotUnsupported {
+                            class_id,
+                            key,
+                            which: 1,
+                        });
+                        trial = reposition_to(reader, slot_offset);
+                        staged_table = pre_slot_table;
+                    }
+                }
+            }
+            // 槽 2：{E720618B}（新对象 = 停止点；不接线）。
+            if stop.is_none() {
                 let slot_offset = trial.position();
                 let pre_slot_table = staged_table.clone();
                 match read_object_entry_10_1(&mut trial, &mut staged_table)? {
@@ -2344,172 +2425,49 @@ pub fn read_feature_layer_successor_10_1(
                         stop = Some(SuccessorStop10_1::LegacyTimeSlotUnsupported {
                             class_id,
                             key,
-                            which,
+                            which: 2,
                         });
                         trial = reposition_to(reader, slot_offset);
                         staged_table = pre_slot_table;
-                        break;
                     }
                 }
-                if stop.is_some() {
-                    break;
-                }
             }
+            legacy_time_slots_field = Some(legacy_time_slots);
         }
 
-        // ㊶ TimeData 族四段（版本 ≥0x20；LayerLib.dll `0x7870d8b0` 等，
-        //    本轮闭合；槽位新对象 = 停止点）。
+        // ㊶ TimeData 族四段（版本 ≥0x20；LayerLib.dll `0x7870d8b0` 等）。
+        //    A 轮起整段接 dep_tail 族读取器：TimeData 槽新对象为
+        //    TimeReference、TimeTable 槽新对象为 TimeExtent 时整体解析其体，
+        //    未知类映射回既有 `TimeSlotUnsupported` 停止（which 0/1）。
         if stop.is_none() && (fl_version as i16) >= 0x20 {
-            let entry_offset = trial.position();
-            let version = trial.read_u16_le()?;
-            let signed = version as i16;
-            if signed > 2 || signed < 0 {
-                return Err(io::Error::new(
-                    ErrorKind::InvalidData,
-                    format!(
-                        "TimeData 对象段 offset 0x{entry_offset:x}: 版本 {version} 超出 \
-                         TimeData::LoadTimeData 接受范围（有符号比较 >2 拒绝；负值位模式\
-                         一并拒绝）"
-                    ),
-                ));
-            }
-            let short_a = trial.read_u16_le()? as i16;
-            let mut time_slot = RefSlot10_1::Null;
-            {
-                let slot_offset = trial.position();
-                let pre_slot_table = staged_table.clone();
-                match read_object_entry_10_1(&mut trial, &mut staged_table)? {
-                    ObjectEntry10_1::Null => {}
-                    ObjectEntry10_1::BackReference { class_id, key } => {
-                        time_slot = RefSlot10_1::BackReference { class_id, key };
-                    }
-                    ObjectEntry10_1::NewObject { class_id, key } => {
-                        stop = Some(SuccessorStop10_1::TimeSlotUnsupported {
-                            class_id,
-                            key,
-                            which: 0,
-                        });
-                        trial = reposition_to(reader, slot_offset);
-                        staged_table = pre_slot_table;
-                    }
-                }
-            }
-            let mut tail_short = None;
-            if stop.is_none() && signed >= 2 {
-                tail_short = Some(trial.read_u16_le()? as i16);
-            }
-            if stop.is_none() {
-                time_data = Some(TimeDataBody10_1 {
-                    version,
-                    short_a,
-                    slot: time_slot,
-                    tail_short,
-                });
-            }
-
-            // TimeTableDefinition（版本 ≤1；String ×4 + 槽）。
-            if stop.is_none() {
-                let entry_offset = trial.position();
-                let version = trial.read_u16_le()?;
-                let signed = version as i16;
-                if signed > 1 || signed < 0 {
-                    return Err(io::Error::new(
-                        ErrorKind::InvalidData,
-                        format!(
-                            "TimeTableDefinition 对象段 offset 0x{entry_offset:x}: 版本 {version} \
-                             超出 TimeTableDefinition::LoadTimeTableDefinition 接受范围\
-                             （有符号比较 >1 拒绝；负值位模式一并拒绝）"
-                        ),
-                    ));
-                }
-                let s1 = read_string_10_1(&mut trial, max_bytes)?;
-                let s2 = read_string_10_1(&mut trial, max_bytes)?;
-                let s3 = read_string_10_1(&mut trial, max_bytes)?;
-                let s4 = read_string_10_1(&mut trial, max_bytes)?;
-                let mut slot = RefSlot10_1::Null;
-                let slot_offset = trial.position();
-                let pre_slot_table = staged_table.clone();
-                match read_object_entry_10_1(&mut trial, &mut staged_table)? {
-                    ObjectEntry10_1::Null => {}
-                    ObjectEntry10_1::BackReference { class_id, key } => {
-                        slot = RefSlot10_1::BackReference { class_id, key };
-                    }
-                    ObjectEntry10_1::NewObject { class_id, key } => {
-                        stop = Some(SuccessorStop10_1::TimeSlotUnsupported {
-                            class_id,
-                            key,
-                            which: 1,
-                        });
-                        trial = reposition_to(reader, slot_offset);
-                        staged_table = pre_slot_table;
-                    }
-                }
-                if stop.is_none() {
-                    time_table_definition = Some(TimeTableDefinitionBody10_1 {
-                        version,
-                        strings: [s1, s2, s3, s4],
-                        slot,
+            let family = read_time_data_family_10_1(&mut trial, max_bytes, &mut staged_table)?;
+            match family.stop {
+                Some(crate::layers::dep_tail::TimeFamilyStop10_1::TimeDataSlot {
+                    class_id,
+                    key,
+                }) => {
+                    stop = Some(SuccessorStop10_1::TimeSlotUnsupported {
+                        class_id,
+                        key,
+                        which: 0,
                     });
                 }
-            }
-
-            // TimeDimensionDefinition（版本 ≤1；String ×2）。
-            if stop.is_none() {
-                let entry_offset = trial.position();
-                let version = trial.read_u16_le()?;
-                let signed = version as i16;
-                if signed > 1 || signed < 0 {
-                    return Err(io::Error::new(
-                        ErrorKind::InvalidData,
-                        format!(
-                            "TimeDimensionDefinition 对象段 offset 0x{entry_offset:x}: 版本 \
-                             {version} 超出 TimeDimensionDefinition::LoadTimeDimensionDefinition \
-                             接受范围（有符号比较 >1 拒绝；负值位模式一并拒绝）"
-                        ),
-                    ));
-                }
-                let s1 = read_string_10_1(&mut trial, max_bytes)?;
-                let s2 = read_string_10_1(&mut trial, max_bytes)?;
-                if stop.is_none() {
-                    time_dimension_definition = Some(TimeDimensionDefinitionBody10_1 {
-                        version,
-                        strings: [s1, s2],
+                Some(crate::layers::dep_tail::TimeFamilyStop10_1::TimeTableSlot {
+                    class_id,
+                    key,
+                }) => {
+                    stop = Some(SuccessorStop10_1::TimeSlotUnsupported {
+                        class_id,
+                        key,
+                        which: 1,
                     });
                 }
+                None => {}
             }
-
-            // TimeDataDisplay（版本 ≤1；short + double + int32 + double +
-            // int32）。
-            if stop.is_none() {
-                let entry_offset = trial.position();
-                let version = trial.read_u16_le()?;
-                let signed = version as i16;
-                if signed > 1 || signed < 0 {
-                    return Err(io::Error::new(
-                        ErrorKind::InvalidData,
-                        format!(
-                            "TimeDataDisplay 对象段 offset 0x{entry_offset:x}: 版本 {version} \
-                             超出 TimeDataDisplay::LoadTimeDataDisplay 接受范围（有符号比较 \
-                             >1 拒绝；负值位模式一并拒绝）"
-                        ),
-                    ));
-                }
-                let short_a = trial.read_u16_le()? as i16;
-                let double_a = trial.read_f64_le()?;
-                let int_a = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
-                let double_b = trial.read_f64_le()?;
-                let int_b = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
-                if stop.is_none() {
-                    time_data_display = Some(TimeDataDisplayBody10_1 {
-                        version,
-                        short_a,
-                        double_a,
-                        int_a,
-                        double_b,
-                        int_b,
-                    });
-                }
-            }
+            time_data = family.time_data;
+            time_table_definition = family.time_table;
+            time_dimension_definition = family.time_dimension;
+            time_data_display = family.time_display;
         }
 
         // ㊷ {E720618B} 槽（版本 >0x20；第十轮起 HotLinkExpressionProperties
@@ -2607,6 +2565,7 @@ pub fn read_feature_layer_successor_10_1(
         short_300,
         strings_304_308_30c,
         legacy_scalars,
+        legacy_time_slots: legacy_time_slots_field,
         time_data,
         time_table_definition,
         time_dimension_definition,

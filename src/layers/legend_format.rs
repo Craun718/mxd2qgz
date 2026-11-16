@@ -57,6 +57,9 @@
 //! 四个 String/符号槽的实现类分布未观察（样本无实例）；版本 0/1 分支无
 //! 字节佐证（Save 恒写 2）；全部结论为静态观察，未经目标软件运行验证。
 
+use crate::layers::patch::{
+    AREA_PATCH_CLASS_ID, LINE_PATCH_CLASS_ID, PatchBody10_1, PatchStop10_1, read_patch_body_10_1,
+};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
@@ -79,14 +82,19 @@ const MAX_BODY_VERSION: i16 = 2;
 
 /// ITextSymbol / ILinePatch / IAreaPatch 槽位的分类结果。
 ///
-/// 三类实现类（TextSymbol、SimpleLineSymbol 族、LinePatch/AreaPatch 等）
-/// 的对象体本轮未闭合，新对象一律为停止点（游标回退到槽位起点）。
+/// C 轮接线起补丁两槽（ILinePatch/IAreaPatch）的新对象命中 LinePatch/
+/// AreaPatch 类时整体消费其共享闭合体（layers::patch 模块）；TextSymbol
+/// 与其余实现类维持停止点（游标回退到槽位起点）。
 #[derive(Debug, Clone, PartialEq)]
 pub enum LegendClassFormatSlot10_1 {
     /// 16 字节全零类标识：空引用，无键、无对象体。
     Null,
     /// 键已见：回引条目，无对象体。类标识原样保留、不校验。
     BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 LinePatch 对象（ILinePatch 槽；C 轮接线）：已读取其共享闭合体。
+    LinePatch(Box<PatchBody10_1>),
+    /// 新 AreaPatch 对象（IAreaPatch 槽；C 轮接线）：已读取其共享闭合体。
+    AreaPatch(Box<PatchBody10_1>),
     /// 新对象但类标识非本读取器可闭合类：体未知且无外部长度，停止点，
     /// 游标回退到该对象头起点、该键不登记。
     Unsupported { class_id: [u8; 16], key: u32 },
@@ -103,6 +111,9 @@ pub enum LegendClassFormatStop10_1 {
         class_id: [u8; 16],
         key: u32,
     },
+    /// 补丁槽（ILinePatch/IAreaPatch）的闭合体自身停止（几何槽未知类，
+    /// 原因透传）；游标停在其内层停止点。
+    PatchBody(PatchStop10_1),
 }
 
 /// LegendClassFormat（Layer.dll Load `0x78664b20`）对象的已确认字段。
@@ -179,15 +190,34 @@ pub fn read_legend_class_format_body_10_1(
     for index in 0..4usize {
         let slot_offset = trial.position();
         let snapshot = staged_table.clone();
+        // C 轮接线：槽 2/3（ILinePatch/IAreaPatch）按类标识分派补丁共享
+        // 读取器（体内停止透传）；其余类与 TextSymbol 两槽维持停止语义。
+        enum PatchKind {
+            Line,
+            Area,
+        }
+        let expected_patch = match index {
+            2 => Some((LINE_PATCH_CLASS_ID, PatchKind::Line)),
+            3 => Some((AREA_PATCH_CLASS_ID, PatchKind::Area)),
+            _ => None,
+        };
+        let mut patch_body = None;
         match read_object_entry_10_1(&mut trial, &mut staged_table)? {
             ObjectEntry10_1::Null => slots[index] = LegendClassFormatSlot10_1::Null,
             ObjectEntry10_1::BackReference { class_id, key } => {
                 slots[index] = LegendClassFormatSlot10_1::BackReference { class_id, key };
             }
+            ObjectEntry10_1::NewObject { class_id, key } if matches!(&expected_patch, Some((id, _)) if class_id == *id) =>
+            {
+                let body = read_patch_body_10_1(&mut trial, max_bytes, &mut staged_table, key)?;
+                if let Some(inner) = body.stop {
+                    stop = Some(LegendClassFormatStop10_1::PatchBody(inner));
+                }
+                patch_body = Some(body);
+            }
             ObjectEntry10_1::NewObject { class_id, key } => {
-                // ITextSymbol/ILinePatch/IAreaPatch 实现类体未闭合：停止并
-                // 回退到槽位起点（回退停止不保留该键），其后槽位不可达。
-                // 之前槽位已消费的键按原生语义保留。
+                // 实现类体未闭合：停止并回退到槽位起点（回退停止不保留该
+                // 键），其后槽位不可达。之前槽位已消费的键按原生语义保留。
                 slots[index] = LegendClassFormatSlot10_1::Unsupported { class_id, key };
                 stop = Some(LegendClassFormatStop10_1::SlotUnsupported {
                     index,
@@ -198,6 +228,15 @@ pub fn read_legend_class_format_body_10_1(
                 staged_table = snapshot;
                 break;
             }
+        }
+        if let Some(body) = patch_body {
+            slots[index] = match expected_patch.expect("补丁体必有期望类").1 {
+                PatchKind::Line => LegendClassFormatSlot10_1::LinePatch(Box::new(body)),
+                PatchKind::Area => LegendClassFormatSlot10_1::AreaPatch(Box::new(body)),
+            };
+        }
+        if stop.is_some() {
+            break;
         }
     }
 

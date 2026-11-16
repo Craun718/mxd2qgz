@@ -781,7 +781,7 @@ fn direct_reader_calls_stay_transactional_on_the_table() {
 use mxd2qgz::objects::display_symbol::{
     DecorationSlot10_1, GRADIENT_FILL_SYMBOL_CLASS_ID, LINE_DECORATION_CLASS_ID,
     SIMPLE_LINE_DECORATION_ELEMENT_CLASS_ID, StdFontSlot10_1, StdPictureSlot10_1,
-    SymbolSlotFull10_1, TEMPLATE_CLASS_ID, UnclosedSlot10_1, read_arrow_marker_symbol_body_10_1,
+    SymbolSlotFull10_1, TEMPLATE_CLASS_ID, read_arrow_marker_symbol_body_10_1,
     read_character_marker_symbol_body_10_1, read_dot_density_fill_symbol_body_10_1,
     read_gradient_fill_symbol_body_10_1, read_line_decoration_body_10_1,
     read_line_fill_symbol_body_10_1, read_marker_fill_symbol_body_10_1,
@@ -1114,7 +1114,10 @@ fn multi_layer_marker_symbol_v3_full_body() {
     ));
     assert_eq!(result.ints_a8.as_deref(), Some(&[1][..]));
     assert_eq!(result.ints_94.as_deref(), Some(&[2][..]));
-    assert_eq!(result.marker_background, Some(UnclosedSlot10_1::Null));
+    assert_eq!(
+        result.marker_background,
+        Some(mxd2qgz::objects::callout_background::CalloutSlot10_1::Null)
+    );
     assert_eq!(result.strings.as_deref(), Some(&["T".to_string()][..]));
     assert_eq!(result.stop, None);
     assert_eq!(reader.position(), bytes.len());
@@ -1553,7 +1556,10 @@ fn picture_line_symbol_slot_and_fill_family_bodies() {
         read_picture_line_symbol_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 100)
             .unwrap();
     assert_eq!(result.byte_30, 1);
-    assert_eq!(result.picture_fill_symbol, Some(UnclosedSlot10_1::Null));
+    assert_eq!(
+        result.picture_fill_symbol,
+        Some(mxd2qgz::objects::picture_fill_symbol::PictureFillSymbolSlot10_1::Null)
+    );
     assert_eq!(result.stop, None);
     assert_eq!(reader.position(), bytes.len());
 
@@ -1665,7 +1671,10 @@ fn picture_line_symbol_slot_and_fill_family_bodies() {
         MAX_SYMBOL_NESTING_DEPTH,
     )
     .unwrap();
-    assert_eq!(result.color_ramp, Some(UnclosedSlot10_1::Null));
+    assert_eq!(
+        result.color_ramp,
+        Some(mxd2qgz::objects::color_ramp::ColorRampSlot10_1::Null)
+    );
     assert_eq!(result.stop, None);
     assert_eq!(reader.position(), bytes.len());
 
