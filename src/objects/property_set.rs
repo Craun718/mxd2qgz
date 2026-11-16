@@ -44,9 +44,11 @@
 //! **不是** VariantStream `ReadString` 的 `n*2+2` 码元布局）；VT_I1(0x10)/
 //! VT_UI1(0x11) 1 字节；VT_UI2(0x12) 2 字节；VT_UI4(0x13) 4 字节；其余
 //! VARTYPE 返回 `0x80004005`。VT_DISPATCH(9)/VT_UNKNOWN(13) 走 AfCore
-//! `LoadObject`（16 字节类 GUID、无键、非 ObjectStream 编码）——对象分支
-//! 边界未闭合，本读取器显式不支持。数组标志 0x2000（含字符串数组与批量
-//! 定宽数组）同样未闭合，显式不支持。
+//! `LoadObject`（16 字节类 GUID、无键、非 ObjectStream 编码）：类 GUID 全
+//! 零的空对象子集已闭合（`variant_object_branch`，流内恰 16 字节零、不产
+//! 生键），映射为 `PropertyValue10_1::NullObject`；非零类 GUID 走
+//! `AfCreateInstance` 实例化且对象体边界由类决定，仍显式不支持。数组标志
+//! 0x2000（含字符串数组与批量定宽数组）同样未闭合，显式不支持。
 //!
 //! ## Save `0x7ffd3280`（写方向互证，证据：确定的）
 //!
@@ -123,14 +125,19 @@ pub const PROPERTY_SET_PROPERTY_CLASS_ID: [u8; 16] = [
 /// PropertySet 值 Variant 的已确认分支（`Variant::Read` 非数组部分）。
 ///
 /// 固定宽度值不转换成有符号数、浮点数或布尔语义，仅原样保留位模式；
-/// 字符串经 AfCore String 布局解码。对象（9/13）与数组（0x2000 标志）分
-/// 支显式不支持，不产生本枚举值。
+/// 字符串经 AfCore String 布局解码。对象（9/13）分支接入已闭合的「类
+/// GUID 全零 → 空对象」子集（`NullObject`，经
+/// [`crate::objects::variant_object_branch`]），非零类 GUID 与数组
+/// （0x2000 标志）分支仍显式不支持。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PropertyValue10_1 {
     /// VT_EMPTY(0)：无载荷。
     Empty,
     /// VT_NULL(1)：无载荷。
     Null,
+    /// VT_DISPATCH(9) / VT_UNKNOWN(13)：类 GUID 全零的空对象（原生
+    /// `LoadObject` 返回 S_OK 且出参保持 NULL，流内恰 16 字节零）。
+    NullObject,
     /// VT_I2(2) / VT_BOOL(11)：2 字节原样位模式。
     Raw2([u8; 2]),
     /// VT_I4(3) / VT_ERROR(10) / VT_R4(4)：4 字节原样位模式。
@@ -182,7 +189,8 @@ pub struct PropertySet10_1 {
 /// 字段序、VARTYPE 表与证据见模块文档。VT_BSTR 的字符串载荷与键名共用
 /// AfCore String 布局，`max_bytes` 约束两者声明长度；`usize::MAX` 表示不额
 /// 外设限。`table` 参数不使用（本体没有 ObjectStream 编码的嵌套条目；对象
-/// 分支 9/13 与数组分支在读取前显式拒绝），仅为与同类读取器签名一致。
+/// 分支 9/13 仅「类 GUID 全零」子集闭合（`NullObject`），非零类 GUID 与数
+/// 组分支在读取前显式拒绝），仅为与同类读取器签名一致。
 pub fn read_property_set_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -253,7 +261,8 @@ pub fn read_property_set_10_1(
 /// 读取一个 `Variant::Read`（AfCore `0x68a7c6a0`，非数组分支）值，失败时
 /// 不推进游标。
 ///
-/// VARTYPE 表见模块文档；对象分支（9/13）与数组标志（0x2000）显式不支持；
+/// VARTYPE 表见模块文档；对象分支（9/13）接入「类 GUID 全零 → 空对象」
+/// 已闭合子集（非零类 GUID 仍显式拒绝），数组标志（0x2000）显式不支持；
 /// 未知 VARTYPE 与原生 default 分支一致返回错误。字符串为 AfCore String
 /// 布局（`String::Read`，4 字节 cb 含 UTF-16LE 终止零）。
 pub fn read_variant_10_1(
@@ -286,13 +295,19 @@ pub fn read_variant_10_1(
         5 | 7 | 6 => PropertyValue10_1::Raw8(trial.read_bytes(8)?.try_into().unwrap()),
         8 => PropertyValue10_1::String(read_string_10_1(&mut trial, max_bytes)?),
         9 | 13 => {
-            return Err(io::Error::new(
-                ErrorKind::Unsupported,
-                format!(
-                    "Variant 值 offset 0x{start:x}: VARTYPE {value_type}（对象分支）走 AfCore \
-                     LoadObject 的无键类 GUID 编码，对象边界未闭合，本读取器不支持"
-                ),
-            ));
+            // 对象分支：子读取器自带 VARTYPE 复核，从入口位置另取游标读取
+            // VARTYPE + 16 字节类 GUID；失败时外层游标不动、可重复。
+            let mut branch = reader.clone();
+            let value =
+                match crate::objects::variant_object_branch::read_variant_object_branch_10_1(
+                    &mut branch,
+                )? {
+                    crate::objects::variant_object_branch::VariantObjectBranch10_1::Null => {
+                        PropertyValue10_1::NullObject
+                    }
+                };
+            *reader = branch;
+            return Ok(value);
         }
         0x10 | 0x11 => PropertyValue10_1::Raw1(trial.read_bytes(1)?.try_into().unwrap()),
         0x12 => PropertyValue10_1::Ui2(trial.read_bytes(2)?.try_into().unwrap()),

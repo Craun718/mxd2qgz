@@ -299,15 +299,32 @@ fn variant_string_uses_afcore_layout_not_readstring() {
 }
 
 #[test]
-fn variant_object_and_array_branches_are_explicitly_unsupported() {
+fn variant_object_branch_null_guid_consumes_and_nonzero_rejects() {
+    // 9/13 + 全零类 GUID：空对象子集，恰消费 2+16 字节并映射 NullObject。
     for value_type in [9_u16, 13] {
-        let mut bytes = value_bytes(value_type, &[1, 2, 3, 4]);
+        let mut bytes = value_bytes(value_type, &[0u8; 16]);
+        bytes.extend_from_slice(b"TAIL");
+        let mut reader = Reader::new(&bytes);
+        let value = read_variant_10_1(&mut reader, 1024).unwrap();
+        assert_eq!(value, PropertyValue10_1::NullObject, "VT={value_type}");
+        assert_eq!(reader.position(), 18);
+        assert_eq!(reader.remaining(), b"TAIL".len());
+    }
+    // 9/13 + 非零类 GUID：AfCreateInstance 分支边界未闭合，显式拒绝且
+    // 游标不动、失败可重复。
+    for value_type in [9_u16, 13] {
+        let mut bytes = value_bytes(
+            value_type,
+            &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+        );
         bytes.extend_from_slice(b"TAIL");
         let mut reader = Reader::new(&bytes);
         let error = read_variant_10_1(&mut reader, 1024).unwrap_err();
         assert_eq!(error.kind(), ErrorKind::Unsupported, "VT={value_type}");
         assert_eq!(reader.position(), 0);
         assert_eq!(reader.remaining(), bytes.len());
+        assert!(read_variant_10_1(&mut reader, 1024).is_err());
+        assert_eq!(reader.position(), 0);
     }
     // 数组标志（0x2000）置位：无论基础类型，读取前显式拒绝。
     for base in [0_u16, 2, 8, 3] {

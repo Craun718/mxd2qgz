@@ -65,9 +65,12 @@
 //!    -1 常量）；
 //! 8. 版本 ==7 精确块：LoadObject（`{E4240307-…}` IBorder）+ LoadObject
 //!    （`{E4240309-…}` IBackground）+ LoadObject（`{A9258348-1753-4B99-820A-
-//!    FCF74429ABC1}` IShadow；仅分类）+ double + int32 + double；
+//!    FCF74429ABC1}` IShadow；第三轮接线起三槽经 element_decor 分派：
+//!    SymbolBorder/SymbolBackground/SymbolShadow 整体解析，其余实现类 = 停
+//!    止回退）+ double + int32 + double；
 //! 9. 版本 ==9 尾加块：LoadObject（`{4434D680-F4DA-11D1-BCA6-0000F875BCCE}`
-//!    ISpatialReference；仅分类）+ int32 + 32 字节原样。
+//!    ISpatialReference；F 轮接线起三类闭合空间参考分派，其余实现类 = 停止
+//!    回退）+ int32 + 32 字节原样。
 //!
 //! Save（`0x6ce711c0`）版本表 `DAT_6ced7ef8`：10.1 写 8——EP 前缀 + String +
 //! int32 + SaveObject(符号) + SaveObject(几何) + int32 + int32 恒 -1，与
@@ -689,14 +692,18 @@ pub struct TextElementBody10_1 {
 }
 
 /// TextElement 版本 ==7 精确块（装饰物三槽 + 标量组；样本版本 8 不含）。
+///
+/// 第三轮接线起三装饰槽经 [`crate::objects::element_decor`] 分派：
+/// SymbolBorder/SymbolBackground/SymbolShadow 新对象整体解析（样本 0 实例，
+/// 合成测试），其余实现类维持停止回退（该槽为 `Null`、停止原因记入宿主体）。
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextDecorationBlock10_1 {
-    /// IBorder 槽（仅分类）。
-    pub border: NestedEntry10_1,
-    /// IBackground 槽（仅分类）。
-    pub background: NestedEntry10_1,
-    /// IShadow 槽（仅分类）。
-    pub shadow: NestedEntry10_1,
+    /// IBorder 槽（SymbolBorder 分派）。
+    pub border: crate::objects::element_decor::DecorSlot10_1,
+    /// IBackground 槽（SymbolBackground 分派）。
+    pub background: crate::objects::element_decor::DecorSlot10_1,
+    /// IShadow 槽（SymbolShadow 分派）。
+    pub shadow: crate::objects::element_decor::DecorSlot10_1,
     /// 第一个 double 的原样位模式。
     pub double_1: f64,
     /// int32 的原样位模式。
@@ -705,11 +712,27 @@ pub struct TextDecorationBlock10_1 {
     pub double_2: f64,
 }
 
+/// TextElement 版本 ==9 尾加块的 ISpatialReference 槽分类结果（F 轮接线：
+/// 三类闭合空间参考分派，其余实现类 = 停止回退；样本版本 8 不含本块）。
+#[derive(Debug, Clone, PartialEq)]
+pub enum SpatialRefSlot10_1 {
+    /// 16 字节全零类标识：空引用标记。
+    Null,
+    /// 键已在本会话登记：回引条目，无对象体。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 ProjectedCoordinateSystem 对象：已读取其闭合体。
+    Projected(crate::objects::spatial_reference::ProjectedCoordinateSystem10_1),
+    /// 新 GeographicCoordinateSystem 对象：已读取其闭合体。
+    Geographic(crate::objects::spatial_reference_slots::GeographicCoordinateSystem10_1),
+    /// 新 UnknownCoordinateSystem 对象：已读取其闭合体。
+    Unknown(crate::objects::spatial_reference_slots::UnknownCoordinateSystem10_1),
+}
+
 /// TextElement 版本 ==9 尾加块。
 #[derive(Debug, Clone, PartialEq)]
 pub struct Version9Block10_1 {
-    /// ISpatialReference 槽（仅分类）。
-    pub spatial_reference: NestedEntry10_1,
+    /// ISpatialReference 槽（三类闭合空间参考分派）。
+    pub spatial_reference: SpatialRefSlot10_1,
     /// int32 的原样位模式。
     pub raw_int32: i32,
     /// 32 字节原样读取（WKSEnvelope 候选）。
@@ -1396,37 +1419,87 @@ pub fn read_text_element_body_10_1(
         if version > 3 {
             tail_int32_2 = Some(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
         }
-        // 8. 版本 ==7 精确块。
+        // 8. 版本 ==7 精确块（第三轮接线：三装饰槽接 element_decor 分派；
+        // 深度预算与符号槽同源，未知实现类维持停止回退）。
         if version == 7 {
             let mut block = TextDecorationBlock10_1 {
-                border: NestedEntry10_1::Null,
-                background: NestedEntry10_1::Null,
-                shadow: NestedEntry10_1::Null,
+                border: crate::objects::element_decor::DecorSlot10_1::Null,
+                background: crate::objects::element_decor::DecorSlot10_1::Null,
+                shadow: crate::objects::element_decor::DecorSlot10_1::Null,
                 double_1: 0.0,
                 raw_int32: 0,
                 double_2: 0.0,
             };
-            let labels = [
-                ("IBorder 槽（版本 7 装饰块）", 0usize),
-                ("IBackground 槽（版本 7 装饰块）", 1usize),
-                ("IShadow 槽（版本 7 装饰块）", 2usize),
+            // 槽序固定：border → background → shadow，按序落位（空标记同样
+            // 消费该槽位，不改变后续槽的归属）。
+            let decor_slots: [(
+                &'static str,
+                fn(
+                    &mut Reader<'_>,
+                    usize,
+                    &mut RefTable10_1,
+                    usize,
+                ) -> io::Result<(
+                    Option<crate::objects::element_decor::DecorSlot10_1>,
+                    Option<crate::objects::display_symbol::SymbolStop10_1>,
+                )>,
+            ); 3] = [
+                (
+                    "IBorder 槽（版本 7 装饰块）",
+                    crate::objects::element_decor::read_border_slot_10_1,
+                ),
+                (
+                    "IBackground 槽（版本 7 装饰块）",
+                    crate::objects::element_decor::read_background_slot_10_1,
+                ),
+                (
+                    "IShadow 槽（版本 7 装饰块）",
+                    crate::objects::element_decor::read_shadow_slot_10_1,
+                ),
             ];
-            for (label, target) in labels {
-                let slot = read_classified_slot(
+            for (slot_index, (label, read_slot)) in decor_slots.iter().enumerate() {
+                let slot_offset = trial.position();
+                let (slot, inner) = read_slot(
                     &mut trial,
+                    max_bytes,
                     &mut trial_table,
-                    &origin,
-                    start,
-                    label,
-                    &mut stop,
+                    MAX_SYMBOL_NESTING_DEPTH,
                 )?;
-                match slot {
-                    Some(entry) => match target {
-                        0 => block.border = entry,
-                        1 => block.background = entry,
-                        _ => block.shadow = entry,
-                    },
-                    None => break,
+                let entry = match slot {
+                    Some(entry) => entry,
+                    None => {
+                        // 未知实现类：分派器已回退游标与登记表，停止原因
+                        //（Slot，含类标识与键）随返回值带出；映射为既有
+                        // NestedObjectNotClosed（游标回退到槽位起点）。
+                        if let Some(crate::objects::display_symbol::SymbolStop10_1::Slot {
+                            class_id,
+                            key,
+                            ..
+                        }) = inner
+                        {
+                            stop = Some(ElementBodyStop10_1::NestedObjectNotClosed {
+                                slot: label,
+                                offset: slot_offset,
+                                class_id,
+                                key,
+                            });
+                        }
+                        break;
+                    }
+                };
+                match slot_index {
+                    0 => block.border = entry,
+                    1 => block.background = entry,
+                    _ => block.shadow = entry,
+                }
+                if let Some(inner) = inner {
+                    // 已解析装饰体内嵌套停止：复用 SymbolSlotNested 透传
+                    //（游标停在内层停止点）。
+                    stop = Some(ElementBodyStop10_1::SymbolSlotNested {
+                        slot: label,
+                        reason: inner,
+                    });
+                    break;
                 }
             }
             if stop.is_none() {
@@ -1436,24 +1509,63 @@ pub fn read_text_element_body_10_1(
                 decoration_block = Some(block);
             }
         }
-        // 9. 版本 ==9 尾加块。
+        // 9. 版本 ==9 尾加块（F 轮接线：ISpatialReference 槽接三类闭合空间
+        // 参考分派；其余实现类维持停止回退，语义与仅分类时一致）。
         if version == 9 && stop.is_none() {
             let mut block = Version9Block10_1 {
-                spatial_reference: NestedEntry10_1::Null,
+                spatial_reference: SpatialRefSlot10_1::Null,
                 raw_int32: 0,
                 raw_envelope: [0; 32],
             };
-            match read_classified_slot(
-                &mut trial,
-                &mut trial_table,
-                &origin,
-                start,
-                "ISpatialReference 槽（版本 9 尾加块）",
-                &mut stop,
-            )? {
-                Some(entry) => block.spatial_reference = entry,
-                None => {}
-            }
+            let sr_offset = trial.position();
+            let sr_snapshot = trial_table.clone();
+            let slot = match read_object_entry_10_1(&mut trial, &mut trial_table)? {
+                ObjectEntry10_1::Null => SpatialRefSlot10_1::Null,
+                ObjectEntry10_1::BackReference { class_id, key } => {
+                    SpatialRefSlot10_1::BackReference { class_id, key }
+                }
+                ObjectEntry10_1::NewObject { class_id, key } => {
+                    // F 轮接线：三类闭合空间参考（PCS/GCS/Unknown）三分派；
+                    // 其余实现类回退到槽位起点、该键不保留，映射为停止。
+                    use crate::objects::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
+                    use crate::objects::spatial_reference_slots::{
+                        GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID, UNKNOWN_COORDINATE_SYSTEM_CLASS_ID,
+                    };
+                    if class_id == PROJECTED_COORDINATE_SYSTEM_CLASS_ID {
+                        SpatialRefSlot10_1::Projected(
+                            crate::objects::spatial_reference::read_projected_coordinate_system_10_1(
+                                &mut trial,
+                                max_bytes,
+                            )?,
+                        )
+                    } else if class_id == GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID {
+                        SpatialRefSlot10_1::Geographic(
+                            crate::objects::spatial_reference_slots::read_geographic_coordinate_system_10_1(
+                                &mut trial,
+                                max_bytes,
+                            )?,
+                        )
+                    } else if class_id == UNKNOWN_COORDINATE_SYSTEM_CLASS_ID {
+                        SpatialRefSlot10_1::Unknown(
+                            crate::objects::spatial_reference_slots::read_unknown_coordinate_system_10_1(
+                                &mut trial,
+                                max_bytes,
+                            )?,
+                        )
+                    } else {
+                        trial_table = sr_snapshot;
+                        trial = rewind(&origin, start, sr_offset);
+                        stop = Some(ElementBodyStop10_1::NestedObjectNotClosed {
+                            slot: "ISpatialReference 槽（版本 9 尾加块）",
+                            offset: sr_offset,
+                            class_id,
+                            key,
+                        });
+                        SpatialRefSlot10_1::Null
+                    }
+                }
+            };
+            block.spatial_reference = slot;
             if stop.is_none() {
                 block.raw_int32 = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
                 block.raw_envelope = trial.read_bytes(32)?.try_into().expect("固定 32 字节");
