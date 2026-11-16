@@ -170,3 +170,57 @@ pub fn read_layout_10_8(
     *reader = trial;
     Ok(result)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn encoded_text(text: &str) -> Vec<u8> {
+        let mut encoded: Vec<u8> = text.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        encoded.extend_from_slice(&[0, 0]);
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&(encoded.len() as u32).to_le_bytes());
+        bytes.extend(encoded);
+        bytes
+    }
+
+    #[test]
+    fn version_layouts_preserve_unknown_tail_without_consuming_it() {
+        let mut bytes = encoded_text("10.1");
+        bytes.extend_from_slice(&19_i16.to_le_bytes());
+        bytes.extend_from_slice(&[0xde, 0xad, 0xbe, 0xef]);
+        let mut reader = Reader::new(&bytes);
+        let layout = read_layout_10_1(&mut reader, 1024).unwrap();
+        assert_eq!(layout.remaining_bytes, 4);
+        assert_eq!(reader.remaining(), 4);
+
+        let mut reader = Reader::new(&bytes);
+        let layout = read_layout_10_8(&mut reader, 1024).unwrap();
+        assert_eq!(layout.remaining_bytes, 4);
+        assert_eq!(reader.remaining(), 4);
+    }
+
+    #[test]
+    fn arcmap_header_keeps_cursor_at_end_of_known_header() {
+        let mut bytes = encoded_text("10.1");
+        bytes.extend_from_slice(&19_i16.to_le_bytes());
+        bytes.extend_from_slice(&2267_i32.to_le_bytes());
+        bytes.extend_from_slice(&[0x91, 0x00, 0xff]);
+        let mut reader = Reader::new(&bytes);
+        let header = read_arcmap_header_10_1(&mut reader, 1024).unwrap();
+        assert_eq!(header.object_count, Some(2267));
+        assert_eq!(header.remaining_bytes, 3);
+        assert_eq!(reader.remaining(), 3);
+    }
+
+    #[test]
+    fn truncated_conditional_count_fails_without_advancing() {
+        let mut bytes = encoded_text("10.1");
+        bytes.extend_from_slice(&19_i16.to_le_bytes());
+        bytes.extend_from_slice(&[1, 2, 3]);
+        let mut reader = Reader::new(&bytes);
+        let error = read_arcmap_header_10_1(&mut reader, 1024).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::UnexpectedEof);
+        assert_eq!(reader.position(), 0);
+    }
+}

@@ -395,12 +395,13 @@ fn parse_first_frame(
                         if let Some(delegated) = &prefix.delegated_layer {
                             diagnostics.push(format!(
                                 "条目 {}：委派注记图层（无对象头，按 FeatureLayer 字段序）前\
-                                 缀：名称 {:?}，第二名称 {:?}；其体剩余未解析（{} 字节），\
-                                 不构造节点",
+                                 缀：名称 {:?}，第二名称 {:?}；后续流剩余 {} 字节，\
+                                 停止状态 {:?}，不构造节点",
                                 entry.index + 1,
                                 delegated.name,
                                 delegated.secondary_name,
-                                delegated.remaining_bytes
+                                delegated.remaining_bytes,
+                                delegated.stop
                             ));
                         }
                         Some(LayerNode::Layer(Layer {
@@ -1345,6 +1346,80 @@ mod tests {
         );
         assert_eq!(mismatched, None);
         assert!(diagnostics.iter().any(|note| note.contains("不匹配")));
+
+        // 同键但不同类也不能复用 Map CRS。
+        let wrong_class = crate::objects::envelope::SpatialReferenceEntry10_1::BackReference {
+            class_id: crate::objects::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID,
+            key: SAMPLE_PCS_KEY,
+        };
+        assert_eq!(
+            envelope_reference_to_model(
+                Some(&wrong_class),
+                Some(SAMPLE_PCS_KEY),
+                Some(&map_crs),
+                0,
+                &mut diagnostics,
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn envelope_inline_crs_is_independent_of_map_crs() {
+        use crate::objects::envelope::SpatialReferenceEntry10_1;
+
+        let bytes = pcs_body("PROJCS[\"Layer CRS\"]");
+        let body = crate::objects::spatial_reference::read_projected_coordinate_system_10_1(
+            &mut Reader::new(&bytes),
+            MAX_FIELD_BYTES,
+        )
+        .unwrap();
+        let reference = SpatialReferenceEntry10_1::Projected {
+            key: 81,
+            body: body.clone(),
+        };
+        let mut diagnostics = Vec::new();
+        let crs =
+            envelope_reference_to_model(Some(&reference), None, None, 0, &mut diagnostics).unwrap();
+        assert_eq!(crs.definition, body.wkt);
+        assert_eq!(
+            crs.projected.unwrap().precision_doubles,
+            body.precision.map(|p| p.doubles)
+        );
+        assert!(diagnostics.is_empty());
+        let map_crs = CoordinateSystem {
+            definition: "GEOGCS[\"Map CRS\"]".to_string(),
+            projected: None,
+            unknown_fields: Vec::new(),
+        };
+        assert_eq!(
+            envelope_reference_to_model(
+                Some(&SpatialReferenceEntry10_1::Null),
+                None,
+                Some(&map_crs),
+                0,
+                &mut diagnostics,
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn reference_sample_associated_layer_crs_reaches_model() {
+        // 仅检查仓库样本的解析接线，不代表 ArcMap/QGIS 软件验收。
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples/测试底图.mxd");
+        let mut document = cfb::open(path).unwrap();
+        let mut bytes = Vec::new();
+        std::io::Read::read_to_end(&mut document.open_stream("/Maps").unwrap(), &mut bytes)
+            .unwrap();
+        let report = parse_maps_10_1(&bytes).unwrap();
+        let frame = &report.map.frames[0];
+        let LayerNode::Layer(layer) = &frame.children[0] else {
+            panic!("参考样本首节点应为 FDO 关联要素图层");
+        };
+        let crs = layer.crs.as_ref().expect("已解析 Envelope 应提供图层 CRS");
+        assert!(!crs.definition.is_empty());
+        assert!(crs.projected.is_some());
     }
 
     #[test]

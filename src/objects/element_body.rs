@@ -432,17 +432,23 @@ pub struct ElementPropertiesPrefix10_1 {
     /// int16 版本的无符号位模式（原生有符号 `>6` 拒绝；本读取器接受 0..=6，
     /// 负值一并拒绝较原生更严；样本 6）。
     pub version: u16,
-    /// 名称 String（this+8；样本空串）。
+    /// String → this+8（样本空串）；按 `IElementProperties2::Name` 命名为候选。
+    /// 当前没有 10.1 Name getter/setter 的接收偏移证据与 Load 落点互证。
     pub name: String,
-    /// 类型描述 String（this+0xc；样本 `"文本"`）。
+    /// String → this+0xc（样本 `"文本"`）；按 `IElementProperties2::Type` 命名为候选。
+    /// 当前没有 10.1 Type getter/setter 的接收偏移证据与 Load 落点互证。
     pub type_description: String,
     /// 版本 <2 的 int32（读后丢弃的旧版遗留段，原样位模式）。
     pub legacy_int32: Option<i32>,
-    /// CustomProperty 值（第 5 字段）。
+    /// 第 5 字段（版本 ≥4 经 Variant 序列化，旧版为对象槽）；按
+    /// `IElementProperties2::CustomProperty` 命名为候选，尚无 getter/setter
+    /// 偏移证据与 Load 落点互证。
     pub custom_property: CustomProperty10_1,
     /// 版本 >2 的 int16 原样位模式（this+0x10；样本 0xFFFF）。
     pub extra_short: Option<u16>,
-    /// 版本 >4 的 double 原样位模式（this+0x2c；参考比例候选）。
+    /// 版本 >4 的 double（this+0x2c；样本 5393.0）；按
+    /// `IElementProperties2::ReferenceScale` 命名为候选，尚无 getter/setter
+    /// 偏移证据与 Load 落点互证。
     pub reference_scale: Option<f64>,
     /// 版本 >5 的 int32 原样位模式（this+0x34；样本 6）。
     pub tail_int32: Option<i32>,

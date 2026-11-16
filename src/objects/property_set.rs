@@ -322,3 +322,45 @@ pub fn read_variant_10_1(
     *reader = trial;
     Ok(value)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::read_property_set_10_1;
+    use crate::storage::object_refs::RefTable10_1;
+    use crate::stream::reader::Reader;
+    use std::io::ErrorKind;
+
+    #[test]
+    fn property_set_version_zero_accepts_empty_set() {
+        // Load 对版本 0 与 1 使用同一字段序；0 计数不进入属性循环。
+        let mut bytes = 0_u16.to_le_bytes().to_vec();
+        bytes.extend(0_i32.to_le_bytes());
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let body = read_property_set_10_1(&mut reader, 64, &mut refs).unwrap();
+        assert_eq!(body.version, 0);
+        assert_eq!(body.count, 0);
+        assert!(body.entries.is_empty());
+        assert_eq!(reader.position(), bytes.len());
+    }
+
+    #[test]
+    fn property_set_version_above_one_rejects_without_advancing() {
+        let mut bytes = 2_u16.to_le_bytes().to_vec();
+        bytes.extend(0_i32.to_le_bytes());
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let error = read_property_set_10_1(&mut reader, 64, &mut refs).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::InvalidData);
+        assert_eq!(reader.position(), 0);
+    }
+
+    #[test]
+    fn truncated_property_set_version_zero_rejects_without_advancing() {
+        let bytes = 0_u16.to_le_bytes();
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        assert!(read_property_set_10_1(&mut reader, 64, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+    }
+}

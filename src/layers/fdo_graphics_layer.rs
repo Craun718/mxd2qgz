@@ -63,10 +63,10 @@
 //! 步骤 4/6 的两个 FeatureLayer 体由 [`crate::layers::feature_layer`] 的前缀读取器
 //! 分派解析：关联图层体（步骤 4）在其停止点（渲染器新对象 / +0x144 GUID /
 //! 数据源体内停止）之后无法继续——本读取器随之停止（步骤 5 起不可达）。
-//! 仅当关联图层槽为空标记/回引时才推进到步骤 5/6；委派体（步骤 6）同样
-//! 在其前缀停止点终结。步骤 7 起的字段（上表 7-15）在本实现中**结构性不可
-//! 达**（FeatureLayer 前缀读取器不输出「体已完整消费」——其后渲染器链未
-//! 闭合），保留为剩余字节，不做解析。
+//! 关联体返回 TailCompleted、空标记或回引时可推进到步骤 5/6。委派体
+//! （步骤 6）返回后本读取器仍停止：TailCompleted 表示 FeatureLayer 体已
+//! 完整消费，步骤 7-15 的 FDO 后续字段尚未接线；其他状态则表示委派体内部
+//! 停止。两者的剩余字节均保留，不猜测未知体的长度。
 //!
 //! 未解决问题：`FUN_6b197dc0`（版本 <4 旧加载器）与 `FUN_6b198420`（版本
 //! 4 探测）未展开；委派子对象（this+0xbc）的 C++ 类身份与构造未闭合（其体
@@ -161,10 +161,10 @@ pub enum FdoGraphicsLayerStop10_1 {
     /// 止点，其后步骤不可达。
     ElementCollectionStopped(ElementCollectionStop10_1),
     /// 委派子对象体（this+0xbc，无对象头）按 FeatureLayer 字段序解析成功：
-    /// 委派体剩余无外部长度，本读取器停止在其前缀停止点。
+    /// 内部停止时保留未知体；TailCompleted 时停止于尚未接线的 FDO 后续段。
     DelegatedLayerBodyStopped { layer_stop: FeatureLayerStop10_1 },
     /// 委派子对象体按 FeatureLayer 字段序解析失败（如数据源为
-    /// FgdbFeatureClassName 等未支持类）：游标回退到委派体起点，体保留未知。
+    /// 未支持的新类）：游标回退到委派体起点，体保留未知。
     DelegatedLayerBodyFailed { reason: String },
 }
 
@@ -199,6 +199,12 @@ impl FdoGraphicsLayerStop10_1 {
                  停止：{}",
                 stop.describe()
             ),
+            Self::DelegatedLayerBodyStopped {
+                layer_stop:
+                    FeatureLayerStop10_1::Successor(
+                        crate::layers::feature_layer_tail::SuccessorStop10_1::TailCompleted,
+                    ),
+            } => "委派 FeatureLayer 体已完整消费；FDO 后续字段尚未接线，后续流保留未知".to_string(),
             Self::DelegatedLayerBodyStopped { .. } => {
                 "委派子对象体（this+0xbc，无对象头）在其 FeatureLayer 前缀停止点\
                  停止：体剩余无外部长度，无法继续"
@@ -414,7 +420,7 @@ pub fn read_fdo_graphics_layer_prefix_10_1(
                 return Err(error);
             }
             Err(error) => {
-                // 内容性失败（如 FgdbFeatureClassName 数据源类不支持）：回退到
+                // 内容性失败（如数据源为未支持的新类）：回退到
                 // 委派体起点，体保留未知。FeatureLayer 前缀读取器失败时不改登
                 // 记表，无需回退表。
                 trial = reposition(&origin, entry_offset, body_offset);
@@ -425,8 +431,7 @@ pub fn read_fdo_graphics_layer_prefix_10_1(
         }
     }
 
-    // 步骤 7 起结构性不可达（见模块文档「本读取器的可达范围」）——委派体
-    // 或关联图层体的剩余无外部长度，本读取器在上方停止。stop 必已赋值。
+    // 委派体完整消费后也停在尚未接线的步骤 7；体内停止时则不能跳过未知体。
     let stop = stop.expect("主分支各路径必设置停止原因");
 
     let result = FdoGraphicsLayerPrefix10_1 {

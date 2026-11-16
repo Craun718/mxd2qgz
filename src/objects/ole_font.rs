@@ -155,7 +155,8 @@ pub struct StdFontBody10_1 {
 /// IPersistStream` 持久化格式；样本 0 实例，仅反编译证据 + 合成测试）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StdPictureBody10_1 {
-    /// 头第二字（Save 写 0；语义未定，Load 不校验；原样保留）。
+    /// 头第二字（Save 写 0，Load 不校验并继续；保留原始位模式）。
+    /// 10.1 可用静态证据不能确定该字的业务语义。
     pub word2: u16,
     /// 内嵌图像数据声明字节数（`==0` = 空图；Load 据此早退）。
     pub data_size: u32,

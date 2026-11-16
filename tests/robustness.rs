@@ -32,7 +32,9 @@ use mxd2qgz::layers::dep_tail::{
 };
 use mxd2qgz::layers::fdo_legacy::read_fdo_graphics_layer_legacy_prefix_10_1;
 use mxd2qgz::layers::feature_id_set::read_feature_id_set_body_10_1;
-use mxd2qgz::layers::feature_layer::read_feature_layer_prefix_10_1;
+use mxd2qgz::layers::feature_layer::{
+    read_feature_layer_prefix_10_1, read_fgdb_feature_class_name_body_10_1,
+};
 use mxd2qgz::layers::feature_layer_tail::read_uid_body_10_1;
 use mxd2qgz::layers::group_layer::read_group_layer_prefix_10_1;
 use mxd2qgz::layers::layer_list::read_layer_list_10_1;
@@ -220,6 +222,7 @@ enum ReaderKind {
     MapSuffix10_1,
     LayerList10_1,
     FeatureLayerPrefix10_1,
+    FgdbFeatureClassNameBody10_1,
     FdoGraphicsLayerPrefix10_1,
     GroupLayerPrefix10_1,
     CompositeGraphicsPrefix10_1,
@@ -357,7 +360,7 @@ enum ReaderKind {
     ShadowSlot10_1,
 }
 
-fn all_kinds() -> [ReaderKind; 137] {
+fn all_kinds() -> [ReaderKind; 138] {
     [
         ReaderKind::NativeString10_1,
         ReaderKind::NativeString10_8,
@@ -370,6 +373,7 @@ fn all_kinds() -> [ReaderKind; 137] {
         ReaderKind::MapSuffix10_1,
         ReaderKind::LayerList10_1,
         ReaderKind::FeatureLayerPrefix10_1,
+        ReaderKind::FgdbFeatureClassNameBody10_1,
         ReaderKind::FdoGraphicsLayerPrefix10_1,
         ReaderKind::GroupLayerPrefix10_1,
         ReaderKind::CompositeGraphicsPrefix10_1,
@@ -619,6 +623,20 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
             bytes.extend([0xa5_u8; 16]);
             bytes.extend(7_u32.to_le_bytes());
             bytes.extend(0_i32.to_le_bytes()); // 活动图层索引
+            bytes
+        }
+        ReaderKind::FgdbFeatureClassNameBody10_1 => {
+            // 包装版本、原样 short，再直接跟内嵌 FeatureClassName 体，无第二对象头。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(0x1234_u16.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            for _ in 0..4 {
+                bytes.extend(encoded(""));
+            }
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_u16.to_le_bytes());
+            bytes.extend([0_u8; 16]);
             bytes
         }
         ReaderKind::FeatureLayerPrefix10_1 => {
@@ -2318,6 +2336,10 @@ fn try_read(kind: ReaderKind, reader: &mut Reader<'_>) -> io::Result<()> {
         }
         ReaderKind::FeatureLayerPrefix10_1 => {
             read_feature_layer_prefix_10_1(reader, 1024, &mut RefTable10_1::new()).map(|_| ())
+        }
+        ReaderKind::FgdbFeatureClassNameBody10_1 => {
+            read_fgdb_feature_class_name_body_10_1(reader, 1024, &mut RefTable10_1::new(), 42)
+                .map(|_| ())
         }
         ReaderKind::FdoGraphicsLayerPrefix10_1 => {
             mxd2qgz::layers::fdo_graphics_layer::read_fdo_graphics_layer_prefix_10_1(

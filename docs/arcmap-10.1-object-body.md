@@ -519,8 +519,10 @@ SystemCore.dll 与 ArcMap.exe 用本机 pyghidra（Ghidra 12.2 + JDK 25，复用
 **键 = ObjectStream 对象 `+0x2c` 处的 4 字节单调计数器：新对象写入当前值作键、写后 +1；
 计数器随 ObjectStream 实例生存，不按流重置（`SetStream 0x7ffcf7a0` 不清表不清计数，既有证据），
 因此同一文档保存/打开会话内全部流共享一个键序。** 样本 /Maps 键序 29..2183（Map=29、CRS=30、
-FDOGraphicsLayer=31、FeatureLayer=32 等）与 /Version 尾部计数 2267（见下）相互印证；构造器
-反编译未见对 `+0x2c` 的显式清零，初值 0 属推断（开放）。
+FDOGraphicsLayer=31、FeatureLayer=32 等）与 /Version 尾部计数 2267（见下）相互印证；构造初值已于 2026-11-16 静态闭合为 0：构造器 `0x7ffcf030` 的
+`param_1[0xf] = 0` 位于对象基址 `+0x3c`，而 IObjectStream2 接口在基址
+`+0x10`，故对应写侧接口指针 `+0x2c`。此前按同一 this 基址寻找清零而遗漏了
+接口位移；见 [本轮对象流记录](mxd-open-streams-20261116.md)。
 
 ### 两张表与计数器布局修正（证据：确定的；修正既有记录）
 
@@ -574,7 +576,7 @@ SystemCore 的 `+0x54` 槽（`0x7ffd0550`）是 EnsureCapacity：**恒返回 0�
 
 - SimpleSaveObject 对 ObjectStream 目标流的委派链：`FUN_68a7c1d0` 等 6 个 fastcall QI 包装
   所查 IID、ObjectStream 分支（`0x68a7b01b..`）各槽位语义、到 `+0x40` 的确切到达路径。
-- `+0x2c` 键计数器的构造初始化（反编译未见显式清零，初值 0 为推断）。
+- `+0x2c` 键计数器的构造初始化已于 2026-11-16 闭合为 0，依据与接口位移见上文；不再列作开放缺口。
 - `+0x190` 处保存侧流对象的类身份与其 `+0x54` 槽在运行时的实际行为（栈残留 -1 的来源）。
 - `LoadObject` 导出的第二辅助 `0x68a7b530` 语义；`FUN_7ffd0850` 的表指针来源寄存器（ESI）
   在写者内的设置指令未逐条核对（伪代码层级）。

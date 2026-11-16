@@ -100,7 +100,7 @@
   - [ ] 闭合 VariantStream 对象分支的引用表。
   - [x] 实现显式 10.8 Variant 前缀读取器，覆盖固定宽度位模式、字符串边界、失败游标和显式对象分支错误；未接入 MXD 解析。
   - [ ] 闭合 SimpleSaveObject 委派链（对象读写委派路径）。
-  - [ ] 确认对象键计数器的构造初值。
+  - [x] 确认 10.1 对象键计数器构造初值为 0：SystemCore 构造器基址 `+0x3c` 清零对应 IObjectStream2 接口指针 `+0x2c`，与先写后增路径对位；静态证据及边界见 [本轮对象流记录](docs/mxd-open-streams-20261116.md)。
 - [x] 解析长度前缀字符串、对象属性和对象引用，并验证 UTF-16LE、空字符串及非 ASCII 字符的处理。
   - [x] 用 REA 确认 10.8 AfCore String::Read/Write 的字节长度、终止零和不严格短读行为，区分原生行为与 Rust 安全子集。
   - [x] 实现显式 10.8 调用点的严格字符串读取器，覆盖空值、中文、代理对、非法编码、全部截断、资源限制和失败游标；未接入 MXD 字段解析。
@@ -140,6 +140,7 @@
   - [x] 走查脚本独立证实 `0xf63..0xfe6` 段（FIDSet/选择集/显示过滤器/扩展段头），第十轮接线后样本连续消费至 `0x155a`；ALPC 条目键/尾 int32 已解析（样本修正 ALPC 尾 int32=1）。
   - [x] 第三轮并行七轮研究+整合接线（2026-11-16）：七组开放族闭合 55 项（A 停止点后方/DEP 裁决+TimeData 族、B IDatasetName 槽族含两类不可持久化裁决、C Legend/MapSurround 全族、D Variant-PropertySet 八分支含四处旧记录修正、E Save 写侧六表+三重交互闭合、F PCS IID/语义+GCS/Unknown 体+CircularArc 裁决、G DisplayCore 槽族含两项负证据裁决），新读取器模块 10 个；整合接线 17 处+element_body ==7/==9+property_set 9|13 两段落位（重叠实现按基准裁决保留一份），robustness 集中清单 93→137 入口，全仓 649 项测试全绿；样本停止点 `0x155a`→`0x1622`（DEP 体完整消费→EC@0x1608 完整消费→委派体数据源未支持类 `{75E10086}` 的对象头位于 0x166c，本项目读取器回退至委派体起点 0x1622）；新研究文档七份（docs/arcmap-10.1-{dep-tail,dataset-name-slots,legend-family,variant-propertyset-slots,save-side,pcs-geometry-slots,display-slots-round3}.md）；全部静态取证，未在目标软件人工验证。
   - [x] 接线 FCN 自身 `{198846D0}` 在 IDatasetName 槽内递归嵌套 FeatureClassName 的分派（layers 层自递归并设置深度限额，覆盖合成输入和限额回滚；尚无目标软件验证，见 dataset-name-slots 研究记录）。
+  - [x] 2026-11-16 开放项并行复核：原 96 项全部分派给 GPT-6 Luna，按七组及数据源续轮形成八份逐项记录；主代理审查后闭合键计数器初值、图层 CRS 接线及 FgdbFeatureClassName 体三项，新增 FDO 后续段接线一项待办。修正虚表地址转录、版本尾部游标/分配边界及过度字段定名；robustness 137→138 入口，验证与完整剩余状态见 [本轮汇总](docs/mxd-parsing-parallel-20261116.md)。
   - 其余开放项按类别逐项单列，每项职责单一；闭合路径注于类别，出处见各研究文档：
     - 体未闭合类族（逐个反编译闭合对象体或分支）：
       - [x] 裁决「DEP 尾段」不存在：DisplayExpressionProperties 实现在 FeatureLayer.dll 定位（RTTI→COL→虚表→GetClassID 三方互证），体=版本≤1+String+int16+引擎槽四项完结无尾段；样本 `0x155a..0x15d8` 实为 FL 后继段 ㊵+㊶，逐字节走查断言通过；第十轮「GetClassID/Load 未定位」撤销，见 [研究记录](docs/arcmap-10.1-dep-tail.md)。
@@ -167,7 +168,8 @@
       - [x] 闭合 IDatasetName 槽其余实现类（GdbCore 范围）：MemoryRelationshipClassName `{6DBA211B}`/QueryTableName `{793873DE}`（版本门无符号，0 被原生拒绝）/RelQueryTableName `{DAB3EE10}`/DBTableName `{4C9307B2}`（无版本字段）四类体闭合；方法学修正：RTTI BCDD 数组会产生伪 COL，候选虚表必须以 GetClassID 反编译写出 CLSID 收尾；FeatureQueryName/TableQueryName（IPersistVariant 形态）与 ObjectClassName 及其他模块实现另列开放项，见 [研究记录](docs/arcmap-10.1-dataset-name-slots.md)。
       - [ ] FeatureBookmark 的 IName 槽实现类体（部分闭合：装载后对名称对象 QI IFeatureClass `{D4803EE6}`，成功写 this+8 失败软置空；实现类分布仍未观察——样本 0 书签，见 legend-family 记录第十节）。
       - [x] 闭合 FDOGraphicsLayer 版本 4 探测分支：三依赖降为两项并全部定位闭合（整流绝对 0 访问成立单独已足；IObjectStream QI 门控主流键读、分支 B 经返回接口读键且前后无条件 Seek 复位）；「不实现」结论维持，见 [研究记录](docs/arcmap-10.1-save-side.md)。
-      - [ ] 委派注记图层数据源类 `{75E10086-4226-42AC-AFEC-CBB9B748F847}`（键 87）coclass 定位与体——**当前样本停止点**（FDO 第 6 步委派体起于 0x1622，数据源槽对象头位于 0x166c；该类非读取器支持的 FeatureClassName，本项目读取器将委派体整体回退至 0x1622）。
+      - [x] 闭合委派注记图层数据源 `{75E10086-4226-42AC-AFEC-CBB9B748F847}`：FileGDB.dll 10.1.0.3035 的 FgdbFeatureClassName，体为版本 short + 原样 short + 内嵌 GdbCore FeatureClassName 体（无第二对象头）；按精确 CLSID 接入，覆盖异常回滚和逐前缀截断。样本委派 FeatureLayer 体完整消费至 `0x2c01`；见 [本轮数据源记录](docs/mxd-open-dataset-20261116.md)。
+      - [ ] 接入 FDOGraphicsLayer 委派 FeatureLayer 体完整消费之后的第 7–15 步后续字段（本轮样本未知区从 `0x2c01` 起，当前读取器在 TailCompleted 后仍停止）。
       - [ ] FeatureQueryName/TableQueryName 的 IVariantStream 体（GdbCore，IPersistVariant 形态，主虚表 +0x14 GetIDType 写出各自 CLSID）。
       - [ ] ObjectClassName 实现类 RTTI 定位（GdbCore 静态未找到）。
     - 符号与 Legend 族（逐个反编译闭合）：
@@ -283,7 +285,7 @@
   - [ ] 取证 `+0x1b4` 槽（版本>8）无值行为。
   - [x] 静态推定 Map+0x298 coclass 为 Geometry Envelope `{30707212}`。
   - [ ] 最终闭合 Map+0x298 coclass 身份。
-  - [ ] 将图层坐标系宿主（图层体 Envelope 第 4 段）接入中间模型。
+  - [x] 将图层坐标系宿主（`+0x1f4` Envelope 第 4 段）接入中间模型：复核现有普通/FDO 关联/组内图层路径，补测内嵌 CRS、回引键/类不匹配、空槽及参考样本关联图层 CRS；软件人工检查未做，见 [本轮空间参考记录](docs/mxd-open-spatial-20261116.md)。
 - [x] 处理未知对象、未知版本、截断数据、非法长度及循环引用；未知对象/版本与截断、非法长度由各读取器原样保留或明确拒绝，循环引用经 `object_refs` 状态机覆盖。
   - [x] 建立跨读取器健壮性测试：全部严格读取器入口的逐前缀截断、失败游标不变与重读一致、超大长度/限额溢出边界、未知类标识与键原样保留、VARTYPE 全空间穷举及非递归有界完成。仅验证读取器自身契约，不代表 MXD 格式规则已验证。
   - [x] 对象引用编码闭合后覆盖缺失引用、重复标识及循环引用：`object_refs` 单元与集成测试覆盖 A→B→A 循环、自引用、跨流共享键序（SetStream 不清表）、重复登记=替换、空表不可区分回引与新对象（原生语义）、截断失败不改登记表；样本键 29/32 辅助对照吻合。仅验证分类器自身契约，不证明完整对象解析已验证。

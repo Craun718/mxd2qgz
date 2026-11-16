@@ -1405,8 +1405,8 @@ pub struct FeatureLayerSuccessor10_1 {
     pub int32_244: Option<i32>,
     /// ㉟ short → obj+0x1be（版本 ≥0x17；样本未达），语义未定。
     pub short_1be: Option<i16>,
-    /// ㊱ PreJoinDefExpressions 块（版本 >0x17；第十轮按样本补 6 字节保留
-    /// 头）。前置停止时 `None`。
+    /// ㊱ PreJoinDefExpressions 块（版本 >0x17）。其后的样本 6 字节间隙
+    /// 归属未定；前置停止时 `None`。
     pub pre_join: Option<PreJoinBlock10_1>,
     /// ㊲ int32 → obj+0x2c0（版本 ≥0x19），语义未定。
     pub int32_2c0: Option<i32>,
@@ -1589,14 +1589,16 @@ pub struct LegacyTailScalars10_1 {
     pub int32_38: i32,
 }
 
-/// ㊱ PreJoinDefExpressions 块（LayerLib.dll `0x786c5d30` + 第十轮样本保留
-/// 头）的已确认字段。
+/// ㊱ PreJoinDefExpressions 块（LayerLib.dll `0x786c5d30`）与样本间隙原样
+/// 保留的数据。
 #[derive(Debug, Clone, PartialEq)]
 pub struct PreJoinBlock10_1 {
     /// int32 计数(样本 0)。负数/零不进循环,原样保留。
     pub count: i32,
-    /// 计数后 6 字节保留头(样本全零;FL 反编译无对应读取,归属未决),
-    /// 原样保留。
+    /// 兼容字段名：样本 count=0 时观察到的 6 个零字节，语义与归属未知。
+    /// 10.1 的 FL Load/Save 调用点及 Read/WritePreJoinDefExpressions 均无
+    /// 对应读取或写出；保留原始值以维持当前样本后续字段对位。非空 count
+    /// 分支的字节归属没有样本佐证。
     pub reserved: [u8; 6],
     /// 计数 × [String + String](样本未达)。
     pub pairs: Vec<(String, String)>,
@@ -2206,11 +2208,10 @@ pub fn read_feature_layer_successor_10_1(
         }
 
         // ㊱ PreJoinDefExpressions（版本 >0x17；LayerLib.dll
-        //    `0x786c5d30`：int32 计数 + count × [String + String]）。第十轮
-        //    样本修正：计数之后、Pairs 之前存在 6 个保留字节（样本
-        //    `0x14f2..0x14f8` 全零；FL 反编译在该处无读取，归属未决——可能
-        //    为 CInternalLayerBase 成员头部或反编译遗漏的短读取；读取器原
-        //    样消费以对位样本，样本仅见证 count=0 形态）。
+        //    `0x786c5d30`：int32 计数 + count × [String + String]）。在样本
+        //    count=0 后、㊲ 前有 6 字节零间隙（/Maps 0x14f2..0x14f8）；10.1
+        //    FL 读写调用点与 helper 均未处理这些字节。当前为保持样本后续字
+        //    段对位而原样读取，字段归属保持未知。
         if stop.is_none() && (fl_version as i16) > 0x17 {
             let count = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
             let mut reserved = [0u8; 6];

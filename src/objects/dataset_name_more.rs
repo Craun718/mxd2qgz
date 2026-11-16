@@ -51,10 +51,13 @@
 //! 已知偏离原生：负值版本位模式拒绝（较原生有符号比较更严，与仓库既有读取
 //! 器口径一致）；QueryTableName 版本 0 原生被无符号门拒绝，读取器同拒。
 //! 通知调用（RCN/FGN 槽装载后的虚表 +0x20、QueryTN 的 +0x40）不消费流字
-//! 节，读取器不模拟。全部字段的业务语义未定性（字符串候选：名称/类别/连接
-//! 信息等，按 FCN/WorkspaceName 家族类推），原样保留；未接入 MXD 解析主链
-//! （接入点见证据文档「建议整合接线点」），人工目视验收未做，不得声称已
-//! 验证。
+//! 节，读取器不模拟。六类标量/String 字段的业务语义未定性（字符串候选：名
+//! 称/类别/连接信息等，按 FCN/WorkspaceName 家族类推），原样保留。五条请求
+//! IID 已由 ArcMap 10.1 类型库定名为 IName、IQueryDescription、IQueryFilter、
+//! ISelectionSet、ISpatialReference；只在中文注释标明对应请求槽，保留原公开
+//! 字段名。接口名不表示流内类标识。
+//! 已经由 FeatureClassName 的 IDatasetName 选择子接入 MXD 解析链；未闭合
+//! 的嵌套新对象体仍是停止点。人工目视验收未做，不得声称已验证。
 
 use crate::objects::dataset_name::{
     FEATURE_DATASET_NAME_CLASS_ID, FeatureDatasetNameBody10_1, FeatureDatasetNameStop10_1,
@@ -325,9 +328,9 @@ pub struct MemoryRelationshipClassNameBody10_1 {
     pub short_a: u16,
     /// 第二个 short（obj+0x1a；语义未定）。
     pub short_b: u16,
-    /// 第一槽（请求 IID `{4BA33331-…}`，obj+0x1c；语义未定名，新对象为停止点）。
+    /// 第一槽（请求 IID `{4BA33331-…}` = IName，obj+0x1c；新对象体未闭合）。
     pub slot_a: UnknownSlot10_1,
-    /// 第二槽（同 IID，obj+0x20）。
+    /// 第二槽（同 IID = IName，obj+0x20；新对象体未闭合）。
     pub slot_b: UnknownSlot10_1,
     /// 后四个字符串（语义未定，候选：源/目标名称与类别）。
     pub strings_b: [String; 4],
@@ -349,10 +352,10 @@ pub struct QueryTableNameBody10_1 {
     pub string_b: String,
     /// 第三个字符串（语义未定）。
     pub string_c: String,
-    /// IWorkspaceName 槽（obj+0x1c；Save 先写本槽再写 `query_slot`）。
+    /// IWorkspaceName 槽（obj+0x1c；Save 先写本槽，再写 IQueryDescription 槽）。
     pub workspace: WorkspaceNameSlot10_1,
-    /// 第二槽（请求 IID `{2E060684-…}`，obj+0x18；新对象为停止点；原生装载
-    /// 后做虚表 +0x40 查询，不读流）。
+    /// 第二槽（请求 IID `{2E060684-…}` = IQueryDescription，obj+0x18；新对象体未闭合；
+    /// 原生装载后做虚表 +0x40 查询，不读流）。
     pub query_slot: UnknownSlot10_1,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<DatasetNameMoreStop10_1>,
@@ -369,13 +372,13 @@ pub struct RelQueryTableNameBody10_1 {
     pub string_a: String,
     /// 第二个字符串（语义未定）。
     pub string_b: String,
-    /// 第一槽（请求 IID `{4BA33331-…}`，obj+0x10；语义未定名，新对象为停止点）。
+    /// 第一槽（请求 IID `{4BA33331-…}` = IName，obj+0x10；新对象体未闭合）。
     pub source_slot: UnknownSlot10_1,
     /// short（obj+0x14；语义未定）。
     pub short_a: u16,
-    /// 第二槽（请求 IID `{FDFEBD93-…}`，obj+0x18）。
+    /// 第二槽（请求 IID `{FDFEBD93-…}` = IQueryFilter，obj+0x18；新对象体未闭合）。
     pub left_slot: UnknownSlot10_1,
-    /// 第三槽（请求 IID `{F7AD47D1-…}`，obj+0x1c）。
+    /// 第三槽（请求 IID `{F7AD47D1-…}` = ISelectionSet，obj+0x1c；新对象体未闭合）。
     pub right_slot: UnknownSlot10_1,
     /// 第三个字符串（语义未定）。
     pub string_c: String,
@@ -402,7 +405,7 @@ pub struct DbTableNameBody10_1 {
     pub string_d: String,
     /// int32（obj+0x14；原生 ≠7 时置内存标志 obj+0x19，语义未定，原样保留）。
     pub int_a: i32,
-    /// 尾槽（请求 IID `{4434D680-…}`，obj+0x20；新对象为停止点）。
+    /// 尾槽（请求 IID `{4434D680-…}` = ISpatialReference，obj+0x20；新对象体未闭合）。
     pub tail_slot: UnknownSlot10_1,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<DatasetNameMoreStop10_1>,

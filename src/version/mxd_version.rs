@@ -12,6 +12,15 @@ use std::io;
 /// 文本读取资源上限（含终止零、不含 4 字节长度前缀），避免对超长流做无界解码。
 pub const MAX_TEXT_BYTES: usize = 1024;
 
+/// 诊断模型最多复制的未知尾部字节数；剩余总长度仍完整报告。
+pub const MAX_UNKNOWN_TAIL_BYTES: usize = 4096;
+
+fn capture_unknown_tail(version_stream: &[u8], start: usize) -> (Vec<u8>, bool) {
+    let tail = &version_stream[start..];
+    let capture_len = tail.len().min(MAX_UNKNOWN_TAIL_BYTES);
+    (tail[..capture_len].to_vec(), tail.len() > capture_len)
+}
+
 /// 静态闭合的「文本 ↔ 保存索引（= `esriArcGISVersion` 枚举值）↔ short」候选表。
 /// 注意：文本表缺 9.3（资源 ID `0x11a` 为打印错误文本的异常候选），因此文本
 /// 下标与 short 下标不通用，必须按下表三元组配对，不能用数组下标互推。
@@ -93,6 +102,10 @@ pub struct MxdVersionReport {
     pub candidate_save_index: Option<usize>,
     /// 识别读取之后剩余的未知字节数。
     pub remaining_bytes: usize,
+    /// 头部条件字段之后的未解释字节原样保留。
+    pub unknown_tail: Vec<u8>,
+    /// 尾部超过捕获上限时为 true；完整长度仍见 `remaining_bytes`。
+    pub unknown_tail_truncated: bool,
     /// 适用范围与未验证声明的固定说明，供调用方直接输出。
     pub note: &'static str,
 }
@@ -108,6 +121,8 @@ pub fn identify_version(version_stream: &[u8]) -> io::Result<MxdVersionReport> {
     let mut reader = Reader::new(version_stream);
     match read_arcmap_header_10_1(&mut reader, MAX_TEXT_BYTES) {
         Ok(header) => {
+            let (unknown_tail, unknown_tail_truncated) =
+                capture_unknown_tail(version_stream, reader.position());
             let text_known = KNOWN_TEXTS.contains(&header.prefix.text.as_str());
             let short_known = KNOWN_SHORTS.contains(&header.prefix.compatibility_short);
             let (branch, note) = if text_known && short_known {
@@ -127,21 +142,29 @@ pub fn identify_version(version_stream: &[u8]) -> io::Result<MxdVersionReport> {
                 object_count: header.object_count,
                 candidate_save_index,
                 remaining_bytes: header.remaining_bytes,
+                unknown_tail,
+                unknown_tail_truncated,
                 note,
             });
         }
         Err(error_10_1) => {
             let mut reader = Reader::new(version_stream);
             match read_layout_10_8(&mut reader, MAX_TEXT_BYTES) {
-                Ok(layout) => Ok(MxdVersionReport {
-                    branch: MxdVersionBranch::Layout10_8Fallback,
-                    text: layout.text,
-                    compatibility_short: layout.compatibility_short,
-                    object_count: None,
-                    candidate_save_index: None,
-                    remaining_bytes: layout.remaining_bytes,
-                    note: LAYOUT_10_8_NOTE,
-                }),
+                Ok(layout) => {
+                    let (unknown_tail, unknown_tail_truncated) =
+                        capture_unknown_tail(version_stream, reader.position());
+                    Ok(MxdVersionReport {
+                        branch: MxdVersionBranch::Layout10_8Fallback,
+                        text: layout.text,
+                        compatibility_short: layout.compatibility_short,
+                        object_count: None,
+                        candidate_save_index: None,
+                        remaining_bytes: layout.remaining_bytes,
+                        unknown_tail,
+                        unknown_tail_truncated,
+                        note: LAYOUT_10_8_NOTE,
+                    })
+                }
                 Err(error_10_8) => Err(io::Error::new(
                     error_10_1.kind(),
                     format!(
@@ -216,6 +239,35 @@ mod tests {
         assert_eq!(candidate_save_index("10.1", 16), None);
         assert_eq!(candidate_save_index("9.3", 16), None);
         assert_eq!(candidate_save_index("任意文本", 19), None);
+    }
+
+    #[test]
+    fn version_report_retains_tail_bytes_verbatim() {
+        let tail = [0x7f, 0, 0xaa, 0x55];
+        let mut bytes = header_bytes("10.1", 19, Some(2267));
+        bytes.extend_from_slice(&tail);
+        let report = identify_version(&bytes).unwrap();
+        assert_eq!(report.remaining_bytes, tail.len());
+        assert_eq!(report.unknown_tail, tail);
+        assert!(!report.unknown_tail_truncated);
+
+        // 仅三个尾字节不足以满足 10.1 的四字节计数，因此回退到 10.8 局部布局。
+        let tail = [0x7f, 0, 0xaa];
+        let mut bytes = header_bytes("candidate", 17, None);
+        bytes.extend_from_slice(&tail);
+        let report = identify_version(&bytes).unwrap();
+        assert_eq!(report.branch, MxdVersionBranch::Layout10_8Fallback);
+        assert_eq!(report.remaining_bytes, tail.len());
+        assert_eq!(report.unknown_tail, tail);
+        assert!(!report.unknown_tail_truncated);
+
+        let long_tail = vec![0x33; MAX_UNKNOWN_TAIL_BYTES + 1];
+        let mut bytes = header_bytes("10.1", 19, Some(2267));
+        bytes.extend_from_slice(&long_tail);
+        let report = identify_version(&bytes).unwrap();
+        assert_eq!(report.remaining_bytes, long_tail.len());
+        assert_eq!(report.unknown_tail.len(), MAX_UNKNOWN_TAIL_BYTES);
+        assert!(report.unknown_tail_truncated);
     }
 
     #[test]

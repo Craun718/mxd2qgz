@@ -76,8 +76,10 @@
 //!    版本表 `DAT_79480dc4` = `[3,4,4,4,4,5]`（`AfStreamGetSaveVersion
 //!    (docVer, 6, 表)`），10.1 恒写 5；
 //! 2. 共同前缀（上节 5 字段）；
-//! 3. `LoadObject`（请求 IID `{52AA5BC1-…}` ILegendFormat）：新对象体
-//!    （LegendFormat `{7A3F91E5-…}` 等）无读取器——在此停止并保留剩余；
+//! 3. `LoadObject`（请求 IID `{52AA5BC1-…}` ILegendFormat）：新对象类标识
+//!    为 LegendFormat `{7A3F91E5-…}` 时分派到
+//!    [`crate::maps::map_surround_family::read_legend_format_body_10_1`]；其他
+//!    未闭合实现类在对象头后停止并保留剩余；
 //! 4. String（`this−0xf8`，标题候选）；
 //! 5. 版本 ==1：double ×2（读后丢弃的旧版遗留段，原样保留位模式；写侧
 //!    无对应写出）；
@@ -104,11 +106,10 @@
 //! 中间模型，人工目视验收未做，不得声称已验证。
 //!
 //! 未解决问题（详见研究记录开放项）：共同前缀第 5 段 32 字节与各 short
-//! 的业务语义未定性；FeatureBookmark int32 语义未定；LegendFormat 与
-//! ILegendItem 实现类（HorizontalBarLegendItem 等）体未闭合；Legend 之外
-//! 的装饰物类（Scalebar/ScaleText/MarkerNorthArrow/MapTitle 等）只列清单
-//! 未逐类反编译；共同前缀版本 0/1（docVersion 83..93 写 2）无门字段差异
-//! 之外的字节佐证。
+//! 的业务语义未定性；FeatureBookmark int32 语义未定；LegendFormat、
+//! LegendItem 及装饰物的若干标量字段未定性；ScaleLine 族三个共同前缀
+//! 调用者的类归属与若干对象接口调用仍未闭合；共同前缀版本 0/1
+//! （docVersion 83..93 写 2）无门字段差异之外的真实流字节佐证。
 
 use crate::layers::legend_item::{
     HORIZONTAL_LEGEND_ITEM_CLASS_ID, HorizontalLegendItemBody10_1, HorizontalLegendItemStop10_1,
@@ -161,8 +162,8 @@ pub const LEGEND_CLASS_ID: [u8; 16] = [
 /// LegendFormat 类标识（CLSID）的 16 字节内存序，供诊断对照。
 ///
 /// GUID 字符串形式为 `{7A3F91E5-B9E3-11D1-8756-0000F8751720}`（esri.clsid
-/// 声明 Map.dll）。该类对象体未反编译；[`LegendStop10_1::LegendFormatBody`]
-/// 停止点的类标识是否为本常量由流内字节决定。
+/// 声明 Map.dll；Load `0x793e0c50` 及字段序见
+/// `docs/arcmap-10.1-legend-family.md`）。
 pub const LEGEND_FORMAT_CLASS_ID: [u8; 16] = [
     0xe5, 0x91, 0x3f, 0x7a, 0xe3, 0xb9, 0xd1, 0x11, 0x87, 0x56, 0x00, 0x00, 0xf8, 0x75, 0x17, 0x20,
 ];

@@ -155,6 +155,17 @@ pub const FEATURE_CLASS_NAME_CLASS_ID: [u8; 16] = [
     0xd0, 0x46, 0x88, 0x19, 0x42, 0xca, 0xd1, 0x11, 0xaa, 0x7c, 0x00, 0xc0, 0x4f, 0xa3, 0x3a, 0x15,
 ];
 
+/// FileGDB.dll `FgdbFeatureClassName` 外层对象的 CLSID 磁盘字节序。
+///
+/// `{75E10086-4226-42AC-AFEC-CBB9B748F847}`。FileGDB.dll 10.1.0.3035 中
+/// IPersistStream 子表 `0x6fafe0c4` 的 GetClassID 槽 `+0x0c` 指向
+/// `0x6fa31600`，该函数写出此 CLSID；RTTI 名为
+/// `.?AVFgdbFeatureClassName@@`。完整表与 Load/Save 证据见
+/// `docs/mxd-open-dataset-20261116.md`。
+pub const FGDB_FEATURE_CLASS_NAME_CLASS_ID: [u8; 16] = [
+    0x86, 0x00, 0xe1, 0x75, 0x26, 0x42, 0xac, 0x42, 0xaf, 0xec, 0xcb, 0xb9, 0xb7, 0x48, 0xf8, 0x47,
+];
+
 /// 可见性字段（obj+0x128）的 VARIANT_BOOL 解释辅助。
 ///
 /// VARIANT_BOOL 的规范取值只有 VARIANT_TRUE（0xFFFF）与 VARIANT_FALSE
@@ -273,6 +284,18 @@ pub struct FeatureClassNamePrefix10_1 {
     pub topology_slot: Option<TopologyNameEntry10_1>,
     /// 停止原因；`None` = 体已完整消费（样本形态：两选择子均为 0）。
     pub stop: Option<FeatureClassNameStop10_1>,
+    /// Some 表示本体由 FileGDB `FgdbFeatureClassName` 包装，保存其外层字段。
+    /// 内嵌 FeatureClassName 没有独立 ObjectStream 头或引用键。
+    pub fgdb_wrapper: Option<FgdbFeatureClassNameHeader10_1>,
+}
+
+/// FileGDB `FgdbFeatureClassName` 外层包装字段。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FgdbFeatureClassNameHeader10_1 {
+    /// 外层版本 short；原生有符号比较拒绝大于 1 的值。
+    pub version: u16,
+    /// 外层 `this+0x28` 的 short，原样保留，语义未定。
+    pub unknown_short: u16,
 }
 
 /// 数据源嵌套条目（请求 IID `{4BA33331-…}`=IName）的分类结果。
@@ -280,8 +303,8 @@ pub struct FeatureClassNamePrefix10_1 {
 pub enum DataSource10_1 {
     /// 16 字节全零类标识：空引用标记，无键、无对象体。
     Null,
-    /// 新 FeatureClassName 对象：已确认体（版本、四字符串、int32 ×2、
-    /// 选择子与嵌套 WorkspaceName 链、版本 >1 选择子）。
+    /// 新 FeatureClassName 对象：已确认体（可为 GdbCore 直接对象，或带
+    /// [`FeatureClassNamePrefix10_1::fgdb_wrapper`] 的 FileGDB 外层包装）。
     FeatureClassName(Box<FeatureClassNamePrefix10_1>),
     /// 键已在本会话登记过的回引条目：其后没有对象体。
     ///
@@ -605,7 +628,57 @@ pub(crate) fn read_feature_class_name_body_with_depth_10_1(
         version1_selector,
         topology_slot,
         stop,
+        fgdb_wrapper: None,
     };
+    *table = staged_table;
+    *reader = trial;
+    Ok(result)
+}
+
+/// 从对象头之后的位置读取 FileGDB 10.1 `FgdbFeatureClassName` 外层包装体。
+///
+/// Load `FileGDB.dll!0x6fa33290`（IPersistStream 表 `0x6fafe0c4` 的 `+0x14`）
+/// 读取版本 short、对象偏移 `+0x28` 的 short，再调用对象偏移 `+0x24` 的
+/// GdbCore FeatureClassName `IPersistStream::Load`。后者直接消费同一流，故复用
+/// [`read_feature_class_name_body_with_depth_10_1`]，不虚构第二个 ObjectStream
+/// 头。完整消费或体内已知停止才提交游标和引用表；任何错误均回滚。
+pub fn read_fgdb_feature_class_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<FeatureClassNamePrefix10_1> {
+    let mut trial = reader.clone();
+    let entry_offset = trial.position();
+    let invalid = |reason: String| {
+        io::Error::new(
+            ErrorKind::InvalidData,
+            format!("FgdbFeatureClassName 对象体 offset 0x{entry_offset:x}: {reason}"),
+        )
+    };
+
+    // Load 使用有符号 short 比较 `1 < version`；负位模式按安全子集拒绝。
+    let version = trial.read_u16_le()?;
+    if (version as i16) > 1 || (version as i16) < 0 {
+        return Err(invalid(format!(
+            "架构版本 {version} 超出 FgdbFeatureClassName::Load 接受范围（>1 拒绝；负值位模式一并拒绝）"
+        )));
+    }
+    let unknown_short = trial.read_u16_le()?;
+    let mut staged_table = table.clone();
+    let feature_class = read_feature_class_name_body_with_depth_10_1(
+        &mut trial,
+        max_bytes,
+        &mut staged_table,
+        key,
+        0,
+    )?;
+
+    let mut result = feature_class;
+    result.fgdb_wrapper = Some(FgdbFeatureClassNameHeader10_1 {
+        version,
+        unknown_short,
+    });
     *table = staged_table;
     *reader = trial;
     Ok(result)
@@ -687,6 +760,18 @@ pub fn read_feature_layer_prefix_10_1(
             fcn_stop = fcn.stop.clone();
             DataSource10_1::FeatureClassName(Box::new(fcn))
         }
+        ObjectEntry10_1::NewObject { class_id, key }
+            if class_id == FGDB_FEATURE_CLASS_NAME_CLASS_ID =>
+        {
+            let fgdb = read_fgdb_feature_class_name_body_10_1(
+                &mut trial,
+                max_bytes,
+                &mut staged_table,
+                key,
+            )?;
+            fcn_stop = fgdb.stop.clone();
+            DataSource10_1::FeatureClassName(Box::new(fgdb))
+        }
         ObjectEntry10_1::NewObject { class_id, key } => {
             // 严格子集只认 FeatureClassName 数据源。新对象体没有外部长度字
             // 段，无法跳过未知类继续读取；显式报错，原游标与登记表不动
@@ -696,7 +781,8 @@ pub fn read_feature_layer_prefix_10_1(
                 ErrorKind::Unsupported,
                 format!(
                     "FeatureLayer 数据源对象 offset 0x{nested_offset:x}: 类标识 {id}（键 \
-                     {key}）不是 FeatureClassName；本读取器仅支持 FeatureClassName 数据源，\
+                     {key}）不是受支持的 FeatureClassName；本读取器仅支持 GdbCore 或 FileGDB \
+                     FeatureClassName 数据源，\
                      且对象体无外部长度字段，无法跳过未知类继续读取"
                 ),
             ));
@@ -784,4 +870,136 @@ pub fn read_feature_layer_prefix_10_1(
     *table = staged_table;
     *reader = trial;
     Ok(result)
+}
+
+#[cfg(test)]
+mod fgdb_feature_class_name_tests {
+    use super::*;
+
+    fn push_u16(bytes: &mut Vec<u8>, value: u16) {
+        bytes.extend(value.to_le_bytes());
+    }
+
+    fn push_u32(bytes: &mut Vec<u8>, value: u32) {
+        bytes.extend(value.to_le_bytes());
+    }
+
+    fn push_empty_string(bytes: &mut Vec<u8>) {
+        bytes.extend([2, 0, 0, 0, 0, 0]);
+    }
+
+    fn push_feature_class_body(
+        bytes: &mut Vec<u8>,
+        workspace_class: Option<[u8; 16]>,
+        workspace_key: u32,
+    ) {
+        push_u16(bytes, 1);
+        for _ in 0..4 {
+            push_empty_string(bytes);
+        }
+        push_u32(bytes, 0);
+        push_u32(bytes, 0);
+        push_u16(bytes, 0);
+        if let Some(class_id) = workspace_class {
+            bytes.extend(class_id);
+            push_u32(bytes, workspace_key);
+        } else {
+            bytes.extend([0; 16]);
+        }
+    }
+
+    #[test]
+    fn fgdb_load_prefix_delegates_to_embedded_feature_class_body() {
+        let mut bytes = Vec::new();
+        push_u16(&mut bytes, 1);
+        push_u16(&mut bytes, 0x3456);
+        push_feature_class_body(&mut bytes, None, 0);
+        let mut reader = Reader::new(&bytes);
+        let mut table = RefTable10_1::new();
+        table.register(42);
+
+        let body = read_fgdb_feature_class_name_body_10_1(&mut reader, 64, &mut table, 42)
+            .expect("valid outer and embedded FeatureClassName bodies");
+
+        assert_eq!(body.fgdb_wrapper.unwrap().version, 1);
+        assert_eq!(body.fgdb_wrapper.unwrap().unknown_short, 0x3456);
+        assert_eq!(body.version, 1);
+        assert_eq!(body.key, 42);
+        assert_eq!(reader.remaining(), 0);
+        assert_eq!(table.len(), 1);
+        assert!(table.contains(42));
+    }
+
+    #[test]
+    fn fgdb_invalid_version_rolls_back_cursor_and_reference_table() {
+        let mut reader = Reader::new(&[2, 0, 0, 0]);
+        let mut table = RefTable10_1::new();
+        table.register(9);
+
+        assert!(read_fgdb_feature_class_name_body_10_1(&mut reader, 64, &mut table, 9).is_err());
+
+        assert_eq!(reader.position(), 0);
+        assert_eq!(table.len(), 1);
+        assert!(table.contains(9));
+        let mut negative = Reader::new(&[0xff, 0xff, 0, 0]);
+        assert!(read_fgdb_feature_class_name_body_10_1(&mut negative, 64, &mut table, 9).is_err());
+        assert_eq!(negative.position(), 0);
+        assert_eq!(table.len(), 1);
+    }
+
+    #[test]
+    fn fgdb_truncated_embedded_object_rolls_back_cursor_and_nested_registration() {
+        let mut bytes = Vec::new();
+        push_u16(&mut bytes, 1);
+        push_u16(&mut bytes, 0);
+        push_feature_class_body(&mut bytes, Some(WORKSPACE_NAME_CLASS_ID), 77);
+        bytes.push(1); // WorkspaceName 版本短截断
+        let mut reader = Reader::new(&bytes);
+        let mut table = RefTable10_1::new();
+        table.register(9);
+
+        assert!(read_fgdb_feature_class_name_body_10_1(&mut reader, 64, &mut table, 9).is_err());
+
+        assert_eq!(reader.position(), 0);
+        assert_eq!(table.len(), 1);
+        assert!(table.contains(9));
+        assert!(!table.contains(77));
+    }
+
+    #[test]
+    fn feature_layer_dispatches_fgdb_wrapper_and_propagates_inner_stop() {
+        let mut bytes = Vec::new();
+        push_u16(&mut bytes, 1); // FeatureLayer version
+        push_empty_string(&mut bytes);
+        push_empty_string(&mut bytes);
+        push_u16(&mut bytes, 0); // 可见性
+        push_u16(&mut bytes, 0);
+        push_u16(&mut bytes, 0);
+        bytes.extend(FGDB_FEATURE_CLASS_NAME_CLASS_ID);
+        push_u32(&mut bytes, 55);
+        push_u16(&mut bytes, 1); // FgdbFeatureClassName version
+        push_u16(&mut bytes, 0x1234); // 外层 short
+        push_feature_class_body(&mut bytes, Some([0xAA; 16]), 77);
+        let mut reader = Reader::new(&bytes);
+        let mut table = RefTable10_1::new();
+
+        let layer = read_feature_layer_prefix_10_1(&mut reader, 64, &mut table)
+            .expect("Fgdb data source reaches the known inner stop point");
+
+        let DataSource10_1::FeatureClassName(body) = layer.data_source else {
+            panic!("FGDB class should use its dedicated data-source branch");
+        };
+        let wrapper = body.fgdb_wrapper.unwrap();
+        assert_eq!(wrapper.version, 1);
+        assert_eq!(wrapper.unknown_short, 0x1234);
+        assert!(matches!(
+            layer.stop,
+            FeatureLayerStop10_1::DataSource(FeatureClassNameStop10_1::WorkspaceNameUnsupported {
+                key: 77,
+                ..
+            })
+        ));
+        assert!(table.contains(55));
+        assert!(!table.contains(77));
+    }
 }
