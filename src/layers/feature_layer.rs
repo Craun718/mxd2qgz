@@ -404,6 +404,16 @@ pub fn read_feature_class_name_body_10_1(
     table: &mut RefTable10_1,
     key: u32,
 ) -> io::Result<FeatureClassNamePrefix10_1> {
+    read_feature_class_name_body_with_depth_10_1(reader, max_bytes, table, key, 0)
+}
+
+pub(crate) fn read_feature_class_name_body_with_depth_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+    depth: usize,
+) -> io::Result<FeatureClassNamePrefix10_1> {
     let mut trial = reader.clone();
     let entry_offset = trial.position();
     let invalid = |reason: String| {
@@ -486,12 +496,14 @@ pub fn read_feature_class_name_body_10_1(
         // `DatasetNameBodyStopped` 透传（游标停在其停止点）。
         let mut more_stop = None;
         let slot = {
-            let dispatched = crate::objects::dataset_name_more::read_dataset_name_slot_10_1(
-                &mut trial,
-                max_bytes,
-                &mut staged_table,
-                &mut more_stop,
-            )?;
+            let dispatched =
+                crate::objects::dataset_name_more::read_dataset_name_slot_with_depth_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged_table,
+                    &mut more_stop,
+                    depth,
+                )?;
             match dispatched {
                 crate::objects::dataset_name_more::DatasetNameMoreSlot10_1::Null => {
                     DatasetNameEntry10_1::Null
@@ -501,7 +513,22 @@ pub fn read_feature_class_name_body_10_1(
                     key,
                 } => DatasetNameEntry10_1::BackReference { class_id, key },
                 crate::objects::dataset_name_more::DatasetNameMoreSlot10_1::Body(body) => {
-                    DatasetNameEntry10_1::NewObject(Box::new(body))
+                    match body {
+                        crate::objects::dataset_name_more::DatasetNameMoreBody10_1::FeatureClassName(nested) => {
+                            if let Some(inner) = nested.stop.clone() {
+                                stop = Some(FeatureClassNameStop10_1::DatasetNameBodyStopped(
+                                    crate::objects::dataset_name_more::DatasetNameMoreStop10_1::FeatureClassNameStopped {
+                                        class_id: FEATURE_CLASS_NAME_CLASS_ID,
+                                        key: nested.key,
+                                        reason: format!("{inner:?}"),
+                                    },
+                                ));
+                            }
+                            // FCN 是 DatasetNameMoreBody 的扩展值；保留在统一枚举中。
+                            DatasetNameEntry10_1::NewObject(Box::new(crate::objects::dataset_name_more::DatasetNameMoreBody10_1::FeatureClassName(nested)))
+                        }
+                        other => DatasetNameEntry10_1::NewObject(Box::new(other)),
+                    }
                 }
                 crate::objects::dataset_name_more::DatasetNameMoreSlot10_1::Unsupported {
                     class_id,

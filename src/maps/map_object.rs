@@ -369,6 +369,9 @@ pub struct MapPrefix10_1 {
     /// 对象体；其他类标识 → [`read_map_prefix_10_1`] 直接报错。对象头键值
     /// 原样丢弃，未保留。
     pub spatial_reference: Option<MapSpatialReference10_1>,
+    /// 第 4 步空间参考对象键；供后续严格解析对该对象的回引。
+    /// 空标记时为 `None`。
+    pub spatial_reference_key: Option<u32>,
     /// 已确认前缀之后剩余的字节数。
     ///
     /// 对应 Load 第 5 步起的字段：其中「图层列表 → … → 书签循环」一段可由
@@ -501,6 +504,7 @@ fn read_map_prefix_inner(
             name,
             secondary_name,
             spatial_reference,
+            spatial_reference_key,
             remaining_bytes: trial.remaining(),
         },
         spatial_reference_key,

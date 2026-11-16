@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 fn crs(definition: &str) -> CoordinateSystem {
     CoordinateSystem {
         definition: definition.into(),
+        projected: None,
         unknown_fields: vec![],
     }
 }

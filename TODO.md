@@ -77,7 +77,7 @@
   - [x] 定性 ProjectedCoordinateSystem 的标志字段语义：流内 u16=`SgCoordRefGetPrecision()>>6&1`，1=64 位高精度网格、0=32 位或无（sg.dll 逐指令绑定；样本 0x0001 吻合）。
   - [x] 定性 ProjectedCoordinateSystem 的 double 字段语义：7 个=XY/Z/M 假原点+比例因子，尾随 3 个=XY/Z/M 容差（ISpatialReferenceTolerance 槽绑定；默认公式 max(0.001/单位因子, 2.0/scale) 复现样本 3×0.001）；域串更正为 u32 字节长+UTF-16LE 原样（旧「ANSI 转码」系误读）；垂向段布局闭合（写侧恒写标志 0），见 [研究记录](docs/arcmap-10.1-pcs-geometry-slots.md)。
   - [x] 实现显式 10.1 ProjectedCoordinateSystem 对象体读取器：按原生 Load 版本分支取字段（>2 域串、≥4 标志+7 double、≥5 再 3 double、>7 拒绝），WKT 强制 ASCII，域串与 double 原样保留；已由 Map 前缀读取器调用。
-  - [ ] 将 ProjectedCoordinateSystem 对象体字段（域字符串、标志、double）接入中间模型。
+  - [x] 将 ProjectedCoordinateSystem 对象体字段（域字符串、标志、double）接入中间模型；合成输入覆盖，尚未在目标软件人工验证。
 - [x] 读取 OLE 容器中的 `/Version`、`/Maps` 等数据流并识别 MXD 版本。
   - [x] 实现显式 10.8 `/Version` 前缀的严格读取器，保留候选文本、有符号 short 位模式和尾部位置；不识别版本，写入规则和跨版本兼容性仍未知。
   - [ ] 闭合 10.8 `/Version` 的写入规则。
@@ -139,7 +139,7 @@
   - [x] 第二轮整合接线：更正 `DISPLAY_EXPRESSION_PROPS_CLASS_ID` 转录笔误（`48 4c`↔`4c 48`，笔误使 DEP 槽永不命中）、FieldInfo 槽 4-way→9-way 分派、TextElement IGeometry 四类分派与 MarkerElement IPoint 接 Point、CharacterMarker 字体槽接 StdFont、PictureMarker 四处 IPicture 槽接 StdPicture、`mxd_maps` DEP/LELP 停止链诊断、robustness 集中清单 74→93 入口；534 项测试全绿，样本停止点 0xd6c→0x151a→0x155a。
   - [x] 走查脚本独立证实 `0xf63..0xfe6` 段（FIDSet/选择集/显示过滤器/扩展段头），第十轮接线后样本连续消费至 `0x155a`；ALPC 条目键/尾 int32 已解析（样本修正 ALPC 尾 int32=1）。
   - [x] 第三轮并行七轮研究+整合接线（2026-11-16）：七组开放族闭合 55 项（A 停止点后方/DEP 裁决+TimeData 族、B IDatasetName 槽族含两类不可持久化裁决、C Legend/MapSurround 全族、D Variant-PropertySet 八分支含四处旧记录修正、E Save 写侧六表+三重交互闭合、F PCS IID/语义+GCS/Unknown 体+CircularArc 裁决、G DisplayCore 槽族含两项负证据裁决），新读取器模块 10 个；整合接线 17 处+element_body ==7/==9+property_set 9|13 两段落位（重叠实现按基准裁决保留一份），robustness 集中清单 93→137 入口，全仓 649 项测试全绿；样本停止点 `0x155a`→`0x1622`（DEP 体完整消费→EC@0x1608 完整消费→委派体数据源未支持类 `{75E10086}` 的对象头位于 0x166c，本项目读取器回退至委派体起点 0x1622）；新研究文档七份（docs/arcmap-10.1-{dep-tail,dataset-name-slots,legend-family,variant-propertyset-slots,save-side,pcs-geometry-slots,display-slots-round3}.md）；全部静态取证，未在目标软件人工验证。
-  - [ ] 接线 FCN 自身 `{198846D0}` 在 IDatasetName 槽内递归嵌套 FeatureClassName 的分派（需 layers 层自递归+深度限额；B 轮六类已接入 TopologyName/FCN 选择子槽，此嵌套形态未接，见 dataset-name-slots 记录接线建议）。
+  - [x] 接线 FCN 自身 `{198846D0}` 在 IDatasetName 槽内递归嵌套 FeatureClassName 的分派（layers 层自递归并设置深度限额，覆盖合成输入和限额回滚；尚无目标软件验证，见 dataset-name-slots 研究记录）。
   - 其余开放项按类别逐项单列，每项职责单一；闭合路径注于类别，出处见各研究文档：
     - 体未闭合类族（逐个反编译闭合对象体或分支）：
       - [x] 裁决「DEP 尾段」不存在：DisplayExpressionProperties 实现在 FeatureLayer.dll 定位（RTTI→COL→虚表→GetClassID 三方互证），体=版本≤1+String+int16+引擎槽四项完结无尾段；样本 `0x155a..0x15d8` 实为 FL 后继段 ㊵+㊶，逐字节走查断言通过；第十轮「GetClassID/Load 未定位」撤销，见 [研究记录](docs/arcmap-10.1-dep-tail.md)。

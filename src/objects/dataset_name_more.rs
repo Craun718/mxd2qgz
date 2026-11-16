@@ -174,6 +174,8 @@ pub const IID_4434D680: [u8; 16] = [
 /// IDatasetName 槽（请求 IID `{89E75917-…}`）新对象的分派读取结果。
 #[derive(Debug, Clone, PartialEq)]
 pub enum DatasetNameMoreBody10_1 {
+    /// FeatureClassName 自身在 IDatasetName 槽中递归嵌套的对象体。
+    FeatureClassName(Box<crate::layers::feature_layer::FeatureClassNamePrefix10_1>),
     /// FeatureDatasetName（第六轮读取器）。
     FeatureDataset(Box<FeatureDatasetNameBody10_1>),
     /// GeometricNetworkName（本模块）。
@@ -210,6 +212,12 @@ pub enum DatasetNameMoreSlot10_1 {
 /// 六类体读取的统一停止原因（体内在首个不可闭合处停止，非错误）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DatasetNameMoreStop10_1 {
+    /// 嵌套 FeatureClassName 自身的已确认停止点。
+    FeatureClassNameStopped {
+        class_id: [u8; 16],
+        key: u32,
+        reason: String,
+    },
     /// 槽位新对象无已闭合读取器（IDatasetName 槽的非七类、或请求 IID 语义
     /// 未知的槽出现新对象）：游标已回退到该槽位对象头起点。
     SlotUnsupported { class_id: [u8; 16], key: u32 },
@@ -224,6 +232,9 @@ pub enum DatasetNameMoreStop10_1 {
         inner: Box<DatasetNameMoreStop10_1>,
     },
 }
+
+/// FCN 自身递归读取的安全上限（并非 ArcMap 格式限制）。
+pub const MAX_FEATURE_CLASS_NAME_NESTING_DEPTH: usize = 16;
 
 /// 请求 IID 语义未知的槽位（MemoryRelationshipClassName 两槽、QueryTableName
 /// 第二槽、RelQueryTableName 三槽、DBTableName 尾槽）的分类结果：新对象一律
@@ -492,6 +503,17 @@ pub fn read_dataset_name_slot_10_1(
     table: &mut RefTable10_1,
     stop_out: &mut Option<DatasetNameMoreStop10_1>,
 ) -> io::Result<DatasetNameMoreSlot10_1> {
+    read_dataset_name_slot_with_depth_10_1(reader, max_bytes, table, stop_out, 0)
+}
+
+/// 带 FCN 递归深度预算的 IDatasetName 槽分派器。
+pub(crate) fn read_dataset_name_slot_with_depth_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    stop_out: &mut Option<DatasetNameMoreStop10_1>,
+    depth: usize,
+) -> io::Result<DatasetNameMoreSlot10_1> {
     // 整体事务：入口克隆 trial 游标与暂存登记表，成功返回（含停止）才提交；
     // 任何失败（截断、嵌套体错误）与未知类回退路径都不推进调用者游标、
     // 不修改登记表。
@@ -505,7 +527,8 @@ pub fn read_dataset_name_slot_10_1(
                 Ok(DatasetNameMoreSlot10_1::BackReference { class_id, key })
             }
             ObjectEntry10_1::NewObject { class_id, key } => {
-                let known = class_id == FEATURE_DATASET_NAME_CLASS_ID
+                let known = class_id == crate::layers::feature_layer::FEATURE_CLASS_NAME_CLASS_ID
+                    || class_id == FEATURE_DATASET_NAME_CLASS_ID
                     || class_id == GEOMETRIC_NETWORK_NAME_CLASS_ID
                     || class_id == RELATIONSHIP_CLASS_NAME_CLASS_ID
                     || class_id == MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID
@@ -517,6 +540,34 @@ pub fn read_dataset_name_slot_10_1(
                     trial = reader.clone();
                     *stop_out = Some(DatasetNameMoreStop10_1::SlotUnsupported { class_id, key });
                     return Ok(DatasetNameMoreSlot10_1::Unsupported { class_id, key });
+                }
+                if class_id == crate::layers::feature_layer::FEATURE_CLASS_NAME_CLASS_ID {
+                    if depth >= MAX_FEATURE_CLASS_NAME_NESTING_DEPTH {
+                        return Err(io::Error::new(
+                            ErrorKind::InvalidData,
+                            format!(
+                                "FeatureClassName 递归深度超过读取器限额 {MAX_FEATURE_CLASS_NAME_NESTING_DEPTH}（防栈溢出，非原生限制）"
+                            ),
+                        ));
+                    }
+                    let body =
+                        crate::layers::feature_layer::read_feature_class_name_body_with_depth_10_1(
+                            &mut trial,
+                            max_bytes,
+                            &mut staged,
+                            key,
+                            depth + 1,
+                        )?;
+                    *stop_out = body.stop.as_ref().map(|reason| {
+                        DatasetNameMoreStop10_1::FeatureClassNameStopped {
+                            class_id,
+                            key,
+                            reason: format!("{reason:?}"),
+                        }
+                    });
+                    return Ok(DatasetNameMoreSlot10_1::Body(
+                        DatasetNameMoreBody10_1::FeatureClassName(Box::new(body)),
+                    ));
                 }
                 let (body, stop) = read_dataset_name_object_10_1(
                     &mut trial,
@@ -1024,6 +1075,77 @@ mod tests {
         v.extend(str_bytes("几何网络"));
         v.extend_from_slice(tail);
         v
+    }
+
+    fn fcn_body(nested: &[u8]) -> Vec<u8> {
+        let mut v = 1u16.to_le_bytes().to_vec();
+        for _ in 0..4 {
+            v.extend(str_bytes(""));
+        }
+        v.extend_from_slice(&0i32.to_le_bytes());
+        v.extend_from_slice(&0i32.to_le_bytes());
+        v.extend_from_slice(&1u16.to_le_bytes());
+        v.extend_from_slice(nested);
+        v
+    }
+
+    #[test]
+    fn fcn_dataset_name_slot_recursively_dispatches_feature_class_name() {
+        let inner_entry = entry(
+            &crate::layers::feature_layer::FEATURE_CLASS_NAME_CLASS_ID,
+            42,
+        );
+        let mut bytes = entry(
+            &crate::layers::feature_layer::FEATURE_CLASS_NAME_CLASS_ID,
+            41,
+        );
+        bytes.extend(fcn_body(&inner_entry));
+        bytes.extend(fcn_body(&[0u8; 16]));
+
+        let mut reader = Reader::new(&bytes);
+        let mut table = RefTable10_1::new();
+        let mut stop = None;
+        let result = read_dataset_name_slot_10_1(&mut reader, 64, &mut table, &mut stop).unwrap();
+        let DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::FeatureClassName(outer)) =
+            result
+        else {
+            panic!("顶层 FCN 应完成类分派");
+        };
+        assert_eq!(outer.key, 41);
+        assert!(matches!(
+            outer.nested,
+            crate::layers::feature_layer::FeatureClassNameNested10_1::DatasetName(
+                crate::layers::feature_layer::DatasetNameEntry10_1::NewObject(inner)
+            ) if matches!(*inner, DatasetNameMoreBody10_1::FeatureClassName(_))
+        ));
+        assert!(table.contains(41));
+        assert!(table.contains(42));
+        assert_eq!(reader.position(), bytes.len());
+        assert_eq!(stop, None);
+    }
+
+    #[test]
+    fn fcn_recursion_depth_limit_fails_transactionally() {
+        let bytes = entry(
+            &crate::layers::feature_layer::FEATURE_CLASS_NAME_CLASS_ID,
+            51,
+        );
+        let mut reader = Reader::new(&bytes);
+        let mut table = RefTable10_1::new();
+        let mut stop = None;
+        let err = read_dataset_name_slot_with_depth_10_1(
+            &mut reader,
+            64,
+            &mut table,
+            &mut stop,
+            MAX_FEATURE_CLASS_NAME_NESTING_DEPTH,
+        )
+        .unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::InvalidData);
+        assert!(err.to_string().contains("递归深度超过读取器限额"));
+        assert_eq!(reader.position(), 0);
+        assert!(!table.contains(51));
+        assert_eq!(stop, None);
     }
 
     #[test]

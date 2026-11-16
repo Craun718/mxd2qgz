@@ -144,6 +144,7 @@ fn reads_sample_layout_prefix_and_preserves_remaining_bytes() {
     let prefix_length = bytes.len() - 4;
     let mut reader = Reader::new(&bytes);
     let parsed = read_map_prefix_10_1(&mut reader, 1024).unwrap();
+    assert_eq!(parsed.spatial_reference_key, Some(30));
     assert_eq!(parsed.version, 51);
     assert_eq!(parsed.name, "新建数据框");
     assert_eq!(parsed.secondary_name, "");

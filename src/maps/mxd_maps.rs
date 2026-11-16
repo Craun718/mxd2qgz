@@ -62,7 +62,7 @@ use crate::maps::map_object::{
 use crate::maps::maps_stream::read_root_prefix_10_1;
 use crate::model::{
     CoordinateSystem, DataFrame, DataSource, Extent, Layer, LayerGroup, LayerNode, Map,
-    UnknownField,
+    ProjectedCoordinateSystem, UnknownField,
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
 use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
@@ -265,6 +265,11 @@ fn parse_first_frame(
         None => diagnostics
             .push("空间参考：嵌套对象头为 16 零字节空引用标记，该数据框未设置坐标系".to_string()),
     }
+    let map_crs = prefix
+        .spatial_reference
+        .as_ref()
+        .and_then(map_spatial_reference_to_model);
+    let map_crs_key = prefix.spatial_reference_key;
 
     // 后缀读取：图层列表 → 基本图形层 → MapSurround → WKSEnvelope → 两个
     // int32 → IEnvelope → 书签循环，到书签循环为止。后缀读取器从 Map 对象体
@@ -311,12 +316,18 @@ fn parse_first_frame(
                 }
                 feature_layer_successor_note(prefix, entry.index, diagnostics);
                 let source = feature_layer_source(prefix, entry.index, diagnostics);
+                let crs = feature_layer_crs(
+                    prefix,
+                    map_crs_key,
+                    map_crs.as_ref(),
+                    entry.index,
+                    diagnostics,
+                );
                 Some(LayerNode::Layer(Layer {
                     name: prefix.name.clone(),
                     visible,
                     source,
-                    // 图层坐标系宿主为图层体内 Envelope（尾段未闭合），保留为 None。
-                    crs: None,
+                    crs,
                     extent: None,
                     unknown_fields: Vec::new(),
                 }))
@@ -342,6 +353,13 @@ fn parse_first_frame(
                         ));
                         feature_layer_successor_note(associated, entry.index, diagnostics);
                         let source = feature_layer_source(associated, entry.index, diagnostics);
+                        let crs = feature_layer_crs(
+                            associated,
+                            map_crs_key,
+                            map_crs.as_ref(),
+                            entry.index,
+                            diagnostics,
+                        );
                         // IElementCollection2 槽（A 轮起 FL 体 TailCompleted 后
                         // 可达）：透传其消费摘要。
                         if let Some(slot) = &prefix.element_collection {
@@ -389,7 +407,7 @@ fn parse_first_frame(
                             name: associated.name.clone(),
                             visible,
                             source,
-                            crs: None,
+                            crs,
                             extent: None,
                             unknown_fields: Vec::new(),
                         }))
@@ -436,7 +454,13 @@ fn parse_first_frame(
                             parsed,
                             ..
                         } => {
-                            if let Some(node) = body_prefix_node(parsed, entry.index, diagnostics) {
+                            if let Some(node) = body_prefix_node(
+                                parsed,
+                                entry.index,
+                                map_crs_key,
+                                map_crs.as_ref(),
+                                diagnostics,
+                            ) {
                                 group_children.push(node);
                             }
                         }
@@ -444,7 +468,13 @@ fn parse_first_frame(
                             parsed: Some(parsed),
                             ..
                         } => {
-                            if let Some(node) = body_prefix_node(parsed, entry.index, diagnostics) {
+                            if let Some(node) = body_prefix_node(
+                                parsed,
+                                entry.index,
+                                map_crs_key,
+                                map_crs.as_ref(),
+                                diagnostics,
+                            ) {
                                 group_children.push(node);
                             }
                         }
@@ -673,23 +703,7 @@ fn parse_first_frame(
         name: prefix.name,
         secondary_name: Some(prefix.secondary_name),
         children,
-        crs: prefix.spatial_reference.and_then(|sr| match sr {
-            // PCS/GCS 以 WKT 写入模型；Unknown 无 WKT（4 串语义未定），
-            // 保持 None 并以诊断说明。
-            crate::maps::map_object::MapSpatialReference10_1::Projected(pcs) => {
-                Some(CoordinateSystem {
-                    definition: pcs.wkt,
-                    unknown_fields: Vec::new(),
-                })
-            }
-            crate::maps::map_object::MapSpatialReference10_1::Geographic(gcs) => {
-                Some(CoordinateSystem {
-                    definition: gcs.wkt,
-                    unknown_fields: Vec::new(),
-                })
-            }
-            crate::maps::map_object::MapSpatialReference10_1::UnknownCoordinateSystem(_) => None,
-        }),
+        crs: map_crs,
         extent,
         unknown_fields: frame_unknown,
     };
@@ -711,6 +725,107 @@ fn variant_bool_to_model(raw: u16, what: &str) -> (bool, Option<String>) {
                  （COM 惯例，原生比较语义未取证）"
             )),
         ),
+    }
+}
+
+fn map_spatial_reference_to_model(
+    sr: &crate::maps::map_object::MapSpatialReference10_1,
+) -> Option<CoordinateSystem> {
+    match sr {
+        crate::maps::map_object::MapSpatialReference10_1::Projected(pcs) => {
+            Some(CoordinateSystem {
+                definition: pcs.wkt.clone(),
+                projected: Some(ProjectedCoordinateSystem {
+                    save_version: pcs.save_version,
+                    domains: pcs.domains.as_ref().map(|domains| domains.strings.clone()),
+                    vertical_flag: pcs.domains.as_ref().map(|domains| domains.vertical_flag),
+                    precision_flags: pcs.precision.as_ref().map(|p| p.flags),
+                    precision_doubles: pcs.precision.as_ref().map(|p| p.doubles),
+                    trailing_doubles: pcs.trailing_doubles,
+                }),
+                unknown_fields: Vec::new(),
+            })
+        }
+        crate::maps::map_object::MapSpatialReference10_1::Geographic(gcs) => {
+            Some(CoordinateSystem {
+                definition: gcs.wkt.clone(),
+                projected: None,
+                unknown_fields: Vec::new(),
+            })
+        }
+        crate::maps::map_object::MapSpatialReference10_1::UnknownCoordinateSystem(_) => None,
+    }
+}
+
+/// 只把 FeatureLayer 已确认的 +0x1f4 Envelope 槽坐标系接入图层模型。
+fn feature_layer_crs(
+    layer: &crate::layers::feature_layer::FeatureLayerPrefix10_1,
+    map_crs_key: Option<u32>,
+    map_crs: Option<&CoordinateSystem>,
+    entry_index: usize,
+    diagnostics: &mut Vec<String>,
+) -> Option<CoordinateSystem> {
+    use crate::layers::annotate_props::EnvelopeSlot10_1;
+
+    let envelope = layer.successor.as_ref().and_then(|s| s.envelope_2.as_ref());
+    let reference = match envelope {
+        Some(EnvelopeSlot10_1::Envelope(body)) => body.spatial_reference.as_ref(),
+        Some(EnvelopeSlot10_1::BackReference { key, .. }) => {
+            diagnostics.push(format!(
+                "条目 {}：+0x1f4 Envelope 本身为回引（键 {key}），没有该 Envelope 的已解析体；不推断图层 CRS",
+                entry_index + 1
+            ));
+            return None;
+        }
+        Some(EnvelopeSlot10_1::Null) | None => return None,
+    };
+    envelope_reference_to_model(reference, map_crs_key, map_crs, entry_index, diagnostics)
+}
+
+fn envelope_reference_to_model(
+    reference: Option<&crate::objects::envelope::SpatialReferenceEntry10_1>,
+    map_crs_key: Option<u32>,
+    map_crs: Option<&CoordinateSystem>,
+    entry_index: usize,
+    diagnostics: &mut Vec<String>,
+) -> Option<CoordinateSystem> {
+    use crate::objects::envelope::SpatialReferenceEntry10_1;
+
+    match reference {
+        Some(SpatialReferenceEntry10_1::Projected { body, .. }) => map_spatial_reference_to_model(
+            &crate::maps::map_object::MapSpatialReference10_1::Projected(body.clone()),
+        ),
+        Some(SpatialReferenceEntry10_1::Geographic { body, .. }) => map_spatial_reference_to_model(
+            &crate::maps::map_object::MapSpatialReference10_1::Geographic(body.clone()),
+        ),
+        Some(SpatialReferenceEntry10_1::BackReference { class_id, key }) => {
+            let expected_class_id = map_crs.map(|crs| {
+                if crs.projected.is_some() {
+                    crate::objects::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID
+                } else {
+                    crate::objects::spatial_reference_slots::GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID
+                }
+            });
+            if map_crs_key == Some(*key) && expected_class_id == Some(*class_id) {
+                return map_crs.cloned();
+            }
+            diagnostics.push(format!(
+                "条目 {}：+0x1f4 Envelope 空间参考回引键 {key}/类标识 {} 与 Map CRS 键 {:?}/类标识 {:?} 不匹配；图层 CRS 留空",
+                entry_index + 1,
+                crate::storage::class_id_hex(class_id),
+                map_crs_key,
+                expected_class_id.map(|id| crate::storage::class_id_hex(&id))
+            ));
+            None
+        }
+        Some(SpatialReferenceEntry10_1::UnknownCoordinateSystem { key, .. }) => {
+            diagnostics.push(format!(
+                "条目 {}：+0x1f4 Envelope 空间参考为无已确认 WKT 的 UnknownCoordinateSystem（键 {key}）；图层 CRS 留空",
+                entry_index + 1
+            ));
+            None
+        }
+        Some(SpatialReferenceEntry10_1::Null) | None => None,
     }
 }
 
@@ -915,6 +1030,8 @@ fn feature_layer_source(
 fn body_prefix_node(
     prefix: &LayerBodyPrefix10_1,
     entry_index: usize,
+    map_crs_key: Option<u32>,
+    map_crs: Option<&CoordinateSystem>,
     diagnostics: &mut Vec<String>,
 ) -> Option<LayerNode> {
     match prefix {
@@ -924,11 +1041,12 @@ fn body_prefix_node(
                 diagnostics.push(note);
             }
             let source = feature_layer_source(fl, entry_index, diagnostics);
+            let crs = feature_layer_crs(fl, map_crs_key, map_crs, entry_index, diagnostics);
             Some(LayerNode::Layer(Layer {
                 name: fl.name.clone(),
                 visible,
                 source,
-                crs: None,
+                crs,
                 extent: None,
                 unknown_fields: Vec::new(),
             }))
@@ -940,11 +1058,13 @@ fn body_prefix_node(
                     diagnostics.push(note);
                 }
                 let source = feature_layer_source(associated, entry_index, diagnostics);
+                let crs =
+                    feature_layer_crs(associated, map_crs_key, map_crs, entry_index, diagnostics);
                 Some(LayerNode::Layer(Layer {
                     name: associated.name.clone(),
                     visible,
                     source,
-                    crs: None,
+                    crs,
                     extent: None,
                     unknown_fields: Vec::new(),
                 }))
@@ -966,7 +1086,9 @@ fn body_prefix_node(
                         parsed,
                         ..
                     } => {
-                        if let Some(node) = body_prefix_node(parsed, entry_index, diagnostics) {
+                        if let Some(node) =
+                            body_prefix_node(parsed, entry_index, map_crs_key, map_crs, diagnostics)
+                        {
                             children.push(node);
                         }
                     }
@@ -974,7 +1096,9 @@ fn body_prefix_node(
                         parsed: Some(parsed),
                         ..
                     } => {
-                        if let Some(node) = body_prefix_node(parsed, entry_index, diagnostics) {
+                        if let Some(node) =
+                            body_prefix_node(parsed, entry_index, map_crs_key, map_crs, diagnostics)
+                        {
                             children.push(node);
                         }
                     }
@@ -1139,6 +1263,13 @@ mod tests {
         assert_eq!(extent.ymax, 2520951.8351);
         let crs = frame.crs.as_ref().unwrap();
         assert_eq!(crs.definition, "PROJCS[\"CGCS2000\"]");
+        let projected = crs.projected.as_ref().expect("PCS 体字段应进入模型");
+        assert_eq!(projected.save_version, 6);
+        assert_eq!(projected.domains, Some([vec![], vec![], vec![], vec![]]));
+        assert_eq!(projected.vertical_flag, Some(0));
+        assert_eq!(projected.precision_flags, Some(1));
+        assert_eq!(projected.precision_doubles, Some(SAMPLE_SEVEN_DOUBLES));
+        assert_eq!(projected.trailing_doubles, Some(SAMPLE_THREE_DOUBLES));
         assert_eq!(crs.unknown_fields, []);
         // 图层列表为空（计数 0）：除尾部外没有其他未知体；尾部起点是书签
         // 计数之后的停止点。
@@ -1181,6 +1312,39 @@ mod tests {
                 .iter()
                 .any(|note| note.contains("书签计数 0"))
         );
+    }
+
+    #[test]
+    fn envelope_crs_back_reference_requires_exact_map_object_key() {
+        let map_crs = CoordinateSystem {
+            definition: "GEOGCS[\"Map CRS\"]".to_string(),
+            projected: None,
+            unknown_fields: Vec::new(),
+        };
+        let reference = crate::objects::envelope::SpatialReferenceEntry10_1::BackReference {
+            class_id:
+                crate::objects::spatial_reference_slots::GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID,
+            key: SAMPLE_PCS_KEY,
+        };
+        let mut diagnostics = Vec::new();
+        let matched = envelope_reference_to_model(
+            Some(&reference),
+            Some(SAMPLE_PCS_KEY),
+            Some(&map_crs),
+            0,
+            &mut diagnostics,
+        );
+        assert_eq!(matched, Some(map_crs.clone()));
+
+        let mismatched = envelope_reference_to_model(
+            Some(&reference),
+            Some(SAMPLE_PCS_KEY + 1),
+            Some(&map_crs),
+            0,
+            &mut diagnostics,
+        );
+        assert_eq!(mismatched, None);
+        assert!(diagnostics.iter().any(|note| note.contains("不匹配")));
     }
 
     #[test]
