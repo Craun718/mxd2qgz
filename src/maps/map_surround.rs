@@ -114,6 +114,16 @@ use crate::layers::legend_item::{
     HORIZONTAL_LEGEND_ITEM_CLASS_ID, HorizontalLegendItemBody10_1, HorizontalLegendItemStop10_1,
     read_horizontal_legend_item_body_10_1,
 };
+use crate::layers::legend_item_family::{
+    HORIZONTAL_BAR_LEGEND_ITEM_CLASS_ID, HorizontalBarLegendItemBody10_1,
+    NESTED_LEGEND_ITEM_CLASS_ID, NestedLegendItemBody10_1, VERTICAL_LEGEND_ITEM_CLASS_ID,
+    VerticalLegendItemBody10_1, read_horizontal_bar_legend_item_body_10_1,
+    read_nested_legend_item_body_10_1, read_vertical_legend_item_body_10_1,
+};
+use crate::maps::map_surround_family::{
+    FamilyStop10_1, LEGEND_FORMAT_CLASS_ID as FAMILY_LEGEND_FORMAT_CLASS_ID, LegendFormatBody10_1,
+    read_legend_format_body_10_1,
+};
 use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -252,17 +262,25 @@ pub struct FeatureBookmark10_1 {
 }
 
 /// Legend 第 3 字段（请求 IID `{52AA5BC1-…}` ILegendFormat）的分类结果。
-/// 新对象体无读取器（LegendFormat 等类未反编译）——触发停止而非枚举值。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// C 轮接线起新对象命中 LegendFormat 类时整体消费其闭合体
+/// （`map_surround_family` 模块；体内停止经
+/// [`LegendStop10_1::LegendFormatBodyIncomplete`] 透传），其余实现类维持
+/// 停止点语义。
+#[derive(Debug, Clone, PartialEq)]
 pub enum LegendFormatEntry10_1 {
     /// 16 字节全零类标识：空引用标记。
     Null,
     /// 键已在本会话登记：20 字节回引条目，其后没有对象体。
     BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 LegendFormat 对象：已读取其闭合体（C 轮接线；IPS 虚表/9 段字段
+    /// 序证据见 docs/arcmap-10.1-legend-family.md）。
+    Body(Box<LegendFormatBody10_1>),
 }
 
 /// Legend 条目循环内一个对象条目（请求 IID `{52AA5BC0-…}` ILegendItem）的
-/// 分类结果（接线轮起 HorizontalLegendItem 体闭合并接入分派）。
+/// 分类结果（接线轮起 HorizontalLegendItem 体闭合接入分派；C 轮接线起
+/// HorizontalBar/Nested/Vertical 三类接入）。
 #[derive(Debug, Clone, PartialEq)]
 pub enum LegendItemSlot10_1 {
     /// 16 字节全零类标识：空引用标记。
@@ -274,6 +292,14 @@ pub enum LegendItemSlot10_1 {
     /// 包装 + LayerLib BaseLegendItem 字段序；体内停止经
     /// [`LegendStop10_1::LegendItemBodyIncomplete`] 上抛）。
     HorizontalLegendItem(Box<HorizontalLegendItemBody10_1>),
+    /// 新 HorizontalBarLegendItem 对象（C 轮接线；流内布局 = BaseLegendItem
+    /// 字段序 + 尾段）。
+    HorizontalBarLegendItem(Box<HorizontalBarLegendItemBody10_1>),
+    /// 新 NestedLegendItem 对象（C 轮接线；BaseLegendItem 字段序 + 尾段）。
+    NestedLegendItem(Box<NestedLegendItemBody10_1>),
+    /// 新 VerticalLegendItem 对象（C 轮接线；与 HorizontalLegendItem 逐字节
+    /// 同序，区别仅在对象头类身份）。
+    VerticalLegendItem(Box<VerticalLegendItemBody10_1>),
 }
 
 /// Legend 条目循环中一个已消费的对象条目（含触发停止的新对象头）。
@@ -324,6 +350,12 @@ pub enum LegendStop10_1 {
         /// HorizontalLegendItem 体内的停止原因。
         reason: HorizontalLegendItemStop10_1,
     },
+    /// C 轮接线新增：ILegendFormat 槽为 LegendFormat 新对象且其体内出现
+    /// 停止（原因透传）。游标停在其内层停止点。
+    LegendFormatBodyIncomplete {
+        /// LegendFormat 体内的停止原因。
+        reason: FamilyStop10_1,
+    },
     /// 版本门尾段读毕（Load `0x793da250` 自然返回点）。
     Completed,
 }
@@ -338,8 +370,12 @@ impl LegendStop10_1 {
                 key,
             } => format!(
                 "Legend 的 ILegendFormat 槽位（offset 0x{offset:x}）为新对象（类 {}，键 \
-                 {key}）：LegendFormat 体未闭合，停止并保留剩余",
+                 {key}）：该类无闭合读取器，停止并保留剩余",
                 class_id_hex(&class_id)
+            ),
+            Self::LegendFormatBodyIncomplete { reason } => format!(
+                "Legend 的 ILegendFormat 槽位（LegendFormat 体）在停止点停止：{reason:?}；\
+                 游标停在内层停止点，其后字段不可达"
             ),
             Self::LegendItemBody {
                 index,
@@ -659,8 +695,10 @@ pub fn read_legend_prefix_10_1(
     // 2. MapSurround 族共同前缀（含 IMap 槽新对象的Unsupported 转发）。
     let common = read_map_surround_common_prefix_10_1(&mut trial, max_bytes, &mut trial_table)?;
 
-    // 3. LoadObject(ILegendFormat {52AA5BC1-…})：空标记/回引消费后继续；
-    //    新对象体无读取器，消费头后停止。
+    // 3. LoadObject(ILegendFormat {52AA5BC1-…})：空标记/回引消费后继续。
+    //    C 轮接线：新对象命中 LegendFormat 类时经 map_surround_family 读取
+    //    器整体消费其闭合体（体内停止透传）；其余实现类维持既有停止语义
+    //    （消费 20 字节对象头后停止）。
     let format_offset = trial.position();
     let legend_format;
     let mut stop = match read_object_entry_10_1(&mut trial, &mut trial_table)? {
@@ -671,6 +709,17 @@ pub fn read_legend_prefix_10_1(
         ObjectEntry10_1::BackReference { class_id, key } => {
             legend_format = LegendFormatEntry10_1::BackReference { class_id, key };
             None
+        }
+        ObjectEntry10_1::NewObject { class_id, key }
+            if class_id == FAMILY_LEGEND_FORMAT_CLASS_ID =>
+        {
+            let body = read_legend_format_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?;
+            let stop_reason = body
+                .stop
+                .clone()
+                .map(|reason| LegendStop10_1::LegendFormatBodyIncomplete { reason });
+            legend_format = LegendFormatEntry10_1::Body(Box::new(body));
+            stop_reason
         }
         ObjectEntry10_1::NewObject { class_id, key } => {
             legend_format = LegendFormatEntry10_1::Null;
@@ -756,6 +805,54 @@ pub fn read_legend_prefix_10_1(
                         stop = Some(LegendStop10_1::LegendItemBodyIncomplete { index, reason });
                     }
                     LegendItemSlot10_1::HorizontalLegendItem(Box::new(body))
+                }
+                ObjectEntry10_1::NewObject { class_id, key }
+                    if class_id == HORIZONTAL_BAR_LEGEND_ITEM_CLASS_ID =>
+                {
+                    // C 轮接线：HorizontalBarLegendItem 体闭合（BaseLegendItem
+                    // 字段序 + int32/double ×2 尾段），整体消费；体内停止透传。
+                    let body = read_horizontal_bar_legend_item_body_10_1(
+                        &mut trial,
+                        max_bytes,
+                        &mut trial_table,
+                        key,
+                    )?;
+                    if let Some(reason) = body.base.stop.clone() {
+                        stop = Some(LegendStop10_1::LegendItemBodyIncomplete { index, reason });
+                    }
+                    LegendItemSlot10_1::HorizontalBarLegendItem(Box::new(body))
+                }
+                ObjectEntry10_1::NewObject { class_id, key }
+                    if class_id == NESTED_LEGEND_ITEM_CLASS_ID =>
+                {
+                    // C 轮接线：NestedLegendItem 体闭合（BaseLegendItem 字段序
+                    // + 尾段），整体消费；体内停止透传。
+                    let body = read_nested_legend_item_body_10_1(
+                        &mut trial,
+                        max_bytes,
+                        &mut trial_table,
+                        key,
+                    )?;
+                    if let Some(reason) = body.base.stop.clone() {
+                        stop = Some(LegendStop10_1::LegendItemBodyIncomplete { index, reason });
+                    }
+                    LegendItemSlot10_1::NestedLegendItem(Box::new(body))
+                }
+                ObjectEntry10_1::NewObject { class_id, key }
+                    if class_id == VERTICAL_LEGEND_ITEM_CLASS_ID =>
+                {
+                    // C 轮接线：VerticalLegendItem 体闭合（与 HorizontalLegendItem
+                    // 逐字节同序），整体消费；体内停止透传。
+                    let body = read_vertical_legend_item_body_10_1(
+                        &mut trial,
+                        max_bytes,
+                        &mut trial_table,
+                        key,
+                    )?;
+                    if let Some(reason) = body.base.stop.clone() {
+                        stop = Some(LegendStop10_1::LegendItemBodyIncomplete { index, reason });
+                    }
+                    LegendItemSlot10_1::VerticalLegendItem(Box::new(body))
                 }
                 ObjectEntry10_1::NewObject { class_id, key } => {
                     // 其余 LegendItem 实现类体无读取器：已消费 20 字节对象头，

@@ -191,20 +191,31 @@ pub enum DatasetNameSlot10_1 {
     /// 新对象且类标识为 FeatureDatasetName：已读取其体（本模块）；体内
     /// 停止时携带原因。
     FeatureDataset(Box<FeatureDatasetNameBody10_1>),
-    /// 新对象但类标识不是 FeatureDatasetName（UnknownDatasetName、
-    /// GeometricNetworkName、FeatureClassName 等其他 IDatasetName 实现类
-    /// 未闭合）：停止点，游标回退到该对象头起点、该键不登记。
+    /// 新对象且类标识为 B 轮闭合的六类之一（GeometricNetworkName/
+    /// RelationshipClassName/MemoryRelationshipClassName/QueryTableName/
+    /// RelQueryTableName/DBTableName）：已读取其体
+    /// （[`crate::objects::dataset_name_more`]，B 轮接线）；体内停止经
+    /// [`TopologyNameStop10_1`] 透传。
+    More(Box<crate::objects::dataset_name_more::DatasetNameMoreBody10_1>),
+    /// 新对象但类标识无已闭合读取器（TableName / UnknownDatasetName /
+    /// FeatureClassName 自身等）：停止点，游标回退到该对象头起点、该键不
+    /// 登记。
     Unsupported { class_id: [u8; 16], key: u32 },
 }
 
 /// TopologyName 体读取的停止原因。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TopologyNameStop10_1 {
-    /// IDatasetName 槽的新对象类标识不是 FeatureDatasetName（体未知）。
+    /// IDatasetName 槽的新对象类标识无已闭合读取器（体未知）。
     DatasetNameUnsupported { class_id: [u8; 16], key: u32 },
     /// 槽内 FeatureDatasetName 体自身的停止点（如 WorkspaceName 体内
     /// PropertySet 新对象），原因透传。
     FeatureDataset(FeatureDatasetNameStop10_1),
+    /// 槽内 B 轮六类体自身的停止点（原因透传，见
+    /// [`crate::objects::dataset_name_more::DatasetNameMoreStop10_1`]）：
+    /// `SlotUnsupported`/`WorkspacePropertySet` 游标停在对应槽位起点或其
+    /// 停止点，`Nested` 游标停在该嵌套读取器的停止点。
+    MoreNested(crate::objects::dataset_name_more::DatasetNameMoreStop10_1),
 }
 
 /// TopologyName（GdbCore.dll Load `0x7095e5c0`）体的已确认字段。
@@ -364,34 +375,71 @@ pub fn read_topology_name_body_10_1(
     let string_b = read_string_10_1(&mut trial, max_bytes)?;
 
     // 3. IDatasetName 槽（请求 IID 与 FCN 选择子 !=0 分支同值）。原生在此
-    //    之前释放旧指针、装载成功后做虚表 +0x20 通知调用（不读流）。
+    //    之前释放旧指针、装载成功后做虚表 +0x20 通知调用（不读流）。B 轮
+    //    起复用 [`crate::objects::dataset_name_more`] 的七类统一分派：
+    //    FeatureDatasetName 走本模块读取器（既有臂），六类走 B 轮读取器，
+    //    停止透传映射见各变体文档。
     let slot_offset = trial.position();
     let saved_table = table.clone();
     let mut staged_table = table.clone();
     let mut stop = None;
-    let dataset = match read_object_entry_10_1(&mut trial, &mut staged_table)? {
-        ObjectEntry10_1::Null => DatasetNameSlot10_1::Null,
-        ObjectEntry10_1::BackReference { class_id, key } => {
-            DatasetNameSlot10_1::BackReference { class_id, key }
-        }
-        ObjectEntry10_1::NewObject { class_id, key }
-            if class_id == FEATURE_DATASET_NAME_CLASS_ID =>
-        {
-            let body =
-                read_feature_dataset_name_body_10_1(&mut trial, max_bytes, &mut staged_table, key)?;
-            if let Some(inner) = body.stop {
-                stop = Some(TopologyNameStop10_1::FeatureDataset(inner));
+    let mut more_stop = None;
+    let dataset = {
+        let slot = crate::objects::dataset_name_more::read_dataset_name_slot_10_1(
+            &mut trial,
+            max_bytes,
+            &mut staged_table,
+            &mut more_stop,
+        )?;
+        match slot {
+            crate::objects::dataset_name_more::DatasetNameMoreSlot10_1::Null => {
+                DatasetNameSlot10_1::Null
             }
-            DatasetNameSlot10_1::FeatureDataset(Box::new(body))
-        }
-        ObjectEntry10_1::NewObject { class_id, key } => {
-            // 其他 IDatasetName 实现类未闭合：停止并回退到槽位起点。
-            stop = Some(TopologyNameStop10_1::DatasetNameUnsupported { class_id, key });
-            trial = reposition_to(reader, slot_offset);
-            staged_table = saved_table;
-            DatasetNameSlot10_1::Unsupported { class_id, key }
+            crate::objects::dataset_name_more::DatasetNameMoreSlot10_1::BackReference {
+                class_id,
+                key,
+            } => DatasetNameSlot10_1::BackReference { class_id, key },
+            crate::objects::dataset_name_more::DatasetNameMoreSlot10_1::Body(body) => {
+                // 七类统一分派：FeatureDatasetName 变体映射回本模块既有臂
+                //（体读取器同源；其体内 WorkspaceName→PropertySet 停止按旧
+                // 口径映射为 `FeatureDataset(WorkspacePropertySetNewObject)`，
+                // 与 B 轮接线建议的「复用 FeatureDataset 变体表达」一致），
+                // 其余六类进 `More`，停止经 MoreNested 透传。
+                match body {
+                    crate::objects::dataset_name_more::DatasetNameMoreBody10_1::FeatureDataset(
+                        fd,
+                    ) => {
+                        if let Some(inner) = fd.stop.clone() {
+                            stop = Some(TopologyNameStop10_1::FeatureDataset(inner));
+                        }
+                        // 统一分派对 FDN 体只透传 WorkspacePropertySet 一类停
+                        // 止（其余 FDN 体内停止已在体读取器的 stop 字段）；
+                        // 此处消费掉 more_stop 以免落入 MoreNested。
+                        more_stop = None;
+                        DatasetNameSlot10_1::FeatureDataset(fd)
+                    }
+                    other => DatasetNameSlot10_1::More(Box::new(other)),
+                }
+            }
+            crate::objects::dataset_name_more::DatasetNameMoreSlot10_1::Unsupported {
+                class_id,
+                key,
+            } => {
+                // 槽位未知类：既有停止变体（B 轮映射 SlotUnsupported →
+                // DatasetNameUnsupported），分派带出的 stop 一并作废。
+                more_stop = None;
+                stop = Some(TopologyNameStop10_1::DatasetNameUnsupported { class_id, key });
+                trial = reposition_to(reader, slot_offset);
+                staged_table = saved_table;
+                DatasetNameSlot10_1::Unsupported { class_id, key }
+            }
         }
     };
+    if let Some(inner) = more_stop {
+        // 六类体内的停止（SlotUnsupported/Nested/WorkspacePropertySet）：
+        // 游标已由分派读取器定位（槽位起点或内层停止点），透传给宿主。
+        stop = Some(TopologyNameStop10_1::MoreNested(inner));
+    }
 
     let result = TopologyNameBody10_1 {
         key,

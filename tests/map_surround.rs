@@ -415,9 +415,15 @@ fn legend_version_one_reads_legacy_doubles_without_gates() {
 
 #[test]
 fn legend_stops_at_new_format_object_and_commits_key() {
+    // C 轮接线后 LegendFormat 类已整体消费（见下一测试）；本测试改用无闭
+    // 合读取器的实现类，验证既有停止语义不变。
+    let unknown_class = [
+        0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
+        0x10,
+    ];
     let mut bytes = 5_u16.to_le_bytes().to_vec();
     bytes.extend(common_prefix_bytes(3, "图例", Some(9)));
-    push_entry_header(&mut bytes, &LEGEND_FORMAT_CLASS_ID, 11);
+    push_entry_header(&mut bytes, &unknown_class, 11);
     bytes.extend(string_bytes("停止点之后保留为剩余"));
 
     let mut reader = Reader::new(&bytes);
@@ -427,7 +433,7 @@ fn legend_stops_at_new_format_object_and_commits_key() {
         legend.stop,
         LegendStop10_1::LegendFormatBody {
             offset: 2 + common_prefix_bytes(3, "图例", Some(9)).len(),
-            class_id: LEGEND_FORMAT_CLASS_ID,
+            class_id: unknown_class,
             key: 11
         }
     );
@@ -440,7 +446,57 @@ fn legend_stops_at_new_format_object_and_commits_key() {
     assert_eq!(reader.position(), bytes.len() - legend.remaining_bytes);
     // 停止是成功返回：新键提交。
     assert!(table.contains(11));
-    assert!(legend.stop.describe().contains("LegendFormat"));
+    assert!(legend.stop.describe().contains("ILegendFormat"));
+}
+
+#[test]
+fn legend_consumes_legend_format_body_when_class_matches() {
+    // C 轮接线：ILegendFormat 槽新对象命中 LegendFormat 类时整体消费其闭
+    // 合体（版本 2 全空槽形态），其后字段（标题/条目循环）继续可达。
+    let mut bytes = 5_u16.to_le_bytes().to_vec();
+    bytes.extend(common_prefix_bytes(3, "图例", Some(9)));
+    push_entry_header(&mut bytes, &LEGEND_FORMAT_CLASS_ID, 11);
+    // LegendFormat 版本 2 最小完整体（全部槽空标记）：short + TextSymbol 槽
+    // + int32 + double ×11 + 两个补丁槽 + short + double ×2。
+    bytes.extend(2_u16.to_le_bytes());
+    bytes.extend(0_u16.to_le_bytes());
+    bytes.extend([0_u8; 16]);
+    bytes.extend(0_i32.to_le_bytes());
+    for _ in 0..11 {
+        bytes.extend(0_f64.to_le_bytes());
+    }
+    bytes.extend([0_u8; 16]); // ILinePatch 槽
+    bytes.extend([0_u8; 16]); // IAreaPatch 槽
+    bytes.extend(0_u16.to_le_bytes());
+    bytes.extend(0_f64.to_le_bytes());
+    bytes.extend(0_f64.to_le_bytes());
+    // 其后 Legend 字段：标题 + short ×3 + 集合 short + 条目计数 0 + 尾段。
+    bytes.extend(string_bytes(""));
+    for _ in 0..4 {
+        bytes.extend(0_u16.to_le_bytes());
+    }
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(0_u16.to_le_bytes()); // 版本 ≥3 tail_short_1
+    bytes.extend(0_u16.to_le_bytes()); // 版本 ≥4 tail_short_2
+    bytes.extend(0_u16.to_le_bytes());
+    bytes.extend(0_u16.to_le_bytes());
+    bytes.extend(0_u16.to_le_bytes());
+    bytes.extend(4.5_f64.to_le_bytes());
+
+    let mut reader = Reader::new(&bytes);
+    let mut table = table_with_keys(&[9]);
+    let legend = read_legend_prefix_10_1(&mut reader, usize::MAX, &mut table).unwrap();
+    assert_eq!(legend.stop, LegendStop10_1::Completed);
+    let LegendFormatEntry10_1::Body(body) = &legend.legend_format else {
+        panic!("LegendFormat 新对象应整体消费：{:?}", legend.legend_format);
+    };
+    assert_eq!(body.version, 2);
+    assert!(matches!(
+        body.title_symbol,
+        mxd2qgz::maps::map_surround_family::SlotEntry10_1::Null
+    ));
+    assert_eq!(reader.remaining(), 0);
+    assert!(table.contains(11));
 }
 
 #[test]

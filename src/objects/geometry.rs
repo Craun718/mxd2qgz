@@ -209,6 +209,10 @@ use crate::objects::envelope::SpatialReferenceEntry10_1;
 use crate::objects::spatial_reference::{
     PROJECTED_COORDINATE_SYSTEM_CLASS_ID, read_projected_coordinate_system_10_1,
 };
+use crate::objects::spatial_reference_slots::{
+    GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID, UNKNOWN_COORDINATE_SYSTEM_CLASS_ID,
+    read_geographic_coordinate_system_10_1, read_unknown_coordinate_system_10_1,
+};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
@@ -722,9 +726,10 @@ fn read_and_gate_declared_length_10_1(
 }
 
 /// 步骤 4（四类共享）：版本 > 1 的嵌套空间参考条目（类身份完全由流内对象
-/// 头决定；语义循 envelope 读取器：Null/回引原样返回，新键仅认投影坐标系，
-/// 其余类 Unsupported——嵌套对象体无外部长度字段，无法跳过未知类继续读取）。
-/// 版本 ≤ 1 原生按 `jl` 跳过该段（无样本，合成测试覆盖），返回 `None`。
+/// 头决定；语义循 envelope 读取器：Null/回引原样返回，新键按 F 轮三分派
+/// 认投影/地理/未知坐标系，其余类 Unsupported——嵌套对象体无外部长度字段，
+/// 无法跳过未知类继续读取）。版本 ≤ 1 原生按 `jl` 跳过该段（无样本，合成
+/// 测试覆盖），返回 `None`。
 fn read_nested_spatial_reference_10_1(
     trial: &mut Reader<'_>,
     trial_table: &mut RefTable10_1,
@@ -751,14 +756,32 @@ fn read_nested_spatial_reference_10_1(
             let body = read_projected_coordinate_system_10_1(trial, max_bytes)?;
             Ok(Some(SpatialReferenceEntry10_1::Projected { key, body }))
         }
+        ObjectEntry10_1::NewObject { class_id, key }
+            if class_id == GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID =>
+        {
+            // 地理坐标系（F 轮接线三分派）。
+            let body = read_geographic_coordinate_system_10_1(trial, max_bytes)?;
+            Ok(Some(SpatialReferenceEntry10_1::Geographic { key, body }))
+        }
+        ObjectEntry10_1::NewObject { class_id, key }
+            if class_id == UNKNOWN_COORDINATE_SYSTEM_CLASS_ID =>
+        {
+            // 未知坐标系（F 轮接线三分派）。
+            let body = read_unknown_coordinate_system_10_1(trial, max_bytes)?;
+            Ok(Some(SpatialReferenceEntry10_1::UnknownCoordinateSystem {
+                key,
+                body,
+            }))
+        }
         ObjectEntry10_1::NewObject { class_id, key } => {
             let id: String = class_id.iter().map(|byte| format!("{byte:02x}")).collect();
             Err(io::Error::new(
                 ErrorKind::Unsupported,
                 format!(
                     "{label} 对象体嵌套空间参考 offset 0x{nested_offset:x}（对象体 offset \
-                     0x{start:x}）: 类标识 {id}（键 {key}）不是投影坐标系；本读取器仅支持\
-                     投影坐标系嵌套，且对象体无外部长度字段，无法跳过未知类继续读取"
+                     0x{start:x}）: 类标识 {id}（键 {key}）不是已闭合的空间参考类；本读取器\
+                     仅支持投影/地理/未知坐标系嵌套（F 轮三分派），且对象体无外部长度字段，\
+                     无法跳过未知类继续读取"
                 ),
             ))
         }

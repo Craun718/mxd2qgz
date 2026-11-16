@@ -76,6 +76,15 @@ use crate::maps::map_surround::{
     LEGEND_CLASS_ID, LegendPrefix10_1, LegendStop10_1, read_aoi_bookmark_10_1,
     read_feature_bookmark_10_1, read_legend_prefix_10_1,
 };
+use crate::maps::map_surround_family::{
+    ALTERNATING_SCALEBAR_CLASS_ID, DOUBLE_ALTERNATING_SCALEBAR_CLASS_ID, FamilyStop10_1,
+    HOLLOW_SCALEBAR_CLASS_ID, MAP_TITLE_CLASS_ID, MARKER_NORTH_ARROW_CLASS_ID, MapTitleBody10_1,
+    MarkerNorthArrowBody10_1, SCALE_TEXT_CLASS_ID, SCALEBAR_CLASS_ID,
+    SINGLE_DIVISION_SCALEBAR_CLASS_ID, ScaleTextBody10_1, ScalebarBody10_1,
+    ScalebarSubclassBody10_1, ScalebarSubclassKind10_1, read_map_title_body_10_1,
+    read_marker_north_arrow_body_10_1, read_scale_text_body_10_1, read_scalebar_body_10_1,
+    read_scalebar_subclass_body_10_1,
+};
 use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
 use crate::objects::spatial_reference::{
     PROJECTED_COORDINATE_SYSTEM_CLASS_ID, ProjectedCoordinateSystem10_1,
@@ -167,6 +176,19 @@ pub enum MapSuffixStop {
         class_id: [u8; 16],
         key: u32,
     },
+    /// MapSurround 循环条目为族内新对象（Scalebar 族/ScaleText/
+    /// MarkerNorthArrow）且其体内出现停止（原因透传）：游标停在其内层
+    /// 停止点。
+    MapSurroundFamilyBody {
+        /// 条目序号（0 起）。
+        index: usize,
+        /// 条目对象头起点偏移。
+        offset: usize,
+        class_id: [u8; 16],
+        key: u32,
+        /// 族读取器带出的体内停止原因。
+        reason: FamilyStop10_1,
+    },
     /// 书签循环条目为新对象：体无外部长度且读取器未接入。
     BookmarkBody {
         index: usize,
@@ -200,6 +222,10 @@ impl MapSuffixStop {
                 "IEnvelope 槽位对象（offset 0x{offset:x}）为新对象且未被 Envelope 读取\
                  器整体消费（非 Envelope 类或解析失败）：体无外部长度，停止"
             ),
+            Self::MapSurroundFamilyBody { index, reason, .. } => format!(
+                "MapSurround 条目 {index}（族装饰物）体在停止点停止：{}；游标停在其停止点",
+                reason.describe()
+            ),
             Self::BookmarkBody { index, offset, .. } => format!(
                 "书签条目 {index}（offset 0x{offset:x}）为新对象且未被读取器整体消费\
                 （类没有读取器或解析失败），停止"
@@ -212,11 +238,35 @@ impl MapSuffixStop {
 }
 
 /// MapSurround 循环条目中已整体消费的元素体。
+///
+/// C 轮接线起 MapSurround 装饰物族（MapTitle/Scalebar/ScaleText/
+/// MarkerNorthArrow + 四个比例尺子类）经 map_surround_family 读取器整体
+/// 消费；体内停止经 [`MapSuffixStop::MapSurroundFamilyBody`] 透传。
 #[derive(Debug, Clone, PartialEq)]
 pub enum MapSurroundElement10_1 {
     /// Legend 已确认前缀（Legend 前缀读取器在 ILegendFormat / ILegendItem
     /// 新对象等体内停止点停止时 `stop` 携带原因；此时后缀循环不继续）。
     Legend(Box<LegendPrefix10_1>),
+    /// MapTitle（体完全闭合：自身版本 + 共同前缀）。
+    MapTitle(Box<MapTitleBody10_1>),
+    /// Scalebar（体内停止经其 `stop` 字段携带）。
+    Scalebar(Box<ScalebarBody10_1>),
+    /// ScaleText（体内停止经其 `stop` 字段携带）。
+    ScaleText(Box<ScaleTextBody10_1>),
+    /// MarkerNorthArrow（体内停止经其 `stop` 字段携带）。
+    MarkerNorthArrow(Box<MarkerNorthArrowBody10_1>),
+    /// 四个比例尺子类之一（Hollow/SingleDivision/Alternating/
+    /// DoubleAlternating；体内停止经 `body.stop` 携带）。
+    ScalebarSubclass(ScalebarSubclassElement10_1),
+}
+
+/// 比例尺子类条目的体与类身份（四类共享同一读取器，按流内类标识区分）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScalebarSubclassElement10_1 {
+    /// 子类种类（按对象头类标识映射）。
+    pub kind: ScalebarSubclassKind10_1,
+    /// 已读取体。
+    pub body: ScalebarSubclassBody10_1,
 }
 
 /// 书签循环条目中已整体消费的元素体（两类书签体字段序完全闭合）。
@@ -286,6 +336,18 @@ pub const MAP_CLASS_ID: [u8; 16] = [
     0x76, 0xaa, 0xbd, 0xe6, 0x35, 0x4d, 0xd0, 0x11, 0x98, 0xbe, 0x00, 0x80, 0x5f, 0x7c, 0xed, 0x21,
 ];
 
+/// Map 前缀第 4 步嵌套空间参考的三分派结果（F 轮接线；类身份由流内对象
+/// 头决定，证据 docs/arcmap-10.1-pcs-geometry-slots.md「接线建议」）。
+#[derive(Debug, Clone, PartialEq)]
+pub enum MapSpatialReference10_1 {
+    /// ProjectedCoordinateSystem（既有读取器）。
+    Projected(ProjectedCoordinateSystem10_1),
+    /// GeographicCoordinateSystem（F 轮；`spatial_reference_slots` 读取器）。
+    Geographic(crate::objects::spatial_reference_slots::GeographicCoordinateSystem10_1),
+    /// UnknownCoordinateSystem（F 轮；同上）。
+    UnknownCoordinateSystem(crate::objects::spatial_reference_slots::UnknownCoordinateSystem10_1),
+}
+
 /// 10.1 Map::Load（`0x793ff4d0`）已确认前缀的解析结果。
 #[derive(Debug, Clone, PartialEq)]
 pub struct MapPrefix10_1 {
@@ -303,9 +365,10 @@ pub struct MapPrefix10_1 {
     /// Load 第 4 步的嵌套空间参考对象体。
     ///
     /// 16 零字节空头 → `None`（沿用对象头的 S_FALSE 约定，仅消耗 16 字节、
-    /// 不读键）；类标识等于 PCS 常量 → 已解析对象体；其他类标识 →
-    /// [`read_map_prefix_10_1`] 直接报错。对象头键值原样丢弃，未保留。
-    pub spatial_reference: Option<ProjectedCoordinateSystem10_1>,
+    /// 不读键）；类标识命中 F 轮三分派（投影/地理/未知坐标系）→ 已解析
+    /// 对象体；其他类标识 → [`read_map_prefix_10_1`] 直接报错。对象头键值
+    /// 原样丢弃，未保留。
+    pub spatial_reference: Option<MapSpatialReference10_1>,
     /// 已确认前缀之后剩余的字节数。
     ///
     /// 对应 Load 第 5 步起的字段：其中「图层列表 → … → 书签循环」一段可由
@@ -326,9 +389,8 @@ pub struct MapPrefix10_1 {
 /// 限，此时超长流按缺短读失败。
 ///
 /// 嵌套空间参考对象的类身份由流内对象头决定：全零 16 字节为空头
-/// （`spatial_reference = None`），类标识等于
-/// [`PROJECTED_COORDINATE_SYSTEM_CLASS_ID`] 时用
-/// [`read_projected_coordinate_system_10_1`] 读取对象体；其他类标识返回
+/// （`spatial_reference = None`），类标识命中 F 轮三分派（投影/地理/未知
+/// 坐标系）时用对应读取器读取对象体；其他类标识返回
 /// [`ErrorKind::Unsupported`]——嵌套对象体没有外部长度字段，本读取器无法
 /// 跳过未知类继续解析，调用者不能把该流继续当作 Map 前缀消费。
 ///
@@ -388,18 +450,46 @@ fn read_map_prefix_inner(
             // PCS 对象体由专门读取器解析，max_bytes 原样转发；键原样返回
             // 供调用者登记（本函数不修改登记表）。
             spatial_reference_key = Some(key);
-            Some(read_projected_coordinate_system_10_1(trial, max_bytes)?)
+            Some(MapSpatialReference10_1::Projected(
+                read_projected_coordinate_system_10_1(trial, max_bytes)?,
+            ))
+        }
+        ObjectHeader::Object { class_id, key }
+            if class_id
+                == crate::objects::spatial_reference_slots::GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID =>
+        {
+            // 地理坐标系（F 轮接线三分派）。
+            spatial_reference_key = Some(key);
+            Some(MapSpatialReference10_1::Geographic(
+                crate::objects::spatial_reference_slots::read_geographic_coordinate_system_10_1(
+                    trial,
+                    max_bytes,
+                )?,
+            ))
+        }
+        ObjectHeader::Object { class_id, key }
+            if class_id
+                == crate::objects::spatial_reference_slots::UNKNOWN_COORDINATE_SYSTEM_CLASS_ID =>
+        {
+            // 未知坐标系（F 轮接线三分派）。
+            spatial_reference_key = Some(key);
+            Some(MapSpatialReference10_1::UnknownCoordinateSystem(
+                crate::objects::spatial_reference_slots::read_unknown_coordinate_system_10_1(
+                    trial,
+                    max_bytes,
+                )?,
+            ))
         }
         ObjectHeader::Object { class_id, key } => {
-            // 严格子集只认投影坐标系嵌套。嵌套对象体无外部长度字段，无法
-            // 跳过未知类继续读取；显式报错，原游标不推进。
+            // 严格子集只认 F 轮三分派的三个坐标系类。嵌套对象体无外部长度
+            // 字段，无法跳过未知类继续读取；显式报错，原游标不推进。
             let id = class_id_hex(&class_id);
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
                 format!(
                     "Map 对象体嵌套对象 offset 0x{nested_offset:x}: 类标识 {id}（键 \
-                     {key}）不是投影坐标系；本读取器仅支持投影坐标系嵌套，且对象体 \
-                     无外部长度字段，无法跳过未知类继续读取"
+                     {key}）不是已闭合的空间参考类；本读取器仅支持投影/地理/未知坐标系 \
+                     嵌套（F 轮三分派），且对象体无外部长度字段，无法跳过未知类继续读取"
                 ),
             ));
         }
@@ -533,13 +623,67 @@ pub fn read_map_suffix_10_1(
             let entry = read_object_entry_10_1(&mut trial, &mut trial_table)?;
             let mut parsed_element = None;
             let mut fully_consumed = false;
-            if let ObjectEntry10_1::NewObject { class_id, .. } = &entry {
+            let mut family_stop = None;
+            if let ObjectEntry10_1::NewObject { class_id, key } = &entry {
                 if *class_id == LEGEND_CLASS_ID {
                     if let Ok(prefix) =
                         read_legend_prefix_10_1(&mut trial, max_bytes, &mut trial_table)
                     {
                         fully_consumed = prefix.stop == LegendStop10_1::Completed;
                         parsed_element = Some(MapSurroundElement10_1::Legend(Box::new(prefix)));
+                    }
+                } else if let Some(kind) = scalebar_subclass_kind(class_id) {
+                    // C 轮接线：四个比例尺子类共享同一层级读取器（键取自
+                    // 条目对象头）。
+                    if let Ok(body) = read_scalebar_subclass_body_10_1(
+                        &mut trial,
+                        max_bytes,
+                        &mut trial_table,
+                        *key,
+                        kind,
+                    ) {
+                        fully_consumed = body.stop.is_none();
+                        family_stop = body.stop;
+                        parsed_element = Some(MapSurroundElement10_1::ScalebarSubclass(
+                            ScalebarSubclassElement10_1 { kind, body },
+                        ));
+                    }
+                } else if *class_id == SCALEBAR_CLASS_ID {
+                    if let Ok(body) =
+                        read_scalebar_body_10_1(&mut trial, max_bytes, &mut trial_table, *key)
+                    {
+                        fully_consumed = body.stop.is_none();
+                        family_stop = body.stop;
+                        parsed_element = Some(MapSurroundElement10_1::Scalebar(Box::new(body)));
+                    }
+                } else if *class_id == SCALE_TEXT_CLASS_ID {
+                    if let Ok(body) =
+                        read_scale_text_body_10_1(&mut trial, max_bytes, &mut trial_table, *key)
+                    {
+                        fully_consumed = body.stop.is_none();
+                        family_stop = body.stop;
+                        parsed_element = Some(MapSurroundElement10_1::ScaleText(Box::new(body)));
+                    }
+                } else if *class_id == MARKER_NORTH_ARROW_CLASS_ID {
+                    if let Ok(body) = read_marker_north_arrow_body_10_1(
+                        &mut trial,
+                        max_bytes,
+                        &mut trial_table,
+                        *key,
+                    ) {
+                        fully_consumed = body.stop.is_none();
+                        family_stop = body.stop;
+                        parsed_element =
+                            Some(MapSurroundElement10_1::MarkerNorthArrow(Box::new(body)));
+                    }
+                } else if *class_id == MAP_TITLE_CLASS_ID {
+                    // MapTitle 体完全闭合（自身版本 + 共同前缀），读取成功
+                    // 即整体消费。
+                    if let Ok(body) =
+                        read_map_title_body_10_1(&mut trial, max_bytes, &mut trial_table, *key)
+                    {
+                        fully_consumed = true;
+                        parsed_element = Some(MapSurroundElement10_1::MapTitle(Box::new(body)));
                     }
                 }
             }
@@ -551,11 +695,22 @@ pub fn read_map_suffix_10_1(
             map_surrounds.push(ObjectSlot10_1 { offset, entry });
             if !fully_consumed {
                 if let Some((class_id, key)) = new_object {
-                    stop = Some(MapSuffixStop::MapSurroundBody {
-                        index,
-                        offset,
-                        class_id,
-                        key,
+                    stop = Some(match family_stop {
+                        // 族内读取器已定位的体内停止：透传原因（游标停在
+                        // 其停止点）。
+                        Some(reason) => MapSuffixStop::MapSurroundFamilyBody {
+                            index,
+                            offset,
+                            class_id,
+                            key,
+                            reason,
+                        },
+                        None => MapSuffixStop::MapSurroundBody {
+                            index,
+                            offset,
+                            class_id,
+                            key,
+                        },
                     });
                     break;
                 }
@@ -725,4 +880,20 @@ fn read_loop_count(trial: &mut Reader<'_>, label: &str, max_bytes: usize) -> io:
         ));
     }
     Ok(count)
+}
+
+/// 按流内类标识映射比例尺子类种类（C 轮接线；四类常量与映射依据
+/// docs/arcmap-10.1-legend-family.md）。
+fn scalebar_subclass_kind(class_id: &[u8; 16]) -> Option<ScalebarSubclassKind10_1> {
+    if *class_id == HOLLOW_SCALEBAR_CLASS_ID {
+        Some(ScalebarSubclassKind10_1::Hollow)
+    } else if *class_id == SINGLE_DIVISION_SCALEBAR_CLASS_ID {
+        Some(ScalebarSubclassKind10_1::SingleDivision)
+    } else if *class_id == ALTERNATING_SCALEBAR_CLASS_ID {
+        Some(ScalebarSubclassKind10_1::Alternating)
+    } else if *class_id == DOUBLE_ALTERNATING_SCALEBAR_CLASS_ID {
+        Some(ScalebarSubclassKind10_1::DoubleAlternating)
+    } else {
+        None
+    }
 }

@@ -194,7 +194,9 @@ pub enum SlotEntry10_1<T> {
 }
 
 /// 族读取的停止原因（体内在首个不可闭合处停止，非错误）。
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// C 轮接线起被 map_object 的 MapSuffixStop（Copy）携带，补 `Copy`。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FamilyStop10_1 {
     /// 第 `slot` 个对象槽（槽名诊断用）出现新对象且类体未闭合；游标已
     /// 回退到该槽位起点。
@@ -1774,16 +1776,6 @@ mod tests {
         data.extend(1.0f64.to_le_bytes());
         data.extend(2.0f64.to_le_bytes());
         data
-    }
-
-    /// 小工具：把 Vec 装箱为带引用计数的写法（仅为可读性；等价直接 move）。
-    trait InnerRef {
-        fn inner_ref(self) -> Vec<u8>;
-    }
-    impl InnerRef for Vec<u8> {
-        fn inner_ref(self) -> Vec<u8> {
-            self
-        }
     }
 
     #[test]

@@ -147,7 +147,12 @@ fn reads_sample_layout_prefix_and_preserves_remaining_bytes() {
     assert_eq!(parsed.version, 51);
     assert_eq!(parsed.name, "新建数据框");
     assert_eq!(parsed.secondary_name, "");
-    assert_sample_pcs(parsed.spatial_reference.as_ref().unwrap());
+    let mxd2qgz::maps::map_object::MapSpatialReference10_1::Projected(pcs) =
+        parsed.spatial_reference.as_ref().unwrap()
+    else {
+        panic!("样本镜像应为 PCS：{:?}", parsed.spatial_reference);
+    };
+    assert_sample_pcs(pcs);
     // 已确认前缀恰好停在 PCS 体末尾；未知尾部保留为 remaining_bytes。
     assert_eq!(parsed.remaining_bytes, 4);
     assert_eq!(reader.position(), prefix_length);
@@ -275,6 +280,17 @@ fn rejects_unknown_nested_class_id_and_preserves_cursor() {
     ];
     for class_id in [&sample_candidate, &synthetic] {
         assert_ne!(*class_id, PROJECTED_COORDINATE_SYSTEM_CLASS_ID);
+        // F 轮三分派后同样不得命中 GCS/Unknown 两常量。
+        assert_ne!(
+            class_id.as_slice(),
+            mxd2qgz::objects::spatial_reference_slots::GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID,
+            "{class_id:?}"
+        );
+        assert_ne!(
+            class_id.as_slice(),
+            mxd2qgz::objects::spatial_reference_slots::UNKNOWN_COORDINATE_SYSTEM_CLASS_ID,
+            "{class_id:?}"
+        );
         let mut bytes = SAMPLE_VERSION.to_le_bytes().to_vec();
         bytes.extend(encoded("新建数据框"));
         bytes.extend(encoded(""));
@@ -285,7 +301,7 @@ fn rejects_unknown_nested_class_id_and_preserves_cursor() {
         let first = read_map_prefix_10_1(&mut reader, 1024).unwrap_err();
         assert_eq!(first.kind(), ErrorKind::Unsupported, "{class_id:?}");
         let message = first.to_string();
-        assert!(message.contains("投影坐标系"), "{message}");
+        assert!(message.contains("不是已闭合的空间参考类"), "{message}");
         assert!(message.contains("无法跳过"), "{message}");
         assert!(message.contains("键 31"), "{message}");
         assert_eq!(reader.position(), 0, "游标必须留在入口");
@@ -417,7 +433,12 @@ fn reads_map_header_then_prefix_in_full_chain() {
     assert_eq!(parsed.version, 51);
     assert_eq!(parsed.name, "新建数据框");
     assert_eq!(parsed.secondary_name, "");
-    assert_eq!(parsed.spatial_reference.unwrap().wkt, "PROJCS[\"x\"]");
+    let mxd2qgz::maps::map_object::MapSpatialReference10_1::Projected(pcs) =
+        parsed.spatial_reference.unwrap()
+    else {
+        panic!("应解析为 PCS");
+    };
+    assert_eq!(pcs.wkt, "PROJCS[\"x\"]");
     assert_eq!(parsed.remaining_bytes, 4);
     assert_eq!(reader.position(), bytes.len() - 4);
     assert_eq!(reader.read_bytes(4).unwrap(), b"tail");

@@ -26,19 +26,48 @@ use mxd2qgz::layers::annotate_props::{
     read_line_label_position_body_10_1, read_point_placement_priorities_body_10_1,
 };
 use mxd2qgz::layers::composite_graphics::read_composite_graphics_layer_prefix_10_1;
+use mxd2qgz::layers::dep_tail::{
+    read_time_body_10_1, read_time_data_family_10_1, read_time_extent_body_10_1,
+    read_time_reference_body_10_1, read_time_zone_info_body_10_1,
+};
 use mxd2qgz::layers::fdo_legacy::read_fdo_graphics_layer_legacy_prefix_10_1;
 use mxd2qgz::layers::feature_id_set::read_feature_id_set_body_10_1;
 use mxd2qgz::layers::feature_layer::read_feature_layer_prefix_10_1;
 use mxd2qgz::layers::feature_layer_tail::read_uid_body_10_1;
 use mxd2qgz::layers::group_layer::read_group_layer_prefix_10_1;
 use mxd2qgz::layers::layer_list::read_layer_list_10_1;
+use mxd2qgz::layers::legend_item::read_base_legend_item_fields_10_1;
+use mxd2qgz::layers::legend_item_family::{
+    read_horizontal_bar_legend_item_body_10_1, read_nested_legend_item_body_10_1,
+    read_vertical_legend_item_body_10_1,
+};
+use mxd2qgz::layers::patch::read_patch_body_10_1;
 use mxd2qgz::maps::map_object::{read_map_prefix_10_1, read_map_suffix_10_1};
 use mxd2qgz::maps::map_surround::{
     read_aoi_bookmark_10_1, read_feature_bookmark_10_1, read_legend_prefix_10_1,
 };
+use mxd2qgz::maps::map_surround_family::{
+    read_legend_format_body_10_1, read_map_title_body_10_1, read_marker_north_arrow_body_10_1,
+    read_scale_text_body_10_1, read_scalebar_body_10_1, read_scalebar_subclass_body_10_1,
+};
 use mxd2qgz::maps::maps_stream::{read_root_prefix_10_1, read_root_prefix_10_8};
+use mxd2qgz::objects::callout_background::{
+    read_balloon_callout_body_10_1, read_line_callout_body_10_1, read_marker_background_slot_10_1,
+    read_marker_text_background_body_10_1, read_simple_line_callout_body_10_1,
+};
+use mxd2qgz::objects::color_ramp::{
+    read_algorithmic_color_ramp_body_10_1, read_color_ramp_slot_10_1,
+    read_multi_part_color_ramp_body_10_1, read_preset_color_ramp_body_10_1,
+    read_random_color_ramp_body_10_1,
+};
 use mxd2qgz::objects::dataset_name::{
     read_feature_dataset_name_body_10_1, read_topology_name_body_10_1,
+};
+use mxd2qgz::objects::dataset_name_more::{
+    read_dataset_name_slot_10_1, read_db_table_name_body_10_1,
+    read_geometric_network_name_body_10_1, read_memory_relationship_class_name_body_10_1,
+    read_query_table_name_body_10_1, read_rel_query_table_name_body_10_1,
+    read_relationship_class_name_body_10_1,
 };
 use mxd2qgz::objects::display_color::{RGB_COLOR_CLASS_ID, read_rgb_color_body_10_1};
 use mxd2qgz::objects::display_symbol::{
@@ -47,6 +76,10 @@ use mxd2qgz::objects::display_symbol::{
 use mxd2qgz::objects::element_body::{
     LINE_ELEMENT_CLASS_ID, MARKER_ELEMENT_CLASS_ID, TEXT_ELEMENT_CLASS_ID, TEXT_SYMBOL_CLASS_ID,
     read_element_body_of_class_10_1,
+};
+use mxd2qgz::objects::element_decor::{
+    read_background_slot_10_1, read_border_slot_10_1, read_shadow_slot_10_1,
+    read_symbol_background_body_10_1, read_symbol_border_body_10_1, read_symbol_shadow_body_10_1,
 };
 use mxd2qgz::objects::envelope::read_envelope_10_1;
 use mxd2qgz::objects::geometry::{
@@ -62,8 +95,15 @@ use mxd2qgz::objects::number_format::{
     read_rate_format_body_10_1, read_scientific_format_body_10_1,
 };
 use mxd2qgz::objects::ole_font::{read_std_font_body_10_1, read_std_picture_body_10_1};
+use mxd2qgz::objects::picture_fill_symbol::{
+    read_picture_fill_symbol_body_10_1, read_picture_fill_symbol_slot_10_1,
+};
 use mxd2qgz::objects::property_set::read_property_set_10_1;
 use mxd2qgz::objects::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
+use mxd2qgz::objects::spatial_reference_slots::{
+    read_geographic_coordinate_system_10_1, read_unknown_coordinate_system_10_1,
+};
+use mxd2qgz::objects::variant_object_branch::read_variant_object_branch_10_1;
 use mxd2qgz::storage::object_refs::{RefTable10_1, read_object_entry_10_1};
 use mxd2qgz::storage::object_stream::{ObjectHeader, read_header_10_1, read_header_10_8};
 use mxd2qgz::stream::native_string::{read_string_10_1, read_string_10_8};
@@ -105,6 +145,65 @@ fn value_bytes(value_type: u16, payload: &[u8]) -> Vec<u8> {
         .into_iter()
         .chain(payload.iter().copied())
         .collect()
+}
+
+/// BaseLegendItem 字段序（基类版本 3、全部槽空标记）——本轮 LegendItem 族
+/// 三个读取器与统一字段序入口共用。
+fn base_legend_item_v3_bytes() -> Vec<u8> {
+    let mut bytes = 3_u16.to_le_bytes().to_vec();
+    bytes.extend([0_u8; 16]); // ILayer 槽
+    for _ in 0..4 {
+        bytes.extend(0_u16.to_le_bytes());
+    }
+    bytes.extend([0_u8; 16]); // ITextSymbol 槽
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(0_u16.to_le_bytes());
+    bytes.extend([0_u8; 16]); // 第二 ITextSymbol 槽
+    bytes.extend([0_u8; 16]); // ILegendClassFormat 槽
+    bytes.extend(0_u16.to_le_bytes());
+    bytes.extend(0_u16.to_le_bytes());
+    // v2 ≥2 组。
+    bytes.extend(0_u16.to_le_bytes());
+    bytes.extend(0_u16.to_le_bytes());
+    bytes.extend(encoded(" ("));
+    bytes.extend(encoded(")"));
+    bytes.extend(0xFFFF_u16.to_le_bytes());
+    // v2 >2 的 INumberFormat 槽。
+    bytes.extend([0_u8; 16]);
+    bytes
+}
+
+/// 最小 RgbColor 体（版本 1，flag==0）。
+fn rgb_color_body_bytes() -> Vec<u8> {
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend([0x01, 0x11, 0x22, 0x33, 0x00]);
+    bytes.extend([0xff, 0x00]);
+    bytes
+}
+
+/// 最小 RandomColorRamp 体（版本 1）。
+fn random_color_ramp_body_bytes() -> Vec<u8> {
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(encoded("梯度"));
+    bytes.extend(7_i32.to_le_bytes());
+    bytes.extend([0x01, 0x00]);
+    bytes.extend(42_i32.to_le_bytes());
+    for value in [10_u16, 200, 20, 210, 30, 220] {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes
+}
+
+/// 最小 Point 体（版本 2：声明 20、类型 1 + X/Y + 空标记）。
+fn point_body_bytes() -> Vec<u8> {
+    let mut bytes = 2_u16.to_le_bytes().to_vec();
+    bytes.extend(20_u32.to_le_bytes());
+    bytes.extend(1_u32.to_le_bytes());
+    bytes.extend(1.5_f64.to_le_bytes());
+    bytes.extend(2.5_f64.to_le_bytes());
+    bytes.extend([0_u8; 16]);
+    bytes
 }
 
 /// 参与统一截断扫描的读取器；每个变体对应一个公共读取函数入口。
@@ -209,9 +308,56 @@ enum ReaderKind {
     AngleFormatBody10_1,
     ScientificFormatBody10_1,
     CustomNumberFormatBody10_1,
+    // —— 本轮整合接线（A：dep_tail TimeData 族；B：IDatasetName 槽族六类 +
+    //    分派；C：patch/LegendItem 族/MapSurround 族；D：Variant 对象分支；
+    //    F：GCS/Unknown 坐标系；G：ColorRamp/Callout/PictureFill/元素装饰）——
+    TimeBody10_1,
+    TimeZoneInfoBody10_1,
+    TimeReferenceBody10_1,
+    TimeExtentBody10_1,
+    TimeDataFamily10_1,
+    GeometricNetworkNameBody10_1,
+    RelationshipClassNameBody10_1,
+    MemoryRelationshipClassNameBody10_1,
+    QueryTableNameBody10_1,
+    RelQueryTableNameBody10_1,
+    DbTableNameBody10_1,
+    DatasetNameSlot10_1,
+    PatchBody10_1,
+    HorizontalBarLegendItemBody10_1,
+    NestedLegendItemBody10_1,
+    VerticalLegendItemBody10_1,
+    BaseLegendItemFields10_1,
+    MapTitleBody10_1,
+    ScalebarBody10_1,
+    ScaleTextBody10_1,
+    MarkerNorthArrowBody10_1,
+    LegendFormatBody10_1,
+    ScalebarSubclassBody10_1,
+    VariantObjectBranch10_1,
+    GeographicCoordinateSystem10_1,
+    UnknownCoordinateSystem10_1,
+    RandomColorRampBody10_1,
+    MultiPartColorRampBody10_1,
+    PresetColorRampBody10_1,
+    AlgorithmicColorRampBody10_1,
+    ColorRampSlot10_1,
+    BalloonCalloutBody10_1,
+    LineCalloutBody10_1,
+    SimpleLineCalloutBody10_1,
+    MarkerTextBackgroundBody10_1,
+    MarkerBackgroundSlot10_1,
+    PictureFillSymbolBody10_1,
+    PictureFillSymbolSlot10_1,
+    SymbolBorderBody10_1,
+    SymbolBackgroundBody10_1,
+    SymbolShadowBody10_1,
+    BorderSlot10_1,
+    BackgroundSlot10_1,
+    ShadowSlot10_1,
 }
 
-fn all_kinds() -> [ReaderKind; 93] {
+fn all_kinds() -> [ReaderKind; 137] {
     [
         ReaderKind::NativeString10_1,
         ReaderKind::NativeString10_8,
@@ -313,6 +459,54 @@ fn all_kinds() -> [ReaderKind; 93] {
         ReaderKind::AngleFormatBody10_1,
         ReaderKind::ScientificFormatBody10_1,
         ReaderKind::CustomNumberFormatBody10_1,
+        // —— 本轮整合接线：A（dep_tail）+ B（IDatasetName 槽族）——
+        ReaderKind::TimeBody10_1,
+        ReaderKind::TimeZoneInfoBody10_1,
+        ReaderKind::TimeReferenceBody10_1,
+        ReaderKind::TimeExtentBody10_1,
+        ReaderKind::TimeDataFamily10_1,
+        ReaderKind::GeometricNetworkNameBody10_1,
+        ReaderKind::RelationshipClassNameBody10_1,
+        ReaderKind::MemoryRelationshipClassNameBody10_1,
+        ReaderKind::QueryTableNameBody10_1,
+        ReaderKind::RelQueryTableNameBody10_1,
+        ReaderKind::DbTableNameBody10_1,
+        ReaderKind::DatasetNameSlot10_1,
+        // —— C（patch + LegendItem 族 + MapSurround 族）——
+        ReaderKind::PatchBody10_1,
+        ReaderKind::HorizontalBarLegendItemBody10_1,
+        ReaderKind::NestedLegendItemBody10_1,
+        ReaderKind::VerticalLegendItemBody10_1,
+        ReaderKind::BaseLegendItemFields10_1,
+        ReaderKind::MapTitleBody10_1,
+        ReaderKind::ScalebarBody10_1,
+        ReaderKind::ScaleTextBody10_1,
+        ReaderKind::MarkerNorthArrowBody10_1,
+        ReaderKind::LegendFormatBody10_1,
+        ReaderKind::ScalebarSubclassBody10_1,
+        // —— D（Variant 对象分支）+ F（GCS/Unknown 坐标系）——
+        ReaderKind::VariantObjectBranch10_1,
+        ReaderKind::GeographicCoordinateSystem10_1,
+        ReaderKind::UnknownCoordinateSystem10_1,
+        // —— G（ColorRamp/Callout/PictureFill/元素装饰）——
+        ReaderKind::RandomColorRampBody10_1,
+        ReaderKind::MultiPartColorRampBody10_1,
+        ReaderKind::PresetColorRampBody10_1,
+        ReaderKind::AlgorithmicColorRampBody10_1,
+        ReaderKind::ColorRampSlot10_1,
+        ReaderKind::BalloonCalloutBody10_1,
+        ReaderKind::LineCalloutBody10_1,
+        ReaderKind::SimpleLineCalloutBody10_1,
+        ReaderKind::MarkerTextBackgroundBody10_1,
+        ReaderKind::MarkerBackgroundSlot10_1,
+        ReaderKind::PictureFillSymbolBody10_1,
+        ReaderKind::PictureFillSymbolSlot10_1,
+        ReaderKind::SymbolBorderBody10_1,
+        ReaderKind::SymbolBackgroundBody10_1,
+        ReaderKind::SymbolShadowBody10_1,
+        ReaderKind::BorderSlot10_1,
+        ReaderKind::BackgroundSlot10_1,
+        ReaderKind::ShadowSlot10_1,
     ]
 }
 
@@ -1513,6 +1707,595 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
             bytes.extend(encoded("0.000"));
             bytes
         }
+        // —— 本轮整合接线：A 轮 dep_tail TimeData 族 ——
+        ReaderKind::TimeBody10_1 => {
+            // 版本 0（判别 1：OA 日期 8 字节）。
+            let mut bytes = 0_u16.to_le_bytes().to_vec();
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend((-1_i64).to_le_bytes());
+            bytes
+        }
+        ReaderKind::TimeZoneInfoBody10_1 => {
+            // 版本 2 满形态（无 bias 段）：3 串 + int32 + 20 字节规则块 +
+            // 计数 1 + 一条规则条目。
+            let mut bytes = 2_u16.to_le_bytes().to_vec();
+            bytes.extend(encoded("中国标准时间"));
+            bytes.extend(encoded("中国夏令时间"));
+            bytes.extend(encoded("(UTC+08:00)"));
+            bytes.extend(480_i32.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(3_i16.to_le_bytes());
+            bytes.extend(5_i16.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(10_i16.to_le_bytes());
+            bytes.extend(5_i16.to_le_bytes());
+            bytes.extend(60_i32.to_le_bytes());
+            bytes.extend(1_i16.to_le_bytes());
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend(9_i32.to_le_bytes());
+            bytes.extend(4_i16.to_le_bytes());
+            bytes.extend(1_i16.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(11_i16.to_le_bytes());
+            bytes.extend(1_i16.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes
+        }
+        ReaderKind::TimeReferenceBody10_1 => {
+            // 版本 1 + ITimeZoneInfo 槽空标记 + short ×2。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend([0_u8; 16]);
+            bytes.extend((-1_i16).to_le_bytes());
+            bytes.extend(0_i16.to_le_bytes());
+            bytes
+        }
+        ReaderKind::TimeExtentBody10_1 => {
+            // 版本 2：起点/终点 Time 新对象（判别 2 WKSDateTime）+
+            // ITimeReference 槽空标记 + 尾字节。
+            let mut time_body = 1_u16.to_le_bytes().to_vec();
+            time_body.extend(2_i32.to_le_bytes());
+            time_body.extend([0x42_u8; 16]);
+            let mut bytes = 2_u16.to_le_bytes().to_vec();
+            bytes.extend(mxd2qgz::layers::dep_tail::TIME_CLASS_ID);
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend(&time_body);
+            bytes.extend(mxd2qgz::layers::dep_tail::TIME_CLASS_ID);
+            bytes.extend(2_u32.to_le_bytes());
+            bytes.extend(&time_body);
+            bytes.extend([0_u8; 16]);
+            bytes.push(0x01);
+            bytes
+        }
+        ReaderKind::TimeDataFamily10_1 => {
+            // 四段全空槽形态：TimeData(v2) + TimeTable(v1) + TimeDimension(v1)
+            // + TimeDisplay(v1)。
+            let mut bytes = 2_u16.to_le_bytes().to_vec();
+            bytes.extend(0_i16.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes.extend(0_i16.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            for _ in 0..4 {
+                bytes.extend(encoded(""));
+            }
+            bytes.extend([0_u8; 16]);
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(encoded(""));
+            bytes.extend(encoded(""));
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(0_i16.to_le_bytes());
+            bytes.extend(0_f64.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(0_f64.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes
+        }
+        // —— B 轮 IDatasetName 槽族六类 + 分派 ——
+        ReaderKind::GeometricNetworkNameBody10_1 => {
+            // 版本 1 + 3 串 + IDatasetName 槽空标记。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(encoded("管网"));
+            bytes.extend(encoded(""));
+            bytes.extend(encoded("几何网络"));
+            bytes.extend([0_u8; 16]);
+            bytes
+        }
+        ReaderKind::RelationshipClassNameBody10_1 => {
+            // 版本 1 + 3 串 + 2×int32 + 2×short + 选择子 0（工作空间槽空标记）。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(encoded("源类"));
+            bytes.extend(encoded("目标类"));
+            bytes.extend(encoded(""));
+            bytes.extend(7_i32.to_le_bytes());
+            bytes.extend((-9_i32).to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(2_u16.to_le_bytes());
+            bytes.extend(0_u16.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes
+        }
+        ReaderKind::MemoryRelationshipClassNameBody10_1 => {
+            // 版本 1 + 3 串 + 2×int32 + 2×short + 双槽空标记 + 4 串。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(encoded("内存关系"));
+            bytes.extend(encoded(""));
+            bytes.extend(encoded("类"));
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend(2_i32.to_le_bytes());
+            bytes.extend(3_u16.to_le_bytes());
+            bytes.extend(4_u16.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes.extend([0_u8; 16]);
+            for _ in 0..4 {
+                bytes.extend(encoded(""));
+            }
+            bytes
+        }
+        ReaderKind::QueryTableNameBody10_1 => {
+            // 版本 1（无符号门内）+ 3 串 + 工作空间槽/查询槽空标记。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(encoded("查询表"));
+            bytes.extend(encoded(""));
+            bytes.extend(encoded(""));
+            bytes.extend([0_u8; 16]);
+            bytes.extend([0_u8; 16]);
+            bytes
+        }
+        ReaderKind::RelQueryTableNameBody10_1 => {
+            // 版本 2 满形态（读 0x26、不读 0x28）。
+            let mut bytes = 2_u16.to_le_bytes().to_vec();
+            bytes.extend(encoded(""));
+            bytes.extend(encoded(""));
+            bytes.extend([0_u8; 16]);
+            bytes.extend(0_u16.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes.extend([0_u8; 16]);
+            bytes.extend(encoded(""));
+            bytes.extend(0_u16.to_le_bytes());
+            bytes.extend(7_u16.to_le_bytes());
+            bytes
+        }
+        ReaderKind::DbTableNameBody10_1 => {
+            // 无版本字段：3 串 + 工作空间槽空标记 + 第 4 串 + int32 + 尾槽空标记。
+            let mut bytes = encoded("目录");
+            bytes.extend(encoded("表名"));
+            bytes.extend(encoded("类别"));
+            bytes.extend([0_u8; 16]);
+            bytes.extend(encoded("第四串"));
+            bytes.extend(7_i32.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes
+        }
+        ReaderKind::DatasetNameSlot10_1 => {
+            // 分派入口：GeometricNetworkName 新对象（头 + 版本 1 体，尾槽空标记）。
+            let mut bytes =
+                mxd2qgz::objects::dataset_name_more::GEOMETRIC_NETWORK_NAME_CLASS_ID.to_vec();
+            bytes.extend(21_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(encoded("管网"));
+            bytes.extend(encoded(""));
+            bytes.extend(encoded("几何网络"));
+            bytes.extend([0_u8; 16]);
+            bytes
+        }
+        // —— C 轮 patch + LegendItem 族 + MapSurround 族 ——
+        ReaderKind::PatchBody10_1 => {
+            // 版本 1（无 ≥2 的尾 short）+ 几何槽空标记 + 补丁名。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend([0_u8; 16]);
+            bytes.extend(encoded("补丁"));
+            bytes
+        }
+        ReaderKind::HorizontalBarLegendItemBody10_1 => {
+            // 条目版本 1 + BaseLegendItem 字段序（基类版本 3 全空槽）+ 尾段
+            // int32（−0x1c）+ double ×2（−0x14/−0xc）。注意 int32 在基类字段
+            // 序之后（与 VerticalLegendItem 的「版本 → int32 → 基类」不同）。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(base_legend_item_v3_bytes());
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend(1.0_f64.to_le_bytes());
+            bytes.extend(2.0_f64.to_le_bytes());
+            bytes
+        }
+        ReaderKind::NestedLegendItemBody10_1 => {
+            // 条目版本 1 + 基类字段序 + 尾段 int32（−0x2c）+ double（−0x24）
+            // + 两个符号槽 + 3 short + int32（−0xc）。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(base_legend_item_v3_bytes());
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend(1.0_f64.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes.extend([0_u8; 16]);
+            bytes.extend(0_u16.to_le_bytes());
+            bytes.extend(0_u16.to_le_bytes());
+            bytes.extend(0_u16.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            bytes
+        }
+        ReaderKind::VerticalLegendItemBody10_1 => {
+            // 条目版本 1 + int32 + 基类字段序（与 HorizontalLegendItem 同序）。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(base_legend_item_v3_bytes());
+            bytes
+        }
+        ReaderKind::BaseLegendItemFields10_1 => {
+            // 统一基类字段序入口：基类版本 3 全空槽形态。
+            base_legend_item_v3_bytes()
+        }
+        ReaderKind::MapTitleBody10_1 => {
+            // 自身版本 1 + 共同前缀版本 3（名称 + 关联地图空标记 + short +
+            // 32 字节）。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(3_u16.to_le_bytes());
+            bytes.extend(encoded("标题"));
+            bytes.extend([0_u8; 16]);
+            bytes.extend(0_u16.to_le_bytes());
+            bytes.extend([0_u8; 32]);
+            bytes
+        }
+        ReaderKind::ScalebarBody10_1 => {
+            // 版本 1 满形态（字体槽全部空标记，避免嵌套类头）。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(3_u16.to_le_bytes());
+            bytes.extend(encoded("比例尺"));
+            bytes.extend([0_u8; 16]);
+            bytes.extend(0_u16.to_le_bytes());
+            bytes.extend([0_u8; 32]);
+            for _ in 0..3 {
+                bytes.extend(7_i32.to_le_bytes());
+            }
+            bytes.extend(2.5_f64.to_le_bytes());
+            for _ in 0..3 {
+                bytes.extend(1_u16.to_le_bytes());
+            }
+            for _ in 0..16 {
+                bytes.extend(0x1111_1111_u32.to_le_bytes());
+            }
+            bytes.extend([0_u8; 16]); // IFont 槽 A
+            bytes.extend(0x2222_2222_u32.to_le_bytes());
+            bytes.extend(8_i32.to_le_bytes());
+            bytes.extend([0_u8; 16]); // IFont 槽 B
+            bytes.extend(0x3333_3333_u32.to_le_bytes());
+            bytes.extend(encoded("0.1"));
+            for _ in 0..4 {
+                bytes.extend(9_i32.to_le_bytes());
+            }
+            bytes.extend([0_u8; 16]); // IFont 槽 C
+            bytes.extend(0x4444_4444_u32.to_le_bytes());
+            bytes
+        }
+        ReaderKind::ScaleTextBody10_1 => {
+            // 版本 3 满形态（TextElement/NumericFormat 槽空标记）。
+            let mut bytes = 3_u16.to_le_bytes().to_vec();
+            bytes.extend(3_u16.to_le_bytes());
+            bytes.extend(encoded("比例尺文本"));
+            bytes.extend([0_u8; 16]);
+            bytes.extend(0_u16.to_le_bytes());
+            bytes.extend([0_u8; 32]);
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend(encoded("1:1000"));
+            bytes.extend(2_i32.to_le_bytes());
+            bytes.extend(3_i32.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes.extend(encoded("%"));
+            bytes.extend(encoded("m"));
+            bytes.extend([0_u8; 16]);
+            bytes.extend(encoded("1:%s"));
+            bytes
+        }
+        ReaderKind::MarkerNorthArrowBody10_1 => {
+            // 自身版本 2 + 基类版本 4 + 前缀 + 基类字段 + MarkerElement 槽
+            // 空标记。
+            let mut bytes = 2_u16.to_le_bytes().to_vec();
+            bytes.extend(4_u16.to_le_bytes());
+            bytes.extend(3_u16.to_le_bytes());
+            bytes.extend(encoded("指北针"));
+            bytes.extend([0_u8; 16]);
+            bytes.extend(0_u16.to_le_bytes());
+            bytes.extend([0_u8; 32]);
+            bytes.extend(1.0_f64.to_le_bytes());
+            bytes.extend(2.0_f64.to_le_bytes());
+            bytes.extend(3.0_f64.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes.extend(4_i32.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes
+        }
+        ReaderKind::LegendFormatBody10_1 => {
+            // 版本 2 满形态（TextSymbol/补丁槽空标记）。
+            let mut bytes = 2_u16.to_le_bytes().to_vec();
+            bytes.extend(5_u16.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes.extend(1_i32.to_le_bytes());
+            for _ in 0..11 {
+                bytes.extend(1.5_f64.to_le_bytes());
+            }
+            bytes.extend([0_u8; 16]);
+            bytes.extend([0_u8; 16]);
+            bytes.extend(7_u16.to_le_bytes());
+            bytes.extend(1.0_f64.to_le_bytes());
+            bytes.extend(2.0_f64.to_le_bytes());
+            bytes
+        }
+        ReaderKind::ScalebarSubclassBody10_1 => {
+            // SingleDivision 满形态（基类版本 6、中段 1 个填充槽、尾段版本 2，
+            // 全部符号槽空标记）。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(6_u16.to_le_bytes());
+            bytes.extend(3_u16.to_le_bytes());
+            bytes.extend(encoded("子类"));
+            bytes.extend([0_u8; 16]);
+            bytes.extend(0_u16.to_le_bytes());
+            bytes.extend([0_u8; 32]);
+            bytes.extend(1.0_f64.to_le_bytes());
+            for _ in 0..3 {
+                bytes.extend(2_u16.to_le_bytes());
+            }
+            bytes.extend(3_i32.to_le_bytes());
+            bytes.extend(encoded("#,##0"));
+            bytes.extend(4_i32.to_le_bytes());
+            bytes.extend(5.0_f64.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes.extend(6_i32.to_le_bytes());
+            bytes.extend(7_i32.to_le_bytes());
+            bytes.extend(8.0_f64.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes.extend([0_u8; 16]);
+            bytes.extend(9_i32.to_le_bytes());
+            bytes.extend(10.0_f64.to_le_bytes());
+            bytes.extend(11_u16.to_le_bytes());
+            bytes.extend(12_u16.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(13.0_f64.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes.extend(2_u16.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes.extend([0_u8; 16]);
+            bytes.extend(14.0_f64.to_le_bytes());
+            bytes.extend(15.0_f64.to_le_bytes());
+            bytes.extend(16_i32.to_le_bytes());
+            bytes.extend(17_i32.to_le_bytes());
+            bytes
+        }
+        // —— D 轮 Variant 对象分支 + F 轮 GCS/Unknown ——
+        ReaderKind::VariantObjectBranch10_1 => {
+            // 零 GUID 空对象编码（18 字节）。
+            let mut bytes = 9_u16.to_le_bytes().to_vec();
+            bytes.extend([0_u8; 16]);
+            bytes
+        }
+        ReaderKind::GeographicCoordinateSystem10_1 => {
+            // 保存版本 2（仅 WKT 块）。
+            let mut bytes = 2_u16.to_le_bytes().to_vec();
+            bytes.extend((b"GEOGCS[x]".len() as u32).to_le_bytes());
+            bytes.extend_from_slice(b"GEOGCS[x]");
+            bytes
+        }
+        ReaderKind::UnknownCoordinateSystem10_1 => {
+            // 保存版本 0：4 个字符串，无精度/容差段。
+            let mut bytes = 0_u16.to_le_bytes().to_vec();
+            for _ in 0..4 {
+                bytes.extend(encoded(""));
+            }
+            bytes
+        }
+        // —— G 轮 ColorRamp/Callout/PictureFill/元素装饰 ——
+        ReaderKind::RandomColorRampBody10_1 => random_color_ramp_body_bytes(),
+        ReaderKind::MultiPartColorRampBody10_1 => {
+            // 版本 2 + 1 个 Random 子色带 + 尾段 1 个 double。
+            let mut bytes = 2_u16.to_le_bytes().to_vec();
+            bytes.extend(encoded("mp"));
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend(mxd2qgz::objects::color_ramp::RANDOM_COLOR_RAMP_CLASS_ID);
+            bytes.extend(5_u32.to_le_bytes());
+            bytes.extend(&random_color_ramp_body_bytes());
+            bytes.extend(1.0_f64.to_le_bytes());
+            bytes
+        }
+        ReaderKind::PresetColorRampBody10_1 => {
+            // 版本 1 + 1 个 RgbColor 颜色（raw_int32=0、color_count=1）。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(encoded("preset"));
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend(RGB_COLOR_CLASS_ID);
+            bytes.extend(7_u32.to_le_bytes());
+            bytes.extend(&rgb_color_body_bytes());
+            bytes
+        }
+        ReaderKind::AlgorithmicColorRampBody10_1 => {
+            // 版本 1 + 起止两个 RgbColor。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(encoded("algo"));
+            bytes.extend(3_i32.to_le_bytes());
+            bytes.extend(RGB_COLOR_CLASS_ID);
+            bytes.extend(10_u32.to_le_bytes());
+            bytes.extend(&rgb_color_body_bytes());
+            bytes.extend(RGB_COLOR_CLASS_ID);
+            bytes.extend(11_u32.to_le_bytes());
+            bytes.extend(&rgb_color_body_bytes());
+            bytes
+        }
+        ReaderKind::ColorRampSlot10_1 => {
+            // 槽分派入口：RandomColorRamp 新对象（头 + 体）。
+            let mut bytes = mxd2qgz::objects::color_ramp::RANDOM_COLOR_RAMP_CLASS_ID.to_vec();
+            bytes.extend(6_u32.to_le_bytes());
+            bytes.extend(&random_color_ramp_body_bytes());
+            bytes
+        }
+        ReaderKind::BalloonCalloutBody10_1 => {
+            // 版本 1 + 样式 + 4 double + 填充符号槽空标记 + Point 锚点 +
+            // 圆角 double。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(2_i32.to_le_bytes());
+            for value in [1.0_f64, 2.0, 3.0, 4.0] {
+                bytes.extend(value.to_le_bytes());
+            }
+            bytes.extend([0_u8; 16]);
+            bytes.extend(mxd2qgz::objects::geometry::POINT_CLASS_ID);
+            bytes.extend(21_u32.to_le_bytes());
+            bytes.extend(&point_body_bytes());
+            bytes.extend(0.5_f64.to_le_bytes());
+            bytes
+        }
+        ReaderKind::LineCalloutBody10_1 => {
+            // 版本 1 + 3 个符号槽空标记 + 锚点空标记 + 风格 + 5 边距。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            for _ in 0..3 {
+                bytes.extend([0_u8; 16]);
+            }
+            bytes.extend([0_u8; 16]);
+            bytes.extend(9.0_f64.to_le_bytes());
+            bytes.extend(1_i32.to_le_bytes());
+            for value in [1.0_f64, 2.0, 3.0, 4.0, 5.0] {
+                bytes.extend(value.to_le_bytes());
+            }
+            bytes
+        }
+        ReaderKind::SimpleLineCalloutBody10_1 => {
+            // 版本 1 + double + 几何槽 Point 新对象 + 引线/锚点槽空标记。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(1.0_f64.to_le_bytes());
+            bytes.extend(2_u16.to_le_bytes());
+            bytes.extend(mxd2qgz::objects::geometry::POINT_CLASS_ID);
+            bytes.extend(41_u32.to_le_bytes());
+            bytes.extend(&point_body_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes.extend([0_u8; 16]);
+            bytes
+        }
+        ReaderKind::MarkerTextBackgroundBody10_1 => {
+            // 版本 1 + short + 符号槽空标记。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(3_u16.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes
+        }
+        ReaderKind::MarkerBackgroundSlot10_1 => {
+            // 槽分派入口：MarkerTextBackground 新对象（头 + 体，符号槽空标记）。
+            let mut bytes =
+                mxd2qgz::objects::callout_background::MARKER_TEXT_BACKGROUND_CLASS_ID.to_vec();
+            bytes.extend(55_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(3_u16.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes
+        }
+        ReaderKind::PictureFillSymbolBody10_1 => {
+            // 版本 8 主路径（图像路径 + 3 色 + 空轮廓槽 + 标量组）。
+            let mut bytes = 8_u16.to_le_bytes().to_vec();
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend(5_i32.to_le_bytes());
+            bytes.extend(encoded("C:/pic.png"));
+            bytes.extend(1.0_f64.to_le_bytes());
+            bytes.extend(2.0_f64.to_le_bytes());
+            for key in [3_u32, 4, 5] {
+                bytes.extend(RGB_COLOR_CLASS_ID);
+                bytes.extend(key.to_le_bytes());
+                bytes.extend(&rgb_color_body_bytes());
+            }
+            bytes.extend([0_u8; 16]);
+            for value in [1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0] {
+                bytes.extend(value.to_le_bytes());
+            }
+            bytes.extend([0_u8; 16]); // 读后即弃 double ×2
+            bytes.extend(11_i32.to_le_bytes());
+            bytes.extend(12_i32.to_le_bytes());
+            bytes.extend([0x01_u8]);
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(2_u16.to_le_bytes());
+            bytes.extend(3_u16.to_le_bytes());
+            bytes
+        }
+        ReaderKind::PictureFillSymbolSlot10_1 => {
+            // 槽分派入口：PictureFillSymbol 新对象（头 + 版本 8 体）。
+            let mut bytes =
+                mxd2qgz::objects::picture_fill_symbol::PICTURE_FILL_SYMBOL_CLASS_ID.to_vec();
+            bytes.extend(61_u32.to_le_bytes());
+            bytes.extend(8_u16.to_le_bytes());
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend(5_i32.to_le_bytes());
+            bytes.extend(encoded("C:/pic.png"));
+            bytes.extend(1.0_f64.to_le_bytes());
+            bytes.extend(2.0_f64.to_le_bytes());
+            for key in [3_u32, 4, 5] {
+                bytes.extend(RGB_COLOR_CLASS_ID);
+                bytes.extend(key.to_le_bytes());
+                bytes.extend(&rgb_color_body_bytes());
+            }
+            bytes.extend([0_u8; 16]);
+            for value in [1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0] {
+                bytes.extend(value.to_le_bytes());
+            }
+            bytes.extend([0_u8; 16]); // 读后即弃 double ×2
+            bytes.extend(11_i32.to_le_bytes());
+            bytes.extend(12_i32.to_le_bytes());
+            bytes.extend([0x01_u8]);
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(2_u16.to_le_bytes());
+            bytes.extend(3_u16.to_le_bytes());
+            bytes
+        }
+        ReaderKind::SymbolBorderBody10_1 => {
+            // 版本 2 满形态：double + 符号槽空标记 + short + double。
+            let mut bytes = 2_u16.to_le_bytes().to_vec();
+            bytes.extend(1.0_f64.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes.extend(7_u16.to_le_bytes());
+            bytes.extend(3.0_f64.to_le_bytes());
+            bytes
+        }
+        ReaderKind::SymbolBackgroundBody10_1 => {
+            // 同 Border 布局。
+            let mut bytes = 2_u16.to_le_bytes().to_vec();
+            bytes.extend(1.0_f64.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes.extend(7_u16.to_le_bytes());
+            bytes.extend(3.0_f64.to_le_bytes());
+            bytes
+        }
+        ReaderKind::SymbolShadowBody10_1 => {
+            // 版本 1：符号槽空标记 + short + double ×2。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend([0_u8; 16]);
+            bytes.extend(7_u16.to_le_bytes());
+            bytes.extend(1.0_f64.to_le_bytes());
+            bytes.extend(2.0_f64.to_le_bytes());
+            bytes
+        }
+        ReaderKind::BorderSlot10_1 => {
+            // 槽分派入口：SymbolBorder 新对象（头 + 版本 2 体）。
+            let mut bytes = mxd2qgz::objects::element_decor::SYMBOL_BORDER_CLASS_ID.to_vec();
+            bytes.extend(70_u32.to_le_bytes());
+            bytes.extend(2_u16.to_le_bytes());
+            bytes.extend(1.0_f64.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes.extend(7_u16.to_le_bytes());
+            bytes.extend(3.0_f64.to_le_bytes());
+            bytes
+        }
+        ReaderKind::BackgroundSlot10_1 => {
+            // 槽分派入口：SymbolBackground 新对象（头 + 版本 2 体）。
+            let mut bytes = mxd2qgz::objects::element_decor::SYMBOL_BACKGROUND_CLASS_ID.to_vec();
+            bytes.extend(71_u32.to_le_bytes());
+            bytes.extend(2_u16.to_le_bytes());
+            bytes.extend(1.0_f64.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes.extend(7_u16.to_le_bytes());
+            bytes.extend(3.0_f64.to_le_bytes());
+            bytes
+        }
+        ReaderKind::ShadowSlot10_1 => {
+            // 槽分派入口：SymbolShadow 新对象（头 + 版本 1 体）。
+            let mut bytes = mxd2qgz::objects::element_decor::SYMBOL_SHADOW_CLASS_ID.to_vec();
+            bytes.extend(72_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend([0_u8; 16]);
+            bytes.extend(7_u16.to_le_bytes());
+            bytes.extend(1.0_f64.to_le_bytes());
+            bytes.extend(2.0_f64.to_le_bytes());
+            bytes
+        }
     }
 }
 
@@ -2006,6 +2789,168 @@ fn try_read(kind: ReaderKind, reader: &mut Reader<'_>) -> io::Result<()> {
         ReaderKind::CustomNumberFormatBody10_1 => {
             read_custom_number_format_body_10_1(reader, 1024, &mut RefTable10_1::new(), 58)
                 .map(|_| ())
+        }
+        // —— 本轮整合接线：A 轮 dep_tail TimeData 族 ——
+        ReaderKind::TimeBody10_1 => {
+            read_time_body_10_1(reader, 1024, &mut RefTable10_1::new(), 60).map(|_| ())
+        }
+        ReaderKind::TimeZoneInfoBody10_1 => {
+            read_time_zone_info_body_10_1(reader, 1024, &mut RefTable10_1::new(), 61).map(|_| ())
+        }
+        ReaderKind::TimeReferenceBody10_1 => {
+            read_time_reference_body_10_1(reader, 1024, &mut RefTable10_1::new(), 62).map(|_| ())
+        }
+        ReaderKind::TimeExtentBody10_1 => {
+            read_time_extent_body_10_1(reader, 1024, &mut RefTable10_1::new(), 63).map(|_| ())
+        }
+        ReaderKind::TimeDataFamily10_1 => {
+            read_time_data_family_10_1(reader, 1024, &mut RefTable10_1::new()).map(|_| ())
+        }
+        // —— B 轮 IDatasetName 槽族六类 + 分派 ——
+        ReaderKind::GeometricNetworkNameBody10_1 => {
+            read_geometric_network_name_body_10_1(reader, 1024, &mut RefTable10_1::new(), 63)
+                .map(|_| ())
+        }
+        ReaderKind::RelationshipClassNameBody10_1 => {
+            read_relationship_class_name_body_10_1(reader, 1024, &mut RefTable10_1::new(), 64)
+                .map(|_| ())
+        }
+        ReaderKind::MemoryRelationshipClassNameBody10_1 => {
+            read_memory_relationship_class_name_body_10_1(
+                reader,
+                1024,
+                &mut RefTable10_1::new(),
+                65,
+            )
+            .map(|_| ())
+        }
+        ReaderKind::QueryTableNameBody10_1 => {
+            read_query_table_name_body_10_1(reader, 1024, &mut RefTable10_1::new(), 66).map(|_| ())
+        }
+        ReaderKind::RelQueryTableNameBody10_1 => {
+            read_rel_query_table_name_body_10_1(reader, 1024, &mut RefTable10_1::new(), 67)
+                .map(|_| ())
+        }
+        ReaderKind::DbTableNameBody10_1 => {
+            read_db_table_name_body_10_1(reader, 1024, &mut RefTable10_1::new(), 68).map(|_| ())
+        }
+        ReaderKind::DatasetNameSlot10_1 => {
+            read_dataset_name_slot_10_1(reader, 1024, &mut RefTable10_1::new(), &mut None)
+                .map(|_| ())
+        }
+        // —— C 轮 patch + LegendItem 族 + MapSurround 族 ——
+        ReaderKind::PatchBody10_1 => {
+            read_patch_body_10_1(reader, 1024, &mut RefTable10_1::new(), 69).map(|_| ())
+        }
+        ReaderKind::HorizontalBarLegendItemBody10_1 => {
+            read_horizontal_bar_legend_item_body_10_1(reader, 1024, &mut RefTable10_1::new(), 70)
+                .map(|_| ())
+        }
+        ReaderKind::NestedLegendItemBody10_1 => {
+            read_nested_legend_item_body_10_1(reader, 1024, &mut RefTable10_1::new(), 71)
+                .map(|_| ())
+        }
+        ReaderKind::VerticalLegendItemBody10_1 => {
+            read_vertical_legend_item_body_10_1(reader, 1024, &mut RefTable10_1::new(), 72)
+                .map(|_| ())
+        }
+        ReaderKind::BaseLegendItemFields10_1 => {
+            read_base_legend_item_fields_10_1(reader, 1024, &mut RefTable10_1::new()).map(|_| ())
+        }
+        ReaderKind::MapTitleBody10_1 => {
+            read_map_title_body_10_1(reader, 1024, &mut RefTable10_1::new(), 73).map(|_| ())
+        }
+        ReaderKind::ScalebarBody10_1 => {
+            read_scalebar_body_10_1(reader, 1024, &mut RefTable10_1::new(), 74).map(|_| ())
+        }
+        ReaderKind::ScaleTextBody10_1 => {
+            read_scale_text_body_10_1(reader, 1024, &mut RefTable10_1::new(), 75).map(|_| ())
+        }
+        ReaderKind::MarkerNorthArrowBody10_1 => {
+            read_marker_north_arrow_body_10_1(reader, 1024, &mut RefTable10_1::new(), 76)
+                .map(|_| ())
+        }
+        ReaderKind::LegendFormatBody10_1 => {
+            read_legend_format_body_10_1(reader, 1024, &mut RefTable10_1::new(), 77).map(|_| ())
+        }
+        ReaderKind::ScalebarSubclassBody10_1 => read_scalebar_subclass_body_10_1(
+            reader,
+            1024,
+            &mut RefTable10_1::new(),
+            78,
+            mxd2qgz::maps::map_surround_family::ScalebarSubclassKind10_1::SingleDivision,
+        )
+        .map(|_| ()),
+        // —— D 轮 Variant 对象分支 + F 轮 GCS/Unknown 坐标系 ——
+        ReaderKind::VariantObjectBranch10_1 => read_variant_object_branch_10_1(reader).map(|_| ()),
+        ReaderKind::GeographicCoordinateSystem10_1 => {
+            read_geographic_coordinate_system_10_1(reader, 1024).map(|_| ())
+        }
+        ReaderKind::UnknownCoordinateSystem10_1 => {
+            read_unknown_coordinate_system_10_1(reader, 1024).map(|_| ())
+        }
+        // —— G 轮 ColorRamp/Callout/PictureFill/元素装饰 ——
+        ReaderKind::RandomColorRampBody10_1 => {
+            read_random_color_ramp_body_10_1(reader, 1024, &mut RefTable10_1::new(), 79).map(|_| ())
+        }
+        ReaderKind::MultiPartColorRampBody10_1 => {
+            read_multi_part_color_ramp_body_10_1(reader, 1024, &mut RefTable10_1::new(), 80, 8)
+                .map(|_| ())
+        }
+        ReaderKind::PresetColorRampBody10_1 => {
+            read_preset_color_ramp_body_10_1(reader, 1024, &mut RefTable10_1::new(), 81).map(|_| ())
+        }
+        ReaderKind::AlgorithmicColorRampBody10_1 => {
+            read_algorithmic_color_ramp_body_10_1(reader, 1024, &mut RefTable10_1::new(), 82)
+                .map(|_| ())
+        }
+        ReaderKind::ColorRampSlot10_1 => {
+            read_color_ramp_slot_10_1(reader, 1024, &mut RefTable10_1::new(), 8, 0).map(|_| ())
+        }
+        ReaderKind::BalloonCalloutBody10_1 => {
+            read_balloon_callout_body_10_1(reader, 1024, &mut RefTable10_1::new(), 83, 8)
+                .map(|_| ())
+        }
+        ReaderKind::LineCalloutBody10_1 => {
+            read_line_callout_body_10_1(reader, 1024, &mut RefTable10_1::new(), 84, 8).map(|_| ())
+        }
+        ReaderKind::SimpleLineCalloutBody10_1 => {
+            read_simple_line_callout_body_10_1(reader, 1024, &mut RefTable10_1::new(), 85, 8)
+                .map(|_| ())
+        }
+        ReaderKind::MarkerTextBackgroundBody10_1 => {
+            read_marker_text_background_body_10_1(reader, 1024, &mut RefTable10_1::new(), 86, 8)
+                .map(|_| ())
+        }
+        ReaderKind::MarkerBackgroundSlot10_1 => {
+            read_marker_background_slot_10_1(reader, 1024, &mut RefTable10_1::new(), 8).map(|_| ())
+        }
+        ReaderKind::PictureFillSymbolBody10_1 => {
+            read_picture_fill_symbol_body_10_1(reader, 1024, &mut RefTable10_1::new(), 87, 8)
+                .map(|_| ())
+        }
+        ReaderKind::PictureFillSymbolSlot10_1 => {
+            read_picture_fill_symbol_slot_10_1(reader, 1024, &mut RefTable10_1::new(), 8)
+                .map(|_| ())
+        }
+        ReaderKind::SymbolBorderBody10_1 => {
+            read_symbol_border_body_10_1(reader, 1024, &mut RefTable10_1::new(), 88, 8).map(|_| ())
+        }
+        ReaderKind::SymbolBackgroundBody10_1 => {
+            read_symbol_background_body_10_1(reader, 1024, &mut RefTable10_1::new(), 89, 8)
+                .map(|_| ())
+        }
+        ReaderKind::SymbolShadowBody10_1 => {
+            read_symbol_shadow_body_10_1(reader, 1024, &mut RefTable10_1::new(), 90, 8).map(|_| ())
+        }
+        ReaderKind::BorderSlot10_1 => {
+            read_border_slot_10_1(reader, 1024, &mut RefTable10_1::new(), 8).map(|_| ())
+        }
+        ReaderKind::BackgroundSlot10_1 => {
+            read_background_slot_10_1(reader, 1024, &mut RefTable10_1::new(), 8).map(|_| ())
+        }
+        ReaderKind::ShadowSlot10_1 => {
+            read_shadow_slot_10_1(reader, 1024, &mut RefTable10_1::new(), 8).map(|_| ())
         }
     }
 }

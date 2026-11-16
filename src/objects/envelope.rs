@@ -68,6 +68,11 @@ use crate::objects::spatial_reference::{
     PROJECTED_COORDINATE_SYSTEM_CLASS_ID, ProjectedCoordinateSystem10_1,
     read_projected_coordinate_system_10_1,
 };
+use crate::objects::spatial_reference_slots::{
+    GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID, GeographicCoordinateSystem10_1,
+    UNKNOWN_COORDINATE_SYSTEM_CLASS_ID, UnknownCoordinateSystem10_1,
+    read_geographic_coordinate_system_10_1, read_unknown_coordinate_system_10_1,
+};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
@@ -106,6 +111,18 @@ pub enum SpatialReferenceEntry10_1 {
     Projected {
         key: u32,
         body: ProjectedCoordinateSystem10_1,
+    },
+    /// 未见过的新键且类标识为地理坐标系（F 轮接线）：已读取完整嵌套 GCS
+    /// 对象体（`spatial_reference_slots` 模块）。登记语义同 `Projected`。
+    Geographic {
+        key: u32,
+        body: GeographicCoordinateSystem10_1,
+    },
+    /// 未见过的新键且类标识为未知坐标系（F 轮接线）：已读取完整嵌套
+    /// Unknown 对象体。登记语义同 `Projected`。
+    UnknownCoordinateSystem {
+        key: u32,
+        body: UnknownCoordinateSystem10_1,
     },
 }
 
@@ -240,6 +257,20 @@ pub fn read_envelope_10_1(
                 // 投影坐标系对象体由专门读取器解析，max_bytes 原样转发。
                 let body = read_projected_coordinate_system_10_1(&mut trial, max_bytes)?;
                 Some(SpatialReferenceEntry10_1::Projected { key, body })
+            }
+            ObjectEntry10_1::NewObject { class_id, key }
+                if class_id == GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID =>
+            {
+                // 地理坐标系（F 轮接线三分派）。
+                let body = read_geographic_coordinate_system_10_1(&mut trial, max_bytes)?;
+                Some(SpatialReferenceEntry10_1::Geographic { key, body })
+            }
+            ObjectEntry10_1::NewObject { class_id, key }
+                if class_id == UNKNOWN_COORDINATE_SYSTEM_CLASS_ID =>
+            {
+                // 未知坐标系（F 轮接线三分派）。
+                let body = read_unknown_coordinate_system_10_1(&mut trial, max_bytes)?;
+                Some(SpatialReferenceEntry10_1::UnknownCoordinateSystem { key, body })
             }
             ObjectEntry10_1::NewObject { class_id, key } => {
                 // 严格子集只认投影坐标系嵌套。嵌套对象体无外部长度字段，

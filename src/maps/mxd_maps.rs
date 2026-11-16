@@ -51,7 +51,7 @@
 //! 解析结果与诊断都是候选观察：单元测试仅验证代码自身契约，解析规则未在
 //! ArcMap 10.1 或 QGIS 中人工目视验证；通过解析不代表 MXD 格式已验证。
 
-use crate::layers::fdo_graphics_layer::AssociatedLayer10_1;
+use crate::layers::fdo_graphics_layer::{AssociatedLayer10_1, ElementCollectionSlot10_1};
 use crate::layers::feature_layer::{
     DataSource10_1, FeatureClassNameNested10_1, WorkspaceNameEntry10_1,
 };
@@ -241,12 +241,27 @@ fn parse_first_frame(
         prefix.name, prefix.secondary_name, prefix.version
     ));
     match &prefix.spatial_reference {
-        Some(pcs) => diagnostics.push(format!(
-            "空间参考：ProjectedCoordinateSystem（保存版本 {}，WKT {} 字节）；\
-             域字符串、垂向标志、精度标志与 double 已由读取器解析但语义未确认，不写入模型",
-            pcs.save_version,
-            pcs.wkt.len()
-        )),
+        Some(sr) => diagnostics.push(match sr {
+            crate::maps::map_object::MapSpatialReference10_1::Projected(pcs) => format!(
+                "空间参考：ProjectedCoordinateSystem（保存版本 {}，WKT {} 字节）；\
+                 域字符串、垂向标志、精度标志与 double 已由读取器解析但语义未确认，不写入模型",
+                pcs.save_version,
+                pcs.wkt.len()
+            ),
+            crate::maps::map_object::MapSpatialReference10_1::Geographic(gcs) => format!(
+                "空间参考：GeographicCoordinateSystem（保存版本 {}，WKT {} 字节；F 轮三分派）；\
+                 域字符串、范围与精度块已由读取器解析但语义未确认，不写入模型",
+                gcs.save_version,
+                gcs.wkt.len()
+            ),
+            crate::maps::map_object::MapSpatialReference10_1::UnknownCoordinateSystem(unk) => {
+                format!(
+                    "空间参考：UnknownCoordinateSystem（保存版本 {}，字符串 4 条，无 WKT；\
+                     F 轮三分派）；字符串与精度块已由读取器解析但语义未确认，不写入模型",
+                    unk.save_version
+                )
+            }
+        }),
         None => diagnostics
             .push("空间参考：嵌套对象头为 16 零字节空引用标记，该数据框未设置坐标系".to_string()),
     }
@@ -318,16 +333,47 @@ fn parse_first_frame(
                         }
                         diagnostics.push(format!(
                             "条目 {}：FDOGraphicsLayer（版本 {}，int32={}，short=0x{:04x}）关\
-                             联要素图层前缀已解析；其体在 {:?} 处停止，ElementCollection2 槽\
-                             起的字段不可达",
+                             联要素图层前缀已解析；{}",
                             entry.index + 1,
                             prefix.version,
                             prefix.int32_field,
                             prefix.short_field,
-                            associated.stop
+                            prefix.stop.describe()
                         ));
                         feature_layer_successor_note(associated, entry.index, diagnostics);
                         let source = feature_layer_source(associated, entry.index, diagnostics);
+                        // IElementCollection2 槽（A 轮起 FL 体 TailCompleted 后
+                        // 可达）：透传其消费摘要。
+                        if let Some(slot) = &prefix.element_collection {
+                            let detail = match slot {
+                                ElementCollectionSlot10_1::Null => "空标记".to_string(),
+                                ElementCollectionSlot10_1::BackReference { key, .. } => {
+                                    format!("回引（键 {key}）")
+                                }
+                                ElementCollectionSlot10_1::ElementCollection(body) => format!(
+                                    "ElementCollection 新对象：版本 {}，元素声明 {}、已消费 \
+                                     {}（{}）",
+                                    body.version,
+                                    body.count,
+                                    match &body.body {
+                                        crate::objects::element_collection::ElementCollectionBody10_1::Interleaved { slots } => slots.len(),
+                                        crate::objects::element_collection::ElementCollectionBody10_1::Sequential { elements, .. } => elements.len(),
+                                    },
+                                    match &body.stop {
+                                        Some(stop) => format!("体内停止：{stop:?}"),
+                                        None => "体完整消费".to_string(),
+                                    }
+                                ),
+                                ElementCollectionSlot10_1::Unsupported { class_id, key } => format!(
+                                    "新对象非 ElementCollection（类 {}，键 {key}）",
+                                    crate::storage::class_id_hex(class_id)
+                                ),
+                            };
+                            diagnostics.push(format!(
+                                "条目 {}：IElementCollection2 槽：{detail}",
+                                entry.index + 1
+                            ));
+                        }
                         if let Some(delegated) = &prefix.delegated_layer {
                             diagnostics.push(format!(
                                 "条目 {}：委派注记图层（无对象头，按 FeatureLayer 字段序）前\
@@ -540,6 +586,16 @@ fn parse_first_frame(
                     key,
                     ..
                 }) => format!("内嵌 PCS（键 {key}）"),
+                Some(crate::objects::envelope::SpatialReferenceEntry10_1::Geographic {
+                    key,
+                    ..
+                }) => format!("内嵌 GCS（键 {key}；F 轮三分派）"),
+                Some(
+                    crate::objects::envelope::SpatialReferenceEntry10_1::UnknownCoordinateSystem {
+                        key,
+                        ..
+                    },
+                ) => format!("内嵌未知坐标系（键 {key}；F 轮三分派）"),
                 None => "该版本分支无此段".to_string(),
             }
         ));
@@ -617,9 +673,22 @@ fn parse_first_frame(
         name: prefix.name,
         secondary_name: Some(prefix.secondary_name),
         children,
-        crs: prefix.spatial_reference.map(|pcs| CoordinateSystem {
-            definition: pcs.wkt,
-            unknown_fields: Vec::new(),
+        crs: prefix.spatial_reference.and_then(|sr| match sr {
+            // PCS/GCS 以 WKT 写入模型；Unknown 无 WKT（4 串语义未定），
+            // 保持 None 并以诊断说明。
+            crate::maps::map_object::MapSpatialReference10_1::Projected(pcs) => {
+                Some(CoordinateSystem {
+                    definition: pcs.wkt,
+                    unknown_fields: Vec::new(),
+                })
+            }
+            crate::maps::map_object::MapSpatialReference10_1::Geographic(gcs) => {
+                Some(CoordinateSystem {
+                    definition: gcs.wkt,
+                    unknown_fields: Vec::new(),
+                })
+            }
+            crate::maps::map_object::MapSpatialReference10_1::UnknownCoordinateSystem(_) => None,
         }),
         extent,
         unknown_fields: frame_unknown,
@@ -667,40 +736,36 @@ fn feature_layer_successor_note(
         successor.hyperlinks.len(),
         successor.string_154,
     ));
-    // ㊴ DisplayExpressionProperties 已闭合前缀消费完毕的停止（接线轮起样本
-    //   可达）：透传前缀内容与未闭合尾段说明，字段风格循既有诊断。
-    if successor.stop == crate::layers::feature_layer_tail::SuccessorStop10_1::ExpressionPropsBody {
-        let engine_note = match &successor.expression_props {
-            Some(crate::layers::feature_layer_tail::ExpressionPropsSlot10_1::Display(prefix)) => {
-                format!(
-                    "版本 {}、表达式 {:?}、int16 {}、引擎槽 {}",
-                    prefix.version,
-                    prefix.string,
-                    prefix.short,
-                    match &prefix.engine {
-                        crate::layers::annotate_props::ExpressionEngineSlot10_1::VbscriptEngine(
-                            engine,
-                        ) => format!("AnnotationVBScriptEngine（键 {}）", engine.key),
-                        crate::layers::annotate_props::ExpressionEngineSlot10_1::BackReference {
-                            key,
-                            ..
-                        } => format!("回引（键 {key}）"),
-                        crate::layers::annotate_props::ExpressionEngineSlot10_1::Null => {
-                            "空标记".to_string()
-                        }
-                        crate::layers::annotate_props::ExpressionEngineSlot10_1::Unsupported {
-                            key,
-                            ..
-                        } => format!("未知类（键 {key}，槽前停止）"),
-                    }
-                )
+    // ㊴ DisplayExpressionProperties 完整体（A 轮接线起样本可达）：透传体
+    //   内容摘要，字段风格循既有诊断。DEP::Load 读流序列仅四项（版本/
+    //   表达式/int16/引擎槽），体在引擎槽处完结、无尾段
+    //   （docs/arcmap-10.1-dep-tail.md 第一节）。
+    if let Some(crate::layers::feature_layer_tail::ExpressionPropsSlot10_1::Display(prefix)) =
+        &successor.expression_props
+    {
+        let engine_note = match &prefix.engine {
+            crate::layers::annotate_props::ExpressionEngineSlot10_1::VbscriptEngine(engine) => {
+                format!("AnnotationVBScriptEngine（键 {}）", engine.key)
             }
-            _ => "槽位形态非 Display 新对象（与停止原因不一致，原样透传）".to_string(),
+            crate::layers::annotate_props::ExpressionEngineSlot10_1::BackReference {
+                key, ..
+            } => {
+                format!("回引（键 {key}）")
+            }
+            crate::layers::annotate_props::ExpressionEngineSlot10_1::Null => "空标记".to_string(),
+            crate::layers::annotate_props::ExpressionEngineSlot10_1::Unsupported {
+                key, ..
+            } => {
+                format!("未知类（键 {key}，槽前停止）")
+            }
         };
         diagnostics.push(format!(
-            "条目 {}：㊴ DisplayExpressionProperties（esri.clsid 声明）已闭合前缀消费完毕\
-             （{}）；其未闭合尾段（字段序未取证）及其后字节保留未知，游标停在尾段起点",
+            "条目 {}：㊴ DisplayExpressionProperties（esri.clsid 声明）体完整消费\
+             （版本 {}、表达式 {:?}、int16 {}、引擎槽 {}；A 轮裁决无尾段）",
             entry_index + 1,
+            prefix.version,
+            prefix.string,
+            prefix.short,
             engine_note,
         ));
     }

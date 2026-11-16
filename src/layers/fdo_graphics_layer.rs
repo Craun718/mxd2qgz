@@ -312,16 +312,28 @@ pub fn read_fdo_graphics_layer_prefix_10_1(
             AssociatedLayer10_1::BackReference { class_id, key }
         }
         ObjectEntry10_1::NewObject { class_id, key: _ } if class_id == FEATURE_LAYER_CLASS_ID => {
-            // 新 FeatureLayer：解析已确认前缀。成功（含其内部停止）即本读取
-            // 器在此停止——关联图层体剩余无外部长度，无法继续。
+            // 新 FeatureLayer：解析已确认前缀。体在其读取器停止点处停止时，
+            // 关联图层体剩余无外部长度，本读取器随之停止（步骤 5 起不可达）。
+            // A 轮起后继段可完整消费（TailCompleted = FL 体语义终点，无剩余
+            // 字段），此时按 FDO::Load 字段序继续步骤 5（IElementCollection2
+            // 槽，样本 0x1608 起的 ElementCollection 头即该槽对象）。
             // 截断（UnexpectedEof）向上传播为错误（保持「截断输入必须失败」
             // 的读取器契约）；内容性失败（版本超限、类不支持、限额）作为
             // AssociatedLayerFailed 停止返回。
             match read_feature_layer_prefix_10_1(&mut trial, max_bytes, &mut trial_table) {
                 Ok(prefix) => {
-                    stop = Some(FdoGraphicsLayerStop10_1::AssociatedLayerBodyStopped {
-                        layer_stop: prefix.stop.clone(),
-                    });
+                    if prefix.stop
+                        == crate::layers::feature_layer::FeatureLayerStop10_1::Successor(
+                            crate::layers::feature_layer_tail::SuccessorStop10_1::TailCompleted,
+                        )
+                    {
+                        // FL 体完整消费：步骤 5 可达。
+                        stop = None;
+                    } else {
+                        stop = Some(FdoGraphicsLayerStop10_1::AssociatedLayerBodyStopped {
+                            layer_stop: prefix.stop.clone(),
+                        });
+                    }
                     AssociatedLayer10_1::FeatureLayer(Box::new(prefix))
                 }
                 Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => {

@@ -133,8 +133,17 @@ pub enum LegacySpatialReferenceSlot10_1 {
     /// 键已见：回引条目，无对象体。
     BackReference { class_id: [u8; 16], key: u32 },
     /// 新 ProjectedCoordinateSystem 对象：体由专门读取器完整消费（其后可
-    /// 继续旧体后续字段）。GCS 等其他空间参考类体未闭合，属停止点。
+    /// 继续旧体后续字段）。
     ProjectedCoordinateSystem(Box<ProjectedCoordinateSystem10_1>),
+    /// 新 GeographicCoordinateSystem 对象（F 轮接线三分派）：体由
+    /// `spatial_reference_slots` 读取器完整消费。
+    GeographicCoordinateSystem(
+        Box<crate::objects::spatial_reference_slots::GeographicCoordinateSystem10_1>,
+    ),
+    /// 新 UnknownCoordinateSystem 对象（F 轮接线三分派）：体同上完整消费。
+    UnknownCoordinateSystem(
+        Box<crate::objects::spatial_reference_slots::UnknownCoordinateSystem10_1>,
+    ),
 }
 
 /// 旧加载器第 11 步 IName 槽位（`{4BA33331-…}`，经 `FUN_6b197be0`）的
@@ -423,8 +432,32 @@ pub fn read_fdo_graphics_layer_legacy_prefix_10_1(
                 spatial_reference =
                     LegacySpatialReferenceSlot10_1::ProjectedCoordinateSystem(Box::new(pcs));
             }
+            ObjectEntry10_1::NewObject { class_id, key: _ }
+                if class_id
+                    == crate::objects::spatial_reference_slots::GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID =>
+            {
+                // GCS 体（F 轮接线三分派）。
+                let gcs = crate::objects::spatial_reference_slots::read_geographic_coordinate_system_10_1(
+                    &mut trial,
+                    max_bytes,
+                )?;
+                spatial_reference =
+                    LegacySpatialReferenceSlot10_1::GeographicCoordinateSystem(Box::new(gcs));
+            }
+            ObjectEntry10_1::NewObject { class_id, key: _ }
+                if class_id
+                    == crate::objects::spatial_reference_slots::UNKNOWN_COORDINATE_SYSTEM_CLASS_ID =>
+            {
+                // Unknown 体（F 轮接线三分派）。
+                let unk = crate::objects::spatial_reference_slots::read_unknown_coordinate_system_10_1(
+                    &mut trial,
+                    max_bytes,
+                )?;
+                spatial_reference =
+                    LegacySpatialReferenceSlot10_1::UnknownCoordinateSystem(Box::new(unk));
+            }
             ObjectEntry10_1::NewObject { class_id, key } => {
-                // 其他空间参考类（如 GCS）体未知且无外部长度：回退并停止。
+                // 其他空间参考类体未知且无外部长度：回退并停止。
                 trial_table = saved_table;
                 trial = reposition(&origin, entry_offset, slot_offset);
                 stop = Some(LegacyFdoStop10_1::SpatialReferenceUnsupported { class_id, key });
@@ -469,7 +502,7 @@ pub fn read_fdo_graphics_layer_legacy_prefix_10_1(
                     key,
                 ) {
                     Ok(prefix) => {
-                        if let Some(fcn_stop) = prefix.stop {
+                        if let Some(fcn_stop) = prefix.stop.clone() {
                             // FCN 体内停止：其体剩余无外部长度，旧体后续字段
                             // 不可达（游标停在 FCN 的停止点，登记表按其结果保
                             // 留）。

@@ -228,10 +228,18 @@
 //! 接口属性的对应、Template 标记 16 字节的两 double 归属，均为候选；全部
 //! 结论为静态观察，未经目标软件运行验证，样本无字节佐证。
 
+use crate::objects::callout_background::{CalloutSlot10_1, read_marker_background_slot_10_1};
+use crate::objects::color_ramp::{ColorRampSlot10_1, read_color_ramp_slot_10_1};
 use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
+use crate::objects::element_body::{
+    TEXT_SYMBOL_CLASS_ID, TextSymbolBody10_1, read_text_symbol_body_10_1,
+};
 use crate::objects::ole_font::{
     STDFONT_CLASS_ID, STDPICTURE_CLASS_ID, StdFontBody10_1, StdPictureBody10_1,
     read_std_font_body_10_1, read_std_picture_body_10_1,
+};
+use crate::objects::picture_fill_symbol::{
+    PictureFillSymbolSlot10_1, read_picture_fill_symbol_slot_10_1,
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -1513,6 +1521,14 @@ pub enum SymbolSlotFull10_1 {
     GradientFillSymbol(Box<GradientFillSymbolBody10_1>),
     /// 新 DotDensityFillSymbol 对象。
     DotDensityFillSymbol(Box<DotDensityFillSymbolBody10_1>),
+    /// 新 TextSymbol 对象（A 轮接线补齐：LELP ⑯ 槽分派已含 TextSymbol，
+    /// 本入口与该清单对齐；证据 docs/arcmap-10.1-dep-tail.md 第五节——
+    /// ㉖ 槽出现 TextSymbol 新对象时不再按未知类停止回退）。TextSymbol 体
+    /// 本身不带键，`key` 为槽位对象头键（嵌套停止归约用）。
+    TextSymbol {
+        body: Box<TextSymbolBody10_1>,
+        key: u32,
+    },
     /// 新对象但类标识不在闭合集合：游标已回退到该槽位起点、登记表未保留
     /// 该键（读取器内部完成回退，调用者据此停止）。
     Unsupported { class_id: [u8; 16], key: u32 },
@@ -1638,6 +1654,12 @@ pub fn slot_full_stop_10_1(
             body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
                 class_id: DOT_DENSITY_FILL_SYMBOL_CLASS_ID,
                 key: body.key,
+            })
+        }
+        SymbolSlotFull10_1::TextSymbol { body, key } => {
+            body.stop.clone().map(|_| SymbolStop10_1::NestedIncomplete {
+                class_id: TEXT_SYMBOL_CLASS_ID,
+                key: *key,
             })
         }
         SymbolSlotFull10_1::Null | SymbolSlotFull10_1::BackReference { .. } => None,
@@ -1836,6 +1858,15 @@ pub fn read_symbol_slot_full_10_1(
                         depth,
                     )?,
                 ))
+            } else if class_id == TEXT_SYMBOL_CLASS_ID {
+                // A 轮接线补齐：TextSymbol 体闭合（element_body 模块，LELP ⑯
+                // 槽分派同款），本入口不再按未知类停止回退。键随槽位携带
+                // （TextSymbol 体自身无键字段）。
+                let body = read_text_symbol_body_10_1(&mut trial, max_bytes, &mut staged)?;
+                SymbolSlotFull10_1::TextSymbol {
+                    body: Box::new(body),
+                    key,
+                }
             } else {
                 // 未知符号类：回退到槽位起点，不保留该键。
                 *reader = origin;
@@ -1945,58 +1976,6 @@ fn read_decoration_slot_10_1(
                     }),
                 ))
             }
-        }
-    }
-}
-
-/// 实现类未闭合的槽位条目（IFontDisp `{BEF6E002-…}` / IPicture
-/// `{7BF80980-…}` / IColorRamp `{BEB87091-…}` / IMarkerBackground
-/// `{AE41E4F0-…}` / IPictureFillSymbol `{D842B081-…}`）：仅分类空标记与
-/// 回引，新对象一律为停止点（实现类族体未闭合，见研究记录开放项）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UnclosedSlot10_1 {
-    /// 16 字节全零类标识：空引用。
-    Null,
-    /// 键已见：回引条目，无对象体。类标识原样保留、不校验。
-    BackReference { class_id: [u8; 16], key: u32 },
-}
-
-/// 读取一个实现类未闭合的槽位条目，返回 `(槽位, 停止)`。
-///
-/// 新对象（类标识不在闭合集合）时槽位为 `None`、停止原因携带该类标识与
-/// 键：游标回退到槽位起点、登记表不保留该键（读取器内部完成回退）。
-fn read_unclosed_slot_10_1(
-    trial: &mut Reader<'_>,
-    staged: &mut RefTable10_1,
-    kind: DisplaySlotKind10_1,
-) -> io::Result<(Option<UnclosedSlot10_1>, Option<SymbolStop10_1>)> {
-    let origin = trial.clone();
-    let saved = staged.clone();
-    let mut forward = trial.clone();
-    let entry = read_object_entry_10_1(&mut forward, staged)?;
-    match entry {
-        ObjectEntry10_1::Null => {
-            *trial = forward;
-            Ok((Some(UnclosedSlot10_1::Null), None))
-        }
-        ObjectEntry10_1::BackReference { class_id, key } => {
-            *trial = forward;
-            Ok((
-                Some(UnclosedSlot10_1::BackReference { class_id, key }),
-                None,
-            ))
-        }
-        ObjectEntry10_1::NewObject { class_id, key } => {
-            *trial = origin;
-            *staged = saved;
-            Ok((
-                None,
-                Some(SymbolStop10_1::Slot {
-                    kind,
-                    class_id,
-                    key,
-                }),
-            ))
         }
     }
 }
@@ -2652,7 +2631,10 @@ pub struct MultiLayerMarkerSymbolBody10_1 {
     pub ints_94: Option<Vec<i32>>,
     /// 版本 ≥2 的 IMarkerBackground 槽（请求 IID `{AE41E4F0-DDE7-11D3-…}`，
     /// Save 槽 this−0xc；实现类未闭合 = 停止）。`None` = 版本 <2 或前置停止。
-    pub marker_background: Option<UnclosedSlot10_1>,
+    /// IMarkerBackground 槽（G 轮接线起经 callout_background 槽分派：
+    /// MarkerTextBackground 新对象整体消费；未知实现类映射为停止原因，
+    /// 字段保持 `None`——`None` 同时表示前置停止未达，见 `stop`）。
+    pub marker_background: Option<CalloutSlot10_1>,
     /// 版本 ≥3 的 count × String（Save 槽 this−0x7c 向量）；版本 <3 无流内
     /// 串段。`None` = 前置停止。
     pub strings: Option<Vec<String>>,
@@ -2742,11 +2724,11 @@ pub fn read_multi_layer_marker_symbol_body_10_1(
         ints_a8 = Some(read_i32_vec(&mut trial, layer_count)?);
         ints_94 = Some(read_i32_vec(&mut trial, layer_count)?);
         if version as i16 >= 2 {
-            let (slot, inner) = read_unclosed_slot_10_1(
-                &mut trial,
-                &mut staged,
-                DisplaySlotKind10_1::MarkerBackground,
-            )?;
+            // G 轮接线：IMarkerBackground 槽接 callout_background 槽分派
+            //（仅 MarkerTextBackground；未知实现类回退并映射为停止原因，
+            // 停止语义不变）。
+            let (slot, inner) =
+                read_marker_background_slot_10_1(&mut trial, max_bytes, &mut staged, depth - 1)?;
             marker_background = slot;
             if let Some(inner) = inner {
                 stop = Some(inner);
@@ -3374,7 +3356,10 @@ pub struct PictureLineSymbolBody10_1 {
     /// IPictureFillSymbol 槽（请求 IID `{D842B081-330C-11D2-…}`，Save 槽
     /// this−0x14；实现类 PictureFillSymbol 未闭合 = 停止）。
     /// `None` = 槽位停止。
-    pub picture_fill_symbol: Option<UnclosedSlot10_1>,
+    /// IPictureFillSymbol 槽（G 轮接线起经 picture_fill_symbol 槽分派：
+    /// PictureFillSymbol 新对象整体消费；未知实现类映射为停止原因，字段
+    /// 保持 `None`——`None` 同时表示前置停止未达，见 `stop`）。
+    pub picture_fill_symbol: Option<PictureFillSymbolSlot10_1>,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<SymbolStop10_1>,
 }
@@ -3404,10 +3389,14 @@ pub fn read_picture_line_symbol_body_10_1(
     let byte_30 = trial.read_bytes(1)?[0];
     let double_2c = trial.read_f64_le()?;
     let double_24 = trial.read_f64_le()?;
-    let (slot, stop) = read_unclosed_slot_10_1(
+    // G 轮接线：IPictureFillSymbol 槽接 picture_fill_symbol 槽分派（未知
+    // 实现类回退并映射为停止原因，停止语义不变）。顶层体读取器无深度入参，
+    // 以读取器自身嵌套限额为槽位预算。
+    let (slot, stop) = read_picture_fill_symbol_slot_10_1(
         &mut trial,
+        max_bytes,
         &mut staged,
-        DisplaySlotKind10_1::PictureFillSymbol,
+        MAX_SYMBOL_NESTING_DEPTH,
     )?;
 
     *table = staged;
@@ -3742,8 +3731,10 @@ pub struct GradientFillSymbolBody10_1 {
     /// 体首 short 版本；>1 原生拒绝（版本常量 `DAT_6ec0b2f8`=1）。
     pub version: u16,
     /// IColorRamp 槽（请求 IID `{BEB87091-C0B4-11D0-8379-…}` → this−0x4c；
-    /// 实现类 RandomColorRamp 等未闭合 = 停止）。`None` = 槽位停止。
-    pub color_ramp: Option<UnclosedSlot10_1>,
+    /// G 轮接线起经 color_ramp 槽分派：四类闭合色带整体消费；未知实现类
+    /// 映射为停止原因，字段保持 `None`——`None` 同时表示前置停止未达，
+    /// 见 `stop`）。
+    pub color_ramp: Option<ColorRampSlot10_1>,
     /// IColor 槽（Save 槽 this−0x34，语义候选：渐变起色）。`None` = 前置停止。
     pub color: Option<ColorSlot10_1>,
     /// ISymbol 槽（Save 槽 this−0x30，语义候选：轮廓符号）。`None` = 前置停止。
@@ -3773,7 +3764,6 @@ pub fn read_gradient_fill_symbol_body_10_1(
     key: u32,
     depth: usize,
 ) -> io::Result<GradientFillSymbolBody10_1> {
-    let _ = depth; // 色带槽无嵌套下钻（未闭合槽位不解析体）
     let mut trial = reader.clone();
     let entry_offset = trial.position();
     let mut staged = table.clone();
@@ -3784,9 +3774,10 @@ pub fn read_gradient_fill_symbol_body_10_1(
         "GradientFillSymbol",
         entry_offset,
     )?;
-    // ② IColorRamp 槽（实现类族未闭合：仅分类空标记与回引）。
+    // ② IColorRamp 槽（G 轮接线：四类闭合色带整体消费；未知实现类回退并
+    //    映射为停止原因，停止语义不变）。
     let (ramp_slot, ramp_stop) =
-        read_unclosed_slot_10_1(&mut trial, &mut staged, DisplaySlotKind10_1::ColorRamp)?;
+        read_color_ramp_slot_10_1(&mut trial, max_bytes, &mut staged, depth - 1, entry_offset)?;
     let color_ramp = ramp_slot;
     let mut stop = ramp_stop;
     let mut color = None;
