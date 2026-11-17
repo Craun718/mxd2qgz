@@ -70,6 +70,55 @@ use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
+/// FeatureBookmark 的 IName 槽中已知对象的严格子集。
+#[derive(Debug, Clone, PartialEq)]
+pub enum BookmarkNameSlot10_1 {
+    /// 空对象。
+    Null,
+    /// 当前对象流会话中已登记的键。
+    BackReference { class_id: [u8; 16], key: u32 },
+    /// FeatureClassName；体内停止点保留在 body.stop。
+    FeatureClassName(Box<crate::layers::feature_layer::FeatureClassNamePrefix10_1>),
+    /// 未闭合的类；游标和登记表均回退到槽起点。
+    Unsupported { class_id: [u8; 16], key: u32 },
+}
+
+/// 读取书签的 IName 对象槽，不读取书签自身前后字段。
+///
+/// 目前只解析 FeatureLayer 的 IName 槽也使用的 FeatureClassName；未知类
+/// 不推断对象体。此函数不模拟装载后的 QI 或数据源打开。
+pub fn read_bookmark_name_slot_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<BookmarkNameSlot10_1> {
+    let mut trial = reader.clone();
+    let mut staged = table.clone();
+    let slot = match read_object_entry_10_1(&mut trial, &mut staged)? {
+        ObjectEntry10_1::Null => BookmarkNameSlot10_1::Null,
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            BookmarkNameSlot10_1::BackReference { class_id, key }
+        }
+        ObjectEntry10_1::NewObject { class_id, key }
+            if class_id == crate::layers::feature_layer::FEATURE_CLASS_NAME_CLASS_ID =>
+        {
+            let body = crate::layers::feature_layer::read_feature_class_name_body_10_1(
+                &mut trial,
+                max_bytes,
+                &mut staged,
+                key,
+            )?;
+            BookmarkNameSlot10_1::FeatureClassName(Box::new(body))
+        }
+        ObjectEntry10_1::NewObject { class_id, key } => {
+            return Ok(BookmarkNameSlot10_1::Unsupported { class_id, key });
+        }
+    };
+    *reader = trial;
+    *table = staged;
+    Ok(slot)
+}
+
 /// GeometricNetworkName 类标识（CLSID）的 16 字节内存序（Data1-3 小端、
 /// Data4 原序）。
 ///

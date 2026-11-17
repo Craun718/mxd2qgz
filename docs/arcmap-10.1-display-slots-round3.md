@@ -151,7 +151,7 @@ IMarkerBackground 实现类无静态线索，槽分派对未知实现类维持�
 | ① | 版本 short | 2 字节 | — | Load `0x6eb3c190` |
 | ② | String | AfCore String::Read | this−0x30（名称候选） | 同上 |
 | ③ | int32 | 4 字节 | this−0x34（**Load 读入后内存槽置 0**——反编译观察的「读取即弃」形态；Save 写槽值；流内 4 字节原样保留） | 同上；Save `0x6eb3c350` 写 this−0x34 |
-| ④ | 2 字节 short | 2 字节 | 低字节 → bool this−0x28（流内 2 字节，高字节读侧不用；Save 写 2 字节 short 低字节 = 布尔值） | 同上 |
+| ④ | 2 字节 short | 2 字节 | 全 16 位与零比较，结果写入 bool this−0x28；见[第四轮指令复核](mxd-round4-display-20261117.md) | 同上 |
 | ⑤ | int32 | 4 字节 | this−0x2c（Seed 候选） | 同上 |
 | ⑥ | short ×6 | 2×6 字节 | this−0x26（装载同写 this−0x24 同值）/ −0x22 / −0x20 / −0x1e / −0x1c / −0x1a（IRandomColorRamp 色相/饱和度/明度端点候选） | 同上 |
 

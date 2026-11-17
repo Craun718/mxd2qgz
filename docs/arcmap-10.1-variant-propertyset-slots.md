@@ -99,8 +99,8 @@ ImageBase `0x7ffb0000`）。
 直接透传。AfCore 导出 `LoadObject`（`0x68a7b6d0`）结构（本轮反汇编定论）：
 
 1. 入口 `0x68a7b6fe`-`0x68a7b730`：`FUN_68a7c4b0(stream)`——对流 QI
-   ESRI 流上下文接口（IID 常量 `0x68c6dcb8`，即前轮 get_DocumentVersion
-   用的同一 IID）。**命中 → 走上下文对象虚表 +0x44**（即
+   IObjectStream（第四轮核对 IID 常量 `0x68c6dca8`；获取文档版本的另一查询
+   使用 `0x68c6dcb8`）。**命中 → 走上下文对象虚表 +0x44**（即
    [基线文档](arcmap-10.1-native-baseline.md) 记录的带键 ObjectStream 读
    分支：16 字节 GUID + 零 GUID 比较 + 4 字节键 + 登记表）——前轮
    「10.8 文档所述 LoadObject 入口 QI 上下文分支在 10.1 未定位」就此闭合，
@@ -111,10 +111,8 @@ ImageBase `0x7ffb0000`）。
    返回 1、不等返回 0，本轮逐指令确认极性）——**相等（零 GUID）→ 直接返
    回 S_OK，出参保持 NULL；不等 → `AfCreateInstance(&类GUID, 空, 0x17,
    IID_IUnknown, out)`**。
-   **注意：`docs/arcmap-10.1-variant-stream.md`「对象分支（问题 4）」节的
-   分支方向写反了（其表述为「等于零 GUID 时进入 AfCreateInstance」）**，
-   本轮以其自身引用的比较器汇编为据修正；该节其余结论（16 字节非
-   ObjectStream 对象头、不可接入严格读取器）不变。GUID 常量字节本轮
+   较早记录曾写反极性，第四轮已据比较函数及分支指令更正。
+   GUID 常量字节本轮
    pefile 亲核：`0x68c6bc2c` = `00000000-…-c000-…0046`（IID_IUnknown）、
    `0x68c6bc4c` = 全零 16 字节；
 3. 非零 GUID 实例化成功后，尾部包装 `0x68a7b530` 将流与对象关联（反编译

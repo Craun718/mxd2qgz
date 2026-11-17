@@ -684,8 +684,12 @@ fn parse_first_frame(
     if let Some(post) = suffix.post_bookmark {
         diagnostics.push(format!(
             "书签后属性（offset 0x{:x}）：+0x19c={}，+0x200={}，+0x264={}，\
-             坐标变换计数 {}；未定性成员不写入模型",
-            post.offset, post.short_19c, post.double_200, post.short_264, post.transformation_count
+             独立表计数 {}；未定性成员不写入模型",
+            post.offset,
+            post.short_19c,
+            post.double_200,
+            post.short_264,
+            post.standalone_table_count,
         ));
     }
 
@@ -694,6 +698,18 @@ fn parse_first_frame(
             "IlluminationProps 槽位（offset 0x{:x}）：{}",
             illumination.object.offset,
             illumination.object.describe(),
+        ));
+    }
+    if let Some(post) = suffix.post_illumination {
+        diagnostics.push(format!(
+            "照明后定长字段（offset 0x{:x}）：+0x1a0=0x{:04x}，临时值=0x{:04x}，\
+             +0x1b0=0x{:08x}，+0x1ac=0x{:04x}，+0x268=0x{:04x}",
+            post.offset,
+            post.short_1a0,
+            post.discarded_short,
+            post.int_1b0,
+            post.short_1ac,
+            post.short_268,
         ));
     }
 

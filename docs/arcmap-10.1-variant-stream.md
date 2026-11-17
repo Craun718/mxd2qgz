@@ -159,20 +159,17 @@ LoadObject 尾部包装 `0x68a7b530`
 `ev_3cde9aa8…`）先经 `IStream` 虚表 `+0x0c` 读 16 字节类 GUID（`pcbRead`
 有检查：hr<0 时透传该 hr，`cbRead < 0x10` 返回 `0x80004005`）；随后与
 `0x68c6bc4c` 处 16 字节常量做比较（`0x68a775f0` 为 4×4 字节比较，
-`ev_86c015f9…`）；常量经 pefile 读得为全零 GUID。**读取的类 GUID 等于
-零 GUID 时**进入 `AfCreateInstance(&类GUID, 已有IUnknown, 0x17, IID_IUnknown, out)`
-（`0x68a77660`）；**不等于零时返回 S_OK 且输出保持 NULL**。尾部包装
+`ev_86c015f9…`）；常量经 pefile 读得为全零 GUID。2026-11-17 第四轮逐指令
+复核：**零 GUID 直接返回 S_OK，输出保持 NULL**；非零 GUID 才在
+`0x68a7b506` 进入 `AfCreateInstance` 辅助函数 `0x68a77660`。尾部包装
 `0x68a7b530`（`ev_d9deb06d…`）会 `operator new` 一个 `VariantStream`
 （构造 `0x68a7a2c0`）并与流关联；该函数反编译含大量不可达块警告，未闭合。
 
-结论与 10.8 相同方向：对象分支的实际持久化依赖 COM 上下文（类 GUID、
-`AfCreateInstance` 类厂查找、对象体序列化），**这 16 字节不是
-`object_stream::read_header_10_1` 所表示的「16 字节 GUID + 4 字节键」对象头**，
-不能把对象分支接入严格读取器。与 10.8 文档描述的差异：10.8 记录
-「入口先对输入 IStream 做 QueryInterface 识别特定上下文，否则读 16 字节
-类 GUID」；10.1 全局 Read 所用的 LoadObject 路径中未见该 QI 分支
-（`0x68a775f0` 只是 16 字节比较），顺序与分支条件可能因版本或反编译拆分
-而不同，未解决（见下）。
+对象分支的实际持久化依赖 COM 流上下文。10.1 `LoadObject` 经
+`0x68a7c4b0` 查询 `IObjectStream`（IID 常量 `0x68c6dca8`）；命中则调
+该接口的 +0x44 槽，未命中才进入上述普通流核心。两路径均可读取 16 字节
+的零 GUID 空对象；非空时必须已知流上下文和具体类体。详见
+[第四轮复核](mxd-round4-review-20261117.md)。
 
 ## 结论：10.8 严格读取子集规则在 10.1 是否成立（问题 5）
 

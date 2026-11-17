@@ -21,6 +21,42 @@ pub enum VariantValue10_8 {
     String(String),
 }
 
+/// 10.1 VariantStream 值的已确认安全子集。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VariantValue10_1 {
+    /// 10.1 与 10.8 已分别核对一致的标量和字符串布局。
+    Scalar(VariantValue10_8),
+    /// 空对象；保留原始 VARTYPE 以区分 VT_DISPATCH 和 VT_UNKNOWN。
+    NullObject { value_type: u16 },
+}
+
+/// 读取 10.1 VariantStream 的标量、字符串或空对象；失败时不推进游标。
+///
+/// 非空对象需要调用点的流上下文及具体类的持久化规则，不能推定其边界。
+/// 此处的 VariantStream 全局序列化器不同于 AfCore 的 `Variant::Read`。
+pub fn read_value_10_1(
+    reader: &mut Reader<'_>,
+    max_string_units: u32,
+) -> io::Result<VariantValue10_1> {
+    let mut trial = reader.clone();
+    let value_type = trial.read_u16_le()?;
+    let value = if matches!(value_type, 9 | 13) {
+        let class_id = trial.read_bytes(16)?;
+        if class_id != [0; 16] {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "10.1 VariantStream 非空对象需要流上下文和类专属对象体解析",
+            ));
+        }
+        VariantValue10_1::NullObject { value_type }
+    } else {
+        trial = reader.clone();
+        VariantValue10_1::Scalar(read_value_10_8(&mut trial, max_string_units)?)
+    };
+    *reader = trial;
+    Ok(value)
+}
+
 /// 从已确认的 VariantStream 值起点读取 10.8 已知前缀，失败时不推进游标。
 ///
 /// `max_string_units` 限制 4 字节前缀声明的 UTF-16 码元数，`0` 允许空字符串。

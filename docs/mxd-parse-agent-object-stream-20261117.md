@@ -68,8 +68,8 @@
 
 已有证据表明：
 
-- AfCore 全局 `VariantStream::Read` 的 `VT_DISPATCH(9)`/`VT_UNKNOWN(13)` 分支调用导出 `LoadObject`。本轮闭合导出 `LoadObject 0x68a7b6d0` 的优先分支：`0x68a7c4b0` 对传入流 QI `IObjectStream {18A45BA7-1266-11D1-86AD-0000F8751720}`；命中时直接调用上下文接口虚表 +0x44，即 SystemCore ObjectStream 带键对象读头；未命中才进入 `0x68a7b490`。`0x68a7b490` 读 16 字节类 GUID 并与全零 GUID 比较：非零返回 S_OK 且输出保持 NULL；只有零 GUID 经 `AfCreateInstance` 创建已知空对象包装。该逻辑修正了旧记录“非零也创建实例”的表述。
-- 因此非 ObjectStream 普通流上的 9/13 条目不能按 20 字节键控头解读，也不能按“读非零 GUID 后实例化类体”解读；只有确认 QI 命中 ObjectStream 后，才能回到 SystemCore 读头路径。
+- AfCore 全局 `VariantStream::Read` 的 `VT_DISPATCH(9)`/`VT_UNKNOWN(13)` 分支调用导出 `LoadObject`。其优先分支经 `0x68a7c4b0` 对传入流 QI `IObjectStream {18A45BA7-1266-11D1-86AD-0000F8751720}`；命中则调用虚表 +0x44，即 SystemCore 带键对象读头；未命中才进入 `0x68a7b490`。第四轮汇编复核更正：普通路径读取 16 字节类 GUID；全零时返回 S_OK、出参保持 NULL，非零才走 `AfCreateInstance` 辅助函数 `0x68a77660`。
+- 普通流上的 9/13 条目没有 ObjectStream 的 4 字节键；只有确认 QI 命中 ObjectStream 后，才能选用 SystemCore 读头路径。
 - SystemCore ObjectStream 读分支在对象支持 `IPersistVariant` 时也会创建 0x1c 字节 VariantStream 包装，再调用对象自己的 `Load`。证据见 [arcmap-10.1-object-body.md](arcmap-10.1-object-body.md) 132-136 行。
 - 因此对象分支没有通用长度，未知类体不能安全跳过。
 

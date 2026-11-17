@@ -52,6 +52,8 @@
 
 ## MXD 解析
 
+- [x] 2026-11-17 第四轮并行续研：分派并复核全部 75 个开放项，修正 Map 独立表计数、Variant 对象流记录和 RandomColorRamp 标志解释；推进 Map 照明后字段、FeatureBookmark 名称槽及 FeatureIDSet 边界校验。原条目的完整验收条件仍开放，见 [第四轮复核与逐项报告](docs/mxd-round4-review-20261117.md)。
+
 - [x] 2026-11-17 第三轮并行续研：闭合 ObjectClassName 实现定位、Geometry 记录类型枚举归属与 LineElement 原宿主实样三项；接入 BasemapLayer 首个实际图层键与图例回引、Map 照明属性槽。原生证据、剩余边界及逐项报告见 [第三轮复核](docs/mxd-round3-review-20261117.md)。
 
 - [x] 2026-11-17 第二轮并行续研：闭合 7 项；接入 Map 书签后属性前导、三类基本图形元素、Envelope v0 和显式 10.8 版本头读取。其余条目分为目标运行、真实样本和可继续静态研究，见 [主审记录与清单](docs/mxd-round2-review-20261117.md)。
@@ -114,7 +116,7 @@
   - [x] 用 REA 确认 10.8 AfCore String::Read/Write 的字节长度、终止零和不严格短读行为，区分原生行为与 Rust 安全子集。
   - [x] 实现显式 10.8 调用点的严格字符串读取器，覆盖空值、中文、代理对、非法编码、全部截断、资源限制和失败游标；未接入 MXD 字段解析。
   - [x] 接入已确认字段归属：Map 数据框名称与第二名称经 Map.dll Load 与样本字节闭合为 AfCore String 布局，接入 `native_string::read_string_10_1`（Map 前缀读取器）；见 [研究记录](docs/arcmap-10.1-map-object.md)。
-  - [ ] 闭合 Map 双名称之外的未定对象属性，包括书签后已读取的三个成员的业务用途、坐标变换及照明属性等后续对象，见 [本轮取证](docs/mxd-round2-review-20261117.md)。
+  - [ ] 闭合 Map 双名称之外的未定对象属性，包括书签后已读取的三个成员的业务用途、非空独立表和后续坐标变换对象；照明之后另有已对位的 12 字节字段，业务名称未定，见 [第四轮 Map 取证](docs/mxd-round4-map-spatial-20261117.md)。
   - [ ] 闭合其他 MXD 版本的字符串规则。
   - [ ] 闭合其他 MXD 版本的对象属性规则。
   - [x] 闭合 10.1 对象键分配与回引编码：键=ObjectStream `+0x2c` 4 字节单调计数器（新对象写后 +1、跨流共享键序）、回引=同构 20 字节头无体无专用标记、唯一判据=键是否已在本会话出现过、循环引用无需专门编码（登记先于持久化）、缺失引用与新对象不可区分（有意保留的原生语义）；实现 `object_refs` 条目分类器与登记表并接入 robustness 集中清单（13 入口），样本键 29 起点/`0x2d2c` 键 32 回引辅助对照吻合；见 [研究记录](docs/arcmap-10.1-object-body.md#101-对象键分配与回引写侧闭合2026-11-14-第五轮)。
@@ -242,8 +244,8 @@
       - [x] 定名 `{DBCA59AC-6771-4408-8F48-C7D53389440C}` 为 esriCarto `IAnnotationSublayer`，见 [类型库复核](docs/mxd-iid-research-20261116.md)。
       - [ ] `{97D5B914}` 未定名 IID。
       - [ ] 其余未定名 IID（上述之外）。
-      - [ ] 定性 B 轮 IDatasetName 六类标量/String 字段与五条请求 IID 业务语义（`{4BA33331}`/`{2E060684}`/`{FDFEBD93}`/`{F7AD47D1}`/`{4434D680}`，OleDB 尾段族类型库定名未做），见 [研究记录](docs/arcmap-10.1-dataset-name-slots.md)。
-      - [ ] 定性 C 轮装饰物族（Scalebar 族/MarkerNorthArrow/MapTitle/LegendFormat/LegendItem 三类/Patch 两类）标量字段业务语义；ScaleLine 族三个共同前缀调用者（`0x793c8990`/`0x7943b2f0`/`0x79448500`）未反编译。
+      - [ ] 定性 B 轮 IDatasetName 六类标量/String 字段与五条请求接口的业务语义；IID 已由 10.1 类型库定名，字段及调用用途见 [第四轮名称取证](docs/mxd-round4-names-format-20261117.md)。
+      - [ ] 定性 C 轮装饰物族（Scalebar 族/MarkerNorthArrow/MapTitle/LegendFormat/LegendItem 三类/Patch 两类）标量字段业务语义；ScaleLine 族三个共同前缀调用者已有反编译，类身份尚未闭合，见 [第四轮页面取证](docs/mxd-round4-page-20261117.md)。
       - [ ] 定性 F 轮 PCS/GCS/Unknown 域串与 Unknown 四串业务语义及填充来源；ISRPersistStream slot8（恒 0x38）成员名；GCS `对象+0xac` 非零守卫语义；容差公式 pe/sg 数值推导链，见 [研究记录](docs/arcmap-10.1-pcs-geometry-slots.md)。
       - [ ] 定性 G 轮 RandomColorRamp 读即弃 int32、PictureFillSymbol 读后即弃 double×2、MultiPart 读写门不对称等反编译级观察（与 round2 三处 short quirk 同族），见 [研究记录](docs/arcmap-10.1-display-slots-round3.md)。
       - [x] 裁决 FL 后继段 ㊱ 六字节错位：原生 PreJoin 无保留头，前序 UID 少读四字节并误读空字符串导致累计错位六字节；已按 10.1 原生读写与样本边界修复并覆盖截断，见 [复核记录](docs/mxd-boundary-luna.md)。

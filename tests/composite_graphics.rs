@@ -958,14 +958,20 @@ fn complete_sample_context_reads_cgl_sublayers_without_skipping() {
             .iter()
             .any(|line| line.contains("书签后属性（offset 0x24fa0）")
                 && line.contains("+0x200=5000")
-                && line.contains("坐标变换计数 0"))
+                && line.contains("独立表计数 0"))
     );
     assert!(report.diagnostics.iter().any(|line| {
         line.contains("IlluminationProps 槽位（offset 0x24fb2）") && line.contains("键 2178")
     }));
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|line| { line.contains("照明后定长字段（offset 0x24fe8）") })
+    );
     let tail = report.map.frames[0].unknown_fields.last().unwrap();
-    assert_eq!(tail.offset, 0x24fe8);
-    assert_eq!(tail.bytes, maps[0x24fe8..]);
+    assert_eq!(tail.offset, 0x24ff4);
+    assert_eq!(tail.bytes, maps[0x24ff4..]);
 }
 
 #[test]

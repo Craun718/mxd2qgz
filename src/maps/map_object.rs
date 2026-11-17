@@ -35,7 +35,8 @@
 //! IEnvelope 对象（请求 IID `{1B077914-…}`；样本为空标记）→ int32 计数 + 循环
 //! （书签，请求 IID `{EE53528B-…}`；参考样本计数 0 @/Maps:0x24f9c）→
 //! 可确认的 18 字节属性前导：一个 `0xffff` short、两个原始成员 short 与
-//! 其间的 double，最后为坐标变换计数。变换集合为空时还可读已确认的照明属性槽。
+//! 其间的 double，最后为独立表计数。独立表集合为空时还可读取照明属性槽
+//! 和随后的定长成员；坐标变换循环位于更后面。
 //!
 //! 调用约定：调用者先用 [`crate::storage::object_stream::read_header_10_1`] 读取
 //! Map 对象头并比对 [`MAP_CLASS_ID`]，从对象头之后的位置调用
@@ -195,10 +196,12 @@ pub enum MapSuffixStop {
     },
     /// 书签之后没有完整匹配写侧的属性前导，余下原样保留。
     AfterBookmarks,
-    /// 已读属性前导，停止于坐标变换集合或照明属性槽之前。
-    AfterPostBookmarkPrefix { transformation_count: i32 },
+    /// 已读属性前导，停止于独立表集合或照明属性槽之前。
+    AfterPostBookmarkPrefix { standalone_table_count: i32 },
     /// 已读照明属性槽，后续 Map 字段仍保留为未知。
     AfterIllumination,
+    /// 照明后的定长字段已读，下一段 Map 字段保留为未知。
+    AfterIlluminationFields,
 }
 
 impl MapSuffixStop {
@@ -231,16 +234,19 @@ impl MapSuffixStop {
                 （类没有读取器或解析失败），停止"
             ),
             Self::AfterIllumination => "照明属性槽已读；后续 Map 字段保留为未知".to_string(),
+            Self::AfterIlluminationFields => {
+                "照明后定长字段已读；后续 Map 字段保留为未知".to_string()
+            }
             Self::AfterBookmarks => {
                 "书签循环之后未匹配完整的保存侧属性前导，余下原样保留".to_string()
             }
             Self::AfterPostBookmarkPrefix {
-                transformation_count: 0,
-            } => "书签后的属性前导已读，坐标变换集合为空；从照明属性槽起保留未知".to_string(),
+                standalone_table_count: 0,
+            } => "书签后的属性前导已读，独立表集合为空；从照明属性槽起保留未知".to_string(),
             Self::AfterPostBookmarkPrefix {
-                transformation_count,
+                standalone_table_count,
             } => {
-                format!("书签后的属性前导已读；从 {transformation_count} 条坐标变换记录起保留未知")
+                format!("书签后的属性前导已读；从 {standalone_table_count} 条独立表记录起保留未知")
             }
         }
     }
@@ -330,8 +336,10 @@ pub struct MapSuffix10_1 {
     pub bookmark_parsed: Vec<Option<BookmarkElement10_1>>,
     /// 书签后与 10.1 普通写侧对位的局部属性。没有匹配完整前导时为 None。
     pub post_bookmark: Option<PostBookmarkPrefix10_1>,
-    /// 坐标变换计数为零时到达的照明属性槽。
+    /// 独立表计数为零时到达的照明属性槽。
     pub illumination: Option<IlluminationSlot10_1>,
+    /// 照明后定长字段，保留流内原始值。
+    pub post_illumination: Option<PostIlluminationFields10_1>,
     /// 停止原因（恒有：书签循环之后也属停止点）。
     pub stop: MapSuffixStop,
     /// 停止点之后剩余的字节数。
@@ -346,7 +354,19 @@ pub struct PostBookmarkPrefix10_1 {
     pub short_19c: u16,
     pub double_200: f64,
     pub short_264: u16,
-    pub transformation_count: i32,
+    /// IStandaloneTable 条目计数。
+    pub standalone_table_count: i32,
+}
+
+/// Map 版本 23..=51 照明槽后的定长成员（Load 0x793ff4d0）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PostIlluminationFields10_1 {
+    pub offset: usize,
+    pub short_1a0: u16,
+    pub discarded_short: u16,
+    pub int_1b0: u32,
+    pub short_1ac: u16,
+    pub short_268: u16,
 }
 
 /// DisplayCore.dll IlluminationProps 的磁盘类标识（由 GetClassID 确认）。
@@ -575,8 +595,8 @@ fn read_map_prefix_inner(
 /// - 基本图形层、MapSurround 条目、IEnvelope 槽位、书签条目的**新对象**体
 ///   （普通 `LoadObject` 槽位无 ExtraSafe 前缀，体无外部长度；基本图形层与
 ///   图层体同样预留集成点）。空标记与回引条目只消耗对象头，继续；
-/// - 书签循环后识别有 0xffff 标记的属性前导；无坐标变换时读取已确认的
-///   照明属性槽。无法确认前导、变换条目或照明槽时从相应边界保留。
+/// - 书签循环后识别有 0xffff 标记的属性前导；无独立表时读取已确认的
+///   照明属性槽。无法确认前导、表条目或照明槽时从相应边界保留。
 ///
 /// IEnvelope 槽位的空标记消费 **16 字节**（沿用 [`crate::storage::object_stream`]
 /// S_FALSE 约定）。注意与任务摘要的 20 字节解读不同：样本 `/Maps:0x24f8c` 起
@@ -599,7 +619,7 @@ pub fn read_map_suffix_10_1(
 
     // 0. 重读已确认前缀：登记嵌套 PCS 键（新键，样本键 30 首现于此），
     //    前缀字段本身不重复报告。
-    let (_prefix, spatial_reference_key) = read_map_prefix_inner(&mut trial, max_bytes)?;
+    let (map_prefix, spatial_reference_key) = read_map_prefix_inner(&mut trial, max_bytes)?;
     if let Some(key) = spatial_reference_key {
         trial_table.register(key);
     }
@@ -873,14 +893,14 @@ pub fn read_map_suffix_10_1(
     }
 
     // 8. Save 普通路径在书签之后只写一次 0xffff short，随后是三个成员
-    //    和坐标变换计数。对不匹配该写侧格式或截断的情况保留全部余量。
+    //    和独立表计数。对不匹配该写侧格式或截断的情况保留全部余量。
     let mut post_bookmark = None;
     if stop.is_none() {
         let mut candidate = trial.clone();
         if let Ok(prefix) = read_post_bookmark_prefix(&mut candidate, max_bytes) {
             trial = candidate;
             stop = Some(MapSuffixStop::AfterPostBookmarkPrefix {
-                transformation_count: prefix.transformation_count,
+                standalone_table_count: prefix.standalone_table_count,
             });
             post_bookmark = Some(prefix);
         }
@@ -888,7 +908,7 @@ pub fn read_map_suffix_10_1(
     let illumination = if matches!(
         stop,
         Some(MapSuffixStop::AfterPostBookmarkPrefix {
-            transformation_count: 0
+            standalone_table_count: 0
         })
     ) {
         let slot = read_illumination_slot(&mut trial, &mut trial_table).ok();
@@ -899,6 +919,14 @@ pub fn read_map_suffix_10_1(
     } else {
         None
     };
+    let post_illumination = if illumination.is_some() {
+        read_post_illumination_fields_10_1(&mut trial, map_prefix.version).ok()
+    } else {
+        None
+    };
+    if post_illumination.is_some() {
+        stop = Some(MapSuffixStop::AfterIlluminationFields);
+    }
     let stop = stop.unwrap_or(MapSuffixStop::AfterBookmarks);
 
     let result = MapSuffix10_1 {
@@ -918,12 +946,35 @@ pub fn read_map_suffix_10_1(
         bookmark_parsed,
         post_bookmark,
         illumination,
+        post_illumination,
         stop,
         remaining_bytes: trial.remaining(),
     };
     *reader = trial;
     *table = trial_table;
     Ok(result)
+}
+
+/// 从已确认的照明槽末尾读取 Map 版本 23..=51 的定长成员；失败不推进游标。
+/// 调用方须先按完整对象流顺序确认版本、照明槽和本段起点。
+pub fn read_post_illumination_fields_10_1(
+    reader: &mut Reader<'_>,
+    map_version: u16,
+) -> io::Result<PostIlluminationFields10_1> {
+    if !(23..=51).contains(&map_version) {
+        return Err(io::Error::new(ErrorKind::InvalidData, "不支持的 Map 版本"));
+    }
+    let mut trial = reader.clone();
+    let fields = PostIlluminationFields10_1 {
+        offset: trial.position(),
+        short_1a0: trial.read_u16_le()?,
+        discarded_short: trial.read_u16_le()?,
+        int_1b0: trial.read_u32_le()?,
+        short_1ac: trial.read_u16_le()?,
+        short_268: trial.read_u16_le()?,
+    };
+    *reader = trial;
+    Ok(fields)
 }
 
 fn read_post_bookmark_prefix(
@@ -940,13 +991,13 @@ fn read_post_bookmark_prefix(
     let short_19c = trial.read_u16_le()?;
     let double_200 = trial.read_f64_le()?;
     let short_264 = trial.read_u16_le()?;
-    let transformation_count = read_loop_count(trial, "坐标变换", max_bytes)?;
+    let standalone_table_count = read_loop_count(trial, "独立表", max_bytes)?;
     Ok(PostBookmarkPrefix10_1 {
         offset,
         short_19c,
         double_200,
         short_264,
-        transformation_count,
+        standalone_table_count,
     })
 }
 

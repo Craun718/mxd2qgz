@@ -111,6 +111,7 @@
 //! 调用者的类归属与若干对象接口调用仍未闭合；共同前缀版本 0/1
 //! （docVersion 83..93 写 2）无门字段差异之外的真实流字节佐证。
 
+use crate::layers::feature_layer::FeatureClassNamePrefix10_1;
 use crate::layers::legend_item::{
     HORIZONTAL_LEGEND_ITEM_CLASS_ID, HorizontalLegendItemBody10_1, HorizontalLegendItemStop10_1,
     read_horizontal_legend_item_body_10_1,
@@ -125,6 +126,7 @@ use crate::maps::map_surround_family::{
     FamilyStop10_1, LEGEND_FORMAT_CLASS_ID as FAMILY_LEGEND_FORMAT_CLASS_ID, LegendFormatBody10_1,
     read_legend_format_body_10_1,
 };
+use crate::objects::dataset_name_more::{BookmarkNameSlot10_1, read_bookmark_name_slot_10_1};
 use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -237,14 +239,15 @@ pub struct AoiBookmark10_1 {
 
 /// FeatureBookmark 名称对象槽（请求 IID `{4BA33331-…}` IName）的分类结果。
 ///
-/// IName 实现类众多（FeatureClassName 等已由 `feature_layer` 在图层上下文
-/// 闭合，但该槽不限于这些类）；新对象体一律不支持，只分类空标记与回引。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// 支持已完整消费的 FeatureClassName；其他新对象类不推断体边界。
+#[derive(Debug, Clone, PartialEq)]
 pub enum BookmarkNameEntry10_1 {
     /// 16 字节全零类标识：空引用标记。
     Null,
     /// 键已在本会话登记：20 字节回引条目，其后没有对象体。
     BackReference { class_id: [u8; 16], key: u32 },
+    /// 内联要素类名称对象。
+    FeatureClassName(Box<FeatureClassNamePrefix10_1>),
 }
 
 /// FeatureBookmark 对象体（Load `0x793b5c50` 全部字段，体完全闭合）。
@@ -595,8 +598,8 @@ pub fn read_aoi_bookmark_10_1(
 /// 推进游标、不修改共享登记表。
 ///
 /// 起点约定：调用者已读取对象头并比对 [`FEATURE_BOOKMARK_CLASS_ID`]。
-/// 名称对象槽（IName）只分类空标记与回引；新对象体一律报
-/// [`ErrorKind::Unsupported`]（IName 实现类众多，无外部长度字段）。
+/// 名称槽支持空值、回引及可完整读取的 FeatureClassName。未知的类或
+/// 体内停止报 [`ErrorKind::Unsupported`]，避免错读随后的书签名称。
 pub fn read_feature_bookmark_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -624,20 +627,30 @@ pub fn read_feature_bookmark_10_1(
     // 2. int32 原样（this+4，语义未定）。
     let raw_int32 = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
 
-    // 3. LoadObject(IName {4BA33331-…})：名称对象，只分类空标记/回引。
+    // 3. LoadObject(IName {4BA33331-…})。
     let name_offset = trial.position();
-    let name_object = match read_object_entry_10_1(&mut trial, &mut trial_table)? {
-        ObjectEntry10_1::Null => BookmarkNameEntry10_1::Null,
-        ObjectEntry10_1::BackReference { class_id, key } => {
+    let name_object = match read_bookmark_name_slot_10_1(&mut trial, max_bytes, &mut trial_table)? {
+        BookmarkNameSlot10_1::Null => BookmarkNameEntry10_1::Null,
+        BookmarkNameSlot10_1::BackReference { class_id, key } => {
             BookmarkNameEntry10_1::BackReference { class_id, key }
         }
-        ObjectEntry10_1::NewObject { class_id, key } => {
+        BookmarkNameSlot10_1::FeatureClassName(body) => {
+            if let Some(stop) = &body.stop {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!(
+                        "FeatureBookmark 名称对象槽 offset 0x{name_offset:x}: FeatureClassName 未读完（{stop:?}）"
+                    ),
+                ));
+            }
+            BookmarkNameEntry10_1::FeatureClassName(body)
+        }
+        BookmarkNameSlot10_1::Unsupported { class_id, key } => {
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
                 format!(
                     "FeatureBookmark 名称对象槽 offset 0x{name_offset:x}: 类标识 {}（键 \
-                     {key}）为新对象；IName 实现类众多且对象体无外部长度字段，本读取器\
-                     不解析任何 IName 新对象体",
+                     {key}）为不支持的新对象",
                     class_id_hex(&class_id)
                 ),
             ));

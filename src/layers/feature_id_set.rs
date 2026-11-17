@@ -91,9 +91,20 @@ pub fn read_feature_id_set_body_10_1(
     }
     // ② int32 计数（负数原生不进循环，原样保留）。
     let count = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+    // 在分配或逐项读取之前检查声明的元素是否全部存在。
+    let item_count = count.max(0) as usize;
+    let byte_count = item_count
+        .checked_mul(4)
+        .ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "FeatureIDSet 元素长度溢出"))?;
+    if byte_count > trial.remaining() {
+        return Err(io::Error::new(
+            ErrorKind::UnexpectedEof,
+            format!("FeatureIDSet 声明 {item_count} 个元素，但剩余字节不足"),
+        ));
+    }
     // ③ 逐元素 int32。
     let mut ids = Vec::new();
-    for _ in 0..count.max(0) as usize {
+    for _ in 0..item_count {
         ids.push(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
     }
 

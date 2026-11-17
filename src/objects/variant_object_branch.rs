@@ -12,7 +12,7 @@
 //! `Variant::Read`（`0x68a7c6a0`）的 9/13 分支（`0x68a7ca4d`）调用 AfCore 导
 //! 出 `LoadObject`（`0x68a7b6d0`），实参为（出参 this+8、IID 常量
 //! `0x68c6bc2c` = IID_IUnknown、流、空 IUnknown）。LoadObject 入口先对流查
-//! 询 ESRI 流上下文接口（QI IID `0x68c6dcb8`，`0x68a7c4b0`）；命中则走带键
+//! 询 IObjectStream（QI IID `0x68c6dca8`，`0x68a7c4b0`）；命中则走带键
 //! ObjectStream 路径（上下文对象虚表 +0x44）。未命中（MXD 内普通 OLE 存储
 //! 流，即本仓库读取模型假设的情形）走普通路径核心 `0x68a7b490`：
 //!

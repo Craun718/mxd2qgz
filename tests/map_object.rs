@@ -753,7 +753,7 @@ fn post_bookmark_prefix_keeps_the_next_object_and_rolls_back_if_incomplete() {
     assert_eq!(
         suffix.stop,
         MapSuffixStop::AfterPostBookmarkPrefix {
-            transformation_count: 0
+            standalone_table_count: 0
         }
     );
     assert_eq!(reader.position(), end);
@@ -791,7 +791,7 @@ fn map_suffix_consumes_illumination_only_at_complete_supported_slot() {
         bytes.extend(n.to_le_bytes());
     }
     let end = bytes.len();
-    let after = [0xaa; 20];
+    let after = [0xaa; 11];
     bytes.extend(after);
 
     let mut reader = Reader::new(&bytes);
@@ -805,9 +805,10 @@ fn map_suffix_consumes_illumination_only_at_complete_supported_slot() {
         (1, [-0.5, 0.5, 1.0], 3.0)
     );
     assert_eq!(result.stop, MapSuffixStop::AfterIllumination);
+    assert!(result.post_illumination.is_none());
     assert!(table.contains(2178));
     assert_eq!(reader.position(), end);
-    assert_eq!(reader.read_bytes(20).unwrap(), &after);
+    assert_eq!(reader.read_bytes(after.len()).unwrap(), &after);
 
     for len in start..end {
         let mut reader = Reader::new(&bytes[..len]);

@@ -25,8 +25,7 @@
 //! 2. String → this−0x30（名称候选）；
 //! 3. int32 → this−0x34（Load 读入 4 字节后内存槽置 0——反编译观察的「读取
 //!    即弃」形态；Save 写槽值。流内 4 字节原样保留）；
-//! 4. 2 字节 short，低字节 → bool this−0x28（流内 2 字节，高字节读侧不用；
-//!    Save 写 2 字节 short 低字节 = 布尔值）；
+//! 4. 2 字节 short，整体与零比较后写入 bool this−0x28；流内值原样保留；
 //! 5. int32 → this−0x2c；
 //! 6. short ×6 → this−0x26（装载同写 this−0x24 同值）/ −0x22 / −0x20 /
 //!    −0x1e / −0x1c / −0x1a（IRandomColorRamp 色相/饱和度/明度端点候选）。
@@ -190,12 +189,19 @@ pub struct RandomColorRampBody10_1 {
     /// int32 → this−0x34（Load 读入后内存槽置 0——读取即弃形态；流内值原样
     /// 保留）。
     pub raw_int32: i32,
-    /// 2 字节 short（低字节 → bool this−0x28；原样保留 2 字节）。
+    /// 2 字节 short（整体与零比较后写入 bool this−0x28；原样保留）。
     pub bool_short: u16,
     /// int32 → this−0x2c。
     pub seed_int32: i32,
     /// short ×6 → this−0x26(=−0x24)/−0x22/−0x20/−0x1e/−0x1c/−0x1a。
     pub shorts: [u16; 6],
+}
+
+impl RandomColorRampBody10_1 {
+    /// 原生 Load 对该标志作整字非零判断；标志的业务含义尚未确定。
+    pub fn loaded_flag(&self) -> bool {
+        self.bool_short != 0
+    }
 }
 
 /// 从对象头之后的位置读取 10.1 RandomColorRamp 体，失败时不推进游标、不修改
@@ -634,6 +640,28 @@ mod tests {
         assert_eq!(body.seed_int32, 42);
         assert_eq!(body.shorts, [10, 200, 20, 210, 30, 220]);
         assert_eq!(reader.remaining(), 0);
+    }
+
+    #[test]
+    fn random_color_ramp_flag_compares_the_full_word() {
+        let mut bytes = random_body_bytes();
+        let offset = 2 + string_bytes("梯度").len() + 4;
+        for (raw, expected) in [(0_u16, false), (1, true), (0x0100, true), (0xffff, true)] {
+            bytes[offset..offset + 2].copy_from_slice(&raw.to_le_bytes());
+            let mut reader = Reader::new(&bytes);
+            let body =
+                read_random_color_ramp_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 9)
+                    .unwrap();
+            assert_eq!(body.bool_short, raw);
+            assert_eq!(body.loaded_flag(), expected);
+            assert_eq!(reader.remaining(), 0);
+        }
+        let mut reader = Reader::new(&bytes[..offset + 1]);
+        assert!(
+            read_random_color_ramp_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 9,)
+                .is_err()
+        );
+        assert_eq!(reader.position(), 0);
     }
 
     #[test]
