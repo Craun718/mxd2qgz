@@ -171,6 +171,46 @@ pub fn read_layout_10_8(
     Ok(result)
 }
 
+/// ArcMap 10.8 读取分支确认的头部；条件字段的含义尚未闭合。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArcMapVersionHeader10_8 {
+    pub prefix: VersionLayout10_8,
+    /// short 大于 11 时读取的四个原始字节，不推定其用途。
+    pub conditional_bytes: Option<[u8; 4]>,
+    /// 已确认头部之后保留的字节数。
+    pub remaining_bytes: usize,
+}
+
+/// 读取 10.8 原生读取分支的已确认头部，失败时不推进游标。
+///
+/// ArcMap.exe 0x47a250 对有符号 short 大于 25 的输入报错；大于 11 时
+/// 消费四字节。后续 CopyTo 的边界和字段语义尚未闭合。
+pub fn read_arcmap_header_10_8(
+    reader: &mut Reader<'_>,
+    max_text_bytes: usize,
+) -> io::Result<ArcMapVersionHeader10_8> {
+    let mut trial = reader.clone();
+    let prefix = read_layout_10_8(&mut trial, max_text_bytes)?;
+    if prefix.compatibility_short > 0x19 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "ArcMap 10.8 不支持大于 0x19 的 Version short",
+        ));
+    }
+    let conditional_bytes = if prefix.compatibility_short > 0x0b {
+        Some(trial.read_bytes(4)?.try_into().unwrap())
+    } else {
+        None
+    };
+    let remaining_bytes = trial.remaining();
+    *reader = trial;
+    Ok(ArcMapVersionHeader10_8 {
+        prefix,
+        conditional_bytes,
+        remaining_bytes,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -222,5 +262,39 @@ mod tests {
         let error = read_arcmap_header_10_1(&mut reader, 1024).unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::UnexpectedEof);
         assert_eq!(reader.position(), 0);
+    }
+
+    #[test]
+    fn arcmap_10_8_header_checks_signed_thresholds_and_preserves_tail() {
+        for short in [-1_i16, 11, 12, 25, 26] {
+            let mut bytes = encoded_text("10.8");
+            bytes.extend_from_slice(&short.to_le_bytes());
+            bytes.extend_from_slice(&[0x12, 0x34, 0x56, 0x78, 0xaa]);
+            let mut reader = Reader::new(&bytes);
+            let result = read_arcmap_header_10_8(&mut reader, 1024);
+            if short == 26 {
+                assert_eq!(result.unwrap_err().kind(), io::ErrorKind::InvalidData);
+                assert_eq!(reader.position(), 0);
+            } else {
+                let header = result.unwrap();
+                assert_eq!(
+                    header.conditional_bytes,
+                    (short > 11).then_some([0x12, 0x34, 0x56, 0x78])
+                );
+                assert_eq!(reader.remaining(), if short > 11 { 1 } else { 5 });
+            }
+        }
+    }
+
+    #[test]
+    fn arcmap_10_8_header_rejects_all_truncated_prefixes_transactionally() {
+        let mut bytes = encoded_text("10.8");
+        bytes.extend_from_slice(&12_i16.to_le_bytes());
+        bytes.extend_from_slice(&[1, 2, 3, 4]);
+        for end in 0..bytes.len() {
+            let mut reader = Reader::new(&bytes[..end]);
+            assert!(read_arcmap_header_10_8(&mut reader, 1024).is_err());
+            assert_eq!(reader.position(), 0, "截断位置 {end}");
+        }
     }
 }

@@ -14,7 +14,7 @@
 //! 对象体布局（Load `0x71869b60` 的版本分支）：
 //!
 //! 1. 2 字节版本 short：>3 拒绝（原生 `FUN_719f1570` 记 `0x80004005`）；
-//!    版本 1 只读 32 字节（无 int32、无空间参考段）；版本 2/3 再读 int32；
+//!    版本 1 只读 32 字节（无 int32、无空间参考段）；版本 0/2/3 再读 int32；
 //! 2. 32 字节 = 4 个小端 double，字段序 `[XMin, YMin, XMax, YMax]`（写方向
 //!    确定，见上）；
 //! 3. int32 原样保留（RTTI 命名 IAttributeAwareness 候选，语义未定；样本
@@ -56,9 +56,8 @@
 //! LoadObject（IEnvelope），键 80 = FeatureLayer 版本 ≥0xf 槽（成员 +0x1f4），
 //! 键 151 = FDO 委派注记 FeatureLayer 体的同族槽；FL 的版本 >8 槽（+0x1b4）
 //! 样本全空标记，`+0x1f4` 与 LELP 槽的字段语义为「视图相交范围 ↔ 数据范围」
-//! 混合分布，成员命名证据仍缺，保持候选）；版本 0 的字段分支未在证据中闭合
-//! （证据仅覆盖版本 1 与版本 2/3 两组分支，本读取器显式拒绝，较原生「仅拒绝
-//! >3」更严）；版本 short 比较的符号性未闭合（按无符号处理，负值位模式一并
+//! 混合分布，成员命名证据仍缺，保持候选）；版本 0 的读取分支有静态证据，
+//! 但没有真实旧档或目标软件运行验证；版本 short 按无符号处理，负值位模式一并
 //! 拒绝，与 map_object 的版本处理一致）；嵌套空间参考仅支持投影坐标系，
 //! GeographicCoordinateSystem / UnknownCoordinateSystem 等其他空间参考类
 //! 无样本与分派证据；回引与新对象在流内不可局部区分（沿用
@@ -135,8 +134,7 @@ pub struct Envelope10_1 {
     /// 静态常量 3，样本 25/25 为 3。比较的符号性未在证据闭合：按无符号解释
     /// 时 0x8000..0xffff 同样大于 3，若原生为有符号比较则负值位模式可能通过
     /// 原生检查，此处一并拒绝（较原生更严，与 map_object 的版本处理一致）。
-    /// 版本 0 不属于证据覆盖的任何分支（版本 1 / 版本 2/3），本读取器显式
-    /// 拒绝，较原生「仅拒绝 >3」更严。
+    /// 版本 0 与 2 读取相同字段，尚无真实旧档验证。
     pub version: u16,
     /// WKSEnvelope 32 字节的 4 个小端 double，按写方向确定的字段序
     /// `[XMin, YMin, XMax, YMax]` 排列。
@@ -148,7 +146,7 @@ pub struct Envelope10_1 {
     /// （FL 版本 ≥0xf 槽与 LELP 槽呈「视图相交范围 ↔ 数据范围」混合分布，
     /// 见模块文档与证据文档归因轮），不作数值断言。
     pub coords: [f64; 4],
-    /// 版本 2/3 分支的 int32，按无符号位模式原样保留、不解释。
+    /// 版本 0/2/3 分支的 int32，按无符号位模式原样保留、不解释。
     ///
     /// 原生 Save 写 `this+0xc` 子接口虚表 +0xc 槽的返回值（RTTI 命名
     /// IAttributeAwareness 候选，语义未定）；Load 在其非零时调 `this+0xc`
@@ -221,21 +219,15 @@ pub fn read_envelope_10_1(
             "版本 {version} 超出原生读取方法的接受范围（>3 记 0x80004005）"
         )));
     }
-    if version == 0 {
-        return Err(invalid(
-            "版本 0 不属于证据覆盖的字段分支（版本 1 / 版本 2/3），无法安全读取后续字节",
-        ));
-    }
-
     // 2. 32 字节 WKSEnvelope：4 个小端 double 按写方向序，仅原样保留位模式。
     let mut coords = [0.0; 4];
     for slot in &mut coords {
         *slot = trial.read_f64_le()?;
     }
 
-    // 3. 版本 2/3：int32 原样保留；低字节 bit6/bit7 追加 Z/M double 对。
+    // 3. 除版本 1 外读取 int32；低字节 bit6/bit7 追加 Z/M double 对。
     // int32 为 0 时两位必然为 0，与原生「非零才调接口再测位」的门等价。
-    let attribute_flags = if version >= 2 {
+    let attribute_flags = if version != 1 {
         Some(trial.read_u32_le()?)
     } else {
         None

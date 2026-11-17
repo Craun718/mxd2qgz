@@ -209,9 +209,8 @@ fn reads_version_one_and_two_without_attribute_or_reference_segments() {
 fn rejects_versions_outside_native_and_evidenced_branches() {
     // 版本 >3：原生经 FUN_719f1570 记 0x80004005，本读取器拒绝；0x8000..
     // 位模式按无符号解释同样大于 3（符号性未闭合，若原生为有符号比较则
-    // 此处更严）。版本 0：证据只覆盖「版本 1」与「版本 2/3」两组分支，
-    // 版本 0 的字段布局未闭合，显式拒绝（较原生「仅拒绝 >3」更严）。
-    for version in [0_u16, 4, 5, 100, 0x1234, 0x8000, 0xffff] {
+    // 此处更严）。
+    for version in [4_u16, 5, 100, 0x1234, 0x8000, 0xffff] {
         let mut bytes = envelope_prefix(version, &COORDS);
         push_attribute_flags(&mut bytes, 0);
         bytes.extend([0_u8; 16]);

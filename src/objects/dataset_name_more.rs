@@ -15,7 +15,7 @@
 //! | --- | --- | --- | --- | --- | --- | --- |
 //! | GeometricNetworkName | `{F452B4D2-9A95-11D2-AACF-00C04FA37B82}` | `0x709b8560` | `0x709b8ca0` | `0x709b8d50` | 有符号 >1 拒绝（Save 恒写 1） | 版本 + String×3 + IDatasetName 槽（obj+0x1c，装载后虚表 +0x20 通知） |
 //! | RelationshipClassName | `{311C2EE1-DA65-11D2-8A54-000000000000}` | `0x70a3ab30` | `0x70a3b330` | `0x70a3b4b0` | 有符号 >1 拒绝（Save 恒写 1） | 版本 + String×3 + int32×2（obj+0x20/0x24）+ short×2（obj+0x28/0x2a）+ int16 选择子：==0 → IWorkspaceName 槽（obj+0x30）；!=0 → IDatasetName 槽（obj+0x2c，通知） |
-//! | MemoryRelationshipClassName | `{6DBA211B-EBDB-11D3-9F84-00C04F6BC886}` | `0x70a402a0` | `0x70a402e0` | `0x70a40440` | 有符号 >1 拒绝（Save 恒写 1） | 版本 + String×3 + int32×2（obj+0x10/0x14）+ short×2（obj+0x18/0x1a）+ LoadObject×2（请求 IID 均为 `{4BA33331-D55F-11D1-8882-0000F877762D}`，obj+0x1c/0x20，语义未定名）+ String×4 |
+//! | MemoryRelationshipClassName | `{6DBA211B-EBDB-11D3-9F84-00C04F6BC886}` | `0x70a402a0` | `0x70a402e0` | `0x70a40440` | 有符号 >1 拒绝（Save 恒写 1） | 版本 + String×3 + int32×2（obj+0x10/0x14）+ short×2（obj+0x18/0x1a）+ LoadObject×2（请求 IID 均为 IName `{4BA33331-D55F-11D1-8882-0000F877762D}`，obj+0x1c/0x20）+ String×4 |
 //! | QueryTableName | `{793873DE-C0BB-48F4-A6BF-F6F83FA3C1BC}` | `0x709329d0` | `0x70932a10` | `0x70932ae0` | **无符号** `(ver-1) ≤ 1`，仅 1/2 通过（0 与 ≥3 拒绝；Save 经 `AfStreamGetSaveVersion` 表 `0x70ab7b2c` = (ffff,ffff,ffff,ffff,1,2)） | 版本 + String×3 + IWorkspaceName 槽（obj+0x1c）+ 槽（请求 IID `{2E060684-E14C-44D3-858A-442AB6A0A863}`，obj+0x18；装载后虚表 +0x40 查询不读流） |
 //! | RelQueryTableName | `{DAB3EE10-0F92-455D-8AA2-3D4ADE5B2F7D}` | `0x70a5a4f0` | `0x70a5a530` | `0x70a5a6f0` | 有符号 >3 拒绝（Save 表 `0x70a88fd8` = (2,3)，恒写 2/3） | 版本 + String×2 + 槽（`{4BA33331-…}`，obj+0x10）+ short（obj+0x14）+ 槽（`{FDFEBD93-ED75-11D0-9A95-080009EC734B}`，obj+0x18）+ 槽（`{F7AD47D1-D55E-11D1-8882-0000F877762D}`，obj+0x1c）+ String + short（obj+0x24）+ [版本 ≥2] short（obj+0x26，短体原生置内存 0）+ [版本 ≥3] short（obj+0x28） |
 //! | DBTableName | `{4C9307B2-C125-4497-BA95-AAE875553B06}` | `0x708d7a00` | `0x708d7a40` | `0x708d7b20` | **无版本字段** | String×3 + IWorkspaceName 槽（obj+0x1c）+ String + int32（obj+0x14，原生 ≠7 时置内存标志）+ 槽（`{4434D680-F4DA-11D1-BCA6-0000F875BCCE}`，obj+0x20） |
@@ -26,18 +26,17 @@
 //! 其余类（TableName / UnknownDatasetName / FeatureClassName / 其他模块实现）
 //! 为停止点。
 //!
-//! ## TableName / UnknownDatasetName / ObjectClassName：不可持久化（静态证据）
+//! ## TableName / UnknownDatasetName / ObjectClassName：持久化体未闭合
 //!
 //! `TableName {06783DB1-E5EE-11D1-B0A2-0000F8780820}`、`UnknownDatasetName
 //! {06783DB1-…082E}`、`ObjectClassName {905CEC64-0B2C-11D4-A060-00C04F6BDD84}`
-//! 在 GdbCore.dll 10.1 内**无任何代码写出其 CLSID**（16 字节字节全镜像仅
-//! .rdata 一份；TableName/ObjectClassName 的 CLSID 数据另有类工厂登记表数据
-//! 引用 `0x70a80854`/`0x70a808cb`，UnknownDatasetName 连工厂表引用也无），
-//! 其 RTTI 虚表块（TableName `0x70ad06f0..0x70ad0860`、UnknownDatasetName
-//! `0x70ad08c0..0x70ad0924`）无任何以 AfStreamRead/AfStreamWrite 框架读流
-//! 写流的 Load/Save 槽（TableName 的构造函数 `0x709b94b0` 与删除析构
-//! `0x709b9480` 证实该块为 C++ 族虚表，槽 +0x14 的 Load 位为 `XOR EAX,EAX;
-//! RET 8` 空实现）。`FeatureQueryName {81CAA5D9-…}`/`TableQueryName
+//! 的具体持久化体尚未闭合。GdbCore.dll 10.1 的 ObjectClassName 注册代码
+//! `0x70a808c5` 将 CLSID 与工厂虚表 `0x70ac2208` 绑定；工厂 RTTI 为
+//! `ClassFactory<FdbTableName>`，工厂函数 `0x7090a240` 调用构造入口
+//! `0x709b9330`，后者安装 RTTI 为 `FdbTableName` 的虚表 `0x70ad06f0`。
+//! `0x709b94b0` 是析构入口，不是构造函数；该证据不证明所有持久化路径
+//! 不存在。详见 `docs/mxd-round3-dataset-format-20261117.md`。
+//! `FeatureQueryName {81CAA5D9-…}`/`TableQueryName
 //! {81CAA5D8-…}` 的主虚表（`0x70aba700`/`0x70aba628`，槽 +0x14 GetIDType
 //! 写出各自 CLSID）呈 IPersistVariant 形态，未找到 AfStream 框架的
 //! IPersistStream Load/Save——持久化路径未闭合。读取器将上述类一律按
@@ -141,34 +140,34 @@ pub const DB_TABLE_NAME_CLASS_ID: [u8; 16] = [
 
 /// 请求 IID `{4BA33331-D55F-11D1-8882-0000F877762D}` 的 16 字节内存序
 /// （MemoryRelationshipClassName 两槽与 RelQueryTableName 第一槽的
-/// LoadObject 请求 IID，接口语义未定名，字节读自 `0x70ab84e4`）。
+/// LoadObject 请求 IID 为 IName，字节读自 `0x70ab84e4`）。
 pub const IID_4BA33331: [u8; 16] = [
     0x31, 0x33, 0xa3, 0x4b, 0x5f, 0xd5, 0xd1, 0x11, 0x88, 0x82, 0x00, 0x00, 0xf8, 0x77, 0x76, 0x2d,
 ];
 
 /// 请求 IID `{2E060684-E14C-44D3-858A-442AB6A0A863}` 的 16 字节内存序
-/// （QueryTableName 第二槽的 LoadObject 请求 IID，语义未定名，字节读自
+/// （QueryTableName 第二槽的 LoadObject 请求 IID 为 IQueryDescription，字节读自
 /// `0x70ac5158`）。
 pub const IID_2E060684: [u8; 16] = [
     0x84, 0x06, 0x06, 0x2e, 0x4c, 0xe1, 0xd3, 0x44, 0x85, 0x8a, 0x44, 0x2a, 0xb6, 0xa0, 0xa8, 0x63,
 ];
 
 /// 请求 IID `{FDFEBD93-ED75-11D0-9A95-080009EC734B}` 的 16 字节内存序
-/// （RelQueryTableName 第二槽的 LoadObject 请求 IID，语义未定名，字节读自
+/// （RelQueryTableName 第二槽的 LoadObject 请求 IID 为 IQueryFilter，字节读自
 /// `0x70ac4f28`）。
 pub const IID_FDFEBD93: [u8; 16] = [
     0x93, 0xbd, 0xfe, 0xfd, 0x75, 0xed, 0xd0, 0x11, 0x9a, 0x95, 0x08, 0x00, 0x09, 0xec, 0x73, 0x4b,
 ];
 
 /// 请求 IID `{F7AD47D1-D55E-11D1-8882-0000F877762D}` 的 16 字节内存序
-/// （RelQueryTableName 第三槽的 LoadObject 请求 IID，语义未定名，字节读自
+/// （RelQueryTableName 第三槽的 LoadObject 请求 IID 为 ISelectionSet，字节读自
 /// `0x70ac4d88`）。
 pub const IID_F7AD47D1: [u8; 16] = [
     0xd1, 0x47, 0xad, 0xf7, 0x5e, 0xd5, 0xd1, 0x11, 0x88, 0x82, 0x00, 0x00, 0xf8, 0x77, 0x76, 0x2d,
 ];
 
 /// 请求 IID `{4434D680-F4DA-11D1-BCA6-0000F875BCCE}` 的 16 字节内存序
-/// （DBTableName 尾槽的 LoadObject 请求 IID，语义未定名，字节读自
+/// （DBTableName 尾槽的 LoadObject 请求 IID 为 ISpatialReference，字节读自
 /// `0x70ab8504`）。
 pub const IID_4434D680: [u8; 16] = [
     0x80, 0xd6, 0x34, 0x44, 0xda, 0xf4, 0xd1, 0x11, 0xbc, 0xa6, 0x00, 0x00, 0xf8, 0x75, 0xbc, 0xce,
@@ -239,7 +238,7 @@ pub enum DatasetNameMoreStop10_1 {
 /// FCN 自身递归读取的安全上限（并非 ArcMap 格式限制）。
 pub const MAX_FEATURE_CLASS_NAME_NESTING_DEPTH: usize = 16;
 
-/// 请求 IID 语义未知的槽位（MemoryRelationshipClassName 两槽、QueryTableName
+/// 具体对象体未知的槽位（MemoryRelationshipClassName 两槽、QueryTableName
 /// 第二槽、RelQueryTableName 三槽、DBTableName 尾槽）的分类结果：新对象一律
 /// 不分派（体未知），停止。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -624,7 +623,7 @@ fn read_workspace_slot_10_1(
     }
 }
 
-/// 读取并分类一个请求 IID 语义未知的槽：空引用/回引原样返回；新对象一律
+/// 读取并分类一个具体对象体未知的槽：空引用/回引原样返回；新对象一律
 /// 停止并回退到槽位起点。
 fn read_unknown_slot_10_1(
     reader: &mut Reader<'_>,
@@ -761,7 +760,7 @@ pub fn read_relationship_class_name_body_10_1(
 
 /// 从对象头之后的位置读取 10.1 MemoryRelationshipClassName 对象体，失败时
 /// 不推进游标、不修改登记表。两个 LoadObject 槽的请求 IID
-/// `{4BA33331-…}` 语义未定名，新对象一律停止。
+/// `{4BA33331-…}` 为 IName，新对象体未知时停止。
 pub fn read_memory_relationship_class_name_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -882,7 +881,8 @@ pub fn read_query_table_name_body_10_1(
 }
 
 /// 从对象头之后的位置读取 10.1 RelQueryTableName 对象体，失败时不推进游标、
-/// 不修改登记表。三个槽的请求 IID 语义未定名，新对象一律停止。
+/// 不修改登记表。三个槽请求 IName、IQueryFilter、ISelectionSet，新对象体
+/// 未闭合时停止。
 pub fn read_rel_query_table_name_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,

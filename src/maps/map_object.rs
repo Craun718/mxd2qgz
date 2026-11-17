@@ -33,10 +33,9 @@
 //! @/Maps:0x24f60）→ **WKSEnvelope 32 字节**（`[XMin,YMin,XMax,YMax]`，写方向
 //! 确定；样本 @0x24f64）→ int32、int32（用途未定性；样本 9、9 @0x24f84）→
 //! IEnvelope 对象（请求 IID `{1B077914-…}`；样本为空标记）→ int32 计数 + 循环
-//! （书签，请求 IID `{EE53528B-…}`；样本计数 0 @/Maps:0x24f9c）→ **到此为止**。
-//! 其后字段（两个 0xFFFF short 等，样本 @0x24fa0 起）与 Map::Load 第 10/11 步
-//! 的对位未闭合（文档「未解决事项（第五轮新增）」第 1 条），一律保留为未知
-//! 尾部，不读取。
+//! （书签，请求 IID `{EE53528B-…}`；参考样本计数 0 @/Maps:0x24f9c）→
+//! 可确认的 18 字节属性前导：一个 `0xffff` short、两个原始成员 short 与
+//! 其间的 double，最后为坐标变换计数。变换集合为空时还可读已确认的照明属性槽。
 //!
 //! 调用约定：调用者先用 [`crate::storage::object_stream::read_header_10_1`] 读取
 //! Map 对象头并比对 [`MAP_CLASS_ID`]，从对象头之后的位置调用
@@ -47,7 +46,8 @@
 //!
 //! 样本核对（2026-11-17）：参考文件从图层列表继续读完基本图形层，读到
 //! 0x24f64 处的 WKSEnvelope、其后 int32 对 (9, 9)、IEnvelope 空标记和
-//! 书签计数 0，于 0x24fa0 停止。IEnvelope 空标记消费 16 字节，与书签计数
+//! 书签计数 0；属性前导从 0x24fa0 开始，照明属性槽从 0x24fb2 开始。
+//! IEnvelope 空标记消费 16 字节，与书签计数
 //! 和下一字段的偏移互证。尚未在 ArcMap 中运行验证。
 //!
 //! 这是仅覆盖上述已确认字段的严格安全子集：要求完整输入、任何失败不推进
@@ -193,9 +193,12 @@ pub enum MapSuffixStop {
         class_id: [u8; 16],
         key: u32,
     },
-    /// 书签循环之后的正常终点：其后字段与 Map::Load 第 10/11 步对位未闭合，
-    /// 全部保留为未知尾部。
+    /// 书签之后没有完整匹配写侧的属性前导，余下原样保留。
     AfterBookmarks,
+    /// 已读属性前导，停止于坐标变换集合或照明属性槽之前。
+    AfterPostBookmarkPrefix { transformation_count: i32 },
+    /// 已读照明属性槽，后续 Map 字段仍保留为未知。
+    AfterIllumination,
 }
 
 impl MapSuffixStop {
@@ -227,9 +230,18 @@ impl MapSuffixStop {
                 "书签条目 {index}（offset 0x{offset:x}）为新对象且未被读取器整体消费\
                 （类没有读取器或解析失败），停止"
             ),
-            Self::AfterBookmarks => "书签循环之后字段未闭合（两个 0xFFFF short 等与 \
-                Map::Load 第 10/11 步对位未定），到此为止，其后保留为未知尾部"
-                .to_string(),
+            Self::AfterIllumination => "照明属性槽已读；后续 Map 字段保留为未知".to_string(),
+            Self::AfterBookmarks => {
+                "书签循环之后未匹配完整的保存侧属性前导，余下原样保留".to_string()
+            }
+            Self::AfterPostBookmarkPrefix {
+                transformation_count: 0,
+            } => "书签后的属性前导已读，坐标变换集合为空；从照明属性槽起保留未知".to_string(),
+            Self::AfterPostBookmarkPrefix {
+                transformation_count,
+            } => {
+                format!("书签后的属性前导已读；从 {transformation_count} 条坐标变换记录起保留未知")
+            }
         }
     }
 }
@@ -316,10 +328,47 @@ pub struct MapSuffix10_1 {
     /// 书签条目中已整体消费的元素体（与 [`Self::bookmarks`] 下标对齐；
     /// 未知类或解析失败为 `None`，后缀在该条目停止）。
     pub bookmark_parsed: Vec<Option<BookmarkElement10_1>>,
+    /// 书签后与 10.1 普通写侧对位的局部属性。没有匹配完整前导时为 None。
+    pub post_bookmark: Option<PostBookmarkPrefix10_1>,
+    /// 坐标变换计数为零时到达的照明属性槽。
+    pub illumination: Option<IlluminationSlot10_1>,
     /// 停止原因（恒有：书签循环之后也属停止点）。
     pub stop: MapSuffixStop,
     /// 停止点之后剩余的字节数。
     pub remaining_bytes: usize,
+}
+
+/// 普通保存路径中的书签后前导（`Map::Save 0x79401850`）。成员偏移沿用
+/// 持久化子接口指针，业务语义未定的值原样保留。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PostBookmarkPrefix10_1 {
+    pub offset: usize,
+    pub short_19c: u16,
+    pub double_200: f64,
+    pub short_264: u16,
+    pub transformation_count: i32,
+}
+
+/// DisplayCore.dll IlluminationProps 的磁盘类标识（由 GetClassID 确认）。
+pub const ILLUMINATION_PROPS_CLASS_ID: [u8; 16] = [
+    0x40, 0x2f, 0x35, 0x1c, 0x8e, 0x29, 0xd3, 0x11, 0x9f, 0x4f, 0x00, 0xc0, 0x4f, 0x6b, 0xc6, 0x19,
+];
+
+/// Map 的照明属性槽（新对象体完整消费才登记）。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct IlluminationSlot10_1 {
+    pub object: ObjectSlot10_1,
+    pub body: Option<IlluminationProps10_1>,
+}
+
+/// 10.1 的 IlluminationProps 体（DisplayCore.dll Load 0x6ebab040）。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct IlluminationProps10_1 {
+    pub version: u16,
+    /// 原生 AfStreamRead(_WKSPointZ *) 读入的三个 double。
+    pub point: [f64; 3],
+    /// 尾随 double，保留原始数值。
+    pub value: f64,
 }
 
 /// Map 类标识（CLSID）的 16 字节内存序（Data1-3 小端、Data4 原序）。
@@ -526,7 +575,8 @@ fn read_map_prefix_inner(
 /// - 基本图形层、MapSurround 条目、IEnvelope 槽位、书签条目的**新对象**体
 ///   （普通 `LoadObject` 槽位无 ExtraSafe 前缀，体无外部长度；基本图形层与
 ///   图层体同样预留集成点）。空标记与回引条目只消耗对象头，继续；
-/// - 书签循环之后的字段未闭合，正常终点即停止（[`MapSuffixStop::AfterBookmarks`]）。
+/// - 书签循环后识别有 0xffff 标记的属性前导；无坐标变换时读取已确认的
+///   照明属性槽。无法确认前导、变换条目或照明槽时从相应边界保留。
 ///
 /// IEnvelope 槽位的空标记消费 **16 字节**（沿用 [`crate::storage::object_stream`]
 /// S_FALSE 约定）。注意与任务摘要的 20 字节解读不同：样本 `/Maps:0x24f8c` 起
@@ -822,7 +872,33 @@ pub fn read_map_suffix_10_1(
         }
     }
 
-    // 8. 书签循环之后字段未闭合：正常终点也是停止点，剩余保留为未知尾部。
+    // 8. Save 普通路径在书签之后只写一次 0xffff short，随后是三个成员
+    //    和坐标变换计数。对不匹配该写侧格式或截断的情况保留全部余量。
+    let mut post_bookmark = None;
+    if stop.is_none() {
+        let mut candidate = trial.clone();
+        if let Ok(prefix) = read_post_bookmark_prefix(&mut candidate, max_bytes) {
+            trial = candidate;
+            stop = Some(MapSuffixStop::AfterPostBookmarkPrefix {
+                transformation_count: prefix.transformation_count,
+            });
+            post_bookmark = Some(prefix);
+        }
+    }
+    let illumination = if matches!(
+        stop,
+        Some(MapSuffixStop::AfterPostBookmarkPrefix {
+            transformation_count: 0
+        })
+    ) {
+        let slot = read_illumination_slot(&mut trial, &mut trial_table).ok();
+        if slot.is_some() {
+            stop = Some(MapSuffixStop::AfterIllumination);
+        }
+        slot
+    } else {
+        None
+    };
     let stop = stop.unwrap_or(MapSuffixStop::AfterBookmarks);
 
     let result = MapSuffix10_1 {
@@ -840,12 +916,87 @@ pub fn read_map_suffix_10_1(
         bookmark_count,
         bookmarks,
         bookmark_parsed,
+        post_bookmark,
+        illumination,
         stop,
         remaining_bytes: trial.remaining(),
     };
     *reader = trial;
     *table = trial_table;
     Ok(result)
+}
+
+fn read_post_bookmark_prefix(
+    trial: &mut Reader<'_>,
+    max_bytes: usize,
+) -> io::Result<PostBookmarkPrefix10_1> {
+    let offset = trial.position();
+    if trial.read_u16_le()? != 0xffff {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "Map 书签后标记不是 0xffff",
+        ));
+    }
+    let short_19c = trial.read_u16_le()?;
+    let double_200 = trial.read_f64_le()?;
+    let short_264 = trial.read_u16_le()?;
+    let transformation_count = read_loop_count(trial, "坐标变换", max_bytes)?;
+    Ok(PostBookmarkPrefix10_1 {
+        offset,
+        short_19c,
+        double_200,
+        short_264,
+        transformation_count,
+    })
+}
+
+fn read_illumination_slot(
+    reader: &mut Reader<'_>,
+    table: &mut RefTable10_1,
+) -> io::Result<IlluminationSlot10_1> {
+    // 先读头和体，完整识别后才提交游标和新键；未知体不能安全跳过。
+    let mut trial = reader.clone();
+    let offset = trial.position();
+    let (entry, body) = match read_header_10_1(&mut trial)? {
+        ObjectHeader::Null => (ObjectEntry10_1::Null, None),
+        ObjectHeader::Object { class_id, key }
+            if class_id == ILLUMINATION_PROPS_CLASS_ID && table.contains(key) =>
+        {
+            (ObjectEntry10_1::BackReference { class_id, key }, None)
+        }
+        ObjectHeader::Object { class_id, key } if class_id == ILLUMINATION_PROPS_CLASS_ID => {
+            let version = trial.read_u16_le()?;
+            if version > 1 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "不支持的 IlluminationProps 版本",
+                ));
+            }
+            let point = [
+                trial.read_f64_le()?,
+                trial.read_f64_le()?,
+                trial.read_f64_le()?,
+            ];
+            let value = trial.read_f64_le()?;
+            table.register(key);
+            (
+                ObjectEntry10_1::NewObject { class_id, key },
+                Some(IlluminationProps10_1 {
+                    version,
+                    point,
+                    value,
+                }),
+            )
+        }
+        _ => {
+            return Err(io::Error::new(ErrorKind::InvalidData, "未知的照明属性对象"));
+        }
+    };
+    *reader = trial;
+    Ok(IlluminationSlot10_1 {
+        object: ObjectSlot10_1 { offset, entry },
+        body,
+    })
 }
 
 /// 读取后缀循环（MapSurround / 书签）的 int32 计数：拒绝负数并预检限额。

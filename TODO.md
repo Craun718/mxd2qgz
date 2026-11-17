@@ -52,6 +52,8 @@
 
 ## MXD 解析
 
+- [x] 2026-11-17 第二轮并行续研：闭合 7 项；接入 Map 书签后属性前导、三类基本图形元素、Envelope v0 和显式 10.8 版本头读取。其余条目分为目标运行、真实样本和可继续静态研究，见 [主审记录与清单](docs/mxd-round2-review-20261117.md)。
+
 - [x] 2026-11-17 并行续研：接入基本图形层子层和尾段，参考样本读到显示范围；修正 9.3 版本候选、旧 Map 后缀分派、StdPicture 类标识，补接 LegendClassFormat 文字符号及点线元素符号。介质模板对照、复核结果和剩余缺口见 [并行核对记录](docs/mxd-parse-review-20261117.md)。
 
 - [x] 2026-11-16 并行续研：修正 UID 与 PreJoin 六字节错位，接入 FDO 后续字段及 SymbolCollection，定名两个 IID；参考样本读取到六条图层条目，栅格体和数据框后缀仍有未知内容，ArcMap/QGIS 人工验证未做。
@@ -110,7 +112,7 @@
   - [x] 用 REA 确认 10.8 AfCore String::Read/Write 的字节长度、终止零和不严格短读行为，区分原生行为与 Rust 安全子集。
   - [x] 实现显式 10.8 调用点的严格字符串读取器，覆盖空值、中文、代理对、非法编码、全部截断、资源限制和失败游标；未接入 MXD 字段解析。
   - [x] 接入已确认字段归属：Map 数据框名称与第二名称经 Map.dll Load 与样本字节闭合为 AfCore String 布局，接入 `native_string::read_string_10_1`（Map 前缀读取器）；见 [研究记录](docs/arcmap-10.1-map-object.md)。
-  - [ ] 闭合对象属性其余字段（Map 双名称之外）的字段归属。
+  - [ ] 闭合 Map 双名称之外的未定对象属性，包括书签后已读取的三个成员的业务用途、坐标变换及照明属性等后续对象，见 [本轮取证](docs/mxd-round2-review-20261117.md)。
   - [ ] 闭合其他 MXD 版本的字符串规则。
   - [ ] 闭合其他 MXD 版本的对象属性规则。
   - [x] 闭合 10.1 对象键分配与回引编码：键=ObjectStream `+0x2c` 4 字节单调计数器（新对象写后 +1、跨流共享键序）、回引=同构 20 字节头无体无专用标记、唯一判据=键是否已在本会话出现过、循环引用无需专门编码（登记先于持久化）、缺失引用与新对象不可区分（有意保留的原生语义）；实现 `object_refs` 条目分类器与登记表并接入 robustness 集中清单（13 入口），样本键 29 起点/`0x2d2c` 键 32 回引辅助对照吻合；见 [研究记录](docs/arcmap-10.1-object-body.md#101-对象键分配与回引写侧闭合2026-11-14-第五轮)。
@@ -225,8 +227,8 @@
       - [ ] ETM 标量与字符串业务语义（标注表达式、类名、OID 等；尾字节样本 0x01）。
       - [ ] FeatureIDSet 标量与字符串业务语义（标注表达式、类名、OID 等）。
       - [x] 定名 ArcMap 10.1 的 esriHyperlinkType 值序：Document=0、URL=1、Macro=2、Script=3，见 [类型库复核](docs/mxd-dataset-format-evidence-20261117.md#补充246-的真实模板-rust-试读和-225-枚举值)。
-      - [ ] 区分 Hyperlink ② 与 Type 字段。
-      - [ ] 区分 Hyperlink ③ 与热链字段。
+      - [x] 确认 Hyperlink ② 是 FeatureId，④ 是 LinkType：10.1 类型库与 Layer.dll 两个接口入口分别绑定成员偏移，见 [证据](docs/mxd-round2-dataset-format-20261117.md)。
+      - [x] 确认 Hyperlink ③ 是 Link（超链接内容）：10.1 类型库与 Layer.dll 的 get/put_Link 绑定字符串成员，见 [证据](docs/mxd-round2-dataset-format-20261117.md)。
       - [ ] 定性 NumberFormat 九类的标量字段语义。
       - [ ] 定性 NumberFormat 九类的 String 字段语义。
       - [ ] 验证 Percentage/Rate「同槽升级」与 LatLon/Angle 独立槽核心形态（样本 0 实例）。
@@ -249,25 +251,25 @@
       - [ ] 解析 FCN 的 TopologyName 选择子。
       - [ ] FDO 旧加载器体。
       - [x] FDOGraphicsSublayer 体：参考样本一个内联实例经完整 FDO 链读取，见 [研究记录](docs/mxd-layer-luna.md)。
-      - [ ] MapSurround 循环非空形态（样本计数 0）。
+      - [x] 在 10.1 安装介质 LandscapeClassic 模板中，从 Map 根读取完整的非空 MapSurround 循环（3 条），随后读到地图范围，见 [实样验证](docs/mxd-round2-review-20261117.md)。
       - [ ] 书签循环非空形态（样本计数 0）。
       - [x] 以介质模板 SouthernUSA 的实际要素图层验证 11 个 FieldInfo v3，见 [图层续研](docs/mxd-layer-label-cgl-20261117.md)。
       - [ ] FieldInfo v0–2 分支。
-      - [ ] LegendClassFormat 样本形态。
-      - [ ] HorizontalLegendItem 样本形态。
-      - [ ] BaseLegendItem 样本形态。
-      - [x] 确认 10.1 写侧 Legend 族版本恒写 3。
-      - [ ] 解析 Legend 族版本 0/1 形态。
-      - [ ] MarkerElement 体（样本 0 实例）。
+      - [x] 从旧版 Africa 模板的 Map 根逐条读取三个新 LegendClassFormat 对象体，均完整消费，见 [实样验证](docs/mxd-round2-review-20261117.md)。
+      - [x] 从旧版 Africa 模板的 Map 根读取三个完整的 HorizontalLegendItem v1，见 [实样验证](docs/mxd-round2-review-20261117.md)。
+      - [x] 随旧版 Africa 模板的 HorizontalLegendItem 验证共享的 BaseLegendItem v1 字段组，见 [实样验证](docs/mxd-round2-review-20261117.md)。
+      - [x] 确认 10.1 写侧 MapSurround 共同前缀恒写 3；Legend 自身版本字段恒写 5，见 [MapSurround 读取记录](src/maps/map_surround.rs)。
+      - [ ] 验证 Legend 主体 v0/v1 的旧版分支（独立于已实测的 HorizontalLegendItem/BaseLegendItem v1）。
+      - [x] 在 10.1 LandscapeClassic 模板中，从 Map 根经 MarkerNorthArrow 完整消费内嵌 MarkerElement 体，见 [实样验证](docs/mxd-round2-review-20261117.md)。
       - [ ] LineElement 体（样本 0 实例）。
-      - [ ] display 两轮闭合的符号族（样本 0 实例）。
-      - [ ] display 两轮闭合的颜色族（样本 0 实例）。
+      - [ ] 补齐尚未实测的 DisplayCore 符号类；两套介质已有 MultiLayerMarkerSymbol/CharacterMarkerSymbol 体读证据，见 [样本记录](docs/mxd-round2-symbol-ole-20261117.md)。
+      - [ ] 补齐尚未实测的 DisplayCore 颜色类。
       - [ ] Hyperlink 版本 0 短体。
       - [ ] Hyperlink 循环空标记/回引形态。
       - [ ] NumberFormat 短体形态（九类全族）。
       - [ ] NumberFormat「同槽升级」与 LatLon/Angle 独立槽核心形态。
       - [ ] Angle 原生忽略核心失败的容错路径（读取器较严）。
-      - [ ] StdPicture 第二字语义与解码器分派（样本 0 实例）。
+      - [ ] 定性 StdPicture 第二字及解码器分派；已验证介质 BMP 体第二字为 0，见 [样本记录](docs/mxd-round2-symbol-ole-20261117.md)。
       - [ ] OLE 字体持久化跨 oleaut32 版本稳定性（介质 2.40.4275 vs 运行时 OS 版本）。
       - [ ] BOLP/UID/HLEP/DEP 前缀的样本结构级证据升级（Load 反编译唯一定位）。
       - [ ] Geometry 版本 0/1。
@@ -275,7 +277,7 @@
       - [ ] 后继段版本 0x1c..0x1f 分支。
       - [ ] TimeData 族四段（样本走 ≥0x20 门）。
       - [ ] PropertySet 版本 0 分支。
-      - [ ] Envelope 版本 0 分支。
+      - [ ] 取得 Envelope v0 的真实旧档字节佐证（读取器已按 10.1 Load 的 v0/v2 同布局实现并验证合成边界）。
       - [ ] FeatureDatasetName 版本 0 分支。
       - [ ] TopologyName 版本 0 分支。
     - 实现约束（非缺口）：各读取器对负值版本位模式的拒绝均较原生更严（写侧不产负值版本；如需对齐原生行为，须先补运行取证）；Geometry <−1e38 坐标的原生钳位未实现（原样保留）、嵌套空间参考仅支持投影坐标系（GCS/Unknown 无证据）；ETM 尺寸声明与实际消费不一致为显式错误（原生不校验，注明较严）。

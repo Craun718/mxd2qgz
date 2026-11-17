@@ -11,8 +11,11 @@
 //! - **FeatureIDSet::Load**（`0x6f6d97d0`，由类描述块 `{fns…, IID, CLSID}`
 //!   与 Save `0x6f6d9880` 对称互证）：
 //!   ① int16 版本（`1 < (short)ver` 有符号拒绝；样本 1）→ ② int32 计数 →
-//!   ③ 循环 count × int32（要素 OID，逐元素读；样本计数 0）。Save 对称
+//!   ③ 循环 count × int32（逐元素读；要素 OID 仅为候选，样本计数 0）。Save 对称
 //!   （写版本常量 1 + `this+8` 计数 + 迭代器逐元素 int32）。
+//! - 类型库 `IFeatureIDSet::Add` 对应虚表 `0x6f7ac338` 的槽 5，
+//!   `0x6f6d96b0` 与 Load 均调用 `0x6f6d9940` 插入同一集合；因此持久化
+//!   元素是该接口的集合成员，但接口名本身不足以证明必为数据源 OID。
 //!
 //! 调用约定：调用者已用 [`crate::storage::object_stream::read_header_10_1`]
 //! 读取对象头、比对 [`FEATURE_ID_SET_CLASS_ID`] 并取得键，从对象头之后的

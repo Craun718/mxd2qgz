@@ -30,9 +30,9 @@
 //! | # | 字段 | 版本门 | 对象偏移 | 语义 |
 //! | --- | --- | --- | --- | --- |
 //! | ① | int16 版本 | 恒有 | — | >1 拒绝；负值位模式原生同样通过门（读取器拒绝，较原生更严） |
-//! | ② | int32 | 恒有 | this+0x4 | esriHyperlinkType 枚举候选（类型库枚举 `{1558D2D3}`，值序未证） |
-//! | ③ | AfCore String::Read | 恒有 | this+0x8 | 链接目标候选（URL/文档路径） |
-//! | ④ | int32 | 恒有 | this+0xc | 语义未定 |
+//! | ② | int32 | 恒有 | this+0x4 | IHyperlink::FeatureId |
+//! | ③ | AfCore String::Read | 恒有 | this+0x8 | IHyperlink::Link |
+//! | ④ | int32 | 恒有 | this+0xc | IHyperlink::LinkType（原样保留枚举值） |
 //!
 //! 体 = short + int32 + String + int32，无嵌套对象、无版本分支字段（版本
 //! 门只做拒绝）。Save 侧有写向专用规范化：docVersion <3 时若链接非 URL 且
@@ -44,11 +44,10 @@
 //! 仅合成输入测试覆盖。
 //!
 //! 这是仅覆盖上述分支的严格安全子集：要求完整输入，任何失败不推进调用者
-//! 游标、不修改登记表；未接入 FeatureLayer 后继段读取器（接线建议见证据
-//! 文档），人工目视验收未做，不得声称已验证。
+//! 游标、不修改登记表；已接入 FeatureLayer 后继段读取器，人工目视验收未做。
 //!
-//! 未解决问题（详见证据文档）：②④ int32 与 ③ String 的业务语义未定性
-//! （枚举值序、链接与热链字段的区分）；`FUN_6f6d9350` 的截断仅按反编译记
+//! 字段与接口的绑定见 `docs/mxd-round2-dataset-format-20261117.md`。
+//! `FUN_6f6d9350` 的截断仅按反编译记
 //! 录，未运行验证；版本 0 短体形态无样本；全部结论未运行 ArcMap 验证。
 
 use crate::storage::object_refs::RefTable10_1;
@@ -81,11 +80,11 @@ pub struct HyperlinkBody10_1 {
     pub key: u32,
     /// 体首 short 版本；>1 原生拒绝，写侧恒 1。
     pub version: u16,
-    /// int32 → this+0x4，语义未定（esriHyperlinkType 枚举候选），原样保留。
+    /// int32 → this+0x4，对应 IHyperlink::FeatureId；字段名保留以兼容调用者。
     pub type_04: i32,
-    /// AfCore String → this+0x8，语义未定（链接目标候选）。
+    /// AfCore String → this+0x8，对应 IHyperlink::Link。
     pub link: String,
-    /// int32 → this+0xc，语义未定，原样保留。
+    /// int32 → this+0xc，对应 IHyperlink::LinkType，未知枚举值原样保留。
     pub int32_0c: i32,
 }
 

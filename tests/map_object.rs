@@ -3,7 +3,8 @@ use mxd2qgz::layers::layer_list::{
     GROUP_LAYER_CLASS_ID, LayerEntryObject, LayerListStop, read_layer_list_10_1,
 };
 use mxd2qgz::maps::map_object::{
-    MAP_CLASS_ID, MapSuffixStop, read_map_prefix_10_1, read_map_suffix_10_1,
+    ILLUMINATION_PROPS_CLASS_ID, MAP_CLASS_ID, MapSuffixStop, read_map_prefix_10_1,
+    read_map_suffix_10_1,
 };
 use mxd2qgz::objects::spatial_reference::{
     PROJECTED_COORDINATE_SYSTEM_CLASS_ID, ProjectedCoordinateSystem10_1,
@@ -727,6 +728,107 @@ fn map_body_with_full_suffix(wkt: &str) -> (Vec<u8>, usize) {
     bytes.extend([0_u8; 16]); // IEnvelope：空标记
     bytes.extend(0_i32.to_le_bytes()); // 书签计数（样本 0）
     (bytes, extent_offset)
+}
+
+#[test]
+fn post_bookmark_prefix_keeps_the_next_object_and_rolls_back_if_incomplete() {
+    let (mut bytes, _) = map_body_with_full_suffix("PROJCS[\"x\"]");
+    let start = bytes.len();
+    bytes.extend(0xffff_u16.to_le_bytes());
+    bytes.extend(7_u16.to_le_bytes());
+    bytes.extend(5537_f64.to_le_bytes());
+    bytes.extend(0x8000_u16.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    let end = bytes.len();
+    let following = object_header(&[0x93; 16], 777);
+    bytes.extend(&following);
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let suffix = read_map_suffix_10_1(&mut reader, 1024, &mut table).unwrap();
+    let prefix = suffix.post_bookmark.unwrap();
+    assert_eq!(prefix.offset, start);
+    assert_eq!(prefix.short_19c, 7);
+    assert_eq!(prefix.double_200, 5537.0);
+    assert_eq!(prefix.short_264, 0x8000);
+    assert_eq!(
+        suffix.stop,
+        MapSuffixStop::AfterPostBookmarkPrefix {
+            transformation_count: 0
+        }
+    );
+    assert_eq!(reader.position(), end);
+    assert_eq!(reader.read_bytes(following.len()).unwrap(), following);
+    assert!(!table.contains(777));
+
+    for length in start..end {
+        let mut reader = Reader::new(&bytes[..length]);
+        let suffix = read_map_suffix_10_1(&mut reader, 1024, &mut RefTable10_1::new()).unwrap();
+        assert_eq!(suffix.post_bookmark, None);
+        assert_eq!(reader.position(), start);
+    }
+    for count in [-1_i32, i32::MAX] {
+        let mut invalid = bytes.clone();
+        invalid[end - 4..end].copy_from_slice(&count.to_le_bytes());
+        let mut reader = Reader::new(&invalid);
+        let suffix = read_map_suffix_10_1(&mut reader, 1024, &mut RefTable10_1::new()).unwrap();
+        assert_eq!(suffix.post_bookmark, None);
+        assert_eq!(reader.position(), start);
+    }
+}
+
+#[test]
+fn map_suffix_consumes_illumination_only_at_complete_supported_slot() {
+    let (mut bytes, _) = map_body_with_full_suffix("PROJCS[\"x\"]");
+    bytes.extend(0xffff_u16.to_le_bytes());
+    bytes.extend(0_u16.to_le_bytes());
+    bytes.extend(5000_f64.to_le_bytes());
+    bytes.extend(0_u16.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    let start = bytes.len();
+    bytes.extend(object_header(&ILLUMINATION_PROPS_CLASS_ID, 2178));
+    bytes.extend(1_u16.to_le_bytes());
+    for n in [-0.5_f64, 0.5, 1.0, 3.0] {
+        bytes.extend(n.to_le_bytes());
+    }
+    let end = bytes.len();
+    let after = [0xaa; 20];
+    bytes.extend(after);
+
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let result = read_map_suffix_10_1(&mut reader, 1024, &mut table).unwrap();
+    let slot = result.illumination.unwrap();
+    let body = slot.body.unwrap();
+    assert_eq!(slot.object.offset, start);
+    assert_eq!(
+        (body.version, body.point, body.value),
+        (1, [-0.5, 0.5, 1.0], 3.0)
+    );
+    assert_eq!(result.stop, MapSuffixStop::AfterIllumination);
+    assert!(table.contains(2178));
+    assert_eq!(reader.position(), end);
+    assert_eq!(reader.read_bytes(20).unwrap(), &after);
+
+    for len in start..end {
+        let mut reader = Reader::new(&bytes[..len]);
+        let mut table = RefTable10_1::new();
+        let result = read_map_suffix_10_1(&mut reader, 1024, &mut table).unwrap();
+        assert_eq!(result.illumination, None, "截断位置 {len}");
+        assert_eq!(reader.position(), start);
+        assert!(!table.contains(2178));
+    }
+    let mut unsupported = bytes;
+    unsupported[start + 20] = 2;
+    let mut reader = Reader::new(&unsupported);
+    let mut table = RefTable10_1::new();
+    assert!(
+        read_map_suffix_10_1(&mut reader, 1024, &mut table)
+            .unwrap()
+            .illumination
+            .is_none()
+    );
+    assert_eq!(reader.position(), start);
+    assert!(!table.contains(2178));
 }
 
 #[test]

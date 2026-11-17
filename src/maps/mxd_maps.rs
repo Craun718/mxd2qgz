@@ -624,8 +624,7 @@ fn parse_first_frame(
     }
     if let Some(surround_count) = suffix.map_surround_count {
         diagnostics.push(format!(
-            "MapSurround 计数 {surround_count}（地图装饰物集合候选，元素 coclass 语义\
-             开放，样本计数 0 未经非空实例验证）；已消费 {} 个条目",
+            "MapSurround 计数 {surround_count}（地图装饰物集合）；已消费 {} 个条目",
             suffix.map_surrounds.len()
         ));
         push_slot_diagnostics(&suffix.map_surrounds, "MapSurround 条目", diagnostics);
@@ -681,6 +680,21 @@ fn parse_first_frame(
             suffix.bookmarks.len()
         ));
         push_slot_diagnostics(&suffix.bookmarks, "书签条目", diagnostics);
+    }
+    if let Some(post) = suffix.post_bookmark {
+        diagnostics.push(format!(
+            "书签后属性（offset 0x{:x}）：+0x19c={}，+0x200={}，+0x264={}，\
+             坐标变换计数 {}；未定性成员不写入模型",
+            post.offset, post.short_19c, post.double_200, post.short_264, post.transformation_count
+        ));
+    }
+
+    if let Some(illumination) = suffix.illumination {
+        diagnostics.push(format!(
+            "IlluminationProps 槽位（offset 0x{:x}）：{}",
+            illumination.object.offset,
+            illumination.object.describe(),
+        ));
     }
 
     // —— 显示范围（WKSEnvelope，到达时才写入模型）——

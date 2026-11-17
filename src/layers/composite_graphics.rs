@@ -91,6 +91,10 @@ use crate::layers::feature_layer::{
 };
 use crate::layers::feature_layer_tail::SuccessorStop10_1;
 use crate::layers::layer_list::FEATURE_LAYER_CLASS_ID;
+use crate::objects::element_body::{
+    ElementBody10_1, ElementBodyStop10_1, LINE_ELEMENT_CLASS_ID, MARKER_ELEMENT_CLASS_ID,
+    TEXT_ELEMENT_CLASS_ID, read_element_body_of_class_10_1,
+};
 use crate::objects::element_collection::{
     ELEMENT_COLLECTION_CLASS_ID, ElementCollection10_1, ElementCollectionStop10_1,
     read_element_collection_10_1,
@@ -179,6 +183,8 @@ pub enum ElementEntry10_1 {
     /// [`CompositeGraphicsLayerStop10_1::ElementCollectionIncomplete`] 透
     /// 传（键按「登记先于持久化」语义保留，游标停在内层停止点）。
     Collection(Box<ElementCollection10_1>),
+    /// 已解析的 IElement 实现类对象体。
+    Element { key: u32, body: ElementBody10_1 },
 }
 
 /// 一个子图层条目（字段序第 9 步循环）。
@@ -232,6 +238,13 @@ pub enum SubLayerTailSlot10_1 {
 /// 已确认前缀的停止原因；本读取器对任何成功输入都返回停止原因（见模块文档）。
 #[derive(Debug, Clone, PartialEq)]
 pub enum CompositeGraphicsLayerStop10_1 {
+    /// 元素体内部无法继续；元素键已登记，游标停在内层停止点。
+    ElementBodyIncomplete {
+        group: usize,
+        index: usize,
+        key: u32,
+        reason: ElementBodyStop10_1,
+    },
     /// 元素组循环（第 2 步）中的新元素对象：其体没有外部长度字段，本读取
     /// 器无法消费。`group`/`index` 为组序号与组内序号（0 起）；游标回退到
     /// 该对象头起点。
@@ -307,6 +320,12 @@ impl CompositeGraphicsLayerStop10_1 {
     /// 停止原因的固定说明（供诊断直接输出）。
     pub fn describe(&self) -> String {
         match self {
+            Self::ElementBodyIncomplete {
+                group,
+                index,
+                key,
+                reason,
+            } => format!("元素组 {group} 条目 {index}（键 {key}）体内部停止：{reason:?}"),
             Self::ElementNewObject { group, index, .. } => format!(
                 "元素组 {group} 的元素条目 {index} 为新对象：其体没有外部长度字段，\
                  无法消费，游标回退到该对象头起点"
@@ -380,7 +399,7 @@ pub struct CompositeGraphicsLayerPrefix10_1 {
     pub version: u16,
     /// 元素组计数的原始位模式；原生按有符号比较，<=0 不迭代。
     pub group_count: u32,
-    /// 已成功处理的元素组；停止组不记录。
+    /// 已处理的元素组；有类型的元素体内部停止时，保留该组已读取的条目。
     pub element_groups: Vec<ElementGroup10_1>,
     /// 名称（→ obj+0x20；样本 `<默认>`）。
     pub name: String,
@@ -486,6 +505,42 @@ pub fn read_composite_graphics_layer_prefix_10_1(
                         ObjectEntry10_1::Null => elements.push(ElementEntry10_1::Null),
                         ObjectEntry10_1::BackReference { class_id, key } => {
                             elements.push(ElementEntry10_1::BackReference { class_id, key });
+                        }
+                        ObjectEntry10_1::NewObject { class_id, key }
+                            if [
+                                TEXT_ELEMENT_CLASS_ID,
+                                MARKER_ELEMENT_CLASS_ID,
+                                LINE_ELEMENT_CLASS_ID,
+                            ]
+                            .contains(&class_id) =>
+                        {
+                            let body = read_element_body_of_class_10_1(
+                                &class_id,
+                                &mut trial,
+                                max_bytes,
+                                &mut trial_table,
+                            )?;
+                            let reason = match &body {
+                                ElementBody10_1::TextElement(body) => &body.stop,
+                                ElementBody10_1::MarkerElement(body) => &body.stop,
+                                ElementBody10_1::LineElement(body) => &body.stop,
+                            }
+                            .clone();
+                            elements.push(ElementEntry10_1::Element { key, body });
+                            if let Some(reason) = reason {
+                                stop =
+                                    Some(CompositeGraphicsLayerStop10_1::ElementBodyIncomplete {
+                                        group,
+                                        index,
+                                        key,
+                                        reason,
+                                    });
+                                element_groups.push(ElementGroup10_1 {
+                                    declared_count,
+                                    elements,
+                                });
+                                break 'groups;
+                            }
                         }
                         ObjectEntry10_1::NewObject { class_id, key }
                             if class_id == ELEMENT_COLLECTION_CLASS_ID =>
