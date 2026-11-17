@@ -159,8 +159,8 @@ pub fn parse_maps_10_1_with_limits(
                 diagnostics.push(
                     "首对象头为全零空引用标记：无类标识可解析，其后字节保留为未知".to_string(),
                 );
-                let consumed = reader.position();
-                if root.remaining_bytes > 0 {
+                let consumed = reader.position() - 4;
+                if consumed < maps.len() {
                     map_unknown.push(UnknownField {
                         stream: "/Maps".to_string(),
                         offset: consumed as u64,
@@ -777,6 +777,15 @@ fn parse_first_frame(
             slot.describe(),
             body.version,
             body.color
+        ));
+    }
+
+    let tail = &suffix.post_border_tail;
+    if tail.short_32a.is_some() {
+        diagnostics.push(format!(
+            "后续版本字段：short={:?}，double 位={:?}，short={:?}；IEnvelope 空槽={:?}，double 位={:?}、{:?}",
+            tail.short_32a, tail.double_320_bits, tail.short_328,
+            tail.scale_envelopes, tail.scale_double_2b8_bits, tail.scale_double_2d8_bits
         ));
     }
 
@@ -1925,8 +1934,8 @@ mod tests {
 
         assert_eq!(report.map.frames, []);
         assert_eq!(report.map.unknown_fields.len(), 1);
-        assert_eq!(report.map.unknown_fields[0].offset, 24);
-        assert_eq!(report.map.unknown_fields[0].bytes, [0x11, 0x22]);
+        assert_eq!(report.map.unknown_fields[0].offset, 20);
+        assert_eq!(report.map.unknown_fields[0].bytes, [0, 0, 0, 0, 0x11, 0x22]);
         assert!(
             report
                 .diagnostics

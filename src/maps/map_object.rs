@@ -407,6 +407,14 @@ pub struct PostBorderTail10_1 {
     pub post_transform_null_object: Option<ObjectSlot10_1>,
     /// 已完整消费的非空 BasicOverposterProperties 对象。
     pub post_transform_overposter: Option<(ObjectSlot10_1, BasicOverposterProperties10_1)>,
+    /// 版本 24 起的三个原始字段（short、double、short）。
+    pub short_32a: Option<(usize, u16)>,
+    pub double_320_bits: Option<(usize, u64)>,
+    pub short_328: Option<(usize, u16)>,
+    /// 版本 26 起的四个 IEnvelope 槽，仅消费空引用。
+    pub scale_envelopes: [Option<ObjectSlot10_1>; 4],
+    pub scale_double_2b8_bits: Option<(usize, u64)>,
+    pub scale_double_2d8_bits: Option<(usize, u64)>,
 }
 
 /// LabelPlacement.dll 的 BasicOverposterProperties 类标识。
@@ -1295,6 +1303,26 @@ pub fn read_map_suffix_10_1(
                     _ => {}
                 }
             }
+        }
+        if map_prefix.version >= 24 {
+            next_short!(short_32a, 18);
+            next_raw!(double_320_bits, 19, 8, u64);
+            next_short!(short_328, 20);
+        }
+        if map_prefix.version >= 26 {
+            for (index, stage) in [(0, 21), (1, 22), (2, 24), (3, 25)] {
+                if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: s }) if s == stage) {
+                    let slot = read_null_object_slot_10_1(&mut trial).ok().flatten();
+                    if slot.is_some() {
+                        post_border_tail.scale_envelopes[index] = slot;
+                        stop = Some(MapSuffixStop::AfterBorderTail { stage: stage + 1 });
+                    }
+                }
+                if index == 1 {
+                    next_raw!(scale_double_2b8_bits, 23, 8, u64);
+                }
+            }
+            next_raw!(scale_double_2d8_bits, 26, 8, u64);
         }
     }
     let stop = stop.unwrap_or(MapSuffixStop::AfterBookmarks);

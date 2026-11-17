@@ -80,7 +80,7 @@ fn map_geometry_null_is_reached_from_reference_root() {
     let border = map.post_illumination_null_border.unwrap();
     assert_eq!(border.offset, 0x25004);
     assert_eq!(border.entry, ObjectEntry10_1::Null);
-    assert_eq!(reader.position(), 0x252be);
+    assert_eq!(reader.position(), 0x252f2);
     assert_eq!(
         map.post_border_tail.post_transform_double_bits,
         Some((0x2524f, 5000_f64.to_bits()))
