@@ -450,7 +450,56 @@ fn read_entry(
             // FDOGraphicsLayer 的新对象体先解析已确认前缀（各读取器事务
             // 性：失败不推进游标、不改登记表），再按条目边界跳过前缀之后
             // 的剩余字节。RasterLayer 等其余类没有读取器，体整体按未知处理。
-            let dispatch = parse_body_prefix(trial, *class_id, max_bytes, trial_table, 0);
+            // Basemap 必须在外层已证或既有观察推定的界内读取；子读取器偏移相对
+            // 有界切片，只有成功时才提交它完整读取的对象登记。
+            let dispatch = if *class_id == crate::layers::basemap_layer::BASEMAP_LAYER_CLASS_ID
+                && bound.is_some()
+            {
+                let (end, _) = bound.expect("已检查外层边界");
+                let start = trial.position();
+                let len = end
+                    .checked_sub(start)
+                    .ok_or_else(|| invalid(offset, "Basemap 外层边界早于对象体"))?;
+                let mut source = trial.clone();
+                let bytes = source.read_bytes(len)?;
+                let mut body_reader = Reader::new(bytes);
+                let mut body_table = trial_table.clone();
+                match crate::layers::basemap_layer::read_basemap_prefix_10_1(
+                    &mut body_reader,
+                    max_bytes,
+                    &mut body_table,
+                ) {
+                    Ok(prefix) => {
+                        trial.read_bytes(body_reader.position())?;
+                        *trial_table = body_table;
+                        let reason = match &prefix.stop {
+                            crate::layers::basemap_layer::BasemapStop10_1::NewObject {
+                                class_id,
+                                key,
+                                ..
+                            } => format!("未闭合新对象 类={} 键 {key}", class_id_hex(class_id)),
+                            crate::layers::basemap_layer::BasemapStop10_1::ShaderElements {
+                                count,
+                                ..
+                            } => format!("未闭合 shader 数组，计数 {count}"),
+                            crate::layers::basemap_layer::BasemapStop10_1::AfterResults {
+                                ..
+                            } => "结果容器后字段尚未接线".to_string(),
+                        };
+                        parse_note = Some(format!(
+                            "Basemap {:?}：已完整读取图层键 {:?}，在 offset=0x{:x} 停止：{}",
+                            prefix.name,
+                            prefix.feature_keys,
+                            start + body_reader.position(),
+                            reason
+                        ));
+                        Ok(None)
+                    }
+                    Err(error) => Err(error),
+                }
+            } else {
+                parse_body_prefix(trial, *class_id, max_bytes, trial_table, 0)
+            };
             match dispatch {
                 Ok(prefix_result) => parsed = prefix_result,
                 Err(error) => {

@@ -184,9 +184,10 @@
 //!
 //! ## 未解决问题（开放项单列）
 //!
-//! 1. 记录类型值的语义：内部 shape 类别与 esriGeometryType 枚举的映射仅
-//!    候选；读取器原样保留不校验（与原生一致）。Point/Multipoint 类型字
-//!    的 0x34/0x35 等标记同理（反编译观察，无运行取证）。
+//! 1. 10.1 类型库区分记录的 esriShapeType 与公开 esriGeometryType。
+//!    例如记录的 5 为 Polygon，公开类型的 Polygon 为 4；0x34/0x35 为
+//!    GeneralPoint/GeneralMultipoint。读取器仍原样保留；尚未核对所有
+//!    导入、导出分支是否接受每个变体。见第三轮 Display / Spatial 记录。
 //! 2. 版本 0/1、AfStreamRead S_FALSE 捷径（返回 1 的「空流」分支）无样本
 //!    佐证；读取器版本 0/1 按「记录 + 无空间参考」处理，S_FALSE 不实现。
 //! 3. 可选段（Z/M/段描述/每点附加数组）在折线/多边形 Load 路径恒不可达

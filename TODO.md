@@ -52,6 +52,8 @@
 
 ## MXD 解析
 
+- [x] 2026-11-17 第三轮并行续研：闭合 ObjectClassName 实现定位、Geometry 记录类型枚举归属与 LineElement 原宿主实样三项；接入 BasemapLayer 首个实际图层键与图例回引、Map 照明属性槽。原生证据、剩余边界及逐项报告见 [第三轮复核](docs/mxd-round3-review-20261117.md)。
+
 - [x] 2026-11-17 第二轮并行续研：闭合 7 项；接入 Map 书签后属性前导、三类基本图形元素、Envelope v0 和显式 10.8 版本头读取。其余条目分为目标运行、真实样本和可继续静态研究，见 [主审记录与清单](docs/mxd-round2-review-20261117.md)。
 
 - [x] 2026-11-17 并行续研：接入基本图形层子层和尾段，参考样本读到显示范围；修正 9.3 版本候选、旧 Map 后缀分派、StdPicture 类标识，补接 LegendClassFormat 文字符号及点线元素符号。介质模板对照、复核结果和剩余缺口见 [并行核对记录](docs/mxd-parse-review-20261117.md)。
@@ -178,7 +180,7 @@
       - [x] 闭合委派注记图层数据源 `{75E10086-4226-42AC-AFEC-CBB9B748F847}`：FileGDB.dll 10.1.0.3035 的 FgdbFeatureClassName，体为版本 short + 原样 short + 内嵌 GdbCore FeatureClassName 体（无第二对象头）；按精确 CLSID 接入，覆盖异常回滚和逐前缀截断。样本委派 FeatureLayer 体完整消费至 `0x2c01`；见 [本轮数据源记录](docs/mxd-open-dataset-20261116.md)。
       - [x] 接入 FDOGraphicsLayer 委派 FeatureLayer 体之后的第 7–15 步后续字段，包含 SymbolCollection 与内联子层；未知嵌套体安全停止，参考样本读至下一图层条目 `0x2d22`，未在 ArcMap 中人工验证，见 [研究记录](docs/mxd-layer-luna.md)。
       - [ ] FeatureQueryName/TableQueryName 的 IVariantStream 体（GdbCore，IPersistVariant 形态，主虚表 +0x14 GetIDType 写出各自 CLSID）。
-      - [ ] ObjectClassName 实现类 RTTI 定位（GdbCore 静态未找到）。
+      - [x] 定位 ObjectClassName 的 GdbCore 实现：10.1 注册工厂和构造函数分别绑定 FdbTableName 工厂与实例 RTTI；持久化行为未在此项验证。见 [第三轮数据集记录](docs/mxd-round3-dataset-format-20261117.md#objectclassname-实现定位)。
     - 符号与 Legend 族（逐个反编译闭合）：
       - [x] 闭合 LegendFormat 体 `{7A3F91E5}`（Map.dll，真实 IPS 虚表在位移 0xb4 的 COL 后；9 段字段序：版本 [1,1,1,1,1,2] 恒写 2+short+ITextSymbol 槽+int32+double×11+ILinePatch 槽+IAreaPatch 槽+short+[≥2]double×2，Load/Save 对称），见 [研究记录](docs/arcmap-10.1-legend-family.md)。
       - [x] 闭合 ILegendItem 实现类体：HorizontalBarLegendItem `{2B65D211}`（条目版本→BaseLegendItem→int32→double×2）、NestedLegendItem `{2B65D212}`（→int32→double→IFillSymbol 槽→ILineSymbol 槽→short×3→int32）、VerticalLegendItem `{A9401A48}`（流内布局与 HorizontalLegendItem 逐字节同序）；四实现类经 LayerLib BaseLegendItem::Load 的四条 IAT 引用定位穷尽，见 [研究记录](docs/arcmap-10.1-legend-family.md)。
@@ -232,7 +234,7 @@
       - [ ] 定性 NumberFormat 九类的标量字段语义。
       - [ ] 定性 NumberFormat 九类的 String 字段语义。
       - [ ] 验证 Percentage/Rate「同槽升级」与 LatLon/Angle 独立槽核心形态（样本 0 实例）。
-      - [ ] Geometry 记录类型值的枚举映射语义（内部 shape 类别 vs esriGeometryType）。
+      - [x] 区分 Geometry 记录的 esriShapeType 与公开 esriGeometryType：按 10.1 类型库对照 shape 各基础类别及 Z/M 变体，并以真实解析分支核对空值、折线、多边形及通用点、多点。见 [第三轮空间记录](docs/mxd-round3-display-spatial-20261117.md#233记录类型和公开几何类型)。
       - [ ] Geometry 内核移交链（+0xc8 内嵌指针虚表 +0x1cc 槽）运行期装配定位。
       - [x] 闭合 FDO 版本 4 探测依赖：三依赖降为两项并逐指令定位（整流绝对 0 访问成立；IObjectStream QI `{18A45BA7}` 门控主流键读、分支 B 经返回接口读键）；三处旧记录修正（第七轮「从返回接口读」系误记、「分支 B 不复位」撤销——汇编在 ==9 比较前无条件 Seek(P)、探测真条件=两探测槽至少一空）；分支 A ≠4 路径为死分支，「不实现」结论维持，见 [研究记录](docs/arcmap-10.1-save-side.md)。
       - [x] 闭合 FDO「Map 架构版本 9」历史布局解读（静态）：Map::Save 版本表 [22,29,30,31,45,51]→10.1 可写最小 Map 架构版本=22（8.3），版本 9 只可能来自 pre-8.3 文档；与 FDO 表 [5,11] 互证 FDO v4=8.3 之前布局（legacy+收尾 String）；分支 B 两种根前缀（带/不带 int32 计数）闭合；「9 对应哪个具体产品版本」10.1 二进制不可证，保持开放。
@@ -261,7 +263,7 @@
       - [x] 确认 10.1 写侧 MapSurround 共同前缀恒写 3；Legend 自身版本字段恒写 5，见 [MapSurround 读取记录](src/maps/map_surround.rs)。
       - [ ] 验证 Legend 主体 v0/v1 的旧版分支（独立于已实测的 HorizontalLegendItem/BaseLegendItem v1）。
       - [x] 在 10.1 LandscapeClassic 模板中，从 Map 根经 MarkerNorthArrow 完整消费内嵌 MarkerElement 体，见 [实样验证](docs/mxd-round2-review-20261117.md)。
-      - [ ] LineElement 体（样本 0 实例）。
+      - [x] 从 10.1 介质 CentralUSA.mxd 的 /PageLayout 根顺序读取 LineElement 体，并从前一 TextElement 的实际登记解析坐标系回引，见 [第三轮页面记录](docs/mxd-round3-line-element-20261117.md)。
       - [ ] 补齐尚未实测的 DisplayCore 符号类；两套介质已有 MultiLayerMarkerSymbol/CharacterMarkerSymbol 体读证据，见 [样本记录](docs/mxd-round2-symbol-ole-20261117.md)。
       - [ ] 补齐尚未实测的 DisplayCore 颜色类。
       - [ ] Hyperlink 版本 0 短体。

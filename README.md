@@ -42,7 +42,9 @@ Rust 库的 `native_string::read_string_10_1` 可读取 10.1 AfCore `String::Wri
 
 `map_surround::read_aoi_bookmark_10_1` / `read_feature_bookmark_10_1` / `read_legend_prefix_10_1` 严格读取 Map 后缀两循环非空时的元素体（Map.dll 10.1.0.3035 反编译）：AOIBookmark（版本 ≤1 + IEnvelope + 名称）与 FeatureBookmark（版本 ≤1 + int32 + IName 条目 + 名称）体完全闭合，Legend 为已确认前缀（共同前缀 + ILegendFormat/ILegendItem 新对象停止）。样本两循环计数均为 0，全部结论无字节佐证；循环经 `map_object::read_map_suffix_10_1` 按类标识分派。见 [研究记录](docs/arcmap-10.1-mapsurround-bookmark.md)。
 
-`mxd_maps::parse_maps_10_1` 将已确认的 10.1 读取器接入中间模型：数据框名称、第二名称、空间参考 WKT 与 PCS 原始字段、按条目顺序构造的图层节点及到达时的显示范围。图层 CRS 从 `+0x1f4` Envelope 提取，Map CRS 回引同时匹配键和类标识；未知内容按流内偏移保留。对象循环仍未闭合，最多解析首个 Map。参考样本首条 FDOGraphicsLayer 的关联、委派 FeatureLayer 与 FDO 后续字段已消费，包含一个内联子层；解析继续到六个图层条目与活动索引，其中两个栅格体按有界未知内容保留。基本图形层的 10 个子层及循环后尾段已消费，读到 `/Maps:0x24f64` 的显示范围；书签后属性前导从 `0x24fa0` 开始，未知尾部从 `0x24fb2` 开始。Map 架构版本小于 23 时只读取前缀，旧图层列表及其后数据保留为未知。证据见 [FDO 续研记录](docs/mxd-layer-luna.md) 和 [图层及标注续研](docs/mxd-layer-label-cgl-20261117.md)。另见 [第二轮复核](docs/mxd-round2-review-20261117.md)的实样验证与待办分类。结果未在 ArcMap 10.1 或 QGIS 中人工目视验证。
+`mxd_maps::parse_maps_10_1` 将已确认的 10.1 读取器接入中间模型：数据框名称、第二名称、空间参考 WKT 与 PCS 原始字段、按条目顺序构造的图层节点及到达时的显示范围。图层 CRS 从 `+0x1f4` Envelope 提取，Map CRS 回引同时匹配键和类标识；未知内容按流内偏移保留。对象循环仍未闭合，最多解析首个 Map。参考样本首条 FDOGraphicsLayer 的关联、委派 FeatureLayer 与 FDO 后续字段已消费，包含一个内联子层；解析继续到六个图层条目与活动索引，其中两个栅格体按有界未知内容保留。基本图形层的 10 个子层及循环后尾段已消费，读到 `/Maps:0x24f64` 的显示范围；书签后属性前导从 `0x24fa0` 开始，参考文件的 IlluminationProps 从 `0x24fb2` 开始，未知尾部从 `0x24fe8` 开始。Map 架构版本小于 23 时只读取前缀，旧图层列表及其后数据保留为未知。证据见 [FDO 续研记录](docs/mxd-layer-luna.md) 和 [图层及标注续研](docs/mxd-layer-label-cgl-20261117.md)。另见 [第二轮复核](docs/mxd-round2-review-20261117.md)的实样验证与待办分类。结果未在 ArcMap 10.1 或 QGIS 中人工目视验证。
+
+`maps::page_layout_prefix` 提供显式 10.1 PageLayout 元素列表前缀和有界元素体读取器；已从介质 `CentralUSA.mxd` 的页面根对象顺序读取线元素和先前定义的空间参考回引。BasemapLayer 已接入有界图层入口：介质 `Africa.mxd` 的首个图例项能回引基图内实际登记的图层键，未支持的剩余体按边界保留。见 [第三轮复核](docs/mxd-round3-review-20261117.md)。
 
 ## 使用
 

@@ -15,15 +15,17 @@ PageLayout RTTI 的 `IPersistStream` 虚表 `0x7b71fa34` 中 GetClassID `0x7b6e4
 | Utilities.mxd | `9c439b8d6624325b6b1a2e1199a7396772b6e5249c61f1076025e35323bd0eb6` | 163 / 14 / 27 | 11 / `0x20cf` / 254 | `0x20cf..0x21ec` |
 | CentralUSA.mxd | `b3b594837ab29c9435c2214793d1dcc65d2985a73d26b6619d83704f99005bac` | 736 / 15 / 9 | 1 / `0xa0c` / 744 | `0xa0c..0xb29` |
 
-两处前缀 `[A,B]=[285,0]`，已知 LineElement 局部探针消费范围均恰为 285 字节。Utilities 的 `/Version` 为 10.0/18 候选，CentralUSA 为 10.1/19 候选；介质版本与文档保存版本不可混同。Utilities 首项是 MapSurroundFrame 候选，CentralUSA 首项是 TextElement 候选。测试仅按范围检查对象头，**没有将跳过的对象键登记进引用表**；长度推定也不能替代逐个 Load，因此这是从页面根对目标位置的结构性定位，不是从原宿主完整解析到目标，254/744 也还不是已验证的首次登记及实际回引关系。
+两处前缀 `[A,B]=[285,0]`，已知 LineElement 局部探针消费范围均恰为 285 字节。Utilities 的 `/Version` 为 10.0/18 候选，CentralUSA 为 10.1/19 候选；介质版本与文档保存版本不可混同。Utilities 首项是 MapSurroundFrame 候选。
 
-新增 `src/maps/page_layout_prefix.rs`，测试 `tests/round3_line_page_layout.rs` 覆盖版本门、限额、负数、每个截断及两个介质前缀/候选范围。该模块尚未声明：主代理如需对外使用，请在 `src/lib.rs` 的 `maps` 模块中添加 `pub mod page_layout_prefix;`，并在对象头和真实跨流引用上下文确定后接入；目前测试通过路径包含模块，不需要修改共享接线。未使用扫描结果构造引用表，也未修改 TextSymbol。
+进一步从 CentralUSA 的 CFB 文件直接打开 `/PageLayout`，校验完整根对象头的 PageLayout CLSID 与键 736，然后按元素循环顺序解析，不预登记其他键：第 0 项 TextElement 键 737 完整读至 `0xa04`，其 Point 几何中的 UnknownCoordinateSystem 在 `0x96e` 新建并登记键 743；第 1 项 LineElement 键 744 从 `0xa0c` 完整读至 `0xb29`，其 Polyline 空间参考槽 `0xb0f` 回引同一类与键 743。首项之后登记键为 736–743，第二项之后为 736–747；无须补入任何 736 以前的键即可完成这两个对象。对照测试从空表单独读取第二项时，743 被当成新对象并导致读取失败，外层游标和引用表回滚。测试由页面流根开始，**并未重建此前 `/Maps` 等流的完整引用表**；根键及相关对象在该局部会话内被视为新对象，不能将该测试扩大为完整 MXD 打开链的验证。
+
+新增 `src/maps/page_layout_prefix.rs` 并在 `src/maps/mod.rs` 正式声明。元素读取器只接纳已观察的 B=0 且 A 为完整对象范围的形态，按类解析完整对象并检查范围，遇到截断、未知类、内层停止或长度不一致则回滚游标与引用表。`tests/round3_line_page_layout.rs` 覆盖版本、限额、截断、两份介质的前缀以及 CentralUSA CFB 真正顺序读取；未修改 TextSymbol 或 CLI。
 
 ## 按原 ID 落档
 
 | ID | 状态 | 证据与缺口 |
 | --- | --- | --- |
-| 262 | PARTIAL | 上述页面 Load、两份介质结构定位和现有 `tests/element_body.rs` 局部完整体；尚缺从 DrawingDefaults、Maps 经页面前置元素持续建立真实引用表，解析 Frame/Text 等前置对象，再逐项证实目标键与内部引用。 |
+| 262 | CLOSED | CentralUSA 从 CFB `/PageLayout` 根顺序读完 TextElement 与 LineElement，实际登记并回引空间参考键 743，见上文。完整跨流会话与其他页面元素覆盖不在这一闭合结论之内。 |
 | 174 | PARTIAL | `arcmap-10.1-legend-family.md` 第十节及 `mxd-round2-surround-elements-20261117.md`：FeatureBookmark 请求 IName 并尝试取得 IFeatureClass；尚缺该槽具体实现类分布和真实非空书签对象体。 |
 | 213 | PARTIAL | `arcmap-10.1-legend-tails.md` 第一节、`mxd-open-legend-20261116.md` 原 206：两个文本符号、线/面补丁和两个版本门 double 的读取顺序已有证据；double 和各符号的确切业务语义仍需 10.1 属性访问器与成员偏移互证。 |
 | 214 | PARTIAL | 同文第二节及 `mxd-open-legend-20261116.md` 原 207：BaseLegendItem 各对象槽和字符串默认值已知；int32、short 和其余标量仍需 Renderers/LayerLib 属性访问器与 Load 偏移对位。 |

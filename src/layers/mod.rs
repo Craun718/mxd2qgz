@@ -1,6 +1,7 @@
 //! 图层对象体的严格读取器与图层列表类分派。
 
 pub mod annotate_props;
+pub mod basemap_layer;
 pub mod composite_graphics;
 pub mod dep_tail;
 pub mod edit_template;
