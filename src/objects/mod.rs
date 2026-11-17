@@ -12,6 +12,7 @@ pub mod element_body;
 pub mod element_collection;
 pub mod element_decor;
 pub mod envelope;
+pub mod geo_transformation;
 pub mod geometry;
 pub mod hyperlink;
 pub mod number_format;

@@ -1,5 +1,7 @@
 # ArcMap 10.1 空间参考槽实现类：ISRPersistStream、PCS 标志/double 语义、GCS 与 Unknown 体、CircularArc 裁决
 
+> [后续指令复核](mxd-terra-integrate-sr.md)更正了 PCS/GCS v2 的域串版本门、PCS 垂向单位段和 GCS 守卫位置。涉及这些细节时以后续记录为准。
+
 记录日期：2026-11-16。对应 TODO「MXD 解析」开放项：闭合 ProjectedCoordinateSystem
 的接口 IID；定性 PCS 标志字段语义；定性 PCS double 字段语义；ISpatialReference
 槽实现类体（ProjectedCoordinateSystem 之外的 GeographicCoordinateSystem 与

@@ -10,7 +10,8 @@
 //! - **A 一手样本字节**：仓库参考样本 /Maps 流内 37 处 StdFont 新对象按本模
 //!   块字段序逐字节全部吻合（37/37，走查脚本 `temp/agent-olestd/
 //!   stdfont_walk_all.py`；其中 TextSymbol 字体槽 21 处、CharacterMarker
-//!   系符号字体槽 16 处）。StdPicture 样本 0 实例，仅合成测试。
+//!   系符号字体槽 16 处）。参考样本未发现 StdPicture；另有旧版介质模板的
+//!   局部 BMP 实例与截断测试，宿主链和目标程序显示未验证。
 //! - **B 原生反编译（介质分发件）**：10.1 安装介质 `Desktop/Setup1.cab`
 //!   条目 `Global_System_OLEAUT32_f3.8C0C59A0_7DC8_11D2_B95D_006097C4DE24`
 //!   = Microsoft **OLEAUT32.DLL 2.40.4275**（OLE 2.40，PE x86，版本资源经
@@ -78,20 +79,20 @@
 //! | --- | --- | --- | --- |
 //! | 0 | WORD | 魔数 0x746c（LE `'lt'`）：Save 头恒写；Load `!=0x746c` 走
 //!   旧格式分支（无头直接按图像魔数嗅探）——本读取器拒绝非 0x746c 形态
-//!   （MXD 写侧恒为 Save 形态） | Load `0x653a0191` 循环读 2 字节比对
+//!   （该介质 OLE Save 写头，不能推广至全部历史 MXD） | Load `0x653a0191` 循环读 2 字节比对
 //!   `0x746c`；SaveHeader `0x653a1071` 写入 |
-//! | 1 | WORD | 第二字（Save 写 0；语义未定，Load 不校验） | SaveHeader 第二
-//!   个 `Write(4)` 的高半；wine 参考实现同样置 0（非本轮证据） |
+//! | 1 | WORD | 第二字（Save 写 0；介质版 Load 读取后不使用） | SaveHeader
+//!   第一次 `Write(4)` 写出 `0x0000746c`；语义和其他版本仍待确认 |
 //! | 2 | DWORD | 内嵌图像数据字节数；`==0` = 空图（Load 置 PICTYPE 0） |
 //!   Load 读 4 字节后零值早退 |
 //! | 3 | BYTE[n] | 图像数据。Load 按首 WORD 魔数分派解码器：`0x4D42`（'BM'）
-//!   BITMAP、`0xD8FF` JPEG、`0x4947`/`0x6967` GIF、`0xCDD7`、`0x0001`、
-//!   `0x0000`；空图由声明长度为零判定，未知魔数拒绝 `0x800a01e1`。上述值
+//!   BITMAP、`0xD8FF` JPEG、`0x4947`/`0x6967` GIF、`0xCDD7`/`0x0001` 元文件、
+//!   `0x0000` 图标或光标目录；空图由声明长度为零判定，未知魔数拒绝 `0x800a01e1`。上述值
 //!   是按小端读取的数值；本读取器原样保留字节、
 //!   不解释格式（解码超出 MXD 解析范围） | Load 内嵌分支魔数 switch |
 //!
-//! 样本 StdPicture 0 实例：本模块仅按反编译实现读取器，配合成测试；样本对
-//! 位无从进行，未在目标软件验证。
+//! 旧版介质模板的局部 StdPicture BMP 体与长度边界已由测试核对；它尚未从
+//! 宿主链到达，也未在目标软件验证，详见 `docs/mxd-round2-symbol-ole-20261117.md`。
 //!
 //! 调用约定与事务性：起点为对象头之后的第一字节（调用者已用
 //! [`crate::storage::object_stream::read_header_10_1`] 读取并分类对象头、键
@@ -232,7 +233,7 @@ pub fn read_std_font_body_10_1(
 /// 从对象头之后的位置读取 StdPicture 对象体。
 ///
 /// `max_bytes` 约束图像数据声明长度。非 `0x746c` 魔数（旧格式无头形态）
-/// 为 [`ErrorKind::InvalidData`]（MXD 写侧恒为 Save 头形态）；截断为
+/// 为 [`ErrorKind::InvalidData`]（不代表所有历史 MXD 均有该头）；截断为
 /// [`ErrorKind::UnexpectedEof`]。
 pub fn read_std_picture_body_10_1(
     reader: &mut Reader<'_>,
@@ -252,7 +253,7 @@ pub fn read_std_picture_body_10_1(
     if magic != STDPICTURE_MAGIC {
         return Err(invalid(format!(
             "魔数 0x{magic:04x} 非 0x746c（Load 0x653a0191 对该值走旧格式内\
-             嵌嗅探分支；MXD 写侧恒为 Save 头形态，本读取器不接受）"
+             嵌嗅探分支；本读取器不接受无头形态）"
         )));
     }
     // 1. 第二字（Save 写 0；Load 不校验，原样保留）。

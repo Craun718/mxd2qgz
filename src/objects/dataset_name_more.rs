@@ -36,11 +36,9 @@
 //! `0x709b9330`，后者安装 RTTI 为 `FdbTableName` 的虚表 `0x70ad06f0`。
 //! `0x709b94b0` 是析构入口，不是构造函数；该证据不证明所有持久化路径
 //! 不存在。详见 `docs/mxd-round3-dataset-format-20261117.md`。
-//! `FeatureQueryName {81CAA5D9-…}`/`TableQueryName
-//! {81CAA5D8-…}` 的主虚表（`0x70aba700`/`0x70aba628`，槽 +0x14 GetIDType
-//! 写出各自 CLSID）呈 IPersistVariant 形态，未找到 AfStream 框架的
-//! IPersistStream Load/Save——持久化路径未闭合。读取器将上述类一律按
-//! 「无已闭合体」停止点处理。
+//! TableQueryName / FeatureQueryName 的 IPersistStream 读取见本模块；SystemCore
+//! 优先查询 IPersistVariant，但两类静态 QI 路径均不支持该接口，详见
+//! `docs/mxd-terra-integrate-query.md`。
 //!
 //! 调用约定与 [`crate::objects::dataset_name`] 一致：调用者先读对象头、比对
 //! 类标识常量并取得键，从对象头之后传入 Reader；嵌套条目登记先于对象体解
@@ -222,6 +220,108 @@ pub const IID_4434D680: [u8; 16] = [
     0x80, 0xd6, 0x34, 0x44, 0xda, 0xf4, 0xd1, 0x11, 0xbc, 0xa6, 0x00, 0x00, 0xf8, 0x75, 0xbc, 0xce,
 ];
 
+/// TableQueryName `{81CAA5D8-90C5-11D3-9F7B-00C04F6BC886}`。
+pub const TABLE_QUERY_NAME_CLASS_ID: [u8; 16] = [
+    0xd8, 0xa5, 0xca, 0x81, 0xc5, 0x90, 0xd3, 0x11, 0x9f, 0x7b, 0x00, 0xc0, 0x4f, 0x6b, 0xc8, 0x86,
+];
+/// FeatureQueryName `{81CAA5D9-90C5-11D3-9F7B-00C04F6BC886}`。
+pub const FEATURE_QUERY_NAME_CLASS_ID: [u8; 16] = [
+    0xd9, 0xa5, 0xca, 0x81, 0xc5, 0x90, 0xd3, 0x11, 0x9f, 0x7b, 0x00, 0xc0, 0x4f, 0x6b, 0xc8, 0x86,
+];
+
+/// 查询名称体，停止后未读取的后续字段为 None。
+#[derive(Debug, Clone, PartialEq)]
+pub struct TableQueryNameBody10_1 {
+    pub key: u32,
+    pub version: u16,
+    pub strings_before_workspace: [String; 3],
+    pub workspace: WorkspaceNameSlot10_1,
+    pub strings_after_workspace: Option<[String; 3]>,
+    pub version_two_tail: Option<(String, u16)>,
+    pub stop: Option<DatasetNameMoreStop10_1>,
+}
+
+/// FeatureQueryName 追加字符串和两个原始 32 位值。
+#[derive(Debug, Clone, PartialEq)]
+pub struct FeatureQueryNameBody10_1 {
+    pub table: TableQueryNameBody10_1,
+    pub feature_tail: Option<(String, u32, u32)>,
+}
+
+/// 读取对象头后的 TableQueryName IPersistStream 体。
+/// 调用者必须先确认该流使用 ObjectStream 引用表，且已登记对象键。
+pub fn read_table_query_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<TableQueryNameBody10_1> {
+    let mut trial = reader.clone();
+    let mut staged = table.clone();
+    let version = trial.read_u16_le()?;
+    check_signed_version(version, 2, "TableQueryName", reader.position())?;
+    let strings_before_workspace = [
+        read_string_10_1(&mut trial, max_bytes)?,
+        read_string_10_1(&mut trial, max_bytes)?,
+        read_string_10_1(&mut trial, max_bytes)?,
+    ];
+    let mut stop = None;
+    let workspace = read_workspace_slot_10_1(&mut trial, max_bytes, &mut staged, &mut stop)?;
+    let mut strings_after_workspace = None;
+    let mut version_two_tail = None;
+    if stop.is_none() {
+        strings_after_workspace = Some([
+            read_string_10_1(&mut trial, max_bytes)?,
+            read_string_10_1(&mut trial, max_bytes)?,
+            read_string_10_1(&mut trial, max_bytes)?,
+        ]);
+        if version >= 2 {
+            version_two_tail = Some((
+                read_string_10_1(&mut trial, max_bytes)?,
+                trial.read_u16_le()?,
+            ));
+        }
+    }
+    *reader = trial;
+    *table = staged;
+    Ok(TableQueryNameBody10_1 {
+        key,
+        version,
+        strings_before_workspace,
+        workspace,
+        strings_after_workspace,
+        version_two_tail,
+        stop,
+    })
+}
+
+/// 读取 FeatureQueryName；基础体停止时不读取追加段，任何错误回滚整个体。
+pub fn read_feature_query_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<FeatureQueryNameBody10_1> {
+    let mut trial = reader.clone();
+    let mut staged = table.clone();
+    let body = read_table_query_name_body_10_1(&mut trial, max_bytes, &mut staged, key)?;
+    let feature_tail = if body.stop.is_none() {
+        Some((
+            read_string_10_1(&mut trial, max_bytes)?,
+            trial.read_u32_le()?,
+            trial.read_u32_le()?,
+        ))
+    } else {
+        None
+    };
+    *reader = trial;
+    *table = staged;
+    Ok(FeatureQueryNameBody10_1 {
+        table: body,
+        feature_tail,
+    })
+}
+
 /// IDatasetName 槽（请求 IID `{89E75917-…}`）新对象的分派读取结果。
 #[derive(Debug, Clone, PartialEq)]
 pub enum DatasetNameMoreBody10_1 {
@@ -237,6 +337,10 @@ pub enum DatasetNameMoreBody10_1 {
     MemoryRelationshipClass(Box<MemoryRelationshipClassNameBody10_1>),
     /// QueryTableName（本模块）。
     QueryTable(Box<QueryTableNameBody10_1>),
+    /// TableQueryName（与 QueryTableName 为不同类）。
+    TableQuery(Box<TableQueryNameBody10_1>),
+    /// FeatureQueryName。
+    FeatureQuery(Box<FeatureQueryNameBody10_1>),
     /// RelQueryTableName（本模块）。
     RelQueryTable(Box<RelQueryTableNameBody10_1>),
     /// DBTableName（本模块）。
@@ -250,7 +354,7 @@ pub enum DatasetNameMoreSlot10_1 {
     Null,
     /// 键已见：回引条目，无对象体。
     BackReference { class_id: [u8; 16], key: u32 },
-    /// 新对象且类标识命中七类之一：已读取其体；体内停止时经
+    /// 新对象且类标识命中支持的类：已读取其体；体内停止时经
     /// [`stop`](DatasetNameMoreSlot10_1::Body) 之外的第二通道（读取器
     /// `stop` 字段）透传。
     Body(DatasetNameMoreBody10_1),
@@ -269,7 +373,7 @@ pub enum DatasetNameMoreStop10_1 {
         key: u32,
         reason: String,
     },
-    /// 槽位新对象无已闭合读取器（IDatasetName 槽的非七类、或请求 IID 语义
+    /// 槽位新对象无已闭合读取器（IDatasetName 槽的未知类、或请求 IID 语义
     /// 未知的槽出现新对象）：游标已回退到该槽位对象头起点。
     SlotUnsupported { class_id: [u8; 16], key: u32 },
     /// WorkspaceName 体内 IPropertySet 槽新对象（经 IWorkspaceName 槽透传，
@@ -527,6 +631,24 @@ fn read_dataset_name_object_10_1(
             let stop = nested_stop!(body);
             Ok((DatasetNameMoreBody10_1::QueryTable(Box::new(body)), stop))
         }
+        TABLE_QUERY_NAME_CLASS_ID => {
+            let mut body = read_table_query_name_body_10_1(reader, max_bytes, table, key)?;
+            let stop = nested_stop!(body);
+            Ok((DatasetNameMoreBody10_1::TableQuery(Box::new(body)), stop))
+        }
+        FEATURE_QUERY_NAME_CLASS_ID => {
+            let mut body = read_feature_query_name_body_10_1(reader, max_bytes, table, key)?;
+            let stop = body
+                .table
+                .stop
+                .take()
+                .map(|inner| DatasetNameMoreStop10_1::Nested {
+                    class_id,
+                    key,
+                    inner: Box::new(inner),
+                });
+            Ok((DatasetNameMoreBody10_1::FeatureQuery(Box::new(body)), stop))
+        }
         REL_QUERY_TABLE_NAME_CLASS_ID => {
             let mut body = read_rel_query_table_name_body_10_1(reader, max_bytes, table, key)?;
             let stop = nested_stop!(body);
@@ -537,16 +659,16 @@ fn read_dataset_name_object_10_1(
             let stop = nested_stop!(body);
             Ok((DatasetNameMoreBody10_1::DbTable(Box::new(body)), stop))
         }
-        _ => unreachable!("调用方先按类标识判定，此处必为七类之一"),
+        _ => unreachable!("调用方先按类标识判定，此处必为支持的类"),
     }
 }
 
 /// 读取并分类一个 IDatasetName 槽（请求 IID `{89E75917-…}`）：空引用/回引
-/// 原样返回；新对象命中七类时分派（嵌套体停止透传为 `Nested`）；其余类为
+/// 原样返回；新对象命中支持的类时分派（嵌套体停止透传为 `Nested`）；其余类为
 /// 停止点并回退到槽位起点。`stop_out` 带出停止原因（无停止时为 `None`）。
 ///
 /// B 轮接线起为本模块与 `dataset_name` / `layers::feature_layer`（FCN ⑦
-/// 选择子 !=0 槽）共用的统一分派入口（七类含 FeatureDatasetName，与第六轮
+/// 选择子 !=0 槽）共用的统一分派入口（支持的类含 FeatureDatasetName，与第六轮
 /// 读取器的 FeatureDatasetName 臂互斥不复读）。
 pub fn read_dataset_name_slot_10_1(
     reader: &mut Reader<'_>,
@@ -584,6 +706,8 @@ pub(crate) fn read_dataset_name_slot_with_depth_10_1(
                     || class_id == RELATIONSHIP_CLASS_NAME_CLASS_ID
                     || class_id == MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID
                     || class_id == QUERY_TABLE_NAME_CLASS_ID
+                    || class_id == TABLE_QUERY_NAME_CLASS_ID
+                    || class_id == FEATURE_QUERY_NAME_CLASS_ID
                     || class_id == REL_QUERY_TABLE_NAME_CLASS_ID
                     || class_id == DB_TABLE_NAME_CLASS_ID;
                 if !known {
@@ -713,7 +837,7 @@ fn check_signed_version(version: u16, max: i16, context: &str, offset: usize) ->
 /// 从对象头之后的位置读取 10.1 GeometricNetworkName 对象体，失败时不推进
 /// 游标、不修改登记表。
 ///
-/// 起点约定与限额口径见模块文档。IDatasetName 槽的新对象命中七类时分派；
+/// 起点约定与限额口径见模块文档。IDatasetName 槽的新对象命中支持的类时分派；
 /// 其余类为停止点（游标回退到槽位起点）。
 pub fn read_geometric_network_name_body_10_1(
     reader: &mut Reader<'_>,

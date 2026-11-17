@@ -83,6 +83,10 @@ use crate::maps::map_surround_family::{
     read_marker_north_arrow_body_10_1, read_scale_text_body_10_1, read_scalebar_body_10_1,
     read_scalebar_subclass_body_10_1,
 };
+use crate::maps::standalone_table::{
+    STANDALONE_TABLE_CLASS_ID, StandaloneTablePrefix10_1, read_standalone_table_prefix_10_1,
+};
+use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
 use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
 use crate::objects::spatial_reference::{
     PROJECTED_COORDINATE_SYSTEM_CLASS_ID, ProjectedCoordinateSystem10_1,
@@ -198,10 +202,18 @@ pub enum MapSuffixStop {
     AfterBookmarks,
     /// 已读属性前导，停止于独立表集合或照明属性槽之前。
     AfterPostBookmarkPrefix { standalone_table_count: i32 },
+    /// 首个独立表的前缀已读，该表未完整消费。
+    StandaloneTableBody { offset: usize },
     /// 已读照明属性槽，后续 Map 字段仍保留为未知。
     AfterIllumination,
     /// 照明后的定长字段已读，下一段 Map 字段保留为未知。
     AfterIlluminationFields,
+    /// 照明后几何槽为空，停止于 IBorder 槽之前。
+    AfterNullGeometry,
+    /// 照明后的几何与边框槽均为空。
+    AfterNullBorder,
+    /// 边框后版本块中已确认字段的停止阶段。
+    AfterBorderTail { stage: u8 },
 }
 
 impl MapSuffixStop {
@@ -237,6 +249,13 @@ impl MapSuffixStop {
             Self::AfterIlluminationFields => {
                 "照明后定长字段已读；后续 Map 字段保留为未知".to_string()
             }
+            Self::AfterNullGeometry => "IGeometry 槽为空；从 IBorder 槽起保留未知".to_string(),
+            Self::AfterNullBorder => {
+                "IGeometry 和 IBorder 槽均为空；后续 Map 字段保留为未知".to_string()
+            }
+            Self::AfterBorderTail { stage } => {
+                format!("IBorder 后版本块已读至阶段 {stage}；后续字段保留为未知")
+            }
             Self::AfterBookmarks => {
                 "书签循环之后未匹配完整的保存侧属性前导，余下原样保留".to_string()
             }
@@ -247,6 +266,9 @@ impl MapSuffixStop {
                 standalone_table_count,
             } => {
                 format!("书签后的属性前导已读；从 {standalone_table_count} 条独立表记录起保留未知")
+            }
+            Self::StandaloneTableBody { offset } => {
+                format!("独立表前缀已读；从其未闭合字段（offset 0x{offset:x}）起保留未知")
             }
         }
     }
@@ -336,14 +358,136 @@ pub struct MapSuffix10_1 {
     pub bookmark_parsed: Vec<Option<BookmarkElement10_1>>,
     /// 书签后与 10.1 普通写侧对位的局部属性。没有匹配完整前导时为 None。
     pub post_bookmark: Option<PostBookmarkPrefix10_1>,
+    /// 首个非空独立表的已确认前缀，不代表表已完整消费。
+    pub first_standalone_table: Option<(ObjectSlot10_1, StandaloneTablePrefix10_1)>,
     /// 独立表计数为零时到达的照明属性槽。
     pub illumination: Option<IlluminationSlot10_1>,
     /// 照明后定长字段，保留流内原始值。
     pub post_illumination: Option<PostIlluminationFields10_1>,
+    /// 仅保留已确认的 IGeometry 空引用；未到达、截断或非空时为 None。
+    pub post_illumination_null_geometry: Option<ObjectSlot10_1>,
+    /// 几何空槽之后已确认的 IBorder 空引用。
+    pub post_illumination_null_border: Option<ObjectSlot10_1>,
+    /// IBorder 后版本块，按原生顺序保留可达字段。
+    pub post_border_tail: PostBorderTail10_1,
     /// 停止原因（恒有：书签循环之后也属停止点）。
     pub stop: MapSuffixStop,
     /// 停止点之后剩余的字节数。
     pub remaining_bytes: usize,
+}
+
+/// Map 版本 23..=51 的边框后字段；未到达或截断的字段为 None。
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct PostBorderTail10_1 {
+    pub short_308: Option<(usize, u16)>,
+    pub null_layer: Option<ObjectSlot10_1>,
+    pub short_310: Option<(usize, u16)>,
+    pub null_envelope: Option<ObjectSlot10_1>,
+    pub short_318: Option<(usize, u16)>,
+    pub short_31a: Option<(usize, u16)>,
+    /// 保留流中 double 的原始位模式，未模拟原生值修正。
+    pub double_bits: Option<(usize, u64)>,
+    /// 以下成员及临时值的业务语义尚未确定，保留原始位。
+    pub int_1a4: Option<(usize, u32)>,
+    pub int_1a8: Option<(usize, u32)>,
+    pub temporary_short: Option<(usize, u16)>,
+    pub temporary_double_bits: Option<(usize, u64)>,
+    /// 后续 IGeoTransformation 集合计数。
+    pub transformation_count: Option<(usize, i32)>,
+    /// 首条前导的兼容性视图；完整条目见 `transformations`。
+    pub first_transformation_prefix: Option<(usize, u32)>,
+    /// 已读取的条目；末项对象为 None 时停在该对象头前。
+    pub transformations: Vec<MapTransformation10_1>,
+    /// 变换循环后的 double、short 原始位，业务语义尚未确定。
+    pub post_transform_double_bits: Option<(usize, u64)>,
+    pub post_transform_short: Option<(usize, u16)>,
+    /// IBackground 槽仅在空引用时消费。
+    pub post_transform_null_background: Option<ObjectSlot10_1>,
+    /// 版本大于 22 的对象槽仅在空引用时消费。
+    pub post_transform_null_object: Option<ObjectSlot10_1>,
+    /// 已完整消费的非空 BasicOverposterProperties 对象。
+    pub post_transform_overposter: Option<(ObjectSlot10_1, BasicOverposterProperties10_1)>,
+}
+
+/// LabelPlacement.dll 的 BasicOverposterProperties 类标识。
+pub const BASIC_OVERPOSTER_PROPERTIES_CLASS_ID: [u8; 16] = [
+    0x56, 0x3d, 0xc7, 0xe0, 0x88, 0x6c, 0x8c, 0x49, 0xb7, 0x7c, 0x78, 0x60, 0x6e, 0x68, 0x8c, 0x97,
+];
+
+/// 原始字段按流顺序保存；版本 0 和 1 无后续字段。
+#[derive(Debug, Clone, PartialEq)]
+pub struct BasicOverposterProperties10_1 {
+    pub version: u16,
+    pub short_before_color: Option<u16>,
+    pub color: Option<ColorSlot10_1>,
+    pub short_after_color: Option<u16>,
+    pub double_bits: Option<u64>,
+}
+
+/// 读取已确认的对象体；短读、未知颜色或版本超界不推进或登记键。
+pub fn read_basic_overposter_properties_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<BasicOverposterProperties10_1> {
+    let mut trial = reader.clone();
+    let mut staged = table.clone();
+    let version = trial.read_u16_le()?;
+    if version > 2 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "BasicOverposterProperties 版本超界",
+        ));
+    }
+    let mut body = BasicOverposterProperties10_1 {
+        version,
+        short_before_color: None,
+        color: None,
+        short_after_color: None,
+        double_bits: None,
+    };
+    if version == 2 {
+        body.short_before_color = Some(trial.read_u16_le()?);
+        let color = read_color_slot_10_1(&mut trial, max_bytes, &mut staged)?;
+        if matches!(color, ColorSlot10_1::Unsupported { .. }) {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "不支持的 BasicOverposterProperties 颜色类",
+            ));
+        }
+        body.color = Some(color);
+        body.short_after_color = Some(trial.read_u16_le()?);
+        body.double_bits = Some(u64::from_le_bytes(
+            trial.read_bytes(8)?.try_into().expect("固定长度"),
+        ));
+    }
+    *reader = trial;
+    *table = staged;
+    Ok(body)
+}
+
+/// 坐标变换循环的一项；原始前导语义尚未确认。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MapTransformation10_1 {
+    pub prefix_offset: usize,
+    pub prefix: u32,
+    pub object: Option<ObjectSlot10_1>,
+    pub body: Option<GeoTransformationBody10_1>,
+}
+
+use crate::objects::geo_transformation::{
+    GEO_TRANSFORMATION_CLASS_ID, GeoTransformationBody10_1, read_geo_transformation_body_10_1,
+};
+/// 原专用读取入口保留，底层与 GeoTransformation 共用实现。
+pub use crate::objects::geo_transformation::{
+    GeoTransformationBody10_1 as NadconTransformation10_1, NADCON_TRANSFORMATION_CLASS_ID,
+};
+
+pub fn read_nadcon_transformation_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+) -> io::Result<NadconTransformation10_1> {
+    read_geo_transformation_body_10_1(reader, NADCON_TRANSFORMATION_CLASS_ID, max_bytes)
 }
 
 /// 普通保存路径中的书签后前导（`Map::Save 0x79401850`）。成员偏移沿用
@@ -905,6 +1049,28 @@ pub fn read_map_suffix_10_1(
             post_bookmark = Some(prefix);
         }
     }
+    let mut first_standalone_table = None;
+    if map_prefix.version >= 11 && post_bookmark.is_some_and(|p| p.standalone_table_count > 0) {
+        let mut candidate = trial.clone();
+        let mut staged = trial_table.clone();
+        let offset = candidate.position();
+        if let Ok(
+            entry @ ObjectEntry10_1::NewObject {
+                class_id: STANDALONE_TABLE_CLASS_ID,
+                ..
+            },
+        ) = read_object_entry_10_1(&mut candidate, &mut staged)
+            && let Ok(prefix) =
+                read_standalone_table_prefix_10_1(&mut candidate, &mut staged, max_bytes, max_bytes)
+        {
+            stop = Some(MapSuffixStop::StandaloneTableBody {
+                offset: candidate.position(),
+            });
+            first_standalone_table = Some((ObjectSlot10_1 { offset, entry }, prefix));
+            trial = candidate;
+            trial_table = staged;
+        }
+    }
     let illumination = if matches!(
         stop,
         Some(MapSuffixStop::AfterPostBookmarkPrefix {
@@ -927,6 +1093,210 @@ pub fn read_map_suffix_10_1(
     if post_illumination.is_some() {
         stop = Some(MapSuffixStop::AfterIlluminationFields);
     }
+    let post_illumination_null_geometry = if post_illumination.is_some() {
+        read_post_illumination_null_geometry_10_1(&mut trial, map_prefix.version)
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
+    if post_illumination_null_geometry.is_some() {
+        stop = Some(MapSuffixStop::AfterNullGeometry);
+    }
+    let post_illumination_null_border = if post_illumination_null_geometry.is_some() {
+        read_null_object_slot_10_1(&mut trial).ok().flatten()
+    } else {
+        None
+    };
+    if post_illumination_null_border.is_some() {
+        stop = Some(MapSuffixStop::AfterNullBorder);
+    }
+    let mut post_border_tail = PostBorderTail10_1::default();
+    if post_illumination_null_border.is_some() {
+        // 版本 23..=51 均进入原生 version > 6 分支；每项独立提交，
+        // 未知对象或短读时停在该项起点。
+        macro_rules! next_short {
+            ($field:ident, $stage:expr) => {
+                if ($stage == 0 && matches!(stop, Some(MapSuffixStop::AfterNullBorder)))
+                    || matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: $stage }))
+                {
+                    let mut candidate = trial.clone();
+                    let offset = candidate.position();
+                    if let Ok(value) = candidate.read_u16_le() {
+                        trial = candidate;
+                        post_border_tail.$field = Some((offset, value));
+                        stop = Some(MapSuffixStop::AfterBorderTail { stage: $stage + 1 });
+                    }
+                }
+            };
+        }
+        next_short!(short_308, 0);
+        if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 1 })) {
+            post_border_tail.null_layer = read_null_object_slot_10_1(&mut trial).ok().flatten();
+            if post_border_tail.null_layer.is_some() {
+                stop = Some(MapSuffixStop::AfterBorderTail { stage: 2 });
+            }
+        }
+        next_short!(short_310, 2);
+        if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 3 })) {
+            post_border_tail.null_envelope = read_null_object_slot_10_1(&mut trial).ok().flatten();
+            if post_border_tail.null_envelope.is_some() {
+                stop = Some(MapSuffixStop::AfterBorderTail { stage: 4 });
+            }
+        }
+        next_short!(short_318, 4);
+        next_short!(short_31a, 5);
+        if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 6 })) {
+            let mut candidate = trial.clone();
+            let offset = candidate.position();
+            if let Ok(bytes) = candidate.read_bytes(8) {
+                let bits = u64::from_le_bytes(bytes.try_into().expect("固定长度"));
+                trial = candidate;
+                post_border_tail.double_bits = Some((offset, bits));
+                stop = Some(MapSuffixStop::AfterBorderTail { stage: 7 });
+            }
+        }
+        macro_rules! next_raw {
+            ($field:ident, $stage:expr, $width:expr, $ty:ty) => {
+                if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: $stage })) {
+                    let mut candidate = trial.clone();
+                    let offset = candidate.position();
+                    if let Ok(bytes) = candidate.read_bytes($width) {
+                        let value = <$ty>::from_le_bytes(bytes.try_into().expect("固定长度"));
+                        trial = candidate;
+                        post_border_tail.$field = Some((offset, value));
+                        stop = Some(MapSuffixStop::AfterBorderTail { stage: $stage + 1 });
+                    }
+                }
+            };
+        }
+        next_raw!(int_1a4, 7, 4, u32);
+        next_raw!(int_1a8, 8, 4, u32);
+        next_raw!(temporary_short, 9, 2, u16);
+        next_raw!(temporary_double_bits, 10, 8, u64);
+        if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 11 })) {
+            let mut candidate = trial.clone();
+            let offset = candidate.position();
+            if let Ok(count) = read_loop_count(&mut candidate, "坐标变换", max_bytes) {
+                trial = candidate;
+                post_border_tail.transformation_count = Some((offset, count));
+                stop = Some(MapSuffixStop::AfterBorderTail { stage: 12 });
+            }
+        }
+        if let Some((_, count)) = post_border_tail.transformation_count {
+            for index in 0..count {
+                let mut candidate = trial.clone();
+                let offset = candidate.position();
+                let Ok(prefix) = candidate.read_u32_le() else {
+                    break;
+                };
+                trial = candidate;
+                if index == 0 {
+                    post_border_tail.first_transformation_prefix = Some((offset, prefix));
+                }
+                post_border_tail
+                    .transformations
+                    .push(MapTransformation10_1 {
+                        prefix_offset: offset,
+                        prefix,
+                        object: None,
+                        body: None,
+                    });
+                stop = Some(MapSuffixStop::AfterBorderTail { stage: 13 });
+                let mut candidate = trial.clone();
+                let mut candidate_table = trial_table.clone();
+                let object_offset = candidate.position();
+                let Ok(entry) = read_object_entry_10_1(&mut candidate, &mut candidate_table) else {
+                    break;
+                };
+                let body = match entry {
+                    ObjectEntry10_1::Null => None,
+                    ObjectEntry10_1::BackReference { class_id, .. }
+                        if matches!(
+                            class_id,
+                            NADCON_TRANSFORMATION_CLASS_ID | GEO_TRANSFORMATION_CLASS_ID
+                        ) =>
+                    {
+                        None
+                    }
+                    ObjectEntry10_1::NewObject { class_id, .. }
+                        if matches!(
+                            class_id,
+                            NADCON_TRANSFORMATION_CLASS_ID | GEO_TRANSFORMATION_CLASS_ID
+                        ) =>
+                    {
+                        let Ok(body) =
+                            read_geo_transformation_body_10_1(&mut candidate, class_id, max_bytes)
+                        else {
+                            break;
+                        };
+                        Some(body)
+                    }
+                    _ => break,
+                };
+                let item = post_border_tail
+                    .transformations
+                    .last_mut()
+                    .expect("已添加条目");
+                item.object = Some(ObjectSlot10_1 {
+                    offset: object_offset,
+                    entry,
+                });
+                item.body = body;
+                trial = candidate;
+                trial_table = candidate_table;
+            }
+            if post_border_tail.transformations.len() == count as usize
+                && post_border_tail
+                    .transformations
+                    .iter()
+                    .all(|item| item.object.is_some())
+            {
+                stop = Some(MapSuffixStop::AfterBorderTail { stage: 14 });
+            }
+        }
+        // 受支持的版本均进入 version >= 13、15、16 和 > 22 的分支。
+        next_raw!(post_transform_double_bits, 14, 8, u64);
+        next_short!(post_transform_short, 15);
+        if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 16 })) {
+            post_border_tail.post_transform_null_background =
+                read_null_object_slot_10_1(&mut trial).ok().flatten();
+            if post_border_tail.post_transform_null_background.is_some() {
+                stop = Some(MapSuffixStop::AfterBorderTail { stage: 17 });
+            }
+        }
+        if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 17 })) {
+            let mut candidate = trial.clone();
+            let mut candidate_table = trial_table.clone();
+            let offset = candidate.position();
+            if let Ok(entry) = read_object_entry_10_1(&mut candidate, &mut candidate_table) {
+                let slot = ObjectSlot10_1 { offset, entry };
+                match entry {
+                    ObjectEntry10_1::Null => {
+                        post_border_tail.post_transform_null_object = Some(slot);
+                        trial = candidate;
+                        trial_table = candidate_table;
+                        stop = Some(MapSuffixStop::AfterBorderTail { stage: 18 });
+                    }
+                    ObjectEntry10_1::NewObject { class_id, .. }
+                        if class_id == BASIC_OVERPOSTER_PROPERTIES_CLASS_ID =>
+                    {
+                        if let Ok(body) = read_basic_overposter_properties_10_1(
+                            &mut candidate,
+                            max_bytes,
+                            &mut candidate_table,
+                        ) {
+                            post_border_tail.post_transform_overposter = Some((slot, body));
+                            trial = candidate;
+                            trial_table = candidate_table;
+                            stop = Some(MapSuffixStop::AfterBorderTail { stage: 18 });
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
     let stop = stop.unwrap_or(MapSuffixStop::AfterBookmarks);
 
     let result = MapSuffix10_1 {
@@ -945,8 +1315,12 @@ pub fn read_map_suffix_10_1(
         bookmarks,
         bookmark_parsed,
         post_bookmark,
+        first_standalone_table,
         illumination,
         post_illumination,
+        post_illumination_null_geometry,
+        post_illumination_null_border,
+        post_border_tail,
         stop,
         remaining_bytes: trial.remaining(),
     };
@@ -975,6 +1349,33 @@ pub fn read_post_illumination_fields_10_1(
     };
     *reader = trial;
     Ok(fields)
+}
+
+/// 从照明后定长字段末尾试读 IGeometry 槽的空引用。
+///
+/// 仅在调用方已确认 Map 版本及本槽起点时使用；非空对象的接口兼容性和
+/// 对象体尚未闭合，返回 `None` 并保持游标不变。截断同样不推进游标。
+pub fn read_post_illumination_null_geometry_10_1(
+    reader: &mut Reader<'_>,
+    map_version: u16,
+) -> io::Result<Option<ObjectSlot10_1>> {
+    if !(23..=51).contains(&map_version) {
+        return Err(io::Error::new(ErrorKind::InvalidData, "不支持的 Map 版本"));
+    }
+    read_null_object_slot_10_1(reader)
+}
+
+fn read_null_object_slot_10_1(reader: &mut Reader<'_>) -> io::Result<Option<ObjectSlot10_1>> {
+    let mut trial = reader.clone();
+    let offset = trial.position();
+    if trial.read_bytes(16)?.iter().any(|&byte| byte != 0) {
+        return Ok(None);
+    }
+    *reader = trial;
+    Ok(Some(ObjectSlot10_1 {
+        offset,
+        entry: ObjectEntry10_1::Null,
+    }))
 }
 
 fn read_post_bookmark_prefix(

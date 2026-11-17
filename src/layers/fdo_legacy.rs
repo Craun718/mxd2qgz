@@ -98,6 +98,10 @@ use crate::layers::feature_layer::{
     FeatureClassNameStop10_1, FeatureLayerStop10_1, read_feature_class_name_body_10_1,
     read_feature_layer_prefix_10_1,
 };
+use crate::objects::element_collection::{
+    ELEMENT_COLLECTION_CLASS_ID, ElementCollection10_1, ElementCollectionStop10_1,
+    read_element_collection_10_1,
+};
 use crate::objects::spatial_reference::{
     PROJECTED_COORDINATE_SYSTEM_CLASS_ID, ProjectedCoordinateSystem10_1,
     read_projected_coordinate_system_10_1,
@@ -174,9 +178,10 @@ pub enum LegacyFdoStop10_1 {
     /// ISpatialReference 槽新对象的类标识不是 ProjectedCoordinateSystem
     /// （如 GCS）：体未知且无外部长度，游标回退到该对象头起点。
     SpatialReferenceUnsupported { class_id: [u8; 16], key: u32 },
-    /// IElementCollection2 槽新对象（含 ElementCollection 类，Layer.dll
-    /// 体布局未闭合）：游标回退到该对象头起点。
+    /// IElementCollection2 槽的未知新对象：游标回退到对象头起点。
     ElementCollectionNewObject { class_id: [u8; 16], key: u32 },
+    /// ElementCollection 内部停止，后续旧体字段不可达。
+    ElementCollectionStopped(ElementCollectionStop10_1),
     /// IName 槽新对象的类标识不是 FeatureClassName：游标回退到该对象头起
     /// 点。
     DataSourceUnsupported { class_id: [u8; 16], key: u32 },
@@ -218,9 +223,12 @@ impl LegacyFdoStop10_1 {
             ),
             Self::ElementCollectionNewObject { class_id, key } => format!(
                 "旧加载器 IElementCollection2 槽新对象（键 {key}，类标识 {}）：\
-                 ElementCollection 体布局未闭合，游标回退到该对象头起点",
+                 类体未知，游标回退到该对象头起点",
                 crate::layers::layer_list::class_id_hex(class_id)
             ),
+            Self::ElementCollectionStopped(stop) => {
+                format!("旧加载器 ElementCollection 体内停止：{}", stop.describe())
+            }
             Self::DataSourceUnsupported { class_id, key } => format!(
                 "旧加载器 IName 槽新对象（键 {key}）类标识 {} 不是 \
                  FeatureClassName：体未知且无外部长度，游标回退到该对象头起点",
@@ -278,6 +286,8 @@ pub struct LegacyFdoGraphicsLayerPrefix10_1 {
     pub spatial_reference: LegacySpatialReferenceSlot10_1,
     /// 第 10 步 IElementCollection2 槽位分类（到达时）。`None` = 未到达。
     pub element_collection: Option<ObjectEntry10_1>,
+    /// 新 ElementCollection 对象的已读取体；空值或其他类时为空。
+    pub element_collection_body: Option<Box<ElementCollection10_1>>,
     /// 第 11 步 IName 槽位（数据源）分类（到达时）。
     pub data_source: LegacyDataSource10_1,
     /// 第 12 步 int16（版本 ≥2；传入内部接口，语义未定性）。
@@ -467,17 +477,25 @@ pub fn read_fdo_graphics_layer_legacy_prefix_10_1(
 
     // 10. IElementCollection2 槽位（与主分支步骤 5 同请求 IID）。
     let mut element_collection = None;
+    let mut element_collection_body = None;
     if stop.is_none() {
         let slot_offset = trial.position();
         let saved_table = trial_table.clone();
         let entry = read_object_entry_10_1(&mut trial, &mut trial_table)?;
         element_collection = Some(entry);
         if let ObjectEntry10_1::NewObject { class_id, key } = entry {
-            // ElementCollection 体布局未闭合（Layer.dll）：任何新对象都按未
-            // 知体停止，回退到对象头起点。
-            trial_table = saved_table;
-            trial = reposition(&origin, entry_offset, slot_offset);
-            stop = Some(LegacyFdoStop10_1::ElementCollectionNewObject { class_id, key });
+            if class_id == ELEMENT_COLLECTION_CLASS_ID {
+                let body = read_element_collection_10_1(&mut trial, max_bytes, &mut trial_table)?;
+                stop = body
+                    .stop
+                    .clone()
+                    .map(LegacyFdoStop10_1::ElementCollectionStopped);
+                element_collection_body = Some(Box::new(body));
+            } else {
+                trial_table = saved_table;
+                trial = reposition(&origin, entry_offset, slot_offset);
+                stop = Some(LegacyFdoStop10_1::ElementCollectionNewObject { class_id, key });
+            }
         }
     }
 
@@ -592,6 +610,7 @@ pub fn read_fdo_graphics_layer_legacy_prefix_10_1(
         associated_layer,
         spatial_reference,
         element_collection,
+        element_collection_body,
         data_source,
         v2_short,
         v2_string_a,

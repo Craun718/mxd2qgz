@@ -4,7 +4,7 @@
 
 ## 原生证据与方法
 
-复核 `temp/agent-map-surround/Map.dll.6BF03936_8AC4_4632_8FB2_A6A34A19655A` SHA-256 为 `1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`，与 [10.1 原生研究](mxd-open-legend-20261116.md)中的 PE x86、Esri Map DLL、文件和产品版本 10.1.0.3035 身份一致。本轮 REA / Ghidra 12.1.4 批量反编译证据 `ev_4d7eb5fab3f6287cfa9fb3d1dbe2a71d9b5b408d2202b175dc24907e260e0deb` 中，FeatureBookmark Load `0x793b5c50` 解析成功：short 版本、4 字节成员、LoadObject 和 String 的顺序与既有读取器一致；IName 对象若非空会再经虚表 +0x14 调用。此结果未证明 int32 的业务名。批量四项中两项失败，不能把失败结果当作新证据；三个 ScaleLine 调用者的既有反编译记录见 [第三轮](mxd-round3-line-element-20261117.md)及 [开放项核查](mxd-open-legend-20261116.md)，调用者身份未闭合。REA 结果为静态反编译而非原始源码或运行行为。
+复核 `temp/agent-map-surround/Map.dll.6BF03936_8AC4_4632_8FB2_A6A34A19655A` SHA-256 为 `1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`，与 [10.1 原生研究](mxd-open-legend-20261116.md)中的 PE x86、Esri Map DLL、文件和产品版本 10.1.0.3035 身份一致。本轮 REA / Ghidra 12.1.4 批量反编译证据 `ev_4d7eb5fab3f6287cfa9fb3d1dbe2a71d9b5b408d2202b175dc24907e260e0deb` 中，FeatureBookmark Load `0x793b5c50` 解析成功：short 版本、4 字节成员、LoadObject 和 String 的顺序与既有读取器一致；IName 对象若非空会再经虚表 +0x14 调用。此结果未证明 int32 的业务名。批量四项中两项失败，不能把失败结果当作新证据；三个 ScaleLine 调用者的既有反编译记录见 [第三轮](mxd-round3-line-element-20261117.md)及 [开放项核查](mxd-open-legend-20261116.md)，调用者身份随后已核定为 ImageInset、MapInset、Overview，并非 ScaleLine，见 [页面续查](mxd-terra-integrate-page.md)。REA 结果为静态反编译而非原始源码或运行行为。
 
 ## 介质与环境查找
 

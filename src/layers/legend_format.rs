@@ -139,8 +139,8 @@ pub struct LegendClassFormatBody10_1 {
     pub line_patch: LegendClassFormatSlot10_1,
     /// 第 5 步 IAreaPatch 槽（→ obj+0x14）。
     pub area_patch: LegendClassFormatSlot10_1,
-    /// 版本 >1 的两个 double 原样位模式（→ obj+0x1c/0x24，语义未定；
-    /// Save 恒写、无版本门）。
+    /// 版本 >1 的 PatchWidth 和 PatchHeight，依流内顺序保留原始 double。
+    /// Save 恒写；访问器与 Load 成员对位见 docs/mxd-terra-depth-legend.md。
     pub patch_doubles: Option<[f64; 2]>,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<LegendClassFormatStop10_1>,

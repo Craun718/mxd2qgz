@@ -2088,8 +2088,8 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
             bytes
         }
         ReaderKind::GeographicCoordinateSystem10_1 => {
-            // 保存版本 2（仅 WKT 块）。
-            let mut bytes = 2_u16.to_le_bytes().to_vec();
+            // 保存版本 1（仅 WKT 块）。
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
             bytes.extend((b"GEOGCS[x]".len() as u32).to_le_bytes());
             bytes.extend_from_slice(b"GEOGCS[x]");
             bytes

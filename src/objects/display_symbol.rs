@@ -2899,7 +2899,7 @@ pub struct CharacterMarkerSymbolBody10_1 {
     pub int32_124: Option<i32>,
     /// int32 → this−0x11c，语义未定。`None` = 前置停止。
     pub int32_11c: Option<i32>,
-    /// 版本 >1 的 short → this−0x10c（读取后原生内存槽被
+    /// 版本 >1 的 RotateWithTransform 原始 short → this−0x10c（读取后原生内存槽被
     /// `Symbol::GetDefaultRotateWithTransformValue` 覆盖，流内值读取即弃；
     /// 反汇编同 ArrowMarker）。`None` = 版本 ≤1 或前置停止。
     pub short_10c: Option<i16>,
@@ -3123,7 +3123,7 @@ pub struct PictureMarkerSymbolBody10_1 {
     pub int32s: Option<[i32; 2]>,
     /// byte → this−0x48（bool，语义未定）。`None` = 前置停止。
     pub byte_48: Option<u8>,
-    /// short → this−0x134（读取后原生内存槽被
+    /// RotateWithTransform 原始 short → this−0x134（读取后原生内存槽被
     /// `Symbol::GetDefaultRotateWithTransformValue` 覆盖，流内值读取即弃）。
     /// `None` = 前置停止。
     pub short_134: Option<i16>,
@@ -3437,10 +3437,10 @@ pub struct ArrowMarkerSymbolBody10_1 {
     pub double_2c: f64,
     /// double → this−0x24，语义未定。
     pub double_24: f64,
-    /// 版本 ≥2 的 short → this−0xc4。读取后原生内存槽被
+    /// 版本 ≥2 的 RotateWithTransform 原始 short → this−0xc4。读取后原生内存槽被
     /// `Symbol::GetDefaultRotateWithTransformValue` 覆盖（反汇编
     /// `0x6eb3edde..0x6eb3edf0`：读入 → 无条件覆写，流内值读取即弃），
-    /// Save 恒写版本 2 并写槽内默认值。读取器保留流内位模式。`None` =
+    /// Save 恒写版本 2 并写该时刻的槽值。读取器保留流内位模式。`None` =
     /// 版本 ≤1 或前置停止。
     pub short_c4: Option<i16>,
     /// 停止原因；`None` = 体已完整消费。

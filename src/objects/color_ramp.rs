@@ -23,8 +23,8 @@
 //!
 //! 1. int16 版本；
 //! 2. String → this−0x30（名称候选）；
-//! 3. int32 → this−0x34（Load 读入 4 字节后内存槽置 0——反编译观察的「读取
-//!    即弃」形态；Save 写槽值。流内 4 字节原样保留）；
+//! 3. int32（Load 读入局部变量后将 this−0x34 清零；Save 写该槽，该槽也是
+//!    IColorRamp::Size setter 写入的请求值；流内 4 字节原样保留）；
 //! 4. 2 字节 short，整体与零比较后写入 bool this−0x28；流内值原样保留；
 //! 5. int32 → this−0x2c；
 //! 6. short ×6 → this−0x26（装载同写 this−0x24 同值）/ −0x22 / −0x20 /
@@ -42,7 +42,8 @@
 //!    写出，Load 顺序消费，不倒序）；
 //! 5. 版本 ≥2：count × 8 字节（count 个 double 原样保留；Save 在 docVer ≥4
 //!    分支写 this−0x14 缓冲 count×8 字节——Load 门「版本 ≥2」与 Save 门
-//!    「docVer ≥4」不对称，按各自反编译实现）。
+//!    「docVer ≥4」不对称。旧版本每个子渐变的权重初始化为 1.0；该数组
+//!    参与 CreateRamp 的子渐变颜色数量分配，见 `docs/mxd-terra-host-color.md`）。
 //!
 //! **PresetColorRamp::Load `0x6eb3ae20`**（`2 < (short)ver` 拒绝；Save 恒写
 //! 版本 1，常量 `DAT_6ec0b320`=1）：
@@ -186,8 +187,7 @@ pub struct RandomColorRampBody10_1 {
     pub version: u16,
     /// String → this−0x30（名称候选）。
     pub name: String,
-    /// int32 → this−0x34（Load 读入后内存槽置 0——读取即弃形态；流内值原样
-    /// 保留）。
+    /// 流内请求 Size；Load 读入局部变量后将对应的对象槽清零，原值在此保留。
     pub raw_int32: i32,
     /// 2 字节 short（整体与零比较后写入 bool this−0x28；原样保留）。
     pub bool_short: u16,
@@ -255,10 +255,25 @@ pub struct MultiPartColorRampBody10_1 {
     /// count × IColorRamp 子梯度槽（经 [`read_color_ramp_slot_10_1`] 分派；
     /// 嵌套停止经各槽 `stop` 上抛）。
     pub ramps: Vec<ColorRampSlot10_1>,
-    /// 版本 ≥2：count × 8 字节 double 原样保留（尺寸候选）。
+    /// 版本 ≥2：每个子渐变的权重，按 double 位模式原样保留。
     pub tail_doubles: Option<Vec<u64>>,
     /// 嵌套停止（子梯度槽出现未闭合实现类时非 None；游标停在内层停止点）。
     pub stop: Option<SymbolStop10_1>,
+}
+
+impl MultiPartColorRampBody10_1 {
+    /// 成功读取完整体后，返回指定子渐变的原生初始权重位模式。
+    /// 旧版本无权重数组，原生为每个子渐变初始化 1.0。
+    pub fn loaded_weight_bits(&self, index: usize) -> Option<u64> {
+        if self.stop.is_some() || index >= self.ramps.len() {
+            return None;
+        }
+        match &self.tail_doubles {
+            Some(values) => values.get(index).copied(),
+            None if self.version < 2 => Some(1.0_f64.to_bits()),
+            None => None,
+        }
+    }
 }
 
 /// 从对象头之后的位置读取 10.1 MultiPartColorRamp 体。
@@ -698,7 +713,7 @@ mod tests {
         bytes.extend(1_i32.to_le_bytes());
         bytes.extend(entry(&RANDOM_COLOR_RAMP_CLASS_ID, 5));
         bytes.extend(random_body_bytes());
-        bytes.extend(1.0_f64.to_le_bytes()); // count=1 → 尾段 1 个 double
+        bytes.extend(2.5_f64.to_le_bytes()); // count=1 → 尾段 1 个 double
         let mut reader = Reader::new(&bytes);
         let mut table = RefTable10_1::new();
         let body = read_multi_part_color_ramp_body_10_1(&mut reader, 1024, &mut table, 3, 8)
@@ -707,9 +722,30 @@ mod tests {
         assert_eq!(body.ramp_count, 1);
         assert_eq!(body.ramps.len(), 1);
         assert!(matches!(body.ramps[0], ColorRampSlot10_1::Random(_)));
-        assert_eq!(body.tail_doubles, Some(vec![1.0_f64.to_bits()]));
+        assert_eq!(body.tail_doubles, Some(vec![2.5_f64.to_bits()]));
+        assert_eq!(body.loaded_weight_bits(0), Some(2.5_f64.to_bits()));
+        assert_eq!(body.loaded_weight_bits(1), None);
         assert!(body.stop.is_none());
         assert_eq!(reader.remaining(), 0);
+    }
+
+    #[test]
+    fn multi_part_old_version_defaults_weights_without_consuming_tail() {
+        let mut bytes = 1_u16.to_le_bytes().to_vec();
+        bytes.extend(string_bytes(""));
+        bytes.extend(2_i32.to_le_bytes());
+        bytes.extend([0_u8; 16]);
+        bytes.extend([0_u8; 16]);
+        bytes.push(0xa5);
+        let mut reader = Reader::new(&bytes);
+        let mut table = RefTable10_1::new();
+        let body = read_multi_part_color_ramp_body_10_1(&mut reader, 1024, &mut table, 3, 8)
+            .expect("旧版渐变体应读取成功");
+        assert_eq!(body.tail_doubles, None);
+        assert_eq!(body.loaded_weight_bits(0), Some(1.0_f64.to_bits()));
+        assert_eq!(body.loaded_weight_bits(1), Some(1.0_f64.to_bits()));
+        assert_eq!(body.loaded_weight_bits(2), None);
+        assert_eq!(reader.read_bytes(1).unwrap(), &[0xa5]);
     }
 
     #[test]
@@ -726,6 +762,7 @@ mod tests {
             .expect("嵌套停止属于成功返回（带停止原因）");
         assert!(body.ramps.is_empty());
         assert!(body.tail_doubles.is_none());
+        assert_eq!(body.loaded_weight_bits(0), None);
         match body.stop.expect("应携带停止原因") {
             SymbolStop10_1::Slot { class_id, key, .. } => {
                 assert_eq!(class_id, unknown);

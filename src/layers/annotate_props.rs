@@ -469,6 +469,19 @@ pub fn read_label_engine_props_body_10_1(
                 )?;
                 engine = ExpressionEngineSlot10_1::VbscriptEngine(Box::new(body));
             }
+            ObjectEntry10_1::NewObject { class_id, key }
+                if class_id == ANNOTATION_JSCRIPT_ENGINE_CLASS_ID
+                    || class_id == ANNOTATION_PYTHON_ENGINE_CLASS_ID =>
+            {
+                let body = read_annotation_expression_engine_body_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged_table,
+                    key,
+                    class_id,
+                )?;
+                engine = ExpressionEngineSlot10_1::OtherEngine(Box::new(body));
+            }
             ObjectEntry10_1::NewObject { class_id, key } => {
                 stop = Some(LelpStop10_1::ExpressionSlotUnsupported { class_id, key });
                 trial = reposition_to(reader, slot_offset);
@@ -697,11 +710,19 @@ pub struct EditTemplateManagerBody10_1 {
     pub count: i32,
     /// 已消费的循环条目（按流内顺序）。
     pub entries: Vec<EtmEntry10_1>,
-    /// 版本 ≥2 的 1 字节（样本 0x00；布尔候选，语义未定），原样保留。
+    /// 版本 ≥2 的 1 字节（样本 0x01），原样保留。原生增删模板会将同一
+    /// 成员置 1，另一接口将非零值返回为 VARIANT_TRUE；完整业务语义未定。
     /// `None` = 版本 ≤1 或前置停止。
     pub tail_byte: Option<u8>,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<EditTemplateManagerStop10_1>,
+}
+
+impl EditTemplateManagerBody10_1 {
+    /// 按原生接口的零与非零比较解释持久化标志；缺席或提前停止时返回 `None`。
+    pub fn persisted_flag_is_set(&self) -> Option<bool> {
+        self.tail_byte.map(|value| value != 0)
+    }
 }
 
 /// 从对象头之后的位置读取 10.1 EditTemplateManager 对象体，失败时不推进
@@ -850,6 +871,16 @@ pub const ANNOTATION_VBSCRIPT_ENGINE_CLASS_ID: [u8; 16] = [
     0x07, 0x72, 0x15, 0xaa, 0x79, 0xe0, 0xd2, 0x11, 0x9f, 0x48, 0x00, 0xc0, 0x4f, 0x6b, 0xc6, 0xa5,
 ];
 
+/// AnnotationJScriptEngine 的 CLSID，来自 10.1 注册声明及 GetClassID。
+pub const ANNOTATION_JSCRIPT_ENGINE_CLASS_ID: [u8; 16] = [
+    0x08, 0x72, 0x15, 0xaa, 0x79, 0xe0, 0xd2, 0x11, 0x9f, 0x48, 0x00, 0xc0, 0x4f, 0x6b, 0xc6, 0xa5,
+];
+
+/// AnnotationPythonEngine 的 CLSID，来自 10.1 注册声明及 GetClassID。
+pub const ANNOTATION_PYTHON_ENGINE_CLASS_ID: [u8; 16] = [
+    0xa2, 0x21, 0x67, 0xbb, 0x1a, 0xd8, 0xe3, 0x45, 0x7f, 0xef, 0x88, 0x4d, 0xb2, 0xb2, 0xa9, 0x05,
+];
+
 /// HotLinkExpressionProperties 类标识(CLSID)的 16 字节内存序。
 ///
 /// GUID `{1B848B0F-5E87-4948-841A-86201FACD925}`。证据:esri.clsid 声明;
@@ -945,6 +976,26 @@ pub struct AnnotationVbscriptEngineBody10_1 {
     pub version: u16,
     /// 版本 ≥2 的 int16(样本 -1),语义未定。`None` = 版本 ≤1。
     pub short: Option<i16>,
+}
+
+/// 按对象头 CLSID 区分的标注表达式引擎；三类共享原生 Load。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnnotationExpressionEngineKind10_1 {
+    /// VBScript 引擎。
+    Vbscript,
+    /// JScript 引擎。
+    Jscript,
+    /// Python 引擎。
+    Python,
+}
+
+/// 表达式引擎的类身份和共享持久化体。
+#[derive(Debug, Clone, PartialEq)]
+pub struct AnnotationExpressionEngineBody10_1 {
+    /// 对象头指定的引擎类。
+    pub kind: AnnotationExpressionEngineKind10_1,
+    /// 三类共享的版本与标量字段；类型名称保留以兼容旧接口。
+    pub body: AnnotationVbscriptEngineBody10_1,
 }
 
 /// HotLinkExpressionProperties 体(实现函数未定位)的样本结构字段。
@@ -1218,6 +1269,32 @@ pub fn read_annotation_vbscript_engine_body_10_1(
     })
 }
 
+/// 在已确认对象头后读取三种 10.1 标注表达式引擎的共享体。
+///
+/// 未知 CLSID 或无效体返回错误，游标和登记表均不变。静态证据与
+/// 未覆盖的槽位接线见 `docs/mxd-terra-depth-label.md`。
+pub fn read_annotation_expression_engine_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+    class_id: [u8; 16],
+) -> io::Result<AnnotationExpressionEngineBody10_1> {
+    let kind = match class_id {
+        ANNOTATION_VBSCRIPT_ENGINE_CLASS_ID => AnnotationExpressionEngineKind10_1::Vbscript,
+        ANNOTATION_JSCRIPT_ENGINE_CLASS_ID => AnnotationExpressionEngineKind10_1::Jscript,
+        ANNOTATION_PYTHON_ENGINE_CLASS_ID => AnnotationExpressionEngineKind10_1::Python,
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "未知标注表达式引擎类",
+            ));
+        }
+    };
+    let body = read_annotation_vbscript_engine_body_10_1(reader, max_bytes, table, key)?;
+    Ok(AnnotationExpressionEngineBody10_1 { kind, body })
+}
+
 /// 从对象头之后的位置读取 10.1 HotLinkExpressionProperties 体(证据:样
 /// 本结构,见结构体文档)。失败时不推进游标、不修改登记表。
 pub fn read_hot_link_expression_props_body_10_1(
@@ -1276,6 +1353,8 @@ pub enum ExpressionEngineSlot10_1 {
     BackReference { class_id: [u8; 16], key: u32 },
     /// 新 AnnotationVBScriptEngine 对象:已解析体。
     VbscriptEngine(Box<AnnotationVbscriptEngineBody10_1>),
+    /// 新 JScript 或 Python 引擎对象：保留类身份和已解析体。
+    OtherEngine(Box<AnnotationExpressionEngineBody10_1>),
     /// 新对象但类标识未闭合:停止点,游标已回退到槽位起点、键不保留。
     Unsupported { class_id: [u8; 16], key: u32 },
 }
@@ -1327,6 +1406,19 @@ pub fn read_display_expression_props_prefix_10_1(
             let body =
                 read_annotation_vbscript_engine_body_10_1(&mut trial, max_bytes, &mut staged, key)?;
             engine = ExpressionEngineSlot10_1::VbscriptEngine(Box::new(body));
+        }
+        ObjectEntry10_1::NewObject { class_id, key }
+            if class_id == ANNOTATION_JSCRIPT_ENGINE_CLASS_ID
+                || class_id == ANNOTATION_PYTHON_ENGINE_CLASS_ID =>
+        {
+            let body = read_annotation_expression_engine_body_10_1(
+                &mut trial,
+                max_bytes,
+                &mut staged,
+                key,
+                class_id,
+            )?;
+            engine = ExpressionEngineSlot10_1::OtherEngine(Box::new(body));
         }
         ObjectEntry10_1::NewObject { class_id, key } => {
             engine = ExpressionEngineSlot10_1::Unsupported { class_id, key };

@@ -46,7 +46,7 @@
 //! | --- | --- | --- | --- |
 //! | ① | int16 版本 | 恒有（>2 拒绝） | — |
 //! | ② | short | 恒有 | this-0xc |
-//! | ③ | NumericFormat::Load(`0x7ffce4b0`) 内嵌核心（short 版本 + int32 ×4 + short ×3） | 版本 ≥2 | this-0xc（同槽升级） |
+//! | ③ | NumericFormat::Load(`0x7ffce4b0`) 内嵌核心（short 版本 + int32 ×4 + short ×3） | 版本 ≥2 | 传入 this-0xc（核心字段在该指针之前） |
 //!
 //! **FractionFormat::Load `0x7ffc68a0`**（`1 < (short)ver` 拒绝）：
 //!
@@ -63,7 +63,7 @@
 //! | ① | int16 版本 | 恒有（>2 拒绝） | — |
 //! | ② | double | 恒有 | this-0x14 |
 //! | ③ | AfCore String::Read | 恒有 | this-0xc |
-//! | ④ | NumericFormat::Load 内嵌核心 | 版本 >1（≥2） | this-0x14（同槽升级，覆盖 ②） |
+//! | ④ | NumericFormat::Load 内嵌核心 | 版本 >1（≥2） | 传入 this-0x14（核心字段在该指针之前） |
 //!
 //! **CurrencyFormat::Load `0x7ffbbbc0`**（`(short)ver < 2` 方可通过）：
 //!
@@ -81,7 +81,7 @@
 //! | ② | short | 恒有 | this-0x2c |
 //! | ③ | short | 恒有 | this-0x2a |
 //! | ④ | short + short | 版本 >1（≥2） | this-0xc / this-0xa（≤1 时原生置内存默认 -1/-1，流内无字段） |
-//! | ⑤ | NumericFormat::Load 内嵌核心 | 版本 >2（≥3） | this-0x38（独立槽，非同槽升级；返回值受检） |
+//! | ⑤ | NumericFormat::Load 内嵌核心 | 版本 >2（≥3） | 传入 this-0x38（返回值受检） |
 //! | ⑥ | short | 版本 >3（≥4） | this-0x8 |
 //!
 //! **AngleFormat::Load `0x7ffb33a0`**（`3 < (short)ver` 拒绝）：
@@ -148,7 +148,7 @@
 //! 人工目视验收未做，不得声称已验证。
 //!
 //! 未解决问题（详见证据文档）：各类标量/String 字段的业务语义未定性；
-//! Percentage/Rate 内嵌核心与外壳的槽位重叠（版本 ≥2 同槽升级）与 LatLon/
+//! Percentage/Rate 内嵌核心调用指针与外壳字段地址相同，但核心字段未覆盖外壳；LatLon/
 //! Angle 内嵌核心（独立槽）仅由反编译证据支撑，无样本字节；短体形态（各
 //! 类版本 ≤门限的分支）无样本；LatLon/Angle Save 版本表的索引语义未确认；
 //! Angle 原生忽略核心 Load 失败的容错路径未在读取器中模拟；全部结论未运
@@ -345,9 +345,10 @@ pub struct NumericFormatBody10_1 {
     pub key: u32,
     /// 体首 short 版本（样本 1）；>1 原生拒绝。
     pub version: u16,
-    /// int32 ×4 → obj-0x1c/-0x18/-0x14/-0x10，语义未定，原样保留。
+    /// 依次为 RoundingOption、RoundingValue、AlignmentOption、AlignmentWidth。
+    /// 保留原始整数；Load 不应用属性 setter 的取值限制。
     pub int32s: [i32; 4],
-    /// short ×3 → obj-0xc/-0xa/-0x8，语义未定，原样保留。
+    /// 依次为 UseSeparator、ZeroPad、ShowPlusSign，保留原始 16 位值。
     pub shorts: [i16; 3],
 }
 
@@ -393,7 +394,7 @@ pub fn read_numeric_format_body_10_1(
 /// PercentageFormat（SystemCore.dll `0x7ffd11b0`）体的已确认字段。
 ///
 /// 字段序：① short 版本（`2 < (short)ver` 有符号拒绝；写侧恒 2）→
-/// ② short → obj-0xc → ③ 版本 ≥2：NumericFormat 核心体（内嵌同槽，无独立
+/// ② short → obj-0xc → ③ 版本 ≥2：NumericFormat 核心体（无独立
 /// 对象头）。版本 0..1 的短体仅 4 字节（②即终结），无样本佐证（仅反编译）。
 #[derive(Debug, Clone, PartialEq)]
 pub struct PercentageFormatBody10_1 {
@@ -403,9 +404,9 @@ pub struct PercentageFormatBody10_1 {
     pub key: u32,
     /// 体首 short 版本；>2 原生拒绝，写侧恒 2。
     pub version: u16,
-    /// short → obj-0xc（恒有），语义未定，原样保留。
+    /// short → obj-0xc（恒有）；IPercentageFormat 的 AdjustPercentage，保留原始位模式。
     pub short_0c: i16,
-    /// 版本 ≥2 的内嵌 NumericFormat 核心体（同槽升级，`None` = 版本 ≤1）。
+    /// 版本 ≥2 的内嵌 NumericFormat 核心体（`None` = 版本 ≤1）。
     pub numeric: Option<Box<NumericFormatBody10_1>>,
 }
 
@@ -431,7 +432,7 @@ pub fn read_percentage_format_body_10_1(
     )?;
     // ② short → obj-0xc。
     let short_0c = trial.read_u16_le()? as i16;
-    // ③ 版本 ≥2：内嵌 NumericFormat 核心（同槽升级；无独立对象头，同键）。
+    // ③ 版本 ≥2：内嵌 NumericFormat 核心（无独立对象头，同键）。
     let numeric = if (version as i16) > 1 {
         Some(Box::new(read_numeric_format_body_10_1(
             &mut trial, table, key,
@@ -459,9 +460,9 @@ pub struct FractionFormatBody10_1 {
     pub key: u32,
     /// 体首 short 版本；>1 原生拒绝，写侧恒 1。
     pub version: u16,
-    /// int32 → obj-0x10（恒有），语义未定，原样保留。
+    /// int32 → obj-0x10（恒有）；IFractionFormat 的 FractionOption 原始枚举值。
     pub int32_10: i32,
-    /// int32 → obj-0xc（恒有），语义未定，原样保留。
+    /// int32 → obj-0xc（恒有）；IFractionFormat 的 FractionFactor 原始值。
     pub int32_0c: i32,
 }
 
@@ -503,7 +504,7 @@ pub fn read_fraction_format_body_10_1(
 ///
 /// 字段序：① short 版本（`2 < (short)ver` 有符号拒绝；写侧恒 2）→
 /// ② double → obj-0x14 → ③ AfCore String → obj-0xc → ④ 版本 >1：Numeric
-/// Format 核心体（内嵌 obj-0x14 同槽升级，覆盖 ②；无独立对象头）。版本
+/// Format 核心体（传入 obj-0x14，核心字段不覆盖 ②；无独立对象头）。版本
 /// 0..1 的短体止于 ③，无样本佐证（仅反编译）。
 #[derive(Debug, Clone, PartialEq)]
 pub struct RateFormatBody10_1 {
@@ -511,11 +512,11 @@ pub struct RateFormatBody10_1 {
     pub key: u32,
     /// 体首 short 版本；>2 原生拒绝，写侧恒 2。
     pub version: u16,
-    /// double → obj-0x14（恒有），语义未定，原样保留。
+    /// double → obj-0x14（恒有）；IRateFormat 的 RateFactor，原样保留。
     pub double_14: f64,
-    /// AfCore String → obj-0xc（恒有），语义未定（单位/比率描述候选）。
+    /// AfCore String → obj-0xc（恒有）；IRateFormat 的 RateString。
     pub string_0c: String,
-    /// 版本 >1 的内嵌 NumericFormat 核心体（同槽升级，`None` = 版本 ≤1）。
+    /// 版本 >1 的内嵌 NumericFormat 核心体（`None` = 版本 ≤1）。
     pub numeric: Option<Box<NumericFormatBody10_1>>,
 }
 
@@ -541,7 +542,7 @@ pub fn read_rate_format_body_10_1(
     let double_14 = trial.read_f64_le()?;
     // ③ AfCore String → obj-0xc。
     let string_0c = read_string_10_1(&mut trial, max_bytes)?;
-    // ④ 版本 >1：内嵌 NumericFormat 核心（obj-0x14 同槽升级；同键）。
+    // ④ 版本 >1：内嵌 NumericFormat 核心（传入 obj-0x14；同键）。
     let numeric = if (version as i16) > 1 {
         Some(Box::new(read_numeric_format_body_10_1(
             &mut trial, table, key,
@@ -604,7 +605,7 @@ pub fn read_currency_format_body_10_1(
 /// 字段序：① short 版本（`4 < (short)ver` 有符号拒绝）→ ② short → obj
 /// -0x2c → ③ short → obj-0x2a → ④ 版本 ≥2：short ×2 → obj-0xc/-0xa（≤1 时
 /// 原生置内存默认 -1/-1，流内无字段）→ ⑤ 版本 ≥3：NumericFormat 核心体
-///（内嵌 obj-0x38 独立槽，非同槽升级；返回值受检）→ ⑥ 版本 ≥4：short →
+///（传入 obj-0x38；返回值受检）→ ⑥ 版本 ≥4：short →
 /// obj-0x8。短体形态（版本 ≤门限）无样本佐证（仅反编译）。
 #[derive(Debug, Clone, PartialEq)]
 pub struct LatLonFormatBody10_1 {
@@ -612,17 +613,18 @@ pub struct LatLonFormatBody10_1 {
     pub key: u32,
     /// 体首 short 版本；>4 原生拒绝，写侧版本表 (3, 3, 4)。
     pub version: u16,
-    /// short → obj-0x2c（恒有），语义未定，原样保留。
+    /// short → obj-0x2c（恒有）；ILatLonFormat 的 ShowDirections 原始位模式。
     pub short_2c: i16,
-    /// short → obj-0x2a（恒有），语义未定，原样保留。
+    /// short → obj-0x2a（恒有）；ILatLonFormat 的 IsLatitude 原始位模式。
     pub short_2a: i16,
-    /// 版本 ≥2：short → obj-0xc（`None` = 版本 ≤1，原生内存默认 -1）。
+    /// 版本 ≥2：short → obj-0xc；ILatLonFormat 的 ShowZeroMinutes（`None` = 版本 ≤1，原生内存默认 -1）。
     pub short_0c: Option<i16>,
-    /// 版本 ≥2：short → obj-0xa（`None` = 版本 ≤1，原生内存默认 -1）。
+    /// 版本 ≥2：short → obj-0xa；ILatLonFormat 的 ShowZeroSeconds（`None` = 版本 ≤1，原生内存默认 -1）。
     pub short_0a: Option<i16>,
-    /// 版本 ≥3 的内嵌 NumericFormat 核心体（obj-0x38 独立槽，非同槽升级）。
+    /// 版本 ≥3 的内嵌 NumericFormat 核心体（传入 obj-0x38）。
     pub numeric: Option<Box<NumericFormatBody10_1>>,
-    /// 版本 ≥4：short → obj-0x8。
+    /// 版本 ≥4：short → obj-0x8；非零时格式输出使用小数分并省略独立秒，
+    /// 零时使用独立分、秒；保留原始位模式，正式接口属性名未确认。
     pub short_08: Option<i16>,
 }
 
@@ -696,11 +698,11 @@ pub struct AngleFormatBody10_1 {
     pub key: u32,
     /// 体首 short 版本；>3 原生拒绝，写侧版本表 (2, 2, 2, 2, 3)。
     pub version: u16,
-    /// short → obj-0xc（恒有），语义未定，原样保留。
+    /// short → obj-0xc（恒有）；IAngleFormat 的 AngleInDegrees 原始位模式。
     pub short_0c: i16,
     /// 版本 ≥2 的内嵌 NumericFormat 核心体（obj-0x10 独立槽）。
     pub numeric: Option<Box<NumericFormatBody10_1>>,
-    /// 版本 ≥3：short → obj-0xa。
+    /// 版本 ≥3：short → obj-0xa；IAngleFormat 的 DisplayDegrees 原始位模式。
     pub short_0a: Option<i16>,
 }
 
@@ -760,7 +762,7 @@ pub struct ScientificFormatBody10_1 {
     pub key: u32,
     /// 体首 short 版本；>2 原生拒绝，写侧恒 2。
     pub version: u16,
-    /// 版本 ≥2：int32 → obj-0x8（`None` = 版本 ≤1，原生内存默认 6）。
+    /// 版本 ≥2：int32 → obj-0x8；IScientificNumberFormat 的 DecimalPlaces（`None` = 版本 ≤1，原生内存默认 6）。
     pub int32_08: Option<i32>,
 }
 
@@ -804,7 +806,7 @@ pub fn read_scientific_format_body_10_1(
 /// CustomNumberFormat（SystemCore.dll `0x7ffbc4d0`）体的已确认字段。
 ///
 /// 字段序：① short 版本（`1 < (short)ver` 有符号拒绝；写侧恒 1）→ ②
-/// AfCore String → obj-0x8（自定义格式串候选；与 RateFormat ③ 同一 IAT 项
+/// AfCore String → obj-0x8（FormatString；与 RateFormat ③ 同一 IAT 项
 /// `?Read@String@@QAEJPAUIStream@@@Z`，AfCore.dll）。无内嵌核心、无版本
 /// 分支字段。
 #[derive(Debug, Clone, PartialEq)]
@@ -813,7 +815,7 @@ pub struct CustomNumberFormatBody10_1 {
     pub key: u32,
     /// 体首 short 版本；>1 原生拒绝，写侧恒 1。
     pub version: u16,
-    /// AfCore String → obj-0x8（恒有），语义未定（自定义格式串候选）。
+    /// AfCore String → obj-0x8（恒有）；ICustomNumberFormat 的 FormatString。
     pub string_08: String,
 }
 

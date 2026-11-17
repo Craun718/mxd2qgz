@@ -37,8 +37,9 @@
 //!    −0x98（颜色候选）；
 //! 6. LoadObject（ISymbol `DAT_6ec0ca2c`）×1 → Save 槽 this−0x94（轮廓符号
 //!    候选）；
-//! 7. double ×8 → this−0x8c / −0x84 / −0x7c / −0x74 / −0x6c / −0x64 / −0x5c
-//!    + 2 个读后即弃（Save 恒写 0.0 的两 double；流内 16 字节原样保留）；
+//! 7. double ×7 → this−0x8c / −0x84 / −0x7c / −0x74 / −0x6c / −0x64 / −0x5c
+//!    + 2 个读后即弃的图片尺寸值（Save 初始化为零后调用尺寸函数，成功时
+//!    写入计算结果；流内 16 字节原样保留，见 `docs/mxd-terra-host-color.md`）；
 //! 8. int32 ×2 → this−0x114 / −0x10c；
 //! 9. byte → this−0x38；
 //! 10. short ×3 → this−0x26 / −0x24 / −0x22。
@@ -225,7 +226,7 @@ pub struct PictureFillSymbolBody10_1 {
     pub outline: Option<SymbolSlotFull10_1>,
     /// double ×7 → this−0x8c..−0x5c（语义未定）。
     pub doubles: [u64; 7],
-    /// 读后即弃 double ×2（Save 恒写 0.0；流内原样保留）。
+    /// 读后即弃的图片尺寸 double ×2；按流内位模式原样保留。
     pub discard_doubles: [u64; 2],
     /// int32 ×2 → this−0x114 / −0x10c。
     pub tail_int32s: [i32; 2],
@@ -237,7 +238,7 @@ pub struct PictureFillSymbolBody10_1 {
     pub stop: Option<SymbolStop10_1>,
 }
 
-/// 读取版本 ==8 主路径的公共尾段（颜色 ×3 + 符号 + double ×10 + int32 ×2 +
+/// 读取版本 ==8 主路径的公共尾段（颜色 ×3 + 符号 + double ×9 + int32 ×2 +
 /// byte + short ×3），遇停止立即返回已填充部分。
 fn read_picture_fill_tail_10_1(
     trial: &mut Reader<'_>,
@@ -604,7 +605,8 @@ mod tests {
         for v in [1.0f64, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0] {
             bytes.extend(v.to_le_bytes());
         }
-        bytes.extend([0u8; 16]); // 读后即弃 double ×2
+        bytes.extend(72.0_f64.to_le_bytes());
+        bytes.extend(144.0_f64.to_le_bytes());
         bytes.extend(11_i32.to_le_bytes());
         bytes.extend(12_i32.to_le_bytes());
         bytes.extend([0x01]);
@@ -638,6 +640,10 @@ mod tests {
         }
         assert!(body.colors.iter().all(|c| c.is_some()));
         assert_eq!(body.outline, Some(SymbolSlotFull10_1::Null));
+        assert_eq!(
+            body.discard_doubles,
+            [72.0_f64.to_bits(), 144.0_f64.to_bits()]
+        );
         assert!(body.stop.is_none());
         assert_eq!(reader.remaining(), 0);
     }

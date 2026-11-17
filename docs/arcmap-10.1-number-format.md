@@ -54,7 +54,7 @@ NumericFormat `0x8006d3e8` 同模式），属类表登记而非第二实现。
 | --- | --- | --- | --- |
 | ① | int16 版本 | 恒有（>2 拒绝） | — |
 | ② | short | 恒有 | this-0xc |
-| ③ | NumericFormat::Load(`0x7ffce4b0`) 内嵌核心（short 版本 + int32 ×4 + short ×3） | 版本 ≥2 | this-0xc（同槽升级） |
+| ③ | NumericFormat::Load(`0x7ffce4b0`) 内嵌核心（short 版本 + int32 ×4 + short ×3） | 版本 ≥2 | 传入 this-0xc（读入地址低于该指针） |
 
 **FractionFormat::Load `0x7ffc68a0`**（`1 < (short)ver` 拒绝）：
 
@@ -71,7 +71,7 @@ NumericFormat `0x8006d3e8` 同模式），属类表登记而非第二实现。
 | ① | int16 版本 | 恒有（>2 拒绝） | — |
 | ② | double | 恒有 | this-0x14 |
 | ③ | AfCore String::Read | 恒有 | this-0xc |
-| ④ | NumericFormat::Load 内嵌核心 | 版本 >1（≥2） | this-0x14（同槽升级，覆盖 ②） |
+| ④ | NumericFormat::Load 内嵌核心 | 版本 >1（≥2） | 传入 this-0x14（不覆盖 ②） |
 
 Save 侧（写方向互证，均写**静态版本 short**，无 AfStreamGetSaveVersion 表，
 版本常量字节逐一读出核对）：
@@ -85,10 +85,9 @@ Save 侧（写方向互证，均写**静态版本 short**，无 AfStreamGetSaveV
 
 要点：
 
-- Percentage/Rate 的内嵌 NumericFormat 核心与外壳**同槽升级**（版本 ≥2 时
-  `this-0xc` / `this-0x14` 由单标量升级为核心对象起点），流内为顺序字节
-  （外壳字段后紧跟核心的版本 short + int32 ×4 + short ×3），无独立对象头、
-  无独立键；这是「版本化继承」写法，与锚 NumericFormat 自身体完全同构。
+- Percentage/Rate 的外壳字段后顺序保存内嵌 NumericFormat 核心，无独立对象头或键。
+  Load 传入外壳字段地址，但核心各读入地址位于该指针之前，不会覆盖外壳字段，
+  见 [指令复核](mxd-terra-next-format.md#原生证据与更正)。
 - 版本 ≤门限（Percentage 0..1、Fraction 0、Rate 0..1）的短体形态只有反编
   译证据，无样本；写侧恒写满形态（版本常量 2/1/2）。
 - 版本门全部为原生有符号 short 比较；负值位模式原生可通过门（落到读字段
@@ -123,9 +122,7 @@ Fraction 10 字节体与版本 2 拒绝、Rate 版本 2 满形态（double+中�
 
 1. 三变体全部标量与 String 字段的业务语义未定性（对齐方式/位数/分母样
    式/单位描述等均为按类名与 NumericFormat 样本形态的候选）。
-2. Percentage/Rate 内嵌核心的「同槽升级」仅由反编译证据支撑（读侧写 this
-   -0xc/-0x14、写侧对称），无样本字节；短体形态（版本 ≤门限）同样无样
-   本。
+2. Percentage/Rate 内嵌核心及各旧版短体尚无可验证对象边界的真实样本字节。
 3. INumberFormat 槽位的四类分派接线未做（本模块只提供读取器；见上文迁移
    建议）。esriSystem 类型库中其余同族类（CurrencyFormat `{7E4F471A}`、
    LatLonFormat `{7E4F471D}`、AngleFormat `{7E4F471E}`、ScientificFormat
@@ -196,7 +193,7 @@ SystemCore.dll 10.1.0.3035（SHA 与文件身份同上文）静态映像 VA；�
 | ② | short | 恒有 | this-0x2c |
 | ③ | short | 恒有 | this-0x2a |
 | ④ | short + short | 版本 >1（≥2） | this-0xc / this-0xa（≤1 时原生置内存默认 -1/-1，流内无字段） |
-| ⑤ | NumericFormat::Load(`0x7ffce4b0`) 内嵌核心 | 版本 >2（≥3） | this-0x38（独立槽，非同槽升级；返回值受检，失败即 Load 失败） |
+| ⑤ | NumericFormat::Load(`0x7ffce4b0`) 内嵌核心 | 版本 >2（≥3） | 传入 this-0x38（返回值受检，失败即 Load 失败） |
 | ⑥ | short | 版本 >3（≥4） | this-0x8 |
 
 **AngleFormat::Load `0x7ffb33a0`**（`3 < (short)ver` 有符号拒绝）：
@@ -229,9 +226,8 @@ CustomNumberFormat ② 与 RateFormat ③ 为**同一 IAT 项**
 **核心升级形态归属（逐类核实，未类推）**：内嵌 NumericFormat 核心仅
 LatLon（版本 ≥3，this-0x38 独立槽，受检）与 Angle（版本 ≥2，this-0x10 独
 立槽，**原生不受检**）两类有；Currency/Scientific/CustomNumber **无核心**
-（反编译无 `0x7ffce4b0` 调用）；Percentage（同槽 this-0xc）/Rate（同槽
-this-0x14）沿用上文既有结论。LatLon/Angle 的核心是**独立槽**而非
-Percentage/Rate 那种「同槽升级」。
+（反编译无 `0x7ffce4b0` 调用）。Percentage/Rate 的传参指针和外壳字段地址相同，
+但核心并不写入该地址；以上传参指针均不能直接当作读入偏移。
 
 ### Save 侧（写方向互证；版本常量/表字节均已读出核对）
 

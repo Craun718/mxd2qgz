@@ -85,9 +85,9 @@
 
 可确认的三条路径：
 
-1. ObjectStream 读头未命中且对象 QI `IPersistVariant {67A4D651-69E0-11D2-8500-0000F875B9C6}` 命中时，用 0x1c 字节包装流包装 ObjectStream，再调用其 `Load(+0x10)`。包装流构造把底层流存到基址 +0x18，`Read(+0x10)` 转发全局 `Read`；因此对象若再调用 `LoadObject`，新包装流仍会 QI 到 `IObjectStream` 并回到同一 ObjectStream 读表。
+1. ObjectStream 读头未命中且对象 QI `IPersistVariant {67A4D651-69E0-11D2-8500-0000F875B9C6}` 命中时，用 0x1c 字节包装流包装 ObjectStream，再调用其 `Load(+0x10)`。包装流构造把底层流存到基址 +0x18，`Read(+0x10)` 转发全局 `Read`；标准 `Read` 将底层 IStream 直接传给全局读值函数，`LoadObject` 对该底层流做 QI；包装接口本身并不转发 IObjectStream QI。见[后续指令复核](mxd-terra-follow-stream.md#包装接口和对象值访问的区别)。
 2. 普通流上的 `LoadObject` 先用 `IObjectStream` 判别上下文；命中走 +0x44 带键路径并复用读表，未命中走零 GUID 空对象分支。
-3. AfCore 写侧 `LoadObject` 的尾部包装只处理 QI `IID_IUnknown` 与 `IDocumentVersion` 两条辅助路径，不是引用表入口。
+3. AfCore 普通流路径中的辅助接口查询不是 ObjectStream 引用表入口；详情见[后续指令复核](mxd-terra-follow-stream.md)。
 
 仍未闭合的是完整接口传播链：
 
@@ -97,13 +97,13 @@
 
 ### 105：闭合 SimpleSaveObject 委派链
 
-**结论：10.1 写入口和 QI 身份已指令级闭合；SystemCore 键控委托链整体闭合，普通持久化语义同时闭合。**
+**结论：10.1 写入口的键控流判定已定位；普通流的部分递归、接口和失败路径仍待闭合。**
 
 已有 10.1 证据：
 
 - `SaveObject 0x68a7b640` 先用 `0x68a7c4b0` 对流 QI `IObjectStream`。命中时取返回接口并调用虚表 +0x40，即 SystemCore `0x7ffcf7e0` 对象写出器；未命中才调用 `SimpleSaveObject 0x68a7af70`，`writeHeader` 恒为 1。
-- 本轮从指令常量还原 QI IID：`0x68a7c1d0`=IID_IUnknown；`0x68a7c240`=`IPersistStream`；`0x68a7c0f0`=`IPersistVariant`；`0x68a7c160`=`IVariantStream`；`0x68a7c320`=`IDocumentVersion`；`0x68a7c390`=`IVariantStreamIO`。
-- 普通路径：`IPersistStream` 命中且流 QI `IID_IUnknown` 成功时，先 `GetClassID`；如果 CLSID 为零则只写 16 字节零空标记；否则 `writeHeader=1` 写 16 字节 CLSID，再 `IPersistStream::Save`。该路径不写 ObjectStream 键。
+- 本轮从指令常量还原 QI IID：`0x68a7c1d0` 使用 IDocumentVersion IID（本处旧记录的 IUnknown 为误标）；`0x68a7c240`=`IPersistStream`；`0x68a7c0f0`=`IPersistVariant`；`0x68a7c160`=`IVariantStream`；`0x68a7c320`=`IDocumentVersion`；`0x68a7c390`=`IVariantStreamIO`。
+- 普通流的一处 IDocumentVersion 查询命中后先调用该接口 +0x10，并尝试对象接口；成功可能提前返回 `0x32`，不能把查询命中直接等价为 IPersistStream 保存。见[后续指令复核](mxd-terra-follow-stream.md#simplesaveobject-的新指令核对)。
 - ObjectStream 委托路径与 SimpleSaveObject 互斥：`SaveObject` 只在未 QI 到 `IObjectStream` 时进入 SimpleSaveObject。SystemCore 写出器本身写 CLSID、按对象指针查写表、命中只写 4 字节旧键；未命中先插入写表，再写当前键并递增 +0x2c，随后按 `IPersistStream(+0x18)` 或 `IPersistVariant(+0x10)` 分派体。
 
 未闭合点：

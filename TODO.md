@@ -52,6 +52,18 @@
 
 ## MXD 解析
 
+- [x] 2026-11-17 Terra 宿主续查：接入 BasicOverposterProperties、第二类坐标变换和首个独立表前缀；闭合 G 轮三项静态读写特例，余 67 个开放项，见 [本轮复核](docs/mxd-terra-host-review.md)。
+
+- [x] 2026-11-17 Terra 持久化链续查：接入 Map NADCON 新对象及回引；核对版本命令、图例布局、页面元素、名称和接口槽，仍有 68 个开放项，见 [本轮复核](docs/mxd-terra-chain-review.md)。
+
+- [x] 2026-11-17 Terra 原生续查：闭合 NumberFormat 标量、TopologyName 和 LegendClassFormat 字段语义，排除 FeatureLayer IUID 槽的旧错误候选；接入 JScript/Python 及 Map 边框后字段，余 68 项，见 [本轮复核](docs/mxd-terra-depth-review.md)。
+
+- [x] 2026-11-17 Terra 接线复核：闭合两类查询名称的标准持久化分派及数字格式字符串属性；接入 Map 几何、边框空槽，修正 PCS/GCS v2 与垂向单位读取。剩余 72 个开放项，见 [本轮复核](docs/mxd-terra-integrate-review.md)。
+
+- [x] 2026-11-17 Terra 定点续查：复核 10.1 版本对话框的间接写入、VariantStream 底流委派、两个 FeatureLayer 包络槽的读前清理、查询名称类的 IPersistStream 归属；补充介质首个 Map 的结构化遍历及 NumericFormat 核心属性。见 [本轮复核](docs/mxd-terra-follow-review.md)。
+
+- [x] 2026-11-17 Terra 并行续研：复核 75 个开放项，闭合三个标记符号的 RotateWithTransform 字段语义；定性 10.8 `/Version` 条件回填值，纠正数字格式字段覆盖和 FeatureLayer 符号槽归属，补充边界测试。其余 74 项仍开放，见 [逐项复核](docs/mxd-terra-next-review.md)。
+
 - [x] 2026-11-17 第四轮并行续研：分派并复核全部 75 个开放项，修正 Map 独立表计数、Variant 对象流记录和 RandomColorRamp 标志解释；推进 Map 照明后字段、FeatureBookmark 名称槽及 FeatureIDSet 边界校验。原条目的完整验收条件仍开放，见 [第四轮复核与逐项报告](docs/mxd-round4-review-20261117.md)。
 
 - [x] 2026-11-17 第三轮并行续研：闭合 ObjectClassName 实现定位、Geometry 记录类型枚举归属与 LineElement 原宿主实样三项；接入 BasemapLayer 首个实际图层键与图例回引、Map 照明属性槽。原生证据、剩余边界及逐项报告见 [第三轮复核](docs/mxd-round3-review-20261117.md)。
@@ -77,7 +89,7 @@
       - [ ] 定性 10.1 `/Version` 头部未知尾部的字节语义。
       - [x] 比较两套安装介质模板中 8.1、9.2、9.3、10.0 和 10.1 的 `/Version` 头部之后的字节：134 个条目（102 份不同内容）均无剩余字节；未知尾部字节的语义仍待证实。见 [介质样本记录](docs/mxd-install-media-samples-20261117.md)。
       - [ ] 在 ArcMap 10.1 中人工验证 `/Version` 头部读写（当前仅有合成边界测试）。
-    - [ ] 闭合 SaveAs UI→put 间接路径（版本属性写入）。
+    - [ ] 闭合版本选择 UI→AfDoc put 的实际派发：标准 MFC Save As 消息传 0，不进入已定位的非零参数版本选择分支；继续追 “Save A Copy” 非零分支的调用来源，见 [消息映射与过滤资源](docs/mxd-terra-chain-version.md)。
     - [ ] 核对本地化语言包文本对版本文本/识别的影响。
     - [ ] 确认旧文档打开后版本索引是否改写。
 - [ ] 运行时验证 `/Version` 版本映射。
@@ -91,7 +103,7 @@
   - [x] 将 ProjectedCoordinateSystem 对象体字段（域字符串、标志、double）接入中间模型；合成输入覆盖，尚未在目标软件人工验证。
 - [x] 读取 OLE 容器中的 `/Version`、`/Maps` 等数据流并识别 MXD 版本。
   - [x] 实现显式 10.8 `/Version` 前缀的严格读取器，保留候选文本、有符号 short 位模式和尾部位置；不识别版本，写入规则和跨版本兼容性仍未知。
-  - [ ] 闭合 10.8 `/Version` 的写入规则。
+  - [ ] 闭合 10.8 `/Version` 的写入规则（条件字段已静态确认为对象写表条目数；额外尾部及失败分支仍待闭合，见 [版本流续查](docs/mxd-terra-next-version.md)）。
   - [ ] 验证 10.8 `/Version` 的跨版本兼容性。
   - [x] 实现基于 10.1 头部规则（文本+short+条件计数）的版本识别候选和 `version` 命令；未知文本/short 保留为未识别候选，10.1 严格读取失败时回退显式 10.8 布局。原生 short 映射已接入命令：`version` 仅在已知文本与 short 精确配对时报告候选保存索引；`9.3`/16 的文本由介质样本补证，映射到索引 3；运行时或软件验证仍缺，用法见 README。
 - [x] 使用 REA 分析对象的序列化和读取逻辑，确定对象边界、类型标识和引用关系；记录证据及适用版本。对象边界（各类自己的 Load/Save、无外部长度）、类型标识（16 字节 ClassID，写侧取 GetClassID 与请求 IID 无关）与引用关系（键回引编码）均已闭合；剩余开放项见下列子项与各记录。
@@ -108,7 +120,7 @@
     - [x] 确认 SetStream 不重置引用表、对象体之前登记、析构释放、普通/VariantStream 分支的接口 GUID 及局部 HRESULT；缺失引用与新对象不能只靠键区分。完整对象体与版本适用性见上项，替换场景见对象键条目，失败恢复已由对象读取错误恢复条目闭合。
   - [x] 用 REA 确认 10.8 VariantStream 已知 VARTYPE 的固定宽度分支和字符串 `n * 2 + 2` 布局；对象分支、对象体和引用表仍未闭环。
   - [ ] 闭合 VariantStream 对象分支的对象体。
-  - [ ] 闭合 VariantStream 对象分支的引用表。
+  - [ ] 闭合 VariantStream 对象分支的引用表（10.1 标准包装经底层 IStream 回到同一表；真实键序与其他包装尚待确认，见 [对象流续查](docs/mxd-terra-follow-stream.md)）。
   - [x] 实现显式 10.8 Variant 前缀读取器，覆盖固定宽度位模式、字符串边界、失败游标和显式对象分支错误；未接入 MXD 解析。
   - [ ] 闭合 SimpleSaveObject 委派链（对象读写委派路径）。
   - [x] 确认 10.1 对象键计数器构造初值为 0：SystemCore 构造器基址 `+0x3c` 清零对应 IObjectStream2 接口指针 `+0x2c`，与先写后增路径对位；静态证据及边界见 [本轮对象流记录](docs/mxd-open-streams-20261116.md)。
@@ -116,7 +128,7 @@
   - [x] 用 REA 确认 10.8 AfCore String::Read/Write 的字节长度、终止零和不严格短读行为，区分原生行为与 Rust 安全子集。
   - [x] 实现显式 10.8 调用点的严格字符串读取器，覆盖空值、中文、代理对、非法编码、全部截断、资源限制和失败游标；未接入 MXD 字段解析。
   - [x] 接入已确认字段归属：Map 数据框名称与第二名称经 Map.dll Load 与样本字节闭合为 AfCore String 布局，接入 `native_string::read_string_10_1`（Map 前缀读取器）；见 [研究记录](docs/arcmap-10.1-map-object.md)。
-  - [ ] 闭合 Map 双名称之外的未定对象属性，包括书签后已读取的三个成员的业务用途、非空独立表和后续坐标变换对象；照明之后另有已对位的 12 字节字段，业务名称未定，见 [第四轮 Map 取证](docs/mxd-round4-map-spatial-20261117.md)。
+  - [ ] 闭合 Map 双名称之外的未定对象属性，包括书签后已读取的三个成员的业务用途、非空独立表的剩余体、NADCON/GeoTransformation 之外的坐标变换类及 BasicOverposterProperties 之后的字段；照明后 12 字节字段的业务名称、非空 IGeometry 和 IBorder 槽仍未闭合（两个空槽已接入），见 [第四轮 Map 取证](docs/mxd-round4-map-spatial-20261117.md)和[坐标变换续查](docs/mxd-terra-chain-map.md)。
   - [ ] 闭合其他 MXD 版本的字符串规则。
   - [ ] 闭合其他 MXD 版本的对象属性规则。
   - [x] 闭合 10.1 对象键分配与回引编码：键=ObjectStream `+0x2c` 4 字节单调计数器（新对象写后 +1、跨流共享键序）、回引=同构 20 字节头无体无专用标记、唯一判据=键是否已在本会话出现过、循环引用无需专门编码（登记先于持久化）、缺失引用与新对象不可区分（有意保留的原生语义）；实现 `object_refs` 条目分类器与登记表并接入 robustness 集中清单（13 入口），样本键 29 起点/`0x2d2c` 键 32 回引辅助对照吻合；见 [研究记录](docs/arcmap-10.1-object-body.md#101-对象键分配与回引写侧闭合2026-11-14-第五轮)。
@@ -156,9 +168,9 @@
     - 体未闭合类族（逐个反编译闭合对象体或分支）：
       - [x] 裁决「DEP 尾段」不存在：DisplayExpressionProperties 实现在 FeatureLayer.dll 定位（RTTI→COL→虚表→GetClassID 三方互证），体=版本≤1+String+int16+引擎槽四项完结无尾段；样本 `0x155a..0x15d8` 实为 FL 后继段 ㊵+㊶，逐字节走查断言通过；第十轮「GetClassID/Load 未定位」撤销，见 [研究记录](docs/arcmap-10.1-dep-tail.md)。
       - [x] 闭合 `0x15d8` 对象头归属：=㊷ HotLinkExpressionProperties（键 85），键序与读写两侧一致，疑点撤销；㊵@0x155a/㊶四段@0x156e..0x15d7/㊸@0x1606/EC 头@0x1608 全分解吻合。
-      - [ ] 其余标注表达式引擎实现类体（样本为 AnnotationVBScriptEngine，已闭合）。
+      - [ ] 尚未识别的标注表达式引擎实现类体（10.1 已确认并接入 VBScript、JScript、Python，后两者尚无实档宿主；见 [标注引擎取证](docs/mxd-terra-depth-label.md)）。
       - [ ] LELP ㉔ 槽 IGraphicsContainer 实现类体（部分闭合：请求 IID 更正为 esriCarto IGraphicsContainer `{D09411D1-4BB4-…}`，旧记录第二 GUID 系笔误；样本槽位=空标记；实现者候选在 afcore 等未反编译模块，负证据落档，见 [研究记录](docs/arcmap-10.1-dep-tail.md)）。
-      - [ ] LELP ㉖ 槽 ISymbol 17 闭合类之外的实现类体（负证据清单落档；`read_symbol_slot_full_10_1` 缺 TextSymbol 分派的缺口已由整合轮补齐，见 [研究记录](docs/arcmap-10.1-dep-tail.md)）。
+      - [ ] FeatureLayer 后继段 ㉖ 槽中未支持的 ISymbol 实现类体（LELP 自身第 ㉖ 项为 int32；TextSymbol 已接入，见 [标注续研](docs/mxd-terra-next-label.md)）。
       - [x] 闭合 TimeData 族槽实现类体：TimeReference `{EFB2E7DB}`/TimeExtent `{5DC783DE}`/Time `{E1721810}`/TimeZoneInfo `{78FAD5F1}` 四类全在 SystemCore.dll，RTTI→COL→虚表→GetClassID 三方互证，Load/Save 字段序闭合；样本槽位全空标记，无字节佐证，见 [研究记录](docs/arcmap-10.1-dep-tail.md)。
       - [x] 裁决 Geometry CircularArc 不实现 IPersistStream（构造性不存在）：实现类为 C++ 类 `ESRI::Arc`（此前 `.?AVCircularArc` RTTI 扫描不命中的原因），QI 的 21 个 IID 无任何持久化接口、构造器无持久化虚表安装；与族内其余五类同判，族内无遗留，见 [研究记录](docs/arcmap-10.1-pcs-geometry-slots.md)。
       - [x] 裁决 SimpleTextPath 不实现 IPersistStream（全层级虚表无持久化形状表，流内不可出现；BezierTextPath、ColorRampElements 同判；TextPath 以原样 CLSID 字段+运行期实例化承载，TextSymbol 内置默认 GUID 定名 SimpleTextParser），见 [研究记录](docs/arcmap-10.1-display-slots-round3.md)。
@@ -176,12 +188,12 @@
       - [x] 裁决 IDatasetName 槽 UnknownDatasetName 与 TableName 不可持久化：GdbCore 内 CLSID 数据全镜像无代码写出、虚表 Load 位空实现（原生无体可闭合，MXD 流出现即无法装载，读取器按停止点处理），见 [研究记录](docs/arcmap-10.1-dataset-name-slots.md)。
       - [x] 闭合 IDatasetName 槽 GeometricNetworkName `{F452B4D2}` 体：版本+String×3+IDatasetName 槽+装载通知，Save 恒写 1 读写对称。
       - [x] 闭合 IDatasetName 槽 RelationshipClassName `{311C2EE1}` 体：版本+String×3+int32×2+short×2+选择子（0→IWorkspaceName 槽/非 0→IDatasetName 槽+通知），Save 对称。
-      - [x] 闭合 IDatasetName 槽其余实现类（GdbCore 范围）：MemoryRelationshipClassName `{6DBA211B}`/QueryTableName `{793873DE}`（版本门无符号，0 被原生拒绝）/RelQueryTableName `{DAB3EE10}`/DBTableName `{4C9307B2}`（无版本字段）四类体闭合；方法学修正：RTTI BCDD 数组会产生伪 COL，候选虚表必须以 GetClassID 反编译写出 CLSID 收尾；FeatureQueryName/TableQueryName（IPersistVariant 形态）与 ObjectClassName 及其他模块实现另列开放项，见 [研究记录](docs/arcmap-10.1-dataset-name-slots.md)。
+      - [x] 闭合 IDatasetName 槽其余实现类（GdbCore 范围）：MemoryRelationshipClassName `{6DBA211B}`/QueryTableName `{793873DE}`（版本门无符号，0 被原生拒绝）/RelQueryTableName `{DAB3EE10}`/DBTableName `{4C9307B2}`（无版本字段）四类体闭合；方法学修正：RTTI BCDD 数组会产生伪 COL，候选虚表必须以 GetClassID 反编译写出 CLSID 收尾；FeatureQueryName/TableQueryName（独立确认的 IPersistStream 形态）与 ObjectClassName 及其他模块实现另列开放项，见 [研究记录](docs/arcmap-10.1-dataset-name-slots.md)。
       - [ ] FeatureBookmark 的 IName 槽实现类体（部分闭合：装载后对名称对象 QI IFeatureClass `{D4803EE6}`，成功写 this+8 失败软置空；实现类分布仍未观察——样本 0 书签，见 legend-family 记录第十节）。
       - [x] 闭合 FDOGraphicsLayer 版本 4 探测分支：三依赖降为两项并全部定位闭合（整流绝对 0 访问成立单独已足；IObjectStream QI 门控主流键读、分支 B 经返回接口读键且前后无条件 Seek 复位）；「不实现」结论维持，见 [研究记录](docs/arcmap-10.1-save-side.md)。
       - [x] 闭合委派注记图层数据源 `{75E10086-4226-42AC-AFEC-CBB9B748F847}`：FileGDB.dll 10.1.0.3035 的 FgdbFeatureClassName，体为版本 short + 原样 short + 内嵌 GdbCore FeatureClassName 体（无第二对象头）；按精确 CLSID 接入，覆盖异常回滚和逐前缀截断。样本委派 FeatureLayer 体完整消费至 `0x2c01`；见 [本轮数据源记录](docs/mxd-open-dataset-20261116.md)。
       - [x] 接入 FDOGraphicsLayer 委派 FeatureLayer 体之后的第 7–15 步后续字段，包含 SymbolCollection 与内联子层；未知嵌套体安全停止，参考样本读至下一图层条目 `0x2d22`，未在 ArcMap 中人工验证，见 [研究记录](docs/mxd-layer-luna.md)。
-      - [ ] FeatureQueryName/TableQueryName 的 IVariantStream 体（GdbCore，IPersistVariant 形态，主虚表 +0x14 GetIDType 写出各自 CLSID）。
+      - [x] 确认标准 10.1 ObjectStream 对 FeatureQueryName/TableQueryName 走 IPersistStream（静态逐级 QI 不支持 IPersistVariant），接入严格读取子集；未知 workspace 子类仍按未知停止，实机与实际宿主未验证。见 [集成取证](docs/mxd-terra-integrate-query.md)。
       - [x] 定位 ObjectClassName 的 GdbCore 实现：10.1 注册工厂和构造函数分别绑定 FdbTableName 工厂与实例 RTTI；持久化行为未在此项验证。见 [第三轮数据集记录](docs/mxd-round3-dataset-format-20261117.md#objectclassname-实现定位)。
     - 符号与 Legend 族（逐个反编译闭合）：
       - [x] 闭合 LegendFormat 体 `{7A3F91E5}`（Map.dll，真实 IPS 虚表在位移 0xb4 的 COL 后；9 段字段序：版本 [1,1,1,1,1,2] 恒写 2+short+ITextSymbol 槽+int32+double×11+ILinePatch 槽+IAreaPatch 槽+short+[≥2]double×2，Load/Save 对称），见 [研究记录](docs/arcmap-10.1-legend-family.md)。
@@ -215,14 +227,14 @@
     - 语义定性（类型库成员级命名或运行取证；读取器对未定性字段原样保留）：
       - [ ] 颜色与符号标量字段业务语义（DisplayCore 两轮各类，按内容候选标注）。
       - [x] 确定符号族三处 short（ArrowMarker ⑫/CharacterMarker ⑭/PictureMarker v9 ⑨ 与历史路径 +0x70）的流内布局。
-      - [ ] 定性三处 short「装载后被 `GetDefaultRotateWithTransformValue` 覆盖」的「读取即弃」语义。
-      - [ ] LegendClassFormat 标量字段业务语义。
-      - [ ] HorizontalLegendItem 标量字段业务语义。
+      - [x] 定性三处标记符号的 RotateWithTransform 原始 short：10.1 成功读取后用当前用户配置或默认值覆盖内存槽，读取器保留磁盘原值，见 [原生字段复核](docs/mxd-terra-next-display.md#第-218-行补充rotatewithtransform-的属性和默认值2026-11-17)。
+      - [x] 定性 LegendClassFormat 的两个持久化标量：PatchWidth、PatchHeight，见 [图例字段对位](docs/mxd-terra-depth-legend.md)。
+      - [ ] 定性 HorizontalLegendItem 布局模式的各值；已确认包装 int32 受流向影响并参与布局，见 [图例续查](docs/mxd-terra-chain-legend.md)。
       - [ ] Legend 共同前缀各 short/int32 字段业务语义。
       - [ ] ElementProperties 字段业务语义。
       - [ ] TextSymbol 字段业务语义。
-      - [ ] FeatureDatasetName 字段业务语义。
-      - [ ] TopologyName 字段业务语义。
+      - [ ] 定性 FeatureDatasetName 第四个字符串和标志；前三串 Name、IName.NameString、Category 和工作空间槽已对位，见 [名称续查](docs/mxd-terra-chain-dataset.md)。
+      - [x] 定性 10.1 TopologyName 持久化字段：Name、Category、FeatureDatasetName；嵌套对象 WorkspaceName getter 的运行副作用未验，见 [字段对位](docs/mxd-terra-depth-names.md)。
       - [ ] MapSurround 共同前缀字段业务语义。
       - [ ] 书签共同前缀字段业务语义。
       - [ ] FDO 旧加载器接口槽业务语义。
@@ -233,21 +245,22 @@
       - [x] 定名 ArcMap 10.1 的 esriHyperlinkType 值序：Document=0、URL=1、Macro=2、Script=3，见 [类型库复核](docs/mxd-dataset-format-evidence-20261117.md#补充246-的真实模板-rust-试读和-225-枚举值)。
       - [x] 确认 Hyperlink ② 是 FeatureId，④ 是 LinkType：10.1 类型库与 Layer.dll 两个接口入口分别绑定成员偏移，见 [证据](docs/mxd-round2-dataset-format-20261117.md)。
       - [x] 确认 Hyperlink ③ 是 Link（超链接内容）：10.1 类型库与 Layer.dll 的 get/put_Link 绑定字符串成员，见 [证据](docs/mxd-round2-dataset-format-20261117.md)。
-      - [ ] 定性 NumberFormat 九类的标量字段语义。
-      - [ ] 定性 NumberFormat 九类的 String 字段语义。
-      - [ ] 验证 Percentage/Rate「同槽升级」与 LatLon/Angle 独立槽核心形态（样本 0 实例）。
+      - [x] 定性 10.1 NumberFormat 九类已确认布局的标量字段语义；LatLon v4 末字段控制小数分输出，正式接口属性名尚未确认，见 [末字段指令复核](docs/mxd-terra-depth-latlon.md)。运行验证另列。
+      - [x] 确认 10.1 NumericFormat 核心七个标量对应的接口属性，见 [字段与访问器对位](docs/mxd-terra-follow-display.md)。
+      - [x] 定性 10.1 NumberFormat 九类体中的两个持久化 String：RateFormat 的 RateString、CustomNumberFormat 的 FormatString，见 [访问器对位](docs/mxd-terra-integrate-numeric.md)。
+      - [ ] 运行验证 Percentage/Rate/LatLon/Angle 的内嵌 NumericFormat 核心（静态已更正 Percentage/Rate 外壳字段被覆盖的说法，见 [数字格式续查](docs/mxd-terra-next-format.md)）。
       - [x] 区分 Geometry 记录的 esriShapeType 与公开 esriGeometryType：按 10.1 类型库对照 shape 各基础类别及 Z/M 变体，并以真实解析分支核对空值、折线、多边形及通用点、多点。见 [第三轮空间记录](docs/mxd-round3-display-spatial-20261117.md#233记录类型和公开几何类型)。
       - [ ] Geometry 内核移交链（+0xc8 内嵌指针虚表 +0x1cc 槽）运行期装配定位。
       - [x] 闭合 FDO 版本 4 探测依赖：三依赖降为两项并逐指令定位（整流绝对 0 访问成立；IObjectStream QI `{18A45BA7}` 门控主流键读、分支 B 经返回接口读键）；三处旧记录修正（第七轮「从返回接口读」系误记、「分支 B 不复位」撤销——汇编在 ==9 比较前无条件 Seek(P)、探测真条件=两探测槽至少一空）；分支 A ≠4 路径为死分支，「不实现」结论维持，见 [研究记录](docs/arcmap-10.1-save-side.md)。
       - [x] 闭合 FDO「Map 架构版本 9」历史布局解读（静态）：Map::Save 版本表 [22,29,30,31,45,51]→10.1 可写最小 Map 架构版本=22（8.3），版本 9 只可能来自 pre-8.3 文档；与 FDO 表 [5,11] 互证 FDO v4=8.3 之前布局（legacy+收尾 String）；分支 B 两种根前缀（带/不带 int32 计数）闭合；「9 对应哪个具体产品版本」10.1 二进制不可证，保持开放。
       - [x] 定名 `{7453C805-9D64-44A6-BF2F-73E477DCE18F}` 为 esriCarto `IPublishLayer`，见 [类型库复核](docs/mxd-iid-research-20261116.md)。
       - [x] 定名 `{DBCA59AC-6771-4408-8F48-C7D53389440C}` 为 esriCarto `IAnnotationSublayer`，见 [类型库复核](docs/mxd-iid-research-20261116.md)。
-      - [ ] `{97D5B914}` 未定名 IID。
-      - [ ] 其余未定名 IID（上述之外）。
+      - [x] 纠正 FeatureLayer 版本 ≥17 槽的 IID 误记：实际请求 `{1714D59B-…}`（IUID），非 `{97D5B914-…}`；见 [调用点及 PE 字节](docs/mxd-terra-depth-iid.md)。
+      - [ ] 其余未定名 IID（含 AnnoLayer 主 QI 的 `{C9E7A782-…}`；另外四个已定名并纠正各接口返回偏移，见 [原生复核](docs/mxd-terra-chain-iid.md)）。
       - [ ] 定性 B 轮 IDatasetName 六类标量/String 字段与五条请求接口的业务语义；IID 已由 10.1 类型库定名，字段及调用用途见 [第四轮名称取证](docs/mxd-round4-names-format-20261117.md)。
-      - [ ] 定性 C 轮装饰物族（Scalebar 族/MarkerNorthArrow/MapTitle/LegendFormat/LegendItem 三类/Patch 两类）标量字段业务语义；ScaleLine 族三个共同前缀调用者已有反编译，类身份尚未闭合，见 [第四轮页面取证](docs/mxd-round4-page-20261117.md)。
-      - [ ] 定性 F 轮 PCS/GCS/Unknown 域串与 Unknown 四串业务语义及填充来源；ISRPersistStream slot8（恒 0x38）成员名；GCS `对象+0xac` 非零守卫语义；容差公式 pe/sg 数值推导链，见 [研究记录](docs/arcmap-10.1-pcs-geometry-slots.md)。
-      - [ ] 定性 G 轮 RandomColorRamp 读即弃 int32、PictureFillSymbol 读后即弃 double×2、MultiPart 读写门不对称等反编译级观察（与 round2 三处 short quirk 同族），见 [研究记录](docs/arcmap-10.1-display-slots-round3.md)。
+      - [ ] 定性 C 轮装饰物族（Scalebar 族/MarkerNorthArrow/MapTitle/LegendFormat/LegendItem 三类/Patch 两类）标量字段业务语义；早期三处 ScaleLine 候选实为 ImageInset/MapInset/Overview，真正的 ScaleLine 实现仍待定位，见 [页面续查](docs/mxd-terra-integrate-page.md)。
+      - [ ] 定性 F 轮 PCS/GCS/Unknown 域串与 Unknown 四串业务语义及填充来源；ISRPersistStream slot8（恒 0x38）成员名；GCS `完整对象+0xc4` 非零守卫语义；容差公式 pe/sg 数值推导链，见 [研究记录](docs/arcmap-10.1-pcs-geometry-slots.md)。
+      - [x] 定性 G 轮三个静态观察：RandomColorRamp 的 Size 请求值读取后不回填，PictureFillSymbol 保存时计算的两个尺寸读取后不使用，MultiPart 的子渐变权重在旧版本默认 1.0；见 [DisplayCore 续查](docs/mxd-terra-host-color.md)。运行行为另验。
       - [x] 裁决 FL 后继段 ㊱ 六字节错位：原生 PreJoin 无保留头，前序 UID 少读四字节并误读空字符串导致累计错位六字节；已按 10.1 原生读写与样本边界修复并覆盖截断，见 [复核记录](docs/mxd-boundary-luna.md)。
     - 样本无佐证分支（待真实样本或运行取证升级为证据）：
       - [x] 确认 FCN 的 FeatureDatasetName 与 TopologyName 选择子在样本 11 处全为 0。
@@ -271,7 +284,7 @@
       - [ ] Hyperlink 版本 0 短体。
       - [ ] Hyperlink 循环空标记/回引形态。
       - [ ] NumberFormat 短体形态（九类全族）。
-      - [ ] NumberFormat「同槽升级」与 LatLon/Angle 独立槽核心形态。
+      - [ ] 取得 Percentage/Rate/LatLon/Angle 内嵌 NumericFormat 核心的真实对象体边界。
       - [ ] Angle 原生忽略核心失败的容错路径（读取器较严）。
       - [ ] 定性 StdPicture 第二字及解码器分派；已验证介质 BMP 体第二字为 0，见 [样本记录](docs/mxd-round2-symbol-ole-20261117.md)。
       - [ ] OLE 字体持久化跨 oleaut32 版本稳定性（介质 2.40.4275 vs 运行时 OS 版本）。
@@ -294,7 +307,7 @@
   - [x] 实现显式 10.1 Envelope 对象体读取器（`envelope`：版本 1/2/3 分支（版本 0 证据未覆盖、显式拒绝并注明较原生更严）、bit6/bit7 Z/M double 对、嵌套 SR 空标记/键回引/内嵌 PCS），接入 Map 后缀 IEnvelope 槽位（整体消费后继续读书签循环）并纳入 robustness 清单；样本 25 实例全版本 3、键 74（回引 Map PCS）/键 80（内嵌 PCS 81）两形态辅助吻合；图层坐标系宿主（图层体 Envelope 第 4 段）的模型接入待后续接线轮处理（尾段链自第八轮起闭合至 FieldInfo 循环，第九轮续闭合 ALPC 环至 LELP 体内；样本停止点现为 LELP ⑯ ISymbol 槽 TextSymbol 新对象 @`0xb7a`，见上方开放项）。
   - [x] 闭合 Envelope 归因并消解「+0x144 后 7 字节」异常（归因取证轮）：旧锚点系双层误读——`0x3d6` 的 16 字节实为 WorkspaceName 体的 ShapefileWorkspaceFactory CLSID `{A06ADB96-…}`（真实位置 `0x3d7..0x3e7`，旧读法起点提前 1 字节得到畸形 GUID），「固定 7 字节」= 工厂 CLSID 末字节 + WS 尾随 int32 + FCN 版本>1 选择子；真 `+0x144` GUID 经四个图层（shapefile/FileGDB/注记形态）逐字段验证均为 16 零，RTM 3035 与样本完全可调和，「样本由 SP 构建」工作假设与 SP 介质对照需求一并撤销（本地仅 RTM 介质，两个 SP 命名文件经核对与 ArcGIS SP 无关）。三个 Envelope 归因闭合：键 74 = LabelPlacement.dll LELP Load `FUN_785468c0` 第 4 个 LoadObject（IEnvelope `{1B077914}`，宿主 LabelEngineLayerProperties 键 60）；键 80 = FeatureLayer::Load `0x6f6e9940` 版本≥0xf 槽成员 +0x1f4；键 151 = FDO 委派注记 FeatureLayer 体内同族槽；另证 FeatureLayer 版本>8 槽（+0x1b4）样本全部空标记、全样本 25 个 Envelope 宿主分布（LELP 槽 10 / FL ver≥0xf 槽 12 / Map 尾簇 2）。`{1C352F40}` = IlluminationProps（esri.clsid 全表查证，书签类候选撤销）；Map+0x298 助手升级为「IEnvelope 持有者（Map 显示范围包络对象）」。另见未定名 IID `{97D5B914}` 条目，见 [研究记录](docs/arcmap-10.1-spatial-reference.md)。
   - [ ] 定性 FeatureLayer `+0x1f4` 槽字段语义（候选「实际绘制/缓存范围」，原「全范围 vs 当前范围」二选一提法作废，缺类型库成员级命名与绘制路径取证）。
-  - [ ] 取证 `+0x1b4` 槽（版本>8）无值行为。
+  - [ ] 取证 `+0x1b4` 槽（版本>8）无值行为（读前释放旧引用并清零已静态确认，仍缺受控运行，见 [FeatureLayer 续查](docs/mxd-terra-follow-feature.md)）。
   - [x] 静态推定 Map+0x298 coclass 为 Geometry Envelope `{30707212}`。
   - [x] 闭合 ArcMap 10.1.0.3035 的 Map+0x298 静态 coclass 身份：原生创建链以 Geometry Envelope `{30707212-52D5-11D0-A8F2-00608C85EDE5}` 创建对象，查询 IEnvelope 后写入该槽，见 [空间范围复核](docs/mxd-spatial-assessment-20261117.md)。
   - [x] 将图层坐标系宿主（`+0x1f4` Envelope 第 4 段）接入中间模型：复核现有普通/FDO 关联/组内图层路径，补测内嵌 CRS、回引键/类不匹配、空槽及参考样本关联图层 CRS；软件人工检查未做，见 [本轮空间参考记录](docs/mxd-open-spatial-20261116.md)。

@@ -55,7 +55,8 @@ pub struct FeatureIdSetBody10_1 {
     pub version: u16,
     /// int32 计数（样本 0）。负数原生不进循环，原样保留。
     pub count: i32,
-    /// 已消费的 int32 元素（要素 OID 候选；样本为空）。
+    /// 已消费的 int32 元素，即 IFeatureIDSet 集合的输入成员；原样保留顺序
+    /// 和重复值，不推断它们一定是数据源 OID（参考样本为空）。
     pub ids: Vec<i32>,
 }
 

@@ -209,7 +209,7 @@ short → String → this−0x20 → int32 → this−0x1c → LoadObject（ICol
 | ④c | 类型 3：LoadObject（**IPicture** `DAT_6ec0b08c`） | 20 头 + 体 | Save 槽 this−0xa4 | ==8 | 同上 |
 | ⑤ | LoadObject（IColor `DAT_6ec0b4f4`）×3 | 20 头 + 体 ×3 | Save 槽 this−0xa0 / −0x9c / −0x98（颜色候选） | ==8 | 同上 |
 | ⑥ | LoadObject（ISymbol `DAT_6ec0ca2c`）×1 | 20 头 + 体 | Save 槽 this−0x94（轮廓符号候选） | ==8 | 同上 |
-| ⑦ | double ×7 + double ×2 | 8×9 字节 | this−0x8c / −0x84 / −0x7c / −0x74 / −0x6c / −0x64 / −0x5c + 2 个读后即弃（Save 恒写 0.0） | ==8 | 同上 |
+| ⑦ | double ×7 + double ×2 | 8×9 字节 | this−0x8c / −0x84 / −0x7c / −0x74 / −0x6c / −0x64 / −0x5c + 2 个读后即弃（Save 先置零再计算尺寸，见 [后续指令复核](mxd-terra-host-color.md)） | ==8 | 同上 |
 | ⑧ | int32 ×2 | 4×2 字节 | this−0x114 / −0x10c | ==8 | 同上 |
 | ⑨ | byte | 1 字节 | this−0x38 | ==8 | 同上 |
 | ⑩ | short ×3 | 2×3 字节 | this−0x26 / −0x24 / −0x22 | ==8 | 同上 |

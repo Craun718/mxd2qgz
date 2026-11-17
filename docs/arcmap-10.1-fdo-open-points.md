@@ -137,15 +137,11 @@ IID `0x6b1ac120` = `{00000109-0000-0000-C000-000000000046}` =
 - 注意：主虚表 `0x6b1ac764` **不是** IPersistStream——其 +0x0c
   （`0x6b1a1580`）返回 UTF-16 字符串 `"FDOGraph…"`（类名访问器），+0x14
   写 CLSID（GetClassID 语义）；循环的 Load 经 QI 解析到 +0x40 子虚表。
-- 主 QI `0x6b1a1890` 的 IID→子对象偏移表（比对地址汇编提取）：
-  `{DBCA59AC-6771-4408-8F48-C7D53389440C}`→+0x28、
-  `{00000109-…}`IPersistStream→+0x40、`{0000010C-…}`IPersistStorage→
-  +0x30、`{34C20004-4D3C-11D0-92D8-00805F7C28B0}`→+0x2c、
-  `{34C20002-…}`ILayer→+0x34、`{12E361F0-1907-11D3-80C7-0080C79F0371}`
-  →+0x38、`{EEF01B2D-8FE1-4759-8B93-51EE22DED70A}`→+0x3c、
-  `{2425B413-1FFC-4407-B9F0-B4AC9ED50BDE}`→+0x44，未命中转基类 QI
-  `0x6b1a3e90`。除 ILayer/IPersistStream/IPersistStorage 外均为未定名
-  IID（esri 类型库本轮未逐一考证）。
+- 主 QI `0x6b1a1890` 的旧表存在分支偏移错对位。以[原始指令与类型库复核](mxd-terra-chain-iid.md)为准：
+  IAnnotationSublayer +0x28、IPersistStream/IPersist +0x40、IGeoDataset +0x30、
+  ILayer +0x2c、IDisplayAdmin +0x34、ILayerDrawingPhase +0x38、
+  ILayerGeneralProperties +0x3c、未定名 `{C9E7A782-…}` +0x44。
+  未命中转基类 QI `0x6b1a3e90`。
 
 ### 体布局（Load `0x6b1a1b10` 反编译；**无样本字节佐证**——样本计数 0）
 

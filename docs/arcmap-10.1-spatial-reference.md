@@ -32,10 +32,10 @@
   1. 2 字节 short：`AfStreamGetSaveVersion(AfStreamGetDocumentVersion(stream), 4, &DAT_71a11dc8)`。`DAT_71a11dc8` 的 4 个小端 short 为 `[2, 3, 6, 6]`（本地静态计算）。按基线已证的 AfCore 超表尾取末项语义，文档版本 5（10.x）得到 6。
   2. 4 字节长度：栈上 ANSI 缓冲的 `strlen`，**不含终止零**。
   3. WKT 文本本身，纯 ASCII 字节，无终止零。文本来源：文档版本 <2 时 `pe_projcs_to_string`；≥2 时 `pe_coordsys_clone`（可带 `pe_vertcs_clone` 的垂向分量）组合 `pe_hvcoordsys_new`，再按一个未解析寄存器比较调用 `pe_hvcoordsys_to_string` 或 `pe_hvcoordsys_to_string_ext`（pe.dll 导入）。**该布局不是 AfCore `String::Write` 的 `n*2+2` UTF-16LE 布局。**
-  4. `0x719bad00`（伪代码副本 `0x719bad00.c`）：连续写 4 个字符串，各为「4 字节长度 + ANSI 字节」，源为对象内 4 个 UTF-16 指针经导入序号函数 `Ordinal_149` 转码。
+  4. `0x719bad00`（伪代码副本 `0x719bad00.c`）：连续写 4 个字符串，各为「4 字节长度 + BSTR 的 UTF-16LE 字节」；与 WKT 的窄字符路径不同。原 ANSI 转码说法由 [后续指令复核](mxd-terra-integrate-sr.md) 更正。
   5. 1 字节零。
   6. 文档版本非零时调用 `0x719bb150`（伪代码副本 `0x719bb150.c`）：参数 1 时先写 2 字节标志（`SgCoordRefGetPrecision` 结果 bit6），再写 7 个 double——`SgCoordRefGetXY` 3 个、`SgCoordRefGetZ` 2 个、`SgCoordRefGetM` 2 个，缺省值为 `DAT_71a66f20`；随后该保存方法再写 3 个 double（`this+0xf0/+0xf8/+0x100`）。`SgCoordRef*` 为 sg.dll 导入。
-- `0x719d3230`（伪代码副本 `0x719d3230.c`）为对应读取方法：读 2 字节 short，大于 7 时经 `0x719f1570` 记录 `0x80004005`（第二参数 `0x1c4`）并退出；读 4 字节长度与该字节数的文本并在栈缓冲（反编译显示 3072 字节）上补终止零，反编译未见长度上限检查；保存版本 <6 时 `pe_projcs_from_string`，≥6 时 `pe_hvcoordsys_from_string` 并可选重建垂向分量；版本 >2 时读域字符串（`0x719babf0`）与 1 字节标志，非零时重建垂向域；版本 ≥4 时 `0x719bae60(1)` 读回标志与 7 个 double；版本 ≥5 时直接读 3 个 double 到 `this+0xf0..+0x104`，更旧版本从标志位恢复。函数末尾调用 `this-0x30` 接口虚表 `+0x74`，其归属未闭合。
+- `0x719d3230`（伪代码副本 `0x719d3230.c`）为对应读取方法：读 2 字节 short，大于 7 时经 `0x719f1570` 记录 `0x80004005`（第二参数 `0x1c4`）并退出；读 4 字节长度与该字节数的文本并在栈缓冲（反编译显示 3072 字节）上补终止零，反编译未见长度上限检查；保存版本 <6 时 `pe_projcs_from_string`，≥6 时 `pe_hvcoordsys_from_string` 并可选重建垂向分量；版本 ≥2 时读域字符串（`0x719babf0`）与 1 字节标志，非零时读取垂向单位段（`0x719ea140`）；版本 ≥4 时 `0x719bae60(1)` 读回标志与 7 个 double；版本 ≥5 时直接读 3 个 double 到 `this+0xf0..+0x104`，更旧版本从标志位恢复。函数末尾调用 `this-0x30` 接口虚表 `+0x74`，其归属未闭合。
 - MappingCoreLib.dll：图层类 CLSID 候选 `{7EE9C496-D123-11D0-8383-080009B996CC}` 数据位于 VA `0x79bfccf0`，Map 类 CLSID 候选 `{E6BDAA76-4D35-11D0-98BE-00805F7CED21}` 数据位于 VA `0x79bfce70`（均为本地静态计算；两个 GUID 同时见于 PageLayout/ArcMap.exe 等模块）。`0x79b85d00`（伪代码副本 `0x79b85d00.c`）以 `AfCreateInstance(&DAT_79bfccf0, ...)` 创建实例，随后 `OleRun` 与 `QueryInterface(&DAT_79bfd338)`；对象身份未闭合。字符串清单（`ev_f53dfc98f07362202aa7634bf1244b7ff1ecaf093fc10677baaea09e0179f67b`）含 PDB 残留装饰名 `?InstallWebMercator@@YAJPAUIMap@@PAPAUISpatialReference@@PAUtagVARIANT@@@Z` 与 `?UninstallWebMercator@@...`，支持「Map 级空间引用操作存在于该模块」的候选判断，但不构成调用链证明。
 - 字符串搜索（`ev_70b20d89...`、`ev_fa6e9c81...`）确认 `PROJCS` 不在 MappingCore.dll 与 MappingCoreLib.dll 的已定义字符串清单中；`PROJCS`/`GEOGCS` 常量在 pe.dll 的两个条目内（本地二进制筛选），与 WKT 由 pe API 生成的反编译观察一致。
 
@@ -264,7 +264,7 @@ SP 介质对照需求一并撤销。
   或绘制路径取证）。
 - 委派注记 FeatureLayer 体（FDO 第 6 步）自身 Load 函数与成员偏移；渲染器体尾段
   （RotationRenderer/SizeRenderer）与 EditTemplate 族逐类闭合。
-- `{97D5B914-FB22-11D1-94A2-080009EEBECB}`（FL 版本>0x10 槽）未在既有 olb dump 命中。
+- FeatureLayer 版本 >0x10 的槽实际请求 IUID `{1714D59B-…}`；旧 IID 候选已由 [PE 字节复核](mxd-terra-depth-iid.md)排除。
 - Map 尾簇（IlluminationProps 之后的 LELP 族与 2182/2183 宿主链）逐字节对位。
 - 全部静态取证，未人工验证。
 

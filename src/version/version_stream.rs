@@ -171,20 +171,29 @@ pub fn read_layout_10_8(
     Ok(result)
 }
 
-/// ArcMap 10.8 读取分支确认的头部；条件字段的含义尚未闭合。
+/// ArcMap 10.8 读取分支确认的头部。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArcMapVersionHeader10_8 {
     pub prefix: VersionLayout10_8,
-    /// short 大于 11 时读取的四个原始字节，不推定其用途。
+    /// short 大于 11 时读取的四个原始字节。
     pub conditional_bytes: Option<[u8; 4]>,
     /// 已确认头部之后保留的字节数。
     pub remaining_bytes: usize,
 }
 
+impl ArcMapVersionHeader10_8 {
+    /// 将条件字段按 10.8 保存路径写入的对象写表条目数解释为候选值。
+    ///
+    /// 任意输入不保证来自该保存路径；原始字节仍可通过 `conditional_bytes` 获取。
+    pub fn write_table_entry_count_candidate(&self) -> Option<u32> {
+        self.conditional_bytes.map(u32::from_le_bytes)
+    }
+}
+
 /// 读取 10.8 原生读取分支的已确认头部，失败时不推进游标。
 ///
 /// ArcMap.exe 0x47a250 对有符号 short 大于 25 的输入报错；大于 11 时
-/// 消费四字节。后续 CopyTo 的边界和字段语义尚未闭合。
+/// 消费四字节。保存路径回填写表条目数；后续 CopyTo 的边界尚未闭合。
 pub fn read_arcmap_header_10_8(
     reader: &mut Reader<'_>,
     max_text_bytes: usize,

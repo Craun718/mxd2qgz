@@ -693,6 +693,15 @@ fn parse_first_frame(
         ));
     }
 
+    if let Some((slot, table)) = suffix.first_standalone_table {
+        diagnostics.push(format!(
+            "首个 StandaloneTable（offset 0x{:x}）：{}；体版本 {}，只读取已确认前缀",
+            slot.offset,
+            slot.describe(),
+            table.version,
+        ));
+    }
+
     if let Some(illumination) = suffix.illumination {
         diagnostics.push(format!(
             "IlluminationProps 槽位（offset 0x{:x}）：{}",
@@ -710,6 +719,64 @@ fn parse_first_frame(
             post.int_1b0,
             post.short_1ac,
             post.short_268,
+        ));
+    }
+    if let Some(geometry) = suffix.post_illumination_null_geometry {
+        diagnostics.push(format!(
+            "照明后 IGeometry 槽位（offset 0x{:x}）：{}",
+            geometry.offset,
+            geometry.describe(),
+        ));
+    }
+    if let Some(border) = suffix.post_illumination_null_border {
+        diagnostics.push(format!(
+            "照明后 IBorder 槽位（offset 0x{:x}）：{}",
+            border.offset,
+            border.describe(),
+        ));
+    }
+
+    if suffix.post_border_tail.short_308.is_some() {
+        let tail = &suffix.post_border_tail;
+        diagnostics.push(format!(
+            "IBorder 后版本块：short={:?}、{:?}、{:?}、{:?}，double 位={:?}；\
+             两个 int32={:?}、{:?}，临时 short={:?}、double 位={:?}；\
+             坐标变换计数={:?}，已读前导 {} 条、完整对象槽 {} 条",
+            tail.short_308,
+            tail.short_310,
+            tail.short_318,
+            tail.short_31a,
+            tail.double_bits,
+            tail.int_1a4,
+            tail.int_1a8,
+            tail.temporary_short,
+            tail.temporary_double_bits,
+            tail.transformation_count,
+            tail.transformations.len(),
+            tail.transformations
+                .iter()
+                .filter(|item| item.object.is_some())
+                .count()
+        ));
+    }
+
+    if let Some(value) = suffix.post_border_tail.post_transform_double_bits {
+        let tail = &suffix.post_border_tail;
+        diagnostics.push(format!(
+            "变换循环后：double 位={value:?}，short={:?}，空背景槽={:?}，后续空对象槽={:?}",
+            tail.post_transform_short,
+            tail.post_transform_null_background,
+            tail.post_transform_null_object
+        ));
+    }
+
+    if let Some((slot, body)) = &suffix.post_border_tail.post_transform_overposter {
+        diagnostics.push(format!(
+            "BasicOverposterProperties（offset 0x{:x}）：{}，版本 {}，颜色槽 {:?}",
+            slot.offset,
+            slot.describe(),
+            body.version,
+            body.color
         ));
     }
 
@@ -935,6 +1002,20 @@ fn feature_layer_successor_note(
         let engine_note = match &prefix.engine {
             crate::layers::annotate_props::ExpressionEngineSlot10_1::VbscriptEngine(engine) => {
                 format!("AnnotationVBScriptEngine（键 {}）", engine.key)
+            }
+            crate::layers::annotate_props::ExpressionEngineSlot10_1::OtherEngine(engine) => {
+                let name = match engine.kind {
+                    crate::layers::annotate_props::AnnotationExpressionEngineKind10_1::Vbscript => {
+                        "AnnotationVBScriptEngine"
+                    }
+                    crate::layers::annotate_props::AnnotationExpressionEngineKind10_1::Jscript => {
+                        "AnnotationJScriptEngine"
+                    }
+                    crate::layers::annotate_props::AnnotationExpressionEngineKind10_1::Python => {
+                        "AnnotationPythonEngine"
+                    }
+                };
+                format!("{name}（键 {}）", engine.body.key)
             }
             crate::layers::annotate_props::ExpressionEngineSlot10_1::BackReference {
                 key, ..

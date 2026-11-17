@@ -25,14 +25,12 @@
 //!    `AfStreamGetSaveVersion(docVer, 5, DAT_6f77c02c)`，版本表
 //!    `[0xFFFF,0xFFFF,0xFFFF,0xFFFF,2]`：docVer=83..92 时 Save 直接返回
 //!    不写任何字节；10.0（docVer=4）与 10.1（docVer=5）恒写 **2**；
-//! 2. String ×2（AfCore String::Read 布局 → obj+0x08/obj+0x0c）：模板
-//!    名称候选 / 第二字符串候选（样本见下）；
-//! 3. 16 字节原始 GUID（→ obj+0x18，原样保留）：关联要素类/表标识候选
-//!    （同一数据源的多模板样本值相同）；
+//! 2. String ×2（持久化接口 this+0x08/0x0c）：Name、Description；
+//! 3. 16 字节原始 GUID（持久化接口 this+0x18）：Tool，原样保留；
 //! 4. int32 计数 + 循环：每项 [String 键][`Variant::Read` 值]——键为
 //!    字段名、值为该字段模板默认值（样本 12 项 = 字段默认值表候选）；
 //!    原生负数/零计数跳过循环，本读取器拒绝负数（较原生更严）；
-//! 5. 版本 ≥2：String（→ obj+0x10，第三字符串候选）。Save 侧该项在
+//! 5. 版本 ≥2：String（持久化接口 this+0x10，Tags）。Save 侧该项在
 //!    迭代器耗尽后恒写（无版本门），与读侧版本 ≥2 门在 10.1 一致
 //!    （Save 恒写版本 2）。
 //!
@@ -83,10 +81,9 @@
 //! 字节数」预检（`usize::MAX` 不设限）。本读取器不递归解析其他对象体，
 //! 不产生停止点（对象分支直接报不支持）。
 //!
-//! 未解决问题（详见研究记录「开放项」）：String B/GUID/第三 String 的
-//! 业务语义为候选（名称/数据源标识/几何类型提示等）；[String,Variant]
-//! 键值对的插入容器与重复键行为未逐项定性；宿主（FeatureLayer 后继字段
-//! 链的哪个槽）未闭合；VT_EMPTY/NULL 带数组标志的原生改道路径未展开；
+//! 访问器对位见 `docs/mxd-terra-host-label.md`。未解决问题：
+//! [String,Variant] 键值对的重复键行为未逐项定性；VT_EMPTY/NULL 带
+//! 数组标志的原生改道路径未展开；
 //! 全部结论为静态观察与样本辅助对位，未经目标软件运行验证。
 
 use crate::storage::object_refs::RefTable10_1;
@@ -422,22 +419,38 @@ pub struct EditTemplateBody10_1 {
     pub key: u32,
     /// 体首 int16 版本的无符号位模式（有符号 >2 拒绝；10.1 Save 恒写 2）。
     pub version: u16,
-    /// 第 2 字段 String（→ obj+0x08；样本为模板名称，如「JZD1」）。
+    /// 第一 String：IEditTemplate::Name（持久化接口 this+0x08）。
     pub name: String,
-    /// 第 2 字段第二个 String（→ obj+0x0c；样本为空串，语义未定）。
+    /// 第二 String：IEditTemplate::Description（持久化接口 this+0x0c）。
     pub string_b: String,
-    /// 第 3 字段 16 字节原始 GUID（→ obj+0x18，原样保留；样本同一数据源
-    /// 多模板共享同值，关联要素类/表标识候选）。
+    /// 16 字节原始 GUID：IEditTemplate::Tool（持久化接口 this+0x18），原样保留。
     pub raw_guid: [u8; 16],
     /// 第 4 字段 int32 计数原始值（负数拒绝，较原生更严）。
     pub field_count: i32,
     /// 已消费的 [String 键][Variant 值] 项。
     pub fields: Vec<EditTemplateField10_1>,
-    /// 版本 ≥2 的第三 String（→ obj+0x10；样本为「点」，语义候选：几何
-    /// 类型提示）；版本 <2 时原生不读流，为 `None`。
+    /// 版本 ≥2 的第三 String：IEditTemplate::Tags（持久化接口 this+0x10）；
+    /// 版本 <2 时原生不读流，为 `None`。
     pub tail_string: Option<String>,
     /// 体之后的剩余字节数（体无外部长度；正常输入应为 0）。
     pub remaining_bytes: usize,
+}
+
+impl EditTemplateBody10_1 {
+    /// 返回 IEditTemplate::Description 对应的持久化字符串。
+    pub fn description(&self) -> &str {
+        &self.string_b
+    }
+
+    /// 返回 IEditTemplate::Tool 的原始 GUID 字节，顺序与流一致。
+    pub fn tool_guid_bytes(&self) -> &[u8; 16] {
+        &self.raw_guid
+    }
+
+    /// 返回 IEditTemplate::Tags；旧版本未写入时为 `None`。
+    pub fn tags(&self) -> Option<&str> {
+        self.tail_string.as_deref()
+    }
 }
 
 /// 从对象头之后的位置读取 10.1 EditTemplate 对象体，失败时不推进游标、

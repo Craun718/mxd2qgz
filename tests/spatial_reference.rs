@@ -32,7 +32,7 @@ fn wkt_body(version: u16, wkt: &str) -> Vec<u8> {
     raw_body(version, wkt.as_bytes())
 }
 
-/// 追加版本 >2 分支的域字符串块（4 组长度前缀字符串 + 1 字节垂向标志）。
+/// 追加版本 >=2 分支的域字符串块及可选垂向单位段。
 fn push_domain_block(bytes: &mut Vec<u8>, strings: &[&[u8]], vertical_flag: u8) {
     assert_eq!(strings.len(), 4);
     for string in strings {
@@ -40,6 +40,11 @@ fn push_domain_block(bytes: &mut Vec<u8>, strings: &[&[u8]], vertical_flag: u8) 
         bytes.extend(*string);
     }
     bytes.push(vertical_flag);
+    if vertical_flag != 0 {
+        bytes.extend(2_u16.to_le_bytes());
+        bytes.extend(3_u32.to_le_bytes());
+        bytes.extend(b"met");
+    }
 }
 
 /// 追加版本 >=4 分支的 2 字节标志与 7 个 double。
@@ -123,12 +128,12 @@ fn reads_455_byte_wkt_matching_reference_sample_length() {
 
 #[test]
 fn every_version_branch_reads_exactly_the_native_field_set() {
-    // 字段存在性与原生 Load 分支一致：1/2（及无表证据的 0）仅 WKT；3 加
+    // 字段存在性与原生 Load 分支一致：1（及无表证据的 0）仅 WKT；2 加
     // 域块；4 加标志与 7 个 double；5/6/7 再加 3 个 double。
     for (version, domains, precision, trailing) in [
         (0_u16, false, false, false),
         (1, false, false, false),
-        (2, false, false, false),
+        (2, true, false, false),
         (3, true, false, false),
         (4, true, true, false),
         (5, true, true, true),
@@ -297,8 +302,7 @@ fn rejects_non_ascii_and_nul_wkt_stricter_than_native() {
 
 #[test]
 fn preserves_domain_bytes_without_ascii_or_encoding_validation() {
-    // 域字符串随 ANSI 代码页（如 GBK 的 >=0x80 字节）且语义未确认；读取器
-    // 保留原始字节（含 NUL），与 WKT 的校验策略差异见模块文档。
+    // 域字符串原样保留，包括非完整 UTF-16 和内嵌 NUL。
     let mut bytes = wkt_body(3, "PROJCS[\"x\"]");
     push_domain_block(
         &mut bytes,
@@ -318,6 +322,7 @@ fn preserves_domain_bytes_without_ascii_or_encoding_validation() {
         ]
     );
     assert_eq!(domains.vertical_flag, 0x2a);
+    assert_eq!(domains.vertical_unit.unwrap().unit_wkt, b"met");
     assert_eq!(body.precision, None);
     assert_eq!(reader.remaining(), 0);
 }
@@ -343,7 +348,9 @@ fn preserves_flag_and_double_bit_patterns_without_validation() {
     let body = read_projected_coordinate_system_10_1(&mut reader, 1024).unwrap();
     let precision = body.precision.unwrap();
     assert_eq!(precision.flags, 0xffff);
-    assert_eq!(body.domains.unwrap().vertical_flag, 0xff);
+    let domains = body.domains.unwrap();
+    assert_eq!(domains.vertical_flag, 0xff);
+    assert_eq!(domains.vertical_unit.unwrap().unit_wkt, b"met");
     for (read, expected) in precision.doubles.iter().zip(doubles.iter()) {
         assert_eq!(read.to_bits(), expected.to_bits());
     }

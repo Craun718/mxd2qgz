@@ -16,7 +16,7 @@
 //! 版本分支（GCS，原生 Load `0x719bec60`，10.1 Save 版本表 `[3,4,7,7]` 恒写 7）：
 //!
 //! - 全部版本：2 字节版本 + 4 字节 WKT 字节长（无终止零）+ 等长 ASCII WKT；
-//! - 版本 >2：4 组（4 字节字节长 + 原样字符串字节）+ 1 字节垂向标志；
+//! - 版本 >=2：4 组（4 字节字节长 + 原样字符串字节）+ 1 字节垂向标志；
 //!   标志非零时紧跟垂向单位段（2 字节版本 ≤2 + 4 字节长 + 等长原样字节，
 //!   原生 `0x719ea140` 读出后经 `pe_unit_from_string` 解析为垂向线性单位）；
 //! - 版本 >2：2 个 double 地理范围（原生首项 NaN 时重建为 [-180, 180]，
@@ -66,7 +66,7 @@ pub const UNKNOWN_COORDINATE_SYSTEM_CLASS_ID: [u8; 16] = [
     0x6b, 0xc0, 0x86, 0xb2, 0x79, 0x08, 0xd2, 0x11, 0xaa, 0xca, 0x00, 0xc0, 0x4f, 0xa3, 0x3c, 0x20,
 ];
 
-/// 版本 >2 分支读取的域字符串块（与投影坐标系同构，原生子函数 `0x719babf0`）。
+/// 版本 >=2 分支读取的域字符串块（与投影坐标系同构，原生子函数 `0x719babf0`）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DomainBlock {
     /// 4 组「4 字节字节长 + 原样字节」的字符串原始字节（样本中无实例）。
@@ -120,7 +120,7 @@ pub struct GeographicCoordinateSystem10_1 {
     pub save_version: u16,
     /// 纯 ASCII WKT 文本，无终止零；4 字节长度前缀同样不含终止零。
     pub wkt: String,
-    /// 版本 >2 分支的域字符串块；版本 <=2 时为 `None`。
+    /// 版本 >=2 分支的域字符串块；版本 <2 时为 `None`。
     pub domains: Option<DomainBlock>,
     /// 版本 >2 分支的 2 个地理范围 double `[min, max]`，原样保留
     /// （原生首项 NaN 时重建 [-180, 180]，本读取器不重建）。
@@ -178,7 +178,7 @@ pub fn read_geographic_coordinate_system_10_1(
     }
     let wkt = read_wkt_block(&mut trial, max_bytes, &invalid)?;
 
-    let domains = if save_version > 2 {
+    let domains = if save_version >= 2 {
         Some(read_domain_block(&mut trial, max_bytes, &invalid)?)
     } else {
         None
@@ -325,7 +325,7 @@ fn read_domain_block(
 }
 
 /// 读取垂向标志非零时的垂向单位段（原生 `0x719ea140`）。
-fn read_vertical_unit_segment(
+pub(crate) fn read_vertical_unit_segment(
     trial: &mut Reader<'_>,
     max_bytes: usize,
     invalid: &dyn Fn(&str) -> io::Error,
@@ -477,7 +477,7 @@ mod tests {
     #[test]
     fn gcs_low_versions_read_wkt_only() {
         let mut bytes = Vec::new();
-        bytes.extend_from_slice(&2u16.to_le_bytes());
+        bytes.extend_from_slice(&1u16.to_le_bytes());
         push_wkt(&mut bytes, "GEOGCS[\"X\"]");
         let mut reader = Reader::new(&bytes);
         let body = read_geographic_coordinate_system_10_1(&mut reader, 4096).unwrap();

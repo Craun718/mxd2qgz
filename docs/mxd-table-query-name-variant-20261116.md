@@ -1,5 +1,8 @@
 # TableQueryName 变体流体布局核验（未闭合）
 
+后续已通过 QI 和次级虚表确认，下文 Load/Save 属于 **IPersistStream**。
+早期按主虚表位置给出的 GetIDType 归属不成立；以[查询名称续查](mxd-terra-follow-names.md)为准。
+
 记录日期：2026-11-16。目标为 ArcMap 10.1.0.3035。GdbCore.dll 原件身份为
 SHA-256 `ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4`，
 PE32 x86，ImageBase `0x708d0000`。本文只记录本次重新取得的 REA 反编译观察，

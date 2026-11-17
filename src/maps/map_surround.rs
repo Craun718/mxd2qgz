@@ -84,7 +84,8 @@
 //! 5. 版本 ==1：double ×2（读后丢弃的旧版遗留段，原样保留位模式；写侧
 //!    无对应写出）；
 //! 6. int16 ×3（`this−0xf0/−0xee/−0xec`，原样保留）；
-//! 7. int16（传入集合接口 `+0xa8`；写侧恒写 `0xFFFF`）；
+//! 7. int16（读入临时变量，10.1 Load 未使用该值；随后调用虚表 `+0xa8`
+//!    清空原有条目；写侧恒写 `0xFFFF`）；
 //! 8. int32 计数 + 循环 `LoadObject`（请求 IID `{52AA5BC0-…}` ILegendItem）：
 //!    空标记 / 回引条目消费后继续；新对象且类标识为 HorizontalLegendItem 时
 //!    整体解析其体（接线轮接入 `legend_item` 模块，体内停止透传），其余
@@ -107,8 +108,9 @@
 //!
 //! 未解决问题（详见研究记录开放项）：共同前缀第 5 段 32 字节与各 short
 //! 的业务语义未定性；FeatureBookmark int32 语义未定；LegendFormat、
-//! LegendItem 及装饰物的若干标量字段未定性；ScaleLine 族三个共同前缀
-//! 调用者的类归属与若干对象接口调用仍未闭合；共同前缀版本 0/1
+//! LegendItem 及装饰物的若干标量字段未定性；此前被列为 ScaleLine 候选的
+//! 三个共同前缀调用者分别属于 ImageInset、MapInset、Overview，其对象接口
+//! 调用语义仍未闭合（见 `docs/mxd-terra-integrate-page.md`）；共同前缀版本 0/1
 //! （docVersion 83..93 写 2）无门字段差异之外的真实流字节佐证。
 
 use crate::layers::feature_layer::FeatureClassNamePrefix10_1;
@@ -318,9 +320,9 @@ pub struct LegendItemEntry10_1 {
 /// Legend 版本 ≥5 尾组的 4 个原样标量（`this−0x9c..−0x94`）。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LegendTailGroup10_1 {
-    /// 三个 int16 的原样位模式。
+    /// FixedFrame、AutoColumns、AutoFit 的 int16 原样位模式。
     pub shorts: [u16; 3],
-    /// 尾随 double 的原样位模式（<5 时原生写默认 4.5，不读流）。
+    /// MinFontSize（<5 时原生写默认 4.5，不读流）。
     pub value: f64,
 }
 
@@ -417,17 +419,17 @@ pub struct LegendPrefix10_1 {
     /// 版本 ==1 的两个 double 原样位模式（读后丢弃的旧版遗留段；写侧无
     /// 对应写出，仅旧文档出现）。
     pub legacy_doubles: Option<[f64; 2]>,
-    /// 三个 int16 原样位模式（第 6 字段，`this−0xf0/−0xee/−0xec`）。
+    /// AutoAdd、AutoReorder、AutoVisibility 的 int16 原样位模式（第 6 字段）。
     pub shorts: [u16; 3],
-    /// 集合接口 `+0xa8` 的 int16 原样位模式（第 7 字段；写侧恒写 `0xFFFF`）。
+    /// 第 7 字段 int16 原样位模式；10.1 Load 不使用该值，Save 恒写 `0xFFFF`。
     pub selection_short: u16,
     /// 条目循环 int32 计数原始值（第 8 字段；负数拒绝，较原生更严）。
     pub item_count: i32,
     /// 已消费的条目（按流内顺序；末位可能是触发停止的新对象头）。
     pub items: Vec<LegendItemEntry10_1>,
-    /// 版本 ≥3 的 int16 原样位模式（`this−0xe8`）。
+    /// 版本 ≥3 的流向内部标志原样位模式（`this−0xe8`）；FlowRight getter 取反。
     pub tail_short_1: Option<u16>,
-    /// 版本 ≥4 的 int16 原样位模式（`this−0xe6`）。
+    /// 版本 ≥4 的 ScaleSymbols int16 原样位模式（`this−0xe6`）。
     pub tail_short_2: Option<u16>,
     /// 版本 ≥5 的尾组（int16 ×3 + double）；<5 时原生写默认值不读流。
     pub tail_group: Option<LegendTailGroup10_1>,
@@ -768,7 +770,7 @@ pub fn read_legend_prefix_10_1(
             legacy_doubles = Some(pair);
         }
 
-        // 6/7. int16 ×3 + int16（集合接口 +0xa8；写侧恒写 0xFFFF）。
+        // 6/7. int16 ×3 + 保留位模式的 int16（原生读后不用，写侧恒写 0xFFFF）。
         for slot in &mut shorts {
             *slot = trial.read_u16_le()?;
         }

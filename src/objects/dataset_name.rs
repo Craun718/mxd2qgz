@@ -14,7 +14,8 @@
 //! int16 选择子：==0 → LoadObject（请求 IID
 //! `{FADD975C-E36F-11D1-AA81-00C04FA33A15}`=IWorkspaceName，类型库定名）；
 //! !=0 → LoadObject（`{89E75917-C287-11D1-AA77-00C04FA33A15}`=IDatasetName）
-//! 并对 obj+0x3c 虚表 +0x20 做通知调用。第 ⑧ 步（版本 >1）为第二选择子：
+//! 并对 obj+0x3c 的 IDatasetName 虚表 +0x20 调用 WorkspaceName getter。
+//! 第 ⑧ 步（版本 >1）为第二选择子：
 //! !=0 → LoadObject（`{505B6FDD-9E6E-42F9-B705-53355B2F1DEF}`=ITopologyName）。
 //! 三个 IID 的文件字节本轮逐一复核（`DAT_70ab8554`/`DAT_70ab8574`/
 //! `DAT_70ac9a70`）。选择子为 16 位值、原生只区分零与非零，无其他取值语义。
@@ -31,11 +32,11 @@
 //!
 //! 1. int16 版本：`cmp word,1; jle` **有符号**，>1 拒绝（0x80004005）；
 //!    Save 恒写静态常量 1（`DAT_70aaac34`）；
-//! 2. AfCore String ×4 → obj+0x0c/+0x10/+0x14/+0x18（语义未定性，按
-//!    FCN 四字符串家族类推为候选：名称/第二名称/类型描述/数据集名）；
-//! 3. 1 字节标志 → obj+0x1c（原生按 bool 存储，语义未定，原样保留）；
+//! 2. AfCore String ×4 → IPersistStream this+0x0c/+0x10/+0x14/+0x18；
+//!    第 1、3 项为 IDatasetName 的 Name、Category，第 2 项为 IName.NameString；
+//! 3. 1 字节标志 → IPersistStream this+0x1c（原生按 bool 存储，语义未定，原样保留）；
 //! 4. LoadObject（请求 IID 与 FCN 选择子 ==0 分支同值 = IWorkspaceName）
-//!    → obj+0x20；条目经 [`crate::storage::object_refs::read_object_entry_10_1`]
+//!    → IPersistStream this+0x20；条目经 [`crate::storage::object_refs::read_object_entry_10_1`]
 //!    分类，新对象且类标识为 WorkspaceName 时读取其已闭合体（复用
 //!    [`crate::objects::workspace_name::read_workspace_name_body_10_1`]，第六轮）。
 //!
@@ -50,12 +51,13 @@
 //!
 //! 1. int16 版本：`cmp word,1; jg fail` **有符号**，>1 拒绝；Save 恒写静态
 //!    常量 1（`DAT_70ab7aa0`）；
-//! 2. AfCore String ×2 → obj+0x0c/+0x10（语义未定性，候选：名称/第二名称）；
+//! 2. AfCore String ×2 → IPersistStream this+0x0c/+0x10，分别对应
+//!    IDatasetName 的 Name、Category；
 //! 3. LoadObject（请求 IID 与 FCN 选择子 !=0 分支同值 = IDatasetName）
-//!    → obj+0x14，装载前先释放旧指针；装载成功后对 obj+0x14 对象做虚表
-//!    +0x20 调用（与 FCN 数据集分支 `this+0x3c` 虚表 +0x20 同一通知模式，
-//!    不读流）。条目分类同上；新对象且类标识为 FeatureDatasetName 时读取
-//!    其体（本模块），其余类为停止点。
+//!    → IPersistStream this+0x14，装载前先释放旧指针；装载成功后对槽内对象做虚表
+//!    +0x20 调用 IDatasetName.WorkspaceName getter；该虚调用的具体副作用
+//!    取决于槽内对象，不能一概断言不读流。条目分类同上；新对象按支持的类
+//!    标识分派，未知类为停止点。
 //!
 //! ## 样本对位（辅助观察）
 //!
@@ -82,13 +84,11 @@
 //! 不得声称已验证。
 //!
 //! 未解决问题（详见证据文档「开放项」）：
-//! - 四个/两个 String 的业务语义未定性（按家族类推为候选），标志字节语义
-//!   未定，均原样保留；
+//! - FeatureDatasetName 的第 4 个 String 与标志字节语义未定，原样保留；
 //! - IDatasetName 槽可能出现的其他 IDatasetName 实现类（UnknownDatasetName、
 //!   GeometricNetworkName、FeatureClassName 自身等，esri.clsid 声明）未闭合，
 //!   读取器在其对象头处停止；
-//! - TopologyName 体的虚表 +0x20 通知调用（与 FCN 分支同型）的接口语义未
-//!   定名；
+//! - TopologyName 嵌套对象的 WorkspaceName getter 的动态副作用仍待验证；
 //! - 版本 0 分支无字节佐证（原生接受，Save 恒写 1）；
 //! - 全部结论为静态观察，未经目标软件运行验证。
 
@@ -165,15 +165,15 @@ pub struct FeatureDatasetNameBody10_1 {
     /// 体首 int16 版本。原生有符号比较 >1 拒绝（汇编证实）；Save 恒写 1。
     /// 样本无实例，接受域内位模式均可能。
     pub version: u16,
-    /// 第一个字符串（→ obj+0x0c；语义未定，候选：名称）。
+    /// 第一个字符串（IPersistStream this+0x0c；IDatasetName.Name）。
     pub string_a: String,
-    /// 第二个字符串（→ obj+0x10；语义未定，候选：第二名称）。
+    /// 第二个字符串（IPersistStream this+0x10；IName.NameString）。
     pub string_b: String,
-    /// 第三个字符串（→ obj+0x14；语义未定，候选：类型描述）。
+    /// 第三个字符串（IPersistStream this+0x14；IDatasetName.Category）。
     pub string_c: String,
-    /// 第四个字符串（→ obj+0x18；语义未定，候选：数据集名）。
+    /// 第四个字符串（IPersistStream this+0x18；语义未定）。
     pub string_d: String,
-    /// 1 字节标志（→ obj+0x1c；原生按 bool 存储，语义未定，原样保留）。
+    /// 1 字节标志（IPersistStream this+0x1c；语义未定，原样保留）。
     pub flag: u8,
     /// 第 4 步 IWorkspaceName 槽（请求 IID `{FADD975C-…}`）分类结果。
     pub workspace: WorkspaceNameSlot10_1,
@@ -225,11 +225,11 @@ pub struct TopologyNameBody10_1 {
     pub key: u32,
     /// 体首 int16 版本。原生有符号比较 >1 拒绝（汇编证实）；Save 恒写 1。
     pub version: u16,
-    /// 第一个字符串（→ obj+0x0c；语义未定，候选：名称）。
+    /// 第一个字符串（IPersistStream this+0x0c；IDatasetName.Name）。
     pub string_a: String,
-    /// 第二个字符串（→ obj+0x10；语义未定，候选：第二名称）。
+    /// 第二个字符串（IPersistStream this+0x10；IDatasetName.Category）。
     pub string_b: String,
-    /// 第 3 步 IDatasetName 槽（请求 IID `{89E75917-…}`）分类结果。
+    /// 第 3 步 IDatasetName 槽，亦对应 ITopologyName.FeatureDatasetName。
     pub dataset: DatasetNameSlot10_1,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<TopologyNameStop10_1>,

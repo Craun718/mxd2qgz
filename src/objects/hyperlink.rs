@@ -76,7 +76,7 @@ pub const HYPERLINK_CLASS_ID: [u8; 16] = [
 pub struct HyperlinkBody10_1 {
     /// 对象头键（槽位分派传入；样本 IHyperlink 计数恒 0，无实例）。
     ///
-    /// 解析成功时该键已按原生语义登记进调用者的登记表。
+    /// 本读取器不登记该键；由读取对象头的调用方负责登记。
     pub key: u32,
     /// 体首 short 版本；>1 原生拒绝，写侧恒 1。
     pub version: u16,

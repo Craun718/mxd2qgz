@@ -96,9 +96,9 @@
 //! 9. 16 字节原样 GUID → 栈（样本为 `{B65A3E74-…}` TextSymbol 自身 CLSID；
 //!    与零 GUID 比较非零时走附加处理——自定义 TextPath CLSID 候选）；
 //! 10. LoadObject（IID `{8FEB6611-2A0D-11D1-9A44-0080C7EC5C96}` = ITextPath）
-//!     → 文本路径槽（仅分类；样本 16 字节零空标记）；
+//!     → Background getter 存储（仅分类；见 docs/mxd-terra-chain-element.md）；
 //! 11. LoadObject（IID `{F3435802-5779-11D0-98BF-00805F7CED21}` = ISymbol）
-//!     → 符号槽 #1（仅分类；样本 16 字节零空标记）；
+//!     → 符号槽 #1（FillSymbol getter 底层存储，仅分类）；
 //! 12. String → this-0x238（样本 `"T35"`，与外层文本相同）；
 //! 13. double → this-0x1ec（样本 8.0，读后作虚调用实参）；int32 →
 //!     this-0x210（样本 1）；double → this-0x204（样本 1.5）；
@@ -190,7 +190,7 @@
 //! 的严格安全子集：不代表完整原生 Load 行为，通过也不代表 MXD 格式已验证。
 //! 未接入 MXD 解析主链，人工目视验收未做，不得声称已验证。
 //!
-//! 未解决问题（详见研究文档「开放项」）：各标量字段业务语义未定性；
+//! 未解决问题（详见研究文档「开放项」）：部分标量字段业务语义未定性；
 //! IGeometry/IMarkerSymbol/ILineSymbol/ISymbol/ITextPath 槽的实现类体未闭
 //! 合（IFontDisp 槽的 StdFont 实现类本轮已闭合，证据
 //! docs/arcmap-10.1-ole-stdfont.md；该槽其余实现类仍为停止回退）；
@@ -434,25 +434,20 @@ pub struct ElementPropertiesPrefix10_1 {
     /// int16 版本的无符号位模式（原生有符号 `>6` 拒绝；本读取器接受 0..=6，
     /// 负值一并拒绝较原生更严；样本 6）。
     pub version: u16,
-    /// String → this+8（样本空串）；按 `IElementProperties2::Name` 命名为候选。
-    /// 当前没有 10.1 Name getter/setter 的接收偏移证据与 Load 落点互证。
+    /// String → this+8；与 `Name` 访问器对位，见 docs/mxd-terra-chain-element.md。
     pub name: String,
-    /// String → this+0xc（样本 `"文本"`）；按 `IElementProperties2::Type` 命名为候选。
-    /// 当前没有 10.1 Type getter/setter 的接收偏移证据与 Load 落点互证。
+    /// String → this+0xc；与 `Type` 访问器对位。
     pub type_description: String,
     /// 版本 <2 的 int32（读后丢弃的旧版遗留段，原样位模式）。
     pub legacy_int32: Option<i32>,
-    /// 第 5 字段（版本 ≥4 经 Variant 序列化，旧版为对象槽）；按
-    /// `IElementProperties2::CustomProperty` 命名为候选，尚无 getter/setter
-    /// 偏移证据与 Load 落点互证。
+    /// 第 5 字段（版本 ≥4 经 Variant 序列化，旧版为对象槽）；与
+    /// `CustomProperty` 访问器对位。
     pub custom_property: CustomProperty10_1,
-    /// 版本 >2 的 int16 原样位模式（this+0x10；样本 0xFFFF）。
+    /// 版本 >2 的 int16 原样位模式（this+0x10；AutoTransform 存储）。
     pub extra_short: Option<u16>,
-    /// 版本 >4 的 double（this+0x2c；样本 5393.0）；按
-    /// `IElementProperties2::ReferenceScale` 命名为候选，尚无 getter/setter
-    /// 偏移证据与 Load 落点互证。
+    /// 版本 >4 的 double（this+0x2c；ReferenceScale 存储）。
     pub reference_scale: Option<f64>,
-    /// 版本 >5 的 int32 原样位模式（this+0x34；样本 6）。
+    /// 版本 >5 的 int32 原样位模式（this+0x34；AnchorPoint 存储）。
     pub tail_int32: Option<i32>,
 }
 
@@ -597,42 +592,45 @@ pub struct TextSymbolBody10_1 {
     pub version: u16,
     /// 颜色槽 #1（IColor；样本 RgbColor 键 1615）。
     pub color1: ColorSlot10_1,
-    /// 字段 3 组：int32 ×3 原样位模式（this-0x478/-0x470/-0x474；样本
-    /// -1、3、1）。
+    /// 字段 3 组：未知 int32、VerticalAlignment、HorizontalAlignment，
+    /// 原样保留（this-0x478/-0x470/-0x474；样本 -1、3、1）。
     pub ints_1: [i32; 3],
-    /// 字段 4 组：byte ×2 原样位模式（this-0x468/-0x467；样本 0、0）。
+    /// 字段 4 组：未知 byte、RightToLeft 原始 byte
+    /// （this-0x468/-0x467；样本 0、0）。
     pub bytes_1: [u8; 2],
-    /// 字段 5 组：double ×3 原样位模式（this-0x45c/-0x44c/-0x444；样本 0）。
+    /// 字段 5 组：Angle、两个未知 double
+    /// （this-0x45c/-0x44c/-0x444；样本均为 0）。
     pub doubles_1: [f64; 3],
     /// 字段 6 组：int32 ×2 原样位模式（this-0x4fc/-0x4f4；样本 13、0）。
     pub ints_2: [i32; 2],
-    /// 颜色槽 #2（IColor；样本 RgbColor 键 1616，全 0）。
+    /// 颜色槽 #2（IColor；与 ShadowColor 访问器存储对位）。
     pub color2: ColorSlot10_1,
-    /// 字段 8 前组：double ×2 + int32 ×2（this-0x37c/-0x374/-0x364/-0x360；
-    /// 样本 0、0、0、0）。
+    /// 字段 8 前组：ShadowXOffset、ShadowYOffset（double），Position、Case
+    /// （int32）；访问器与 Load 偏移对位见 docs/mxd-terra-integrate-text.md。
+    /// 样本依次为 0、0、0、0；保留流内原始值。
     pub group_8a: ([f64; 2], [i32; 2]),
-    /// 字段 8 中组：double ×3（this-0x35c/-0x354/-0x34c；样本 0、100、100）。
+    /// CharacterSpacing、CharacterWidth、WordSpacing（double ×3；样本 0、100、100）。
     pub doubles_2: [f64; 3],
-    /// byte（this-0x344；样本 1）。
+    /// Kerning 的原始 byte（this-0x344；样本 1）。
     pub byte_2: u8,
-    /// double（this-0x33c；样本 0.0）。
+    /// Leading（double，this-0x33c；样本 0.0）。
     pub double_3: f64,
-    /// int32（this-0x330；样本 0）。
+    /// Direction（int32，this-0x330；样本 0）。
     pub int_3: i32,
-    /// double（this-0x32c；样本 88.0）。
+    /// FlipAngle（double，this-0x32c；样本 88.0）。
     pub double_4: f64,
-    /// byte（this-0x320；样本 1）。
+    /// TypeSetting 的原始 byte（this-0x320；样本 1）。
     pub byte_3: u8,
     /// 16 字节原样 GUID（样本为 TextSymbol 自身 CLSID；与零 GUID 比较非零
     /// 走附加处理——自定义 TextPath CLSID 候选；原样保留）。
     pub raw_path_clsid: [u8; 16],
-    /// ITextPath 文本路径槽（仅分类；样本空标记）。
+    /// ITextPath 槽（仅分类）；与 Background getter 存储对位。
     pub text_path: NestedEntry10_1,
-    /// ISymbol 符号槽 #1（仅分类；样本空标记）。
+    /// ISymbol 符号槽 #1（仅分类）；与 FillSymbol getter 的底层存储对位。
     pub symbol1: NestedEntry10_1,
-    /// String（this-0x238；样本 `"T35"`，与外层文本相同）。
+    /// String（this-0x238；与 Text getter 存储对位）。
     pub name_string: String,
-    /// double（this-0x1ec；样本 8.0）。
+    /// Size 相关的 double（this-0x1ec；样本 8.0；Load 读取后还作虚调用）。
     pub double_5: f64,
     /// int32（this-0x210；样本 1）。
     pub int_4: i32,
@@ -643,7 +641,7 @@ pub struct TextSymbolBody10_1 {
     /// 体；样本为 {7914E603} SimpleFillSymbol 新对象；未知符号类不出现在本
     /// 字段——映射为停止原因，字段保持 `Null`）。
     pub symbol2: SymbolSlotFull10_1,
-    /// IFontDisp 字体槽（本轮起经 [`read_font_slot`] 类分派：StdFont 新对
+    /// IFontDisp 字体槽（与 Font getter 存储对位；经 [`read_font_slot`] 分派：StdFont 新对
     /// 象解析为 [`FontSlot10_1::StdFont`] 体变体（样本 37 处 StdFont 全为该
     /// 类，证据 docs/arcmap-10.1-ole-stdfont.md）；未知字体类不出现在本字
     /// 段——映射为停止原因，字段保持 `Null`）。
