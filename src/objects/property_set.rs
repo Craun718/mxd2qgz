@@ -44,10 +44,11 @@
 //! **不是** VariantStream `ReadString` 的 `n*2+2` 码元布局）；VT_I1(0x10)/
 //! VT_UI1(0x11) 1 字节；VT_UI2(0x12) 2 字节；VT_UI4(0x13) 4 字节；其余
 //! VARTYPE 返回 `0x80004005`。VT_DISPATCH(9)/VT_UNKNOWN(13) 走 AfCore
-//! `LoadObject`（16 字节类 GUID、无键、非 ObjectStream 编码）：类 GUID 全
-//! 零的空对象子集已闭合（`variant_object_branch`，流内恰 16 字节零、不产
-//! 生键），映射为 `PropertyValue10_1::NullObject`；非零类 GUID 走
-//! `AfCreateInstance` 实例化且对象体边界由类决定，仍显式不支持。数组标志
+//! 普通 IStream 下 `LoadObject` 读取 16 字节类 GUID、无键；类 GUID 全零的
+//! 空对象子集映射为 `PropertyValue10_1::NullObject`，非零类 GUID 显式不支持。
+//! 若调用上下文已确认 ObjectStream，应使用独立 API
+//! [`read_property_set_object_stream_10_1`]：它读 GUID+共享键，并仅分派本类
+//! 已证的 PropertySet 对象体。数组标志
 //! 0x2000（含字符串数组与批量定宽数组）同样未闭合，显式不支持。
 //!
 //! ## Save `0x7ffd3280`（写方向互证，证据：确定的）
@@ -81,8 +82,8 @@
 //! 功返回才提交；任何失败（截断、版本超限、负计数、限额、未知 VARTYPE、
 //! 对象/数组分支）都不推进调用者游标。`max_bytes` 约束键名与 BSTR 值的声
 //! 明长度，并在任何条目读取之前预检「计数 × 每条目最小 6 字节」。
-//! `table` 参数仅为与同类读取器签名一致（本体内没有 ObjectStream 编码的
-//! 嵌套条目，登记表不被读取或修改）。这是仅覆盖上述分支的严格安全子集，
+//! 旧入口 `table` 参数仅为与同类读取器签名一致，登记表不被读取或修改；
+//! ObjectStream 解析使用新 API。这是仅覆盖上述分支的严格安全子集，
 //! 不代表完整原生 Load 行为，通过也不代表 MXD 格式已验证。
 //!
 //! 未解决问题（详见证据文档「开放项」）：SystemCore 本地 `Variant::Read`
@@ -90,6 +91,7 @@
 //! 各值的业务语义（DATABASE/连接属性候选）未定性；版本 0 无样本佐证；
 //! 全部结论为静态观察，未经目标软件运行验证。
 
+use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
@@ -101,6 +103,8 @@ const MAX_BODY_VERSION: i16 = 1;
 /// 每个属性条目的最小流内字节数：键名 String 最小 4 字节（cb=0 空串）+
 /// 值 Variant 最小 2 字节（无载荷 VARTYPE）。用于计数 ×最小条目的限额预检。
 const MIN_ENTRY_BYTES: usize = 6;
+/// 限制递归 PropertySet 体的嵌套深度，避免恶意输入耗尽栈。
+const MAX_NESTED_PROPERTY_SETS: usize = 64;
 
 /// PropertySet 类标识（CLSID）的 16 字节内存序（Data1-3 小端、Data4 原序）。
 ///
@@ -188,15 +192,15 @@ pub struct PropertySet10_1 {
 ///
 /// 字段序、VARTYPE 表与证据见模块文档。VT_BSTR 的字符串载荷与键名共用
 /// AfCore String 布局，`max_bytes` 约束两者声明长度；`usize::MAX` 表示不额
-/// 外设限。`table` 参数不使用（本体没有 ObjectStream 编码的嵌套条目；对象
-/// 分支 9/13 仅「类 GUID 全零」子集闭合（`NullObject`），非零类 GUID 与数
-/// 组分支在读取前显式拒绝），仅为与同类读取器签名一致。
+/// 外设限。此入口保留普通 IStream 的保守上下文，不把 `table` 当作
+/// ObjectStream 会话。需要会话引用表时使用独立的
+/// [`read_property_set_object_stream_10_1`]。
 pub fn read_property_set_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
-    table: &mut crate::storage::object_refs::RefTable10_1,
+    table: &mut RefTable10_1,
 ) -> io::Result<PropertySet10_1> {
-    let _ = table; // 无嵌套 ObjectStream 条目；见模块文档。
+    let _ = table;
     let start = reader.position();
     let invalid = |reason: String| {
         io::Error::new(
@@ -258,6 +262,171 @@ pub fn read_property_set_10_1(
     Ok(result)
 }
 
+/// ObjectStream PropertySet 值的独立表示；现有普通流公开枚举保持不变。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PropertyValueObjectStream10_1 {
+    /// 内联标量或普通空对象，编码与 [`PropertyValue10_1`] 相同。
+    Inline(PropertyValue10_1),
+    /// 新对象且类为已证明可读取的 PropertySet。
+    Object {
+        class_id: [u8; 16],
+        key: u32,
+        body: Box<PropertySetObjectStream10_1>,
+    },
+    /// 同一 ObjectStream 会话中已登记对象的回引，无后续对象体。
+    BackReference { class_id: [u8; 16], key: u32 },
+}
+
+/// ObjectStream 中单个 PropertySet 条目。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PropertyEntryObjectStream10_1 {
+    pub key: String,
+    pub value: PropertyValueObjectStream10_1,
+}
+
+/// ObjectStream 上下文中的 PropertySet 对象体。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PropertySetObjectStream10_1 {
+    pub version: u16,
+    pub count: u32,
+    pub entries: Vec<PropertyEntryObjectStream10_1>,
+    pub remaining_bytes: usize,
+}
+
+/// 显式按 ObjectStream 会话读取 PropertySet 体，并共享调用者的引用表。
+///
+/// 本 API 不探测普通 IStream 是否实现 IObjectStream：调用者必须已由外层
+/// 上下文确认 ObjectStream。对象头读取复用 Variant 对象分支读取器；仅当新
+/// 对象 CLSID 等于本类经 SystemCore IPersistStream 虚表确认的 PropertySet
+/// CLSID 时才递归读取其体，其他新类不猜边界。游标和引用表均事务性提交。
+pub fn read_property_set_object_stream_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<PropertySetObjectStream10_1> {
+    read_property_set_object_stream_nested_10_1(reader, max_bytes, table, 0)
+}
+
+fn read_property_set_object_stream_nested_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<PropertySetObjectStream10_1> {
+    let start = reader.position();
+    let invalid = |reason: String| {
+        io::Error::new(
+            ErrorKind::InvalidData,
+            format!("PropertySet ObjectStream 体 offset 0x{start:x}: {reason}"),
+        )
+    };
+    let mut trial = reader.clone();
+    let mut trial_table = table.clone();
+    let version = trial.read_u16_le()?;
+    if (version as i16) > MAX_BODY_VERSION || (version as i16) < 0 {
+        return Err(invalid(format!(
+            "版本位模式 {version}（0x{version:04x}）超出接受范围 0..=1"
+        )));
+    }
+    let count_offset = trial.position();
+    let count_raw = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+    if count_raw < 0 {
+        return Err(invalid(format!(
+            "属性计数 offset 0x{count_offset:x} 为负数（{count_raw}）"
+        )));
+    }
+    let count = count_raw as usize;
+    let min_total = count
+        .checked_mul(MIN_ENTRY_BYTES)
+        .ok_or_else(|| invalid("计数乘最小条目长度溢出".into()))?;
+    if min_total > max_bytes {
+        return Err(invalid(format!(
+            "计数 {count} 的最小条目长度超过资源限额 {max_bytes}"
+        )));
+    }
+    let mut entries = Vec::new();
+    for index in 0..count {
+        let key = read_string_10_1(&mut trial, max_bytes)
+            .map_err(|error| invalid(format!("条目 {index} 键名读取失败：{error}")))?;
+        let value = read_variant_object_stream_value_10_1(
+            &mut trial,
+            max_bytes,
+            &mut trial_table,
+            depth,
+        )
+        .map_err(|error| invalid(format!("条目 {index}（键 {key:?}）值读取失败：{error}")))?;
+        entries.push(PropertyEntryObjectStream10_1 { key, value });
+    }
+    let result = PropertySetObjectStream10_1 {
+        version,
+        count: count_raw as u32,
+        entries,
+        remaining_bytes: trial.remaining(),
+    };
+    *reader = trial;
+    *table = trial_table;
+    Ok(result)
+}
+
+fn read_variant_object_stream_value_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<PropertyValueObjectStream10_1> {
+    let mut peek = reader.clone();
+    let value_type = peek.read_u16_le()?;
+    if value_type != 9 && value_type != 13 {
+        let value = read_variant_10_1(reader, max_bytes)?;
+        return Ok(PropertyValueObjectStream10_1::Inline(value));
+    }
+    let mut trial = reader.clone();
+    let mut trial_table = table.clone();
+    let entry =
+        crate::objects::variant_object_branch::read_variant_object_branch_object_stream_10_1(
+            &mut trial,
+            &mut trial_table,
+        )?;
+    let value = match entry {
+        ObjectEntry10_1::Null => {
+            PropertyValueObjectStream10_1::Inline(PropertyValue10_1::NullObject)
+        }
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            PropertyValueObjectStream10_1::BackReference { class_id, key }
+        }
+        ObjectEntry10_1::NewObject { class_id, key } if class_id == PROPERTY_SET_CLASS_ID => {
+            if depth >= MAX_NESTED_PROPERTY_SETS {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    format!("PropertySet ObjectStream 对象嵌套深度超过 {MAX_NESTED_PROPERTY_SETS}"),
+                ));
+            }
+            let body = read_property_set_object_stream_nested_10_1(
+                &mut trial,
+                max_bytes,
+                &mut trial_table,
+                depth + 1,
+            )?;
+            PropertyValueObjectStream10_1::Object {
+                class_id,
+                key,
+                body: Box::new(body),
+            }
+        }
+        ObjectEntry10_1::NewObject { class_id, key } => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                format!(
+                    "Variant ObjectStream 类 GUID {class_id:02x?}、键 {key} 无已证对象体分派；边界由类决定"
+                ),
+            ));
+        }
+    };
+    *reader = trial;
+    *table = trial_table;
+    Ok(value)
+}
+
 /// 读取一个 `Variant::Read`（AfCore `0x68a7c6a0`，非数组分支）值，失败时
 /// 不推进游标。
 ///
@@ -295,8 +464,7 @@ pub fn read_variant_10_1(
         5 | 7 | 6 => PropertyValue10_1::Raw8(trial.read_bytes(8)?.try_into().unwrap()),
         8 => PropertyValue10_1::String(read_string_10_1(&mut trial, max_bytes)?),
         9 | 13 => {
-            // 对象分支：子读取器自带 VARTYPE 复核，从入口位置另取游标读取
-            // VARTYPE + 16 字节类 GUID；失败时外层游标不动、可重复。
+            // 该公开入口保留普通 IStream 的上下文语义，不推断其实现 IObjectStream。
             let mut branch = reader.clone();
             let value =
                 match crate::objects::variant_object_branch::read_variant_object_branch_10_1(

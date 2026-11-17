@@ -1017,7 +1017,9 @@ fn workspace_property_set_new_object_parses_body_and_completes() {
     assert_eq!(body.entries[0].key, "DATABASE");
     assert_eq!(
         body.entries[0].value,
-        mxd2qgz::objects::property_set::PropertyValue10_1::String("D:\\g".to_string())
+        mxd2qgz::objects::property_set::PropertyValueObjectStream10_1::Inline(
+            mxd2qgz::objects::property_set::PropertyValue10_1::String("D:\\g".to_string())
+        )
     );
     // 其后字段可达：工厂标志 + CLSID + int32，FCN 选择子 0，渲染器空标记。
     assert_eq!(ws.factory_flag, Some(1));

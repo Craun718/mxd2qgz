@@ -6,7 +6,8 @@
 
 use mxd2qgz::objects::property_set::{
     PROPERTY_SET_CLASS_ID, PROPERTY_SET_PROPERTY_CLASS_ID, PropertyValue10_1,
-    read_property_set_10_1, read_variant_10_1,
+    PropertyValueObjectStream10_1, read_property_set_10_1, read_property_set_object_stream_10_1,
+    read_variant_10_1,
 };
 use mxd2qgz::storage::object_refs::RefTable10_1;
 use mxd2qgz::stream::reader::Reader;
@@ -32,6 +33,18 @@ fn value_bytes(value_type: u16, payload: &[u8]) -> Vec<u8> {
         .into_iter()
         .chain(payload.iter().copied())
         .collect()
+}
+
+fn property_set_with_object(key: u32, body: &[u8]) -> Vec<u8> {
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(encoded("nested"));
+    bytes.extend(value_bytes(13, &[]));
+    // ObjectStream 非空对象头：Variant 已写 VARTYPE，后随 GUID 和共享键。
+    bytes.extend(PROPERTY_SET_CLASS_ID);
+    bytes.extend(key.to_le_bytes());
+    bytes.extend(body);
+    bytes
 }
 
 /// 样本实例 1（/Maps `0x147f9`）的体形态：版本 1、计数 1、键 "DATABASE"、
@@ -119,6 +132,119 @@ fn reads_empty_set_and_multiple_entries() {
     assert_eq!(body.entries[1].key, "");
     assert_eq!(body.entries[1].value, PropertyValue10_1::Empty);
     assert_eq!(body.remaining_bytes, 0);
+}
+
+#[test]
+fn nonempty_variant_reads_nested_property_set_body_and_registers_shared_key() {
+    let nested_body = [
+        1_u16.to_le_bytes().as_slice(),
+        0_i32.to_le_bytes().as_slice(),
+    ]
+    .concat();
+    let bytes = property_set_with_object(41, &nested_body);
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let value = read_property_set_object_stream_10_1(&mut reader, 1024, &mut refs).unwrap();
+
+    let PropertyValueObjectStream10_1::Object {
+        class_id,
+        key,
+        body,
+    } = &value.entries[0].value
+    else {
+        panic!("应按已证 PropertySet CLSID 分派新对象体");
+    };
+    assert_eq!(*class_id, PROPERTY_SET_CLASS_ID);
+    assert_eq!(*key, 41);
+    assert_eq!(body.version, 1);
+    assert_eq!(body.count, 0);
+    assert!(refs.contains(41));
+    assert_eq!(reader.position(), bytes.len());
+}
+
+#[test]
+fn ordinary_property_set_entry_does_not_assume_object_stream_key() {
+    let bytes = property_set_with_object(41, &[1, 0, 0, 0, 0, 0]);
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let error = read_property_set_10_1(&mut reader, 1024, &mut refs).unwrap_err();
+
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert_eq!(reader.position(), 0);
+    assert!(refs.is_empty());
+}
+
+#[test]
+fn property_set_variants_share_refs_across_separate_stream_readers() {
+    let nested_body = [
+        1_u16.to_le_bytes().as_slice(),
+        0_i32.to_le_bytes().as_slice(),
+    ]
+    .concat();
+    let first_bytes = property_set_with_object(77, &nested_body);
+    let mut refs = RefTable10_1::new();
+    let mut first_reader = Reader::new(&first_bytes);
+    let first = read_property_set_object_stream_10_1(&mut first_reader, 1024, &mut refs).unwrap();
+    assert!(matches!(
+        first.entries[0].value,
+        PropertyValueObjectStream10_1::Object { key: 77, .. }
+    ));
+
+    // 新流只带同一 GUID+键；命中会话表后，不跟随 PropertySet 对象体。
+    let second_bytes = property_set_with_object(77, &[]);
+    let mut second_reader = Reader::new(&second_bytes);
+    let second = read_property_set_object_stream_10_1(&mut second_reader, 1024, &mut refs).unwrap();
+    assert_eq!(
+        second.entries[0].value,
+        PropertyValueObjectStream10_1::BackReference {
+            class_id: PROPERTY_SET_CLASS_ID,
+            key: 77,
+        }
+    );
+    assert_eq!(second_reader.position(), second_bytes.len());
+    assert_eq!(refs.len(), 1);
+}
+
+#[test]
+fn deepest_back_reference_is_read_even_at_nested_object_limit() {
+    let mut deepest = 1_u16.to_le_bytes().to_vec();
+    deepest.extend(1_i32.to_le_bytes());
+    deepest.extend(encoded("ancestor"));
+    deepest.extend(13_u16.to_le_bytes());
+    deepest.extend(PROPERTY_SET_CLASS_ID);
+    deepest.extend(1_u32.to_le_bytes());
+
+    let mut bytes = deepest;
+    for key in (1..=64).rev() {
+        bytes = property_set_with_object(key, &bytes);
+    }
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let body = read_property_set_object_stream_10_1(&mut reader, 1024, &mut refs).unwrap();
+
+    assert!(matches!(
+        body.entries[0].value,
+        PropertyValueObjectStream10_1::Object { key: 1, .. }
+    ));
+    assert_eq!(refs.len(), 64);
+    assert_eq!(reader.position(), bytes.len());
+}
+
+#[test]
+fn unsupported_new_object_rolls_back_reader_and_shared_refs() {
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(encoded("unknown"));
+    bytes.extend(13_u16.to_le_bytes());
+    bytes.extend([0xA5; 16]);
+    bytes.extend(5_u32.to_le_bytes());
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let error = read_property_set_object_stream_10_1(&mut reader, 1024, &mut refs).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert!(error.to_string().contains("无已证对象体分派"));
+    assert_eq!(reader.position(), 0);
+    assert!(refs.is_empty());
 }
 
 #[test]

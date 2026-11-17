@@ -37,13 +37,12 @@
 //!   保留为尾部未知字段；
 //! - 活动图层索引与各对象槽位只进诊断与报告
 //!   （[`MapsParseReport10_1::layer_list`]）；
-//! - 工程名称、其余数据框对象与根尾部值之后的字段没有已确认证据，保留为
-//!   [`UnknownField`](crate::model::UnknownField) 或空字段，不做任何推断。
+//! - 工程名称、未闭合的数据框对象与根尾部值之后的字段保留为
+//!   [`UnknownField`](crate::model::UnknownField) 或空字段。
 //!
-//! 对象循环边界未闭合：Map 之后的对象体没有外部长度字段，本模块不跳过未知
-//! 对象，因此无论数量是多少，最多只解析首个 Map 对象。正数量时根前缀读取器
-//! 在首对象头之后读取的 4 字节按写侧证据（数量 → 对象循环 → 循环尾部值）
-//! 属于首对象体，不是循环尾部值，本模块不把它解释为尾部。
+//! 仅当当前 Map 对象体到达已确认的结束位置时，才循序读下一对象头。整个根
+//! 循环完成后读出实际根尾值；正数量时，根前缀在首对象头后试读的 4 字节属于
+//! 对象体，不解释为根尾。未知对象没有通用长度，不跳过。
 //!
 //! 解析失败（根前缀错误、首对象非 Map、已确认前缀或后缀内的截断与非法值）
 //! 返回明确错误且不返回部分模型；后缀在结构停止点（标志 1 新对象体、未接入
@@ -53,19 +52,20 @@
 
 use crate::layers::fdo_graphics_layer::{AssociatedLayer10_1, ElementCollectionSlot10_1};
 use crate::layers::feature_layer::{
-    DataSource10_1, FeatureClassNameNested10_1, WorkspaceNameEntry10_1,
+    DataSource10_1, DatasetNameEntry10_1, FeatureClassNameNested10_1, WorkspaceNameEntry10_1,
 };
 use crate::layers::layer_list::{LayerBodyPrefix10_1, LayerEntryObject, LayerList10_1};
 use crate::maps::map_object::{
-    MAP_CLASS_ID, ObjectSlot10_1, read_map_prefix_10_1, read_map_suffix_10_1,
+    MAP_CLASS_ID, MapSurroundElement10_1, ObjectSlot10_1, read_map_prefix_object_stream_10_1,
+    read_map_suffix_10_1,
 };
 use crate::maps::maps_stream::read_root_prefix_10_1;
 use crate::model::{
     CoordinateSystem, DataFrame, DataSource, Extent, Layer, LayerGroup, LayerNode, Map,
     ProjectedCoordinateSystem, UnknownField,
 };
-use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
-use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
+use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use crate::storage::object_stream::ObjectHeader;
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
@@ -88,6 +88,8 @@ pub struct MapsParseReport10_1 {
     /// 仅数量为 0（空循环）时它才是循环尾部值；数量为正时按写侧证据该位置
     /// 属于首对象体，本模块不解释，字段仅保留位模式供诊断。
     pub tail_raw: u32,
+    /// 仅在对象循环完整消费后确认的根尾值（流内偏移、原始位模式）。
+    pub confirmed_tail: Option<(usize, u32)>,
     /// 首个数据框的图层列表解析结果（含条目、活动图层索引与停止信息）。
     ///
     /// 活动图层索引按约定放报告不放模型。仅存在被解析的 Map 对象时为
@@ -129,6 +131,7 @@ pub fn parse_maps_10_1_with_limits(
     let mut frames: Vec<DataFrame> = Vec::new();
     let mut map_unknown: Vec<UnknownField> = Vec::new();
     let mut report_layer_list: Option<LayerList10_1> = None;
+    let mut confirmed_tail = None;
 
     if root.count == 0 {
         // 空循环：此处的 4 字节才是读侧循环结束后无条件读取的尾部值。
@@ -137,6 +140,7 @@ pub fn parse_maps_10_1_with_limits(
             root.tail_raw
         ));
         let consumed = reader.position();
+        confirmed_tail = Some((consumed - 4, root.tail_raw));
         if root.remaining_bytes > 0 {
             map_unknown.push(UnknownField {
                 stream: "/Maps".to_string(),
@@ -169,10 +173,96 @@ pub fn parse_maps_10_1_with_limits(
                 }
             }
             ObjectHeader::Object { class_id, key: _ } if class_id == MAP_CLASS_ID => {
-                let (frame, layer_list) =
-                    parse_first_frame(maps, root.count, &mut diagnostics, max_bytes)?;
-                frames.push(frame);
-                report_layer_list = layer_list;
+                let mut refs = RefTable10_1::new();
+                let mut map_indices = std::collections::HashMap::<u32, (usize, usize)>::new();
+                let mut reference_copy_budget = maps.len();
+                let mut objects = Reader::new(maps).reposition_to(4);
+                let mut complete = true;
+                for index in 0..root.count {
+                    let entry_offset = objects.position();
+                    let entry = read_object_entry_10_1(&mut objects, &mut refs);
+                    match entry {
+                        Ok(ObjectEntry10_1::NewObject { class_id, key })
+                            if class_id == MAP_CLASS_ID =>
+                        {
+                            let body = parse_frame(
+                                maps,
+                                objects.position(),
+                                index,
+                                root.count,
+                                &mut diagnostics,
+                                max_bytes,
+                                &mut refs,
+                            );
+                            let (frame, layer_list, end) = match body {
+                                Ok(result) => result,
+                                Err(error) if index == 0 => return Err(error),
+                                Err(error) => {
+                                    diagnostics.push(format!(
+                                        "数据框体读取失败（0x{entry_offset:x}）：{error}"
+                                    ));
+                                    preserve_maps_tail(maps, entry_offset, &mut map_unknown);
+                                    complete = false;
+                                    break;
+                                }
+                            };
+                            if let Some(end) = end {
+                                map_indices.insert(key, (frames.len(), end - entry_offset));
+                            }
+                            frames.push(frame);
+                            if index == 0 {
+                                report_layer_list = layer_list;
+                            }
+                            let Some(end) = end else {
+                                complete = false;
+                                break;
+                            };
+                            objects = objects.reposition_to(end);
+                        }
+                        Ok(ObjectEntry10_1::BackReference { class_id, key })
+                            if class_id == MAP_CLASS_ID && map_indices.contains_key(&key) =>
+                        {
+                            let (original, len) = map_indices[&key];
+                            // 模型持有独立节点；限制大对象的重复回引复制量。
+                            let Some(remaining) = reference_copy_budget.checked_sub(len) else {
+                                diagnostics.push(format!(
+                                    "数据框回引复制超过输入长度限额：0x{entry_offset:x}"
+                                ));
+                                preserve_maps_tail(maps, entry_offset, &mut map_unknown);
+                                complete = false;
+                                break;
+                            };
+                            reference_copy_budget = remaining;
+                            frames.push(frames[original].clone());
+                            diagnostics.push(format!(
+                                "数据框 {}/{}：回引键 {key}",
+                                index + 1,
+                                root.count
+                            ));
+                        }
+                        _ => {
+                            diagnostics.push(format!(
+                                "未支持的数据框对象或无法确认的回引：0x{entry_offset:x}"
+                            ));
+                            preserve_maps_tail(maps, entry_offset, &mut map_unknown);
+                            complete = false;
+                            break;
+                        }
+                    }
+                }
+                if complete {
+                    let offset = objects.position();
+                    if let Ok(raw) = objects.read_u32_le() {
+                        confirmed_tail = Some((offset, raw));
+                        diagnostics.push(format!(
+                            "循环尾部值原始位模式 0x{raw:08x}（流内偏移 0x{offset:x}）"
+                        ));
+                    } else {
+                        diagnostics
+                            .push(format!("数据框对象循环完成，但根尾值在 0x{offset:x} 截断"));
+                    }
+                    preserve_maps_tail(maps, objects.position(), &mut map_unknown);
+                }
             }
             ObjectHeader::Object { class_id, key } => {
                 // 首对象不是 Map 类：对象体无外部长度字段，无法跳过未知类
@@ -204,41 +294,42 @@ pub fn parse_maps_10_1_with_limits(
         },
         count: root.count,
         tail_raw: root.tail_raw,
+        confirmed_tail,
         layer_list: report_layer_list,
         version_candidates: Vec::new(),
         diagnostics,
     })
 }
 
-/// 解析首个 Map 对象体的已确认前缀与后缀并构造数据框。
-///
-/// `maps` 是完整流字节；本函数从数量之后重新读取 Map 对象头（与根前缀读取
-/// 器的确定性行为一致），再依次调用 [`read_map_prefix_10_1`] 与
-/// [`read_map_suffix_10_1`]。后缀使用跨流共享的键登记表：Map 对象自身的键
-/// 在读取对象头时登记（与原生 ObjectStream `+0x44` 读头即查表/登记一致），
-/// 嵌套 PCS 键与后缀新对象键由后缀读取器登记。返回数据框与图层列表
-/// （图层列表放报告不放模型，见模块文档）。
-fn parse_first_frame(
+fn preserve_maps_tail(maps: &[u8], offset: usize, unknown: &mut Vec<UnknownField>) {
+    if let Some(bytes) = maps.get(offset..).filter(|bytes| !bytes.is_empty()) {
+        unknown.push(UnknownField {
+            stream: "/Maps".to_string(),
+            offset: offset as u64,
+            bytes: bytes.to_vec(),
+        });
+    }
+}
+
+/// 从已登记的 Map 对象头之后解析一个数据框。仅完整对象返回下一根字段的偏移。
+fn parse_frame(
     maps: &[u8],
+    body_offset: usize,
+    index: i32,
     count: i32,
     diagnostics: &mut Vec<String>,
     max_bytes: usize,
-) -> io::Result<(DataFrame, Option<LayerList10_1>)> {
-    // 从数量之后重读首对象头：read_header_10_1 与根前缀读取器使用同一实现，
-    // 头部消耗量确定（对象 20 字节），重读不引入新的解释。
-    let mut body = Reader::new(maps);
-    body.read_bytes(4)?;
-    let header = read_header_10_1(&mut body)?;
-    debug_assert!(matches!(
-        header,
-        ObjectHeader::Object { class_id, .. } if class_id == MAP_CLASS_ID
-    ));
-
-    let prefix = read_map_prefix_10_1(&mut body, max_bytes)?;
+    table: &mut RefTable10_1,
+) -> io::Result<(DataFrame, Option<LayerList10_1>, Option<usize>)> {
+    let mut body = Reader::new(maps).reposition_to(body_offset);
+    let prefix = read_map_prefix_object_stream_10_1(&mut body, max_bytes, table)?;
 
     diagnostics.push(format!(
-        "数据框 1/{count}：名称 {:?}，第二名称 {:?}，架构版本 {}（>51 已由读取器拒绝）",
-        prefix.name, prefix.secondary_name, prefix.version
+        "数据框 {}/{count}：名称 {:?}，第二名称 {:?}，架构版本 {}（>51 已由读取器拒绝）",
+        index + 1,
+        prefix.name,
+        prefix.secondary_name,
+        prefix.version
     ));
     match &prefix.spatial_reference {
         Some(sr) => diagnostics.push(match sr {
@@ -262,6 +353,11 @@ fn parse_first_frame(
                 )
             }
         }),
+        None if prefix.spatial_reference_back_reference.is_some() => {
+            if let Some(key) = prefix.spatial_reference_key {
+                diagnostics.push(format!("空间参考：会话内回引键 {key}"));
+            }
+        }
         None => diagnostics
             .push("空间参考：嵌套对象头为 16 零字节空引用标记，该数据框未设置坐标系".to_string()),
     }
@@ -280,10 +376,9 @@ fn parse_first_frame(
             prefix.version,
             remaining.len()
         ));
-        if count > 1 {
+        if let remaining_count @ 1.. = count - index - 1 {
             diagnostics.push(format!(
-                "其余 {} 个数据框对象未解析：首个 Map 后缀边界未知",
-                count - 1
+                "其余 {remaining_count} 个数据框对象未解析：当前 Map 后缀边界未知"
             ));
         }
         let unknown_fields = if remaining.is_empty() {
@@ -305,25 +400,14 @@ fn parse_first_frame(
                 unknown_fields,
             },
             None,
+            None,
         ));
     }
     let map_crs_key = prefix.spatial_reference_key;
 
-    // 后缀读取：图层列表 → 基本图形层 → MapSurround → WKSEnvelope → 两个
-    // int32 → IEnvelope → 书签循环，到书签循环为止。后缀读取器从 Map 对象体
-    // 起点接收 Reader（内部重读前缀以登记嵌套 PCS 键并定位图层列表起点），
-    // 因此这里从数量之后重建一个 Reader；共享登记表先登记 Map 对象自身的键
-    //（对象头在上方重读时获得）。
-    let map_key = match header {
-        ObjectHeader::Object { key, .. } => key,
-        ObjectHeader::Null => unreachable!("首对象为 Map 类时对象头不是空标记"),
-    };
-    let mut table = RefTable10_1::new();
-    table.register(map_key);
-    let mut suffix_reader = Reader::new(maps);
-    suffix_reader.read_bytes(4)?;
-    read_header_10_1(&mut suffix_reader)?;
-    let suffix = read_map_suffix_10_1(&mut suffix_reader, max_bytes, &mut table)?;
+    // 后缀读取器从对象体起点重读前缀；所有 Map 共用根流会话键表。
+    let mut suffix_reader = Reader::new(maps).reposition_to(body_offset);
+    let suffix = read_map_suffix_10_1(&mut suffix_reader, max_bytes, table)?;
 
     // —— 图层列表诊断、体前缀模型填充与未知体保留 ——
     let list = &suffix.layer_list;
@@ -551,6 +635,9 @@ fn parse_first_frame(
                 ));
                 None
             }
+            Some(LayerBodyPrefix10_1::RasterLayer(raster)) => {
+                raster_node(raster, entry.index, diagnostics)
+            }
             None => None,
         };
         // 回引条目：键命中先前已解析条目时复用同对象节点（原生同一图层对象
@@ -628,6 +715,15 @@ fn parse_first_frame(
             suffix.map_surrounds.len()
         ));
         push_slot_diagnostics(&suffix.map_surrounds, "MapSurround 条目", diagnostics);
+        for (index, parsed) in suffix.map_surround_parsed.iter().enumerate() {
+            if let Some(MapSurroundElement10_1::Legend(legend)) = parsed {
+                diagnostics.push(format!(
+                    "MapSurround Legend 条目 {}：主体版本 {}",
+                    index + 1,
+                    legend.version
+                ));
+            }
+        }
     }
     if let Some(envelope) = &suffix.envelope_object {
         diagnostics.push(format!(
@@ -675,8 +771,7 @@ fn parse_first_frame(
     }
     if let Some(bookmark_count) = suffix.bookmark_count {
         diagnostics.push(format!(
-            "书签计数 {bookmark_count}（空间书签集合候选，样本计数 0 未经非空实例\
-             验证）；已消费 {} 个条目",
+            "书签计数 {bookmark_count}（空间书签集合）；已消费 {} 个条目",
             suffix.bookmarks.len()
         ));
         push_slot_diagnostics(&suffix.bookmarks, "书签条目", diagnostics);
@@ -792,8 +887,31 @@ fn parse_first_frame(
     }
     if tail.masking_version.is_some() {
         diagnostics.push(format!(
-            "Map LayerMasking：版本={:?}，计数={:?}，已读条目={:?}，尾 short={:?}；逐图层接口状态未确定，后续保留",
-            tail.masking_version, tail.masking_count, tail.masking_entries.as_ref().map(Vec::len), tail.masking_empty_short
+            "Map LayerMasking：版本={:?}，计数={:?}，已读条目={:?}，尾 short={:?}",
+            tail.masking_version,
+            tail.masking_count,
+            tail.masking_entries.as_ref().map(Vec::len),
+            tail.masking_empty_short
+        ));
+    }
+
+    if let Some(fields) = &tail.post_masking {
+        diagnostics.push(format!(
+            "Map 逐图层遮罩循环不消费字节；之后的 IsFramed 原始位={:?}，+0x398 字符串偏移={:?}，+0x3a0 short={:?}，+0x15d 字节={:?}",
+            fields.is_framed_bits,
+            fields.string_398.as_ref().map(|(offset, _)| offset),
+            fields.short_3a0,
+            fields.byte_15d,
+        ));
+    }
+
+    if let Some(collections) = &tail.persist_collections {
+        diagnostics.push(format!(
+            "Map 版本 33 集合：声明 {}，已读 {}，后续 LONG={:?}，停止={:?}",
+            collections.count,
+            collections.collection.len(),
+            collections.long_value,
+            collections.stop
         ));
     }
 
@@ -823,24 +941,20 @@ fn parse_first_frame(
 
     // —— 停止点与尾部未知区 ——
     let stop_offset = suffix_reader.position();
-    diagnostics.push(format!(
-        "后缀读取停止：{}；其后 {} 字节保留为数据框未知尾部（流内偏移 0x{stop_offset:x} \
-         起），不解释",
-        suffix.stop.describe(),
-        suffix.remaining_bytes
-    ));
-    if suffix.remaining_bytes > 0 {
-        frame_unknown.push(UnknownField {
-            stream: "/Maps".to_string(),
-            offset: stop_offset as u64,
-            bytes: maps[stop_offset..].to_vec(),
-        });
-    }
-    if count > 1 {
+    let complete = suffix.stop == crate::maps::map_object::MapSuffixStop::Complete;
+    if complete {
+        diagnostics.push(format!("Map 对象体完整消费至 /Maps:0x{stop_offset:x}"));
+    } else {
         diagnostics.push(format!(
-            "其余 {} 个数据框对象未解析：对象循环边界未闭合，对象体无外部长度字段，不跳过未知对象",
-            count - 1
+            "后缀读取停止：{}；其后 {} 字节保留为数据框未知尾部（流内偏移 0x{stop_offset:x} 起），不解释",
+            suffix.stop.describe(), suffix.remaining_bytes
         ));
+        preserve_maps_tail(maps, stop_offset, &mut frame_unknown);
+        if let remaining_count @ 1.. = count - index - 1 {
+            diagnostics.push(format!(
+                "其余 {remaining_count} 个数据框对象未解析：对象循环边界未闭合，对象体无外部长度字段，不跳过未知对象"
+            ));
+        }
     }
     if children.is_empty() {
         diagnostics.push(
@@ -865,7 +979,11 @@ fn parse_first_frame(
         extent,
         unknown_fields: frame_unknown,
     };
-    Ok((frame, Some(suffix.layer_list.clone())))
+    Ok((
+        frame,
+        Some(suffix.layer_list),
+        complete.then_some(stop_offset),
+    ))
 }
 
 /// VARIANT_BOOL 位模式 → 模型布尔值；非规范位模式按非零=真处理并返回说明。
@@ -1157,6 +1275,41 @@ fn feature_layer_source(
                 FeatureClassNameNested10_1::WorkspaceName(_) => {
                     (None, Some("工作空间槽为空标记/回引，无路径".to_string()))
                 }
+                FeatureClassNameNested10_1::DatasetName(DatasetNameEntry10_1::NewObject(body)) => {
+                    use crate::objects::dataset_name::WorkspaceNameSlot10_1;
+                    use crate::objects::dataset_name_more::DatasetNameMoreBody10_1;
+
+                    if let DatasetNameMoreBody10_1::FeatureDataset(dataset) = body.as_ref() {
+                        let detail = match &dataset.workspace {
+                            WorkspaceNameSlot10_1::WorkspaceName(ws) => match &ws.stop {
+                                Some(stop) => {
+                                    format!("工作空间键 {}，路径已读，后续停止：{stop:?}", ws.key)
+                                }
+                                None => format!("工作空间键 {}，路径已读", ws.key),
+                            },
+                            WorkspaceNameSlot10_1::Null => "工作空间槽为空".to_string(),
+                            WorkspaceNameSlot10_1::BackReference { key, .. } => {
+                                format!("工作空间槽回引键 {key}，当前条目无路径体")
+                            }
+                            WorkspaceNameSlot10_1::Unsupported { class_id, key } => format!(
+                                "工作空间槽类 {}（键 {key}）未解析",
+                                crate::layers::layer_list::class_id_hex(class_id),
+                            ),
+                        };
+                        (
+                            dataset.workspace_path().map(str::to_owned),
+                            Some(format!(
+                                "FeatureDatasetName（键 {}）：{detail}",
+                                dataset.key
+                            )),
+                        )
+                    } else {
+                        (
+                            None,
+                            Some("IDatasetName 当前类未映射工作空间路径".to_string()),
+                        )
+                    }
+                }
                 FeatureClassNameNested10_1::DatasetName(_) => (
                     None,
                     Some("选择子 !=0 的 IDatasetName 分支：槽位保留未知".to_string()),
@@ -1284,6 +1437,7 @@ fn body_prefix_node(
                 unknown_fields: Vec::new(),
             }))
         }
+        LayerBodyPrefix10_1::RasterLayer(raster) => raster_node(raster, entry_index, diagnostics),
         LayerBodyPrefix10_1::CompositeGraphicsLayer(cgl) => {
             diagnostics.push(format!(
                 "条目 {}：CompositeGraphicsLayer（名称 {:?}）为图形层，中间模型没有对应\
@@ -1294,6 +1448,27 @@ fn body_prefix_node(
             None
         }
     }
+}
+
+/// RasterLayer 的名称和可见性均经 10.1 ILayer 虚表和 Load 的完整对象偏移对位。
+fn raster_node(
+    prefix: &crate::layers::raster_layer::RasterLayerPrefix10_1,
+    entry_index: usize,
+    diagnostics: &mut Vec<String>,
+) -> Option<LayerNode> {
+    let continuation = prefix.continuation.as_ref()?;
+    let (visible, note) = variant_bool_to_model(continuation.fixed_shorts[0], "可见性");
+    if let Some(note) = note {
+        diagnostics.push(format!("条目 {}：{note}", entry_index + 1));
+    }
+    Some(LayerNode::Layer(Layer {
+        name: prefix.first_string.clone(),
+        visible,
+        source: None,
+        crs: None,
+        extent: None,
+        unknown_fields: Vec::new(),
+    }))
 }
 
 /// 输出后缀对象槽位（MapSurround / 书签条目）的诊断行。
@@ -1392,6 +1567,71 @@ mod tests {
         bytes.extend(9_i32.to_le_bytes());
         bytes.extend([0_u8; 16]); // IEnvelope：空标记
         bytes.extend(0_i32.to_le_bytes()); // 书签计数（样本 0）
+        bytes
+    }
+
+    /// 可闭合 Legend 对象体，用于核对解析诊断直连流内主体版本。
+    fn suffix_chain_with_legend(legend_version: u16) -> Vec<u8> {
+        let mut bytes = 0_i32.to_le_bytes().to_vec(); // 图层列表计数
+        bytes.extend((-1_i32).to_le_bytes()); // 活动图层索引
+        bytes.extend([0_u8; 16]); // 基本图形层空标记
+        bytes.extend(1_i32.to_le_bytes()); // 一个 MapSurround
+        bytes.extend(crate::maps::map_surround::LEGEND_CLASS_ID);
+        bytes.extend(0x2b_u32.to_le_bytes()); // Legend 对象键
+
+        bytes.extend(legend_version.to_le_bytes());
+        bytes.extend(3_u16.to_le_bytes()); // 共同前缀版本
+        bytes.extend(encoded("图例"));
+        bytes.extend([0_u8; 16]); // 关联地图空槽
+        bytes.extend(0_u16.to_le_bytes()); // 共同前缀 short
+        bytes.extend([0_u8; 32]); // 共同前缀原始块
+        bytes.extend([0_u8; 16]); // LegendFormat 空槽
+        bytes.extend(encoded("标题"));
+        if legend_version == 1 {
+            bytes.extend(1.0_f64.to_le_bytes());
+            bytes.extend(2.0_f64.to_le_bytes());
+        }
+        bytes.extend([0_u16.to_le_bytes(); 3].concat()); // 三个 short
+        bytes.extend(0xffff_u16.to_le_bytes()); // 集合前 short
+        bytes.extend(0_i32.to_le_bytes()); // LegendItem 计数
+        if legend_version >= 3 {
+            bytes.extend(0_u16.to_le_bytes());
+        }
+        if legend_version >= 4 {
+            bytes.extend(0_u16.to_le_bytes());
+        }
+        if legend_version >= 5 {
+            bytes.extend([0_u16.to_le_bytes(); 3].concat());
+            bytes.extend(0.0_f64.to_le_bytes());
+        }
+
+        for value in [0.0_f64; 4] {
+            bytes.extend(value.to_le_bytes()); // WKSEnvelope
+        }
+        bytes.extend(0_i32.to_le_bytes());
+        bytes.extend(0_i32.to_le_bytes());
+        bytes.extend([0_u8; 16]); // IEnvelope 空槽
+        bytes.extend(0_i32.to_le_bytes()); // 书签计数
+        bytes
+    }
+
+    fn suffix_chain_with_aoi_bookmark() -> Vec<u8> {
+        let mut bytes = 0_i32.to_le_bytes().to_vec(); // 图层列表计数
+        bytes.extend((-1_i32).to_le_bytes()); // 活动图层索引
+        bytes.extend([0_u8; 16]); // 基本图形层空标记
+        bytes.extend(0_i32.to_le_bytes()); // MapSurround 计数
+        for value in [0.0_f64; 4] {
+            bytes.extend(value.to_le_bytes()); // WKSEnvelope
+        }
+        bytes.extend(0_i32.to_le_bytes());
+        bytes.extend(0_i32.to_le_bytes());
+        bytes.extend([0_u8; 16]); // IEnvelope 空槽
+        bytes.extend(1_i32.to_le_bytes()); // 一个 AOIBookmark
+        bytes.extend(crate::maps::map_surround::AOI_BOOKMARK_CLASS_ID);
+        bytes.extend(0x2b_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes()); // AOIBookmark 版本
+        bytes.extend([0_u8; 16]); // 位置 Envelope 空槽
+        bytes.extend(encoded("样例书签"));
         bytes
     }
 
@@ -1609,6 +1849,30 @@ mod tests {
         let crs = layer.crs.as_ref().expect("已解析 Envelope 应提供图层 CRS");
         assert!(!crs.definition.is_empty());
         assert!(crs.projected.is_some());
+        let model_rasters = &frame.children[frame.children.len() - 2..];
+        for ((index, expected_visible), model_node) in
+            [(4, false), (5, true)].into_iter().zip(model_rasters)
+        {
+            let Some(LayerBodyPrefix10_1::RasterLayer(raster)) = &list.entries[index].parsed else {
+                panic!("参考样本应读取栅格图层前缀");
+            };
+            let LayerNode::Layer(node) = model_node else {
+                panic!("栅格应成为叶节点");
+            };
+            assert!(!node.name.is_empty());
+            assert_eq!(node.name, raster.first_string);
+            assert_eq!(node.visible, expected_visible);
+        }
+        let Some(LayerBodyPrefix10_1::RasterLayer(raster)) = &list.entries[5].parsed else {
+            unreachable!();
+        };
+        let name = raster
+            .dataset_name
+            .as_ref()
+            .expect("普通栅格名称体应已消费");
+        assert_eq!(name.key, 1545);
+        assert!(name.stop.is_none());
+        assert_eq!(list.entries[5].body.unwrap().offset, 0x14862);
     }
 
     #[test]
@@ -1792,6 +2056,50 @@ mod tests {
         // 未知尾部从新对象头起保留。
         let unknown = &report.map.frames[0].unknown_fields[0];
         assert_eq!(unknown.bytes, unknown_entry);
+    }
+
+    #[test]
+    fn feature_dataset_workspace_path_reaches_the_layer_source() {
+        use crate::layers::feature_layer::{
+            FEATURE_CLASS_NAME_CLASS_ID, WORKSPACE_NAME_CLASS_ID, read_feature_layer_prefix_10_1,
+        };
+        use crate::objects::dataset_name::FEATURE_DATASET_NAME_CLASS_ID;
+
+        let mut body = 34_u16.to_le_bytes().to_vec();
+        body.extend(encoded("道路层"));
+        body.extend(encoded(""));
+        body.extend([0; 6]); // 可见性等三个 short
+        body.extend(FEATURE_CLASS_NAME_CLASS_ID);
+        body.extend(10_u32.to_le_bytes());
+        body.extend(2_u16.to_le_bytes());
+        for value in ["道路", "", "要素类", "交通"] {
+            body.extend(encoded(value));
+        }
+        body.extend([0; 8]); // 两个 int32
+        body.extend(1_u16.to_le_bytes()); // 选择 IDatasetName
+        body.extend(FEATURE_DATASET_NAME_CLASS_ID);
+        body.extend(11_u32.to_le_bytes());
+        body.extend(1_u16.to_le_bytes());
+        for value in ["交通", "", "要素数据集", ""] {
+            body.extend(encoded(value));
+        }
+        body.push(0);
+        body.extend(WORKSPACE_NAME_CLASS_ID);
+        body.extend(12_u32.to_le_bytes());
+        body.extend(1_u16.to_le_bytes());
+        for value in ["..\\data.gdb", "", "File Geodatabase"] {
+            body.extend(encoded(value));
+        }
+        body.extend([0; 16 + 1 + 4]); // 空 PropertySet、工厂标志 0、尾 int32
+        body.extend(0_u16.to_le_bytes()); // 不含 TopologyName
+        body.extend([0xa5; 20]); // 未知渲染器，读取器在该槽停止
+
+        let mut reader = Reader::new(&body);
+        let prefix =
+            read_feature_layer_prefix_10_1(&mut reader, 1024, &mut RefTable10_1::new()).unwrap();
+        let source = feature_layer_source(&prefix, 0, &mut Vec::new()).unwrap();
+        assert_eq!(source.path.as_deref(), Some("..\\data.gdb"));
+        assert_eq!(source.connection.as_deref(), Some("道路"));
     }
 
     #[test]
@@ -1991,6 +2299,77 @@ mod tests {
                 .iter()
                 .any(|note| note.contains("未设置坐标系"))
         );
+    }
+
+    #[test]
+    fn parsed_legend_versions_are_reported_for_old_and_current_layouts() {
+        for version in [1_u16, 5] {
+            let mut body = SAMPLE_VERSION.to_le_bytes().to_vec();
+            body.extend(encoded("图例测试框"));
+            body.extend(encoded(""));
+            body.extend([0_u8; 16]); // Map 空间参考
+            body.extend(suffix_chain_with_legend(version));
+            let report = parse_maps_10_1(&maps_stream(1, &body, &[])).unwrap();
+
+            assert!(report.diagnostics.iter().any(|line| {
+                line.contains(&format!("MapSurround Legend 条目 1：主体版本 {version}"))
+            }));
+            assert!(
+                report
+                    .diagnostics
+                    .iter()
+                    .any(|line| line.contains("书签计数 0"))
+            );
+        }
+    }
+
+    #[test]
+    fn nonempty_aoi_bookmark_is_consumed() {
+        let mut body = SAMPLE_VERSION.to_le_bytes().to_vec();
+        body.extend(encoded("书签测试框"));
+        body.extend(encoded(""));
+        body.extend([0_u8; 16]); // Map 空间参考
+        body.extend(suffix_chain_with_aoi_bookmark());
+        let report = parse_maps_10_1(&maps_stream(1, &body, &[])).unwrap();
+
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|line| line.contains("书签计数 1"))
+        );
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|line| line.contains("书签条目 1/1"))
+        );
+        assert!(
+            !report
+                .diagnostics
+                .iter()
+                .any(|line| line.contains("后缀读取停止：书签条目 0"))
+        );
+    }
+
+    #[test]
+    fn truncated_nonempty_aoi_bookmark_stops_at_its_body_and_keeps_tail() {
+        let mut body = SAMPLE_VERSION.to_le_bytes().to_vec();
+        body.extend(encoded("书签测试框"));
+        body.extend(encoded(""));
+        body.extend([0_u8; 16]); // Map 空间参考
+        let mut suffix = suffix_chain_with_aoi_bookmark();
+        suffix.pop(); // 破坏名称字符串的 UTF-16LE 终止符，模拟短读
+        body.extend(suffix);
+        let report = parse_maps_10_1(&maps_stream(1, &body, &[])).unwrap();
+
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|line| line.contains("后缀读取停止：书签条目 0"))
+        );
+        assert!(!report.map.frames[0].unknown_fields.is_empty());
     }
 
     #[test]

@@ -145,7 +145,7 @@ use std::io::{self, ErrorKind};
 /// GetClassID `0x793a2600` 写出该 CLSID（`DAT_79481590`）。样本中无实例
 /// （书签计数 0），无字节佐证。
 pub const AOI_BOOKMARK_CLASS_ID: [u8; 16] = [
-    0x73, 0xae, 0xb1, 0xbb, 0x41, 0xe3, 0x11, 0xd2, 0xae, 0x1e, 0x08, 0x00, 0x09, 0xec, 0x73, 0x2a,
+    0x73, 0xae, 0xb1, 0xbb, 0xe3, 0x41, 0xd2, 0x11, 0xae, 0x1e, 0x08, 0x00, 0x09, 0xec, 0x73, 0x2a,
 ];
 
 /// FeatureBookmark（要素书签）类标识（CLSID）的 16 字节内存序。
@@ -154,7 +154,7 @@ pub const AOI_BOOKMARK_CLASS_ID: [u8; 16] = [
 /// esri.clsid.xml 声明 Map.dll；Map.dll GetClassID `0x793b5520` 写出
 /// （`DAT_79482c18`）。样本中无实例，无字节佐证。
 pub const FEATURE_BOOKMARK_CLASS_ID: [u8; 16] = [
-    0x5b, 0xb3, 0x65, 0xec, 0x42, 0x43, 0x11, 0xd2, 0xae, 0x22, 0x08, 0x00, 0x09, 0xec, 0x73, 0x2a,
+    0x5b, 0xb3, 0x65, 0xec, 0x42, 0x43, 0xd2, 0x11, 0xae, 0x22, 0x08, 0x00, 0x09, 0xec, 0x73, 0x2a,
 ];
 
 /// Legend（图例）类标识（CLSID）的 16 字节内存序。
@@ -207,7 +207,11 @@ pub struct MapSurroundCommonPrefix10_1 {
     pub version: u16,
     /// 装饰物名称（String::Read → `this−0xa0`）。
     pub name: String,
-    /// 关联地图条目：`None` = 16 字节空标记；`Some` = 20 字节回引。
+    /// 关联地图条目（请求 esriCarto `IMap`，IID
+    /// `{E6BDAA75-4D35-11D0-98BE-00805F7CED21}`）：`None` = 16 字节空标记；
+    /// `Some` = 20 字节回引。该成员语义由 Map.dll 10.1 Load 的接口 IID、
+    /// 接口 setter 调用及 Save 对应对象指针的写出共同确认；回引目标类标识
+    /// 仍原样保留。
     pub map_entry: Option<MapBackReference10_1>,
     /// 版本 ≥2 的 int16 原样位模式（`this−0x8c`，语义未定）。
     pub extra_short: Option<u16>,
@@ -480,9 +484,12 @@ pub fn read_map_surround_common_prefix_10_1(
     // 2. 名称字符串（String::Read 布局 → this−0xa0）。
     let name = read_string_10_1(&mut trial, max_bytes)?;
 
-    // 3. LoadObject(IMap {E6BDAA75-…})：关联地图。登记先于持久化使该槽在
-    //    真实流中恒为回引；空标记与回引之外的新对象（整棵 Map 体，无外部
-    //    长度）不可跳过，报不支持。
+    // 3. LoadObject(IMap {E6BDAA75-4D35-11D0-98BE-00805F7CED21})：关联地图。
+    //    Load 通过关联 MapSurround 接口子对象的 +0x10 虚函数设置该 IMap；
+    //    Save（Map.dll 0x79441510）从其对象指针成员调用 SaveObject。两侧
+    //    的 this 调整方式不同，不把伪代码参数偏移误当成相同绝对偏移。
+    //    登记先于持久化使该槽在真实流中恒为回引；空标记与回引之外的新对象
+    //    （整棵 Map 体，无外部长度）不可跳过，报不支持。
     let map_offset = trial.position();
     let map_entry = match read_object_entry_10_1(&mut trial, &mut trial_table)? {
         ObjectEntry10_1::Null => None,

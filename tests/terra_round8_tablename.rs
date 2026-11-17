@@ -145,5 +145,63 @@ fn linearref_tablename_from_map_host() {
     assert_eq!(prefix.named_object_bodies[0].as_ref().unwrap().key, 334);
     assert_eq!(prefix.stop, StandaloneTableStop10_1::Complete);
     assert_eq!(map.standalone_tables.len(), 2);
-    assert_eq!(r.position(), 0x8407);
+    let fields = map.post_border_tail.post_masking.as_ref().unwrap();
+    assert_eq!(fields.is_framed_bits.0, 0x8407);
+    assert_eq!(fields.string_398, None);
+    assert_eq!(r.position(), 0x8409);
+    assert_eq!(map.stop, mxd2qgz::maps::map_object::MapSuffixStop::Complete);
+    let report = mxd2qgz::maps::mxd_maps::parse_maps_10_1(&data).unwrap();
+    assert_eq!(report.confirmed_tail, Some((0x8409, 1)));
+    assert!(
+        report.map.frames[0]
+            .unknown_fields
+            .iter()
+            .all(|field| field.offset < 0x8409)
+    );
+    assert!(report.map.unknown_fields.is_empty());
+}
+
+#[test]
+#[ignore = "需要 10.1 SDK Java 安装介质提取文件"]
+fn root_loop_reaches_next_slot_only_after_a_verified_complete_map() {
+    use mxd2qgz::maps::mxd_maps::parse_maps_10_1;
+    let path = "temp/terra-round8-old/sdk-java/LinearRef.mxd.4896861F_D89C_46BA_ABEC_17591162B2B1";
+    let mut doc = cfb::open(path).unwrap();
+    let mut data = Vec::new();
+    doc.open_stream("/Maps")
+        .unwrap()
+        .read_to_end(&mut data)
+        .unwrap();
+    let end = 0x8409;
+
+    // 复用真实首框及其实际类/键作为第二槽回引；根尾值保留在循环后。
+    let mut two = data[..end].to_vec();
+    two[..4].copy_from_slice(&2_u32.to_le_bytes());
+    two.extend_from_slice(&data[4..24]);
+    two.extend_from_slice(&data[end..]);
+    let report = parse_maps_10_1(&two).unwrap();
+    assert_eq!(report.map.frames.len(), 2);
+    assert!(report.map.frames[0].name == report.map.frames[1].name);
+    assert_eq!(
+        report.map.frames[0].children.len(),
+        report.map.frames[1].children.len()
+    );
+    assert_eq!(report.confirmed_tail, Some((end + 20, 1)));
+
+    // 未知第二个类没有长度，不能把后续字节错认成根尾值。
+    two[end] ^= 0x80;
+    let report = parse_maps_10_1(&two).unwrap();
+    assert_eq!(report.map.frames.len(), 1);
+    assert_eq!(report.confirmed_tail, None);
+    assert_eq!(report.map.unknown_fields[0].offset as usize, end);
+    assert_eq!(report.map.unknown_fields[0].bytes, two[end..]);
+
+    // 根尾值只剩 3 字节，仍应保留已完成的框，不报告完整根尾。
+    let report = parse_maps_10_1(&data[..data.len() - 1]).unwrap();
+    assert_eq!(report.map.frames.len(), 1);
+    assert_eq!(report.confirmed_tail, None);
+    assert_eq!(
+        report.map.unknown_fields[0].bytes,
+        data[end..data.len() - 1]
+    );
 }

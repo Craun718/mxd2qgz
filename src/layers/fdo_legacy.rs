@@ -31,8 +31,9 @@
 //!     除对象条目外不读流；
 //! 12. 版本 ≥2：int16；13. String；14. String；15. int32；
 //!     16. LoadObject（**ISymbol** `{F3435802-…}`，
-//!     `DAT_6b1abd70`，传给 SelectionSymbol）；17. int16；
-//!     18. int16；19. LoadObject（**IColor** `{20CD40B0-…}`）；
+//!     `DAT_6b1abd70`，传给 SelectionSymbol；该槽复用已闭合的符号族分派器）；
+//!     17. int16；18. int16；19. LoadObject（**IColor** `{20CD40B0-…}`，
+//!     该槽复用已闭合的颜色族分派器）；
 //! 20. 版本 ≥3（`2 < ver`）：String（收尾）。
 //!
 //! 旧加载器在收尾 String 后返回——即旧体在最后一个字段处**完整终结**
@@ -97,6 +98,11 @@ use crate::layers::feature_layer::{
     FEATURE_CLASS_NAME_CLASS_ID, FEATURE_LAYER_CLASS_ID, FeatureClassNamePrefix10_1,
     FeatureClassNameStop10_1, FeatureLayerStop10_1, read_feature_class_name_body_10_1,
     read_feature_layer_prefix_10_1,
+};
+use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
+use crate::objects::display_symbol::{
+    DisplaySlotKind10_1, MAX_SYMBOL_NESTING_DEPTH, SymbolSlotFull10_1, SymbolStop10_1,
+    read_symbol_slot_full_10_1, slot_full_stop_10_1,
 };
 use crate::objects::element_collection::{
     ELEMENT_COLLECTION_CLASS_ID, ElementCollection10_1, ElementCollectionStop10_1,
@@ -191,11 +197,11 @@ pub enum LegacyFdoStop10_1 {
     DataSourceStopped { stop: FeatureClassNameStop10_1 },
     /// FeatureClassName 体读取失败：游标与登记表回退到该对象头起点。
     DataSourceFailed { reason: String },
-    /// 版本 ≥2 的 SelectionSymbol 槽新对象（符号体未接入）：游标回退
-    /// 到该对象头起点。
+    /// 版本 ≥2 的 SelectionSymbol 槽新对象类不在符号闭合集：游标回退到对象头。
     RendererNewObject { class_id: [u8; 16], key: u32 },
-    /// 版本 ≥2 的 IColor 槽新对象（颜色体未闭合）：游标回退到该对象头起
-    /// 点。
+    /// SelectionSymbol 符号体内部槽未闭合。
+    RendererBodyStopped { stop: SymbolStop10_1 },
+    /// 版本 ≥2 的 IColor 槽新对象类不在颜色闭合集：游标回退到对象头。
     ColorNewObject { class_id: [u8; 16], key: u32 },
 }
 
@@ -244,12 +250,15 @@ impl LegacyFdoStop10_1 {
                 format!("旧加载器数据源 FeatureClassName 体解析失败（{reason}），体保留未知")
             }
             Self::RendererNewObject { class_id, key } => format!(
-                "旧加载器 SelectionSymbol 槽新对象（键 {key}，类标识 {}）：符号\
-                 体未接入，游标回退到该对象头起点",
+                "旧加载器 SelectionSymbol 槽新对象（键 {key}，类标识 {}）不受支持：\
+                 游标回退到该对象头起点",
                 crate::layers::layer_list::class_id_hex(class_id)
             ),
+            Self::RendererBodyStopped { stop } => {
+                format!("旧加载器 SelectionSymbol 符号体内停止：{stop:?}")
+            }
             Self::ColorNewObject { class_id, key } => format!(
-                "旧加载器 IColor 槽新对象（键 {key}，类标识 {}）：颜色体未闭合，\
+                "旧加载器 IColor 槽新对象（键 {key}，类标识 {}）不受支持：\
                  游标回退到该对象头起点",
                 crate::layers::layer_list::class_id_hex(class_id)
             ),
@@ -298,14 +307,13 @@ pub struct LegacyFdoGraphicsLayerPrefix10_1 {
     pub v2_string_b: Option<String>,
     /// 第 15 步 IFeatureSelection.CombinationMethod 原始 int32（版本 ≥2）。
     pub v2_int32: Option<i32>,
-    /// 第 16 步 SelectionSymbol 的 ISymbol 槽位分类（版本 ≥2，到达时）。`None` = 未
-    /// 到达或空标记前停止（空标记/回引继续，见 `stop`）。
+    /// 第 16 步 SelectionSymbol 的原始对象条目分类，保持既有公开类型和值。
     pub renderer_slot: Option<ObjectEntry10_1>,
     /// 第 17 步 IFeatureLayer.ScaleSymbols 原始 short（版本 ≥2）。
     pub v2_short_x: Option<u16>,
     /// 第 18 步 IFeatureSelection.SetSelectionSymbol 原始 short（版本 ≥2）。
     pub v2_short_y: Option<u16>,
-    /// 第 19 步 SelectionColor 的 IColor 槽位分类（版本 ≥2，到达时）。`None` = 未到达。
+    /// 第 19 步 SelectionColor 的原始对象条目分类，保持既有公开类型和值。
     pub color_slot: Option<ObjectEntry10_1>,
     /// 第 20 步 IDataLayer.RelativeBase（版本 ≥3）。
     pub tail_string: Option<String>,
@@ -564,30 +572,49 @@ pub fn read_fdo_graphics_layer_legacy_prefix_10_1(
         v2_int32 = Some(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
 
         // 16. SelectionSymbol 的 ISymbol 槽（DAT_6b1abd70={F3435802-…}）：
-        //     空标记/回引继续，新对象停止。
+        //     复用已闭合的符号族分派器。未知类回退至槽头，嵌套体停止则
+        //     保留停止原因，后续字段不可达。
         let slot_offset = trial.position();
         let saved_table = trial_table.clone();
-        let entry = read_object_entry_10_1(&mut trial, &mut trial_table)?;
-        renderer_slot = Some(entry);
-        if let ObjectEntry10_1::NewObject { class_id, key } = entry {
+        let mut entry_reader = trial.clone();
+        let mut entry_table = trial_table.clone();
+        renderer_slot = Some(read_object_entry_10_1(&mut entry_reader, &mut entry_table)?);
+        let slot = read_symbol_slot_full_10_1(
+            &mut trial,
+            max_bytes,
+            &mut trial_table,
+            MAX_SYMBOL_NESTING_DEPTH,
+        )?;
+        if let SymbolSlotFull10_1::Unsupported { class_id, key } = &slot {
             trial_table = saved_table;
             trial = reposition(&origin, entry_offset, slot_offset);
-            stop = Some(LegacyFdoStop10_1::RendererNewObject { class_id, key });
+            stop = Some(LegacyFdoStop10_1::RendererNewObject {
+                class_id: *class_id,
+                key: *key,
+            });
+        } else {
+            if let Some(symbol_stop) = slot_full_stop_10_1(&slot, DisplaySlotKind10_1::Symbol) {
+                stop = Some(LegacyFdoStop10_1::RendererBodyStopped { stop: symbol_stop });
+            }
         }
-
         if stop.is_none() {
             v2_short_x = Some(trial.read_u16_le()?);
             v2_short_y = Some(trial.read_u16_le()?);
 
-            // 19. IColor 槽位（DAT_6b1abd50={20CD40B0-…}）。
+            // 19. IColor 槽位（DAT_6b1abd50={20CD40B0-…}）：解析已闭合颜色族。
             let slot_offset = trial.position();
             let saved_table = trial_table.clone();
-            let entry = read_object_entry_10_1(&mut trial, &mut trial_table)?;
-            color_slot = Some(entry);
-            if let ObjectEntry10_1::NewObject { class_id, key } = entry {
+            let mut entry_reader = trial.clone();
+            let mut entry_table = trial_table.clone();
+            color_slot = Some(read_object_entry_10_1(&mut entry_reader, &mut entry_table)?);
+            let slot = read_color_slot_10_1(&mut trial, max_bytes, &mut trial_table)?;
+            if let ColorSlot10_1::Unsupported { class_id, key } = &slot {
                 trial_table = saved_table;
                 trial = reposition(&origin, entry_offset, slot_offset);
-                stop = Some(LegacyFdoStop10_1::ColorNewObject { class_id, key });
+                stop = Some(LegacyFdoStop10_1::ColorNewObject {
+                    class_id: *class_id,
+                    key: *key,
+                });
             }
         }
     }

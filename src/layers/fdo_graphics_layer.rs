@@ -238,6 +238,8 @@ pub struct FdoGraphicsLayerPrefix10_1 {
     pub short_field: u16,
     /// Load 第 4 步 ILayer 槽位（关联要素图层）分类结果。
     pub associated_layer: AssociatedLayer10_1,
+    /// 完整读取并登记的关联 FeatureLayer 新对象键；用于证明后续回引的实际类型。
+    pub associated_feature_layer_key: Option<u32>,
     /// Load 第 5 步 IElementCollection2 槽位分类（到达时）。`None` = 在关
     /// 联图层槽即停止。
     pub element_collection: Option<ElementCollectionSlot10_1>,
@@ -590,6 +592,7 @@ pub fn read_fdo_graphics_layer_prefix_10_1(
             int32_field: 0,
             short_field: 0,
             associated_layer: AssociatedLayer10_1::Null,
+            associated_feature_layer_key: None,
             element_collection: None,
             delegated_layer: None,
             fdo_tail: None,
@@ -608,6 +611,7 @@ pub fn read_fdo_graphics_layer_prefix_10_1(
     let slot_offset = trial.position();
     let saved_table = trial_table.clone();
     let mut stop;
+    let mut associated_feature_layer_key = None;
     let associated_layer = match read_object_entry_10_1(&mut trial, &mut trial_table)? {
         ObjectEntry10_1::Null => {
             stop = None;
@@ -617,7 +621,7 @@ pub fn read_fdo_graphics_layer_prefix_10_1(
             stop = None;
             AssociatedLayer10_1::BackReference { class_id, key }
         }
-        ObjectEntry10_1::NewObject { class_id, key: _ } if class_id == FEATURE_LAYER_CLASS_ID => {
+        ObjectEntry10_1::NewObject { class_id, key } if class_id == FEATURE_LAYER_CLASS_ID => {
             // 新 FeatureLayer：解析已确认前缀。体在其读取器停止点处停止时，
             // 关联图层体剩余无外部长度，本读取器随之停止（步骤 5 起不可达）。
             // A 轮起后继段可完整消费（TailCompleted = FL 体语义终点，无剩余
@@ -635,6 +639,7 @@ pub fn read_fdo_graphics_layer_prefix_10_1(
                     {
                         // FL 体完整消费：步骤 5 可达。
                         stop = None;
+                        associated_feature_layer_key = Some(key);
                     } else {
                         stop = Some(FdoGraphicsLayerStop10_1::AssociatedLayerBodyStopped {
                             layer_stop: prefix.stop.clone(),
@@ -766,6 +771,7 @@ pub fn read_fdo_graphics_layer_prefix_10_1(
         int32_field,
         short_field,
         associated_layer,
+        associated_feature_layer_key,
         element_collection,
         delegated_layer,
         fdo_tail,

@@ -5,7 +5,8 @@
 //! 记录）；目标实现为 **AfCore.dll 10.1.0.3035**（`temp/arcgis101-bin/` 既有
 //! 基线，SHA-256 `031858c4…cc47c17`；SystemCore.dll 经 IAT 按名导入同一导出
 //! `?Read@Variant@@QAEJPAUIStream@@_N@Z`，故本分支对 PropertySet 值同样适
-//! 用，见该文档「值序列化器身份」节）。
+//! 用，见该文档「值序列化器身份」节）。ObjectStream 上下文分支的新增头部
+//! 读取器及 QI/接收端证据见 `docs/mxd-luna-followup-stream-20261118.md`。
 //!
 //! ## 原生编码（证据：确定的）
 //!
@@ -42,6 +43,7 @@
 //! 节在 trial 游标上读取，失败不推进调用者游标。单元测试只覆盖可构造输
 //! 入，不代表原生运行已验证。
 
+use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
@@ -88,6 +90,37 @@ pub fn read_variant_object_branch_10_1(
     }
     *reader = trial;
     Ok(VariantObjectBranch10_1::Null)
+}
+
+/// 在已由调用方确认的 10.1 ObjectStream 上读取 Variant 对象头。
+///
+/// 原生 `LoadObject` 对底层 IStream 查询 `IObjectStream` 成功后转入 SystemCore
+/// `ObjectStream::LoadObject`（虚表 `+0x44`），因此非空对象头为 GUID + u32 键，
+/// 并须共享该 ObjectStream 会话的引用表。此入口只分类对象头，不消费新对象体；
+/// 普通流必须继续使用 [`read_variant_object_branch_10_1`]，其非零 GUID 仍明确不支持。
+/// 失败时游标和引用表均保持原状。
+pub fn read_variant_object_branch_object_stream_10_1(
+    reader: &mut Reader<'_>,
+    refs: &mut RefTable10_1,
+) -> io::Result<ObjectEntry10_1> {
+    let start = reader.position();
+    let invalid = |reason: String| {
+        io::Error::new(
+            ErrorKind::InvalidData,
+            format!("Variant ObjectStream 对象分支 offset 0x{start:x}: {reason}"),
+        )
+    };
+    let mut trial = reader.clone();
+    let value_type = trial.read_u16_le()?;
+    if value_type != 9 && value_type != 13 {
+        return Err(invalid(format!(
+            "VARTYPE {value_type} 不属于对象分支（仅 9/13 走 LoadObject）"
+        )));
+    }
+    // 对象条目读取器在完整读取头部后才登记键；此后无其它可失败操作。
+    let entry = read_object_entry_10_1(&mut trial, refs)?;
+    *reader = trial;
+    Ok(entry)
 }
 
 #[cfg(test)]
@@ -182,5 +215,66 @@ mod tests {
         let error = read_variant_object_branch_10_1(&mut r).expect_err("截断应失败");
         assert_eq!(error.kind(), ErrorKind::UnexpectedEof);
         assert_eq!(r.position(), before);
+    }
+
+    #[test]
+    fn object_stream_非空对象头读取键并登记新对象() {
+        let mut bytes = vec![13, 0];
+        bytes.extend_from_slice(&[0xA5; 16]);
+        bytes.extend_from_slice(&29u32.to_le_bytes());
+        bytes.extend_from_slice(&[0xEE, 0xFF]);
+        let mut r = reader(&bytes);
+        let mut refs = RefTable10_1::new();
+        assert_eq!(
+            read_variant_object_branch_object_stream_10_1(&mut r, &mut refs).unwrap(),
+            ObjectEntry10_1::NewObject {
+                class_id: [0xA5; 16],
+                key: 29,
+            }
+        );
+        assert_eq!(r.position(), 22);
+        assert_eq!(r.remaining(), 2, "新对象体由上层具体类解析");
+        assert!(refs.contains(29));
+    }
+
+    #[test]
+    fn object_stream_重复键分类为回引且空标记不读键() {
+        let mut refs = RefTable10_1::new();
+        let mut object = vec![9, 0];
+        object.extend_from_slice(&[0x22; 16]);
+        object.extend_from_slice(&7u32.to_le_bytes());
+        let mut first = reader(&object);
+        assert!(matches!(
+            read_variant_object_branch_object_stream_10_1(&mut first, &mut refs).unwrap(),
+            ObjectEntry10_1::NewObject { key: 7, .. }
+        ));
+        let mut again = reader(&object);
+        assert!(matches!(
+            read_variant_object_branch_object_stream_10_1(&mut again, &mut refs).unwrap(),
+            ObjectEntry10_1::BackReference { key: 7, .. }
+        ));
+
+        let mut null = reader(&[
+            13, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ]);
+        assert_eq!(
+            read_variant_object_branch_object_stream_10_1(&mut null, &mut refs).unwrap(),
+            ObjectEntry10_1::Null
+        );
+        assert_eq!(null.position(), 18);
+    }
+
+    #[test]
+    fn object_stream_截断对象头不推进游标或登记键() {
+        let mut bytes = vec![9, 0];
+        bytes.extend_from_slice(&[0x44; 16]);
+        bytes.extend_from_slice(&[1, 2]);
+        let mut r = reader(&bytes);
+        let mut refs = RefTable10_1::new();
+        let error = read_variant_object_branch_object_stream_10_1(&mut r, &mut refs)
+            .expect_err("缺少完整键时必须失败");
+        assert_eq!(error.kind(), ErrorKind::UnexpectedEof);
+        assert_eq!(r.position(), 0);
+        assert!(refs.is_empty());
     }
 }

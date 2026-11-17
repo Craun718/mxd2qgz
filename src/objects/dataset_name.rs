@@ -34,7 +34,12 @@
 //!    Save 恒写静态常量 1（`DAT_70aaac34`）；
 //! 2. AfCore String ×4 → IPersistStream this+0x0c/+0x10/+0x14/+0x18；
 //!    第 1、3 项为 IDatasetName 的 Name、Category，第 2 项为 IName.NameString；
-//! 3. 1 字节标志 → IPersistStream this+0x1c（原生按 bool 存储，语义未定，原样保留）；
+//! 3. 1 字节标志 → IPersistStream this+0x1c，即完整对象 +0x48；
+//!    `IFeatureDatasetNameImpl` 接口视图（完整对象 +0x20）的 getter/setter
+//!    分别位于虚表 +0x14/+0x18，直接访问接口 this+0x28；getter 仅将字节
+//!    `1` 映射为 `VARIANT_TRUE`，setter 仅将 `VARIANT_TRUE`（-1）写为 1，
+//!    其他值写为 0。流读写不经过该规范化访问器，故解析仍保留原始字节；
+//!    私有成员名、生产者及业务用途未定；
 //! 4. LoadObject（请求 IID 与 FCN 选择子 ==0 分支同值 = IWorkspaceName）
 //!    → IPersistStream this+0x20；条目经 [`crate::storage::object_refs::read_object_entry_10_1`]
 //!    分类，新对象且类标识为 WorkspaceName 时读取其已闭合体（复用
@@ -84,7 +89,10 @@
 //! 不得声称已验证。
 //!
 //! 未解决问题（详见证据文档「开放项」）：
-//! - FeatureDatasetName 的第 4 个 String 与标志字节语义未定，原样保留；
+//! - FeatureDatasetName 的第 4 个 String 已确认由 `IFeatureDatasetNameImpl`
+//!   虚表 +0x0c/+0x10 访问，接口 this+0x24（完整对象 +0x44）；标志的
+//!   访问器位于 +0x14/+0x18、接口 this+0x28（完整对象 +0x48）。私有成员名、
+//!   实际生产者/消费者及业务用途未定，流字段仍原样保留；
 //! - IDatasetName 槽可能出现的其他 IDatasetName 实现类（UnknownDatasetName、
 //!   GeometricNetworkName、FeatureClassName 自身等，esri.clsid 声明）未闭合，
 //!   读取器在其对象头处停止；
@@ -171,16 +179,37 @@ pub struct FeatureDatasetNameBody10_1 {
     pub string_b: String,
     /// 第三个字符串（IPersistStream this+0x14；IDatasetName.Category）。
     pub string_c: String,
-    /// 第四个字符串（IPersistStream this+0x18）；对象 +0x20 的 IFeatureDatasetNameImpl 接口
-    /// +0x0c/+0x10 方法访问同一字段，成员名称与业务语义未定。
+    /// 第四个字符串（IPersistStream this+0x18，即完整对象 +0x44）。
+    /// `IFeatureDatasetNameImpl` 接口视图位于完整对象 +0x20，其虚表 +0x0c
+    /// getter 与 +0x10 setter 均访问接口 this+0x24；私有成员名和业务语义未定。
     pub string_d: String,
-    /// 1 字节标志（IPersistStream this+0x1c）；对象 +0x20 的 IFeatureDatasetNameImpl 接口
-    /// +0x14/+0x18 方法按 VARIANT_BOOL 读写，成员名称未定，原始字节保留。
+    /// 1 字节标志（IPersistStream this+0x1c，即完整对象 +0x48）。
+    /// `IFeatureDatasetNameImpl` 接口视图位于完整对象 +0x20，其虚表 +0x14
+    /// getter 将字节值恰为 1 映射为 `VARIANT_TRUE`，+0x18 setter 将输入
+    /// `VARIANT_TRUE`（-1）映射为字节 1、其余输入映射为 0。Load/Save 直接
+    /// 读写该字节，不经过访问器；因此保留原始值。私有成员名和业务用途未定。
     pub flag: u8,
     /// 第 4 步 IWorkspaceName 槽（请求 IID `{FADD975C-…}`）分类结果。
     pub workspace: WorkspaceNameSlot10_1,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<FeatureDatasetNameStop10_1>,
+}
+
+impl FeatureDatasetNameBody10_1 {
+    /// 返回已解析 WorkspaceName 体中的路径原文。
+    ///
+    /// 已知 WorkspaceName 即使在 PropertySet 子槽处停止，路径字段仍已先行
+    /// 完整读取，因此仍可返回；调用方可同时检查 [`Self::stop`] 保留诊断。
+    /// 返回 `None` 时，空、回引和未知类等状态仍由 [`Self::workspace`] 原样
+    /// 保留，调用方应检查该槽以输出相应诊断。路径不做规范化或本机存在性判断。
+    pub fn workspace_path(&self) -> Option<&str> {
+        match &self.workspace {
+            WorkspaceNameSlot10_1::WorkspaceName(workspace) => Some(&workspace.path),
+            WorkspaceNameSlot10_1::Null
+            | WorkspaceNameSlot10_1::BackReference { .. }
+            | WorkspaceNameSlot10_1::Unsupported { .. } => None,
+        }
+    }
 }
 
 /// TopologyName 体第 3 步 IDatasetName 槽位的分类结果。

@@ -46,8 +46,8 @@
 //! [`parse_body_prefix`]）：FeatureLayer → `feature_layer`、GroupLayer →
 //! `group_layer`、CompositeGraphicsLayer → `composite_graphics`、
 //! FDOGraphicsLayer → `fdo_graphics_layer`（2026-11-14 第六轮闭合，
-//! AnnoLayer.dll `0x6b1955a0`，样本条目 1 的类）。RasterLayer 等其余类没
-//! 有读取器，体整体按有界未知跳过。体前缀解析失败
+//! AnnoLayer.dll `0x6b1955a0`，样本条目 1 的类）。RasterLayer 仅在
+//! ExtraSafe 条目界内读取已确认前缀；无读取器的类按有界未知跳过。体前缀解析失败
 //! （版本超限、嵌套类不支持等）不使整条列表失败：按有界未知降级并在条目
 //! 上保留失败原因；真实截断仍会因有界跳过超出流长度而整体失败。标志 1 的
 //! 新对象体解析出前缀后游标停在前缀终点（体剩余无外部长度，列表停止）；
@@ -102,6 +102,11 @@ const OBJECT_HEADER_BYTES: usize = 20;
 /// 单个条目的最小字节数：2 字节标志 + 8 字节全零前缀（ExtraSafe 空条目）。
 const MIN_ENTRY_BYTES: usize = 10;
 
+/// RasterLayer 类标识 `{D02371C9-35F7-11D2-B1F2-00C04F8EDEFF}` 的文件字节序。
+pub(crate) const RASTER_LAYER_CLASS_ID: [u8; 16] = [
+    0xc9, 0x71, 0x23, 0xd0, 0xf7, 0x35, 0xd2, 0x11, 0xb1, 0xf2, 0x00, 0xc0, 0x4f, 0x8e, 0xde, 0xff,
+];
+
 /// 类标识的 32 字符小写十六进制串（诊断用）：实现移至
 /// [`crate::storage::class_id_hex`]（消除 objects→layers 依赖倒置），此处保
 /// 留原名重导出。
@@ -128,6 +133,8 @@ pub enum LayerBodyPrefix10_1 {
     /// FDOGraphicsLayer 体前缀（版本、int32/short 标量、关联要素图层
     /// ILayer 槽、IElementCollection2 槽、委派 FeatureLayer 体，第六轮闭合）。
     FdoGraphicsLayer(Box<FdoGraphicsLayerPrefix10_1>),
+    /// 有界 RasterLayer 的已确认前缀。
+    RasterLayer(crate::layers::raster_layer::RasterLayerPrefix10_1),
 }
 
 impl LayerBodyPrefix10_1 {
@@ -141,6 +148,7 @@ impl LayerBodyPrefix10_1 {
             Self::FeatureLayer(prefix) => &prefix.name,
             Self::GroupLayer(prefix) => &prefix.name,
             Self::CompositeGraphicsLayer(prefix) => &prefix.name,
+            Self::RasterLayer(prefix) => &prefix.first_string,
             Self::FdoGraphicsLayer(prefix) => match &prefix.associated_layer {
                 crate::layers::fdo_graphics_layer::AssociatedLayer10_1::FeatureLayer(layer) => {
                     &layer.name
@@ -231,8 +239,43 @@ impl LayerListEntry {
                 parts.push(format!("新对象 类={} 键 {key}", class_id_hex(class_id)));
             }
         }
-        if let Some(parsed) = &self.parsed {
-            parts.push(format!("体前缀已解析：名称 {:?}", parsed.layer_name()));
+        match &self.parsed {
+            Some(LayerBodyPrefix10_1::RasterLayer(prefix)) => {
+                parts.push(format!("RasterLayer 体前缀已解析：版本 {}", prefix.version));
+                if let Some(continuation) = &prefix.continuation
+                    && let Some(crate::storage::object_stream::ObjectHeader::Object {
+                        class_id,
+                        key,
+                    }) = &continuation.first_object_header
+                {
+                    parts.push(format!(
+                        "首个 IName 对象头 类={} 键 {key}",
+                        class_id_hex(class_id)
+                    ));
+                }
+                if let Some(name) = &prefix.dataset_name {
+                    parts.push(match &name.stop {
+                        Some(stop) => format!("RasterDatasetName 未读完：{stop:?}"),
+                        None => "RasterDatasetName 对象体已解析".into(),
+                    });
+                }
+                if let Some(name) = &prefix.fgdb_dataset_name {
+                    parts.push(if name.delegated_name.stop.is_none() {
+                        "FgdbRasterDatasetName 的委派名称体已解析".into()
+                    } else {
+                        "FgdbRasterDatasetName 的委派名称体未读完".into()
+                    });
+                }
+                if let Some(records) = &prefix.fgdb_raster_io {
+                    parts.push(if records.stop.is_none() {
+                        "FgdbRasterDatasetName 的 RasterIO 已读到结束记录".into()
+                    } else {
+                        "FgdbRasterDatasetName 的 RasterIO 保留未读记录".into()
+                    });
+                }
+            }
+            Some(parsed) => parts.push(format!("体前缀已解析：名称 {:?}", parsed.layer_name())),
+            None => {}
         }
         if let Some(body) = &self.body {
             if body.len > 0 {
@@ -449,10 +492,18 @@ fn read_entry(
             // 类分派：FeatureLayer / GroupLayer / CompositeGraphicsLayer /
             // FDOGraphicsLayer 的新对象体先解析已确认前缀（各读取器事务
             // 性：失败不推进游标、不改登记表），再按条目边界跳过前缀之后
-            // 的剩余字节。RasterLayer 等其余类没有读取器，体整体按未知处理。
+            // 的剩余字节。没有读取器的类整体按未知处理。
             // Basemap 必须在外层已证或既有观察推定的界内读取；子读取器偏移相对
             // 有界切片，只有成功时才提交它完整读取的对象登记。
-            let dispatch = if *class_id == crate::layers::basemap_layer::BASEMAP_LAYER_CLASS_ID
+            let dispatch = if *class_id == RASTER_LAYER_CLASS_ID {
+                // RasterLayer 后续体尚未闭合；只解析 ExtraSafe 外层界内的前缀。
+                if let Some((end, _)) = bound {
+                    read_bounded_raster_prefix(trial, end, max_bytes, offset, trial_table)
+                        .map(|prefix| Some(LayerBodyPrefix10_1::RasterLayer(prefix)))
+                } else {
+                    Ok(None)
+                }
+            } else if *class_id == crate::layers::basemap_layer::BASEMAP_LAYER_CLASS_ID
                 && bound.is_some()
             {
                 let (end, _) = bound.expect("已检查外层边界");
@@ -542,6 +593,69 @@ fn read_entry(
         parsed,
         parse_note,
     })
+}
+
+/// 只在当前条目的字节范围内试读，避免首串借用后一个条目或活动索引的字节。
+fn read_bounded_raster_prefix(
+    trial: &mut Reader<'_>,
+    end: usize,
+    max_bytes: usize,
+    offset: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<crate::layers::raster_layer::RasterLayerPrefix10_1> {
+    let mut source = trial.clone();
+    let len = end
+        .checked_sub(source.position())
+        .ok_or_else(|| invalid(offset, "RasterLayer 外层边界早于对象体"))?;
+    let mut body = Reader::new(source.read_bytes(len)?);
+    let mut prefix =
+        crate::layers::raster_layer::read_raster_layer_prefix_10_1(&mut body, max_bytes)?;
+    // 续段失败不丢弃已确定的首串，且试读器不越过外层条目界。
+    prefix.continuation = crate::layers::raster_layer::read_raster_layer_continuation_10_1(
+        &mut body,
+        prefix.version,
+        max_bytes,
+    )
+    .ok();
+    use crate::layers::fgdb_raster_dataset_name::{
+        FGDB_RASTER_DATASET_NAME_CLASS_ID, read_fgdb_raster_dataset_name_prefix_10_1,
+        read_fgdb_raster_io_prefix_10_1,
+    };
+    use crate::layers::raster_dataset_name::{
+        RASTER_DATASET_NAME_CLASS_ID, read_raster_dataset_name_body_10_1,
+    };
+    if let Some(continuation) = &prefix.continuation
+        && let Some(crate::storage::object_stream::ObjectHeader::Object { class_id, key }) =
+            continuation.first_object_header
+        && matches!(
+            class_id,
+            RASTER_DATASET_NAME_CLASS_ID | FGDB_RASTER_DATASET_NAME_CLASS_ID
+        )
+        && !refs.contains(key)
+    {
+        let mut staged = refs.clone();
+        staged.register(key);
+        if class_id == RASTER_DATASET_NAME_CLASS_ID {
+            if let Ok(name) =
+                read_raster_dataset_name_body_10_1(&mut body, max_bytes, &mut staged, key)
+            {
+                *refs = staged;
+                prefix.dataset_name = Some(Box::new(name));
+            }
+        } else if let Ok(name) =
+            read_fgdb_raster_dataset_name_prefix_10_1(&mut body, max_bytes, &mut staged, key)
+        {
+            *refs = staged;
+            if name.delegated_name.stop.is_none()
+                && let Ok(records) = read_fgdb_raster_io_prefix_10_1(&mut body, max_bytes)
+            {
+                prefix.fgdb_raster_io = Some(Box::new(records));
+            }
+            prefix.fgdb_dataset_name = Some(Box::new(name));
+        }
+    }
+    trial.read_bytes(body.position())?;
+    Ok(prefix)
 }
 
 /// 按类标识分派新对象体的已确认前缀解析（组图层子图层递归共用，见

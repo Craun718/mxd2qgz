@@ -33,7 +33,7 @@
 //! 静态观察，未经目标软件运行验证。
 
 use crate::objects::property_set::{
-    PROPERTY_SET_CLASS_ID, PropertySet10_1, read_property_set_10_1,
+    PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1, read_property_set_object_stream_10_1,
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -63,7 +63,7 @@ pub enum WorkspaceNameStop10_1 {
 }
 
 /// WorkspaceName 体内 IPropertySet 槽位（请求 IID `{F0BA6ABC-…}`）的分类
-/// 结果（已接入 [`read_property_set_10_1`]）。
+/// 结果（已接入 [`read_property_set_object_stream_10_1`]）。
 #[derive(Debug, Clone, PartialEq)]
 pub enum PropertySetSlot10_1 {
     /// 16 字节全零类标识：空引用，无键、无对象体。
@@ -72,7 +72,7 @@ pub enum PropertySetSlot10_1 {
     BackReference { class_id: [u8; 16], key: u32 },
     /// 新 PropertySet 对象（类标识经 [`PROPERTY_SET_CLASS_ID`] 校验）：已读
     /// 取其闭合体（版本、计数、[键名 String + 值 Variant] 循环）。
-    PropertySet(Box<PropertySet10_1>),
+    PropertySet(Box<PropertySetObjectStream10_1>),
     /// 新对象但类标识非 PropertySet（其余实现类体未闭合）：停止点，游标回
     /// 退到该对象头起点、该键不保留（见
     /// [`WorkspaceNameStop10_1::PropertySetNewObject`]）。
@@ -178,7 +178,10 @@ pub fn read_workspace_name_body_10_1(
         ObjectEntry10_1::NewObject { class_id, key: _ } if class_id == PROPERTY_SET_CLASS_ID => {
             // 接线:PropertySet 体(版本 + 计数 + [键名 String + 值 Variant]
             // 循环)整体消费;失败不推进游标、不修改登记表(读取器自身事务性)。
-            let body = read_property_set_10_1(&mut trial, max_bytes, &mut staged_table)?;
+            // WorkspaceName 已在 ObjectStream 会话中解码对象头。原生把同一
+            // IStream 传给 PropertySet::Load，嵌套值必须共用会话键表。
+            let body =
+                read_property_set_object_stream_10_1(&mut trial, max_bytes, &mut staged_table)?;
             PropertySetSlot10_1::PropertySet(Box::new(body))
         }
         ObjectEntry10_1::NewObject { class_id, key } => {

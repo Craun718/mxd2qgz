@@ -14,6 +14,8 @@ use mxd2qgz::layers::fdo_legacy::{
 use mxd2qgz::layers::feature_layer::{
     FEATURE_CLASS_NAME_CLASS_ID, FEATURE_LAYER_CLASS_ID, FeatureLayerStop10_1,
 };
+use mxd2qgz::objects::display_color::RGB_COLOR_CLASS_ID;
+use mxd2qgz::objects::display_symbol::SIMPLE_MARKER_SYMBOL_CLASS_ID;
 use mxd2qgz::objects::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
 use mxd2qgz::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
 use mxd2qgz::stream::reader::Reader;
@@ -454,6 +456,13 @@ fn renderer_and_color_new_objects_roll_back_to_header() {
             key: 35
         })
     );
+    assert_eq!(
+        parsed.renderer_slot,
+        Some(ObjectEntry10_1::NewObject {
+            class_id: [0xF3; 16],
+            key: 35
+        })
+    );
     assert_eq!(parsed.v2_short_x, None, "渲染器停止后不可达");
     let header_end = bytes.len() - b"opaque".len() - 20;
     assert_eq!(reader.position(), header_end);
@@ -484,8 +493,143 @@ fn renderer_and_color_new_objects_roll_back_to_header() {
             key: 36
         })
     );
+    assert_eq!(
+        parsed.color_slot,
+        Some(ObjectEntry10_1::NewObject {
+            class_id: [0xEE; 16],
+            key: 36
+        })
+    );
     assert_eq!(reader.position(), bytes.len() - b"opaque".len() - 20);
     assert!(!table.contains(36));
+}
+
+#[test]
+fn legacy_body_dispatches_closed_selection_symbol_and_color_bodies() {
+    let mut bytes = legacy_head(2, "旧层");
+    bytes.extend([0_u8; 16]); // ILayer
+    bytes.extend([0_u8; 16]); // ISpatialReference
+    bytes.extend([0_u8; 16]); // IElementCollection2
+    bytes.extend([0_u8; 16]); // IName
+    bytes.extend(0_u16.to_le_bytes()); // Selectable
+    bytes.extend(encoded("selection")); // DataSourceType
+    bytes.extend(encoded("OBJECTID")); // DisplayField
+    bytes.extend(0_i32.to_le_bytes()); // CombinationMethod
+
+    // SelectionSymbol：完整 SimpleMarkerSymbol v1，两个颜色槽为空。
+    bytes.extend(entry_bytes(&SIMPLE_MARKER_SYMBOL_CLASS_ID, 35));
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend([0_u8; 16]);
+    bytes.extend(6.0_f64.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(13_i32.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend([0.0_f64; 3].into_iter().flat_map(f64::to_le_bytes));
+    bytes.push(1);
+    bytes.extend(1.0_f64.to_le_bytes());
+    bytes.extend([0_u8; 16]);
+    bytes.extend(0x44_u16.to_le_bytes()); // ScaleSymbols
+    bytes.extend(0x55_u16.to_le_bytes()); // SetSelectionSymbol
+
+    // SelectionColor：完整 RgbColor v1。
+    bytes.extend(entry_bytes(&RGB_COLOR_CLASS_ID, 36));
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.push(0);
+    for value in [1.0_f64, 2.0, 3.0] {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes.push(0);
+    bytes.push(0xFF);
+
+    let mut table = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let parsed = read_fdo_graphics_layer_legacy_prefix_10_1(&mut reader, 1024, &mut table).unwrap();
+
+    assert_eq!(
+        parsed.renderer_slot,
+        Some(ObjectEntry10_1::NewObject {
+            class_id: SIMPLE_MARKER_SYMBOL_CLASS_ID,
+            key: 35
+        })
+    );
+    assert!(matches!(
+        parsed.color_slot,
+        Some(ObjectEntry10_1::NewObject {
+            class_id: RGB_COLOR_CLASS_ID,
+            key: 36
+        })
+    ));
+    assert_eq!(parsed.stop, None);
+    assert_eq!(parsed.remaining_bytes, 0);
+    assert_eq!(reader.position(), bytes.len());
+    assert!(table.contains(35));
+    assert!(table.contains(36));
+}
+
+#[test]
+fn nested_selection_symbol_stop_preserves_entry_and_inner_offset() {
+    let mut bytes = legacy_head(2, "旧层");
+    bytes.extend([0_u8; 16]); // ILayer
+    bytes.extend([0_u8; 16]); // ISpatialReference
+    bytes.extend([0_u8; 16]); // IElementCollection2
+    bytes.extend([0_u8; 16]); // IName
+    bytes.extend(0_u16.to_le_bytes());
+    bytes.extend(encoded(""));
+    bytes.extend(encoded(""));
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(entry_bytes(&SIMPLE_MARKER_SYMBOL_CLASS_ID, 35));
+    bytes.extend(1_u16.to_le_bytes()); // SimpleMarkerSymbol 版本
+    bytes.extend(entry_bytes(&[0xF3; 16], 37)); // 主色槽未知对象
+    let nested_header_offset = bytes.len() - 20;
+
+    let mut table = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let parsed = read_fdo_graphics_layer_legacy_prefix_10_1(&mut reader, 1024, &mut table).unwrap();
+
+    assert_eq!(
+        parsed.renderer_slot,
+        Some(ObjectEntry10_1::NewObject {
+            class_id: SIMPLE_MARKER_SYMBOL_CLASS_ID,
+            key: 35
+        })
+    );
+    assert!(matches!(
+        parsed.stop,
+        Some(LegacyFdoStop10_1::RendererBodyStopped {
+            stop: mxd2qgz::objects::display_symbol::SymbolStop10_1::NestedIncomplete {
+                key: 35,
+                ..
+            }
+        })
+    ));
+    assert_eq!(reader.position(), nested_header_offset);
+    assert!(table.contains(35));
+    assert!(!table.contains(37));
+    assert_eq!(parsed.v2_short_x, None);
+}
+
+#[test]
+fn malformed_nested_selection_symbol_rolls_back_legacy_read() {
+    let mut bytes = legacy_head(2, "旧层");
+    bytes.extend([0_u8; 16]); // ILayer
+    bytes.extend([0_u8; 16]); // ISpatialReference
+    bytes.extend([0_u8; 16]); // IElementCollection2
+    bytes.extend([0_u8; 16]); // IName
+    bytes.extend(0_u16.to_le_bytes());
+    bytes.extend(encoded(""));
+    bytes.extend(encoded(""));
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(entry_bytes(&SIMPLE_MARKER_SYMBOL_CLASS_ID, 35));
+    bytes.extend(1_u16.to_le_bytes()); // Symbol body begins, then truncates.
+
+    let mut table = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let error =
+        read_fdo_graphics_layer_legacy_prefix_10_1(&mut reader, 1024, &mut table).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::UnexpectedEof);
+    assert_eq!(reader.position(), 0);
+    assert!(table.is_empty());
 }
 
 #[test]

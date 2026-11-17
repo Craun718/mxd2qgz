@@ -5,6 +5,7 @@
 //! 测试只覆盖代码自身契约（合成正常/异常输入），不代表格式已验证，未在
 //! 目标软件或样本中核对。
 
+use mxd2qgz::maps::map_object::MAP_CLASS_ID;
 use mxd2qgz::maps::map_surround::{
     AOI_BOOKMARK_CLASS_ID, BookmarkEnvelopeEntry10_1, BookmarkNameEntry10_1,
     FEATURE_BOOKMARK_CLASS_ID, LEGEND_CLASS_ID, LEGEND_FORMAT_CLASS_ID, LegendFormatEntry10_1,
@@ -54,7 +55,7 @@ fn common_prefix_bytes(version: u16, name: &str, map_key: Option<u32>) -> Vec<u8
     let mut bytes = version.to_le_bytes().to_vec();
     bytes.extend(string_bytes(name));
     match map_key {
-        Some(key) => push_entry_header(&mut bytes, &LEGEND_CLASS_ID, key),
+        Some(key) => push_entry_header(&mut bytes, &MAP_CLASS_ID, key),
         None => push_null_marker(&mut bytes),
     }
     if version >= 2 {
@@ -277,7 +278,7 @@ fn common_prefix_version_gates() {
     assert_eq!(
         prefix.map_entry,
         Some(MapBackReference10_1 {
-            class_id: LEGEND_CLASS_ID,
+            class_id: MAP_CLASS_ID,
             key: 9
         })
     );
@@ -353,7 +354,7 @@ fn legend_reads_full_version_five_body() {
     assert_eq!(
         legend.common.map_entry,
         Some(MapBackReference10_1 {
-            class_id: LEGEND_CLASS_ID,
+            class_id: MAP_CLASS_ID,
             key: 9
         })
     );
@@ -634,14 +635,14 @@ fn class_id_constants_match_documented_clsids() {
     assert_eq!(
         AOI_BOOKMARK_CLASS_ID,
         [
-            0x73, 0xae, 0xb1, 0xbb, 0x41, 0xe3, 0x11, 0xd2, 0xae, 0x1e, 0x08, 0x00, 0x09, 0xec,
+            0x73, 0xae, 0xb1, 0xbb, 0xe3, 0x41, 0xd2, 0x11, 0xae, 0x1e, 0x08, 0x00, 0x09, 0xec,
             0x73, 0x2a
         ]
     );
     assert_eq!(
         FEATURE_BOOKMARK_CLASS_ID,
         [
-            0x5b, 0xb3, 0x65, 0xec, 0x42, 0x43, 0x11, 0xd2, 0xae, 0x22, 0x08, 0x00, 0x09, 0xec,
+            0x5b, 0xb3, 0x65, 0xec, 0x42, 0x43, 0xd2, 0x11, 0xae, 0x22, 0x08, 0x00, 0x09, 0xec,
             0x73, 0x2a
         ]
     );

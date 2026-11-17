@@ -121,10 +121,8 @@ fn sdk_old_field_group_and_standalone_host_paths() {
     ));
     assert_eq!(body.named_object_bodies[0].as_ref().unwrap().key, 334);
     assert_eq!(body.stop, StandaloneTableStop10_1::Complete);
-    assert!(matches!(
-        linear.stop,
-        MapSuffixStop::AfterBorderTail { stage: 38 }
-    ));
+    assert!(matches!(linear.stop, MapSuffixStop::Complete));
+    assert!(linear.post_border_tail.post_masking.is_some());
 }
 
 // 扫描仅生成候选，后两字节未必是版本，也不能判断新对象与回引。

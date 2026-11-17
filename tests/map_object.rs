@@ -1,6 +1,7 @@
 use mxd2qgz::layers::layer_list::{
     BodyBoundBasis, COMPOSITE_GRAPHICS_LAYER_CLASS_ID, FEATURE_LAYER_CLASS_ID,
-    GROUP_LAYER_CLASS_ID, LayerEntryObject, LayerListStop, read_layer_list_10_1,
+    GROUP_LAYER_CLASS_ID, LayerBodyPrefix10_1, LayerEntryObject, LayerListStop,
+    read_layer_list_10_1,
 };
 use mxd2qgz::maps::map_object::{
     ILLUMINATION_PROPS_CLASS_ID, MAP_CLASS_ID, MapSuffixStop, read_map_prefix_10_1,
@@ -570,6 +571,75 @@ fn layer_list_reads_flags_prefixes_backref_empty_and_active_index() {
     assert_eq!(list.entries[2].offset, 72);
     assert!(table.contains(51));
     assert_eq!(table.len(), 1);
+}
+
+#[test]
+fn raster_prefix_reads_within_its_extra_safe_bound() {
+    let raster_class = [
+        0xc9, 0x71, 0x23, 0xd0, 0xf7, 0x35, 0xd2, 0x11, 0xb1, 0xf2, 0x00, 0xc0, 0x4f, 0x8e, 0xde,
+        0xff,
+    ];
+    for case in 0..3 {
+        let mut body = 17_i32.to_le_bytes().to_vec();
+        if case != 0 {
+            body.extend(encoded("栅格"));
+            if case == 1 {
+                // 续段字符串声明完整，不能从下个字段借用终止零。
+                body.extend(4_u32.to_le_bytes());
+                body.extend(b"A\0");
+            } else {
+                body.extend(encoded("."));
+                body.extend([0; 6]);
+                body.extend(1_i32.to_le_bytes());
+                body.extend(object_header(&[0x7a; 16], 19));
+                body.extend([0xa5; 3]); // IName 对象体的未知字节
+            }
+        } else {
+            // 字符串长度完整，但数据只有 2 字节；读取器不得借用活动索引中的 0。
+            body.extend(4_u32.to_le_bytes());
+            body.extend(b"A\0");
+        }
+
+        let mut data = 1_i32.to_le_bytes().to_vec();
+        data.extend(2_u16.to_le_bytes());
+        data.extend((20 + body.len() as u32).to_le_bytes());
+        data.extend(0_u32.to_le_bytes());
+        data.extend(object_header(&raster_class, 18));
+        data.extend(&body);
+        data.extend(0_i32.to_le_bytes());
+
+        let mut reader = Reader::new(&data);
+        let list = read_layer_list_10_1(&mut reader, 1024, &mut RefTable10_1::new()).unwrap();
+        let entry = &list.entries[0];
+        assert_eq!(list.active_index, Some(0));
+        assert_eq!(reader.remaining(), 0);
+        if case != 0 {
+            let Some(LayerBodyPrefix10_1::RasterLayer(raster)) = &entry.parsed else {
+                panic!("有界体应读取栅格前缀");
+            };
+            assert_eq!(raster.version, 17);
+            if case == 1 {
+                assert!(raster.continuation.is_none());
+                assert_eq!(entry.body.unwrap().len, 6);
+            } else {
+                let continuation = raster.continuation.as_ref().unwrap();
+                assert_eq!(continuation.second_string, ".");
+                assert_eq!(
+                    continuation.first_object_header,
+                    Some(ObjectHeader::Object {
+                        class_id: [0x7a; 16],
+                        key: 19
+                    }),
+                );
+                assert_eq!(entry.body.unwrap().len, 3);
+            }
+            assert!(entry.parse_note.is_none());
+        } else {
+            assert!(entry.parsed.is_none());
+            assert_eq!(entry.body.unwrap().len, body.len());
+            assert!(entry.parse_note.is_some());
+        }
+    }
 }
 
 #[test]

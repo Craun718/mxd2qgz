@@ -21,8 +21,10 @@ use std::io;
 /// 跨流共享的已见键登记表（对应原生 ObjectStream 读表）。
 ///
 /// 原生 `SetStream` 不清空该表，因此同一文档会话的全部流共用一个实例。
-/// 键重复登记对应写侧键重复替换分支的读侧对偶：覆盖旧登记并保留替换次数。
-#[derive(Debug, Clone, Default)]
+/// 本表只保留读侧已见键及显式重复登记次数，不保存 COM 对象指针。
+/// 写侧插入器另有同键替换分支；正常读侧先查表，命中后直接作为回引返回，
+/// 不会再次登记。因此这里的重复登记计数不能当作写侧替换行为的模拟。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RefTable10_1 {
     seen: HashMap<u32, u32>,
 }
@@ -38,10 +40,11 @@ impl RefTable10_1 {
         self.seen.contains_key(&key)
     }
 
-    /// 登记键；返回 `true` 表示该键此前已存在（重复登记=替换）。
+    /// 登记键；返回 `true` 表示该键此前已登记。
     ///
     /// 新对象必须在解析对象体之前登记：原生登记先于持久化，循环引用的
-    /// 解析依赖此顺序。值字段保留替换次数（饱和计数，仅观测用途）。
+    /// 解析依赖此顺序。重复次数是本读取器的观测值，不代表原生对象被替换；
+    /// 正常条目读取遇到已见键时会返回回引，不调用本方法。
     pub fn register(&mut self, key: u32) -> bool {
         match self.seen.get_mut(&key) {
             Some(count) => {

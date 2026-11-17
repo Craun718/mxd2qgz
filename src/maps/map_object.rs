@@ -68,9 +68,17 @@ use crate::layers::composite_graphics::{
     COMPOSITE_GRAPHICS_LAYER_CLASS_ID, CompositeGraphicsLayerPrefix10_1,
     CompositeGraphicsLayerStop10_1, read_composite_graphics_layer_prefix_10_1,
 };
-use crate::layers::layer_list::{LayerList10_1, LayerListStop, class_id_hex, read_layer_list_10_1};
-use crate::maps::layer_masking::{MaskEntry10_1, read_entries_10_1};
+use crate::layers::layer_list::{
+    LayerBodyPrefix10_1, LayerEntryObject, LayerList10_1, LayerListStop, class_id_hex,
+    read_layer_list_10_1,
+};
+use crate::maps::layer_masking::{
+    LayerMaskingSupport10_1, MaskEntry10_1, known_layer_masking_support_10_1, read_entries_10_1,
+};
 use crate::maps::map_decor::read_map_decor_slot_10_1;
+use crate::maps::map_persist_collections::{
+    MapPersistCollections10_1, read_map_persist_collections_before_v34_10_1,
+};
 use crate::maps::map_surround::{
     AOI_BOOKMARK_CLASS_ID, AoiBookmark10_1, FEATURE_BOOKMARK_CLASS_ID, FeatureBookmark10_1,
     LEGEND_CLASS_ID, LegendPrefix10_1, LegendStop10_1, read_aoi_bookmark_10_1,
@@ -150,6 +158,8 @@ impl ObjectSlot10_1 {
 /// 后缀读取的停止原因（非错误：已消费内容有效，其后保留为未知尾部）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MapSuffixStop {
+    /// 原生版本门所需的全部对象体字段已消费，游标位于下一个根流字段。
+    Complete,
     /// 图层列表在标志 1 新对象体处停止（体无外部长度、读取器未接入；集成点）。
     /// 明细见 [`LayerList10_1::stop`]。
     LayerListFlag1Body {
@@ -232,6 +242,7 @@ impl MapSuffixStop {
     /// 停止原因的固定说明（供诊断直接输出）。
     pub fn describe(self) -> String {
         match self {
+            Self::Complete => "Map 对象体已完整消费".into(),
             Self::LayerListFlag1Body { index, offset, .. } => format!(
                 "图层列表条目 {index}（offset 0x{offset:x}）为标志 1 新对象：体无外部\
                  长度，类分派读取器只覆盖已确认前缀，停止"
@@ -440,12 +451,117 @@ pub struct PostBorderTail10_1 {
     pub scale_double_2d8_bits: Option<(usize, u64)>,
     /// 版本 27 起的八个 4 字节原始成员。
     pub scale_ints: [Option<(usize, u32)>; 8],
-    /// Map 自身 LayerMasking 的版本、外层计数及空集合后的 short。
+    /// Map 自身 LayerMasking 的版本和外层计数。
     pub masking_version: Option<(usize, u16)>,
     pub masking_count: Option<(usize, i32)>,
     /// 已完整消费的集合条目；未知新对象使条目整体回退。
     pub masking_entries: Option<Vec<MaskEntry10_1>>,
+    /// Map 自身 LayerMasking 的尾 short（LayerLib Load 0x786f1ff0）。
     pub masking_empty_short: Option<(usize, u16)>,
+    /// 已证实逐图层遮罩循环不消费字节时，继续读取的 Map 字段。
+    pub post_masking: Option<PostMaskingMapFields10_1>,
+    /// Map 版本 33 起的 IUnknown 集合、LONG 和对象槽。
+    pub persist_collections: Option<MapPersistCollections10_1>,
+}
+
+// 本子集只在所有非空图层均已知不支持 ILayerMasking 时跨过循环。
+fn layer_masking_consumes_no_bytes_10_1(layer_list: &LayerList10_1) -> bool {
+    if layer_list.stop.is_some()
+        || layer_list.active_index.is_none()
+        || usize::try_from(layer_list.count) != Ok(layer_list.entries.len())
+    {
+        return false;
+    }
+    let mut known = std::collections::HashMap::new();
+    for entry in &layer_list.entries {
+        match entry.object {
+            LayerEntryObject::Empty | LayerEntryObject::Entry(ObjectEntry10_1::Null) => {}
+            LayerEntryObject::Entry(ObjectEntry10_1::NewObject { class_id, key }) => {
+                if known_layer_masking_support_10_1(&class_id)
+                    != LayerMaskingSupport10_1::Unsupported
+                {
+                    return false;
+                }
+                match entry.parsed.as_ref() {
+                    Some(
+                        LayerBodyPrefix10_1::FeatureLayer(_) | LayerBodyPrefix10_1::RasterLayer(_),
+                    ) => {}
+                    Some(LayerBodyPrefix10_1::FdoGraphicsLayer(fdo))
+                        if fdo.completion().is_some() =>
+                    {
+                        if let Some(key) = fdo.associated_feature_layer_key {
+                            known.insert(key, crate::layers::feature_layer::FEATURE_LAYER_CLASS_ID);
+                        }
+                    }
+                    _ => return false,
+                }
+                known.insert(key, class_id);
+            }
+            LayerEntryObject::Entry(ObjectEntry10_1::BackReference { class_id, key }) => {
+                if known.get(&key) != Some(&class_id) {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
+/// Map 版本 29..=51 中 LayerMasking 之后的已确认字段。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PostMaskingMapFields10_1 {
+    /// IScreenDisplay.IsFramed 的 16 位 VARIANT_BOOL 原始位。
+    pub is_framed_bits: (usize, u16),
+    /// Map 成员 +0x398 的字符串；仅版本大于 29 时存在。
+    pub string_398: Option<(usize, String)>,
+    /// Map 成员 +0x3a0 的 short；仅版本至少为 31 时存在。
+    pub short_3a0: Option<(usize, u16)>,
+    /// Map 成员 +0x15d 的单字节原值；仅版本至少为 32 时存在。
+    pub byte_15d: Option<(usize, u8)>,
+}
+
+/// 读取 LayerMasking 后、下一对象集合之前的字段；失败不推进游标。
+///
+/// 调用方须先确认 Map 版本和本段起点。10.1 Load 在版本 > 0x1c 时读取
+/// 通过 Map 子接口虚表 +0x60 设置 IsFramed，在版本 > 0x1d 时读取 Load 视图 +0x398 的
+/// String，再按版本读 +0x3a0 short（0x79400908..14）与 +0x15d 字节
+/// （0x79400939..45）。未知业务语义保留原始位模式。
+pub fn read_post_masking_map_fields_10_1(
+    reader: &mut Reader<'_>,
+    map_version: u16,
+    max_bytes: usize,
+) -> io::Result<PostMaskingMapFields10_1> {
+    if !(29..=51).contains(&map_version) {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "Map 版本未进入遮罩后 short 分支（需要 29..=51）",
+        ));
+    }
+    let mut trial = reader.clone();
+    let short = (trial.position(), trial.read_u16_le()?);
+    let string_398 = if map_version > 29 {
+        let offset = trial.position();
+        Some((offset, read_string_10_1(&mut trial, max_bytes)?))
+    } else {
+        None
+    };
+    let short_3a0 = if map_version >= 31 {
+        Some((trial.position(), trial.read_u16_le()?))
+    } else {
+        None
+    };
+    let byte_15d = if map_version >= 32 {
+        Some((trial.position(), trial.read_bytes(1)?[0]))
+    } else {
+        None
+    };
+    *reader = trial;
+    Ok(PostMaskingMapFields10_1 {
+        is_framed_bits: short,
+        string_398,
+        short_3a0,
+        byte_15d,
+    })
 }
 
 /// LabelPlacement.dll 的 BasicOverposterProperties 类标识。
@@ -621,6 +737,8 @@ pub struct MapPrefix10_1 {
     /// 第 4 步空间参考对象键；供后续严格解析对该对象的回引。
     /// 空标记时为 `None`。
     pub spatial_reference_key: Option<u32>,
+    /// 同一 ObjectStream 已登记键的空间参考回引；不在此处重复读对象体。
+    pub spatial_reference_back_reference: Option<[u8; 16]>,
     /// 已确认前缀之后剩余的字节数。
     ///
     /// 对应 Load 第 5 步起的字段：其中「图层列表 → … → 书签循环」一段可由
@@ -655,12 +773,25 @@ pub fn read_map_prefix_10_1(
 ) -> io::Result<MapPrefix10_1> {
     // 全部字段在 trial 游标上读取，完整成功才提交；任何失败路径都不推进原游标。
     let mut trial = reader.clone();
-    let (result, _spatial_reference_key) = read_map_prefix_inner(&mut trial, max_bytes)?;
+    let (result, _spatial_reference_key) = read_map_prefix_inner(&mut trial, max_bytes, None)?;
     *reader = trial;
     Ok(result)
 }
 
-/// 前缀读取的内部实现：额外返回嵌套空间参考对象的键（空标记为 `None`）。
+/// 在已有 ObjectStream 会话中读取 Map 前缀。已登记的空间参考对象仅消费
+/// 对象头；本入口不登记新键，完整后缀读取器负责登记并提交。
+pub fn read_map_prefix_object_stream_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &RefTable10_1,
+) -> io::Result<MapPrefix10_1> {
+    let mut trial = reader.clone();
+    let (result, _) = read_map_prefix_inner(&mut trial, max_bytes, Some(table))?;
+    *reader = trial;
+    Ok(result)
+}
+
+/// 前缀读取的内部实现：额外返回新空间参考对象的键。
 ///
 /// 键不参与前缀的公开行为（保持 [`read_map_prefix_10_1`] 的签名与语义不变），
 /// 仅供 [`read_map_suffix_10_1`] 登记进共享键表——流内后续对象对 Map 空间
@@ -669,6 +800,7 @@ pub fn read_map_prefix_10_1(
 fn read_map_prefix_inner(
     trial: &mut Reader<'_>,
     max_bytes: usize,
+    table: Option<&RefTable10_1>,
 ) -> io::Result<(MapPrefix10_1, Option<u32>)> {
     let entry_offset = trial.position();
 
@@ -692,10 +824,16 @@ fn read_map_prefix_inner(
     // 4. 嵌套空间参考对象：先读对象头（类身份完全由流内对象头决定）。
     let nested_offset = trial.position();
     let mut spatial_reference_key = None;
+    let mut spatial_reference_back_reference = None;
     let spatial_reference = match read_header_10_1(trial)? {
         // 全零 16 字节：沿用对象头读取器的 S_FALSE 约定，仅消耗对象头本身、
         // 不读键；语义上表示该 Map 没有空间参考对象。
         ObjectHeader::Null => None,
+        ObjectHeader::Object { class_id, key } if table.is_some_and(|table| table.contains(key)) => {
+            spatial_reference_key = Some(key);
+            spatial_reference_back_reference = Some(class_id);
+            None
+        }
         ObjectHeader::Object { class_id, key }
             if class_id == PROJECTED_COORDINATE_SYSTEM_CLASS_ID =>
         {
@@ -754,9 +892,10 @@ fn read_map_prefix_inner(
             secondary_name,
             spatial_reference,
             spatial_reference_key,
+            spatial_reference_back_reference,
             remaining_bytes: trial.remaining(),
         },
-        spatial_reference_key,
+        spatial_reference_key.filter(|_| spatial_reference_back_reference.is_none()),
     ))
 }
 
@@ -802,7 +941,8 @@ pub fn read_map_suffix_10_1(
 
     // 0. 重读已确认前缀：登记嵌套 PCS 键（新键，样本键 30 首现于此），
     //    前缀字段本身不重复报告。
-    let (map_prefix, spatial_reference_key) = read_map_prefix_inner(&mut trial, max_bytes)?;
+    let (map_prefix, spatial_reference_key) =
+        read_map_prefix_inner(&mut trial, max_bytes, Some(&trial_table))?;
     if let Some(key) = spatial_reference_key {
         trial_table.register(key);
     }
@@ -1514,6 +1654,40 @@ pub fn read_map_suffix_10_1(
             }
             if post_border_tail.masking_entries.is_some() {
                 next_short!(masking_empty_short, 37);
+            }
+            // 原生 Map 0x79403d50 遍历与写图层列表相同的数组。这里只跨过
+            // 接口已证不支持的图层；GroupLayer、未知类和未验证回引仍停留。
+            if map_prefix.version >= 29
+                && matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 38 }))
+                && layer_masking_consumes_no_bytes_10_1(&layer_list)
+                && let Ok(fields) =
+                    read_post_masking_map_fields_10_1(&mut trial, map_prefix.version, max_bytes)
+            {
+                post_border_tail.post_masking = Some(fields);
+                // 版本 29..=32 的后续分支只初始化/更新已有对象；下一条
+                // 持久化字段属于版本 >=33（Map.dll 0x7940095c..aab）。
+                stop = Some(if map_prefix.version <= 32 {
+                    MapSuffixStop::Complete
+                } else {
+                    MapSuffixStop::AfterBorderTail { stage: 39 }
+                });
+            }
+            if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 39 }))
+                && let Ok(collections) = read_map_persist_collections_before_v34_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &trial_table,
+                    map_prefix.version,
+                )
+            {
+                if collections.stop.is_none() {
+                    stop = Some(if map_prefix.version == 33 {
+                        MapSuffixStop::Complete
+                    } else {
+                        MapSuffixStop::AfterBorderTail { stage: 40 }
+                    });
+                }
+                post_border_tail.persist_collections = Some(collections);
             }
         }
     }

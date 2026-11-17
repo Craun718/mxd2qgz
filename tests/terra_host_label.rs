@@ -64,7 +64,7 @@ fn manager_preserves_flag_and_interprets_nonzero() {
 }
 
 #[test]
-fn feature_id_set_retains_signed_values_and_duplicate_stream_entries() {
+fn feature_id_set_deduplicates_members_but_consumes_duplicate_stream_entries() {
     let mut data = 1_u16.to_le_bytes().to_vec();
     data.extend(3_i32.to_le_bytes());
     for id in [-1_i32, 7, 7] {
@@ -72,7 +72,8 @@ fn feature_id_set_retains_signed_values_and_duplicate_stream_entries() {
     }
     let mut reader = Reader::new(&data);
     let result = read_feature_id_set_body_10_1(&mut reader, &mut RefTable10_1::new(), 1).unwrap();
-    assert_eq!(result.ids, [-1, 7, 7]);
+    assert_eq!(result.count, 3);
+    assert_eq!(result.ids, [-1, 7]);
     assert_eq!(reader.remaining(), 0);
     let mut truncated = Reader::new(&data[..data.len() - 1]);
     assert!(read_feature_id_set_body_10_1(&mut truncated, &mut RefTable10_1::new(), 1).is_err());

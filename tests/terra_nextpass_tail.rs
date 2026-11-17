@@ -53,8 +53,8 @@ fn tail_fields_stop_at_each_incomplete_field_and_unknown_envelope() {
     assert_eq!(stop, MapSuffixStop::AfterBorderTail { stage: 24 });
     assert!(!refs.contains(2182));
     let (position, stop, refs) = parse(&bytes);
-    assert_eq!(position, 0x253be);
-    assert_eq!(stop, MapSuffixStop::AfterBorderTail { stage: 38 });
+    assert_eq!(position, 0x253e1);
+    assert_eq!(stop, MapSuffixStop::AfterBorderTail { stage: 40 });
     assert!(refs.contains(2182));
     assert!(refs.contains(2183));
 }
@@ -66,6 +66,9 @@ fn map_masking_empty_prefix_and_nonempty_boundary() {
         for cut in pair[0]..pair[1] {
             assert_eq!(parse(&bytes[..cut]).0, pair[0]);
         }
+    }
+    for cut in 0x253be..0x253c9 {
+        assert_eq!(parse(&bytes[..cut]).0, 0x253be);
     }
     let mut nonempty = bytes.clone();
     nonempty[0x253b8..0x253bc].copy_from_slice(&1_i32.to_le_bytes());
@@ -80,7 +83,7 @@ fn map_masking_empty_prefix_and_nonempty_boundary() {
 }
 
 #[test]
-fn map_masking_nonempty_back_reference_then_stops_at_layers() {
+fn map_masking_nonempty_back_reference_reaches_post_masking_fields() {
     let bytes = sample();
     let mut modified = bytes[..0x253b8].to_vec();
     modified.extend(1_i32.to_le_bytes());
@@ -89,10 +92,10 @@ fn map_masking_nonempty_back_reference_then_stops_at_layers() {
     modified.extend(0_i32.to_le_bytes());
     modified.extend(0xffff_u16.to_le_bytes());
     modified.extend(&bytes[0x253be..]);
-    let expected = 0x253b8 + 4 + 20 + 4 + 2;
+    let expected = 0x253b8 + 4 + 20 + 4 + 2 + 11 + 24;
     let (position, stop, _) = parse(&modified);
     assert_eq!(position, expected);
-    assert_eq!(stop, MapSuffixStop::AfterBorderTail { stage: 38 });
+    assert_eq!(stop, MapSuffixStop::AfterBorderTail { stage: 40 });
 }
 
 #[test]
@@ -121,4 +124,16 @@ fn four_empty_envelopes_and_raw_values_are_consumed_in_order() {
     assert!(tail.scale_envelopes.iter().all(Option::is_some));
     assert_eq!(tail.scale_double_2b8_bits.unwrap().1, 0x8000_0000_0000_0000);
     assert_eq!(tail.scale_double_2d8_bits.unwrap().1, 0x7ff0_0000_0000_0001);
+}
+
+#[test]
+fn a_layer_with_unverified_class_or_back_reference_keeps_masking_bytes() {
+    let bytes = sample();
+    // 流中第二条是对首条 FDO 已登记关联 FeatureLayer 的回引。
+    // 改其 GUID 但保留键和长度，仍能读完图层列表，不能以错误类跨过遮罩。
+    let mut modified = bytes.clone();
+    modified[0x2d2c] ^= 0x80;
+    let (position, stop, _) = parse(&modified);
+    assert_eq!(position, 0x253be);
+    assert_eq!(stop, MapSuffixStop::AfterBorderTail { stage: 38 });
 }

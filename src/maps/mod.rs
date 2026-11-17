@@ -4,6 +4,7 @@
 pub mod layer_masking;
 pub mod map_decor;
 pub mod map_object;
+pub mod map_persist_collections;
 pub mod map_surround;
 pub mod map_surround_family;
 pub mod maps_stream;

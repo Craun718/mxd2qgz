@@ -56,14 +56,31 @@ fn push_entry_header(bytes: &mut Vec<u8>, class_id: &[u8; 16], key: u32) {
 /// IPropertySet 空标记 + 标志 0（无工厂 CLSID）+ int32 0）。返回（字节,
 /// 体长）。
 fn full_workspace_body() -> Vec<u8> {
+    full_workspace_body_with_path("D:\\测试.gdb")
+}
+
+fn full_workspace_body_with_path(path: &str) -> Vec<u8> {
     let mut bytes = 1_u16.to_le_bytes().to_vec();
-    bytes.extend(encoded("D:\\测试.gdb"));
+    bytes.extend(encoded(path));
     bytes.extend(empty_string());
     bytes.extend(encoded("File Geodatabase"));
     bytes.extend([0_u8; 16]); // IPropertySet 空标记（16 字节零，无键）
     bytes.push(0); // 工厂标志 0：无 16 字节工厂 CLSID
     bytes.extend(0_i32.to_le_bytes());
     bytes
+}
+
+#[test]
+fn workspace_path_accessor_preserves_an_empty_path_string() {
+    let (mut body, _) = feature_dataset_prefix(1, 0);
+    push_entry_header(&mut body, &WORKSPACE_NAME_CLASS_ID, WS_KEY);
+    body.extend(full_workspace_body_with_path(""));
+    let mut bytes = Vec::new();
+    push_entry_header(&mut bytes, &FEATURE_DATASET_NAME_CLASS_ID, FDN_KEY);
+    bytes.extend(body);
+
+    let (_, parsed) = read_fdn_entry(&bytes, &mut RefTable10_1::new()).unwrap();
+    assert_eq!(parsed.workspace_path(), Some(""));
 }
 
 /// 在 WorkspaceName 体内 IPropertySet 槽位携带新对象（体未闭合）的体：
@@ -178,6 +195,7 @@ fn reads_full_feature_dataset_name_chain_with_workspace() {
     };
     assert_eq!(ws.version, 1);
     assert_eq!(ws.path, "D:\\测试.gdb");
+    assert_eq!(parsed.workspace_path(), Some("D:\\测试.gdb"));
     assert_eq!(ws.stop, None);
     assert_eq!(parsed.stop, None, "链完整消费不应停止");
     // 登记：FDN 键 + WS 键均已提交。
@@ -213,6 +231,7 @@ fn feature_dataset_name_workspace_null_and_back_reference_consume_no_body() {
     let mut table = RefTable10_1::new();
     let (_, parsed) = read_fdn_entry(&bytes, &mut table).unwrap();
     assert_eq!(parsed.workspace, WorkspaceNameSlot10_1::Null);
+    assert_eq!(parsed.workspace_path(), None);
     assert_eq!(parsed.stop, None);
     assert_eq!(table.len(), 1, "空标记不产生新键");
 
@@ -232,6 +251,11 @@ fn feature_dataset_name_workspace_null_and_back_reference_consume_no_body() {
             key: WS_KEY
         }
     );
+    assert_eq!(parsed.workspace_path(), None);
+    assert!(matches!(
+        parsed.workspace,
+        WorkspaceNameSlot10_1::BackReference { key: WS_KEY, .. }
+    ));
     assert_eq!(parsed.stop, None);
     assert_eq!(table.len(), 2);
 }
@@ -262,6 +286,7 @@ fn feature_dataset_name_unknown_workspace_class_stops_and_rolls_back() {
             key: WS_KEY
         }
     );
+    assert_eq!(parsed.workspace_path(), None);
     // 游标回退到工作空间槽位起点（对象头之后 + 前缀长度），未知类键不登记
     //（新表重读，避免首读登记影响分类）。
     let mut table = RefTable10_1::new();
@@ -379,6 +404,7 @@ fn reads_full_topology_name_chain_with_nested_feature_dataset() {
         panic!("数据集槽应解析 FeatureDatasetName 体：{:?}", parsed.dataset);
     };
     assert_eq!(fdn.version, 1);
+    assert_eq!(fdn.workspace_path(), Some("D:\\测试.gdb"));
     assert!(matches!(
         fdn.workspace,
         WorkspaceNameSlot10_1::WorkspaceName(_)
@@ -545,8 +571,8 @@ fn topology_name_truncation_is_transactional_and_limit_forwards() {
 
 #[test]
 fn non_canonical_flag_byte_is_preserved_verbatim() {
-    // 原生按 bool 存储；非 0/1 位模式不做解释，原样保留（工作空间槽走空
-    // 标记以隔离该字段）。
+    // 接口访问器会把 VARIANT_BOOL 归一化为 0/1，但 Load/Save 直接读写单字节；
+    // 读取器应保留非规范位模式（工作空间槽用空标记以隔离该字段）。
     let (mut body, _) = feature_dataset_prefix(1, 0x5A);
     body.extend([0_u8; 16]);
     let mut bytes = Vec::new();

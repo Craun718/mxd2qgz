@@ -119,5 +119,5 @@ fn linearref_two_tables_from_map_host() {
     assert_eq!(first.named_object_bodies[0].as_ref().unwrap().key, 334);
     assert_eq!(&data[0x6bed..0x6bfd], &FIELD_INFO_CLASS_ID);
     assert_eq!(&data[0x6bfd..0x6c03], &[0x4e, 1, 0, 0, 2, 0]);
-    assert_eq!(r.position(), 0x8407);
+    assert_eq!(r.position(), 0x8409);
 }
