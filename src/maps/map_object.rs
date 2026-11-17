@@ -69,6 +69,8 @@ use crate::layers::composite_graphics::{
     CompositeGraphicsLayerStop10_1, read_composite_graphics_layer_prefix_10_1,
 };
 use crate::layers::layer_list::{LayerList10_1, LayerListStop, class_id_hex, read_layer_list_10_1};
+use crate::maps::layer_masking::{MaskEntry10_1, read_entries_10_1};
+use crate::maps::map_decor::read_map_decor_slot_10_1;
 use crate::maps::map_surround::{
     AOI_BOOKMARK_CLASS_ID, AoiBookmark10_1, FEATURE_BOOKMARK_CLASS_ID, FeatureBookmark10_1,
     LEGEND_CLASS_ID, LegendPrefix10_1, LegendStop10_1, read_aoi_bookmark_10_1,
@@ -77,16 +79,19 @@ use crate::maps::map_surround::{
 use crate::maps::map_surround_family::{
     ALTERNATING_SCALEBAR_CLASS_ID, DOUBLE_ALTERNATING_SCALEBAR_CLASS_ID, FamilyStop10_1,
     HOLLOW_SCALEBAR_CLASS_ID, MAP_TITLE_CLASS_ID, MARKER_NORTH_ARROW_CLASS_ID, MapTitleBody10_1,
-    MarkerNorthArrowBody10_1, SCALE_TEXT_CLASS_ID, SCALEBAR_CLASS_ID,
-    SINGLE_DIVISION_SCALEBAR_CLASS_ID, ScaleTextBody10_1, ScalebarBody10_1,
-    ScalebarSubclassBody10_1, ScalebarSubclassKind10_1, read_map_title_body_10_1,
-    read_marker_north_arrow_body_10_1, read_scale_text_body_10_1, read_scalebar_body_10_1,
-    read_scalebar_subclass_body_10_1,
+    MarkerNorthArrowBody10_1, SCALE_LINE_CLASS_ID, SCALE_TEXT_CLASS_ID, SCALEBAR_CLASS_ID,
+    SINGLE_DIVISION_SCALEBAR_CLASS_ID, STEPPED_SCALE_LINE_CLASS_ID, ScaleLineBody10_1,
+    ScaleLineStop10_1, ScaleTextBody10_1, ScalebarBody10_1, ScalebarSubclassBody10_1,
+    ScalebarSubclassKind10_1, read_map_title_body_10_1, read_marker_north_arrow_body_10_1,
+    read_scale_line_10_1, read_scale_text_body_10_1, read_scalebar_body_10_1,
+    read_scalebar_subclass_body_10_1, read_stepped_scale_line_10_1,
 };
 use crate::maps::standalone_table::{
-    STANDALONE_TABLE_CLASS_ID, StandaloneTablePrefix10_1, read_standalone_table_prefix_10_1,
+    STANDALONE_TABLE_CLASS_ID, StandaloneTablePrefix10_1, StandaloneTableStop10_1,
+    read_standalone_table_prefix_10_1,
 };
 use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
+use crate::objects::element_decor::{DecorKind10_1, DecorSlot10_1};
 use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
 use crate::objects::spatial_reference::{
     PROJECTED_COORDINATE_SYSTEM_CLASS_ID, ProjectedCoordinateSystem10_1,
@@ -191,6 +196,11 @@ pub enum MapSuffixStop {
         /// 族读取器带出的体内停止原因。
         reason: FamilyStop10_1,
     },
+    /// 比例尺线体内尚未闭合的槽。
+    ScaleLineBody {
+        index: usize,
+        reason: ScaleLineStop10_1,
+    },
     /// 书签循环条目为新对象：体无外部长度且读取器未接入。
     BookmarkBody {
         index: usize,
@@ -202,15 +212,17 @@ pub enum MapSuffixStop {
     AfterBookmarks,
     /// 已读属性前导，停止于独立表集合或照明属性槽之前。
     AfterPostBookmarkPrefix { standalone_table_count: i32 },
-    /// 首个独立表的前缀已读，该表未完整消费。
+    /// 独立表集合尚未完整消费。
     StandaloneTableBody { offset: usize },
+    /// 独立表集合已消费；下一槽为照明属性。
+    AfterStandaloneTables,
     /// 已读照明属性槽，后续 Map 字段仍保留为未知。
     AfterIllumination,
     /// 照明后的定长字段已读，下一段 Map 字段保留为未知。
     AfterIlluminationFields,
     /// 照明后几何槽为空，停止于 IBorder 槽之前。
     AfterNullGeometry,
-    /// 照明后的几何与边框槽均为空。
+    /// 照明后的几何槽为空，边框槽已完整读取。
     AfterNullBorder,
     /// 边框后版本块中已确认字段的停止阶段。
     AfterBorderTail { stage: u8 },
@@ -241,6 +253,9 @@ impl MapSuffixStop {
                 "MapSurround 条目 {index}（族装饰物）体在停止点停止：{}；游标停在其停止点",
                 reason.describe()
             ),
+            Self::ScaleLineBody { index, reason } => {
+                format!("MapSurround 条目 {index} 的比例尺线体内停止：{reason:?}")
+            }
             Self::BookmarkBody { index, offset, .. } => format!(
                 "书签条目 {index}（offset 0x{offset:x}）为新对象且未被读取器整体消费\
                 （类没有读取器或解析失败），停止"
@@ -251,7 +266,7 @@ impl MapSuffixStop {
             }
             Self::AfterNullGeometry => "IGeometry 槽为空；从 IBorder 槽起保留未知".to_string(),
             Self::AfterNullBorder => {
-                "IGeometry 和 IBorder 槽均为空；后续 Map 字段保留为未知".to_string()
+                "IGeometry 槽为空，IBorder 槽已读取；后续 Map 字段保留为未知".to_string()
             }
             Self::AfterBorderTail { stage } => {
                 format!("IBorder 后版本块已读至阶段 {stage}；后续字段保留为未知")
@@ -268,8 +283,9 @@ impl MapSuffixStop {
                 format!("书签后的属性前导已读；从 {standalone_table_count} 条独立表记录起保留未知")
             }
             Self::StandaloneTableBody { offset } => {
-                format!("独立表前缀已读；从其未闭合字段（offset 0x{offset:x}）起保留未知")
+                format!("独立表未闭合；从 offset 0x{offset:x} 起保留未知")
             }
+            Self::AfterStandaloneTables => "独立表集合已读；从照明槽起保留未知".to_string(),
         }
     }
 }
@@ -295,6 +311,8 @@ pub enum MapSurroundElement10_1 {
     /// 四个比例尺子类之一（Hollow/SingleDivision/Alternating/
     /// DoubleAlternating；体内停止经 `body.stop` 携带）。
     ScalebarSubclass(ScalebarSubclassElement10_1),
+    /// ScaleLine 或 SteppedScaleLine。
+    ScaleLine(Box<ScaleLineBody10_1>),
 }
 
 /// 比例尺子类条目的体与类身份（四类共享同一读取器，按流内类标识区分）。
@@ -358,16 +376,18 @@ pub struct MapSuffix10_1 {
     pub bookmark_parsed: Vec<Option<BookmarkElement10_1>>,
     /// 书签后与 10.1 普通写侧对位的局部属性。没有匹配完整前导时为 None。
     pub post_bookmark: Option<PostBookmarkPrefix10_1>,
-    /// 首个非空独立表的已确认前缀，不代表表已完整消费。
-    pub first_standalone_table: Option<(ObjectSlot10_1, StandaloneTablePrefix10_1)>,
+    /// 已读独立表槽；最后一个体可能携带内部停止原因。
+    pub standalone_tables: Vec<(ObjectSlot10_1, Option<StandaloneTablePrefix10_1>)>,
     /// 独立表计数为零时到达的照明属性槽。
     pub illumination: Option<IlluminationSlot10_1>,
     /// 照明后定长字段，保留流内原始值。
     pub post_illumination: Option<PostIlluminationFields10_1>,
     /// 仅保留已确认的 IGeometry 空引用；未到达、截断或非空时为 None。
     pub post_illumination_null_geometry: Option<ObjectSlot10_1>,
-    /// 几何空槽之后已确认的 IBorder 空引用。
+    /// 几何空槽之后的 IBorder 空引用；非空结果见 `post_illumination_border`。
     pub post_illumination_null_border: Option<ObjectSlot10_1>,
+    /// 已完整读取的边框槽（含空槽）。
+    pub post_illumination_border: Option<(usize, DecorSlot10_1)>,
     /// IBorder 后版本块，按原生顺序保留可达字段。
     pub post_border_tail: PostBorderTail10_1,
     /// 停止原因（恒有：书签循环之后也属停止点）。
@@ -401,8 +421,10 @@ pub struct PostBorderTail10_1 {
     /// 变换循环后的 double、short 原始位，业务语义尚未确定。
     pub post_transform_double_bits: Option<(usize, u64)>,
     pub post_transform_short: Option<(usize, u16)>,
-    /// IBackground 槽仅在空引用时消费。
+    /// IBackground 空引用；非空结果见 `post_transform_background`。
     pub post_transform_null_background: Option<ObjectSlot10_1>,
+    /// 已完整读取的背景槽（含空槽）。
+    pub post_transform_background: Option<(usize, DecorSlot10_1)>,
     /// 版本大于 22 的对象槽仅在空引用时消费。
     pub post_transform_null_object: Option<ObjectSlot10_1>,
     /// 已完整消费的非空 BasicOverposterProperties 对象。
@@ -418,6 +440,12 @@ pub struct PostBorderTail10_1 {
     pub scale_double_2d8_bits: Option<(usize, u64)>,
     /// 版本 27 起的八个 4 字节原始成员。
     pub scale_ints: [Option<(usize, u32)>; 8],
+    /// Map 自身 LayerMasking 的版本、外层计数及空集合后的 short。
+    pub masking_version: Option<(usize, u16)>,
+    pub masking_count: Option<(usize, i32)>,
+    /// 已完整消费的集合条目；未知新对象使条目整体回退。
+    pub masking_entries: Option<Vec<MaskEntry10_1>>,
+    pub masking_empty_short: Option<(usize, u16)>,
 }
 
 /// LabelPlacement.dll 的 BasicOverposterProperties 类标识。
@@ -884,6 +912,19 @@ pub fn read_map_suffix_10_1(
                         family_stop = body.stop;
                         parsed_element = Some(MapSurroundElement10_1::Scalebar(Box::new(body)));
                     }
+                } else if matches!(*class_id, SCALE_LINE_CLASS_ID | STEPPED_SCALE_LINE_CLASS_ID) {
+                    let read = if *class_id == SCALE_LINE_CLASS_ID {
+                        read_scale_line_10_1
+                    } else {
+                        read_stepped_scale_line_10_1
+                    };
+                    if let Ok(body) = read(&mut trial, max_bytes, &mut trial_table, *key) {
+                        fully_consumed = body.stop.is_none();
+                        if let Some(reason) = body.stop {
+                            stop = Some(MapSuffixStop::ScaleLineBody { index, reason });
+                        }
+                        parsed_element = Some(MapSurroundElement10_1::ScaleLine(Box::new(body)));
+                    }
                 } else if *class_id == SCALE_TEXT_CLASS_ID {
                     if let Ok(body) =
                         read_scale_text_body_10_1(&mut trial, max_bytes, &mut trial_table, *key)
@@ -921,6 +962,9 @@ pub fn read_map_suffix_10_1(
             };
             map_surround_parsed.push(parsed_element);
             map_surrounds.push(ObjectSlot10_1 { offset, entry });
+            if stop.is_some() {
+                break;
+            }
             if !fully_consumed {
                 if let Some((class_id, key)) = new_object {
                     stop = Some(match family_stop {
@@ -1060,33 +1104,64 @@ pub fn read_map_suffix_10_1(
             post_bookmark = Some(prefix);
         }
     }
-    let mut first_standalone_table = None;
-    if map_prefix.version >= 11 && post_bookmark.is_some_and(|p| p.standalone_table_count > 0) {
-        let mut candidate = trial.clone();
-        let mut staged = trial_table.clone();
-        let offset = candidate.position();
-        if let Ok(
-            entry @ ObjectEntry10_1::NewObject {
-                class_id: STANDALONE_TABLE_CLASS_ID,
-                ..
-            },
-        ) = read_object_entry_10_1(&mut candidate, &mut staged)
-            && let Ok(prefix) =
-                read_standalone_table_prefix_10_1(&mut candidate, &mut staged, max_bytes, max_bytes)
-        {
-            stop = Some(MapSuffixStop::StandaloneTableBody {
-                offset: candidate.position(),
-            });
-            first_standalone_table = Some((ObjectSlot10_1 { offset, entry }, prefix));
+    let mut standalone_tables = Vec::new();
+    if let Some(prefix) = post_bookmark.filter(|p| p.standalone_table_count > 0)
+        && map_prefix.version >= 11
+    {
+        for _ in 0..prefix.standalone_table_count {
+            let mut candidate = trial.clone();
+            let mut staged = trial_table.clone();
+            let offset = candidate.position();
+            stop = Some(MapSuffixStop::StandaloneTableBody { offset });
+            let Ok(entry) = read_object_entry_10_1(&mut candidate, &mut staged) else {
+                break;
+            };
+            let body = match entry {
+                ObjectEntry10_1::Null => None,
+                ObjectEntry10_1::BackReference {
+                    class_id: STANDALONE_TABLE_CLASS_ID,
+                    ..
+                } => None,
+                ObjectEntry10_1::NewObject {
+                    class_id: STANDALONE_TABLE_CLASS_ID,
+                    ..
+                } => {
+                    let Ok(body) = read_standalone_table_prefix_10_1(
+                        &mut candidate,
+                        &mut staged,
+                        max_bytes,
+                        max_bytes,
+                    ) else {
+                        break;
+                    };
+                    Some(body)
+                }
+                _ => break,
+            };
+            let partial = body
+                .as_ref()
+                .is_some_and(|body| body.stop != StandaloneTableStop10_1::Complete);
+            standalone_tables.push((ObjectSlot10_1 { offset, entry }, body));
             trial = candidate;
             trial_table = staged;
+            if partial {
+                stop = Some(MapSuffixStop::StandaloneTableBody {
+                    offset: trial.position(),
+                });
+                break;
+            }
+            if standalone_tables.len() == prefix.standalone_table_count as usize {
+                stop = Some(MapSuffixStop::AfterStandaloneTables);
+            }
         }
     }
     let illumination = if matches!(
         stop,
-        Some(MapSuffixStop::AfterPostBookmarkPrefix {
-            standalone_table_count: 0
-        })
+        Some(
+            MapSuffixStop::AfterPostBookmarkPrefix {
+                standalone_table_count: 0
+            } | MapSuffixStop::AfterStandaloneTables
+        )
     ) {
         let slot = read_illumination_slot(&mut trial, &mut trial_table).ok();
         if slot.is_some() {
@@ -1114,16 +1189,34 @@ pub fn read_map_suffix_10_1(
     if post_illumination_null_geometry.is_some() {
         stop = Some(MapSuffixStop::AfterNullGeometry);
     }
-    let post_illumination_null_border = if post_illumination_null_geometry.is_some() {
-        read_null_object_slot_10_1(&mut trial).ok().flatten()
+    let post_illumination_border = if post_illumination_null_geometry.is_some() {
+        let offset = trial.position();
+        read_map_decor_slot_10_1(
+            &mut trial,
+            &mut trial_table,
+            max_bytes,
+            DecorKind10_1::Border,
+        )
+        .ok()
+        .flatten()
+        .map(|slot| (offset, slot))
     } else {
         None
     };
-    if post_illumination_null_border.is_some() {
+    let post_illumination_null_border =
+        post_illumination_border
+            .as_ref()
+            .and_then(|(offset, slot)| {
+                matches!(slot, DecorSlot10_1::Null).then_some(ObjectSlot10_1 {
+                    offset: *offset,
+                    entry: ObjectEntry10_1::Null,
+                })
+            });
+    if post_illumination_border.is_some() {
         stop = Some(MapSuffixStop::AfterNullBorder);
     }
     let mut post_border_tail = PostBorderTail10_1::default();
-    if post_illumination_null_border.is_some() {
+    if post_illumination_border.is_some() {
         // 版本 23..=51 均进入原生 version > 6 分支；每项独立提交，
         // 未知对象或短读时停在该项起点。
         macro_rules! next_short {
@@ -1270,9 +1363,26 @@ pub fn read_map_suffix_10_1(
         next_raw!(post_transform_double_bits, 14, 8, u64);
         next_short!(post_transform_short, 15);
         if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 16 })) {
-            post_border_tail.post_transform_null_background =
-                read_null_object_slot_10_1(&mut trial).ok().flatten();
-            if post_border_tail.post_transform_null_background.is_some() {
+            let offset = trial.position();
+            post_border_tail.post_transform_background = read_map_decor_slot_10_1(
+                &mut trial,
+                &mut trial_table,
+                max_bytes,
+                DecorKind10_1::Background,
+            )
+            .ok()
+            .flatten()
+            .map(|slot| (offset, slot));
+            post_border_tail.post_transform_null_background = post_border_tail
+                .post_transform_background
+                .as_ref()
+                .and_then(|(offset, slot)| {
+                    matches!(slot, DecorSlot10_1::Null).then_some(ObjectSlot10_1 {
+                        offset: *offset,
+                        entry: ObjectEntry10_1::Null,
+                    })
+                });
+            if post_border_tail.post_transform_background.is_some() {
                 stop = Some(MapSuffixStop::AfterBorderTail { stage: 17 });
             }
         }
@@ -1366,6 +1476,46 @@ pub fn read_map_suffix_10_1(
                 }
             }
         }
+        if map_prefix.version >= 28 {
+            if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 35 })) {
+                let mut candidate = trial.clone();
+                let offset = candidate.position();
+                if let Ok(version @ 0..=2) = candidate.read_u16_le() {
+                    post_border_tail.masking_version = Some((offset, version));
+                    trial = candidate;
+                    stop = Some(MapSuffixStop::AfterBorderTail { stage: 36 });
+                }
+            }
+            if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 36 })) {
+                let mut candidate = trial.clone();
+                let offset = candidate.position();
+                if let Ok(count) = read_loop_count(&mut candidate, "LayerMasking", max_bytes) {
+                    post_border_tail.masking_count = Some((offset, count));
+                    trial = candidate;
+                    stop = Some(MapSuffixStop::AfterBorderTail { stage: 37 });
+                }
+            }
+            if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 37 })) {
+                let mut candidate = trial.clone();
+                let mut candidate_table = trial_table.clone();
+                let version = post_border_tail.masking_version.unwrap().1;
+                let count = post_border_tail.masking_count.unwrap().1 as usize;
+                if let Ok(entries) = read_entries_10_1(
+                    &mut candidate,
+                    max_bytes,
+                    &mut candidate_table,
+                    version,
+                    count,
+                ) {
+                    post_border_tail.masking_entries = Some(entries);
+                    trial = candidate;
+                    trial_table = candidate_table;
+                }
+            }
+            if post_border_tail.masking_entries.is_some() {
+                next_short!(masking_empty_short, 37);
+            }
+        }
     }
     let stop = stop.unwrap_or(MapSuffixStop::AfterBookmarks);
 
@@ -1385,11 +1535,12 @@ pub fn read_map_suffix_10_1(
         bookmarks,
         bookmark_parsed,
         post_bookmark,
-        first_standalone_table,
+        standalone_tables,
         illumination,
         post_illumination,
         post_illumination_null_geometry,
         post_illumination_null_border,
+        post_illumination_border,
         post_border_tail,
         stop,
         remaining_bytes: trial.remaining(),

@@ -18,7 +18,7 @@ esriGeoDatabase `09b741f2627633d36b67985e175632055fe6c5b8cd1000484acc3007f5917f9
 | `0x6b1ac8b8` | 12E361F0-1907-11D3-80C7-0080C79F0371 | IDisplayAdmin（esriDisplay 51） | +0x34 |
 | `0x6b1abf00` | EEF01B2D-8FE1-4759-8B93-51EE22DED70A | ILayerDrawingPhase（esriCarto 103） | +0x38 |
 | `0x6b1abf10` | 2425B413-1FFC-4407-B9F0-B4AC9ED50BDE | ILayerGeneralProperties（esriCarto 105） | +0x3c |
-| `0x6b1abd10` | C9E7A782-3DDC-411F-8A66-908C579F123D | 未定名，既有类型库枚举无命中 | +0x44 |
+| `0x6b1abd10` | C9E7A782-3DDC-411F-8A66-908C579F123D | [IDocumentVersionSupport](mxd-terra-round10-iid.md)（后续由 RTTI 核实，公开类型库无命中） | +0x44 |
 
 命中地址和加数逐条对应，不能把接口名单与下一分支的加数相配。
 未命中路径仍委派给基类；本轮没有穷尽其接口、实际运行状态或方法副作用。

@@ -308,6 +308,9 @@ fn text_element_sample_shaped_body_stops_at_unclosed_symbol2() {
     // 停止点 = ISymbol #2 新对象：游标恰在其对象头起点，键未登记。
     let stop = symbol.stop.as_ref().expect("应停止于 ISymbol #2");
     assert!(stop.describe().contains("ISymbol"));
+    assert_eq!(symbol.mask_style(), None);
+    assert_eq!(symbol.mask_size(), None);
+    assert_eq!(symbol.mask_symbol(), None);
     let consumed = body.len() - symbol.remaining_bytes;
     assert_eq!(
         consumed,
@@ -1002,6 +1005,9 @@ fn text_element_parses_sample_shaped_symbol2_simple_fill_symbol() {
     assert_eq!(reader.position(), body.len());
     let symbol = te.symbol.as_ref().expect("TextSymbol 体应已消费");
     assert!(symbol.stop.is_none(), "TextSymbol 体应完整消费");
+    assert_eq!(symbol.mask_style(), Some(1));
+    assert_eq!(symbol.mask_size(), Some(1.5));
+    assert_eq!(symbol.mask_symbol(), Some(&symbol.symbol2));
     // 符号 #2 为 SimpleFillSymbol 体（轮廓空标记 + 填充色 + 标量段）。
     let SymbolSlotFull10_1::SimpleFillSymbol(fill) = &symbol.symbol2 else {
         panic!("符号 #2 应为 SimpleFillSymbol：{:?}", symbol.symbol2);

@@ -52,6 +52,12 @@
 
 ## MXD 解析
 
+- [x] 2026-11-17 Terra 第九轮：读通 SDK 两张独立表，接入要素书签的 TableName 和 TextSymbol 遮罩属性，核对逐图层遮罩递归、旧档 Metadata 加载及旧对象边界；余 65 项，见 [本轮复核](docs/mxd-terra-round9-review.md)。
+
+- [x] 2026-11-17 Terra 第八轮：闭合旧 FDO 接口槽语义；接入地图遮罩结构、边框背景和 TableName，补 FieldInfo/GroupLayer 实档及 Save A Copy 静态链，余 65 项，见 [本轮复核](docs/mxd-terra-round8-review.md)。
+
+- [x] 2026-11-17 Terra 后续宿主续查：接入两个比例尺线类、独立表集合及后续缩放/遮罩字段，修正 ALPC 空项对齐并闭合集合字段静态语义，余 66 项；见 [本轮复核](docs/mxd-terra-nextpass-review.md)。
+
 - [x] 2026-11-17 Terra 宿主续查：接入 BasicOverposterProperties、第二类坐标变换和首个独立表前缀；闭合 G 轮三项静态读写特例，余 67 个开放项，见 [本轮复核](docs/mxd-terra-host-review.md)。
 
 - [x] 2026-11-17 Terra 持久化链续查：接入 Map NADCON 新对象及回引；核对版本命令、图例布局、页面元素、名称和接口槽，仍有 68 个开放项，见 [本轮复核](docs/mxd-terra-chain-review.md)。
@@ -89,9 +95,9 @@
       - [ ] 定性 10.1 `/Version` 头部未知尾部的字节语义。
       - [x] 比较两套安装介质模板中 8.1、9.2、9.3、10.0 和 10.1 的 `/Version` 头部之后的字节：134 个条目（102 份不同内容）均无剩余字节；未知尾部字节的语义仍待证实。见 [介质样本记录](docs/mxd-install-media-samples-20261117.md)。
       - [ ] 在 ArcMap 10.1 中人工验证 `/Version` 头部读写（当前仅有合成边界测试）。
-    - [ ] 闭合版本选择 UI→AfDoc put 的实际派发：标准 MFC Save As 消息传 0，不进入已定位的非零参数版本选择分支；继续追 “Save A Copy” 非零分支的调用来源，见 [消息映射与过滤资源](docs/mxd-terra-chain-version.md)。
+    - [ ] 验证版本选择 UI→AfDoc put 的实际派发；“Save A Copy” 的子类型 12 → IApplication +0x48 → 非零版本选择已静态对位，见 [命令链复核](docs/mxd-terra-round8-version.md)。
     - [ ] 核对本地化语言包文本对版本文本/识别的影响。
-    - [ ] 确认旧文档打开后版本索引是否改写。
+    - [ ] 确认旧文档打开后版本索引是否改写；已验证分类值用于 [Metadata 加载](docs/mxd-terra-round9-save.md)，尚未覆盖间接调用及其他加载路径。
 - [ ] 运行时验证 `/Version` 版本映射。
 - [ ] 运行时验证 `/Version` 索引输出。
 - [x] 使用 REA 分析坐标系读取逻辑，验证 `/Maps` 中投影文本候选的长度和作用范围。
@@ -128,7 +134,7 @@
   - [x] 用 REA 确认 10.8 AfCore String::Read/Write 的字节长度、终止零和不严格短读行为，区分原生行为与 Rust 安全子集。
   - [x] 实现显式 10.8 调用点的严格字符串读取器，覆盖空值、中文、代理对、非法编码、全部截断、资源限制和失败游标；未接入 MXD 字段解析。
   - [x] 接入已确认字段归属：Map 数据框名称与第二名称经 Map.dll Load 与样本字节闭合为 AfCore String 布局，接入 `native_string::read_string_10_1`（Map 前缀读取器）；见 [研究记录](docs/arcmap-10.1-map-object.md)。
-  - [ ] 闭合 Map 双名称之外的未定对象属性，包括书签后已读取的三个成员的业务用途、非空独立表的剩余体、NADCON/GeoTransformation 之外的坐标变换类及 BasicOverposterProperties 之后的字段；照明后 12 字节字段的业务名称、非空 IGeometry 和 IBorder 槽仍未闭合（两个空槽已接入），见 [第四轮 Map 取证](docs/mxd-round4-map-spatial-20261117.md)和[坐标变换续查](docs/mxd-terra-chain-map.md)。
+  - [ ] 闭合 Map 双名称之外的未定对象属性，包括书签后已读取的三个成员的业务用途、尚未支持的独立表嵌套对象（SDK 的 LinearRef 两张 v9 表已完整读取，包括 TableName、工作空间及命名 FieldInfo，见 [独立表续查](docs/mxd-terra-round9-table.md)）、NADCON/GeoTransformation 之外的坐标变换类及 BasicOverposterProperties 之后的字段；照明后 12 字节字段的业务名称、非空 IGeometry 和其他 IBorder/IBackground 实现仍未闭合（SymbolBorder 和 SymbolBackground 已接入），见 [第四轮 Map 取证](docs/mxd-round4-map-spatial-20261117.md)和[坐标变换续查](docs/mxd-terra-chain-map.md)。
   - [ ] 闭合其他 MXD 版本的字符串规则。
   - [ ] 闭合其他 MXD 版本的对象属性规则。
   - [x] 闭合 10.1 对象键分配与回引编码：键=ObjectStream `+0x2c` 4 字节单调计数器（新对象写后 +1、跨流共享键序）、回引=同构 20 字节头无体无专用标记、唯一判据=键是否已在本会话出现过、循环引用无需专门编码（登记先于持久化）、缺失引用与新对象不可区分（有意保留的原生语义）；实现 `object_refs` 条目分类器与登记表并接入 robustness 集中清单（13 入口），样本键 29 起点/`0x2d2c` 键 32 回引辅助对照吻合；见 [研究记录](docs/arcmap-10.1-object-body.md#101-对象键分配与回引写侧闭合2026-11-14-第五轮)。
@@ -141,7 +147,7 @@
   - [x] 闭合 `FE3115E9`/`EE53528B` 两循环与键 1619..2101 簇归属：`FE3115E9`=IMapSurround（第 5 步地图装饰物集合循环）、`EE53528B`=ISpatialBookmark（第 9 步空间书签集合循环），同批经类型库定名约 20 个请求 IID（IHyperlink/IEnvelope/IStandaloneTable/IGeoTransformation/IFeatureRenderer/IName 等，修正第三轮两处候选）；键簇归属闭合为 CGL-1553 注记子图层条目（`[String 注记类名][FeatureLayer 完整体]`×9 + 1 个对键 1792 的回引头），修正第四轮「计数 50」误读，元素 coclass 经 esri.clsid 全表逐头归名；两循环样本元素定性仍需含书签/装饰物的样本，见 [研究记录](docs/arcmap-10.1-map-object.md#mapsurround书签循环接口身份注记子图层簇修正与样本尾部2026-11-14-第五轮)。
   - [x] 实现显式 10.1 图层列表读取器（`layer_list`：计数、标志 1/2/3、ExtraSafe `[A][B]` 前缀、B 原生同步与 A 界观察推定跳过、`object_refs` 分类、活动索引）与 Map 体后缀读取器（`map_object::read_map_suffix_10_1`：基本图形层槽位、MapSurround 循环、WKSEnvelope、两个 int32、IEnvelope 槽位、书签循环，到书签循环为止），接入 `parse` 与中间模型：条目顺序 → children（回引命中已解析键时复用同对象节点）、WKSEnvelope → extent。仓库样本在条目 1（FDOGraphicsLayer 标志 1，AnnoLayer.dll 未反编译）按原生语义停止（体无外部长度不可跳过）；条目 2..6 的 A 界经合成前导 6/6 辅助吻合——条目 4 A=3318 与活动索引 @`0x16fb6` 系研究文档笔误，以样本字节为准；跳过体键未登记对回引判定的影响已在模块文档说明（A/B 界保证对位不受影响）。第六轮更正：AnnoLayer.dll 已反编译，FDOGraphicsLayer 经类分派接入（新 `fdo_graphics_layer` 前缀读取器）并实现组图层子图层递归，样本条目 1 现解析 FDO 前缀与关联 FeatureLayer 体，停止点推进至关联 FeatureLayer 的渲染器槽位（SimpleRenderer 新对象 @`0x3ed`）。
   - [x] 实现显式 10.1 GroupLayer / CompositeGraphicsLayer 已确认前缀读取器（`group_layer`/`composite_graphics`，前缀停止语义：嵌套新对象/ExtensionHelper/未展开尾段处停止并保留剩余，失败事务性回滚登记表）；字段序按反编译一手证据（`/tmp/r3` 产物）修正研究文档表格三处出入（GroupLayer 嵌套对象门 `2 < ver`、CGL 第 6 步三个 int32、CGL 子图层条目尾段字段），样本 CGL 体 0x16fce 起逐段吻合（辅助观察）；样本无组图层，GroupLayer 版本分支无字节佐证，23 项单元测试。第六轮实现组图层子图层递归（<11 普通条目解析至前缀停止点、≥11 ExtraSafe 条目经类分派解析后按 A 界跳过，深度限额 64 为防栈溢出非原生限制），裁决 CGL 子图层计数位于 `0x17056`=10（`0x17052` 为版本>1 的 int32；10 条目 = 9 新 + 1 回引，键簇 1619..2101 逐条复核）。
-  - [ ] 取得 GroupLayer 版本分支的字节佐证。
+  - [ ] 取得 GroupLayer <11 普通子层分支的字节佐证；v11/v12 ExtraSafe 子层已由 SDK 实档互证，见 [介质宿主复核](docs/mxd-terra-round8-old.md)。
   - [x] 第七轮闭合五组开放点并接入分派链：渲染器链第一环（`feature_layer_tail`：SimpleRenderer `{F3435801}` 体 + SimpleMarkerSymbol/RgbColor/LegendGroup/LegendClass，样本 `0x3ed..0x602` 逐字段吻合，接入渲染器槽分派）、FCN 的 IDatasetName/ITopologyName 新对象体（`dataset_name`：FeatureDatasetName `{198846CF}`/TopologyName `{9FCA50EC}`，样本 11 个 FCN 选择子全 0、无字节佐证，接入 FCN 选择子分派）、ElementCollection 体（`element_collection`：Layer.dll RTTI→COL→虚表，Load `0x7865a340` 版本 <4 三循环 / ==4 交错布局，样本 12 实例全版本 4，接入 FDO 第 5 步分派）、FDO 开放点（`fdo_legacy`：<4 旧加载器 20 字段序与元素循环类 FDOGraphicsSublayer `{4ABA3851}` 均无字节佐证；版本 4 探测因整流绝对位置依赖不实现；委派子对象闭合为聚合 FeatureLayer `{E663A651}` 机制解释）、MapSurround/书签循环类族（`map_surround`：AOI/Feature 书签体完全闭合、Legend 已确认前缀，样本计数 0 无字节佐证，接入 Map 后缀循环分派）；robustness 集中清单增至 28 个入口，见各轮研究记录（docs/arcmap-10.1-featurelayer-tail.md、-fdo-open-points.md、-element-collection.md、-dataset-name.md、-mapsurround-bookmark.md）。
   - [x] 并行五轮闭合 FL 后继段与尾段链族：FL::Load 后继段 10 步至 FieldInfo 循环（IFieldInfo `{A2BAAE2C}`；RTM 3035「不可调和差异」裁决为误读并撤销，样本 0x5b0..0xafe 逐字节零分歧，停止点 0x5c0→0xafe）+ FieldInfo/NumericFormat 体；DisplayCore 十类符号与颜色（SimpleLine/Fill、MarkerLine/CartographicLine/HashLine、Cmyk/Hsv/Hls/GrayColor 共享 Color 核心）；LegendClassFormat/HorizontalLegendItem（Renderers.dll 动态安装 IPersistStream 虚表）/EditTemplate（样本 10 处 CLSID 命中、键 1605 逐字段吻合）+ AfCore `Variant::Read` bool=true 分支；PropertySet（值序列化器=类方法 Variant::Read 而非 VariantStream，样本 2 实例）+ ElementProperties 前缀与 TextElement/TextSymbol/Marker/LineElement 体（TextElement 样本 16 实例对位，修正第五轮「内嵌 SimpleTextPath」误读为原样 GUID+空标记）；接线轮九处分派点接入、display 模块归入 objects 并消除 objects→layers 依赖倒置、修复 SMS 首色槽 key 阴影，robustness 集中清单现为 48 个入口，423 项测试，见各研究记录及其接线轮小节。
   - [x] 独立重构轮消除剩余两处 objects→layers 依赖倒置：WorkspaceName 体读取器自 `layers::feature_layer` 移入 `objects::workspace_name`（`dataset_name` 改引 objects 路径）、`class_id_hex` 自 `layers::layer_list` 移入 `storage`（`element_collection` 改调 storage 路径），Reader 新增 `reposition_to` 回退共用原语；423 项测试与样本停止点 0xafe 均不变。
@@ -189,7 +195,7 @@
       - [x] 闭合 IDatasetName 槽 GeometricNetworkName `{F452B4D2}` 体：版本+String×3+IDatasetName 槽+装载通知，Save 恒写 1 读写对称。
       - [x] 闭合 IDatasetName 槽 RelationshipClassName `{311C2EE1}` 体：版本+String×3+int32×2+short×2+选择子（0→IWorkspaceName 槽/非 0→IDatasetName 槽+通知），Save 对称。
       - [x] 闭合 IDatasetName 槽其余实现类（GdbCore 范围）：MemoryRelationshipClassName `{6DBA211B}`/QueryTableName `{793873DE}`（版本门无符号，0 被原生拒绝）/RelQueryTableName `{DAB3EE10}`/DBTableName `{4C9307B2}`（无版本字段）四类体闭合；方法学修正：RTTI BCDD 数组会产生伪 COL，候选虚表必须以 GetClassID 反编译写出 CLSID 收尾；FeatureQueryName/TableQueryName（独立确认的 IPersistStream 形态）与 ObjectClassName 及其他模块实现另列开放项，见 [研究记录](docs/arcmap-10.1-dataset-name-slots.md)。
-      - [ ] FeatureBookmark 的 IName 槽实现类体（部分闭合：装载后对名称对象 QI IFeatureClass `{D4803EE6}`，成功写 this+8 失败软置空；实现类分布仍未观察——样本 0 书签，见 legend-family 记录第十节）。
+      - [ ] FeatureBookmark 的其余 IName 槽实现类体；已接入 FeatureClassName、TableName，原生先调用 IName::Open 再对返回对象查询 IFeatureClass，见 [书签续查](docs/mxd-terra-round9-bookmark.md)。
       - [x] 闭合 FDOGraphicsLayer 版本 4 探测分支：三依赖降为两项并全部定位闭合（整流绝对 0 访问成立单独已足；IObjectStream QI 门控主流键读、分支 B 经返回接口读键且前后无条件 Seek 复位）；「不实现」结论维持，见 [研究记录](docs/arcmap-10.1-save-side.md)。
       - [x] 闭合委派注记图层数据源 `{75E10086-4226-42AC-AFEC-CBB9B748F847}`：FileGDB.dll 10.1.0.3035 的 FgdbFeatureClassName，体为版本 short + 原样 short + 内嵌 GdbCore FeatureClassName 体（无第二对象头）；按精确 CLSID 接入，覆盖异常回滚和逐前缀截断。样本委派 FeatureLayer 体完整消费至 `0x2c01`；见 [本轮数据源记录](docs/mxd-open-dataset-20261116.md)。
       - [x] 接入 FDOGraphicsLayer 委派 FeatureLayer 体之后的第 7–15 步后续字段，包含 SymbolCollection 与内联子层；未知嵌套体安全停止，参考样本读至下一图层条目 `0x2d22`，未在 ArcMap 中人工验证，见 [研究记录](docs/mxd-layer-luna.md)。
@@ -230,15 +236,15 @@
       - [x] 定性三处标记符号的 RotateWithTransform 原始 short：10.1 成功读取后用当前用户配置或默认值覆盖内存槽，读取器保留磁盘原值，见 [原生字段复核](docs/mxd-terra-next-display.md#第-218-行补充rotatewithtransform-的属性和默认值2026-11-17)。
       - [x] 定性 LegendClassFormat 的两个持久化标量：PatchWidth、PatchHeight，见 [图例字段对位](docs/mxd-terra-depth-legend.md)。
       - [ ] 定性 HorizontalLegendItem 布局模式的各值；已确认包装 int32 受流向影响并参与布局，见 [图例续查](docs/mxd-terra-chain-legend.md)。
-      - [ ] Legend 共同前缀各 short/int32 字段业务语义。
+      - [x] 定性 Legend 自身前缀的 short/int32：AutoAdd、AutoReorder、AutoVisibility、读弃且写常量的 short、图例条目计数；MapSurround 基类另列，见 [前缀对位](docs/mxd-terra-round10-legend.md)。
       - [ ] ElementProperties 字段业务语义。
-      - [ ] TextSymbol 字段业务语义。
+      - [ ] TextSymbol 剩余字段业务语义；MaskStyle、MaskSize、MaskSymbol 和颜色槽已 [对位](docs/mxd-terra-round9-text.md)。
       - [ ] 定性 FeatureDatasetName 第四个字符串和标志；前三串 Name、IName.NameString、Category 和工作空间槽已对位，见 [名称续查](docs/mxd-terra-chain-dataset.md)。
       - [x] 定性 10.1 TopologyName 持久化字段：Name、Category、FeatureDatasetName；嵌套对象 WorkspaceName getter 的运行副作用未验，见 [字段对位](docs/mxd-terra-depth-names.md)。
       - [ ] MapSurround 共同前缀字段业务语义。
       - [ ] 书签共同前缀字段业务语义。
-      - [ ] FDO 旧加载器接口槽业务语义。
-      - [ ] ALPC 标量与字符串业务语义（标注表达式、类名、OID 等）。
+      - [x] 定性 FDO 旧加载器的 ILayer/IFeatureLayer/IFeatureSelection/IDataLayer 写入槽及数据源要素类查询，见 [旧版接口和类型库对位](docs/mxd-terra-round8-fdo.md)。运行时副作用和旧档证据另验。
+      - [x] 定性 10.1 ALPC 集合自身的条目 ID 与下一 ID 计数器，修正空对象不带条目 ID 的读取；标注表达式及类名属于另列的 LELP，集合 ID 不等同于要素 OID。见 [标注取证](docs/mxd-terra-nextpass-expression.md)。
       - [ ] LELP 标量与字符串业务语义（标注表达式、类名、OID 等）。
       - [ ] ETM 标量与字符串业务语义（标注表达式、类名、OID 等；尾字节样本 0x01）。
       - [ ] FeatureIDSet 标量与字符串业务语义（标注表达式、类名、OID 等）。
@@ -256,10 +262,10 @@
       - [x] 定名 `{7453C805-9D64-44A6-BF2F-73E477DCE18F}` 为 esriCarto `IPublishLayer`，见 [类型库复核](docs/mxd-iid-research-20261116.md)。
       - [x] 定名 `{DBCA59AC-6771-4408-8F48-C7D53389440C}` 为 esriCarto `IAnnotationSublayer`，见 [类型库复核](docs/mxd-iid-research-20261116.md)。
       - [x] 纠正 FeatureLayer 版本 ≥17 槽的 IID 误记：实际请求 `{1714D59B-…}`（IUID），非 `{97D5B914-…}`；见 [调用点及 PE 字节](docs/mxd-terra-depth-iid.md)。
-      - [ ] 其余未定名 IID（含 AnnoLayer 主 QI 的 `{C9E7A782-…}`；另外四个已定名并纠正各接口返回偏移，见 [原生复核](docs/mxd-terra-chain-iid.md)）。
+      - [x] 定名剩余的保存路径 IID：`{C9E7A782-…}` 为 IDocumentVersionSupport，`{4BF42172-…}` 为 INoPersistInArcGISDocument；见 [RTTI、虚表与保存调用对位](docs/mxd-terra-round10-iid.md)。
       - [ ] 定性 B 轮 IDatasetName 六类标量/String 字段与五条请求接口的业务语义；IID 已由 10.1 类型库定名，字段及调用用途见 [第四轮名称取证](docs/mxd-round4-names-format-20261117.md)。
-      - [ ] 定性 C 轮装饰物族（Scalebar 族/MarkerNorthArrow/MapTitle/LegendFormat/LegendItem 三类/Patch 两类）标量字段业务语义；早期三处 ScaleLine 候选实为 ImageInset/MapInset/Overview，真正的 ScaleLine 实现仍待定位，见 [页面续查](docs/mxd-terra-integrate-page.md)。
-      - [ ] 定性 F 轮 PCS/GCS/Unknown 域串与 Unknown 四串业务语义及填充来源；ISRPersistStream slot8（恒 0x38）成员名；GCS `完整对象+0xc4` 非零守卫语义；容差公式 pe/sg 数值推导链，见 [研究记录](docs/arcmap-10.1-pcs-geometry-slots.md)。
+      - [ ] 定性 C 轮装饰物族（Scalebar 族/MarkerNorthArrow/MapTitle/LegendFormat/LegendItem 三类/Patch 两类）标量字段业务语义；早期三处 ScaleLine 候选实为 ImageInset/MapInset/Overview，真正的 ScaleLine 和 SteppedScaleLine 已定位并接入；标量属性仍待对位，见 [比例尺线续查](docs/mxd-terra-nextpass-scale.md)。
+      - [ ] 定性 F 轮 PCS/GCS/Unknown 域串与 Unknown 四串业务语义及填充来源；ISRPersistStream 的 GetPrecisionSizeMax（slot 8，写出 0x38）已定名；GCS `完整对象+0xc4` 非零守卫语义；容差公式 pe/sg 数值推导链，见 [研究记录](docs/arcmap-10.1-pcs-geometry-slots.md)。
       - [x] 定性 G 轮三个静态观察：RandomColorRamp 的 Size 请求值读取后不回填，PictureFillSymbol 保存时计算的两个尺寸读取后不使用，MultiPart 的子渐变权重在旧版本默认 1.0；见 [DisplayCore 续查](docs/mxd-terra-host-color.md)。运行行为另验。
       - [x] 裁决 FL 后继段 ㊱ 六字节错位：原生 PreJoin 无保留头，前序 UID 少读四字节并误读空字符串导致累计错位六字节；已按 10.1 原生读写与样本边界修复并覆盖截断，见 [复核记录](docs/mxd-boundary-luna.md)。
     - 样本无佐证分支（待真实样本或运行取证升级为证据）：
@@ -271,7 +277,7 @@
       - [x] 在 10.1 安装介质 LandscapeClassic 模板中，从 Map 根读取完整的非空 MapSurround 循环（3 条），随后读到地图范围，见 [实样验证](docs/mxd-round2-review-20261117.md)。
       - [ ] 书签循环非空形态（样本计数 0）。
       - [x] 以介质模板 SouthernUSA 的实际要素图层验证 11 个 FieldInfo v3，见 [图层续研](docs/mxd-layer-label-cgl-20261117.md)。
-      - [ ] FieldInfo v0–2 分支。
+      - [ ] FieldInfo v0/v1 实档分支；v2 已在 SDK 工程中由宿主完整读取 5 项，见 [介质宿主复核](docs/mxd-terra-round8-old.md)。
       - [x] 从旧版 Africa 模板的 Map 根逐条读取三个新 LegendClassFormat 对象体，均完整消费，见 [实样验证](docs/mxd-round2-review-20261117.md)。
       - [x] 从旧版 Africa 模板的 Map 根读取三个完整的 HorizontalLegendItem v1，见 [实样验证](docs/mxd-round2-review-20261117.md)。
       - [x] 随旧版 Africa 模板的 HorizontalLegendItem 验证共享的 BaseLegendItem v1 字段组，见 [实样验证](docs/mxd-round2-review-20261117.md)。
@@ -286,7 +292,7 @@
       - [ ] NumberFormat 短体形态（九类全族）。
       - [ ] 取得 Percentage/Rate/LatLon/Angle 内嵌 NumericFormat 核心的真实对象体边界。
       - [ ] Angle 原生忽略核心失败的容错路径（读取器较严）。
-      - [ ] 定性 StdPicture 第二字及解码器分派；已验证介质 BMP 体第二字为 0，见 [样本记录](docs/mxd-round2-symbol-ole-20261117.md)。
+      - [x] 定性 StdPicture 第二字及解码器首层分派：10.1 介质的 OLEAUT32 2.40.4275.1 写零、读侧忽略其值，按载荷首字进入各处理分支；见 [静态取证](docs/mxd-terra-round10-picture.md)。系统实际加载版本与运行行为未验。
       - [ ] OLE 字体持久化跨 oleaut32 版本稳定性（介质 2.40.4275 vs 运行时 OS 版本）。
       - [ ] BOLP/UID/HLEP/DEP 前缀的样本结构级证据升级（Load 反编译唯一定位）。
       - [ ] Geometry 版本 0/1。

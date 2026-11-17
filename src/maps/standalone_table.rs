@@ -7,8 +7,14 @@ use crate::layers::dep_tail::{TimeDataFamily10_1, read_time_data_family_10_1};
 use crate::layers::feature_layer::{
     FEATURE_CLASS_NAME_CLASS_ID, FeatureClassNamePrefix10_1, read_feature_class_name_body_10_1,
 };
+use crate::layers::feature_layer_tail::{
+    FIELD_INFO_CLASS_ID, FieldInfoBody10_1, FieldInfoStop10_1, read_field_info_body_10_1,
+};
 use crate::objects::dataset_name_more::{
     QUERY_TABLE_NAME_CLASS_ID, QueryTableNameBody10_1, read_query_table_name_body_10_1,
+};
+use crate::objects::workspace_name::{
+    WORKSPACE_NAME_CLASS_ID, WorkspaceNameEntry10_1, read_workspace_name_body_10_1,
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -20,10 +26,77 @@ pub const STANDALONE_TABLE_CLASS_ID: [u8; 16] = [
     0x47, 0x50, 0x7c, 0xee, 0xdb, 0xe3, 0xd3, 0x11, 0xa0, 0x96, 0x00, 0xc0, 0x4f, 0x6b, 0xc6, 0x26,
 ];
 
+/// TableName 的 CLSID（Windows GUID 字节序）。
+pub const TABLE_NAME_CLASS_ID: [u8; 16] = [
+    0xb1, 0x3d, 0x78, 0x06, 0xee, 0xe5, 0xd1, 0x11, 0xb0, 0xa2, 0x00, 0x00, 0xf8, 0x78, 0x08, 0x20,
+];
+
+/// TableName 对象体；工作空间未知对象处停止，不推断后续长度。
+///
+/// GdbCoreLib 10.1 的 `FdbDatasetName::Load` 读取版本、三串及
+/// IWorkspaceName；证据和原生版本门的差异见 `docs/mxd-terra-round8-tablename.md`。
+#[derive(Debug, Clone, PartialEq)]
+pub struct TableNameBody10_1 {
+    pub version: u16,
+    pub strings: [String; 3],
+    pub workspace: WorkspaceNameEntry10_1,
+}
+
+pub(super) fn read_table_name_body_10_1(
+    reader: &mut Reader<'_>,
+    table: &mut RefTable10_1,
+    max_bytes: usize,
+) -> io::Result<(TableNameBody10_1, bool)> {
+    let mut r = reader.clone();
+    let mut refs = table.clone();
+    let version = r.read_u16_le()?;
+    if version > 1 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "TableName 版本不支持",
+        ));
+    }
+    let strings = [
+        read_string_10_1(&mut r, max_bytes)?,
+        read_string_10_1(&mut r, max_bytes)?,
+        read_string_10_1(&mut r, max_bytes)?,
+    ];
+    let slot_start = r.clone();
+    let before = refs.clone();
+    let (workspace, stopped) = match read_object_entry_10_1(&mut r, &mut refs)? {
+        ObjectEntry10_1::Null => (WorkspaceNameEntry10_1::Null, false),
+        ObjectEntry10_1::BackReference { class_id, key } => (
+            WorkspaceNameEntry10_1::BackReference { class_id, key },
+            false,
+        ),
+        ObjectEntry10_1::NewObject { class_id, key } if class_id == WORKSPACE_NAME_CLASS_ID => {
+            let body = read_workspace_name_body_10_1(&mut r, max_bytes, &mut refs, key)?;
+            let stopped = body.stop.is_some();
+            (WorkspaceNameEntry10_1::NewObject(Box::new(body)), stopped)
+        }
+        ObjectEntry10_1::NewObject { class_id, key } => {
+            r = slot_start;
+            refs = before;
+            (WorkspaceNameEntry10_1::Unsupported { class_id, key }, true)
+        }
+    };
+    *reader = r;
+    *table = refs;
+    Ok((
+        TableNameBody10_1 {
+            version,
+            strings,
+            workspace,
+        },
+        stopped,
+    ))
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum StandaloneNameBody10_1 {
     FeatureClassName(Box<FeatureClassNamePrefix10_1>),
     QueryTableName(Box<QueryTableNameBody10_1>),
+    TableName(Box<TableNameBody10_1>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,6 +112,8 @@ pub enum StandaloneTableStop10_1 {
         class_id: [u8; 16],
         key: u32,
     },
+    /// FieldInfo 内部的未知数字格式对象。
+    NamedFieldInfoBody(FieldInfoStop10_1),
     /// 名称对象内部的未支持子对象。
     NameBody,
     /// 关系对象循环中的未知新对象。
@@ -73,6 +148,8 @@ pub struct StandaloneTablePrefix10_1 {
     pub dataset_name: Option<ObjectEntry10_1>,
     pub dataset_name_body: Option<StandaloneNameBody10_1>,
     pub named_objects: Vec<(String, ObjectEntry10_1)>,
+    /// 与 named_objects 一一对应；空槽或回引没有新对象体。
+    pub named_object_bodies: Vec<Option<FieldInfoBody10_1>>,
     pub trailing_string: Option<String>,
     pub relationships: Vec<ObjectEntry10_1>,
     pub sequence_object: Option<ObjectEntry10_1>,
@@ -117,6 +194,13 @@ fn read_name(
             let stopped = body.stop.is_some();
             (
                 Some(StandaloneNameBody10_1::QueryTableName(Box::new(body))),
+                stopped,
+            )
+        }
+        ObjectEntry10_1::NewObject { class_id, .. } if class_id == TABLE_NAME_CLASS_ID => {
+            let (body, stopped) = read_table_name_body_10_1(&mut trial, &mut staged, max_bytes)?;
+            (
+                Some(StandaloneNameBody10_1::TableName(Box::new(body))),
                 stopped,
             )
         }
@@ -172,6 +256,7 @@ pub fn read_standalone_table_prefix_10_1(
         dataset_name: None,
         dataset_name_body: None,
         named_objects: Vec::new(),
+        named_object_bodies: Vec::new(),
         trailing_string: None,
         relationships: Vec::new(),
         sequence_object: None,
@@ -203,19 +288,38 @@ pub fn read_standalone_table_prefix_10_1(
         let mut slot_reader = r.clone();
         let mut slot_refs = table.clone();
         let entry = read_object_entry_10_1(&mut slot_reader, &mut slot_refs)?;
-        if let ObjectEntry10_1::NewObject { class_id, key } = entry {
-            result.stop = StandaloneTableStop10_1::NamedObject {
-                name,
-                class_id,
-                key,
-            };
+        let body = match entry {
+            ObjectEntry10_1::NewObject { class_id, key } if class_id == FIELD_INFO_CLASS_ID => {
+                Some(read_field_info_body_10_1(
+                    &mut slot_reader,
+                    max_string_bytes,
+                    &mut slot_refs,
+                    key,
+                )?)
+            }
+            ObjectEntry10_1::NewObject { class_id, key } => {
+                result.stop = StandaloneTableStop10_1::NamedObject {
+                    name,
+                    class_id,
+                    key,
+                };
+                *reader = r;
+                *refs = table;
+                return Ok(result);
+            }
+            _ => None,
+        };
+        let stop = body.as_ref().and_then(|body| body.stop);
+        r = slot_reader;
+        table = slot_refs;
+        result.named_objects.push((name, entry));
+        result.named_object_bodies.push(body);
+        if let Some(stop) = stop {
+            result.stop = StandaloneTableStop10_1::NamedFieldInfoBody(stop);
             *reader = r;
             *refs = table;
             return Ok(result);
         }
-        r = slot_reader;
-        table = slot_refs;
-        result.named_objects.push((name, entry));
     }
     result.trailing_string = Some(read_string_10_1(&mut r, max_string_bytes)?);
     if version >= 2 {

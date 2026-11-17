@@ -29,7 +29,7 @@ fn reference_map_reaches_post_illumination_fields_from_root() {
         }
     ));
     let map = read_map_suffix_10_1(&mut reader, 4_000_000, &mut table).unwrap();
-    assert_eq!(map.stop, MapSuffixStop::AfterBorderTail { stage: 35 });
+    assert_eq!(map.stop, MapSuffixStop::AfterBorderTail { stage: 38 });
     let fields = map.post_illumination.unwrap();
     assert_eq!(fields.offset, 0x24fe8);
     assert_eq!(fields.short_1a0.to_le_bytes(), bytes[0x24fe8..0x24fea]);
@@ -40,7 +40,7 @@ fn reference_map_reaches_post_illumination_fields_from_root() {
     assert_eq!(fields.int_1b0.to_le_bytes(), bytes[0x24fec..0x24ff0]);
     assert_eq!(fields.short_1ac.to_le_bytes(), bytes[0x24ff0..0x24ff2]);
     assert_eq!(fields.short_268.to_le_bytes(), bytes[0x24ff2..0x24ff4]);
-    assert_eq!(reader.position(), 0x253b6);
+    assert_eq!(reader.position(), 0x253be);
 }
 
 #[test]

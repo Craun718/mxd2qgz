@@ -172,7 +172,7 @@ Load `FUN_793da250` 字段序（汇编逐门复核）：
 | 8 | int32 计数 + 循环 LoadObject（ILegendItem `{52AA5BC0-…}`） | 恒有 | 每项经集合接口 `+0xa4` 入集 |
 | 9 | int16（−0xe8） | 版本 ≥3 | `0x794414e8` 同型门 `0x793da4e8` |
 | 10 | int16（−0xe6） | 版本 ≥4 | `0x793da51b` |
-| 11 | int16 ×3 + double（−0x9c..−0x94） | 版本 ≥5 | `0x793da545`；<5 原生写默认（含 4.5）不读流 |
+| 11 | int16 ×3 + double（−0x9c..−0x94） | 版本 ≥5 | `0x793da545`；<5 原生写默认（含 4.0）不读流 |
 
 Save `FUN_793da650` 对称（含恒写 `0xFFFF` short、int32 计数 + 循环
 SaveObject 条目、恒写 −0xe8、docVersion≠0 写 −0xe6、docVersion≥5 写尾组；

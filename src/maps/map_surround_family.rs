@@ -2413,6 +2413,344 @@ mod tests {
         );
     }
 
+    // 返回各对象槽与版本字段的位置，供边界和回滚测试定位。
+    fn scale_line_fixture(base: u16, tail: u16, stepped: bool) -> (Vec<u8>, Vec<usize>) {
+        let mut data = vec![0xabu8; 3];
+        let mut positions = Vec::new();
+        data.extend(1u16.to_le_bytes());
+        data.extend(base.to_le_bytes());
+        data.extend(common_prefix_bytes());
+        data.extend([0u8; 18]);
+        data.extend(string_bytes("scale"));
+        data.extend([0u8; 12]);
+        positions.push(data.len());
+        data.extend([0u8; 16]);
+        data.extend([0u8; 4]);
+        if base < 2 {
+            data.extend(0x12345678u32.to_le_bytes());
+        }
+        data.extend([0u8; 12]);
+        positions.push(data.len());
+        data.extend([0u8; 16]);
+        if base >= 2 {
+            positions.push(data.len());
+            data.extend([0u8; 16]);
+        }
+        if base >= 3 {
+            data.extend([0u8; 4]);
+        }
+        if base >= 4 {
+            data.extend([0u8; 8]);
+        }
+        if base >= 5 {
+            data.extend([0u8; 2]);
+        }
+        if base >= 6 {
+            data.extend([0u8; 2]);
+        }
+        positions.push(data.len());
+        data.extend(1u16.to_le_bytes());
+        positions.push(data.len());
+        data.extend([0u8; 16]);
+        positions.push(data.len());
+        data.extend(tail.to_le_bytes());
+        if tail < 2 {
+            data.extend(0xffffu16.to_le_bytes());
+        }
+        positions.push(data.len());
+        data.extend([0u8; 16]);
+        positions.push(data.len());
+        data.extend([0u8; 16]);
+        data.extend([0u8; 20]);
+        if tail >= 2 {
+            data.extend(0xabcdef01u32.to_le_bytes());
+        }
+        if stepped {
+            data.extend(0x7ff8_0000_0000_1234u64.to_le_bytes());
+        }
+        (data, positions)
+    }
+
+    fn scale_table() -> RefTable10_1 {
+        let mut table = RefTable10_1::new();
+        table.register(30);
+        table
+    }
+
+    #[test]
+    fn map_surround_loop_reads_both_scale_line_classes_before_extent() {
+        use crate::maps::map_object::{MapSurroundElement10_1, read_map_suffix_10_1};
+        let mut data = 51_u16.to_le_bytes().to_vec();
+        data.extend(string_bytes("Map"));
+        data.extend(string_bytes(""));
+        data.extend([0; 16]); // 空空间参考。
+        data.extend(0_i32.to_le_bytes()); // 空图层列表。
+        data.extend((-1_i32).to_le_bytes());
+        data.extend([0; 16]); // 空基本图形层。
+        data.extend(2_i32.to_le_bytes());
+        for (class_id, key, stepped) in [
+            (SCALE_LINE_CLASS_ID, 41_u32, false),
+            (STEPPED_SCALE_LINE_CLASS_ID, 42_u32, true),
+        ] {
+            data.extend(class_id);
+            data.extend(key.to_le_bytes());
+            data.extend_from_slice(&scale_line_fixture(6, 2, stepped).0[3..]);
+        }
+        let extent_offset = data.len();
+        for bound in [1.0_f64, 2.0, 3.0, 4.0] {
+            data.extend(bound.to_le_bytes());
+        }
+        data.extend([0; 8 + 16 + 4]);
+        let mut reader = Reader::new(&data);
+        let mut table = scale_table();
+        let map = read_map_suffix_10_1(&mut reader, 4096, &mut table).unwrap();
+        for (item, expected) in map.map_surround_parsed.iter().zip([
+            ScaleLineKind10_1::ScaleLine,
+            ScaleLineKind10_1::SteppedScaleLine,
+        ]) {
+            assert!(
+                matches!(item, Some(MapSurroundElement10_1::ScaleLine(body)) if body.kind == expected && body.stop.is_none())
+            );
+        }
+        assert_eq!(map.map_surround_parsed.len(), 2);
+        assert_eq!(map.extent_offset, Some(extent_offset));
+        assert!(table.contains(41) && table.contains(42));
+        assert_eq!(reader.remaining(), 0);
+    }
+
+    #[test]
+    fn scale_line_reads_all_legacy_and_current_boundaries() {
+        for base in 0..=6 {
+            for tail in 0..=2 {
+                for stepped in [false, true] {
+                    let (mut data, _) = scale_line_fixture(base, tail, stepped);
+                    let end = data.len();
+                    data.extend([0xde, 0xad, 0xbe, 0xef]);
+                    let mut reader = Reader::new(&data);
+                    reader.read_bytes(3).unwrap();
+                    let mut table = scale_table();
+                    let kind = if stepped {
+                        ScaleLineKind10_1::SteppedScaleLine
+                    } else {
+                        ScaleLineKind10_1::ScaleLine
+                    };
+                    let body =
+                        read_scale_line_body_10_1(&mut reader, 4096, &mut table, 9, kind).unwrap();
+                    assert_eq!(body.stop, None);
+                    assert_eq!(
+                        reader.position(),
+                        end,
+                        "base={base} tail={tail} stepped={stepped}"
+                    );
+                    assert_eq!(body.remaining_bytes, 4);
+                    assert_eq!(
+                        body.fields.iter().any(|field| matches!(
+                            field,
+                            ScaleLineField10_1::Raw {
+                                name: "base_legacy_discard",
+                                ..
+                            }
+                        )),
+                        base < 2
+                    );
+                    assert_eq!(
+                        body.fields.iter().any(|field| matches!(
+                            field,
+                            ScaleLineField10_1::Raw {
+                                name: "tail_int_b",
+                                ..
+                            }
+                        )),
+                        tail >= 2
+                    );
+                    assert_eq!(body.fields.iter().any(|field| matches!(field, ScaleLineField10_1::Raw { name: "stepped_double", bytes } if bytes == &0x7ff8_0000_0000_1234u64.to_le_bytes())), stepped);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn scale_line_stops_and_rolls_back_each_unknown_slot() {
+        let (data, offsets) = scale_line_fixture(6, 2, false);
+        for (index, slot) in [
+            (0, "label_symbol"),
+            (1, "second_symbol"),
+            (2, "number_format"),
+            (4, "line_symbol"),
+            (6, "tail_symbol_a"),
+            (7, "tail_symbol_b"),
+        ] {
+            let offset = offsets[index];
+            let mut bytes = data.clone();
+            bytes.splice(offset..offset + 16, backref_header(&[0x77; 16], 99));
+            let mut table = scale_table();
+            let mut reader = Reader::new(&bytes);
+            reader.read_bytes(3).unwrap();
+            let body = read_scale_line_10_1(&mut reader, 4096, &mut table, 9).unwrap();
+            assert_eq!(
+                body.stop,
+                Some(ScaleLineStop10_1::Object {
+                    slot,
+                    offset,
+                    class_id: [0x77; 16],
+                    key: 99
+                })
+            );
+            assert_eq!(reader.position(), offset);
+            assert!(!table.contains(99));
+        }
+    }
+
+    #[test]
+    fn scale_line_rolls_back_unfinished_nested_symbol_and_accepts_backrefs() {
+        use crate::objects::display_symbol::SIMPLE_LINE_SYMBOL_CLASS_ID;
+        let (data, offsets) = scale_line_fixture(6, 2, false);
+        let offset = offsets[4];
+        let mut nested = backref_header(&SIMPLE_LINE_SYMBOL_CLASS_ID, 55);
+        nested.extend(1u16.to_le_bytes());
+        nested.extend(backref_header(&[0x77; 16], 56));
+        let mut bytes = data.clone();
+        bytes.splice(offset..offset + 16, nested);
+        let mut reader = Reader::new(&bytes);
+        reader.read_bytes(3).unwrap();
+        let mut table = scale_table();
+        let body = read_scale_line_10_1(&mut reader, 4096, &mut table, 9).unwrap();
+        assert!(
+            matches!(body.stop, Some(ScaleLineStop10_1::Symbol { slot: "line_symbol", offset: at, reason: SymbolStop10_1::NestedIncomplete { key: 55, .. } }) if at == offset)
+        );
+        assert_eq!(reader.position(), offset);
+        assert!(!table.contains(55) && !table.contains(56));
+
+        let mut bytes = data;
+        bytes.splice(
+            offset..offset + 16,
+            backref_header(&SIMPLE_LINE_SYMBOL_CLASS_ID, 55),
+        );
+        let mut reader = Reader::new(&bytes);
+        reader.read_bytes(3).unwrap();
+        let mut table = scale_table();
+        table.register(55);
+        let body = read_scale_line_10_1(&mut reader, 4096, &mut table, 9).unwrap();
+        assert_eq!(body.stop, None);
+        assert!(body.fields.iter().any(|f| matches!(
+            f,
+            ScaleLineField10_1::LineSymbol(SymbolSlotFull10_1::BackReference { key: 55, .. })
+        )));
+    }
+
+    #[test]
+    fn scale_line_retains_closed_objects_and_rolls_back_failed_calls() {
+        use crate::objects::display_symbol::SIMPLE_LINE_SYMBOL_CLASS_ID;
+        let (mut data, offsets) = scale_line_fixture(6, 2, false);
+        let mut format = backref_header(&NUMERIC_FORMAT_CLASS_ID, 70);
+        format.extend(numeric_format_bytes());
+        let delta = format.len() - 16;
+        data.splice(offsets[2]..offsets[2] + 16, format);
+        let line_offset = offsets[4] + delta;
+        let mut line = backref_header(&SIMPLE_LINE_SYMBOL_CLASS_ID, 71);
+        line.extend(1u16.to_le_bytes());
+        line.extend([0u8; 16]);
+        line.extend([0u8; 20]);
+        data.splice(line_offset..line_offset + 16, line);
+        let mut reader = Reader::new(&data);
+        reader.read_bytes(3).unwrap();
+        let mut table = scale_table();
+        let body = read_scale_line_10_1(&mut reader, 4096, &mut table, 9).unwrap();
+        assert_eq!(body.stop, None);
+        assert!(table.contains(70) && table.contains(71));
+        assert!(body.fields.iter().any(|field| matches!(
+            field,
+            ScaleLineField10_1::NumberFormat(SlotEntry10_1::Body(_))
+        )));
+        assert!(body.fields.iter().any(|field| matches!(
+            field,
+            ScaleLineField10_1::LineSymbol(SymbolSlotFull10_1::SimpleLineSymbol(_))
+        )));
+
+        let mut reader = Reader::new(&data[..data.len() - 1]);
+        reader.read_bytes(3).unwrap();
+        let mut table = scale_table();
+        assert!(read_scale_line_10_1(&mut reader, 4096, &mut table, 9).is_err());
+        assert_eq!(reader.position(), 3);
+        assert!(!table.contains(70) && !table.contains(71));
+
+        let mut data = data;
+        let tail_slot = offsets[6] + delta + (20 + 2 + 16 + 20 - 16);
+        data.splice(tail_slot..tail_slot + 16, backref_header(&[0x77; 16], 72));
+        let mut reader = Reader::new(&data);
+        reader.read_bytes(3).unwrap();
+        let mut table = scale_table();
+        let body = read_scale_line_10_1(&mut reader, 4096, &mut table, 9).unwrap();
+        assert!(matches!(
+            body.stop,
+            Some(ScaleLineStop10_1::Object {
+                slot: "tail_symbol_a",
+                key: 72,
+                ..
+            })
+        ));
+        assert!(table.contains(70) && table.contains(71) && !table.contains(72));
+    }
+
+    #[test]
+    fn scale_line_rolls_back_unfinished_text_symbol() {
+        let (mut data, offsets) = scale_line_fixture(6, 2, false);
+        let mut text = backref_header(&TEXT_SYMBOL_CLASS_ID, 80);
+        text.extend(1u16.to_le_bytes());
+        text.extend(backref_header(&[0x77; 16], 81));
+        data.splice(offsets[0]..offsets[0] + 16, text);
+        let mut reader = Reader::new(&data);
+        reader.read_bytes(3).unwrap();
+        let mut table = scale_table();
+        let body = read_scale_line_10_1(&mut reader, 4096, &mut table, 9).unwrap();
+        assert!(matches!(
+            body.stop,
+            Some(ScaleLineStop10_1::Object {
+                slot: "label_symbol",
+                key: 80,
+                ..
+            })
+        ));
+        assert_eq!(reader.position(), offsets[0]);
+        assert!(!table.contains(80) && !table.contains(81));
+    }
+
+    #[test]
+    fn scale_line_truncations_and_invalid_versions_are_transactional() {
+        for stepped in [false, true] {
+            let (data, offsets) = scale_line_fixture(6, 2, stepped);
+            for cut in 3..data.len() {
+                let mut reader = Reader::new(&data[..cut]);
+                reader.read_bytes(3).unwrap();
+                let mut table = scale_table();
+                let result = read_scale_line_body_10_1(
+                    &mut reader,
+                    4096,
+                    &mut table,
+                    9,
+                    if stepped {
+                        ScaleLineKind10_1::SteppedScaleLine
+                    } else {
+                        ScaleLineKind10_1::ScaleLine
+                    },
+                );
+                assert!(result.is_err(), "截断 {cut}");
+                assert_eq!(reader.position(), 3);
+                assert_eq!(table.len(), 1);
+            }
+            for (offset, invalid) in [(3, 2u16), (5, 7), (offsets[3], 2), (offsets[5], 3)] {
+                let mut bytes = data.clone();
+                bytes[offset..offset + 2].copy_from_slice(&invalid.to_le_bytes());
+                let mut reader = Reader::new(&bytes);
+                reader.read_bytes(3).unwrap();
+                let mut table = scale_table();
+                assert!(read_scale_line_10_1(&mut reader, 4096, &mut table, 9).is_err());
+                assert_eq!(reader.position(), 3);
+                assert_eq!(table.len(), 1);
+            }
+        }
+    }
+
     #[test]
     fn truncation_leaves_reader_unmoved_and_table_clean() {
         // 对 Scalebar 完整体逐前缀截断：失败时游标与登记表保持不变。

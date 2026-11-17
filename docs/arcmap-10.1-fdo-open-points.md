@@ -5,6 +5,8 @@
 子对象 C++ 类身份。本轮为静态逆向研究，未运行 ArcMap，未做任何人工目视验
 收；全部结论标注证据强度，样本对位仅作辅助观察。
 
+> [后续接口槽复核](mxd-terra-nextpass-fdo.md)更正了旧加载器第 9 项和第 13–19 项的接收者与偏移；涉及这些项时以后续表为准。
+
 ## 方法与环境
 
 - 目标文件：AnnoLayer.dll，从 `Setup1.cab` 条目
@@ -140,7 +142,7 @@ IID `0x6b1ac120` = `{00000109-0000-0000-C000-000000000046}` =
 - 主 QI `0x6b1a1890` 的旧表存在分支偏移错对位。以[原始指令与类型库复核](mxd-terra-chain-iid.md)为准：
   IAnnotationSublayer +0x28、IPersistStream/IPersist +0x40、IGeoDataset +0x30、
   ILayer +0x2c、IDisplayAdmin +0x34、ILayerDrawingPhase +0x38、
-  ILayerGeneralProperties +0x3c、未定名 `{C9E7A782-…}` +0x44。
+  ILayerGeneralProperties +0x3c、[IDocumentVersionSupport](mxd-terra-round10-iid.md) `{C9E7A782-…}` +0x44。
   未命中转基类 QI `0x6b1a3e90`。
 
 ### 体布局（Load `0x6b1a1b10` 反编译；**无样本字节佐证**——样本计数 0）

@@ -693,13 +693,16 @@ fn parse_first_frame(
         ));
     }
 
-    if let Some((slot, table)) = suffix.first_standalone_table {
+    for (index, (slot, body)) in suffix.standalone_tables.iter().enumerate() {
         diagnostics.push(format!(
-            "首个 StandaloneTable（offset 0x{:x}）：{}；体版本 {}，只读取已确认前缀",
+            "独立表 {}（offset 0x{:x}）：{}",
+            index + 1,
             slot.offset,
             slot.describe(),
-            table.version,
         ));
+        if let Some(body) = body {
+            diagnostics.push(format!("独立表体版本 {}", body.version));
+        }
     }
 
     if let Some(illumination) = suffix.illumination {
@@ -728,11 +731,10 @@ fn parse_first_frame(
             geometry.describe(),
         ));
     }
-    if let Some(border) = suffix.post_illumination_null_border {
+    if let Some((offset, border)) = &suffix.post_illumination_border {
         diagnostics.push(format!(
-            "照明后 IBorder 槽位（offset 0x{:x}）：{}",
-            border.offset,
-            border.describe(),
+            "照明后 IBorder 槽位（offset 0x{:x}）：{:?}",
+            offset, border,
         ));
     }
 
@@ -763,9 +765,9 @@ fn parse_first_frame(
     if let Some(value) = suffix.post_border_tail.post_transform_double_bits {
         let tail = &suffix.post_border_tail;
         diagnostics.push(format!(
-            "变换循环后：double 位={value:?}，short={:?}，空背景槽={:?}，后续空对象槽={:?}",
+            "变换循环后：double 位={value:?}，short={:?}，背景槽={:?}，后续空对象槽={:?}",
             tail.post_transform_short,
-            tail.post_transform_null_background,
+            tail.post_transform_background,
             tail.post_transform_null_object
         ));
     }
@@ -786,6 +788,12 @@ fn parse_first_frame(
             "后续版本字段：short={:?}，double 位={:?}，short={:?}；IEnvelope 槽={:?}，double 位={:?}、{:?}，int32={:?}",
             tail.short_32a, tail.double_320_bits, tail.short_328,
             tail.scale_envelopes, tail.scale_double_2b8_bits, tail.scale_double_2d8_bits, tail.scale_ints
+        ));
+    }
+    if tail.masking_version.is_some() {
+        diagnostics.push(format!(
+            "Map LayerMasking：版本={:?}，计数={:?}，已读条目={:?}，尾 short={:?}；逐图层接口状态未确定，后续保留",
+            tail.masking_version, tail.masking_count, tail.masking_entries.as_ref().map(Vec::len), tail.masking_empty_short
         ));
     }
 

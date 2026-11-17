@@ -35,11 +35,48 @@ fn nonempty_standalone_table_stops_at_its_first_unknown_child() {
         read_object_entry_10_1_after_root_prefix(&mut reader, &mut refs);
         let map = read_map_suffix_10_1(&mut reader, 4_000_000, &mut refs).unwrap();
         assert_eq!(reader.position(), expected);
-        assert_eq!(map.first_standalone_table.is_some(), table_seen);
+        assert_eq!(!map.standalone_tables.is_empty(), table_seen);
         assert_eq!(refs.contains(50000), table_seen);
         assert!(!refs.contains(50001));
         assert!(map.illumination.is_none());
     }
+}
+
+#[test]
+fn complete_standalone_table_and_back_reference_reach_illumination() {
+    let mut document = cfb::open("samples/测试底图.mxd").unwrap();
+    let mut bytes = Vec::new();
+    document
+        .open_stream("/Maps")
+        .unwrap()
+        .read_to_end(&mut bytes)
+        .unwrap();
+    const TABLE: usize = 0x24fb2;
+    let tail = bytes.split_off(TABLE);
+    bytes[TABLE - 4..TABLE].copy_from_slice(&2_i32.to_le_bytes());
+    bytes.extend(STANDALONE_TABLE_CLASS_ID);
+    bytes.extend(50000_u32.to_le_bytes());
+    bytes.extend(0_u16.to_le_bytes());
+    bytes.extend([0; 16]);
+    bytes.extend(0_u32.to_le_bytes());
+    bytes.extend(2_u32.to_le_bytes());
+    bytes.extend(0_u16.to_le_bytes());
+    bytes.extend(STANDALONE_TABLE_CLASS_ID);
+    bytes.extend(50000_u32.to_le_bytes());
+    let illumination_offset = bytes.len();
+    bytes.extend(tail);
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    read_object_entry_10_1_after_root_prefix(&mut reader, &mut refs);
+    let map = read_map_suffix_10_1(&mut reader, 4_000_000, &mut refs).unwrap();
+    assert_eq!(map.standalone_tables.len(), 2);
+    assert!(map.standalone_tables[0].1.is_some());
+    assert!(matches!(
+        map.standalone_tables[1].0.entry,
+        ObjectEntry10_1::BackReference { key: 50000, .. }
+    ));
+    assert_eq!(map.illumination.unwrap().object.offset, illumination_offset);
+    assert!(refs.contains(50000));
 }
 
 fn read_object_entry_10_1_after_root_prefix(reader: &mut Reader<'_>, refs: &mut RefTable10_1) {
@@ -80,7 +117,7 @@ fn map_geometry_null_is_reached_from_reference_root() {
     let border = map.post_illumination_null_border.unwrap();
     assert_eq!(border.offset, 0x25004);
     assert_eq!(border.entry, ObjectEntry10_1::Null);
-    assert_eq!(reader.position(), 0x253b6);
+    assert_eq!(reader.position(), 0x253be);
     assert_eq!(
         map.post_border_tail.post_transform_double_bits,
         Some((0x2524f, 5000_f64.to_bits()))

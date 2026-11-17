@@ -1,5 +1,11 @@
 # ArcMap 10.1 IDatasetName 槽实现类体族（GeometricNetworkName / RelationshipClassName / MemoryRelationshipClassName / QueryTableName / RelQueryTableName / DBTableName）与不可持久化类（TableName / UnknownDatasetName / ObjectClassName / FeatureQueryName / TableQueryName）
 
+> SDK Java LinearRef.mxd 的首个 StandaloneTable 从 Map 根顺序到达后，IName 槽在
+> `/Maps:0x6a66` 出现 TableName CLSID `{06783DB1-E5EE-11D1-B0A2-0000F8780820}`、
+> 新键 332，后面有对象体字节。见 [介质宿主复核](mxd-terra-round8-old.md)。
+> [后续原生复核](mxd-terra-round8-tablename.md)已找到 GdbCore 虚表到 GdbCoreLib 基类 Load/Save 的跳板，
+> 撤销 TableName“不可持久化”的推断；其他类的结论不由该实档外推。
+
 记录日期：2026-11-16。本轮（并行轮 B 轮）闭合 TODO「MXD 解析」中
 「IDatasetName 槽其余实现类」族。全部为静态取证（本机 pyghidra，Ghidra
 12.2 + JDK 25，打开第六轮 GdbCore 工程缓存副本 `/tmp/gh-b-dsnames/`，逐锚

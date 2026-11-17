@@ -53,10 +53,46 @@ fn tail_fields_stop_at_each_incomplete_field_and_unknown_envelope() {
     assert_eq!(stop, MapSuffixStop::AfterBorderTail { stage: 24 });
     assert!(!refs.contains(2182));
     let (position, stop, refs) = parse(&bytes);
-    assert_eq!(position, 0x253b6);
-    assert_eq!(stop, MapSuffixStop::AfterBorderTail { stage: 35 });
+    assert_eq!(position, 0x253be);
+    assert_eq!(stop, MapSuffixStop::AfterBorderTail { stage: 38 });
     assert!(refs.contains(2182));
     assert!(refs.contains(2183));
+}
+
+#[test]
+fn map_masking_empty_prefix_and_nonempty_boundary() {
+    let bytes = sample();
+    for pair in [0x253b6, 0x253b8, 0x253bc, 0x253be].windows(2) {
+        for cut in pair[0]..pair[1] {
+            assert_eq!(parse(&bytes[..cut]).0, pair[0]);
+        }
+    }
+    let mut nonempty = bytes.clone();
+    nonempty[0x253b8..0x253bc].copy_from_slice(&1_i32.to_le_bytes());
+    let (position, stop, _) = parse(&nonempty);
+    assert_eq!(position, 0x253bc);
+    assert_eq!(stop, MapSuffixStop::AfterBorderTail { stage: 37 });
+    for version in [3_u16, 0xffff] {
+        let mut bad = bytes.clone();
+        bad[0x253b6..0x253b8].copy_from_slice(&version.to_le_bytes());
+        assert_eq!(parse(&bad).0, 0x253b6);
+    }
+}
+
+#[test]
+fn map_masking_nonempty_back_reference_then_stops_at_layers() {
+    let bytes = sample();
+    let mut modified = bytes[..0x253b8].to_vec();
+    modified.extend(1_i32.to_le_bytes());
+    // 使用前面登记过的 Envelope 回引，只检验流结构，不断言接口兼容性。
+    modified.extend(&bytes[0x252f2..0x25306]);
+    modified.extend(0_i32.to_le_bytes());
+    modified.extend(0xffff_u16.to_le_bytes());
+    modified.extend(&bytes[0x253be..]);
+    let expected = 0x253b8 + 4 + 20 + 4 + 2;
+    let (position, stop, _) = parse(&modified);
+    assert_eq!(position, expected);
+    assert_eq!(stop, MapSuffixStop::AfterBorderTail { stage: 38 });
 }
 
 #[test]

@@ -171,9 +171,11 @@ pub struct FeatureDatasetNameBody10_1 {
     pub string_b: String,
     /// 第三个字符串（IPersistStream this+0x14；IDatasetName.Category）。
     pub string_c: String,
-    /// 第四个字符串（IPersistStream this+0x18；语义未定）。
+    /// 第四个字符串（IPersistStream this+0x18）；对象 +0x20 的 IFeatureDatasetNameImpl 接口
+    /// +0x0c/+0x10 方法访问同一字段，成员名称与业务语义未定。
     pub string_d: String,
-    /// 1 字节标志（IPersistStream this+0x1c；语义未定，原样保留）。
+    /// 1 字节标志（IPersistStream this+0x1c）；对象 +0x20 的 IFeatureDatasetNameImpl 接口
+    /// +0x14/+0x18 方法按 VARIANT_BOOL 读写，成员名称未定，原始字节保留。
     pub flag: u8,
     /// 第 4 步 IWorkspaceName 槽（请求 IID `{FADD975C-…}`）分类结果。
     pub workspace: WorkspaceNameSlot10_1,

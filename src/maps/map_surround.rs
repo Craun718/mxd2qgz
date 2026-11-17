@@ -58,12 +58,13 @@
 //! ## FeatureBookmark（要素书签，体完全闭合）
 //!
 //! CLSID `{EC65B35B-4342-11D2-AE22-080009EC732A}`（GetClassID `0x793b5520`，
-//! 虚表 `0x79482be8`）。Load `0x793b5c50`：① int16 版本（0..=1）→ ② int32
+//! 虚表 `0x79482be8`）。Load `0x793b5c50`：① int16 版本（有符号 ≤1；本
+//! 读取器仅接受 0..=1）→ ② int32
 //! （`this+4`，语义未定，原样保留）→ ③ `LoadObject`（请求 IID
 //! `{4BA33331-…}` IName，名称对象）→ ④ String（书签名称）。Save
 //! `0x793b5d70` 恒写版本 1（`DAT_79480e94`）+ int32 + `SaveObject` +
-//! `String::Write`，对称。名称对象的新对象体无读取器（IName 实现类众多），
-//! 本模块只分类条目、不解析体。
+//! `String::Write`，对称。名称对象支持 FeatureClassName 和 TableName 的
+//! 保守子集；证据与版本门差异见 `docs/mxd-terra-round9-bookmark.md`。
 //!
 //! ## Legend（图例，已确认前缀）
 //!
@@ -113,7 +114,9 @@
 //! 调用语义仍未闭合（见 `docs/mxd-terra-integrate-page.md`）；共同前缀版本 0/1
 //! （docVersion 83..93 写 2）无门字段差异之外的真实流字节佐证。
 
-use crate::layers::feature_layer::FeatureClassNamePrefix10_1;
+use crate::layers::feature_layer::{
+    FEATURE_CLASS_NAME_CLASS_ID, FeatureClassNamePrefix10_1, read_feature_class_name_body_10_1,
+};
 use crate::layers::legend_item::{
     HORIZONTAL_LEGEND_ITEM_CLASS_ID, HorizontalLegendItemBody10_1, HorizontalLegendItemStop10_1,
     read_horizontal_legend_item_body_10_1,
@@ -128,7 +131,7 @@ use crate::maps::map_surround_family::{
     FamilyStop10_1, LEGEND_FORMAT_CLASS_ID as FAMILY_LEGEND_FORMAT_CLASS_ID, LegendFormatBody10_1,
     read_legend_format_body_10_1,
 };
-use crate::objects::dataset_name_more::{BookmarkNameSlot10_1, read_bookmark_name_slot_10_1};
+use crate::maps::standalone_table::{TABLE_NAME_CLASS_ID, read_table_name_body_10_1};
 use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -241,7 +244,7 @@ pub struct AoiBookmark10_1 {
 
 /// FeatureBookmark 名称对象槽（请求 IID `{4BA33331-…}` IName）的分类结果。
 ///
-/// 支持已完整消费的 FeatureClassName；其他新对象类不推断体边界。
+/// 支持已完整消费的 FeatureClassName 和 TableName；其他新对象类不推断体边界。
 #[derive(Debug, Clone, PartialEq)]
 pub enum BookmarkNameEntry10_1 {
     /// 16 字节全零类标识：空引用标记。
@@ -250,12 +253,14 @@ pub enum BookmarkNameEntry10_1 {
     BackReference { class_id: [u8; 16], key: u32 },
     /// 内联要素类名称对象。
     FeatureClassName(Box<FeatureClassNamePrefix10_1>),
+    /// 内联表名称对象；不代表能够打开为要素类。
+    TableName(Box<crate::maps::standalone_table::TableNameBody10_1>),
 }
 
 /// FeatureBookmark 对象体（Load `0x793b5c50` 全部字段，体完全闭合）。
 #[derive(Debug, Clone, PartialEq)]
 pub struct FeatureBookmark10_1 {
-    /// int16 版本的无符号位模式（原生有符号比较仅接受 0..=1；Save 恒写 1）。
+    /// int16 版本位模式（本读取器接受 0..=1；原生有符号比较也接受负值）。
     pub version: u16,
     /// 第 2 字段 int32 的原样位模式（`this+4`，语义未定）。
     pub raw_int32: i32,
@@ -322,7 +327,7 @@ pub struct LegendItemEntry10_1 {
 pub struct LegendTailGroup10_1 {
     /// FixedFrame、AutoColumns、AutoFit 的 int16 原样位模式。
     pub shorts: [u16; 3],
-    /// MinFontSize（<5 时原生写默认 4.5，不读流）。
+    /// MinFontSize（<5 时原生写默认 4.0，不读流）。
     pub value: f64,
 }
 
@@ -596,12 +601,11 @@ pub fn read_aoi_bookmark_10_1(
     Ok(result)
 }
 
-/// 从对象头之后的位置读取 FeatureBookmark（要素书签）对象体，失败时不
-/// 推进游标、不修改共享登记表。
+/// 从对象头之后读取 FeatureBookmark；错误时游标及登记表不变。
 ///
-/// 起点约定：调用者已读取对象头并比对 [`FEATURE_BOOKMARK_CLASS_ID`]。
-/// 名称槽支持空值、回引及可完整读取的 FeatureClassName。未知的类或
-/// 体内停止报 [`ErrorKind::Unsupported`]，避免错读随后的书签名称。
+/// 调用者已读取对象头并比对 [`FEATURE_BOOKMARK_CLASS_ID`]。名称槽支持空值、
+/// 回引及可完整读取的 FeatureClassName、TableName；未知类或体内停止返回
+/// [`ErrorKind::Unsupported`]，避免错读随后的书签名称。
 pub fn read_feature_bookmark_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -617,12 +621,11 @@ pub fn read_feature_bookmark_10_1(
     let mut trial = reader.clone();
     let mut trial_table = table.clone();
 
-    // 1. int16 版本：原生有符号 0..=1。
+    // 1. 原生有符号比较只拒绝大于 1；本安全子集也拒绝负值位模式。
     let version = trial.read_u16_le()?;
     if version > 1 {
         return Err(invalid(format!(
-            "版本位模式 {version}（0x{version:04x}）超出原生接受范围 0..=1（Load \
-             0x793b5c50 有符号比较；Save 恒写 1）"
+            "版本位模式 {version}（0x{version:04x}）超出读取器支持的 0..=1（原生有符号比较只拒绝大于 1；Save 恒写 1）"
         )));
     }
 
@@ -631,12 +634,14 @@ pub fn read_feature_bookmark_10_1(
 
     // 3. LoadObject(IName {4BA33331-…})。
     let name_offset = trial.position();
-    let name_object = match read_bookmark_name_slot_10_1(&mut trial, max_bytes, &mut trial_table)? {
-        BookmarkNameSlot10_1::Null => BookmarkNameEntry10_1::Null,
-        BookmarkNameSlot10_1::BackReference { class_id, key } => {
+    let name_object = match read_object_entry_10_1(&mut trial, &mut trial_table)? {
+        ObjectEntry10_1::Null => BookmarkNameEntry10_1::Null,
+        ObjectEntry10_1::BackReference { class_id, key } => {
             BookmarkNameEntry10_1::BackReference { class_id, key }
         }
-        BookmarkNameSlot10_1::FeatureClassName(body) => {
+        ObjectEntry10_1::NewObject { class_id, key } if class_id == FEATURE_CLASS_NAME_CLASS_ID => {
+            let body =
+                read_feature_class_name_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?;
             if let Some(stop) = &body.stop {
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,
@@ -645,14 +650,26 @@ pub fn read_feature_bookmark_10_1(
                     ),
                 ));
             }
-            BookmarkNameEntry10_1::FeatureClassName(body)
+            BookmarkNameEntry10_1::FeatureClassName(Box::new(body))
         }
-        BookmarkNameSlot10_1::Unsupported { class_id, key } => {
+        ObjectEntry10_1::NewObject { class_id, .. } if class_id == TABLE_NAME_CLASS_ID => {
+            let (body, stopped) =
+                read_table_name_body_10_1(&mut trial, &mut trial_table, max_bytes)?;
+            if stopped {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!(
+                        "FeatureBookmark 名称对象槽 offset 0x{name_offset:x}: TableName 未读完"
+                    ),
+                ));
+            }
+            BookmarkNameEntry10_1::TableName(Box::new(body))
+        }
+        ObjectEntry10_1::NewObject { class_id, key } => {
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
                 format!(
-                    "FeatureBookmark 名称对象槽 offset 0x{name_offset:x}: 类标识 {}（键 \
-                     {key}）为不支持的新对象",
+                    "FeatureBookmark 名称对象槽 offset 0x{name_offset:x}: 类标识 {}（键 {key}）为不支持的新对象",
                     class_id_hex(&class_id)
                 ),
             ));
@@ -898,7 +915,7 @@ pub fn read_legend_prefix_10_1(
         if version >= 4 {
             tail_short_2 = Some(trial.read_u16_le()?);
         }
-        // 11. 版本 ≥5：int16 ×3 + double（<5 时原生写默认 4.5，不读流）。
+        // 11. 版本 ≥5：int16 ×3 + double（<5 时原生写默认 4.0，不读流）。
         if version >= 5 {
             let mut group = LegendTailGroup10_1 {
                 shorts: [0; 3],

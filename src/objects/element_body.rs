@@ -590,7 +590,7 @@ pub use crate::objects::display_color::ColorSlot10_1;
 pub struct TextSymbolBody10_1 {
     /// 2 字节版本的无符号位模式（`4 < ver` 拒绝；样本 4）。
     pub version: u16,
-    /// 颜色槽 #1（IColor；样本 RgbColor 键 1615）。
+    /// 颜色槽 #1（IColor；Color getter 在 FillSymbol 底层槽为空时使用）。
     pub color1: ColorSlot10_1,
     /// 字段 3 组：未知 int32、VerticalAlignment、HorizontalAlignment，
     /// 原样保留（this-0x478/-0x470/-0x474；样本 -1、3、1）。
@@ -632,11 +632,11 @@ pub struct TextSymbolBody10_1 {
     pub name_string: String,
     /// Size 相关的 double（this-0x1ec；样本 8.0；Load 读取后还作虚调用）。
     pub double_5: f64,
-    /// int32（this-0x210；样本 1）。
+    /// IMask::MaskStyle 的原始 int32（this-0x210；样本 1）。
     pub int_4: i32,
-    /// double（this-0x204；样本 1.5）。
+    /// IMask::MaskSize 的原始 double（this-0x204；样本 1.5）。
     pub double_6: f64,
-    /// ISymbol 符号槽 #2（接线轮起经 [`read_display_symbol_slot_10_1`] 分派：
+    /// IMask::MaskSymbol 底层 ISymbol 符号槽 #2（经 [`read_display_symbol_slot_10_1`] 分派：
     /// SimpleMarkerSymbol 与本轮闭合的 DisplayCore 同族符号解析为对应体变
     /// 体；样本为 {7914E603} SimpleFillSymbol 新对象；未知符号类不出现在本
     /// 字段——映射为停止原因，字段保持 `Null`）。
@@ -658,6 +658,23 @@ pub struct TextSymbolBody10_1 {
     pub stop: Option<ElementBodyStop10_1>,
     /// 停止点之后剩余的字节数（完整消费时为窗口内剩余全部字节）。
     pub remaining_bytes: usize,
+}
+
+impl TextSymbolBody10_1 {
+    /// 完整读取时返回流内 MaskStyle 原始值，不转换未知枚举值。
+    pub fn mask_style(&self) -> Option<i32> {
+        self.stop.is_none().then_some(self.int_4)
+    }
+
+    /// 完整读取时返回流内 MaskSize 原始值，不套用 setter 的限制。
+    pub fn mask_size(&self) -> Option<f64> {
+        self.stop.is_none().then_some(self.double_6)
+    }
+
+    /// 完整读取时返回 MaskSymbol 的底层槽；不模拟原生 getter 的接口查询。
+    pub fn mask_symbol(&self) -> Option<&SymbolSlotFull10_1> {
+        self.stop.is_none().then_some(&self.symbol2)
+    }
 }
 
 /// 10.1 TextElement::Load（`0x6ce70e50`）可读取的对象体。

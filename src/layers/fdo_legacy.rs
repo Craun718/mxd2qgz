@@ -30,8 +30,8 @@
 //!     `DAT_6b1abcf0`）后调 `ConvertToFullPath`（LayerLib.dll 导出）——
 //!     除对象条目外不读流；
 //! 12. 版本 ≥2：int16；13. String；14. String；15. int32；
-//!     16. LoadObject（**IFeatureRenderer** `{F3435802-…}`，
-//!     `DAT_6b1abd70`，与 FeatureLayer 渲器槽同 IID）；17. int16；
+//!     16. LoadObject（**ISymbol** `{F3435802-…}`，
+//!     `DAT_6b1abd70`，传给 SelectionSymbol）；17. int16；
 //!     18. int16；19. LoadObject（**IColor** `{20CD40B0-…}`）；
 //! 20. 版本 ≥3（`2 < ver`）：String（收尾）。
 //!
@@ -191,7 +191,7 @@ pub enum LegacyFdoStop10_1 {
     DataSourceStopped { stop: FeatureClassNameStop10_1 },
     /// FeatureClassName 体读取失败：游标与登记表回退到该对象头起点。
     DataSourceFailed { reason: String },
-    /// 版本 ≥2 的 IFeatureRenderer 槽新对象（渲染器体未闭合）：游标回退
+    /// 版本 ≥2 的 SelectionSymbol 槽新对象（符号体未接入）：游标回退
     /// 到该对象头起点。
     RendererNewObject { class_id: [u8; 16], key: u32 },
     /// 版本 ≥2 的 IColor 槽新对象（颜色体未闭合）：游标回退到该对象头起
@@ -244,8 +244,8 @@ impl LegacyFdoStop10_1 {
                 format!("旧加载器数据源 FeatureClassName 体解析失败（{reason}），体保留未知")
             }
             Self::RendererNewObject { class_id, key } => format!(
-                "旧加载器 IFeatureRenderer 槽新对象（键 {key}，类标识 {}）：渲染器\
-                 体未闭合，游标回退到该对象头起点",
+                "旧加载器 SelectionSymbol 槽新对象（键 {key}，类标识 {}）：符号\
+                 体未接入，游标回退到该对象头起点",
                 crate::layers::layer_list::class_id_hex(class_id)
             ),
             Self::ColorNewObject { class_id, key } => format!(
@@ -264,15 +264,15 @@ pub struct LegacyFdoGraphicsLayerPrefix10_1 {
     /// 2 字节版本 short 的无符号位模式（主 Load 分发有符号比较 ≤3 进旧加
     /// 载器；负值位模式本读取器一并拒绝，较原生更严）。
     pub version: u16,
-    /// 名称 String（第 1 步；经内部接口 put，成员槽位语义未定性）。
+    /// 第 1 步 ILayer.Name。
     pub name: String,
-    /// 第 2 步 int16（传入内部接口，语义未定性），原样保留。
+    /// 第 2 步 ILayer.Visible 的原始 short。
     pub short_a: u16,
-    /// 第 3 步 int16（传入内部接口，语义未定性），原样保留。
+    /// 第 3 步 ILayer.ShowTips 的原始 short。
     pub short_b: u16,
-    /// 第 4 步 double（传入内部接口），原样保留。
+    /// 第 4 步 ILayer.MinimumScale 的原始 double。
     pub double_a: f64,
-    /// 第 5 步 double（传入内部接口），原样保留。
+    /// 第 5 步 ILayer.MaximumScale 的原始 double。
     pub double_b: f64,
     /// 第 6 步 int32 → this+0xe8（与主分支步骤 2 同槽，样本主分支值 3），
     /// 语义未定，原样保留。
@@ -290,24 +290,24 @@ pub struct LegacyFdoGraphicsLayerPrefix10_1 {
     pub element_collection_body: Option<Box<ElementCollection10_1>>,
     /// 第 11 步 IName 槽位（数据源）分类（到达时）。
     pub data_source: LegacyDataSource10_1,
-    /// 第 12 步 int16（版本 ≥2；传入内部接口，语义未定性）。
+    /// 第 12 步 IFeatureLayer.Selectable 原始 short（版本 ≥2）。
     pub v2_short: Option<u16>,
-    /// 第 13 步 String（版本 ≥2；传入内部接口）。
+    /// 第 13 步 IFeatureLayer.DataSourceType（版本 ≥2）。
     pub v2_string_a: Option<String>,
-    /// 第 14 步 String（版本 ≥2；传入内部接口）。
+    /// 第 14 步 IFeatureLayer.DisplayField（版本 ≥2）。
     pub v2_string_b: Option<String>,
-    /// 第 15 步 int32（版本 ≥2；传入内部接口）。
+    /// 第 15 步 IFeatureSelection.CombinationMethod 原始 int32（版本 ≥2）。
     pub v2_int32: Option<i32>,
-    /// 第 16 步 IFeatureRenderer 槽位分类（版本 ≥2，到达时）。`None` = 未
+    /// 第 16 步 SelectionSymbol 的 ISymbol 槽位分类（版本 ≥2，到达时）。`None` = 未
     /// 到达或空标记前停止（空标记/回引继续，见 `stop`）。
     pub renderer_slot: Option<ObjectEntry10_1>,
-    /// 第 17 步 int16（版本 ≥2）。
+    /// 第 17 步 IFeatureLayer.ScaleSymbols 原始 short（版本 ≥2）。
     pub v2_short_x: Option<u16>,
-    /// 第 18 步 int16（版本 ≥2）。
+    /// 第 18 步 IFeatureSelection.SetSelectionSymbol 原始 short（版本 ≥2）。
     pub v2_short_y: Option<u16>,
-    /// 第 19 步 IColor 槽位分类（版本 ≥2，到达时）。`None` = 未到达。
+    /// 第 19 步 SelectionColor 的 IColor 槽位分类（版本 ≥2，到达时）。`None` = 未到达。
     pub color_slot: Option<ObjectEntry10_1>,
-    /// 第 20 步收尾 String（版本 ≥3）。
+    /// 第 20 步 IDataLayer.RelativeBase（版本 ≥3）。
     pub tail_string: Option<String>,
     /// 停止原因；`None` = 旧体已完整消费（旧加载器在收尾 String 后返回）。
     pub stop: Option<LegacyFdoStop10_1>,
@@ -563,8 +563,8 @@ pub fn read_fdo_graphics_layer_legacy_prefix_10_1(
         v2_string_b = Some(read_string_10_1(&mut trial, max_bytes)?);
         v2_int32 = Some(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
 
-        // 16. IFeatureRenderer 槽位（DAT_6b1abd70={F3435802-…}，与
-        //     FeatureLayer 渲染器槽同 IID）：空标记/回引继续，新对象停止。
+        // 16. SelectionSymbol 的 ISymbol 槽（DAT_6b1abd70={F3435802-…}）：
+        //     空标记/回引继续，新对象停止。
         let slot_offset = trial.position();
         let saved_table = trial_table.clone();
         let entry = read_object_entry_10_1(&mut trial, &mut trial_table)?;
