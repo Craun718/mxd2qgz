@@ -22,9 +22,6 @@ const ELEMENT_COLLECTION_CLASS_ID: [u8; 16] = [
     0x72, 0x39, 0x8f, 0xce, 0xbe, 0xe9, 0xd1, 0x11, 0xa2, 0x32, 0x08, 0x00, 0x09, 0xb6, 0xf2, 0x2b,
 ];
 /// 样本 FeatureLayer 类标识（{E663A651-8AAD-11D0-BEC7-00805F7C4268}，内存序）。
-const FEATURE_LAYER_CLASS_ID: [u8; 16] = [
-    0x51, 0xa6, 0x63, 0xe6, 0xad, 0x8a, 0xd0, 0x11, 0xbe, 0xc7, 0x00, 0x80, 0x5f, 0x7c, 0x42, 0x68,
-];
 /// 预置进登记表的既有键：命中即回引。
 const SEEN_KEY: u32 = 5;
 
@@ -77,6 +74,20 @@ fn cgl_body(
         bytes.extend(9_u32.to_le_bytes());
     }
     bytes.extend(sublayer_region);
+    bytes.extend(1_u32.to_le_bytes());
+    bytes.extend([0_u8; 16]);
+    if version > 2 {
+        bytes.extend([0_u8; 16]);
+    }
+    if version >= 4 {
+        bytes.extend(encoded(""));
+    }
+    if version == 4 {
+        bytes.extend(0_u16.to_le_bytes());
+    }
+    if version >= 5 {
+        bytes.extend([0_u8; 16]);
+    }
     bytes.extend(tail);
     bytes
 }
@@ -153,12 +164,15 @@ fn dispatches_element_collection_nested_object_and_continues() {
     ec.extend(0_u32.to_le_bytes());
     let mut sublayers = 1_u32.to_le_bytes().to_vec();
     sublayers.extend(encoded("JZD1 注记"));
-    let mut fl_header = FEATURE_LAYER_CLASS_ID.to_vec();
+    let mut fl_header = UNKNOWN_CLASS_ID.to_vec();
     fl_header.extend(1555_u32.to_le_bytes());
     sublayers.extend(&fl_header);
     let mut bytes = cgl_body(6, &group_region, "<默认>", &ec, &sublayers, b"");
     bytes.extend(b"opaque-feature-layer");
-    let header_start = bytes.len() - fl_header.len() - b"opaque-feature-layer".len();
+    let header_start = bytes
+        .windows(fl_header.len())
+        .position(|w| w == fl_header)
+        .unwrap();
     let mut table = RefTable10_1::new();
     let mut reader = Reader::new(&bytes);
     let parsed = read_composite_graphics_layer_prefix_10_1(&mut reader, 1024, &mut table).unwrap();
@@ -198,7 +212,7 @@ fn dispatches_element_collection_nested_object_and_continues() {
         CompositeGraphicsLayerStop10_1::SubLayerNewObject {
             index: 0,
             name: "JZD1 注记".to_string(),
-            class_id: FEATURE_LAYER_CLASS_ID,
+            class_id: UNKNOWN_CLASS_ID,
             key: 1555
         }
     );
@@ -300,7 +314,7 @@ fn version_boundaries_and_after_version_one_gate() {
                 .unwrap();
         assert_eq!(parsed.version, version, "version={version}");
         assert_eq!(parsed.after_version1, after_version1, "version={version}");
-        assert_eq!(parsed.stop, CompositeGraphicsLayerStop10_1::TailNotExpanded);
+        assert_eq!(parsed.stop, CompositeGraphicsLayerStop10_1::Completed);
         assert_eq!(
             parsed.sublayers[0].tail_double,
             if version > 1 { Some(-1.75) } else { None },
@@ -368,7 +382,7 @@ fn element_groups_classify_null_and_back_references_and_skip_negative_counts() {
             }
         ]
     );
-    assert_eq!(parsed.stop, CompositeGraphicsLayerStop10_1::TailNotExpanded);
+    assert_eq!(parsed.stop, CompositeGraphicsLayerStop10_1::Completed);
     assert_eq!(table.len(), 1, "空引用与回引不新增登记");
 
     // 组计数 0xffffffff（有符号 -1）：不迭代，组列表为空，计数位模式保留。
@@ -382,13 +396,15 @@ fn element_groups_classify_null_and_back_references_and_skip_negative_counts() {
     negative.extend(0.5_f64.to_le_bytes());
     negative.extend(9_u32.to_le_bytes());
     negative.extend(0_u32.to_le_bytes());
+    negative.extend(1_u32.to_le_bytes());
+    negative.extend([0_u8; 16]);
     let mut reader = Reader::new(&negative);
     let parsed =
         read_composite_graphics_layer_prefix_10_1(&mut reader, 1024, &mut RefTable10_1::new())
             .unwrap();
     assert_eq!(parsed.group_count, 0xffff_ffff);
     assert!(parsed.element_groups.is_empty());
-    assert_eq!(parsed.stop, CompositeGraphicsLayerStop10_1::TailNotExpanded);
+    assert_eq!(parsed.stop, CompositeGraphicsLayerStop10_1::Completed);
 }
 
 #[test]
@@ -487,7 +503,7 @@ fn reads_sublayer_items_with_tail_fields() {
             },
         ]
     );
-    assert_eq!(parsed.stop, CompositeGraphicsLayerStop10_1::TailNotExpanded);
+    assert_eq!(parsed.stop, CompositeGraphicsLayerStop10_1::Completed);
     assert_eq!(parsed.remaining_bytes, 4);
     assert_eq!(table.len(), 1);
 }
@@ -496,7 +512,7 @@ fn reads_sublayer_items_with_tail_fields() {
 fn stops_at_sublayer_new_object_keeping_consumed_name() {
     // 子图层条目的 ILayer 新对象（样本链：String 后紧跟 FeatureLayer 键 1555
     // 头 @0x1706e）：停止、条目不入列、已消费的条目名保存在停止原因中。
-    let mut new_header = FEATURE_LAYER_CLASS_ID.to_vec();
+    let mut new_header = UNKNOWN_CLASS_ID.to_vec();
     new_header.extend(1555_u32.to_le_bytes());
     let mut item_bytes = encoded("JZD1 注记");
     item_bytes.extend(&new_header);
@@ -511,7 +527,10 @@ fn stops_at_sublayer_new_object_keeping_consumed_name() {
         b"",
     );
     bytes.extend(b"opaque-feature-layer");
-    let header_start = bytes.len() - new_header.len() - b"opaque-feature-layer".len();
+    let header_start = bytes
+        .windows(new_header.len())
+        .position(|w| w == new_header)
+        .unwrap();
     let mut table = RefTable10_1::new();
     let mut reader = Reader::new(&bytes);
     let parsed = read_composite_graphics_layer_prefix_10_1(&mut reader, 1024, &mut table).unwrap();
@@ -520,7 +539,7 @@ fn stops_at_sublayer_new_object_keeping_consumed_name() {
         CompositeGraphicsLayerStop10_1::SubLayerNewObject {
             index: 0,
             name: "JZD1 注记".to_string(),
-            class_id: FEATURE_LAYER_CLASS_ID,
+            class_id: UNKNOWN_CLASS_ID,
             key: 1555
         }
     );
@@ -552,7 +571,10 @@ fn stops_at_sublayer_tail_new_object_with_partial_entry() {
     bytes.extend(b"opaque-tail");
     // 新对象头之后仍有版本 >1 的尾随 double（sublayer_region 写在其后），
     // 然后才是追加的未知区。
-    let header_start = bytes.len() - new_header.len() - 8 - b"opaque-tail".len();
+    let header_start = bytes
+        .windows(new_header.len())
+        .position(|w| w == new_header)
+        .unwrap();
     let mut table = RefTable10_1::new();
     let mut reader = Reader::new(&bytes);
     let parsed = read_composite_graphics_layer_prefix_10_1(&mut reader, 1024, &mut table).unwrap();
@@ -771,19 +793,16 @@ fn sample_basemap_cgl_body_advances_to_sublayer_feature_layer_stop() {
     assert_eq!(parsed.after_version1, Some((0.0, 1)));
     assert_eq!(parsed.sublayer_count, 10);
     assert!(parsed.sublayers.is_empty());
-    assert_eq!(
+    assert!(matches!(
         parsed.stop,
-        CompositeGraphicsLayerStop10_1::SubLayerNewObject {
+        CompositeGraphicsLayerStop10_1::SubLayerFeatureIncomplete {
             index: 0,
-            name: "JZD1 注记".to_string(),
-            class_id: FEATURE_LAYER_CLASS_ID,
-            key: 1555
+            key: 1555,
+            ..
         }
-    );
-    // 停止点 = 0x1706e（FeatureLayer 头起点）。
-    assert_eq!(reader.position(), 0x1706e - body_offset);
-    assert_eq!(parsed.remaining_bytes, maps.len() - 0x1706e);
-    assert!(!table.contains(1555));
+    ));
+    assert!(reader.position() > 0x1706e - body_offset);
+    assert!(table.contains(1555));
 }
 
 #[test]
@@ -825,10 +844,10 @@ fn element_loop_and_sublayer_tail_dispatch_element_collections_inline() {
     let mut table = RefTable10_1::new();
     table.register(SEEN_KEY);
     let parsed = read_composite_graphics_layer_prefix_10_1(&mut reader, 1024, &mut table).unwrap();
-    // 两处体整体消费、无体内停止：游标停在第 10 步尾段（TailNotExpanded）。
+    // 两处体整体消费、无体内停止：已消费第 10 步尾段（Completed）。
     assert!(matches!(
         parsed.stop,
-        CompositeGraphicsLayerStop10_1::TailNotExpanded
+        CompositeGraphicsLayerStop10_1::Completed
     ));
     assert_eq!(parsed.element_groups.len(), 1);
     match &parsed.element_groups[0].elements[0] {
@@ -850,10 +869,7 @@ fn element_loop_and_sublayer_tail_dispatch_element_collections_inline() {
         "体完整消费后版本 >1 的尾随 double 可达"
     );
     assert!(table.contains(90) && table.contains(91));
-    assert_eq!(
-        parsed.remaining_bytes, 0,
-        "尾段为空，读取器在 TailNotExpanded 停止"
-    );
+    assert_eq!(parsed.remaining_bytes, 0, "尾段已完整消费");
 }
 
 #[test]
@@ -905,4 +921,178 @@ fn element_collection_inner_stop_propagates_from_element_loop() {
     // 内层键 99 不登记；外层 ElementCollection 键 90 已登记。
     assert!(table.contains(90));
     assert!(!table.contains(99));
+}
+
+#[test]
+fn complete_sample_context_reads_cgl_sublayers_without_skipping() {
+    use std::io::Read as _;
+    let mut document = cfb::open("samples/测试底图.mxd").unwrap();
+    let mut maps = Vec::new();
+    document
+        .open_stream("/Maps")
+        .unwrap()
+        .read_to_end(&mut maps)
+        .unwrap();
+    let report = mxd2qgz::maps::mxd_maps::parse_maps_10_1(&maps).unwrap();
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|line| line.contains("子图层计数 10（已消费 10 条）"))
+    );
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|line| line.contains("CompositeGraphicsLayer 对象体已完整消费"))
+    );
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|line| line.contains("WKSEnvelope，offset 0x24f64"))
+    );
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|line| line.contains("0x24fa0"))
+    );
+}
+
+#[test]
+fn nested_composite_sublayer_stops_before_header_without_recursion() {
+    let header = entry_bytes(COMPOSITE_GRAPHICS_LAYER_CLASS_ID, 99);
+    let mut region = 1_u32.to_le_bytes().to_vec();
+    region.extend(encoded("nested"));
+    region.extend(&header);
+    let bytes = cgl_body(6, &group_region(&[]), "root", &[0; 16], &region, &[]);
+    let header_offset = bytes
+        .windows(header.len())
+        .position(|w| w == header)
+        .unwrap();
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let result = read_composite_graphics_layer_prefix_10_1(&mut reader, 1024, &mut table).unwrap();
+    assert!(matches!(
+        result.stop,
+        CompositeGraphicsLayerStop10_1::SubLayerNewObject { key: 99, .. }
+    ));
+    assert_eq!(reader.position(), header_offset);
+    assert!(!table.contains(99));
+}
+
+#[test]
+fn tail_version_gates_and_unknown_slot_boundaries() {
+    for version in 0..=6 {
+        let bytes = cgl_body(
+            version,
+            &group_region(&[]),
+            "",
+            &[0; 16],
+            &0_u32.to_le_bytes(),
+            &[],
+        );
+        let mut reader = Reader::new(&bytes);
+        let result =
+            read_composite_graphics_layer_prefix_10_1(&mut reader, 1024, &mut RefTable10_1::new())
+                .unwrap();
+        assert_eq!(result.stop, CompositeGraphicsLayerStop10_1::Completed);
+        assert_eq!(result.tail.object_3c.is_some(), version > 2);
+        assert_eq!(result.tail.string_b4.is_some(), version >= 4);
+        assert_eq!(result.tail.short_v4.is_some(), version == 4);
+        assert_eq!(result.tail.doubles.is_some(), version >= 5);
+        assert_eq!(reader.position(), bytes.len());
+    }
+    for slot in 0..=1 {
+        let mut bytes = cgl_body(
+            6,
+            &group_region(&[]),
+            "",
+            &[0; 16],
+            &0_u32.to_le_bytes(),
+            &[],
+        );
+        let tail_len = 4 + 16 + 16 + encoded("").len() + 16;
+        let pos = bytes.len() - tail_len + 4 + if slot == 1 { 16 } else { 0 };
+        bytes.splice(pos..pos + 16, entry_bytes(UNKNOWN_CLASS_ID, 99));
+        let mut reader = Reader::new(&bytes);
+        let mut table = RefTable10_1::new();
+        let result =
+            read_composite_graphics_layer_prefix_10_1(&mut reader, 1024, &mut table).unwrap();
+        assert!(
+            matches!(result.stop, CompositeGraphicsLayerStop10_1::TailNewObject { slot: s, key: 99, .. } if s == slot)
+        );
+        assert_eq!(reader.position(), pos);
+        assert!(!table.contains(99));
+    }
+}
+
+#[test]
+fn tail_spatial_reference_dispatch_and_invalid_bodies_are_transactional() {
+    use mxd2qgz::objects::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
+    use mxd2qgz::objects::spatial_reference_slots::{
+        GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID, UNKNOWN_COORDINATE_SYSTEM_CLASS_ID,
+    };
+    for (class_id, body, kind) in [
+        (
+            PROJECTED_COORDINATE_SYSTEM_CLASS_ID,
+            vec![0, 0, 0, 0, 0, 0],
+            0,
+        ),
+        (
+            GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID,
+            vec![0, 0, 0, 0, 0, 0],
+            1,
+        ),
+        (
+            UNKNOWN_COORDINATE_SYSTEM_CLASS_ID,
+            [
+                vec![0, 0],
+                [encoded(""), encoded(""), encoded(""), encoded("")].concat(),
+            ]
+            .concat(),
+            2,
+        ),
+    ] {
+        let mut bytes = cgl_body(
+            6,
+            &group_region(&[]),
+            "",
+            &[0; 16],
+            &0_u32.to_le_bytes(),
+            &[],
+        );
+        let offset = bytes.len() - (4 + 16 + 16 + encoded("").len() + 16) + 4 + 16;
+        let object = [entry_bytes(class_id, 99), body].concat();
+        bytes.splice(offset..offset + 16, object);
+        let mut reader = Reader::new(&bytes);
+        let mut table = RefTable10_1::new();
+        let parsed =
+            read_composite_graphics_layer_prefix_10_1(&mut reader, 1024, &mut table).unwrap();
+        assert_eq!(parsed.stop, CompositeGraphicsLayerStop10_1::Completed);
+        assert!(table.contains(99));
+        assert!(match (kind, parsed.tail.object_3c) {
+            (0, Some(ConsumedEntry10_1::Projected { key: 99, .. })) => true,
+            (1, Some(ConsumedEntry10_1::Geographic { key: 99, .. })) => true,
+            (2, Some(ConsumedEntry10_1::UnknownSpatialReference { key: 99, .. })) => true,
+            _ => false,
+        });
+        for bad in [offset + 20, offset + 21] {
+            let mut reader = Reader::new(&bytes[..bad]);
+            let mut table = RefTable10_1::new();
+            assert!(
+                read_composite_graphics_layer_prefix_10_1(&mut reader, 1024, &mut table).is_err()
+            );
+            assert_eq!(reader.position(), 0);
+            assert!(!table.contains(99));
+        }
+        let mut invalid = bytes.clone();
+        invalid[offset + 20..offset + 22].copy_from_slice(&0xffff_u16.to_le_bytes());
+        let mut reader = Reader::new(&invalid);
+        let mut table = RefTable10_1::new();
+        assert!(read_composite_graphics_layer_prefix_10_1(&mut reader, 1024, &mut table).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(!table.contains(99));
+    }
 }

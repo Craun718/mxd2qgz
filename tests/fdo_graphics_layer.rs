@@ -6,7 +6,8 @@
 
 use mxd2qgz::layers::fdo_graphics_layer::{
     AssociatedLayer10_1, ElementCollectionSlot10_1, FDO_GRAPHICS_LAYER_CLASS_ID,
-    FdoGraphicsLayerStop10_1, read_fdo_graphics_layer_prefix_10_1,
+    FdoGraphicsLayerStop10_1, FdoSymbolCollectionSlot10_1, read_fdo_graphics_layer_prefix_10_1,
+    read_fdo_graphics_layer_tail_10_1,
 };
 use mxd2qgz::layers::feature_layer::{
     FEATURE_CLASS_NAME_CLASS_ID, FEATURE_LAYER_CLASS_ID, FeatureLayerStop10_1,
@@ -39,6 +40,224 @@ fn entry_bytes(class_id: &[u8; 16], key: u32) -> Vec<u8> {
     let mut bytes = class_id.to_vec();
     bytes.extend(key.to_le_bytes());
     bytes
+}
+
+fn null_slot() -> [u8; 16] {
+    [0; 16]
+}
+
+fn empty_fdo_tail(version: u16) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    if version >= 6 {
+        bytes.extend(0x1234_5678_i32.to_le_bytes());
+        bytes.extend(0x8123_u16.to_le_bytes());
+        if version <= 7 {
+            bytes.extend(0_i32.to_le_bytes());
+        }
+        bytes.extend(0_i32.to_le_bytes());
+        bytes.extend(null_slot());
+        bytes.extend(null_slot());
+        bytes.extend(null_slot());
+        if (7..=10).contains(&version) {
+            bytes.extend(encoded(""));
+            bytes.extend(0_u16.to_le_bytes());
+        }
+        if version >= 8 {
+            bytes.extend(0_u16.to_le_bytes());
+        }
+        if version >= 9 {
+            bytes.extend(0_i32.to_le_bytes());
+        }
+        if version >= 10 {
+            bytes.extend(0_u16.to_le_bytes());
+            bytes.extend(null_slot());
+            bytes.extend(null_slot());
+            bytes.extend(null_slot());
+        }
+    }
+    bytes
+}
+
+#[test]
+fn fdo_tail_version_gates_consume_synthetic_empty_slots() {
+    for version in 5..=11 {
+        let bytes = empty_fdo_tail(version);
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let tail =
+            read_fdo_graphics_layer_tail_10_1(&mut reader, 1024, &mut refs, version, 32).unwrap();
+        assert_eq!(reader.remaining(), 0, "version={version}");
+        assert!(tail.stop.is_none(), "version={version}");
+        assert_eq!(
+            tail.sublayers.as_ref().map(Vec::len),
+            (version >= 9).then_some(0)
+        );
+        assert_eq!(tail.version_10_short.is_some(), version >= 10);
+        assert_eq!(
+            tail.final_color.is_some(),
+            version >= 10,
+            "version={version}"
+        );
+        assert_eq!(tail.field_130, if version >= 6 { 0x1234_5678 } else { 0 });
+        assert_eq!(tail.field_1a8, if version >= 6 { 0x8123 } else { 0 });
+    }
+}
+
+#[test]
+fn fdo_tail_unknown_symbol_collection_stops_transactionally_at_header() {
+    let unknown_class = [0x77; 16];
+    let mut bytes = 0_i32.to_le_bytes().to_vec();
+    bytes.extend(0_u16.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(null_slot());
+    bytes.extend(null_slot());
+    bytes.extend(entry_bytes(&unknown_class, 900));
+    bytes.extend([0xAA; 8]);
+    let mut refs = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let tail = read_fdo_graphics_layer_tail_10_1(&mut reader, 1024, &mut refs, 11, 32).unwrap();
+    assert_eq!(
+        tail.stop,
+        Some(mxd2qgz::layers::fdo_graphics_layer::FdoGraphicsLayerTailStop10_1::UnsupportedSymbolCollection {
+            class_id: unknown_class,
+            key: 900,
+        })
+    );
+    assert_eq!(reader.position(), 42);
+    assert!(!refs.contains(900));
+}
+
+#[test]
+fn fdo_v6_legacy_loop_reads_nonempty_record() {
+    let mut bytes = Vec::new();
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(0_u16.to_le_bytes());
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(encoded("旧符号名"));
+    bytes.extend(7_u16.to_le_bytes());
+    bytes.extend(1.25_f64.to_le_bytes());
+    bytes.extend((-2.5_f64).to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(null_slot());
+    bytes.extend(null_slot());
+    bytes.extend(null_slot());
+    let mut reader = Reader::new(&bytes);
+    let tail =
+        read_fdo_graphics_layer_tail_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 6, 32)
+            .unwrap();
+    assert_eq!(reader.remaining(), 0);
+    let entry = &tail.legacy_entries.as_ref().unwrap()[0];
+    assert_eq!(entry.name, "旧符号名");
+    assert_eq!(entry.short, 7);
+    assert_eq!(entry.doubles, [1.25, -2.5]);
+}
+
+#[test]
+fn loop_counts_are_bounded_by_checked_minimum_bytes_before_allocation() {
+    let mut v6 = 0_i32.to_le_bytes().to_vec();
+    v6.extend(0_u16.to_le_bytes());
+    v6.extend(2_i32.to_le_bytes());
+    let mut reader = Reader::new(&v6);
+    let error = read_fdo_graphics_layer_tail_10_1(&mut reader, 59, &mut RefTable10_1::new(), 6, 32)
+        .unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert_eq!(reader.position(), 0);
+
+    let mut v9 = 0_i32.to_le_bytes().to_vec();
+    v9.extend(0_u16.to_le_bytes());
+    v9.extend(0_i32.to_le_bytes());
+    v9.extend(null_slot());
+    v9.extend(null_slot());
+    v9.extend(null_slot());
+    v9.extend(0_u16.to_le_bytes());
+    v9.extend(1_i32.to_le_bytes());
+    let mut reader = Reader::new(&v9);
+    let error = read_fdo_graphics_layer_tail_10_1(&mut reader, 35, &mut RefTable10_1::new(), 9, 32)
+        .unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert_eq!(reader.position(), 0);
+}
+
+#[test]
+fn symbol_collection_null_and_back_reference_remain_distinct() {
+    let null_bytes = empty_fdo_tail(11);
+    let mut reader = Reader::new(&null_bytes);
+    let null_tail =
+        read_fdo_graphics_layer_tail_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 11, 32)
+            .unwrap();
+    assert_eq!(
+        null_tail.symbol_collection,
+        Some(FdoSymbolCollectionSlot10_1::Null)
+    );
+
+    let key = 901_u32;
+    let mut backref_bytes = empty_fdo_tail(11);
+    backref_bytes[42..58]
+        .copy_from_slice(&mxd2qgz::objects::symbol_collection::SYMBOL_COLLECTION_CLASS_ID);
+    backref_bytes.splice(58..58, key.to_le_bytes());
+    let mut refs = RefTable10_1::new();
+    refs.register(key);
+    let mut reader = Reader::new(&backref_bytes);
+    let backref_tail =
+        read_fdo_graphics_layer_tail_10_1(&mut reader, 1024, &mut refs, 11, 32).unwrap();
+    assert_eq!(
+        backref_tail.symbol_collection,
+        Some(FdoSymbolCollectionSlot10_1::BackReference {
+            class_id: mxd2qgz::objects::symbol_collection::SYMBOL_COLLECTION_CLASS_ID,
+            key,
+        })
+    );
+}
+
+#[test]
+fn sample_fdo_tail_reaches_next_layer_entry() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples/测试底图.mxd");
+    let mut document = cfb::open(path).unwrap();
+    let mut maps = Vec::new();
+    std::io::Read::read_to_end(&mut document.open_stream("/Maps").unwrap(), &mut maps).unwrap();
+    let tail_start = 0x2c01;
+    let tail_end = 0x2d22;
+    let mut reader = Reader::new(&maps[tail_start..tail_end]);
+    let tail =
+        read_fdo_graphics_layer_tail_10_1(&mut reader, 1 << 20, &mut RefTable10_1::new(), 11, 32)
+            .unwrap();
+    assert_eq!(reader.position(), tail_end - tail_start);
+    assert_eq!(tail.sublayers.as_ref().map(Vec::len), Some(1));
+    assert!(tail.stop.is_none());
+    assert_eq!(maps[tail_end], 2, "下一个图层标志应为 2");
+    assert!(tail.final_color.is_some());
+    let Some(FdoSymbolCollectionSlot10_1::SymbolCollection(collection)) =
+        tail.symbol_collection.as_ref()
+    else {
+        panic!("样本应解析为新 SymbolCollection 对象")
+    };
+    assert_eq!(collection.key, 156);
+    assert_eq!(collection.version, 3);
+    assert!(collection.items.is_empty());
+}
+
+#[test]
+fn sample_fdo_tail_truncations_are_transactional() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples/测试底图.mxd");
+    let mut document = cfb::open(path).unwrap();
+    let mut maps = Vec::new();
+    std::io::Read::read_to_end(&mut document.open_stream("/Maps").unwrap(), &mut maps).unwrap();
+    let full = &maps[0x2c01..0x2d22];
+    for end in 0..full.len() {
+        let mut reader = Reader::new(&full[..end]);
+        let mut refs = RefTable10_1::new();
+        let err = read_fdo_graphics_layer_tail_10_1(&mut reader, 1 << 20, &mut refs, 11, 32)
+            .expect_err("所有严格前缀均应截断失败");
+        assert!(
+            matches!(
+                err.kind(),
+                ErrorKind::UnexpectedEof | ErrorKind::InvalidData
+            ),
+            "end={end}: {err}"
+        );
+        assert_eq!(reader.position(), 0, "end={end}");
+        assert!(refs.is_empty(), "end={end}");
+    }
 }
 
 /// 合成 FeatureLayer 体（到渲染器空标记 + GUID + 最小后继段的完整前缀链）。
@@ -188,7 +407,7 @@ fn null_and_back_reference_associated_layers_advance_to_element_collection() {
         parsed.element_collection,
         Some(ElementCollectionSlot10_1::Null)
     );
-    let delegated = parsed.delegated_layer.expect("委派体应解析");
+    let delegated = parsed.delegated_layer.as_ref().expect("委派体应解析");
     assert_eq!(delegated.name, "注记层");
     assert_eq!(
         parsed.stop,

@@ -48,9 +48,9 @@
 //! [`LEGEND_CLASS_FORMAT_CLASS_ID`] 并取得键，从对象头之后的位置传入
 //! Reader；本模块不重复读取对象头。四个对象槽经
 //! [`crate::storage::object_refs::read_object_entry_10_1`] 分类：空标记与
-//! 回引消费后继续；**新对象**（ITextSymbol/ILinePatch/IAreaPatch 实现类
-//! 体未闭合）为停止点——游标回退到该槽位起点、该键不登记，其后的槽位
-//! 不可达。任何失败不推进调用者游标、不修改登记表。`max_bytes` 与本轮
+//! 回引消费后继续；TextSymbol、LinePatch 和 AreaPatch 按槽位分派。
+//! 未知新对象为停止点，游标回退到槽位起点且该键不登记；已知体内
+//! 的停止点向上传递。任何失败不推进调用者游标、不修改登记表。`max_bytes` 与本轮
 //! 其他读取器同口径（`usize::MAX` 表示不额外设限）。
 //!
 //! 未解决问题（详见研究记录「开放项」）：两个 double 的业务语义未定；
@@ -59,6 +59,9 @@
 
 use crate::layers::patch::{
     AREA_PATCH_CLASS_ID, LINE_PATCH_CLASS_ID, PatchBody10_1, PatchStop10_1, read_patch_body_10_1,
+};
+use crate::objects::element_body::{
+    TEXT_SYMBOL_CLASS_ID, TextSymbolBody10_1, read_text_symbol_body_10_1,
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::reader::Reader;
@@ -83,14 +86,15 @@ const MAX_BODY_VERSION: i16 = 2;
 /// ITextSymbol / ILinePatch / IAreaPatch 槽位的分类结果。
 ///
 /// C 轮接线起补丁两槽（ILinePatch/IAreaPatch）的新对象命中 LinePatch/
-/// AreaPatch 类时整体消费其共享闭合体（layers::patch 模块）；TextSymbol
-/// 与其余实现类维持停止点（游标回退到槽位起点）。
+/// AreaPatch 类时整体消费其共享闭合体（layers::patch 模块）；TextSymbol 两槽分派已知类，其他实现类维持停止点。
 #[derive(Debug, Clone, PartialEq)]
 pub enum LegendClassFormatSlot10_1 {
     /// 16 字节全零类标识：空引用，无键、无对象体。
     Null,
     /// 键已见：回引条目，无对象体。类标识原样保留、不校验。
     BackReference { class_id: [u8; 16], key: u32 },
+    /// 新 TextSymbol 对象；嵌套未知对象时保留已读取前缀。
+    TextSymbol(Box<TextSymbolBody10_1>),
     /// 新 LinePatch 对象（ILinePatch 槽；C 轮接线）：已读取其共享闭合体。
     LinePatch(Box<PatchBody10_1>),
     /// 新 AreaPatch 对象（IAreaPatch 槽；C 轮接线）：已读取其共享闭合体。
@@ -114,6 +118,8 @@ pub enum LegendClassFormatStop10_1 {
     /// 补丁槽（ILinePatch/IAreaPatch）的闭合体自身停止（几何槽未知类，
     /// 原因透传）；游标停在其内层停止点。
     PatchBody(PatchStop10_1),
+    /// 文字符号内部的停止点；具体原因保存在对应符号体的 stop 字段。
+    TextSymbolBody,
 }
 
 /// LegendClassFormat（Layer.dll Load `0x78664b20`）对象的已确认字段。
@@ -147,7 +153,7 @@ pub struct LegendClassFormatBody10_1 {
 ///
 /// 起点约定：调用者已读取对象头、比对 [`LEGEND_CLASS_FORMAT_CLASS_ID`] 并
 /// 取得键 `key`。字段序与证据见模块文档。`max_bytes` 为资源限额（本轮
-/// 字段无字符串；保留参数与同族读取器同口径，`usize::MAX` 不设限）。
+/// 嵌套文字和补丁对象的资源限额，`usize::MAX` 不设限）。
 /// 对象槽新对象为成功返回的停止点（游标回退到槽位起点）；截断、版本
 /// 超限为错误，游标与登记表不动。
 pub fn read_legend_class_format_body_10_1(
@@ -156,7 +162,6 @@ pub fn read_legend_class_format_body_10_1(
     table: &mut RefTable10_1,
     key: u32,
 ) -> io::Result<LegendClassFormatBody10_1> {
-    let _ = max_bytes; // 本轮字段无变长载荷；保留参数与同族读取器同口径
     let mut trial = reader.clone();
     let entry_offset = trial.position();
     let invalid = |reason: String| {
@@ -191,7 +196,7 @@ pub fn read_legend_class_format_body_10_1(
         let slot_offset = trial.position();
         let snapshot = staged_table.clone();
         // C 轮接线：槽 2/3（ILinePatch/IAreaPatch）按类标识分派补丁共享
-        // 读取器（体内停止透传）；其余类与 TextSymbol 两槽维持停止语义。
+        // 读取器（体内停止透传）；其余类维持停止语义；前两槽分派 TextSymbol。
         enum PatchKind {
             Line,
             Area,
@@ -206,6 +211,15 @@ pub fn read_legend_class_format_body_10_1(
             ObjectEntry10_1::Null => slots[index] = LegendClassFormatSlot10_1::Null,
             ObjectEntry10_1::BackReference { class_id, key } => {
                 slots[index] = LegendClassFormatSlot10_1::BackReference { class_id, key };
+            }
+            ObjectEntry10_1::NewObject { class_id, key: _ }
+                if index < 2 && class_id == TEXT_SYMBOL_CLASS_ID =>
+            {
+                let body = read_text_symbol_body_10_1(&mut trial, max_bytes, &mut staged_table)?;
+                if body.stop.is_some() {
+                    stop = Some(LegendClassFormatStop10_1::TextSymbolBody);
+                }
+                slots[index] = LegendClassFormatSlot10_1::TextSymbol(Box::new(body));
             }
             ObjectEntry10_1::NewObject { class_id, key } if matches!(&expected_patch, Some((id, _)) if class_id == *id) =>
             {

@@ -68,7 +68,8 @@ use crate::maps::map_surround::{
     MapSurroundCommonPrefix10_1, read_map_surround_common_prefix_10_1,
 };
 use crate::objects::display_symbol::{
-    MAX_SYMBOL_NESTING_DEPTH, SymbolSlotFull10_1, read_symbol_slot_full_10_1,
+    DisplaySlotKind10_1, MAX_SYMBOL_NESTING_DEPTH, SymbolSlotFull10_1, SymbolStop10_1,
+    read_symbol_slot_full_10_1, slot_full_stop_10_1,
 };
 use crate::objects::element_body::{
     MARKER_ELEMENT_CLASS_ID, MarkerElementBody10_1, TEXT_ELEMENT_CLASS_ID, TEXT_SYMBOL_CLASS_ID,
@@ -206,12 +207,22 @@ pub enum FamilyStop10_1 {
         class_id: [u8; 16],
         key: u32,
     },
+    /// MarkerElement 的内层读取未完成；具体原因保存在元素体的 stop 字段。
+    MarkerElementIncomplete,
+    /// 旧版 IMarkerSymbol 槽或其嵌套体未完成。
+    LegacyMarkerSymbol(SymbolStop10_1),
 }
 
 impl FamilyStop10_1 {
     /// 停止原因的固定说明（供诊断直接输出）。
     pub fn describe(self) -> String {
         match self {
+            Self::MarkerElementIncomplete => {
+                "MarkerNorthArrow 的 MarkerElement 体内停止；详情见元素体".to_owned()
+            }
+            Self::LegacyMarkerSymbol(reason) => {
+                format!("MarkerNorthArrow 的旧版符号槽停止：{reason:?}")
+            }
             Self::SlotUnsupported {
                 slot,
                 class_id,
@@ -769,11 +780,12 @@ pub fn read_marker_north_arrow_body_10_1(
     let mut marker_element: SlotEntry10_1<MarkerElementBody10_1> = SlotEntry10_1::Null;
     if stop.is_none() {
         if version < 2 {
-            // 10.1 不可达：int32 读入即丢 + IMarkerSymbol 槽（未知符号类
-            // 的 Unsupported 由枚举承载，不触发整体停止）。
+            // 10.1 写侧不可达：int32 读入即丢，再归约符号槽内停止。
             let _ = trial.read_bytes(4)?;
             legacy_marker =
                 read_symbol_slot_full_10_1(&mut trial, max_bytes, table, MAX_SYMBOL_NESTING_DEPTH)?;
+            stop = slot_full_stop_10_1(&legacy_marker, DisplaySlotKind10_1::Symbol)
+                .map(FamilyStop10_1::LegacyMarkerSymbol);
         } else {
             let (slot, reason) = read_typed_slot_10_1(
                 &mut trial,
@@ -783,8 +795,13 @@ pub fn read_marker_north_arrow_body_10_1(
                 &MARKER_ELEMENT_CLASS_ID,
                 |reader, table, _key| read_marker_element_body_10_1(reader, max_bytes, table),
             )?;
+            stop = reason.or_else(|| match &slot {
+                SlotEntry10_1::Body(body) if body.stop.is_some() => {
+                    Some(FamilyStop10_1::MarkerElementIncomplete)
+                }
+                _ => None,
+            });
             marker_element = slot;
-            stop = reason;
         }
     }
 
@@ -831,8 +848,7 @@ pub struct MarkerNorthArrowBody10_1 {
     pub base_point: SlotEntry10_1<PointBody10_1>,
     /// 基类版本 ≥4 的 int32（`−0x34`，位模式；<4 不读流）。
     pub base_int32: Option<i32>,
-    /// 自身版本 <2 的 IMarkerSymbol 槽（10.1 不可达；槽内 Unsupported 由
-    /// 枚举承载）。
+    /// 自身版本 <2 的 IMarkerSymbol 槽（10.1 写侧不可达；停止向外传播）。
     pub legacy_marker: SymbolSlotFull10_1,
     /// 自身版本 ≥2 的 IMarkerElement 槽（`−0x1c`；标记元素候选）。
     pub marker_element: SlotEntry10_1<MarkerElementBody10_1>,
@@ -1737,6 +1753,118 @@ mod tests {
         assert!(matches!(body.marker_element, SlotEntry10_1::Null));
         assert_eq!(body.stop, None);
         assert_eq!(body.remaining_bytes, 0);
+    }
+
+    /// 元素共同前缀版本 6；VT_EMPTY、空名称与类型字符串。
+    fn marker_element_prefix() -> Vec<u8> {
+        let mut bytes = 3u16.to_le_bytes().to_vec();
+        bytes.extend(6u16.to_le_bytes());
+        bytes.extend(string_bytes(""));
+        bytes.extend(string_bytes("Marker"));
+        bytes.extend(0u16.to_le_bytes());
+        bytes.extend(0u16.to_le_bytes());
+        bytes.extend(0f64.to_le_bytes());
+        bytes.extend(0i32.to_le_bytes());
+        bytes
+    }
+
+    #[test]
+    fn marker_north_arrow_propagates_element_stop_to_map_suffix() {
+        use crate::maps::map_object::{MapSuffixStop, read_map_suffix_10_1};
+        use crate::objects::element_body::ElementBodyStop10_1;
+        let mut data = 51u16.to_le_bytes().to_vec();
+        data.extend(string_bytes("Map"));
+        data.extend(string_bytes(""));
+        data.extend([0u8; 16]); // 地图空间参考为空。
+        data.extend(0i32.to_le_bytes()); // 空图层列表。
+        data.extend((-1i32).to_le_bytes());
+        data.extend([0u8; 16]); // 基本图形层为空。
+        data.extend(1i32.to_le_bytes());
+        let surround_offset = data.len();
+        data.extend(MARKER_NORTH_ARROW_CLASS_ID);
+        data.extend(41u32.to_le_bytes());
+        let arrow = mna_v2_bytes();
+        data.extend_from_slice(&arrow[20..arrow.len() - 16]);
+        data.extend(MARKER_ELEMENT_CLASS_ID);
+        data.extend(42u32.to_le_bytes());
+        data.extend(marker_element_prefix());
+        let symbol_offset = data.len();
+        data.extend([0x77u8; 16]); // 未知 IMarkerSymbol 新对象。
+        data.extend(43u32.to_le_bytes());
+        data.extend([0u8; 64]); // 确保错误继续时能观察是否读取后续字段。
+
+        let mut table = RefTable10_1::new();
+        table.register(30); // 共同前缀中的地图回引。
+        let mut reader = Reader::new(&data);
+        let suffix = read_map_suffix_10_1(&mut reader, 4096, &mut table).unwrap();
+        assert_eq!(
+            suffix.stop,
+            MapSuffixStop::MapSurroundFamilyBody {
+                index: 0,
+                offset: surround_offset,
+                class_id: MARKER_NORTH_ARROW_CLASS_ID,
+                key: 41,
+                reason: FamilyStop10_1::MarkerElementIncomplete,
+            }
+        );
+        assert_eq!(reader.position(), symbol_offset);
+        assert!(table.contains(30) && table.contains(41) && table.contains(42));
+        assert!(!table.contains(43));
+        assert!(suffix.extent.is_none());
+        let Some(crate::maps::map_object::MapSurroundElement10_1::MarkerNorthArrow(arrow)) =
+            &suffix.map_surround_parsed[0]
+        else {
+            panic!("缺少指北针体")
+        };
+        let SlotEntry10_1::Body(element) = &arrow.marker_element else {
+            panic!("缺少元素体")
+        };
+        assert!(
+            matches!(element.stop, Some(ElementBodyStop10_1::NestedObjectNotClosed { key: 43, offset, .. }) if offset == symbol_offset)
+        );
+    }
+
+    #[test]
+    fn marker_north_arrow_legacy_symbol_stops_are_propagated() {
+        use crate::objects::display_symbol::SIMPLE_MARKER_SYMBOL_CLASS_ID;
+        for nested in [false, true] {
+            let mut data = mna_v2_bytes();
+            data[20..22].copy_from_slice(&1u16.to_le_bytes());
+            data.truncate(data.len() - 16);
+            data.extend(0i32.to_le_bytes());
+            if nested {
+                data.extend(SIMPLE_MARKER_SYMBOL_CLASS_ID);
+                data.extend(50u32.to_le_bytes());
+                data.extend(1u16.to_le_bytes());
+            }
+            let stop_offset = data.len();
+            data.extend([0x77u8; 16]);
+            data.extend(51u32.to_le_bytes());
+            let mut table = RefTable10_1::new();
+            table.register(30);
+            let mut reader = Reader::new(&data);
+            reader.read_bytes(20).unwrap();
+            let body = read_marker_north_arrow_body_10_1(&mut reader, 4096, &mut table, 9).unwrap();
+            let expected = if nested {
+                SymbolStop10_1::NestedIncomplete {
+                    class_id: SIMPLE_MARKER_SYMBOL_CLASS_ID,
+                    key: 50,
+                }
+            } else {
+                SymbolStop10_1::Slot {
+                    kind: DisplaySlotKind10_1::Symbol,
+                    class_id: [0x77; 16],
+                    key: 51,
+                }
+            };
+            assert_eq!(
+                body.stop,
+                Some(FamilyStop10_1::LegacyMarkerSymbol(expected))
+            );
+            assert_eq!(reader.position(), stop_offset);
+            assert_eq!(table.contains(50), nested);
+            assert!(!table.contains(51));
+        }
     }
 
     #[test]

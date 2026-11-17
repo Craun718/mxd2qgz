@@ -1073,3 +1073,204 @@ fn text_symbol_symbol2_nested_stop_propagates() {
     assert!(table.contains(1593), "SFS 键已登记（对象头已消费）");
     assert!(!table.contains(1601), "嵌套未知键不保留");
 }
+
+#[test]
+fn shape_symbols_read_known_types_and_reject_wrong_interface() {
+    use mxd2qgz::objects::display_symbol::{
+        SIMPLE_LINE_SYMBOL_CLASS_ID, SIMPLE_MARKER_SYMBOL_CLASS_ID,
+    };
+    for marker in [true, false] {
+        let mut bytes = 3_u16.to_le_bytes().to_vec();
+        bytes.extend(ep_prefix(6));
+        let slot_offset = bytes.len();
+        let class = if marker {
+            SIMPLE_MARKER_SYMBOL_CLASS_ID
+        } else {
+            SIMPLE_LINE_SYMBOL_CLASS_ID
+        };
+        bytes.extend(entry(&class, 71));
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(null_entry());
+        if marker {
+            bytes.extend([0_u8; 8 + 12 + 24 + 1 + 8]);
+            bytes.extend(null_entry());
+        } else {
+            bytes.extend([0_u8; 8 + 12]);
+        }
+        bytes.extend(null_entry());
+        bytes.extend(0_i32.to_le_bytes());
+        if marker {
+            bytes.extend([0_u8; 32]);
+        } else {
+            bytes.extend(0_u16.to_le_bytes());
+        }
+        let mut table = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        if marker {
+            let body = read_marker_element_body_10_1(&mut reader, 1024, &mut table).unwrap();
+            assert!(matches!(
+                body.symbol,
+                SymbolSlotFull10_1::SimpleMarkerSymbol(_)
+            ));
+            assert!(body.stop.is_none());
+        } else {
+            let body = read_line_element_body_10_1(&mut reader, 1024, &mut table).unwrap();
+            assert!(matches!(
+                body.symbol,
+                SymbolSlotFull10_1::SimpleLineSymbol(_)
+            ));
+            assert!(body.stop.is_none());
+        }
+        assert_eq!(reader.position(), bytes.len());
+        assert!(table.contains(71));
+        for end in 0..bytes.len() {
+            let mut reader = Reader::new(&bytes[..end]);
+            let mut table = RefTable10_1::new();
+            table.register(4);
+            let failed = if marker {
+                read_marker_element_body_10_1(&mut reader, 1024, &mut table).is_err()
+            } else {
+                read_line_element_body_10_1(&mut reader, 1024, &mut table).is_err()
+            };
+            assert!(failed, "{marker} {end}");
+            assert_eq!(reader.position(), 0);
+            assert_eq!(table.len(), 1);
+            assert!(table.contains(4));
+        }
+        let mut wrong = bytes[..slot_offset].to_vec();
+        wrong.extend(entry(&SIMPLE_FILL_SYMBOL_CLASS_ID, 72));
+        let mut table = RefTable10_1::new();
+        let mut reader = Reader::new(&wrong);
+        let stop = if marker {
+            read_marker_element_body_10_1(&mut reader, 1024, &mut table)
+                .unwrap()
+                .stop
+        } else {
+            read_line_element_body_10_1(&mut reader, 1024, &mut table)
+                .unwrap()
+                .stop
+        };
+        assert!(matches!(
+            stop,
+            Some(
+                mxd2qgz::objects::element_body::ElementBodyStop10_1::NestedObjectNotClosed {
+                    key: 72,
+                    ..
+                }
+            )
+        ));
+        assert_eq!(reader.position(), slot_offset);
+        assert!(!table.contains(72));
+    }
+}
+
+#[test]
+fn shape_symbol_nested_unknown_stops_without_registering_inner_key() {
+    use mxd2qgz::objects::display_symbol::{
+        SIMPLE_LINE_SYMBOL_CLASS_ID, SIMPLE_MARKER_SYMBOL_CLASS_ID,
+    };
+    use mxd2qgz::objects::element_body::ElementBodyStop10_1;
+    for marker in [true, false] {
+        let mut bytes = 3_u16.to_le_bytes().to_vec();
+        bytes.extend(ep_prefix(6));
+        bytes.extend(entry(
+            if marker {
+                &SIMPLE_MARKER_SYMBOL_CLASS_ID
+            } else {
+                &SIMPLE_LINE_SYMBOL_CLASS_ID
+            },
+            71,
+        ));
+        bytes.extend(1_u16.to_le_bytes());
+        let inner_offset = bytes.len();
+        bytes.extend(entry(&[0x55; 16], 72));
+        let mut table = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        let stop = if marker {
+            read_marker_element_body_10_1(&mut reader, 1024, &mut table)
+                .unwrap()
+                .stop
+        } else {
+            read_line_element_body_10_1(&mut reader, 1024, &mut table)
+                .unwrap()
+                .stop
+        };
+        assert!(matches!(
+            stop,
+            Some(ElementBodyStop10_1::SymbolSlotNested { .. })
+        ));
+        assert_eq!(reader.position(), inner_offset);
+        assert!(table.contains(71));
+        assert!(!table.contains(72));
+    }
+}
+
+#[test]
+#[ignore = "requires extracted ArcMap 10.1 and 10.8 media streams under temp"]
+fn media_shape_candidates_reach_geometry_and_tail() {
+    use mxd2qgz::objects::display_symbol::SymbolSlotFull10_1;
+    let cases = [
+        (
+            "temp/arcmap101-media-streams/Africa.mxd.Maps",
+            0xb53b,
+            0xb6c3,
+            true,
+        ),
+        (
+            "temp/arcmap101-media-streams/Utilities.mxd.PageLayout",
+            0x20cf,
+            0x21ec,
+            false,
+        ),
+        (
+            "temp/arcmap108-media-streams/asia.mxd.2319C344_B117_4BE0_8B98_93D6E4E94502.Maps",
+            0xae25,
+            0xafad,
+            true,
+        ),
+        (
+            "temp/arcmap108-media-streams/centralusa.mxd.756AEF33_7F48_48CE_804C_228E110C42CC.PageLayout",
+            0xa0c,
+            0xb29,
+            false,
+        ),
+    ];
+    for (path, offset, end, marker) in cases {
+        let bytes =
+            std::fs::read(path).unwrap_or_else(|error| panic!("无法读取介质流 {path}: {error}"));
+        let class = if marker {
+            MARKER_ELEMENT_CLASS_ID
+        } else {
+            LINE_ELEMENT_CLASS_ID
+        };
+        assert_eq!(&bytes[offset..offset + 16], &class);
+        let key = u32::from_le_bytes(bytes[offset + 16..offset + 20].try_into().unwrap());
+        let mut table = RefTable10_1::new();
+        // 局部探针只是假定此前键已经登记，不代表整流引用关系已经确认。
+        for previous in 0..=key {
+            table.register(previous);
+        }
+        let mut reader = Reader::new(&bytes);
+        reader.read_bytes(offset + 20).unwrap();
+        if marker {
+            let body = read_marker_element_body_10_1(&mut reader, 1_000_000, &mut table).unwrap();
+            assert!(matches!(
+                body.symbol,
+                SymbolSlotFull10_1::CharacterMarkerSymbol(_)
+            ));
+            assert!(matches!(body.geometry, PointSlot10_1::Point(_)));
+            assert!(body.stop.is_none());
+            assert!(body.raw_envelope.is_some());
+        } else {
+            let body = read_line_element_body_10_1(&mut reader, 1_000_000, &mut table).unwrap();
+            assert!(matches!(
+                body.symbol,
+                SymbolSlotFull10_1::SimpleLineSymbol(_)
+            ));
+            assert!(matches!(body.geometry, GeometrySlot10_1::Polyline(_)));
+            assert!(body.stop.is_none());
+            assert_eq!(body.tail_short, Some(0));
+        }
+        assert_eq!(reader.position(), end, "{path}");
+    }
+}

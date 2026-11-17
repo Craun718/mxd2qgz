@@ -715,8 +715,8 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
         }
         ReaderKind::CompositeGraphicsPrefix10_1 => {
             // 版本 6：元素组计数 0 + 名称 + short ×3 + double ×2 + int32 ×3 +
-            // 空标记嵌套对象 + 版本 >1 的 double+int32 + 子图层计数 0 → 尾段
-            // 停止点恰在样本末尾。
+            // 空标记嵌套对象 + 版本 >1 的 double+int32 + 子图层计数 0 +
+            // 循环后尾段（int32、两个空对象槽、空字符串、两个 double）。
             let mut bytes = 6_u16.to_le_bytes().to_vec();
             bytes.extend(0_i32.to_le_bytes()); // 元素组计数 0
             bytes.extend(encoded("G"));
@@ -732,6 +732,10 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
             bytes.extend(0_f64.to_le_bytes()); // 版本 >1：double
             bytes.extend(0_i32.to_le_bytes()); // 版本 >1：int32
             bytes.extend(0_i32.to_le_bytes()); // 子图层计数 0
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend([0_u8; 32]);
+            bytes.extend(encoded(""));
+            bytes.extend([0_u8; 16]);
             bytes
         }
         ReaderKind::Envelope10_1 => {
@@ -1640,10 +1644,11 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
             bytes
         }
         ReaderKind::UidBody10_1 => {
-            // 样本形态 A：版本 1 + 标志 1 + GUID。
+            // 样本形态 A：版本 1 + 标志 1 + GUID + int32。
             let mut bytes = 1_u16.to_le_bytes().to_vec();
             bytes.push(1);
             bytes.extend([0xa5_u8; 16]);
+            bytes.extend(0_i32.to_le_bytes());
             bytes
         }
         ReaderKind::HotLinkExpressionPropsBody10_1 => {

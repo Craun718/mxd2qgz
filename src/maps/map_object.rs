@@ -45,13 +45,10 @@
 //! 并要求调用者提供跨流共享的键登记表（Map 对象自身的键由调用者在读取
 //! Map 对象头时登记）。
 //!
-//! 样本核对（2026-11-14，辅助观察）：完整样本在图层列表条目 1（标志 1
-//! 新对象）停止，尾部起点 0x28e 与证据文档一致；用样本前缀 + 合成空图层
-//! 列表 + 样本 0x24f60..0x24fa0 尾段驱动本读取器，WKSEnvelope 四 double
-//! 读出 37392944.284/2520083.285/37394230.529/2520951.835、其后 int32 对
-//! (9, 9)、IEnvelope 空标记、书签计数 0、停止 AfterBookmarks，全部与证据
-//! 文档一致（尾段核对同时支持 IEnvelope 空标记 16 字节消费的判断，见
-//! [`read_map_suffix_10_1`] 文档）。
+//! 样本核对（2026-11-17）：参考文件从图层列表继续读完基本图形层，读到
+//! 0x24f64 处的 WKSEnvelope、其后 int32 对 (9, 9)、IEnvelope 空标记和
+//! 书签计数 0，于 0x24fa0 停止。IEnvelope 空标记消费 16 字节，与书签计数
+//! 和下一字段的偏移互证。尚未在 ArcMap 中运行验证。
 //!
 //! 这是仅覆盖上述已确认字段的严格安全子集：要求完整输入、任何失败不推进
 //! 调用者游标、不修改共享登记表。停止点（如标志 1 新对象体、未接入读取器的
@@ -68,7 +65,7 @@
 
 use crate::layers::composite_graphics::{
     COMPOSITE_GRAPHICS_LAYER_CLASS_ID, CompositeGraphicsLayerPrefix10_1,
-    read_composite_graphics_layer_prefix_10_1,
+    CompositeGraphicsLayerStop10_1, read_composite_graphics_layer_prefix_10_1,
 };
 use crate::layers::layer_list::{LayerList10_1, LayerListStop, class_id_hex, read_layer_list_10_1};
 use crate::maps::map_surround::{
@@ -590,10 +587,8 @@ pub fn read_map_suffix_10_1(
 
     if stop.is_none() {
         // 2. 基本图形层对象（SaveObject(+0xf8)，请求 IID {34B2EF81-…}）。
-        //    类标识为 CompositeGraphicsLayer 时解析已确认体前缀（样本即此
-        //    情况，键 1553）：读取器在首个不可闭合字段处停止并把游标回退到
-        //    该字段起点。该槽位对象体无外部长度，后缀仍在此停止，剩余保留
-        //    为未知尾部；其余类（或前缀解析失败）不消费体、停在对象头之后。
+        //    CompositeGraphicsLayer 对象体完整消费后才继续。该槽位没有外部
+        //    长度；未知类或体内停止时将余下字节保留为未知尾部。
         let offset = trial.position();
         let entry = read_object_entry_10_1(&mut trial, &mut trial_table)?;
         if let ObjectEntry10_1::NewObject { class_id, .. } = entry {
@@ -607,7 +602,11 @@ pub fn read_map_suffix_10_1(
             }
         }
         base_graphics_layer = Some(ObjectSlot10_1 { offset, entry });
-        if let ObjectEntry10_1::NewObject { class_id, key } = entry {
+        if let ObjectEntry10_1::NewObject { class_id, key } = entry
+            && !base_graphics_layer_parsed
+                .as_ref()
+                .is_some_and(|body| body.stop == CompositeGraphicsLayerStop10_1::Completed)
+        {
             stop = Some(MapSuffixStop::BaseGraphicsLayerBody {
                 offset,
                 class_id,

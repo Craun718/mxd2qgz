@@ -44,18 +44,17 @@
 //!    （`DAT_6f7aa58c` → +0x94）、版本 >1 再读 double（→ +0x88）。
 //!    [条目尾段在文档节摘要中未列出，第五轮「未解决事项」3 已记载
 //!    「short×3+double×2+int×2+LoadObject+double，CGL::Load 已有」]；
-//! 10. 尾段未逐项展开（不可实现，本读取器在此停止）：反编译可见循环后的
-//!     int32（→ +0x50）、嵌套对象（ILayer 族 → +0x48）、版本 >2 的嵌套对
-//!     象（`DAT_6f7aa48c` → +0x3c）、版本 >=4 的 String（→ +0xb4）、==4
-//!     再读 short、版本 >=5 的 double ×2（→ +0xbc/+0xc4）；这些字段本读
-//!     取器不消费，保留为未知尾部。
+//! 10. int32 + ILayer 对象槽 + 版本 >2 的对象槽 + 版本 >=4 的 String；
+//!     版本 ==4 再读 short，版本 >=5 再读两个 double。未知对象在对象头停
+//!     止；各字段读完返回 Completed。写侧 FeatureLayer.dll 0x6f6b2620 与
+//!     10.1 样本尾段对位见 docs/mxd-layer-label-cgl-20261117.md。
 //!
 //! 停止语义（与 [`crate::maps::map_object`] 的设计差异及理由）：map_object 对未
 //! 知嵌套类直接报错，因为其后没有同序字段可继续；本模块面对的嵌套对象
 //! （元素、条目 ILayer、ElementCollection 等）之后仍有已确认字段，而新对
 //! 象体没有外部长度字段、无法跳过——报错会丢弃已解析前缀。因此本读取器
 //! 是「已确认前缀」语义：解析到首个不可闭合字段（新对象体 / 尾段）为止，
-//! 返回已解析字段 + 剩余字节数 + 停止原因
+//! 返回已解析字段 + 剩余字节数 + 完成或停止原因
 //! [`CompositeGraphicsLayerStop10_1`]，不因未知嵌套类报错中断。
 //!
 //! 调用约定：调用者先用 [`crate::storage::object_stream::read_header_10_1`] 读取对象
@@ -73,8 +72,8 @@
 //! int32（@`0x1704a`）→ 第 9 步子图层计数 @`0x17056` = 10（样本字节支持
 //! 第六轮裁决：`0x17052` 的 1 是第 8 步 int32）→ 条目 1 = String `JZD1 注
 //! 记`（@`0x1705a`，16 字节声明）+ FeatureLayer 对象头 @`0x1706e` 键 1555
-//! 新对象——本读取器在此停止（`SubLayerNewObject`，条目 ILayer 槽不分派
-//! FeatureLayer 体）。文档第四节转录的条目名「MZD1 」与当前样本字节不符
+//! 新对象；现按 FeatureLayer 分派。完整对象登记上下文中，10 条子层
+//! 均可消费，随后在循环后尾段停止。文档第四节转录的条目名「MZD1 」与当前样本字节不符
 //! （实际为 `JZD1 注记`）。本次核对基于 2026-11-14 的样本导出（与第四轮
 //! 研究副本在 CGL 区域外有 157 字节字符串差异；CGL 区域内逐字节一致）。
 //! 样本吻合为辅助观察，未在目标软件中验证。
@@ -83,14 +82,27 @@
 //! 接入 ElementCollection 分派（第 7 步同模式，体内停止透传
 //! `ElementCollectionIncomplete`/`SubLayerTailCollectionIncomplete`，落位记
 //! 录见 docs/arcmap-10.1-map-object.md 文末「接线轮」节）；第 6 步第三个
-//! int32、第 8 步 int32、条目尾段字段的语义未定性；`FUN_6f6b3100` 与尾段
-//! 未展开；版本 short 符号性未闭合（本读取器按无符号更严处理）；条目尾段
+//! int32、第 8 步 int32、条目尾段字段的语义未定性；`FUN_6f6b3100` 运行时行为未验证；版本 short 符号性未闭合（本读取器按无符号更严处理）；条目尾段
 //! 与单元 FeatureLayer 体结束边界的逐字节对位未完成（第五轮「未解决事项」
 //! 3）。人工目视验收未做，不声称已验证。
 
+use crate::layers::feature_layer::{
+    FeatureLayerPrefix10_1, FeatureLayerStop10_1, read_feature_layer_prefix_10_1,
+};
+use crate::layers::feature_layer_tail::SuccessorStop10_1;
+use crate::layers::layer_list::FEATURE_LAYER_CLASS_ID;
 use crate::objects::element_collection::{
     ELEMENT_COLLECTION_CLASS_ID, ElementCollection10_1, ElementCollectionStop10_1,
     read_element_collection_10_1,
+};
+use crate::objects::spatial_reference::{
+    PROJECTED_COORDINATE_SYSTEM_CLASS_ID, ProjectedCoordinateSystem10_1,
+    read_projected_coordinate_system_10_1,
+};
+use crate::objects::spatial_reference_slots::{
+    GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID, GeographicCoordinateSystem10_1,
+    UNKNOWN_COORDINATE_SYSTEM_CLASS_ID, UnknownCoordinateSystem10_1,
+    read_geographic_coordinate_system_10_1, read_unknown_coordinate_system_10_1,
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -113,13 +125,33 @@ pub const COMPOSITE_GRAPHICS_LAYER_CLASS_ID: [u8; 16] = [
     0x83, 0xbb, 0x46, 0x96, 0x12, 0x95, 0xd2, 0x11, 0xa2, 0xf6, 0x08, 0x00, 0x09, 0xb6, 0xf2, 0x2b,
 ];
 
-/// 已消费的嵌套对象条目（新对象是停止点，不出现在记录中）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// 已消费的嵌套对象条目；已支持的子图层新对象保留其解析体。
+#[derive(Debug, Clone, PartialEq)]
 pub enum ConsumedEntry10_1 {
     /// 16 字节全零类标识的空引用：无键、无对象体。
     Null,
     /// 键已在此前登记：回引条目，其后没有对象体。
     BackReference { class_id: [u8; 16], key: u32 },
+    /// 新投影坐标系对象及已登记键。
+    Projected {
+        key: u32,
+        body: Box<ProjectedCoordinateSystem10_1>,
+    },
+    /// 新地理坐标系对象及已登记键。
+    Geographic {
+        key: u32,
+        body: Box<GeographicCoordinateSystem10_1>,
+    },
+    /// 新未知坐标系对象及已登记键。
+    UnknownSpatialReference {
+        key: u32,
+        body: Box<UnknownCoordinateSystem10_1>,
+    },
+    /// 已完整读取的 FeatureLayer 子图层。
+    FeatureLayer {
+        key: u32,
+        body: Box<FeatureLayerPrefix10_1>,
+    },
 }
 /// 一个元素组（字段序第 2 步循环）。
 #[derive(Debug, Clone, PartialEq)]
@@ -229,6 +261,13 @@ pub enum CompositeGraphicsLayerStop10_1 {
         class_id: [u8; 16],
         key: u32,
     },
+    /// FeatureLayer 体内部停止；对象键保留，条目尾段尚不可达。
+    SubLayerFeatureIncomplete {
+        index: usize,
+        name: String,
+        key: u32,
+        body: Box<FeatureLayerPrefix10_1>,
+    },
     /// 子图层条目尾段嵌套对象（`DAT_6f7aa58c`）是新对象且类标识非
     /// ElementCollection：该条目以部分消费状态记录（`tail_nested`/
     /// `tail_double` 为 `None`），游标回退到其头起点。
@@ -254,9 +293,14 @@ pub enum CompositeGraphicsLayerStop10_1 {
         key: u32,
         reason: ElementCollectionStop10_1,
     },
-    /// 子图层循环之后的尾段（第 10 条）未逐项展开：反编译可见其后的 int32、
-    /// ILayer 族嵌套对象与版本分支 String/double，本读取器不消费。
-    TailNotExpanded,
+    /// 尾段对象槽为未知新对象；游标回退至该对象头。
+    TailNewObject {
+        slot: u8,
+        class_id: [u8; 16],
+        key: u32,
+    },
+    /// 对象体的全部已证字段均已消费。
+    Completed,
 }
 
 impl CompositeGraphicsLayerStop10_1 {
@@ -280,6 +324,12 @@ impl CompositeGraphicsLayerStop10_1 {
                 "子图层条目 {index} 的 ILayer 为新对象：停止并回退到其头起点（该条目\
                  的名称字符串已消费但不入列表）"
             ),
+            Self::SubLayerFeatureIncomplete {
+                index, key, body, ..
+            } => format!(
+                "子图层条目 {index} 的 FeatureLayer（键 {key}）体内部停止：{:?}",
+                body.stop
+            ),
             Self::SubLayerTailNewObject { index, .. } => format!(
                 "子图层条目 {index} 的尾段嵌套对象为新对象（类标识非 \
                  ElementCollection）：条目以部分消费状态记录，\
@@ -298,11 +348,29 @@ impl CompositeGraphicsLayerStop10_1 {
                 "元素组 {group} 条目 {index} 的 ElementCollection（键 {key}）体在内部停止点停止：\
                  {reason:?}；游标停在内层停止点，其后条目与组不可达"
             ),
-            Self::TailNotExpanded => {
-                "子图层循环之后的尾段未逐项展开：本读取器不消费，保守停止".to_string()
+            Self::TailNewObject { slot, .. } => {
+                format!("尾段对象槽 {slot} 为未知新对象，游标回退到对象头")
             }
+            Self::Completed => "CompositeGraphicsLayer 对象体已完整消费".to_string(),
         }
     }
+}
+
+/// 子图层循环后的尾段；未到达的字段为 None。
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct CompositeGraphicsTail10_1 {
+    /// 尾部 int32 的原始位模式。
+    pub int32_50: Option<u32>,
+    /// ILayer 对象槽。
+    pub layer: Option<ConsumedEntry10_1>,
+    /// 版本大于 2 的对象槽。
+    pub object_3c: Option<ConsumedEntry10_1>,
+    /// 版本不低于 4 的字符串。
+    pub string_b4: Option<String>,
+    /// 版本等于 4 的 short。
+    pub short_v4: Option<u16>,
+    /// 版本不低于 5 的两个 double。
+    pub doubles: Option<[f64; 2]>,
 }
 
 /// 10.1 CompositeGraphicsLayer::Load（`0x6f6b2100`）已确认前缀的解析结果。
@@ -347,7 +415,9 @@ pub struct CompositeGraphicsLayerPrefix10_1 {
     pub sublayer_count: u32,
     /// 已成功处理的子图层条目。
     pub sublayers: Vec<SubLayerEntry10_1>,
-    /// 停止原因；成功输入也总有停止点（新对象 / 尾段）。
+    /// 子图层循环后的字段。
+    pub tail: CompositeGraphicsTail10_1,
+    /// 完成或停止原因。
     pub stop: CompositeGraphicsLayerStop10_1,
     /// 停止位置之后的剩余字节数（相对传入 Reader 窗口）。
     pub remaining_bytes: usize,
@@ -561,6 +631,34 @@ pub fn read_composite_graphics_layer_prefix_10_1(
                             ObjectEntry10_1::BackReference { class_id, key } => {
                                 ConsumedEntry10_1::BackReference { class_id, key }
                             }
+                            ObjectEntry10_1::NewObject { class_id, key }
+                                if class_id == FEATURE_LAYER_CLASS_ID =>
+                            {
+                                let body = read_feature_layer_prefix_10_1(
+                                    &mut trial,
+                                    max_bytes,
+                                    &mut trial_table,
+                                )?;
+                                if body.stop
+                                    != FeatureLayerStop10_1::Successor(
+                                        SuccessorStop10_1::TailCompleted,
+                                    )
+                                {
+                                    stop = Some(
+                                        CompositeGraphicsLayerStop10_1::SubLayerFeatureIncomplete {
+                                            index,
+                                            name: item_name,
+                                            key,
+                                            body: Box::new(body),
+                                        },
+                                    );
+                                    break 'sublayers;
+                                }
+                                ConsumedEntry10_1::FeatureLayer {
+                                    key,
+                                    body: Box::new(body),
+                                }
+                            }
                             ObjectEntry10_1::NewObject { class_id, key } => {
                                 // 新对象体不可消费：回退并停止；已消费的条目字
                                 // 符串保存在停止原因里，不丢弃。
@@ -701,8 +799,74 @@ pub fn read_composite_graphics_layer_prefix_10_1(
         }
     }
 
-    // 10. 尾段未逐项展开：默认停止点（若此前未因新对象停止）。
-    let stop = stop.unwrap_or(CompositeGraphicsLayerStop10_1::TailNotExpanded);
+    // 10. 未知对象体无长度，保留头起点；截断则回滚整个读取事务。
+    let mut tail = CompositeGraphicsTail10_1::default();
+    if stop.is_none() {
+        tail.int32_50 = Some(trial.read_u32_le()?);
+        for slot in 0..if version > 2 { 2 } else { 1 } {
+            let offset = trial.position();
+            let saved_table = trial_table.clone();
+            let entry = match read_object_entry_10_1(&mut trial, &mut trial_table)? {
+                ObjectEntry10_1::Null => ConsumedEntry10_1::Null,
+                ObjectEntry10_1::BackReference { class_id, key } => {
+                    ConsumedEntry10_1::BackReference { class_id, key }
+                }
+                ObjectEntry10_1::NewObject { class_id, key }
+                    if slot == 1 && class_id == PROJECTED_COORDINATE_SYSTEM_CLASS_ID =>
+                {
+                    ConsumedEntry10_1::Projected {
+                        key,
+                        body: Box::new(read_projected_coordinate_system_10_1(
+                            &mut trial, max_bytes,
+                        )?),
+                    }
+                }
+                ObjectEntry10_1::NewObject { class_id, key }
+                    if slot == 1 && class_id == GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID =>
+                {
+                    ConsumedEntry10_1::Geographic {
+                        key,
+                        body: Box::new(read_geographic_coordinate_system_10_1(
+                            &mut trial, max_bytes,
+                        )?),
+                    }
+                }
+                ObjectEntry10_1::NewObject { class_id, key }
+                    if slot == 1 && class_id == UNKNOWN_COORDINATE_SYSTEM_CLASS_ID =>
+                {
+                    ConsumedEntry10_1::UnknownSpatialReference {
+                        key,
+                        body: Box::new(read_unknown_coordinate_system_10_1(&mut trial, max_bytes)?),
+                    }
+                }
+                ObjectEntry10_1::NewObject { class_id, key } => {
+                    trial_table = saved_table;
+                    trial = reposition(&origin, entry_offset, offset, limit)?;
+                    stop = Some(CompositeGraphicsLayerStop10_1::TailNewObject {
+                        slot,
+                        class_id,
+                        key,
+                    });
+                    break;
+                }
+            };
+            if slot == 0 {
+                tail.layer = Some(entry);
+            } else {
+                tail.object_3c = Some(entry);
+            }
+        }
+        if stop.is_none() && version >= 4 {
+            tail.string_b4 = Some(read_string_10_1(&mut trial, max_bytes)?);
+            if version == 4 {
+                tail.short_v4 = Some(trial.read_u16_le()?);
+            }
+        }
+        if stop.is_none() && version >= 5 {
+            tail.doubles = Some([trial.read_f64_le()?, trial.read_f64_le()?]);
+        }
+    }
+    let stop = stop.unwrap_or(CompositeGraphicsLayerStop10_1::Completed);
 
     let result = CompositeGraphicsLayerPrefix10_1 {
         version,
@@ -719,6 +883,7 @@ pub fn read_composite_graphics_layer_prefix_10_1(
         after_version1,
         sublayer_count,
         sublayers,
+        tail,
         stop,
         remaining_bytes: trial.remaining(),
     };

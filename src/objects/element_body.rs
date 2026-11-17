@@ -156,8 +156,8 @@
 //! - 第二实例（键 1850 @`0x1da39`，文本 `"T12"`）同构互证；16 实例的版本 8 +
 //!   EP 版本 6 头部全部一致。
 //!
-//! MarkerElement/LineElement 无样本字节佐证，布局结论仅有反编译一手证据，
-//! 单元测试全部使用合成输入。
+//! 参考样本无 MarkerElement/LineElement；安装介质模板的局部候选现可读至
+//! 几何与尾段。局部探针假定此前键已登记，不能替代整流或目标软件验证。
 //!
 //! ## 与 element_collection 的分派衔接（接线轮已接入）
 //!
@@ -175,7 +175,8 @@
 //! read_geometry_body_10_1`] 四类类型化分派（Polyline/Polygon/Point/
 //! Multipoint 体整体解析，样本 16 实例原全部停在 TextElement 该槽；证据：
 //! docs/arcmap-10.1-geometry.md「接线建议」与「第二轮落位」）、MarkerElement
-//! 的 IPoint 槽经 [`read_point_slot`] Point 分派；TextSymbol 的 ITextPath/
+//! 的 IPoint 槽经 [`read_point_slot`] Point 分派；点/线符号槽分别限制
+//! 已知对应类后调用通用符号读取器，嵌套停止透传；TextSymbol 的 ITextPath/
 //! ISymbol #1/IFontDisp 仍仅分类；TextSymbol 体内的嵌套停止上抛为
 //! TextElement 的停止原因（原实现未透传，见 [`read_text_element_body_10_1`]
 //! 内注释）。`fdo_graphics_layer` 的 ElementCollection 槽已在前轮接入
@@ -194,8 +195,9 @@
 //! 合（IFontDisp 槽的 StdFont 实现类本轮已闭合，证据
 //! docs/arcmap-10.1-ole-stdfont.md；该槽其余实现类仍为停止回退）；
 //! TextSymbol 版本门尾段（>1 short、≥3 GUID、≥4 short）StdFont 体闭合后样
-//! 本可达、位模式原样保留（读侧语义未定）；MarkerElement 32 字节尾块、
-//! TextElement 版本 7/9 精确块无样本佐证；全部结论未运行目标软件验证。
+//! 本可达、位模式原样保留（读侧语义未定）；MarkerElement 尾块虽有模板
+//! 局部候选，仍未确定语义；TextElement 版本 7/9 精确块无样本佐证；
+//! 全部结论未运行目标软件验证。
 
 use crate::objects::display_color::read_color_slot_10_1;
 use crate::objects::display_symbol::{
@@ -400,7 +402,7 @@ impl ElementBodyStop10_1 {
                 class_id_hex(class_id)
             ),
             Self::SymbolSlotNested { slot, reason } => format!(
-                "TextSymbol 体 {slot} 的已闭合符号体内出现嵌套停止：{reason:?}；游标停在\
+                "{slot} 的已闭合符号体内出现嵌套停止：{reason:?}；游标停在\
                  内层停止点，已消费字段保持提交"
             ),
             Self::PropertiesCustomProperty {
@@ -753,11 +755,11 @@ pub struct MarkerElementBody10_1 {
     pub version: u16,
     /// ElementProperties 共同前缀（CustomProperty 槽停止时 `None`）。
     pub properties: Option<ElementPropertiesPrefix10_1>,
-    /// IMarkerSymbol 符号槽（仅分类，新对象 = 停止点）。
-    pub symbol: NestedEntry10_1,
+    /// IMarkerSymbol 槽：仅对已知点符号类分派，未知类停在槽头。
+    pub symbol: SymbolSlotFull10_1,
     /// IPoint 几何槽（接线轮起经 [`read_point_slot`] 类分派：Point 新对象
     /// 整体解析其体（无停止点）；其余实现类映射为停止原因，字段保持
-    /// `Null`。样本 0 实例，接线契约由合成测试固定）。
+    /// `Null`。参考样本无实例；安装介质有局部候选）。
     pub geometry: PointSlot10_1,
     /// 版本 >1 的 int32（this+0x26）。
     pub tail_int32: Option<i32>,
@@ -777,10 +779,10 @@ pub struct LineElementBody10_1 {
     pub version: u16,
     /// ElementProperties 共同前缀（CustomProperty 槽停止时 `None`）。
     pub properties: Option<ElementPropertiesPrefix10_1>,
-    /// ILineSymbol 符号槽（仅分类，新对象 = 停止点）。
-    pub symbol: NestedEntry10_1,
+    /// ILineSymbol 槽：仅对已知线符号类分派，未知类停在槽头。
+    pub symbol: SymbolSlotFull10_1,
     /// IGeometry 几何槽（接线轮起与 TextElement 同经四类类型化分派：
-    /// [`GeometrySlot10_1`]；其余几何类映射为停止原因。样本 0 实例）。
+    /// [`GeometrySlot10_1`]；其余几何类映射为停止原因。参考样本无实例）。
     pub geometry: GeometrySlot10_1,
     /// 版本 >1 的 int32（this+0x23）。
     pub tail_int32: Option<i32>,
@@ -989,6 +991,69 @@ fn read_symbol_slot<'a>(
         }
         other => Ok(other),
     }
+}
+
+/// 在调用通用符号读取器前按槽位接口限制新对象类，避免把填充符号、
+/// 辅助对象或另一类符号误当成目标接口实现。空值和回引维持既有语义。
+fn read_shape_symbol_slot<'a>(
+    trial: &mut Reader<'a>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    marker: bool,
+    stop: &mut Option<ElementBodyStop10_1>,
+) -> io::Result<SymbolSlotFull10_1> {
+    use crate::objects::display_symbol as symbols;
+    let slot = if marker {
+        "IMarkerSymbol 符号槽"
+    } else {
+        "ILineSymbol 符号槽"
+    };
+    let offset = trial.position();
+    let mut probe = trial.clone();
+    let mut probe_table = table.clone();
+    let (class_id, key) = match read_object_entry_10_1(&mut probe, &mut probe_table)? {
+        ObjectEntry10_1::Null => {
+            *trial = probe;
+            return Ok(SymbolSlotFull10_1::Null);
+        }
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            *trial = probe;
+            return Ok(SymbolSlotFull10_1::BackReference { class_id, key });
+        }
+        ObjectEntry10_1::NewObject { class_id, key } => (class_id, key),
+    };
+    {
+        let allowed = if marker {
+            [
+                symbols::SIMPLE_MARKER_SYMBOL_CLASS_ID,
+                symbols::MULTI_LAYER_MARKER_SYMBOL_CLASS_ID,
+                symbols::CHARACTER_MARKER_SYMBOL_CLASS_ID,
+                symbols::PICTURE_MARKER_SYMBOL_CLASS_ID,
+                symbols::ARROW_MARKER_SYMBOL_CLASS_ID,
+            ]
+            .contains(&class_id)
+        } else {
+            [
+                symbols::SIMPLE_LINE_SYMBOL_CLASS_ID,
+                symbols::MARKER_LINE_SYMBOL_CLASS_ID,
+                symbols::CARTOGRAPHIC_LINE_SYMBOL_CLASS_ID,
+                symbols::HASH_LINE_SYMBOL_CLASS_ID,
+                symbols::MULTI_LAYER_LINE_SYMBOL_CLASS_ID,
+                symbols::PICTURE_LINE_SYMBOL_CLASS_ID,
+            ]
+            .contains(&class_id)
+        };
+        if !allowed {
+            *stop = Some(ElementBodyStop10_1::NestedObjectNotClosed {
+                slot,
+                offset,
+                class_id,
+                key,
+            });
+            return Ok(SymbolSlotFull10_1::Null);
+        }
+    }
+    read_symbol_slot(trial, max_bytes, table, slot, stop)
 }
 
 /// 读取一个 IGeometry 类槽位：接线轮起对闭合四类经
@@ -1634,23 +1699,13 @@ pub fn read_marker_element_body_10_1(
         };
 
     // 3. IMarkerSymbol 符号槽；4. IPoint 几何槽；5. 版本门尾段。
-    let mut symbol = NestedEntry10_1::Null;
+    let mut symbol = SymbolSlotFull10_1::Null;
     let mut geometry = PointSlot10_1::Null;
     let mut tail_int32 = None;
     let mut raw_envelope = None;
 
     if stop.is_none() {
-        match read_classified_slot(
-            &mut trial,
-            &mut trial_table,
-            &origin,
-            start,
-            "IMarkerSymbol 符号槽",
-            &mut stop,
-        )? {
-            Some(entry) => symbol = entry,
-            None => {}
-        }
+        symbol = read_shape_symbol_slot(&mut trial, max_bytes, &mut trial_table, true, &mut stop)?;
     }
     if stop.is_none() {
         geometry = read_point_slot(
@@ -1722,23 +1777,13 @@ pub fn read_line_element_body_10_1(
         };
 
     // 3. ILineSymbol 符号槽；4. IGeometry 几何槽；5. 版本门尾段。
-    let mut symbol = NestedEntry10_1::Null;
+    let mut symbol = SymbolSlotFull10_1::Null;
     let mut geometry = GeometrySlot10_1::Null;
     let mut tail_int32 = None;
     let mut tail_short = None;
 
     if stop.is_none() {
-        match read_classified_slot(
-            &mut trial,
-            &mut trial_table,
-            &origin,
-            start,
-            "ILineSymbol 符号槽",
-            &mut stop,
-        )? {
-            Some(entry) => symbol = entry,
-            None => {}
-        }
+        symbol = read_shape_symbol_slot(&mut trial, max_bytes, &mut trial_table, false, &mut stop)?;
     }
     if stop.is_none() {
         match read_geometry_slot(

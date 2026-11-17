@@ -20,5 +20,6 @@ pub mod picture_fill_symbol;
 pub mod property_set;
 pub mod spatial_reference;
 pub mod spatial_reference_slots;
+pub mod symbol_collection;
 pub mod variant_object_branch;
 pub mod workspace_name;

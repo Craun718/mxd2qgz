@@ -28,7 +28,7 @@
 //!    ElementCollection（键 86，头 @`0x1608`，体仅版本 short 4 + 元素计数
 //!    0，Layer.dll 未反编译、体布局为样本观察）；
 //! 6. 委派加载：this+0xbc 接口虚表 +0x14 的 Load(stream)——**无对象头的内
-//!    嵌子对象体**。样本 `0x1622..0x2cc7` 按 FeatureLayer 字段序逐字段吻
+//!    嵌子对象体**。样本 `0x1622..0x2c01` 按 FeatureLayer 字段序逐字段吻
 //!    合（版本 34、名称「龙安镇人民政府工作底图用界址点注记」、第二名称
 //!    「文件地理数据库要素类」、可见性 0xFFFF、数据源 FgdbFeatureClassName
 //!    键 87 等），即注记图层内嵌的第二个 FeatureLayer 体；C++ 类身份未闭
@@ -42,10 +42,10 @@
 //!     LoadObject(ISymbolCollection `{0E5D8C65-…}`)：样本 RgbColor 154、
 //!     RgbColor 155、SymbolCollection 156；
 //! 11. 版本 7..10：String（丢弃）+ int16（丢弃）；
-//! 12. 版本 ≥8：int16 → this+0x13c（样本 0 @`0x2cc7`）；随后
+//! 12. 版本 ≥8：int16 → this+0x13c（样本 0 @`0x2c8f`）；随后
 //!     `FUN_6b199320`/`FUN_6b199480`/`FUN_6b19f840` 不读流（反编译核对）；
 //! 13. 版本 ≥9：int32 元素计数 + 每元素 new 0x88 记录并调其虚表 +0x14
-//!     Load（图形元素类，样本计数 0 @`0x2cc9`，非空循环未实证）；
+//!     Load（样本计数 1 @`0x2c91`，内联子层体 `0x2c95..0x2ccd`）；
 //! 14. 版本 ≥10：int16 → this+0x1bc（样本 0 @`0x2ccd`）；
 //!     LoadObject(ILineSymbol `{E6BDAA7D-…}`)、LoadObject(IMarkerSymbol
 //!     `{E6BDAA7C-…}`)：样本均为 16 零空标记；
@@ -53,38 +53,46 @@
 //!     节恰终结于条目边界 `0x2d22`，与图层列表条目 2 的标志位置逐字节互
 //!     证）。
 //!
-//! 样本对位（`/Maps:0x28e..0x2d22`，辅助观察）：全部字段按上述序吻合——
-//! 0x2cc7..0x2cef 的 40 个零 = [short@+0x13c][int32 计数 0][short@+0x1bc]
-//! [ILineSymbol 空标记][IMarkerSymbol 空标记]，其前的 SymbolCollection 体
-//! 尾随零与 `02` 字节属其体内（Layer.dll 未展开，按未知保留）。
+//! 样本对位（`/Maps:0x28e..0x2d22`，辅助观察）：SymbolCollection 版本 3、
+//! 空条目及尾部 int32 于 `0x2c85..0x2c8f` 消费；`0x2cc7..0x2cef` 覆盖
+//! 内联子层末端、版本 ≥10 short 与两个空符号槽，
+//! 最后 RgbColor 体终止于下一图层标志。自动测试现从真实 `/Maps` 字节验证该尾段。
 //!
 //! ## 本读取器的可达范围
 //!
-//! 步骤 4/6 的两个 FeatureLayer 体由 [`crate::layers::feature_layer`] 的前缀读取器
-//! 分派解析：关联图层体（步骤 4）在其停止点（渲染器新对象 / +0x144 GUID /
-//! 数据源体内停止）之后无法继续——本读取器随之停止（步骤 5 起不可达）。
-//! 关联体返回 TailCompleted、空标记或回引时可推进到步骤 5/6。委派体
-//! （步骤 6）返回后本读取器仍停止：TailCompleted 表示 FeatureLayer 体已
-//! 完整消费，步骤 7-15 的 FDO 后续字段尚未接线；其他状态则表示委派体内部
-//! 停止。两者的剩余字节均保留，不猜测未知体的长度。
+//! 步骤 4/6 的两个 FeatureLayer 体由 [`crate::layers::feature_layer`] 前缀读取器
+//! 分派解析。关联图层体若停在未闭合内容，步骤 5 起不可达；关联体完整、空标记
+//! 或回引时可推进到步骤 5/6。委派体返回 FeatureLayer `TailCompleted` 后，本模块
+//! 继续解析 FDO 步骤 7–15；未知嵌套对象在对象头回退并保留为明确停止，错误输入
+//! 则保持整个调用事务性。
 //!
 //! 未解决问题：`FUN_6b197dc0`（版本 <4 旧加载器）与 `FUN_6b198420`（版本
 //! 4 探测）未展开；委派子对象（this+0xbc）的 C++ 类身份与构造未闭合（其体
 //! 按 FeatureLayer 字段序读取为样本佐证）；ElementCollection 体布局
 //! （Layer.dll）未反编译，样本观察为版本 short + int32 计数 + 循环；版本
-//! ≥9 元素循环的元素类字段序未闭合（样本计数 0）；步骤 8-15 的字段语义
+//! ≥9 元素循环的非样本形态仍需取证；步骤 8-15 的字段语义
 //! （颜色/符号槽位按请求 IID 类型库考证，业务含义候选）未在非样本版本实
 //! 证；全部结论未运行 ArcMap 验证。
 
+use crate::layers::fdo_legacy::{FdoGraphicsSublayer10_1, read_fdo_graphics_sublayer_10_1};
 use crate::layers::feature_layer::{
     FEATURE_LAYER_CLASS_ID, FeatureLayerPrefix10_1, FeatureLayerStop10_1,
     read_feature_layer_prefix_10_1,
+};
+use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
+use crate::objects::display_symbol::{
+    DisplaySlotKind10_1, SymbolSlotFull10_1, read_symbol_slot_full_10_1, slot_full_stop_10_1,
 };
 use crate::objects::element_collection::{
     ELEMENT_COLLECTION_CLASS_ID, ElementCollection10_1, ElementCollectionStop10_1,
     read_element_collection_10_1,
 };
+use crate::objects::symbol_collection::{
+    SYMBOL_COLLECTION_CLASS_ID, SymbolCollectionBody10_1, SymbolCollectionStop10_1,
+    read_symbol_collection_body_10_1,
+};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
@@ -160,8 +168,8 @@ pub enum FdoGraphicsLayerStop10_1 {
     /// 处停止（原因透传，见 [`ElementCollectionStop10_1`]）：游标停在其停
     /// 止点，其后步骤不可达。
     ElementCollectionStopped(ElementCollectionStop10_1),
-    /// 委派子对象体（this+0xbc，无对象头）按 FeatureLayer 字段序解析成功：
-    /// 内部停止时保留未知体；TailCompleted 时停止于尚未接线的 FDO 后续段。
+    /// 委派子对象体（this+0xbc，无对象头）按 FeatureLayer 字段序停止；TailCompleted
+    /// 时可从当前游标接续 FDO 尾段，是否完成由结果中的 `fdo_tail` 单独表示。
     DelegatedLayerBodyStopped { layer_stop: FeatureLayerStop10_1 },
     /// 委派子对象体按 FeatureLayer 字段序解析失败（如数据源为
     /// 未支持的新类）：游标回退到委派体起点，体保留未知。
@@ -204,7 +212,7 @@ impl FdoGraphicsLayerStop10_1 {
                     FeatureLayerStop10_1::Successor(
                         crate::layers::feature_layer_tail::SuccessorStop10_1::TailCompleted,
                     ),
-            } => "委派 FeatureLayer 体已完整消费；FDO 后续字段尚未接线，后续流保留未知".to_string(),
+            } => "委派 FeatureLayer 体已完整消费；检查 FDO 尾段结果判断对象体是否完整".to_string(),
             Self::DelegatedLayerBodyStopped { .. } => {
                 "委派子对象体（this+0xbc，无对象头）在其 FeatureLayer 前缀停止点\
                  停止：体剩余无外部长度，无法继续"
@@ -236,10 +244,301 @@ pub struct FdoGraphicsLayerPrefix10_1 {
     /// Load 第 6 步委派子对象体按 FeatureLayer 字段序解析出的前缀（到达
     /// 时）。`None` = 未到达或解析失败（见停止原因）。
     pub delegated_layer: Option<Box<FeatureLayerPrefix10_1>>,
+    /// 委派体完整时继续读取的 FDO 后续字段；`stop=None` 才表示 FDO 对象体完整。
+    pub fdo_tail: Option<FdoGraphicsLayerTail10_1>,
     /// 停止原因（恒有）。
     pub stop: FdoGraphicsLayerStop10_1,
     /// 停止点之后剩余的字节数（相对传入 Reader 窗口）。
     pub remaining_bytes: usize,
+}
+
+/// 委派 FeatureLayer 完成后供图层列表分派层使用的 FDO 接续状态。
+///
+/// 只有第 7–15 步全部消费、且没有未知嵌套体停止时才返回
+/// `FdoTailCompleted`。委派 FeatureLayer 完成或尾段在未知类处停止均返回 None。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FdoGraphicsLayerCompletion10_1 {
+    /// FDO 后续字段也已消费完毕。
+    FdoTailCompleted,
+}
+
+impl FdoGraphicsLayerPrefix10_1 {
+    /// 从现有前缀停止原因判定是否可接续 FDO 尾段。
+    pub fn completion(&self) -> Option<FdoGraphicsLayerCompletion10_1> {
+        self.fdo_tail.as_ref().and_then(|tail| {
+            (tail.stop.is_none()).then_some(FdoGraphicsLayerCompletion10_1::FdoTailCompleted)
+        })
+    }
+}
+
+/// FDO 尾段中的可保留旧循环记录。
+#[derive(Debug, Clone, PartialEq)]
+pub struct FdoLegacyEntry10_1 {
+    pub name: String,
+    pub short: u16,
+    pub doubles: [f64; 2],
+}
+
+/// FDOGraphicsLayer 第 7–15 步后续字段及其安全停止点。
+#[derive(Debug, Clone, PartialEq)]
+pub struct FdoGraphicsLayerTail10_1 {
+    /// 步骤 8 int32 原始位模式（this+0x130）。
+    pub field_130: i32,
+    /// 步骤 8 short 原始位模式（this+0x1a8）。
+    pub field_1a8: u16,
+    pub legacy_entries: Option<Vec<FdoLegacyEntry10_1>>,
+    pub int32_field: i32,
+    pub colors: [Option<ColorSlot10_1>; 2],
+    pub symbol_collection: Option<FdoSymbolCollectionSlot10_1>,
+    pub version_7_string: Option<String>,
+    pub version_7_short: Option<u16>,
+    pub version_8_short: Option<u16>,
+    pub sublayers: Option<Vec<FdoGraphicsSublayer10_1>>,
+    pub version_10_short: Option<u16>,
+    pub line_symbol: Option<SymbolSlotFull10_1>,
+    pub marker_symbol: Option<SymbolSlotFull10_1>,
+    pub final_color: Option<ColorSlot10_1>,
+    /// 未知嵌套体的停止原因；游标停在该对象头，尾段不算完成。
+    pub stop: Option<FdoGraphicsLayerTailStop10_1>,
+}
+
+/// FDO ISymbolCollection 槽，保留空标记、回引和新对象三种编码状态。
+#[derive(Debug, Clone, PartialEq)]
+pub enum FdoSymbolCollectionSlot10_1 {
+    Null,
+    BackReference { class_id: [u8; 16], key: u32 },
+    SymbolCollection(Box<SymbolCollectionBody10_1>),
+    Unsupported { class_id: [u8; 16], key: u32 },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum FdoGraphicsLayerTailStop10_1 {
+    UnsupportedSymbolCollection { class_id: [u8; 16], key: u32 },
+    SymbolCollection(SymbolCollectionStop10_1),
+    UnsupportedColor { class_id: [u8; 16], key: u32 },
+    UnsupportedLineSymbol { class_id: [u8; 16], key: u32 },
+    UnsupportedMarkerSymbol { class_id: [u8; 16], key: u32 },
+    UnsupportedFinalColor { class_id: [u8; 16], key: u32 },
+    IncompleteLineSymbol,
+    IncompleteMarkerSymbol,
+}
+
+/// 从委派 FeatureLayer 完整终点继续读取 FDOGraphicsLayer 的版本相关尾段。
+/// 未知对象类以成功停止返回，游标与引用表停在未知对象头起点；任何截断、
+/// 格式错误或限额错误均事务性失败。
+pub fn read_fdo_graphics_layer_tail_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    version: u16,
+    depth: usize,
+) -> io::Result<FdoGraphicsLayerTail10_1> {
+    const MAX_ITEMS: usize = 1_000_000;
+    if !(5..=11).contains(&version) {
+        return Err(io::Error::new(
+            ErrorKind::InvalidInput,
+            format!("FDO 尾段续读要求主分支版本 5..=11，收到 {version}"),
+        ));
+    }
+    let mut trial = reader.clone();
+    let mut staged = table.clone();
+    let mut field_130 = 0;
+    let mut field_1a8 = 0;
+    let mut legacy_entries = None;
+    let mut int32_field = 0;
+    let mut colors = [None, None];
+    let mut symbol_collection = None;
+    let mut version_7_string = None;
+    let mut version_7_short = None;
+    let mut version_8_short = None;
+    let mut sublayers = None;
+    let mut version_10_short = None;
+    let mut line_symbol = None;
+    let mut marker_symbol = None;
+    let mut final_color = None;
+    let mut stop = None;
+    macro_rules! finish {
+        () => {{
+            let parsed = FdoGraphicsLayerTail10_1 {
+                field_130,
+                field_1a8,
+                legacy_entries,
+                int32_field,
+                colors,
+                symbol_collection,
+                version_7_string,
+                version_7_short,
+                version_8_short,
+                sublayers,
+                version_10_short,
+                line_symbol,
+                marker_symbol,
+                final_color,
+                stop,
+            };
+            *reader = trial;
+            *table = staged;
+            return Ok(parsed);
+        }};
+    }
+    if version < 6 {
+        finish!();
+    }
+    field_130 = trial.read_u32_le()? as i32;
+    field_1a8 = trial.read_u16_le()?;
+    if version <= 7 {
+        let count = trial.read_u32_le()? as i32;
+        let minimum = usize::try_from(count)
+            .ok()
+            .and_then(|count| count.checked_mul(30));
+        if count < 0 || count as usize > MAX_ITEMS || minimum.is_none_or(|n| n > max_bytes) {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "FDO 旧循环计数非法、超过条目限额或声明的最小字节数超过 max_bytes",
+            ));
+        }
+        let mut entries = Vec::with_capacity(count as usize);
+        for _ in 0..count {
+            entries.push(FdoLegacyEntry10_1 {
+                name: read_string_10_1(&mut trial, max_bytes)?,
+                short: trial.read_u16_le()?,
+                doubles: [trial.read_f64_le()?, trial.read_f64_le()?],
+            });
+        }
+        legacy_entries = Some(entries);
+    }
+    int32_field = trial.read_u32_le()? as i32;
+    for index in 0..2 {
+        let start = trial.clone();
+        let refs = staged.clone();
+        let slot = read_color_slot_10_1(&mut trial, max_bytes, &mut staged)?;
+        if let ColorSlot10_1::Unsupported { class_id, key } = slot {
+            trial = start;
+            staged = refs;
+            stop = Some(FdoGraphicsLayerTailStop10_1::UnsupportedColor { class_id, key });
+            finish!();
+        }
+        colors[index] = Some(slot);
+    }
+    let slot_start = trial.clone();
+    let refs_start = staged.clone();
+    match read_object_entry_10_1(&mut trial, &mut staged)? {
+        ObjectEntry10_1::Null => {
+            symbol_collection = Some(FdoSymbolCollectionSlot10_1::Null);
+        }
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            symbol_collection = Some(FdoSymbolCollectionSlot10_1::BackReference { class_id, key });
+        }
+        ObjectEntry10_1::NewObject { class_id, key } if class_id == SYMBOL_COLLECTION_CLASS_ID => {
+            let body =
+                read_symbol_collection_body_10_1(&mut trial, max_bytes, &mut staged, key, depth)?;
+            let body_stop = body.stop.clone();
+            symbol_collection = Some(FdoSymbolCollectionSlot10_1::SymbolCollection(Box::new(
+                body,
+            )));
+            if let Some(reason) = body_stop {
+                stop = Some(FdoGraphicsLayerTailStop10_1::SymbolCollection(reason));
+                finish!();
+            }
+        }
+        ObjectEntry10_1::NewObject { class_id, key } => {
+            trial = slot_start;
+            staged = refs_start;
+            symbol_collection = Some(FdoSymbolCollectionSlot10_1::Unsupported { class_id, key });
+            stop =
+                Some(FdoGraphicsLayerTailStop10_1::UnsupportedSymbolCollection { class_id, key });
+            finish!();
+        }
+    }
+    if (7..=10).contains(&version) {
+        version_7_string = Some(read_string_10_1(&mut trial, max_bytes)?);
+        version_7_short = Some(trial.read_u16_le()?);
+    }
+    if version >= 8 {
+        version_8_short = Some(trial.read_u16_le()?);
+    }
+    if version >= 9 {
+        let count = trial.read_u32_le()? as i32;
+        let minimum = usize::try_from(count)
+            .ok()
+            .and_then(|count| count.checked_mul(36));
+        if count < 0 || count as usize > MAX_ITEMS || minimum.is_none_or(|n| n > max_bytes) {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "FDO 子层计数非法、超过条目限额或声明的最小字节数超过 max_bytes",
+            ));
+        }
+        let mut items = Vec::with_capacity(count as usize);
+        for _ in 0..count {
+            items.push(read_fdo_graphics_sublayer_10_1(&mut trial, max_bytes)?);
+        }
+        sublayers = Some(items);
+    }
+    // Load `0x6b1955a0` 第 14、15 步同属版本 >=10 分支；续研反编译字段序
+    // （docs/mxd-layer-luna.md「原生控制流与 SymbolCollection」）将末尾 IColor
+    // 明确列在 ILineSymbol、IMarkerSymbol 之后，因此 5..9 不读取 final_color。
+    if version >= 10 {
+        version_10_short = Some(trial.read_u16_le()?);
+        for line in [true, false] {
+            let start = trial.clone();
+            let refs = staged.clone();
+            let slot = read_symbol_slot_full_10_1(&mut trial, max_bytes, &mut staged, depth)?;
+            if let SymbolSlotFull10_1::Unsupported { class_id, key } = &slot {
+                trial = start;
+                staged = refs;
+                stop = Some(if line {
+                    FdoGraphicsLayerTailStop10_1::UnsupportedLineSymbol {
+                        class_id: *class_id,
+                        key: *key,
+                    }
+                } else {
+                    FdoGraphicsLayerTailStop10_1::UnsupportedMarkerSymbol {
+                        class_id: *class_id,
+                        key: *key,
+                    }
+                });
+                finish!();
+            }
+            if slot_full_stop_10_1(
+                &slot,
+                if line {
+                    DisplaySlotKind10_1::LineSymbol
+                } else {
+                    DisplaySlotKind10_1::MarkerSymbol
+                },
+            )
+            .is_some()
+            {
+                stop = Some(if line {
+                    FdoGraphicsLayerTailStop10_1::IncompleteLineSymbol
+                } else {
+                    FdoGraphicsLayerTailStop10_1::IncompleteMarkerSymbol
+                });
+                if line {
+                    line_symbol = Some(slot);
+                } else {
+                    marker_symbol = Some(slot);
+                }
+                finish!();
+            }
+            if line {
+                line_symbol = Some(slot);
+            } else {
+                marker_symbol = Some(slot);
+            }
+        }
+        let start = trial.clone();
+        let refs = staged.clone();
+        let slot = read_color_slot_10_1(&mut trial, max_bytes, &mut staged)?;
+        if let ColorSlot10_1::Unsupported { class_id, key } = slot {
+            trial = start;
+            staged = refs;
+            stop = Some(FdoGraphicsLayerTailStop10_1::UnsupportedFinalColor { class_id, key });
+            finish!();
+        }
+        final_color = Some(slot);
+    }
+    finish!();
 }
 
 /// 从对象头之后的位置读取 10.1 FDOGraphicsLayer 对象体的已确认前缀。
@@ -293,6 +592,7 @@ pub fn read_fdo_graphics_layer_prefix_10_1(
             associated_layer: AssociatedLayer10_1::Null,
             element_collection: None,
             delegated_layer: None,
+            fdo_tail: None,
             stop: FdoGraphicsLayerStop10_1::VersionBranchNotExpanded { version },
             remaining_bytes: trial.remaining(),
         };
@@ -431,8 +731,35 @@ pub fn read_fdo_graphics_layer_prefix_10_1(
         }
     }
 
-    // 委派体完整消费后也停在尚未接线的步骤 7；体内停止时则不能跳过未知体。
-    let stop = stop.expect("主分支各路径必设置停止原因");
+    // 委派体完整消费后继续 FDO 版本门控尾段；其余委派停止不能越过未知体。
+    let mut fdo_tail = None;
+    if matches!(
+        stop,
+        Some(FdoGraphicsLayerStop10_1::DelegatedLayerBodyStopped {
+            layer_stop: FeatureLayerStop10_1::Successor(
+                crate::layers::feature_layer_tail::SuccessorStop10_1::TailCompleted
+            )
+        })
+    ) {
+        if let Some(layer) = delegated_layer.as_ref() {
+            if layer.stop
+                == FeatureLayerStop10_1::Successor(
+                    crate::layers::feature_layer_tail::SuccessorStop10_1::TailCompleted,
+                )
+            {
+                fdo_tail = Some(read_fdo_graphics_layer_tail_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut trial_table,
+                    version,
+                    32,
+                )?);
+            }
+        }
+    }
+    let stop = stop.unwrap_or_else(|| FdoGraphicsLayerStop10_1::DelegatedLayerBodyStopped {
+        layer_stop: delegated_layer.as_ref().expect("委派体存在").stop.clone(),
+    });
 
     let result = FdoGraphicsLayerPrefix10_1 {
         version,
@@ -441,6 +768,7 @@ pub fn read_fdo_graphics_layer_prefix_10_1(
         associated_layer,
         element_collection,
         delegated_layer,
+        fdo_tail,
         stop,
         remaining_bytes: trial.remaining(),
     };

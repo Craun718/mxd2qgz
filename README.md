@@ -6,7 +6,7 @@
 
 适配目标为 **ArcMap 10.1**，与旧版软件保持一致。后续 REA 研究、MXD 解析实现和源工程人工验收均以 10.1 为基准。已有 10.8 原生研究及显式 10.8 读取器保留原版本范围，需经 10.1 原生实现复核后才能用于目标版本；当前尚未验证 10.1 转换能力。
 
-本机安装介质目录为 `/home/gxrs/下载/arcmap10.1/ar10.1`，Desktop 安装入口为 `Desktop/setup.msi`，配套载荷为 `Desktop/Setup1.cab` 和 `Desktop/Setup2.cab`。已读取 `Desktop/Setup.ini`：`ProductName=ArcGIS 10.1 for Desktop`、`ProductVersion=10.1.3035`、`ProductLanguage=English`。这些是安装配置声明；尚未安装或进行 ArcMap 人工验证。安装介质仅作为本地研究来源，不纳入仓库。
+本机安装介质目录包含 Desktop 安装入口 `Desktop/setup.msi`，配套载荷为 `Desktop/Setup1.cab` 和 `Desktop/Setup2.cab`。已读取 `Desktop/Setup.ini`：`ProductName=ArcGIS 10.1 for Desktop`、`ProductVersion=10.1.3035`、`ProductLanguage=English`。这些是安装配置声明；尚未安装或进行 ArcMap 人工验证。安装介质仅作为本地研究来源，不纳入仓库。
 
 已从 `Setup1.cab` 提取并核对五个原生 DLL 的自身版本、身份声明和摘要，并定位初步 REA 入口；细节和未解决事项见 [10.1 原生文件基线](docs/arcmap-10.1-native-baseline.md)。
 
@@ -36,13 +36,13 @@ Rust 库的 `native_string::read_string_10_1` 可读取 10.1 AfCore `String::Wri
 
 `element_collection::read_element_collection_10_1` 严格读取 10.1 ElementCollection 对象体（Layer.dll RTTI→COL→虚表定位，Load `0x7865a340`）：版本有符号 >4 拒绝；版本 <4 为三个顺序分离循环（元素 → int32 → 版本 ≥3 再 int32），版本 ==4 为逐元素交错 [IElement `{9B001319}` + int32 ×3]；新对象元素为唯一停止点（游标与登记回退）。样本 12 实例全版本 4，FDO 槽位键 86 的体恰 6 字节、终结于委派 FeatureLayer 起点（辅助观察）。见 [研究记录](docs/arcmap-10.1-element-collection.md)。
 
-`dataset_name::read_feature_dataset_name_body_10_1` / `read_topology_name_body_10_1` 严格读取 FeatureClassName 体两选择子分支的新对象体（GdbCore.dll）：FeatureDatasetName `{198846CF}`（Load `0x709b7c90`：版本 ≤1 + String×4 + 1 字节标志 + IWorkspaceName 槽，WorkspaceName 体复用第六轮读取器）与 TopologyName `{9FCA50EC}`（Load `0x7095e5c0`：版本 ≤1 + String×2 + IDatasetName 槽，FeatureDatasetName 体递归）。样本 11 个 FCN 的选择子全 0、两 CLSID 全流 0 命中，布局结论仅有反编译一手证据、无字节佐证。见 [研究记录](docs/arcmap-10.1-dataset-name.md)。
+`dataset_name::read_feature_dataset_name_body_10_1` / `read_topology_name_body_10_1` 严格读取 FeatureClassName 体两选择子分支的新对象体（GdbCore.dll）：FeatureDatasetName `{198846CF}`（Load `0x709b7c90`：版本 ≤1 + String×4 + 1 字节标志 + IWorkspaceName 槽，WorkspaceName 体复用第六轮读取器）与 TopologyName `{9FCA50EC}`（Load `0x7095e5c0`：版本 ≤1 + String×2 + IDatasetName 槽，FeatureDatasetName 体递归）。参考样本 11 个 FCN 的选择子均为 0；安装介质模板 Africa 的非零选择子已用 Rust 局部读取到 FeatureDatasetName v1，TopologyName 分支仍无字节佐证。见 [研究记录](docs/mxd-dataset-format-evidence-20261117.md)。
 
-`fdo_legacy::read_fdo_graphics_layer_legacy_prefix_10_1` 覆盖 10.1 FDOGraphicsLayer 版本 0..=3 旧加载器的 20 字段序（AnnoLayer.dll `FUN_6b197dc0`：String、short/double 标量、ILayer/ISpatialReference/IElementCollection2/IName 槽、版本 ≥2 的渲染器与颜色槽，旧体收尾即完整终结；无样本字节佐证）；版本 4 探测函数机制闭合（流绝对位置 0 比对 CLSID + IObjectStream QI）但因依赖整流访问与运行时游标效应不实现，主读取器对版本 4 维持停止。`read_fdo_graphics_sublayer_10_1` 读取版本 ≥9 元素循环的 FDOGraphicsSublayer 体（`{4ABA3851}`，未登记于 esri.clsid 的内部子对象；样本计数 0，无字节佐证）。委派子对象身份、旧加载器与元素循环的证据见 [FDO 开放点记录](docs/arcmap-10.1-fdo-open-points.md)。
+`fdo_legacy::read_fdo_graphics_layer_legacy_prefix_10_1` 覆盖 10.1 FDOGraphicsLayer 版本 0..=3 旧加载器的已确认字段（无样本字节佐证）；版本 4 探测依赖整流访问与运行时游标效应，主读取器维持停止。`read_fdo_graphics_sublayer_10_1` 读取版本 ≥9 元素循环的 FDOGraphicsSublayer 体（`{4ABA3851}`）；参考样本中有一个内联实例，见 [FDO 续研记录](docs/mxd-layer-luna.md)。
 
 `map_surround::read_aoi_bookmark_10_1` / `read_feature_bookmark_10_1` / `read_legend_prefix_10_1` 严格读取 Map 后缀两循环非空时的元素体（Map.dll 10.1.0.3035 反编译）：AOIBookmark（版本 ≤1 + IEnvelope + 名称）与 FeatureBookmark（版本 ≤1 + int32 + IName 条目 + 名称）体完全闭合，Legend 为已确认前缀（共同前缀 + ILegendFormat/ILegendItem 新对象停止）。样本两循环计数均为 0，全部结论无字节佐证；循环经 `map_object::read_map_suffix_10_1` 按类标识分派。见 [研究记录](docs/arcmap-10.1-mapsurround-bookmark.md)。
 
-`mxd_maps::parse_maps_10_1` 将已确认的 10.1 读取器接入中间模型：数据框名称、第二名称、空间参考 WKT 与 PCS 原始字段、按条目顺序构造的图层节点及到达时的显示范围。图层 CRS 从 `+0x1f4` Envelope 提取，Map CRS 回引同时匹配键和类标识；未知内容按流内偏移保留。对象循环仍未闭合，最多解析首个 Map。参考样本首条 FDOGraphicsLayer 的关联和委派 FeatureLayer 现均完整消费；委派数据源 `{75E10086-4226-42AC-AFEC-CBB9B748F847}` 已确认是 FileGDB.dll 的 FgdbFeatureClassName，并按外层两 short + 内嵌 FeatureClassName（无第二对象头）解析。未知区从 `/Maps:0x2c01` 起，剩余 141,676 字节：这是 FDO 第 7–15 步后续字段尚未接线的边界。此前 `0x1622` 回退点已越过；不能把未读取的五条图层或显示范围当作已解析。证据与验证见 [本轮汇总](docs/mxd-parsing-parallel-20261116.md)。结果未在 ArcMap 10.1 或 QGIS 中人工目视验证。
+`mxd_maps::parse_maps_10_1` 将已确认的 10.1 读取器接入中间模型：数据框名称、第二名称、空间参考 WKT 与 PCS 原始字段、按条目顺序构造的图层节点及到达时的显示范围。图层 CRS 从 `+0x1f4` Envelope 提取，Map CRS 回引同时匹配键和类标识；未知内容按流内偏移保留。对象循环仍未闭合，最多解析首个 Map。参考样本首条 FDOGraphicsLayer 的关联、委派 FeatureLayer 与 FDO 后续字段已消费，包含一个内联子层；解析继续到六个图层条目与活动索引，其中两个栅格体按有界未知内容保留。基本图形层的 10 个子层及循环后尾段已消费，读到 `/Maps:0x24f64` 的显示范围；书签循环结束后从 `0x24fa0` 起的字节仍保留为未知。Map 架构版本小于 23 时只读取前缀，旧图层列表及其后数据保留为未知。证据见 [FDO 续研记录](docs/mxd-layer-luna.md) 和 [图层及标注续研](docs/mxd-layer-label-cgl-20261117.md)。结果未在 ArcMap 10.1 或 QGIS 中人工目视验证。
 
 ## 使用
 
@@ -58,7 +58,7 @@ cargo run -- compare 'before.mxd' 'after.mxd' /Maps
 cargo run -- hex 'map.mxd' /Maps 0x860 96
 ```
 
-`inspect` 列出 OLE 容器的数据流和字节数；`strings` 扫描 `/Maps` 中两种对齐方式的 UTF-16LE 候选字符串，并输出相对于该流的十六进制偏移。扫描不是对象解析，可能存在乱码、截断或误报，不能据此判断图层数量、完整路径或坐标系。`extract` 导出指定数据流，不会覆盖已有文件。`hex` 查看指定流的字节范围，偏移和长度支持十进制或 `0x` 十六进制，范围超出流时返回错误。`compare` 比较两个文件中指定流的相同偏移，输出不同字节的半开区间及流长度；插入或删除字节会使后续数据错位，差异区间不表示对象边界。`version` 读取 `/Version` 并按 ArcMap 10.1 头部规则与已知文本、short 集合输出识别候选，并按静态闭合的「文本↔保存索引↔short」映射（见 10.1 原生基线 2026-11-14 节）给出候选保存索引（即 esriArcGISVersion 枚举值）；文本与 short 须命中同一索引才给出候选，索引 3（9.3）因资源文本异常无法由文本命中，未知文本不映射为 9.3。10.1 规则不满足时改报 10.8 局部布局候选；全部结果都是候选，映射未经运行时确认，未在目标软件中验证。`parse` 读取 `/Maps` 并按显式 10.1 已确认前缀与后缀填充中间模型：输出 `/Version` 识别候选、数据框数量候选、首个数据框的名称/第二名称/CRS WKT、图层列表条目（标志、前缀、分类、键、体前缀）与活动图层索引、显示范围（到达时）、未知字节的流内偏移与长度及逐条诊断；对象循环未闭合，最多解析首个对象，参考样本现完整消费首条 FDOGraphicsLayer 的关联及委派 FeatureLayer，停止于 `/Maps:0x2c01`：FDO 后续字段尚未接线。仅首条图层进入部分模型，活动索引和显示范围尚未到达；解析失败仍返回明确错误。结果未在目标软件中验证，不能据此判断完整图层树或转换能力。
+`inspect` 列出 OLE 容器的数据流和字节数；`strings` 扫描 `/Maps` 中两种对齐方式的 UTF-16LE 候选字符串，并输出相对于该流的十六进制偏移。扫描不是对象解析，可能存在乱码、截断或误报，不能据此判断图层数量、完整路径或坐标系。`extract` 导出指定数据流，不会覆盖已有文件。`hex` 查看指定流的字节范围，偏移和长度支持十进制或 `0x` 十六进制，范围超出流时返回错误。`compare` 比较两个文件中指定流的相同偏移，输出不同字节的半开区间及流长度；插入或删除字节会使后续数据错位，差异区间不表示对象边界。`version` 读取 `/Version` 并按 ArcMap 10.1 头部规则与已知文本、short 集合输出识别候选；仅在文本与 short 精确配对时给出候选保存索引（即 esriArcGISVersion 枚举值）。`9.3`/16 可识别为索引 3，由原生 short 表和[安装介质样本](docs/mxd-install-media-samples-20261117.md)共同支持。10.1 规则不满足时改报 10.8 局部布局候选；全部结果都是候选，映射未经运行时确认，未在目标软件中验证。`parse` 读取 `/Maps` 并按显式 10.1 已确认前缀与后缀填充中间模型：输出 `/Version` 识别候选、数据框数量候选、首个数据框的名称/第二名称/CRS WKT、图层列表条目（标志、前缀、分类、键、体前缀）与活动图层索引、显示范围（到达时）、未知字节的流内偏移与长度及逐条诊断；对象循环未闭合，最多解析首个 Map。参考样本可读取六条图层记录、活动索引和首个数据框的显示范围；未支持的有界图层体和未解析的 Map 后缀保留为未知。解析失败返回明确错误。结果未在目标软件中验证，不能据此判断完整图层树或转换能力。
 研究以 REA 对目标软件实现和运行行为的分析为主；可控对照样本仅作辅助证据。记录流内偏移和脱敏的方法见研究记录中的“对照样本采集流程”。
 
 ## Python 接口
@@ -92,6 +92,7 @@ EPSG:4326/3857 与主画布范围。输出默认不覆盖已有文件，断链�
 ## 后续工作
 
 1. 使用 REA 追踪原生文档打开、版本和对象持久化实现，确定对象边界、类型及版本差异；可控样本可辅助核对。
+   AfCore.dll 10.1.0.3035 的函数级反编译产物已导出到 `temp/rea-decompile-20261117/AfCore/`，并在本机研究目录保留副本；覆盖、哈希与限制见 [对象体记录](docs/arcmap-10.1-object-body.md)。
 2. 解析地图、图层树、数据源、坐标系与显示范围，建立有明确未知字段的中间模型。
 3. 使用 Rust 直接写入 QGS XML 和 QGZ ZIP，QGIS 用于输出基准和验收；逐步覆盖符号、标注和布局，报告不支持的对象与断链数据源。
 4. 对照 ArcMap 原始工程和 QGIS 输出，验证数据、图层顺序及视觉效果。

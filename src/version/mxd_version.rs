@@ -22,21 +22,20 @@ fn capture_unknown_tail(version_stream: &[u8], start: usize) -> (Vec<u8>, bool) 
 }
 
 /// 静态闭合的「文本 ↔ 保存索引（= `esriArcGISVersion` 枚举值）↔ short」候选表。
-/// 注意：文本表缺 9.3（资源 ID `0x11a` 为打印错误文本的异常候选），因此文本
-/// 下标与 short 下标不通用，必须按下表三元组配对，不能用数组下标互推。
-/// 映射为静态证据，未经运行时或目标软件验证。
-const CANDIDATE_TABLE: [(&str, usize, i16); 5] = [
+/// 9.3/16 由 10.1 安装介质模板字节与 short 静态映射共同支持；它不证明
+/// 10.1 英文资源 ID `0x11a` 的异常候选或运行时写入路径。未经目标软件验证。
+const CANDIDATE_TABLE: [(&str, usize, i16); 6] = [
     ("8.3", 0, 10),
     ("9.0", 1, 13),
     ("9.2", 2, 14),
+    ("9.3", 3, 16),
     ("10.0", 4, 18),
     ("10.1", 5, 19),
 ];
 
-/// ArcMap.exe 英文资源中与保存索引对应的版本文本候选（资源 ID `0x14d`/`0x173`/
-/// `0x186`/`0xe804`/`0x193`）。索引 3（esriArcGISVersion93）无文本条目，
-/// 不得把未知文本映射为 9.3。
-pub const KNOWN_TEXTS: [&str; 5] = ["8.3", "9.0", "9.2", "10.0", "10.1"];
+/// 已知版本文本候选；9.3 来自安装介质模板，其余来自 10.1 英文资源静态分析。
+/// 未知文本不得映射为 9.3。
+pub const KNOWN_TEXTS: [&str; 6] = ["8.3", "9.0", "9.2", "9.3", "10.0", "10.1"];
 
 /// ArcMap 10.1 保存入口静态表的六个有符号 short；下标即 `esriArcGISVersion`
 /// 枚举值（83/90/92/93/10/101，Current=101=5）。静态闭合见
@@ -46,8 +45,8 @@ pub const KNOWN_SHORTS: [i16; 6] = [10, 13, 14, 16, 18, 19];
 
 /// 按「文本与 short 同时命中 [`CANDIDATE_TABLE`] 中同一三元组」给出候选保存
 /// 索引（即 `esriArcGISVersion` 枚举值）。文本或 short 任一未知、或组合不属
-/// 同一索引时返回 `None`；索引 3（9.3）因资源文本异常无法由文本命中，只能
-/// 保持 `None`。这是静态映射候选，不能据此声明文件的实际保存版本。
+/// 同一索引时返回 `None`。9.3/16 由介质样本和静态 short 表共同支持；
+/// 这是候选，不能据此声明文件的实际保存版本。
 pub fn candidate_save_index(text: &str, compatibility_short: i16) -> Option<usize> {
     CANDIDATE_TABLE
         .iter()
@@ -79,7 +78,7 @@ impl MxdVersionBranch {
     }
 }
 
-const KNOWN_CANDIDATE_NOTE: &str = "文本与 short 命中静态候选映射（文本↔保存索引↔short，见 native-baseline 2026-11-14 节）；映射未经运行时确认，识别结果未在目标软件中验证";
+const KNOWN_CANDIDATE_NOTE: &str = "文本与 short 命中静态候选映射所用集合（9.3 文本另有介质样本支持；精确配对结果见候选索引）；映射未经运行时确认，识别结果未在目标软件中验证";
 const UNRECOGNIZED_NOTE: &str = "未识别文本/short；原生接受任意文本，未知文本不映射为 9.3";
 const LAYOUT_10_8_NOTE: &str =
     "仅 10.8 布局候选；不满足 ArcMap 10.1 头部规则，对象计数不由该布局读取，适用版本范围未验证";
@@ -206,6 +205,7 @@ mod tests {
             ("8.3", 10, None, Some(0)),
             ("9.0", 13, Some(1), Some(1)),
             ("9.2", 14, Some(2), Some(2)),
+            ("9.3", 16, Some(53), Some(3)),
             ("10.0", 18, Some(3), Some(4)),
             ("10.1", 19, Some(2267), Some(5)),
         ];
@@ -237,7 +237,8 @@ mod tests {
     fn candidate_save_index_helper_matches_pair_only() {
         assert_eq!(candidate_save_index("10.1", 19), Some(5));
         assert_eq!(candidate_save_index("10.1", 16), None);
-        assert_eq!(candidate_save_index("9.3", 16), None);
+        assert_eq!(candidate_save_index("9.3", 16), Some(3));
+        assert_eq!(candidate_save_index("9.3", 14), None);
         assert_eq!(candidate_save_index("任意文本", 19), None);
     }
 

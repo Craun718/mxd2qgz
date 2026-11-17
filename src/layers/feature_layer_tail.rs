@@ -1405,8 +1405,8 @@ pub struct FeatureLayerSuccessor10_1 {
     pub int32_244: Option<i32>,
     /// ㉟ short → obj+0x1be（版本 ≥0x17；样本未达），语义未定。
     pub short_1be: Option<i16>,
-    /// ㊱ PreJoinDefExpressions 块（版本 >0x17）。其后的样本 6 字节间隙
-    /// 归属未定；前置停止时 `None`。
+    /// ㊱ PreJoinDefExpressions 块（版本 >0x17；计数后直接为 String 对，
+    /// 前置停止时 `None`）。
     pub pre_join: Option<PreJoinBlock10_1>,
     /// ㊲ int32 → obj+0x2c0（版本 ≥0x19），语义未定。
     pub int32_2c0: Option<i32>,
@@ -1494,24 +1494,23 @@ pub enum UidSlot10_1 {
 }
 
 /// UID（SystemCore.dll，GetClassID `0x7fff8ca0` 写出
-/// `{78FF7FA1-FB2F-11D1-94A2-080009EEBECB}`）体的样本结构字段。
+/// `{78FF7FA1-FB2F-11D1-94A2-080009EEBECB}`）体的原始字段。
 ///
-/// 证据：样本结构(样本 `/Maps:0x14bd..0x14d0` 等 13 实例逐字节,两种形态:
-/// `[ver=1][flag=1][LELP CLSID]` 与 `[ver=2][flag=0][零 GUID]`)+ GetClassID
-/// 与工厂定位旁证;Load 实体未唯一定位(UID 类持久化经基类虚调用转发,
-/// 证据注于研究记录)。字段序:① int16 版本(样本 1/2,无门,原样保留)→
-/// ② u8(样本 1 = 携带 GUID、0 = 零值,语义候选)→ ③ 16 字节 GUID(样本 =
-/// 所在 LELP 的 CLSID;零值实例全零),原样保留。
+/// 证据：SystemCore.dll 虚表 `0x80074574` 的 GetClassID、Load、Save 槽及
+/// `0x7fff9320`/`0x7fff9380` 原生读写实现。字段序为 short 版本、u8
+/// 标志、16 字节 GUID、int32；语义未定，均原样保留。
 #[derive(Debug, Clone, PartialEq)]
 pub struct UidBody10_1 {
     /// 对象头键(样本 82)。
     pub key: u32,
-    /// 体首 short 版本(样本 1/2;无反编译证据,不设上限)。
+    /// 体首 short 版本（原生 Load 未检查版本上限）。
     pub version: u16,
     /// u8 标志(样本 1/0;语义候选),原样保留。
     pub flag: u8,
     /// 16 字节 GUID(样本 = LELP CLSID / 全零),原样保留。
     pub guid: [u8; 16],
+    /// GUID 后的 int32，语义未定。
+    pub value_18: i32,
 }
 
 /// ㊴ {A62B9EC2}=IDisplayExpressionProperties 槽条目分类。
@@ -1547,7 +1546,7 @@ pub const UID_CLASS_ID: [u8; 16] = [
     0xa1, 0x7f, 0xff, 0x78, 0x2f, 0xfb, 0xd1, 0x11, 0x94, 0xa2, 0x08, 0x00, 0x09, 0xee, 0xbe, 0xcb,
 ];
 
-/// 从对象头之后的位置读取 10.1 UID 体(证据:样本结构,见 [`UidBody10_1`])。
+/// 从对象头之后的位置读取 10.1 UID 体（原生字段序见 [`UidBody10_1`]）。
 /// 失败时不推进游标、不修改登记表。
 pub fn read_uid_body_10_1(reader: &mut Reader<'_>, key: u32) -> io::Result<UidBody10_1> {
     let mut trial = reader.clone();
@@ -1555,12 +1554,14 @@ pub fn read_uid_body_10_1(reader: &mut Reader<'_>, key: u32) -> io::Result<UidBo
     let flag = trial.read_bytes(1)?[0];
     let mut guid = [0u8; 16];
     guid.copy_from_slice(trial.read_bytes(16)?);
+    let value_18 = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
     *reader = trial;
     Ok(UidBody10_1 {
         key,
         version,
         flag,
         guid,
+        value_18,
     })
 }
 
@@ -1589,17 +1590,11 @@ pub struct LegacyTailScalars10_1 {
     pub int32_38: i32,
 }
 
-/// ㊱ PreJoinDefExpressions 块（LayerLib.dll `0x786c5d30`）与样本间隙原样
-/// 保留的数据。
+/// ㊱ PreJoinDefExpressions 块（LayerLib.dll `0x786c5d30`）。
 #[derive(Debug, Clone, PartialEq)]
 pub struct PreJoinBlock10_1 {
     /// int32 计数(样本 0)。负数/零不进循环,原样保留。
     pub count: i32,
-    /// 兼容字段名：样本 count=0 时观察到的 6 个零字节，语义与归属未知。
-    /// 10.1 的 FL Load/Save 调用点及 Read/WritePreJoinDefExpressions 均无
-    /// 对应读取或写出；保留原始值以维持当前样本后续字段对位。非空 count
-    /// 分支的字节归属没有样本佐证。
-    pub reserved: [u8; 6],
     /// 计数 × [String + String](样本未达)。
     pub pairs: Vec<(String, String)>,
 }
@@ -2208,14 +2203,11 @@ pub fn read_feature_layer_successor_10_1(
         }
 
         // ㊱ PreJoinDefExpressions（版本 >0x17；LayerLib.dll
-        //    `0x786c5d30`：int32 计数 + count × [String + String]）。在样本
-        //    count=0 后、㊲ 前有 6 字节零间隙（/Maps 0x14f2..0x14f8）；10.1
-        //    FL 读写调用点与 helper 均未处理这些字节。当前为保持样本后续字
-        //    段对位而原样读取，字段归属保持未知。
+        //    `0x786c5d30`：int32 计数 + count × [String + String]）。样本
+        //    `/Maps:0x14f4` 为计数，后续 `0x14f8` 是 `+0x2c0` int32，
+        //    因此计数后不跳过额外字节。
         if stop.is_none() && (fl_version as i16) > 0x17 {
             let count = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
-            let mut reserved = [0u8; 6];
-            reserved.copy_from_slice(trial.read_bytes(6)?);
             let mut pairs = Vec::new();
             if count > 0 {
                 for _ in 0..count as usize {
@@ -2224,11 +2216,7 @@ pub fn read_feature_layer_successor_10_1(
                     pairs.push((first, second));
                 }
             }
-            pre_join = Some(PreJoinBlock10_1 {
-                count,
-                reserved,
-                pairs,
-            });
+            pre_join = Some(PreJoinBlock10_1 { count, pairs });
         }
 
         // ㊲㊳ 版本 ≥0x19 标量块。

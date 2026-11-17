@@ -583,3 +583,17 @@ SystemCore 的 `+0x54` 槽（`0x7ffd0550`）是 EnsureCapacity：**恒返回 0�
 - 写表按对象指针哈希：同一对象跨 SetStream 后保存必然命中（键回引），跨文档不适用；
   替换分支（`FUN_7ffdab10` 返回 1）在写侧的触发场景未核。
 - 全部结论为静态观察；ArcMap 10.1 与 QGIS 的人工打开与目视核对均未进行，不声称已验证。
+
+## AfCore 反编译产物（2026-11-17）
+
+本轮用 REA 6.9.0 CLI `decompile-all`（Ghidra 12.2）导出上述 AfCore.dll
+`031858c4…cc47c17` 的全部已恢复函数伪代码。REA 选择 7851 项；7119 个本地
+函数写成函数级 C 伪代码，731 个外部导入无函数体并标记为 `external`，唯一
+失败项是 `0x68af2130`（Ghidra 反编译响应超过 50 MiB 负载上限）。仓库内完整
+产物为 `temp/rea-decompile-20261117/AfCore/`，另已复制到本机研究目录。
+产物索引记录输入 SHA-256、
+分析配置摘要、函数地址、函数体范围、输出 SHA-256 和逐项限制：
+`decompile-index.json`；逐次尝试记录在 `decompile-journal.jsonl`；副本
+README 在 `temp/rea-decompile-20261117/README.md`。目录中的 `.c` 是
+Ghidra 伪代码，不是原始源码；导出不改变上述静态结论的证据范围，也没有
+运行 ArcMap 或做人工目视验收。

@@ -2145,11 +2145,12 @@ mod tail_continuation {
         for value in [1.0_f64, 2.0, 3.0, 4.0] {
             b.extend(value.to_le_bytes());
         }
-        // IUID 槽：UID 新对象（键 92，体 19 字节）。
+        // IUID 槽：UID 新对象（键 92，体 23 字节）。
         push_entry_header(&mut b, &UID_CLASS_ID, 92);
         b.extend(1_i16.to_le_bytes());
         b.push(1);
         b.extend_from_slice(&LABEL_ENGINE_PROPS_CLASS_ID);
+        b.extend(42_i32.to_le_bytes()); // UID GUID 后的 int32
         b.extend(string_bytes("")); // String +0x28c
         b.extend(0_i16.to_le_bytes()); // short +0x1d8
         b.extend(0_f64.to_le_bytes()); // double +0x290
@@ -2157,8 +2158,9 @@ mod tail_continuation {
         b.extend(0_i16.to_le_bytes()); // short +0x1da
         b.extend(0_i32.to_le_bytes()); // int32 +0x244
         b.extend(0_i16.to_le_bytes()); // short +0x1be
-        b.extend(0_i32.to_le_bytes()); // PreJoin 计数 0
-        b.extend_from_slice(&[0u8; 6]); // 保留头 6 字节(第十轮样本修正)
+        b.extend(1_i32.to_le_bytes()); // PreJoin 计数；紧接一对 String
+        b.extend(string_bytes("左表达式"));
+        b.extend(string_bytes("右表达式"));
         b.extend(0_i32.to_le_bytes()); // int32 +0x2c0
         b.extend(0_i16.to_le_bytes());
         b.extend(0_i16.to_le_bytes());
@@ -2201,6 +2203,23 @@ mod tail_continuation {
         let result = read_feature_layer_successor_10_1(&mut reader, 34, 4096, &mut table).unwrap();
         assert_eq!(result.stop, SuccessorStop10_1::TailCompleted);
         assert_eq!(reader.remaining(), 0);
+        let left_pair = string_bytes("左表达式");
+        let pair_at = b
+            .windows(left_pair.len())
+            .position(|window| window == left_pair)
+            .unwrap();
+        let pre_join_at = pair_at - 4;
+        for cut in pre_join_at..b.len() {
+            let mut truncated = Reader::new(&b[..cut]);
+            let mut refs = table_with_keys(&[7]);
+            assert!(
+                read_feature_layer_successor_10_1(&mut truncated, 34, 4096, &mut refs).is_err(),
+                "PreJoin 至后继尾部在偏移 {cut} 截断应失败"
+            );
+            assert_eq!(truncated.position(), 0, "截断不得推进游标（cut={cut}）");
+            assert_eq!(refs.len(), 1, "截断不得提交引用表（cut={cut}）");
+            assert!(refs.contains(7));
+        }
         assert!(table.contains(59));
         assert!(table.contains(75));
         // 扩展段 ETM 无 ObjectStream 键（第十轮）：仅其 EditTemplate 条目
@@ -2213,6 +2232,11 @@ mod tail_continuation {
         ));
         assert!(matches!(result.display_filter, Some(RefSlot10_1::Null)));
         assert_eq!(result.shorts_21c_220_21e, Some([0, 0, 0]));
+        assert_eq!(
+            result.pre_join.as_ref().map(|block| block.pairs.as_slice()),
+            Some(&[("左表达式".to_owned(), "右表达式".to_owned())][..])
+        );
+        assert_eq!(result.int32_2c0, Some(0));
         assert_eq!(result.extension_count, Some(1));
         match &result.extensions[0] {
             LayerExtension10_1::EditTemplateManager(etm) => {
@@ -2668,6 +2692,7 @@ mod tail_continuation {
             let mut a = 1_i16.to_le_bytes().to_vec();
             a.push(1);
             a.extend_from_slice(&LABEL_ENGINE_PROPS_CLASS_ID);
+            a.extend(42_i32.to_le_bytes());
             let mut reader = Reader::new(&a);
             let _table = RefTable10_1::new();
             let body = read_uid_body_10_1(&mut reader, 82).unwrap();
@@ -2675,16 +2700,49 @@ mod tail_continuation {
             assert_eq!(body.version, 1);
             assert_eq!(body.flag, 1);
             assert_eq!(body.guid, LABEL_ENGINE_PROPS_CLASS_ID);
+            assert_eq!(body.value_18, 42);
             assert_eq!(reader.remaining(), 0);
             // 形态 B:ver 2、flag 0、零 GUID(样本键 82 的零值实例)。
             let mut zero = 2_i16.to_le_bytes().to_vec();
             zero.push(0);
             zero.extend_from_slice(&[0u8; 16]);
+            zero.extend((-7_i32).to_le_bytes());
             let mut reader2 = Reader::new(&zero);
             let body2 = read_uid_body_10_1(&mut reader2, 82).unwrap();
             assert_eq!(body2.version, 2);
             assert_eq!(body2.flag, 0);
             assert_eq!(body2.guid, [0u8; 16]);
+            assert_eq!(body2.value_18, -7);
+            for cut in 0..zero.len() {
+                let mut truncated = Reader::new(&zero[..cut]);
+                assert!(read_uid_body_10_1(&mut truncated, 82).is_err());
+                assert_eq!(truncated.position(), 0);
+            }
+        }
+
+        #[test]
+        fn reference_sample_uid_ends_before_feature_layer_string() {
+            use std::io::Read;
+
+            let path =
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples/测试底图.mxd");
+            let mut compound = cfb::open(path).unwrap();
+            let mut maps = Vec::new();
+            compound
+                .open_stream("/Maps")
+                .unwrap()
+                .read_to_end(&mut maps)
+                .unwrap();
+            assert_eq!(&maps[0x14a9..0x14b9], &UID_CLASS_ID);
+            assert_eq!(&maps[0x14b9..0x14bd], &82_u32.to_le_bytes());
+            let mut reader = Reader::new(&maps[0x14bd..0x14da]);
+            let body = read_uid_body_10_1(&mut reader, 82).unwrap();
+            assert_eq!(body.version, 1);
+            assert_eq!(body.flag, 1);
+            assert_eq!(body.guid, LABEL_ENGINE_PROPS_CLASS_ID);
+            assert_eq!(body.value_18, 0);
+            assert_eq!(reader.position(), 0x17);
+            assert_eq!(reader.read_bytes(6).unwrap(), [2, 0, 0, 0, 0, 0]);
         }
 
         #[test]
@@ -2907,8 +2965,7 @@ mod tail_continuation {
             b.extend(0_i16.to_le_bytes());
             b.extend(0_i32.to_le_bytes());
             b.extend((-1_i16).to_le_bytes());
-            b.extend(0_i32.to_le_bytes()); // PreJoin 计数
-            b.extend_from_slice(&[0u8; 6]); // 保留头 6 字节
+            b.extend(0_i32.to_le_bytes()); // PreJoin 计数；后接 +0x2c0
             b.extend(0_i32.to_le_bytes());
             for _ in 0..3 {
                 b.extend(0_i16.to_le_bytes());

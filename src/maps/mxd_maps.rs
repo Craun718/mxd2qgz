@@ -269,6 +269,44 @@ fn parse_first_frame(
         .spatial_reference
         .as_ref()
         .and_then(map_spatial_reference_to_model);
+
+    // 旧版 Map 使用另一条图层列表读取路径，不能用新版列表推算后续边界。
+    if prefix.version < 0x17 {
+        let stop_offset = body.position();
+        let remaining = &maps[stop_offset..];
+        diagnostics.push(format!(
+            "Map 架构版本 {} 小于 23（0x17）：旧版图层列表尚未接入，后缀从 \
+             /Maps:0x{stop_offset:x} 起的 {} 字节保留为未知；图层和显示范围未解析",
+            prefix.version,
+            remaining.len()
+        ));
+        if count > 1 {
+            diagnostics.push(format!(
+                "其余 {} 个数据框对象未解析：首个 Map 后缀边界未知",
+                count - 1
+            ));
+        }
+        let unknown_fields = if remaining.is_empty() {
+            Vec::new()
+        } else {
+            vec![UnknownField {
+                stream: "/Maps".to_string(),
+                offset: stop_offset as u64,
+                bytes: remaining.to_vec(),
+            }]
+        };
+        return Ok((
+            DataFrame {
+                name: prefix.name,
+                secondary_name: Some(prefix.secondary_name),
+                children: Vec::new(),
+                crs: map_crs,
+                extent: None,
+                unknown_fields,
+            },
+            None,
+        ));
+    }
     let map_crs_key = prefix.spatial_reference_key;
 
     // 后缀读取：图层列表 → 基本图形层 → MapSurround → WKSEnvelope → 两个
@@ -349,7 +387,13 @@ fn parse_first_frame(
                             prefix.version,
                             prefix.int32_field,
                             prefix.short_field,
-                            prefix.stop.describe()
+                            if prefix.completion().is_some() {
+                                "委派 FeatureLayer 和 FDO 后续字段已完整消费".to_string()
+                            } else if let Some(tail) = &prefix.fdo_tail {
+                                format!("FDO 后续字段在未知内容处停止：{:?}", tail.stop)
+                            } else {
+                                prefix.stop.describe()
+                            }
                         ));
                         feature_layer_successor_note(associated, entry.index, diagnostics);
                         let source = feature_layer_source(associated, entry.index, diagnostics);
@@ -569,8 +613,7 @@ fn parse_first_frame(
     if let Some(parsed) = &suffix.base_graphics_layer_parsed {
         diagnostics.push(format!(
             "基本图形层体前缀（CompositeGraphicsLayer）：名称 {:?}，元素组计数 {}（已消费 \
-             {} 组），子图层计数 {}（已消费 {} 条）；读取器在其停止点（{}）处结束，\
-             体剩余保留为未知尾部",
+             {} 组），子图层计数 {}（已消费 {} 条）；{}",
             parsed.name,
             parsed.group_count,
             parsed.element_groups.len(),
@@ -1413,6 +1456,24 @@ mod tests {
         std::io::Read::read_to_end(&mut document.open_stream("/Maps").unwrap(), &mut bytes)
             .unwrap();
         let report = parse_maps_10_1(&bytes).unwrap();
+        let list = report.layer_list.as_ref().expect("应解析图层列表");
+        assert_eq!(list.entries.len(), 6, "FDO 完整消费后应继续读取后续图层");
+        assert_eq!(list.entries[1].offset, 0x2d22);
+        assert_eq!(list.active_index, Some(-1));
+        let Some(LayerBodyPrefix10_1::FdoGraphicsLayer(fdo)) = &list.entries[0].parsed else {
+            panic!("首个图层应为已解析的 FDO 对象");
+        };
+        assert!(fdo.completion().is_some());
+        assert_eq!(
+            fdo.fdo_tail
+                .as_ref()
+                .unwrap()
+                .sublayers
+                .as_ref()
+                .unwrap()
+                .len(),
+            1
+        );
         let frame = &report.map.frames[0];
         let LayerNode::Layer(layer) = &frame.children[0] else {
             panic!("参考样本首节点应为 FDO 关联要素图层");
@@ -1560,8 +1621,8 @@ mod tests {
     fn suffix_parses_cgl_base_graphics_prefix_before_stopping() {
         // 基本图形层为合法 CompositeGraphicsLayer 前缀体：版本 6、元素组计数 0、
         // 名称、short ×3、double ×2、int32 ×3、嵌套空标记、版本 >1 的
-        // double+int32、子图层计数 0 → 读取器停在未展开尾段。该槽位对象体无
-        // 外部长度，后缀仍在槽位停止，但体前缀进入诊断。
+        // double+int32、子图层计数 0，然后尾段遇未知新对象。该槽位对象体无
+        // 外部长度，后缀保留未知头及其后数据，但已读部分进入诊断。
         let mut cgl_body = (6_u16).to_le_bytes().to_vec();
         cgl_body.extend(0_i32.to_le_bytes()); // 元素组计数 0
         cgl_body.extend(encoded("G")); // 名称
@@ -1579,12 +1640,14 @@ mod tests {
         cgl_body.extend(0_f64.to_le_bytes()); // 版本 >1：double
         cgl_body.extend(0_i32.to_le_bytes()); // 版本 >1：int32
         cgl_body.extend(0_i32.to_le_bytes()); // 子图层计数 0
+        cgl_body.extend(1_u32.to_le_bytes()); // 循环后 int32
+        let unknown_entry = [0x77; 20]; // 未知类标识 + 未登记对象键
         let mut suffix = 0_i32.to_le_bytes().to_vec();
         suffix.extend((-1_i32).to_le_bytes());
         suffix.extend(crate::layers::layer_list::COMPOSITE_GRAPHICS_LAYER_CLASS_ID);
         suffix.extend(1553_u32.to_le_bytes());
         suffix.extend(&cgl_body);
-        suffix.extend([0x77; 4]); // CGL 未展开尾段（后缀停止点之后的未知字节）
+        suffix.extend(unknown_entry);
         let mut body = frame_body("框", "", "PROJCS[\"X\"]");
         body.extend(&suffix);
         let stream = maps_stream(1, &body, &[]);
@@ -1598,9 +1661,9 @@ mod tests {
         );
         // MapSurround 计数仍未读取（槽位体无外部长度，后缀停止）。
         assert_eq!(report.map.frames[0].extent, None);
-        // 未知尾部 = CGL 体的未展开尾段（读取器停止点之后的字节）。
+        // 未知尾部从新对象头起保留。
         let unknown = &report.map.frames[0].unknown_fields[0];
-        assert_eq!(unknown.bytes, vec![0x77; 4]);
+        assert_eq!(unknown.bytes, unknown_entry);
     }
 
     #[test]

@@ -339,7 +339,7 @@ pub fn read_layer_list_10_1(
     let mut stop = None;
     for index in 0..count_usize {
         let entry = read_entry(&mut trial, index, &mut trial_table, list_offset, max_bytes)?;
-        // 标志 1 新对象体：无外部长度、读取器未接入（集成点），停止。
+        // 标志 1 的对象体没有外部长度；只有已确认完整消费的类才能继续。
         if let LayerListEntry {
             object: LayerEntryObject::Entry(ObjectEntry10_1::NewObject { class_id, key }),
             flag: FLAG_LOAD_OBJECT,
@@ -347,14 +347,21 @@ pub fn read_layer_list_10_1(
             ..
         } = &entry
         {
-            stop = Some(LayerListStop::Flag1NewObjectBody {
-                index,
-                offset: *offset,
-                class_id: *class_id,
-                key: *key,
-            });
-            entries.push(entry);
-            break;
+            let completed = matches!(
+                &entry.parsed,
+                Some(LayerBodyPrefix10_1::FdoGraphicsLayer(body))
+                    if body.completion().is_some()
+            );
+            if !completed {
+                stop = Some(LayerListStop::Flag1NewObjectBody {
+                    index,
+                    offset: *offset,
+                    class_id: *class_id,
+                    key: *key,
+                });
+                entries.push(entry);
+                break;
+            }
         }
         entries.push(entry);
     }

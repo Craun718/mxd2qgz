@@ -2162,11 +2162,18 @@ fn picture_marker_type3_slot_parses_stdpicture_inline() {
     use mxd2qgz::objects::display_symbol::{
         PictureImage10_1, PictureImagePayload10_1, StdPictureSlot10_1,
     };
-    use mxd2qgz::objects::ole_font::STDPICTURE_CLASS_ID;
     let mut bytes = 9_u16.to_le_bytes().to_vec();
     bytes.extend(3_i32.to_le_bytes()); // 图像类型 3
     bytes.extend(0_i32.to_le_bytes()); // aux int32
-    push_entry(&mut bytes, &STDPICTURE_CLASS_ID, 96); // IPicture 槽
+    // 固定流内 GUID 字节，避免与被测常量共用同一个转录错误。
+    push_entry(
+        &mut bytes,
+        &[
+            0x04, 0x52, 0xe3, 0x0b, 0x91, 0x8f, 0xce, 0x11, 0x9d, 0xe3, 0x00, 0xaa, 0x00, 0x4b,
+            0xb8, 0x51,
+        ],
+        96,
+    ); // IPicture 槽
     bytes.extend(std_picture_body());
     for _ in 0..3 {
         push_null(&mut bytes); // IColor ×3
