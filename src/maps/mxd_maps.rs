@@ -783,9 +783,9 @@ fn parse_first_frame(
     let tail = &suffix.post_border_tail;
     if tail.short_32a.is_some() {
         diagnostics.push(format!(
-            "后续版本字段：short={:?}，double 位={:?}，short={:?}；IEnvelope 空槽={:?}，double 位={:?}、{:?}",
+            "后续版本字段：short={:?}，double 位={:?}，short={:?}；IEnvelope 槽={:?}，double 位={:?}、{:?}，int32={:?}",
             tail.short_32a, tail.double_320_bits, tail.short_328,
-            tail.scale_envelopes, tail.scale_double_2b8_bits, tail.scale_double_2d8_bits
+            tail.scale_envelopes, tail.scale_double_2b8_bits, tail.scale_double_2d8_bits, tail.scale_ints
         ));
     }
 

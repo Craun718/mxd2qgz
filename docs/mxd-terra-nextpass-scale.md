@@ -1,0 +1,37 @@
+# ScaleLine 原生持久化续查（2026-11-17）
+
+## 身份与方法
+
+只追踪真正的 `ScaleLine`、`SteppedScaleLine` 及其委派段；原先三个伪候选的更正见 [既有记录](mxd-terra-integrate-page.md)。地址为下述 PE 的虚拟地址。重算 `temp/agent-map-surround/Map.dll.6BF03936_8AC4_4632_8FB2_A6A34A19655A` SHA-256 为 `1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`，PE32 x86、ImageBase `0x793a0000`；版本资源自述 Esri Map DLL、OriginalFilename `Map.DLL`、FileVersion/ProductVersion `10.1.0.3035`。注册包 `esri.clsid.ecfg` SHA-256 `170ae1f812bafc317ac98455eb7be844dd37f8d3a158c454cedf12f5046c3486`。文件自述身份与摘要不等于签名验证。
+
+独立 REA 6.9.0 CLI、JDK 25 和仓库独占 TMPDIR 启动 Ghidra 12.2；目标导入后桥接 Unix socket 的 bind 返回 `Operation not permitted`，未得到 REA 伪代码（诊断保存在 `temp/terra-nextpass-scale/rea.json`）。按任务约定改用 `GHIDRA_INSTALL_DIR=/opt/ghidra` 的隔离 pyghidra，将已有项目**复制**到独占目录后打开副本，未修改共享目标或项目。反编译结果在 `temp/terra-nextpass-scale/0x*.c`；身份链另用 PE 字节及 objdump 核查。产物含本机路径，分享前须脱敏。以下是静态观察，并非原始源码或运行取证。
+
+| 类 | 注册 CLSID | RTTI、持久化虚表 | Load / Save 实体 |
+| --- | --- | --- | --- |
+| ScaleLine | `{6589F140-F7F7-11D2-B872-00600802E603}` | TypeDescriptor `0x794b4d88`；COL `0x79497fe4`，位移 `0x2ac`；虚表 `0x7948c858` | `+0x14` → 跳板 `0x79453b80` → `0x794537f0`；`+0x18` → `0x79453aa0` → `0x79453870` |
+| SteppedScaleLine | `{6589F141-F7F7-11D2-B872-00600802E603}` | TypeDescriptor `0x794b53a8`；COL `0x79499f24`，位移 `0x2b4`；虚表 `0x7948e530` | `+0x14` → `0x794685c0` → `0x794682d0`；`+0x18` → `0x79468550` → `0x79468360` |
+
+跳板均先按接口指针前保存的动态位移和额外常数调整 `this`，不能直接把不同虚表的参数偏移等同。独立 identity 方法 `0x794530b0` / `0x79467a00` 分别复制 `0x79485098` / `0x794850a8` 的上述 CLSID，与注册包相符。持久化虚表的 `+0x0c` 则经调整跳到 `0x794510b0`，从实例取 16 字节，并非直接读取上述常量；静态数据不能单独证明实际执行时该实例字段为何值。`ScaleLineImpl` RTTI `0x794b4d6c` 是另一内部类型，不能据名字当成可独立持久化 coclass。
+
+## 读写顺序和边界
+
+两个具体类的 Load 首先读取自身 short 版本，有符号值大于 1 拒绝；负值通过该原生上限比较。Save 首 short 均为 1（`0x79480d18` / `0x79480cf0`）。随后两者顺序完全相同：
+
+1. `0x79451120` 基类 Load；Save 为 `0x79451400`。它从 short 基类版本开始（有符号 >6 拒绝），再调 `0x794413d0` 共同前缀；之后的文本、标量、ITextSymbol×2 和条件 INumberFormat 等字段及版本门见 [已有逐字段记录](arcmap-10.1-legend-family.md)。写侧版本表和字段也在既有记录中，不在此重复。基类 `<2` 的额外 int32 是读侧旧分支，10.1 当前写侧不会写出该项。
+2. `ScaleLineImpl` 委派段 Load `0x79453ef0`：short 版本（有符号 >1 拒绝），再 `LoadObject` 一个 ILineSymbol；其 IID 常量 `0x7948c8d0` 读取为 `{E6BDAA7D-4D35-11D0-98BE-00805F7CED21}`。Save `0x79453f70` 写版本 1 和该槽。**此段没有 double 或填充符号**，与已有四个 Scalebar 子类的中段不同。
+3. 线段尾部 Load `0x79454ee0` / Save `0x79455030`：short 版本（有符号 >2 拒绝；Save 写 2）；版本 <2 先读 short 标志；然后两个 ILineSymbol 槽、8 字节×2、4 字节；版本 ≥2 再读 4 字节。版本 <2 时最后一个内存字段由标志计算为 0 或 5，**不从流中读**。Save 对应当前版本写两个槽、8 字节×2、4 字节×2。8 字节数值和标量的业务名尚未绑定，按原始位模式处理。
+4. 仅 SteppedScaleLine 在上述尾段之后读取 8 字节（Load `0x79468340`，Save `0x794683d1`）。`0x79467a60` / `0x79467a70` 对相关实例位置作 double 读取和写入；访问器名称未闭合，不能据此命名其业务含义。Save 和 Load 对称，不依赖自身版本分支。
+
+所有嵌套 `LoadObject` 都可能产生无外部长度的新对象体：解析器必须完成该体或在该对象头前回退游标及登记，不能扫描 GUID 或跳过未知长度。短读、非法版本、长度和键登记均需保持事务性。字段识别仅限 10.1.0.3035；尚无可控字节、ArcMap 执行或 QGIS 验收证据。
+
+## 接线裁决与可勾边界
+
+静态证据足以独立闭合**两具体类身份、Load/Save 跳板链及相互区别的持久化字段序**；可作为这些独立研究子项的勾选依据。业务属性命名、流内实例、目标软件运行验证不能随之勾选。
+
+本轮没有接入解析器。既有 `read_scalebar_subclass_body_10_1` 的中段是 double 加填充符号，不能直接用于本类；它的尾段对版本 <2 仍无条件读取第二个 int32，与上面的原生旧分支不符，而且对未知符号未传播停止，不能安全复制其完整消费假设。正确接线还需要在 MapSurround 宿主循环分派新 CLSID，而当前分派位于 `src/maps/map_object.rs`，不在本轮独占的 `element_decor` / `map_surround` 范围内。应先实现可事务回退的基类及符号槽读取、单独修正旧尾段，再由拥有宿主文件的工作接线；不可因静态链闭合而声称 `parse` 已支持。上述问题是针对复用路径的代码审查结论，本轮未修改这些既有实现。
+
+拟覆盖的构造验证：两类各自版本 1、Stepped 末尾 8 字节及哨兵边界；各版本门和尾段 0/1/2（旧版本不误读后继 4 字节）；空槽、已登记回引、未知新对象停止并回退登记；截断、超限版本及嵌套失败时游标和登记事务性。合成测试不能替代源工程与转换结果的人工核验。
+
+本轮没有新增解析器或 ScaleLine 构造测试；对当时的整个工作区运行 `cargo fmt --check` 和 `cargo test` 均通过，这只能说明现有测试通过，不能证明上述新格式已被验证。
+
+ArcMap 10.1 环境暂缺；未在 ArcMap 或 QGIS 打开工程，也未作图层、显示或布局目视核查。

@@ -11,7 +11,7 @@ fn string(s: &str) -> Vec<u8> {
 
 #[test]
 fn reads_null_and_reference_prefix_and_stops_before_remaining_body() {
-    let mut data = 14u16.to_le_bytes().to_vec();
+    let mut data = 1u16.to_le_bytes().to_vec();
     data.extend([0; 16]);
     data.extend(1u32.to_le_bytes());
     data.extend(string("字段"));
@@ -29,7 +29,7 @@ fn reads_null_and_reference_prefix_and_stops_before_remaining_body() {
         ObjectEntry10_1::BackReference { key: 9, .. }
     ));
     assert_eq!(p.trailing_string.as_deref(), Some("表"));
-    assert_eq!(p.stop, StandaloneTableStop10_1::RemainingBody);
+    assert_eq!(p.stop, StandaloneTableStop10_1::Complete);
     assert_eq!(r.read_bytes(1).unwrap(), &[0xaa]);
 }
 

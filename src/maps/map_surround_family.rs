@@ -168,6 +168,15 @@ pub const DOUBLE_ALTERNATING_SCALEBAR_CLASS_ID: [u8; 16] = [
     0x48, 0xf1, 0x89, 0x65, 0xf7, 0xf7, 0xd2, 0x11, 0xb8, 0x72, 0x00, 0x60, 0x08, 0x02, 0xe6, 0x03,
 ];
 
+/// ScaleLine `{6589F140-F7F7-11D2-B872-00600802E603}`，见续查记录。
+pub const SCALE_LINE_CLASS_ID: [u8; 16] = [
+    0x40, 0xf1, 0x89, 0x65, 0xf7, 0xf7, 0xd2, 0x11, 0xb8, 0x72, 0x00, 0x60, 0x08, 0x02, 0xe6, 0x03,
+];
+/// SteppedScaleLine `{6589F141-F7F7-11D2-B872-00600802E603}`。
+pub const STEPPED_SCALE_LINE_CLASS_ID: [u8; 16] = [
+    0x41, 0xf1, 0x89, 0x65, 0xf7, 0xf7, 0xd2, 0x11, 0xb8, 0x72, 0x00, 0x60, 0x08, 0x02, 0xe6, 0x03,
+];
+
 /// 版本门上限：Scalebar/比例尺子类自身版本（有符号 >1 拒绝；Save 恒写 1）。
 const MAX_OWN_VERSION_1: i16 = 1;
 /// 版本门上限：BaseNorthArrow 版本（有符号 >4 拒绝；10.1 写 4）。
@@ -1332,6 +1341,340 @@ pub struct ScalebarSubclassBody10_1 {
     pub stop: Option<FamilyStop10_1>,
     /// 停止点之后剩余的字节数。
     pub remaining_bytes: usize,
+}
+
+/// 两个具体类共享的读取入口类别；由调用者核对对象头 CLSID 后选择。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScaleLineKind10_1 {
+    ScaleLine,
+    SteppedScaleLine,
+}
+
+/// 已消费的字段；未定名标量以原始小端字节保留，顺序与原生流一致。
+#[derive(Debug, Clone, PartialEq)]
+pub enum ScaleLineField10_1 {
+    Raw { name: &'static str, bytes: Vec<u8> },
+    Text { name: &'static str, value: String },
+    TextSymbol(SlotEntry10_1<TextSymbolBody10_1>),
+    NumberFormat(SlotEntry10_1<NumericFormatBody10_1>),
+    LineSymbol(SymbolSlotFull10_1),
+}
+
+/// 未闭合对象槽：整个槽及其新增登记均回滚，偏移指向槽头。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScaleLineStop10_1 {
+    Object {
+        slot: &'static str,
+        offset: usize,
+        class_id: [u8; 16],
+        key: u32,
+    },
+    Symbol {
+        slot: &'static str,
+        offset: usize,
+        reason: SymbolStop10_1,
+    },
+}
+
+/// 已确认的比例尺线对象体；`stop == None` 才表示完整消费。
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScaleLineBody10_1 {
+    pub key: u32,
+    pub kind: ScaleLineKind10_1,
+    pub version: u16,
+    pub base_version: u16,
+    pub common: MapSurroundCommonPrefix10_1,
+    pub fields: Vec<ScaleLineField10_1>,
+    pub stop: Option<ScaleLineStop10_1>,
+    pub remaining_bytes: usize,
+}
+
+fn scale_line_version(reader: &mut Reader<'_>, max: u16, label: &str) -> io::Result<u16> {
+    let offset = reader.position();
+    let value = reader.read_u16_le()?;
+    // 负值原生比较可通过，但不属于已确认的写侧版本。
+    if (value as i16) < 0 || value > max {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("{label} 版本 {value} 在 0x{offset:x} 超出 0..={max}"),
+        ));
+    }
+    Ok(value)
+}
+
+fn scale_line_object<T>(
+    reader: &mut Reader<'_>,
+    table: &mut RefTable10_1,
+    slot: &'static str,
+    expected: &[u8; 16],
+    body_reader: impl FnOnce(&mut Reader<'_>, &mut RefTable10_1, u32) -> io::Result<(T, bool)>,
+) -> io::Result<Result<SlotEntry10_1<T>, ScaleLineStop10_1>> {
+    let mut trial = reader.clone();
+    let mut staged = table.clone();
+    let entry = read_object_entry_10_1(&mut trial, &mut staged)?;
+    let result = match entry {
+        ObjectEntry10_1::Null => SlotEntry10_1::Null,
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            SlotEntry10_1::BackReference { class_id, key }
+        }
+        ObjectEntry10_1::NewObject { class_id, key } => {
+            if class_id != *expected {
+                return Ok(Err(ScaleLineStop10_1::Object {
+                    slot,
+                    offset: reader.position(),
+                    class_id,
+                    key,
+                }));
+            }
+            let (body, complete) = body_reader(&mut trial, &mut staged, key)?;
+            if !complete {
+                return Ok(Err(ScaleLineStop10_1::Object {
+                    slot,
+                    offset: reader.position(),
+                    class_id,
+                    key,
+                }));
+            }
+            SlotEntry10_1::Body(Box::new(body))
+        }
+    };
+    *reader = trial;
+    *table = staged;
+    Ok(Ok(result))
+}
+
+fn scale_line_symbol(
+    reader: &mut Reader<'_>,
+    table: &mut RefTable10_1,
+    max_bytes: usize,
+    slot: &'static str,
+) -> io::Result<Result<SymbolSlotFull10_1, ScaleLineStop10_1>> {
+    use crate::objects::display_symbol::{
+        CARTOGRAPHIC_LINE_SYMBOL_CLASS_ID, HASH_LINE_SYMBOL_CLASS_ID, MARKER_LINE_SYMBOL_CLASS_ID,
+        MULTI_LAYER_LINE_SYMBOL_CLASS_ID, PICTURE_LINE_SYMBOL_CLASS_ID,
+        SIMPLE_LINE_SYMBOL_CLASS_ID,
+    };
+    let mut trial = reader.clone();
+    let mut staged = table.clone();
+    let mut probe = trial.clone();
+    let mut probe_table = staged.clone();
+    if let ObjectEntry10_1::NewObject { class_id, key } =
+        read_object_entry_10_1(&mut probe, &mut probe_table)?
+    {
+        if ![
+            SIMPLE_LINE_SYMBOL_CLASS_ID,
+            MARKER_LINE_SYMBOL_CLASS_ID,
+            CARTOGRAPHIC_LINE_SYMBOL_CLASS_ID,
+            HASH_LINE_SYMBOL_CLASS_ID,
+            MULTI_LAYER_LINE_SYMBOL_CLASS_ID,
+            PICTURE_LINE_SYMBOL_CLASS_ID,
+        ]
+        .contains(&class_id)
+        {
+            return Ok(Err(ScaleLineStop10_1::Object {
+                slot,
+                offset: reader.position(),
+                class_id,
+                key,
+            }));
+        }
+    }
+    let symbol =
+        read_symbol_slot_full_10_1(&mut trial, max_bytes, &mut staged, MAX_SYMBOL_NESTING_DEPTH)?;
+    if let Some(reason) = slot_full_stop_10_1(&symbol, DisplaySlotKind10_1::Symbol) {
+        return Ok(Err(ScaleLineStop10_1::Symbol {
+            slot,
+            offset: reader.position(),
+            reason,
+        }));
+    }
+    *reader = trial;
+    *table = staged;
+    Ok(Ok(symbol))
+}
+
+/// 读取 ScaleLine 或 SteppedScaleLine 的对象体；对象头须由调用者读取。
+///
+/// 依据 Map.dll 10.1 的 `0x794537f0` / `0x794682d0`，证据及旧版分支见
+/// `docs/mxd-terra-nextpass-scale.md`。错误回滚整个调用；遇到未知或未完成的
+/// 嵌套体时返回停止原因，回滚整个对应槽，之前完整字段和登记保留。
+pub fn read_scale_line_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+    kind: ScaleLineKind10_1,
+) -> io::Result<ScaleLineBody10_1> {
+    let mut trial = reader.clone();
+    let mut staged = table.clone();
+    let version = scale_line_version(&mut trial, 1, "ScaleLine")?;
+    let base_version = scale_line_version(&mut trial, 6, "ScaleLine 基类")?;
+    let common = read_map_surround_common_prefix_10_1(&mut trial, max_bytes, &mut staged)?;
+    let mut fields = Vec::new();
+    let mut stop = None;
+    // 闭包在首次未闭合槽停止；外层统一提交已完成前缀。
+    (|| -> io::Result<()> {
+        macro_rules! raw {
+            ($name:expr, $len:expr) => {
+                fields.push(ScaleLineField10_1::Raw {
+                    name: $name,
+                    bytes: trial.read_bytes($len)?.to_vec(),
+                })
+            };
+        }
+        macro_rules! object {
+            ($result:expr, $variant:ident) => {
+                match $result? {
+                    Ok(value) => fields.push(ScaleLineField10_1::$variant(value)),
+                    Err(reason) => {
+                        stop = Some(reason);
+                        return Ok(());
+                    }
+                }
+            };
+        }
+        raw!("base_double_a", 8);
+        raw!("base_shorts", 6);
+        raw!("base_int_a", 4);
+        fields.push(ScaleLineField10_1::Text {
+            name: "base_string",
+            value: read_string_10_1(&mut trial, max_bytes)?,
+        });
+        raw!("base_int_b", 4);
+        raw!("base_double_b", 8);
+        object!(
+            scale_line_object(
+                &mut trial,
+                &mut staged,
+                "label_symbol",
+                &TEXT_SYMBOL_CLASS_ID,
+                |r, t, _| {
+                    let body = read_text_symbol_body_10_1(r, max_bytes, t)?;
+                    let complete = body.stop.is_none();
+                    Ok((body, complete))
+                }
+            ),
+            TextSymbol
+        );
+        raw!("base_int_c", 4);
+        if base_version < 2 {
+            raw!("base_legacy_discard", 4);
+        }
+        raw!("base_int_d", 4);
+        raw!("base_double_c", 8);
+        object!(
+            scale_line_object(
+                &mut trial,
+                &mut staged,
+                "second_symbol",
+                &TEXT_SYMBOL_CLASS_ID,
+                |r, t, _| {
+                    let body = read_text_symbol_body_10_1(r, max_bytes, t)?;
+                    let complete = body.stop.is_none();
+                    Ok((body, complete))
+                }
+            ),
+            TextSymbol
+        );
+        if base_version >= 2 {
+            object!(
+                scale_line_object(
+                    &mut trial,
+                    &mut staged,
+                    "number_format",
+                    &NUMERIC_FORMAT_CLASS_ID,
+                    |r, t, k| Ok((read_numeric_format_body_10_1(r, t, k)?, true))
+                ),
+                NumberFormat
+            );
+        }
+        if base_version >= 3 {
+            raw!("base_tail_int", 4);
+        }
+        if base_version >= 4 {
+            raw!("base_tail_double", 8);
+        }
+        if base_version >= 5 {
+            raw!("base_tail_short_a", 2);
+        }
+        if base_version >= 6 {
+            raw!("base_tail_short_b", 2);
+        }
+        let mid = scale_line_version(&mut trial, 1, "ScaleLineImpl")?;
+        fields.push(ScaleLineField10_1::Raw {
+            name: "line_version",
+            bytes: mid.to_le_bytes().to_vec(),
+        });
+        object!(
+            scale_line_symbol(&mut trial, &mut staged, max_bytes, "line_symbol"),
+            LineSymbol
+        );
+        let tail = scale_line_version(&mut trial, 2, "ScaleLine 尾段")?;
+        fields.push(ScaleLineField10_1::Raw {
+            name: "tail_version",
+            bytes: tail.to_le_bytes().to_vec(),
+        });
+        if tail < 2 {
+            raw!("tail_legacy_flag", 2);
+        }
+        object!(
+            scale_line_symbol(&mut trial, &mut staged, max_bytes, "tail_symbol_a"),
+            LineSymbol
+        );
+        object!(
+            scale_line_symbol(&mut trial, &mut staged, max_bytes, "tail_symbol_b"),
+            LineSymbol
+        );
+        raw!("tail_double_a", 8);
+        raw!("tail_double_b", 8);
+        raw!("tail_int_a", 4);
+        if tail >= 2 {
+            raw!("tail_int_b", 4);
+        }
+        if kind == ScaleLineKind10_1::SteppedScaleLine {
+            raw!("stepped_double", 8);
+        }
+        Ok(())
+    })()?;
+    let remaining_bytes = trial.remaining();
+    *reader = trial;
+    *table = staged;
+    Ok(ScaleLineBody10_1 {
+        key,
+        kind,
+        version,
+        base_version,
+        common,
+        fields,
+        stop,
+        remaining_bytes,
+    })
+}
+
+/// ScaleLine 专用入口。
+pub fn read_scale_line_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<ScaleLineBody10_1> {
+    read_scale_line_body_10_1(reader, max_bytes, table, key, ScaleLineKind10_1::ScaleLine)
+}
+
+/// SteppedScaleLine 专用入口。
+pub fn read_stepped_scale_line_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<ScaleLineBody10_1> {
+    read_scale_line_body_10_1(
+        reader,
+        max_bytes,
+        table,
+        key,
+        ScaleLineKind10_1::SteppedScaleLine,
+    )
 }
 
 #[cfg(test)]

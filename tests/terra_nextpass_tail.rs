@@ -35,10 +35,28 @@ fn tail_fields_stop_at_each_incomplete_field_and_unknown_envelope() {
             assert!(!refs.contains(2182));
         }
     }
-    let (position, stop, refs) = parse(&bytes);
+    for (start, end, key) in [(0x252f2, 0x25340, 2182), (0x25340, 0x2538e, 2183)] {
+        for cut in start..end {
+            let (position, _, refs) = parse(&bytes[..cut]);
+            assert_eq!(position, start, "对象截断于 {cut:#x}");
+            assert!(!refs.contains(key));
+        }
+    }
+    for cut in 0x25396..0x253b6 {
+        let (position, _, _) = parse(&bytes[..cut]);
+        assert_eq!(position, 0x25396 + ((cut - 0x25396) / 4) * 4);
+    }
+    let mut unknown = bytes.clone();
+    unknown[0x252f2] ^= 0x80;
+    let (position, stop, refs) = parse(&unknown);
     assert_eq!(position, 0x252f2);
     assert_eq!(stop, MapSuffixStop::AfterBorderTail { stage: 24 });
     assert!(!refs.contains(2182));
+    let (position, stop, refs) = parse(&bytes);
+    assert_eq!(position, 0x253b6);
+    assert_eq!(stop, MapSuffixStop::AfterBorderTail { stage: 35 });
+    assert!(refs.contains(2182));
+    assert!(refs.contains(2183));
 }
 
 #[test]

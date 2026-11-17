@@ -14,7 +14,7 @@
 //!    `{1D5849F2-…}`=IAnnotateLayerPropertiesCollection）：
 //!    ① int16 版本（`2 < (short)ver` 有符号拒绝；样本 2）→ ② int32 计数 →
 //!    ③ 循环 [LoadObject（IAnnotateLayerProperties `{01004142-…}`）+
-//!    （版本 ≥2）int32 条目键] → ④ 版本 ≥2：int32 尾 int32。样本：版本 2、
+//!    （版本 ≥2 且对象非空）int32 条目 ID] → ④ 版本 ≥2：int32 尾值。样本：版本 2、
 //!    计数 1、条目 = LELP 新对象（键 60）+ 条目键 int32 + 尾 int32。
 //! 2. **LabelEngineLayerProperties**（LabelPlacement.dll，实现 Load
 //!    `0x785468c0`，GetClassID 常量拷贝形、CLSID `{01004145-…}` 数据常量
@@ -67,8 +67,8 @@
 //!   反编译佐证，见 `BolpBody10_1` 文档）；⑱ AnnotationVBScriptEngine 体
 //!   第十轮闭合（`0x785361d0`）；⑲ Envelope 体为对象层已闭合读取器；
 //!   ㉔ IGraphicsContainer 实现类体未闭合（样本空标记）；
-//! - ALPC/ETM/LELP 各标量与字符串的业务语义为候选（表达式、标注类名、
-//!   可见性等），未经目标软件行为验证；
+//! - ALPC/ETM 及 LELP 尚未绑定字段的业务语义仍待核实；已绑定的
+//!   LELP 属性与原生访问器对位见 `docs/mxd-terra-nextpass-expression.md`；
 //! - ETM ④ 的 1 字节（样本 0x01）语义未定；
 //! - 全部结论为静态反编译观察与样本辅助对位，未运行 ArcMap 10.1，未人工
 //!   目视验收。
@@ -237,7 +237,7 @@ pub enum EditTemplateManagerStop10_1 {
 pub struct AlpcEntry10_1 {
     /// 对象分类（空引用 / 回引 / 新 LELP 对象）。前置停止时为 `Null`。
     pub slot: AlpcEntrySlot10_1,
-    /// 版本 ≥2 的 int32 条目键（样本 0）。`None` = 版本 ≤1 或前置停止。
+    /// 版本 ≥2 的集合条目 ID（样本 0）；空引用、旧版本或前置停止时为 None。
     pub entry_key: Option<i32>,
 }
 
@@ -265,7 +265,7 @@ pub struct AnnotatePropsBody10_1 {
     pub count: i32,
     /// 已消费的循环条目（按流内顺序）。
     pub entries: Vec<AlpcEntry10_1>,
-    /// 版本 ≥2 的尾 int32（→ -0x10 下一个条目键计数候选；样本 0）。
+    /// 版本 ≥2 的尾 int32（原生 Add 使用的下一条目 ID 计数器）。
     /// `None` = 版本 ≤1 或前置停止。
     pub trailing_int32: Option<i32>,
     /// 停止原因；`None` = 体已完整消费。
@@ -280,33 +280,33 @@ pub struct LelpBody10_1 {
     pub key: u32,
     /// 体首 short 版本（样本 7）；有符号比较 >7 拒绝。
     pub version: u16,
-    /// ② String（样本 `[JZDH]`；标注表达式候选）。
+    /// ② String：`ILabelEngineLayerProperties::Expression`（样本 `[JZDH]`）。
     pub expression: String,
-    /// ③ short → -0x74（样本 -1），语义未定。
+    /// ③ short → -0x74：`IsExpressionSimple` 的原始 BOOL（样本 -1）。
     pub short_74: i16,
     /// ④ 版本 ≤1 的 short。`None` = 版本 ≥2（原生不读流；样本即此形态）。
     pub short_ver1: Option<i16>,
-    /// ⑤ double → -0x54（样本 0.0），语义未定（比例上限候选）。
+    /// ⑤ double → -0x54：`ILabelEngineLayerProperties::Offset`（样本 0.0）。
     pub double_54: f64,
-    /// ⑥ int32 → -0x60（样本 0），语义未定。
+    /// ⑥ int32 → -0x60：`LabelWhichFeatures` 原始枚举值（样本 0）。
     pub int32_60: i32,
-    /// ⑦ short → -0x5c（样本 -1），语义未定。
+    /// ⑦ short → -0x5c：`CreateUnplacedElements` 原始 BOOL（样本 -1）。
     pub short_5c: i16,
-    /// ⑧ short → -0x4c（样本 0），语义未定。
+    /// ⑧ short → -0x4c：`FeatureLinked` 原始 BOOL（样本 0）。
     pub short_4c: i16,
-    /// ⑨ short → -0x4a（样本 -1），语义未定。
+    /// ⑨ short → -0x4a：`UseOutput` 原始 BOOL（样本 -1）。
     pub short_4a: i16,
-    /// ⑩ int32 → -0x80（样本 0），语义未定。
+    /// ⑩ int32 → -0x80：`SymbolID`（样本 0）。
     pub int32_80: i32,
-    /// ⑪ double → -0x34（样本 0.0），语义未定。
+    /// ⑪ double → -0x34：`AnnotationMinimumScale`（样本 0.0）。
     pub double_34: f64,
-    /// ⑫ double → -0x3c（样本 0.0），语义未定。
+    /// ⑫ double → -0x3c：`AnnotationMaximumScale`（样本 0.0）。
     pub double_3c: f64,
-    /// ⑬ short → -0x48（样本 -1），语义未定。
+    /// ⑬ short → -0x48：`DisplayAnnotation` 原始 BOOL（样本 -1）。
     pub short_48: i16,
-    /// ⑭ String（样本 `默认`；标注类名候选）。
+    /// ⑭ String：`IAnnotateLayerProperties::Class`（样本 `默认`）。
     pub name: String,
-    /// ⑮ String（样本空串）。
+    /// ⑮ String：`IAnnotateLayerProperties::WhereClause`（样本空串）。
     pub string_b: String,
     /// ⑯ ITextSymbol 槽的分类（接线轮起 TextSymbol 新对象整体解析，见
     /// [`LelpTextSymbolSlot10_1`]；体内停止经 `stop` 透传）。
@@ -326,13 +326,14 @@ pub struct LelpBody10_1 {
     pub double_1c: Option<f64>,
     /// ㉒ int32 → -0x14。前置停止时 `None`。
     pub int32_14: Option<i32>,
-    /// ㉓ int32 → -0x2c。前置停止时 `None`。
+    /// ㉓ int32 → -0x2c：`Priority`。前置停止时 `None`。
     pub int32_2c: Option<i32>,
     /// ㉔ 版本 >2 的 IGraphicsContainer 槽分类。`None` = 版本 ≤2 或前置停止。
     pub container_slot: Option<ObjectEntry10_1>,
-    /// ㉕ 版本 ≥4 的 short → -0x46。`None` = 版本 ≤3 或前置停止。
+    /// ㉕ 版本 ≥4 的 short → -0x46：`AddUnplacedToGraphicsContainer` 原始 BOOL。
+    /// `None` = 版本 ≤3 或前置停止。
     pub short_46: Option<i16>,
-    /// ㉖ 版本 ≥5 的 int32 → -0x7c。`None` = 版本 ≤4 或前置停止。
+    /// ㉖ 版本 ≥5 的 int32 → -0x7c，语义未定。`None` = 版本 ≤4 或前置停止。
     pub int32_7c: Option<i32>,
     /// ㉗ 版本 ==6 的 short。`None` = 版本 ≠6 或前置停止。
     pub short_ver6: Option<i16>,
@@ -658,8 +659,8 @@ pub fn read_annotate_props_collection_body_10_1(
                 staged_table = pre_item_table;
             }
         }
-        // 版本 ≥2 的条目键 int32（前置停止时不读取）。
-        if stop.is_none() && (version as i16) >= 2 {
+        // 原生 Load 只为成功读取的非空对象消费集合 ID。
+        if stop.is_none() && version >= 2 && !matches!(entry.slot, AlpcEntrySlot10_1::Null) {
             entry.entry_key = Some(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
         }
         entries.push(entry);

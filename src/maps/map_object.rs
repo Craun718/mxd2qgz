@@ -411,10 +411,13 @@ pub struct PostBorderTail10_1 {
     pub short_32a: Option<(usize, u16)>,
     pub double_320_bits: Option<(usize, u64)>,
     pub short_328: Option<(usize, u16)>,
-    /// 版本 26 起的四个 IEnvelope 槽，仅消费空引用。
+    /// 版本 26 起的四个 IEnvelope 槽和已消费的新对象体。
     pub scale_envelopes: [Option<ObjectSlot10_1>; 4],
+    pub scale_envelope_bodies: [Option<Envelope10_1>; 4],
     pub scale_double_2b8_bits: Option<(usize, u64)>,
     pub scale_double_2d8_bits: Option<(usize, u64)>,
+    /// 版本 27 起的八个 4 字节原始成员。
+    pub scale_ints: [Option<(usize, u32)>; 8],
 }
 
 /// LabelPlacement.dll 的 BasicOverposterProperties 类标识。
@@ -1312,10 +1315,35 @@ pub fn read_map_suffix_10_1(
         if map_prefix.version >= 26 {
             for (index, stage) in [(0, 21), (1, 22), (2, 24), (3, 25)] {
                 if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: s }) if s == stage) {
-                    let slot = read_null_object_slot_10_1(&mut trial).ok().flatten();
-                    if slot.is_some() {
-                        post_border_tail.scale_envelopes[index] = slot;
-                        stop = Some(MapSuffixStop::AfterBorderTail { stage: stage + 1 });
+                    let mut candidate = trial.clone();
+                    let mut candidate_table = trial_table.clone();
+                    let offset = candidate.position();
+                    if let Ok(entry) = read_object_entry_10_1(&mut candidate, &mut candidate_table)
+                    {
+                        let body = match entry {
+                            ObjectEntry10_1::Null => Some(None),
+                            ObjectEntry10_1::BackReference { class_id, .. }
+                                if class_id == ENVELOPE_CLASS_ID =>
+                            {
+                                Some(None)
+                            }
+                            ObjectEntry10_1::NewObject { class_id, .. }
+                                if class_id == ENVELOPE_CLASS_ID =>
+                            {
+                                read_envelope_10_1(&mut candidate, max_bytes, &mut candidate_table)
+                                    .ok()
+                                    .map(Some)
+                            }
+                            _ => None,
+                        };
+                        if let Some(body) = body {
+                            post_border_tail.scale_envelopes[index] =
+                                Some(ObjectSlot10_1 { offset, entry });
+                            post_border_tail.scale_envelope_bodies[index] = body;
+                            trial = candidate;
+                            trial_table = candidate_table;
+                            stop = Some(MapSuffixStop::AfterBorderTail { stage: stage + 1 });
+                        }
                     }
                 }
                 if index == 1 {
@@ -1323,6 +1351,20 @@ pub fn read_map_suffix_10_1(
                 }
             }
             next_raw!(scale_double_2d8_bits, 26, 8, u64);
+        }
+        if map_prefix.version >= 27 {
+            for index in 0..8 {
+                let stage = 27 + index as u8;
+                if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: s }) if s == stage) {
+                    let mut candidate = trial.clone();
+                    let offset = candidate.position();
+                    if let Ok(value) = candidate.read_u32_le() {
+                        post_border_tail.scale_ints[index] = Some((offset, value));
+                        trial = candidate;
+                        stop = Some(MapSuffixStop::AfterBorderTail { stage: stage + 1 });
+                    }
+                }
+            }
         }
     }
     let stop = stop.unwrap_or(MapSuffixStop::AfterBookmarks);
