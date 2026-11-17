@@ -6,7 +6,7 @@
 
 重新计算 `temp/agent-fdo-open/cab1/AnnoLayer.dll.6BF03936_8AC4_4632_8FB2_A6A34A19655A` 的 SHA-256 为 `b487f3e0dc0e70dbc4b75f72eb6dcd8d5521eb422dbea6e3b2e201489a2d33a5`；PE Machine `0x14c`、ImageBase `0x6b180000`、固定版本资源 `10.1.0.3035`，与 [既有 10.1 基线](arcmap-10.1-fdo-open-points.md)一致。静态 VA 仅适用于该文件。esriCarto 类型库提取物 `carto.tlb` 重算 SHA-256 `8a70f4094c85b966ce0b0129ad7fa3d9562269c73f87e4f70cbc78c75775b578`，与 10.1 介质基线一致；利用既有 `ITypeLib` 类型名/IID 清单，未能重新枚举其方法。GeoDatabase 的既有类型清单所用 `.olb` 和提取类型库重算 SHA-256 分别为 `09b741f2627633d36b67985e175632055fe6c5b8cd1000484acc3007f5917f9d` 和 `92634979daa3ed0008b36d152e1fdf39cba04944f6bc7bbb5ea4c786bb44bb9a`；本轮未独立重新核对其 CAB 来源，该类型名仅作辅助。哈希和版本资源不构成签名认证或运行证明。
 
-复用先前隔离反编译，重新以 PE 字节、objdump 指令及隔离 pyghidra/Ghidra 12.2、JDK 25 反编译核对调用点、查询辅助和目标函数。独立 REA 6.9.0 CLI 指向上述 DLL，超时取消，未取得可用反编译结果；按要求改在仓库 `temp/terra-nextpass-fdo/` 独立 TMPDIR、配置及新项目中用 `GHIDRA_INSTALL_DIR=/opt/ghidra` 的 pyghidra，没有切换共享 REA 目标。独立 Wine 在默认沙箱因套接字 bind 被拒；隔离前缀重试未获得类型库成员输出，不把它当作成功枚举。反编译变量类型和不可达块警告不作为调用约定的唯一证据，关键处按汇编复核。
+复用先前隔离反编译，重新以 PE 字节、objdump 指令及隔离 pyghidra/Ghidra 12.2、JDK 25 反编译核对调用点、查询辅助和目标函数。独立 Ghidra 桥接工具 6.9.0 CLI 指向上述 DLL，超时取消，未取得可用反编译结果；按要求改在仓库 `temp/terra-nextpass-fdo/` 独立 TMPDIR、配置及新项目中用 `GHIDRA_INSTALL_DIR=/opt/ghidra` 的 pyghidra，没有切换共享 Ghidra 桥接工具 目标。独立 Wine 在默认沙箱因套接字 bind 被拒；隔离前缀重试未获得类型库成员输出，不把它当作成功枚举。反编译变量类型和不可达块警告不作为调用约定的唯一证据，关键处按汇编复核。
 
 ## 可确认的接收者与实际操作
 

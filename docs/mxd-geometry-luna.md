@@ -4,8 +4,8 @@
 
 ## 方法与证据边界
 
-- 本轮通过 REA/Ghidra 12.1.4 打开提取物 `Geometry.dll.F84366F9_C0B7_4267_A16E_D48D9E6DD261`；REA 报告 PE x86，SHA-256 `c57d154f207ee249adc69136574cf274771370ff93a15eb0be5682ce828f0d47`。目标身份与 `docs/arcmap-10.1-geometry.md` 和 `docs/arcmap-10.1-pcs-geometry-slots.md` 所记一致。
-- 直接分析 `FUN_7197fc50`（REA Evidence `ev_cbecb6b16ba35e765699cadc9a8d83b8d7fc563278c3bb35194cf7153fa72304`）。反编译观察表明该函数消费内部记录类型并写入 shape 对象；类型 0 进入空几何捷径，Polyline/Polygon 的类分支以 3/5 作为空形状回填标记。它没有从这些观察推出公开 `esriGeometryType` 枚举映射。
+- 本轮通过 Ghidra（经桥接工具） 12.1.4 打开提取物 `Geometry.dll.F84366F9_C0B7_4267_A16E_D48D9E6DD261`；Ghidra 桥接工具 报告 PE x86，SHA-256 `c57d154f207ee249adc69136574cf274771370ff93a15eb0be5682ce828f0d47`。目标身份与 `docs/arcmap-10.1-geometry.md` 和 `docs/arcmap-10.1-pcs-geometry-slots.md` 所记一致。
+- 直接分析 `FUN_7197fc50`（Ghidra 桥接工具 Evidence `ev_cbecb6b16ba35e765699cadc9a8d83b8d7fc563278c3bb35194cf7153fa72304`）。反编译观察表明该函数消费内部记录类型并写入 shape 对象；类型 0 进入空几何捷径，Polyline/Polygon 的类分支以 3/5 作为空形状回填标记。它没有从这些观察推出公开 `esriGeometryType` 枚举映射。
 - 本研究是静态原生分析，非 ArcMap 运行时调用观察。函数伪代码是反编译表示，不等同源代码；间接调用的完整目标及运行期对象装配仍可能未知。参考 MXD 样本及既有反编译记录只作辅助，未将无实例解释成格式分支不存在。
 
 ## 对指定 TODO 项的裁定
@@ -22,7 +22,7 @@
 | 268 | 原生 `AfStreamRead` 返回 `S_FALSE` 时进入空流捷径，并调用内嵌接口后原样返回。当前读取器不实现这一返回状态；没有捕获真实流/运行结果。 | 未闭合，当前为明确不支持。 |
 | 269 | 本行属于 Geometry 解析之外的后继段版本分支；本轮没有从其实际拥有者取得完整静态证据，亦未发现可独立安全添加的实现。 | 未闭合；不据相邻版本门推断。 |
 | 270 | “TimeData 族四段”未由本轮几何分析覆盖。样本经过 `>=0x20` 门并不能证明低版本布局。 | 未闭合；需其拥有者的 Load 分支证据及合适输入。 |
-| 271 | PropertySet 版本 0 是独立对象体分支；本轮未对该对象的 10.1 Load 做 REA 复核。 | 未闭合。 |
+| 271 | PropertySet 版本 0 是独立对象体分支；本轮未对该对象的 10.1 Load 做 Ghidra 桥接工具 复核。 | 未闭合。 |
 | 272 | Envelope 当前读取器/研究明确只支持版本 1/2/3，静态版本 0 行为未证；本轮没有足够新证据改变此边界。 | 未闭合。 |
 | 273–274 | FeatureDatasetName 和 TopologyName 的版本 0 在 10.1 Load 的有符号 `version > 1` 拒绝门下可通过，现有读取器允许该版本；Save 恒写 1。当前无真实版本 0 流实例。 | 解析门已实现；真实分支样本条目仍开放。 |
 

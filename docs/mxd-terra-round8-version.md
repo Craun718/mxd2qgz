@@ -13,7 +13,7 @@
 | afUILib.dll | `35d41cf850cbe13c202cca84441cee05db487bc54421ab9d5012dc0b1cad7da4` | `AfUI.DLL` |
 | PageLayout.dll | `ba9e71f42e00d06a2311a1492fc3d1aeca544c96d9ebd3926140a11b8de9d69f` | `PageLayout.DLL` |
 
-版本资源是文件声明，摘要是字节身份，均不证明签名或运行版本。数据源及工作输出在忽略目录 `temp/terra-round8-version/`，可能包含本机路径，分享前应脱敏。复核 PE RTTI、导入表、跳转表、GUID 字节和 objdump 指令，另用隔离 pyghidra / Ghidra 12.2、JDK 25，在先前 ArcMap 工程的本轮副本中反编译；伪代码不是源码。独立 REA 6.9.0 CLI 使用仓库专用 TMPDIR，任务 `7b387cf4-8f73-458f-8cda-97f5ca07762f` 在导入分析 330 秒后报告 `provider_timeout`，未产出反编译，不将超时误记为 Unix socket 失败；未切换共享 REA。既有 PageLayout REA 导出只作定位辅助。
+版本资源是文件声明，摘要是字节身份，均不证明签名或运行版本。数据源及工作输出在忽略目录 `temp/terra-round8-version/`，可能包含本机路径，分享前应脱敏。复核 PE RTTI、导入表、跳转表、GUID 字节和 objdump 指令，另用隔离 pyghidra / Ghidra 12.2、JDK 25，在先前 ArcMap 工程的本轮副本中反编译；伪代码不是源码。独立 Ghidra 桥接工具 6.9.0 CLI 使用仓库专用 TMPDIR，任务 `7b387cf4-8f73-458f-8cda-97f5ca07762f` 在导入分析 330 秒后报告 `provider_timeout`，未产出反编译，不将超时误记为 Unix socket 失败；未切换共享 Ghidra 桥接工具。既有 PageLayout Ghidra 桥接工具 导出只作定位辅助。
 
 ## 命令到非零参数分支
 

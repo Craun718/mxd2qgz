@@ -4,9 +4,9 @@
 
 ## 取证基线
 
-- ArcMap 目标身份沿用 [10.1 原生基线](arcmap-10.1-native-baseline.md)：Desktop `Setup1.cab` 提取的目标组件为 x86、版本资源 10.1.0.3035；FeatureLayer.dll 与 LabelPlacement.dll 文件 SHA-256 分别为 `2baf8706…98bb60`、`8415f63c…35ea3d`。本轮复核的 REA 输入哈希与文档登记一致。版本资源与哈希是文件身份，不是运行行为证据。
-- 对 LabelPlacement.dll 的定点 REA 反编译 `0x785468c0`（LELP::Load）再次确认：版本 short 后依序读取 String、short、double、int32、short×3、int32、double×2、short、String×2、四个 LoadObject、double×2、int32×2；版本 >2 的 IGraphicsContainer 槽以及版本 ≥4/≥5/==6 的尾字段按门读取。REA 未加载可用 PDB 名称，故类名字符串搜索为空不能作为实现类不存在的负证据。该函数输出是 10.1.0.3035 文件上的静态反编译，不是目标程序运行观察。
-- 对 FeatureLayer.dll 的定点 REA 复核 `FeatureLayer::Load 0x6f6e9940` 与 `Save 0x6f6eb1b0` 调用序。Load 在 ㊱ 门内直接调用 `CInternalLayerBase::ReadPreJoinDefExpressions`，之后第一个显式读取是 `+0x2c0` 的 4 字节；Save 对称地直接调用 `WritePreJoinDefExpressions`，之后第一个显式写出也是 `+0x2c0` 的 4 字节。现有 helper 反编译记录为 `[int32 count][count × (String + String)]`。调用点没有另外读写 6 字节。
+- ArcMap 目标身份沿用 [10.1 原生基线](arcmap-10.1-native-baseline.md)：Desktop `Setup1.cab` 提取的目标组件为 x86、版本资源 10.1.0.3035；FeatureLayer.dll 与 LabelPlacement.dll 文件 SHA-256 分别为 `2baf8706…98bb60`、`8415f63c…35ea3d`。本轮复核的 Ghidra 桥接工具 输入哈希与文档登记一致。版本资源与哈希是文件身份，不是运行行为证据。
+- 对 LabelPlacement.dll 的定点 Ghidra 桥接工具 反编译 `0x785468c0`（LELP::Load）再次确认：版本 short 后依序读取 String、short、double、int32、short×3、int32、double×2、short、String×2、四个 LoadObject、double×2、int32×2；版本 >2 的 IGraphicsContainer 槽以及版本 ≥4/≥5/==6 的尾字段按门读取。Ghidra 桥接工具 未加载可用 PDB 名称，故类名字符串搜索为空不能作为实现类不存在的负证据。该函数输出是 10.1.0.3035 文件上的静态反编译，不是目标程序运行观察。
+- 对 FeatureLayer.dll 的定点 Ghidra 桥接工具 复核 `FeatureLayer::Load 0x6f6e9940` 与 `Save 0x6f6eb1b0` 调用序。Load 在 ㊱ 门内直接调用 `CInternalLayerBase::ReadPreJoinDefExpressions`，之后第一个显式读取是 `+0x2c0` 的 4 字节；Save 对称地直接调用 `WritePreJoinDefExpressions`，之后第一个显式写出也是 `+0x2c0` 的 4 字节。现有 helper 反编译记录为 `[int32 count][count × (String + String)]`。调用点没有另外读写 6 字节。
 - 样本 `/Maps` 字节（`temp/r6-maps.bin`）在 ㊱ 附近为：前置 short @`0x14ec`=`-1`；计数 @`0x14ee..0x14f2`=`0`；六个零字节 @`0x14f2..0x14f8`；`+0x2c0` int32 @`0x14f8..0x14fc`=`0`；㊲ short×3 @`0x14fc..0x1502`=`[-1,0,-1]`。解析器为到达样本后续字段而保留这六字节，但读写侧证据不能解释其来源。
 - 目前工作区没有 ArcMap 10.1 运行观察；主代理执行的本轮基线 `cargo fmt --check`、`cargo test` 已通过，样本 `parse` 停在 `0x1622`。本轮未等待或重复全局测试。以下凡要求另一真实 MXD 或目标软件运行的项目均标出剩余缺口。
 
@@ -21,7 +21,7 @@
 | 149 | 部分 | LELP ㉖ 槽当前按 `read_symbol_slot_full_10_1` 可识别类分派，TextSymbol 分派也已接入；未知类安全停止。现有研究列出的 17 类闭合集没有建立“10.1 所有 ISymbol 实现”全集，本轮基线已完整消费该样本中的已支持 LELP 链，不能据此外推其他实现类。剩余：接口实现全集与本样本外的真实槽形态。 |
 | 215 | 部分 | FDO 旧加载器的静态 `FUN_6b197dc0` 字段序及请求 IID 已记录：ILayer、ISpatialReference、IElementCollection2、IName、IFeatureRenderer、IColor。它们的结构角色可按请求接口说明，但 `ISpatialReference`/渲染器/颜色等旧分支内具体业务状态未从旧版本样本或运行取证定名。样本 FDO 版本 11 不走旧分支。 |
 | 216 | 部分 | ALPC 静态 Load 结构为版本、计数、IAnnotateLayerProperties 条目（版本 ≥2 带条目 int32）及尾 int32；早期读取器曾在内层 LELP TextSymbol 槽停止；本轮基线已越过该点，现有样本走查确认 ALPC 尾 int32=1，但字段业务名称仍未闭合。表达式/类名/OID 等是字段候选，不能从字符串内容单独定名。剩余：接口属性映射或运行时行为证据。 |
-| 217 | 部分 | LELP::Load 新鲜 REA 复核了字段与对象槽的精确顺序，样本提供 String `[JZDH]`、`默认` 和若干标量值；这些值不能唯一映射到公开属性。候选“表达式/类名/可见性”保持候选，不据此改字段名或业务模型。剩余：类型库属性访问器与成员偏移的静态对应，或运行取证。 |
+| 217 | 部分 | LELP::Load 新鲜 Ghidra 桥接工具 复核了字段与对象槽的精确顺序，样本提供 String `[JZDH]`、`默认` 和若干标量值；这些值不能唯一映射到公开属性。候选“表达式/类名/可见性”保持候选，不据此改字段名或业务模型。剩余：类型库属性访问器与成员偏移的静态对应，或运行取证。 |
 | 218 | 部分 | ETM 宿主已由扩展段与 EditTemplate 新对象序列定位。样本 ETM 体版本 2、计数 1，末尾字节现有走查更正为 `0x01`（不是早期报告的 `0x00`）；本轮同步更正 `annotate_props.rs` 模块文档。该字节语义仍未知，ETM/模板其他标量与字符串的业务成员映射也未闭合。 |
 | 219 | 部分 | FeatureIDSet 体为版本 short、int32 count、count 个 int32；类身份与 IFeatureIDSet 接口已由 CLSID/类型库确认，Save 以集合迭代器写出整数，故 OID 是强候选。样本 count=0，没有元素值佐证其范围、符号或实际 ID 语义。剩余：非空选择集样本或 ArcMap 运行观察。 |
 | 238 | 部分（冲突定位已收窄） | 本轮重新反编译读/写调用点，确认 FeatureLayer::Load/Save 都在 PreJoin helper 后直接读/写 `+0x2c0`，调用点无六字节操作；helper 既有反编译也只含 count 与成对字符串。因此已排除“六字节是已知 PreJoin 字段/写出字段”。但样本确有 `0x14f2..0x14f8` 六个零字节，静态写侧不能解释它们如何进入样本。源码保留兼容字段名 `reserved`，注释限定为样本 count=0 下观察到的未知字节；不因命名或保留策略声称其为 PreJoin 字段。非空 count 的间隙位置也没有样本佐证。仍需含非空 PreJoin 的样本、完整写侧对象状态/生成过程，或目标运行取证来裁定来源；当前不能宣称字节来源闭合。 |

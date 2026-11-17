@@ -13,7 +13,7 @@
 | afUILib | `AfUI.DLL` | `35d41cf850cbe13c202cca84441cee05db487bc54421ab9d5012dc0b1cad7da4` | `0x10000000` |
 | GdbCore | `GdbCore.DLL` | `ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4` | `0x708d0000` |
 
-依据 PE 原文件字节、`objdump` x86 指令，交叉参照已有 REA 6.9.0/Ghidra 12.2 AfCore 全函数导出（`temp/rea-decompile-20261117/AfCore/functions/`，伪代码不是原始源码）。IID 在映像中的扫描只用于定位候选，单个 QI 调用既不是接口实现的证明，也不是宿主存在性的证明；独立 CLI 和隔离补证的结果见文末。
+依据 PE 原文件字节、`objdump` x86 指令，交叉参照已有 Ghidra 桥接工具 6.9.0/Ghidra 12.2 AfCore 全函数导出（`temp/rea-decompile-20261117/AfCore/functions/`，伪代码不是原始源码）。IID 在映像中的扫描只用于定位候选，单个 QI 调用既不是接口实现的证明，也不是宿主存在性的证明；独立 CLI 和隔离补证的结果见文末。
 
 ## 对旧辅助函数归属的修正
 
@@ -46,7 +46,7 @@ GdbCore `0x709fa3c0` 的唯一已分析调用者为 `0x709fa494`，传入值来�
 
 本轮未改 Rust：该模块没有流上下文与会话引用表参数，不能按非零 CLSID 猜测对象体长度，也不能将普通流的无键头套用于带键 ObjectStream；现有未知类停止行为保留。缺少实际类与流上下文时，构造一个“非空对象成功”测试会把假设写成规则。
 
-独立 REA 6.9.0 CLI 指向 AfCore、JDK 25、Ghidra 12.2，使用仓库内独占 `TMPDIR`；启动分析达到 330 秒期限后返回 `provider_timeout`，没有产生本轮反编译证据。随后使用 `GHIDRA_INSTALL_DIR=/opt/ghidra`、独立配置和复制工程运行 pyghidra，初次因 X11 不可用失败，设置 Java headless 后成功取得上述 GdbCore 函数及引用。没有切换共享 REA 目标。忽略目录中的原始诊断可能含本机路径，分享前须脱敏。
+独立 Ghidra 桥接工具 6.9.0 CLI 指向 AfCore、JDK 25、Ghidra 12.2，使用仓库内独占 `TMPDIR`；启动分析达到 330 秒期限后返回 `provider_timeout`，没有产生本轮反编译证据。随后使用 `GHIDRA_INSTALL_DIR=/opt/ghidra`、独立配置和复制工程运行 pyghidra，初次因 X11 不可用失败，设置 Java headless 后成功取得上述 GdbCore 函数及引用。没有切换共享 Ghidra 桥接工具 目标。忽略目录中的原始诊断可能含本机路径，分享前须脱敏。
 
 ## 可勾范围及验证限制
 

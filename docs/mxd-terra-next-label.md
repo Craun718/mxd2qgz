@@ -4,7 +4,7 @@
 
 ## 新证据：PageLayout 实现图形容器
 
-复核本机 `temp/pseudocode/pagelayout/functions/0x7b6ccaf0.c`：REA/Ghidra 12.1.4 伪代码显示同一 PageLayout 构造过程在对象 +0x4c 安装 `IGraphicsContainer::vftable`，随后覆盖为 PageLayout 自身虚表。此前 [页面研究](mxd-round3-line-element-20261117.md) 从 RTTI 和持久化虚表 `0x7b71fa34` 定位 GetClassID `0x7b6e4e00`、Load `0x7b6e4e30`。本轮复读 GetClassID 伪代码，写出的 CLSID 为 `{DD94D76E-836D-11D0-87EC-080009EC732A}`。本轮重算输入 PageLayout.dll 的 SHA-256 `ba9e71f42e00d06a2311a1492fc3d1aeca544c96d9ebd3926140a11b8de9d69f`，与导出及版本 10.1.0.3035 基线一致。
+复核本机 `temp/pseudocode/pagelayout/functions/0x7b6ccaf0.c`：Ghidra（经桥接工具） 12.1.4 伪代码显示同一 PageLayout 构造过程在对象 +0x4c 安装 `IGraphicsContainer::vftable`，随后覆盖为 PageLayout 自身虚表。此前 [页面研究](mxd-round3-line-element-20261117.md) 从 RTTI 和持久化虚表 `0x7b71fa34` 定位 GetClassID `0x7b6e4e00`、Load `0x7b6e4e30`。本轮复读 GetClassID 伪代码，写出的 CLSID 为 `{DD94D76E-836D-11D0-87EC-080009EC732A}`。本轮重算输入 PageLayout.dll 的 SHA-256 `ba9e71f42e00d06a2311a1492fc3d1aeca544c96d9ebd3926140a11b8de9d69f`，与导出及版本 10.1.0.3035 基线一致。
 
 这证明 PageLayout 是一个静态可识别的 IGraphicsContainer 实现候选，且具有持久化实现；**不证明 LELP 实际保存过该类**。页面 Load 只解析了元素循环前缀及部分元素，其完整对象体尚未闭合，不能将此类直接接入 LELP 的容器槽。`tests/terra_next_label.rs` 用构造体检查该 CLSID 遇到未知体时在对象头停止、不登记键，以及截断时回滚；这不是目标软件存储该槽的证据。
 
@@ -23,6 +23,6 @@
 
 ## 验证
 
-`cargo test --test terra_next_label` 两项通过；与 `dataset_name`、`fdo_legacy`、`terra_fdo_legacy`、`round3_labels_sample` 一起运行共 38 项通过。后两项标注样本测试有真实参考文件，但不构成目标软件运行验证。没有改动解析器或公共入口。本轮未启动新 REA 实例，使用已保留的隔离导出；未打开 ArcMap/QGIS。
+`cargo test --test terra_next_label` 两项通过；与 `dataset_name`、`fdo_legacy`、`terra_fdo_legacy`、`round3_labels_sample` 一起运行共 38 项通过。后两项标注样本测试有真实参考文件，但不构成目标软件运行验证。没有改动解析器或公共入口。本轮未启动新 Ghidra 桥接工具 实例，使用已保留的隔离导出；未打开 ArcMap/QGIS。
 
 全仓 `cargo test` 通过，包含既有忽略项；`cargo fmt --check` 因并行新增的 `tests/terra_next_geometry.rs` 格式差异失败，本组没有修改该文件。`rustfmt --check --edition 2024 tests/terra_next_label.rs` 通过。

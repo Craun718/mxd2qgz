@@ -6,7 +6,7 @@
 
 PE 固定版本资源和 Machine 复核：FeatureLayer、AnnoLayer、RasterLayer 均为 x86 `0x14c`，版本 `10.1.0.3035`。SHA-256 分别为 `2baf870615bb75b6f30ccea173ba4303fdd0b1a6571e11b9197c5fcf7298bb60`、`b487f3e0dc0e70dbc4b75f72eb6dcd8d5521eb422dbea6e3b2e201489a2d33a5`、`9262bc1a05d4ca4cf65613682d3ade93b70c0112cf1caf3e21ea1b168f359de6`，与既有基线一致；哈希及资源声明不验证签名。
 
-隔离 REA 6.9.0 CLI 以 JDK 25、仓库专用 TMPDIR 对 AnnoLayer `0x6b1a1890` 发起 run `301df0d3-e94e-4ebd-9eb4-625d1589202a`；Ghidra 12.2 导入后 Unix socket `Operation not permitted`，无反编译结果。随后使用仓库隔离 pyghidra/Ghidra 12.2、JDK 25：FeatureLayer 和 AnnoLayer 复制第九轮工程后打开，RasterLayer 独立导入；对指定入口建函数、反编译，并以 PE 数据和 `objdump` 复核比较常量与控制流。没有切换共享 REA 目标。原始日志、汇编及伪代码在忽略目录 `temp/terra-round10-mask/`，可能含本机路径。
+隔离 Ghidra 桥接工具 6.9.0 CLI 以 JDK 25、仓库专用 TMPDIR 对 AnnoLayer `0x6b1a1890` 发起 run `301df0d3-e94e-4ebd-9eb4-625d1589202a`；Ghidra 12.2 导入后 Unix socket `Operation not permitted`，无反编译结果。随后使用仓库隔离 pyghidra/Ghidra 12.2、JDK 25：FeatureLayer 和 AnnoLayer 复制第九轮工程后打开，RasterLayer 独立导入；对指定入口建函数、反编译，并以 PE 数据和 `objdump` 复核比较常量与控制流。没有切换共享 Ghidra 桥接工具 目标。原始日志、汇编及伪代码在忽略目录 `temp/terra-round10-mask/`，可能含本机路径。
 
 RTTI 按最终虚表前一指针取 COL，COL `+0x10` 取类层级，再取层级 `+8/+0xc` 的数量和 BCD 数组；BCD 类型名在类型描述符 `+8`，同时检查 `mdisp/pdisp`。这只核对编译器记录的基类，不排除聚合或 QI 委派。目标 IID 为 `ILayerMasking {536427DA-5354-491D-AE92-ABEBAA8BB05B}`。
 

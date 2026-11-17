@@ -4,7 +4,7 @@
 
 ## 文件身份、环境与依据
 
-本轮对 `temp/arcgis101-bin/` 的 AfCore.dll 和 SystemCore.dll 重算 SHA-256，分别为 `031858c414c0105b3b978c754f3d0f31ba1d98f15d44ff15b1589c9adcc47c17`、`f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`，与 [10.1 基线](arcmap-10.1-native-baseline.md)和[第四轮](mxd-round4-version-object-20261117.md)的身份及 10.1.0.3035 版本记录一致；本轮哈希确认文件未变，不独立证明产品版本或发行签名。已复读保留的 REA/Ghidra 12.1.4 导出 `temp/pseudocode/AfCore/functions/0x68a7af70.c`、`0x68a7b490.c`、`0x68a7b530.c`；反编译不是原始代码，其中 `0x68a7b530` 明示删除不可达块，不能据此证明完整接口传播。本轮未发起新 REA 会话：`/tmp` 剩余约 211 MiB，既有[取证记录](mxd-open-streams-20261116.md)记录 Ghidra 曾因 `/tmp` ENOSPC 失败；没有删除共享文件或重复该资源密集调用。
+本轮对 `temp/arcgis101-bin/` 的 AfCore.dll 和 SystemCore.dll 重算 SHA-256，分别为 `031858c414c0105b3b978c754f3d0f31ba1d98f15d44ff15b1589c9adcc47c17`、`f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`，与 [10.1 基线](arcmap-10.1-native-baseline.md)和[第四轮](mxd-round4-version-object-20261117.md)的身份及 10.1.0.3035 版本记录一致；本轮哈希确认文件未变，不独立证明产品版本或发行签名。已复读保留的 Ghidra（经桥接工具） 12.1.4 导出 `temp/pseudocode/AfCore/functions/0x68a7af70.c`、`0x68a7b490.c`、`0x68a7b530.c`；反编译不是原始代码，其中 `0x68a7b530` 明示删除不可达块，不能据此证明完整接口传播。本轮未发起新 Ghidra 桥接工具 会话：`/tmp` 剩余约 211 MiB，既有[取证记录](mxd-open-streams-20261116.md)记录 Ghidra 曾因 `/tmp` ENOSPC 失败；没有删除共享文件或重复该资源密集调用。
 
 仓库参考样本为 `samples/测试底图.mxd`。已提取的两版介质流分别位于 `temp/arcmap101-media-streams/` 和 `temp/arcmap108-media-streams/`；既有[介质样本清单](mxd-install-media-samples-20261117.md)记录 66 与 68 个 MXD/MXT、102 份不同内容，磁盘版本覆盖 8.1、9.2、9.3、10.0、10.1，且各样本的 `/Version` 不代表对应版本对象体已逐字段闭合。本轮确认两目录及其流文件存在，未重新全量分析样本，也未用字节扫描宣称发现对象边界或 v0 体。
 
@@ -21,7 +21,7 @@
 | 110 VariantStream 对象体 | 10.1 的 VT 9/13 走 LoadObject；是否带键取决于传入流 QI 到 IObjectStream。已暂存的 `read_value_10_1` 支持标量及零 GUID 空对象，非零对象明确拒绝。 | **否**。具体对象类负责各自的体，非零类的完整体和真实文件字段归属尚缺；不能据空对象或合成数据外推。 |
 | 111 VariantStream 引用表 | ObjectStream 的 IPersistVariant 分支创建包装流；[第四轮](mxd-round4-version-object-20261117.md)确认 LoadObject 的 QI 命中走 +0x44，而嵌套包装的 QI 传播仍需逐层证明。 | **否**。[另一份对象流续研](mxd-parse-agent-object-stream-20261117.md)主张嵌套包装可 QI 到同一表，但未给出足以独立核查全部包装 QueryInterface 槽及对象身份的链条；需汇编和运行/真实文件对照，也需明确 10.8 范围。 |
 | 112 已勾选背景 | 已有显式 10.8 Variant 前缀及错误边界。 | 已勾选，不视为 10.1 非空对象或真实文档验证。 |
-| 113 SimpleSaveObject 委派 | 第四轮确认 10.1 `SaveObject` 在 QI IObjectStream 成功时走 +0x40，否则走 `SimpleSaveObject`；`LoadObject` 对应 +0x44 或普通流。既有 REA `0x68a7af70` 显示普通及递归/包装路径；`0x68a7b530` 伪代码删除多个块。 | **否**。续研对 10.1 写入口与 QI 有更强结论，但包装递归各分支的参数、失败与读取对应关系尚未完整逐指令核对，10.8 亦未闭合；不能把写入口局部闭合升级为整个对象读写委派链完成。 |
+| 113 SimpleSaveObject 委派 | 第四轮确认 10.1 `SaveObject` 在 QI IObjectStream 成功时走 +0x40，否则走 `SimpleSaveObject`；`LoadObject` 对应 +0x44 或普通流。既有 Ghidra 桥接工具 `0x68a7af70` 显示普通及递归/包装路径；`0x68a7b530` 伪代码删除多个块。 | **否**。续研对 10.1 写入口与 QI 有更强结论，但包装递归各分支的参数、失败与读取对应关系尚未完整逐指令核对，10.8 亦未闭合；不能把写入口局部闭合升级为整个对象读写委派链完成。 |
 | 120 其他版本字符串 | 10.1、显式 10.8 有局部字符串路径；介质包括更早磁盘版本。 | **否**。仅凭 `/Version` 和字符串扫描不能证明历史版本各字段编码；需各版本二进制、具体调用点及样本。 |
 | 121 其他版本对象属性 | 10.1 类体有局部分支与对象版本门；介质包含旧版头部。 | **否**。对象字段按类和版本变化，历史磁盘版本不证明其各类属性规则；需逐版本逐类 Load/Save 与实档。 |
 | 122 已勾选背景 | 10.1 键序与回引的局部静态证据和分类器已有记录。 | 已勾选，不代表重复登记运行场景已观察。 |

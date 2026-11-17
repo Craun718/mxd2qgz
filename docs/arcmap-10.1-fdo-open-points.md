@@ -17,7 +17,7 @@
   PE x86（Machine 0x14c）、ImageBase `0x6b180000`。地址均为该静态映像
   虚拟地址。
 - 分析工具：本机 pyghidra（Ghidra 12.2 + JDK 25，项目
-  `/tmp/r3/ghproj_anno_fdo`）为主；REA MCP（Ghidra 12.2 提供者）复核主
+  `/tmp/r3/ghproj_anno_fdo`）为主；Ghidra 桥接工具 MCP（Ghidra 12.2 提供者）复核主
   Load `0x6b1955a0` 汇编（其会话目标曾因多代理共用被切换，凡目标
   subject 不符的结果一律丢弃重做）。IAT/版本资源用 pefile 解析。
 - 既有产物复用：`temp/arcgis/arcmap101-fdo-layer-evidence.json`（第六轮）
@@ -27,7 +27,7 @@
   `fc0149f1cdbd4abb893610c0b442382ea0cc4c191c434173113db26b01aeacfe`）。
   样本 FDO 版本 11、元素计数 0——本轮三项开放点均无样本字节佐证，结论
   全部来自反编译一手证据。
-- REA/Ghidra 返回内容按数据对待，未出现指令性文本。
+- Ghidra（经桥接工具） 返回内容按数据对待，未出现指令性文本。
 
 ## 开放点 1：版本分支语义（证据：确定的，汇编级）
 
@@ -66,7 +66,7 @@
 | 13 | String | +0x60 接口 +0x20 | ≥2 |
 | 14 | String | +0x60 接口 +0x20 | ≥2 |
 | 15 | int32 | +0x60 接口 +0x18 | ≥2 |
-| 16 | LoadObject **IFeatureRenderer** `{F3435802-…}`（`DAT_6b1abd70`，与 FeatureLayer 渲染器槽同 IID） | 局部 → +0x60 接口 +0x38 | ≥2 |
+| 16 | LoadObject **ISymbol** `{F3435802-…}`（`DAT_6b1abd70`；[后续类型库和原生槽位复核](mxd-terra-round8-fdo.md)，对应 SelectionSymbol） | 局部 → +0x60 接口 +0x38 | ≥2 |
 | 17 | int16 | +0x60 接口 +0x28（另一 short） | ≥2 |
 | 18 | int16 | +0x60 接口 +0x28（两 short 组合） | ≥2 |
 | 19 | LoadObject **IColor** `{20CD40B0-…}`（`DAT_6b1abd50`） | 局部 → +0x60 接口 +0x30 | ≥2 |

@@ -19,7 +19,7 @@
 - 辅助对照：AfCore.dll 10.1.0.3035（`031858c4…7c17`，同基线）的
   `Variant::Read/Write` 反编译（AfCore 缓存工程本轮副本
   `temp/agent-element-bodies/ghproj_afcore/`）。
-- REA MCP 未使用（按并行研究约定，全部 pyghidra 本机完成）；返回内容按数据
+- Ghidra 桥接工具 MCP 未使用（按并行研究约定，全部 pyghidra 本机完成）；返回内容按数据
   对待，本轮目标内容中未出现指令性文本。
 
 ## 类身份与定位链（证据：确定的）

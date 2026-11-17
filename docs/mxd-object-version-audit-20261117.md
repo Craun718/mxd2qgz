@@ -1,6 +1,6 @@
 # MXD 对象流与版本开放项核对（2026-11-17）
 
-本表使用任务指定的 TODO **原行号**，不修改 TODO。证据为既有 REA 静态记录，
+本表使用任务指定的 TODO **原行号**，不修改 TODO。证据为既有 Ghidra 桥接工具 静态记录，
 不是本轮 ArcMap 运行观察；10.1 目标的身份及 SHA-256 见
 [对象流记录](mxd-parse-agent-object-stream-20261117.md)和
 [版本记录](mxd-version-luna.md)。10.8 另行标注，不把它当作 10.1 证据。
@@ -71,7 +71,7 @@ ArcMap 10.1 运行会话、许可证或受控旧版保存过程，因此未运�
 
 ## 范围和限制
 
-对象流细节、10.1 输入摘要和 REA 地址见
+对象流细节、10.1 输入摘要和 Ghidra 桥接工具 地址见
 [对象流记录](mxd-parse-agent-object-stream-20261117.md)；PropertySet 原生
 虚表、字段序及严格子集见 [PropertySet 记录](arcmap-10.1-property-set.md)。
 既有对象流记录对 Variant 包装的 QI 传播和普通流零 GUID 分支存在需要进一步

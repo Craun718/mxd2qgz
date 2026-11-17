@@ -4,7 +4,7 @@
 
 本轮针对 [上轮待查](mxd-terra-next-page.md)的三个地址重新追索持久化虚表，不修改 TODO。`temp/agent-map-surround/Map.dll.6BF03936_8AC4_4632_8FB2_A6A34A19655A` 重算 SHA-256 `1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`；PE32 x86，ImageBase `0x793a0000`，版本资源声明 Esri Map DLL、FileVersion/ProductVersion `10.1.0.3035`、OriginalFilename `Map.DLL`。这是文件自述身份与摘要，不是签名或执行验证。地址均为该映像 VA。
 
-仓库独占 `temp/terra-integrate-page/` 中使用 JDK 25、Ghidra 12.2 / pyghidra 新建工程，重新反编译三个函数及三个跳板，产物为 `0x*.c`，再以 PE 指针、RTTI、objdump 指令和介质 `esri.clsid.ecfg` 交叉核对。未连接或修改共享 REA 服务；这是静态伪代码，不是原始源码或目标程序运行记录。脚本及输出可能包含本机路径，分享前需脱敏。
+仓库独占 `temp/terra-integrate-page/` 中使用 JDK 25、Ghidra 12.2 / pyghidra 新建工程，重新反编译三个函数及三个跳板，产物为 `0x*.c`，再以 PE 指针、RTTI、objdump 指令和介质 `esri.clsid.ecfg` 交叉核对。未连接或修改共享 Ghidra 桥接工具 服务；这是静态伪代码，不是原始源码或目标程序运行记录。脚本及输出可能包含本机路径，分享前需脱敏。
 
 ## 三个调用者：更正 ScaleLine 候选
 

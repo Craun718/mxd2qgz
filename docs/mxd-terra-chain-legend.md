@@ -6,7 +6,7 @@
 
 本轮重算 `temp/agent-map-surround/Map.dll.6BF03936_8AC4_4632_8FB2_A6A34A19655A` 的 SHA-256 为 `1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`；PE machine `0x14c`、ImageBase `0x793a0000`，固定版本资源为 `10.1.0.3035`，与前轮身份一致。这是文件自述和字节身份，不证明签名或运行状态。下列地址为该 PE 的静态映像 VA。
 
-前轮独立 REA CLI 的 Ghidra 桥接 Unix socket 因 `Operation not permitted` 失败，见前轮记录。本轮没有切换共享 REA 会话：使用 JDK 25、Ghidra 12.2 / pyghidra，复制前轮 Map 工程到独占 `temp/terra-chain-legend/`，设置仓库内独立 Java 临时目录、配置及缓存，重新反编译 Load、Save 和集合清理方法；同时从本轮重验的 PE 读取虚表、用 objdump 核查调用指令。Ghidra 伪代码不是原始源码；临时产物可能含本机路径，分享前须检查脱敏。
+前轮独立 Ghidra 桥接工具 CLI 的 Ghidra 桥接 Unix socket 因 `Operation not permitted` 失败，见前轮记录。本轮没有切换共享 Ghidra 桥接工具 会话：使用 JDK 25、Ghidra 12.2 / pyghidra，复制前轮 Map 工程到独占 `temp/terra-chain-legend/`，设置仓库内独立 Java 临时目录、配置及缓存，重新反编译 Load、Save 和集合清理方法；同时从本轮重验的 PE 读取虚表、用 objdump 核查调用指令。Ghidra 伪代码不是原始源码；临时产物可能含本机路径，分享前须检查脱敏。
 
 ## Legend 集合前 short：读后未使用
 
@@ -16,7 +16,7 @@
 
 ## HorizontalLegendItem 包装 int32：流向相关的内部布局模式
 
-续查时从用户重新提取的 `temp/terra-chain-renderers/Renderers.dll.6BF03936_8AC4_4632_8FB2_A6A34A19655A` 重算 SHA-256 为 `399c80c99a6c61de120c21b518d9b29069f2c78b20a705c07178aa3e2b656274`；PE x86、ImageBase `0x7cac0000`，固定版本及 FileVersion/ProductVersion 均为 `10.1.0.3035`，InternalName 为 `Renderers`，OriginalFilename 为 `Renderers.dll`。这是文件自述及字节身份，不是签名或运行验证。使用 JDK 25、Ghidra 12.2 / pyghidra 在该目录新建独立工程、配置、缓存和 TMPDIR，定点反编译并以 PE 虚表、IID 和 objdump 指令交叉核对；未操作共享 REA。原始结果位于忽略目录，分享前须检查本机路径。
+续查时从用户重新提取的 `temp/terra-chain-renderers/Renderers.dll.6BF03936_8AC4_4632_8FB2_A6A34A19655A` 重算 SHA-256 为 `399c80c99a6c61de120c21b518d9b29069f2c78b20a705c07178aa3e2b656274`；PE x86、ImageBase `0x7cac0000`，固定版本及 FileVersion/ProductVersion 均为 `10.1.0.3035`，InternalName 为 `Renderers`，OriginalFilename 为 `Renderers.dll`。这是文件自述及字节身份，不是签名或运行验证。使用 JDK 25、Ghidra 12.2 / pyghidra 在该目录新建独立工程、配置、缓存和 TMPDIR，定点反编译并以 PE 虚表、IID 和 objdump 指令交叉核对；未操作共享 Ghidra 桥接工具。原始结果位于忽略目录，分享前须检查本机路径。
 
 令构造 `0x7cad4c70` 的对象指针为 O。配置表 `0x7caec4d4` 的第二项为 `0x170`，构造在 `O+0x14+0x170 = O+0x184` 安装持久化虚表，并在 `O+0x180` 写入调整值 0。Load thunk `0x7cad5d30` 减去该调整值后，Load `0x7cad50e0` 读取相对持久化指针 `−8` 的 int32，故字段位于 **O+0x17c**；构造 `0x7cad4d6a` 在此写 0。此换算也更正 [尾段记录](arcmap-10.1-legend-tails.md) 对此构造布局持久化指针写作 `this+0x174` 的表述：该值不能直接当作相对 O 的持久化指针，读取字段时应计入配置表所在的 `+0x14`。Save `0x7cad5150` 从同一位置回写。
 

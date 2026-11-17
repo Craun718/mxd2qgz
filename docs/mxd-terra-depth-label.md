@@ -6,7 +6,7 @@
 
 - LabelPlacement.dll 来自既有 10.1 安装介质提取物（来源见 [10.1 基线](arcmap-10.1-spatial-reference.md)），本轮重算 SHA-256 为 `8415f63c1889e269ba6ae585538f601130c20cef02e4556e875a52217d35ea3d`；PE x86，ImageBase `0x78530000`。本轮用 pefile 读取资源：FileVersion/ProductVersion 均为 `10.1.0.3035`，InternalName `LabelPlacement`，OriginalFilename `LabelPlacement.dll`。身份声明与哈希不等于签名验证。
 - esri.clsid 既有提取文件 `temp/agent-fl-tail/ecfg/esri.clsid.xml` 分别登记下表三类。类型库和前期范围见 [续研](mxd-terra-next-label.md)、[第三轮](mxd-round3-labels-featurelayer-20261117.md)。
-- 独立 REA 6.9.0 CLI / Ghidra 12.2 对同一哈希启动分析成功，但桥接 UNIX socket 在沙箱中报 `Operation not permitted`，未取得函数 Evidence ID，原始失败信息位于忽略目录 `temp/terra-depth-label/js-getclass.json`。随后使用隔离 pyghidra/Ghidra 12.2、JDK 25、仓库内独占 TMPDIR 和新工程，对同一 DLL 反编译，结果在 `temp/terra-depth-label/0x*.c`；未切换共享 REA 目标。首次 pyghidra 因配置目录只读、第二次因 X11 不可访问失败；隔离 XDG 目录并使用 headless 后成功。结合 PE RTTI/COL、虚表原始字节和 objdump 汇编交叉检查；临时输出可能含本机路径，分享前需脱敏。
+- 独立 Ghidra 桥接工具 6.9.0 CLI / Ghidra 12.2 对同一哈希启动分析成功，但桥接 UNIX socket 在沙箱中报 `Operation not permitted`，未取得函数 Evidence ID，原始失败信息位于忽略目录 `temp/terra-depth-label/js-getclass.json`。随后使用隔离 pyghidra/Ghidra 12.2、JDK 25、仓库内独占 TMPDIR 和新工程，对同一 DLL 反编译，结果在 `temp/terra-depth-label/0x*.c`；未切换共享 Ghidra 桥接工具 目标。首次 pyghidra 因配置目录只读、第二次因 X11 不可访问失败；隔离 XDG 目录并使用 headless 后成功。结合 PE RTTI/COL、虚表原始字节和 objdump 汇编交叉检查；临时输出可能含本机路径，分享前需脱敏。
 
 ## 类、接口及持久化归属
 

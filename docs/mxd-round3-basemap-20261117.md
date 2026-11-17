@@ -12,7 +12,7 @@
 
 - BasemapLayer.dll：FileVersion/ProductVersion `10.1.0.3035`，SHA-256 `c8f4692970c5311e5d591f317c5e6c0379e9e6b9ad62a2383c71ecb6c8f64aad`。Basemap `Load` `0x6b646260` 与 ExtraSafe 调用见上一轮报告。配置表及 `0x6b66eb80` GetClassID 对应 ArrayOfIShader `{E0BBDBAF-0059-449C-B6F1-EDF1353A2C54}`；RTTI `.?AVArrayOfIShader@@` 的子接口虚表 `0x6b6adf30`、Load 槽 `0x6b66f7d0` 读 short 版本（有符号 >1 拒绝）、int32 数量，再按数量调用元素读取；Save `0x6b66f8a0` 对称写版本 1 与计数。当前仅接入空数组，新非空数组明确停止。
 - MappingCoreLib.dll：FileVersion/ProductVersion `10.1.0.3035`，SHA-256 `c2bf81dcfcb65473ce35b953c4f4b76392a594085460c299326cc20bed59986a`。导出 `CPrepareResultsContainer::LoadResults` `0x79b719a0` 读取 int32 计数并循环构造 `PersistedPrepareResult(IStream*)`；构造函数 `0x79b6f710` 委派 `Load` `0x79b6fa20`。后者读 short 版本（有符号 >2 拒绝）、int32×2、一个 LoadObject；版本 1 接着读两个 LoadObject，其他版本读 int32 计数及相应 LoadObject 循环。Save `0x79b6f8b0` 对版本 2 数量分支提供写侧佐证。对象槽新类只有完整读取后才能继续；当前仅接入完整 FeatureLayer。
-- REA 6.9.0 独立 CLI 验证目标摘要时，Ghidra 桥接因沙箱禁止 Unix socket bind 返回 `Operation not permitted`。本轮改用隔离的本地 pyghidra/Ghidra 12.2 项目定点反编译，原始输出与脚本仅在 `temp/`；伪代码并非原始源码。未切换共享 REA 目标，也未运行 ArcMap。
+- Ghidra 桥接工具 6.9.0 独立 CLI 验证目标摘要时，Ghidra 桥接因沙箱禁止 Unix socket bind 返回 `Operation not permitted`。本轮改用隔离的本地 pyghidra/Ghidra 12.2 项目定点反编译，原始输出与脚本仅在 `temp/`；伪代码并非原始源码。未切换共享 Ghidra 桥接工具 目标，也未运行 ArcMap。
 
 ## 尚需主代理协调的共享入口
 

@@ -6,7 +6,7 @@
 
 重新读取介质提取的 `GdbCore.dll.FA783766_EB8B_462D_8D00_E07AC33230EA`：PE32 x86，ImageBase `0x708d0000`，版本资源 FileVersion/ProductVersion `10.1.0.3035`、OriginalFilename `GdbCore.DLL`、CompanyName `Esri`；SHA-256 `ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4`，与既有基线一致。10.1 esriSystem 类型库资源 SHA-256 `0f3bc6496f2665cd6b03fa0071c0077f3b6fdab8f96c8b80f02beec36d7ad7a8`。版本声明和摘要不等于签名认证。
 
-前轮独立 REA CLI 以 JDK 25 分析同一文件时 UNIX socket 返回 `Operation not permitted`，见 [续查](mxd-terra-follow-names.md)；本轮未更改共享 REA 会话，使用 JDK 25、Ghidra 12.2 和隔离 pyghidra 对复制的既有工程重新反编译访问器与读写函数，仓库内独立 TMPDIR、配置及项目位于 `temp/terra-chain-dataset/`。另以 objdump 校对指令、PE 原始 GUID 和虚表，用 `winedump` 读取类型库；本轮单独启动 Wine 枚举时 socket 亦被拒绝，未据此声称 Wine 运行成功。临时文件可能含本机路径，分享前须检查脱敏。反编译是静态证据，非原始源码和目标程序运行。
+前轮独立 Ghidra 桥接工具 CLI 以 JDK 25 分析同一文件时 UNIX socket 返回 `Operation not permitted`，见 [续查](mxd-terra-follow-names.md)；本轮未更改共享 Ghidra 桥接工具 会话，使用 JDK 25、Ghidra 12.2 和隔离 pyghidra 对复制的既有工程重新反编译访问器与读写函数，仓库内独立 TMPDIR、配置及项目位于 `temp/terra-chain-dataset/`。另以 objdump 校对指令、PE 原始 GUID 和虚表，用 `winedump` 读取类型库；本轮单独启动 Wine 枚举时 socket 亦被拒绝，未据此声称 Wine 运行成功。临时文件可能含本机路径，分享前须检查脱敏。反编译是静态证据，非原始源码和目标程序运行。
 
 ## 第二串：IName.NameString
 

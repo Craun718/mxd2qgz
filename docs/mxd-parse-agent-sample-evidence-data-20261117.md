@@ -1,6 +1,6 @@
 # ArcMap 10.1 FCN 选择子与 FDO 旧加载器样本证据研究（2026-11-17）
 
-本文是唯一新增研究输出，对应 `TODO.md` 第 246-248 行。本轮只做只读 REA 研究、
+本文是唯一新增研究输出，对应 `TODO.md` 第 246-248 行。本轮只做只读 Ghidra 桥接工具 研究、
 样本字节复核、一次性 `temp/` 分析和本文落档；未修改 Rust 源码、测试、
 `README.md` 或 `TODO.md`。未运行 ArcMap 10.1，也未在 QGIS 中人工打开或目视
 检查结果。现有读取器与并行未提交改动保持原样。
@@ -10,7 +10,7 @@
 | 级别 | 本轮含义 | 结论可支持范围 |
 | --- | --- | --- |
 | A 样本证据 | 按已闭合对象边界走查 `/Maps` 字节 | 只证明该样本实例及其可达分支 |
-| B 反编译证据 | ArcMap 10.1.0.3035 原生 DLL 的 REA 静态反编译 | 闭合读侧字段序与控制流，不证明运行状态 |
+| B 反编译证据 | ArcMap 10.1.0.3035 原生 DLL 的 Ghidra 桥接工具 静态反编译 | 闭合读侧字段序与控制流，不证明运行状态 |
 | C 读取器与合成测试 | 仓库实现或构造输入下的契约 | 不升格为 MXD 格式或目标软件验证 |
 | D 运行取证 | ArcMap 10.1 保存、调试或受控 COM 观察 | 本轮未执行，仍为样本缺项的闭合路径 |
 
@@ -63,7 +63,7 @@ FCN 选择子字节。
 
 ### FCN 选择子规则
 
-本轮在 GdbCore.dll 上用 REA 复核 `FdbFeatureClassName::Load 0x709b5080`。
+本轮在 GdbCore.dll 上用 Ghidra 桥接工具 复核 `FdbFeatureClassName::Load 0x709b5080`。
 伪代码绑定 `ev_56a6db5abff391693494e637334f1d75e97b5c5585230298f094ee6ecb08f687`。
 第 ⑦ 步是 int16 选择子：`==0` 请求 `DAT_70ab8554`
 `{FADD975C-E36F-11D1-AA81-00C04FA33A15}` IWorkspaceName；`!=0` 请求
@@ -81,7 +81,7 @@ GdbCore 三方定位链为：esri.clsid.ecfg 声明 `{198846CF}` → GetClassID
 表 `0x70ad04ec`；该虚表 `+0x14` 为 Load `0x709b7c90`，`+0x18` 为 Save
 `0x709b7d50`。
 
-本轮 REA 复核 `0x709b7c90`
+本轮 Ghidra 桥接工具 复核 `0x709b7c90`
 （`ev_e435b925054f3073295a9aa947c324dea02ae9d554d4c7809713eb4507a0d80c`）
 和 `0x709b7d50`
 （`ev_c233c172793805287466fa71ffb249b6c275c56f22300231fc0f8c71f9fc5c6b`）。
@@ -131,7 +131,7 @@ GdbCore 定位链为：esri.clsid.ecfg 声明 `{9FCA50EC}` → GetClassID
 `0x70af02fc` 连接 IPersistStream 虚表 `0x70aca460`；`+0x14` Load 是
 `0x7095e5c0`，`+0x18` Save 是 `0x7095e550`。
 
-本轮 REA 复核 `0x7095e5c0`
+本轮 Ghidra 桥接工具 复核 `0x7095e5c0`
 （`ev_65d12247d79fe9afb492ec129c5b7d1db4d68ef3c8660ac15fae7f5457ec3fe0`）
 和 `0x7095e550`
 （`ev_e58d71262768f6fcc28eabdab9f2d4e66cc418af7ffec06fb62261061fedd204`）。
@@ -143,7 +143,7 @@ GdbCore 定位链为：esri.clsid.ecfg 声明 `{9FCA50EC}` → GetClassID
    成功后对 `+0x14` 对象执行虚表 `+0x20` 通知调用，不读流。Save 以调用方
    `docVersion` 参数透传 `SaveObject`。
 
-REA 入边分页对 FDN Load 返回 8 条、TN Load 返回 6 条均为函数体内条件跳转；
+Ghidra 桥接工具 入边分页对 FDN Load 返回 8 条、TN Load 返回 6 条均为函数体内条件跳转；
 本会话没有直接给出虚表数据引用，因此本轮把“虚表 +0x14 指向对应 Load”作
 为既有定位链复核结论，不以本轮入边页为唯一证明。这不影响伪代码函数体本身
 的字段序结论。
@@ -175,18 +175,18 @@ MemoryRelationshipClassName、QueryTableName、RelQueryTableName、DBTableName
 
 ### 主 Load 分支
 
-本轮在 AnnoLayer.dll 上用 REA 复核 `FDOGraphicsLayer::Load 0x6b1955a0`
+本轮在 AnnoLayer.dll 上用 Ghidra 桥接工具 复核 `FDOGraphicsLayer::Load 0x6b1955a0`
 （分析父证据 `ev_6e406c01d8ba1f79f1388d77b431e4656a252f7812c3f394e356787eb5228fc4`）。
 函数体范围为 `0x6b1955a0..0x6b195a74`。既有汇编记录为：有符号
 `CMP AX,0xb; JG` 使版本 >11 拒绝；`CMP AX,3; JG` 使版本 0..=3（含负值位模
 式）进入 `FUN_6b197dc0`；`0x6b1955f2..0x6b195607` 以 `(this-0x54, 流, 版本)`
 调用旧加载器；版本 4 先进入探测 `FUN_6b198420`，真则旧加载器后读并丢弃一
 个 String，假则主分支。本轮没有新增完整逐地址汇编页，主 Load 控制流引用既
-有记录；地址范围与 REA 函数体边界一致。
+有记录；地址范围与 Ghidra 桥接工具 函数体边界一致。
 
 ### 旧加载器字段序
 
-本轮 REA 复核 `FUN_6b197dc0`。分析父证据
+本轮 Ghidra 桥接工具 复核 `FUN_6b197dc0`。分析父证据
 `ev_723da649c48932dd7d88f46a06ca6f2d0d074e174064f6acb0ebd8a5d81cb995`；函数
 体 `0x6b197dc0..0x6b19841a`，544 条汇编、44 个基本块；伪代码父证据
 `ev_800231c24e93cd048412643f94cbda9c223d753b984a4c37facfba20075f706f`。
@@ -300,7 +300,7 @@ GUID；分支 A 与 FDO 本类 `{34B2EF83-…}` 比对；分支 B 与 Map
 ArcMap 行为验证。未闭合的 IDatasetName/IWorkspaceName/IName/IColor 等实现
 类不应按请求 IID 猜体；继续对象头停止，直到样本或运行证据闭合其布局。
 
-## REA 执行状态与限制
+## Ghidra 桥接工具 执行状态与限制
 
 本会话累计产生 70 条 Evidence。AnnoLayer 成功分析记录 `0x6b1955a0`、
 `0x6b197dc0`、`0x6b197be0`；GdbCore 会话成功复核 FCN/FDN/TN Load、FDN/TN

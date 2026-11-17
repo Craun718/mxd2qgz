@@ -4,7 +4,7 @@
 
 目标是 ArcGIS Desktop 10.1.3035 安装介质携带的 Microsoft OLE 分发件，而非已证实由 ArcMap 实际加载的系统 DLL。复算 `Setup1.cab` 已提取条目 `Global_System_OLEAUT32_f3.8C0C59A0_7DC8_11D2_B95D_006097C4DE24` SHA-256 为 `baeb2f7c1b8be56738d34e1d1ddf8e0eebd3a633215dc1575e14656be38b939d`；PE 机器 `0x14c`（x86），ImageBase `0x65340000`，资源 InternalName `OLEAUT32.DLL`、FileVersion `2.40.4275`。固定版本 `2.40.4275.1` 见[前轮记录](mxd-terra-host-ole.md)。文件身份与摘要不证明签名或实际加载路径。
 
-本轮直接复读该文件、已有 `temp/terra-host-ole/` 反编译和汇编，独立用 PE 虚拟地址读取下列 16 字节标识。前轮在仓库独立目录以 JDK 25、Ghidra 12.2 分析：REA 6.9.0 因 UNIX socket `Operation not permitted` 未产生函数 Evidence ID，继而用隔离 pyghidra 生成伪代码并以 objdump 校验；未使用共享 REA。此处引用的伪代码只是反编译产物，参数不可靠处以汇编为准。既有证据已足以回答本轮首层分派，无需再次启动分析。
+本轮直接复读该文件、已有 `temp/terra-host-ole/` 反编译和汇编，独立用 PE 虚拟地址读取下列 16 字节标识。前轮在仓库独立目录以 JDK 25、Ghidra 12.2 分析：Ghidra 桥接工具 6.9.0 因 UNIX socket `Operation not permitted` 未产生函数 Evidence ID，继而用隔离 pyghidra 生成伪代码并以 objdump 校验；未使用共享 Ghidra 桥接工具。此处引用的伪代码只是反编译产物，参数不可靠处以汇编为准。既有证据已足以回答本轮首层分派，无需再次启动分析。
 
 ## 第二字和循环
 

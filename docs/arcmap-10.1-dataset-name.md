@@ -18,9 +18,9 @@ ArcMap，未做人工目视验收；结论按证据强度标注，开放的仍�
   → 同虚表 +0x14/+0x18 槽），虚表归属经 RTTI 完整对象定位符（COL）链确认；
   字段序经 Load/Save 反编译与汇编逐指令核对；样本对位用
   `temp/r6-maps.bin` 全流扫描。
-- 工具：REA MCP（Ghidra 12.2 提供者，JDK 25，用户级配置）+ 本机 pyghidra
+- 工具：Ghidra 桥接工具 MCP（Ghidra 12.2 提供者，JDK 25，用户级配置）+ 本机 pyghidra
   3.2.0（Ghidra 12.2 + JDK 25，复用第六轮项目缓存 `/tmp/r3/ghproj_gdbcore`）。
-  REA 共享服务器本轮与其他研究代理（Map.dll 会话）多次互相抢占活动目标：
+  Ghidra 桥接工具 共享服务器本轮与其他研究代理（Map.dll 会话）多次互相抢占活动目标：
   本轮在 GdbCore 绑定状态下成功取得两条一手证据（`DAT_70ab8574` IID 字节
   读取、FDN Load `0x709b7c90` 反编译 ev_78efd183…、TN Load `0x7095e5c0`
   反编译 ev_4398b31a…），其余查询在目标被切换后改用本机 pyghidra（同一
@@ -37,7 +37,7 @@ SHA-256 与第六轮基线一致。地址均为该 PE 静态映像虚拟地址�
 
 ## 选择子语义复核（FCN 体 `0x709b5080`，证据：确定的）
 
-第六轮字段序经本轮文件字节与 REA 读取复核：
+第六轮字段序经本轮文件字节与 Ghidra 桥接工具 读取复核：
 
 - 第 ⑦ 步 int16 选择子：`==0` → LoadObject（IID `DAT_70ab8554` =
   `{FADD975C-E36F-11D1-AA81-00C04FA33A15}`）；`!=0` → LoadObject（IID
@@ -192,7 +192,7 @@ Load `0x7095e5c0` 字段序（Save `0x7095e550` 对称；汇编核对）：
 
 - 二进制：`temp/agent-dataset-name/GdbCore.dll.FA783766_EB8B_462D_8D00_E07AC33230EA`
   （身份见首节表）。
-- REA 证据（GdbCore 绑定状态下）：IID 字节 `DAT_70ab8574`（ev_1c153cbb…）、
+- Ghidra 桥接工具 证据（GdbCore 绑定状态下）：IID 字节 `DAT_70ab8574`（ev_1c153cbb…）、
   FDN Load 反编译（ev_78efd183…，父证据 ev_4f33e987…）、TN Load 反编译
   （ev_4398b31a…）。
 - 本机 pyghidra 产物（脚本在 `temp/agent-dataset-name/scripts/`，输出 JSON

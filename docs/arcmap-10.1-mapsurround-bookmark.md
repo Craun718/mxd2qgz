@@ -12,7 +12,7 @@ MapSurround 循环计数（`/Maps:0x24f60`）与书签循环计数（`0x24f9c`�
 
 ## 方法与文件身份
 
-- REA MCP（Ghidra 12.2 提供者，用户级配置 JDK 25，本轮未发生 JAVA_HOME
+- Ghidra 桥接工具 MCP（Ghidra 12.2 提供者，用户级配置 JDK 25，本轮未发生 JAVA_HOME
   错误）。共享服务器与其他 agent 并发使用，多次出现打开目标被切走的情况，
   均以「open + 操作同批」重试恢复；结束已调用 `close_binary`。
 - 本轮从 `/home/gxrs/下载/arcmap10.1/ar10.1/Desktop/Setup1.cab` 条目

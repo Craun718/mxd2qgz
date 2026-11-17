@@ -25,7 +25,7 @@ ArcMap，也未在 ArcMap 或 QGIS 人工检查。
   自定义属性；没有加载或执行该程序集。程序集不是从上述介质重新提取的，
   因此以下结合原生虚表及介质类型库的同 IID 证据，不把文件版本单独作为同源证明。
 - 原生反编译采用独立 pyghidra 工程副本、Ghidra `/opt/ghidra`、JDK 25 和
-  仓库专用临时目录；未切换或修改共享 REA 会话。汇编另用 objdump 核对。
+  仓库专用临时目录；未切换或修改共享 Ghidra 桥接工具 会话。汇编另用 objdump 核对。
   临时探针及输出在 `temp/terra-round8-sr/`，仅为可重做的辅助材料。
 
 ## ISRPersistStream slot 8 的成员名

@@ -15,8 +15,8 @@
 
 ## 方法与文件身份
 
-- REA MCP（Ghidra 12.2 提供者，JDK 25）反编译 + 样本字节对位（`temp/r6-maps.bin`，
-  `cargo run -- hex` 与自写脚本）。与并行代理共享 REA 服务器，活动目标被切换
+- Ghidra 桥接工具 MCP（Ghidra 12.2 提供者，JDK 25）反编译 + 样本字节对位（`temp/r6-maps.bin`，
+  `cargo run -- hex` 与自写脚本）。与并行代理共享 Ghidra 桥接工具 服务器，活动目标被切换
   后以「open + 操作同批」重试恢复。
 - 本轮新提取 **DisplayCore.dll**（Setup1.cab，符号/颜色实现）：SHA-256
   `9b3e61f9…a926e4d2`，pefile 复核 `10.1.0.3035`。

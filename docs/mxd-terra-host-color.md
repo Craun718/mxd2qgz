@@ -6,7 +6,7 @@
 
 重新计算 `temp/agent-fl-tail/DisplayCore.dll.33A02325_2485_4623_B2CE_71B5736B51DF` 的 SHA-256 为 `9b3e61f9ca553f14a442338dfc1c24ac51c1eea6dd9a4509282466a6a926e4d2`，与既有基线一致；PE32 x86，ImageBase `0x6eb30000`，版本资源 FileVersion/ProductVersion `10.1.0.3035`、InternalName `DisplayCore`、OriginalFilename `DisplayCore.dll`。版本资源是声明，哈希标识字节，并非签名或运行证明。
 
-在仓库专用 `temp/terra-host-color/` 的 TMPDIR、配置及缓存中，以独立 REA 6.9.0 CLI、Ghidra 12.2、JDK 25 取得 Random Load 的 Evidence `ev_ae3ca61e0fd052e0ef424c2a654e8d08ddd4dc55b0ef824411195d25b962dfa1`；新核对原 DLL 的虚表、常量及 objdump 指令。没有切换共享 REA 目标。类型库使用既有介质提取的 esriDisplay TYPELIB（SHA-256 `6052021b77c05ddb6b37b5373a04ada586a6664a121733ddf0651297106229ab`，见 [类型库身份记录](mxd-terra-follow-display.md)），在独立 Wine 前缀中枚举；Wine 是元数据读取，不是 ArcMap 执行。64 位 Wine 的 `oVft` 除二对位 x86 虚槽；成员名输出正常；本次只用于选定接口，不主张完整枚举类型库。地址均为静态映像 VA。分析文件可能含本机路径，分享前须脱敏。
+在仓库专用 `temp/terra-host-color/` 的 TMPDIR、配置及缓存中，以独立 Ghidra 桥接工具 6.9.0 CLI、Ghidra 12.2、JDK 25 取得 Random Load 的 Evidence `ev_ae3ca61e0fd052e0ef424c2a654e8d08ddd4dc55b0ef824411195d25b962dfa1`；新核对原 DLL 的虚表、常量及 objdump 指令。没有切换共享 Ghidra 桥接工具 目标。类型库使用既有介质提取的 esriDisplay TYPELIB（SHA-256 `6052021b77c05ddb6b37b5373a04ada586a6664a121733ddf0651297106229ab`，见 [类型库身份记录](mxd-terra-follow-display.md)），在独立 Wine 前缀中枚举；Wine 是元数据读取，不是 ArcMap 执行。64 位 Wine 的 `oVft` 除二对位 x86 虚槽；成员名输出正常；本次只用于选定接口，不主张完整枚举类型库。地址均为静态映像 VA。分析文件可能含本机路径，分享前须脱敏。
 
 ## RandomColorRamp：请求 Size 的持久化槽
 

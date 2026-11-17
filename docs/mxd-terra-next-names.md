@@ -4,7 +4,7 @@
 
 | 行 | 状态 | 证据、缺口 |
 | --- | --- | --- |
-| 184 | 推进，未闭合 | TableQueryName 候选 Load/Save `0x708f5070/0x708f5280` 及字段序有 [REA 记录](mxd-table-query-name-variant-20261116.md)，但 `Write_exref`、调用关系、虚表归属及 FeatureQueryName 完具体未闭合，不能安全实现。 |
+| 184 | 推进，未闭合 | TableQueryName 候选 Load/Save `0x708f5070/0x708f5280` 及字段序有 [Ghidra 桥接工具 记录](mxd-table-query-name-variant-20261116.md)，但 `Write_exref`、调用关系、虚表归属及 FeatureQueryName 完具体未闭合，不能安全实现。 |
 | 224 | 推进，未闭合 | FeatureDatasetName 四个 String、标志与工作空间槽已有 10.1 读写结构；业务名尚缺访问器及成员偏移绑定，见 [名称记录](mxd-terra-names-20261117.md)。 |
 | 225 | 推进，未闭合 | TopologyName 两 String 及 IDatasetName 槽的 Load/Save 已定位；字段属性及槽后虚调用仍待定性，见 [数据样本研究](mxd-parse-agent-sample-evidence-data-20261117.md)。 |
 | 228 | 推进，未闭合 | FDO 旧加载器版本门和接口调用序已分析，接口方法到业务属性缺逐槽绑定，见上述数据样本研究。 |
@@ -16,4 +16,4 @@
 | 285 | 推进，待真实旧档或运行 | FeatureDatasetName v0/v1 静态读侧同布局，10.1 Save 恒写 v1；v0 目前仅构造测试。 |
 | 286 | 推进，待真实旧档或运行 | TopologyName v0/v1 静态读侧同布局，10.1 Save 恒写 v1；v0 目前仅构造测试。 |
 
-`cargo test --test dataset_name --test fdo_legacy --test terra_fdo_legacy` 共 34 项通过；这些为合成测试，不能证明旧档互操作。未作目标软件人工验证。未发起新 REA 会话；复用既有版本化静态证据及本机导出，避免共享 `/tmp` 的空间压力。
+`cargo test --test dataset_name --test fdo_legacy --test terra_fdo_legacy` 共 34 项通过；这些为合成测试，不能证明旧档互操作。未作目标软件人工验证。未发起新 Ghidra 桥接工具 会话；复用既有版本化静态证据及本机导出，避免共享 `/tmp` 的空间压力。

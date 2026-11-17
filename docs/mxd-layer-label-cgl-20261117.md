@@ -37,7 +37,7 @@ FeatureLayer.dll 的 `CompositeGraphicsLayer::Load` 0x6f6b2100 读子图层条�
 
 ## CGL 尾段与 FieldInfo v3 补充（后续轮）
 
-此前停点 `0x24f22` 是子层循环终点，不是 CGL 体终点。ArcMap 10.1.0.3035 FeatureLayer.dll（SHA-256 `2baf870615bb75b6f30ccea173ba4303fdd0b1a6571e11b9197c5fcf7298bb60`）的 Load `0x6f6b2100` 尾段依次读 int32、ILayer 对象、版本 >2 的对象、版本 >=4 的 String、版本 ==4 的 short、版本 >=5 的两个 double，随后返回。Load 伪代码在 `/tmp/r3/annolayer_work/cgl_load_6f6b2100.c`；虚表相邻槽 `0x6f7aa308/0x6f7aa30c` 指向 Load/Save。Save `0x6f6b2620` 的 REA/Ghidra 证据 `ev_b96a845b02442287ae05d724a7fd78cac279534e21a26b6770d42b98d8d42072` 显示末段同序写 int32、两个对象和字符串、双精度数；写侧使用文档版本门，不能将其直接外推为所有历史读侧架构版本。旧文档中的虚表地址与该相邻槽地址存在差异，以本轮 PE 字节及函数关联为准。
+此前停点 `0x24f22` 是子层循环终点，不是 CGL 体终点。ArcMap 10.1.0.3035 FeatureLayer.dll（SHA-256 `2baf870615bb75b6f30ccea173ba4303fdd0b1a6571e11b9197c5fcf7298bb60`）的 Load `0x6f6b2100` 尾段依次读 int32、ILayer 对象、版本 >2 的对象、版本 >=4 的 String、版本 ==4 的 short、版本 >=5 的两个 double，随后返回。Load 伪代码在 `/tmp/r3/annolayer_work/cgl_load_6f6b2100.c`；虚表相邻槽 `0x6f7aa308/0x6f7aa30c` 指向 Load/Save。Save `0x6f6b2620` 的 Ghidra（经桥接工具） 证据 `ev_b96a845b02442287ae05d724a7fd78cac279534e21a26b6770d42b98d8d42072` 显示末段同序写 int32、两个对象和字符串、双精度数；写侧使用文档版本门，不能将其直接外推为所有历史读侧架构版本。旧文档中的虚表地址与该相邻槽地址存在差异，以本轮 PE 字节及函数关联为准。
 
 参考样本 `/Maps`（完整登记上下文）：`0x24f22..26` int32 1；`0x24f26..36` 第一个对象空标记；`0x24f36..4a` 第二个对象为键 30 回引；`0x24f4a..50` 空 String；`0x24f50..60` 两个零 double。CGL 在 `0x24f60` 结束。下游 Map 后缀实际到达 `0x24f64` WKSEnvelope，最终保留未知尾部起点 `0x24fa0`。这是静态代码与样本对位，不是目标软件运行验证。未知新对象体无外部长度，读取器在相应对象头回退并返回 TailNewObject；完整体才返回 Completed。
 

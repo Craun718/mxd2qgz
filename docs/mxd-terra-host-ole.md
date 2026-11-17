@@ -4,7 +4,7 @@
 
 本轮接续 [Terra 显示](mxd-terra-next-display.md)、[第三轮](mxd-round3-display-spatial-20261117.md)及 [OLE 记录](arcmap-10.1-ole-stdfont.md)，不改 TODO。重新读取 ArcGIS Desktop 10.1 `Setup1.cab` 已提取条目 `Global_System_OLEAUT32_f3.8C0C59A0_7DC8_11D2_B95D_006097C4DE24`：SHA-256 `baeb2f7c1b8be56738d34e1d1ddf8e0eebd3a633215dc1575e14656be38b939d`，PE x86、ImageBase `0x65340000`，固定文件版本 `2.40.4275.1`，字符串 FileVersion `2.40.4275`、InternalName `OLEAUT32.DLL`。摘要和版本资源用于识别文件，不证明签名或目标机器实际加载了它。它是介质分发件，不是经确认的 ArcMap 10.1 运行系统库；以下地址和结论只适用于此文件。
 
-独立 REA 6.9.0 CLI、Ghidra 12.2、JDK 25 分析 `0x653a0191`：目标哈希吻合，Ghidra 完成分析但 UNIX socket 桥接失败（`Operation not permitted`），没有取得新的 REA 函数 Evidence ID。未切换共享 REA。随后在仓库 `temp/terra-host-ole/` 的独立工程、配置、缓存与 TMPDIR 使用 pyghidra/Ghidra 12.2 和 JDK 25 定点反编译，并以 objdump 核对调用及关键指令。临时产物包括 `rea.json`、`0x*.c`、`load.asm`、`decoders.asm`、`save.asm`；分享前检查路径。伪代码不是原始源码，尤其 `0x6539f7dc`、`0x6539fd93` 的参数和栈变量恢复不可靠，下面以调用点及指令为准。
+独立 Ghidra 桥接工具 6.9.0 CLI、Ghidra 12.2、JDK 25 分析 `0x653a0191`：目标哈希吻合，Ghidra 完成分析但 UNIX socket 桥接失败（`Operation not permitted`），没有取得新的 Ghidra 桥接工具 函数 Evidence ID。未切换共享 Ghidra 桥接工具。随后在仓库 `temp/terra-host-ole/` 的独立工程、配置、缓存与 TMPDIR 使用 pyghidra/Ghidra 12.2 和 JDK 25 定点反编译，并以 objdump 核对调用及关键指令。临时产物包括 `rea.json`、`0x*.c`、`load.asm`、`decoders.asm`、`save.asm`；分享前检查路径。伪代码不是原始源码，尤其 `0x6539f7dc`、`0x6539fd93` 的参数和栈变量恢复不可靠，下面以调用点及指令为准。
 
 ## 第二字和读头边界
 

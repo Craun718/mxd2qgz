@@ -1,12 +1,12 @@
 # 数据源、IID 与数字格式开放项复核（2026-11-17）
 
-本记录对应本轮任务指定的 TODO 原行号；不修改 TODO、共享模块或既有成果。静态反编译、真实介质文件的局部结构、合成测试和 ArcMap 运行验证是不同证据等级。此前 REA 证据仍以各原研究文档为准；本轮未重新启动 REA，也未运行 ArcMap 或 QGIS。
+本记录对应本轮任务指定的 TODO 原行号；不修改 TODO、共享模块或既有成果。静态反编译、真实介质文件的局部结构、合成测试和 ArcMap 运行验证是不同证据等级。此前 Ghidra 桥接工具 证据仍以各原研究文档为准；本轮未重新启动 Ghidra 桥接工具，也未运行 ArcMap 或 QGIS。
 
 ## 原件、版本与查找范围
 
 - 10.1 介质 Setup1.cab 包含 66 个 MXD/MXT，`temp/arcmap101-media-streams/index.json` 给出文件 SHA-256、版本候选及流清单，66 个均有 `/Maps` 和 `/PageLayout`。版本候选分布：9.3/16 34、9.2/14 3、10.0/18 11、10.1/19 18；并非运行时版本鉴定。
 - 10.8 介质 Data1.cab 的 68 个模板索引在 `temp/arcmap108-media-streams/index.json`；磁盘版本候选是 10.1/19 26、9.3/16 18、9.2/14 12、10.0/18 11、8.1/10 1。10.8 介质出身不等于磁盘格式 10.8，也不自动证明目标版本的运行行为。
-- GdbCore 10.1 已提取原件 SHA-256 `ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4`，本轮重算一致。10.1 安装介质身份及静态 Load/Save、REA Evidence 见 [数据源局部证据](mxd-parse-agent-sample-evidence-data-20261117.md) 和 [数据集槽研究](arcmap-10.1-dataset-name-slots.md)。
+- GdbCore 10.1 已提取原件 SHA-256 `ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4`，本轮重算一致。10.1 安装介质身份及静态 Load/Save、Ghidra 桥接工具 Evidence 见 [数据源局部证据](mxd-parse-agent-sample-evidence-data-20261117.md) 和 [数据集槽研究](arcmap-10.1-dataset-name-slots.md)。
 - 本机仅发现仓库参考样本及上述介质模板；Wine 可执行程序存在，但 README 标注 ArcMap 10.1 未安装、未人工验收；不能把 Wine 可用视为可用 ArcObjects 运行环境。旧版软件或可以产生指定对象状态的受控运行环境尚未确认可用。
 
 ## 介质模板局部结构走查
@@ -24,7 +24,7 @@
 
 | 原行 | 状态 | 证据与剩余缺口 |
 | --- | --- | --- |
-| 176 | 部分 | TableQueryName 候选 Load `0x708f5070`/Save `0x708f5280` 有 REA 静态观察，仍有间接调用/写侧 helper 与完整字段边界未解；FeatureQueryName 的完整体未定位。详见 [变体流研究](mxd-table-query-name-variant-20261116.md)。需验证虚表归属、helper 与对象状态，不能实现猜测布局。 |
+| 176 | 部分 | TableQueryName 候选 Load `0x708f5070`/Save `0x708f5280` 有 Ghidra 桥接工具 静态观察，仍有间接调用/写侧 helper 与完整字段边界未解；FeatureQueryName 的完整体未定位。详见 [变体流研究](mxd-table-query-name-variant-20261116.md)。需验证虚表归属、helper 与对象状态，不能实现猜测布局。 |
 | 177 | 阻塞 | ObjectClassName 的 CLSID 配置已知，GdbCore 静态检索仅发现接口 TD，未找到实现类 RTTI/COL/虚表；不能以接口 RTTI 冒充类。需重新定位实现类或确认其实际模块。 |
 | 216 | 部分 | FDN 四字符串及标志的对象偏移与顺序已有静态读写证据，介质局部链新增真实 v1 体；仍缺 getter/setter 或受控状态变化以绑定业务语义。 |
 | 217 | 部分 | TopologyName 两字符串和槽顺序有静态读写证据，缺字段业务语义和可走查的实际对象。 |

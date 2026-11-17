@@ -21,16 +21,16 @@ VariantStream 的按 `VARTYPE` 分发读取布局，逐项对照 Git 历史 `c17
 
 本轮分析全部针对 AfCore.dll 的上述摘要；地址是该静态映像的虚拟地址
 （PE ImageBase `0x68a70000`，经 pefile 读取标头确认——普通 shell 工具观察，
-非 REA 证据），不是运行时地址，也不是 MXD/OLE 流偏移。
+非 Ghidra 桥接工具 证据），不是运行时地址，也不是 MXD/OLE 流偏移。
 
 ## 工具与环境（偏离记录）
 
-- 基线及此前 10.8 研究使用 REA 6.8.0 / Ghidra 12.1.4（分析配置摘要
+- 基线及此前 10.8 研究使用 Ghidra 桥接工具 6.8.0 / Ghidra 12.1.4（分析配置摘要
   `e763201e…`）。本轮开始时 `/opt/ghidra` 已升级为 12.2，要求 JDK 25+，
-  而 rea MCP 服务器注册环境固定 `JAVA_HOME=/usr/lib/jvm/java-21-openjdk`，
+  而 Ghidra 桥接工具 MCP 服务器注册环境固定 `JAVA_HOME=/usr/lib/jvm/java-21-openjdk`，
   Ghidra 提供者就绪检查失败（`unsupported_version`），MCP 深度分析不可用。
-  本机另有 `java-25-openjdk`。已按 REA 恢复文档「继续使用 CLI」路径处理：
-  所有本轮证据由 rea CLI 6.9.0（与服务器同一 npx 安装，`rea-agents@6.9.0`）
+  本机另有 `java-25-openjdk`。已按 Ghidra 桥接工具 恢复文档「继续使用 CLI」路径处理：
+  所有本轮证据由 Ghidra 桥接工具 CLI 6.9.0（与服务器使用同一安装）
   在 `JAVA_HOME` 指向 JDK 25 的 shell 中逐命令生成，提供者为 Ghidra 12.2，
   分析配置摘要 `af4d30c9d76866092ce084421f113cb34393a9703542b46a5c290a493c77a8c4`。
   建议：将注册环境 `JAVA_HOME` 更新为 JDK 25 后重启 MCP 客户端，以恢复
@@ -43,13 +43,13 @@ VariantStream 的按 `VARTYPE` 分发读取布局，逐项对照 Git 历史 `c17
   完整 Evidence 记录合并而成（合并脚本为 `temp/arcgis/afcore101-variant-work/build_bundle.py`，
   信封结构对齐既有规范包：`binding`/`entries`/`evidence_bundle`/`target`，
   每条命令附 `entries` 工作流条目，`query_id` 由真实命令数据确定性派生）。
-  注意：`rea evidence-import`（6.9.0 CLI）对它返回 `wrong-kind`——该校验器
-  只接受本版本 `export_evidence_bundle` 产物；既有 REA 6.8.0 会话导出的
+  注意：当时的证据导入命令（6.9.0 CLI）对它返回 `wrong-kind`——该校验器
+  只接受本版本 `export_evidence_bundle` 产物；既有 Ghidra 桥接工具 6.8.0 会话导出的
   规范包（如 `arcmap101-save-version-table.json`）同样被拒。因此该文件
   未通过 canonical 校验，但其中 20 条记录均为本轮 CLI 命令的完整原始信封。
   两个 16 字节 GUID 常量的读取使用
   pefile 的 VA→文件偏移映射（`0x68c6bc2c`、`0x68c6bc4c`），标注为普通
-  shell 工具观察，不在 REA 证据包内。
+  shell 工具观察，不在 Ghidra 桥接工具 证据包内。
 
 ## 10.1 函数定位（问题 1）
 
@@ -209,14 +209,14 @@ LoadObject 尾部包装 `0x68a7b530`
 
 - 本文地址与结论仅绑定上表五个 10.1.0.3035 文件（以 SHA-256 为准），
   其中核心结论绑定 AfCore.dll 摘要 `031858c4…`；不外推到其他版本。
-- 本轮分析工具为 rea CLI 6.9.0 / Ghidra 12.2 / JDK 25（分析配置摘要
-  `af4d30c9…`），与基线及 10.8 研究的 REA 6.8.0 / Ghidra 12.1.4 不同；
+- 本轮分析工具为 Ghidra 桥接工具 CLI 6.9.0 / Ghidra 12.2 / JDK 25（分析配置摘要
+  `af4d30c9…`），与基线及 10.8 研究的 Ghidra 桥接工具 6.8.0 / Ghidra 12.1.4 不同；
   伪代码与汇编均为静态反编译产物，PDB 加载状态未知，间接调用与寄存器
   参数可能不完整。
 - 这是静态复核，不是运行验证：未运行 ArcMap，未做人工目视检查，未声称
   任何 MXD 字段或软件兼容性已验证。
 - 上表 `0x68c6bc2c`、`0x68c6bc4c` 两处 16 字节为 pefile 文件读取观察，
-  不是 REA 证据记录。
+  不是 Ghidra 桥接工具 证据记录。
 
 ## 未解决事项
 

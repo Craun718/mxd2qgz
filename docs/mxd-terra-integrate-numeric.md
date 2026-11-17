@@ -6,7 +6,7 @@
 
 对 `Setup1.cab` 提取的 `SystemCore.dll.017F52BF_20D0_487A_A583_436DA6406CFF` 重新计算 SHA-256：`f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`；PE32 x86，版本资源 FileVersion、ProductVersion 为 `10.1.0.3035`，InternalName `SystemCore`、OriginalFilename `SystemCore.dll`。这是身份声明及字节摘要，不是签名认证。类型库使用前轮同一 esriSystem TYPELIB（SHA-256 `0f3bc6496f2665cd6b03fa0071c0077f3b6fdab8f96c8b80f02beec36d7ad7a8`）。
 
-用 REA 6.9.0/Ghidra 12.1.4 既有全量反编译定位各构造、QI，再新读原 PE 的指令、虚表、IID 和虚基表；伪代码不是源代码。用独立 Wine 前缀在 `temp/terra-integrate-numeric/` 读取类型库，64 位 Wine 给出的槽偏移除二换算为 x86；类型库输出是静态元数据，不是 ArcMap 运行。普通沙箱 Unix socket 被拒，隔离进程在授权环境运行；未更改共享 REA 服务。表格的 O 是构造函数接收的对象基址，P 是该构造布局的 IPersistStream 指针。各持久化虚表的 Load thunk 先把传入 P 减 `[P-4]`；这些构造函数在 P-4 写入的值为零，因此下表 P 可直接用于对应 Load 的负偏移。此结论不外推到其他类或构造布局。
+用 Ghidra 桥接工具 6.9.0/Ghidra 12.1.4 既有全量反编译定位各构造、QI，再新读原 PE 的指令、虚表、IID 和虚基表；伪代码不是源代码。用独立 Wine 前缀在 `temp/terra-integrate-numeric/` 读取类型库，64 位 Wine 给出的槽偏移除二换算为 x86；类型库输出是静态元数据，不是 ArcMap 运行。普通沙箱 Unix socket 被拒，隔离进程在授权环境运行；未更改共享 Ghidra 桥接工具 服务。表格的 O 是构造函数接收的对象基址，P 是该构造布局的 IPersistStream 指针。各持久化虚表的 Load thunk 先把传入 P 减 `[P-4]`；这些构造函数在 P-4 写入的值为零，因此下表 P 可直接用于对应 Load 的负偏移。此结论不外推到其他类或构造布局。
 
 ## 属性及内存对位
 

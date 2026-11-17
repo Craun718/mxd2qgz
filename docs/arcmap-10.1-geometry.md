@@ -16,7 +16,7 @@ IGeometry 槽实现类（Polyline 等）体未闭合」。全部结论为**静�
   录内独立命名工程（未入库），Open 副本不共享锁。地址均为 PE 10.1.0.3035
   静态映像 VA。定位链的前半段（CLSID 常量 → 立即数引用 → movq GetClassID
   形态 → RTTI TD→COL→虚表锚定）以 pefile + 段字节扫描机械完成，Ghidra 反
-  编译复核 Load/Save/导入器。REA MCP 未使用（并行研究约定）。
+  编译复核 Load/Save/导入器。Ghidra 桥接工具 MCP 未使用（并行研究约定）。
 - 样本为第六轮导出的 /Maps 流（152,941 字节，流内偏移，见
   element-collection 文档）。注意：该流注记簇之后区域含数据源路径，本轮仅
   读取几何对象字节，未把该区域写入任何入库文件。

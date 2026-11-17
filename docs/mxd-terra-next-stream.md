@@ -4,9 +4,9 @@
 
 ## 输入与依据
 
-本轮重新计算 `temp/arcgis101-bin/` 提取物 SHA-256：AfCore.dll `031858c414c0105b3b978c754f3d0f31ba1d98f15d44ff15b1589c9adcc47c17`、SystemCore.dll `f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`，与 [10.1 对象体基线](arcmap-10.1-object-body.md)一致，对应介质 ArcGIS 10.1.0.3035。读取本机 REA/Ghidra 12.2 导出的 AfCore `0x68a7b490`、`0x68a7b530`、`0x68a7b6d0`、`0x68a7af70` 等伪代码，以及仓库中的 SystemCore、文档链与汇编记录；反编译不是原始源码。`0x68a7b530` 和 `0x68a7b6d0` 的输出含不可达块警告，不能独立证明所有路径。
+本轮重新计算 `temp/arcgis101-bin/` 提取物 SHA-256：AfCore.dll `031858c414c0105b3b978c754f3d0f31ba1d98f15d44ff15b1589c9adcc47c17`、SystemCore.dll `f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`，与 [10.1 对象体基线](arcmap-10.1-object-body.md)一致，对应介质 ArcGIS 10.1.0.3035。读取本机 Ghidra（经桥接工具） 12.2 导出的 AfCore `0x68a7b490`、`0x68a7b530`、`0x68a7b6d0`、`0x68a7af70` 等伪代码，以及仓库中的 SystemCore、文档链与汇编记录；反编译不是原始源码。`0x68a7b530` 和 `0x68a7b6d0` 的输出含不可达块警告，不能独立证明所有路径。
 
-补核已有 REA 10.8 SystemCore 静态证据 `temp/round3-systemcore108-setstream.json`，目标 SHA-256 `48cbd921972d12156119d524f9c3923225fd30795e33c22c65c87db3a6c89aca`，Ghidra 12.2，`0x1006f8c0` 仅替换底流并 AddRef/Release，未见表清理。它只证明该函数的局部静态行为，不证明跨版本文件兼容或类体相同。
+补核已有 Ghidra 桥接工具 10.8 SystemCore 静态证据 `temp/round3-systemcore108-setstream.json`，目标 SHA-256 `48cbd921972d12156119d524f9c3923225fd30795e33c22c65c87db3a6c89aca`，Ghidra 12.2，`0x1006f8c0` 仅替换底流并 AddRef/Release，未见表清理。它只证明该函数的局部静态行为，不证明跨版本文件兼容或类体相同。
 
 ## 逐项结果
 

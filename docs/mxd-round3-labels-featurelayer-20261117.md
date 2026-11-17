@@ -7,7 +7,7 @@
 - FeatureLayer.dll：ArcMap 10.1.0.3035，SHA-256 `2baf870615bb75b6f30ccea173ba4303fdd0b1a6571e11b9197c5fcf7298bb60`，本轮 `sha256sum` 与 [原生版本记录](mxd-boundary-luna.md) 一致；其 PE 首选 ImageBase 为 `0x6f6a0000`。
 - LabelPlacement.dll：SHA-256 `8415f63c1889e269ba6ae585538f601130c20cef02e4556e875a52217d35ea3d`，本轮哈希与 [10.1 标注记录](mxd-label-luna.md) 一致。
 - esriCarto 10.1 嵌入类型库 SHA-256 `8a70f4094c85b966ce0b0129ad7fa3d9562269c73f87e4f70cbc78c75775b578`；原 OLB 与提取关系见 [类型库证据](mxd-dataset-format-evidence-20261117.md#补充246-的真实模板-rust-试读和-225-枚举值)。用 Wine `LoadTypeLibEx` 和 `ITypeInfo::GetFuncDesc/GetNames` 读取；64 位 Wine 的 `oVft` 需除 2 才对应 32 位 DLL 的字节偏移。
-- 独立 REA 6.9.0 CLI / Ghidra 12.2：FeatureIDSet Load `0x6f6d97d0`，证据 `ev_b064555635a7126497ef1aee72d05ddcd6c2bbe809533f210aba129d3caca173`；Add `0x6f6d96b0`，证据 `ev_2b53d285e2ac1efd7a1bb7bd735a10a5d5b1b281f7b62219491628218cc0fa37`。原始输出只保留在 `temp/round3-labels/`。静态反编译不是运行轨迹。
+- 独立 Ghidra 桥接工具 6.9.0 CLI / Ghidra 12.2：FeatureIDSet Load `0x6f6d97d0`，证据 `ev_b064555635a7126497ef1aee72d05ddcd6c2bbe809533f210aba129d3caca173`；Add `0x6f6d96b0`，证据 `ev_2b53d285e2ac1efd7a1bb7bd735a10a5d5b1b281f7b62219491628218cc0fa37`。原始输出只保留在 `temp/round3-labels/`。静态反编译不是运行轨迹。
 
 ## 新增访问器和样本证据
 
@@ -17,7 +17,7 @@ FeatureIDSet 的 RTTI `.?AVFeatureIDSet@@` 类型描述符为 `0x6f7d27bc`；COL
 
 独立测试直接打开仓库 `samples/测试底图.mxd` 的 `/Maps`，验证 FeatureIDSet 键 75 处 `0xf63..0xf7d` 的完整对象头及版本 1、计数 0，HLEP 键 85 处 `0x15d8..0x1606` 的头、版本 1、空字符串、-1 和零块，并检查 HLEP 每个截断前缀不推进游标。HLEP 体长的解释仍是样本结构，不是 Load 已定位的证明；样本位置由既有宿主链定位，测试不宣称独立证明所有外层归属。
 
-额外按 LabelPlacement.dll 的 MSVC RTTI 与 PE 虚表交叉检查：`BasicOverposterLayerProperties` 的类型描述符为 `0x7858dd20`，COL 显示多个子对象；其中 +0x10 虚表 `0x7857acc0` 的第四槽 `0x78547ba0` 跳转到 `0x78570dc0`。HLEP 类型描述符为 `0x7858dfa0`，其 +0x10 虚表 `0x7857b748` 第四槽也指向 `0x78570dc0`。因此以前对 HLEP 的“仅两个接口”描述不足以概括全部 RTTI 子对象；但 RTTI 子对象及共享函数本身未证明它们是 IPersistStream，也不能将该共享函数直接认作 Load。REA 对 `0x78570dc0` 的伪代码（`ev_1ba1310741198fd5b7e152b02bc0b9dcbc9d2588d5b1b6ea2c681ecc80380bc4`）出现内存流、SaveObject、Seek 和 LoadObject 调用；但反编译报告超过最大重启次数并出现未恢复寄存器变量，暂不能据此确认槽语义或数据流。需要对 QI、接口类型和槽签名继续取证。
+额外按 LabelPlacement.dll 的 MSVC RTTI 与 PE 虚表交叉检查：`BasicOverposterLayerProperties` 的类型描述符为 `0x7858dd20`，COL 显示多个子对象；其中 +0x10 虚表 `0x7857acc0` 的第四槽 `0x78547ba0` 跳转到 `0x78570dc0`。HLEP 类型描述符为 `0x7858dfa0`，其 +0x10 虚表 `0x7857b748` 第四槽也指向 `0x78570dc0`。因此以前对 HLEP 的“仅两个接口”描述不足以概括全部 RTTI 子对象；但 RTTI 子对象及共享函数本身未证明它们是 IPersistStream，也不能将该共享函数直接认作 Load。Ghidra 桥接工具 对 `0x78570dc0` 的伪代码（`ev_1ba1310741198fd5b7e152b02bc0b9dcbc9d2588d5b1b6ea2c681ecc80380bc4`）出现内存流、SaveObject、Seek 和 LoadObject 调用；但反编译报告超过最大重启次数并出现未恢复寄存器变量，暂不能据此确认槽语义或数据流。需要对 QI、接口类型和槽签名继续取证。
 
 ## 逐项裁决
 

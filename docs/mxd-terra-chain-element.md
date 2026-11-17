@@ -6,7 +6,7 @@
 
 重新计算 `temp/agent-fl-tail/LayerLib.dll.6BF03936_8AC4_4632_8FB2_A6A34A19655A` SHA-256 `55514f054c9e4827d773cf1a9b9a83e7c41c483f73758965244625165f330e02`，以及 `DisplayCore.dll.33A02325_2485_4623_B2CE_71B5736B51DF` SHA-256 `9b3e61f9ca553f14a442338dfc1c24ac51c1eea6dd9a4509282466a6a926e4d2`，均与既有元素体记录一致。两者 PE Machine 均为 `0x14c`，资源 FileVersion/ProductVersion 为 `10.1.0.3035`。注意前者 CAB 条目名为 LayerLib.dll，但其版本资源的 InternalName/OriginalFilename 实际为 `LayerUI`/`LayerUI.DLL`；后者资源为 `DisplayCore`/`DisplayCore.dll`。这些是文件字节和资源声明，不证明签名真实性或安装映射；地址仅绑定对应摘要。
 
-本轮用 pefile 读取导出、虚表和常量，以 objdump 读取指令，并复用先前 10.1 esriDisplay 类型库 dump；不存在源码不足而需新建反编译会话的情况，没有连接、切换或重置共享 REA。类型库经 Wine 解析及其输出限制见 [前次记录](mxd-terra-follow-display.md)，下述 TextSymbol 槽号以该 dump 的 `oVft/2` 为 x86 偏移。
+本轮用 pefile 读取导出、虚表和常量，以 objdump 读取指令，并复用先前 10.1 esriDisplay 类型库 dump；不存在源码不足而需新建反编译会话的情况，没有连接、切换或重置共享 Ghidra 桥接工具。类型库经 Wine 解析及其输出限制见 [前次记录](mxd-terra-follow-display.md)，下述 TextSymbol 槽号以该 dump 的 `oVft/2` 为 x86 偏移。
 
 ## ElementProperties
 

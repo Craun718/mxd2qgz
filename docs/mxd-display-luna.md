@@ -4,10 +4,10 @@
 
 ## 证据来源和复核方式
 
-- REA/Ghidra 12.1.4 直接打开 `temp/arcgis101-bin/SystemCore.dll.017F52BF_20D0_487A_A583_436DA6406CFF`，SHA-256 `f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`。对 Percentage、Fraction、Rate、LatLon、Angle 的 10.1 Load 入口做函数分析，并按保留 Evidence 查看反编译伪代码。
-- REA/Ghidra 直接打开 `temp/arcgis101-bin/featurelayerdll/FeatureLayer.dll.6BF03936_8AC4_4632_8FB2_A6A34A19655A`，SHA-256 `2baf870615bb75b6f30ccea173ba4303fdd0b1a6571e11b9197c5fcf7298bb60`，复核 Hyperlink Load `0x6f6d9170`。
-- DisplayCore 符号与颜色、OLE StdFont/StdPicture 依据现有 10.1 记录交叉核对：`arcmap-10.1-display-symbols-round2.md`、`arcmap-10.1-display-slots-round3.md`、`arcmap-10.1-display-tails.md`、`arcmap-10.1-element-bodies.md`、`arcmap-10.1-hyperlink.md`、`arcmap-10.1-number-format.md`、`arcmap-10.1-ole-stdfont.md`。本轮没有在 REA 中打开 DisplayCore 或 oleaut32：工作区对应临时 DLL 路径已不可用；不把已有文档误称为本轮 REA 复核。
-- REA 证据 ID：Percentage `ev_07a3b005bc406ec74cb2254c72002a3702aea3df2d621494643a588ef23fd8e8`；Fraction `ev_66ba676d208891089277363fc716ee05fc23dca4d1d95bc9ec5c63e8f72a7fff`；Rate `ev_7ff4bd10a068e83115cafb481e0b337dd5e17c09980eec47c6269aad40b9bed1`；LatLon `ev_99d22e8daa82fd3589fb90b6ae8c2b6fc0c58044a40f65cc2c7c28c291a8fc30`；Angle `ev_9bbd5ad7c90f070a8b4cdfa9d297937cba33312931d7aae26ca7350fdb61c45f`；Hyperlink `ev_85e8d04631002adf0ede539d9cce12c18a41557de3d503c19d7590031b580d3c`。REA 观察是静态反编译，不是 ArcMap 运行时观测。
+- Ghidra（经桥接工具） 12.1.4 直接打开 `temp/arcgis101-bin/SystemCore.dll.017F52BF_20D0_487A_A583_436DA6406CFF`，SHA-256 `f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`。对 Percentage、Fraction、Rate、LatLon、Angle 的 10.1 Load 入口做函数分析，并按保留 Evidence 查看反编译伪代码。
+- Ghidra（经桥接工具） 直接打开 `temp/arcgis101-bin/featurelayerdll/FeatureLayer.dll.6BF03936_8AC4_4632_8FB2_A6A34A19655A`，SHA-256 `2baf870615bb75b6f30ccea173ba4303fdd0b1a6571e11b9197c5fcf7298bb60`，复核 Hyperlink Load `0x6f6d9170`。
+- DisplayCore 符号与颜色、OLE StdFont/StdPicture 依据现有 10.1 记录交叉核对：`arcmap-10.1-display-symbols-round2.md`、`arcmap-10.1-display-slots-round3.md`、`arcmap-10.1-display-tails.md`、`arcmap-10.1-element-bodies.md`、`arcmap-10.1-hyperlink.md`、`arcmap-10.1-number-format.md`、`arcmap-10.1-ole-stdfont.md`。本轮没有在 Ghidra 桥接工具 中打开 DisplayCore 或 oleaut32：工作区对应临时 DLL 路径已不可用；不把已有文档误称为本轮 Ghidra 桥接工具 复核。
+- Ghidra 桥接工具 证据 ID：Percentage `ev_07a3b005bc406ec74cb2254c72002a3702aea3df2d621494643a588ef23fd8e8`；Fraction `ev_66ba676d208891089277363fc716ee05fc23dca4d1d95bc9ec5c63e8f72a7fff`；Rate `ev_7ff4bd10a068e83115cafb481e0b337dd5e17c09980eec47c6269aad40b9bed1`；LatLon `ev_99d22e8daa82fd3589fb90b6ae8c2b6fc0c58044a40f65cc2c7c28c291a8fc30`；Angle `ev_9bbd5ad7c90f070a8b4cdfa9d297937cba33312931d7aae26ca7350fdb61c45f`；Hyperlink `ev_85e8d04631002adf0ede539d9cce12c18a41557de3d503c19d7590031b580d3c`。Ghidra 桥接工具 观察是静态反编译，不是 ArcMap 运行时观测。
 
 ## 分项结论
 
@@ -27,8 +27,8 @@
 
 ### NumberFormat：TODO 225–227、261–263
 
-- REA 复核的 10.1 Load 形态与既有文档吻合：Percentage `0x7ffd11b0`、Fraction `0x7ffc68a0`、Rate `0x7ffd6a10`、LatLon `0x7ffca1e0`、Angle `0x7ffb33a0`。九类版本门和字段顺序已有实现/记录；类型名与字段布局仍不足以确认每个标量/字符串的显示业务含义。故 **225、226 不能勾选为语义定性完成**。
-- **227 的静态布局结论可闭合，样本子项未闭合。** Percentage v2 及以上在原 short 所在位置继续读取 NumericFormat 核心（同槽升级）；Rate v2 及以上在 double 后读取 String，再在该 double 槽位置接续 NumericFormat 核心；LatLon/Angle 的 NumericFormat 核心位于各自不同对象偏移，是独立槽。REA 对应伪代码可见 Percentage 调 `0x7ffce4b0` 的版本条件，以及 LatLon/Angle 的不同基址参数。样本中九类变体没有足够实例覆盖这两种核心布局，所以 TODO 中的“样本 0 实例”验证不能完成。
+- Ghidra 桥接工具 复核的 10.1 Load 形态与既有文档吻合：Percentage `0x7ffd11b0`、Fraction `0x7ffc68a0`、Rate `0x7ffd6a10`、LatLon `0x7ffca1e0`、Angle `0x7ffb33a0`。九类版本门和字段顺序已有实现/记录；类型名与字段布局仍不足以确认每个标量/字符串的显示业务含义。故 **225、226 不能勾选为语义定性完成**。
+- **227 的静态布局结论可闭合，样本子项未闭合。** Percentage v2 及以上在原 short 所在位置继续读取 NumericFormat 核心（同槽升级）；Rate v2 及以上在 double 后读取 String，再在该 double 槽位置接续 NumericFormat 核心；LatLon/Angle 的 NumericFormat 核心位于各自不同对象偏移，是独立槽。Ghidra 桥接工具 对应伪代码可见 Percentage 调 `0x7ffce4b0` 的版本条件，以及 LatLon/Angle 的不同基址参数。样本中九类变体没有足够实例覆盖这两种核心布局，所以 TODO 中的“样本 0 实例”验证不能完成。
 - Angle `0x7ffb33a0` 在版本 >1 调用 NumericFormat Load 后没有检查返回值，之后仍按版本继续读取尾 short；现有 Rust 读取器把核心失败作为整体错误，较原生更严格。**第 263 行仍未闭合**：容错路径的原生流游标效应未在 ArcMap 运行时验证，不能仅按静态调用继续实现宽松恢复。
 - TODO 第 261、262 行标记的是短体/样本形态核验。已有合成测试覆盖格式门与截断，但九类短体和升级核心均缺 MXD 样本；合成测试不能替代样本或目标软件验证。
 
@@ -51,4 +51,4 @@
 
 本轮未修改既有源文件、测试文件或 TODO。相关读取器已存在：`src/objects/hyperlink.rs`、`src/objects/number_format.rs`、`src/objects/ole_font.rs`、`src/objects/display_color.rs`、`src/objects/display_symbol.rs`、`src/objects/element_body.rs`，以及 FeatureLayer 后继段中的 Hyperlink/NumberFormat 分派。因没有合法的新增专属代码边界，本轮不复制实现、不新增未接线的冗余解析器。
 
-验证包括：REA 对 10.1 SystemCore.dll 和 FeatureLayer.dll 的静态打开与函数分析；读取仓库研究记录和现有实现。未运行测试（本轮没有代码改动），未在 ArcMap 10.1 或 QGIS 中人工检查；本轮结论不构成运行时或视觉验收。
+验证包括：Ghidra 桥接工具 对 10.1 SystemCore.dll 和 FeatureLayer.dll 的静态打开与函数分析；读取仓库研究记录和现有实现。未运行测试（本轮没有代码改动），未在 ArcMap 10.1 或 QGIS 中人工检查；本轮结论不构成运行时或视觉验收。

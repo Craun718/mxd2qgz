@@ -6,7 +6,7 @@
 
 Map `0x7945d350` 对 `LoadObject` 请求 `0x79482c08`；直接读取 Map 该处和 GdbCore `0x70ab84e4` 的 16 字节，均为 IName IID `{4BA33331-D55F-11D1-8882-0000F877762D}`。GdbCore 中 FeatureClassName 持久化表 `0x70ad02dc` 的 GetClassID/Load 归属见 [既有证据](arcmap-10.1-map-object.md)，构造代码 `0x709b3b43..0x709b3b8f` 同时设置主表 `0x70ad0190`；该表首项 QI `0x709b3f50` 比较 `0x70ab84e4` 并返回对象 `+0x10`。QueryTableName 的持久化表 `0x70ac5128` 与类身份见 [既有证据](arcmap-10.1-dataset-name-slots.md)，构造代码 `0x70932142..0x70932179` 设置主表 `0x70ac5038`；其 QI `0x709330d0` 在 `0x7093311b..0x70933146` 比较同一 IID 并返回 `+0x10`。两支均检查了静态机器指令与隔离 Ghidra 反编译，并非仅据类名或类型库推定。QI 路径是原生实现的静态证据，未实际调用目标软件或证明每个流对象都能成功打开数据源。
 
-独立 REA 6.9.0 CLI、JDK 25 和仓库专属 TMPDIR 对 GdbCore 的尝试因 Ghidra 330 秒启动期限返回 `provider_timeout`，没有产生该调用的反编译证据；未修改共享 REA 目标。随后用 `GHIDRA_INSTALL_DIR=/opt/ghidra`、JDK 25、独立目录与复制的既有工程运行 pyghidra/Ghidra 12.2，产物为忽略目录 `temp/terra-nextpass-table/qi_probe.json`，并用 objdump 和 PE 字节交叉核对。产物可能含本机路径，分享前须脱敏。
+独立 Ghidra 桥接工具 6.9.0 CLI、JDK 25 和仓库专属 TMPDIR 对 GdbCore 的尝试因 Ghidra 330 秒启动期限返回 `provider_timeout`，没有产生该调用的反编译证据；未修改共享 Ghidra 桥接工具 目标。随后用 `GHIDRA_INSTALL_DIR=/opt/ghidra`、JDK 25、独立目录与复制的既有工程运行 pyghidra/Ghidra 12.2，产物为忽略目录 `temp/terra-nextpass-table/qi_probe.json`，并用 objdump 和 PE 字节交叉核对。产物可能含本机路径，分享前须脱敏。
 
 ## 读取器与边界
 

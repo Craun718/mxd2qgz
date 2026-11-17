@@ -4,9 +4,9 @@
 
 ## 文件身份和方法
 
-重新计算提取原件 SHA-256，并用 PE 版本资源核对 FileVersion 均为 10.1.0.3035：GdbCore `ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4`；DisplayCore `9b3e61f9ca553f14a442338dfc1c24ac51c1eea6dd9a4509282466a6a926e4d2`；SystemCore `f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`。地址为目标 DLL 的 PE 虚拟地址。原 REA 伪代码证据、类型库来源和既有样本范围分别见 [数据集槽](arcmap-10.1-dataset-name-slots.md)、[变体流](mxd-table-query-name-variant-20261116.md)、[数字格式](arcmap-10.1-number-format.md) 与 [数据源 IID](mxd-dataset-format-evidence-20261117.md)。
+重新计算提取原件 SHA-256，并用 PE 版本资源核对 FileVersion 均为 10.1.0.3035：GdbCore `ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4`；DisplayCore `9b3e61f9ca553f14a442338dfc1c24ac51c1eea6dd9a4509282466a6a926e4d2`；SystemCore `f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`。地址为目标 DLL 的 PE 虚拟地址。原 Ghidra 桥接工具 伪代码证据、类型库来源和既有样本范围分别见 [数据集槽](arcmap-10.1-dataset-name-slots.md)、[变体流](mxd-table-query-name-variant-20261116.md)、[数字格式](arcmap-10.1-number-format.md) 与 [数据源 IID](mxd-dataset-format-evidence-20261117.md)。
 
-本轮独立启动 REA 6.8.0 CLI，不切换共享 MCP 目标。定点反编译 `0x708f4ab0` 返回 `provider_unavailable`：当前 `/opt/ghidra` 是 12.2，CLI 指定支持 12.1.x；诊断的 Java 21 也低于要求的 JDK 25（机器另有 JDK 25）。未更改全局配置或其他代理的会话。原始错误保存在 `temp/round3-dataset/`。以下 ObjectClassName 的新证据来自原 DLL 的 PE 字节和 objdump 指令，而非声称本轮新取得 REA 伪代码；需用兼容版本的独立 REA 会话进一步复核。
+本轮独立启动 Ghidra 桥接工具 6.8.0 CLI，不切换共享 MCP 目标。定点反编译 `0x708f4ab0` 返回 `provider_unavailable`：当前 `/opt/ghidra` 是 12.2，CLI 指定支持 12.1.x；诊断的 Java 21 也低于要求的 JDK 25（机器另有 JDK 25）。未更改全局配置或其他代理的会话。原始错误保存在 `temp/round3-dataset/`。以下 ObjectClassName 的新证据来自原 DLL 的 PE 字节和 objdump 指令，而非声称本轮新取得 Ghidra 桥接工具 伪代码；需用兼容版本的独立 Ghidra 桥接工具 会话进一步复核。
 
 ## ObjectClassName 实现定位
 
@@ -20,7 +20,7 @@
 
 | ID | 状态 | 证据和缺口 |
 | --- | --- | --- |
-| 178 | PARTIAL | 已有 REA 证据 `ev_692562cbf1e7d3f7180662b9c83de903e10293297ab9531dd5970cd2e49162d8` 覆盖 TableQueryName 候选 `0x708f5070`/`0x708f5280`；版本、字符串和对象调用的局部次序见既有变体流记录。虚表归属、写侧 `Write_exref`、间接调用和 FeatureQueryName 完整读写链未闭合；需兼容 REA/Ghidra 的独立会话补伪代码。不能实现猜测布局。 |
+| 178 | PARTIAL | 已有 Ghidra 桥接工具 证据 `ev_692562cbf1e7d3f7180662b9c83de903e10293297ab9531dd5970cd2e49162d8` 覆盖 TableQueryName 候选 `0x708f5070`/`0x708f5280`；版本、字符串和对象调用的局部次序见既有变体流记录。虚表归属、写侧 `Write_exref`、间接调用和 FeatureQueryName 完整读写链未闭合；需兼容 Ghidra（经桥接工具） 的独立会话补伪代码。不能实现猜测布局。 |
 | 179 | CLOSED | ObjectClassName 的注册、工厂 RTTI、构造和实际 FdbTableName 类型链见上；本项只关闭实现位置定位，不关闭其持久化或运行行为。 |
 | 218 | PARTIAL | GdbCore `0x709b7c90` 的四 String、标志和 Workspace 槽已有 Load/Save 静态布局及介质局部链；仍缺属性访问器与对象偏移的匹配，不能定名字段。 |
 | 219 | PARTIAL | GdbCore `0x7095e5c0` 的两 String 和 IDatasetName 槽已有静态布局；仍缺访问器与各字段的绑定及实际拓扑对象。 |

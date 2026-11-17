@@ -6,7 +6,7 @@
 
 本轮重新计算并以 pefile 核对 PE x86 固定版本：ArcMap.exe `10.1.0.3035`、SHA-256 `1fb79eee6b442bd61c44dd3d0864ddfff06b1df882ddc59fb87380bb3ec5af97`；PageLayout.dll `10.1.0.3035`、SHA-256 `ba9e71f42e00d06a2311a1492fc3d1aeca544c96d9ebd3926140a11b8de9d69f`。与[原生基线](arcmap-10.1-native-baseline.md)一致；资源版本是声明，摘要标识字节，不证明签名或运行身份。
 
-本轮利用已有独立 REA/Ghidra 12.1.4 的 PageLayout 全函数导出定位代码，其索引中的 target SHA-256 与本轮 DLL 一致；另重新读取 PE GUID、虚表字节并用 objdump 检查构造、接口调用及关键分支。已有第八轮隔离 Ghidra 12.2/JDK 25 伪代码用于 `0x47a3f0` 辅助定位。伪代码不是源码，PDB 加载状态未知，自动推断的库函数名不作为证据。本轮未切换共享 REA 目标。忽略目录 `temp/terra-round9-*.asm` 等输出含本机路径，分享前须脱敏。
+本轮利用已有独立 Ghidra（经桥接工具） 12.1.4 的 PageLayout 全函数导出定位代码，其索引中的 target SHA-256 与本轮 DLL 一致；另重新读取 PE GUID、虚表字节并用 objdump 检查构造、接口调用及关键分支。已有第八轮隔离 Ghidra 12.2/JDK 25 伪代码用于 `0x47a3f0` 辅助定位。伪代码不是源码，PDB 加载状态未知，自动推断的库函数名不作为证据。本轮未切换共享 Ghidra 桥接工具 目标。忽略目录 `temp/terra-round9-*.asm` 等输出含本机路径，分享前须脱敏。
 
 ## 从 CMxDoc 成员绑定到 DocumentInfo
 

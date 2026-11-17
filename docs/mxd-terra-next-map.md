@@ -22,4 +22,4 @@
 
 ## 验证和交接
 
-`cargo test --test terra_next_map`、`cargo test --test round4_map_spatial -- --include-ignored --nocapture`、`cargo test --test round4_names_format --test envelope_v0_round2`、完整 `cargo test` 均通过；`cargo fmt --check` 通过。测试进程的 TMPDIR 指向仓库 `temp/terra-map-feature-private/tmp`。重新使用已有 REA 导出和证据包；受 `/tmp` 空间紧张及并行目标会话隔离约束，没有启动新的 Ghidra 导入。未在 ArcMap 10.1 或 QGIS 打开并人工检查，未进行目标进程运行实验。主代理可整合新测试及本表，不宜勾选上述未关闭条目。
+`cargo test --test terra_next_map`、`cargo test --test round4_map_spatial -- --include-ignored --nocapture`、`cargo test --test round4_names_format --test envelope_v0_round2`、完整 `cargo test` 均通过；`cargo fmt --check` 通过。测试进程的 TMPDIR 指向仓库 `temp/terra-map-feature-private/tmp`。重新使用已有 Ghidra 桥接工具 导出和证据包；受 `/tmp` 空间紧张及并行目标会话隔离约束，没有启动新的 Ghidra 导入。未在 ArcMap 10.1 或 QGIS 打开并人工检查，未进行目标进程运行实验。主代理可整合新测试及本表，不宜勾选上述未关闭条目。

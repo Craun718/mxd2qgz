@@ -1,6 +1,6 @@
 # MXD 解析对象流与版本规则研究（2026-11-17）
 
-本轮只做只读 REA 研究和本记录整理；没有修改 Rust 源码、测试、`README.md` 或 `TODO.md`。
+本轮只做只读 Ghidra 桥接工具 研究和本记录整理；没有修改 Rust 源码、测试、`README.md` 或 `TODO.md`。
 
 ## 范围与证据基线
 
@@ -25,7 +25,7 @@
 | ArcMap.exe | `a9a963b9dffbf0cb346c67c98bce0880b7e64363410a788dccb9597cff3c75fe` |
 | PageLayout.dll | `6d432cb4ee65fc3f73f20c2270db1f10e0292935dfec466fe74e8922ff2413ee` |
 
-本轮用 REA/Ghidra 12.1.4 对上述 10.1 AfCore.dll、SystemCore.dll 完成新的函数级静态取证；没有运行 ArcMap 或 QGIS。为避免覆盖并行研究，未把本轮 REA 会话导出为新的证据包；文中保留 MCP 返回的证据 ID 和关键地址，供后续会话核对。
+本轮用 Ghidra（经桥接工具） 12.1.4 对上述 10.1 AfCore.dll、SystemCore.dll 完成新的函数级静态取证；没有运行 ArcMap 或 QGIS。为避免覆盖并行研究，未把本轮 Ghidra 桥接工具 会话导出为新的证据包；文中保留 MCP 返回的证据 ID 和关键地址，供后续会话核对。
 
 本轮关键函数：AfCore `LoadObject`、`SaveObject`、`SimpleSaveObject`、QI 包装与尾部包装；SystemCore `SetStream`、对象读头、对象写出器、读/写表查找与替换函数。既有记录之外的修正：`LoadObject` 普通分支只实例化零 GUID 空对象，非零 GUID 保持空输出并返回成功；这与此前把 `0x68a7b490` 泛化为“读 GUID 后创建实例”的表述不同。SimpleSaveObject 的 QI IID 也已从指令常量还原。
 
@@ -190,6 +190,6 @@
 - 未运行 ArcMap 10.1、10.8 或 QGIS。
 - 未新增 Rust 代码、测试或解析器接线。
 - 未更新 `TODO.md`。
-- 未更新既有研究文档或导出新的 REA 证据包；文中 REA Evidence ID 只可在对应 MCP 会话核对，文件级可复核证据包括输入 SHA-256、反编译产物索引与既有证据包。
+- 未更新既有研究文档或导出新的 Ghidra 桥接工具 证据包；文中 Ghidra 桥接工具 Evidence ID 只可在对应 MCP 会话核对，文件级可复核证据包括输入 SHA-256、反编译产物索引与既有证据包。
 - 10.1 结论是静态反编译，不是目标软件运行观察；Map、图层、空间参考与转换结果的人工验收仍缺。
 - 10.8 文件本轮仅完成提取与 SHA-256 核验，不构成新的函数级证据。

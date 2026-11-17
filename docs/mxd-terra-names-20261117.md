@@ -1,12 +1,12 @@
 # 名称、数字格式与 Hyperlink 基线复核（2026-11-17）
 
-本表行号固定为本次任务给出的 TODO 基线，不随以后插行重编号。未修改 TODO；“不可勾选”指对应完整缺口仍未闭合。此前结果及 REA Evidence 的完整上下文见[第四轮名称取证](mxd-round4-names-format-20261117.md)、[变体流](mxd-table-query-name-variant-20261116.md)、[数字格式](arcmap-10.1-number-format.md)、[样本检索](mxd-dataset-format-evidence-20261117.md)和 [Hyperlink](arcmap-10.1-hyperlink.md)。本轮没有重新运行 REA，引用的是明确标明版本的既有 REA 静态结果，不将其描述为运行观察。
+本表行号固定为本次任务给出的 TODO 基线，不随以后插行重编号。未修改 TODO；“不可勾选”指对应完整缺口仍未闭合。此前结果及 Ghidra 桥接工具 Evidence 的完整上下文见[第四轮名称取证](mxd-round4-names-format-20261117.md)、[变体流](mxd-table-query-name-variant-20261116.md)、[数字格式](arcmap-10.1-number-format.md)、[样本检索](mxd-dataset-format-evidence-20261117.md)和 [Hyperlink](arcmap-10.1-hyperlink.md)。本轮没有重新运行 Ghidra 桥接工具，引用的是明确标明版本的既有 Ghidra 桥接工具 静态结果，不将其描述为运行观察。
 
 ## 逐行裁决
 
 | 基线行 | 可勾选性 | 证据、阻碍和后续复核 |
 | --- | --- | --- |
-| 184 | 不可 | GdbCore 10.1 TableQueryName 候选 Load `0x708f5070`、Save `0x708f5280` 已有 REA 伪代码；`Write_exref`、间接调用与虚表归属链及 FeatureQueryName 完整读写仍未闭合。进一步定位两类虚表、GetIDType、helper 和实际流消费；不能把另一类 QueryTableName 的读取器当作实现。 |
+| 184 | 不可 | GdbCore 10.1 TableQueryName 候选 Load `0x708f5070`、Save `0x708f5280` 已有 Ghidra 桥接工具 伪代码；`Write_exref`、间接调用与虚表归属链及 FeatureQueryName 完整读写仍未闭合。进一步定位两类虚表、GetIDType、helper 和实际流消费；不能把另一类 QueryTableName 的读取器当作实现。 |
 | 224 | 不可 | FeatureDatasetName Load `0x709b7c90` 的四个字符串、标志和 Workspace 槽有静态布局；Africa 有局部 v1 对象链。各字段与访问器的业务属性尚未逐一绑定，需要类型库成员、实际虚表访问器及字段偏移交叉验证。 |
 | 225 | 不可 | TopologyName Load `0x7095e5c0` 的两个字符串及数据集名称槽有静态布局；缺访问器字段映射和拓扑对象实证，不能据顺序猜测名称。 |
 | 236 | 不可 | 九类 SystemCore Load/Save 已记录版本门与标量布局，但未完成所有标量到接口属性的逐类访问器绑定。须逐类关联类型库、虚表及成员偏移。 |

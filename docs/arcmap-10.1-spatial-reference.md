@@ -1,6 +1,6 @@
 # ArcMap 10.1 空间参考持久化（/Maps 投影文本）
 
-记录日期：2026-11-13。本轮是静态 REA 研究与仓库参考样本的字节对照，未执行 ArcMap 或 QGIS；文中区分原生证据、样本辅助观察与未验证项。所有地址均为所属 DLL 静态映像虚拟地址（VA），绑定下述文件摘要。
+记录日期：2026-11-13。本轮是静态 Ghidra 桥接工具 研究与仓库参考样本的字节对照，未执行 ArcMap 或 QGIS；文中区分原生证据、样本辅助观察与未验证项。所有地址均为所属 DLL 静态映像虚拟地址（VA），绑定下述文件摘要。
 
 ## 来源与文件身份
 
@@ -16,11 +16,11 @@
 
 三者均为 PE x86（Machine `0x14c`）。`Geometry.dll` 与基线五个 DLL 同为 10.1.0.3035；两个 `pe.dll` 条目报告 10.1.0.679，与 Desktop 3035 的组件版本映射未核对，属未解决事项。版本取自资源内 `VS_FIXEDFILEINFO` 及 ProductVersion 字符串，是资源声明，不是签名验证。原文件和提取物不纳入仓库。
 
-## REA 入口与分析环境
+## Ghidra 桥接工具 入口与分析环境
 
-本轮 REA MCP 服务器不可用：注册环境 `JAVA_HOME` 指向 JDK 21，而本机 Ghidra 12.2 要求 64 位 JDK 25+（提供者诊断报 `unsupported_version`）。研究经 `rea` CLI 6.9.0（npx 缓存入口）以 `JAVA_HOME=/usr/lib/jvm/java-25-openjdk` 完成，引擎为 Ghidra 12.2；bridge 声明核对版本为 12.1.4，12.2 为被接受的观察版本。字符串搜索与全量反编译的分析配置摘要为 `af4d30c9d76866092ce084421f113cb34393a9703542b46a5c290a493c77a8c4`；Geometry.dll 全量反编译 manifest 的 evidence ID 为 `ev_cc6d7cd18c2aa3d207835cb5238632dff09b480f062abf76ab2314c211ac4480`。Ghidra 类型信息引用 PDB `Geometry.pdb`（GUID `235bee7b-efff-44e5-bad9-9dde52dfc745`，RSDS），加载状态未知；`ClassFactory<ESRI::...>`、`ProjectedCoordinateSystem::vftable` 等名称来自该恢复的类型信息，不能视为已运行对象的证明。
+本轮 Ghidra 桥接工具 MCP 服务器不可用：注册环境 `JAVA_HOME` 指向 JDK 21，而本机 Ghidra 12.2 要求 64 位 JDK 25+（提供者诊断报 `unsupported_version`）。研究经 Ghidra 桥接工具 CLI 6.9.0（npx 缓存入口）以 `JAVA_HOME=/usr/lib/jvm/java-25-openjdk` 完成，引擎为 Ghidra 12.2；bridge 声明核对版本为 12.1.4，12.2 为被接受的观察版本。字符串搜索与全量反编译的分析配置摘要为 `af4d30c9d76866092ce084421f113cb34393a9703542b46a5c290a493c77a8c4`；Geometry.dll 全量反编译 manifest 的 evidence ID 为 `ev_cc6d7cd18c2aa3d207835cb5238632dff09b480f062abf76ab2314c211ac4480`。Ghidra 类型信息引用 PDB `Geometry.pdb`（GUID `235bee7b-efff-44e5-bad9-9dde52dfc745`，RSDS），加载状态未知；`ClassFactory<ESRI::...>`、`ProjectedCoordinateSystem::vftable` 等名称来自该恢复的类型信息，不能视为已运行对象的证明。
 
-证据包在忽略目录 `temp/arcgis/`：`arcmap101-spatialref-mappingcore-projcs-search.json`（`ev_70b20d890b74b3dd90aeec9bd63020877304d960e4517c4ed9fb068f8b6bb4c5`）、`arcmap101-spatialref-mappingcorelib-projcs-search.json`（`ev_fa6e9c81126ba89a66d1eb682035b43df0c959a1ba8b1c54dc7c236ab4c170cd`）、`arcmap101-spatialref-mappingcorelib-sr-search.json`（`ev_f53dfc98f07362202aa7634bf1244b7ff1ecaf093fc10677baaea09e0179f67b`）、`arcmap101-spatialref-geometry-decompile.json`、`arcmap101-spatialref-mappingcorelib-decompile.json`（该 manifest 文件为空，反编译产物 1811 个函数文件完好，见下条限制），以及关键函数伪代码副本 `arcmap101-spatialref-pseudocode/`。文件含本机路径，分享前须脱敏。字符串清单只覆盖 Ghidra 已定义字符串；字节级搜索（`search-bytes`）在 CLI 中不接受 `--snapshot`，本轮未取得字节搜索的 REA 证据，相关字节定位均为本地静态计算（python 脚本读文件），在文中明确标注。
+证据包在忽略目录 `temp/arcgis/`：`arcmap101-spatialref-mappingcore-projcs-search.json`（`ev_70b20d890b74b3dd90aeec9bd63020877304d960e4517c4ed9fb068f8b6bb4c5`）、`arcmap101-spatialref-mappingcorelib-projcs-search.json`（`ev_fa6e9c81126ba89a66d1eb682035b43df0c959a1ba8b1c54dc7c236ab4c170cd`）、`arcmap101-spatialref-mappingcorelib-sr-search.json`（`ev_f53dfc98f07362202aa7634bf1244b7ff1ecaf093fc10677baaea09e0179f67b`）、`arcmap101-spatialref-geometry-decompile.json`、`arcmap101-spatialref-mappingcorelib-decompile.json`（该 manifest 文件为空，反编译产物 1811 个函数文件完好，见下条限制），以及关键函数伪代码副本 `arcmap101-spatialref-pseudocode/`。文件含本机路径，分享前须脱敏。字符串清单只覆盖 Ghidra 已定义字符串；字节级搜索（`search-bytes`）在 CLI 中不接受 `--snapshot`，本轮未取得字节搜索的 Ghidra 桥接工具 证据，相关字节定位均为本地静态计算（python 脚本读文件），在文中明确标注。
 
 ## 原生证据：空间参考类与投影文本写出
 
@@ -58,7 +58,7 @@
 
 ## 坐标系字段的宿主与 Map 侧分支闭合（2026-11-14）
 
-对应 TODO「MXD 解析」第 67 行。证据来源：REA 6.9.0 / Ghidra 12.2 静态分析 Map.dll（SHA-256 `1c0675cc…34b1bb8`）与 FeatureLayer.dll（`2baf8706…298bb60`，均 10.1.0.3035），样本 `/tmp/r3-maps.bin`（SHA-256 `9852c0e2…8129b49`）字节对照；偏移为 /Maps 流内偏移。证据包 `temp/arcgis/arcmap101-map-cr-extent-evidence.json`（含本机路径，分享前脱敏）。未运行目标软件；详细字段序见 [Map 对象体文档](arcmap-10.1-map-object.md) 2026-11-14 节。
+对应 TODO「MXD 解析」第 67 行。证据来源：Ghidra 桥接工具 6.9.0 / Ghidra 12.2 静态分析 Map.dll（SHA-256 `1c0675cc…34b1bb8`）与 FeatureLayer.dll（`2baf8706…298bb60`，均 10.1.0.3035），样本 `/tmp/r3-maps.bin`（SHA-256 `9852c0e2…8129b49`）字节对照；偏移为 /Maps 流内偏移。证据包 `temp/arcgis/arcmap101-map-cr-extent-evidence.json`（含本机路径，分享前脱敏）。未运行目标软件；详细字段序见 [Map 对象体文档](arcmap-10.1-map-object.md) 2026-11-14 节。
 
 - **Map 对象体的空间参考读取分支补全**：Map::Load（`0x793ff4d0`）读取嵌套空间参考对象时请求 IID 数据 `DAT_79481cc0` = `{4434D680-F4DA-11D1-BCA6-0000F875BCCE}`（公开 ArcObjects 的 ISpatialReference IID；名称按 SDK 惯例标注）。对象类身份由流内类标识决定（PCS `{2A626700-…}` 等），Map.dll 不自行按 GUID 分派；16 字节零类标识 = 空对象标记（既有 SystemCore 证据）。PCS 内部布局（short 保存版本 + WKT 长度 + ANSI WKT + 4 域字符串 + 1 字节零 + 2 字节标志 + 7 double + 3 double）维持上节证据，本轮以样本首对象（`0x44..0x274`，560 字节）逐字节复核一致。
 - **对上节定位观察的精确化**：上节「每处空间参考对象头之前紧邻 32 字节，恰为 4 个 double」应修正为：该 32 字节属于紧邻的 **Envelope 对象**（`{30707212-52D5-11D0-A8F2-00608C85EDE5}`，esri.clsid.xml 类名 `Envelope`，Geometry.dll）体的一段，完整结构为 `short 3` + 4 double `[XMin, YMin, XMax, YMax]` + `int32 0` + 空间参考嵌套头/回引；Envelope 头（16 字节类标识 + 4 字节键）在四 double 前 22 字节。样本 25 个 Envelope（键 74..2183）逐字节一致；上节列出的 11 处 PCS 对象头全部位于某 Envelope 体内或紧随其后。
@@ -134,7 +134,7 @@ AfCore 访问器导出逐指令绑定：`?XMin@WKSEnvelope` (0x68abe9d0) 读 +0x
 
 对应 TODO「MXD 解析」第 83 行（Envelope 两实例字段语义、键 74/80/151 的 LoadObject
 逐条归因、+0x144 GUID 后 7 字节与 RTM 3035 不可调和、Map `+0x298` 助手身份、
-`{1C352F40}` 类名）。证据：静态 REA（pyghidra 3.2.0 + Ghidra 12.2 + JDK 25，本地）+
+`{1C352F40}` 类名）。证据：静态 Ghidra 桥接工具（pyghidra 3.2.0 + Ghidra 12.2 + JDK 25，本地）+
 样本字节逐字段对照 + 类名/IID 查证（`esri.clsid.ecfg` 解出的 `esri.clsid.xml` 全表
 10675 类、`/tmp/mxd-arcgis101-guiddocs/wine/` 的 esri\*.olb 类型库 dump）。证据包
 `temp/arcgis/arcmap101-envelope-attribution-evidence.json`（含本机路径，分享前脱敏）。

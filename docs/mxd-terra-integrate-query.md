@@ -4,7 +4,7 @@
 
 ## 原件与新证据
 
-重新计算 GdbCore SHA-256 为 `ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4`，SystemCore 为 `f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`，与既有 10.1.0.3035 PE 版本及身份核对一致；哈希本身不认证签名。此次重新读取两 PE 的 x86 原始指令和 GUID 数据；对独占副本用 pyghidra / Ghidra 12.2 和 JDK 25 定点反编译 GdbCore `0x708f4960`、`0x708f5700`、`0x70a60800`，结果在忽略目录 `temp/terra-integrate-query/probe.json`，不得不经脱敏就分享。上轮独立 REA CLI 的 Unix socket 失败记录见[前次研究](mxd-terra-follow-names.md)；本轮隔离进程未改变共享服务器状态。反编译是静态分析，不是运行证据。
+重新计算 GdbCore SHA-256 为 `ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4`，SystemCore 为 `f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`，与既有 10.1.0.3035 PE 版本及身份核对一致；哈希本身不认证签名。此次重新读取两 PE 的 x86 原始指令和 GUID 数据；对独占副本用 pyghidra / Ghidra 12.2 和 JDK 25 定点反编译 GdbCore `0x708f4960`、`0x708f5700`、`0x70a60800`，结果在忽略目录 `temp/terra-integrate-query/probe.json`，不得不经脱敏就分享。上轮独立 Ghidra 桥接工具 CLI 的 Unix socket 失败记录见[前次研究](mxd-terra-follow-names.md)；本轮隔离进程未改变共享服务器状态。反编译是静态分析，不是运行证据。
 
 ## 新闭合的分派路径
 

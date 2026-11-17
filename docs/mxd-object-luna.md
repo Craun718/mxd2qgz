@@ -4,14 +4,14 @@
 
 ## 方法与版本证据
 
-通过 REA 6.9.0 / Ghidra 12.1.4 对本地 ArcMap 10.1 原生 PE 做新鲜静态分析：
+通过 Ghidra 桥接工具 6.9.0 / Ghidra 12.1.4 对本地 ArcMap 10.1 原生 PE 做新鲜静态分析：
 
 | 模块 | 文件 SHA-256 | 版本身份 |
 | --- | --- | --- |
 | SystemCore.dll | `f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a` | 与仓库 `arcmap-10.1-native-baseline.md` 登记的 ArcGIS 10.1.0.3035 匹配 |
 | AfCore.dll | `031858c414c0105b3b978c754f3d0f31ba1d98f15d44ff15b1589c9adcc47c17` | 与同一 10.1.0.3035 基线匹配 |
 
-本轮 REA 新鲜证据：SystemCore `SetStream` `0x7ffcf7a0`（`ev_baa8cf346e82fd0c829204f549b08e4e7659ae37c063b9279e124c7848878996`）、对象写出 `0x7ffcf7e0`（`ev_5fdb3192a3f03af8b2f8a721f9d179179ef0f31ca473aebdcaa3a8cc04ccbf79`）、对象读入 `0x7ffcff70`（`ev_1857c188c726b4b741400430a8507d516d4c372411be70f8208a8cb113298919`）和读表插入/更新 `0x7ffd0950`（`ev_17bc00cc26ed389e037b968a005cfb3fac52006dabdb036cab67b63367be81f0`）。以上 Evidence 的 subject 均为哈希匹配的 SystemCore.dll。AfCore 分析目标也已按哈希打开；SimpleSaveObject 新鲜反编译请求未得到可用结果，因此该部分引用仓库既有、绑定相同 10.1 哈希的研究与已保存伪代码，未将失败请求算作本轮证据。
+本轮 Ghidra 桥接工具 新鲜证据：SystemCore `SetStream` `0x7ffcf7a0`（`ev_baa8cf346e82fd0c829204f549b08e4e7659ae37c063b9279e124c7848878996`）、对象写出 `0x7ffcf7e0`（`ev_5fdb3192a3f03af8b2f8a721f9d179179ef0f31ca473aebdcaa3a8cc04ccbf79`）、对象读入 `0x7ffcff70`（`ev_1857c188c726b4b741400430a8507d516d4c372411be70f8208a8cb113298919`）和读表插入/更新 `0x7ffd0950`（`ev_17bc00cc26ed389e037b968a005cfb3fac52006dabdb036cab67b63367be81f0`）。以上 Evidence 的 subject 均为哈希匹配的 SystemCore.dll。AfCore 分析目标也已按哈希打开；SimpleSaveObject 新鲜反编译请求未得到可用结果，因此该部分引用仓库既有、绑定相同 10.1 哈希的研究与已保存伪代码，未将失败请求算作本轮证据。
 
 这里的版本声明来自文件哈希与既有安装介质版本资源核验，不是 ArcMap 运行时观察。全程静态分析；没有安装或运行 ArcMap，也没有做 ArcMap/QGIS 人工目视验收。10.8 比较仅引用已有带版本标记的研究，不把它当作本轮重查结果。
 

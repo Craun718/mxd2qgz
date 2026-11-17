@@ -6,7 +6,7 @@
 
 - GdbCore 原件为 `temp/agent-dataset-name/GdbCore.dll.FA783766_EB8B_462D_8D00_E07AC33230EA`，重新计算 SHA-256 `ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4`；PE32 x86、ImageBase `0x708d0000`，PE 版本资源 FileVersion `10.1.0.3035`、CompanyName `Esri`、OriginalFilename `GdbCore.DLL`。以下地址只对应此文件的静态映像，不是运行地址；版本资源不构成签名认证。
 - 既有 10.1 类型库提取物 `esriGeoDatabase.olb.392FE3A8_65C9_4463_A15B_89F00F8F3FE8` 本轮重算 SHA-256 `09b741f2627633d36b67985e175632055fe6c5b8cd1000484acc3007f5917f9d`，PE 版本资源为 `10.1.0.3035`，FileDescription 和 OriginalFilename 均为 `esriGeoDatabase.olb`。既有 LoadTypeLibEx 枚举转储的索引 675、677 为两个 typekind=5 类，分别是 TableQueryName `{81CAA5D8-90C5-11D3-9F7B-00C04F6BC886}` 和 FeatureQueryName `{81CAA5D9-90C5-11D3-9F7B-00C04F6BC886}`；转储并非本轮重新枚举。10.1 `esri.clsid.xml` 对应声明与之相符。类型库本身并不证明调用发生。
-- 独立 REA 6.9.0 CLI、Ghidra 12.2、JDK 25 以仓库内独占 TMPDIR 分析 `0x708f4ab0`；run `38615cf7-7e7f-41ed-993b-1456e3278bde` 因 Unix socket `Operation not permitted` 失败，没有产生函数证据，也未改变共享服务目标。改为本机 pyghidra/Ghidra 12.2、JDK 25，打开**复制**的既有 GdbCore 分析工程，对所列函数重新定点反编译；再用 PE 原始数据、导入表和 objdump 指令交叉核对。脚本、伪代码和失败诊断在忽略目录 `temp/terra-follow-names/`，可能含本机路径，分享前脱敏。反编译不是原始源码，部分类型传播和间接调用仍有不确定性。
+- 独立 Ghidra 桥接工具 6.9.0 CLI、Ghidra 12.2、JDK 25 以仓库内独占 TMPDIR 分析 `0x708f4ab0`；run `38615cf7-7e7f-41ed-993b-1456e3278bde` 因 Unix socket `Operation not permitted` 失败，没有产生函数证据，也未改变共享服务目标。改为本机 pyghidra/Ghidra 12.2、JDK 25，打开**复制**的既有 GdbCore 分析工程，对所列函数重新定点反编译；再用 PE 原始数据、导入表和 objdump 指令交叉核对。脚本、伪代码和失败诊断在忽略目录 `temp/terra-follow-names/`，可能含本机路径，分享前脱敏。反编译不是原始源码，部分类型传播和间接调用仍有不确定性。
 
 ## 归属链及重要更正
 

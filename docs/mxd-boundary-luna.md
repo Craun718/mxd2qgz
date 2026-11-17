@@ -4,7 +4,7 @@
 
 ## 原生文件身份与读写证据
 
-从 README 所列 Desktop `Setup1.cab` 提取的 FeatureLayer.dll，经 REA/Ghidra 12.1.4 以 PE x86 打开：SHA-256 `2baf870615bb75b6f30ccea173ba4303fdd0b1a6571e11b9197c5fcf7298bb60`，版本资源为 `10.1.0.3035`，与 [原生文件基线](arcmap-10.1-native-baseline.md) 一致。用于确认委派实现的 LayerLib.dll SHA-256 为 `55514f054c9e4827d773cf1a9b9a83e7c41c483f73758965244625165f330e02`；由同一 CAB 提取，未独立复核其版本资源或签名。
+从 README 所列 Desktop `Setup1.cab` 提取的 FeatureLayer.dll，经 Ghidra（经桥接工具） 12.1.4 以 PE x86 打开：SHA-256 `2baf870615bb75b6f30ccea173ba4303fdd0b1a6571e11b9197c5fcf7298bb60`，版本资源为 `10.1.0.3035`，与 [原生文件基线](arcmap-10.1-native-baseline.md) 一致。用于确认委派实现的 LayerLib.dll SHA-256 为 `55514f054c9e4827d773cf1a9b9a83e7c41c483f73758965244625165f330e02`；由同一 CAB 提取，未独立复核其版本资源或签名。
 
 以下均为本地目标文件的 `shipped-artifact` 静态证据，地址为 PE 静态映像地址：
 
@@ -21,7 +21,7 @@
 
 SystemCore.dll 10.1.0.3035（SHA-256 `f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`）的 UID 持久化虚表 `0x80074574` 中，GetClassID、Load 和 Save 分别为 `0x7fff8ca0`、`0x7fff9320`、`0x7fff9380`，虚表字节证据 `ev_215f0c1229760058d78f0aeb15be3cb2821d2d5ab13341818320541f4ddd0952`。GetClassID 写出 `{78FF7FA1-FB2F-11D1-94A2-080009EEBECB}`；Load 证据 `ev_8f99630f5e7840723958e44baea8b9155c86b3ff049f99f4d5ddcc58b8a9c72a` 和 Save 证据 `ev_d7180bb580808b59a42283c24a6791fb68f5af0d053833f5fdd93c9ae1f09799` 均显示字段依次是 2 字节版本、1 字节标志、16 字节 GUID、4 字节 int32，共 23 字节。最后 int32 的业务含义未定。Load 对版本不设上限；Save 写版本 1。两者均为静态观察。
 
-FeatureLayer::Load 的 UID 对象之后字段序由本轮 REA 证据 `ev_a6152635db9c14167799eac9961b9254fb3890a45b2ba9f2a20b23c384b75052` 复核：String +0x28c、short +0x1d8、double ×2、short +0x1da、int32 +0x244、short +0x1be、PreJoin、int32 +0x2c0、short ×3、String ×4。下表从样本 `/Maps` UID 对象头 `0x14a9` 开始逐字段对位，区间均为半开区间；String 长度前缀不包含在长度内。
+FeatureLayer::Load 的 UID 对象之后字段序由本轮 Ghidra 桥接工具 证据 `ev_a6152635db9c14167799eac9961b9254fb3890a45b2ba9f2a20b23c384b75052` 复核：String +0x28c、short +0x1d8、double ×2、short +0x1da、int32 +0x244、short +0x1be、PreJoin、int32 +0x2c0、short ×3、String ×4。下表从样本 `/Maps` UID 对象头 `0x14a9` 开始逐字段对位，区间均为半开区间；String 长度前缀不包含在长度内。
 
 | 起点 | 结束 | 字段 | 原始值或解释 |
 | --- | --- | --- | --- |

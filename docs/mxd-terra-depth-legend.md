@@ -6,7 +6,7 @@
 
 重算 SHA-256，并用 PE 固定版本资源复核均为 x86、10.1.0.3035：Map.dll `1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`（ImageBase `0x793a0000`）、Layer.dll `fe52bd9988b66f9d6f906b014e5684f28fc20e9b97b53c90909fa3d44e9efed8`（`0x78650000`）、LayerLib.dll `55514f054c9e4827d773cf1a9b9a83e7c41c483f73758965244625165f330e02`（`0x78690000`）。版本资源是声明，哈希不证明签名。esriCarto TYPELIB SHA-256 `8a70f4094c85b966ce0b0129ad7fa3d9562269c73f87e4f70cbc78c75775b578`，头声明 SYS_WIN32、版本 10.1。
 
-类型库通过隔离 Wine 前缀下 `LoadTypeLibEx` 静态读取；64 位 Wine 报告的 oVft 除以 2 才对应目标 x86 字节偏移。工具的宽字符串类型名乱码，按 IID 和正确输出的成员名识别，不能把导出过程当作 ArcMap 运行。独立 REA 6.9.0 CLI 绑定 Layer.dll 时，Ghidra 分析完成但 Unix socket 绑定返回 `Operation not permitted`，未切换共享 REA 目标；随后使用 JDK 25、Ghidra 12.2 / pyghidra，在 `temp/terra-depth-legend/` 独占项目、配置、缓存及 Java 临时目录反编译 Map 和 Layer 的 Load、QI、访问器，另用 objdump 检查机器指令。伪代码非原始源码。TLB 导出、脚本及汇编位于该忽略目录，分享前需检查本机路径。
+类型库通过隔离 Wine 前缀下 `LoadTypeLibEx` 静态读取；64 位 Wine 报告的 oVft 除以 2 才对应目标 x86 字节偏移。工具的宽字符串类型名乱码，按 IID 和正确输出的成员名识别，不能把导出过程当作 ArcMap 运行。独立 Ghidra 桥接工具 6.9.0 CLI 绑定 Layer.dll 时，Ghidra 分析完成但 Unix socket 绑定返回 `Operation not permitted`，未切换共享 Ghidra 桥接工具 目标；随后使用 JDK 25、Ghidra 12.2 / pyghidra，在 `temp/terra-depth-legend/` 独占项目、配置、缓存及 Java 临时目录反编译 Map 和 Layer 的 Load、QI、访问器，另用 objdump 检查机器指令。伪代码非原始源码。TLB 导出、脚本及汇编位于该忽略目录，分享前需检查本机路径。
 
 ## LegendClassFormat：两个 double
 

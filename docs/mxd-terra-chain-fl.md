@@ -6,7 +6,7 @@
 
 本轮重新计算并用 pefile 检查提取文件：FeatureLayer.dll 的 Machine 为 `0x14c`，FileVersion `10.1.0.3035`、InternalName `FeatureLayer`、OriginalFilename `FeatureLayer.DLL`，SHA-256 `2baf870615bb75b6f30ccea173ba4303fdd0b1a6571e11b9197c5fcf7298bb60`；ArcMap.exe 为 `0x14c`，版本 `10.1.0.3035`、InternalName `ArcMap`、OriginalFilename `ArcMap.exe`，SHA-256 `1fb79eee6b442bd61c44dd3d0864ddfff06b1df882ddc59fb87380bb3ec5af97`。与仓库 10.1 基线一致；版本资源是声明、哈希是字节身份，均不证明签名或运行。
 
-独立 REA 6.9.0 CLI 使用 Ghidra 12.2、JDK 25 和仓库专用 TMPDIR 对 FeatureLayer.dll 发起反编译；导入和分析后桥接 Unix socket 报 `Operation not permitted`，未产生函数 Evidence。未切换共享 REA 目标。另用隔离 pyghidra/Ghidra 12.2、JDK 25 独占项目分析 ArcMap.exe，并以 objdump、PE 原始字节交叉核查。分析物及失败诊断位于忽略目录 `temp/terra-chain-fl/`，可能含本机路径，分享前应检查。伪代码不是源码，以下直接控制流以机器指令为准。
+独立 Ghidra 桥接工具 6.9.0 CLI 使用 Ghidra 12.2、JDK 25 和仓库专用 TMPDIR 对 FeatureLayer.dll 发起反编译；导入和分析后桥接 Unix socket 报 `Operation not permitted`，未产生函数 Evidence。未切换共享 Ghidra 桥接工具 目标。另用隔离 pyghidra/Ghidra 12.2、JDK 25 独占项目分析 ArcMap.exe，并以 objdump、PE 原始字节交叉核查。分析物及失败诊断位于忽略目录 `temp/terra-chain-fl/`，可能含本机路径，分享前应检查。伪代码不是源码，以下直接控制流以机器指令为准。
 
 ## 修正第二级 IID
 

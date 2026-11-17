@@ -5,7 +5,7 @@
 
 ## Envelope 版本 0：新的静态证据与实现
 
-复用 REA 全函数反编译 `/tmp/r1-pseudo-geom/functions/0x71869b60.c`：
+复用 Ghidra 桥接工具 全函数反编译 `/tmp/r1-pseudo-geom/functions/0x71869b60.c`：
 Geometry.dll `FUN_71869b60` 首先读取 short、拒绝有符号值大于 3，随后
 仅当版本等于 1 才走短分支；else 读取 32 字节、4 字节标志，依次按
 bit 6、bit 7 各读取 16 字节；仅等于 3 时加载空间参考。因此版本 0

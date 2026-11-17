@@ -17,7 +17,7 @@ Legend / MapSurround / 书签相关开放项，修改仅涉及 `src/maps/map_sur
   [`arcmap-10.1-legend-tails.md`](arcmap-10.1-legend-tails.md)，以及
   `/tmp/gh-c-legend/out/map4_cp_caller_793c8990.c`、
   `map4_cp_caller_7943b2f0.c`、`map4_cp_caller_79448500.c` 三份同源
-  Ghidra 反编译输出。REA 本轮的 Ghidra 入口对这些 PE VA 未定位到函数
+  Ghidra 反编译输出。Ghidra 桥接工具 本轮的 Ghidra 入口对这些 PE VA 未定位到函数
   （其错误要求先解析当前导入映像中的函数坐标）；因此没有把失败调用当作
   新证据，复核依赖可直接检查的既有反编译产物。它们是静态证据，不代表运行
   行为。

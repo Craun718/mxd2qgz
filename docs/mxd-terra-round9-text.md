@@ -2,7 +2,7 @@
 
 本轮从 [既有访问器对位](mxd-terra-integrate-text.md) 和 [颜色等槽对位](mxd-terra-chain-element.md) 出发，只研究 ArcMap 10.1 TextSymbol；静态地址不代表运行观察。重新计算 `temp/agent-fl-tail/DisplayCore.dll.33A02325_2485_4623_B2CE_71B5736B51DF` SHA-256 `9b3e61f9ca553f14a442338dfc1c24ac51c1eea6dd9a4509282466a6a926e4d2`，PE machine `0x14c`，版本资源 InternalName/OriginalFilename 为 `DisplayCore`/`DisplayCore.dll`，FileVersion/ProductVersion 均为 `10.1.0.3035`；与既有记录和 README 介质版本声明一致，不能由此推断签名真实性。类型库为此前从同介质提取的 esriDisplay 资源，重新计算 SHA-256 `6052021b77c05ddb6b37b5373a04ada586a6664a121733ddf0651297106229ab`，`winedump` 报头版本 10.1、SYS_WIN32。
 
-以独立 REA 6.9.0 CLI、Ghidra 12.2、JDK 25、仓库独占 TMPDIR 对同一 DLL 的 `0x6ebcc310` 发起反编译；run `d4e712aa-6de4-4a61-87de-68b5e4e86ab3` 的 Ghidra 桥接 Unix socket 因 `Operation not permitted` 失败，无本轮 REA 函数 Evidence。随后将已有 DisplayCore 项目复制到本轮目录，以隔离 pyghidra、`/opt/ghidra`、JDK 25 定点反编译 Load 与相关访问器，得到新的静态伪代码；未更改共享目标。以下由原 PE 字节、objdump 指令、类型库 `winedump` 和新伪代码交叉核对；伪代码仅作为辅助，不是源码或运行结果，间接调用以指令为准。临时诊断可能包含本机路径，分享前须脱敏。
+以独立 Ghidra 桥接工具 6.9.0 CLI、Ghidra 12.2、JDK 25、仓库独占 TMPDIR 对同一 DLL 的 `0x6ebcc310` 发起反编译；run `d4e712aa-6de4-4a61-87de-68b5e4e86ab3` 的 Ghidra 桥接 Unix socket 因 `Operation not permitted` 失败，无本轮 Ghidra 桥接工具 函数 Evidence。随后将已有 DisplayCore 项目复制到本轮目录，以隔离 pyghidra、`/opt/ghidra`、JDK 25 定点反编译 Load 与相关访问器，得到新的静态伪代码；未更改共享目标。以下由原 PE 字节、objdump 指令、类型库 `winedump` 和新伪代码交叉核对；伪代码仅作为辅助，不是源码或运行结果，间接调用以指令为准。临时诊断可能包含本机路径，分享前须脱敏。
 
 ## IMask 三项新增对位
 

@@ -6,7 +6,7 @@
 
 本轮重算 `temp/arcgis101-bin/geometrydll/Geometry.dll.F84366F9_C0B7_4267_A16E_D48D9E6DD261` SHA-256 为 `c57d154f207ee249adc69136574cf274771370ff93a15eb0be5682ce828f0d47`。PE machine `0x14c`、ImageBase `0x717e0000`，版本资源 FileVersion/ProductVersion `10.1.0.3035`、InternalName `Geometry`、OriginalFilename `Geometry.DLL`，与既有基线相符；版本自述与字节摘要不证明签名。以下地址均为静态 VA。
 
-前轮独立 REA 6.9.0 CLI 使用 JDK 25 时 Ghidra 12.2 的 Unix socket 绑定失败（`Operation not permitted`），见前述记录；本轮未切换共享 REA。将前轮 Geometry 工程复制到 `temp/terra-host-geo/project`，以隔离 pyghidra/Ghidra 12.2、JDK 25 和仓库内独立临时/配置/缓存目录查询虚表及反编译，并以原 PE 的 objdump 指令核对构造。伪代码不是原始源码，私有分析产物在忽略目录，分享前需检查路径。
+前轮独立 Ghidra 桥接工具 6.9.0 CLI 使用 JDK 25 时 Ghidra 12.2 的 Unix socket 绑定失败（`Operation not permitted`），见前述记录；本轮未切换共享 Ghidra 桥接工具。将前轮 Geometry 工程复制到 `temp/terra-host-geo/project`，以隔离 pyghidra/Ghidra 12.2、JDK 25 和仓库内独立临时/配置/缓存目录查询虚表及反编译，并以原 PE 的 objdump 指令核对构造。伪代码不是原始源码，私有分析产物在忽略目录，分享前需检查路径。
 
 ## 类工厂、构造和持久化槽
 

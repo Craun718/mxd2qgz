@@ -18,7 +18,7 @@
 | PageLayout.dll.6BF03936_8AC4_4632_8FB2_A6A34A19655A | `ba9e71f42e00d06a2311a1492fc3d1aeca544c96d9ebd3926140a11b8de9d69f` |
 | MxTools.dll.C13FAB27_D904_4317_AC52_8A308EFED288 | `d29677c8514e705c6585b1b5a27d4e5cf32f7326891ccfe6ed7beeb70ca51347` |
 
-版本均为 10.1.0.3035（pefile 资源声明，见基线文档）。本轮 REA 6.9.0 CLI
+版本均为 10.1.0.3035（pefile 资源声明，见基线文档）。本轮 Ghidra 桥接工具 6.9.0 CLI
 （npm 缓存 `9b9809298fe40d2c`）+ Ghidra 12.2，`JAVA_HOME=/usr/lib/jvm/java-25-openjdk`；
 MCP 注册的 `JAVA_HOME` 为 JDK 21 会被 Ghidra 12.2 拒绝，故全部经 CLI 运行。
 地址为静态映像虚拟地址，绑定上表文件摘要，不是运行时地址。PDB 加载状态

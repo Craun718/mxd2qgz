@@ -4,7 +4,7 @@
 
 ## 原生证据与更正
 
-本机 `temp/arcgis101-bin/SystemCore.dll.017F52BF_20D0_487A_A583_436DA6406CFF` SHA-256 为 `f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`，与 [既有 10.1.0.3035 身份核对](arcmap-10.1-number-format.md)及 `temp/pseudocode/SystemCore/decompile-index.json` 的 target SHA 一致。复核 REA/Ghidra 12.1.4 导出 `functions/0x7ffd11b0.c`、`0x7ffd6a10.c`、`0x7ffce4b0.c`、`0x7ffca1e0.c`、`0x7ffb33a0.c`，并用 objdump 对同一 PE 的 x86 指令作交叉核对（静态 VA）。
+本机 `temp/arcgis101-bin/SystemCore.dll.017F52BF_20D0_487A_A583_436DA6406CFF` SHA-256 为 `f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`，与 [既有 10.1.0.3035 身份核对](arcmap-10.1-number-format.md)及 `temp/pseudocode/SystemCore/decompile-index.json` 的 target SHA 一致。复核 Ghidra（经桥接工具） 12.1.4 导出 `functions/0x7ffd11b0.c`、`0x7ffd6a10.c`、`0x7ffce4b0.c`、`0x7ffca1e0.c`、`0x7ffb33a0.c`，并用 objdump 对同一 PE 的 x86 指令作交叉核对（静态 VA）。
 
 **更正旧记录的“同槽升级/覆盖”解释**：以各 Load 接收的第一个栈参数为 P。Percentage `0x7ffd11ea` 令 `esi=P-0xc`，把该地址交给 AfStreamRead 写 short，`0x7ffd120b–120d` 又将 esi 作为 NumericFormat Load 的第一个参数。Rate `0x7ffd6a47` 令 `edi=P-0x14`，将其作为 double 的写入地址，`0x7ffd6a6e–70` 又将 edi 作为 NumericFormat Load 的第一个参数。但是 NumericFormat `0x7ffce4e6–f1` 将收到的第一个参数再减 `0x1c` 才交给第一个字段的 AfStreamRead；其伪代码中后续字段偏移依次为 -0x18、-0x14、-0x10、-0xc、-0xa、-8。因而核心字段位于调用参数之前（分别为 P-0x28..P-0x13、P-0x30..P-0x1b），不覆盖外层 short 或 double。上界为包含式。这里确认的是对指令及反编译中调用参数和读入地址的静态算术，不推断对象类型或内存生命周期。流内两个字段仍是顺序出现，现有读取器保留两者，读取逻辑无需因此更改。原 [数字格式记录](arcmap-10.1-number-format.md) 的“同槽升级”和“覆盖”结论不应再引用，待主代理整合修订该共享文档及其他引用。
 

@@ -19,7 +19,7 @@
 - Envelope v0：新宿主为 v3，内嵌 Map 的对应槽为空，不闭合 v0。
 - 多根 Map：前轮 20 份声明多个根 Map 的文件，其首对象仍有未闭合尾段。本轮没有跨越该边界，不能把内嵌 Map 当第二个根 Map；后续需要在共享引用表下闭合首 Map 对象体，或从外部真实边界与完整对象表获得可信起点。读取器目前将 Map 空间参考回引当新对象体也是复用该入口的障碍。
 
-既有 10.1 原生版本门证据参见 [图层](mxd-layer-luna.md)、[FieldInfo](mxd-round4-layers-20261117.md) 和 [Envelope](mxd-round2-spatial-20261117.md)。本轮源码和已有静态证据足以确定本次可追踪的宿主顺序，未新启动 REA 或切换共享目标，也未将静态规则当实机证据。
+既有 10.1 原生版本门证据参见 [图层](mxd-layer-luna.md)、[FieldInfo](mxd-round4-layers-20261117.md) 和 [Envelope](mxd-round2-spatial-20261117.md)。本轮源码和已有静态证据足以确定本次可追踪的宿主顺序，未新启动 Ghidra 桥接工具 或切换共享目标，也未将静态规则当实机证据。
 
 ## 复现与验证
 

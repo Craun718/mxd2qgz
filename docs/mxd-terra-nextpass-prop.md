@@ -12,7 +12,7 @@
 | SystemCore.dll | `f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a` | `0x7ffb0000` |
 | GdbCore.dll | `ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4` | `0x708d0000` |
 
-重读原生证据和仓库实现，另用 `objdump` 核对 SystemCore `0x7ffd3f3a..0x7ffd3f47` 与 `0x7ffd3fc6..0x7ffd3fd3`：两处压入参数 1 后分别通过 IAT `0x8006b2e0`、`0x8006b2e8` 调用；导入身份见上述槽位修正记录。此前独立 REA CLI 因 Unix socket 权限失败的具体记录见[查询名称续查](mxd-terra-follow-names.md)。本轮使用 JDK 25、`GHIDRA_INSTALL_DIR=/opt/ghidra`、仓库独占临时目录及复制的工程尝试隔离 pyghidra：首次未找到目标函数，重新分析未完成而中止，**没有取得可用新反编译证据**。未改变共享 REA 目标；临时输出可能含本机路径，分享前须脱敏。
+重读原生证据和仓库实现，另用 `objdump` 核对 SystemCore `0x7ffd3f3a..0x7ffd3f47` 与 `0x7ffd3fc6..0x7ffd3fd3`：两处压入参数 1 后分别通过 IAT `0x8006b2e0`、`0x8006b2e8` 调用；导入身份见上述槽位修正记录。此前独立 Ghidra 桥接工具 CLI 因 Unix socket 权限失败的具体记录见[查询名称续查](mxd-terra-follow-names.md)。本轮使用 JDK 25、`GHIDRA_INSTALL_DIR=/opt/ghidra`、仓库独占临时目录及复制的工程尝试隔离 pyghidra：首次未找到目标函数，重新分析未完成而中止，**没有取得可用新反编译证据**。未改变共享 Ghidra 桥接工具 目标；临时输出可能含本机路径，分享前须脱敏。
 
 ## 本轮判断
 

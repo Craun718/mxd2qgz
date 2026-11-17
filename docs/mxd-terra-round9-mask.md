@@ -13,7 +13,7 @@
 | AnnoLayer.dll | `b487f3e0dc0e70dbc4b75f72eb6dcd8d5521eb422dbea6e3b2e201489a2d33a5` |
 | LayerLib.dll（资源名 LayerUI） | `55514f054c9e4827d773cf1a9b9a83e7c41c483f73758965244625165f330e02` |
 
-文件位置及资源名的历史核对见 [前轮](mxd-terra-round8-mask.md)、[FDO 记录](mxd-terra-nextpass-fdo.md)。版本和哈希不证明签名或运行状态。独立 REA 6.9.0 CLI、JDK 25、`/opt/ghidra`、仓库专用 TMPDIR 对 Map `0x79403bc0` 的本轮 run `74a743dd-ea19-463a-9c46-8badc407ea56` 导入后因 Unix socket `Operation not permitted` 失败，没有返回反编译证据。随后在复制的独立工程中用 pyghidra/Ghidra 12.2 定位原始 IID 字节及地址引用，并以 `objdump` 反汇编和 PE 原始数据复核；未切换共享 REA 目标。以下地址均为这些文件的静态 VA。IID 搜索未穷举间接引用或跨模块聚合。
+文件位置及资源名的历史核对见 [前轮](mxd-terra-round8-mask.md)、[FDO 记录](mxd-terra-nextpass-fdo.md)。版本和哈希不证明签名或运行状态。独立 Ghidra 桥接工具 6.9.0 CLI、JDK 25、`/opt/ghidra`、仓库专用 TMPDIR 对 Map `0x79403bc0` 的本轮 run `74a743dd-ea19-463a-9c46-8badc407ea56` 导入后因 Unix socket `Operation not permitted` 失败，没有返回反编译证据。随后在复制的独立工程中用 pyghidra/Ghidra 12.2 定位原始 IID 字节及地址引用，并以 `objdump` 反汇编和 PE 原始数据复核；未切换共享 Ghidra 桥接工具 目标。以下地址均为这些文件的静态 VA。IID 搜索未穷举间接引用或跨模块聚合。
 
 ## Map 的实际控制流
 

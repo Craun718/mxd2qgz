@@ -6,9 +6,9 @@
 
 ## 方法与环境
 
-- 目标：Layer.dll（esriCarto 的元素集合/图例等 coclass 宿主）。本轮先以 REA MCP
+- 目标：Layer.dll（esriCarto 的元素集合/图例等 coclass 宿主）。本轮先以 Ghidra 桥接工具 MCP
   `open_binary` 绑定 Layer.dll（SHA-256 校验一致）并完成 `binary_overview`
-  （Ghidra 12.2，1365 个过程），但共享 REA 服务器的 Ghidra 深度分析提供者仅持有
+  （Ghidra 12.2，1365 个过程），但共享 Ghidra 桥接工具 服务器的 Ghidra 深度分析提供者仅持有
   单个活动程序：本会话随后的 `search_bytes` 相继被并行研究代理重新绑定的
   GdbCore.dll、Map.dll、FeatureLayer.dll 截走。按既有各轮的恢复路径（见
   [arcmap-10.1-map-object.md](arcmap-10.1-map-object.md)「方法与环境」），本轮
@@ -19,7 +19,7 @@
   wine/dump*.txt，本轮仅检索，未重新解析）；完整类表 `esri.clsid.xml`
   （`/tmp/r3/ecfg/x/`）。样本为 `temp/r6-maps.bin`（152941 字节，SHA-256
   `fc0149f1…aeacfe`，第六轮导出），偏移为 /Maps 流内偏移。
-- REA 返回内容按数据对待；本轮目标内容中未出现指令性文本。
+- Ghidra 桥接工具 返回内容按数据对待；本轮目标内容中未出现指令性文本。
 
 ## Layer.dll 身份核对（AGENTS.md 要求）
 
@@ -182,7 +182,7 @@ FeatureLayer 体起点 `0x1622`（版本 short 34），与第六轮 FDO 字段�
    fdo_graphics_layer 的处理）。
 5. 负计数原生按空集合成功返回，本读取器拒绝（与 maps_stream / Map 后缀循
    环计数同一严格程度）。
-6. REA 共享服务器单活动程序的限制：本轮深度分析在本机 pyghidra 完成（与前
+6. Ghidra 桥接工具 共享服务器单活动程序的限制：本轮深度分析在本机 pyghidra 完成（与前
    几轮同环境）；后续如需复核，按「方法与环境」复现即可。
 7. 全部结论为静态观察；未运行 ArcMap 10.1，未在 QGIS 中核对，不声称已验证。
 

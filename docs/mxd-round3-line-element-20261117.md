@@ -4,7 +4,7 @@
 
 ## 262：页面入口与候选元素范围
 
-复用 REA/Ghidra 12.1.4 输出 `temp/pseudocode/pagelayout/`：导出清单的目标 SHA-256 是 `ba9e71f42e00d06a2311a1492fc3d1aeca544c96d9ebd3926140a11b8de9d69f`，本轮对 `temp/arcgis101-bin` 中的 PageLayout.dll 重新计算得到相同摘要，身份及版本 10.1.0.3035 见 `arcmap-10.1-native-baseline.md`。同名 `temp/arcgis/native` 文件摘要不同，本轮没有作为 10.1 证据。伪代码为反编译结果，不是原始源码。
+复用 Ghidra（经桥接工具） 12.1.4 输出 `temp/pseudocode/pagelayout/`：导出清单的目标 SHA-256 是 `ba9e71f42e00d06a2311a1492fc3d1aeca544c96d9ebd3926140a11b8de9d69f`，本轮对 `temp/arcgis101-bin` 中的 PageLayout.dll 重新计算得到相同摘要，身份及版本 10.1.0.3035 见 `arcmap-10.1-native-baseline.md`。同名 `temp/arcgis/native` 文件摘要不同，本轮没有作为 10.1 证据。伪代码为反编译结果，不是原始源码。
 
 PageLayout RTTI 的 `IPersistStream` 虚表 `0x7b71fa34` 中 GetClassID `0x7b6e4e00` 写 PageLayout CLSID，Load 槽是 `0x7b6e4e30`。Load 先读取无符号 short 版本（要求小于 16）、4 字节成员、4 字节有符号循环数；版本小于 7 调 `LoadObject`，否则调用 `ExtraSafeReadObject` 加载各元素。原生循环负数不进入；本轮新增读取器严格拒绝负数、过高版本和超限数量，失败回滚游标。未知成员仍保留原始位模式。
 

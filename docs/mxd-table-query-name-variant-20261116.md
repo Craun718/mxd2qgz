@@ -5,12 +5,12 @@
 
 记录日期：2026-11-16。目标为 ArcMap 10.1.0.3035。GdbCore.dll 原件身份为
 SHA-256 `ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4`，
-PE32 x86，ImageBase `0x708d0000`。本文只记录本次重新取得的 REA 反编译观察，
+PE32 x86，ImageBase `0x708d0000`。本文只记录本次重新取得的 Ghidra 桥接工具 反编译观察，
 不修改共享模块入口、TODO 或解析器。
 
-## REA 证据
+## Ghidra 桥接工具 证据
 
-REA/Ghidra 12.1.4 对上述 10.1 GdbCore 原件成功反编译以下入口：
+Ghidra（经桥接工具） 12.1.4 对上述 10.1 GdbCore 原件成功反编译以下入口：
 
 - Load `0x708f5070`，Evidence `ev_692562cbf1e7d3f7180662b9c83de903e10293297ab9531dd5970cd2e49162d8`。
 - Save `0x708f5280`，同一 Evidence。
@@ -47,5 +47,5 @@ Save 中的三个虚接口取值能数量对应，但它们的具体流写入路
 开放。仓库现有 `QueryTableName`（CLSID `{793873DE-C0BB-48F4-A6BF-F6F83FA3C1BC}`）
 读取器是另一类，不代表本文的 TableQueryName（CLSID `{81CAA5D8-90C5-11D3-9F7B-00C04F6BC886}`）。
 
-本轮未取得 ArcMap 运行时或真实 MXD 字节对这两类的验证；本文为静态 REA 观察，
+本轮未取得 ArcMap 运行时或真实 MXD 字节对这两类的验证；本文为静态 Ghidra 桥接工具 观察，
 不宣称人工软件验收。

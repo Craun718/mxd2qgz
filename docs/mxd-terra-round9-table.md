@@ -6,7 +6,7 @@
 
 重新核对 Map.dll：PE32 x86、ImageBase `0x793a0000`、固定文件版本 10.1.0.3035、SHA-256 `1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`；Layer.dll：PE32 x86、ImageBase `0x78650000`、固定文件版本 10.1.0.3035、SHA-256 `fe52bd9988b66f9d6f906b014e5684f28fc20e9b97b53c90909fa3d44e9efed8`。哈希和版本资源用于核对身份，不证明签名或运行行为。
 
-此前独立 REA CLI / Ghidra 的 Map `0x7945d630` Load 伪代码在 String + 对象的计数循环中请求 `DAT_7948dcd0`，证据及限制见 [宿主记录](mxd-terra-host-table.md)。本轮对上述 Map.dll 直接按 VA 检查 16 字节，结果 `2c ae ba a2 9b 96 d2 11 ae 77 08 00 09 ec 73 2a`，即 IID `{A2BAAE2C-969B-11D2-AE77-080009EC732A}`，与既有 IFieldInfo 识别一致。Layer.dll FieldInfo CLSID `{A2BAAE2D-969B-11D2-AE77-080009EC732A}`、GetClassID、Load/Save、虚表、v0–4 读侧顺序及版本门的原生证据见 [FieldInfo 研究](arcmap-10.1-featurelayer-tail.md#fieldinfo-元素体layerdll-0x7865b520证据确定的)。本轮复用这些已保存 REA 静态证据，并新增二进制 IID 字节交叉核查；未切换共享 REA 目标，也未新增目标软件运行观察。IID 与 CLSID 不同；本轮没有通过运行时 QI 验证对象。
+此前独立 Ghidra 桥接工具 CLI / Ghidra 的 Map `0x7945d630` Load 伪代码在 String + 对象的计数循环中请求 `DAT_7948dcd0`，证据及限制见 [宿主记录](mxd-terra-host-table.md)。本轮对上述 Map.dll 直接按 VA 检查 16 字节，结果 `2c ae ba a2 9b 96 d2 11 ae 77 08 00 09 ec 73 2a`，即 IID `{A2BAAE2C-969B-11D2-AE77-080009EC732A}`，与既有 IFieldInfo 识别一致。Layer.dll FieldInfo CLSID `{A2BAAE2D-969B-11D2-AE77-080009EC732A}`、GetClassID、Load/Save、虚表、v0–4 读侧顺序及版本门的原生证据见 [FieldInfo 研究](arcmap-10.1-featurelayer-tail.md#fieldinfo-元素体layerdll-0x7865b520证据确定的)。本轮复用这些已保存 Ghidra 桥接工具 静态证据，并新增二进制 IID 字节交叉核查；未切换共享 Ghidra 桥接工具 目标，也未新增目标软件运行观察。IID 与 CLSID 不同；本轮没有通过运行时 QI 验证对象。
 
 ## 接线与样本
 

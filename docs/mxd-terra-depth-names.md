@@ -8,7 +8,7 @@ GdbCore 原件 `temp/agent-dataset-name/GdbCore.dll.FA783766_EB8B_462D_8D00_E07A
 
 10.1 类型库提取物 `esriGeoDatabase.olb.392FE3A8_65C9_4463_A15B_89F00F8F3FE8` 重算 SHA-256 `09b741f2627633d36b67985e175632055fe6c5b8cd1000484acc3007f5917f9d`；对应已提取的 `big.tlb` 哈希 `92634979daa3ed0008b36d152e1fdf39cba04944f6bc7bbb5ea4c786bb44bb9a`，关联提取过程见 [基线](arcmap-10.1-native-baseline.md)。本轮以隔离 Wine 前缀运行本地 LoadTypeLibEx 成员枚举工具，得到 `IDatasetName`（IID `{89E75917-C287-11D1-AA77-00C04FA33A15}`）在 IUnknown 之后依序为 Name get/put、Type get、Category get/put、WorkspaceName get/putref、SubsetNames get；`ITopologyName`（IID `{505B6FDD-9E6E-42F9-B705-53355B2F1DEF}`）依序为 DirtyAreasName get、TopologyErrorName get、FeatureDatasetName get/putref。枚举进程为 64 位，输出 `oVft` 为 8 字节槽；本记录按**成员序**转换成目标 x86 的 4 字节槽，而非直接使用 64 位偏移。类型库只提供接口契约，属性归属还需下面的 QI、虚表及函数交叉证据。
 
-原研究已用 REA 取得两个 Load 的证据；本轮复用 [前次独立 REA CLI 失败](mxd-terra-follow-names.md)（Unix socket `Operation not permitted`，未切换共享目标）的记录，采用隔离 pyghidra/Ghidra 12.2、JDK 25，复制既有工程，仓库内独立 TMPDIR 与配置进行新函数取证。原始结果和成员枚举脚本在忽略目录 `temp/terra-depth-names/`，可能含本机路径；分享前需检查脱敏。汇编核对 QI 与 GUID，伪代码可能有类型传播和间接调用限制，未执行 GdbCore。
+原研究已用 Ghidra 桥接工具 取得两个 Load 的证据；本轮复用 [前次独立 Ghidra 桥接工具 CLI 失败](mxd-terra-follow-names.md)（Unix socket `Operation not permitted`，未切换共享目标）的记录，采用隔离 pyghidra/Ghidra 12.2、JDK 25，复制既有工程，仓库内独立 TMPDIR 与配置进行新函数取证。原始结果和成员枚举脚本在忽略目录 `temp/terra-depth-names/`，可能含本机路径；分享前需检查脱敏。汇编核对 QI 与 GUID，伪代码可能有类型传播和间接调用限制，未执行 GdbCore。
 
 RTTI COL 显示两类的 IPersistStream 虚表前 COL 偏移均为 `0x2c`；FeatureDatasetName QI `0x709b6560` 比较 IDatasetName IID 后返回完整对象 `+0x14`，TopologyName QI `0x7095e160` 同样返回 `+0x14`，其 ITopologyName IID 分支返回 `+0x18`。对应虚表分别为 FeatureDatasetName `0x70ad0430`、TopologyName `0x70aca3ac`（IDatasetName）以及 `0x70aca3dc`（ITopologyName）。
 

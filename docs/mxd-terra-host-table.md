@@ -6,7 +6,7 @@
 
 重新计算 10.1 介质提取文件 `temp/arcgis101-bin/mapdll/Map.dll.6BF03936_8AC4_4632_8FB2_A6A34A19655A`：SHA-256 `1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`，与 [Map 既有基线](arcmap-10.1-map-object.md)一致；PE32 x86，ImageBase `0x793a0000`，版本资源 FileVersion/ProductVersion `10.1.0.3035`，InternalName `Map`、OriginalFilename `Map.DLL`。版本资源和摘要是身份核对，不是签名认证。
 
-独立 REA 6.9.0 CLI / Ghidra 12.2 / JDK 25 在专用 `temp/terra-host-table/tmp` 生成 Load 的证据 `ev_d96d18622a3f8729b06c310974642ffaed1826085639c3e7949fa30bd6e7d888`，没有切换共享 REA。另以 Ghidra 12.2 / JDK 25 隔离 pyghidra 打开复制的既有 Map 工程，定点反编译 Load、Save、首段委派及 Map Load，并用 PE 数据、objdump 关键指令交叉检查。REA 及 Ghidra 对长函数均有重启次数或不可达块警告，不能把伪代码当原始源码；关键字段边界仍需后续复核。工作产物存于忽略目录 `temp/terra-host-table/`，可能含本机路径，分享前脱敏。最初因 `/tmp` 空间不足沙箱启动失败，独立 REA 调用使用提权执行；JVM 和分析目录仍放在仓库内。
+独立 Ghidra 桥接工具 6.9.0 CLI / Ghidra 12.2 / JDK 25 在专用 `temp/terra-host-table/tmp` 生成 Load 的证据 `ev_d96d18622a3f8729b06c310974642ffaed1826085639c3e7949fa30bd6e7d888`，没有切换共享 Ghidra 桥接工具。另以 Ghidra 12.2 / JDK 25 隔离 pyghidra 打开复制的既有 Map 工程，定点反编译 Load、Save、首段委派及 Map Load，并用 PE 数据、objdump 关键指令交叉检查。Ghidra 桥接工具 及 Ghidra 对长函数均有重启次数或不可达块警告，不能把伪代码当原始源码；关键字段边界仍需后续复核。工作产物存于忽略目录 `temp/terra-host-table/`，可能含本机路径，分享前脱敏。最初因 `/tmp` 空间不足沙箱启动失败，独立 Ghidra 桥接工具 调用使用提权执行；JVM 和分析目录仍放在仓库内。
 
 Map Load `0x793ff4d0` 在书签后读两个 short、一个 double、一个 short 和 int32 计数。Map 版本 `<11` 的逐项请求 IID `0x79482c08` 是 IName；版本 `>=11` 请求 `0x79488300` 是 IStandaloneTable `{FFC6B179-E3EC-11D3-A096-00C04F6BC626}`，经 `LoadObject` 逐项读取。旧分支不能当作 StandaloneTable 类体。此接口允许其他实现，不能把每项都假定为本类。参考 [先前介质根调查](mxd-terra-next-map.md)，到达该位置的介质工程均为零计数；未到达的工程不能据此推断。
 

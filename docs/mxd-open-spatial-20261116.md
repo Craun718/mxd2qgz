@@ -25,16 +25,16 @@
 
 ## 原生证据与版本边界
 
-本轮复用仓库已有 REA/反编译和类型库记录，没有启动新的 Ghidra 导入。当前 REA 会话状态查询为 `open=false`、保留记录数为 0；不会重置或关闭该共享会话。已有空间参考研究将 Geometry.dll 绑定到 ArcMap 10.1 Desktop 10.1.0.3035，SHA-256 `c57d154f207ee249adc69136574cf274771370ff93a15eb0be5682ce828f0d47`；FeatureLayer.dll 为 10.1.0.3035，SHA-256 `2baf870615bb75b6f30ccea173ba4303fdd0b1a6571e11b9197c5fcf7298bb60`；Map.dll 为 10.1.0.3035，SHA-256 `1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`。Geometry.dll 与 sg.dll / pe.dll 10.1.0.679 的组件版本对应关系仍按既有记录保留为未核事项。
+本轮复用仓库已有 Ghidra 桥接工具/反编译和类型库记录，没有启动新的 Ghidra 导入。当前 Ghidra 桥接工具 会话状态查询为 `open=false`、保留记录数为 0；不会重置或关闭该共享会话。已有空间参考研究将 Geometry.dll 绑定到 ArcMap 10.1 Desktop 10.1.0.3035，SHA-256 `c57d154f207ee249adc69136574cf274771370ff93a15eb0be5682ce828f0d47`；FeatureLayer.dll 为 10.1.0.3035，SHA-256 `2baf870615bb75b6f30ccea173ba4303fdd0b1a6571e11b9197c5fcf7298bb60`；Map.dll 为 10.1.0.3035，SHA-256 `1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`。Geometry.dll 与 sg.dll / pe.dll 10.1.0.679 的组件版本对应关系仍按既有记录保留为未核事项。
 
 复用证据入口：
 
 - [PCS、GCS、Unknown 与 Geometry 静态研究](arcmap-10.1-pcs-geometry-slots.md)：Geometry.dll 10.1.0.3035 的反编译/汇编、类型库 IID、类标识与已有样本交叉核对；证据明确没有运行 ArcMap。
 - [Geometry 记录体研究](arcmap-10.1-geometry.md)：四类 Geometry wrapper 与记录导入器的字段及版本分支、内部记录标记、样本覆盖范围和未定位的运行时移交链。
-- [空间参考、Envelope 与 Map 范围研究](arcmap-10.1-spatial-reference.md)：Map.dll、FeatureLayer.dll、Geometry.dll 10.1.0.3035 静态证据及参考样本 `/Maps` 的字段定位；报告分别标出 REA 证据、静态推断与样本辅助观察。
+- [空间参考、Envelope 与 Map 范围研究](arcmap-10.1-spatial-reference.md)：Map.dll、FeatureLayer.dll、Geometry.dll 10.1.0.3035 静态证据及参考样本 `/Maps` 的字段定位；报告分别标出 Ghidra 桥接工具 证据、静态推断与样本辅助观察。
 - 已保存的 [Envelope 归因 Evidence](../temp/arcgis/arcmap101-envelope-attribution-evidence.json) 记录 10.1 x86 PE 的 SHA-256、样本槽分布与未定 IID；证据包含本机路径，分享前应脱敏。
 
-现有分析产物来自 REA/Ghidra 12.2（bridge 对 12.1.4 验证）；结论限于上述 10.1.0.3035 二进制及文中注明的 10.1.0.679 辅助组件。类型库/PDB 名称作为静态命名证据；不表示运行时对象已装配。样本字节只是辅助对照，合成测试不是 ArcMap 行为验证。
+现有分析产物来自 Ghidra（经桥接工具） 12.2（bridge 对 12.1.4 验证）；结论限于上述 10.1.0.3035 二进制及文中注明的 10.1.0.679 辅助组件。类型库/PDB 名称作为静态命名证据；不表示运行时对象已装配。样本字节只是辅助对照，合成测试不是 ArcMap 行为验证。
 
 ## 现有实现与接线检查
 

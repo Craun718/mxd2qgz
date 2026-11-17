@@ -1,6 +1,6 @@
 # MXD 解析 Map、Layer 与空间范围续研记录
 
-记录日期：2026-11-17。本轮是只读静态 REA/Ghidra 研究；没有运行 ArcMap，
+记录日期：2026-11-17。本轮是只读静态 Ghidra（经桥接工具） 研究；没有运行 ArcMap，
 没有修改 Rust 源码、测试、`README.md`、`TODO.md` 或既有研究文档。结论限于
 ArcMap 10.1 Desktop 10.1.0.3035 的下列 PE x86 目标，地址均为对应静态映像 VA：
 
@@ -11,7 +11,7 @@ ArcMap 10.1 Desktop 10.1.0.3035 的下列 PE x86 目标，地址均为对应静�
 | AfCore.dll | `031858c414c0105b3b978c754f3d0f31ba1d98f15d44ff15b1589c9adcc47c17` |
 
 对应本地文件位于 `temp/arcgis101-bin/{mapdll,featurelayerdll,AfCore.dll...}`。
-本轮使用 REA 6.9.0/Ghidra 12.1.4（bridge 对 12.1.4 验证）。参考样本只用于核
+本轮使用 Ghidra 桥接工具 6.9.0/Ghidra 12.1.4（bridge 对 12.1.4 验证）。参考样本只用于核
 对既有记录与当前读取器现状；本轮没有为任何条目新增字节佐证。
 
 ## 结论摘要
@@ -123,10 +123,10 @@ FeatureLayer 全为 20 字节空标记。本轮补充：
 - `0x793fdcc0` 调用 `0x793a2ee0` 创建对象；`0x793a2ee0` 调
   `AfCreateInstance(DAT_79481570, NULL, 0x17, IID_IUnknown, &unknown)`，成功
   后运行对象并 QI `DAT_794815c4`。
-- REA `read_bytes` 显示 `DAT_79481570` =
+- Ghidra 桥接工具 `read_bytes` 显示 `DAT_79481570` =
   `{30707212-52D5-11D0-A8F2-00608C85EDE5}`；与既有 Geometry.dll Envelope
   CoClass、GetClassID 和样本流内类标识逐字节一致。
-- REA `read_bytes` 显示 `DAT_794815c4` =
+- Ghidra 桥接工具 `read_bytes` 显示 `DAT_794815c4` =
   `{1B077914-38C5-11D0-92D2-00805F7C28B0}`，即既有类型库记录的 IEnvelope。
 
 因此 Map+0x298 的静态 coclass 身份为 Geometry Envelope
@@ -136,13 +136,13 @@ FeatureLayer 全为 20 字节空标记。本轮补充：
 
 ## 证据与未解决问题
 
-- 本轮新增关键 REA Evidence：Map 创建链 `ev_8180a34881f99f9509dda243f3ee5d
+- 本轮新增关键 Ghidra 桥接工具 Evidence：Map 创建链 `ev_8180a34881f99f9509dda243f3ee5d
   66063b248c4e43788af5adc1b7c9d8b4f2`、`ev_692d0de3f55968a59033ca08727dd9045
   40bd20207673eb232d4b5db86d7d3de`；FeatureLayer Load
   `ev_464203a579bef93aa3d0d61f5acdd1f3b04a8386cfb1db1e942a8dc4cf7226e4`；FL
   Save `ev_5798c6fee46cd1049d2b8994a9e9b5e2d441053f1a45b3d387af1960f8c92346`；
   GroupLayer Load/Save 与 AfCore 空保存路径分别在上述静态章节绑定。Evidence
-  IDs 在当前 REA 会话内存中保留；若需要跨进程复查，应先导出证据包。
+  IDs 在当前 Ghidra 桥接工具 会话内存中保留；若需要跨进程复查，应先导出证据包。
 - 未运行 ArcMap、QGIS 或 COM 目标；没有目标软件人工检查。
 - GroupLayer 架构版本分支、`+0x1f4` 成员命名、`+0x1b4` 运行时空成员状态与副
   作用仍未闭合。

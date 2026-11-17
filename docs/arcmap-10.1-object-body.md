@@ -22,7 +22,7 @@ maps-analysis.md）。本文只记录静态反编译观察，未运行 ArcMap，
 
 ## 对象头加载分支 0x7ffcff70（2026-11-13）
 
-再次核对五个文件 SHA-256 均与上表一致。本轮 REA 6.9.0 CLI（npm 缓存
+再次核对五个文件 SHA-256 均与上表一致。本轮 Ghidra 桥接工具 6.9.0 CLI（npm 缓存
 `9b9809298fe40d2c`）+ Ghidra 12.2 静态反编译；MCP 服务器注册的
 `JAVA_HOME` 仍指向 JDK 21，Ghidra 12.2 拒绝启动，故本轮全部经 CLI 以
 `JAVA_HOME=/usr/lib/jvm/java-25-openjdk` 运行，目标与摘要不变。首次
@@ -335,7 +335,7 @@ digest、limitations）已汇总至忽略目录
 
 研究目标：闭合读取失败（短读、未知类、Load 返回错误 HRESULT）时
 ObjectStream 与文档打开主读取器 `0x7b708d00` 的恢复/清理行为、引用表
-回滚情况、错误向上传播路径及文档打开是否整体失败。证据为 REA 6.8.0 /
+回滚情况、错误向上传播路径及文档打开是否整体失败。证据为 Ghidra 桥接工具 6.8.0 /
 Ghidra 12.2 静态反编译与指令级观察，输入文件 SHA-256 复核为
 PageLayout `ba9e71f4…8de9d69f`、SystemCore `f63cf949…3f7de3ad1a`
 （与基线一致）；地址绑定 10.1.0.3035 静态映像。引用的 Evidence 记录：
@@ -438,7 +438,7 @@ EH 处理器字节与指令级证据 `ev_6bb004f2b30f7bbd67ec77ec48e0950464f5861
 智能指针析构后透传、无登记键删除。本节新增的是其上层（PageLayout
 主读取器）对相同 HRESULT 的处理：不重试、不部分提交、整体失败。
 SystemCore 侧本轮另做了一次字节读取交叉核对（`ev_40b32b…` 返回
-0 字节，`ev_3ba37f…` 同）：该次读空是 REA 会话绑定到
+0 字节，`ev_3ba37f…` 同）：该次读空是 Ghidra 桥接工具 会话绑定到
 `/tmp/mxd-arcgis101-align2` 目录副本（SHA-256 与基线一致）导致的
 会话路由差异，不是文件缺失；SystemCore 结论仍以上节
 `temp/arcgis` 目标的证据为准。
@@ -469,7 +469,7 @@ EH 处理器调用的两个辅助函数身份与展开的动态验证；
 ## 10.1 对象键分配与回引写侧闭合（2026-11-14 第五轮）
 
 研究目标：闭合 TODO 开放的「对象键的分配规则」「回引在流中的表示」「能否从流本身区分回引与新对象」
-「循环引用编码」。证据来源分两路：AfCore.dll 经 REA 6.9.0 / Ghidra 12.2 共享会话分析（subject=
+「循环引用编码」。证据来源分两路：AfCore.dll 经 Ghidra 桥接工具 6.9.0 / Ghidra 12.2 共享会话分析（subject=
 `temp/arcgis101-bin/AfCore.dll.017F52BF_20D0_487A_A583_436DA6406CFF`，SHA-256 `031858c4…cc47c17`
 开工前与基线一致；证据 `ev_c67bc79f…`（SaveObject 伪代码）、`ev_30b78320…`（SimpleSaveObject 伪代码）、
 `ev_3ba50a88…`（SimpleSaveObject 全指令），证据包导出为
@@ -586,8 +586,8 @@ SystemCore 的 `+0x54` 槽（`0x7ffd0550`）是 EnsureCapacity：**恒返回 0�
 
 ## AfCore 反编译产物（2026-11-17）
 
-本轮用 REA 6.9.0 CLI `decompile-all`（Ghidra 12.2）导出上述 AfCore.dll
-`031858c4…cc47c17` 的全部已恢复函数伪代码。REA 选择 7851 项；7119 个本地
+本轮用 Ghidra 桥接工具 6.9.0 CLI `decompile-all`（Ghidra 12.2）导出上述 AfCore.dll
+`031858c4…cc47c17` 的全部已恢复函数伪代码。Ghidra 桥接工具 选择 7851 项；7119 个本地
 函数写成函数级 C 伪代码，731 个外部导入无函数体并标记为 `external`，唯一
 失败项是 `0x68af2130`（Ghidra 反编译响应超过 50 MiB 负载上限）。仓库内完整
 产物为 `temp/rea-decompile-20261117/AfCore/`，另已复制到本机研究目录。

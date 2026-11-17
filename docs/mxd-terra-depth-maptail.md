@@ -6,7 +6,7 @@
 
 重新核对 `temp/arcgis101-bin/mapdll/Map.dll.6BF03936_8AC4_4632_8FB2_A6A34A19655A`：PE32 x86，SHA-256 `1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`；版本资源 `FileVersion` / `ProductVersion` 均为 `10.1.0.3035`，`InternalName=Map`，`OriginalFilename=Map.DLL`。这些是文件身份与自述版本，不证明签名真实性。
 
-为不切换共享 REA 目标，先查找独立 `rea` CLI，当前 PATH 无该命令；系统 Python 无 pyghidra。随后按 reverse-engineer-anything 的隔离路径，使用仓库既有 `temp/pyghidra-venv`、Ghidra 12.2 和 JDK 25，在专用 `temp/terra-depth-maptail/` 下设置独立项目、用户目录、配置、缓存和 TMPDIR，重新分析 DLL 并反编译 `0x793ff4d0`、`0x79401850`。另对既有独立反汇编 `temp/terra-integrate-map/load.asm` 的具体指令交叉核对；新输出及日志在本轮专用目录。此为静态分析，未运行 ArcMap。
+为不切换共享 Ghidra 桥接工具 目标，先查找独立 Ghidra 桥接工具 CLI，当前 PATH 无该命令；系统 Python 无 pyghidra。随后使用隔离环境，使用仓库既有 `temp/pyghidra-venv`、Ghidra 12.2 和 JDK 25，在专用 `temp/terra-depth-maptail/` 下设置独立项目、用户目录、配置、缓存和 TMPDIR，重新分析 DLL 并反编译 `0x793ff4d0`、`0x79401850`。另对既有独立反汇编 `temp/terra-integrate-map/load.asm` 的具体指令交叉核对；新输出及日志在本轮专用目录。此为静态分析，未运行 ArcMap。
 
 ## 读取顺序与接入边界
 

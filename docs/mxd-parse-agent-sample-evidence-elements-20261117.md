@@ -15,7 +15,7 @@ HorizontalLegendItem 样本形态、BaseLegendItem 样本形态、Legend 族版�
 | 级别 | 含义 | 本文使用范围 |
 | --- | --- | --- |
 | A 样本证据 | 参考样本 `/Maps` 的对象边界走查或当前读取器级诊断 | 只证明该样本实例与可达分支 |
-| B 反编译证据 | ArcMap 10.1.0.3035 原生 DLL 的 REA/Ghidra 静态分析 | 闭合字段序、版本门和读写侧控制流 |
+| B 反编译证据 | ArcMap 10.1.0.3035 原生 DLL 的 Ghidra（经桥接工具） 静态分析 | 闭合字段序、版本门和读写侧控制流 |
 | C 合成测试 | 读取器对构造输入的契约验证 | 不升格为 MXD 格式或目标软件验证 |
 | D 运行取证 | ArcMap 保存、调试或受控 COM 观察 | 本轮未执行 |
 
@@ -36,13 +36,13 @@ HorizontalLegendItem 样本形态、BaseLegendItem 样本形态、Legend 族版�
 | 原生模块 | SHA-256 | 地址证据 |
 | --- | --- | --- |
 | Map.dll 10.1.0.3035 | `1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8` | B 级 |
-| Layer.dll 10.1.0.3035 | `fe52bd9988b66f9d6f906b014e5684f28fc20e9b97b53c90909fa3d44e9efed8` | 既有 B 级；本轮 REA 新分析失败 |
+| Layer.dll 10.1.0.3035 | `fe52bd9988b66f9d6f906b014e5684f28fc20e9b97b53c90909fa3d44e9efed8` | 既有 B 级；本轮 Ghidra 桥接工具 新分析失败 |
 | LayerLib.dll 10.1.0.3035 | `55514f054c9e4827d773cf1a9b9a83e7c41c483f73758965244625165f330e02` | 既有 B 级 |
 | Renderers.dll 10.1.0.3035 | `399c80c99a6c61de120c21b518d9b29069f2c78b20a705c07178aa3e2b656274` | 既有 B 级 |
 | GraphicElements.dll 10.1.0.3035 | `f24451c8bf25cce7c1906ea67e5fa3ce351b8f9918c6ddcd2a40083151f77ae9` | 既有 B 级 |
 | DisplayCore.dll 10.1.0.3035 | `9b3e61f9ca553f14a442338dfc1c24ac51c1eea6dd9a4509282466a6a926e4d2` | 既有 B 级 |
 
-本轮 REA/Ghidra 12.1.4 对 Map.dll 的新鲜分析证据：
+本轮 Ghidra（经桥接工具） 12.1.4 对 Map.dll 的新鲜分析证据：
 
 | 函数 | 内容 | Evidence ID |
 | --- | --- | --- |
@@ -51,7 +51,7 @@ HorizontalLegendItem 样本形态、BaseLegendItem 样本形态、Legend 族版�
 | MapSurround 共同前缀 Load `0x794413d0` | 版本/String/IMap/条件字段 | `ev_5ad07a423c6b9918b82757e294eeabb304a110df844b168bddea5d2151a97f85` |
 | Legend::Load `0x793da250` | Legend 自身版本与条目循环 | `ev_33b7d165469d0e4dd23b60bcf46acc287f59caf90b934cd197889eb4f6dc80d4` |
 
-上述 Evidence 的 subject 均为上表 Map.dll 哈希。Layer.dll 新建 REA 分析在
+上述 Evidence 的 subject 均为上表 Map.dll 哈希。Layer.dll 新建 Ghidra 桥接工具 分析在
 `/tmp` 99% 占用时以 `java.io.IOException: 设备上没有空间` 失败，未得到新
 函数证据；失败尝试不作为证据。本文的 Layer/LayerLib/Renderers/Graphic
 Elements/DisplayCore 结论均引用既有研究记录，那些记录绑定同一哈希或哈希

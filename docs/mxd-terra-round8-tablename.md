@@ -18,7 +18,7 @@
   GdbCore.DLL/GdbCoreLib.DLL。这是静态字节身份及版本声明，不是签名认证。
 - GdbCore 以 JDK 25、`/opt/ghidra` 和仓库内独立临时目录对既有 Ghidra 工程
   副本进行 pyghidra 反编译；用 PE 导入/导出表和 objdump 指令核对跨 DLL
-  跳板及字段序。未切换共享 REA 会话。临时产物在
+  跳板及字段序。未切换共享 Ghidra 桥接工具 会话。临时产物在
   `temp/terra-round8-tablename/`；避免分享其中可能含本机路径的诊断数据。
 
 ## 旧结论的明确更正

@@ -4,7 +4,7 @@
 
 本轮重新读取 PE 版本资源：x86、FileVersion / ProductVersion `10.1.0.3035`、InternalName `FeatureLayer`、OriginalFilename `FeatureLayer.DLL`；SHA-256 `2baf870615bb75b6f30ccea173ba4303fdd0b1a6571e11b9197c5fcf7298bb60`，与既有 10.1 身份记录一致。版本资源和哈希不证明发行签名，也不证明目标运行状态。
 
-本轮新动作：使用 `objdump -d -Mintel` 扫描目标 DLL 两个位移的指令，围绕 Load、清理助手和接口查询助手复核汇编；使用独立 pyghidra / Ghidra 12.2、JDK 25 项目重新反编译 Load 及候选函数。项目、脚本、伪代码和日志在忽略目录 `temp/terra-follow-feature/`，其中可能有本机路径，分享前须检查。`TMPDIR`、Java 临时目录及配置均指向该独占目录；首次启动因显示环境不可用失败，启用 headless 后成功。未切换共享 REA 服务器目标。伪代码不是原始源码，反编译器对部分候选函数标记了删除不可达块，相关判断以下以汇编为准。
+本轮新动作：使用 `objdump -d -Mintel` 扫描目标 DLL 两个位移的指令，围绕 Load、清理助手和接口查询助手复核汇编；使用独立 pyghidra / Ghidra 12.2、JDK 25 项目重新反编译 Load 及候选函数。项目、脚本、伪代码和日志在忽略目录 `temp/terra-follow-feature/`，其中可能有本机路径，分享前须检查。`TMPDIR`、Java 临时目录及配置均指向该独占目录；首次启动因显示环境不可用失败，启用 headless 后成功。未切换共享 Ghidra 桥接工具 服务器目标。伪代码不是原始源码，反编译器对部分候选函数标记了删除不可达块，相关判断以下以汇编为准。
 
 ## +0x1b4：读前释放和清零
 

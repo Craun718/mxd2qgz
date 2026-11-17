@@ -1,6 +1,6 @@
 # 10.1 保存私有接口：RTTI 定名与调用对位
 
-接续 [QI 复核](mxd-terra-chain-iid.md) 和 [AfCore 保存分派](mxd-terra-round8-variant.md)。ArcMap 10.1.0.3035 的 AnnoLayer.dll、AfCore.dll 静态映像分别采用前轮记录的 SHA-256 `b487f3e0dc0e70dbc4b75f72eb6dcd8d5521eb422dbea6e3b2e201489a2d33a5` 和 `031858c414c0105b3b978c754f3d0f31ba1d98f15d44ff15b1589c9adcc47c17`。使用既有 REA AfCore 函数导出定位，再以 PE 虚表原始字节和 objdump 复核。
+接续 [QI 复核](mxd-terra-chain-iid.md) 和 [AfCore 保存分派](mxd-terra-round8-variant.md)。ArcMap 10.1.0.3035 的 AnnoLayer.dll、AfCore.dll 静态映像分别采用前轮记录的 SHA-256 `b487f3e0dc0e70dbc4b75f72eb6dcd8d5521eb422dbea6e3b2e201489a2d33a5` 和 `031858c414c0105b3b978c754f3d0f31ba1d98f15d44ff15b1589c9adcc47c17`。使用既有 Ghidra 桥接工具 AfCore 函数导出定位，再以 PE 虚表原始字节和 objdump 复核。
 
 - AnnoLayer 构造 `0x6b1a184c` 将完整对象 +0x44 的虚表设为 `0x6b1ac8a4`。其 QI 命中 `{C9E7A782-3DDC-411F-8A66-908C579F123D}` 后返回相同接口视图。该表 +0x0c/+0x10 的实际地址分别为 `0x6b1a1d60`、`0x6b1a1d90`，两者均以 `ret 0x0c` 返回。
 - 第一槽接收版本值和输出指针。空输出指针返回 E_POINTER；版本按有符号 32 位比较，小于 1 时向输出写 short 0，否则写 short 0xffff；正常返回 S_OK。第二槽只检查输出指针，正常时写 32 位空指针并返回 S_OK；该 AnnoLayer 实现不生成替代对象。

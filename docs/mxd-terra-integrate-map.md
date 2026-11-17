@@ -6,7 +6,7 @@
 
 本轮重新读取 `temp/arcgis101-bin/mapdll/Map.dll.6BF03936_8AC4_4632_8FB2_A6A34A19655A`：SHA-256 `1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`；PE machine `0x14c`、ImageBase `0x793a0000`，版本资源 FileVersion `10.1.0.3035`、InternalName `Map`、OriginalFilename `Map.DLL`。这是文件自述身份及摘要，不是签名真实性或运行验证。
 
-为避免改变共享 REA 会话，本轮按 REA 技能的隔离方式以 pyghidra/Ghidra 12.2、JDK 25 重新分析该文件，项目、配置及 Java 临时目录均放在 `temp/terra-integrate-map/`。新反编译输出为该目录 `0x793ff4d0.c`、`0x79401850.c`；独立使用 objdump 生成 `load.asm` 核查控制流和参数。首试因 X11 连接失败退出，随后启用 headless 并使用独立用户目录；未修改共享服务器状态。
+本轮以 pyghidra/Ghidra 12.2、JDK 25 在隔离环境中重新分析该文件，项目、配置及 Java 临时目录均放在 `temp/terra-integrate-map/`。新反编译输出为该目录 `0x793ff4d0.c`、`0x79401850.c`；独立使用 objdump 生成 `load.asm` 核查控制流和参数。首试因 X11 连接失败退出，随后启用 headless 并使用独立用户目录；未修改共享服务器状态。
 
 ## 紧邻字段及边界
 

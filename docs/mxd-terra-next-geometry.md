@@ -6,7 +6,7 @@
 
 本轮计算 `temp/arcgis101-bin/geometrydll/Geometry.dll.F84366F9_C0B7_4267_A16E_D48D9E6DD261` 的 SHA-256 为 `c57d154f207ee249adc69136574cf274771370ff93a15eb0be5682ce828f0d47`，与 [PCS/GCS 记录](arcmap-10.1-pcs-geometry-slots.md)的 ArcGIS 10.1.0.3035 文件一致；该文亦列明 sg.dll 10.1.0.679 摘要和与 Desktop 组件版本关系尚未核实的限制。
 
-使用仓库内隔离目录 `temp/terra-next-rea` 并显式设置 TMPDIR，以 REA CLI 6.9.0 / Ghidra 12.2 对 Geometry.dll `0x719bec60` 尝试新的独立反编译。导入和自动分析完成，但桥接 Unix 套接字绑定返回 `Operation not permitted`，REA 以 `execution_failure` 退出；原始诊断保存在 `temp/terra-next-rea/gcs-load.json`。该尝试没有返回新的函数证据，本记录采用已有的版本绑定静态研究，不将失败当作原生运行观察。
+使用仓库内隔离目录 `temp/terra-next-rea` 并显式设置 TMPDIR，以 Ghidra 桥接工具 CLI 6.9.0 / Ghidra 12.2 对 Geometry.dll `0x719bec60` 尝试新的独立反编译。导入和自动分析完成，但桥接 Unix 套接字绑定返回 `Operation not permitted`，Ghidra 桥接工具 以 `execution_failure` 退出；原始诊断保存在 `temp/terra-next-rea/gcs-load.json`。该尝试没有返回新的函数证据，本记录采用已有的版本绑定静态研究，不将失败当作原生运行观察。
 
 ## 逐项状态
 

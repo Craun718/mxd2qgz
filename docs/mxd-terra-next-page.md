@@ -1,6 +1,6 @@
 # 页面、图例和书签续查（2026-11-17）
 
-范围为本轮 TODO 当前行 219–222、226–227、248、266；未修改 TODO、公共入口或书签代码。`temp/agent-map-surround/Map.dll.6BF03936_8AC4_4632_8FB2_A6A34A19655A` 本轮 SHA-256 为 `1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`，与 [第四轮](mxd-round4-page-20261117.md)中 PE x86、Esri Map DLL、10.1.0.3035 身份一致。`temp/pseudocode/pagelayout` 是 Ghidra 12.1.4 的静态反编译导出，其索引 SHA 为 `ba9e71f42e00d06a2311a1492fc3d1aeca544c96d9ebd3926140a11b8de9d69f`；不能当作原始源码。此目录不含 Map.dll、Layer.dll 和 LayerLib.dll 的完整伪代码，不能仅凭命名把它代替这些目标。因 `/tmp` 空间告急，本轮没有启动大型 Ghidra 缓存，关闭了本轮只完成身份绑定的 REA 目标。
+范围为本轮 TODO 当前行 219–222、226–227、248、266；未修改 TODO、公共入口或书签代码。`temp/agent-map-surround/Map.dll.6BF03936_8AC4_4632_8FB2_A6A34A19655A` 本轮 SHA-256 为 `1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`，与 [第四轮](mxd-round4-page-20261117.md)中 PE x86、Esri Map DLL、10.1.0.3035 身份一致。`temp/pseudocode/pagelayout` 是 Ghidra 12.1.4 的静态反编译导出，其索引 SHA 为 `ba9e71f42e00d06a2311a1492fc3d1aeca544c96d9ebd3926140a11b8de9d69f`；不能当作原始源码。此目录不含 Map.dll、Layer.dll 和 LayerLib.dll 的完整伪代码，不能仅凭命名把它代替这些目标。因 `/tmp` 空间告急，本轮没有启动大型 Ghidra 缓存，关闭了本轮只完成身份绑定的 Ghidra 桥接工具 目标。
 
 ## 条目状态
 

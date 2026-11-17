@@ -5,11 +5,11 @@
 ## 方法与环境
 
 - 服务器与本机研究文件基线见 [arcmap-10.1-native-baseline.md](arcmap-10.1-native-baseline.md)；本轮开工前重新复核全部文件 SHA-256 与基线一致（见下表）。
-- REA MCP 6.8.0 可绑定目标（`open_binary` PageLayout.dll 两次成功，SHA-256 校验一致），但其 Ghidra 深度分析提供商被拒绝：提供商要求 `JAVA_HOME` 指向 64 位完整 JDK 25+，而 REA 服务器进程继承 JAVA_HOME=JDK 21（错误码 `unsupported_version`，诊断 `java_command=/usr/lib/jvm/java-21-openjdk/bin/java`）。本轮按恢复指南未重试同一失败，改用本机直接驱动 Ghidra：**Ghidra 12.2**（`/opt/ghidra`，2026-11-11 构建）+ **pyghidra 3.2.0**（Ghidra 自带 wheel 离线安装的独立 venv）+ JDK 25.0.5，逐 DLL 全量自动分析，分析项目缓存于 `/tmp/r3/ghproj*`（会话临时目录）。
+- Ghidra 桥接工具 MCP 6.8.0 可绑定目标（`open_binary` PageLayout.dll 两次成功，SHA-256 校验一致），但其 Ghidra 深度分析提供商被拒绝：提供商要求 `JAVA_HOME` 指向 64 位完整 JDK 25+，而 Ghidra 桥接工具 服务器进程继承 JAVA_HOME=JDK 21（错误码 `unsupported_version`，诊断 `java_command=/usr/lib/jvm/java-21-openjdk/bin/java`）。本轮按恢复指南未重试同一失败，改用本机直接驱动 Ghidra：**Ghidra 12.2**（`/opt/ghidra`，2026-11-11 构建）+ **pyghidra 3.2.0**（Ghidra 自带 wheel 离线安装的独立 venv）+ JDK 25.0.5，逐 DLL 全量自动分析，分析项目缓存于 `/tmp/r3/ghproj*`（会话临时目录）。
 - 地址均为对应 PE 10.1.0.3035 静态映像虚拟地址，绑定下表文件摘要；不是运行时地址，也不是 MXD 流内偏移。流内偏移均显式标注 `/Maps:0x…`。
 - 安装配置证据：`Setup1.cab` 条目 `esri.clsid.ecfg.6ADD9D9E_C501_4D1B_82A7_B406A96CFD61`（ZIP，SHA-256 `170ae1f812bafc317ac98455eb7be844dd37f8d3a158c454cedf12f5046c3486`）内含 `esri.clsid.xml`：全产品 635 个模块、10675 条 CLSID→progID→Module 映射。这是**安装配置声明**，单独不构成实现证据；其可信度由下文与二进制类表的全量比对支撑。
-- REA 返回内容按数据对待；本轮目标内容中未出现指令性文本。共享服务器上有其他 agent 的 Ghidra JVM，未做任何进程级干预。
-- 证据包：`temp/arcgis/arcmap101-map-object-evidence.json`（本轮自建，含文件身份、关键地址、类表、样本比对）；同目录 `arcmap101-map-object-rea-pagelayout.json`（同日更早 REA 会话对同一 PageLayout.dll 的证据，Ghidra 12.1.4）。两者含本机路径，分享前应脱敏。
+- Ghidra 桥接工具 返回内容按数据对待；本轮目标内容中未出现指令性文本。共享服务器上有其他 agent 的 Ghidra JVM，未做任何进程级干预。
+- 证据包：`temp/arcgis/arcmap101-map-object-evidence.json`（本轮自建，含文件身份、关键地址、类表、样本比对）；同目录 `arcmap101-map-object-rea-pagelayout.json`（同日更早 Ghidra 桥接工具 会话对同一 PageLayout.dll 的证据，Ghidra 12.1.4）。两者含本机路径，分享前应脱敏。
 
 ## 文件身份复核（开工前 sha256sum 全部复算）
 
@@ -192,7 +192,7 @@ PageLayout `0x7b708d00`（基线已见其存在；本轮补 ASCII 流名证据 `
 
 ## 坐标系与显示范围字段闭合（2026-11-14 第三轮）
 
-对应 TODO「MXD 解析」第 67 行「解析地图坐标系、图层坐标系和显示范围」。证据来源：REA 6.9.0 / Ghidra 12.2 静态分析 Map.dll 与 FeatureLayer.dll（均 10.1.0.3035，SHA 见上文与本节文件身份），地址为静态映像 VA；样本字节定位用 `/tmp/r3-maps.bin`（SHA-256 `9852c0e2…8129b49`，偏移为 /Maps 流内偏移）。证据包：`temp/arcgis/arcmap101-map-cr-extent-evidence.json`（50 条，含本机路径，分享前脱敏）。两份 DLL 在本轮先后打开、由本轮关闭；未运行目标软件。未解决的问题见文末更新。
+对应 TODO「MXD 解析」第 67 行「解析地图坐标系、图层坐标系和显示范围」。证据来源：Ghidra 桥接工具 6.9.0 / Ghidra 12.2 静态分析 Map.dll 与 FeatureLayer.dll（均 10.1.0.3035，SHA 见上文与本节文件身份），地址为静态映像 VA；样本字节定位用 `/tmp/r3-maps.bin`（SHA-256 `9852c0e2…8129b49`，偏移为 /Maps 流内偏移）。证据包：`temp/arcgis/arcmap101-map-cr-extent-evidence.json`（50 条，含本机路径，分享前脱敏）。两份 DLL 在本轮先后打开、由本轮关闭；未运行目标软件。未解决的问题见文末更新。
 
 ### Map::Load 空间参考分支复核与补全（证据：确定的）
 
@@ -251,7 +251,7 @@ FeatureLayer.dll（SHA-256 `2baf8706…98bb60`）`0x6f6e9940` 反编译中全部
 
 ## Map::Save 方向、ExtraSafe 前缀与图层列表样本闭合（2026-11-14 第四轮）
 
-对应 TODO「解析数据框、图层树、图层顺序、图层可见性和数据源连接信息」：把第三轮标为候选的 `FUN_794035f0` 集合升级为样本逐条目闭合，并闭合 Save 写侧与 `ExtraSafeReadObject`/`ExtraSafeWriteObject` 前缀语义。证据：REA 6.9.0 / Ghidra 12.2 复用会话（Map.dll，SHA-256 `1c0675cc…`，会话开工前已由其他轮打开，本轮直接复用、未关闭）；AfCore.dll 与 AnnoLayer.dll 用本机 pyghidra（Ghidra 12.2 + JDK 25，`/tmp/r3/venv`，项目 `/tmp/r3/ghproj_afcore`、`/tmp/r3/ghproj_anno`）。本轮新提取 AnnoLayer.dll（`Setup1.cab` 条目 `6BF03936_…`，版本 10.1.0.3035，SHA-256 `b487f3e0dc0e70dbc4b75f72eb6dcd8d5521eb422dbea6e3b2e201489a2d33a5`）与 LabelPlacement.dll（10.1.0.3035，SHA-256 `8415f63c1889e269ba6ae585538f601130c20cef02e4556e875a52217d35ea3d`），仅做字节扫描与 RTTI 定位，未反编译其函数体。样本偏移为 `/tmp/r3-maps.bin` 流内偏移。全部为静态观察，未运行目标软件。
+对应 TODO「解析数据框、图层树、图层顺序、图层可见性和数据源连接信息」：把第三轮标为候选的 `FUN_794035f0` 集合升级为样本逐条目闭合，并闭合 Save 写侧与 `ExtraSafeReadObject`/`ExtraSafeWriteObject` 前缀语义。证据：Ghidra 桥接工具 6.9.0 / Ghidra 12.2 复用会话（Map.dll，SHA-256 `1c0675cc…`，会话开工前已由其他轮打开，本轮直接复用、未关闭）；AfCore.dll 与 AnnoLayer.dll 用本机 pyghidra（Ghidra 12.2 + JDK 25，`/tmp/r3/venv`，项目 `/tmp/r3/ghproj_afcore`、`/tmp/r3/ghproj_anno`）。本轮新提取 AnnoLayer.dll（`Setup1.cab` 条目 `6BF03936_…`，版本 10.1.0.3035，SHA-256 `b487f3e0dc0e70dbc4b75f72eb6dcd8d5521eb422dbea6e3b2e201489a2d33a5`）与 LabelPlacement.dll（10.1.0.3035，SHA-256 `8415f63c1889e269ba6ae585538f601130c20cef02e4556e875a52217d35ea3d`），仅做字节扫描与 RTTI 定位，未反编译其函数体。样本偏移为 `/tmp/r3-maps.bin` 流内偏移。全部为静态观察，未运行目标软件。
 
 ### Map.dll ImageBase 与 IAT（证据：确定的）
 

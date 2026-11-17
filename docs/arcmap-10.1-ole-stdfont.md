@@ -56,7 +56,7 @@ StdFont 新对象（键 68）体未闭合且对象体无外部长度不可跳过
   图片对象载体，本轮未反编译（oleaut32 2.40 已含同等图片实现， OleLoadPicture
   等导出在 oleaut32 本体内）。
 - 工具与纪律：全部静态分析用本机 pyghidra（Ghidra headless 工程放系统临时
-  目录以避开路径限制），未动 REA MCP 二进制工具；Ghidra 反编译函数列表与输
+  目录以避开路径限制），未动 Ghidra 桥接工具 MCP 二进制工具；Ghidra 反编译函数列表与输
   出存 `temp/agent-olestd/*_out.txt`。全部为静态观察，未运行目标软件。
 
 ## StdFont 体字段序（对象头 20 字节之后；确定的）

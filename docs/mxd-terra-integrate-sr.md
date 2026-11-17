@@ -4,7 +4,7 @@
 
 ## 对象身份与方法
 
-目标为介质提取的 x86 Geometry.dll，SHA-256 `c57d154f207ee249adc69136574cf274771370ff93a15eb0be5682ce828f0d47`，与既有 VS_FIXEDFILEINFO 10.1.0.3035 身份记录一致；介质 Desktop 配置声明 10.1.3035，见 README。以 JDK 25 和独占 pyghidra 工程分析，另以 objdump 核对控制流。首次尝试因 JVM 使用 `/tmp` 导致空间不足失败；设置 `java.io.tmpdir` 到仓库独占目录后完成。未连接或修改共享 REA 服务器。反编译及查询记录在 `temp/terra-integrate-sr/`，该目录为临时研究产物，不作为交付依据。
+目标为介质提取的 x86 Geometry.dll，SHA-256 `c57d154f207ee249adc69136574cf274771370ff93a15eb0be5682ce828f0d47`，与既有 VS_FIXEDFILEINFO 10.1.0.3035 身份记录一致；介质 Desktop 配置声明 10.1.3035，见 README。以 JDK 25 和独占 pyghidra 工程分析，另以 objdump 核对控制流。首次尝试因 JVM 使用 `/tmp` 导致空间不足失败；设置 `java.io.tmpdir` 到仓库独占目录后完成。未连接或修改共享 Ghidra 桥接工具 服务器。反编译及查询记录在 `temp/terra-integrate-sr/`，该目录为临时研究产物，不作为交付依据。
 
 ## 版本 2 域串及 PCS 垂向单位段
 

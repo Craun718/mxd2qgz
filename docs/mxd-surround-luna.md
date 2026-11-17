@@ -5,15 +5,15 @@
 ## 结论摘要
 
 - 已有读取器覆盖 Legend 前缀/尾段、LegendClassFormat、HorizontalLegendItem/BaseLegendItem、MapSurround 共同前缀、AOIBookmark/FeatureBookmark，以及可识别的文本/Marker/Line 图面元素。解析结构已存在，故本轮没有新增重复源码或改动共享模块。
-- REA 对从 ArcMap 10.1 Setup1.cab 提取的 Map.dll 复核了 Legend、MapSurround 共同前缀、AOI 书签和 Feature 书签的 Load 实体。调用顺序与仓库已有布局记录相符；具体字段语义仍须按证据强度区分。
+- Ghidra 桥接工具 对从 ArcMap 10.1 Setup1.cab 提取的 Map.dll 复核了 Legend、MapSurround 共同前缀、AOI 书签和 Feature 书签的 Load 实体。调用顺序与仓库已有布局记录相符；具体字段语义仍须按证据强度区分。
 - 样本 `samples/测试底图.mxd` 的 MapSurround 和书签循环计数均为 0；Legend/装饰物及书签对象体没有样本实例。因此第 247–254 行相关的非空循环、LegendClassFormat、HorizontalLegendItem/BaseLegendItem 和 Legend 旧版本样本项均未被本轮实现或静态分析闭合。
 - 图面元素的字符串字段语义可由接口名提出候选；多个整数、浮点及自定义属性仍按原始值保留。没有运行 ArcMap/QGIS，未作人工目视验证。
 
 ## 研究对象与可复核证据
 
-- 10.1 安装介质：README 所述本机 ArcMap 10.1 Desktop Setup1.cab。REA 从中提取 `Map.dll.6BF03936_8AC4_4632_8FB2_A6A34A19655A`，PE32 x86，ImageBase `0x793a0000`，SHA-256 `1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`。哈希与既有 10.1 研究记录所用 Map.dll 一致；介质声明版本为 10.1.3035。
-- REA/Ghidra 12.1.4 shipped-artifact Evidence：Legend `FUN_793da250`，ID `ev_8cf0eadc86bac4a1b9a6c5f8029fc6fd22774cf21036cdb83a488dc18dcbffbd`；MapSurround 共同前缀 `FUN_794413d0`，ID `ev_6ad9125ebcac64ae34f7bd7d7da65ab32cb3a73cc725d1bb9413385324c6ca42`；AOIBookmark `FUN_793a2cd0`，ID `ev_cf736ced07110b759d4b690bc925b05db816291be7989ce02be0ffeb63eb1e08`；FeatureBookmark `FUN_793b5c50`，ID `ev_76f42705e7e64509d77abc6d39cf75ca6faa75f2b239998d1703eda1b6ceda07`。
-- 方法是对上述 Load 入口作静态反编译并与仓库既有 Save/类型库/类身份研究互证。Ghidra 伪代码不是原始源码；对未命名字段的业务解释不因此自动成立。LegendClassFormat、HorizontalLegendItem 与元素字段的详细布局，本轮复用了仓库 10.1 既有研究记录，没有声称本轮重新逐个调用 REA。
+- 10.1 安装介质：README 所述本机 ArcMap 10.1 Desktop Setup1.cab。Ghidra 桥接工具 从中提取 `Map.dll.6BF03936_8AC4_4632_8FB2_A6A34A19655A`，PE32 x86，ImageBase `0x793a0000`，SHA-256 `1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`。哈希与既有 10.1 研究记录所用 Map.dll 一致；介质声明版本为 10.1.3035。
+- Ghidra（经桥接工具） 12.1.4 shipped-artifact Evidence：Legend `FUN_793da250`，ID `ev_8cf0eadc86bac4a1b9a6c5f8029fc6fd22774cf21036cdb83a488dc18dcbffbd`；MapSurround 共同前缀 `FUN_794413d0`，ID `ev_6ad9125ebcac64ae34f7bd7d7da65ab32cb3a73cc725d1bb9413385324c6ca42`；AOIBookmark `FUN_793a2cd0`，ID `ev_cf736ced07110b759d4b690bc925b05db816291be7989ce02be0ffeb63eb1e08`；FeatureBookmark `FUN_793b5c50`，ID `ev_76f42705e7e64509d77abc6d39cf75ca6faa75f2b239998d1703eda1b6ceda07`。
+- 方法是对上述 Load 入口作静态反编译并与仓库既有 Save/类型库/类身份研究互证。Ghidra 伪代码不是原始源码；对未命名字段的业务解释不因此自动成立。LegendClassFormat、HorizontalLegendItem 与元素字段的详细布局，本轮复用了仓库 10.1 既有研究记录，没有声称本轮重新逐个调用 Ghidra 桥接工具。
 
 ## Legend 字段语义
 
@@ -47,7 +47,7 @@ BaseLegendItem 含关联 `ILayer` 槽、两处 `ITextSymbol` 槽、`ILegendClass
 
 ### MapSurround 共同前缀
 
-REA 复核 `FUN_794413d0`：int16 版本、String、`LoadObject` 请求 IID `IMap`、版本大于 1 时 short、版本大于 2 时 32 字节 WKSEnvelope。后者由原生函数读入栈临时区；Load 体没有将其写入对象的迹象。既有 Save 反编译显示恒写对象内另一个位置对应的 32 字节，因此该项读写映射/初始化路径仍未解释。
+Ghidra 桥接工具 复核 `FUN_794413d0`：int16 版本、String、`LoadObject` 请求 IID `IMap`、版本大于 1 时 short、版本大于 2 时 32 字节 WKSEnvelope。后者由原生函数读入栈临时区；Load 体没有将其写入对象的迹象。既有 Save 反编译显示恒写对象内另一个位置对应的 32 字节，因此该项读写映射/初始化路径仍未解释。
 
 | 字段 | 结论 |
 | --- | --- |
@@ -58,8 +58,8 @@ REA 复核 `FUN_794413d0`：int16 版本、String、`LoadObject` 请求 IID `IMa
 
 ### 书签
 
-- AOIBookmark：REA 证实版本 short、`IEnvelope` 对象槽、String。IEnvelope 的接口类别确定；它作为空间书签范围是由类身份与接口组成共同支持的语义。String 是书签名称候选，仍建议用公开成员或运行值确认其精确属性名。
-- FeatureBookmark：REA 证实版本 short、int32、`IName` 槽、String。`IName` 对象槽表示要素/数据名称相关对象，但它的具体实现类与其 `+0x14` 虚调用语义未由本轮闭合。int32 未定性；末尾 String 为书签名称候选。
+- AOIBookmark：Ghidra 桥接工具 证实版本 short、`IEnvelope` 对象槽、String。IEnvelope 的接口类别确定；它作为空间书签范围是由类身份与接口组成共同支持的语义。String 是书签名称候选，仍建议用公开成员或运行值确认其精确属性名。
+- FeatureBookmark：Ghidra 桥接工具 证实版本 short、int32、`IName` 槽、String。`IName` 对象槽表示要素/数据名称相关对象，但它的具体实现类与其 `+0x14` 虚调用语义未由本轮闭合。int32 未定性；末尾 String 为书签名称候选。
 - 两类保存侧恒写版本 1；Load 允许 0..=1。该版本兼容范围不代表样本具有任一书签对象。
 
 ## 图面元素业务语义与样本状态
@@ -80,6 +80,6 @@ TextElement 已确认包含文本 String、`ITextSymbol`、几何对象和额外
 
 ## 可独立完成项与未解决项
 
-本轮重新确认目标 DLL 身份、用 REA 复核四个 Load 字段序，并基于接口类型和读写操作收紧语义边界。仓库已有实现覆盖对应布局，新增并行读取器会造成字段定义和分派重复，因此没有创建源码文件。
+本轮重新确认目标 DLL 身份、用 Ghidra 桥接工具 复核四个 Load 字段序，并基于接口类型和读写操作收紧语义边界。仓库已有实现覆盖对应布局，新增并行读取器会造成字段定义和分派重复，因此没有创建源码文件。
 
 仍开放：Legend 各 short/int32 的成员级语义；LegendClassFormat 双 double；HorizontalLegendItem/BaseLegendItem 标量；MapSurround 共同前缀 short 与 32 字节段的真实用途；FeatureBookmark int32、IName 实现分布及调用语义；ElementProperties 候选成员映射；TextElement 额外 int32；所有指定的非空样本形态和 ArcMap/QGIS 人工打开检查。应由真实非空 MXD、10.1 类型库属性实现偏移互证或受控运行取证继续闭合。

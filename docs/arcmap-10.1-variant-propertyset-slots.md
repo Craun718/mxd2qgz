@@ -19,7 +19,7 @@ ImageBase `0x7ffb0000`）。
 - 深度分析在本机 pyghidra（Ghidra 12.2 + JDK 25）完成；AfCore 复用既有缓存
   工程副本（打开前整目录复制到本轮私有目录，不共享锁），SystemCore 复用
   `temp/agent-fl-tail2/ghproj_sc/` 缓存工程的整目录副本。脚本与产物在本轮
-  worktree `temp/agent-d-variant/`。REA MCP 未使用（并行轮约定）。
+  worktree `temp/agent-d-variant/`。Ghidra 桥接工具 MCP 未使用（并行轮约定）。
 - IAT/导出序号、GUID 常量字节以 pefile 直接读取（普通 shell 工具观察）。
 - 返回内容按数据对待；本轮目标内容中未出现指令性文本。
 

@@ -1,7 +1,7 @@
 # MXD 图层目标项证据与独立读取器审计
 
 记录日期：2026-11-16。目标版本 ArcMap 10.1.0.3035。本文依据本轮及仓库内已登记的
-REA 静态反编译、参考样本逐字节对位和现有读取器；未运行 ArcMap 10.1，也未
+Ghidra 桥接工具 静态反编译、参考样本逐字节对位和现有读取器；未运行 ArcMap 10.1，也未
 在 ArcMap/QGIS 中人工打开验证。参考样本是辅助材料，样本缺项不能证明格式分支
 不存在。
 
@@ -129,7 +129,7 @@ Envelope 对象通常对应此类就勾选第 287 行。
 
 ## 2026-11-16 续研：FDO 委派体之后的实际样本边界
 
-### 本轮文件身份和 REA 证据
+### 本轮文件身份和 Ghidra 桥接工具 证据
 
 - 从 `Desktop/Setup1.cab` 条目 `AnnoLayer.dll.6BF03936_8AC4_4632_8FB2_A6A34A19655A`
   重新提取 PE32 i386 DLL，版本资源 10.1.0.3035，ImageBase `0x6b180000`，
@@ -139,7 +139,7 @@ Envelope 对象通常对应此类就勾选第 287 行。
   10.1.0.3035，SHA-256 `9b3e61f9ca553f14a442338dfc1c24ac51c1eea6dd9a4509282466a6a926e4d2`。
   安装配置声明 `{0E5D8C66-8D91-11D3-9FCA-00C04F6BC6A5}` 属该 DLL 的
   SymbolCollection；本轮 `GetClassID` `0x6ebc8100` 独立写出相同 CLSID。
-- REA 6.9.0 / Ghidra 12.1.4：AnnoLayer Load `0x6b1955a0` 的 Evidence ID
+- Ghidra 桥接工具 6.9.0 / Ghidra 12.1.4：AnnoLayer Load `0x6b1955a0` 的 Evidence ID
   `ev_e6e82e511ec1bc16df7bc1a09aa0ff97080d4654720afe95d78a7d9ccae02da0`；
   旧循环 `0x6b195a80` 为 `ev_a5a3a42e1ed79b0e8050361973e71bdbfb157d6b4d82c81d0004e010bb79d5ad`；
   Save `0x6b195b90` 为 `ev_44fed819f580613ff271c374c28161c0f6fff2ed109f566a72f0d2815d5ff743`。
@@ -150,7 +150,7 @@ Envelope 对象通常对应此类就勾选第 287 行。
   其中 RTTI `.?AVSymbolCollection@@` 的 COL `0x6ec2272c`（偏移 `0x44`）指向虚表
   `0x6ec15ce4`：`+0x0c` 为 GetClassID thunk `0x6ebc8c50`，`+0x14` 为 Load thunk
   `0x6ebc8d10`，`+0x18` 为 Save thunk `0x6ebc8cb0`。
-- 完整 REA 会话证据导出到本机临时文件 `/tmp/luna-fdo-anno-evidence.json` 与
+- 完整 Ghidra 桥接工具 会话证据导出到本机临时文件 `/tmp/luna-fdo-anno-evidence.json` 与
   `/tmp/luna-fdo-display-evidence.json`；其内容含本机路径，分享前应脱敏。
 
 ### 原生控制流与 SymbolCollection

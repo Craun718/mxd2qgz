@@ -31,6 +31,6 @@
 - **GroupLayer <11：不可勾选真实普通子层。** 新增 v10 合成回归；旧 Map 空列表无法提供 GroupLayer 实例。
 - **Envelope v0：不可勾选真实旧档。** 新增合成无维度边界测试，先前完整截断与 Z/M 组合测试仍见 `tests/envelope_v0_round2.rs`；SDK 两处 +20=0 不再作为有意义的 v0 候选。
 
-执行 `TMPDIR="$PWD/temp/terra-round9-old/tmp" cargo test --offline --test terra_round9_old -- --include-ignored`：5 项通过；`cargo fmt --check` 通过；完整 `cargo test --offline`：794 通过、17 忽略；`git diff --check` 通过。独立 REA 6.9.0 CLI 使用 JDK 25、Ghidra `/opt/ghidra`、仓库内 TMPDIR，55 秒本轮时限到达后被取消，输出标记 `cancelled`，没有产出函数证据，不能说是 socket 失败或 provider 自身超时。随后采用独立拷贝的 Ghidra 工程和隔离配置，通过 pyghidra 获取上述静态结果，没有切换共享 REA 目标。
+执行 `TMPDIR="$PWD/temp/terra-round9-old/tmp" cargo test --offline --test terra_round9_old -- --include-ignored`：5 项通过；`cargo fmt --check` 通过；完整 `cargo test --offline`：794 通过、17 忽略；`git diff --check` 通过。独立 Ghidra 桥接工具 6.9.0 CLI 使用 JDK 25、Ghidra `/opt/ghidra`、仓库内 TMPDIR，55 秒本轮时限到达后被取消，输出标记 `cancelled`，没有产出函数证据，不能说是 socket 失败或 provider 自身超时。随后采用独立拷贝的 Ghidra 工程和隔离配置，通过 pyghidra 获取上述静态结果，没有切换共享 Ghidra 桥接工具 目标。
 
 ArcMap 当前不可用；未在 ArcMap 10.1 或 QGIS 中人工打开源工程与转换结果，不能声称旧版本兼容、转换结果或目标软件运行已验证。后续需取得能顺序到达对应旧对象体的可控旧档，或先闭合 ArcToolbox 宿主及对象引用机制；必要时追加旧介质。更多来源的全流扫描只能缩小候选范围，不能代替顺序读取。

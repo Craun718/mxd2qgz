@@ -6,7 +6,7 @@
 
 本轮重新计算 SHA-256 并以 pefile 检查 PE x86 固定 FileVersion：10.1 ArcMap.exe 为 `10.1.0.3035`、`1fb79eee6b442bd61c44dd3d0864ddfff06b1df882ddc59fb87380bb3ec5af97`；10.8 ArcMap.exe 为 `10.8.0.12790`、`a9a963b9dffbf0cb346c67c98bce0880b7e64363410a788dccb9597cff3c75fe`；10.1 AfCore 为 `10.1.0.3035`、`031858c414c0105b3b978c754f3d0f31ba1d98f15d44ff15b1589c9adcc47c17`，均与既有记录一致。依据 ArcMap 的导入表，从 10.1 Desktop Setup1.cab 新提取 afUILib.dll（`10.1.0.3035`，`35d41cf850cbe13c202cca84441cee05db487bc54421ab9d5012dc0b1cad7da4`）与 OwnControlsLib.dll（`10.1.0.3035`，`3e42685ce0fd175c509c7fa09e54a62d45083118e318c3a2fe51507107301f26`）。资源版本是文件声明，摘要标识字节，并非签名认证。
 
-使用导入表、资源表、消息映射数据及 objdump 指令；另用 Ghidra 12.2 / JDK 25 的隔离 pyghidra 项目定点反编译。沿用先前 REA 套接字受限后的隔离路线，未切换共享 REA 会话。伪代码有类型和长函数还原限制，关键虚槽与参数以汇编复核。工作文件位于忽略目录 `temp/terra-chain-version/`，可能含本机路径；分享前检查脱敏。
+使用导入表、资源表、消息映射数据及 objdump 指令；另用 Ghidra 12.2 / JDK 25 的隔离 pyghidra 项目定点反编译。沿用先前 Ghidra 桥接工具 套接字受限后的隔离路线，未切换共享 Ghidra 桥接工具 会话。伪代码有类型和长函数还原限制，关键虚槽与参数以汇编复核。工作文件位于忽略目录 `temp/terra-chain-version/`，可能含本机路径；分享前检查脱敏。
 
 ## 10.1 命令与对话框来源
 

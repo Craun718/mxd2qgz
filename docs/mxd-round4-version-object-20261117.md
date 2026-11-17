@@ -4,13 +4,13 @@
 
 ## 本轮证据与实现
 
-复用第三轮与既有 REA/Ghidra 静态证据，重新核对介质提取文件 SHA-256：10.1 ArcMap.exe `1fb79eee6b442bd61c44dd3d0864ddfff06b1df882ddc59fb87380bb3ec5af97`、AfCore.dll `031858c414c0105b3b978c754f3d0f31ba1d98f15d44ff15b1589c9adcc47c17`、SystemCore.dll `f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`，与 10.1.0.3035 基线一致。10.8 ArcMap.exe `a9a963b9dffbf0cb346c67c98bce0880b7e64363410a788dccb9597cff3c75fe`、SystemCore `48cbd921972d12156119d524f9c3923225fd30795e33c22c65c87db3a6c89aca` 为 10.8.0.12790，结论只限该版本。原 PE 虚拟地址非运行地址。
+复用第三轮与既有 Ghidra（经桥接工具） 静态证据，重新核对介质提取文件 SHA-256：10.1 ArcMap.exe `1fb79eee6b442bd61c44dd3d0864ddfff06b1df882ddc59fb87380bb3ec5af97`、AfCore.dll `031858c414c0105b3b978c754f3d0f31ba1d98f15d44ff15b1589c9adcc47c17`、SystemCore.dll `f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`，与 10.1.0.3035 基线一致。10.8 ArcMap.exe `a9a963b9dffbf0cb346c67c98bce0880b7e64363410a788dccb9597cff3c75fe`、SystemCore `48cbd921972d12156119d524f9c3923225fd30795e33c22c65c87db3a6c89aca` 为 10.8.0.12790，结论只限该版本。原 PE 虚拟地址非运行地址。
 
 新增 `stream::variant_stream::read_value_10_1`：复用经 [10.1 VariantStream 逐分支核对](arcmap-10.1-variant-stream.md) 的固定宽度及字符串安全子集；9/13 且全零 CLSID 返回空对象，非零 CLSID 明确 Unsupported，截断和错误均不推进游标。全局 VariantStream 与类方法 `Variant::Read` 是不同序列化器，不能借用后者独有 VARTYPE；对象零标记的极性以[后续更正](arcmap-10.1-variant-propertyset-slots.md)为准。测试是合成边界，不证明目标软件运行行为。尚无公共路由接入；由整合方按已证字段归属调用。
 
 本轮以 objdump 复核 AfCore `0x68a7b640..0x68a7b6a4` 与 `0x68a7b6d0..0x68a7b76b`：SaveObject/LoadObject 均对流调用 `0x68a7c4b0`；命中时分别调用返回接口虚表 +0x40/+0x44，未命中时写侧进 SimpleSaveObject，读侧进 `0x68a7b490`，非空成功后进入 `0x68a7b530`。`0x68a7c4b0` 在 `0x68a7c4c0` 压入 IID 地址 **0x68c6dca8**；而 SimpleSaveObject 内 `0x68a7c1d0` 的 QI 在 `0x68a7c1e0` 压入 **0x68c6dcb8**，二者不可混同。部分旧注释将前者写为 dcb8；尚未在本轮解析这两个 IID 的全部身份。`0x68a7b530` 既有 Ghidra 12.2 伪代码提示大量不可达块，不能将其伪代码当作包装接口传播的完整证明。
 
-REA 6.9.0 已识别上述 10.1 AfCore PE 哈希；新发起的批量反编译尚未返回时，发现 `/tmp` 可用空间降至约 7 MiB，主动中止等待以免继续增加 tmpfs 压力；没有把该次请求当作新反编译证据。其他结论依赖既有 REA 证据及本轮 objdump。没有清理其他任务或系统文件。
+Ghidra 桥接工具 6.9.0 已识别上述 10.1 AfCore PE 哈希；新发起的批量反编译尚未返回时，发现 `/tmp` 可用空间降至约 7 MiB，主动中止等待以免继续增加 tmpfs 压力；没有把该次请求当作新反编译证据。其他结论依赖既有 Ghidra 桥接工具 证据及本轮 objdump。没有清理其他任务或系统文件。
 
 ## 逐项状态
 

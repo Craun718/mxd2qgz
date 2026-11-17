@@ -6,7 +6,7 @@
 
 本轮重算 Map.dll（`temp/agent-map-surround/Map.dll.6BF03936_8AC4_4632_8FB2_A6A34A19655A`）SHA-256 `1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`，以及 GdbCore.dll（`temp/agent-dataset-name/GdbCore.dll.FA783766_EB8B_462D_8D00_E07AC33230EA`）SHA-256 `ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4`；两者 PE32 x86，文件/产品版本均声明 `10.1.0.3035`，原始文件名分别 Map.DLL、GdbCore.DLL，与前轮一致。这些是静态身份和自述版本，不是签名认证。`third_party/ForestRight/vendor/ESRI.ArcGIS.System.dll` 的 SHA-256 为 `657c2072703fa9904a9f25bc56c4a46425b86ba2af89f9e7c3faddd6a307a766`，文件和产品版本资源均为 10.1.0.3035。GdbCoreLib 的同版身份及持久化链见 [第八轮](mxd-terra-round8-tablename.md)，本轮未重新计算其哈希。
 
-独立 REA 6.9.0 CLI、JDK 25、`/opt/ghidra`、仓库内专用 TMPDIR 分析 Map.dll Load；run `d4dda94a-5c97-4f39-b047-a2736cc97f45` 的 Ghidra 桥接 Unix socket 报 `Operation not permitted`，未产生函数 Evidence。按预定回退使用复制的独立 Map/GdbCore 工程、pyghidra/Ghidra 12.2 和 JDK 25，隔离项目、缓存及临时目录，重新反编译目标及辅助函数；另用 PE 原始虚表、objdump 指令和既有类型库转储核查。未连接或切换共享 REA 目标。`temp/terra-round9-bookmark/` 为忽略的临时证据，分享前应检查敏感路径。反编译不是原始源码。
+独立 Ghidra 桥接工具 6.9.0 CLI、JDK 25、`/opt/ghidra`、仓库内专用 TMPDIR 分析 Map.dll Load；run `d4dda94a-5c97-4f39-b047-a2736cc97f45` 的 Ghidra 桥接 Unix socket 报 `Operation not permitted`，未产生函数 Evidence。按预定回退使用复制的独立 Map/GdbCore 工程、pyghidra/Ghidra 12.2 和 JDK 25，隔离项目、缓存及临时目录，重新反编译目标及辅助函数；另用 PE 原始虚表、objdump 指令和既有类型库转储核查。未连接或切换共享 Ghidra 桥接工具 目标。`temp/terra-round9-bookmark/` 为忽略的临时证据，分享前应检查敏感路径。反编译不是原始源码。
 
 ## 构造、虚表、读写与语义
 

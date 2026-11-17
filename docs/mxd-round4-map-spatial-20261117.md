@@ -6,7 +6,7 @@
 
 重新对本地 Setup1.cab 提取物计算摘要并用 pefile 核对版本资源：Map.dll 为 PE x86、InternalName `Map`、OriginalFilename `Map.DLL`、FileVersion 10.1.0.3035，SHA-256 `1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`；Geometry.dll 为 PE x86、InternalName `Geometry`、OriginalFilename `Geometry.DLL`、FileVersion 10.1.0.3035，SHA-256 `c57d154f207ee249adc69136574cf274771370ff93a15eb0be5682ce828f0d47`。与既有身份记录一致；版本资源是文件自身声明，并非签名真实性或目标环境运行证明。
 
-复用同摘要的既有 REA 6.9.0/Ghidra 12.2 证据包 `temp/arcgis/arcmap101-map-cr-extent-evidence.json`，Map Load `0x793ff4d0` 的 Evidence `ev_069e1a6cf0430ee69dd90c7c7f562b775368daf04cca8a0fd201e4e59102951e`，Save `0x79401850` 的批量反编译 Evidence `ev_db66d1a2485171567327850f20933669ba520abf22d6fc735a0a09274cbe1a35`。本轮提取局部伪代码至本组忽略目录；没有声称重新反编译或运行目标进程。第三轮照明证据见 `mxd-round3-map-tail-20261117.md`，空间证据见 `mxd-round3-display-spatial-20261117.md`。
+复用同摘要的既有 Ghidra 桥接工具 6.9.0/Ghidra 12.2 证据包 `temp/arcgis/arcmap101-map-cr-extent-evidence.json`，Map Load `0x793ff4d0` 的 Evidence `ev_069e1a6cf0430ee69dd90c7c7f562b775368daf04cca8a0fd201e4e59102951e`，Save `0x79401850` 的批量反编译 Evidence `ev_db66d1a2485171567327850f20933669ba520abf22d6fc735a0a09274cbe1a35`。本轮提取局部伪代码至本组忽略目录；没有声称重新反编译或运行目标进程。第三轮照明证据见 `mxd-round3-map-tail-20261117.md`，空间证据见 `mxd-round3-display-spatial-20261117.md`。
 
 ## 原 117：Map 后缀与独立表计数
 
@@ -36,7 +36,7 @@ Load 的持久化子接口相对偏移，照明对象之后对于本入口所支
 
 ## 验证与交接
 
-`tests/round4_map_spatial.rs` 覆盖真实参考文件从根到该段的连续解析、原始位模式与末尾保留、版本 23/34/35/51、版本外拒绝和全部截断点回退；介质枚举测试手动 `--include-ignored` 执行，不作为每次默认测试的介质依赖。合成边界仅验证读取器，不替代真实旧档证据。静态 REA 与样本对位不构成 ArcMap 10.1 或 QGIS 人工验收，本轮两者均未打开。
+`tests/round4_map_spatial.rs` 覆盖真实参考文件从根到该段的连续解析、原始位模式与末尾保留、版本 23/34/35/51、版本外拒绝和全部截断点回退；介质枚举测试手动 `--include-ignored` 执行，不作为每次默认测试的介质依赖。合成边界仅验证读取器，不替代真实旧档证据。静态 Ghidra 桥接工具 与样本对位不构成 ArcMap 10.1 或 QGIS 人工验收，本轮两者均未打开。
 
 请整合方：若要在 `mxd_maps.rs` 接入该 12 字节入口，先定义中间模型/诊断如何保存全部原始值和剩余字节；随后修正 `transformation_count` 字段名及共享诊断、相关测试，避免现有 UI 把独立表误称为坐标变换。非零表和后续坐标变换需要对象类别及对象体证据后再消费。暂不改变共享接线。
 

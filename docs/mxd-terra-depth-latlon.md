@@ -2,7 +2,7 @@
 
 ## 身份与范围
 
-重新读取 `temp/arcgis101-bin/SystemCore.dll.017F52BF_20D0_487A_A583_436DA6406CFF`：SHA-256 `f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`；PE32 x86，资源 FileVersion/ProductVersion `10.1.0.3035`、InternalName `SystemCore`、OriginalFilename `SystemCore.dll`。版本为文件自述，哈希用于确认字节，均非签名认证。以既有 REA 6.9.0/Ghidra 12.1.4 导出 `temp/pseudocode/SystemCore/functions/0x7ffc91b0.c`、`0x7ffc9880.c` 为定位线索，本轮对同一 PE 用 objdump 新读虚表、指令与常量，未切换共享 REA 目标；伪代码不是源码。下述地址为静态映像 VA。
+重新读取 `temp/arcgis101-bin/SystemCore.dll.017F52BF_20D0_487A_A583_436DA6406CFF`：SHA-256 `f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`；PE32 x86，资源 FileVersion/ProductVersion `10.1.0.3035`、InternalName `SystemCore`、OriginalFilename `SystemCore.dll`。版本为文件自述，哈希用于确认字节，均非签名认证。以既有 Ghidra 桥接工具 6.9.0/Ghidra 12.1.4 导出 `temp/pseudocode/SystemCore/functions/0x7ffc91b0.c`、`0x7ffc9880.c` 为定位线索，本轮对同一 PE 用 objdump 新读虚表、指令与常量，未切换共享 Ghidra 桥接工具 目标；伪代码不是源码。下述地址为静态映像 VA。
 
 ## 最后 short 的地址链和分支
 

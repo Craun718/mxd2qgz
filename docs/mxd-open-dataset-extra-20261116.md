@@ -40,7 +40,7 @@
     第 4 行：`3 ISpatialReference 4434D680-F4DA-11D1-BCA60000F875BCCE typekind=3`，
     即 `{4434D680-F4DA-11D1-BCA6-0000F875BCCE}`。
   类型库证明请求 IID 的接口身份，不证明槽内类标识、字段业务含义或 MXD 样本形态。
-- 以 GdbCore 原件 SHA-256 过滤 REA 导出，只使用
+- 以 GdbCore 原件 SHA-256 过滤 Ghidra 桥接工具 导出，只使用
   `ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4` 记录；
   未使用 FileGDB.dll 的 `0x6fa*` VA。对原始 PE `.rdata` 使用
   `struct.iter_unpack('<I', raw_bytes)` 解码，TQN 次级表 `0x70aba6dc` 的
@@ -62,7 +62,7 @@
 | TODO 原行 | 状态 | 本轮结论与证据 | 尚缺证据 |
 | --- | --- | --- | --- |
 | 168 | 未闭合 | FeatureBookmark `{EC65B35B-4342-11D2-AE22-080009EC732A}` 的 Load 请求 IID `{4BA33331-…}`，10.1 类型库定名 IName；Load 成功后对接口槽 `+0x14` 调用，并 QI IFeatureClass，失败软置空。详见 mapsurround/bookmark 第五节、legend-family 第十节。 | 流内 IName 对象的 coclass 分布未知，书签样本计数为 0；`+0x14` 调用也未定性。因此没有可据以实现分布分派的证据。 |
-| 171 | 未闭合 | GdbCore SHA 过滤后的 REA 记录和按小端程序解码的 TQN 次级表确认 GetIDType/Load/Save/GetSizeMax 槽入口；直接指令显示版本门、三次 String 读写、IWorkspaceName LoadObject/SaveObject 和后续槽操作。 | 未取得完整 Load/Save 反编译；所有字段边界、剩余接口槽语义及 FQN 对应体仍开放。本轮未实现 VariantStream 体，维持现有停止点。 |
+| 171 | 未闭合 | GdbCore SHA 过滤后的 Ghidra 桥接工具 记录和按小端程序解码的 TQN 次级表确认 GetIDType/Load/Save/GetSizeMax 槽入口；直接指令显示版本门、三次 String 读写、IWorkspaceName LoadObject/SaveObject 和后续槽操作。 | 未取得完整 Load/Save 反编译；所有字段边界、剩余接口槽语义及 FQN 对应体仍开放。本轮未实现 VariantStream 体，维持现有停止点。 |
 | 172 | 未闭合 | 10.1 `esri.clsid.ecfg` 将 ObjectClassName CLSID `{905CEC64-0B2C-11D4-A060-00C04F6BDD84}` 归入 GdbCore；旧报告在 GdbCore 中找到 `IObjectClassNameImpl` 接口 TD，但未找到具体实现类 RTTI，也未找到可确证的实现类虚表链。 | 具体类 TD/COL/虚表、GetClassID 实现及其所属模块仍未知。不能把接口 TD 当作 coclass RTTI。 |
 | 211 | 部分 | FeatureDatasetName `Load 0x709b7c90` 的 10.1 静态字段序为版本、String×4、1 字节标志、IWorkspaceName 槽；四 String 位于对象 `+0x0c/+0x10/+0x14/+0x18`，标志在 `+0x1c`。读写对称见 dataset-name 第 FeatureDatasetName 节。 | 反编译只证明读取顺序和写回槽位，没有成员名、语义化 getter/setter 或运行取值。四 String 与标志业务语义仍未定，继续按序号和原值保存。 |
 | 212 | 部分 | TopologyName `Load 0x7095e5c0` 的字段序为版本、String×2、IDatasetName 槽；两个 String 位于对象 `+0x0c/+0x10`，槽在 `+0x14`。读写对称见 dataset-name 的 TopologyName 节。 | 两 String 的业务语义和 `+0x20` 通知调用含义未由成员名或运行证据定性；不将其提升为名称/别名等业务字段。 |

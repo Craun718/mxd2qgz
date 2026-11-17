@@ -6,9 +6,9 @@
 
 - 10.1：从 README 指定的 `Desktop/Setup1.cab` 提取 CAB 条目 `ArcMap.exe.E97001B0_1E76_4BE8_B51F_269775FE0A80`。PE x86；版本资源 FileVersion/ProductVersion `10.1.0.3035`，InternalName `ArcMap`，OriginalFilename `ArcMap.exe`，CompanyName `Esri`；SHA-256 `1fb79eee6b442bd61c44dd3d0864ddfff06b1df882ddc59fb87380bb3ec5af97`，与既有基线一致。
 - 10.8：从本机 `temp/arcgis/unpacked/Desktop/SetupFiles/Data1.cab` 提取同名条目。PE x86；版本资源 FileVersion/ProductVersion `10.8.0.12790`，InternalName `ArcMap`，OriginalFilename `ArcMap.exe`，CompanyName `Esri`；SHA-256 `a9a963b9dffbf0cb346c67c98bce0880b7e64363410a788dccb9597cff3c75fe`。版本资源是文件身份声明，不是签名真实性验证。
-- 本轮使用 REA / Ghidra 12.1.4。两版共 21 条 Evidence 保存在本机 `/tmp/mxd-version-luna-evidence.json`（同内容检查点 `/tmp/mxd-version-luna-checkpoint.json`）；该临时位置可能被清理，包中包含本机路径，分享前须脱敏。分析目标已关闭，会话已清理。PDB 加载状态未知；Ghidra 未解析的虚调用与异常路径不能当作不存在。
+- 本轮使用 Ghidra 桥接工具 / Ghidra 12.1.4。两版共 21 条 Evidence 保存在本机 `/tmp/mxd-version-luna-evidence.json`（同内容检查点 `/tmp/mxd-version-luna-checkpoint.json`）；该临时位置可能被清理，包中包含本机路径，分享前须脱敏。分析目标已关闭，会话已清理。PDB 加载状态未知；Ghidra 未解析的虚调用与异常路径不能当作不存在。
 
-本记录更正上一轮误判：安装介质可以重新提取，10.8 CAB 也存在；仅凭先前提取目录或 REA 会话为空，不能认定目标文件不可用。
+本记录更正上一轮误判：安装介质可以重新提取，10.8 CAB 也存在；仅凭先前提取目录或 Ghidra 桥接工具 会话为空，不能认定目标文件不可用。
 
 ## 10.1 Version 和版本分支
 
@@ -20,15 +20,15 @@ ArcMap.exe `0x466fb0` 的本轮反编译 `ev_4ac6e29e677912a04960a0289c7b8a03672
 
 ## SaveAs 与 put 路径
 
-`0x42b120`（`ev_7230475da905b46f203c2a3317f49dfa784276682bb928454b0bdcc1796eee79`）仅将输入写到接口 this 的 `+0x28`。REA 读取 `0x545e40` 虚表（`ev_44d31ae9620c60348de197fd7b7a49130e0faa0350474b1fce392a413b14e8d2`）确认 `+0x0c` 指向该实现，`+0x10` 指向 `0x42b140`。对目标映像初始化内存查找其小端地址字节仅命中 `0x545e4c`（`ev_3c6ab0710141dbabeb812e431d324e7e6c652ef48f7d83113b154c54c43b0f16`）；这只是有界静态字节观察，不能排除间接调用、动态计算或其他模块调用。
+`0x42b120`（`ev_7230475da905b46f203c2a3317f49dfa784276682bb928454b0bdcc1796eee79`）仅将输入写到接口 this 的 `+0x28`。Ghidra 桥接工具 读取 `0x545e40` 虚表（`ev_44d31ae9620c60348de197fd7b7a49130e0faa0350474b1fce392a413b14e8d2`）确认 `+0x0c` 指向该实现，`+0x10` 指向 `0x42b140`。对目标映像初始化内存查找其小端地址字节仅命中 `0x545e4c`（`ev_3c6ab0710141dbabeb812e431d324e7e6c652ef48f7d83113b154c54c43b0f16`）；这只是有界静态字节观察，不能排除间接调用、动态计算或其他模块调用。
 
-IDocumentVersion IID 字节在 `0x554e9c` 和 `0x555854` 两处命中（`ev_04e7b66cec1fe287ce72edda05638dee0b0065ca9043b08420d03d44bf69e262`）。REA 在后者解析到 `0x48a2a3` 引用（`ev_7a3036d87dd0885241ce0a1b32521f61fa28629d887cbe575814da7bc1242aeb`），所在函数 `0x48a250` 用该 IID 查询输入接口并保存结果（`ev_39a8528a34d9f7371020d5744edc16858418cea658be4bb77c374d179ad9b418`），已解析直接调用者为 `0x488bf0`（`ev_3a87014cd4cb008880964c399010b12b16f675968e9d4c1a3397dd9ce8a789e8`）。写入器反编译调用 `0x488bf0`，之后对取得的接口虚槽 `+0x0c` 传入保存索引；该观察有助于定位写入器向流侧传递索引，但尚不能证明 SaveAs 对话框到 AfDoc put 的路径。另一 IID 地址的空引用结果受静态覆盖限制。
+IDocumentVersion IID 字节在 `0x554e9c` 和 `0x555854` 两处命中（`ev_04e7b66cec1fe287ce72edda05638dee0b0065ca9043b08420d03d44bf69e262`）。Ghidra 桥接工具 在后者解析到 `0x48a2a3` 引用（`ev_7a3036d87dd0885241ce0a1b32521f61fa28629d887cbe575814da7bc1242aeb`），所在函数 `0x48a250` 用该 IID 查询输入接口并保存结果（`ev_39a8528a34d9f7371020d5744edc16858418cea658be4bb77c374d179ad9b418`），已解析直接调用者为 `0x488bf0`（`ev_3a87014cd4cb008880964c399010b12b16f675968e9d4c1a3397dd9ce8a789e8`）。写入器反编译调用 `0x488bf0`，之后对取得的接口虚槽 `+0x0c` 传入保存索引；该观察有助于定位写入器向流侧传递索引，但尚不能证明 SaveAs 对话框到 AfDoc put 的路径。另一 IID 地址的空引用结果受静态覆盖限制。
 
 `0x47a740`（`ev_3ba7402216a5aa09a26c953a583fe353d842630543a8863edde7296c8d3c87f7`）按序列化方向分派 10.1 读写，符合既有记录；其反编译存在终止调用导致的函数体覆盖限制。SaveAs UI 到 put、打开旧文档后保存索引是否被改写仍未闭合。
 
 ## 10.8 定位结果
 
-REA 字符串清单在 `0x55e6d0` 发现 UTF-16 `Version`（`ev_09249a3b7a24b755bf8643d4aa68f1dbc6433e1a5deca2818a447ef73d0610fc`），已解析静态引用 `0x47a770`、`0x48a8b7`（`ev_88b066f0f902e2973206a58e73d517c0be439aae9323c39d6690aa8e3e28f988`），分别位于 `0x47a250` 和 `0x48a380`（`ev_60d77c01f301ee7edc62c1eb23fa25d91645d858ac03c22d352e9115b3b94154`、`ev_25573faf0d7b37750bca26451df803181cdb3a858f96e00a424406bef5121989`）。用户要求收束时两函数的反编译调用尚未返回，因此本轮只记录候选入口，未将它们定性为读或写，也未闭合 10.8 写入规则或跨版本兼容性。
+Ghidra 桥接工具 字符串清单在 `0x55e6d0` 发现 UTF-16 `Version`（`ev_09249a3b7a24b755bf8643d4aa68f1dbc6433e1a5deca2818a447ef73d0610fc`），已解析静态引用 `0x47a770`、`0x48a8b7`（`ev_88b066f0f902e2973206a58e73d517c0be439aae9323c39d6690aa8e3e28f988`），分别位于 `0x47a250` 和 `0x48a380`（`ev_60d77c01f301ee7edc62c1eb23fa25d91645d858ac03c22d352e9115b3b94154`、`ev_25573faf0d7b37750bca26451df803181cdb3a858f96e00a424406bef5121989`）。用户要求收束时两函数的反编译调用尚未返回，因此本轮只记录候选入口，未将它们定性为读或写，也未闭合 10.8 写入规则或跨版本兼容性。
 
 ## 未解决事项与验证
 

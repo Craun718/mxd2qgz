@@ -16,9 +16,9 @@ SystemCore.dll SHA-256
 TextSymbol/StdFont/PropertySet 对位；许多显示对象、Hyperlink、九类 NumberFormat
 均无实例。
 
-本轮试图用 REA 对已核对摘要的 DisplayCore.dll 作独立函数分析。REA 当前没有
+本轮试图用 Ghidra 桥接工具 对已核对摘要的 DisplayCore.dll 作独立函数分析。Ghidra 桥接工具 当前没有
 其他活动二进制会话；新鲜 Ghidra 导入在 `/tmp` tmpfs 空间不足时退出，未得到
-函数证据。本轮不据此声称新增 REA 函数观察，也未清理任何研究资料。随后复用
+函数证据。本轮不据此声称新增 Ghidra 桥接工具 函数观察，也未清理任何研究资料。随后复用
 仓库已有的 10.1 反编译与样本记录，并查阅 Esri ArcObjects 10.6/10.7 API 文档
 作接口层旁证。较新 API 页面不能证明 10.1 的字段归属；只有 10.1 Load/Save
 字段访问而缺少同一内存槽的 getter/setter 访问证据时，字段名仍标候选。
@@ -46,7 +46,7 @@ TextSymbol/StdFont/PropertySet 对位；许多显示对象、Hyperlink、九类 
 | 258 | 部分 | Hyperlink 循环走 ObjectStream 通用对象头解析，可处理零 GUID 空槽与键回引；对象流基础语义有 10.1 共享实现证据。 | Hyperlink 无样本条目，不能证明该 Hyperlink 宿主循环两种形态均由 ArcMap 10.1 产生或接受；需要真实样本/运行取证。 |
 | 259 | 部分 | `number_format.rs` 已实现九类体读取器与每类静态版本门；`arcmap-10.1-number-format.md` 记有短体字段序；可构造分支有合成正常/异常覆盖。 | 九类短体在参考样本均无实例，语义映射仍未闭合；不能把测试结果写成格式样本证据。 |
 | 260 | 部分 | Percentage/Rate 同槽升级及 LatLon/Angle 独立槽结构已在 10.1 Load/Save 静态对照中分开实现；核心读取器测试覆盖构造形态。 | 样本 0 实例，缺少真实流的对象体边界证据。 |
-| 261 | 阻塞（保守实现维持） | 10.1 AngleFormat Load 版本 ≥2 调 NumericFormat 核心但不检查其失败 HRESULT；当前严格读取器失败即回滚/报错，未仿原生继续读。静态反编译证据与差异已在 number format 记录中说明。 | 原生忽略失败后的游标/对象状态依赖可运行观察或精确指令级复核；REA 导入本轮因 ENOSPC 未完成。无证据前不放宽错误处理。 |
+| 261 | 阻塞（保守实现维持） | 10.1 AngleFormat Load 版本 ≥2 调 NumericFormat 核心但不检查其失败 HRESULT；当前严格读取器失败即回滚/报错，未仿原生继续读。静态反编译证据与差异已在 number format 记录中说明。 | 原生忽略失败后的游标/对象状态依赖可运行观察或精确指令级复核；Ghidra 桥接工具 导入本轮因 ENOSPC 未完成。无证据前不放宽错误处理。 |
 | 262 | 部分 | oleaut32 2.40.4275 静态代码显示 StdPicture 第二字 Save 写 0、Load 不校验；图像数据头会依魔数分流解码器。现解析器保留 `word2` 与图像 blob，不猜语义、不解码未知格式。 | 该 oleaut32 不是已确认的 ArcMap 10.1 OS 运行时 DLL；样本 StdPicture 0 实例。第二字语义和各解码器入口未闭合，需目标 OS 运行库及真实图像样本。 |
 | 263 | 阻塞（跨版本验证） | 介质 oleaut32 2.40.4275 的 StdFont/StdPicture Load/Save 静态证据与 MXD 样本 37 个 StdFont 体逐字节吻合；运行环境版本信息见 `arcmap-10.1-ole-stdfont.md`。 | XP/ArcMap 10.1 实际使用的系统 oleaut32 5.1.x 未获取，未对两版本做函数/流输出对比。兼容性不能由旧介质 DLL 或一组 MXD 样本证明。 |
 | 269 | 部分（实现与合成测试） | SystemCore.dll 10.1 Load `0x7ffd3080` 对版本 0 与 1 走同字段路径，Save 恒写 1；实现接受 0。新增单元测试覆盖版本 0 空集合、版本 2 拒绝回滚、版本 0 头截断回滚。`cargo test property_set` 本轮通过。 | 版本 0 无参考样本；只记录静态支持与合成测试，不勾真实样本佐证。 |

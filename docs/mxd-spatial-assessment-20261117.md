@@ -1,7 +1,7 @@
 # 空间参考、几何与地图范围开放项复核
 
 日期：2026-11-17。行号以本轮开始时的 TODO.md 为准。依据仓库保留的
-ArcMap Desktop 10.1.0.3035 静态 REA 记录及参考样本研究；未执行 ArcMap。
+ArcMap Desktop 10.1.0.3035 静态 Ghidra 桥接工具 记录及参考样本研究；未执行 ArcMap。
 本轮核对提取文件 SHA-256：Map `1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`，
 FeatureLayer `2baf870615bb75b6f30ccea173ba4303fdd0b1a6571e11b9197c5fcf7298bb60`，
 Geometry `c57d154f207ee249adc69136574cf274771370ff93a15eb0be5682ce828f0d47`，

@@ -6,7 +6,7 @@
 
 重新计算介质提取的 FeatureLayer.dll SHA-256 为 `2baf870615bb75b6f30ccea173ba4303fdd0b1a6571e11b9197c5fcf7298bb60`；PE Machine `0x14c`、FileVersion `10.1.0.3035`、InternalName `FeatureLayer`、OriginalFilename `FeatureLayer.DLL`。esriCarto 嵌入类型库 SHA-256 `8a70f4094c85b966ce0b0129ad7fa3d9562269c73f87e4f70cbc78c75775b578`、类型库版本 10.1。摘要确认字节身份，版本资源是文件声明，均不是签名或运行证明。
 
-同一 DLL 的独立 REA 6.9.0 CLI / Ghidra 12.2 在[既有独立取证](mxd-terra-chain-fl.md)中因桥接 Unix socket `Operation not permitted` 失败，未产生函数 Evidence；本轮未改共享 REA，使用 JDK 25、Ghidra 12.2 / pyghidra，在仓库 `temp/terra-host-label/` 复制工程并重新反编译 Load、Save、QI 和访问器，以 PE 字节及 objdump 复核。JVM 临时目录、缓存和工程均位于该目录。类型库在复制的独立 Wine 前缀下通过 `LoadTypeLibEx`、`GetFuncDesc`、`GetNames` 枚举；沙箱内 Wine socket 被拒绝，随后在授权环境中完成枚举。这不是运行 ArcMap。64 位 Wine 输出的 `oVft` 除以 2 对应 x86 目标字节偏移。临时输出可能含本机路径，分享前须脱敏。
+同一 DLL 的独立 Ghidra 桥接工具 6.9.0 CLI / Ghidra 12.2 在[既有独立取证](mxd-terra-chain-fl.md)中因桥接 Unix socket `Operation not permitted` 失败，未产生函数 Evidence；本轮未改共享 Ghidra 桥接工具，使用 JDK 25、Ghidra 12.2 / pyghidra，在仓库 `temp/terra-host-label/` 复制工程并重新反编译 Load、Save、QI 和访问器，以 PE 字节及 objdump 复核。JVM 临时目录、缓存和工程均位于该目录。类型库在复制的独立 Wine 前缀下通过 `LoadTypeLibEx`、`GetFuncDesc`、`GetNames` 枚举；沙箱内 Wine socket 被拒绝，随后在授权环境中完成枚举。这不是运行 ArcMap。64 位 Wine 输出的 `oVft` 除以 2 对应 x86 目标字节偏移。临时输出可能含本机路径，分享前须脱敏。
 
 ## FeatureIDSet
 

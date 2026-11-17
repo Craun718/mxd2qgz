@@ -6,7 +6,7 @@
 
 - README 指向 ArcGIS Desktop 10.1.3035 安装介质。本轮重新计算提取件 `temp/agent-fl-tail/DisplayCore.dll.33A02325_2485_4623_B2CE_71B5736B51DF` 的 SHA-256 为 `9b3e61f9ca553f14a442338dfc1c24ac51c1eea6dd9a4509282466a6a926e4d2`；PE machine `0x14c`、文件版本 10.1.0.3035。
 - 介质分发件 OLEAUT32 SHA-256 `baeb2f7c1b8be56738d34e1d1ddf8e0eebd3a633215dc1575e14656be38b939d`，PE x86，版本 2.40.4275.1，不是已验证的目标系统运行时。
-- REA/Ghidra 12.1.4 批量反编译 `0x6eb35310`、`0x6eb3c190`、`0x6eb395b0`、`0x6eb71110`、`0x6ebd0a60`，Evidence `ev_bc70a38ee0a7fab898b527725a2614ede5388940e6461ab113c2c5b296a05e21`；另用 objdump 核对下述指令。静态 VA 属于上述文件，伪代码不是原始源码。
+- Ghidra（经桥接工具） 12.1.4 批量反编译 `0x6eb35310`、`0x6eb3c190`、`0x6eb395b0`、`0x6eb71110`、`0x6ebd0a60`，Evidence `ev_bc70a38ee0a7fab898b527725a2614ede5388940e6461ab113c2c5b296a05e21`；另用 objdump 核对下述指令。静态 VA 属于上述文件，伪代码不是原始源码。
 
 ## 新增原生观察及实现
 
@@ -18,7 +18,7 @@ RandomColorRamp Load `0x6eb3c190` 在 `0x6eb3c230..0x6eb3c240` 读 2 字节，`0
 | --- | --- | --- |
 | 214 | 部分 | 颜色核心 `0x6eb35310` 再次确认三 double / 四字节分支与尾字节取补；尚未把颜色及各符号全部标量与属性访问器对位。新确认梯度布尔载入规则不提供业务名。 |
 | 221 | 部分 | TextSymbol `0x6ebd0a60` 重新反编译，支持现有字段序与版本门；未完成属性访问器和各成员偏移绑定，继续保留原始值。 |
-| 248 | 部分 | RandomColorRamp 丢弃 int32、PictureFill 两个局部 double、MultiPart 版本门再次由上述 REA 结果支持；新纠正同体布尔标志的整字判断。丢弃字段的历史用途和业务含义仍未知。 |
+| 248 | 部分 | RandomColorRamp 丢弃 int32、PictureFill 两个局部 double、MultiPart 版本门再次由上述 Ghidra 桥接工具 结果支持；新纠正同体布尔标志的整字判断。丢弃字段的历史用途和业务含义仍未知。 |
 | 267 | 部分 | 既有 Africa 介质 MultiLayerMarker/CharacterMarker 局部对象测试见 `mxd-round2-symbol-ole-20261117.md`；其余符号类尚未逐个从已证实宿主路径读取，不能按候选命中闭合。 |
 | 268 | 部分 | 检查现有 10.1 介质提取的 Maps/PageLayout：HSV 类标识 10 次、CMYK 306 次候选，HLS/Gray 0 次；例如 CentralUSA Maps `0x4227` 和 Africa Maps `0xeb4`。这是字节定位，不证明对象归属或边界；尚未从已证实宿主链走到这些候选。原行不闭合。 |
 | 274 | 部分 | 第三轮 `mxd-round3-display-spatial-20261117.md` 核实介质 OLE 2.40 写第二字为零、读侧未见校验，并确认 BMP/GIF/JPEG 等分派；第二字业务语义及目标 OS 解码器仍未定。真实 BMP 局部测试见第二轮记录。 |

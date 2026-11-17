@@ -8,7 +8,7 @@
 
 esriSystem 的 TYPELIB 资源 SHA-256 `0f3bc6496f2665cd6b03fa0071c0077f3b6fdab8f96c8b80f02beec36d7ad7a8`，与 [10.1 介质身份记录](arcmap-10.1-native-baseline.md)一致；esriDisplay `.olb` 和提取资源的 SHA-256 分别为 `5f64ecc7511ca3a8174bab83a57f550d3703a5c96131262771ad1a2e78ad3660`、`6052021b77c05ddb6b37b5373a04ada586a6664a121733ddf0651297106229ab`，来自该记录所述 10.1 介质提取目录。借用已有 `memberdump`，在仓库专用 `temp/terra-follow-display/` 的独立 Wine 前缀和 TMPDIR 中通过 `LoadTypeLibEx` 读取类型库；这是 Wine 对静态元数据的解析，不是 ArcMap 运行。64 位 Wine 返回的 `oVft` 除以 2 与 x86 四字节虚表槽对位。工具进程输出成员后返回码 3，类型名称的宽字符打印乱码；下列成员名称经 UTF-8 转换正常输出，IID 则与已有类型库清单互证，不把退出码当成完整枚举成功的证明。原输出在该专用目录，分享前需检查本机路径。
 
-原生实现部分使用既有 REA 6.9.0 / Ghidra 12.1.4 SystemCore 全量导出的 `functions/0x7ffce4b0.c`、`0x7ffcdb20.c`、各访问器伪代码及新执行的 PE 数据读取、objdump 指令复核；这些伪代码不是原始源码。未启动或更改共享 REA 服务器。默认沙箱中独立 Wine 因 Unix socket bind 被拒，随后使用独立授权进程完成枚举。
+原生实现部分使用既有 Ghidra 桥接工具 6.9.0 / Ghidra 12.1.4 SystemCore 全量导出的 `functions/0x7ffce4b0.c`、`0x7ffcdb20.c`、各访问器伪代码及新执行的 PE 数据读取、objdump 指令复核；这些伪代码不是原始源码。未启动或更改共享 Ghidra 桥接工具 服务器。默认沙箱中独立 Wine 因 Unix socket bind 被拒，随后使用独立授权进程完成枚举。
 
 ## NumericFormat 核心：七个流字段与访问器
 
@@ -38,5 +38,5 @@ Load 依序写 `P-0x1c/-0x18/-0x14/-0x10/-0xc/-0xa/-8`，代入 P 后恰为上�
 ## 可勾范围与验证
 
 - 可作为独立闭合项：**NumericFormat 核心七个持久化字段的 10.1 静态属性名与访问器对位**。这不闭合「NumberFormat 九类标量」整项，也不闭合字符串或任何运行验证项。
-- TextSymbol 全部标量语义、NumberFormat 其他类及 Rate/Custom 字符串继续开放。下一步应先分别从类型库 IID 跟进 QI 和虚表，处理 thunk/虚基调整，再将 getter/setter 实际成员地址与 Load/Save 对位；必要时借助独立 REA 或隔离 pyghidra 补证。对行为、显示效果及实际对象字节仍需目标软件运行或宿主路径明确的真实样本。
+- TextSymbol 全部标量语义、NumberFormat 其他类及 Rate/Custom 字符串继续开放。下一步应先分别从类型库 IID 跟进 QI 和虚表，处理 thunk/虚基调整，再将 getter/setter 实际成员地址与 Load/Save 对位；必要时借助独立 Ghidra 桥接工具 或隔离 pyghidra 补证。对行为、显示效果及实际对象字节仍需目标软件运行或宿主路径明确的真实样本。
 - 本轮仅新增研究文档，未改 Rust，不需要因此运行 Rust 测试；`git diff --check` 通过（该命令不检查未跟踪文档）。未在 ArcMap 10.1 或 QGIS 打开工程，软件版本、转换效果和人工目视验收均未验证。

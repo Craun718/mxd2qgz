@@ -11,4 +11,4 @@
 | 296 | 部分，未关闭 | `+0x1f4` 是 IEnvelope，Load 后传入数据源 QI 接口的虚表 `+0x10`；正式属性名称、绘制路径和生命周期未确认。不得将“实际绘制/缓存范围”当作事实；详见 [空间调用链](mxd-parse-agent-map-layer-spatial-20261117.md)。 |
 | 297 | 部分，未关闭 | `+0x1b4` 的 Save 将槽传入 SaveObject；通用空指针路径写 16 零字节，参考样本的已观察槽均为空。构造、赋值和运行时副作用尚未穷尽，不能推断成员始终为空或没有副作用，见同一空间调用链。 |
 
-本次重跑 `cargo test --test round4_layers --test property_set_v0_independent` 和完整 `cargo test` 全部通过；完整测试包含 `src/layers/dep_tail.rs` 的时间族合成测试，其证据级别仍是构造输入。按资源提示复用现存 REA 静态证据，没有启动新 Ghidra 导入。未运行 ArcMap 或 QGIS、未做人工目视验收；这些条目不应因静态和单元测试勾选。后续分别需要含旧分支的可定位旧档、启用时间的工程和 10.1 接口/运行调用记录。
+本次重跑 `cargo test --test round4_layers --test property_set_v0_independent` 和完整 `cargo test` 全部通过；完整测试包含 `src/layers/dep_tail.rs` 的时间族合成测试，其证据级别仍是构造输入。按资源提示复用现存 Ghidra 桥接工具 静态证据，没有启动新 Ghidra 导入。未运行 ArcMap 或 QGIS、未做人工目视验收；这些条目不应因静态和单元测试勾选。后续分别需要含旧分支的可定位旧档、启用时间的工程和 10.1 接口/运行调用记录。

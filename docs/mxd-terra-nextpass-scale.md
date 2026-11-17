@@ -4,7 +4,7 @@
 
 只追踪真正的 `ScaleLine`、`SteppedScaleLine` 及其委派段；原先三个伪候选的更正见 [既有记录](mxd-terra-integrate-page.md)。地址为下述 PE 的虚拟地址。重算 `temp/agent-map-surround/Map.dll.6BF03936_8AC4_4632_8FB2_A6A34A19655A` SHA-256 为 `1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`，PE32 x86、ImageBase `0x793a0000`；版本资源自述 Esri Map DLL、OriginalFilename `Map.DLL`、FileVersion/ProductVersion `10.1.0.3035`。注册包 `esri.clsid.ecfg` SHA-256 `170ae1f812bafc317ac98455eb7be844dd37f8d3a158c454cedf12f5046c3486`。文件自述身份与摘要不等于签名验证。
 
-独立 REA 6.9.0 CLI、JDK 25 和仓库独占 TMPDIR 启动 Ghidra 12.2；目标导入后桥接 Unix socket 的 bind 返回 `Operation not permitted`，未得到 REA 伪代码（诊断保存在 `temp/terra-nextpass-scale/rea.json`）。按任务约定改用 `GHIDRA_INSTALL_DIR=/opt/ghidra` 的隔离 pyghidra，将已有项目**复制**到独占目录后打开副本，未修改共享目标或项目。反编译结果在 `temp/terra-nextpass-scale/0x*.c`；身份链另用 PE 字节及 objdump 核查。产物含本机路径，分享前须脱敏。以下是静态观察，并非原始源码或运行取证。
+独立 Ghidra 桥接工具 6.9.0 CLI、JDK 25 和仓库独占 TMPDIR 启动 Ghidra 12.2；目标导入后桥接 Unix socket 的 bind 返回 `Operation not permitted`，未得到 Ghidra 桥接工具 伪代码（诊断保存在 `temp/terra-nextpass-scale/rea.json`）。按任务约定改用 `GHIDRA_INSTALL_DIR=/opt/ghidra` 的隔离 pyghidra，将已有项目**复制**到独占目录后打开副本，未修改共享目标或项目。反编译结果在 `temp/terra-nextpass-scale/0x*.c`；身份链另用 PE 字节及 objdump 核查。产物含本机路径，分享前须脱敏。以下是静态观察，并非原始源码或运行取证。
 
 | 类 | 注册 CLSID | RTTI、持久化虚表 | Load / Save 实体 |
 | --- | --- | --- | --- |

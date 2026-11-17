@@ -23,7 +23,7 @@
 - FeatureLayer 数据源按精确 CLSID 分派到 Fgdb 包装解析器，嵌套 FeatureClassName 的已知停止原因继续传播到 FeatureLayer。
 - 新增四项单元测试：完整外层+内嵌体；非法外层版本不推进游标/不改引用表；嵌套 WorkspaceName 截断时游标和新键登记回滚；FeatureLayer Fgdb 分派及内层停止传播。
 - 验证：`cargo fmt --check` 通过；`cargo test` 全部通过（库 167 项，集成测试通过；1 项需 QGIS API 的测试按仓库配置忽略）。`cargo run -- parse 'samples/测试底图.mxd'` 正常完成；原先的未知起点/停止位置 `0x1622` 推进到 `/Maps` 偏移 `0x2c01`，剩余 141,676 字节。样本在 ArcMap 10.1 / QGIS 中未人工目视验证；当前更深处的具体字段语义或对象边界不由字符串扫描推断。
-- 更新后的全量 REA Evidence 导出：`temp/agent-dataset-name/mxd-open-dataset-evidence-20261116.json`（77 条记录，0 unknowns）。目标会话保持打开，没有调用 close/reset。
+- 更新后的全量 Ghidra 桥接工具 Evidence 导出：`temp/agent-dataset-name/mxd-open-dataset-evidence-20261116.json`（77 条记录，0 unknowns）。目标会话保持打开，没有调用 close/reset。
 
 ### 剩余边界与主代理接线
 

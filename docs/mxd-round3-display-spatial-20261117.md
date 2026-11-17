@@ -5,10 +5,10 @@
 ## 身份、方法和边界
 
 - DisplayCore.dll：Setup1.cab 提取物，PE x86，文件版本资源 10.1.0.3035，SHA-256 `9b3e61f9ca553f14a442338dfc1c24ac51c1eea6dd9a4509282466a6a926e4d2`。
-- Geometry.dll：同介质，PE x86，文件版本资源 10.1.0.3035，SHA-256 `c57d154f207ee249adc69136574cf274771370ff93a15eb0be5682ce828f0d47`。复用 REA 全函数伪代码，分析配置摘要 `af4d30c9d76866092ce084421f113cb34393a9703542b46a5c290a493c77a8c4`；`0x7197fc50` 先前 Evidence `ev_cbecb6b16ba35e765699cadc9a8d83b8d7fc563278c3bb35194cf7153fa72304`。
+- Geometry.dll：同介质，PE x86，文件版本资源 10.1.0.3035，SHA-256 `c57d154f207ee249adc69136574cf274771370ff93a15eb0be5682ce828f0d47`。复用 Ghidra 桥接工具 全函数伪代码，分析配置摘要 `af4d30c9d76866092ce084421f113cb34393a9703542b46a5c290a493c77a8c4`；`0x7197fc50` 先前 Evidence `ev_cbecb6b16ba35e765699cadc9a8d83b8d7fc563278c3bb35194cf7153fa72304`。
 - esriGeometry.olb：既有介质提取物 SHA-256 `d45fb2105c869cda034fa80101cf2d0b932e08ea6f31eca8d4322fe7f7cd3e8e`；提取的类型库资源 SHA-256 `341646ec9ef602e82aa75072a116bd3468a6b023475b827dbd418481e97d9409`。用 Wine `LoadTypeLibEx` 和 `ITypeInfo::GetVarDesc` 输出枚举成员；接口和枚举元数据非运行行为。
 - 介质 OLEAUT32：PE x86，文件版本资源 2.40.4275.1，SHA-256 `baeb2f7c1b8be56738d34e1d1ddf8e0eebd3a633215dc1575e14656be38b939d`；这是介质分发件，不是已经核验的 ArcMap 10.1 目标系统运行库。
-- 新 REA CLI 6.9.0 / Ghidra 12.2 独立进程定点反编译，未更改共享目标：ArrowMarker Load `ev_d1d90cc9ea36b4907a7721ac0299419f3a3d9ad10a695170b436f0cd97abb596`；OLE Load `ev_af151d9f6677e00845aa730bc7436e73f78328e21cd3606ad4ba745d55d68d09`；OLE SaveHeader `ev_6ac39a425f185ffc2b5c2576b1b15f0452458df87c8d5c5bbe9bdbe0c5635b4a`。原始输出和类型库 dump 只在 `temp/round3-display-spatial/`；地址均为相应文件的静态映像地址。第一次 REA 因 `/tmp` 无空间失败，重试改用仓库临时目录；本地 Unix 套接字在沙箱内被拒后使用独立授权进程。
+- 新 Ghidra 桥接工具 CLI 6.9.0 / Ghidra 12.2 独立进程定点反编译，未更改共享目标：ArrowMarker Load `ev_d1d90cc9ea36b4907a7721ac0299419f3a3d9ad10a695170b436f0cd97abb596`；OLE Load `ev_af151d9f6677e00845aa730bc7436e73f78328e21cd3606ad4ba745d55d68d09`；OLE SaveHeader `ev_6ac39a425f185ffc2b5c2576b1b15f0452458df87c8d5c5bbe9bdbe0c5635b4a`。原始输出和类型库 dump 只在 `temp/round3-display-spatial/`；地址均为相应文件的静态映像地址。第一次 Ghidra 桥接工具 因 `/tmp` 无空间失败，重试改用仓库临时目录；本地 Unix 套接字在沙箱内被拒后使用独立授权进程。
 
 ## 233：记录类型和公开几何类型
 
@@ -36,13 +36,13 @@
 | ID | 状态 | 证据与还缺什么 |
 | --- | --- | --- |
 | 210 | PARTIAL | `arcmap-10.1-display-symbols-round2.md`、`arcmap-10.1-display-tails.md` 已记录颜色/符号读写字段和偏移；未逐类把类型库 getter/setter 绑定到成员槽，缺少全量业务语义。继续做接口槽、调整器和属性访问器对照，无法定性的用受控运行验证。 |
-| 212 | PARTIAL | 新 REA ArrowMarker `0x6eb3ec40`：版本≥2 读 short 至持久化接口 this−0xc4，成功后无条件调用 DisplayLib `Symbol::GetDefaultRotateWithTransformValue(this−0x11c,-1)` 并覆盖同槽；版本<2 不读但同样赋默认。既有记录中 CharacterMarker `0x6eb9b150` 版本>1 的 this−0x10c、PictureMarker v9 `0x6eb7a650` 的 this−0x134 及旧版本 `0x6eb7d750` 的对象+0x70 均记录同型；另有 SimpleMarker `0x6ebbefa0` 的独立同型证据。保存值及属性对应、DisplayLib 默认函数实现和历史意图尚未闭合；尤其不能假定返回值总为固定布尔值。须取得并核验 DisplayLib 10.1 后反编译默认函数、属性 getter/setter，必要时运行受控存取。 |
+| 212 | PARTIAL | 新 Ghidra 桥接工具 ArrowMarker `0x6eb3ec40`：版本≥2 读 short 至持久化接口 this−0xc4，成功后无条件调用 DisplayLib `Symbol::GetDefaultRotateWithTransformValue(this−0x11c,-1)` 并覆盖同槽；版本<2 不读但同样赋默认。既有记录中 CharacterMarker `0x6eb9b150` 版本>1 的 this−0x10c、PictureMarker v9 `0x6eb7a650` 的 this−0x134 及旧版本 `0x6eb7d750` 的对象+0x70 均记录同型；另有 SimpleMarker `0x6ebbefa0` 的独立同型证据。保存值及属性对应、DisplayLib 默认函数实现和历史意图尚未闭合；尤其不能假定返回值总为固定布尔值。须取得并核验 DisplayLib 10.1 后反编译默认函数、属性 getter/setter，必要时运行受控存取。 |
 | 217 | PARTIAL | `element_body.rs` 文档给出 TextSymbol Load `0x6ebd0a60` 字段顺序和成员偏移，字体槽有既有 StdFont 静态及样本证据；尚未将每个标量绑定相应属性。请主代理修改 `element_body`，本轮不改该文件；需 TextSymbol 各属性访问器与偏移逐个对照。 |
-| 233 | CLOSED（类型域及类别对照） | 10.1 类型库明确两枚举及基础类别，已知 REA 分支互证。全部导入/导出分支对变体的接受行为未验证。 |
+| 233 | CLOSED（类型域及类别对照） | 10.1 类型库明确两枚举及基础类别，已知 Ghidra 桥接工具 分支互证。全部导入/导出分支对变体的接受行为未验证。 |
 | 239 | BLOCKED | `{97D5B914-FB22-11D1-94A2-080009EEBECB}` 未定名；`mxd-iid-research-20261116.md` 的 79 类型库未命中和 FeatureLayer 该模块字面搜索未命中均为有界负证据，不能证明不存在。需包含该接口声明的其他类型库/二进制或 10.1 实际 QI 与调用链。 |
 | 243 | PARTIAL | `arcmap-10.1-pcs-geometry-slots.md` 已有 PCS/GCS/Unknown 读写及 Unknown 第二串被第三串覆盖、ISRPersistStream slot 8 恒写 `0x38`、GCS 对象+0xac 非零拒绝等静态事实；域串/四串的名称和填充、slot 名称、守卫业务含义及 pe/sg 容差数值推导尚缺完整访问器与调用链。 |
 | 244 | PARTIAL | 同版本 DisplayCore RandomColorRamp Load `0x6eb3c190` 读 int32 后置零、Save `0x6eb3c350` 写槽；PictureFill Load `0x6eb71110` 两 double 读后不用、Save `0x6eb71580` 写零；MultiPart 的 Load≥2 与 Save docVer≥4 的门依版本表对应。依据 `arcmap-10.1-display-slots-round3.md`；这些观察尚不解释字段原用途或历史兼容意图，需访问器、调用链或受控对象。 |
-| 270 | PARTIAL | 新 REA 验证读写头及魔数分派，纠正两处小端常数与空图描述；第二字命名、未定名解码分支和目标系统实际运行库仍未闭合，详见上节。 |
+| 270 | PARTIAL | 新 Ghidra 桥接工具 验证读写头及魔数分派，纠正两处小端常数与空图描述；第二字命名、未定名解码分支和目标系统实际运行库仍未闭合，详见上节。 |
 
 ## 验证
 

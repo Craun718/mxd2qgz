@@ -1,10 +1,10 @@
-# MXD Version 与保存路径：10.8 REA 续查
+# MXD Version 与保存路径：10.8 Ghidra 桥接工具 续查
 
-日期：2026-11-16。此记录补充 [前序静态复核](mxd-version-luna.md)，不覆盖该文件或同一工作区的其他代理修改。目标文件从 `temp/arcgis/unpacked/Desktop/SetupFiles/Data1.cab` 提取，CAB 条目为 `ArcMap.exe.E97001B0_1E76_4BE8_B51F_269775FE0A80`；REA/Ghidra 12.1.4 确认 x86 PE，SHA-256 `a9a963b9dffbf0cb346c67c98bce0880b7e64363410a788dccb9597cff3c75fe`，与前序身份记录相同。
+日期：2026-11-16。此记录补充 [前序静态复核](mxd-version-luna.md)，不覆盖该文件或同一工作区的其他代理修改。目标文件从 `temp/arcgis/unpacked/Desktop/SetupFiles/Data1.cab` 提取，CAB 条目为 `ArcMap.exe.E97001B0_1E76_4BE8_B51F_269775FE0A80`；Ghidra（经桥接工具） 12.1.4 确认 x86 PE，SHA-256 `a9a963b9dffbf0cb346c67c98bce0880b7e64363410a788dccb9597cff3c75fe`，与前序身份记录相同。
 
 ## 10.8 原生读写证据
 
-- `0x48a380`（REA Evidence `ev_367c652f2838cbed5e22c98f5afb843b302e773ad53e7de369acc922c28bdb13`）是以 `IStorage*` 为参数、主体跨 `0x48a380–0x48e47d` 的大型保存/加载入口之一。可见写侧创建名为 `Version` 的流；`String::Write` 写版本文本；随后通过 `AfStreamGetSaveVersion(local_edc, 0x0c, ...)` 计算并写 2 字节值。该值之后记录当前位置，再写 4 字节占位，之后还在同一打开的流对象上执行额外写入。当前反编译块不足以可靠界定占位回填位置及完整写入终点；不能把它直接等同于 10.1 对象表键计数。
+- `0x48a380`（Ghidra 桥接工具 Evidence `ev_367c652f2838cbed5e22c98f5afb843b302e773ad53e7de369acc922c28bdb13`）是以 `IStorage*` 为参数、主体跨 `0x48a380–0x48e47d` 的大型保存/加载入口之一。可见写侧创建名为 `Version` 的流；`String::Write` 写版本文本；随后通过 `AfStreamGetSaveVersion(local_edc, 0x0c, ...)` 计算并写 2 字节值。该值之后记录当前位置，再写 4 字节占位，之后还在同一打开的流对象上执行额外写入。当前反编译块不足以可靠界定占位回填位置及完整写入终点；不能把它直接等同于 10.1 对象表键计数。
 - 同一函数的读侧打开 `Version`，调用 `String::Read`，从该流读取 2 字节到局部 short；大于 `0x19` 拒绝；大于 `0x0b` 时再读 4 字节到 `local_8dc`，并调用该流的 `CopyTo`，随后才调用文档加载分派 `FUN_004899d0(..., short)`。因此 10.8 的可观察阈值与 10.1 记录的拒绝 `>0x13` 不同，且 10.8 读侧确实在文档分派前消费额外 4 字节并继续复制流数据。`CopyTo` 的接收对象及复制长度在该处反编译为宽泛/异常参数，故 4 字节的业务语义和其后数据归属仍不能仅凭局部伪代码定名。
 - 另一个大函数 `0x47a250`（Evidence `ev_ec08a66d13c46d90ea6e879c888c03139158d4f1402a4bcbc5b7d0cd05be82bd`，主体 `0x47a250–0x47d978`）与读侧 `0x48a380` 均有超大栈帧、反编译重启上限警告和 Ghidra 终止调用/控制流限制。其伪代码显示从 `Version` 读文本和 short、按阈值进入条件读取，并继续其他文档加载步骤；这些不完整的大函数不宜单独用来推出全部失败路径或整个流的严格边界。
 
@@ -14,7 +14,7 @@
 
 TODO 66–71 的 10.1 `/Version` 尾部语义、跨版本差异、ArcMap 10.1 运行验证及 SaveAs UI→put 仍未闭合。前序 10.1 证据只把保存索引经接口传到 Version 写入路径，尚未连通 SaveAs 命令/UI 与 AfDoc `put` 的全路径；本轮没有取得新证据补上该链路。
 
-实现评估：仓库已有 `src/version/version_stream.rs` 的显式 10.8 局部读取器，其契约只读取已确认的文本与 short 并保留尾部。本轮证据支持继续保留该严格局部解析边界，不支持新增 10.8 写入器或解释占位字段，也不支持合并 10.1/10.8 布局。因此未改公共接线、生产代码、测试或 TODO；没有可安全闭合的独立代码实现。REA Evidence bundle 保存在 `/tmp/mxd-version-luna-round2.json`（环境临时文件，可能清理；含本机目标路径，分享前需脱敏），分析目标已正常关闭。
+实现评估：仓库已有 `src/version/version_stream.rs` 的显式 10.8 局部读取器，其契约只读取已确认的文本与 short 并保留尾部。本轮证据支持继续保留该严格局部解析边界，不支持新增 10.8 写入器或解释占位字段，也不支持合并 10.1/10.8 布局。因此未改公共接线、生产代码、测试或 TODO；没有可安全闭合的独立代码实现。Ghidra 桥接工具 Evidence bundle 保存在 `/tmp/mxd-version-luna-round2.json`（环境临时文件，可能清理；含本机目标路径，分享前需脱敏），分析目标已正常关闭。
 
 ## 后续取证点
 

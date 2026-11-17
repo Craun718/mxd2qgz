@@ -8,7 +8,7 @@
 
 本轮重算 `temp/agent-dataset-name/GdbCore.dll.FA783766_EB8B_462D_8D00_E07AC33230EA`：SHA-256 `ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4`；PE32 x86，ImageBase `0x708d0000`，版本资源 FileVersion/ProductVersion `10.1.0.3035`、OriginalFilename `GdbCore.DLL`、CompanyName Esri。10.1 `esriGeoDatabase.olb` 的版本资源亦为 `10.1.0.3035`，原件 SHA-256 `09b741f2627633d36b67985e175632055fe6c5b8cd1000484acc3007f5917f9d`，提取的类型库 SHA-256 `92634979daa3ed0008b36d152e1fdf39cba04944f6bc7bbb5ea4c786bb44bb9a`。哈希和版本资源不是签名认证。所有地址均为静态 VA。
 
-先复查 [上轮调用链](mxd-terra-chain-dataset.md) 和既有反编译。既有独立 REA CLI 对同一 DLL 遇到 Unix socket `Operation not permitted`，见 [续查](mxd-terra-follow-names.md)；按允许的回退方案使用 Ghidra 12.2、JDK 25 和隔离 pyghidra，对既有工程副本反编译，独立项目、配置、TMPDIR 及输出在 `temp/terra-round10-dataset/`；未切换共享 REA 目标。未执行目标 DLL。反编译器对若干复杂函数报告删除不可达块，其结果不能作为该些分支完整行为的证据。
+先复查 [上轮调用链](mxd-terra-chain-dataset.md) 和既有反编译。既有独立 Ghidra 桥接工具 CLI 对同一 DLL 遇到 Unix socket `Operation not permitted`，见 [续查](mxd-terra-follow-names.md)；按允许的回退方案使用 Ghidra 12.2、JDK 25 和隔离 pyghidra，对既有工程副本反编译，独立项目、配置、TMPDIR 及输出在 `temp/terra-round10-dataset/`；未切换共享 Ghidra 桥接工具 目标。未执行目标 DLL。反编译器对若干复杂函数报告删除不可达块，其结果不能作为该些分支完整行为的证据。
 
 ## 接口与持久化对位
 

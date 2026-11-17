@@ -6,7 +6,7 @@
 
 重新计算 `temp/agent-map-surround/Map.dll.6BF03936_8AC4_4632_8FB2_A6A34A19655A` 的 SHA-256 为 `1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`；PE Machine `0x14c`、ImageBase `0x793a0000`，固定文件版本 `10.1.0.3035`。既有 esriCarto 类型库 `temp/terra-integrate-page/carto.tlb` 重新计算 SHA-256 为 `8a70f4094c85b966ce0b0129ad7fa3d9562269c73f87e4f70cbc78c75775b578`，其来源和 10.1 身份见 [前轮](mxd-terra-depth-legend.md)。版本资源是文件声明，哈希识别字节，不证明签名或运行状态。
 
-本轮先复用此前独立 REA CLI 分析相同 Map.dll 的结果：`temp/terra-round9-bookmark/rea.json` 中 run `d4dda94a-5c97-4f39-b047-a2736cc97f45` 的 Ghidra 12.2 桥接 Unix socket 因 `Operation not permitted` 失败，未返回函数证据；该失败不是本轮新运行。随后复制已有 Map Ghidra 工程至 `temp/terra-round10-legend/`，使用 JDK 25、Ghidra 12.2/pyghidra 和该目录独立项目、TMPDIR、Java home、配置及缓存，反编译共同 Load/Save、ItemCount getter、集合清理函数和一个内部 getter；并直接检查 PE 虚表与 objdump 指令。未连接或切换共享 REA 目标。反编译是静态伪代码，不是源码或运行证据；临时输出可能含本机路径，分享前应脱敏。类型库使用既有隔离 Wine `LoadTypeLibEx` 导出，64 位报告的 oVft 除以二为目标 x86 字节偏移；成员名与 IID 使用可读输出，宽字符串类型名乱码的局限见前轮。
+本轮先复用此前独立 Ghidra 桥接工具 CLI 分析相同 Map.dll 的结果：`temp/terra-round9-bookmark/rea.json` 中 run `d4dda94a-5c97-4f39-b047-a2736cc97f45` 的 Ghidra 12.2 桥接 Unix socket 因 `Operation not permitted` 失败，未返回函数证据；该失败不是本轮新运行。随后复制已有 Map Ghidra 工程至 `temp/terra-round10-legend/`，使用 JDK 25、Ghidra 12.2/pyghidra 和该目录独立项目、TMPDIR、Java home、配置及缓存，反编译共同 Load/Save、ItemCount getter、集合清理函数和一个内部 getter；并直接检查 PE 虚表与 objdump 指令。未连接或切换共享 Ghidra 桥接工具 目标。反编译是静态伪代码，不是源码或运行证据；临时输出可能含本机路径，分享前应脱敏。类型库使用既有隔离 Wine `LoadTypeLibEx` 导出，64 位报告的 oVft 除以二为目标 x86 字节偏移；成员名与 IID 使用可读输出，宽字符串类型名乱码的局限见前轮。
 
 ## Legend 自身字段
 

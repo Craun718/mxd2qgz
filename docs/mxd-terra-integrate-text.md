@@ -6,7 +6,7 @@
 
 重新对 `temp/agent-fl-tail/DisplayCore.dll.33A02325_2485_4623_B2CE_71B5736B51DF` 计算 SHA-256 为 `9b3e61f9ca553f14a442338dfc1c24ac51c1eea6dd9a4509282466a6a926e4d2`，PE32 x86；本轮 pefile 读取资源声明 `DisplayCore.dll`、Esri ArcGIS、FileVersion/ProductVersion `10.1.0.3035`。该摘要与 [10.1 显示续查](mxd-terra-follow-display.md)一致，文件身份声明不构成签名认证。接口成员及虚表序来自同一 10.1 介质的 esriDisplay 类型库，详见该记录；x64 枚举的 oVft 除以 2 得到 x86 偏移。
 
-本轮读取 PE 虚表和 objdump x86 指令，复核已有 REA/Ghidra 定位的 Load `0x6ebd0a60`；局部反汇编留在忽略目录 `temp/terra-integrate-text/`。没有连接或改变共享 REA 服务。下述 `O` 是构造函数 `0x6ebc9da0` 的对象基址，`I` 为接口指针，`P` 为 Load 实体的 this：
+本轮读取 PE 虚表和 objdump x86 指令，复核已有 Ghidra（经桥接工具） 定位的 Load `0x6ebd0a60`；局部反汇编留在忽略目录 `temp/terra-integrate-text/`。没有连接或改变共享 Ghidra 桥接工具 服务。下述 `O` 是构造函数 `0x6ebc9da0` 的对象基址，`I` 为接口指针，`P` 为 Load 实体的 this：
 
 - QI `0x6ebca980` 比较 `IFormattedTextSymbol` IID 常量 `0x6ec15a64` 与 `ITextSymbol` IID 常量 `0x6ec0ce9c`，匹配均跳到 `0x6ebcad5a` 返回 `O+0x98`；构造代码 `0x6ebc9ed6` 正在该位置安装虚表 `0x6ec1643c`。两接口共用前缀；因此 `I=O+0x98`，类型库的 getter/put 槽次可对到该虚表，而不是依据相似值猜测。
 - 构造代码 `0x6ebc9dd4` 安装 vbtable `0x6ec16708`，其第二项为 `0x540`；`0x6ebc9f6c` 在 `O+0x14+0x540=O+0x554` 放置 IPersistStream 虚表 `0x6ec166e8`，并在该指针前一字设置 `0x540-0x540=0`。Load thunk `0x6ebe5bd0` 从虚表指针减去前一字后跳到实体，因此此构造布局下 `P=O+0x554=I+0x4bc`。这是该构造实例的静态关系，不泛化到别的类。

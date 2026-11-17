@@ -14,14 +14,14 @@ ArcMap 10.1，未做任何人工验收；不据此声称 MXD 读取或转换能�
 - 目标 `SystemCore.dll.017F52BF_20D0_487A_A583_436DA6406CFF`，
   `sha256sum` = `f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`，
   与 [基线文档](arcmap-10.1-native-baseline.md) 一致（ArcMap 10.1.0.3035）。
-- 工具：REA 6.9.0 CLI（npm 缓存 `9b9809298fe40d2c`）+ Ghidra 12.2，
+- 工具：Ghidra 桥接工具 6.9.0 CLI（npm 缓存 `9b9809298fe40d2c`）+ Ghidra 12.2，
   全部经 CLI 以 `JAVA_HOME=/usr/lib/jvm/java-25-openjdk` 运行
   （MCP 注册的 JDK 21 会被 Ghidra 12.2 拒绝）。
 - 下文地址全部是 PE 静态映像虚拟地址，绑定上述文件摘要，不是 MXD 偏移。
 - 节区映射：`.text` 0x7ffb1000（raw 0x400）、`.rdata` 0x8006b000
   （raw 0xb9a00）、`.data` 0x800a4000（raw 0xf1c00）；`.rdata` 内锚定
   映射 `file_off = 0xCC1B8 + (va - 0x8007d7b8)`（由
-  `rea address-to-file-offset` 权威给出，0x8007d7b8 → 836024）。
+  当时的地址到文件偏移转换工具 权威给出，0x8007d7b8 → 836024）。
   Ghidra 对 `.data` 附近个别地址的字节读回与文件不符，凡涉字节事实均以
   `address-to-file-offset` + PE 文件直接解析裁决。
 

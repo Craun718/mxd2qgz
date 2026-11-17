@@ -4,9 +4,9 @@
 
 ## 身份和本轮复核
 
-本轮核对 `temp/agent-element-coll/work/Layer.dll`：PE x86，版本资源 FileVersion/ProductVersion `10.1.0.3035`，OriginalFilename `Layer.DLL`，SHA-256 `fe52bd9988b66f9d6f906b014e5684f28fc20e9b97b53c90909fa3d44e9efed8`，与 [既有记录](arcmap-10.1-featurelayer-tail.md) 的摘要前缀、版本一致。独立 REA 6.9.0/Ghidra 对 `0x7865b520` 的静态反编译证据 `ev_9eba4ed3e68ecea5cb2c473fa31fb20ce8305839be80d0eaf15aaa4b7cc97544`：有符号版本大于 4 拒绝；读取 short，版本大于 1 再读 short，随后 String 和对象槽；版本大于 2 读 short 和 int32，版本大于 3 再读两个 short。该观察支持现有读取器的版本门，不能证明旧版真实字节或这些字段业务语义。完整证据输出在忽略目录 `temp/mxd-round4/layers/fieldinfo-load-final.json`，含本机路径，分享前应检查脱敏。
+本轮核对 `temp/agent-element-coll/work/Layer.dll`：PE x86，版本资源 FileVersion/ProductVersion `10.1.0.3035`，OriginalFilename `Layer.DLL`，SHA-256 `fe52bd9988b66f9d6f906b014e5684f28fc20e9b97b53c90909fa3d44e9efed8`，与 [既有记录](arcmap-10.1-featurelayer-tail.md) 的摘要前缀、版本一致。独立 Ghidra 桥接工具 6.9.0/Ghidra 对 `0x7865b520` 的静态反编译证据 `ev_9eba4ed3e68ecea5cb2c473fa31fb20ce8305839be80d0eaf15aaa4b7cc97544`：有符号版本大于 4 拒绝；读取 short，版本大于 1 再读 short，随后 String 和对象槽；版本大于 2 读 short 和 int32，版本大于 3 再读两个 short。该观察支持现有读取器的版本门，不能证明旧版真实字节或这些字段业务语义。完整证据输出在忽略目录 `temp/mxd-round4/layers/fieldinfo-load-final.json`，含本机路径，分享前应检查脱敏。
 
-首次 REA 服务的 Ghidra 使用 `/tmp`，因空间耗尽未完成；随后将独立进程的 TMPDIR 指向本组目录。独立进程在沙箱中因 Unix 套接字拒绝而失败，取得执行授权后成功；失败结果不作为原生证据。
+首次 Ghidra 桥接工具 服务的 Ghidra 使用 `/tmp`，因空间耗尽未完成；随后将独立进程的 TMPDIR 指向本组目录。独立进程在沙箱中因 Unix 套接字拒绝而失败，取得执行授权后成功；失败结果不作为原生证据。
 
 已检查仓库参考样本与两套介质的现有提取、索引和第三轮对象级记录。10.1 介质的 66 个模板可用；此前对两套模板的解析仍存在未知对象停止点，不能由未到达的字段推断不存在。10.8 介质的 SouthernUSA 已由完整宿主链定位到 11 个 FieldInfo v3，文件保存版本为 9.3；这不证明 v0–2。参见 [图层续研](mxd-layer-label-cgl-20261117.md) 和 [介质清单](mxd-install-media-samples-20261117.md)。本机有 Wine，但未发现已安装可用的 ArcMap 10.1 或已连接 Windows 目标；未以 Wine 的存在推断目标可运行。
 
@@ -23,7 +23,7 @@
 | 227 | 部分 | ALPC 已有结构与公开接口列表，标量及字符串未逐项绑定访问器。 |
 | 228 | 部分 | LELP 读取顺序及部分类型库方法已知，具体持久化成员与访问器仍需逐项关联。 |
 | 229 | 部分 | ETM 读取结构、Count/EditTemplate 接口已知，尾字节及其余标量语义尚未闭合。 |
-| 230 | 部分 | 第三轮 REA 已证明 Load 与 IFeatureIDSet::Add 操作同一集合；没有证据把所有集合整数等同于数据源 OID。本轮加强数量边界检查，不改变字段语义。 |
+| 230 | 部分 | 第三轮 Ghidra 桥接工具 已证明 Load 与 IFeatureIDSet::Add 操作同一集合；没有证据把所有集合整数等同于数据源 OID。本轮加强数量边界检查，不改变字段语义。 |
 | 253 | 部分 | FCN 非零 TopologyName 选择子的静态实现及读取器已有，真实非零对象未从宿主链定位。 |
 | 254 | 部分 | FDO 旧体版本分支已有静态规则和读取器，缺真实旧体。 |
 | 259 | 部分 | 本轮重新核验 FieldInfo Load 的版本门，新增 v0–2 正常及截断合成测试；真实 v3 有介质字节，v0–2 未获真实字节。 |

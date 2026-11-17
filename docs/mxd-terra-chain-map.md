@@ -6,7 +6,7 @@
 
 重新计算 `temp/arcgis101-bin/mapdll/Map.dll.6BF03936_8AC4_4632_8FB2_A6A34A19655A` SHA-256：`1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`。本轮 pefile 读取 machine `0x14c`、FileVersion/ProductVersion `10.1.0.3035`、InternalName `Map`、OriginalFilename `Map.DLL`；文件声明和摘要不构成签名认证。
 
-利用前轮隔离 pyghidra/Ghidra 反编译的 Load `0x793ff4d0`、Save `0x79401850` 作为起点，本轮直接对该 DLL 新反汇编 Load `0x79400188..0x794002c3`，并重新从 PE 读取 `0x79487e40` 的 IID 字节；另与前轮 Load 反汇编中的 `0x79400416..0x79400492`、Save 伪代码对位。没有连接或切换共享 REA 会话，未启动目标软件。
+利用前轮隔离 pyghidra/Ghidra 反编译的 Load `0x793ff4d0`、Save `0x79401850` 作为起点，本轮直接对该 DLL 新反汇编 Load `0x79400188..0x794002c3`，并重新从 PE 读取 `0x79487e40` 的 IID 字节；另与前轮 Load 反汇编中的 `0x79400416..0x79400492`、Save 伪代码对位。没有连接或切换共享 Ghidra 桥接工具 会话，未启动目标软件。
 
 ## 顺序与边界
 
@@ -36,7 +36,7 @@ Save 侧也依次写出两成员、short、double、集合计数以及每条的 
 
 重新计算介质提取的 `Geometry.dll.F84366F9_C0B7_4267_A16E_D48D9E6DD261` SHA-256 为 `c57d154f207ee249adc69136574cf274771370ff93a15eb0be5682ce828f0d47`；本轮读取 PE machine `0x14c`、ImageBase `0x717e0000`、FileVersion/ProductVersion `10.1.0.3035`、InternalName `Geometry`、OriginalFilename `Geometry.DLL`，与已有 10.1 基线一致。这是字节身份及版本资源声明，不是签名或运行证明。
 
-按约定使用 REA 6.9.0 独立 CLI、JDK 25 和仓库内专用 TMPDIR；run `e2071b90-88eb-41b9-b98b-1b1648f82099` 的 Ghidra 12.2 Unix socket 绑定报 `Operation not permitted`，未产生可用反编译证据。随后复制现有 Geometry 工程到 `temp/terra-chain-map-native/`，以独立用户、配置、缓存和 Java 临时目录运行 pyghidra/Ghidra 12.2/JDK 25，定点读取虚表与反编译，再对原 DLL 新反汇编。未使用或切换共享 REA 会话；临时产物可能含本机路径，分享前需脱敏。
+按约定使用 Ghidra 桥接工具 6.9.0 独立 CLI、JDK 25 和仓库内专用 TMPDIR；run `e2071b90-88eb-41b9-b98b-1b1648f82099` 的 Ghidra 12.2 Unix socket 绑定报 `Operation not permitted`，未产生可用反编译证据。随后复制现有 Geometry 工程到 `temp/terra-chain-map-native/`，以独立用户、配置、缓存和 Java 临时目录运行 pyghidra/Ghidra 12.2/JDK 25，定点读取虚表与反编译，再对原 DLL 新反汇编。未使用或切换共享 Ghidra 桥接工具 会话；临时产物可能含本机路径，分享前需脱敏。
 
 - 从 DLL `.rdata:0x71a1e330` 直接读取 CLSID `{D661941C-DA8A-11D3-9F60-00C04F6BDD7F}`；注册构造 `0x71a09a70` 将该地址与 `NADCONTransformation` 及其类工厂并列。`0x719c4480` 将同一 CLSID 写至调用者，位于 NADCON 的持久化虚表 `0x71a2894c` 的 GetClassID 槽，进一步绑定类与持久化实现。
 - 该虚表 Load 槽 `0x719c5d40`：`0x719c5df1` 读取 2 字节版本，`0x719c5e0c` 对 2 做有符号比较，大于 2 则失败；`0x719c5e4a` 读 4 字节长度，`0x719c5e61..0x719c5e99` 按该长度读原始字节、补 NUL 后调用 `pe_geogtran_from_string`。Save `0x719c5ef0` 选择保存版本，调用 `pe_geogtran_to_string` 或 `_ext`，依次写 short、4 字节长度和不含 C 终止符的字节。此处没有实现 pe.dll 文本语义或坐标计算，也未将文本视作有效变换的证明。
