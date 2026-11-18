@@ -451,6 +451,38 @@ pub struct ElementPropertiesPrefix10_1 {
     pub tail_int32: Option<i32>,
 }
 
+/// esriCarto 10.1 的 esriAnchorPointEnum；未知整数保留在流字段中。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ElementAnchorPoint10_1 {
+    TopLeft,
+    Top,
+    TopRight,
+    Left,
+    Center,
+    Right,
+    BottomLeft,
+    Bottom,
+    BottomRight,
+}
+
+impl ElementPropertiesPrefix10_1 {
+    pub fn anchor_point(&self) -> Option<ElementAnchorPoint10_1> {
+        use ElementAnchorPoint10_1::*;
+        match self.tail_int32? {
+            0 => Some(TopLeft),
+            1 => Some(Top),
+            2 => Some(TopRight),
+            3 => Some(Left),
+            4 => Some(Center),
+            5 => Some(Right),
+            6 => Some(BottomLeft),
+            7 => Some(Bottom),
+            8 => Some(BottomRight),
+            _ => None,
+        }
+    }
+}
+
 /// 把游标重定位到传入 Reader 窗口的绝对偏移 `target`（回退实现；目标必在
 /// 窗口内）。
 fn rewind<'a>(origin: &Reader<'a>, start: usize, target: usize) -> Reader<'a> {
@@ -467,7 +499,7 @@ fn rewind<'a>(origin: &Reader<'a>, start: usize, target: usize) -> Reader<'a> {
 /// 起点约定：调用者已确认这是某元素类体的 EP 前缀起点（各类 Load 第一跳）。
 /// CustomProperty 槽（版本 <4）新对象时返回停止原因，游标回退到该槽对象头
 /// 起点、该键不登记（登记表恢复快照）；其余失败不推进游标、不修改登记表。
-fn read_element_properties_prefix_10_1(
+pub(crate) fn read_element_properties_prefix_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
@@ -573,7 +605,7 @@ fn read_element_properties_prefix_10_1(
 }
 
 /// EP 前缀读取结果：完整前缀或 CustomProperty 槽停止。
-enum PrefixOutcome10_1 {
+pub(crate) enum PrefixOutcome10_1 {
     Complete(ElementPropertiesPrefix10_1),
     Stopped(ElementBodyStop10_1),
 }
@@ -735,6 +767,142 @@ pub struct TextDecorationBlock10_1 {
     pub double_2: f64,
 }
 
+/// 两个原生 Load 路径共用相同的 IBorder / IBackground / IShadow 和标量组。
+fn read_text_decoration_block_10_1(
+    trial: &mut Reader<'_>,
+    max_bytes: usize,
+    trial_table: &mut RefTable10_1,
+) -> io::Result<(Option<TextDecorationBlock10_1>, Option<ElementBodyStop10_1>)> {
+    let mut stop = None;
+    let mut block = TextDecorationBlock10_1 {
+        border: crate::objects::element_decor::DecorSlot10_1::Null,
+        background: crate::objects::element_decor::DecorSlot10_1::Null,
+        shadow: crate::objects::element_decor::DecorSlot10_1::Null,
+        double_1: 0.0,
+        raw_int32: 0,
+        double_2: 0.0,
+    };
+    // 槽序固定：border → background → shadow，按序落位（空标记同样
+    // 消费该槽位，不改变后续槽的归属）。
+    let decor_slots: [(
+        &'static str,
+        fn(
+            &mut Reader<'_>,
+            usize,
+            &mut RefTable10_1,
+            usize,
+        ) -> io::Result<(
+            Option<crate::objects::element_decor::DecorSlot10_1>,
+            Option<crate::objects::display_symbol::SymbolStop10_1>,
+        )>,
+    ); 3] = [
+        (
+            "IBorder 槽（文本装饰块）",
+            crate::objects::element_decor::read_border_slot_10_1,
+        ),
+        (
+            "IBackground 槽（文本装饰块）",
+            crate::objects::element_decor::read_background_slot_10_1,
+        ),
+        (
+            "IShadow 槽（文本装饰块）",
+            crate::objects::element_decor::read_shadow_slot_10_1,
+        ),
+    ];
+    for (slot_index, (label, read_slot)) in decor_slots.iter().enumerate() {
+        let slot_offset = trial.position();
+        let (slot, inner) = read_slot(trial, max_bytes, trial_table, MAX_SYMBOL_NESTING_DEPTH)?;
+        let entry = match slot {
+            Some(entry) => entry,
+            None => {
+                // 未知实现类：分派器已回退游标与登记表，停止原因
+                //（Slot，含类标识与键）随返回值带出；映射为既有
+                // NestedObjectNotClosed（游标回退到槽位起点）。
+                if let Some(crate::objects::display_symbol::SymbolStop10_1::Slot {
+                    class_id,
+                    key,
+                    ..
+                }) = inner
+                {
+                    stop = Some(ElementBodyStop10_1::NestedObjectNotClosed {
+                        slot: label,
+                        offset: slot_offset,
+                        class_id,
+                        key,
+                    });
+                }
+                break;
+            }
+        };
+        match slot_index {
+            0 => block.border = entry,
+            1 => block.background = entry,
+            _ => block.shadow = entry,
+        }
+        if let Some(inner) = inner {
+            // 已解析装饰体内嵌套停止：复用 SymbolSlotNested 透传
+            //（游标停在内层停止点）。
+            stop = Some(ElementBodyStop10_1::SymbolSlotNested {
+                slot: label,
+                reason: inner,
+            });
+            break;
+        }
+    }
+    if stop.is_some() {
+        return Ok((None, stop));
+    }
+    block.double_1 = trial.read_f64_le()?;
+    block.raw_int32 = trial.read_u32_le()? as i32;
+    block.double_2 = trial.read_f64_le()?;
+    Ok((Some(block), None))
+}
+
+/// CartoXProvider.dll 0x6ce52050：先读装饰块，再委派 TextElement::Load。
+pub const PARAGRAPH_TEXT_ELEMENT_CLASS_ID: [u8; 16] = [
+    0xb1, 0x98, 0x45, 0xc8, 0xbe, 0xc4, 0x03, 0x42, 0x91, 0x32, 0xad, 0xa2, 0xbe, 0x57, 0xf3, 0x0c,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParagraphTextElement10_1 {
+    pub version: u16,
+    pub decoration: Option<TextDecorationBlock10_1>,
+    pub text_element: Option<TextElementBody10_1>,
+    pub stop: Option<ElementBodyStop10_1>,
+}
+
+pub fn read_paragraph_text_element_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<ParagraphTextElement10_1> {
+    let mut trial = reader.clone();
+    let mut refs = table.clone();
+    let version = trial.read_u16_le()?;
+    if version > 1 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "不支持的 ParagraphTextElement 版本",
+        ));
+    }
+    let (decoration, mut stop) = read_text_decoration_block_10_1(&mut trial, max_bytes, &mut refs)?;
+    let text_element = if stop.is_none() {
+        let body = read_text_element_body_10_1(&mut trial, max_bytes, &mut refs)?;
+        stop = body.stop.clone();
+        Some(body)
+    } else {
+        None
+    };
+    *reader = trial;
+    *table = refs;
+    Ok(ParagraphTextElement10_1 {
+        version,
+        decoration,
+        text_element,
+        stop,
+    })
+}
+
 /// TextElement 版本 ==9 尾加块的 ISpatialReference 槽分类结果（F 轮接线：
 /// 三类闭合空间参考分派，其余实现类 = 停止回退；样本版本 8 不含本块）。
 #[derive(Debug, Clone, PartialEq)]
@@ -813,8 +981,20 @@ pub struct LineElementBody10_1 {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ElementBody10_1 {
     TextElement(Box<TextElementBody10_1>),
+    ParagraphTextElement(Box<ParagraphTextElement10_1>),
     MarkerElement(Box<MarkerElementBody10_1>),
     LineElement(Box<LineElementBody10_1>),
+}
+
+impl ElementBody10_1 {
+    pub fn stop(&self) -> Option<&ElementBodyStop10_1> {
+        match self {
+            Self::TextElement(body) => body.stop.as_ref(),
+            Self::ParagraphTextElement(body) => body.stop.as_ref(),
+            Self::MarkerElement(body) => body.stop.as_ref(),
+            Self::LineElement(body) => body.stop.as_ref(),
+        }
+    }
 }
 
 /// 按调用者已读取的对象头类标识分派元素体读取。
@@ -832,6 +1012,10 @@ pub fn read_element_body_of_class_10_1(
         Ok(ElementBody10_1::TextElement(Box::new(
             read_text_element_body_10_1(reader, max_bytes, table)?,
         )))
+    } else if *class_id == PARAGRAPH_TEXT_ELEMENT_CLASS_ID {
+        Ok(ElementBody10_1::ParagraphTextElement(Box::new(
+            read_paragraph_text_element_10_1(reader, max_bytes, table)?,
+        )))
     } else if *class_id == MARKER_ELEMENT_CLASS_ID {
         Ok(ElementBody10_1::MarkerElement(Box::new(
             read_marker_element_body_10_1(reader, max_bytes, table)?,
@@ -844,7 +1028,7 @@ pub fn read_element_body_of_class_10_1(
         Err(io::Error::new(
             ErrorKind::Unsupported,
             format!(
-                "元素类 {} 不在本读取器的闭合清单（TextElement/MarkerElement/LineElement）",
+                "元素类 {} 不在本读取器的闭合清单（TextElement/ParagraphTextElement/MarkerElement/LineElement）",
                 class_id_hex(class_id)
             ),
         ))
@@ -1508,92 +1692,8 @@ pub fn read_text_element_body_10_1(
         // 8. 版本 ==7 精确块（第三轮接线：三装饰槽接 element_decor 分派；
         // 深度预算与符号槽同源，未知实现类维持停止回退）。
         if version == 7 {
-            let mut block = TextDecorationBlock10_1 {
-                border: crate::objects::element_decor::DecorSlot10_1::Null,
-                background: crate::objects::element_decor::DecorSlot10_1::Null,
-                shadow: crate::objects::element_decor::DecorSlot10_1::Null,
-                double_1: 0.0,
-                raw_int32: 0,
-                double_2: 0.0,
-            };
-            // 槽序固定：border → background → shadow，按序落位（空标记同样
-            // 消费该槽位，不改变后续槽的归属）。
-            let decor_slots: [(
-                &'static str,
-                fn(
-                    &mut Reader<'_>,
-                    usize,
-                    &mut RefTable10_1,
-                    usize,
-                ) -> io::Result<(
-                    Option<crate::objects::element_decor::DecorSlot10_1>,
-                    Option<crate::objects::display_symbol::SymbolStop10_1>,
-                )>,
-            ); 3] = [
-                (
-                    "IBorder 槽（版本 7 装饰块）",
-                    crate::objects::element_decor::read_border_slot_10_1,
-                ),
-                (
-                    "IBackground 槽（版本 7 装饰块）",
-                    crate::objects::element_decor::read_background_slot_10_1,
-                ),
-                (
-                    "IShadow 槽（版本 7 装饰块）",
-                    crate::objects::element_decor::read_shadow_slot_10_1,
-                ),
-            ];
-            for (slot_index, (label, read_slot)) in decor_slots.iter().enumerate() {
-                let slot_offset = trial.position();
-                let (slot, inner) = read_slot(
-                    &mut trial,
-                    max_bytes,
-                    &mut trial_table,
-                    MAX_SYMBOL_NESTING_DEPTH,
-                )?;
-                let entry = match slot {
-                    Some(entry) => entry,
-                    None => {
-                        // 未知实现类：分派器已回退游标与登记表，停止原因
-                        //（Slot，含类标识与键）随返回值带出；映射为既有
-                        // NestedObjectNotClosed（游标回退到槽位起点）。
-                        if let Some(crate::objects::display_symbol::SymbolStop10_1::Slot {
-                            class_id,
-                            key,
-                            ..
-                        }) = inner
-                        {
-                            stop = Some(ElementBodyStop10_1::NestedObjectNotClosed {
-                                slot: label,
-                                offset: slot_offset,
-                                class_id,
-                                key,
-                            });
-                        }
-                        break;
-                    }
-                };
-                match slot_index {
-                    0 => block.border = entry,
-                    1 => block.background = entry,
-                    _ => block.shadow = entry,
-                }
-                if let Some(inner) = inner {
-                    // 已解析装饰体内嵌套停止：复用 SymbolSlotNested 透传
-                    //（游标停在内层停止点）。
-                    stop = Some(ElementBodyStop10_1::SymbolSlotNested {
-                        slot: label,
-                        reason: inner,
-                    });
-                    break;
-                }
-            }
-            if stop.is_none() {
-                block.double_1 = trial.read_f64_le()?;
-                block.raw_int32 = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
-                block.double_2 = trial.read_f64_le()?;
-                decoration_block = Some(block);
-            }
+            (decoration_block, stop) =
+                read_text_decoration_block_10_1(&mut trial, max_bytes, &mut trial_table)?;
         }
         // 9. 版本 ==9 尾加块（F 轮接线：ISpatialReference 槽接三类闭合空间
         // 参考分派；其余实现类维持停止回退，语义与仅分类时一致）。

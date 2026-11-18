@@ -179,15 +179,14 @@ pub struct FeatureDatasetNameBody10_1 {
     pub string_b: String,
     /// 第三个字符串（IPersistStream this+0x14；IDatasetName.Category）。
     pub string_c: String,
-    /// 第四个字符串（IPersistStream this+0x18，即完整对象 +0x44）。
-    /// `IFeatureDatasetNameImpl` 接口视图位于完整对象 +0x20，其虚表 +0x0c
-    /// getter 与 +0x10 setter 均访问接口 this+0x24；私有成员名和业务语义未定。
+    /// 要素类的类别描述（IPersistStream this+0x18，即完整对象 +0x44）。
+    /// FileGDB 和 SdeFDB 通过 IFeatureDatasetNameImpl 的 +0x10 写工作空间对应的类别文本。
     pub string_d: String,
     /// 1 字节标志（IPersistStream this+0x1c，即完整对象 +0x48）。
     /// `IFeatureDatasetNameImpl` 接口视图位于完整对象 +0x20，其虚表 +0x14
     /// getter 将字节值恰为 1 映射为 `VARIANT_TRUE`，+0x18 setter 将输入
     /// `VARIANT_TRUE`（-1）映射为字节 1、其余输入映射为 0。Load/Save 直接
-    /// 读写该字节，不经过访问器；因此保留原始值。私有成员名和业务用途未定。
+    /// 读写该字节，不经过访问器；因此保留原始值。枚举时真值将该名称作为单一要素类。
     pub flag: u8,
     /// 第 4 步 IWorkspaceName 槽（请求 IID `{FADD975C-…}`）分类结果。
     pub workspace: WorkspaceNameSlot10_1,
@@ -196,6 +195,16 @@ pub struct FeatureDatasetNameBody10_1 {
 }
 
 impl FeatureDatasetNameBody10_1 {
+    /// 返回工作空间提供的要素类类别描述。原生文本可能随语言环境变化。
+    pub fn feature_class_category(&self) -> &str {
+        &self.string_d
+    }
+
+    /// 返回原生枚举器是否按此对象自身的名称枚举单一要素类。
+    pub fn enumerates_as_single_feature_class(&self) -> bool {
+        self.flag == 1
+    }
+
     /// 返回已解析 WorkspaceName 体中的路径原文。
     ///
     /// 已知 WorkspaceName 即使在 PropertySet 子槽处停止，路径字段仍已先行

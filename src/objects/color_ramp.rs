@@ -16,6 +16,8 @@
 //! - **AlgorithmicColorRamp** `{BEB8709B-…}`：虚表 `0x6ec0b468`，GetClassID
 //!   `0x6eb31010`（读常量 `0x6ec0b544`）、Load `0x6eb316c0`、Save `0x6eb317f0`。
 //!
+//! 名称字段均调用 AfCore 自由函数 ReadString/WriteString（BSTR 码元数），不是 String::Read/Write。
+//!
 //! ## 字段序（Load 反编译 + Save 对称互证；证据强度：确定的；样本 0 实例）
 //!
 //! **RandomColorRamp::Load `0x6eb3c190`**（版本 `2 < (short)ver` 拒绝
@@ -84,7 +86,7 @@
 use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
 use crate::objects::display_symbol::{DisplaySlotKind10_1, SymbolStop10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
-use crate::stream::native_string::read_string_10_1;
+use crate::stream::native_string::read_bstr_string_10_1;
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
@@ -221,7 +223,7 @@ pub fn read_random_color_ramp_body_10_1(
         "RandomColorRamp",
         entry_offset,
     )?;
-    let name = read_string_10_1(&mut trial, max_bytes)?;
+    let name = read_bstr_string_10_1(&mut trial, max_bytes)?;
     let raw_int32 = read_i32_le(&mut trial)?;
     let bool_short = trial.read_u16_le()?;
     let seed_int32 = read_i32_le(&mut trial)?;
@@ -298,7 +300,7 @@ pub fn read_multi_part_color_ramp_body_10_1(
         "MultiPartColorRamp",
         entry_offset,
     )?;
-    let name = read_string_10_1(&mut trial, max_bytes)?;
+    let name = read_bstr_string_10_1(&mut trial, max_bytes)?;
     let ramp_count = read_loop_count(&mut trial, max_bytes, "MultiPartColorRamp", entry_offset)?;
     let mut ramps = Vec::with_capacity((ramp_count as usize).min(4096));
     let mut stop = None;
@@ -383,7 +385,7 @@ pub fn read_preset_color_ramp_body_10_1(
         "PresetColorRamp",
         entry_offset,
     )?;
-    let name = read_string_10_1(&mut trial, max_bytes)?;
+    let name = read_bstr_string_10_1(&mut trial, max_bytes)?;
     let raw_int32 = read_i32_le(&mut trial)?;
     let color_count = read_loop_count(&mut trial, max_bytes, "PresetColorRamp", entry_offset)?;
     let mut colors = Vec::with_capacity((color_count as usize).min(4096));
@@ -451,7 +453,7 @@ pub fn read_algorithmic_color_ramp_body_10_1(
         "AlgorithmicColorRamp",
         entry_offset,
     )?;
-    let name = read_string_10_1(&mut trial, max_bytes)?;
+    let name = read_bstr_string_10_1(&mut trial, max_bytes)?;
     let raw_int32 = read_i32_le(&mut trial)?;
     let mut colors = [None, None];
     let mut stop = None;
@@ -538,28 +540,14 @@ pub fn read_color_ramp_slot_10_1(
                     ),
                 ));
             }
-            let slot = if class_id == RANDOM_COLOR_RAMP_CLASS_ID {
-                let body = read_random_color_ramp_body_10_1(&mut forward, max_bytes, staged, key)?;
-                Some(ColorRampSlot10_1::Random(Box::new(body)))
-            } else if class_id == MULTI_PART_COLOR_RAMP_CLASS_ID {
-                let body = read_multi_part_color_ramp_body_10_1(
-                    &mut forward,
-                    max_bytes,
-                    staged,
-                    key,
-                    depth - 1,
-                )?;
-                Some(ColorRampSlot10_1::MultiPart(Box::new(body)))
-            } else if class_id == PRESET_COLOR_RAMP_CLASS_ID {
-                let body = read_preset_color_ramp_body_10_1(&mut forward, max_bytes, staged, key)?;
-                Some(ColorRampSlot10_1::Preset(Box::new(body)))
-            } else if class_id == ALGORITHMIC_COLOR_RAMP_CLASS_ID {
-                let body =
-                    read_algorithmic_color_ramp_body_10_1(&mut forward, max_bytes, staged, key)?;
-                Some(ColorRampSlot10_1::Algorithmic(Box::new(body)))
-            } else {
-                None
-            };
+            let slot = read_color_ramp_body_for_class_10_1(
+                &mut forward,
+                max_bytes,
+                staged,
+                depth,
+                class_id,
+                key,
+            )?;
             match slot {
                 Some(slot) => {
                     let stop = nested_ramp_stop(&slot);
@@ -583,8 +571,40 @@ pub fn read_color_ramp_slot_10_1(
     }
 }
 
+/// 已消费对象类标识时的颜色梯度体分派。调用者负责事务和层数检查。
+pub(crate) fn read_color_ramp_body_for_class_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+    class_id: [u8; 16],
+    key: u32,
+) -> io::Result<Option<ColorRampSlot10_1>> {
+    Ok(if class_id == RANDOM_COLOR_RAMP_CLASS_ID {
+        let body = read_random_color_ramp_body_10_1(reader, max_bytes, table, key)?;
+        Some(ColorRampSlot10_1::Random(Box::new(body)))
+    } else if class_id == MULTI_PART_COLOR_RAMP_CLASS_ID {
+        let body = read_multi_part_color_ramp_body_10_1(
+            reader,
+            max_bytes,
+            table,
+            key,
+            depth.saturating_sub(1),
+        )?;
+        Some(ColorRampSlot10_1::MultiPart(Box::new(body)))
+    } else if class_id == PRESET_COLOR_RAMP_CLASS_ID {
+        let body = read_preset_color_ramp_body_10_1(reader, max_bytes, table, key)?;
+        Some(ColorRampSlot10_1::Preset(Box::new(body)))
+    } else if class_id == ALGORITHMIC_COLOR_RAMP_CLASS_ID {
+        let body = read_algorithmic_color_ramp_body_10_1(reader, max_bytes, table, key)?;
+        Some(ColorRampSlot10_1::Algorithmic(Box::new(body)))
+    } else {
+        None
+    })
+}
+
 /// 归约 MultiPart 子梯度槽的嵌套停止为外层嵌套未完整（与装饰槽分派同型）。
-fn nested_ramp_stop(slot: &ColorRampSlot10_1) -> Option<SymbolStop10_1> {
+pub(crate) fn nested_ramp_stop(slot: &ColorRampSlot10_1) -> Option<SymbolStop10_1> {
     match slot {
         ColorRampSlot10_1::MultiPart(body) => body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
             class_id: MULTI_PART_COLOR_RAMP_CLASS_ID,
@@ -606,15 +626,15 @@ mod tests {
         bytes
     }
 
-    /// 构造字符串（AfCore String：u32 字节数 + UTF-16LE + 终止零）。
+    /// 构造 AfCore BSTR 字符串：u32 码元数，非空另有终止零。
     fn string_bytes(text: &str) -> Vec<u8> {
-        let mut bytes = ((text.encode_utf16().count() * 2 + 2) as u32)
-            .to_le_bytes()
-            .to_vec();
+        let mut bytes = (text.encode_utf16().count() as u32).to_le_bytes().to_vec();
         for unit in text.encode_utf16() {
             bytes.extend(unit.to_le_bytes());
         }
-        bytes.extend(0_u16.to_le_bytes());
+        if !text.is_empty() {
+            bytes.extend(0_u16.to_le_bytes());
+        }
         bytes
     }
 

@@ -48,8 +48,7 @@
 //! 空对象子集映射为 `PropertyValue10_1::NullObject`，非零类 GUID 显式不支持。
 //! 若调用上下文已确认 ObjectStream，应使用独立 API
 //! [`read_property_set_object_stream_10_1`]：它读 GUID+共享键，并仅分派本类
-//! 已证的 PropertySet 对象体。数组标志
-//! 0x2000（含字符串数组与批量定宽数组）同样未闭合，显式不支持。
+//! 已证的 PropertySet 对象体。支持一维定宽数组及 BSTR 数组。
 //!
 //! ## Save `0x7ffd3280`（写方向互证，证据：确定的）
 //!
@@ -91,9 +90,10 @@
 //! 各值的业务语义（DATABASE/连接属性候选）未定性；版本 0 无样本佐证；
 //! 全部结论为静态观察，未经目标软件运行验证。
 
-use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
+use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
+use crate::stream::variant_array::{ClassVariantArray10_1, read_class_variant_array_10_1};
 use std::io::{self, ErrorKind};
 
 /// PropertySet::Load 接受的最大版本：汇编 `cmp word,1; jle` 有符号比较，>1
@@ -126,13 +126,12 @@ pub const PROPERTY_SET_PROPERTY_CLASS_ID: [u8; 16] = [
     0x14, 0x2b, 0x6d, 0x5b, 0x4a, 0xf6, 0x57, 0x44, 0x84, 0xe0, 0x61, 0x7a, 0xe2, 0x13, 0x0f, 0xf9,
 ];
 
-/// PropertySet 值 Variant 的已确认分支（`Variant::Read` 非数组部分）。
+/// PropertySet 值 Variant 的已确认分支（`Variant::Read`）。
 ///
 /// 固定宽度值不转换成有符号数、浮点数或布尔语义，仅原样保留位模式；
 /// 字符串经 AfCore String 布局解码。对象（9/13）分支接入已闭合的「类
 /// GUID 全零 → 空对象」子集（`NullObject`，经
-/// [`crate::objects::variant_object_branch`]），非零类 GUID 与数组
-/// （0x2000 标志）分支仍显式不支持。
+/// [`crate::objects::variant_object_branch`]），非零类 GUID 显式不支持。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PropertyValue10_1 {
     /// VT_EMPTY(0)：无载荷。
@@ -156,6 +155,8 @@ pub enum PropertyValue10_1 {
     Ui2([u8; 2]),
     /// VT_UI4(0x13)：4 字节原样位模式。
     Ui4([u8; 4]),
+    /// 已确认元素类型的一维数组。
+    Array(ClassVariantArray10_1),
 }
 
 /// 单个属性条目：键名（AfCore String）+ 值 Variant。
@@ -262,7 +263,7 @@ pub fn read_property_set_10_1(
     Ok(result)
 }
 
-/// ObjectStream PropertySet 值的独立表示；现有普通流公开枚举保持不变。
+/// 已确认 ObjectStream 宿主中 Variant 值的表示，含对象体与会话回引。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PropertyValueObjectStream10_1 {
     /// 内联标量或普通空对象，编码与 [`PropertyValue10_1`] 相同。
@@ -368,25 +369,44 @@ fn read_property_set_object_stream_nested_10_1(
     Ok(result)
 }
 
-fn read_variant_object_stream_value_10_1(
+/// 在已确认的 ObjectStream 宿主中读取一个 AfCore Variant::Read(true) 值。
+pub(crate) fn read_variant_object_stream_value_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
     depth: usize,
 ) -> io::Result<PropertyValueObjectStream10_1> {
-    let mut peek = reader.clone();
-    let value_type = peek.read_u16_le()?;
-    if value_type != 9 && value_type != 13 {
-        let value = read_variant_10_1(reader, max_bytes)?;
-        return Ok(PropertyValueObjectStream10_1::Inline(value));
-    }
+    read_variant_object_stream_layout_10_1(reader, max_bytes, table, depth, false)
+}
+
+/// 已确认的 ObjectStream 宿主中的 Variant::Read(false)，保留空对象、回引和已知对象体。
+pub(crate) fn read_padded_variant_object_stream_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<PropertyValueObjectStream10_1> {
+    read_variant_object_stream_layout_10_1(reader, max_bytes, table, 0, true)
+}
+
+fn read_variant_object_stream_layout_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+    padded: bool,
+) -> io::Result<PropertyValueObjectStream10_1> {
     let mut trial = reader.clone();
+    let value_type = trial.read_u16_le()?;
+    if value_type != 9 && value_type != 13 {
+        return read_variant_layout_10_1(reader, max_bytes, padded)
+            .map(PropertyValueObjectStream10_1::Inline);
+    }
+    if padded {
+        // AfCore 先跨过保留区，再把原流直接传给 LoadObject。
+        trial.read_bytes(14)?;
+    }
     let mut trial_table = table.clone();
-    let entry =
-        crate::objects::variant_object_branch::read_variant_object_branch_object_stream_10_1(
-            &mut trial,
-            &mut trial_table,
-        )?;
+    let entry = read_object_entry_10_1(&mut trial, &mut trial_table)?;
     let value = match entry {
         ObjectEntry10_1::Null => {
             PropertyValueObjectStream10_1::Inline(PropertyValue10_1::NullObject)
@@ -427,16 +447,24 @@ fn read_variant_object_stream_value_10_1(
     Ok(value)
 }
 
-/// 读取一个 `Variant::Read`（AfCore `0x68a7c6a0`，非数组分支）值，失败时
+/// 读取一个 `Variant::Read`（AfCore `0x68a7c6a0`）值，失败时
 /// 不推进游标。
 ///
 /// VARTYPE 表见模块文档；对象分支（9/13）接入「类 GUID 全零 → 空对象」
-/// 已闭合子集（非零类 GUID 仍显式拒绝），数组标志（0x2000）显式不支持；
-/// 未知 VARTYPE 与原生 default 分支一致返回错误。字符串为 AfCore String
+/// 已闭合子集（非零类 GUID 仍显式拒绝），支持定宽与 BSTR 数组；
+/// 未知 VARTYPE 与原生 default 分支一致返回错误。标量字符串为 AfCore String
 /// 布局（`String::Read`，4 字节 cb 含 UTF-16LE 终止零）。
 pub fn read_variant_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
+) -> io::Result<PropertyValue10_1> {
+    read_variant_layout_10_1(reader, max_bytes, false)
+}
+
+fn read_variant_layout_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    padded: bool,
 ) -> io::Result<PropertyValue10_1> {
     let start = reader.position();
     let invalid = |reason: String| {
@@ -447,14 +475,14 @@ pub fn read_variant_10_1(
     };
     let mut trial = reader.clone();
     let value_type = trial.read_u16_le()?;
+    if padded {
+        // 0x68a7c6fd：Read(false) 从 VARTYPE 之后跳过十四字节。
+        trial.read_bytes(14)?;
+    }
     if value_type & 0x2000 != 0 {
-        return Err(io::Error::new(
-            ErrorKind::Unsupported,
-            format!(
-                "Variant 值 offset 0x{start:x}: 数组标志 0x2000（VARTYPE 0x{value_type:04x}）\
-                 的 SafeArray 分支未闭合，本读取器不支持"
-            ),
-        ));
+        let array = read_class_variant_array_10_1(&mut trial, value_type & !0x2000, max_bytes)?;
+        *reader = trial;
+        return Ok(PropertyValue10_1::Array(array));
     }
     let value = match value_type {
         0 => PropertyValue10_1::Empty,
@@ -464,6 +492,12 @@ pub fn read_variant_10_1(
         5 | 7 | 6 => PropertyValue10_1::Raw8(trial.read_bytes(8)?.try_into().unwrap()),
         8 => PropertyValue10_1::String(read_string_10_1(&mut trial, max_bytes)?),
         9 | 13 => {
+            if padded {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    "带保留区的 Variant 对象值尚未支持",
+                ));
+            }
             // 该公开入口保留普通 IStream 的上下文语义，不推断其实现 IObjectStream。
             let mut branch = reader.clone();
             let value =

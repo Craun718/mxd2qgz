@@ -125,6 +125,51 @@ pub enum SpatialReferenceEntry10_1 {
     },
 }
 
+/// 读取一个普通 ObjectStream 的 ISpatialReference 槽。
+/// 调用者负责所属对象的游标和登记表事务。
+pub(crate) fn read_spatial_reference_entry_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<SpatialReferenceEntry10_1> {
+    use SpatialReferenceEntry10_1::*;
+    let offset = reader.position();
+    Ok(match read_object_entry_10_1(reader, table)? {
+        ObjectEntry10_1::Null => Null,
+        ObjectEntry10_1::BackReference { class_id, key } => BackReference { class_id, key },
+        ObjectEntry10_1::NewObject {
+            class_id: PROJECTED_COORDINATE_SYSTEM_CLASS_ID,
+            key,
+        } => Projected {
+            key,
+            body: read_projected_coordinate_system_10_1(reader, max_bytes)?,
+        },
+        ObjectEntry10_1::NewObject {
+            class_id: GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID,
+            key,
+        } => Geographic {
+            key,
+            body: read_geographic_coordinate_system_10_1(reader, max_bytes)?,
+        },
+        ObjectEntry10_1::NewObject {
+            class_id: UNKNOWN_COORDINATE_SYSTEM_CLASS_ID,
+            key,
+        } => UnknownCoordinateSystem {
+            key,
+            body: read_unknown_coordinate_system_10_1(reader, max_bytes)?,
+        },
+        ObjectEntry10_1::NewObject { class_id, key } => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                format!(
+                    "ISpatialReference 槽 offset 0x{offset:x}: 不支持的类 {}（键 {key}）；仅支持投影坐标系、地理坐标系及 UnknownCoordinateSystem，未知体无外部长度，无法跳过",
+                    crate::storage::class_id_hex(&class_id)
+                ),
+            ));
+        }
+    })
+}
+
 /// 10.1 Envelope::Load（`0x71869b60`）可读取的 Envelope 对象体。
 #[derive(Debug, Clone, PartialEq)]
 pub struct Envelope10_1 {
@@ -187,7 +232,7 @@ pub struct Envelope10_1 {
 /// 新键在嵌套对象体读取之前登记到表的试读副本上，调用整体成功才一并提交；
 /// 任何失败既不推进游标、也不修改调用者的登记表。
 ///
-/// 嵌套条目为未见过的新键且类标识不是投影坐标系时返回
+/// 嵌套条目为未见过的新键且类标识不在已支持的空间参考类中时返回
 /// [`ErrorKind::Unsupported`]：嵌套对象体没有外部长度字段，本读取器无法
 /// 跳过未知类继续解析，调用者不能把该流继续当作 Envelope 体消费。
 ///
@@ -237,47 +282,11 @@ pub fn read_envelope_10_1(
 
     // 4. 仅版本 3：嵌套空间参考条目（类身份完全由流内对象头决定）。
     let spatial_reference = if version == 3 {
-        let nested_offset = trial.position();
-        match read_object_entry_10_1(&mut trial, &mut trial_table)? {
-            ObjectEntry10_1::Null => Some(SpatialReferenceEntry10_1::Null),
-            ObjectEntry10_1::BackReference { class_id, key } => {
-                Some(SpatialReferenceEntry10_1::BackReference { class_id, key })
-            }
-            ObjectEntry10_1::NewObject { class_id, key }
-                if class_id == PROJECTED_COORDINATE_SYSTEM_CLASS_ID =>
-            {
-                // 投影坐标系对象体由专门读取器解析，max_bytes 原样转发。
-                let body = read_projected_coordinate_system_10_1(&mut trial, max_bytes)?;
-                Some(SpatialReferenceEntry10_1::Projected { key, body })
-            }
-            ObjectEntry10_1::NewObject { class_id, key }
-                if class_id == GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID =>
-            {
-                // 地理坐标系（F 轮接线三分派）。
-                let body = read_geographic_coordinate_system_10_1(&mut trial, max_bytes)?;
-                Some(SpatialReferenceEntry10_1::Geographic { key, body })
-            }
-            ObjectEntry10_1::NewObject { class_id, key }
-                if class_id == UNKNOWN_COORDINATE_SYSTEM_CLASS_ID =>
-            {
-                // 未知坐标系（F 轮接线三分派）。
-                let body = read_unknown_coordinate_system_10_1(&mut trial, max_bytes)?;
-                Some(SpatialReferenceEntry10_1::UnknownCoordinateSystem { key, body })
-            }
-            ObjectEntry10_1::NewObject { class_id, key } => {
-                // 严格子集只认投影坐标系嵌套。嵌套对象体无外部长度字段，
-                // 无法跳过未知类继续读取；显式报错，游标与登记表都不提交。
-                let id: String = class_id.iter().map(|byte| format!("{byte:02x}")).collect();
-                return Err(io::Error::new(
-                    ErrorKind::Unsupported,
-                    format!(
-                        "Envelope 对象体嵌套对象 offset 0x{nested_offset:x}: 类标识 {id}（键 \
-                         {key}）不是投影坐标系；本读取器仅支持投影坐标系嵌套，且对象体 \
-                         无外部长度字段，无法跳过未知类继续读取"
-                    ),
-                ));
-            }
-        }
+        Some(read_spatial_reference_entry_10_1(
+            &mut trial,
+            max_bytes,
+            &mut trial_table,
+        )?)
     } else {
         None
     };

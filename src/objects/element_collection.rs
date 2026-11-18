@@ -145,10 +145,14 @@ pub enum ElementEntry10_1 {
     /// 16 字节全零类标识：空引用标记（原生把空元素指针传入加集方法）。
     Null,
     /// 键已在本会话登记过：20 字节回引条目，无对象体。
-    BackReference { class_id: [u8; 16], key: u32 },
+    BackReference {
+        class_id: [u8; 16],
+        key: u32,
+    },
     /// 新 TextElement 对象：已解析其体（体内嵌套停止经
     /// [`ElementCollectionStop10_1::ElementBodyIncomplete`] 上抛）。
     TextElement(Box<crate::objects::element_body::TextElementBody10_1>),
+    ParagraphTextElement(Box<crate::objects::element_body::ParagraphTextElement10_1>),
     /// 新 MarkerElement 对象：已解析其体。
     MarkerElement(Box<crate::objects::element_body::MarkerElementBody10_1>),
     /// 新 LineElement 对象：已解析其体。
@@ -161,6 +165,7 @@ impl ElementEntry10_1 {
         match self {
             Self::Null | Self::BackReference { .. } => None,
             Self::TextElement(body) => body.stop.as_ref(),
+            Self::ParagraphTextElement(body) => body.stop.as_ref(),
             Self::MarkerElement(body) => body.stop.as_ref(),
             Self::LineElement(body) => body.stop.as_ref(),
         }
@@ -485,8 +490,8 @@ fn read_stoppable_entry<'a>(
     // 新对象：按类标识分派闭合元素体；其他类维持未知类停止回退语义。
     let parsed = read_element_body_of_class_10_1(&class_id, trial, max_bytes, trial_table);
     match parsed {
-        Ok(ElementBody10_1::TextElement(body)) => {
-            if let Some(reason) = body.stop.clone() {
+        Ok(body) => {
+            if let Some(reason) = body.stop().cloned() {
                 *stop = Some(ElementCollectionStop10_1::ElementBodyIncomplete {
                     index,
                     class_id,
@@ -495,31 +500,15 @@ fn read_stoppable_entry<'a>(
                 });
                 return Ok(None);
             }
-            Ok(Some(ElementEntry10_1::TextElement(body)))
-        }
-        Ok(ElementBody10_1::MarkerElement(body)) => {
-            if let Some(reason) = body.stop.clone() {
-                *stop = Some(ElementCollectionStop10_1::ElementBodyIncomplete {
-                    index,
-                    class_id,
-                    key,
-                    reason,
-                });
-                return Ok(None);
-            }
-            Ok(Some(ElementEntry10_1::MarkerElement(body)))
-        }
-        Ok(ElementBody10_1::LineElement(body)) => {
-            if let Some(reason) = body.stop.clone() {
-                *stop = Some(ElementCollectionStop10_1::ElementBodyIncomplete {
-                    index,
-                    class_id,
-                    key,
-                    reason,
-                });
-                return Ok(None);
-            }
-            Ok(Some(ElementEntry10_1::LineElement(body)))
+            let entry = match body {
+                ElementBody10_1::TextElement(body) => ElementEntry10_1::TextElement(body),
+                ElementBody10_1::ParagraphTextElement(body) => {
+                    ElementEntry10_1::ParagraphTextElement(body)
+                }
+                ElementBody10_1::MarkerElement(body) => ElementEntry10_1::MarkerElement(body),
+                ElementBody10_1::LineElement(body) => ElementEntry10_1::LineElement(body),
+            };
+            Ok(Some(entry))
         }
         Err(error) if error.kind() == ErrorKind::Unsupported => {
             // 未知元素类：体布局未闭合（TextElement 等类无读取器）且无外部

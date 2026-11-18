@@ -11,6 +11,7 @@ use mxd2qgz::objects::property_set::{
 };
 use mxd2qgz::storage::object_refs::RefTable10_1;
 use mxd2qgz::stream::reader::Reader;
+use mxd2qgz::stream::variant_array::ClassVariantArray10_1;
 use std::io::ErrorKind;
 
 /// 构造 AfCore String::Write 布局的合法输入：u32 字节长度前缀（含终止零）+
@@ -452,12 +453,54 @@ fn variant_object_branch_null_guid_consumes_and_nonzero_rejects() {
         assert!(read_variant_10_1(&mut reader, 1024).is_err());
         assert_eq!(reader.position(), 0);
     }
-    // 数组标志（0x2000）置位：无论基础类型，读取前显式拒绝。
-    for base in [0_u16, 2, 8, 3] {
+    // 数组标志（0x2000）下无已证布局的元素仍拒绝。
+    for base in [0_u16, 1, 9, 13] {
         let bytes = value_bytes(base | 0x2000, &[1, 2, 3, 4, 5, 6, 7, 8]);
         let mut reader = Reader::new(&bytes);
         let error = read_variant_10_1(&mut reader, 1024).unwrap_err();
         assert_eq!(error.kind(), ErrorKind::Unsupported, "VT={base:#x}");
+        assert_eq!(reader.position(), 0);
+    }
+}
+
+#[test]
+fn string_variant_array_checks_aggregate_budget_and_preserves_tail() {
+    let mut payload = 3_i32.to_le_bytes().to_vec();
+    payload.extend(0_u32.to_le_bytes()); // 空元素只有长度字段。
+    payload.extend(1_u32.to_le_bytes());
+    payload.extend(('甲' as u16).to_le_bytes());
+    payload.extend(0_u16.to_le_bytes());
+    payload.extend(0_u32.to_le_bytes());
+    let mut bytes = value_bytes(0x2008, &payload);
+    for cut in 0..bytes.len() {
+        let mut reader = Reader::new(&bytes[..cut]);
+        assert!(read_variant_10_1(&mut reader, 16).is_err());
+        assert_eq!(reader.position(), 0);
+    }
+    bytes.push(0x7b);
+    let mut reader = Reader::new(&bytes);
+    assert_eq!(
+        read_variant_10_1(&mut reader, 15).unwrap_err().kind(),
+        ErrorKind::InvalidData,
+    );
+    assert_eq!(reader.position(), 0);
+    assert_eq!(
+        read_variant_10_1(&mut reader, 16).unwrap(),
+        PropertyValue10_1::Array(ClassVariantArray10_1::Strings(vec![
+            String::new(),
+            "甲".into(),
+            String::new(),
+        ])),
+    );
+    assert_eq!(reader.read_bytes(1).unwrap(), [0x7b]);
+
+    for count in [-1_i32, i32::MAX] {
+        let bytes = value_bytes(0x2013, &count.to_le_bytes());
+        let mut reader = Reader::new(&bytes);
+        assert_eq!(
+            read_variant_10_1(&mut reader, 128).unwrap_err().kind(),
+            ErrorKind::InvalidData,
+        );
         assert_eq!(reader.position(), 0);
     }
 }

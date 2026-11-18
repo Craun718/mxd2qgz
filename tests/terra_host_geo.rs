@@ -1,11 +1,16 @@
 use mxd2qgz::objects::geo_transformation::{
-    GEO_TRANSFORMATION_CLASS_ID, NADCON_TRANSFORMATION_CLASS_ID, read_geo_transformation_body_10_1,
+    COORDINATE_FRAME_TRANSFORMATION_CLASS_ID, GEO_TRANSFORMATION_CLASS_ID,
+    NADCON_TRANSFORMATION_CLASS_ID, read_geo_transformation_body_10_1,
 };
 use mxd2qgz::stream::reader::Reader;
 
 #[test]
-fn both_classes_share_versions_and_preserve_raw_bytes_and_tail() {
-    for class in [GEO_TRANSFORMATION_CLASS_ID, NADCON_TRANSFORMATION_CLASS_ID] {
+fn supported_classes_share_versions_and_preserve_raw_bytes_and_tail() {
+    for class in [
+        GEO_TRANSFORMATION_CLASS_ID,
+        NADCON_TRANSFORMATION_CLASS_ID,
+        COORDINATE_FRAME_TRANSFORMATION_CLASS_ID,
+    ] {
         for version in 0u16..=2 {
             let mut bytes = version.to_le_bytes().to_vec();
             bytes.extend(3u32.to_le_bytes());
@@ -23,7 +28,11 @@ fn both_classes_share_versions_and_preserve_raw_bytes_and_tail() {
 #[test]
 fn errors_leave_the_original_cursor_unchanged() {
     let bytes = [0xaa, 1, 0, 3, 0, 0, 0, 7, 8, 9];
-    for class in [GEO_TRANSFORMATION_CLASS_ID, NADCON_TRANSFORMATION_CLASS_ID] {
+    for class in [
+        GEO_TRANSFORMATION_CLASS_ID,
+        NADCON_TRANSFORMATION_CLASS_ID,
+        COORDINATE_FRAME_TRANSFORMATION_CLASS_ID,
+    ] {
         for end in 1..bytes.len() {
             let mut reader = Reader::new(&bytes[..end]);
             reader.read_bytes(1).unwrap();

@@ -851,7 +851,7 @@ pub struct SimpleFillSymbolBody10_1 {
     /// 体首 short 版本；>1 原生拒绝（Save 恒写 1）。
     pub version: u16,
     /// ISymbol 槽（请求 IID `{F3435802-…}`，轮廓线符号候选）。
-    pub outline: DisplaySymbolSlot10_1,
+    pub outline: SymbolSlotFull10_1,
     /// IColor 槽（填充色候选，Save 侧槽 `this−0x28`）。`None` = 轮廓槽停止。
     pub color: Option<ColorSlot10_1>,
     /// int32 → this−0x7c（样式候选）。`None` = 前置停止。
@@ -868,7 +868,7 @@ pub struct SimpleFillSymbolBody10_1 {
 /// 不修改登记表。
 ///
 /// 起点约定：调用者已读取对象头、比对 [`SIMPLE_FILL_SYMBOL_CLASS_ID`] 并取
-/// 得键 `key`。轮廓槽（ISymbol）经 [`read_display_symbol_slot_10_1`] 分派，
+/// 得键 `key`。轮廓槽（ISymbol）经 [`read_symbol_slot_full_10_1`] 分派，
 /// 未闭合新对象或嵌套体停止时其后的颜色槽与标量不可达（成功停止）。
 pub fn read_simple_fill_symbol_body_10_1(
     reader: &mut Reader<'_>,
@@ -889,8 +889,9 @@ pub fn read_simple_fill_symbol_body_10_1(
         entry_offset,
     )?;
     // ② ISymbol 槽（轮廓线符号候选）。
-    let outline = read_display_symbol_slot_10_1(&mut trial, max_bytes, &mut staged, depth - 1)?;
-    let mut stop = slot_stop_10_1(&outline, DisplaySlotKind10_1::Symbol);
+    let outline =
+        read_symbol_slot_full_10_1(&mut trial, max_bytes, &mut staged, depth.saturating_sub(1))?;
+    let mut stop = slot_full_stop_10_1(&outline, DisplaySlotKind10_1::Symbol);
     // ③ IColor 槽 + ④-⑦ 标量段（前置停止时不读取）。
     let mut color = None;
     let mut style = None;

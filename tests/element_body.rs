@@ -275,6 +275,14 @@ fn text_element_sample_shaped_body_stops_at_unclosed_symbol2() {
     assert_eq!(props.extra_short, Some(0xffff));
     assert_eq!(props.reference_scale, Some(5393.0));
     assert_eq!(props.tail_int32, Some(6));
+    assert_eq!(
+        props.anchor_point(),
+        Some(mxd2qgz::objects::element_body::ElementAnchorPoint10_1::BottomLeft)
+    );
+    let mut unknown = props.clone();
+    unknown.tail_int32 = Some(9);
+    assert_eq!(unknown.anchor_point(), None);
+    assert_eq!(unknown.tail_int32, Some(9));
     assert_eq!(te.text, "T35");
     assert_eq!(te.raw_bool_int32, 1);
     let symbol = te.symbol.as_ref().expect("TextSymbol 体应已消费");
@@ -1279,4 +1287,29 @@ fn media_shape_candidates_reach_geometry_and_tail() {
         }
         assert_eq!(reader.position(), end, "{path}");
     }
+}
+
+#[test]
+fn paragraph_text_version_and_truncated_base_do_not_commit() {
+    use mxd2qgz::objects::element_body::read_paragraph_text_element_10_1;
+    let mut bytes = vec![0; 2 + 48 + 8 + 4 + 8];
+    bytes[0] = 1;
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    refs.register(19);
+    let saved = refs.clone();
+    assert!(read_paragraph_text_element_10_1(&mut reader, 1024, &mut refs).is_err());
+    assert_eq!(reader.position(), 0);
+    assert_eq!(refs, saved);
+
+    bytes[0] = 2;
+    let mut reader = Reader::new(&bytes);
+    assert_eq!(
+        read_paragraph_text_element_10_1(&mut reader, 1024, &mut refs)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::InvalidData
+    );
+    assert_eq!(reader.position(), 0);
+    assert_eq!(refs, saved);
 }

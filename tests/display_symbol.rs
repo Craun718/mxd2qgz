@@ -244,7 +244,7 @@ fn simple_fill_symbol_nests_line_symbol_outline() {
     )
     .unwrap();
     match &result.outline {
-        mxd2qgz::objects::display_symbol::DisplaySymbolSlot10_1::SimpleLineSymbol(body) => {
+        mxd2qgz::objects::display_symbol::SymbolSlotFull10_1::SimpleLineSymbol(body) => {
             assert_eq!(body.key, 21);
             assert_eq!(body.width, Some(4.0));
             assert_eq!(body.stop, None);
@@ -289,7 +289,7 @@ fn simple_fill_symbol_unknown_outline_stops() {
     .unwrap();
     assert!(matches!(
         result.outline,
-        mxd2qgz::objects::display_symbol::DisplaySymbolSlot10_1::Unsupported { key: 800, .. }
+        mxd2qgz::objects::display_symbol::SymbolSlotFull10_1::Unsupported { key: 800, .. }
     ));
     assert_eq!(result.color, None);
     assert_eq!(result.style, None);

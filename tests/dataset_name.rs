@@ -189,7 +189,9 @@ fn reads_full_feature_dataset_name_chain_with_workspace() {
     assert_eq!(parsed.string_b, "");
     assert_eq!(parsed.string_c, "File Geodatabase Feature Dataset");
     assert_eq!(parsed.string_d, "拓扑数据集");
+    assert_eq!(parsed.feature_class_category(), "拓扑数据集");
     assert_eq!(parsed.flag, 1);
+    assert!(parsed.enumerates_as_single_feature_class());
     let WorkspaceNameSlot10_1::WorkspaceName(ws) = &parsed.workspace else {
         panic!("工作空间槽应解析 WorkspaceName 体：{:?}", parsed.workspace);
     };
@@ -581,5 +583,6 @@ fn non_canonical_flag_byte_is_preserved_verbatim() {
     let mut table = RefTable10_1::new();
     let (_, parsed) = read_fdn_entry(&bytes, &mut table).unwrap();
     assert_eq!(parsed.flag, 0x5A);
+    assert!(!parsed.enumerates_as_single_feature_class());
     assert_eq!(parsed.stop, None);
 }
