@@ -235,8 +235,7 @@ VariantStream 的 `Read/Write` 成员（`0x68a7bc50`/`0x68a7bc70`）= 全局族�
   `Null` 映射为 `PropertyValue10_1` 的新变体（如
   `PropertyValue10_1::NullObject`）；现有
   `PropertyValue10_1`/`read_variant_10_1` 其余行为不动。
-- 数组 0x2000 分支维持显式 `Unsupported`（本文第 2 节已闭合其编码，但无样
-  本且元素类型-SafeArray 交互依赖 OLEAUT32 运行行为，严格读取器不实现）。
+- 本轮当时未接入数组；后续实现范围见[单维数组接入](#单维数组接入)。
 - `tests/robustness.rs` 集中清单如需登记新入口，由整合轮统一处理。
 
 ## 未解决事项
@@ -255,3 +254,31 @@ VariantStream 的 `Read/Write` 成员（`0x68a7bc50`/`0x68a7bc70`）= 全局族�
    文判别式外推。
 6. 全部结论为静态观察；未运行 ArcMap 10.1，未在 QGIS 中核对，不声称已
    验证。
+
+## 单维数组接入
+
+依据上述 AfCore.dll 10.1.0.3035 `Variant::Read`（`0x68a7c6a0`）和
+`Variant::Write`（`0x68a7cb50`），PropertySet、Field 默认值、值域、
+MosaicRule 排序值和 EditTemplate 共用 [数组读取器](../src/stream/variant_array.rs)。
+去除 `0x2000` 标志后，已证固定宽度元素保留 VARTYPE 与原始位模式；
+BSTR 元素采用全局 ReadString：零长度只占 4 字节，非零长度为码元数，
+另读末尾终止零。带 14 字节保留区与不带保留区的 Variant 仍由各宿主指定。
+
+读取器拒绝负计数、未知元素和超限载荷，并在截断时保留原游标。
+合成测试覆盖编码值域及 Field 默认值的对象边界、混合空与非空的 BSTR 数组、
+逐字节截断与总载荷限额。VT_EMPTY/VT_NULL 数组的 SafeArrayCreate 行为、对象
+数组及其他未知类型仍未实现；未在真实 MXD 中观察到这些数组，也未进行 ArcMap
+运行验证。
+
+## 带保留区的 ObjectStream 对象值
+
+AfCore.dll 10.1.0.3035 的 Load 在 `0x68a7c6eb..0x68a7c709` 根据实参跳过
+14 字节，然后才分派 VARTYPE。9 / 13 共享 `0x68a7ca4d`，把原 IStream
+直接传入 `LoadObject 0x68a7b6d0`；保留区不影响底流的 IObjectStream 查询。
+Write 在 `0x68a7cb99` 后对应写 14 个零字节，然后同样分派对象值。
+
+栅格唯一值类别、UniqueValues、RangeDomain、CodedValueDomain 和 MosaicRule
+的已确认 ObjectStream 宿主复用同一读取器。空对象不登记键；回引及新
+PropertySet 共享调用方的对象键表，内部 PropertySet 条目保留其不带保留区的
+自身布局。未知新类和对象数组继续显式停止。合成验证覆盖类别与统计集合之间
+的回引、值域回滚及 MosaicRule 后继字段；未做 ArcMap 运行验证。

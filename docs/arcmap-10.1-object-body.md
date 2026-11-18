@@ -483,19 +483,11 @@ SystemCore.dll 与 ArcMap.exe 用本机 pyghidra（Ghidra 12.2 + JDK 25，复用
 
 ### AfCore 导出 SaveObject / LoadObject（证据：确定的）
 
-- `SaveObject(IUnknown*, IStream*, int)` 导出 1844 @`0x68a7b640`：薄包装，SEH 安装后调
-  `StrmUtil::SimpleSaveObject(param_1, param_2, param_3, 1)`（`ev_c67bc79f…`）。
-- `LoadObject(IUnknown**, const GUID&, IStream*, IUnknown*)` 导出 1545 @`0x68a7b6d0`：调
-  `0x68a7b490`（既有记录的「16 字节 GUID 读取+AfCreateInstance」内核辅助）后若输出非空再调
-  `0x68a7b530`（本地反编译 `/tmp/r5/af_work/f68a7b6d0.c`；后一函数语义未展开，开放）。
-- `StrmUtil::SimpleSaveObject(IUnknown* obj, IStream* stm, int fClearDirty, int writeHeader)`
-  （`0x68a7af70`，`ev_30b78320…`/`ev_3ba50a88…`）通用保存器：`obj==0` 时直接
-  `IStream::Write(stm, 16 字节零, 16)`（终止/空标记）；普通 IPersistStream 路径
-  （汇编 `0x68a7b43f..0x68a7b476`）为 `GetClassID` → **`IStream::Write(stm, &clsid, 16, 0)`**
-  （`writeHeader!=0` 时）→ **`pPersistStream->Save(stm, fClearDirty)`**（虚表 `+0x18`，
-  `stm` 原样传入）——该分支**不写键**。IPersistVariant 路径按变体类型 0xd/9 递归并以
-  0x1c 字节 VariantStream 包装分派。辅助 `0x68a7c1d0/0x7c240/0x7c0f0/0x7c160/0x7c320/0x7c390`
-  为 fastcall QI 包装，所查 IID 与分支间的槽位链未逐条闭合（开放，见文末）。
+- `SaveObject 0x68a7b640` 和 `LoadObject 0x68a7b6d0` 先对流查询 IObjectStream，命中分别调
+  `+0x40/+0x44`。未命中才走普通流：保存调 `SimpleSaveObject 0x68a7af70`，读取调
+  `0x68a7b490`（16 字节 GUID 后按需创建对象）及 `0x68a7b530`（委派对象 Load）。
+- 普通流不附加对象键，读写均优先选 IPersistVariant；版本转换递归由两个文档版本支持接口触发。
+  详细 IID、版本分支和返回状态见[后续指令复核](mxd-simple-object-dispatch-20261118.md)。
 
 ### ObjectStream 写出器（虚表 `+0x40` = `0x7ffcf7e0`）逐分支闭合（证据：确定的）
 
@@ -552,12 +544,11 @@ FDOGraphicsLayer=31、FeatureLayer=32 等）与 /Version 尾部计数 2267（见
 使祖先/自身引用天然表示为键回引；Rust 侧解析器必须维护「已见键集合」状态机。
 新对象与回引写出的 GUID 均为对象 ClassID，与请求 IID 无关（写侧取 `GetClassID`）。
 
-### SimpleSaveObject 与写出器的委派关系（开放）
+### SimpleSaveObject 与写出器的委派关系（闭合）
 
-顶层对象经 AfCore `SaveObject` 保存时键必然被写出（样本首对象 GUID 后即键 29），而
-SimpleSaveObject 的普通分支不写键——委派必经其对 ObjectStream 目标流的专用分支
-（`FUN_68a7c1d0` QI 成功后的 `0x68a7b01b..` 路径），但该路径各 QI 的 IID 与最终到达
-`+0x40` 的槽位链未逐条闭合；普通分支与 ObjectStream 场景的互斥关系属静态推断。
+由外层 `SaveObject` 对输入流查询 IObjectStream，命中才调用 `+0x40` 写共享对象键；
+`SimpleSaveObject` 是未命中时的回退，内部 `0x68a7c1d0` 查询的是 IDocumentVersion。
+两条路径的分界与错误返回见[读写委派记录](mxd-simple-object-dispatch-20261118.md)。
 
 ### /Maps 尾部 4 字节（指令级闭合；对既有结论的精化）
 
@@ -574,11 +565,9 @@ SystemCore 的 `+0x54` 槽（`0x7ffd0550`）是 EnsureCapacity：**恒返回 0�
 
 ## 未解决事项（第五轮新增）
 
-- SimpleSaveObject 对 ObjectStream 目标流的委派链：`FUN_68a7c1d0` 等 6 个 fastcall QI 包装
-  所查 IID、ObjectStream 分支（`0x68a7b01b..`）各槽位语义、到 `+0x40` 的确切到达路径。
 - `+0x2c` 键计数器的构造初始化已于 2026-11-16 闭合为 0，依据与接口位移见上文；不再列作开放缺口。
 - `+0x190` 处保存侧流对象的类身份与其 `+0x54` 槽在运行时的实际行为（栈残留 -1 的来源）。
-- `LoadObject` 导出的第二辅助 `0x68a7b530` 语义；`FUN_7ffd0850` 的表指针来源寄存器（ESI）
+- `FUN_7ffd0850` 的表指针来源寄存器（ESI）
   在写者内的设置指令未逐条核对（伪代码层级）。
 - 写表按对象指针哈希：同一对象跨 SetStream 后保存必然命中（键回引），跨文档不适用；
   替换分支（`FUN_7ffdab10` 返回 1）在写侧的触发场景未核。

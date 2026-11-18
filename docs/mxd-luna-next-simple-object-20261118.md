@@ -1,5 +1,7 @@
 # SimpleSaveObject 委派链复核（2026-11-18）
 
+> 历史记录。这里的 GEN 接口名、IPersistVariant 与 VT 分支的归属、普通流读侧和 TODO 状态已被[后续原始指令复核](mxd-simple-object-dispatch-20261118.md)取代。
+
 ## 结论
 
 ArcMap 10.1.0.3035 的**静态保存委派骨架**可由 AfCore 与 SystemCore 原生指令闭合到分支级；原 TODO「SimpleSaveObject 委派链」仍不能作为“真实宿主/读写全链已完成”勾选。闭合的是入口选择、接口 IID、可见递归参数及对象流写出端的职责边界。没有闭合的是参考 MXD 中某个具体非空对象实际命中哪条分支、所有 IPersistVariant 类的真实宿主和体边界，以及 AfCore 读包装器的完整传播与失败语义。未运行 ArcMap，符合本轮不使用 ArcMap 的约束。

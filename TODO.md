@@ -54,6 +54,20 @@
 
 2026-11-18 的六组原生取证、样本结果和剩余边界见 [并行复核记录](docs/mxd-luna-20261118-review.md)。
 
+- [x] 2026-11-18 布局尾段：接入 Page、标尺、捕捉、布局扩展、元素锚定和外层打印标记；参考工程读过 GroupElement。66 份 10.1 安装介质工程及参考工程全部消费 /PageLayout 流，见[原生字段与实档边界](docs/mxd-page-layout-tail-20261118.md)。
+
+- [x] 2026-11-18 介质续查：接入 UniqueValueRenderer、CoordinateFrameTransformation、TransparencyDisplayFilter 和 ParagraphTextElement；纠正四类色带名称的 AfCore BSTR 长度单位。66 份 10.1 安装介质 MXD/MXT 均读完了布局元素列表，见[原生调用与实档复核](docs/mxd-us-media-renderer-paragraph-20261118.md)。
+
+- [x] 2026-11-18 Basemap 续查：读通空图层列表的内嵌 Map、正式子图层回引、空扩展尾部和已确认类型的逐层遮罩。10.1 候选工程中新有 10 份到达布局，9 份读完元素列表，见[原生复核与介质统计](docs/mxd-basemap-continuation-20261118.md)。
+
+- [x] 2026-11-18 布局续查：读通 Graticule、DMSGridLabel、SimpleMapGridBorder 和 LocatorRectangle；接通 SimpleFillSymbol 的多图层线轮廓。10.1 介质中进入页面元素集合的 48 份均读完集合，见[网格与定位框复核](docs/mxd-page-layout-grid-20261118.md)。
+
+- [x] 2026-11-18 布局续查：接入 MapSurroundFrame、RectangleElement、FrameElement 和无对象体的有界元素槽；Utilities 的 27 个页面元素走通，三个内联地图框分别回引三个根 Map，见[布局复核](docs/mxd-page-layout-surround-20261118.md)。
+
+- [x] 2026-11-18 续查：按原生委派链读取 MapFrame 的 BaseFrameElement、几何、属性和装饰；接入 /Maps → /PageLayout 的同会话元素解析，以 SDK 实档确认地图框边界，见[地图框研究](docs/mxd-map-frame-body-20261118.md)。
+
+- [x] 2026-11-18 续查：按 10.1 Map 原生版本门读取 v34–51 尾段；参考工程读至 /Maps 根尾，另以介质 SDK 实档和补导的 MapElements.dll 证明 MapFrame 的 IMap 槽跨流回引。核对 ElementProperties 锚点枚举、书签属性与 FeatureIDSet ID 的数据源约束，见[本轮记录](docs/mxd-map-tail-cross-stream-20261118.md)。
+
 - [x] 2026-11-18 Luna 续查：闭合 SDK 旧档的 TimeData 四段宿主验证；接入 Map 无逐层遮罩分支后的字段、FileGDB 栅格名称的 RasterIO 子集及 WorkspaceName 内的 PropertySet 对象分支。原生取证、样本和剩余边界见 [主审记录](docs/mxd-luna-20261118-review.md#第二次续查与主审)。
 
 - [x] 2026-11-17 Terra 第九轮：读通 SDK 两张独立表，接入要素书签的 TableName 和 TextSymbol 遮罩属性，核对逐图层遮罩递归、旧档 Metadata 加载及旧对象边界；余 65 项，见 [本轮复核](docs/mxd-terra-round9-review.md)。
@@ -113,11 +127,11 @@
   - [x] 实现显式 10.1 ProjectedCoordinateSystem 对象体读取器：按原生 Load 版本分支取字段（>2 域串、≥4 标志+7 double、≥5 再 3 double、>7 拒绝），WKT 强制 ASCII，域串与 double 原样保留；已由 Map 前缀读取器调用。
   - [x] 将 ProjectedCoordinateSystem 对象体字段（域字符串、标志、double）接入中间模型；合成输入覆盖，尚未在目标软件人工验证。
 - [x] 读取 OLE 容器中的 `/Version`、`/Maps` 等数据流并识别 MXD 版本。
-  - [x] 实现显式 10.8 `/Version` 前缀的严格读取器，保留候选文本、有符号 short 位模式和尾部位置；不识别版本，写入规则和跨版本兼容性仍未知。
-  - [ ] 闭合 10.8 `/Version` 的写入规则（条件字段已静态确认为对象写表条目数；额外尾部及失败分支仍待闭合，见 [版本流续查](docs/mxd-terra-next-version.md)）。
+  - [x] 实现显式 10.8 `/Version` 前缀的严格读取器，保留候选文本、有符号 short 位模式和尾部位置。
+  - [x] 闭合 10.8 内置 `/Version` 的静态写入规则：文本、short 和条件计数后没有已定义的尾段；已追踪创建、写入和回填的失败分支，补齐显式编码器和字节测试，见 [写入边界](docs/mxd-10.8-version-write-boundary.md)。
   - [x] 绑定 10.8 保存入口的 DocumentInfo 间接调用：先切流到 `Metadata` 再写元数据，见 [REA 续查](docs/mxd-luna-followup-version-20261118.md)。
   - [ ] 验证 10.8 `/Version` 的跨版本兼容性。
-  - [x] 实现基于 10.1 头部规则（文本+short+条件计数）的版本识别候选和 `version` 命令；未知文本/short 保留为未识别候选，10.1 严格读取失败时回退显式 10.8 布局。原生 short 映射已接入命令：`version` 仅在已知文本与 short 精确配对时报告候选保存索引；`9.3`/16 的文本由介质样本补证，映射到索引 3；运行时或软件验证仍缺，用法见 README。
+  - [x] 实现基于 10.1 头部规则（文本+short+条件计数）的版本识别候选和 `version` 命令；未知文本/short 保留为未识别候选，10.1 严格读取失败时再验证完整的 10.8 头部，输出条件计数并从其后保留未知字节。原生 short 映射已接入命令：`version` 仅在已知文本与 short 精确配对时报告候选保存索引；`9.3`/16 的文本由介质样本补证，映射到索引 3；运行时或软件验证仍缺，用法见 README。
 - [x] 使用 Ghidra 桥接工具 分析对象的序列化和读取逻辑，确定对象边界、类型标识和引用关系；记录证据及适用版本。对象边界（各类自己的 Load/Save、无外部长度）、类型标识（16 字节 ClassID，写侧取 GetClassID 与请求 IID 无关）与引用关系（键回引编码）均已闭合；剩余开放项见下列子项与各记录。
   - [x] 核对 10.1 托管 IObjectStream 方法顺序，记录 LoadObject 和版本属性的 x86 槽位候选及跨版本限制。
   - [x] 在 Ghidra 12.1.4 中核对 10.8 接口 GUID、构造后的实际虚表及 IUnknown 转发；定位读流入口。
@@ -127,21 +141,52 @@
     - [x] 10.1 汇编级复核：对象体由各类自己的 Load/Save 读写、无外部长度字段（未知类不可跳过）；登记先于持久化、键重复替换分支存在、SetStream 不清表；`/Maps` 写侧（数量=数据框数、循环后 4 字节尾部值）与读侧闭合，与 10.8 结构一致，见 [研究记录](docs/arcmap-10.1-object-body.md)。
     - [x] 实现显式 10.1 `/Maps` 根前缀读取器（数量、首对象头、尾部原始值），覆盖全前缀截断、失败游标与限额；不解析对象体，已接入 `parse`。
     - [x] 从 PageLayout.dll 实际文档读取链确认分流格式的 `/Maps:0x00` 数量及 `0x04` 首对象入口；记录 Mx Document 优先分支和跨流复用 ObjectStream。对象体与版本适用性仍未闭环（引用表生命周期由 SetStream 条目闭合）。
-    - [ ] 闭合跨流复用 ObjectStream 的对象体。
-    - [ ] 确定跨流复用 ObjectStream 的版本适用性。
+    - [ ] 闭合跨流复用 ObjectStream 的对象体（已证 LinearRef 的 MapFrame 完整体回引 /Maps 键 31 并接入 parse；Utilities 的装饰框及嵌套 MapFrame 也已走通；MilitaryPortrait 已读通 Graticule 与 LocatorRectangle；66 份安装介质工程及参考工程已读完布局对象体；其他网格实现、非空打印设置和未覆盖扩展仍开放，见[布局尾段复核](docs/mxd-page-layout-tail-20261118.md)）。
+    - [ ] 确定跨流复用 ObjectStream 的版本适用性（10.1 介质中已见 `/Version` 候选 9.2、9.3、10.0 使用实际 MapFrame 跨流回引，10.1 候选中已确认 Africa、USA 等工程的实际跨流回引；仍待核对超出这组候选的版本边界及其他宿主，见[介质分组](docs/mxd-us-media-renderer-paragraph-20261118.md)）。
     - [x] 确认 SetStream 不重置引用表、对象体之前登记、析构释放、普通/VariantStream 分支的接口 GUID 及局部 HRESULT；缺失引用与新对象不能只靠键区分。完整对象体与版本适用性见上项，替换场景见对象键条目，失败恢复已由对象读取错误恢复条目闭合。
   - [x] 用 Ghidra 桥接工具 确认 10.8 VariantStream 已知 VARTYPE 的固定宽度分支和字符串 `n * 2 + 2` 布局；对象分支、对象体和引用表仍未闭环。
-  - [ ] 闭合 VariantStream 对象分支的对象体（PropertySet 的 `Variant::Read` 已独立接入 WorkspaceName 的 ObjectStream 路径，见 [研究记录](docs/mxd-luna-deep-property-20261118.md)；该结果不替代 VariantStream 类族证据）。
-  - [ ] 闭合 VariantStream 对象分支的引用表（10.1 标准包装经底层 IStream 回到同一表；真实键序与其他包装尚待确认，见 [对象流续查](docs/mxd-terra-follow-stream.md)）。
+  - [x] 接入 10.1 VariantStream 非空对象分派与 ImageServerLayer 前缀：原生读写对位至扩展、包络和空间参考槽；标准包装和 VariantStreamIO 均由底流决定是否共用对象表，见 [取证与测试](docs/mxd-10.1-variant-image-server-layer.md)。
+  - [x] 接入 ImageServerLayer v8/v13/v18/v22 的 Variant 尾段字段和 ImageServerName 体；名称内的 PropertySet 与外层共享对象键，见 [尾段取证](docs/mxd-10.1-image-server-layer-tail.md)。
+  - [x] 接入 ImageServerLayer 的 RasterColormapRenderer 完整体分派；体未闭合时回退到 Variant 槽头，见 [栅格渲染器取证](docs/mxd-10.1-raster-renderer.md)。
+  - [x] 接入 RasterRGBRenderer 参考档 v9 完整体，读取三个无键直方图和四个带键数组，并由普通 RasterLayer 与 ImageServerLayer 共用，见 [栅格渲染器补查](docs/mxd-10.1-raster-renderer.md#rgb-的两个嵌套对象)。
+  - [x] 接入 SimpleRasterRenderer v1/v2 对象体，见 [原生读写顺序](docs/mxd-10.1-raster-renderer.md#simplerasterrenderer)。
+  - [x] 接入 RasterDiscreteColorRenderer v1 对象体，读取颜色数组、字符串和独立梯度，见 [离散色原生取证](docs/mxd-10.1-raster-renderer.md#rasterdiscretecolorrenderer)。
+  - [x] 接入 RasterUniqueValueRenderer v1–v4 已确认布局及 UniqueValues v1，见 [唯一值原生取证](docs/mxd-10.1-raster-renderer.md#rasteruniquevaluerenderer)。
+  - [ ] 补齐旧版 RasterUniqueValueRenderer 的非空 IEnumRasterUniqueValueColor 对象。
+  - [x] 接入带保留区的 Variant 对象值（空对象、PropertySet 和同会话回引），覆盖栅格唯一值、值域与 MosaicRule，见 [AfCore 取证](docs/arcmap-10.1-variant-propertyset-slots.md#带保留区的-objectstream-对象值)。
+  - [ ] 补齐栅格唯一值类别及统计集合内其他新对象类的 Variant 体分派。
+  - [x] 接入 RasterClassifyRenderer v1–v5 的已确认布局、分类断点及图例与数值格式槽，见 [分类原生取证](docs/mxd-10.1-raster-renderer.md#rasterclassifyrenderer)。
+  - [x] 接入 RasterStretchRenderer v1–v9 已确认布局，读取定长旧体、无键 RasterIO 对象和结束标记前的采样数组，见 [拉伸原生取证](docs/mxd-10.1-raster-renderer.md#rasterstretchrenderer)。
+  - [ ] 补齐其余 IRasterRenderer 实现。
+  - [x] 接入 RasterRGBRenderer v1–v3 旧式对象体及共用体 v1，复用两个带键颜色槽；原生拒绝 v0，见 [旧版取证](docs/mxd-10.1-raster-renderer.md#rgb-v1v3-与共用体-v1)。
+  - [x] 接入 RasterRGBRenderer tag 18 的 PansharpeningFilter v1 体（两个 LoadRaster 空槽），见 [全色锐化取证](docs/mxd-10.1-raster-renderer.md#rgb-tag-18全色锐化)。
+  - [x] 接入 RasterRGBRenderer tag 18 非空 LoadRaster 槽，读取普通及 FileGDB 栅格名称、波段名、变换和包络，并复用宿主键表。
+  - [ ] 补齐 RasterRGBRenderer tag 18 非空 LoadRaster 槽中未支持的数据集名称类。
+  - [x] 接入 ImageServerLayer 非空 Fields 及 Field 的已确认对象体；默认值复用 AfCore Variant 读取器，见 [字段集合取证](docs/mxd-10.1-fields.md)。
+  - [x] 接入 Field 的 RangeDomain 与 CodedValueDomain，读取标量的 Variant::Read(false) 值，见 [值域取证](docs/mxd-10.1-fields.md#idomain范围值域与编码值域)。
+  - [x] 接入 AfCore Variant 的已证单维定宽和 BSTR 数组；PropertySet、Field 默认值、值域和 EditTemplate 共用数组读取器，见 [数组取证](docs/arcmap-10.1-variant-propertyset-slots.md#单维数组接入)。
+  - [ ] 补齐范围或编码值域中其他新对象类的 Variant 体分派。
+  - [ ] 确认范围或编码值域中尚无证据的 Variant 数组元素类型。
+  - [ ] 补齐 Field 中其他非空 IDomain 实现类。
+  - [x] 接入 Field 非空 GeometryDef，读取网格列表与空间参考，见 [定义对象取证](docs/mxd-10.1-fields.md#几何定义与栅格定义)。
+  - [x] 接入 Field 非空 RasterDef，支持原生 v1/v2 尾字段与空间参考，见 [定义对象取证](docs/mxd-10.1-fields.md#几何定义与栅格定义)。
+  - [x] 接入 ImageServerLayer 的 MosaicRule 及时间值、点、FIDSet 子槽的已知实现，见 [规则取证](docs/mxd-10.1-image-server-rules.md)。
+  - [x] 接入 ImageServerLayer 的 RenderingRule 体，复用已闭合的 IRasterRenderer，见 [规则取证](docs/mxd-10.1-image-server-rules.md)。
+  - [x] 接入 RenderingRule 的 IdentityFunction 和 CachedRasterFunctionArguments，见 [函数与参数取证](docs/mxd-10.1-image-server-rules.md#非空栅格函数与参数)。
+  - [ ] 补齐 RenderingRule 的其他非空 IRasterFunction 对象体。
+  - [ ] 补齐 RenderingRule 的其他非空 IRasterFunctionArguments 对象体。
+  - [x] 接入 IdentityXform、PolynomialXform 和 CompositeXform 对象体，由 RasterLayer 与 ImageServerLayer 共用，见 [地理数据变换取证](docs/mxd-10.1-geodata-xform.md)。
+  - [ ] 补齐其他非空 IGeodataXform 实现类的对象体分派。
+  - [ ] 闭合 VariantStream 对象分支的引用表（10.1 标准包装与 VariantStreamIO 已静态对位；仍缺真实宿主键序及其他包装路径的佐证，见 [取证](docs/mxd-10.1-variant-image-server-layer.md#两种对象头与引用表)）。
   - [x] 实现显式 10.1 ObjectStream 上下文的 Variant 对象头读取：区分空标记、新对象和会话键回引，见 [AfCore/SystemCore 续查](docs/mxd-luna-followup-stream-20261118.md)。
   - [x] 实现显式 10.8 Variant 前缀读取器，覆盖固定宽度位模式、字符串边界、失败游标和显式对象分支错误；未接入 MXD 解析。
-  - [ ] 闭合 SimpleSaveObject 委派链（对象读写委派路径）。
+  - [x] 闭合 SimpleSaveObject 委派链：10.1 原生指令确认导出的 IObjectStream 分流、普通流版本适配递归、两类持久化接口优先级和读写错误传播；另核对 10.8 分派骨架。见 [读写委派记录](docs/mxd-simple-object-dispatch-20261118.md)。
   - [x] 确认 10.1 对象键计数器构造初值为 0：SystemCore 构造器基址 `+0x3c` 清零对应 IObjectStream2 接口指针 `+0x2c`，与先写后增路径对位；静态证据及边界见 [本轮对象流记录](docs/mxd-open-streams-20261116.md)。
 - [x] 解析长度前缀字符串、对象属性和对象引用，并验证 UTF-16LE、空字符串及非 ASCII 字符的处理。
   - [x] 用 Ghidra 桥接工具 确认 10.8 AfCore String::Read/Write 的字节长度、终止零和不严格短读行为，区分原生行为与 Rust 安全子集。
   - [x] 实现显式 10.8 调用点的严格字符串读取器，覆盖空值、中文、代理对、非法编码、全部截断、资源限制和失败游标；未接入 MXD 字段解析。
   - [x] 接入已确认字段归属：Map 数据框名称与第二名称经 Map.dll Load 与样本字节闭合为 AfCore String 布局，接入 `native_string::read_string_10_1`（Map 前缀读取器）；见 [研究记录](docs/arcmap-10.1-map-object.md)。
-  - [ ] 闭合 Map 双名称之外的未定对象属性，包括书签后已读取的三个成员的业务用途、尚未支持的独立表嵌套对象（SDK 的 LinearRef 两张 v9 表已完整读取，包括 TableName、工作空间及命名 FieldInfo，见 [独立表续查](docs/mxd-terra-round9-table.md)）、NADCON/GeoTransformation 之外的坐标变换类及 BasicOverposterProperties 之后的字段（已接入 Map 自身遮罩及无需逐层读遮罩时的后四个字段）；照明后 12 字节字段的业务名称、非空 IGeometry 和其他 IBorder/IBackground 实现仍未闭合（SymbolBorder 和 SymbolBackground 已接入），见 [第四轮 Map 取证](docs/mxd-round4-map-spatial-20261117.md)和[坐标变换续查](docs/mxd-terra-chain-map.md)。
+  - [ ] 闭合 Map 双名称之外的未定对象属性，包括书签后已读取的三个成员的业务用途、尚未支持的独立表嵌套对象（SDK 的 LinearRef 两张 v9 表已完整读取，包括 TableName、工作空间及命名 FieldInfo，见 [独立表续查](docs/mxd-terra-round9-table.md)）、NADCON、GeoTransformation、CoordinateFrameTransformation 之外的坐标变换类及 BasicOverposterProperties 之后的字段（已接入 Map 自身遮罩及无需逐层读遮罩时的后四个字段）；照明后 12 字节字段的业务名称、非空 IGeometry 和其他 IBorder/IBackground 实现仍未闭合（SymbolBorder 和 SymbolBackground 已接入），见 [第四轮 Map 取证](docs/mxd-round4-map-spatial-20261117.md)和[坐标变换续查](docs/mxd-terra-chain-map.md)。
   - [ ] 闭合其他 MXD 版本的字符串规则。
   - [ ] 闭合其他 MXD 版本的对象属性规则。
   - [x] 闭合 10.1 对象键分配与回引编码：键=ObjectStream `+0x2c` 4 字节单调计数器（新对象写后 +1、跨流共享键序）、回引=同构 20 字节头无体无专用标记、唯一判据=键是否已在本会话出现过、循环引用无需专门编码（登记先于持久化）、缺失引用与新对象不可区分（有意保留的原生语义）；实现 `object_refs` 条目分类器与登记表并接入 robustness 集中清单（13 入口），样本键 29 起点/`0x2d2c` 键 32 回引辅助对照吻合；见 [研究记录](docs/arcmap-10.1-object-body.md#101-对象键分配与回引写侧闭合2026-11-14-第五轮)。
@@ -224,7 +269,7 @@
       - [x] 闭合 `Variant::Read` 对象分支：9/13 臂调导出 LoadObject（先 QI ESRI 上下文接口，命中走带键 ObjectStream 路径——顺带闭合 variant-stream 文档「10.8 所述入口 QI 上下文分支在 10.1 未定位」）；普通路径读 16 字节类 GUID，**==零 GUID→S_OK 且出参保持 NULL，非零→AfCreateInstance**（旧 variant-stream 文档分支方向系笔误，已在其自身记录修正）；非零体由对象自身持久化方法消费，通用边界静态不存在（开放）。
       - [x] 闭合 `Variant::Read` bool=false 的 Seek 分支：Seek(+14, STREAM_SEEK_CUR) 且返回值不检查——语义为 14 字节保留头部跳过，与 Write 侧写 14 零字节严格互证（旧「版本定位」表述修正）。
       - [x] 在反编译中观察到 PropertySet 数组（0x2000）分支。
-      - [x] 逐指令复核 PropertySet 数组（0x2000）分支：分发键 vt&0xdfff，[计数:4][元素]，SafeArrayCreate（lLbound 两路径显式清零）+批量定宽读/逐元素全局 ReadString，IAT 序号全部坐实；无样本，Rust 读取器维持显式 Unsupported（正确，无需实现）。
+      - [x] 逐指令复核 PropertySet 数组（0x2000）分支：分发键 vt&0xdfff，[计数:4][元素]，SafeArrayCreate（lLbound 两路径显式清零）+批量定宽读/逐元素全局 ReadString，IAT 序号全部坐实；无样本；后续支持范围见上方 Variant 数组接入条目。
       - [x] 闭合 PropertySet 对象（9/13）分支=LoadObject 路径；零 GUID 空对象 `[9/13:2][16×00]` 共 18 字节子集已实现并接入 property_set（PropertyValue10_1::NullObject），非零 GUID 维持 Unsupported。
       - [x] 裁决 PropertySetProperty `{5B6D2B14}` 无流体：CLSID 常量唯一命中+RTTI 派出五子对象虚表判别，无 IPersistStream/IVariantStream——SystemCore 内不存在可反编译的流对象体，MXD 内以内联键值承载（样本 2/2）；旧文档猜测的虚表 +0x14 槽值实为 COL 区数据。
       - [x] 确认 SystemCore 「本地 `Variant::Read`」实为 IAT 导入 AfCore `?Read@Variant@@`（0x7ffd3f00/0x7ffd3f90 为 VariantInit→AfCore 调用包装）：**不存在静态链接副本，AfCore 逐分支分析对 PropertySet 值即权威**（旧「本地编译副本」说法修正，property-set 记录开放项 1 就此闭合）；签名/字符串分支/Load 调用点的历史确认在该前提下仍有效。
@@ -242,19 +287,19 @@
       - [x] 确定符号族三处 short（ArrowMarker ⑫/CharacterMarker ⑭/PictureMarker v9 ⑨ 与历史路径 +0x70）的流内布局。
       - [x] 定性三处标记符号的 RotateWithTransform 原始 short：10.1 成功读取后用当前用户配置或默认值覆盖内存槽，读取器保留磁盘原值，见 [原生字段复核](docs/mxd-terra-next-display.md#第-218-行补充rotatewithtransform-的属性和默认值2026-11-17)。
       - [x] 定性 LegendClassFormat 的两个持久化标量：PatchWidth、PatchHeight，见 [图例字段对位](docs/mxd-terra-depth-legend.md)。
-      - [ ] 定性 HorizontalLegendItem 布局模式的各值；已确认包装 int32 受流向影响并参与布局，见 [图例续查](docs/mxd-terra-chain-legend.md)。
+      - [x] 定性 HorizontalLegendItem 的六个 Arrangement 值（样块、标签、描述的排列顺序）；VerticalLegendItem 共用同一枚举，保留未知值。见[图例排列取证](docs/mxd-terra-chain-legend.md#续查arrangement-枚举已定名2026-11-18)。
       - [x] 定性 Legend 自身前缀的 short/int32：AutoAdd、AutoReorder、AutoVisibility、读弃且写常量的 short、图例条目计数；MapSurround 基类另列，见 [前缀对位](docs/mxd-terra-round10-legend.md)。
-      - [ ] ElementProperties 字段业务语义。
+      - [x] 定性 10.1 ElementProperties 字段：Name、Type、CustomProperty、AutoTransform、ReferenceScale、AnchorPoint（含 0–8 枚举）；v0/v1 遗留 LONG 在 10.1 Load 读后丢弃，见[访问器与枚举复核](docs/mxd-map-tail-cross-stream-20261118.md#elementproperties-与-featureidset)。
       - [ ] TextSymbol 剩余字段业务语义；MaskStyle、MaskSize、MaskSymbol 和颜色槽已 [对位](docs/mxd-terra-round9-text.md)。
-      - [ ] 定性 FeatureDatasetName 第四个字符串和标志；前三串 Name、IName.NameString、Category 和工作空间槽已对位；第四串与标志已绑定原生访问器，业务意义仍未知，见 [名称续查](docs/mxd-luna-deep-names-20261118.md)。
+      - [x] 定性 FeatureDatasetName 第四串为要素类类别描述，标志位为是否以自身名称枚举单一要素类；10.1 FileGDB、SdeFDB 和 GdbCoreLib 生产与消费路径互证，读取器保留原始值。见[名称续查](docs/mxd-luna-deep-names-20261118.md#续查要素类类别与单类枚举2026-11-18)。
       - [x] 定性 10.1 TopologyName 持久化字段：Name、Category、FeatureDatasetName；嵌套对象 WorkspaceName getter 的运行副作用未验，见 [字段对位](docs/mxd-terra-depth-names.md)。
-      - [ ] MapSurround 共同前缀字段业务语义。
-      - [ ] 书签共同前缀字段业务语义。
+      - [x] 定性 MapSurround 共同前缀的 short 为 IBoundsProperties.FixedAspectRatio，类型库、虚表和布局调用三方对位；读取器保留原始位模式并区分缺省、零与非零。见[固定纵横比取证](docs/arcmap-10.1-mapsurround-bookmark.md#固定纵横比2026-11-18)。
+      - [x] 定性 10.1 AOIBookmark/FeatureBookmark 字段：Name、Location、FeatureId 及用于打开 FeatureClass 的持久化 IName，见[书签访问器复核](docs/mxd-map-tail-cross-stream-20261118.md#书签与装饰物)。
       - [x] 定性 FDO 旧加载器的 ILayer/IFeatureLayer/IFeatureSelection/IDataLayer 写入槽及数据源要素类查询，见 [旧版接口和类型库对位](docs/mxd-terra-round8-fdo.md)。运行时副作用和旧档证据另验。
       - [x] 定性 10.1 ALPC 集合自身的条目 ID 与下一 ID 计数器，修正空对象不带条目 ID 的读取；标注表达式及类名属于另列的 LELP，集合 ID 不等同于要素 OID。见 [标注取证](docs/mxd-terra-nextpass-expression.md)。
-      - [ ] LELP 标量与字符串业务语义（标注表达式、类名、OID 等）。
-      - [ ] ETM 标量与字符串业务语义（标注表达式、类名、OID 等；尾字节样本 0x01）。
-      - [ ] 确认 FeatureIDSet 集合成员是否始终对应数据源的实际要素 OID；该体无独立字符串字段。
+      - [x] 定性 10.1 LELP 标量和字符串：剩余字段为缩放比、参考比例尺、单位和标注类 ID；两个旧 short 只被 10.1 读取并丢弃，见 [字段对位](docs/mxd-10.1-label-transformation-fields.md)。
+      - [x] 定性 10.1 ETM 持久化字段：字符串归属 EditTemplate 子对象；尾标志非零时 EditTools 跳过该图层的自动模板候选收集，见 [尾标志取证](docs/mxd-10.1-label-transformation-fields.md#edittemplatemanageretm)。
+      - [x] 确认 FeatureIDSet 集合成员没有实际数据源 OID 保证：Load/Add 接收整数并判重，没有数据源校验；具体非空宿主的实际 ID 来源待实档核对，见[原生复核](docs/mxd-map-tail-cross-stream-20261118.md#elementproperties-与-featureidset)。
       - [x] 按 10.1 集合插入器语义处理 FeatureIDSet 的重复成员；原始声明计数保留，见 [FeatureIDSet 复核](docs/mxd-luna-followup-feature-id-set-20261118.md)。
       - [x] 定名 ArcMap 10.1 的 esriHyperlinkType 值序：Document=0、URL=1、Macro=2、Script=3，见 [类型库复核](docs/mxd-dataset-format-evidence-20261117.md#补充246-的真实模板-rust-试读和-225-枚举值)。
       - [x] 确认 Hyperlink ② 是 FeatureId，④ 是 LinkType：10.1 类型库与 Layer.dll 两个接口入口分别绑定成员偏移，见 [证据](docs/mxd-round2-dataset-format-20261117.md)。
@@ -320,8 +365,8 @@
   - [x] 写方向取证闭合 Envelope/PCS Save 与显示范围：Envelope::Save 恒写版本 3（short 3 + 32 字节 WKSEnvelope + int32 + bit6/7 追加 Z/M + SR 子对象）、Load 按 1/2/3 分支（==3 才 LoadObject SR，IID 与 Map 第 4 步同值）；字段序 [XMin,YMin,XMax,YMax] 由 AfCore 访问器逐指令绑定证实；PCS Save 恒写 v6 与读侧分支对称；Map::Save 显示范围写出链闭合（Map+0x298 助手 +0xdc 槽 → 原样 32 字节），样本定位 `0x24f64` 升级为确定（前后括号完整：第 5 段 MapSurround 与书签循环计数确认=0，20 字节空标记=16 零+键 0，对象头类标识修正为 `{1C352F40}`、`{1C352F3F}` 为请求 IID），见 [研究记录](docs/arcmap-10.1-spatial-reference.md#envelopesave-wksenvelope-写方向与-map-显示范围闭合2026-11-14-写方向取证轮)。
   - [x] 实现显式 10.1 Envelope 对象体读取器（`envelope`：版本 1/2/3 分支（版本 0 证据未覆盖、显式拒绝并注明较原生更严）、bit6/bit7 Z/M double 对、嵌套 SR 空标记/键回引/内嵌 PCS），接入 Map 后缀 IEnvelope 槽位（整体消费后继续读书签循环）并纳入 robustness 清单；样本 25 实例全版本 3、键 74（回引 Map PCS）/键 80（内嵌 PCS 81）两形态辅助吻合；图层坐标系宿主（图层体 Envelope 第 4 段）的模型接入待后续接线轮处理（尾段链自第八轮起闭合至 FieldInfo 循环，第九轮续闭合 ALPC 环至 LELP 体内；样本停止点现为 LELP ⑯ ISymbol 槽 TextSymbol 新对象 @`0xb7a`，见上方开放项）。
   - [x] 闭合 Envelope 归因并消解「+0x144 后 7 字节」异常（归因取证轮）：旧锚点系双层误读——`0x3d6` 的 16 字节实为 WorkspaceName 体的 ShapefileWorkspaceFactory CLSID `{A06ADB96-…}`（真实位置 `0x3d7..0x3e7`，旧读法起点提前 1 字节得到畸形 GUID），「固定 7 字节」= 工厂 CLSID 末字节 + WS 尾随 int32 + FCN 版本>1 选择子；真 `+0x144` GUID 经四个图层（shapefile/FileGDB/注记形态）逐字段验证均为 16 零，RTM 3035 与样本完全可调和，「样本由 SP 构建」工作假设与 SP 介质对照需求一并撤销（本地仅 RTM 介质，两个 SP 命名文件经核对与 ArcGIS SP 无关）。三个 Envelope 归因闭合：键 74 = LabelPlacement.dll LELP Load `FUN_785468c0` 第 4 个 LoadObject（IEnvelope `{1B077914}`，宿主 LabelEngineLayerProperties 键 60）；键 80 = FeatureLayer::Load `0x6f6e9940` 版本≥0xf 槽成员 +0x1f4；键 151 = FDO 委派注记 FeatureLayer 体内同族槽；另证 FeatureLayer 版本>8 槽（+0x1b4）样本全部空标记、全样本 25 个 Envelope 宿主分布（LELP 槽 10 / FL ver≥0xf 槽 12 / Map 尾簇 2）。`{1C352F40}` = IlluminationProps（esri.clsid 全表查证，书签类候选撤销）；Map+0x298 助手升级为「IEnvelope 持有者（Map 显示范围包络对象）」。另见未定名 IID `{97D5B914}` 条目，见 [研究记录](docs/arcmap-10.1-spatial-reference.md)。
-  - [ ] 定性 FeatureLayer `+0x1f4` 槽字段语义（候选「实际绘制/缓存范围」，原「全范围 vs 当前范围」二选一提法作废，缺类型库成员级命名与绘制路径取证）。
-  - [ ] 取证 `+0x1b4` 槽（版本>8）无值行为（读前释放旧引用并清零已静态确认，仍缺受控运行，见 [FeatureLayer 续查](docs/mxd-terra-follow-feature.md)）。
+  - [x] 定性 FeatureLayer `+0x1f4` 为持久化的数据集范围缓存；FeatureLayer 的 IGeoDataset.Extent 更新或回退使用该包络，加载时还用于恢复 SQL 查询类范围。见[范围缓存取证](docs/mxd-terra-chain-fl.md#续查数据集范围缓存与-sql-查询图层2026-11-18)。
+  - [ ] 运行验证 FeatureLayer `+0x1b4` 无值时的行为；原生静态确认 ILayer.AreaOfInterest 在该显式包络为空时回退到 IGeoDataset.Extent，Load 读前释放并清零。见[范围缓存取证](docs/mxd-terra-chain-fl.md#续查数据集范围缓存与-sql-查询图层2026-11-18)。
   - [x] 静态推定 Map+0x298 coclass 为 Geometry Envelope `{30707212}`。
   - [x] 闭合 ArcMap 10.1.0.3035 的 Map+0x298 静态 coclass 身份：原生创建链以 Geometry Envelope `{30707212-52D5-11D0-A8F2-00608C85EDE5}` 创建对象，查询 IEnvelope 后写入该槽，见 [空间范围复核](docs/mxd-spatial-assessment-20261117.md)。
   - [x] 将图层坐标系宿主（`+0x1f4` Envelope 第 4 段）接入中间模型：复核现有普通/FDO 关联/组内图层路径，补测内嵌 CRS、回引键/类不匹配、空槽及参考样本关联图层 CRS；软件人工检查未做，见 [本轮空间参考记录](docs/mxd-open-spatial-20261116.md)。
@@ -330,10 +375,13 @@
   - [x] 对象引用编码闭合后覆盖缺失引用、重复标识及循环引用：`object_refs` 单元与集成测试覆盖 A→B→A 循环、自引用、跨流共享键序（SetStream 不清表）、重复登记=替换、空表不可区分回引与新对象（原生语义）、截断失败不改登记表；样本键 29/32 辅助对照吻合。仅验证分类器自身契约，不证明完整对象解析已验证。
 
 - [x] 接入旧 FDO 加载器版本 0–3 中已支持的 SelectionSymbol/IColor 对象体分派；覆盖未知类和截断回退，实档证据另列。
-- [x] 从 ExtraSafe 图层有界条目读取 RasterLayer 的前缀至首个 IName 对象头；未解析字段原样保留，栅格渲染仍待实现，见 [栅格续查](docs/mxd-luna-followup-display-20261118.md)。
+- [x] 从 ExtraSafe 图层有界条目读取 RasterLayer 的前缀至首个 IName 对象头；首个名称对象后续见本节栅格渲染器条目，见 [栅格续查](docs/mxd-luna-followup-display-20261118.md)。
 - [x] 从参考工程的有界 RasterLayer 顺序读取 FileGDB 栅格名称的普通 RasterDatasetName 委派体及 RasterIO 结束记录；非空 RasterIO 对象与其余 RasterLayer 字节保持未知，见 [栅格取证](docs/mxd-luna-deep-fgdb-raster-20261118.md)。
 - [x] 用 10.1 ILayer 类型库和虚表把栅格名称、可见性接入图层树。
 - [x] 在父栅格条目界内读取 RasterDatasetName 已确认的体及 WorkspaceName 子体；参考样本键 1545 读至 `0x14862`，见 [名称体续查](docs/mxd-luna-followup-rasterdatasetname-20261118.md)。
+- [x] 在 RasterLayer 有界条目中从已闭合的单个 IName 顺序进入 IRasterRenderer，读取参考工程的完整色表渲染器及 RGB 波段与 RasterIO 前缀，见 [栅格渲染器取证](docs/mxd-10.1-raster-renderer.md)。
+- [x] 闭合参考工程两个 RasterLayer v17 的渲染器后尾段：到达各自 ExtraSafe 边界，复用 LayerLib 时间段与 IStatsHistogram 读取器，见 [栅格图层尾段取证](docs/mxd-10.1-raster-layer-tail.md)。
+
 
 ## 中间模型
 

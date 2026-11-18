@@ -33,3 +33,43 @@
 本轮修改 `map_surround` 的三处注释以修正调用关系，保留现有字段和行为。`cargo fmt --check`、完整 `cargo test` 和 `git diff --check` 通过；Cargo 无权清理用户级全局缓存，但未影响测试。合成测试及静态分析不能替代 ArcMap 10.1 和 QGIS 中的人工验证。
 
 Renderers 续查仅更新本记录，没有修改 Rust 代码或新增解析规则；检查文件身份、反编译结果及上述 PE 指令与虚表，不以静态分析宣称目标软件运行结果。
+
+## 续查：Arrangement 枚举已定名（2026-11-18）
+
+上一节的「仅能定性为内部模式」是当时未对到属性和枚举的阶段结论。
+横排与纵排包装 int32 都是 `Arrangement`。其值决定图例样块、标签和描述的顺序。
+以下以 10.1 静态文件为依据，未在 ArcMap 或 QGIS 中检查视觉效果。
+
+1. **类型库定名。** 介质 `esriCarto` 10.1 TYPELIB 的 SHA-256 为
+   `8a70f4094c85b966ce0b0129ad7fa3d9562269c73f87e4f70cbc78c75775b578`。
+   直接解读 MSFT 的 TypeInfo 418/419，分别是 `IHorizontalLegendItem`
+   （`8A7A1786-79B2-11D2-87D5-0000F8751720`）和 `IVerticalLegendItem`
+   （同前缀、首字段末位为 7）。两者 `+0x0c` 是 `get_Arrangement`，
+   `+0x10` 是 `put_Arrangement`。参数类型描述 `0xf50` 指向 TypeInfo 395
+   （类型引用 `0x9a4c`）的 `esriLegendItemArrangement`，getter 使用其指针类型
+   `0xf58`。枚举成员记录起于流内 `0x105374`，数值取自成员记录中的常量。
+2. **持久化字段对位。** 复核上一节所列 Renderers.dll 的 SHA-256、x86 架构与
+   10.1.0.3035 版本。原始指令中，横排 QI `0x7cad4f10` 命中属性接口 IID 后
+   在 `0x7cad4f35` 返回完整对象 O+`0x178`；构造 `0x7cad4d45` 向该处装
+   `0x7caeb22c` 虚表。纵排 QI `0x7cae18c0` 同样返回 O+`0x178`，构造
+   `0x7cae16f5` 装 `0x7caec49c`。两表的 get/put 共用
+   `0x7cae15b0/0x7cae1590`，分别读取和写入接口再加 4，即 O+`0x17c`。
+   两类的 Load/Save 使用持久化视图 O+`0x184` 减 8，与同一成员对位。
+3. **分支复核。** `objdump -d -Mintel` 横排入口 `0x7cad5360` 在
+   `0x7cad56dd` 按原始值跳转到下表地址。纵排 `0x7cae1f47` 对同一枚举
+   使用自己的坐标计算表。任意不在 0..5 范围内的 int32 仍能原样持久化；
+   横排计算对此走 `0x7cad588b` 的缺省路径，不能据此把未知字节当成 0。
+
+| 原值 | 10.1 枚举常量 | 顺序 | 横排分支 |
+| --- | --- | --- | --- |
+| 0 | `esriPatchLabelDescription` | 样块、标签、描述 | `0x7cad56e4` |
+| 1 | `esriPatchDescriptionLabel` | 样块、描述、标签 | `0x7cad57b6` |
+| 2 | `esriLabelPatchDescription` | 标签、样块、描述 | `0x7cad571c` |
+| 3 | `esriLabelDescriptionPatch` | 标签、描述、样块 | `0x7cad575b` |
+| 4 | `esriDescriptionPatchLabel` | 描述、样块、标签 | `0x7cad57ee` |
+| 5 | `esriDescriptionLabelPatch` | 描述、标签、样块 | `0x7cad5833` |
+
+横排 `ILegendItem2.ChangeFlowDirection` 仍按上一节的证据把枚举改写为 0 或 5。
+宽度计算 `0x7cad51b0` 单列 2 和 4，是样块位于两段文本之间的两种排列。
+类型库还独立解释了为什么 0 与 5 互为反序。Rust 对两类公开同一枚举的读取接口，
+原字段保留全部位模式；合成输入覆盖六个枚举值和未知值。

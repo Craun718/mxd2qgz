@@ -27,7 +27,7 @@
 
 本轮用 Ghidra（经桥接工具） 12.1.4 对上述 10.1 AfCore.dll、SystemCore.dll 完成新的函数级静态取证；没有运行 ArcMap 或 QGIS。为避免覆盖并行研究，未把本轮 Ghidra 桥接工具 会话导出为新的证据包；文中保留 MCP 返回的证据 ID 和关键地址，供后续会话核对。
 
-本轮关键函数：AfCore `LoadObject`、`SaveObject`、`SimpleSaveObject`、QI 包装与尾部包装；SystemCore `SetStream`、对象读头、对象写出器、读/写表查找与替换函数。既有记录之外的修正：`LoadObject` 普通分支只实例化零 GUID 空对象，非零 GUID 保持空输出并返回成功；这与此前把 `0x68a7b490` 泛化为“读 GUID 后创建实例”的表述不同。SimpleSaveObject 的 QI IID 也已从指令常量还原。
+本轮关键函数：AfCore `LoadObject`、`SaveObject`、`SimpleSaveObject`、QI 包装与尾部包装；SystemCore `SetStream`、对象读头、对象写出器、读/写表查找与替换函数。普通流 `LoadObject` 的零 GUID 分支和接口分派以[后续原始指令复核](mxd-simple-object-dispatch-20261118.md)为准：零 GUID 不创建对象，非零才尝试创建。
 
 ## 逐项结论
 
@@ -97,19 +97,7 @@
 
 ### 105：闭合 SimpleSaveObject 委派链
 
-**结论：10.1 写入口的键控流判定已定位；普通流的部分递归、接口和失败路径仍待闭合。**
-
-已有 10.1 证据：
-
-- `SaveObject 0x68a7b640` 先用 `0x68a7c4b0` 对流 QI `IObjectStream`。命中时取返回接口并调用虚表 +0x40，即 SystemCore `0x7ffcf7e0` 对象写出器；未命中才调用 `SimpleSaveObject 0x68a7af70`，`writeHeader` 恒为 1。
-- 这组辅助函数的旧接口标签已由 [PE IID 字节复核](mxd-terra-round8-variant.md)撤销。已确认 `0x68a7c1d0` 查询 IDocumentVersion、`0x68a7c320` 查询 IPersistVariant、`0x68a7c390` 查询 IPersistStream；其余见新表，不按旧标签推断。
-- 普通流的一处 IDocumentVersion 查询命中后先调用该接口 +0x10，并尝试对象接口；成功可能提前返回 `0x32`，不能把查询命中直接等价为 IPersistStream 保存。见[后续指令复核](mxd-terra-follow-stream.md#simplesaveobject-的新指令核对)。
-- ObjectStream 委托路径与 SimpleSaveObject 互斥：`SaveObject` 只在未 QI 到 `IObjectStream` 时进入 SimpleSaveObject。SystemCore 写出器本身写 CLSID、按对象指针查写表、命中只写 4 字节旧键；未命中先插入写表，再写当前键并递增 +0x2c，随后按 `IPersistStream(+0x18)` 或 `IPersistVariant(+0x10)` 分派体。
-
-未闭合点：
-
-1. `SimpleSaveObject` 中 `IVariantStream`/`IVariantStreamIO` 对象的具体递归规则已可按顶层分支描述，但各 `IPersistVariant` 实现类的体布局不在本函数闭合范围内。
-2. 10.8 侧对应委托链未重新取证。
+写入口的键控流判定和普通流的递归、读写槽位、错误返回已由[后续原始指令复核](mxd-simple-object-dispatch-20261118.md)闭合。系统对象流通过 `+0x40/+0x44` 委派，普通流中的两个递归分支来自 IDocumentVersionSupport/GEN。各 IPersistVariant 实现类的体布局仍需独立证据。
 
 ### 111：闭合 Map 双名称之外对象属性字段归属
 

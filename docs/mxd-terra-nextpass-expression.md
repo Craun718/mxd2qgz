@@ -1,5 +1,8 @@
 # 10.1 标注集合与表达式属性对位（2026-11-17）
 
+后续已将 LELP 的四个未定成员对位到原生变换属性和标注类 ID，并确认两个旧 short
+在 10.1 仅用于兼容消费，见[字段对位](mxd-10.1-label-transformation-fields.md)。
+
 本次只补充成员归属；读取顺序和既有研究见 [FeatureLayer 尾段](arcmap-10.1-featurelayer-tail.md)和[标注续研](mxd-terra-next-label.md)。地址均为静态 PE VA，O 为完整对象起点、P 为传入 Load 的指针。没有启动 ArcMap 或 QGIS。未改 TODO，以下按缺口边界而非旧行号判断。
 
 ## 证据与换算

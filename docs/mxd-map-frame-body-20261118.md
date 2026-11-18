@@ -1,0 +1,16 @@
+# MapFrame 对象体和 /PageLayout 接线
+
+后续已接入装饰框、矩形和页面元素回引，见[布局续查](mxd-page-layout-surround-20261118.md)。本记录保留地图框接线当轮的检查结果。
+
+以 10.1.0.3035 的原生实现为准。先复用[上轮 MapElements.dll 的 Ghidra 导出](mxd-map-tail-cross-stream-20261118.md#sdk-linearref-的跨流-mapframe)，用 `objdump` 复核版本门、导入跳转及委派实现。MapElements.dll SHA-256 为 `67a6cbb2dfd1fe2626d32a8fbb1835b38e26b9543833b52628a85e7330d98768`；LayerLib.dll（版本资源内部名 LayerUI）SHA-256 为 `55514f054c9e4827d773cf1a9b9a83e7c41c483f73758965244625165f330e02`，均与既有介质身份记录相符。以下是静态映像 VA。
+
+- MapFrame Load `0x79570a20` 从 IMap 槽读完之后，版本小于 4 在 `0x79570b1b..b40` 进入 LONG、double、IEnvelope 槽；小于 2 在 `0x79570c16` 再进 IGeometry、两个 short、IBorder 槽。两种旧分支的值保留原始位，未把其业务含义扩展到所有版本。
+- `0x79570ce9/0x79570d83` 分别读两个 LONG 计数。其循环在 `0x79570d25/0x79570db4` 请求 IMapGrid 与 ILocatorRectangle；名称由磁盘常量地址 `0x7959c9b0/0x7959c190` 的 IID 与 esriCarto 10.1 类型库对位。最后 `0x79570de8` 通过导入槽 `0x7959926c` 调用 LayerLib 的 BaseFrameElement::Load。Load 唯独版本等于 3 时在 `0x79570df7` 之后再读 IMapFrame、LONG、double、LONG、IFeatureLayer。写侧存在版本转换分支，本轮没有把读侧门当作同版本对称写入承诺。
+- LayerLib 导出表的 BaseFrameElement Load/Save 分别为 `0x7869b410/0x7869b530`。Load 先读版本（原生有符号上限 2），调用 `0x786d00d0`；该助手读独立版本（上限 3）、IGeometry 对象、版本 ≥2 的 LONG 和版本 ≥3 的 short。回到 BaseFrameElement，依序调用 `0x786b97f0` 读取 ElementProperties、载入 IBorder/IBackground，读一个 short，再在版本 ≥2 加载 IShadow。IIDs 取自 `0x7871f498/0x7871f4a8/0x7871f4c8`，用 esriCarto 10.1 类型库对位。LayerLib 导出的 get/put_DraftMode（`0x7869a720/0x7869a750`）访问接口视图 `+0x2c`；RTTI 虚表的该视图位于完整对象 `+0xc0`、持久化视图位于 `+0x0c`，故 `0xc0+0x2c=0x0c+0xe0`，对应同一 DraftMode 成员。原生有部分委派失败不马上退出；Rust 严格要求各体完整且不重现 COM 回调。
+- 元素必须完整落在 ExtraSafe 声明范围内。空槽、已登记回引、已支持的 Geometry/Envelope 和 SymbolBorder/SymbolBackground/SymbolShadow 通用体可读；新 IMapGrid、ILocatorRectangle 或其他未知类没有外层子体长度，在元素开始处回滚整个事务。跨流入口还核对 IMap 回引指向已解析的根 Map，整张键表仍可能因另一个有界对象的未知内容而不完整。
+
+SDK Java LinearRef 实档：元素包装位于 `/PageLayout:0x1e`，IMap 回引键 31 结束于 `0x50`。两个集合均为空，`0x74` 起为 BaseFrameElement v2，内联 Geometry 基类 v3 的 Polygon 键 418 含 UnknownCoordinateSystem 键 419。接续 ElementProperties v6（Type 是 `Data Frame`），再消费 SymbolBorder、SimpleLineSymbol 和 RgbColor 键 420–422，直到声明的元素终点 `0x27f`。该槽之后仍有 527 字节 PageLayout 尾段，不是 MapFrame 的剩余字节。工程的 /Maps 中还有未解析的有界图层体，未用此实档证明所有原生键都已登记。
+
+`parse` 现在在 /Maps 根尾与根循环结束位置确认后把同一引用表用于 /PageLayout 根及受支持的 ExtraSafe 集合，报告地图框键、回引位置和根 Map 键。其余布局字段原样保留；未进入布局或遇到未知布局元素时仍报告未知流范围，不按 GUID 扫描恢复同步。对于 66 份 10.1 介质工程，48 份进入布局元素集合，共确认 36 个 MapFrame → Map 回引；14 份遇到暂未支持的 MapSurroundFrame。这些计数只描述当前顺序读取结果。
+
+`cargo fmt --check`、`git diff --check` 与 `cargo test --no-fail-fast -- --include-ignored` 通过（881 项）。验证覆盖 v0–v4 读侧门、逐字节长度修正后的内层截断、未知网格不能登记新键及孤立 /PageLayout 无法解出实档回引；使用 LinearRef 从 `parse` 实际输出核对跨流位置。未做 ArcMap 10.1 或 QGIS 人工验收。完整 PageLayout 尾部、部分布局元素和跨流的其他类仍开放。

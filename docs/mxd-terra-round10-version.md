@@ -1,5 +1,8 @@
 # Terra 第十轮：10.8 `/Version` 写侧尾部与失败分支
 
+后续已用切流、保留引用和读表容量调用的证据闭合内置写入规则，见
+[10.8 写入边界](mxd-10.8-version-write-boundary.md)。本页保留第十轮的阶段判断。
+
 2026-11-17。范围是静态分析 10.8 写入器，接续[条件回填](mxd-terra-next-version.md)和[别名边界](mxd-terra-chain-version.md)。本轮未改 TODO、读取器或测试。下列 VA 是 PE 静态映像地址；调用链和分支不是运行记录。
 
 ## 身份、方法及证据边界

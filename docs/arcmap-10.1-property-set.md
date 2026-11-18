@@ -140,8 +140,9 @@ ASCII+终止零；其余 VARTYPE、空串键、计数 0、版本 0 均无样本�
   拒绝、「计数 × 每条目最小 6 字节」在任何条目读取之前预检限额；键名与
   VT_BSTR 共用 [`crate::stream::native_string::read_string_10_1`]；值经
   `read_variant_10_1`（本模块）：完整 VARTYPE 分支 + 未知 VARTYPE 与原生
-  default 一致拒绝 + 对象分支 9/13 与数组标志 0x2000 显式
-  `Unsupported`。全部字段在 trial 游标上读取，失败不推进游标。
+  default 一致拒绝。初版尚未接入对象和数组；当前支持普通 IStream 空对象、
+  ObjectStream 中已识别的对象，以及[已证单维数组](arcmap-10.1-variant-propertyset-slots.md#单维数组接入)。
+  全部字段在 trial 游标上读取，失败不推进游标。
   `table` 参数不使用（体内无 ObjectStream 编码条目），仅为同类读取器签名
   一致。测试 14 项（tests/property_set.rs）：样本形态体、空集/多条目、版本
   门、负计数、限额预检、全前缀截断事务性、VARTYPE 分支/截断/未知/对象/数

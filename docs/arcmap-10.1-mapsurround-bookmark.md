@@ -110,8 +110,8 @@ Load `FUN_794413d0` 字段序（汇编复核 `0x7944147a`/`0x794414b5`）：
 | 1 | int16 版本 | 无上限拒绝（原生） | 门为有符号 `≥2`/`≥3`；负值位模式原生通过 |
 | 2 | String（名称 → this−0xa0） | 恒有 | AfCore String::Read |
 | 3 | LoadObject（IMap `{E6BDAA75-…}`） | 恒有 | 关联地图；真实流中为对 Map 的键回引头（20 字节，无体）；空标记亦合法 |
-| 4 | int16（this−0x8c） | 版本 ≥2 | 原样保留 |
-| 5 | 32 字节原始（WKSEnvelope 候选） | 版本 ≥3 | **原生读入栈后丢弃**（无存储指令）；写侧取 `this−0x84` 恒写，字段语义开放 |
+| 4 | FixedAspectRatio（int16，this−0x8c） | 版本 ≥2 | 0 为假，非零为真；保留原始位模式 |
+| 5 | WKSEnvelope（32 字节） | 版本 ≥3 | Load 读入栈后丢弃；Save 写 `this−0x84`，该包络由 FitToBounds 更新 |
 
 Save `FUN_79441510` 对称：`AfStreamGetSaveVersion(docVer, 5, DAT_79480d58)`
 → String::Write → SaveObject(IMap) → int16（**恒写**，无版本门）→
@@ -124,6 +124,36 @@ Save `FUN_79441510` 对称：`AfStreamGetSaveVersion(docVer, 5, DAT_79480d58)`
 - 共同前缀版本表 `DAT_79480d58` = `[2,2,2,2,3]`（N=5）→ 10.1（docVer=5）
   恒写**版本 3**（含第 4/5 字段）；docVer 83..10 写 2（无 32 字节段）。
 - Legend 版本表 `DAT_79480dc4` = `[3,4,4,4,4,5]`（N=6）→ 10.1 恒写 **5**。
+
+### 固定纵横比（2026-11-18）
+
+Map.dll 为 PE x86、文件版本 10.1.0.3035，SHA-256 为
+`1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`。
+复用研究目录的 `Map/7943fd10.c`、`Map/794413d0.c`、`Map/79441510.c`、
+`Map/79441940.c`、`Map/79441970.c` 与 `Map/79441130.c`，以 `objdump -d -Mintel`
+复核以下静态地址：
+
+- 介质 `esriCarto` 10.1 类型库（SHA-256
+  `8a70f4094c85b966ce0b0129ad7fa3d9562269c73f87e4f70cbc78c75775b578`）的
+  TypeInfo 162 对应 `IBoundsProperties {7AD72C5D-EB8A-11D3-9314-00600802E603}`。
+  直接读取 MSFT 类型库的名称表和成员记录（`memoffset=0xf0d38`）确认 x86
+  `+0x0c/+0x10` 分别是 `FixedAspectRatio` 的 get/put；第三槽 `+0x14` 是
+  `FixedSize` 的 get，另外一个属性。
+- 构造器 `0x7943fd96..0x7943fdb2` 在完整对象 `+0x24` 安装
+  `IBoundsProperties` 虚表 `0x7948a49c`（RTTI 同一位移），并在
+  `0x7943fe1a` 初始化完整对象的 `+0x50` 为 0。该虚表的属性设置器
+  `0x79441970` 写 `(接口 this + 0x2c)`，即完整对象 `+0x50`。取值器
+  `0x79441940` 转发到完整对象的内部虚表 `+0x48`，基类实现
+  `0x793a1170` 取同一 short。持久化视图位于 `+0xdc`，其读写的
+  `this−0x8c` 同样落在 `+0x50`。
+- TypeInfo 178 把 `IMapSurround +0x20` 定名为 `QueryBounds`；该槽
+  `0x79441130` 从接口视图 `+0x2c` 检查同一 short。`0x794411ce..0x794411d3`
+  在非零时使用当前显示变换提供的包络路径，跳过普通边界重新计算。这是一个
+  以零/非零区分的标志，禁止只识别 `0xffff` 或把它误作 FixedSize。
+
+Rust 保留原始位模式，`fixed_aspect_ratio()` 在版本 0/1 返回 `None`，
+版本 2/3 根据已存值取布尔值；此接口仅报告持久化属性，不重做 ArcMap 布局。
+合成测试覆盖字段缺省、0 与非零。本轮未运行 ArcMap 或 QGIS。
 
 ## 四、AOIBookmark（空间书签，体完全闭合；证据：确定的）
 
@@ -205,8 +235,7 @@ Load ver=5 读全部尾段，读写一致（ver/docVersion 桥接经版本表闭
 3. Scalebar/ScaleText/MarkerNorthArrow/MapTitle 及四个 Scalebar 子类的
    尾段未逐类反编译（共同前缀已由调用者集合证实为其 Load 首段）；本轮
    仅列清单。
-4. 共同前缀第 5 段 32 字节读入即丢（无存储）与写侧恒写的语义、第 4 段
-   short、Legend 各 short/int32 的业务语义均未定性。
+4. 本轮未定性的共同前缀字段已由上节与[拟合包络复核](mxd-map-tail-cross-stream-20261118.md#书签与装饰物)定名；Legend 自身标量需按类体核对。
 5. FeatureBookmark 名称对象（IName）的实现类分布未观察；其 `+0x14`
    直调与接线（`FUN_793acdc0`）的语义未展开。
 6. 共同前缀原生无版本上限、Legend 原生接受负版本（有符号 JLE）：读取器

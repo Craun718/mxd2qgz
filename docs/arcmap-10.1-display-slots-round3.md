@@ -144,12 +144,14 @@ IMarkerBackground 实现类无静态线索，槽分派对未知实现类维持�
 | PresetColorRamp | `{BEB8709A-…}` | `0x6ec0c378` | `0x6eb3a6e0`（读常量 `0x6ec0c3b8`） | `0x6eb3ae20` | `0x6eb3afa0` | 恒 1（`DAT_6ec0b320`） |
 | AlgorithmicColorRamp | `{BEB8709B-…}` | `0x6ec0b468` | `0x6eb31010`（读常量 `0x6ec0b544`） | `0x6eb316c0` | `0x6eb317f0` | 恒 1（`DAT_6ec0b358`） |
 
+> 后续实档及 AfCore 指令复核：以下四类的名称用自由函数 ReadString/WriteString 的 BSTR 布局，长度为 UTF-16 码元数。名称槽的早期 String::Read 归类已更正，见[唯一值渲染器续查](mxd-us-media-renderer-paragraph-20261118.md)。
+
 **RandomColorRamp::Load `0x6eb3c190`**（`2 < (short)ver` 拒绝）：
 
 | # | 字段 | 原语 | 去向 | 证据 |
 | - | ---- | ---- | ---- | ---- |
 | ① | 版本 short | 2 字节 | — | Load `0x6eb3c190` |
-| ② | String | AfCore String::Read | this−0x30（名称候选） | 同上 |
+| ② | 名称 | AfCore ReadString（BSTR） | this−0x30（名称候选） | 同上 |
 | ③ | int32 | 4 字节 | this−0x34（**Load 读入后内存槽置 0**——反编译观察的「读取即弃」形态；Save 写槽值；流内 4 字节原样保留） | 同上；Save `0x6eb3c350` 写 this−0x34 |
 | ④ | 2 字节 short | 2 字节 | 全 16 位与零比较，结果写入 bool this−0x28；见[第四轮指令复核](mxd-round4-display-20261117.md) | 同上 |
 | ⑤ | int32 | 4 字节 | this−0x2c（Seed 候选） | 同上 |
@@ -160,7 +162,7 @@ IMarkerBackground 实现类无静态线索，槽分派对未知实现类维持�
 | # | 字段 | 原语 | 去向 | 版本门 | 证据 |
 | - | ---- | ---- | ---- | ------ | ---- |
 | ① | 版本 short | 2 字节 | — | — | Load `0x6eb395b0` |
-| ② | String | AfCore String::Read | this−0x44（名称候选） | — | 同上 |
+| ② | 名称 | AfCore ReadString（BSTR） | this−0x44（名称候选） | — | 同上 |
 | ③ | int32 count | 4 字节 | this−0x24（Save 序） | — | 同上 |
 | ④ | count × LoadObject（**IColorRamp** `{BEB87091-…}`，`DAT_6ec0b524`） | 20 头 + 体 | 子梯度槽（Save 槽 this−0x28 数组顺序写出，Load 顺序消费，**不倒序**） | — | 同上 |
 | ⑤ | count × 8 字节 double | 8×count 字节 | this−0x14 缓冲（尺寸候选） | Load 版本 ≥2；Save docVer ≥4（**读写门不对称**，按各自反编译实现） | 同上；Save `if docVer < 4 跳过` |

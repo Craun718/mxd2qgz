@@ -1,5 +1,9 @@
 # MXD Version 与保存路径：10.8 Ghidra 桥接工具 续查
 
+后续更正：直接复核 x86 指令后，确认旧伪代码所谓的 `CopyTo` 实为对象流读表扩容，
+写侧的额外四字节操作则为回填；完整结论见 [10.8 写入边界](mxd-10.8-version-write-boundary.md)。
+下文保留当时的分析范围。
+
 日期：2026-11-16。此记录补充 [前序静态复核](mxd-version-luna.md)，不覆盖该文件或同一工作区的其他代理修改。目标文件从 `temp/arcgis/unpacked/Desktop/SetupFiles/Data1.cab` 提取，CAB 条目为 `ArcMap.exe.E97001B0_1E76_4BE8_B51F_269775FE0A80`；Ghidra（经桥接工具） 12.1.4 确认 x86 PE，SHA-256 `a9a963b9dffbf0cb346c67c98bce0880b7e64363410a788dccb9597cff3c75fe`，与前序身份记录相同。
 
 ## 10.8 原生读写证据

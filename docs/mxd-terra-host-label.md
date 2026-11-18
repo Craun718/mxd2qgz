@@ -1,5 +1,8 @@
 # FeatureIDSet 与编辑模板宿主的静态接口对位（2026-11-17）
 
+后续确认 ETM 私有管理接口的 RTTI 名称，以及非零尾标志在 EditTools 中的实际分支，
+见[尾标志取证](mxd-10.1-label-transformation-fields.md#edittemplatemanageretm)。
+
 本轮接续 [Terra 标注续研](mxd-terra-next-label.md) 和 [FeatureIDSet 前次取证](mxd-round3-labels-featurelayer-20261117.md)。本记录的地址是 ArcMap 10.1 静态映像 VA；类型库、反编译和构造测试均不代表 ArcMap 的运行行为，也不代替 QGIS 人工验收。
 
 ## 身份和方法

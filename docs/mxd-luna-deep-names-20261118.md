@@ -62,3 +62,66 @@ REA CLI 因当前沙箱不能绑定 Unix socket 未启动。本轮通过现有 1
 `GdbCore.dll` 的 `0x709b7c90`、`0x709b7d50`、`0x708d8750`、`0x709a8f40`、
 `0x709b74d0`、`0x709b7510` 及 QI `0x709b6560`，并从接口虚表槽追到其调用点。
 没有在 ArcMap 运行或人工打开 MXD；合成测试不等于目标软件验收。
+
+## 续查：要素类类别与单类枚举（2026-11-18）
+
+第四串是**要素类的类别描述**；标志为真时，**按数据集名称对象的自身名称枚举
+一个要素类**。这是根据生产者和消费者描述的语义；未取得私有接口的原始 IDL
+成员拼写。前几节是此前只确定成员偏移的阶段记录。
+
+从 10.1 Desktop `Setup1.cab` 补提取以下 x86 PE，固定版本资源均为
+10.1.0.3035，地址为静态 VA。另复核上文 GdbCore 的版本、架构和哈希一致。
+
+| 文件 | SHA-256 |
+| --- | --- |
+| FileGDB.dll | `73cef6bac97b0bdba8e4b26e2052cefab0b55a32e3a4141c01701d7cbc5f1230` |
+| SdeFDB.dll | `6b56d69e3e32736f08716c11f402bb90e9f67c74ed4e7cc017de1f9f3e6aeed0` |
+| GdbCoreLib.dll | `10e0af85e3e3825647733f99d573c969d69ccaf47203365e51323fce07008baa` |
+
+1. **类别字符串的生产者。** FileGDB 的 FeatureDataset、SdeFDB 的 SdeDataset
+   分别将 `0x6fa21c10`、`0x7e7c5940` 放入 IDataset 虚表 `+0x10`
+   （`FullName`，10.1 esriGeoDatabase 类型库 TypeInfo 9）。创建名称对象后先
+   对其 `IDatasetName +0x1c` 设置数据集 Category，FileGDB 加载字符串资源
+   `0xfa2`（`File Geodatabase Feature Dataset`），SdeFDB 用 `0x578`
+   （`SDE Feature Dataset`）。随后通过 `0x6fa238a0` 或 `0x7e7cb610`
+   查询同一个私有接口 IID `3C5BBE8C-C9C3-11D1-AA7C-00C04FA33A15`，
+   在 `0x6fa21db9` / `0x7e7c5af1` 向该接口 `+0x10` 另写
+   `0xfa1` / `0x589` 的文本。PE 英文资源（语言 1033）分别为
+   `File Geodatabase Feature Class`、`SDE Feature Class`。因此第四串属于
+   要素类类别，和第三串所在的要素数据集 Category 分开，也不用于替代名称或路径。
+2. **标志的生产者。** 两个 FullName 方法均在 `0x6fa21dc4..0x6fa21dd9` /
+   `0x7e7c5afc..0x7e7c5b11` 读 IDataset 视图 `+0x165` 的单字节，
+   转成 VARIANT_BOOL，设置私有接口 `+0x18`。方法所在 IDataset 视图位于完整
+   对象 `+0x24`；同一对象的 FdbDataset 基类从 `+0x10` 开始，
+   所以这是该基类的 `+0x179`。`FdbDataset::Open 0x70bf9010` 在走常规
+   要素数据集初始化以外的 `OpenFeatureTable` 或 `OpenFeatureQuery` 路径后，
+   于 `0x70bf914e` 把此字节设为 1。另一生产者是
+   `FdbFeatureDatasetEnum::Next(IDatasetName**) 0x70c12ca0`，在
+   `0x70c12e00..0x70c12e19` 根据当前枚举条目对应的字节是否为 1
+   设置同一标志。
+3. **标志的消费者。** GdbCoreLib 导出的
+   `FdbFeatureClassEnum(IDatasetName*, const String&, bool) 0x70d4ef50`
+   在 `0x70d4f0cd` 查询同一私有接口（`0x70d56270`），在
+   `0x70d4f0e3` 调 `+0x14` 取标志。返回 `VARIANT_TRUE (-1)` 时，
+   `0x70d4f10b` 调原名称对象的 `IDatasetName::get_Name(+0x0c)`，
+   把得到的一个名称插入枚举数组并加一计数。否则转 `0x70d4f180`，
+   调用符号可核验的 `AddESRIFeatureClasses`，再调用
+   `RemovePrivateExtensionFeatureClasses`，使用正常的子要素类枚举路径。
+
+类型库来自同一介质的 `esriGeoDatabase.olb`（SHA-256
+`09b741f2627633d36b67985e175632055fe6c5b8cd1000484acc3007f5917f9d`），
+PE TYPELIB 1/1033 资源 SHA-256
+`92634979daa3ed0008b36d152e1fdf39cba04944f6bc7bbb5ea4c786bb44bb9a`；
+直接按 MSFT 的类型及成员记录解析，TypeInfo 9/11 分别定位 IDataset 和
+IDatasetName。补充逆向用 `objdump -d -Mintel`（代码）、PE 导入导出和 RTTI
+（调用角色）及 RT_STRING（生产者传入文本）互证。
+
+已有介质工程 Africa 的 `/Maps` 在 `0x3a8` 处有键 44 的版本 1 体：
+第三串 `0x3d4` 为 `File Geodatabase Feature Dataset`，第四串 `0x41a` 为
+`File Geodatabase Feature Class`，`0x45c` 的标志为 0，工作空间对象头紧随于
+`0x45d`。这是两种类别在实际文件中共存的字节证据；真分支仍由原生指令及合成
+输入检验。
+
+Rust 添加语义访问器，保持原字段与解析宽度；真值必须是原始字节 1，其他位模式
+仍保留。未在 ArcMap 或 QGIS 实际打开工程验证，也未以此推断类型库未公开的
+私有成员拼写。

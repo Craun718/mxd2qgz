@@ -1,5 +1,8 @@
 # FeatureLayer 包络槽下游接口链（2026-11-17）
 
+11 月 18 日已[闭合范围缓存语义](#续查数据集范围缓存与-sql-查询图层2026-11-18)。
+前几节保留 11 月 17 日的阶段性结论和取证过程。
+
 承接 [包络槽续查](mxd-terra-follow-feature.md) 的原 TODO 296。本文仅为静态研究，地址为 x86 映像 VA、成员偏移基于 FeatureLayer Load 的第一个显式参数；不代表 ASLR 运行地址。本轮未修改 TODO 或解析器，未运行 ArcMap、QGIS，未进行人工目视验收。
 
 ## 身份与方法
@@ -28,3 +31,70 @@
 新证据将第二级 IID 修正并定位 ArcMap 中额外的 `+0x14` 调用，但仍未找到两个接口的正式名称、`+0x10` 方法声明或承接该方法的具体类和实现。现阶段只可称 `+0x1f4` 为传入该方法的持久化 IEnvelope，不能认定为实际绘制范围、缓存范围或数据范围；也不能从额外 short 分支给 Envelope 赋名。这不改变已确认的文件字段布局，不实施解析器语义变更。
 
 可单独落账的已完成研究动作：**10.1 FeatureLayer 第二级 QI 的 IID 原始字节纠错，并交叉定位 ArcMap 同 IID 的另一方法槽调用**。原 TODO 296 的业务语义与具体实现仍未闭合，不可勾选；尚需找到能识别 IID 的 10.1 类型信息或 QI 实现，追踪其虚表 `+0x10` 目标及成员读写，并在可用环境中对可控图层、视图和数据源进行 ArcMap 10.1 运行观察。任何静态推断、合成测试或扫描结果均不能替代运行及 ArcMap/QGIS 目视验收。
+
+## 续查：数据集范围缓存与 SQL 查询图层（2026-11-18）
+
+`FeatureLayer` 的 IPersistStream 视图 `+0x1f4` 是**持久化的数据集范围缓存**。
+具有空间数据源时，图层的范围 getter 取得数据集范围并更新缓存；无法取得数据源的
+IGeoDataset 接口时，回退到这个包络。SQL 查询类还有一条反向路径：加载图层时，
+可用缓存恢复 SQL 数据源内部的范围。该字段不宜作为地图当前显示范围或实际绘制裁剪框，
+也不能把落盘缓存视为数据源此刻的权威范围。
+
+### FeatureLayer：字段位置与读取路径
+
+复核研究目录原有 FeatureLayer.dll 的 SHA-256 与上节一致，PE x86，版本
+10.1.0.3035。复用 `FeatureLayer/6f6e9940.c`、`6f6e5ab0.c`、
+`6f6dd450.c`，结合 `objdump -d -Mintel` 复核 Ghidra 输出删去的分支。
+
+- 构造器 `0x6f6db996..0x6f6db9be`、RTTI 与两份 10.1 类型库互证：
+  完整对象 O 的 IGeoDataset、IPersistStream、ILayer 接口分别位于
+  `+0xc8/+0xd0/+0xd8`。持久化 `+0x1f4` 和范围 getter 的
+  `+0x1fc` 都是 **O+`0x2c4`**；构造器 `0x6f6dbe41` 将该成员初始化为 0。
+- esriGeoDatabase TYPELIB TypeInfo 19 将 `IGeoDataset +0x10` 定名为
+  `get_Extent`。FeatureLayer 的该槽（虚表 `0x6f7acf78`、实现
+  `0x6f6e5ab0`）先查数据源的 IGeoDataset：`0x6f6e5af4` 请求
+  `34C20004-4D3C-11D0-92D8-00805F7C28B0`。数据源提供该接口时，
+  `0x6f6e5c0c` 调其 `get_Extent`；结果空指针或空包络时还调用
+  LayerLib 的 `GetExtentFromSpatialReference`（IAT `0x6f74e4e0`）。
+  `0x6f6e5c91..0x6f6e5ca6` 将结果经复制及 QI 存回 IEnvelope 缓存槽。
+- 数据源缺失或不提供 IGeoDataset 时，`0x6f6e5b04..0x6f6e5bb4` 取
+  同一缓存并复制到范围输出；如有图层空间参考，复制前赋给缓存包络。
+  显式 AOI 是另一成员：esriCarto TypeInfo 5 的 `ILayer.AreaOfInterest
+  +0x18` 对应 FeatureLayer `0x6f6dd450`。其成员 `this+0x1ac`
+  与持久化槽 `+0x1b4` 同为 O+`0x284`。在
+  `0x6f6dd50f..0x6f6dd520`，该成员为空时，AOI getter 转调同一图层
+  的 `IGeoDataset.get_Extent`。这是对空值的静态结论，未观察目标软件运行。
+
+### SQL 查询图层：缓存的恢复路径
+
+从 10.1 Desktop 介质的两个 CAB 补查 DLL/OLB 中的完整 IID，找到此前未检索的
+`SqlFDB.dll`。该 DLL 提取自 10.1 Desktop 介质，PE x86、固定文件版本
+10.1.0.3035，SHA-256 `fb440a01e9435947892f0ad9cbb76aaf1cd7ca40c09e5cea0cdba11c23294b8b`。
+
+| IID（见上节） | SqlClass 的 QI 命中指令 | 返回偏移 | RTTI 基类描述 |
+| --- | --- | --- | --- |
+| `720A857D-45A9-4DBF-AA06-73715C654B01` | `0x7fee1877..0x7fee1888` | O+`0x10` | `0x7ff3538c`：IQueryLayerClass |
+| `89E86261-2B2D-45A7-BE01-64190DBC9BDB` | `0x7fee1920..0x7fee1933` | O+`0x38` | `0x7ff35178`：IQueryLayerExtent |
+
+- SqlClass 构造器 `0x7fedac9b` 安装 `IQueryLayerExtent` 虚表
+  `0x7ff2f1e4`。FeatureLayer::Load 的最后一步
+  `0x6f6ea94b` 调用此接口 `+0x10` 的范围设置方法。对应 SqlClass 实现
+  `0x7fee1620` 将 IEnvelope 以其 WKSEnvelope 查询槽 `+0xdc` 复制为
+  四坐标（完整 SqlClass O+`0xd8`），将 O+`0x8d` 标为已备好范围。
+  空包络指针返回 E_POINTER；FeatureLayer 这个调用点没有传播该方法的返回码。
+  `+0x14` 的 `0x7fee1660` 把同一就绪标志返回为 VARIANT_BOOL，
+  解释了前轮 ArcMap 中同接口的 16 位输出。这里按行为描述私有槽，
+  未断言原始 IDL 方法拼写。
+- 同一 SqlClass 的 IGeoDataset 虚表 `0x7ff2f0d4` 中，
+  `get_Extent 0x7fee0ed0` 从 `0x7fee0f13` 检查同一 O+`0x8d`。
+  置位时直接跳到 `0x7fee10ad`，从 O+`0xd8` 组装范围；否则走查询/
+  计算路径，结果写入同一缓存后置位。因此保存的查询图层范围会参与数据源的
+  Extent 返回；没有从这些指令推断实际视图裁剪、运行时绘制或用户界面行为。
+
+接口位置分别以完整 FeatureLayer 和完整 SqlClass 为基准，不跨对象相加。
+类型信息来自介质 esriGeoDatabase TYPELIB（SHA-256
+`92634979daa3ed0008b36d152e1fdf39cba04944f6bc7bbb5ea4c786bb44bb9a`）
+与 esriCarto TYPELIB（SHA-256
+`8a70f4094c85b966ce0b0129ad7fa3d9562269c73f87e4f70cbc78c75775b578`）。
+已在 Rust 接入范围缓存的命名访问器；槽位格式、回引和中间模型原有 CRS 映射保持
+原行为。未在 ArcMap/QGIS 人工检查，显式 AOI 空值的受控运行观察仍未完成。

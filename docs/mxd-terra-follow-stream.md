@@ -11,11 +11,13 @@
 
 ## SimpleSaveObject 的新指令核对
 
+本节是阶段性记录；读取侧、递归和错误返回见[后续闭合](mxd-simple-object-dispatch-20261118.md)。
+
 `SaveObject 0x68a7b640` 对输入流 QI IObjectStream；返回指针非空时调用 +0x40，否则调用 `SimpleSaveObject 0x68a7af70`，参数 `writeHeader=1`。不能把后者内部的某分支直接称为 ObjectStream 写槽。进一步核对：
 
 - `0x68a7b004` 的 `0x68a7c1d0` 使用 IID 地址 `0x68c6dcb8`，不是 `0x68c6dca8`；前者的字节及既有 IID 记录对应 IDocumentVersion，**不是 IID_IUnknown**。因此 [对象流调查](mxd-parse-agent-object-stream-20261117.md)第 105–106 行把该查询称为 IUnknown 的解释有误。若流上该查询成功，函数使用所得接口 +0x10，再尝试对象的 `0x68a7c240` 接口；命中时 `0x68a7b069` 直接返回 `0x32`，不能把该路径简化为普通 IPersistStream Save。
 - `0x68a7b099..0x68a7b0e8` 的第一组候选在检查标志为零后取出接口并递归调用 `SimpleSaveObject`，原流及原第三参数继续传入、第四参数强制为 1；递归返回值经 `edi` 保存并在清理后返回。`0x68a7b141..0x68a7b24a` 的另一组读取 VARIANT 后，VT 13 直接传对象、VT 9 经辅助 QI 后传对象，其他类型传空指针，均递归相同函数且第四参数为 1；返回值经 `ebx` 保留。这里的分支条件、接口名和具体实现的副作用仍需结合接口定义和调用点逐条验证，不能把递归直接认作经过 SaveObject 的 +0x40 分派。
-- 后续 `0x68a7b280..0x68a7b47c` 还涉及对象上的 IDocumentVersion/IVariantStreamIO、可选头和新包装，分别调用不同虚表槽；若 `0x68a7b2ce` 调用失败则清理并返回 E_FAIL。`0x68a7b530` 读侧、各子调用失败与输出对应关系仍未完整闭合；没有足够证据把整条委派链标为完成。
+- 后续 `0x68a7b280..0x68a7b47c` 查询对象上的 IPersistVariant/IPersistStream，并处理可选头和流适配器，分别调用不同虚表槽；若 `0x68a7b2ce` 调用失败则清理并返回 E_FAIL。`0x68a7b530` 读侧、各子调用失败与输出对应关系仍未完整闭合；没有足够证据把整条委派链标为完成。
 
 ## 待办判断与验证边界
 
