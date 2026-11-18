@@ -969,9 +969,14 @@ fn complete_sample_context_reads_cgl_sublayers_without_skipping() {
             .iter()
             .any(|line| { line.contains("照明后定长字段（offset 0x24fe8）") })
     );
-    let tail = report.map.frames[0].unknown_fields.last().unwrap();
-    assert_eq!(tail.offset, 0x253e1);
-    assert_eq!(tail.bytes, maps[0x253e1..]);
+    assert_eq!(report.confirmed_tail, Some((0x25569, 1)));
+    assert!(report.map.unknown_fields.is_empty());
+    assert!(
+        report.map.frames[0]
+            .unknown_fields
+            .iter()
+            .all(|field| field.offset < 0x253e1)
+    );
 }
 
 #[test]

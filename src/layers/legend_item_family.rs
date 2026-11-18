@@ -55,7 +55,9 @@
 //! 游标与登记表整体不动。全部结论为静态反编译观察，未经目标软件运行
 //! 验证，不得声称已验证。
 
-use crate::layers::legend_item::{BaseLegendItemFields10_1, read_base_legend_item_fields_10_1};
+use crate::layers::legend_item::{
+    BaseLegendItemFields10_1, LegendItemArrangement10_1, read_base_legend_item_fields_10_1,
+};
 use crate::objects::display_symbol::{
     MAX_SYMBOL_NESTING_DEPTH, SymbolSlotFull10_1, read_symbol_slot_full_10_1,
 };
@@ -291,12 +293,19 @@ pub struct VerticalLegendItemBody10_1 {
     pub key: u32,
     /// 条目版本 short 的无符号位模式（有符号 >1 拒绝；Save 恒写 1）。
     pub version: u16,
-    /// int32（`−8`，位模式；与 HorizontalLegendItem 的 int32 同位）。
+    /// IVerticalLegendItem.Arrangement 的原始 int32（持久化接口 −8）。
     pub raw_int32: i32,
     /// BaseLegendItem 字段序。
     pub base: BaseLegendItemFields10_1,
     /// 停止点之后剩余的字节数。
     pub remaining_bytes: usize,
+}
+
+impl VerticalLegendItemBody10_1 {
+    /// 返回该图例项记录的排列顺序；未知值仍可通过 `raw_int32` 读取。
+    pub fn arrangement(&self) -> Option<LegendItemArrangement10_1> {
+        LegendItemArrangement10_1::from_raw(self.raw_int32)
+    }
 }
 
 #[cfg(test)]

@@ -11,7 +11,7 @@ use std::io::Read;
 
 #[test]
 #[ignore = "需要本地 10.1 安装介质 Africa.mxd"]
-fn africa_from_map_root_reaches_first_prepare_result_layer() {
+fn africa_from_map_root_reads_prepare_results_and_sublayers() {
     let mut doc = cfb::open("temp/arcmap101-media-mxd/Africa.mxd").unwrap();
     let mut bytes = Vec::new();
     doc.open_stream("/Maps")
@@ -53,19 +53,22 @@ fn africa_from_map_root_reaches_first_prepare_result_layer() {
     let p = read_basemap_prefix_10_1(&mut r, 1_000_000, &mut refs).unwrap();
     assert_eq!(p.name, "Basemap");
     assert_eq!(p.results_count, Some(6));
-    assert_eq!(p.feature_keys, vec![42]);
-    assert_eq!(
-        p.stop,
-        BasemapStop10_1::NewObject {
-            offset: 0x145d,
-            class_id: MAP_CLASS_ID,
-            key: 91
-        }
-    );
-    assert_eq!(r.position(), 0x145d);
+    assert_eq!(p.feature_keys, [42, 105, 140, 176, 222, 258]);
+    assert_eq!(p.sublayers.len(), 6);
+    for (&key, sublayer) in p.feature_keys.iter().zip(&p.sublayers) {
+        assert_eq!(
+            *sublayer,
+            ObjectEntry10_1::BackReference {
+                class_id: mxd2qgz::layers::feature_layer::FEATURE_LAYER_CLASS_ID,
+                key,
+            }
+        );
+        assert!(refs.contains(key));
+    }
+    assert_eq!(p.stop, BasemapStop10_1::Complete);
+    assert_eq!(r.position(), 0x65fd);
     assert!(refs.contains(41));
-    assert!(refs.contains(42));
-    assert!(!refs.contains(91));
+    assert!(refs.contains(91));
 }
 
 #[test]
@@ -99,19 +102,14 @@ fn africa_map_root_uses_basemap_refs_in_legend() {
     let suffix =
         mxd2qgz::maps::map_object::read_map_suffix_10_1(&mut r, 1_000_000, &mut refs).unwrap();
     let entry = &suffix.layer_list.entries[0];
-    let unknown = entry.body.expect("保留未解析的 Basemap 体");
-    assert_eq!(unknown.offset, 0x145d);
-    assert_eq!(unknown.offset + unknown.len, 0x65fd);
-    assert_eq!(
-        unknown.basis,
-        mxd2qgz::layers::layer_list::BodyBoundBasis::PrefixAInference
-    );
-    assert!(entry.parse_note.as_ref().unwrap().contains("键 [42]"));
-    assert!(refs.contains(42));
-    assert!(!refs.contains(91));
-    use mxd2qgz::layers::legend_item::{BaseLegendItemStop10_1, LegendItemSlot10_1 as LayerSlot};
+    let unknown = entry.body.expect("保留 Basemap 的 ExtraSafe 边界");
+    assert_eq!(unknown.offset, 0x65fd);
+    assert_eq!(unknown.len, 0);
+    assert!(refs.contains(91));
+    assert!(refs.contains(140));
+    use mxd2qgz::layers::legend_item::LegendItemSlot10_1 as LayerSlot;
     use mxd2qgz::maps::{
-        map_object::MapSurroundElement10_1,
+        map_object::{MapSuffixStop, MapSurroundElement10_1},
         map_surround::{LegendItemSlot10_1 as LegendEntry, LegendStop10_1},
     };
     let Some(MapSurroundElement10_1::Legend(legend)) = &suffix.map_surround_parsed[0] else {
@@ -128,18 +126,34 @@ fn africa_map_root_uses_basemap_refs_in_legend() {
         }
     ));
     assert!(first.stop.is_none());
-    assert!(matches!(
-        legend.stop,
-        LegendStop10_1::LegendItemBodyIncomplete {
-            index: 1,
-            reason: BaseLegendItemStop10_1::SlotUnsupported {
-                class_id: mxd2qgz::layers::feature_layer::FEATURE_LAYER_CLASS_ID,
-                key: 140,
-                ..
-            },
+    assert_eq!(legend.stop, LegendStop10_1::Completed);
+    assert_eq!(legend.items.len(), 3);
+    let [(key, masking)] = suffix.post_border_tail.layer_masking.as_slice() else {
+        panic!("应读取首个图层的独立遮罩段");
+    };
+    assert_eq!((*key, masking.version, masking.tail), (40, 2, 0));
+    assert!(masking.entries.is_empty());
+    assert_eq!(suffix.stop, MapSuffixStop::Complete);
+    assert_eq!(r.position(), 0xc510);
+    assert_eq!(bytes.len() - r.position(), 4);
+    let mut layout_bytes = Vec::new();
+    doc.open_stream("/PageLayout")
+        .unwrap()
+        .read_to_end(&mut layout_bytes)
+        .unwrap();
+    let report =
+        mxd2qgz::maps::mxd_maps::parse_mxd_streams_10_1(&bytes, Some(&layout_bytes)).unwrap();
+    let layout = report.page_layout.unwrap();
+    assert!(layout.stop.is_none(), "{:?}", layout.stop);
+    assert_eq!(layout.consumed_elements, 7);
+    assert_eq!(layout.map_frames.len(), 1);
+    assert_eq!(
+        layout.map_frames[0].prefix.map,
+        ObjectEntry10_1::BackReference {
+            class_id: MAP_CLASS_ID,
+            key: 38
         }
-    ));
-    assert_eq!(r.position(), 0xa13d);
+    );
 }
 
 #[test]
@@ -153,17 +167,19 @@ fn empty_results_and_invalid_version_are_bounded() {
     bytes.extend([0u8; 16]);
     bytes.extend([0u8; 2]);
     bytes.extend([0u8; 4]);
+    bytes.extend(0u32.to_le_bytes()); // 正式子图层计数
     let mut reader = Reader::new(&bytes);
     let mut refs = RefTable10_1::new();
     let result = read_basemap_prefix_10_1(&mut reader, 1024, &mut refs).unwrap();
     assert_eq!(result.results_count, Some(0));
     assert_eq!(reader.position(), bytes.len());
-    assert_eq!(
-        result.stop,
-        BasemapStop10_1::AfterResults {
-            offset: bytes.len()
-        }
-    );
+    assert_eq!(result.stop, BasemapStop10_1::Complete);
+    for end in 0..bytes.len() {
+        let mut reader = Reader::new(&bytes[..end]);
+        assert!(read_basemap_prefix_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
     bytes[0..2].copy_from_slice(&12u16.to_le_bytes());
     let mut reader = Reader::new(&bytes);
     assert!(read_basemap_prefix_10_1(&mut reader, 1024, &mut refs).is_err());

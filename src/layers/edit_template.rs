@@ -156,22 +156,8 @@ pub enum VariantClassValue10_1 {
     Array(ClassVariantArray10_1),
 }
 
-/// 数组变体的元素序列。
-#[derive(Debug, Clone, PartialEq)]
-pub enum ClassVariantArray10_1 {
-    /// 固定宽度元素：去 0x2000 后的 VARTYPE、元素字节数与整块原始字节
-    /// （原生为一次 `IStream::Read(count × 元素字节数)`）。
-    Fixed {
-        /// 去 0x2000 标志后的 VARTYPE。
-        vartype: u16,
-        /// 单元素字节数。
-        element_bytes: usize,
-        /// count × 元素字节数的原始字节。
-        raw: Vec<u8>,
-    },
-    /// VT_BSTR|VT_ARRAY：每元素 `ReadString`（n*2+2 布局）。
-    Strings(Vec<String>),
-}
+pub use crate::stream::variant_array::ClassVariantArray10_1;
+use crate::stream::variant_array::read_class_variant_array_10_1;
 
 /// 从当前位置读取一个 AfCore `Variant::Read`（bool=true 路径）值，失败时
 /// 不推进游标。
@@ -210,93 +196,9 @@ pub fn read_variant_class_value_10_1(
     };
 
     if is_array {
-        match vt {
-            8 => {
-                // BSTR 数组：int32 计数 + 每元素 ReadString（n*2+2）。
-                let count_offset = trial.position();
-                let count = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
-                if count < 0 {
-                    return Err(invalid(format!(
-                        "BSTR 数组计数 offset 0x{count_offset:x}: 计数为负数（{count}）；\
-                         原生负计数使 SafeArrayCreate 失败返回 0x80004005"
-                    )));
-                }
-                let count_usize = usize::try_from(count).expect("计数已确认为非负");
-                let min_total = count_usize
-                    .checked_mul(6) // 每元素最小 4 字节 n + 2 字节载荷
-                    .ok_or_else(|| invalid("BSTR 数组计数 × 最小元素字节数溢出".to_string()))?;
-                if min_total > max_bytes {
-                    return Err(invalid(format!(
-                        "BSTR 数组计数 {count} 超过资源限额 {max_bytes}"
-                    )));
-                }
-                let mut items = Vec::new();
-                for _ in 0..count_usize {
-                    items.push(read_variant_bstr_array_element_10_8(&mut trial, max_bytes)?);
-                }
-                let value = VariantClassValue10_1::Array(ClassVariantArray10_1::Strings(items));
-                *reader = trial;
-                return Ok(value);
-            }
-            // EMPTY/NULL 带数组标志：原生改道 BSTR 数组路径，语义未定，
-            // 本读取器拒绝（较原生更严，无字节佐证）。
-            0 | 1 => {
-                return Err(io::Error::new(
-                    ErrorKind::Unsupported,
-                    format!(
-                        "Variant::Read 值 offset 0x{start:x}: VT_EMPTY/NULL 带 VT_ARRAY 标志 \
-                         （原生改道 BSTR 数组路径，SafeArrayCreate(VT_EMPTY) 语义未定），不支持"
-                    ),
-                ));
-            }
-            // 对象类型不允许数组（原生 switch 无 9/13 的数组路径）。
-            9 | 13 => {
-                return Err(io::Error::new(
-                    ErrorKind::Unsupported,
-                    format!(
-                        "Variant::Read 值 offset 0x{start:x}: VT_DISPATCH/UNKNOWN（0x{raw_vt:04x}）\
-                         为对象分支，原生经全局 LoadObject 走 16 字节类 GUID/零 GUID 的 COM \
-                         上下文（非对象流对象头），未闭合，显式拒绝"
-                    ),
-                ));
-            }
-            w => {
-                let element_bytes = match fixed_width {
-                    Some(n) => n,
-                    None => {
-                        return Err(invalid(format!(
-                            "数组 VARTYPE {w}（原始 0x{raw_vt:04x}）无对应载荷分支（原生 \
-                             default → 0x80004005）"
-                        )));
-                    }
-                };
-                let count_offset = trial.position();
-                let count = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
-                if count < 0 {
-                    return Err(invalid(format!(
-                        "数组计数 offset 0x{count_offset:x}: 计数为负数（{count}）；原生负计数\
-                         使 SafeArrayCreate 失败返回 0x80004005"
-                    )));
-                }
-                let count_usize = usize::try_from(count).expect("计数已确认为非负");
-                let total = count_usize
-                    .checked_mul(element_bytes)
-                    .ok_or_else(|| invalid("数组计数 × 元素字节数溢出".to_string()))?;
-                if total > max_bytes {
-                    return Err(invalid(format!(
-                        "数组计数 {count} × 元素字节数 {element_bytes} 超过资源限额 {max_bytes}"
-                    )));
-                }
-                let raw = trial.read_bytes(total)?.to_vec();
-                let value = VariantClassValue10_1::Array(ClassVariantArray10_1::Fixed {
-                    vartype: vt,
-                    element_bytes,
-                    raw,
-                });
-                *reader = trial;
-                return Ok(value);
-            }
-        }
+        let array = read_class_variant_array_10_1(&mut trial, vt, max_bytes)?;
+        *reader = trial;
+        return Ok(VariantClassValue10_1::Array(array));
     }
 
     // 非数组分支。
@@ -351,52 +253,6 @@ pub fn read_variant_class_value_10_1(
             }
         }
     };
-    *reader = trial;
-    Ok(value)
-}
-
-/// 读取 `ReadString`（VariantStream/OLE 风格）布局的一个字符串元素：
-/// 4 字节 UTF-16LE 码元数 `n`；`n == 0` 时无载荷（空串），否则读
-/// `n*2+2` 字节并要求末尾 UTF-16LE 终止零。这是 `native_string`
-/// 布局（n 为含终止零的字节长度）之外的另一种原生字符串布局，
-/// 仅用于 [`ClassVariantArray10_1::Strings`] 元素。
-///
-/// `max_bytes` 约束 `n*2+2` 载荷（`usize::MAX` 不设限）；失败时不推进
-/// 游标。
-fn read_variant_bstr_array_element_10_8(
-    reader: &mut Reader<'_>,
-    max_bytes: usize,
-) -> io::Result<String> {
-    let start = reader.position();
-    let invalid = |reason: String| {
-        io::Error::new(
-            ErrorKind::InvalidData,
-            format!("ReadString 元素 offset 0x{start:x}: {reason}"),
-        )
-    };
-    let mut trial = reader.clone();
-    let units = trial.read_u32_le()?;
-    if units == 0 {
-        *reader = trial;
-        return Ok(String::new());
-    }
-    let payload_length = units
-        .checked_mul(2)
-        .and_then(|length| length.checked_add(2))
-        .and_then(|length| usize::try_from(length).ok())
-        .ok_or_else(|| invalid("码元数 × 2 + 2 溢出".to_string()))?;
-    if payload_length > max_bytes {
-        return Err(invalid(format!(
-            "声明载荷 {payload_length} 字节超过资源限额 {max_bytes}"
-        )));
-    }
-    let payload = trial.read_bytes(payload_length)?;
-    if payload[payload_length - 2..] != [0, 0] {
-        return Err(invalid("载荷末尾不是 UTF-16LE 终止零".to_string()));
-    }
-    let value = Reader::new(&payload[..payload_length - 2])
-        .read_utf16_le(payload_length - 2)
-        .map_err(|error| invalid(format!("非法 UTF-16LE 编码：{error}")))?;
     *reader = trial;
     Ok(value)
 }

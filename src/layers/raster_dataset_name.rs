@@ -11,6 +11,10 @@
 //! 传入本模块。读取器最多消费四条顺序 String、IWorkspaceName 槽及该对象体
 //! 版本门控制的两个 int32；未知嵌套类或旧零门值是成功停止点。
 
+use super::fgdb_raster_dataset_name::{
+    FGDB_RASTER_DATASET_NAME_CLASS_ID, FgdbRasterDatasetNamePrefix10_1, FgdbRasterIoPrefix10_1,
+    read_fgdb_raster_dataset_name_prefix_10_1, read_fgdb_raster_io_prefix_10_1,
+};
 use crate::objects::workspace_name::{
     WORKSPACE_NAME_CLASS_ID, WorkspaceNamePrefix10_1, WorkspaceNameStop10_1,
     read_workspace_name_body_10_1,
@@ -177,6 +181,67 @@ pub fn read_raster_dataset_name_body_10_1(
         tail_at_70,
         stop,
     })
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum RasterDatasetNameEntryBody10_1 {
+    Dataset(Box<RasterDatasetNameBody10_1>),
+    FileGeodatabase {
+        name: Box<FgdbRasterDatasetNamePrefix10_1>,
+        records: Box<FgdbRasterIoPrefix10_1>,
+    },
+}
+
+/// 在宿主已建立的 ObjectStream 表中读取名称条目；调用者须整体暂存游标与键表。
+pub(super) fn read_supported_raster_name_entry_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<(ObjectEntry10_1, Option<RasterDatasetNameEntryBody10_1>)> {
+    let entry = read_object_entry_10_1(reader, table)?;
+    let incomplete = |reason: String| io::Error::new(io::ErrorKind::Unsupported, reason);
+    let body = match entry {
+        ObjectEntry10_1::Null
+        | ObjectEntry10_1::BackReference {
+            class_id: RASTER_DATASET_NAME_CLASS_ID | FGDB_RASTER_DATASET_NAME_CLASS_ID,
+            ..
+        } => None,
+        ObjectEntry10_1::NewObject {
+            class_id: RASTER_DATASET_NAME_CLASS_ID,
+            key,
+        } => {
+            let name = read_raster_dataset_name_body_10_1(reader, max_bytes, table, key)?;
+            if let Some(stop) = name.stop {
+                return Err(incomplete(format!("RasterDatasetName 未读完：{stop:?}")));
+            }
+            Some(RasterDatasetNameEntryBody10_1::Dataset(Box::new(name)))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: FGDB_RASTER_DATASET_NAME_CLASS_ID,
+            key,
+        } => {
+            let name = read_fgdb_raster_dataset_name_prefix_10_1(reader, max_bytes, table, key)?;
+            if let Some(stop) = name.delegated_name.stop {
+                return Err(incomplete(format!("FileGDB 委派名称未读完：{stop:?}")));
+            }
+            let records = read_fgdb_raster_io_prefix_10_1(reader, max_bytes)?;
+            if let Some(stop) = records.stop {
+                return Err(incomplete(format!("FileGDB 名称记录未读完：{stop:?}")));
+            }
+            Some(RasterDatasetNameEntryBody10_1::FileGeodatabase {
+                name: Box::new(name),
+                records: Box::new(records),
+            })
+        }
+        ObjectEntry10_1::NewObject { class_id, .. }
+        | ObjectEntry10_1::BackReference { class_id, .. } => {
+            return Err(incomplete(format!(
+                "未支持的栅格名称类 {}",
+                crate::storage::class_id_hex(&class_id)
+            )));
+        }
+    };
+    Ok((entry, body))
 }
 
 #[cfg(test)]

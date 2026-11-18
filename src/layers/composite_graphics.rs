@@ -93,7 +93,7 @@ use crate::layers::feature_layer_tail::SuccessorStop10_1;
 use crate::layers::layer_list::FEATURE_LAYER_CLASS_ID;
 use crate::objects::element_body::{
     ElementBody10_1, ElementBodyStop10_1, LINE_ELEMENT_CLASS_ID, MARKER_ELEMENT_CLASS_ID,
-    TEXT_ELEMENT_CLASS_ID, read_element_body_of_class_10_1,
+    PARAGRAPH_TEXT_ELEMENT_CLASS_ID, TEXT_ELEMENT_CLASS_ID, read_element_body_of_class_10_1,
 };
 use crate::objects::element_collection::{
     ELEMENT_COLLECTION_CLASS_ID, ElementCollection10_1, ElementCollectionStop10_1,
@@ -509,6 +509,7 @@ pub fn read_composite_graphics_layer_prefix_10_1(
                         ObjectEntry10_1::NewObject { class_id, key }
                             if [
                                 TEXT_ELEMENT_CLASS_ID,
+                                PARAGRAPH_TEXT_ELEMENT_CLASS_ID,
                                 MARKER_ELEMENT_CLASS_ID,
                                 LINE_ELEMENT_CLASS_ID,
                             ]
@@ -520,12 +521,7 @@ pub fn read_composite_graphics_layer_prefix_10_1(
                                 max_bytes,
                                 &mut trial_table,
                             )?;
-                            let reason = match &body {
-                                ElementBody10_1::TextElement(body) => &body.stop,
-                                ElementBody10_1::MarkerElement(body) => &body.stop,
-                                ElementBody10_1::LineElement(body) => &body.stop,
-                            }
-                            .clone();
+                            let reason = body.stop().cloned();
                             elements.push(ElementEntry10_1::Element { key, body });
                             if let Some(reason) = reason {
                                 stop =

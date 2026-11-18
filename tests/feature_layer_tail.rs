@@ -2230,7 +2230,14 @@ mod tail_continuation {
             &result.feature_id_set,
             Some(FeatureIdSetSlot10_1::FeatureIdSet(body)) if body.count == 0
         ));
-        assert!(matches!(result.display_filter, Some(RefSlot10_1::Null)));
+        assert!(matches!(
+            result.display_filter,
+            Some(
+                mxd2qgz::layers::feature_layer_tail::DisplayFilterSlot10_1::Reference(
+                    RefSlot10_1::Null
+                )
+            )
+        ));
         assert_eq!(result.shorts_21c_220_21e, Some([0, 0, 0]));
         assert_eq!(
             result.pre_join.as_ref().map(|block| block.pairs.as_slice()),
@@ -2262,7 +2269,7 @@ mod tail_continuation {
             Some(mxd2qgz::layers::feature_layer_tail::SymbolSlotFull10_1::SimpleMarkerSymbol(_))
         ));
         assert_eq!(result.stop, SuccessorStop10_1::TailCompleted);
-        match &result.envelope_2 {
+        match result.cached_dataset_extent() {
             Some(EnvelopeSlot10_1::Envelope(env)) => {
                 assert_eq!(env.version, 1);
                 assert_eq!(env.coords, [1.0, 2.0, 3.0, 4.0]);
@@ -2349,9 +2356,32 @@ mod tail_continuation {
         assert_eq!(body.version, 7);
         assert_eq!(body.expression, "[JZDH]");
         assert_eq!(body.name, "默认");
+        assert_eq!(body.annotation_class_id, Some(0));
         assert!(body.short_ver1.is_none()); // 版本 7 不读 ④
         assert!(body.short_ver6.is_none()); // 版本 ≠6
         assert_eq!(reader.remaining(), 0);
+    }
+
+    #[test]
+    fn lelp_legacy_short_and_annotation_class_id_have_separate_version_gates() {
+        let mut v4 = lelp_body_v7(None);
+        v4[..2].copy_from_slice(&4_u16.to_le_bytes());
+        v4.truncate(v4.len() - 4);
+        let mut v6 = lelp_body_v7(None);
+        v6[..2].copy_from_slice(&6_u16.to_le_bytes());
+        let id_offset = v6.len() - 4;
+        v6[id_offset..].copy_from_slice(&31_i32.to_le_bytes());
+        v6.extend(123_i16.to_le_bytes());
+        for (mut bytes, id, legacy_short) in [(v4, None, None), (v6, Some(31), Some(123))] {
+            bytes.push(0x9a);
+            let mut reader = Reader::new(&bytes);
+            let body =
+                read_label_engine_props_body_10_1(&mut reader, 64, &mut RefTable10_1::new(), 60)
+                    .unwrap();
+            assert_eq!(body.annotation_class_id, id);
+            assert_eq!(body.short_ver6, legacy_short);
+            assert_eq!(reader.read_bytes(1).unwrap(), [0x9a]);
+        }
     }
 
     #[test]
@@ -2845,10 +2875,10 @@ mod tail_continuation {
                 other => panic!("⑱ 槽分类不符：{other:?}"),
             }
             assert!(matches!(body.envelope, EnvelopeSlot10_1::Null));
-            assert_eq!(body.double_24, Some(0.0));
+            assert_eq!(body.scale_ratio, Some(0.0));
             assert_eq!(body.int32_2c, Some(1));
             assert_eq!(body.short_46, Some(-1));
-            assert_eq!(body.int32_7c, Some(2));
+            assert_eq!(body.annotation_class_id, Some(2));
             assert_eq!(reader.remaining(), 0);
             assert!(table.contains(69));
             assert!(table.contains(70));

@@ -452,6 +452,32 @@ pub fn read_base_legend_item_fields_10_1(
 /// 后，条目层不再自有停止类别）。
 pub type HorizontalLegendItemStop10_1 = BaseLegendItemStop10_1;
 
+/// esriCarto 10.1 的 esriLegendItemArrangement：图例色块、标签与描述的排列顺序。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LegendItemArrangement10_1 {
+    PatchLabelDescription,
+    PatchDescriptionLabel,
+    LabelPatchDescription,
+    LabelDescriptionPatch,
+    DescriptionPatchLabel,
+    DescriptionLabelPatch,
+}
+
+impl LegendItemArrangement10_1 {
+    /// 解释已知排列值；未登记的值由调用者原样保留。
+    pub const fn from_raw(raw: i32) -> Option<Self> {
+        match raw {
+            0 => Some(Self::PatchLabelDescription),
+            1 => Some(Self::PatchDescriptionLabel),
+            2 => Some(Self::LabelPatchDescription),
+            3 => Some(Self::LabelDescriptionPatch),
+            4 => Some(Self::DescriptionPatchLabel),
+            5 => Some(Self::DescriptionLabelPatch),
+            _ => None,
+        }
+    }
+}
+
 /// HorizontalLegendItem（Renderers.dll thunk `0x7cad5d30` + LayerLib.dll
 /// BaseLegendItem::Load `0x786a2b00`）对象的已确认字段。
 ///
@@ -464,8 +490,7 @@ pub struct HorizontalLegendItemBody10_1 {
     /// 条目版本 short 的无符号位模式（原生有符号 `1 < v` 拒绝；Save 恒写
     /// 1；负值一并拒绝较原生更严）。
     pub version: u16,
-    /// 第 2 步：受流向影响的内部布局模式（持久化接口 −8）。
-    /// 各模式值未完全定性，保留原始 int32。
+    /// 第 2 步：IHorizontalLegendItem.Arrangement 的原始 int32（持久化接口 −8）。
     pub raw_int32: i32,
     /// BaseLegendItem 版本 short 的无符号位模式（无拒绝门，分支用；10.1
     /// 写侧恒写 3；本读取器仅接受 0..=3）。
@@ -494,6 +519,13 @@ pub struct HorizontalLegendItemBody10_1 {
     pub stop: Option<HorizontalLegendItemStop10_1>,
     /// 停止点之后剩余的字节数。
     pub remaining_bytes: usize,
+}
+
+impl HorizontalLegendItemBody10_1 {
+    /// 返回该图例项记录的排列顺序；未知值仍可通过 `raw_int32` 读取。
+    pub fn arrangement(&self) -> Option<LegendItemArrangement10_1> {
+        LegendItemArrangement10_1::from_raw(self.raw_int32)
+    }
 }
 
 /// 从对象头之后的位置读取 10.1 HorizontalLegendItem 对象体，失败时不
@@ -532,7 +564,7 @@ pub fn read_horizontal_legend_item_body_10_1(
         )));
     }
 
-    // 2. int32 原样（→ 对象 −8；语义未定）。
+    // 2. Arrangement int32（持久化接口 −8），保留未知值。
     let raw_int32 = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
 
     // 3..11. 基类字段序（统一读取器）。

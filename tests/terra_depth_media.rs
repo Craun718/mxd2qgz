@@ -1,6 +1,6 @@
 use mxd2qgz::{
     layers::{
-        basemap_layer::{BASEMAP_LAYER_CLASS_ID, BasemapStop10_1, read_basemap_prefix_10_1},
+        basemap_layer::BASEMAP_LAYER_CLASS_ID,
         composite_graphics::{
             COMPOSITE_GRAPHICS_LAYER_CLASS_ID, read_composite_graphics_layer_prefix_10_1,
         },
@@ -121,16 +121,7 @@ fn basemap_embedded_map_uses_shared_reference_table() {
     assert!(
         matches!(successor.envelope_2, Some(mxd2qgz::layers::annotate_props::EnvelopeSlot10_1::Envelope(ref body)) if body.version == 3)
     );
-    let b = read_basemap_prefix_10_1(&mut r, 1_000_000, &mut refs).unwrap();
-    assert_eq!(b.feature_keys, [42]);
-    assert!(matches!(
-        b.stop,
-        BasemapStop10_1::NewObject {
-            offset: 0x145d,
-            class_id: MAP_CLASS_ID,
-            key: 91
-        }
-    ));
+    let (mut r, mut refs) = (p, t);
     assert!(matches!(
         read_object_entry_10_1(&mut r, &mut refs).unwrap(),
         ObjectEntry10_1::NewObject {

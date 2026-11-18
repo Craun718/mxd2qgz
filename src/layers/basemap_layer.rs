@@ -1,5 +1,8 @@
 //! ArcMap 10.1 BasemapLayer 的可证前缀；遇到未闭合对象体即停止。
 //! 原生调用与范围见 docs/mxd-round3-basemap-20261117.md。
+use crate::maps::map_object::{
+    MAP_CLASS_ID, MapSuffixStop, read_map_prefix_object_stream_10_1, read_map_suffix_10_1,
+};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
 use crate::stream::{native_string::read_string_10_1, reader::Reader};
@@ -12,7 +15,7 @@ pub const ARRAY_OF_I_SHADER_CLASS_ID: [u8; 16] = [
     0xaf, 0xdb, 0xbb, 0xe0, 0x59, 0x00, 0x9c, 0x44, 0xb6, 0xf1, 0xed, 0xf1, 0x35, 0x3a, 0x2c, 0x54,
 ];
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BasemapStop10_1 {
     /// 未消费的普通对象头及其未闭合体。
     NewObject {
@@ -20,18 +23,32 @@ pub enum BasemapStop10_1 {
         class_id: [u8; 16],
         key: u32,
     },
+    /// 要素图层未完全读取；保留其对象头及未提交的体。
+    FeatureLayer {
+        key: u32,
+        body_stop_offset: usize,
+        reason: crate::layers::feature_layer::FeatureLayerStop10_1,
+    },
     /// 数组非空时元素体尚未接线。
-    ShaderElements { offset: usize, count: u32 },
-    /// 结果容器结束后的字段尚未接线。
-    AfterResults { offset: usize },
+    ShaderElements {
+        offset: usize,
+        count: u32,
+    },
+    /// 非空扩展可能登记后续引用使用的对象，保留整个扩展段。
+    Extensions {
+        offset: usize,
+        count: u32,
+    },
+    Complete,
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BasemapPrefix10_1 {
     pub version: u16,
     pub name: String,
     pub results_count: Option<u32>,
     /// 已完整读取并登记的结果列表 FeatureLayer 键。
     pub feature_keys: Vec<u32>,
+    pub sublayers: Vec<ObjectEntry10_1>,
     pub stop: BasemapStop10_1,
 }
 fn count(reader: &mut Reader<'_>, limit: usize) -> io::Result<u32> {
@@ -72,6 +89,25 @@ fn slot(
                     feature_keys.push(key);
                     return Ok(None);
                 }
+                return Ok(Some(BasemapStop10_1::FeatureLayer {
+                    key,
+                    body_stop_offset: probe.position(),
+                    reason: body.stop,
+                }));
+            }
+            if allow_feature && class_id == MAP_CLASS_ID {
+                let mut refs = table.clone();
+                refs.register(key);
+                let mut prefix = probe.clone();
+                // 目前只进入非递归的内嵌 Map：图层列表非空可能重新进入 Basemap。
+                if matches!(read_map_prefix_object_stream_10_1(&mut prefix, max_bytes, &refs), Ok(body) if body.version >= 23)
+                    && matches!(prefix.read_u32_le(), Ok(0))
+                    && matches!(read_map_suffix_10_1(&mut probe, max_bytes, &mut refs), Ok(body) if body.stop == MapSuffixStop::Complete)
+                {
+                    *reader = probe;
+                    *table = refs;
+                    return Ok(None);
+                }
             }
             Ok(Some(BasemapStop10_1::NewObject {
                 offset,
@@ -105,6 +141,7 @@ pub fn read_basemap_prefix_10_1(
     }
     let mut result_count = None;
     let mut feature_keys = Vec::new();
+    let mut sublayers = Vec::new();
     let stop = 'parse: {
         if v > 2
             && let Some(s) = slot(&mut r, &mut t, max_bytes, &mut feature_keys, false)?
@@ -176,9 +213,58 @@ pub fn read_basemap_prefix_10_1(
                 }
             }
         }
-        BasemapStop10_1::AfterResults {
-            offset: r.position(),
+        if v >= 9 {
+            r.read_u16_le()?;
         }
+        let n = count(&mut r, max_bytes / 8)?;
+        for _ in 0..n {
+            let mut probe = r.clone();
+            let a = probe.read_u32_le()?;
+            let b = probe.read_u32_le()?;
+            if (a, b) == (0, 0) {
+                r = probe;
+                continue;
+            }
+            let offset = probe.position();
+            let ObjectHeader::Object { class_id, key } = read_header_10_1(&mut probe)? else {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "Basemap 非空子图层条目缺少对象头",
+                ));
+            };
+            if !t.contains(key) {
+                break 'parse BasemapStop10_1::NewObject {
+                    offset,
+                    class_id,
+                    key,
+                };
+            }
+            if (a, b) != (20, 0) {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    "Basemap 子图层回引的 ExtraSafe 边界尚未支持",
+                ));
+            }
+            sublayers.push(ObjectEntry10_1::BackReference { class_id, key });
+            r = probe;
+        }
+        if v >= 10 {
+            let mut probe = r.clone();
+            let n = count(&mut probe, max_bytes / 24)?;
+            if n != 0 {
+                break 'parse BasemapStop10_1::Extensions {
+                    offset: r.position(),
+                    count: n,
+                };
+            }
+            read_string_10_1(&mut probe, max_bytes)?;
+            probe.read_bytes(16)?;
+            r = probe;
+        }
+        if v >= 11 {
+            r.read_bytes(8)?;
+        }
+        BasemapStop10_1::Complete
     };
     *reader = r;
     *table = t;
@@ -187,6 +273,7 @@ pub fn read_basemap_prefix_10_1(
         name,
         results_count: result_count,
         feature_keys,
+        sublayers,
         stop,
     })
 }

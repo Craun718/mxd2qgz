@@ -322,15 +322,22 @@ pub enum RendererSlot10_1 {
     /// 16 字节全零类标识：空引用，无键、无对象体。
     Null,
     /// 键已见：回引条目，无对象体。
-    BackReference { class_id: [u8; 16], key: u32 },
+    BackReference {
+        class_id: [u8; 16],
+        key: u32,
+    },
     /// 新 SimpleRenderer 对象（类标识经 [`SIMPLE_RENDERER_CLASS_ID`] 校验）：
     /// 已读取其闭合体（feature_layer_tail 模块：SimpleMarkerSymbol、
     /// RgbColor、LegendGroup、LegendClass 嵌套链）；体内停止时经
     /// [`FeatureLayerStop10_1::RendererBody`] 携带原因。
     SimpleRenderer(Box<SimpleRendererPrefix10_1>),
-    /// 新对象但类标识不是 SimpleRenderer（其他渲染器类体未闭合）：停止点，
+    UniqueValueRenderer(Box<crate::layers::unique_value_renderer::UniqueValueRenderer10_1>),
+    /// 不支持的新渲染器类：停止点，
     /// 游标回退到该对象头起点。
-    Unsupported { class_id: [u8; 16], key: u32 },
+    Unsupported {
+        class_id: [u8; 16],
+        key: u32,
+    },
 }
 
 /// FeatureLayer 体读取的停止原因（本读取器为「已确认前缀」语义：始终在最
@@ -341,12 +348,15 @@ pub enum FeatureLayerStop10_1 {
     /// 数据源 FeatureClassName 体内（含 WorkspaceName 体）的停止点。
     DataSource(FeatureClassNameStop10_1),
     /// 数据源之后的首个嵌套对象（请求 IID `{40A9E884-…}`=IFeatureRenderer）
-    /// 为新对象且类标识不是 SimpleRenderer（其他渲染器类体未闭合）：读取
-    /// 对象头后停止。
-    RendererNewObject { class_id: [u8; 16], key: u32 },
+    /// 为未知的新渲染器对象：停在对象头之前。
+    RendererNewObject {
+        class_id: [u8; 16],
+        key: u32,
+    },
     /// 渲染器槽的 SimpleRenderer 体自身的停止点（原因透传，见
     /// [`SimpleRendererStop10_1`]）：游标停在其停止点。
     RendererBody(SimpleRendererStop10_1),
+    UniqueValueRendererBody(crate::layers::unique_value_renderer::UniqueValueRendererStop10_1),
     /// 渲染器槽之后的后继字段段（+0x144 GUID 后的 String/double/short、
     /// IHyperlink 循环、IColor 槽、String ×2/int32、FieldInfo 计数循环）的
     /// 停止点（原因透传，见 feature_layer_tail 的 [`SuccessorStop10_1`]）：
@@ -790,8 +800,8 @@ pub fn read_feature_layer_prefix_10_1(
     };
 
     // 6. 渲染器槽位（请求 IID {40A9E884-…}=IFeatureRenderer）：仅当数据源
-    //    已完整消费（含 FCN 体内无停止）时到达。新 SimpleRenderer 对象读取
-    //    其闭合体；其他渲染器类在对象头处停止。
+    //    已完整消费（含 FCN 体内无停止）时到达。分派已知渲染器，
+    //    未知类在对象头处停止。
     let mut renderer = None;
     let mut guid_after_renderer = None;
     let mut successor_result = None;
@@ -820,6 +830,23 @@ pub fn read_feature_layer_prefix_10_1(
                         renderer_stop = Some(FeatureLayerStop10_1::RendererBody(inner));
                     }
                     RendererSlot10_1::SimpleRenderer(Box::new(body))
+                }
+                ObjectEntry10_1::NewObject {
+                    class_id: crate::layers::unique_value_renderer::UNIQUE_VALUE_RENDERER_CLASS_ID,
+                    key,
+                } => {
+                    let body =
+                        crate::layers::unique_value_renderer::read_unique_value_renderer_10_1(
+                            &mut trial,
+                            max_bytes,
+                            &mut staged_table,
+                            key,
+                        )?;
+                    renderer_stop = body
+                        .stop
+                        .clone()
+                        .map(FeatureLayerStop10_1::UniqueValueRendererBody);
+                    RendererSlot10_1::UniqueValueRenderer(Box::new(body))
                 }
                 ObjectEntry10_1::NewObject { class_id, key } => {
                     // 其他渲染器类：体未知且无外部长度，回退到槽位起点（不

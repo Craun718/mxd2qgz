@@ -714,43 +714,13 @@ pub fn read_time_data_family_10_1(
     let mut stop = None;
 
     // ① TimeData（版本 ≤2）。
-    let mut time_data = None;
-    {
-        let entry_offset = trial.position();
-        let version = read_version_short(&mut trial, 2, "TimeData", entry_offset)?;
-        let short_a = trial.read_u16_le()? as i16;
-        let mut slot = TimeReferenceSlot10_1::Null;
-        let mut tail_short = None;
-        let slot_offset = trial.position();
-        let pre_slot_table = staged.clone();
-        match read_object_entry_10_1(&mut trial, &mut staged)? {
-            ObjectEntry10_1::Null => {}
-            ObjectEntry10_1::BackReference { class_id, key } => {
-                slot = TimeReferenceSlot10_1::BackReference { class_id, key };
-            }
-            ObjectEntry10_1::NewObject { class_id, key } if class_id == TIME_REFERENCE_CLASS_ID => {
-                let body = read_time_reference_body_10_1(&mut trial, max_bytes, &mut staged, key)?;
-                slot = TimeReferenceSlot10_1::Body(Box::new(body));
-            }
-            ObjectEntry10_1::NewObject { class_id, key } => {
-                trial = reposition_to(&reader.clone(), slot_offset);
-                staged = pre_slot_table;
-                slot = TimeReferenceSlot10_1::Unsupported { class_id, key };
-                stop = Some(TimeFamilyStop10_1::TimeDataSlot { class_id, key });
-            }
+    let time_data = match read_time_data_segment(&mut trial, max_bytes, &mut staged)? {
+        Ok(segment) => Some(segment),
+        Err(reason) => {
+            stop = Some(reason);
+            None
         }
-        if stop.is_none() && version >= 2 {
-            tail_short = Some(trial.read_u16_le()? as i16);
-        }
-        if stop.is_none() {
-            time_data = Some(TimeDataSegment10_1 {
-                version,
-                short_a,
-                slot,
-                tail_short,
-            });
-        }
-    }
+    };
 
     // ② TimeTableDefinition（版本 ≤1）。
     let mut time_table = None;
@@ -790,36 +760,16 @@ pub fn read_time_data_family_10_1(
     }
 
     // ③ TimeDimensionDefinition（版本 ≤1）。
-    let mut time_dimension = None;
-    if stop.is_none() {
-        let entry_offset = trial.position();
-        let version = read_version_short(&mut trial, 1, "TimeDimensionDefinition", entry_offset)?;
-        let mut strings: [String; 2] = Default::default();
-        for s in &mut strings {
-            *s = read_stream_string_10_1(&mut trial, max_bytes)?;
-        }
-        time_dimension = Some(TimeDimensionSegment10_1 { version, strings });
-    }
+    let time_dimension = stop
+        .is_none()
+        .then(|| read_time_dimension_segment_10_1(&mut trial, max_bytes))
+        .transpose()?;
 
     // ④ TimeDataDisplay（版本 ≤1）。
-    let mut time_display = None;
-    if stop.is_none() {
-        let entry_offset = trial.position();
-        let version = read_version_short(&mut trial, 1, "TimeDataDisplay", entry_offset)?;
-        let short_a = trial.read_u16_le()? as i16;
-        let double_a = trial.read_f64_le()?;
-        let int_a = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
-        let double_b = trial.read_f64_le()?;
-        let int_b = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
-        time_display = Some(TimeDisplaySegment10_1 {
-            version,
-            short_a,
-            double_a,
-            int_a,
-            double_b,
-            int_b,
-        });
-    }
+    let time_display = stop
+        .is_none()
+        .then(|| read_time_display_segment_10_1(&mut trial))
+        .transpose()?;
 
     let remaining_bytes = trial.remaining();
     *table = staged;
@@ -831,6 +781,100 @@ pub fn read_time_data_family_10_1(
         time_display,
         stop,
         remaining_bytes,
+    })
+}
+
+/// 读取独立的 TimeData 段；不消费宿主中紧随其后的其他时间段。
+/// 未知类或截断均不修改调用者游标和引用表。
+pub(crate) fn read_time_data_segment_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<TimeDataSegment10_1> {
+    let mut trial = reader.clone();
+    let mut staged = table.clone();
+    let segment = read_time_data_segment(&mut trial, max_bytes, &mut staged)?.map_err(|stop| {
+        io::Error::new(
+            ErrorKind::Unsupported,
+            format!("TimeData 对象槽未闭合：{stop:?}"),
+        )
+    })?;
+    *reader = trial;
+    *table = staged;
+    Ok(segment)
+}
+
+fn read_time_data_segment(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<Result<TimeDataSegment10_1, TimeFamilyStop10_1>> {
+    let start = reader.position();
+    let version = read_version_short(reader, 2, "TimeData", start)?;
+    let short_a = reader.read_u16_le()? as i16;
+    let mut trial = reader.clone();
+    let mut staged = table.clone();
+    let slot = match read_object_entry_10_1(&mut trial, &mut staged)? {
+        ObjectEntry10_1::Null => TimeReferenceSlot10_1::Null,
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            TimeReferenceSlot10_1::BackReference { class_id, key }
+        }
+        ObjectEntry10_1::NewObject { class_id, key } if class_id == TIME_REFERENCE_CLASS_ID => {
+            let body = read_time_reference_body_10_1(&mut trial, max_bytes, &mut staged, key)?;
+            if body.short_b.is_none() {
+                return Ok(Err(TimeFamilyStop10_1::TimeDataSlot { class_id, key }));
+            }
+            TimeReferenceSlot10_1::Body(Box::new(body))
+        }
+        ObjectEntry10_1::NewObject { class_id, key } => {
+            return Ok(Err(TimeFamilyStop10_1::TimeDataSlot { class_id, key }));
+        }
+    };
+    let tail_short = (version >= 2)
+        .then(|| trial.read_u16_le().map(|value| value as i16))
+        .transpose()?;
+    *reader = trial;
+    *table = staged;
+    Ok(Ok(TimeDataSegment10_1 {
+        version,
+        short_a,
+        slot,
+        tail_short,
+    }))
+}
+
+pub(crate) fn read_time_dimension_segment_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+) -> io::Result<TimeDimensionSegment10_1> {
+    let mut trial = reader.clone();
+    let version = read_version_short(&mut trial, 1, "TimeDimensionDefinition", reader.position())?;
+    let strings = [
+        read_stream_string_10_1(&mut trial, max_bytes)?,
+        read_stream_string_10_1(&mut trial, max_bytes)?,
+    ];
+    *reader = trial;
+    Ok(TimeDimensionSegment10_1 { version, strings })
+}
+
+pub(crate) fn read_time_display_segment_10_1(
+    reader: &mut Reader<'_>,
+) -> io::Result<TimeDisplaySegment10_1> {
+    let mut trial = reader.clone();
+    let version = read_version_short(&mut trial, 1, "TimeDataDisplay", reader.position())?;
+    let short_a = trial.read_u16_le()? as i16;
+    let double_a = trial.read_f64_le()?;
+    let int_a = trial.read_u32_le()? as i32;
+    let double_b = trial.read_f64_le()?;
+    let int_b = trial.read_u32_le()? as i32;
+    *reader = trial;
+    Ok(TimeDisplaySegment10_1 {
+        version,
+        short_a,
+        double_a,
+        int_a,
+        double_b,
+        int_b,
     })
 }
 

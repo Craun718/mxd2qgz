@@ -817,51 +817,8 @@ pub fn read_simple_renderer_body_10_1(
     let mut rotation_tail = None;
     let mut size_tail = None;
     if stop.is_none() && (version as i16) > 2 {
-        let tail_offset = trial.position();
-        let rv = read_version_short(
-            &mut trial,
-            MAX_RENDERER_TAIL_VERSION,
-            "RotationRenderer",
-            tail_offset,
-        )?;
-        let mut flags = [0_i32; 2];
-        for slot in flags.iter_mut() {
-            *slot = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
-        }
-        let mut expressions: [String; 3] = Default::default();
-        for slot in expressions.iter_mut() {
-            *slot = read_string_10_1(&mut trial, max_bytes)?;
-        }
-        let mut doubles = [0_f64; 6];
-        for slot in doubles.iter_mut() {
-            *slot = trial.read_f64_le()?;
-        }
-        rotation_tail = Some(RotationRendererTail10_1 {
-            version: rv,
-            flags,
-            expressions,
-            doubles,
-        });
-
-        let size_offset = trial.position();
-        let sv = read_version_short(
-            &mut trial,
-            MAX_RENDERER_TAIL_VERSION,
-            "SizeRenderer",
-            size_offset,
-        )?;
-        let size_flags = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
-        let expression = read_string_10_1(&mut trial, max_bytes)?;
-        let mut size_doubles = [0_f64; 2];
-        for slot in size_doubles.iter_mut() {
-            *slot = trial.read_f64_le()?;
-        }
-        size_tail = Some(SizeRendererTail10_1 {
-            version: sv,
-            flags: size_flags,
-            expression,
-            doubles: size_doubles,
-        });
+        rotation_tail = Some(read_rotation_renderer_tail_10_1(&mut trial, max_bytes)?);
+        size_tail = Some(read_size_renderer_tail_10_1(&mut trial, max_bytes)?);
     }
 
     let remaining_bytes = trial.remaining();
@@ -883,6 +840,64 @@ pub fn read_simple_renderer_body_10_1(
     *table = staged_table;
     *reader = trial;
     Ok(result)
+}
+
+/// 读取各渲染器委派给 LayerLib 的现代旋转字段。
+pub(crate) fn read_rotation_renderer_tail_10_1(
+    trial: &mut Reader<'_>,
+    max_bytes: usize,
+) -> io::Result<RotationRendererTail10_1> {
+    let tail_offset = trial.position();
+    let rv = read_version_short(
+        trial,
+        MAX_RENDERER_TAIL_VERSION,
+        "RotationRenderer",
+        tail_offset,
+    )?;
+    let mut flags = [0_i32; 2];
+    for slot in flags.iter_mut() {
+        *slot = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+    }
+    let mut expressions: [String; 3] = Default::default();
+    for slot in expressions.iter_mut() {
+        *slot = read_string_10_1(trial, max_bytes)?;
+    }
+    let mut doubles = [0_f64; 6];
+    for slot in doubles.iter_mut() {
+        *slot = trial.read_f64_le()?;
+    }
+    Ok(RotationRendererTail10_1 {
+        version: rv,
+        flags,
+        expressions,
+        doubles,
+    })
+}
+
+/// 读取各渲染器委派给 LayerLib 的现代尺寸字段。
+pub(crate) fn read_size_renderer_tail_10_1(
+    trial: &mut Reader<'_>,
+    max_bytes: usize,
+) -> io::Result<SizeRendererTail10_1> {
+    let size_offset = trial.position();
+    let sv = read_version_short(
+        trial,
+        MAX_RENDERER_TAIL_VERSION,
+        "SizeRenderer",
+        size_offset,
+    )?;
+    let size_flags = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+    let expression = read_string_10_1(trial, max_bytes)?;
+    let mut size_doubles = [0_f64; 2];
+    for slot in size_doubles.iter_mut() {
+        *slot = trial.read_f64_le()?;
+    }
+    Ok(SizeRendererTail10_1 {
+        version: sv,
+        flags: size_flags,
+        expression,
+        doubles: size_doubles,
+    })
 }
 
 /// FieldInfo 类标识（CLSID）的 16 字节内存序。
@@ -950,6 +965,55 @@ pub enum NumberFormatSlot10_1 {
     ScientificFormat(Box<ScientificFormatBody10_1>),
     /// 新 CustomNumberFormat 对象（体为 short 版本 + 格式串；样本 0 实例）。
     CustomNumberFormat(Box<CustomNumberFormatBody10_1>),
+}
+
+/// 从已登记的 INumberFormat 新对象头之后按 CLSID 读取对象体。
+pub(super) fn read_number_format_body_for_class_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    class_id: [u8; 16],
+    key: u32,
+) -> io::Result<Option<NumberFormatSlot10_1>> {
+    Ok(Some(match class_id {
+        NUMERIC_FORMAT_CLASS_ID => {
+            let body = read_numeric_format_body_10_1(reader, table, key)?;
+            NumberFormatSlot10_1::NumericFormat(Box::new(body))
+        }
+        PERCENTAGE_FORMAT_CLASS_ID => {
+            let body = read_percentage_format_body_10_1(reader, table, key)?;
+            NumberFormatSlot10_1::PercentageFormat(Box::new(body))
+        }
+        FRACTION_FORMAT_CLASS_ID => {
+            let body = read_fraction_format_body_10_1(reader, table, key)?;
+            NumberFormatSlot10_1::FractionFormat(Box::new(body))
+        }
+        RATE_FORMAT_CLASS_ID => {
+            let body = read_rate_format_body_10_1(reader, max_bytes, table, key)?;
+            NumberFormatSlot10_1::RateFormat(Box::new(body))
+        }
+        CURRENCY_FORMAT_CLASS_ID => {
+            let body = read_currency_format_body_10_1(reader, table, key)?;
+            NumberFormatSlot10_1::CurrencyFormat(Box::new(body))
+        }
+        LATLON_FORMAT_CLASS_ID => {
+            let body = read_latlon_format_body_10_1(reader, table, key)?;
+            NumberFormatSlot10_1::LatLonFormat(Box::new(body))
+        }
+        ANGLE_FORMAT_CLASS_ID => {
+            let body = read_angle_format_body_10_1(reader, table, key)?;
+            NumberFormatSlot10_1::AngleFormat(Box::new(body))
+        }
+        SCIENTIFIC_FORMAT_CLASS_ID => {
+            let body = read_scientific_format_body_10_1(reader, table, key)?;
+            NumberFormatSlot10_1::ScientificFormat(Box::new(body))
+        }
+        CUSTOM_NUMBER_FORMAT_CLASS_ID => {
+            let body = read_custom_number_format_body_10_1(reader, max_bytes, table, key)?;
+            NumberFormatSlot10_1::CustomNumberFormat(Box::new(body))
+        }
+        _ => return Ok(None),
+    }))
 }
 
 /// FieldInfo 体读取的停止原因。
@@ -1051,53 +1115,22 @@ pub fn read_field_info_body_10_1(
         ObjectEntry10_1::BackReference { class_id, key } => {
             (NumberFormatSlot10_1::BackReference { class_id, key }, None)
         }
-        ObjectEntry10_1::NewObject { class_id, key } if class_id == NUMERIC_FORMAT_CLASS_ID => {
-            let body = read_numeric_format_body_10_1(&mut trial, &mut staged_table, key)?;
-            (NumberFormatSlot10_1::NumericFormat(Box::new(body)), None)
-        }
-        ObjectEntry10_1::NewObject { class_id, key } if class_id == PERCENTAGE_FORMAT_CLASS_ID => {
-            let body = read_percentage_format_body_10_1(&mut trial, &mut staged_table, key)?;
-            (NumberFormatSlot10_1::PercentageFormat(Box::new(body)), None)
-        }
-        ObjectEntry10_1::NewObject { class_id, key } if class_id == FRACTION_FORMAT_CLASS_ID => {
-            let body = read_fraction_format_body_10_1(&mut trial, &mut staged_table, key)?;
-            (NumberFormatSlot10_1::FractionFormat(Box::new(body)), None)
-        }
-        ObjectEntry10_1::NewObject { class_id, key } if class_id == RATE_FORMAT_CLASS_ID => {
-            let body = read_rate_format_body_10_1(&mut trial, max_bytes, &mut staged_table, key)?;
-            (NumberFormatSlot10_1::RateFormat(Box::new(body)), None)
-        }
-        ObjectEntry10_1::NewObject { class_id, key } if class_id == CURRENCY_FORMAT_CLASS_ID => {
-            let body = read_currency_format_body_10_1(&mut trial, &mut staged_table, key)?;
-            (NumberFormatSlot10_1::CurrencyFormat(Box::new(body)), None)
-        }
-        ObjectEntry10_1::NewObject { class_id, key } if class_id == LATLON_FORMAT_CLASS_ID => {
-            let body = read_latlon_format_body_10_1(&mut trial, &mut staged_table, key)?;
-            (NumberFormatSlot10_1::LatLonFormat(Box::new(body)), None)
-        }
-        ObjectEntry10_1::NewObject { class_id, key } if class_id == ANGLE_FORMAT_CLASS_ID => {
-            let body = read_angle_format_body_10_1(&mut trial, &mut staged_table, key)?;
-            (NumberFormatSlot10_1::AngleFormat(Box::new(body)), None)
-        }
-        ObjectEntry10_1::NewObject { class_id, key } if class_id == SCIENTIFIC_FORMAT_CLASS_ID => {
-            let body = read_scientific_format_body_10_1(&mut trial, &mut staged_table, key)?;
-            (NumberFormatSlot10_1::ScientificFormat(Box::new(body)), None)
-        }
-        ObjectEntry10_1::NewObject { class_id, key }
-            if class_id == CUSTOM_NUMBER_FORMAT_CLASS_ID =>
-        {
-            let body =
-                read_custom_number_format_body_10_1(&mut trial, max_bytes, &mut staged_table, key)?;
-            (
-                NumberFormatSlot10_1::CustomNumberFormat(Box::new(body)),
-                None,
-            )
-        }
         ObjectEntry10_1::NewObject { class_id, key } => {
-            let stop = FieldInfoStop10_1::NumberFormatUnsupported { class_id, key };
-            trial = reposition_to(reader, slot_offset);
-            staged_table = saved_table;
-            (NumberFormatSlot10_1::Null, Some(stop))
+            match read_number_format_body_for_class_10_1(
+                &mut trial,
+                max_bytes,
+                &mut staged_table,
+                class_id,
+                key,
+            )? {
+                Some(body) => (body, None),
+                None => {
+                    let stop = FieldInfoStop10_1::NumberFormatUnsupported { class_id, key };
+                    trial = reposition_to(reader, slot_offset);
+                    staged_table = saved_table;
+                    (NumberFormatSlot10_1::Null, Some(stop))
+                }
+            }
         }
     };
 
@@ -1354,7 +1387,7 @@ pub struct FeatureLayerSuccessor10_1 {
     /// ⑮ short → obj+0x1fe（样本 -1），语义未定。前置停止时 `None`。
     pub short_1fe: Option<i16>,
     /// ⑯ IDisplayFilter 槽分类（版本 ≥2）。前置停止/版本不足时 `None`。
-    pub display_filter: Option<RefSlot10_1>,
+    pub display_filter: Option<DisplayFilterSlot10_1>,
     /// ⑰ short ×3 → obj+0x21c/+0x220/+0x21e（版本 ≥3；样本 0/0/0），语义
     /// 未定。前置停止/版本不足时 `None`。
     pub shorts_21c_220_21e: Option<[i16; 3]>,
@@ -1368,7 +1401,7 @@ pub struct FeatureLayerSuccessor10_1 {
     pub relationship_classes: Vec<RefSlot10_1>,
     /// ㉑ String → obj+0x18c（版本 ≥8；样本 cb=2 空串），语义未定。
     pub string_18c: Option<String>,
-    /// ㉒ IEnvelope 槽分类（版本 >8；样本空标记）。
+    /// ㉒ IEnvelope 槽分类（版本 >8）；非空时供 ILayer.AreaOfInterest 优先使用。
     pub envelope_1: Option<RefSlot10_1>,
     /// ㉓ 范围计数（版本 >9；样本 0）。负数原生不进循环。
     pub range_count: Option<i32>,
@@ -1387,7 +1420,7 @@ pub struct FeatureLayerSuccessor10_1 {
     pub short_12e: Option<i16>,
     /// ㉗ int32 → obj+0x1f0（版本 >0xe），语义未定。
     pub int32_1f0: Option<i32>,
-    /// ㉘ IEnvelope 槽 2 分类（版本 >0xe；第十轮起 Envelope 新对象整体解析）。
+    /// ㉘ 持久化的数据集范围缓存（版本 >0xe）；SQL 查询图层加载时也用它恢复数据源范围。
     pub envelope_2: Option<EnvelopeSlot10_1>,
     /// ㉙ IUID 槽分类（版本 >0x10；第十轮起 UID 新对象整体解析）。
     pub uid: Option<UidSlot10_1>,
@@ -1449,6 +1482,13 @@ pub struct FeatureLayerSuccessor10_1 {
     pub remaining_bytes: usize,
 }
 
+impl FeatureLayerSuccessor10_1 {
+    /// 返回原始范围缓存槽；保留缺省、空引用、回引与已解析包络的区别。
+    pub fn cached_dataset_extent(&self) -> Option<&EnvelopeSlot10_1> {
+        self.envelope_2.as_ref()
+    }
+}
+
 /// 通用「仅空标记/回引可消费」槽位的分类结果（第九轮延续段的标量段之间的
 /// LoadObject 槽）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1457,6 +1497,22 @@ pub enum RefSlot10_1 {
     Null,
     /// 键已见：回引条目，无对象体。类标识原样保留、不校验。
     BackReference { class_id: [u8; 16], key: u32 },
+}
+
+const TRANSPARENCY_DISPLAY_FILTER_CLASS_ID: [u8; 16] = [
+    0x65, 0x4a, 0x75, 0xad, 0xb4, 0x13, 0xd3, 0x11, 0xb8, 0x9d, 0x00, 0x60, 0x08, 0x02, 0xe6, 0x03,
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DisplayFilterSlot10_1 {
+    Reference(RefSlot10_1),
+    Transparency {
+        key: u32,
+        version: u16,
+        filter_short: u16,
+        base_version: u16,
+        base_values: [u32; 2],
+    },
 }
 
 /// ⑪ ALPC 槽（请求 IID `{1D5849F2-…}`）的分类结果。
@@ -1901,22 +1957,47 @@ pub fn read_feature_layer_successor_10_1(
         // ⑮ short +0x1fe。
         short_1fe = Some(trial.read_u16_le()? as i16);
 
-        // ⑯ IDisplayFilter 槽（请求 IID {19F85377-…}，版本 ≥2）。此前
-        //    「EditTemplate 宿主」假设撤销：样本该槽为空标记；新对象类为
-        //    停止点。
+        // ⑯ IDisplayFilter 槽（请求 IID {19F85377-…}，版本 ≥2）。
+        //    Portland 实档使用 TransparencyDisplayFilter，其他新实现类保留。
         if (fl_version as i16) >= 2 {
             let slot_offset = trial.position();
             let pre_slot_table = staged_table.clone();
             match read_object_entry_10_1(&mut trial, &mut staged_table)? {
-                ObjectEntry10_1::Null => display_filter = Some(RefSlot10_1::Null),
+                ObjectEntry10_1::Null => {
+                    display_filter = Some(DisplayFilterSlot10_1::Reference(RefSlot10_1::Null));
+                }
                 ObjectEntry10_1::BackReference { class_id, key } => {
-                    display_filter = Some(RefSlot10_1::BackReference { class_id, key });
+                    display_filter = Some(DisplayFilterSlot10_1::Reference(
+                        RefSlot10_1::BackReference { class_id, key },
+                    ));
+                }
+                ObjectEntry10_1::NewObject {
+                    class_id: TRANSPARENCY_DISPLAY_FILTER_CLASS_ID,
+                    key,
+                } => {
+                    // DisplayCore 0x6ebe7fc0 读取本类字段，再委派 0x6eb9f4c0 读基类。
+                    let version = trial.read_u16_le()?;
+                    let filter_short = trial.read_u16_le()?;
+                    let base_version = trial.read_u16_le()?;
+                    if version > 1 || base_version > 1 {
+                        return Err(io::Error::new(
+                            ErrorKind::InvalidData,
+                            "不支持的透明度过滤器版本",
+                        ));
+                    }
+                    display_filter = Some(DisplayFilterSlot10_1::Transparency {
+                        key,
+                        version,
+                        filter_short,
+                        base_version,
+                        base_values: [trial.read_u32_le()?, trial.read_u32_le()?],
+                    });
                 }
                 ObjectEntry10_1::NewObject { class_id, key } => {
                     stop = Some(SuccessorStop10_1::DisplayFilterUnsupported { class_id, key });
                     trial = reposition_to(reader, slot_offset);
                     staged_table = pre_slot_table;
-                    display_filter = Some(RefSlot10_1::Null);
+                    display_filter = Some(DisplayFilterSlot10_1::Reference(RefSlot10_1::Null));
                 }
             }
         }

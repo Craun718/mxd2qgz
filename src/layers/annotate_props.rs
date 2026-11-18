@@ -34,7 +34,7 @@
 //!    类名候选）、串 3 空，槽数据依次为 TextSymbol 新对象（键 61，接线轮起
 //!    经 [`read_text_symbol_body_10_1`] 整体解析，体内停止经
 //!    [`LelpStop10_1::TextSymbolBody`] 透传）、其后槽位在样本停止点之后未
-//!    达。⑤-⑬/⑳-㉓ 各标量业务语义未定，原样保留。
+//!    达。成员按 10.1 接口对位，标量原始值保留。
 //! 3. **EditTemplateManager**（FeatureLayer.dll，Load `0x6f6d0a80`、Save
 //!    `0x6f6d0bc0` 对称，GetClassID `0x6f6d0a50` 写出 CLSID
 //!    `{A0162E85-E170-4B10-A370-CEE08D8D4B8C}`；esri.clsid 声明；样本经
@@ -67,9 +67,10 @@
 //!   反编译佐证，见 `BolpBody10_1` 文档）；⑱ AnnotationVBScriptEngine 体
 //!   第十轮闭合（`0x785361d0`）；⑲ Envelope 体为对象层已闭合读取器；
 //!   ㉔ IGraphicsContainer 实现类体未闭合（样本空标记）；
-//! - ALPC/ETM 及 LELP 尚未绑定字段的业务语义仍待核实；已绑定的
-//!   LELP 属性与原生访问器对位见 `docs/mxd-terra-nextpass-expression.md`；
-//! - ETM ④ 的 1 字节（样本 0x01）语义未定；
+//! - LELP 属性与原生访问器对位见 `docs/mxd-terra-nextpass-expression.md` 与
+//!   `docs/mxd-10.1-label-transformation-fields.md`；
+//! - ETM ④ 的 1 字节控制 EditTools 的模板候选收集，见
+//!   `docs/mxd-10.1-label-transformation-fields.md`；
 //! - 全部结论为静态反编译观察与样本辅助对位，未运行 ArcMap 10.1，未人工
 //!   目视验收。
 
@@ -284,7 +285,7 @@ pub struct LelpBody10_1 {
     pub expression: String,
     /// ③ short → -0x74：`IsExpressionSimple` 的原始 BOOL（样本 -1）。
     pub short_74: i16,
-    /// ④ 版本 ≤1 的 short。`None` = 版本 ≥2（原生不读流；样本即此形态）。
+    /// ④ 版本 ≤1 的旧 short；10.1 Load 读进栈临时量后丢弃。`None` = 版本 ≥2。
     pub short_ver1: Option<i16>,
     /// ⑤ double → -0x54：`ILabelEngineLayerProperties::Offset`（样本 0.0）。
     pub double_54: f64,
@@ -320,12 +321,13 @@ pub struct LelpBody10_1 {
     /// ⑲ 槽分类（第十轮起 Envelope 新对象经对象层读取器整体解析，体内含
     /// 嵌套空间参考，见 [`EnvelopeSlot10_1`]）。
     pub envelope: EnvelopeSlot10_1,
-    /// ⑳ double → -0x24（样本未达），语义未定。前置停止时 `None`。
-    pub double_24: Option<f64>,
-    /// ㉑ double → -0x1c。前置停止时 `None`。
-    pub double_1c: Option<f64>,
-    /// ㉒ int32 → -0x14。前置停止时 `None`。
-    pub int32_14: Option<i32>,
+    /// ⑳ double → -0x24：`IAnnotateLayerTransformationProperties::ScaleRatio`。
+    /// 前置停止时 `None`。
+    pub scale_ratio: Option<f64>,
+    /// ㉑ double → -0x1c：`ReferenceScale`。前置停止时 `None`。
+    pub reference_scale: Option<f64>,
+    /// ㉒ int32 → -0x14：`Units` 的原始枚举值。前置停止时 `None`。
+    pub units: Option<i32>,
     /// ㉓ int32 → -0x2c：`Priority`。前置停止时 `None`。
     pub int32_2c: Option<i32>,
     /// ㉔ 版本 >2 的 IGraphicsContainer 槽分类。`None` = 版本 ≤2 或前置停止。
@@ -333,9 +335,11 @@ pub struct LelpBody10_1 {
     /// ㉕ 版本 ≥4 的 short → -0x46：`AddUnplacedToGraphicsContainer` 原始 BOOL。
     /// `None` = 版本 ≤3 或前置停止。
     pub short_46: Option<i16>,
-    /// ㉖ 版本 ≥5 的 int32 → -0x7c，语义未定。`None` = 版本 ≤4 或前置停止。
-    pub int32_7c: Option<i32>,
-    /// ㉗ 版本 ==6 的 short。`None` = 版本 ≠6 或前置停止。
+    /// ㉖ 版本 ≥5 的 int32 → -0x7c：`ILabelEngineLayerProperties2::AnnotationClassID`。
+    /// `None` = 版本 ≤4 或前置停止；与 SymbolID、集合条目 ID 和要素 OID 独立。
+    pub annotation_class_id: Option<i32>,
+    /// ㉗ 版本 ==6 的旧 short；10.1 Load 读到栈上后丢弃。
+    /// `None` = 版本 ≠6 或前置停止。
     pub short_ver6: Option<i16>,
     /// 停止原因；`None` = 体已完整消费（10.1 写侧版本 ≤7 全部字段）。
     pub stop: Option<LelpStop10_1>,
@@ -519,18 +523,18 @@ pub fn read_label_engine_props_body_10_1(
     }
 
     // ⑳-㉓ 标量段（前置停止时不读取）。
-    let mut double_24 = None;
-    let mut double_1c = None;
-    let mut int32_14 = None;
+    let mut scale_ratio = None;
+    let mut reference_scale = None;
+    let mut units = None;
     let mut int32_2c = None;
     let mut container_slot = None;
     let mut short_46 = None;
-    let mut int32_7c = None;
+    let mut annotation_class_id = None;
     let mut short_ver6 = None;
     if stop.is_none() {
-        double_24 = Some(trial.read_f64_le()?);
-        double_1c = Some(trial.read_f64_le()?);
-        int32_14 = Some(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
+        scale_ratio = Some(trial.read_f64_le()?);
+        reference_scale = Some(trial.read_f64_le()?);
+        units = Some(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
         int32_2c = Some(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
         // ㉔ 版本 >2：IGraphicsContainer 槽。
         if (version as i16) > 2 {
@@ -550,7 +554,8 @@ pub fn read_label_engine_props_body_10_1(
             short_46 = Some(trial.read_u16_le()? as i16);
         }
         if stop.is_none() && (version as i16) >= 5 {
-            int32_7c = Some(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
+            annotation_class_id =
+                Some(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
         }
         if stop.is_none() && (version as i16) == 6 {
             short_ver6 = Some(trial.read_u16_le()? as i16);
@@ -578,13 +583,13 @@ pub fn read_label_engine_props_body_10_1(
         overposter,
         engine,
         envelope,
-        double_24,
-        double_1c,
-        int32_14,
+        scale_ratio,
+        reference_scale,
+        units,
         int32_2c,
         container_slot,
         short_46,
-        int32_7c,
+        annotation_class_id,
         short_ver6,
         stop,
     };
@@ -711,8 +716,8 @@ pub struct EditTemplateManagerBody10_1 {
     pub count: i32,
     /// 已消费的循环条目（按流内顺序）。
     pub entries: Vec<EtmEntry10_1>,
-    /// 版本 ≥2 的 1 字节（样本 0x01），原样保留。原生增删模板会将同一
-    /// 成员置 1，另一接口将非零值返回为 VARIANT_TRUE；完整业务语义未定。
+    /// 版本 ≥2 的 1 字节（样本 0x01），原样保留。增删模板将它置 1，
+    /// EditTools 在非零时跳过该图层的模板候选收集。
     /// `None` = 版本 ≤1 或前置停止。
     pub tail_byte: Option<u8>,
     /// 停止原因；`None` = 体已完整消费。
@@ -720,7 +725,8 @@ pub struct EditTemplateManagerBody10_1 {
 }
 
 impl EditTemplateManagerBody10_1 {
-    /// 按原生接口的零与非零比较解释持久化标志；缺席或提前停止时返回 `None`。
+    /// 原生管理接口返回的布尔标志，非零会使 EditTools 跳过该图层的模板候选收集。
+    /// 流内字段缺席或未到达时返回 `None`，不模拟原生构造与 Load 的状态变化。
     pub fn persisted_flag_is_set(&self) -> Option<bool> {
         self.tail_byte.map(|value| value != 0)
     }

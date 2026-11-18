@@ -17,9 +17,10 @@ use mxd2qgz::layers::legend_format::{
     read_legend_class_format_body_10_1,
 };
 use mxd2qgz::layers::legend_item::{
-    HORIZONTAL_LEGEND_ITEM_CLASS_ID, HorizontalLegendItemStop10_1, LegendItemClassFormatSlot10_1,
-    LegendItemSlot10_1, read_horizontal_legend_item_body_10_1,
+    HORIZONTAL_LEGEND_ITEM_CLASS_ID, HorizontalLegendItemStop10_1, LegendItemArrangement10_1,
+    LegendItemClassFormatSlot10_1, LegendItemSlot10_1, read_horizontal_legend_item_body_10_1,
 };
+use mxd2qgz::layers::legend_item_family::read_vertical_legend_item_body_10_1;
 use mxd2qgz::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
 use mxd2qgz::storage::object_stream::read_header_10_1;
 use mxd2qgz::stream::reader::Reader;
@@ -326,6 +327,7 @@ fn legend_item_reads_full_body_with_nested_class_format() {
         read_horizontal_legend_item_body_10_1(&mut reader, usize::MAX, &mut table, key).unwrap();
     assert_eq!(body.version, 1);
     assert_eq!(body.raw_int32, 0x5A5A_A5A5_u32 as i32);
+    assert_eq!(body.arrangement(), None);
     assert_eq!(body.base_version, 3);
     assert!(matches!(
         body.layer,
@@ -359,6 +361,40 @@ fn legend_item_reads_full_body_with_nested_class_format() {
         !table.contains(key),
         "本体键由调用者经分类登记，读取器不重复登记"
     );
+}
+
+#[test]
+fn legend_item_arrangements_match_carto_enum_values() {
+    use LegendItemArrangement10_1::*;
+    for (raw, expected) in [
+        (0_i32, PatchLabelDescription),
+        (1, PatchDescriptionLabel),
+        (2, LabelPatchDescription),
+        (3, LabelDescriptionPatch),
+        (4, DescriptionPatchLabel),
+        (5, DescriptionLabelPatch),
+    ] {
+        let mut bytes = legend_item_bytes(1, 1, true, false);
+        bytes[2..6].copy_from_slice(&raw.to_le_bytes());
+        let horizontal = read_horizontal_legend_item_body_10_1(
+            &mut Reader::new(&bytes),
+            usize::MAX,
+            &mut table_with_keys(&[100]),
+            77,
+        )
+        .unwrap();
+        let vertical = read_vertical_legend_item_body_10_1(
+            &mut Reader::new(&bytes),
+            usize::MAX,
+            &mut table_with_keys(&[100]),
+            77,
+        )
+        .unwrap();
+        assert_eq!(horizontal.arrangement(), Some(expected));
+        assert_eq!(vertical.arrangement(), Some(expected));
+        assert_eq!(horizontal.remaining_bytes, 0);
+        assert_eq!(vertical.remaining_bytes, 0);
+    }
 }
 
 #[test]

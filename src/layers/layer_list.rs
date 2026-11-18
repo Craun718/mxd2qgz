@@ -135,6 +135,10 @@ pub enum LayerBodyPrefix10_1 {
     FdoGraphicsLayer(Box<FdoGraphicsLayerPrefix10_1>),
     /// 有界 RasterLayer 的已确认前缀。
     RasterLayer(crate::layers::raster_layer::RasterLayerPrefix10_1),
+    /// 有界 ImageServerLayer 的 IPersistVariant 体，可能在未知对象前停止。
+    ImageServerLayer(Box<crate::layers::image_server_layer_tail::ImageServerLayerBody10_1>),
+    /// 有界 BasemapLayer 的结果对象与子图层回引。
+    BasemapLayer(crate::layers::basemap_layer::BasemapPrefix10_1),
 }
 
 impl LayerBodyPrefix10_1 {
@@ -149,6 +153,8 @@ impl LayerBodyPrefix10_1 {
             Self::GroupLayer(prefix) => &prefix.name,
             Self::CompositeGraphicsLayer(prefix) => &prefix.name,
             Self::RasterLayer(prefix) => &prefix.first_string,
+            Self::ImageServerLayer(body) => &body.prefix.name,
+            Self::BasemapLayer(prefix) => &prefix.name,
             Self::FdoGraphicsLayer(prefix) => match &prefix.associated_layer {
                 crate::layers::fdo_graphics_layer::AssociatedLayer10_1::FeatureLayer(layer) => {
                     &layer.name
@@ -253,25 +259,81 @@ impl LayerListEntry {
                         class_id_hex(class_id)
                     ));
                 }
-                if let Some(name) = &prefix.dataset_name {
-                    parts.push(match &name.stop {
-                        Some(stop) => format!("RasterDatasetName 未读完：{stop:?}"),
-                        None => "RasterDatasetName 对象体已解析".into(),
+                use crate::layers::raster_dataset_name::RasterDatasetNameEntryBody10_1;
+                for name in &prefix.names {
+                    match &name.body {
+                        Some(RasterDatasetNameEntryBody10_1::Dataset(_)) => {
+                            parts.push("RasterDatasetName 对象体已解析".into());
+                        }
+                        Some(RasterDatasetNameEntryBody10_1::FileGeodatabase { .. }) => {
+                            parts.push("FgdbRasterDatasetName 的委派名称体已解析".into());
+                            parts.push("FgdbRasterDatasetName 的 RasterIO 已读到结束记录".into());
+                        }
+                        None => {}
+                    }
+                }
+                if let Some(stop) = &prefix.names_stop {
+                    parts.push(format!("RasterLayer 名称列表未解析完：{stop}"));
+                }
+                if let Some(renderer) = &prefix.renderer {
+                    use crate::layers::raster_renderer::RasterRendererPrefix10_1::{
+                        Classify, Colormap, Discrete, LegacyRgb, Rgb, Simple, Stretch, UniqueValue,
+                    };
+                    parts.push(match &renderer.body {
+                        Some(Colormap { version, stop, .. }) => match stop {
+                            Some(stop) => format!("色表渲染器 v{version} 前缀已解析：{stop}"),
+                            None => format!("色表渲染器 v{version} 对象体已解析"),
+                        },
+                        Some(Rgb {
+                            version,
+                            bands,
+                            stop,
+                            ..
+                        }) => match stop {
+                            Some(stop) => format!(
+                                "RGB 渲染器 v{version} 前缀已解析，波段索引 {bands:?}：{stop}"
+                            ),
+                            None => {
+                                format!("RGB 渲染器 v{version} 对象体已解析，波段索引 {bands:?}")
+                            }
+                        },
+                        Some(LegacyRgb(body)) => format!(
+                            "RGB 渲染器 v{} 对象体已解析，波段索引 {:?}",
+                            body.version, body.bands
+                        ),
+                        Some(Simple { version, .. }) => {
+                            format!("SimpleRasterRenderer v{version} 对象体已解析")
+                        }
+                        Some(Discrete(body)) => format!(
+                            "离散色渲染器 v{} 对象体已解析，{} 个颜色值",
+                            body.version,
+                            body.colors.len()
+                        ),
+                        Some(UniqueValue(body)) => format!(
+                            "栅格唯一值渲染器 v{} 对象体已解析，{} 个类别",
+                            body.version,
+                            body.classes.len()
+                        ),
+                        Some(Classify(body)) => format!(
+                            "栅格分类渲染器 v{} 对象体已解析，{} 个断点",
+                            body.version,
+                            body.breaks.len()
+                        ),
+                        Some(Stretch(body)) => format!(
+                            "栅格拉伸渲染器 v{} 对象体已解析，波段索引 {}",
+                            body.version, body.band
+                        ),
+                        None => format!("栅格渲染器对象槽 {:?}", renderer.entry),
                     });
                 }
-                if let Some(name) = &prefix.fgdb_dataset_name {
-                    parts.push(if name.delegated_name.stop.is_none() {
-                        "FgdbRasterDatasetName 的委派名称体已解析".into()
-                    } else {
-                        "FgdbRasterDatasetName 的委派名称体未读完".into()
-                    });
+                if let Some(stop) = &prefix.renderer_stop {
+                    parts.push(format!("栅格渲染器槽未解析：{stop}"));
                 }
-                if let Some(records) = &prefix.fgdb_raster_io {
-                    parts.push(if records.stop.is_none() {
-                        "FgdbRasterDatasetName 的 RasterIO 已读到结束记录".into()
-                    } else {
-                        "FgdbRasterDatasetName 的 RasterIO 保留未读记录".into()
-                    });
+                if prefix.tail.is_some() {
+                    parts.push("RasterLayer 渲染器后的尾段已解析".into());
+                }
+                if let Some(stop) = &prefix.tail_stop {
+                    parts.push(format!("RasterLayer 尾段未解析：{stop}"));
                 }
             }
             Some(parsed) => parts.push(format!("体前缀已解析：名称 {:?}", parsed.layer_name())),
@@ -496,13 +558,40 @@ fn read_entry(
             // Basemap 必须在外层已证或既有观察推定的界内读取；子读取器偏移相对
             // 有界切片，只有成功时才提交它完整读取的对象登记。
             let dispatch = if *class_id == RASTER_LAYER_CLASS_ID {
-                // RasterLayer 后续体尚未闭合；只解析 ExtraSafe 外层界内的前缀。
+                // RasterLayer 只在 ExtraSafe 外层界内进入对象体读取器。
                 if let Some((end, _)) = bound {
                     read_bounded_raster_prefix(trial, end, max_bytes, offset, trial_table)
                         .map(|prefix| Some(LayerBodyPrefix10_1::RasterLayer(prefix)))
                 } else {
                     Ok(None)
                 }
+            } else if *class_id == crate::layers::image_server_layer::IMAGE_SERVER_LAYER_CLASS_ID
+                && let Some((end, _)) = bound
+            {
+                let mut source = trial.clone();
+                let len = end
+                    .checked_sub(source.position())
+                    .ok_or_else(|| invalid(offset, "ImageServerLayer 外层边界早于对象体"))?;
+                let mut body = Reader::new(source.read_bytes(len)?);
+                crate::layers::image_server_layer_tail::read_image_server_layer_body_10_1(
+                    &mut body,
+                    max_bytes,
+                    trial_table,
+                )
+                .and_then(|parsed| {
+                    if let Some(stop) = &parsed.stop {
+                        parse_note = Some(format!(
+                            "ImageServerLayer 在 offset=0x{:x} 停止：{}",
+                            trial.position() + stop.offset,
+                            stop.reason
+                        ));
+                    }
+                    // 后续未读值只能按宿主给出的范围保留。
+                    trial.read_bytes(body.position())?;
+                    Ok(Some(LayerBodyPrefix10_1::ImageServerLayer(Box::new(
+                        parsed,
+                    ))))
+                })
             } else if *class_id == crate::layers::basemap_layer::BASEMAP_LAYER_CLASS_ID
                 && bound.is_some()
             {
@@ -520,6 +609,13 @@ fn read_entry(
                     max_bytes,
                     &mut body_table,
                 ) {
+                    Ok(prefix)
+                        if prefix.stop
+                            == crate::layers::basemap_layer::BasemapStop10_1::Complete
+                            && body_reader.remaining() != 0 =>
+                    {
+                        Err(invalid(offset, "Basemap 实际消费与 ExtraSafe 边界不一致"))
+                    }
                     Ok(prefix) => {
                         trial.read_bytes(body_reader.position())?;
                         *trial_table = body_table;
@@ -529,22 +625,34 @@ fn read_entry(
                                 key,
                                 ..
                             } => format!("未闭合新对象 类={} 键 {key}", class_id_hex(class_id)),
+                            crate::layers::basemap_layer::BasemapStop10_1::FeatureLayer {
+                                key,
+                                body_stop_offset,
+                                reason,
+                            } => format!(
+                                "FeatureLayer 键 {key} 体内停于 offset=0x{:x}：{reason:?}",
+                                start + body_stop_offset
+                            ),
                             crate::layers::basemap_layer::BasemapStop10_1::ShaderElements {
                                 count,
                                 ..
                             } => format!("未闭合 shader 数组，计数 {count}"),
-                            crate::layers::basemap_layer::BasemapStop10_1::AfterResults {
+                            crate::layers::basemap_layer::BasemapStop10_1::Extensions {
+                                count,
                                 ..
-                            } => "结果容器后字段尚未接线".to_string(),
+                            } => format!("未闭合扩展集合，计数 {count}"),
+                            crate::layers::basemap_layer::BasemapStop10_1::Complete => {
+                                "已完整读取".to_string()
+                            }
                         };
                         parse_note = Some(format!(
-                            "Basemap {:?}：已完整读取图层键 {:?}，在 offset=0x{:x} 停止：{}",
+                            "Basemap {:?}：已完整读取图层键 {:?}，offset=0x{:x}：{}",
                             prefix.name,
                             prefix.feature_keys,
                             start + body_reader.position(),
                             reason
                         ));
-                        Ok(None)
+                        Ok(Some(LayerBodyPrefix10_1::BasemapLayer(prefix)))
                     }
                     Err(error) => Err(error),
                 }
@@ -608,52 +716,7 @@ fn read_bounded_raster_prefix(
         .checked_sub(source.position())
         .ok_or_else(|| invalid(offset, "RasterLayer 外层边界早于对象体"))?;
     let mut body = Reader::new(source.read_bytes(len)?);
-    let mut prefix =
-        crate::layers::raster_layer::read_raster_layer_prefix_10_1(&mut body, max_bytes)?;
-    // 续段失败不丢弃已确定的首串，且试读器不越过外层条目界。
-    prefix.continuation = crate::layers::raster_layer::read_raster_layer_continuation_10_1(
-        &mut body,
-        prefix.version,
-        max_bytes,
-    )
-    .ok();
-    use crate::layers::fgdb_raster_dataset_name::{
-        FGDB_RASTER_DATASET_NAME_CLASS_ID, read_fgdb_raster_dataset_name_prefix_10_1,
-        read_fgdb_raster_io_prefix_10_1,
-    };
-    use crate::layers::raster_dataset_name::{
-        RASTER_DATASET_NAME_CLASS_ID, read_raster_dataset_name_body_10_1,
-    };
-    if let Some(continuation) = &prefix.continuation
-        && let Some(crate::storage::object_stream::ObjectHeader::Object { class_id, key }) =
-            continuation.first_object_header
-        && matches!(
-            class_id,
-            RASTER_DATASET_NAME_CLASS_ID | FGDB_RASTER_DATASET_NAME_CLASS_ID
-        )
-        && !refs.contains(key)
-    {
-        let mut staged = refs.clone();
-        staged.register(key);
-        if class_id == RASTER_DATASET_NAME_CLASS_ID {
-            if let Ok(name) =
-                read_raster_dataset_name_body_10_1(&mut body, max_bytes, &mut staged, key)
-            {
-                *refs = staged;
-                prefix.dataset_name = Some(Box::new(name));
-            }
-        } else if let Ok(name) =
-            read_fgdb_raster_dataset_name_prefix_10_1(&mut body, max_bytes, &mut staged, key)
-        {
-            *refs = staged;
-            if name.delegated_name.stop.is_none()
-                && let Ok(records) = read_fgdb_raster_io_prefix_10_1(&mut body, max_bytes)
-            {
-                prefix.fgdb_raster_io = Some(Box::new(records));
-            }
-            prefix.fgdb_dataset_name = Some(Box::new(name));
-        }
-    }
+    let prefix = super::raster_layer::read_bounded_raster_body_10_1(&mut body, max_bytes, refs)?;
     trial.read_bytes(body.position())?;
     Ok(prefix)
 }

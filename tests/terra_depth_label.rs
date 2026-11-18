@@ -102,9 +102,11 @@ fn both_host_slots_continue_for_new_engines() {
             matches!(result.engine, ExpressionEngineSlot10_1::OtherEngine(ref e) if e.kind == kind && e.body.key == 71)
         );
         assert_eq!(result.stop, None);
-        assert_eq!(result.double_24, Some(12.5));
+        assert_eq!(result.scale_ratio, Some(12.5));
+        assert_eq!(result.reference_scale, Some(4.5));
+        assert_eq!(result.units, Some(17));
         assert_eq!(result.int32_2c, Some(23));
-        assert_eq!(result.int32_7c, Some(29));
+        assert_eq!(result.annotation_class_id, Some(29));
         assert_eq!(reader.position(), lelp.len());
         assert!(table.contains(71));
         for cut in engine_end - 4..engine_end {

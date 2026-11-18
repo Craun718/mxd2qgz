@@ -1,7 +1,7 @@
 use mxd2qgz::{
     layers::{
         feature_layer::{FEATURE_LAYER_CLASS_ID, FeatureLayerStop10_1},
-        feature_layer_tail::SuccessorStop10_1,
+        feature_layer_tail::{DisplayFilterSlot10_1, SuccessorStop10_1},
         layer_list::{LayerBodyPrefix10_1, LayerEntryObject},
     },
     maps::map_object::{MAP_CLASS_ID, read_map_suffix_10_1},
@@ -48,6 +48,7 @@ fn sdk_java_portland_featurelayer_reaches_all_four_timedata_segments() {
     let map = read_map_suffix_10_1(&mut reader, 16_000_000, &mut refs).unwrap();
 
     let mut reached = Vec::new();
+    let mut transparency_filter = None;
     for entry in &map.layer_list.entries {
         let Some(LayerBodyPrefix10_1::FeatureLayer(layer)) = &entry.parsed else {
             continue;
@@ -102,13 +103,23 @@ fn sdk_java_portland_featurelayer_reaches_all_four_timedata_segments() {
         assert_eq!(display.version, 1);
         assert_eq!((display.int_a, display.int_b), (4, 8));
         assert!(matches!(successor.stop, SuccessorStop10_1::TailCompleted));
+        if let Some(DisplayFilterSlot10_1::Transparency {
+            key: 938,
+            version,
+            base_version,
+            ..
+        }) = successor.display_filter
+        {
+            transparency_filter = Some((version, base_version));
+        }
     }
     assert_eq!(
         reached,
         [
-            0x2da, 0x1c450, 0x386ed, 0x3a7b6, 0x3b38c, 0x4d32a, 0x4e1ac, 0x6a00b, 0x6af1d, 0x6e402,
-            0x6f3ed, 0x700d9, 0x713af,
+            0x2da, 0x1c450, 0x386ed, 0x39458, 0x3a7b6, 0x3b38c, 0x3c150, 0x4d32a, 0x4e1ac, 0x6a00b,
+            0x6af1d, 0x6be57, 0x6cb58, 0x6e402, 0x6f3ed, 0x700d9, 0x713af, 0x720cd
         ],
-        "Map 宿主顺序中的 13 个 FeatureLayer 条目"
+        "Map 宿主顺序中的 18 个 FeatureLayer 条目"
     );
+    assert_eq!(transparency_filter, Some((1, 1)));
 }

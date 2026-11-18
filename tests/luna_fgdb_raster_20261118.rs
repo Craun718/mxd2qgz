@@ -1,5 +1,7 @@
 use mxd2qgz::layers::layer_list::LayerBodyPrefix10_1;
-use mxd2qgz::layers::raster_dataset_name::RasterDatasetWorkspaceSlot10_1;
+use mxd2qgz::layers::raster_dataset_name::{
+    RasterDatasetNameEntryBody10_1, RasterDatasetWorkspaceSlot10_1,
+};
 use mxd2qgz::maps::map_object::read_map_suffix_10_1;
 use mxd2qgz::storage::object_refs::{RefTable10_1, read_object_entry_10_1};
 use mxd2qgz::stream::reader::Reader;
@@ -22,7 +24,11 @@ fn filegdb_raster_name_reaches_end_record_in_reference_map() {
     let Some(LayerBodyPrefix10_1::RasterLayer(raster)) = &entry.parsed else {
         panic!("第五条应为 FileGDB 栅格");
     };
-    let name = raster.fgdb_dataset_name.as_ref().unwrap();
+    let Some(RasterDatasetNameEntryBody10_1::FileGeodatabase { name, records }) =
+        &raster.names[0].body
+    else {
+        panic!("应读完 FileGDB 栅格名称");
+    };
     assert_eq!(name.delegated_name.key, 260);
     let Some(RasterDatasetWorkspaceSlot10_1::WorkspaceName(workspace)) =
         &name.delegated_name.workspace
@@ -34,7 +40,6 @@ fn filegdb_raster_name_reaches_end_record_in_reference_map() {
     assert!(refs.contains(260));
     assert!(refs.contains(261));
     assert!(name.delegated_name.stop.is_none());
-    let records = raster.fgdb_raster_io.as_ref().unwrap();
     assert_eq!(
         (records.tag1_value, records.tag4_value, records.tag7_value),
         (1, 1, Some(1))
@@ -44,6 +49,7 @@ fn filegdb_raster_name_reaches_end_record_in_reference_map() {
         mxd2qgz::layers::fgdb_raster_dataset_name::FgdbRasterIoObject10_1::Null
     ));
     assert!(records.stop.is_none());
-    assert_eq!(entry.body.unwrap().offset, 0x51d9);
-    assert_eq!(reader.position(), 0x253e1);
+    // end_offset 相对 RasterLayer 体；对象体前是 flag、ExtraSafe 前缀和对象头。
+    assert_eq!(entry.offset + 30 + records.end_offset.unwrap(), 0x51d9);
+    assert_eq!(reader.position(), 0x25569);
 }
