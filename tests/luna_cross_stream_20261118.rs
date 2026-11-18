@@ -1,11 +1,11 @@
 use mxd2qgz::maps::map_object::MAP_CLASS_ID;
 use mxd2qgz::maps::map_object::{MapSuffixStop, read_map_suffix_10_1};
 use mxd2qgz::maps::page_layout_prefix::{
-    PAGE_LAYOUT_CLASS_ID, read_page_layout_element_10_1, read_page_layout_prefix_10_1,
+    PAGE_LAYOUT_CLASS_ID, read_page_layout_map_frame_10_1, read_page_layout_map_frame_prefix_10_1,
+    read_page_layout_prefix_10_1,
 };
 use mxd2qgz::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use mxd2qgz::stream::reader::Reader;
-use std::collections::HashSet;
 use std::io::Read;
 
 const LINEARREF_PATH: &str =
@@ -87,83 +87,96 @@ fn linearref_page_layout_checks_references_against_completed_maps_session() {
     let map = read_map_suffix_10_1(&mut maps_reader, 16_000_000, &mut session_refs).unwrap();
     assert_eq!(map.stop, MapSuffixStop::Complete);
     assert_eq!(maps_reader.position(), 0x8409);
-    let map_keys: HashSet<u32> = (0..10_000)
-        .filter(|key| session_refs.contains(*key))
-        .collect();
-    assert!(map_keys.len() > 100);
+    assert_eq!(maps_reader.read_u32_le().unwrap(), 1);
+    assert_eq!(maps_reader.remaining(), 0);
+    assert!(session_refs.contains(31));
 
     let mut page_reader = Reader::new(&page);
-    assert!(matches!(
+    assert_eq!(
         read_object_entry_10_1(&mut page_reader, &mut session_refs).unwrap(),
         ObjectEntry10_1::NewObject {
             class_id: PAGE_LAYOUT_CLASS_ID,
-            ..
+            key: 416
         }
-    ));
-    let prefix = read_page_layout_prefix_10_1(&mut page_reader, 100_000).unwrap();
-    let mut found = Vec::new();
-
-    for index in 0..prefix.element_count {
-        let offset = page_reader.position();
-        let mut probe = page_reader.clone();
-        let size = probe.read_u32_le().unwrap() as usize;
-        let seek = probe.read_u32_le().unwrap();
-        assert_eq!(seek, 0, "element {index} at {offset:#x}");
-        let mut region = probe.read_region(size).unwrap();
-        let mut probe_refs = session_refs.clone();
-        if let ObjectEntry10_1::BackReference { class_id, key } =
-            read_object_entry_10_1(&mut region, &mut probe_refs).unwrap()
-        {
-            if map_keys.contains(&key) {
-                found.push((index, offset, class_id, key, "element-slot"));
-                break;
-            }
-            panic!("PageLayout 根元素回引键 {key} 不属于已消费的 Maps 键集");
-        }
-
-        let (entry, body) =
-            match read_page_layout_element_10_1(&mut page_reader, 16_000_000, &mut session_refs) {
-                Ok(value) => value,
-                Err(error) => {
-                    eprintln!(
-                        "LinearRef PageLayout stops at element {index}, offset {offset:#x}: {error}"
-                    );
-                    break;
-                }
-            };
-        let ObjectEntry10_1::NewObject { class_id, key } = entry else {
-            unreachable!("page element reader only returns new objects")
-        };
-
-        // Debug 输出来自已解析的强类型槽；只认明确的 BackReference 变体，
-        // 并将其键与 Maps 完整读取后冻结的键集求交。
-        let debug = format!("{body:?}");
-        let mut rest = debug.as_str();
-        while let Some(start) = rest.find("BackReference {") {
-            rest = &rest[start + "BackReference {".len()..];
-            let Some(key_start) = rest.find("key: ") else {
-                break;
-            };
-            let value = &rest[key_start + 5..];
-            let digits: String = value.chars().take_while(char::is_ascii_digit).collect();
-            let Ok(reference_key) = digits.parse::<u32>() else {
-                continue;
-            };
-            if map_keys.contains(&reference_key) {
-                found.push((index, offset, class_id, reference_key, "nested-slot"));
-            }
-            rest = value;
-        }
-        if !found.is_empty() {
-            eprintln!(
-                "found LinearRef Maps-to-PageLayout back-reference(s): {found:?}; element key={key}"
-            );
-            break;
-        }
-    }
-
-    assert!(
-        !found.is_empty(),
-        "no Maps-key back-reference was reached before the first unsupported PageLayout body"
     );
+    let prefix = read_page_layout_prefix_10_1(&mut page_reader, 100_000).unwrap();
+    assert!(prefix.extra_safe);
+    assert_eq!(prefix.element_count, 1);
+
+    // 仅解析 /PageLayout 时，原样的 IMap 头无法识别为回引。
+    let mut isolated_reader = page_reader.clone();
+    let mut isolated_refs = RefTable10_1::new();
+    isolated_refs.register(416);
+    assert!(
+        read_page_layout_map_frame_prefix_10_1(&mut isolated_reader, 4096, &mut isolated_refs)
+            .is_err()
+    );
+    assert_eq!(isolated_reader.position(), 0x1e);
+    assert!(!isolated_refs.contains(417));
+
+    let body = read_page_layout_map_frame_10_1(&mut page_reader, 4096, &mut session_refs).unwrap();
+    let frame = body.prefix;
+    assert_eq!(frame.version, 2);
+    assert_eq!(frame.frame_key, 417);
+    assert_eq!(frame.map_offset, 0x3c);
+    assert_eq!(
+        frame.map,
+        ObjectEntry10_1::BackReference {
+            class_id: MAP_CLASS_ID,
+            key: 31
+        }
+    );
+    assert!(session_refs.contains(417));
+    assert_eq!(page_reader.position(), 0x27f);
+    assert_eq!(body.base.properties.type_description, "Data Frame");
+    assert!(session_refs.contains(422));
+    assert_eq!(frame.remaining_in_element, 559);
+
+    let report = mxd2qgz::maps::mxd_maps::parse_mxd_streams_10_1(&maps, Some(&page)).unwrap();
+    let layout = report.page_layout.unwrap();
+    assert_eq!(layout.consumed_elements, 1);
+    assert_eq!(layout.map_frames.len(), 1);
+    assert_eq!(layout.map_frames[0].prefix.map, frame.map);
+    assert_eq!(layout.end_offset, 0x27f);
+    assert_eq!(layout.tail.as_ref().unwrap().end_offset, 0x48c);
+    assert_eq!(layout.print_settings_flag, Some(0));
+    assert_eq!(layout.consumed_end_offset(), page.len());
+    assert!(
+        !report
+            .map
+            .unknown_fields
+            .iter()
+            .any(|field| field.stream == "/PageLayout")
+    );
+}
+
+#[test]
+fn page_layout_map_frame_does_not_borrow_bytes_from_next_element() {
+    use mxd2qgz::maps::page_layout_prefix::MAP_FRAME_CLASS_ID;
+
+    let mut bytes = Vec::new();
+    // IMap 回引需要 20 字节，声明范围只给了 19 字节。
+    bytes.extend(41_u32.to_le_bytes());
+    bytes.extend(0_u32.to_le_bytes());
+    bytes.extend(MAP_FRAME_CLASS_ID);
+    bytes.extend(8_u32.to_le_bytes());
+    bytes.extend(2_u16.to_le_bytes());
+    bytes.extend(MAP_CLASS_ID);
+    bytes.extend(3_u32.to_le_bytes());
+    bytes.push(0x71);
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    refs.register(3);
+    let expected_refs = refs.clone();
+    assert!(read_page_layout_map_frame_prefix_10_1(&mut reader, 1024, &mut refs).is_err());
+    assert_eq!(reader.position(), 0);
+    assert_eq!(refs, expected_refs);
+
+    bytes[..4].copy_from_slice(&43_u32.to_le_bytes());
+    let mut reader = Reader::new(&bytes);
+    let frame = read_page_layout_map_frame_prefix_10_1(&mut reader, 1024, &mut refs).unwrap();
+    assert_eq!(frame.map_offset, 30);
+    assert_eq!(frame.remaining_in_element, 1);
+    assert_eq!(reader.position(), 50);
+    assert_eq!(reader.read_bytes(1).unwrap(), &[0x71]);
 }

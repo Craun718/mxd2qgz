@@ -1,0 +1,458 @@
+//! PageLayout.dll 10.1.0.3035 的元素列表后字段（Load 0x7b6e4e30）。
+use super::map_decor::read_map_decor_slot_10_1;
+use super::map_object::MAP_CLASS_ID;
+use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
+use crate::objects::element_decor::{DecorKind10_1, DecorSlot10_1};
+use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
+use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use crate::stream::{native_string::read_string_10_1, reader::Reader};
+use std::io::{self, ErrorKind};
+
+const PAGE: [u8; 16] = [
+    0x6f, 0xd7, 0x94, 0xdd, 0x6d, 0x83, 0xd0, 0x11, 0x87, 0xec, 0x08, 0x00, 0x09, 0xec, 0x73, 0x2a,
+];
+const RULER: [u8; 16] = [
+    0xac, 0x81, 0xe0, 0x31, 0x02, 0xcb, 0xd1, 0x11, 0x87, 0x6c, 0, 0, 0xf8, 0x75, 0x17, 0x20,
+];
+const GRID: [u8; 16] = [
+    0xad, 0x81, 0xe0, 0x31, 0x02, 0xcb, 0xd1, 0x11, 0x87, 0x6c, 0, 0, 0xf8, 0x75, 0x17, 0x20,
+];
+const GUIDES: [u8; 16] = [
+    0xae, 0x81, 0xe0, 0x31, 0x02, 0xcb, 0xd1, 0x11, 0x87, 0x6c, 0, 0, 0xf8, 0x75, 0x17, 0x20,
+];
+const OPTIMIZATION_EXTENSION: [u8; 16] = [
+    0x9f, 0xd8, 0x29, 0x6c, 0xba, 0xb7, 0xb0, 0x4f, 0xa8, 0x8d, 0xfe, 0xa7, 0x7a, 0x03, 0xba, 0x0e,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LayoutSlot10_1<T> {
+    pub entry: ObjectEntry10_1,
+    pub body: Option<T>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Page10_1 {
+    pub version: u16,
+    pub paper_id: u32,
+    pub raw_8c: u32,
+    pub orientation: u16,
+    pub raw_84: u32,
+    pub size: [f64; 2],
+    pub stored_printable_extent: [f64; 4],
+    pub raw_shorts: [u16; 2],
+    pub color: ColorSlot10_1,
+    pub border: DecorSlot10_1,
+    pub background: DecorSlot10_1,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RulerSettings10_1 {
+    pub version: u16,
+    pub interval: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SnapGrid10_1 {
+    pub version: u16,
+    pub raw_short: u16,
+    pub spacing: [f64; 2],
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SnapGuides10_1 {
+    pub version: u16,
+    pub positions: Vec<f64>,
+    pub raw_short: u16,
+    pub raw_long: u32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GraphicSnapEnvironment10_1 {
+    pub version: u16,
+    pub tolerance: f64,
+    pub agent_classes: Vec<[u8; 16]>,
+    pub extra_class_ids: Vec<[u8; 16]>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MapOptimizationExtension10_1 {
+    pub version: u16,
+    pub string_2: Option<String>,
+    pub values_3: Option<[u32; 2]>,
+    pub flag_4: Option<u8>,
+    pub flag_5: Option<u8>,
+    pub values_6: Option<[u32; 2]>,
+    pub string_6: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LayoutElementAnchor10_1 {
+    pub envelope: LayoutSlot10_1<Envelope10_1>,
+    pub raw_double: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PageLayoutTail10_1 {
+    pub page: LayoutSlot10_1<Page10_1>,
+    pub ruler: LayoutSlot10_1<RulerSettings10_1>,
+    pub grid: LayoutSlot10_1<SnapGrid10_1>,
+    pub guides: [LayoutSlot10_1<SnapGuides10_1>; 2],
+    pub snap_environment: GraphicSnapEnvironment10_1,
+    pub map: ObjectEntry10_1,
+    pub raw_shorts: [u16; 4],
+    /// 视图范围的四个序列化坐标。
+    pub view_extent: [f64; 4],
+    /// 版面范围的 XMin、YMin、Width、Height。
+    pub layout_origin_size: [f64; 4],
+    pub version_2: Option<(u16, u16, u32)>,
+    pub version_3_short: Option<u16>,
+    pub version_4_double: Option<f64>,
+    pub version_5_short: Option<u16>,
+    pub version_6_long: Option<u32>,
+    pub version_8_short: Option<u16>,
+    pub version_9_shorts: Option<[u16; 2]>,
+    pub optimization_extensions: Vec<MapOptimizationExtension10_1>,
+    pub version_11_slot: Option<ObjectEntry10_1>,
+    pub legacy_version_12_or_13_doubles: Option<[f64; 2]>,
+    pub version_13_long: Option<u32>,
+    pub element_values: Vec<u32>,
+    pub anchors: Vec<LayoutElementAnchor10_1>,
+    pub end_offset: usize,
+}
+
+fn invalid(reason: &str) -> io::Error {
+    io::Error::new(ErrorKind::InvalidData, reason)
+}
+
+fn unsupported(reason: &str) -> io::Error {
+    io::Error::new(ErrorKind::Unsupported, reason)
+}
+
+fn read_version(r: &mut Reader<'_>, max: u16, name: &str) -> io::Result<u16> {
+    let value = r.read_u16_le()?;
+    if value > max {
+        return Err(invalid(&format!("{name} 版本 {value} 超出范围")));
+    }
+    Ok(value)
+}
+
+fn count(r: &mut Reader<'_>, bytes: usize, max: usize) -> io::Result<usize> {
+    let n = r.read_u32_le()?;
+    if n > i32::MAX as u32 || n as usize > max.min(r.remaining()) / bytes {
+        return Err(invalid("布局集合计数超过声明范围或资源限额"));
+    }
+    Ok(n as usize)
+}
+
+fn doubles<const N: usize>(r: &mut Reader<'_>) -> io::Result<[f64; N]> {
+    let mut items = [0.0; N];
+    for item in &mut items {
+        *item = r.read_f64_le()?;
+    }
+    Ok(items)
+}
+
+fn read_slot<T>(
+    r: &mut Reader<'_>,
+    refs: &mut RefTable10_1,
+    expected: [u8; 16],
+    name: &str,
+    load: impl FnOnce(&mut Reader<'_>, &mut RefTable10_1) -> io::Result<T>,
+) -> io::Result<LayoutSlot10_1<T>> {
+    let offset = r.position();
+    let entry = read_object_entry_10_1(r, refs)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, .. } if class_id == expected => None,
+        ObjectEntry10_1::NewObject { class_id, .. } if class_id == expected => Some(load(r, refs)?),
+        _ => {
+            return Err(unsupported(&format!(
+                "{name} @0x{offset:x} 的实现类尚未支持：{entry:?}"
+            )));
+        }
+    };
+    Ok(LayoutSlot10_1 { entry, body })
+}
+
+fn read_page(r: &mut Reader<'_>, refs: &mut RefTable10_1, max: usize) -> io::Result<Page10_1> {
+    let version = read_version(r, 1, "Page")?;
+    let paper_id = r.read_u32_le()?;
+    let raw_8c = r.read_u32_le()?;
+    let orientation = r.read_u16_le()?;
+    let raw_84 = r.read_u32_le()?;
+    let size = doubles(r)?;
+    let stored_printable_extent = doubles(r)?;
+    let raw_shorts = [r.read_u16_le()?, r.read_u16_le()?];
+    let color = read_color_slot_10_1(r, max, refs)?;
+    if matches!(color, ColorSlot10_1::Unsupported { .. }) {
+        return Err(unsupported("Page 颜色的实现类尚未支持"));
+    }
+    let border = read_map_decor_slot_10_1(r, refs, max, DecorKind10_1::Border)?
+        .ok_or_else(|| unsupported("Page 边框的实现类尚未支持"))?;
+    let background = read_map_decor_slot_10_1(r, refs, max, DecorKind10_1::Background)?
+        .ok_or_else(|| unsupported("Page 背景的实现类尚未支持"))?;
+    Ok(Page10_1 {
+        version,
+        paper_id,
+        raw_8c,
+        orientation,
+        raw_84,
+        size,
+        stored_printable_extent,
+        raw_shorts,
+        color,
+        border,
+        background,
+    })
+}
+
+fn read_guides(r: &mut Reader<'_>, max: usize) -> io::Result<SnapGuides10_1> {
+    let version = read_version(r, 1, "SnapGuides")?;
+    let n = count(r, 8, max)?;
+    let mut positions = Vec::with_capacity(n);
+    for _ in 0..n {
+        positions.push(r.read_f64_le()?);
+    }
+    Ok(SnapGuides10_1 {
+        version,
+        positions,
+        raw_short: r.read_u16_le()?,
+        raw_long: r.read_u32_le()?,
+    })
+}
+
+fn read_class_ids(r: &mut Reader<'_>, max: usize) -> io::Result<Vec<[u8; 16]>> {
+    let n = count(r, 16, max)?;
+    Ok(r.read_bytes(n * 16)?
+        .chunks_exact(16)
+        .map(|bytes| bytes.try_into().unwrap())
+        .collect())
+}
+
+fn read_extension(r: &mut Reader<'_>, max: usize) -> io::Result<MapOptimizationExtension10_1> {
+    let version = read_version(r, 6, "MapOptimizationLayoutExtension")?;
+    // CartoConverter 0x6ccc0e2a 委派 MappingCoreLib::LoadResults。
+    // 当前只支持已在布局中验证的空结果容器。
+    if r.read_u32_le()? != 0 {
+        return Err(unsupported("布局扩展的非空准备结果尚未支持"));
+    }
+    let string_2 = (version >= 2)
+        .then(|| read_string_10_1(r, max))
+        .transpose()?;
+    let values_3 = if version >= 3 {
+        let values = [r.read_u32_le()?, r.read_u32_le()?];
+        // 此槽在介质样本为空；非空的请求接口尚未完成类型对位。
+        if r.read_bytes(16)? != [0; 16] {
+            return Err(unsupported("布局优化扩展的非空对象槽尚未支持"));
+        }
+        Some(values)
+    } else {
+        None
+    };
+    let flag_4 = (version >= 4)
+        .then(|| r.read_bytes(1).map(|bytes| bytes[0]))
+        .transpose()?;
+    let flag_5 = (version >= 5)
+        .then(|| r.read_bytes(1).map(|bytes| bytes[0]))
+        .transpose()?;
+    let (values_6, string_6) = if version >= 6 {
+        (
+            Some([r.read_u32_le()?, r.read_u32_le()?]),
+            Some(read_string_10_1(r, max)?),
+        )
+    } else {
+        (None, None)
+    };
+    Ok(MapOptimizationExtension10_1 {
+        version,
+        string_2,
+        values_3,
+        flag_4,
+        flag_5,
+        values_6,
+        string_6,
+    })
+}
+
+fn read_extensions(
+    r: &mut Reader<'_>,
+    max: usize,
+) -> io::Result<Vec<MapOptimizationExtension10_1>> {
+    let n = count(r, 24, max)?;
+    let mut extensions = Vec::with_capacity(n);
+    for _ in 0..n {
+        let start = r.position();
+        let size = u64::from_le_bytes(r.read_bytes(8)?.try_into().unwrap());
+        let size = usize::try_from(size)
+            .ok()
+            .filter(|n| *n <= max)
+            .ok_or_else(|| invalid("PageLayout 扩展体长度超过限额"))?;
+        let class_id: [u8; 16] = r.read_bytes(16)?.try_into().unwrap();
+        if class_id != OPTIMIZATION_EXTENSION {
+            return Err(unsupported(&format!(
+                "未知 PageLayout 扩展 @0x{start:x}：{class_id:02x?}"
+            )));
+        }
+        let mut body = r.read_region(size)?;
+        extensions.push(read_extension(&mut body, max)?);
+        if body.remaining() != 0 {
+            return Err(invalid("PageLayout 扩展体未完整消费声明范围"));
+        }
+    }
+    Ok(extensions)
+}
+
+fn read_version_11_slot(r: &mut Reader<'_>) -> io::Result<ObjectEntry10_1> {
+    let (a, b) = (r.read_u32_le()?, r.read_u32_le()?);
+    match (a, b) {
+        (0, 0) => Ok(ObjectEntry10_1::Null),
+        (16, 0) if r.read_bytes(16)? == [0; 16] => Ok(ObjectEntry10_1::Null),
+        _ => Err(unsupported(
+            "PageLayout v11 起的非空 ExtraSafe 对象槽尚未支持",
+        )),
+    }
+}
+
+/// 从已确认的元素列表末端读取布局体；失败时整个尾段及其引用登记回退。
+pub fn read_page_layout_tail_10_1(
+    reader: &mut Reader<'_>,
+    refs: &mut RefTable10_1,
+    version: u16,
+    element_count: u32,
+    max: usize,
+    is_root_map: impl Fn(u32) -> bool,
+) -> io::Result<PageLayoutTail10_1> {
+    if version > 15 {
+        return Err(invalid("不支持的 PageLayout 版本"));
+    }
+    let mut r = reader.clone();
+    let mut t = refs.clone();
+    let page = read_slot(&mut r, &mut t, PAGE, "Page", |r, t| read_page(r, t, max))?;
+    let ruler = read_slot(&mut r, &mut t, RULER, "RulerSettings", |r, _| {
+        Ok(RulerSettings10_1 {
+            version: read_version(r, 1, "RulerSettings")?,
+            interval: r.read_f64_le()?,
+        })
+    })?;
+    let grid = read_slot(&mut r, &mut t, GRID, "SnapGrid", |r, _| {
+        Ok(SnapGrid10_1 {
+            version: read_version(r, 1, "SnapGrid")?,
+            raw_short: r.read_u16_le()?,
+            spacing: doubles(r)?,
+        })
+    })?;
+    let guides = [
+        read_slot(&mut r, &mut t, GUIDES, "SnapGuides", |r, _| {
+            read_guides(r, max)
+        })?,
+        read_slot(&mut r, &mut t, GUIDES, "SnapGuides", |r, _| {
+            read_guides(r, max)
+        })?,
+    ];
+    // GraphicSnapEnvironment 的虚表 Load 直接委派，流中没有对象头。
+    let snap_environment = GraphicSnapEnvironment10_1 {
+        version: read_version(&mut r, 1, "GraphicSnapEnvironment")?,
+        tolerance: r.read_f64_le()?,
+        agent_classes: read_class_ids(&mut r, max)?,
+        extra_class_ids: read_class_ids(&mut r, max)?,
+    };
+    let map = read_object_entry_10_1(&mut r, &mut t)?;
+    match map {
+        ObjectEntry10_1::Null => {}
+        ObjectEntry10_1::BackReference {
+            class_id: MAP_CLASS_ID,
+            key,
+        } if is_root_map(key) => {}
+        _ => return Err(unsupported("PageLayout 所引用的 Map 不是已确认的根对象")),
+    };
+    let raw_shorts = [
+        r.read_u16_le()?,
+        r.read_u16_le()?,
+        r.read_u16_le()?,
+        r.read_u16_le()?,
+    ];
+    let view_extent = doubles(&mut r)?;
+    let layout_origin_size = doubles(&mut r)?;
+    let version_2 = if version >= 2 {
+        Some((r.read_u16_le()?, r.read_u16_le()?, r.read_u32_le()?))
+    } else {
+        None
+    };
+    let version_3_short = (version >= 3).then(|| r.read_u16_le()).transpose()?;
+    let version_4_double = (version >= 4).then(|| r.read_f64_le()).transpose()?;
+    let version_5_short = (version >= 5).then(|| r.read_u16_le()).transpose()?;
+    let version_6_long = (version >= 6).then(|| r.read_u32_le()).transpose()?;
+    let version_8_short = (version >= 8).then(|| r.read_u16_le()).transpose()?;
+    let version_9_shorts = if version >= 9 {
+        Some([r.read_u16_le()?, r.read_u16_le()?])
+    } else {
+        None
+    };
+    let optimization_extensions = if version >= 10 {
+        read_extensions(&mut r, max)?
+    } else {
+        Vec::new()
+    };
+    let version_11_slot = (version >= 11)
+        .then(|| read_version_11_slot(&mut r))
+        .transpose()?;
+    let legacy_version_12_or_13_doubles = matches!(version, 12 | 13)
+        .then(|| doubles(&mut r))
+        .transpose()?;
+    let mut version_13_long = None;
+    let mut element_values = Vec::new();
+    let mut anchors = Vec::new();
+    if version >= 13 {
+        version_13_long = Some(r.read_u32_le()?);
+        let n = count(&mut r, if version >= 15 { 28 } else { 4 }, max)?;
+        if n != element_count as usize {
+            return Err(invalid("布局尾段计数与元素列表不一致"));
+        }
+        for _ in 0..n {
+            element_values.push(r.read_u32_le()?);
+        }
+        if version >= 15 {
+            for _ in 0..n {
+                let envelope = read_slot(
+                    &mut r,
+                    &mut t,
+                    ENVELOPE_CLASS_ID,
+                    "布局锚定范围",
+                    |r, t| read_envelope_10_1(r, max, t),
+                )?;
+                anchors.push(LayoutElementAnchor10_1 {
+                    envelope,
+                    raw_double: r.read_f64_le()?,
+                });
+            }
+        }
+    }
+    let end_offset = r.position();
+    *reader = r;
+    *refs = t;
+    Ok(PageLayoutTail10_1 {
+        page,
+        ruler,
+        grid,
+        guides,
+        snap_environment,
+        map,
+        raw_shorts,
+        view_extent,
+        layout_origin_size,
+        version_2,
+        version_3_short,
+        version_4_double,
+        version_5_short,
+        version_6_long,
+        version_8_short,
+        version_9_shorts,
+        optimization_extensions,
+        version_11_slot,
+        legacy_version_12_or_13_doubles,
+        version_13_long,
+        element_values,
+        anchors,
+        end_offset,
+    })
+}

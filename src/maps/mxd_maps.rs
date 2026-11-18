@@ -60,6 +60,7 @@ use crate::maps::map_object::{
     read_map_suffix_10_1,
 };
 use crate::maps::maps_stream::read_root_prefix_10_1;
+use crate::maps::page_layout_prefix::{PageLayoutElements10_1, read_page_layout_elements_10_1};
 use crate::model::{
     CoordinateSystem, DataFrame, DataSource, Extent, Layer, LayerGroup, LayerNode, Map,
     ProjectedCoordinateSystem, UnknownField,
@@ -95,6 +96,8 @@ pub struct MapsParseReport10_1 {
     /// 活动图层索引按约定放报告不放模型。仅存在被解析的 Map 对象时为
     /// `Some`（数量为 0 或首对象头为空标记时为 `None`）。
     pub layer_list: Option<LayerList10_1>,
+    /// 按相同 ObjectStream 键表解出的页面元素；尚未识别的后段保存在工程未知字段中。
+    pub page_layout: Option<PageLayoutElements10_1>,
     /// `/Version` 识别候选的摘要行。
     ///
     /// `/Maps` 解析不读取其他数据流，本字段由调用方（`parse` 命令）按需
@@ -119,6 +122,24 @@ pub fn parse_maps_10_1_with_limits(
     max_count: u32,
     max_bytes: usize,
 ) -> io::Result<MapsParseReport10_1> {
+    parse_mxd_streams_10_1_with_limits(maps, None, max_count, max_bytes)
+}
+
+/// 在 /Maps 的根尾得到确认之后，从同一会话继续识别 /PageLayout 中的元素。
+/// 布局缺失或读到未知字段，不改变 /Maps 的读取结果。
+pub fn parse_mxd_streams_10_1(
+    maps: &[u8],
+    page_layout: Option<&[u8]>,
+) -> io::Result<MapsParseReport10_1> {
+    parse_mxd_streams_10_1_with_limits(maps, page_layout, MAX_MAP_COUNT, MAX_FIELD_BYTES)
+}
+
+fn parse_mxd_streams_10_1_with_limits(
+    maps: &[u8],
+    page_layout: Option<&[u8]>,
+    max_count: u32,
+    max_bytes: usize,
+) -> io::Result<MapsParseReport10_1> {
     let mut diagnostics = Vec::new();
     let mut reader = Reader::new(maps);
     let root = read_root_prefix_10_1(&mut reader, max_count)?;
@@ -132,6 +153,8 @@ pub fn parse_maps_10_1_with_limits(
     let mut map_unknown: Vec<UnknownField> = Vec::new();
     let mut report_layer_list: Option<LayerList10_1> = None;
     let mut confirmed_tail = None;
+    let mut refs = RefTable10_1::new();
+    let mut map_indices = std::collections::HashMap::<u32, (usize, usize)>::new();
 
     if root.count == 0 {
         // 空循环：此处的 4 字节才是读侧循环结束后无条件读取的尾部值。
@@ -173,8 +196,6 @@ pub fn parse_maps_10_1_with_limits(
                 }
             }
             ObjectHeader::Object { class_id, key: _ } if class_id == MAP_CLASS_ID => {
-                let mut refs = RefTable10_1::new();
-                let mut map_indices = std::collections::HashMap::<u32, (usize, usize)>::new();
                 let mut reference_copy_budget = maps.len();
                 let mut objects = Reader::new(maps).reposition_to(4);
                 let mut complete = true;
@@ -279,6 +300,78 @@ pub fn parse_maps_10_1_with_limits(
         }
     }
 
+    let page_layout = page_layout.and_then(|page| {
+        let result = if confirmed_tail.is_some() && map_unknown.is_empty() {
+            match read_page_layout_elements_10_1(page, max_bytes, &mut refs, |key| {
+                map_indices.contains_key(&key)
+            }) {
+                Ok(layout) => {
+                    diagnostics.push(format!(
+                        "/PageLayout 元素：已读 {}/{}，地图框 {}，装饰框 {}",
+                        layout.consumed_elements,
+                        layout.prefix.element_count,
+                        layout.map_frames.len(),
+                        layout.surround_frames.len()
+                    ));
+                    for frame in layout.map_frames.iter().chain(
+                        layout
+                            .surround_frames
+                            .iter()
+                            .filter_map(|frame| frame.map_frame_body.as_deref()),
+                    ) {
+                        if let ObjectEntry10_1::BackReference { key, .. } = frame.prefix.map {
+                            diagnostics.push(format!(
+                                "MapFrame 键 {} 在 /PageLayout:0x{:x} 回引 /Maps 的 Map 键 {key}",
+                                frame.prefix.frame_key, frame.prefix.map_offset
+                            ));
+                        }
+                    }
+                    if let Some(reason) = &layout.stop {
+                        diagnostics.push(format!(
+                            "/PageLayout 在 0x{:x} 停止：{reason}",
+                            layout.end_offset
+                        ));
+                    }
+                    if let Some(tail) = &layout.tail {
+                        diagnostics.push(format!(
+                            "/PageLayout 对象体完整消费至 0x{:x}，锚定条目 {}",
+                            tail.end_offset,
+                            tail.anchors.len()
+                        ));
+                    }
+                    if let Some(flag) = layout.print_settings_flag {
+                        diagnostics.push(format!("/PageLayout 打印设置标记 0x{flag:04x}"));
+                    }
+                    if let Some(reason) = &layout.tail_error {
+                        diagnostics.push(format!(
+                            "/PageLayout 尾段从 0x{:x} 保留：{reason}",
+                            layout.consumed_end_offset()
+                        ));
+                    }
+                    Some(layout)
+                }
+                Err(error) => {
+                    diagnostics.push(format!("/PageLayout 根未解析：{error}"));
+                    None
+                }
+            }
+        } else {
+            diagnostics.push("/Maps 根循环尚有未知内容，/PageLayout 暂保留原始字节".into());
+            None
+        };
+        let offset = result
+            .as_ref()
+            .map_or(0, PageLayoutElements10_1::consumed_end_offset);
+        if offset < page.len() {
+            map_unknown.push(UnknownField {
+                stream: "/PageLayout".into(),
+                offset: offset as u64,
+                bytes: page[offset..].to_vec(),
+            });
+        }
+        result
+    });
+
     diagnostics.push(
         "解析仅覆盖显式 10.1 已确认前缀；单元测试不代表目标软件验证，\
          未在 ArcMap 10.1 或 QGIS 中人工目视验证"
@@ -296,6 +389,7 @@ pub fn parse_maps_10_1_with_limits(
         tail_raw: root.tail_raw,
         confirmed_tail,
         layer_list: report_layer_list,
+        page_layout,
         version_candidates: Vec::new(),
         diagnostics,
     })
@@ -638,6 +732,12 @@ fn parse_frame(
             Some(LayerBodyPrefix10_1::RasterLayer(raster)) => {
                 raster_node(raster, entry.index, diagnostics)
             }
+            Some(LayerBodyPrefix10_1::ImageServerLayer(layer)) => Some(image_server_layer_node(
+                &layer.prefix,
+                entry.index,
+                diagnostics,
+            )),
+            Some(LayerBodyPrefix10_1::BasemapLayer(_)) => None,
             None => None,
         };
         // 回引条目：键命中先前已解析条目时复用同对象节点（原生同一图层对象
@@ -915,6 +1015,14 @@ fn parse_frame(
         ));
     }
 
+    if let Some(late) = &tail.late_tail {
+        let stop = late.stop.as_deref().unwrap_or("已消费至对象终点");
+        diagnostics.push(format!(
+            "Map 版本 34 起的字段：已读 {} 项；{stop}",
+            late.fields.len()
+        ));
+    }
+
     // —— 显示范围（WKSEnvelope，到达时才写入模型）——
     let extent = suffix.extent.map(|wks| Extent {
         xmin: wks.xmin,
@@ -1033,7 +1141,7 @@ fn map_spatial_reference_to_model(
     }
 }
 
-/// 只把 FeatureLayer 已确认的 +0x1f4 Envelope 槽坐标系接入图层模型。
+/// 用 FeatureLayer 数据集范围缓存中的空间参考作为已序列化的图层 CRS 线索。
 fn feature_layer_crs(
     layer: &crate::layers::feature_layer::FeatureLayerPrefix10_1,
     map_crs_key: Option<u32>,
@@ -1043,7 +1151,10 @@ fn feature_layer_crs(
 ) -> Option<CoordinateSystem> {
     use crate::layers::annotate_props::EnvelopeSlot10_1;
 
-    let envelope = layer.successor.as_ref().and_then(|s| s.envelope_2.as_ref());
+    let envelope = layer
+        .successor
+        .as_ref()
+        .and_then(|s| s.cached_dataset_extent());
     let reference = match envelope {
         Some(EnvelopeSlot10_1::Envelope(body)) => body.spatial_reference.as_ref(),
         Some(EnvelopeSlot10_1::BackReference { key, .. }) => {
@@ -1179,8 +1290,7 @@ fn feature_layer_successor_note(
     annotate_chain_note(successor, entry_index, diagnostics);
 }
 
-/// 标注环诊断：ALPC 槽为已解析集合时逐条列出 LELP 表达式/类名与 TextSymbol
-/// 体形态；均为已确认字段，业务语义不解释。
+/// 标注环诊断：逐条列出已读到的标注类 ID、名称、表达式和 TextSymbol 信息。
 fn annotate_chain_note(
     successor: &crate::layers::feature_layer_tail::FeatureLayerSuccessor10_1,
     entry_index: usize,
@@ -1220,15 +1330,20 @@ fn annotate_chain_note(
             Some(reason) => format!("；LELP 体内停止：{reason:?}"),
             None => String::new(),
         };
+        let annotation_class_id_note = lelp
+            .annotation_class_id
+            .map(|id| format!("（标注类 ID {id}）"))
+            .unwrap_or_default();
         diagnostics.push(format!(
             "条目 {}：标注属性集合（键 {}）条目 LELP（键 {}，版本 {}）：表达式 {:?}、\
-             标注类名 {:?}；{}{}；条目键 {}",
+             标注类名 {:?}{}；{}{}；条目键 {}",
             entry_index + 1,
             alpc.key,
             lelp.key,
             lelp.version,
             lelp.expression,
             lelp.name,
+            annotation_class_id_note,
             text_symbol_note,
             lelp_stop_note,
             match entry.entry_key {
@@ -1438,6 +1553,12 @@ fn body_prefix_node(
             }))
         }
         LayerBodyPrefix10_1::RasterLayer(raster) => raster_node(raster, entry_index, diagnostics),
+        LayerBodyPrefix10_1::ImageServerLayer(layer) => Some(image_server_layer_node(
+            &layer.prefix,
+            entry_index,
+            diagnostics,
+        )),
+        LayerBodyPrefix10_1::BasemapLayer(_) => None,
         LayerBodyPrefix10_1::CompositeGraphicsLayer(cgl) => {
             diagnostics.push(format!(
                 "条目 {}：CompositeGraphicsLayer（名称 {:?}）为图形层，中间模型没有对应\
@@ -1451,6 +1572,25 @@ fn body_prefix_node(
 }
 
 /// RasterLayer 的名称和可见性均经 10.1 ILayer 虚表和 Load 的完整对象偏移对位。
+fn image_server_layer_node(
+    prefix: &crate::layers::image_server_layer::ImageServerLayerPrefix10_1,
+    entry_index: usize,
+    diagnostics: &mut Vec<String>,
+) -> LayerNode {
+    let (visible, note) = variant_bool_to_model(prefix.visible_raw as u16, "可见性");
+    if let Some(note) = note {
+        diagnostics.push(format!("条目 {}：{note}", entry_index + 1));
+    }
+    LayerNode::Layer(Layer {
+        name: prefix.name.clone(),
+        visible,
+        source: None,
+        crs: None,
+        extent: None,
+        unknown_fields: Vec::new(),
+    })
+}
+
 fn raster_node(
     prefix: &crate::layers::raster_layer::RasterLayerPrefix10_1,
     entry_index: usize,
@@ -1862,17 +2002,53 @@ mod tests {
             assert!(!node.name.is_empty());
             assert_eq!(node.name, raster.first_string);
             assert_eq!(node.visible, expected_visible);
+            let tail = raster.tail.as_ref().expect("参考样本栅格图层应读到体末尾");
+            assert_eq!(list.entries[index].body.unwrap().len, 0);
+            assert_eq!(tail.raster_io.shorts_35_to_37, [0, 0, 0]);
+            assert!(f64::from_bits(tail.wks_bits[0]).is_nan());
+            let time = tail.time.as_ref().unwrap();
+            assert_eq!(
+                (
+                    time.data.version,
+                    time.display.version,
+                    time.dimension.version
+                ),
+                (2, 1, 1)
+            );
+            assert_eq!((time.display.int_a, time.display.int_b), (4, 8));
         }
         let Some(LayerBodyPrefix10_1::RasterLayer(raster)) = &list.entries[5].parsed else {
             unreachable!();
         };
-        let name = raster
-            .dataset_name
-            .as_ref()
-            .expect("普通栅格名称体应已消费");
+        use crate::layers::raster_dataset_name::RasterDatasetNameEntryBody10_1;
+        let Some(RasterDatasetNameEntryBody10_1::Dataset(name)) = &raster.names[0].body else {
+            panic!("普通栅格名称体应已消费");
+        };
         assert_eq!(name.key, 1545);
         assert!(name.stop.is_none());
-        assert_eq!(list.entries[5].body.unwrap().offset, 0x14862);
+        use crate::layers::raster_renderer::RasterRendererPrefix10_1::{Colormap, Rgb};
+        use crate::layers::raster_renderer::{PansharpeningSlot10_1, RasterHistogramSlot10_1};
+        assert!(matches!(
+            raster.renderer.as_ref().and_then(|slot| slot.body.as_ref()),
+            Some(Rgb { version: 9, bands: [0, 1, 2], tail: Some(tail), stop: None, .. })
+                if tail.double_arrays.len() == 4 && tail.shared.version == 9
+                    && tail.pansharpening == Some(PansharpeningSlot10_1::Null)
+                    && tail.histograms.iter().all(|slot| matches!(slot,
+                        Some(RasterHistogramSlot10_1::Histogram(histogram))
+                            if histogram.bins.len() == 256
+                                && histogram.additional_bins.as_ref().is_some_and(|bins| bins.len() == 4)
+                    ))
+        ));
+        assert_eq!(list.entries[5].body.unwrap().offset, 0x16fb6);
+        let Some(LayerBodyPrefix10_1::RasterLayer(raster)) = &list.entries[4].parsed else {
+            unreachable!();
+        };
+        assert!(matches!(
+            raster.renderer.as_ref().and_then(|slot| slot.body.as_ref()),
+            Some(Colormap { version: 3, palette_values, tail: Some(tail), stop: None, .. })
+                if palette_values.iter().copied().eq(0..256) && tail.shared.version == 9
+        ));
+        assert_eq!(list.entries[4].body.unwrap().offset, 0x145a3);
     }
 
     #[test]

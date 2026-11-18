@@ -263,17 +263,21 @@ fn common_prefix_version_gates() {
         assert_eq!(prefix.name, "装饰物");
         assert_eq!(prefix.map_entry, None);
         assert_eq!(prefix.extra_short, None);
+        assert_eq!(prefix.fixed_aspect_ratio(), None);
         assert_eq!(prefix.raw_envelope, None);
     }
     // 版本 2：仅追加 short。
-    let bytes = common_prefix_bytes(2, "比例尺", Some(9));
+    let mut bytes = common_prefix_bytes(2, "比例尺", Some(9));
+    let short_offset = bytes.len() - 2;
+    bytes[short_offset..].copy_from_slice(&0_u16.to_le_bytes());
     let prefix = read_map_surround_common_prefix_10_1(
         &mut Reader::new(&bytes),
         usize::MAX,
         &mut table_with_keys(&[9]),
     )
     .unwrap();
-    assert_eq!(prefix.extra_short, Some(0x1234));
+    assert_eq!(prefix.extra_short, Some(0));
+    assert_eq!(prefix.fixed_aspect_ratio(), Some(false));
     assert_eq!(prefix.raw_envelope, None);
     assert_eq!(
         prefix.map_entry,
@@ -291,6 +295,7 @@ fn common_prefix_version_gates() {
     )
     .unwrap();
     assert_eq!(prefix.extra_short, Some(0x1234));
+    assert_eq!(prefix.fixed_aspect_ratio(), Some(true));
     assert_eq!(prefix.raw_envelope, Some([0xAB_u8; 32]));
 }
 

@@ -99,7 +99,7 @@ fn map_reaches_later_fields_after_both_nonempty_slots() {
     assert!(map.post_border_tail.post_transform_overposter.is_some());
     assert_eq!(
         reader.position(),
-        0x253e1 + border.len() + background.len() - 32
+        0x25569 + border.len() + background.len() - 32
     );
     assert!(refs.contains(50000) && refs.contains(50001));
 }

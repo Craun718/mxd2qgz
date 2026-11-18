@@ -184,10 +184,18 @@ fn rgb_color_body_bytes() -> Vec<u8> {
     bytes
 }
 
+fn encoded_bstr(value: &str) -> Vec<u8> {
+    let mut bytes = (value.encode_utf16().count() as u32).to_le_bytes().to_vec();
+    if !value.is_empty() {
+        bytes.extend(value.encode_utf16().chain([0]).flat_map(u16::to_le_bytes));
+    }
+    bytes
+}
+
 /// 最小 RandomColorRamp 体（版本 1）。
 fn random_color_ramp_body_bytes() -> Vec<u8> {
     let mut bytes = 1_u16.to_le_bytes().to_vec();
-    bytes.extend(encoded("梯度"));
+    bytes.extend(encoded_bstr("梯度"));
     bytes.extend(7_i32.to_le_bytes());
     bytes.extend([0x01, 0x00]);
     bytes.extend(42_i32.to_le_bytes());
@@ -2107,7 +2115,7 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
         ReaderKind::MultiPartColorRampBody10_1 => {
             // 版本 2 + 1 个 Random 子色带 + 尾段 1 个 double。
             let mut bytes = 2_u16.to_le_bytes().to_vec();
-            bytes.extend(encoded("mp"));
+            bytes.extend(encoded_bstr("mp"));
             bytes.extend(1_i32.to_le_bytes());
             bytes.extend(mxd2qgz::objects::color_ramp::RANDOM_COLOR_RAMP_CLASS_ID);
             bytes.extend(5_u32.to_le_bytes());
@@ -2118,7 +2126,7 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
         ReaderKind::PresetColorRampBody10_1 => {
             // 版本 1 + 1 个 RgbColor 颜色（raw_int32=0、color_count=1）。
             let mut bytes = 1_u16.to_le_bytes().to_vec();
-            bytes.extend(encoded("preset"));
+            bytes.extend(encoded_bstr("preset"));
             bytes.extend(0_i32.to_le_bytes());
             bytes.extend(1_i32.to_le_bytes());
             bytes.extend(RGB_COLOR_CLASS_ID);
@@ -2129,7 +2137,7 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
         ReaderKind::AlgorithmicColorRampBody10_1 => {
             // 版本 1 + 起止两个 RgbColor。
             let mut bytes = 1_u16.to_le_bytes().to_vec();
-            bytes.extend(encoded("algo"));
+            bytes.extend(encoded_bstr("algo"));
             bytes.extend(3_i32.to_le_bytes());
             bytes.extend(RGB_COLOR_CLASS_ID);
             bytes.extend(10_u32.to_le_bytes());

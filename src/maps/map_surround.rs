@@ -42,16 +42,15 @@
 //! 3. `LoadObject`（请求 IID `{E6BDAA75-…}` IMap）：关联地图对象。流内为
 //!    对已持久化 Map 的键回引头（20 字节，无体）；空标记与回引之外的新对象
 //!   属未预期形态，本读取器报不支持错误；
-//! 4. 版本 ≥2：int16（`this−0x8c`，原样保留）；
-//! 5. 版本 ≥3：32 字节原始读取（WKSEnvelope 候选；原生读取后未存储——读入
-//!    栈后丢弃，写侧取 `this−0x84` 恒写，字段语义开放）。原样保留字节。
+//! 4. 版本 ≥2：FixedAspectRatio 的 int16 位模式（`this−0x8c`）；
+//! 5. 版本 ≥3：32 字节 WKSEnvelope；原生 Load 读入栈后丢弃，Save 取
+//!    FitToBounds 更新的 `this−0x84`。读取器原样保留字节。
 //!
 //! ## AOIBookmark（空间书签，体完全闭合）
 //!
 //! CLSID `{BBB1AE73-41E3-11D2-AE1E-080009EC732A}`（esri.clsid 声明 Map.dll；
 //! GetClassID `0x793a2600` 写出该 CLSID，虚表 `0x79481550`，adjustor 0x14）。
-//! Load `0x793a2cd0`：① int16 版本（有符号比较 `1 < (short)v`，仅 0..=1 接受，
-//! 负值原生即拒绝）→ ② `LoadObject`（请求 IID `{1B077914-…}` IEnvelope，
+//! Load `0x793a2cd0`：① int16 版本（原生有符号比较仅拒绝 >1；本读取器仅接受 0..=1）→ ② `LoadObject`（请求 IID `{1B077914-…}` IEnvelope，
 //! 位置包络）→ ③ String（书签名称）。Save `0x793a2d60` 恒写版本 1
 //! （`DAT_79480eac`）+ `SaveObject` + `String::Write`，读写对称。
 //!
@@ -60,7 +59,7 @@
 //! CLSID `{EC65B35B-4342-11D2-AE22-080009EC732A}`（GetClassID `0x793b5520`，
 //! 虚表 `0x79482be8`）。Load `0x793b5c50`：① int16 版本（有符号 ≤1；本
 //! 读取器仅接受 0..=1）→ ② int32
-//! （`this+4`，语义未定，原样保留）→ ③ `LoadObject`（请求 IID
+//! （`this+4`，IFeatureBookmark.FeatureId，原样保留）→ ③ `LoadObject`（请求 IID
 //! `{4BA33331-…}` IName，名称对象）→ ④ String（书签名称）。Save
 //! `0x793b5d70` 恒写版本 1（`DAT_79480e94`）+ int32 + `SaveObject` +
 //! `String::Write`，对称。名称对象支持 FeatureClassName 和 TableName 的
@@ -107,8 +106,7 @@
 //! 覆盖上述字段的严格安全子集：无样本字节佐证，未接入 `parse` 命令与
 //! 中间模型，人工目视验收未做，不得声称已验证。
 //!
-//! 未解决问题（详见研究记录开放项）：共同前缀第 5 段 32 字节与各 short
-//! 的业务语义未定性；FeatureBookmark int32 语义未定；LegendFormat、
+//! 未解决问题（详见研究记录开放项）：LegendFormat、
 //! LegendItem 及装饰物的若干标量字段未定性；此前被列为 ScaleLine 候选的
 //! 三个共同前缀调用者分别属于 ImageInset、MapInset、Overview，其对象接口
 //! 调用语义仍未闭合（见 `docs/mxd-terra-integrate-page.md`）；共同前缀版本 0/1
@@ -213,11 +211,18 @@ pub struct MapSurroundCommonPrefix10_1 {
     /// 接口 setter 调用及 Save 对应对象指针的写出共同确认；回引目标类标识
     /// 仍原样保留。
     pub map_entry: Option<MapBackReference10_1>,
-    /// 版本 ≥2 的 int16 原样位模式（`this−0x8c`，语义未定）。
+    /// 版本 ≥2 的 FixedAspectRatio 原始 int16 位模式（持久化接口 `this−0x8c`）。
     pub extra_short: Option<u16>,
-    /// 版本 ≥3 的 32 字节原始读取（WKSEnvelope 候选；原生读入后丢弃，
-    /// 写侧取 `this−0x84` 恒写。仅原样保留字节，不做数值解释）。
+    /// 版本 ≥3 的 WKSEnvelope 原始字节。Save 取 FitToBounds 更新的 `this−0x84`，Load 读入
+    /// 局部 WKSEnvelope 后丢弃；不作为装饰物的当前范围。
     pub raw_envelope: Option<[u8; 32]>,
+}
+
+impl MapSurroundCommonPrefix10_1 {
+    /// 返回流中写入的固定纵横比标志。旧版本未存该属性时返回 `None`。
+    pub fn fixed_aspect_ratio(&self) -> Option<bool> {
+        self.extra_short.map(|raw| raw != 0)
+    }
 }
 
 /// AOIBookmark 位置包络槽（请求 IID `{1B077914-…}` IEnvelope）的分类结果。
@@ -235,10 +240,9 @@ pub enum BookmarkEnvelopeEntry10_1 {
 /// AOIBookmark 对象体（Load `0x793a2cd0` 全部字段，体完全闭合）。
 #[derive(Debug, Clone, PartialEq)]
 pub struct AoiBookmark10_1 {
-    /// int16 版本的无符号位模式（原生有符号比较仅接受 0..=1，负值即拒绝；
-    /// Save 恒写 1）。
+    /// int16 版本位模式（本读取器接受 0..=1；原生有符号比较也接受负值；Save 恒写 1）。
     pub version: u16,
-    /// 位置包络条目（第 2 字段）。
+    /// IAOIBookmark.Location 位置包络（第 2 字段）。
     pub envelope: BookmarkEnvelopeEntry10_1,
     /// 书签名称（第 3 字段，String::Read → `this+8`）。
     pub name: String,
@@ -266,7 +270,7 @@ pub enum BookmarkNameEntry10_1 {
 pub struct FeatureBookmark10_1 {
     /// int16 版本位模式（本读取器接受 0..=1；原生有符号比较也接受负值）。
     pub version: u16,
-    /// 第 2 字段 int32 的原样位模式（`this+4`，语义未定）。
+    /// 第 2 字段原值（`this+4`，IFeatureBookmark.FeatureId）；不检查要素是否存在。
     pub raw_int32: i32,
     /// 名称对象条目（第 3 字段）。
     pub name_object: BookmarkNameEntry10_1,
@@ -509,14 +513,14 @@ pub fn read_map_surround_common_prefix_10_1(
         }
     };
 
-    // 4. 版本 ≥2：int16 原样（this−0x8c）。
+    // 4. 版本 ≥2：保留 FixedAspectRatio 的 int16 位模式（this−0x8c）。
     let extra_short = if version >= 2 {
         Some(trial.read_u16_le()?)
     } else {
         None
     };
 
-    // 5. 版本 ≥3：32 字节原样（WKSEnvelope 候选；原生读入后丢弃，写侧取
+    // 5. 版本 ≥3：WKSEnvelope 原样（原生读入后丢弃，写侧取
     //    this−0x84 恒写）。
     let raw_envelope = if version >= 3 {
         let bytes = trial.read_bytes(32)?;
@@ -559,13 +563,11 @@ pub fn read_aoi_bookmark_10_1(
     let mut trial = reader.clone();
     let mut trial_table = table.clone();
 
-    // 1. int16 版本：原生 `lVar4<0 || 1<(short)v` 拒绝，即有符号 0..=1
-    //    （负值原生即拒绝，与位模式 >1 的拒绝合并为同一无符号判定）。
+    // 1. int16 版本：原生有符号比较只拒绝 >1；本读取器同时拒绝负值位模式。
     let version = trial.read_u16_le()?;
     if version > 1 {
         return Err(invalid(format!(
-            "版本位模式 {version}（0x{version:04x}）超出原生接受范围 0..=1（Load \
-             0x793a2cd0 有符号比较，>1 或负值拒绝 0x80004005；Save 恒写 1）"
+            "版本位模式 {version}（0x{version:04x}）超出读取器支持范围 0..=1"
         )));
     }
 
@@ -636,7 +638,7 @@ pub fn read_feature_bookmark_10_1(
         )));
     }
 
-    // 2. int32 原样（this+4，语义未定）。
+    // 2. IFeatureBookmark.FeatureId（this+4）。
     let raw_int32 = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
 
     // 3. LoadObject(IName {4BA33331-…})。

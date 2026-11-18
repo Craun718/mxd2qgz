@@ -73,9 +73,11 @@ use crate::layers::layer_list::{
     read_layer_list_10_1,
 };
 use crate::maps::layer_masking::{
-    LayerMaskingSupport10_1, MaskEntry10_1, known_layer_masking_support_10_1, read_entries_10_1,
+    LayerMasking10_1, LayerMaskingSupport10_1, MaskEntry10_1, known_layer_masking_support_10_1,
+    read_entries_10_1, read_layer_masking_10_1,
 };
 use crate::maps::map_decor::read_map_decor_slot_10_1;
+use crate::maps::map_late_tail::{LateMapTail10_1, read_map_late_tail_10_1};
 use crate::maps::map_persist_collections::{
     MapPersistCollections10_1, read_map_persist_collections_before_v34_10_1,
 };
@@ -411,9 +413,10 @@ pub struct MapSuffix10_1 {
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct PostBorderTail10_1 {
     pub short_308: Option<(usize, u16)>,
-    pub null_layer: Option<ObjectSlot10_1>,
+    pub layer_30c: Option<ObjectSlot10_1>,
     pub short_310: Option<(usize, u16)>,
-    pub null_envelope: Option<ObjectSlot10_1>,
+    pub envelope_314: Option<ObjectSlot10_1>,
+    pub envelope_314_parsed: Option<Envelope10_1>,
     pub short_318: Option<(usize, u16)>,
     pub short_31a: Option<(usize, u16)>,
     /// 保留流中 double 的原始位模式，未模拟原生值修正。
@@ -438,6 +441,7 @@ pub struct PostBorderTail10_1 {
     pub post_transform_background: Option<(usize, DecorSlot10_1)>,
     /// 版本大于 22 的对象槽仅在空引用时消费。
     pub post_transform_null_object: Option<ObjectSlot10_1>,
+    pub post_transform_overposter_reference: Option<ObjectSlot10_1>,
     /// 已完整消费的非空 BasicOverposterProperties 对象。
     pub post_transform_overposter: Option<(ObjectSlot10_1, BasicOverposterProperties10_1)>,
     /// 版本 24 起的三个原始字段（short、double、short）。
@@ -458,29 +462,62 @@ pub struct PostBorderTail10_1 {
     pub masking_entries: Option<Vec<MaskEntry10_1>>,
     /// Map 自身 LayerMasking 的尾 short（LayerLib Load 0x786f1ff0）。
     pub masking_empty_short: Option<(usize, u16)>,
-    /// 已证实逐图层遮罩循环不消费字节时，继续读取的 Map 字段。
+    /// 逐图层遮罩记录，顺序与原生图层遍历一致；无接口的条目不产生记录。
+    pub layer_masking: Vec<(u32, LayerMasking10_1)>,
+    /// 逐图层遮罩循环完整消费后读取的 Map 字段。
     pub post_masking: Option<PostMaskingMapFields10_1>,
     /// Map 版本 33 起的 IUnknown 集合、LONG 和对象槽。
     pub persist_collections: Option<MapPersistCollections10_1>,
+    /// 版本 34 起的已确认字段及未读原因。
+    pub late_tail: Option<LateMapTail10_1>,
 }
 
-// 本子集只在所有非空图层均已知不支持 ILayerMasking 时跨过循环。
-fn layer_masking_consumes_no_bytes_10_1(layer_list: &LayerList10_1) -> bool {
+// 只在已确认主接口及其子图层遮罩行为时消费记录。
+fn read_map_layer_masking_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    layer_list: &LayerList10_1,
+    map_version: u16,
+) -> Option<Vec<(u32, LayerMasking10_1)>> {
+    use crate::layers::basemap_layer::{BASEMAP_LAYER_CLASS_ID, BasemapStop10_1};
+    use crate::layers::feature_layer::FEATURE_LAYER_CLASS_ID;
     if layer_list.stop.is_some()
         || layer_list.active_index.is_none()
         || usize::try_from(layer_list.count) != Ok(layer_list.entries.len())
     {
-        return false;
+        return None;
     }
     let mut known = std::collections::HashMap::new();
+    let mut records = Vec::new();
     for entry in &layer_list.entries {
         match entry.object {
             LayerEntryObject::Empty | LayerEntryObject::Entry(ObjectEntry10_1::Null) => {}
             LayerEntryObject::Entry(ObjectEntry10_1::NewObject { class_id, key }) => {
+                if let Some(LayerBodyPrefix10_1::BasemapLayer(basemap)) = entry.parsed.as_ref()
+                    && class_id == BASEMAP_LAYER_CLASS_ID
+                    && map_version >= 40
+                    && basemap.stop == BasemapStop10_1::Complete
+                {
+                    // ICompositeLayer 遍历正式子图层集合。这里只接受确实从
+                    // PrepareResult 完整读出的 FeatureLayer（无 ILayerMasking）。
+                    let features: std::collections::HashSet<_> =
+                        basemap.feature_keys.iter().copied().collect();
+                    if !basemap.sublayers.iter().all(|slot| {
+                        matches!(slot,
+                        ObjectEntry10_1::BackReference { class_id: FEATURE_LAYER_CLASS_ID, key }
+                            if features.contains(key))
+                    }) {
+                        return None;
+                    }
+                    records.push((key, read_layer_masking_10_1(reader, max_bytes, refs).ok()?));
+                    known.insert(key, class_id);
+                    continue;
+                }
                 if known_layer_masking_support_10_1(&class_id)
                     != LayerMaskingSupport10_1::Unsupported
                 {
-                    return false;
+                    return None;
                 }
                 match entry.parsed.as_ref() {
                     Some(
@@ -493,18 +530,21 @@ fn layer_masking_consumes_no_bytes_10_1(layer_list: &LayerList10_1) -> bool {
                             known.insert(key, crate::layers::feature_layer::FEATURE_LAYER_CLASS_ID);
                         }
                     }
-                    _ => return false,
+                    _ => return None,
                 }
                 known.insert(key, class_id);
             }
             LayerEntryObject::Entry(ObjectEntry10_1::BackReference { class_id, key }) => {
                 if known.get(&key) != Some(&class_id) {
-                    return false;
+                    return None;
+                }
+                if class_id == BASEMAP_LAYER_CLASS_ID {
+                    records.push((key, read_layer_masking_10_1(reader, max_bytes, refs).ok()?));
                 }
             }
         }
     }
-    true
+    Some(records)
 }
 
 /// Map 版本 29..=51 中 LayerMasking 之后的已确认字段。
@@ -630,12 +670,13 @@ pub struct MapTransformation10_1 {
     pub body: Option<GeoTransformationBody10_1>,
 }
 
-use crate::objects::geo_transformation::{
-    GEO_TRANSFORMATION_CLASS_ID, GeoTransformationBody10_1, read_geo_transformation_body_10_1,
-};
 /// 原专用读取入口保留，底层与 GeoTransformation 共用实现。
 pub use crate::objects::geo_transformation::{
     GeoTransformationBody10_1 as NadconTransformation10_1, NADCON_TRANSFORMATION_CLASS_ID,
+};
+use crate::objects::geo_transformation::{
+    GeoTransformationBody10_1, read_geo_transformation_body_10_1,
+    supports_geo_transformation_body_10_1,
 };
 
 pub fn read_nadcon_transformation_10_1(
@@ -1020,81 +1061,24 @@ pub fn read_map_suffix_10_1(
             let mut parsed_element = None;
             let mut fully_consumed = false;
             let mut family_stop = None;
-            if let ObjectEntry10_1::NewObject { class_id, key } = &entry {
-                if *class_id == LEGEND_CLASS_ID {
-                    if let Ok(prefix) =
-                        read_legend_prefix_10_1(&mut trial, max_bytes, &mut trial_table)
-                    {
-                        fully_consumed = prefix.stop == LegendStop10_1::Completed;
-                        parsed_element = Some(MapSurroundElement10_1::Legend(Box::new(prefix)));
+            if let ObjectEntry10_1::NewObject { class_id, key } = entry
+                && let Ok((body, body_stop)) = read_map_surround_body_10_1(
+                    class_id,
+                    key,
+                    &mut trial,
+                    max_bytes,
+                    &mut trial_table,
+                )
+            {
+                fully_consumed = body_stop.is_none();
+                match body_stop {
+                    Some(SurroundBodyStop10_1::Family(reason)) => family_stop = Some(reason),
+                    Some(SurroundBodyStop10_1::ScaleLine(reason)) => {
+                        stop = Some(MapSuffixStop::ScaleLineBody { index, reason })
                     }
-                } else if let Some(kind) = scalebar_subclass_kind(class_id) {
-                    // C 轮接线：四个比例尺子类共享同一层级读取器（键取自
-                    // 条目对象头）。
-                    if let Ok(body) = read_scalebar_subclass_body_10_1(
-                        &mut trial,
-                        max_bytes,
-                        &mut trial_table,
-                        *key,
-                        kind,
-                    ) {
-                        fully_consumed = body.stop.is_none();
-                        family_stop = body.stop;
-                        parsed_element = Some(MapSurroundElement10_1::ScalebarSubclass(
-                            ScalebarSubclassElement10_1 { kind, body },
-                        ));
-                    }
-                } else if *class_id == SCALEBAR_CLASS_ID {
-                    if let Ok(body) =
-                        read_scalebar_body_10_1(&mut trial, max_bytes, &mut trial_table, *key)
-                    {
-                        fully_consumed = body.stop.is_none();
-                        family_stop = body.stop;
-                        parsed_element = Some(MapSurroundElement10_1::Scalebar(Box::new(body)));
-                    }
-                } else if matches!(*class_id, SCALE_LINE_CLASS_ID | STEPPED_SCALE_LINE_CLASS_ID) {
-                    let read = if *class_id == SCALE_LINE_CLASS_ID {
-                        read_scale_line_10_1
-                    } else {
-                        read_stepped_scale_line_10_1
-                    };
-                    if let Ok(body) = read(&mut trial, max_bytes, &mut trial_table, *key) {
-                        fully_consumed = body.stop.is_none();
-                        if let Some(reason) = body.stop {
-                            stop = Some(MapSuffixStop::ScaleLineBody { index, reason });
-                        }
-                        parsed_element = Some(MapSurroundElement10_1::ScaleLine(Box::new(body)));
-                    }
-                } else if *class_id == SCALE_TEXT_CLASS_ID {
-                    if let Ok(body) =
-                        read_scale_text_body_10_1(&mut trial, max_bytes, &mut trial_table, *key)
-                    {
-                        fully_consumed = body.stop.is_none();
-                        family_stop = body.stop;
-                        parsed_element = Some(MapSurroundElement10_1::ScaleText(Box::new(body)));
-                    }
-                } else if *class_id == MARKER_NORTH_ARROW_CLASS_ID {
-                    if let Ok(body) = read_marker_north_arrow_body_10_1(
-                        &mut trial,
-                        max_bytes,
-                        &mut trial_table,
-                        *key,
-                    ) {
-                        fully_consumed = body.stop.is_none();
-                        family_stop = body.stop;
-                        parsed_element =
-                            Some(MapSurroundElement10_1::MarkerNorthArrow(Box::new(body)));
-                    }
-                } else if *class_id == MAP_TITLE_CLASS_ID {
-                    // MapTitle 体完全闭合（自身版本 + 共同前缀），读取成功
-                    // 即整体消费。
-                    if let Ok(body) =
-                        read_map_title_body_10_1(&mut trial, max_bytes, &mut trial_table, *key)
-                    {
-                        fully_consumed = true;
-                        parsed_element = Some(MapSurroundElement10_1::MapTitle(Box::new(body)));
-                    }
+                    _ => {}
                 }
+                parsed_element = Some(body);
             }
             let new_object = match &entry {
                 ObjectEntry10_1::NewObject { class_id, key } => Some((*class_id, *key)),
@@ -1376,15 +1360,51 @@ pub fn read_map_suffix_10_1(
         }
         next_short!(short_308, 0);
         if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 1 })) {
-            post_border_tail.null_layer = read_null_object_slot_10_1(&mut trial).ok().flatten();
-            if post_border_tail.null_layer.is_some() {
+            let mut candidate = trial.clone();
+            let offset = candidate.position();
+            if let Ok(header) = read_header_10_1(&mut candidate)
+                && let Some(entry) = match header {
+                    ObjectHeader::Null => Some(ObjectEntry10_1::Null),
+                    ObjectHeader::Object { class_id, key }
+                        if class_id == crate::layers::feature_layer::FEATURE_LAYER_CLASS_ID
+                            && trial_table.contains(key) =>
+                    {
+                        Some(ObjectEntry10_1::BackReference { class_id, key })
+                    }
+                    _ => None,
+                }
+            {
+                trial = candidate;
+                post_border_tail.layer_30c = Some(ObjectSlot10_1 { offset, entry });
                 stop = Some(MapSuffixStop::AfterBorderTail { stage: 2 });
             }
         }
         next_short!(short_310, 2);
         if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 3 })) {
-            post_border_tail.null_envelope = read_null_object_slot_10_1(&mut trial).ok().flatten();
-            if post_border_tail.null_envelope.is_some() {
+            let mut candidate = trial.clone();
+            let mut refs = trial_table.clone();
+            let offset = candidate.position();
+            if let Ok(entry) = read_object_entry_10_1(&mut candidate, &mut refs)
+                && let Ok(parsed) = match entry {
+                    ObjectEntry10_1::Null
+                    | ObjectEntry10_1::BackReference {
+                        class_id: ENVELOPE_CLASS_ID,
+                        ..
+                    } => Ok(None),
+                    ObjectEntry10_1::NewObject {
+                        class_id: ENVELOPE_CLASS_ID,
+                        ..
+                    } => read_envelope_10_1(&mut candidate, max_bytes, &mut refs).map(Some),
+                    _ => Err(io::Error::new(
+                        ErrorKind::Unsupported,
+                        "Map 边框后的 Envelope 对象类尚未支持",
+                    )),
+                }
+            {
+                trial = candidate;
+                trial_table = refs;
+                post_border_tail.envelope_314 = Some(ObjectSlot10_1 { offset, entry });
+                post_border_tail.envelope_314_parsed = parsed;
                 stop = Some(MapSuffixStop::AfterBorderTail { stage: 4 });
             }
         }
@@ -1456,18 +1476,12 @@ pub fn read_map_suffix_10_1(
                 let body = match entry {
                     ObjectEntry10_1::Null => None,
                     ObjectEntry10_1::BackReference { class_id, .. }
-                        if matches!(
-                            class_id,
-                            NADCON_TRANSFORMATION_CLASS_ID | GEO_TRANSFORMATION_CLASS_ID
-                        ) =>
+                        if supports_geo_transformation_body_10_1(class_id) =>
                     {
                         None
                     }
                     ObjectEntry10_1::NewObject { class_id, .. }
-                        if matches!(
-                            class_id,
-                            NADCON_TRANSFORMATION_CLASS_ID | GEO_TRANSFORMATION_CLASS_ID
-                        ) =>
+                        if supports_geo_transformation_body_10_1(class_id) =>
                     {
                         let Ok(body) =
                             read_geo_transformation_body_10_1(&mut candidate, class_id, max_bytes)
@@ -1535,6 +1549,15 @@ pub fn read_map_suffix_10_1(
                 match entry {
                     ObjectEntry10_1::Null => {
                         post_border_tail.post_transform_null_object = Some(slot);
+                        trial = candidate;
+                        trial_table = candidate_table;
+                        stop = Some(MapSuffixStop::AfterBorderTail { stage: 18 });
+                    }
+                    ObjectEntry10_1::BackReference {
+                        class_id: BASIC_OVERPOSTER_PROPERTIES_CLASS_ID,
+                        ..
+                    } => {
+                        post_border_tail.post_transform_overposter_reference = Some(slot);
                         trial = candidate;
                         trial_table = candidate_table;
                         stop = Some(MapSuffixStop::AfterBorderTail { stage: 18 });
@@ -1655,14 +1678,24 @@ pub fn read_map_suffix_10_1(
             if post_border_tail.masking_entries.is_some() {
                 next_short!(masking_empty_short, 37);
             }
-            // 原生 Map 0x79403d50 遍历与写图层列表相同的数组。这里只跨过
-            // 接口已证不支持的图层；GroupLayer、未知类和未验证回引仍停留。
+            // 原生 Map 0x79403d50 遍历与写图层列表相同的数组。
+            let mut candidate = trial.clone();
+            let mut candidate_refs = trial_table.clone();
             if map_prefix.version >= 29
                 && matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 38 }))
-                && layer_masking_consumes_no_bytes_10_1(&layer_list)
+                && let Some(records) = read_map_layer_masking_10_1(
+                    &mut candidate,
+                    max_bytes,
+                    &mut candidate_refs,
+                    &layer_list,
+                    map_prefix.version,
+                )
                 && let Ok(fields) =
-                    read_post_masking_map_fields_10_1(&mut trial, map_prefix.version, max_bytes)
+                    read_post_masking_map_fields_10_1(&mut candidate, map_prefix.version, max_bytes)
             {
+                trial = candidate;
+                trial_table = candidate_refs;
+                post_border_tail.layer_masking = records;
                 post_border_tail.post_masking = Some(fields);
                 // 版本 29..=32 的后续分支只初始化/更新已有对象；下一条
                 // 持久化字段属于版本 >=33（Map.dll 0x7940095c..aab）。
@@ -1688,6 +1721,19 @@ pub fn read_map_suffix_10_1(
                     });
                 }
                 post_border_tail.persist_collections = Some(collections);
+            }
+            if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 40 }))
+                && let Ok(fields) = read_map_late_tail_10_1(
+                    &mut trial,
+                    &mut trial_table,
+                    max_bytes,
+                    map_prefix.version,
+                )
+            {
+                if fields.stop.is_none() {
+                    stop = Some(MapSuffixStop::Complete);
+                }
+                post_border_tail.late_tail = Some(fields);
             }
         }
     }
@@ -1881,6 +1927,81 @@ fn read_loop_count(trial: &mut Reader<'_>, label: &str, max_bytes: usize) -> io:
         ));
     }
     Ok(count)
+}
+
+/// MapSurround 独立对象体的停止原因；宿主决定停止时是否提交前缀。
+#[derive(Debug, Clone, PartialEq)]
+pub(super) enum SurroundBodyStop10_1 {
+    Legend(LegendStop10_1),
+    Family(FamilyStop10_1),
+    ScaleLine(ScaleLineStop10_1),
+}
+
+/// 允许 Map 和 PageLayout 使用同一套装饰物类读取器。
+pub(super) fn read_map_surround_body_10_1(
+    class_id: [u8; 16],
+    key: u32,
+    reader: &mut Reader<'_>,
+    limit: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<(MapSurroundElement10_1, Option<SurroundBodyStop10_1>)> {
+    use MapSurroundElement10_1 as Element;
+    use SurroundBodyStop10_1 as Stop;
+    let (element, stop) = match class_id {
+        LEGEND_CLASS_ID => {
+            let body = read_legend_prefix_10_1(reader, limit, refs)?;
+            let stop =
+                (body.stop != LegendStop10_1::Completed).then(|| Stop::Legend(body.stop.clone()));
+            (Element::Legend(Box::new(body)), stop)
+        }
+        MAP_TITLE_CLASS_ID => {
+            let body = read_map_title_body_10_1(reader, limit, refs, key)?;
+            (Element::MapTitle(Box::new(body)), None)
+        }
+        SCALEBAR_CLASS_ID => {
+            let body = read_scalebar_body_10_1(reader, limit, refs, key)?;
+            let stop = body.stop.map(Stop::Family);
+            (Element::Scalebar(Box::new(body)), stop)
+        }
+        SCALE_TEXT_CLASS_ID => {
+            let body = read_scale_text_body_10_1(reader, limit, refs, key)?;
+            let stop = body.stop.map(Stop::Family);
+            (Element::ScaleText(Box::new(body)), stop)
+        }
+        MARKER_NORTH_ARROW_CLASS_ID => {
+            let body = read_marker_north_arrow_body_10_1(reader, limit, refs, key)?;
+            let stop = body.stop.map(Stop::Family);
+            (Element::MarkerNorthArrow(Box::new(body)), stop)
+        }
+        SCALE_LINE_CLASS_ID | STEPPED_SCALE_LINE_CLASS_ID => {
+            let read = if class_id == SCALE_LINE_CLASS_ID {
+                read_scale_line_10_1
+            } else {
+                read_stepped_scale_line_10_1
+            };
+            let body = read(reader, limit, refs, key)?;
+            let stop = body.stop.map(Stop::ScaleLine);
+            (Element::ScaleLine(Box::new(body)), stop)
+        }
+        _ => {
+            let Some(kind) = scalebar_subclass_kind(&class_id) else {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!(
+                        "未支持的 IMapSurround 类 {}，键 {key}",
+                        class_id_hex(&class_id)
+                    ),
+                ));
+            };
+            let body = read_scalebar_subclass_body_10_1(reader, limit, refs, key, kind)?;
+            let stop = body.stop.map(Stop::Family);
+            (
+                Element::ScalebarSubclass(ScalebarSubclassElement10_1 { kind, body }),
+                stop,
+            )
+        }
+    };
+    Ok((element, stop))
 }
 
 /// 按流内类标识映射比例尺子类种类（C 轮接线；四类常量与映射依据

@@ -53,8 +53,8 @@ fn tail_fields_stop_at_each_incomplete_field_and_unknown_envelope() {
     assert_eq!(stop, MapSuffixStop::AfterBorderTail { stage: 24 });
     assert!(!refs.contains(2182));
     let (position, stop, refs) = parse(&bytes);
-    assert_eq!(position, 0x253e1);
-    assert_eq!(stop, MapSuffixStop::AfterBorderTail { stage: 40 });
+    assert_eq!(position, 0x25569);
+    assert_eq!(stop, MapSuffixStop::Complete);
     assert!(refs.contains(2182));
     assert!(refs.contains(2183));
 }
@@ -92,10 +92,10 @@ fn map_masking_nonempty_back_reference_reaches_post_masking_fields() {
     modified.extend(0_i32.to_le_bytes());
     modified.extend(0xffff_u16.to_le_bytes());
     modified.extend(&bytes[0x253be..]);
-    let expected = 0x253b8 + 4 + 20 + 4 + 2 + 11 + 24;
+    let expected = 0x25569 + 24;
     let (position, stop, _) = parse(&modified);
     assert_eq!(position, expected);
-    assert_eq!(stop, MapSuffixStop::AfterBorderTail { stage: 40 });
+    assert_eq!(stop, MapSuffixStop::Complete);
 }
 
 #[test]

@@ -45,6 +45,7 @@ pub enum LayerMaskingSupport10_1 {
 ///
 /// 这里的类标识只用于静态能力表，不能代替运行时 QI，也不涵盖插件替换类。
 pub fn known_layer_masking_support_10_1(class_id: &[u8; 16]) -> LayerMaskingSupport10_1 {
+    use crate::layers::basemap_layer::BASEMAP_LAYER_CLASS_ID;
     use crate::layers::fdo_graphics_layer::FDO_GRAPHICS_LAYER_CLASS_ID;
     use crate::layers::fdo_legacy::FDO_GRAPHICS_SUBLAYER_CLASS_ID;
     use crate::layers::feature_layer::FEATURE_LAYER_CLASS_ID;
@@ -52,7 +53,7 @@ pub fn known_layer_masking_support_10_1(class_id: &[u8; 16]) -> LayerMaskingSupp
 
     use crate::layers::layer_list::RASTER_LAYER_CLASS_ID;
 
-    if *class_id == GROUP_LAYER_CLASS_ID {
+    if *class_id == GROUP_LAYER_CLASS_ID || *class_id == BASEMAP_LAYER_CLASS_ID {
         LayerMaskingSupport10_1::Supported
     } else if *class_id == FEATURE_LAYER_CLASS_ID
         || *class_id == FDO_GRAPHICS_LAYER_CLASS_ID

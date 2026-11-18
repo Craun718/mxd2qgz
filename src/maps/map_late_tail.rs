@@ -1,0 +1,261 @@
+//! Map.dll 10.1.0.3035 Load 0x79400ab0..0x794015af 的持久化后段。
+//! 按读侧条件门处理；值的业务语义未确认时，仅保留原始位与偏移。
+
+use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
+use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
+use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
+use crate::stream::native_string::read_string_10_1;
+use crate::stream::reader::Reader;
+use std::io::{self, ErrorKind};
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum LateMapValue10_1 {
+    Short(u16),
+    Long(u32),
+    DoubleBits(u64),
+    DoubleListBits(Vec<u64>),
+    String(String),
+    Object {
+        entry: ObjectEntry10_1,
+        envelope: Option<Box<Envelope10_1>>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LateMapField10_1 {
+    pub offset: usize,
+    /// 已确认的 Load 成员偏移或局部字段标识。
+    pub field: &'static str,
+    pub value: LateMapValue10_1,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LateMapTail10_1 {
+    pub fields: Vec<LateMapField10_1>,
+    /// 未读字段及出错原因；此时游标停在该字段起点。
+    pub stop: Option<String>,
+}
+
+struct TailReader<'a, 'b> {
+    stream: &'a mut Reader<'b>,
+    refs: &'a mut RefTable10_1,
+    max_bytes: usize,
+    fields: Vec<LateMapField10_1>,
+}
+
+impl TailReader<'_, '_> {
+    fn field(
+        &mut self,
+        name: &'static str,
+        read: impl FnOnce(&mut Reader<'_>, &mut RefTable10_1) -> io::Result<LateMapValue10_1>,
+    ) -> io::Result<()> {
+        let offset = self.stream.position();
+        let mut trial = self.stream.clone();
+        let value = read(&mut trial, self.refs)
+            .map_err(|err| io::Error::new(err.kind(), format!("{name} @ 0x{offset:x}：{err}")))?;
+        self.fields.push(LateMapField10_1 {
+            offset,
+            field: name,
+            value,
+        });
+        *self.stream = trial;
+        Ok(())
+    }
+
+    fn short(&mut self, name: &'static str) -> io::Result<()> {
+        self.field(name, |r, _| Ok(LateMapValue10_1::Short(r.read_u16_le()?)))
+    }
+
+    fn long(&mut self, name: &'static str) -> io::Result<()> {
+        self.field(name, |r, _| Ok(LateMapValue10_1::Long(r.read_u32_le()?)))
+    }
+
+    fn double(&mut self, name: &'static str) -> io::Result<()> {
+        self.field(name, |r, _| {
+            Ok(LateMapValue10_1::DoubleBits(r.read_f64_le()?.to_bits()))
+        })
+    }
+
+    fn string(&mut self, name: &'static str) -> io::Result<()> {
+        let limit = self.max_bytes;
+        self.field(name, |r, _| {
+            Ok(LateMapValue10_1::String(read_string_10_1(r, limit)?))
+        })
+    }
+
+    fn doubles(&mut self, name: &'static str) -> io::Result<()> {
+        let limit = self.max_bytes;
+        self.field(name, |r, _| {
+            let count = bounded_count(r, limit, 8)?;
+            let values = (0..count)
+                .map(|_| r.read_f64_le().map(f64::to_bits))
+                .collect::<io::Result<Vec<_>>>()?;
+            Ok(LateMapValue10_1::DoubleListBits(values))
+        })
+    }
+
+    fn object(&mut self, name: &'static str, allow_envelope: bool) -> io::Result<()> {
+        let limit = self.max_bytes;
+        self.field(name, |r, refs| {
+            let (entry, envelope) = match read_header_10_1(r)? {
+                ObjectHeader::Null => (ObjectEntry10_1::Null, None),
+                ObjectHeader::Object { class_id, key } if refs.contains(key) => {
+                    (ObjectEntry10_1::BackReference { class_id, key }, None)
+                }
+                ObjectHeader::Object { class_id, key }
+                    if allow_envelope && class_id == ENVELOPE_CLASS_ID =>
+                {
+                    let mut refs_trial = refs.clone();
+                    refs_trial.register(key);
+                    let envelope = read_envelope_10_1(r, limit, &mut refs_trial)?;
+                    *refs = refs_trial;
+                    (
+                        ObjectEntry10_1::NewObject { class_id, key },
+                        Some(Box::new(envelope)),
+                    )
+                }
+                ObjectHeader::Object { class_id, key } => {
+                    return Err(io::Error::new(
+                        ErrorKind::Unsupported,
+                        format!("新对象类 {class_id:02x?} 键 {key} 的体尚未支持"),
+                    ));
+                }
+            };
+            Ok(LateMapValue10_1::Object { entry, envelope })
+        })
+    }
+
+    fn read(&mut self, version: u16) -> io::Result<()> {
+        // 0x79400ab0：v34 起的属性，包括三个对象槽。
+        self.long("+0x1d0")?;
+        self.double("+0x1d8")?;
+        self.object("+0x1e0", true)?;
+        self.object("+0x1e4", false)?;
+        self.double("+0x1e8")?;
+        self.long("+0x1f0")?;
+        self.object("+0x1f4", false)?;
+        self.short("+0x3ea")?;
+
+        if version >= 36 {
+            // 0x79400c76
+            self.doubles("用户比例尺集合")?;
+        }
+        if version >= 37 {
+            // 0x79400cf3
+            self.long("ScaleSnapping")?;
+        }
+        if version >= 38 {
+            // 0x79400d44
+            self.double("+0x408")?;
+            self.long("+0x410")?;
+            self.double("+0x418")?;
+            self.object("+0x420", false)?;
+            self.object("v38 对象 2", false)?;
+            self.object("v38 对象 3", false)?;
+        }
+        if version >= 39 {
+            // 0x79400ed3
+            self.object("+0x424", false)?;
+            self.long("v39 LONG")?;
+            self.string("+0x42c")?;
+            self.short("+0x430")?;
+            self.long("+0x434")?;
+            self.long("+0x438")?;
+            if version < 45 {
+                // 0x7940104c
+                self.short("v39..44 short")?;
+            }
+        }
+        if version >= 41 {
+            // 0x794010be
+            self.long("+0x43c")?;
+            self.object("+0x440", false)?;
+        }
+        if version == 42 {
+            // 0x7940113b
+            self.short("v42 short")?;
+            self.short("+0x44a")?;
+        }
+        if version >= 43 {
+            // 0x794011a7
+            self.short("+0x44a")?;
+            self.string("+0x428")?;
+        }
+        if version >= 44 {
+            // 0x794011e4
+            self.object("+0x44c", false)?;
+        }
+        if version >= 45 {
+            // 0x79401217
+            self.short("+0x450")?;
+        }
+        if version >= 47 {
+            // 0x794012c3
+            self.short("+0x454")?;
+        }
+        if version >= 48 {
+            // 0x794012ee
+            self.long("v48 LONG")?;
+        }
+        if version == 49 {
+            // 0x7940134e
+            let offset = self.stream.position();
+            let mut trial = self.stream.clone();
+            let count = bounded_count(&mut trial, self.max_bytes, 18).map_err(|err| {
+                io::Error::new(err.kind(), format!("v49 对象计数 @ 0x{offset:x}：{err}"))
+            })?;
+            self.long("v49 对象计数")?;
+            for _ in 0..count {
+                self.object("v49 集合对象", false)?;
+                self.short("v49 集合 short")?;
+            }
+        }
+        if version >= 51 {
+            // 0x794013f2
+            self.short("+0x452")?;
+            self.object("v51 对象", false)?;
+        }
+        Ok(())
+    }
+}
+
+fn bounded_count(reader: &mut Reader<'_>, max_bytes: usize, min_item: usize) -> io::Result<usize> {
+    let count = reader.read_u32_le()? as i32;
+    let count = usize::try_from(count)
+        .map_err(|_| io::Error::new(ErrorKind::InvalidData, "Map 后段集合计数为负"))?;
+    let size = count
+        .checked_mul(min_item)
+        .filter(|&size| size <= max_bytes)
+        .ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "Map 后段集合超过限额"))?;
+    if size > reader.remaining() {
+        return Err(io::Error::new(ErrorKind::UnexpectedEof, "Map 后段集合截断"));
+    }
+    Ok(count)
+}
+
+/// 从已完整读取的版本 33 集合之后读取，直到对象终点或首个未支持的字段。
+/// 未知新对象没有通用体长，保留其头和后续字节，且不登记该键。
+pub fn read_map_late_tail_10_1(
+    reader: &mut Reader<'_>,
+    refs: &mut RefTable10_1,
+    max_bytes: usize,
+    version: u16,
+) -> io::Result<LateMapTail10_1> {
+    if !(34..=51).contains(&version) {
+        return Err(io::Error::new(
+            ErrorKind::InvalidInput,
+            "Map 后段版本须为 34..=51",
+        ));
+    }
+    let mut parser = TailReader {
+        stream: reader,
+        refs,
+        max_bytes,
+        fields: Vec::new(),
+    };
+    let stop = parser.read(version).err().map(|err| err.to_string());
+    Ok(LateMapTail10_1 {
+        fields: parser.fields,
+        stop,
+    })
+}
