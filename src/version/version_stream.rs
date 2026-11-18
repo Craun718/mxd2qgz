@@ -97,9 +97,42 @@ pub fn write_arcmap_header_10_1(
     object_count: Option<i32>,
 ) -> io::Result<Vec<u8>> {
     const SHORTS: [i16; 6] = [10, 13, 14, 16, 18, 19];
+    encode_arcmap_header(
+        save_index,
+        text,
+        object_count.map(i32::to_le_bytes),
+        &SHORTS,
+    )
+}
+
+/// 构造 10.8 内置保存路径成功回填后的 /Version 字节。
+///
+/// 调用者提供实际解析到的本地化版本文本及对象写表条目数。
+/// 索引 0 没有计数字段；索引大于表上限时使用最后一个 short。
+/// 此函数不创建 OLE 容器，也不模拟原生 Seek 或部分写入失败。
+pub fn write_arcmap_header_10_8(
+    save_index: i32,
+    text: &str,
+    write_table_entry_count: Option<u32>,
+) -> io::Result<Vec<u8>> {
+    const SHORTS: [i16; 12] = [10, 13, 14, 16, 18, 19, 20, 21, 22, 23, 24, 25];
+    encode_arcmap_header(
+        save_index,
+        text,
+        write_table_entry_count.map(u32::to_le_bytes),
+        &SHORTS,
+    )
+}
+
+fn encode_arcmap_header(
+    save_index: i32,
+    text: &str,
+    object_count: Option<[u8; 4]>,
+    shorts: &[i16],
+) -> io::Result<Vec<u8>> {
     let index = usize::try_from(save_index)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "保存版本索引不能为负数"))?;
-    let short = SHORTS[index.min(SHORTS.len() - 1)];
+    let short = shorts[index.min(shorts.len() - 1)];
     if text.contains('\0') || (save_index == 0) != object_count.is_none() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -119,7 +152,7 @@ pub fn write_arcmap_header_10_1(
     }
     out.extend_from_slice(&short.to_le_bytes());
     if let Some(count) = object_count {
-        out.extend_from_slice(&count.to_le_bytes());
+        out.extend_from_slice(&count);
     }
     Ok(out)
 }
@@ -193,7 +226,8 @@ impl ArcMapVersionHeader10_8 {
 /// 读取 10.8 原生读取分支的已确认头部，失败时不推进游标。
 ///
 /// ArcMap.exe 0x47a250 对有符号 short 大于 25 的输入报错；大于 11 时
-/// 消费四字节。保存路径回填写表条目数；后续 CopyTo 的边界尚未闭合。
+/// 消费四字节。保存路径回填写表条目数，读取路径将其用作对象读表容量提示。
+/// 保留头部之后的任何字节，供诊断非标准或来源不明的输入。
 pub fn read_arcmap_header_10_8(
     reader: &mut Reader<'_>,
     max_text_bytes: usize,

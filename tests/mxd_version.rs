@@ -115,36 +115,38 @@ fn in_range_unknown_shorts_differ_from_known_boundaries() {
 
 #[test]
 fn shorts_above_0x13_fall_back_to_the_10_8_layout_candidate() {
-    // 10.1 严格读取拒绝大于 0x13 的 short；10.8 布局保留全部位模式。
-    // 该分支不读取对象计数，报告恒为 None；计数 4 字节留在未知尾部。
-    for short in [0x14_i16, 0x7fff] {
+    for short in [0x14_i16, 0x19] {
         let bytes = header_bytes("10.1", short, Some(7));
         let report = identify_version(&bytes).unwrap();
         assert_eq!(report.branch, MxdVersionBranch::Layout10_8Fallback);
         assert_eq!(report.text, "10.1");
         assert_eq!(report.compatibility_short, short);
-        assert_eq!(report.object_count, None);
-        assert_eq!(report.remaining_bytes, 4);
+        assert_eq!(report.object_count, Some(7));
+        assert_eq!(report.remaining_bytes, 0);
         assert!(report.note.contains("仅 10.8 布局候选"));
     }
+    let bytes = header_bytes("unknown", 0x1a, Some(7));
+    assert_eq!(
+        identify_version(&bytes).unwrap_err().kind(),
+        std::io::ErrorKind::InvalidData
+    );
 }
 
 #[test]
-fn truncation_prefixes_split_between_errors_and_10_8_fallback() {
-    let full = write_arcmap_header_10_1(5, "10.1", Some(7)).unwrap();
-    // 文本加 short 的完整前缀长度；更短的前缀在两个读取器中都失败。
-    let complete_prefix = encoded("10.1").len() + 2;
-    for length in 0..full.len() {
-        let report = identify_version(&full[..length]);
-        if length < complete_prefix {
-            let error = report.unwrap_err();
-            assert_eq!(error.kind(), std::io::ErrorKind::UnexpectedEof, "{length}");
-        } else {
-            let report = report.unwrap();
-            assert_eq!(report.branch, MxdVersionBranch::Layout10_8Fallback);
-            assert_eq!(report.remaining_bytes, length - complete_prefix);
+fn version_identification_rejects_truncated_headers_in_both_versions() {
+    for full in [
+        write_arcmap_header_10_1(5, "10.1", Some(7)).unwrap(),
+        header_bytes("10.8", 25, Some(7)),
+    ] {
+        for length in 0..full.len() {
+            let error = identify_version(&full[..length]).unwrap_err();
+            assert!(
+                error.to_string().contains("10.8 布局"),
+                "截断长度 {length}：{error}"
+            );
         }
     }
+    let full = write_arcmap_header_10_1(5, "10.1", Some(7)).unwrap();
     assert_eq!(
         identify_version(&full).unwrap().branch,
         MxdVersionBranch::ArcMap10_1KnownCandidate
@@ -274,6 +276,18 @@ fn version_command_reports_synthetic_stream_fields() {
         "{stdout}"
     );
     assert!(stdout.contains("未在目标软件中验证"), "{stdout}");
+}
+
+#[test]
+fn version_command_distinguishes_10_8_count_from_unknown_tail() {
+    let mut bytes = header_bytes("10.8", 25, Some(42));
+    bytes.extend([0xde, 0xad]);
+    let fixture = Fixture::with_version(Some(&bytes));
+    let stdout = success(fixture.run(&["version", "地图.mxd"]));
+    assert!(stdout.contains("Branch: 仅 10.8 布局候选"), "{stdout}");
+    assert!(stdout.contains("Object count: 42"), "{stdout}");
+    assert!(stdout.contains("Remaining bytes: 2"), "{stdout}");
+    assert!(stdout.contains("Save index candidate: none"), "{stdout}");
 }
 
 #[test]

@@ -1,9 +1,10 @@
-//! Desktop 10.8 AfCore VariantStream 已知前缀的严格读取子集。
+//! Desktop 10.1 和 10.8 AfCore VariantStream 的严格读取子集。
 //!
 //! 字符串前缀是 UTF-16 码元数量，随后是 `n * 2 + 2` 字节载荷；这与
-//! AfCore `String::Read` 的含终止零字节长度不同。证据和边界见
-//! 本模块不解析，也不定位 MXD 字段归属。
+//! AfCore `String::Read` 的含终止零字节长度不同。非空对象体由调用方按类分派；
+//! 对象头是否带键由调用方已确认的宿主流决定。
 
+use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
@@ -23,11 +24,39 @@ pub enum VariantValue10_8 {
 
 /// 10.1 VariantStream 值的已确认安全子集。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum VariantValue10_1 {
+pub enum VariantValue10_1<B = ()> {
     /// 10.1 与 10.8 已分别核对一致的标量和字符串布局。
     Scalar(VariantValue10_8),
     /// 空对象；保留原始 VARTYPE 以区分 VT_DISPATCH 和 VT_UNKNOWN。
     NullObject { value_type: u16 },
+    /// 对象流键已登记，流内不跟对象体。保留本次出现的原始类标识。
+    BackReference {
+        value_type: u16,
+        class_id: [u8; 16],
+        key: u32,
+    },
+    /// 对象体由调用者提供的类读取器消费。
+    Object {
+        value_type: u16,
+        header: VariantObjectHeader10_1,
+        body: B,
+    },
+}
+
+/// 非空新对象的 VariantStream 头部。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VariantObjectHeader10_1 {
+    pub class_id: [u8; 16],
+    /// 底层流支持 IObjectStream 时才带键。
+    pub key: Option<u32>,
+}
+
+/// 全局 LoadObject 接收的是标准包装保存的底层流。
+pub enum VariantObjectContext10_1<'a> {
+    /// 底层流不提供原生 IObjectStream；非空对象只有类标识。
+    Plain,
+    /// 同一 ObjectStream 会话的读表，可以跨 Reader 使用。
+    ObjectStream(&'a mut RefTable10_1),
 }
 
 /// 读取 10.1 VariantStream 的标量、字符串或空对象；失败时不推进游标。
@@ -38,20 +67,87 @@ pub fn read_value_10_1(
     reader: &mut Reader<'_>,
     max_string_units: u32,
 ) -> io::Result<VariantValue10_1> {
-    let mut trial = reader.clone();
-    let value_type = trial.read_u16_le()?;
-    let value = if matches!(value_type, 9 | 13) {
-        let class_id = trial.read_bytes(16)?;
-        if class_id != [0; 16] {
-            return Err(io::Error::new(
+    read_value_with_objects_10_1(
+        reader,
+        max_string_units,
+        VariantObjectContext10_1::Plain,
+        |_, _, _| {
+            Err(io::Error::new(
                 ErrorKind::Unsupported,
                 "10.1 VariantStream 非空对象需要流上下文和类专属对象体解析",
-            ));
+            ))
+        },
+    )
+}
+
+/// 读取标准 10.1 VariantStream 的一个值，已见键直接返回回引。
+///
+/// `read_body` 只在遇到新对象时调用；其游标位于对象体起点，且当前键已临时登记。
+/// 对象体无通用长度；不支持的类应返回错误。错误不会推进游标或修改调用者的读表。
+/// 不执行原生的 COM 激活或接口查询，调用者负责限定类和宿主。
+pub fn read_value_with_objects_10_1<B>(
+    reader: &mut Reader<'_>,
+    max_string_units: u32,
+    context: VariantObjectContext10_1<'_>,
+    read_body: impl FnOnce(
+        &mut Reader<'_>,
+        VariantObjectHeader10_1,
+        VariantObjectContext10_1<'_>,
+    ) -> io::Result<B>,
+) -> io::Result<VariantValue10_1<B>> {
+    let mut trial = reader.clone();
+    let value_type = trial.read_u16_le()?;
+    if !matches!(value_type, 9 | 13) {
+        return read_value_10_8(reader, max_string_units).map(VariantValue10_1::Scalar);
+    }
+    let value = match context {
+        VariantObjectContext10_1::Plain => {
+            let class_id = trial.read_bytes(16)?.try_into().unwrap();
+            if class_id == [0; 16] {
+                VariantValue10_1::NullObject { value_type }
+            } else {
+                let header = VariantObjectHeader10_1 {
+                    class_id,
+                    key: None,
+                };
+                let body = read_body(&mut trial, header, VariantObjectContext10_1::Plain)?;
+                VariantValue10_1::Object {
+                    value_type,
+                    header,
+                    body,
+                }
+            }
         }
-        VariantValue10_1::NullObject { value_type }
-    } else {
-        trial = reader.clone();
-        VariantValue10_1::Scalar(read_value_10_8(&mut trial, max_string_units)?)
+        VariantObjectContext10_1::ObjectStream(table) => {
+            let mut staged = table.clone();
+            match read_object_entry_10_1(&mut trial, &mut staged)? {
+                ObjectEntry10_1::Null => VariantValue10_1::NullObject { value_type },
+                ObjectEntry10_1::BackReference { class_id, key } => {
+                    VariantValue10_1::BackReference {
+                        value_type,
+                        class_id,
+                        key,
+                    }
+                }
+                ObjectEntry10_1::NewObject { class_id, key } => {
+                    let header = VariantObjectHeader10_1 {
+                        class_id,
+                        key: Some(key),
+                    };
+                    let body = read_body(
+                        &mut trial,
+                        header,
+                        VariantObjectContext10_1::ObjectStream(&mut staged),
+                    )?;
+                    *table = staged;
+                    VariantValue10_1::Object {
+                        value_type,
+                        header,
+                        body,
+                    }
+                }
+            }
+        }
     };
     *reader = trial;
     Ok(value)
@@ -86,7 +182,7 @@ pub fn read_value_10_8(
             if units > max_string_units {
                 return Err(invalid("字符串码元数超过调用者资源限额"));
             }
-            // 空字符串只写入 VT_BSTR 和零长度；终止零本身计入 n。
+            // 空字符串只写入 VT_BSTR 和零长度；n 不计入终止零。
             if units == 0 {
                 VariantValue10_8::String(String::new())
             } else {

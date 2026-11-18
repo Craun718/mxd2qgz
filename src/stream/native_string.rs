@@ -20,6 +20,42 @@ pub fn read_string_10_1(reader: &mut Reader<'_>, max_bytes: usize) -> io::Result
     read_writer_subset(reader, max_bytes)
 }
 
+/// AfCore 自由函数 ReadString(BSTR*, IStream*)：长度为 UTF-16 码元数；
+/// 零不带正文，非零的正文另含一个终止零（10.1：0x68a7b7a0）。
+pub fn read_bstr_string_10_1(reader: &mut Reader<'_>, max_bytes: usize) -> io::Result<String> {
+    let mut trial = reader.clone();
+    let offset = trial.position();
+    let invalid = |reason| {
+        io::Error::new(
+            ErrorKind::InvalidData,
+            format!("AfCore BSTR 字符串 offset 0x{offset:x}: {reason}"),
+        )
+    };
+    let units = usize::try_from(trial.read_u32_le()?).map_err(|_| invalid("码元数无法表示"))?;
+    let result = if units == 0 {
+        String::new()
+    } else {
+        let len = units
+            .checked_mul(2)
+            .ok_or_else(|| invalid("码元字节数溢出"))?;
+        let total = len
+            .checked_add(2)
+            .ok_or_else(|| invalid("含终止零的字节数溢出"))?;
+        if total > max_bytes {
+            return Err(invalid("长度超过调用者资源限额"));
+        }
+        let bytes = trial.read_bytes(total)?;
+        if bytes[len..] != [0, 0] || bytes[..len].chunks_exact(2).any(|u| u == [0, 0]) {
+            return Err(invalid("终止零位置不合法"));
+        }
+        Reader::new(&bytes[..len])
+            .read_utf16_le(len)
+            .map_err(|_| invalid("非法 UTF-16LE 内容"))?
+    };
+    *reader = trial;
+    Ok(result)
+}
+
 fn read_writer_subset(reader: &mut Reader<'_>, max_bytes: usize) -> io::Result<String> {
     let start = reader.position();
     let invalid = |reason: &str| {

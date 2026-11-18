@@ -1,7 +1,8 @@
 use mxd2qgz::stream::reader::Reader;
 use mxd2qgz::version::version_stream::{
     CompatibilityBranch10_1, CompatibilityBranch10_8, VersionLayout10_8, read_arcmap_header_10_1,
-    read_layout_10_1, read_layout_10_8, write_arcmap_header_10_1,
+    read_arcmap_header_10_8, read_layout_10_1, read_layout_10_8, write_arcmap_header_10_1,
+    write_arcmap_header_10_8,
 };
 use std::io::ErrorKind;
 
@@ -70,6 +71,52 @@ fn arcmap_10_1_count_boundary_unknown_tail_and_failures() {
     assert!(write_arcmap_header_10_1(0, "10.1", Some(0)).is_err());
     assert!(write_arcmap_header_10_1(1, "10.1", None).is_err());
     assert!(write_arcmap_header_10_1(1, "bad\0text", Some(0)).is_err());
+}
+
+#[test]
+fn arcmap_10_8_writer_matches_native_header_boundaries() {
+    // ArcMap.exe 0x554ff0 的原始 short 表。
+    let shorts = [10_u8, 13, 14, 16, 18, 19, 20, 21, 22, 23, 24, 25];
+    for index in (0..12).chain([12, i32::MAX]) {
+        let count = (index > 0).then_some(0x8765_4321);
+        let bytes = write_arcmap_header_10_8(index, "版", count).unwrap();
+        let mut expected = vec![
+            4,
+            0,
+            0,
+            0,
+            0x48,
+            0x72,
+            0,
+            0,
+            shorts[index.min(11) as usize],
+            0,
+        ];
+        if index > 0 {
+            expected.extend([0x21, 0x43, 0x65, 0x87]);
+        }
+        assert_eq!(bytes, expected);
+        let parsed = read_arcmap_header_10_8(&mut Reader::new(&bytes), 4).unwrap();
+        assert_eq!(parsed.write_table_entry_count_candidate(), count);
+        assert_eq!(parsed.remaining_bytes, 0);
+    }
+}
+
+#[test]
+fn arcmap_10_8_writer_rejects_invalid_indices_and_count_presence() {
+    for (index, text, count) in [
+        (-1, "8.3", None),
+        (0, "8.3", Some(0)),
+        (1, "9.0", None),
+        (11, "10\0.8", Some(1)),
+    ] {
+        assert_eq!(
+            write_arcmap_header_10_8(index, text, count)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::InvalidInput
+        );
+    }
 }
 
 #[test]

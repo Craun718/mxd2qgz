@@ -148,3 +148,27 @@ fn version_10_1_writer_subset_and_invalid_inputs() {
     );
     assert_eq!(reader.position(), 0);
 }
+
+#[test]
+fn bstr_stream_uses_code_units_and_zero_count_has_no_body() {
+    use mxd2qgz::stream::native_string::read_bstr_string_10_1;
+    let mut bytes = 0_u32.to_le_bytes().to_vec();
+    bytes.extend(3_u32.to_le_bytes());
+    bytes.extend("中🗺".encode_utf16().chain([0]).flat_map(u16::to_le_bytes));
+    bytes.push(0xa7);
+    let mut reader = Reader::new(&bytes);
+    assert_eq!(read_bstr_string_10_1(&mut reader, 0).unwrap(), "");
+    assert_eq!(reader.position(), 4);
+    assert_eq!(read_bstr_string_10_1(&mut reader, 8).unwrap(), "中🗺");
+    assert_eq!(reader.read_bytes(1).unwrap(), &[0xa7]);
+    for cut in 4..bytes.len() - 1 {
+        let mut reader = Reader::new(&bytes[..cut]);
+        reader.read_bytes(4).unwrap();
+        assert!(read_bstr_string_10_1(&mut reader, 8).is_err());
+        assert_eq!(reader.position(), 4);
+    }
+    let mut reader = Reader::new(&bytes);
+    reader.read_bytes(4).unwrap();
+    assert!(read_bstr_string_10_1(&mut reader, 7).is_err());
+    assert_eq!(reader.position(), 4);
+}

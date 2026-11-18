@@ -2,11 +2,11 @@
 //!
 //! 先按 ArcMap 10.1 严格头部规则解析，再对照已知文本与 short 集合给出候选，
 //! 并按静态闭合的「文本↔保存索引↔short」映射给出候选保存索引；10.1 规则
-//! 失败时回退显式 10.8 局部布局。所有结果都是候选，未经 ArcMap 或 QGIS 中
+//! 失败时尝试显式 10.8 头部。所有结果都是候选，未经 ArcMap 或 QGIS 中
 //! 的软件验证，不能据此声明文件的实际保存版本或转换能力。
 
 use crate::stream::reader::Reader;
-use crate::version::version_stream::{read_arcmap_header_10_1, read_layout_10_8};
+use crate::version::version_stream::{read_arcmap_header_10_1, read_arcmap_header_10_8};
 use std::io;
 
 /// 文本读取资源上限（含终止零、不含 4 字节长度前缀），避免对超长流做无界解码。
@@ -63,7 +63,7 @@ pub enum MxdVersionBranch {
     ArcMap10_1KnownCandidate,
     /// 按 ArcMap 10.1 头部规则完整解析，但文本或 short 不在已知集合。
     ArcMap10_1Unrecognized,
-    /// ArcMap 10.1 头部规则失败后的显式 10.8 局部布局候选。
+    /// ArcMap 10.1 头部规则失败后的显式 10.8 头部候选。
     Layout10_8Fallback,
 }
 
@@ -81,7 +81,7 @@ impl MxdVersionBranch {
 const KNOWN_CANDIDATE_NOTE: &str = "文本与 short 命中静态候选映射所用集合（9.3 文本另有介质样本支持；精确配对结果见候选索引）；映射未经运行时确认，识别结果未在目标软件中验证";
 const UNRECOGNIZED_NOTE: &str = "未识别文本/short；原生接受任意文本，未知文本不映射为 9.3";
 const LAYOUT_10_8_NOTE: &str =
-    "仅 10.8 布局候选；不满足 ArcMap 10.1 头部规则，对象计数不由该布局读取，适用版本范围未验证";
+    "仅 10.8 布局候选；不满足 ArcMap 10.1 头部规则，计数用于对象读表容量，适用版本范围未验证";
 
 /// `/Version` 识别报告；全部字段都是候选观察，未经目标软件验证。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,7 +92,7 @@ pub struct MxdVersionReport {
     pub text: String,
     /// 有符号 short 的完整位模式；到具体版本的映射未运行时确认。
     pub compatibility_short: i16,
-    /// short 大于 11 时的对象流表计数；10.8 布局分支不读取该字段，恒为 `None`。
+    /// short 大于 11 时的对象流表计数，按读侧的有符号位模式保留。
     /// 这是容量预估信息，不能解释为图层数。
     pub object_count: Option<i32>,
     /// 静态闭合映射下的候选保存索引（= `esriArcGISVersion` 枚举值，见
@@ -114,7 +114,7 @@ pub struct MxdVersionReport {
 /// 用 [`MAX_TEXT_BYTES`] 的文本上限尝试 ArcMap 10.1 严格头部规则：成功且
 /// 文本与 short 都在已知集合时报告匹配候选；解析成功但集合之外时仍完整
 /// 报告字段。10.1 规则失败（含 short 超限、截断、非法 UTF-16）时回退显式
-/// 10.8 局部布局并标注候选范围；两者都失败时返回带两个原因的错误。
+/// 10.8 头部并标注候选范围；两者都失败时返回带两个原因的错误。
 /// 识别结果是候选，未在 ArcMap 或 QGIS 中验证。
 pub fn identify_version(version_stream: &[u8]) -> io::Result<MxdVersionReport> {
     let mut reader = Reader::new(version_stream);
@@ -148,17 +148,17 @@ pub fn identify_version(version_stream: &[u8]) -> io::Result<MxdVersionReport> {
         }
         Err(error_10_1) => {
             let mut reader = Reader::new(version_stream);
-            match read_layout_10_8(&mut reader, MAX_TEXT_BYTES) {
-                Ok(layout) => {
+            match read_arcmap_header_10_8(&mut reader, MAX_TEXT_BYTES) {
+                Ok(header) => {
                     let (unknown_tail, unknown_tail_truncated) =
                         capture_unknown_tail(version_stream, reader.position());
                     Ok(MxdVersionReport {
                         branch: MxdVersionBranch::Layout10_8Fallback,
-                        text: layout.text,
-                        compatibility_short: layout.compatibility_short,
-                        object_count: None,
+                        text: header.prefix.text,
+                        compatibility_short: header.prefix.compatibility_short,
+                        object_count: header.conditional_bytes.map(i32::from_le_bytes),
                         candidate_save_index: None,
-                        remaining_bytes: layout.remaining_bytes,
+                        remaining_bytes: header.remaining_bytes,
                         unknown_tail,
                         unknown_tail_truncated,
                         note: LAYOUT_10_8_NOTE,
@@ -167,7 +167,7 @@ pub fn identify_version(version_stream: &[u8]) -> io::Result<MxdVersionReport> {
                 Err(error_10_8) => Err(io::Error::new(
                     error_10_1.kind(),
                     format!(
-                        "无法按 ArcMap 10.1 头部规则或 10.8 局部布局识别 /Version；10.1 规则：{error_10_1}；10.8 布局：{error_10_8}"
+                        "无法按 ArcMap 10.1 或 10.8 头部规则识别 /Version；10.1 规则：{error_10_1}；10.8 布局：{error_10_8}"
                     ),
                 )),
             }
@@ -252,12 +252,13 @@ mod tests {
         assert_eq!(report.unknown_tail, tail);
         assert!(!report.unknown_tail_truncated);
 
-        // 仅三个尾字节不足以满足 10.1 的四字节计数，因此回退到 10.8 局部布局。
+        // 10.8 完整头部之后的字节也应原样保留。
         let tail = [0x7f, 0, 0xaa];
-        let mut bytes = header_bytes("candidate", 17, None);
+        let mut bytes = header_bytes("candidate", 25, Some(7));
         bytes.extend_from_slice(&tail);
         let report = identify_version(&bytes).unwrap();
         assert_eq!(report.branch, MxdVersionBranch::Layout10_8Fallback);
+        assert_eq!(report.object_count, Some(7));
         assert_eq!(report.remaining_bytes, tail.len());
         assert_eq!(report.unknown_tail, tail);
         assert!(!report.unknown_tail_truncated);
