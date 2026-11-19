@@ -107,3 +107,49 @@ fn count_is_bounded_and_truncation_does_not_consume_the_array() {
         assert_eq!(reader.position(), 74);
     }
 }
+
+#[test]
+fn map_v51_reads_paragraph_element_and_keeps_next_root_field() {
+    use mxd2qgz::objects::element_body::PARAGRAPH_TEXT_ELEMENT_CLASS_ID;
+
+    let mut fixture = vec![0; 240];
+    fixture[170] = 2;
+    fixture[208] = 2;
+    let slot_at = fixture.len();
+    fixture.extend(PARAGRAPH_TEXT_ELEMENT_CLASS_ID);
+    fixture.extend(81_u32.to_le_bytes());
+    fixture.extend(1_u16.to_le_bytes());
+    fixture.extend([0; 3 * 16 + 8 + 4 + 8]); // 空装饰槽及其后标量。
+    fixture.extend(0_u16.to_le_bytes()); // TextElement v0。
+    fixture.extend(4_u16.to_le_bytes()); // ElementProperties v4。
+    fixture.extend([2, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0]);
+    fixture.extend([0; 4]); // VT_EMPTY 与 short。
+    fixture.extend([4, 0, 0, 0, b'A', 0, 0, 0]);
+    fixture.extend([0; 4 + 16 + 16]); // 标量、空符号及空几何槽。
+    let end = fixture.len();
+    fixture.extend(0xdeadbeef_u32.to_le_bytes());
+
+    let mut reader = Reader::new(&fixture);
+    let mut refs = RefTable10_1::new();
+    let result = read_map_late_tail_10_1(&mut reader, &mut refs, 4096, 51).unwrap();
+    assert!(result.stop.is_none(), "{:?}", result.stop);
+    let Some(LateMapValue10_1::ParagraphTextElement { entry, body }) =
+        result.fields.last().map(|field| &field.value)
+    else {
+        panic!("缺少 Map v51 段落文本元素");
+    };
+    assert!(matches!(entry, ObjectEntry10_1::NewObject { key: 81, .. }));
+    assert_eq!(body.text_element.as_ref().unwrap().text, "A");
+    assert_eq!(reader.position(), end);
+    assert_eq!(reader.read_u32_le().unwrap(), 0xdeadbeef);
+    assert!(refs.contains(81));
+
+    for cut in slot_at..end {
+        let mut reader = Reader::new(&fixture[..cut]);
+        let mut refs = RefTable10_1::new();
+        let result = read_map_late_tail_10_1(&mut reader, &mut refs, 4096, 51).unwrap();
+        assert!(result.stop.is_some());
+        assert_eq!(reader.position(), slot_at);
+        assert!(refs.is_empty());
+    }
+}

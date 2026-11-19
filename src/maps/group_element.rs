@@ -3,6 +3,9 @@ use super::map_frame::{BaseFrameElement10_1, base_frame};
 use super::rectangle_element::{
     RECTANGLE_ELEMENT_CLASS_ID, RectangleElement10_1, read_rectangle_element_10_1,
 };
+use super::surround_frame::{
+    MAP_SURROUND_FRAME_CLASS_ID, MapSurroundFrame10_1, read_surround_frame_10_1,
+};
 use crate::objects::element_body::{
     ElementBody10_1, ElementPropertiesPrefix10_1, PrefixOutcome10_1,
     read_element_body_of_class_10_1, read_element_properties_prefix_10_1,
@@ -22,6 +25,7 @@ pub enum GroupChild10_1 {
     Indirect(ObjectEntry10_1),
     Group(Box<GroupElement10_1>),
     Rectangle(Box<RectangleElement10_1>),
+    SurroundFrame(Box<MapSurroundFrame10_1>),
     Element(u32, Box<ElementBody10_1>),
 }
 
@@ -38,12 +42,21 @@ pub struct GroupElement10_1 {
 /// 从已知边界读取组，子元素继续使用同一键表。未知体或超限时回滚整组。
 pub(super) fn read_group_element_10_1(
     r: &mut Reader<'_>,
+    region_offset: usize,
     limit: usize,
     table: &mut RefTable10_1,
+    is_root_map: &impl Fn(u32) -> bool,
 ) -> io::Result<GroupElement10_1> {
     let mut candidate = r.clone();
     let mut refs = table.clone();
-    let result = read_group(&mut candidate, limit, &mut refs, 16)?;
+    let result = read_group(
+        &mut candidate,
+        region_offset,
+        limit,
+        &mut refs,
+        is_root_map,
+        16,
+    )?;
     *r = candidate;
     *table = refs;
     Ok(result)
@@ -59,8 +72,10 @@ fn unsupported(message: impl Into<String>) -> io::Error {
 
 fn read_group(
     r: &mut Reader<'_>,
+    region_offset: usize,
     limit: usize,
     refs: &mut RefTable10_1,
+    is_root_map: &impl Fn(u32) -> bool,
     depth: usize,
 ) -> io::Result<GroupElement10_1> {
     if depth == 0 {
@@ -92,15 +107,26 @@ fn read_group(
             ObjectHeader::Object {
                 class_id: GROUP_ELEMENT_CLASS_ID,
                 key,
-            } if !refs.contains(key) => {
-                GroupChild10_1::Group(Box::new(read_group(r, limit, refs, depth - 1)?))
-            }
+            } if !refs.contains(key) => GroupChild10_1::Group(Box::new(read_group(
+                r,
+                region_offset,
+                limit,
+                refs,
+                is_root_map,
+                depth - 1,
+            )?)),
             ObjectHeader::Object {
                 class_id: RECTANGLE_ELEMENT_CLASS_ID,
                 key,
             } if !refs.contains(key) => {
                 GroupChild10_1::Rectangle(Box::new(read_rectangle_element_10_1(r, limit, refs)?))
             }
+            ObjectHeader::Object {
+                class_id: MAP_SURROUND_FRAME_CLASS_ID,
+                key,
+            } if !refs.contains(key) => GroupChild10_1::SurroundFrame(Box::new(
+                read_surround_frame_10_1(r, region_offset, limit, refs, is_root_map)?,
+            )),
             _ => {
                 let entry = read_object_entry_10_1(r, refs)?;
                 if let ObjectEntry10_1::NewObject { class_id, key } = entry {

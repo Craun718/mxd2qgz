@@ -72,7 +72,7 @@ pub struct FrameGeometrySlot10_1 {
     pub body: Option<Box<GeometryBody10_1>>,
 }
 
-// 调用者持有有界 Reader 和事务键表；本函数失败时不承诺内部游标。
+// 调用者持有试读游标和事务键表；本函数失败时不承诺内部游标。
 pub(super) fn read_map_frame_tail(
     r: &mut Reader<'_>,
     limit: usize,

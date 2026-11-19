@@ -71,3 +71,55 @@ fn absent_interface_unknown_new_and_bad_counts() {
         );
     }
 }
+
+#[test]
+fn reads_new_layers_in_both_mask_slots_and_shares_keys() {
+    use mxd2qgz::layers::group_layer::GROUP_LAYER_CLASS_ID;
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    fn group(key: u32) -> Vec<u8> {
+        let mut bytes = GROUP_LAYER_CLASS_ID.to_vec();
+        bytes.extend(key.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(2_u32.to_le_bytes());
+        bytes.extend([0; 2 + 3 * 2 + 2 * 8 + 4]);
+        bytes
+    }
+
+    let mut bytes = 2_u16.to_le_bytes().to_vec();
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(group(7));
+    bytes.extend(2_i32.to_le_bytes());
+    bytes.extend(group(8));
+    bytes.extend([2, 0, 0, 0, 0, 0]);
+    bytes.extend(&group(8)[..20]);
+    bytes.extend([4, 0, 0, 0, b'A', 0, 0, 0]);
+    bytes.extend(0xffff_u16.to_le_bytes());
+    for end in 0..bytes.len() {
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes[..end]);
+        assert!(read_optional_layer_masking_10_1(&mut reader, 1024, &mut refs, true).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+    let mut refs = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let result = read_optional_layer_masking_10_1(&mut reader, 1024, &mut refs, true)
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        result.entries[0].object,
+        ObjectEntry10_1::NewObject { key: 7, .. }
+    ));
+    assert!(matches!(
+        result.entries[0].targets[0].0,
+        ObjectEntry10_1::NewObject { key: 8, .. }
+    ));
+    assert!(matches!(
+        result.entries[0].targets[1].0,
+        ObjectEntry10_1::BackReference { key: 8, .. }
+    ));
+    assert_eq!(result.entries[0].targets[1].1.as_deref(), Some("A"));
+    assert_eq!(reader.remaining(), 0);
+    assert!(refs.contains(7) && refs.contains(8));
+}

@@ -165,3 +165,400 @@ fn reference_document_reads_group_and_leaves_nonempty_print_record_at_exact_boun
     assert_eq!(unknown.offset, 0x1c64);
     assert_eq!(unknown.bytes, [0x30, 0x4f, 0x25]);
 }
+
+#[test]
+fn nonempty_print_settings_handle_paper_and_each_printer_body() {
+    use mxd2qgz::maps::page_layout_prefix::PAGE_LAYOUT_CLASS_ID;
+    use mxd2qgz::maps::print_settings::{
+        ARC_PRESS_PRINTER_CLASS_ID, EMF_PRINTER_CLASS_ID, PS_PRINTER_CLASS_ID, PrinterBody10_1,
+    };
+
+    let mut page = PAGE_LAYOUT_CLASS_ID.to_vec();
+    page.extend(1_u32.to_le_bytes());
+    page.extend(15_u16.to_le_bytes());
+    page.extend([0; 8]);
+    page.extend(layout_tail(15, 0));
+    page.extend(1_u16.to_le_bytes());
+    let settings_start = page.len();
+    page.extend(3_u16.to_le_bytes());
+    page.extend(0x804_u16.to_le_bytes());
+    page.extend(4_u32.to_le_bytes());
+    page.extend("纸\0".encode_utf16().flat_map(u16::to_le_bytes));
+    page.extend(8_u32.to_le_bytes());
+    page.extend([0; 8]);
+    let mode_size_offset = page.len();
+    page.extend(223_u32.to_le_bytes());
+    let mut dev_mode = [0; 223];
+    dev_mode[0x44..0x46].copy_from_slice(&220_u16.to_le_bytes());
+    dev_mode[0x46..0x48].copy_from_slice(&3_u16.to_le_bytes());
+    dev_mode[220..].copy_from_slice(&[1, 2, 3]);
+    page.extend(dev_mode);
+    let paper_end = page.len();
+
+    for class in [
+        EMF_PRINTER_CLASS_ID,
+        PS_PRINTER_CLASS_ID,
+        ARC_PRESS_PRINTER_CLASS_ID,
+    ] {
+        page.truncate(paper_end);
+        page.extend(class);
+        page.extend(7_u32.to_le_bytes());
+        if class == ARC_PRESS_PRINTER_CLASS_ID {
+            page.extend(2_u16.to_le_bytes());
+            page.extend(4_u32.to_le_bytes());
+            page.extend("甲\0".encode_utf16().flat_map(u16::to_le_bytes));
+            page.extend(8_u16.to_le_bytes());
+            page.push(1);
+            page.extend(1_u32.to_le_bytes()); // BSTR 的长度以码元计。
+            page.extend("X\0".encode_utf16().flat_map(u16::to_le_bytes));
+            page.extend(3_u32.to_le_bytes());
+            page.extend([1, 5, 9]);
+            for value in [-10_i32, 20, 30, 40, 50] {
+                page.extend(value.to_le_bytes());
+            }
+            page.push(0);
+        } else {
+            page.extend(1_u16.to_le_bytes());
+        }
+        let report = parse_mxd_streams_10_1(&[0; 8], Some(&page)).unwrap();
+        let layout = report.page_layout.unwrap();
+        assert_eq!(layout.consumed_end_offset(), page.len());
+        assert!(layout.tail_error.is_none());
+        let settings = layout.print_settings.unwrap();
+        assert_eq!(settings.paper.version, 3);
+        assert_eq!(settings.paper.system_language, Some(0x804));
+        assert_eq!(settings.paper.printer_description.as_deref(), Some("纸"));
+        assert_eq!(settings.paper.dev_names, [0; 8]);
+        assert_eq!(settings.paper.dev_mode, dev_mode);
+        assert_eq!(
+            settings.printer,
+            ObjectEntry10_1::NewObject {
+                class_id: class,
+                key: 7
+            }
+        );
+        match (class, settings.printer_body.unwrap()) {
+            (EMF_PRINTER_CLASS_ID, PrinterBody10_1::Emf { version: 1 })
+            | (PS_PRINTER_CLASS_ID, PrinterBody10_1::PostScript { version: 1 }) => {}
+            (ARC_PRESS_PRINTER_CLASS_ID, PrinterBody10_1::ArcPress(printer)) => {
+                assert_eq!(printer.name, "甲");
+                assert_eq!(printer.short, 8);
+                assert_eq!(printer.first_flag, 1);
+                assert_eq!(printer.driver_class, "X");
+                assert_eq!(printer.driver_data.as_deref(), Some([1, 5, 9].as_slice()));
+                assert_eq!(printer.longs, [-10, 20, 30, 40, 50]);
+                assert_eq!(printer.last_flag, 0);
+            }
+            other => panic!("未读出预期的打印机：{other:?}"),
+        }
+    }
+
+    for end in settings_start..page.len() {
+        let report = parse_mxd_streams_10_1(&[0; 8], Some(&page[..end])).unwrap();
+        let layout = report.page_layout.unwrap();
+        assert_eq!(layout.consumed_end_offset(), settings_start, "位置 {end}");
+        assert!(layout.tail_error.is_some());
+    }
+    page[mode_size_offset..mode_size_offset + 4].copy_from_slice(&219_u32.to_le_bytes());
+    let report = parse_mxd_streams_10_1(&[0; 8], Some(&page)).unwrap();
+    let layout = report.page_layout.unwrap();
+    assert_eq!(layout.consumed_end_offset(), settings_start);
+    assert!(layout.tail_error.unwrap().contains("DEVMODE"));
+    assert_eq!(report.map.unknown_fields[0].bytes, page[settings_start..]);
+}
+
+#[test]
+fn print_settings_legacy_paper_accepts_empty_and_populated_dev_mode() {
+    use mxd2qgz::maps::page_layout_prefix::PAGE_LAYOUT_CLASS_ID;
+    use mxd2qgz::maps::print_settings::{EMF_PRINTER_CLASS_ID, PrinterBody10_1};
+
+    let mut prefix = PAGE_LAYOUT_CLASS_ID.to_vec();
+    prefix.extend(1_u32.to_le_bytes());
+    prefix.extend(15_u16.to_le_bytes());
+    prefix.extend([0; 8]);
+    prefix.extend(layout_tail(15, 0));
+    prefix.extend(0xffff_u16.to_le_bytes());
+    for version in 0..=3_u16 {
+        let mut page = prefix.clone();
+        page.extend(version.to_le_bytes());
+        if version >= 2 {
+            page.extend(0x409_u16.to_le_bytes());
+            page.extend(2_u32.to_le_bytes());
+            page.extend([0; 2]);
+        }
+        page.extend(0_u32.to_le_bytes());
+        let mode_size_offset = page.len();
+        page.extend(0_u32.to_le_bytes());
+        page.extend([0; 16]);
+        let report = parse_mxd_streams_10_1(&[0; 8], Some(&page)).unwrap();
+        let layout = report.page_layout.unwrap();
+        assert!(layout.tail_error.is_none());
+        assert_eq!(layout.consumed_end_offset(), page.len());
+        let settings = layout.print_settings.unwrap();
+        assert_eq!(settings.paper.version, version);
+        assert_eq!(settings.printer, ObjectEntry10_1::Null);
+        assert!(settings.paper.dev_mode.is_empty());
+        assert_eq!(
+            settings.paper.system_language,
+            (version >= 2).then_some(0x409)
+        );
+
+        page.truncate(mode_size_offset);
+        page.extend(220_u32.to_le_bytes());
+        let mut mode = [0; 223];
+        mode[0x44..0x46].copy_from_slice(&188_u16.to_le_bytes());
+        mode[0x46..0x48].copy_from_slice(&3_u16.to_le_bytes());
+        mode[220..].copy_from_slice(&[1, 2, 3]);
+        page.extend(mode);
+        page.extend(EMF_PRINTER_CLASS_ID);
+        page.extend(7_u32.to_le_bytes());
+        page.extend(1_u16.to_le_bytes());
+
+        let report = parse_mxd_streams_10_1(&[0; 8], Some(&page)).unwrap();
+        let layout = report.page_layout.unwrap();
+        assert_eq!(layout.consumed_end_offset(), page.len());
+        assert!(layout.tail_error.is_none());
+        let settings = layout.print_settings.unwrap();
+        assert_eq!(settings.paper.version, version);
+        assert_eq!(settings.paper.declared_dev_mode_size, 220);
+        assert_eq!(settings.paper.dev_mode, mode);
+        assert_eq!(
+            settings.printer_body,
+            Some(PrinterBody10_1::Emf { version: 1 })
+        );
+
+        let mode_start = mode_size_offset + 4;
+        for end in [mode_start + 219, mode_start + 222] {
+            let report = parse_mxd_streams_10_1(&[0; 8], Some(&page[..end])).unwrap();
+            let layout = report.page_layout.unwrap();
+            assert_eq!(layout.consumed_end_offset(), prefix.len());
+            assert!(layout.tail_error.unwrap().contains("IPaper"));
+            assert_eq!(report.map.unknown_fields[0].bytes, page[prefix.len()..end]);
+        }
+
+        page[mode_start + 0x44..mode_start + 0x46].copy_from_slice(&220_u16.to_le_bytes());
+        let report = parse_mxd_streams_10_1(&[0; 8], Some(&page)).unwrap();
+        let layout = report.page_layout.unwrap();
+        assert_eq!(layout.consumed_end_offset(), prefix.len());
+        assert!(layout.tail_error.unwrap().contains("DEVMODE"));
+        assert_eq!(report.map.unknown_fields[0].bytes, page[prefix.len()..]);
+    }
+}
+
+#[test]
+fn legacy_split_print_layouts_follow_the_save_version() {
+    use mxd2qgz::maps::mxd_maps::parse_mxd_streams_10_1_with_version;
+    use mxd2qgz::maps::page_layout_prefix::PAGE_LAYOUT_CLASS_ID;
+    use mxd2qgz::maps::print_settings::{ARC_PRESS_PRINTER_CLASS_ID, PrinterBody10_1};
+    use mxd2qgz::version::{
+        mxd_version::identify_version, version_stream::write_arcmap_header_10_1,
+    };
+    use std::io::Write;
+
+    for (index, text, layout_version) in [(0, "8.3", 7_u16), (1, "9.0", 9)] {
+        let version_bytes =
+            write_arcmap_header_10_1(index, text, (index != 0).then_some(12)).unwrap();
+        let version = identify_version(&version_bytes).unwrap();
+
+        let mut page = PAGE_LAYOUT_CLASS_ID.to_vec();
+        page.extend(1_u32.to_le_bytes());
+        page.extend(layout_version.to_le_bytes());
+        page.extend([0; 8]);
+        page.extend(layout_tail(layout_version, 0));
+        page.extend(1_u16.to_le_bytes());
+        let settings_start = page.len();
+
+        let paper_version = if index == 0 { 2_u16 } else { 3_u16 };
+        page.extend(paper_version.to_le_bytes());
+        page.extend(0x409_u16.to_le_bytes());
+        page.extend(2_u32.to_le_bytes());
+        page.extend([0; 2]);
+        page.extend(0_u32.to_le_bytes());
+        let dev_mode = if index == 0 {
+            // 原样写盘的分配块保留固定成员之后的额外字节。
+            let mut mode = vec![0; 240];
+            mode[0x44..0x46].copy_from_slice(&220_u16.to_le_bytes());
+            mode[220..].fill(0xa5);
+            mode
+        } else {
+            Vec::new()
+        };
+        page.extend((dev_mode.len() as u32).to_le_bytes());
+        page.extend(&dev_mode);
+        page.extend(ARC_PRESS_PRINTER_CLASS_ID);
+        page.extend(7_u32.to_le_bytes());
+        page.extend(2_u16.to_le_bytes());
+        page.extend(4_u32.to_le_bytes());
+        page.extend("甲\0".encode_utf16().flat_map(u16::to_le_bytes));
+        page.extend(8_u16.to_le_bytes());
+        page.push(1);
+        page.extend(1_u32.to_le_bytes());
+        page.extend("X\0".encode_utf16().flat_map(u16::to_le_bytes));
+        for value in [100_i32, -20, 30, 40, 50] {
+            page.extend(value.to_le_bytes());
+        }
+        page.push(0);
+
+        let report =
+            parse_mxd_streams_10_1_with_version(&[0; 8], Some(&page), Some(&version)).unwrap();
+        let layout = report.page_layout.unwrap();
+        assert_eq!(layout.consumed_end_offset(), page.len());
+        assert!(layout.tail_error.is_none());
+        let settings = layout.print_settings.unwrap();
+        assert_eq!(settings.paper.version, paper_version);
+        assert_eq!(settings.paper.dev_mode, dev_mode);
+        let Some(PrinterBody10_1::ArcPress(printer)) = settings.printer_body else {
+            panic!("未读出 ArcPress");
+        };
+        assert_eq!(printer.version, 2);
+        assert_eq!(printer.driver_data, None);
+        assert_eq!(printer.longs, [100, -20, 30, 40, 50]);
+
+        let report = parse_mxd_streams_10_1(&[0; 8], Some(&page)).unwrap();
+        let layout = report.page_layout.unwrap();
+        assert!(layout.print_settings.is_none());
+        assert_eq!(layout.consumed_end_offset(), settings_start);
+
+        let truncated = &page[..page.len() - 1];
+        let report =
+            parse_mxd_streams_10_1_with_version(&[0; 8], Some(truncated), Some(&version)).unwrap();
+        let layout = report.page_layout.unwrap();
+        assert!(layout.print_settings.is_none());
+        assert_eq!(layout.consumed_end_offset(), settings_start);
+        assert_eq!(
+            report.map.unknown_fields[0].bytes,
+            truncated[settings_start..]
+        );
+
+        let wrong_version =
+            identify_version(&write_arcmap_header_10_1(2, "9.2", Some(12)).unwrap()).unwrap();
+        let report =
+            parse_mxd_streams_10_1_with_version(&[0; 8], Some(&page), Some(&wrong_version))
+                .unwrap();
+        assert!(report.page_layout.unwrap().print_settings.is_none());
+
+        let folder = tempfile::tempdir().unwrap();
+        let path = folder.path().join("旧版打印.mxd");
+        let mut document = cfb::create(&path).unwrap();
+        for (name, bytes) in [
+            ("/Maps", &[0; 8][..]),
+            ("/PageLayout", page.as_slice()),
+            ("/Version", version_bytes.as_slice()),
+        ] {
+            document
+                .create_stream(name)
+                .unwrap()
+                .write_all(bytes)
+                .unwrap();
+        }
+        drop(document);
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_mxd2qgz"))
+            .arg("parse")
+            .arg(&path)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{:?}", output.stderr);
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        assert!(
+            stdout.contains(&format!(
+                "已读 Paper v{paper_version} 及打印机槽至 0x{:x}",
+                page.len()
+            )),
+            "{stdout}"
+        );
+    }
+}
+
+#[test]
+fn ordinary_layout_elements_keep_cross_stream_references_and_body_boundaries() {
+    use mxd2qgz::maps::map_object::MAP_CLASS_ID;
+    use mxd2qgz::maps::page_layout_prefix::{MAP_FRAME_CLASS_ID, PAGE_LAYOUT_CLASS_ID};
+
+    let mut document = cfb::open("samples/测试底图.mxd").unwrap();
+    let mut maps = Vec::new();
+    document
+        .open_stream("/Maps")
+        .unwrap()
+        .read_to_end(&mut maps)
+        .unwrap();
+
+    let v = 6_u16;
+    let frame_key = 10_000_u32;
+    let map_key = 29_u32;
+    let mut page = PAGE_LAYOUT_CLASS_ID.to_vec();
+    page.extend(9_999_u32.to_le_bytes());
+    page.extend(v.to_le_bytes());
+    page.extend(0_u32.to_le_bytes());
+    page.extend(3_u32.to_le_bytes());
+
+    let mut frame_header = MAP_FRAME_CLASS_ID.to_vec();
+    frame_header.extend(frame_key.to_le_bytes());
+    page.extend(&frame_header);
+    page.extend(4_u16.to_le_bytes()); // MapFrame 无旧范围段及旧版框体。
+    let map_offset = page.len();
+    page.extend(MAP_CLASS_ID);
+    page.extend(map_key.to_le_bytes());
+    page.extend([0; 8]); // 两个空集合。
+    page.extend([0; 2 + 2 + 16]); // BaseFrameElement、RectShapeElement、空几何。
+    page.extend(0_u16.to_le_bytes()); // ElementProperties v0。
+    for _ in 0..2 {
+        page.extend(2_u32.to_le_bytes());
+        page.extend(0_u16.to_le_bytes());
+    }
+    page.extend([0; 4 + 16 + 16 + 16 + 2]); // 旧属性及框体装饰。
+    let backref_offset = page.len();
+    page.extend(&frame_header);
+    let null_offset = page.len();
+    page.extend([0; 16]);
+    let tail_offset = page.len();
+    page.extend(layout_tail(v, 3));
+    page.extend(0_u16.to_le_bytes());
+
+    let report = parse_mxd_streams_10_1(&maps, Some(&page)).unwrap();
+    let layout = report.page_layout.unwrap();
+    assert!(!layout.prefix.extra_safe);
+    assert_eq!(layout.consumed_elements, 3, "{:?}", layout.stop);
+    assert_eq!(layout.end_offset, tail_offset);
+    assert_eq!(layout.consumed_end_offset(), page.len());
+    let frame = &layout.map_frames[0].prefix;
+    assert_eq!(frame.map_offset, map_offset);
+    assert_eq!(
+        frame.map,
+        ObjectEntry10_1::BackReference {
+            class_id: MAP_CLASS_ID,
+            key: map_key
+        }
+    );
+    assert_eq!(
+        layout.indirect_elements,
+        [
+            (
+                1,
+                backref_offset,
+                ObjectEntry10_1::BackReference {
+                    class_id: MAP_FRAME_CLASS_ID,
+                    key: frame_key
+                }
+            ),
+            (2, null_offset, ObjectEntry10_1::Null)
+        ]
+    );
+
+    // 第一个已完成的体仍然可用，未知体及其后的字节一并保留。
+    page[backref_offset..backref_offset + 16].fill(0xa5);
+    page[backref_offset + 16..backref_offset + 20].copy_from_slice(&(frame_key + 1).to_le_bytes());
+    for bytes in [&page[..backref_offset + 19], page.as_slice()] {
+        let report = parse_mxd_streams_10_1(&maps, Some(bytes)).unwrap();
+        let layout = report.page_layout.unwrap();
+        assert_eq!(layout.consumed_elements, 1);
+        assert_eq!(layout.consumed_end_offset(), backref_offset);
+        assert!(layout.stop.is_some());
+        let unknown = report
+            .map
+            .unknown_fields
+            .iter()
+            .find(|field| field.stream == "/PageLayout")
+            .unwrap();
+        assert_eq!(unknown.bytes, bytes[backref_offset..]);
+    }
+}

@@ -1,8 +1,10 @@
 use mxd2qgz::maps::map_decor::read_map_decor_slot_10_1;
 use mxd2qgz::maps::map_object::read_map_suffix_10_1;
+use mxd2qgz::objects::display_symbol::SymbolSlotFull10_1;
 use mxd2qgz::objects::element_decor::{
     DecorKind10_1, DecorSlot10_1, SYMBOL_BACKGROUND_CLASS_ID, SYMBOL_BORDER_CLASS_ID,
 };
+use mxd2qgz::objects::picture_fill_symbol::{PICTURE_FILL_SYMBOL_CLASS_ID, PictureFillImage10_1};
 use mxd2qgz::storage::object_refs::{RefTable10_1, read_object_entry_10_1};
 use mxd2qgz::stream::reader::Reader;
 use std::io::Read;
@@ -80,7 +82,17 @@ fn map_reaches_later_fields_after_both_nonempty_slots() {
         .read_to_end(&mut bytes)
         .unwrap();
     let border = object(SYMBOL_BORDER_CLASS_ID, 50000);
-    let background = object(SYMBOL_BACKGROUND_CLASS_ID, 50001);
+    let mut picture_fill = PICTURE_FILL_SYMBOL_CLASS_ID.to_vec();
+    picture_fill.extend(50002_u32.to_le_bytes());
+    picture_fill.extend(8_u16.to_le_bytes());
+    picture_fill.extend(2_i32.to_le_bytes()); // 内联位图块。
+    picture_fill.extend(0_i32.to_le_bytes());
+    let image = [0xab, 0xcd, 0xef];
+    picture_fill.extend((image.len() as u32).to_le_bytes());
+    picture_fill.extend(image);
+    picture_fill.extend([0; 16 * 4 + 72 + 8 + 1 + 6]); // 空颜色和轮廓及标量尾段。
+    let mut background = object(SYMBOL_BACKGROUND_CLASS_ID, 50001);
+    background.splice(30..46, picture_fill);
     bytes.splice(0x25259..0x25269, background.clone());
     bytes.splice(0x25004..0x25014, border.clone());
     let mut reader = Reader::new(&bytes);
@@ -92,14 +104,19 @@ fn map_reaches_later_fields_after_both_nonempty_slots() {
         map.post_illumination_border,
         Some((0x25004, DecorSlot10_1::Border(_)))
     ));
-    assert!(matches!(
-        map.post_border_tail.post_transform_background,
-        Some((_, DecorSlot10_1::Background(_)))
-    ));
+    let Some((_, DecorSlot10_1::Background(background_body))) =
+        map.post_border_tail.post_transform_background
+    else {
+        panic!("未读到地图背景");
+    };
+    let SymbolSlotFull10_1::PictureFillSymbol(fill) = &background_body.symbol else {
+        panic!("未读到图片填充符号");
+    };
+    assert_eq!(fill.image, PictureFillImage10_1::Blob(Some(image.into())));
     assert!(map.post_border_tail.post_transform_overposter.is_some());
     assert_eq!(
         reader.position(),
         0x25569 + border.len() + background.len() - 32
     );
-    assert!(refs.contains(50000) && refs.contains(50001));
+    assert!(refs.contains(50000) && refs.contains(50001) && refs.contains(50002));
 }

@@ -148,7 +148,7 @@ fn sdk_toolbox_candidate_may_be_shifted_version_three() {
 
 #[test]
 #[ignore = "需要已提取的 8.1 calibrate.mxd"]
-fn old_map_v19_reaches_empty_legacy_lists_and_graphics_header() {
+fn old_map_v19_reads_calibrate_across_maps_and_page_layout() {
     use mxd2qgz::{
         layers::composite_graphics::COMPOSITE_GRAPHICS_LAYER_CLASS_ID,
         maps::map_object::{MAP_CLASS_ID, read_map_prefix_10_1},
@@ -187,4 +187,25 @@ fn old_map_v19_reaches_empty_legacy_lists_and_graphics_header() {
             key: 32
         }
     ));
+
+    let mut page = Vec::new();
+    file.open_stream("/PageLayout")
+        .unwrap()
+        .read_to_end(&mut page)
+        .unwrap();
+    let report = mxd2qgz::maps::mxd_maps::parse_mxd_streams_10_1(&bytes, Some(&page)).unwrap();
+    assert_eq!(report.confirmed_tail, Some((0x4db, 0)));
+    assert_eq!(report.layer_list.unwrap().legacy_counts, Some((0, Some(0))));
+    let layout = report.page_layout.unwrap();
+    assert_eq!(layout.consumed_elements, 13);
+    assert_eq!(layout.consumed_end_offset(), page.len());
+    assert_eq!(layout.map_frames[0].prefix.frame_key, 2047);
+    assert_eq!(
+        layout.map_frames[0].prefix.map,
+        ObjectEntry10_1::BackReference {
+            class_id: MAP_CLASS_ID,
+            key: 31
+        }
+    );
+    assert!(report.map.unknown_fields.is_empty());
 }

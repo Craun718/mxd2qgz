@@ -631,7 +631,8 @@ fn raster_prefix_reads_within_its_extra_safe_bound() {
                         key: 19
                     }),
                 );
-                assert_eq!(entry.body.unwrap().len, 3);
+                assert!(raster.names_stop.is_some());
+                assert_eq!(entry.body.unwrap().len, 23); // 保留整个未知名称条目。
             }
             assert!(entry.parse_note.is_none());
         } else {
@@ -1194,4 +1195,51 @@ fn map_suffix_prechecks_loop_counts_against_limit() {
     assert_eq!(error.kind(), ErrorKind::InvalidData);
     assert!(error.to_string().contains("限额"), "{error}");
     assert_eq!(reader.position(), 0);
+}
+
+#[test]
+fn ordinary_raster_entries_in_reference_map_leave_the_map_suffix_at_its_boundary() {
+    use mxd2qgz::maps::map_object::MapSuffixStop;
+    use mxd2qgz::storage::object_refs::read_object_entry_10_1;
+    use std::io::Read;
+
+    let mut maps = Vec::new();
+    cfb::open("samples/测试底图.mxd")
+        .unwrap()
+        .open_stream("/Maps")
+        .unwrap()
+        .read_to_end(&mut maps)
+        .unwrap();
+    // 使用参考工程中完整的两个 v17 对象体，保留原键并改用普通 LoadObject。
+    for offset in [0x145a3, 0x4fbc] {
+        assert_eq!(&maps[offset..offset + 2], &[2, 0]);
+        maps[offset..offset + 2].copy_from_slice(&1_u16.to_le_bytes());
+        maps.drain(offset + 2..offset + 10);
+    }
+
+    let mut reader = Reader::new(&maps);
+    let mut refs = RefTable10_1::new();
+    assert_eq!(reader.read_u32_le().unwrap(), 1);
+    read_object_entry_10_1(&mut reader, &mut refs).unwrap();
+    let suffix = read_map_suffix_10_1(&mut reader, 1 << 20, &mut refs).unwrap();
+    assert_eq!(
+        suffix.stop,
+        MapSuffixStop::Complete,
+        "{:?}",
+        suffix.layer_list.stop
+    );
+    assert_eq!(suffix.layer_list.active_index, Some(-1));
+    for entry in &suffix.layer_list.entries[4..] {
+        assert_eq!(entry.flag, 1);
+        assert!(
+            matches!(&entry.parsed, Some(LayerBodyPrefix10_1::RasterLayer(body))
+                if body.version == 17 && body.tail.is_some()),
+            "{:?}",
+            entry.parse_note
+        );
+    }
+    assert!(refs.contains(259) && refs.contains(1544));
+    assert_eq!(reader.position(), 0x25569 - 16);
+    assert_eq!(reader.read_u32_le().unwrap(), 1);
+    assert!(reader.remaining() == 0);
 }

@@ -3,20 +3,29 @@
 //! 静态证据与未覆盖字段见 `docs/mxd-terra-host-table.md`。调用者须先读取
 //! 对象头、确认 CLSID 并登记外层键；未知嵌套对象体前停止，不推断其长度。
 
+use crate::layers::annotate_props::{
+    ANNOTATE_PROPS_COLLECTION_CLASS_ID, AnnotatePropsBody10_1, DISPLAY_EXPRESSION_PROPS_CLASS_ID,
+    DisplayExpressionPropsPrefix10_1, ExpressionEngineSlot10_1,
+    read_annotate_props_collection_body_10_1, read_display_expression_props_prefix_10_1,
+};
 use crate::layers::dep_tail::{TimeDataFamily10_1, read_time_data_family_10_1};
-use crate::layers::feature_layer::{
-    FEATURE_CLASS_NAME_CLASS_ID, FeatureClassNamePrefix10_1, read_feature_class_name_body_10_1,
-};
+use crate::layers::feature_layer::FeatureClassNamePrefix10_1;
 use crate::layers::feature_layer_tail::{
-    FIELD_INFO_CLASS_ID, FieldInfoBody10_1, FieldInfoStop10_1, read_field_info_body_10_1,
+    FIELD_INFO_CLASS_ID, FieldInfoBody10_1, FieldInfoStop10_1, UID_CLASS_ID, UidBody10_1,
+    read_field_info_body_10_1, read_uid_body_10_1,
 };
+pub use crate::layers::layer_extensions::LayerExtensionEntry10_1 as StandaloneTableExtension10_1;
+use crate::layers::layer_extensions::read_layer_extension_entry_10_1;
 use crate::objects::dataset_name_more::{
-    QUERY_TABLE_NAME_CLASS_ID, QueryTableNameBody10_1, read_query_table_name_body_10_1,
+    DatasetNameMoreBody10_1, DatasetNameMoreSlot10_1, NetCdfTableNameBody10_1,
+    QueryTableNameBody10_1, read_relationship_name_slot_10_1, read_tabular_name_slot_10_1,
 };
+use crate::objects::display_color::{ColorBody10_1, ColorSlot10_1, read_color_slot_10_1};
 use crate::objects::workspace_name::{
     WORKSPACE_NAME_CLASS_ID, WorkspaceNameEntry10_1, read_workspace_name_body_10_1,
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
@@ -30,6 +39,10 @@ pub const STANDALONE_TABLE_CLASS_ID: [u8; 16] = [
 pub const TABLE_NAME_CLASS_ID: [u8; 16] = [
     0xb1, 0x3d, 0x78, 0x06, 0xee, 0xe5, 0xd1, 0x11, 0xb0, 0xa2, 0x00, 0x00, 0xf8, 0x78, 0x08, 0x20,
 ];
+/// FgdbTableName 的 CLSID（Windows GUID 字节序）。
+pub const FGDB_TABLE_NAME_CLASS_ID: [u8; 16] = [
+    0xc5, 0x88, 0x6c, 0x84, 0xc5, 0x6c, 0xc7, 0x49, 0xa6, 0xfe, 0x8f, 0xa0, 0x3d, 0x79, 0xbd, 0x07,
+];
 
 /// TableName 对象体；工作空间未知对象处停止，不推断后续长度。
 ///
@@ -40,9 +53,32 @@ pub struct TableNameBody10_1 {
     pub version: u16,
     pub strings: [String; 3],
     pub workspace: WorkspaceNameEntry10_1,
+    /// FileGDB 外层的版本和持久化 short，普通 TableName 没有外层。
+    pub fgdb_wrapper: Option<(u16, u16)>,
 }
 
-pub(super) fn read_table_name_body_10_1(
+/// FileGDB.dll 0x6fa33290 读取两个 short 后把同一流交给内联 TableName。
+pub(crate) fn read_fgdb_table_name_body_10_1(
+    reader: &mut Reader<'_>,
+    table: &mut RefTable10_1,
+    max_bytes: usize,
+) -> io::Result<(TableNameBody10_1, bool)> {
+    let mut trial = reader.clone();
+    let version = trial.read_u16_le()?;
+    if version > 1 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "FgdbTableName 版本不支持",
+        ));
+    }
+    let flags = trial.read_u16_le()?;
+    let (mut body, stopped) = read_table_name_body_10_1(&mut trial, table, max_bytes)?;
+    body.fgdb_wrapper = Some((version, flags));
+    *reader = trial;
+    Ok((body, stopped))
+}
+
+pub(crate) fn read_table_name_body_10_1(
     reader: &mut Reader<'_>,
     table: &mut RefTable10_1,
     max_bytes: usize,
@@ -87,6 +123,7 @@ pub(super) fn read_table_name_body_10_1(
             version,
             strings,
             workspace,
+            fgdb_wrapper: None,
         },
         stopped,
     ))
@@ -97,6 +134,8 @@ pub enum StandaloneNameBody10_1 {
     FeatureClassName(Box<FeatureClassNamePrefix10_1>),
     QueryTableName(Box<QueryTableNameBody10_1>),
     TableName(Box<TableNameBody10_1>),
+    NetCdfTableName(Box<NetCdfTableNameBody10_1>),
+    OtherTabularName(Box<DatasetNameMoreBody10_1>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -143,6 +182,13 @@ pub enum StandaloneTableStop10_1 {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum StandaloneTableTailBody10_1 {
+    DisplayExpression(Box<DisplayExpressionPropsPrefix10_1>),
+    Uid(UidBody10_1),
+    AnnotateProps(Box<AnnotatePropsBody10_1>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct StandaloneTablePrefix10_1 {
     pub version: u16,
     pub dataset_name: Option<ObjectEntry10_1>,
@@ -152,7 +198,10 @@ pub struct StandaloneTablePrefix10_1 {
     pub named_object_bodies: Vec<Option<FieldInfoBody10_1>>,
     pub trailing_string: Option<String>,
     pub relationships: Vec<ObjectEntry10_1>,
+    /// 与 relationships 一一对应，包含已读取的关系名称新对象体。
+    pub relationship_bodies: Vec<Option<DatasetNameMoreBody10_1>>,
     pub sequence_object: Option<ObjectEntry10_1>,
+    pub sequence_color: Option<ColorBody10_1>,
     pub sequence_count: Option<i32>,
     pub sequence_tokens: Vec<i32>,
     pub sequence_values: Vec<i32>,
@@ -162,9 +211,11 @@ pub struct StandaloneTablePrefix10_1 {
     pub version_strings: Vec<String>,
     pub pre_join: Option<Vec<(String, String)>>,
     pub tail_objects: Vec<ObjectEntry10_1>,
+    pub tail_object_bodies: Vec<Option<StandaloneTableTailBody10_1>>,
     pub legacy_short: Option<u16>,
     pub time_family: Option<TimeDataFamily10_1>,
     pub extension_count: Option<i32>,
+    pub extensions: Vec<StandaloneTableExtension10_1>,
     pub stop: StandaloneTableStop10_1,
 }
 
@@ -177,48 +228,45 @@ fn read_name(
     Option<StandaloneNameBody10_1>,
     Option<StandaloneTableStop10_1>,
 )> {
-    let mut trial = r.clone();
-    let mut staged = table.clone();
-    let entry = read_object_entry_10_1(&mut trial, &mut staged)?;
-    let (body, stopped) = match entry {
-        ObjectEntry10_1::NewObject { class_id, key } if class_id == FEATURE_CLASS_NAME_CLASS_ID => {
-            let body = read_feature_class_name_body_10_1(&mut trial, max_bytes, &mut staged, key)?;
-            let stopped = body.stop.is_some();
-            (
-                Some(StandaloneNameBody10_1::FeatureClassName(Box::new(body))),
-                stopped,
-            )
+    let header = read_header_10_1(&mut r.clone())?;
+    let mut stop = None;
+    let name = read_tabular_name_slot_10_1(r, max_bytes, table, &mut stop)?;
+    let (entry, body) = match name {
+        DatasetNameMoreSlot10_1::Null => (ObjectEntry10_1::Null, None),
+        DatasetNameMoreSlot10_1::BackReference { class_id, key } => {
+            (ObjectEntry10_1::BackReference { class_id, key }, None)
         }
-        ObjectEntry10_1::NewObject { class_id, key } if class_id == QUERY_TABLE_NAME_CLASS_ID => {
-            let body = read_query_table_name_body_10_1(&mut trial, max_bytes, &mut staged, key)?;
-            let stopped = body.stop.is_some();
-            (
-                Some(StandaloneNameBody10_1::QueryTableName(Box::new(body))),
-                stopped,
-            )
-        }
-        ObjectEntry10_1::NewObject { class_id, .. } if class_id == TABLE_NAME_CLASS_ID => {
-            let (body, stopped) = read_table_name_body_10_1(&mut trial, &mut staged, max_bytes)?;
-            (
-                Some(StandaloneNameBody10_1::TableName(Box::new(body))),
-                stopped,
-            )
-        }
-        ObjectEntry10_1::NewObject { class_id, key } => {
+        DatasetNameMoreSlot10_1::Unsupported { class_id, key } => {
             return Ok((
                 None,
                 None,
                 Some(StandaloneTableStop10_1::DatasetName { class_id, key }),
             ));
         }
-        _ => (None, false),
+        DatasetNameMoreSlot10_1::Body(name) => {
+            let body = match name {
+                DatasetNameMoreBody10_1::FeatureClassName(body) => {
+                    StandaloneNameBody10_1::FeatureClassName(body)
+                }
+                DatasetNameMoreBody10_1::QueryTable(body) => {
+                    StandaloneNameBody10_1::QueryTableName(body)
+                }
+                DatasetNameMoreBody10_1::Table(body) => StandaloneNameBody10_1::TableName(body),
+                DatasetNameMoreBody10_1::NetCdfTable(body) => {
+                    StandaloneNameBody10_1::NetCdfTableName(body)
+                }
+                body => StandaloneNameBody10_1::OtherTabularName(Box::new(body)),
+            };
+            let ObjectHeader::Object { class_id, key } = header else {
+                unreachable!("已读取表名新对象体");
+            };
+            (ObjectEntry10_1::NewObject { class_id, key }, Some(body))
+        }
     };
-    *r = trial;
-    *table = staged;
     Ok((
         Some(entry),
         body,
-        stopped.then_some(StandaloneTableStop10_1::NameBody),
+        stop.is_some().then_some(StandaloneTableStop10_1::NameBody),
     ))
 }
 
@@ -259,7 +307,9 @@ pub fn read_standalone_table_prefix_10_1(
         named_object_bodies: Vec::new(),
         trailing_string: None,
         relationships: Vec::new(),
+        relationship_bodies: Vec::new(),
         sequence_object: None,
+        sequence_color: None,
         sequence_count: None,
         sequence_tokens: Vec::new(),
         sequence_values: Vec::new(),
@@ -269,9 +319,11 @@ pub fn read_standalone_table_prefix_10_1(
         version_strings: Vec::new(),
         pre_join: None,
         tail_objects: Vec::new(),
+        tail_object_bodies: Vec::new(),
         legacy_short: None,
         time_family: None,
         extension_count: None,
+        extensions: Vec::new(),
         stop: StandaloneTableStop10_1::Complete,
     };
     let (entry, body, stop) = read_name(&mut r, &mut table, max_string_bytes)?;
@@ -324,33 +376,67 @@ pub fn read_standalone_table_prefix_10_1(
     result.trailing_string = Some(read_string_10_1(&mut r, max_string_bytes)?);
     if version >= 2 {
         for _ in 0..count(&mut r, max_entries)? {
+            let header = read_header_10_1(&mut r.clone())?;
             let mut trial = r.clone();
             let mut staged = table.clone();
-            let entry = read_object_entry_10_1(&mut trial, &mut staged)?;
-            if let ObjectEntry10_1::NewObject { class_id, key } = entry {
+            let mut stop = None;
+            let relationship = read_relationship_name_slot_10_1(
+                &mut trial,
+                max_string_bytes,
+                &mut staged,
+                &mut stop,
+            )?;
+            if stop.is_some() {
+                let ObjectHeader::Object { class_id, key } = header else {
+                    unreachable!("关系名称的停止点位于新对象中");
+                };
                 result.stop = StandaloneTableStop10_1::RelationshipObject { class_id, key };
                 *reader = r;
                 *refs = table;
                 return Ok(result);
             }
+            let (entry, body) = match relationship {
+                DatasetNameMoreSlot10_1::Null => (ObjectEntry10_1::Null, None),
+                DatasetNameMoreSlot10_1::BackReference { class_id, key } => {
+                    (ObjectEntry10_1::BackReference { class_id, key }, None)
+                }
+                DatasetNameMoreSlot10_1::Body(body) => {
+                    let ObjectHeader::Object { class_id, key } = header else {
+                        unreachable!("已读取关系名称新对象体");
+                    };
+                    (ObjectEntry10_1::NewObject { class_id, key }, Some(body))
+                }
+                DatasetNameMoreSlot10_1::Unsupported { .. } => unreachable!("未知关系名称应已停止"),
+            };
             r = trial;
             table = staged;
             result.relationships.push(entry);
+            result.relationship_bodies.push(body);
         }
     }
     if version >= 3 {
-        let mut trial = r.clone();
-        let mut staged = table.clone();
-        let entry = read_object_entry_10_1(&mut trial, &mut staged)?;
-        if let ObjectEntry10_1::NewObject { class_id, key } = entry {
-            result.stop = StandaloneTableStop10_1::SequenceObject { class_id, key };
-            *reader = r;
-            *refs = table;
-            return Ok(result);
-        }
-        r = trial;
-        table = staged;
-        result.sequence_object = Some(entry);
+        let color = read_color_slot_10_1(&mut r, max_string_bytes, &mut table)?;
+        result.sequence_object = Some(match color {
+            ColorSlot10_1::Null => ObjectEntry10_1::Null,
+            ColorSlot10_1::BackReference { class_id, key } => {
+                ObjectEntry10_1::BackReference { class_id, key }
+            }
+            ColorSlot10_1::Color { class_id, body } => {
+                let key = match &body {
+                    ColorBody10_1::Rgb(body) => body.key,
+                    ColorBody10_1::Core { body, .. } => body.key,
+                    ColorBody10_1::Cmyk(body) => body.key,
+                };
+                result.sequence_color = Some(body);
+                ObjectEntry10_1::NewObject { class_id, key }
+            }
+            ColorSlot10_1::Unsupported { class_id, key } => {
+                result.stop = StandaloneTableStop10_1::SequenceObject { class_id, key };
+                *reader = r;
+                *refs = table;
+                return Ok(result);
+            }
+        });
         let n = count(&mut r, max_entries)?;
         result.sequence_count = Some(n);
         let mut previous = -2i32;
@@ -429,19 +515,52 @@ pub fn read_standalone_table_prefix_10_1(
             let mut trial = r.clone();
             let mut staged = table.clone();
             let entry = read_object_entry_10_1(&mut trial, &mut staged)?;
-            if let ObjectEntry10_1::NewObject { class_id, key } = entry {
-                result.stop = StandaloneTableStop10_1::TailObject {
-                    slot,
-                    class_id,
-                    key,
+            let body = if let ObjectEntry10_1::NewObject { class_id, key } = entry {
+                let body = match (slot, class_id) {
+                    (0, DISPLAY_EXPRESSION_PROPS_CLASS_ID) => {
+                        let body = read_display_expression_props_prefix_10_1(
+                            &mut trial,
+                            max_string_bytes,
+                            &mut staged,
+                            key,
+                        )?;
+                        (!matches!(body.engine, ExpressionEngineSlot10_1::Unsupported { .. }))
+                            .then(|| StandaloneTableTailBody10_1::DisplayExpression(Box::new(body)))
+                    }
+                    (1, UID_CLASS_ID) => Some(StandaloneTableTailBody10_1::Uid(
+                        read_uid_body_10_1(&mut trial, key)?,
+                    )),
+                    (2, ANNOTATE_PROPS_COLLECTION_CLASS_ID) => {
+                        let body = read_annotate_props_collection_body_10_1(
+                            &mut trial,
+                            max_string_bytes,
+                            &mut staged,
+                            key,
+                        )?;
+                        body.stop
+                            .is_none()
+                            .then(|| StandaloneTableTailBody10_1::AnnotateProps(Box::new(body)))
+                    }
+                    _ => None,
                 };
-                *reader = r;
-                *refs = table;
-                return Ok(result);
-            }
+                if body.is_none() {
+                    result.stop = StandaloneTableStop10_1::TailObject {
+                        slot,
+                        class_id,
+                        key,
+                    };
+                    *reader = r;
+                    *refs = table;
+                    return Ok(result);
+                }
+                body
+            } else {
+                None
+            };
             r = trial;
             table = staged;
             result.tail_objects.push(entry);
+            result.tail_object_bodies.push(body);
         }
     }
     if version >= 12 {
@@ -458,18 +577,30 @@ pub fn read_standalone_table_prefix_10_1(
     if version >= 14 {
         let n = count(&mut r, max_entries)?;
         result.extension_count = Some(n);
-        if n > 0 {
+        let mut budget = max_string_bytes;
+        for _ in 0..n {
             let mut trial = r.clone();
-            let size = i64::from_le_bytes(trial.read_bytes(8)?.try_into().unwrap());
-            if size < 0 {
-                return Err(io::Error::new(
-                    ErrorKind::InvalidData,
-                    "StandaloneTable 扩展尺寸无效",
-                ));
+            let mut staged = table.clone();
+            match read_layer_extension_entry_10_1(
+                &mut trial,
+                max_string_bytes,
+                &mut staged,
+                &mut budget,
+            ) {
+                Ok(extension) => {
+                    r = trial;
+                    table = staged;
+                    result.extensions.push(extension);
+                }
+                Err(error) if error.kind() == ErrorKind::Unsupported => {
+                    let mut header = r.clone();
+                    let size = i64::from_le_bytes(header.read_bytes(8)?.try_into().unwrap());
+                    let class_id = header.read_bytes(16)?.try_into().unwrap();
+                    result.stop = StandaloneTableStop10_1::Extension { class_id, size };
+                    break;
+                }
+                Err(error) => return Err(error),
             }
-            let mut class_id = [0; 16];
-            class_id.copy_from_slice(trial.read_bytes(16)?);
-            result.stop = StandaloneTableStop10_1::Extension { class_id, size };
         }
     }
     *reader = r;

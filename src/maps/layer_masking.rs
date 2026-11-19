@@ -2,6 +2,7 @@
 //! docs/mxd-luna-deep-layer-masking-20261118.md，流结构边界见
 //! docs/mxd-terra-round8-mask.md。
 
+use crate::layers::layer_list::read_complete_layer_body_10_1;
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
@@ -46,12 +47,15 @@ pub enum LayerMaskingSupport10_1 {
 /// 这里的类标识只用于静态能力表，不能代替运行时 QI，也不涵盖插件替换类。
 pub fn known_layer_masking_support_10_1(class_id: &[u8; 16]) -> LayerMaskingSupport10_1 {
     use crate::layers::basemap_layer::BASEMAP_LAYER_CLASS_ID;
+    use crate::layers::cache_tile_reader::is_tiled_layer;
+    use crate::layers::cad_layer::{CAD_FEATURE_LAYER_CLASS_ID, CAD_LAYER_CLASS_ID};
     use crate::layers::fdo_graphics_layer::FDO_GRAPHICS_LAYER_CLASS_ID;
     use crate::layers::fdo_legacy::FDO_GRAPHICS_SUBLAYER_CLASS_ID;
     use crate::layers::feature_layer::FEATURE_LAYER_CLASS_ID;
     use crate::layers::group_layer::GROUP_LAYER_CLASS_ID;
 
     use crate::layers::layer_list::RASTER_LAYER_CLASS_ID;
+    use crate::layers::wcs_layer::WCS_LAYER_CLASS_ID;
 
     if *class_id == GROUP_LAYER_CLASS_ID || *class_id == BASEMAP_LAYER_CLASS_ID {
         LayerMaskingSupport10_1::Supported
@@ -59,6 +63,10 @@ pub fn known_layer_masking_support_10_1(class_id: &[u8; 16]) -> LayerMaskingSupp
         || *class_id == FDO_GRAPHICS_LAYER_CLASS_ID
         || *class_id == FDO_GRAPHICS_SUBLAYER_CLASS_ID
         || *class_id == RASTER_LAYER_CLASS_ID
+        || *class_id == CAD_LAYER_CLASS_ID
+        || *class_id == CAD_FEATURE_LAYER_CLASS_ID
+        || *class_id == WCS_LAYER_CLASS_ID
+        || is_tiled_layer(*class_id)
     {
         LayerMaskingSupport10_1::Unsupported
     } else {
@@ -89,13 +97,18 @@ fn count(reader: &mut Reader<'_>, max_bytes: usize) -> io::Result<usize> {
     Ok(n)
 }
 
-fn reference(reader: &mut Reader<'_>, refs: &mut RefTable10_1) -> io::Result<ObjectEntry10_1> {
-    match read_object_entry_10_1(reader, refs)? {
-        ObjectEntry10_1::NewObject { .. } => {
-            Err(io::Error::new(ErrorKind::Unsupported, "遮罩对象体尚未支持"))
-        }
-        entry => Ok(entry),
+// 外层请求 ILayer，内层请求 IUnknown。同一图层体分派适用于两处；
+// 内层其他可持久化对象仍需该类的完整读取器。
+fn read_mask_object(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<ObjectEntry10_1> {
+    let entry = read_object_entry_10_1(reader, refs)?;
+    if let ObjectEntry10_1::NewObject { class_id, .. } = entry {
+        read_complete_layer_body_10_1(reader, class_id, max_bytes, refs)?;
     }
+    Ok(entry)
 }
 
 /// 读取已确认接口存在时的集合；失败时游标和引用表均不变。
@@ -122,7 +135,7 @@ pub fn read_layer_masking_10_1(
     })
 }
 
-/// 消费已确认的外层计数之后的条目；未知对象体使整个操作回退。
+/// 消费已确认的外层计数之后的条目；新图层体必须完整读取，未知对象使整个操作回退。
 pub fn read_entries_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -141,7 +154,7 @@ pub fn read_entries_10_1(
     let mut entries = Vec::new();
     let mut total = n;
     for _ in 0..n {
-        let object = reference(&mut trial, &mut table)?;
+        let object = read_mask_object(&mut trial, max_bytes, &mut table)?;
         let inner = count(&mut trial, max_bytes)?;
         total = total
             .checked_add(inner)
@@ -151,7 +164,7 @@ pub fn read_entries_10_1(
         }
         let mut targets = Vec::new();
         for _ in 0..inner {
-            let target = reference(&mut trial, &mut table)?;
+            let target = read_mask_object(&mut trial, max_bytes, &mut table)?;
             let name = if version > 1 {
                 Some(read_string_10_1(&mut trial, max_bytes)?)
             } else {

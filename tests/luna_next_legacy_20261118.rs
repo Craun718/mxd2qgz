@@ -103,6 +103,13 @@ fn sdk_group_layers_are_reached_from_map_roots_and_are_v11_or_v12() {
                 else {
                     return None;
                 };
+                if entry.offset == 0x15a {
+                    assert_eq!(
+                        group.stop,
+                        mxd2qgz::layers::group_layer::GroupLayerStop10_1::Complete
+                    );
+                    assert_eq!(entry.body.as_ref().unwrap().len, 0);
+                }
                 Some((
                     entry.offset,
                     *key,

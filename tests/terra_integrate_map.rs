@@ -1,9 +1,17 @@
 use mxd2qgz::maps::map_object::{
-    MAP_CLASS_ID, MapSuffixStop, NADCON_TRANSFORMATION_CLASS_ID, read_map_suffix_10_1,
-    read_nadcon_transformation_10_1, read_post_illumination_null_geometry_10_1,
+    MAP_CLASS_ID, MapGeometryBody10_1, MapSuffixStop, MapTransformationDirection10_1,
+    NADCON_TRANSFORMATION_CLASS_ID, read_map_suffix_10_1, read_nadcon_transformation_10_1,
+    read_post_illumination_null_geometry_10_1,
 };
 use mxd2qgz::maps::standalone_table::STANDALONE_TABLE_CLASS_ID;
-use mxd2qgz::objects::geo_transformation::GEO_TRANSFORMATION_CLASS_ID;
+use mxd2qgz::objects::envelope::ENVELOPE_CLASS_ID;
+use mxd2qgz::objects::geo_transformation::{
+    COMPOSITE_GEO_TRANSFORMATION_CLASS_ID, GEO_TRANSFORMATION_CLASS_ID,
+    NTV2_TRANSFORMATION_CLASS_ID,
+};
+use mxd2qgz::objects::geometry::{
+    GEOMETRY_BAG_CLASS_ID, GeometryBody10_1, MULTIPATCH_CLASS_ID, POINT_CLASS_ID,
+};
 use mxd2qgz::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use mxd2qgz::stream::reader::Reader;
 use std::io::Read;
@@ -145,6 +153,14 @@ fn map_geometry_null_is_reached_from_reference_root() {
     assert!(table.contains(2181));
     let items = &map.post_border_tail.transformations;
     assert_eq!(items.len(), 2);
+    assert_eq!(
+        items[0].direction_on_disk(),
+        Some(MapTransformationDirection10_1::Forward)
+    );
+    assert_eq!(
+        items[1].direction_on_disk(),
+        Some(MapTransformationDirection10_1::Reverse)
+    );
     assert_eq!(items[0].object.unwrap().offset, 0x2505e);
     assert_eq!(items[0].body.as_ref().unwrap().version, 1);
     assert_eq!(items[0].body.as_ref().unwrap().text.len(), 447);
@@ -183,6 +199,119 @@ fn nonempty_or_truncated_border_is_preserved_after_null_geometry() {
         assert!(map.post_illumination_null_border.is_none());
         assert_eq!(reader.position(), border);
         assert_eq!(map.remaining_bytes, input.len() - border);
+    }
+}
+
+#[test]
+fn nonempty_map_geometry_reaches_border_and_preserves_unknown_slots() {
+    let mut document = cfb::open("samples/测试底图.mxd").unwrap();
+    let mut bytes = Vec::new();
+    document
+        .open_stream("/Maps")
+        .unwrap()
+        .read_to_end(&mut bytes)
+        .unwrap();
+    const GEOMETRY: usize = 0x24ff4;
+    const KEY: u32 = 60001;
+    let header = |class: [u8; 16]| {
+        let mut bytes = class.to_vec();
+        bytes.extend(KEY.to_le_bytes());
+        bytes
+    };
+
+    let mut point = header(POINT_CLASS_ID);
+    point.extend(1_u16.to_le_bytes());
+    point.extend(20_u32.to_le_bytes());
+    point.extend(1_u32.to_le_bytes());
+    point.extend(2.5_f64.to_le_bytes());
+    point.extend(4.0_f64.to_le_bytes());
+    let mut envelope = header(ENVELOPE_CLASS_ID);
+    envelope.extend(1_u16.to_le_bytes());
+    for value in [10.0_f64, 20.0, 30.0, 40.0] {
+        envelope.extend(value.to_le_bytes());
+    }
+    let mut bag = header(GEOMETRY_BAG_CLASS_ID);
+    bag.extend(1_u16.to_le_bytes());
+    bag.extend([0; 4 + 16 + 16 + 1]);
+    let mut patch = header(MULTIPATCH_CLASS_ID);
+    patch.extend(2_u16.to_le_bytes());
+    patch.extend(4_u32.to_le_bytes());
+    patch.extend([0; 4 + 16]);
+    let backref = header(POINT_CLASS_ID);
+    for (slot_bytes, class_id, is_reference) in [
+        (&point, POINT_CLASS_ID, false),
+        (&envelope, ENVELOPE_CLASS_ID, false),
+        (&backref, POINT_CLASS_ID, true),
+        (&bag, GEOMETRY_BAG_CLASS_ID, false),
+        (&patch, MULTIPATCH_CLASS_ID, false),
+    ] {
+        let mut input = bytes.clone();
+        input.splice(GEOMETRY..GEOMETRY + 16, slot_bytes.iter().copied());
+        let mut reader = Reader::new(&input);
+        let mut refs = RefTable10_1::new();
+        if is_reference {
+            refs.register(KEY);
+        }
+        assert_eq!(reader.read_u32_le().unwrap(), 1);
+        read_object_entry_10_1(&mut reader, &mut refs).unwrap();
+        let map = read_map_suffix_10_1(&mut reader, 4_000_000, &mut refs).unwrap();
+        let (slot, body) = map.post_illumination_geometry.unwrap();
+        assert_eq!(slot.offset, GEOMETRY);
+        assert!(map.post_illumination_null_geometry.is_none());
+        assert_eq!(
+            map.post_illumination_null_border.unwrap().offset,
+            GEOMETRY + slot_bytes.len()
+        );
+        assert!(refs.contains(KEY));
+        match body {
+            Some(MapGeometryBody10_1::Geometry(GeometryBody10_1::Point(value))) => {
+                assert_eq!(
+                    slot.entry,
+                    ObjectEntry10_1::NewObject { class_id, key: KEY }
+                );
+                assert_eq!((value.record.x, value.record.y), (Some(2.5), Some(4.0)));
+            }
+            Some(MapGeometryBody10_1::Envelope(_)) => {
+                assert_eq!(
+                    slot.entry,
+                    ObjectEntry10_1::NewObject { class_id, key: KEY }
+                );
+                assert_eq!(class_id, ENVELOPE_CLASS_ID);
+            }
+            Some(MapGeometryBody10_1::Geometry(GeometryBody10_1::GeometryBag(value))) => {
+                assert_eq!(class_id, GEOMETRY_BAG_CLASS_ID);
+                assert!(value.members.is_empty());
+            }
+            Some(MapGeometryBody10_1::Geometry(GeometryBody10_1::MultiPatch(value))) => {
+                assert_eq!(class_id, MULTIPATCH_CLASS_ID);
+                assert_eq!(value.record_bytes, [0; 4]);
+            }
+            None if is_reference => {
+                assert_eq!(
+                    slot.entry,
+                    ObjectEntry10_1::BackReference { class_id, key: KEY }
+                );
+            }
+            other => panic!("非预期几何体：{other:?}"),
+        }
+        assert_eq!(map.stop, MapSuffixStop::Complete);
+        assert_eq!(reader.position(), 0x25569 + slot_bytes.len() - 16);
+    }
+
+    let unknown = header([0x41; 16]);
+    for invalid in [&unknown, &point[..point.len() - 1]] {
+        let mut input = bytes[..GEOMETRY].to_vec();
+        input.extend(invalid);
+        let mut reader = Reader::new(&input);
+        let mut refs = RefTable10_1::new();
+        assert_eq!(reader.read_u32_le().unwrap(), 1);
+        read_object_entry_10_1(&mut reader, &mut refs).unwrap();
+        let map = read_map_suffix_10_1(&mut reader, 4_000_000, &mut refs).unwrap();
+        assert_eq!(map.stop, MapSuffixStop::AfterIlluminationFields);
+        assert!(map.post_illumination_geometry.is_none());
+        assert!(map.post_illumination_border.is_none());
+        assert_eq!(reader.position(), GEOMETRY);
+        assert!(!refs.contains(KEY));
     }
 }
 
@@ -310,6 +439,10 @@ fn transformation_prefix_preserves_each_boundary_and_unknown_objects() {
         tail.first_transformation_prefix,
         Some((start + 22, 0x87654321))
     );
+    assert_eq!(
+        tail.transformations[0].direction_on_disk(),
+        Some(MapTransformationDirection10_1::Unknown(0x87654321))
+    );
     assert_eq!(pos, start + 26);
     assert_eq!(map.remaining_bytes, 20);
     let mut offset = start;
@@ -415,7 +548,7 @@ fn transformation_loop_handles_null_backref_and_failed_new_body() {
     ));
     assert!(refs.contains(50000));
     let second_header = items[1].object.unwrap().offset;
-    let second_end = items[2].prefix_offset;
+    let second_end = items[2].offset;
     let third_header = items[2].object.unwrap().offset;
     let mut alternate = bytes.clone();
     for header in [second_header, third_header] {
@@ -432,6 +565,33 @@ fn transformation_loop_handles_null_backref_and_failed_new_body() {
             key: 50000,
         }
     );
+    let mut composite = bytes.clone();
+    for header in [second_header, third_header] {
+        composite[header..header + 16].copy_from_slice(&COMPOSITE_GEO_TRANSFORMATION_CLASS_ID);
+    }
+    let mut composite_body = 1_u16.to_le_bytes().to_vec();
+    composite_body.extend(2_u16.to_le_bytes());
+    composite_body.extend(('组' as u16).to_le_bytes());
+    composite_body.extend(1_u16.to_le_bytes());
+    composite_body.extend((-1_i16).to_le_bytes());
+    composite_body.extend(NTV2_TRANSFORMATION_CLASS_ID);
+    composite_body.extend(&bytes[second_header + 20..second_end]);
+    composite.splice(second_header + 20..second_end, composite_body);
+    let (map, pos, refs) = parse(&composite);
+    assert_eq!(pos, composite.len() - 4);
+    assert_eq!(map.stop, MapSuffixStop::AfterBorderTail { stage: 14 });
+    assert!(refs.contains(50000));
+    let items = &map.post_border_tail.transformations;
+    let body = items[1].body.as_ref().unwrap().composite.as_ref().unwrap();
+    assert_eq!(body.name, "组");
+    assert_eq!(body.items.len(), 1);
+    assert_eq!(body.items[0].direction, -1);
+    assert_eq!(body.items[0].class_id, NTV2_TRANSFORMATION_CLASS_ID);
+    assert_eq!(body.items[0].body.text, b"abc");
+    assert!(matches!(
+        items[2].object.unwrap().entry,
+        ObjectEntry10_1::BackReference { key: 50000, .. }
+    ));
     for cut in second_header..second_end {
         let (map, pos, refs) = parse(&bytes[..cut]);
         assert_eq!(pos, second_header);
@@ -611,5 +771,143 @@ fn basic_overposter_body_accepts_null_and_known_color_reference() {
                 )
         );
         assert_eq!(reader.position(), bytes.len());
+    }
+}
+
+#[test]
+fn maplex_overposter_reads_dictionaries_and_number_groups_in_map_object() {
+    use mxd2qgz::maps::maplex::{
+        MAPLEX_OVERPOSTER_PROPERTIES_CLASS_ID, MaplexDictionaryEntries10_1,
+    };
+
+    fn header(bytes: &mut Vec<u8>, class: [u8; 16], key: u32) {
+        bytes.extend(class);
+        bytes.extend(key.to_le_bytes());
+    }
+    fn string(bytes: &mut Vec<u8>, value: &str) {
+        let units: Vec<_> = value.encode_utf16().chain([0]).collect();
+        bytes.extend((units.len() as u32 * 2).to_le_bytes());
+        bytes.extend(units.into_iter().flat_map(u16::to_le_bytes));
+    }
+
+    let dictionaries = [
+        8, 0x48, 0x66, 0x20, 0xdb, 0x56, 0x28, 0xbd, 0x67, 0xdc, 2, 0xe3, 0x3d, 0xec, 0xf3, 0x21,
+    ];
+    let dictionary = [
+        8, 0x48, 0x66, 0x20, 0xe2, 0x3d, 0xd1, 0x1c, 0x8a, 9, 8, 0xe0, 0xd, 0xec, 0x73, 0x21,
+    ];
+    let entry = [
+        8, 0x48, 0x66, 0x20, 0x45, 0xfe, 0x18, 0x90, 0xbe, 0x1f, 0x66, 0xeb, 0xd, 0xec, 0x73, 0x21,
+    ];
+    let groups = [
+        0xb8, 0x3b, 0x5f, 0x75, 0xfb, 0x63, 0x4b, 0xe5, 0x88, 0x4c, 0x74, 0xf3, 0xdd, 0x2a, 0x8a,
+        0x81,
+    ];
+    let group = [
+        0x5d, 0xef, 0xdd, 0x66, 0xb3, 0x1a, 0x31, 0x5f, 0x7b, 0xc1, 0x75, 0x5d, 0xde, 0xf3, 0x3d,
+        0x32,
+    ];
+    let mut maplex = Vec::new();
+    header(&mut maplex, MAPLEX_OVERPOSTER_PROPERTIES_CLASS_ID, 4001);
+    maplex.extend(7_i16.to_le_bytes());
+    maplex.extend((-10_i32).to_le_bytes());
+    maplex.extend(11_u16.to_le_bytes());
+    header(&mut maplex, dictionaries, 4002);
+    maplex.extend(1_i16.to_le_bytes());
+    let dict_count = maplex.len();
+    maplex.extend(2_i32.to_le_bytes());
+    header(&mut maplex, dictionary, 4003);
+    maplex.extend(1_i16.to_le_bytes());
+    maplex.extend(1_i32.to_le_bytes());
+    for letter in [b'A', b'B'] {
+        maplex.extend(1_u32.to_le_bytes()); // BSTR 长度是码元数。
+        maplex.extend([letter, 0, 0, 0]);
+    }
+    header(&mut maplex, dictionary, 4004);
+    maplex.extend(2_i16.to_le_bytes());
+    maplex.extend(2_i32.to_le_bytes());
+    header(&mut maplex, entry, 4005);
+    maplex.extend(1_i16.to_le_bytes());
+    string(&mut maplex, "路径");
+    string(&mut maplex, "路");
+    maplex.extend((-16_i32).to_le_bytes());
+    header(&mut maplex, entry, 4005);
+    string(&mut maplex, "词典");
+    maplex.extend(20_u16.to_le_bytes());
+    maplex.extend(21_i32.to_le_bytes());
+    maplex.extend(2.5_f64.to_le_bytes());
+    maplex.extend([0; 16]);
+    maplex.extend([22_u16, 23, 24].into_iter().flat_map(u16::to_le_bytes));
+    header(&mut maplex, groups, 4006);
+    maplex.extend(1_i16.to_le_bytes());
+    maplex.extend(1_i32.to_le_bytes());
+    header(&mut maplex, group, 4007);
+    maplex.extend(1_i16.to_le_bytes());
+    string(&mut maplex, "编号组");
+    maplex.extend([25_i32, 26, 27].into_iter().flat_map(i32::to_le_bytes));
+    string(&mut maplex, "后缀");
+    maplex.extend(28_i32.to_le_bytes());
+
+    let mut file = cfb::open("samples/测试底图.mxd").unwrap();
+    let mut bytes = Vec::new();
+    file.open_stream("/Maps")
+        .unwrap()
+        .read_to_end(&mut bytes)
+        .unwrap();
+    let start = 0x25269;
+    let original_end = {
+        // BasicOverposterProperties 的边界由正常 Map 解析确认。
+        let mut reader = Reader::new(&bytes[24..0x252be]);
+        let result =
+            read_map_suffix_10_1(&mut reader, 4_000_000, &mut RefTable10_1::new()).unwrap();
+        assert!(result.post_border_tail.post_transform_overposter.is_some());
+        reader.position() + 24
+    };
+    let maplex_end = start + maplex.len();
+    bytes.splice(start..original_end, maplex);
+    let mut reader = Reader::new(&bytes[24..]);
+    let mut refs = RefTable10_1::new();
+    let parsed = read_map_suffix_10_1(&mut reader, 4_000_000, &mut refs).unwrap();
+    let body = parsed.post_border_tail.post_transform_maplex.unwrap().1;
+    assert_eq!(body.version, 7);
+    assert_eq!(body.v4_v5_long, None);
+    assert_eq!(body.v5_shorts, Some([23, 24]));
+    assert_eq!(body.v3.unwrap().double_24, 2.5_f64.to_bits());
+    let dictionaries = body.dictionaries.unwrap().body.unwrap();
+    let items: Vec<_> = dictionaries
+        .items
+        .into_iter()
+        .map(|item| item.body.unwrap().entries)
+        .collect();
+    assert!(
+        matches!(&items[0], MaplexDictionaryEntries10_1::LegacyArrays { first, second } if first == &["A"] && second == &["B"])
+    );
+    let MaplexDictionaryEntries10_1::Objects { items, name } = &items[1] else {
+        panic!("缺少对象式词典");
+    };
+    assert_eq!(name, "词典");
+    assert_eq!(items[0].body.as_ref().unwrap().strings, ["路径", "路"]);
+    assert!(matches!(
+        items[1].entry,
+        ObjectEntry10_1::BackReference { key: 4005, .. }
+    ));
+    let groups = body.key_number_groups.unwrap().body.unwrap();
+    assert_eq!(groups.items[0].body.as_ref().unwrap().longs, [25, 26, 27]);
+    assert_eq!(groups.items[0].body.as_ref().unwrap().second_string, "后缀");
+    assert_eq!(
+        parsed.post_border_tail.short_32a.unwrap().0 + 24,
+        maplex_end
+    );
+    assert!((4001..=4007).all(|key| refs.contains(key)));
+
+    let mut bad_count = bytes.clone();
+    bad_count[start + dict_count..start + dict_count + 4].copy_from_slice(&i32::MAX.to_le_bytes());
+    for input in [&bytes[..maplex_end - 1], bad_count.as_slice()] {
+        let mut reader = Reader::new(&input[24..]);
+        let mut refs = RefTable10_1::new();
+        let parsed = read_map_suffix_10_1(&mut reader, 4_000_000, &mut refs).unwrap();
+        assert!(parsed.post_border_tail.post_transform_maplex.is_none());
+        assert_eq!(reader.position() + 24, start);
+        assert!((4001..=4007).all(|key| !refs.contains(key)));
     }
 }

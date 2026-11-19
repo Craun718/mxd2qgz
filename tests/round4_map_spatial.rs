@@ -53,7 +53,7 @@ fn post_illumination_reader_preserves_bits_and_rejects_truncation() {
     bytes.extend(0xba98_u16.to_le_bytes());
     let end = bytes.len();
     bytes.push(0x5a);
-    for version in [23, 34, 35, 51] {
+    for version in [5, 14, 18, 19, 22, 23, 34, 35, 51] {
         let mut reader = Reader::new(&bytes);
         reader.read_bytes(1).unwrap();
         let fields = read_post_illumination_fields_10_1(&mut reader, version).unwrap();
@@ -74,7 +74,7 @@ fn post_illumination_reader_preserves_bits_and_rejects_truncation() {
         assert!(read_post_illumination_fields_10_1(&mut reader, 51).is_err());
         assert_eq!(reader.position(), 1);
     }
-    for version in [0, 22, 52, u16::MAX] {
+    for version in [0, 4, 52, u16::MAX] {
         let mut reader = Reader::new(&bytes);
         assert!(read_post_illumination_fields_10_1(&mut reader, version).is_err());
         assert_eq!(reader.position(), 0);

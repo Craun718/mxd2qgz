@@ -215,14 +215,7 @@ pub fn read_page_layout_element_10_1(
 ) -> io::Result<(ObjectEntry10_1, ElementBody10_1)> {
     let (mut trial, mut region) = read_extra_safe_element_region(reader, max_bytes)?;
     let mut refs = table.clone();
-    let entry = read_object_entry_10_1(&mut region, &mut refs)?;
-    let ObjectEntry10_1::NewObject { class_id, .. } = entry else {
-        return Err(io::Error::new(ErrorKind::Unsupported, "页面元素并非新对象"));
-    };
-    let body = read_element_body_of_class_10_1(&class_id, &mut region, max_bytes, &mut refs)?;
-    if let Some(stop) = body.stop() {
-        return Err(io::Error::new(ErrorKind::Unsupported, stop.describe()));
-    }
+    let (entry, body) = read_complete_element_body(&mut region, max_bytes, &mut refs)?;
     if region.remaining() != 0 {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
@@ -235,17 +228,34 @@ pub fn read_page_layout_element_10_1(
     Ok((entry, body))
 }
 
+fn read_complete_element_body(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<(ObjectEntry10_1, ElementBody10_1)> {
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let ObjectEntry10_1::NewObject { class_id, .. } = entry else {
+        return Err(io::Error::new(ErrorKind::Unsupported, "页面元素并非新对象"));
+    };
+    let body = read_element_body_of_class_10_1(&class_id, reader, max_bytes, refs)?;
+    if let Some(stop) = body.stop() {
+        return Err(io::Error::new(ErrorKind::Unsupported, stop.describe()));
+    }
+    Ok((entry, body))
+}
+
 /// 已顺序读出的布局元素集合及可识别的尾段。
 #[derive(Debug, Clone, PartialEq)]
 pub struct PageLayoutElements10_1 {
     pub prefix: PageLayoutPrefix10_1,
     pub map_frames: Vec<super::map_frame::MapFrame10_1>,
     pub surround_frames: Vec<super::surround_frame::MapSurroundFrame10_1>,
-    /// 不带对象体的元素槽，保存其序号、包装起点和条目。
+    /// 不带对象体的元素槽，保存其序号、槽起点和条目。
     pub indirect_elements: Vec<(u32, usize, ObjectEntry10_1)>,
     pub rectangles: Vec<super::rectangle_element::RectangleElement10_1>,
     pub frame_elements: Vec<(u32, super::map_frame::BaseFrameElement10_1)>,
     pub paragraphs: Vec<(u32, ParagraphTextElement10_1)>,
+    pub pictures: Vec<(u32, super::picture_element::PictureElement10_1)>,
     pub groups: Vec<super::group_element::GroupElement10_1>,
     pub consumed_elements: u32,
     /// 元素列表末端；元素未读完时为首个未解析元素的位置。
@@ -255,22 +265,27 @@ pub struct PageLayoutElements10_1 {
     pub tail_error: Option<String>,
     /// 文档加载器在 PageLayout 对象体之后读取；非零时后接打印纸张及打印机。
     pub print_settings_flag: Option<u16>,
+    pub print_settings: Option<super::print_settings::PrintSettings10_1>,
 }
 
 impl PageLayoutElements10_1 {
     pub fn consumed_end_offset(&self) -> usize {
+        if let Some(settings) = self.print_settings.as_ref() {
+            return settings.end_offset;
+        }
         self.tail.as_ref().map_or(self.end_offset, |tail| {
             tail.end_offset + usize::from(self.print_settings_flag.is_some()) * 2
         })
     }
 }
 
-/// 用 /Maps 的同一键表解析 /PageLayout 根与 ExtraSafe 元素集合。
+/// 用 /Maps 的同一键表解析 /PageLayout 根与元素集合。
 /// 按原生顺序遍历；未知类或嵌套对象会停止，避免遗漏其可能登记的键。
 pub(super) fn read_page_layout_elements_10_1(
     page: &[u8],
     max_bytes: usize,
     refs: &mut RefTable10_1,
+    save_index: Option<usize>,
     is_root_map: impl Fn(u32) -> bool,
 ) -> io::Result<PageLayoutElements10_1> {
     let mut reader = Reader::new(page);
@@ -280,78 +295,37 @@ pub(super) fn read_page_layout_elements_10_1(
         {
             let prefix = read_page_layout_prefix_10_1(&mut reader, 65_536)?;
             refs.register(key);
-            let mut result = PageLayoutElements10_1 {
-                prefix,
-                map_frames: Vec::new(),
-                surround_frames: Vec::new(),
-                indirect_elements: Vec::new(),
-                rectangles: Vec::new(),
-                frame_elements: Vec::new(),
-                paragraphs: Vec::new(),
-                groups: Vec::new(),
-                consumed_elements: 0,
-                end_offset: reader.position(),
-                stop: None,
-                tail: None,
-                tail_error: None,
-                print_settings_flag: None,
-            };
-            if result.prefix.element_count > 0 && !result.prefix.extra_safe {
-                result.stop = Some("尚未接入普通对象形式的页面元素循环".into());
-                return Ok(result);
-            }
-            for index in 0..result.prefix.element_count {
-                let offset = reader.position();
-                match read_element_or_map_frame(&mut reader, max_bytes, refs, &is_root_map) {
-                    Ok(element) => {
-                        match element {
-                            PageFrame::Map(frame) => result.map_frames.push(*frame),
-                            PageFrame::Surround(frame) => result.surround_frames.push(*frame),
-                            PageFrame::Indirect(entry) => {
-                                result.indirect_elements.push((index, offset, entry))
-                            }
-                            PageFrame::Rectangle(rect) => result.rectangles.push(*rect),
-                            PageFrame::Base(key, body) => result.frame_elements.push((key, *body)),
-                            PageFrame::Paragraph(key, body) => result.paragraphs.push((key, *body)),
-                            PageFrame::Group(body) => result.groups.push(*body),
-                            PageFrame::Other => {}
-                        }
-                        result.consumed_elements += 1;
-                        result.end_offset = reader.position();
-                    }
-                    Err(error) => {
-                        result.stop = Some(error.to_string());
-                        break;
-                    }
-                }
-            }
-            if result.stop.is_none() {
-                match super::page_layout_tail::read_page_layout_tail_10_1(
-                    &mut reader,
-                    refs,
-                    result.prefix.version,
-                    result.prefix.element_count,
-                    max_bytes,
-                    &is_root_map,
-                ) {
-                    Ok(tail) => {
-                        result.tail = Some(tail);
-                        // 外层文档读侧 0x7b708d00：ObjectStream::LoadObject
-                        // 返回后经当前 IStream 再读两字节，而非 PageLayout::Load。
-                        match reader.read_u16_le() {
-                            Ok(flag) => {
-                                result.print_settings_flag = Some(flag);
-                                if flag != 0 {
-                                    result.tail_error =
-                                        Some("非空打印设置（IPaper / IPrinter）尚未支持".into());
+            let mut result =
+                read_page_layout_body(&mut reader, max_bytes, refs, &is_root_map, prefix)?;
+            if result.tail.is_some() {
+                // 0x7b708d00 在 PageLayout::Load 之后读取文档级打印设置标记。
+                match reader.read_u16_le() {
+                    Ok(flag) => {
+                        result.print_settings_flag = Some(flag);
+                        if flag != 0 {
+                            use super::print_settings::PrintSaveFormat10_1;
+                            // 写侧版本表 0x7b71c840：8.3 存 v7，9.0 存 v9。
+                            let format = match (save_index, result.prefix.version, flag) {
+                                (Some(0), 7, 1) => PrintSaveFormat10_1::ArcGis83,
+                                (Some(1), 9, 1) => PrintSaveFormat10_1::ArcGis90,
+                                _ => PrintSaveFormat10_1::Default,
+                            };
+                            match super::print_settings::read_print_settings_10_1(
+                                &mut reader,
+                                max_bytes,
+                                refs,
+                                format,
+                            ) {
+                                Ok(settings) => result.print_settings = Some(settings),
+                                Err(error) => {
+                                    result.tail_error = Some(format!("打印设置：{error}"))
                                 }
                             }
-                            Err(error) => {
-                                result.tail_error = Some(format!("打印设置标记截断：{error}"))
-                            }
                         }
                     }
-                    Err(error) => result.tail_error = Some(error.to_string()),
+                    Err(error) => {
+                        result.tail_error = Some(format!("打印设置标记截断：{error}"));
+                    }
                 }
             }
             Ok(result)
@@ -363,6 +337,103 @@ pub(super) fn read_page_layout_elements_10_1(
     }
 }
 
+/// 在普通 LoadObject 槽中读取布局体，完整消费后提交，留出外层后继字段。
+pub(crate) fn read_page_layout_object_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<PageLayoutElements10_1> {
+    let mut trial = reader.clone();
+    let mut staged = refs.clone();
+    let prefix = read_page_layout_prefix_10_1(&mut trial, 65_536)?;
+    let result = read_page_layout_body(
+        &mut trial,
+        max_bytes,
+        &mut staged,
+        &|key| refs.contains_map(key),
+        prefix,
+    )?;
+    if let Some(reason) = result.stop.as_ref().or(result.tail_error.as_ref()) {
+        return Err(io::Error::new(ErrorKind::Unsupported, reason.clone()));
+    }
+    *reader = trial;
+    *refs = staged;
+    Ok(result)
+}
+
+fn read_page_layout_body(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    is_root_map: &impl Fn(u32) -> bool,
+    prefix: PageLayoutPrefix10_1,
+) -> io::Result<PageLayoutElements10_1> {
+    let mut result = PageLayoutElements10_1 {
+        prefix,
+        map_frames: Vec::new(),
+        surround_frames: Vec::new(),
+        indirect_elements: Vec::new(),
+        rectangles: Vec::new(),
+        frame_elements: Vec::new(),
+        paragraphs: Vec::new(),
+        pictures: Vec::new(),
+        groups: Vec::new(),
+        consumed_elements: 0,
+        end_offset: reader.position(),
+        stop: None,
+        tail: None,
+        tail_error: None,
+        print_settings_flag: None,
+        print_settings: None,
+    };
+    for index in 0..result.prefix.element_count {
+        let offset = reader.position();
+        match read_element_or_map_frame(
+            reader,
+            max_bytes,
+            refs,
+            is_root_map,
+            result.prefix.extra_safe,
+        ) {
+            Ok(element) => {
+                match element {
+                    PageFrame::Map(frame) => result.map_frames.push(*frame),
+                    PageFrame::Surround(frame) => result.surround_frames.push(*frame),
+                    PageFrame::Indirect(entry) => {
+                        result.indirect_elements.push((index, offset, entry))
+                    }
+                    PageFrame::Rectangle(rect) => result.rectangles.push(*rect),
+                    PageFrame::Base(key, body) => result.frame_elements.push((key, *body)),
+                    PageFrame::Paragraph(key, body) => result.paragraphs.push((key, *body)),
+                    PageFrame::Picture(key, body) => result.pictures.push((key, *body)),
+                    PageFrame::Group(body) => result.groups.push(*body),
+                    PageFrame::Other => {}
+                }
+                result.consumed_elements += 1;
+                result.end_offset = reader.position();
+            }
+            Err(error) => {
+                result.stop = Some(error.to_string());
+                break;
+            }
+        }
+    }
+    if result.stop.is_none() {
+        match super::page_layout_tail::read_page_layout_tail_10_1(
+            reader,
+            refs,
+            result.prefix.version,
+            result.prefix.element_count,
+            max_bytes,
+            is_root_map,
+        ) {
+            Ok(tail) => result.tail = Some(tail),
+            Err(error) => result.tail_error = Some(error.to_string()),
+        }
+    }
+    Ok(result)
+}
+
 enum PageFrame {
     Map(Box<super::map_frame::MapFrame10_1>),
     Surround(Box<super::surround_frame::MapSurroundFrame10_1>),
@@ -370,6 +441,7 @@ enum PageFrame {
     Rectangle(Box<super::rectangle_element::RectangleElement10_1>),
     Base(u32, Box<super::map_frame::BaseFrameElement10_1>),
     Paragraph(u32, Box<ParagraphTextElement10_1>),
+    Picture(u32, Box<super::picture_element::PictureElement10_1>),
     Group(Box<super::group_element::GroupElement10_1>),
     Other,
 }
@@ -379,135 +451,120 @@ fn read_element_or_map_frame(
     max_bytes: usize,
     refs: &mut RefTable10_1,
     is_root_map: &impl Fn(u32) -> bool,
+    extra_safe: bool,
+) -> io::Result<PageFrame> {
+    let (mut prefix, mut region) = if extra_safe {
+        read_extra_safe_element_region(reader, max_bytes)?
+    } else {
+        // 普通对象无外部长度；各持久化体自行确定结束位置。
+        (
+            reader.clone(),
+            reader.clone().read_region(reader.remaining())?,
+        )
+    };
+    let start = prefix.position();
+    let mut staged = refs.clone();
+    let element = read_page_frame(&mut region, start, max_bytes, &mut staged, is_root_map)
+        .map_err(|error| {
+            io::Error::new(
+                error.kind(),
+                format!(
+                    "页面元素 /PageLayout:0x{:x}：{error}",
+                    start + region.position()
+                ),
+            )
+        })?;
+    if extra_safe && region.remaining() != 0 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "页面元素未完整消费声明范围",
+        ));
+    }
+    prefix.read_bytes(region.position())?;
+    *reader = prefix;
+    *refs = staged;
+    Ok(element)
+}
+
+fn read_page_frame(
+    reader: &mut Reader<'_>,
+    start: usize,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    is_root_map: &impl Fn(u32) -> bool,
 ) -> io::Result<PageFrame> {
     use super::surround_frame::{MAP_SURROUND_FRAME_CLASS_ID, read_surround_frame_10_1};
-    let (mut prefix, mut region) = read_extra_safe_element_region(reader, max_bytes)?;
-    let mut probe = region.clone();
+
+    let mut probe = reader.clone();
     let header = read_header_10_1(&mut probe)?;
-    let indirect = match header {
-        ObjectHeader::Null => Some(ObjectEntry10_1::Null),
-        ObjectHeader::Object { class_id, key } if refs.contains(key) => {
-            Some(ObjectEntry10_1::BackReference { class_id, key })
-        }
-        _ => None,
-    };
-    if let Some(entry) = indirect {
-        if probe.remaining() != 0 {
-            return Err(io::Error::new(
-                ErrorKind::InvalidData,
-                "页面元素空槽或回引之后仍有额外字节",
-            ));
-        }
-        prefix.read_bytes(probe.position())?;
-        *reader = prefix;
-        return Ok(PageFrame::Indirect(entry));
-    }
     match header {
+        ObjectHeader::Null => {
+            *reader = probe;
+            Ok(PageFrame::Indirect(ObjectEntry10_1::Null))
+        }
+        ObjectHeader::Object { class_id, key } if refs.contains(key) => {
+            *reader = probe;
+            Ok(PageFrame::Indirect(ObjectEntry10_1::BackReference {
+                class_id,
+                key,
+            }))
+        }
         ObjectHeader::Object {
             class_id: MAP_FRAME_CLASS_ID,
             ..
         } => {
-            let frame = read_map_frame_prefix(&mut region, prefix.position(), refs)?;
-            check_root_map_link(&frame, is_root_map)?;
-            read_bounded_map_frame_tail(reader, prefix, region, max_bytes, refs, frame)
-                .map(|frame| PageFrame::Map(Box::new(frame)))
+            let prefix = read_map_frame_prefix(reader, start, refs)?;
+            check_root_map_link(&prefix, is_root_map)?;
+            refs.register(prefix.frame_key);
+            let frame = super::map_frame::read_map_frame_tail(reader, max_bytes, refs, prefix)?;
+            Ok(PageFrame::Map(Box::new(frame)))
         }
         ObjectHeader::Object {
             class_id: MAP_SURROUND_FRAME_CLASS_ID,
             ..
         } => {
-            let start = prefix.position();
-            let frame = read_bounded_page_body(
-                reader,
-                prefix,
-                region,
-                refs,
-                "MapSurroundFrame",
-                |r, staged| read_surround_frame_10_1(r, start, max_bytes, staged, is_root_map),
-            )?;
+            let frame = read_surround_frame_10_1(reader, start, max_bytes, refs, is_root_map)?;
             Ok(PageFrame::Surround(Box::new(frame)))
         }
         ObjectHeader::Object {
             class_id: super::rectangle_element::RECTANGLE_ELEMENT_CLASS_ID,
             ..
         } => {
-            let rect = read_bounded_page_body(
-                reader,
-                prefix,
-                region,
-                refs,
-                "RectangleElement",
-                |r, staged| {
-                    super::rectangle_element::read_rectangle_element_10_1(r, max_bytes, staged)
-                },
-            )?;
+            let rect =
+                super::rectangle_element::read_rectangle_element_10_1(reader, max_bytes, refs)?;
             Ok(PageFrame::Rectangle(Box::new(rect)))
         }
         ObjectHeader::Object {
             class_id: FRAME_ELEMENT_CLASS_ID,
             key,
         } => {
-            let base = read_bounded_page_body(
-                reader,
-                prefix,
-                region,
-                refs,
-                "FrameElement",
-                |r, staged| {
-                    r.read_bytes(20)?; // 此处已确认为新 FrameElement 的头。
-                    staged.register(key);
-                    super::map_frame::base_frame(r, max_bytes, staged)
-                },
-            )?;
-            Ok(PageFrame::Base(key, Box::new(base)))
+            *reader = probe;
+            refs.register(key);
+            let body = super::map_frame::base_frame(reader, max_bytes, refs)?;
+            Ok(PageFrame::Base(key, Box::new(body)))
         }
         ObjectHeader::Object {
             class_id: super::group_element::GROUP_ELEMENT_CLASS_ID,
             ..
-        } => read_bounded_page_body(reader, prefix, region, refs, "GroupElement", |r, staged| {
-            super::group_element::read_group_element_10_1(r, max_bytes, staged)
-        })
-        .map(|body| PageFrame::Group(Box::new(body))),
-        _ => read_page_layout_element_10_1(reader, max_bytes, refs).map(|(entry, body)| {
-            match (entry, body) {
-                (
-                    ObjectEntry10_1::NewObject { key, .. },
-                    ElementBody10_1::ParagraphTextElement(body),
-                ) => PageFrame::Paragraph(key, body),
+        } => {
+            let body = super::group_element::read_group_element_10_1(
+                reader,
+                start,
+                max_bytes,
+                refs,
+                is_root_map,
+            )?;
+            Ok(PageFrame::Group(Box::new(body)))
+        }
+        ObjectHeader::Object { key, .. } => {
+            let (_, body) = read_complete_element_body(reader, max_bytes, refs)?;
+            Ok(match body {
+                ElementBody10_1::ParagraphTextElement(body) => PageFrame::Paragraph(key, body),
+                ElementBody10_1::PictureElement(body) => PageFrame::Picture(key, body),
                 _ => PageFrame::Other,
-            }
-        }),
+            })
+        }
     }
-}
-
-fn read_bounded_page_body<'a, T>(
-    reader: &mut Reader<'a>,
-    mut prefix: Reader<'a>,
-    mut region: Reader<'a>,
-    refs: &mut RefTable10_1,
-    name: &str,
-    read_body: impl FnOnce(&mut Reader<'a>, &mut RefTable10_1) -> io::Result<T>,
-) -> io::Result<T> {
-    let mut staged = refs.clone();
-    let body = read_body(&mut region, &mut staged).map_err(|err| {
-        io::Error::new(
-            err.kind(),
-            format!(
-                "{name} /PageLayout:0x{:x}：{err}",
-                prefix.position() + region.position()
-            ),
-        )
-    })?;
-    if region.remaining() != 0 {
-        return Err(io::Error::new(
-            ErrorKind::InvalidData,
-            format!("{name} 未完整消费声明范围"),
-        ));
-    }
-    prefix.read_bytes(region.position())?;
-    *reader = prefix;
-    *refs = staged;
-    Ok(body)
 }
 
 pub(super) fn check_root_map_link(

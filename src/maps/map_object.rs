@@ -70,7 +70,7 @@ use crate::layers::composite_graphics::{
 };
 use crate::layers::layer_list::{
     LayerBodyPrefix10_1, LayerEntryObject, LayerList10_1, LayerListStop, class_id_hex,
-    read_layer_list_10_1,
+    read_layer_list_10_1, read_legacy_layer_lists_10_1,
 };
 use crate::maps::layer_masking::{
     LayerMasking10_1, LayerMaskingSupport10_1, MaskEntry10_1, known_layer_masking_support_10_1,
@@ -96,13 +96,23 @@ use crate::maps::map_surround_family::{
     read_scale_line_10_1, read_scale_text_body_10_1, read_scalebar_body_10_1,
     read_scalebar_subclass_body_10_1, read_stepped_scale_line_10_1,
 };
+use crate::maps::maplex::{
+    MAPLEX_ANNOTATE_MAP_CLASS_ID, MAPLEX_OVERPOSTER_PROPERTIES_CLASS_ID, MaplexAnnotateMap10_1,
+    MaplexOverposterProperties10_1, read_annotate_map as read_maplex_annotate_map,
+    read_overposter_properties as read_maplex_overposter_properties,
+};
 use crate::maps::standalone_table::{
     STANDALONE_TABLE_CLASS_ID, StandaloneTablePrefix10_1, StandaloneTableStop10_1,
     read_standalone_table_prefix_10_1,
 };
+use crate::objects::dataset_name_more::{DatasetNameMoreSlot10_1, read_tabular_name_slot_10_1};
 use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
 use crate::objects::element_decor::{DecorKind10_1, DecorSlot10_1};
 use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
+use crate::objects::geometry::{
+    GEOMETRY_BAG_CLASS_ID, GeometryBody10_1, MULTIPATCH_CLASS_ID, MULTIPOINT_CLASS_ID,
+    POINT_CLASS_ID, POLYGON_CLASS_ID, POLYLINE_CLASS_ID, read_geometry_body_10_1,
+};
 use crate::objects::spatial_reference::{
     PROJECTED_COORDINATE_SYSTEM_CLASS_ID, ProjectedCoordinateSystem10_1,
     read_projected_coordinate_system_10_1,
@@ -172,6 +182,13 @@ pub enum MapSuffixStop {
         class_id: [u8; 16],
         key: u32,
     },
+    LegacyLayerBody {
+        index: usize,
+        offset: usize,
+    },
+    LegacyTableName {
+        offset: usize,
+    },
     /// 基本图形层对象为新对象：该槽位对象体无外部长度，无法跳过。类标识为
     /// CompositeGraphicsLayer 时已解析已确认体前缀
     /// （[`MapSuffix10_1::base_graphics_layer_parsed`]），游标停在其停止点
@@ -220,12 +237,16 @@ pub enum MapSuffixStop {
         class_id: [u8; 16],
         key: u32,
     },
-    /// 书签之后没有完整匹配写侧的属性前导，余下原样保留。
+    /// 书签之后未读到完整的属性前导，余下原样保留。
     AfterBookmarks,
     /// 已读属性前导，停止于独立表集合或照明属性槽之前。
-    AfterPostBookmarkPrefix { standalone_table_count: i32 },
+    AfterPostBookmarkPrefix {
+        standalone_table_count: i32,
+    },
     /// 独立表集合尚未完整消费。
-    StandaloneTableBody { offset: usize },
+    StandaloneTableBody {
+        offset: usize,
+    },
     /// 独立表集合已消费；下一槽为照明属性。
     AfterStandaloneTables,
     /// 已读照明属性槽，后续 Map 字段仍保留为未知。
@@ -234,10 +255,14 @@ pub enum MapSuffixStop {
     AfterIlluminationFields,
     /// 照明后几何槽为空，停止于 IBorder 槽之前。
     AfterNullGeometry,
-    /// 照明后的几何槽为空，边框槽已完整读取。
+    /// 照明后非空几何槽已读取，停止于 IBorder 槽之前。
+    AfterGeometry,
+    /// 照明后几何及边框槽已完整读取。
     AfterNullBorder,
     /// 边框后版本块中已确认字段的停止阶段。
-    AfterBorderTail { stage: u8 },
+    AfterBorderTail {
+        stage: u8,
+    },
 }
 
 impl MapSuffixStop {
@@ -249,6 +274,12 @@ impl MapSuffixStop {
                 "图层列表条目 {index}（offset 0x{offset:x}）为标志 1 新对象：体无外部\
                  长度，类分派读取器只覆盖已确认前缀，停止"
             ),
+            Self::LegacyLayerBody { index, offset } => {
+                format!("旧图层列表条目 {index}（offset 0x{offset:x}）对象体尚未读完")
+            }
+            Self::LegacyTableName { offset } => {
+                format!("旧表 IName 条目未读完（offset 0x{offset:x}）")
+            }
             Self::BaseGraphicsLayerBody { offset, .. } => format!(
                 "基本图形层对象（offset 0x{offset:x}）为新对象：体无外部长度；\
                  CompositeGraphicsLayer 已解析体前缀时游标停在其停止点，否则停在\
@@ -278,8 +309,9 @@ impl MapSuffixStop {
                 "照明后定长字段已读；后续 Map 字段保留为未知".to_string()
             }
             Self::AfterNullGeometry => "IGeometry 槽为空；从 IBorder 槽起保留未知".to_string(),
+            Self::AfterGeometry => "IGeometry 槽已读；从 IBorder 槽起保留未知".to_string(),
             Self::AfterNullBorder => {
-                "IGeometry 槽为空，IBorder 槽已读取；后续 Map 字段保留为未知".to_string()
+                "IGeometry 和 IBorder 槽已读取；后续 Map 字段保留为未知".to_string()
             }
             Self::AfterBorderTail { stage } => {
                 format!("IBorder 后版本块已读至阶段 {stage}；后续字段保留为未知")
@@ -352,6 +384,8 @@ pub enum BookmarkElement10_1 {
 /// `None`，停止点之后的字节保留在 [`MapSuffix10_1::remaining_bytes`]。
 #[derive(Debug, Clone, PartialEq)]
 pub struct MapSuffix10_1 {
+    /// Map v21–v27 的旧遮罩附加值。
+    pub legacy_masking_short: Option<u16>,
     /// 图层列表（含条目、活动索引与列表自身的停止信息）。
     pub layer_list: LayerList10_1,
     /// 基本图形层对象槽位（到达时）。
@@ -391,10 +425,18 @@ pub struct MapSuffix10_1 {
     pub post_bookmark: Option<PostBookmarkPrefix10_1>,
     /// 已读独立表槽；最后一个体可能携带内部停止原因。
     pub standalone_tables: Vec<(ObjectSlot10_1, Option<StandaloneTablePrefix10_1>)>,
+    /// v0–v10 的旧表来源名称。
+    pub legacy_table_names: Vec<(usize, DatasetNameMoreSlot10_1)>,
     /// 独立表计数为零时到达的照明属性槽。
     pub illumination: Option<IlluminationSlot10_1>,
+    /// v0–v3 内联照明，依次保存三维点和附加 double 的位模式。
+    pub legacy_illumination: Option<(usize, [u64; 4])>,
+    /// v0–v4 共用的照明后字段，原生版本门跳过的字段为空。
+    pub legacy_illumination_fields: Option<LegacyPostIlluminationFields10_1>,
     /// 照明后定长字段，保留流内原始值。
     pub post_illumination: Option<PostIlluminationFields10_1>,
+    /// 照明后的 IGeometry 槽；新对象携带解析体。
+    pub post_illumination_geometry: Option<(ObjectSlot10_1, Option<MapGeometryBody10_1>)>,
     /// 仅保留已确认的 IGeometry 空引用；未到达、截断或非空时为 None。
     pub post_illumination_null_geometry: Option<ObjectSlot10_1>,
     /// 几何空槽之后的 IBorder 空引用；非空结果见 `post_illumination_border`。
@@ -409,7 +451,19 @@ pub struct MapSuffix10_1 {
     pub remaining_bytes: usize,
 }
 
-/// Map 版本 23..=51 的边框后字段；未到达或截断的字段为 None。
+#[derive(Debug, Clone, PartialEq)]
+pub enum MapGeometryBody10_1 {
+    Envelope(Envelope10_1),
+    Geometry(GeometryBody10_1),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum LegacyAnnotateMapBody10_1 {
+    AnnotateMap { version: i16 },
+    Maplex(Box<MaplexAnnotateMap10_1>),
+}
+
+/// Map 边框后字段；未到达或截断的字段为 None。
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct PostBorderTail10_1 {
     pub short_308: Option<(usize, u16)>,
@@ -428,7 +482,7 @@ pub struct PostBorderTail10_1 {
     pub temporary_double_bits: Option<(usize, u64)>,
     /// 后续 IGeoTransformation 集合计数。
     pub transformation_count: Option<(usize, i32)>,
-    /// 首条前导的兼容性视图；完整条目见 `transformations`。
+    /// 首条方向字段的原值及偏移，完整条目见 `transformations`。
     pub first_transformation_prefix: Option<(usize, u32)>,
     /// 已读取的条目；末项对象为 None 时停在该对象头前。
     pub transformations: Vec<MapTransformation10_1>,
@@ -439,11 +493,14 @@ pub struct PostBorderTail10_1 {
     pub post_transform_null_background: Option<ObjectSlot10_1>,
     /// 已完整读取的背景槽（含空槽）。
     pub post_transform_background: Option<(usize, DecorSlot10_1)>,
+    /// 版本 19–22 的 IAnnotateMap 槽及新对象体。
+    pub legacy_annotate_map: Option<(ObjectSlot10_1, Option<LegacyAnnotateMapBody10_1>)>,
     /// 版本大于 22 的对象槽仅在空引用时消费。
     pub post_transform_null_object: Option<ObjectSlot10_1>,
     pub post_transform_overposter_reference: Option<ObjectSlot10_1>,
     /// 已完整消费的非空 BasicOverposterProperties 对象。
     pub post_transform_overposter: Option<(ObjectSlot10_1, BasicOverposterProperties10_1)>,
+    pub post_transform_maplex: Option<(ObjectSlot10_1, Box<MaplexOverposterProperties10_1>)>,
     /// 版本 24 起的三个原始字段（short、double、short）。
     pub short_32a: Option<(usize, u16)>,
     pub double_320_bits: Option<(usize, u64)>,
@@ -480,71 +537,183 @@ fn read_map_layer_masking_10_1(
     layer_list: &LayerList10_1,
     map_version: u16,
 ) -> Option<Vec<(u32, LayerMasking10_1)>> {
-    use crate::layers::basemap_layer::{BASEMAP_LAYER_CLASS_ID, BasemapStop10_1};
-    use crate::layers::feature_layer::FEATURE_LAYER_CLASS_ID;
+    use crate::maps::layer_masking::{LayerMaskingProbe10_1, layer_masking_probe_10_1};
     if layer_list.stop.is_some()
         || layer_list.active_index.is_none()
         || usize::try_from(layer_list.count) != Ok(layer_list.entries.len())
     {
         return None;
     }
-    let mut known = std::collections::HashMap::new();
-    let mut records = Vec::new();
+    let mut traversal = LayerMaskingTraversal {
+        reader,
+        refs,
+        max_bytes,
+        skip_top_level_basemap: layer_masking_probe_10_1(map_version as i16, true)
+            == LayerMaskingProbe10_1::SkipLegacyBasemapLayer,
+        known: Default::default(),
+        records: Vec::new(),
+    };
     for entry in &layer_list.entries {
-        match entry.object {
-            LayerEntryObject::Empty | LayerEntryObject::Entry(ObjectEntry10_1::Null) => {}
-            LayerEntryObject::Entry(ObjectEntry10_1::NewObject { class_id, key }) => {
-                if let Some(LayerBodyPrefix10_1::BasemapLayer(basemap)) = entry.parsed.as_ref()
-                    && class_id == BASEMAP_LAYER_CLASS_ID
-                    && map_version >= 40
-                    && basemap.stop == BasemapStop10_1::Complete
+        if let LayerEntryObject::Entry(object) = entry.object {
+            traversal.visit(object, entry.parsed.as_ref(), 0)?;
+        }
+    }
+    Some(traversal.records)
+}
+
+struct LayerMaskingTraversal<'a, 'data, 'body> {
+    reader: &'a mut Reader<'data>,
+    refs: &'a mut RefTable10_1,
+    max_bytes: usize,
+    skip_top_level_basemap: bool,
+    // FDO、WCS 等专门读取器已经确认身份的嵌入图层可以只登记类。
+    known: std::collections::HashMap<u32, ([u8; 16], Option<&'body LayerBodyPrefix10_1>)>,
+    records: Vec<(u32, LayerMasking10_1)>,
+}
+
+impl<'body> LayerMaskingTraversal<'_, '_, 'body> {
+    fn visit(
+        &mut self,
+        entry: ObjectEntry10_1,
+        parsed: Option<&'body LayerBodyPrefix10_1>,
+        depth: u32,
+    ) -> Option<()> {
+        use crate::layers::basemap_layer::BasemapStop10_1;
+        use crate::layers::feature_layer::FEATURE_LAYER_CLASS_ID;
+        use crate::layers::group_layer::GroupLayerStop10_1;
+
+        // 防止异常回引造成无限递归，复用 GroupLayer 读取器的深度限制。
+        if depth > crate::layers::group_layer::MAX_RECURSION_DEPTH {
+            return None;
+        }
+        let (class_id, key, body) = match entry {
+            ObjectEntry10_1::Null => return Some(()),
+            ObjectEntry10_1::NewObject { class_id, key } => {
+                let body = parsed?;
+                self.known.insert(key, (class_id, Some(body)));
+                (class_id, key, Some(body))
+            }
+            ObjectEntry10_1::BackReference { class_id, key } => {
+                let (known_class, body) = self.known.get(&key).copied()?;
+                if class_id != known_class {
+                    return None;
+                }
+                (class_id, key, body)
+            }
+        };
+        match body {
+            Some(LayerBodyPrefix10_1::GroupLayer(group)) => {
+                if group.stop != GroupLayerStop10_1::Complete
+                    || usize::try_from(group.child_count) != Ok(group.children.len())
                 {
-                    // ICompositeLayer 遍历正式子图层集合。这里只接受确实从
-                    // PrepareResult 完整读出的 FeatureLayer（无 ILayerMasking）。
+                    return None;
+                }
+                self.read_record(key)?;
+                for child in &group.children {
+                    self.visit_group_child(child, depth + 1)?;
+                }
+            }
+            Some(LayerBodyPrefix10_1::BasemapLayer(basemap))
+                if basemap.stop == BasemapStop10_1::Complete =>
+            {
+                for &key in &basemap.feature_keys {
+                    self.known
+                        .entry(key)
+                        .or_insert((FEATURE_LAYER_CLASS_ID, None));
+                }
+                if depth != 0 || !self.skip_top_level_basemap {
+                    // 正式子层集合仅支持身份已由 PrepareResult 确认的 FeatureLayer。
                     let features: std::collections::HashSet<_> =
                         basemap.feature_keys.iter().copied().collect();
                     if !basemap.sublayers.iter().all(|slot| {
                         matches!(slot,
-                        ObjectEntry10_1::BackReference { class_id: FEATURE_LAYER_CLASS_ID, key }
-                            if features.contains(key))
+                            ObjectEntry10_1::BackReference { class_id: FEATURE_LAYER_CLASS_ID, key }
+                                if features.contains(key))
                     }) {
                         return None;
                     }
-                    records.push((key, read_layer_masking_10_1(reader, max_bytes, refs).ok()?));
-                    known.insert(key, class_id);
-                    continue;
+                    self.read_record(key)?;
                 }
-                if known_layer_masking_support_10_1(&class_id)
-                    != LayerMaskingSupport10_1::Unsupported
-                {
-                    return None;
-                }
-                match entry.parsed.as_ref() {
-                    Some(
-                        LayerBodyPrefix10_1::FeatureLayer(_) | LayerBodyPrefix10_1::RasterLayer(_),
+            }
+            _ if known_layer_masking_support_10_1(&class_id)
+                == LayerMaskingSupport10_1::Unsupported =>
+            {
+                match body {
+                    None
+                    | Some(
+                        LayerBodyPrefix10_1::FeatureLayer(_)
+                        | LayerBodyPrefix10_1::CadLayer(_)
+                        | LayerBodyPrefix10_1::CadFeatureLayer(_)
+                        | LayerBodyPrefix10_1::RasterLayer(_)
+                        | LayerBodyPrefix10_1::TiledLayer(_),
                     ) => {}
+                    Some(LayerBodyPrefix10_1::WcsLayer(wcs)) => {
+                        if let ObjectEntry10_1::NewObject { key, class_id } = wcs.raster.entry {
+                            self.known.entry(key).or_insert((class_id, None));
+                        }
+                    }
                     Some(LayerBodyPrefix10_1::FdoGraphicsLayer(fdo))
                         if fdo.completion().is_some() =>
                     {
                         if let Some(key) = fdo.associated_feature_layer_key {
-                            known.insert(key, crate::layers::feature_layer::FEATURE_LAYER_CLASS_ID);
+                            self.known
+                                .entry(key)
+                                .or_insert((FEATURE_LAYER_CLASS_ID, None));
                         }
                     }
                     _ => return None,
                 }
-                known.insert(key, class_id);
             }
-            LayerEntryObject::Entry(ObjectEntry10_1::BackReference { class_id, key }) => {
-                if known.get(&key) != Some(&class_id) {
-                    return None;
-                }
-                if class_id == BASEMAP_LAYER_CLASS_ID {
-                    records.push((key, read_layer_masking_10_1(reader, max_bytes, refs).ok()?));
-                }
+            _ => return None,
+        }
+        Some(())
+    }
+
+    fn visit_group_child(
+        &mut self,
+        child: &'body crate::layers::group_layer::GroupChildEntry10_1,
+        depth: u32,
+    ) -> Option<()> {
+        use crate::layers::group_layer::GroupChildEntry10_1;
+
+        match child {
+            GroupChildEntry10_1::Empty | GroupChildEntry10_1::Null => Some(()),
+            GroupChildEntry10_1::BackReference { class_id, key } => self.visit(
+                ObjectEntry10_1::BackReference {
+                    class_id: *class_id,
+                    key: *key,
+                },
+                None,
+                depth,
+            ),
+            GroupChildEntry10_1::ParsedNewObject {
+                class_id,
+                key,
+                parsed,
             }
+            | GroupChildEntry10_1::SkippedNewObject {
+                class_id,
+                key,
+                body_length: 0,
+                parsed: Some(parsed),
+                ..
+            } => self.visit(
+                ObjectEntry10_1::NewObject {
+                    class_id: *class_id,
+                    key: *key,
+                },
+                Some(parsed),
+                depth,
+            ),
+            GroupChildEntry10_1::SkippedNewObject { .. } => None,
         }
     }
-    Some(records)
+
+    fn read_record(&mut self, key: u32) -> Option<()> {
+        let record = read_layer_masking_10_1(self.reader, self.max_bytes, self.refs).ok()?;
+        self.records.push((key, record));
+        Some(())
+    }
 }
 
 /// Map 版本 29..=51 中 LayerMasking 之后的已确认字段。
@@ -661,13 +830,32 @@ pub fn read_basic_overposter_properties_10_1(
     Ok(body)
 }
 
-/// 坐标变换循环的一项；原始前导语义尚未确认。
+/// 坐标变换循环的一项，v12/v13 直接从对象头开始。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MapTransformation10_1 {
-    pub prefix_offset: usize,
-    pub prefix: u32,
+    pub offset: usize,
+    /// v14 起保存的 esriTransformDirection 原始位模式。
+    pub prefix: Option<u32>,
     pub object: Option<ObjectSlot10_1>,
     pub body: Option<GeoTransformationBody10_1>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MapTransformationDirection10_1 {
+    Forward,
+    Reverse,
+    Unknown(u32),
+}
+
+impl MapTransformation10_1 {
+    /// 返回存盘方向。v12/v13 无方向字段，原生装载时传正向给操作集。
+    pub fn direction_on_disk(&self) -> Option<MapTransformationDirection10_1> {
+        self.prefix.map(|value| match value {
+            0 => MapTransformationDirection10_1::Forward,
+            1 => MapTransformationDirection10_1::Reverse,
+            _ => MapTransformationDirection10_1::Unknown(value),
+        })
+    }
 }
 
 /// 原专用读取入口保留，底层与 GeoTransformation 共用实现。
@@ -687,26 +875,45 @@ pub fn read_nadcon_transformation_10_1(
 }
 
 /// 普通保存路径中的书签后前导（`Map::Save 0x79401850`）。成员偏移沿用
-/// 持久化子接口指针，业务语义未定的值原样保留。
+/// 持久化子接口指针，字段保留原始存盘值。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PostBookmarkPrefix10_1 {
     pub offset: usize,
+    /// Load 读入临时位置的首个 short。10.1 普通 Save 写 0xffff。
+    pub leading_short: u16,
+    /// IViewManager.VerboseEvents 的 short 原值。
     pub short_19c: u16,
+    /// IMap.ReferenceScale。
     pub double_200: f64,
+    /// IMap.UseSymbolLevels 的 short 原值。
     pub short_264: u16,
     /// IStandaloneTable 条目计数。
     pub standalone_table_count: i32,
 }
 
-/// Map 版本 23..=51 照明槽后的定长成员（Load 0x793ff4d0）。
+/// Map 版本 5..=51 照明槽后的定长成员（Load 0x793ff4d0）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PostIlluminationFields10_1 {
     pub offset: usize,
+    /// IViewManager.ConserveMemory 的 short 原值，原生 Load 在版本小于 35 时改为 0xffff。
     pub short_1a0: u16,
+    /// Map::Save 写零，Load 只读到临时变量。
     pub discarded_short: u16,
+    /// IViewManager.OutputBandSize 的 LONG 原始位模式。
     pub int_1b0: u32,
+    /// IViewManager.DelayBackgroundDraw 的 short 原值。
     pub short_1ac: u16,
+    /// IMap.Expanded 的 short 原值。
     pub short_268: u16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LegacyPostIlluminationFields10_1 {
+    pub offset: usize,
+    pub short_1a0: Option<u16>,
+    pub discarded_short: Option<u16>,
+    pub int_1b0: Option<u32>,
+    pub short_1ac: Option<u16>,
 }
 
 /// DisplayCore.dll IlluminationProps 的磁盘类标识（由 GetClassID 确认）。
@@ -958,7 +1165,7 @@ fn read_map_prefix_inner(
 /// - 基本图形层、MapSurround 条目、IEnvelope 槽位、书签条目的**新对象**体
 ///   （普通 `LoadObject` 槽位无 ExtraSafe 前缀，体无外部长度；基本图形层与
 ///   图层体同样预留集成点）。空标记与回引条目只消耗对象头，继续；
-/// - 书签循环后识别有 0xffff 标记的属性前导；无独立表时读取已确认的
+/// - 书签循环后读取定长属性前导；无独立表时读取已确认的
 ///   照明属性槽。无法确认前导、表条目或照明槽时从相应边界保留。
 ///
 /// IEnvelope 槽位的空标记消费 **16 字节**（沿用 [`crate::storage::object_stream`]
@@ -977,6 +1184,15 @@ pub fn read_map_suffix_10_1(
     max_bytes: usize,
     table: &mut RefTable10_1,
 ) -> io::Result<MapSuffix10_1> {
+    read_map_with_suffix_10_1(reader, max_bytes, table).map(|(_, suffix)| suffix)
+}
+
+/// 读取普通对象槽中的 Map，并保留前缀字段和后缀解析结果。
+pub(crate) fn read_map_with_suffix_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<(MapPrefix10_1, MapSuffix10_1)> {
     let mut trial = reader.clone();
     let mut trial_table = table.clone();
 
@@ -988,22 +1204,33 @@ pub fn read_map_suffix_10_1(
         trial_table.register(key);
     }
 
-    // 1. 图层列表（ver>=0x17 分支；样本 ver=51）。
-    let layer_list = read_layer_list_10_1(&mut trial, max_bytes, &mut trial_table)?;
-    // 图层列表的停止原因目前仅有标志 1 新对象体一种（LayerListStop 单变体）。
-    let mut stop = layer_list.stop.map(
-        |LayerListStop::Flag1NewObjectBody {
-             index,
-             offset,
-             class_id,
-             key,
-         }| MapSuffixStop::LayerListFlag1Body {
+    let version = map_prefix.version;
+    let layer_list = if version < 23 {
+        read_legacy_layer_lists_10_1(&mut trial, max_bytes, &mut trial_table, version)?
+    } else {
+        read_layer_list_10_1(&mut trial, max_bytes, &mut trial_table)?
+    };
+    let mut stop = layer_list.stop.map(|stop| match stop {
+        LayerListStop::Flag1NewObjectBody {
+            index,
+            offset,
+            class_id,
+            key,
+        } => MapSuffixStop::LayerListFlag1Body {
             index,
             offset,
             class_id,
             key,
         },
-    );
+        LayerListStop::LegacyObjectBody { index, offset, .. } => {
+            MapSuffixStop::LegacyLayerBody { index, offset }
+        }
+    });
+    let mut legacy_masking_short = if stop.is_none() && matches!(version, 20 | 21) {
+        read_legacy_masking(&mut trial, version)?
+    } else {
+        None
+    };
 
     let mut base_graphics_layer = None;
     let mut base_graphics_layer_parsed = None;
@@ -1047,6 +1274,10 @@ pub fn read_map_suffix_10_1(
                 key,
             });
         }
+    }
+
+    if stop.is_none() && (22..=27).contains(&version) {
+        legacy_masking_short = read_legacy_masking(&mut trial, version)?;
     }
 
     if stop.is_none() {
@@ -1215,8 +1446,7 @@ pub fn read_map_suffix_10_1(
         }
     }
 
-    // 8. Save 普通路径在书签之后只写一次 0xffff short，随后是三个成员
-    //    和独立表计数。对不匹配该写侧格式或截断的情况保留全部余量。
+    // 8. Load 在书签后读取临时 short、三个成员和表计数。普通 Save 的临时值为 0xffff。
     let mut post_bookmark = None;
     if stop.is_none() {
         let mut candidate = trial.clone();
@@ -1279,14 +1509,52 @@ pub fn read_map_suffix_10_1(
             }
         }
     }
-    let illumination = if matches!(
+    let mut legacy_table_names = Vec::new();
+    if let Some(post) = post_bookmark.filter(|post| version < 11 && post.standalone_table_count > 0)
+    {
+        for _ in 0..post.standalone_table_count {
+            let offset = trial.position();
+            stop = Some(MapSuffixStop::LegacyTableName { offset });
+            let mut candidate = trial.clone();
+            let mut staged = trial_table.clone();
+            let mut name_stop = None;
+            let Ok(name) =
+                read_tabular_name_slot_10_1(&mut candidate, max_bytes, &mut staged, &mut name_stop)
+            else {
+                break;
+            };
+            if name_stop.is_some() || matches!(name, DatasetNameMoreSlot10_1::Null) {
+                break;
+            }
+            legacy_table_names.push((offset, name));
+            trial = candidate;
+            trial_table = staged;
+        }
+        if legacy_table_names.len() == post.standalone_table_count as usize {
+            stop = Some(MapSuffixStop::AfterStandaloneTables);
+        }
+    }
+    let at_illumination = matches!(
         stop,
         Some(
             MapSuffixStop::AfterPostBookmarkPrefix {
                 standalone_table_count: 0
             } | MapSuffixStop::AfterStandaloneTables
         )
-    ) {
+    );
+    let legacy_illumination = if at_illumination && version < 4 {
+        let offset = trial.position();
+        trial.read_bytes(32).ok().map(|bytes| {
+            stop = Some(MapSuffixStop::AfterIllumination);
+            let values = std::array::from_fn(|i| {
+                u64::from_le_bytes(bytes[i * 8..][..8].try_into().expect("固定长度"))
+            });
+            (offset, values)
+        })
+    } else {
+        None
+    };
+    let illumination = if at_illumination && version >= 4 {
         let slot = read_illumination_slot(&mut trial, &mut trial_table).ok();
         if slot.is_some() {
             stop = Some(MapSuffixStop::AfterIllumination);
@@ -1295,25 +1563,46 @@ pub fn read_map_suffix_10_1(
     } else {
         None
     };
-    let post_illumination = if illumination.is_some() {
-        read_post_illumination_fields_10_1(&mut trial, map_prefix.version).ok()
+    let legacy_illumination_fields =
+        if version < 5 && (illumination.is_some() || legacy_illumination.is_some()) {
+            read_legacy_post_illumination_fields(&mut trial, version).ok()
+        } else {
+            None
+        };
+    let post_illumination = if illumination.is_some() && version >= 5 {
+        read_post_illumination_fields_10_1(&mut trial, version).ok()
     } else {
         None
     };
     if post_illumination.is_some() {
         stop = Some(MapSuffixStop::AfterIlluminationFields);
     }
-    let post_illumination_null_geometry = if post_illumination.is_some() {
-        read_post_illumination_null_geometry_10_1(&mut trial, map_prefix.version)
-            .ok()
-            .flatten()
+    if legacy_illumination_fields.is_some() || (version == 5 && post_illumination.is_some()) {
+        stop = Some(MapSuffixStop::Complete);
+    }
+    let post_illumination_geometry = if version >= 6 && post_illumination.is_some() {
+        read_post_illumination_geometry_10_1(
+            &mut trial,
+            &mut trial_table,
+            max_bytes,
+            map_prefix.version,
+        )
+        .ok()
+        .flatten()
     } else {
         None
     };
-    if post_illumination_null_geometry.is_some() {
-        stop = Some(MapSuffixStop::AfterNullGeometry);
+    let post_illumination_null_geometry = post_illumination_geometry
+        .as_ref()
+        .and_then(|(slot, _)| (slot.entry == ObjectEntry10_1::Null).then_some(*slot));
+    if post_illumination_geometry.is_some() {
+        stop = Some(if post_illumination_null_geometry.is_some() {
+            MapSuffixStop::AfterNullGeometry
+        } else {
+            MapSuffixStop::AfterGeometry
+        });
     }
-    let post_illumination_border = if post_illumination_null_geometry.is_some() {
+    let post_illumination_border = if post_illumination_geometry.is_some() {
         let offset = trial.position();
         read_map_decor_slot_10_1(
             &mut trial,
@@ -1336,12 +1625,14 @@ pub fn read_map_suffix_10_1(
                     entry: ObjectEntry10_1::Null,
                 })
             });
-    if post_illumination_border.is_some() {
+    if version == 6 && post_illumination_border.is_some() {
+        stop = Some(MapSuffixStop::Complete);
+    } else if post_illumination_border.is_some() {
         stop = Some(MapSuffixStop::AfterNullBorder);
     }
     let mut post_border_tail = PostBorderTail10_1::default();
-    if post_illumination_border.is_some() {
-        // 版本 23..=51 均进入原生 version > 6 分支；每项独立提交，
+    if version >= 7 && post_illumination_border.is_some() {
+        // 此处已到达原生 version > 6 的分支；每项独立提交，
         // 未知对象或短读时停在该项起点。
         macro_rules! next_short {
             ($field:ident, $stage:expr) => {
@@ -1434,11 +1725,17 @@ pub fn read_map_suffix_10_1(
                 }
             };
         }
-        next_raw!(int_1a4, 7, 4, u32);
-        next_raw!(int_1a8, 8, 4, u32);
-        next_raw!(temporary_short, 9, 2, u16);
-        next_raw!(temporary_double_bits, 10, 8, u64);
-        if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 11 })) {
+        if version >= 8 {
+            next_raw!(int_1a4, 7, 4, u32);
+            next_raw!(int_1a8, 8, 4, u32);
+        }
+        if version >= 9 {
+            next_raw!(temporary_short, 9, 2, u16);
+        }
+        if version >= 10 {
+            next_raw!(temporary_double_bits, 10, 8, u64);
+        }
+        if version >= 12 && matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 11 })) {
             let mut candidate = trial.clone();
             let offset = candidate.position();
             if let Ok(count) = read_loop_count(&mut candidate, "坐标变换", max_bytes) {
@@ -1451,17 +1748,19 @@ pub fn read_map_suffix_10_1(
             for index in 0..count {
                 let mut candidate = trial.clone();
                 let offset = candidate.position();
-                let Ok(prefix) = candidate.read_u32_le() else {
+                let Ok(prefix) = (version >= 14).then(|| candidate.read_u32_le()).transpose()
+                else {
                     break;
                 };
                 trial = candidate;
                 if index == 0 {
-                    post_border_tail.first_transformation_prefix = Some((offset, prefix));
+                    post_border_tail.first_transformation_prefix =
+                        prefix.map(|value| (offset, value));
                 }
                 post_border_tail
                     .transformations
                     .push(MapTransformation10_1 {
-                        prefix_offset: offset,
+                        offset,
                         prefix,
                         object: None,
                         body: None,
@@ -1513,10 +1812,14 @@ pub fn read_map_suffix_10_1(
                 stop = Some(MapSuffixStop::AfterBorderTail { stage: 14 });
             }
         }
-        // 受支持的版本均进入 version >= 13、15、16 和 > 22 的分支。
-        next_raw!(post_transform_double_bits, 14, 8, u64);
-        next_short!(post_transform_short, 15);
-        if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 16 })) {
+        if version >= 13 {
+            next_raw!(post_transform_double_bits, 14, 8, u64);
+        }
+        // 原生 0x79400301 和 0x7940032b 分别检查 short 与 IBackground 的版本门。
+        if version >= 15 {
+            next_short!(post_transform_short, 15);
+        }
+        if version >= 16 && matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 16 })) {
             let offset = trial.position();
             post_border_tail.post_transform_background = read_map_decor_slot_10_1(
                 &mut trial,
@@ -1540,7 +1843,34 @@ pub fn read_map_suffix_10_1(
                 stop = Some(MapSuffixStop::AfterBorderTail { stage: 17 });
             }
         }
-        if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 17 })) {
+        if matches!(
+            (version, stop),
+            (7, Some(MapSuffixStop::AfterBorderTail { stage: 7 }))
+                | (8, Some(MapSuffixStop::AfterBorderTail { stage: 9 }))
+                | (9, Some(MapSuffixStop::AfterBorderTail { stage: 10 }))
+                | (10 | 11, Some(MapSuffixStop::AfterBorderTail { stage: 11 }))
+                | (12, Some(MapSuffixStop::AfterBorderTail { stage: 14 }))
+                | (13 | 14, Some(MapSuffixStop::AfterBorderTail { stage: 15 }))
+                | (15, Some(MapSuffixStop::AfterBorderTail { stage: 16 }))
+                | (16 | 18, Some(MapSuffixStop::AfterBorderTail { stage: 17 }))
+        ) {
+            stop = Some(MapSuffixStop::Complete);
+        }
+        if (19..=22).contains(&version)
+            && matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 17 }))
+        {
+            let mut candidate = trial.clone();
+            let mut staged = trial_table.clone();
+            if let Ok(annotate_map) =
+                read_legacy_annotate_map(&mut candidate, max_bytes, &mut staged)
+            {
+                trial = candidate;
+                trial_table = staged;
+                post_border_tail.legacy_annotate_map = Some(annotate_map);
+                stop = Some(MapSuffixStop::Complete);
+            }
+        }
+        if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 17 })) && version >= 23 {
             let mut candidate = trial.clone();
             let mut candidate_table = trial_table.clone();
             let offset = candidate.position();
@@ -1554,13 +1884,29 @@ pub fn read_map_suffix_10_1(
                         stop = Some(MapSuffixStop::AfterBorderTail { stage: 18 });
                     }
                     ObjectEntry10_1::BackReference {
-                        class_id: BASIC_OVERPOSTER_PROPERTIES_CLASS_ID,
+                        class_id:
+                            BASIC_OVERPOSTER_PROPERTIES_CLASS_ID | MAPLEX_OVERPOSTER_PROPERTIES_CLASS_ID,
                         ..
                     } => {
                         post_border_tail.post_transform_overposter_reference = Some(slot);
                         trial = candidate;
                         trial_table = candidate_table;
                         stop = Some(MapSuffixStop::AfterBorderTail { stage: 18 });
+                    }
+                    ObjectEntry10_1::NewObject {
+                        class_id: MAPLEX_OVERPOSTER_PROPERTIES_CLASS_ID,
+                        ..
+                    } => {
+                        if let Ok(body) = read_maplex_overposter_properties(
+                            &mut candidate,
+                            max_bytes,
+                            &mut candidate_table,
+                        ) {
+                            post_border_tail.post_transform_maplex = Some((slot, Box::new(body)));
+                            trial = candidate;
+                            trial_table = candidate_table;
+                            stop = Some(MapSuffixStop::AfterBorderTail { stage: 18 });
+                        }
                     }
                     ObjectEntry10_1::NewObject { class_id, .. }
                         if class_id == BASIC_OVERPOSTER_PROPERTIES_CLASS_ID =>
@@ -1639,6 +1985,16 @@ pub fn read_map_suffix_10_1(
                 }
             }
         }
+        // 0x7940078c 之后的持久化字段按版本启用；未进入下一版本门即读完。
+        if matches!(
+            (version, stop),
+            (23, Some(MapSuffixStop::AfterBorderTail { stage: 18 }))
+                | (24 | 25, Some(MapSuffixStop::AfterBorderTail { stage: 21 }))
+                | (26, Some(MapSuffixStop::AfterBorderTail { stage: 27 }))
+                | (27, Some(MapSuffixStop::AfterBorderTail { stage: 35 }))
+        ) {
+            stop = Some(MapSuffixStop::Complete);
+        }
         if map_prefix.version >= 28 {
             if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 35 })) {
                 let mut candidate = trial.clone();
@@ -1681,8 +2037,7 @@ pub fn read_map_suffix_10_1(
             // 原生 Map 0x79403d50 遍历与写图层列表相同的数组。
             let mut candidate = trial.clone();
             let mut candidate_refs = trial_table.clone();
-            if map_prefix.version >= 29
-                && matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 38 }))
+            if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 38 }))
                 && let Some(records) = read_map_layer_masking_10_1(
                     &mut candidate,
                     max_bytes,
@@ -1690,14 +2045,15 @@ pub fn read_map_suffix_10_1(
                     &layer_list,
                     map_prefix.version,
                 )
-                && let Ok(fields) =
-                    read_post_masking_map_fields_10_1(&mut candidate, map_prefix.version, max_bytes)
+                && let Ok(fields) = (version >= 29)
+                    .then(|| read_post_masking_map_fields_10_1(&mut candidate, version, max_bytes))
+                    .transpose()
             {
                 trial = candidate;
                 trial_table = candidate_refs;
                 post_border_tail.layer_masking = records;
-                post_border_tail.post_masking = Some(fields);
-                // 版本 29..=32 的后续分支只初始化/更新已有对象；下一条
+                post_border_tail.post_masking = fields;
+                // 版本 28..=32 的后续分支只初始化/更新已有对象；下一条
                 // 持久化字段属于版本 >=33（Map.dll 0x7940095c..aab）。
                 stop = Some(if map_prefix.version <= 32 {
                     MapSuffixStop::Complete
@@ -1740,6 +2096,7 @@ pub fn read_map_suffix_10_1(
     let stop = stop.unwrap_or(MapSuffixStop::AfterBookmarks);
 
     let result = MapSuffix10_1 {
+        legacy_masking_short,
         layer_list,
         base_graphics_layer,
         base_graphics_layer_parsed,
@@ -1756,8 +2113,12 @@ pub fn read_map_suffix_10_1(
         bookmark_parsed,
         post_bookmark,
         standalone_tables,
+        legacy_table_names,
         illumination,
+        legacy_illumination,
+        legacy_illumination_fields,
         post_illumination,
+        post_illumination_geometry,
         post_illumination_null_geometry,
         post_illumination_null_border,
         post_illumination_border,
@@ -1767,16 +2128,81 @@ pub fn read_map_suffix_10_1(
     };
     *reader = trial;
     *table = trial_table;
-    Ok(result)
+    Ok((map_prefix, result))
 }
 
-/// 从已确认的照明槽末尾读取 Map 版本 23..=51 的定长成员；失败不推进游标。
+// 0x79403ec0 对 v20–v27 先读零 LONG，v21 起读 short，v25–v27 再读零 LONG。
+fn read_legacy_masking(reader: &mut Reader<'_>, version: u16) -> io::Result<Option<u16>> {
+    if reader.read_u32_le()? != 0 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "旧 Map 遮罩 LONG 非零",
+        ));
+    }
+    let short = (version >= 21).then(|| reader.read_u16_le()).transpose()?;
+    if (25..=27).contains(&version) && reader.read_u32_le()? != 0 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "旧 Map 遮罩第二个 LONG 非零",
+        ));
+    }
+    Ok(short)
+}
+
+fn read_legacy_annotate_map(
+    reader: &mut Reader<'_>,
+    limit: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<(ObjectSlot10_1, Option<LegacyAnnotateMapBody10_1>)> {
+    const ANNOTATE_MAP: [u8; 16] = [
+        0x02, 0x90, 0x43, 0x8c, 0xec, 0x14, 0xd2, 0x11, 0xa2, 0x7e, 8, 0, 9, 0xb6, 0xf2, 0x2b,
+    ];
+    let offset = reader.position();
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let body = match entry {
+        ObjectEntry10_1::Null
+        | ObjectEntry10_1::BackReference {
+            class_id: ANNOTATE_MAP | MAPLEX_ANNOTATE_MAP_CLASS_ID,
+            ..
+        } => None,
+        ObjectEntry10_1::NewObject {
+            class_id: ANNOTATE_MAP,
+            ..
+        } => {
+            // Annotation.dll 0x6b1c6910 只读有符号的类版本。
+            let version = reader.read_u16_le()? as i16;
+            if version > 1 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "AnnotateMap 版本超过 1",
+                ));
+            }
+            Some(LegacyAnnotateMapBody10_1::AnnotateMap { version })
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: MAPLEX_ANNOTATE_MAP_CLASS_ID,
+            ..
+        } => {
+            let body = read_maplex_annotate_map(reader, limit, refs)?;
+            Some(LegacyAnnotateMapBody10_1::Maplex(Box::new(body)))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "不支持的 IAnnotateMap 类",
+            ));
+        }
+    };
+    Ok((ObjectSlot10_1 { offset, entry }, body))
+}
+
+/// 从已确认的照明槽末尾读取 Map 版本 5..=51 的定长成员；失败不推进游标。
 /// 调用方须先按完整对象流顺序确认版本、照明槽和本段起点。
 pub fn read_post_illumination_fields_10_1(
     reader: &mut Reader<'_>,
     map_version: u16,
 ) -> io::Result<PostIlluminationFields10_1> {
-    if !(23..=51).contains(&map_version) {
+    if !(5..=51).contains(&map_version) {
         return Err(io::Error::new(ErrorKind::InvalidData, "不支持的 Map 版本"));
     }
     let mut trial = reader.clone();
@@ -1787,6 +2213,22 @@ pub fn read_post_illumination_fields_10_1(
         int_1b0: trial.read_u32_le()?,
         short_1ac: trial.read_u16_le()?,
         short_268: trial.read_u16_le()?,
+    };
+    *reader = trial;
+    Ok(fields)
+}
+
+fn read_legacy_post_illumination_fields(
+    reader: &mut Reader<'_>,
+    version: u16,
+) -> io::Result<LegacyPostIlluminationFields10_1> {
+    let mut trial = reader.clone();
+    let fields = LegacyPostIlluminationFields10_1 {
+        offset: trial.position(),
+        short_1a0: (version >= 2).then(|| trial.read_u16_le()).transpose()?,
+        discarded_short: (version >= 2).then(|| trial.read_u16_le()).transpose()?,
+        int_1b0: (version >= 2).then(|| trial.read_u32_le()).transpose()?,
+        short_1ac: (version >= 3).then(|| trial.read_u16_le()).transpose()?,
     };
     *reader = trial;
     Ok(fields)
@@ -1804,6 +2246,64 @@ pub fn read_post_illumination_null_geometry_10_1(
         return Err(io::Error::new(ErrorKind::InvalidData, "不支持的 Map 版本"));
     }
     read_null_object_slot_10_1(reader)
+}
+
+/// 读取 Map.dll 10.1 在 0x793fffe1 请求的 IGeometry 槽。
+/// 非空未知类停在槽起点，已知类只在完整读取后提交引用。
+fn read_post_illumination_geometry_10_1(
+    reader: &mut Reader<'_>,
+    refs: &mut RefTable10_1,
+    max_bytes: usize,
+    map_version: u16,
+) -> io::Result<Option<(ObjectSlot10_1, Option<MapGeometryBody10_1>)>> {
+    if !(6..=51).contains(&map_version) {
+        return Err(io::Error::new(ErrorKind::InvalidData, "不支持的 Map 版本"));
+    }
+    let mut trial = reader.clone();
+    let mut staged = refs.clone();
+    let offset = trial.position();
+    let entry = read_object_entry_10_1(&mut trial, &mut staged)?;
+    let parsed = match entry {
+        ObjectEntry10_1::Null
+        | ObjectEntry10_1::BackReference {
+            class_id:
+                ENVELOPE_CLASS_ID
+                | POINT_CLASS_ID
+                | MULTIPOINT_CLASS_ID
+                | POLYLINE_CLASS_ID
+                | POLYGON_CLASS_ID
+                | GEOMETRY_BAG_CLASS_ID
+                | MULTIPATCH_CLASS_ID,
+            ..
+        } => None,
+        ObjectEntry10_1::NewObject {
+            class_id: ENVELOPE_CLASS_ID,
+            ..
+        } => Some(MapGeometryBody10_1::Envelope(read_envelope_10_1(
+            &mut trial,
+            max_bytes,
+            &mut staged,
+        )?)),
+        ObjectEntry10_1::NewObject {
+            class_id:
+                class_id @ (POINT_CLASS_ID
+                | MULTIPOINT_CLASS_ID
+                | POLYLINE_CLASS_ID
+                | POLYGON_CLASS_ID
+                | GEOMETRY_BAG_CLASS_ID
+                | MULTIPATCH_CLASS_ID),
+            ..
+        } => Some(MapGeometryBody10_1::Geometry(read_geometry_body_10_1(
+            &class_id,
+            &mut trial,
+            max_bytes,
+            &mut staged,
+        )?)),
+        _ => return Ok(None),
+    };
+    *reader = trial;
+    *refs = staged;
+    Ok(Some((ObjectSlot10_1 { offset, entry }, parsed)))
 }
 
 fn read_null_object_slot_10_1(reader: &mut Reader<'_>) -> io::Result<Option<ObjectSlot10_1>> {
@@ -1824,18 +2324,14 @@ fn read_post_bookmark_prefix(
     max_bytes: usize,
 ) -> io::Result<PostBookmarkPrefix10_1> {
     let offset = trial.position();
-    if trial.read_u16_le()? != 0xffff {
-        return Err(io::Error::new(
-            ErrorKind::InvalidData,
-            "Map 书签后标记不是 0xffff",
-        ));
-    }
+    let leading_short = trial.read_u16_le()?;
     let short_19c = trial.read_u16_le()?;
     let double_200 = trial.read_f64_le()?;
     let short_264 = trial.read_u16_le()?;
     let standalone_table_count = read_loop_count(trial, "独立表", max_bytes)?;
     Ok(PostBookmarkPrefix10_1 {
         offset,
+        leading_short,
         short_19c,
         double_200,
         short_264,

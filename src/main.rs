@@ -169,7 +169,12 @@ fn run() -> io::Result<()> {
                     Err(error) if error.kind() == io::ErrorKind::NotFound => (None, None),
                     Err(error) => (None, Some(error)),
                 };
-            let mut report = mxd_maps::parse_mxd_streams_10_1(&maps, page_layout.as_deref())?;
+            let (version, version_lines) = read_version_candidate(&mut document, &path);
+            let mut report = mxd_maps::parse_mxd_streams_10_1_with_version(
+                &maps,
+                page_layout.as_deref(),
+                version.as_ref(),
+            )?;
             if let Some(error) = page_layout_error {
                 report
                     .diagnostics
@@ -177,7 +182,7 @@ fn run() -> io::Result<()> {
             }
             // /Version 识别候选并入报告与输出：复用 version 命令的识别逻辑；
             // /Version 缺失或识别失败按同样诊断输出，不使 parse 失败。
-            report.version_candidates = version_candidate_lines(&mut document, &path);
+            report.version_candidates = version_lines;
             let mut output = io::BufWriter::new(io::stdout().lock());
             writeln!(output, "Document: {}", Path::new(&path).display())?;
             writeln!(output, "Stream /Maps: {} bytes", maps.len())?;
@@ -292,10 +297,10 @@ fn run() -> io::Result<()> {
 ///
 /// /Version 缺失或识别失败按 version 命令同样的诊断措辞输出（缺失时附
 /// parse 不因此失败的说明），全部结果都是候选，未经目标软件验证。
-fn version_candidate_lines<F: Read + Seek>(
+fn read_version_candidate<F: Read + Seek>(
     document: &mut cfb::CompoundFile<F>,
     path: &std::ffi::OsStr,
-) -> Vec<String> {
+) -> (Option<mxd_version::MxdVersionReport>, Vec<String>) {
     let displayed = Path::new(path).display();
     match input::read_stream(document, "/Version") {
         Ok(bytes) => match mxd_version::identify_version(&bytes) {
@@ -321,14 +326,20 @@ fn version_candidate_lines<F: Read + Seek>(
                     report.remaining_bytes
                 ));
                 lines.push(format!("Version note: {}", report.note));
-                lines
+                (Some(report), lines)
             }
-            Err(error) => vec![format!("Version candidate: 识别失败（{error}）")],
+            Err(error) => (
+                None,
+                vec![format!("Version candidate: 识别失败（{error}）")],
+            ),
         },
-        Err(error) => vec![format!(
-            "Version candidate: 无法读取 {displayed} 的 /Version 数据流：{error}\
-             （parse 不因此失败）"
-        )],
+        Err(error) => (
+            None,
+            vec![format!(
+                "Version candidate: 无法读取 {displayed} 的 /Version 数据流：{error}\
+                 （parse 不因此失败）"
+            )],
+        ),
     }
 }
 

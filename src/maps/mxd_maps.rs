@@ -56,8 +56,8 @@ use crate::layers::feature_layer::{
 };
 use crate::layers::layer_list::{LayerBodyPrefix10_1, LayerEntryObject, LayerList10_1};
 use crate::maps::map_object::{
-    MAP_CLASS_ID, MapSurroundElement10_1, ObjectSlot10_1, read_map_prefix_object_stream_10_1,
-    read_map_suffix_10_1,
+    MAP_CLASS_ID, MapSurroundElement10_1, MapTransformationDirection10_1, ObjectSlot10_1,
+    read_map_prefix_object_stream_10_1, read_map_suffix_10_1,
 };
 use crate::maps::maps_stream::read_root_prefix_10_1;
 use crate::maps::page_layout_prefix::{PageLayoutElements10_1, read_page_layout_elements_10_1};
@@ -68,6 +68,7 @@ use crate::model::{
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::storage::object_stream::ObjectHeader;
 use crate::stream::reader::Reader;
+use crate::version::mxd_version::MxdVersionReport;
 use std::io::{self, ErrorKind};
 
 /// 数据框数量限额：进入对象循环前拒绝超过该值的数量，避免按异常数量申请解析工作。
@@ -122,7 +123,7 @@ pub fn parse_maps_10_1_with_limits(
     max_count: u32,
     max_bytes: usize,
 ) -> io::Result<MapsParseReport10_1> {
-    parse_mxd_streams_10_1_with_limits(maps, None, max_count, max_bytes)
+    parse_mxd_streams_10_1_with_limits(maps, None, None, max_count, max_bytes)
 }
 
 /// 在 /Maps 的根尾得到确认之后，从同一会话继续识别 /PageLayout 中的元素。
@@ -131,12 +132,28 @@ pub fn parse_mxd_streams_10_1(
     maps: &[u8],
     page_layout: Option<&[u8]>,
 ) -> io::Result<MapsParseReport10_1> {
-    parse_mxd_streams_10_1_with_limits(maps, page_layout, MAX_MAP_COUNT, MAX_FIELD_BYTES)
+    parse_mxd_streams_10_1_with_version(maps, page_layout, None)
+}
+
+/// 同时提供 /Version 的识别结果，供 /PageLayout 中与旧保存索引绑定的打印设置使用。
+pub fn parse_mxd_streams_10_1_with_version(
+    maps: &[u8],
+    page_layout: Option<&[u8]>,
+    version: Option<&MxdVersionReport>,
+) -> io::Result<MapsParseReport10_1> {
+    parse_mxd_streams_10_1_with_limits(
+        maps,
+        page_layout,
+        version.and_then(|report| report.candidate_save_index),
+        MAX_MAP_COUNT,
+        MAX_FIELD_BYTES,
+    )
 }
 
 fn parse_mxd_streams_10_1_with_limits(
     maps: &[u8],
     page_layout: Option<&[u8]>,
+    save_index: Option<usize>,
     max_count: u32,
     max_bytes: usize,
 ) -> io::Result<MapsParseReport10_1> {
@@ -206,6 +223,7 @@ fn parse_mxd_streams_10_1_with_limits(
                         Ok(ObjectEntry10_1::NewObject { class_id, key })
                             if class_id == MAP_CLASS_ID =>
                         {
+                            refs.mark_map(key);
                             let body = parse_frame(
                                 maps,
                                 objects.position(),
@@ -302,7 +320,7 @@ fn parse_mxd_streams_10_1_with_limits(
 
     let page_layout = page_layout.and_then(|page| {
         let result = if confirmed_tail.is_some() && map_unknown.is_empty() {
-            match read_page_layout_elements_10_1(page, max_bytes, &mut refs, |key| {
+            match read_page_layout_elements_10_1(page, max_bytes, &mut refs, save_index, |key| {
                 map_indices.contains_key(&key)
             }) {
                 Ok(layout) => {
@@ -341,6 +359,12 @@ fn parse_mxd_streams_10_1_with_limits(
                     }
                     if let Some(flag) = layout.print_settings_flag {
                         diagnostics.push(format!("/PageLayout 打印设置标记 0x{flag:04x}"));
+                    }
+                    if let Some(settings) = &layout.print_settings {
+                        diagnostics.push(format!(
+                            "/PageLayout 已读 Paper v{} 及打印机槽至 0x{:x}",
+                            settings.paper.version, settings.end_offset
+                        ));
                     }
                     if let Some(reason) = &layout.tail_error {
                         diagnostics.push(format!(
@@ -460,48 +484,50 @@ fn parse_frame(
         .as_ref()
         .and_then(map_spatial_reference_to_model);
 
-    // 旧版 Map 使用另一条图层列表读取路径，不能用新版列表推算后续边界。
-    if prefix.version < 0x17 {
-        let stop_offset = body.position();
-        let remaining = &maps[stop_offset..];
-        diagnostics.push(format!(
-            "Map 架构版本 {} 小于 23（0x17）：旧版图层列表尚未接入，后缀从 \
-             /Maps:0x{stop_offset:x} 起的 {} 字节保留为未知；图层和显示范围未解析",
-            prefix.version,
-            remaining.len()
-        ));
-        if let remaining_count @ 1.. = count - index - 1 {
-            diagnostics.push(format!(
-                "其余 {remaining_count} 个数据框对象未解析：当前 Map 后缀边界未知"
-            ));
-        }
-        let unknown_fields = if remaining.is_empty() {
-            Vec::new()
-        } else {
-            vec![UnknownField {
-                stream: "/Maps".to_string(),
-                offset: stop_offset as u64,
-                bytes: remaining.to_vec(),
-            }]
-        };
-        return Ok((
-            DataFrame {
-                name: prefix.name,
-                secondary_name: Some(prefix.secondary_name),
-                children: Vec::new(),
-                crs: map_crs,
-                extent: None,
-                unknown_fields,
-            },
-            None,
-            None,
-        ));
-    }
     let map_crs_key = prefix.spatial_reference_key;
 
     // 后缀读取器从对象体起点重读前缀；所有 Map 共用根流会话键表。
     let mut suffix_reader = Reader::new(maps).reposition_to(body_offset);
-    let suffix = read_map_suffix_10_1(&mut suffix_reader, max_bytes, table)?;
+    let suffix = match read_map_suffix_10_1(&mut suffix_reader, max_bytes, table) {
+        Ok(suffix) => suffix,
+        Err(error) if prefix.version < 23 => {
+            let stop_offset = body.position();
+            let remaining = &maps[stop_offset..];
+            diagnostics.push(format!(
+                "Map 架构版本 {} 小于 23（0x17）：旧版后缀未读完（{error}），从 \
+             /Maps:0x{stop_offset:x} 起保留 {} 字节",
+                prefix.version,
+                remaining.len()
+            ));
+            if let remaining_count @ 1.. = count - index - 1 {
+                diagnostics.push(format!(
+                    "其余 {remaining_count} 个数据框对象未解析：当前 Map 后缀边界未知"
+                ));
+            }
+            let unknown_fields = if remaining.is_empty() {
+                Vec::new()
+            } else {
+                vec![UnknownField {
+                    stream: "/Maps".to_string(),
+                    offset: stop_offset as u64,
+                    bytes: remaining.to_vec(),
+                }]
+            };
+            return Ok((
+                DataFrame {
+                    name: prefix.name,
+                    secondary_name: Some(prefix.secondary_name),
+                    children: Vec::new(),
+                    crs: map_crs,
+                    extent: None,
+                    unknown_fields,
+                },
+                None,
+                None,
+            ));
+        }
+        Err(error) => return Err(error),
+    };
 
     // —— 图层列表诊断、体前缀模型填充与未知体保留 ——
     let list = &suffix.layer_list;
@@ -705,13 +731,12 @@ fn parse_frame(
                     }
                 }
                 diagnostics.push(format!(
-                    "条目 {}：组图层子图层声明 {} 个，已消费 {} 条，其中 {} 条经类分派解析\
-                     出前缀并填充 children；解析失败的子图层体与尾段保留未知（无组图层样\
-                     本，分派行为无字节佐证）",
+                    "条目 {}：组图层子图层声明 {} 个，已读取 {} 条，其中 {} 条进入中间模型；{}",
                     entry.index + 1,
                     prefix.child_count,
                     prefix.children.len(),
-                    group_children.len()
+                    group_children.len(),
+                    prefix.stop.describe()
                 ));
                 Some(LayerNode::Group(LayerGroup {
                     name: prefix.name.clone(),
@@ -729,15 +754,53 @@ fn parse_frame(
                 ));
                 None
             }
+            Some(LayerBodyPrefix10_1::Graphics3d(layer)) => {
+                diagnostics.push(format!(
+                    "条目 {}：三维图形层 {:?}，已读取 {} 个元素",
+                    entry.index + 1,
+                    layer.name,
+                    layer.elements.len()
+                ));
+                None
+            }
             Some(LayerBodyPrefix10_1::RasterLayer(raster)) => {
                 raster_node(raster, entry.index, diagnostics)
+            }
+            Some(LayerBodyPrefix10_1::WcsLayer(layer)) => {
+                if let ObjectEntry10_1::BackReference {
+                    class_id: crate::layers::layer_list::RASTER_LAYER_CLASS_ID,
+                    key,
+                } = layer.raster.entry
+                {
+                    parsed_by_key
+                        .iter()
+                        .find(|(seen, _)| *seen == key)
+                        .map(|(_, layer)| layer.clone())
+                } else {
+                    layer
+                        .raster
+                        .body
+                        .as_deref()
+                        .and_then(|raster| raster_node(raster, entry.index, diagnostics))
+                }
             }
             Some(LayerBodyPrefix10_1::ImageServerLayer(layer)) => Some(image_server_layer_node(
                 &layer.prefix,
                 entry.index,
                 diagnostics,
             )),
-            Some(LayerBodyPrefix10_1::BasemapLayer(_)) => None,
+            Some(
+                LayerBodyPrefix10_1::BasemapLayer(_)
+                | LayerBodyPrefix10_1::TiledLayer(_)
+                | LayerBodyPrefix10_1::CadLayer(_),
+            ) => None,
+            Some(prefix @ LayerBodyPrefix10_1::CadFeatureLayer(_)) => body_prefix_node(
+                prefix,
+                entry.index,
+                map_crs_key,
+                map_crs.as_ref(),
+                diagnostics,
+            ),
             None => None,
         };
         // 回引条目：键命中先前已解析条目时复用同对象节点（原生同一图层对象
@@ -754,6 +817,11 @@ fn parse_frame(
             }
         }
         if let Some(node) = node {
+            if let Some(LayerBodyPrefix10_1::WcsLayer(wcs)) = &entry.parsed
+                && let ObjectEntry10_1::NewObject { key, .. } = wcs.raster.entry
+            {
+                parsed_by_key.push((key, node.clone()));
+            }
             if let LayerEntryObject::Entry(ObjectEntry10_1::NewObject { key, .. }) = &entry.object {
                 parsed_by_key.push((*key, node.clone()));
             }
@@ -878,13 +946,26 @@ fn parse_frame(
     }
     if let Some(post) = suffix.post_bookmark {
         diagnostics.push(format!(
-            "书签后属性（offset 0x{:x}）：+0x19c={}，+0x200={}，+0x264={}，\
-             独立表计数 {}；未定性成员不写入模型",
+            "书签后属性（offset 0x{:x}）：VerboseEvents(+0x19c)={}，\
+             ReferenceScale(+0x200)={}，UseSymbolLevels(+0x264)={}，{}计数 {}，首个 short=0x{:04x}",
             post.offset,
             post.short_19c,
             post.double_200,
             post.short_264,
+            if prefix.version < 11 {
+                "旧表 IName"
+            } else {
+                "独立表"
+            },
             post.standalone_table_count,
+            post.leading_short,
+        ));
+    }
+
+    if !suffix.legacy_table_names.is_empty() {
+        diagnostics.push(format!(
+            "已读旧表 IName 条目 {} 个",
+            suffix.legacy_table_names.len()
         ));
     }
 
@@ -907,10 +988,19 @@ fn parse_frame(
             illumination.object.describe(),
         ));
     }
+    if let Some((offset, values)) = suffix.legacy_illumination {
+        diagnostics.push(format!(
+            "内联照明（offset 0x{offset:x}，double 位）：{values:x?}"
+        ));
+    }
+    if let Some(fields) = suffix.legacy_illumination_fields {
+        diagnostics.push(format!("早期照明后字段（存盘值）：{fields:x?}"));
+    }
     if let Some(post) = suffix.post_illumination {
         diagnostics.push(format!(
-            "照明后定长字段（offset 0x{:x}）：+0x1a0=0x{:04x}，临时值=0x{:04x}，\
-             +0x1b0=0x{:08x}，+0x1ac=0x{:04x}，+0x268=0x{:04x}",
+            "照明后定长字段（offset 0x{:x}，存盘值）：ConserveMemory(+0x1a0)=0x{:04x}，\
+             临时值=0x{:04x}，OutputBandSize(+0x1b0)=0x{:08x}，\
+             DelayBackgroundDraw(+0x1ac)=0x{:04x}，Expanded(+0x268)=0x{:04x}",
             post.offset,
             post.short_1a0,
             post.discarded_short,
@@ -919,7 +1009,7 @@ fn parse_frame(
             post.short_268,
         ));
     }
-    if let Some(geometry) = suffix.post_illumination_null_geometry {
+    if let Some((geometry, _)) = &suffix.post_illumination_geometry {
         diagnostics.push(format!(
             "照明后 IGeometry 槽位（offset 0x{:x}）：{}",
             geometry.offset,
@@ -938,7 +1028,7 @@ fn parse_frame(
         diagnostics.push(format!(
             "IBorder 后版本块：short={:?}、{:?}、{:?}、{:?}，double 位={:?}；\
              两个 int32={:?}、{:?}，临时 short={:?}、double 位={:?}；\
-             坐标变换计数={:?}，已读前导 {} 条、完整对象槽 {} 条",
+             坐标变换计数={:?}，完整对象槽 {} 条",
             tail.short_308,
             tail.short_310,
             tail.short_318,
@@ -949,12 +1039,25 @@ fn parse_frame(
             tail.temporary_short,
             tail.temporary_double_bits,
             tail.transformation_count,
-            tail.transformations.len(),
             tail.transformations
                 .iter()
                 .filter(|item| item.object.is_some())
                 .count()
         ));
+        let (mut forward, mut reverse, mut unknown) = (0, 0, 0);
+        for item in &tail.transformations {
+            match item.direction_on_disk() {
+                Some(MapTransformationDirection10_1::Forward) => forward += 1,
+                Some(MapTransformationDirection10_1::Reverse) => reverse += 1,
+                Some(MapTransformationDirection10_1::Unknown(_)) => unknown += 1,
+                None => {}
+            }
+        }
+        if forward + reverse + unknown > 0 {
+            diagnostics.push(format!(
+                "坐标变换存盘方向：正向 {forward} 条、反向 {reverse} 条、未知 {unknown} 条"
+            ));
+        }
     }
 
     if let Some(value) = suffix.post_border_tail.post_transform_double_bits {
@@ -995,9 +1098,16 @@ fn parse_frame(
         ));
     }
 
+    if tail.post_masking.is_some() || !tail.layer_masking.is_empty() {
+        diagnostics.push(format!(
+            "Map 逐图层遮罩循环：已读 {} 条记录",
+            tail.layer_masking.len()
+        ));
+    }
+
     if let Some(fields) = &tail.post_masking {
         diagnostics.push(format!(
-            "Map 逐图层遮罩循环不消费字节；之后的 IsFramed 原始位={:?}，+0x398 字符串偏移={:?}，+0x3a0 short={:?}，+0x15d 字节={:?}",
+            "逐图层遮罩后的 IsFramed 原始位={:?}，+0x398 字符串偏移={:?}，+0x3a0 short={:?}，+0x15d 字节={:?}",
             fields.is_framed_bits,
             fields.string_398.as_ref().map(|(offset, _)| offset),
             fields.short_3a0,
@@ -1250,18 +1360,7 @@ fn feature_layer_successor_note(
                 format!("AnnotationVBScriptEngine（键 {}）", engine.key)
             }
             crate::layers::annotate_props::ExpressionEngineSlot10_1::OtherEngine(engine) => {
-                let name = match engine.kind {
-                    crate::layers::annotate_props::AnnotationExpressionEngineKind10_1::Vbscript => {
-                        "AnnotationVBScriptEngine"
-                    }
-                    crate::layers::annotate_props::AnnotationExpressionEngineKind10_1::Jscript => {
-                        "AnnotationJScriptEngine"
-                    }
-                    crate::layers::annotate_props::AnnotationExpressionEngineKind10_1::Python => {
-                        "AnnotationPythonEngine"
-                    }
-                };
-                format!("{name}（键 {}）", engine.body.key)
+                format!("{}（键 {}）", engine.kind.class_name(), engine.body.key)
             }
             crate::layers::annotate_props::ExpressionEngineSlot10_1::BackReference {
                 key, ..
@@ -1363,6 +1462,15 @@ fn feature_layer_source(
 ) -> Option<DataSource> {
     match &prefix.data_source {
         DataSource10_1::FeatureClassName(fcn) => {
+            if let Some(coverage) = fcn.coverage_wrapper {
+                diagnostics.push(format!(
+                    "条目 {}：数据源 CoverageFeatureClassName（键 {}，版本 {}）",
+                    entry_index + 1,
+                    fcn.key,
+                    coverage.version
+                ));
+                return None;
+            }
             let (path, workspace_note) = match &fcn.nested {
                 FeatureClassNameNested10_1::WorkspaceName(WorkspaceNameEntry10_1::NewObject(
                     ws,
@@ -1451,6 +1559,33 @@ fn feature_layer_source(
                 connection: Some(fcn.name.clone()),
                 unknown_fields: Vec::new(),
             })
+        }
+        DataSource10_1::NetCdfFeatureClassName(body) => {
+            diagnostics.push(format!(
+                "条目 {}：数据源 NetCDFFeatureClassName（键 {}，版本 {}）",
+                entry_index + 1,
+                body.key,
+                body.version
+            ));
+            None
+        }
+        DataSource10_1::XyEventSourceName(body) => {
+            diagnostics.push(format!(
+                "条目 {}：数据源 XYEventSourceName（键 {}，版本 {}）",
+                entry_index + 1,
+                body.key,
+                body.version
+            ));
+            None
+        }
+        DataSource10_1::RouteEventSourceName(body) => {
+            diagnostics.push(format!(
+                "条目 {}：数据源 RouteEventSourceName（键 {}，版本 {}）",
+                entry_index + 1,
+                body.key,
+                body.version
+            ));
+            None
         }
         DataSource10_1::Null => None,
         DataSource10_1::BackReference { key, .. } => {
@@ -1553,12 +1688,58 @@ fn body_prefix_node(
             }))
         }
         LayerBodyPrefix10_1::RasterLayer(raster) => raster_node(raster, entry_index, diagnostics),
+        LayerBodyPrefix10_1::WcsLayer(layer) => layer
+            .raster
+            .body
+            .as_deref()
+            .and_then(|raster| raster_node(raster, entry_index, diagnostics)),
         LayerBodyPrefix10_1::ImageServerLayer(layer) => Some(image_server_layer_node(
             &layer.prefix,
             entry_index,
             diagnostics,
         )),
         LayerBodyPrefix10_1::BasemapLayer(_) => None,
+        LayerBodyPrefix10_1::CadLayer(layer) => {
+            diagnostics.push(format!(
+                "条目 {}：已读取 CAD 绘图图层 {:?}",
+                entry_index + 1,
+                layer.name
+            ));
+            None
+        }
+        LayerBodyPrefix10_1::CadFeatureLayer(layer) => {
+            let base = layer.feature.as_ref()?;
+            let (visible, note) = variant_bool_to_model(base.visibility_raw, "可见性");
+            if let Some(note) = note {
+                diagnostics.push(note);
+            }
+            let crs = feature_layer_crs(base, map_crs_key, map_crs, entry_index, diagnostics);
+            Some(LayerNode::Layer(Layer {
+                name: base.name.clone(),
+                visible,
+                source: None,
+                crs,
+                extent: None,
+                unknown_fields: Vec::new(),
+            }))
+        }
+        LayerBodyPrefix10_1::TiledLayer(layer) => {
+            diagnostics.push(format!(
+                "条目 {}：已读取瓦片图层 {:?}",
+                entry_index + 1,
+                layer.name()
+            ));
+            None
+        }
+        LayerBodyPrefix10_1::Graphics3d(layer) => {
+            diagnostics.push(format!(
+                "条目 {}：三维图形层 {:?}，已读取 {} 个元素",
+                entry_index + 1,
+                layer.name,
+                layer.elements.len()
+            ));
+            None
+        }
         LayerBodyPrefix10_1::CompositeGraphicsLayer(cgl) => {
             diagnostics.push(format!(
                 "条目 {}：CompositeGraphicsLayer（名称 {:?}）为图形层，中间模型没有对应\
@@ -2004,8 +2185,8 @@ mod tests {
             assert_eq!(node.visible, expected_visible);
             let tail = raster.tail.as_ref().expect("参考样本栅格图层应读到体末尾");
             assert_eq!(list.entries[index].body.unwrap().len, 0);
-            assert_eq!(tail.raster_io.shorts_35_to_37, [0, 0, 0]);
-            assert!(f64::from_bits(tail.wks_bits[0]).is_nan());
+            assert_eq!(tail.raster_io.as_ref().unwrap().shorts_35_to_37, [0, 0, 0]);
+            assert!(f64::from_bits(tail.wks_bits.unwrap()[0]).is_nan());
             let time = tail.time.as_ref().unwrap();
             assert_eq!(
                 (

@@ -113,7 +113,10 @@
 //! （docVersion 83..93 写 2）无门字段差异之外的真实流字节佐证。
 
 use crate::layers::feature_layer::{
-    FEATURE_CLASS_NAME_CLASS_ID, FeatureClassNamePrefix10_1, read_feature_class_name_body_10_1,
+    COVERAGE_FEATURE_CLASS_NAME_CLASS_ID, FEATURE_CLASS_NAME_CLASS_ID,
+    FGDB_FEATURE_CLASS_NAME_CLASS_ID, FeatureClassNamePrefix10_1,
+    read_coverage_feature_class_name_body_10_1, read_feature_class_name_body_10_1,
+    read_fgdb_feature_class_name_body_10_1,
 };
 use crate::layers::legend_item::{
     HORIZONTAL_LEGEND_ITEM_CLASS_ID, HorizontalLegendItemBody10_1, HorizontalLegendItemStop10_1,
@@ -130,7 +133,18 @@ use crate::maps::map_surround_family::{
     read_legend_format_body_10_1,
 };
 use crate::maps::standalone_table::{TABLE_NAME_CLASS_ID, read_table_name_body_10_1};
+use crate::objects::dataset_name_more::{
+    FEATURE_QUERY_NAME_CLASS_ID, FeatureQueryNameBody10_1, NETCDF_FEATURE_CLASS_NAME_CLASS_ID,
+    NetCdfFeatureClassNameBody10_1, TABLE_QUERY_NAME_CLASS_ID, TableQueryNameBody10_1,
+    XY_EVENT_SOURCE_NAME_CLASS_ID, XyEventSourceNameBody10_1, read_feature_query_name_body_10_1,
+    read_netcdf_feature_class_name_body_10_1, read_table_query_name_body_10_1,
+    read_xy_event_source_name_body_10_1,
+};
 use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
+use crate::objects::route_event_name::{
+    ROUTE_EVENT_SOURCE_NAME_CLASS_ID, RouteEventSourceNameBody10_1,
+    read_route_event_source_name_body_10_1,
+};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
@@ -252,17 +266,25 @@ pub struct AoiBookmark10_1 {
 
 /// FeatureBookmark 名称对象槽（请求 IID `{4BA33331-…}` IName）的分类结果。
 ///
-/// 支持已完整消费的 FeatureClassName 和 TableName；其他新对象类不推断体边界。
+/// 支持已取证且完整消费的名称体。
 #[derive(Debug, Clone, PartialEq)]
 pub enum BookmarkNameEntry10_1 {
     /// 16 字节全零类标识：空引用标记。
     Null,
     /// 键已在本会话登记：20 字节回引条目，其后没有对象体。
-    BackReference { class_id: [u8; 16], key: u32 },
+    BackReference {
+        class_id: [u8; 16],
+        key: u32,
+    },
     /// 内联要素类名称对象。
     FeatureClassName(Box<FeatureClassNamePrefix10_1>),
     /// 内联表名称对象；不代表能够打开为要素类。
     TableName(Box<crate::maps::standalone_table::TableNameBody10_1>),
+    FeatureQueryName(Box<FeatureQueryNameBody10_1>),
+    NetCdfFeatureClassName(Box<NetCdfFeatureClassNameBody10_1>),
+    XyEventSourceName(Box<XyEventSourceNameBody10_1>),
+    RouteEventSourceName(Box<RouteEventSourceNameBody10_1>),
+    TableQueryName(Box<TableQueryNameBody10_1>),
 }
 
 /// FeatureBookmark 对象体（Load `0x793b5c50` 全部字段，体完全闭合）。
@@ -613,7 +635,7 @@ pub fn read_aoi_bookmark_10_1(
 /// 从对象头之后读取 FeatureBookmark；错误时游标及登记表不变。
 ///
 /// 调用者已读取对象头并比对 [`FEATURE_BOOKMARK_CLASS_ID`]。名称槽支持空值、
-/// 回引及可完整读取的 FeatureClassName、TableName；未知类或体内停止返回
+/// 回引及 [`BookmarkNameEntry10_1`] 中可完整读取的名称体；未知类或体内停止返回
 /// [`ErrorKind::Unsupported`]，避免错读随后的书签名称。
 pub fn read_feature_bookmark_10_1(
     reader: &mut Reader<'_>,
@@ -648,9 +670,30 @@ pub fn read_feature_bookmark_10_1(
         ObjectEntry10_1::BackReference { class_id, key } => {
             BookmarkNameEntry10_1::BackReference { class_id, key }
         }
-        ObjectEntry10_1::NewObject { class_id, key } if class_id == FEATURE_CLASS_NAME_CLASS_ID => {
-            let body =
-                read_feature_class_name_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?;
+        ObjectEntry10_1::NewObject {
+            class_id:
+                class_id @ (FEATURE_CLASS_NAME_CLASS_ID
+                | FGDB_FEATURE_CLASS_NAME_CLASS_ID
+                | COVERAGE_FEATURE_CLASS_NAME_CLASS_ID),
+            key,
+        } => {
+            let body = match class_id {
+                FGDB_FEATURE_CLASS_NAME_CLASS_ID => read_fgdb_feature_class_name_body_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut trial_table,
+                    key,
+                )?,
+                COVERAGE_FEATURE_CLASS_NAME_CLASS_ID => read_coverage_feature_class_name_body_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut trial_table,
+                    key,
+                )?,
+                _ => {
+                    read_feature_class_name_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?
+                }
+            };
             if let Some(stop) = &body.stop {
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,
@@ -673,6 +716,94 @@ pub fn read_feature_bookmark_10_1(
                 ));
             }
             BookmarkNameEntry10_1::TableName(Box::new(body))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: NETCDF_FEATURE_CLASS_NAME_CLASS_ID,
+            key,
+        } => {
+            let body = read_netcdf_feature_class_name_body_10_1(
+                &mut trial,
+                max_bytes,
+                &mut trial_table,
+                key,
+            )?;
+            if let Some(stop) = &body.stop {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!(
+                        "FeatureBookmark 名称对象槽 offset 0x{name_offset:x}: NetCDFFeatureClassName 未读完（{stop:?}）"
+                    ),
+                ));
+            }
+            BookmarkNameEntry10_1::NetCdfFeatureClassName(Box::new(body))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: XY_EVENT_SOURCE_NAME_CLASS_ID,
+            key,
+        } => {
+            let body =
+                read_xy_event_source_name_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?;
+            if let Some(stop) = &body.stop {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!(
+                        "FeatureBookmark 名称对象槽 offset 0x{name_offset:x}: XYEventSourceName 未读完（{stop:?}）"
+                    ),
+                ));
+            }
+            BookmarkNameEntry10_1::XyEventSourceName(Box::new(body))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: ROUTE_EVENT_SOURCE_NAME_CLASS_ID,
+            key,
+        } => {
+            let body = read_route_event_source_name_body_10_1(
+                &mut trial,
+                max_bytes,
+                &mut trial_table,
+                key,
+            )?;
+            if let Some(stop) = &body.stop {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!(
+                        "FeatureBookmark 名称对象槽 offset 0x{name_offset:x}: RouteEventSourceName 未读完（{stop:?}）"
+                    ),
+                ));
+            }
+            BookmarkNameEntry10_1::RouteEventSourceName(Box::new(body))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: FEATURE_QUERY_NAME_CLASS_ID,
+            key,
+        } => {
+            let body =
+                read_feature_query_name_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?;
+            if let Some(stop) = &body.table.stop {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!(
+                        "FeatureBookmark 名称对象槽 offset 0x{name_offset:x}: FeatureQueryName 未读完（{stop:?}）"
+                    ),
+                ));
+            }
+            BookmarkNameEntry10_1::FeatureQueryName(Box::new(body))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: TABLE_QUERY_NAME_CLASS_ID,
+            key,
+        } => {
+            let body =
+                read_table_query_name_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?;
+            if let Some(stop) = &body.stop {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!(
+                        "FeatureBookmark 名称对象槽 offset 0x{name_offset:x}: TableQueryName 未读完（{stop:?}）"
+                    ),
+                ));
+            }
+            BookmarkNameEntry10_1::TableQueryName(Box::new(body))
         }
         ObjectEntry10_1::NewObject { class_id, key } => {
             return Err(io::Error::new(

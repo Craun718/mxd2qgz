@@ -327,3 +327,48 @@ fn desktop_media_reads_each_layout_object_and_empty_print_settings() {
     }
     assert_eq!(count, 66);
 }
+
+#[test]
+fn group_element_reads_nested_surround_frame_and_shares_its_key() {
+    use mxd2qgz::maps::group_element::{GROUP_ELEMENT_CLASS_ID, GroupChild10_1};
+
+    let frame = surround_frame(2);
+    let mut group = GROUP_ELEMENT_CLASS_ID.to_vec();
+    group.extend(5_u32.to_le_bytes());
+    group.extend(2_u16.to_le_bytes());
+    group.extend(0_u16.to_le_bytes()); // ElementProperties v0。
+    group.extend([2, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0]);
+    group.extend([0; 4 + 16]);
+    group.extend(1_u32.to_le_bytes());
+    let frame_at = group.len();
+    group.extend(&frame);
+    group.extend(&frame[20 + 2 + 48..]); // 组尾的 BaseFrameElement。
+
+    let mut page = layout_root(2);
+    push_element(&mut page, &group);
+    push_element(&mut page, &frame[..20]);
+    let layout = parse_mxd_streams_10_1(&[0; 8], Some(&page))
+        .unwrap()
+        .page_layout
+        .unwrap();
+    assert_eq!(layout.consumed_elements, 2);
+    assert!(matches!(
+        &layout.groups[0].children[..],
+        [GroupChild10_1::SurroundFrame(frame)] if frame.key == 7
+    ));
+    assert!(matches!(
+        &layout.indirect_elements[..],
+        [(1, _, ObjectEntry10_1::BackReference { key: 7, .. })]
+    ));
+
+    let mut bad_page = layout_root(1);
+    let group_at = bad_page.len();
+    push_element(&mut bad_page, &group[..frame_at + frame.len() - 1]);
+    let layout = parse_mxd_streams_10_1(&[0; 8], Some(&bad_page))
+        .unwrap()
+        .page_layout
+        .unwrap();
+    assert_eq!(layout.consumed_elements, 0);
+    assert_eq!(layout.end_offset, group_at);
+    assert!(layout.groups.is_empty());
+}

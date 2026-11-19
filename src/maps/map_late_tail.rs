@@ -1,6 +1,9 @@
 //! Map.dll 10.1.0.3035 Load 0x79400ab0..0x794015af 的持久化后段。
 //! 按读侧条件门处理；值的业务语义未确认时，仅保留原始位与偏移。
 
+use crate::objects::element_body::{
+    PARAGRAPH_TEXT_ELEMENT_CLASS_ID, ParagraphTextElement10_1, read_paragraph_text_element_10_1,
+};
 use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
 use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
@@ -18,6 +21,10 @@ pub enum LateMapValue10_1 {
     Object {
         entry: ObjectEntry10_1,
         envelope: Option<Box<Envelope10_1>>,
+    },
+    ParagraphTextElement {
+        entry: ObjectEntry10_1,
+        body: Box<ParagraphTextElement10_1>,
     },
 }
 
@@ -94,7 +101,7 @@ impl TailReader<'_, '_> {
         })
     }
 
-    fn object(&mut self, name: &'static str, allow_envelope: bool) -> io::Result<()> {
+    fn object(&mut self, name: &'static str, new_class: Option<[u8; 16]>) -> io::Result<()> {
         let limit = self.max_bytes;
         self.field(name, |r, refs| {
             let (entry, envelope) = match read_header_10_1(r)? {
@@ -103,7 +110,7 @@ impl TailReader<'_, '_> {
                     (ObjectEntry10_1::BackReference { class_id, key }, None)
                 }
                 ObjectHeader::Object { class_id, key }
-                    if allow_envelope && class_id == ENVELOPE_CLASS_ID =>
+                    if Some(class_id) == new_class && class_id == ENVELOPE_CLASS_ID =>
                 {
                     let mut refs_trial = refs.clone();
                     refs_trial.register(key);
@@ -113,6 +120,25 @@ impl TailReader<'_, '_> {
                         ObjectEntry10_1::NewObject { class_id, key },
                         Some(Box::new(envelope)),
                     )
+                }
+                ObjectHeader::Object { class_id, key }
+                    if Some(class_id) == new_class
+                        && class_id == PARAGRAPH_TEXT_ELEMENT_CLASS_ID =>
+                {
+                    let mut refs_trial = refs.clone();
+                    refs_trial.register(key);
+                    let body = read_paragraph_text_element_10_1(r, limit, &mut refs_trial)?;
+                    if let Some(stop) = &body.stop {
+                        return Err(io::Error::new(
+                            ErrorKind::Unsupported,
+                            format!("段落文本元素体未完整读取：{stop:?}"),
+                        ));
+                    }
+                    *refs = refs_trial;
+                    return Ok(LateMapValue10_1::ParagraphTextElement {
+                        entry: ObjectEntry10_1::NewObject { class_id, key },
+                        body: Box::new(body),
+                    });
                 }
                 ObjectHeader::Object { class_id, key } => {
                     return Err(io::Error::new(
@@ -129,11 +155,11 @@ impl TailReader<'_, '_> {
         // 0x79400ab0：v34 起的属性，包括三个对象槽。
         self.long("+0x1d0")?;
         self.double("+0x1d8")?;
-        self.object("+0x1e0", true)?;
-        self.object("+0x1e4", false)?;
+        self.object("+0x1e0", Some(ENVELOPE_CLASS_ID))?;
+        self.object("+0x1e4", None)?;
         self.double("+0x1e8")?;
         self.long("+0x1f0")?;
-        self.object("+0x1f4", false)?;
+        self.object("+0x1f4", None)?;
         self.short("+0x3ea")?;
 
         if version >= 36 {
@@ -149,13 +175,13 @@ impl TailReader<'_, '_> {
             self.double("+0x408")?;
             self.long("+0x410")?;
             self.double("+0x418")?;
-            self.object("+0x420", false)?;
-            self.object("v38 对象 2", false)?;
-            self.object("v38 对象 3", false)?;
+            self.object("+0x420", None)?;
+            self.object("v38 对象 2", None)?;
+            self.object("v38 对象 3", None)?;
         }
         if version >= 39 {
             // 0x79400ed3
-            self.object("+0x424", false)?;
+            self.object("+0x424", None)?;
             self.long("v39 LONG")?;
             self.string("+0x42c")?;
             self.short("+0x430")?;
@@ -169,7 +195,7 @@ impl TailReader<'_, '_> {
         if version >= 41 {
             // 0x794010be
             self.long("+0x43c")?;
-            self.object("+0x440", false)?;
+            self.object("+0x440", None)?;
         }
         if version == 42 {
             // 0x7940113b
@@ -183,7 +209,7 @@ impl TailReader<'_, '_> {
         }
         if version >= 44 {
             // 0x794011e4
-            self.object("+0x44c", false)?;
+            self.object("+0x44c", None)?;
         }
         if version >= 45 {
             // 0x79401217
@@ -206,14 +232,14 @@ impl TailReader<'_, '_> {
             })?;
             self.long("v49 对象计数")?;
             for _ in 0..count {
-                self.object("v49 集合对象", false)?;
+                self.object("v49 集合对象", None)?;
                 self.short("v49 集合 short")?;
             }
         }
         if version >= 51 {
             // 0x794013f2
             self.short("+0x452")?;
-            self.object("v51 对象", false)?;
+            self.object("v51 对象", Some(PARAGRAPH_TEXT_ELEMENT_CLASS_ID))?;
         }
         Ok(())
     }

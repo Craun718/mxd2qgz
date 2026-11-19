@@ -1,12 +1,97 @@
 use mxd2qgz::{
+    layers::feature_layer::FGDB_FEATURE_CLASS_NAME_CLASS_ID,
     maps::{
         map_surround::{BookmarkNameEntry10_1, read_feature_bookmark_10_1},
         standalone_table::TABLE_NAME_CLASS_ID,
     },
-    objects::workspace_name::WorkspaceNameEntry10_1,
+    objects::{
+        dataset_name_more::{FEATURE_QUERY_NAME_CLASS_ID, TABLE_QUERY_NAME_CLASS_ID},
+        workspace_name::WorkspaceNameEntry10_1,
+    },
     storage::object_refs::RefTable10_1,
     stream::reader::Reader,
 };
+
+#[test]
+fn bookmark_reads_filegdb_and_query_names_with_transactional_boundaries() {
+    const EMPTY: [u8; 6] = [2, 0, 0, 0, 0, 0];
+    for class in [
+        FGDB_FEATURE_CLASS_NAME_CLASS_ID,
+        FEATURE_QUERY_NAME_CLASS_ID,
+        TABLE_QUERY_NAME_CLASS_ID,
+    ] {
+        let mut data = 1_u16.to_le_bytes().to_vec();
+        data.extend(42_i32.to_le_bytes());
+        data.extend(class);
+        data.extend(17_u32.to_le_bytes());
+        let workspace_offset;
+        if class == FGDB_FEATURE_CLASS_NAME_CLASS_ID {
+            data.extend(1_u16.to_le_bytes());
+            data.extend(0x1234_u16.to_le_bytes());
+            data.extend(2_u16.to_le_bytes()); // 内嵌 FeatureClassName，无第二个对象头。
+            for _ in 0..4 {
+                data.extend(EMPTY);
+            }
+            data.extend([0; 8 + 2]);
+            workspace_offset = data.len();
+            data.extend([0; 16 + 2]);
+        } else {
+            data.extend(2_u16.to_le_bytes());
+            for _ in 0..3 {
+                data.extend(EMPTY);
+            }
+            workspace_offset = data.len();
+            data.extend([0; 16]);
+            for _ in 0..4 {
+                data.extend(EMPTY);
+            }
+            data.extend(0x1234_u16.to_le_bytes());
+            if class == FEATURE_QUERY_NAME_CLASS_ID {
+                data.extend(EMPTY);
+                data.extend(11_u32.to_le_bytes());
+                data.extend(22_u32.to_le_bytes());
+            }
+        }
+        data.extend([4, 0, 0, 0, b'B', 0, 0, 0]);
+        let end = data.len();
+        data.push(0xa5);
+        let mut reader = Reader::new(&data);
+        let mut refs = RefTable10_1::new();
+        let bookmark = read_feature_bookmark_10_1(&mut reader, 4096, &mut refs).unwrap();
+        match bookmark.name_object {
+            BookmarkNameEntry10_1::FeatureClassName(body) => {
+                assert_eq!(class, FGDB_FEATURE_CLASS_NAME_CLASS_ID);
+                assert!(body.fgdb_wrapper.is_some());
+            }
+            BookmarkNameEntry10_1::FeatureQueryName(body) => {
+                assert_eq!(class, FEATURE_QUERY_NAME_CLASS_ID);
+                assert_eq!(body.feature_tail, Some((String::new(), 11, 22)));
+            }
+            BookmarkNameEntry10_1::TableQueryName(body) => {
+                assert_eq!(class, TABLE_QUERY_NAME_CLASS_ID);
+                assert_eq!(body.version_two_tail, Some((String::new(), 0x1234)));
+            }
+            other => panic!("非预期的书签名称：{other:?}"),
+        }
+        assert_eq!(bookmark.name, "B");
+        assert_eq!(reader.read_bytes(1).unwrap(), [0xa5]);
+        assert!(refs.contains(17));
+
+        let mut unknown = data.clone();
+        let mut entry = vec![0x5a; 16];
+        entry.extend(18_u32.to_le_bytes());
+        unknown.splice(workspace_offset..workspace_offset + 16, entry);
+        for input in [&data[..end - 1], &unknown[..]] {
+            let mut reader = Reader::new(input);
+            let mut refs = RefTable10_1::new();
+            refs.register(5);
+            let before = refs.clone();
+            assert!(read_feature_bookmark_10_1(&mut reader, 4096, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert_eq!(refs, before);
+        }
+    }
+}
 
 fn fixture(workspace: &[u8]) -> Vec<u8> {
     let mut b = 1u16.to_le_bytes().to_vec();
@@ -128,4 +213,521 @@ fn new_workspace_and_incomplete_nested_object() {
     );
     assert_eq!(r.position(), 0);
     assert_eq!(refs.len(), 1);
+}
+
+#[test]
+fn netcdf_feature_name_preserves_keys_and_boundaries_across_hosts() {
+    use mxd2qgz::layers::feature_layer::{
+        DataSource10_1, FeatureLayerStop10_1, read_feature_layer_prefix_10_1,
+    };
+    use mxd2qgz::maps::standalone_table::{
+        StandaloneNameBody10_1, StandaloneTableStop10_1, read_standalone_table_prefix_10_1,
+    };
+    use mxd2qgz::objects::dataset_name_more::{
+        DatasetNameMoreBody10_1, NETCDF_FEATURE_CLASS_NAME_CLASS_ID,
+    };
+    use mxd2qgz::objects::string_array::STR_ARRAY_CLASS_ID;
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    const EMPTY: [u8; 6] = [2, 0, 0, 0, 0, 0];
+    const NAMED: [u8; 8] = [4, 0, 0, 0, b'x', 0, 0, 0];
+    const LONG_ARRAY: [u8; 16] = [
+        0x08, 0xb8, 0xbf, 0x98, 0x1f, 0xe9, 0xd2, 0x11, 0x9f, 0x81, 0, 0xc0, 0x4f, 0x8e, 0xce, 0x27,
+    ];
+    for version in 0_u16..=2 {
+        let mut name = NETCDF_FEATURE_CLASS_NAME_CLASS_ID.to_vec();
+        name.extend(17_u32.to_le_bytes());
+        name.extend(version.to_le_bytes());
+        name.extend(EMPTY.repeat(4));
+        name.extend((-1_i32).to_le_bytes());
+        name.extend(24_i32.to_le_bytes());
+        name.extend([0; 16]);
+
+        name.extend(STR_ARRAY_CLASS_ID);
+        name.extend(18_u32.to_le_bytes());
+        name.extend(1_u16.to_le_bytes());
+        name.extend(1_u32.to_le_bytes());
+        name.extend(NAMED);
+        name.extend([0; 16]);
+        name.extend(STR_ARRAY_CLASS_ID);
+        name.extend(18_u32.to_le_bytes());
+        name.extend(LONG_ARRAY);
+        name.extend(19_u32.to_le_bytes());
+        name.extend(1_u16.to_le_bytes());
+        name.extend(1_u32.to_le_bytes());
+        name.extend(3_i32.to_le_bytes());
+        if version == 2 {
+            name.extend(NAMED.repeat(4));
+        }
+
+        let mut bookmark = 1_u16.to_le_bytes().to_vec();
+        bookmark.extend(42_i32.to_le_bytes());
+        bookmark.extend(&name);
+        bookmark.extend(NAMED);
+        let mut reader = Reader::new(&bookmark);
+        let mut refs = RefTable10_1::new();
+        let parsed = read_feature_bookmark_10_1(&mut reader, 4096, &mut refs).unwrap();
+        let BookmarkNameEntry10_1::NetCdfFeatureClassName(body) = parsed.name_object else {
+            panic!("缺少 NetCDF 要素类名称");
+        };
+        assert_eq!(parsed.name, "x");
+        assert_eq!(body.version, version);
+        assert_eq!(body.longs, [-1, 24]);
+        assert_eq!(
+            body.strings_v2,
+            (version == 2).then(|| [
+                "x".to_string(),
+                "x".to_string(),
+                "x".to_string(),
+                "x".to_string()
+            ])
+        );
+        assert!(matches!(
+            body.arrays.unwrap()[2].entry,
+            ObjectEntry10_1::BackReference { key: 18, .. }
+        ));
+        assert_eq!(body.dimension_indices.unwrap().body, Some((1, vec![3])));
+        assert!((17..=19).all(|key| refs.contains(key)));
+        assert_eq!(reader.remaining(), 0);
+
+        for end in [bookmark.len() - 1, 6 + name.len() - 1] {
+            let mut reader = Reader::new(&bookmark[..end]);
+            let mut refs = RefTable10_1::new();
+            refs.register(11);
+            let before = refs.clone();
+            assert!(read_feature_bookmark_10_1(&mut reader, 4096, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert_eq!(refs, before);
+        }
+
+        let mut layer = 0_u16.to_le_bytes().to_vec();
+        layer.extend(EMPTY.repeat(2));
+        layer.extend([0; 6]);
+        layer.extend(&name);
+        let renderer_offset = layer.len();
+        layer.extend([0x55; 16]);
+        layer.extend(20_u32.to_le_bytes());
+        let mut reader = Reader::new(&layer);
+        let mut refs = RefTable10_1::new();
+        let parsed = read_feature_layer_prefix_10_1(&mut reader, 4096, &mut refs).unwrap();
+        assert!(matches!(
+            parsed.data_source,
+            DataSource10_1::NetCdfFeatureClassName(body) if body.key == 17
+        ));
+        assert!(matches!(
+            parsed.stop,
+            FeatureLayerStop10_1::RendererNewObject { key: 20, .. }
+        ));
+        assert_eq!(reader.position(), renderer_offset);
+        assert!(refs.contains(19) && !refs.contains(20));
+
+        let mut table = 1_u16.to_le_bytes().to_vec();
+        table.extend(&name);
+        table.extend(0_u32.to_le_bytes());
+        table.extend(EMPTY);
+        let mut reader = Reader::new(&table);
+        let mut refs = RefTable10_1::new();
+        let parsed = read_standalone_table_prefix_10_1(&mut reader, &mut refs, 64, 4096).unwrap();
+        assert_eq!(parsed.stop, StandaloneTableStop10_1::Complete);
+        assert!(matches!(
+            parsed.dataset_name_body,
+            Some(StandaloneNameBody10_1::OtherTabularName(body))
+                if matches!(*body, DatasetNameMoreBody10_1::NetCdfFeatureClass(_))
+        ));
+        assert!(refs.contains(19));
+        assert_eq!(reader.remaining(), 0);
+    }
+}
+
+#[test]
+fn xy_event_bookmark_reads_nested_table_fields_and_spatial_reference() {
+    use mxd2qgz::objects::dataset_name_more::{
+        DatasetNameMoreBody10_1, DatasetNameMoreSlot10_1, XY_EVENT_2_FIELDS_PROPERTIES_CLASS_ID,
+        XY_EVENT_SOURCE_NAME_CLASS_ID,
+    };
+    use mxd2qgz::objects::envelope::SpatialReferenceEntry10_1;
+    use mxd2qgz::objects::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    let encoded_char = |c: u8| [4, 0, 0, 0, c, 0, 0, 0];
+    let empty = [2, 0, 0, 0, 0, 0];
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(11_i32.to_le_bytes());
+    bytes.extend(XY_EVENT_SOURCE_NAME_CLASS_ID);
+    bytes.extend(17_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(encoded_char(b'A'));
+    bytes.extend(empty);
+    let source_offset = bytes.len();
+    bytes.extend(TABLE_NAME_CLASS_ID);
+    bytes.extend(18_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(empty.repeat(3));
+    bytes.extend([0; 16]);
+    bytes.extend(XY_EVENT_2_FIELDS_PROPERTIES_CLASS_ID);
+    bytes.extend(19_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    for field in [b'x', b'y', b'z'] {
+        bytes.extend(encoded_char(field));
+    }
+    bytes.extend(PROJECTED_COORDINATE_SYSTEM_CLASS_ID);
+    bytes.extend(7_u32.to_le_bytes());
+    bytes.extend(encoded_char(b'B'));
+    let mut refs = RefTable10_1::new();
+    refs.register(7);
+    let before = refs.clone();
+    let mut reader = Reader::new(&bytes);
+    let parsed = read_feature_bookmark_10_1(&mut reader, 4096, &mut refs).unwrap();
+    let BookmarkNameEntry10_1::XyEventSourceName(source) = parsed.name_object else {
+        panic!("缺少 XY 事件源");
+    };
+    assert_eq!(parsed.name, "B");
+    assert!(matches!(
+        source.source,
+        DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::Table(_))
+    ));
+    let (entry, fields) = source.properties.unwrap();
+    let fields = fields.unwrap();
+    assert_eq!(
+        [fields.x_field, fields.y_field, fields.z_field],
+        ["x", "y", "z"]
+    );
+    assert!(matches!(entry, ObjectEntry10_1::NewObject { key: 19, .. }));
+    assert!(matches!(
+        source.spatial_reference,
+        Some(SpatialReferenceEntry10_1::BackReference { key: 7, .. })
+    ));
+    assert_eq!(reader.remaining(), 0);
+    assert!((17..=19).all(|key| refs.contains(key)));
+
+    let mut unknown = bytes.clone();
+    unknown[source_offset..source_offset + 16].fill(0x69);
+    for malformed in [&unknown[..], &bytes[..bytes.len() - 1]] {
+        let mut reader = Reader::new(malformed);
+        let mut refs = before.clone();
+        assert!(read_feature_bookmark_10_1(&mut reader, 4096, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert_eq!(refs, before);
+    }
+}
+
+#[test]
+fn route_event_name_keeps_locator_and_property_versions_aligned() {
+    use mxd2qgz::layers::feature_layer::{
+        DataSource10_1, FeatureLayerStop10_1, read_feature_layer_prefix_10_1,
+    };
+    use mxd2qgz::maps::standalone_table::{
+        StandaloneNameBody10_1, StandaloneTableStop10_1, read_standalone_table_prefix_10_1,
+    };
+    use mxd2qgz::objects::dataset_name_more::{DatasetNameMoreBody10_1, DatasetNameMoreSlot10_1};
+    use mxd2qgz::objects::route_event_name::{
+        ROUTE_EVENT_SOURCE_NAME_CLASS_ID, ROUTE_MEASURE_LINE_PROPERTIES_CLASS_ID,
+        ROUTE_MEASURE_LOCATOR_NAME_CLASS_ID, ROUTE_MEASURE_POINT_PROPERTIES_CLASS_ID,
+    };
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    const EMPTY: [u8; 6] = [2, 0, 0, 0, 0, 0];
+    const NAME: [u8; 8] = [4, 0, 0, 0, b'r', 0, 0, 0];
+    for (base, props_version, point) in [
+        (0_u16, 0_u16, true),
+        (1, 1, true),
+        (2, 2, true),
+        (3, 3, false),
+        (4, 4, true),
+        (4, 5, true),
+        (4, 5, false),
+    ] {
+        let mut name = ROUTE_EVENT_SOURCE_NAME_CLASS_ID.to_vec();
+        name.extend(17_u32.to_le_bytes());
+        name.extend(1_u16.to_le_bytes());
+        name.extend(EMPTY.repeat(2));
+
+        name.extend(ROUTE_MEASURE_LOCATOR_NAME_CLASS_ID);
+        name.extend(18_u32.to_le_bytes());
+        name.extend(1_u16.to_le_bytes());
+        name.extend(base.to_le_bytes());
+        name.extend(EMPTY.repeat(4));
+        let route_offset = name.len();
+        name.extend(TABLE_NAME_CLASS_ID);
+        name.extend(19_u32.to_le_bytes());
+        name.extend(1_u16.to_le_bytes());
+        name.extend(EMPTY.repeat(3));
+        name.extend([0; 16]);
+        name.extend(NAME);
+        if base < 4 {
+            name.extend(0x1234_u16.to_le_bytes());
+        }
+        name.extend(17_i32.to_le_bytes());
+        if base == 2 {
+            name.extend((-92_i32).to_le_bytes());
+        }
+
+        name.extend(TABLE_NAME_CLASS_ID);
+        name.extend(19_u32.to_le_bytes());
+        name.extend(if point {
+            ROUTE_MEASURE_POINT_PROPERTIES_CLASS_ID
+        } else {
+            ROUTE_MEASURE_LINE_PROPERTIES_CLASS_ID
+        });
+        name.extend(20_u32.to_le_bytes());
+        name.extend(props_version.to_le_bytes());
+        name.extend(EMPTY.repeat(4));
+        name.push(1);
+        name.extend(23_i32.to_le_bytes());
+        if props_version >= 3 {
+            name.extend(0x4321_u16.to_le_bytes());
+            name.extend(NAME);
+        }
+        if props_version >= 5 {
+            name.extend(0x2468_u16.to_le_bytes());
+        }
+        if point && props_version != 1 {
+            name.extend(4_u16.to_le_bytes());
+            name.extend(5_u16.to_le_bytes());
+            name.extend(NAME);
+            name.extend(6_u16.to_le_bytes());
+            if props_version >= 4 {
+                name.extend(7_u16.to_le_bytes());
+            }
+        }
+
+        let mut bookmark = 1_u16.to_le_bytes().to_vec();
+        bookmark.extend(12_i32.to_le_bytes());
+        bookmark.extend(&name);
+        bookmark.extend(NAME);
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bookmark);
+        let parsed = read_feature_bookmark_10_1(&mut reader, 4096, &mut refs).unwrap();
+        let BookmarkNameEntry10_1::RouteEventSourceName(source) = parsed.name_object else {
+            panic!("缺少路线事件源");
+        };
+        let locator = source.locator_body.unwrap();
+        assert_eq!(locator.base_version, base);
+        let suffix = locator.suffix.unwrap();
+        assert_eq!(suffix.string_40, "r");
+        assert_eq!(suffix.legacy_short, (base < 4).then_some(0x1234));
+        assert_eq!(suffix.long_44, 17);
+        assert_eq!(suffix.legacy_long_v2, (base == 2).then_some(-92));
+        assert!(matches!(
+            source.event_table,
+            Some(DatasetNameMoreSlot10_1::BackReference { key: 19, .. })
+        ));
+        assert!(matches!(
+            source.properties,
+            Some(ObjectEntry10_1::NewObject { key: 20, .. })
+        ));
+        let properties = source.properties_body.unwrap();
+        assert_eq!(properties.long_1c, 23);
+        assert_eq!(
+            properties.fields_v3.as_ref().map(|(s, _)| *s),
+            (props_version >= 3).then_some(0x4321)
+        );
+        assert_eq!(properties.short_v5, (props_version >= 5).then_some(0x2468));
+        assert_eq!(
+            properties.point_fields.is_some(),
+            point && props_version != 1
+        );
+        if let Some(fields) = properties.point_fields {
+            assert_eq!(fields.shorts, [4, 5]);
+            assert_eq!(fields.short_4c, 6);
+            assert_eq!(fields.short_v4, (props_version >= 4).then_some(7));
+        }
+        assert_eq!(parsed.name, "r");
+        assert_eq!(reader.remaining(), 0);
+        assert!((17..=20).all(|key| refs.contains(key)));
+
+        let mut unknown_route = bookmark.clone();
+        unknown_route[6 + route_offset..6 + route_offset + 16].fill(0x74);
+        for bad in [&bookmark[..6 + name.len() - 1], &unknown_route] {
+            let mut refs = RefTable10_1::new();
+            let mut reader = Reader::new(bad);
+            assert!(read_feature_bookmark_10_1(&mut reader, 4096, &mut refs).is_err());
+            assert!(refs.is_empty());
+            assert_eq!(reader.position(), 0);
+        }
+
+        let mut layer = 0_u16.to_le_bytes().to_vec();
+        layer.extend(EMPTY.repeat(2));
+        layer.extend([0; 6]);
+        layer.extend(&name);
+        let end = layer.len();
+        layer.extend([0x55; 16]);
+        layer.extend(21_u32.to_le_bytes());
+        let mut reader = Reader::new(&layer);
+        let mut refs = RefTable10_1::new();
+        let parsed = read_feature_layer_prefix_10_1(&mut reader, 4096, &mut refs).unwrap();
+        assert!(
+            matches!(parsed.data_source, DataSource10_1::RouteEventSourceName(body) if body.key == 17)
+        );
+        assert!(matches!(
+            parsed.stop,
+            FeatureLayerStop10_1::RendererNewObject { key: 21, .. }
+        ));
+        assert_eq!(reader.position(), end);
+        assert!(refs.contains(20) && !refs.contains(21));
+
+        let mut table = 1_u16.to_le_bytes().to_vec();
+        table.extend(&name);
+        table.extend(0_u32.to_le_bytes());
+        table.extend(EMPTY);
+        let mut reader = Reader::new(&table);
+        let mut refs = RefTable10_1::new();
+        let parsed = read_standalone_table_prefix_10_1(&mut reader, &mut refs, 64, 4096).unwrap();
+        assert_eq!(parsed.stop, StandaloneTableStop10_1::Complete);
+        assert!(matches!(
+            parsed.dataset_name_body,
+            Some(StandaloneNameBody10_1::OtherTabularName(body))
+                if matches!(*body, DatasetNameMoreBody10_1::RouteEventSource(_))
+        ));
+        assert!(refs.contains(20));
+        assert_eq!(reader.remaining(), 0);
+    }
+}
+
+#[test]
+fn coverage_wrappers_share_inner_object_keys() {
+    use mxd2qgz::layers::feature_layer::{
+        COVERAGE_FEATURE_CLASS_NAME_CLASS_ID, DatasetNameEntry10_1, FeatureClassNameNested10_1,
+    };
+    use mxd2qgz::objects::dataset_name::{COVERAGE_NAME_CLASS_ID, WorkspaceNameSlot10_1};
+    use mxd2qgz::objects::dataset_name_more::DatasetNameMoreBody10_1;
+    use mxd2qgz::objects::workspace_name::WORKSPACE_NAME_CLASS_ID;
+
+    const EMPTY: [u8; 6] = [2, 0, 0, 0, 0, 0];
+    for version in [0_u16, 1] {
+        let mut bytes = 1_u16.to_le_bytes().to_vec();
+        bytes.extend(11_i32.to_le_bytes());
+        bytes.extend(COVERAGE_FEATURE_CLASS_NAME_CLASS_ID);
+        bytes.extend(17_u32.to_le_bytes());
+        bytes.extend(version.to_le_bytes());
+        bytes.extend((-23_i32).to_le_bytes());
+        bytes.extend(24_i32.to_le_bytes());
+        bytes.push(0xff);
+        bytes.extend(2_u16.to_le_bytes()); // 内联 FeatureClassName。
+        bytes.extend(EMPTY.repeat(4));
+        bytes.extend([0; 8]);
+        bytes.extend(1_u16.to_le_bytes()); // 按 IDatasetName 分派 CoverageName。
+        bytes.extend(COVERAGE_NAME_CLASS_ID);
+        bytes.extend(18_u32.to_le_bytes());
+        bytes.extend(version.to_le_bytes());
+        bytes.extend(25_i32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes()); // 内联 FeatureDatasetName。
+        bytes.extend(EMPTY.repeat(4));
+        bytes.push(1);
+        bytes.extend(WORKSPACE_NAME_CLASS_ID);
+        bytes.extend(7_u32.to_le_bytes());
+        bytes.extend(0_u16.to_le_bytes()); // 内联 FeatureClassName 的第二选择子。
+        bytes.extend([4, 0, 0, 0, b'C', 0, 0, 0]);
+
+        let mut refs = RefTable10_1::new();
+        refs.register(7);
+        let before = refs.clone();
+        let mut reader = Reader::new(&bytes);
+        let mark = read_feature_bookmark_10_1(&mut reader, 4096, &mut refs).unwrap();
+        let BookmarkNameEntry10_1::FeatureClassName(feature) = mark.name_object else {
+            panic!("缺少 Coverage 要素类名称");
+        };
+        let header = feature.coverage_wrapper.unwrap();
+        assert_eq!(header.version, version);
+        assert_eq!(header.longs, [-23, 24]);
+        assert_eq!(header.flag, 0xff);
+        assert_eq!(feature.key, 17);
+        assert_eq!(feature.version1_selector, Some(0));
+        let FeatureClassNameNested10_1::DatasetName(DatasetNameEntry10_1::NewObject(dataset)) =
+            feature.nested
+        else {
+            panic!("缺少 Coverage 数据集名称")
+        };
+        let DatasetNameMoreBody10_1::FeatureDataset(dataset) = *dataset else {
+            panic!("缺少内联 FeatureDatasetName");
+        };
+        assert_eq!(dataset.key, 18);
+        assert_eq!(dataset.coverage_wrapper, Some((version, 25)));
+        assert!(matches!(
+            dataset.workspace,
+            WorkspaceNameSlot10_1::BackReference { key: 7, .. }
+        ));
+        assert_eq!(mark.name, "C");
+        assert_eq!(reader.remaining(), 0);
+        assert!(refs.contains(17) && refs.contains(18));
+        assert_eq!(refs.len(), 3);
+
+        for end in [28, bytes.len() - 9, bytes.len() - 1] {
+            let mut reader = Reader::new(&bytes[..end]);
+            let mut refs = before.clone();
+            assert!(read_feature_bookmark_10_1(&mut reader, 4096, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert_eq!(refs, before);
+        }
+    }
+}
+
+#[test]
+fn cad_drawing_name_reads_workspace_reference_before_feature_class_suffix() {
+    use mxd2qgz::layers::feature_layer::{
+        DatasetNameEntry10_1, FEATURE_CLASS_NAME_CLASS_ID, FeatureClassNameNested10_1,
+    };
+    use mxd2qgz::objects::dataset_name::WorkspaceNameSlot10_1;
+    use mxd2qgz::objects::dataset_name_more::{CAD_DRAWING_NAME_CLASS_ID, DatasetNameMoreBody10_1};
+    use mxd2qgz::objects::workspace_name::WORKSPACE_NAME_CLASS_ID;
+
+    const EMPTY: [u8; 6] = [2, 0, 0, 0, 0, 0];
+    const NAME: [u8; 8] = [4, 0, 0, 0, b'D', 0, 0, 0];
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(11_i32.to_le_bytes());
+    bytes.extend(FEATURE_CLASS_NAME_CLASS_ID);
+    bytes.extend(17_u32.to_le_bytes());
+    bytes.extend(2_u16.to_le_bytes());
+    bytes.extend(EMPTY.repeat(4));
+    bytes.extend([0; 8]);
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(CAD_DRAWING_NAME_CLASS_ID);
+    bytes.extend(18_u32.to_le_bytes());
+    let drawing_version = bytes.len();
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(NAME);
+    bytes.extend(EMPTY.repeat(2));
+    bytes.extend(WORKSPACE_NAME_CLASS_ID);
+    bytes.extend(7_u32.to_le_bytes());
+    bytes.extend(0_u16.to_le_bytes());
+    bytes.extend(NAME);
+
+    let mut refs = RefTable10_1::new();
+    refs.register(7);
+    let before = refs.clone();
+    let mut reader = Reader::new(&bytes);
+    let mark = read_feature_bookmark_10_1(&mut reader, 4096, &mut refs).unwrap();
+    let BookmarkNameEntry10_1::FeatureClassName(feature) = mark.name_object else {
+        panic!("缺少要素类名称");
+    };
+    let FeatureClassNameNested10_1::DatasetName(DatasetNameEntry10_1::NewObject(drawing)) =
+        feature.nested
+    else {
+        panic!("缺少 CAD 图名")
+    };
+    let DatasetNameMoreBody10_1::CadDrawing(drawing) = *drawing else {
+        panic!("缺少 CadDrawingName 对象体");
+    };
+    assert_eq!(drawing.version, 1);
+    assert_eq!(drawing.strings, ["D", "", ""]);
+    assert!(matches!(
+        drawing.workspace,
+        WorkspaceNameSlot10_1::BackReference { key: 7, .. }
+    ));
+    assert_eq!(feature.version1_selector, Some(0));
+    assert_eq!(mark.name, "D");
+    assert_eq!(reader.remaining(), 0);
+    assert!(refs.contains(17) && refs.contains(18));
+
+    for version in [0_u16, 2] {
+        let mut malformed = bytes.clone();
+        malformed[drawing_version..drawing_version + 2].copy_from_slice(&version.to_le_bytes());
+        for bad in [&malformed[..], &bytes[..bytes.len() - 12]] {
+            let mut reader = Reader::new(bad);
+            let mut refs = before.clone();
+            assert!(read_feature_bookmark_10_1(&mut reader, 4096, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert_eq!(refs, before);
+        }
+    }
 }

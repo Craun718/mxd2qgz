@@ -137,3 +137,54 @@ fn a_layer_with_unverified_class_or_back_reference_keeps_masking_bytes() {
     assert_eq!(position, 0x253be);
     assert_eq!(stop, MapSuffixStop::AfterBorderTail { stage: 38 });
 }
+
+#[test]
+fn map_versions_23_to_28_finish_at_their_last_native_field() {
+    use mxd2qgz::maps::mxd_maps::parse_maps_10_1;
+
+    let bytes = sample();
+    for (version, end) in [
+        (23_u16, 0x252be),
+        (24, 0x252ca),
+        (25, 0x252ca),
+        (26, 0x25396),
+        (27, 0x253b6),
+        (28, 0x253be),
+    ] {
+        let mut maps = bytes[..end].to_vec();
+        maps[24..26].copy_from_slice(&version.to_le_bytes());
+        let mut mask_bytes = Vec::new();
+        if version <= 27 {
+            mask_bytes.extend(0_u32.to_le_bytes());
+            mask_bytes.extend(0x1732_u16.to_le_bytes());
+            if version >= 25 {
+                mask_bytes.extend(0_u32.to_le_bytes());
+            }
+        }
+        let mask_offset = 0x24f60;
+        let end = end + mask_bytes.len();
+        maps.splice(mask_offset..mask_offset, mask_bytes);
+        assert_eq!(parse(&maps).0, end, "Map v{version}");
+        assert_eq!(parse(&maps).1, MapSuffixStop::Complete, "Map v{version}");
+        assert_ne!(parse(&maps[..end - 1]).1, MapSuffixStop::Complete);
+
+        maps.extend(0x1234_u32.to_le_bytes());
+        let report = parse_maps_10_1(&maps).unwrap();
+        assert_eq!(report.confirmed_tail, Some((end, 0x1234)));
+        assert!(report.map.unknown_fields.is_empty());
+
+        if (25..=27).contains(&version) {
+            maps[mask_offset + 6] = 1;
+            let err = parse_maps_10_1(&maps).unwrap_err();
+            assert!(err.to_string().contains("第二个 LONG 非零"));
+        }
+
+        if version == 28 {
+            // 修改前面已登记的图层回引类标识，遮罩遍历不再能确认这条图层。
+            maps[0x2d2c] ^= 0x80;
+            let (position, stop, _) = parse(&maps);
+            assert_eq!(position, end);
+            assert_eq!(stop, MapSuffixStop::AfterBorderTail { stage: 38 });
+        }
+    }
+}
