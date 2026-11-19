@@ -205,8 +205,9 @@ use crate::objects::display_symbol::{
     read_symbol_slot_full_10_1, slot_full_stop_10_1,
 };
 use crate::objects::geometry::{
-    GeometryBody10_1, MULTIPOINT_CLASS_ID, POINT_CLASS_ID, POLYGON_CLASS_ID, POLYLINE_CLASS_ID,
-    PointBody10_1, PolylineBody10_1, read_geometry_body_10_1, read_point_body_10_1,
+    GEOMETRY_BAG_CLASS_ID, GeometryBody10_1, MULTIPATCH_CLASS_ID, MULTIPOINT_CLASS_ID,
+    POINT_CLASS_ID, POLYGON_CLASS_ID, POLYLINE_CLASS_ID, PointBody10_1, PolylineBody10_1,
+    read_geometry_body_10_1, read_point_body_10_1,
 };
 use crate::objects::ole_font::{STDFONT_CLASS_ID, StdFontBody10_1, read_std_font_body_10_1};
 use crate::objects::property_set::{PropertyValue10_1, read_variant_10_1};
@@ -293,7 +294,10 @@ pub enum GeometrySlot10_1 {
     /// 16 字节全零类标识：空引用，无键、无对象体。
     Null,
     /// 键已见：回引条目，无对象体。类标识原样保留、不校验。
-    BackReference { class_id: [u8; 16], key: u32 },
+    BackReference {
+        class_id: [u8; 16],
+        key: u32,
+    },
     /// 新 Polyline 对象（类标识经 [`crate::objects::geometry::
     /// POLYLINE_CLASS_ID`] 校验）：已解析体。体读取要么完整成功、要么错误
     /// 上抛（无体内停止点，见 geometry 模块；样本 16 实例佐证）。
@@ -304,6 +308,7 @@ pub enum GeometrySlot10_1 {
     Point(Box<PointBody10_1>),
     /// 新 Multipoint 对象（样本 0 实例，合成测试覆盖）。
     Multipoint(Box<crate::objects::geometry::MultipointBody10_1>),
+    Other(Box<GeometryBody10_1>),
 }
 
 /// IPoint 类槽位条目的分类结果（MarkerElement 几何槽；接线轮起 Point 新对
@@ -984,6 +989,7 @@ pub enum ElementBody10_1 {
     ParagraphTextElement(Box<ParagraphTextElement10_1>),
     MarkerElement(Box<MarkerElementBody10_1>),
     LineElement(Box<LineElementBody10_1>),
+    PictureElement(Box<crate::maps::picture_element::PictureElement10_1>),
 }
 
 impl ElementBody10_1 {
@@ -993,6 +999,7 @@ impl ElementBody10_1 {
             Self::ParagraphTextElement(body) => body.stop.as_ref(),
             Self::MarkerElement(body) => body.stop.as_ref(),
             Self::LineElement(body) => body.stop.as_ref(),
+            Self::PictureElement(_) => None,
         }
     }
 }
@@ -1008,6 +1015,8 @@ pub fn read_element_body_of_class_10_1(
     max_bytes: usize,
     table: &mut RefTable10_1,
 ) -> io::Result<ElementBody10_1> {
+    use crate::maps::picture_element::{PictureElementKind10_1, read_picture_element_10_1};
+
     if *class_id == TEXT_ELEMENT_CLASS_ID {
         Ok(ElementBody10_1::TextElement(Box::new(
             read_text_element_body_10_1(reader, max_bytes, table)?,
@@ -1024,13 +1033,14 @@ pub fn read_element_body_of_class_10_1(
         Ok(ElementBody10_1::LineElement(Box::new(
             read_line_element_body_10_1(reader, max_bytes, table)?,
         )))
+    } else if let Some(kind) = PictureElementKind10_1::from_class(class_id) {
+        Ok(ElementBody10_1::PictureElement(Box::new(
+            read_picture_element_10_1(reader, max_bytes, table, kind)?,
+        )))
     } else {
         Err(io::Error::new(
             ErrorKind::Unsupported,
-            format!(
-                "元素类 {} 不在本读取器的闭合清单（TextElement/ParagraphTextElement/MarkerElement/LineElement）",
-                class_id_hex(class_id)
-            ),
+            format!("尚不支持元素类 {}", class_id_hex(class_id)),
         ))
     }
 }
@@ -1283,9 +1293,12 @@ fn read_geometry_slot<'a>(
             if class_id == POLYLINE_CLASS_ID
                 || class_id == POLYGON_CLASS_ID
                 || class_id == POINT_CLASS_ID
-                || class_id == MULTIPOINT_CLASS_ID =>
+                || class_id == MULTIPOINT_CLASS_ID
+                || class_id == crate::objects::envelope::ENVELOPE_CLASS_ID
+                || class_id == GEOMETRY_BAG_CLASS_ID
+                || class_id == MULTIPATCH_CLASS_ID =>
         {
-            // 键已由条目分类登记（登记先于持久化）；四类几何体无停止点，
+            // 键已由条目分类登记（登记先于持久化）；已支持的几何体无中途停止点，
             // 完整成功才提交（失败不推进游标、登记表由调用方 trial 语义保
             // 护；错误上抛即整体失败）。
             let body = read_geometry_body_10_1(&class_id, trial, max_bytes, trial_table)?;
@@ -1294,6 +1307,7 @@ fn read_geometry_slot<'a>(
                 GeometryBody10_1::Polygon(body) => GeometrySlot10_1::Polygon(Box::new(body)),
                 GeometryBody10_1::Point(body) => GeometrySlot10_1::Point(Box::new(body)),
                 GeometryBody10_1::Multipoint(body) => GeometrySlot10_1::Multipoint(Box::new(body)),
+                body => GeometrySlot10_1::Other(Box::new(body)),
             }))
         }
         ObjectEntry10_1::NewObject { class_id, key } => {

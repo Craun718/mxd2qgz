@@ -1,8 +1,9 @@
-//! GdbCore.dll 10.1 的 RangeDomain 和 CodedValueDomain。
+//! 10.1 Field 的 IDomain 对象，见 docs/mxd-10.1-fields.md。
 
 use crate::objects::property_set::{
     PropertyValueObjectStream10_1, read_padded_variant_object_stream_10_1,
 };
+use crate::objects::string_array::{StringArraySlot10_1, read_string_array_slot_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::{read_bstr_string_10_1, read_string_10_1};
 use crate::stream::reader::Reader;
@@ -14,6 +15,9 @@ pub const RANGE_DOMAIN_CLASS_ID: [u8; 16] = [
 pub const CODED_VALUE_DOMAIN_CLASS_ID: [u8; 16] = [
     0x1b, 0x6c, 0x4c, 0xf8, 0xff, 0x47, 0xd2, 0x11, 0x99, 0x33, 0x00, 0x00, 0xf8, 0x03, 0x72, 0xb4,
 ];
+pub const BIT_MASK_CODED_VALUE_DOMAIN_CLASS_ID: [u8; 16] = [
+    0x16, 0x89, 0x04, 0xc4, 0x0f, 0x41, 0xce, 0x4d, 0x90, 0x24, 0xbe, 0x5b, 0xe6, 0xba, 0x0a, 0x23,
+];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DomainSlot10_1 {
@@ -24,7 +28,7 @@ pub struct DomainSlot10_1 {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DomainBody10_1 {
     pub version: u16,
-    pub base_version: u16,
+    pub base_version: Option<u16>,
     pub base_longs: [i32; 3],
     pub base_strings: [String; 3],
     pub long_before_values: i32,
@@ -35,6 +39,10 @@ pub struct DomainBody10_1 {
 pub enum DomainValues10_1 {
     Range([PropertyValueObjectStream10_1; 2]),
     Coded(Vec<CodedDomainValue10_1>),
+    BitMask {
+        prefix: [u32; 2],
+        labels: StringArraySlot10_1,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -87,21 +95,27 @@ fn read_body(
     refs: &mut RefTable10_1,
     class_id: [u8; 16],
 ) -> io::Result<DomainBody10_1> {
-    let is_range = match class_id {
-        RANGE_DOMAIN_CLASS_ID => true,
-        CODED_VALUE_DOMAIN_CLASS_ID => false,
-        _ => {
-            return Err(io::Error::new(
-                ErrorKind::Unsupported,
-                format!(
-                    "IDomain 未支持的新对象类 {}",
-                    crate::storage::class_id_hex(&class_id)
-                ),
-            ));
-        }
-    };
+    if !matches!(
+        class_id,
+        RANGE_DOMAIN_CLASS_ID | CODED_VALUE_DOMAIN_CLASS_ID | BIT_MASK_CODED_VALUE_DOMAIN_CLASS_ID
+    ) {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            format!(
+                "IDomain 未支持的新对象类 {}",
+                crate::storage::class_id_hex(&class_id)
+            ),
+        ));
+    }
     let outer_version = version(r)?;
-    let base_version = version(r)?;
+    let is_bit_mask = class_id == BIT_MASK_CODED_VALUE_DOMAIN_CLASS_ID;
+    if is_bit_mask && outer_version != 0 {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            format!("BitMaskCodedValueDomain 未支持版本 {outer_version}"),
+        ));
+    }
+    let base_version = (!is_bit_mask).then(|| version(r)).transpose()?;
     let base_longs = [long(r)?, long(r)?, long(r)?];
     let base_strings = [
         read_string_10_1(r, max_bytes)?,
@@ -109,7 +123,9 @@ fn read_body(
         read_string_10_1(r, max_bytes)?,
     ];
     let long_before_values = long(r)?;
-    let values = if is_range {
+    let values = if is_bit_mask {
+        read_bit_mask_values(r, max_bytes, refs, long_before_values)?
+    } else if class_id == RANGE_DOMAIN_CLASS_ID {
         DomainValues10_1::Range([
             read_padded_variant_object_stream_10_1(r, max_bytes, refs)?,
             read_padded_variant_object_stream_10_1(r, max_bytes, refs)?,
@@ -143,6 +159,46 @@ fn read_body(
     })
 }
 
+fn read_bit_mask_values(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    count: i32,
+) -> io::Result<DomainValues10_1> {
+    let prefix = [reader.read_u32_le()?, reader.read_u32_le()?];
+    let [a, b] = prefix;
+    let size = if b == 0 { a } else { b } as usize;
+    if size > max_bytes {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "BitMaskCodedValueDomain 的 ExtraSafe 长度超过限额",
+        ));
+    }
+    let mut region = reader.read_region(size)?;
+    let labels = if size == 0 {
+        StringArraySlot10_1 {
+            entry: ObjectEntry10_1::Null,
+            body: None,
+        }
+    } else {
+        read_string_array_slot_10_1(&mut region, max_bytes, refs)?
+    };
+    // 非空数组逐项与第一个 int32 数量对应，回引的标签保留在原对象上。
+    let saved_count = match &labels.body {
+        Some((_, strings)) => Some(strings.len()),
+        None if labels.entry == ObjectEntry10_1::Null => Some(0),
+        None => None,
+    };
+    if region.remaining() != 0 || count < 0 || saved_count.is_some_and(|len| len != count as usize)
+    {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "BitMaskCodedValueDomain 的标签数量或 ExtraSafe 边界不符",
+        ));
+    }
+    Ok(DomainValues10_1::BitMask { prefix, labels })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -150,6 +206,71 @@ mod tests {
         PROPERTY_SET_CLASS_ID, PropertyValue10_1, PropertyValueObjectStream10_1::Inline,
     };
     use crate::stream::variant_array::ClassVariantArray10_1;
+
+    #[test]
+    fn bit_mask_domain_reads_bounded_labels_and_shares_their_key() {
+        use crate::objects::string_array::STR_ARRAY_CLASS_ID;
+
+        let mut bytes = BIT_MASK_CODED_VALUE_DOMAIN_CLASS_ID.to_vec();
+        bytes.extend(81_u32.to_le_bytes());
+        bytes.extend(0_u16.to_le_bytes());
+        for value in [3_i32, 2, 1] {
+            bytes.extend(value.to_le_bytes());
+        }
+        for _ in 0..3 {
+            bytes.extend([2, 0, 0, 0, 0, 0]); // 三个空字符串。
+        }
+        let count_offset = bytes.len();
+        bytes.extend(2_i32.to_le_bytes());
+        let mut array = STR_ARRAY_CLASS_ID.to_vec();
+        array.extend(82_u32.to_le_bytes());
+        array.extend(1_u16.to_le_bytes());
+        array.extend(2_i32.to_le_bytes());
+        for label in ['甲', '乙'] {
+            array.extend(4_u32.to_le_bytes());
+            array.extend((label as u16).to_le_bytes());
+            array.extend(0_u16.to_le_bytes());
+        }
+        let array_size = array.len() as u32;
+        bytes.extend(array_size.to_le_bytes());
+        bytes.extend(0_u32.to_le_bytes());
+        bytes.extend(array);
+        let end = bytes.len();
+        bytes.extend(0x1234_u16.to_le_bytes()); // 宿主的下一字段。
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let parsed = read_domain_slot_10_1(&mut reader, 4096, &mut refs)
+            .unwrap()
+            .body
+            .unwrap();
+        assert_eq!(parsed.base_version, None);
+        assert_eq!(parsed.base_longs, [3, 2, 1]);
+        assert_eq!(parsed.long_before_values, 2);
+        let DomainValues10_1::BitMask { prefix, labels } = parsed.values else {
+            panic!("预期掩码值域");
+        };
+        assert_eq!(prefix, [array_size, 0]);
+        assert_eq!(
+            labels.body,
+            Some((1, vec!["甲".to_owned(), "乙".to_owned()]))
+        );
+        assert!(refs.contains(81) && refs.contains(82));
+        assert_eq!(reader.read_u16_le().unwrap(), 0x1234);
+
+        let mut wrong_count = bytes.clone();
+        wrong_count[count_offset..count_offset + 4].copy_from_slice(&1_i32.to_le_bytes());
+        for input in (0..end)
+            .map(|cut| &bytes[..cut])
+            .chain([wrong_count.as_slice()])
+        {
+            let mut reader = Reader::new(input);
+            let mut refs = RefTable10_1::new();
+            assert!(read_domain_slot_10_1(&mut reader, 4096, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
 
     #[test]
     fn coded_domain_label_and_code_use_distinct_string_lengths() {
@@ -262,6 +383,19 @@ mod tests {
         );
         assert_eq!(reader.position(), end);
         assert!(refs.contains(71) && refs.contains(72));
+
+        // 这些类型不能按普通数组读。第二个值失败时首个值的对象键也要撤销。
+        for element_type in [0_u16, 1, 9, 12, 13, 14, 15, 20, 21, 0x4011] {
+            let mut invalid = fixture.clone();
+            invalid[end - 36..end - 34].copy_from_slice(&(0x2000 | element_type).to_le_bytes());
+            let mut input = Reader::new(&invalid);
+            let mut keys = RefTable10_1::new();
+            keys.register(70);
+            let original = keys.clone();
+            assert!(read_domain_slot_10_1(&mut input, 4096, &mut keys).is_err());
+            assert_eq!(input.position(), 0);
+            assert_eq!(keys, original);
+        }
 
         // 回引改成未见过的键和未知类；须同时回退已读的第一个值。
         fixture[end - 20] ^= 1;

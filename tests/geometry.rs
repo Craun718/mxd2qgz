@@ -1019,3 +1019,177 @@ fn typed_dispatch_routes_all_four_classes_and_rejects_unknown() {
     assert_eq!(reader.position(), 0);
     assert!(table.is_empty());
 }
+
+#[test]
+fn polygon_record_preserves_trailing_bytes_before_its_spatial_reference() {
+    use mxd2qgz::objects::geometry::read_polygon_body_10_1;
+    let points = [[0.0, 0.0], [5.0, 0.0], [2.0, 5.0], [0.0, 0.0]];
+    let mut record = record_bytes(5, &COORDS, &[0], &points);
+    let trail = [0x5a; 20];
+    record.extend(trail);
+    let mut bytes = body_with(2, &record, &[0; 16]);
+    let stop = bytes.len();
+    bytes.push(0xbc);
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let parsed = read_polygon_body_10_1(&mut reader, 4096, &mut table).unwrap();
+    assert_eq!(parsed.record.points, points);
+    assert_eq!(parsed.record.trailing_bytes, trail);
+    assert_eq!(reader.position(), stop);
+    assert_eq!(reader.read_bytes(1).unwrap(), &[0xbc]);
+}
+
+#[test]
+fn geometry_bag_reads_cached_geometry_nested_members_and_shared_keys() {
+    use mxd2qgz::objects::envelope::ENVELOPE_CLASS_ID;
+    use mxd2qgz::objects::geometry::GEOMETRY_BAG_CLASS_ID;
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(2_i32.to_le_bytes());
+    bytes.extend(ENVELOPE_CLASS_ID);
+    bytes.extend(90_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend([0; 32]); // 缓存包络。
+    bytes.extend(GEOMETRY_BAG_CLASS_ID);
+    bytes.extend(91_u32.to_le_bytes());
+    bytes.extend([0; 2 + 4 + 16 + 16 + 1]); // 空 v0 子集合。
+    bytes.extend(ENVELOPE_CLASS_ID);
+    bytes.extend(90_u32.to_le_bytes()); // 子项回引缓存槽。
+    bytes.extend([0; 16]); // 空坐标系。
+    bytes.push(3);
+    let end = bytes.len();
+    bytes.extend(0x1234_u16.to_le_bytes());
+
+    for cut in 0..end {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(
+            read_geometry_body_10_1(&GEOMETRY_BAG_CLASS_ID, &mut reader, 4096, &mut refs).is_err()
+        );
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let GeometryBody10_1::GeometryBag(body) =
+        read_geometry_body_10_1(&GEOMETRY_BAG_CLASS_ID, &mut reader, 4096, &mut refs).unwrap()
+    else {
+        panic!("缺少 GeometryBag");
+    };
+    assert_eq!(body.version, 1);
+    assert!(matches!(
+        body.cached_geometry.body.as_deref(),
+        Some(GeometryBody10_1::Envelope(_))
+    ));
+    assert!(
+        matches!(body.members[0].body.as_deref(), Some(GeometryBody10_1::GeometryBag(bag)) if bag.members.is_empty())
+    );
+    assert!(matches!(
+        body.members[1].entry,
+        ObjectEntry10_1::BackReference { key: 90, .. }
+    ));
+    assert_eq!(body.spatial_reference, SpatialReferenceEntry10_1::Null);
+    assert_eq!(body.flags_byte, 3);
+    assert_eq!(reader.position(), end);
+    assert_eq!(reader.read_u16_le().unwrap(), 0x1234);
+    assert!(refs.contains(90) && refs.contains(91));
+}
+
+#[test]
+fn geometry_bag_rejects_invalid_count_unknown_member_and_overdeep_bags() {
+    use mxd2qgz::objects::geometry::GEOMETRY_BAG_CLASS_ID;
+
+    let mut invalid_count = vec![0, 0];
+    invalid_count.extend((-1_i32).to_le_bytes());
+    let mut unknown_member = vec![0, 0, 1, 0, 0, 0];
+    unknown_member.extend([0; 16]);
+    unknown_member.extend([0x55; 16]);
+    unknown_member.extend(12_u32.to_le_bytes());
+
+    let mut deep = vec![0; 2 + 4 + 16 + 16 + 1];
+    for key in 1_u32..=32 {
+        let mut parent = vec![0, 0, 1, 0, 0, 0];
+        parent.extend([0; 16]);
+        parent.extend(GEOMETRY_BAG_CLASS_ID);
+        parent.extend(key.to_le_bytes());
+        parent.extend(deep);
+        parent.extend([0; 17]);
+        deep = parent;
+    }
+    for (bytes, kind) in [
+        (invalid_count, ErrorKind::InvalidData),
+        (unknown_member, ErrorKind::Unsupported),
+        (deep, ErrorKind::InvalidData),
+    ] {
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        assert_eq!(
+            read_geometry_body_10_1(&GEOMETRY_BAG_CLASS_ID, &mut reader, 4096, &mut refs)
+                .unwrap_err()
+                .kind(),
+            kind
+        );
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+}
+
+#[test]
+fn multi_patch_keeps_bounded_record_and_reads_spatial_reference_in_both_versions() {
+    use mxd2qgz::objects::geometry::MULTIPATCH_CLASS_ID;
+
+    for (version, record) in [
+        (
+            1_u16,
+            &[
+                0x39, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0x31, 0x32, 0x33, 0x34,
+            ][..],
+        ),
+        (2, &[0, 0, 0, 0][..]),
+    ] {
+        let mut bytes = version.to_le_bytes().to_vec();
+        bytes.extend((record.len() as u32).to_le_bytes());
+        bytes.extend(record);
+        bytes.extend(PROJECTED_COORDINATE_SYSTEM_CLASS_ID);
+        bytes.extend(70_u32.to_le_bytes());
+        let end = bytes.len();
+        bytes.extend(0x1234_u16.to_le_bytes());
+        let mut refs = RefTable10_1::new();
+        refs.register(70);
+
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            assert!(
+                read_geometry_body_10_1(&MULTIPATCH_CLASS_ID, &mut reader, 4096, &mut refs)
+                    .is_err()
+            );
+            assert_eq!(reader.position(), 0);
+            assert_eq!(refs.len(), 1);
+        }
+        let mut reader = Reader::new(&bytes);
+        assert!(
+            read_geometry_body_10_1(
+                &MULTIPATCH_CLASS_ID,
+                &mut reader,
+                record.len() - 1,
+                &mut refs
+            )
+            .is_err()
+        );
+        assert_eq!(reader.position(), 0);
+        let GeometryBody10_1::MultiPatch(body) =
+            read_geometry_body_10_1(&MULTIPATCH_CLASS_ID, &mut reader, 4096, &mut refs).unwrap()
+        else {
+            panic!("缺少 MultiPatch");
+        };
+        assert_eq!(body.version, version);
+        assert_eq!(body.record_bytes, record);
+        assert!(matches!(
+            body.spatial_reference,
+            SpatialReferenceEntry10_1::BackReference { key: 70, .. }
+        ));
+        assert_eq!(reader.read_u16_le().unwrap(), 0x1234);
+    }
+}

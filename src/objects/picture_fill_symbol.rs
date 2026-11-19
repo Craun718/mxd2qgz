@@ -49,7 +49,7 @@
 //! 1. 版本 <6：LoadObject（IPicture）→ 图像对象槽；版本 ≥6：String（路径候
 //!    选），串空 → LoadObject（IPicture），串非空 → double ×2；
 //! 2. LoadObject（IColor）×3 + LoadObject（ISymbol）×1；
-//! 3. double ×8 + double ×2（读后即弃）；
+//! 3. double ×7 + double ×2（读后即弃）；
 //! 4. int32 ×2；
 //! 5. 版本 >1：byte；版本 >3：short ×3；版本 >6：int32 N +（N≠0 时 N 字节
 //!    位图块，Save 侧 `FUN_6eb74740` docVer<5 分支对称）。
@@ -63,11 +63,7 @@
 //!
 //! ## 槽位分派
 //!
-//! [`read_picture_fill_symbol_slot_10_1`]：PictureLineSymbol 的 IPictureFillSymbol
-//! 槽（`display_symbol.rs` 的 `read_unclosed_slot_10_1` 当前对
-//! `DisplaySlotKind10_1::PictureFillSymbol` 停止）——空标记与回引可消费，新
-//! 对象类标识为 PictureFillSymbol 时整体解析，其余实现类回退到槽位起点、不
-//! 保留该键。接线归整合轮。
+//! PictureLineSymbol 的 IPictureFillSymbol 和通用符号槽共用本体读取器。
 //!
 //! 事务性与限额约定同仓内其他读取器（trial 游标/登记表、版本负值位模式拒绝、
 //! 失败不推进、`max_bytes` 约束字符串与循环计数/位图块）。样本 0 实例，全部
@@ -113,10 +109,9 @@ fn read_picture_object_slot_10_1(
     staged: &mut RefTable10_1,
     kind: DisplaySlotKind10_1,
 ) -> io::Result<(Option<PictureObjectSlot10_1>, Option<SymbolStop10_1>)> {
-    let origin = trial.clone();
-    let saved = staged.clone();
+    let mut refs = staged.clone();
     let mut forward = trial.clone();
-    let entry = read_object_entry_10_1(&mut forward, staged)?;
+    let entry = read_object_entry_10_1(&mut forward, &mut refs)?;
     match entry {
         ObjectEntry10_1::Null => {
             *trial = forward;
@@ -130,27 +125,23 @@ fn read_picture_object_slot_10_1(
             ))
         }
         ObjectEntry10_1::NewObject { class_id, key: _ } if class_id == STDPICTURE_CLASS_ID => {
-            // 键已登记；StdPicture 体无停止点，完整成功才提交（失败上抛由宿
-            // 主 trial 语义保证整体不提交）。
+            // StdPicture 体完整读取后才提交对象键。
             let body = read_std_picture_body_10_1(&mut forward, max_bytes)?;
             *trial = forward;
+            *staged = refs;
             Ok((
                 Some(PictureObjectSlot10_1::StdPicture(Box::new(body))),
                 None,
             ))
         }
-        ObjectEntry10_1::NewObject { class_id, key } => {
-            *trial = origin;
-            *staged = saved;
-            Ok((
-                None,
-                Some(SymbolStop10_1::Slot {
-                    kind,
-                    class_id,
-                    key,
-                }),
-            ))
-        }
+        ObjectEntry10_1::NewObject { class_id, key } => Ok((
+            None,
+            Some(SymbolStop10_1::Slot {
+                kind,
+                class_id,
+                key,
+            }),
+        )),
     }
 }
 
@@ -220,6 +211,8 @@ pub struct PictureFillSymbolBody10_1 {
     pub raw_int32: i32,
     /// 类型分支载荷。
     pub image: PictureFillImage10_1,
+    /// v7 在旧式图像和公共尾字段之后附加的位图块。
+    pub legacy_bitmap: Option<Vec<u8>>,
     /// 颜色槽 ×3（Save 槽 this−0xa0 / −0x9c / −0x98）。
     pub colors: [Option<ColorSlot10_1>; 3],
     /// 轮廓符号槽 ×1（Save 槽 this−0x94）。
@@ -238,14 +231,14 @@ pub struct PictureFillSymbolBody10_1 {
     pub stop: Option<SymbolStop10_1>,
 }
 
-/// 读取版本 ==8 主路径的公共尾段（颜色 ×3 + 符号 + double ×9 + int32 ×2 +
-/// byte + short ×3），遇停止立即返回已填充部分。
+/// 读取公共尾段。v2 起有一个字节字段，v4 起有三个 short。
 fn read_picture_fill_tail_10_1(
     trial: &mut Reader<'_>,
     max_bytes: usize,
     staged: &mut RefTable10_1,
     depth: usize,
-    entry_offset: usize,
+    version: u16,
+    mut stop: Option<SymbolStop10_1>,
 ) -> io::Result<(
     [Option<ColorSlot10_1>; 3],
     Option<SymbolSlotFull10_1>,
@@ -257,8 +250,10 @@ fn read_picture_fill_tail_10_1(
     Option<SymbolStop10_1>,
 )> {
     let mut colors = [None, None, None];
-    let mut stop = None;
     for slot in colors.iter_mut() {
+        if stop.is_some() {
+            break;
+        }
         match read_color_slot_10_1(trial, max_bytes, staged)? {
             ColorSlot10_1::Unsupported { class_id, key } => {
                 stop = Some(SymbolStop10_1::Slot {
@@ -297,12 +292,15 @@ fn read_picture_fill_tail_10_1(
         for slot in tail_int32s.iter_mut() {
             *slot = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
         }
-        tail_byte = trial.read_bytes(1)?[0];
-        for slot in tail_shorts.iter_mut() {
-            *slot = trial.read_u16_le()?;
+        if version >= 2 {
+            tail_byte = trial.read_bytes(1)?[0];
+        }
+        if version >= 4 {
+            for slot in tail_shorts.iter_mut() {
+                *slot = trial.read_u16_le()?;
+            }
         }
     }
-    let _ = entry_offset;
     Ok((
         colors,
         outline,
@@ -381,26 +379,28 @@ pub fn read_picture_fill_symbol_body_10_1(
                 };
             }
         }
-        let (colors, outline, doubles, discard, tail_int32s, tail_byte, tail_shorts, stop2) =
+        let (colors, outline, doubles, discard, tail_int32s, tail_byte, tail_shorts, stop) =
             read_picture_fill_tail_10_1(
                 &mut trial,
                 max_bytes,
                 &mut trial_table,
                 depth,
-                entry_offset,
+                version,
+                stop,
             )?;
-        let stop = stop.or(stop2);
-        if stop.is_none() && version > 6 {
-            // 版本 >6：int32 N +（N≠0 时 N 字节）位图块（尾段附加）。
+        let legacy_bitmap = if stop.is_none() && version == 7 {
             let size = read_blob_size(&mut trial, max_bytes, entry_offset)?;
-            read_blob_data(&mut trial, size)?;
-        }
+            read_blob_data(&mut trial, size)?
+        } else {
+            None
+        };
         let result = PictureFillSymbolBody10_1 {
             key,
             version,
             image_type,
             raw_int32,
             image,
+            legacy_bitmap,
             colors,
             outline,
             doubles,
@@ -459,15 +459,22 @@ pub fn read_picture_fill_symbol_body_10_1(
             ));
         }
     };
-    let (colors, outline, doubles, discard, tail_int32s, tail_byte, tail_shorts, stop2) =
-        read_picture_fill_tail_10_1(&mut trial, max_bytes, &mut trial_table, depth, entry_offset)?;
-    let stop = stop.or(stop2);
+    let (colors, outline, doubles, discard, tail_int32s, tail_byte, tail_shorts, stop) =
+        read_picture_fill_tail_10_1(
+            &mut trial,
+            max_bytes,
+            &mut trial_table,
+            depth,
+            version,
+            stop,
+        )?;
     let result = PictureFillSymbolBody10_1 {
         key,
         version,
         image_type,
         raw_int32,
         image,
+        legacy_bitmap: None,
         colors,
         outline,
         doubles,
@@ -504,10 +511,9 @@ pub fn read_picture_fill_symbol_slot_10_1(
     staged: &mut RefTable10_1,
     depth: usize,
 ) -> io::Result<(Option<PictureFillSymbolSlot10_1>, Option<SymbolStop10_1>)> {
-    let origin = trial.clone();
-    let saved = staged.clone();
+    let mut refs = staged.clone();
     let mut forward = trial.clone();
-    let entry = read_object_entry_10_1(&mut forward, staged)?;
+    let entry = read_object_entry_10_1(&mut forward, &mut refs)?;
     match entry {
         ObjectEntry10_1::Null => {
             *trial = forward;
@@ -531,7 +537,7 @@ pub fn read_picture_fill_symbol_slot_10_1(
                 let body = read_picture_fill_symbol_body_10_1(
                     &mut forward,
                     max_bytes,
-                    staged,
+                    &mut refs,
                     key,
                     depth - 1,
                 )?;
@@ -540,13 +546,12 @@ pub fn read_picture_fill_symbol_slot_10_1(
                     key,
                 });
                 *trial = forward;
+                *staged = refs;
                 Ok((
                     Some(PictureFillSymbolSlot10_1::PictureFill(Box::new(body))),
                     stop,
                 ))
             } else {
-                *trial = origin;
-                *staged = saved;
                 Ok((
                     None,
                     Some(SymbolStop10_1::Slot {
@@ -716,18 +721,18 @@ mod tests {
 
     #[test]
     fn picture_fill_v8_unknown_picture_impl_stops() {
-        let unknown = [0x66_u8; 16];
         let mut bytes = 8_u16.to_le_bytes().to_vec();
         bytes.extend(3_i32.to_le_bytes());
         bytes.extend(0_i32.to_le_bytes());
-        bytes.extend(entry(&unknown, 81));
-        bytes.extend([0xEE]); // 哨兵
+        let picture_offset = bytes.len();
+        // 已知颜色类放在 IPicture 槽时，不能把它误读为后面的颜色字段。
+        bytes.extend(rgb_body_bytes(81));
         let mut reader = Reader::new(&bytes);
         let mut table = RefTable10_1::new();
         let body = read_picture_fill_symbol_body_10_1(&mut reader, 1024, &mut table, 72, 8)
             .expect("嵌套停止属于成功返回");
         assert!(body.stop.is_some());
-        assert_eq!(reader.remaining(), 21, "游标应停在未知 IPicture 实现槽起点");
+        assert_eq!(reader.position(), picture_offset);
         assert!(table.is_empty());
     }
 
@@ -767,6 +772,24 @@ mod tests {
         assert_eq!(body.version, 5);
         assert!(matches!(body.image, PictureFillImage10_1::Picture(_)));
         assert_eq!(reader.remaining(), 0);
+        for version in 0_u16..=4 {
+            let omitted = if version < 2 {
+                7
+            } else if version < 4 {
+                6
+            } else {
+                0
+            };
+            let mut old = bytes[..bytes.len() - omitted].to_vec();
+            old[..2].copy_from_slice(&version.to_le_bytes());
+            old.extend([0xaa; 8]);
+            let mut reader = Reader::new(&old);
+            let mut table = RefTable10_1::new();
+            let body = read_picture_fill_symbol_body_10_1(&mut reader, 1024, &mut table, 73, 8)
+                .expect("旧版尾字段应按版本读取");
+            assert_eq!(body.version, version);
+            assert_eq!(reader.read_bytes(8).unwrap(), &[0xaa; 8]);
+        }
         // 版本 6：String 非空 → double ×2（无 IPicture 槽）；版本 >6 无 blob
         // 之外的附加。
         let mut bytes6 = 6_u16.to_le_bytes().to_vec();
@@ -813,6 +836,7 @@ mod tests {
         let body = read_picture_fill_symbol_body_10_1(&mut reader, 1024, &mut table, 75, 8)
             .expect("版本 7 旧路径应整体消费");
         assert!(matches!(body.image, PictureFillImage10_1::Picture(_)));
+        assert_eq!(body.legacy_bitmap.as_deref(), Some(&[0xaa, 0xbb][..]));
         assert_eq!(reader.remaining(), 0);
     }
 
@@ -831,6 +855,13 @@ mod tests {
         ));
         assert!(stop.is_none());
         assert_eq!(reader.remaining(), 0);
+        for cut in [20, bytes.len() - 1] {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut table = RefTable10_1::new();
+            assert!(read_picture_fill_symbol_slot_10_1(&mut reader, 1024, &mut table, 8).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(table.is_empty());
+        }
         // 未知实现类停止回退。
         let unknown = [0x77_u8; 16];
         let bytes = entry(&unknown, 95);

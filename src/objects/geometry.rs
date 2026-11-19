@@ -87,8 +87,7 @@
 //! 掩码位（= 0x01000000/0x02000000/0x04000000/0x08000000/0x20000000）置位
 //! 即原生拒 `0x8004020a`——该掩码**不含** `0x10000000` ID 位，ID 段可达。
 //! 其余类型字原生拒绝，本读取器同拒。原生不校验声明长度与消费长度的关系
-//! （wrapper 不回退，声明尾随字节成为死空间）；本读取器要求声明长度与布局
-//! 常量严格相等，较原生更严。
+//! （wrapper 不回退）。本读取器拒绝短于记录布局的声明长度，保留已声明区间内的尾随字节。
 //!
 //! ## Multipoint 记录字节块内部布局（Load `0x718ff9c0` → 内嵌导入
 //! `0x71906590`；反编译逐行核对，确定的；样本 0 实例）
@@ -206,7 +205,11 @@
 //!    0 实例：全部由合成测试覆盖，未运行 ArcMap 10.1，未在 QGIS 中核对，
 //!    不声称已验证。
 
-use crate::objects::envelope::SpatialReferenceEntry10_1;
+use crate::objects::envelope::{
+    ENVELOPE_CLASS_ID, Envelope10_1, SpatialReferenceEntry10_1, read_envelope_10_1,
+    read_spatial_reference_entry_10_1,
+};
+use crate::objects::multi_patch::{MultiPatchRecord10_1, decode_multi_patch_record};
 use crate::objects::spatial_reference::{
     PROJECTED_COORDINATE_SYSTEM_CLASS_ID, read_projected_coordinate_system_10_1,
 };
@@ -299,10 +302,12 @@ pub struct ShapeRecord10_1 {
     /// Polyline 样本恒 `[0]`；多环 Polygon 即数组长度 > 1）。原生负值拒
     /// `0x80040253`，本读取器一并拒绝（u32 无负值位模式）。
     pub path_starts: Vec<u32>,
-    /// 二维点坐标（点数 = 记录长度按布局推导；Polyline 样本恒 2）。原生拒
+    /// 二维点坐标（点数来自记录计数；Polyline 样本恒 2）。原生拒
     /// 绝单点（`0x80040221`，共享解析器对折线与多边形同一检查），本读取器
     /// 同拒；坐标原样保留位模式、不钳位。
     pub points: Vec<[f64; 2]>,
+    /// 记录声明区间内，原生二维布局未解释的尾随字节。
+    pub trailing_bytes: Vec<u8>,
 }
 
 /// 兼容别名：Polyline 记录即共享 shape 记录（本轮起 Polygon 同构）。
@@ -444,6 +449,39 @@ pub struct MultipointBody10_1 {
     pub spatial_reference: Option<SpatialReferenceEntry10_1>,
 }
 
+/// Geometry.dll 的 GeometryBag 与 MultiPatch 类标识。
+pub const GEOMETRY_BAG_CLASS_ID: [u8; 16] = [
+    0xc0, 0xf5, 0xb5, 0x10, 0x81, 0x37, 0xd2, 0x11, 0xbc, 0xc5, 0, 0, 0xf8, 0x75, 0xbc, 0xce,
+];
+pub const MULTIPATCH_CLASS_ID: [u8; 16] = [
+    0xc6, 0x41, 0xc0, 0xf3, 0x4d, 0xae, 0xd2, 0x11, 0x9c, 0x93, 0, 0xc0, 0x4f, 0xb1, 0x78, 0x38,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GeometryBagSlot10_1 {
+    pub entry: ObjectEntry10_1,
+    pub body: Option<Box<GeometryBody10_1>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GeometryBag10_1 {
+    pub version: u16,
+    /// 子几何循环前的 IGeometry 缓存槽。
+    pub cached_geometry: GeometryBagSlot10_1,
+    pub members: Vec<GeometryBagSlot10_1>,
+    pub spatial_reference: SpatialReferenceEntry10_1,
+    pub flags_byte: u8,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MultiPatchBody10_1 {
+    pub version: u16,
+    /// 原生导入器接收的完整限定区间，包含可能存在的 v1 兼容包装。
+    pub record_bytes: Vec<u8>,
+    pub record: Option<MultiPatchRecord10_1>,
+    pub spatial_reference: SpatialReferenceEntry10_1,
+}
+
 /// 按类标识分派的几何体读取结果（[`read_geometry_body_10_1`] 的返回）。
 #[derive(Debug, Clone, PartialEq)]
 pub enum GeometryBody10_1 {
@@ -455,6 +493,9 @@ pub enum GeometryBody10_1 {
     Point(PointBody10_1),
     /// Multipoint（样本 0 实例，合成测试覆盖）。
     Multipoint(MultipointBody10_1),
+    Envelope(Envelope10_1),
+    GeometryBag(Box<GeometryBag10_1>),
+    MultiPatch(Box<MultiPatchBody10_1>),
 }
 
 /// 初版兼容入口：按调用者已读取的对象头类标识分派几何体读取，仅闭合
@@ -482,50 +523,155 @@ pub fn read_geometry_body_of_class_10_1(
             ErrorKind::Unsupported,
             format!(
                 "几何类 {id} 不在兼容入口的闭合清单（仅 Polyline）；Polygon/Point/Multipoint \
-                 请改用 read_geometry_body_10_1 类型化分派，其余几何类流内持久化不存在"
+                 及其他已支持类请改用 read_geometry_body_10_1 类型化分派"
             ),
         ))
     }
 }
 
-/// 类型化分派入口：按调用者已读取的对象头类标识读取四类几何体。
-///
-/// 覆盖 Polyline/Polygon/Point/Multipoint（各类布局见模块文档；后三类样本
-/// 0 实例，全部结论为静态反编译、合成测试覆盖）。未知类返回
-/// [`ErrorKind::Unsupported`]，游标不推进、登记表不修改。
+/// 类型化分派入口：从对象头之后读取可识别的 10.1 IGeometry 实现。
+/// 未知类返回 `Unsupported`，失败不推进游标或修改登记表。
 pub fn read_geometry_body_10_1(
     class_id: &[u8; 16],
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
 ) -> io::Result<GeometryBody10_1> {
-    if *class_id == POLYLINE_CLASS_ID {
-        Ok(GeometryBody10_1::Polyline(read_polyline_body_10_1(
-            reader, max_bytes, table,
-        )?))
-    } else if *class_id == POLYGON_CLASS_ID {
-        Ok(GeometryBody10_1::Polygon(read_polygon_body_10_1(
-            reader, max_bytes, table,
-        )?))
-    } else if *class_id == POINT_CLASS_ID {
-        Ok(GeometryBody10_1::Point(read_point_body_10_1(
-            reader, max_bytes, table,
-        )?))
-    } else if *class_id == MULTIPOINT_CLASS_ID {
-        Ok(GeometryBody10_1::Multipoint(read_multipoint_body_10_1(
-            reader, max_bytes, table,
-        )?))
-    } else {
-        let id: String = class_id.iter().map(|byte| format!("{byte:02x}")).collect();
-        Err(io::Error::new(
-            ErrorKind::Unsupported,
-            format!(
-                "几何类 {id} 不在本读取器的闭合清单（Polyline/Polygon/Point/Multipoint）；\
-                 其余几何类流内持久化经反编译证实不存在（Path/Ring/Line/BezierCurve/\
-                 EllipticArc）或虚表未定位（CircularArc）"
-            ),
-        ))
+    read_geometry_body(class_id, reader, max_bytes, table, 0)
+}
+
+fn read_geometry_body(
+    class_id: &[u8; 16],
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: u32,
+) -> io::Result<GeometryBody10_1> {
+    Ok(match *class_id {
+        POLYLINE_CLASS_ID => {
+            GeometryBody10_1::Polyline(read_polyline_body_10_1(reader, max_bytes, table)?)
+        }
+        POLYGON_CLASS_ID => {
+            GeometryBody10_1::Polygon(read_polygon_body_10_1(reader, max_bytes, table)?)
+        }
+        POINT_CLASS_ID => GeometryBody10_1::Point(read_point_body_10_1(reader, max_bytes, table)?),
+        MULTIPOINT_CLASS_ID => {
+            GeometryBody10_1::Multipoint(read_multipoint_body_10_1(reader, max_bytes, table)?)
+        }
+        ENVELOPE_CLASS_ID => {
+            GeometryBody10_1::Envelope(read_envelope_10_1(reader, max_bytes, table)?)
+        }
+        GEOMETRY_BAG_CLASS_ID => GeometryBody10_1::GeometryBag(Box::new(read_geometry_bag(
+            reader, max_bytes, table, depth,
+        )?)),
+        MULTIPATCH_CLASS_ID => {
+            GeometryBody10_1::MultiPatch(Box::new(read_multi_patch(reader, max_bytes, table)?))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                format!("尚不支持几何类 {}", crate::storage::class_id_hex(class_id)),
+            ));
+        }
+    })
+}
+
+/// GeometryBag::Load 0x71873be0 和 Save 0x71873dc0。
+fn read_geometry_bag(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: u32,
+) -> io::Result<GeometryBag10_1> {
+    if depth >= 32 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "GeometryBag 嵌套超过限额",
+        ));
     }
+    let mut trial = reader.clone();
+    let mut staged = table.clone();
+    let version = trial.read_u16_le()?;
+    if version > 1 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "不支持的 GeometryBag 版本",
+        ));
+    }
+    let count = trial.read_u32_le()? as i32;
+    if count < 0 || count as usize > max_bytes.min(trial.remaining()) / 16 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "GeometryBag 几何数量超出范围",
+        ));
+    }
+    let mut read_slot = || {
+        let entry = read_object_entry_10_1(&mut trial, &mut staged)?;
+        let body = match entry {
+            ObjectEntry10_1::NewObject { class_id, .. } => Some(Box::new(read_geometry_body(
+                &class_id,
+                &mut trial,
+                max_bytes,
+                &mut staged,
+                depth + 1,
+            )?)),
+            _ => None,
+        };
+        Ok::<_, io::Error>(GeometryBagSlot10_1 { entry, body })
+    };
+    let cached_geometry = read_slot()?;
+    let mut members = Vec::new();
+    for _ in 0..count {
+        members.push(read_slot()?);
+    }
+    let spatial_reference = read_spatial_reference_entry_10_1(&mut trial, max_bytes, &mut staged)?;
+    let flags_byte = trial.read_bytes(1)?[0];
+    *reader = trial;
+    *table = staged;
+    Ok(GeometryBag10_1 {
+        version,
+        cached_geometry,
+        members,
+        spatial_reference,
+        flags_byte,
+    })
+}
+
+/// MultiPatch::Load 0x718e4610。可识别的面片从限定区间解码。
+fn read_multi_patch(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<MultiPatchBody10_1> {
+    let start = reader.position();
+    let mut trial = reader.clone();
+    let mut staged = table.clone();
+    let version = trial.read_u16_le()?;
+    if !(1..=2).contains(&version) {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "不支持的 MultiPatch 版本",
+        ));
+    }
+    let size = read_and_gate_declared_length_10_1(&mut trial, start, "MultiPatch", max_bytes)?;
+    let minimum = if version == 1 { 12 } else { 4 };
+    if size < minimum {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "MultiPatch 记录短于其版本所需前导",
+        ));
+    }
+    let record_bytes = trial.read_bytes(record_len(size))?.to_vec();
+    let record = decode_multi_patch_record(version, &record_bytes, max_bytes)?;
+    let spatial_reference = read_spatial_reference_entry_10_1(&mut trial, max_bytes, &mut staged)?;
+    *reader = trial;
+    *table = staged;
+    Ok(MultiPatchBody10_1 {
+        version,
+        record_bytes,
+        record,
+        spatial_reference,
+    })
 }
 
 /// 从对象头之后的位置读取 10.1 Polyline 对象体的严格子集。
@@ -535,7 +681,7 @@ pub fn read_geometry_body_10_1(
 /// 上限），本读取器设限较原生更严。任何失败不推进游标、不修改登记表；错
 /// 误位置相对于传入 Reader，调用方需另外记录流和对象身份。
 ///
-/// 声明长度与布局常量不一致、点数为 1、路径数或点数为负位模式时返回
+/// 声明区间短于布局、点数为 1、路径数或点数为负位模式时返回
 /// [`ErrorKind::InvalidData`]（原生或拒绝同型输入、或存在越界未定义行为，
 /// 本读取器一律显式拒绝）。这是严格安全子集，通过不代表 MXD 格式已验证。
 pub fn read_polyline_body_10_1(
@@ -858,8 +1004,8 @@ fn require_exact_len(record_len: usize, expected: usize, what: &str) -> Result<(
 /// 在有界窗口上解析 Polyline/Polygon 记录字节块（共享解析器 `0x7197fc50`
 /// 标志 0 布局）。
 ///
-/// `record_len` 为包装声明的长度；空几何（类型 0）要求恰为 4 字节，非空布
-/// 局要求 `44 + 路径数×4 + 点数×16` 严格相等。`path_term` 为错误文案中的
+/// `record_len` 为包装声明的长度；空几何（类型 0）消费类型字段，非空布局
+/// 至少需要 `44 + 路径数×4 + 点数×16` 字节。`path_term` 为错误文案中的
 /// 计数名称（"路径" / "环"）。返回 `Err(String)` 表示布局违规（由调用方包
 /// 装为 InvalidData）。
 fn read_shape_record_10_1(
@@ -871,19 +1017,17 @@ fn read_shape_record_10_1(
         |window: &mut Reader<'_>| window.read_u32_le().map_err(|error| error.to_string());
     let read_f64 =
         |window: &mut Reader<'_>| window.read_f64_le().map_err(|error| error.to_string());
-    if record_len == EMPTY_RECORD_LEN {
-        let kind = read_u32(window)?;
-        if kind != 0 {
-            return Err(format!(
-                "空几何记录（长度 4）的类型位模式 {kind} 非 0；原生对类型 0 之外的值会继续\
-                 按完整布局解析（越界未定义行为），本读取器拒绝"
-            ));
-        }
+    let kind = read_u32(window)?;
+    if kind == 0 {
         return Ok(ShapeRecord10_1 {
             kind,
             envelope: [0.0; 4],
             path_starts: Vec::new(),
             points: Vec::new(),
+            trailing_bytes: window
+                .read_bytes(window.remaining())
+                .map_err(|e| e.to_string())?
+                .to_vec(),
         });
     }
     if record_len < FIXED_RECORD_HEADER {
@@ -891,19 +1035,20 @@ fn read_shape_record_10_1(
             "记录声明长度 {record_len} 不足以容纳非空布局头部 44 字节"
         ));
     }
-    let kind = read_u32(window)?;
     let mut envelope = [0.0; 4];
     for slot in &mut envelope {
         *slot = read_f64(window)?;
     }
     let path_count = read_u32(window)?;
     let point_count = read_u32(window)?;
-    let expected = FIXED_RECORD_HEADER + path_count as usize * 4 + point_count as usize * 16;
-    require_exact_len(
-        record_len,
-        expected,
-        &format!("44 + {path_term}数 {path_count}×4 + 点数 {point_count}×16"),
-    )?;
+    let expected =
+        FIXED_RECORD_HEADER as u64 + u64::from(path_count) * 4 + u64::from(point_count) * 16;
+    if expected > record_len as u64 || path_count > i32::MAX as u32 || point_count > i32::MAX as u32
+    {
+        return Err(format!(
+            "记录长度 {record_len} 或计数无效（44 + {path_term}数 {path_count}×4 + 点数 {point_count}×16 = {expected}）"
+        ));
+    }
     if point_count == 1 {
         return Err(format!(
             "点数 1：原生共享解析器（ShapePolyline::Parse == ShapePolygon::Parse，0x7197fc50）\
@@ -920,12 +1065,15 @@ fn read_shape_record_10_1(
         let y = read_f64(window)?;
         points.push([x, y]);
     }
-    debug_assert_eq!(window.remaining(), 0);
     Ok(ShapeRecord10_1 {
         kind,
         envelope,
         path_starts,
         points,
+        trailing_bytes: window
+            .read_bytes(window.remaining())
+            .map_err(|e| e.to_string())?
+            .to_vec(),
     })
 }
 

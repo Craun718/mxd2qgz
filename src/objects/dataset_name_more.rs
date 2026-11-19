@@ -13,17 +13,17 @@
 //!
 //! | 类 | CLSID | GetClassID | Load | Save | 版本门 | 体字段序 |
 //! | --- | --- | --- | --- | --- | --- | --- |
-//! | GeometricNetworkName | `{F452B4D2-9A95-11D2-AACF-00C04FA37B82}` | `0x709b8560` | `0x709b8ca0` | `0x709b8d50` | 有符号 >1 拒绝（Save 恒写 1） | 版本 + String×3 + IDatasetName 槽（obj+0x1c，装载后虚表 +0x20 通知） |
-//! | RelationshipClassName | `{311C2EE1-DA65-11D2-8A54-000000000000}` | `0x70a3ab30` | `0x70a3b330` | `0x70a3b4b0` | 有符号 >1 拒绝（Save 恒写 1） | 版本 + String×3 + int32×2（obj+0x20/0x24）+ short×2（obj+0x28/0x2a）+ int16 选择子：==0 → IWorkspaceName 槽（obj+0x30）；!=0 → IDatasetName 槽（obj+0x2c，通知） |
+//! | GeometricNetworkName | `{F452B4D2-9A95-11D2-AACF-00C04FA37B82}` | `0x709b8560` | `0x709b8ca0` | `0x709b8d50` | 有符号 >1 拒绝（Save 恒写 1） | 版本 + String×3 + IDatasetName 槽（obj+0x1c，随后获取 WorkspaceName） |
+//! | RelationshipClassName | `{311C2EE1-DA65-11D2-8A54-000000000000}` | `0x70a3ab30` | `0x70a3b330` | `0x70a3b4b0` | 有符号 >1 拒绝（Save 恒写 1） | 版本 + String×3 + int32×2（obj+0x20/0x24）+ short×2（obj+0x28/0x2a）+ int16 选择子：==0 → IWorkspaceName 槽（obj+0x30）；!=0 → IDatasetName 槽（obj+0x2c，随后获取 WorkspaceName） |
 //! | MemoryRelationshipClassName | `{6DBA211B-EBDB-11D3-9F84-00C04F6BC886}` | `0x70a402a0` | `0x70a402e0` | `0x70a40440` | 有符号 >1 拒绝（Save 恒写 1） | 版本 + String×3 + int32×2（obj+0x10/0x14）+ short×2（obj+0x18/0x1a）+ LoadObject×2（请求 IID 均为 IName `{4BA33331-D55F-11D1-8882-0000F877762D}`，obj+0x1c/0x20）+ String×4 |
-//! | QueryTableName | `{793873DE-C0BB-48F4-A6BF-F6F83FA3C1BC}` | `0x709329d0` | `0x70932a10` | `0x70932ae0` | **无符号** `(ver-1) ≤ 1`，仅 1/2 通过（0 与 ≥3 拒绝；Save 经 `AfStreamGetSaveVersion` 表 `0x70ab7b2c` = (ffff,ffff,ffff,ffff,1,2)） | 版本 + String×3 + IWorkspaceName 槽（obj+0x1c）+ 槽（请求 IID `{2E060684-E14C-44D3-858A-442AB6A0A863}`，obj+0x18；装载后虚表 +0x40 查询不读流） |
+//! | QueryTableName | `{793873DE-C0BB-48F4-A6BF-F6F83FA3C1BC}` | `0x709329d0` | `0x70932a10` | `0x70932ae0` | **无符号** `(ver-1) ≤ 1`，仅 1/2 通过（0 与 ≥3 拒绝；Save 经 `AfStreamGetSaveVersion` 表 `0x70ab7b2c` = (ffff,ffff,ffff,ffff,1,2)） | 版本 + String×3 + IWorkspaceName 槽（obj+0x1c）+ 槽（请求 IID `{2E060684-E14C-44D3-858A-442AB6A0A863}`，obj+0x18；装载后调用 IsSpatialQuery） |
 //! | RelQueryTableName | `{DAB3EE10-0F92-455D-8AA2-3D4ADE5B2F7D}` | `0x70a5a4f0` | `0x70a5a530` | `0x70a5a6f0` | 有符号 >3 拒绝（Save 表 `0x70a88fd8` = (2,3)，恒写 2/3） | 版本 + String×2 + 槽（`{4BA33331-…}`，obj+0x10）+ short（obj+0x14）+ 槽（`{FDFEBD93-ED75-11D0-9A95-080009EC734B}`，obj+0x18）+ 槽（`{F7AD47D1-D55E-11D1-8882-0000F877762D}`，obj+0x1c）+ String + short（obj+0x24）+ [版本 ≥2] short（obj+0x26，短体原生置内存 0）+ [版本 ≥3] short（obj+0x28） |
 //! | DBTableName | `{4C9307B2-C125-4497-BA95-AAE875553B06}` | `0x708d7a00` | `0x708d7a40` | `0x708d7b20` | **无版本字段** | String×3 + IWorkspaceName 槽（obj+0x1c）+ String + int32（obj+0x14，原生 ≠7 时置内存标志）+ 槽（`{4434D680-F4DA-11D1-BCA6-0000F875BCCE}`，obj+0x20） |
 //!
 //! IDatasetName 槽（请求 IID `{89E75917-C287-11D1-AA77-00C04FA33A15}`）的
 //! 新对象按类标识分派：FeatureDatasetName（第六轮，[`read_feature_dataset_name_body_10_1`]）
-//! 与本模块六类互相递归（深度受流长天然约束，登记先于体解析使循环呈回引）；
-//! 其余类（TableName / UnknownDatasetName / FeatureClassName / 其他模块实现）
+//! 与本模块其他已知类共用嵌套上限，登记先于体解析使循环呈回引；
+//! 未确认类（TableName / UnknownDatasetName / 其他模块实现）
 //! 为停止点。
 //!
 //! ## TableName / UnknownDatasetName / ObjectClassName：持久化体未闭合
@@ -47,21 +47,43 @@
 //!
 //! 已知偏离原生：负值版本位模式拒绝（较原生有符号比较更严，与仓库既有读取
 //! 器口径一致）；QueryTableName 版本 0 原生被无符号门拒绝，读取器同拒。
-//! 通知调用（RCN/FGN 槽装载后的虚表 +0x20、QueryTN 的 +0x40）不消费流字
-//! 节，读取器不模拟。六类标量/String 字段的业务语义未定性（字符串候选：名
-//! 称/类别/连接信息等，按 FCN/WorkspaceName 家族类推），原样保留。五条请求
-//! IID 已由 ArcMap 10.1 类型库定名为 IName、IQueryDescription、IQueryFilter、
+//! RCN/FGN 装载 FeatureDatasetName 后获取 WorkspaceName，QueryTableName
+//! 调用 IsSpatialQuery。读取器保留持久化字段的原值。五条请求 IID 已由
+//! ArcMap 10.1 类型库定名为 IName、IQueryDescription、IQueryFilter、
 //! ISelectionSet、ISpatialReference；只在中文注释标明对应请求槽，保留原公开
 //! 字段名。接口名不表示流内类标识。
 //! 已经由 FeatureClassName 的 IDatasetName 选择子接入 MXD 解析链；未闭合
 //! 的嵌套新对象体仍是停止点。人工目视验收未做，不得声称已验证。
 
-use crate::objects::dataset_name::{
-    FEATURE_DATASET_NAME_CLASS_ID, FeatureDatasetNameBody10_1, FeatureDatasetNameStop10_1,
-    WorkspaceNameSlot10_1, read_feature_dataset_name_body_10_1,
+use crate::layers::feature_layer::{
+    COVERAGE_FEATURE_CLASS_NAME_CLASS_ID, FEATURE_CLASS_NAME_CLASS_ID,
+    FGDB_FEATURE_CLASS_NAME_CLASS_ID, read_coverage_feature_class_name_body_10_1,
+    read_fgdb_feature_class_name_body_10_1,
 };
+use crate::layers::raster_dataset_name::{RasterLongArraySlot10_1, read_long_array_slot};
+use crate::maps::standalone_table::{
+    FGDB_TABLE_NAME_CLASS_ID, TABLE_NAME_CLASS_ID, TableNameBody10_1,
+    read_fgdb_table_name_body_10_1, read_table_name_body_10_1,
+};
+use crate::objects::dataset_name::{
+    COVERAGE_NAME_CLASS_ID, FEATURE_DATASET_NAME_CLASS_ID, FeatureDatasetNameBody10_1,
+    FeatureDatasetNameStop10_1, WorkspaceNameSlot10_1, read_coverage_name_body_10_1,
+    read_feature_dataset_name_body_10_1,
+};
+use crate::objects::envelope::{
+    SpatialReferenceEntry10_1, read_spatial_reference_body_10_1, read_spatial_reference_entry_10_1,
+};
+use crate::objects::query_filter::{
+    QueryFilterBody10_1, QueryFilterObject10_1, read_query_filter_slot_10_1,
+};
+use crate::objects::route_event_name::{
+    ROUTE_EVENT_SOURCE_NAME_CLASS_ID, RouteEventSourceNameBody10_1,
+    read_route_event_source_name_body_10_1,
+};
+use crate::objects::string_array::{StringArraySlot10_1, read_string_array_slot_10_1};
 use crate::objects::workspace_name::{
-    WORKSPACE_NAME_CLASS_ID, WorkspaceNameStop10_1, read_workspace_name_body_10_1,
+    WORKSPACE_NAME_CLASS_ID, WorkspaceNameEntry10_1, WorkspaceNameStop10_1,
+    read_workspace_name_body_10_1,
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -327,8 +349,17 @@ pub fn read_feature_query_name_body_10_1(
 pub enum DatasetNameMoreBody10_1 {
     /// FeatureClassName 自身在 IDatasetName 槽中递归嵌套的对象体。
     FeatureClassName(Box<crate::layers::feature_layer::FeatureClassNamePrefix10_1>),
+    /// TableName 在 IName 槽中的对象体。
+    Table(Box<TableNameBody10_1>),
+    /// NetCDFTableName 在 IName 槽中的对象体。
+    NetCdfTable(Box<NetCdfTableNameBody10_1>),
+    /// NetCDFFeatureClassName 的独立持久化体。
+    NetCdfFeatureClass(Box<NetCdfFeatureClassNameBody10_1>),
+    XyEventSource(Box<XyEventSourceNameBody10_1>),
+    RouteEventSource(Box<RouteEventSourceNameBody10_1>),
     /// FeatureDatasetName（第六轮读取器）。
     FeatureDataset(Box<FeatureDatasetNameBody10_1>),
+    CadDrawing(Box<CadDrawingNameBody10_1>),
     /// GeometricNetworkName（本模块）。
     GeometricNetwork(Box<GeometricNetworkNameBody10_1>),
     /// RelationshipClassName（本模块）。
@@ -359,7 +390,7 @@ pub enum DatasetNameMoreSlot10_1 {
     /// `stop` 字段）透传。
     Body(DatasetNameMoreBody10_1),
     /// 新对象但类标识无已闭合体（TableName / UnknownDatasetName /
-    /// FeatureClassName / 其他模块实现）：停止点，游标回退到该对象头起点、
+    /// 其他模块实现）：停止点，游标回退到该对象头起点、
     /// 该键不登记。
     Unsupported { class_id: [u8; 16], key: u32 },
 }
@@ -391,9 +422,7 @@ pub enum DatasetNameMoreStop10_1 {
 /// FCN 自身递归读取的安全上限（并非 ArcMap 格式限制）。
 pub const MAX_FEATURE_CLASS_NAME_NESTING_DEPTH: usize = 16;
 
-/// 具体对象体未知的槽位（MemoryRelationshipClassName 两槽、QueryTableName
-/// 第二槽、RelQueryTableName 三槽、DBTableName 尾槽）的分类结果：新对象一律
-/// 不分派（体未知），停止。
+/// 尚未分派新对象体的槽位分类结果。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnknownSlot10_1 {
     /// 16 字节全零类标识：空引用。
@@ -411,13 +440,13 @@ pub struct GeometricNetworkNameBody10_1 {
     pub key: u32,
     /// 体首 int16 版本（有符号 >1 拒绝；Save 恒写 1）。
     pub version: u16,
-    /// 第一个字符串（语义未定，候选：名称）。
+    /// IDatasetName.Name。
     pub string_a: String,
-    /// 第二个字符串（语义未定）。
+    /// IName.NameString。
     pub string_b: String,
-    /// 第三个字符串（语义未定）。
+    /// IDatasetName.Category。
     pub string_c: String,
-    /// IDatasetName 槽（obj+0x1c；原生装载后对槽对象做虚表 +0x20 通知，不读流）。
+    /// FeatureDatasetName 槽（持久化接口 +0x1c）；原生装载后从中获取 WorkspaceName。
     pub dataset: DatasetNameMoreSlot10_1,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<DatasetNameMoreStop10_1>,
@@ -429,7 +458,7 @@ pub struct GeometricNetworkNameBody10_1 {
 pub enum RelationshipClassTail10_1 {
     /// 选择子 ==0：IWorkspaceName 槽（obj+0x30）。
     Workspace(WorkspaceNameSlot10_1),
-    /// 选择子 !=0：IDatasetName 槽（obj+0x2c；装载后虚表 +0x20 通知）。
+    /// 选择子非零：FeatureDatasetName 槽（持久化接口 +0x2c），原生从中获取 WorkspaceName。
     Dataset(DatasetNameMoreSlot10_1),
 }
 
@@ -440,19 +469,19 @@ pub struct RelationshipClassNameBody10_1 {
     pub key: u32,
     /// 体首 int16 版本（有符号 >1 拒绝；Save 恒写 1）。
     pub version: u16,
-    /// 第一个字符串（语义未定，候选：名称）。
+    /// IDatasetName.Name。
     pub string_a: String,
-    /// 第二个字符串（语义未定）。
+    /// IName.NameString。
     pub string_b: String,
-    /// 第三个字符串（语义未定）。
+    /// IDatasetName.Category。
     pub string_c: String,
-    /// 第一个 int32（obj+0x20；语义未定）。
+    /// Cardinality，保留磁盘原值。
     pub int_a: i32,
-    /// 第二个 int32（obj+0x24；语义未定）。
+    /// Notification，保留磁盘原值。
     pub int_b: i32,
-    /// 第一个 short（obj+0x28；语义未定）。
+    /// IsComposite，保留磁盘原值。
     pub short_a: u16,
-    /// 第二个 short（obj+0x2a；语义未定）。
+    /// IsAttributed，保留磁盘原值。
     pub short_b: u16,
     /// 流内 int16 选择子（原生只区分零与非零，原样保留）。
     pub selector: u16,
@@ -470,21 +499,21 @@ pub struct MemoryRelationshipClassNameBody10_1 {
     pub key: u32,
     /// 体首 int16 版本（有符号 >1 拒绝；Save 恒写 1）。
     pub version: u16,
-    /// 前三个字符串（语义未定，候选：名称/类别/描述）。
+    /// 依次为 IDatasetName.Name、IName.NameString、IDatasetName.Category。
     pub strings_a: [String; 3],
-    /// 第一个 int32（obj+0x10；语义未定）。
+    /// Cardinality，保留磁盘原值。
     pub int_a: i32,
-    /// 第二个 int32（obj+0x14；语义未定）。
+    /// Notification，保留磁盘原值。
     pub int_b: i32,
-    /// 第一个 short（obj+0x18；语义未定）。
+    /// IsComposite，保留磁盘原值。
     pub short_a: u16,
-    /// 第二个 short（obj+0x1a；语义未定）。
+    /// IsAttributed，保留磁盘原值。
     pub short_b: u16,
-    /// 第一槽（请求 IID `{4BA33331-…}` = IName，obj+0x1c；新对象体未闭合）。
-    pub slot_a: UnknownSlot10_1,
-    /// 第二槽（同 IID = IName，obj+0x20；新对象体未闭合）。
-    pub slot_b: UnknownSlot10_1,
-    /// 后四个字符串（语义未定，候选：源/目标名称与类别）。
+    /// OriginName（IName，持久化接口 +0x1c）。
+    pub slot_a: DatasetNameMoreSlot10_1,
+    /// DestinationName（IName，持久化接口 +0x20）。
+    pub slot_b: DatasetNameMoreSlot10_1,
+    /// 依次为 ForwardPathLabel、BackwardPathLabel、OriginPrimaryKey、OriginForeignKey。
     pub strings_b: [String; 4],
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<DatasetNameMoreStop10_1>,
@@ -498,16 +527,15 @@ pub struct QueryTableNameBody10_1 {
     /// 体首 int16 版本；原生无符号 `(ver-1) ≤ 1`，仅 1/2 通过（0 拒绝，
     /// 与同族其他类的有符号门不同）。
     pub version: u16,
-    /// 第一个字符串（语义未定，候选：名称）。
+    /// IDatasetName.Name。
     pub string_a: String,
-    /// 第二个字符串（语义未定）。
+    /// IName.NameString。
     pub string_b: String,
-    /// 第三个字符串（语义未定）。
+    /// IDatasetName.Category。
     pub string_c: String,
     /// IWorkspaceName 槽（obj+0x1c；Save 先写本槽，再写 IQueryDescription 槽）。
     pub workspace: WorkspaceNameSlot10_1,
-    /// 第二槽（请求 IID `{2E060684-…}` = IQueryDescription，obj+0x18；新对象体未闭合；
-    /// 原生装载后做虚表 +0x40 查询，不读流）。
+    /// QueryDescription（IQueryDescription，持久化接口 +0x18）；原生装载后调用 IsSpatialQuery。
     pub query_slot: UnknownSlot10_1,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<DatasetNameMoreStop10_1>,
@@ -520,28 +548,39 @@ pub struct RelQueryTableNameBody10_1 {
     pub key: u32,
     /// 体首 int16 版本（有符号 >3 拒绝；Save 表 (2,3) 恒写 2/3）。
     pub version: u16,
-    /// 第一个字符串（语义未定，候选：名称）。
+    /// IDatasetName.Name。
     pub string_a: String,
-    /// 第二个字符串（语义未定）。
+    /// IName.NameString。
     pub string_b: String,
-    /// 第一槽（请求 IID `{4BA33331-…}` = IName，obj+0x10；新对象体未闭合）。
-    pub source_slot: UnknownSlot10_1,
-    /// short（obj+0x14；语义未定）。
+    /// 关系类名称（IName，持久化接口 +0x10）。支持普通和内存关系类名称。
+    pub source_slot: DatasetNameMoreSlot10_1,
+    /// ForwardDirection，保留磁盘 short 原值。
     pub short_a: u16,
-    /// 第二槽（请求 IID `{FDFEBD93-…}` = IQueryFilter，obj+0x18；新对象体未闭合）。
-    pub left_slot: UnknownSlot10_1,
-    /// 第三槽（请求 IID `{F7AD47D1-…}` = ISelectionSet，obj+0x1c；新对象体未闭合）。
+    /// SrcQueryFilter（IQueryFilter，持久化接口 +0x18）。
+    pub left_slot: Option<QueryFilterObject10_1<QueryFilterBody10_1>>,
+    /// SrcSelectionSet（ISelectionSet，持久化接口 +0x1c）。
     pub right_slot: UnknownSlot10_1,
-    /// 第三个字符串（语义未定）。
+    /// TargetColumns。
     pub string_c: String,
-    /// short（obj+0x24；语义未定）。
+    /// LeftOuterJoin，保留磁盘 short 原值。
     pub short_b: u16,
-    /// 版本 ≥2 的 short（obj+0x26；短体原生置内存 0，流内无字段 → `None`）。
+    /// DoNotPushJoinToDB，v2 起保存。较早版本没有此字段，原生默认置 0。
     pub short_c: Option<u16>,
-    /// 版本 ≥3 的 short（obj+0x28；短体流内无字段 → `None`）。
+    /// FireRowChangedEvents，v3 起保存。
     pub short_d: Option<u16>,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<DatasetNameMoreStop10_1>,
+}
+
+/// DBTableName 尾部的 ISpatialReference 槽。
+#[derive(Debug, Clone, PartialEq)]
+pub enum DbTableSpatialReference10_1 {
+    Parsed(SpatialReferenceEntry10_1),
+    /// 未知新类。游标停在对象头之前。
+    Unsupported {
+        class_id: [u8; 16],
+        key: u32,
+    },
 }
 
 /// DBTableName（GdbCore.dll Load `0x708d7a40`）体的已确认字段。
@@ -549,24 +588,332 @@ pub struct RelQueryTableNameBody10_1 {
 pub struct DbTableNameBody10_1 {
     /// 对象头键。
     pub key: u32,
-    /// 前三个字符串（语义未定，候选：目录/名称/类别；**本类无版本字段**）。
+    /// 依次为 IDatasetName.Name、IName.NameString、IDatasetName.Category（体首无版本字段）。
     pub strings_a: [String; 3],
     /// IWorkspaceName 槽（obj+0x1c）。
     pub workspace: WorkspaceNameSlot10_1,
-    /// 第四个字符串（语义未定）。
+    /// 几何列名称，来自 SqlClass 的几何字段 IField.Name。
     pub string_d: String,
-    /// int32（obj+0x14；原生 ≠7 时置内存标志 obj+0x19，语义未定，原样保留）。
+    /// esriGeometryType 原值。原生加载时与 esriGeometryAny（7）比较。
     pub int_a: i32,
-    /// 尾槽（请求 IID `{4434D680-…}` = ISpatialReference，obj+0x20；新对象体未闭合）。
-    pub tail_slot: UnknownSlot10_1,
+    /// 尾槽（请求 ISpatialReference，obj+0x20）。工作空间处停止时为 `None`。
+    pub tail_slot: Option<DbTableSpatialReference10_1>,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<DatasetNameMoreStop10_1>,
+}
+
+pub const CAD_DRAWING_NAME_CLASS_ID: [u8; 16] = [
+    0x09, 0x43, 0x22, 0xd4, 0xcb, 0xa5, 0xd2, 0x11, 0x9b, 0x10, 0, 0xc0, 0x4f, 0xa3, 0x32, 0x99,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CadDrawingNameBody10_1 {
+    pub key: u32,
+    pub version: u16,
+    pub strings: [String; 3],
+    pub workspace: WorkspaceNameSlot10_1,
+    pub stop: Option<DatasetNameMoreStop10_1>,
+}
+
+/// CadFDB.dll 0x6cab7030 在三条字符串后读取 IWorkspaceName。
+pub(crate) fn read_cad_drawing_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<CadDrawingNameBody10_1> {
+    let mut r = reader.clone();
+    let mut staged = table.clone();
+    let version = r.read_u16_le()?;
+    if version != 1 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("CadDrawingName 不支持版本 {version}"),
+        ));
+    }
+    let strings = [
+        read_string_10_1(&mut r, max)?,
+        read_string_10_1(&mut r, max)?,
+        read_string_10_1(&mut r, max)?,
+    ];
+    let mut stop = None;
+    let workspace = read_workspace_slot_10_1(&mut r, max, &mut staged, &mut stop)?;
+    *reader = r;
+    *table = staged;
+    Ok(CadDrawingNameBody10_1 {
+        key,
+        version,
+        strings,
+        workspace,
+        stop,
+    })
+}
+
+pub const XY_EVENT_SOURCE_NAME_CLASS_ID: [u8; 16] = [
+    0x20, 0xa9, 0x9a, 0x30, 0xec, 0xea, 0xd3, 0x11, 0x9f, 0x8a, 0x00, 0xc0, 0x4f, 0x6b, 0xdf, 0x06,
+];
+pub const XY_EVENT_2_FIELDS_PROPERTIES_CLASS_ID: [u8; 16] = [
+    0xa2, 0x5c, 0x04, 0x71, 0x02, 0x79, 0xd4, 0x11, 0x9f, 0xe5, 0x00, 0xc0, 0x4f, 0x6b, 0xdf, 0x06,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct XyEventSourceNameBody10_1 {
+    pub key: u32,
+    pub version: u16,
+    pub strings: [String; 2],
+    pub source: DatasetNameMoreSlot10_1,
+    pub properties: Option<(ObjectEntry10_1, Option<XyEventFields10_1>)>,
+    pub spatial_reference: Option<SpatialReferenceEntry10_1>,
+    pub stop: Option<DatasetNameMoreStop10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct XyEventFields10_1 {
+    pub version: u16,
+    pub x_field: String,
+    pub y_field: String,
+    pub z_field: String,
+}
+
+/// XYEvents.dll 0x810365d0 使用普通 IName、IXYEventProperties 和 ISpatialReference 槽。
+pub(crate) fn read_xy_event_source_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<XyEventSourceNameBody10_1> {
+    let mut trial = reader.clone();
+    let mut staged = table.clone();
+    let version = trial.read_u16_le()?;
+    check_signed_version(version, 1, "XYEventSourceName", reader.position())?;
+    let strings = [
+        read_string_10_1(&mut trial, max)?,
+        read_string_10_1(&mut trial, max)?,
+    ];
+    let mut stop = None;
+    let source = read_tabular_name_slot_10_1(&mut trial, max, &mut staged, &mut stop)?;
+    let mut properties = None;
+    let mut spatial_reference = None;
+    if stop.is_none() {
+        let entry = read_object_entry_10_1(&mut trial, &mut staged)?;
+        let body = match entry {
+            ObjectEntry10_1::NewObject {
+                class_id: XY_EVENT_2_FIELDS_PROPERTIES_CLASS_ID,
+                ..
+            } => {
+                let version = trial.read_u16_le()?;
+                check_signed_version(version, 1, "XYEvent2FieldsProperties", trial.position() - 2)?;
+                Some(XyEventFields10_1 {
+                    version,
+                    x_field: read_string_10_1(&mut trial, max)?,
+                    y_field: read_string_10_1(&mut trial, max)?,
+                    z_field: read_string_10_1(&mut trial, max)?,
+                })
+            }
+            ObjectEntry10_1::Null | ObjectEntry10_1::BackReference { .. } => None,
+            ObjectEntry10_1::NewObject { class_id, key } => {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!(
+                        "IXYEventProperties 槽的未知类 {}（键 {key}）",
+                        crate::storage::class_id_hex(&class_id)
+                    ),
+                ));
+            }
+        };
+        properties = Some((entry, body));
+        spatial_reference = Some(read_spatial_reference_entry_10_1(
+            &mut trial,
+            max,
+            &mut staged,
+        )?);
+    }
+    *reader = trial;
+    *table = staged;
+    Ok(XyEventSourceNameBody10_1 {
+        key,
+        version,
+        strings,
+        source,
+        properties,
+        spatial_reference,
+        stop,
+    })
+}
+
+pub const NETCDF_FEATURE_CLASS_NAME_CLASS_ID: [u8; 16] = [
+    0x68, 0xf1, 0x5e, 0xee, 0x62, 0x7b, 0xd5, 0x4e, 0x89, 0xbb, 0xff, 0x73, 0xd3, 0x90, 0xaf, 0x93,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NetCdfFeatureClassNameBody10_1 {
+    pub key: u32,
+    pub version: u16,
+    /// 按持久化顺序保留四个字符串和两个 LONG。
+    pub strings: [String; 4],
+    pub longs: [i32; 2],
+    pub workspace: WorkspaceNameSlot10_1,
+    pub arrays: Option<[StringArraySlot10_1; 3]>,
+    pub dimension_indices: Option<RasterLongArraySlot10_1>,
+    pub strings_v2: Option<[String; 4]>,
+    pub stop: Option<DatasetNameMoreStop10_1>,
+}
+
+fn read_netcdf_arrays(
+    r: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<([StringArraySlot10_1; 3], RasterLongArraySlot10_1)> {
+    let names = [
+        read_string_array_slot_10_1(r, max, refs)?,
+        read_string_array_slot_10_1(r, max, refs)?,
+        read_string_array_slot_10_1(r, max, refs)?,
+    ];
+    Ok((names, read_long_array_slot(r, max, refs)?))
+}
+
+/// NetCDFDB.dll 0x7ae1fd40。额外的四个字符串只在 v2 中出现。
+pub(crate) fn read_netcdf_feature_class_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<NetCdfFeatureClassNameBody10_1> {
+    let mut r = reader.clone();
+    let mut staged = table.clone();
+    let version = r.read_u16_le()?;
+    check_signed_version(version, 2, "NetCDFFeatureClassName", reader.position())?;
+    let strings = [
+        read_string_10_1(&mut r, max)?,
+        read_string_10_1(&mut r, max)?,
+        read_string_10_1(&mut r, max)?,
+        read_string_10_1(&mut r, max)?,
+    ];
+    let longs = [r.read_u32_le()? as i32, r.read_u32_le()? as i32];
+    let mut stop = None;
+    let workspace = read_workspace_slot_10_1(&mut r, max, &mut staged, &mut stop)?;
+    let (arrays, dimension_indices, strings_v2) = if stop.is_some() {
+        (None, None, None)
+    } else {
+        let (arrays, indices) = read_netcdf_arrays(&mut r, max, &mut staged)?;
+        // 原生仅在维度名称已知且非空时逐项取索引。
+        if arrays[2]
+            .body
+            .as_ref()
+            .is_some_and(|(_, values)| !values.is_empty())
+            && matches!(indices.entry, ObjectEntry10_1::Null)
+        {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "NetCDFFeatureClassName 的非空维度名称缺少索引数组",
+            ));
+        }
+        let strings_v2 = (version >= 2)
+            .then(|| -> io::Result<_> {
+                Ok([
+                    read_string_10_1(&mut r, max)?,
+                    read_string_10_1(&mut r, max)?,
+                    read_string_10_1(&mut r, max)?,
+                    read_string_10_1(&mut r, max)?,
+                ])
+            })
+            .transpose()?;
+        (Some(arrays), Some(indices), strings_v2)
+    };
+    *reader = r;
+    *table = staged;
+    Ok(NetCdfFeatureClassNameBody10_1 {
+        key,
+        version,
+        strings,
+        longs,
+        workspace,
+        arrays,
+        dimension_indices,
+        strings_v2,
+        stop,
+    })
+}
+
+pub const NETCDF_TABLE_NAME_CLASS_ID: [u8; 16] = [
+    0x23, 0x7a, 0x59, 0x2d, 0x89, 0xa9, 0xc1, 0x43, 0x9b, 0x1b, 0x19, 0xe7, 0x5b, 0xbf, 0xb7, 0x8f,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NetCdfTableNameBody10_1 {
+    pub version: u16,
+    pub strings: [String; 3],
+    pub workspace: WorkspaceNameSlot10_1,
+    /// 按流中顺序保留前两个成员数组和临时维度名称数组。
+    pub arrays: Option<[StringArraySlot10_1; 3]>,
+    pub dimension_indices: Option<RasterLongArraySlot10_1>,
+    pub stop: Option<DatasetNameMoreStop10_1>,
+}
+
+/// NetCDFDB.dll 0x7ae2fdc0 与 0x7ae2fff0 使用宿主 ObjectStream 的五个槽。
+pub(crate) fn read_netcdf_table_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<NetCdfTableNameBody10_1> {
+    let mut r = reader.clone();
+    let mut staged = table.clone();
+    let version = r.read_u16_le()?;
+    if version > 1 {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            "NetCDFTableName 版本不支持",
+        ));
+    }
+    let strings = [
+        read_string_10_1(&mut r, max)?,
+        read_string_10_1(&mut r, max)?,
+        read_string_10_1(&mut r, max)?,
+    ];
+    let mut stop = None;
+    let workspace = read_workspace_slot_10_1(&mut r, max, &mut staged, &mut stop)?;
+    let (arrays, dimension_indices) = if stop.is_some() {
+        (None, None)
+    } else {
+        let (arrays, indices) = read_netcdf_arrays(&mut r, max, &mut staged)?;
+        if matches!(arrays[2].entry, ObjectEntry10_1::Null)
+            || matches!(indices.entry, ObjectEntry10_1::Null)
+        {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "NetCDFTableName 的维度数组为空对象",
+            ));
+        }
+        (Some(arrays), Some(indices))
+    };
+    *reader = r;
+    *table = staged;
+    Ok(NetCdfTableNameBody10_1 {
+        version,
+        strings,
+        workspace,
+        arrays,
+        dimension_indices,
+        stop,
+    })
 }
 
 /// 把 IDatasetName 槽的新对象按类标识分派到已闭合读取器（FeatureDatasetName
 /// + 本模块六类；含相互递归）。失败向上传播；嵌套体停止透传为
 /// [`DatasetNameMoreStop10_1::Nested`]。
 fn read_dataset_name_object_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    class_id: [u8; 16],
+    key: u32,
+) -> io::Result<(DatasetNameMoreBody10_1, Option<DatasetNameMoreStop10_1>)> {
+    table.with_nested_dataset_name(|table| {
+        read_dataset_name_object_body_10_1(reader, max_bytes, table, class_id, key)
+    })
+}
+
+fn read_dataset_name_object_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
@@ -586,8 +933,88 @@ fn read_dataset_name_object_10_1(
         };
     }
     match class_id {
-        FEATURE_DATASET_NAME_CLASS_ID => {
-            let body = read_feature_dataset_name_body_10_1(reader, max_bytes, table, key)?;
+        CAD_DRAWING_NAME_CLASS_ID => {
+            let mut body = read_cad_drawing_name_body_10_1(reader, max_bytes, table, key)?;
+            let stop = nested_stop!(body);
+            Ok((DatasetNameMoreBody10_1::CadDrawing(Box::new(body)), stop))
+        }
+        ROUTE_EVENT_SOURCE_NAME_CLASS_ID => {
+            let mut body = read_route_event_source_name_body_10_1(reader, max_bytes, table, key)?;
+            let stop = nested_stop!(body);
+            Ok((
+                DatasetNameMoreBody10_1::RouteEventSource(Box::new(body)),
+                stop,
+            ))
+        }
+        XY_EVENT_SOURCE_NAME_CLASS_ID => {
+            let mut body = read_xy_event_source_name_body_10_1(reader, max_bytes, table, key)?;
+            let stop = nested_stop!(body);
+            Ok((DatasetNameMoreBody10_1::XyEventSource(Box::new(body)), stop))
+        }
+        NETCDF_FEATURE_CLASS_NAME_CLASS_ID => {
+            let mut body = read_netcdf_feature_class_name_body_10_1(reader, max_bytes, table, key)?;
+            let stop = nested_stop!(body);
+            Ok((
+                DatasetNameMoreBody10_1::NetCdfFeatureClass(Box::new(body)),
+                stop,
+            ))
+        }
+        NETCDF_TABLE_NAME_CLASS_ID => {
+            let mut body = read_netcdf_table_name_body_10_1(reader, max_bytes, table)?;
+            let stop = nested_stop!(body);
+            Ok((DatasetNameMoreBody10_1::NetCdfTable(Box::new(body)), stop))
+        }
+        FGDB_FEATURE_CLASS_NAME_CLASS_ID | COVERAGE_FEATURE_CLASS_NAME_CLASS_ID => {
+            let body = if class_id == COVERAGE_FEATURE_CLASS_NAME_CLASS_ID {
+                read_coverage_feature_class_name_body_10_1(reader, max_bytes, table, key)?
+            } else {
+                read_fgdb_feature_class_name_body_10_1(reader, max_bytes, table, key)?
+            };
+            let stop =
+                body.stop
+                    .as_ref()
+                    .map(|reason| DatasetNameMoreStop10_1::FeatureClassNameStopped {
+                        class_id,
+                        key,
+                        reason: format!("{reason:?}"),
+                    });
+            Ok((
+                DatasetNameMoreBody10_1::FeatureClassName(Box::new(body)),
+                stop,
+            ))
+        }
+        TABLE_NAME_CLASS_ID | FGDB_TABLE_NAME_CLASS_ID => {
+            let (body, _) = if class_id == FGDB_TABLE_NAME_CLASS_ID {
+                read_fgdb_table_name_body_10_1(reader, table, max_bytes)?
+            } else {
+                read_table_name_body_10_1(reader, table, max_bytes)?
+            };
+            let stop = match &body.workspace {
+                WorkspaceNameEntry10_1::Unsupported { class_id, key } => {
+                    Some(DatasetNameMoreStop10_1::SlotUnsupported {
+                        class_id: *class_id,
+                        key: *key,
+                    })
+                }
+                WorkspaceNameEntry10_1::NewObject(workspace) => workspace.stop.map(|reason| {
+                    let WorkspaceNameStop10_1::PropertySetNewObject { class_id, key } = reason;
+                    DatasetNameMoreStop10_1::WorkspacePropertySet { class_id, key }
+                }),
+                _ => None,
+            };
+            let stop = stop.map(|inner| DatasetNameMoreStop10_1::Nested {
+                class_id,
+                key,
+                inner: Box::new(inner),
+            });
+            Ok((DatasetNameMoreBody10_1::Table(Box::new(body)), stop))
+        }
+        FEATURE_DATASET_NAME_CLASS_ID | COVERAGE_NAME_CLASS_ID => {
+            let body = if class_id == COVERAGE_NAME_CLASS_ID {
+                read_coverage_name_body_10_1(reader, max_bytes, table, key)?
+            } else {
+                read_feature_dataset_name_body_10_1(reader, max_bytes, table, key)?
+            };
             let stop = body.stop.map(|inner| match inner {
                 FeatureDatasetNameStop10_1::WorkspacePropertySetNewObject { class_id, key } => {
                     DatasetNameMoreStop10_1::WorkspacePropertySet { class_id, key }
@@ -687,36 +1114,102 @@ pub(crate) fn read_dataset_name_slot_with_depth_10_1(
     stop_out: &mut Option<DatasetNameMoreStop10_1>,
     depth: usize,
 ) -> io::Result<DatasetNameMoreSlot10_1> {
+    read_name_slot_with_depth_10_1(reader, max_bytes, table, stop_out, depth, |class_id| {
+        matches!(
+            class_id,
+            FEATURE_CLASS_NAME_CLASS_ID
+                | FEATURE_DATASET_NAME_CLASS_ID
+                | COVERAGE_NAME_CLASS_ID
+                | CAD_DRAWING_NAME_CLASS_ID
+                | COVERAGE_FEATURE_CLASS_NAME_CLASS_ID
+                | GEOMETRIC_NETWORK_NAME_CLASS_ID
+                | RELATIONSHIP_CLASS_NAME_CLASS_ID
+                | MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID
+                | QUERY_TABLE_NAME_CLASS_ID
+                | TABLE_QUERY_NAME_CLASS_ID
+                | FEATURE_QUERY_NAME_CLASS_ID
+                | REL_QUERY_TABLE_NAME_CLASS_ID
+                | DB_TABLE_NAME_CLASS_ID
+        )
+    })
+}
+
+/// 从 IName 槽读取已有对象体布局的表或要素类名称。
+pub(crate) fn read_tabular_name_slot_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    stop_out: &mut Option<DatasetNameMoreStop10_1>,
+) -> io::Result<DatasetNameMoreSlot10_1> {
+    read_name_slot_with_depth_10_1(reader, max_bytes, table, stop_out, 0, |class_id| {
+        matches!(
+            class_id,
+            FEATURE_CLASS_NAME_CLASS_ID
+                | FGDB_FEATURE_CLASS_NAME_CLASS_ID
+                | COVERAGE_FEATURE_CLASS_NAME_CLASS_ID
+                | TABLE_NAME_CLASS_ID
+                | FGDB_TABLE_NAME_CLASS_ID
+                | NETCDF_TABLE_NAME_CLASS_ID
+                | NETCDF_FEATURE_CLASS_NAME_CLASS_ID
+                | XY_EVENT_SOURCE_NAME_CLASS_ID
+                | ROUTE_EVENT_SOURCE_NAME_CLASS_ID
+                | QUERY_TABLE_NAME_CLASS_ID
+                | TABLE_QUERY_NAME_CLASS_ID
+                | FEATURE_QUERY_NAME_CLASS_ID
+                | REL_QUERY_TABLE_NAME_CLASS_ID
+                | DB_TABLE_NAME_CLASS_ID
+        )
+    })
+}
+
+/// 两个端点槽请求 IName，共用已有表名称和要素类名称读取器。
+fn read_relationship_endpoint_slot_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    stop_out: &mut Option<DatasetNameMoreStop10_1>,
+) -> io::Result<DatasetNameMoreSlot10_1> {
+    read_name_slot_with_depth_10_1(reader, max_bytes, table, stop_out, 0, |class_id| {
+        matches!(
+            class_id,
+            FEATURE_CLASS_NAME_CLASS_ID
+                | FGDB_FEATURE_CLASS_NAME_CLASS_ID
+                | TABLE_NAME_CLASS_ID
+                | QUERY_TABLE_NAME_CLASS_ID
+                | TABLE_QUERY_NAME_CLASS_ID
+                | FEATURE_QUERY_NAME_CLASS_ID
+                | DB_TABLE_NAME_CLASS_ID
+        )
+    })
+}
+
+fn read_name_slot_with_depth_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    stop_out: &mut Option<DatasetNameMoreStop10_1>,
+    depth: usize,
+    accepts: impl FnOnce([u8; 16]) -> bool,
+) -> io::Result<DatasetNameMoreSlot10_1> {
     // 整体事务：入口克隆 trial 游标与暂存登记表，成功返回（含停止）才提交；
     // 任何失败（截断、嵌套体错误）与未知类回退路径都不推进调用者游标、
     // 不修改登记表。
     let mut trial = reader.clone();
     let mut staged = table.clone();
     let result = (|| -> io::Result<DatasetNameMoreSlot10_1> {
-        let saved_table = staged.clone();
         match read_object_entry_10_1(&mut trial, &mut staged)? {
             ObjectEntry10_1::Null => Ok(DatasetNameMoreSlot10_1::Null),
             ObjectEntry10_1::BackReference { class_id, key } => {
                 Ok(DatasetNameMoreSlot10_1::BackReference { class_id, key })
             }
             ObjectEntry10_1::NewObject { class_id, key } => {
-                let known = class_id == crate::layers::feature_layer::FEATURE_CLASS_NAME_CLASS_ID
-                    || class_id == FEATURE_DATASET_NAME_CLASS_ID
-                    || class_id == GEOMETRIC_NETWORK_NAME_CLASS_ID
-                    || class_id == RELATIONSHIP_CLASS_NAME_CLASS_ID
-                    || class_id == MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID
-                    || class_id == QUERY_TABLE_NAME_CLASS_ID
-                    || class_id == TABLE_QUERY_NAME_CLASS_ID
-                    || class_id == FEATURE_QUERY_NAME_CLASS_ID
-                    || class_id == REL_QUERY_TABLE_NAME_CLASS_ID
-                    || class_id == DB_TABLE_NAME_CLASS_ID;
-                if !known {
-                    staged = saved_table;
+                if !accepts(class_id) {
+                    staged = table.clone();
                     trial = reader.clone();
                     *stop_out = Some(DatasetNameMoreStop10_1::SlotUnsupported { class_id, key });
                     return Ok(DatasetNameMoreSlot10_1::Unsupported { class_id, key });
                 }
-                if class_id == crate::layers::feature_layer::FEATURE_CLASS_NAME_CLASS_ID {
+                if class_id == FEATURE_CLASS_NAME_CLASS_ID {
                     if depth >= MAX_FEATURE_CLASS_NAME_NESTING_DEPTH {
                         return Err(io::Error::new(
                             ErrorKind::InvalidData,
@@ -725,14 +1218,15 @@ pub(crate) fn read_dataset_name_slot_with_depth_10_1(
                             ),
                         ));
                     }
-                    let body =
+                    let body = staged.with_nested_dataset_name(|table| {
                         crate::layers::feature_layer::read_feature_class_name_body_with_depth_10_1(
                             &mut trial,
                             max_bytes,
-                            &mut staged,
+                            table,
                             key,
                             depth + 1,
-                        )?;
+                        )
+                    })?;
                     *stop_out = body.stop.as_ref().map(|reason| {
                         DatasetNameMoreStop10_1::FeatureClassNameStopped {
                             class_id,
@@ -796,6 +1290,21 @@ fn read_workspace_slot_10_1(
     }
 }
 
+/// 读取关系查询表的关系类名称槽，复用已验证的两种 IName 实现。
+pub(crate) fn read_relationship_name_slot_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    stop_out: &mut Option<DatasetNameMoreStop10_1>,
+) -> io::Result<DatasetNameMoreSlot10_1> {
+    read_name_slot_with_depth_10_1(reader, max_bytes, table, stop_out, 0, |class_id| {
+        matches!(
+            class_id,
+            RELATIONSHIP_CLASS_NAME_CLASS_ID | MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID
+        )
+    })
+}
+
 /// 读取并分类一个具体对象体未知的槽：空引用/回引原样返回；新对象一律
 /// 停止并回退到槽位起点。
 fn read_unknown_slot_10_1(
@@ -822,7 +1331,12 @@ fn read_unknown_slot_10_1(
 }
 
 /// 版本门（有符号比较）：`(version as i16) > max || 负值` 拒绝。
-fn check_signed_version(version: u16, max: i16, context: &str, offset: usize) -> io::Result<()> {
+pub(super) fn check_signed_version(
+    version: u16,
+    max: i16,
+    context: &str,
+    offset: usize,
+) -> io::Result<()> {
     if (version as i16) > max || (version as i16) < 0 {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
@@ -959,15 +1473,21 @@ pub fn read_memory_relationship_class_name_body_10_1(
 
     let mut staged_table = table.clone();
     let mut stop = None;
-    let slot_a = read_unknown_slot_10_1(&mut trial, &mut staged_table, &mut stop)?;
+    let slot_a =
+        read_relationship_endpoint_slot_10_1(&mut trial, max_bytes, &mut staged_table, &mut stop)?;
     // 槽位停止后其体不可达（未知对象无外部长度），后续字段按占位填充。
     let (slot_b, strings_b) = if stop.is_some() {
         (
-            UnknownSlot10_1::Null,
+            DatasetNameMoreSlot10_1::Null,
             [String::new(), String::new(), String::new(), String::new()],
         )
     } else {
-        let slot_b = read_unknown_slot_10_1(&mut trial, &mut staged_table, &mut stop)?;
+        let slot_b = read_relationship_endpoint_slot_10_1(
+            &mut trial,
+            max_bytes,
+            &mut staged_table,
+            &mut stop,
+        )?;
         let strings_b = if stop.is_some() {
             [String::new(), String::new(), String::new(), String::new()]
         } else {
@@ -1073,21 +1593,19 @@ pub fn read_rel_query_table_name_body_10_1(
 
     let mut staged_table = table.clone();
     let mut stop = None;
-    let source_slot = read_unknown_slot_10_1(&mut trial, &mut staged_table, &mut stop)?;
+    let source_slot =
+        read_relationship_name_slot_10_1(&mut trial, max_bytes, &mut staged_table, &mut stop)?;
     // 槽位停止后其体不可达（未知对象无外部长度），后续字段按占位填充。
     let (short_a, left_slot, right_slot, string_c, short_b, short_c, short_d) = if stop.is_some() {
-        (
-            0,
-            UnknownSlot10_1::Null,
-            UnknownSlot10_1::Null,
-            String::new(),
-            0,
-            None,
-            None,
-        )
+        (0, None, UnknownSlot10_1::Null, String::new(), 0, None, None)
     } else {
         let short_a = u16::from_le_bytes(trial.read_bytes(2)?.try_into().expect("2 字节"));
-        let left_slot = read_unknown_slot_10_1(&mut trial, &mut staged_table, &mut stop)?;
+        let left_slot = Some(read_query_filter_slot_10_1(
+            &mut trial,
+            max_bytes,
+            &mut staged_table,
+            &mut stop,
+        )?);
         let right_slot = if stop.is_some() {
             UnknownSlot10_1::Null
         } else {
@@ -1175,9 +1693,24 @@ pub fn read_db_table_name_body_10_1(
         0
     };
     let tail_slot = if stop.is_none() {
-        read_unknown_slot_10_1(&mut trial, &mut staged_table, &mut stop)?
+        let mut tail_reader = trial.clone();
+        let mut tail_table = staged_table.clone();
+        let entry = read_object_entry_10_1(&mut tail_reader, &mut tail_table)?;
+        let reference = read_spatial_reference_body_10_1(&mut tail_reader, max_bytes, &entry)?;
+        Some(match (reference, entry) {
+            (Some(reference), _) => {
+                trial = tail_reader;
+                staged_table = tail_table;
+                DbTableSpatialReference10_1::Parsed(reference)
+            }
+            (None, ObjectEntry10_1::NewObject { class_id, key }) => {
+                stop = Some(DatasetNameMoreStop10_1::SlotUnsupported { class_id, key });
+                DbTableSpatialReference10_1::Unsupported { class_id, key }
+            }
+            _ => unreachable!("仅未知新类没有对象体读取器"),
+        })
     } else {
-        UnknownSlot10_1::Null
+        None
     };
 
     let result = DbTableNameBody10_1 {
@@ -1545,18 +2078,81 @@ mod tests {
         assert_eq!(body.short_b, 4);
         assert_eq!(
             body.slot_a,
-            UnknownSlot10_1::Unsupported {
+            DatasetNameMoreSlot10_1::Unsupported {
                 class_id: [0x66; 16],
                 key: 62
             }
         );
         // 停止后 slot_b/strings_b 为占位。
-        assert_eq!(body.slot_b, UnknownSlot10_1::Null);
+        assert_eq!(body.slot_b, DatasetNameMoreSlot10_1::Null);
         assert!(body.strings_b.iter().all(|s| s.is_empty()));
         assert!(!table.contains(62));
         let consumed_before_slot =
             2 + str_bytes("内存关系").len() + str_bytes("").len() + str_bytes("类").len() + 12;
         assert_eq!(reader.position(), consumed_before_slot);
+    }
+
+    #[test]
+    fn memrcn_reads_named_endpoints_before_labels() {
+        let mut bytes = entry(&MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID, 60);
+        bytes.extend(1u16.to_le_bytes());
+        for _ in 0..3 {
+            bytes.extend(str_bytes(""));
+        }
+        bytes.extend([0; 12]);
+        bytes.extend(entry(&FGDB_FEATURE_CLASS_NAME_CLASS_ID, 61));
+        bytes.extend(1u16.to_le_bytes());
+        bytes.extend(20u16.to_le_bytes());
+        bytes.extend(fcn_body(&[0; 16]));
+        bytes.extend(entry(&TABLE_NAME_CLASS_ID, 62));
+        bytes.extend(1u16.to_le_bytes());
+        for text in ["目的表", "", "表"] {
+            bytes.extend(str_bytes(text));
+        }
+        bytes.extend([0; 16]);
+        for text in ["正向", "反向", "OID", "OriginID"] {
+            bytes.extend(str_bytes(text));
+        }
+        let end = bytes.len();
+        bytes.extend(entry(&TABLE_NAME_CLASS_ID, 62));
+
+        let mut reader = Reader::new(&bytes);
+        let mut table = RefTable10_1::new();
+        let mut stop = None;
+        let result = read_dataset_name_slot_10_1(&mut reader, 64, &mut table, &mut stop).unwrap();
+        let DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::MemoryRelationshipClass(body)) =
+            result
+        else {
+            panic!("应读到内存关系类名称");
+        };
+        assert!(matches!(
+            &body.slot_a,
+            DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::FeatureClassName(fcn))
+                if fcn.key == 61 && fcn.fgdb_wrapper.is_some()
+        ));
+        assert!(matches!(
+            &body.slot_b,
+            DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::Table(table))
+                if table.strings[0] == "目的表"
+        ));
+        assert_eq!(body.strings_b, ["正向", "反向", "OID", "OriginID"]);
+        assert_eq!(stop, None);
+        assert_eq!(reader.position(), end);
+        assert!(table.contains(61));
+        assert_eq!(
+            read_object_entry_10_1(&mut reader, &mut table).unwrap(),
+            ObjectEntry10_1::BackReference {
+                class_id: TABLE_NAME_CLASS_ID,
+                key: 62
+            }
+        );
+        for at in 0..end {
+            let mut reader = Reader::new(&bytes[..at]);
+            let mut table = RefTable10_1::new();
+            assert!(read_dataset_name_slot_10_1(&mut reader, 64, &mut table, &mut None).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(table.is_empty());
+        }
     }
 
     #[test]
@@ -1663,6 +2259,241 @@ mod tests {
         assert_eq!(reader.position(), 0);
     }
 
+    fn relquerytn_v3_body(source: &[u8]) -> Vec<u8> {
+        let mut bytes = 3u16.to_le_bytes().to_vec();
+        bytes.extend(str_bytes(""));
+        bytes.extend(str_bytes(""));
+        bytes.extend_from_slice(source);
+        bytes.extend(1u16.to_le_bytes());
+        bytes.extend([0; 32]);
+        bytes.extend(str_bytes("字段"));
+        bytes.extend(2u16.to_le_bytes());
+        bytes.extend(3u16.to_le_bytes());
+        bytes.extend(4u16.to_le_bytes());
+        bytes
+    }
+
+    #[test]
+    fn relquerytn_reads_both_relationship_names_before_the_join_fields() {
+        const RELATIONSHIP: [u8; 16] = RELATIONSHIP_CLASS_NAME_CLASS_ID;
+        const MEMORY: [u8; 16] = MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID;
+        let mut memory_body = 1u16.to_le_bytes().to_vec();
+        for _ in 0..3 {
+            memory_body.extend(str_bytes(""));
+        }
+        memory_body.extend([0; 12 + 32]);
+        for _ in 0..4 {
+            memory_body.extend(str_bytes(""));
+        }
+        for (class_id, body) in [(RELATIONSHIP, rcn_body(0, &[0; 16])), (MEMORY, memory_body)] {
+            let mut source = entry(&class_id, 42);
+            source.extend(body);
+            let mut bytes = entry(&REL_QUERY_TABLE_NAME_CLASS_ID, 41);
+            bytes.extend(relquerytn_v3_body(&source));
+            let end = bytes.len();
+            bytes.extend(entry(&class_id, 42));
+            let mut reader = Reader::new(&bytes);
+            let mut table = RefTable10_1::new();
+            let mut stop = None;
+            let outer =
+                read_dataset_name_slot_10_1(&mut reader, 64, &mut table, &mut stop).unwrap();
+            let DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::RelQueryTable(outer)) =
+                outer
+            else {
+                panic!("应读到 RelQueryTableName");
+            };
+            match outer.source_slot {
+                DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::RelationshipClass(body)) => {
+                    assert_eq!((class_id, body.key), (RELATIONSHIP, 42));
+                }
+                DatasetNameMoreSlot10_1::Body(
+                    DatasetNameMoreBody10_1::MemoryRelationshipClass(body),
+                ) => {
+                    assert_eq!((class_id, body.key), (MEMORY, 42));
+                }
+                other => panic!("未读到关系类名称：{other:?}"),
+            }
+            assert_eq!(outer.string_c, "字段");
+            assert_eq!(outer.short_d, Some(4));
+            assert_eq!(stop, None);
+            assert_eq!(reader.position(), end);
+            assert_eq!(
+                read_object_entry_10_1(&mut reader, &mut table).unwrap(),
+                ObjectEntry10_1::BackReference { class_id, key: 42 }
+            );
+
+            for at in 0..end {
+                let mut reader = Reader::new(&bytes[..at]);
+                let mut table = RefTable10_1::new();
+                assert!(
+                    read_dataset_name_slot_10_1(&mut reader, 64, &mut table, &mut None).is_err()
+                );
+                assert_eq!(reader.position(), 0);
+                assert!(table.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn relquerytn_query_filter_versions_and_spatial_suffix() {
+        use crate::objects::geometry::{GeometryBody10_1, POINT_CLASS_ID};
+        use crate::objects::query_filter::{
+            FilterDefinitions10_1, QUERY_FILTER_CLASS_ID, SPATIAL_FILTER_CLASS_ID,
+            SpatialFilterGeometry10_1,
+        };
+
+        for (version, spatial) in [(0u16, false), (1, false), (2, false), (3, false), (4, true)] {
+            let class = if spatial {
+                SPATIAL_FILTER_CLASS_ID
+            } else {
+                QUERY_FILTER_CLASS_ID
+            };
+            let mut filter = entry(&class, 42);
+            if spatial {
+                filter.extend(1u16.to_le_bytes());
+            }
+            filter.extend(version.to_le_bytes());
+            filter.extend(str_bytes("OID"));
+            filter.extend(str_bytes("OID > 0"));
+            filter.extend(str_bytes(""));
+            filter.extend([0; 16]);
+            filter.extend(0.25f64.to_le_bytes());
+            filter.extend([0; 16]);
+            if version != 1 {
+                filter.extend(0u32.to_le_bytes()); // 空 PostfixClause。
+                if version == 2 {
+                    filter.extend(0u32.to_le_bytes());
+                } else {
+                    filter.extend([0; 16]);
+                }
+            }
+            if version == 4 {
+                filter.extend(1u32.to_le_bytes()); // 一个 UTF-16 码元加终止零。
+                filter.extend([b'X', 0, 0, 0]);
+            }
+            if spatial {
+                filter.extend(1i32.to_le_bytes());
+                filter.extend(2i32.to_le_bytes());
+                filter.extend(str_bytes("rel"));
+                filter.extend(entry(&POINT_CLASS_ID, 43));
+                filter.extend(1u16.to_le_bytes());
+                filter.extend(4u32.to_le_bytes());
+                filter.extend(0u32.to_le_bytes()); // 空点记录。
+                filter.extend(str_bytes("Shape"));
+                filter.extend(3u16.to_le_bytes());
+            }
+            let mut bytes = relquerytn_v3_body(&[0; 16]);
+            let offset = 2 + str_bytes("").len() * 2 + 16 + 2;
+            bytes.splice(offset..offset + 16, filter);
+            let end = bytes.len();
+            bytes.extend(entry(&class, 42));
+
+            let mut reader = Reader::new(&bytes);
+            let mut table = RefTable10_1::new();
+            let outer =
+                read_rel_query_table_name_body_10_1(&mut reader, 64, &mut table, 41).unwrap();
+            let Some(QueryFilterObject10_1::Body { key: 42, body }) = outer.left_slot else {
+                panic!("应读到过滤器对象体");
+            };
+            let core = match *body {
+                QueryFilterBody10_1::Query(core) => core,
+                QueryFilterBody10_1::Spatial {
+                    version: 1,
+                    core,
+                    spatial: Some(fields),
+                } => {
+                    assert_eq!((fields.search_order, fields.spatial_rel), (1, 2));
+                    assert_eq!(fields.geometry_field.as_deref(), Some("Shape"));
+                    assert!(matches!(
+                        fields.geometry,
+                        QueryFilterObject10_1::Body { key: 43, body }
+                            if matches!(body.as_ref(), SpatialFilterGeometry10_1::Geometry(GeometryBody10_1::Point(_)))
+                    ));
+                    assert_eq!(fields.spatial_rel_description, "rel");
+                    assert_eq!(fields.filter_owns_geometry, Some(3));
+                    core
+                }
+                other => panic!("SpatialFilter 后缀未完整读取：{other:?}"),
+            };
+            assert_eq!(core.version, version);
+            assert_eq!(core.where_clause, "OID > 0");
+            assert_eq!(core.spatial_resolution, Some(0.25));
+            assert_eq!(core.postfix_clause.as_deref(), (version != 1).then_some(""));
+            assert_eq!(core.prefix_clause.as_deref(), (version == 4).then_some("X"));
+            if version == 2 {
+                assert_eq!(
+                    core.definitions,
+                    Some(FilterDefinitions10_1::Inline(vec![]))
+                );
+            }
+            assert_eq!(outer.stop, None);
+            assert_eq!(outer.short_d, Some(4));
+            assert_eq!(reader.position(), end);
+            assert_eq!(
+                read_object_entry_10_1(&mut reader, &mut table).unwrap(),
+                ObjectEntry10_1::BackReference {
+                    class_id: class,
+                    key: 42
+                }
+            );
+            for at in 0..end {
+                let mut reader = Reader::new(&bytes[..at]);
+                let mut table = RefTable10_1::new();
+                assert!(
+                    read_rel_query_table_name_body_10_1(&mut reader, 64, &mut table, 41).is_err()
+                );
+                assert_eq!(reader.position(), 0);
+                assert!(table.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn relquerytn_preserves_the_first_unknown_relationship_slot() {
+        let unknown = [0x55; 16];
+        let mut source = entry(&RELATIONSHIP_CLASS_NAME_CLASS_ID, 42);
+        source.extend(rcn_body(1, &entry(&unknown, 43)));
+        let bytes = relquerytn_v3_body(&source);
+        let mut reader = Reader::new(&bytes);
+        let mut table = RefTable10_1::new();
+        let body = read_rel_query_table_name_body_10_1(&mut reader, 64, &mut table, 41).unwrap();
+        assert_eq!(
+            body.stop,
+            Some(DatasetNameMoreStop10_1::Nested {
+                class_id: RELATIONSHIP_CLASS_NAME_CLASS_ID,
+                key: 42,
+                inner: Box::new(DatasetNameMoreStop10_1::SlotUnsupported {
+                    class_id: unknown,
+                    key: 43
+                }),
+            })
+        );
+        let at = reader.position();
+        assert_eq!(bytes[at..at + 20], entry(&unknown, 43));
+        assert!(table.contains(42));
+        assert!(!table.contains(43));
+        assert_eq!(body.short_d, None);
+    }
+
+    #[test]
+    fn alternating_relationship_names_share_the_dataset_nesting_limit() {
+        let mut entry_bytes = vec![0; 16];
+        for level in (0..34).rev() {
+            let mut next = entry(&REL_QUERY_TABLE_NAME_CLASS_ID, level * 2 + 1);
+            let mut source = entry(&RELATIONSHIP_CLASS_NAME_CLASS_ID, level * 2 + 2);
+            source.extend(rcn_body(1, &entry_bytes));
+            next.extend(relquerytn_v3_body(&source));
+            entry_bytes = next;
+        }
+        let mut reader = Reader::new(&entry_bytes);
+        let mut table = RefTable10_1::new();
+        let error =
+            read_dataset_name_slot_10_1(&mut reader, 64, &mut table, &mut None).unwrap_err();
+        assert!(error.to_string().contains("数据集名称嵌套深度"));
+        assert_eq!(reader.position(), 0);
+        assert!(table.is_empty());
+    }
+
     #[test]
     fn dbtn_has_no_version_field() {
         // 体首即字符串长度：前 4 字节按 String 解析而非版本。
@@ -1683,12 +2514,85 @@ mod tests {
         assert_eq!(body.strings_a[1], "表名");
         assert_eq!(body.int_a, 7);
         assert!(table.contains(91));
+        assert_eq!(
+            body.tail_slot,
+            Some(DbTableSpatialReference10_1::Parsed(
+                SpatialReferenceEntry10_1::Null
+            ))
+        );
         match body.workspace {
             WorkspaceNameSlot10_1::WorkspaceName(ws) => assert_eq!(ws.key, 91),
             other => panic!("期望 WorkspaceName 槽，实际 {other:?}"),
         }
         assert_eq!(body.stop, None);
         assert_eq!(reader.position(), bytes.len());
+    }
+
+    #[test]
+    fn dbtn_spatial_reference_uses_the_shared_key_table() {
+        use crate::objects::spatial_reference_slots::GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID as GCS;
+
+        let mut bytes = str_bytes("");
+        bytes.extend(str_bytes(""));
+        bytes.extend(str_bytes(""));
+        bytes.extend([0; 16]);
+        bytes.extend(str_bytes(""));
+        bytes.extend(7_i32.to_le_bytes());
+        let tail_offset = bytes.len();
+        bytes.extend(entry(&GCS, 91));
+        bytes.extend(2_u16.to_le_bytes());
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.push(b'X');
+        bytes.extend([0; 17]); // 四个空域串及垂向标志。
+        let end = bytes.len();
+        bytes.extend(entry(&GCS, 91));
+
+        let mut table = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        let body = read_db_table_name_body_10_1(&mut reader, 64, &mut table, 90).unwrap();
+        assert!(matches!(
+            body.tail_slot,
+            Some(DbTableSpatialReference10_1::Parsed(
+                SpatialReferenceEntry10_1::Geographic { key: 91, .. }
+            ))
+        ));
+        assert_eq!(body.stop, None);
+        assert_eq!(reader.position(), end);
+        assert_eq!(
+            read_object_entry_10_1(&mut reader, &mut table).unwrap(),
+            ObjectEntry10_1::BackReference {
+                class_id: GCS,
+                key: 91
+            }
+        );
+
+        let mut reader = Reader::new(&bytes[..end - 1]);
+        let mut table = RefTable10_1::new();
+        table.register(90);
+        assert!(read_db_table_name_body_10_1(&mut reader, 64, &mut table, 90).is_err());
+        assert_eq!(reader.position(), 0);
+        assert_eq!(table.len(), 1);
+
+        let unknown = [0x55; 16];
+        bytes[tail_offset..tail_offset + 16].copy_from_slice(&unknown);
+        let mut reader = Reader::new(&bytes);
+        let body = read_db_table_name_body_10_1(&mut reader, 64, &mut table, 90).unwrap();
+        assert_eq!(
+            body.stop,
+            Some(DatasetNameMoreStop10_1::SlotUnsupported {
+                class_id: unknown,
+                key: 91
+            })
+        );
+        assert_eq!(
+            body.tail_slot,
+            Some(DbTableSpatialReference10_1::Unsupported {
+                class_id: unknown,
+                key: 91
+            })
+        );
+        assert_eq!(reader.position(), tail_offset);
+        assert!(!table.contains(91));
     }
 
     #[test]
@@ -1720,7 +2624,7 @@ mod tests {
             }
         );
         assert_eq!(body.string_d, "");
-        assert_eq!(body.tail_slot, UnknownSlot10_1::Null);
+        assert_eq!(body.tail_slot, None);
         assert!(!table.contains(92));
     }
 

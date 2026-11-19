@@ -239,7 +239,8 @@ use crate::objects::ole_font::{
     read_std_font_body_10_1, read_std_picture_body_10_1,
 };
 use crate::objects::picture_fill_symbol::{
-    PictureFillSymbolSlot10_1, read_picture_fill_symbol_slot_10_1,
+    PICTURE_FILL_SYMBOL_CLASS_ID, PictureFillSymbolBody10_1, PictureFillSymbolSlot10_1,
+    read_picture_fill_symbol_body_10_1, read_picture_fill_symbol_slot_10_1,
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -1512,6 +1513,8 @@ pub enum SymbolSlotFull10_1 {
     PictureMarkerSymbol(Box<PictureMarkerSymbolBody10_1>),
     /// 新 PictureLineSymbol 对象。
     PictureLineSymbol(Box<PictureLineSymbolBody10_1>),
+    /// 新 PictureFillSymbol 对象。
+    PictureFillSymbol(Box<PictureFillSymbolBody10_1>),
     /// 新 ArrowMarkerSymbol 对象。
     ArrowMarkerSymbol(Box<ArrowMarkerSymbolBody10_1>),
     /// 新 LineFillSymbol 对象。
@@ -1624,6 +1627,12 @@ pub fn slot_full_stop_10_1(
         SymbolSlotFull10_1::PictureLineSymbol(body) => {
             body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
                 class_id: PICTURE_LINE_SYMBOL_CLASS_ID,
+                key: body.key,
+            })
+        }
+        SymbolSlotFull10_1::PictureFillSymbol(body) => {
+            body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
+                class_id: PICTURE_FILL_SYMBOL_CLASS_ID,
                 key: body.key,
             })
         }
@@ -1815,6 +1824,14 @@ pub fn read_symbol_slot_full_10_1(
                     max_bytes,
                     &mut staged,
                     key,
+                )?))
+            } else if class_id == PICTURE_FILL_SYMBOL_CLASS_ID {
+                SymbolSlotFull10_1::PictureFillSymbol(Box::new(read_picture_fill_symbol_body_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged,
+                    key,
+                    depth - 1,
                 )?))
             } else if class_id == ARROW_MARKER_SYMBOL_CLASS_ID {
                 SymbolSlotFull10_1::ArrowMarkerSymbol(Box::new(read_arrow_marker_symbol_body_10_1(

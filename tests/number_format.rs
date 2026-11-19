@@ -504,6 +504,7 @@ fn angle_version_branches_read_core_from_version_2() {
                 int32s: [9, 10, 11, 12],
                 shorts: [0, 0, 0],
             })),
+            rejected_numeric_version: None,
             short_0a: Some(5),
         }
     );

@@ -1,0 +1,413 @@
+//! GdbCore.dll 10.1 的 QueryFilter 与 SpatialFilter 持久化体。
+
+use crate::layers::feature_id_set::{
+    FID_SET_CLASS_ID, FeatureIdSetBody10_1, read_fid_set_body_10_1,
+};
+use crate::objects::dataset_name_more::DatasetNameMoreStop10_1;
+use crate::objects::envelope::{
+    ENVELOPE_CLASS_ID, Envelope10_1, SpatialReferenceEntry10_1, read_envelope_10_1,
+    read_spatial_reference_body_10_1,
+};
+use crate::objects::geometry::{
+    GeometryBody10_1, MULTIPOINT_CLASS_ID, POINT_CLASS_ID, POLYGON_CLASS_ID, POLYLINE_CLASS_ID,
+    read_geometry_body_10_1,
+};
+use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use crate::stream::native_string::{read_bstr_string_10_1, read_string_10_1};
+use crate::stream::reader::Reader;
+use std::io::{self, ErrorKind};
+
+pub const QUERY_FILTER_CLASS_ID: [u8; 16] = [
+    0x95, 0xbd, 0xfe, 0xfd, 0x75, 0xed, 0xd0, 0x11, 0x9a, 0x95, 0x08, 0x00, 0x09, 0xec, 0x73, 0x4b,
+];
+pub const SPATIAL_FILTER_CLASS_ID: [u8; 16] = [
+    0x96, 0xbd, 0xfe, 0xfd, 0x75, 0xed, 0xd0, 0x11, 0x9a, 0x95, 0x08, 0x00, 0x09, 0xec, 0x73, 0x4b,
+];
+const FILTER_DEFS_CLASS_ID: [u8; 16] = [
+    0x1a, 0x15, 0x31, 0x31, 0x5c, 0x4b, 0x26, 0x45, 0x98, 0xbe, 0x71, 0x17, 0x46, 0xb0, 0x3d, 0xf8,
+];
+const XML_FILTER_DEF_CLASS_ID: [u8; 16] = [
+    0xdb, 0x75, 0xf9, 0x47, 0xc0, 0x77, 0x8c, 0x4a, 0xb8, 0xa0, 0x8e, 0x9f, 0xe7, 0x7a, 0x97, 0x95,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum QueryFilterObject10_1<T> {
+    Null,
+    BackReference { class_id: [u8; 16], key: u32 },
+    Body { key: u32, body: Box<T> },
+    Unsupported { class_id: [u8; 16], key: u32 },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum QueryFilterBody10_1 {
+    Query(Box<QueryFilterCore10_1>),
+    Spatial {
+        version: u16,
+        core: Box<QueryFilterCore10_1>,
+        spatial: Option<Box<SpatialFilterFields10_1>>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct QueryFilterCore10_1 {
+    pub version: u16,
+    pub sub_fields: String,
+    pub where_clause: String,
+    /// 持久化接口 +0x18 的第三个 String。
+    pub string_c: String,
+    pub output_reference: QueryFilterObject10_1<SpatialReferenceEntry10_1>,
+    pub spatial_resolution: Option<f64>,
+    pub fid_set: Option<QueryFilterObject10_1<FeatureIdSetBody10_1>>,
+    pub postfix_clause: Option<String>,
+    pub definitions: Option<FilterDefinitions10_1>,
+    pub prefix_clause: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum FilterDefinitions10_1 {
+    Inline(Vec<QueryFilterObject10_1<XmlFilterDef10_1>>),
+    Collection(QueryFilterObject10_1<FilterDefinitionsBody10_1>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FilterDefinitionsBody10_1 {
+    pub version: u16,
+    pub entries: Vec<QueryFilterObject10_1<XmlFilterDef10_1>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct XmlFilterDef10_1 {
+    pub version: u16,
+    pub strings: [String; 2],
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum SpatialFilterGeometry10_1 {
+    Geometry(GeometryBody10_1),
+    Envelope(Envelope10_1),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpatialFilterFields10_1 {
+    pub search_order: i32,
+    pub spatial_rel: i32,
+    pub spatial_rel_description: String,
+    pub geometry: QueryFilterObject10_1<SpatialFilterGeometry10_1>,
+    pub geometry_field: Option<String>,
+    /// FilterOwnsGeometry，保留磁盘 short 原值。
+    pub filter_owns_geometry: Option<u16>,
+}
+
+type Stop = Option<DatasetNameMoreStop10_1>;
+
+fn read_version(reader: &mut Reader<'_>, max: u16, class: &str) -> io::Result<u16> {
+    let version = reader.read_u16_le()?;
+    if version > max {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("{class} 不支持版本 {version}"),
+        ));
+    }
+    Ok(version)
+}
+
+fn read_slot<T>(
+    reader: &mut Reader<'_>,
+    table: &mut RefTable10_1,
+    stop: &mut Stop,
+    read: impl FnOnce(
+        &mut Reader<'_>,
+        &mut RefTable10_1,
+        [u8; 16],
+        u32,
+        &mut Stop,
+    ) -> io::Result<Option<T>>,
+) -> io::Result<QueryFilterObject10_1<T>> {
+    let mut trial = reader.clone();
+    let mut staged = table.clone();
+    let slot = match read_object_entry_10_1(&mut trial, &mut staged)? {
+        ObjectEntry10_1::Null => QueryFilterObject10_1::Null,
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            QueryFilterObject10_1::BackReference { class_id, key }
+        }
+        ObjectEntry10_1::NewObject { class_id, key } => {
+            let Some(body) = read(&mut trial, &mut staged, class_id, key, stop)? else {
+                *stop = Some(DatasetNameMoreStop10_1::SlotUnsupported { class_id, key });
+                return Ok(QueryFilterObject10_1::Unsupported { class_id, key });
+            };
+            if let Some(inner) = stop.take() {
+                *stop = Some(DatasetNameMoreStop10_1::Nested {
+                    class_id,
+                    key,
+                    inner: Box::new(inner),
+                });
+            }
+            QueryFilterObject10_1::Body {
+                key,
+                body: Box::new(body),
+            }
+        }
+    };
+    *reader = trial;
+    *table = staged;
+    Ok(slot)
+}
+
+fn read_definitions(
+    reader: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+    stop: &mut Stop,
+) -> io::Result<Vec<QueryFilterObject10_1<XmlFilterDef10_1>>> {
+    let count = reader.read_u32_le()? as i32;
+    let count = usize::try_from(count)
+        .map_err(|_| io::Error::new(ErrorKind::InvalidData, "FilterDefs 数量为负"))?;
+    if count > reader.remaining() / 16 {
+        return Err(io::Error::new(
+            ErrorKind::UnexpectedEof,
+            "FilterDefs 条目截断",
+        ));
+    }
+    let mut entries = Vec::new();
+    for _ in 0..count {
+        entries.push(read_slot(reader, table, stop, |reader, _, class, _, _| {
+            if class != XML_FILTER_DEF_CLASS_ID {
+                return Ok(None);
+            }
+            Ok(Some(XmlFilterDef10_1 {
+                version: read_version(reader, 1, "XMLFilterDef")?,
+                strings: [
+                    read_bstr_string_10_1(reader, max)?,
+                    read_bstr_string_10_1(reader, max)?,
+                ],
+            }))
+        })?);
+        if stop.is_some() {
+            break;
+        }
+    }
+    Ok(entries)
+}
+
+fn read_core(
+    reader: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+    stop: &mut Stop,
+) -> io::Result<QueryFilterCore10_1> {
+    let version = read_version(reader, 4, "QueryFilter")?;
+    let sub_fields = read_string_10_1(reader, max)?;
+    let where_clause = read_string_10_1(reader, max)?;
+    let string_c = read_string_10_1(reader, max)?;
+    let output_reference = read_slot(reader, table, stop, |reader, _, class_id, key, _| {
+        read_spatial_reference_body_10_1(reader, max, &ObjectEntry10_1::NewObject { class_id, key })
+    })?;
+    let mut core = QueryFilterCore10_1 {
+        version,
+        sub_fields,
+        where_clause,
+        string_c,
+        output_reference,
+        spatial_resolution: None,
+        fid_set: None,
+        postfix_clause: None,
+        definitions: None,
+        prefix_clause: None,
+    };
+    if stop.is_some() {
+        return Ok(core);
+    }
+    core.spatial_resolution = Some(reader.read_f64_le()?);
+    core.fid_set = Some(read_slot(
+        reader,
+        table,
+        stop,
+        |reader, table, class, key, _| {
+            if class == FID_SET_CLASS_ID {
+                read_fid_set_body_10_1(reader, table, key).map(Some)
+            } else {
+                Ok(None)
+            }
+        },
+    )?);
+    if stop.is_some() || version == 1 {
+        return Ok(core);
+    }
+    core.postfix_clause = Some(read_bstr_string_10_1(reader, max)?);
+    core.definitions = Some(if version == 2 {
+        FilterDefinitions10_1::Inline(read_definitions(reader, max, table, stop)?)
+    } else {
+        FilterDefinitions10_1::Collection(read_slot(
+            reader,
+            table,
+            stop,
+            |reader, table, class, _, stop| {
+                if class != FILTER_DEFS_CLASS_ID {
+                    return Ok(None);
+                }
+                Ok(Some(FilterDefinitionsBody10_1 {
+                    version: read_version(reader, 1, "FilterDefs")?,
+                    entries: read_definitions(reader, max, table, stop)?,
+                }))
+            },
+        )?)
+    });
+    if stop.is_none() && version == 4 {
+        core.prefix_clause = Some(read_bstr_string_10_1(reader, max)?);
+    }
+    Ok(core)
+}
+
+fn read_spatial_fields(
+    reader: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+    stop: &mut Stop,
+) -> io::Result<SpatialFilterFields10_1> {
+    let search_order = reader.read_u32_le()? as i32;
+    let spatial_rel = reader.read_u32_le()? as i32;
+    let spatial_rel_description = read_string_10_1(reader, max)?;
+    let geometry = read_slot(reader, table, stop, |reader, table, class, _, _| {
+        Ok(Some(match class {
+            ENVELOPE_CLASS_ID => {
+                SpatialFilterGeometry10_1::Envelope(read_envelope_10_1(reader, max, table)?)
+            }
+            POINT_CLASS_ID | MULTIPOINT_CLASS_ID | POLYLINE_CLASS_ID | POLYGON_CLASS_ID => {
+                SpatialFilterGeometry10_1::Geometry(read_geometry_body_10_1(
+                    &class, reader, max, table,
+                )?)
+            }
+            _ => return Ok(None),
+        }))
+    })?;
+    let (geometry_field, filter_owns_geometry) = if stop.is_none() {
+        (
+            Some(read_string_10_1(reader, max)?),
+            Some(reader.read_u16_le()?),
+        )
+    } else {
+        (None, None)
+    };
+    Ok(SpatialFilterFields10_1 {
+        search_order,
+        spatial_rel,
+        geometry_field,
+        geometry,
+        spatial_rel_description,
+        filter_owns_geometry,
+    })
+}
+
+pub(crate) fn read_query_filter_slot_10_1(
+    reader: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+    stop: &mut Stop,
+) -> io::Result<QueryFilterObject10_1<QueryFilterBody10_1>> {
+    read_slot(reader, table, stop, |reader, table, class, _, stop| {
+        Ok(Some(match class {
+            QUERY_FILTER_CLASS_ID => {
+                QueryFilterBody10_1::Query(Box::new(read_core(reader, max, table, stop)?))
+            }
+            SPATIAL_FILTER_CLASS_ID => {
+                let version = read_version(reader, 1, "SpatialFilter")?;
+                let core = Box::new(read_core(reader, max, table, stop)?);
+                let spatial = if stop.is_none() {
+                    Some(Box::new(read_spatial_fields(reader, max, table, stop)?))
+                } else {
+                    None
+                };
+                QueryFilterBody10_1::Spatial {
+                    version,
+                    core,
+                    spatial,
+                }
+            }
+            _ => return Ok(None),
+        }))
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn append_header(bytes: &mut Vec<u8>, class: [u8; 16], key: u32) {
+        bytes.extend(class);
+        bytes.extend(key.to_le_bytes());
+    }
+
+    #[test]
+    fn filter_definitions_register_xml_children_and_stop_at_unknown_ones() {
+        let mut bytes = Vec::new();
+        append_header(&mut bytes, QUERY_FILTER_CLASS_ID, 1);
+        bytes.extend(4u16.to_le_bytes());
+        for _ in 0..3 {
+            bytes.extend([2, 0, 0, 0, 0, 0]); // 空 String，长度含终止零。
+        }
+        bytes.extend([0; 16 + 8]);
+        append_header(&mut bytes, FID_SET_CLASS_ID, 2);
+        bytes.extend(1u16.to_le_bytes());
+        bytes.extend(1u32.to_le_bytes());
+        bytes.extend(99i32.to_le_bytes());
+        bytes.extend(0u32.to_le_bytes()); // 空 BSTR。
+        append_header(&mut bytes, FILTER_DEFS_CLASS_ID, 3);
+        bytes.extend(1u16.to_le_bytes());
+        bytes.extend(2u32.to_le_bytes());
+        append_header(&mut bytes, XML_FILTER_DEF_CLASS_ID, 4);
+        bytes.extend(1u16.to_le_bytes());
+        bytes.extend(1u32.to_le_bytes());
+        bytes.extend([b'X', 0, 0, 0]);
+        bytes.extend(0u32.to_le_bytes());
+        let last = bytes.len();
+        append_header(&mut bytes, XML_FILTER_DEF_CLASS_ID, 4);
+        bytes.extend(0u32.to_le_bytes()); // PrefixClause。
+
+        let mut reader = Reader::new(&bytes);
+        let mut table = RefTable10_1::new();
+        let mut stop = None;
+        let result = read_query_filter_slot_10_1(&mut reader, 64, &mut table, &mut stop).unwrap();
+        let QueryFilterObject10_1::Body { key: 1, body } = result else {
+            panic!("应读到 QueryFilter");
+        };
+        let QueryFilterBody10_1::Query(core) = *body else {
+            panic!("应读到普通 QueryFilter");
+        };
+        let Some(FilterDefinitions10_1::Collection(QueryFilterObject10_1::Body { key: 3, body })) =
+            core.definitions.as_ref()
+        else {
+            panic!("应读到 FilterDefs");
+        };
+        let [
+            QueryFilterObject10_1::Body { key: 4, body: xml },
+            QueryFilterObject10_1::BackReference { key: 4, .. },
+        ] = body.entries.as_slice()
+        else {
+            panic!("应读到 XMLFilterDef 及其回引");
+        };
+        assert_eq!(xml.strings, ["X", ""]);
+        assert!(
+            matches!(core.fid_set.as_ref(), Some(QueryFilterObject10_1::Body { key: 2, body }) if body.ids == [99])
+        );
+        assert_eq!(core.prefix_clause.as_deref(), Some(""));
+        assert_eq!(reader.position(), bytes.len());
+        assert_eq!(table.len(), 4);
+        assert_eq!(stop, None);
+
+        bytes[last..last + 16].fill(0x55);
+        bytes[last + 16..last + 20].copy_from_slice(&5u32.to_le_bytes());
+        let mut reader = Reader::new(&bytes);
+        let mut table = RefTable10_1::new();
+        read_query_filter_slot_10_1(&mut reader, 64, &mut table, &mut stop).unwrap();
+        assert!(matches!(
+            stop,
+            Some(DatasetNameMoreStop10_1::Nested { key: 1, inner, .. }) if matches!(
+                inner.as_ref(), DatasetNameMoreStop10_1::Nested { key: 3, inner, .. }
+                    if matches!(inner.as_ref(), DatasetNameMoreStop10_1::SlotUnsupported { key: 5, .. })
+            )
+        ));
+        assert_eq!(reader.position(), last);
+        assert_eq!(table.len(), 4);
+        assert!(!table.contains(5));
+    }
+}

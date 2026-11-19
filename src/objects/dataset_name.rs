@@ -113,6 +113,11 @@ use std::io::{self, ErrorKind};
 /// `cmp word,1; jle/jg` 有符号比较，>1 拒绝；两类的 Save 恒写 1。
 const MAX_BODY_VERSION: i16 = 1;
 
+/// CoverageFDB.dll 0x6e0c3320 返回的 CoverageName CLSID。
+pub const COVERAGE_NAME_CLASS_ID: [u8; 16] = [
+    0x72, 0x1c, 0x92, 0x1e, 0x2f, 0x12, 0xd3, 0x11, 0x9f, 0x31, 0, 0xc0, 0x4f, 0x79, 0x92, 0x7c,
+];
+
 /// FeatureDatasetName 类标识（CLSID）的 16 字节内存序（Data1-3 小端、
 /// Data4 原序）。
 ///
@@ -192,6 +197,8 @@ pub struct FeatureDatasetNameBody10_1 {
     pub workspace: WorkspaceNameSlot10_1,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<FeatureDatasetNameStop10_1>,
+    /// CoverageName 外层版本及原始 LONG。
+    pub coverage_wrapper: Option<(u16, i32)>,
 }
 
 impl FeatureDatasetNameBody10_1 {
@@ -373,10 +380,33 @@ pub fn read_feature_dataset_name_body_10_1(
         flag,
         workspace,
         stop,
+        coverage_wrapper: None,
     };
     *table = staged_table;
     *reader = trial;
     Ok(result)
+}
+
+/// CoverageFDB.dll 0x6e0c3360 读取版本和 LONG 后委派给内联 FeatureDatasetName。
+pub(crate) fn read_coverage_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<FeatureDatasetNameBody10_1> {
+    let mut trial = reader.clone();
+    let version = trial.read_u16_le()?;
+    if version > 1 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "CoverageName 版本不支持",
+        ));
+    }
+    let long = trial.read_u32_le()? as i32;
+    let mut body = read_feature_dataset_name_body_10_1(&mut trial, max_bytes, table, key)?;
+    body.coverage_wrapper = Some((version, long));
+    *reader = trial;
+    Ok(body)
 }
 
 /// 从对象头之后的位置读取 10.1 TopologyName 对象体，失败时不推进游标、

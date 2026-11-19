@@ -90,7 +90,7 @@
 //! | --- | --- | --- | --- |
 //! | ① | int16 版本 | 恒有（>3 拒绝） | — |
 //! | ② | short | 恒有 | this-0xc |
-//! | ③ | NumericFormat::Load 内嵌核心 | 版本 >1（≥2） | this-0x10（独立槽；**原生不检查返回值**，核心失败后继续读本函数后续字段；本读取器按严格子集改为整体失败，较原生更严） |
+//! | ③ | NumericFormat::Load 内嵌核心 | 版本 >1（≥2） | this-0x10（独立槽；原生忽略核心版本拒绝并继续读后续字段） |
 //! | ④ | short | 版本 >2（≥3） | this-0xa |
 //!
 //! **ScientificFormat::Load `0x7ffda430`**（`2 < (short)ver` 拒绝）：
@@ -151,7 +151,7 @@
 //! Percentage/Rate 内嵌核心调用指针与外壳字段地址相同，但核心字段未覆盖外壳；LatLon/
 //! Angle 内嵌核心（独立槽）仅由反编译证据支撑，无样本字节；短体形态（各
 //! 类版本 ≤门限的分支）无样本；LatLon/Angle Save 版本表的索引语义未确认；
-//! Angle 原生忽略核心 Load 失败的容错路径未在读取器中模拟；全部结论未运
+//! Angle 核心版本拒绝时仍读取后续字段，截断返回错误；全部结论未运
 //! 行 ArcMap 验证。
 
 use crate::storage::object_refs::RefTable10_1;
@@ -373,22 +373,30 @@ pub fn read_numeric_format_body_10_1(
         "NumericFormat",
         entry_offset,
     )?;
+    let body = read_numeric_format_fields(&mut trial, version, key)?;
+    *reader = trial;
+    Ok(body)
+}
+
+fn read_numeric_format_fields(
+    reader: &mut Reader<'_>,
+    version: u16,
+    key: u32,
+) -> io::Result<NumericFormatBody10_1> {
     let mut int32s = [0_i32; 4];
     for slot in int32s.iter_mut() {
-        *slot = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+        *slot = reader.read_u32_le()? as i32;
     }
     let mut shorts = [0_i16; 3];
     for slot in shorts.iter_mut() {
-        *slot = trial.read_u16_le()? as i16;
+        *slot = reader.read_u16_le()? as i16;
     }
-    let result = NumericFormatBody10_1 {
+    Ok(NumericFormatBody10_1 {
         key,
         version,
         int32s,
         shorts,
-    };
-    *reader = trial;
-    Ok(result)
+    })
 }
 
 /// PercentageFormat（SystemCore.dll `0x7ffd11b0`）体的已确认字段。
@@ -688,9 +696,9 @@ pub fn read_latlon_format_body_10_1(
 /// AngleFormat（SystemCore.dll `0x7ffb33a0`）体的已确认字段。
 ///
 /// 字段序：① short 版本（`3 < (short)ver` 有符号拒绝）→ ② short → obj
-/// -0xc → ③ 版本 ≥2：NumericFormat 核心体（内嵌 obj-0x10 独立槽；**原生不
-/// 检查核心 Load 返回值**，失败后继续读后续字段；本读取器按严格子集改为
-/// 整体失败，较原生更严）→ ④ 版本 ≥3：short → obj-0xa。短体形态（版本
+/// -0xc → ③ 版本 ≥2：NumericFormat 核心体（内嵌 obj-0x10 独立槽；
+/// 核心版本超限时消费版本字段，并继续读取外层字段）→ ④ 版本 ≥3：
+/// short → obj-0xa。短体形态（版本
 /// ≤门限）无样本佐证（仅反编译）。
 #[derive(Debug, Clone, PartialEq)]
 pub struct AngleFormatBody10_1 {
@@ -702,6 +710,8 @@ pub struct AngleFormatBody10_1 {
     pub short_0c: i16,
     /// 版本 ≥2 的内嵌 NumericFormat 核心体（obj-0x10 独立槽）。
     pub numeric: Option<Box<NumericFormatBody10_1>>,
+    /// 核心 Load 拒绝的版本原值；区别于 Angle 旧版省略核心。
+    pub rejected_numeric_version: Option<i16>,
     /// 版本 ≥3：short → obj-0xa；IAngleFormat 的 DisplayDegrees 原始位模式。
     pub short_0a: Option<i16>,
 }
@@ -716,7 +726,7 @@ pub struct AngleFormatBody10_1 {
 /// 套对象条目）。
 pub fn read_angle_format_body_10_1(
     reader: &mut Reader<'_>,
-    table: &mut RefTable10_1,
+    _table: &mut RefTable10_1,
     key: u32,
 ) -> io::Result<AngleFormatBody10_1> {
     let mut trial = reader.clone();
@@ -725,14 +735,23 @@ pub fn read_angle_format_body_10_1(
     let version = read_version_short(&mut trial, MAX_ANGLE_VERSION, "AngleFormat", entry_offset)?;
     // ② short → obj-0xc。
     let short_0c = trial.read_u16_le()? as i16;
-    // ③ 版本 ≥2：内嵌 NumericFormat 核心（obj-0x10 独立槽）。原生忽略核心
-    // 失败继续读 ④；此处按严格子集传播失败（较原生更严）。
-    let numeric = if (version as i16) > 1 {
-        Some(Box::new(read_numeric_format_body_10_1(
-            &mut trial, table, key,
-        )?))
+    // 原生核心因版本超限返回时已经消费两个字节，外层从该位置继续。
+    let (numeric, rejected_numeric_version) = if (version as i16) > 1 {
+        let core_version = trial.read_u16_le()?;
+        if core_version as i16 > MAX_NUMERIC_FORMAT_VERSION {
+            (None, Some(core_version as i16))
+        } else {
+            (
+                Some(Box::new(read_numeric_format_fields(
+                    &mut trial,
+                    core_version,
+                    key,
+                )?)),
+                None,
+            )
+        }
     } else {
-        None
+        (None, None)
     };
     // ④ 版本 ≥3：short → obj-0xa。
     let short_0a = if (version as i16) > 2 {
@@ -745,6 +764,7 @@ pub fn read_angle_format_body_10_1(
         version,
         short_0c,
         numeric,
+        rejected_numeric_version,
         short_0a,
     };
     *reader = trial;

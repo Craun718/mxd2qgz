@@ -132,9 +132,31 @@ pub(crate) fn read_spatial_reference_entry_10_1(
     max_bytes: usize,
     table: &mut RefTable10_1,
 ) -> io::Result<SpatialReferenceEntry10_1> {
-    use SpatialReferenceEntry10_1::*;
     let offset = reader.position();
-    Ok(match read_object_entry_10_1(reader, table)? {
+    let entry = read_object_entry_10_1(reader, table)?;
+    if let Some(reference) = read_spatial_reference_body_10_1(reader, max_bytes, &entry)? {
+        return Ok(reference);
+    }
+    let ObjectEntry10_1::NewObject { class_id, key } = entry else {
+        unreachable!("仅未知新类没有对象体读取器");
+    };
+    Err(io::Error::new(
+        ErrorKind::Unsupported,
+        format!(
+            "ISpatialReference 槽 offset 0x{offset:x}: 不支持的类 {}（键 {key}）；仅支持投影坐标系、地理坐标系及 UnknownCoordinateSystem，未知体无外部长度，无法跳过",
+            crate::storage::class_id_hex(&class_id)
+        ),
+    ))
+}
+
+/// 根据已读取的对象头解析已知的空间参考。未知新类返回 `None`。
+pub(crate) fn read_spatial_reference_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    entry: &ObjectEntry10_1,
+) -> io::Result<Option<SpatialReferenceEntry10_1>> {
+    use SpatialReferenceEntry10_1::*;
+    Ok(Some(match *entry {
         ObjectEntry10_1::Null => Null,
         ObjectEntry10_1::BackReference { class_id, key } => BackReference { class_id, key },
         ObjectEntry10_1::NewObject {
@@ -158,16 +180,8 @@ pub(crate) fn read_spatial_reference_entry_10_1(
             key,
             body: read_unknown_coordinate_system_10_1(reader, max_bytes)?,
         },
-        ObjectEntry10_1::NewObject { class_id, key } => {
-            return Err(io::Error::new(
-                ErrorKind::Unsupported,
-                format!(
-                    "ISpatialReference 槽 offset 0x{offset:x}: 不支持的类 {}（键 {key}）；仅支持投影坐标系、地理坐标系及 UnknownCoordinateSystem，未知体无外部长度，无法跳过",
-                    crate::storage::class_id_hex(&class_id)
-                ),
-            ));
-        }
-    })
+        ObjectEntry10_1::NewObject { .. } => return Ok(None),
+    }))
 }
 
 /// 10.1 Envelope::Load（`0x71869b60`）可读取的 Envelope 对象体。
