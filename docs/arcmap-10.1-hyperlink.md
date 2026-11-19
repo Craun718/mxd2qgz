@@ -90,10 +90,10 @@
 1. ②④ int32 与 ③ String 的业务语义未定性：esriHyperlinkType 枚举值序、
    ② 是否即 Type、③ 与 IHotlinkContainer 热链字段的区分，均无样本佐证；
    ④ 语义完全开放。
-2. 版本 0 短体（版本门之下唯一变体）无样本；`FUN_6f6d9350` 的「?」截断仅
+2. 版本 0 与版本 1 共用同一布局，两者由同一版本比较和无条件字段读取证实。
+   版本 0 仍无实档；`FUN_6f6d9350` 的「?」截断仅
    按反编译记录，未运行验证。
-3. IHyperlink 循环条目的空标记（16 字节零）与回引形态按 ObjectStream 通用
-   语义处理，无 Hyperlink 特有字节佐证。
+3. 空标记与回引的宿主分支已补查，仍无对应实档，见下文。
 4. 全部结论为静态取证；未运行 ArcMap 10.1，未人工目视验收，不声称已验证。
 
 ## 接线轮落位（2026-11-15）
@@ -103,4 +103,13 @@
 调 `read_hyperlink_body_10_1` 整体解析（循环继续；其余类维持
 `HyperlinkNewObject` 停止回退）。`HyperlinkSlot10_1` 新增
 `Hyperlink(Box<HyperlinkBody10_1>)` 变体并去 `Copy`/`Eq`（循 D 轮提示）。
-样本计数恒 0，接线后样本行为不变（仅合成测试覆盖，robustness 清单已收）。
+样本计数恒 0，已有正常及异常构造测试。复扫 268 个 /Maps 或 /PageLayout 流文件，
+未命中 Hyperlink CLSID。
+
+## 空标记与回引的宿主复核
+
+核对 x86 FeatureLayer.dll `10.1.0.3035`，SHA-256 `2baf870615bb75b6f30ccea173ba4303fdd0b1a6571e11b9197c5fcf7298bb60`。现有伪代码 `0x6f6e9940` 与 objdump 对位：`0x6f6e9b24` 调 `LoadObject` 请求 IHyperlink，`0x6f6e9b2d` 只测试 HRESULT 是否为负。`0x6f6e9b40` 把输出指针交给 `0x6f701ad0`，该函数复制指针到数组项，首项走 `0x6f702c50`。空指针同样占一个数组项。`0x6f6e9b52` 按原计数循环，之后 `0x6f6e9b68` 读取 IColor 槽。
+
+同一对象流会话中，全零类标识消费 16 字节并返回 S_FALSE，命中已有键则对原对象查询 IHyperlink 并返回 S_OK，均不读取对象体。写侧 `0x6f6eb406` 取数组计数，循环从 `obj+0x174` 逐项调用 SaveObject，沿用通用空标记和写表回引。[ObjectStream 读写分支](arcmap-10.1-object-body.md)
+
+构造测试按新 Hyperlink、空标记、同类同键回引的顺序喂给 FeatureLayer 后继段，验证 IColor 与 FieldInfo 仍可读完且引用表只登记了一个键。测试不替代 ArcMap 10.1 运行验证。Hyperlink v0 实档仍缺。

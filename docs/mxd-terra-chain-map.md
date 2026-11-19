@@ -46,3 +46,11 @@ Save 侧也依次写出两成员、short、double、集合计数以及每条的 
 可独立勾选：**10.1 NADCONTransformation 的 CLSID、持久化槽及版本/长度/文本字节布局的静态对位**；**Map 版本 23..=51 的坐标变换循环在空引用、NADCON 新对象及该类已见键回引范围内逐项消费**。不能据此勾选所有坐标变换类型、变换语义、独立表体、循环后续字段或完整 Map 尾部。空集合只推进到计数之后，不宣称后缀已结束。
 
 本轮构造测试覆盖版本和长度边界、所有对象体短读、循环空引用/新对象/回引，以及未知类或截断时游标和键表回退；参考样本从根读取两项。`cargo fmt --check`、定向测试及完整 `cargo test --offline` 通过（默认忽略项未运行）；README 的 parse 命令报告未知尾部从 `0x2524f` 起 798 字节。仍未在 ArcMap 10.1 运行或在 QGIS 中目视验收。
+
+## Map 变换条目的存盘方向
+
+对上文同一 SHA-256 的 Map.dll 10.1.0.3035 x86 补做原始指令核对。`0x79417a67` 使用 `0x79487e50` 的 GeoTransformationOperationSet CLSID 创建操作集，并在 `0x79417a90` 请求 `0x79488608` 的 IID `{0049530E-E3EC-11D3-9F62-00C04F6BDD7F}`。该接口在同介质 esriGeometry.olb 的 TypeInfo 37 为 `IGeoTransformationOperationSet`。类型库 SHA-256 为 `d45fb2105c869cda034fa80101cf2d0b932e08ea6f31eca8d4322fe7f7cd3e8e`。
+
+TypeInfo 37 的 `Set`（`+0x0c`）与 `Next`（`+0x20`）分别以方向为第一个输入和输出参数，参数类型为 TypeInfo 36 的 `esriTransformDirection`。类型库常量值为 `esriTransformForward=0`、`esriTransformReverse=1`。Map Save `0x794020e0..0x79402145` 将 `Next` 返回的方向原样写成 LONG，随后写对应变换对象。Load v14 起在 `0x79400416..0x79400492` 读取 LONG 并传给 `Set`。v12/v13 在 `0x79400500` 起直接读取对象，调用 `Set` 时传 `0`，磁盘上无方向字段。
+
+Rust 保留每条存盘原值并提供方向枚举，CLI 显示方向计数。参考样本从根顺序读取两个 NADCON 条目，第一项 `0x2505a` 为正向，第二项 `0x25237` 为反向，后者回引同一变换对象。构造测试覆盖未知方向位和 v12/v13 字段缺省。ArcMap/QGIS 人工核验未做。

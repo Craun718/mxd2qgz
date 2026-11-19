@@ -23,3 +23,30 @@
 - 可单独落账：Map 独立表命名槽的 10.1 请求 IID 字节与既有 IFieldInfo 证据相符；FieldInfo 在该槽的保守分派及上述 SDK 两表读取器结果；首表 24 个 v2 是已知 v2 的额外宿主证据。
 - TODO 第 135 行是多缺口合项：SDK 首表停止于命名对象的旧描述可更新为本轮结果，但其他类和字段仍开放，整项不能勾选；第 278 行 v0/v1 仍缺实档，不能勾选。本轮依用户要求未修改 TODO。
 - 非空独立表的任意对象实现、真实数据源打开、回引接口兼容、其他版本及完整转换未闭合。ArcMap 10.1 暂不可用，未在 ArcMap 或 QGIS 打开、目视检查图层、表、数据、坐标系、范围、样式或布局。
+
+## 关系名称、序列颜色和后续对象
+
+在同一份 Map.dll 10.1.0.3035 的 Ghidra 导出 `0x7945d630` 与
+objdump 指令中复核后续 LoadObject；IID 字节以 PE 映像为准，接口名由
+10.1 介质类型库对位。
+
+| 版本条件 | 引用 IID 数据的指令 | 请求接口与读取器 |
+| --- | --- | --- |
+| 起始名称及 v4 起第二名称 | 辅助函数 `0x7945d350`，第二槽 `0x7945dbbe` | IName，共用旧 Map 表名分派，加入 FileGDB 要素类和查询表名称 |
+| v2 起关系循环 | `0x7945d829` | IRelationshipClassName，接入类型库公开的 RelationshipClassName 和 MemoryRelationshipClassName |
+| v3 起压缩序列之前 | `0x7945da0b` | IColor，类型库公开的 RgbColor、CmykColor、HsvColor、GrayColor、HlsColor 均已有体读取器 |
+| v11 起尾槽 | `0x7945dd8b` | IDisplayExpressionProperties，接入 DisplayExpressionProperties 和已支持的引擎 |
+| 仅 v11、v12，额外 short 后 | `0x7945dde1`、`0x7945de09` | IUID、IAnnotateLayerPropertiesCollection，复用各自体读取器 |
+
+ALPC 请求的完整 IID 为 `1D5849F2-0D33-11D2-A26F-080009B6F22B`，
+与 [Annotation.dll 接口实现](mxd-terra-nextpass-expression.md) 一致。
+v14 在时间字段之后调用 `ExtensionHelper::LoadExtensions`，Save
+`0x7945e3c0` 调用 `ExtensionHelper::SaveExtensions`。独立表复用
+LayerLib 的旧式尺寸、CLSID 和类体分派，已知扩展的嵌套键共享宿主表。
+未知关系、尾槽和扩展停在对应条目起点，保留此前读完的对象及引用键。
+
+构造测试覆盖非空关系名、同键回引、序列前非空颜色、v11/v12 UID 与标注
+集合、v14 时间轨道扩展的 LongArray 新键和后继未知扩展，以及截断时的
+回滚。参考工程和两套安装介质的 134 份工程仍读到两条根流的终点，这批
+工程的 Map 解析未报告独立表体。LinearRef 的两张 v9 独立表仍由 SDK
+回归用例覆盖，新增非空组合尚缺 ArcMap 10.1 实档和人工验收。

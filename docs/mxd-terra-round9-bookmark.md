@@ -24,3 +24,26 @@
 `tests/terra_round9_bookmark.rs` 的合成测试覆盖 TableName 空工作空间、回引、新 WorkspaceName、嵌套未知对象停止、截断、版本及字符串限额，核对成功位置和失败事务回滚。专门测试 3 项通过；`cargo fmt --check` 通过；`cargo test --offline` 全量通过（794 项通过、16 项默认忽略）。
 
 可单独落账：FeatureBookmark 10.1 的 IName 请求、构造/虚表定位、名称对象调用后对结果 QI 的静态路径；TableName 的 IName 视图和此宿主下可完整读取子集的分派。仍不可将「FeatureBookmark 全部 IName 具体实现及实际分布」「非空书签真实读取」「int32 业务属性」「ArcMap/QGIS 人工验收」整体勾选。其他实现、真实打开结果及软失败行为仍需目标运行取证。
+
+## FileGDB 与查询名称的后续接线
+
+再次核对 Desktop 10.1.0.3035 的 FileGDB.dll 和 GdbCore.dll，摘要分别为
+`73cef6bac97b0bdba8e4b26e2052cefab0b55a32e3a4141c01701d7cbc5f1230` 与
+`ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4`。
+
+- FgdbFeatureClassName（`75E10086-4226-42AC-AFEC-CBB9B748F847`）构造器
+  在 `0x6fa31731..0x6fa31745` 以外层对象为聚合者，创建 GdbCore
+  FeatureClassName 并保存其非委派 IUnknown。外层 QI 在
+  `0x6fa3317d..0x6fa3318d` 将 IName 请求交给该内置对象。
+  外层 IPersistStream 仍使用独立的 `0x6fafe0c4` 虚表和
+  `0x6fa33290` Load，因此书签直接复用读取 FileGDB 包装和内嵌名称体的入口。
+- TableQueryName 的 QI `0x708f4960` 在 `0x708f4967` 比对
+  `0x70ab84e4` 的 IName IID，返回对象 +0x10；该视图的 Open 槽
+  指向 `0x708f4ab0`。FeatureQueryName 的 QI `0x708f5700` 对
+  该请求转入同一基类入口。两类的 IPersistStream 读写顺序已由
+  [查询名称取证](mxd-terra-integrate-query.md)核对，按流内 CLSID 复用。
+
+合成书签覆盖三个非空名称、书签字符串的后继边界及未知工作空间和截断时
+的事务回滚。参考工程和 199 个介质流里有 FileGDB 名称的类标识命中，
+尚未通过结构遍历确认它在书签槽内出现，两种查询名称也没有类标识命中。
+其余 IName 实现仍需核对，软件实际打开和人工验收待补。

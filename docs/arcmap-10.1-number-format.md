@@ -253,9 +253,9 @@ LatLon/Angle 的 Save 经 `AfStreamGetSaveVersion(文档版本, 表长, 表)`
 `read_angle_format_body_10_1`/`read_scientific_format_body_10_1`/
 `read_custom_number_format_body_10_1`），严格事务子集（失败不推进游标、
 不修改登记表；CustomNumber 的 String 受 `max_bytes` 限额）。与原生的已知
-偏离（均在读取器文档注明）：负值版本位模式拒绝（较原生更严）；Angle 的
-核心 Load 失败从「原生忽略继续」改为整体失败（较原生更严，不模拟容错路
-径）；LatLon ④ 的内存默认 -1/-1 与 Scientific ② 的内存默认 6 是对象内存
+偏离（均在读取器文档注明）：除 Angle 内嵌核心外，负值版本位模式拒绝；
+Angle 内嵌核心的版本拒绝路径见下文。LatLon ④ 的内存默认 -1/-1 与
+Scientific ② 的内存默认 6 是对象内存
 状态，不在流内，读取结果以 `Option::None` 表示。
 
 ### 测试（tests/number_format.rs，10 → 19 项）
@@ -292,12 +292,23 @@ Scientific 版本 2 int32/版本 1 短体（后续字节不消费）/版本 3 �
    编译证据。
 3. LatLon/Angle Save 版本表的索引/封顶语义未反编译；`esriArcGISVersion`
    文档版本枚举值与产品版本的对应未确认。
-4. Angle 原生忽略核心 Load 失败的容错路径（继续读 ④）未在读取器中模拟；
-   若真实流出现核心截断，读取器比原生严格。
+4. Angle 内嵌核心的 IStream 短读与原生游标传播仍待运行验证，读取器明确
+   拒绝截断。
 5. 短体形态（Currency 0、LatLon 0..2、Angle 0..1、Scientific 0..1、
    CustomNumber 0；含版本 0 是否合法出现亦无证据）无样本字节。
 6. 全部结论为静态取证；未运行 ArcMap 10.1，未人工目视验收，不声称已验
    证。
+
+### AngleFormat 内嵌核心版本拒绝
+
+用同一 SystemCore.dll 10.1.0.3035 映像复核原始指令。核心
+`0x7ffce4b0` 先在 `0x7ffce4c0` 读取 2 字节版本，
+`0x7ffce4d7..0x7ffce4dc` 对有符号版本大于 1 直接返回错误。
+调用方 `0x7ffb33f4..0x7ffb340e` 忽略核心返回值，Angle v2 在已消费
+的核心版本后结束，v3 从紧随其后的 short 读取 DisplayDegrees。
+读取器保留被拒绝的核心版本，并按原生位置消费外层字段。构造测试确认
+两种外层版本的对象边界、后续字节及 v3 尾字段截断回滚。ArcMap 运行中
+的 IStream 短读传播和真实失败样本尚未验证。
 
 ### 接线轮落位（整合接线轮，2026-11-15）
 

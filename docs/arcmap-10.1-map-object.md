@@ -167,15 +167,16 @@ GroupLayer::Load `0x6f711270` 完整字段序（上一节第 149 行的展开；
 | double ×2 → +0xa8/+0xb0 | 恒有 | |
 | int32 计数 + 循环子图层 `LoadObject`（IID `DAT_6f7aa4ec`） | 恒有；ver<11 走 `LoadObject`+`FUN_6f7021d0`，≥11 走 `ExtraSafeReadObject` | 内联序列；≥11 的 ExtraSafeReadObject 差异未展开 |
 | int16 可见性 → +0xbc | <2 默认 0xffff，≥2 读取 | VARIANT_BOOL，与 FeatureLayer 同构 |
-| 嵌套 `LoadObject`（IID `DAT_6f7aa4bc`） | ≥2 | |
+| 嵌套 `LoadObject`（IEnvelope，IID `DAT_6f7aa4bc`） | ≥3 | |
 | double → +0xc8 | ≥4 | |
 | 扩展序列 `ExtensionHelper::LoadExtensions(+0x100)` | ≥5 | |
 | String → +0xdc；==6 再读 short | ≥6 | |
 | short → +0xd6 | ≥7 | |
-| double ×2 → +0xe0/+0xe8 | ≥7 | |
-| short ×3（local、+0xf2、+0xf4；首值传入 +0x78 接口 +0x24） | ≥9 | |
-| 嵌套 `LoadObject`（IID `DAT_6f7aafb8`） | ≥11 | 结果存 +0x7c 接口 |
-| LayerMasking 初始化 | 尾部 | 版本 <0xc 且 +0xf0 非零时有条件循环 |
+| double ×2 → +0xe0/+0xe8 | ≥8 | |
+| short → +0xd8 | ≥9 | |
+| short ×3（local、+0xf2、+0xf4；首值传入 +0x78 接口 +0x24） | ≥10 | |
+| 嵌套 `LoadObject`（IDisplayFilter，IID `DAT_6f7aafb8`） | 12 | 结果存 +0x7c 接口 |
+| LayerMasking 初始化 | 尾部 | 版本 <12 且 +0xf0 非零时遍历已有子图层；本体不再读流 |
 
 FeatureLayer::Load `0x6f6e9940` 头部段补充（上限 0x22=34）：int16 版本 → String 名称(+0x120) → String 第二名称(+0x124) → int16 ×3（+0x128 可见性 VARIANT_BOOL / +0x12a / +0x12c）→ 嵌套 `LoadObject`（数据源连接）→ **原样 16 字节 GUID → obj+0x144**（`AfStreamRead(0x10)`，非对象头，未定性——候选为数据源扩展标识）。样本首 FeatureLayer（键 0x4f 起，版本 34）与此段逐字段吻合。
 

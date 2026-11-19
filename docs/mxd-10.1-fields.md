@@ -74,8 +74,60 @@ RangeDomain 紧跟两个 `Variant::Read(false)` 边界值；CodedValueDomain
 影像服务图层中的非空范围域、编码域的两种字符串长度、计数和截断回退。
 另以合成字段默认值和编码值验证数组及后继字段的边界。带保留区的空对象、
 PropertySet 与回引也可读取，见[对象值证据](arcmap-10.1-variant-propertyset-slots.md#带保留区的-objectstream-对象值)。
-未知新类、未确认的数组元素类型及其他未识别值域类仍保留为停止点。未做
+未确认的 Variant 新对象类保留为停止点，数组分派见[读写分发表复核](arcmap-10.1-variant-propertyset-slots.md#值域数组的读写分发表复核)。未做
 ArcMap 运行验证。
+
+## BitMaskCodedValueDomain
+
+介质注册 CLSID `{C4048916-410F-4DCE-9024-BE5BE6BA0A23}`。该类的
+RTTI 与持久化实现位于 NetworkAnalystSolvers.dll x86 10.1.0.3035，
+映像基址 `0x7b070000`，SHA-256
+`a88f590573b8115a05921d624258214f9ea73baa7eaa720d182b7b5c2798234c`。
+RTTI `0x7b231868`、构造器 `0x7b08f740` 和 QI `0x7b08f9f0` 互证类身份。
+QI 在 `0x7b08f9f7` 比对 Field 所请求的 IDomain IID，返回完整对象
+`+0x18`。委派 QI `0x7b1d1800` 返回 IPersistStream 虚基偏移
+`+0x6c` 的虚表 `0x7b1fd7e8`。虚表跳板最终到达 GetClassID
+`0x7b090460`、Load `0x7b0904c0` 和 Save `0x7b0906d0`。
+
+按 objdump 核对，两侧字段序为 short 版本、三个 int32、三个 AfCore
+String、int32 标签数量及一个 ExtraSafe 对象。Save 版本表 `0x7b1fc610`
+的有效项为 0。Save `0x7b0907d2` 调 `0x7b091100` 创建 StrArray，
+插入相同数量的标签后写出；Load `0x7b0905c3` 调 ExtraSafeReadObject
+请求 IStringArray，并在 `0x7b090600..0x7b090674` 用标签索引生成
+`1 << i` 的 int32 编码。位掩码通过标签顺序表达。
+
+Rust 复用 MosaicDatasetName 的 StrArray 读取器，限制 ExtraSafe 边界，
+保留原始计数与标签顺序，并在嵌套体失败时回滚整个值域。合成测试覆盖
+新标签对象、宿主后继字段、数量不匹配和逐字节截断。参考工程加 66 份
+10.1 介质的 /Maps 均未检出该 CLSID，未做 ArcMap 运行验证。
+
+## Field 的 IDomain 实现范围
+
+对 10.1 介质中 72 个可解码的 Desktop MSFT 类型库，沿 coclass
+引用表与已解析接口继承核对 IDomain
+`DF18FE0A-84BA-11D2-AB61-000000000000`。类型库声明了
+RangeDomain 与 CodedValueDomain。对已提取的 1,115 个 Desktop DLL
+扫描 IID 并复核 28 个命中模块的代码引用，共定位到三处实现侧 IID 比较：
+
+| 模块 | 指令地址 | 实现类 |
+| --- | --- | --- |
+| GdbCore.dll | `0x708d3777` | CodedValueDomain |
+| GdbCore.dll | `0x70934557` | RangeDomain |
+| NetworkAnalystSolvers.dll | `0x7b08f9f7` | BitMaskCodedValueDomain |
+
+其他直接引用把 IID 传给现有对象的 QI、LoadObject 或创建入口。
+特别是 TableDefUI.dll x86 10.1.0.3035（SHA-256
+`ecee68d2e003cb24634871a0ff1e1048140e7e27a26d185ad8e9888c84d6c247`）的
+`0x1001a200` 根据 1/2/3 选择 RangeDomain、CodedValueDomain
+或 `F84C6C1C-47FF-11D2-9933-0000F80372B4`，再请求 IDomain。
+第三项 CLSID 位于 `0x100b3934`，在 `0x1001a2c3` 作为
+AfCreateInstance 的类参数。它只在该调用方出现，未出现在同批
+esri.clsid.xml、已提取的其他 Desktop DLL/OLB 或 200 个已扫描工程流中。
+这证实了调用点，当前 10.1 介质没有为该候选提供可接入的持久化体。
+
+因此已接入本次 10.1 Desktop 核对范围中确认的三种普通 IDomain
+持久化实现。若今后取得旧类的实际工厂或对象体，再单独分析其布局。
+目前没有这组值域的新增真实 MXD 或 ArcMap 运行验证。
 
 ## 几何定义与栅格定义
 

@@ -19,3 +19,23 @@
 对 66 份 10.1 介质工程回归，48 份进入页面元素集合，其中完整读完集合的工程由 34 份增至 44 份；当前总共顺序读到 170 个页面元素，其中 28 个是装饰框。这些数字不含未解析的 PageLayout 尾段。Utilities.mxd 的 27 个元素全部读到 `/PageLayout:0x3669`，其中有五个 MapSurroundFrame 和共享地图框回引。三个内联 MapFrame 的键 165、175、183 在 `/PageLayout:0x66/0x491/0x7c8` 分别回引 `/Maps` 的 Map 键 29、85、124；末尾另保留 671 字节。合成用例覆盖装饰框 v0–v3 版本门、空槽和有界回引，及回引多出字节时拒绝消费条目。
 
 尚未完成：MilitaryPortrait 的两个介质条目停在 Graticule 网格对象；ConservationLandscape 的两个条目停在矩形填充符号的子对象。另有 18 份工程因前置 /Maps 边界原因没进入布局；普通对象形式的旧布局元素、布局尾段和其他未知跨流对象体仍待闭合。原生读写分支及介质回归不能替代 ArcMap/QGIS 人工验收。
+
+## 组元素中的装饰框
+
+GraphicElements.dll 10.1.0.3035 的 GroupElement Load `0x75035ef0` 在子元素循环中使用普通 IElement 对象槽，见 [GroupElement 持久化顺序](mxd-page-layout-tail-20261118.md)。MapSurroundFrame 的类身份及生效的 Load 入口见上文。分组宿主现在使用同一个 MapSurroundFrame 读取器，并把布局起始偏移、跨流 Map 检查及对象键表传给子项。没有额外的 ExtraSafe 头。构造测试覆盖同一布局后续元素对组内装饰框的回引，以及子体截断时整组回退。
+
+完成 v51 Map 段落文本接线后，10.8 补充对照中有八份工程在布局组内实际遇到该类。复用已核实的 10.1 对象体分派后，八份均到达布局终点，布局总数由 41/68 增至 49/68。66 份 10.1 介质工程和仓库样例仍到达布局终点。余下 19 份 10.8 对照工程的首个未支持类分别是 EmfPictureElement（9 份）、BmpPictureElement（9 份）、JpgPictureElement（1 份），由 10.1 介质类表确认类名，图片体未在本次读取。未做 ArcMap 或 QGIS 人工验收。
+
+## 图片元素的普通对象体
+
+使用 10.1 Desktop 介质的 x86 `RasterGraphicElements.dll`，版本资源为 `10.1.0.3035`，SHA-256 为 `a33a04b3a190074b1aa5291ab726825b9ab454914dafad81beeb7e595591e40d`。现有源码成果未导出此模块，本轮使用 PE 类注册、RTTI、虚表及 `objdump -d -Mintel` 对位。通用 PictureElement、Emf、Bmp、Jpg、Gif、Tif、Png、Jp2 八类的 `+0x9c` 持久化视图都由虚表 `+0x14` 的 thunk `0x7c5948c0` 进入 `0x7c593450`，`+0x18` 则从 `0x7c594b30` 到 Save `0x7c593780`。
+
+| Load 原生地址 | 存盘字段 |
+| --- | --- |
+| `0x7c593474..0x7c5934e6` | short 版本，0–2 读 RectShapeElement 和 ElementProperties，3–9 读 BaseFrameElement。构造入口在 `0x7c591404` 将普通对象的另一路兼容标志置零。 |
+| `0x7c5934e6..0x7c593569` | v2 起读嵌入 short。其值为 `0xffff`，或版本 ≤4 且 ElementProperties 名称为空时，以普通 LoadObject 读取 IPicture（`0x7c59e42c` 的 IID `{7BF80980-BF32-101A-8BBB-00AA00300CAB}`）。v0–3 再读旧 short。Save 在 v4 写 BaseFrameElement 前，将图片路径复制到该旧名称字段。 |
+| `0x7c593569..0x7c5936c7` | v5 加三个 AfCore String；v6 加 32 字节 WKSEnvelope；v7 加 String；v8 加 short 和 String；v9 加 String。Save 版本表 `0x7c59e578` 为 `[4,4,4,4,5,9]`。 |
+
+读取器复用几何框架、ElementProperties 及有长度的 StdPicture 体。仅在对象完整消费后提交游标和登记表。通用元素分派覆盖布局顶层、布局组内、图形子层和元素集合。图片按原始字节保留。类名仅说明元素类，例如 CMY_PlotterCalibrate 的 JpgPictureElement 内嵌 StdPicture 的有效载荷以 BMP 标识开头。外部图片路径只作为字符串读取。特殊旧兼容路径 `0x7c593180`、带外部状态的宿主、其他新 IPicture 类及无长度头的 StdPicture 尚未接入。
+
+构造测试覆盖普通 v0–v9、旧名称门、八类分派、图片与元素回引、全部截断边界、过大声明和未知 IPicture 的回退。实档回归中，10.8 介质 19 份原停止工程各读出一项 v4 图片元素（EMF 9、BMP 9、JPG 1）。按根尾偏移加四字节和布局实际消费终点分别与流长度比较，10.8 的 68 份、10.1 的 66 份及仓库样例的两个流都到达精确终点。该检查覆盖对象流边界，未知的有界子对象仍可能保留。ArcMap 和 QGIS 人工验收未做。

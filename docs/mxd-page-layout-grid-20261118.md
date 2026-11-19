@@ -17,3 +17,69 @@
 - **10.1 介质版本候选分组**：66 份中，能进入页面元素循环的 48 份现全部读完集合（此前 44 份）。按 `/Version` 头的文本候选分组，9.2 为 3/3，9.3 为 34/34，10.0 为 11/11；这些工程都检测到至少一个页面地图框回引。候选文本为 10.1 的 18 份均因 /Maps 前置未知内容未进入页面元素循环，目前主要见于 Basemap 和 MapSurround 子体；未由这批样本证明 10.1 流类别的全覆盖。10.8 介质仅作回归对照，不据此确认 10.8 原生实现。
 
 `cargo fmt --check`、`git diff --check` 与 `cargo test --no-fail-fast -- --include-ignored` 通过（887 项）。新增合成覆盖 Graticule v0–v5 门、DMS 标签、简单网格边框，以及逐字节截断后的游标和键表回滚。实档测试覆盖两条此前失败的宿主路径。从布局元素集合结束到 PageLayout 根对象结束的字段，以及其他网格、标签、边框实现仍待研究。
+
+## MeasuredGrid、IndexGrid 与 CalibratedMapGridBorder
+
+复用安装介质中的 x86 `MapElements.dll`（`10.1.0.3035`，SHA-256 `67a6cbb2dfd1fe2626d32a8fbb1835b38e26b9543833b52628a85e7330d98768`），用 objdump 补查持久化虚表、委派和字段读写。以下均为该 PE 的虚拟地址。
+
+| 类 | 身份与持久化入口 | 字段顺序 |
+| --- | --- | --- |
+| MeasuredGrid `{03762C90-F4D0-11D1-ADE8-080009EC732A}` | 持久化虚表 `0x7959d58c`；GetClassID `0x79581a70`；Load `0x79581ab0`；Save `0x79581bd0` | 有符号 short 版本，最大 2。`0x79581afa` 调 MapGrid 基体读取器，随后四个 double、一个 LONG、ISpatialReference 对象槽（`0x79581b8b`）。仅版本 2 再读一个 short（`0x79581baa`）。 |
+| IndexGrid `{03762C91-F4D0-11D1-ADE8-080009EC732A}` | 持久化虚表 `0x7959b8cc`；GetClassID `0x79563200`；Load `0x79565300`；Save `0x795654a0` | 有符号 short 版本，最大 1。`0x7956534d` 调 MapGrid 基体读取器，随后两个 LONG，再读两组有符号 LONG 计数与 AfCore String。字符串分别由 `0x795653cd` 和 `0x7956543e` 读取。非正计数跳过循环。 |
+| CalibratedMapGridBorder `{6CA416B0-E160-11D2-9F4E-00C04F6BC78E}` | 持久化虚表 `0x79599eb0`；GetClassID `0x79544b50`；Load `0x79546a70`；Save `0x79546b60` | 有符号 short 版本，最大 1。`0x79546add` 和 `0x79546afb` 各读一个 IFillSymbol 对象槽，使用 IID `{E6BDAA7E-4D35-11D0-98BE-00805F7CED21}`；之后是两个 double 及一个 short。 |
+
+三类对象从 `/PageLayout` 的 MapFrame 网格集合读取。网格基体、空间参考和填充符号复用已有读取器，嵌套对象与地图框共用对象键。构造测试在一个地图框内依次读取两版 MeasuredGrid 和 IndexGrid，覆盖填充对象新键及回引、跨网格边框回引、空间参考回引、空标签和中文标签，并检查版本越界、计数越界、截断时的游标和引用表回滚。
+
+在两套介质提取的 268 个 `/Maps` 与 `/PageLayout` 流中未命中这三个 CLSID。当前以静态布局和构造测试验证，尚未在 ArcMap 10.1 中打开含这三类对象的工程。未定标量保留原值，未知标签或符号类仍可使所属地图框停止读取。
+
+## FormattedGridLabel、MixedFontGridLabel 与 CornerGridLabel
+
+对同一 `MapElements.dll` x86 `10.1.0.3035` 映像补查原始虚表与读写指令。MapGrid 在 `0x79576f77` 传入 `{CE41C501-9DF9-11D2-AADE-000000000000}`（IGridLabel）。扫描 72 份介质类型库并沿接口继承关系查找，公开的四个 coclass 为 DMSGridLabel 和下表三类。
+
+| 类 | IPersistStream 虚表、GetClassID、Load / Save | 版本与后继字段 |
+| --- | --- | --- |
+| FormattedGridLabel `{CE41C507-9DF9-11D2-AADE-000000000000}` | `0x7959ae04`、`0x79555600`、`0x79555640 / 0x79555720` | 有符号 short，最大 2。共同字段之后，v2 追加一个 short（`0x79555702`）。 |
+| MixedFontGridLabel `{CE41C508-9DF9-11D2-AADE-000000000000}` | `0x7959da94`、`0x7958d420`、`0x7958d460 / 0x7958d640` | 有符号 short，最大 3。共同字段之后读取第二个 ITextSymbol（`0x7958d539`），v2 起读 5 个 short，v3 再读一个 short。 |
+| CornerGridLabel `{FD52B61A-71CD-4108-A916-F818969404EA}` | `0x7959a314`、`0x7954a7d0`、`0x7954a810 / 0x7954aa50` | 有符号 short，最大 2。共同字段之后读取第二个 ITextSymbol（`0x7954a8e9`）、5 个 short、4 个 short、2 个 LONG。v2 追加 3 个 AfCore String，读取入口 `0x7954aa1c / 0x7954aa29 / 0x7954aa36`。 |
+
+共同字段指版本后的 ITextSymbol、INumberFormat 和 double。原生请求 IID 位于 `0x79599948` 和 `0x7959a334`，Rust 复用相应的符号与数字格式分派，并沿用宿主对象键。MixedFont 和 Corner 在第二个 ITextSymbol 加载失败时有运行时恢复路径。读取器只在确认完整消费槽位时继续，避免未知符号体错位到后继字段。标量暂按原值保留。
+
+地图框构造测试覆盖三个标签的各写入版本及其旧门、非空数字格式、标签紧随字段和截断回滚。268 个介质 `/Maps` 和 `/PageLayout` 流未命中这三个 CLSID。尚缺实际标签工程和 ArcMap/QGIS 人工验收。
+
+## CustomOverlayGrid 与 MgrsGrid
+
+本轮核对 ArcMap x86 `10.1.0.3035` 安装介质的 72 份类型库。以
+`IMapGrid` IID `{03762C8B-F4D0-11D1-ADE8-080009EC732A}` 沿接口继承关系
+枚举，公开类为 Graticule、MeasuredGrid、IndexGrid、CustomOverlayGrid、MgrsGrid。
+`IMapGridBorder` IID `{AC81ECF9-9EE4-11D2-AADF-000000000000}` 的公开类为
+SimpleMapGridBorder 和 CalibratedMapGridBorder。
+
+现有源码导出未覆盖对应读写体。使用 objdump 核对 `MapElements.dll`
+（SHA-256 `67a6cbb2dfd1fe2626d32a8fbb1835b38e26b9543833b52628a85e7330d98768`），
+以 Ghidra 补充 Load/Save 反编译。两类的 QueryInterface 分别从
+`0x7954b430`、`0x795828a0` 委派至 `0x79575bb0`，后者处理
+IPersistStream 并返回虚基类视图。以构造函数安装的虚表和 GetClassID
+返回值绑定持久化方法。
+
+| 类 | CLSID | IPersistStream 虚表 | GetClassID / Load / Save |
+| --- | --- | --- | --- |
+| CustomOverlayGrid | `{FF501C8A-D74B-11D2-9F43-00C04F6BC78E}` | `0x7959a700` | `0x7954ea30` / `0x7954ea70` / `0x7954ebb0` |
+| MgrsGrid | `{35F4D526-895D-4F85-B97F-1A3B84C629AD}` | `0x7959d864` | `0x7958a4e0` / `0x7958a520` / `0x7958a710` |
+
+- **CustomOverlayGrid** 先读有符号 short 版本（最大 1，Save 写 1），
+  调 `0x79576ec0` 读取 MapGrid 基体，再读 `IName`（IID
+  `{4BA33331-D55F-11D1-8882-0000F877762D}`）和一个 AfCore String。
+  原生在加载 IName 后调用其 Open，再读取字符串。Rust 保留数据源引用及
+  字符串，识别 GdbCore 和 FileGDB 的 FeatureClassName 新对象，遇见其他
+  IName 新对象或内嵌名称体读取停止时保留 MapFrame 边界。
+- **MgrsGrid** 先读有符号 short 版本（最大 3，Save 写 3）并读取 MapGrid
+  基体，之后依次读取 LONG、ISpatialReference、short、ITextSymbol、
+  ILineSymbol、double、short、ITextSymbol、两个 LONG。版本 ≥2 加一个
+  short，版本 ≥3 再加 LONG 和 ILineSymbol。各槽以类型库 IID 验证，
+  字段中尚未绑定至属性的值按原始位模式保留。
+
+合成 MapFrame 覆盖 MgrsGrid v1–v3、自定义叠加网格的 GdbCore
+FeatureClassName、符号回引，以及不支持的版本、未知 IName 与截断时的游标和
+引用表恢复。已提取的 268 个介质 `/Maps` 和 `/PageLayout` 流未命中这两个
+CLSID 的内存序字节。参考工程原文件同样无命中。尚未在 ArcMap 或 QGIS 中
+人工核验这两种网格。

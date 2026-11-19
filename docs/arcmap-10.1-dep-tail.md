@@ -233,3 +233,60 @@ PictureLine/ArrowMarker/LineFill/MarkerFill/GradientFill/DotDensityFill）+
   ver <2 bias 分支仅反编译证据。
 - 全部结论为静态取证，未运行 ArcMap 10.1，未人工目视验收；样本对位为辅助
   观察（temp/agent-a-deptail/walk_dep_tail.py 断言通过）。
+
+## IGraphicsContainer 实现续查
+
+10.1 介质提取的 72 份 OLB 中，esriCarto、esri3DAnalyst、esriGlobeCore 共声明七个实现 `{D09411D1-4BB4-11D1-B6CC-080009B996CC}` 的 coclass。LELP 的 `0x785468c0` 在版本 ≥3 时于 `0x78546b2c` 传入该 IID 加载槽。类型库结果说明接口归属，持久化由二进制中的 QueryInterface 和虚表确认。
+
+| 类 | CLSID | 本次范围 |
+| --- | --- | --- |
+| CompositeGraphicsLayer | `9646BB83-9512-11D2-A2F6-080009B6F22B` | FeatureLayer.dll 主 QI `0x6f6b0770` 命中该 IID 返回 +0x34。已有 Load `0x6f6b2100` 的读取器。 |
+| GraphicsSubLayer | `D3A9D37D-EC3C-40C7-87B6-7057AEB605F2` | FeatureLayer.dll 主 QI `0x6f70e6a0` 命中该 IID 返回 +0x38。没有独立可用的对象流持久化接口。 |
+| FDOGraphicsLayer | `34B2EF83-F4AC-11D1-A245-080009B6F22B` | AnnoLayer.dll 主 QI `0x6b18e8c0`，已有对象体读取器。 |
+| Map | `E6BDAA76-4D35-11D0-98BE-00805F7CED21` | Map.dll 主 QI `0x793e4620`，已有对象体读取器。 |
+| PageLayout | `DD94D76E-836D-11D0-87EC-080009EC732A` | PageLayout.dll 主 QI `0x7b6cedf0`，已有布局读取器。 |
+| GraphicsLayer3D | `4C87A8F0-01E3-11D4-AB69-0008C73FD50C` | Scene.dll 主 QI `0x7d2a15b0`，IGraphicsContainer 位于 +0x38，IPersistStream 位于 +0x5c。 |
+| GlobeGraphicsLayer | `A415A073-CF06-4CDC-8664-439D0D5E7169` | GlobeLayers.dll 主 QI `0x72f51ad0`，IGraphicsContainer 位于 +0x3c，IPersistStream 位于 +0x5c。 |
+
+- FeatureLayer.dll 版本资源为 `10.1.0.3035`，PE x86，SHA-256 `2baf870615bb75b6f30ccea173ba4303fdd0b1a6571e11b9197c5fcf7298bb60`。已有 `FeatureLayer/6f70e290.c` 和 `6f70e540.c` 确认类名与虚表归属。objdump 显示主 QI 的 12 个 IID 均非 IPersist、IPersistStream 或 IPersistVariant，后备链 `0x6f73c440 → 0x6f73c0d0` 仅比较 IConnectionPointContainer、IUnknown、ISupportErrorInfo 和 `9F9650F1-5F49-4041-BA0F-D10BAFF1D7BC`。回到后备链后，对流加载使用的两个持久化 IID 均落入 `E_NOINTERFACE`。同模块 `0x6f70e2b7` 引用登记 CLSID `0x6f7aa65c`。这一裁决针对独立对象体，CompositeGraphicsLayer 内联的子层条目继续按各自版本布局读取。
+- Scene.dll 和 GlobeLayers.dll 均为 PE x86，FileVersion `10.1.0.3035`，SHA-256 分别为 `b41f37424a13b0257ce3c5c3258038a3640876aba48b33e05b332f7af3594006` 和 `79346fc1fa0d25c01ac41ae2a7b0ee3014847c38f1661ff7d23cce75fe6fd1b8`。IPersistStream 子表经 RTTI/COL 对位，分别为 `0x7d2c8a2c` 和 `0x72f78410`；三项持久化入口 GetClassID/Load/Save 分别为 `0x7d2a4c60/0x7d2a4a10/0x7d2a4870` 和 `0x72f60a40/0x72f60080/0x72f5fb10`。GetClassID 指令各引用登记 CLSID 常量 `0x7d2c8c4c` 和 `0x72f787b0`。
+- 两类 3D 容器的字段序与六类可持久化对象的 LELP 接线见下。CompositeGraphicsLayer 可含 FeatureLayer，FeatureLayer 可再含 LELP；需要共享对象表及递归限制。
+
+### 三维图形容器的对象体
+
+已有反编译目录缺少 Scene.dll 与 GlobeLayers.dll 的这四个 IPersistStream 入口。用 pyghidra 加载上节已验明身份的 PE，补出 `0x7d2a4a10 / 0x7d2a4870` 和 `0x72f60080 / 0x72f5fb10` 的伪代码，并用 objdump 复核指令。四份可复查的输出在忽略目录 `temp/raster-renderer-101/` 内，按入口地址命名。
+
+| 类 | 对象体顺序 |
+| --- | --- |
+| GraphicsLayer3D | 版本 short（1–5）、AfCore String、short×4、ILayer 槽、IEnvelope 槽、有符号元素计数、IElement 槽循环。版本 ≥2 再读 short，≥3 再读 ISpatialReference，≥4 调 LayerLib ExtensionHelper，≥5 再读 short。 |
+| GlobeGraphicsLayer | 版本 short（1–7）、AfCore String、short×2、ILayer 槽、IEnvelope 槽、有符号元素计数、IElement 槽循环。每个槽后按版本读下述附加属性。循环后各版本均调 ExtensionHelper，接 short×2；版本 ≥4 再读两个 IEnvelope 槽。 |
+
+两类均从加载时接受的版本区间分派。Scene 的 `0x7d2a4af4 / 0x7d2a4b16 / 0x7d2a4b63 / 0x7d2a4bcb` 以及 Globe 的 `0x72f60131 / 0x72f60153` 一带分别对位到 ILayer、IEnvelope、IElement 和 ISpatialReference。几何附加槽请求 `0x72f78660` 的 `{1B07790D-38C5-11D0-92D2-00805F7C28B0}`（IGeometry）。Scene Save 选择版本后写出当前尾部；旧版本接受范围由 Load 的单独分支确定。
+
+Globe 元素附加属性的定宽段按顺序如下：
+
+1. 版本 ≥2 时先读 1 字节标志×3、int32、版本 ≥3 的 1 字节标志、1 字节标志×2、double×2。
+2. 接 1 字节标志、double×3、4 字节原始值、float、1 字节标志、三组 double×3、1 字节标志×2、一组 double×3、1 字节标志、两组 double×3。Load 的七次 `0x72f609f0` 和 Save 的七次 `0x72f609a0` 均逐条复核，每次恒处理 24 字节。
+3. 版本 ≥5 时再读 double×2、int32×4、short×3、int32。
+4. 接 1 字节标志和 double。版本 ≥6 再读一个 IGeometry，≥7 再读第二个。
+
+定宽段在 v2、v3–4、v5–7 分别为 215、216、258 字节。解析器保留原始字节与几何槽条目，字段用途待访问器证据。两类扩展列表使用 [LayerLib 的旧式 ExtensionHelper](mxd-10.1-raster-layer-tail.md)，支持零长度条目与 EditTemplateManager。关联图层接线范围见下。未知嵌套体在 LELP 回退至图形容器槽起点，截断或非法版本回滚整个 LELP 读取。
+
+构造测试覆盖所有接受版本、LELP 后继标量、Globe 两个几何版本门、MarkerElement 与 Point 新对象和回引、非空模板扩展与零长度扩展、未知关联图层及逐前缀截断。对本地 66 个 MXD 路径的 `/Maps`、`/PageLayout` 和可提取的三个 `/3D Analyst` 流扫描两个 CLSID，未命中字节候选。没有真实非空宿主，也未进行 ArcMap/QGIS 人工验收。
+
+### LELP 容器和关联图层接线
+
+Scene.dll 的 `0x7d2a4af4` 和 GlobeLayers.dll 的 `0x72f60131` 都将同一个 `ILayer {34C20002-4D3C-11D0-92D8-00805F7C28B0}` 传给普通 `LoadObject`。两处 Save 分别以 `this+0x20` 和 `this+0x34` 的对象调用 SaveObject。普通对象槽没有可跳过的外层长度；关联槽仅在已有读取器证实读完 FeatureLayer、CompositeGraphicsLayer、FDOGraphicsLayer、GraphicsLayer3D 或 GlobeGraphicsLayer 的对象体后提交。其余图层的普通对象体或子槽仍待接入。两类 3D 图层也在 Map 图层列表按标志 1 或 ExtraSafe 分派，ExtraSafe 路径在条目范围内试读并检查完整消费。
+
+LELP 的 IGraphicsContainer 槽接入类型库及持久化链确认的六类内置对象。图形图层复用完整对象判定；Map 复用原有前缀/后缀的 `Complete` 终点；PageLayout 复用对象体读序，保留外层在 `0x7b708d00` 处理的打印设置。普通布局对象里的 IMap 回引要求对象头和共享表都确认 Map 身份。该身份只在读取已识别的 Map 新对象头后登记，随整个槽的试读回退。对象体未完整消费时，游标回到容器头之前，该对象及其子对象的键一并撤销。新对象每进入一次跨图层/图形容器的无界分派占用一级限额，最多 8 级；已见键的回引不占用限额。深度上限为读取器防栈耗尽设置。
+
+测试从仓库参考工程提取已验证边界的 Map、PageLayout 和 FDOGraphicsLayer 体，再构造非空 LELP 或 3D 关联宿主，以验证实际对象体可完整消费、根 Map 回引仍能解析、宿主后继字段仍可读取。补充合成的 CompositeGraphicsLayer、普通/有界 3D 图层、未知嵌套类和深度边界。真实非空 LELP 宿主及 ArcMap/QGIS 人工验收仍未验证。
+
+关联槽续查将 BasemapLayer 和 ImageServerLayer 接入同一完整体判定。BasemapLayer 沿用 [Basemap Load 与子层证据](mxd-round3-basemap-20261117.md) 的 `Complete` 结束点。ImageServerLayer 沿用 [IPersistVariant 对象体](mxd-10.1-variant-image-server-layer.md)，即由 ObjectStream 对当前流构造 VariantStream 包装，其内部对象仍使用同一引用表。Scene v1 嵌套 ImageServerLayer v22 的合成数据验证了图层、名称和属性集三个键的登记，并覆盖尾字段截断的外层回滚。Globe v1 嵌套 BasemapLayer v6 的合成数据验证了容器尾字段和宿主哨兵的边界。
+
+另复核 FeatureLayer.dll 10.1.0.3035（SHA-256 `2baf870615bb75b6f30ccea173ba4303fdd0b1a6571e11b9197c5fcf7298bb60`）既有伪代码 `0x6f711270` 及 `0x6f7119b0`。GroupLayer 末尾 IDisplayFilter 的读门是版本 **12**，而版本 11 只改变子图层的普通/ExtraSafe 包装。PE 中 `0x6f7aafb8` 与 `0x6f7aa4bc` 两个常量分别与 IDisplayFilter 和 IEnvelope 的 IID 相符。尾部 `0x6f6c8100` 释放既有接口，`0x6f715540` 查询子层接口；这两个助手均未调用流读取。旧版本遮罩循环遍历的是已装载的子层，而独立的逐层遮罩记录由 Map 的加载流程读取。GroupLayer 尾段及其普通关联对象入口已按以下边界接入。
+
+
+GroupLayer 完整体读取复用 LayerLib 旧式扩展与 DisplayCore 的 TransparencyDisplayFilter 读取器。版本 5 读扩展列表，版本 6 起读字符串（版本 6 再读 short），版本 7 起读 short，版本 8 起读两个 double，版本 9 起读 short，版本 10 起读三个 short，版本 12 再读 IDisplayFilter。组内子图层与关联槽共享引用表；普通子体须完整读取，ExtraSafe 子体须在声明范围内读完。未支持的子图层、过滤器或扩展使普通关联体整体回滚。Map 图层列表优先尝试完整读取 GroupLayer，并保留原前缀入口处理已界定但尚未完整支持的对象。
+
+构造测试覆盖 GroupLayer v0–12、普通与 ExtraSafe 新子层、非空包络、模板扩展、非空透明度过滤器、后继哨兵和截断回滚。SDK Java brazil.mxd 的首个 v11 组图层从 Map 图层列表到达完整体边界，外层 A 范围无剩余；第二、第三个组及 SDK .NET 的两个 v12 组复核了子项数。版本 <11 的真实 GroupLayer 及 ArcMap/QGIS 人工验收仍开放。

@@ -29,3 +29,22 @@ COL 将每对虚表分别归属同一 RTTI，子对象偏移为 `0x18`。三个�
 ## 验证
 
 `tests/terra_depth_label.rs` 使用构造数据覆盖三类版本 0/1/2、两种新类在两个宿主槽中的分派与类身份、LELP 后续标量、DEP 后继哨兵、未知类回退和引擎体截断回滚。全仓 `cargo fmt --check` 和 `cargo test` 通过，后者含既有忽略项；Cargo 提示全局缓存自动清理因权限不足失败，但构建和测试成功。Rust 测试不是 ArcMap/QGIS 运行或目视验收。
+
+## HotLink 与 Hatch 实现续查
+
+用 `IAnnotationExpressionEngine {AA157206-E079-11D2-9F48-00C04F6BC6A5}` 复查 10.1 安装介质提取的 72 份 OLB 和 1,115 份 Desktop DLL。类型库返回 Annotation 和 HotLink 各三类；通过 IID 常量查找代码交叉引用，另在 Hatch.dll 定位到三类共用的 QueryInterface。其余常量交叉引用为调用方传入 IID 的路径。安装介质的 `esri.clsid.xml` 登记了全部九个 CLSID。这一清单限于已检查的内置二进制，外部注册类仍由两个宿主槽按未知类处理。
+
+两模块均为 PE x86，版本资源的 FileVersion 和 ProductVersion 均为 `10.1.0.3035`。LabelPlacement.dll 与上文相同，Hatch.dll 的 InternalName 为 `Hatch`、OriginalFilename 为 `Hatch.DLL`，SHA-256 为 `a756f3867987695cdcf9b5e087f82ac2603e7d7a17d2c3e7f5d895dbf47972ba`。下列地址由 RTTI、COL、虚表转储与 objdump 指令复核得到。
+
+| 类 | CLSID | IPersistStream 虚表 | GetClassID | GUID 常量 |
+| --- | --- | --- | --- | --- |
+| HotLinkVBScriptEngine | `55EF0065-FDFF-469B-B693-8EBFC56B3B3B` | `0x7857bd68` | `0x78540f80` | `0x7857b7f0` |
+| HotLinkJScriptEngine | `03E82E63-A812-49EB-AD12-4D1E1C7ADA7C` | `0x7857b9d0` | `0x78540a70` | `0x7857ba08` |
+| HotLinkPythonEngine | `FF7D30A3-38FA-67D1-780A-BEBB61C0E599` | `0x7857bb2c` | `0x78540ca0` | `0x7857bb64` |
+| HatchVBScriptEngine | `6D061FD8-B445-464A-9C57-B2A5E17F4313` | `0x75838c9c` | `0x758309a0` | `0x75837990` |
+| HatchJScriptEngine | `C1C46259-357C-4FF2-9E9E-2167CF898E55` | `0x75837f10` | `0x75827b80` | `0x758379a0` |
+| HatchPythonEngine | `DDF76409-BEB1-77A2-308C-5DBE9A6E00B3` | `0x758386dc` | `0x7582b490` | `0x758379b0` |
+
+- HotLink 三类的主 QI 为 LabelPlacement.dll `0x78535c80`，与 Annotation 三类共用。同一 Load `0x785361d0` 接受版本 0、1、2，版本为 2 时再读有符号 short。Save `0x78541460` 按文档版本查 `0x78579828`，查表调用传入 5，表起始五个 short 为 `[-1, -1, -1, -1, 2]`；调用返回 `-1` 时跳过写入，其余路径可见两次 2 字节写入。
+- Hatch 三类的主 QI 为 Hatch.dll `0x75830420`，命中 `0x75838ce4` 的 IID 返回完整对象 +0x10，命中 `0x7583730c` 的 IPersistStream 或 `0x758372fc` 的 IPersist 返回 +0x18。Load `0x758309e0` 读取一个版本 short，检查有符号上限 1 后返回。Save `0x75830a30` 只写 `0x758373e0` 处的版本常量 1。
+- LELP 与 DEP 均按对象头中的 CLSID 分派，保留引擎身份、引用键及已确认字段。构造测试核对了六类在两个宿主中的消费边界、后续字段和截断回滚，并覆盖 Hatch 拒绝版本 2。10.1 原生比较接受负版本位模式，读取器沿用既有的负版本拒绝策略。新增类尚无在这两个槽中出现的真实 MXD 字节，也未在 ArcMap/QGIS 中验证。

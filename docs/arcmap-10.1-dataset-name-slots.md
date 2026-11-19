@@ -88,7 +88,7 @@ GetClassID 引用（第六轮 `0x70a7e630` 同族结论本轮再证）。
 | --- | --- | --- |
 | ① | int16 版本 | — |
 | ② | AfCore String ×3 | this+0x10/0x14/0x18（Save 写侧 LEA 证实） |
-| ③ | LoadObject（请求 IID `{89E75917-…}`=IDatasetName，`0x70ab8574`）→ obj+0x1c；装载成功后对槽对象做虚表 +0x20 调用（通知，不读流，与 FCN/TN 同型） | obj+0x1c（Save `SaveObject([obj+0x1c], 1)`） |
+| ③ | LoadObject（请求 IID `{89E75917-…}`=IDatasetName，`0x70ab8574`）→ obj+0x1c；装载成功后对槽对象做虚表 +0x20 获取 WorkspaceName | obj+0x1c（Save `SaveObject([obj+0x1c], 1)`） |
 
 **RelationshipClassName::Load `0x70a3b330`**（版本门有符号 >1 拒绝；Save
 恒写静态常量 `0x70a88fec` = short 1）：
@@ -101,7 +101,7 @@ GetClassID 引用（第六轮 `0x70a7e630` 同族结论本轮再证）。
 | ④ | int32 | obj+0x24 |
 | ⑤ | int16（AfStreamRead 短读长度==2 已检） | obj+0x28 |
 | ⑥ | int16 | obj+0x2a |
-| ⑦ | int16 选择子（读长==2 已检；原生只区分零/非零）：==0 → LoadObject（请求 IID `{FADD975C-…}`=IWorkspaceName `0x70ab8554`）→ obj+0x30；!=0 → LoadObject（IID IDatasetName `0x70ab8574`）→ obj+0x2c + 虚表 +0x20 通知。Save 侧选择子写 `(obj+0x2c != 0)` | obj+0x30 / obj+0x2c |
+| ⑦ | int16 选择子（读长==2 已检；原生只区分零/非零）：==0 → LoadObject（请求 IID `{FADD975C-…}`=IWorkspaceName `0x70ab8554`）→ obj+0x30；!=0 → LoadObject（IID IDatasetName `0x70ab8574`）→ obj+0x2c + 虚表 +0x20 获取 WorkspaceName。Save 侧选择子写 `(obj+0x2c != 0)` | obj+0x30 / obj+0x2c |
 
 **MemoryRelationshipClassName::Load `0x70a402e0`**（版本门有符号 >1 拒绝；
 Save 恒写静态常量 `0x70a88fe8` = short 1）：
@@ -114,7 +114,7 @@ Save 恒写静态常量 `0x70a88fe8` = short 1）：
 | ④ | int32 | obj+0x14 |
 | ⑤ | int16 | obj+0x18 |
 | ⑥ | int16 | obj+0x1a |
-| ⑦ | LoadObject（请求 IID `{4BA33331-D55F-11D1-8882-0000F877762D}`，字节 `0x70ab84e4`，接口语义未定名） | obj+0x1c（Save `SaveObject([obj+0x1c],1)`） |
+| ⑦ | LoadObject（请求 IID `{4BA33331-D55F-11D1-8882-0000F877762D}`，字节 `0x70ab84e4`，IName） | obj+0x1c（Save `SaveObject([obj+0x1c],1)`） |
 | ⑧ | LoadObject（同 IID） | obj+0x20 |
 | ⑨ | AfCore String ×4 | — |
 
@@ -129,7 +129,7 @@ Save 恒写静态常量 `0x70a88fe8` = short 1）：
 | ① | int16 版本 | — |
 | ② | AfCore String ×3 | — |
 | ③ | LoadObject（IID IWorkspaceName）→ obj+0x1c | obj+0x1c（Save 先写本槽） |
-| ④ | LoadObject（IID `{2E060684-E14C-44D3-858A-442AB6A0A863}`，字节 `0x70ac5158`，语义未定名）→ obj+0x18；装载后若非空做虚表 +0x40 查询（不读流），结果置内存 bool obj+0x14 | obj+0x18（Save 后写本槽） |
+| ④ | LoadObject（IID `{2E060684-E14C-44D3-858A-442AB6A0A863}`，字节 `0x70ac5158`，IQueryDescription）→ obj+0x18；装载后若非空则调用虚表 +0x40 的 IsSpatialQuery，结果置内存 bool obj+0x14 | obj+0x18（Save 后写本槽） |
 
 **RelQueryTableName::Load `0x70a5a530`**（版本门有符号 >3 拒绝；Save 经
 `AfStreamGetSaveVersion(文档版本, 2, 0x70a88fd8)`，表 = (2, 3)，即真实文档
@@ -155,9 +155,94 @@ Save 首字段即 String::Write，逐字段对称；这是六类中唯一无版�
 | --- | --- | --- |
 | ① | AfCore String ×3 | — |
 | ② | LoadObject（IID IWorkspaceName）→ obj+0x1c（装载前释放旧指针） | obj+0x1c |
-| ③ | AfCore String | — |
-| ④ | int32（原生 ≠7 时置内存标志 obj+0x19=1，语义未定） | obj+0x14 |
-| ⑤ | LoadObject（IID `{4434D680-F4DA-11D1-BCA6-0000F875BCCE}`，字节 `0x70ab8504`，语义未定名）→ obj+0x20 | obj+0x20 |
+| ③ | AfCore String，几何列名称 | obj+0x10 |
+| ④ | int32，esriGeometryType。原生值异于 esriGeometryAny（7）时置内存标志 obj+0x19=1 | obj+0x14 |
+| ⑤ | LoadObject（IID `{4434D680-F4DA-11D1-BCA6-0000F875BCCE}`，字节 `0x70ab8504`，ISpatialReference）→ obj+0x20 | obj+0x20 |
+
+### DBTableName 尾部空间参考
+
+用基线所列 GdbCore.dll 10.1.0.3035 原件重新核对 SHA-256，经
+`objdump -d -Mintel` 确认 `0x708d7adc` 压入 ISpatialReference IID 常量
+`0x70ab8504`，`0x708d7ae1` 取持久化接口相对偏移 `+0x20`，随后
+`0x708d7aed` 将字段和当前流交给 LoadObject。Save 在 `0x708d7b8a`
+取同一成员，并于 `0x708d7b91` 调用同一当前流上的 SaveObject。
+这一路径使用普通对象头，和工作空间槽共享宿主登记表。
+
+解析器复用已有 PCS、GCS 和 UnknownCoordinateSystem 分派。未知新类保留
+对象头作为停止位置，已知类体截断时回滚整个 DBTableName 的游标和登记表。
+合成 GCS v2 用例验证体边界及后续键回引。未取得非空尾槽实档，未在 ArcMap
+和 QGIS 人工检查。
+
+### 数据集名称字段与接口访问器
+
+用同版 GdbCore.dll 复核下列字段。esriGeoDatabase.olb 来自 10.1 介质，
+SHA-256 为 `09b741f2627633d36b67985e175632055fe6c5b8cd1000484acc3007f5917f9d`。
+从其英语资源提取的 MSFT 类型库 SHA-256 为
+`92634979daa3ed0008b36d152e1fdf39cba04944f6bc7bbb5ea4c786bb44bb9a`。
+按 x86 类型库中记录的槽偏移读取接口属性名，并用 QI 的 IID 分支和
+RTTI Complete Object Locator 偏移确定实际接口指针。下表偏移统一相对于
+完整对象。首组字符串依次对位为 IDatasetName.Name、IName.NameString
+及 IDatasetName.Category，其中 RelQueryTableName 首组仅有前两串。
+字符串按原始值保留。
+
+| 类 | IPersistStream / IDatasetName / IName 相对偏移 | 三串完整对象偏移 | 三个 getter（按流序） |
+| --- | --- | --- | --- |
+| GeometricNetworkName | `+0x1c / +0x14 / +0x10` | `+0x2c / +0x30 / +0x34` | `0x70a272f0 / 0x70a27580 / 0x70a27580` |
+| RelationshipClassName | `+0x20 / +0x14 / +0x10` | `+0x34 / +0x38 / +0x3c` | `0x70a27580 / 0x708d7600 / 0x708d7600` |
+| MemoryRelationshipClassName | `+0x20 / +0x14 / +0x10` | `+0x24 / +0x28 / +0x2c` | `0x7091b8c0 / 0x70a272f0 / 0x70a272f0` |
+| QueryTableName | `+0x28 / +0x14 / +0x10` | `+0x30 / +0x34 / +0x2c` | `0x708d71f0 / 0x708d8750 / 0x70a272f0` |
+| RelQueryTableName | `+0x20 / +0x14 / +0x10` | `+0x28 / +0x2c / —` | `0x709df5d0 / 0x708d71f0 / —` |
+| DBTableName | `+0x2c / +0x14 / +0x10` | `+0x34 / +0x38 / +0x30` | `0x70a27580 / 0x708d7600 / 0x708d71f0` |
+
+RelQueryTableName 首段只有两串，第三串在选择集槽之后，为下表的 TargetColumns。
+GeometricNetworkName 的 IGeometricNetworkName 虚表 `0x70ad0630`
+（完整对象 `+0x18`）的 getter `0x709b8b90` 读取完整对象 `+0x38`，
+即持久化的 FeatureDatasetName 槽。RelationshipClassName 的
+IRelationshipClassName 表 `0x70adb9dc`（`+0x18`）的 getter
+`0x709fec90` 读取完整对象 `+0x4c`，对应选择子非零的 FeatureDatasetName。
+零分支使用 IDatasetName.WorkspaceName，getter `0x70a49310` 读取完整对象
+`+0x50`。上述两类读取 FeatureDatasetName 后对该对象调用虚表 `+0x20`
+获取 WorkspaceName，分别存入本对象的工作空间成员。
+
+| 类 / 接口虚表 | 流中剩余字段的顺序、完整对象偏移与 getter |
+| --- | --- |
+| RelationshipClassName / IRelationshipClassName `0x70adb9dc` | Cardinality `+0x40`（`0x708d1650`）、Notification `+0x44`（`0x70a44a70`）、IsComposite `+0x48`（`0x708de140`）、IsAttributed `+0x4a`（`0x70a3b200`）。 |
+| MemoryRelationshipClassName / IRelationshipClassName `0x70adbe14`、IMemoryRelationshipClassName `0x70adbe4c` | Cardinality `+0x30`（`0x708fe3c0`）、Notification `+0x34`（`0x7093e310`）、IsComposite `+0x38`（`0x70a400d0`）、IsAttributed `+0x3a`（`0x70a40120`）；OriginName `+0x3c`（`0x709b8b90`）、DestinationName `+0x40`（`0x70a40150`）；ForwardPathLabel `+0x44`（`0x708d7600`）、BackwardPathLabel `+0x48`（`0x70a401e0`）、OriginPrimaryKey `+0x4c`（`0x709a9be0`）、OriginForeignKey `+0x50`（`0x70a40250`）。 |
+| QueryTableName / IDatasetName `0x70ac5080`、IQueryTableName `0x70ac50b0` | WorkspaceName `+0x44`（`0x70a49440`）、QueryDescription `+0x40`（`0x70932360`）。Load 在 `0x70932ab6` 调用 IQueryDescription.`IsSpatialQuery`（+0x40），将布尔结果缓存于完整对象 `+0x3c`。IQueryTableName.Query getter `0x70932570` 优先调用该对象的 Query getter（+0x38），仅在无 QueryDescription 时使用完整对象 `+0x38` 的内存字符串。 |
+| RelQueryTableName / IRelQueryTableName2 `0x70add0bc` | RelationshipClassName `+0x30`（`0x70a5a990`）、ForwardDirection `+0x34`（`0x70a5aa50`）、SrcQueryFilter `+0x38`（`0x70a5aa40`）、SrcSelectionSet `+0x3c`（`0x70a5a9b0`）、TargetColumns `+0x40`（`0x70a5a980`）、LeftOuterJoin `+0x44`（`0x70a5a9a0`）、v2 起 DoNotPushJoinToDB `+0x46`（`0x70a5a9e0`）、v3 起 FireRowChangedEvents `+0x48`（`0x70a5a4a0`）。前七个 getter 经跳板将 this 从完整对象 `+0x1c` 调整到 `+0x18`，FireRowChangedEvents 直接使用 `+0x1c`。 |
+| DBTableName / IDatasetName `0x70ab83b4` | WorkspaceName `+0x48`（`0x709fec90`）。第四串 `+0x3c` 和 int32 `+0x40` 由 QI `0x708d7cc0` 映射到 `+0x18` 的接口 `{7561FC25-7E2F-4D96-8A4C-6F3973A3C21E}` 写入，见 setter `0x708d7020` 和 `0x708d7000`。字段含义见下一节。公开 IDatasetName.Type getter `0x708d71c0` 根据布尔缓存返回数据集类型 5 或 10。 |
+
+这里确认的是字段对位。运行时打开数据源、未支持的嵌套类体，以及字段取值
+在 ArcMap 中的实际效果仍需实档或运行取证。
+
+### DBTableName 几何列名称与类型
+
+同为 10.1.0.3035 的 SqlFDB.dll（SHA-256
+`fb440a01e9435947892f0ad9cbb76aaf1cd7ca40c09e5cea0cdba11c23294b8b`）
+在 `0x7fed3a29` 查询 DBTableName 的辅助接口。SqlClass 的函数
+`0x7fedd890` 位于虚表 `0x7ff2eff4` 的 `+0x10`，其 RTTI COL
+的接口偏移为 `+0x18`。这把赋值链中的接口相对偏移换算到完整对象：
+
+- **几何列名称**。SqlClass 在 `0x7fee1bf8` 逐个取得 IField，
+  `0x7fee1c94` 通过 `IField+0x14` 读取 Type。类型库 TypeInfo 44
+  定义 7 为 esriFieldTypeGeometry。该分支在 `0x7fee1ccd` 通过
+  `IField+0x0c` 读取 Name，并于 `0x7fee1d0f` 赋到 SqlClass
+  完整对象 `+0xc4`（接口 `+0xac`）。`0x7fedd953` 将这个字符串
+  传给辅助接口 `+0x10` 的 setter `0x708d7020`。GdbCore Save
+  `0x708d7b68` 将对应成员写成第四个 String。
+- **几何类型**。SqlClass 完整对象 `+0xd4`（接口 `+0xbc`）在
+  `0x7fedd962` 传给辅助接口 `+0x14` 的 setter `0x708d7000`，
+  GdbCore Save `0x708d7b7d` 将对应成员写成 4 字节整数。SqlFDB
+  的 `0x7fee1ee2` 查询 `{439A0D51-3915-11D1-9CA7-0000F8780619}`，
+  即 IGeometryDefEdit。随后 `0x7fee1efe` 取同一 SqlClass 成员传给
+  该接口 `+0x2c` 的 GeometryType setter。对应类型库 TypeInfo 465
+  定义了此槽。esriGeometry 10.1 类型库（SHA-256
+  `78aaabd92926d1a42011a3e6f9100116666a4adfec2dde9165c1b0af37fd4f64`）
+  TypeInfo 1 的枚举表定义 esriGeometryAny 为 7，和 GdbCore Load
+  在 `0x708d7afa` 的比较一致。
+
+上述结论绑定到读写字段的业务含义。辅助接口的正式成员名、其他数据源的赋值
+分支和目标软件中的实际取值仍待取证。读取器继续原样保留字符串和整数。
 
 三处 LoadObject 助手的调用形态与第六轮 FCN 槽一致：GdbCore 内部包装
 `CALL 0x708ed690`（安全释放旧槽对象，ESI=槽地址）+ IAT `0x70a873ac`
@@ -165,6 +250,118 @@ Save 首字段即 String::Write，逐字段对称；这是六类中唯一无版�
 `?LoadObject@@YAJPPAUIUnknown@@ABU_GUID@@PAUIStream@@PAU1@@Z`）。请求 IID
 字节逐一读出核对（IWorkspaceName `0x70ab8554`/IDatasetName `0x70ab8574` 与
 第六轮一致，新四 IID 见上表）。
+
+### RelQueryTableName 的非空关系类名称
+
+使用同一 GdbCore.dll 10.1.0.3035 原件的 `objdump -d -Mintel` 输出
+复核。Load `0x70a5a530` 在 `0x70a5a5a8` 压入 IName IID 常量
+`0x70ab84e4`，于 `0x70a5a5b3` 将槽（持久化接口 `+0x10`）和
+宿主流传给 LoadObject。Save 在 `0x70a5a769` 取同一成员，
+`0x70a5a776` 调用 SaveObject。RelationshipClassName 的 QI
+`0x70a3ae00` 和 MemoryRelationshipClassName 的 QI `0x70a3fcc0`
+都比较该 IID 并返回完整对象 `+0x10`。两类的 GetClassID 与
+IPersistStream 读写入口见上表。
+
+解析器复用两类已验证的对象体，并与宿主共享键表。未知新类停在对象头前；
+已知类内部的停止原因逐层返回。数据集名称与关系名称交替嵌套时共用 32 层
+新对象限额，回引不增加层数。构造测试覆盖两类体之后的连接字段、同键回引、
+嵌套停止、逐字节截断及交替嵌套的限额回滚。
+
+两套介质提取的 134 个 `/Maps` 流及仓库参考 MXD 文件未检出
+RelQueryTableName 的 CLSID 内存序字节。此检索未取得实档对象体；
+ISelectionSet 和其他可能的 IName 类仍需独立取证。
+本轮未在 ArcMap 或 QGIS 人工检查。
+
+### RelQueryTableName 的查询过滤器
+
+使用本页所列 GdbCore.dll 10.1.0.3035 原件和同版 esriGeoDatabase 类型库，
+以 `objdump -d -Mintel`、PE RTTI、原始 GUID 和导入地址交叉核对。
+RelQueryTableName Load `0x70a5a5f1` 对第二对象槽请求 IQueryFilter
+（`0x70ac4f28`）。以下类的 IPersistStream Load 和 Save 由虚表定位，
+并以 GetClassID 返回常量确认类身份。QueryFilter、SpatialFilter、FilterDefs、
+XMLFilterDef 的 QI 主入口分别为 `0x709fe890`、`0x70a00520`、
+`0x708fd430`、`0x70a29af0`，沿基类链提供 IPersistStream，没有命中
+标准 ObjectStream 优先查询的 IPersistVariant IID。
+
+| 类 | CLSID | IPersistStream 虚表 | GetClassID / Load / Save |
+| --- | --- | --- | --- |
+| QueryFilter | `FDFEBD95-ED75-11D0-9A95-080009EC734B` | `0x70ad8018` | `0x709fecc0 / 0x709ff8b0 / 0x709ffaf0` |
+| SpatialFilter | `FDFEBD96-ED75-11D0-9A95-080009EC734B` | `0x70ad8134` | `0x70a00630 / 0x70a007d0 / 0x70a00900` |
+| FilterDefs | `3131151A-4B5C-4526-98BE-711746B03DF8` | `0x70abe040` | `0x708fd3f0 / 0x709011c0 / 0x708ff110` |
+| XMLFilterDef | `47F975DB-77C0-4A8C-B8A0-8E9FE77A9795` | `0x70adabc4` | `0x70a29920 / 0x70a29fa0 / 0x70a2a020` |
+
+- **QueryFilter** 先读 short 版本，再读三个 AfCore String（SubFields、
+  WhereClause、第三串原样保留）、ISpatialReference、double SpatialResolution、
+  IFIDSet。Save 表 `0x70a89008` 为 `[1,1,3,3,4]`。Load v1 在 IFIDSet
+  后结束。其他版本还读自由函数 ReadString 编码的 PostfixClause。
+  v2 在其后读取内联 int32 数量及 IFilterDef 对象循环（`0x709ffa41`），
+  v0/v3/v4 读取一个 IFilterDefs 对象（`0x709ffaa7`）。v4 再读
+  自由函数 ReadString 编码的 PrefixClause。
+- **SpatialFilter** 先读自身的 short v0/v1，`0x70a00871` 直接调用
+  QueryFilter 的 Load，含原有版本字段。随后读 SearchOrder、SpatialRel
+  两个 int32，SpatialRelDescription String、IGeometry、GeometryField String，
+  最后读取 FilterOwnsGeometry 的 short 原值（getter `0x709abef0`）。
+  空间属性按 ISpatialFilter 虚表 `0x70ad81b4`
+  和接口偏移 `+0x58` 对位，两个字符串 getter 分别为 `0x709ba9a0`
+  和 `0x709df5d0`。现有几何体读取器支持 Point、Multipoint、
+  Polyline、Polygon 和 Envelope。
+- **FilterDefs** 读取 short v0/v1 和 int32 数量。循环中 `0x7090125c`
+  经主虚表 `0x70abdfec` 的 `+0x2c` 到 `0x708fd250`，调用
+  LoadObject，再对结果查询 IFilterDef。**XMLFilterDef** 读取 short
+  v0/v1，再调用自由函数 ReadString 两次。此路径保持宿主键表，复用
+  已有 ISpatialReference 和 FIDSet 读取器。
+
+构造测试覆盖两类过滤器的版本体边界、空间几何、非空 FIDSet 和 FilterDefs、
+XMLFilterDef 回引、逐字节截断回滚及未知定义类停止。新增解析器拒绝负数版本、
+负数定义条目计数及长度不足。RelQueryTableName 真实宿主、其余过滤器实现和
+ArcMap/QGIS 人工检查仍待取证。
+
+### MemoryRelationshipClassName 的端点名称
+
+同一 GdbCore.dll 10.1.0.3035 的 Load 在 `0x70a403d3` 和
+`0x70a403f1` 依次把持久化接口的 `+0x1c`、`+0x20` 成员交给
+LoadObject，请求相同的 IName IID `0x70ab84e4`。Save 对应调用位于
+`0x70a40514` 与 `0x70a40528`。IMemoryRelationshipClassName 的
+OriginName、DestinationName 对位见前表。
+
+两个槽复用已核对的 FeatureClassName、FgdbFeatureClassName、TableName、
+QueryTableName、FeatureQueryName、TableQueryName 和 DBTableName
+对象体。新对象与后续回引使用同一宿主键表。构造用例经过外层
+IDatasetName 入口读取 FileGDB 要素类名称、普通表名称及后四串，覆盖
+逐字节截断回滚。未知类或内部未读完的成员继续报告停止点。尚无两槽非空的
+真实旧档和目标软件运行证据。
+
+### RelQueryTableName 的选择集槽
+
+由 GdbCore 10.1 Load `0x70a5a613` 的 `0x70ac4d88` IID 数据和类型库
+TypeInfo 59 确认，第三槽请求 ISelectionSet。Save 调用 `0x70a5a7b6`
+将对象交给宿主流的 SaveObject。复核 GdbCore 的构造类、GetClassID 返回
+值、QI 主入口和共享后备 `0x70a60800`，得到下列四类：
+
+| 实现 | CLSID | ISelectionSet 的 QI 主入口 |
+| --- | --- | --- |
+| Selection | `10EC66F1-D954-11D1-89EA-006097AFF44E` | `0x70a1a600` |
+| FileSelection | `EB75FC9A-485C-11D4-9F52-00C04F79927C` | `0x709e9130` |
+| FIDSetSelection | `DA8B5B26-8BBD-41E8-A4AC-54C980F56119` | `0x709db270` |
+| RelQueryTableSelectionSet | `6FC04EAF-F7B8-432F-B87C-C9D9B17E79BF` | `0x70a5ac80` |
+
+四类均能返回 ISelectionSet。其 QI 分支和共享后备均没有命中
+IPersistStream、IPersistVariant，或 SystemCore 写出器先查询的
+`{C9E7A782-3DDC-411F-8A66-908C579F123D}`、
+`{BB75DA81-8DFE-4122-A9C2-86F07C539AD5}`。RelQueryTableSelectionSet
+在完整对象 `+0x1c` 的虚表 `0x70add21c` 属于请求
+`{F87875E1-D8B4-11D1-89EA-006097AFF44E}` 的接口。
+`0x70a5b460` 和 `0x70a5b4c0` 对所包对象查询同一 IID 后转调用
+`+0x18/+0x1c`，两处都没有接收 IStream 参数。
+
+SystemCore.dll 10.1.0.3035（SHA-256
+`f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`）
+的 ObjectStream 写出器 `0x7ffcf7e0` 在持久化接口均为空时，于
+`0x7ffcfbd2` 跳到 `0x7ffcff1d`，以空对象入参递归调用同一写槽，
+生成 16 个零字节。结论限定于这四个具体类在默认宿主写出路径的直接输入。
+原生代码在持久化查询前还可经 `0x7ffd0760` 调用已配置的对象替换回调，
+其他模块的 ISelectionSet 实现及替换输入仍待实档取证。读取器继续区分
+空槽、回引和未知新类。这是静态取证，未在 ArcMap 或 QGIS 人工检查。
 
 ## TableName / UnknownDatasetName / ObjectClassName：无流持久化实现（静态证据链）
 
@@ -263,11 +460,10 @@ IID）。全部合成输入（样本 0 实例），通过不代表 MXD 格式已
 
 ## 未解决事项
 
-1. 六类全部标量/String 字段与五条请求 IID 的业务语义未定性（名称/类别/连
-   接信息/源目标名称等均为按 FCN/WorkspaceName 家族类推的候选），原样保
-   留；MemRCN 双槽与 RelQueryTN 三槽的对象类语义未定名（IID `0x70ab84e4`
-   等 GUID 尾段呈 OleDB `{…8882-0000F877762D}`/`{…080009EC734B}` 族，类型
-   库定名未做）。
+1. MemRCN 双槽的其他 IName 类、RelQueryTN 的其他 IQueryFilter 实现、
+   选择集替换路径和其他 IName 类、
+   以及 QueryTableName 的 QueryDescription
+   槽仍需对其具体对象类补齐读取分派。
 2. 六类全部无样本字节佐证（参考样本全文件 0 命中）；版本 0 分支（FGN/RCN/
    MemRCN/RelQueryTN 门内）与 QueryTableName 版本 1/2 之外的短体形态无写侧
    来源（Save 恒写 1 或 2/3）。

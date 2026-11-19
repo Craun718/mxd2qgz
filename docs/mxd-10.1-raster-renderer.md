@@ -16,17 +16,16 @@ RasterRenderer.dll 未找到既有导出，本轮从提取目录
 | RasterColormapRenderer（ColormapRenderer） | `{3B8283FA-1BD4-4212-B385-19E77B9E0D3B}` | `0x7c961bb0` | `0x7c9b146c` | `0x7c962350` / `0x7c962500` |
 | RasterRGBRenderer（TrueColorRenderer） | `{577F1870-7037-11D2-9F29-00C04F8ED1D7}` | `0x7c996e60` | `0x7c9b5f1c` | `0x7c99ad10` / `0x7c99b300` |
 | SimpleRasterRenderer | `{3232D0EF-3460-4879-A1E6-366590CF3EEC}` | `0x7c996ad0` | `0x7c9b5b1c` | `0x7c9969c0` / `0x7c996a30` |
+| SAIRenderer | `{11AB0050-74F5-4C3E-9EF9-873B6BD85B2C}` | `0x7c994d90` | `0x7c9b5794` | `0x7c9955b0` / `0x7c995660` |
 | RasterDiscreteColorRenderer（DiscreteColorRenderer） | `{AC874573-D778-4421-B9C6-14557D8BD692}` | `0x7c9672f0` | `0x7c9b1aa4` | `0x7c967c60` / `0x7c967d70` |
 | UniqueValueRenderer | `{0842B595-4F2F-11D2-9F43-00C04F8ECE3D}` | `0x7c99f900` | `0x7c9b6498` | `0x7c99f180` / `0x7c99f4d0` |
 | RasterClassifyRenderer | `{CE8B2F44-A027-11D2-AAE7-00C04FA33416}` | `0x7c972450` | `0x7c9b277c` | `0x7c971ac0` / `0x7c972060` |
 | RasterStretchRenderer | `{A301A3B2-74D7-11D2-9F29-00C04F8ED1D7}` | `0x7c97fc60` | `0x7c9b3edc` | `0x7c97f0d0` / `0x7c97f6b0` |
 
-普通 RasterLayer::Load `0x7c73bd40` 调用 `0x7c73b380`。后者在每个
-LoadObject(IName) 后，版本 >0 时再读一条 AfCore String，早先的名称体读取器未消费
-此串；IName 循环成功返回后，主函数立即调用 LoadObject，`0x7c769b44` 的 IID 为
-`{6F5322D1-3790-11D2-8D26-0000F8780535}`（IRasterRenderer）。本轮只在
-ExtraSafe 有界体中，单个已支持的 IName 完整消费后读后续字符串和渲染器，避免把
-多名称、非空未知 RasterIO 记录或损坏名称体中的字节误当成对象头。
+普通 RasterLayer::Load `0x7c73bd40` 在名称循环返回成功后读取
+IRasterRenderer，请求 IID 位于 `0x7c769b44`，为
+`{6F5322D1-3790-11D2-8D26-0000F8780535}`。名称循环按 ExtraSafe 已知边界
+读取，详见[名称列表取证](mxd-10.1-raster-layer-tail.md#名称列表与渲染器边界)。
 
 ## 已接入的读取范围
 
@@ -108,17 +107,23 @@ Save 调 `Get92SaveVersion(stream, 1)`，可写时保存 int32 版本、两次
 SHA-256 `6d89601832b788177aac492e7fdfb0f1b012db86e2a75e6e480e6e647508eb1f`）
 的 LoadRaster `0x7bf2edf0` 与 SaveRaster `0x7bf2e950` 互证：
 
-- 先依 AfCore LoadObject 读取 IDatasetName `{4BA33331-D55F-11D1-8882-0000F877762D}`；
+- 先依 AfCore LoadObject 读取 IName `{4BA33331-D55F-11D1-8882-0000F877762D}`；
   空标记为 16 个零字节，此后直接返回。过滤器允许两个槽都为空的编码。
-- 非空名称在原生打开成功后还跟 int32 波段数量、AfCore String 循环、
-  IGeodataXform、IEnvelope。名称回引只省略名称体，其后的波段和对象槽仍各自存在。
+- IName 指针非空时，原生在 `0x7bf2eeb4` 调 Open，随即读取 int32 波段数量，
+  中间没有检查 Open 的 HRESULT。`0x7bf2ef53` 在数量非正时跳过名称字符串循环。
+  波段名称之后还有 IGeodataXform 和 IEnvelope。名称回引只省略名称体。
   解析器只读取持久化数据，不打开栅格。已接入普通 RasterDatasetName、FileGDB
-  名称与其已证 RasterIO 记录，以及已有读取器支持的变换与包络。
+  等名称与其已证 RasterIO 记录，保留波段数量原值，并复用已有变换与包络读取器。
 - RasterIO 构造器 `0x7bf13ac0` 将传入的 IStream 原样存入 +0x0c；
   `0x7bf13e2e..0x7bf13e3a` 将同一指针传进过滤器的 Load。过滤器本身无键，
   其 LoadRaster 的名称、变换、包络在已接入的 MXD 宿主内仍走 AfCore
   LoadObject 的带键分支，复用宿主的 ObjectStream 表。未知类或内部前缀未闭合
   时保留 RGB 未读尾段及原表；普通 IStream 宿主和运行时数据源打开失败行为未验证。
+
+SaveRaster 在 `0x7bf2ea16` 经 `0x7bf3e0d0 → 0x7bec4dc0` 请求 IDataset
+`{2D04C042-7766-11D0-B77D-00805F7CED21}`，在 `0x7bf2ea3d` 调虚表 `+0x10`
+取得 FullName，`0x7bf2ea84` 以 SaveObject 写出。该取名路径与 RasterLayer
+tag 30 共享多种候选对象体，两处的外层持久化方式不同。[FullName 来源复核](mxd-10.1-raster-layer-tail.md#三个名称宿主的接口与-fullname-来源)
 
 参考工程和 66 个 10.1 介质 /Maps 流均未找到该 CLSID。合成 v4 RGB 测试覆盖
 带过滤器的 tag 18、其后 tag 19 和共用体的边界，另验证两个非空槽中普通与
@@ -133,6 +138,33 @@ Save 在同一位置写 short，再调用 `0x7c98c6b0`。Save 版本表 `0x7c9b1
 为 `[-1,1,1,2]`；读取器只接受写侧已证的 v1、v2，原生 Load 未显式拒绝其他
 版本。参考工程及 66 个 10.1 介质 /Maps 流均无该类 CLSID 命中；合成测试验证
 v1/v2 的 short 门、共用体终点与截断回滚。未做 ArcMap 运行验证。
+
+### SAIRenderer
+
+安装介质 `esri.clsid.ecfg` 把该 CLSID 绑定到 RasterRenderer.dll 的
+`esriCarto.SAIRenderer`。同一 10.1.0.3035 映像中，GetClassID 复制
+`0x7c9b22fc`，QI `0x7c995040` 委派给 `0x7c98a270`，其比较的
+`0x7c9b2378` 是 IRasterRenderer IID。
+
+Load 读 int32 版本及 short，随后检查持久化接口 `+0x148`。新对象的
+基类构造器 `0x7c989a20` 在 `0x7c989d29` 将对应的完整对象 `+0x18c`
+清零，派生类构造和 Load 在读取此状态前不修改它，因此正常新对象分支
+接着消费两个 double，再调用共用 Load `0x7c98c3b0`。Save 的同一状态门
+控制写出两个 double，版本表 `0x7c9b102c` 为 `[-1,-1,-1,-1,1]`。
+实现限于写侧可确认的 v1 和新对象布局。原生允许的更低版本和 Save 前
+状态位非零的写入形态仍缺实档。
+
+参考工程与 66 个 10.1、68 个 10.8 介质 /Maps 流均无该 CLSID 命中。
+合成测试经 RasterLayer 的正常分派进入 SAIRenderer，并从共用体继续读取
+图层尾段到界。渲染器体逐字节截断时保留此前已读名称，回滚渲染器键。
+该分支未在 ArcMap 中运行验证。
+
+同一介质的 esriCarto 类型库 RefTab 直接列出的六个 IRasterRenderer
+coclass 已全部接入；SAIRenderer 和 SimpleRasterRenderer 由注册表、
+QI 和持久化虚表补证。注册表还列出 VectorFieldRenderer
+`{BF3B4791-C58D-4FDF-A8FA-D0D8D7DA7061}`，但本次提取的 Desktop
+PE DLL 中未找到该 CLSID 的内存序字节；当前没有足以识别其接口或对象体的
+10.1 证据。该搜索范围也不能排除其他宿主 DLL 或外部注册实现。
 
 ### RasterDiscreteColorRenderer
 
@@ -166,7 +198,8 @@ Save 版本表 `0x7c9b0f80` 为 `[2,3,4]`，旧 Load 拒绝小于 1；
   int32 数量与 `double + int32` 对循环，最后进入共用体。v1 会交换分组键的
   高低半字，读取器保留原值。10.1 旧体 Save 在统计槽恒写空对象；原生也请求
   `{FAFDB8B5-5FE3-11D2-9F24-00C04F8ED1D7}`，与 esriCarto 10.1
-  TypeInfo 46 的 `IEnumRasterUniqueValueColor` 对位；非空实现体尚未确认。
+  TypeInfo 46 的 `IEnumRasterUniqueValueColor` 对位；非空体见
+  [旧版唯一值颜色枚举](#旧版唯一值颜色枚举)。
 - v3/v4：三个 AfCore String、short、ISymbol、String、计数加 ILegendGroup
   循环，随后读分组值。后接 short、IUniqueValues，v4 再读 IColorRamp，最后
   进入共用体。请求 IID 来自 `0x7c9b2a44`：`{B2768AB2-E583-4CCF-831D-36237C2F520A}`，
@@ -185,6 +218,28 @@ Save 版本表 `0x7c9b0f80` 为 `[2,3,4]`，旧 Load 拒绝小于 1；
 参考工程、66 个 10.1 及 68 个 10.8 介质 /Maps 流中未检出这两个类。
 合成测试覆盖四个版本、v4 额外梯度、数组值、非空 UniqueValues、数量越界和
 逐字节截断后的引用表回退；未做 ArcMap 运行验证。
+
+#### 旧版唯一值颜色枚举
+
+10.1.0.3035 的 RasterRendererUI.dll（x86，ImageBase `0x10000000`，
+SHA-256 `03701af97bb319d179deec8052c158a1bf4aa72438721d764e6ddf340b66e937`）
+提供 `RasterUniqueValueColors`，注册 CLSID
+`{D10498BE-6616-11D2-AABC-00C04FA33416}`。RTTI TypeDescriptor
+`0x100a7310`、QI `0x1006a150` 和 GetClassID `0x100695c0` 将请求 IID
+和该类对位。IPersistStream 虚表 `0x10094a04` 的 Load `0x10069ad0`
+与 Save `0x10069eb0` 由 pyghidra 补充导出，并用 objdump 核对导入和分支。
+
+对象流使用带键头，新建体依次读取 int32 版本 1、int32 类别数、
+int32 键类型标志。标志为零时每类先读 double 键，非零时用 AfCore String
+读键。其后每类读 int32 颜色数和该数量的 4 字节颜色值。Save 通过枚举
+接口槽 `+0x10` 选类别，`+0x14` 取下一色值，类型库对应
+`set_Class` 和 `Next`。代码保留原始颜色位模式；空槽和已见类键回引
+不消费对象体。外层 10.1 RasterUniqueValueRenderer 的兼容 Save 仍在这
+个槽写空对象。
+
+参考工程及 66 个 10.1、68 个 10.8 介质 /Maps 流未见该 CLSID。
+合成测试覆盖两个键分支、后继采样与共用体、超大计数和逐字节截断后的
+游标及键回滚。尚无旧版生产文件或 ArcMap 运行佐证。
 
 ### RasterClassifyRenderer
 
@@ -243,6 +298,64 @@ Save 版本表 `0x7c9b0f80` 为 `[2,3,4]`，旧 Load 拒绝小于 1；
 合成验证覆盖 v1–v9、原流引用键、附有字符串的采样数组、非法计数及逐字节
 截断回退。未做 ArcMap 运行验证。
 
+## 其余注册候选的持久化核对
+
+### Raster3DRenderer
+
+SceneRenderers.dll x86 10.1.0.3035 的 SHA-256 为
+`1674d87a74366cff2943e45d3dd1fd9e10d89960b9480d1abea44ffd84c56da7`。
+Raster3DRenderer `{4A524E70-93CC-11D3-A40C-0004AC1B1D86}` 的
+RTTI `0x7d4bf750` 对位对象 +0x1c 的名义持久化表 `0x7d4ba038`；
+GetClassID `0x7d4b00b0` 复制 `0x7d4b99c0` 的 CLSID。
+QI `0x7d4ada40` 以 `0x7d4ba0f4` 的 IID 匹配 IRasterRenderer，
+返回完整对象 +0x38。
+
+类工厂 CreateInstance `0x7d4a42d0` 的非聚合分支在
+`0x7d4a4395..0x7d4a43e4` 分配 0x5c 字节、调用构造器 `0x7d4ad8b0`，
+再查询所请求的接口。构造器 `0x7d4ad90c` 将转发 QI 使用的完整对象
++0x44 清零。新实例的 Raster3DRenderer QI 对其自身接口逐项比较后，
+经 `0x7d4adbbb` 到基类 QI `0x7d4b2f40`，再到
+`0x7d4b5180`。这条链没有命中 IPersistStream（`00000109-…`）
+或 IPersistVariant（`67A4D651-…`）的分支，最终返回
+`E_NOINTERFACE`（`0x7d4b5272`）。其中辅助分支的独立对象 IID
+为 `DF0B3D60-…` 和 `9F9650F1-…`，与持久化 IID 不同。
+
+名义虚表的 Load `0x7d4b4c50`、Save `0x7d4b00f0` 处理 short
+版本并按持久化接口 +0x2c 的指针调用委派体，流中没有该委派槽的对象头。
+普通 ObjectStream 载入新实例时无法经上述 QI 取得这张虚表。
+因此不能将这个 short 当成 MXD 中已确认的完整对象体。运行期
+装配内部对象后是否有其他持久化路径仍待实档或运行取证。参考工程
+和 66 份 10.1 介质的 /Maps 均无此 CLSID 的命中。
+
+### RasterRenderer.dll 的实际类工厂
+
+复核 72 份 Desktop 10.1 OLB 中的 coclass RefTab、导入接口与接口继承，
+只有 esriCarto 的六类在此范围声明 IRasterRenderer。注册表中另有
+SimpleRasterRenderer、SAIRenderer 和 VectorFieldRenderer。前两类
+已按原生 QI 和持久化入口接入。
+
+RasterRenderer.dll 10.1.0.3035 的导出 DllGetClassObject
+`0x7c96b420` 跳到 `0x7c9a76f0`。后者以 0x34 为步长扫描
+`0x7c9c45a0` 起的类表，并在空指针处返回
+`CLASS_E_CLASSNOTAVAILABLE`（`0x7c9a772d`）。首项 CLSID 指针
+在 PE .data 中指向 `0x7c9b22bc`；初始化器 `0x7c9ae130`
+填入其余十三项，并在 `0x7c9ae7d6` 写入类表的空终止项
+`0x7c9c4878`。14 个实际工厂依次为：
+
+1. RasterStretchColorRampRenderer、RasterClassifyColorRampRenderer、
+   RasterUniqueValueRenderer、RasterRGBRenderer、RasterColormapRenderer、
+   RasterDiscreteColorRenderer。
+2. RasterRendererMakerDefault、RasterCatalogRendererPickerDefault、
+   SimpleRasterRenderer、SAIRenderer。
+3. FootprintRasterizer、RenderedRaster、RenderedRasterFunction、
+   RenderedRasterFunctionArguments。
+
+VectorFieldRenderer（`BF3B4791-C58D-4FDF-A8FA-D0D8D7DA7061`）
+及注册在同一模块中的 VectorFieldRendererFunction 和参数类都不在
+此类工厂表中。三者的 CLSID 在 1,115 个已提取的 Desktop DLL 中
+也没有内存序命中。这里确认的是 10.1.0.3035 介质中的该模块
+不会经其导出工厂创建这三类。第三方实现、其他补丁或平台需要独立核对。
+
 ## 样本与待查项
 
 参考工程 `/Maps` 的两处偏移由有界结构读取到达（样本仅作佐证）：
@@ -254,7 +367,7 @@ Save 版本表 `0x7c9b0f80` 为 `[2,3,4]`，旧 Load 拒绝小于 1；
 
 两条 RasterLayer 在渲染器结束后均余 298 字节，由后续的
 [RasterLayer 尾段读取器](mxd-10.1-raster-layer-tail.md)完整消费。
-其他 IRasterRenderer 具体类、多 IName 循环及未知的 LoadRaster 内嵌类仍待闭合。尚无带这两种渲染器的真实 ImageServerLayer 宿主；测试以 v13
+未知的 LoadRaster 内嵌类及尚无实档的渲染器宿主仍待核对。尚无带这两种渲染器的真实 ImageServerLayer 宿主；测试以 v13
 合成宿主分别嵌入色表合成体与 RGB 实档体，验证渲染器后能继续读取，且遇
 截断、未知类时回退到槽位起点，不提交渲染器及嵌套对象的新键。未做
 ArcMap 或 QGIS 人工验收。

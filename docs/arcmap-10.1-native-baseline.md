@@ -113,6 +113,19 @@ Rust 的 `read_arcmap_header_10_1` 和 `write_arcmap_header_10_1` 实现上述�
 
 SystemCore 其他 IID 匹配分支的构造与虚表复核见下节。保存版本索引 3 的运行时资源解析、Version 在所有旧版分支及失败情况下的流边界和目标软件运行行为仍需进一步验证。ArcMap 10.1 与 QGIS 的人工目视检查未进行。
 
+### 10.1 Version 写入结束位置
+
+以基线表中的 ArcMap.exe 和 PageLayout.dll 10.1.0.3035 为输入，用 `objdump -d` 复核保存例程与跨模块的流切换。下列地址均为对应 PE 的静态虚拟地址。
+
+| 模块和调用地址 | 流生命周期 |
+| --- | --- |
+| ArcMap.exe `0x4674bb`、`0x4674cf`、`0x4674f6` | 以 `0x55506c` 的 UTF-16LE 名称创建 `Version`，另存一份 IStream 引用到 `[ebp-0x15c]`，并用 ObjectStream `+0x38` 绑定该流。 |
+| ArcMap.exe `0x4675ec`、`0x46769d`、`0x46776b`、`0x467788` | 依次写字符串和 short。索引至少为 1 时先记下当前位置，再写四字节计数占位。随后 AfDoc 的保存调用接收 IStorage。 |
+| ArcMap.exe `0x467b3d`、PageLayout.dll `0x7b691bc1`、`0x7b691bf6` | ArcMap 把同一个 ObjectStream 交给 DocumentInfo 保存槽。PageLayout 创建 `Metadata`（UTF-16LE 字符串位于 `0x7b71c878`），并在分流旧版与新版格式前绑定它。创建失败则经负 HRESULT 返回，ArcMap 退出保存。后续 ArcMap 可再切到 `Templates`，因此 `0x467e59` 对当前对象流的四字节写入发生在离开 `Version` 之后。 |
+| ArcMap.exe `0x46c039`、`0x46c062`、`0x46c076` | 索引至少为 1 时，使用保留的 IStream 引用寻回占位位置，读取对象流写表计数并覆盖原四字节。其余对保留引用的访问用于释放。 |
+
+因此该 10.1 原生保存路径的 `/Version` 在 short 后结束（索引 0），或在四字节对象键计数后结束（索引至少为 1）。反汇编确定了写入边界。对两套安装介质提取的 134 个流再按字符串字节数和有符号 short 独立核对，全部在已知字段处结束，去重后有 56 份不同的 `/Version` 字节序列。将来如果输入中确有剩余字节，解析器继续将其保留为未知。ArcMap 10.1 中的实际保存和回读仍待人工验证。
+
 ## 10.1 版本接口实现及保存分支复核（2026-11-13）
 
 以下继续使用上文 SystemCore 和 ArcMap 可执行文件的摘要；Ghidra 桥接工具 6.8.0 / Ghidra 12.1.4，静态证据包为忽略目录 `temp/arcgis/arcmap101-version-iid-constructors.json` 与 `arcmap101-version-followup-2.json`，含本机路径。类名取自 Ghidra 的类型信息，构造后的具体虚表和访问方法另以地址复核；不表示已运行这些对象。
@@ -143,7 +156,7 @@ SystemCore 其他 IID 匹配分支的构造与虚表复核见下节。保存版�
 
 - PageLayout `0x7b70a8e0` 使用的类 GUID `043731d0-a7cf-11d1-8bd1-080009ee4e41` 在 AfCore 中只有一处数据 0x68c6bde4，唯一静态引用来自 `0x68a7c040`：该函数执行 `AfCreateInstance(CLSID, NULL, 0x17, IID_IUnknown)`、OleRun、再以 `18a45ba7-1266-11d1-86ad-0000f8751720` 查询接口——与 PageLayout `0x7b6a7030` 请求的 IID 相同（`ev_1133e1222d4a92fd290ed66b770f5fdd2f48a2a5ea9a94c680e4e355969d2f54`、`ev_a2ef8f1e…`、`ev_8bd46eea…`）。`AfCreateInstance`（`0x68a77660`）经 FactoryCache 或 `CoCreateInstance` 取得类工厂后调用其 CreateInstance（`ev_e82e11d6…`、`ev_9f3477cc…`、`ev_e847d5ae…`）。PageLayout 侧据此可在不依赖 SystemCore 类表的情况下到达该对象；SystemCore 类表项映射仍未闭合。
 - AfCore `CreateMemoryStream`（`0x68a7bad0`）在 `CreateStreamOnHGlobal` 后用同一创建函数取得该对象并以接口 +0x38 连接新 IStream，确认 +0x38 为底层流连接槽位（`ev_b7b16c04…`）；PageLayout 的 Version 读取经该对象转发到底层流并调用导出 `String::Read`。字符串 `MapDocumentPackager` 在 AfCore 中仅为 Ghidra 符号字符串候选，未建立与该 CLSID 的绑定。
-- PageLayout `0x7b7098b0` 调用 `StgOpenStorage` 后进入 `0x7b708d00`。本次取得完整伪代码（`ev_8207418e…`），此前「反编译截断」的记录不再成立。主干为：打开 `Mx Document`，首个 4 字节 int 大于 1 时返回错误 `-0x7fffbffb`；第二个 4 字节写入输出参数；对象流 +0x38 连接后按 4 字节计数循环以 IID_IUnknown 调用 +0x44 加载对象；随后按 GUID `dd94d76a-6d83-11d0-87ec-080009ec732a` 重连、读字符串、按 `dd94d76b-6d83-11d0-87ec-080009ec732a` 读 2 字节 short，为 0 时结束。short 非零分支继续按 `387bc1d1-543f-11d1-885e-0000f87808ee` 与 `2ab49820-9406-11d0-87ef-080009ec732a` 读取，并创建 CLSID `558c4e63-3f11-11d1-885e-0000f87808ee` 查询到前者。`Maps` 存储按 map 循环加载对象，随后打开 `PageLayout` 存储，同样按 dd94d76a/b 处理，其中 2 字节计数大于 2 时拒绝。这些 GUID 的接口语义与对象身份仍未闭合，不能据 GUID 名称推断字段含义。
+- PageLayout `0x7b7098b0` 调用 `StgOpenStorage` 后进入 `0x7b708d00`。本次取得完整伪代码（`ev_8207418e…`），此前「反编译截断」的记录不再成立。主干为：打开 `Mx Document`，首个 4 字节 int 大于 1 时返回错误 `-0x7fffbffb`；第二个 4 字节写入输出参数；对象流 +0x38 连接后按 4 字节计数循环以 IID_IUnknown 调用 +0x44 加载对象；随后按 GUID `dd94d76a-6d83-11d0-87ec-080009ec732a` 重连、读字符串、按 `dd94d76b-6d83-11d0-87ec-080009ec732a` 读 2 字节 short，为 0 时结束。short 非零分支继续按 `387bc1d1-3f54-11d1-885e-0000f87808ee` 与 `2ab49820-9406-11d0-87ef-080009ec732a` 读取，并创建 CLSID `e28c4e63-3f55-11d1-885e-0000f87808ee` 查询到前者。`Maps` 存储按 map 循环加载对象，随后打开 `PageLayout` 存储，同样按 dd94d76a/b 处理，其中 2 字节计数大于 2 时拒绝。这些 GUID 的接口语义与对象身份仍未闭合，不能据 GUID 名称推断字段含义。
 - AfCore `0x68a7c1d0` 以 `ecc43c55-0148-4ec1-bf87-b9a183c5dc98` 查询输入接口，与既有 IDocumentVersion 判定一致，此处为汇编复核（`ev_0f8f2ce3…`）。
 
 上述闭合仅是静态身份与调用链，不证明 Version 全部字节规则；`Mx Document` 前两个 4 字节字段、对象错误恢复、Version 写入路径仍未闭合。ArcMap 10.1 与 QGIS 的人工目视检查未进行。
@@ -297,9 +310,9 @@ typekind：3 = TKIND_INTERFACE（接口 IID），5 = TKIND_COCLASS（组件类 C
 | `ecc43c55-0148-4ec1-bf87-b9a183c5dc98` | esriSystem **IDocumentVersion**（3） | 文档版本接口：AfCore `get_DocumentVersion` 内部 QI 此 IID（既有行为证据）；与 2026-11-14 节 AfCore `0x68a7c1d0` 汇编复核一致 | ArcMap.exe `0x15349c/0x153e54` | 确认（类型库 + 行为证据双重） |
 | `dd94d76a-6d83-11d0-87ec-080009ec732a` | esriCarto **IPageLayout**（3） | 布局接口：对象流 +0x44 按此 IID 加载页面对象（`Mx Document` 分支与 `PageLayout` 存储两处），随后 `FUN_7b6c4490` 读名字符串 | `0x7b71fed4`（`ev_33debe16c2b062a953e9f6400489d74616ad8247d72a8beab7f907ca4ff99219`） | 确认（类型库 + 主干反编译，`ev_2740f60e…`） |
 | `dd94d76b-6d83-11d0-87ec-080009ec732a` | esriCarto **IActiveView**（3） | 活动视图接口：读 2 字节 short 后按此 IID 加载活动视图对象（`FUN_7b6a7850` 存入输出） | `0x7b71fec4`（`ev_895a36f00837edfca2a3f6877d00bf3ef17240b0c858805ec9a772862a530cc3`） | 确认（同上） |
-| `387bc1d1-543f-11d1-885e-0000f87808ee` | esriOutput **IPaper**（3） | 纸张设置接口：short 非零的打印设置分支按此 IID 加载纸张对象；`FUN_7b70e800`（0x7b70e800）创建 558c4e63 后 QI 的目标也是此 IID（`DAT_7b721678`） | `0x7b7207cc`（`ev_c41b61c86a1e342d216d51365351dcec6c8e69964752a70da7c9683a21d9af50`）、`0x7b721678`（`ev_9354fbde58dcce79e1d28c392f7de363d46610d5f4fdcf67834363aaf71d8f0d`） | 确认（类型库 + `FUN_7b70e800` 反编译 `ev_a4b557cf…`） |
+| `387bc1d1-3f54-11d1-885e-0000f87808ee` | esriOutput **IPaper**（3） | 纸张设置接口：short 非零的打印设置分支按此 IID 加载纸张对象；`FUN_7b70e800`（0x7b70e800）创建 Paper 后 QI 的目标也是此 IID（`DAT_7b721678`） | `0x7b7207cc`（`ev_c41b61c86a1e342d216d51365351dcec6c8e69964752a70da7c9683a21d9af50`）、`0x7b721678`（`ev_9354fbde58dcce79e1d28c392f7de363d46610d5f4fdcf67834363aaf71d8f0d`） | 确认（类型库 + `FUN_7b70e800` 反编译 `ev_a4b557cf…`） |
 | `2ab49820-9406-11d0-87ef-080009ec732a` | esriOutput **IPrinter**（3） | 打印机接口：同一打印设置分支按此 IID 加载打印机对象（`FUN_7b70ea70` 存入输出）。定义于 esriOutput，另被 7 个类型库引用（esriArcGlobe/ArcMapUI/ArcScene/Carto/Controls/OutputExtensions/OutputUI） | `0x7b7207dc`（`ev_b2564889019cce52c2a2b99601445564b688630f28e59922a4a3b366fd237d95`）；PageLayout.dll 数据 `0x8f3dc`、ArcMap.exe `0x153b18/0x153cd8` | 确认（类型库 + 主干反编译） |
-| `558c4e63-3f11-11d1-885e-0000f87808ee` | **不在任何类型库**（79 个 .olb 全部 wine 解析均无） | `FUN_7b70e800`：`AfCreateInstance(0x7b7207ec=558c4e63, NULL, 0x17, IID_IUnknown)` → `OleRun` → QI `387bc1d1`（IPaper）。即一个未登记于类型库、对外提供 IPaper 的内部组件类（候选：打印纸张设置的内部实现类；与 esriOutput 已登记 coclass `Paper`（`e28c4e63-3f55-11d1-885e-0000f87808ee`）同属 `885e-0000f87808ee` GUID 家族，疑为同族内部/早期变体） | `0x7b7207ec`（`ev_704691ce4b0cd1e75bd0b9fde03acfc638f9489dbd57b056d28ee21a12fae5b9`）；PageLayout.dll `0x8f3ec`、ArcMap.exe `0x153b28`（紧邻 2ab49820/IPrinter） | **候选**（创建与 QI 行为已证；类名/ProgID 未闭合） |
+| `e28c4e63-3f55-11d1-885e-0000f87808ee` | esriOutput **Paper**（5） | `FUN_7b70e800`：`AfCreateInstance(0x7b7207ec=Paper, NULL, 0x17, IID_IUnknown)` → `OleRun` → QI `387bc1d1`（IPaper）。 | `0x7b7207ec`；PrintOut.dll GetClassID `0x7bcd63f0` 的常量 `0x7bce0c88`。 | 确认（PE 原始字节 + 类型库 + GetClassID），见[打印设置复核](mxd-page-layout-tail-20261118.md#非空打印设置) |
 | `8f2b6061-ab00-11d2-87f4-0000f8751720` | esriSystem **Array**（5） | 数组组件类 CLSID：主干开头 `FUN_7b6a6f10(&local_30, 0x7b71df1c=8f2b6061, 0, 0x17)` 创建；`Mx Document` 循环内对每个按 IID_IUnknown 加载的对象调用其虚表 +0x14（按 COM 惯例推断为 IArray::Add，槽位名是推断）。语义：加载对象的收集容器（对象引用表载体候选） | `0x7b71df1c`（`ev_bb04b4bb7acd4f32477001ac38123945ba122a290e713da2f85ca029a66df26d`） | 确认（类型库）；+0x14 槽位语义为推断 |
 | `00000000-0000-0000-c000-000000000046` | （标准 IID_IUnknown） | `Mx Document`/`Maps` 对象循环中 +0x44 加载对象所用的 IID（`DAT_7b71c76c`）；`FUN_7b70e800` 的 AfCreateInstance 输出接口 | `0x7b71c76c`（`ev_c9e321bca2c23df23c84cadd42fa553b6be3ea64113b4ad3eb7e834272785ee3`）、`0x7b71d15c`（`ev_f3d25eac162952237f698fd1650c42cad852e6050158acea0f02ac4a93f5e155`） | 确认 |
 
@@ -320,9 +333,9 @@ typekind：3 = TKIND_INTERFACE（接口 IID），5 = TKIND_COCLASS（组件类 C
 
 ### 未解决事项
 
-- `558c4e63` 的类名/ProgID/注册表登记内容（不在类型库；需安装介质外证据或运行时观察）。
-- IPaper/IPrinter/IPageLayout/IActiveView 对象体的持久化字段（对象流 +0x44 加载后的
-  字节布局）未展开；本节只闭合 IID 语义，不证明任何字段布局。
+- Paper 的 ProgID 和实际注册表登记内容尚未运行验证。
+- 分流文档的直接 Paper 体及三类 IPrinter 对象体已补查。旧纸张有非空 DEVMODE 时的边界仍待实档复核。[打印设置复核](mxd-page-layout-tail-20261118.md#非空打印设置)
+- 本节未展开 IPageLayout/IActiveView 的持久化字段。分流宿主中已解析的布局字段见[布局尾段复核](mxd-page-layout-tail-20261118.md)。
 - Array 虚表 +0x14 槽位（Add 推断）与对象引用表的运行时行为未验证。
 - 类型库解析经 wine 11.21 OLE 实现完成，未在 Windows 原生 `LoadTypeLibEx` 下复核；
   名称↔GUID 绑定为文件内静态数据，风险低但非零。

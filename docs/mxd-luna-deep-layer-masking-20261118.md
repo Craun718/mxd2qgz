@@ -45,3 +45,28 @@ AfCore `0x68a77660` 调 `0x68a777c0`；后者走 `CoCreateInstance` 或 `Factory
 新增 `tests/luna_layer_masking_20261118.rs` 覆盖版本 39/40 门界、Basemap QI 成败、负 short 位模式、已核实的类能力及未知类保守返回。该专属测试 2 项通过，两个改动 Rust 文件的 `rustfmt --check` 通过。全量 `cargo test --offline` 有一项无关失败：`tests/composite_graphics.rs::complete_sample_context_reads_cgl_sublayers_without_skipping` 在第 973 行得到游标 152508、断言 152510；全仓 `cargo fmt --check` 还报告未改的 `tests/luna_map_tail_20261118.rs` 格式差异。未在 ArcMap/QGIS 中验证；测试只验证编码后的静态决策表，不证明运行时环境行为。
 
 未重复分析 Map `0x79403d50` 伪代码中的 NULL 参数误判；本轮引用的是 Map 原始指令里实际传递的 QI 输出。未运行 REA CLI：现有地址导出加原始指令足以闭合本轮静态分派；若要再追注册工厂运行期替换或实际 COM 激活，应由主代理对 AnnoLayer `0x6b18df98`、`0x6b18ef03`，FeatureLayer `0x6f6e7a40` / `0x6f73c440` 运行 REA，并核验目标机器类注册。未输出 MXD 样本敏感属性。
+
+## GroupLayer 子层遍历
+
+沿用上表中的 Map.dll 和 FeatureLayer.dll 10.1.0.3035。对照地址索引中的 `79403bc0.c`、`6f711270.c`、`6f710540.c`、`6f710570.c`、`6f7105c0.c` 和 `6f701c60.c`，用两份原始 PE 的 `objdump -d -Mintel` 补齐反编译丢失的循环和参数。以下地址均为静态 VA。
+
+| 模块及地址 | 观察 |
+| --- | --- |
+| Map.dll `0x79403bf9`、`0x79403c0e`、`0x79403c27`、`0x79403c6d` | 先读当前层遮罩，再查询 ICompositeLayer，从索引 0 开始枚举子层。 |
+| Map.dll `0x79403c95`、`0x79403cad` | 对子层查询 ILayerMasking 后直接递归进入 `0x79403bc0`。递归路径没有 `0x79403d50` 的旧版顶层 Basemap 门。 |
+| FeatureLayer.dll `0x6f70fe97..c0`、`0x6f710540`、`0x6f710570` | GroupLayer 的 ICompositeLayer 视图为 `this+0x30`；计数和索引读取对应同一子层数组。 |
+| FeatureLayer.dll `0x6f7113e9..3fa`、`0x6f7105c0`、`0x6f701c60`、`0x6f7119b0` | Load 按流顺序添加成功读取的子层。Add 检查空指针及自引用或祖先循环，随后以索引 −1 追加；正常追加路径没有同级去重。Save 按索引递增写出该数组。 |
+
+Rust 按上述顺序消费已完整识别的 GroupLayer 自身和子层遮罩，空槽无记录。回引须匹配先前确认的对象键和类，重复回引按各自位置再走一遍子树。畸形回引受递归深度上限保护。遇到未知子层、未完整消费的子层或遮罩截断，整个逐图层循环回退到循环起点。嵌套 BasemapLayer 可以在 Map v28–v39 中产生遮罩记录；其正式子层集合仍限于 PrepareResult 中完整确认的 FeatureLayer 回引。图层树中未识别的图层类接口、不能完整读取的新遮罩对象体及 ArcMap/QGIS 人工验收仍开放。
+
+Map v28 的构造测试覆盖普通组图层子层项、嵌套 Basemap、重复子层回引、顶层回引、错类回引和截断。该测试验证对象停止点和记录顺序，尚缺原生生成的嵌套遮罩实档。
+
+## 遮罩集合中的新对象
+
+LayerLib.dll 10.1.0.3035（SHA-256 `55514f054c9e4827d773cf1a9b9a83e7c41c483f73758965244625165f330e02`）的 `LayerMasking::LoadLayerMasking 0x786f1ff0` 已有 Ghidra 导出。复核原始指令及两处 IID 的 PE 字节后，`0x786f21b8` 将 `0x7871fc68` 传给外层 LoadObject，即 `{34C20002-4D3C-11D0-92D8-00805F7C28B0}`。同版本 `ESRI.ArcGIS.Carto.dll` 的 GuidAttribute 将该 IID 定名为 ILayer。`0x786f221c` 将 `0x7871e78c` 传给内层 LoadObject，即 `{00000000-0000-0000-C000-000000000046}`（IUnknown）。两者均走普通对象槽，头部没有外层体长。
+
+两处新对象都可交给既有完整图层体分派器。对象键与嵌套对象键随遮罩集合一起提交。未知类或截断时集合回退，内层非图层的 IUnknown 对象仍需各类持久化证据。现有结果保留对象头、目标名称和遮罩尾字段。构造测试令外层和内层分别引入新图层，再回引先前内层对象，并逐字节截断检查游标和登记表回退。
+
+## 回归结果
+
+`cargo fmt --check`、`git diff --check` 通过。全量测试含忽略项共 1035 项通过。CLI 对仓库样例和 66 份 10.1 介质工程均读完 `/Maps` 与 `/PageLayout`。按实际对象键回查，10.1 介质的 18 份工程共读出 22 条 BasemapLayer 遮罩记录，集合条目数均为 0。68 份 10.8 介质补充对照中，60 份读到地图根尾，41 份读完布局。组层递归和集合内新对象由构造测试覆盖。ArcMap 和 QGIS 人工验收未做。

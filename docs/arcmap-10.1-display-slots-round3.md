@@ -219,7 +219,7 @@ short → String → this−0x20 → int32 → this−0x1c → LoadObject（ICol
 **版本 ≤7（旧路径 `0x6eb74aa0`，字段序反编译记录；无样本）**：版本 <6：
 LoadObject（IPicture）→ 图像对象槽；版本 ≥6：String（路径候选），串空 →
 LoadObject（IPicture），串非空 → double ×2 → 随后 IColor ×3 + ISymbol ×1 +
-double ×8 + double ×2（读后即弃）+ int32 ×2 + 版本 >1 byte + 版本 >3
+double ×7 + double ×2（读后即弃）+ int32 ×2 + 版本 >1 byte + 版本 >3
 short ×3 + 版本 >6 int32 N +（N≠0 时 N 字节位图块）。与 PictureMarker 历史
 路径（display-symbols-round2 记录）同族同型。
 
