@@ -957,18 +957,21 @@ fn complete_sample_context_reads_cgl_sublayers_without_skipping() {
             .diagnostics
             .iter()
             .any(|line| line.contains("书签后属性（offset 0x24fa0）")
-                && line.contains("+0x200=5000")
+                && line.contains("ReferenceScale(+0x200)=5000")
+                && line.contains("VerboseEvents(+0x19c)")
+                && line.contains("UseSymbolLevels(+0x264)")
                 && line.contains("独立表计数 0"))
     );
     assert!(report.diagnostics.iter().any(|line| {
         line.contains("IlluminationProps 槽位（offset 0x24fb2）") && line.contains("键 2178")
     }));
-    assert!(
-        report
-            .diagnostics
-            .iter()
-            .any(|line| { line.contains("照明后定长字段（offset 0x24fe8）") })
-    );
+    assert!(report.diagnostics.iter().any(|line| {
+        line.contains("照明后定长字段（offset 0x24fe8，存盘值）")
+            && line.contains("ConserveMemory(+0x1a0)")
+            && line.contains("OutputBandSize(+0x1b0)")
+            && line.contains("DelayBackgroundDraw(+0x1ac)")
+            && line.contains("Expanded(+0x268)")
+    }));
     assert_eq!(report.confirmed_tail, Some((0x25569, 1)));
     assert!(report.map.unknown_fields.is_empty());
     assert!(

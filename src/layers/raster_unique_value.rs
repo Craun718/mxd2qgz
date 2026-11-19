@@ -31,6 +31,9 @@ pub const RASTER_UNIQUE_VALUE_RENDERER_CLASS_ID: [u8; 16] = [
 pub const UNIQUE_VALUES_CLASS_ID: [u8; 16] = [
     0xc7, 0xf1, 0x81, 0x9c, 0x2b, 0x79, 0x7e, 0x46, 0xac, 0x80, 0x06, 0x9e, 0x4f, 0xdf, 0x4d, 0xef,
 ];
+pub const RASTER_UNIQUE_VALUE_COLORS_CLASS_ID: [u8; 16] = [
+    0xbe, 0x98, 0x04, 0xd1, 0x16, 0x66, 0xd2, 0x11, 0xaa, 0xbc, 0x00, 0xc0, 0x4f, 0xa3, 0x34, 0x16,
+];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RasterUniqueValueRenderer10_1 {
@@ -59,12 +62,40 @@ pub enum RasterUniqueValueLayout10_1 {
     Legacy {
         before_groups: i32,
         legend_item: LegendItemSlot10_1,
+        colors: RasterUniqueValueColorsSlot10_1,
         samples: Vec<(f64, i32)>,
     },
     Modern {
         unique_values: UniqueValuesSlot10_1,
         ramp: Option<ColorRampSlot10_1>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RasterUniqueValueColorsSlot10_1 {
+    pub entry: ObjectEntry10_1,
+    pub body: Option<Box<RasterUniqueValueColors10_1>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RasterUniqueValueColors10_1 {
+    pub version: i32,
+    /// 非零时全部条目用字符串键。
+    pub string_flag: i32,
+    pub entries: Vec<RasterUniqueValueColorEntry10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RasterUniqueValueColorEntry10_1 {
+    pub value: RasterUniqueValueColorKey10_1,
+    /// 原生按 4 字节读写，不重排位模式。
+    pub colors: Vec<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum RasterUniqueValueColorKey10_1 {
+    Number(f64),
+    Text(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -137,19 +168,14 @@ pub(super) fn read_raster_unique_value(
     }
     let second_short = r.read_u16_le()?;
     let layout = if let (Some(before_groups), Some(legend_item)) = (before_groups, legend_item) {
-        // 10.1 的旧格式 Save 在这里显式写空对象；未知非空体没有外部长度。
-        if read_object_entry_10_1(r, table)? != ObjectEntry10_1::Null {
-            return Err(io::Error::new(
-                ErrorKind::Unsupported,
-                "旧版栅格唯一值渲染器的非空统计对象尚未支持",
-            ));
-        }
+        let colors = read_legacy_colors(r, max, table)?;
         let samples = (0..length(r, max, 12)?)
             .map(|_| Ok((r.read_f64_le()?, long(r)?)))
             .collect::<io::Result<_>>()?;
         RasterUniqueValueLayout10_1::Legacy {
             before_groups,
             legend_item,
+            colors,
             samples,
         }
     } else {
@@ -175,6 +201,70 @@ pub(super) fn read_raster_unique_value(
         layout,
         shared,
     })
+}
+
+fn read_legacy_colors(
+    reader: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<RasterUniqueValueColorsSlot10_1> {
+    let entry = read_object_entry_10_1(reader, table)?;
+    let body = match entry {
+        ObjectEntry10_1::Null
+        | ObjectEntry10_1::BackReference {
+            class_id: RASTER_UNIQUE_VALUE_COLORS_CLASS_ID,
+            ..
+        } => None,
+        ObjectEntry10_1::NewObject {
+            class_id: RASTER_UNIQUE_VALUE_COLORS_CLASS_ID,
+            ..
+        } => {
+            let mut r = reader.clone().read_region(reader.remaining().min(max))?;
+            let version = long(&mut r)?;
+            if version != 1 {
+                return Err(invalid(format!(
+                    "未支持的 RasterUniqueValueColors 版本 {version}"
+                )));
+            }
+            // RasterRendererUI.dll 先读计数和模式，再按同一模式读取各条目。
+            let count = length(&mut r, max, 4)?;
+            let string_flag = long(&mut r)?;
+            let string_keys = string_flag != 0;
+            let entry_min = if string_keys { 10 } else { 12 };
+            if count > r.remaining() / entry_min {
+                return Err(invalid("RasterUniqueValueColors 条目计数超出可读范围"));
+            }
+            let mut entries = Vec::new();
+            for _ in 0..count {
+                let value = if string_keys {
+                    RasterUniqueValueColorKey10_1::Text(read_string_10_1(&mut r, max)?)
+                } else {
+                    RasterUniqueValueColorKey10_1::Number(r.read_f64_le()?)
+                };
+                let colors = (0..length(&mut r, max, 4)?)
+                    .map(|_| r.read_u32_le())
+                    .collect::<io::Result<_>>()?;
+                entries.push(RasterUniqueValueColorEntry10_1 { value, colors });
+            }
+            reader.read_bytes(r.position())?;
+            Some(Box::new(RasterUniqueValueColors10_1 {
+                version,
+                string_flag,
+                entries,
+            }))
+        }
+        ObjectEntry10_1::NewObject { class_id, .. }
+        | ObjectEntry10_1::BackReference { class_id, .. } => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                format!(
+                    "未支持的 IEnumRasterUniqueValueColor 类 {}",
+                    crate::storage::class_id_hex(&class_id)
+                ),
+            ));
+        }
+    };
+    Ok(RasterUniqueValueColorsSlot10_1 { entry, body })
 }
 
 pub(super) fn read_unique_values(

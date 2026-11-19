@@ -1,6 +1,6 @@
 use mxd2qgz::layers::annotate_props::EDIT_TEMPLATE_MANAGER_CLASS_ID;
 use mxd2qgz::layers::dep_tail::TIME_CLASS_ID;
-use mxd2qgz::layers::feature_id_set::FEATURE_ID_SET_CLASS_ID;
+use mxd2qgz::layers::feature_id_set::FID_SET_CLASS_ID;
 use mxd2qgz::layers::image_server_layer::{
     IMAGE_SERVER_LAYER_CLASS_ID, read_image_server_layer_prefix_10_1,
 };
@@ -20,7 +20,9 @@ use mxd2qgz::objects::envelope::{
 };
 use mxd2qgz::objects::field_defs::{GEOMETRY_DEF_CLASS_ID, RASTER_DEF_CLASS_ID};
 use mxd2qgz::objects::fields::{FIELD_CLASS_ID, FIELDS_CLASS_ID};
-use mxd2qgz::objects::geodata_xform::{GeodataXformBody10_1, IDENTITY_XFORM_CLASS_ID};
+use mxd2qgz::objects::geodata_xform::{
+    ADJUST_XFORM_CLASS_ID, GeodataXformBody10_1, IDENTITY_XFORM_CLASS_ID,
+};
 use mxd2qgz::objects::property_set::{
     PROPERTY_SET_CLASS_ID, PropertyValue10_1, PropertyValueObjectStream10_1,
 };
@@ -103,6 +105,64 @@ fn image_server_layer() -> (Vec<u8>, usize) {
     let sr_offset = bytes.len();
     object(&mut bytes, PROJECTED_COORDINATE_SYSTEM_CLASS_ID, 30);
     (bytes, sr_offset)
+}
+
+#[test]
+fn image_server_extension_dispatch_shares_property_keys_with_the_prefix() {
+    use mxd2qgz::layers::image_server_layer::{
+        ImageServerLayerExtension10_1, read_image_server_layer_prefix_10_1,
+    };
+    use mxd2qgz::objects::property_set::PROPERTY_SET_CLASS_ID;
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    let extension = [
+        0xc9, 0x0e, 0xfd, 0xf7, 0x15, 0xf2, 0x7f, 0x4e, 0xb1, 0xf8, 0x94, 0xba, 0x0e, 0xb6, 0x03,
+        0xb9,
+    ];
+    let mut bytes = layer_properties(22);
+    variant(&mut bytes, 2, &2_i16.to_le_bytes());
+    object(&mut bytes, extension, 71);
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(PROPERTY_SET_CLASS_ID);
+    bytes.extend(72_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(0_u32.to_le_bytes());
+    object(&mut bytes, extension, 73);
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(PROPERTY_SET_CLASS_ID);
+    bytes.extend(72_u32.to_le_bytes());
+    for _ in 0..3 {
+        null_object(&mut bytes);
+    }
+
+    let mut refs = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes[..bytes.len() - 1]);
+    assert!(read_image_server_layer_prefix_10_1(&mut reader, 4096, &mut refs).is_err());
+    assert_eq!(reader.position(), 0);
+    assert!(refs.is_empty());
+
+    let mut reader = Reader::new(&bytes);
+    let parsed = read_image_server_layer_prefix_10_1(&mut reader, 4096, &mut refs).unwrap();
+    let [
+        VariantValue10_1::Object {
+            body: ImageServerLayerExtension10_1::ServerLayerExtension(first),
+            ..
+        },
+        VariantValue10_1::Object {
+            body: ImageServerLayerExtension10_1::ServerLayerExtension(second),
+            ..
+        },
+    ] = parsed.extensions.as_slice()
+    else {
+        panic!("应读取两个服务图层扩展");
+    };
+    assert_eq!(first.properties.body.as_ref().unwrap().count, 0);
+    assert!(matches!(
+        second.properties.entry,
+        ObjectEntry10_1::BackReference { key: 72, .. }
+    ));
+    assert_eq!(reader.remaining(), 0);
+    assert!(refs.contains(71) && refs.contains(72) && refs.contains(73));
 }
 
 fn null_object(bytes: &mut Vec<u8>) {
@@ -235,7 +295,13 @@ fn complete_layer_with_slots(
 #[test]
 fn image_layer_v20_dispatches_nonempty_geodata_xform() {
     let mut transform = Vec::new();
-    object(&mut transform, IDENTITY_XFORM_CLASS_ID, 66);
+    object(&mut transform, ADJUST_XFORM_CLASS_ID, 66);
+    transform.extend(1_i32.to_le_bytes());
+    transform.extend(7_u16.to_le_bytes());
+    transform.extend(8_i32.to_le_bytes());
+    transform.extend([0; 16]);
+    transform.extend(IDENTITY_XFORM_CLASS_ID);
+    transform.extend(67_u32.to_le_bytes());
     transform.extend(2_i32.to_le_bytes());
     transform.extend([0; 16]);
     let (bytes, _, _) = complete_layer_with_slots(22, None, None, Some(&transform));
@@ -246,10 +312,11 @@ fn image_layer_v20_dispatches_nonempty_geodata_xform() {
     assert!(body.tail.iter().any(|field| matches!(field,
         ImageServerTailField10_1::Object(VariantValue10_1::Object { body, .. })
         if matches!(body.as_ref(), ImageServerTailObject10_1::GeodataXform(
-            GeodataXformBody10_1::Identity { version: 2, .. }
+            GeodataXformBody10_1::Adjust { version: 1, short_c8: 7, long_a8: 8, .. }
         ))
     )));
     assert!(refs.contains(66));
+    assert!(refs.contains(67));
     assert_eq!(reader.remaining(), 0);
 }
 
@@ -580,7 +647,8 @@ fn bounded_image_layer_uses_one_table_for_new_bodies_and_back_references() {
     assert!(matches!(
         &parsed.extensions[..],
         [VariantValue10_1::Object { body, .. }, VariantValue10_1::BackReference { key: 51, .. }]
-        if body.tail_byte == Some(1)
+        if matches!(body, mxd2qgz::layers::image_server_layer::ImageServerLayerExtension10_1::EditTemplateManager(manager)
+            if manager.tail_byte == Some(1))
     ));
     assert!(matches!(
         &parsed.extent,
@@ -664,6 +732,117 @@ fn plain_variant_uses_a_class_id_without_a_key() {
 }
 
 #[test]
+fn rendering_rule_reads_stretch_histograms_and_derived_arguments() {
+    use mxd2qgz::layers::image_server_rules::STRETCH_FUNCTION_CLASS_ID;
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    let histogram = [
+        0xc1, 0x27, 0x30, 0xba, 0xca, 0x49, 0x88, 0x47, 0x8b, 0x5a, 0x3a, 0x6b, 0x38, 0x7d, 0xe7,
+        0x8c,
+    ];
+    let stretch_args = [
+        0x56, 0x1e, 0x26, 0xd8, 0x8a, 0x17, 0x52, 0x4a, 0x91, 0x5b, 0x78, 0x8f, 0x93, 0x93, 0x95,
+        0x1c,
+    ];
+    let mut rule = Vec::new();
+    object(&mut rule, RENDERING_RULE_CLASS_ID, 84);
+    rule.extend(1_u16.to_le_bytes());
+    native_string(&mut rule, "拉伸");
+    native_string(&mut rule, "");
+    rule.extend(STRETCH_FUNCTION_CLASS_ID);
+    rule.extend(85_u32.to_le_bytes());
+    rule.extend(3_u16.to_le_bytes());
+    native_string(&mut rule, "Stretch");
+    native_string(&mut rule, "");
+    rule.extend(3_i32.to_le_bytes());
+    rule.extend(2_u16.to_le_bytes());
+    let count_offset = rule.len();
+    rule.extend(2_i32.to_le_bytes());
+    rule.extend(histogram);
+    rule.extend(86_u32.to_le_bytes());
+    rule.extend(3_i32.to_le_bytes());
+    rule.extend([0; 48]); // 六项统计值。
+    rule.extend(1_i32.to_le_bytes());
+    rule.extend(10_f64.to_le_bytes());
+    rule.extend(2_f64.to_le_bytes());
+    rule.extend(histogram);
+    rule.extend(86_u32.to_le_bytes());
+    rule.extend(stretch_args);
+    rule.extend(87_u32.to_le_bytes());
+    rule.extend(1_u16.to_le_bytes());
+    rule.extend(PROPERTY_SET_CLASS_ID);
+    rule.extend(88_u32.to_le_bytes());
+    rule.extend(1_u16.to_le_bytes());
+    rule.extend(0_i32.to_le_bytes());
+    native_string(&mut rule, "输出");
+    rule.extend([0; 16]);
+
+    let mut mosaic = Vec::new();
+    null_object(&mut mosaic);
+    let (bytes, _, _) = complete_layer_with_slots(22, None, Some([&mosaic, &rule]), None);
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let result = read_image_server_layer_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+    assert!(result.stop.is_none(), "{:?}", result.stop);
+    let parsed = result
+        .tail
+        .iter()
+        .find_map(|field| {
+            let ImageServerTailField10_1::Object(VariantValue10_1::Object { body, .. }) = field
+            else {
+                return None;
+            };
+            if let ImageServerTailObject10_1::RenderingRule(rule) = body.as_ref() {
+                Some(rule)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    let histograms = parsed
+        .function
+        .body
+        .as_ref()
+        .unwrap()
+        .histograms
+        .as_ref()
+        .unwrap();
+    assert_eq!(histograms[0].body.as_ref().unwrap().bins, [10.0]);
+    assert!(matches!(
+        histograms[1].entry,
+        ObjectEntry10_1::BackReference { key: 86, .. }
+    ));
+    assert!(
+        parsed
+            .arguments
+            .body
+            .as_ref()
+            .unwrap()
+            .properties
+            .body
+            .is_some()
+    );
+    assert_eq!(parsed.strings[2], "输出");
+    assert!((84..=88).all(|key| refs.contains(key)));
+    assert_eq!(reader.remaining(), 0);
+
+    let offset = bytes
+        .windows(rule.len())
+        .position(|window| window == rule)
+        .unwrap();
+    let mut invalid = bytes.clone();
+    invalid[offset + count_offset..offset + count_offset + 4]
+        .copy_from_slice(&i32::MAX.to_le_bytes());
+    for input in [&invalid[..], &bytes[..offset + rule.len() - 1]] {
+        let mut reader = Reader::new(input);
+        let mut refs = RefTable10_1::new();
+        let result = read_image_server_layer_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+        assert_eq!(result.stop.unwrap().offset, offset);
+        assert!((84..=88).all(|key| !refs.contains(key)));
+    }
+}
+
+#[test]
 fn mosaic_and_rendering_rules_read_nested_objects_and_stop_at_an_unknown_argument() {
     let mut mosaic = Vec::new();
     object(&mut mosaic, MOSAIC_RULE_CLASS_ID, 80);
@@ -679,7 +858,7 @@ fn mosaic_and_rendering_rules_read_nested_objects_and_stop_at_an_unknown_argumen
     native_string(&mut mosaic, "第三串");
     mosaic.extend([0; 10]);
     mosaic.extend([0; 16]); // 空 Point。
-    mosaic.extend(FEATURE_ID_SET_CLASS_ID);
+    mosaic.extend(FID_SET_CLASS_ID);
     mosaic.extend(81_u32.to_le_bytes());
     mosaic.extend(1_u16.to_le_bytes());
     mosaic.extend(1_i32.to_le_bytes());
@@ -786,4 +965,54 @@ fn mosaic_and_rendering_rules_read_nested_objects_and_stop_at_an_unknown_argumen
         assert!((80..=83).all(|key| refs.contains(key)));
         assert!((84..=87).all(|key| !refs.contains(key)));
     }
+}
+
+#[test]
+fn scene_graphics_reads_image_server_layer_and_preserves_shared_keys() {
+    use mxd2qgz::layers::graphics_3d::{GRAPHICS_LAYER_3D_CLASS_ID, read_graphics_3d_layer_10_1};
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    let (body, _, _) = complete_layer(22);
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    native_string(&mut bytes, "Scene");
+    bytes.extend([0; 8]);
+    bytes.extend(IMAGE_SERVER_LAYER_CLASS_ID);
+    bytes.extend(51_u32.to_le_bytes());
+    let body_offset = bytes.len();
+    bytes.extend(&body);
+    bytes.extend([0; 16 + 4]);
+    let end = bytes.len();
+    bytes.push(0xcc);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let parsed =
+        read_graphics_3d_layer_10_1(&GRAPHICS_LAYER_3D_CLASS_ID, &mut reader, 4096, &mut refs)
+            .unwrap();
+    assert_eq!(
+        parsed.associated_layer,
+        ObjectEntry10_1::NewObject {
+            class_id: IMAGE_SERVER_LAYER_CLASS_ID,
+            key: 51
+        }
+    );
+    assert!(matches!(
+        parsed.associated_layer_body.as_deref(),
+        Some(LayerBodyPrefix10_1::ImageServerLayer(layer)) if layer.stop.is_none()
+    ));
+    assert!(refs.contains(51) && refs.contains(60) && refs.contains(61));
+    assert_eq!(reader.position(), end);
+    assert_eq!(reader.read_bytes(1).unwrap(), [0xcc]);
+
+    // 从图层体最后一个字节之前截断，验证内部键和外部图层键都回退。
+    let mut reader = Reader::new(&bytes[..body_offset + body.len() - 1]);
+    let mut refs = RefTable10_1::new();
+    refs.register(99);
+    assert!(
+        read_graphics_3d_layer_10_1(&GRAPHICS_LAYER_3D_CLASS_ID, &mut reader, 4096, &mut refs)
+            .is_err()
+    );
+    assert_eq!(reader.position(), 0);
+    assert!(refs.contains(99));
+    assert_eq!(refs.len(), 1);
 }

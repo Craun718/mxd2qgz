@@ -34,26 +34,14 @@
 //!    第五轮类型库考证为 IEnvelope）。[文档字段表标注 >=2，反编译为
 //!    `2 < ver`，以反编译为准]；
 //! 8. 版本 >=4：double → +0xc8；
-//! 9. 版本 >=5：`ExtensionHelper::LoadExtensions`（参数含流对象，流消费
-//!    布局未展开——不可实现，本读取器在此停止）；
-//! 10. 反编译可见、但本读取器不可达的字段：>=6 String→+0xdc、==6 再读
-//!     short、>=7 short→+0xd6、>7 double×2→+0xe0/+0xe8 [文档字段表标注
-//!     >=7，反编译为 `7 < ver`]、>=9 short→+0xd8 [文档字段表漏记]、>9
-//!     short×3（local、+0xf2、+0xf4）、>=11 嵌套对象（IID
-//!     {19F85377-1387-11D3-B89C-00600802E603}，第五轮考证为
-//!     IDisplayFilter）、尾部 LayerMasking 条件循环。步骤 9 在版本 >=5
-//!     时先于这些字段出现且必须停止，版本 <5 时它们的版本条件又不满足，
-//!     因此对任何版本都不可达，不进入解析结果。
+//! 9. 版本 >=5：LayerLib `ExtensionHelper::LoadExtensions`；
+//! 10. 版本 >=6 读 String（版本 6 再读 short）；>=7 读 short；>=8 读
+//!     double ×2；>=9 读 short；>=10 读 short ×3；版本 12 读 IDisplayFilter。
+//!     随后的接口释放和遮罩初始化不消费流。
 //!
-//! 停止语义（与 [`crate::maps::map_object`] 的设计差异及理由）：map_object 对
-//! 未知嵌套类直接报错，因为其后没有同序字段可继续；本模块面对的嵌套对象
-//! （子图层、IEnvelope）之后仍有已确认字段，而新对象体没有外部长度字段、
-//! 无法跳过——报错会丢弃已解析前缀。因此本读取器是「已确认前缀」语义：
-//! 解析到首个不可闭合字段（新对象体 / ExtensionHelper / 尾段）为止，返回
-//! 已解析字段 + 剩余字节数 + 停止原因 [`GroupLayerStop10_1`]，不因未知嵌
-//! 套类报错中断。ExtraSafe 条目例外：A 前缀给出有界体积，A>=20 时把对象
-//! 头后 A-20 字节按未知体范围记录并继续；A 与 B 的同步位置冲突时以反编译
-//! 证实的 B 同步为准。
+//! 普通关联槽需要完整消费，使用与 3D 图层共用的无界分派。ExtraSafe 子层在
+//! 条目边界内读完才提交；未知子体会使整个普通关联对象回滚。旧的前缀入口仍
+//! 提供部分解析信息，用于外层有界图层列表的诊断和保留。
 //!
 //! ## 子图层递归（2026-11-14 第六轮接入）
 //!
@@ -72,20 +60,22 @@
 //! 头并比对 [`GROUP_LAYER_CLASS_ID`]，从对象头之后的位置调用
 //! [`read_group_layer_prefix_10_1`]；本模块不重复读取对象头。
 //!
-//! 样本对照：仓库参考样本 `samples/测试底图.mxd` 无组图层，本模块字段序只
-//! 有反编译证据、无样本字节佐证（文档「未解决事项」2）；ExtraSafe 前缀的
-//! `[A][B]` 布局与「A=对象总体积」有 /Maps 图层列表（Map 的图层循环，非
-//! GroupLayer 子图层）的逐条目吻合（第四轮），仅作布局佐证。人工目视验
-//! 收未做，不声称已验证。
-//!
-//! 未解决问题：三个 short（+0xa0/+0xa2/+0xa4）语义未定性；版本 short 的
-//! 符号性未闭合（本读取器按无符号更严处理）；A 前缀仅是写侧观察，读侧原
-//! 生不消费 A，A<20 的输入按本读取器报错（原生可能经 B 同步接受）；B 为
-//! 负值位模式时的原生 Seek 行为未证实，本读取器直接拒绝；>=5 的
-//! ExtensionHelper 与尾部 LayerMasking/`FUN_6f6c8100` 未展开（后者反编译
-//! 无参数、按不消费流处理，未验证）。
+//! 仓库参考工程无组图层。SDK 的 brazil.mxd 与 SchematicsForServerSample.mxd
+//! 提供版本 11/12 子层包装的字节；brazil.mxd 首个版本 11 体已核对完整边界。
+//! 版本 <11 的真实对象与 ArcMap/QGIS 验收仍待验证。
 
-use crate::layers::layer_list::LayerBodyPrefix10_1;
+use super::cache_tile_reader::is_tiled_layer;
+use super::wcs_layer::{WCS_LAYER_CLASS_ID, read_wcs_layer_body_10_1};
+use crate::layers::feature_layer_tail::{
+    DisplayFilterSlot10_1, RefSlot10_1, TRANSPARENCY_DISPLAY_FILTER_CLASS_ID,
+    read_transparency_display_filter_10_1,
+};
+use crate::layers::layer_extensions::{LayerExtensionEntry10_1, read_layer_extensions_10_1};
+use crate::layers::layer_list::{
+    LayerBodyPrefix10_1, RASTER_LAYER_CLASS_ID, read_complete_layer_body_10_1,
+};
+use crate::layers::raster_layer::read_complete_bounded_raster_body_10_1;
+use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
@@ -100,7 +90,7 @@ const OBJECT_HEADER_BYTES: u32 = 20;
 /// 子图层递归解析的最大深度（Rust 侧防栈溢出的安全限额，非原生限制：原生
 /// 按 C++ 递归无显式上限；每层至少消费 22 字节，超深输入在本读取器内按未
 /// 知体跳过/停止处理）。
-const MAX_RECURSION_DEPTH: u32 = 64;
+pub(crate) const MAX_RECURSION_DEPTH: u32 = 64;
 
 /// GroupLayer 类标识（CLSID）的 16 字节内存序（Data1-3 小端、Data4 原序）。
 ///
@@ -176,11 +166,11 @@ pub enum GroupLayerStop10_1 {
     ChildLayerBody { index: usize },
     /// 版本 >2 的嵌套对象（IEnvelope 候选）是新对象：停止并回退到其头起点。
     NestedNewObject { class_id: [u8; 16], key: u32 },
-    /// 版本 >=5 的 `ExtensionHelper::LoadExtensions` 未展开：其流消费布局
-    /// 未知，无法继续；其后的版本分支字段因此全部不可达（模块文档第 10 条）。
+    /// 版本所需的全部对象体字段已消费。
+    Complete,
+    /// 前缀入口停在版本 >=5 的扩展列表前。
     ExtensionHelperNotExpanded,
-    /// 版本 <5 时全部版本条件字段之后的尾段（`FUN_6f6c8100` 与 LayerMasking
-    /// 条件循环）未逐项展开：反编译未见其中的流读取，但未经验证，保守停止。
+    /// 前缀入口的旧版终点（版本 <5）。
     TailNotExpanded,
 }
 
@@ -205,16 +195,24 @@ impl GroupLayerStop10_1 {
             Self::NestedNewObject { .. } => {
                 "版本 >2 的嵌套对象（IEnvelope 候选）为新对象：停止并回退到其头起点".to_string()
             }
-            Self::ExtensionHelperNotExpanded => {
-                "版本 >=5 的 ExtensionHelper::LoadExtensions 未展开：其后的版本分支\
-                 字段全部不可达"
-                    .to_string()
-            }
-            Self::TailNotExpanded => {
-                "版本 <5 的尾段（LayerMasking 条件循环等）未逐项展开：保守停止".to_string()
-            }
+            Self::Complete => "GroupLayer 对象体已完整消费".into(),
+            Self::ExtensionHelperNotExpanded => "前缀读取停在版本 >=5 的扩展列表前".to_string(),
+            Self::TailNotExpanded => "前缀读取到达版本 <5 的末尾".to_string(),
         }
     }
+}
+
+/// 10.1 GroupLayer::Load 在版本 5 起读取的尾段。
+#[derive(Debug, Clone, PartialEq)]
+pub struct GroupLayerTail10_1 {
+    pub extensions: Vec<LayerExtensionEntry10_1>,
+    pub string_dc: Option<String>,
+    pub legacy_v6_short: Option<u16>,
+    pub short_d6: Option<u16>,
+    pub doubles_e0_e8: Option<[f64; 2]>,
+    pub short_d8: Option<u16>,
+    pub v10_shorts: Option<[u16; 3]>,
+    pub display_filter: Option<DisplayFilterSlot10_1>,
 }
 
 /// 10.1 GroupLayer::Load（`0x6f711270`）已确认前缀的解析结果。
@@ -241,9 +239,12 @@ pub struct GroupLayerPrefix10_1 {
     /// `None` = 版本条件未满足，或该对象是新对象（停止原因
     /// [`GroupLayerStop10_1::NestedNewObject`]）。
     pub nested_after_visibility: Option<ConsumedEntry10_1>,
+    /// 新 Envelope 对象的键和对象体，由完整体入口读取。
+    pub envelope: Option<(u32, Box<Envelope10_1>)>,
     /// 版本 >=4 的 double（→ +0xc8）。`None` = 版本条件未满足或已停止。
     pub double_after_nested: Option<f64>,
-    /// 停止原因；成功输入也总有停止点（新对象 / ExtensionHelper / 尾段）。
+    pub tail: Option<GroupLayerTail10_1>,
+    /// 完整体读取达到版本所需终点时为 Complete。
     pub stop: GroupLayerStop10_1,
     /// 停止位置之后的剩余字节数（相对传入 Reader 窗口）。
     pub remaining_bytes: usize,
@@ -281,6 +282,24 @@ pub(crate) fn read_group_layer_prefix_with_depth_10_1(
     max_bytes: usize,
     table: &mut RefTable10_1,
     depth: u32,
+) -> io::Result<GroupLayerPrefix10_1> {
+    read_group_layer_10_1(reader, max_bytes, table, depth, false)
+}
+
+pub(super) fn read_group_layer_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<GroupLayerPrefix10_1> {
+    read_group_layer_10_1(reader, max_bytes, table, 0, true)
+}
+
+fn read_group_layer_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: u32,
+    complete: bool,
 ) -> io::Result<GroupLayerPrefix10_1> {
     let entry_offset = reader.position();
     // 入口克隆：Reader 没有随机定位原语，B 同步与停止回退都用「入口克隆 +
@@ -346,23 +365,96 @@ pub(crate) fn read_group_layer_prefix_with_depth_10_1(
                         children.push(GroupChildEntry10_1::BackReference { class_id, key });
                     }
                     ObjectEntry10_1::NewObject { class_id, key } => {
+                        let bounded_body = is_tiled_layer(class_id)
+                            || matches!(
+                                class_id,
+                                crate::layers::cad_layer::CAD_LAYER_CLASS_ID
+                                    | crate::layers::cad_layer::CAD_FEATURE_LAYER_CLASS_ID
+                            );
+                        let exact_boundary = complete || bounded_body;
                         // A 的体积语义是写侧观察（读侧原生不消费 A）：A>=20 时
                         // 体按「前缀终点到 A 界」有界处理；A<20 与写侧不变量
                         // 矛盾，按本读取器报错。
-                        if a < OBJECT_HEADER_BYTES {
+                        if a < OBJECT_HEADER_BYTES && (!exact_boundary || b == 0) {
                             return Err(invalid(format!(
                                 "ExtraSafe 子图层条目 offset 0x{prefix_offset:x}: 前缀 A={a} \
                                  小于对象头 {OBJECT_HEADER_BYTES} 字节，无法用作有界跳过"
                             )));
                         }
-                        let full_body_length = (a - OBJECT_HEADER_BYTES) as usize;
                         let body_offset = trial.position();
+                        let full_body_length = if exact_boundary && b != 0 {
+                            (b as i32)
+                                .checked_sub(OBJECT_HEADER_BYTES as i32)
+                                .and_then(|n| usize::try_from(n).ok())
+                                .ok_or_else(|| {
+                                    invalid(format!("子图层同步边界 B={b} 小于对象头"))
+                                })?
+                        } else {
+                            (a - OBJECT_HEADER_BYTES) as usize
+                        };
                         // 类分派递归（第六轮接入）：体前缀先解析（组图层套组
                         // 图层经同一分派递归，深度受 MAX_RECURSION_DEPTH 限
                         // 制），再把剩余按 A 界跳过；解析失败或类无读取器时
                         // 整个体按未知跳过。
                         let mut parsed = None;
-                        if depth < MAX_RECURSION_DEPTH {
+                        if complete {
+                            let mut region = trial.read_region(full_body_length)?;
+                            let body = if class_id == RASTER_LAYER_CLASS_ID {
+                                LayerBodyPrefix10_1::RasterLayer(
+                                    read_complete_bounded_raster_body_10_1(
+                                        &mut region,
+                                        max_bytes,
+                                        &mut trial_table,
+                                    )?,
+                                )
+                            } else if class_id == WCS_LAYER_CLASS_ID {
+                                LayerBodyPrefix10_1::WcsLayer(Box::new(read_wcs_layer_body_10_1(
+                                    &mut region,
+                                    max_bytes,
+                                    &mut trial_table,
+                                    true,
+                                )?))
+                            } else {
+                                read_complete_layer_body_10_1(
+                                    &mut region,
+                                    class_id,
+                                    max_bytes,
+                                    &mut trial_table,
+                                )?
+                            };
+                            if region.remaining() != 0 {
+                                return Err(invalid("ExtraSafe 子图层体未完整消费声明范围".into()));
+                            }
+                            parsed = Some(Box::new(body));
+                        } else if bounded_body {
+                            let mut source = trial.clone();
+                            let mut region = source.read_region(full_body_length)?;
+                            let mut refs = trial_table.clone();
+                            if let Ok(body) = read_complete_layer_body_10_1(
+                                &mut region,
+                                class_id,
+                                max_bytes,
+                                &mut refs,
+                            ) && region.remaining() == 0
+                            {
+                                trial = source;
+                                trial_table = refs;
+                                parsed = Some(Box::new(body));
+                            }
+                        } else if class_id == WCS_LAYER_CLASS_ID {
+                            let mut source = trial.clone();
+                            let mut region = source.read_region(full_body_length)?;
+                            if let Ok(body) = read_wcs_layer_body_10_1(
+                                &mut region,
+                                max_bytes,
+                                &mut trial_table,
+                                true,
+                            ) {
+                                trial = source;
+                                parsed =
+                                    Some(Box::new(LayerBodyPrefix10_1::WcsLayer(Box::new(body))));
+                            }
+                        } else if depth < MAX_RECURSION_DEPTH {
                             match crate::layers::layer_list::parse_body_prefix(
                                 &mut trial,
                                 class_id,
@@ -416,6 +508,11 @@ pub(crate) fn read_group_layer_prefix_with_depth_10_1(
                                  同步目标溢出"
                             ))
                         })?;
+                    if complete && target != trial.position() {
+                        return Err(invalid(format!(
+                            "子图层同步位置 {target:#x} 与实际消费不一致"
+                        )));
+                    }
                     trial = reposition(&origin, entry_offset, target, limit).map_err(|_| {
                         invalid(format!(
                             "ExtraSafe 子图层条目 offset 0x{prefix_offset:x}: 前缀 B={b} 同步\
@@ -436,6 +533,20 @@ pub(crate) fn read_group_layer_prefix_with_depth_10_1(
                         children.push(GroupChildEntry10_1::BackReference { class_id, key });
                     }
                     ObjectEntry10_1::NewObject { class_id, key } => {
+                        if complete {
+                            let body = read_complete_layer_body_10_1(
+                                &mut trial,
+                                class_id,
+                                max_bytes,
+                                &mut trial_table,
+                            )?;
+                            children.push(GroupChildEntry10_1::ParsedNewObject {
+                                class_id,
+                                key,
+                                parsed: Box::new(body),
+                            });
+                            continue 'children;
+                        }
                         // 新对象体没有外部长度字段。先经类分派解析已确认前缀
                         //（2026-11-14 第六轮接入递归，替代原先一律回退的行
                         // 为）：解析成功时游标停在其停止点并记录
@@ -509,6 +620,7 @@ pub(crate) fn read_group_layer_prefix_with_depth_10_1(
     // 7. 版本 >2（反编译 `2 < ver`，文档表格标注 >=2，以反编译为准）：
     //    嵌套对象（IEnvelope 候选）。
     let mut nested_after_visibility = None;
+    let mut envelope = None;
     if stop.is_none() && version > 2 {
         let header_offset = trial.position();
         let saved_table = trial_table.clone();
@@ -519,6 +631,15 @@ pub(crate) fn read_group_layer_prefix_with_depth_10_1(
             }
             ObjectEntry10_1::BackReference { class_id, key } => {
                 nested_after_visibility = Some(ConsumedEntry10_1::BackReference { class_id, key });
+            }
+            ObjectEntry10_1::NewObject {
+                class_id: ENVELOPE_CLASS_ID,
+                key,
+            } if complete => {
+                envelope = Some((
+                    key,
+                    Box::new(read_envelope_10_1(&mut trial, max_bytes, &mut trial_table)?),
+                ));
             }
             ObjectEntry10_1::NewObject { class_id, key } => {
                 trial_table = saved_table;
@@ -535,10 +656,19 @@ pub(crate) fn read_group_layer_prefix_with_depth_10_1(
         double_after_nested = Some(trial.read_f64_le()?);
     }
 
-    // 9/10. 停止点：版本 >=5 是未展开的 ExtensionHelper；否则（版本 <5）全部
-    // 版本条件字段之后是未展开的尾段（反编译未见其中的流读取，保守停止）。
+    let tail = if complete && stop.is_none() && version >= 5 {
+        Some(read_group_layer_tail(
+            &mut trial,
+            max_bytes,
+            &mut trial_table,
+            version,
+        )?)
+    } else {
+        None
+    };
     let stop = match stop {
         Some(stop) => stop,
+        None if complete => GroupLayerStop10_1::Complete,
         None if version >= 5 => GroupLayerStop10_1::ExtensionHelperNotExpanded,
         None => GroupLayerStop10_1::TailNotExpanded,
     };
@@ -552,7 +682,9 @@ pub(crate) fn read_group_layer_prefix_with_depth_10_1(
         children,
         visibility,
         nested_after_visibility,
+        envelope,
         double_after_nested,
+        tail,
         stop,
         remaining_bytes: trial.remaining(),
     };
@@ -584,4 +716,65 @@ fn reposition<'a>(
         .read_bytes(target - entry_offset)
         .expect("目标位置已校验在窗口内");
     Ok(positioned)
+}
+
+fn read_group_layer_tail(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    version: u16,
+) -> io::Result<GroupLayerTail10_1> {
+    let extensions = read_layer_extensions_10_1(reader, max_bytes, table)?;
+    let string_dc = (version >= 6)
+        .then(|| read_string_10_1(reader, max_bytes))
+        .transpose()?;
+    let legacy_v6_short = (version == 6).then(|| reader.read_u16_le()).transpose()?;
+    let short_d6 = (version >= 7).then(|| reader.read_u16_le()).transpose()?;
+    let doubles_e0_e8 = (version >= 8)
+        .then(|| Ok::<_, io::Error>([reader.read_f64_le()?, reader.read_f64_le()?]))
+        .transpose()?;
+    let short_d8 = (version >= 9).then(|| reader.read_u16_le()).transpose()?;
+    let v10_shorts = (version >= 10)
+        .then(|| {
+            Ok::<_, io::Error>([
+                reader.read_u16_le()?,
+                reader.read_u16_le()?,
+                reader.read_u16_le()?,
+            ])
+        })
+        .transpose()?;
+    let display_filter = if version == 12 {
+        Some(match read_object_entry_10_1(reader, table)? {
+            ObjectEntry10_1::Null => DisplayFilterSlot10_1::Reference(RefSlot10_1::Null),
+            ObjectEntry10_1::BackReference { class_id, key } => {
+                DisplayFilterSlot10_1::Reference(RefSlot10_1::BackReference { class_id, key })
+            }
+            ObjectEntry10_1::NewObject {
+                class_id: TRANSPARENCY_DISPLAY_FILTER_CLASS_ID,
+                key,
+            } => read_transparency_display_filter_10_1(reader, key)?,
+            ObjectEntry10_1::NewObject { class_id, key } => {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!(
+                        "GroupLayer IDisplayFilter 类 {}（键 {key}）未支持",
+                        crate::storage::class_id_hex(&class_id)
+                    ),
+                ));
+            }
+        })
+    } else {
+        None
+    };
+    // 原生其后仅清理接口、更新内存中的图层遮罩，不消费字节。
+    Ok(GroupLayerTail10_1 {
+        extensions,
+        string_dc,
+        legacy_v6_short,
+        short_d6,
+        doubles_e0_e8,
+        short_d8,
+        v10_shorts,
+        display_filter,
+    })
 }

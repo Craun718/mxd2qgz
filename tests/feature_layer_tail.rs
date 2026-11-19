@@ -1397,41 +1397,49 @@ fn successor_stops_at_hyperlink_new_object() {
 }
 
 #[test]
-fn successor_hyperlink_loop_parses_hyperlink_bodies_inline() {
-    // 接线轮：IHyperlink 循环条目 Hyperlink（{3036D35E-…}）新对象经
-    // objects::hyperlink 体读取器整体解析（证据：docs/arcmap-10.1-hyperlink.md
-    // 「接线建议」）；样本计数恒 0，本测试为合成输入契约。两个条目
-    // （新对象 + 空标记）后循环继续，IColor/FieldInfo 段照常可达。
+fn successor_hyperlink_loop_parses_new_null_and_repeated_key_in_order() {
+    // 构造新对象、空标记和同一键回引，验证循环之后仍能读取 IColor 与 FieldInfo。
     use mxd2qgz::objects::hyperlink::HYPERLINK_CLASS_ID;
 
     let mut entries = Vec::new();
     push_entry_header(&mut entries, &HYPERLINK_CLASS_ID, 80);
     entries.extend(1_u16.to_le_bytes()); // Hyperlink 版本 1
-    entries.extend(0_i32.to_le_bytes()); // ② type（语义未定）
-    entries.extend(string_bytes("https://example.invalid/a")); // ③ 链接候选
-    entries.extend(0_i32.to_le_bytes()); // ④ 尾 int32
-    push_null_marker(&mut entries); // 第二条目：空标记
+    entries.extend(17_i32.to_le_bytes()); // FeatureId
+    entries.extend(string_bytes("https://example.invalid/a"));
+    entries.extend(0_i32.to_le_bytes()); // LinkType
+    push_null_marker(&mut entries);
+    push_entry_header(&mut entries, &HYPERLINK_CLASS_ID, 80);
 
-    let mut bytes = successor_prefix(2, &entries, &[0_u8; 16]);
+    let mut bytes = successor_prefix(3, &entries, &[0_u8; 16]);
     // 之后只有 FieldInfo 计数 0、无延续段字节：循环完成、ALPC 槽头不可读。
     bytes.extend(0_i32.to_le_bytes());
     let mut reader = Reader::new(&bytes);
     let mut table = RefTable10_1::new();
     let result = read_feature_layer_successor_10_1(&mut reader, 34, 1024, &mut table).unwrap();
     assert_eq!(result.stop, SuccessorStop10_1::FieldInfoLoopCompleted);
-    assert_eq!(result.hyperlink_count, 2);
-    assert_eq!(result.hyperlinks.len(), 2);
+    assert_eq!(result.hyperlink_count, 3);
+    assert_eq!(result.hyperlinks.len(), 3);
     match &result.hyperlinks[0] {
         HyperlinkSlot10_1::Hyperlink(body) => {
             assert_eq!(body.key, 80);
             assert_eq!(body.version, 1);
+            assert_eq!(body.type_04, 17);
             assert_eq!(body.link, "https://example.invalid/a");
         }
         other => panic!("条目 0 应为 Hyperlink 体：{other:?}"),
     }
     assert!(matches!(result.hyperlinks[1], HyperlinkSlot10_1::Null));
+    assert_eq!(
+        result.hyperlinks[2],
+        HyperlinkSlot10_1::BackReference {
+            class_id: HYPERLINK_CLASS_ID,
+            key: 80,
+        }
+    );
     assert!(table.contains(80));
+    assert_eq!(table.len(), 1);
     assert!(matches!(result.color, ColorSlot10_1::Null));
+    assert_eq!(reader.remaining(), 0);
 }
 
 #[test]
@@ -2126,13 +2134,55 @@ mod tail_continuation {
         b.extend(string_bytes("")); // String +0x18c
         push_null_marker(&mut b); // Envelope 槽 1
         b.extend(0_i32.to_le_bytes()); // 范围计数 0
-        // 扩展段：1 条 ETM（第十轮格式：尺寸 = 体字节数，条目 = [CLSID][体]，
-        // 无对象键）。
-        b.extend(1_i32.to_le_bytes());
+        // 旧式扩展的体长之后写 CLSID 和对象体，无外层对象键。
+        b.extend(8_i32.to_le_bytes());
         let etm_body = edit_template_manager_body(77);
         b.extend((etm_body.len() as i64).to_le_bytes());
         b.extend_from_slice(&EDIT_TEMPLATE_MANAGER_CLASS_ID);
         b.extend_from_slice(&etm_body);
+        b.extend(2_i64.to_le_bytes());
+        b.extend(mxd2qgz::layers::feature_layer_tail::REPRESENTATION_LAYER_EXTENSION_CLASS_ID);
+        b.extend(1_i16.to_le_bytes());
+        let mut route = 1_i16.to_le_bytes().to_vec();
+        route.extend(string_bytes("路线编号"));
+        push_null_marker(&mut route);
+        push_null_marker(&mut route);
+        b.extend((route.len() as i64).to_le_bytes());
+        b.extend(mxd2qgz::layers::feature_layer_tail::ROUTE_LAYER_EXTENSION_CLASS_ID);
+        b.extend(route);
+        b.extend(7_i64.to_le_bytes());
+        b.extend(mxd2qgz::layers::feature_layer_tail::HATCH_LAYER_EXTENSION_CLASS_ID);
+        b.extend(1_i16.to_le_bytes());
+        b.push(1);
+        b.extend(0_i32.to_le_bytes());
+        let mut tracking = 1_f64.to_le_bytes().to_vec();
+        tracking.extend(0_i32.to_le_bytes());
+        for _ in 0..2 {
+            tracking.extend(13_u16.to_le_bytes());
+            push_null_marker(&mut tracking);
+        }
+        tracking.extend([0; 8]); // 两个空 ATL BSTR 指针。
+        b.extend((tracking.len() as i64).to_le_bytes());
+        b.extend(mxd2qgz::layers::feature_layer_tail::TRACKING_FILTER_LAYER_EXTENSION_CLASS_ID);
+        b.extend(tracking);
+        b.extend(19_i64.to_le_bytes());
+        b.extend(mxd2qgz::layers::feature_layer_tail::E2_LAYER_EXTENSION_VALUES_CLASS_ID);
+        b.extend(1_i16.to_le_bytes());
+        push_null_marker(&mut b);
+        b.push(1);
+        b.extend(38_i64.to_le_bytes());
+        b.extend(
+            mxd2qgz::layers::feature_layer_tail::FEATURE_SERVICE_LAYER_EDIT_EXTENSION_CLASS_ID,
+        );
+        b.extend(1_i16.to_le_bytes());
+        push_null_marker(&mut b);
+        push_null_marker(&mut b);
+        b.extend(0_u32.to_le_bytes()); // 空 BSTR。
+        b.extend(22_i64.to_le_bytes());
+        b.extend(mxd2qgz::layers::feature_layer_tail::TIME_LAYER_TRACK_EXTENSION_CLASS_ID);
+        b.extend(1_u16.to_le_bytes());
+        push_null_marker(&mut b);
+        b.extend(0_u32.to_le_bytes()); // 空时间窗口列表。
         b.extend(1.5_f64.to_le_bytes()); // double +0x1e8
         // ISymbol 槽：SMS 新对象（键 90，全闭合符号族整体解析）。
         push_entry_header(&mut b, &SIMPLE_MARKER_SYMBOL_CLASS_ID, 90);
@@ -2244,7 +2294,39 @@ mod tail_continuation {
             Some(&[("左表达式".to_owned(), "右表达式".to_owned())][..])
         );
         assert_eq!(result.int32_2c0, Some(0));
-        assert_eq!(result.extension_count, Some(1));
+        assert_eq!(result.extension_count, Some(8));
+        assert_eq!(
+            result.extensions[1],
+            LayerExtension10_1::RepresentationLayerExtension(Some(1))
+        );
+        let LayerExtension10_1::RouteLayerExtension(Some(route)) = &result.extensions[2] else {
+            panic!("预期 RouteLayerExtension");
+        };
+        assert_eq!(route.string, "路线编号");
+        assert!(route.anomaly.body.is_none());
+        assert!(route.identify.body.is_none());
+        let LayerExtension10_1::HatchLayerExtension(Some(hatch)) = &result.extensions[3] else {
+            panic!("预期 HatchLayerExtension");
+        };
+        assert_eq!(hatch.flag, 1);
+        assert!(hatch.classes.is_empty());
+        let LayerExtension10_1::TrackingFilterLayerExtension(Some(tracking)) =
+            &result.extensions[4]
+        else {
+            panic!("预期 TrackingFilterLayerExtension");
+        };
+        assert_eq!(tracking.properties, [None, None]);
+        assert_eq!(tracking.strings, [None, None]);
+        let LayerExtension10_1::E2LayerExtensionValues(Some(e2)) = &result.extensions[5] else {
+            panic!("预期 E2LayerExtensionValues");
+        };
+        assert_eq!(e2.flag, 1);
+        assert!(
+            matches!(&result.extensions[6], LayerExtension10_1::FeatureServiceLayerEditExtension(Some(edit)) if edit.text.is_empty())
+        );
+        assert!(
+            matches!(&result.extensions[7], LayerExtension10_1::TimeLayerTrackExtension(Some(track)) if track.windows.is_empty())
+        );
         match &result.extensions[0] {
             LayerExtension10_1::EditTemplateManager(etm) => {
                 // 扩展段条目无 ObjectStream 键：body.key 恒 0（第十轮）。
@@ -2262,6 +2344,7 @@ mod tail_continuation {
                     other => panic!("EditTemplate 条目分类不符：{other:?}"),
                 }
             }
+            other => panic!("扩展条目分类不符：{other:?}"),
         }
         // 第十轮接线断言：㉖ SMS 体、㉘ Envelope 体、㉙ UID 体。
         assert!(matches!(
@@ -3037,8 +3120,9 @@ mod tail_continuation {
             assert_eq!(result.stop, SuccessorStop10_1::TailCompleted);
             assert_eq!(reader.remaining(), 0);
             assert_eq!(result.extension_count, Some(1));
-            // LayerExtension10_1 当前仅 EditTemplateManager 一个变体，单变体枚举可无条件解构。
-            let LayerExtension10_1::EditTemplateManager(etm) = &result.extensions[0];
+            let LayerExtension10_1::EditTemplateManager(etm) = &result.extensions[0] else {
+                panic!("预期 EditTemplateManager");
+            };
             assert_eq!(etm.key, 0); // 扩展段无键
             assert_eq!(etm.version, 2);
             assert_eq!(etm.tail_byte, Some(1)); // 样本 0x01

@@ -384,7 +384,7 @@ impl TailReader<'_, '_> {
     }
 }
 
-fn read_name(
+pub(super) fn read_name(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,

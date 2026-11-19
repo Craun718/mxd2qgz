@@ -11,10 +11,29 @@
 //! 传入本模块。读取器最多消费四条顺序 String、IWorkspaceName 槽及该对象体
 //! 版本门控制的两个 int32；未知嵌套类或旧零门值是成功停止点。
 
+use super::cache_tile_reader::{CacheTileReaderBody10_1, read_tile_reader};
+use super::feature_layer::{FeatureClassNamePrefix10_1, read_feature_class_name_body_10_1};
 use super::fgdb_raster_dataset_name::{
     FGDB_RASTER_DATASET_NAME_CLASS_ID, FgdbRasterDatasetNamePrefix10_1, FgdbRasterIoPrefix10_1,
     read_fgdb_raster_dataset_name_prefix_10_1, read_fgdb_raster_io_prefix_10_1,
 };
+use super::image_server_layer_tail::{
+    IMAGE_SERVER_NAME_CLASS_ID, ImageServerName10_1, read_name as read_image_server_name,
+};
+use super::image_server_rules::{
+    RasterFunctionArgumentsBody10_1, RasterFunctionBody10_1, RuleSlot10_1, read_arguments,
+    read_function, slot, supports_function_arguments,
+};
+use super::raster_layer_tail::{RasterLayerEnvelopeSlot10_1, read_envelope_slot};
+use super::raster_renderer::{raster_io_record, read_raster_io_end};
+use super::wcs_name::{WCS_COVERAGE_NAME_CLASS_ID, WcsCoverageName10_1, read_wcs_coverage_name};
+use crate::objects::geodata_xform::{GeodataXformSlot10_1, read_geodata_xform_slot_with_depth};
+use crate::objects::geometry::{GeometryBody10_1, read_geometry_body_10_1};
+use crate::objects::property_set::{
+    PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1, read_property_set_object_stream_10_1,
+};
+pub use crate::objects::string_array::StringArraySlot10_1 as RasterStringArraySlot10_1;
+use crate::objects::string_array::read_string_array_slot_10_1;
 use crate::objects::workspace_name::{
     WORKSPACE_NAME_CLASS_ID, WorkspaceNamePrefix10_1, WorkspaceNameStop10_1,
     read_workspace_name_body_10_1,
@@ -33,6 +52,53 @@ use std::io;
 pub const RASTER_DATASET_NAME_CLASS_ID: [u8; 16] = [
     0xe2, 0xe6, 0xbc, 0x75, 0xf5, 0x8a, 0x8e, 0x47, 0x88, 0x92, 0xfa, 0x45, 0xca, 0x50, 0xaf, 0x4d,
 ];
+/// MapServerLayer.dll 10.1 CacheRasterDatasetName。
+pub const CACHE_RASTER_DATASET_NAME_CLASS_ID: [u8; 16] = [
+    0x24, 0xb0, 0x3e, 0x34, 0x47, 0x5f, 0x13, 0x48, 0x8d, 0x4c, 0x66, 0xaa, 0x8a, 0x6d, 0x2f, 0x19,
+];
+pub const RASTER_DATASET_NAME83_CLASS_ID: [u8; 16] = [
+    0x01, 0x0e, 0x36, 0x76, 0x46, 0xec, 0xd1, 0x11, 0x8d, 0x21, 0x00, 0x00, 0xf8, 0x78, 0x05, 0x35,
+];
+pub const RASTER_BAND_NAME_CLASS_ID: [u8; 16] = [
+    0x13, 0xe1, 0x25, 0xbc, 0x8b, 0x16, 0xd2, 0x11, 0x8d, 0x25, 0, 0, 0xf8, 0x78, 0x05, 0x35,
+];
+pub const RASTER_BAND_COLLECTION_NAME_CLASS_ID: [u8; 16] = [
+    0xb5, 0xc1, 0x0f, 0x71, 0x18, 0xa1, 0x5b, 0x44, 0x98, 0xd4, 0xef, 0x7d, 0x56, 0xe1, 0x8a, 0x88,
+];
+pub const RASTER_CATALOG_NAME_CLASS_ID: [u8; 16] = [
+    0xfc, 0x62, 0xff, 0x33, 0xd6, 0xd7, 0xe8, 0x48, 0x82, 0xd9, 0x77, 0xc0, 0xaa, 0xdb, 0xf5, 0xd1,
+];
+pub const MOSAIC_DATASET_NAME_CLASS_ID: [u8; 16] = [
+    0x6d, 0xbb, 0xd5, 0x5c, 0x49, 0x65, 0x9e, 0x42, 0x80, 0xf4, 0x0d, 0xd4, 0x73, 0x11, 0x98, 0xd1,
+];
+pub const ACCESS_RASTER_DATASET_NAME_CLASS_ID: [u8; 16] = [
+    0x31, 0xdc, 0xf9, 0xc8, 0x21, 0xd2, 0x35, 0x46, 0x92, 0x3e, 0x1a, 0x55, 0xa5, 0x25, 0xb1, 0xa1,
+];
+pub const SDE_RASTER_DATASET_NAME_CLASS_ID: [u8; 16] = [
+    0xc5, 0x03, 0xc0, 0xd6, 0x50, 0xa0, 0x8e, 0x43, 0xbb, 0xd4, 0x97, 0x29, 0x4c, 0x3f, 0xdd, 0xc1,
+];
+pub const NETCDF_RASTER_DATASET_NAME_CLASS_ID: [u8; 16] = [
+    0x2b, 0xaa, 0xb4, 0x8c, 0xce, 0x58, 0x8f, 0x43, 0x8c, 0xd8, 0xf5, 0xf0, 0xbe, 0xf4, 0x1a, 0xaf,
+];
+pub const IS_RASTER_DATASET_NAME_CLASS_ID: [u8; 16] = [
+    0xdd, 0x48, 0x2a, 0x2d, 0xa1, 0xff, 0x6e, 0x4b, 0x96, 0x91, 0xbf, 0xe8, 0xed, 0xba, 0x87, 0x61,
+];
+pub const FUNCTION_RASTER_DATASET_NAME_CLASS_ID: [u8; 16] = [
+    0xcc, 0xe8, 0x07, 0xeb, 0x78, 0xee, 0x8a, 0x43, 0xa2, 0xc1, 0xba, 0x80, 0x45, 0x5a, 0xcb, 0x02,
+];
+pub const INTERNET_TILED_LAYER_NAME_CLASS_ID: [u8; 16] = [
+    0x63, 0xa5, 0x23, 0xa7, 0x3c, 0x0e, 0x84, 0x44, 0xbb, 0xd1, 0x68, 0xb8, 0x19, 0x29, 0xb5, 0xff,
+];
+pub const AIS_IMAGE_SERVICE_NAME_CLASS_ID: [u8; 16] = [
+    0x9e, 0x16, 0x42, 0xb8, 0x85, 0x34, 0x8e, 0x45, 0x95, 0x22, 0x2d, 0x69, 0xdd, 0xea, 0x8b, 0x6c,
+];
+pub const RASTER_TYPE_NAME_CLASS_ID: [u8; 16] = [
+    0x0b, 0x98, 0x7e, 0x50, 0x38, 0xd3, 0x36, 0x46, 0xa7, 0x29, 0xa9, 0x39, 0xbf, 0xca, 0xa1, 0x24,
+];
+pub(super) const LONG_ARRAY_CLASS_ID: [u8; 16] = [
+    0x08, 0xb8, 0xbf, 0x98, 0x1f, 0xe9, 0xd2, 0x11, 0x9f, 0x81, 0, 0xc0, 0x4f, 0x8e, 0xce, 0x27,
+];
+pub(super) const MAX_NAME_NESTING: usize = 16;
 
 /// RasterDatasetName 体内 IWorkspaceName 请求槽的解析结果。
 #[derive(Debug, Clone, PartialEq)]
@@ -45,6 +111,25 @@ pub enum RasterDatasetWorkspaceSlot10_1 {
     WorkspaceName(Box<WorkspaceNamePrefix10_1>),
     /// 新对象，但类不是已支持的 WorkspaceName；游标停在该对象头前。
     Unsupported { class_id: [u8; 16], key: u32 },
+}
+
+fn read_workspace_slot(
+    reader: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<RasterDatasetWorkspaceSlot10_1> {
+    use RasterDatasetWorkspaceSlot10_1 as Slot;
+    Ok(match read_object_entry_10_1(reader, table)? {
+        ObjectEntry10_1::Null => Slot::Null,
+        ObjectEntry10_1::BackReference { class_id, key } => Slot::BackReference { class_id, key },
+        ObjectEntry10_1::NewObject {
+            class_id: WORKSPACE_NAME_CLASS_ID,
+            key,
+        } => Slot::WorkspaceName(Box::new(read_workspace_name_body_10_1(
+            reader, max, table, key,
+        )?)),
+        ObjectEntry10_1::NewObject { class_id, key } => Slot::Unsupported { class_id, key },
+    })
 }
 
 /// RasterDatasetName 对象体的有界停止位置。
@@ -117,42 +202,23 @@ pub fn read_raster_dataset_name_body_10_1(
     ];
     let before_nested = trial.clone();
     let mut stop = None;
-    let workspace = match read_object_entry_10_1(&mut trial, &mut staged_table)? {
-        ObjectEntry10_1::Null => RasterDatasetWorkspaceSlot10_1::Null,
-        ObjectEntry10_1::BackReference { class_id, key } => {
-            RasterDatasetWorkspaceSlot10_1::BackReference { class_id, key }
-        }
-        ObjectEntry10_1::NewObject {
-            class_id,
-            key: nested_key,
-        } if class_id == WORKSPACE_NAME_CLASS_ID => {
-            let body = read_workspace_name_body_10_1(
-                &mut trial,
-                max_bytes,
-                &mut staged_table,
-                nested_key,
-            )?;
+    let workspace = read_workspace_slot(&mut trial, max_bytes, &mut staged_table)?;
+    match &workspace {
+        RasterDatasetWorkspaceSlot10_1::WorkspaceName(body) => {
             if let Some(nested_stop) = body.stop {
                 stop = Some(RasterDatasetNameStop10_1::NestedWorkspaceName(nested_stop));
             }
-            RasterDatasetWorkspaceSlot10_1::WorkspaceName(Box::new(body))
         }
-        ObjectEntry10_1::NewObject {
-            class_id,
-            key: nested_key,
-        } => {
+        RasterDatasetWorkspaceSlot10_1::Unsupported { class_id, key } => {
             stop = Some(RasterDatasetNameStop10_1::UnsupportedWorkspaceClass {
-                class_id,
-                key: nested_key,
+                class_id: *class_id,
+                key: *key,
             });
             trial = before_nested;
             staged_table = table.clone();
-            RasterDatasetWorkspaceSlot10_1::Unsupported {
-                class_id,
-                key: nested_key,
-            }
         }
-    };
+        _ => {}
+    }
 
     let (tail_at_6c, tail_at_70) = if stop.is_none() {
         let at_6c = if version_gate >= 3 {
@@ -186,10 +252,194 @@ pub fn read_raster_dataset_name_body_10_1(
 #[derive(Debug, Clone, PartialEq)]
 pub enum RasterDatasetNameEntryBody10_1 {
     Dataset(Box<RasterDatasetNameBody10_1>),
+    Cache(Box<CacheRasterDatasetName10_1>),
+    WcsCoverage(Box<WcsCoverageName10_1>),
+    Dataset83 {
+        name: Box<RasterDatasetNameBody10_1>,
+        records: Option<RasterDatasetName83Records10_1>,
+    },
     FileGeodatabase {
         name: Box<FgdbRasterDatasetNamePrefix10_1>,
         records: Box<FgdbRasterIoPrefix10_1>,
     },
+    Band(Box<RasterBandName10_1>),
+    BandCollection(Box<RasterBandCollectionName10_1>),
+    Catalog(Box<FeatureClassNamePrefix10_1>),
+    Mosaic(Box<MosaicDatasetName10_1>),
+    Database(Box<DatabaseRasterDatasetName10_1>),
+    NetCdf(Box<NetCdfRasterDatasetName10_1>),
+    ImageService(Box<IsRasterDatasetName10_1>),
+    ImageServerReference(Box<ImageServerName10_1>),
+    Function(Box<FunctionRasterDatasetName10_1>),
+    InternetTiledLayer(Box<InternetTiledLayerName10_1>),
+    AisImageService(AisImageServiceName10_1),
+    RasterType(Box<RasterTypeName10_1>),
+}
+
+/// MapServerLayer.dll 10.1 的 InternetTiledLayerName。
+#[derive(Debug, Clone, PartialEq)]
+pub struct InternetTiledLayerName10_1 {
+    pub version: i16,
+    pub name_string: String,
+    /// 持久化接口 +0x14 的整数原值。
+    pub integer: i32,
+    pub tile_reader: RuleSlot10_1<CacheTileReaderBody10_1>,
+}
+
+/// ImageServer.dll 10.1 的 AISImageServiceName。
+#[derive(Debug, Clone, PartialEq)]
+pub struct AisImageServiceName10_1 {
+    pub version: i32,
+    /// 第一串对应 IName.NameString，后两串原样保留。
+    pub strings: [String; 3],
+}
+
+/// MosaicDB.dll 10.1 的 RasterTypeName。
+#[derive(Debug, Clone, PartialEq)]
+pub struct RasterTypeName10_1 {
+    pub version: u16,
+    pub name_string: String,
+    pub name: String,
+    pub instance_id: i32,
+    pub mosaic_dataset: RuleSlot10_1<MosaicDatasetName10_1>,
+}
+
+/// MapServerLayer.dll 10.1 Load 0x79e22a40、Save 0x79e22b20。
+#[derive(Debug, Clone, PartialEq)]
+pub struct CacheRasterDatasetName10_1 {
+    /// 原生无版本门，原样保留。
+    pub version: u16,
+    pub strings: [String; 2],
+    pub workspace: RasterDatasetWorkspaceSlot10_1,
+    pub tile_reader: ObjectEntry10_1,
+    pub tile_reader_body: Option<Box<CacheTileReaderBody10_1>>,
+    pub envelope: RasterLayerEnvelopeSlot10_1,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FunctionRasterDatasetName10_1 {
+    pub version: u16,
+    pub strings: [String; 3],
+    pub workspace: RasterDatasetWorkspaceSlot10_1,
+    pub path: String,
+    pub legacy: Option<FunctionRasterLegacyName10_1>,
+    pub function: RuleSlot10_1<RasterFunctionBody10_1>,
+    pub input_count: Option<i32>,
+    pub inputs: Vec<RuleSlot10_1<FunctionRasterInput10_1>>,
+    pub properties: Option<RuleSlot10_1<PropertySetObjectStream10_1>>,
+    pub geometry: Option<RuleSlot10_1<GeometryBody10_1>>,
+    pub string_40: Option<String>,
+    pub string_48: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FunctionRasterLegacyName10_1 {
+    pub text: String,
+    pub long: i32,
+    pub name: RasterNameSlot10_1,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum FunctionRasterInput10_1 {
+    Arguments(RasterFunctionArgumentsBody10_1),
+    Name(RasterDatasetNameEntryBody10_1),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct IsRasterDatasetName10_1 {
+    pub version: u16,
+    pub strings: [String; 6],
+    pub long_44: i32,
+    pub workspace: RasterDatasetWorkspaceSlot10_1,
+    pub name: RasterNameSlot10_1,
+    pub string_50: Option<String>,
+    pub string_54: Option<String>,
+    pub transform: Option<GeodataXformSlot10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NetCdfRasterDatasetName10_1 {
+    pub version: i32,
+    pub strings: [String; 8],
+    pub legacy: Option<(String, RasterLayerEnvelopeSlot10_1)>,
+    pub labels: RasterStringArraySlot10_1,
+    pub values: RasterLongArraySlot10_1,
+    pub workspace: RasterDatasetWorkspaceSlot10_1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RasterLongArraySlot10_1 {
+    pub entry: ObjectEntry10_1,
+    pub body: Option<(u16, Vec<i32>)>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DatabaseRasterDatasetName10_1 {
+    pub class_id: [u8; 16],
+    pub delegated_name: RasterDatasetNameBody10_1,
+    pub records: Option<DatabaseRasterDatasetRecords10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DatabaseRasterDatasetRecords10_1 {
+    pub longs_1_4: [i32; 2],
+    pub strings_2_3_5: [String; 3],
+    pub tag6_name: Option<DatabaseRasterTag6Name10_1>,
+    pub tag7_long: Option<i32>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DatabaseRasterTag6Name10_1 {
+    FeatureClass(Box<FeatureClassNamePrefix10_1>),
+    Raster {
+        class_id: [u8; 16],
+        body: RasterDatasetNameEntryBody10_1,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MosaicDatasetName10_1 {
+    pub version: u16,
+    pub strings: [String; 2],
+    pub workspace: RasterDatasetWorkspaceSlot10_1,
+    pub short_44: Option<u16>,
+    pub long_48: Option<i32>,
+    pub string_array: Option<RasterStringArraySlot10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RasterBandName10_1 {
+    pub has_version_marker: bool,
+    pub strings: [String; 3],
+    pub selector: u16,
+    pub source: RasterBandNameSource10_1,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum RasterBandNameSource10_1 {
+    Workspace(RasterDatasetWorkspaceSlot10_1),
+    Dataset(RasterNameSlot10_1),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RasterBandCollectionName10_1 {
+    pub version: u16,
+    pub text: String,
+    pub name: RasterNameSlot10_1,
+    pub array_entry: ObjectEntry10_1,
+    pub array: Option<(u16, Vec<i32>)>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RasterNameSlot10_1 {
+    pub entry: ObjectEntry10_1,
+    pub body: Option<RasterDatasetNameEntryBody10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RasterDatasetName83Records10_1 {
+    pub first_long: i32,
+    pub text: String,
 }
 
 /// 在宿主已建立的 ObjectStream 表中读取名称条目；调用者须整体暂存游标与键表。
@@ -198,28 +448,193 @@ pub(super) fn read_supported_raster_name_entry_10_1(
     max_bytes: usize,
     table: &mut RefTable10_1,
 ) -> io::Result<(ObjectEntry10_1, Option<RasterDatasetNameEntryBody10_1>)> {
+    let slot = read_name_slot(reader, max_bytes, table, MAX_NAME_NESTING)?;
+    Ok((slot.entry, slot.body))
+}
+
+pub(super) fn read_name_slot(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<RasterNameSlot10_1> {
     let entry = read_object_entry_10_1(reader, table)?;
-    let incomplete = |reason: String| io::Error::new(io::ErrorKind::Unsupported, reason);
     let body = match entry {
         ObjectEntry10_1::Null
         | ObjectEntry10_1::BackReference {
-            class_id: RASTER_DATASET_NAME_CLASS_ID | FGDB_RASTER_DATASET_NAME_CLASS_ID,
+            class_id:
+                RASTER_DATASET_NAME_CLASS_ID
+                | CACHE_RASTER_DATASET_NAME_CLASS_ID
+                | WCS_COVERAGE_NAME_CLASS_ID
+                | RASTER_DATASET_NAME83_CLASS_ID
+                | FGDB_RASTER_DATASET_NAME_CLASS_ID
+                | RASTER_BAND_NAME_CLASS_ID
+                | RASTER_BAND_COLLECTION_NAME_CLASS_ID
+                | RASTER_CATALOG_NAME_CLASS_ID
+                | MOSAIC_DATASET_NAME_CLASS_ID
+                | ACCESS_RASTER_DATASET_NAME_CLASS_ID
+                | SDE_RASTER_DATASET_NAME_CLASS_ID
+                | NETCDF_RASTER_DATASET_NAME_CLASS_ID
+                | IS_RASTER_DATASET_NAME_CLASS_ID
+                | IMAGE_SERVER_NAME_CLASS_ID
+                | FUNCTION_RASTER_DATASET_NAME_CLASS_ID
+                | INTERNET_TILED_LAYER_NAME_CLASS_ID
+                | AIS_IMAGE_SERVICE_NAME_CLASS_ID
+                | RASTER_TYPE_NAME_CLASS_ID,
             ..
         } => None,
-        ObjectEntry10_1::NewObject {
-            class_id: RASTER_DATASET_NAME_CLASS_ID,
-            key,
-        } => {
+        ObjectEntry10_1::NewObject { class_id, key } => Some(read_name_body(
+            reader, max_bytes, table, class_id, key, depth,
+        )?),
+        ObjectEntry10_1::BackReference { class_id, .. } => {
+            return Err(unsupported_raster_name_class(&class_id));
+        }
+    };
+    Ok(RasterNameSlot10_1 { entry, body })
+}
+
+fn unsupported_raster_name_class(class_id: &[u8; 16]) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::Unsupported,
+        format!(
+            "未支持的栅格名称类 {}",
+            crate::storage::class_id_hex(class_id)
+        ),
+    )
+}
+
+/// 读取已知 CLSID 的名称对象体。无键宿主传 0，嵌套对象仍使用宿主表。
+pub(super) fn read_supported_raster_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    class_id: [u8; 16],
+    key: u32,
+) -> io::Result<RasterDatasetNameEntryBody10_1> {
+    read_name_body(reader, max_bytes, table, class_id, key, MAX_NAME_NESTING)
+}
+
+pub(super) fn read_name_body(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    class_id: [u8; 16],
+    key: u32,
+    depth: usize,
+) -> io::Result<RasterDatasetNameEntryBody10_1> {
+    if depth == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "栅格名称嵌套超过限额",
+        ));
+    }
+    let incomplete = |reason: String| io::Error::new(io::ErrorKind::Unsupported, reason);
+    match class_id {
+        CACHE_RASTER_DATASET_NAME_CLASS_ID => Ok(RasterDatasetNameEntryBody10_1::Cache(Box::new(
+            read_cache_raster_name(reader, max_bytes, table, depth - 1)?,
+        ))),
+        INTERNET_TILED_LAYER_NAME_CLASS_ID => {
+            let version = reader.read_u16_le()? as i16;
+            if version > 1 {
+                return Err(incomplete(format!(
+                    "InternetTiledLayerName 未支持版本 {version}"
+                )));
+            }
+            let name_string = read_string_10_1(reader, max_bytes)?;
+            let integer = reader.read_u32_le()? as i32;
+            let tile_reader = slot(reader, table, |r, refs, class, _| {
+                read_tile_reader(r, max_bytes, refs, class, depth - 1)
+            })?;
+            Ok(RasterDatasetNameEntryBody10_1::InternetTiledLayer(
+                Box::new(InternetTiledLayerName10_1 {
+                    version,
+                    name_string,
+                    integer,
+                    tile_reader,
+                }),
+            ))
+        }
+        AIS_IMAGE_SERVICE_NAME_CLASS_ID => {
+            let version = reader.read_u32_le()? as i32;
+            if version > 1 {
+                return Err(incomplete(format!(
+                    "AISImageServiceName 未支持版本 {version}"
+                )));
+            }
+            Ok(RasterDatasetNameEntryBody10_1::AisImageService(
+                AisImageServiceName10_1 {
+                    version,
+                    strings: [
+                        read_string_10_1(reader, max_bytes)?,
+                        read_string_10_1(reader, max_bytes)?,
+                        read_string_10_1(reader, max_bytes)?,
+                    ],
+                },
+            ))
+        }
+        WCS_COVERAGE_NAME_CLASS_ID => Ok(RasterDatasetNameEntryBody10_1::WcsCoverage(Box::new(
+            read_wcs_coverage_name(reader, max_bytes, table)?,
+        ))),
+        RASTER_TYPE_NAME_CLASS_ID => {
+            let version = reader.read_u16_le()?;
+            if version != 1 {
+                return Err(incomplete(format!("RasterTypeName 未支持版本 {version}")));
+            }
+            let name_string = read_string_10_1(reader, max_bytes)?;
+            let name = read_string_10_1(reader, max_bytes)?;
+            let instance_id = reader.read_u32_le()? as i32;
+            let mosaic_dataset = slot(reader, table, |r, refs, class, _| {
+                if class != MOSAIC_DATASET_NAME_CLASS_ID {
+                    return Err(unsupported_raster_name_class(&class));
+                }
+                read_mosaic_dataset_name(r, max_bytes, refs)
+            })?;
+            if let ObjectEntry10_1::BackReference { class_id, .. } = mosaic_dataset.entry
+                && class_id != MOSAIC_DATASET_NAME_CLASS_ID
+            {
+                return Err(unsupported_raster_name_class(&class_id));
+            }
+            Ok(RasterDatasetNameEntryBody10_1::RasterType(Box::new(
+                RasterTypeName10_1 {
+                    version,
+                    name_string,
+                    name,
+                    instance_id,
+                    mosaic_dataset,
+                },
+            )))
+        }
+        RASTER_DATASET_NAME_CLASS_ID | RASTER_DATASET_NAME83_CLASS_ID => {
             let name = read_raster_dataset_name_body_10_1(reader, max_bytes, table, key)?;
             if let Some(stop) = name.stop {
                 return Err(incomplete(format!("RasterDatasetName 未读完：{stop:?}")));
             }
-            Some(RasterDatasetNameEntryBody10_1::Dataset(Box::new(name)))
+            let name = Box::new(name);
+            if class_id == RASTER_DATASET_NAME_CLASS_ID {
+                return Ok(RasterDatasetNameEntryBody10_1::Dataset(name));
+            }
+            // RasterDatasetName83::Load 的 InitCheck 在无 magic 时恢复流位置。
+            let has_records =
+                reader.remaining() >= 4 && reader.clone().read_u32_le()? == 0x00ff_00fa;
+            let records = has_records
+                .then(|| -> io::Result<_> {
+                    raster_io_record(reader, 0x00ff_00fa, 0)?;
+                    let first_long =
+                        i32::from_le_bytes(raster_io_record(reader, 1, 4)?.try_into().unwrap());
+                    if reader.read_u32_le()? != 2 {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "RasterDatasetName83 缺少 RasterIO tag 2 字符串",
+                        ));
+                    }
+                    let text = read_string_10_1(reader, max_bytes)?;
+                    read_raster_io_end(reader)?;
+                    Ok(RasterDatasetName83Records10_1 { first_long, text })
+                })
+                .transpose()?;
+            Ok(RasterDatasetNameEntryBody10_1::Dataset83 { name, records })
         }
-        ObjectEntry10_1::NewObject {
-            class_id: FGDB_RASTER_DATASET_NAME_CLASS_ID,
-            key,
-        } => {
+        FGDB_RASTER_DATASET_NAME_CLASS_ID => {
             let name = read_fgdb_raster_dataset_name_prefix_10_1(reader, max_bytes, table, key)?;
             if let Some(stop) = name.delegated_name.stop {
                 return Err(incomplete(format!("FileGDB 委派名称未读完：{stop:?}")));
@@ -228,20 +643,502 @@ pub(super) fn read_supported_raster_name_entry_10_1(
             if let Some(stop) = records.stop {
                 return Err(incomplete(format!("FileGDB 名称记录未读完：{stop:?}")));
             }
-            Some(RasterDatasetNameEntryBody10_1::FileGeodatabase {
+            Ok(RasterDatasetNameEntryBody10_1::FileGeodatabase {
                 name: Box::new(name),
                 records: Box::new(records),
             })
         }
-        ObjectEntry10_1::NewObject { class_id, .. }
-        | ObjectEntry10_1::BackReference { class_id, .. } => {
-            return Err(incomplete(format!(
-                "未支持的栅格名称类 {}",
-                crate::storage::class_id_hex(&class_id)
-            )));
+        RASTER_BAND_NAME_CLASS_ID => Ok(RasterDatasetNameEntryBody10_1::Band(Box::new(
+            read_band_name(reader, max_bytes, table, depth - 1)?,
+        ))),
+        RASTER_BAND_COLLECTION_NAME_CLASS_ID => {
+            Ok(RasterDatasetNameEntryBody10_1::BandCollection(Box::new(
+                read_band_collection_name(reader, max_bytes, table, depth - 1)?,
+            )))
+        }
+        RASTER_CATALOG_NAME_CLASS_ID => {
+            // 构造器内建 FeatureClassName，直接委派同一流的 Load。
+            let name = read_feature_class_name_body_10_1(reader, max_bytes, table, key)?;
+            if let Some(stop) = &name.stop {
+                return Err(incomplete(format!(
+                    "RasterCatalogName 委派体未读完：{stop:?}"
+                )));
+            }
+            Ok(RasterDatasetNameEntryBody10_1::Catalog(Box::new(name)))
+        }
+        MOSAIC_DATASET_NAME_CLASS_ID => Ok(RasterDatasetNameEntryBody10_1::Mosaic(Box::new(
+            read_mosaic_dataset_name(reader, max_bytes, table)?,
+        ))),
+        NETCDF_RASTER_DATASET_NAME_CLASS_ID => Ok(RasterDatasetNameEntryBody10_1::NetCdf(
+            Box::new(read_netcdf_dataset_name(reader, max_bytes, table)?),
+        )),
+        IS_RASTER_DATASET_NAME_CLASS_ID => {
+            Ok(RasterDatasetNameEntryBody10_1::ImageService(Box::new(
+                read_is_raster_dataset_name(reader, max_bytes, table, depth - 1)?,
+            )))
+        }
+        IMAGE_SERVER_NAME_CLASS_ID => Ok(RasterDatasetNameEntryBody10_1::ImageServerReference(
+            Box::new(read_image_server_name(reader, max_bytes, table)?),
+        )),
+        FUNCTION_RASTER_DATASET_NAME_CLASS_ID => {
+            Ok(RasterDatasetNameEntryBody10_1::Function(Box::new(
+                read_function_raster_dataset_name(reader, max_bytes, table, depth - 1)?,
+            )))
+        }
+        ACCESS_RASTER_DATASET_NAME_CLASS_ID | SDE_RASTER_DATASET_NAME_CLASS_ID => {
+            let name = read_raster_dataset_name_body_10_1(reader, max_bytes, table, key)?;
+            if let Some(stop) = name.stop {
+                return Err(incomplete(format!("数据库栅格委派名称未读完：{stop:?}")));
+            }
+            let records = if reader.remaining() >= 4 && reader.clone().read_u32_le()? == 0x00ff_00fa
+            {
+                Some(read_database_raster_records(
+                    reader,
+                    max_bytes,
+                    table,
+                    class_id,
+                    depth - 1,
+                )?)
+            } else {
+                None
+            };
+            Ok(RasterDatasetNameEntryBody10_1::Database(Box::new(
+                DatabaseRasterDatasetName10_1 {
+                    class_id,
+                    delegated_name: name,
+                    records,
+                },
+            )))
+        }
+        _ => Err(unsupported_raster_name_class(&class_id)),
+    }
+}
+
+fn read_function_raster_dataset_name(
+    reader: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+    child_depth: usize,
+) -> io::Result<FunctionRasterDatasetName10_1> {
+    let version = reader.read_u16_le()?;
+    if version > 7 {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            format!("未支持的 FunctionRasterDatasetName 版本 {version}"),
+        ));
+    }
+    let strings = [
+        read_string_10_1(reader, max)?,
+        read_string_10_1(reader, max)?,
+        read_string_10_1(reader, max)?,
+    ];
+    let workspace = read_complete_workspace_slot(reader, max, table, "FunctionRasterDatasetName")?;
+    let legacy_string = (version < 4)
+        .then(|| read_string_10_1(reader, max))
+        .transpose()?;
+    let path = read_string_10_1(reader, max)?;
+    let legacy = legacy_string
+        .map(|text| -> io::Result<_> {
+            Ok(FunctionRasterLegacyName10_1 {
+                text,
+                long: reader.read_u32_le()? as i32,
+                name: read_name_slot(reader, max, table, child_depth)?,
+            })
+        })
+        .transpose()?;
+    let function = slot(reader, table, |r, refs, class_id, _| {
+        read_function(r, max, refs, class_id, child_depth)
+    })?;
+    let input_count = (version >= 2)
+        .then(|| reader.read_u32_le().map(|n| n as i32))
+        .transpose()?;
+    // 旧版本和非正计数均读取一个 IUnknown；正计数逐项读取。
+    let count = input_count.unwrap_or(0).max(1) as usize;
+    if count > reader.remaining().min(max) / 16 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "函数栅格名称输入数量超限",
+        ));
+    }
+    let inputs = (0..count)
+        .map(|_| {
+            slot(reader, table, |r, refs, class_id, key| {
+                if supports_function_arguments(class_id) {
+                    read_arguments(r, max, refs, class_id).map(FunctionRasterInput10_1::Arguments)
+                } else {
+                    read_name_body(r, max, refs, class_id, key, child_depth)
+                        .map(FunctionRasterInput10_1::Name)
+                }
+            })
+        })
+        .collect::<io::Result<_>>()?;
+    let properties = (version >= 3)
+        .then(|| {
+            slot(reader, table, |r, refs, class_id, _| {
+                if class_id != PROPERTY_SET_CLASS_ID {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Unsupported,
+                        "函数栅格名称未支持的 IPropertySet 类",
+                    ));
+                }
+                read_property_set_object_stream_10_1(r, max, refs)
+            })
+        })
+        .transpose()?;
+    let geometry = (3..=4)
+        .contains(&version)
+        .then(|| {
+            slot(reader, table, |r, refs, class_id, _| {
+                read_geometry_body_10_1(&class_id, r, max, refs)
+            })
+        })
+        .transpose()?;
+    Ok(FunctionRasterDatasetName10_1 {
+        version,
+        strings,
+        workspace,
+        path,
+        legacy,
+        function,
+        input_count,
+        inputs,
+        properties,
+        geometry,
+        string_40: (version >= 6)
+            .then(|| read_string_10_1(reader, max))
+            .transpose()?,
+        string_48: (version >= 7)
+            .then(|| read_string_10_1(reader, max))
+            .transpose()?,
+    })
+}
+
+fn read_is_raster_dataset_name(
+    reader: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+    child_depth: usize,
+) -> io::Result<IsRasterDatasetName10_1> {
+    let version = reader.read_u16_le()?;
+    if version > 4 {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            format!("未支持的 ISRasterDatasetName 版本 {version}"),
+        ));
+    }
+    let mut strings: [String; 6] = Default::default();
+    for string in &mut strings {
+        *string = read_string_10_1(reader, max)?;
+    }
+    Ok(IsRasterDatasetName10_1 {
+        version,
+        strings,
+        long_44: reader.read_u32_le()? as i32,
+        workspace: read_complete_workspace_slot(reader, max, table, "ISRasterDatasetName")?,
+        name: read_name_slot(reader, max, table, child_depth)?,
+        string_50: (version >= 2)
+            .then(|| read_string_10_1(reader, max))
+            .transpose()?,
+        string_54: (version >= 3)
+            .then(|| read_string_10_1(reader, max))
+            .transpose()?,
+        transform: (version >= 4)
+            .then(|| read_geodata_xform_slot_with_depth(reader, max, table, child_depth))
+            .transpose()?,
+    })
+}
+
+fn read_netcdf_dataset_name(
+    reader: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<NetCdfRasterDatasetName10_1> {
+    let version = reader.read_u32_le()? as i32;
+    if !(0..=2).contains(&version) {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            format!("未支持的 NetCDFRasterDatasetName 版本 {version}"),
+        ));
+    }
+    let mut strings: [String; 8] = Default::default();
+    for string in &mut strings {
+        *string = read_string_10_1(reader, max)?;
+    }
+    let legacy = if version == 1 {
+        Some((
+            read_string_10_1(reader, max)?,
+            read_envelope_slot(reader, max, table)?,
+        ))
+    } else {
+        None
+    };
+    let labels = read_string_array_slot_10_1(reader, max, table)?;
+    Ok(NetCdfRasterDatasetName10_1 {
+        version,
+        strings,
+        legacy,
+        labels,
+        values: read_long_array_slot(reader, max, table)?,
+        workspace: read_complete_workspace_slot(reader, max, table, "NetCDFRasterDatasetName")?,
+    })
+}
+
+fn read_database_raster_records(
+    reader: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+    class: [u8; 16],
+    depth: usize,
+) -> io::Result<DatabaseRasterDatasetRecords10_1> {
+    use super::fgdb_raster_dataset_name::{
+        read_raster_io_i32_10_1, read_raster_io_record_header_10_1, read_raster_io_string_10_1,
+    };
+    use crate::layers::feature_layer::FEATURE_CLASS_NAME_CLASS_ID;
+
+    raster_io_record(reader, 0x00ff_00fa, 0)?;
+    let first = read_raster_io_i32_10_1(reader, 1)?;
+    let second = read_raster_io_string_10_1(reader, 2, max)?;
+    let third = read_raster_io_string_10_1(reader, 3, max)?;
+    let fourth = read_raster_io_i32_10_1(reader, 4)?;
+    let fifth = read_raster_io_string_10_1(reader, 5, max)?;
+    if read_raster_io_record_header_10_1(reader)? != (6, -1) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "数据库栅格名称的 RasterIO tag 6 记录头不匹配",
+        ));
+    }
+
+    // RasterIO 内嵌外壳只有 CLSID，子对象沿用宿主 ObjectStream。
+    let class_id: [u8; 16] = reader.read_bytes(16)?.try_into().unwrap();
+    let tag6_name = match class_id {
+        id if id == [0; 16] => None,
+        FEATURE_CLASS_NAME_CLASS_ID => {
+            let name = read_feature_class_name_body_10_1(reader, max, table, 0)?;
+            if let Some(stop) = &name.stop {
+                return Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    format!("RasterIO tag 6 FeatureClassName 未读完：{stop:?}"),
+                ));
+            }
+            Some(DatabaseRasterTag6Name10_1::FeatureClass(Box::new(name)))
+        }
+        _ => Some(DatabaseRasterTag6Name10_1::Raster {
+            class_id,
+            body: read_name_body(reader, max, table, class_id, 0, depth)?,
+        }),
+    };
+    let tag7_long = (class == ACCESS_RASTER_DATASET_NAME_CLASS_ID
+        && reader.clone().read_u32_le()? == 7)
+        .then(|| read_raster_io_i32_10_1(reader, 7))
+        .transpose()?;
+    read_raster_io_end(reader)?;
+    Ok(DatabaseRasterDatasetRecords10_1 {
+        longs_1_4: [first, fourth],
+        strings_2_3_5: [second, third, fifth],
+        tag6_name,
+        tag7_long,
+    })
+}
+
+fn read_band_name(
+    reader: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+    child_depth: usize,
+) -> io::Result<RasterBandName10_1> {
+    // 旧布局没有版本字。原生回退 4 字节，再读第一条 String。
+    let has_version_marker = reader.clone().read_u32_le()? == 1;
+    if has_version_marker {
+        reader.read_u32_le()?;
+    }
+    let strings = [
+        read_string_10_1(reader, max)?,
+        read_string_10_1(reader, max)?,
+        read_string_10_1(reader, max)?,
+    ];
+    let selector = reader.read_u16_le()?;
+    let source = if selector == 0 {
+        RasterBandNameSource10_1::Workspace(read_complete_workspace_slot(
+            reader,
+            max,
+            table,
+            "RasterBandName",
+        )?)
+    } else {
+        let dataset = read_name_slot(reader, max, table, child_depth)?;
+        if dataset.entry == ObjectEntry10_1::Null {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "RasterBandName 的 IDatasetName 为空",
+            ));
+        }
+        RasterBandNameSource10_1::Dataset(dataset)
+    };
+    Ok(RasterBandName10_1 {
+        has_version_marker,
+        strings,
+        selector,
+        source,
+    })
+}
+
+fn read_cache_raster_name(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+    child_depth: usize,
+) -> io::Result<CacheRasterDatasetName10_1> {
+    let mut trial = reader.clone();
+    let mut staged = refs.clone();
+    let version = trial.read_u16_le()?;
+    let strings = [
+        read_string_10_1(&mut trial, max)?,
+        read_string_10_1(&mut trial, max)?,
+    ];
+    let workspace =
+        read_complete_workspace_slot(&mut trial, max, &mut staged, "CacheRasterDatasetName")?;
+    let tile_reader = slot(&mut trial, &mut staged, |r, refs, class, _| {
+        read_tile_reader(r, max, refs, class, child_depth)
+    })?;
+    let envelope = read_envelope_slot(&mut trial, max, &mut staged)?;
+    *reader = trial;
+    *refs = staged;
+    Ok(CacheRasterDatasetName10_1 {
+        version,
+        strings,
+        workspace,
+        tile_reader: tile_reader.entry,
+        tile_reader_body: tile_reader.body,
+        envelope,
+    })
+}
+
+fn read_complete_workspace_slot(
+    reader: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+    label: &str,
+) -> io::Result<RasterDatasetWorkspaceSlot10_1> {
+    let workspace = read_workspace_slot(reader, max, table)?;
+    match &workspace {
+        RasterDatasetWorkspaceSlot10_1::Unsupported { class_id, .. } => {
+            Err(unsupported_raster_name_class(class_id))
+        }
+        RasterDatasetWorkspaceSlot10_1::WorkspaceName(body) if body.stop.is_some() => {
+            Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                format!("{label} 的 WorkspaceName 体未读完"),
+            ))
+        }
+        _ => Ok(workspace),
+    }
+}
+
+fn read_mosaic_dataset_name(
+    reader: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<MosaicDatasetName10_1> {
+    let version = reader.read_u16_le()?;
+    if version > 4 {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            format!("未支持的 MosaicDatasetName 版本 {version}"),
+        ));
+    }
+    Ok(MosaicDatasetName10_1 {
+        version,
+        strings: [
+            read_string_10_1(reader, max)?,
+            read_string_10_1(reader, max)?,
+        ],
+        workspace: read_complete_workspace_slot(reader, max, table, "MosaicDatasetName")?,
+        short_44: (version >= 2).then(|| reader.read_u16_le()).transpose()?,
+        long_48: (version >= 3)
+            .then(|| reader.read_u32_le().map(|n| n as i32))
+            .transpose()?,
+        string_array: (version >= 4)
+            .then(|| read_string_array_slot_10_1(reader, max, table))
+            .transpose()?,
+    })
+}
+
+fn read_band_collection_name(
+    reader: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+    child_depth: usize,
+) -> io::Result<RasterBandCollectionName10_1> {
+    let version = reader.read_u16_le()?;
+    if version > 1 {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            format!("未支持的 RasterBandCollectionName 版本 {version}"),
+        ));
+    }
+    let text = read_string_10_1(reader, max)?;
+    let name = read_name_slot(reader, max, table, child_depth)?;
+    let RasterLongArraySlot10_1 {
+        entry: array_entry,
+        body: array,
+    } = read_long_array_slot(reader, max, table)?;
+    Ok(RasterBandCollectionName10_1 {
+        version,
+        text,
+        name,
+        array_entry,
+        array,
+    })
+}
+
+pub(crate) fn read_long_array_slot(
+    reader: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<RasterLongArraySlot10_1> {
+    let entry = read_object_entry_10_1(reader, table)?;
+    let body = match entry {
+        ObjectEntry10_1::Null | ObjectEntry10_1::BackReference { .. } => None,
+        ObjectEntry10_1::NewObject {
+            class_id: LONG_ARRAY_CLASS_ID,
+            ..
+        } => {
+            let version = reader.read_u16_le()?;
+            if version > 1 {
+                return Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    format!("未支持的 LongArray 版本 {version}"),
+                ));
+            }
+            let count = (reader.read_u32_le()? as i32).max(0) as usize;
+            if count > max / 4 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "LongArray 超过长度限额",
+                ));
+            }
+            if count > reader.remaining() / 4 {
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "LongArray 超出剩余范围",
+                ));
+            }
+            let values = (0..count)
+                .map(|_| reader.read_u32_le().map(|value| value as i32))
+                .collect::<io::Result<_>>()?;
+            Some((version, values))
+        }
+        ObjectEntry10_1::NewObject { class_id, .. } => {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                format!(
+                    "ILongArray 未支持的新对象类 {}",
+                    crate::storage::class_id_hex(&class_id),
+                ),
+            ));
         }
     };
-    Ok((entry, body))
+    Ok(RasterLongArraySlot10_1 { entry, body })
 }
 
 #[cfg(test)]

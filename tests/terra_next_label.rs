@@ -25,19 +25,27 @@ fn page_layout_container_stops_before_unclosed_body() {
     let slot_offset = data.len();
     data.extend(PAGE_LAYOUT_CLASS_ID);
     data.extend(123_u32.to_le_bytes());
-    data.extend([0x5a; 8]);
+    data.extend(7_u16.to_le_bytes());
+    data.extend(0_u32.to_le_bytes());
+    data.extend(1_u32.to_le_bytes());
+    data.extend(20_u32.to_le_bytes());
+    data.extend(0_u32.to_le_bytes());
+    data.extend([0x5a; 16]);
+    data.extend(124_u32.to_le_bytes());
     let mut reader = Reader::new(&data);
     let mut table = RefTable10_1::new();
     let body = read_label_engine_props_body_10_1(&mut reader, 4096, &mut table, 1).unwrap();
     assert_eq!(reader.position(), slot_offset);
     assert!(!table.contains(123));
-    assert_eq!(
+    assert!(!table.contains(124));
+    assert!(matches!(
         body.stop,
-        Some(LelpStop10_1::ContainerSlotUnsupported {
+        Some(LelpStop10_1::ContainerBodyUnsupported {
             class_id: PAGE_LAYOUT_CLASS_ID,
             key: 123,
+            ..
         })
-    );
+    ));
 }
 
 #[test]

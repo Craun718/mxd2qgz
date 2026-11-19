@@ -807,3 +807,199 @@ fn plain_child_with_dispatch_failure_rolls_back_with_note() {
     assert_eq!(reader.position(), header_start, "回退到子图层对象头起点");
     assert!(!table.contains(31));
 }
+
+fn group_v5_tail(version: u16) -> Vec<u8> {
+    use mxd2qgz::layers::annotate_props::EDIT_TEMPLATE_MANAGER_CLASS_ID;
+
+    let mut body = Vec::new();
+    if version >= 5 {
+        body.extend(1_u32.to_le_bytes());
+        body.extend(7_u64.to_le_bytes());
+        body.extend(EDIT_TEMPLATE_MANAGER_CLASS_ID);
+        body.extend([2, 0, 0, 0, 0, 0, 1]);
+    }
+    if version >= 6 {
+        body.extend(encoded("尾段"));
+    }
+    if version == 6 {
+        body.extend(6_u16.to_le_bytes());
+    }
+    if version >= 7 {
+        body.extend(7_u16.to_le_bytes());
+    }
+    if version >= 8 {
+        body.extend(8.0_f64.to_le_bytes());
+        body.extend((-8.0_f64).to_le_bytes());
+    }
+    if version >= 9 {
+        body.extend(9_u16.to_le_bytes());
+    }
+    if version >= 10 {
+        body.extend([10, 0, 11, 0, 12, 0]);
+    }
+    if version == 12 {
+        // TransparencyDisplayFilter，派生体 v1 + 基类 v1。
+        body.extend(entry_bytes(
+            [
+                0x65, 0x4a, 0x75, 0xad, 0xb4, 0x13, 0xd3, 0x11, 0xb8, 0x9d, 0x00, 0x60, 0x08, 0x02,
+                0xe6, 0x03,
+            ],
+            127,
+        ));
+        body.extend([1, 0, 12, 0, 1, 0]);
+        body.extend(130_u32.to_le_bytes());
+        body.extend(140_u32.to_le_bytes());
+    }
+    body
+}
+
+fn scene_with_group(bytes: &[u8]) -> Vec<u8> {
+    let mut body = 1_u16.to_le_bytes().to_vec();
+    body.extend(encoded("Scene"));
+    body.extend([0; 8]);
+    body.extend(entry_bytes(GROUP_LAYER_CLASS_ID, 125));
+    body.extend(bytes);
+    body.extend([0; 16 + 4]);
+    body
+}
+
+#[test]
+fn scene_association_reads_each_group_version_and_nested_layers() {
+    use mxd2qgz::layers::feature_layer_tail::DisplayFilterSlot10_1;
+    use mxd2qgz::layers::graphics_3d::{GRAPHICS_LAYER_3D_CLASS_ID, read_graphics_3d_layer_10_1};
+    use mxd2qgz::objects::envelope::ENVELOPE_CLASS_ID;
+
+    for version in 0..=12 {
+        let mut child = entry_bytes(GROUP_LAYER_CLASS_ID, 126);
+        child.extend(group_body(
+            0,
+            "子组",
+            &child_region(0, &[]),
+            0,
+            &[],
+            0.0,
+            &[],
+        ));
+        if version >= 11 {
+            let byte_length = child.len() as u32;
+            let mut bounded = if version == 11 {
+                extra_safe_prefix(byte_length, 0)
+            } else {
+                extra_safe_prefix(byte_length, byte_length)
+            };
+            bounded.extend(child);
+            child = bounded;
+        }
+        let mut envelope = entry_bytes(ENVELOPE_CLASS_ID, 128);
+        envelope.extend(1_u16.to_le_bytes());
+        for value in [1.0_f64, 2.0, 3.0, 4.0] {
+            envelope.extend(value.to_le_bytes());
+        }
+        let group = group_body(
+            version,
+            "组",
+            &child_region(1, &[child]),
+            0xffff,
+            &envelope,
+            4.0,
+            &group_v5_tail(version),
+        );
+        let mut bytes = scene_with_group(&group);
+        let end = bytes.len();
+        bytes.extend([0xa5, 0x5a]);
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let scene =
+            read_graphics_3d_layer_10_1(&GRAPHICS_LAYER_3D_CLASS_ID, &mut reader, 4096, &mut refs)
+                .unwrap();
+        let Some(LayerBodyPrefix::GroupLayer(body)) = scene.associated_layer_body.as_deref() else {
+            panic!("关联槽应读取组图层");
+        };
+        assert_eq!(body.stop, GroupLayerStop10_1::Complete);
+        assert_eq!(body.version, version);
+        assert_eq!(body.children.len(), 1);
+        assert_eq!(
+            body.envelope.as_ref().map(|(_, envelope)| envelope.coords),
+            (version >= 3).then_some([1.0, 2.0, 3.0, 4.0])
+        );
+        assert_eq!(body.tail.is_some(), version >= 5);
+        if let Some(tail) = &body.tail {
+            assert_eq!(
+                tail.extensions[0]
+                    .template_manager
+                    .as_ref()
+                    .unwrap()
+                    .tail_byte,
+                Some(1)
+            );
+            assert_eq!(tail.string_dc.as_deref(), (version >= 6).then_some("尾段"));
+            assert_eq!(tail.legacy_v6_short, (version == 6).then_some(6));
+            assert_eq!(tail.short_d6, (version >= 7).then_some(7));
+            assert_eq!(tail.doubles_e0_e8, (version >= 8).then_some([8.0, -8.0]));
+            assert_eq!(tail.short_d8, (version >= 9).then_some(9));
+            assert_eq!(tail.v10_shorts, (version >= 10).then_some([10, 11, 12]));
+            assert!(if version == 12 {
+                matches!(
+                    tail.display_filter,
+                    Some(DisplayFilterSlot10_1::Transparency {
+                        key: 127,
+                        filter_short: 12,
+                        base_values: [130, 140],
+                        ..
+                    })
+                )
+            } else {
+                tail.display_filter.is_none()
+            });
+        }
+        assert!(refs.contains(125) && refs.contains(126));
+        assert_eq!(refs.contains(127), version == 12);
+        assert_eq!(refs.contains(128), version >= 3);
+        assert_eq!(reader.position(), end);
+        assert_eq!(reader.read_bytes(2).unwrap(), [0xa5, 0x5a]);
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(
+                read_graphics_3d_layer_10_1(
+                    &GRAPHICS_LAYER_3D_CLASS_ID,
+                    &mut reader,
+                    4096,
+                    &mut refs,
+                )
+                .is_err(),
+                "版本 {version}，截断位置 {cut}"
+            );
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+}
+
+#[test]
+fn group_with_bounded_unknown_child_does_not_commit_associated_object_keys() {
+    use mxd2qgz::layers::graphics_3d::{GRAPHICS_LAYER_3D_CLASS_ID, read_graphics_3d_layer_10_1};
+
+    let mut child = extra_safe_prefix(20, 0);
+    child.extend(entry_bytes([0x42; 16], 126));
+    let group = group_body(
+        11,
+        "组",
+        &child_region(1, &[child]),
+        0xffff,
+        &[0; 16],
+        0.0,
+        &group_v5_tail(11),
+    );
+    let bytes = scene_with_group(&group);
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    refs.register(1);
+    let error =
+        read_graphics_3d_layer_10_1(&GRAPHICS_LAYER_3D_CLASS_ID, &mut reader, 4096, &mut refs)
+            .unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::Unsupported);
+    assert_eq!(reader.position(), 0);
+    assert_eq!(refs.len(), 1);
+    assert!(refs.contains(1));
+}

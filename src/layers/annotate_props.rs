@@ -66,7 +66,7 @@
 //!   三个嵌套槽实现类；BOLP 自身 Load 未唯一定位，字段序为样本结构+局部
 //!   反编译佐证，见 `BolpBody10_1` 文档）；⑱ AnnotationVBScriptEngine 体
 //!   第十轮闭合（`0x785361d0`）；⑲ Envelope 体为对象层已闭合读取器；
-//!   ㉔ IGraphicsContainer 实现类体未闭合（样本空标记）；
+//!   ㉔ IGraphicsContainer 槽分派六类可持久化内置对象（样本空标记）；
 //! - LELP 属性与原生访问器对位见 `docs/mxd-terra-nextpass-expression.md` 与
 //!   `docs/mxd-10.1-label-transformation-fields.md`；
 //! - ETM ④ 的 1 字节控制 EditTools 的模板候选收集，见
@@ -74,7 +74,17 @@
 //! - 全部结论为静态反编译观察与样本辅助对位，未运行 ArcMap 10.1，未人工
 //!   目视验收。
 
+use crate::layers::composite_graphics::COMPOSITE_GRAPHICS_LAYER_CLASS_ID;
 use crate::layers::edit_template::{EDIT_TEMPLATE_CLASS_ID, read_edit_template_body_10_1};
+use crate::layers::fdo_graphics_layer::FDO_GRAPHICS_LAYER_CLASS_ID;
+use crate::layers::graphics_3d::{GLOBE_GRAPHICS_LAYER_CLASS_ID, GRAPHICS_LAYER_3D_CLASS_ID};
+use crate::layers::layer_list::{LayerBodyPrefix10_1, read_complete_layer_body_10_1};
+use crate::maps::map_object::{
+    MAP_CLASS_ID, MapPrefix10_1, MapSuffix10_1, MapSuffixStop, read_map_with_suffix_10_1,
+};
+use crate::maps::page_layout_prefix::{
+    PAGE_LAYOUT_CLASS_ID, PageLayoutElements10_1, read_page_layout_object_10_1,
+};
 use crate::objects::element_body::{
     ElementBodyStop10_1, TEXT_SYMBOL_CLASS_ID, TextSymbolBody10_1, read_text_symbol_body_10_1,
 };
@@ -159,6 +169,54 @@ fn read_version_short(
     Ok(version)
 }
 
+/// LELP ㉔ 槽中新建的图形容器。
+#[derive(Debug, Clone, PartialEq)]
+pub enum LelpContainerBody10_1 {
+    Layer(Box<LayerBodyPrefix10_1>),
+    Map {
+        prefix: Box<MapPrefix10_1>,
+        suffix: Box<MapSuffix10_1>,
+    },
+    PageLayout(Box<PageLayoutElements10_1>),
+}
+
+fn read_label_container_body(
+    class_id: [u8; 16],
+    key: u32,
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<LelpContainerBody10_1> {
+    match class_id {
+        MAP_CLASS_ID => table.with_nested_graphics(|table| {
+            let version = reader.clone().read_u16_le()?;
+            if !(23..=51).contains(&version) {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!("图形容器 Map 对象体的版本 {version} 未支持"),
+                ));
+            }
+            table.mark_map(key);
+            let (prefix, suffix) = read_map_with_suffix_10_1(reader, max_bytes, table)?;
+            if suffix.stop != MapSuffixStop::Complete {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    suffix.stop.describe(),
+                ));
+            }
+            Ok(LelpContainerBody10_1::Map {
+                prefix: Box::new(prefix),
+                suffix: Box::new(suffix),
+            })
+        }),
+        PAGE_LAYOUT_CLASS_ID => table
+            .with_nested_graphics(|table| read_page_layout_object_10_1(reader, max_bytes, table))
+            .map(|layout| LelpContainerBody10_1::PageLayout(Box::new(layout))),
+        _ => read_complete_layer_body_10_1(reader, class_id, max_bytes, table)
+            .map(|layer| LelpContainerBody10_1::Layer(Box::new(layer))),
+    }
+}
+
 /// LELP 体读取的停止原因（全部为「成功停止」：游标停在停止点）。
 ///
 /// 接线轮起 TextSymbol 体会经类分派整体解析，其体内停止透传为本枚举新变
@@ -183,6 +241,12 @@ pub enum LelpStop10_1 {
     EnvelopeSlotUnsupported { class_id: [u8; 16], key: u32 },
     /// ㉔ IGraphicsContainer 槽（版本 >2）的新对象类标识未闭合。
     ContainerSlotUnsupported { class_id: [u8; 16], key: u32 },
+    /// ㉔ 已知图形容器包含未知嵌套体，回退到容器对象头。
+    ContainerBodyUnsupported {
+        class_id: [u8; 16],
+        key: u32,
+        reason: String,
+    },
     /// ⑰ BOLP 体内部停止（原因透传，游标停在其停止点；槽键按「登记先于
     /// 持久化」保留）。
     OverposterBody(BolpStop10_1),
@@ -332,6 +396,8 @@ pub struct LelpBody10_1 {
     pub int32_2c: Option<i32>,
     /// ㉔ 版本 >2 的 IGraphicsContainer 槽分类。`None` = 版本 ≤2 或前置停止。
     pub container_slot: Option<ObjectEntry10_1>,
+    /// ㉔ 已完整读取的新容器对象。
+    pub container_body: Option<LelpContainerBody10_1>,
     /// ㉕ 版本 ≥4 的 short → -0x46：`AddUnplacedToGraphicsContainer` 原始 BOOL。
     /// `None` = 版本 ≤3 或前置停止。
     pub short_46: Option<i16>,
@@ -349,8 +415,8 @@ pub struct LelpBody10_1 {
 /// 不推进游标、不修改登记表。
 ///
 /// 起点约定：调用者已读取对象头、比对 [`LABEL_ENGINE_PROPS_CLASS_ID`] 并
-/// 取得键 `key`。四个固定槽与版本 >2 的容器槽的新对象仅空标记/回引可消费，
-/// 其余类为成功停止（游标回退到该槽位起点、该键不保留）。
+/// 取得键 `key`。已支持的新对象按类消费；未知类为成功停止，游标回退到槽位起点，
+/// 不保留该键。
 pub fn read_label_engine_props_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -475,8 +541,7 @@ pub fn read_label_engine_props_body_10_1(
                 engine = ExpressionEngineSlot10_1::VbscriptEngine(Box::new(body));
             }
             ObjectEntry10_1::NewObject { class_id, key }
-                if class_id == ANNOTATION_JSCRIPT_ENGINE_CLASS_ID
-                    || class_id == ANNOTATION_PYTHON_ENGINE_CLASS_ID =>
+                if AnnotationExpressionEngineKind10_1::from_class_id(class_id).is_some() =>
             {
                 let body = read_annotation_expression_engine_body_10_1(
                     &mut trial,
@@ -528,6 +593,7 @@ pub fn read_label_engine_props_body_10_1(
     let mut units = None;
     let mut int32_2c = None;
     let mut container_slot = None;
+    let mut container_body = None;
     let mut short_46 = None;
     let mut annotation_class_id = None;
     let mut short_ver6 = None;
@@ -541,6 +607,40 @@ pub fn read_label_engine_props_body_10_1(
             let slot_offset = trial.position();
             let pre_slot_table = staged_table.clone();
             match read_object_entry_10_1(&mut trial, &mut staged_table)? {
+                entry @ ObjectEntry10_1::NewObject { class_id, key }
+                    if matches!(
+                        class_id,
+                        GRAPHICS_LAYER_3D_CLASS_ID
+                            | GLOBE_GRAPHICS_LAYER_CLASS_ID
+                            | COMPOSITE_GRAPHICS_LAYER_CLASS_ID
+                            | FDO_GRAPHICS_LAYER_CLASS_ID
+                            | MAP_CLASS_ID
+                            | PAGE_LAYOUT_CLASS_ID
+                    ) =>
+                {
+                    match read_label_container_body(
+                        class_id,
+                        key,
+                        &mut trial,
+                        max_bytes,
+                        &mut staged_table,
+                    ) {
+                        Ok(body) => {
+                            container_slot = Some(entry);
+                            container_body = Some(body);
+                        }
+                        Err(error) if error.kind() == ErrorKind::Unsupported => {
+                            stop = Some(LelpStop10_1::ContainerBodyUnsupported {
+                                class_id,
+                                key,
+                                reason: error.to_string(),
+                            });
+                            trial = reposition_to(reader, slot_offset);
+                            staged_table = pre_slot_table;
+                        }
+                        Err(error) => return Err(error),
+                    }
+                }
                 ObjectEntry10_1::NewObject { class_id, key } => {
                     stop = Some(LelpStop10_1::ContainerSlotUnsupported { class_id, key });
                     trial = reposition_to(reader, slot_offset);
@@ -588,6 +688,7 @@ pub fn read_label_engine_props_body_10_1(
         units,
         int32_2c,
         container_slot,
+        container_body,
         short_46,
         annotation_class_id,
         short_ver6,
@@ -888,6 +989,36 @@ pub const ANNOTATION_PYTHON_ENGINE_CLASS_ID: [u8; 16] = [
     0xa2, 0x21, 0x67, 0xbb, 0x1a, 0xd8, 0xe3, 0x45, 0x7f, 0xef, 0x88, 0x4d, 0xb2, 0xb2, 0xa9, 0x05,
 ];
 
+/// HotLinkVBScriptEngine 的 CLSID，来自 10.1 注册声明及 GetClassID。
+pub const HOT_LINK_VBSCRIPT_ENGINE_CLASS_ID: [u8; 16] = [
+    0x65, 0x00, 0xef, 0x55, 0xff, 0xfd, 0x9b, 0x46, 0xb6, 0x93, 0x8e, 0xbf, 0xc5, 0x6b, 0x3b, 0x3b,
+];
+
+/// HotLinkJScriptEngine 的 CLSID，来自 10.1 注册声明及 GetClassID。
+pub const HOT_LINK_JSCRIPT_ENGINE_CLASS_ID: [u8; 16] = [
+    0x63, 0x2e, 0xe8, 0x03, 0x12, 0xa8, 0xeb, 0x49, 0xad, 0x12, 0x4d, 0x1e, 0x1c, 0x7a, 0xda, 0x7c,
+];
+
+/// HotLinkPythonEngine 的 CLSID，来自 10.1 注册声明及 GetClassID。
+pub const HOT_LINK_PYTHON_ENGINE_CLASS_ID: [u8; 16] = [
+    0xa3, 0x30, 0x7d, 0xff, 0xfa, 0x38, 0xd1, 0x67, 0x78, 0x0a, 0xbe, 0xbb, 0x61, 0xc0, 0xe5, 0x99,
+];
+
+/// HatchVBScriptEngine 的 CLSID，来自 10.1 注册声明及 GetClassID。
+pub const HATCH_VBSCRIPT_ENGINE_CLASS_ID: [u8; 16] = [
+    0xd8, 0x1f, 0x06, 0x6d, 0x45, 0xb4, 0x4a, 0x46, 0x9c, 0x57, 0xb2, 0xa5, 0xe1, 0x7f, 0x43, 0x13,
+];
+
+/// HatchJScriptEngine 的 CLSID，来自 10.1 注册声明及 GetClassID。
+pub const HATCH_JSCRIPT_ENGINE_CLASS_ID: [u8; 16] = [
+    0x59, 0x62, 0xc4, 0xc1, 0x7c, 0x35, 0xf2, 0x4f, 0x9e, 0x9e, 0x21, 0x67, 0xcf, 0x89, 0x8e, 0x55,
+];
+
+/// HatchPythonEngine 的 CLSID，来自 10.1 注册声明及 GetClassID。
+pub const HATCH_PYTHON_ENGINE_CLASS_ID: [u8; 16] = [
+    0x09, 0x64, 0xf7, 0xdd, 0xb1, 0xbe, 0xa2, 0x77, 0x30, 0x8c, 0x5d, 0xbe, 0x9a, 0x6e, 0x00, 0xb3,
+];
+
 /// HotLinkExpressionProperties 类标识(CLSID)的 16 字节内存序。
 ///
 /// GUID `{1B848B0F-5E87-4948-841A-86201FACD925}`。证据:esri.clsid 声明;
@@ -985,7 +1116,7 @@ pub struct AnnotationVbscriptEngineBody10_1 {
     pub short: Option<i16>,
 }
 
-/// 按对象头 CLSID 区分的标注表达式引擎；三类共享原生 Load。
+/// 按对象头 CLSID 区分的 10.1 IAnnotationExpressionEngine 实现。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnnotationExpressionEngineKind10_1 {
     /// VBScript 引擎。
@@ -994,6 +1125,49 @@ pub enum AnnotationExpressionEngineKind10_1 {
     Jscript,
     /// Python 引擎。
     Python,
+    /// HotLinkVBScriptEngine。
+    HotLinkVbscript,
+    /// HotLinkJScriptEngine。
+    HotLinkJscript,
+    /// HotLinkPythonEngine。
+    HotLinkPython,
+    /// HatchVBScriptEngine。
+    HatchVbscript,
+    /// HatchJScriptEngine。
+    HatchJscript,
+    /// HatchPythonEngine。
+    HatchPython,
+}
+
+impl AnnotationExpressionEngineKind10_1 {
+    fn from_class_id(class_id: [u8; 16]) -> Option<Self> {
+        match class_id {
+            ANNOTATION_VBSCRIPT_ENGINE_CLASS_ID => Some(Self::Vbscript),
+            ANNOTATION_JSCRIPT_ENGINE_CLASS_ID => Some(Self::Jscript),
+            ANNOTATION_PYTHON_ENGINE_CLASS_ID => Some(Self::Python),
+            HOT_LINK_VBSCRIPT_ENGINE_CLASS_ID => Some(Self::HotLinkVbscript),
+            HOT_LINK_JSCRIPT_ENGINE_CLASS_ID => Some(Self::HotLinkJscript),
+            HOT_LINK_PYTHON_ENGINE_CLASS_ID => Some(Self::HotLinkPython),
+            HATCH_VBSCRIPT_ENGINE_CLASS_ID => Some(Self::HatchVbscript),
+            HATCH_JSCRIPT_ENGINE_CLASS_ID => Some(Self::HatchJscript),
+            HATCH_PYTHON_ENGINE_CLASS_ID => Some(Self::HatchPython),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn class_name(self) -> &'static str {
+        match self {
+            Self::Vbscript => "AnnotationVBScriptEngine",
+            Self::Jscript => "AnnotationJScriptEngine",
+            Self::Python => "AnnotationPythonEngine",
+            Self::HotLinkVbscript => "HotLinkVBScriptEngine",
+            Self::HotLinkJscript => "HotLinkJScriptEngine",
+            Self::HotLinkPython => "HotLinkPythonEngine",
+            Self::HatchVbscript => "HatchVBScriptEngine",
+            Self::HatchJscript => "HatchJScriptEngine",
+            Self::HatchPython => "HatchPythonEngine",
+        }
+    }
 }
 
 /// 表达式引擎的类身份和共享持久化体。
@@ -1001,7 +1175,7 @@ pub enum AnnotationExpressionEngineKind10_1 {
 pub struct AnnotationExpressionEngineBody10_1 {
     /// 对象头指定的引擎类。
     pub kind: AnnotationExpressionEngineKind10_1,
-    /// 三类共享的版本与标量字段；类型名称保留以兼容旧接口。
+    /// 版本与可选标量。Hatch 引擎只有版本字段；类型名称沿用旧接口。
     pub body: AnnotationVbscriptEngineBody10_1,
 }
 
@@ -1260,9 +1434,23 @@ pub fn read_annotation_vbscript_engine_body_10_1(
     _table: &mut RefTable10_1,
     key: u32,
 ) -> io::Result<AnnotationVbscriptEngineBody10_1> {
+    read_expression_engine_fields(reader, key, AnnotationExpressionEngineKind10_1::Vbscript)
+}
+
+fn read_expression_engine_fields(
+    reader: &mut Reader<'_>,
+    key: u32,
+    kind: AnnotationExpressionEngineKind10_1,
+) -> io::Result<AnnotationVbscriptEngineBody10_1> {
+    let max_version = match kind {
+        AnnotationExpressionEngineKind10_1::HatchVbscript
+        | AnnotationExpressionEngineKind10_1::HatchJscript
+        | AnnotationExpressionEngineKind10_1::HatchPython => 1,
+        _ => 2,
+    };
     let mut trial = reader.clone();
     let entry_offset = trial.position();
-    let version = read_version_short(&mut trial, 2, "AnnotationVBScriptEngine", entry_offset)?;
+    let version = read_version_short(&mut trial, max_version, kind.class_name(), entry_offset)?;
     let short = if version >= 2 {
         Some(trial.read_u16_le()? as i16)
     } else {
@@ -1276,29 +1464,20 @@ pub fn read_annotation_vbscript_engine_body_10_1(
     })
 }
 
-/// 在已确认对象头后读取三种 10.1 标注表达式引擎的共享体。
+/// 在已确认对象头后读取 10.1 标注表达式引擎体。
 ///
 /// 未知 CLSID 或无效体返回错误，游标和登记表均不变。静态证据与
 /// 未覆盖的槽位接线见 `docs/mxd-terra-depth-label.md`。
 pub fn read_annotation_expression_engine_body_10_1(
     reader: &mut Reader<'_>,
-    max_bytes: usize,
-    table: &mut RefTable10_1,
+    _max_bytes: usize,
+    _table: &mut RefTable10_1,
     key: u32,
     class_id: [u8; 16],
 ) -> io::Result<AnnotationExpressionEngineBody10_1> {
-    let kind = match class_id {
-        ANNOTATION_VBSCRIPT_ENGINE_CLASS_ID => AnnotationExpressionEngineKind10_1::Vbscript,
-        ANNOTATION_JSCRIPT_ENGINE_CLASS_ID => AnnotationExpressionEngineKind10_1::Jscript,
-        ANNOTATION_PYTHON_ENGINE_CLASS_ID => AnnotationExpressionEngineKind10_1::Python,
-        _ => {
-            return Err(io::Error::new(
-                ErrorKind::InvalidData,
-                "未知标注表达式引擎类",
-            ));
-        }
-    };
-    let body = read_annotation_vbscript_engine_body_10_1(reader, max_bytes, table, key)?;
+    let kind = AnnotationExpressionEngineKind10_1::from_class_id(class_id)
+        .ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "未知标注表达式引擎类"))?;
+    let body = read_expression_engine_fields(reader, key, kind)?;
     Ok(AnnotationExpressionEngineBody10_1 { kind, body })
 }
 
@@ -1415,8 +1594,7 @@ pub fn read_display_expression_props_prefix_10_1(
             engine = ExpressionEngineSlot10_1::VbscriptEngine(Box::new(body));
         }
         ObjectEntry10_1::NewObject { class_id, key }
-            if class_id == ANNOTATION_JSCRIPT_ENGINE_CLASS_ID
-                || class_id == ANNOTATION_PYTHON_ENGINE_CLASS_ID =>
+            if AnnotationExpressionEngineKind10_1::from_class_id(class_id).is_some() =>
         {
             let body = read_annotation_expression_engine_body_10_1(
                 &mut trial,

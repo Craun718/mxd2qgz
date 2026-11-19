@@ -186,3 +186,37 @@ fn empty_results_and_invalid_version_are_bounded() {
     assert_eq!(reader.position(), 0);
     assert!(refs.is_empty());
 }
+
+#[test]
+fn globe_graphics_reads_basemap_through_its_ordinary_ilayer_slot() {
+    use mxd2qgz::layers::graphics_3d::{
+        GLOBE_GRAPHICS_LAYER_CLASS_ID, read_graphics_3d_layer_10_1,
+    };
+    use mxd2qgz::layers::layer_list::LayerBodyPrefix10_1;
+
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(2_u32.to_le_bytes());
+    bytes.extend([0; 2 + 4]);
+    bytes.extend(BASEMAP_LAYER_CLASS_ID);
+    bytes.extend(91_u32.to_le_bytes());
+    bytes.extend(6_u16.to_le_bytes());
+    bytes.extend(2_u32.to_le_bytes());
+    bytes.extend([0; 2 + 6 + 18 + 16 + 16 + 16 + 2 + 4 + 4]);
+    bytes.extend([0; 16 + 4 + 4]);
+    bytes.extend([1, 0, 2, 0]);
+    let end = bytes.len();
+    bytes.extend([0xa5, 0x5a]);
+
+    let mut refs = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let parsed =
+        read_graphics_3d_layer_10_1(&GLOBE_GRAPHICS_LAYER_CLASS_ID, &mut reader, 4096, &mut refs)
+            .unwrap();
+    assert!(matches!(
+        parsed.associated_layer_body.as_deref(),
+        Some(LayerBodyPrefix10_1::BasemapLayer(layer)) if layer.stop == BasemapStop10_1::Complete
+    ));
+    assert!(refs.contains(91));
+    assert_eq!(reader.position(), end);
+    assert_eq!(reader.read_bytes(2).unwrap(), [0xa5, 0x5a]);
+}

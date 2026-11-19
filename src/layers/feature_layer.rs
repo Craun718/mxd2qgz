@@ -111,6 +111,15 @@ use crate::objects::dataset_name::{
     TOPOLOGY_NAME_CLASS_ID, TopologyNameBody10_1, TopologyNameStop10_1,
     read_topology_name_body_10_1,
 };
+use crate::objects::dataset_name_more::{
+    DatasetNameMoreStop10_1, NETCDF_FEATURE_CLASS_NAME_CLASS_ID, NetCdfFeatureClassNameBody10_1,
+    XY_EVENT_SOURCE_NAME_CLASS_ID, XyEventSourceNameBody10_1,
+    read_netcdf_feature_class_name_body_10_1, read_xy_event_source_name_body_10_1,
+};
+use crate::objects::route_event_name::{
+    ROUTE_EVENT_SOURCE_NAME_CLASS_ID, RouteEventSourceNameBody10_1,
+    read_route_event_source_name_body_10_1,
+};
 pub use crate::objects::workspace_name::{
     PropertySetSlot10_1, WORKSPACE_NAME_CLASS_ID, WorkspaceNameEntry10_1, WorkspaceNamePrefix10_1,
     WorkspaceNameStop10_1, read_workspace_name_body_10_1,
@@ -164,6 +173,11 @@ pub const FEATURE_CLASS_NAME_CLASS_ID: [u8; 16] = [
 /// `docs/mxd-open-dataset-20261116.md`。
 pub const FGDB_FEATURE_CLASS_NAME_CLASS_ID: [u8; 16] = [
     0x86, 0x00, 0xe1, 0x75, 0x26, 0x42, 0xac, 0x42, 0xaf, 0xec, 0xcb, 0xb9, 0xb7, 0x48, 0xf8, 0x47,
+];
+
+/// CoverageFDB.dll 0x6e0e5990 返回的 CoverageFeatureClassName CLSID。
+pub const COVERAGE_FEATURE_CLASS_NAME_CLASS_ID: [u8; 16] = [
+    0xe8, 0x7d, 0xf7, 0x72, 0x2a, 0x12, 0xd3, 0x11, 0x9f, 0x31, 0, 0xc0, 0x4f, 0x79, 0x92, 0x7c,
 ];
 
 /// 可见性字段（obj+0x128）的 VARIANT_BOOL 解释辅助。
@@ -287,6 +301,7 @@ pub struct FeatureClassNamePrefix10_1 {
     /// Some 表示本体由 FileGDB `FgdbFeatureClassName` 包装，保存其外层字段。
     /// 内嵌 FeatureClassName 没有独立 ObjectStream 头或引用键。
     pub fgdb_wrapper: Option<FgdbFeatureClassNameHeader10_1>,
+    pub coverage_wrapper: Option<CoverageFeatureClassNameHeader10_1>,
 }
 
 /// FileGDB `FgdbFeatureClassName` 外层包装字段。
@@ -298,6 +313,14 @@ pub struct FgdbFeatureClassNameHeader10_1 {
     pub unknown_short: u16,
 }
 
+/// CoverageFeatureClassName 外层的版本及原始标量。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CoverageFeatureClassNameHeader10_1 {
+    pub version: u16,
+    pub longs: [i32; 2],
+    pub flag: u8,
+}
+
 /// 数据源嵌套条目（请求 IID `{4BA33331-…}`=IName）的分类结果。
 #[derive(Debug, Clone, PartialEq)]
 pub enum DataSource10_1 {
@@ -306,13 +329,19 @@ pub enum DataSource10_1 {
     /// 新 FeatureClassName 对象：已确认体（可为 GdbCore 直接对象，或带
     /// [`FeatureClassNamePrefix10_1::fgdb_wrapper`] 的 FileGDB 外层包装）。
     FeatureClassName(Box<FeatureClassNamePrefix10_1>),
+    NetCdfFeatureClassName(Box<NetCdfFeatureClassNameBody10_1>),
+    XyEventSourceName(Box<XyEventSourceNameBody10_1>),
+    RouteEventSourceName(Box<RouteEventSourceNameBody10_1>),
     /// 键已在本会话登记过的回引条目：其后没有对象体。
     ///
     /// 类标识原样保留、不校验是否为
     /// [`FEATURE_CLASS_NAME_CLASS_ID`]：回引头会重复被引对象的类标识（样本
     /// 证据见模块文档），调用者可自行比对；回引无体、不影响后续字段对位，
     /// 本读取器不据此拒绝。
-    BackReference { class_id: [u8; 16], key: u32 },
+    BackReference {
+        class_id: [u8; 16],
+        key: u32,
+    },
 }
 
 /// FeatureLayer 体渲染器槽位（请求 IID `{40A9E884-…}`=IFeatureRenderer）
@@ -347,6 +376,7 @@ pub enum RendererSlot10_1 {
 pub enum FeatureLayerStop10_1 {
     /// 数据源 FeatureClassName 体内（含 WorkspaceName 体）的停止点。
     DataSource(FeatureClassNameStop10_1),
+    TabularDataSource(DatasetNameMoreStop10_1),
     /// 数据源之后的首个嵌套对象（请求 IID `{40A9E884-…}`=IFeatureRenderer）
     /// 为未知的新渲染器对象：停在对象头之前。
     RendererNewObject {
@@ -639,6 +669,7 @@ pub(crate) fn read_feature_class_name_body_with_depth_10_1(
         topology_slot,
         stop,
         fgdb_wrapper: None,
+        coverage_wrapper: None,
     };
     *table = staged_table;
     *reader = trial;
@@ -694,6 +725,33 @@ pub fn read_fgdb_feature_class_name_body_10_1(
     Ok(result)
 }
 
+/// CoverageFDB.dll 0x6e0e6150 读取外层标量后委派给内联 FeatureClassName。
+pub(crate) fn read_coverage_feature_class_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<FeatureClassNamePrefix10_1> {
+    let mut trial = reader.clone();
+    let version = trial.read_u16_le()?;
+    if version > 1 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "CoverageFeatureClassName 版本不支持",
+        ));
+    }
+    let longs = [trial.read_u32_le()? as i32, trial.read_u32_le()? as i32];
+    let flag = trial.read_bytes(1)?[0];
+    let mut body = read_feature_class_name_body_10_1(&mut trial, max_bytes, table, key)?;
+    body.coverage_wrapper = Some(CoverageFeatureClassNameHeader10_1 {
+        version,
+        longs,
+        flag,
+    });
+    *reader = trial;
+    Ok(body)
+}
+
 /// 从对象头之后的位置读取 10.1 FeatureLayer 对象体的已确认前缀，失败时不
 /// 推进游标、不修改登记表。
 ///
@@ -706,9 +764,10 @@ pub fn read_fgdb_feature_class_name_body_10_1(
 /// 前检查；`usize::MAX` 表示不额外设限，此时超长流按短读失败。
 ///
 /// 数据源条目经 [`crate::storage::object_refs::read_object_entry_10_1`] 分类并登记：
-/// 16 零字节为空引用；键已见为回引（无体）；新对象且类标识为
-/// FeatureClassName 时读取其完整已确认体（体内的嵌套停止传播为本读取器的
-/// [`FeatureLayerStop10_1::DataSource`] 成功停止）；其他类标识返回
+/// 16 零字节为空引用，已登记的键为无体回引。新对象按类标识分派到
+/// FeatureClassName、FgdbFeatureClassName、CoverageFeatureClassName、NetCDFFeatureClassName、
+/// XYEventSourceName、RouteEventSourceName 的对象体读取器。名称体内的停止传播为数据源停止点。
+/// 未支持的类标识返回
 /// [`ErrorKind::Unsupported`]——嵌套对象体没有外部长度字段，本读取器无法
 /// 跳过未知类继续解析，调用者不能把该流继续当作 FeatureLayer 前缀消费。
 /// 分类依赖登记表状态：空表会把实际的回引分类为新对象（流内无法局部区分，
@@ -756,7 +815,7 @@ pub fn read_feature_layer_prefix_10_1(
     // 登记先发生在调用者登记表的副本上，全部成功后才整体提交。
     let nested_offset = trial.position();
     let mut staged_table = table.clone();
-    let mut fcn_stop = None;
+    let mut data_source_stop = None;
     let data_source = match read_object_entry_10_1(&mut trial, &mut staged_table)? {
         ObjectEntry10_1::Null => DataSource10_1::Null,
         ObjectEntry10_1::BackReference { class_id, key } => {
@@ -767,7 +826,7 @@ pub fn read_feature_layer_prefix_10_1(
             // 读取器的 DataSource 停止;截断/版本超限等错误向上传播。
             let fcn =
                 read_feature_class_name_body_10_1(&mut trial, max_bytes, &mut staged_table, key)?;
-            fcn_stop = fcn.stop.clone();
+            data_source_stop = fcn.stop.clone().map(FeatureLayerStop10_1::DataSource);
             DataSource10_1::FeatureClassName(Box::new(fcn))
         }
         ObjectEntry10_1::NewObject { class_id, key }
@@ -779,21 +838,75 @@ pub fn read_feature_layer_prefix_10_1(
                 &mut staged_table,
                 key,
             )?;
-            fcn_stop = fgdb.stop.clone();
+            data_source_stop = fgdb.stop.clone().map(FeatureLayerStop10_1::DataSource);
             DataSource10_1::FeatureClassName(Box::new(fgdb))
         }
+        ObjectEntry10_1::NewObject {
+            class_id: COVERAGE_FEATURE_CLASS_NAME_CLASS_ID,
+            key,
+        } => {
+            let body = read_coverage_feature_class_name_body_10_1(
+                &mut trial,
+                max_bytes,
+                &mut staged_table,
+                key,
+            )?;
+            data_source_stop = body.stop.clone().map(FeatureLayerStop10_1::DataSource);
+            DataSource10_1::FeatureClassName(Box::new(body))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: NETCDF_FEATURE_CLASS_NAME_CLASS_ID,
+            key,
+        } => {
+            let body = read_netcdf_feature_class_name_body_10_1(
+                &mut trial,
+                max_bytes,
+                &mut staged_table,
+                key,
+            )?;
+            data_source_stop = body
+                .stop
+                .clone()
+                .map(FeatureLayerStop10_1::TabularDataSource);
+            DataSource10_1::NetCdfFeatureClassName(Box::new(body))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: XY_EVENT_SOURCE_NAME_CLASS_ID,
+            key,
+        } => {
+            let body =
+                read_xy_event_source_name_body_10_1(&mut trial, max_bytes, &mut staged_table, key)?;
+            data_source_stop = body
+                .stop
+                .clone()
+                .map(FeatureLayerStop10_1::TabularDataSource);
+            DataSource10_1::XyEventSourceName(Box::new(body))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: ROUTE_EVENT_SOURCE_NAME_CLASS_ID,
+            key,
+        } => {
+            let body = read_route_event_source_name_body_10_1(
+                &mut trial,
+                max_bytes,
+                &mut staged_table,
+                key,
+            )?;
+            data_source_stop = body
+                .stop
+                .clone()
+                .map(FeatureLayerStop10_1::TabularDataSource);
+            DataSource10_1::RouteEventSourceName(Box::new(body))
+        }
         ObjectEntry10_1::NewObject { class_id, key } => {
-            // 严格子集只认 FeatureClassName 数据源。新对象体没有外部长度字
-            // 段，无法跳过未知类继续读取；显式报错，原游标与登记表不动
+            // 新对象体没有外部长度字段，未知类直接报错，原游标与登记表不动
             // （键虽已被分类状态机登记进副本，副本随失败丢弃）。
             let id: String = class_id.iter().map(|byte| format!("{byte:02x}")).collect();
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
                 format!(
                     "FeatureLayer 数据源对象 offset 0x{nested_offset:x}: 类标识 {id}（键 \
-                     {key}）不是受支持的 FeatureClassName；本读取器仅支持 GdbCore 或 FileGDB \
-                     FeatureClassName 数据源，\
-                     且对象体无外部长度字段，无法跳过未知类继续读取"
+                     {key}）无法按受支持的 FeatureClassName 等数据源格式读取，且对象体无外部长度字段，无法跳过"
                 ),
             ));
         }
@@ -805,8 +918,8 @@ pub fn read_feature_layer_prefix_10_1(
     let mut renderer = None;
     let mut guid_after_renderer = None;
     let mut successor_result = None;
-    let stop = match fcn_stop {
-        Some(stop) => FeatureLayerStop10_1::DataSource(stop),
+    let stop = match data_source_stop {
+        Some(stop) => stop,
         None => {
             let slot_offset = trial.position();
             let saved_table = staged_table.clone();

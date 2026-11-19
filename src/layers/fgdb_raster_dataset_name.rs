@@ -114,13 +114,16 @@ pub enum FgdbRasterIoStop10_1 {
 const RASTER_IO_MAGIC_10_1: i32 = 0x00ff_00fa;
 const NULL_CLASS_ID_10_1: [u8; 16] = [0; 16];
 
-fn read_raster_io_record_header_10_1(reader: &mut Reader<'_>) -> io::Result<(i32, i32)> {
+pub(super) fn read_raster_io_record_header_10_1(reader: &mut Reader<'_>) -> io::Result<(i32, i32)> {
     let tag = i32::from_le_bytes(reader.read_bytes(4)?.try_into().unwrap());
     let length = i32::from_le_bytes(reader.read_bytes(4)?.try_into().unwrap());
     Ok((tag, length))
 }
 
-fn read_raster_io_i32_10_1(reader: &mut Reader<'_>, expected_tag: i32) -> io::Result<i32> {
+pub(super) fn read_raster_io_i32_10_1(
+    reader: &mut Reader<'_>,
+    expected_tag: i32,
+) -> io::Result<i32> {
     let (tag, length) = read_raster_io_record_header_10_1(reader)?;
     if tag != expected_tag || length != 4 {
         return Err(io::Error::new(
@@ -135,7 +138,7 @@ fn read_raster_io_i32_10_1(reader: &mut Reader<'_>, expected_tag: i32) -> io::Re
     ))
 }
 
-fn read_raster_io_string_10_1(
+pub(super) fn read_raster_io_string_10_1(
     reader: &mut Reader<'_>,
     expected_tag: i32,
     max_string_bytes: usize,

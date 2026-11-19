@@ -8,7 +8,7 @@ use crate::layers::raster_classify_renderer::{
     RASTER_CLASSIFY_RENDERER_CLASS_ID, RasterClassifyRenderer10_1, read_raster_classify_renderer,
 };
 pub use crate::layers::raster_dataset_name::RasterDatasetNameEntryBody10_1 as LoadedRasterName10_1;
-use crate::layers::raster_dataset_name::read_supported_raster_name_entry_10_1;
+use crate::layers::raster_dataset_name::{RasterNameSlot10_1, read_name_slot};
 use crate::layers::raster_layer_tail::{RasterLayerEnvelopeSlot10_1, read_envelope_slot};
 use crate::layers::raster_stretch_renderer::{
     RASTER_STRETCH_RENDERER_CLASS_ID, RasterStretchRenderer10_1, read_raster_stretch_renderer,
@@ -21,7 +21,9 @@ use crate::objects::display_color::{
     ColorSlot10_1, RGB_COLOR_CLASS_ID, read_color_slot_10_1, read_rgb_color_body_10_1,
 };
 use crate::objects::display_symbol::MAX_SYMBOL_NESTING_DEPTH;
-use crate::objects::geodata_xform::{GeodataXformSlot10_1, read_geodata_xform_slot_10_1};
+use crate::objects::geodata_xform::{
+    GeodataXformSlot10_1, MAX_XFORM_NESTING, read_geodata_xform_slot_with_depth,
+};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
@@ -36,6 +38,9 @@ pub const RASTER_RGB_RENDERER_CLASS_ID: [u8; 16] = [
 ];
 pub const SIMPLE_RASTER_RENDERER_CLASS_ID: [u8; 16] = [
     0xef, 0xd0, 0x32, 0x32, 0x60, 0x34, 0x79, 0x48, 0xa1, 0xe6, 0x36, 0x65, 0x90, 0xcf, 0x3e, 0xec,
+];
+pub const SAI_RENDERER_CLASS_ID: [u8; 16] = [
+    0x50, 0x00, 0xab, 0x11, 0xf5, 0x74, 0x3e, 0x4c, 0x9e, 0xf9, 0x87, 0x3b, 0x6b, 0xd8, 0x5b, 0x2c,
 ];
 pub const DISCRETE_COLOR_RENDERER_CLASS_ID: [u8; 16] = [
     0x73, 0x45, 0x87, 0xac, 0x78, 0xd7, 0x21, 0x44, 0xb9, 0xc6, 0x14, 0x55, 0x7d, 0x8b, 0xd6, 0x92,
@@ -71,6 +76,13 @@ pub enum RasterRendererPrefix10_1 {
         version: i32,
         /// v2 起在共用体之前读取的原始 short。
         short: Option<u16>,
+        shared: RasterRendererShared10_1,
+    },
+    Sai {
+        version: i32,
+        short: u16,
+        /// 在共用体之前顺序读取的两个原始 double。
+        doubles: [f64; 2],
         shared: RasterRendererShared10_1,
     },
     Discrete(Box<DiscreteColorRenderer10_1>),
@@ -164,6 +176,8 @@ pub struct LoadedRaster10_1 {
     pub name_entry: ObjectEntry10_1,
     /// 回引仍包含波段列表和后两槽，只省略数据集名称体。
     pub name_body: Option<LoadedRasterName10_1>,
+    /// 原生读取有符号数量，非正值不进入波段名称循环。
+    pub declared_band_count: i32,
     pub band_names: Vec<String>,
     pub transform: GeodataXformSlot10_1,
     pub extent: RasterLayerEnvelopeSlot10_1,
@@ -225,6 +239,7 @@ impl RasterRendererPrefix10_1 {
             self,
             Self::Colormap { tail: Some(_), .. }
                 | Self::Simple { .. }
+                | Self::Sai { .. }
                 | Self::Discrete(_)
                 | Self::UniqueValue(_)
                 | Self::Classify(_)
@@ -247,7 +262,12 @@ fn signed_long(reader: &mut Reader<'_>) -> io::Result<i32> {
 
 /// 数量先按当前有界区可容纳的条目数校验，再逐项读取。
 fn count(reader: &mut Reader<'_>, min_size: usize) -> io::Result<usize> {
-    let count = signed_long(reader)?.max(0) as usize;
+    let declared = signed_long(reader)?;
+    bounded_count(reader, declared, min_size)
+}
+
+fn bounded_count(reader: &Reader<'_>, declared: i32, min_size: usize) -> io::Result<usize> {
+    let count = declared.max(0) as usize;
     if count > reader.remaining() / min_size {
         return Err(io::Error::new(
             ErrorKind::UnexpectedEof,
@@ -389,6 +409,22 @@ pub(crate) fn read_raster_renderer_body_10_1(
             RasterRendererPrefix10_1::Simple {
                 version,
                 short,
+                shared,
+            }
+        }
+        SAI_RENDERER_CLASS_ID => {
+            let version = signed_long(&mut trial)?;
+            if version != 1 {
+                return Err(invalid(format!("未支持的 SAIRenderer 版本 {version}")));
+            }
+            // 新对象构造器将共用状态位清零，Load 在此状态下读取两项 double。
+            let short = trial.read_u16_le()?;
+            let doubles = [trial.read_f64_le()?, trial.read_f64_le()?];
+            let shared = read_shared_tail(&mut trial, max_bytes, &mut staged)?;
+            RasterRendererPrefix10_1::Sai {
+                version,
+                short,
+                doubles,
                 shared,
             }
         }
@@ -776,7 +812,7 @@ pub(crate) fn read_stats_histogram_body_10_1(
     })
 }
 
-fn read_double_array_slot(
+pub(crate) fn read_double_array_slot(
     reader: &mut Reader<'_>,
     table: &mut RefTable10_1,
 ) -> io::Result<RasterDoubleArraySlot10_1> {
@@ -794,7 +830,7 @@ fn read_double_array_slot(
         }
         ObjectEntry10_1::NewObject { class_id, .. } => {
             return Err(invalid(format!(
-                "RGB 渲染器 IDoubleArray 槽存在未知类 {}",
+                "IDoubleArray 槽存在未知类 {}",
                 crate::storage::class_id_hex(&class_id)
             )));
         }
@@ -802,32 +838,44 @@ fn read_double_array_slot(
     Ok(RasterDoubleArraySlot10_1 { entry, body })
 }
 
-fn read_load_raster(
+pub(crate) fn read_load_raster(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
+    xform_depth: usize,
 ) -> io::Result<Option<LoadedRaster10_1>> {
-    // RasterCoreLib.dll 0x7bf2edf0：名称槽走 AfCore LoadObject，沿用底流表。
-    let (name_entry, name_body) = read_supported_raster_name_entry_10_1(reader, max_bytes, table)?;
+    // RasterCoreLib.dll 0x7bf2edf0：IName 槽走 AfCore LoadObject，沿用底流表。
+    // 名称内也可包含变换，从当前预算进入名称，避免跨两种对象的递归重置限额。
+    let RasterNameSlot10_1 {
+        entry: name_entry,
+        body: name_body,
+    } = read_name_slot(
+        reader,
+        max_bytes,
+        table,
+        (xform_depth + 1).min(MAX_XFORM_NESTING),
+    )?;
     if name_entry == ObjectEntry10_1::Null {
         return Ok(None);
     }
     // 每条编码名称至少为 4 字节长度和 2 字节终止零。
-    let band_names = (0..count(reader, 6)?)
+    let declared_band_count = signed_long(reader)?;
+    let band_names = (0..bounded_count(reader, declared_band_count, 6)?)
         .map(|_| read_string_10_1(reader, max_bytes))
         .collect::<io::Result<_>>()?;
-    let transform = read_geodata_xform_slot_10_1(reader, max_bytes, table)?;
+    let transform = read_geodata_xform_slot_with_depth(reader, max_bytes, table, xform_depth)?;
     let extent = read_envelope_slot(reader, max_bytes, table)?;
     Ok(Some(LoadedRaster10_1 {
         name_entry,
         name_body,
+        declared_band_count,
         band_names,
         transform,
         extent,
     }))
 }
 
-fn read_pansharpening_filter(
+pub(super) fn read_pansharpening_filter(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
@@ -838,8 +886,8 @@ fn read_pansharpening_filter(
         return Err(invalid(format!("未支持的全色锐化过滤器版本 {version}")));
     }
     let rasters = [
-        read_load_raster(reader, max_bytes, table)?,
-        read_load_raster(reader, max_bytes, table)?,
+        read_load_raster(reader, max_bytes, table, MAX_XFORM_NESTING)?,
+        read_load_raster(reader, max_bytes, table, MAX_XFORM_NESTING)?,
     ];
     let method = signed_long(reader)?;
     let mut weights = [0.0; 4];

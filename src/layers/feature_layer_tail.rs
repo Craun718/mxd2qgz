@@ -149,9 +149,37 @@ use crate::layers::dep_tail::{
 use crate::layers::feature_id_set::{
     FEATURE_ID_SET_CLASS_ID, FeatureIdSetBody10_1, read_feature_id_set_body_10_1,
 };
+use crate::layers::globe_layer_properties::{
+    GLOBE_LAYER_PROPERTIES_CLASS_ID, GlobeLayerProperties10_1, read_bounded_globe_layer_properties,
+};
+pub use crate::layers::hatch_layer_extension::HATCH_LAYER_EXTENSION_CLASS_ID;
+use crate::layers::hatch_layer_extension::{
+    HatchLayerExtension10_1, read_bounded_hatch_layer_extension,
+};
+pub use crate::layers::layer_extensions::{
+    E2_LAYER_EXTENSION_VALUES_CLASS_ID, FEATURE_SERVICE_LAYER_EDIT_EXTENSION_CLASS_ID,
+    REPRESENTATION_LAYER_EXTENSION_CLASS_ID,
+};
+use crate::layers::layer_extensions::{
+    E2LayerExtensionValues10_1, FeatureServiceLayerEditExtension10_1,
+    read_bounded_e2_layer_extension_values, read_bounded_feature_service_layer_edit_extension,
+    read_bounded_representation_layer_extension,
+};
 use crate::layers::legend_format::{
     LEGEND_CLASS_FORMAT_CLASS_ID, LegendClassFormatBody10_1, LegendClassFormatStop10_1,
     read_legend_class_format_body_10_1,
+};
+pub use crate::layers::route_layer_extension::ROUTE_LAYER_EXTENSION_CLASS_ID;
+use crate::layers::route_layer_extension::{
+    RouteLayerExtension10_1, read_bounded_route_layer_extension,
+};
+pub use crate::layers::time_layer_track_extension::TIME_LAYER_TRACK_EXTENSION_CLASS_ID;
+use crate::layers::time_layer_track_extension::{
+    TimeLayerTrackExtension10_1, read_bounded_time_layer_track_extension,
+};
+pub use crate::layers::tracking_filter_layer_extension::TRACKING_FILTER_LAYER_EXTENSION_CLASS_ID;
+use crate::layers::tracking_filter_layer_extension::{
+    TrackingFilterLayerExtension10_1, read_bounded_tracking_filter_layer_extension,
 };
 use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
 use crate::objects::display_symbol::{
@@ -968,7 +996,7 @@ pub enum NumberFormatSlot10_1 {
 }
 
 /// 从已登记的 INumberFormat 新对象头之后按 CLSID 读取对象体。
-pub(super) fn read_number_format_body_for_class_10_1(
+pub(crate) fn read_number_format_body_for_class_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
@@ -1499,7 +1527,7 @@ pub enum RefSlot10_1 {
     BackReference { class_id: [u8; 16], key: u32 },
 }
 
-const TRANSPARENCY_DISPLAY_FILTER_CLASS_ID: [u8; 16] = [
+pub(super) const TRANSPARENCY_DISPLAY_FILTER_CLASS_ID: [u8; 16] = [
     0x65, 0x4a, 0x75, 0xad, 0xb4, 0x13, 0xd3, 0x11, 0xb8, 0x9d, 0x00, 0x60, 0x08, 0x02, 0xe6, 0x03,
 ];
 
@@ -1513,6 +1541,29 @@ pub enum DisplayFilterSlot10_1 {
         base_version: u16,
         base_values: [u32; 2],
     },
+}
+
+// DisplayCore 0x6ebe7fc0 读取本类字段，再委派 0x6eb9f4c0 读基类。
+pub(super) fn read_transparency_display_filter_10_1(
+    reader: &mut Reader<'_>,
+    key: u32,
+) -> io::Result<DisplayFilterSlot10_1> {
+    let version = reader.read_u16_le()?;
+    let filter_short = reader.read_u16_le()?;
+    let base_version = reader.read_u16_le()?;
+    if version > 1 || base_version > 1 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "不支持的透明度过滤器版本",
+        ));
+    }
+    Ok(DisplayFilterSlot10_1::Transparency {
+        key,
+        version,
+        filter_short,
+        base_version,
+        base_values: [reader.read_u32_le()?, reader.read_u32_le()?],
+    })
 }
 
 /// ⑪ ALPC 槽（请求 IID `{1D5849F2-…}`）的分类结果。
@@ -1628,6 +1679,15 @@ pub enum LayerExtension10_1 {
     /// 体内停止经 `body.stop` 以
     /// [`SuccessorStop10_1::EditTemplateManagerBody`] 传播）。
     EditTemplateManager(Box<EditTemplateManagerBody10_1>),
+    /// 零长度旧式扩展由原生加载器跳过。
+    RepresentationLayerExtension(Option<i16>),
+    RouteLayerExtension(Option<Box<RouteLayerExtension10_1>>),
+    HatchLayerExtension(Option<Box<HatchLayerExtension10_1>>),
+    TrackingFilterLayerExtension(Option<Box<TrackingFilterLayerExtension10_1>>),
+    E2LayerExtensionValues(Option<E2LayerExtensionValues10_1>),
+    FeatureServiceLayerEditExtension(Option<Box<FeatureServiceLayerEditExtension10_1>>),
+    GlobeLayerProperties(Option<Box<GlobeLayerProperties10_1>>),
+    TimeLayerTrackExtension(Option<Box<TimeLayerTrackExtension10_1>>),
 }
 
 /// 版本 0x1c..0x1f 分支的标量块（10.1 docVersion 不写；本轮静态闭合，无样
@@ -1699,7 +1759,7 @@ pub fn read_feature_layer_successor_10_1(
     // 登记表副本：循环与槽位登记先发生在副本上，整体成功才随外层提交。
     let mut staged_table = table.clone();
 
-    // ⑤ IHyperlink 计数循环：新对象为停止点（Hyperlink 族体未闭合）。
+    // ⑤ IHyperlink 计数循环：已知类读对象体，空标记和回引各计一项。
     let hyperlink_count = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
     let mut hyperlinks = Vec::new();
     let mut stop = None;
@@ -1975,23 +2035,7 @@ pub fn read_feature_layer_successor_10_1(
                     class_id: TRANSPARENCY_DISPLAY_FILTER_CLASS_ID,
                     key,
                 } => {
-                    // DisplayCore 0x6ebe7fc0 读取本类字段，再委派 0x6eb9f4c0 读基类。
-                    let version = trial.read_u16_le()?;
-                    let filter_short = trial.read_u16_le()?;
-                    let base_version = trial.read_u16_le()?;
-                    if version > 1 || base_version > 1 {
-                        return Err(io::Error::new(
-                            ErrorKind::InvalidData,
-                            "不支持的透明度过滤器版本",
-                        ));
-                    }
-                    display_filter = Some(DisplayFilterSlot10_1::Transparency {
-                        key,
-                        version,
-                        filter_short,
-                        base_version,
-                        base_values: [trial.read_u32_le()?, trial.read_u32_le()?],
-                    });
+                    display_filter = Some(read_transparency_display_filter_10_1(&mut trial, key)?);
                 }
                 ObjectEntry10_1::NewObject { class_id, key } => {
                     stop = Some(SuccessorStop10_1::DisplayFilterUnsupported { class_id, key });
@@ -2101,7 +2145,7 @@ pub fn read_feature_layer_successor_10_1(
         //    直接按 CLSID 实例化，不经对象流登记；尺寸 = 体字节数，不含
         //    CLSID 与尺寸字段本身——样本声明 387、体 0xfe7..0x116a 恰 387）。
         //    第九轮「[CLSID][键][体]、尺寸覆盖三者」的记录撤销。已知类
-        //    EditTemplateManager 体读取（键参数恒 0，扩展段无键）；其余类
+        //    已确认的扩展体（EditTemplateManager 键参数恒 0）；其余类
         //    为停止点（回退到该条目 [int64 尺寸] 字段起点，该条目整体不
         //    消费）。
         if stop.is_none() && (fl_version as i16) >= 0xb {
@@ -2140,6 +2184,115 @@ pub fn read_feature_layer_successor_10_1(
                         ));
                     }
                     extensions.push(LayerExtension10_1::EditTemplateManager(Box::new(body)));
+                } else if matches!(
+                    class_id,
+                    REPRESENTATION_LAYER_EXTENSION_CLASS_ID
+                        | ROUTE_LAYER_EXTENSION_CLASS_ID
+                        | HATCH_LAYER_EXTENSION_CLASS_ID
+                        | TRACKING_FILTER_LAYER_EXTENSION_CLASS_ID
+                        | E2_LAYER_EXTENSION_VALUES_CLASS_ID
+                        | FEATURE_SERVICE_LAYER_EDIT_EXTENSION_CLASS_ID
+                        | GLOBE_LAYER_PROPERTIES_CLASS_ID
+                        | TIME_LAYER_TRACK_EXTENSION_CLASS_ID
+                ) {
+                    let size = usize::try_from(size)
+                        .ok()
+                        .filter(|&size| size <= max_bytes)
+                        .ok_or_else(|| {
+                            io::Error::new(ErrorKind::InvalidData, "图层扩展体长度超过限额")
+                        })?;
+                    let bytes = (size != 0).then(|| trial.read_bytes(size)).transpose()?;
+                    let extension = match class_id {
+                        GLOBE_LAYER_PROPERTIES_CLASS_ID => {
+                            LayerExtension10_1::GlobeLayerProperties(
+                                bytes
+                                    .map(|bytes| {
+                                        read_bounded_globe_layer_properties(
+                                            bytes,
+                                            max_bytes,
+                                            &mut staged_table,
+                                        )
+                                    })
+                                    .transpose()?,
+                            )
+                        }
+                        TIME_LAYER_TRACK_EXTENSION_CLASS_ID => {
+                            LayerExtension10_1::TimeLayerTrackExtension(
+                                bytes
+                                    .map(|bytes| {
+                                        read_bounded_time_layer_track_extension(
+                                            bytes,
+                                            max_bytes,
+                                            &mut staged_table,
+                                        )
+                                    })
+                                    .transpose()?,
+                            )
+                        }
+                        FEATURE_SERVICE_LAYER_EDIT_EXTENSION_CLASS_ID => {
+                            LayerExtension10_1::FeatureServiceLayerEditExtension(
+                                bytes
+                                    .map(|bytes| {
+                                        read_bounded_feature_service_layer_edit_extension(
+                                            bytes,
+                                            max_bytes,
+                                            &mut staged_table,
+                                        )
+                                    })
+                                    .transpose()?,
+                            )
+                        }
+                        E2_LAYER_EXTENSION_VALUES_CLASS_ID => {
+                            LayerExtension10_1::E2LayerExtensionValues(
+                                bytes
+                                    .map(|bytes| {
+                                        read_bounded_e2_layer_extension_values(bytes, &staged_table)
+                                    })
+                                    .transpose()?,
+                            )
+                        }
+                        TRACKING_FILTER_LAYER_EXTENSION_CLASS_ID => {
+                            LayerExtension10_1::TrackingFilterLayerExtension(
+                                bytes
+                                    .map(|bytes| {
+                                        read_bounded_tracking_filter_layer_extension(
+                                            bytes,
+                                            max_bytes,
+                                            &mut staged_table,
+                                        )
+                                    })
+                                    .transpose()?,
+                            )
+                        }
+                        ROUTE_LAYER_EXTENSION_CLASS_ID => LayerExtension10_1::RouteLayerExtension(
+                            bytes
+                                .map(|bytes| {
+                                    read_bounded_route_layer_extension(
+                                        bytes,
+                                        max_bytes,
+                                        &mut staged_table,
+                                    )
+                                })
+                                .transpose()?,
+                        ),
+                        HATCH_LAYER_EXTENSION_CLASS_ID => LayerExtension10_1::HatchLayerExtension(
+                            bytes
+                                .map(|bytes| {
+                                    read_bounded_hatch_layer_extension(
+                                        bytes,
+                                        max_bytes,
+                                        &mut staged_table,
+                                    )
+                                })
+                                .transpose()?,
+                        ),
+                        _ => LayerExtension10_1::RepresentationLayerExtension(
+                            bytes
+                                .map(read_bounded_representation_layer_extension)
+                                .transpose()?,
+                        ),
+                    };
+                    extensions.push(extension);
                 } else {
                     stop = Some(SuccessorStop10_1::LayerExtensionUnsupported { class_id, size });
                     trial = reposition_to(reader, entry_offset);

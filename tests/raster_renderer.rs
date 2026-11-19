@@ -206,7 +206,10 @@ fn tagged_rgb_filter_consumes_empty_rasters_and_preserves_next_record() {
 #[test]
 fn tagged_rgb_filter_reads_raster_names_and_references_with_the_original_stream() {
     use mxd2qgz::layers::fgdb_raster_dataset_name::FGDB_RASTER_DATASET_NAME_CLASS_ID;
-    use mxd2qgz::layers::raster_dataset_name::RASTER_DATASET_NAME_CLASS_ID;
+    use mxd2qgz::layers::raster_dataset_name::{
+        ACCESS_RASTER_DATASET_NAME_CLASS_ID, RASTER_DATASET_NAME_CLASS_ID,
+        RASTER_DATASET_NAME83_CLASS_ID, SDE_RASTER_DATASET_NAME_CLASS_ID,
+    };
     use mxd2qgz::layers::raster_renderer::{LoadedRasterName10_1, PansharpeningSlot10_1};
     use mxd2qgz::objects::envelope::ENVELOPE_CLASS_ID;
     use mxd2qgz::objects::geodata_xform::IDENTITY_XFORM_CLASS_ID;
@@ -224,7 +227,10 @@ fn tagged_rgb_filter_reads_raster_names_and_references_with_the_original_stream(
 
     for class_id in [
         RASTER_DATASET_NAME_CLASS_ID,
+        RASTER_DATASET_NAME83_CLASS_ID,
         FGDB_RASTER_DATASET_NAME_CLASS_ID,
+        ACCESS_RASTER_DATASET_NAME_CLASS_ID,
+        SDE_RASTER_DATASET_NAME_CLASS_ID,
     ] {
         let mut bytes = tagged_rgb_filter_prefix();
         let first_raster = bytes.len();
@@ -235,7 +241,12 @@ fn tagged_rgb_filter_reads_raster_names_and_references_with_the_original_stream(
         }
         bytes.extend([0; 16]); // 空工作空间。
         bytes.extend([0; 8]); // 名称版本 4 的两个 int32。
-        if class_id == FGDB_RASTER_DATASET_NAME_CLASS_ID {
+        if matches!(
+            class_id,
+            FGDB_RASTER_DATASET_NAME_CLASS_ID
+                | ACCESS_RASTER_DATASET_NAME_CLASS_ID
+                | SDE_RASTER_DATASET_NAME_CLASS_ID
+        ) {
             record(&mut bytes, 0xff00fa, &[]);
             record(&mut bytes, 1, &29_i32.to_le_bytes());
             record(&mut bytes, 2, &[b'a', 0, 0, 0]);
@@ -245,7 +256,15 @@ fn tagged_rgb_filter_reads_raster_names_and_references_with_the_original_stream(
             bytes.extend(6_i32.to_le_bytes());
             bytes.extend([0xff; 4]);
             bytes.extend([0; 16]);
-            bytes.extend([0xff; 8]); // FileGDB 自身的 RasterIO 结束对。
+            if class_id == ACCESS_RASTER_DATASET_NAME_CLASS_ID {
+                record(&mut bytes, 7, &1_i32.to_le_bytes());
+            }
+            bytes.extend([0xff; 8]); // 数据库名称自身的 RasterIO 结束对。
+        } else if class_id == RASTER_DATASET_NAME83_CLASS_ID {
+            record(&mut bytes, 0xff00fa, &[]);
+            record(&mut bytes, 1, &31_i32.to_le_bytes());
+            record(&mut bytes, 2, &[b'c', 0, 0, 0]);
+            bytes.extend([0xff; 8]);
         }
 
         let bands = bytes.len();
@@ -261,8 +280,15 @@ fn tagged_rgb_filter_reads_raster_names_and_references_with_the_original_stream(
             bytes.extend(ordinate.to_le_bytes());
         }
         entry(&mut bytes, class_id, 72); // 回引名称之后仍写本槽的波段与对象。
-        bytes.extend(1_i32.to_le_bytes());
-        string(&mut bytes, "全色");
+        let second_band_count = if class_id == RASTER_DATASET_NAME83_CLASS_ID {
+            -1_i32
+        } else {
+            1
+        };
+        bytes.extend(second_band_count.to_le_bytes());
+        if second_band_count > 0 {
+            string(&mut bytes, "全色");
+        }
         entry(&mut bytes, IDENTITY_XFORM_CLASS_ID, 73);
         entry(&mut bytes, ENVELOPE_CLASS_ID, 74);
         finish_tagged_rgb_filter(&mut bytes);
@@ -287,11 +313,29 @@ fn tagged_rgb_filter_reads_raster_names_and_references_with_the_original_stream(
         let first = filter.rasters[0].as_ref().unwrap();
         match first.name_body.as_ref().unwrap() {
             LoadedRasterName10_1::Dataset(name) => assert_eq!(name.key, 72),
+            LoadedRasterName10_1::Dataset83 { name, records } => {
+                assert_eq!(name.key, 72);
+                let records = records.as_ref().unwrap();
+                assert_eq!((records.first_long, records.text.as_str()), (31, "c"));
+            }
             LoadedRasterName10_1::FileGeodatabase { name, records } => {
                 assert_eq!(name.delegated_name.key, 72);
                 assert_eq!(records.tag1_value, 29);
             }
+            LoadedRasterName10_1::Database(name) => {
+                assert_eq!(name.delegated_name.key, 72);
+                let records = name.records.as_ref().unwrap();
+                assert_eq!(records.longs_1_4, [29, 7]);
+                assert_eq!(records.strings_2_3_5, ["a", "b", ""]);
+                assert!(records.tag6_name.is_none());
+                assert_eq!(
+                    records.tag7_long,
+                    (class_id == ACCESS_RASTER_DATASET_NAME_CLASS_ID).then_some(1)
+                );
+            }
+            other => panic!("预期测试构造的栅格数据集名称，读取为 {other:?}"),
         }
+        assert_eq!(first.declared_band_count, 2);
         assert_eq!(first.band_names, ["红", "绿"]);
         assert!(first.transform.body.is_some());
         assert_eq!(
@@ -304,7 +348,12 @@ fn tagged_rgb_filter_reads_raster_names_and_references_with_the_original_stream(
             ObjectEntry10_1::BackReference { class_id, key: 72 }
         );
         assert!(second.name_body.is_none());
-        assert_eq!(second.band_names, ["全色"]);
+        assert_eq!(second.declared_band_count, second_band_count);
+        if second_band_count > 0 {
+            assert_eq!(second.band_names, ["全色"]);
+        } else {
+            assert!(second.band_names.is_empty());
+        }
         assert!(matches!(
             second.transform.entry,
             ObjectEntry10_1::BackReference { key: 73, .. }
@@ -449,7 +498,8 @@ fn discrete_renderer_preserves_unsigned_colors_and_the_ramp_key() {
 #[test]
 fn raster_unique_value_reads_both_layouts_and_nested_values() {
     use mxd2qgz::layers::raster_unique_value::{
-        RASTER_UNIQUE_VALUE_RENDERER_CLASS_ID, RasterUniqueValueLayout10_1, UNIQUE_VALUES_CLASS_ID,
+        RASTER_UNIQUE_VALUE_COLORS_CLASS_ID, RASTER_UNIQUE_VALUE_RENDERER_CLASS_ID,
+        RasterUniqueValueColorKey10_1, RasterUniqueValueLayout10_1, UNIQUE_VALUES_CLASS_ID,
     };
     use mxd2qgz::objects::color_ramp::ColorRampSlot10_1;
     use mxd2qgz::objects::property_set::{
@@ -465,7 +515,13 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
         bytes.extend(0_u16.to_le_bytes());
     }
 
-    for version in 1_i32..=4 {
+    for (version, legacy_colors) in [
+        (1_i32, None),
+        (1, Some(0_i32)),
+        (2, Some(1)),
+        (3, None),
+        (4, None),
+    ] {
         let legacy = version < 3;
         let mut bytes = RASTER_UNIQUE_VALUE_RENDERER_CLASS_ID.to_vec();
         bytes.extend(81_u32.to_le_bytes());
@@ -508,7 +564,23 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
         bytes.extend(9_u16.to_le_bytes());
         let tail_object = bytes.len();
         if legacy {
-            bytes.extend([0; 16]);
+            if let Some(string_flag) = legacy_colors {
+                bytes.extend(RASTER_UNIQUE_VALUE_COLORS_CLASS_ID);
+                bytes.extend(82_u32.to_le_bytes());
+                bytes.extend(1_i32.to_le_bytes());
+                bytes.extend(1_i32.to_le_bytes());
+                bytes.extend(string_flag.to_le_bytes());
+                if string_flag == 0 {
+                    bytes.extend(9.25_f64.to_le_bytes());
+                } else {
+                    string(&mut bytes, '甲' as u16);
+                }
+                bytes.extend(2_i32.to_le_bytes());
+                bytes.extend(0xaa00_ff11_u32.to_le_bytes());
+                bytes.extend(0x0000_1234_u32.to_le_bytes());
+            } else {
+                bytes.extend([0; 16]);
+            }
             bytes.extend(1_i32.to_le_bytes());
             bytes.extend(13.25_f64.to_le_bytes());
             bytes.extend(23_i32.to_le_bytes());
@@ -577,12 +649,37 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
         match body.layout {
             RasterUniqueValueLayout10_1::Legacy {
                 before_groups,
+                colors,
                 samples,
                 ..
             } => {
                 assert!(legacy);
                 assert_eq!(before_groups, 17);
                 assert_eq!(samples, [(13.25, 23)]);
+                if let Some(string_flag) = legacy_colors {
+                    assert_eq!(
+                        colors.entry,
+                        ObjectEntry10_1::NewObject {
+                            class_id: RASTER_UNIQUE_VALUE_COLORS_CLASS_ID,
+                            key: 82,
+                        }
+                    );
+                    let colors = colors.body.unwrap();
+                    assert_eq!((colors.version, colors.string_flag), (1, string_flag));
+                    assert_eq!(colors.entries.len(), 1);
+                    assert_eq!(
+                        colors.entries[0].value,
+                        if string_flag == 0 {
+                            RasterUniqueValueColorKey10_1::Number(9.25)
+                        } else {
+                            RasterUniqueValueColorKey10_1::Text("甲".into())
+                        }
+                    );
+                    assert_eq!(colors.entries[0].colors, [0xaa00_ff11, 0x1234]);
+                } else {
+                    assert_eq!(colors.entry, ObjectEntry10_1::Null);
+                    assert!(colors.body.is_none());
+                }
             }
             RasterUniqueValueLayout10_1::Modern {
                 unique_values,
@@ -623,7 +720,7 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
             refs.len(),
             if version == 4 {
                 3
-            } else if legacy {
+            } else if legacy && legacy_colors.is_none() {
                 1
             } else {
                 2
@@ -643,6 +740,12 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
         let mut broken = bytes.clone();
         broken[tail_object] ^= 1;
         assert_rollback(&broken);
+        if legacy_colors.is_some() {
+            let count = tail_object + 24;
+            let mut broken = bytes.clone();
+            broken[count..count + 4].copy_from_slice(&i32::MAX.to_le_bytes());
+            assert_rollback(&broken);
+        }
         bytes[value_count..value_count + 4].copy_from_slice(&i32::MAX.to_le_bytes());
         assert_rollback(&bytes);
     }

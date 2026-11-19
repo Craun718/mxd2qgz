@@ -91,6 +91,7 @@ use crate::layers::feature_layer::{
 };
 use crate::layers::feature_layer_tail::SuccessorStop10_1;
 use crate::layers::layer_list::FEATURE_LAYER_CLASS_ID;
+use crate::maps::picture_element::PictureElementKind10_1;
 use crate::objects::element_body::{
     ElementBody10_1, ElementBodyStop10_1, LINE_ELEMENT_CLASS_ID, MARKER_ELEMENT_CLASS_ID,
     PARAGRAPH_TEXT_ELEMENT_CLASS_ID, TEXT_ELEMENT_CLASS_ID, read_element_body_of_class_10_1,
@@ -513,7 +514,8 @@ pub fn read_composite_graphics_layer_prefix_10_1(
                                 MARKER_ELEMENT_CLASS_ID,
                                 LINE_ELEMENT_CLASS_ID,
                             ]
-                            .contains(&class_id) =>
+                            .contains(&class_id)
+                                || PictureElementKind10_1::from_class(&class_id).is_some() =>
                         {
                             let body = read_element_body_of_class_10_1(
                                 &class_id,

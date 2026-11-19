@@ -76,6 +76,10 @@
 //!   写 2），本读取器按相同路径处理并原样保留标志值；
 //! - 图层列表元素的业务语义（绘制顺序、图层树展开方式）不在本模块范围。
 
+use crate::layers::cad_layer::{
+    CAD_FEATURE_LAYER_CLASS_ID, CAD_LAYER_CLASS_ID, CadFeatureLayer10_1, CadLayer10_1,
+    read_cad_feature_layer_10_1, read_cad_layer_10_1,
+};
 use crate::layers::composite_graphics::read_composite_graphics_layer_prefix_10_1;
 use crate::layers::fdo_graphics_layer::{
     FDO_GRAPHICS_LAYER_CLASS_ID, FdoGraphicsLayerPrefix10_1, read_fdo_graphics_layer_prefix_10_1,
@@ -107,6 +111,14 @@ pub(crate) const RASTER_LAYER_CLASS_ID: [u8; 16] = [
     0xc9, 0x71, 0x23, 0xd0, 0xf7, 0x35, 0xd2, 0x11, 0xb1, 0xf2, 0x00, 0xc0, 0x4f, 0x8e, 0xde, 0xff,
 ];
 
+use crate::layers::graphics_3d::{
+    GLOBE_GRAPHICS_LAYER_CLASS_ID, GRAPHICS_LAYER_3D_CLASS_ID, Graphics3dLayer10_1,
+    read_graphics_3d_layer_10_1,
+};
+
+use super::cache_tile_reader::{TiledLayer10_1, is_tiled_layer, read_tiled_layer_10_1};
+use super::wcs_layer::{WCS_LAYER_CLASS_ID, WcsLayer10_1, read_wcs_layer_body_10_1};
+
 /// 类标识的 32 字符小写十六进制串（诊断用）：实现移至
 /// [`crate::storage::class_id_hex`]（消除 objects→layers 依赖倒置），此处保
 /// 留原名重导出。
@@ -133,8 +145,14 @@ pub enum LayerBodyPrefix10_1 {
     /// FDOGraphicsLayer 体前缀（版本、int32/short 标量、关联要素图层
     /// ILayer 槽、IElementCollection2 槽、委派 FeatureLayer 体，第六轮闭合）。
     FdoGraphicsLayer(Box<FdoGraphicsLayerPrefix10_1>),
+    /// Scene 或 Globe 图形层完整对象体。
+    Graphics3d(Box<Graphics3dLayer10_1>),
     /// 有界 RasterLayer 的已确认前缀。
     RasterLayer(crate::layers::raster_layer::RasterLayerPrefix10_1),
+    WcsLayer(Box<WcsLayer10_1>),
+    TiledLayer(Box<TiledLayer10_1>),
+    CadLayer(Box<CadLayer10_1>),
+    CadFeatureLayer(Box<CadFeatureLayer10_1>),
     /// 有界 ImageServerLayer 的 IPersistVariant 体，可能在未知对象前停止。
     ImageServerLayer(Box<crate::layers::image_server_layer_tail::ImageServerLayerBody10_1>),
     /// 有界 BasemapLayer 的结果对象与子图层回引。
@@ -152,7 +170,16 @@ impl LayerBodyPrefix10_1 {
             Self::FeatureLayer(prefix) => &prefix.name,
             Self::GroupLayer(prefix) => &prefix.name,
             Self::CompositeGraphicsLayer(prefix) => &prefix.name,
+            Self::Graphics3d(body) => &body.name,
+            Self::TiledLayer(body) => body.name(),
+            Self::CadLayer(body) => &body.name,
+            Self::CadFeatureLayer(body) => body.feature.as_ref().map_or("", |base| &base.name),
             Self::RasterLayer(prefix) => &prefix.first_string,
+            Self::WcsLayer(body) => body
+                .raster
+                .body
+                .as_ref()
+                .map_or("", |raster| &raster.first_string),
             Self::ImageServerLayer(body) => &body.prefix.name,
             Self::BasemapLayer(prefix) => &prefix.name,
             Self::FdoGraphicsLayer(prefix) => match &prefix.associated_layer {
@@ -205,9 +232,9 @@ pub struct UnknownBodyRange {
 pub struct LayerListEntry {
     /// 条目序号（0 起，即列表内的绘制顺序位置候选）。
     pub index: usize,
-    /// 条目起点偏移（2 字节标志处，相对传入 Reader 的底层字节）。
+    /// 条目起点偏移，相对传入 Reader 的底层字节。
     pub offset: usize,
-    /// 2 字节标志原始值（1/2/3；其他值在读取时已按原生 0x80004005 语义拒绝）。
+    /// 2 字节标志原始值（1/2/3）；无标志的旧版条目记为 0。
     pub flag: u16,
     /// ExtraSafe 8 字节前缀 `[A][B]` 原始位模式；标志 1 无前缀，为 `None`。
     pub prefix: Option<(u32, u32)>,
@@ -229,7 +256,11 @@ impl LayerListEntry {
     /// 单行诊断描述：标志、前缀 A/B、分类、类标识十六进制、键、体前缀与有界
     /// 体范围。
     pub fn describe(&self) -> String {
-        let mut parts = vec![format!("标志 {}", self.flag)];
+        let mut parts = vec![if self.flag == 0 {
+            "旧版无标志条目".to_string()
+        } else {
+            format!("标志 {}", self.flag)
+        }];
         if let Some((a, b)) = self.prefix {
             parts.push(format!("前缀 A={a} B={b}"));
         }
@@ -246,6 +277,18 @@ impl LayerListEntry {
             }
         }
         match &self.parsed {
+            Some(LayerBodyPrefix10_1::TiledLayer(body)) => {
+                parts.push(format!("瓦片图层对象体已解析：名称 {:?}", body.name()));
+            }
+            Some(LayerBodyPrefix10_1::CadLayer(body)) => {
+                parts.push(format!(
+                    "CadLayer 对象体已解析（版本 {}，名称 {:?}）",
+                    body.version, body.name
+                ));
+            }
+            Some(LayerBodyPrefix10_1::WcsLayer(body)) => {
+                parts.push(format!("WCSLayer 对象体已解析：版本 {}", body.version));
+            }
             Some(LayerBodyPrefix10_1::RasterLayer(prefix)) => {
                 parts.push(format!("RasterLayer 体前缀已解析：版本 {}", prefix.version));
                 if let Some(continuation) = &prefix.continuation
@@ -265,6 +308,57 @@ impl LayerListEntry {
                         Some(RasterDatasetNameEntryBody10_1::Dataset(_)) => {
                             parts.push("RasterDatasetName 对象体已解析".into());
                         }
+                        Some(RasterDatasetNameEntryBody10_1::Cache(_)) => {
+                            parts.push("CacheRasterDatasetName 对象体已解析".into());
+                        }
+                        Some(RasterDatasetNameEntryBody10_1::WcsCoverage(_)) => {
+                            parts.push("WCSCoverageName 对象体已解析".into());
+                        }
+                        Some(RasterDatasetNameEntryBody10_1::Dataset83 { .. }) => {
+                            parts.push("RasterDatasetName83 对象体已解析".into());
+                        }
+                        Some(RasterDatasetNameEntryBody10_1::Band(_)) => {
+                            parts.push("RasterBandName 对象体已解析".into());
+                        }
+                        Some(RasterDatasetNameEntryBody10_1::BandCollection(_)) => {
+                            parts.push("RasterBandCollectionName 对象体已解析".into());
+                        }
+                        Some(RasterDatasetNameEntryBody10_1::Catalog(_)) => {
+                            parts.push("RasterCatalogName 的委派名称体已解析".into());
+                        }
+                        Some(RasterDatasetNameEntryBody10_1::Mosaic(_)) => {
+                            parts.push("MosaicDatasetName 对象体已解析".into());
+                        }
+                        Some(RasterDatasetNameEntryBody10_1::Database(database)) => {
+                            use crate::layers::raster_dataset_name::ACCESS_RASTER_DATASET_NAME_CLASS_ID;
+                            let name = if database.class_id == ACCESS_RASTER_DATASET_NAME_CLASS_ID {
+                                "AccessRasterDatasetName"
+                            } else {
+                                "SdeRasterDatasetName"
+                            };
+                            parts.push(format!("{name} 对象体已解析"));
+                        }
+                        Some(RasterDatasetNameEntryBody10_1::NetCdf(_)) => {
+                            parts.push("NetCDFRasterDatasetName 对象体已解析".into());
+                        }
+                        Some(RasterDatasetNameEntryBody10_1::ImageService(_)) => {
+                            parts.push("ISRasterDatasetName 对象体已解析".into());
+                        }
+                        Some(RasterDatasetNameEntryBody10_1::ImageServerReference(_)) => {
+                            parts.push("ImageServerName 对象体已解析".into());
+                        }
+                        Some(RasterDatasetNameEntryBody10_1::Function(_)) => {
+                            parts.push("FunctionRasterDatasetName 对象体已解析".into());
+                        }
+                        Some(RasterDatasetNameEntryBody10_1::InternetTiledLayer(_)) => {
+                            parts.push("InternetTiledLayerName 对象体已解析".into());
+                        }
+                        Some(RasterDatasetNameEntryBody10_1::AisImageService(_)) => {
+                            parts.push("AISImageServiceName 对象体已解析".into());
+                        }
+                        Some(RasterDatasetNameEntryBody10_1::RasterType(_)) => {
+                            parts.push("RasterTypeName 对象体已解析".into());
+                        }
                         Some(RasterDatasetNameEntryBody10_1::FileGeodatabase { .. }) => {
                             parts.push("FgdbRasterDatasetName 的委派名称体已解析".into());
                             parts.push("FgdbRasterDatasetName 的 RasterIO 已读到结束记录".into());
@@ -277,7 +371,8 @@ impl LayerListEntry {
                 }
                 if let Some(renderer) = &prefix.renderer {
                     use crate::layers::raster_renderer::RasterRendererPrefix10_1::{
-                        Classify, Colormap, Discrete, LegacyRgb, Rgb, Simple, Stretch, UniqueValue,
+                        Classify, Colormap, Discrete, LegacyRgb, Rgb, Sai, Simple, Stretch,
+                        UniqueValue,
                     };
                     parts.push(match &renderer.body {
                         Some(Colormap { version, stop, .. }) => match stop {
@@ -303,6 +398,9 @@ impl LayerListEntry {
                         ),
                         Some(Simple { version, .. }) => {
                             format!("SimpleRasterRenderer v{version} 对象体已解析")
+                        }
+                        Some(Sai { version, .. }) => {
+                            format!("SAIRenderer v{version} 对象体已解析")
                         }
                         Some(Discrete(body)) => format!(
                             "离散色渲染器 v{} 对象体已解析，{} 个颜色值",
@@ -372,13 +470,22 @@ pub enum LayerListStop {
         class_id: [u8; 16],
         key: u32,
     },
+    /// 旧图层体未完整读取，游标保留在条目起点。
+    LegacyObjectBody {
+        index: usize,
+        offset: usize,
+        class_id: [u8; 16],
+        key: u32,
+    },
 }
 
 /// 图层列表（计数 + 条目 + 活动索引）的解析结果。
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayerList10_1 {
-    /// 声明的图层计数原始值（样本 6）。负数在读取时已拒绝。
+    /// 已读取的列表计数之和。负数在读取时已拒绝。
     pub count: i32,
+    /// 旧版双列表的各自计数；第一列表中途停止时第二计数未知。
+    pub legacy_counts: Option<(i32, Option<i32>)>,
     /// 已消费的条目（按流内顺序）。停止时少于 `count`。
     pub entries: Vec<LayerListEntry>,
     /// 循环完成后读取的活动图层索引原始位模式（样本 -1 = 无活动图层候选）；
@@ -456,7 +563,22 @@ pub fn read_layer_list_10_1(
                 &entry.parsed,
                 Some(LayerBodyPrefix10_1::FdoGraphicsLayer(body))
                     if body.completion().is_some()
+            ) || matches!(
+                &entry.parsed,
+                Some(
+                    LayerBodyPrefix10_1::Graphics3d(_)
+                        | LayerBodyPrefix10_1::WcsLayer(_)
+                        | LayerBodyPrefix10_1::CadLayer(_)
+                        | LayerBodyPrefix10_1::CadFeatureLayer(_)
+                        | LayerBodyPrefix10_1::TiledLayer(_)
+                )
             );
+            let completed = completed
+                || matches!(&entry.parsed, Some(LayerBodyPrefix10_1::GroupLayer(body))
+                    if body.stop == crate::layers::group_layer::GroupLayerStop10_1::Complete);
+            let completed = completed
+                || matches!(&entry.parsed, Some(LayerBodyPrefix10_1::RasterLayer(body))
+                    if body.tail.is_some());
             if !completed {
                 stop = Some(LayerListStop::Flag1NewObjectBody {
                     index,
@@ -480,6 +602,7 @@ pub fn read_layer_list_10_1(
 
     let result = LayerList10_1 {
         count,
+        legacy_counts: None,
         entries,
         active_index,
         stop,
@@ -487,6 +610,115 @@ pub fn read_layer_list_10_1(
     };
     *reader = trial;
     *table = trial_table;
+    Ok(result)
+}
+
+/// Map.dll 0x794038a0 的双列表。第一列表在 v18–v22 使用 ExtraSafe；
+/// 第二列表始终是普通 ILayer 对象，两者共用对象键表。
+pub(crate) fn read_legacy_layer_lists_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    version: u16,
+) -> io::Result<LayerList10_1> {
+    if version == 17 {
+        return Err(invalid(reader.position(), "原生拒绝 Map v17 的旧图层列表"));
+    }
+    let mut trial = reader.clone();
+    let mut staged = table.clone();
+    let mut counts = [None; 2];
+    let mut count = 0_i32;
+    let mut entries = Vec::new();
+    let mut stop = None;
+    for (list_index, slot) in counts.iter_mut().enumerate() {
+        let extra_safe = list_index == 0 && version > 17;
+        let min_width = if extra_safe { 8 } else { 16 };
+        let offset = trial.position();
+        let size = trial.read_u32_le()? as i32;
+        let width = usize::try_from(size)
+            .ok()
+            .and_then(|size| size.checked_mul(min_width))
+            .filter(|&width| width <= trial.remaining() && width <= max_bytes);
+        if width.is_none() {
+            return Err(invalid(offset, "旧图层列表计数为负数或超过范围"));
+        }
+        count = count
+            .checked_add(size)
+            .ok_or_else(|| invalid(offset, "旧图层列表累计计数溢出"))?;
+        *slot = Some(size);
+        for _ in 0..size {
+            let index = entries.len();
+            let offset = trial.position();
+            let mut current = trial.clone();
+            let prefix = extra_safe
+                .then(|| -> io::Result<_> { Ok((current.read_u32_le()?, current.read_u32_le()?)) })
+                .transpose()?;
+            let mut refs = staged.clone();
+            let mut entry = LayerListEntry {
+                index,
+                offset,
+                flag: 0,
+                prefix,
+                object: LayerEntryObject::Empty,
+                body: None,
+                parsed: None,
+                parse_note: None,
+            };
+            if prefix != Some((0, 0)) {
+                let mut body = if let Some((a, b)) = prefix {
+                    // B 非零时原生从前缀末尾寻址；否则 A 给出对象区间。
+                    let size = if b != 0 { b } else { a } as usize;
+                    Some(current.read_region(size)?)
+                } else {
+                    None
+                };
+                let objects = body.as_mut().unwrap_or(&mut current);
+                let object = read_object_entry_10_1(objects, &mut refs)?;
+                entry.object = LayerEntryObject::Entry(object);
+                if let ObjectEntry10_1::NewObject { class_id, key } = object {
+                    match read_complete_layer_body_10_1(objects, class_id, max_bytes, &mut refs) {
+                        Ok(parsed) => entry.parsed = Some(parsed),
+                        Err(error) => {
+                            stop = Some(LayerListStop::LegacyObjectBody {
+                                index,
+                                offset,
+                                class_id,
+                                key,
+                            });
+                            entry.parse_note = Some(error.to_string());
+                            entries.push(entry);
+                            break;
+                        }
+                    }
+                }
+                if let Some(body) = body
+                    && body.remaining() != 0
+                {
+                    return Err(invalid(offset, "旧图层体未完整消费 ExtraSafe 区间"));
+                }
+            }
+            trial = current;
+            staged = refs;
+            entries.push(entry);
+        }
+        if stop.is_some() {
+            break;
+        }
+    }
+    let active_index = stop
+        .is_none()
+        .then(|| trial.read_u32_le().map(|raw| raw as i32))
+        .transpose()?;
+    let result = LayerList10_1 {
+        count,
+        legacy_counts: Some((counts[0].expect("已读取首个计数"), counts[1])),
+        entries,
+        active_index,
+        stop,
+        remaining_bytes: trial.remaining(),
+    };
+    *reader = trial;
+    *table = staged;
     Ok(result)
 }
 
@@ -558,13 +790,53 @@ fn read_entry(
             // Basemap 必须在外层已证或既有观察推定的界内读取；子读取器偏移相对
             // 有界切片，只有成功时才提交它完整读取的对象登记。
             let dispatch = if *class_id == RASTER_LAYER_CLASS_ID {
-                // RasterLayer 只在 ExtraSafe 外层界内进入对象体读取器。
                 if let Some((end, _)) = bound {
                     read_bounded_raster_prefix(trial, end, max_bytes, offset, trial_table)
                         .map(|prefix| Some(LayerBodyPrefix10_1::RasterLayer(prefix)))
                 } else {
-                    Ok(None)
+                    read_complete_layer_body_10_1(trial, *class_id, max_bytes, trial_table)
+                        .map(Some)
                 }
+            } else if *class_id == WCS_LAYER_CLASS_ID {
+                if let Some((end, _)) = bound {
+                    let mut source = trial.clone();
+                    let len = end
+                        .checked_sub(source.position())
+                        .ok_or_else(|| invalid(offset, "WCSLayer 外层边界早于对象体"))?;
+                    let mut body = source.read_region(len)?;
+                    let parsed = read_wcs_layer_body_10_1(&mut body, max_bytes, trial_table, true);
+                    parsed.map(|body| {
+                        *trial = source;
+                        Some(LayerBodyPrefix10_1::WcsLayer(Box::new(body)))
+                    })
+                } else {
+                    read_complete_layer_body_10_1(trial, *class_id, max_bytes, trial_table)
+                        .map(Some)
+                }
+            } else if (matches!(*class_id, CAD_LAYER_CLASS_ID | CAD_FEATURE_LAYER_CLASS_ID)
+                || is_tiled_layer(*class_id)
+                || matches!(
+                    *class_id,
+                    GRAPHICS_LAYER_3D_CLASS_ID | GLOBE_GRAPHICS_LAYER_CLASS_ID
+                ))
+                && let Some((end, _)) = bound
+            {
+                let mut source = trial.clone();
+                let len = end
+                    .checked_sub(source.position())
+                    .ok_or_else(|| invalid(offset, "图层外层边界早于对象体"))?;
+                let mut body = source.read_region(len)?;
+                let mut refs = trial_table.clone();
+                read_complete_layer_body_10_1(&mut body, *class_id, max_bytes, &mut refs).and_then(
+                    |parsed| {
+                        if body.remaining() != 0 {
+                            return Err(invalid(offset, "图层实际消费与 ExtraSafe 边界不一致"));
+                        }
+                        trial.read_bytes(body.position())?;
+                        *trial_table = refs;
+                        Ok(Some(parsed))
+                    },
+                )
             } else if *class_id == crate::layers::image_server_layer::IMAGE_SERVER_LAYER_CLASS_ID
                 && let Some((end, _)) = bound
             {
@@ -656,6 +928,8 @@ fn read_entry(
                     }
                     Err(error) => Err(error),
                 }
+            } else if *class_id == GROUP_LAYER_CLASS_ID {
+                read_group_layer_list_body(trial, bound.map(|(end, _)| end), max_bytes, trial_table)
             } else {
                 parse_body_prefix(trial, *class_id, max_bytes, trial_table, 0)
             };
@@ -721,6 +995,33 @@ fn read_bounded_raster_prefix(
     Ok(prefix)
 }
 
+/// 组图层优先完整读取；已有前缀读取器继续提供未知子层的诊断。
+fn read_group_layer_list_body(
+    reader: &mut Reader<'_>,
+    end: Option<usize>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<Option<LayerBodyPrefix10_1>> {
+    let mut trial = reader.clone();
+    if let Some(end) = end {
+        let len = end
+            .checked_sub(reader.position())
+            .ok_or_else(|| invalid(reader.position(), "GroupLayer 外层边界早于对象体"))?;
+        trial = trial.read_region(len)?;
+    }
+    let start = trial.position();
+    let mut refs = table.clone();
+    if let Ok(body) =
+        read_complete_layer_body_10_1(&mut trial, GROUP_LAYER_CLASS_ID, max_bytes, &mut refs)
+        && (end.is_none() || trial.remaining() == 0)
+    {
+        reader.read_bytes(trial.position() - start)?;
+        *table = refs;
+        return Ok(Some(body));
+    }
+    parse_body_prefix(reader, GROUP_LAYER_CLASS_ID, max_bytes, table, 0)
+}
+
 /// 按类标识分派新对象体的已确认前缀解析（组图层子图层递归共用，见
 /// [`crate::layers::group_layer`]）。
 ///
@@ -759,9 +1060,106 @@ pub(crate) fn parse_body_prefix(
         Ok(Some(LayerBodyPrefix10_1::FdoGraphicsLayer(Box::new(
             read_fdo_graphics_layer_prefix_10_1(trial, max_bytes, trial_table)?,
         ))))
+    } else if class_id == WCS_LAYER_CLASS_ID {
+        read_wcs_layer_body_10_1(trial, max_bytes, trial_table, false)
+            .map(|body| Some(LayerBodyPrefix10_1::WcsLayer(Box::new(body))))
+    } else if class_id == CAD_LAYER_CLASS_ID {
+        read_cad_layer_10_1(trial, max_bytes, trial_table)
+            .map(|body| Some(LayerBodyPrefix10_1::CadLayer(Box::new(body))))
+    } else if class_id == CAD_FEATURE_LAYER_CLASS_ID {
+        read_cad_feature_layer_10_1(trial, max_bytes, trial_table)
+            .map(|body| Some(LayerBodyPrefix10_1::CadFeatureLayer(Box::new(body))))
+    } else if is_tiled_layer(class_id) {
+        read_tiled_layer_10_1(class_id, trial, max_bytes, trial_table)
+            .map(|body| Some(LayerBodyPrefix10_1::TiledLayer(Box::new(body))))
+    } else if matches!(
+        class_id,
+        GRAPHICS_LAYER_3D_CLASS_ID | GLOBE_GRAPHICS_LAYER_CLASS_ID
+    ) {
+        Ok(Some(LayerBodyPrefix10_1::Graphics3d(Box::new(
+            read_graphics_3d_layer_10_1(&class_id, trial, max_bytes, trial_table)?,
+        ))))
     } else {
         Ok(None)
     }
+}
+
+/// 消费普通 LoadObject 槽的完整图层体。没有外层长度，部分读取结果不提交。
+pub(crate) fn read_complete_layer_body_10_1(
+    reader: &mut Reader<'_>,
+    class_id: [u8; 16],
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<LayerBodyPrefix10_1> {
+    use crate::layers::composite_graphics::CompositeGraphicsLayerStop10_1;
+    use crate::layers::feature_layer::FeatureLayerStop10_1;
+    use crate::layers::feature_layer_tail::SuccessorStop10_1;
+
+    let unsupported = |reason| {
+        io::Error::new(
+            ErrorKind::Unsupported,
+            format!("图层类 {}：{reason}", class_id_hex(&class_id)),
+        )
+    };
+    let mut trial = reader.clone();
+    let mut refs = table.clone();
+    let body = refs
+        .with_nested_graphics(|refs| match class_id {
+            crate::layers::basemap_layer::BASEMAP_LAYER_CLASS_ID => {
+                crate::layers::basemap_layer::read_basemap_prefix_10_1(&mut trial, max_bytes, refs)
+                    .map(|body| Some(LayerBodyPrefix10_1::BasemapLayer(body)))
+            }
+            crate::layers::image_server_layer::IMAGE_SERVER_LAYER_CLASS_ID => {
+                crate::layers::image_server_layer_tail::read_image_server_layer_body_10_1(
+                    &mut trial, max_bytes, refs,
+                )
+                .map(|body| Some(LayerBodyPrefix10_1::ImageServerLayer(Box::new(body))))
+            }
+            RASTER_LAYER_CLASS_ID => crate::layers::raster_layer::read_inline_raster_body_10_1(
+                &mut trial, max_bytes, refs,
+            )
+            .map(|body| Some(LayerBodyPrefix10_1::RasterLayer(body))),
+            GROUP_LAYER_CLASS_ID => {
+                crate::layers::group_layer::read_group_layer_body_10_1(&mut trial, max_bytes, refs)
+                    .map(|body| Some(LayerBodyPrefix10_1::GroupLayer(Box::new(body))))
+            }
+            _ => parse_body_prefix(&mut trial, class_id, max_bytes, refs, 0),
+        })?
+        .ok_or_else(|| unsupported("当前没有无外层长度的对象体读取器"))?;
+    let complete = match &body {
+        LayerBodyPrefix10_1::FeatureLayer(body) => matches!(
+            body.stop,
+            FeatureLayerStop10_1::Successor(SuccessorStop10_1::TailCompleted)
+        ),
+        LayerBodyPrefix10_1::CompositeGraphicsLayer(body) => {
+            body.stop == CompositeGraphicsLayerStop10_1::Completed
+        }
+        LayerBodyPrefix10_1::FdoGraphicsLayer(body) => body.completion().is_some(),
+        LayerBodyPrefix10_1::GroupLayer(body) => {
+            body.stop == crate::layers::group_layer::GroupLayerStop10_1::Complete
+        }
+        LayerBodyPrefix10_1::RasterLayer(body) => body.tail.is_some(),
+        LayerBodyPrefix10_1::Graphics3d(_)
+        | LayerBodyPrefix10_1::WcsLayer(_)
+        | LayerBodyPrefix10_1::CadLayer(_)
+        | LayerBodyPrefix10_1::CadFeatureLayer(_)
+        | LayerBodyPrefix10_1::TiledLayer(_) => true,
+        LayerBodyPrefix10_1::BasemapLayer(body) => {
+            body.stop == crate::layers::basemap_layer::BasemapStop10_1::Complete
+        }
+        LayerBodyPrefix10_1::ImageServerLayer(body) => {
+            if let Some(stop) = &body.stop {
+                return Err(io::Error::new(stop.error_kind, stop.reason.clone()));
+            }
+            true
+        }
+    };
+    if !complete {
+        return Err(unsupported("对象体未完整读取"));
+    }
+    *reader = trial;
+    *table = refs;
+    Ok(body)
 }
 
 /// 计算条目对象部分的终点（有界跳过目标）与跳过依据。

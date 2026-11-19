@@ -1,6 +1,9 @@
 //! ArcMap 10.1 ImageServerLayer 的 IPersistVariant 前缀。
 //! 原生读写及类证据见 docs/mxd-10.1-variant-image-server-layer.md。
 
+use super::layer_extensions::{
+    SERVER_LAYER_EXTENSION_CLASS_ID, ServerLayerExtension10_1, read_server_layer_extension,
+};
 use crate::layers::annotate_props::{
     EDIT_TEMPLATE_MANAGER_CLASS_ID, EditTemplateManagerBody10_1,
     read_edit_template_manager_body_10_1,
@@ -37,12 +40,17 @@ pub struct ImageServerLayerPrefix10_1 {
     pub visible_raw: i16,
     /// 版本之后的 19 个标量，按保存顺序保留原始值（含名称）。
     pub scalar_fields: Vec<VariantValue10_8>,
-    /// 扩展集合中，当前只分派已知的 EditTemplateManager 类体。
-    pub extensions: Vec<VariantValue10_1<EditTemplateManagerBody10_1>>,
+    pub extensions: Vec<VariantValue10_1<ImageServerLayerExtension10_1>>,
     /// IEnvelope 槽，保留空对象、回引和已读对象体。
     pub extent: VariantValue10_1<Envelope10_1>,
     /// ISpatialReference 槽，保留已支持的三个空间参考类。
     pub spatial_reference: VariantValue10_1<ImageServerSpatialReference10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ImageServerLayerExtension10_1 {
+    EditTemplateManager(Box<EditTemplateManagerBody10_1>),
+    ServerLayerExtension(Box<ServerLayerExtension10_1>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -111,21 +119,33 @@ pub fn read_image_server_layer_prefix_10_1(
         extensions.push(read_object(
             &mut trial,
             &mut staged,
-            |body, header, refs| {
-                require_class(header, EDIT_TEMPLATE_MANAGER_CLASS_ID, "图层扩展")?;
-                let parsed = read_edit_template_manager_body_10_1(
-                    body,
-                    max_bytes,
-                    refs,
-                    header.key.expect("ObjectStream 非空对象有键"),
-                )?;
-                if parsed.stop.is_some() {
-                    return Err(io::Error::new(
-                        ErrorKind::Unsupported,
-                        "ImageServerLayer 扩展内的编辑模板尚未完整消费",
-                    ));
+            |body, header, refs| match header.class_id {
+                SERVER_LAYER_EXTENSION_CLASS_ID => {
+                    read_server_layer_extension(body, max_bytes, refs).map(|body| {
+                        ImageServerLayerExtension10_1::ServerLayerExtension(Box::new(body))
+                    })
                 }
-                Ok(parsed)
+                EDIT_TEMPLATE_MANAGER_CLASS_ID => {
+                    let parsed = read_edit_template_manager_body_10_1(
+                        body,
+                        max_bytes,
+                        refs,
+                        header.key.expect("ObjectStream 非空对象有键"),
+                    )?;
+                    if parsed.stop.is_some() {
+                        return Err(io::Error::new(
+                            ErrorKind::Unsupported,
+                            "ImageServerLayer 扩展内的编辑模板尚未完整消费",
+                        ));
+                    }
+                    Ok(ImageServerLayerExtension10_1::EditTemplateManager(
+                        Box::new(parsed),
+                    ))
+                }
+                _ => Err(super::image_server_rules::unsupported_class(
+                    "ImageServerLayer 图层扩展",
+                    &header.class_id,
+                )),
             },
         )?);
     }

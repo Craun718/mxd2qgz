@@ -45,6 +45,11 @@ pub const FEATURE_ID_SET_CLASS_ID: [u8; 16] = [
     0x88, 0x4b, 0xbb, 0xd5, 0xa1, 0xe0, 0xd2, 0x11, 0x9f, 0x4d, 0x00, 0xc0, 0x4f, 0x6b, 0xc7, 0x8e,
 ];
 
+/// GdbCore.dll 的 IFIDSet 实现，二进制体与 FeatureIDSet 同形。
+pub const FID_SET_CLASS_ID: [u8; 16] = [
+    0xf0, 0xda, 0x9b, 0xd7, 0xa8, 0xca, 0xd2, 0x11, 0xb2, 0xbe, 0x00, 0x00, 0xf8, 0x78, 0x22, 0x9e,
+];
+
 /// FeatureIDSet::Load 接受的最大版本：`1 < (short)ver` 有符号拒绝；样本 1。
 /// 证据：FeatureLayer.dll `0x6f6d97d0`。
 const MAX_FEATURE_ID_SET_VERSION: i16 = 1;
@@ -124,5 +129,16 @@ pub fn read_feature_id_set_body_10_1(
         ids,
     };
     *reader = trial;
+    Ok(result)
+}
+
+/// GdbCore::FIDSet::Load 读取同形对象体，但 Add 拒绝负 OID。
+pub(crate) fn read_fid_set_body_10_1(
+    reader: &mut Reader<'_>,
+    table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<FeatureIdSetBody10_1> {
+    let mut result = read_feature_id_set_body_10_1(reader, table, key)?;
+    result.ids.retain(|&id| id >= 0);
     Ok(result)
 }
