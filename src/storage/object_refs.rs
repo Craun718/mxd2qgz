@@ -15,7 +15,7 @@
 
 use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
 use crate::stream::reader::Reader;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io;
 
 /// 跨流共享的已见键登记表（对应原生 ObjectStream 读表）。
@@ -27,12 +27,64 @@ use std::io;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RefTable10_1 {
     seen: HashMap<u32, u32>,
+    map_keys: HashSet<u32>,
+    // 共享键表的试读副本也继承跨类图形对象的当前递归深度。
+    graphics_nesting: u8,
+    // 数据集名称和关联名称也可能经不同槽互相嵌套。
+    dataset_name_nesting: u8,
 }
 
 impl RefTable10_1 {
     /// 空登记表。
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// 图形容器可经图层和标注属性互相嵌套；限制新对象层数，回引不占用深度。
+    pub(crate) fn with_nested_graphics<T>(
+        &mut self,
+        read: impl FnOnce(&mut Self) -> io::Result<T>,
+    ) -> io::Result<T> {
+        const MAX_GRAPHICS_NESTING: u8 = 8;
+        let depth = self.graphics_nesting;
+        if depth >= MAX_GRAPHICS_NESTING {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("图形容器嵌套深度超过读取器限额 {MAX_GRAPHICS_NESTING}"),
+            ));
+        }
+        self.graphics_nesting = depth + 1;
+        let result = read(self);
+        self.graphics_nesting = depth;
+        result
+    }
+
+    pub(crate) fn with_nested_dataset_name<T>(
+        &mut self,
+        read: impl FnOnce(&mut Self) -> io::Result<T>,
+    ) -> io::Result<T> {
+        const MAX_DATASET_NAME_NESTING: u8 = 32;
+        let depth = self.dataset_name_nesting;
+        if depth >= MAX_DATASET_NAME_NESTING {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("数据集名称嵌套深度超过读取器限额 {MAX_DATASET_NAME_NESTING}"),
+            ));
+        }
+        self.dataset_name_nesting = depth + 1;
+        let result = read(self);
+        self.dataset_name_nesting = depth;
+        result
+    }
+
+    /// 标记经真实对象头确认的 Map，供嵌套布局校验 IMap 回引。
+    pub(crate) fn mark_map(&mut self, key: u32) {
+        debug_assert!(self.contains(key));
+        self.map_keys.insert(key);
+    }
+
+    pub(crate) fn contains_map(&self, key: u32) -> bool {
+        self.map_keys.contains(&key)
     }
 
     /// 键是否已在本会话登记过；命中即回引。

@@ -7,3 +7,5 @@ pub mod native_string;
 pub mod reader;
 pub mod variant_array;
 pub mod variant_stream;
+
+pub(crate) mod zlib;

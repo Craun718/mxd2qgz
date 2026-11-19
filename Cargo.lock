@@ -234,6 +234,7 @@ name = "mxd2qgz"
 version = "0.1.0"
 dependencies = [
  "cfb",
+ "flate2",
  "pyo3",
  "roxmltree",
  "tempfile",

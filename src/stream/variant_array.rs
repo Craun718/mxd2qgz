@@ -39,10 +39,17 @@ pub(crate) fn read_class_variant_array_10_1(
         5..=7 => 8,
         16 | 17 => 1,
         8 => 4, // BSTR 元素至少占码元计数；空串无正文。
-        0 | 1 | 9 | 13 => {
+        0 | 1 => {
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
-                format!("VARTYPE {vartype} 的数组没有受支持的元素布局"),
+                format!("VARTYPE {vartype} 无有效的 SafeArray 元素布局"),
+            ));
+        }
+        9 | 13 => {
+            // AfCore 清除数组标志后直接进入单对象 LoadObject，流内没有元素区。
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                format!("VARTYPE {vartype} 的数组没有逐对象持久化布局"),
             ));
         }
         _ => return Err(invalid("数组元素类型未知")),
