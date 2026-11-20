@@ -515,15 +515,27 @@ fn read_version_short(
     what: &str,
     entry_offset: usize,
 ) -> io::Result<u16> {
-    let version = trial.read_u16_le()?;
-    let signed = version as i16;
-    if signed > max || signed < 0 {
+    let version = read_signed_symbol_version(trial, max, what, entry_offset)?;
+    if (version as i16) < 0 {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
-            format!(
-                "{what} 对象体 offset 0x{entry_offset:x}: 版本 {version} 超出 \
-                 {what}::Load 接受范围（有符号比较 >{max} 拒绝；负值位模式一并拒绝）"
-            ),
+            format!("{what} 对象体 offset 0x{entry_offset:x}: 未确认的负版本位模式 {version}"),
+        ));
+    }
+    Ok(version)
+}
+
+fn read_signed_symbol_version(
+    trial: &mut Reader<'_>,
+    max: i16,
+    what: &str,
+    entry_offset: usize,
+) -> io::Result<u16> {
+    let version = trial.read_u16_le()?;
+    if (version as i16) > max {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("{what} 对象体 offset 0x{entry_offset:x}: 版本 {version} 超过有符号上限 {max}"),
         ));
     }
     Ok(version)
@@ -3355,13 +3367,13 @@ pub fn read_picture_marker_symbol_body_10_1(
         )
     };
 
-    let version = trial.read_u16_le()?;
+    let version = read_signed_symbol_version(
+        &mut trial,
+        MAX_PICTURE_MARKER_VERSION,
+        "PictureMarkerSymbol",
+        entry_offset,
+    )?;
     let signed = version as i16;
-    if signed > MAX_PICTURE_MARKER_VERSION {
-        return Err(invalid(format!(
-            "有符号版本 {signed} 超过上限 {MAX_PICTURE_MARKER_VERSION}"
-        )));
-    }
     let mut stop = None;
 
     // 图像块：版本 ≤8 历史路径 / 版本 9 分支。槽位停止记入 `stop`，共享
@@ -3573,7 +3585,7 @@ pub fn read_picture_line_symbol_body_10_1(
     let entry_offset = trial.position();
     let mut staged = table.clone();
 
-    let version = read_version_short(
+    let version = read_signed_symbol_version(
         &mut trial,
         MAX_SYMBOL_VERSION,
         "PictureLineSymbol",
@@ -3655,7 +3667,7 @@ pub fn read_arrow_marker_symbol_body_10_1(
     let entry_offset = trial.position();
     let mut staged = table.clone();
 
-    let version = read_version_short(
+    let version = read_signed_symbol_version(
         &mut trial,
         MAX_ARROW_MARKER_VERSION,
         "ArrowMarkerSymbol",

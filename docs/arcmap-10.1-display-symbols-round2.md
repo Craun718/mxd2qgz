@@ -640,3 +640,13 @@ objdump 复核了写标记的三条指令。
 此成员与选择路径、内嵌块或 IPicture 槽的图像类型字段各自独立。
 标记 1 在上述两个入口共用于 GIF 和 BMP。解析器保留完整整数，
 其他赋值来源、路径分支附带的 double 语义和 ArcMap/QGIS 目视验证待补。
+
+### 图片线与箭头标记的有符号版本门
+
+同版 DisplayCore.dll 的 PictureLineSymbol Load 在 `0x6eb77285`
+比较 short 与 1，随后用 JG 拒绝超上限，读完共同体。
+ArrowMarkerSymbol 在 `0x6eb3ec7a` 以同类比较拒绝大于 2 的值，
+`0x6eb3edc2` 的尾 short 读取门也按有符号比较处理。
+两类沿用图片标记的有符号读取辅助函数并保留原始版本位模式。
+构造测试覆盖负值与 v0/v1、空子槽和后继边界；负版本真实写出来源
+及 ArcMap/QGIS 目视验证仍待补。

@@ -469,6 +469,7 @@
       - [x] 对位 PictureFillSymbol 的三个颜色槽及前景背景交换分支。[图片填充取色](docs/arcmap-10.1-display-symbols-round2.md#图片填充的颜色槽)
       - [x] 按 10.1 有符号版本门读取 PictureFillSymbol 旧格式。[版本取证](docs/arcmap-10.1-display-symbols-round2.md#图片填充的旧版本比较)
       - [x] 按 10.1 有符号版本门读取 PictureMarkerSymbol 旧格式。[版本取证](docs/arcmap-10.1-display-symbols-round2.md#图片标记的旧版本比较)
+      - [x] 按原生有符号版本门读取 PictureLineSymbol 和 ArrowMarkerSymbol。[版本取证](docs/arcmap-10.1-display-symbols-round2.md#图片线与箭头标记的有符号版本门)
       - [x] 定性图片标记 v9 和图片填充 v8 的辅助 int32 为图像编码标记。[编码取证](docs/arcmap-10.1-display-symbols-round2.md#图片符号的图像编码标记)
       - [x] 对位 RandomColorRamp 的 UseSeed、Seed 及六个亮度、饱和度和色相端点。[访问器对位](docs/mxd-terra-host-color.md#randomcolorramp公开端点与随机种子)
       - [x] 对位 CartographicLineSymbol、HashLineSymbol、MarkerLineSymbol 的标量属性，并接入完整嵌套符号分派。[线符号属性](docs/arcmap-10.1-display-tails.md#制图线刻线与标记线的属性)

@@ -1611,6 +1611,33 @@ fn picture_marker_symbol_legacy_paths() {
 }
 
 #[test]
+fn picture_line_and_arrow_marker_accept_signed_versions() {
+    for version in [i16::MIN, -1, 0, 1] {
+        let mut bytes = version.to_le_bytes().to_vec();
+        bytes.extend([0; 1 + 2 * 8 + 16]);
+        bytes.push(0xa5);
+        let mut reader = Reader::new(&bytes);
+        let body =
+            read_picture_line_symbol_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 100)
+                .unwrap();
+        assert_eq!(body.version, version as u16);
+        assert!(body.stop.is_none());
+        assert_eq!(reader.read_bytes(1).unwrap(), [0xa5]);
+
+        let mut bytes = version.to_le_bytes().to_vec();
+        bytes.extend([0; 16 + 5 * 8 + 3 * 4]);
+        bytes.push(0xa5);
+        let mut reader = Reader::new(&bytes);
+        let body =
+            read_arrow_marker_symbol_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 101)
+                .unwrap();
+        assert_eq!(body.version, version as u16);
+        assert!(body.stop.is_none() && body.short_c4.is_none());
+        assert_eq!(reader.read_bytes(1).unwrap(), [0xa5]);
+    }
+}
+
+#[test]
 fn picture_line_symbol_slot_and_fill_family_bodies() {
     // PictureLineSymbol：图像填充槽空标记完整消费。
     let mut bytes = 1_u16.to_le_bytes().to_vec();
