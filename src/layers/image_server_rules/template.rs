@@ -187,10 +187,80 @@ fn read_variable_value(
     if matches!(vartype, 9 | 13) {
         object_wire.read_bytes(14)?;
         if object_wire.clone().read_bytes(16)? != PROPERTY_SET_CLASS_ID {
-            let object = read_input(&mut object_wire, max, refs, depth)?;
-            *r = object_wire;
-            return Ok(RasterVariableVariant10_1::Object { vartype, object });
+            let mut staged = refs.clone();
+            match read_input(&mut object_wire, max, &mut staged, depth) {
+                Ok(object) => {
+                    *r = object_wire;
+                    *refs = staged;
+                    return Ok(RasterVariableVariant10_1::Object { vartype, object });
+                }
+                Err(error) if error.kind() == ErrorKind::Unsupported => {
+                    // 栅格输入专用分派之外，变量仍可保存标准 AfCore 对象值。
+                    return read_padded_variant_object_stream_10_1(r, max, refs)
+                        .map(RasterVariableVariant10_1::Value)
+                        .map_err(|fallback| {
+                            if fallback.kind() == ErrorKind::Unsupported {
+                                error
+                            } else {
+                                fallback
+                            }
+                        });
+                }
+                Err(error) => return Err(error),
+            }
         }
     }
     read_padded_variant_object_stream_10_1(r, max, refs).map(RasterVariableVariant10_1::Value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::objects::number_format::NUMERIC_FORMAT_CLASS_ID;
+
+    #[test]
+    fn variable_reads_generic_number_format_and_reuses_its_key() {
+        let entry = {
+            let mut bytes = 13_u16.to_le_bytes().to_vec();
+            bytes.extend([0; 14]);
+            bytes.extend(NUMERIC_FORMAT_CLASS_ID);
+            bytes.extend(42_u32.to_le_bytes());
+            bytes
+        };
+        let mut bytes = entry.clone();
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend([0; 22]);
+        let end = bytes.len();
+        bytes.extend(&entry);
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let value = read_variable_value(&mut reader, 4096, &mut refs, 4).unwrap();
+        assert!(matches!(
+            value,
+            RasterVariableVariant10_1::Value(PropertyValueObjectStream10_1::NumberFormat(_))
+        ));
+        assert_eq!(reader.position(), end);
+        assert!(matches!(
+            read_variable_value(&mut reader, 4096, &mut refs, 4).unwrap(),
+            RasterVariableVariant10_1::Object {
+                object: RuleSlot10_1 {
+                    entry: ObjectEntry10_1::BackReference { key: 42, .. },
+                    body: None
+                },
+                ..
+            }
+        ));
+        assert_eq!(reader.remaining(), 0);
+
+        let mut reader = Reader::new(&bytes[..end - 1]);
+        let mut refs = RefTable10_1::new();
+        assert_eq!(
+            read_variable_value(&mut reader, 4096, &mut refs, 4)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::UnexpectedEof
+        );
+        assert_eq!(reader.position(), 0);
+        assert!(!refs.contains(42));
+    }
 }

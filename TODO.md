@@ -258,6 +258,7 @@
   - [x] 接入 MosaicFunction 与 MosaicRule 的原生 FIDSet 对象体，见 [集合取证](docs/mxd-10.1-image-server-rules.md#mosaicfunctionmosaiclodinfos-与-fidset)。
   - [x] 接入 RasterFunctionTemplate v1–v3 的已确认布局及递归引用，见 [模板取证](docs/mxd-10.1-image-server-rules.md#rasterfunctiontemplate-与-rasterfunctionvariable)。
   - [x] 接入模板变量的标量与已确认对象值分派，见 [变量取证](docs/mxd-10.1-image-server-rules.md#rasterfunctiontemplate-与-rasterfunctionvariable)。
+  - [x] 接入栅格函数变量中共用 AfCore Variant 分派能读取的对象体及回引。[变量对象取证](docs/mxd-10.1-image-server-rules.md#栅格函数变量的共用-variant-对象)
   - [x] 接入三个外部模块已确认布局的六个栅格函数类，见 [外部函数取证](docs/mxd-10.1-image-server-rules.md#外部模块的栅格函数与参数)。
   - [x] 接入三个外部模块已确认布局的六个栅格函数参数类，见 [外部参数取证](docs/mxd-10.1-image-server-rules.md#外部模块的栅格函数与参数)。
   - [ ] 补齐 RenderingRule 剩余的非空 IRasterFunction 对象体。

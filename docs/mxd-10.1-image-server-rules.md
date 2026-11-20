@@ -798,3 +798,16 @@ CLSID 和构造常量比对。此条件命中 109 条登记。补以 72 份类�
 
 这轮清点排除了上述登记候选。其他模块的间接实现、旧版别名和第三方
 类仍需要独立原生或真实宿主证据；未做 ArcMap/QGIS 人工验收。
+
+### 栅格函数变量的共用 Variant 对象
+
+同版 FunctionRasterDB.dll 的 RasterFunctionVariable v2 Load
+`0x6fcf4e30` 读取带保留区的 AfCore Variant，Save
+`0x6fcf4f20` 写回同类编码。对象值沿用 AfCore 标准对象流，
+见 [带保留区的对象值](arcmap-10.1-variant-propertyset-slots.md#带保留区的-objectstream-对象值)。
+栅格名称和参数等专用分派继续优先。遇到专用分派不支持的对象值时，
+解析器从原位置用共用 Variant 读取器重新解码。两次试读的登记表各自
+隔离，成功的对象仍登记到同一宿主会话。
+
+合成输入验证变量中的 NumericFormat、同键回引和对象体截断回滚。
+实档变量及 ArcMap/QGIS 目视验证待补。
