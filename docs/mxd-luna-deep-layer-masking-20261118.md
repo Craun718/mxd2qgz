@@ -141,6 +141,12 @@ Map 现在可越过完整读取的 GraphicsLayer3D 及其回引。构造 Map v28
 
 构造 Map v28 验证完整 ImageServerLayer v8 和回引之后的流尾，以及遇到未知 IName 后停于逐层遮罩入口。原生服务图层实档及 ArcMap/QGIS 人工验收仍待验证。
 
+## WMSLayer 的接口分派
+
+10.1.0.3035 Desktop 的 WMSLayer.dll（PE32，SHA-256 `d204a1efc758e6b721c356976f3be4384a8f23ce1ef085f3cccc4c4f53630da6`）在同版本类注册表中对应 `5B0DA8F6-5E43-40AE-9871-56BA33936F30`。MSVC RTTI 的零偏移完整对象定位符绑定 WMSLayer 主虚表 `0x80d8d0bc`，首项为 `0x80d6e000`。用 objdump 核对主 QI 的 21 个 IID 比较及未命中路径 `0x80d6e315 → 0x80d847b0`、`0x80d84804 → 0x80d83720` 中的另外四个固定候选。ILayerMasking 和 IBasemapLayer 均无命中，`0x80d83812` 返回 `E_NOINTERFACE`。
+
+构造 Map v28 验证已确定边界的 WMSLayer 及其回引可通过逐图层遮罩，未知类仍在该阶段停止。66 份已提取的 10.1 介质 Maps 流中均未命中 WMSLayer CLSID 字节。WMSLayer 持久化体、WMSMapLayer 与 WMSGroupLayer 的接口分派，以及 ArcMap/QGIS 人工验收仍待验证。
+
 ## ProcessLayer 的组图层委派及遮罩
 
 用 `objdump -d -Mintel` 及 PE32 虚表复核 10.1.0.3035 的 `GpObjects.dll`，SHA-256 `c9da22687b40e070d7178538846f707c04d26474d2fa835acb01ceaa46d2f896`。同版本 `esri.clsid.xml`、原生 GetClassID `0x7477a220` 和 SDK 工程的顶层对象头均给出 ProcessLayer CLSID `D6E92E16-E656-4119-B8E1-88576F6833E6`。
