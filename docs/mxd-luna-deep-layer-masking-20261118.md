@@ -145,7 +145,11 @@ Map 现在可越过完整读取的 GraphicsLayer3D 及其回引。构造 Map v28
 
 10.1.0.3035 Desktop 的 WMSLayer.dll（PE32，SHA-256 `d204a1efc758e6b721c356976f3be4384a8f23ce1ef085f3cccc4c4f53630da6`）在同版本类注册表中对应 `5B0DA8F6-5E43-40AE-9871-56BA33936F30`。MSVC RTTI 的零偏移完整对象定位符绑定 WMSLayer 主虚表 `0x80d8d0bc`，首项为 `0x80d6e000`。用 objdump 核对主 QI 的 21 个 IID 比较及未命中路径 `0x80d6e315 → 0x80d847b0`、`0x80d84804 → 0x80d83720` 中的另外四个固定候选。ILayerMasking 和 IBasemapLayer 均无命中，`0x80d83812` 返回 `E_NOINTERFACE`。
 
-构造 Map v28 验证已确定边界的 WMSLayer 及其回引可通过逐图层遮罩，未知类仍在该阶段停止。66 份已提取的 10.1 介质 Maps 流中均未命中 WMSLayer CLSID 字节。WMSLayer 持久化体、WMSMapLayer 与 WMSGroupLayer 的接口分派，以及 ArcMap/QGIS 人工验收仍待验证。
+构造 Map v28 验证已确定边界的 WMSLayer 及其回引可通过逐图层遮罩，未知类仍在该阶段停止。66 份已提取的 10.1 介质 Maps 流中均未命中 WMSLayer CLSID 字节。WMSLayer 持久化体与 ArcMap/QGIS 人工验收仍待验证。
+
+### WMS 子图层
+
+同一 10.1.0.3035 模块及注册表将 WMSGroupLayer 绑定到 `F677BA62-7CA7-400A-9C59-62930A282CEB`，WMSMapLayer 绑定到 `E38A56C0-D5BD-4899-B089-C8ED4E38B77F`。零偏移 RTTI 定位符分别指向主虚表 `0x80d8c934` 和 `0x80d8da74`。用 objdump 复核首项 `0x80d66660` 和 `0x80d77830` 的 21 和 40 个固定 IID 比较，包含条件分支。两种遮罩探测 IID 均无命中，分别在 `0x80d669d7` 和 `0x80d77e94` 调用共用后备 `0x80d847b0`，沿上节证据返回 `E_NOINTERFACE`。构造 Map v28 验证两类有界图层及回引。原生持久化体和目标软件人工验收仍未验证。
 
 ## ProcessLayer 的组图层委派及遮罩
 
