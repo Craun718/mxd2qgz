@@ -316,6 +316,7 @@
   - [x] 定性 Map 坐标变换条目的方向字段及 v12/v13 的缺省规则。[方向取证](docs/mxd-terra-chain-map.md#map-变换条目的存盘方向)
   - [ ] 定位额外组件提供的 Map 坐标变换持久化类。GEOCONTransformation 与 NADCON5Transformation 在 10.1 Desktop 介质中仅见注册声明。[实现清点](docs/mxd-terra-host-geo.md#101-安装介质的接口实现清点)
   - [ ] 补齐地图级标注属性后尚未支持的逐图层遮罩分支。剩余未确认图层类的接口分派及集合内尚不能读取的新对象体。
+  - [x] 定性遮罩集合尾字段为 UseMasking，输出 Map 和逐图层原始位模式。[字段取证](docs/mxd-luna-deep-layer-masking-20261118.md#遮罩记录的-usemasking)
   - [x] 确认 ImageServerLayer 不消费逐图层遮罩，接入完整对象及回引。[接口分派取证](docs/mxd-luna-deep-layer-masking-20261118.md#imageserverlayer-的接口分派)
   - [x] 确认 CompositeGraphicsLayer 不消费逐图层遮罩，接入完整对象及回引。[接口分派取证](docs/mxd-luna-deep-layer-masking-20261118.md#compositegraphicslayer-的接口分派)
   - [x] 确认 GlobeGraphicsLayer 不消费逐图层遮罩，接入已读取的图层及回引。[接口分派取证](docs/mxd-luna-deep-layer-masking-20261118.md#globegraphicslayer-的接口分派)

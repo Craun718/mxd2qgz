@@ -517,7 +517,7 @@ pub struct PostBorderTail10_1 {
     pub masking_count: Option<(usize, i32)>,
     /// 已完整消费的集合条目；未知新对象使条目整体回退。
     pub masking_entries: Option<Vec<MaskEntry10_1>>,
-    /// Map 自身 LayerMasking 的尾 short（LayerLib Load 0x786f1ff0）。
+    /// Map 自身 ILayerMasking::UseMasking 的流内偏移及原始位模式。
     pub masking_empty_short: Option<(usize, u16)>,
     /// 逐图层遮罩记录，顺序与原生图层遍历一致；无接口的条目不产生记录。
     pub layer_masking: Vec<(u32, LayerMasking10_1)>,

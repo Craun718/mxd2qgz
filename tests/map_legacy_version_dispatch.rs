@@ -674,13 +674,17 @@ fn map_v28_reads_nested_group_masks_in_layer_order_and_rolls_back_on_failure() {
         .post_border_tail
         .layer_masking
         .iter()
-        .map(|(key, record)| (*key, record.tail))
+        .map(|(key, record)| (*key, record.use_masking_raw()))
         .collect();
     assert_eq!(records, keys.into_iter().zip(0..).collect::<Vec<_>>());
     assert_eq!(reader.read_u32_le().unwrap(), 0x1717);
-    assert_eq!(
-        parse_maps_10_1(&bytes).unwrap().confirmed_tail,
-        Some((offset + end, 0x1717))
+    let report = parse_maps_10_1(&bytes).unwrap();
+    assert_eq!(report.confirmed_tail, Some((offset + end, 0x1717)));
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|line| line.contains("图层键 92 的 UseMasking 原始位为 0x0002"))
     );
 
     let mut bad_class = bytes.clone();

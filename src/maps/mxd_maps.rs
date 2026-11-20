@@ -1166,7 +1166,7 @@ fn frame_from_body(
     }
     if tail.masking_version.is_some() {
         diagnostics.push(format!(
-            "Map LayerMasking：版本={:?}，计数={:?}，已读条目={:?}，尾 short={:?}",
+            "Map LayerMasking：版本={:?}，计数={:?}，已读条目={:?}，UseMasking 原始位={:?}",
             tail.masking_version,
             tail.masking_count,
             tail.masking_entries.as_ref().map(Vec::len),
@@ -1178,6 +1178,13 @@ fn frame_from_body(
         diagnostics.push(format!(
             "Map 逐图层遮罩循环：已读 {} 条记录",
             tail.layer_masking.len()
+        ));
+    }
+
+    for (key, record) in &tail.layer_masking {
+        diagnostics.push(format!(
+            "图层键 {key} 的 UseMasking 原始位为 0x{:04x}",
+            record.use_masking_raw()
         ));
     }
 

@@ -130,7 +130,14 @@ pub struct MaskEntry10_1 {
 pub struct LayerMasking10_1 {
     pub version: u16,
     pub entries: Vec<MaskEntry10_1>,
+    /// ILayerMasking::UseMasking 的原始 VARIANT_BOOL 位模式。
     pub tail: u16,
+}
+
+impl LayerMasking10_1 {
+    pub fn use_masking_raw(&self) -> u16 {
+        self.tail
+    }
 }
 
 pub(super) fn read_masking_count_10_1(
