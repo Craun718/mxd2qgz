@@ -674,6 +674,7 @@ impl<'body> LayerMaskingTraversal<'_, '_, 'body> {
                     ) => {}
                     Some(LayerBodyPrefix10_1::CompositeGraphicsLayer(layer))
                         if layer.stop == CompositeGraphicsLayerStop10_1::Completed => {}
+                    Some(LayerBodyPrefix10_1::ImageServerLayer(layer)) if layer.stop.is_none() => {}
                     Some(LayerBodyPrefix10_1::WcsLayer(wcs)) => {
                         if let ObjectEntry10_1::NewObject { key, class_id } = wcs.raster.entry {
                             self.known.entry(key).or_insert((class_id, None));

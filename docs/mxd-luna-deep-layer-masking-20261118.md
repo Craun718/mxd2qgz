@@ -119,6 +119,12 @@ Map 现在可越过完整读取的 GraphicsLayer3D 及其回引。构造 Map v28
 
 沿用三维图形容器取证确认的 CLSID `A415A073-CF06-4CDC-8664-439D0D5E7169`。复核 10.1.0.3035 Desktop 的 GlobeLayers.dll（PE32，SHA-256 `79346fc1fa0d25c01ac41ae2a7b0ee3014847c38f1661ff7d23cce75fe6fd1b8`）。用 `objdump -d -Mintel` 核对主 QI `0x72f51ad0` 的 21 个固定 IID，再读取未命中路径 `0x72f51e7e → 0x72f6c480` 和 `0x72f6c4d4 → 0x72f6d780` 的其余四个比较常量。所有常量均与 ILayerMasking 不同，`0x72f6d86c..0x72f6d872` 清空输出并返回 `E_NOINTERFACE`。构造 Map v28 验证完整图层及其回引之后的流尾。原生 MXD 宿主及 ArcMap/QGIS 人工验收仍待验证。
 
+## ImageServerLayer 的接口分派
+
+10.1.0.3035 Desktop 的 `ImageServerLayer.dll`（PE32，SHA-256 `0256f97057275fedb550c947b0f8333184427755a394ef09099d22349fe5bb14`）与同版本 `esri.clsid.xml` 提供类身份 `477D13E7-8D68-45B6-A7FD-2EF442BCCE95`。用 MSVC RTTI 的完整对象定位符找到 ImageServerLayer 主虚表 `0x7802eb64`，首项为 QI `0x77fe8380`。用 `objdump -d -Mintel` 提取该函数对 `0x77fe3df0` 的 56 次比较及对应 IID 常量，包含 `0x77fe89b2..0x77fe8c22` 条件分支中的候选。未命中经 `0x77fe8d55 → 0x78023390` 和 `0x780233e4 → 0x78022ff0` 比较另外四个固定 IID，均无 ILayerMasking 或 IBasemapLayer 命中，`0x780230e2` 返回 `E_NOINTERFACE`。
+
+构造 Map v28 验证完整 ImageServerLayer v8 和回引之后的流尾，以及遇到未知 IName 后停于逐层遮罩入口。原生服务图层实档及 ArcMap/QGIS 人工验收仍待验证。
+
 ## ProcessLayer 的组图层委派及遮罩
 
 用 `objdump -d -Mintel` 及 PE32 虚表复核 10.1.0.3035 的 `GpObjects.dll`，SHA-256 `c9da22687b40e070d7178538846f707c04d26474d2fa835acb01ceaa46d2f896`。同版本 `esri.clsid.xml`、原生 GetClassID `0x7477a220` 和 SDK 工程的顶层对象头均给出 ProcessLayer CLSID `D6E92E16-E656-4119-B8E1-88576F6833E6`。

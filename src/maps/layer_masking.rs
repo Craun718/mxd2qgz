@@ -87,6 +87,7 @@ pub fn known_layer_masking_support_10_1(class_id: &[u8; 16]) -> LayerMaskingSupp
     use crate::layers::feature_layer::FEATURE_LAYER_CLASS_ID;
     use crate::layers::graphics_3d::{GLOBE_GRAPHICS_LAYER_CLASS_ID, GRAPHICS_LAYER_3D_CLASS_ID};
     use crate::layers::group_layer::GROUP_LAYER_CLASS_ID;
+    use crate::layers::image_server_layer::IMAGE_SERVER_LAYER_CLASS_ID;
     use crate::layers::process_layer::PROCESS_LAYER_CLASS_ID;
 
     use crate::layers::layer_list::RASTER_LAYER_CLASS_ID;
@@ -107,6 +108,7 @@ pub fn known_layer_masking_support_10_1(class_id: &[u8; 16]) -> LayerMaskingSupp
         || *class_id == CAD_ANNOTATION_LAYER_CLASS_ID
         || *class_id == COVERAGE_ANNOTATION_LAYER_CLASS_ID
         || *class_id == WCS_LAYER_CLASS_ID
+        || *class_id == IMAGE_SERVER_LAYER_CLASS_ID
         || *class_id == GRAPHICS_LAYER_3D_CLASS_ID
         || *class_id == GLOBE_GRAPHICS_LAYER_CLASS_ID
         || is_tiled_layer(*class_id)

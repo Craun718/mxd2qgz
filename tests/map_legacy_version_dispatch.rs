@@ -807,3 +807,63 @@ fn map_v28_skips_masking_for_complete_composite_graphics_layer() {
     let (bytes, _) = map_with_version(28, &suffix);
     assert!(parse_maps_10_1(&bytes).unwrap().confirmed_tail.is_none());
 }
+
+#[test]
+fn map_v28_reads_past_complete_image_server_layer_and_back_reference() {
+    use mxd2qgz::layers::image_server_layer::IMAGE_SERVER_LAYER_CLASS_ID;
+
+    let mut layer = IMAGE_SERVER_LAYER_CLASS_ID.to_vec();
+    layer.extend(90_u32.to_le_bytes());
+    layer.extend(3_u16.to_le_bytes()); // VT_I4 版本。
+    layer.extend(8_i32.to_le_bytes());
+    for (vt, size) in [
+        (8_u16, 4),
+        (8, 4),
+        (11, 2),
+        (11, 2),
+        (11, 2),
+        (11, 2),
+        (5, 8),
+        (5, 8),
+        (5, 8),
+        (8, 4),
+        (5, 8),
+        (5, 8),
+        (11, 2),
+        (11, 2),
+        (2, 2),
+        (11, 2),
+        (2, 2),
+        (11, 2),
+        (2, 2),
+        (2, 2),
+        (13, 16),
+        (13, 16),
+        (13, 16),
+        (8, 4),
+        (11, 2),
+        (8, 4),
+    ] {
+        layer.extend(vt.to_le_bytes());
+        layer.resize(layer.len() + size, 0);
+    }
+    let name_slot = layer.len();
+    layer.extend(13_u16.to_le_bytes()); // 空 IName。
+    layer.extend([0; 16]);
+    let mut suffix = map_v28_masking_suffix(&[&layer, &layer[..20]]);
+    let end = suffix.len();
+    suffix.extend(0x1717_u32.to_le_bytes());
+    let (bytes, offset) = map_with_version(28, &suffix);
+    assert_eq!(
+        parse_maps_10_1(&bytes).unwrap().confirmed_tail,
+        Some((offset + end, 0x1717))
+    );
+
+    // 未知 IName 使图层尾部解析停止，即使图层列表有外层边界。
+    layer[name_slot + 2..name_slot + 18].fill(0x7d);
+    layer.extend(91_u32.to_le_bytes());
+    let mut suffix = map_v28_masking_suffix(&[&layer, &layer[..20]]);
+    suffix.extend(0x1717_u32.to_le_bytes());
+    let (bytes, _) = map_with_version(28, &suffix);
+    assert!(parse_maps_10_1(&bytes).unwrap().confirmed_tail.is_none());
+}
