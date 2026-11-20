@@ -63,6 +63,8 @@ Map v28 的构造测试覆盖普通组图层子层项、嵌套 Basemap、重复�
 
 GroupLayer v11–v12 的 ExtraSafe 子层沿用已确认的外层边界。DimensionLayer、TopologyLayer、NetworkLayer 和 SchematicLayer 的类级 ILayerMasking 分派已确认不消费遮罩，因此完整组读取器可保留这些子层的未知体，并在遍历时登记对象键供回引使用。构造的 Map v28 覆盖 NetworkLayer 新子层、同组回引、顶层回引和未知类退回。子层体字段和原生嵌套实档尚未验证。
 
+Map 诊断记录逐层循环失败的首个原因。有对象身份时，输出图层键及尚未确认的类，或输出该图层遮罩记录的底层读取错误。构造测试验证错类回引与遮罩截断各有独立诊断，并仍回退到同一循环起点。此项支持定位尚未解析的类和字段，原生绘制效果仍待人工验收。
+
 ## 遮罩集合中的新对象
 
 LayerLib.dll 10.1.0.3035（SHA-256 `55514f054c9e4827d773cf1a9b9a83e7c41c483f73758965244625165f330e02`）的 `LayerMasking::LoadLayerMasking 0x786f1ff0` 已有 Ghidra 导出。复核原始指令及两处 IID 的 PE 字节后，`0x786f21b8` 将 `0x7871fc68` 传给外层 LoadObject，即 `{34C20002-4D3C-11D0-92D8-00805F7C28B0}`。同版本 `ESRI.ArcGIS.Carto.dll` 的 GuidAttribute 将该 IID 定名为 ILayer。`0x786f221c` 将 `0x7871e78c` 传给内层 LoadObject，即 `{00000000-0000-0000-C000-000000000046}`（IUnknown）。两者均走普通对象槽，头部没有外层体长。

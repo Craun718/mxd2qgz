@@ -703,12 +703,23 @@ fn map_v28_reads_nested_group_masks_in_layer_order_and_rolls_back_on_failure() {
     // 保留回引键，改成不匹配的类；无效回引不得掩盖下一个根字段。
     let child_ref_offset = offset + 4 + 10 + parent.len() - 20;
     bad_class[child_ref_offset..child_ref_offset + 16].copy_from_slice(&BASEMAP_LAYER_CLASS_ID);
-    for invalid in [&bytes[..offset + end - 1], &bad_class] {
+    for (invalid, reason) in [
+        (&bytes[..offset + end - 1], "遮罩记录读取失败"),
+        (&bad_class[..], "与登记类不匹配"),
+    ] {
         let mut reader = Reader::new(&invalid[24..]);
         let mut refs = RefTable10_1::new();
         let parsed = read_map_suffix_10_1(&mut reader, 4096, &mut refs).unwrap();
         assert_eq!(parsed.stop, MapSuffixStop::AfterBorderTail { stage: 38 });
         assert_eq!(reader.position(), offset + masks_at - 24);
+        assert!(
+            parsed
+                .post_border_tail
+                .layer_masking_stop
+                .as_deref()
+                .unwrap()
+                .contains(reason)
+        );
         assert!(parsed.post_border_tail.layer_masking.is_empty());
     }
 }

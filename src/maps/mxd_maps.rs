@@ -1181,6 +1181,10 @@ fn frame_from_body(
         ));
     }
 
+    if let Some(reason) = &tail.layer_masking_stop {
+        diagnostics.push(format!("Map 逐图层遮罩停止：{reason}"));
+    }
+
     for (key, record) in &tail.layer_masking {
         diagnostics.push(format!(
             "图层键 {key} 的 UseMasking 原始位为 0x{:04x}",

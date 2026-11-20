@@ -521,6 +521,8 @@ pub struct PostBorderTail10_1 {
     pub masking_empty_short: Option<(usize, u16)>,
     /// 逐图层遮罩记录，顺序与原生图层遍历一致；无接口的条目不产生记录。
     pub layer_masking: Vec<(u32, LayerMasking10_1)>,
+    /// 逐图层循环回退前遇到的首个障碍。
+    pub layer_masking_stop: Option<String>,
     /// 逐图层遮罩循环完整消费后读取的 Map 字段。
     pub post_masking: Option<PostMaskingMapFields10_1>,
     /// Map 版本 33 起的 IUnknown 集合、LONG 和对象槽。
@@ -536,7 +538,7 @@ fn read_map_layer_masking_10_1(
     refs: &mut RefTable10_1,
     layer_list: &LayerList10_1,
     map_version: u16,
-) -> Option<Vec<(u32, LayerMasking10_1)>> {
+) -> Result<Vec<(u32, LayerMasking10_1)>, String> {
     use crate::maps::layer_masking::{
         LayerMaskingProbe10_1, is_unparsed_layer_without_masking_10_1, layer_masking_probe_10_1,
     };
@@ -544,7 +546,7 @@ fn read_map_layer_masking_10_1(
         || layer_list.active_index.is_none()
         || usize::try_from(layer_list.count) != Ok(layer_list.entries.len())
     {
-        return None;
+        return Err("图层列表未完整读取".into());
     }
     let mut traversal = LayerMaskingTraversal {
         reader,
@@ -569,7 +571,7 @@ fn read_map_layer_masking_10_1(
             traversal.visit(object, entry.parsed.as_ref(), 0)?;
         }
     }
-    Some(traversal.records)
+    Ok(traversal.records)
 }
 
 struct LayerMaskingTraversal<'a, 'data, 'body> {
@@ -588,7 +590,7 @@ impl<'body> LayerMaskingTraversal<'_, '_, 'body> {
         entry: ObjectEntry10_1,
         parsed: Option<&'body LayerBodyPrefix10_1>,
         depth: u32,
-    ) -> Option<()> {
+    ) -> Result<(), String> {
         use crate::layers::basemap_layer::BasemapStop10_1;
         use crate::layers::composite_graphics::CompositeGraphicsLayerStop10_1;
         use crate::layers::feature_layer::FEATURE_LAYER_CLASS_ID;
@@ -596,19 +598,32 @@ impl<'body> LayerMaskingTraversal<'_, '_, 'body> {
 
         // 防止异常回引造成无限递归，复用 GroupLayer 读取器的深度限制。
         if depth > crate::layers::group_layer::MAX_RECURSION_DEPTH {
-            return None;
+            return Err(format!("遮罩遍历超过深度上限：{entry:?}"));
         }
         let (class_id, key, body) = match entry {
-            ObjectEntry10_1::Null => return Some(()),
+            ObjectEntry10_1::Null => return Ok(()),
             ObjectEntry10_1::NewObject { class_id, key } => {
-                let body = parsed?;
+                let body = parsed.ok_or_else(|| {
+                    format!(
+                        "图层键 {key} 的类 {} 缺少可用对象体",
+                        class_id_hex(&class_id)
+                    )
+                })?;
                 self.known.insert(key, (class_id, Some(body)));
                 (class_id, key, Some(body))
             }
             ObjectEntry10_1::BackReference { class_id, key } => {
-                let (known_class, body) = self.known.get(&key).copied()?;
+                let (known_class, body) = self.known.get(&key).copied().ok_or_else(|| {
+                    format!(
+                        "遮罩图层回引键 {key} 未登记，类 {}",
+                        class_id_hex(&class_id)
+                    )
+                })?;
                 if class_id != known_class {
-                    return None;
+                    return Err(format!(
+                        "图层回引键 {key} 与登记类不匹配，请求类 {}",
+                        class_id_hex(&class_id)
+                    ));
                 }
                 (class_id, key, body)
             }
@@ -618,7 +633,10 @@ impl<'body> LayerMaskingTraversal<'_, '_, 'body> {
                 if group.stop != GroupLayerStop10_1::Complete
                     || usize::try_from(group.child_count) != Ok(group.children.len())
                 {
-                    return None;
+                    return Err(format!(
+                        "组图层键 {key} 的子层未完整读取，类 {}",
+                        class_id_hex(&class_id)
+                    ));
                 }
                 self.read_record(key)?;
                 for child in &group.children {
@@ -627,7 +645,10 @@ impl<'body> LayerMaskingTraversal<'_, '_, 'body> {
             }
             Some(LayerBodyPrefix10_1::ProcessLayer(process)) => {
                 if usize::try_from(process.group.child_count) != Ok(process.group.children.len()) {
-                    return None;
+                    return Err(format!(
+                        "流程图层键 {key} 的子层未完整读取，类 {}",
+                        class_id_hex(&class_id)
+                    ));
                 }
                 self.read_record(key)?;
                 // ICompositeLayer 枚举委派组的子层，组本身没有独立遮罩记录。
@@ -652,7 +673,10 @@ impl<'body> LayerMaskingTraversal<'_, '_, 'body> {
                             ObjectEntry10_1::BackReference { class_id: FEATURE_LAYER_CLASS_ID, key }
                                 if features.contains(key))
                     }) {
-                        return None;
+                        return Err(format!(
+                            "底图图层键 {key} 的正式子层未全部确认，类 {}",
+                            class_id_hex(&class_id)
+                        ));
                     }
                     self.read_record(key)?;
                 }
@@ -689,23 +713,33 @@ impl<'body> LayerMaskingTraversal<'_, '_, 'body> {
                                 .or_insert((FEATURE_LAYER_CLASS_ID, None));
                         }
                     }
-                    _ => return None,
+                    _ => {
+                        return Err(format!(
+                            "图层键 {key} 的对象体未完整读取，类 {}",
+                            class_id_hex(&class_id)
+                        ));
+                    }
                 }
             }
-            _ => return None,
+            _ => {
+                return Err(format!(
+                    "图层键 {key} 的遮罩分派未确认，类 {}",
+                    class_id_hex(&class_id)
+                ));
+            }
         }
-        Some(())
+        Ok(())
     }
 
     fn visit_group_child(
         &mut self,
         child: &'body crate::layers::group_layer::GroupChildEntry10_1,
         depth: u32,
-    ) -> Option<()> {
+    ) -> Result<(), String> {
         use crate::layers::group_layer::GroupChildEntry10_1;
 
         match child {
-            GroupChildEntry10_1::Empty | GroupChildEntry10_1::Null => Some(()),
+            GroupChildEntry10_1::Empty | GroupChildEntry10_1::Null => Ok(()),
             GroupChildEntry10_1::BackReference { class_id, key } => self.visit(
                 ObjectEntry10_1::BackReference {
                     class_id: *class_id,
@@ -741,16 +775,20 @@ impl<'body> LayerMaskingTraversal<'_, '_, 'body> {
             } if crate::maps::layer_masking::is_unparsed_layer_without_masking_10_1(*class_id) => {
                 // ExtraSafe 已同步到下一条目，此类的子层查询不消费遮罩。
                 self.known.insert(*key, (*class_id, None));
-                Some(())
+                Ok(())
             }
-            GroupChildEntry10_1::SkippedNewObject { .. } => None,
+            GroupChildEntry10_1::SkippedNewObject { class_id, key, .. } => Err(format!(
+                "组图层子层键 {key} 的对象体未完整读取，类 {}",
+                class_id_hex(class_id)
+            )),
         }
     }
 
-    fn read_record(&mut self, key: u32) -> Option<()> {
-        let record = read_layer_masking_10_1(self.reader, self.max_bytes, self.refs).ok()?;
+    fn read_record(&mut self, key: u32) -> Result<(), String> {
+        let record = read_layer_masking_10_1(self.reader, self.max_bytes, self.refs)
+            .map_err(|error| format!("图层键 {key} 的遮罩记录读取失败：{error}"))?;
         self.records.push((key, record));
-        Some(())
+        Ok(())
     }
 }
 
@@ -2073,31 +2111,42 @@ pub(crate) fn read_map_with_suffix_10_1(
                 next_short!(masking_empty_short, 37);
             }
             // 原生 Map 0x79403d50 遍历与写图层列表相同的数组。
-            let mut candidate = trial.clone();
-            let mut candidate_refs = trial_table.clone();
-            if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 38 }))
-                && let Some(records) = read_map_layer_masking_10_1(
+            if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 38 })) {
+                let mut candidate = trial.clone();
+                let mut candidate_refs = trial_table.clone();
+                let records = read_map_layer_masking_10_1(
                     &mut candidate,
                     max_bytes,
                     &mut candidate_refs,
                     &layer_list,
                     map_prefix.version,
-                )
-                && let Ok(fields) = (version >= 29)
-                    .then(|| read_post_masking_map_fields_10_1(&mut candidate, version, max_bytes))
-                    .transpose()
-            {
-                trial = candidate;
-                trial_table = candidate_refs;
-                post_border_tail.layer_masking = records;
-                post_border_tail.post_masking = fields;
-                // 版本 28..=32 的后续分支只初始化/更新已有对象；下一条
-                // 持久化字段属于版本 >=33（Map.dll 0x7940095c..aab）。
-                stop = Some(if map_prefix.version <= 32 {
-                    MapSuffixStop::Complete
-                } else {
-                    MapSuffixStop::AfterBorderTail { stage: 39 }
-                });
+                );
+                match records {
+                    Err(reason) => post_border_tail.layer_masking_stop = Some(reason),
+                    Ok(records) => {
+                        let fields = (version >= 29)
+                            .then(|| {
+                                read_post_masking_map_fields_10_1(
+                                    &mut candidate,
+                                    version,
+                                    max_bytes,
+                                )
+                            })
+                            .transpose();
+                        if let Ok(fields) = fields {
+                            trial = candidate;
+                            trial_table = candidate_refs;
+                            post_border_tail.layer_masking = records;
+                            post_border_tail.post_masking = fields;
+                            // 版本 28..=32 的后续分支不消费持久化字段。
+                            stop = Some(if map_prefix.version <= 32 {
+                                MapSuffixStop::Complete
+                            } else {
+                                MapSuffixStop::AfterBorderTail { stage: 39 }
+                            });
+                        }
+                    }
+                }
             }
             if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 39 }))
                 && let Ok(collections) = read_map_persist_collections_before_v34_10_1(
