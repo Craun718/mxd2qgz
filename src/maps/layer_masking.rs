@@ -136,6 +136,38 @@ impl MaskEntry10_1 {
     pub fn masking_layers(&self) -> &[(ObjectEntry10_1, Option<String>)] {
         &self.targets
     }
+
+    /// 读取指定遮罩层的已识别层级设置。
+    pub fn masking_levels(&self, index: usize) -> Option<MaskingLevels10_1> {
+        let (_, text) = self.targets.get(index)?;
+        decode_masking_levels_10_1(text.as_deref()?)
+    }
+}
+
+/// 符号层级过滤器。空字符串匹配所有层级。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MaskingLevels10_1 {
+    All,
+    Selected(Vec<std::ops::RangeInclusive<i32>>),
+}
+
+/// 解码单个层级和闭区间，无法识别时由调用者继续保留原字符串。
+pub fn decode_masking_levels_10_1(text: &str) -> Option<MaskingLevels10_1> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Some(MaskingLevels10_1::All);
+    }
+    let mut levels = Vec::new();
+    for token in text.split([',', ';']).filter(|token| !token.is_empty()) {
+        let (start, end) = if let Some((start, end)) = token.split_once('-') {
+            (start.trim().parse().ok()?, end.trim().parse().ok()?)
+        } else {
+            let level = token.trim().parse().ok()?;
+            (level, level)
+        };
+        levels.push(start..=end);
+    }
+    Some(MaskingLevels10_1::Selected(levels))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -121,6 +121,28 @@ fn reads_new_layers_in_both_mask_slots_and_shares_keys() {
         result.entries[0].masking_layers()[1].1.as_deref(),
         Some("A")
     );
+    assert_eq!(
+        result.entries[0].masking_levels(0),
+        Some(mxd2qgz::maps::layer_masking::MaskingLevels10_1::All)
+    );
+    assert_eq!(result.entries[0].masking_levels(1), None);
     assert_eq!(reader.remaining(), 0);
     assert!(refs.contains(7) && refs.contains(8));
+}
+
+#[test]
+fn masking_level_lists_decode_inclusive_ranges_and_preserve_unknown_forms() {
+    use mxd2qgz::maps::layer_masking::{MaskingLevels10_1, decode_masking_levels_10_1};
+
+    assert_eq!(
+        decode_masking_levels_10_1(" \t"),
+        Some(MaskingLevels10_1::All)
+    );
+    assert_eq!(
+        decode_masking_levels_10_1(" 1;3-5,,8; "),
+        Some(MaskingLevels10_1::Selected(vec![1..=1, 3..=5, 8..=8]))
+    );
+    for unknown in ["A", "1-", "-2", "1-2-3", "2147483648"] {
+        assert_eq!(decode_masking_levels_10_1(unknown), None);
+    }
 }
