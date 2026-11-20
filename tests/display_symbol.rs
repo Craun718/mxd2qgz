@@ -1638,6 +1638,32 @@ fn picture_line_and_arrow_marker_accept_signed_versions() {
 }
 
 #[test]
+fn picture_line_respects_the_outer_symbol_budget() {
+    let mut line = mxd2qgz::objects::display_symbol::PICTURE_LINE_SYMBOL_CLASS_ID.to_vec();
+    line.extend(5_u32.to_le_bytes());
+    line.extend(1_u16.to_le_bytes());
+    line.extend([0; 1 + 2 * 8]);
+    let mut empty = line.clone();
+    push_null(&mut empty);
+    let mut reader = Reader::new(&empty);
+    let mut refs = RefTable10_1::new();
+    assert!(matches!(
+        read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 1).unwrap(),
+        SymbolSlotFull10_1::PictureLineSymbol(body) if body.stop.is_none()
+    ));
+    assert_eq!(reader.remaining(), 0);
+
+    line.extend(mxd2qgz::objects::picture_fill_symbol::PICTURE_FILL_SYMBOL_CLASS_ID);
+    line.extend(6_u32.to_le_bytes());
+    let mut reader = Reader::new(&line);
+    let mut refs = RefTable10_1::new();
+    let error = read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 1).unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    assert_eq!(reader.position(), 0);
+    assert!(refs.is_empty());
+}
+
+#[test]
 fn picture_line_symbol_slot_and_fill_family_bodies() {
     // PictureLineSymbol：图像填充槽空标记完整消费。
     let mut bytes = 1_u16.to_le_bytes().to_vec();

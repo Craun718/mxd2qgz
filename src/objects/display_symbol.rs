@@ -1935,12 +1935,15 @@ pub fn read_symbol_slot_full_10_1(
                     )?,
                 ))
             } else if class_id == PICTURE_LINE_SYMBOL_CLASS_ID {
-                SymbolSlotFull10_1::PictureLineSymbol(Box::new(read_picture_line_symbol_body_10_1(
-                    &mut trial,
-                    max_bytes,
-                    &mut staged,
-                    key,
-                )?))
+                SymbolSlotFull10_1::PictureLineSymbol(Box::new(
+                    read_picture_line_symbol_body_with_depth(
+                        &mut trial,
+                        max_bytes,
+                        &mut staged,
+                        key,
+                        depth - 1,
+                    )?,
+                ))
             } else if class_id == PICTURE_FILL_SYMBOL_CLASS_ID {
                 SymbolSlotFull10_1::PictureFillSymbol(Box::new(read_picture_fill_symbol_body_10_1(
                     &mut trial,
@@ -3581,6 +3584,22 @@ pub fn read_picture_line_symbol_body_10_1(
     table: &mut RefTable10_1,
     key: u32,
 ) -> io::Result<PictureLineSymbolBody10_1> {
+    read_picture_line_symbol_body_with_depth(
+        reader,
+        max_bytes,
+        table,
+        key,
+        MAX_SYMBOL_NESTING_DEPTH,
+    )
+}
+
+fn read_picture_line_symbol_body_with_depth(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+    depth: usize,
+) -> io::Result<PictureLineSymbolBody10_1> {
     let mut trial = reader.clone();
     let entry_offset = trial.position();
     let mut staged = table.clone();
@@ -3594,15 +3613,8 @@ pub fn read_picture_line_symbol_body_10_1(
     let byte_30 = trial.read_bytes(1)?[0];
     let double_2c = trial.read_f64_le()?;
     let double_24 = trial.read_f64_le()?;
-    // G 轮接线：IPictureFillSymbol 槽接 picture_fill_symbol 槽分派（未知
-    // 实现类回退并映射为停止原因，停止语义不变）。顶层体读取器无深度入参，
-    // 以读取器自身嵌套限额为槽位预算。
-    let (slot, stop) = read_picture_fill_symbol_slot_10_1(
-        &mut trial,
-        max_bytes,
-        &mut staged,
-        MAX_SYMBOL_NESTING_DEPTH,
-    )?;
+    let (slot, stop) =
+        read_picture_fill_symbol_slot_10_1(&mut trial, max_bytes, &mut staged, depth)?;
 
     *table = staged;
     *reader = trial;
