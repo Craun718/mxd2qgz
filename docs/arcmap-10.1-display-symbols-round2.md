@@ -566,7 +566,7 @@ IPictureFillSymbol 和 IFillProperties 分别对位 +0x98 的虚表
 分别取完整对象 +0x58 和 +0x60（对应持久化 −0x114 和 −0x10c）。
 IFillSymbol::Outline `0x6eb70b90` 取其接口 +0x40，确认该槽位
 为持久化 −0x94。读取器照旧保留原始位模式。
-各颜色槽的绘制分支仍待进一步定性，ArcMap/QGIS 目视验收待补。
+ArcMap/QGIS 目视验收待补。
 
 ### 图片填充的图像效果
 
@@ -583,3 +583,18 @@ IFillSymbol::Outline `0x6eb70b90` 取其接口 +0x40，确认该槽位
 旧式读写 `0x6eb74aa0/0x6eb74740` 使用完整对象上的同三个成员，
 从对象版本 4 起有此字段组。Rust 保留原始位模式。
 ArcMap/QGIS 的显示效果尚待目视验证。
+
+### 图片填充的颜色槽
+
+同版 DisplayCore.dll 的 Save `0x6eb71580` 依次写持久化成员
+−0xa0、−0x9c、−0x98，即完整对象 +0xcc、+0xd0、+0xd4。
+在 +0x98 的 IPictureFillSymbol 视图中，Color getter `0x6eb708d0`
+常规调用主虚表 `0x6ec0fc04` 的 +0x2c（`0x6eb734e0`），取
++0xd0 的前景色。BackgroundColor getter `0x6eb702f0` 常规调用
++0x24（`0x6eb73350`），取 +0xcc。二者均在交换标志置位、
+图块供给器存在且其 +0x14 调用返回非零时交换这两个入口。
+
+BitmapTransparencyColor getter `0x6eb70360` 访问接口 +0x3c，
+即完整对象 +0xd4。它在内部图像类型为 2、3 时提前返回，
+其余分支从该成员复制或初始化颜色。解析器保留三个持久化槽，
+将图像运行期取色行为记录在此。ArcMap/QGIS 目视验证待补。

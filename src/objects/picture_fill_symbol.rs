@@ -34,7 +34,7 @@
 //!      docs/arcmap-10.1-ole-stdfont.md）整体解析，其余实现类停止回退；
 //!    - 其他：原生拒绝。
 //! 5. LoadObject（IColor `DAT_6ec0b4f4`）×3 → Save 槽 this−0xa0 / −0x9c /
-//!    −0x98（颜色候选）；
+//!    −0x98（常规取色路径依次为背景色、前景色、位图透明色）；
 //! 6. LoadObject（ISymbol `DAT_6ec0ca2c`）×1 → Save 槽 this−0x94（轮廓符号
 //!    候选）；
 //! 7. double ×7 → this−0x8c / −0x84 / −0x7c / −0x74 / −0x6c / −0x64 / −0x5c
@@ -213,7 +213,8 @@ pub struct PictureFillSymbolBody10_1 {
     pub image: PictureFillImage10_1,
     /// v7 在旧式图像和公共尾字段之后附加的位图块。
     pub legacy_bitmap: Option<Vec<u8>>,
-    /// 颜色槽 ×3（Save 槽 this−0xa0 / −0x9c / −0x98）。
+    /// 依次为常规路径的背景色、前景色和位图透明色。原生交换分支会
+    /// 互换前两槽的公开取色结果，解析器保留流内顺序。
     pub colors: [Option<ColorSlot10_1>; 3],
     /// 轮廓符号槽 ×1（Save 槽 this−0x94）。
     pub outline: Option<SymbolSlotFull10_1>,
