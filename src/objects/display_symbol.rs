@@ -3310,15 +3310,15 @@ pub struct PictureMarkerSymbolBody10_1 {
     /// 图像块（版本 9 分支 / 版本 ≤8 历史路径）。体内槽位停止时保留已读
     /// 前缀（`stop` 携带原因）。
     pub image: PictureImage10_1,
-    /// IColor 槽 ×3（Save 侧三连 SaveObject；语义候选填充/透明/背景色）。
+    /// IColor 槽 ×3，依次为 Color、BackgroundColor、BitmapTransparencyColor。
     /// 第 i 项为 `None` = 在该槽停止或未达。
     pub colors: [Option<ColorSlot10_1>; 3],
-    /// double ×6（→ this−0xdc/−0xc4/−0xbc/−0xb4/−0xd4/−0xcc，语义未定）。
+    /// 六个 double，依次为 Angle、Size、XOffset、YOffset、XScale、YScale。
     /// `None` = 前置停止。
     pub doubles: Option<[f64; 6]>,
-    /// int32 ×2（→ this−0x14c/−0x144，语义未定）。`None` = 前置停止。
+    /// 两个 int32，依次为 ROP2、MapLevel。`None` = 前置停止。
     pub int32s: Option<[i32; 2]>,
-    /// byte → this−0x48（bool，语义未定）。`None` = 前置停止。
+    /// SwapForeGroundBackGroundColor，保留原始 byte。`None` = 前置停止。
     pub byte_48: Option<u8>,
     /// RotateWithTransform 原始 short → this−0x134（读取后原生内存槽被
     /// `Symbol::GetDefaultRotateWithTransformValue` 覆盖，流内值读取即弃）。

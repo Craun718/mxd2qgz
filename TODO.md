@@ -462,6 +462,7 @@
       - [ ] 定性 DisplayCore 符号类其余标量字段。
       - [x] 对位 ArrowMarkerSymbol 的八个持久化标量，并核对 Size 的派生规则。[箭头取证](docs/arcmap-10.1-display-symbols-round2.md#箭头标记的标量属性)
       - [x] 对位 PictureLineSymbol 的 Rotate、Offset 和 Width。[图片线取证](docs/arcmap-10.1-display-symbols-round2.md#图片线的标量属性)
+      - [x] 对位 PictureMarkerSymbol 的三个颜色槽、六个 double、ROP2、MapLevel 与前景背景交换标志。[图片标记取证](docs/arcmap-10.1-display-symbols-round2.md#图片标记的颜色与几何属性)
       - [x] 对位 RandomColorRamp 的 UseSeed、Seed 及六个亮度、饱和度和色相端点。[访问器对位](docs/mxd-terra-host-color.md#randomcolorramp公开端点与随机种子)
       - [x] 对位 CartographicLineSymbol、HashLineSymbol、MarkerLineSymbol 的标量属性，并接入完整嵌套符号分派。[线符号属性](docs/arcmap-10.1-display-tails.md#制图线刻线与标记线的属性)
       - [x] 对位线填充、标记填充和渐变填充的标量属性，纠正偏移、间距与渐变字段的解释。[填充符号属性](docs/arcmap-10.1-display-symbols-round2.md#三种填充符号的标量属性)

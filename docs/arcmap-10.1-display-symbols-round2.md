@@ -501,3 +501,30 @@ XScale 和 YScale 的读取方法 `0x6eb76d60/0x6eb76da0` 从接口 +0x38
 取得图片填充对象后委派。+0x98 +0x38 对应持久化接口 −0x14，即
 图像填充槽，两个缩放值不在外层标量段。Rust 注释按以上对位，仍保存
 流内位模式。ArcMap/QGIS 目视验证待补。
+
+### 图片标记的颜色与几何属性
+
+以同一 DisplayCore.dll 10.1.0.3035 和 esriDisplay.olb 核对
+PictureMarkerSymbol。RTTI 将持久化虚表 `0x6ec10738` 定在完整对象
++0x1a4，IPictureMarkerSymbol 虚表 `0x6ec105c4` 在 +0x98，
+ICartographicMarkerSymbol 虚表 `0x6ec10648` 在 +0xa0。
+
+| 流内属性 | getter | 接口成员 | 持久化成员 |
+| --- | --- | --- | --- |
+| Color | 0x6eb79890 | +0x88 | −0x84 |
+| BackgroundColor | 0x6eb79420 | +0x8c | −0x80 |
+| BitmapTransparencyColor | 0x6eb79570 | +0x90 | −0x7c |
+| Angle | 0x6eb5d310 | +0x30 | −0xdc |
+| Size | 0x6eb79960 | +0x48 | −0xc4 |
+| XOffset | 0x6eb799c0 | +0x50 | −0xbc |
+| YOffset | 0x6eb70510 | +0x58 | −0xb4 |
+| XScale | 0x6eb79a50 | +0x30（制图标记接口） | −0xd4 |
+| YScale | 0x6eb79ab0 | +0x38（制图标记接口） | −0xcc |
+| SwapForeGroundBackGroundColor | 0x6eb79660 | +0xc4 | −0x48 |
+
+Save 的三次颜色对象读取在 `0x6eb7acb4/0x6eb7acd1/0x6eb7aceb`
+按上表顺序取成员。ROP2 和 MapLevel 由 +0x18 和 +0x24 的公共
+接口转发到 DisplayLib，分别取完整对象 +0x58 和 +0x60，对应
+持久化 −0x14c 和 −0x144。字段注释保留线序，单位换算与颜色 getter
+的运行期分支仍由软件处理。尾部三个 short 的语义和 ArcMap/QGIS
+目视验证待补。
