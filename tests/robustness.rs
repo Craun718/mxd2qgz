@@ -1964,7 +1964,7 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
             for _ in 0..3 {
                 bytes.extend(1_u16.to_le_bytes());
             }
-            for _ in 0..16 {
+            for _ in 0..20 {
                 bytes.extend(0x1111_1111_u32.to_le_bytes());
             }
             bytes.extend([0_u8; 16]); // IFont 槽 A

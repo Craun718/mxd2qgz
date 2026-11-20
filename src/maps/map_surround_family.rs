@@ -402,7 +402,7 @@ pub struct MapTitleBody10_1 {
 ///
 /// 字段序（Load `0x794460b0` / Save `0x79446550`，逐段对称）：① int16
 /// 自身版本（有符号 >1 拒绝 `0x80004005`；Save 恒写 1 `DAT_79480d40`）
-/// → ② 共同前缀 → ③ 3×int32、double、3×int16、16×4 字节原样标量 →
+/// → ② 共同前缀 → ③ 3×int32、double、3×int16、20×4 字节原样标量 →
 /// ④ IFont 槽（`this−0x6c`）→ ⑤ uint32+int32 → ⑥ IFont 槽（`−0x54`）→
 /// ⑦ uint32 → ⑧ String（数字格式串候选）→ ⑨ 4×int32 → ⑩ IFont 槽
 /// （`−0x2c`）→ ⑪ uint32。三个 IFont 槽（请求 IID
@@ -416,6 +416,7 @@ pub fn read_scalebar_body_10_1(
 ) -> io::Result<ScalebarBody10_1> {
     let start = reader.position();
     let mut trial = reader.clone();
+    let mut staged = table.clone();
     let invalid = |reason: String| {
         io::Error::new(
             ErrorKind::InvalidData,
@@ -434,9 +435,9 @@ pub fn read_scalebar_body_10_1(
     }
 
     // 2. MapSurround 族共同前缀。
-    let common = read_map_surround_common_prefix_10_1(&mut trial, max_bytes, table)?;
+    let common = read_map_surround_common_prefix_10_1(&mut trial, max_bytes, &mut staged)?;
 
-    // 3. 标量段：3×int32 + double + 3×int16 + 16×4 字节原样（含符号差异，
+    // 3. 标量段：3×int32 + double + 3×int16 + 20×4 字节原样（含符号差异，
     //    原样保留位模式）。
     let mut head_ints = [0_u32; 3];
     for slot in &mut head_ints {
@@ -446,6 +447,10 @@ pub fn read_scalebar_body_10_1(
     let mut bar_shorts = [0_u16; 3];
     for slot in &mut bar_shorts {
         *slot = trial.read_u16_le()?;
+    }
+    let mut raw_before_tail = [0_u32; 4];
+    for slot in &mut raw_before_tail {
+        *slot = trial.read_u32_le()?;
     }
     let mut raw_tail = [0_u32; 16];
     for slot in &mut raw_tail {
@@ -457,7 +462,7 @@ pub fn read_scalebar_body_10_1(
     let (font_a, mut stop) = read_typed_slot_10_1(
         &mut trial,
         max_bytes,
-        table,
+        &mut staged,
         "font_a(IFont)",
         &STDFONT_CLASS_ID,
         |reader, _table, _key| read_std_font_body_10_1(reader, max_bytes),
@@ -477,7 +482,7 @@ pub fn read_scalebar_body_10_1(
         let (slot, reason) = read_typed_slot_10_1(
             &mut trial,
             max_bytes,
-            table,
+            &mut staged,
             "font_b(IFont)",
             &STDFONT_CLASS_ID,
             |reader, _table, _key| read_std_font_body_10_1(reader, max_bytes),
@@ -502,7 +507,7 @@ pub fn read_scalebar_body_10_1(
         let (slot, reason) = read_typed_slot_10_1(
             &mut trial,
             max_bytes,
-            table,
+            &mut staged,
             "font_c(IFont)",
             &STDFONT_CLASS_ID,
             |reader, _table, _key| read_std_font_body_10_1(reader, max_bytes),
@@ -516,6 +521,7 @@ pub fn read_scalebar_body_10_1(
 
     let remaining = trial.remaining();
     *reader = trial;
+    *table = staged;
     Ok(ScalebarBody10_1 {
         key,
         version,
@@ -523,6 +529,7 @@ pub fn read_scalebar_body_10_1(
         head_ints,
         bar_double,
         bar_shorts,
+        raw_before_tail,
         raw_tail,
         font_a,
         mid_pair,
@@ -562,6 +569,8 @@ pub struct ScalebarBody10_1 {
     pub bar_double: f64,
     /// 3×int16（`−0xc4/−0xc2/−0xc0`，位模式）。
     pub bar_shorts: [u16; 3],
+    /// 偏移 −0xbc、−0xb8、−0xb4、−0xb0 的四项原始位模式。
+    pub raw_before_tail: [u32; 4],
     /// 16×4 字节原样标量（偏移见 [`SCALEBAR_RAW_TAIL_OFFSETS`]）。
     pub raw_tail: [u32; 16],
     /// IFont 槽（`−0x6c`；字体候选）。
@@ -2131,6 +2140,9 @@ mod tests {
         for _ in 0..3 {
             data.extend(1u16.to_le_bytes());
         }
+        for word in [0x0123_4567_u32, 0x89ab_cdef, 0xfedc_ba98, 0x7654_3210] {
+            data.extend(word.to_le_bytes());
+        }
         for _ in 0..16 {
             data.extend(0x11111111u32.to_le_bytes());
         }
@@ -2166,6 +2178,10 @@ mod tests {
         assert_eq!(body.common.name, "装饰物");
         assert_eq!(body.head_ints, [7; 3]);
         assert_eq!(body.bar_double, 2.5);
+        assert_eq!(
+            body.raw_before_tail,
+            [0x0123_4567, 0x89ab_cdef, 0xfedc_ba98, 0x7654_3210]
+        );
         assert_eq!(body.raw_tail, [0x11111111; 16]);
         match &body.font_a {
             SlotEntry10_1::Body(font) => {
@@ -2186,7 +2202,7 @@ mod tests {
     fn scalebar_font_slot_unsupported_stops_at_slot_start() {
         let mut data = scalebar_full_bytes();
         // 把槽 A 类标识换成未知类。
-        let slot_a_offset = 20 + 2 + common_prefix_bytes().len() + (4 * 3) + 8 + (2 * 3) + 4 * 16;
+        let slot_a_offset = 20 + 2 + common_prefix_bytes().len() + (4 * 3) + 8 + (2 * 3) + 4 * 20;
         replace_entry(&mut data, slot_a_offset, &[0x55; 16], 99);
         let body = read_body(&data, read_scalebar_body_10_1).expect("停止是成功返回");
         match body.font_a {
@@ -3202,13 +3218,12 @@ mod tests {
             reader.read_bytes(20).unwrap();
             let pos = reader.position();
             let result = read_scalebar_body_10_1(&mut reader, 4096, &mut table, 5);
-            if result.is_err() {
-                assert_eq!(reader.position(), pos, "截断 {cut} 处失败必须不推进游标");
-                assert!(
-                    !table.contains(11) && !table.contains(12),
-                    "截断 {cut} 处失败不得登记槽位键"
-                );
-            }
+            assert!(result.is_err(), "截断 {cut} 处必须读取失败");
+            assert_eq!(reader.position(), pos, "截断 {cut} 处失败必须不推进游标");
+            assert!(
+                !table.contains(11) && !table.contains(12),
+                "截断 {cut} 处失败不得登记槽位键"
+            );
         }
     }
 }

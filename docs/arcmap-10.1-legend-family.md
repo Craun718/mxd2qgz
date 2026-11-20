@@ -125,7 +125,7 @@ GetClassID `0x79446040`；Load `0x794460b0` / Save `0x79446550`。字段序
 | 3 | int32 ×3 → −0xdc/−0xd8/−0xd4 | 原样保留 |
 | 4 | double → −0xcc | 原样保留 |
 | 5 | int16 ×3 → −0xc4/−0xc2/−0xc0 | 原样保留 |
-| 6 | 16×4 字节原样 → −0xac..−0x70 | Ghidra 标注 long/ulong 交替（−0xac、−0xa8、−0xa4、−0xa0、−0x9c、−0x98、−0x94、−0x90、−0x8c、−0x88、−0x84、−0x80、−0x7c、−0x78、−0x74、−0x70），按位模式保留 |
+| 6 | 20×4 字节原样 → −0xbc..−0x70 | Ghidra 标注混合 long/ulong，按位模式保留 |
 | 7 | LoadObject（请求 IID `{BEF6E002-A874-101A-8BBA-00AA00300CAB}` = **IFont**，OLE 标准）→ 槽 −0x6c | Save `SaveObject(−0x6c)` 对称；流内预期 OLE StdFont（`{0BE35203-…}`） |
 | 8 | uint32 → −0x5c、int32 → −0x58 | 原样保留 |
 | 9 | LoadObject（IFont）→ 槽 −0x54 | |
@@ -137,6 +137,15 @@ GetClassID `0x79446040`；Load `0x794460b0` / Save `0x79446550`。字段序
 
 三个 IFont 槽是比例尺标注字体候选（OLE StdFont 体的读取器在
 `src/objects/ole_font`，样本 37 实例佐证过其布局）。
+
+复核 Map.dll 10.1.0.3035（SHA-256
+`1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`）。
+旧字段表从 −0xac 起算，漏列四项。Load 在
+`0x794461e4/0x794461ff/0x7944621a/0x79446239` 取四个连续成员的地址，
+Save 在 `0x7944667d/0x79446698/0x794466b3/0x794466d2` 对称写出。
+读取器先保留这四个值，再读取原有 16 项。合成输入验证三个字体槽与
+后续字段的边界，以及逐前缀截断回滚。字段业务语义和 ArcMap/QGIS
+实档目视验证待补。
 
 ## 三、ScaleText（`{7A3F91DC-…}`，体完全闭合；证据：确定的）
 

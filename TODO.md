@@ -525,6 +525,7 @@
       - [ ] 定性 Scalebar 共用基类 v5 增加的 short。[比例尺续查](docs/mxd-terra-nextpass-scale.md#分数字符开关)
       - [x] 定性四类填充比例尺派生中段的 double 为 IScaleBar.BarHeight，并从解析结果提供该值。[高度取证](docs/mxd-terra-nextpass-scale.md#填充比例尺高度)
       - [ ] 定性独立 Scalebar 类的其余标量字段。[比例尺续查](docs/mxd-terra-nextpass-scale.md)
+      - [x] 补读独立 Scalebar 首个字体槽前漏掉的四个 32 位值，并验证截断回滚。[原生读写](docs/arcmap-10.1-legend-family.md#二scalebar7a3f91db-体完全闭合证据确定的)
       - [x] 定性 MarkerNorthArrow 基类的大小、角度、校准角度、参考点和类型。[属性对位](docs/arcmap-10.1-legend-family.md#指北针的属性)
       - [ ] 确认 MarkerNorthArrow 旧版标记槽前弃读 int32 的历史写侧用途。
       - [x] 定性 MapTitle 的自身版本与共同前缀字段，并按原生有符号比较验证条件字段边界。[原生读写](docs/arcmap-10.1-legend-family.md#一maptitle7a3f91df-体完全闭合证据确定的)
