@@ -622,3 +622,21 @@ ArcMap/QGIS 实档目视验证待补。
 负版本经过两个 IPicture 槽及共同标量段，跳过随后按正版本启用的字段。
 Rust 保留原始版本位模式。构造测试核对负版本和 v0/v1 的后继哨兵位置。
 负版本真实写出来源和 ArcMap/QGIS 目视验证待补。
+
+### 图片符号的图像编码标记
+
+同版 DisplayCore.dll 的图片标记 v9 从持久化 −0x10 读写辅助 int32，
+即完整对象 +0x194。图片填充 v8 对应 −0x14，即 +0x158。
+这两个成员由各自 +0x9c 的路径加载入口 `0x6eb7cc50/0x6eb74180`
+在处理 data URI 时赋值。已导出的反编译给出 MIME 串比较，
+objdump 复核了写标记的三条指令。
+
+| 标记 | 该写入路径接受的 MIME | 标记 / 填充赋值指令 |
+| --- | --- | --- |
+| 1 | image/gif、image/bmp | 0x6eb7cd76 / 0x6eb7429b |
+| 2 | image/png | 0x6eb7cd04 / 0x6eb74229 |
+| 3 | image/jpeg、image/jpe | 0x6eb7cd82 / 0x6eb742a7 |
+
+此成员与选择路径、内嵌块或 IPicture 槽的图像类型字段各自独立。
+标记 1 在上述两个入口共用于 GIF 和 BMP。解析器保留完整整数，
+其他赋值来源、路径分支附带的 double 语义和 ArcMap/QGIS 目视验证待补。

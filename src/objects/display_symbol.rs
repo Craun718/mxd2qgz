@@ -3293,6 +3293,7 @@ pub enum PictureImage10_1 {
     /// IPicture 槽停止（游标停在槽位起点）。
     V9 {
         image_type: u32,
+        /// 原生图像编码标记，保留原始值。
         aux_int32: i32,
         payload: Option<PictureImagePayload10_1>,
     },
