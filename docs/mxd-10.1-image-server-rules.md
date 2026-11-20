@@ -769,3 +769,32 @@ RasterInfo 可以经 Variant 或地理变换再次到达栅格名称与函数规
 再次进入 Variant 时继承外层深度，并允许限额处读取已有键。合并函数测试
 验证压缩流可复用外层键号及深度限额继续生效。真实非空属性集和模板宿主仍待
 实档或运行取证，ArcMap/QGIS 人工验收尚未进行。
+
+### RenderingRule 登记候选复核
+
+对照 10.1 Desktop 的解包登记文件 `esri.clsid.xml`（SHA-256
+`13a72c90856b258dbd065b4cbc9a2eedf744b411edfa9ccb56b64ce5074eedce`），
+在 FunctionRasterDB、RasterLocalOp、SARasterFunction、ImageServerLayer、
+RasterRenderer、RasterCoreLib、MosaicDB、_3DToRasterFunctions 的登记模块下，
+提取 progID 含 Function 或 Argument 的候选 CLSID，与 Rust 的内存序
+CLSID 和构造常量比对。此条件命中 109 条登记。补以 72 份类型库中
+直接或继承声明 IRasterFunction 的 coclass GUID，避免仅按名称筛选。
+后一个集合中的具体类均能对应代码中的已知类标识。
+
+登记名称筛查留下四个未声明解析常量的 CLSID：
+
+- SARasterFunction 的 MemoryPixelsIntersectFunction 和 ScalarFunction
+  分别已证持久化失败及宿主接口查询失败，见[登记表复核](#局部运算公开类和登记表复核)。
+- FunctionRasterDB.dll 10.1.0.3035（摘要同本页前述原件）的
+  RasterFunctionHelper（`B55F1F83-3745-4C88-BBE1-4FC7A0273409`）
+  主 QI `0x6fcf0cb0` 比较 `0x6fd4ba78` 的 IID，再委派
+  `0x6fd29d40`。这两个入口的比较常量没有 RenderingRule 的两个
+  函数接口 IID，未命中时后者在 `0x6fd29e32` 返回 E_NOINTERFACE。
+- 同版 FunctionRasterDataset（`D0CC7770-AA1A-4FE3-BD82-1D8BB7B3781F`）
+  主 QI `0x6fc898e0` 的 42 个比较常量经 objdump 和 PE 字节复核。
+  后备 `0x6fd2a280` 只增加一个比较并转入 `0x6fd29d40`。两条
+  路径均不响应 RenderingRule 的函数或参数 IID。其名称对象
+  FunctionRasterDatasetName 有独立 CLSID 和解析入口。
+
+这轮清点排除了上述登记候选。其他模块的间接实现、旧版别名和第三方
+类仍需要独立原生或真实宿主证据；未做 ArcMap/QGIS 人工验收。
