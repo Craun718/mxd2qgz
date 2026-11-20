@@ -351,12 +351,18 @@ pub(super) fn read_renderer_legend_item(
         ObjectEntry10_1::NewObject {
             class_id: NESTED_LEGEND_ITEM_CLASS_ID,
             key,
-        } => confirmed!(
-            read_nested_legend_item_body_10_1,
-            NestedLegendItem,
-            key,
-            base.stop
-        ),
+        } => {
+            let body = read_nested_legend_item_body_10_1(r, max, table, key)?;
+            if let Some(stop) = body.symbol_stop {
+                return Err(invalid(format!("栅格渲染器图例项符号未闭合：{stop:?}")));
+            }
+            if let Some(stop) = &body.base.stop {
+                return Err(invalid(format!(
+                    "栅格渲染器 ILegendItem 体未闭合：{stop:?}"
+                )));
+            }
+            LegendItemSlot10_1::NestedLegendItem(Box::new(body))
+        }
         ObjectEntry10_1::NewObject {
             class_id: VERTICAL_LEGEND_ITEM_CLASS_ID,
             key,

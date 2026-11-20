@@ -58,10 +58,10 @@ fn common_prefix_bytes(version: u16, name: &str, map_key: Option<u32>) -> Vec<u8
         Some(key) => push_entry_header(&mut bytes, &MAP_CLASS_ID, key),
         None => push_null_marker(&mut bytes),
     }
-    if version >= 2 {
+    if (version as i16) >= 2 {
         bytes.extend(0x1234_u16.to_le_bytes());
     }
-    if version >= 3 {
+    if (version as i16) >= 3 {
         bytes.extend([0xAB_u8; 32]);
     }
     bytes
@@ -300,16 +300,23 @@ fn common_prefix_version_gates() {
 }
 
 #[test]
-fn common_prefix_rejects_unverified_versions() {
-    for version in [4_u16, 0x8000, 0xFFFF] {
-        let bytes = common_prefix_bytes(version, "", None);
-        let error = read_map_surround_common_prefix_10_1(
-            &mut Reader::new(&bytes),
-            usize::MAX,
-            &mut RefTable10_1::new(),
-        )
-        .unwrap_err();
-        assert_eq!(error.kind(), ErrorKind::InvalidData, "版本 {version:#x}");
+fn common_prefix_signed_version_preserves_successor() {
+    for (version, has_tail) in [
+        (4_u16, true),
+        (0x7fff, true),
+        (0x8000, false),
+        (0xffff, false),
+    ] {
+        let mut bytes = common_prefix_bytes(version, "", None);
+        bytes.push(0xac);
+        let mut reader = Reader::new(&bytes);
+        let prefix =
+            read_map_surround_common_prefix_10_1(&mut reader, usize::MAX, &mut RefTable10_1::new())
+                .unwrap();
+        assert_eq!(prefix.version, version);
+        assert_eq!(prefix.extra_short.is_some(), has_tail);
+        assert_eq!(prefix.raw_envelope.is_some(), has_tail);
+        assert_eq!(reader.read_bytes(1).unwrap(), &[0xac]);
     }
 }
 

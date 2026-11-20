@@ -59,7 +59,8 @@ use crate::layers::legend_item::{
     BaseLegendItemFields10_1, LegendItemArrangement10_1, read_base_legend_item_fields_10_1,
 };
 use crate::objects::display_symbol::{
-    MAX_SYMBOL_NESTING_DEPTH, SymbolSlotFull10_1, read_symbol_slot_full_10_1,
+    DisplaySlotKind10_1, MAX_SYMBOL_NESTING_DEPTH, SymbolSlotFull10_1, SymbolStop10_1,
+    read_symbol_slot_full_10_1, slot_full_stop_10_1,
 };
 use crate::storage::object_refs::RefTable10_1;
 use crate::stream::reader::Reader;
@@ -117,13 +118,13 @@ pub fn read_horizontal_bar_legend_item_body_10_1(
         )
     };
     let version = trial.read_u16_le()?;
-    if (version as i16) > MAX_ITEM_VERSION || (version as i16) < 0 {
+    if (version as i16) > MAX_ITEM_VERSION {
         return Err(invalid(format!(
-            "条目版本 {version} 超出接受范围（有符号 >1 拒绝 0x80004005；Save 恒写 1；\
-             负值位模式原生通过，此处一并拒绝）"
+            "条目版本 {version} 超出接受范围（有符号 >1 拒绝 0x80004005；Save 恒写 1）"
         )));
     }
-    let base = read_base_legend_item_fields_10_1(&mut trial, max_bytes, table)?;
+    let mut staged = table.clone();
+    let base = read_base_legend_item_fields_10_1(&mut trial, max_bytes, &mut staged)?;
     let mut raw_int32 = None;
     let mut doubles = None;
     if base.stop.is_none() {
@@ -132,6 +133,7 @@ pub fn read_horizontal_bar_legend_item_body_10_1(
         let b = trial.read_f64_le()?;
         doubles = Some([a, b]);
     }
+    *table = staged;
     *reader = trial;
     Ok(HorizontalBarLegendItemBody10_1 {
         key,
@@ -152,9 +154,9 @@ pub struct HorizontalBarLegendItemBody10_1 {
     pub version: u16,
     /// BaseLegendItem 字段序。
     pub base: BaseLegendItemFields10_1,
-    /// int32（`−0x1c`，位模式）。
+    /// IVerticalLegendItem.Arrangement。
     pub raw_int32: Option<i32>,
-    /// double ×2（`−0x14/−0xc`，位模式）。
+    /// AngleAbove 和 AngleBelow。
     pub doubles: Option<[f64; 2]>,
     /// 停止点之后剩余的字节数。
     pub remaining_bytes: usize,
@@ -166,8 +168,7 @@ pub struct HorizontalBarLegendItemBody10_1 {
 /// BaseLegendItem 字段序 → int32（`−0x2c`，位模式）→ double（`−0x24`）→
 /// IFillSymbol 槽（`−0x1c`）→ ILineSymbol 槽（`−0x18`）→ int16 ×3
 /// （`−0x14/−0x12/−0x10`）→ int32（`−0xc`）。两个符号槽经
-/// [`read_symbol_slot_full_10_1`] 全量分派（未知符号类为槽内枚举值，
-/// 不整体停止）。
+/// [`read_symbol_slot_full_10_1`] 全量分派，遇到未闭合符号即停止。
 pub fn read_nested_legend_item_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -183,31 +184,47 @@ pub fn read_nested_legend_item_body_10_1(
         )
     };
     let version = trial.read_u16_le()?;
-    if (version as i16) > MAX_ITEM_VERSION || (version as i16) < 0 {
+    if (version as i16) > MAX_ITEM_VERSION {
         return Err(invalid(format!(
-            "条目版本 {version} 超出接受范围（有符号 >1 拒绝 0x80004005；Save 恒写 1；\
-             负值位模式原生通过，此处一并拒绝）"
+            "条目版本 {version} 超出接受范围（有符号 >1 拒绝 0x80004005；Save 恒写 1）"
         )));
     }
-    let base = read_base_legend_item_fields_10_1(&mut trial, max_bytes, table)?;
+    let mut staged = table.clone();
+    let base = read_base_legend_item_fields_10_1(&mut trial, max_bytes, &mut staged)?;
     let mut raw_int32 = None;
     let mut raw_double = None;
     let mut fill_symbol = SymbolSlotFull10_1::Null;
     let mut line_symbol = SymbolSlotFull10_1::Null;
+    let mut symbol_stop = None;
     let mut shorts = [0_u16; 3];
     let mut raw_int32_b = None;
     if base.stop.is_none() {
         raw_int32 = Some(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
         raw_double = Some(trial.read_f64_le()?);
-        fill_symbol =
-            read_symbol_slot_full_10_1(&mut trial, max_bytes, table, MAX_SYMBOL_NESTING_DEPTH)?;
-        line_symbol =
-            read_symbol_slot_full_10_1(&mut trial, max_bytes, table, MAX_SYMBOL_NESTING_DEPTH)?;
+        fill_symbol = read_symbol_slot_full_10_1(
+            &mut trial,
+            max_bytes,
+            &mut staged,
+            MAX_SYMBOL_NESTING_DEPTH,
+        )?;
+        symbol_stop = slot_full_stop_10_1(&fill_symbol, DisplaySlotKind10_1::FillSymbol);
+        if symbol_stop.is_none() {
+            line_symbol = read_symbol_slot_full_10_1(
+                &mut trial,
+                max_bytes,
+                &mut staged,
+                MAX_SYMBOL_NESTING_DEPTH,
+            )?;
+            symbol_stop = slot_full_stop_10_1(&line_symbol, DisplaySlotKind10_1::LineSymbol);
+        }
+    }
+    if base.stop.is_none() && symbol_stop.is_none() {
         for slot in &mut shorts {
             *slot = trial.read_u16_le()?;
         }
         raw_int32_b = Some(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
     }
+    *table = staged;
     *reader = trial;
     Ok(NestedLegendItemBody10_1 {
         key,
@@ -217,6 +234,7 @@ pub fn read_nested_legend_item_body_10_1(
         raw_double,
         fill_symbol,
         line_symbol,
+        symbol_stop,
         shorts,
         raw_int32_b,
         remaining_bytes: reader.remaining(),
@@ -232,17 +250,19 @@ pub struct NestedLegendItemBody10_1 {
     pub version: u16,
     /// BaseLegendItem 字段序。
     pub base: BaseLegendItemFields10_1,
-    /// int32（`−0x2c`，位模式）。
+    /// IHorizontalLegendItem.Arrangement。
     pub raw_int32: Option<i32>,
-    /// double（`−0x24`，位模式）。
+    /// INestedLegendItem.LeaderOverhang。
     pub raw_double: Option<f64>,
     /// IFillSymbol 槽（`−0x1c`）。
     pub fill_symbol: SymbolSlotFull10_1,
     /// ILineSymbol 槽（`−0x18`）。
     pub line_symbol: SymbolSlotFull10_1,
-    /// int16 ×3（`−0x14/−0x12/−0x10`，位模式）。
+    /// 首个未读完的符号槽或嵌套体。
+    pub symbol_stop: Option<SymbolStop10_1>,
+    /// AutoLayout、LabelEnds、ShowOutlines 的原始 short 位模式。
     pub shorts: [u16; 3],
-    /// int32（`−0xc`，位模式）。
+    /// INestedLegendItem.HorizontalAlignment。
     pub raw_int32_b: Option<i32>,
     /// 停止点之后剩余的字节数。
     pub remaining_bytes: usize,
@@ -268,14 +288,15 @@ pub fn read_vertical_legend_item_body_10_1(
         )
     };
     let version = trial.read_u16_le()?;
-    if (version as i16) > MAX_ITEM_VERSION || (version as i16) < 0 {
+    if (version as i16) > MAX_ITEM_VERSION {
         return Err(invalid(format!(
-            "条目版本 {version} 超出接受范围（有符号 >1 拒绝 0x80004005；Save 恒写 1；\
-             负值位模式原生通过，此处一并拒绝）"
+            "条目版本 {version} 超出接受范围（有符号 >1 拒绝 0x80004005；Save 恒写 1）"
         )));
     }
     let raw_int32 = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
-    let base = read_base_legend_item_fields_10_1(&mut trial, max_bytes, table)?;
+    let mut staged = table.clone();
+    let base = read_base_legend_item_fields_10_1(&mut trial, max_bytes, &mut staged)?;
+    *table = staged;
     *reader = trial;
     Ok(VerticalLegendItemBody10_1 {
         key,
@@ -604,6 +625,40 @@ mod tests {
     }
 
     #[test]
+    fn nested_unknown_symbol_stops_before_following_fields() {
+        let fixture = nested_bytes();
+        for (distance, kind) in [
+            (42, DisplaySlotKind10_1::FillSymbol),
+            (26, DisplaySlotKind10_1::LineSymbol),
+        ] {
+            let mut bytes = fixture.clone();
+            bytes[20..22].copy_from_slice(&0x8000u16.to_le_bytes());
+            let at = bytes.len() - distance;
+            bytes.splice(
+                at..at + 16,
+                [0x77; 16].into_iter().chain(81u32.to_le_bytes()),
+            );
+            read_item(&bytes, |reader, max, table, key| {
+                let body = read_nested_legend_item_body_10_1(reader, max, table, key)?;
+                assert_eq!(body.version, 0x8000);
+                assert_eq!(
+                    body.symbol_stop,
+                    Some(SymbolStop10_1::Slot {
+                        kind,
+                        class_id: [0x77; 16],
+                        key: 81
+                    })
+                );
+                assert_eq!(reader.position(), at);
+                assert!(!table.contains(81));
+                assert!(body.raw_int32_b.is_none());
+                Ok(())
+            })
+            .unwrap();
+        }
+    }
+
+    #[test]
     fn reads_nested_full_body() {
         let data = nested_bytes();
         let body = read_item(&data, read_nested_legend_item_body_10_1).expect("Nested 体");
@@ -659,13 +714,13 @@ mod tests {
         for cut in 20..data.len() {
             let mut table = RefTable10_1::default();
             table.register(30);
-            let mut reader = Reader::new(&data);
+            let mut reader = Reader::new(&data[..cut]);
             reader.read_bytes(20).unwrap();
             let pos = reader.position();
             let result = read_nested_legend_item_body_10_1(&mut reader, 4096, &mut table, 5);
-            if result.is_err() {
-                assert_eq!(reader.position(), pos, "截断 {cut} 处失败必须不推进游标");
-            }
+            assert!(result.is_err(), "截断 {cut}");
+            assert_eq!(reader.position(), pos);
+            assert_eq!(table.len(), 1);
         }
     }
 }

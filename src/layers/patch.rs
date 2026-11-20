@@ -24,8 +24,8 @@
 //!    预期 Polyline、AreaPatch 预期 Polygon（类身份由流内 16 字节对象头
 //!    决定；请求 IID 只约束接口）。本读取器对新对象按四类闭合几何
 //!    （Polyline/Polygon/Point/Multipoint）分派整体消费，其余类停止；
-//! 3. String（→ 对象 −0x10，补丁名称候选）；
-//! 4. 版本 ≥2：int16（→ 对象 −0xc，语义未定，原样保留）；
+//! 3. String（→ 对象 −0x10，IPatch.Name）；
+//! 4. 版本 ≥2：int16（→ 对象 −0xc，IPatch.PreserveAspectRatio 的原始位模式）；
 //! 5. 版本 <3：原生调 `FUN_786664b0` 做装载后整理（不读流）——10.1 写侧
 //!    恒写版本 3，该分支在 10.1 产物中不可达，读取器不模拟。
 //!
@@ -39,7 +39,7 @@
 //! 游标、不修改登记表。`max_bytes` 约束名称字符串，`usize::MAX` 表示不
 //! 额外设限。
 //!
-//! 未解决问题（详见研究记录）：名称 String 与 int16 的业务语义未定；
+//! 未解决问题（详见研究记录）：
 //! 版本 0/1/2 短体形态无字节佐证（Save 恒写 3）；补丁几何类分布未观察
 //! （样本 0 实例）；全部结论为静态反编译观察，未经目标软件运行验证，
 //! 不得声称已验证。
@@ -113,7 +113,7 @@ pub struct PatchBody10_1 {
     pub geometry: PatchGeometrySlot10_1,
     /// 第 3 步补丁名称字符串（→ 对象 −0x10）。
     pub name: String,
-    /// 版本 ≥2 的 int16 原样位模式（→ 对象 −0xc，语义未定）。
+    /// 版本 ≥2 的 int16 原样位模式（→ 对象 −0xc，IPatch.PreserveAspectRatio）。
     pub extra_short: Option<u16>,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<PatchStop10_1>,

@@ -220,6 +220,8 @@ pub enum FamilyStop10_1 {
     MarkerElementIncomplete,
     /// 旧版 IMarkerSymbol 槽或其嵌套体未完成。
     LegacyMarkerSymbol(SymbolStop10_1),
+    /// 比例尺的填充或线符号槽未完整读取。
+    ScalebarSymbol(SymbolStop10_1),
 }
 
 impl FamilyStop10_1 {
@@ -229,6 +231,7 @@ impl FamilyStop10_1 {
             Self::MarkerElementIncomplete => {
                 "MarkerNorthArrow 的 MarkerElement 体内停止；详情见元素体".to_owned()
             }
+            Self::ScalebarSymbol(reason) => format!("比例尺符号槽停止：{reason:?}"),
             Self::LegacyMarkerSymbol(reason) => {
                 format!("MarkerNorthArrow 的旧版符号槽停止：{reason:?}")
             }
@@ -260,46 +263,65 @@ fn read_typed_slot_10_1<T>(
     target_class: &[u8; 16],
     read_body: impl FnOnce(&mut Reader<'_>, &mut RefTable10_1, u32) -> io::Result<T>,
 ) -> io::Result<(SlotEntry10_1<T>, Option<FamilyStop10_1>)> {
-    let origin = reader.clone();
+    read_checked_family_slot(reader, table, slot, target_class, |r, t, k| {
+        read_body(r, t, k).map(Some)
+    })
+}
+
+fn read_family_text_slot(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    slot: &'static str,
+) -> io::Result<(SlotEntry10_1<TextSymbolBody10_1>, Option<FamilyStop10_1>)> {
+    read_checked_family_slot(reader, table, slot, &TEXT_SYMBOL_CLASS_ID, |r, t, _| {
+        let body = read_text_symbol_body_10_1(r, max_bytes, t)?;
+        Ok(body.stop.is_none().then_some(body))
+    })
+}
+
+fn read_checked_family_slot<T>(
+    reader: &mut Reader<'_>,
+    table: &mut RefTable10_1,
+    slot: &'static str,
+    target_class: &[u8; 16],
+    read_body: impl FnOnce(&mut Reader<'_>, &mut RefTable10_1, u32) -> io::Result<Option<T>>,
+) -> io::Result<(SlotEntry10_1<T>, Option<FamilyStop10_1>)> {
     let mut trial = reader.clone();
     let mut staged = table.clone();
-    match read_object_entry_10_1(&mut trial, &mut staged)? {
-        ObjectEntry10_1::Null => {
-            *reader = trial;
-            *table = staged;
-            Ok((SlotEntry10_1::Null, None))
-        }
+    let entry = match read_object_entry_10_1(&mut trial, &mut staged)? {
+        ObjectEntry10_1::Null => SlotEntry10_1::Null,
         ObjectEntry10_1::BackReference { class_id, key } => {
-            *reader = trial;
-            *table = staged;
-            Ok((SlotEntry10_1::BackReference { class_id, key }, None))
+            SlotEntry10_1::BackReference { class_id, key }
         }
         ObjectEntry10_1::NewObject { class_id, key } => {
-            if class_id == *target_class {
-                let body = read_body(&mut trial, &mut staged, key)?;
-                *reader = trial;
-                *table = staged;
-                Ok((SlotEntry10_1::Body(Box::new(body)), None))
+            let body = if class_id == *target_class {
+                read_body(&mut trial, &mut staged, key)?
             } else {
-                *reader = origin;
-                Ok((
+                None
+            };
+            let Some(body) = body else {
+                return Ok((
                     SlotEntry10_1::Unsupported { class_id, key },
                     Some(FamilyStop10_1::SlotUnsupported {
                         slot,
                         class_id,
                         key,
                     }),
-                ))
-            }
+                ));
+            };
+            SlotEntry10_1::Body(Box::new(body))
         }
-    }
+    };
+    *reader = trial;
+    *table = staged;
+    Ok((entry, None))
 }
 
 /// 从对象头之后的位置读取 MapTitle（地图标题）对象体。
 ///
 /// 字段序（Load `0x794426f0` / Save `0x79442740`）：① int16 自身版本
-/// （原生无拒绝门、负值位模式通过；Save 恒写 1（`DAT_79480d48`），本
-/// 读取器仅接受 0..=1 较原生更严）→ ② MapSurround 族共同前缀（含其
+/// （Load 保留全部位模式；Save 恒写 1，见 `DAT_79480d48`）→ ② MapSurround 族共同前缀（含其
 /// 自身的版本 short/String/IMap 槽/条件字段）。**MapTitle 的持久化体
 /// 到此完结**（Save 侧同构：短 + 共同前缀 Save `0x79441510`）。
 pub fn read_map_title_body_10_1(
@@ -308,21 +330,9 @@ pub fn read_map_title_body_10_1(
     table: &mut RefTable10_1,
     key: u32,
 ) -> io::Result<MapTitleBody10_1> {
-    let start = reader.position();
     let mut trial = reader.clone();
-    let invalid = |reason: String| {
-        io::Error::new(
-            ErrorKind::InvalidData,
-            format!("MapTitle 对象体 offset 0x{start:x}: {reason}"),
-        )
-    };
+    // 原生仅检查 short 读取成功，随后无条件委派给共同前缀。
     let version = trial.read_u16_le()?;
-    if version > 1 {
-        return Err(invalid(format!(
-            "版本位模式 {version}（0x{version:04x}）超出本读取器接受范围 0..=1（Load \
-             0x794426f0 无拒绝门、负值位模式亦通过；Save 恒写 1，其余值无字节佐证，拒绝）"
-        )));
-    }
     let common = read_map_surround_common_prefix_10_1(&mut trial, max_bytes, table)?;
     *reader = trial;
     Ok(MapTitleBody10_1 {
@@ -337,8 +347,7 @@ pub fn read_map_title_body_10_1(
 pub struct MapTitleBody10_1 {
     /// 对象头键。
     pub key: u32,
-    /// int16 自身版本的无符号位模式（原生无拒绝门；Save 恒写 1；读取器
-    /// 仅接受 0..=1，较原生更严）。
+    /// int16 自身版本的无符号位模式（原生无拒绝门；Save 恒写 1）。
     pub version: u16,
     /// MapSurround 族共同前缀（第 2 字段起，含其版本门条件字段）。
     pub common: MapSurroundCommonPrefix10_1,
@@ -577,14 +586,8 @@ pub fn read_scale_text_body_10_1(
     let mut stop = None;
     if version < 2 {
         legacy_text = Some(read_string_10_1(&mut trial, max_bytes)?);
-        let (slot, reason) = read_typed_slot_10_1(
-            &mut trial,
-            max_bytes,
-            table,
-            "legacy_symbol(ITextSymbol)",
-            &TEXT_SYMBOL_CLASS_ID,
-            |reader, table, _key| read_text_symbol_body_10_1(reader, max_bytes, table),
-        )?;
+        let (slot, reason) =
+            read_family_text_slot(&mut trial, max_bytes, table, "legacy_symbol(ITextSymbol)")?;
         legacy_symbol = slot;
         stop = reason;
     }
@@ -847,13 +850,13 @@ pub struct MarkerNorthArrowBody10_1 {
     pub base_version: u16,
     /// MapSurround 族共同前缀。
     pub common: MapSurroundCommonPrefix10_1,
-    /// 基类 double（`−0x2c`，位模式）。
+    /// INorthArrow.Size 的持久化缓存值。
     pub base_double_a: f64,
-    /// 基类 double（`−0x24`，位模式）。
+    /// INorthArrow.Angle。
     pub base_double_b: f64,
-    /// 基类版本 ≥2 的 double（`−0x1c`，位模式；<2 内存清零不读流）。
+    /// 基类版本 ≥2 的 INorthArrow.CalibrationAngle。
     pub base_double_c: Option<f64>,
-    /// 基类版本 ≥3 的 IPoint 槽（`−0x14`；<3 不读流）。
+    /// 基类版本 ≥3 的 INorthArrow.ReferenceLocation。
     pub base_point: SlotEntry10_1<PointBody10_1>,
     /// 基类版本 ≥4 的 int32（`−0x34`，位模式；<4 不读流）。
     pub base_int32: Option<i32>,
@@ -889,6 +892,7 @@ pub fn read_legend_format_body_10_1(
 ) -> io::Result<LegendFormatBody10_1> {
     let start = reader.position();
     let mut trial = reader.clone();
+    let mut staged = table.clone();
     let invalid = |reason: String| {
         io::Error::new(
             ErrorKind::InvalidData,
@@ -909,13 +913,11 @@ pub fn read_legend_format_body_10_1(
     let extra_short = trial.read_u16_le()?;
 
     // 3. ITextSymbol 槽（−0x88）。
-    let (title_symbol, mut stop) = read_typed_slot_10_1(
+    let (title_symbol, mut stop) = read_family_text_slot(
         &mut trial,
         max_bytes,
-        table,
+        &mut staged,
         "title_symbol(ITextSymbol)",
-        &TEXT_SYMBOL_CLASS_ID,
-        |reader, table, _key| read_text_symbol_body_10_1(reader, max_bytes, table),
     )?;
 
     // 4. int32（−0x84）。
@@ -933,28 +935,30 @@ pub fn read_legend_format_body_10_1(
     }
 
     // 6./7. ILinePatch / IAreaPatch 槽。
+    let read_patch = |reader: &mut Reader<'_>, table: &mut RefTable10_1, key| {
+        let body = read_patch_body_10_1(reader, max_bytes, table, key)?;
+        Ok(body.stop.is_none().then_some(body))
+    };
     let mut line_patch: SlotEntry10_1<PatchBody10_1> = SlotEntry10_1::Null;
     let mut area_patch: SlotEntry10_1<PatchBody10_1> = SlotEntry10_1::Null;
     if stop.is_none() {
-        let (slot, reason) = read_typed_slot_10_1(
+        let (slot, reason) = read_checked_family_slot(
             &mut trial,
-            max_bytes,
-            table,
+            &mut staged,
             "line_patch(ILinePatch)",
             &LINE_PATCH_CLASS_ID,
-            |reader, table, key| read_patch_body_10_1(reader, max_bytes, table, key),
+            read_patch,
         )?;
         line_patch = slot;
         stop = reason;
     }
     if stop.is_none() {
-        let (slot, reason) = read_typed_slot_10_1(
+        let (slot, reason) = read_checked_family_slot(
             &mut trial,
-            max_bytes,
-            table,
+            &mut staged,
             "area_patch(IAreaPatch)",
             &AREA_PATCH_CLASS_ID,
-            |reader, table, key| read_patch_body_10_1(reader, max_bytes, table, key),
+            read_patch,
         )?;
         area_patch = slot;
         stop = reason;
@@ -976,6 +980,7 @@ pub fn read_legend_format_body_10_1(
 
     let remaining = trial.remaining();
     *reader = trial;
+    *table = staged;
     Ok(LegendFormatBody10_1 {
         key,
         version,
@@ -1000,21 +1005,22 @@ pub struct LegendFormatBody10_1 {
     /// int16 版本的无符号位模式（有符号 >2 拒绝；10.1 恒写 2；负值拒绝
     /// 较原生更严）。
     pub version: u16,
-    /// int16（`−0x8c`，原样位模式，语义未定）。
+    /// ILegendFormat.ShowTitle 的原始 short 位模式。
     pub extra_short: u16,
-    /// ITextSymbol 槽（`−0x88`；标题符号候选）。
+    /// ILegendFormat.TitleSymbol。
     pub title_symbol: SlotEntry10_1<TextSymbolBody10_1>,
-    /// int32（`−0x84`，位模式）。
+    /// ILegendFormat.TitlePosition 的枚举值。
     pub raw_int32: Option<i32>,
-    /// double ×11（`−0x7c..−0x2c`，位模式；索引 n 对应 `−0x7c + 8n`）。
+    /// 依次为 TitleGap、VerticalItemGap、HorizontalItemGap、LayerNameGap、GroupGap、
+    /// HeadingGap、TextGap、VerticalPatchGap、HorizontalPatchGap、DefaultPatchWidth、DefaultPatchHeight。
     pub doubles: [f64; 11],
-    /// ILinePatch 槽（`−0x14`；线补丁候选）。
+    /// ILegendFormat.DefaultLinePatch。
     pub line_patch: SlotEntry10_1<PatchBody10_1>,
-    /// IAreaPatch 槽（`−0x10`；面补丁候选）。
+    /// ILegendFormat.DefaultAreaPatch。
     pub area_patch: SlotEntry10_1<PatchBody10_1>,
-    /// int16（`−0xc`，原样位模式）。
+    /// ILegendLayout.ScaleGraphicsOnResize 的原始 short 位模式。
     pub tail_short: Option<u16>,
-    /// 版本 ≥2 的 double ×2（`−0x24/−0x1c`）。
+    /// 版本 ≥2 的 ILegendFormat2.LabelWidth 和 DescriptionWidth。
     pub patch_doubles: Option<[f64; 2]>,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<FamilyStop10_1>,
@@ -1047,6 +1053,33 @@ impl ScalebarSubclassKind10_1 {
     }
 }
 
+fn read_scalebar_symbols(
+    reader: &mut Reader<'_>,
+    table: &mut RefTable10_1,
+    max_bytes: usize,
+    count: usize,
+    kind: DisplaySlotKind10_1,
+    symbols: &mut Vec<SymbolSlotFull10_1>,
+) -> io::Result<Option<FamilyStop10_1>> {
+    for _ in 0..count {
+        let mut trial = reader.clone();
+        let mut staged = table.clone();
+        let symbol = read_symbol_slot_full_10_1(
+            &mut trial,
+            max_bytes,
+            &mut staged,
+            MAX_SYMBOL_NESTING_DEPTH,
+        )?;
+        if let Some(reason) = slot_full_stop_10_1(&symbol, kind) {
+            return Ok(Some(FamilyStop10_1::ScalebarSymbol(reason)));
+        }
+        symbols.push(symbol);
+        *reader = trial;
+        *table = staged;
+    }
+    Ok(None)
+}
+
 /// 从对象头之后的位置读取四个比例尺子类（Hollow/SingleDivision/Alternating/
 /// DoubleAlternating）的对象体。
 ///
@@ -1054,7 +1087,7 @@ impl ScalebarSubclassKind10_1 {
 /// → ② 基类段（Load `0x79451120`）：int16 基类版本（有符号 >6 拒绝；
 /// Save 版本表 `DAT_79480d28`=[3,3,3,3,4,6] → 10.1 恒写 6）→ 共同前缀 →
 /// double（`−0x17c`）→ int16 ×3（`−0x174/−0x172/−0x170`）→ int32（`−0x16c`）
-/// → String（`−0x168`，数字格式串候选）→ int32（`−0x164`）→ double
+/// → String（`−0x168`，单位标签）→ int32（`−0x164`）→ double
 /// （`−0x15c`）→ ITextSymbol 槽（`−0x154`）→ int32（`−0x150`）→ [基类
 /// 版本 <2：int32 读入即丢（10.1 不可达）] int32（`−0x148`）→ double
 /// （`−0x144`）→ ITextSymbol 槽（`−0x13c`）→ [≥2] INumberFormat 槽
@@ -1067,9 +1100,7 @@ impl ScalebarSubclassKind10_1 {
 /// → double（+0x18）→ int32（+0x20）→ [≥2] int32（+0x24；<2 原生按标志
 /// 写内存默认 0/5，不读流）。
 ///
-/// ISymbol 族槽经 [`read_symbol_slot_full_10_1`] 全量分派（未知符号类为
-/// 槽内 `Unsupported` 枚举值，不整体停止——与其余槽的整体停止语义不同，
-/// 与仓库既有符号槽约定一致）。
+/// 填充或线符号未闭合时回退到该符号的对象头。
 pub fn read_scalebar_subclass_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -1077,6 +1108,7 @@ pub fn read_scalebar_subclass_body_10_1(
     key: u32,
     kind: ScalebarSubclassKind10_1,
 ) -> io::Result<ScalebarSubclassBody10_1> {
+    let mut staged = table.clone();
     let start = reader.position();
     let mut trial = reader.clone();
     let invalid = |reason: String| {
@@ -1104,7 +1136,7 @@ pub fn read_scalebar_subclass_body_10_1(
              [3,3,3,3,4,6]，10.1 恒写 6）"
         )));
     }
-    let common = read_map_surround_common_prefix_10_1(&mut trial, max_bytes, table)?;
+    let common = read_map_surround_common_prefix_10_1(&mut trial, max_bytes, &mut staged)?;
     let base_double_a = trial.read_f64_le()?;
     let mut base_shorts = [0_u16; 3];
     for slot in &mut base_shorts {
@@ -1114,13 +1146,11 @@ pub fn read_scalebar_subclass_body_10_1(
     let base_number_string = read_string_10_1(&mut trial, max_bytes)?;
     let base_int32_b = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
     let base_double_b = trial.read_f64_le()?;
-    let (label_symbol, mut stop) = read_typed_slot_10_1(
+    let (label_symbol, mut stop) = read_family_text_slot(
         &mut trial,
         max_bytes,
-        table,
+        &mut staged,
         "label_symbol(ITextSymbol)",
-        &TEXT_SYMBOL_CLASS_ID,
-        |reader, table, _key| read_text_symbol_body_10_1(reader, max_bytes, table),
     )?;
     let mut base_int32_c = None;
     let mut legacy_discard = None;
@@ -1139,13 +1169,11 @@ pub fn read_scalebar_subclass_body_10_1(
         }
         base_int32_d = Some(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
         base_double_c = Some(trial.read_f64_le()?);
-        let (slot, reason) = read_typed_slot_10_1(
+        let (slot, reason) = read_family_text_slot(
             &mut trial,
             max_bytes,
-            table,
+            &mut staged,
             "second_symbol(ITextSymbol)",
-            &TEXT_SYMBOL_CLASS_ID,
-            |reader, table, _key| read_text_symbol_body_10_1(reader, max_bytes, table),
         )?;
         second_symbol = slot;
         stop = reason;
@@ -1154,7 +1182,7 @@ pub fn read_scalebar_subclass_body_10_1(
         let (slot, reason) = read_typed_slot_10_1(
             &mut trial,
             max_bytes,
-            table,
+            &mut staged,
             "number_format(INumberFormat)",
             &NUMERIC_FORMAT_CLASS_ID,
             |reader, table, slot_key| read_numeric_format_body_10_1(reader, table, slot_key),
@@ -1191,15 +1219,14 @@ pub fn read_scalebar_subclass_body_10_1(
         }
         mid_version = Some(mid);
         mid_double = Some(trial.read_f64_le()?);
-        for index in 0..kind.fill_slot_count() {
-            let _ = index;
-            fill_symbols.push(read_symbol_slot_full_10_1(
-                &mut trial,
-                max_bytes,
-                table,
-                MAX_SYMBOL_NESTING_DEPTH,
-            )?);
-        }
+        stop = read_scalebar_symbols(
+            &mut trial,
+            &mut staged,
+            max_bytes,
+            kind.fill_slot_count(),
+            DisplaySlotKind10_1::FillSymbol,
+            &mut fill_symbols,
+        )?;
     }
 
     // 4. 尾段：short + [<2] 标志 + ILineSymbol 槽 ×2 + double ×2 + int32 ×2。
@@ -1220,21 +1247,31 @@ pub fn read_scalebar_subclass_body_10_1(
         if tail < 2 {
             legacy_flag = Some(trial.read_u16_le()?);
         }
-        for _ in 0..2 {
-            let slot =
-                read_symbol_slot_full_10_1(&mut trial, max_bytes, table, MAX_SYMBOL_NESTING_DEPTH)?;
-            line_symbols.push(slot);
-        }
+        stop = read_scalebar_symbols(
+            &mut trial,
+            &mut staged,
+            max_bytes,
+            2,
+            DisplaySlotKind10_1::LineSymbol,
+            &mut line_symbols,
+        )?;
+    }
+    if stop.is_none() {
         let a = trial.read_f64_le()?;
         let b = trial.read_f64_le()?;
         tail_doubles = Some([a, b]);
         let c = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
-        let d = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
+        let d = match legacy_flag {
+            Some(0) => 0,
+            Some(_) => 5,
+            None => i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()),
+        };
         tail_ints = Some([c, d]);
     }
 
     let remaining = trial.remaining();
     *reader = trial;
+    *table = staged;
     Ok(ScalebarSubclassBody10_1 {
         key,
         kind,
@@ -1287,31 +1324,31 @@ pub struct ScalebarSubclassBody10_1 {
     pub common: MapSurroundCommonPrefix10_1,
     /// 基类 double（`−0x17c`，位模式）。
     pub base_double_a: f64,
-    /// 基类 int16 ×3（`−0x174/−0x172/−0x170`，位模式）。
+    /// 依次为 Divisions、DivisionsBeforeZero、Subdivisions 的 short 位模式。
     pub base_shorts: [u16; 3],
-    /// 基类 int32（`−0x16c`，位模式）。
+    /// IScaleBar.Units 枚举值。
     pub base_int32_a: i32,
-    /// 基类 String（`−0x168`，数字格式串候选）。
+    /// IScaleBar.UnitLabel（`−0x168`）。
     pub base_number_string: String,
-    /// 基类 int32（`−0x164`，位模式）。
+    /// IScaleBar.UnitLabelPosition 枚举值。
     pub base_int32_b: i32,
-    /// 基类 double（`−0x15c`，位模式）。
+    /// IScaleBar.UnitLabelGap。
     pub base_double_b: f64,
     /// 基类 ITextSymbol 槽（`−0x154`；标签符号候选）。
     pub label_symbol: SlotEntry10_1<TextSymbolBody10_1>,
-    /// 基类 int32（`−0x150`，位模式）。
+    /// IScaleBar.LabelFrequency 枚举值。
     pub base_int32_c: Option<i32>,
     /// 基类版本 <2 读入即丢的 int32（10.1 不可达）。
     pub legacy_discard: Option<i32>,
-    /// 基类 int32（`−0x148`，位模式）。
+    /// IScaleBar.LabelPosition 枚举值。
     pub base_int32_d: Option<i32>,
-    /// 基类 double（`−0x144`，位模式）。
+    /// IScaleBar.LabelGap。
     pub base_double_c: Option<f64>,
     /// 基类第二 ITextSymbol 槽（`−0x13c`）。
     pub second_symbol: SlotEntry10_1<TextSymbolBody10_1>,
     /// 基类版本 ≥2 的 INumberFormat 槽（`−0x14c`）。
     pub number_format: SlotEntry10_1<NumericFormatBody10_1>,
-    /// 基类版本 ≥3 的 int32（`−0x138`，位模式）。
+    /// 基类版本 ≥3 的 IScaleBar.ResizeHint。
     pub tail_int32: Option<i32>,
     /// 基类版本 ≥4 的 double（`−0xec`，位模式）。
     pub tail_double: Option<f64>,
@@ -1328,14 +1365,13 @@ pub struct ScalebarSubclassBody10_1 {
     pub fill_symbols: Vec<SymbolSlotFull10_1>,
     /// 尾段版本的无符号位模式（有符号 >2 拒绝；Save 恒写 2）。
     pub tail_version: Option<u16>,
-    /// 尾段版本 <2 的 int16 标志（10.1 不可达；≥2 时原生置 +0x24 内存
-    /// 默认 0/5）。
+    /// 尾段版本 <2 的 int16 标志，原生据其计算 +0x24 的值。
     pub legacy_flag: Option<u16>,
-    /// 尾段 ILineSymbol 槽 ×2（`+4/+8`；刻度线符号候选）。
+    /// 依次为 IScaleMarks.DivisionMarkSymbol 和 SubdivisionMarkSymbol。
     pub line_symbols: Vec<SymbolSlotFull10_1>,
-    /// 尾段 double ×2（`+0x10/+0x18`，位模式）。
+    /// 依次为 DivisionMarkHeight 和 SubdivisionMarkHeight。
     pub tail_doubles: Option<[f64; 2]>,
-    /// 尾段 int32 ×2（`+0x20/+0x24`，位模式）。
+    /// MarkPosition 和 MarkFrequency。版本 <2 时第二项由标志计算，版本 2 从流读取。
     pub tail_ints: Option<[i32; 2]>,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<FamilyStop10_1>,
@@ -1632,6 +1668,7 @@ pub fn read_scale_line_body_10_1(
             raw!("tail_int_b", 4);
         }
         if kind == ScaleLineKind10_1::SteppedScaleLine {
+            // IScaleBar.BarHeight，保留对外字段名及原始位模式。
             raw!("stepped_double", 8);
         }
         Ok(())
@@ -1919,16 +1956,20 @@ mod tests {
     }
 
     #[test]
-    fn rejects_map_title_version_out_of_range() {
-        let mut data = vec![0xaau8; 16];
-        data.extend_from_slice(&9u32.to_le_bytes());
-        data.extend(2u16.to_le_bytes()); // >1 拒绝
-        data.extend_from_slice(&common_prefix_bytes());
-        assert!(read_body(&data, read_map_title_body_10_1).is_err());
-        let mut negative = data;
-        negative[20] = 0xff;
-        negative[21] = 0xff;
-        assert!(read_body(&negative, read_map_title_body_10_1).is_err());
+    fn map_title_outer_version_does_not_change_body_boundary() {
+        for version in [0u16, 2, 0x7fff, 0x8000, 0xffff] {
+            let mut data = vec![0; 20];
+            data.extend(version.to_le_bytes());
+            data.extend(common_prefix_bytes());
+            data.push(0xac);
+            read_body(&data, |reader, max, table, key| {
+                let body = read_map_title_body_10_1(reader, max, table, key)?;
+                assert_eq!(body.version, version);
+                assert_eq!(reader.read_bytes(1)?, &[0xac]);
+                Ok(())
+            })
+            .unwrap();
+        }
     }
 
     /// Scalebar 完整体（版本 1 + 前缀 + 标量段 + 3 个 StdFont 槽 + 尾段）。
@@ -2294,6 +2335,39 @@ mod tests {
     }
 
     #[test]
+    fn legend_format_rolls_back_unfinished_patch_and_truncated_suffix() {
+        let fixture = legend_format_v2_bytes();
+        for (at, id) in [
+            (132, LINE_PATCH_CLASS_ID),
+            (fixture.len() - 34, AREA_PATCH_CLASS_ID),
+        ] {
+            let mut bytes = fixture.clone();
+            bytes.truncate(at);
+            bytes.extend(backref_header(&id, 80));
+            bytes.extend(3u16.to_le_bytes());
+            bytes.extend(backref_header(&[0x77; 16], 81));
+            let mut reader = Reader::new(&bytes);
+            reader.read_bytes(20).unwrap();
+            let mut refs = RefTable10_1::new();
+            let body = read_legend_format_body_10_1(&mut reader, 4096, &mut refs, 9).unwrap();
+            assert!(matches!(
+                body.stop,
+                Some(FamilyStop10_1::SlotUnsupported { key: 80, .. })
+            ));
+            assert_eq!(reader.position(), at);
+            assert_eq!(refs.contains(31), id == AREA_PATCH_CLASS_ID);
+            assert!(!refs.contains(80) && !refs.contains(81));
+            assert!(body.tail_short.is_none());
+        }
+        let mut reader = Reader::new(&fixture[..fixture.len() - 1]);
+        reader.read_bytes(20).unwrap();
+        let mut refs = RefTable10_1::new();
+        assert!(read_legend_format_body_10_1(&mut reader, 4096, &mut refs, 9).is_err());
+        assert_eq!(reader.position(), 20);
+        assert_eq!(refs.len(), 0);
+    }
+
+    #[test]
     fn rejects_legend_format_version_out_of_range() {
         let mut data = legend_format_v2_bytes();
         data[20] = 3;
@@ -2377,6 +2451,116 @@ mod tests {
         assert_eq!(body.tail_ints, Some([16, 17]));
         assert_eq!(body.stop, None);
         assert_eq!(body.remaining_bytes, 0);
+    }
+
+    #[test]
+    fn filled_scalebar_stops_at_incomplete_symbol_headers() {
+        use crate::objects::display_symbol::SIMPLE_LINE_SYMBOL_CLASS_ID;
+        let fixture = subclass_full_bytes();
+        let tail = fixture.len() - 58;
+        let label =
+            24 + common_prefix_bytes().len() + 8 + 6 + 4 + string_bytes("#,##0").len() + 4 + 8;
+        for (offset, class_id, kind) in [
+            (label, TEXT_SYMBOL_CLASS_ID, None),
+            (tail - 16, [0x77; 16], Some(DisplaySlotKind10_1::FillSymbol)),
+            (
+                tail + 18,
+                SIMPLE_LINE_SYMBOL_CLASS_ID,
+                Some(DisplaySlotKind10_1::LineSymbol),
+            ),
+        ] {
+            let mut data = fixture.clone();
+            let mut entry = backref_header(&class_id, 55);
+            if class_id != [0x77; 16] {
+                entry.extend(1u16.to_le_bytes());
+                entry.extend(backref_header(&[0x77; 16], 56));
+            }
+            data.splice(offset..offset + 16, entry);
+            read_body(&data, |r, m, t, k| {
+                let before = t.clone();
+                let body = read_scalebar_subclass_body_10_1(
+                    r,
+                    m,
+                    t,
+                    k,
+                    ScalebarSubclassKind10_1::SingleDivision,
+                )?;
+                match kind {
+                    None => assert!(matches!(
+                        body.stop,
+                        Some(FamilyStop10_1::SlotUnsupported { key: 55, .. })
+                    )),
+                    Some(DisplaySlotKind10_1::FillSymbol) => assert!(matches!(
+                        body.stop,
+                        Some(FamilyStop10_1::ScalebarSymbol(SymbolStop10_1::Slot {
+                            key: 55,
+                            kind: DisplaySlotKind10_1::FillSymbol,
+                            ..
+                        }))
+                    )),
+                    _ => assert!(matches!(
+                        body.stop,
+                        Some(FamilyStop10_1::ScalebarSymbol(
+                            SymbolStop10_1::NestedIncomplete { key: 55, .. }
+                        ))
+                    )),
+                }
+                assert_eq!(r.position(), offset);
+                assert_eq!(*t, before);
+                assert!(body.tail_ints.is_none());
+                Ok(())
+            })
+            .unwrap();
+        }
+    }
+
+    #[test]
+    fn legacy_scalebar_tail_leaves_successor_unread() {
+        for (version, flag, expected) in [(0_u16, 0_u16, 0), (1, 0xffff, 5)] {
+            let mut data = subclass_full_bytes();
+            let start = data.len() - 58;
+            data.truncate(data.len() - 4);
+            data.splice(
+                start..start + 2,
+                version.to_le_bytes().into_iter().chain(flag.to_le_bytes()),
+            );
+            let body = read_body(&data, |r, m, t, k| {
+                read_scalebar_subclass_body_10_1(
+                    r,
+                    m,
+                    t,
+                    k,
+                    ScalebarSubclassKind10_1::SingleDivision,
+                )
+            })
+            .unwrap();
+            assert_eq!(body.tail_ints, Some([16, expected]));
+            data.pop();
+            assert!(
+                read_body(&data, |r, m, t, k| {
+                    read_scalebar_subclass_body_10_1(
+                        r,
+                        m,
+                        t,
+                        k,
+                        ScalebarSubclassKind10_1::SingleDivision,
+                    )
+                })
+                .is_err()
+            );
+            data.extend([0, 0xde, 0xad, 0xbe, 0xef]);
+            let body = read_body(&data, |r, m, t, k| {
+                read_scalebar_subclass_body_10_1(
+                    r,
+                    m,
+                    t,
+                    k,
+                    ScalebarSubclassKind10_1::SingleDivision,
+                )
+            })
+            .unwrap();
+            assert_eq!(body.remaining_bytes, 4);
+        }
     }
 
     #[test]

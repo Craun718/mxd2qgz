@@ -33,11 +33,8 @@
 //! 的 `IPersistStream::Load` 先调共享基类前缀读取（`0x794413d0` 共 9 个
 //! 调用者，含 Legend `0x793da2f2`、Scalebar `0x794460fd`），再读各自尾段：
 //!
-//! 1. int16 版本（**原生无上限拒绝**，负值位模式也通过；本读取器仅接受
-//!    0..=3 并拒绝其余，较原生更严——写侧版本表 `DAT_79480d58` =
-//!    `[2,2,2,2,3]`（`AfStreamGetSaveVersion(docVer, 5, 表)`，docVer≥N 取
-//!    `表[N−1]`，见 AfCore `0x68a847f0`），10.1（esriArcGISVersion=5）恒写
-//!    3，>3 无写侧来源）；
+//! 1. int16 版本，按有符号值判断后续字段。写侧版本表 `DAT_79480d58`
+//!    为 `[2,2,2,2,3]`，10.1 写 3；
 //! 2. String（名称 → `this−0xa0`，AfCore String::Read 布局）；
 //! 3. `LoadObject`（请求 IID `{E6BDAA75-…}` IMap）：关联地图对象。流内为
 //!    对已持久化 Map 的键回引头（20 字节，无体）；空标记与回引之外的新对象
@@ -218,9 +215,7 @@ pub struct MapBackReference10_1 {
 pub struct MapSurroundCommonPrefix10_1 {
     /// int16 版本的无符号位模式。
     ///
-    /// 原生无上限拒绝、负值位模式通过；本读取器仅接受 0..=3（写侧版本表
-    /// `[2,2,2,2,3]`，10.1 恒写 3；>3 与负值均无字节佐证，一并拒绝，较
-    /// 原生更严）。版本 0/1 无门字段，2 追加 short，3 再追加 32 字节。
+    /// 原生按有符号值判断，≥2 追加 short，≥3 再追加 32 字节。
     pub version: u16,
     /// 装饰物名称（String::Read → `this−0xa0`）。
     pub name: String,
@@ -399,6 +394,11 @@ pub enum LegendStop10_1 {
         /// HorizontalLegendItem 体内的停止原因。
         reason: HorizontalLegendItemStop10_1,
     },
+    /// NestedLegendItem 的装饰符号未读完。
+    LegendItemSymbol {
+        index: usize,
+        reason: crate::objects::display_symbol::SymbolStop10_1,
+    },
     /// C 轮接线新增：ILegendFormat 槽为 LegendFormat 新对象且其体内出现
     /// 停止（原因透传）。游标停在其内层停止点。
     LegendFormatBodyIncomplete {
@@ -436,6 +436,9 @@ impl LegendStop10_1 {
                  ILegendItem 实现类体未闭合，停止并保留剩余",
                 class_id_hex(&class_id)
             ),
+            Self::LegendItemSymbol { index, reason } => {
+                format!("图例项 {index} 的符号未读完：{reason:?}")
+            }
             Self::LegendItemBodyIncomplete { index, reason } => format!(
                 "Legend 条目 {index}（HorizontalLegendItem）体在停止点停止：{reason:?}；\
                  游标停在内层停止点，其后条目不可达"
@@ -494,26 +497,12 @@ pub fn read_map_surround_common_prefix_10_1(
     max_bytes: usize,
     table: &mut RefTable10_1,
 ) -> io::Result<MapSurroundCommonPrefix10_1> {
-    let start = reader.position();
-    let invalid = |reason: String| {
-        io::Error::new(
-            ErrorKind::InvalidData,
-            format!("MapSurround 共同前缀 offset 0x{start:x}: {reason}"),
-        )
-    };
     let mut trial = reader.clone();
     let mut trial_table = table.clone();
 
-    // 1. int16 版本：原生无上限拒绝、负值通过；仅接受 0..=3（较原生更严，
-    //    写侧 10.1 恒写 3，其余位模式无字节佐证）。
+    // 原生用有符号 short 进行两处版本比较。
     let version = trial.read_u16_le()?;
-    if version > 3 {
-        return Err(invalid(format!(
-            "版本位模式 {version}（0x{version:04x}）超出本读取器接受范围 0..=3；原生读取\
-             （0x794413d0）无上限拒绝、负值位模式亦通过，写侧版本表 DAT_79480d58 \
-             = [2,2,2,2,3]（10.1 恒写 3），其余值无字节佐证，拒绝"
-        )));
-    }
+    let signed_version = version as i16;
 
     // 2. 名称字符串（String::Read 布局 → this−0xa0）。
     let name = read_string_10_1(&mut trial, max_bytes)?;
@@ -544,7 +533,7 @@ pub fn read_map_surround_common_prefix_10_1(
     };
 
     // 4. 版本 ≥2：保留 FixedAspectRatio 的 int16 位模式（this−0x8c）。
-    let extra_short = if version >= 2 {
+    let extra_short = if signed_version >= 2 {
         Some(trial.read_u16_le()?)
     } else {
         None
@@ -552,7 +541,7 @@ pub fn read_map_surround_common_prefix_10_1(
 
     // 5. 版本 ≥3：WKSEnvelope 原样（原生读入后丢弃，写侧取
     //    this−0x84 恒写）。
-    let raw_envelope = if version >= 3 {
+    let raw_envelope = if signed_version >= 3 {
         let bytes = trial.read_bytes(32)?;
         Some(bytes.try_into().expect("固定 32 字节"))
     } else {
@@ -1045,6 +1034,8 @@ pub fn read_legend_prefix_10_1(
                     )?;
                     if let Some(reason) = body.base.stop.clone() {
                         stop = Some(LegendStop10_1::LegendItemBodyIncomplete { index, reason });
+                    } else if let Some(reason) = body.symbol_stop {
+                        stop = Some(LegendStop10_1::LegendItemSymbol { index, reason });
                     }
                     LegendItemSlot10_1::NestedLegendItem(Box::new(body))
                 }
