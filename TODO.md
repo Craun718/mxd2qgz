@@ -460,6 +460,7 @@
       - [x] 提取 AfCore `AfStreamGetSaveVersion`（`0x68a847f0`）版本表并闭合内部映射：null/N==0→−1；N−1<docVer→table[N−1]（截断末项）；否则 table[docVer]；负 docVer 原生越界读（Rust 封装拒绝）；`AfStreamGetDocumentVersion 0x68a84760` 缺省 5；六表提取落 `src/version/save_version_table.rs`（Map [22,29,30,31,45,51]/FL [17,22,23,25,34,34]/ETM [-1,-1,-1,-1,1,2]/ET [-1,-1,-1,-1,2]/FDO [5,11]/FDO 子层 [-1,2]，样本值逐一吻合）。
     - 语义定性（类型库成员级命名或运行取证；读取器对未定性字段原样保留）：
       - [ ] 定性 DisplayCore 符号类其余标量字段。
+      - [x] 对位 ArrowMarkerSymbol 的八个持久化标量，并核对 Size 的派生规则。[箭头取证](docs/arcmap-10.1-display-symbols-round2.md#箭头标记的标量属性)
       - [x] 对位 RandomColorRamp 的 UseSeed、Seed 及六个亮度、饱和度和色相端点。[访问器对位](docs/mxd-terra-host-color.md#randomcolorramp公开端点与随机种子)
       - [x] 对位 CartographicLineSymbol、HashLineSymbol、MarkerLineSymbol 的标量属性，并接入完整嵌套符号分派。[线符号属性](docs/arcmap-10.1-display-tails.md#制图线刻线与标记线的属性)
       - [x] 对位线填充、标记填充和渐变填充的标量属性，纠正偏移、间距与渐变字段的解释。[填充符号属性](docs/arcmap-10.1-display-symbols-round2.md#三种填充符号的标量属性)

@@ -3618,21 +3618,21 @@ pub struct ArrowMarkerSymbolBody10_1 {
     pub version: u16,
     /// IColor 槽（→ this−0x40）。`None` = 前置停止。
     pub color: Option<ColorSlot10_1>,
-    /// double → this−0x8c，语义未定（尺寸候选）。
+    /// double → this−0x8c，Length 的流内值。
     pub double_8c: f64,
-    /// double → this−0x7c，语义未定（宽度候选）。
+    /// double → this−0x7c，Width 的流内值。
     pub double_7c: f64,
-    /// double → this−0x6c，语义未定（长度候选）。
+    /// double → this−0x6c，Angle 的流内值。
     pub double_6c: f64,
-    /// int32 → this−0x64，语义未定（样式候选）。
+    /// int32 → this−0x64，Style。
     pub int32_64: i32,
-    /// int32 → this−0xdc，语义未定。
+    /// int32 → this−0xdc，ROP2。
     pub int32_dc: i32,
-    /// int32 → this−0xd4，语义未定。
+    /// int32 → this−0xd4，MapLevel。
     pub int32_d4: i32,
-    /// double → this−0x2c，语义未定。
+    /// double → this−0x2c，XOffset 的流内值。
     pub double_2c: f64,
-    /// double → this−0x24，语义未定。
+    /// double → this−0x24，YOffset 的流内值。
     pub double_24: f64,
     /// 版本 ≥2 的 RotateWithTransform 原始 short → this−0xc4。读取后原生内存槽被
     /// `Symbol::GetDefaultRotateWithTransformValue` 覆盖（反汇编

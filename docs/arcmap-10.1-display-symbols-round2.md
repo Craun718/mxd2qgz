@@ -456,3 +456,29 @@ DisplayCore.dll 10.1.0.3035 的 Template 持久化接口位于对象 +0xb4，ITe
 DisplayCore.dll 10.1.0.3035 的持久化接口位于完整对象 +0x17c。按 esriDisplay.olb 核对 +0x98 的标记接口，CharacterIndex getter 0x6eb9a710 读取接口 +0x24。Angle、Size、XOffset、YOffset 的 getter 分别为 0x6eb5d310、0x6ebc4ae0、0x6ebbe200、0x6eb79960。+0x9c 的制图标记接口读取 XScale、YScale（0x6eb9a980、0x6eb4c020）。六个 double 在流中按上述顺序排列。
 
 版本 3 起的字体描述符使用 IFont（IID 末组前的首 DWORD 为 BEF6E002）。将 Save 0x6eb9b5b0 的调用与 ocidl.idl 的 IFont 方法顺序核对，名称之后依次为 Bold、Italic、Underline、Strikethrough（四个 BOOL），再写 Weight、Charset（两个 SHORT）。0x6eb9b8f5 调用 +0x14 取得 CY，0x6eb9b900 和 0x6eb9b91a 先后取其高、低 DWORD 写出。每个 DWORD 各自按小端编码。尚未在目标软件中目视验证。
+
+### 箭头标记的标量属性
+
+复核 DisplayCore.dll 10.1.0.3035（SHA-256
+`9b3e61f9ca553f14a442338dfc1c24ac51c1eea6dd9a4509282466a6a926e4d2`）。
+RTTI 将 ArrowMarkerSymbol 的持久化虚表 `0x6ec0c9dc` 和箭头接口虚表
+`0x6ec0c944` 分别定位到完整对象 +0x134 和 +0x98。
+esriDisplay.olb 的 IArrowMarkerSymbol 继承 IMarkerSymbol。逐个核对
+类型库槽与 objdump 确认的 getter 成员，得到以下对应关系。
+
+| 属性 | getter | 持久化成员 |
+| --- | --- | --- |
+| Length | 0x6eb3e490 | −0x8c |
+| Width | 0x6eb76df0 | −0x7c |
+| Angle | 0x6eb5d310 | −0x6c |
+| Style | 0x6eb3e430 | −0x64 |
+| XOffset | 0x6eb3e370 | −0x2c |
+| YOffset | 0x6eb3e3d0 | −0x24 |
+| ROP2 | 0x6eb3dc70 | −0xdc |
+| MapLevel | 0x6eb61450 | −0xd4 |
+
+最后两项分别由 +0x18 和 +0x24 接口转发至 DisplayLib 的同名导出，
+取完整对象 +0x58 和 +0x60。Size 的 getter `0x6eb3e230` 比较原始
+Length 和 Width，通常取较大值，并无独立持久化字段。各 getter 的
+计算或换算不改变流中数值的解释，Rust 继续保留原值和既有字段名。
+ArcMap/QGIS 目视验证待补。
