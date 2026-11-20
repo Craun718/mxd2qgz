@@ -121,3 +121,19 @@ esriCarto 10.1 的 IScaleMarks（6DFAE8E7-ECAA-11D0-8682-0000F8751720）
 非持久化成员 `+0xb0`，并把 `+0xa8` 的非零值清零。
 这是 10.1 静态证据。v5/v6 两个 short 的语义、覆盖值的运行时来源以及
 ArcMap/QGIS 的实档目视验证待补。
+
+## 填充比例尺高度
+
+用同一 Map.dll 10.1.0.3035 的 PE RTTI 核对主虚表，并用 objdump
+沿 IScaleBar.BarHeight 的 getter `0x79450370` 核对派生虚调用。
+Hollow、SingleDivision、Alternating、DoubleAlternating 的主虚表
+依次为 `0x79483624`、`0x7948ce54`、`0x79480ee4`、`0x79482444`。
+四张表的 `+0xd8/+0xdc` 均为 `0x793a1320/0x793b29c0`，直接读写
+完整对象 `+0x270` 的 double。
+
+四类持久化虚表所在子对象偏移均为 `+0x268`；Load 实体
+`0x793a1be0/0x79458830` 将该指针原样传给中段读取器
+`0x793b3bf0/0x79459000`，两者均在版本之后读八字节至子对象 `+8`。
+因此流中该 double 正是 BarHeight。Rust 保留原字段并提供
+`bar_height()`。合成输入验证字段与游标边界，ArcMap 和 QGIS
+实档目视验证仍待补。

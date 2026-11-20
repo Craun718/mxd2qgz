@@ -513,7 +513,7 @@
       - [x] 接入 DBTableName 尾部非空 ISpatialReference 中的 PCS、GCS 和 UnknownCoordinateSystem 对象体，复用宿主键表。见 [读写取证](docs/arcmap-10.1-dataset-name-slots.md#dbtablename-尾部空间参考)。
       - [x] 定性 Scalebar 共用基类中 `IScaleBar.Division` 的两处持久化值和取值优先级。[分段值取证](docs/mxd-terra-nextpass-scale.md#iscalebardivision-的两处持久化值)
       - [ ] 定性 Scalebar 共用基类版本 5 和 6 增加的两个 short。[比例尺续查](docs/mxd-terra-nextpass-scale.md)
-      - [ ] 定性填充比例尺派生中段的 double。[比例尺续查](docs/mxd-terra-nextpass-scale.md)
+      - [x] 定性四类填充比例尺派生中段的 double 为 IScaleBar.BarHeight，并从解析结果提供该值。[高度取证](docs/mxd-terra-nextpass-scale.md#填充比例尺高度)
       - [ ] 定性独立 Scalebar 类的其余标量字段。[比例尺续查](docs/mxd-terra-nextpass-scale.md)
       - [x] 定性 MarkerNorthArrow 基类的大小、角度、校准角度、参考点和类型。[属性对位](docs/arcmap-10.1-legend-family.md#指北针的属性)
       - [ ] 确认 MarkerNorthArrow 旧版标记槽前弃读 int32 的历史写侧用途。

@@ -1435,6 +1435,11 @@ pub struct ScaleMarkProperties10_1 {
 }
 
 impl ScalebarSubclassBody10_1 {
+    /// 派生中段保存的 IScaleBar.BarHeight。
+    pub fn bar_height(&self) -> Option<f64> {
+        self.mid_double
+    }
+
     /// 两个刻度符号及其后继标量读完后可用。
     pub fn scale_mark_properties(&self) -> Option<ScaleMarkProperties10_1> {
         let [division_mark_height, subdivision_mark_height] = self.tail_doubles?;
@@ -2500,6 +2505,7 @@ mod tests {
         assert_eq!(body.tail_short_b, Some(12));
         assert_eq!(body.mid_version, Some(1));
         assert_eq!(body.mid_double, Some(13.0));
+        assert_eq!(body.bar_height(), Some(13.0));
         assert_eq!(body.fill_symbols.len(), 1);
         assert_eq!(body.tail_version, Some(2));
         assert!(body.legacy_flag.is_none());
