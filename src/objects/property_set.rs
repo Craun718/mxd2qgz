@@ -101,6 +101,12 @@ use crate::layers::raster_dataset_name::{LONG_ARRAY_CLASS_ID, read_long_array_bo
 use crate::layers::raster_renderer::{
     DOUBLE_ARRAY_CLASS_ID, STATS_HISTOGRAM_CLASS_ID, read_double_array_body,
 };
+use crate::objects::color_ramp::{
+    ALGORITHMIC_COLOR_RAMP_CLASS_ID, ColorRampSlot10_1, MULTI_PART_COLOR_RAMP_CLASS_ID,
+    PRESET_COLOR_RAMP_CLASS_ID, RANDOM_COLOR_RAMP_CLASS_ID, nested_ramp_stop,
+    read_color_ramp_body_for_class_10_1,
+};
+use crate::objects::display_color::{ColorBody10_1, read_color_body_for_class_10_1};
 use crate::objects::envelope::{
     ENVELOPE_CLASS_ID, SpatialReferenceEntry10_1, read_spatial_reference_body_10_1,
 };
@@ -322,6 +328,8 @@ pub enum PropertyValueObjectStream10_1 {
     /// 已有独立 IPersistStream 对象体的 SystemCore UID。
     Uid(UidBody10_1),
     Geometry(Box<VariantGeometry10_1>),
+    Color(Box<EncodedVariantObject10_1<ColorBody10_1>>),
+    ColorRamp(Box<EncodedVariantObject10_1<ColorRampSlot10_1>>),
     SpatialReference(Box<EncodedVariantObject10_1<SpatialReferenceEntry10_1>>),
     RasterInfo(Box<EncodedVariantObject10_1<RasterInfoVariantBody10_1>>),
     Raster {
@@ -689,10 +697,55 @@ pub(crate) fn read_variant_object_body_10_1(
                 body,
             }))
         }
+        ObjectEntry10_1::NewObject {
+            class_id:
+                class_id @ (RANDOM_COLOR_RAMP_CLASS_ID
+                | MULTI_PART_COLOR_RAMP_CLASS_ID
+                | PRESET_COLOR_RAMP_CLASS_ID
+                | ALGORITHMIC_COLOR_RAMP_CLASS_ID),
+            key,
+        } => {
+            check_variant_object_depth(depth)?;
+            let mut wire = reader
+                .clone()
+                .read_region(max_bytes.min(reader.remaining()))?;
+            let body = read_color_ramp_body_for_class_10_1(
+                &mut wire,
+                max_bytes,
+                table,
+                (MAX_NESTED_VARIANT_OBJECTS - depth).min(16),
+                class_id,
+                key,
+            )?
+            .filter(|body| nested_ramp_stop(body).is_none())
+            .ok_or_else(|| {
+                io::Error::new(ErrorKind::Unsupported, "Variant 颜色梯度对象体未读完")
+            })?;
+            let bytes = Arc::from(reader.read_bytes(wire.position())?);
+            PropertyValueObjectStream10_1::ColorRamp(Box::new(EncodedVariantObject10_1 {
+                class_id,
+                key,
+                bytes,
+                body,
+            }))
+        }
         ObjectEntry10_1::NewObject { class_id, key } => {
             let mut wire = reader
                 .clone()
                 .read_region(max_bytes.min(reader.remaining()))?;
+            if let Some(body) =
+                read_color_body_for_class_10_1(class_id, &mut wire, max_bytes, table, key)?
+            {
+                let bytes = Arc::from(reader.read_bytes(wire.position())?);
+                return Ok(PropertyValueObjectStream10_1::Color(Box::new(
+                    EncodedVariantObject10_1 {
+                        class_id,
+                        key,
+                        bytes,
+                        body,
+                    },
+                )));
+            }
             if let Some(body) = read_spatial_reference_body_10_1(&mut wire, max_bytes, &entry)? {
                 let bytes = Arc::from(reader.read_bytes(wire.position())?);
                 return Ok(PropertyValueObjectStream10_1::SpatialReference(Box::new(
@@ -1236,6 +1289,97 @@ mod tests {
         assert_eq!(error.kind(), ErrorKind::Unsupported);
         assert_eq!(reader.position(), 0);
         assert_eq!(refs, original);
+    }
+
+    #[test]
+    fn color_variant_preserves_boundary_and_rolls_back_truncation() {
+        let mut bytes = 13_u16.to_le_bytes().to_vec();
+        bytes.extend([0; 14]);
+        object(
+            &mut bytes,
+            crate::objects::display_color::RGB_COLOR_CLASS_ID,
+            1,
+        );
+        let body = [1, 0, 1, 0, 1, 4, 3, 2, 1, 0, 255];
+        bytes.extend(body);
+        let mut refs = RefTable10_1::new();
+        for end in 0..bytes.len() {
+            let mut reader = Reader::new(&bytes[..end]);
+            assert!(read_padded_variant_object_stream_10_1(&mut reader, 128, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert_eq!(refs.len(), 0);
+        }
+        bytes.push(0xac);
+        let mut reader = Reader::new(&bytes);
+        let value = read_padded_variant_object_stream_10_1(&mut reader, 128, &mut refs).unwrap();
+        let PropertyValueObjectStream10_1::Color(color) = value else {
+            panic!("应为颜色对象");
+        };
+        assert_eq!(color.bytes(), body);
+        assert_eq!(reader.remaining(), 1);
+        assert_eq!(refs.len(), 1);
+    }
+
+    #[test]
+    fn color_ramp_variant_preserves_nested_keys_and_rejects_unknown_color() {
+        let mut bytes = 13_u16.to_le_bytes().to_vec();
+        bytes.extend([0; 14]);
+        object(&mut bytes, MULTI_PART_COLOR_RAMP_CLASS_ID, 1);
+        let body_start = bytes.len();
+        bytes.extend(2_u16.to_le_bytes());
+        bytes.extend(0_u32.to_le_bytes());
+        bytes.extend(1_u32.to_le_bytes());
+        object(&mut bytes, ALGORITHMIC_COLOR_RAMP_CLASS_ID, 2);
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend([0; 8]);
+        let color_start = bytes.len();
+        object(
+            &mut bytes,
+            crate::objects::display_color::RGB_COLOR_CLASS_ID,
+            3,
+        );
+        bytes.extend([1, 0, 1, 0, 1, 4, 3, 2, 1, 0, 255]);
+        object(
+            &mut bytes,
+            crate::objects::display_color::RGB_COLOR_CLASS_ID,
+            3,
+        );
+        bytes.extend(1.25_f64.to_le_bytes());
+        let end = bytes.len();
+        bytes.push(0xac);
+
+        let mut refs = RefTable10_1::new();
+        refs.register(9);
+        let original = refs.clone();
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            assert!(read_padded_variant_object_stream_10_1(&mut reader, 128, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert_eq!(refs, original);
+        }
+        let mut unknown = bytes.clone();
+        unknown[color_start..color_start + 16].fill(0xee);
+        let mut reader = Reader::new(&unknown);
+        let err = read_padded_variant_object_stream_10_1(&mut reader, 128, &mut refs).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::Unsupported);
+        assert_eq!(reader.position(), 0);
+        assert_eq!(refs, original);
+
+        let mut reader = Reader::new(&bytes);
+        let value = read_padded_variant_object_stream_10_1(&mut reader, 128, &mut refs).unwrap();
+        let PropertyValueObjectStream10_1::ColorRamp(ramp) = value else {
+            panic!("应为颜色梯度对象");
+        };
+        assert_eq!(ramp.bytes(), &bytes[body_start..end]);
+        let ColorRampSlot10_1::MultiPart(body) = ramp.body() else {
+            panic!("应为组合渐变");
+        };
+        assert_eq!(
+            body.tail_doubles.as_deref(),
+            Some(&[1.25_f64.to_bits()][..])
+        );
+        assert_eq!(reader.position(), end);
+        assert_eq!(refs.len(), 4);
     }
 
     #[test]
