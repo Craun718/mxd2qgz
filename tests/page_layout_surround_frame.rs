@@ -372,3 +372,56 @@ fn group_element_reads_nested_surround_frame_and_shares_its_key() {
     assert_eq!(layout.end_offset, group_at);
     assert!(layout.groups.is_empty());
 }
+
+#[test]
+fn group_element_reads_nested_map_frame_and_rolls_back_truncation() {
+    use mxd2qgz::maps::group_element::{GROUP_ELEMENT_CLASS_ID, GroupChild10_1};
+
+    let surrogate = surround_frame(2);
+    let base = &surrogate[20 + 2 + 48..];
+    let mut frame = MAP_FRAME_CLASS_ID.to_vec();
+    frame.extend(7_u32.to_le_bytes());
+    frame.extend(4_u16.to_le_bytes());
+    frame.extend([0; 16 + 8]); // IMap 空槽和两个空集合。
+    frame.extend(base);
+
+    let mut group = GROUP_ELEMENT_CLASS_ID.to_vec();
+    group.extend(5_u32.to_le_bytes());
+    group.extend(2_u16.to_le_bytes());
+    group.extend(0_u16.to_le_bytes()); // ElementProperties v0。
+    group.extend([2, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0]);
+    group.extend([0; 4 + 16]);
+    group.extend(1_u32.to_le_bytes());
+    group.extend(&frame);
+    let frame_end = group.len();
+    group.extend(base);
+
+    let mut page = layout_root(2);
+    push_element(&mut page, &group);
+    push_element(&mut page, &frame[..20]);
+    let layout = parse_mxd_streams_10_1(&[0; 8], Some(&page))
+        .unwrap()
+        .page_layout
+        .unwrap();
+    assert_eq!(layout.consumed_elements, 2);
+    assert!(matches!(
+        &layout.groups[0].children[..],
+        [GroupChild10_1::MapFrame(frame)] if frame.prefix.frame_key == 7
+    ));
+    assert!(matches!(
+        &layout.indirect_elements[..],
+        [(1, _, ObjectEntry10_1::BackReference { key: 7, .. })]
+    ));
+
+    let mut bad_page = layout_root(1);
+    let group_start = bad_page.len();
+    push_element(&mut bad_page, &group[..frame_end - 1]);
+    let layout = parse_mxd_streams_10_1(&[0; 8], Some(&bad_page))
+        .unwrap()
+        .page_layout
+        .unwrap();
+    assert_eq!(layout.end_offset, group_start);
+    assert_eq!(layout.consumed_elements, 0);
+    assert!(layout.groups.is_empty());
+    assert!(layout.stop.is_some());
+}

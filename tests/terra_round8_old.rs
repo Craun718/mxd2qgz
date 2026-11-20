@@ -17,6 +17,391 @@ use mxd2qgz::{
 };
 use std::{collections::BTreeMap, io::Read, path::PathBuf};
 
+#[test]
+#[ignore = "需要 10.1 SDK 安装介质提取文件"]
+fn sdk_feature_layers_consume_server_extensions_and_their_tails() {
+    use mxd2qgz::layers::feature_layer_tail::{LayerExtension10_1, SuccessorStop10_1};
+    use mxd2qgz::objects::property_set::PROPERTY_SET_CLASS_ID;
+
+    for (file, expected) in [
+        ("MontgomerySimple", [(0x4121, 232), (0x4fcb, 265)]),
+        ("airportgolf", [(0x2cf, 59), (0x1120, 88)]),
+    ] {
+        let map = read_sdk_map(&format!(
+            "temp/terra-round8-old/sdk-dotnet/{file}.mxd.89833ED7_0681_4032_BE76_9AB6C721CEB2"
+        ));
+        let mut found = Vec::new();
+        for entry in map.layer_list.entries {
+            let Some(LayerBodyPrefix10_1::FeatureLayer(layer)) = entry.parsed else {
+                continue;
+            };
+            let Some(tail) = layer.successor else {
+                continue;
+            };
+            for extension in tail.extensions {
+                let LayerExtension10_1::ServerLayerExtension(Some(extension)) = extension else {
+                    continue;
+                };
+                let ObjectEntry10_1::NewObject {
+                    class_id: PROPERTY_SET_CLASS_ID,
+                    key,
+                } = extension.properties.entry
+                else {
+                    panic!("预期服务扩展定义一个属性集");
+                };
+                assert_eq!(extension.version, 1);
+                assert_eq!(extension.properties.body.unwrap().count, 1);
+                assert_eq!(tail.stop, SuccessorStop10_1::TailCompleted);
+                found.push((entry.offset, key));
+            }
+        }
+        assert_eq!(found, expected);
+    }
+}
+
+#[test]
+#[ignore = "需要 10.1 SDK 安装介质提取文件"]
+fn sdk_maps_cross_the_masking_stage_with_opaque_native_layers() {
+    for (path, offset, trailer) in [
+        (
+            "sdk-dotnet/Montgomery.mxd.89833ED7_0681_4032_BE76_9AB6C721CEB2",
+            0x1d7c4,
+            1,
+        ),
+        (
+            "sdk-dotnet/MontgomerySimple.mxd.89833ED7_0681_4032_BE76_9AB6C721CEB2",
+            0x9484,
+            0,
+        ),
+        (
+            "sdk-java/portland.mxd.4896861F_D89C_46BA_ABEC_17591162B2B1",
+            0x77373,
+            1,
+        ),
+    ] {
+        let mut doc = cfb::open(format!("temp/terra-round8-old/{path}")).unwrap();
+        let mut maps = Vec::new();
+        doc.open_stream("/Maps")
+            .unwrap()
+            .read_to_end(&mut maps)
+            .unwrap();
+        let report = mxd2qgz::maps::mxd_maps::parse_maps_10_1(&maps).unwrap();
+        assert_eq!(report.confirmed_tail, Some((offset, trailer)), "{path}");
+        assert_eq!(offset + 4, maps.len(), "{path}");
+    }
+}
+
+#[test]
+#[ignore = "需要 10.1 SDK 安装介质提取文件"]
+fn sdk_process_layer_reads_its_delegate_and_map_mask() {
+    use mxd2qgz::layers::group_layer::GroupChildEntry10_1;
+
+    let map = read_sdk_map(
+        "temp/terra-round8-old/sdk-dotnet/USA_Data_ClipTools.mxd.89833ED7_0681_4032_BE76_9AB6C721CEB2",
+    );
+    let entry = &map.layer_list.entries[2];
+    assert_eq!(entry.offset, 0x1a68);
+    assert_eq!(entry.body.unwrap().len, 0);
+    let Some(LayerBodyPrefix10_1::ProcessLayer(body)) = &entry.parsed else {
+        panic!("预期完整 ProcessLayer");
+    };
+    assert_eq!(
+        (body.version, body.group_key, body.group.version),
+        (1, 114, 11)
+    );
+    assert_eq!(body.process_stream.len(), 14_513);
+    assert_eq!(body.trailing_short, 0);
+    assert!(matches!(
+        &body.group.children[..],
+        [GroupChildEntry10_1::SkippedNewObject {
+            key: 115,
+            body_length: 0,
+            parsed: Some(parsed),
+            ..
+        }] if matches!(parsed.as_ref(), LayerBodyPrefix10_1::FeatureLayer(_))
+    ));
+    let [(key, masking)] = &map.post_border_tail.layer_masking[..] else {
+        panic!("预期恰好读取 ProcessLayer 自身的遮罩记录");
+    };
+    assert_eq!((*key, masking.version, masking.tail), (113, 1, 0));
+    assert!(masking.entries.is_empty());
+    assert_eq!(map.stop, MapSuffixStop::Complete);
+    assert_eq!(map.remaining_bytes, 4);
+}
+
+#[test]
+#[ignore = "需要 10.1 SDK 安装介质提取文件"]
+fn sdk_map_time_slots_read_three_extents_and_reach_the_stream_tail() {
+    use mxd2qgz::layers::dep_tail::TimeSlot10_1;
+    use mxd2qgz::maps::map_late_tail::LateMapValue10_1;
+    use mxd2qgz::maps::mxd_maps::parse_maps_10_1;
+
+    for (name, offsets, first_key, end, trailer) in [
+        ("PrintMultiPage", [0x7f8, 0x873, 0x8fe], 41, 0x9a3, 0),
+        ("airportgolf", [0x2422, 0x249d, 0x2528], 101, 0x25e5, 1),
+    ] {
+        let path = format!(
+            "temp/terra-round8-old/sdk-dotnet/{name}.mxd.89833ED7_0681_4032_BE76_9AB6C721CEB2"
+        );
+        let map = read_sdk_map(&path);
+        assert_eq!(map.stop, MapSuffixStop::Complete);
+        let tail = map.post_border_tail.late_tail.unwrap();
+        assert!(tail.stop.is_none());
+        let mut found = Vec::new();
+        for field in tail.fields {
+            if let LateMapValue10_1::TimeExtent(body) = field.value {
+                let (TimeSlot10_1::Body(start), TimeSlot10_1::Body(end)) = (body.start, body.end)
+                else {
+                    panic!("预期两个新 Time 对象");
+                };
+                assert_eq!((start.key, end.key), (body.key + 1, body.key + 2));
+                assert_eq!(body.version, 2);
+                found.push((field.offset, body.key));
+            }
+        }
+        assert_eq!(
+            found,
+            offsets
+                .into_iter()
+                .zip([first_key, first_key + 3, first_key + 6])
+                .collect::<Vec<_>>()
+        );
+
+        let mut doc = cfb::open(&path).unwrap();
+        let mut maps = Vec::new();
+        doc.open_stream("/Maps")
+            .unwrap()
+            .read_to_end(&mut maps)
+            .unwrap();
+        assert_eq!(
+            parse_maps_10_1(&maps).unwrap().confirmed_tail,
+            Some((end, trailer))
+        );
+        assert_eq!(maps.len(), end + 4);
+    }
+}
+
+#[test]
+#[ignore = "需要 10.1 SDK 安装介质提取文件"]
+fn sdk_map_base_graphics_reads_polygon_elements() {
+    use mxd2qgz::layers::composite_graphics::ElementEntry10_1;
+    use mxd2qgz::maps::mxd_maps::parse_mxd_streams_10_1_with_version;
+    use mxd2qgz::objects::element_body::{ElementBody10_1, GeometrySlot10_1};
+    use mxd2qgz::version::mxd_version::identify_version;
+
+    for (path, key, end) in [
+        (
+            "sdk-dotnet/Gulf_of_St._Lawrence.mxd.89833ED7_0681_4032_BE76_9AB6C721CEB2",
+            373,
+            0x1e7fc,
+        ),
+        (
+            "sdk-java/gulf_of_st._lawrence.mxd.4896861F_D89C_46BA_ABEC_17591162B2B1",
+            388,
+            0x1d9d1,
+        ),
+    ] {
+        let path = format!("temp/terra-round8-old/{path}");
+        let map = read_sdk_map(&path);
+        let graphics = map.base_graphics_layer_parsed.unwrap();
+        let elements = &graphics.element_groups[0].elements;
+        assert_eq!(elements.len(), 5);
+        let ElementEntry10_1::Element {
+            key: found,
+            body: ElementBody10_1::PolygonElement(polygon),
+        } = &elements[0]
+        else {
+            panic!("预期基本图形层中的 PolygonElement");
+        };
+        assert_eq!(*found, key);
+        assert_eq!(polygon.version, 3);
+        assert!(polygon.stop.is_none());
+        assert!(matches!(polygon.geometry, GeometrySlot10_1::Polygon(_)));
+        assert_eq!(map.stop, MapSuffixStop::Complete);
+
+        let mut doc = cfb::open(&path).unwrap();
+        let mut read_stream = |name: &str| {
+            let mut bytes = Vec::new();
+            doc.open_stream(name)
+                .unwrap()
+                .read_to_end(&mut bytes)
+                .unwrap();
+            bytes
+        };
+        let maps = read_stream("/Maps");
+        let layout_bytes = read_stream("/PageLayout");
+        let version = identify_version(&read_stream("/Version")).unwrap();
+        let report =
+            parse_mxd_streams_10_1_with_version(&maps, Some(&layout_bytes), Some(&version))
+                .unwrap();
+        assert_eq!(report.confirmed_tail, Some((end, 1)));
+        assert_eq!(maps.len(), end + 4);
+        let layout = report.page_layout.unwrap();
+        assert!(layout.tail.is_some() && layout.tail_error.is_none());
+        assert_eq!(layout.consumed_end_offset(), layout_bytes.len());
+    }
+}
+
+#[test]
+#[ignore = "需要 10.1 SDK 安装介质提取文件"]
+fn sdk_hurricanes_reads_time_zone_rules_and_both_stream_ends() {
+    use mxd2qgz::layers::dep_tail::{TimeReferenceSlot10_1, TimeZoneInfoSlot10_1};
+    use mxd2qgz::layers::feature_layer_tail::SuccessorStop10_1;
+    use mxd2qgz::maps::mxd_maps::parse_mxd_streams_10_1_with_version;
+    use mxd2qgz::version::mxd_version::identify_version;
+
+    let path = "temp/terra-round8-old/sdk-dotnet/TimeAwareHurricanes.mxd.89833ED7_0681_4032_BE76_9AB6C721CEB2";
+    let map = read_sdk_map(path);
+    let entry = &map.layer_list.entries[0];
+    assert_eq!(entry.offset, 0x154);
+    assert_eq!(entry.body.unwrap().len, 0);
+    let Some(LayerBodyPrefix10_1::FeatureLayer(layer)) = &entry.parsed else {
+        panic!("预期 FeatureLayer");
+    };
+    let tail = layer.successor.as_ref().unwrap();
+    assert_eq!(tail.stop, SuccessorStop10_1::TailCompleted);
+    let data = tail.time_data.as_ref().unwrap();
+    assert_eq!(data.version, 1);
+    let TimeReferenceSlot10_1::Body(reference) = &data.slot else {
+        panic!("预期 TimeReference 新对象");
+    };
+    let TimeZoneInfoSlot10_1::Body(zone) = &reference.zone_info else {
+        panic!("预期 TimeZoneInfo 新对象");
+    };
+    assert_eq!((reference.key, zone.key, zone.version), (73, 74, 1));
+    assert_eq!(zone.count, 2);
+    assert_eq!(
+        zone.rules.iter().map(|rule| rule.int_a).collect::<Vec<_>>(),
+        [2006, 2007]
+    );
+    assert_eq!((reference.short_a, reference.short_b), (Some(0), Some(-1)));
+    assert_eq!(tail.time_table_definition.as_ref().unwrap().version, 1);
+    assert_eq!(map.stop, MapSuffixStop::Complete);
+
+    let mut doc = cfb::open(path).unwrap();
+    let mut read_stream = |name: &str| {
+        let mut bytes = Vec::new();
+        doc.open_stream(name)
+            .unwrap()
+            .read_to_end(&mut bytes)
+            .unwrap();
+        bytes
+    };
+    let maps = read_stream("/Maps");
+    let layout_bytes = read_stream("/PageLayout");
+    let version = identify_version(&read_stream("/Version")).unwrap();
+    let result =
+        parse_mxd_streams_10_1_with_version(&maps, Some(&layout_bytes), Some(&version)).unwrap();
+    assert_eq!(result.confirmed_tail, Some((0x2507, 0)));
+    assert_eq!(maps.len(), 0x250b);
+    let layout = result.page_layout.unwrap();
+    assert!(layout.tail.is_some() && layout.tail_error.is_none());
+    assert_eq!(layout.consumed_end_offset(), layout_bytes.len());
+}
+
+#[test]
+#[ignore = "需要 10.1 SDK 安装介质提取文件"]
+fn sdk_print_multi_page_reads_a_nested_map_frame_and_cross_stream_reference() {
+    use mxd2qgz::maps::group_element::GroupChild10_1;
+    use mxd2qgz::maps::mxd_maps::parse_mxd_streams_10_1;
+
+    let path =
+        "temp/terra-round8-old/sdk-dotnet/PrintMultiPage.mxd.89833ED7_0681_4032_BE76_9AB6C721CEB2";
+    let mut doc = cfb::open(path).unwrap();
+    let mut read = |name: &str| {
+        let mut bytes = Vec::new();
+        doc.open_stream(name)
+            .unwrap()
+            .read_to_end(&mut bytes)
+            .unwrap();
+        bytes
+    };
+    let maps = read("/Maps");
+    let mut page = read("/PageLayout");
+    let result = parse_mxd_streams_10_1(&maps, Some(&page)).unwrap();
+    assert_eq!(result.confirmed_tail, Some((0x9a3, 0)));
+    let layout = result.page_layout.unwrap();
+    assert_eq!(layout.consumed_elements, 1);
+    let group = &layout.groups[0];
+    assert_eq!((group.key, group.children.len()), (51, 7));
+    let frame = group
+        .children
+        .iter()
+        .find_map(|child| match child {
+            GroupChild10_1::MapFrame(frame) => Some(frame),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!((frame.prefix.frame_key, frame.prefix.version), (71, 4));
+    assert_eq!(frame.prefix.map_offset, 0x1fc3a);
+    assert_eq!(
+        frame.prefix.map,
+        ObjectEntry10_1::BackReference {
+            class_id: MAP_CLASS_ID,
+            key: 29
+        }
+    );
+    assert!(layout.tail.is_some() && layout.tail_error.is_none());
+    assert_eq!(layout.consumed_end_offset(), page.len());
+
+    // 30 是已见的基本图形层键，不能当成根 Map 回引。
+    page[0x1fc4a..0x1fc4e].copy_from_slice(&30_u32.to_le_bytes());
+    let layout = parse_mxd_streams_10_1(&maps, Some(&page))
+        .unwrap()
+        .page_layout
+        .unwrap();
+    assert_eq!(layout.end_offset, 0x1e);
+    assert!(layout.groups.is_empty());
+    assert!(layout.stop.unwrap().contains("尚未确认的根 Map 键"));
+}
+
+#[test]
+#[ignore = "需要 10.1 SDK 安装介质提取文件"]
+fn sdk_schematics_reuses_nested_map_in_the_root_list() {
+    use mxd2qgz::maps::mxd_maps::parse_mxd_streams_10_1;
+
+    let path = "temp/terra-round8-old/sdk-dotnet/SchematicsForServerSample.mxd.89833ED7_0681_4032_BE76_9AB6C721CEB2";
+    let map = read_sdk_map(path);
+    let slot = map
+        .post_border_tail
+        .persist_collections
+        .unwrap()
+        .map_interface
+        .unwrap();
+    assert_eq!(slot.offset, 0xcbe5);
+    assert_eq!(
+        slot.entry,
+        ObjectEntry10_1::NewObject {
+            class_id: MAP_CLASS_ID,
+            key: 533
+        }
+    );
+    let (prefix, suffix) = *slot.body.unwrap();
+    assert_eq!(prefix.version, 45);
+    assert_eq!(suffix.stop, MapSuffixStop::Complete);
+    assert_eq!(suffix.layer_list.count, 1);
+
+    let mut doc = cfb::open(path).unwrap();
+    let mut read = |name: &str| {
+        let mut bytes = Vec::new();
+        doc.open_stream(name)
+            .unwrap()
+            .read_to_end(&mut bytes)
+            .unwrap();
+        bytes
+    };
+    let maps = read("/Maps");
+    let page = read("/PageLayout");
+    let report = parse_mxd_streams_10_1(&maps, Some(&page)).unwrap();
+    assert_eq!(report.confirmed_tail, Some((0x2c4a7, 1)));
+    assert_eq!(maps.len(), 0x2c4ab);
+    assert_eq!(report.map.frames.len(), 4);
+    assert_eq!(report.map.frames[3].name, prefix.name);
+    let layout = report.page_layout.unwrap();
+    assert!(layout.tail.is_some() && layout.tail_error.is_none());
+    assert_eq!(layout.consumed_end_offset(), page.len());
+}
+
 fn read_sdk_map(path: &str) -> MapSuffix10_1 {
     let mut doc = cfb::open(path).unwrap();
     let mut bytes = Vec::new();

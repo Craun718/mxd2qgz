@@ -1,5 +1,6 @@
 //! GraphicElements.dll 10.1 GroupElement 的普通对象流子元素。
-use super::map_frame::{BaseFrameElement10_1, base_frame};
+use super::map_frame::{BaseFrameElement10_1, MapFrame10_1, base_frame};
+use super::page_layout_prefix::{MAP_FRAME_CLASS_ID, read_map_frame};
 use super::rectangle_element::{
     RECTANGLE_ELEMENT_CLASS_ID, RectangleElement10_1, read_rectangle_element_10_1,
 };
@@ -25,6 +26,7 @@ pub enum GroupChild10_1 {
     Indirect(ObjectEntry10_1),
     Group(Box<GroupElement10_1>),
     Rectangle(Box<RectangleElement10_1>),
+    MapFrame(Box<MapFrame10_1>),
     SurroundFrame(Box<MapSurroundFrame10_1>),
     Element(u32, Box<ElementBody10_1>),
 }
@@ -121,6 +123,16 @@ fn read_group(
             } if !refs.contains(key) => {
                 GroupChild10_1::Rectangle(Box::new(read_rectangle_element_10_1(r, limit, refs)?))
             }
+            ObjectHeader::Object {
+                class_id: MAP_FRAME_CLASS_ID,
+                key,
+            } if !refs.contains(key) => GroupChild10_1::MapFrame(Box::new(read_map_frame(
+                r,
+                region_offset,
+                limit,
+                refs,
+                is_root_map,
+            )?)),
             ObjectHeader::Object {
                 class_id: MAP_SURROUND_FRAME_CLASS_ID,
                 key,

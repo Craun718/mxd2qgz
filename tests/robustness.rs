@@ -1590,10 +1590,8 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
         }
         // —— 整合接线轮：F 轮 BOLP 族 / 引擎 / UID / HLEP / DEP 前缀 ——
         ReaderKind::BolpBody10_1 => {
-            // 三槽全空标记的最小完整体：20B 标量前缀 + 槽 1/2 空 + 槽间 16B
-            // + 槽 3 空 + 44B 尾段（count 0 / double / int / String cb=0 /
-            // int / 20B 未定名块）。
-            let mut bytes = 0_i16.to_le_bytes().to_vec();
+            // 三个空对象槽和完整 v6 尾段。
+            let mut bytes = 6_i16.to_le_bytes().to_vec();
             for _ in 0..3 {
                 bytes.extend(0_i16.to_le_bytes());
             }
@@ -1610,11 +1608,11 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
             bytes.extend(0_i32.to_le_bytes()); // 尾段 count 0
             bytes.extend(0_f64.to_le_bytes());
             bytes.extend(0_i32.to_le_bytes());
-            bytes.extend(0_u32.to_le_bytes()); // String cb=0（空 BSTR）
-            bytes.extend(0_i32.to_le_bytes());
-            bytes.extend(1_i32.to_le_bytes()); // 20B 未定名块
-            bytes.extend(2_i32.to_le_bytes());
             bytes.extend(0_f64.to_le_bytes());
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend([2, 0, 0, 0, 0, 0]); // 空 AfCore String。
+            bytes.extend(0_i16.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
             bytes.extend(0_i16.to_le_bytes());
             bytes.extend((-1_i16).to_le_bytes());
             bytes
@@ -1747,29 +1745,16 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
             bytes
         }
         ReaderKind::TimeZoneInfoBody10_1 => {
-            // 版本 2 满形态（无 bias 段）：3 串 + int32 + 20 字节规则块 +
-            // 计数 1 + 一条规则条目。
+            // 版本 2：3 串、int32、基本规则及一条年度规则。
             let mut bytes = 2_u16.to_le_bytes().to_vec();
             bytes.extend(encoded("中国标准时间"));
             bytes.extend(encoded("中国夏令时间"));
             bytes.extend(encoded("(UTC+08:00)"));
             bytes.extend(480_i32.to_le_bytes());
-            bytes.extend(0_i32.to_le_bytes());
-            bytes.extend(3_i16.to_le_bytes());
-            bytes.extend(5_i16.to_le_bytes());
-            bytes.extend(0_i32.to_le_bytes());
-            bytes.extend(10_i16.to_le_bytes());
-            bytes.extend(5_i16.to_le_bytes());
-            bytes.extend(60_i32.to_le_bytes());
+            bytes.extend([0; 172]);
             bytes.extend(1_i16.to_le_bytes());
             bytes.extend(1_i32.to_le_bytes());
-            bytes.extend(9_i32.to_le_bytes());
-            bytes.extend(4_i16.to_le_bytes());
-            bytes.extend(1_i16.to_le_bytes());
-            bytes.extend(0_i32.to_le_bytes());
-            bytes.extend(11_i16.to_le_bytes());
-            bytes.extend(1_i16.to_le_bytes());
-            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend([0; 172]);
             bytes
         }
         ReaderKind::TimeReferenceBody10_1 => {
@@ -2203,13 +2188,10 @@ fn sample(kind: ReaderKind) -> Vec<u8> {
             bytes
         }
         ReaderKind::MarkerBackgroundSlot10_1 => {
-            // 槽分派入口：MarkerTextBackground 新对象（头 + 体，符号槽空标记）。
-            let mut bytes =
-                mxd2qgz::objects::callout_background::MARKER_TEXT_BACKGROUND_CLASS_ID.to_vec();
+            // IMarkerBackground 槽中的 LineCallout 新对象。
+            let mut bytes = mxd2qgz::objects::callout_background::LINE_CALLOUT_CLASS_ID.to_vec();
             bytes.extend(55_u32.to_le_bytes());
-            bytes.extend(1_u16.to_le_bytes());
-            bytes.extend(3_u16.to_le_bytes());
-            bytes.extend([0_u8; 16]);
+            bytes.extend(sample(ReaderKind::LineCalloutBody10_1));
             bytes
         }
         ReaderKind::PictureFillSymbolBody10_1 => {

@@ -42,22 +42,53 @@ pub enum LayerMaskingSupport10_1 {
     Unresolved,
 }
 
+pub(crate) const DIMENSION_LAYER_CLASS_ID: [u8; 16] = [
+    0x32, 0x7e, 0xe2, 0xf1, 0xa7, 0x0c, 0xd4, 0x11, 0x80, 0xd7, 0x00, 0xc0, 0x4f, 0x60, 0x15, 0x65,
+];
+pub(crate) const TOPOLOGY_LAYER_CLASS_ID: [u8; 16] = [
+    0xd5, 0xba, 0x98, 0xde, 0x5e, 0x13, 0x36, 0x4b, 0x96, 0x53, 0x57, 0xb5, 0x51, 0x3f, 0xb7, 0xb2,
+];
+pub(crate) const NETWORK_LAYER_CLASS_ID: [u8; 16] = [
+    0x4b, 0xe9, 0xf8, 0xd4, 0xf5, 0x5c, 0x8f, 0x4f, 0x8b, 0x4d, 0x5b, 0x25, 0xae, 0x4c, 0x0a, 0xf9,
+];
+const SCHEMATIC_LAYER_CLASS_ID: [u8; 16] = [
+    0xd6, 0x82, 0xf0, 0x2e, 0x5f, 0x0b, 0x70, 0x4b, 0x94, 0x16, 0x35, 0xd7, 0x5e, 0xfa, 0x7f, 0xed,
+];
+
+// 这些类尚无图层体读取器，但已确认不消费遮罩记录。
+pub(crate) fn is_unparsed_layer_without_masking_10_1(class_id: [u8; 16]) -> bool {
+    matches!(
+        class_id,
+        DIMENSION_LAYER_CLASS_ID
+            | TOPOLOGY_LAYER_CLASS_ID
+            | NETWORK_LAYER_CLASS_ID
+            | SCHEMATIC_LAYER_CLASS_ID
+    )
+}
+
 /// 返回本轮已核实的类级 ILayerMasking QI 结果；未知类保持未决。
 ///
 /// 这里的类标识只用于静态能力表，不能代替运行时 QI，也不涵盖插件替换类。
 pub fn known_layer_masking_support_10_1(class_id: &[u8; 16]) -> LayerMaskingSupport10_1 {
     use crate::layers::basemap_layer::BASEMAP_LAYER_CLASS_ID;
     use crate::layers::cache_tile_reader::is_tiled_layer;
-    use crate::layers::cad_layer::{CAD_FEATURE_LAYER_CLASS_ID, CAD_LAYER_CLASS_ID};
+    use crate::layers::cad_layer::{
+        CAD_ANNOTATION_LAYER_CLASS_ID, CAD_FEATURE_LAYER_CLASS_ID, CAD_LAYER_CLASS_ID,
+    };
+    use crate::layers::coverage_annotation_layer::COVERAGE_ANNOTATION_LAYER_CLASS_ID;
     use crate::layers::fdo_graphics_layer::FDO_GRAPHICS_LAYER_CLASS_ID;
     use crate::layers::fdo_legacy::FDO_GRAPHICS_SUBLAYER_CLASS_ID;
     use crate::layers::feature_layer::FEATURE_LAYER_CLASS_ID;
     use crate::layers::group_layer::GROUP_LAYER_CLASS_ID;
+    use crate::layers::process_layer::PROCESS_LAYER_CLASS_ID;
 
     use crate::layers::layer_list::RASTER_LAYER_CLASS_ID;
     use crate::layers::wcs_layer::WCS_LAYER_CLASS_ID;
 
-    if *class_id == GROUP_LAYER_CLASS_ID || *class_id == BASEMAP_LAYER_CLASS_ID {
+    if matches!(
+        *class_id,
+        GROUP_LAYER_CLASS_ID | BASEMAP_LAYER_CLASS_ID | PROCESS_LAYER_CLASS_ID
+    ) {
         LayerMaskingSupport10_1::Supported
     } else if *class_id == FEATURE_LAYER_CLASS_ID
         || *class_id == FDO_GRAPHICS_LAYER_CLASS_ID
@@ -65,8 +96,11 @@ pub fn known_layer_masking_support_10_1(class_id: &[u8; 16]) -> LayerMaskingSupp
         || *class_id == RASTER_LAYER_CLASS_ID
         || *class_id == CAD_LAYER_CLASS_ID
         || *class_id == CAD_FEATURE_LAYER_CLASS_ID
+        || *class_id == CAD_ANNOTATION_LAYER_CLASS_ID
+        || *class_id == COVERAGE_ANNOTATION_LAYER_CLASS_ID
         || *class_id == WCS_LAYER_CLASS_ID
         || is_tiled_layer(*class_id)
+        || is_unparsed_layer_without_masking_10_1(*class_id)
     {
         LayerMaskingSupport10_1::Unsupported
     } else {

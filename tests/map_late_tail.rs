@@ -60,6 +60,64 @@ fn reads_version_gates_without_consuming_following_bytes() {
 }
 
 #[test]
+fn time_extent_slot_preserves_following_fields_and_rolls_back_on_failure() {
+    use mxd2qgz::layers::dep_tail::{TIME_EXTENT_CLASS_ID, TIME_REFERENCE_CLASS_ID};
+
+    let mut bytes = vec![0; 102];
+    let offset = bytes.len();
+    bytes.extend(TIME_EXTENT_CLASS_ID);
+    bytes.extend(91_u32.to_le_bytes());
+    bytes.extend(2_u16.to_le_bytes());
+    bytes.extend([0; 48]);
+    bytes.push(1);
+    let body_end = bytes.len();
+    bytes.extend([0; 16]);
+    bytes.extend(TIME_REFERENCE_CLASS_ID);
+    bytes.extend(92_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend([0; 16]);
+    bytes.extend(0x23_u16.to_le_bytes());
+    bytes.extend(0x45_u16.to_le_bytes());
+    let end = bytes.len();
+    bytes.extend(0x11223344_u32.to_le_bytes());
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let result = read_map_late_tail_10_1(&mut reader, &mut refs, 4096, 38).unwrap();
+    assert!(result.stop.is_none(), "{:?}", result.stop);
+    let field = result
+        .fields
+        .iter()
+        .find(|field| field.offset == offset)
+        .unwrap();
+    let LateMapValue10_1::TimeExtent(body) = &field.value else {
+        panic!("预期 TimeExtent");
+    };
+    assert_eq!((body.key, body.version, body.tail_byte), (91, 2, Some(1)));
+    assert!(refs.contains(91));
+    assert!(refs.contains(92));
+    let LateMapValue10_1::TimeReference(reference) = &result.fields.last().unwrap().value else {
+        panic!("预期 TimeReference");
+    };
+    assert_eq!((reference.key, reference.short_b), (92, Some(0x45)));
+    assert_eq!(reader.position(), end);
+    assert_eq!(reader.read_u32_le().unwrap(), 0x11223344);
+
+    for length in [body_end - 1, body_end] {
+        let mut refs = RefTable10_1::new();
+        let mut invalid = bytes[..length].to_vec();
+        if length == body_end {
+            invalid[offset + 22] = 1;
+        }
+        let mut reader = Reader::new(&invalid);
+        let result = read_map_late_tail_10_1(&mut reader, &mut refs, 4096, 38).unwrap();
+        assert!(result.stop.unwrap().contains("+0x420"));
+        assert_eq!(reader.position(), offset);
+        assert!(!refs.contains(91));
+    }
+}
+
+#[test]
 fn unknown_object_and_incomplete_envelope_stop_before_the_header() {
     let mut bytes = vec![0; 12];
     bytes.extend([0x42; 16]);

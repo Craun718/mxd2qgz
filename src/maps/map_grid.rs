@@ -1,13 +1,13 @@
 //! MapElements.dll 10.1 的网格、标签及网格边框持久化布局。
 
-use crate::layers::feature_layer::{
-    FEATURE_CLASS_NAME_CLASS_ID, FGDB_FEATURE_CLASS_NAME_CLASS_ID, FeatureClassNamePrefix10_1,
-    read_feature_class_name_body_10_1, read_fgdb_feature_class_name_body_10_1,
-};
+use crate::layers::feature_layer::FeatureClassNamePrefix10_1;
 use crate::layers::feature_layer_tail::{
     NumberFormatSlot10_1, read_number_format_body_for_class_10_1,
 };
 use crate::maps::map_frame::unsupported;
+use crate::objects::dataset_name_more::{
+    DatasetNameMoreBody10_1, DatasetNameMoreSlot10_1, read_feature_source_name_slot_10_1,
+};
 use crate::objects::display_symbol::{
     DisplaySlotKind10_1 as Kind, SymbolSlotFull10_1 as Symbol, read_symbol_slot_full_10_1,
     slot_full_stop_10_1,
@@ -17,6 +17,7 @@ use crate::objects::number_format::{
     LATLON_FORMAT_CLASS_ID, LatLonFormatBody10_1, read_latlon_format_body_10_1,
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
 use crate::stream::{native_string::read_string_10_1, reader::Reader};
 use std::io::{self, ErrorKind};
 
@@ -73,6 +74,7 @@ pub struct CustomOverlayGrid10_1 {
     pub base: MapGrid10_1,
     pub source: ObjectEntry10_1,
     pub feature_class_name: Option<Box<FeatureClassNamePrefix10_1>>,
+    pub other_source_name: Option<Box<DatasetNameMoreBody10_1>>,
     pub string_44: String,
 }
 
@@ -274,33 +276,43 @@ fn read_custom_overlay_grid(
 ) -> io::Result<CustomOverlayGrid10_1> {
     let version = read_signed_version(r, 1, "CustomOverlayGrid")?;
     let base = read_base_grid(r, limit, refs)?;
-    let source = read_object_entry_10_1(r, refs)?;
-    let feature_class_name = match source {
-        ObjectEntry10_1::NewObject { class_id, key } => {
-            let name = match class_id {
-                FEATURE_CLASS_NAME_CLASS_ID => {
-                    read_feature_class_name_body_10_1(r, limit, refs, key)
-                }
-                FGDB_FEATURE_CLASS_NAME_CLASS_ID => {
-                    read_fgdb_feature_class_name_body_10_1(r, limit, refs, key)
-                }
-                _ => return Err(unsupported("CustomOverlayGrid IName", source)),
-            }?;
-            if let Some(stop) = &name.stop {
-                return Err(io::Error::new(
-                    ErrorKind::Unsupported,
-                    format!("CustomOverlayGrid IName 未读完: {stop:?}"),
-                ));
-            }
-            Some(Box::new(name))
+    let header = read_header_10_1(&mut r.clone())?;
+    let mut stop = None;
+    let name = read_feature_source_name_slot_10_1(r, limit, refs, &mut stop)?;
+    if let Some(stop) = stop {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            format!("CustomOverlayGrid IName 未读完: {stop:?}"),
+        ));
+    }
+    let (source, body) = match name {
+        DatasetNameMoreSlot10_1::Null => (ObjectEntry10_1::Null, None),
+        DatasetNameMoreSlot10_1::BackReference { class_id, key } => {
+            (ObjectEntry10_1::BackReference { class_id, key }, None)
         }
-        _ => None,
+        DatasetNameMoreSlot10_1::Body(body) => {
+            let ObjectHeader::Object { class_id, key } = header else {
+                unreachable!("已读取带键的要素来源名称");
+            };
+            (ObjectEntry10_1::NewObject { class_id, key }, Some(body))
+        }
+        DatasetNameMoreSlot10_1::Unsupported { class_id, key } => {
+            return Err(unsupported(
+                "CustomOverlayGrid IName",
+                ObjectEntry10_1::NewObject { class_id, key },
+            ));
+        }
+    };
+    let (feature_class_name, other_source_name) = match body {
+        Some(DatasetNameMoreBody10_1::FeatureClassName(body)) => (Some(body), None),
+        other => (None, other.map(Box::new)),
     };
     Ok(CustomOverlayGrid10_1 {
         version,
         base,
         source,
         feature_class_name,
+        other_source_name,
         string_44: read_string_10_1(r, limit)?,
     })
 }

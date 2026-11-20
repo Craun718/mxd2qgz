@@ -56,8 +56,9 @@ use crate::layers::feature_layer::{
 };
 use crate::layers::layer_list::{LayerBodyPrefix10_1, LayerEntryObject, LayerList10_1};
 use crate::maps::map_object::{
-    MAP_CLASS_ID, MapSurroundElement10_1, MapTransformationDirection10_1, ObjectSlot10_1,
-    read_map_prefix_object_stream_10_1, read_map_suffix_10_1,
+    MAP_CLASS_ID, MapPrefix10_1, MapSuffix10_1, MapSurroundElement10_1,
+    MapTransformationDirection10_1, ObjectSlot10_1, read_map_prefix_object_stream_10_1,
+    read_map_suffix_10_1,
 };
 use crate::maps::maps_stream::read_root_prefix_10_1;
 use crate::maps::page_layout_prefix::{PageLayoutElements10_1, read_page_layout_elements_10_1};
@@ -172,6 +173,7 @@ fn parse_mxd_streams_10_1_with_limits(
     let mut confirmed_tail = None;
     let mut refs = RefTable10_1::new();
     let mut map_indices = std::collections::HashMap::<u32, (usize, usize)>::new();
+    let mut nested_maps = std::collections::HashMap::new();
 
     if root.count == 0 {
         // 空循环：此处的 4 字节才是读侧循环结束后无条件读取的尾部值。
@@ -233,7 +235,7 @@ fn parse_mxd_streams_10_1_with_limits(
                                 max_bytes,
                                 &mut refs,
                             );
-                            let (frame, layer_list, end) = match body {
+                            let (frame, suffix, end) = match body {
                                 Ok(result) => result,
                                 Err(error) if index == 0 => return Err(error),
                                 Err(error) => {
@@ -249,8 +251,11 @@ fn parse_mxd_streams_10_1_with_limits(
                                 map_indices.insert(key, (frames.len(), end - entry_offset));
                             }
                             frames.push(frame);
-                            if index == 0 {
-                                report_layer_list = layer_list;
+                            if let Some(mut suffix) = suffix {
+                                collect_nested_maps(&mut suffix, &mut nested_maps, maps.len());
+                                if index == 0 {
+                                    report_layer_list = Some(suffix.layer_list);
+                                }
                             }
                             let Some(end) = end else {
                                 complete = false;
@@ -275,6 +280,29 @@ fn parse_mxd_streams_10_1_with_limits(
                             frames.push(frames[original].clone());
                             diagnostics.push(format!(
                                 "数据框 {}/{}：回引键 {key}",
+                                index + 1,
+                                root.count
+                            ));
+                        }
+                        Ok(ObjectEntry10_1::BackReference {
+                            class_id: MAP_CLASS_ID,
+                            key,
+                        }) if nested_maps.contains_key(&key) => {
+                            let (body, len) = nested_maps.remove(&key).unwrap();
+                            let (prefix, suffix) = *body;
+                            let (frame, _) = frame_from_body(
+                                maps,
+                                prefix,
+                                &suffix,
+                                index,
+                                root.count,
+                                &mut diagnostics,
+                            );
+                            refs.mark_map(key);
+                            map_indices.insert(key, (frames.len(), len));
+                            frames.push(frame);
+                            diagnostics.push(format!(
+                                "数据框 {}/{}：回引内嵌 Map 键 {key}",
                                 index + 1,
                                 root.count
                             ));
@@ -438,7 +466,7 @@ fn parse_frame(
     diagnostics: &mut Vec<String>,
     max_bytes: usize,
     table: &mut RefTable10_1,
-) -> io::Result<(DataFrame, Option<LayerList10_1>, Option<usize>)> {
+) -> io::Result<(DataFrame, Option<MapSuffix10_1>, Option<usize>)> {
     let mut body = Reader::new(maps).reposition_to(body_offset);
     let prefix = read_map_prefix_object_stream_10_1(&mut body, max_bytes, table)?;
 
@@ -484,8 +512,6 @@ fn parse_frame(
         .as_ref()
         .and_then(map_spatial_reference_to_model);
 
-    let map_crs_key = prefix.spatial_reference_key;
-
     // 后缀读取器从对象体起点重读前缀；所有 Map 共用根流会话键表。
     let mut suffix_reader = Reader::new(maps).reposition_to(body_offset);
     let suffix = match read_map_suffix_10_1(&mut suffix_reader, max_bytes, table) {
@@ -528,6 +554,45 @@ fn parse_frame(
         }
         Err(error) => return Err(error),
     };
+
+    let (frame, end) = frame_from_body(maps, prefix, &suffix, index, count, diagnostics);
+    Ok((frame, Some(suffix), end))
+}
+
+type NestedMaps = std::collections::HashMap<u32, (Box<(MapPrefix10_1, MapSuffix10_1)>, usize)>;
+
+/// 把已完整消费的内嵌 Map 保留到根对象循环结束，供根列表回引复用。
+fn collect_nested_maps(suffix: &mut MapSuffix10_1, maps: &mut NestedMaps, stream_len: usize) {
+    let Some(slot) = suffix
+        .post_border_tail
+        .persist_collections
+        .as_mut()
+        .and_then(|collections| collections.map_interface.as_mut())
+    else {
+        return;
+    };
+    if let ObjectEntry10_1::NewObject { key, .. } = slot.entry
+        && let Some(mut body) = slot.body.take()
+    {
+        collect_nested_maps(&mut body.1, maps, stream_len);
+        let len = stream_len - body.1.remaining_bytes - slot.offset;
+        maps.insert(key, (body, len));
+    }
+}
+
+fn frame_from_body(
+    maps: &[u8],
+    prefix: MapPrefix10_1,
+    suffix: &MapSuffix10_1,
+    index: i32,
+    count: i32,
+    diagnostics: &mut Vec<String>,
+) -> (DataFrame, Option<usize>) {
+    let map_crs = prefix
+        .spatial_reference
+        .as_ref()
+        .and_then(map_spatial_reference_to_model);
+    let map_crs_key = prefix.spatial_reference_key;
 
     // —— 图层列表诊断、体前缀模型填充与未知体保留 ——
     let list = &suffix.layer_list;
@@ -754,6 +819,13 @@ fn parse_frame(
                 ));
                 None
             }
+            Some(prefix @ LayerBodyPrefix10_1::ProcessLayer(_)) => body_prefix_node(
+                prefix,
+                entry.index,
+                map_crs_key,
+                map_crs.as_ref(),
+                diagnostics,
+            ),
             Some(LayerBodyPrefix10_1::Graphics3d(layer)) => {
                 diagnostics.push(format!(
                     "条目 {}：三维图形层 {:?}，已读取 {} 个元素",
@@ -793,6 +865,10 @@ fn parse_frame(
                 LayerBodyPrefix10_1::BasemapLayer(_)
                 | LayerBodyPrefix10_1::TiledLayer(_)
                 | LayerBodyPrefix10_1::CadLayer(_),
+            ) => None,
+            Some(
+                LayerBodyPrefix10_1::CadAnnotationLayer(_)
+                | LayerBodyPrefix10_1::CoverageAnnotationLayer(_),
             ) => None,
             Some(prefix @ LayerBodyPrefix10_1::CadFeatureLayer(_)) => body_prefix_node(
                 prefix,
@@ -1158,7 +1234,7 @@ fn parse_frame(
     }
 
     // —— 停止点与尾部未知区 ——
-    let stop_offset = suffix_reader.position();
+    let stop_offset = maps.len() - suffix.remaining_bytes;
     let complete = suffix.stop == crate::maps::map_object::MapSuffixStop::Complete;
     if complete {
         diagnostics.push(format!("Map 对象体完整消费至 /Maps:0x{stop_offset:x}"));
@@ -1197,11 +1273,7 @@ fn parse_frame(
         extent,
         unknown_fields: frame_unknown,
     };
-    Ok((
-        frame,
-        Some(suffix.layer_list),
-        complete.then_some(stop_offset),
-    ))
+    (frame, complete.then_some(stop_offset))
 }
 
 /// VARIANT_BOOL 位模式 → 模型布尔值；非规范位模式按非零=真处理并返回说明。
@@ -1646,7 +1718,12 @@ fn body_prefix_node(
             }
             _ => None,
         },
-        LayerBodyPrefix10_1::GroupLayer(group) => {
+        LayerBodyPrefix10_1::GroupLayer(_) | LayerBodyPrefix10_1::ProcessLayer(_) => {
+            let group = match prefix {
+                LayerBodyPrefix10_1::GroupLayer(group) => group.as_ref(),
+                LayerBodyPrefix10_1::ProcessLayer(body) => &body.group,
+                _ => unreachable!(),
+            };
             let (visible, note) = match group.visibility {
                 Some(raw) => variant_bool_to_model(raw, "可见性"),
                 None => (true, None),
@@ -1699,6 +1776,15 @@ fn body_prefix_node(
             diagnostics,
         )),
         LayerBodyPrefix10_1::BasemapLayer(_) => None,
+        LayerBodyPrefix10_1::CadAnnotationLayer(_)
+        | LayerBodyPrefix10_1::CoverageAnnotationLayer(_) => {
+            diagnostics.push(format!(
+                "条目 {}：已读取注记图层 {:?}",
+                entry_index + 1,
+                prefix.layer_name()
+            ));
+            None
+        }
         LayerBodyPrefix10_1::CadLayer(layer) => {
             diagnostics.push(format!(
                 "条目 {}：已读取 CAD 绘图图层 {:?}",

@@ -179,13 +179,23 @@ fn legacy_map_v19_to_v22_handle_both_layer_lists_and_annotate_map() {
 
 #[test]
 fn map_v0_to_v13_read_version_gated_tail_fields() {
+    use mxd2qgz::layers::raster_dataset_name::{
+        RASTER_BAND_NAME_CLASS_ID, RASTER_CATALOG_NAME_CLASS_ID, RasterDatasetNameEntryBody10_1,
+    };
     use mxd2qgz::maps::map_object::read_map_suffix_10_1;
-    use mxd2qgz::maps::standalone_table::{FGDB_TABLE_NAME_CLASS_ID, TABLE_NAME_CLASS_ID};
+    use mxd2qgz::maps::standalone_table::{
+        FGDB_TABLE_NAME_CLASS_ID, OBJECT_CLASS_NAME_CLASS_ID, TABLE_NAME_CLASS_ID,
+    };
+    use mxd2qgz::objects::ams_dataset_name::AMS_DATASET_NAME_CLASS_ID;
     use mxd2qgz::objects::dataset_name_more::{
         DatasetNameMoreBody10_1, DatasetNameMoreSlot10_1, NETCDF_TABLE_NAME_CLASS_ID,
+        REFERENCED_TABLE_NAME_CLASS_ID, SCHEMATIC_DATASET_NAME_CLASS_ID,
+        SCHEMATIC_DIAGRAM_CLASS_NAME_CLASS_ID,
     };
     use mxd2qgz::objects::geo_transformation::NADCON_TRANSFORMATION_CLASS_ID;
+    use mxd2qgz::objects::property_set::PROPERTY_SET_CLASS_ID;
     use mxd2qgz::objects::string_array::STR_ARRAY_CLASS_ID;
+    use mxd2qgz::objects::workspace_name::{PropertySetSlot10_1, WORKSPACE_NAME_CLASS_ID};
     use mxd2qgz::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
     use mxd2qgz::stream::reader::Reader;
 
@@ -195,28 +205,80 @@ fn map_v0_to_v13_read_version_gated_tail_fields() {
         suffix.extend([0; 16 + 4 + 32 + 8 + 16 + 4]); // 基本图形层、装饰物、范围、IEnvelope 和书签。
         suffix.extend(0x1234_u16.to_le_bytes());
         suffix.extend([0; 2 + 8 + 2]);
-        let fgdb_wrapper = (version % 3 == 1).then_some((1_u16, 0x4c2a_u16));
+        let referenced = version == 10;
+        let ams = version == 7;
+        let fgdb_wrapper = (version % 3 == 1 && !referenced && !ams).then_some((1_u16, 0x4c2a_u16));
         let netcdf = version % 3 == 2;
         let table_offset = (version < 11).then(|| {
             suffix.extend(2_u32.to_le_bytes());
             let offset = suffix.len();
-            let class_id = if netcdf {
+            let class_id = if ams {
+                AMS_DATASET_NAME_CLASS_ID
+            } else if referenced {
+                REFERENCED_TABLE_NAME_CLASS_ID
+            } else if netcdf {
                 NETCDF_TABLE_NAME_CLASS_ID
             } else if fgdb_wrapper.is_some() {
                 FGDB_TABLE_NAME_CLASS_ID
             } else {
-                TABLE_NAME_CLASS_ID
+                match version {
+                    0 => OBJECT_CLASS_NAME_CLASS_ID,
+                    3 => RASTER_BAND_NAME_CLASS_ID,
+                    6 => RASTER_CATALOG_NAME_CLASS_ID,
+                    9 => SCHEMATIC_DIAGRAM_CLASS_NAME_CLASS_ID,
+                    _ => TABLE_NAME_CLASS_ID,
+                }
             };
             suffix.extend(class_id);
             suffix.extend(90_u32.to_le_bytes());
+            if ams {
+                // 四个空 ATL BSTR、三个整数，其中首个标记要素类。
+                suffix.extend([0; 16]);
+                suffix.extend(5_i32.to_le_bytes());
+                suffix.extend([0; 8]);
+                suffix.extend(13_u16.to_le_bytes());
+                suffix.extend(WORKSPACE_NAME_CLASS_ID);
+                suffix.extend(1_u16.to_le_bytes());
+                suffix.extend([2, 0, 0, 0, 0, 0].repeat(3));
+                suffix.extend(PROPERTY_SET_CLASS_ID);
+                suffix.extend(101_u32.to_le_bytes());
+                suffix.extend(1_u16.to_le_bytes());
+                suffix.extend(0_u32.to_le_bytes());
+                suffix.extend([0; 5]);
+                suffix.extend((-3_i16).to_le_bytes());
+                suffix.extend(class_id);
+                suffix.extend(90_u32.to_le_bytes());
+                return offset;
+            }
+            if referenced {
+                suffix.extend((-1_i16).to_le_bytes());
+                suffix.extend(TABLE_NAME_CLASS_ID);
+                suffix.extend(101_u32.to_le_bytes());
+            }
             if let Some((version, flags)) = fgdb_wrapper {
                 suffix.extend(version.to_le_bytes());
                 suffix.extend(flags.to_le_bytes());
             }
-            suffix.extend(1_u16.to_le_bytes());
-            for _ in 0..3 {
+            if version == 3 {
+                suffix.extend(1_u32.to_le_bytes()); // RasterBandName 版本标记。
+            } else {
+                suffix.extend(1_u16.to_le_bytes());
+            }
+            for _ in 0..if version == 6 { 4 } else { 3 } {
                 suffix.extend(2_u32.to_le_bytes());
                 suffix.extend(0_u16.to_le_bytes());
+            }
+            if version == 6 {
+                suffix.extend([0; 8]); // RasterCatalogName 委派给 FeatureClassName。
+            }
+            if matches!(version, 3 | 6) {
+                suffix.extend(0_u16.to_le_bytes());
+            }
+            if version == 9 {
+                suffix.extend(SCHEMATIC_DATASET_NAME_CLASS_ID);
+                suffix.extend(101_u32.to_le_bytes());
+                suffix.extend(1_u16.to_le_bytes());
+                suffix.extend([2, 0, 0, 0, 0, 0].repeat(3));
             }
             suffix.extend([0; 16]); // WorkspaceName 空槽。
             if netcdf {
@@ -310,6 +372,45 @@ fn map_v0_to_v13_read_version_gated_tail_fields() {
         if let Some(table_offset) = table_offset {
             let names = &map.legacy_table_names;
             match &names[0].1 {
+                DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::AmsDatasetName(name))
+                    if ams =>
+                {
+                    assert_eq!(name.scalars, [5, 0, 0]);
+                    assert_eq!(name.trailing_short, -3);
+                    assert!(matches!(
+                        name.workspace_name.property_set,
+                        PropertySetSlot10_1::PropertySet(_)
+                    ));
+                    assert!(refs.contains(101));
+                }
+                DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::ReferencedTable(name))
+                    if referenced =>
+                {
+                    assert_eq!(name.version, -1);
+                    assert_eq!(name.key, 90);
+                    assert!(matches!(
+                        name.source,
+                        DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::Table(_))
+                    ));
+                    assert!(refs.contains(101));
+                }
+                DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::SchematicClass(name))
+                    if version == 9 =>
+                {
+                    assert!(matches!(
+                        &name.dataset,
+                        DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::SchematicDataset(dataset))
+                            if dataset.key == 101
+                    ));
+                    assert!(refs.contains(101));
+                }
+                DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::RasterTable(name)) => {
+                    assert!(matches!(
+                        (version, name.as_ref()),
+                        (3, RasterDatasetNameEntryBody10_1::Band(_))
+                            | (6, RasterDatasetNameEntryBody10_1::Catalog(_))
+                    ));
+                }
                 DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::Table(name)) if !netcdf => {
                     assert_eq!(name.fgdb_wrapper, fgdb_wrapper);
                 }
@@ -344,7 +445,7 @@ fn map_v0_to_v13_read_version_gated_tail_fields() {
             assert!(stopped.legacy_table_names.is_empty());
             assert_eq!(reader.position(), at);
             assert!(!refs.contains(90));
-            if fgdb_wrapper.is_some() || netcdf {
+            if fgdb_wrapper.is_some() || netcdf || referenced {
                 let mut bad_version = bytes.clone();
                 bad_version[at + 20..at + 22].copy_from_slice(&2_u16.to_le_bytes());
                 let mut reader = Reader::new(&bad_version);
@@ -354,6 +455,31 @@ fn map_v0_to_v13_read_version_gated_tail_fields() {
                 assert!(stopped.legacy_table_names.is_empty());
                 assert_eq!(reader.position(), at);
                 assert!(!refs.contains(90));
+            }
+            if ams {
+                // 截在旧表名称的尾部 short 前，内嵌属性集此前已遇到。
+                let tail = names[1].0 - 2;
+                let mut reader = Reader::new(&bytes[..tail]);
+                reader.read_bytes(24).unwrap();
+                let mut refs = RefTable10_1::new();
+                let stopped = read_map_suffix_10_1(&mut reader, 4096, &mut refs).unwrap();
+                assert!(stopped.legacy_table_names.is_empty());
+                assert_eq!(reader.position(), at);
+                assert!(!refs.contains(90) && !refs.contains(101));
+            }
+            if referenced {
+                // 未知内层类与已知内层短读均回退到整个包装条目起点。
+                let mut unknown_inner = bytes.clone();
+                unknown_inner[at + 22..at + 38].fill(0x7d);
+                for test in [&unknown_inner[..], &bytes[..at + 43]] {
+                    let mut reader = Reader::new(test);
+                    reader.read_bytes(24).unwrap();
+                    let mut refs = RefTable10_1::new();
+                    let stopped = read_map_suffix_10_1(&mut reader, 4096, &mut refs).unwrap();
+                    assert!(stopped.legacy_table_names.is_empty());
+                    assert_eq!(reader.position(), at);
+                    assert!(!refs.contains(90) && !refs.contains(101));
+                }
             }
         }
         if version >= 12 {
@@ -469,6 +595,30 @@ fn map_v28_masking_suffix(layers: &[&[u8]]) -> Vec<u8> {
     suffix.extend([0; 4 * 16 + 2 * 8 + 8 * 4]); // 四个包络及其后字段。
     suffix.extend([0; 2 + 4 + 2]); // Map 自身的空遮罩。
     suffix
+}
+
+#[test]
+fn map_v28_skips_bounded_network_layer_and_its_back_reference() {
+    let mut layer = [
+        0x4b, 0xe9, 0xf8, 0xd4, 0xf5, 0x5c, 0x8f, 0x4f, 0x8b, 0x4d, 0x5b, 0x25, 0xae, 0x4c, 0x0a,
+        0xf9,
+    ]
+    .to_vec();
+    layer.extend(90_u32.to_le_bytes());
+    layer.extend([0x12, 0x34]);
+    let mut suffix = map_v28_masking_suffix(&[&layer, &layer[..20]]);
+    let end = suffix.len();
+    suffix.extend(0x1717_u32.to_le_bytes());
+    let (bytes, offset) = map_with_version(28, &suffix);
+    let report = parse_maps_10_1(&bytes).unwrap();
+    assert_eq!(report.confirmed_tail, Some((offset + end, 0x1717)));
+
+    // 未知类即使具备完整的有界体，也不能推定为不消费遮罩。
+    layer[0] ^= 1;
+    let mut suffix = map_v28_masking_suffix(&[&layer, &layer[..20]]);
+    suffix.extend(0x1717_u32.to_le_bytes());
+    let (bytes, _) = map_with_version(28, &suffix);
+    assert!(parse_maps_10_1(&bytes).unwrap().confirmed_tail.is_none());
 }
 
 #[test]

@@ -1,11 +1,17 @@
 use mxd2qgz::{
-    layers::feature_layer::FGDB_FEATURE_CLASS_NAME_CLASS_ID,
+    layers::{
+        feature_layer::FGDB_FEATURE_CLASS_NAME_CLASS_ID,
+        raster_dataset_name::RASTER_CATALOG_NAME_CLASS_ID,
+    },
     maps::{
         map_surround::{BookmarkNameEntry10_1, read_feature_bookmark_10_1},
         standalone_table::TABLE_NAME_CLASS_ID,
     },
     objects::{
-        dataset_name_more::{FEATURE_QUERY_NAME_CLASS_ID, TABLE_QUERY_NAME_CLASS_ID},
+        dataset_name_more::{
+            DatasetNameMoreSlot10_1, FEATURE_QUERY_NAME_CLASS_ID, REL_QUERY_TABLE_NAME_CLASS_ID,
+            RELATIONSHIP_CLASS_NAME_CLASS_ID, TABLE_QUERY_NAME_CLASS_ID,
+        },
         workspace_name::WorkspaceNameEntry10_1,
     },
     storage::object_refs::RefTable10_1,
@@ -13,10 +19,11 @@ use mxd2qgz::{
 };
 
 #[test]
-fn bookmark_reads_filegdb_and_query_names_with_transactional_boundaries() {
+fn bookmark_reads_filegdb_catalog_and_query_names_with_transactional_boundaries() {
     const EMPTY: [u8; 6] = [2, 0, 0, 0, 0, 0];
     for class in [
         FGDB_FEATURE_CLASS_NAME_CLASS_ID,
+        RASTER_CATALOG_NAME_CLASS_ID,
         FEATURE_QUERY_NAME_CLASS_ID,
         TABLE_QUERY_NAME_CLASS_ID,
     ] {
@@ -25,9 +32,14 @@ fn bookmark_reads_filegdb_and_query_names_with_transactional_boundaries() {
         data.extend(class);
         data.extend(17_u32.to_le_bytes());
         let workspace_offset;
-        if class == FGDB_FEATURE_CLASS_NAME_CLASS_ID {
-            data.extend(1_u16.to_le_bytes());
-            data.extend(0x1234_u16.to_le_bytes());
+        if matches!(
+            class,
+            FGDB_FEATURE_CLASS_NAME_CLASS_ID | RASTER_CATALOG_NAME_CLASS_ID
+        ) {
+            if class == FGDB_FEATURE_CLASS_NAME_CLASS_ID {
+                data.extend(1_u16.to_le_bytes());
+                data.extend(0x1234_u16.to_le_bytes());
+            }
             data.extend(2_u16.to_le_bytes()); // 内嵌 FeatureClassName，无第二个对象头。
             for _ in 0..4 {
                 data.extend(EMPTY);
@@ -63,6 +75,11 @@ fn bookmark_reads_filegdb_and_query_names_with_transactional_boundaries() {
                 assert_eq!(class, FGDB_FEATURE_CLASS_NAME_CLASS_ID);
                 assert!(body.fgdb_wrapper.is_some());
             }
+            BookmarkNameEntry10_1::RasterCatalogName(body) => {
+                assert_eq!(class, RASTER_CATALOG_NAME_CLASS_ID);
+                assert_eq!(body.key, 17);
+                assert!(body.stop.is_none());
+            }
             BookmarkNameEntry10_1::FeatureQueryName(body) => {
                 assert_eq!(class, FEATURE_QUERY_NAME_CLASS_ID);
                 assert_eq!(body.feature_tail, Some((String::new(), 11, 22)));
@@ -90,6 +107,61 @@ fn bookmark_reads_filegdb_and_query_names_with_transactional_boundaries() {
             assert_eq!(reader.position(), 0);
             assert_eq!(refs, before);
         }
+    }
+}
+
+#[test]
+fn bookmark_reads_relationship_query_and_its_relationship_reference() {
+    const EMPTY: [u8; 6] = [2, 0, 0, 0, 0, 0];
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(42_i32.to_le_bytes());
+    bytes.extend(REL_QUERY_TABLE_NAME_CLASS_ID);
+    bytes.extend(17_u32.to_le_bytes());
+    bytes.extend(3_u16.to_le_bytes());
+    bytes.extend(EMPTY.repeat(2));
+    let source_offset = bytes.len();
+    bytes.extend(RELATIONSHIP_CLASS_NAME_CLASS_ID);
+    bytes.extend(18_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend([0; 32]);
+    bytes.extend(EMPTY);
+    for flag in [2_u16, 3, 4] {
+        bytes.extend(flag.to_le_bytes());
+    }
+    bytes.extend([4, 0, 0, 0, b'B', 0, 0, 0]);
+    let end = bytes.len();
+    bytes.push(0x53);
+
+    let mut existing = RefTable10_1::new();
+    existing.register(18);
+    let mut refs = existing.clone();
+    let mut reader = Reader::new(&bytes);
+    let bookmark = read_feature_bookmark_10_1(&mut reader, 4096, &mut refs).unwrap();
+    let BookmarkNameEntry10_1::RelQueryTableName(query) = bookmark.name_object else {
+        panic!("应读取关系查询名称");
+    };
+    assert_eq!(query.key, 17);
+    assert!(matches!(
+        query.source_slot,
+        DatasetNameMoreSlot10_1::BackReference {
+            class_id: RELATIONSHIP_CLASS_NAME_CLASS_ID,
+            key: 18
+        }
+    ));
+    assert_eq!((query.short_c, query.short_d), (Some(3), Some(4)));
+    assert_eq!(bookmark.name, "B");
+    assert_eq!(reader.position(), end);
+    assert!(refs.contains(17));
+
+    let mut unknown = bytes.clone();
+    unknown[source_offset] ^= 0xff;
+    unknown[source_offset + 16..source_offset + 20].copy_from_slice(&19_u32.to_le_bytes());
+    for input in [&bytes[..end - 1], &unknown] {
+        let mut refs = existing.clone();
+        let mut reader = Reader::new(input);
+        assert!(read_feature_bookmark_10_1(&mut reader, 4096, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert_eq!(refs, existing);
     }
 }
 
@@ -730,4 +802,99 @@ fn cad_drawing_name_reads_workspace_reference_before_feature_class_suffix() {
             assert_eq!(refs, before);
         }
     }
+}
+
+#[test]
+fn ams_bookmark_reads_ole_workspace_and_preserves_object_stream_keys() {
+    use mxd2qgz::objects::{
+        ams_dataset_name::AMS_DATASET_NAME_CLASS_ID,
+        property_set::PROPERTY_SET_CLASS_ID,
+        workspace_name::{PropertySetSlot10_1, WORKSPACE_NAME_CLASS_ID},
+    };
+
+    let mut data = 1_u16.to_le_bytes().to_vec();
+    data.extend(42_i32.to_le_bytes());
+    data.extend(AMS_DATASET_NAME_CLASS_ID);
+    data.extend(17_u32.to_le_bytes());
+    let bstr_offset = data.len();
+    data.extend(5_u32.to_le_bytes());
+    data.extend([0xff, 0, 0x20, 0, 0]);
+    data.extend(0_u32.to_le_bytes());
+    data.extend(2_u32.to_le_bytes());
+    data.extend([0, 0]);
+    data.extend(0_u32.to_le_bytes());
+    for value in [5_i32, -2, 99] {
+        data.extend(value.to_le_bytes());
+    }
+
+    let variant_offset = data.len();
+    data.extend(13_u16.to_le_bytes());
+    let workspace_offset = data.len();
+    data.extend(WORKSPACE_NAME_CLASS_ID);
+    data.extend(1_u16.to_le_bytes());
+    for _ in 0..3 {
+        data.extend([2, 0, 0, 0, 0, 0]);
+    }
+    data.extend(PROPERTY_SET_CLASS_ID);
+    data.extend(18_u32.to_le_bytes());
+    data.extend(1_u16.to_le_bytes());
+    data.extend(0_i32.to_le_bytes());
+    data.extend([0; 5]); // 工厂标志和尾随整数。
+    data.extend((-12_i16).to_le_bytes());
+    data.extend([4, 0, 0, 0, b'B', 0, 0, 0]);
+    let end = data.len();
+    data.push(0xa5);
+
+    let mut reader = Reader::new(&data);
+    let mut refs = RefTable10_1::new();
+    let bookmark = read_feature_bookmark_10_1(&mut reader, 4096, &mut refs).unwrap();
+    let BookmarkNameEntry10_1::AmsDatasetName(body) = bookmark.name_object else {
+        panic!("预期 AMSDatasetName");
+    };
+    assert_eq!(
+        body.strings,
+        [Some(vec![0xff, 0, 0x20]), None, Some(vec![]), None]
+    );
+    assert_eq!(body.scalars, [5, -2, 99]);
+    assert!(matches!(
+        body.workspace_name.property_set,
+        PropertySetSlot10_1::PropertySet(_)
+    ));
+    assert_eq!(body.trailing_short, -12);
+    assert_eq!(bookmark.name, "B");
+    assert_eq!(reader.position(), end);
+    assert_eq!(reader.read_bytes(1).unwrap(), [0xa5]);
+    let mut expected_refs = RefTable10_1::new();
+    expected_refs.register(17);
+    expected_refs.register(18);
+    assert_eq!(refs, expected_refs);
+
+    let verify_failure = |input: &[u8], max_bytes| {
+        let mut reader = Reader::new(input);
+        let mut refs = RefTable10_1::new();
+        refs.register(3);
+        let before = refs.clone();
+        let error = read_feature_bookmark_10_1(&mut reader, max_bytes, &mut refs).unwrap_err();
+        assert_eq!(reader.position(), 0);
+        assert_eq!(refs, before);
+        error.kind()
+    };
+    for prefix in 1..end {
+        verify_failure(&data[..prefix], 4096);
+    }
+    use std::io::ErrorKind::{InvalidData, Unsupported};
+    let mut bad_length = data.clone();
+    bad_length[bstr_offset..bstr_offset + 4].copy_from_slice(&1_u32.to_le_bytes());
+    assert_eq!(verify_failure(&bad_length, 4096), InvalidData);
+    assert_eq!(verify_failure(&data, 4), InvalidData);
+
+    let mut wrong_variant = data.clone();
+    wrong_variant[variant_offset] = 9;
+    assert_eq!(verify_failure(&wrong_variant, 4096), InvalidData);
+    let mut unknown_workspace = data.clone();
+    unknown_workspace[workspace_offset..workspace_offset + 16].fill(0x5a);
+    assert_eq!(verify_failure(&unknown_workspace, 4096), Unsupported);
+    let mut null_workspace = data;
+    null_workspace[workspace_offset..workspace_offset + 16].fill(0);
+    assert_eq!(verify_failure(&null_workspace, 4096), InvalidData);
 }

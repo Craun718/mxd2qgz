@@ -470,7 +470,15 @@ fn map_frame_reads_numeric_grid_label_versions_and_rolls_back_truncation() {
 #[test]
 fn map_frame_reads_mgrs_and_custom_overlay_grid_bodies() {
     use mxd2qgz::layers::feature_layer::FEATURE_CLASS_NAME_CLASS_ID;
+    use mxd2qgz::layers::raster_dataset_name::{
+        RASTER_CATALOG_NAME_CLASS_ID, RasterDatasetNameEntryBody10_1,
+    };
     use mxd2qgz::maps::map_grid::{CUSTOM_OVERLAY_GRID_CLASS_ID, MGRS_GRID_CLASS_ID};
+    use mxd2qgz::maps::standalone_table::TABLE_NAME_CLASS_ID;
+    use mxd2qgz::objects::dataset_name_more::{
+        DatasetNameMoreBody10_1, XY_EVENT_2_FIELDS_PROPERTIES_CLASS_ID,
+        XY_EVENT_SOURCE_NAME_CLASS_ID,
+    };
     use mxd2qgz::objects::display_symbol::{SIMPLE_LINE_SYMBOL_CLASS_ID, SymbolSlotFull10_1};
 
     fn string(bytes: &mut Vec<u8>, value: &str) {
@@ -526,6 +534,7 @@ fn map_frame_reads_mgrs_and_custom_overlay_grid_bodies() {
     grids.extend(1_i32.to_le_bytes());
     grids.extend(1_i32.to_le_bytes());
     grids.extend([0; 2 + 16 + 2]);
+    let source_end = grids.len();
     string(&mut grids, "格网编号");
 
     let mut body = frame_body(2);
@@ -569,12 +578,67 @@ fn map_frame_reads_mgrs_and_custom_overlay_grid_bodies() {
     assert!(overlay.feature_class_name.is_some());
     assert!(refs.contains(72));
 
+    let mut catalog = body.clone();
+    catalog[start + source_offset..start + source_offset + 16]
+        .copy_from_slice(&RASTER_CATALOG_NAME_CLASS_ID);
+    let bytes = wrap(&catalog);
+    let mut reader = Reader::new(&bytes);
+    let mut refs = original.clone();
+    let frame = read_page_layout_map_frame_10_1(&mut reader, 4096, &mut refs).unwrap();
+    let overlay = frame.grids[3].custom_overlay_grid.as_ref().unwrap();
+    assert!(matches!(
+        overlay.other_source_name.as_deref(),
+        Some(DatasetNameMoreBody10_1::RasterTable(name))
+            if matches!(name.as_ref(), RasterDatasetNameEntryBody10_1::Catalog(body) if body.key == 72)
+    ));
+    assert_eq!(overlay.string_44, "格网编号");
+    assert_eq!(reader.remaining(), 0);
+    assert!(refs.contains(72));
+
+    let mut event_source = XY_EVENT_SOURCE_NAME_CLASS_ID.to_vec();
+    event_source.extend(72_u32.to_le_bytes());
+    event_source.extend(1_u16.to_le_bytes());
+    string(&mut event_source, "格网事件");
+    string(&mut event_source, "");
+    let event_table_offset = event_source.len();
+    event_source.extend(TABLE_NAME_CLASS_ID);
+    event_source.extend(73_u32.to_le_bytes());
+    event_source.extend(1_u16.to_le_bytes());
+    for value in ["坐标表", "", ""] {
+        string(&mut event_source, value);
+    }
+    event_source.extend([0; 16]);
+    event_source.extend(XY_EVENT_2_FIELDS_PROPERTIES_CLASS_ID);
+    event_source.extend(74_u32.to_le_bytes());
+    event_source.extend(1_u16.to_le_bytes());
+    for value in ["x", "y", "z"] {
+        string(&mut event_source, value);
+    }
+    event_source.extend([0; 16]);
+    let mut event_body = body.clone();
+    event_body.splice(start + source_offset..start + source_end, event_source);
+    let bytes = wrap(&event_body);
+    let mut reader = Reader::new(&bytes);
+    let mut refs = original.clone();
+    let frame = read_page_layout_map_frame_10_1(&mut reader, 4096, &mut refs).unwrap();
+    let overlay = frame.grids[3].custom_overlay_grid.as_ref().unwrap();
+    assert!(matches!(
+        overlay.other_source_name.as_deref(),
+        Some(DatasetNameMoreBody10_1::XyEventSource(_))
+    ));
+    assert_eq!(overlay.string_44, "格网编号");
+    assert_eq!(reader.remaining(), 0);
+    assert!([72, 73, 74].into_iter().all(|key| refs.contains(key)));
+
+    let mut unknown_event_table = event_body;
+    unknown_event_table[start + source_offset + event_table_offset] ^= 0xff;
     let mut unknown_source = body.clone();
     unknown_source[start + source_offset] ^= 0xff;
     let mut unknown_version = body.clone();
     unknown_version[start + 20..start + 22].copy_from_slice(&4_u16.to_le_bytes());
     for invalid in [
         unknown_source.as_slice(),
+        unknown_event_table.as_slice(),
         unknown_version.as_slice(),
         &body[..start + final_line_offset + 17],
         &body[..start + source_body_offset + 1],

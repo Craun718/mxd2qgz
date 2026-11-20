@@ -537,7 +537,9 @@ fn read_map_layer_masking_10_1(
     layer_list: &LayerList10_1,
     map_version: u16,
 ) -> Option<Vec<(u32, LayerMasking10_1)>> {
-    use crate::maps::layer_masking::{LayerMaskingProbe10_1, layer_masking_probe_10_1};
+    use crate::maps::layer_masking::{
+        LayerMaskingProbe10_1, is_unparsed_layer_without_masking_10_1, layer_masking_probe_10_1,
+    };
     if layer_list.stop.is_some()
         || layer_list.active_index.is_none()
         || usize::try_from(layer_list.count) != Ok(layer_list.entries.len())
@@ -555,6 +557,15 @@ fn read_map_layer_masking_10_1(
     };
     for entry in &layer_list.entries {
         if let LayerEntryObject::Entry(object) = entry.object {
+            // 只有已确认 QI 结果且图层列表已定位到有界体末尾，才可登记该层。
+            if entry.parsed.is_none()
+                && entry.body.is_some()
+                && let ObjectEntry10_1::NewObject { class_id, key } = object
+                && is_unparsed_layer_without_masking_10_1(class_id)
+            {
+                traversal.known.insert(key, (class_id, None));
+                continue;
+            }
             traversal.visit(object, entry.parsed.as_ref(), 0)?;
         }
     }
@@ -613,6 +624,16 @@ impl<'body> LayerMaskingTraversal<'_, '_, 'body> {
                     self.visit_group_child(child, depth + 1)?;
                 }
             }
+            Some(LayerBodyPrefix10_1::ProcessLayer(process)) => {
+                if usize::try_from(process.group.child_count) != Ok(process.group.children.len()) {
+                    return None;
+                }
+                self.read_record(key)?;
+                // ICompositeLayer 枚举委派组的子层，组本身没有独立遮罩记录。
+                for child in &process.group.children {
+                    self.visit_group_child(child, depth + 1)?;
+                }
+            }
             Some(LayerBodyPrefix10_1::BasemapLayer(basemap))
                 if basemap.stop == BasemapStop10_1::Complete =>
             {
@@ -644,6 +665,8 @@ impl<'body> LayerMaskingTraversal<'_, '_, 'body> {
                         LayerBodyPrefix10_1::FeatureLayer(_)
                         | LayerBodyPrefix10_1::CadLayer(_)
                         | LayerBodyPrefix10_1::CadFeatureLayer(_)
+                        | LayerBodyPrefix10_1::CadAnnotationLayer(_)
+                        | LayerBodyPrefix10_1::CoverageAnnotationLayer(_)
                         | LayerBodyPrefix10_1::RasterLayer(_)
                         | LayerBodyPrefix10_1::TiledLayer(_),
                     ) => {}
@@ -2065,7 +2088,7 @@ pub(crate) fn read_map_with_suffix_10_1(
                 && let Ok(collections) = read_map_persist_collections_before_v34_10_1(
                     &mut trial,
                     max_bytes,
-                    &trial_table,
+                    &mut trial_table,
                     map_prefix.version,
                 )
             {

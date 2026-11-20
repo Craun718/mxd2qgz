@@ -4,6 +4,9 @@
 //! 跳过集合分支；版本 `>=33` 读取计数、IUnknown 条目、LONG 和 IMap 槽位，
 //! 随后进入版本 `>=34` 门。本模块在未知新对象体前停止，不猜测其长度。
 
+use super::map_object::{
+    MAP_CLASS_ID, MapPrefix10_1, MapSuffix10_1, MapSuffixStop, read_map_with_suffix_10_1,
+};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
 use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
 use crate::stream::reader::Reader;
@@ -18,11 +21,13 @@ pub struct UnknownSlot10_1 {
 }
 
 /// Map+0x1b8 的 IMap 请求槽。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MapInterfaceSlot10_1 {
     /// 对象头起点，相对 Reader 底层字节。
     pub offset: usize,
     pub entry: ObjectEntry10_1,
+    /// 新 Map 的对象体。空槽及回引仅保留对象头。
+    pub body: Option<Box<(MapPrefix10_1, MapSuffix10_1)>>,
 }
 
 /// 未知新对象体的保守停止点；对象头未提交，等待后续专用读取器。
@@ -44,7 +49,7 @@ pub enum MapPersistCollectionsStop10_1 {
 }
 
 /// Map 版本 33 分支已确认字段。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MapPersistCollections10_1 {
     pub start_offset: usize,
     /// 集合声明计数。
@@ -61,12 +66,12 @@ pub struct MapPersistCollections10_1 {
 /// 读取 Map 版本 `>=33` 的集合和槽位，停在版本 `>=34` 数据块之前。
 ///
 /// 计数是有符号 int32；负数、超过字节上限或截断均报错，且整个调用不推进
-/// Reader 或引用表。空槽与已登记键回引可安全越过。遇到新键时只提交其之前
-/// 已闭合内容；未知对象头本身及其登记保持回滚，游标停在该头起点。
+/// Reader 或引用表。IMap 新对象完整读取后才提交其键；遇到未知类或
+/// 未闭合对象时只提交此前字段，游标停在对象头起点。
 pub fn read_map_persist_collections_before_v34_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
-    refs: &RefTable10_1,
+    refs: &mut RefTable10_1,
     architecture_version: u16,
 ) -> io::Result<MapPersistCollections10_1> {
     if architecture_version < 33 {
@@ -129,24 +134,44 @@ pub fn read_map_persist_collections_before_v34_10_1(
     let offset = trial.position();
     let mut slot_reader = trial.clone();
     let entry = peek_slot(&mut slot_reader, refs)?;
+    let mut body = None;
     if let ObjectEntry10_1::NewObject { class_id, key } = entry {
-        *reader = trial;
-        return Ok(MapPersistCollections10_1 {
-            start_offset,
-            count,
-            collection,
-            long_value: Some(long_value),
-            map_interface: None,
-            stop: Some(MapPersistCollectionsStop10_1::MapInterfaceObjectBody {
-                offset,
-                class_id,
-                key,
-            }),
-        });
+        if class_id == MAP_CLASS_ID {
+            let mut staged = refs.clone();
+            staged.register(key);
+            let parsed = staged.with_nested_graphics(|staged| {
+                read_map_with_suffix_10_1(&mut slot_reader, max_bytes, staged)
+            });
+            if let Ok(parsed) = parsed
+                && parsed.1.stop == MapSuffixStop::Complete
+            {
+                *refs = staged;
+                body = Some(Box::new(parsed));
+            }
+        }
+        if body.is_none() {
+            *reader = trial;
+            return Ok(MapPersistCollections10_1 {
+                start_offset,
+                count,
+                collection,
+                long_value: Some(long_value),
+                map_interface: None,
+                stop: Some(MapPersistCollectionsStop10_1::MapInterfaceObjectBody {
+                    offset,
+                    class_id,
+                    key,
+                }),
+            });
+        }
     }
 
     trial = slot_reader;
-    let map_interface = MapInterfaceSlot10_1 { offset, entry };
+    let map_interface = MapInterfaceSlot10_1 {
+        offset,
+        entry,
+        body,
+    };
     *reader = trial;
     Ok(MapPersistCollections10_1 {
         start_offset,

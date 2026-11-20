@@ -12,6 +12,29 @@ fn object_header(class_id: [u8; 16], key: u32) -> Vec<u8> {
 }
 
 #[test]
+fn incomplete_nested_map_leaves_its_key_and_body_uncommitted() {
+    use mxd2qgz::maps::map_object::MAP_CLASS_ID;
+
+    let mut bytes = vec![0; 8]; // 空集合与 LONG。
+    bytes.extend(object_header(MAP_CLASS_ID, 91));
+    bytes.extend(45_u16.to_le_bytes()); // 只有版本，没有名称及后续字段。
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let result =
+        read_map_persist_collections_before_v34_10_1(&mut reader, 256, &mut refs, 45).unwrap();
+    assert_eq!(
+        result.stop,
+        Some(MapPersistCollectionsStop10_1::MapInterfaceObjectBody {
+            offset: 8,
+            class_id: MAP_CLASS_ID,
+            key: 91,
+        })
+    );
+    assert!(refs.is_empty());
+    assert_eq!(reader.position(), 8);
+}
+
+#[test]
 fn reference_sample_advances_from_253c9_to_before_v34_block() {
     let mut doc = cfb::open("samples/测试底图.mxd").unwrap();
     let mut maps = Vec::new();

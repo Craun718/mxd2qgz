@@ -128,17 +128,22 @@ use crate::layers::legend_item_family::{
     VerticalLegendItemBody10_1, read_horizontal_bar_legend_item_body_10_1,
     read_nested_legend_item_body_10_1, read_vertical_legend_item_body_10_1,
 };
+use crate::layers::raster_dataset_name::RASTER_CATALOG_NAME_CLASS_ID;
 use crate::maps::map_surround_family::{
     FamilyStop10_1, LEGEND_FORMAT_CLASS_ID as FAMILY_LEGEND_FORMAT_CLASS_ID, LegendFormatBody10_1,
     read_legend_format_body_10_1,
 };
 use crate::maps::standalone_table::{TABLE_NAME_CLASS_ID, read_table_name_body_10_1};
+use crate::objects::ams_dataset_name::{
+    AMS_DATASET_NAME_CLASS_ID, AmsDatasetName10_1, read_ams_dataset_name_10_1,
+};
 use crate::objects::dataset_name_more::{
     FEATURE_QUERY_NAME_CLASS_ID, FeatureQueryNameBody10_1, NETCDF_FEATURE_CLASS_NAME_CLASS_ID,
-    NetCdfFeatureClassNameBody10_1, TABLE_QUERY_NAME_CLASS_ID, TableQueryNameBody10_1,
-    XY_EVENT_SOURCE_NAME_CLASS_ID, XyEventSourceNameBody10_1, read_feature_query_name_body_10_1,
-    read_netcdf_feature_class_name_body_10_1, read_table_query_name_body_10_1,
-    read_xy_event_source_name_body_10_1,
+    NetCdfFeatureClassNameBody10_1, REL_QUERY_TABLE_NAME_CLASS_ID, RelQueryTableNameBody10_1,
+    TABLE_QUERY_NAME_CLASS_ID, TableQueryNameBody10_1, XY_EVENT_SOURCE_NAME_CLASS_ID,
+    XyEventSourceNameBody10_1, read_feature_query_name_body_10_1,
+    read_netcdf_feature_class_name_body_10_1, read_rel_query_table_name_body_10_1,
+    read_table_query_name_body_10_1, read_xy_event_source_name_body_10_1,
 };
 use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
 use crate::objects::route_event_name::{
@@ -278,6 +283,7 @@ pub enum BookmarkNameEntry10_1 {
     },
     /// 内联要素类名称对象。
     FeatureClassName(Box<FeatureClassNamePrefix10_1>),
+    RasterCatalogName(Box<FeatureClassNamePrefix10_1>),
     /// 内联表名称对象；不代表能够打开为要素类。
     TableName(Box<crate::maps::standalone_table::TableNameBody10_1>),
     FeatureQueryName(Box<FeatureQueryNameBody10_1>),
@@ -285,6 +291,8 @@ pub enum BookmarkNameEntry10_1 {
     XyEventSourceName(Box<XyEventSourceNameBody10_1>),
     RouteEventSourceName(Box<RouteEventSourceNameBody10_1>),
     TableQueryName(Box<TableQueryNameBody10_1>),
+    RelQueryTableName(Box<RelQueryTableNameBody10_1>),
+    AmsDatasetName(Box<AmsDatasetName10_1>),
 }
 
 /// FeatureBookmark 对象体（Load `0x793b5c50` 全部字段，体完全闭合）。
@@ -674,7 +682,8 @@ pub fn read_feature_bookmark_10_1(
             class_id:
                 class_id @ (FEATURE_CLASS_NAME_CLASS_ID
                 | FGDB_FEATURE_CLASS_NAME_CLASS_ID
-                | COVERAGE_FEATURE_CLASS_NAME_CLASS_ID),
+                | COVERAGE_FEATURE_CLASS_NAME_CLASS_ID
+                | RASTER_CATALOG_NAME_CLASS_ID),
             key,
         } => {
             let body = match class_id {
@@ -702,7 +711,11 @@ pub fn read_feature_bookmark_10_1(
                     ),
                 ));
             }
-            BookmarkNameEntry10_1::FeatureClassName(Box::new(body))
+            if class_id == RASTER_CATALOG_NAME_CLASS_ID {
+                BookmarkNameEntry10_1::RasterCatalogName(Box::new(body))
+            } else {
+                BookmarkNameEntry10_1::FeatureClassName(Box::new(body))
+            }
         }
         ObjectEntry10_1::NewObject { class_id, .. } if class_id == TABLE_NAME_CLASS_ID => {
             let (body, stopped) =
@@ -805,6 +818,30 @@ pub fn read_feature_bookmark_10_1(
             }
             BookmarkNameEntry10_1::TableQueryName(Box::new(body))
         }
+        ObjectEntry10_1::NewObject {
+            class_id: REL_QUERY_TABLE_NAME_CLASS_ID,
+            key,
+        } => {
+            let body =
+                read_rel_query_table_name_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?;
+            if let Some(stop) = &body.stop {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!(
+                        "FeatureBookmark 名称对象槽 offset 0x{name_offset:x}: RelQueryTableName 未读完（{stop:?}）"
+                    ),
+                ));
+            }
+            BookmarkNameEntry10_1::RelQueryTableName(Box::new(body))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: AMS_DATASET_NAME_CLASS_ID,
+            key: _,
+        } => BookmarkNameEntry10_1::AmsDatasetName(Box::new(read_ams_dataset_name_10_1(
+            &mut trial,
+            max_bytes,
+            &mut trial_table,
+        )?)),
         ObjectEntry10_1::NewObject { class_id, key } => {
             return Err(io::Error::new(
                 ErrorKind::Unsupported,

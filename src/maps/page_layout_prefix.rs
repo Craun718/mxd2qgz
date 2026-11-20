@@ -513,10 +513,7 @@ fn read_page_frame(
             class_id: MAP_FRAME_CLASS_ID,
             ..
         } => {
-            let prefix = read_map_frame_prefix(reader, start, refs)?;
-            check_root_map_link(&prefix, is_root_map)?;
-            refs.register(prefix.frame_key);
-            let frame = super::map_frame::read_map_frame_tail(reader, max_bytes, refs, prefix)?;
+            let frame = read_map_frame(reader, start, max_bytes, refs, is_root_map)?;
             Ok(PageFrame::Map(Box::new(frame)))
         }
         ObjectHeader::Object {
@@ -565,6 +562,20 @@ fn read_page_frame(
             })
         }
     }
+}
+
+/// 在宿主已建立的读事务中读取地图框，校验回引后使用同一张引用表。
+pub(super) fn read_map_frame(
+    reader: &mut Reader<'_>,
+    start: usize,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    is_root_map: &impl Fn(u32) -> bool,
+) -> io::Result<super::map_frame::MapFrame10_1> {
+    let prefix = read_map_frame_prefix(reader, start, refs)?;
+    check_root_map_link(&prefix, is_root_map)?;
+    refs.register(prefix.frame_key);
+    super::map_frame::read_map_frame_tail(reader, max_bytes, refs, prefix)
 }
 
 pub(super) fn check_root_map_link(
