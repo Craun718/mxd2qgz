@@ -511,7 +511,7 @@
       - [x] 定性 DBTableName 第四个字符串为几何列名称，见 [SqlFDB 字段来源](docs/arcmap-10.1-dataset-name-slots.md#dbtablename-几何列名称与类型)。
       - [x] 定性 DBTableName int32 为几何类型 `esriGeometryType`，见 [SqlFDB 字段来源](docs/arcmap-10.1-dataset-name-slots.md#dbtablename-几何列名称与类型)。
       - [x] 接入 DBTableName 尾部非空 ISpatialReference 中的 PCS、GCS 和 UnknownCoordinateSystem 对象体，复用宿主键表。见 [读写取证](docs/arcmap-10.1-dataset-name-slots.md#dbtablename-尾部空间参考)。
-      - [x] 定性 Scalebar 共用基类中 `IScaleBar.Division` 的两处持久化值和取值优先级。[分段值取证](docs/mxd-terra-nextpass-scale.md#iscalebardivision-的两处持久化值)
+      - [x] 定性 Scalebar 共用基类中 `IScaleBar.Division` 的两处持久化值和取值优先级，并从解析结果提供该值。[分段值取证](docs/mxd-terra-nextpass-scale.md#iscalebardivision-的两处持久化值)
       - [x] 定性 Scalebar 共用基类 v6 的 short 为 IScaleBar2.UseFractionCharacters，并从解析结果提供该值。[分数字符取证](docs/mxd-terra-nextpass-scale.md#分数字符开关)
       - [ ] 定性 Scalebar 共用基类 v5 增加的 short。[比例尺续查](docs/mxd-terra-nextpass-scale.md#分数字符开关)
       - [x] 定性四类填充比例尺派生中段的 double 为 IScaleBar.BarHeight，并从解析结果提供该值。[高度取证](docs/mxd-terra-nextpass-scale.md#填充比例尺高度)

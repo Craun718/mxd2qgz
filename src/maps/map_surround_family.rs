@@ -1434,7 +1434,21 @@ pub struct ScaleMarkProperties10_1 {
     pub mark_frequency: i32,
 }
 
+// 基类 v4 起优先使用非零覆盖值。原生只在恰等于零时回退。
+fn scale_bar_division(version: u16, base: f64, override_value: Option<f64>) -> Option<f64> {
+    if version < 4 {
+        return Some(base);
+    }
+    let value = override_value?;
+    Some(if value == 0.0 { base } else { value })
+}
+
 impl ScalebarSubclassBody10_1 {
+    /// 当前持久化字段对应的 IScaleBar.Division。
+    pub fn division(&self) -> Option<f64> {
+        scale_bar_division(self.base_version, self.base_double_a, self.tail_double)
+    }
+
     /// 派生中段保存的 IScaleBar.BarHeight。
     pub fn bar_height(&self) -> Option<f64> {
         self.mid_double
@@ -1466,6 +1480,15 @@ impl ScaleLineBody10_1 {
             }
             _ => None,
         })
+    }
+
+    /// 当前持久化字段对应的 IScaleBar.Division。
+    pub fn division(&self) -> Option<f64> {
+        scale_bar_division(
+            self.base_version,
+            f64::from_le_bytes(self.raw_field("base_double_a")?),
+            self.raw_field("base_tail_double").map(f64::from_le_bytes),
+        )
     }
 
     /// 基类 v6 写出的 IScaleBar2.UseFractionCharacters。
@@ -2511,6 +2534,7 @@ mod tests {
         assert_eq!(body.base_number_string, "#,##0");
         assert_eq!(body.tail_int32, Some(9));
         assert_eq!(body.tail_double, Some(10.0));
+        assert_eq!(body.division(), Some(10.0));
         assert_eq!(body.tail_short_a, Some(11));
         assert_eq!(body.tail_short_b, Some(12));
         assert_eq!(body.use_fraction_characters(), Some(true));
@@ -2683,7 +2707,8 @@ mod tests {
         data.extend(1u16.to_le_bytes());
         data.extend(base.to_le_bytes());
         data.extend(common_prefix_bytes());
-        data.extend([0u8; 18]);
+        data.extend(2.0_f64.to_le_bytes());
+        data.extend([0u8; 10]);
         data.extend(string_bytes("scale"));
         data.extend([0u8; 12]);
         positions.push(data.len());
@@ -2808,6 +2833,7 @@ mod tests {
                         "base={base} tail={tail} stepped={stepped}"
                     );
                     assert_eq!(body.remaining_bytes, 4);
+                    assert_eq!(body.division(), Some(2.0));
                     assert_eq!(body.use_fraction_characters(), (base == 6).then_some(false));
                     assert_eq!(
                         body.scale_mark_properties(),
@@ -2846,6 +2872,18 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn division_preserves_incomplete_and_nonzero_override_values() {
+        assert_eq!(scale_bar_division(3, 2.0, None), Some(2.0));
+        assert_eq!(scale_bar_division(4, 2.0, None), None);
+        assert_eq!(scale_bar_division(4, 2.0, Some(-0.0)), Some(2.0));
+        let nan = 0x7ff8_0000_0000_1234;
+        assert_eq!(
+            scale_bar_division(4, 2.0, Some(f64::from_bits(nan))).map(f64::to_bits),
+            Some(nan)
+        );
     }
 
     #[test]
