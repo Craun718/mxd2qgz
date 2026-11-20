@@ -54,8 +54,8 @@
   IPersistStream 虚表 `0x6ec15724`：+0x14 thunk `0x6ebc0460` → Load
   `0x6ebbefa0`；Save `0x6ebbf190`。
 - 字段序：① short 版本（>2 拒绝；样本 2）→ ② LoadObject（IColor
-  `{20CD40B0-…}`）→ ③ double（样本 6.0，尺寸候选）→ ④ int32 ×3（样本
-  0/13/0，13 为 marker 样式候选）→ ⑤ double ×3（样本 0）→ ⑥ 1 字节（样本 1）
+  `{20CD40B0-…}`）→ ③ double（样本 6.0，Size）→ ④ int32 ×3（样本
+  0/13/0，依次为 Style、ROP2、MapLevel）→ ⑤ double ×3（样本 0）→ ⑥ 1 字节（样本 1）
   → ⑦ double（样本 1.0）→ ⑧ LoadObject（IColor，轮廓色）→ ⑨ 版本 >1：short
   （样本 0xFFFF）。
 - 构造中的 `FUN_6eb406f0` 两处调用不读流（虚调用返回值），无流内字节。

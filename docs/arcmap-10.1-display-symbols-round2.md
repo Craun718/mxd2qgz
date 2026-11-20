@@ -92,8 +92,8 @@ GetClassID 立即数、Load 实体与样本对位）互证闭环。
 | SimpleLineDecorationElement | `{533D88F3-0A1A-11D2-B27F-0000F878229E}` | `0x6ec10d54` | `0x6eb840e0` | `0x6eb84120` | `0x6eb84270` | 恒 1（`DAT_6ec0b290`） |
 
 - **Template**：short 版本（`1 < ver` 拒绝 `0x80004005`）→ double（→
-  this−0x94，间隔候选）→ int32 count → count × 16 字节（每标记 2 个
-  double：位置 + 角度候选；Save 槽 this−0x88 数组，逐项 16 字节对称写）。
+  this−0x94，Interval）→ int32 count → count × 16 字节（每标记 2 个
+  double：实段长度 mark、空段长度 Gap；Save 槽 this−0x88 数组，逐项 16 字节对称写）。
   Save 侧 `if (param_3 != 0)` 写链与上一轮同型（写 `this−0x9c` 链一字节，
   不影响流内字节，目标未解析）。
 - **LineDecoration**：short 版本（`1 < ver` 拒绝）→ int32 count →
@@ -181,11 +181,11 @@ GetClassID 立即数、Load 实体与样本对位）互证闭环。
 | ③ | `FUN_6eb406f0` | 不读流 | bool this−0x54 | — | 同上 |
 | ④ | int32 | 4 字节 | this−0xc0 | — | 同上 |
 | ⑤-⑩ | double ×6 | 8×6 字节 | this−0xb4 / −0xac / −0xa4 / −0x9c / −0x94 / −0x8c | — | 同上（⑤ 装载后虚表 +0x10 回调） |
-| ⑪ | LoadObject（**IFontDisp `{BEF6E002-A874-101A-8BBA-00AA00300CAB}`**，`DAT_6ec0b07c`，OLE 标准接口） | 20 头 + 体 | Save 槽 this−0xbc | <3 | 同上（Save 在 docVer<3 分支写同槽） |
+| ⑪ | LoadObject（**IFont `{BEF6E002-A874-101A-8BBA-00AA00300CAB}`**，`DAT_6ec0b07c`，OLE 标准接口） | 20 头 + 体 | Save 槽 this−0xbc | <3 | 同上（Save 在 docVer<3 分支写同槽） |
 | ⑫⑬ | int32 ×2 | 4×2 字节 | this−0x124 / −0x11c | — | 同上 |
 | ⑭ | short | 2 字节 | this−0x10c | >1 | 同上；**读取后内存槽被 `Symbol::GetDefaultRotateWithTransformValue` 覆盖，流内值读取即弃**（Save 写槽内默认值；反汇编 `0x6eb9b…` 与 ArrowMarker `0x6eb3edde..0x6eb3edf0` 同型核实） |
-| ⑮ | String + int32 ×4 + short ×2 + int32 ×2 | String::Read + 4+2+2+4+2+4+4 字节 | 字体描述符（Save 由 this−0xbc 字体对象逐属性回写：名 BSTR + vt+0x1c/0x24/0x2c/0x34 四 int32 + vt+0x3c/0x44 两 short + vt+0x14 两 int32） | ≥3 | 同上 |
-| ⑯ | LoadObject（IFontDisp 同上常量） | 20 头 + 体 | Save 恒写同槽 this−0xbc 重写 | >3 | 同上 |
+| ⑮ | String + int32 ×4 + short ×2 + int32 ×2 | String::Read + 4×4 + 2×2 + 2×4 字节 | 字体描述符（Save 由 this−0xbc 字体对象逐属性回写：名 BSTR + vt+0x1c/0x24/0x2c/0x34 四 int32 + vt+0x3c/0x44 两 short + vt+0x14 两 int32） | ≥3 | 同上 |
+| ⑯ | LoadObject（IFont 同上常量） | 20 头 + 体 | Save 恒写同槽 this−0xbc 重写 | >3 | 同上 |
 
 ### 5. PictureMarkerSymbol `{7914E602-…}`
 
@@ -384,10 +384,7 @@ double（+0x18c / 局部 / +0xf8）→ 版本 >7（v8）int32 N +（N≠0 时 N 
 - 同族仍未闭合：TextSymbol（体已由 element-bodies 轮闭合；本轮仅补虚表归
   属与尾段证据）、SimpleTextPath、Callout/背景族等 esri.clsid DisplayCore
   其余条目。
-- 语义候选：MultiLayer 两级 int 数组与字符串的业务语义；CharacterMarker
-  字体描述符八字段与 IFontDisp 属性的对应、六个 double 的业务命名；Template
-  标记 16 字节的两 double 归属（位置/角度）；SimpleLineDecorationElement
-  三 byte + short 的语义；各类 int32/double/byte 的业务命名（按符号学惯例
+- 语义候选：MultiLayer 两级 int 数组与字符串的业务语义；各类 int32/double/byte 的业务命名（按符号学惯例
   推断）；三个 Save 的 `if (param_3 != 0)` 写链目标未解析（不影响流内字
   节）。
 - 全部结论为静态反编译观察，未经 ArcMap 10.1 运行验证；样本对位无从谈起
@@ -405,3 +402,57 @@ LegendClass、`element_body` 的 TextSymbol ISymbol 槽 #2 三处调用由
 轮闭合符号在宿主槽获得递归解析。样本三类 ISymbol 槽当前仅含第一轮闭合类，
 样本行为不变（停止点仍 0xd6c）。第五节 14 直读入口与本轮 `read_symbol_
 slot_full_10_1` 已入 tests/robustness.rs 集中清单（74 入口）。
+
+### 三种填充符号的标量属性
+
+将 ArcMap 10.1.0.3035 的 esriDisplay.olb 接口顺序与 DisplayCore.dll 的虚表、属性读取函数及持久化成员地址交叉核对，得到以下线序。这里的地址均为静态分析地址。
+
+| 类与读取入口 | 接口证据 | 持久化属性 |
+| --- | --- | --- |
+| LineFillSymbol 0x6eb5e390 | ILineFillSymbol 虚表 0x6ec0e6a4，getter 0x6eb76df0、0x6eb5d280、0x6eb5d310 | 三个连续 double 为 Angle、Offset、Separation |
+| MarkerFillSymbol 0x6eb606c0 | IFillProperties 虚表 0x6ec0e984，getter 0x6eb5fe40、0x6eb5fea0、0x6eb54600、0x6eb5ff90 | 四个连续 double 为 XOffset、YOffset、XSeparation、YSeparation。IMarkerFillSymbol 的 0x6eb5fa90 对应末尾 GridAngle |
+| GradientFillSymbol 0x6eb52710 | IGradientFillSymbol 虚表 0x6ec0dccc，getter 0x6ebbcc30、0x6eb514d0、0x6ebbe3f0、0x6eb51310 | 依次为 GradientPercentage、IntervalCount、GradientAngle、Style；随后为公共 ROP2、MapLevel |
+
+以上映射尚未经 ArcMap 或 QGIS 目视检查。
+
+### 点密度填充属性
+
+DisplayCore.dll 10.1.0.3035 的 RTTI 将持久化接口定位到完整对象 +0x12c，将虚表 0x6ec0d96c 定位到 +0x9c。按 esriDisplay.olb 的 IDotDensityFillSymbol / IDotDensityFillSymbol2 槽序核对读取函数后，可以将接口成员偏移减去 0x90，与 Load 的字段逐个对位。
+
+| 读取函数 | 接口成员 | 持久化字段 |
+| --- | --- | --- |
+| 0x6eb9a980 DotSize | +0x4c | −0x44，后段 double |
+| 0x6eb4c020 DotSpacing | +0x54 | −0x3c，首个 double |
+| 0x6eb4c080 FixedPlacement | +0x5c | −0x34，首个 byte |
+| 0x6eb4bf70 DotCount | +0x28 数组 | −0x68，各标记对应的整数 |
+| 0x6eb4c0f0 BackgroundColor | +0x40 | −0x50，末尾颜色槽 |
+| 0x6eb4c150 RandomSeed | +0x74 | −0x1c，第三个 int32 |
+
+IDotDensityMasking 虚表 0x6ec0d9bc 位于完整对象 +0xa0。UseMasking 的 getter/setter（0x6eb4c260 / 0x6eb4c230）访问接口 +0x64，对应持久化 −0x28。ExcludeMask 的 getter/setter（0x6eb4c2c0 / 0x6eb4c290）访问接口 +0x65，对应持久化 −0x27。以上为静态对位，尚未经目标软件目视验证。
+
+### 填充符号的轮廓与颜色槽
+
+在同一 10.1.0.3035 模块中，esriDisplay.olb 的 IFillSymbol::Outline 读取槽为 +0x14。结合 RTTI 的接口偏移，将四个实现的 getter 对回持久化槽如下。
+
+| 类 | getter 地址 | 接口成员 | 持久化成员 |
+| --- | --- | --- | --- |
+| LineFillSymbol | 0x6eb5d5c0 | +0x14 | −0x70 |
+| MarkerFillSymbol | 0x6eb5fd40 | +0x64 | −0x30 |
+| GradientFillSymbol | 0x6eb51740 | +0x2c | −0x30 |
+| DotDensityFillSymbol | 0x6eb4c5a0 | +0x38 | −0x58 |
+
+GradientFillSymbol 的 Color getter 0x6eb51540 直接取接口 +0x28，即持久化 −0x34。LineFillSymbol 与 MarkerFillSymbol 的 Color getter 0x6eb5d390、0x6eb5fb10 分别取接口 +0x10 的线符号和 +0x14 的标记符号，再通过接口调用取色。DotDensityFillSymbol 的 0x6eb4c370 先检查标记数量，再取标记数组。后面三类的公开取色操作均不足以给各自单独序列化的第一个颜色槽命名。
+
+### 简单线装饰元素的属性
+
+DisplayCore.dll 10.1.0.3035 的 RTTI 将持久化接口（虚表 0x6ec10d54）定位到对象 +0x58，将 ISimpleLineDecorationElement（0x6ec10cec）定位到 +0x18。按 esriDisplay.olb 的属性方法顺序检查，Rotate、FlipFirst、FlipAll 的 getter 0x6eb837e0、0x6eb83830、0x6eb83880 分别读取接口 +0x28、+0x29、+0x2a，正好对应 Save 0x6eb84270 写出的前三个字节。继承的 PositionAsRatio getter 0x6eb835d0 读取 +0x2c 的 short，对应持久化 −0x14。MarkerSymbol getter 0x6eb83650 读取 +0x1c，对应持久化 −0x24。PositionCount 0x6eb3bec0 和 Position 0x6eb83600 分别读取数目与索引位置。位置值由解析器保留为原始 double。尚未进行原生目视验证。
+
+### 线型模板的实段与空段
+
+DisplayCore.dll 10.1.0.3035 的 Template 持久化接口位于对象 +0xb4，ITemplate 位于 +0x18（虚表 0x6ec11104）。esriDisplay.olb 的 GetPatternElement 参数依次命名为 index、mark、Gap。实现 0x6eb86fa0 以 index × 16 寻址，将元素 +0 的 double 写入 mark，+8 的 double 写入 Gap。Save 0x6eb87bb0 从同一数组逐项写出 16 字节。Interval getter 0x6eba9f50 读取接口 +8，对应 Save 的 −0x94。PatternElementCount getter 0x6ebead30 读取接口 +0x18，对应 Save 的 −0x84。解析器保留原始数值；尚未目视验证线型在目标软件中的显示。
+
+### 字符标记的几何属性与字体大小
+
+DisplayCore.dll 10.1.0.3035 的持久化接口位于完整对象 +0x17c。按 esriDisplay.olb 核对 +0x98 的标记接口，CharacterIndex getter 0x6eb9a710 读取接口 +0x24。Angle、Size、XOffset、YOffset 的 getter 分别为 0x6eb5d310、0x6ebc4ae0、0x6ebbe200、0x6eb79960。+0x9c 的制图标记接口读取 XScale、YScale（0x6eb9a980、0x6eb4c020）。六个 double 在流中按上述顺序排列。
+
+版本 3 起的字体描述符使用 IFont（IID 末组前的首 DWORD 为 BEF6E002）。将 Save 0x6eb9b5b0 的调用与 ocidl.idl 的 IFont 方法顺序核对，名称之后依次为 Bold、Italic、Underline、Strikethrough（四个 BOOL），再写 Weight、Charset（两个 SHORT）。0x6eb9b8f5 调用 +0x14 取得 CY，0x6eb9b900 和 0x6eb9b91a 先后取其高、低 DWORD 写出。每个 DWORD 各自按小端编码。尚未在目标软件中目视验证。

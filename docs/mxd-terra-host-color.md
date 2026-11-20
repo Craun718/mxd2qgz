@@ -31,3 +31,26 @@ QI `0x6eb389a0` 将 IColorRamp/IMultiPartColorRamp 返回 O+0x18；类型库成�
 可独立落账的静态子项：Random 的 Size setter／Save 槽与读后清零关系；PictureFill 两字段的图片尺寸计算来源及读即弃关系（包含纠正恒零结论）；MultiPart 数组作为分配权重、旧版本默认值与读写版本门的关系。它们不构成原 TODO 整项、所有属性语义或软件运行验收的闭合，本轮未改 TODO。
 
 `cargo fmt --check` 和完整 `cargo test` 通过；构造测试覆盖旧版默认权重、版本 2 非默认权重、停止与越界，以及图片尺寸非零位模式保留。构造测试只检查读取器边界及值保留，不证明原生可达性。ArcMap 10.1 环境暂缺：未打开、保存、重开或检查图层和图片显示；QGIS 也未进行目视验收。需后续在原生宿主中分别设置 Size、图片及权重，比较保存字节和重开结果，覆盖空图片、不同类型和失败路径。
+
+## RandomColorRamp：公开端点与随机种子
+
+同一 DisplayCore.dll 10.1.0.3035，复用本地 Ghidra 导出并用
+`objdump -s` 核对 `0x6ec0c4d4` 虚表。esriDisplay 类型库 TypeInfo 18
+的 IRandomColorRamp 与 QI `0x6eb3bc90` 比较的 IID `0x6ec0c578`
+对位，返回 O+0x18。访问器偏移与 Load `0x6eb3c190` 的存储位置如下。
+
+| 属性 | getter 槽 | getter VA | 完整对象偏移 |
+| --- | --- | --- | --- |
+| Seed | +0x28 | 0x6eb3bec0 | +0x28 |
+| UseSeed | +0x30 | 0x6eb3bf10 | +0x2c |
+| MinValue | +0x38 | 0x6eb3bf80 | +0x2e |
+| MaxValue | +0x40 | 0x6eb3bfe0 | +0x32 |
+| MinSaturation | +0x48 | 0x6eb3c040 | +0x34 |
+| MaxSaturation | +0x50 | 0x6eb3c0a0 | +0x36 |
+| StartHue | +0x58 | 0x6eb3c100 | +0x38 |
+| EndHue | +0x60 | 0x6eb3c160 | +0x3a |
+
+UseSeed 的磁盘 short 经非零判断进入布尔成员。MinValue 还被 Load
+复制到 O+0x30，公开 getter 取 O+0x2e。六个端点 getter 将 short
+符号扩展成 int32。Rust 保留原盘位模式。尚未在 ArcMap 运行核对端点对
+颜色生成的影响。

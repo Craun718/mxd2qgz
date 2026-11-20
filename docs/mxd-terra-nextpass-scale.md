@@ -43,3 +43,58 @@ ArcMap 10.1 环境暂缺；未在 ArcMap 或 QGIS 打开工程，也未作图层
 旧尾段 0/1 不读取末尾 int32；原始标志由 `tail_legacy_flag` 保留，可按原生规则计算内存默认值。版本位模式限制为非负已确认子集，较原生有符号上限比较更严格；原始标量和 Stepped 附加值以字节保存。构造测试覆盖两类、基类 0..6、尾段 0..2、哨兵、回引、已闭合对象、未知及嵌套未闭合槽、逐字节截断和非法版本。没有修改既有四类读取器，也未接入 `map_object.rs` / `mxd_maps.rs`；宿主分派由后续集成完成。所有测试均为构造输入，仍需真实流及 ArcMap/QGIS 人工验证。
 
 主审按两个 CLSID 接入 MapSurround 循环，构造两个连续新对象并验证读取后续非空显示范围的起点。实际 MXD 与目标软件验收仍未执行。
+
+## IScaleBar 属性与旧尾段边界
+
+复核上文标识的 Map.dll 10.1.0.3035，另按 esriCarto.tlb 10.1 的
+MSFT TypeInfo 成员表读取 IScaleBar（6DFAE8E2-ECAA-11D0-8682-0000F8751720）
+的 oVft。SteppedScaleLine 的 RTTI 将虚表 0x7948e2cc 放在完整对象 +0xd8，
+持久化 Save 实体的 this 在 +0x268，传给基类 Save 0x79451400 的指针在
++0x26c。故基类成员相对 IScaleBar 的偏移等于其 Save 偏移加 0x194。
+以下 getter 的取数指令由 objdump 复核。
+
+| IScaleBar 属性 | oVft | getter | 基类 Save 成员 |
+|---|---:|---:|---:|
+| Divisions | 0x3c | 0x7944f9d0 | −0x174 |
+| DivisionsBeforeZero | 0x44 | 0x7944fa50 | −0x172 |
+| Subdivisions | 0x4c | 0x793a1070 | −0x170 |
+| Units | 0x54 | 0x7944fb10 | −0x16c |
+| UnitLabel | 0x5c | 0x794573b0 | −0x168 |
+| UnitLabelPosition | 0x64 | 0x793b8800 | −0x164 |
+| UnitLabelGap | 0x6c | 0x7944fc40 | −0x15c |
+| LabelFrequency | 0x7c | 0x7944fe30 | −0x150 |
+| LabelPosition | 0x8c | 0x79450080 | −0x148 |
+| LabelGap | 0x94 | 0x794500f0 | −0x144 |
+| ResizeHint | 0xb4 | 0x79450430 | −0x138 |
+
+BarHeight 的 get/put（oVft 0xac/0xb0）进入 0x79450370/0x794503b0，
+还原完整对象指针，再调用主虚表 0x7948e0b4 的 +0xd8/+0xdc。
+在 SteppedScaleLine 两槽分别是 0x79467a60/0x79467a70，对完整对象
++0x2a8 的 double 读写。末尾 Save 成员 +0x268+0x40 正好对应该值。
+Rust 保留现有字段名 stepped_double。尚未验证 ArcMap 界面显示单位。
+
+四类填充比例尺共用的尾段读取已按 0x79454ee0 修正。版本 0/1
+根据 short 标志恢复第二个 int32 成员（零为 0，非零为 5），只消费
+第一个 int32。版本 2 两者均从流读取。构造输入覆盖后继字节、两个
+旧版本和末字节截断。旧尾段的实档及目标软件目视仍未验证。
+
+## IScaleMarks 尾段
+
+esriCarto 10.1 的 IScaleMarks（6DFAE8E7-ECAA-11D0-8682-0000F8751720）
+声明六对 get/put。Map.dll 的 SteppedScaleLine 在完整对象 +0x278
+装配虚表 0x7948e4d4；Save 0x79468360 调用 0x79455030 时传入同一子对象
+（+0x268+0x10）。按 get 槽与实际读成员指令可还原整个共享尾段。
+
+| 属性 | get 槽 | 原生入口 | 成员 |
+|---|---:|---:|---:|
+| DivisionMarkSymbol | 0x0c | 0x79454b60 | +4 |
+| SubdivisionMarkSymbol | 0x14 | 0x79454cd0 | +8 |
+| DivisionMarkHeight | 0x1c | 0x793c8820 | +0x10 |
+| SubdivisionMarkHeight | 0x24 | 0x7943b220 | +0x18 |
+| MarkPosition | 0x2c | 0x794570a0 | +0x20 |
+| MarkFrequency | 0x34 | 0x79457130 | +0x24 |
+
+版本 0/1 由标志生成的 0 或 5 属于 MarkFrequency。两个线符号、
+中段填充符号和基类文字符号均缺少独立体长。填充比例尺遇到未知类或
+嵌套体停止时保留此前完整字段，游标停在所属符号头，放弃该槽内新键；
+后继刻度与地图范围没有可读起点。构造测试检查了这三类停止位置。

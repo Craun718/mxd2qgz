@@ -105,6 +105,14 @@ Save `0x79442740`（IPS 虚表 `0x7948a76c`，位移 0xdc）。
 写版本 1 → `FUN_79441510`（共同前缀 Save）。**MapTitle 持久化体 =
 共同前缀，至此完结。**
 
+Map.dll 10.1.0.3035 的 0x7944270e 读取自身 short 后只检查 HRESULT，
+0x7944272a 直接调用共同前缀 Load。共同前缀在 0x7944147f 和
+0x794414ba 分别将 2、3 与有符号 short 比较，使用 jg 跳过相应字段。
+Rust 按此读取并保留两个版本的原始位模式。自身 short 是格式版本；
+共同前缀的名称、关联地图、FixedAspectRatio 和 FitToBounds 写出的
+WKSEnvelope 已分别对位，见[成员取证](mxd-map-tail-cross-stream-20261118.md)。
+合成用例以紧邻的后继字节验证负版本及大于写侧版本的读侧边界。
+
 ## 二、Scalebar（`{7A3F91DB-…}`，体完全闭合；证据：确定的）
 
 GetClassID `0x79446040`；Load `0x794460b0` / Save `0x79446550`。字段序
@@ -162,6 +170,26 @@ Save `0x79444ca0`。两级版本（自身 + BaseNorthArrow 基类段）：
 | 8 | int32（读入即丢）+ LoadObject(**IMarkerSymbol** `{E6BDAA7C-…}`) | 自身版本 <2 | 10.1 不可达（自身恒写 2）；符号经虚表 setter 装入 −0x1c |
 | 9 | LoadObject(**IMarkerElement** `{530FD711-EF0C-11D0-83A0-080009B996CC}`，类型库 esriCarto）→ 槽 −0x1c | 自身版本 ≥2 | Save `SaveObject(−0x1c)` 恒写；标记元素候选 |
 
+### 指北针的属性
+
+esriCarto 10.1 的 INorthArrow、INorthArrow2 成员表分别对位 Map.dll
+的 0x7948b3ec 和 0x7948b44c。MarkerNorthArrow RTTI 定位这两个接口在
+完整对象 +0xd8 和 +0xdc。基类 Save 0x793a3ce0 以完整对象 +0x11c
+为基址，和两个接口分别相差 0x44、0x40。
+
+| 基类流字段 | 属性 | 取证 |
+|---|---|---|
+| −0x2c | Size | INorthArrow 槽 0x40 的 setter 在 0x79444a75 将输入 double 缓存到接口 +0x18 |
+| −0x24 | Angle | 槽 0x44 的 getter 0x793a39b0 读取 +0x20 |
+| −0x1c | CalibrationAngle | 槽 0x48 的 getter 0x793a39e0 读取 +0x28 |
+| −0x14 | ReferenceLocation | 槽 0x50 的 getter 0x793a3a60 读取 +0x30 的 IPoint |
+| −0x34 | NorthArrowType | INorthArrow2 槽 0x5c 的 getter 0x793a3ad0 读取 +0x0c，对应 esriNorthArrowType |
+
+Size 的 getter 0x794449b0 从标记元素请求符号，setter 同步缓存大小；
+解析器保留保存时缓存的值。旧版标记符号前的 int32 在当前 10.1 读取路径
+读入后丢弃，其历史写侧业务名仍未查明。上述对位来自静态指令，尚未在
+ArcMap 面板中核对显示值。
+
 ## 五、四个 Scalebar 子类（体完全闭合；证据：确定的）
 
 CLSID 与 GetClassID：HollowScaleBar `{6589F143-F7F7-11D2-B872-00600802E603}`
@@ -180,7 +208,7 @@ SingleDivision 独立 `0x79458830`/Save `0x794588b0`（版本常量
 | 1 | int16 自身版本 | 有符号 `1 < v` 拒绝 | Save 恒写 1 |
 | 2 | int16 基类段版本 | 有符号 `6 < v` 拒绝 | 基类 Load `0x79451120`；Save `AfStreamGetSaveVersion(docVer, 6, DAT_79480d28)`，表 `[3,3,3,3,4,6]` → 10.1 恒写 6 |
 | 3 | 共同前缀 | 恒有 | `FUN_794413d0(this−0x190)` |
-| 4 | double → −0x17c；int16 ×3 → −0x174/−0x172/−0x170；int32 → −0x16c；String → −0x168（数字格式串候选）；int32 → −0x164；double → −0x15c | 恒有 | |
+| 4 | double → −0x17c；int16 ×3 → −0x174/−0x172/−0x170；int32 → −0x16c；String → −0x168（UnitLabel）；int32 → −0x164；double → −0x15c | 恒有 | |
 | 5 | LoadObject(ITextSymbol `{A80B5E91-…}`) → 槽 −0x154 | 恒有 | 标签符号候选 |
 | 6 | int32 → −0x150 | 恒有 | |
 | 7 | int32（读入即丢） | 基类版本 <2 | 10.1 不可达 |
@@ -194,9 +222,9 @@ SingleDivision 独立 `0x79458830`/Save `0x794588b0`（版本常量
 | 15 | int16 中段版本；double → +8 | 有符号 `1 < v` 拒绝 | 中段 Load `0x793b3bf0`（Hollow/Alt/DblAlt 共享）或 `0x79459000`（SingleDivision）；Save 恒写 1 |
 | 16 | LoadObject(**IFillSymbol** `{E6BDAA7E-…}`) ×2（SingleDivision ×1）→ 槽 +0x10/+0x14 | 恒有 | Save `SaveObject(+0x10)`、`SaveObject(+0x14)`（SingleDivision 仅 +0x10） |
 | 17 | int16 尾段版本 | 有符号 `2 < v` 拒绝 | 共享尾段 Load `0x79454ee0`；Save 恒写 2（`DAT_79480d10` = `02 00`） |
-| 18 | int16 标志 | 尾段版本 <2 | 10.1 不可达；≥2 时 +0x24 由内存默认（标志非 0 → 5，否则 0） |
+| 18 | int16 标志 | 尾段版本 <2 | 旧档读取时由标志生成 +0x24（非 0 → 5，否则 0） |
 | 19 | LoadObject(**ILineSymbol** `{E6BDAA7D-…}`) ×2 → 槽 +4/+8 | 恒有 | |
-| 20 | double → +0x10；double → +0x18；int32 → +0x20；int32 → +0x24 | 恒有（+0x24 见第 18 行） | |
+| 20 | double → +0x10；double → +0x18；int32 → +0x20；int32 → +0x24 | 前三项恒有，+0x24 仅版本 ≥2 从流读取 | |
 
 ## 六、LegendFormat（`{7A3F91E5-…}`，体完全闭合；证据：确定的）
 
@@ -222,6 +250,28 @@ GetClassID（identity 虚表 +0x14 `0x793dfd50`）写出 CLSID（`DAT_79485128/
 Legend 读取器在其旧停止点（`LegendStop10_1::LegendFormatBody`）越过本类
 体所需的全部字段序至此闭合。
 
+### LegendFormat 的公开属性
+
+对 Map.dll 10.1.0.3035 的 QueryInterface 0x793e0130 逐个读取 IID。
+0x79485a28、0x79486108、0x79486118 分别与 esriCarto 10.1 类型库中的
+ILegendFormat、ILegendFormat2、ILegendLayout 对应。返回的子对象在完整对象
++0x18、+0x1c、+0x20，RTTI 虚表分别是 0x79485f34、0x79485fcc、0x79486070。
+按类型库 oVft 跟到 getter，用实际读成员指令和 Save 0x793e0ec0 对位如下。
+
+| 流字段 | 属性（流内顺序） | getter 地址（同序） |
+|---|---|---|
+| short、对象、int32 | ShowTitle、TitleSymbol、TitlePosition | 793e02e0、793e0330、79456f90 |
+| 连续 double 的前六项 | TitleGap、VerticalItemGap、HorizontalItemGap、LayerNameGap、GroupGap、HeadingGap | 793a39b0、793a39e0、793e0500、793e0550、793e0590、793e05d0 |
+| 连续 double 的后五项 | TextGap、VerticalPatchGap、HorizontalPatchGap、DefaultPatchWidth、DefaultPatchHeight | 793e0610、793e0650、793e0690、793e06d0、793e0730 |
+| 两个对象 | DefaultLinePatch、DefaultAreaPatch | 793e0790、793e0910 |
+| 后段 short | ILegendLayout.ScaleGraphicsOnResize | 793e0290 |
+| v2 两个 double | ILegendFormat2.LabelWidth、DescriptionWidth | 793e0b90、793e0bf0 |
+
+例如 ScaleGraphicsOnResize 从第三个接口 +0x88 读取 short，即完整对象
++0xa8，对应 Save 指针 −0xc。两个宽度分别从第二个接口 +0x74/+0x7c 读取。
+上述字段绑定属于原生静态证据。未知补丁几何的构造输入已验证停止在所属
+补丁的对象头，读取器保留此前已完成的补丁键，截断返回错误时回滚本次调用。
+
 ## 七、LinePatch / AreaPatch（体完全闭合；证据：确定的）
 
 两 coclass 声明于 Layer.dll（esri.clsid）；RTTI `.?AVLinePatch@@`/
@@ -238,6 +288,18 @@ AreaPatch `0x7865c640` 写出 `{2066267E-…}`）。字段序：
 | 3 | String → −0x10 | 恒有 | 补丁名称候选 |
 | 4 | int16 → −0xc | 版本 ≥2 | |
 | 5 | 装载后整理 `FUN_786664b0` | 版本 <3 | 不读流；10.1 恒写版本 3，分支不可达 |
+
+### 两类 Patch 的属性
+
+Layer.dll 10.1.0.3035 的 LinePatch 与 AreaPatch 在完整对象 +0x18
+分别装配 0x7866e814 与 0x7866e738，两张表的 IPatch 成员实现一致。
+esriCarto 10.1 类型库给出 IPatch 的 IID BEB4EDB5-E3B4-11D2-B868-00600802E603。
+Name 的 get/put（槽 0x0c/0x10）在 0x78663450/0x78663480 使用接口 +0x1c
+的 String。PreserveAspectRatio 的 get/put（0x14/0x18）在
+0x7865b0a0/0x786667d0 读取和写入接口 +0x20 的 short。
+槽 0x1c 的 0x78666af0 替换 +0x24 的 Geometry。三者分别对位
+Save 0x78666c40 的 −0x10、−0xc、−8；v0/v1 缺少比例标志，
+v2 起按原始 short 保存。实档界面属性值尚未人工核对。
 
 ## 八、ILegendItem 其余实现类（体前缀 + 尾段完全闭合；证据：确定的）
 
@@ -266,6 +328,34 @@ GetClassID，IPS 虚表由构造动态安装；Load 实体以 IAT `0x7cae9398`
 
 BaseLegendItem 字段序沿用 legend-tails 轮结论（`docs/arcmap-10.1-legend-tails.md`
 第二节），本轮未发现字段序层面的出入。
+
+### 三种图例项的派生属性
+
+Renderers.dll 10.1.0.3035（SHA-256
+`399c80c99a6c61de120c21b518d9b29069f2c78b20a705c07178aa3e2b656274`）
+与 esriCarto 10.1 类型库对位如下。HorizontalBar 的 QI 0x7cad2e30
+将 IHorizontalBarLegendItem 返回为完整对象 +0x178，将 IVerticalLegendItem
+返回为 +0x17c。其 Arrangement getter 0x7cae15b0 读接口 +4，
+等于 Save 指针 +0x19c 减 0x1c。AngleAbove、AngleBelow 的 getter
+0x7cad2a50、0x7cad2ac0 分别读第一个接口 +0x10、+0x18。
+Vertical 的 IVerticalLegendItem 虚表 0x7caec49c 复用同一 Arrangement
+getter，接口在 +0x178，成员即 Save 指针 +0x184 减 8。
+
+Nested 的 QI 0x7cad8030 将 INestedLegendItem 返回为 +0x178，
+IHorizontalLegendItem 为 +0x17c。后者 getter 0x7cad7a70 读 +0x24，
+对应 Save 指针 +0x1cc 减 0x2c，即首个 Arrangement。前者虚表
+0x7caeb974 的 getter 与 Save 0x7cad9100 相比，依流内顺序如下。
+
+| 成员 | 属性 | getter |
+|---|---|---|
+| −0x24 | LeaderOverhang | 7cad7b30 |
+| −0x1c、−0x18 | OutlineSymbol、LeaderSymbol | 7cad7aa0、7cac8910 |
+| −0x14、−0x12、−0x10 | AutoLayout、LabelEnds、ShowOutlines | 7cad7b80、7cad7bd0、7cad7c20 |
+| −0xc | HorizontalAlignment | 7cad7c70 |
+
+三类的外层版本均由有符号 short 比较后 jle 进入对象体，实际指令在
+0x7cad3073、0x7cad9007、0x7cae1ac0。持久化字段的共享部分见
+[BaseLegendItem 属性表](mxd-terra-depth-legend.md)。未做 ArcMap 图例显示验收。
 
 ## 九、请求 IID 定名补全（类型库 typekind=3，证据：确认（类型库））
 

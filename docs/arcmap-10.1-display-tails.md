@@ -139,7 +139,7 @@ CLSID `{7914E5F9-C892-11D0-8BB6-080009EE4E41}`；IPersistStream 虚表
 | ② | LoadObject（IColor `{20CD40B0-…}`，`DAT_6ec0b4f4`） | 20 字节头 + 体 | this−0x2c | 同上 |
 | — | `FUN_6eb406f0` 返回值 | 不读流（前轮已证） | this−0xc（bool） | 同上 |
 | ③ | double（宽度候选） | 8 字节 | this−0x24 | 同上 |
-| ④ | int32（样式候选） | 4 字节 | this−0x28 | 同上 |
+| ④ | int32（Style） | 4 字节 | this−0x28 | 同上 |
 | ⑤⑥ | int32 ×2 | 4×2 字节 | this−0x7c / this−0x74 | 同上 |
 
 - Save 恒写版本 1（`DAT_6ec0b250`）+ `SaveObject(this−0x2c)` + ③④⑤⑥，
@@ -157,7 +157,7 @@ GetClassID `0x6ebbb6a0`。
 | ② | LoadObject（ISymbol `{F3435802-…}`，`DAT_6ec0ca2c`；轮廓线符号候选） | 20 字节头 + 体 | this−0x24（Save 槽） | 同上；Load 目标被 `FUN_6eb32c80` 遮蔽，槽归属以 Save `SaveObject(−0x24)` 序印证 |
 | ③ | LoadObject（IColor `DAT_6ec0b4f4`；填充色候选） | 20 字节头 + 体 | this−0x28（Save 槽，同上印证） | 同上 |
 | — | `FUN_6eb406f0` | 不读流 | this−0x8（bool） | 同上 |
-| ④ | int32（样式候选） | 4 字节 | this−0x7c | 同上 |
+| ④ | int32（ROP2） | 4 字节 | this−0x7c | 同上 |
 | ⑤⑥ | int32 ×2 | 4×2 字节 | this−0x74 / this−0xc | 同上 |
 
 - Save 恒写版本 1（`DAT_6ec0b254`）+ SaveObject ×2 + int32 ×3，对称
@@ -322,3 +322,89 @@ GetClassID `0x6eb53c30`。
   Callout 族等（esri.clsid DisplayCore 全表 73 类中其余条目）。
 - 全部结论为静态反编译观察，未经 ArcMap 10.1 运行验证；样本对位无从谈起
   （无实例），人工目视验收未做。
+
+## 颜色属性与流字段
+
+DisplayCore.dll 10.1.0.3035 的 RgbColor 在对象 +0x1c 安装 IRgbColor
+虚表 0x6ec0c69c。esriDisplay 10.1 类型库的 IColor（20CD40B0-8F3D-11D0-8590-0800091A2A72）
+将 +0x0c 命名为 RGB setter，将 +0x24 命名为 SetCIELAB。两个跳板
+0x6eb3dbd0、0x6eb34fd0 分别落到 0x6eb3d690、0x6eb34170，与共享
+Load 0x6eb35310 从内部虚表 +0x1c、+0x34 调用的实体一致。
+零标志的三个 double 是 CIELAB 的 L*、a*、b*。非零标志的 4 字节
+走 RGB setter，低三字节依次为红、绿、蓝，由 IRgbColor 三个 getter
+0x6eb3d7e0、0x6eb3d830、0x6eb3d880 的地址与 setter 写入位置对位。
+bit 25 取反后写到对象 +0x18，随后流尾的独立字节覆盖同一成员。
+
+IColor 的 UseWindowsDithering 和 Transparency 分别由 getter
+0x6eb36960、0x6eb3d3d0 读取完整对象 +0x18、+0x19。核心 Load
+0x6eb3542d、0x6eb35442 指向同两处，末字节在 0x6eb35454 取
+255 减去流内字节。Rust 保留原始编码并提供 Transparency 属性值。
+CMYK v3 缺少该字段，旧版核心和 v4 均可恢复。
+
+CmykColor QI 0x6eb343c0 从 0x6ec0b874 比较 IPostScriptColor
+（6060613E-1233-11D3-9F45-00C04F6BC709），返回完整对象 +0x20，
+虚表 0x6ec0b7e4。Overprint 和 SpotColor 位于接口 +0x0c、
++0x0d（setter 0x6eb34740、0x6eb34790），SpotDescription 和
+SpotPercentage 位于 +0x10、+0x14（setter 0x6eb347e0、0x6eb34800）。
+这四项对应 Load 指针 −0x10、−0xf、−0xc、−8。v3 起 CMYK
+四字节按 C、M、Y、K 排列；ICmykColor getter 0x6eb34620、
+0x6eb34670、0x6eb346c0、0x6eb34710 读取同一段连续内存。
+
+实体 0x6eb3d8dc、核心 0x6eb3534a、CMYK 0x6eb3487c 的版本上限均为
+有符号 jg，CMYK 的字段版本门同样使用有符号分支。合成测试覆盖负版本
+和流尾边界。渲染结果尚未在 ArcMap 或 QGIS 人工对照。
+
+## 简单点线面符号的显示属性
+
+用 esriDisplay 10.1 类型库的成员槽对照 DisplayCore.dll 10.1.0.3035
+的三个具体符号。SimpleLineSymbol、SimpleFillSymbol 和 SimpleMarkerSymbol
+的专用接口均位于完整对象 +0x98，持久化视图分别位于 +0xd4、+0xd4、
++0x124。公共 ISymbol 在 +0x18，ROP2 getter 0x6eb3dc70 经过导入表
+0x6ec0a640 调用 DisplayLib 的 Symbol::get_ROP2（0x6ed95300），读取
+接口 +0x40。MapLevel 接口位于完整对象 +0x24，DisplayLib 导出
+0x6ed954b0 读取接口 +0x3c。两属性对应完整对象 +0x58、+0x60。
+
+| 对象 | 持久化成员与属性 | 专用访问器证据 |
+|---|---|---|
+| 简单线 | −0x24 Width，−0x28 Style，−0x7c ROP2，−0x74 MapLevel | 虚表 0x6ec15424；0x6ebbcc30 取 +0x18 的存储宽度并委派换算，0x6ebbcb80 取 +0x14 的样式 |
+| 简单面 | 三个 int32 依次为 ROP2、MapLevel、Style | 虚表 0x6ec15224；0x6ebbafc0 取接口 +0x30，即完整对象 +0xc8，对位 Save 0x6ebbb5e0 的末项 −0xc |
+| 简单点 | Size 后的三个 int32 为 Style、ROP2、MapLevel；三个 double 为 Angle、XOffset、YOffset | 虚表 0x6ec15654；Style getter 0x6eb38ad0 读 +0x1c；角度与偏移读取入口 0x6eb5d280、0x6eb5d310、0x6ebbe3f0 |
+| 简单点轮廓 | Outline、OutlineSize、OutlineColor | getter 0x6ebbe1a0、0x6ebbe200、0x6ebbe160 对位 +0x48、+0x40、+0x4c |
+
+解析器保留原始枚举、宽度和偏移。构造面符号用互异的 13、42、3
+分别验证 ROP2、MapLevel、Style；地图界面中的显示效果尚未人工验证。
+
+## 制图线、刻线与标记线的属性
+
+DisplayCore.dll 10.1.0.3035 的 RTTI 给出下列完整对象内偏移。
+用 esriDisplay 10.1 的 ICartographicLineSymbol 和 ILineProperties 成员槽
+取 getter 的 this 相对地址，再对照本页各类 Save 的成员地址。
+下表的偏移以十六进制表示。
+
+| 类型 | 持久化视图 | ICartographicLineSymbol | ILineProperties |
+|---|---:|---|---|
+| CartographicLineSymbol | 1154 | +98，虚表 6ec11bfc | +9c，虚表 6ec11c34 |
+| HashLineSymbol | 21d4 | +9c，虚表 6ec0e00c | +a0，虚表 6ec0e044 |
+| MarkerLineSymbol | 218c | +9c，虚表 6ec0ebf4 | +a0，虚表 6ec0ec2c |
+
+| 流内字段，按 Save 顺序 | 属性顺序 |
+|---|---|
+| 制图线颜色之前 | Cap、Join、Width、Flip、Offset |
+| 制图线装饰之后 | ROP2、MapLevel、DecorationOnTop、LineStartOffset、MiterLimit |
+| 刻线符号槽之前 | Angle、Cap、Join、Width、Flip、Offset |
+| 刻线装饰之后 | ROP2、MapLevel、DecorationOnTop、LineStartOffset、MiterLimit |
+| 标记线标记槽之前 | Flip、Offset |
+| 标记线装饰之后 | ROP2、MapLevel、DecorationOnTop、LineStartOffset；v2 追加 Cap、Join、MiterLimit |
+
+例如制图线 Cap、Join、MiterLimit 分别由 6ebbcb80、6ebead30、6eb984e0
+读取接口 +14、+18、+68。刻线的对应入口是 6eb54570、6eb545d0、
+6eb54600，标记线是 6eb61c90、6eb61cf0、6eb61d50。制图线的
+Flip、Offset、LineStartOffset、DecorationOnTop 由 6eb986d0、6eb54600、
+6eb98760、6eb98670 读取接口 +24、+2c、+5c、+58。位置和宽度
+getter 会委派单位换算，解析器保存流内的 double。公共 ROP2、MapLevel
+沿用前节的 DisplayLib 导出。刻线的 HashSymbol getter 6eb54500 读取
+IHashLineSymbol +58；标记线的 MarkerSymbol getter 6eb63db0 读取
+IMarkerLineSymbol +14。两种符号槽都已接入完整符号分派。
+
+构造测试将 MultiLayerLineSymbol 放在刻线槽内，核对键登记、深度耗尽时回滚
+和后继标量边界。目标软件显示结果尚未人工核对。

@@ -215,6 +215,8 @@
   - [x] 接入旧版 RasterUniqueValueRenderer 的 RasterUniqueValueColors v1 对象体，读取数值键、字符串键及颜色原值列表，见 [旧枚举取证](docs/mxd-10.1-raster-renderer.md#旧版唯一值颜色枚举)。
   - [x] 接入带保留区的 Variant 对象值（空对象、PropertySet 和同会话回引），覆盖栅格唯一值、值域与 MosaicRule，见 [AfCore 取证](docs/arcmap-10.1-variant-propertyset-slots.md#带保留区的-objectstream-对象值)。
   - [ ] 补齐栅格唯一值类别及统计集合内其他新对象类的 Variant 体分派。
+  - [x] 接入共享 ObjectStream Variant 的四类 DisplayCore 颜色渐变，保留原始对象体和会话键。[渐变对象取证](docs/arcmap-10.1-variant-propertyset-slots.md#displaycore-颜色渐变对象)
+  - [x] 接入共享 ObjectStream Variant 中的五类 DisplayCore 颜色对象，保留字段、原始字节和会话键。[颜色对象取证](docs/arcmap-10.1-variant-propertyset-slots.md#displaycore-颜色对象)
   - [x] 将 StrArray、LongArray、DoubleArray 接入 ObjectStream Variant 对象值，覆盖栅格类别和统计集合、值域与 PropertySet，并复用会话键。[原生分派证据](docs/arcmap-10.1-variant-propertyset-slots.md#systemcore-数组对象)
   - [x] 将 Geometry.dll 七类普通持久化几何接入 ObjectStream Variant，覆盖栅格类别、统计集合回引及值域。[读写与键取证](docs/arcmap-10.1-variant-propertyset-slots.md#geometrydll-的有键几何对象)
   - [x] 将 RasterStatistics、RasterHistogram、RasterColormap 和 StatsHistogram 接入 ObjectStream Variant，递归对象共用键表和深度限制。[RasterDB 取证](docs/arcmap-10.1-variant-propertyset-slots.md#rasterdb-的统计直方图与色表对象)
@@ -448,7 +450,18 @@
       - [x] 观察推断「docVersion 0 → 旧布局版本号」，并由符号族第二轮印证表项为直接读数。
       - [x] 提取 AfCore `AfStreamGetSaveVersion`（`0x68a847f0`）版本表并闭合内部映射：null/N==0→−1；N−1<docVer→table[N−1]（截断末项）；否则 table[docVer]；负 docVer 原生越界读（Rust 封装拒绝）；`AfStreamGetDocumentVersion 0x68a84760` 缺省 5；六表提取落 `src/version/save_version_table.rs`（Map [22,29,30,31,45,51]/FL [17,22,23,25,34,34]/ETM [-1,-1,-1,-1,1,2]/ET [-1,-1,-1,-1,2]/FDO [5,11]/FDO 子层 [-1,2]，样本值逐一吻合）。
     - 语义定性（类型库成员级命名或运行取证；读取器对未定性字段原样保留）：
-      - [ ] 颜色与符号标量字段业务语义（DisplayCore 两轮各类，按内容候选标注）。
+      - [ ] 定性 DisplayCore 符号类其余标量字段。
+      - [x] 对位 RandomColorRamp 的 UseSeed、Seed 及六个亮度、饱和度和色相端点。[访问器对位](docs/mxd-terra-host-color.md#randomcolorramp公开端点与随机种子)
+      - [x] 对位 CartographicLineSymbol、HashLineSymbol、MarkerLineSymbol 的标量属性，并接入完整嵌套符号分派。[线符号属性](docs/arcmap-10.1-display-tails.md#制图线刻线与标记线的属性)
+      - [x] 对位线填充、标记填充和渐变填充的标量属性，纠正偏移、间距与渐变字段的解释。[填充符号属性](docs/arcmap-10.1-display-symbols-round2.md#三种填充符号的标量属性)
+      - [x] 对位点密度填充的点尺寸、点间距、固定位置、各标记点数、背景色与随机种子。[点密度填充属性](docs/arcmap-10.1-display-symbols-round2.md#点密度填充属性)
+      - [x] 对位点密度填充的 UseMasking 和 ExcludeMask 标志。[点密度填充属性](docs/arcmap-10.1-display-symbols-round2.md#点密度填充属性)
+      - [x] 对位四种填充符号的 Outline 槽及渐变填充的 Color 槽。[轮廓与颜色](docs/arcmap-10.1-display-symbols-round2.md#填充符号的轮廓与颜色槽)
+      - [x] 对位 SimpleLineDecorationElement 的旋转、翻转、比例位置和标记属性。[线装饰元素](docs/arcmap-10.1-display-symbols-round2.md#简单线装饰元素的属性)
+      - [x] 核实 Template 的 Interval 和每个图案元素的 mark、Gap 线序。[线型模板](docs/arcmap-10.1-display-symbols-round2.md#线型模板的实段与空段)
+      - [x] 对位字符标记的六个几何属性与 IFont 描述符，按流内高低字还原字体大小。[字符标记](docs/arcmap-10.1-display-symbols-round2.md#字符标记的几何属性与字体大小)
+      - [x] 定性简单点线面符号的 Style、ROP2、MapLevel 和尺寸字段，并修正面样式的取值位置。[属性访问器](docs/arcmap-10.1-display-tails.md#简单点线面符号的显示属性)
+      - [x] 对位 DisplayCore 五类颜色的 CIELAB、RGB、CMYK、抖动、透明度及专色属性。[原生属性对位](docs/arcmap-10.1-display-tails.md#颜色属性与流字段)
       - [x] 确定符号族三处 short（ArrowMarker ⑫/CharacterMarker ⑭/PictureMarker v9 ⑨ 与历史路径 +0x70）的流内布局。
       - [x] 定性三处标记符号的 RotateWithTransform 原始 short：10.1 成功读取后用当前用户配置或默认值覆盖内存槽，读取器保留磁盘原值，见 [原生字段复核](docs/mxd-terra-next-display.md#第-218-行补充rotatewithtransform-的属性和默认值2026-11-17)。
       - [x] 定性 LegendClassFormat 的两个持久化标量：PatchWidth、PatchHeight，见 [图例字段对位](docs/mxd-terra-depth-legend.md)。
@@ -498,7 +511,16 @@
       - [x] 定性 DBTableName 第四个字符串为几何列名称，见 [SqlFDB 字段来源](docs/arcmap-10.1-dataset-name-slots.md#dbtablename-几何列名称与类型)。
       - [x] 定性 DBTableName int32 为几何类型 `esriGeometryType`，见 [SqlFDB 字段来源](docs/arcmap-10.1-dataset-name-slots.md#dbtablename-几何列名称与类型)。
       - [x] 接入 DBTableName 尾部非空 ISpatialReference 中的 PCS、GCS 和 UnknownCoordinateSystem 对象体，复用宿主键表。见 [读写取证](docs/arcmap-10.1-dataset-name-slots.md#dbtablename-尾部空间参考)。
-      - [ ] 定性 C 轮装饰物族（Scalebar 族/MarkerNorthArrow/MapTitle/LegendFormat/LegendItem 三类/Patch 两类）标量字段业务语义；早期三处 ScaleLine 候选实为 ImageInset/MapInset/Overview，真正的 ScaleLine 和 SteppedScaleLine 已定位并接入；标量属性仍待对位，见 [比例尺线续查](docs/mxd-terra-nextpass-scale.md)。
+      - [ ] 定性 Scalebar 族其余标量字段。[比例尺续查](docs/mxd-terra-nextpass-scale.md)
+      - [x] 定性 MarkerNorthArrow 基类的大小、角度、校准角度、参考点和类型。[属性对位](docs/arcmap-10.1-legend-family.md#指北针的属性)
+      - [ ] 确认 MarkerNorthArrow 旧版标记槽前弃读 int32 的历史写侧用途。
+      - [x] 定性 MapTitle 的自身版本与共同前缀字段，并按原生有符号比较验证条件字段边界。[原生读写](docs/arcmap-10.1-legend-family.md#一maptitle7a3f91df-体完全闭合证据确定的)
+      - [x] 定性 HorizontalBar、Nested、Vertical 三类 LegendItem 的派生标量，并对位两个符号属性。[派生字段与属性](docs/arcmap-10.1-legend-family.md#三种图例项的派生属性)
+      - [x] 定性 LegendFormat 完整体的标题、间距、补丁、缩放和宽度属性。[访问器对位](docs/arcmap-10.1-legend-family.md#legendformat-的公开属性)
+      - [x] 对位 LinePatch 和 AreaPatch 的名称、几何以及 v2 起的 PreserveAspectRatio。[两类 Patch 的属性](docs/arcmap-10.1-legend-family.md#两类-patch-的属性)
+      - [x] 对位 IScaleBar 的分段数、单位、标签位置与间距等 11 项基类属性及 SteppedScaleLine.BarHeight。[属性虚表对位](docs/mxd-terra-nextpass-scale.md#iscalebar-属性与旧尾段边界)
+      - [x] 修正四类填充比例尺 v0/v1 尾段对后继字段的多读。[旧尾段边界](docs/mxd-terra-nextpass-scale.md#iscalebar-属性与旧尾段边界)
+      - [x] 定性共用尾段的六个 IScaleMarks 属性，并核对填充比例尺遇到未闭合符号时的停止位置。[刻度属性与边界](docs/mxd-terra-nextpass-scale.md#iscalemarks-尾段)
       - [ ] 定性 F 轮 PCS/GCS/Unknown 域串与 Unknown 四串业务语义及填充来源；ISRPersistStream 的 GetPrecisionSizeMax（slot 8，写出 0x38）已定名；GCS `完整对象+0xc4` 非零守卫语义；容差公式 pe/sg 数值推导链，见 [研究记录](docs/arcmap-10.1-pcs-geometry-slots.md)。
       - [x] 定性 G 轮三个静态观察：RandomColorRamp 的 Size 请求值读取后不回填，PictureFillSymbol 保存时计算的两个尺寸读取后不使用，MultiPart 的子渐变权重在旧版本默认 1.0；见 [DisplayCore 续查](docs/mxd-terra-host-color.md)。运行行为另验。
       - [x] 裁决 FL 后继段 ㊱ 六字节错位：原生 PreJoin 无保留头，前序 UID 少读四字节并误读空字符串导致累计错位六字节；已按 10.1 原生读写与样本边界修复并覆盖截断，见 [复核记录](docs/mxd-boundary-luna.md)。

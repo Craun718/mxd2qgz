@@ -488,3 +488,28 @@ StatsHistogram 复用 [渲染器统计体](mxd-10.1-raster-renderer.md#rgb-的�
 ArcMap 运行取证，ArcMap/QGIS 人工验收尚未进行。
 135 份对照工程的 /Maps 和 /PageLayout 均读至末尾。270 条流中仅一条命中
 StatsHistogram 的 CLSID，前三类零命中。CLSID 扫描未用来判定 Variant 宿主。
+
+## DisplayCore 颜色对象
+
+带保留区的 Variant 对象分支读出 CLSID 和会话键后，颜色体沿用 IColor
+槽的分派。DisplayCore.dll 10.1.0.3035 的 RgbColor、HsvColor、GrayColor
+及 HlsColor 共用 Load 入口 0x6eb3d8b0 和核心 0x6eb35310，CmykColor
+使用 0x6eb34850。各类身份及字段顺序见[颜色持久化取证](arcmap-10.1-display-tails.md)。
+构造的 VT_UNKNOWN/RgbColor 覆盖逐字节截断回滚、键登记和后继字节边界。
+参考工程已有独立颜色槽实例，颜色作为值域或栅格类别 Variant 的实际宿主尚未验证。
+
+## DisplayCore 颜色渐变对象
+
+复核 DisplayCore.dll 10.1.0.3035，SHA-256 为
+`9b3e61f9ca553f14a442338dfc1c24ac51c1eea6dd9a4509282466a6a926e4d2`。
+本地 Ghidra 导出中的四个 Load 为 Random `0x6eb3c190`、MultiPart
+`0x6eb395b0`、Preset `0x6eb3ae20`、Algorithmic `0x6eb316c0`。
+其 CLSID、Save 及普通对象体布局见 [四类渐变的原始取证](arcmap-10.1-display-slots-round3.md)。
+AfCore 的普通 ObjectStream Variant 对象分支通过对象头分派持久化接口。
+因此复用已有渐变体读取器。MultiPart 的渐变槽和后两类的颜色槽沿用
+同一引用表；未知子类使整个 Variant 回滚。补齐 Preset 和 Algorithmic
+向外层传播内部停止的路径，防止后继读取误把未知颜色对象头当作本对象尾段。
+
+合成输入覆盖组合渐变内嵌算法渐变、颜色回引、非默认权重、后继字节定位、
+逐字节截断和未知颜色回滚。未取得栅格统计或值域实际写出渐变 Variant 的
+宿主字节，未在 ArcMap 10.1 或 QGIS 目视验证。
