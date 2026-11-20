@@ -1673,13 +1673,16 @@ mod tests {
 
     #[test]
     fn function_raster_name_reads_legacy_single_and_modern_counted_inputs() {
+        use super::super::image_server_rules::RasterTemplateInput10_1;
         use super::super::image_server_rules::{
             CACHED_RASTER_FUNCTION_ARGUMENTS_CLASS_ID, IDENTITY_FUNCTION_CLASS_ID,
         };
         use super::super::raster_dataset_name::{
             FUNCTION_RASTER_DATASET_NAME_CLASS_ID, FunctionRasterInput10_1,
         };
-        use crate::objects::property_set::PROPERTY_SET_CLASS_ID;
+        use crate::objects::property_set::{
+            PROPERTY_SET_CLASS_ID, PropertyValueObjectStream10_1, RASTER_SCALAR_CLASS_ID,
+        };
 
         for version in [1_u16, 4, 7] {
             let mut bytes = body_prefix(1, 1);
@@ -1705,7 +1708,7 @@ mod tests {
             bytes.extend(9_i32.to_le_bytes());
             bytes.extend(1_u16.to_le_bytes());
             if version >= 2 {
-                bytes.extend((if version == 7 { 2_i32 } else { 0 }).to_le_bytes());
+                bytes.extend((if version == 7 { 4_i32 } else { 0 }).to_le_bytes());
             }
             bytes.extend(CACHED_RASTER_FUNCTION_ARGUMENTS_CLASS_ID);
             bytes.extend(82_u32.to_le_bytes());
@@ -1714,6 +1717,12 @@ mod tests {
             if version == 7 {
                 bytes.extend(CACHED_RASTER_FUNCTION_ARGUMENTS_CLASS_ID);
                 bytes.extend(82_u32.to_le_bytes());
+                bytes.extend(RASTER_SCALAR_CLASS_ID);
+                bytes.extend(84_u32.to_le_bytes());
+                bytes.extend(1_u16.to_le_bytes());
+                bytes.extend([0; 16]); // 空 Variant。
+                bytes.extend(RASTER_SCALAR_CLASS_ID);
+                bytes.extend(84_u32.to_le_bytes());
             }
             if version >= 3 {
                 bytes.extend(PROPERTY_SET_CLASS_ID);
@@ -1761,6 +1770,20 @@ mod tests {
                     name.inputs[1].entry,
                     ObjectEntry10_1::BackReference { key: 82, .. }
                 ));
+                assert!(matches!(
+                    name.inputs[2].body.as_deref(),
+                    Some(FunctionRasterInput10_1::Other(body))
+                        if matches!(**body, RasterTemplateInput10_1::NativeArgument(
+                            PropertyValueObjectStream10_1::RasterScalar { key: 84, .. }
+                        ))
+                ));
+                assert_eq!(
+                    name.inputs[3].entry,
+                    ObjectEntry10_1::BackReference {
+                        class_id: RASTER_SCALAR_CLASS_ID,
+                        key: 84,
+                    }
+                );
             }
             assert!((80..=82).all(|key| refs.contains(key)));
             assert_eq!(refs.contains(83), version >= 3);

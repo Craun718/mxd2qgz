@@ -325,6 +325,13 @@ String。输入槽从 v2 起先读 int32 数量，正值按数量读 IUnknown；
 合成 v1、v4、v7 覆盖旧版单输入、零计数回退、正计数和键回引，
 并验证截断回滚。未知函数或输入类保留为该名称停止点。
 
+函数栅格名称与 RasterFunctionTemplate 的输入均经同版 AfCore
+LoadObject 请求 IUnknown。名称体现在复用模板的输入分派，从而也能
+读取 RasterFunctionVariable、RasterInfo、RasterInfos、Scalar 和
+ArgumentArray。保留原有名称及参数表示，新增类仍用宿主对象表。
+合成 v7 在既有参数回引之后读取 Scalar 新对象及同键回引，随后读取
+属性集、名称后缀和图层尾段。实档中的新增输入类仍待取证。
+
 参考工程和 66 份 10.1 介质的 /Maps 均未检出这两个栅格名称类的 CLSID，
 ArcMap 运行与 QGIS 人工验收尚未进行。
 

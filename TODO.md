@@ -620,6 +620,7 @@
 - [x] 接入 NetCDFRasterDatasetName 的版本门及 StrArray、LongArray 子体，见 [NetCDF 名称取证](docs/mxd-10.1-raster-layer-tail.md#netcdf-栅格名称)。
 - [x] 接入 ISRasterDatasetName 的版本字段和 ImageServerName 子体，见 [影像服务栅格名称取证](docs/mxd-10.1-raster-layer-tail.md#影像服务栅格名称)。
 - [x] 接入 FunctionRasterDatasetName 的版本分支、已知函数及单项和计数输入槽，见 [函数栅格名称取证](docs/mxd-10.1-raster-layer-tail.md#函数栅格名称)。
+- [x] 将函数栅格名称的 IUnknown 输入槽接入栅格模板的共享对象分派。[名称体取证](docs/mxd-10.1-raster-layer-tail.md#函数栅格名称)
 - [x] 接入有界 RasterLayer v8–v11 的渲染器后尾段，含可缺省的 RasterIO、v10 专用 short 和 v11 的 double 对，见 [旧版尾段](docs/mxd-10.1-raster-layer-tail.md#v8v11-尾段)。
 - [x] 接入有界 RasterLayer v12 可省略的地理数据变换和包络槽，见 [原生分支与边界](docs/mxd-10.1-raster-layer-tail.md#v12-变换与包络)。
 - [x] 接入有界 RasterLayer v0–v7 的渲染器后尾段版本门及旧式扩展体边界，见 [旧版尾段](docs/mxd-10.1-raster-layer-tail.md#v0v7-尾段)。

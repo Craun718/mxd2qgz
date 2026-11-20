@@ -21,8 +21,8 @@ use super::image_server_layer_tail::{
     IMAGE_SERVER_NAME_CLASS_ID, ImageServerName10_1, read_name as read_image_server_name,
 };
 use super::image_server_rules::{
-    RasterFunctionArgumentsBody10_1, RasterFunctionBody10_1, RuleSlot10_1, read_arguments,
-    read_function, slot, supports_function_arguments,
+    RasterFunctionArgumentsBody10_1, RasterFunctionBody10_1, RasterTemplateInput10_1, RuleSlot10_1,
+    read_function, read_input_body, slot,
 };
 use super::raster_layer_tail::{RasterLayerEnvelopeSlot10_1, read_envelope_slot};
 use super::raster_renderer::{raster_io_record, read_raster_io_end};
@@ -334,6 +334,7 @@ pub struct FunctionRasterLegacyName10_1 {
 pub enum FunctionRasterInput10_1 {
     Arguments(RasterFunctionArgumentsBody10_1),
     Name(RasterDatasetNameEntryBody10_1),
+    Other(Box<RasterTemplateInput10_1>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -754,13 +755,17 @@ fn read_function_raster_dataset_name(
     let inputs = (0..count)
         .map(|_| {
             slot(reader, table, |r, refs, class_id, key| {
-                if supports_function_arguments(class_id) {
-                    read_arguments(r, max, refs, class_id, child_depth)
-                        .map(FunctionRasterInput10_1::Arguments)
-                } else {
-                    read_name_body(r, max, refs, class_id, key, child_depth)
-                        .map(FunctionRasterInput10_1::Name)
-                }
+                Ok(
+                    match read_input_body(r, max, refs, class_id, key, child_depth)? {
+                        RasterTemplateInput10_1::Arguments(body) => {
+                            FunctionRasterInput10_1::Arguments(body)
+                        }
+                        RasterTemplateInput10_1::RasterName(body) => {
+                            FunctionRasterInput10_1::Name(body)
+                        }
+                        other => FunctionRasterInput10_1::Other(Box::new(other)),
+                    },
+                )
             })
         })
         .collect::<io::Result<_>>()?;

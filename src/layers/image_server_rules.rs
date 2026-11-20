@@ -7,6 +7,8 @@ mod mosaic_arguments;
 mod raster_info;
 mod template;
 
+pub(super) use template::read_input_body;
+
 pub use merge::{
     DecodedMergeRasterInput10_1, MergeRasterInput10_1, MergeRastersArguments10_1,
     MergeRastersPayload10_1,
