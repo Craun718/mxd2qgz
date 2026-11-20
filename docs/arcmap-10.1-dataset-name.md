@@ -1,8 +1,8 @@
 # ArcMap 10.1 FeatureClassName 体 IDatasetName / ITopologyName 选择子分支（FeatureDatasetName / TopologyName 新对象体）
 
 记录日期：2026-11-14。对应 TODO「MXD 解析」节第 76 行开放项中的
-「IDatasetName/ITopologyName 新对象体」。全部为静态逆向观察，未运行
-ArcMap，未做人工目视验收；结论按证据强度标注，开放的仍开放。
+「IDatasetName/ITopologyName 新对象体」。原始记录采用静态逆向，
+文末补入版本 0 的原生函数运行取证。ArcMap 和 QGIS 人工验收尚未进行。
 
 ## 任务与方法
 
@@ -177,8 +177,8 @@ Load `0x7095e5c0` 字段序（Save `0x7095e550` 对称；汇编核对）：
    `{06783DB1-…20}` 及 FeatureClassName 自身（若基类 FdbDatasetName 实现
    IDatasetName，派生类均可能出现在该槽）；读取器在非 FeatureDatasetName
    类对象头处停止。
-4. 版本 0 分支无字节佐证（原生门为有符号 ≤1，接受 0 与负值位模式；Save
-   恒写 1）；读取器按 0..=1 接受、负值拒绝（较原生更严）。
+4. 版本 0 已由文末原生函数试验验证，仍缺真实旧工程字节。读取器接受 0..=1，
+   拒绝负版本位模式。
 5. 接线开放：FCN 读取器两槽位停止点 → 本模块读取器的分派（需修改共享
    文件 `feature_layer.rs` 或经 `mxd_maps` 层包装）；接入后 `parse` 命令
    对含要素数据集/拓扑样本的解析深度才会受益。
@@ -212,3 +212,34 @@ Load `0x7095e5c0` 字段序（Save `0x7095e550` 对称；汇编核对）：
 `read_topology_name_body_10_1`（体内停止透传，其余类维持
 `DatasetNameNewObject` / `TopologyNameNewObject` 停止回退）。「实现接线」
 节的「未接线」说明与开放项第 5 条就此作废；其余开放项不受影响。
+
+## 两个名称对象的版本 0 原生读取
+
+2026-11-19 从研究目录的 GdbCore.dll 10.1.0.3035（PE32，SHA-256
+`ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4`）
+按原址映射四个持久化入口，在 QEMU i386 执行。FeatureDatasetName 的
+Load/Save 为 `0x709b7c90 / 0x709b7d50`，TopologyName 为
+`0x7095e5c0 / 0x7095e550`。同时运行 AfCore.dll 10.1.0.3035（SHA-256
+`031858c414c0105b3b978c754f3d0f31ba1d98f15d44ff15b1589c9adcc47c17`）
+的 String::Read/Write 和 AfStreamRead/Write。IStream、字符串分配及
+LoadObject/SaveObject 调用边界由测试提供。测试按普通对象流规则生成子
+FeatureDatasetName 的 CLSID 和键 7、工作空间槽的 16 字节空 GUID，
+并将非空子对象的体读写转入真实 FeatureDatasetName 入口。
+TopologyName 加载后通过子对象虚表 `+0x20` 请求 WorkspaceName，
+测试替身记录了这次调用及返回成员的更新。
+
+| 检查 | 结果 |
+| --- | --- |
+| 真实 Save | 两体均写出版本 1。外层 TopologyName 连同子 FeatureDatasetName 共 103 字节，子体始于偏移 48。 |
+| 真实 Load v0 | 只把两处版本 short 改为 0。读取恰好止于偏移 103，保留后续哨兵，与 v1 的字段值一致。 |
+| 字段 | 外层两串分别为 `topo`、`cat`。子体四串为 `fdn`、空串、`拓扑`、`d`，标志保留 `0x7b`。 |
+| 版本 2 | 分别从两体起点调用 Load，均只消费版本 short 并返回 `E_FAIL`。 |
+| Rust | 对 v0/v1 应用现有解析器，确认原始字段、键 7、103 字节体边界和 103 个逐字节截断位置的回滚。 |
+
+v0 只改变两个版本字段，其他字节保持不变，证明两类在这两个版本中
+使用同一体布局。核对记录位于忽略目录 `temp/mxd-dataset-v0/`，其中
+v1、v0 两组 103 字节对象体的 SHA-256 分别为
+`604841fde455e8b82ebccad308b18ba4f7cbe5f849a306d38fcc9a2b00896c82` 和
+`a80860074d0b3857612d723606dbd1dfb5349d8c94ddb762d0614d3720d46b1f`。
+此试验覆盖原生对象体及指定的子槽形态。真实旧 MXD 中的 v0 实例、
+FCN 的非零 TopologyName 选择子实档及 ArcMap/QGIS 人工验收仍待取得。

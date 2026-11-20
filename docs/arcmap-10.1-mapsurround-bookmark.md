@@ -255,3 +255,30 @@ HorizontalLegendItem 体（`legend_format` 读取器，新增
 `LegendItemBodyIncomplete` 停止变体透传嵌套停止）。样本两循环计数均为 0，
 样本层面仍无字节佐证；开放项 2/3/5 状态不变（开放项 5 的 IName 槽已列入
 TODO 体未闭合类族清单）。模块测试现为 22 项（接线新增 2 项）。
+
+## Legend 主体 v0/v1 原生读取
+
+2026-11-19 核对研究目录中 Map.dll 10.1.0.3035（PE32，SHA-256
+`1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`）。
+按原址映射 Legend Load `0x793da250`、MapSurround 共同前缀
+`0x794413d0`、子对象指针清理助手，以及 AfCore 10.1 的
+`String::Read` 和 `AfStreamRead`，在 QEMU i386 中运行。IStream、
+LoadObject、内存分配、图例集合和地图关联虚表由测试提供，状态守卫
+`0x793d1470 / 0x793d14e0` 及读取完成后的布局更新 `0x793d3a70`
+以不读流的替身返回。这覆盖持久化字段的消费和条目派发，
+图例布局刷新未纳入试验。
+
+构造两个主体，均含 MapSurround v3（名称、空 IMap、FixedAspectRatio、
+32 字节包络）、空 ILegendFormat、标题 `图例`、四个可区分的 short、
+计数 1 和一个 ILegendItem 回引。v1 在标题后写入 `-9.5` 和
+`123.25`，原生从 `0x793da38b`、`0x793da3a7` 读取到同一临时位置。
+共同前缀和图例在两个版本中都调用设定关联地图、清空条目和追加一个
+条目的虚表，各消费 120、136 字节。哨兵仍在对象结束位置，
+v5 才写入流的尾字段由原生在这两个版本中设为 `0 / 0xffff / 0xffff / 4.0`。
+
+Rust 使用相同对象体与已登记的回引键，复核标题、两个 double 的版本门、
+四个 short、回引起点以及结尾。两个主体共 256 个截断前缀均报错，
+游标与键表保持不动。测试文件在忽略目录 `temp/mxd-legend-v0/`，
+两条带长度记录的原始输出 SHA-256 为
+`fd29a7fce5772897e7058e3a9e50810f8ad2aff33cae844d1d5d9e80e66649b9`。
+尚未找到真实旧 MXD 的 Legend 主体 v0/v1，也未进行 ArcMap/QGIS 人工验收。

@@ -218,6 +218,31 @@ JPEG `0x653a3162(&0x6537a0d8)`、增强元文件 Save `0x653a0cab` |
    引）。全部入口已在 `tests/ole_font.rs` 覆盖，robustness 轮可按其既有矩
    阵形态并入。
 
+## 介质原生 DLL 与 Wine 的双向持久化
+
+在独立 Wine 11.22 前缀中，用 PE32 x86 驱动分别直接加载介质
+Microsoft oleaut32 2.40.4275（资源版本 2.40.4275.1，
+SHA-256 `baeb2f7c1b8be56738d34e1d1ddf8e0eebd3a633215dc1575e14656be38b939d`）
+与 Wine 内置的 32 位 oleaut32（SHA-256
+`6c8e6501284eea9e77d769bd5c4635ef7da42318ff1cc78865b62dfb3c301b04`）。
+装载日志确认为 native 与 builtin。原 DLL 以临时文件名加载，
+未替换 Wine 前缀的系统 DLL。
+
+两边通过 OleCreateFontIndirect 创建相同的 Tahoma、charset 134、
+weight 650、8.75pt 字体，遍历斜体、下划线和删除线的八种组合。
+两边调用 IPersistStream::Save 输出的八组 v1 对象体逐字节一致。
+每组由另一实现加载，核对流位置恰好为体长，再保存得到相同字节。
+三种标志全开时的输出是
+`01 86 00 0e 8a 02 cc 55 01 00 06 54 61 68 6f 6d 61`，
+该原生输出已加入 Rust 回归测试，验证字段及下一字节边界。
+
+将该体改为版本 0 并去掉 charset 两字节后，微软 DLL 成功读取，
+重新保存为 v1 时保留接收对象原有的 charset 2。Wine 对同一构造体
+返回失败。实验文件及日志在忽略目录
+`temp/mxd-rule-objects/stdfont-cross-version/`。本次实验是 ASCII
+字体名的持久化对照，Windows XP 等实际系统组件的兼容性以及
+ArcMap/QGIS 中的人工验收仍待验证。
+
 ## 未解决事项（开放项）
 
 - **版本适用性假设**：介质 oleaut32 为 2.40.4275（Win9x/NT4 时代分发件）；
@@ -228,8 +253,8 @@ JPEG `0x653a3162(&0x6537a0d8)`、增强元文件 Save `0x653a0cab` |
 - **StdPicture 样本 0 实例**：读取器仅反编译 + 合成测试；头第二字语义未定
   （Save 写 0、Load 不校验）；图像数据格式分派表未逐一反编译各解码器入口；
   与样本字节的对位无从进行。
-- **StdFont 版本 0 的字段默认值**：Load 对版本 0 跳过 charset，其余字段照
-  读；写侧恒写 1，版本 0 的完整语义（何时产生）未定性。
+- **StdFont 版本 0 的来源**：介质 DLL 跳过存盘 charset 并保留接收对象的原值，
+  写侧恒写 1。真实版本 0 的写入方及工程字节仍待查找。
 - **flags 位包仅 bit1-3 定性**（Italic/Underline/Strikethrough，源自
   FONTDESC 打包式）；bit0 与 bit4-7 在 37 处样本恒 0，原生是否使用未定。
 - **charset/weight/size 与 QGIS 字体模型的映射**未做（属转换语义，非格式）；

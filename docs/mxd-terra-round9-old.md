@@ -128,6 +128,31 @@ Save `0x7ae300a6`、`0x7ae300b5` 分别创建 StrArray 与 LongArray
 NetCDFTableName 的 CLSID。旧 Map 中真实出现这两个类的版本仍待运行确认，
 尚未做 ArcMap/QGIS 人工验收。
 
+### ReferencedTableName
+
+复核 MosaicDB.dll x86 10.1.0.3035，SHA-256
+`424814c3eceb88871df221bb42cb420b61c79c110a1e46a0e05af744db0a39ed`。
+RTTI 标识位于 `0x7a6722d8`，IPersistStream 虚表位于 `0x7a61fdbc`。
+GetClassID `0x7a59b2c0` 从 `0x7a5fed58` 复制类标识
+`AB144E5E-9475-473E-B078-4E95440C52FE`。
+主 QI 在 `0x7a59a9eb..0x7a59aa05` 将 IName
+`4BA33331-D55F-11D1-8882-0000F877762D` 映射到完整对象 `+0x14`。
+
+用 Ghidra 和 objdump 交叉核对 Load `0x7a59b300` 及 Save `0x7a59b380`。
+对象体只有 short 版本及一个普通 IName 槽，`0x7a59b367` 的 LoadObject
+请求与主 QI 一致的 IID。保存时 `0x7a5f8228` 处的有符号版本表为
+`[-1, -1, -1, -1, 1]`。版本 short 写成功后仍写 IName 槽。
+读取端不为 -1 设专门分支，随后按同一规则加载子名字。
+
+共享表名读取器接入该包装体，接受版本 -1、0、1。原生比较只限上界，
+Rust 拒绝其余未观察到的负版本。子名字复用现有分派和宿主引用表；
+旧 Map 测试覆盖 -1、新子对象及外层同键回引，未知或截断的子名字会把
+旧 Map 槽和键回退到包装对象头。StandaloneTable 测试覆盖版本 0、1 和
+子名字回引。尚无旧 Map 或 StandaloneTable 中的此类实档宿主证据。
+参考 MXD 和两套 Desktop 介质 134 份工程均读至 `/Maps` 与 `/PageLayout`
+终点。另对上述工程与 37 份 SDK 工程做两条流的类标识扫描，均未命中该类。
+ArcMap 及 QGIS 人工验收尚未进行。
+
 ### NetCDFFeatureClassName
 
 同一模块的 `NetCDFFeatureClassName` 持久化虚表位于 `0x7ae605f4`。
@@ -312,7 +337,7 @@ Load `0x6f6beb60` 将 v4 及以前委派到 `0x6f6becc0`，v5 先内联加载
 数据段。v5 追加 short、ILineSymbol 和 IMarkerSymbol 槽，两个 IID
 地址分别为 `0x6f7aafd8` 和 `0x6f7aafc8`，由 esriDisplay 类型库确认。
 Save `0x6f6bf8e0` 的写版本表 `0x6f794b3c` 为 2 和 5。
-CadAnnotationLayer 仍待接入该聚合注记层的对象体。
+聚合注记层的详细布局见下节。
 
 构造用例从普通和 ExtraSafe 图层列表入口覆盖 CadLayer v1–v8，检查活动图层
 索引边界，以及截断和超限后的有界跳过与子对象键回滚。全量 Rust 测试含忽略项
@@ -332,7 +357,7 @@ CadFeatureLayer 的 Save `0x6cb08340` 写出两个 SaveObject 槽，首槽
 写版本表 `0x6cb21414` 为 2 和 4。v1 不带外层 short 列表，v2 起
 为有符号 LONG 计数和 short 列表，v3 起追加 String。v3 在 String
 之后额外读取一个 short，v4 在同一位置读取两个 double。版本分支
-由 `0x6cb07ed4` 至 `0x6cb08059` 和 `0x6cb08193` 至
+由 `0x6cb07ed3` 至 `0x6cb08059` 和 `0x6cb08193` 至
 `0x6cb082c6` 的读侧指令交叉核对。原生 Load 的实际消费受要素
 源打开结果和接口计数影响，Rust 按磁盘声明计数读全字段，ExtraSafe
 条目校验外层声明长度。CadFeatureLayer 进入中间模型时保留名称、可见性
@@ -344,6 +369,44 @@ CadFeatureLayer 的 Save `0x6cb08340` 写出两个 SaveObject 槽，首槽
 IBasemapLayer 都不能命中。构造用例验证两种列表入口各版本结束位置、
 聚合键不登记以及截断与未知聚合类时的事务行为。仍待含 CadFeatureLayer
 的 ArcMap 实档及软件人工验收。
+
+### CoverageAnnotationLayer 与 CadAnnotationLayer
+
+依据 10.1 FeatureLayer.dll 已有 Ghidra 导出 `6f6beb60.c`、
+`6f6becc0.c`、`6f6be810.c`、`6f6bf2e0.c`、`6f6bf8e0.c`，
+结合安装介质 x86 指令复核。CoverageAnnotationLayer 的构造代码
+`0x6f6b8128` 至 `0x6f6b8155` 创建 FeatureLayer 并取 IPersistStream，
+将接口保存在完整对象 `+0x70`。v5 的 Load 直接调用该接口读取内联体，
+流中没有独立的 FeatureLayer 头。旧版前缀读 String、三个 short、
+IName 槽及两个 double。两者随后进入同一个集合读取函数。
+
+| 读侧地址 | 磁盘字段 |
+| --- | --- |
+| `0x6f6bf323`–`0x6f6bf379` | LONG 计数、IFieldInfo 槽序列 |
+| `0x6f6bf38c`–`0x6f6bf472` | LONG、LONG 计数、等量 LONG |
+| `0x6f6bf487`–`0x6f6bf68a` | 各自带 LONG 计数的 OLE 字体、IColor 与 ITextSymbol 槽序列 |
+| `0x6f6bf6a8`–`0x6f6bf89b` | LONG、带计数的 LONG 序列、带计数的 short 序列、两个 LONG、ILineSymbol 槽 |
+
+字体槽的 IID 来自 `0x6f74ebdc`（`BEF6E002-A874-101A-8BBA-00AA00300CAB`），
+现识别 StdFont。v2 起旧分支追加两个 String 和 short，v3 起追加 LONG
+及 IDisplayFilter，v4 再加一个 String 和 short。v5 从公共段直接接读
+short、ILineSymbol 和 IMarkerSymbol。未知子类或未完整读取的内联体
+在保留外层边界的情况下整体回退。
+
+CadAnnotationLayer `0x6cb01f40` 经 IObjectStream `+0x48` 读入预创建的
+CoverageAnnotationLayer，聚合键保留在对象头且不登记到读表。其后复用
+CadFeatureLayer 的绘图槽及尾段，写版本表 `0x6cb21418` 为 2 和 4。
+`0x6cb026b0` 写入 short 列表的计数。读取器以磁盘计数确定边界，
+ArcMap 运行时的源数据打开分支仍待验证。外层 QI `0x6cb014f0` 经
+`0x6cb019e5` 转发至 CoverageAnnotationLayer 主 QI `0x6f6b8ab0`，
+后者未命中时转发至同一构造流程创建的 FeatureLayer。沿实际比较和
+委派路径复核，两个注记类均不提供 ILayerMasking 或 IBasemapLayer。
+
+构造用例覆盖旧前缀和内联基类、非空字段及字体和颜色集合、外层 v1–v4
+和 ExtraSafe 截断后的键回滚。注记层目前在解析结果和诊断中保留。
+全量 Rust 测试含忽略项共 1069 项通过。参考工程和 134 份介质工程的
+`/Maps` 与 `/PageLayout` 均读至流末尾，两条流均未扫描到这两类
+注记层的 CLSID。两类仍待 ArcMap 实档及 ArcMap、QGIS 人工验收。
 
 ## Maplex 标注引擎与地图级属性
 
@@ -385,3 +448,21 @@ GetClassID 返回的 GUID 及 AfCore 导入，并用 Ghidra 补导 LabelPlacemen
 条目回引、编号组及后继字段对位。截断和超限计数使整个 Maplex 槽回退，撤销嵌套键。
 两个地图级 Maplex CLSID 在已提取的 268 个介质流中均无命中，尚无对应实档和
 ArcMap／QGIS 人工核验。
+
+### 跟踪工作空间的表名称
+
+同版 Map.dll `0x793ffc3a` 请求 IName，`0x793ffc8b` 调用 IName::Open，
+成功后经 `0x793acce0 / 0x79466970` 对输出查询
+`{FCB01CB5-9F0B-11D0-BEC7-00805F7C4268}`（ITable，常量 `0x79482000`）。
+TrackingWorkspace.dll 10.1.0.3035 的 AMSDatasetName 可响应同一
+IName。Open `0x80a60d70` 对类型值 5 调 IAMSWorkspace +0x14，
+其余值调 +0x18（`0x80a60dfc / 0x80a60e01`）。后者对位
+IAMSWorkspace 虚表 `0x80ad1d44` 的 `0x80a64010`，在
+`0x80a640e0` 开始查询同一 ITable IID，常量 `0x80acf47c`。
+介质类型库还列出 TemporalFeatureClass 实现 ITable。模块身份和持久化路径见
+[AMSDatasetName 原生取证](mxd-terra-round9-bookmark.md#trackingworkspace-的-amsdatasetname)。
+
+旧 Map 和 StandaloneTable 的共享表名称分派复用 AMSDatasetName 读取器。
+合成 Map v7 验证新名称对象、后续回引和内嵌 WorkspaceName 的带键属性集，
+也验证截断后回滚整个条目及两个新键。真实旧 Map 中的该名称尚无样本，
+原生 Open 及 ArcMap/QGIS 人工验收尚未执行。

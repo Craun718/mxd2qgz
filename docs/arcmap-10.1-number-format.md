@@ -122,7 +122,8 @@ Fraction 10 字节体与版本 2 拒绝、Rate 版本 2 满形态（double+中�
 
 1. 三变体全部标量与 String 字段的业务语义未定性（对齐方式/位数/分母样
    式/单位描述等均为按类名与 NumericFormat 样本形态的候选）。
-2. Percentage/Rate 内嵌核心及各旧版短体尚无可验证对象边界的真实样本字节。
+2. Percentage/Rate 内嵌核心及各旧版短体的边界已补做
+   [原生取证](#内嵌核心与旧版对象体的原生取证)。暂无含这些分支的实际 MXD 宿主。
 3. INumberFormat 槽位的四类分派接线未做（本模块只提供读取器；见上文迁移
    建议）。esriSystem 类型库中其余同族类（CurrencyFormat `{7E4F471A}`、
    LatLonFormat `{7E4F471D}`、AngleFormat `{7E4F471E}`、ScientificFormat
@@ -287,17 +288,90 @@ Scientific 版本 2 int32/版本 1 短体（后续字节不消费）/版本 3 �
 
 1. 五类全部标量/String 字段的业务语义未定性（经纬度换算参数、角度格式、
    科学计数参数、自定义格式串等均为候选）。
-2. LatLon ④ 的 -1/-1 与 Scientific ② 的 6 为内存默认的推断（反编译立即
-   数写出，无样本佐证流内形态）；LatLon/Angle 内嵌核心的独立槽布局仅反
-   编译证据。
+2. LatLon ④ 的 -1/-1 与 Scientific ② 的 6 已确认是旧版 Load 设置的内存默认值。
+   LatLon/Angle 内嵌核心的独立槽由[原生写读往返](#内嵌核心与旧版对象体的原生取证)复核。
 3. LatLon/Angle Save 版本表的索引/封顶语义未反编译；`esriArcGISVersion`
    文档版本枚举值与产品版本的对应未确认。
-4. Angle 内嵌核心的 IStream 短读与原生游标传播仍待运行验证，读取器明确
-   拒绝截断。
-5. 短体形态（Currency 0、LatLon 0..2、Angle 0..1、Scientific 0..1、
-   CustomNumber 0；含版本 0 是否合法出现亦无证据）无样本字节。
-6. 全部结论为静态取证；未运行 ArcMap 10.1，未人工目视验收，不声称已验
-   证。
+4. Angle 内嵌核心的 IStream 短读和游标传播已补做原生指令取证，见
+   [短读取证](#angleformat-短读取证)。读取器明确拒绝截断。
+5. v0 短体可由 10.1 Load 接受。历史版本实际写出情况仍缺 MXD 样本。
+6. 未运行 ArcMap 10.1，未做目标软件内的人工目视验收。
+
+### AngleFormat 短读取证
+
+从 10.1.0.3035 的 SystemCore.dll 提取 AngleFormat Load `0x7ffb33a0` 和
+NumericFormat Load `0x7ffce4b0`，从同版 AfCore.dll 提取两个导入共用的
+`AfStreamRead` `0x68a84830`。SystemCore 和 AfCore 的 SHA-256 分别为
+`f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a` 和
+`031858c414c0105b3b978c754f3d0f31ba1d98f15d44ff15b1589c9adcc47c17`。
+按原虚拟地址布置未修改的指令字节，以 QEMU i386 执行。测试 IStream 记录每次
+Read 的起始位置、请求长度、实际传输长度和 HRESULT。未加载 ArcMap 应用程序，
+也未覆盖 Windows 真实复合文档流。
+
+每个输入从位置 0 开始，外壳版本、外壳 short、内核版本各占 2 字节。
+内核首个 LONG 在位置 6 只读到 `55 66`，对象内存预填 `cc`。
+
+| Angle 版本 | IStream 短读与后续字节 | Load 返回 | 结束位置 | 观察 |
+| --- | --- | --- | --- | --- |
+| 2 | 首个 LONG 短读返回 `0x8003001e` | `S_OK` | 8 | 核心提前返回；只留下部分写入 `55 66 cc cc` |
+| 3 | 首个 LONG 同上，之后无字节 | `0x80004005` | 8 | 外层继续尝试读尾 short，尾部 Read 仍返回 `0x8003001e` |
+| 3 | 强制首个 LONG 短读并返回 `0x8003001e`，位置 8 尚有 `77 88` | `S_OK` | 10 | 外层从位置 8 读入 `77 88` 作为尾 short |
+| 2 | 首个 LONG 及后续 EOF 返回 `S_FALSE` | `S_OK` | 8 | 核心执行余下 6 次读取，均取到 0 字节 |
+| 3 | 首个 LONG 及后续 EOF 返回 `S_FALSE` | `S_OK` | 8 | 包含尾 short 在内的后续 7 次读取均取到 0 字节 |
+
+失败返回不会撤销 IStream 已消费的字节。核心因负 HRESULT 提前返回后，
+Angle v3 在当前位置读尾 short。原生只判断 HRESULT 的符号，`S_FALSE`
+会通过各标量读取门。Rust 对截断仍返回错误并恢复游标，避免将缺少字段的对象
+引入后续解析。
+
+### 内嵌核心与旧版对象体的原生取证
+
+沿用短读实验核对过 SHA-256 的 SystemCore.dll 和 AfCore.dll 10.1.0.3035。把
+上表四类及 NumericFormat 的 Load/Save、原生版本表、AfCore 的读写转发、
+`AfStreamGetSaveVersion`、String::Read/Write 和字符串赋值指令映射到原址，
+在 QEMU i386 中运行。测试提供顺序内存 IStream、指定的文档版本索引和固定容量的
+字符串缓冲。String 保留原生长度和数据读写过程，底层内存分配及 BSTR 分配由
+测试实现。输入是在每类对象的已知标量位置填入的受控值，没有启动 ArcMap、实例化
+完整 COM 类或打开 MXD。
+
+从对象体起点计算偏移。Rate 使用 `42.25` 和 `km/h`，字符串含终止零共 10 字节，
+所以核心起点是 `2 + 8 + 4 + 10 = 24`。
+
+| 外层对象 | 文档版本索引 | 对象体版本 | 内嵌核心范围 | 对象体长度 |
+| --- | ---: | ---: | --- | ---: |
+| Percentage | 5 | 2 | `[4, 28)` | 28 |
+| Rate | 5 | 2 | `[24, 48)` | 48 |
+| LatLon | 0 | 3 | `[10, 34)` | 34 |
+| LatLon | 5 | 4 | `[10, 34)` | 36 |
+| Angle | 0 | 2 | `[4, 28)` | 28 |
+| Angle | 5 | 3 | `[4, 28)` | 30 |
+
+六次原生 Save 和 Load 均返回 `S_OK`。核心依次写读版本 1、四个 LONG 和三个
+short，共 24 字节，无额外对象头或键。对比 Load 后的对象内存，四类核心标量全部
+恢复，Percentage 的外层 short、Rate 的 double 和字符串也分别恢复。读取跟踪显示
+LatLon v4 和 Angle v3 在核心之后各读一个 short。Rust 对每份原生 Save 输出均
+恢复七个核心标量，并在相同的对象边界前停止，下一条目的 `de ad` 标记保持可读。
+
+#### 旧版读取分支
+
+另用 19 个手工构造的旧版输入调用九个 10.1 原生 Load 入口。表中长度均包含
+两字节版本字段，String 测试值仍为 `km/h`。
+
+| 类 | v0/v1 字节数 | 其他旧版或字段结果 |
+| --- | ---: | --- |
+| Numeric | 24 | v0/v1 均读全七个字段 |
+| Percentage | 4 | 读外层 short，省略核心 |
+| Fraction | 10 | v0/v1 均读两个 LONG |
+| Rate | 24 | 读 double 和 String，省略核心 |
+| Currency | 2 | 只读版本 |
+| LatLon | 6 | v0/v1 将两项默认为 -1，v2 读取两项后在第 10 字节结束 |
+| Angle | 4 | 读外层 short，省略核心 |
+| Scientific | 2 | v0/v1 设置内存默认值 6 |
+| CustomNumber | 16 | v0/v1 都在 String 终止零后结束 |
+
+全部原生调用成功，Rust 的读取结束位置相同。以上验证了目标版本读端接受这些
+字节形态。实际旧版 MXD 是否曾写出每个分支，以及它们在真实宿主中的装载情况，
+仍缺实档证据。
 
 ### AngleFormat 内嵌核心版本拒绝
 

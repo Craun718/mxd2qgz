@@ -30,7 +30,7 @@
 | 现有字段 | 访问器与实际存储 | Load 落点及结论 |
 | --- | --- | --- |
 | `color2` | ShadowColor getter 槽 +0x50 → `0x6ebcad90`，取 `I+0x13c` 后委派 | `P-0x380`，第二 IColor 槽（`0x6ebd0c65`） |
-| `text_path` | Background getter 槽 +0xb0 → `0x6ebcb230`，取 `I+0x198` | `P-0x324`，第一个对象槽 `0x6ebd0e3b` 请求 ITextPath；同一存储的接口属性名为 Background，不能由名字推断具体实现类 |
+| `text_path` | Background getter 槽 +0xb0 → `0x6ebcb230`，取 `I+0x198` | `P-0x324`，第一个对象槽 `0x6ebd0e3b` 请求 ITextBackground；同一存储的接口属性名为 Background |
 | `symbol1` | FillSymbol getter 槽 +0xc0 → `0x6ebcb450`，对 `I+0x1a0` 的对象 QueryInterface | `P-0x31c`，第二个对象槽 `0x6ebd0e84` 请求 ISymbol；getter 会查询接口，不等于所有 ISymbol 都是有效 FillSymbol |
 | `name_string` | Text getter 槽 +0x44 → `0x6ebcc1d0`，取 `I+0x284` | `P-0x238`，String `0x6ebd0ea2` |
 | `font` | Font getter 槽 +0x0c → `0x6ebcb700`，取 `I+0x40` 并委派 | `P-0x47c`，IFontDisp 槽 `0x6ebd0f60` |

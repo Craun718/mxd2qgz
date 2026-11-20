@@ -105,7 +105,7 @@ int32 → int32 **恒 -1**。无 ==7/==9 块，与 Load 版本 8 路径对称。
 
 | # | 字段 | 版本门 | 说明 |
 | --- | --- | --- | --- |
-| 1 | int16 版本 | `4 < ver` 拒绝 | 样本 4 |
+| 1 | int16 版本 | 有符号 `4 < ver` 拒绝 | 样本 4，负值走旧版短尾 |
 | 2 | LoadObject（IID `{20CD40B0-8F3D-11D0-8590-0800091A2A72}` = **IColor**）→ this-0x480 | 恒有 | 颜色槽 #1（样本 RgbColor 键 1615，体 31 字节已由 feature_layer_tail 轮闭合） |
 | 3 | int32 → this-0x478 / -0x470 / -0x474 | 恒有 | 样本 -1、3、1 |
 | 4 | byte → this-0x468 / -0x467 | 恒有 | 样本 0、0 |
@@ -114,7 +114,7 @@ int32 → int32 **恒 -1**。无 ==7/==9 块，与 Load 版本 8 路径对称。
 | 7 | LoadObject（IColor）→ 颜色槽 #2 | 恒有 | 样本 RgbColor 键 1616（全 0） |
 | 8 | double → this-0x37c / -0x374；int32 → this-0x364 / -0x360；double → this-0x35c / -0x354 / -0x34c；byte → this-0x344；double → this-0x33c；int32 → this-0x330；double → this-0x32c；byte → this-0x320 | 恒有 | 样本 0、0、0、0、0、100、100、1、0、0、90、1 |
 | 9 | 16 字节原样 GUID → 栈 | 恒有 | 样本为 `{B65A3E74-…}` **TextSymbol 自身 CLSID**；与零 GUID 比较（常量 `0x6ec0b0cc`）非零时走附加处理——自定义 TextPath CLSID 候选；**不是对象头**（无键） |
-| 10 | LoadObject（IID `{8FEB6611-2A0D-11D1-9A44-0080C7EC5C96}` = **ITextPath**） | 恒有 | 文本路径槽（仅分类；样本 16 字节零空标记） |
+| 10 | LoadObject（IID `{8FEB6611-2A0D-11D1-9A44-0080C7EC5C96}` = **ITextBackground**） | 恒有 | 文字背景槽（样本 16 字节零空标记） |
 | 11 | LoadObject（IID `{F3435802-5779-11D0-98BF-00805F7CED21}` = **ISymbol**） | 恒有 | 符号槽 #1（仅分类；样本空标记） |
 | 12 | String → this-0x238 | 恒有 | 样本 `"T35"`（与外层文本相同） |
 | 13 | double → this-0x1ec；int32 → this-0x210；double → this-0x204 | 恒有 | 样本 8.0、1、1.5（double 读后作虚调用实参） |
@@ -124,7 +124,7 @@ int32 → int32 **恒 -1**。无 ==7/==9 块，与 Load 版本 8 路径对称。
 
 **第五轮「TextSymbol 体内键位恒 0 的内嵌 SimpleTextPath」现象重新归因**：字
 段 9 的 16 字节是**原样 GUID 字段**（非对象头、无键），样本值为 TextSymbol
-自身 CLSID；其后 32 个零字节是字段 10/11 两个 ITextPath/ISymbol 空标记
+自身 CLSID；其后 32 个零字节是字段 10/11 两个 ITextBackground/ISymbol 空标记
 （16+16），不是「键 0 的对象头」；`{7914E603}` 与 OLE StdFont 是字段 14/15
 的**正常键控** ObjectStream 条目（键 1593/1617）。内嵌链消失，TextSymbol 体
 在常规对象分派处停止。
@@ -167,7 +167,7 @@ CircleElement、EllipseElement、RectangleElement 等）0 实例。
 | `0x18610` | IColor #2 | RgbColor 键 1616（全 0，体 31 字节） |
 | `0x18643` | 字段 8 标量组 | 0、0、0、0、0、100、100、1、0、0、90、1 |
 | `0x18689` | 16 字节原样 GUID | `{B65A3E74-…}`（TextSymbol 自身 CLSID） |
-| `0x18699` | ITextPath / ISymbol #1 | 双空标记（32 零字节） |
+| `0x18699` | ITextBackground / ISymbol #1 | 双空标记（32 零字节） |
 | `0x186b9` | String | `"T35"` |
 | `0x186c5` | double / int32 / double | 8.0、1、1.5 |
 | `0x186d9` | ISymbol #2 | `{7914E603-…}` 键 1593 **新对象 = 停止点** |
@@ -187,7 +187,7 @@ IGeometry 槽，读取器未达。MarkerElement/LineElement 无样本字节佐�
 - `read_text_element_body_10_1`：版本 ≤9（==9 按 8+尾加块）；符号槽新对象且
   类标识为 TextSymbol 时进入 `read_text_symbol_body_10_1`（版本 ≤4；IColor
   槽新对象且类标识为 RgbColor 时复用 feature_layer_tail 的 RgbColor 体读取
-  器；ITextPath/ISymbol/IFontDisp 槽仅分类，新对象 = 停止点）；IGeometry 槽
+  器；本轮仅分类文字背景、符号和字体槽，后续已接入已知实现）；IGeometry 槽
   仅分类；版本 7/9 精确块按反编译实现（槽位仅分类）。
 - `read_marker_element_body_10_1` / `read_line_element_body_10_1`：版本 ≤3、
   EP 前缀、符号/几何槽分类、版本门尾段。
@@ -219,8 +219,8 @@ IGeometry 槽，读取器未达。MarkerElement/LineElement 无样本字节佐�
 7. 各标量字段业务语义未定性（EP 的名称/类型描述/参考比例、TextSymbol 的
    int32 组/字节组/double 组、TextElement 的 int32 布尔与双 int32 尾段等，
    按内容候选标注，全部原样保留）。
-8. 负值版本位模式：各类 Load 均有符号比较、负值原生通过；本读取器一律拒绝
-   （较原生更严，写侧不产）。版本 0 与 EP 版本 1..5 的门字段差异按反编译实
+8. 负值版本位模式：TextSymbol 按原生有符号比较读取旧布局。其他对象的版本
+   约束见各读取器。版本 0 与 EP 版本 1..5 的门字段差异按反编译实
    现，无样本。
 9. 全部结论为静态观察；未运行 ArcMap 10.1，未在 QGIS 中核对，不声称已验证。
 
@@ -241,7 +241,7 @@ IGeometry 槽，读取器未达。MarkerElement/LineElement 无样本字节佐�
   槽改调 `objects::display_symbol::read_display_symbol_slot_10_1`（样本
   {7914E603} = SimpleFillSymbol 体整体解析，TextSymbol 推进到 IFontDisp 槽
   与版本门尾段）；双 IColor 槽改调 `objects::display_color::
-  read_color_slot_10_1`（五类闭合颜色整体解析）。ITextPath/ISymbol #1/
+  read_color_slot_10_1`（五类闭合颜色整体解析）。ITextBackground/ISymbol #1/
   IFontDisp/IGeometry 槽维持仅分类。
 - 实现修正：TextElement 读取器原先不透传 TextSymbol 体的嵌套停止（样本恰
   在符号槽 #2 的 20 字节对象头停止，外层重读同一头恰好对位，故前轮未见
@@ -253,3 +253,34 @@ IGeometry 槽，读取器未达。MarkerElement/LineElement 无样本字节佐�
   停止点（0xafe，ALPC 槽）之后的未闭合区域，本轮不可达——接线效果以合成
   测试为准（TextElement 全链推进到 IFontDisp 尾段、元素循环解析 TextElement
   后继续等），样本停止点对比见 featurelayer-tail 接线轮。
+
+## PolygonElement 与 SDK 基本图形层
+
+`GraphicElements.dll` 10.1.0.3035（PE32 x86，SHA-256
+`f24451c8bf25cce7c1906ea67e5fa3ce351b8f9918c6ddcd2a40083151f77ae9`）
+的注册类 `3A9767C7-F253-11D0-83A4-080009B996CC` 对应 PolygonElement。
+现有导出没有该模块，用 PE RTTI 和 objdump 补查。IPersistStream 虚表
+`0x75072298` 的 GetClassID `0x75056e30` 从 `0x750710b8` 写同一 CLSID，
+Load 为 `0x750588a0`，Save 为 `0x750589d0`。
+
+- `0x750588b5..0x750588da` 读 2 字节有符号版本并检查上限 3。
+  `0x750588e3` 调导入的 ElementProperties::Load。
+- `0x75058904..0x75058910` 请求 IFillSymbol（常量 `0x7506ebcc`，
+  IID `E6BDAA7E-4D35-11D0-98BE-00805F7CED21`）。接下来
+  `0x75058934..0x75058940` 请求 IGeometry（常量 `0x7506fae4`，
+  IID `1B07790D-38C5-11D0-92D2-00805F7C28B0`）。
+- v2 起读取 int32，v3 再读 short。两次读取位于 `0x75058960` 和
+  `0x75058984`，与 LineElement 的字段宽度及版本门一致。Save 写 v3，
+  在两个对象槽后写这两个值。两个值的业务含义仍开放。
+
+Rust 复用线元素的主体布局和原有符号、几何读取器，按 IFillSymbol 限制
+新对象类。已接入普通元素分派、ElementCollection 和 CompositeGraphicsLayer。
+合成输入覆盖 v0–v3、截断和不实现 IFillSymbol 的新对象。
+
+| 10.1 SDK 工程 | 基本图形层首个 PolygonElement | Map 对象结束 |
+| --- | --- | --- |
+| .NET Gulf_of_St._Lawrence（Map v45） | `0x8055`，键 373，v3 | `0x1e7fc` |
+| Java gulf_of_st._lawrence（Map v29） | `0x74f8`，键 388，v3 | `0x1d9d1` |
+
+两个工程均完整读完基本图形层第一组的五个元素，随后到达 Maps 流尾值和
+PageLayout 流尾。ArcMap 和 QGIS 人工验收未执行。

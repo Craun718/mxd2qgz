@@ -69,9 +69,9 @@ IPersistStream 并返回虚基类视图。以构造函数安装的虚表和 GetC
 - **CustomOverlayGrid** 先读有符号 short 版本（最大 1，Save 写 1），
   调 `0x79576ec0` 读取 MapGrid 基体，再读 `IName`（IID
   `{4BA33331-D55F-11D1-8882-0000F877762D}`）和一个 AfCore String。
-  原生在加载 IName 后调用其 Open，再读取字符串。Rust 保留数据源引用及
-  字符串，识别 GdbCore 和 FileGDB 的 FeatureClassName 新对象，遇见其他
-  IName 新对象或内嵌名称体读取停止时保留 MapFrame 边界。
+  原生在加载 IName 后调用其 Open，再读取字符串。Rust 保留数据源引用、
+  已解码的名称体及字符串，遇见未知 IName 或内嵌名称体读取停止时保留
+  MapFrame 边界。名称类型与接口的对应关系见下节。
 - **MgrsGrid** 先读有符号 short 版本（最大 3，Save 写 3）并读取 MapGrid
   基体，之后依次读取 LONG、ISpatialReference、short、ITextSymbol、
   ILineSymbol、double、short、ITextSymbol、两个 LONG。版本 ≥2 加一个
@@ -83,3 +83,30 @@ FeatureClassName、符号回引，以及不支持的版本、未知 IName 与截
 引用表恢复。已提取的 268 个介质 `/Maps` 和 `/PageLayout` 流未命中这两个
 CLSID 的内存序字节。参考工程原文件同样无命中。尚未在 ArcMap 或 QGIS 中
 人工核验这两种网格。
+
+### 自定义叠加格网的要素来源
+
+在 x86 ArcMap 10.1.0.3035 的 `MapElements.dll`（SHA-256
+`67a6cbb2dfd1fe2626d32a8fbb1835b38e26b9543833b52628a85e7330d98768`）
+中，用 `objdump` 复核 `CustomOverlayGrid::Load/Save` 的接口调用。
+Load 在 `0x7954ead4` 附近读取 IName，在 `0x7954eb25` 调用其 Open。
+打开失败时清空临时指针并继续。打开结果在 `0x7954eb61` 传入
+`0x7954f530`，其中 `0x7954f569` 附近用
+`{D4803EE6-79F4-11D0-97FC-0080C7F79481}` 查询 IFeatureClass。
+`0x7954eb6a` 继续读字符串。Save 在 `0x7954ec2c` 调用
+`0x7954f5e0`，后者用 `{2D04C042-7766-11D0-B77D-00805F7CED21}`
+查询 IDataset，再在 `0x7954ec53` 附近调用 IDataset::get_FullName，
+并在 `0x7954ec63` 用 SaveObject 写回该名称。
+
+Rust 在此槽复用已有的 GdbCore、FileGDB 和 Coverage 的 FeatureClassName，
+以及 FeatureQueryName、NetCDFFeatureClassName、XYEventSourceName、
+RouteEventSourceName 和 AMSDatasetName 的名称体读取器。各名称的版本门和
+内嵌对象顺序见 [Coverage、NetCDF 和事件源](mxd-terra-round9-old.md)、
+[书签名称槽](mxd-terra-round9-bookmark.md)和
+[查询名称接入](mxd-terra-integrate-query.md)。AMSDatasetName 允许多个数据集类型，
+其中类型 5 的 Open 分支返回 IFeatureClass。该槽解码持久化数据，保留原始
+类型值。合成 MapFrame 验证了含 TableName 和 XYEventProperties 的事件源、
+后续格网编号、嵌套引用注册，以及未知内嵌表类时的完整回滚。重新读取 134 份
+10.1/10.8 介质工程及仓库参考工程，135 份工程的 `/Maps` 与 `/PageLayout`
+均完整消费，其中无 CustomOverlayGrid CLSID 字节命中。扩展名称的原生
+工程保存、打开和显示仍待人工验证。

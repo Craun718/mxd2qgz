@@ -157,10 +157,9 @@ ElementCollection 体读取器已在 `src/objects/element_collection.rs` 闭合
   （`WKSDateTime`，`PAU_WKSDateTime__K`）；其他 → 原生 `0x80004005`。
 - **TimeZoneInfo::Load**（体 helper `0x7fff6010`）：① int16（`2 < ver`
   拒绝）→ ② 版本 <2：int32（bias 候选，内存缺省 −1）→ ③ String ×3 →
-  ④ 版本 <2：int32（缺省 −1）→ ⑤ int32（this+0xc）→ ⑥ 规则块 20 字节
-  （`0x7fff5e90`：int32+short+short+int32+short+short+int32，写侧
-  `0x7fff5f50` 对称）→ ⑦ int16 计数（≤0 不进循环）→ ⑧ 计数 × [int32 +
-  规则块]（每条 24 字节）。
+  ④ 版本 <2：int32（缺省 −1）→ ⑤ int32（this+0xc）→ ⑥ 172 字节规则块
+  （`0x7fff5e90` 读，`0x7fff5f50` 写）→ ⑦ int16 计数（≤0 不进循环）
+  → ⑧ 计数 × [int32 + 规则块]（每条 176 字节）。见[规则块复核](#timezoneinfo-规则块与非空-timeawarehurricanes-宿主)。
 - 槽请求 IID 与 FL 版本 0x1c..0x1f 遗留分支的三个 LoadObject（`DAT_6f7adab4`
   ={F6CBA4A3}、`DAT_6f7adad4`={BD724B95}、`DAT_6f7adde4`={E720618B}）接口
   相同——该分支的 ITimeReference/ITimeExtent 槽实现类同为本节两类
@@ -290,3 +289,154 @@ LELP 的 IGraphicsContainer 槽接入类型库及持久化链确认的六类内�
 GroupLayer 完整体读取复用 LayerLib 旧式扩展与 DisplayCore 的 TransparencyDisplayFilter 读取器。版本 5 读扩展列表，版本 6 起读字符串（版本 6 再读 short），版本 7 起读 short，版本 8 起读两个 double，版本 9 起读 short，版本 10 起读三个 short，版本 12 再读 IDisplayFilter。组内子图层与关联槽共享引用表；普通子体须完整读取，ExtraSafe 子体须在声明范围内读完。未支持的子图层、过滤器或扩展使普通关联体整体回滚。Map 图层列表优先尝试完整读取 GroupLayer，并保留原前缀入口处理已界定但尚未完整支持的对象。
 
 构造测试覆盖 GroupLayer v0–12、普通与 ExtraSafe 新子层、非空包络、模板扩展、非空透明度过滤器、后继哨兵和截断回滚。SDK Java brazil.mxd 的首个 v11 组图层从 Map 图层列表到达完整体边界，外层 A 范围无剩余；第二、第三个组及 SDK .NET 的两个 v12 组复核了子项数。版本 <11 的真实 GroupLayer 及 ArcMap/QGIS 人工验收仍开放。
+
+
+## TimeZoneInfo 规则块与非空 TimeAwareHurricanes 宿主
+
+复核 `SystemCore.dll` 10.1.0.3035（PE32 x86，SHA-256
+`f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`）。
+现有 Ghidra 导出 `0x7fff7790`、`0x7fff6010` 确认版本门、对象体顺序及规则循环。
+在读 helper `0x7fff5e90` 与写 helper `0x7fff5f50` 的原始指令中，
+七个 AfStreamRead/AfStreamWrite 长度实参依次为
+`4, 0x40, 0x10, 4, 0x40, 0x10, 4`，共 172 字节。两个宽串各含
+32 个 UTF-16 码元，两个定长日期块各为 16 字节。先前将后两种宽度误记为
+short，导致基本规则提前结束并把规则内字节当成计数。当前保存定长块原始字节，
+按有符号计数解释年度规则循环，并在分配前校验数组的字节限额和流长度。
+
+SDK .NET 的 `TimeAwareHurricanes` 在 `/Maps:0x113e` 进入 FeatureLayer v34
+的 TimeData，内部 TimeReference 键 73、TimeZoneInfo v1 键 74。基本规则
+范围是 `0x1202..0x12ae`，其后计数为 2。规则条目分别从 `0x12b0` 和
+`0x1360` 起，年度键为 2006、2007，规则集合结束于 `0x1410`。
+后继 TimeReference 两个 short 为 0 和 −1，TimeTableDefinition v1 从
+`0x1414` 开始。FeatureLayer 对象与 ExtraSafe 边界 `0x17b9` 对齐。
+Map v44 在 `0x2507` 结束，之后恰好剩四字节根尾值，PageLayout 同样读至流尾。
+
+构造测试覆盖 v1/v2、负计数、非零定长块、截断和数组资源限额。
+未定名的时区标量仍保留存盘值，ArcMap 与 QGIS 人工验收未执行。
+
+## FeatureLayer 后继段的统计图符号
+
+证据来自 ArcGIS Desktop 安装介质的 `DisplayCore.dll` PE32，文件版本
+10.1.0.3035，首选基址 `0x6eb30000`，SHA-256
+`9b3e61f9ca553f14a442338dfc1c24ac51c1eea6dd9a4509282466a6a926e4d2`。
+以既有 Ghidra 导出的函数为主，直接读取 PE 的 RTTI、虚表、版本常量和 IID
+字节，并与 `esriDisplay.olb` 类型条目 343–345 的 CLSID 对照。以下地址为首选虚拟地址。
+
+| 类 | CLSID | IPersistStream 虚表 | GetClassID / Load / Save | QueryInterface |
+| --- | --- | --- | --- | --- |
+| BarChartSymbol | `5031736A-BD70-11D3-9F79-00C04F6BC709` | `0x6ec0d2f4` | `0x6eb48710` / `0x6eb48430` / `0x6eb485b0` | `0x6eb46ba0` |
+| PieChartSymbol | `50317368-BD70-11D3-9F79-00C04F6BC709` | `0x6ec109fc` | `0x6eb80160` / `0x6eb7fea0` / `0x6eb80010` | `0x6eb7e6a0` |
+| StackedChartSymbol | `50317369-BD70-11D3-9F79-00C04F6BC709` | `0x6ec1100c` | `0x6eb86290` / `0x6eb85fa0` / `0x6eb86120` | `0x6eb84980` |
+
+三者的 QI 均接受 FeatureLayer 后继段 ㉖ 所请求的 `ISymbol`
+`{F3435802-5779-11D0-98BF-00805F7CED21}`（`0x6ec0ca2c`）。三个 Save
+均写 short 版本 1，分别取自 `0x6ec0b304`、`0x6ec0b298`、`0x6ec0b284`。
+每个体的首段依次为 short、double×4、byte、double。随后的类特有字段如下。
+
+| 类 | 首段之后的标量 | 公共段前的对象槽 |
+| --- | --- | --- |
+| BarChartSymbol | byte×2、double×2 | ILineSymbol |
+| PieChartSymbol | int32、byte×2 | ILineSymbol |
+| StackedChartSymbol | byte×3、double | IFillSymbol |
+
+公共段 Load `0x6eb4a5d0`、Save `0x6eb4a7f0`。依次读取 short 版本（Save
+恒写 2，取自 `0x6ec0b300`）、int32×2、double、仅版本 1 读取的 ILineCallout
+槽、int32 计数、计数项的 (IFillSymbol, double)，末尾为 IMarkerBackground 槽。
+ILineCallout 和 IMarkerBackground 的 IID 分别在 `0x6ec0d6c4` 和 `0x6ec0d6d4`，
+均由 LineCallout 的 QI `0x6eb577f0` 接受。后者也供 MultiLayerMarker 使用。
+IFillSymbol 和 ILineSymbol 的 IID 常量分别位于 `0x6ec0ce8c` 和 `0x6ec0d334`。
+
+解析器保留标量顺序，字段业务含义待验证。遇到未知嵌套对象时，回退统计图符号
+整体及本次登记的键。截断、负计数及超过读取器限制的声明长度作为错误。
+原生实现会忽略部分嵌套读失败，无法据此确定后一对象的起点。
+
+参考样本及介质、SDK 现有语料共有 111 个去重工程的 221 个 Maps/PageLayout
+流，未发现这三个 CLSID 的字节候选。合成测试覆盖三类对象、版本 1 的
+LineCallout、共享回引、未知槽、逐字节截断及 FeatureLayer ㉖ 后续字段对位。
+ArcMap 与 QGIS 中的人工验收未做。FeatureLayer ㉖ 的其他 ISymbol 实现仍待追查。
+
+DisplayCore 的 `0x6ec0ca2c` 在现有反编译中由 22 个可映射到 RTTI 主虚表的
+QueryInterface 函数直接比较，均已纳入符号分派。该扫描仅覆盖模块内的这组直接比较。安装介质 DLL 的 ISymbol IID 字节引用和
+RTTI 主虚表补扫定位了其他模块的候选，已确认并接入的类见下一节。SymbolMimic
+等其他候选仍需区分接口查询、消费调用和持久化入口。
+
+## FeatureLayer 符号槽的栅格和 WMS 实现
+
+以下地址为安装介质 ArcGIS Desktop 10.1.0.3035 的 PE32 首选虚拟地址。
+`RasterLayer.dll` 基址 `0x7c710000`，SHA-256
+`9262bc1a05d4ca4cf65613682d3ade93b70c0112cf1caf3e21ea1b168f359de6`。
+从 Ghidra 现有导出复核 QI、类工厂注册表 `0x7c765bd0` 及 IPersistStream
+虚表。ColorSymbol 和 ColorRampSymbol 的 QI 都直接比较 ISymbol 的
+`0x7c767c1c`、IFillSymbol 的 `0x7c767c2c`。RasterRGBSymbol 的 QI
+沿 `0x7c7140f0 → 0x7c713100` 接受这两个接口。
+
+| 类 | 类工厂注册 CLSID | QueryInterface | IPersistStream 虚表 | GetClassID / Load / Save 实现 |
+| --- | --- | --- | --- | --- |
+| ColorSymbol | `B81F9AE0-026E-11D3-9C1F-00C04F5AA6ED` | `0x7c713100` | `0x7c767e94` | `0x7c713600` / `0x7c713470` / `0x7c713550` |
+| ColorRampSymbol | `40987040-204C-11D3-A3F2-0004AC1B1D86` | `0x7c711440` | `0x7c767b78` | `0x7c712510` / `0x7c712080` / `0x7c7122c0` |
+| RasterRGBSymbol | `99DCCB66-2E09-11D3-A626-0008C7BF3347` | `0x7c7140f0` | `0x7c76a2a8` | 经 `0x7c72ca70` / `0x7c72ca30` / `0x7c72cb00` 转调 ColorSymbol 的三项实现 |
+
+RasterRGBSymbol 的 IPersistStream::GetClassID 返回 ColorSymbol 的 CLSID，因而一般
+按 ColorSymbol 读到持久化记录。若流内使用其工厂注册 CLSID，读取器按其实际 Load
+委派读取同一体并保留流内类。三种注册 CLSID 与 `esriCarto.olb` 的 933–935 号
+类别相符。ColorSymbol 体为 short 版本（上限 1，Save 恒写 1）、IColor、三个
+int32（Save 末项置零）。ColorRampSymbol 体先读 short 版本（上限 5）、IColor、
+三个 int32、IColorRamp，然后按下表读取剩余字段。IColor 与 IColorRamp 的 IID
+分别取自 `0x7c767bec`、`0x7c767c0c`，复用已有对象槽和共享键表。
+
+| 顺序 | 字段 | Load 门 |
+| --- | --- | --- |
+| 1 | short | 所有版本 |
+| 2 | short | 版本 <2 |
+| 3 | int32 | 所有版本 |
+| 4 | short ×3 | 版本 ≥3 |
+| 5 | int32 | 版本 ≥4 |
+| 6 | short ×2 | 版本 ≥5 |
+
+Save 的文档版本表 `0x7c7678fc` 为 `[2,2,2,3,5]`。v0、v1 和 v4 的尾段
+按原生 Load 保留。字段含义未定的标量按原始顺序存储。未知 IColor 或 IColorRamp
+对象使读取停在对应嵌套对象边界。截断回滚整个外层符号及其新登记的键。
+
+SDK .NET 的 `BloomfieldTownship.mxd`（SHA-256
+`eb2513113c4cf2528561a89371b8d8d5fb8cd44038f18ff8af32193c7db328b1`）
+在 /Maps 的 RasterStretchRenderer `0x4b73..0x6d0f` 的 RasterIO 标签 9
+内含无键图例组，组体 `0x5626..0x6335`。读取器确认组中的三个
+ColorRampSymbol v5 键 218、233、248 及各自对象范围
+`0x5656..0x5761`、`0x5ae1..0x5bec`、`0x5f58..0x5fd1`。
+SDK Java 的 `portland.mxd` 的 RasterClassifyRenderer
+`0x73b30..0x75da0` 内含图例组 `0x73bb1..0x73f5a`，完整读取五个
+ColorSymbol v1（键 953、956、959、962、965）及其后续图例字段。
+两段均从渲染器入口验证结束偏移。/Maps 根尾值分别位于 `0x777b` 和
+`0x77373`。语料未发现 RasterRGBSymbol 注册 CLSID 实例，合成测试覆盖其委派体。
+
+`WMSLayer.dll` 基址 `0x80d60000`，SHA-256
+`d204a1efc758e6b721c356976f3be4384a8f23ce1ef085f3cccc4c4f53630da6`。
+现有导出目录无该模块，使用 objdump 指令、PE IAT、RTTI 和虚表复核。
+URLPictureMarkerSymbol 的 GetClassID `0x80d650d0` 返回 `0x80d8ba6c`
+处的 `4213CB01-BEE0-4F3F-BF07-0CD0A4C95EB2`，注册表为 `0x80d89f43`。
+QI `0x80d63c10` 在 `0x80d63c3f` 和 `0x80d63c2b` 分别比较 ISymbol
+和 IMarkerSymbol。IPersistStream 虚表 `0x80d8c538` 的 Load 和 Save
+经 `0x80d65f70`、`0x80d65e40` 转至 `0x80d65110`、`0x80d651d0`。
+持久化体依次为 short 版本（Load 上限 1，Save 取 `0x80d8b900` 处常量 1）、
+两个 AfCore String、一个 IPictureMarkerSymbol 槽（`0x80d8be00`）。
+原生可将该槽写为空并在内存中初始化默认对象，读取器保留流里的空槽或内嵌
+PictureMarkerSymbol。两字符串按原始顺序保留，解析不访问 URL。语料未发现此 CLSID，
+合成测试覆盖空槽、内嵌体、错误类及逐字节截断。
+
+上述 SDK 实档验证为本地 Rust 解析，尚无 FeatureLayer ㉖ 的对应实档，也未在 ArcMap
+或 QGIS 中人工验收。其他 DLL 中的持久化 ISymbol 实现仍待追查。
+
+### SymbolMimic 的持久化入口
+
+`DisplayRepresentation.dll` 首选基址 `0x6ee10000`，SHA-256
+`2bd5100c7727212feef568a9210efeb3b95f1172745575361738e85a5a754e10`。
+用 objdump 复核 `SymbolMimic` 的 QI `0x6ee790f0`。在 `0x6ee79217`
+请求 ISymbol，在 `0x6ee792ca` 请求 IPersistStream 并返回 `this + 0x28`
+（虚表 `0x6ee9b420`）。GetClassID `0x6ee78b40` 指向 `0x6ee9b564` 的
+`EC284786-A394-44E9-94AA-AA05830747E2`，类工厂条目在 `0x6ee93234` 引用
+同一常量。Load `0x6ee7a7d0` 和 Save `0x6ee7a880` 同为 short 版本
+（`0x6eeb224c` 初值 1）、int32、对象槽、int32。对象槽请求 IID
+`2B7BE3AB-BB72-49D0-A6EE-63ACD1F9068C`（`0x6ee9ac20`），
+`esriDisplay.olb` 第 408 项定名 IRepresentationRule。
+同模块 RepresentationRule 的 QI `0x6ee73a50` 直接接受该接口。非空
+IRepresentationRule 实现和 SymbolMimic 的宿主接线仍待解析。

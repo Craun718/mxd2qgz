@@ -306,3 +306,185 @@ Write 在 `0x68a7cb99` 后对应写 14 个零字节，然后同样分派对象�
 PropertySet 共享调用方的对象键表，内部 PropertySet 条目保留其不带保留区的
 自身布局。未知新类和对象数组继续显式停止。合成验证覆盖类别与统计集合之间
 的回引、值域回滚及 MosaicRule 后继字段；未做 ArcMap 运行验证。
+
+### SystemCore 数组对象
+
+AfCore 10.1.0.3035 的 `Variant::Read` 在 VARTYPE 9/13 把原始流交给
+`LoadObject 0x68a7b6d0`，并在 `0x68a7ca4f` 传入 `0x68c6bc2c`
+的 IUnknown IID。ObjectStream 路径根据类标识进行对象分派，
+因此同一个对象头可以绑定 SystemCore 的已确认数组类，体中没有额外的
+Variant VARTYPE。SystemCore.dll 10.1.0.3035 SHA-256 为
+`f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`。
+
+| 类 | CLSID | 原生 Load / Save | 元素 |
+| --- | --- | --- | --- |
+| StrArray | `A7F92065-36CE-47B6-A463-4763DA947CC2` | `0x80042aa0 / 0x800422f0` | AfCore String，读取委派 `0x80040930` |
+| LongArray | `98BFB808-E91F-11D2-9F81-00C04F8ECE27` | `0x80042aa0 / 0x800422f0` | LONG，读取委派 `0x800407c0` |
+| DoubleArray | `60C06CA7-E09E-11D2-9F7B-00C04F8ECE27` | `0x800419b0 / 0x80041a80` | double，读取委派 `0x80040520` |
+
+三个对象体均先读 short 版本和有符号 LONG 计数。Rust 复用原有三类数组
+读取逻辑，保留对象头类标识、会话键以及 double 的原始位模式。内联
+SAFEARRAY 仍由 VARTYPE 的数组标志决定。带保留区及不带保留区的
+ObjectStream 宿主共享上述对象分派，未知类与对象数组仍显式停止。
+
+构造数据在栅格类别中读取 StrArray 并从 UniqueValues 回引，在
+CodedValueDomain 中读取非空 LongArray。DoubleArray 覆盖两种 Variant
+外壳、负零、NaN 载荷、字节限额及键回滚。尚无实际 MXD 在上述 Variant
+宿主中出现这些数组类的证据。
+
+### SystemCore 嵌套数组
+
+在同一份 SystemCore.dll 10.1.0.3035 上追踪 RTTI 至 IPersistStream
+虚表，核对 GetClassID 的常量和逐元素的虚调用目标。类体均以
+short 版本和有符号 LONG 计数开头，Save 写版本 1。
+
+| 类 | CLSID | 持久化虚表 | Load / Save |
+| --- | --- | --- | --- |
+| VarArray | `762F0474-ECA2-475B-99F4-26678D79436E` | `0x8007c52c` | `0x80043990 / 0x80043a60` |
+| VarStrArray | `485708E7-6EBD-415F-AA56-7CD1782AECD1` | `0x8007c794` | `0x80042aa0 / 0x800422f0` |
+| PropertySetArray | `C94BBD8A-EC33-4921-8EC3-6AD4B33232C3` | `0x8007c630` | `0x800443c0 / 0x80044bd0` |
+
+- VarArray 经逐项读取函数 `0x80040ed0` 在 `0x80040f2c` 压入 false，
+  再调用 IAT `0x8006b2e0` 的 AfCore Variant::Read。写侧
+  `0x80040e30` 同样用 false。因此即使外壳 Variant 无 14 字节保留区，
+  每个 VarArray 元素仍按带保留区解析。
+- VarStrArray 从完整对象虚表 `0x8007c744+0x28` 进入 `0x80040930`，
+  复用 StrArray 的逐元素 AfCore String 读取。
+- PropertySetArray 的逐项函数 `0x800448b0` 在 `0x8004490b` 通过
+  LoadObject 载入对象，随后在 `0x80044923..0x8004492b` 请求 IPropertySet
+  `F0BA6ABC-8E9F-11D0-B4AB-0000F8037368`。写侧 `0x80044120`
+  经查询后在 `0x80044187` 调 SaveObject。Rust 读取非空 PropertySet 或
+  同类回引，拒绝无法进入该 QI 的空槽。PropertySetPropertyArray 的
+  类标识和 QI 均不同，尚无可用的非空逐元素体证据。
+
+构造用例在 VarArray 中读取 PropertySetArray，新 PropertySet 内再读取
+无保留区的 VarStrArray，随后分别验证属性集、字符串数组的同键回引。
+嵌套数组沿用 PropertySet 的深度限额，未知类、截断和超限时回退对象值游标
+及该值登记的全部键。目前未在 MXD 样本或 ArcMap 中确认这些嵌套数组的宿主。
+
+### ValueArray 与 UID
+
+GdbCore.dll x86 10.1.0.3035，SHA-256
+`ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4`。
+注册代码 `0x70a81376..0x70a8139f` 将 `0D78BBB6-AD8B-4F25-A9F5-4436EDF9D217`
+绑定到工厂虚表 `0x70ac248c`，工厂 `0x7090c710` 调构造 `0x70a12240`。
+后者安装主虚表 `0x70ad89bc` 和完整对象 `+0x10` 处的持久化虚表
+`0x70ad8a10`。QI 的 `0x70a1574d..0x70a157eb` 将 IPersistStream
+与 IPersist 映射到该位置。GetClassID `0x70a15280` 从 `0x70ad8fec`
+返回同一 CLSID。
+
+Load/Save `0x70a152c0 / 0x70a15390` 按 short 版本与 LONG 计数开始，
+正计数随后进主虚表的逐元素槽。普通 ValueArray 的读槽 `+0x28`
+指向 `0x70a5aab0`，写槽 `+0x24` 指向 `0x70984a50`，两段指令
+均返回 `0x80004001`。未对可能覆盖这些槽的派生类作布局推断。
+
+按原址映射 GdbCore 和 AfCore 的原生指令，以 QEMU i386 执行对象体
+Load/Save。驱动提供初始化的对象内存、内存 IStream 和固定堆缓冲。
+空 Save 输出 `01 00 00 00 00 00`。Load v1 和改写版本字的 v0 都返回
+`S_OK`，结束位置为 6，后随字节未消费。v2 在位置 2 返回
+`0x80004005`。计数 1 的 Save 在写完 6 字节头后从实际主虚表槽返回
+`0x80004001`。Rust 接受 v0/v1 且计数为零的对象体，保留外壳键。
+该实验未启动 ArcMap 或触发完整文档保存。
+
+Variant 分派同时复用 [SystemCore UID 对象体](mxd-boundary-luna.md)，
+保留版本、标志、GUID 和最后一个 int32。构造 VarArray 验证 UID
+后的第二个键头按回引消费，以及 ValueArray 超版本、非零计数、UID
+回引截断时整个数组及其新键回滚。暂无含这些 Variant 对象值的实档宿主。
+参考工程及两套介质的 134 份工程均读至 `/Maps` 与 `/PageLayout` 终点，
+两条流均未命中 ValueArray CLSID。未做 ArcMap 或 QGIS 人工验收。
+
+### SystemCore 的通用 Array
+
+同版 SystemCore 的 `8F2B6061-AB00-11D2-87F4-0000F8751720` 由
+`0x7ffb6040` 从 `0x8006d810` 取出。主 QI `0x7ffb6290` 的四个直接
+IID 分支均无 IPersistStream，默认调用 `0x800533e0`，后者只匹配
+IUnknown 和两个框架接口。完整对象 `+0x18` 的虚表 `0x8006d784`
+在 `0x7ffb6540 / 0x7ffb65b0` 经外部序列化接口处理 BSTR、计数和
+逐项对象。该入口无 MXD 二进制流读写依据，通用 Array 仍停在未知类分支。
+
+### Geometry.dll 的有键几何对象
+
+复核 PE32 10.1.0.3035 的 AfCore、SystemCore 和 Geometry.dll，摘要分别为
+`031858c414c0105b3b978c754f3d0f31ba1d98f15d44ff15b1589c9adcc47c17`、
+`f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a` 和
+`c57d154f207ee249adc69136574cf274771370ff93a15eb0be5682ce828f0d47`。
+AfCore `0x68a7ca4d` 将 VT_DISPATCH 和 VT_UNKNOWN 的对象值都传给原流的
+LoadObject，请求 `0x68c6bc2c` 的 IUnknown。SystemCore
+`0x7ffcff70` 在 `0x7ffd0236` 登记新键，再调用对象的持久化入口。
+保留区只改变对象头在流中的位置。
+
+Point、Multipoint、Polyline、Polygon、Envelope、GeometryBag 和 MultiPatch
+已有各自的 GetClassID、Load 和 Save 证据，见
+[几何实现清点](mxd-round4-map-spatial-20261117.md#101-的-igeometry-类体清点)。
+Point、Multipoint、Polyline 与 Polygon 另有
+[QEMU 原生 Load 记录](arcmap-10.1-geometry.md)。
+共享 Variant 读取器调用同一几何体分派，保留类型化几何和实际消费的字节，
+按原编码比较坐标位模式。GeometryBag 各成员及几何内的空间参考共用宿主键表。
+裁切或非法体出错时，外层几何和所有暂存子键均回滚。
+
+构造 RasterUniqueValueRenderer v4 验证类别中新 GeometryBag 的 Point
+成员可在 UniqueValues 中回引，并核对后继统计值、颜色坡道和逐字节截断。
+构造 CodedValueDomain 验证新 Point 的原始体、负零坐标和后继边界，
+以及任一字段截断时的整个值域回滚。样本中这两类宿主的非空几何值仍待验证，
+ArcMap/QGIS 人工验收尚未进行。
+参考工程及两套安装介质共 135 份工程的 /Maps 和 /PageLayout 均读至末尾。
+
+### Geometry.dll 的有键空间参考对象
+
+对仓外提取的 PE32 x86 10.1.0.3035 原件复核版本资源和 SHA-256。
+Geometry.dll 为 `c57d154f207ee249adc69136574cf274771370ff93a15eb0be5682ce828f0d47`，
+AfCore.dll 为 `031858c414c0105b3b978c754f3d0f31ba1d98f15d44ff15b1589c9adcc47c17`，
+GdbCore.dll 为 `ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4`。
+以 `objdump` 核对 GdbCore 的 RangeDomain::Save 在 `0x70935482` 和
+`0x7093548e` 把两个边界值交给 AfCore Variant::Write(false)，
+CodedValueDomain::Save 在 `0x708d5599` 经 IAT `0x70a873bc`
+写出循环中的编码值。AfCore 的 VT_DISPATCH/VT_UNKNOWN 读写分支分别在
+`0x68a7ca58` 和 `0x68a7ce26` 调用 LoadObject/SaveObject，
+所以对象体由流内 CLSID 选择，并沿用原流的键表。
+
+Geometry.dll 三类的持久化入口由虚表原字节核对。
+
+| 类 | 持久化虚表 | GetClassID / Load / Save |
+| --- | --- | --- |
+| ProjectedCoordinateSystem | `0x71a29ccc` | `0x719d2b30` / `0x719d3230` / `0x719d3690` |
+| GeographicCoordinateSystem | `0x71a26818` | `0x719bc190` / `0x719bec60` / `0x719bf1d0` |
+| UnknownCoordinateSystem | `0x71a2c320` | `0x719eab80` / `0x719ecd80` / `0x719ed310` |
+
+Rust 的 ObjectStream Variant 分派复用普通空间参考槽的三类读取器，
+保留键、类型化对象体和原始字节。合成 RangeDomain 先读一个空间参考
+Variant，再读一个内部回引该键的 Envelope Variant，覆盖三类、
+结束位置、截断和未知类时的整域回滚。重新读取 134 份 10.1/10.8
+介质工程和仓库参考工程，135 份的 `/Maps`、`/PageLayout` 均完整
+消费，两种值域的 CLSID 字节均无命中。实际值域编辑、对象比较行为和
+真实宿主字节仍待取证，未做 ArcMap/QGIS 人工验收。空间参考的字段和版本差异见
+[各类持久化接口](arcmap-10.1-pcs-geometry-slots.md)。
+
+### RasterDB 的统计、直方图与色表对象
+
+复核 Desktop 10.1.0.3035 PE32 RasterDB.dll，SHA-256
+`97207d5cc5307bfe126e030792b5e92c085668953a736a6875d35e72d7e86400`。
+持久化虚表、读写入口和类标识互相对位：
+
+| 类 | CLSID | IPersistStream 虚表 | GetClassID | Load / Save |
+| --- | --- | --- | --- | --- |
+| RasterStatistics | `8446EB83-3251-4F20-8B79-1D5421E39D4A` | `0x7c1346ec` | `0x7c0cb900` | `0x7c0cb940 / 0x7c0cba90` |
+| RasterHistogram | `B01293EA-88D0-4E7D-AF82-A0B10BAC9B33` | `0x7c134184` | `0x7c0c82a0` | `0x7c0c82e0 / 0x7c0c8400` |
+| RasterColormap | `92195722-5732-11D2-AAAD-00C04FA375FB` | `0x7c131fec` | `0x7c09b6e0` | `0x7c09cdb0 / 0x7c09cf00` |
+| StatsHistogram | `BA3027C1-49CA-4788-8B5A-3A6B387DE78C` | `0x7c136850` | `0x7c100650` | `0x7c101910 / 0x7c101b30` |
+
+前三类复用 [RasterInfo 的字段序](mxd-10.1-image-server-rules.md#rasterinfo-二进制对象体)。
+版本比较分别在 `0x7c0cb96f`、`0x7c0c8312`、`0x7c09cdf1` 读取
+有符号 short，Rust 保留原位模式。三类的内嵌 Variant 均使用 AfCore
+的 `Variant::Read(false)`（RasterDB 导入槽 `0x7c1212a0`）与同一原流。
+StatsHistogram 复用 [渲染器统计体](mxd-10.1-raster-renderer.md#rgb-的两个嵌套对象)
+的 int32 版本和分版本桶数组。
+
+两种已确认的有键 Variant 外壳均可分派这四个对象体。新键及内嵌键共用
+宿主对象表，递归的色表、直方图、统计、属性集与 Variant 数组共用深度限制；
+回引只消费对象头，失败不提交暂存状态。统计值按 double 位模式比较。
+构造 RasterInfoFunction 和 MergeRasters 内层流验证四类对象嵌套、
+后继字段、NaN 位模式和色表键回引。交替嵌套色表与 VarArray 的输入另行验证
+深度限制、截断、超版本及回滚。实际宿主中的该类 Variant 值仍待实档或
+ArcMap 运行取证，ArcMap/QGIS 人工验收尚未进行。
+135 份对照工程的 /Maps 和 /PageLayout 均读至末尾。270 条流中仅一条命中
+StatsHistogram 的 CLSID，前三类零命中。CLSID 扫描未用来判定 Variant 宿主。

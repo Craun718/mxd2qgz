@@ -50,3 +50,99 @@ LayerLib 的旧式尺寸、CLSID 和类体分派，已知扩展的嵌套键共�
 回滚。参考工程和两套安装介质的 134 份工程仍读到两条根流的终点，这批
 工程的 Map 解析未报告独立表体。LinearRef 的两张 v9 独立表仍由 SDK
 回归用例覆盖，新增非空组合尚缺 ArcMap 10.1 实档和人工验收。
+
+
+## ObjectClassName 与栅格表名称
+
+2026-11-20 用 10.1.0.3035 的 GdbCore.dll、GdbCoreLib.dll、RasterDB.dll、
+RasterCatalog.dll 及 10.1 安装登记表和类型库核对旧 Map 与独立表
+的普通 IName 分派。旧 Map 逐项读取 IName，独立表从
+`0x7945d350` 与 `0x7945dbbe` 请求相同接口。名称可打开的实际
+数据源类型仍由原生运行状态决定。
+
+- ObjectClassName `905CEC64-0B2C-11D4-A060-00C04F6BDD84` 的
+  [工厂与构造链](mxd-round3-dataset-format-20261117.md#objectclassname-实现定位)
+  建立到 FdbTableName。构造器 `0x709b9330` 安装 IPersistStream
+  表 `0x70ad076c`。Load `0x70a63662` 经导入槽 `0x70a8759c`
+  到 GdbCoreLib `0x70d4e980`，读 short、三条 AfCore String 和
+  IWorkspaceName，布局与 TableName 相同。Save 经 `0x70a63668`
+  进入 `0x70d4ea10`。GetClassID `0x709b9d40` 从
+  `0x70ac318c` 返回 TableName CLSID。解析器也接受登记的
+  ObjectClassName 作为读取别名，并保留原对象头。
+- RasterBandName `BC25E113-168B-11D2-8D25-0000F8780535` 的 IName 虚表
+  `0x7c131038` 中 Open 为 `0x7c053720`。类型库将 RasterBand
+  列为 ITable 的公开实现，已知数据集波段 FullName 的类及布局见
+  [波段证据](mxd-10.1-raster-layer-tail.md#波段名称与集合)。
+- RasterCatalogName `33FF62FC-D7D6-48E8-82D9-77C0AADBF5D1` 的主 QI
+  `0x7be36150` 将普通 IName 查询交给对象 `+0x1c` 的委派指针。类型库将 RasterCatalog
+  列为 ITable 的公开实现。该名称的 Load `0x7be36460` 直接委派
+  FeatureClassName，保留外层键并共享工作空间等嵌套键。
+  读写对位见[目录名称证据](mxd-10.1-raster-layer-tail.md#rastercatalogname)。
+
+两个栅格名称复用栅格读取器，保留原始类和对应的数据体。合成 Map v0、
+v3、v6 以及 v0 StandaloneTable 验证三类的新对象、旧 Map 同键回引、
+后继字段和独立表截断回滚。SdeRasterTableName 的 Load/Save 均返回 E_FAIL，
+详见[栅格表名复核](mxd-10.1-raster-layer-tail.md)。
+参考工程与两套介质的 135 份工程均读至 /Maps 和 /PageLayout 末尾，
+270 条流未出现本轮三个 CLSID。ArcMap/QGIS 人工验收尚未进行。
+
+## Schematic 图表类和元素类名称
+
+取证使用 Desktop 10.1.0.3035 的 PE32 `SchematicDB.dll` 指令、RTTI 虚表、
+10.1 类注册表及 esriSchematic 类型库。模块 SHA-256 为
+`f8d9cc41cbb29b278f95a691b5b96b90184c8d1e636dd29c3ebc8eff5c2b7fca`。
+地址为模块首选基址下的虚拟地址。
+
+| 持久类 | 注册 CLSID | IPersistStream 虚表 | GetClassID | Load | Save |
+| --- | --- | --- | --- | --- | --- |
+| SchematicDiagramClassName | `359C39BC-FDB6-49B6-8A1C-2397B3EA9261` | `0x7d70c104` | `0x7d6d5cc0` | `0x7d6e30b0` | `0x7d6d7a70` |
+| SchematicElementClassName | `6787EB86-1EB7-4B18-BB61-13A5D847DCDB` | `0x7d70d174` | `0x7d6e2ff0` | `0x7d6e30b0` | `0x7d6e3030` |
+| SchematicDatasetName | `333DAE77-1AEB-447D-8E83-FE043E84A671` | `0x7d7091dc` | `0x7d6944e0` | `0x7d695340` | `0x7d6952c0` |
+
+- 三类均读取有符号 short，接受 `<= 1`，随后读取三条 AfCore String。三个
+  Save 的版本表位于 `0x7d704a20`、`0x7d704a18`、`0x7d704a24`，首项均为 1。
+- 两个类名由 `0x7d6e3126` 调用 LoadObject，请求 `ISchematicDatasetName`
+  （IID 常量 `0x7d709370`）。数据集名由 `0x7d6953b6` 调用 LoadObject，请求
+  `IWorkspaceName`（IID 常量 `0x7d709350`）。两个普通对象槽均共享上游对象键表。
+- 图表类名和元素类名的 IName 虚表分别为 `0x7d70c080`、`0x7d70d104`，
+  Open 分别为 `0x7d6d61f0`、`0x7d6e2660`。两者调用内层数据集名的 IName::Open，
+  然后进入各自的数据集查找接口。esriSchematic 类型库中的公开 SchematicDiagramClass
+  和 SchematicElementClass 均声明 ITable。实际打开结果仍待运行验证。
+- 已接入 Map v0–v10 旧表及 StandaloneTable 的 IName 分派。合成 Map v9 和
+  StandaloneTable v4 覆盖普通对象、共享数据集与类名回引、未知类停止和截断回滚。
+  内层数据集槽按 `ISchematicDatasetName` 分派，工作空间槽复用 `IWorkspaceName`
+  读取器。ArcMap/QGIS 人工验收尚未进行。
+
+参考工程和两套安装介质中的 135 份工程均读至 /Maps 和 /PageLayout 末尾。
+这 270 条流中未命中上述三个 CLSID。
+
+## 有属性的关系类名称
+
+核对 Desktop 10.1.0.3035 的 PE32 GdbCore.dll、FileGDB.dll、GdbCoreLib.dll
+指令及导入导出表。三个模块的 SHA-256 分别为
+`ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4`、
+`73cef6bac97b0bdba8e4b26e2052cefab0b55a32e3a4141c01701d7cbc5f1230` 和
+`10e0af85e3e3825647733f99d573c969d69ccaf47203365e51323fce07008baa`。
+
+- RelationshipClassName 的 IName 虚表 `0x70adb990` 的 Open
+  `0x70a3b060` 打开工作空间名称，查询 `IFeatureWorkspace`
+  （IID 位于 `0x70ab85a4`），调用虚表 `+0x2c` 打开关系类，最终在
+  `0x70a3b175` 查询返回对象的 IUnknown。
+- FileGDB Workspace 在 `0x6fa8583f` 开始的 QI 分支返回 IFeatureWorkspace
+  虚表 `0x6fb02a00`，`+0x2c` 的 `0x6fa8e1f0` 跳至对象 `+0x50`
+  的虚表 `0x6fb02930` 中的 `0x6fa8dd70`。当基数为 3 或属性标志非零时，
+  `0x6fa8e03c` 调用 AttributedRelationshipClass 构造器 `0x6fa01560`，
+  后者在 `0x6fa015a1` 调用导出的 FdbAttributedRelationshipClass 基类构造器。
+  GdbCoreLib 为该基类导出 ITable 虚表，10.1 类型库也声明
+  AttributedRelationshipClass 实现 ITable。
+- 共享表名槽复用 RelationshipClassName 的既有读法，保留原始基数、属性标志
+  和工作空间或数据集槽。原生打开时查询的数据集定义决定是否返回有属性关系类，
+  因此读取阶段不以名称体里的标志决定对象长度或拒绝已确认的名称布局。
+  合成 StandaloneTable v0 检查表名体、空工作空间槽、键登记与后继字段。
+- MemoryRelationshipClassName 的 IName Open `0x70a3fe30` 打开两个端点并调用
+  MemoryRelationshipClassFactory。对应的 MemoryRelationshipClass 主 QI
+  `0x70a3c220` 及后备 `0x70a60800` 均无 ITable 分支，10.1 类型库亦未声明
+  ITable，故该名称只由关系名称槽等已有宿主处理。
+
+同批 135 份工程的两条根流均读至末尾，未命中 RelationshipClassName CLSID。
+有属性关系类的 ArcMap/QGIS 人工验收尚未进行。

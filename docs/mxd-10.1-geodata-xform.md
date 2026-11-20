@@ -115,21 +115,47 @@ RasterDB.dll 10.1.0.3035 的 GetClassID `0x7c03be20` 从 `0x7c12d53c` 写出
 `CB7DC226-5AD2-4A40-88F4-3CEDB5D63BDE`。IPersistStream 虚表 `0x7c12f12c`
 指向 Load `0x7c03bb70` 和 Save `0x7c03b9f0`。Save 在 `0x7c03ba19` 使用
 `0x7c1236cc` 的版本表 `[-1,-1,-1,-1,1]`。v1 写 int32 版本、ISpatialReference、
-IGeometryCollection、int32 点数、int32 标志。标志非零时接两个点数组，
+IProjectiveTransformation2D、int32 点数、int32 标志。标志非零时接两个点数组，
 各有点数指定数量的二维 WKSPoint（每个 16 字节）。点数、标志和数组分别从
 相对 IPersistStream 的 `+0xa8`、`+0xb4`、`+0xac/+0xb0` 读取。
 
-Load 接受两个槽之后还请求 `1C8A72C4-5A43-48EF-938E-2119608D77D0`
-（IProjectiveTransformation2D），第三个 LoadObject 位于 `0x7c03bc58`。
-Save 在 `0x7c03ba7c` 写第二槽后直接写点数。Rust 按已确认的 10.1 Save v1
-读取，使用宿主对象表及现有空间参考、几何集合分派。读侧第三槽和旧档兼容
-仍需实档或运行观察；第三槽若是空 GUID，开头八字节可与合法零点数和零标志
-重合，无界对象体中不能靠试读判定。
+本轮复核并更正第二槽的身份。Save `0x7c03ba72..0x7c03ba83` 写的
+是成员 `+0xa4`。Load 则依次读 ISpatialReference、IGeometryCollection、
+IProjectiveTransformation2D。其中 `0x7c03bc20..0x7c03bc42` 把
+几何集合放在 `+0x10`，第三槽读取 `0x7c03bc58` 后，经
+`0x7c03c630` 对返回对象查询 IProjectiveTransformation2D 并写入
+`+0xa4`。第三槽读取和该接口查询的 IID 均为
+`1C8A72C4-5A43-48EF-938E-2119608D77D0`，常量分别在
+`0x7c12f1d8` 和 `0x7c12957c`。
 
-在 GeometricXform 对象分支的合成测试中，ProjectiveXform 新体消费两组点和
-Multipoint 后读到外层 double，并覆盖计数超界与任意截断回滚。已扫描的 268 个
-/Maps 或 /PageLayout 流文件中未检出 ProjectiveXform CLSID 候选。未运行
-ArcMap 或 QGIS 进行人工验收。
+10.1 类型库列出 ProjectiveTransformation2D
+`F82EB04A-4E5A-43C7-9A54-457439AA8E9E`。Geometry.dll 的
+IPersistStream 虚表 `0x71a23588` 的 Load 和 Save 直接返回
+`E_NOTIMPL`（`0x718ad650`）。Rust 在可由该 CLSID 明确识别的
+第二或第三槽中保留已登记的回引，遇到新对象时停止。
+写侧两槽格式中的空投影槽可正常读取。原有读取器兼容的「第二槽为几何，
+紧随点数」仍可消费，缺少原生 Save 输出佐证。若 Load 期待的第三槽为
+零 GUID，开头八字节可与合法零点数和零标志重合。无独立体边界或
+版本信息时保留已有分派规则，第三槽为空的旧档仍待取证。
+
+2026-11-20 在 QEMU i386 中把 RasterDB.dll 的原始指令映射到原 VA，
+执行 `0x7c03b9f0` 与 `0x7c03bb70`。驱动提供内存流、保存索引 4
+及空对象读写回调。Save v1 写两槽共 44 字节，直接交给 Load 返回
+`0x80004005`。在控制点字段前补一条空对象后，Load 返回 `S_OK`，
+按空间参考、几何集合、投影变换三个 IID 请求对象，共消费 60 字节，
+后继标记保持在偏移 60。驱动未加载 ArcMap，也未执行 COM 工厂或
+原生对象流键表。临时驱动位于忽略目录 `temp/mxd-rule-objects/projective-native/`。
+
+Rust 在有明确 ExtraSafe 边界的 RasterLayer 中先验证现有布局。若其
+变换和包络后的字段无法恰好读到边界，才暂存游标及引用表试读多出的空槽。
+第二种形态也必须完整读取包络及版本后缀，并恰好读到边界。
+构造 v12、v13 和 v17 验证空或非空几何集合、空投影变换、后继包络的新键
+以及失败回滚。普通对象流以及缺少精确结束位置的其他宿主仍缺旧档证据。另对本机参考档、提取的 Desktop 与 SDK MXD 中
+221 条去重后的 Maps/PageLayout 流扫描 ProjectiveXform CLSID，未见候选。
+
+合成测试覆盖写侧空槽、两种明确的回引位置、前后对象边界、新对象拒绝
+和任意截断回滚。参考工程与两套介质共 135 份工程的 /Maps 和 /PageLayout
+均读至末尾，270 条流未出现上述两个 CLSID。ArcMap 和 QGIS 人工验收尚未进行。
 
 ## Geometric、LSR 与 Pictometry
 
@@ -249,6 +275,19 @@ Save 表 `0x7a1d873c` 为 `[-1,-1,1,2,2]`。两版均写 short 版本，
 参考工程及 66 份 10.1 介质 /Maps 流未检出该 CLSID。合成测试覆盖
 v1/v2、空状态、原始高位字节，以及非法标志、长度越界和截断回退。
 
-注册表把 ADSXform、Transform3DXform、CameraXform 列在 RasterDB.dll 下。
-本轮对提取的 1115 个 Desktop DLL 搜索三个 CLSID 的内存序字节均无命中，
-尚无法证实其在 10.1 的工厂或持久化路径。该搜索只覆盖这些 PE 原件。
+10.8 的登记表把 ADSXform、Transform3DXform、CameraXform 列在 RasterDB.dll 下。
+这三类未出现在从 10.1 Desktop CAB 提取的 esri.clsid.ecfg 中。此前对提取的
+1115 个 10.1 Desktop DLL 搜索三个 CLSID 的内存序字节亦无命中。
+
+## 10.1 内置变换分派清点
+
+以 esriGeoDatabase 的 IGeodataXform IID
+`5E6CF525-4E74-419B-946F-7DA9BFDF815D` 为起点，扫描 72 个可读的
+10.1 Desktop 类型库。按接口继承和 coclass RefTab 找到 16 个公开 coclass。
+在 10.1 的 esri.clsid.ecfg 中，名字以 Xform 结尾的 17 个 CLSID
+与 Rust 分派完全一致。多出的 PictometryXform 经 RasterDB 主 QI
+`0x7c030720` 的 `0x7c030727` 直接返回 IGeodataXform。
+提取的 PE 中搜到这个 IID 的直接比较分别归于 RasterDB、GdalRasterDB
+和 Mensuration 中已确认的 17 类。其余指令交叉引用为调用方请求接口、
+加载对象或辅助创建调用。已定位的 10.1 内置类均有对象体分派。
+ProjectiveXform 的空第三槽已在有界 RasterLayer 接入，无界宿主仍开放。其他版本或附加组件带来的类应按其各自的原生证据确认。

@@ -105,3 +105,21 @@ Geometry.dll `0x7192db20` 先按声明长度读完整缓冲，再调用共享二
 读取器校验最小记录长度、保留多出的字节，并从声明边界读空间参考。
 整档验证读完 13/13 个布局元素，最后一个 MapFrame 回引真实 /Maps 的键 31，
 布局对象至 `0x23123`，随后读完零打印标记。
+
+## GroupElement 内嵌 MapFrame
+
+10.1.0.3035 的 GraphicElements.dll（SHA-256
+`f24451c8bf25cce7c1906ea67e5fa3ce351b8f9918c6ddcd2a40083151f77ae9`）
+在 GroupElement Load `0x75035ef0` 的 `0x75035f66..0x75035f6c`
+用普通 LoadObject 读取 IElement，IID 为 `9B001319-9ED7-11D0-859E-0800091A2A72`。
+MapFrame 的类与持久化链沿用 [MapFrame 对象体](mxd-map-frame-body-20261118.md)
+的 MapElements.dll 证据。组内读取使用同一 MapFrame 对象体读取器和跨流键表，
+地图框前无额外 ExtraSafe 包装。截断、未知对象或非根 Map 回引时回滚整组。
+
+SDK .NET 的 PrintMultiPage（`/Version` 文本 9.4，PageLayout 架构 v14）在
+`/PageLayout:0x1e` 有一个 ExtraSafe 元素。组对象头位于 `0x26`，键 51，
+共七个子元素，其中 `0x1fc24` 是 MapFrame v4（键 71）。
+其 IMap 槽 `0x1fc3a` 指向 `/Maps` 的根 Map 键 29，布局读取到
+`0x3fc10` 流尾。替换为同会话内基本图形层的键 30 时，读取器在
+组包装起点 `0x1e` 停止。构造用例还验证组内地图框可被后续页面元素回引，
+及子体截断时整组不提交。ArcMap 与 QGIS 人工验收未执行。

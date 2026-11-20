@@ -83,12 +83,48 @@ IPersistStream 虚表 `0x6ec0b82c`（COL 偏移 60，cdOffset=4）；Load thunk
 | ⑥ | 4 字节 CMYK | 4 字节 | this−0x14 | ≥3 | 同上 |
 | ⑦ | 字节 | 1 字节 | this−0x24 | ≥4（`3 < ver`） | 同上 |
 | ⑧ | 字节 | 1 字节，装载取补 `0xff−b` | this−0x23 | ≥4 | 同上 |
-| ⑨ | 共享核心段 | 上表 ①–⑥（核心在 `this−0x1c`） | — | ≤2（含 ≤1 直入） | 同上 `FUN_6eb35310(this−0x1c)` |
+| ⑨ | 共享核心段 | 上表 ②–⑥（核心在 `this−0x1c`） | — | ≤2（含 ≤1 直入） | 同上 `FUN_6eb35310(this−0x1c)` |
 
 - Save 恒写版本 **4**（`DAT_6ec0b340`），与版本 4 读分支逐字段对称（含
   ⑧ 取补写）；版本 ≤3 分支在本二进制无写侧来源（**确定**，历史兼容分支）。
 - ⑦⑧ 与核心段 ⑤⑥ 同落在 this−0x24/−0x23（版本 4 读侧独立读入同槽），
   字段语义未定（候选：核心标志与补码字节的版本 4 重复表达）。
+
+## 五类颜色的原生读写与 CMYK 旧版核心
+
+2026-11-19。重新核对 DisplayCore.dll x86 10.1.0.3035，SHA-256
+`9b3e61f9ca553f14a442338dfc1c24ac51c1eea6dd9a4509282466a6a926e4d2`。
+采用既有反编译、objdump 指令、PE 导入表及原始虚表。通过 pefile 按
+PE 地址提取 IPersistStream 表、GetClassID/Load/Save 入口、thunk、核心
+及常量，在 `qemu-i386` 运行。读写通过真实 AfCore.dll 10.1.0.3035
+的流转发和字符串例程完成（SHA-256
+`031858c414c0105b3b978c754f3d0f31ba1d98f15d44ff15b1589c9adcc47c17`）。
+探针提供内存 IStream、BSTR 分配和颜色分量转换槽，验证颜色持久化
+字节和游标。转换槽记录收到的分量或 packed 值。
+
+| 类和版本 | 输入依据 | 原生完整消费 |
+| --- | --- | ---: |
+| Rgb、Hsv、Hls、Gray v1 | 四类分别经原生 Save 写三 double，再读回 | 各 31 字节 |
+| Rgb、Hsv、Hls、Gray v1 | 受控 packed 分支，Load 经类的原生入口 | 各 11 字节 |
+| Cmyk v0、v1 | 受控三 double / packed 共享核心，各版两组 | 各 31 / 11 字节 |
+| Cmyk v2 | 无字符串的三 double 核心、含字符串的 packed 核心 | 33 / 23 字节 |
+| Cmyk v3 | 无字符串、含字符串 | 8 / 18 字节 |
+| Cmyk v4 | 原生 Save 写含字符串的对象体，再读回 | 20 字节 |
+
+旧版 Cmyk Load `0x6eb34850` 已读外层版本，v2 读完可选字符串和
+short 后，于 `0x6eb3490b` 直接调用 `0x6eb35310`。共享核心先读
+自己的版本，然后读分支字节。旧 Rust 入口把独立颜色类的外层版本也
+计入内嵌核心，经原生探针构造的六份 v0–v2 体均解析失败。修正后只读
+核心自身版本，`CoreColorBody10_1.version_outer` 沿用外层 Cmyk 版本。
+独立颜色类仍读取各自外层版本及核心版本。Rust 对 17 组数据经 IColor
+分派均完整消费并保留紧随其后的哨兵字节，回归用例另检验紧接空对象
+和截断时的游标、键回滚。
+
+探针代码和结果位于忽略目录 `temp/mxd-display-color-native/`，
+`result.bin` SHA-256 为
+`5bb67931d3a50db33d19970a7bb53f99a31b368a6acd3101ab4aa45d945e3c3f`。
+受控运行验证了颜色类和持久化格式，未验证颜色转换数值、
+带这些分支的 ArcMap 工程及 QGIS 渲染效果。
 
 ## 三、SimpleLineSymbol
 

@@ -66,8 +66,8 @@ pyghidra 的 RasterCoreLib 基类导出辅助复核。
   二进制体为 short 版本（≤1）及一个 IPropertySet 普通对象槽
   （IID `F0BA6ABC-…` 存于 `0x7bf56d94`）；支持空、回引与
   PropertySet 新对象。保存版本表 `0x7bf565c4` 为 `[-1,-1,-1,-1,1]`。
-  安装注册表同时列有 `RasterFunctionArguments {D553E917-…}`，
-  尚未定位该 CLSID 的原生持久化入口，未套用缓存类布局。
+  `RasterFunctionArguments {D553E917-…}` 来自 10.8 登记表。
+  10.1 安装介质复核见[登记表复核](#局部运算公开类和登记表复核)。
 
 两类都未在参考工程 /Maps 或已抽取的 199 个安装介质流中命中。
 v22 合成宿主验证非空函数、参数和嵌套 PropertySet 的后继边界，并验证
@@ -238,7 +238,8 @@ Load/Save 的调用、GetClassID 的常量以及安装介质注册表。下列�
   由安装介质类型库定名，位于 `0x6fd49038`。Save 版本表
   `0x6fd3f438` 的 10.1 项为 2。
 - 参数先读派生 short（上限 2），再调用 BasicFunctionArguments::Load，
-  最后读两个压缩 Variant。解压后的每段数据各含一个 IUnknown 槽。
+  最后读两个压缩 Variant。解压后的每段数据各含一个 IUnknown 槽，
+  由属性读取路径延迟打开，见下文。
   `0x6fcc339b/0x6fcc345f` 分别调用 `0x6fc5d070` 创建独立
   ObjectStream 后，各自用 `+0x38` 连接解压内存流。函数的
   `0x6fcc244c` 同样创建内层 ObjectStream。类工厂实参
@@ -256,12 +257,38 @@ Load/Save 的调用、GetClassID 的常量以及安装介质注册表。下列�
 - Rust 读取器对压缩与解压大小应用宿主字节限额，验证完整 zlib 流
   及实际读写字节数。IRasterInfo2 为空时直接解析后续矩形数据。
   已支持的非空 RasterInfo 会与后继矩形一起解析。遇到未知信息对象或
-  未支持的嵌套类型时，保留其头及解压边界内的剩余字节。参数的非空
-  IUnknown 保留对象头后的原始体。
+  未支持的嵌套类型时，保留其头及解压边界内的剩余字节。
 
 合成 RenderingRule 测试覆盖 v2 三段压缩数据、独立键、矩形、未知对象原值、
 全部截断、失效校验和与长度异常。两种 MergeRasters CLSID 在参考工程
 /Maps 及 199 个安装介质流中均无命中。ArcMap/QGIS 人工验收待补。
+
+#### Rasters 和 Footprints 的压缩参数对象
+
+复核同一 Desktop 10.1.0.3035 PE32 FunctionRasterDB.dll，SHA-256
+`40af35694799c27fe2ace8bf28b12ca84a8f348122267180452291e0dd1c2701`。
+静态初始化 `0x6fd3ba80 / 0x6fd3baa0` 把 UTF-16 字符串 `Rasters`、
+`Footprints` 放入 `0x6fd7c064 / 0x6fd7c068`。
+`Load 0x6fcc3290` 用有符号 short 比较派生版本上限 2，
+读取基类及两个压缩 Variant 后，按上述顺序把两个独立 ObjectStream
+作为对象值写入属性集（`0x6fcc3406 / 0x6fcc34bf`）。
+
+两项属性访问器为 `0x6fcc2c70 / 0x6fcc2e40`，来自
+IMergeRastersFunctionArguments 虚表 `0x6fd48fcc` 及 10.1 类型库。
+如属性持有流，两者分别在 `0x6fcc2d0e / 0x6fcc2ede` 对流调用
+LoadObject，请求 `0x6fd3f0ac` 的 IUnknown，随后将装入的对象替换到
+属性集。Save 从这两个对象值调用 ConvertFunctionArgument，
+在 `0x6fcc36cf / 0x6fcc3756` 各向独立 ObjectStream 写一个对象。
+保存版本表 `0x6fd3f444` 的 10.1 项是 2。
+
+Rust 在有界解压流中复用有键对象和栅格模板输入的已知体分派。已读完的
+参数同时保留对象体原字节，未知类或未知嵌套仍保留解压后的边界及字节。
+两个压缩输入各自登记对象键，递归读取沿用宿主剩余的栅格深度限额。
+构造 RenderingRule 验证 Rasters 的栅格名称、Footprints 的 GeometryBag
+及子 Point 回引、同键号的独立分派、有符号版本、尾随字节拒绝和截断。
+实际保存的参数类集合和对应实档仍待取证，ArcMap/QGIS 人工验收未做。
+135 份对照工程均读至 /Maps 和 /PageLayout 末尾，270 条流中未命中
+MergeRastersFunction 或 MergeRastersFunctionArguments 的 CLSID。
 
 ### RasterInfo 二进制对象体
 
@@ -336,11 +363,18 @@ Load 循环通过 `0x709d9ac0` 加入成员，重复值合并且负 OID
 被拒绝，Load 忽略单个 Add 的返回值。MosaicFunction 和
 MosaicRule 两处 IFIDSet 槽接入该 FIDSet 实现。
 
-MosaicFunction v3/v4 与 RasterInfo v6 请求同一个 IPnt IID。
-RasterDB 的 Pnt 类（`064087E4-09B9-4892-A893-FCA89BB171D1`）
-QI `0x7c0337c0` 对应该 IID，但该 QI 可见路径未定位到其
-普通 IPersistStream 装载入口。IPnt 的非空新对象仍待原生证据，
-空和回引可解析。参考工程及 199 个介质流未发现这四种类的标识。
+MosaicFunction v3/v4 与 RasterInfo v6 请求同一个 IPnt IID。72 份
+10.1 介质类型库中，公开实现为 Pnt（`064087E4-09B9-4892-A893-FCA89BB171D1`）
+和 DblPnt（`1F1A2725-6B9D-44A5-B75E-9E4CD9B9F90A`）。在同一
+RasterDB.dll 映像中，它们共用主 QI `0x7c0337c0`，两个直接比较项
+`0x7c12add4 / 0x7c12ecf8` 分别为 IPnt 与
+`DA8CBCBE-02C9-47B8-844E-71B502773284`。后备 `0x7c10a550` 只比较
+`0x7c12215c / 0x7c1221dc / 0x7c1368e4`，未命中返回
+E_NOINTERFACE。两张主表 `0x7c12ebd0 / 0x7c12ec3c` 均没有可用于
+普通 ObjectStream 新对象的 IPersistStream 或 IPersistVariant 分派。
+IPnt 空槽和回引可解析，其他实现写出的非空新对象仍待原生证据。
+参考工程及 199 个介质流未发现前述 MosaicFunction、MosaicLODInfos、
+FIDSet 和 Pnt 四种类的标识。
 合成 v1–v9 覆盖版本分支、非空 MosaicLODInfos、FIDSet 的重复及负 ID、
 后续 RenderingRule 字段、尾部截断和计数超限。ArcMap/QGIS 人工验收待补。
 
@@ -415,9 +449,323 @@ SARasterFunction 的 MemoryPixelsIntersectFunction 也响应
 IRasterFunction；QI `0x7d0b4760` 将 IPersistStream 映射至
 +0x20 虚表 `0x7d0e317c`，其 Load/Save
 `0x7d0b5240/0x7d0b5250` 都直接返回 `E_FAIL`。这条路径没有
-可用对象体。登记表中的 ElevationVoidFill 两类和 VectorFieldRendererFunction
-两类在对应的这份 PE 中未找到各自 CLSID 常量，持久化入口仍待定位。
+可用对象体。ElevationVoidFill 和 VectorFieldRendererFunction 相关类的版本归属
+见[登记表复核](#局部运算公开类和登记表复核)。
 
 参考工程 /Maps 和 199 个安装介质流没有前述十二个新增 CLSID
 的命中。合成 RenderingRule 覆盖 LAS 与局部运算代表对象、非空属性集、
 外层后继字段和超版本拒绝。未做 ArcMap/QGIS 人工验收。
+
+### 函数集合、栅格项与三个参数体
+
+2026-11-19 核对 10.1.0.3035 PE32（原址），从 RTTI
+IRasterFunction / IRasterFunctionArguments 基类定位实现，再以虚表、
+GetClassID、导入表、类型库及 objdump 对照持久化路径。
+FunctionRasterDB.dll SHA-256 为
+`40af35694799c27fe2ace8bf28b12ca84a8f348122267180452291e0dd1c2701`，
+ImageServerLayer.dll 为
+`0256f97057275fedb550c947b0f8333184427755a394ef09099d22349fe5bb14`。
+
+| 类及 CLSID | IPersistStream 虚表 / GetClassID | Load / Save |
+| --- | --- | --- |
+| RasterFunctionCollection `1F120F8F-17AA-4B8E-8CD8-6007E0DEDB80` | `0x6fd4b8f0 / 0x6fcf08d0` | `0x6fcf0910 / 0x6fcf0a00` |
+| RasterItemFunction `31E67A19-ED23-4825-BF1E-6A7D7B0EF190` | `0x78033368 / 0x78021d70` | `0x78021db0 / 0x78021e30` |
+| RasterItemFunctionArguments `A2A534D3-D721-4C8C-BFAF-98C6D835DAF2` | `0x78033478 / 0x78020c70` | `0x78026210 / 0x78026216` |
+| RasterFunctionTemplateArguments `E7E9FA4F-FCC6-483D-9450-FF38B6A2C315` | `0x6fd4bdd4 / 0x6fcf4310` | `0x6fd2ce4a / 0x6fd2ce50` |
+| RasterInfoFunctionArguments `877BD868-EE05-4493-B586-BB71681F0665` | `0x6fd4c4e4 / 0x6fcf8aa0` | `0x6fd2ce4a / 0x6fcfb180` |
+
+RasterFunctionCollection 体从 short 版本开始（有符号上限 1），接有符号
+int32 计数与普通 IRasterFunction 槽循环。Load `0x6fcf0944..0x6fcf0999`
+直接读取这些字段，Save `0x6fcf0a47..0x6fcf0aa7` 对称，无基类体。
+计数非正时原生不进循环。正计数的槽返回后原生直接调用该对象的 AddRef，
+所以 Rust 对空子函数报告非法数据。子函数共享宿主键表和栅格函数的递归深度
+限额。栅格项先经 IAT `0x7802c46c` 读 BasicFunction，再读派生 short
+（上限 1）和 IRasterInfo 槽。`0x78033518` 的 IID 为
+`94058B85-ACF1-49BA-A2A7-A9CCC6F4C26A`，复用现有 RasterInfo 体读取器。
+
+三个参数类均经导入桩委派 BasicFunctionArguments::Load，复用 short
+版本和 IPropertySet 槽。RasterInfoFunctionArguments 的 Save 对内存属性集
+做临时操作，再于 `0x6fcfb1da` 调 BasicFunctionArguments::Save，之后
+恢复内存值。该段没有额外的流字段。
+
+构造 RenderingRule 测试覆盖集合内的非空 RasterItemFunction 和
+RasterInfo、子函数回引、派生 v0 的负计数集合、三个参数类的属性集、
+后续表达式字符串与渲染器空槽。逐前缀截断、空子函数和过大计数均报错。
+135 份本地工程的 /Maps 与 /PageLayout 都完整读取。这 270 条流中未命中
+五类 CLSID 候选，尚无实际 RenderingRule 宿主字节或 ArcMap/QGIS 人工验收。
+
+外部公开局部运算类的委派关系见[登记表复核](#局部运算公开类和登记表复核)。
+
+### MosaicDB 的属性集参数
+
+2026-11-19 使用安装介质 MosaicDB.dll 与 RasterCoreLib.dll 的
+10.1.0.3035 PE32。SHA-256 分别为
+`424814c3eceb88871df221bb42cb420b61c79c110a1e46a0e05af744db0a39ed` 和
+`6d89601832b788177aac492e7fdfb0f1b012db86e2a75e6e480e6e647508eb1f`。
+按 RTTI 的 IRasterFunctionArguments 与 IPersistStream 接口偏移
+相交定位 70 个类，读取持久化虚表的 GetClassID、Load、Save，
+用类型库与 objdump 复核。五个基类的 GetClassID 进入
+`0x7a5c33f2`，该跳板转入 CRT `_purecall`，未纳入类表。
+支持类的 CLSID 和版本范围见
+[src/layers/image_server_rules/mosaic_arguments.rs](../src/layers/image_server_rules/mosaic_arguments.rs)。
+
+MosaicDB 的 IAT `0x7a5f5eb0 / 0x7a5f5eac` 分别导入
+RasterCoreLib 的 BasicFunctionArguments Load/Save。Load `0x7beb6460`
+读取 short（上限 1）和普通 IPropertySet 槽。下表的派生版本字段
+与基类版本是独立的 short。
+
+| 类组 | 类数 | MosaicDB Load | 体序与派生版本 |
+| --- | --- | --- | --- |
+| 镶嵌作业参数及通用过滤器 | 25 | `0x7a441220`、`0x7a3d3d40`、`0x7a5a013c` | 只有基类体 |
+| 文件及对象遍历器、MosaicDatasetJob | 10 | `0x7a40c480` | 基类体、派生 v1 |
+| URIPropertiesFilter | 1 | `0x7a424070` | 派生 v0–1、基类体 |
+| ISDefBuilder、RPDefBuilder | 2 | `0x7a490c10` | 基类体、派生 v2 |
+| LasBuilder、LasDatasetBuilder、TerrainBuilder | 3 | `0x7a4bf2e0` | 基类体、派生 v0–2 |
+| Applanix、Landsat 等构建器 | 12 | `0x7a4ccf90`、`0x7a4d20c0` | 基类体、派生 v0–1 |
+| RasterDatasetBuilder、TableBuilder | 2 | `0x7a4dfb60`、`0x7a500bf0` | 基类体、派生 v3 |
+
+表中构建器先经 `0x7a476660` 调基类读取，再从内存属性集同步成员。
+其 Save 经 IAT 写基类体及派生 short。需要按有符号上限和精确版本分别
+处理，例如 `0x7a40c4af..0x7a40c4b8` 实际要求派生值等于 1，
+`0x7a4dfb8b..0x7a4dfb99` 要求等于 3。实现保留派生版本，
+基类属性集沿用宿主对象表。RenderingRule 和模板输入共用参数分派。
+
+合成 RenderingRule 对七种布局分别核对属性集、新键和对象尾部，
+并覆盖允许的旧版本、被拒绝的派生版本和截断。135 份工程的 270 条
+/Maps 和 /PageLayout 流均读至末尾，未命中这 55 个 CLSID。
+这批类已具备原生持久化与接口证据，实际 RenderingRule 宿主、非空
+属性集可能引入的其他对象类和 ArcMap/QGIS 人工验收仍待取证。
+
+### MosaicDB 的旧版槽与内联参数
+
+同一 MosaicDB.dll 10.1.0.3035 中，以下八个类需要按派生版本读取额外字段，
+或直接调用成员对象的 IPersistStream Load。槽与内联对象中的属性集使用宿主引用表。
+
+| 类 | Load / Save | 字段顺序 |
+| --- | --- | --- |
+| RasterDatasetCrawler | `0x7a411190 / 0x7a411260` | 基类体、派生 v1–v3。v3 追加 int32、IName 槽 |
+| TableCrawler | `0x7a413af0 / 0x7a413cb0` | 基类体、派生 v1–v3。v1 追加 IName 槽，v2 追加 IName 槽和 int32 |
+| HREBuilder | `0x7a4ca770 / 0x7a47e9a0` | 内联 RasterDatasetBuilder、外层 short，按有符号值检查上限 2 |
+| NITFBuilder | `0x7a4ca770 / 0x7a4ca800` | 内联 RasterDatasetBuilder、外层 short，按有符号值检查上限 2 |
+| PixFileBuilder | `0x7a4d0450 / 0x7a4d04e0` | 内联 RasterDatasetBuilder、外层 short，按有符号值检查上限 1 |
+| RPFBuilder | `0x7a4f4c50 / 0x7a4f4cf0` | 内联 RasterDatasetBuilder、外层 short，按有符号值检查上限 940 |
+| AddRastersParameters | `0x7a56bcf0 / 0x7a56bd60` | 基类体、内联 SynchronizeParameters |
+| URIProductNameFilter | `0x7a423440 / 0x7a4233e0` | 派生 short。值 ≤1 时读取 AfCore String、short、两个 IStringArray 槽。值 2–940 时读取基类体 |
+
+两个遍历器在 `0x7a4111ed`、`0x7a413bc9` 请求 IName（IID 位于
+`0x7a5ff008`）。URIProductNameFilter 在 `0x7a423534`、
+`0x7a42359b` 请求 IStringArray（IID 位于 `0x7a5ff048`），
+Save 根据 `0x7a5f8640` 写 v940 与基类体。旧版直接字段保存原始 short
+位模式，`has_basic_arguments` 标记流上是否有基类体。
+
+四个构建器的构造路径在 `0x7a47b5b1`、`0x7a4c8be1`、
+`0x7a4cfca7`、`0x7a4f3041` 指定 RasterDatasetBuilder
+的 CLSID 常量 `0x7a5fe808`。Load 经 `0x7a514ac0` 请求
+IPersistStream（IID `0x7a6017f0`），在同一流上直接调用
+虚表 `+0x14` 的 Load。RasterDatasetBuilder 体为基类体加派生 v3。
+AddRastersParameters 构造路径在 `0x7a56ba71..0x7a56ba85`
+指定 SynchronizeParameters 的 CLSID 常量 `0x7a5fea38`，
+Load 在 `0x7a56bd27..0x7a56bd36` 使用同样的直接调用。
+SynchronizeParameters Load `0x7a441220` 和 Save `0x7a50aa30`
+直接转入基类入口。两种直接调用均无单独的成员 CLSID 或引用键。
+
+合成 RenderingRule 验证两种遍历器的三个版本、新名称对象、内联成员中
+的跨体属性集回引、旧版过滤器的数组回引、有符号版本分支及逐字节截断。
+
+### RasterType 和 OverviewItemURI
+
+RasterType Load `0x7a431610` 先读取基类属性集，再读取普通 IName 槽。
+`0x7a442310` 对所得名称请求 IRasterTypeName，类型库对应的具体实现
+是 RasterTypeName。派生 short 在 `0x7a4316e9..0x7a4316f4`
+按无符号区间检查 2–943。只有 v943 继续读取两个普通对象槽，
+`0x7a600178` 按类型库对位 IAddRastersParameters，
+`0x7a600198` 对位 ISynchronizeParameters。类型库列出
+AddRastersParameters 同时实现两种接口，SynchronizeParameters 实现后者。
+Save `0x7a431820` 的版本表 `0x7a5f85ec` 含 943。
+合成 v2、v942、v943 覆盖非空名称、添加栅格参数对象及同步参数槽回引。
+
+OverviewItemURI Load `0x7a41da70` 在基类体之后连续调用三次
+IPersistStream Load，Save `0x7a41db70` 对称写入。构造路径
+`0x7a41c98a..0x7a41ca08` 使用 CLSID 常量
+`0x7a5fe798`、`0x7a5fe7d8`、`0x7a5ffce8`，分别对应 ItemURI、
+CellSizeLevel、FunctionRasterDatasetName。三个成员内联，无单独的对象头。
+ItemURI GetClassID `0x7a41ad30` 和 Load `0x7a41ad70` 对位类型库
+的 `{FD27E0BE-6D83-40DF-A226-CFB614F7655D}`。其版本为 1–941，
+之后读五条 AfCore String、一个 double（IAT `0x7a5f5238` 的
+`AfStreamRead` double 重载）。v2 起读 IStringArray，v941 加读
+IPropertySet，IID 常量分别在 `0x7a5ff048` 和 `0x7a5ff028`。
+Save `0x7a41aea0` 使用版本表 `0x7a5f86b8`。CellSizeLevel 复用
+基类参数体，FunctionRasterDatasetName 复用栅格名称对象体和递归限额。
+合成 ItemURI v1、v940、v941 覆盖各分支及跨内联对象的属性集回引。
+
+本次补齐该 RTTI 交集中的全部 65 个具体类。范围限于 MosaicDB.dll
+中含 IRasterFunctionArguments 和 IPersistStream 相应 RTTI 的类。
+RenderingRule 的其他模块类及实际宿主接受的参数集合仍待核对。
+参考工程与两套安装介质共 135 份工程的 /Maps 和 /PageLayout 均读至末尾，
+这些流未出现本次十个类的 CLSID。ArcMap/QGIS 人工验收尚未进行。
+
+
+### 局部运算公开类和登记表复核
+
+2026-11-20 复核 Desktop 10.1.0.3035 PE32 的 RasterLocalOp.dll
+（SHA-256 `bbadb2a4e926b456f34444ee2300b3f3ae3d39bf1897aa45ddeddf1ffa6bcfbd`）
+及 SARasterFunction.dll（SHA-256
+`5b8938501daae70bbd3185a726c233813e6eb4456b72032d5b080b0b4e27637d`）。
+公开 Local、Math 和 Conditional 的 CLSID 位于 RasterLocalOp.dll
+`0x7c7cc5ec..0x7c7cc64b`，以 10.1 安装登记表及
+esriSpatialAnalyst 类型库的 IRasterFunction、IRasterFunctionArguments 配对核实。
+
+| 公开类 | CLSID |
+| --- | --- |
+| LocalFunction | `3DEDF3D2-61FC-4F9D-9EAE-5A3F5358308B` |
+| MathFunction | `2E60049F-FE7F-4BCD-9B34-B6AC978B1E10` |
+| ConditionalFunction | `C75DB7FB-1BED-46E3-8F96-17D24D8A03CE` |
+| LocalFunctionArguments | `19DA76F9-E143-41B3-955C-38033A7189A8` |
+| MathFunctionArguments | `DE07B947-BD0B-4851-AA70-3826B4983240` |
+| ConditionalFunctionArguments | `35591E68-2DC3-4630-8BBA-48EAEA56F834` |
+
+函数构造链均到达 `0x7c7c2880`，参数构造链到达 `0x7c7c2930`。
+两处分别从 `0x7c7ccd50`、`0x7c7ccd60` 取 LocalFunctionImpl
+与 LocalFunctionArgumentsImpl 的 CLSID，经 `0x7c7c3710` 的
+AfCreateInstance 把聚合对象存于 `+0x14`。公开函数的 QI（例如
+`0x7c7c2eb0`）和公开参数的 QI（例如 `0x7c7c3180`）把
+IPersistStream 查询转给这个成员。对应底层持久化入口仍为
+SARasterFunction 的 `0x7cd698a0 / 0x7cd69930` 与
+`0x7cd6b0a0 / 0x7cd6b0f0`。解析器在对象体分派时复用这两个布局，
+保留对象头原始 CLSID。SystemCore 对象流写出器
+`0x7ffcf7e0` 经 `0x7ffd0be0` 请求 IPersistStream
+（IID `0x8007127c`）并取其 GetClassID，因此静态路径预期保存时
+使用底层 Impl CLSID。公开 CLSID 的读取按构造和 QI 路径验证。
+
+登记清单重新从 10.1 Desktop CAB 提取 `esri.clsid.ecfg`
+（SHA-256 `170ae1f812bafc317ac98455eb7be844dd37f8d3a158c454cedf12f5046c3486`）。
+此前对照的 10.8 登记表含
+RasterFunctionArguments、BufferedRasterFunction、MultidimensionalRasterFunction、
+ElevationVoidFillFunction、VectorFieldRendererFunction 及其中可见的参数类。
+这些名称未出现在本次 10.1 登记表中。两种接口的类型库、RTTI
+与二进制筛查均以 10.1 Desktop 介质为准。MemoryPixelsIntersectFunction
+已定位到返回 E_FAIL 的原生 Load/Save 桩，解析器保留该类停止点。
+同模块登记的 ScalarFunction（`D3205BCF-767F-4E5E-AC12-C1CFC0286552`）
+经 `0x7d0bd1e0` 和 `0x7d0bd830` 查询接口，两种 RenderingRule
+槽 IID 均落入 `0x7d0bd922` 的 E_NOINTERFACE 分支。
+
+合成 RenderingRule 覆盖三个公开函数和三个公开参数对象、局部运算值、
+嵌套属性集、对象头 CLSID 与后继边界。参考工程和两套介质共 135 份工程的
+/Maps 和 /PageLayout 均可完整读取，270 条流未出现六个公开 CLSID。
+实际宿主字节、历史版本别名及第三方实现仍需独立证据。
+ArcMap/QGIS 人工验收尚未进行。
+
+### 规则与函数的有符号版本门
+
+沿用上文经版本资源与 SHA-256 复核的 10.1.0.3035 x86 模块。对
+esriDataSourcesRaster 及介质类型库导出中直接实现 IRasterFunction 或
+IRasterFunctionArguments 的可见 coclass 逐项比对 CLSID，均已有分派。
+继续扫描 1,115 个 Desktop DLL 的两个 IID 常量。命中也包括调用方，仅凭 IID
+字节无法排除经继承、委派或动态注册提供的实现。
+
+用 objdump 对照 short 比较和跳转，复核以下入口。地址为对应模块的映像 VA。
+
+| 模块 | 已核对的有符号比较 |
+| --- | --- |
+| ImageServer.dll | RenderingRule `0x77f8656f` 比较上限 1；MosaicRule `0x77f83424` 比较上限 5，`0x77f834f6`、`0x77f8351b` 分别判断可选槽的下限 2、4 |
+| RasterCoreLib.dll | BasicFunction `0x7beb27c8`、`0x7beb27da` 比较上限 4 和旧体分支 2；BasicFunctionArguments `0x7beb648b` 比较上限 1 |
+| FunctionRasterDB.dll | 共用函数入口 `0x6fd1edce` 比较上限 1；独立函数的比较见 `0x6fc2334c`、`0x6fc5c08d`、`0x6fca0e9e`、`0x6fd07e6b`、`0x6fcf990d`、`0x6fcc2422`、`0x6fd2262c`、`0x6fcf0944` |
+| FunctionRasterDB.dll | MosaicFunction `0x6fcc9858` 比较上限 9，`0x6fcc9ad7` 起按有符号版本追加字段；模板 `0x6fcf2fe8` 比较上限 3，`0x6fcf3128`、`0x6fcf3172` 控制尾部；模板变量的两次比较为 `0x6fcf4e5f`、`0x6fcf4e89` |
+| SARasterFunction.dll | 局部运算函数 `0x7cd698db`、参数尾部 `0x7cd6b0dc`、MLClassifyFunction `0x7d0b661e` 均比较上限 1 |
+| ImageServerLayer.dll、RasterRenderer.dll、3DToRasterFunctions.dll | 栅格项 `0x78021ddd`、渲染栅格函数 `0x7c988f7e` 和三维转栅格入口 `0x681cdd5e` 均比较上限 1 |
+| SystemCore.dll | TimeInstant 在 `0x7ffea9d1` 比较上限 1，`0x7ffea9d6` 以有符号 jg 进入失败路径 |
+
+解析器按 i16 判定这些分支，将原始 u16 保留在输出中。合成用例验证
+负版本的规则、基类、模板及变量、镶嵌函数与局部运算参数，以及 v4
+MosaicRule 中负版本 TimeInstant。正版本超限仍被拒绝。重新读取 134 份
+10.1/10.8 介质工程与仓库参考工程，两种规则的 CLSID 在 135 份工程的
+`/Maps` 和 `/PageLayout` 中均无字节命中，两流全部读至结束。
+负版本位模式的 ArcMap 实际保存来源和实档仍待取证，未在 ArcMap/QGIS
+中人工验收。
+
+### Scalar 与 ArgumentArray
+
+核对 Desktop 10.1.0.3035 PE32 FunctionRasterDB.dll，SHA-256
+`40af35694799c27fe2ace8bf28b12ca84a8f348122267180452291e0dd1c2701`。
+原生工厂表从 `0x6fd76658` 开始、步长为 `0x34`，在 `0x6fd7675c` 和
+`0x6fd76790` 分别登记 Scalar、ArgumentArray，与同版介质注册表互证。
+
+| 类 | CLSID | IPersistStream 虚表 | GetClassID / Load / Save |
+| --- | --- | --- | --- |
+| Scalar | `A5B2BF59-7876-4BAC-AB34-7C2F3684B95F` | `0x6fd4d860` | `0x6fd0cd60 / 0x6fd0cda0 / 0x6fd0ce00` |
+| ArgumentArray | `926DCB90-DA33-45A2-8A24-907B66367AA9` | `0x6fd3f6d4` | 调整跳板到 `0x6fc21540 / 0x6fc21580 / 0x6fc21770` |
+
+- Scalar::QI `0x6fd0cc40` 把持久化接口映射到对象 `+0x14`。
+  Load 读有符号 short（上限 1），再通过 `0x6fd0cde5` 调
+  `Variant::Read(false)`。写侧 `0x6fd0ce61` 同样使用
+  `Variant::Write(false)`，版本表 `0x6fd3f304` 的有效项为 1。
+- ArgumentArray::QI `0x6fc21270` 经虚基表返回 IPersistStream。
+  Load 读同样的 short 版本、两条 AfCore String、signed LONG 计数，
+  正计数时 `0x6fc216c6` 按项从原流 LoadObject，请求
+  `0x6fd3f0ac` 的 IUnknown。空结果也作为参数传给集合方法，调用点忽略
+  该方法返回值，随后判空再 Release。Rust 保留空对象项及原始计数。
+  Save 版本表 `0x6fd3f5c8` 的有效项为 1，写侧在 `0x6fc2199b`
+  调 SaveObject 写各项。
+- 两类实现的本地接口分别由 IID 常量 `0x6fd4d8c4` 和
+  `0x6fd3f760` 对位，在这里按可持久化的嵌套值解析。Rust 从
+  RasterFunctionTemplate 的 IUnknown 输入和参数 PropertySet 的有键
+  Variant 接入两类。ArgumentArray 的普通对象项与模板、参数属性集共享键。
+  未知新项停在其所属对象的错误边界，递归项沿用 Variant 深度限额。
+
+构造 RenderingRule 测试覆盖模板中新数组及 Scalar、同数组回引、空对象项，
+和外层参数属性集中的新数组回引模板已登记的 Scalar。还核对不同 Variant
+保留区、后继字段及属性集的截断和超计数回滚。更多 IUnknown 项、其他工厂类
+和真实嵌套宿主仍待取证。ArcMap/QGIS 人工验收尚未进行。
+135 份对照工程的 /Maps 和 /PageLayout 均读至末尾，270 条流中未检出
+两类 CLSID。
+
+### RasterInfos 与模板中的 RasterInfo
+
+对照同一 FunctionRasterDB.dll 10.1.0.3035。RasterInfos
+（`F01B2CC6-A685-456D-B23F-909596DFD9A2`）在原生工厂表
+`0x6fd766f4` 登记，主 QI `0x6fcafe20` 将 IPersistStream 映到
+对象 `+0x10` 的虚表 `0x6fd47570`。GetClassID `0x6fcafa00`
+返回 `0x6fd48364` 的 CLSID，Load/Save 分别为
+`0x6fcafa60 / 0x6fcafb30`。
+
+Load 先读有符号 short（上限 1），再读 signed int32 成员数，
+非正数不进入循环。正计数时，主虚表 `0x6fd4751c` 的
+`+0x2c` 逐项委派 `0x6fcaf5b0`。该助手在 `0x6fcaf60b`
+以原流调用 LoadObject，请求 IUnknown，随后在 `0x6fcaf62b`
+对返回对象查询 `0x6fd422d0` 的 IRasterInfo。Save 固定写版本 1，
+按计数通过 `0x6fcaf510` 和 `0x6fcaf577` 逐项调用 SaveObject。
+72 份同版介质类型库只列出 RasterInfo 实现 IRasterInfo。
+这些成员有普通对象头及会话键。读侧成功路径会解引用 LoadObject 的
+输出指针，Rust 对集合成员的空槽报错。
+
+模板的 IUnknown 输入和模板变量的对象值接入两类。集合中的成员、
+独立 RasterInfo 及内部几何沿用同一引用表。RasterInfo 的版本门
+`0x6fcf6e14` 和后续分支均按有符号 short 比较，解析器保留原值
+的位模式。通过 RasterInfo 关联的栅格地理变换可能再进入函数栅格名称，
+因此复用调用方剩余嵌套深度，并将其从 MosaicFunction、MergeRastersFunction
+及单对象函数入口传入。压缩子流仍使用其独立键表。
+
+合成 RenderingRule 覆盖集合内回引、独立 RasterInfo 对集合内点的回引、
+模板变量对集合的回引、有符号版本、后继字段、空成员、非法计数和截断。
+含忽略用例的全量测试共 1098 项通过。135 份对照工程均读至 /Maps
+和 /PageLayout 末尾，两条流中未命中 RasterInfos、RasterInfo 和
+DblPnt 的 CLSID。
+
+#### 参数属性集与 ArgumentArray
+
+在 10.1 AfCore.dll 的 `0x68a7ca4d` 复核 VT_DISPATCH 和 VT_UNKNOWN
+均对原流调用 LoadObject，请求 IUnknown。ArgumentArray 的逐项读法
+也请求 IUnknown（`0x6fc216c6`）。两处共享 ObjectStream 的引用表，
+所以按 CLSID 复用上节的 RasterInfo 与 RasterInfos 读取器。
+对象体保留类型化字段和实际消费的字节，用原始编码比较浮点位模式。
+
+RasterInfo 可以经 Variant 或地理变换再次到达栅格名称与函数规则。
+读取器把活动的栅格信息及 Variant 深度随会话状态传递，保持原有对象
+深度限额。MergeRastersFunction 的压缩子流只继承这两个深度值，
+子流的对象键独立登记。此处的限额和失败回滚是 Rust 读取器的边界检查。
+
+合成属性集覆盖 ArgumentArray 中同时出现新集合、新 RasterInfo 及回引，
+同一属性集的后继值复用数组内键，任意截断均回滚。递归测试核对 RasterInfo
+再次进入 Variant 时继承外层深度，并允许限额处读取已有键。合并函数测试
+验证压缩流可复用外层键号及深度限额继续生效。真实非空属性集和模板宿主仍待
+实档或运行取证，ArcMap/QGIS 人工验收尚未进行。

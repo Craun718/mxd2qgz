@@ -130,6 +130,15 @@ tag 30 共享多种候选对象体，两处的外层持久化方式不同。[Ful
 FileGDB 名称体、新对象和回引、波段名称独立读取、逐字节截断及超大计数回滚。
 未做 ArcMap 运行验证。
 
+全色锐化入口也用含 CacheRasterDatasetName 和 NetCDFRasterDatasetName
+的合成 RGB 对象验证。第一个槽中的缓存名称定义 WorkspaceName 和 Envelope；
+第二个槽的 NetCDF 名称回引 WorkspaceName，两个栅格的范围都回引同一
+Envelope。正常输入继续读完 tag 19 与共用体；第二个槽截断或者名称类未知
+时回滚整个 tag 18 记录及其新键。复查 134 份 10.1/10.8 介质工程与仓库
+参考工程，135 份工程的 `/Maps` 和 `/PageLayout` 均完整读完，其中未命中
+PansharpeningFilter 的 CLSID 字节。本轮没有实际全色锐化工程，也未做
+ArcMap/QGIS 人工验收。
+
 ### SimpleRasterRenderer
 
 RasterRenderer.dll 10.1 的 Load 先读 int32 版本，版本 ≥2 读一个

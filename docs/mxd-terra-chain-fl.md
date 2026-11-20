@@ -97,4 +97,40 @@ IGeoDataset 接口时，回退到这个包络。SQL 查询类还有一条反向�
 与 esriCarto TYPELIB（SHA-256
 `8a70f4094c85b966ce0b0129ad7fa3d9562269c73f87e4f70cbc78c75775b578`）。
 已在 Rust 接入范围缓存的命名访问器；槽位格式、回引和中间模型原有 CRS 映射保持
-原行为。未在 ArcMap/QGIS 人工检查，显式 AOI 空值的受控运行观察仍未完成。
+原行为。显式 AOI 空值的受控运行见下节。未在 ArcMap/QGIS 人工检查。
+
+## 显式 AOI 的原生运行验证
+
+2026-11-19。FeatureLayer.dll、AfCore.dll、SystemCore.dll 均为 x86 10.1.0.3035。
+FeatureLayer.dll 的 SHA-256 与本文前述一致，AfCore.dll 为
+`031858c414c0105b3b978c754f3d0f31ba1d98f15d44ff15b1589c9adcc47c17`，
+SystemCore.dll 为 `f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`。
+
+用 pefile 提取原始指令和接口表，按 PE 映像地址映射到 32 位 ELF，以
+`qemu-i386` 执行。由原生 ILayer 表 `0x6f7acfec+0x18` 进入 AOI getter
+`0x6f6dd450`，同一对象的 IGeoDataset 表 `0x6f7acf78+0x10` 指向完整
+Extent getter `0x6f6e5ab0`。探针提供受控包络、数据源接口和空间参考，
+记录复制、引用计数、数据源 Extent 和 LayerLib 空间参考回退的调用。
+
+在空对象加载用例，先把旧包络放进 O+`0x284`，再执行原生 Load 的
+`0x6f6ea571..0x6f6ea591`。原生 `0x6f6acc10` 释放旧引用并清零，
+AfCore `LoadObject 0x68a7b6d0` 请求 ObjectStream 接口，原生
+SystemCore `0x7ffcff70..0x7ffd0035` 从内存流消费 16 字节空类标识，
+返回 `S_FALSE`，不读取键。该槽完成后 O+`0x284` 仍为空。
+
+| 受控输入 | `AreaOfInterest` 实际输出 |
+| --- | --- |
+| 显式 AOI、缓存同时存在 | 返回显式 AOI 的副本并赋图层空间参考 |
+| 原生加载空 AOI，数据源缺失，缓存有效 | 返回缓存包络的副本 |
+| AOI、数据源、缓存均缺失 | `S_OK`，输出空指针 |
+| AOI 缺失，数据源拒绝 IGeoDataset，缓存有效 | 返回缓存包络的副本 |
+| AOI 缺失，数据源返回有效范围 | 返回数据源范围，并将副本写入缓存 |
+| AOI 缺失，数据源返回失败，空间参考回退也返回失败 | 确认调用空间参考回退，AOI 仍返回 `S_OK` 和空指针 |
+
+原生运行覆盖受控接口调用，实际数据源及 ArcMap/QGIS 人工验收仍待验证。
+复现探针在忽略目录 `temp/mxd-feature-aoi/`，`result.bin` SHA-256
+为 `c66bb34a5ea21b6386ee4f36d86f0fae51e0e8c6e0f01ad9d194e6b93767a55a`。
+Rust 后继段现从 v9 起接受显式 AOI 槽中的 Envelope 新对象，复用已有
+包络读取器及引用表，结果保存在 `explicit_area_of_interest`。空对象和
+回引继续用 `envelope_1` 分类。测试以 v10 尾段确认包络键登记、后续范围
+ID 的游标衔接及截断回滚。持久化范围缓存仍走独立槽。

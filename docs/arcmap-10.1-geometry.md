@@ -211,7 +211,7 @@ LoadObject ISpatialReference 空引用）。
    5、0 空几何）与 esriGeometryType 枚举（类型库存在该枚举但 dump 未含成
    员值）的映射仅候选；读取器原样保留不校验（与原生一致）。
 2. 版本 0/1、AfStreamRead S_FALSE 捷径（返回 1 的「空流」分支）无样本佐
-   证；读取器版本 0/1 按「记录 + 无空间参考」处理，S_FALSE 不实现。
+   证；边界与 S_FALSE 已有[原生函数运行取证](#四类几何的-v0v1-和-s_false)。
 3. 可选段（Z/M/段描述/每点附加数组）在 Load 路径恒不可达（标志恒 0），仅
    反编译记录；Save 侧标志 `0x400`（docVer > 1）的导出差异未展开。
 4. Point/Polygon/Multipoint/Path/Ring/BezierCurve/EllipticArc/Line/
@@ -403,8 +403,7 @@ Multipoint/Path/Ring/Line/BezierCurve/EllipticArc/CircularArc/MultiPatch 均
 1. 记录类型值语义（shape 类别 ↔ esriGeometryType 映射；Point/Multipoint 的
    0x34/0x35 等标记）仍为反编译观察候选——新增三类的类型字同样原样保留不
    校验（与原生一致）。
-2. 版本 0/1、S_FALSE 捷径无样本佐证（读取器版本 0/1 按「记录 + 无空间参
-   考」处理，S_FALSE 不实现）——四类同。
+2. 四类的版本 0/1、S_FALSE 均已补入[原生函数运行取证](#四类几何的-v0v1-和-s_false)，仍缺实档。
 3. 折线/多边形可选段（Z/M/段描述/附加数组）Load 路径恒不可达；Point/
    Multipoint 类型字高标志位的 Z/M/ID 段已按反编译闭合（合成测试覆盖），
    亦无样本佐证。
@@ -440,3 +439,36 @@ Multipoint/Path/Ring/Line/BezierCurve/EllipticArc/CircularArc/MultiPatch 均
 - 样本重走：停止点维持 `0x155a`；16 处 Polyline 实例位于 CGL 图形集合
   （流内偏移在当前样本停止点之后），接线不改变样本行为。`cargo fmt
   --check` 与全量 `cargo test` 绿；未声称运行验证。
+
+## 四类几何的 v0/v1 和 S_FALSE
+
+2026-11-19 从研究目录取 Geometry.dll 10.1.0.3035，校验 SHA-256 与本文方法节
+一致。在 QEMU i386 中按原地址执行 Point Load `0x7191c1a0`、Multipoint
+Load `0x718ff9c0`、Polyline/Polygon 共用 Load `0x7192db20`。真实
+SystemCore.dll ObjectStream Read `0x7ffcf520`（10.1.0.3035，SHA-256
+`f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`）
+及 AfCore `AfStreamRead` 转发器 `0x68a84830` 夹在对象与受控 IStream 之间，
+后者按剩余字节数返回完整读或短读。内存分配、记录导入接口和几何内核接口
+由测试提供。记录导入替身逐字节核对传入缓冲和长度，并验证折线、多边形
+的导入标志为 `0x100`，不执行图形内核的导入逻辑。
+
+v0/v1 两组各有 Point XY、三点 Multipoint、单路径 Polyline 及单环 Polygon。
+原生各完成一次版本读取、一次长度读取和一次记录读取，四类都在记录末尾
+返回 S_OK。Rust 读取同一输入，核对类型字、XY、包络、路径起点及对象后的
+哨兵，四类均没有空间参考槽。对应的两组完整体长度均为
+26、94、86、102 字节。616 个逐字节截断前缀均报错，保持游标及已有键。
+
+复核 RTTI 与 10.1 类型库的 `IGeometry::SetEmpty`。四个类在完整对象
+`+0x10` 的 IGeometry 视图通过虚表 `+0x20` 分派，具体包括 Point
+`0x719158b0`、Multipoint `0x718ffd90`、Polyline/Polygon 共用的
+`0x71922e10`。测试在版本字段的零字节和一字节两种短读中运行这些
+原生函数。两种情况均在唯一一次 Read 后进入 SetEmpty，保持短读实际
+消费量并返回 S_FALSE。未请求长度、分配缓冲或读空间参考。Point 写入
+内部空状态，Multipoint 在已走过 Load 前置清理后再次调用集合清理，
+折线和多边形清理集合后转入几何内核清空槽，测试确认该槽被调用。
+
+字节解析入口把不完整的版本字段报告为截断，保持对象游标和引用表。
+完整的空几何仍可由正常记录中的空类型字表达。受控运行与对照脚本在
+`temp/mxd-geometry-v0/`。八条带类型和长度的构造记录输出 SHA-256 为
+`6e1151fbe2b283a72b6e8040a1e9eaae272762fe552999b77e8762a0dc8c693c`。
+未找到对应的真实旧 MXD，ArcMap/QGIS 人工验收尚未进行。

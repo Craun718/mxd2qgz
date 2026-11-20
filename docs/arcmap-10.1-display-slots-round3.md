@@ -63,16 +63,10 @@ ITextPath 表、偏移 0x14 的 4 槽 ITextPath2 表、偏移 0x18 的 4 槽 IPe
 TD `0x6ec3cc20`）同样只有身份表（GetClassID `0x6eb49400` 一系）与接口表，
 无 IPersistStream。
 
-- **结论（证据强度：确定的反编译负证据）**：SimpleTextPath/BezierTextPath
-  不实现 IPersistStream，`ObjectStream::LoadObject` 对其必然失败——**流内不
-  可出现**，对象体无格式可闭合；读取器不实现（也无须实现）。TextSymbol 的
-  ITextPath 槽（`0x6ebd0a60` 字段 10）能承载的流内实现类只能是实现了
-  IPersistStream 的其他 TextPath（LabelPlacement.dll 的 WordTextPath/
-  OverposterTextPath 等，不在本轮范围），样本该槽为空标记。
-- 旁证：TextSymbol 版本门尾段的内置默认 TextPath GUID
-  `{D7099B91-E298-499E-9757-72BB39E55CF3}` 经类型库 dump 对出 coclass
-  **SimpleTextParser**（esriDisplay #375）——TextSymbol 以「原样 CLSID 字段
-  + 运行期实例化」而非流内对象承载默认 TextPath，与上述负证据自洽。
+- SimpleTextPath 和 BezierTextPath 无 IPersistStream 体。TextSymbol 先保存
+  ITextPath 实现类的 CLSID，再保存带键的 ITextBackground 对象槽。版本尾部的
+  CLSID 属于 ITextParser。原生读写的区分及四种文字背景见
+  [后续复核](mxd-terra-round9-text.md#文字背景填充符号和版本尾段复核)。
 - 同样负结果：**ColorRampElements** `{CCDBF37E-7A63-4788-A7CB-2A5B0E98A180}`
   （esri.clsid DisplayCore 条目，RTTI 层级 14 项）全层级无 IPersistStream
   形状虚表——同为不可流内持久化类，不实现读取器。
@@ -127,13 +121,18 @@ TD `0x6ec3cc20`）同样只有身份表（GetClassID `0x6eb49400` 一系）与�
 | ② | short | 2 字节 | this−0x1c | 同上 |
 | ③ | LoadObject（ISymbol `DAT_6ec0ca2c`） | 20 头 + 体 | Save 槽 this−0x2c（标记符号） | 同上（Save 对称） |
 
-## 三、IMarkerBackground 实现类 = MarkerTextBackground（闭合）
+## 三、IMarkerBackground 实现类复核
 
-IMarkerBackground `{AE41E4F0-DDE7-11D3-8216-0080C79F0371}`（MultiLayerMarker
-v≥2 槽请求 IID）的流内实现类：esri.clsid 全表检索仅 **MarkerTextBackground**
-（DisplayCore）一个候选 coclass（`MarkerBackground` 名称检索无其他 ArcGIS
-条目）；本轮将其体闭合（上表第四行，体仅 short + 标记符号槽）。其余可能的
-IMarkerBackground 实现类无静态线索，槽分派对未知实现类维持停止。
+DisplayCore 10.1 的 `LineCallout::QueryInterface`（`0x6eb577f0`）直接用
+`0x6ec0d6d4` 处的 IID `{AE41E4F0-DDE7-11D3-8216-0080C79F0371}` 返回接口。
+`MarkerTextBackground::QueryInterface`（`0x6eb63b70`）接受的主接口为
+`{A8577A00-7283-11D2-9816-0080C7E04196}`，在 `esriDisplay.olb` 中定名
+`IMarkerTextBackground`。两类的 QI 与公共 QI 链确认两者为不同接口。此前按类名将
+MarkerTextBackground 归入 MultiLayerMarker v≥2 的 IMarkerBackground 槽，现改由
+LineCallout 分派。MarkerTextBackground 仍用于 ITextBackground 槽。
+
+统计图符号的公共段同样请求 IMarkerBackground。
+见[统计图符号取证](arcmap-10.1-dep-tail.md#featurelayer-后继段的统计图符号)。
 
 ## 四、IColorRamp 族（GradientFill 槽；四类闭合）
 
@@ -285,7 +284,7 @@ this−8 → double → this−0x1c → double → this−0x14（无版本门尾
 - `src/objects/callout_background.rs`：四类常量 + 四个体读取器 + 槽分派
   `read_callout_slot_10_1`（三 Callout 族，`allow_marker_background` 参数
   区分接口族）与 `read_marker_background_slot_10_1`（IMarkerBackground 槽，
-  仅接受 MarkerTextBackground）。建议接入点：`display_symbol.rs`
+  按上文 QI 复核接受 LineCallout）。原接线位置：`display_symbol.rs`
   `read_unclosed_slot_10_1`（`MarkerBackground` 槽）改调
   `read_marker_background_slot_10_1`。
 - `src/objects/picture_fill_symbol.rs`：类常量 + 体读取器

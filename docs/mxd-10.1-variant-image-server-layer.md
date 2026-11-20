@@ -32,7 +32,7 @@ esriCarto 10.1 TypeInfo 1637 的 coclass 与 ImageServerLayer.dll
 | 组 | 字节和访问器证据 |
 | --- | --- |
 | 普通属性 | 版本之后，按顺序为 BSTR×2、BOOL×4、R8×3、BSTR、R8×2、BOOL、(BOOL+I2)×3，保存调用范围 `0x77fecf6c..0x77fed3e3`。有三处 BOOL 在 Load 仅消费，由 Save 对位类型。第二个 BSTR 在 `0x77feb48f` 交 ILayer `+0x10`（Name put）；四个 BOOL 中第三个在 `0x77feb53b` 交同接口 `+0x30`（Visible put）。ILayer 子对象由 RTTI 定位在完整对象 `+0x78`，属性名来自 esriCarto TypeInfo 5。 |
-| 图层扩展 | 保存 `0x77fed425` 输出 VT_I2 计数，`0x77fed46e` 在 ILayerExtensions `+0x10` 取每项，`0x77fed490` 保存 VT_UNKNOWN。Load `0x77feb86c` 区分版本小于 5 的单对象路径；版本 ≥5 的正计数逐项调用 `0x77feb8cf`，`0x77feb8f0` 转交 ILayerExtensions `+0x14`。Rust 新对象已接入 EditTemplateManager 和 ServerLayerExtension；其余类体按未支持停止。 |
+| 图层扩展 | 保存 `0x77fed425` 输出 VT_I2 计数，`0x77fed46e` 在 ILayerExtensions `+0x10` 取每项，`0x77fed490` 保存 VT_UNKNOWN。Load `0x77feb86c` 区分版本小于 5 的单对象路径；版本 ≥5 的正计数逐项调用 `0x77feb8cf`，`0x77feb8f0` 转交 ILayerExtensions `+0x14`。已支持的对象体见下文，未知类显式停止。 |
 | IEnvelope 与 ISpatialReference | Save 分别在 `0x77fed4e9`、`0x77fed573` 写 VT_UNKNOWN；两个属性间 `0x77fed527` 固定写 VT_UNKNOWN + 空指针，Load 在 `0x77feb958` 消费该值。非空值读后经 `0x78000c50`、`0x78000cc0` 查询 IEnvelope `1B077914-38C5-11D0-92D2-00805F7C28B0`、ISpatialReference `4434D680-F4DA-11D1-BCA6-0000F875BCCE`。复用 Envelope、PCS、GCS、UnknownCoordinateSystem 的 10.1 读取器，不混用 Variant::Read 语法。 |
 
 ImageServerLayer.dll 在 `0x77fff146` 引用 ServerLayerExtension CLSID
@@ -41,6 +41,30 @@ ImageServerLayer.dll 在 `0x77fff146` 引用 ServerLayerExtension CLSID
 其中 IPropertySet 是普通 ObjectStream 槽。构造测试让两个新 ServerLayerExtension
 共用一个属性集键，随后读取 Envelope 及空间参考，并检查截断时前缀和键表整体回退。
 见[扩展持久化取证](mxd-10.1-raster-layer-tail.md#扩展对象体与嵌套键)。
+
+### 共用属性集、动态瓦片与服务编辑扩展
+
+复核上同版 x86 ImageServerLayer.dll（SHA-256
+`0256f97057275fedb550c947b0f8333184427755a394ef09099d22349fe5bb14`）。
+构造器在 `0x77fe7522` 为完整对象 `+0xa4` 安装
+`0x7802ef28` 虚表，其 `+0x14` 指向 AddExtension `0x77fefe80`。
+该入口对非空对象调用 AddRef，再交给 `0x77ffed50` 加入集合。
+此处没有依据 CLSID 筛选对象。Load 按 VT_UNKNOWN 取扩展，
+Save 遍历同一个集合。
+
+因此共用分派还接入普通 PropertySet、DynamicTiledLayerProperties 与
+FeatureServiceLayerEditExtension。后两类沿用经过版本和摘要复核的
+DynamicDisplay.dll 与 MapServerLayer.dll 10.1.0.3035 的独立对象体，
+见[动态瓦片扩展](mxd-10.1-raster-layer-tail.md#dynamictiledlayerproperties)
+和[服务编辑扩展](mxd-10.1-raster-layer-tail.md#featureservicelayereditextension)。
+Variant 扩展列表没有单体长度，按类本身的字段读序结束；RasterLayer
+两种有界包装仍额外检查声明长度。三类与后续包络使用同一对象表。
+
+合成 v22 ImageServerLayer 验证直接属性集的新键及动态瓦片对它的回引、
+编辑扩展两个名称中的新对象与回引、后继包络、未知名称和截断时的整前缀回滚。
+重新读取 134 份 10.1/10.8 介质工程和仓库参考工程。135 份的 `/Maps` 与
+`/PageLayout` 均读至结束，未命中 ImageServerLayer 的 CLSID 字节。
+尚无这三类在 ImageServerLayer 中的实档分布证据，未进行 ArcMap/QGIS 人工验收。
 
 ## 两种对象头与引用表
 

@@ -510,6 +510,13 @@ E2LayerDescriptionValues（CLSID `FD7E95FC-F4F8-486F-A3DE-FBAF111404F5`）
 描述槽边界、回引和截断。两套介质 134 个 `/Maps` 流及参考 MXD 未命中
 扩展和描述 CLSID，实际宿主仍待 ArcMap/QGIS 验证。
 
+复核同版原始 PE 的 ATL 描述接口表。每项 12 字节，`0x7b327eb0`
+返回描述接口（对象偏移 0），`0x7b327ebc` 返回 IXMLSerialize（偏移 4），
+`0x7b327ec8` 终止。没有转发项、IPersistStream 或 IPersistVariant。
+72 份 10.1 介质类型库也未发布该私有描述 IID。因此原生
+E2LayerDescriptionValues 缺少从普通 ObjectStream 读取首次定义所需的
+持久化接口，不能按该类的 XML 体推断流字节。其他实现和原生回引来源仍开放。
+
 ### FeatureServiceLayerEditExtension
 
 介质将 `{9A2BDA48-AD26-4706-BB88-F47D7B0C8F32}` 注册到
@@ -550,6 +557,34 @@ ITimeWindow IID `0x794fd34c` 为 `{6ECFE5F7-1227-4565-AC21-626316A84D0A}`。
 `/Maps` 和 `/PageLayout` 流均未检出这两个扩展 CLSID，尚无对应非空扩展实档，
 ArcMap/QGIS 人工验收未做。
 
+### DynamicTiledLayerProperties
+
+10.1 介质的 `esri.clsid.ecfg` 将 `7E2335D9-1E8D-4488-9E1E-888557C31B3D`
+注册到 DynamicDisplay.dll。复核 x86 10.1.0.3035，SHA-256 为
+`7f57f7db88f69f95f10087716a1da338947a5754125fda8a08445ecd6415b278`。
+创建调用 `0x6ef8f4db` 使用该 CLSID。原生路径经 `0x6ef8ad14` 查询
+ILayerExtensions（IID `BB6A78CA-9C28-4F75-899F-DFF65174082C`），
+在 `0x6ef8ad2b` 创建对象并设置属性，随后在 `0x6ef8add9` 调用
+该接口的 `+0x14` 将对象加入集合。另一条路径同样在
+`0x6efa6881` 创建对象并在 `0x6efa699d` 加入扩展。
+
+IPersistStream 虚表 `0x6efc1ac4` 的 GetClassID、Load、Save 分别为
+`0x6ef87020`、`0x6ef878d0`、`0x6ef87a40`。现有导出缺少此模块
+的函数，使用 Ghidra 补导 Load/Save，并对照 PE 导入表与原始指令。
+Load 读取有符号版本 short（上限 3）、AfCore String、IPropertySet、
+另两个 AfCore String、两个 short 和一个 double。IPropertySet
+读取点 `0x6ef8793b` 使用 AfCore LoadObject。v2 起追加 LONG、short、
+LONG，v3 加读一个 short。Save 版本表 `0x6efbe9c0` 为 1、2、3。
+
+两代 RasterLayer 包装、FeatureLayer 旧式包装及共用 LayerLib 分派
+使用同一读取器。属性集对象复用宿主引用表，扩展体截断或长度不符时
+回滚子键。构造用例覆盖三个写出版本、跨扩展条目的属性集回引、
+截断及多余字节。原生调用确认可挂接到 ILayerExtensions，具体
+RasterLayer 宿主仍须实档验证。
+全量 Rust 测试含忽略项共 1071 项通过。参考工程与 134 份介质工程的
+`/Maps` 和 `/PageLayout` 均读至流末尾，两个流中未命中本类 CLSID。
+ArcMap 与 QGIS 人工验收未做。
+
 ### GlobeLayerProperties
 
 GlobeLayers.dll 10.1.0.3035（SHA-256
@@ -589,6 +624,75 @@ String、v6 起的 short。
 新键、回引和截断。介质的 268 个 `/Maps` 和 `/PageLayout` 流未检出
 此扩展，实际 MXD 宿主与 3D 设置语义尚待运行取证，ArcMap/QGIS 人工验收未做。
 
+### SceneFilters 的四类 3DProperties
+
+从 10.1 介质的 esri3DAnalyst 类型库定名，再对照 SceneFilters.dll x86
+10.1.0.3035 的 CLSID 常量和 IPersistStream 虚表。模块 SHA-256 为
+`fc605f3ade84db3379ffed69d2fc93effa61599ceff5a2b08cb228f4678d2bbe`。
+既有反编译导出缺少 SceneFilters.dll，使用独立 pyghidra/Ghidra 12.2
+导出 Load，并用 objdump 复核分支、调用和 Save 的版本表。反编译及汇编
+在忽略目录 `temp/mxd-scene-filters/` 和 `temp/mxd-extension-SceneFilters.asm`。
+
+| 类 | CLSID | IPersistStream 虚表 | GetClassID |
+| --- | --- | --- | --- |
+| Basic3DProperties | `A5A8DC61-268C-11D4-914A-0080C7074326` | `0x7d30ee5c` | `0x7d305880` |
+| Tin3DProperties | `B7A0A25D-24F7-11D3-9F4D-00C04F6BC5F4` | `0x7d30f4a4` | `0x7d30aa90` |
+| Raster3DProperties | `4A4CECE3-F53A-11D3-80D9-00C04FA0ADF8` | `0x7d30eabc` | `0x7d3056f0` |
+| Feature3DProperties | `4A4CECE4-F53A-11D3-80D9-00C04FA0ADF8` | `0x7d30e4e4` | `0x7d301010` |
+
+四张虚表均以 `0x7d3088c0` 加载、`0x7d3090b0` 保存。Load 接受
+版本 1–13，Save 在 `0x7d30eb38` 的六档表为 6、6、9、10、10、13。
+SceneRenderers.dll 10.1.0.3035（SHA-256
+`1674d87a74366cff2943e45d3dd1fd9e10d89960b9480d1abea44ffd84c56da7`）
+在 `0x7d4b31e5` 查询 ILayerExtensions，经 `0x7d4b3225` 枚举扩展，
+在 `0x7d4b3244` 查询条目的 I3DProperties（IID `BC6F44CC-21E8-11D4-A383-00C04F6BC619`）。
+该调用链确认此接口用于读取图层扩展配置；实际 MXD 的宿主分布仍待实档验证。
+
+- 版本 short 后是地表模式 LONG。v1 总是读 String。v2 起模式 0 读 String，
+  模式 1 调 `0x7d3089fa` 读普通 IName，v4 起紧接路径 String，其他模式跳过这组字段。
+  随后的 IName::Open 调用处理打开的数据源，Rust 保留流中对象及引用。
+- 字符串之间按 `0x7d308bb9..0x7d308d44` 的版本门消费固定宽度字段。
+  v5 起的 4 字节在 v3 起的 8 字节之前，随后是 8 字节、String、4 字节、
+  String 及 18 字节。其后 v3、v6、v7、v8、v9、v10、v11、v12 分别追加
+  4、4、8、4、4、8、48、8 字节。v13 在末尾经 `0x7d30907d` 调普通
+  LoadObject，请求 IEnvelope（IID `1B077914-38C5-11D0-92D2-00805F7C28B0`）。
+- IName 槽复用已支持的栅格名称分派，并接入 TinDB.dll 的 TinName。
+  TinDB.dll x86 10.1.0.3035 的 SHA-256 为
+  `4b9c7a5155fb0b18a0e819937dde40115f613bd0831bb45b0947fe64d287c86d`。
+  虚表 `0x8037c74c` 的 GetClassID `0x80354020` 返回
+  `5F13F416-42BC-11D2-A569-0000F8774F0F`。Load `0x803540e0` 用
+  有符号 short 上限 1，然后读三个 AfCore String 和一个普通 IWorkspaceName，
+  写侧 `0x80354070` 对应。已支持的名称和包络从宿主 ObjectStream 表登记或回引。
+
+Rust 对两代 RasterLayer、FeatureLayer 旧式扩展和共用 LayerLib 扩展
+分派使用同一有界读取器。对象体读完且声明长度吻合时才提交子键。
+合成测试覆盖 v1–v13、地表模式、普通 RasterLayer 两种扩展包装、跨层体
+名称回引、TinName 的工作空间和嵌套包络新键，以及逐字节截断回滚。
+`cargo test --offline` 共 1051 项通过、28 项忽略。参考工程与两套介质
+的 134 份工程均完整读到 `/Maps` 和 `/PageLayout` 末尾，270 个流中
+没有命中本组四个 CLSID。其他 IName 实现、带本组扩展的实档以及
+ArcMap/QGIS 人工验证仍开放。
+
+### 独立 PropertySet 扩展与普通图层入口
+
+复核 RasterLayer.dll 10.1.0.3035 的 ILayerExtensions 委派。主 QI 在
+`0x7c73afe3..0x7c73b00b` 对 IID `0x7c7690b0` 返回完整对象
+`+0xec`。构造指令 `0x7c736afe` 安装虚表 `0x7c76c5ec`，
+其 `+0x14` 指向 AddExtension `0x7c743150`。现有伪代码与
+objdump 显示，该入口只检查 IUnknown 指针是否为空，然后 AddRef
+并加入数组。RasterLayer 的 Save `0x7c73d0a0` 依据文档保存版本
+把同一数组交给旧式 LayerLib SaveExtensions 或 `0x7c73de10` 的
+ExtraSafeWriteObject 循环。两代包装均允许直接添加具有
+IPersistStream 的 SystemCore PropertySet。PropertySet Load
+`0x7ffd3080` 接收原流，内部对象值沿用宿主引用表。
+
+Rust 接入两代 RasterLayer 及共用旧式图层扩展入口中的独立 PropertySet，
+按声明边界确认对象体及内部新键。普通图层在完整性检查中同时认可已有的
+DynamicTiledLayerProperties 对象体。合成 v3/v8 普通 RasterLayer
+验证独立 PropertySet 登记内部对象，随后 DynamicTiledLayerProperties
+回引同一键，并验证后继边界、截断、体积不符和失败回滚。
+未定位到实档中的独立 PropertySet 扩展宿主，ArcMap/QGIS 待人工验收。
+
 ### GlobeLayerExtensionsImporter 候选
 
 介质将 `BCCF4E7B-A9C6-4441-96B4-4F7E078E6A4C` 注册到
@@ -611,6 +715,61 @@ GlobeLayers.dll 10.1.0.3035（SHA-256
 IGeodataXform 和 IEnvelope，之后下一段由版本 ≥14 控制，因此 v12 中两槽
 构成可选末段。Rust 使用父 ExtraSafe 条目界判断省略形态。存在剩余字节时，
 两槽均需读完并恰好到界。合成测试覆盖完整与省略形态、截断和多余字节。
+
+### v12 尾段的原生读取实验
+
+使用本文开头同 SHA-256 的 x86 RasterLayer.dll 10.1.0.3035。对照
+仓外导出和 objdump，主 Load 在 `0x7c73be97..0x7c73be9e` 将
+`this-0x9c` 传给名称读取器 `0x7c73b380`。单名称路径在
+`0x7c73b752` 调 IName::Open，在 `0x7c73b77a` 查询打开结果的
+接口，成功分支在 `0x7c73b7bf..0x7c73b7ea` 把对象成员
+`+0x14c` 交给该接口的 `+0x18` 方法作为输出地址。
+`0x14c-0x9c=0xb0`，正是主 Load 判断是否读 v12 尾段的成员。
+多个名称的路径也调用 Open（`0x7c73b9f8`），并可能在
+`0x7c73bb0c` 更新同一成员。可选 RasterIO 名称在
+`0x7c73c574` 调 Open，非空结果进一步进入 `0x7c757df0`
+及图层虚调用，见 `0x7c73c583..0x7c73c597`。因此即使保存的名称
+是已知类且成功读取，仍需实际数据源状态才能按原生分支决定游标。
+
+将原件 `0x7c73c6f6..0x7c73c767`、`0x7c73c903..0x7c73c920`
+及两个小型引用助手按原 VA 映射到 ELF，在 QEMU i386 中执行。
+驱动直接提供 `this+0xb0`，由 IAT `0x7c7670f8` 上的回调记录
+LoadObject 请求并读取 16 字节空对象标记。四组使用完全相同的输入，
+即两个空对象标记（32 字节）后跟一个标记字节。
+
+| 图层版本 | `this+0xb0` | 被调用的对象槽 | 末段消费字节 |
+| --- | --- | --- | --- |
+| 11 | 非空 | 无 | 0 |
+| 12 | 空 | 无 | 0 |
+| 12 | 非空 | IGeodataXform、IEnvelope | 32 |
+| 13 | 空 | IGeodataXform、IEnvelope | 32 |
+
+两处 IID 由原件 `0x7c76c914` 和 `0x7c768fa0` 读出并在回调
+中核对。实验在版本判断后的汇合点截停，未执行完整 COM 加载、名称打开
+或 ArcMap 文档打开。脚本和二进制输出位于忽略目录
+`temp/mxd-rule-objects/raster-v12-native/`。普通对象的读取仍需
+从宿主结构或真实旧档得到独立的边界证据。
+
+### 旧 Map 的 ExtraSafe 图层
+
+复核 x86 Map.dll 10.1.0.3035（SHA-256
+`1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`）
+的双列表读入口 `0x794038a0`。v18–v22 的第一组在 `0x79403afd`
+经 IAT `0x794801e4` 调用 AfCore ExtraSafeReadObject，第二组在
+`0x794039f9` 经 IAT `0x79480048` 调用 LoadObject。解析器现将第一组
+的实际对象终点传给 RasterLayer，以及最后一个槽为底层栅格的 WCSLayer。
+合成 v19 双列表覆盖 A 长度、B 同步长度、两种可选尾段、第二组的栅格
+回引和活动图层索引。可选尾段截断时停在第一组条目起点，保留进入
+该条目前的引用表。
+
+复查 134 份 10.1/10.8 介质工程和仓库参考工程，135 份的 `/Maps`
+和 `/PageLayout` 均完整读至结束。两条流中共见两处 RasterLayer
+CLSID 字节命中，均无对象头后版本 12 的候选。
+
+同版 RasterLayer::Save 在 `0x7c73d0a0` 使用版本表 `0x7c7678a8`，
+选择 7、11、13、16 或 17。原生 v12 加载分支的两种形态仍需更早写出的档案或
+运行取证。普通 LoadObject 槽缺少外层终点时，需要证明数据集状态或后继
+对象边界。ArcMap/QGIS 人工验收尚未进行。
 
 ## v14 颜色索引
 
@@ -681,9 +840,61 @@ RasterCoreLib.dll `0x7bf13d90` 在读取 CLSID 后直接调用持久化 Load，
 | CacheRasterDB.dll | CacheRasterDataset / CacheRasterBand | `0x6c0e42a0` 创建 CacheRasterDatasetName，`0x6c0e1490` 创建 RasterBandName。 |
 | MapServerLayer.dll | InternetTiledLayer | `0x79e32960 → 0x79e357c0` 在 `0x79e357eb` 创建 InternetTiledLayerName。 |
 
+补查已提取的 10.1.0.3035 PE32，按 RTTI 的 IDataset 基类偏移配对完整对象虚表，
+再核对 objdump 中的创建参数、IName 查询与底层转发。SdeRasterDB、FgdbRasterDB
+和 ImageServerLayer 的栅格波段都使用已有 RasterBandName CLSID
+`BC25E113-168B-11D2-8D25-0000F8780535`。
+
+| 模块 | 虚表 `+0x10` 的入口及观察结果 |
+| --- | --- |
+| RasterJET.dll | AccessRasterDataset `0x7c6f1610` 查询已缓存名称的 IName，缓存为空时转发到底层 IDataset 的 FullName。 |
+| SdeRasterDB.dll | SdeRasterBand `0x7f60ac40` 创建 RasterBandName。SdeRasterDataset `0x7f60fcc0` 对已有名称成员请求 IName，并在返回前将底层 FullName 填入原名称对象。 |
+| FgdbRasterDB.dll | FgdbRasterBand `0x6f921d20` 创建 RasterBandName。FgdbRasterDataset `0x6f9278d0` 从名称成员查询 IName。UnmanagedFgdbRasterDataset `0x6f939580` 在 IName 缓存与底层 FullName 之间选择。 |
+| MosaicDB.dll | MosaicDataset `0x7a3d6950` 创建已支持的 MosaicDatasetName。ReferencedTable `0x7a597f00` 将底层 FullName 包在 ReferencedTableName 中，创建助手为 `0x7a3e0e00`，属于表名称路径。 |
+| ImageServerLayer.dll | ISRasterBand `0x7800b1e0` 创建 RasterBandName，ISRasterDataset `0x7800e380` 创建已支持的 ISRasterDatasetName，ISRasterTable `0x780144d0` 返回 `E_NOTIMPL`。 |
+| RasterDB.dll | RasterTable `0x7c024010` 返回 `E_FAIL`。 |
+
+模块 SHA-256 与对应名称小节一致。补充校验 RasterJET 为
+`b5722104bd55f6f1b72263151918c5294037c8fc36629a820f0e06c6e23ac31a`，
+FgdbRasterDB 为 `571be820c79b217571ea8f902c091e44f6268566bd35880488e8c4ef74008fef`，
+ImageServerLayer 为 `0256f97057275fedb550c947b0f8333184427755a394ef09099d22349fe5bb14`。
+上述转发分支仍取决于底层数据集对象；RTTI 清点也可能遗漏不携带相应类型描述符的实现。
+
 FunctionRasterDB 的 SimpleRasterTable 在 `0x6fcf2f60` 直接返回 `E_FAIL`，不产出名称。RasterDB 的 RasterClassNames 主 QI `0x7c05a740` 只匹配公开的 IRasterClassNames，未命中继续到 `0x7c10a550`。该助手检查 IUnknown 及两个框架 IID，随后返回 `E_NOINTERFACE`。介质登记表含 RasterBandNames CLSID `{92C9131C-DBD1-4A0C-B7A1-D2985E958C06}`，在本轮扫描的 1,115 个提取 DLL 中未命中其 CLSID，也未建立栅格宿主的写入证据。它与已有 RasterBandName、RasterBandCollectionName 是不同登记项。
 
 上述模块版本和摘要沿用本文各名称小节。RasterDB.dll 的本轮 SHA-256 为 `97207d5cc5307bfe126e030792b5e92c085668953a736a6875d35e72d7e86400`。结论限于已定位的 FullName 分支，未覆盖所有缓存名称来源、动态类工厂和第三方数据集。未在 ArcMap 或 QGIS 中人工验证。
+
+#### Grid 与基础栅格类的名称来源复核
+
+扫描 Desktop 介质中已提取的 DLL，按 MSVC RTTI 的 IRasterDataset、
+IRasterBand 和 IDataset 检索，补查 GridCore、RasterCoreLib、RasterLayer
+及 NetCDFDB 的基础实现。以下均为 PE32 x86 10.1.0.3035，以 PE 版本资源、
+虚表原字节和 objdump 复核。
+
+- GridCore.dll（SHA-256
+  `43251973fbe1cf92b35250e035e9128ed466b78ce67138ad6fa9f2bc91f70f51`）
+  的 EsriGrid 与 SABand 的 IDataset 虚表分别为 `0x7519717c` 和
+  `0x7519d12c`。两者的 get_FullName（`0x750ed090`、`0x75143780`）
+  都调用 `0x750f22d0` 查询底层对象的 IDataset，随后调结果的
+  `+0x10`。IID 由 `0x75195be4` 的原始字节确认。这两条路径的持久化名称
+  由底层对象决定，Grid 包装层没有独立创建名称。
+- RasterLayer.dll 的 CompositeRasterDataset 之 IDataset 虚表
+  `0x7c76813c` 的 get_FullName（`0x7c748620`）直接返回
+  `E_NOTIMPL`。同模块的名称列表 Save（`0x7c73ced0`）逐项把
+  `+0x13c` 集合中的现有 IName 交给 `0x7c748c80`。该助手可能为名称
+  改写相对路径，仍把原名称指针传给 SaveObject。因此该列表的可能来源
+  不能仅以另两个宿主的 IDataset::get_FullName 路径界定。
+- RasterCoreLib.dll 的 BasicRasterBand 和 BasicRasterDataset 的
+  get_FullName 项，以及 BasicRasterName 的 IPersistStream 虚表
+  `0x7bf59534` 的 GetClassID、Load 和 Save 三项，均指向
+  `0x7bf4497c`，跳转到 MSVCR90.dll 的 `_purecall`。NetCDFDB.dll
+  （SHA-256 `e78ea582fdd66f45dfa717eb22346e9f691e1bb4e26587a1d09f72b0d1bc5ebd`）
+  中的两个 BasicRaster 基类 get_FullName 也在 `0x7ae588f0` 跳转
+  `_purecall`，由派生类提供名称。这些基础实现没有可据以解码的独立名称体。
+
+已知缓存和 NetCDF 名称体复用同一个带键 LoadRaster 入口，见
+[RGB tag 18 回归](mxd-10.1-raster-renderer.md#rgb-tag-18全色锐化)。
+未确认动态底层实现实际返回的名字与旧版或外部组件注册的扩展类。
 
 ### WCS 名称与 GDAL 数据集全名
 

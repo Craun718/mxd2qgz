@@ -70,3 +70,32 @@ LayerLib.dll 10.1.0.3035（SHA-256 `55514f054c9e4827d773cf1a9b9a83e7c41c483f7375
 ## 回归结果
 
 `cargo fmt --check`、`git diff --check` 通过。全量测试含忽略项共 1035 项通过。CLI 对仓库样例和 66 份 10.1 介质工程均读完 `/Maps` 与 `/PageLayout`。按实际对象键回查，10.1 介质的 18 份工程共读出 22 条 BasemapLayer 遮罩记录，集合条目数均为 0。68 份 10.8 介质补充对照中，60 份读到地图根尾，41 份读完布局。组层递归和集合内新对象由构造测试覆盖。ArcMap 和 QGIS 人工验收未做。
+
+## DimensionLayer、TopologyLayer 和 NetworkLayer
+
+以 10.1.0.3035 Desktop 安装介质中的 PE32 文件为准。先用同版本 `esri.clsid.xml` 将 SDK 工程顶层有界槽中的 CLSID 对位到类名，再用 PE RTTI 的完整对象定位符绑定主虚表 QueryInterface 槽。复核过程中使用 FeatureLayer 的现有 Ghidra 导出，并用 `objdump -d -Mintel` 补查 Dimension 与 NetworkLayer 的指令。
+
+| 类与 CLSID | 模块与 SHA-256 | QI 路径 |
+|---|---|---|
+| DimensionLayer `F1E27E32-0CA7-11D4-80D7-00C04F601565` | `Dimension.dll` `1a8a46c98c74ddf442481397cda68806b7a488fb12a3f68d806e5afc7e6eaecf` | 主虚表 `0x6e9f4c3c` 的 QI 为 `0x6e9e97d0`。外层在 `0x6e9e9adf..aec` 将未命中的 ILayerMasking 请求转发给 `this+0x54`。构造代码 `0x6e9e956b..9587` 以聚合标志 1 和 FeatureLayer CLSID `0x6e9f4fdc` 创建该成员，请求 IUnknown。其内部 QI 链按上文在 FeatureLayer 基类查询末尾返回 `E_NOINTERFACE`。 |
+| TopologyLayer `DE98BAD5-135E-4B36-9653-57B5513FB7B2` | `FeatureLayer.dll` `2baf870615bb75b6f30ccea173ba4303fdd0b1a6571e11b9197c5fcf7298bb60` | 主虚表 `0x6f7b1518` 的 QI 为 `0x6f7287a0`。Ghidra 导出内的 IID 比较均未包含 ILayerMasking，末尾直接调用 `0x6f73c0d0`，未命中在 `0x6f73c1ba` 路径返回 `E_NOINTERFACE`。同 DLL 内的遮罩 IID 引用 `0x6f710212` 属于 GroupLayer。 |
+| NetworkLayer `D4F8E94B-5CF5-4F8F-8B4D-5B25AE4C0AF9` | `NetworkLayer.dll` `9a1f25263eca92124884deec893a44a7b51ca52f8a2d491c7fbdfad51b1af337` | 主虚表 `0x7b2a9a68` 的 QI 为 `0x7b28cc70`。未命中在 `0x7b28d24c` 调到 `0x7b29f850`，再经 `0x7b29f8a4` 调到 `0x7b29f080`，三个分派均只比较各自固定 IID，最终 `0x7b29f16c..172` 清空输出并返回 `E_NOINTERFACE`。 |
+
+Map 读取器仅在图层列表已经为这些类确定顶层对象体范围后登记图层键，随后继续逐层遮罩遍历。仍保留图层原始体及其边界依据。SDK .NET 的 Montgomery 和 MontgomerySimple（Map v44）及 SDK Java 的 portland（Map v45）都复用原有 ExtraSafe `A - 20` 边界推定。三个工程此前停于阶段 38，现分别在 `0x1d7c4`、`0x9484`、`0x77373` 结束 Map 对象，随后均恰好剩下四字节 Maps 流尾值。构造用例验证顶层 NetworkLayer 和同键回引均不消费遮罩，并验证未知 CLSID 仍停在阶段 38。
+
+两份 mole_data 中有界跳过的第三方子图层暂未找到同版本类实现。ArcMap 与 QGIS 的人工验收未执行。
+
+## ProcessLayer 的组图层委派及遮罩
+
+用 `objdump -d -Mintel` 及 PE32 虚表复核 10.1.0.3035 的 `GpObjects.dll`，SHA-256 `c9da22687b40e070d7178538846f707c04d26474d2fa835acb01ceaa46d2f896`。同版本 `esri.clsid.xml`、原生 GetClassID `0x7477a220` 和 SDK 工程的顶层对象头均给出 ProcessLayer CLSID `D6E92E16-E656-4119-B8E1-88576F6833E6`。
+
+| 位置 | 已确认的行为 |
+|---|---|
+| QI `0x7477a791..a7b3` 与 `0x7477ab7e..ab99` | IPersistStream 位于对象 `+0x3c`，虚表 `0x747bc9ac` 的 Load/Save 槽为 `0x7477b8d0`、`0x7477bb00`。 |
+| Load `0x7477b8ee..b951` | 读取两字节版本，原生拒绝有符号值大于 1。随后以 IGroupLayer IID `EDAD6644-1810-11D1-86AE-0000F8751720` 调用普通 LoadObject，结果写入完整对象 `+0x90`（相对 IPersistStream 接口 `+0x54`）。 |
+| Load `0x7477b97c..ba80`、`0x7477babb..bacd` | 创建单独的 MemoryBlobStream，读取四字节无符号体长和原始字节。非零体长时把字节交给该流，作为 MdProcess 持久化输入，随后从原流读两字节到完整对象 `+0x94`。Save 在 `0x7477bb20..bb43` 写版本 1 及组对象，并在 `0x7477bc2b..bc68` 写体长、进程字节和 short。 |
+| QI `0x7477aa43..aa72`、`0x7477a6b9..a6e8` | 分别返回对象 `+0x78` 的 ILayerMasking 和 `+0x34` 的 ICompositeLayer。后者虚表 `0x747bc97c` 的子层计数与索引方法 `0x7477abc0`、`0x7477ac30` 均通过接口相对 `+0x5c`（完整对象 `+0x90`）取出 IGroupLayer，再查询其 ICompositeLayer。Map 对 ProcessLayer 读取自身记录后直接遍历委派组的子层。 |
+
+SDK .NET 的 `USA_Data_ClipTools` 在 `/Maps:0x1a68` 定义 ProcessLayer v1（键 113）。其 GroupLayer v11（键 114）有一个完整 FeatureLayer 子层（键 115）。独立进程流长 14,513 字节，尾 short 为零。Map v30 的逐层遮罩在 `0xbf3d` 消费一条属于键 113 的 v1 空记录，组本身没有独立记录。Map 对象于 `0xbf4d` 结束，随后四字节流尾值为 1。构造体覆盖非空进程流、全部截断位置及超过限额的体长。
+
+当前将 MdProcess 字节原样保留，支持 IGroupLayer 槽定义新 GroupLayer 的分支。委派槽回引、替代 IGroupLayer 类、非标准版本及进程运行时行为仍需取证。ArcMap 与 QGIS 的人工验收未执行。

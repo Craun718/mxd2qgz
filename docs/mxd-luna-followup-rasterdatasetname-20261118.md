@@ -25,10 +25,14 @@ ImageBase `0x7bfb0000`。REA/Ghidra 12.2 成功反编译 Load，Evidence ID
 | `0x7c1211b0` | `AfStreamWrite(IStream*, const long*, ...)` | Save 写 4 字节值 |
 
 因此首字段确为 SaveVersion 导出的 4 字节门值；读取器仍原样保留为 `i32`，并
-只按 Load 的有符号比较 `>=3`、`>=4` 选择后续两个 int32。门值为零时原生
-`Seek(-4, CUR)`，再从原位置进入第一条 `String::Read`；这是旧零门分支，不应把
-这个回退误读为一般字段顺序。当前严格 String 子集拒绝零长度编码，读取器在该
-分支停在体起点，保留原值和停止原因。
+只按 Load 的有符号比较 `>=3`、`>=4` 选择后续两个 int32。门值为零时
+`0x7c0ba606..0x7c0ba61a` 执行 `Seek(-4, CUR)`，再从原位置进入第一条
+`String::Read`。IAT `0x7c12114c` 指向 AfCore.dll 10.1.0.3035
+（SHA-256 `031858c414c0105b3b978c754f3d0f31ba1d98f15d44ff15b1589c9adcc47c17`）
+的 `0x68ab46f0`。objdump 复核该函数在 `0x68ab471a..0x68ab471c`
+把零长度送到 `0x68ab4780` 返回 `E_FAIL`，RasterDB 在 `0x7c0ba639`
+向上传递失败。Rust 将零门报告为非法数据，保持 Reader 与引用表位置，
+合成测试在零门后附加正常字段以确认这些字节不会被误读。未取得零门实档。
 
 ## Load 字段与嵌套对象
 
@@ -58,8 +62,8 @@ RasterDatasetName 键 1545 的体起点 `/Maps:0x14621`：
 - 提供由 GetClassID 复核的类标识常量；四条 String 作为无语义名称的有序数组保留。
 - 在 IWorkspaceName 槽中消费空标记/回引，或仅对新 WorkspaceName 类调用现有体读取器；
   其他新类在对象头前成功停止。
-- 按有符号门值读取 `+0x6c`、`+0x70` 原值，不猜字段名。嵌套体停止、未知类及零门
-  分支均保留停止状态；错误不推进 Reader 或引用表。
+- 按有符号门值读取 `+0x6c`、`+0x70` 原值。嵌套体停止和未知类保留停止
+  状态，零门及其他错误不推进 Reader 或引用表。
 - 调用方必须传入已由父条目长度切出的有界 Reader；不读取 FgdbRasterDatasetName
   wrapper，不消费 RasterLayer 的后续字段。
 

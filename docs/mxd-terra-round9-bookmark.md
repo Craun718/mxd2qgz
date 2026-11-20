@@ -25,6 +25,36 @@
 
 可单独落账：FeatureBookmark 10.1 的 IName 请求、构造/虚表定位、名称对象调用后对结果 QI 的静态路径；TableName 的 IName 视图和此宿主下可完整读取子集的分派。仍不可将「FeatureBookmark 全部 IName 具体实现及实际分布」「非空书签真实读取」「int32 业务属性」「ArcMap/QGIS 人工验收」整体勾选。其他实现、真实打开结果及软失败行为仍需目标运行取证。
 
+## 栅格目录与关系查询名称
+
+复核 Desktop 10.1.0.3035 x86 的 RasterCatalog.dll（SHA-256
+`0b6ac9b5e0c3e8efb715d68c5a55de89275def9ec7f666ffae91f0ff7972c585`）
+及 GdbCore.dll（SHA-256
+`ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4`）。
+以 objdump、PE 虚表原字节和 esriGeoDatabase 类型库交叉核对。
+
+- RasterCatalogName 的构造在 `0x7be36002` 创建 FeatureClassName，
+  `0x7be36237..0x7be3623f` 将 IName 查询转发给该成员。其持久化
+  Load `0x7be36460` 直接委派同一流，内部名称没有第二个对象头。
+  GdbCore 的 FeatureClassName IName 虚表 `0x70ad01bc` 的 Open
+  槽指向 `0x709b42c0`。10.1 esriGeoDatabase 把 RasterCatalog
+  （`55E13E7E-52BD-4145-9ADF-9CF8B776C346`）列为 IFeatureClass 实现。
+- RelQueryTableName 的 IName 虚表 `0x70add028` 的 Open 槽指向
+  `0x70a5a0d0`。调用打开源关系，并依方向在关系对象虚表
+  `+0x20/+0x24` 取表，再在 `0x70a5a389` 附近查询返回对象的
+  IUnknown。类型库把 RelQueryTable
+  （`365F6148-1D24-11D3-9F5C-00C04F6BC886`）列为可提供
+  IFeatureClass 的类。该接口能否取得取决于关系查询及其底层表。
+  名称的 Load/Save `0x70a5a530/0x70a5a6f0` 已有
+  [对象体证据](arcmap-10.1-dataset-name-slots.md#relquerytablename-的非空关系类名称)。
+
+FeatureBookmark 和 CustomOverlayGrid 两处复用已有名称体读取器，
+保留外层身份及关系名称回引。合成书签覆盖栅格目录委派体、关系查询
+v3 尾字段、后续书签名、未知关系类与截断回滚。合成 MapFrame 覆盖
+栅格目录格网来源及其后续字段。135 份仓库参考及 10.1/10.8 介质工程的
+`/Maps` 和 `/PageLayout` 均读至结束，两类 CLSID 字节均未命中。
+原生关系查询实际返回的接口、实档对象体以及 ArcMap/QGIS 人工验收仍待核对。
+
 ## FileGDB 与查询名称的后续接线
 
 再次核对 Desktop 10.1.0.3035 的 FileGDB.dll 和 GdbCore.dll，摘要分别为
@@ -47,3 +77,42 @@
 的事务回滚。参考工程和 199 个介质流里有 FileGDB 名称的类标识命中，
 尚未通过结构遍历确认它在书签槽内出现，两种查询名称也没有类标识命中。
 其余 IName 实现仍需核对，软件实际打开和人工验收待补。
+
+## TrackingWorkspace 的 AMSDatasetName
+
+Desktop 介质中的 `TrackingWorkspace.dll` 为 PE32 x86，版本资源的文件版本和产品
+版本均为 10.1.0.3035，原始名 `trackingworkspace.DLL`，SHA-256
+`892c7b52d27d0f0c3d2f4ee8954273cc603e744d1ee79292183a4517eea21e8e`。
+在既有反编译导出之外，用 PE RTTI、原始虚表、导入表和 objdump 核对本模块。
+`esri.clsid.xml` 在该 DLL 下注册 AMSDatasetName
+`{A677AB67-2FB8-11D5-B7E2-00010265ADC5}`。同值由
+`0x80ad158c` 虚表的 GetClassID `0x80a61290` 写出，Load/Save 位分别指向
+`0x80a612d0`/`0x80a61450`。RTTI 将对象的 +0x8 视图
+`0x80ad151c` 对位为 IName。其 Open `0x80a60d70` 在
+`0x80a60de8` 依据数据集类型值 5 分派到 IAMSWorkspace 的 +0x14 槽，
+对应虚表 `0x80ad1d44` 的 `0x80a63bd0`。后者可在
+`0x80a63cf9..0x80a63cff` 对工作空间内取得的对象查询 IFeatureClass。
+书签能否成功打开要素仍取决于工作空间和数据。
+
+Load 与 Save 无对象体版本字段，顺序相同。字段偏移相对于 IPersistStream 视图。
+
+| 流内顺序 | 原生证据 |
+| --- | --- |
+| ATL BSTR ×4 | Load `0x80a61ee0`，Save `0x80a61b00`。依次对应 +0x2c、+0x28、+0x40、+0x48。u32 字节长度 0 表示空指针，非零长度包含两个终止字节。Load 接受 2 至 0x100000，可装载奇数长度的原始 BSTR 载荷。 |
+| int32 ×3 | +0x3c、+0x38、+0x44，读写均走 AfCore 整数重载。 |
+| IWorkspaceName | `0x80a61ce0` 读 ATL Variant，AMSDatasetName 要求 VT_UNKNOWN（13）及非空值。下游 `0x80a61b70` 经 ReadClassStm 读 16 字节 CLSID，激活类、查询 IPersistStream，并以同一 IStream 调 Load。Save `0x80a61840` 经 `0x80acd4c8` 导入的 OleSaveToStream 写对象。 |
+| int16 | +0x30，位于内嵌 WorkspaceName 完整体之后。 |
+
+TrackingWorkspace 在 `0x80a655fa`、`0x80a6f78e` 和 `0x80a712e5`
+直接请求 IID `{FADD975C-E36F-11D1-AA81-00C04FA33A15}`，用
+`0x80ad16e0` 的 `{5A350011-71E3-11D1-AA82-00C04FA33A15}` 创建
+GdbCore WorkspaceName。书签分派复用其 Load 读取器。OLE 头只有 CLSID，
+内联工作空间自身无 ObjectStream 键。工作空间体内部用 AfCore LoadObject
+读 IPropertySet，原流仍带会话接口，因此继续共享外层登记表。
+原生 Load 可接受其他实现 IPersistStream 和 IWorkspaceName 的类。Rust 当前在
+未知 CLSID 处返回 Unsupported，字符串和未对位标量保留原始值。
+
+合成书签检查了内嵌工作空间与共享属性集键，并覆盖逐前缀截断、BSTR 限额、
+错误 Variant 类型、空和未知工作空间的事务回滚。参考工程与 134 份安装介质
+工程的 /Maps 和 /PageLayout 均读取到流尾，两流均未扫描到 AMSDatasetName
+的 CLSID。仍待真实书签宿主字节和 ArcMap 10.1/QGIS 人工验证。

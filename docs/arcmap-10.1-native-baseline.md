@@ -386,6 +386,70 @@ esriSystem 类型库中的枚举 `esriArcGISVersion`（GUID `73ABEA55-3BC9-47D4-
 - SaveAs 版本选择 UI 到 `IDocumentVersion::put_DocumentVersion`（`0x42b120`）的间接调用路径未追踪（虚调用不在静态覆盖内）。
 - 打开旧版本文档后 `AfDoc+0x14c` 是否被改写、再次保存的实际版本取值未验证（静态候选：保持初值 5）。
 - 索引 3 的 `0x11a` 文本在本地化安装（含 ResArcMap.dll 语言包）中的实际值未验证；英文回退文本为打印错误文本（资源异常候选）。
+
+### 10.1 Version 保存片段运行验证
+
+复核 x86 10.1.0.3035 的 ArcMap.exe、AfCore.dll 和 SystemCore.dll，SHA-256 与本页 [原生运行库基线](#101-arcmap-version-头部读取与写入2026-11-13)一致。以 `pefile` 取原始机器码与只读数据，`objdump` 校核跳转和调用边界，以 32 位 ELF 按 PE 虚拟地址映射片段，在 `qemu-i386` 执行。
+
+- 对受控 AfDoc 对象调用 put（`0x42b120`），经 CMxDoc getter（`0x47f580`）调用原虚表 `0x545e40` 的 getter（`0x42b140`）。返回值作为保存片段的索引入参。
+- 执行 ArcMap.exe `0x467508..0x467802`，保留资源 ID 选择以及调用原生 AfCore `String::Write`（`0x68ab4680`）、`AfStreamGetSaveVersion`（`0x68a847f0`，原表 `0x54bfb4`）和 `AfStreamWrite`（`0x68a84850`）。资源加载替身从 ArcMap.exe 的 `RT_STRING` 语言 `0x0409` 按实际请求 ID 提供文本；BSTR 分配和 IStream 写入、定位由测试提供。
+- 跳至 ArcMap.exe `0x46bfe4..0x46c07e` 执行回填。为受控 ObjectStream 读、写表计数字段设置不同值，由原生 SystemCore 虚表 `+0x5c` 实现（`0x7ffd05d0`）取数。索引 0 无定位调用或计数；索引 1～6 各有两次定位，最终计数均为写表预置值 `0x12340000 + 索引`。
+
+| 保存入参 | 资源 ID | 文本 | short | 字节数 | Rust 候选保存索引 |
+| --- | --- | --- | --- | --- | --- |
+| 0 | `0x014d` | `8.3` | 10 | 14 | 0 |
+| 1 | `0x0173` | `9.0` | 13 | 18 | 1 |
+| 2 | `0x0186` | `9.2` | 14 | 18 | 2 |
+| 3 | `0x011a` | `An unexpected error occured while printing the document.` | 16 | 124 | 无 |
+| 4 | `0xe804` | `10.0` | 18 | 20 | 4 |
+| 5 | `0x0193` | `10.1` | 19 | 20 | 5 |
+| 6（越界对照） | `0x0193` | `10.1` | 19 | 20 | 5 |
+
+七组字节均可由 Rust 的 `read_arcmap_header_10_1` 完整读取，与 `write_arcmap_header_10_1` 逐字节一致。脚本、探针与输出位于忽略目录 `temp/mxd-version-native/`；`result.bin` 含每组索引、资源 ID、测试计数、长度及原生输出，SHA-256 为 `d207ac8f8b6aa4bcc10577f7f51e89605a8993f5d77e7eb5103ec4dcbc7c1352`。
+
+本次执行覆盖属性存取、头部保存和条件回填片段。ArcMap 的实际语言模块选择、完整 OLE 保存和打开、旧文档重存及 ArcMap/QGIS 人工验证仍开放。读取分类见下一节。
+
+### 10.1 Version 读取分类运行验证
+
+使用 `pefile` 提取并按 PE 原地址映射 x86 10.1.0.3035 指令，以 `objdump` 复核调用边界，在 `qemu-i386` 执行。ArcMap.exe 和 AfCore.dll 的摘要同上，PageLayout.dll 的 SHA-256 为 `ba9e71f42e00d06a2311a1492fc3d1aeca544c96d9ebd3926140a11b8de9d69f`。
+
+- ArcMap 执行完整分类函数 `0x47a3f0`、两个内部流访问函数 `0x4052b0` 和 `0x406780`，以及 Build Number 分词和取整调用所在函数 `0x47a600`。测试提供 IStorage/IStream、对象工厂及属性读取回调，以及 OLE/CRT 字符串和数字操作所需的替身。原生代码实际请求 `Mx Document` 和 `Mx Document Version Info`；后者经一次 4 字节读取后才调用 ObjectStream 的对象读取虚槽，再访问 `Build Number` 属性。
+- PageLayout 执行 `0x7b70aa96..0x7b70ab11` 的流打开、连接、文本和 short 读取及分类。在片段入口按原函数设置默认输出 5、short 初值 0；流和对象壳由测试提供。AfCore 的 `String::Read`（`0x68ab46f0`）和 `AfStreamRead`（`0x68a84830`）均运行原生指令。测试核对了文本内容和流光标。
+
+| 输入 | ArcMap 分类 | PageLayout 分类 |
+| --- | --- | --- |
+| short 为 `-1、10、13、14、16、17`（ArcMap 的 `Mx Document` 打开失败） | 3 | 3 |
+| short 为 `18、19`（ArcMap 的 `Mx Document` 打开失败） | 5 | 5 |
+| `Mx Document` 打开成功，Build Number 为 `9.4.0.2036` | 3，short 10 和 19 相同 | — |
+| `Mx Document` 打开成功，Build Number 为 `9.4.0.2037`、`10.1.0.3035`、`9.5.0.2036` 或 `10.0.0.2036` | 5，short 10 和 19 相同 | — |
+| `Mx Document` 打开成功，属性读取返回错误 | 5，short 10 和 19 相同 | — |
+| `Version` 打开失败 | — | 5 |
+| `Version` 已读到完整文本，short 读取失败且输出缓冲保持初值 | — | 3 |
+
+两组 short 对照分别写入 `10.1` 和 `8.3`，PageLayout 各项结果一致。ArcMap 在测试中收到空存储参数时直接返回 5。Build Number 三个独立上界对应主版本 ≤ 9、次版本 ≤ 4、构建号 < 2037，在这些路径上不会再次比较 short。整个 `Mx Document Version Info` 缺失的测试没有获得分类输出；其边界不同于成功取得属性集后查询属性失败。
+
+Rust `read_layout_10_1` 的 16 组完整前缀分类与原生 short 分支一致，缺 short 则返回错误。该 Rust 入口只接收 `/Version` 字节，未进行 ArcMap 的独立构建号检查。复现探针和交叉检查位于忽略目录 `temp/mxd-version-classify/`，二进制结果 SHA-256 为 `321d1710d2b30c49cb1fd85b9b8b0f9f634e86285ad05332ade4ef568c70d3ac`。本次未在 ArcMap/QGIS 中人工打开工程，未验证打开旧文档后保存版本属性的变化。
+
+### 10.1 版本文本与读取分支
+
+使用现有 Ghidra 导出和 objdump 复核 ArcMap.exe、SystemCore.dll 10.1.0.3035。
+ArcMap.exe 的 SHA-256 为 `1fb79eee6b442bd61c44dd3d0864ddfff06b1df882ddc59fb87380bb3ec5af97`，
+SystemCore.dll 为 `f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`。
+
+- ArcMap 读取入口 `0x4764d0` 在 `0x476a62` 调 IObjectStream2 虚表 `+0x4c` 传入读到的文本。
+  SystemCore 虚表 `0x800710dc` 的该槽为 `0x7ffd0530`，只赋值给接口指针 `+0x40` 的
+  String 后返回成功。配对槽 `+0x50`（`0x7ffd0500`）从同一成员生成 BSTR。
+- ArcMap 读取器用 short 决定上限检查和对象计数字段，随后把存储和 short 交给
+  `0x47a3f0`。该分类器依据独立的 Build Number 或 short 返回 3/5。
+  PageLayout `0x7b70a8e0` 同样读取文本后按 short 分类。这些局部判定不比较版本文本。
+  对象流仍保留字符串，后续对象的间接使用路径未穷尽。
+- 本机 `DesktopChinese_CN.msi` 提取的 `resArcMap.dll` 的 PE 固定版本为 10.8.0.12790。
+  用 pefile 比较同版本 English（`0x0409`）与简中（`0x0804`）的 RT_STRING，
+  六个共用 ID 里五个数字文本相同，`0x11a` 在简中对应“打印文档时发生异常错误。”。
+  [完整的 10.8 资源对照](mxd-10.8-version-write-boundary.md#简体中文资源对照)。
+  10.1 非英语资源和 ArcMap 内实际另存行为仍待验证。
+- Rust 头部解析保留非 ASCII 文本、short、对象计数和剩余字节。对未知文本不生成候选保存索引。
+  回归用例采用 10.8 简中资源字符串加合成的 10.1 布局，验证读取边界与候选逻辑。
 - `AfDoc+0x150` 之后与保存无直接关系的字段、`IStateVersion`（`+0x128`）语义未展开。
 - 10.8 侧结论（枚举 6..11、Current=0xB）仅绑定从 10.8 安装包提取的 esriSystem.olb（10.8.0.12790），未复核 10.8 ArcMap.exe/PageLayout 代码；类型库解析经 wine，未在 Windows 原生复核。
 - 全部结论为静态观察，未运行 ArcMap 10.1/10.8，未做人工目视验收。

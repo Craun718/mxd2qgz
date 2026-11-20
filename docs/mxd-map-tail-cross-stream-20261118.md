@@ -61,3 +61,54 @@ Map.dll 10.1.0.3035（SHA-256 `1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477
 10.8 介质八份工程的 Map 版本均为 51，该槽中实际读到键 81、CLSID `{C84598B1-C4BE-4203-9132-ADA2BE57F30C}`，对象头位于 `/Maps:0x1635` 或 `0x1732`。类体使用已按 [CartoXProvider.dll 10.1.0.3035 的 Load 和 Save](mxd-us-media-renderer-paragraph-20261118.md#对象体证据) 验证的 ParagraphTextElement 读取器。仅在装饰和委派的 TextElement 读完后提交键表和终点。其他新 IElement 类仍保留在其槽起点。
 
 合成测试验证最后一个槽的文本读取、逐字节截断回退和其后根尾未被吞掉。八份对照工程由 v51 槽停止推进至确认的地图根尾，10.8 介质的地图根覆盖达到 68/68，布局终点仍为 41/68。10.1 介质（66/66）和仓库样例的地图及布局覆盖不变。未在 ArcMap 或 QGIS 人工验收。
+
+## Map v38 至 v39 的时间对象槽
+
+复核 ArcMap 10.1.0.3035 的 x86 Map.dll（SHA-256
+`1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`）。用现有
+Map Load 伪代码定位，再用 objdump 核对四次 LoadObject 的 IID、目的成员和版本门。
+
+| 版本及槽位 | 指令与 IID 常量 | 读取范围 |
+| --- | --- | --- |
+| ≥38，`+0x420` | `0x79400db4..0x79400dc5`，`0x79487e30` | ITimeExtent |
+| ≥38，临时对象 2 | `0x79400de3..0x79400df5`，`0x79487e20` | ITimeValue，目前覆盖 TimeExtent 实现 |
+| ≥38，临时对象 3 | `0x79400e3b..0x79400e4d`，`0x79487e10` | ITimeReference |
+| ≥39，`+0x424` | `0x79400ee5..0x79400eeb`，同 `0x79487e30` | ITimeExtent |
+
+三个 IID 依次为 `BD724B95-018F-4367-9883-9560D92293A7`、
+`4CE86E17-E819-4C72-BD98-E55AE59B0317`、`F6CBA4A3-BC48-47BC-9F15-2A561B9E6C71`。
+复用 [SystemCore 对象体](arcmap-10.1-dep-tail.md)，完整读取才提交外层与内嵌键。
+TimeInstant 作为 Map 的 ITimeValue 宿主、自定义时间对象和运行时赋值仍待验证。
+
+SDK .NET 的 PrintMultiPage（Map v41）在 `0x7f8/0x873/0x8fe` 读取
+TimeExtent 键 41、44、47，airportgolf（Map v44）在 `0x2422/0x249d/0x2528`
+读取键 101、104、107。每个 TimeExtent 均为 v2，并含两个新建的 v1 Time 对象。
+两张 Map 分别结束于 `0x9a3/0x25e5`，其后仅剩四字节 Maps 流尾值。
+第三个 v38 槽的非空 TimeReference 及 TimeExtent 截断、未知子类使用构造输入验证。
+ArcMap 与 QGIS 的人工验收未执行。
+
+## Map v33 起的内嵌 Map 和根列表回引
+
+在 10.1.0.3035 的 Map.dll（哈希见上文）复核 Load 指令
+`0x79400a31..0x79400a42`。普通 LoadObject 请求 `0x79488460` 的
+IMap IID `E6BDAA75-4D35-11D0-98BE-00805F7CED21`，保存于 `+0x1b8`。
+磁盘 Map 类标识为 `E6BDAA76-4D35-11D0-98BE-00805F7CED21`。
+新 Map 由原读取器递归消费，共用暂存引用表和图形对象嵌套限额；
+内层未闭合时在 IMap 对象头停止，内嵌键不提交。
+
+Map v45 的 SDK .NET SchematicsForServerSample 在 `/Maps:0xcbe5`
+定义内嵌 Map 键 533。它的有界 SchematicLayer 是遮罩遍历原先的停点。
+SchematicLayer.dll 10.1.0.3035（SHA-256
+`b2dcc605e8953f5e28a3ca25249c4bf5763557173dc52a994d744b6ca69e4d02`）
+的主虚表 `0x7d90c91c` 首项 `0x7d8e4350` 是 QueryInterface。
+以 objdump 复核固定 IID 的比较链和 `0x7d8e4948` 的末级调用。该调用
+进入 `0x7d904180`，仍仅比较固定 IID，未命中在 `0x7d904272`
+返回 E_NOINTERFACE。两级都没有 ILayerMasking 比较或未知 IID 动态委派。
+SchematicLayer 体仍按已确认的外层范围保留原始未知内容。
+
+根列表第四槽 `0x2c493` 是键 533 的回引。根读取器复用之前解析的
+前缀与后缀生成第四个数据框，共用根级键与后继布局的回引检查。
+Maps 根尾写在 `0x2c4a7`，其后没有未读字节；PageLayout 也读至流尾。
+实档回归验证四个根槽与布局，构造测试验证内嵌体截断时的游标和引用表。
+当前覆盖该 IMap 槽内的标准 Map 实现。未知集合类和其他宿主的新 Map
+仍需独立证据，ArcMap 与 QGIS 人工验收未执行。

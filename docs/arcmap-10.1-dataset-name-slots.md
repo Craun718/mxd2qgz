@@ -363,7 +363,11 @@ SystemCore.dll 10.1.0.3035（SHA-256
 其他模块的 ISelectionSet 实现及替换输入仍待实档取证。读取器继续区分
 空槽、回引和未知新类。这是静态取证，未在 ArcMap 或 QGIS 人工检查。
 
-## TableName / UnknownDatasetName / ObjectClassName：无流持久化实现（静态证据链）
+## TableName / UnknownDatasetName / ObjectClassName：早期持久化排查
+
+2026-11-20 复核更新。TableName 与 ObjectClassName 已定位到
+同一 FdbTableName 持久化表及 GdbCoreLib 读写实现。以下结论是早期排查
+记录，新证据见[对象名分派续查](mxd-terra-round9-table.md#objectclassname-与栅格表名称)。
 
 三条相互独立的证据：
 

@@ -437,14 +437,14 @@ FieldInfo 循环之后（版本门均伪代码复核，关键门另有写侧对�
 | ㊴ | LoadObject({A62B9EC2-…}=IDisplayExpressionProperties) | 版本 >0x19 | 槽 | —（停止点后） |
 | ㊵ | short + String ×3 | 版本 >0x1a | +0x300/+0x304/+0x308/+0x30c | —（停止点后） |
 | ㊶ | TimeData 族四段（LayerLib.dll `0x7870d8b0`/`0x7870df80`/`0x7870e250`/`0x7870f6c0`，本轮闭合：TimeData 版本 ≤2 short+short+槽+（≥2）short；TimeTable 版本 ≤1 String×4+槽；TimeDimension 版本 ≤1 String×2；TimeDisplay 版本 ≤1 short+double+int32+double+int32） | 版本 ≥0x20 | -0x68/-0x80/-0x58/-0x48 段 | —（停止点后） |
-| ㊷ | LoadObject({E720618B-…}=IHotLinkExpressionProperties) | 版本 >0x20 | 槽 | —（停止点后） |
+| ㊷ | LoadObject({E720618B-…}=IHotLinkExpressionProperties) | 版本 ==0x1f 或 >0x20 | 槽 | —（停止点后） |
 | ㊸ | short | 版本 >0x21 | +0x2ca | —（停止点后） |
 
 版本 0x1c..0x1f 分支（`0x1b < ver && ver < 0x20`，10.1 docVersion 不写）：short +
 String ×4 + short + double + int32（→ -0x62/-0x78/-0x74/-0x70/-0x6c/-0x44/-0x40/
 -0x38）→ 版本 ≥0x1d LoadObject({F6CBA4A3-…}=ITimeReference)、版本 ≥0x1e
 LoadObject({BD724B95-…}=ITimeExtent)、版本 ==0x1f LoadObject({E720618B-…})。字段
-序静态闭合，无样本字节佐证（实现按门接入、槽位新对象为停止点并注明）。
+序已通过文末原生函数运行复核并按门接入；真实旧版工程字节待验证。
 
 中间的 `FUN_6f6e0c00`（+0x144 GUID 后）、`FUN_6f6c8100`、`FUN_6f6acc10`、
 `FUN_6f701ad0`、`FUN_6f6dd210`、`FUN_6f6fd550`（MakeBSTR+QI）、`FUN_6f7025b0`/
@@ -512,8 +512,8 @@ LoadObject({BD724B95-…}=ITimeExtent)、版本 ==0x1f LoadObject({E720618B-…}
   函数未定位）、标注表达式引擎族、LELP ⑲/㉔ 槽 Envelope/IGraphicsContainer
   实现类、㉖ ISymbol 槽、㉘/㉙ Envelope/IUID 实现类、㊴/㊷ 表达式属性族、
   TimeData 族槽实现类均在停止点之后，体未闭合（读取器新对象即停止）。
-- 版本 0x1c..0x1f 分支与 TimeData 族仅有反编译证据，无样本字节佐证（样本 34 走
-  ≥0x20 门，0x1c..0x1f 分支不可达）。
+- 样本 34 走 TimeData 族。版本 0x1c..0x1f 的字段门与体边界已通过
+  [原生函数运行复核](#旧版时间字段与热链接属性)，仍缺旧版实档。
 - ALPC/LELP/ETM/FeatureIDSet 各标量与字符串的业务语义为候选（标注表达式、类
   名、OID 等），原样保留；ETM 尾字节（样本 0x00）语义未定。
 - LELP 条目键（ALPC ③ 的 int32）与 ALPC 尾 int32 在样本中未达（LELP 体内停
@@ -569,9 +569,9 @@ LELP ⑰⑱⑲ 槽分派）、`src/layers/feature_layer_tail.rs`（㉖㉘㉙㊴�
 | LineLabelPlacementPriorities | {261A4377-D9D5-11D2-A806-CC9F870BCD5A} | 0x7855ae10（GetClassID +0x40 邻位，15×int32 循环） | 确定的 | 键 71 @0xe01：ver 1、ints [0,3,3,3,0,0,3,3,3,0,0,3,3,3,0] |
 | PointPlacementPriorities | {261A4372-D9D5-11D2-A806-CC9F870BCD5A} | 0x7856d920（+0x290 邻位，8×int32 循环） | 确定的 | 键 72 @0xe63：ver 1、ints [2,2,1,2,2,3,3,3] |
 | AnnotationVBScriptEngine | {AA157207-E079-11D2-9F48-00C04F6BC6A5} | 0x785361d0（适配虚表 0x7857a1fc 槽 +0x18；Save 0x78536240 写常量 2） | 确定的 | 键 73 @0xec5：ver 2、short -1 |
-| BasicOverposterLayerProperties | {EE535289-41C9-11D1-880A-080009EC732A} | **未唯一定位**（见下） | 样本结构 + 0x7853d3a0 局部佐证 | 键 69 @0xda3：体 0xdb7..0xec5 共 270 字节 |
+| BasicOverposterLayerProperties | {EE535289-41C9-11D1-880A-080009EC732A} | Load 0x7853d3a0 / Save 0x7853d710 | [原生版本门复核](#bolp-的原生版本门和标注对象宿主) | 键 69 @0xda3：v6，体 0xdb7..0xec5 共 270 字节 |
 | UID | {78FF7FA1-FB2F-11D1-94A2-080009EEBECB}（SystemCore，GetClassID 0x7fff8ca0） | 未唯一定位（持久化经基类虚调用转发 0x7ffcdb00→虚表槽） | 样本结构 | 键 82 @0x14a9 等 13 实例：ver+flag+GUID 19 字节 |
-| HotLinkExpressionProperties | {1B848B0F-5E87-4948-841A-86201FACD925}（GetClassID 0x78540500） | 未定位（QI 0x785406d0 仅两接口） | 样本结构 + 构造 0x78540560 成员形状 | 键 85 @0x15d8：ver 1、String 空、short -1、16B 零 |
+| HotLinkExpressionProperties | {1B848B0F-5E87-4948-841A-86201FACD925}（GetClassID 0x78540500） | Load 0x78540850 / Save 0x785408f0 | [原生指令和运行](#旧版时间字段与热链接属性) | 键 85 @0x15d8：ver 1、String 空、short -1、空引擎槽 |
 | DisplayExpressionProperties | {D75C6301-C05A-484C-A7BD-AE82E5E1FC75}（FeatureLayer.dll） | 未定位 | 样本结构（前缀） | 键 83 @0x151a：ver 1、"[BSM]"、-1、引擎键 84 |
 
 ### BOLP::Load 未定位（负证据清单）与字段序
@@ -688,3 +688,137 @@ double/int32/String/int32 在三槽之间与之后）与样本不符，函数归
   （命名与槽位不符属历史遗留，本轮不改既有行为）。`cargo fmt --check` 与
   全量 `cargo test` 绿；未声称运行验证。
 - 全部结论为静态取证与样本辅助对位，未运行 ArcMap 10.1，未人工目视验收。
+
+## 旧版时间字段与热链接属性
+
+2026-11-19 核对研究目录的 FeatureLayer.dll 10.1.0.3035（PE32，SHA-256
+`2baf870615bb75b6f30ccea173ba4303fdd0b1a6571e11b9197c5fcf7298bb60`）。
+从本地反编译导出的 `6f6e9940.c` 追到实际指令。旧字段块从
+`0x6f6eacc7` 判版本，`0x6f6eada3` 对 0x1c 跳过全部槽，
+`0x6f6eadeb` 对 0x1d 跳过 ITimeExtent，`0x6f6eae37` 仅在 0x1f
+读取 IHotLinkExpressionProperties。0x1f 和 >0x20 读侧使用同一
+IID（`0x6f7adde4`），并写入同一成员（以持久化接口视图为基准 `+0x2f4`）。
+修复前 Rust 对 0x1c～0x1e 试读尚未出现的槽，在 0x1f 的非空热链接
+属性对象头处停下。
+
+LabelPlacement.dll 10.1.0.3035（SHA-256
+`8415f63c1889e269ba6ae585538f601130c20cef02e4556e875a52217d35ea3d`）
+HotLinkExpressionProperties 的持久化虚表位于 `0x7857b7a8`，
+接口偏移 `+0x30`。Load/Save thunk `0x785409f0 / 0x785409a0`
+分别转到 `0x78540850 / 0x785408f0`。Load 按有符号 short 拒绝大于 1
+的版本，然后读取 AfCore String、short、普通对象槽。`0x785408b3`
+请求 `AA157206-E079-11D2-9F48-00C04F6BC6A5`，即
+IAnnotationExpressionEngine。样本中末尾 16 零字节是空对象头。
+Rust 复用显示表达式已用的引擎槽分派，读取空对象、回引和已知新对象。
+未知引擎保留外层键并停止在内层对象头。0x1f 和 >0x20 共用该读取路径。
+
+将 FeatureLayer 的旧段指令、LabelPlacement 的 HotLink Load 和
+AfCore 原生字符串及读流函数按地址映射，在 QEMU i386 中运行。
+使用受控 IStream、字符串分配和 LoadObject 替身，记录各次接口请求。
+TimeReference、TimeExtent 和表达式引擎槽使用替身，非空 HotLink 槽
+转入真实 Load，并确认其消费表达式、short 及非空引擎槽。每行均在
+哨兵前停止，其中字节数对应本次构造输入。
+
+| FeatureLayer 版本 | 请求的槽 | 旧段消耗 |
+| --- | --- | --- |
+| 0x1b | 无 | 0 字节 |
+| 0x1c | 无 | 48 字节 |
+| 0x1d | ITimeReference | 68 字节 |
+| 0x1e | ITimeReference、ITimeExtent | 88 字节 |
+| 0x1f | ITimeReference、ITimeExtent、IHotLinkExpressionProperties | 140 字节 |
+
+Rust 集成测试从完整后继段前缀进入四档旧版本，覆盖非空时间对象、
+TimeExtent 内指回 TimeReference 的回引、热链接的非空 VBScript 引擎及
+其回引、未知引擎停止位置和所有旧段截断。真实 0x1c–0x1f 工程与
+ArcMap/QGIS 人工验收仍待取得。
+
+### BOLP 的原生版本门和标注对象宿主
+
+核对 10.1.0.3035 LabelPlacement.dll（PE32，SHA-256
+`8415f63c1889e269ba6ae585538f601130c20cef02e4556e875a52217d35ea3d`）。
+BasicOverposterLayerProperties 的 +0xac IPersistStream 视图采用
+`0x7857af8c` 虚表。GetClassID thunk `0x7853e3c0` 到 `0x7853d360`，
+由 `0x7857a814` 写出 `EE535289-41C9-11D1-880A-080009EC732A`。
+Load thunk `0x7853e330` 到 `0x7853d3a0`，Save thunk `0x7853e640`
+到 `0x7853d710`。早期记录中未归属的 `0x7853d3a0` 即本类 Load。
+原始指令 `0x7853d3de..0x7853d3e6` 按有符号 short 拒绝 >6。
+Save 读取 `0x78579844` 的表 [4, 6]。
+
+版本字段后按已知前缀读取三个 short、三个 int32、两个对象槽、
+槽间标量及第三对象槽。下表为第三对象槽后的实际顺序，偏移相对
+IPersistStream。
+
+| 条件 | 字段 | Load 地址 |
+| --- | --- | --- |
+| 各版本 | int32 计数、正数时逐项 double、-0x44 double、-0x70 int32 | `0x7853d540..0x7853d5c6` |
+| ≤1 | AfCore String、int32，原生读取后丢弃 | `0x7853d5d3..0x7853d61e` |
+| ≥3 | -0x24 double | `0x7853d624..0x7853d635` |
+| ≥4 | -0x1c int32、-0x18 AfCore String、-0x14 short | `0x7853d646..0x7853d677` |
+| ≥5 | -0x10 int32、-0x0c short | `0x7853d684..0x7853d6a7` |
+| ≥6 | -0x5a short，旧版由原生从 -0x5c 回填 | `0x7853d6b4..0x7853d6ec` |
+
+参考工程 v6 的 44 字节尾段长度正好与旧读取器相同，旧字段划分因此曾通过
+边界检查。按原生版本门，`0xe99..0xec5` 是空 double 集合、公共 double 0
+和 int32 0、v3 double 0、v4 int32 1 加空 String（cb=2）及 short 0、
+v5 两项均 0、v6 short -1。Rust 改用上述布局，保留有符号版本位模式，
+未知嵌套槽回退到对象头。构造 v0–v6 和负版本覆盖可缺省字段、非空字符串
+及正计数，逐段截断回滚，并拒绝 v7。
+
+对 FeatureLayer.dll 10.1.0.3035（SHA-256
+`2baf870615bb75b6f30ccea173ba4303fdd0b1a6571e11b9197c5fcf7298bb60`）
+重新反汇编 DEP Load `0x6f6cbdd0`。版本比较
+`0x6f6cbdfe..0x6f6cbe06` 使用有符号 short，>1 返回 E_FAIL。
+当引擎 LoadObject 在 `0x6f6cbe41` 读失败，DEP 返回该失败。
+Rust 读取器在未知引擎头处停止 FeatureLayer 后继字段的解码，保留
+已消费 DEP 前缀与外层键。构造用例将引擎头开头编码为表面合法的短整数、
+空串，核对不会误读后继字段，也验证超版本时整个调用回滚。
+
+参考 MXD（SHA-256
+`14772f8e3fedca8e1760bef77ab418011df4d8105f5159a05bc866bf603e3738`）
+从 /Maps 根、首 Map、`0x278` 的 FDOGraphicsLayer 图层条目进入
+关联 FeatureLayer v34，沿同一登记表完成标注集合、UID、DEP 和 HLEP。
+下表用原始字节边界对照结构解析返回值。
+
+| 对象 | /Maps 对象范围（右端不含） | 结构核对 |
+| --- | --- | --- |
+| BOLP | `0xda3..0xec5` | 键 69，v6，标注集合内 LELP 的 overposter 槽，后继为表达式引擎 |
+| UID | `0x14a9..0x14d4` | 键 82，v1，23 字节体，后继为 FeatureLayer 字符串 |
+| DEP | `0x151a..0x155a` | 键 83，v1，内嵌 VBScript 引擎键 84，后继为 FeatureLayer short 与字符串 |
+| HLEP | `0x15d8..0x1606` | 键 85，v1，空引擎，后继 short 读至关联 FeatureLayer 结束 `0x1608` |
+
+FDO 随后读取 ElementCollection 键 86，根 Map 消费至流尾。该链作为参考
+工程回归测试。ArcMap 10.1 和 QGIS 人工验收尚未进行。
+
+另从参考工程、两套 Desktop 介质、10.1 补充条目及 10.1 SDK Java/.NET
+共 182 份工程走查首 Map 的顶层图层、组图层和 FDO 关联或委派层。
+可确认对象体共 BOLP v6 320 个、UID v1 66 个、DEP v1 9 个、HLEP v1 11 个。
+这些计数来自实际槽位读取。182 份中分别有 166 个 /Maps 流及 166 个
+/PageLayout 流完整消费，与修改前的同一语料走查一致。此次路径未发现
+BOLP v0–v5 的原档实例，旧版本由原生指令与合成测试覆盖。
+
+## SDK 工程中的 ServerLayerExtension
+
+两份 10.1 .NET SDK 工程的 FeatureLayer 原生扩展条目含
+ServerLayerExtension `{F7FD0EC9-F215-4E7F-B1F8-94BA0EB603B9}`。
+MapServer.dll x86 10.1.0.3035（SHA-256
+`1da625c8b314283b9fed35b3118d1637bf7dade21a973cadc78173000edd0270`）
+的 Load `0x79dcb620` 在 `0x79dcb64b` 比较有符号 short 上限 1，
+在 `0x79dcb687` 调用 LoadObject 请求 IPropertySet。FeatureLayer
+的 LayerLib 扩展外壳不登记对象键，内部的属性集使用同一个流的对象表。
+沿用[原生持久化入口](mxd-10.1-raster-layer-tail.md#扩展对象体与嵌套键)。
+
+从两份工程的首 Map 顺序读取图层。下表偏移为图层条目在 `/Maps`
+中的起点。四个扩展均为 v1，属性集各含一条记录。接入前图层停在扩展，
+接入后四个图层的后继体均读完。
+
+| SDK 工程 | 图层条目偏移 | 对应属性集键 |
+| --- | --- | --- |
+| `MontgomerySimple.mxd` | `0x4121`、`0x4fcb` | 232、265 |
+| `airportgolf.mxd` | `0x2cf`、`0x1120` | 59、88 |
+
+文件 SHA-256 分别为
+`634cac214d8fffa675726fbb3581e05181c692974729d0e679822d3eafb789db` 和
+`f4f76d080696b6a3bf516a6421870cd45491b7308db6b86fcf7cf6d4c1470384`。
+合成图层同时覆盖独立 PropertySet、服务扩展内部的新属性集和后续
+扩展的同键回引。两份工程的 Map 尾段仍有独立停止点，未做 ArcMap/QGIS
+人工验收。
