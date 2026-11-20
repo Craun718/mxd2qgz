@@ -3544,18 +3544,13 @@ pub struct PictureLineSymbolBody10_1 {
     pub key: u32,
     /// 体首 short 版本；>1 原生拒绝（版本常量 `DAT_6ec0b2a8`=1）。
     pub version: u16,
-    /// byte → this−0x30（bool，语义未定）。
+    /// byte → this−0x30，Rotate 原始位模式。
     pub byte_30: u8,
-    /// double → this−0x2c，语义未定。
+    /// double → this−0x2c，Offset 的流内值。
     pub double_2c: f64,
-    /// double → this−0x24，语义未定。
+    /// double → this−0x24，Width 的流内值。
     pub double_24: f64,
-    /// IPictureFillSymbol 槽（请求 IID `{D842B081-330C-11D2-…}`，Save 槽
-    /// this−0x14；实现类 PictureFillSymbol 未闭合 = 停止）。
-    /// `None` = 槽位停止。
-    /// IPictureFillSymbol 槽（G 轮接线起经 picture_fill_symbol 槽分派：
-    /// PictureFillSymbol 新对象整体消费；未知实现类映射为停止原因，字段
-    /// 保持 `None`——`None` 同时表示前置停止未达，见 `stop`）。
+    /// IPictureFillSymbol 槽（this−0x14）。未知对象体停在该槽，详见 stop。
     pub picture_fill_symbol: Option<PictureFillSymbolSlot10_1>,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<SymbolStop10_1>,
@@ -3565,14 +3560,13 @@ pub struct PictureLineSymbolBody10_1 {
 /// 不修改登记表。
 ///
 /// 起点约定：调用者已读取对象头、比对 [`PICTURE_LINE_SYMBOL_CLASS_ID`] 并
-/// 取得键 `key`。图像填充符号槽新对象（实现类未闭合）为成功停止。
+/// 取得键 `key`。未知图像填充符号实现为成功停止。
 pub fn read_picture_line_symbol_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
     key: u32,
 ) -> io::Result<PictureLineSymbolBody10_1> {
-    let _ = max_bytes; // 体无字符串字段；图像填充槽未闭合，不消费字节
     let mut trial = reader.clone();
     let entry_offset = trial.position();
     let mut staged = table.clone();

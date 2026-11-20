@@ -229,7 +229,7 @@ double（+0x18c / 局部 / +0xf8）→ 版本 >7（v8）int32 N +（N≠0 时 N 
 | ① | 版本 short | 2 字节，`1 < ver` 拒绝 | — | — | Load `0x6eb77250` |
 | ② | byte | 1 字节 | this−0x30 | — | 同上 |
 | ③④ | double ×2 | 8×2 字节 | this−0x2c / −0x24 | — | 同上 |
-| ⑤ | LoadObject（**IPictureFillSymbol `{D842B081-330C-11D2-9168-0000F87808EE}`**，`DAT_6ec0ffa4`，类型库定名） | 20 头 + 体 | Save 槽 this−0x14 | — | 同上；实现类 PictureFillSymbol 未闭合 = 停止点 |
+| ⑤ | LoadObject（**IPictureFillSymbol `{D842B081-330C-11D2-9168-0000F87808EE}`**，`DAT_6ec0ffa4`，类型库定名） | 20 头 + 体 | Save 槽 this−0x14 | — | 同上；已支持 PictureFillSymbol 体，未知实现停止 |
 
 ### 7. ArrowMarkerSymbol `{88539431-E06E-11D1-B277-0000F878229E}`
 
@@ -482,3 +482,22 @@ esriDisplay.olb 的 IArrowMarkerSymbol 继承 IMarkerSymbol。逐个核对
 Length 和 Width，通常取较大值，并无独立持久化字段。各 getter 的
 计算或换算不改变流中数值的解释，Rust 继续保留原值和既有字段名。
 ArcMap/QGIS 目视验证待补。
+
+### 图片线的标量属性
+
+复核同一 DisplayCore.dll 10.1.0.3035 的 RTTI 和 esriDisplay.olb。
+PictureLineSymbol 的持久化接口（虚表 `0x6ec10344`）在完整对象
++0xe4，IPictureLineSymbol（虚表 `0x6ec1023c`）在 +0x98。
+按类型库的 IPictureLineSymbol 及其 ILineSymbol 基接口成员槽对位，
+objdump 显示以下取数指令。
+
+| 属性 | getter 槽及地址 | 接口成员 | 持久化成员 |
+| --- | --- | --- | --- |
+| Rotate | +0x34，0x6eb76d10 | +0x1c，byte | −0x30 |
+| Offset | +0x4c，0x6eb76df0 | +0x20，double | −0x2c |
+| Width | +0x14，0x6eb5d280 | +0x28，double | −0x24 |
+
+XScale 和 YScale 的读取方法 `0x6eb76d60/0x6eb76da0` 从接口 +0x38
+取得图片填充对象后委派。+0x98 +0x38 对应持久化接口 −0x14，即
+图像填充槽，两个缩放值不在外层标量段。Rust 注释按以上对位，仍保存
+流内位模式。ArcMap/QGIS 目视验证待补。
