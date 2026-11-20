@@ -228,6 +228,25 @@
 //! 接口属性的对应、Template 标记 16 字节的两 double 归属，均为候选；全部
 //! 结论为静态观察，未经目标软件运行验证，样本无字节佐证。
 
+mod chart;
+mod raster;
+mod url_picture;
+
+use chart::read_chart_symbol_body_10_1;
+pub use chart::{
+    BAR_CHART_SYMBOL_CLASS_ID, ChartSymbolBody10_1, ChartSymbolFields10_1,
+    PIE_CHART_SYMBOL_CLASS_ID, STACKED_CHART_SYMBOL_CLASS_ID,
+};
+
+pub use raster::{
+    COLOR_RAMP_SYMBOL_CLASS_ID, COLOR_SYMBOL_CLASS_ID, ColorRampSymbolBody10_1,
+    ColorRampSymbolTail10_1, ColorSymbolBody10_1, RASTER_RGB_SYMBOL_CLASS_ID,
+};
+use raster::{read_color_ramp_symbol_body_10_1, read_color_symbol_body_10_1};
+
+use url_picture::read_url_picture_marker_symbol_body_10_1;
+pub use url_picture::{URL_PICTURE_MARKER_SYMBOL_CLASS_ID, UrlPictureMarkerSymbolBody10_1};
+
 use crate::objects::callout_background::{CalloutSlot10_1, read_marker_background_slot_10_1};
 use crate::objects::color_ramp::{ColorRampSlot10_1, read_color_ramp_slot_10_1};
 use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
@@ -515,6 +534,37 @@ fn read_i32_le(trial: &mut Reader<'_>) -> io::Result<i32> {
     Ok(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()))
 }
 
+pub(crate) const MARKER_SYMBOL_CLASSES: &[[u8; 16]] = &[
+    SIMPLE_MARKER_SYMBOL_CLASS_ID,
+    MULTI_LAYER_MARKER_SYMBOL_CLASS_ID,
+    CHARACTER_MARKER_SYMBOL_CLASS_ID,
+    PICTURE_MARKER_SYMBOL_CLASS_ID,
+    ARROW_MARKER_SYMBOL_CLASS_ID,
+    URL_PICTURE_MARKER_SYMBOL_CLASS_ID,
+];
+
+pub(crate) const LINE_SYMBOL_CLASSES: &[[u8; 16]] = &[
+    SIMPLE_LINE_SYMBOL_CLASS_ID,
+    MARKER_LINE_SYMBOL_CLASS_ID,
+    CARTOGRAPHIC_LINE_SYMBOL_CLASS_ID,
+    HASH_LINE_SYMBOL_CLASS_ID,
+    MULTI_LAYER_LINE_SYMBOL_CLASS_ID,
+    PICTURE_LINE_SYMBOL_CLASS_ID,
+];
+
+pub(crate) const FILL_SYMBOL_CLASSES: &[[u8; 16]] = &[
+    SIMPLE_FILL_SYMBOL_CLASS_ID,
+    MULTI_LAYER_FILL_SYMBOL_CLASS_ID,
+    PICTURE_FILL_SYMBOL_CLASS_ID,
+    COLOR_SYMBOL_CLASS_ID,
+    COLOR_RAMP_SYMBOL_CLASS_ID,
+    RASTER_RGB_SYMBOL_CLASS_ID,
+    LINE_FILL_SYMBOL_CLASS_ID,
+    MARKER_FILL_SYMBOL_CLASS_ID,
+    GRADIENT_FILL_SYMBOL_CLASS_ID,
+    DOT_DENSITY_FILL_SYMBOL_CLASS_ID,
+];
+
 /// 槽位在体字段序中的类别（停止原因与诊断用）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DisplaySlotKind10_1 {
@@ -539,6 +589,8 @@ pub enum DisplaySlotKind10_1 {
     Font,
     /// IMarkerBackground 槽（MultiLayerMarkerSymbol 版本 ≥2；实现类未闭合）。
     MarkerBackground,
+    /// ITextBackground 槽（TextSymbol 的文字背景）。
+    TextBackground,
     /// IPicture 槽（PictureMarkerSymbol 图像类型 3 / 历史路径；实现类未闭合）。
     Picture,
     /// IPictureFillSymbol 槽（PictureLineSymbol；实现类未闭合 = 停止）。
@@ -1484,7 +1536,10 @@ pub enum SymbolSlotFull10_1 {
     /// 16 字节全零类标识：空引用。
     Null,
     /// 键已见：回引条目，无对象体。
-    BackReference { class_id: [u8; 16], key: u32 },
+    BackReference {
+        class_id: [u8; 16],
+        key: u32,
+    },
     /// 新 SimpleMarkerSymbol 对象（第一轮）。
     SimpleMarkerSymbol(Box<SimpleMarkerSymbolPrefix10_1>),
     /// 新 SimpleLineSymbol 对象（第一轮）。
@@ -1511,6 +1566,8 @@ pub enum SymbolSlotFull10_1 {
     CharacterMarkerSymbol(Box<CharacterMarkerSymbolBody10_1>),
     /// 新 PictureMarkerSymbol 对象。
     PictureMarkerSymbol(Box<PictureMarkerSymbolBody10_1>),
+    /// WMSLayer.dll 的 URL 图像标记符号。
+    UrlPictureMarkerSymbol(Box<UrlPictureMarkerSymbolBody10_1>),
     /// 新 PictureLineSymbol 对象。
     PictureLineSymbol(Box<PictureLineSymbolBody10_1>),
     /// 新 PictureFillSymbol 对象。
@@ -1525,6 +1582,12 @@ pub enum SymbolSlotFull10_1 {
     GradientFillSymbol(Box<GradientFillSymbolBody10_1>),
     /// 新 DotDensityFillSymbol 对象。
     DotDensityFillSymbol(Box<DotDensityFillSymbolBody10_1>),
+    /// RasterLayer.dll 的颜色、渐变和 RGB 符号。
+    ColorSymbol(Box<ColorSymbolBody10_1>),
+    ColorRampSymbol(Box<ColorRampSymbolBody10_1>),
+    RasterRgbSymbol(Box<ColorSymbolBody10_1>),
+    /// 统计图符号及其完整嵌套对象。
+    ChartSymbol(Box<ChartSymbolBody10_1>),
     /// 新 TextSymbol 对象（A 轮接线补齐：LELP ⑯ 槽分派已含 TextSymbol，
     /// 本入口与该清单对齐；证据 docs/arcmap-10.1-dep-tail.md 第五节——
     /// ㉖ 槽出现 TextSymbol 新对象时不再按未知类停止回退）。TextSymbol 体
@@ -1535,7 +1598,10 @@ pub enum SymbolSlotFull10_1 {
     },
     /// 新对象但类标识不在闭合集合：游标已回退到该槽位起点、登记表未保留
     /// 该键（读取器内部完成回退，调用者据此停止）。
-    Unsupported { class_id: [u8; 16], key: u32 },
+    Unsupported {
+        class_id: [u8; 16],
+        key: u32,
+    },
 }
 
 /// 归约全闭合符号类槽位的停止（语义同 [`slot_stop_10_1`]，覆盖第二轮闭合
@@ -1624,6 +1690,12 @@ pub fn slot_full_stop_10_1(
                 key: body.key,
             })
         }
+        SymbolSlotFull10_1::UrlPictureMarkerSymbol(body) => {
+            body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
+                class_id: URL_PICTURE_MARKER_SYMBOL_CLASS_ID,
+                key: body.key,
+            })
+        }
         SymbolSlotFull10_1::PictureLineSymbol(body) => {
             body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
                 class_id: PICTURE_LINE_SYMBOL_CLASS_ID,
@@ -1666,6 +1738,25 @@ pub fn slot_full_stop_10_1(
                 key: body.key,
             })
         }
+        SymbolSlotFull10_1::ColorSymbol(body) => {
+            body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
+                class_id: COLOR_SYMBOL_CLASS_ID,
+                key: body.key,
+            })
+        }
+        SymbolSlotFull10_1::ColorRampSymbol(body) => {
+            body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
+                class_id: COLOR_RAMP_SYMBOL_CLASS_ID,
+                key: body.key,
+            })
+        }
+        SymbolSlotFull10_1::RasterRgbSymbol(body) => {
+            body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
+                class_id: RASTER_RGB_SYMBOL_CLASS_ID,
+                key: body.key,
+            })
+        }
+        SymbolSlotFull10_1::ChartSymbol(_) => None,
         SymbolSlotFull10_1::TextSymbol { body, key } => {
             body.stop.clone().map(|_| SymbolStop10_1::NestedIncomplete {
                 class_id: TEXT_SYMBOL_CLASS_ID,
@@ -1818,6 +1909,16 @@ pub fn read_symbol_slot_full_10_1(
                 SymbolSlotFull10_1::PictureMarkerSymbol(Box::new(
                     read_picture_marker_symbol_body_10_1(&mut trial, max_bytes, &mut staged, key)?,
                 ))
+            } else if class_id == URL_PICTURE_MARKER_SYMBOL_CLASS_ID {
+                SymbolSlotFull10_1::UrlPictureMarkerSymbol(Box::new(
+                    read_url_picture_marker_symbol_body_10_1(
+                        &mut trial,
+                        max_bytes,
+                        &mut staged,
+                        key,
+                        depth - 1,
+                    )?,
+                ))
             } else if class_id == PICTURE_LINE_SYMBOL_CLASS_ID {
                 SymbolSlotFull10_1::PictureLineSymbol(Box::new(read_picture_line_symbol_body_10_1(
                     &mut trial,
@@ -1876,6 +1977,48 @@ pub fn read_symbol_slot_full_10_1(
                         depth,
                     )?,
                 ))
+            } else if class_id == COLOR_SYMBOL_CLASS_ID {
+                SymbolSlotFull10_1::ColorSymbol(Box::new(read_color_symbol_body_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged,
+                    key,
+                )?))
+            } else if class_id == COLOR_RAMP_SYMBOL_CLASS_ID {
+                SymbolSlotFull10_1::ColorRampSymbol(Box::new(read_color_ramp_symbol_body_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged,
+                    key,
+                    depth - 1,
+                )?))
+            } else if class_id == RASTER_RGB_SYMBOL_CLASS_ID {
+                SymbolSlotFull10_1::RasterRgbSymbol(Box::new(read_color_symbol_body_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged,
+                    key,
+                )?))
+            } else if matches!(
+                class_id,
+                BAR_CHART_SYMBOL_CLASS_ID
+                    | PIE_CHART_SYMBOL_CLASS_ID
+                    | STACKED_CHART_SYMBOL_CLASS_ID
+            ) {
+                match read_chart_symbol_body_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged,
+                    depth - 1,
+                    class_id,
+                    key,
+                ) {
+                    Ok(body) => SymbolSlotFull10_1::ChartSymbol(Box::new(body)),
+                    Err(error) if error.kind() == ErrorKind::Unsupported => {
+                        return Ok(SymbolSlotFull10_1::Unsupported { class_id, key });
+                    }
+                    Err(error) => return Err(error),
+                }
             } else if class_id == TEXT_SYMBOL_CLASS_ID {
                 // A 轮接线补齐：TextSymbol 体闭合（element_body 模块，LELP ⑯
                 // 槽分派同款），本入口不再按未知类停止回退。键随槽位携带
@@ -2650,7 +2793,7 @@ pub struct MultiLayerMarkerSymbolBody10_1 {
     /// 版本 ≥2 的 IMarkerBackground 槽（请求 IID `{AE41E4F0-DDE7-11D3-…}`，
     /// Save 槽 this−0xc；实现类未闭合 = 停止）。`None` = 版本 <2 或前置停止。
     /// IMarkerBackground 槽（G 轮接线起经 callout_background 槽分派：
-    /// MarkerTextBackground 新对象整体消费；未知实现类映射为停止原因，
+    /// LineCallout 新对象整体消费；未知实现类映射为停止原因，
     /// 字段保持 `None`——`None` 同时表示前置停止未达，见 `stop`）。
     pub marker_background: Option<CalloutSlot10_1>,
     /// 版本 ≥3 的 count × String（Save 槽 this−0x7c 向量）；版本 <3 无流内
@@ -2743,7 +2886,7 @@ pub fn read_multi_layer_marker_symbol_body_10_1(
         ints_94 = Some(read_i32_vec(&mut trial, layer_count)?);
         if version as i16 >= 2 {
             // G 轮接线：IMarkerBackground 槽接 callout_background 槽分派
-            //（仅 MarkerTextBackground；未知实现类回退并映射为停止原因，
+            //（LineCallout；未知实现类回退并映射为停止原因，
             // 停止语义不变）。
             let (slot, inner) =
                 read_marker_background_slot_10_1(&mut trial, max_bytes, &mut staged, depth - 1)?;

@@ -2233,3 +2233,419 @@ fn picture_marker_legacy_picture_slot_unknown_class_stops() {
     );
     assert_eq!(reader.position(), slot_offset);
 }
+
+fn chart_symbol_prefix(class_id: &[u8; 16], fields: &[u8]) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    push_entry(&mut bytes, class_id, 10);
+    bytes.extend(1_u16.to_le_bytes());
+    for value in [1.25_f64, 2.5, 3.75, 4.0] {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes.push(1);
+    bytes.extend(5.5_f64.to_le_bytes());
+    bytes.extend(fields);
+    bytes
+}
+
+#[test]
+fn chart_symbols_read_variant_fields_nested_objects_and_following_slot() {
+    use mxd2qgz::objects::callout_background::{CalloutSlot10_1, LINE_CALLOUT_CLASS_ID};
+    use mxd2qgz::objects::display_symbol::{
+        BAR_CHART_SYMBOL_CLASS_ID, ChartSymbolFields10_1, PIE_CHART_SYMBOL_CLASS_ID,
+        STACKED_CHART_SYMBOL_CLASS_ID, SymbolSlotFull10_1, read_symbol_slot_full_10_1,
+    };
+    let mut bar_fields = vec![1, 0];
+    bar_fields.extend(6.0_f64.to_le_bytes());
+    bar_fields.extend(7.0_f64.to_le_bytes());
+    let mut pie_fields = 17_i32.to_le_bytes().to_vec();
+    pie_fields.extend([0, 1]);
+    let mut stacked_fields = vec![1, 0, 1];
+    stacked_fields.extend(8.0_f64.to_le_bytes());
+
+    for (class, fields, expected, common_version) in [
+        (
+            BAR_CHART_SYMBOL_CLASS_ID,
+            bar_fields,
+            ChartSymbolFields10_1::Bar {
+                flags: [1, 0],
+                values: [6.0, 7.0],
+            },
+            2_u16,
+        ),
+        (
+            PIE_CHART_SYMBOL_CLASS_ID,
+            pie_fields,
+            ChartSymbolFields10_1::Pie {
+                value: 17,
+                flags: [0, 1],
+            },
+            1_u16,
+        ),
+        (
+            STACKED_CHART_SYMBOL_CLASS_ID,
+            stacked_fields,
+            ChartSymbolFields10_1::Stacked {
+                flags: [1, 0, 1],
+                value: 8.0,
+            },
+            2_u16,
+        ),
+    ] {
+        let mut bytes = chart_symbol_prefix(&class, &fields);
+        push_null(&mut bytes); // 轮廓
+        bytes.extend(common_version.to_le_bytes());
+        bytes.extend(19_i32.to_le_bytes());
+        bytes.extend(2_i32.to_le_bytes());
+        bytes.extend(14.0_f64.to_le_bytes());
+        if common_version == 1 {
+            push_entry(&mut bytes, &LINE_CALLOUT_CLASS_ID, 11);
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend([0; 4 * 16]); // 三个符号槽和锚点槽
+            bytes.extend([0; 6 * 8 + 4]);
+        }
+        bytes.extend(2_i32.to_le_bytes());
+        push_entry(&mut bytes, &SIMPLE_FILL_SYMBOL_CLASS_ID, 12);
+        bytes.extend(1_u16.to_le_bytes());
+        push_null(&mut bytes); // 填充符号的轮廓
+        push_null(&mut bytes); // 颜色
+        bytes.extend([0; 12]);
+        bytes.extend(101.0_f64.to_le_bytes());
+        push_entry(&mut bytes, &SIMPLE_FILL_SYMBOL_CLASS_ID, 12);
+        bytes.extend(51.0_f64.to_le_bytes());
+        if common_version == 1 {
+            push_entry(&mut bytes, &LINE_CALLOUT_CLASS_ID, 11);
+        } else {
+            push_null(&mut bytes);
+        }
+        let end = bytes.len();
+        push_entry(&mut bytes, &class, 10);
+
+        let mut reader = Reader::new(&bytes);
+        let mut table = RefTable10_1::new();
+        let slot = read_symbol_slot_full_10_1(&mut reader, 1024, &mut table, 8).unwrap();
+        let SymbolSlotFull10_1::ChartSymbol(body) = slot else {
+            panic!("预期统计图符号，实际为 {slot:?}");
+        };
+        assert_eq!(reader.position(), end);
+        assert_eq!(body.fields, expected);
+        assert_eq!(body.initial_values, [1.25, 2.5, 3.75, 4.0]);
+        assert_eq!(body.flag, 1);
+        assert_eq!(body.value, 5.5);
+        assert_eq!(body.common_integers, [19, 2]);
+        assert_eq!(body.common_value, 14.0);
+        assert!(matches!(
+            body.entries[0].0,
+            SymbolSlotFull10_1::SimpleFillSymbol(_)
+        ));
+        assert_eq!(body.entries[0].1, 101.0);
+        assert_eq!(
+            body.entries[1],
+            (
+                SymbolSlotFull10_1::BackReference {
+                    class_id: SIMPLE_FILL_SYMBOL_CLASS_ID,
+                    key: 12
+                },
+                51.0
+            )
+        );
+        if common_version == 1 {
+            assert!(matches!(
+                body.legacy_callout,
+                Some(CalloutSlot10_1::Line(_))
+            ));
+            assert!(matches!(
+                body.marker_background,
+                CalloutSlot10_1::BackReference { key: 11, .. }
+            ));
+        } else {
+            assert_eq!(body.legacy_callout, None);
+            assert_eq!(body.marker_background, CalloutSlot10_1::Null);
+        }
+        assert_eq!(
+            read_symbol_slot_full_10_1(&mut reader, 1024, &mut table, 8).unwrap(),
+            SymbolSlotFull10_1::BackReference {
+                class_id: class,
+                key: 10
+            }
+        );
+        assert_eq!(reader.remaining(), 0);
+
+        for length in 0..end {
+            let mut reader = Reader::new(&bytes[..length]);
+            let mut table = RefTable10_1::new();
+            assert!(
+                read_symbol_slot_full_10_1(&mut reader, 1024, &mut table, 8).is_err(),
+                "截断位置 {length}"
+            );
+            assert_eq!(reader.position(), 0);
+            assert!(table.is_empty());
+        }
+    }
+}
+
+#[test]
+fn chart_symbol_rejects_negative_count_and_rewinds_unknown_background() {
+    use mxd2qgz::objects::display_symbol::{
+        PIE_CHART_SYMBOL_CLASS_ID, SymbolSlotFull10_1, read_symbol_slot_full_10_1,
+    };
+    let mut bytes = chart_symbol_prefix(&PIE_CHART_SYMBOL_CLASS_ID, &[0; 6]);
+    push_null(&mut bytes); // 轮廓
+    bytes.extend(2_u16.to_le_bytes());
+    bytes.extend([0; 16]); // 公共标量段
+    let count_offset = bytes.len();
+    bytes.extend((-1_i32).to_le_bytes());
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    assert_eq!(
+        read_symbol_slot_full_10_1(&mut reader, 1024, &mut table, 8)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::InvalidData
+    );
+    assert_eq!(reader.position(), 0);
+    assert!(table.is_empty());
+
+    bytes[count_offset..].copy_from_slice(&1_i32.to_le_bytes());
+    push_entry(&mut bytes, &SIMPLE_FILL_SYMBOL_CLASS_ID, 12);
+    bytes.extend(1_u16.to_le_bytes());
+    push_null(&mut bytes);
+    push_null(&mut bytes);
+    bytes.extend([0; 12]);
+    bytes.extend(10.0_f64.to_le_bytes());
+    push_entry(&mut bytes, &[0xaa; 16], 90);
+    let mut reader = Reader::new(&bytes);
+    assert_eq!(
+        read_symbol_slot_full_10_1(&mut reader, 1024, &mut table, 8).unwrap(),
+        SymbolSlotFull10_1::Unsupported {
+            class_id: PIE_CHART_SYMBOL_CLASS_ID,
+            key: 10,
+        }
+    );
+    assert_eq!(reader.position(), 0);
+    assert!(table.is_empty());
+}
+
+#[test]
+fn raster_color_symbols_preserve_the_color_and_all_integer_fields() {
+    use mxd2qgz::objects::display_symbol::{
+        COLOR_SYMBOL_CLASS_ID, RASTER_RGB_SYMBOL_CLASS_ID, SymbolSlotFull10_1,
+        read_symbol_slot_full_10_1,
+    };
+
+    for class in [COLOR_SYMBOL_CLASS_ID, RASTER_RGB_SYMBOL_CLASS_ID] {
+        let mut bytes = Vec::new();
+        push_entry(&mut bytes, &class, 41);
+        bytes.extend(1_u16.to_le_bytes());
+        push_entry(&mut bytes, &RGB_COLOR_CLASS_ID, 42);
+        bytes.extend(rgb_color_body());
+        for value in [13_i32, -5, 17] {
+            bytes.extend(value.to_le_bytes());
+        }
+        let end = bytes.len();
+        push_entry(&mut bytes, &class, 41);
+        let mut reader = Reader::new(&bytes);
+        let mut table = RefTable10_1::new();
+        let body = match read_symbol_slot_full_10_1(&mut reader, 1024, &mut table, 8).unwrap() {
+            SymbolSlotFull10_1::ColorSymbol(body) if class == COLOR_SYMBOL_CLASS_ID => body,
+            SymbolSlotFull10_1::RasterRgbSymbol(body) if class == RASTER_RGB_SYMBOL_CLASS_ID => {
+                body
+            }
+            slot => panic!("符号类不符: {slot:?}"),
+        };
+        assert_eq!(
+            (body.key, body.version, body.integers, body.stop),
+            (41, 1, Some([13, -5, 17]), None)
+        );
+        assert!(matches!(body.color, ColorSlot10_1::Color { .. }));
+        assert!(table.contains(42));
+        assert_eq!(reader.position(), end);
+        assert_eq!(
+            read_symbol_slot_full_10_1(&mut reader, 1024, &mut table, 8).unwrap(),
+            SymbolSlotFull10_1::BackReference {
+                class_id: class,
+                key: 41
+            }
+        );
+        assert_eq!(reader.remaining(), 0);
+    }
+}
+
+#[test]
+fn raster_color_ramp_symbol_consumes_only_fields_for_its_version() {
+    use mxd2qgz::objects::color_ramp::ColorRampSlot10_1;
+    use mxd2qgz::objects::display_symbol::{
+        COLOR_RAMP_SYMBOL_CLASS_ID, SymbolSlotFull10_1, read_symbol_slot_full_10_1,
+    };
+
+    for version in 0_u16..=5 {
+        let mut bytes = Vec::new();
+        push_entry(&mut bytes, &COLOR_RAMP_SYMBOL_CLASS_ID, 41);
+        bytes.extend(version.to_le_bytes());
+        push_null(&mut bytes); // 颜色
+        for value in [13_i32, -5, 17] {
+            bytes.extend(value.to_le_bytes());
+        }
+        push_null(&mut bytes); // 渐变
+        bytes.extend(30_u16.to_le_bytes());
+        if version < 2 {
+            bytes.extend(31_u16.to_le_bytes());
+        }
+        bytes.extend(32_i32.to_le_bytes());
+        if version >= 3 {
+            for value in [33_u16, 34, 35] {
+                bytes.extend(value.to_le_bytes());
+            }
+        }
+        if version >= 4 {
+            bytes.extend((-36_i32).to_le_bytes());
+        }
+        if version >= 5 {
+            bytes.extend(37_u16.to_le_bytes());
+            bytes.extend(0xffff_u16.to_le_bytes());
+        }
+        let end = bytes.len();
+        bytes.push(0xb1);
+        let mut reader = Reader::new(&bytes);
+        let SymbolSlotFull10_1::ColorRampSymbol(body) =
+            read_symbol_slot_full_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 8).unwrap()
+        else {
+            panic!("预期颜色渐变符号");
+        };
+        assert_eq!((body.key, body.version, body.stop), (41, version, None));
+        assert_eq!(body.integers, Some([13, -5, 17]));
+        assert_eq!(body.ramp, Some(ColorRampSlot10_1::Null));
+        let tail = body.tail.unwrap();
+        assert_eq!(tail.first_short, 30);
+        assert_eq!(tail.legacy_short, (version < 2).then_some(31));
+        assert_eq!(tail.integer, 32);
+        assert_eq!(tail.shorts_v3, (version >= 3).then_some([33, 34, 35]));
+        assert_eq!(tail.integer_v4, (version >= 4).then_some(-36));
+        assert_eq!(tail.shorts_v5, (version >= 5).then_some([37, 0xffff]));
+        assert_eq!(reader.read_bytes(1).unwrap(), &[0xb1]);
+
+        for length in 0..end {
+            let mut reader = Reader::new(&bytes[..length]);
+            let mut table = RefTable10_1::new();
+            assert!(
+                read_symbol_slot_full_10_1(&mut reader, 1024, &mut table, 8).is_err(),
+                "版本 {version} 截断于 {length}"
+            );
+            assert_eq!(reader.position(), 0);
+            assert!(table.is_empty());
+        }
+    }
+}
+
+#[test]
+fn raster_color_ramp_symbol_stops_at_unrecognized_ramp() {
+    use mxd2qgz::objects::display_symbol::{
+        COLOR_RAMP_SYMBOL_CLASS_ID, DisplaySlotKind10_1, SymbolSlotFull10_1,
+        read_symbol_slot_full_10_1, slot_full_stop_10_1,
+    };
+
+    let mut bytes = Vec::new();
+    push_entry(&mut bytes, &COLOR_RAMP_SYMBOL_CLASS_ID, 41);
+    bytes.extend(5_u16.to_le_bytes());
+    push_null(&mut bytes);
+    bytes.extend([0; 12]);
+    let ramp_offset = bytes.len();
+    push_entry(&mut bytes, &[0xe3; 16], 42);
+    let mut reader = Reader::new(&bytes);
+    let mut table = RefTable10_1::new();
+    let slot = read_symbol_slot_full_10_1(&mut reader, 1024, &mut table, 8).unwrap();
+    assert_eq!(
+        slot_full_stop_10_1(&slot, DisplaySlotKind10_1::Symbol),
+        Some(SymbolStop10_1::NestedIncomplete {
+            class_id: COLOR_RAMP_SYMBOL_CLASS_ID,
+            key: 41
+        })
+    );
+    let SymbolSlotFull10_1::ColorRampSymbol(body) = slot else {
+        panic!("预期保留渐变符号前缀");
+    };
+    assert_eq!(
+        body.stop,
+        Some(SymbolStop10_1::Slot {
+            kind: DisplaySlotKind10_1::ColorRamp,
+            class_id: [0xe3; 16],
+            key: 42
+        })
+    );
+    assert!(body.tail.is_none());
+    assert_eq!(reader.position(), ramp_offset);
+    assert!(table.contains(41));
+    assert!(!table.contains(42));
+}
+
+#[test]
+fn url_picture_marker_preserves_strings_and_reads_the_embedded_marker() {
+    use mxd2qgz::objects::display_symbol::{
+        PICTURE_MARKER_SYMBOL_CLASS_ID, SymbolSlotFull10_1, URL_PICTURE_MARKER_SYMBOL_CLASS_ID,
+        read_symbol_slot_full_10_1,
+    };
+
+    let mut prefix = Vec::new();
+    push_entry(&mut prefix, &URL_PICTURE_MARKER_SYMBOL_CLASS_ID, 61);
+    prefix.extend(1_u16.to_le_bytes());
+    push_string(&mut prefix, "https://example.invalid/图标.png");
+    push_string(&mut prefix, "image/png");
+    for embedded in [false, true] {
+        let mut bytes = prefix.clone();
+        if embedded {
+            push_entry(&mut bytes, &PICTURE_MARKER_SYMBOL_CLASS_ID, 62);
+            bytes.extend(9_u16.to_le_bytes());
+            bytes.extend(1_i32.to_le_bytes()); // 路径图像分支
+            bytes.extend(0_i32.to_le_bytes());
+            push_string(&mut bytes, "图.png");
+            bytes.extend(0.5_f64.to_le_bytes());
+            bytes.extend([0; 3 * 16 + 6 * 8 + 2 * 4 + 1 + 4 * 2]);
+        } else {
+            push_null(&mut bytes);
+        }
+        let end = bytes.len();
+        bytes.push(0xd5);
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let SymbolSlotFull10_1::UrlPictureMarkerSymbol(body) =
+            read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 8).unwrap()
+        else {
+            panic!("预期 URL 图像标记符号");
+        };
+        assert_eq!((body.key, body.version, body.stop), (61, 1, None));
+        assert_eq!(
+            body.strings,
+            ["https://example.invalid/图标.png", "image/png"]
+        );
+        assert!(if embedded {
+            matches!(body.picture_marker, SymbolSlotFull10_1::PictureMarkerSymbol(nested) if nested.key == 62)
+        } else {
+            body.picture_marker == SymbolSlotFull10_1::Null
+        });
+        assert_eq!(refs.contains(62), embedded);
+        assert_eq!(reader.read_bytes(1).unwrap(), [0xd5]);
+
+        for length in 0..end {
+            let mut reader = Reader::new(&bytes[..length]);
+            let mut refs = RefTable10_1::new();
+            assert!(
+                read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 8).is_err(),
+                "截断于 {length}"
+            );
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+
+    let slot_start = prefix.len();
+    push_entry(&mut prefix, &SIMPLE_MARKER_SYMBOL_CLASS_ID, 70);
+    let mut reader = Reader::new(&prefix);
+    let mut refs = RefTable10_1::new();
+    let SymbolSlotFull10_1::UrlPictureMarkerSymbol(body) =
+        read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 8).unwrap()
+    else {
+        panic!("预期保留 URL 图像标记符号前缀");
+    };
+    assert!(body.stop.is_some());
+    assert_eq!(reader.position(), slot_start);
+    assert!(!refs.contains(70));
+}

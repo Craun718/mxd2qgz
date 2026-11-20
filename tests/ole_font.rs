@@ -78,6 +78,24 @@ const SAMPLE_FONT_BODY: &[u8] = &[
     0x01, 0x86, 0x00, 0x00, 0x90, 0x01, 0xc0, 0xd4, 0x01, 0x00, 0x04, 0xcb, 0xce, 0xcc, 0xe5,
 ];
 
+#[test]
+fn reads_font_saved_by_native_oleaut32_and_wine() {
+    // 两种实现均写出该 ASCII 字体体，三个布尔属性全部开启。
+    let bytes = [
+        0x01, 0x86, 0x00, 0x0e, 0x8a, 0x02, 0xcc, 0x55, 0x01, 0x00, 0x06, b'T', b'a', b'h', b'o',
+        b'm', b'a', 0x53,
+    ];
+    let mut reader = Reader::new(&bytes);
+    let font = read_std_font_body_10_1(&mut reader, 32).unwrap();
+    assert_eq!(font.version, 1);
+    assert_eq!(font.charset, Some(134));
+    assert_eq!(font.flags, 0x0e);
+    assert_eq!(font.weight, 650);
+    assert_eq!(font.size_cy_lo, 87500);
+    assert_eq!(font.name_bytes, b"Tahoma");
+    assert_eq!(reader.read_bytes(1).unwrap(), [0x53]);
+}
+
 /// TextSymbol 体（版本 4）合成前缀：字段 1-14 全为空标记/零，字段序按
 /// element_body 模块文档。返回（字节，字体槽起点偏移）——字体槽条目、
 /// StdFont/StdPicture 体与版本门尾段由各测试自行拼接。

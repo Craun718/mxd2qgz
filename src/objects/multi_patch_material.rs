@@ -8,7 +8,11 @@ use std::io::{self, ErrorKind};
 pub enum MultiPatchMaterialCommand10_1<'a> {
     Color([u8; 3]),
     TransparencyPercent(u8),
+    Shininess(u8),
     CullBackface,
+    /// 命令存在时显示边线，载荷为 RGB 三个通道。
+    EdgeColor([u8; 3]),
+    EdgeWidth(u8),
     /// 指向提供纹理的材质，保留存盘的有符号索引。
     TextureReference {
         opcode: u8,
@@ -21,11 +25,6 @@ pub enum MultiPatchMaterialCommand10_1<'a> {
         height: u16,
         /// 旧命令的编码由操作码区分，没有独立的存盘字段。
         encoding: Option<u32>,
-        bytes: &'a [u8],
-    },
-    /// 已确认长度，保留其尚未定名的属性。
-    Attribute {
-        opcode: u8,
         bytes: &'a [u8],
     },
 }
@@ -86,6 +85,7 @@ impl<'a> Iterator for MultiPatchMaterialCommands10_1<'a> {
 }
 
 /// 旧命令长度由 0x718fdccc 确认。带版本的命令由 0x718fed40 的查找器确认。
+/// 旧转换器的复制阶段会多取 3/4 后的一字节，磁盘边界采用旧查找器的两字节宽度。
 fn read_command<'a>(
     r: &mut Reader<'a>,
     legacy: bool,
@@ -93,32 +93,24 @@ fn read_command<'a>(
     use MultiPatchMaterialCommand10_1::*;
 
     let opcode = r.read_bytes(1)?[0];
-    let attribute_size = match opcode {
-        1 => return Ok(Color(r.read_bytes(3)?.try_into().unwrap())),
-        2 => return read_texture(r, opcode, legacy),
-        3 => return Ok(TransparencyPercent(r.read_bytes(1)?[0])),
-        6 => return Ok(CullBackface),
-        7 if legacy => return read_texture(r, opcode, true),
-        5 | 8 if opcode == 5 || legacy => {
-            return Ok(TextureReference {
-                opcode,
-                material_index: r.read_u32_le()? as i32,
-            });
-        }
-        4 => 1,
-        9 if !legacy => 3,
-        10 if !legacy => 1,
-        _ => {
-            return Err(io::Error::new(
-                ErrorKind::Unsupported,
-                format!("未知操作码 0x{opcode:02x}"),
-            ));
-        }
-    };
-    Ok(Attribute {
-        opcode,
-        bytes: r.read_bytes(attribute_size)?,
-    })
+    match opcode {
+        1 => Ok(Color(r.read_bytes(3)?.try_into().unwrap())),
+        2 => read_texture(r, opcode, legacy),
+        3 => Ok(TransparencyPercent(r.read_bytes(1)?[0])),
+        4 => Ok(Shininess(r.read_bytes(1)?[0])),
+        5 | 8 if opcode == 5 || legacy => Ok(TextureReference {
+            opcode,
+            material_index: r.read_u32_le()? as i32,
+        }),
+        6 => Ok(CullBackface),
+        7 if legacy => read_texture(r, opcode, true),
+        9 if !legacy => Ok(EdgeColor(r.read_bytes(3)?.try_into().unwrap())),
+        10 if !legacy => Ok(EdgeWidth(r.read_bytes(1)?[0])),
+        _ => Err(io::Error::new(
+            ErrorKind::Unsupported,
+            format!("未知操作码 0x{opcode:02x}"),
+        )),
+    }
 }
 
 fn read_texture<'a>(

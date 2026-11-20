@@ -26,16 +26,11 @@
 //! 未确认类（TableName / UnknownDatasetName / 其他模块实现）
 //! 为停止点。
 //!
-//! ## TableName / UnknownDatasetName / ObjectClassName：持久化体未闭合
+//! ## TableName、ObjectClassName 与未知名称
 //!
-//! `TableName {06783DB1-E5EE-11D1-B0A2-0000F8780820}`、`UnknownDatasetName
-//! {06783DB1-…082E}`、`ObjectClassName {905CEC64-0B2C-11D4-A060-00C04F6BDD84}`
-//! 的具体持久化体尚未闭合。GdbCore.dll 10.1 的 ObjectClassName 注册代码
-//! `0x70a808c5` 将 CLSID 与工厂虚表 `0x70ac2208` 绑定；工厂 RTTI 为
-//! `ClassFactory<FdbTableName>`，工厂函数 `0x7090a240` 调用构造入口
-//! `0x709b9330`，后者安装 RTTI 为 `FdbTableName` 的虚表 `0x70ad06f0`。
-//! `0x709b94b0` 是析构入口，不是构造函数；该证据不证明所有持久化路径
-//! 不存在。详见 `docs/mxd-round3-dataset-format-20261117.md`。
+//! TableName 和工厂别名 ObjectClassName 均经 FdbTableName 的持久化虚表，
+//! 复用 GdbCoreLib 的 FdbDatasetName 版本、三条字符串和 IWorkspaceName 槽。
+//! UnknownDatasetName 缺少已确认的对象体。
 //! TableQueryName / FeatureQueryName 的 IPersistStream 读取见本模块；SystemCore
 //! 优先查询 IPersistVariant，但两类静态 QI 路径均不支持该接口，详见
 //! `docs/mxd-terra-integrate-query.md`。
@@ -60,10 +55,16 @@ use crate::layers::feature_layer::{
     FGDB_FEATURE_CLASS_NAME_CLASS_ID, read_coverage_feature_class_name_body_10_1,
     read_fgdb_feature_class_name_body_10_1,
 };
-use crate::layers::raster_dataset_name::{RasterLongArraySlot10_1, read_long_array_slot};
+use crate::layers::raster_dataset_name::{
+    RASTER_BAND_NAME_CLASS_ID, RASTER_CATALOG_NAME_CLASS_ID, RasterDatasetNameEntryBody10_1,
+    RasterLongArraySlot10_1, read_long_array_slot, read_supported_raster_name_body_10_1,
+};
 use crate::maps::standalone_table::{
-    FGDB_TABLE_NAME_CLASS_ID, TABLE_NAME_CLASS_ID, TableNameBody10_1,
+    FGDB_TABLE_NAME_CLASS_ID, OBJECT_CLASS_NAME_CLASS_ID, TABLE_NAME_CLASS_ID, TableNameBody10_1,
     read_fgdb_table_name_body_10_1, read_table_name_body_10_1,
+};
+use crate::objects::ams_dataset_name::{
+    AMS_DATASET_NAME_CLASS_ID, AmsDatasetName10_1, read_ams_dataset_name_10_1,
 };
 use crate::objects::dataset_name::{
     COVERAGE_NAME_CLASS_ID, FEATURE_DATASET_NAME_CLASS_ID, FeatureDatasetNameBody10_1,
@@ -351,12 +352,19 @@ pub enum DatasetNameMoreBody10_1 {
     FeatureClassName(Box<crate::layers::feature_layer::FeatureClassNamePrefix10_1>),
     /// TableName 在 IName 槽中的对象体。
     Table(Box<TableNameBody10_1>),
+    /// 可经 IName 打开的栅格属性表及栅格目录。
+    RasterTable(Box<RasterDatasetNameEntryBody10_1>),
+    SchematicClass(Box<SchematicClassNameBody10_1>),
+    SchematicDataset(Box<SchematicDatasetNameBody10_1>),
     /// NetCDFTableName 在 IName 槽中的对象体。
     NetCdfTable(Box<NetCdfTableNameBody10_1>),
+    /// MosaicDB 的 ReferencedTableName 包装体。
+    ReferencedTable(Box<ReferencedTableNameBody10_1>),
     /// NetCDFFeatureClassName 的独立持久化体。
     NetCdfFeatureClass(Box<NetCdfFeatureClassNameBody10_1>),
     XyEventSource(Box<XyEventSourceNameBody10_1>),
     RouteEventSource(Box<RouteEventSourceNameBody10_1>),
+    AmsDatasetName(Box<AmsDatasetName10_1>),
     /// FeatureDatasetName（第六轮读取器）。
     FeatureDataset(Box<FeatureDatasetNameBody10_1>),
     CadDrawing(Box<CadDrawingNameBody10_1>),
@@ -649,6 +657,60 @@ pub(crate) fn read_cad_drawing_name_body_10_1(
     })
 }
 
+pub const SCHEMATIC_DIAGRAM_CLASS_NAME_CLASS_ID: [u8; 16] = [
+    0xbc, 0x39, 0x9c, 0x35, 0xb6, 0xfd, 0xb6, 0x49, 0x8a, 0x1c, 0x23, 0x97, 0xb3, 0xea, 0x92, 0x61,
+];
+pub const SCHEMATIC_ELEMENT_CLASS_NAME_CLASS_ID: [u8; 16] = [
+    0x86, 0xeb, 0x87, 0x67, 0xb7, 0x1e, 0x18, 0x4b, 0xbb, 0x61, 0x13, 0xa5, 0xd8, 0x47, 0xdc, 0xdb,
+];
+pub const SCHEMATIC_DATASET_NAME_CLASS_ID: [u8; 16] = [
+    0x77, 0xae, 0x3d, 0x33, 0xeb, 0x1a, 0x7d, 0x44, 0x8e, 0x83, 0xfe, 0x04, 0x3e, 0x84, 0xa6, 0x71,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SchematicClassNameBody10_1 {
+    pub key: u32,
+    pub version: i16,
+    pub strings: [String; 3],
+    pub dataset: DatasetNameMoreSlot10_1,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SchematicDatasetNameBody10_1 {
+    pub key: u32,
+    pub version: i16,
+    pub strings: [String; 3],
+    pub workspace: WorkspaceNameSlot10_1,
+}
+
+fn read_schematic_name_prefix(r: &mut Reader<'_>, max: usize) -> io::Result<(i16, [String; 3])> {
+    let version = r.read_u16_le()? as i16;
+    if version > 1 {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            format!("Schematic 名称未支持版本 {version}"),
+        ));
+    }
+    let strings = [
+        read_string_10_1(r, max)?,
+        read_string_10_1(r, max)?,
+        read_string_10_1(r, max)?,
+    ];
+    Ok((version, strings))
+}
+
+pub const REFERENCED_TABLE_NAME_CLASS_ID: [u8; 16] = [
+    0x5e, 0x4e, 0x14, 0xab, 0x75, 0x94, 0x3e, 0x47, 0xb0, 0x78, 0x4e, 0x95, 0x44, 0x0c, 0x52, 0xfe,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReferencedTableNameBody10_1 {
+    pub key: u32,
+    /// MosaicDB 兼容版本表可写出 -1，后面仍有 IName 槽。
+    pub version: i16,
+    pub source: DatasetNameMoreSlot10_1,
+}
+
 pub const XY_EVENT_SOURCE_NAME_CLASS_ID: [u8; 16] = [
     0x20, 0xa9, 0x9a, 0x30, 0xec, 0xea, 0xd3, 0x11, 0x9f, 0x8a, 0x00, 0xc0, 0x4f, 0x6b, 0xdf, 0x06,
 ];
@@ -933,6 +995,48 @@ fn read_dataset_name_object_body_10_1(
         };
     }
     match class_id {
+        AMS_DATASET_NAME_CLASS_ID => {
+            let body = read_ams_dataset_name_10_1(reader, max_bytes, table)?;
+            Ok((
+                DatasetNameMoreBody10_1::AmsDatasetName(Box::new(body)),
+                None,
+            ))
+        }
+        SCHEMATIC_DIAGRAM_CLASS_NAME_CLASS_ID | SCHEMATIC_ELEMENT_CLASS_NAME_CLASS_ID => {
+            let (version, strings) = read_schematic_name_prefix(reader, max_bytes)?;
+            let mut stop = None;
+            let dataset = read_name_slot_with_depth_10_1(
+                reader,
+                max_bytes,
+                table,
+                &mut stop,
+                0,
+                |class_id| class_id == SCHEMATIC_DATASET_NAME_CLASS_ID,
+            )?;
+            Ok((
+                DatasetNameMoreBody10_1::SchematicClass(Box::new(SchematicClassNameBody10_1 {
+                    key,
+                    version,
+                    strings,
+                    dataset,
+                })),
+                stop,
+            ))
+        }
+        SCHEMATIC_DATASET_NAME_CLASS_ID => {
+            let (version, strings) = read_schematic_name_prefix(reader, max_bytes)?;
+            let mut stop = None;
+            let workspace = read_workspace_slot_10_1(reader, max_bytes, table, &mut stop)?;
+            Ok((
+                DatasetNameMoreBody10_1::SchematicDataset(Box::new(SchematicDatasetNameBody10_1 {
+                    key,
+                    version,
+                    strings,
+                    workspace,
+                })),
+                stop,
+            ))
+        }
         CAD_DRAWING_NAME_CLASS_ID => {
             let mut body = read_cad_drawing_name_body_10_1(reader, max_bytes, table, key)?;
             let stop = nested_stop!(body);
@@ -964,6 +1068,34 @@ fn read_dataset_name_object_body_10_1(
             let stop = nested_stop!(body);
             Ok((DatasetNameMoreBody10_1::NetCdfTable(Box::new(body)), stop))
         }
+        REFERENCED_TABLE_NAME_CLASS_ID => {
+            let mut trial = reader.clone();
+            let version = trial.read_u16_le()? as i16;
+            // 原生 Load 比较有符号上限，已知 Save 写 -1 或 1。
+            if !(-1..=1).contains(&version) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("ReferencedTableName 未支持架构版本 {version}"),
+                ));
+            }
+            let mut stop = None;
+            let source = read_tabular_name_slot_10_1(&mut trial, max_bytes, table, &mut stop)?;
+            *reader = trial;
+            let body = ReferencedTableNameBody10_1 {
+                key,
+                version,
+                source,
+            };
+            let stop = stop.map(|inner| DatasetNameMoreStop10_1::Nested {
+                class_id,
+                key,
+                inner: Box::new(inner),
+            });
+            Ok((
+                DatasetNameMoreBody10_1::ReferencedTable(Box::new(body)),
+                stop,
+            ))
+        }
         FGDB_FEATURE_CLASS_NAME_CLASS_ID | COVERAGE_FEATURE_CLASS_NAME_CLASS_ID => {
             let body = if class_id == COVERAGE_FEATURE_CLASS_NAME_CLASS_ID {
                 read_coverage_feature_class_name_body_10_1(reader, max_bytes, table, key)?
@@ -983,7 +1115,7 @@ fn read_dataset_name_object_body_10_1(
                 stop,
             ))
         }
-        TABLE_NAME_CLASS_ID | FGDB_TABLE_NAME_CLASS_ID => {
+        TABLE_NAME_CLASS_ID | FGDB_TABLE_NAME_CLASS_ID | OBJECT_CLASS_NAME_CLASS_ID => {
             let (body, _) = if class_id == FGDB_TABLE_NAME_CLASS_ID {
                 read_fgdb_table_name_body_10_1(reader, table, max_bytes)?
             } else {
@@ -1008,6 +1140,11 @@ fn read_dataset_name_object_body_10_1(
                 inner: Box::new(inner),
             });
             Ok((DatasetNameMoreBody10_1::Table(Box::new(body)), stop))
+        }
+        RASTER_BAND_NAME_CLASS_ID | RASTER_CATALOG_NAME_CLASS_ID => {
+            let body =
+                read_supported_raster_name_body_10_1(reader, max_bytes, table, class_id, key)?;
+            Ok((DatasetNameMoreBody10_1::RasterTable(Box::new(body)), None))
         }
         FEATURE_DATASET_NAME_CLASS_ID | COVERAGE_NAME_CLASS_ID => {
             let body = if class_id == COVERAGE_NAME_CLASS_ID {
@@ -1148,16 +1285,48 @@ pub(crate) fn read_tabular_name_slot_10_1(
                 | FGDB_FEATURE_CLASS_NAME_CLASS_ID
                 | COVERAGE_FEATURE_CLASS_NAME_CLASS_ID
                 | TABLE_NAME_CLASS_ID
+                | OBJECT_CLASS_NAME_CLASS_ID
                 | FGDB_TABLE_NAME_CLASS_ID
+                | RASTER_BAND_NAME_CLASS_ID
+                | RASTER_CATALOG_NAME_CLASS_ID
+                | RELATIONSHIP_CLASS_NAME_CLASS_ID
+                | SCHEMATIC_DIAGRAM_CLASS_NAME_CLASS_ID
+                | SCHEMATIC_ELEMENT_CLASS_NAME_CLASS_ID
                 | NETCDF_TABLE_NAME_CLASS_ID
+                | REFERENCED_TABLE_NAME_CLASS_ID
                 | NETCDF_FEATURE_CLASS_NAME_CLASS_ID
                 | XY_EVENT_SOURCE_NAME_CLASS_ID
                 | ROUTE_EVENT_SOURCE_NAME_CLASS_ID
+                | AMS_DATASET_NAME_CLASS_ID
                 | QUERY_TABLE_NAME_CLASS_ID
                 | TABLE_QUERY_NAME_CLASS_ID
                 | FEATURE_QUERY_NAME_CLASS_ID
                 | REL_QUERY_TABLE_NAME_CLASS_ID
                 | DB_TABLE_NAME_CLASS_ID
+        )
+    })
+}
+
+/// 读取可打开为 IFeatureClass 的已知 IName，供自定义叠加格网使用。
+pub(crate) fn read_feature_source_name_slot_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    stop_out: &mut Option<DatasetNameMoreStop10_1>,
+) -> io::Result<DatasetNameMoreSlot10_1> {
+    read_name_slot_with_depth_10_1(reader, max_bytes, table, stop_out, 0, |class_id| {
+        matches!(
+            class_id,
+            FEATURE_CLASS_NAME_CLASS_ID
+                | FGDB_FEATURE_CLASS_NAME_CLASS_ID
+                | COVERAGE_FEATURE_CLASS_NAME_CLASS_ID
+                | RASTER_CATALOG_NAME_CLASS_ID
+                | FEATURE_QUERY_NAME_CLASS_ID
+                | REL_QUERY_TABLE_NAME_CLASS_ID
+                | NETCDF_FEATURE_CLASS_NAME_CLASS_ID
+                | XY_EVENT_SOURCE_NAME_CLASS_ID
+                | ROUTE_EVENT_SOURCE_NAME_CLASS_ID
+                | AMS_DATASET_NAME_CLASS_ID
         )
     })
 }
@@ -1175,6 +1344,7 @@ fn read_relationship_endpoint_slot_10_1(
             FEATURE_CLASS_NAME_CLASS_ID
                 | FGDB_FEATURE_CLASS_NAME_CLASS_ID
                 | TABLE_NAME_CLASS_ID
+                | OBJECT_CLASS_NAME_CLASS_ID
                 | QUERY_TABLE_NAME_CLASS_ID
                 | TABLE_QUERY_NAME_CLASS_ID
                 | FEATURE_QUERY_NAME_CLASS_ID

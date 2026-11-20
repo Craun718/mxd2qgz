@@ -75,6 +75,7 @@ use crate::objects::display_symbol::{
 };
 use crate::objects::geometry::{POINT_CLASS_ID, PointBody10_1, read_point_body_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
@@ -564,15 +565,14 @@ pub enum CalloutSlot10_1 {
     Line(Box<LineCalloutBody10_1>),
     /// 新 SimpleLineCallout 对象（体闭合；`0x6eb82580`）。
     SimpleLine(Box<SimpleLineCalloutBody10_1>),
-    /// 新 MarkerTextBackground 对象（体闭合；`0x6eb64380`；IMarkerBackground
-    /// 槽分派入口 [`read_marker_background_slot_10_1`] 复用本变体）。
+    /// 新 MarkerTextBackground 对象（`0x6eb64380`，实现 IMarkerTextBackground）。
     MarkerBackground(Box<MarkerTextBackgroundBody10_1>),
 }
 
 /// 读取一个 Callout/文字背景类槽位条目，返回 `(槽位, 停止)`。
 ///
-/// `allow_marker_background` 控制是否接受 MarkerTextBackground（IMarkerBackground
-/// 槽传 `true`；纯 callout 接口族槽传 `false`）。其余实现类回退到槽位起点、
+/// `allow_marker_background` 控制 ITextBackground 槽是否接受 MarkerTextBackground。
+/// 纯 callout 接口族槽传 `false`。其余实现类回退到槽位起点、
 /// 登记表不保留该键，以停止原因返回。
 pub fn read_callout_slot_10_1(
     trial: &mut Reader<'_>,
@@ -686,22 +686,29 @@ fn callout_body_stop(slot: &CalloutSlot10_1) -> Option<SymbolStop10_1> {
     })
 }
 
-/// 读取一个 IMarkerBackground 类槽位条目（MultiLayerMarkerSymbol 版本 ≥2 的
-/// 槽位）：仅接受 MarkerTextBackground 实现，其余实现类停止回退。
+/// 读取 IMarkerBackground 槽。DisplayCore 的 LineCallout::QueryInterface
+/// （`0x6eb577f0`）直接返回该接口；未知新对象在头起点停止。
 pub fn read_marker_background_slot_10_1(
     trial: &mut Reader<'_>,
     max_bytes: usize,
     staged: &mut RefTable10_1,
     depth: usize,
 ) -> io::Result<(Option<CalloutSlot10_1>, Option<SymbolStop10_1>)> {
-    read_callout_slot_10_1(
-        trial,
-        max_bytes,
-        staged,
-        depth,
-        true,
-        DisplaySlotKind10_1::MarkerBackground,
-    )
+    let kind = DisplaySlotKind10_1::MarkerBackground;
+    if let ObjectHeader::Object { class_id, key } = read_header_10_1(&mut trial.clone())?
+        && !staged.contains(key)
+        && class_id != LINE_CALLOUT_CLASS_ID
+    {
+        return Ok((
+            None,
+            Some(SymbolStop10_1::Slot {
+                kind,
+                class_id,
+                key,
+            }),
+        ));
+    }
+    read_callout_slot_10_1(trial, max_bytes, staged, depth, false, kind)
 }
 
 #[cfg(test)]
@@ -840,20 +847,20 @@ mod tests {
     }
 
     #[test]
-    fn marker_background_slot_accepts_only_marker_text_background() {
-        let mut bytes = entry(&MARKER_TEXT_BACKGROUND_CLASS_ID, 55);
+    fn marker_background_slot_accepts_line_callout() {
+        let mut bytes = entry(&LINE_CALLOUT_CLASS_ID, 55);
         bytes.extend(1_u16.to_le_bytes());
-        bytes.extend(0_u16.to_le_bytes());
-        bytes.extend([0u8; 16]); // 符号槽空标记
+        bytes.extend([0u8; 4 * 16]); // 三个符号槽与锚点槽
+        bytes.extend([0u8; 6 * 8 + 4]); // 标量段
         let mut reader = Reader::new(&bytes);
         let mut table = RefTable10_1::new();
         let (slot, stop) = read_marker_background_slot_10_1(&mut reader, 1024, &mut table, 8)
             .expect("槽读取应成功");
-        assert!(matches!(slot, Some(CalloutSlot10_1::MarkerBackground(_))));
+        assert!(matches!(slot, Some(CalloutSlot10_1::Line(_))));
         assert!(stop.is_none());
         assert_eq!(reader.remaining(), 0);
-        // 非 MarkerTextBackground 实现类：停止回退。
-        let unknown = [0x44_u8; 16];
+        // IMarkerTextBackground 是另一接口，必须在对象头起点停止。
+        let unknown = MARKER_TEXT_BACKGROUND_CLASS_ID;
         let bytes = entry(&unknown, 60);
         let mut reader = Reader::new(&bytes);
         let mut table = RefTable10_1::new();

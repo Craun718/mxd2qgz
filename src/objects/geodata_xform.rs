@@ -70,6 +70,9 @@ pub const CSM_XFORM_CLASS_ID: [u8; 16] = [
 pub const PROJECTIVE_XFORM_CLASS_ID: [u8; 16] = [
     0x26, 0xc2, 0x7d, 0xcb, 0xd2, 0x5a, 0x40, 0x4a, 0x88, 0xf4, 0x3c, 0xed, 0xb5, 0xd6, 0x3b, 0xde,
 ];
+pub const PROJECTIVE_TRANSFORMATION_2D_CLASS_ID: [u8; 16] = [
+    0x4a, 0xb0, 0x2e, 0xf8, 0x5a, 0x4e, 0xc7, 0x43, 0x9a, 0x54, 0x45, 0x74, 0x39, 0xaa, 0x8e, 0x9e,
+];
 pub(crate) const MAX_XFORM_NESTING: usize = 16;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -236,6 +239,8 @@ pub struct ProjectiveXform10_1 {
     pub version: i32,
     pub reference: SpatialReferenceEntry10_1,
     pub geometry: GeometryCollectionSlot10_1,
+    /// 已确认的投影变换槽，包含有界旧档的空槽。
+    pub transformation: Option<ObjectEntry10_1>,
     pub point_count: usize,
     pub points_flag: i32,
     pub point_arrays: Option<[Vec<[f64; 2]>; 2]>,
@@ -427,10 +432,38 @@ fn read_projective_xform(
     max: usize,
     table: &mut RefTable10_1,
     version: i32,
+    has_empty_third_slot: bool,
 ) -> io::Result<ProjectiveXform10_1> {
     let reference = read_spatial_reference_entry_10_1(r, max, table)?;
-    let geometry = read_geometry_collection(r, max, table, "ProjectiveXform IGeometryCollection")?;
-    // 10.1 Save 在两个对象槽后直接写点数和标志。
+    let (geometry, transformation) =
+        if !has_empty_third_slot && projective_transformation_follows(r) {
+            // Save 写的是投影变换成员，只有 Load 所需的布局另含几何集合。
+            let geometry = GeometryCollectionSlot10_1 {
+                entry: ObjectEntry10_1::Null,
+                body: None,
+            };
+            (
+                geometry,
+                Some(read_projective_transformation_reference(r, table)?),
+            )
+        } else {
+            let geometry = read_geometry_collection(r, max, table, "ProjectiveXform 第二对象槽")?;
+            // 空 GUID 与两个零计数字段可能重合。只按明确的 CLSID 接受额外槽。
+            let transformation = if has_empty_third_slot {
+                if r.read_bytes(16)? != [0; 16] {
+                    return Err(io::Error::new(
+                        ErrorKind::InvalidData,
+                        "ProjectiveXform 的第三槽不是空对象",
+                    ));
+                }
+                Some(ObjectEntry10_1::Null)
+            } else {
+                projective_transformation_follows(r)
+                    .then(|| read_projective_transformation_reference(r, table))
+                    .transpose()?
+            };
+            (geometry, transformation)
+        };
     let point_count = nonnegative_count(r)?;
     let points_flag = long(r)?;
     let point_arrays = (points_flag != 0)
@@ -444,10 +477,32 @@ fn read_projective_xform(
         version,
         reference,
         geometry,
+        transformation,
         point_count,
         points_flag,
         point_arrays,
     })
+}
+
+fn projective_transformation_follows(r: &Reader<'_>) -> bool {
+    r.clone()
+        .read_bytes(16)
+        .is_ok_and(|bytes| bytes == PROJECTIVE_TRANSFORMATION_2D_CLASS_ID)
+}
+
+fn read_projective_transformation_reference(
+    r: &mut Reader<'_>,
+    table: &mut RefTable10_1,
+) -> io::Result<ObjectEntry10_1> {
+    let entry = read_object_entry_10_1(r, table)?;
+    if matches!(entry, ObjectEntry10_1::BackReference { .. }) {
+        return Ok(entry);
+    }
+    // Geometry.dll 的 ProjectiveTransformation2D Load 返回 E_NOTIMPL。
+    Err(io::Error::new(
+        ErrorKind::Unsupported,
+        "ProjectiveTransformation2D 新对象没有可读取的 10.1 二进制体",
+    ))
 }
 
 fn read_point_slot(
@@ -727,6 +782,39 @@ pub fn read_geodata_xform_slot_10_1(
     Ok(slot)
 }
 
+/// 旧式投影变换多一个空槽，仅供能验证后继字段与结束位置的宿主试读。
+pub(crate) fn read_projective_with_empty_third_slot(
+    reader: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<GeodataXformSlot10_1> {
+    let entry = read_object_entry_10_1(reader, table)?;
+    if !matches!(
+        entry,
+        ObjectEntry10_1::NewObject {
+            class_id: PROJECTIVE_XFORM_CLASS_ID,
+            ..
+        }
+    ) {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            "需要新 ProjectiveXform 对象",
+        ));
+    }
+    let version = long(reader)?;
+    if version != 1 {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            format!("ProjectiveXform 未支持的版本 {version}"),
+        ));
+    }
+    let body = read_projective_xform(reader, max, table, version, true)?;
+    Ok(GeodataXformSlot10_1 {
+        entry,
+        body: Some(Box::new(GeodataXformBody10_1::Projective(Box::new(body)))),
+    })
+}
+
 /// 已消费对象头的 Variant 宿主入口。宿主负责提交根对象键。
 pub(crate) fn read_geodata_xform_body_10_1(
     r: &mut Reader<'_>,
@@ -803,7 +891,7 @@ fn read_body(
             read_geometric_xform(r, max, table, version, depth - 1)?,
         )),
         PROJECTIVE_XFORM_CLASS_ID => GeodataXformBody10_1::Projective(Box::new(
-            read_projective_xform(r, max, table, version)?,
+            read_projective_xform(r, max, table, version, false)?,
         )),
         LSR_XFORM_CLASS_ID => {
             GeodataXformBody10_1::Lsr(Box::new(read_lsr_xform(r, max, table, version)?))

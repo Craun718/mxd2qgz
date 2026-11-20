@@ -261,7 +261,7 @@ fn with_materials(version: u16, materials: &[&[u8]]) -> Vec<u8> {
 #[test]
 fn reads_material_commands_from_normal_geometry_dispatch() {
     use mxd2qgz::objects::multi_patch_material::MultiPatchMaterialCommand10_1::{
-        Attribute, Color, CullBackface, Texture, TextureReference, TransparencyPercent,
+        Color, CullBackface, EdgeColor, EdgeWidth, Texture, TextureReference, TransparencyPercent,
     };
 
     for version in [1, 2] {
@@ -325,19 +325,7 @@ fn reads_material_commands_from_normal_geometry_dispatch() {
                 },]
             );
         } else {
-            assert_eq!(
-                decoded[5..],
-                [
-                    Attribute {
-                        opcode: 9,
-                        bytes: &[11, 12, 13]
-                    },
-                    Attribute {
-                        opcode: 10,
-                        bytes: &[7]
-                    },
-                ]
-            );
+            assert_eq!(decoded[5..], [EdgeColor([11, 12, 13]), EdgeWidth(7)]);
         }
         assert_eq!(
             materials.commands(1).unwrap().next().unwrap().unwrap(),
@@ -376,4 +364,40 @@ fn unknown_or_short_command_does_not_consume_following_material() {
         CullBackface
     );
     assert_eq!(materials.payload, [6, 88, 73, 1, 4, 6]);
+}
+
+#[test]
+fn legacy_material_attributes_leave_the_next_opcode_and_material_intact() {
+    use mxd2qgz::objects::multi_patch_material::MultiPatchMaterialCommand10_1::{
+        Color, CullBackface, Shininess, TransparencyPercent,
+    };
+
+    let bytes = with_materials(1, &[&[3, 40, 1, 11, 22, 33], &[4, 9], &[6]]);
+    let mut refs = RefTable10_1::new();
+    refs.register(71);
+    let mut reader = Reader::new(&bytes);
+    let body = read_body(&mut reader, 4096, &mut refs).unwrap();
+    let Some(MultiPatchRecord10_1::Mesh(mesh)) = body.record else {
+        panic!("缺少旧式面片");
+    };
+    let materials = mesh.materials.unwrap();
+    assert_eq!(materials.offsets, [0, 6, 8, 9]);
+    for (index, expected) in [
+        vec![TransparencyPercent(40), Color([11, 22, 33])],
+        vec![Shininess(9)],
+        vec![CullBackface],
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        assert_eq!(
+            materials
+                .commands(index)
+                .unwrap()
+                .collect::<io::Result<Vec<_>>>()
+                .unwrap(),
+            expected
+        );
+    }
+    assert_eq!(reader.remaining(), 0);
 }

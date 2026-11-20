@@ -273,7 +273,109 @@ mod tests {
     }
 
     #[test]
+    fn range_domain_shares_variant_spatial_reference_with_envelope() {
+        use crate::objects::envelope::{ENVELOPE_CLASS_ID, SpatialReferenceEntry10_1};
+        use crate::objects::geometry::GeometryBody10_1;
+        use crate::objects::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
+        use crate::objects::spatial_reference_slots::{
+            GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID, UNKNOWN_COORDINATE_SYSTEM_CLASS_ID,
+        };
+
+        let empty_string = [2, 0, 0, 0, 0, 0];
+        for (class_id, body) in [
+            (PROJECTED_COORDINATE_SYSTEM_CLASS_ID, vec![1, 0, 0, 0, 0, 0]),
+            (
+                GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID,
+                vec![1, 0, 0, 0, 0, 0],
+            ),
+            (
+                UNKNOWN_COORDINATE_SYSTEM_CLASS_ID,
+                [vec![0, 0], empty_string.repeat(4)].concat(),
+            ),
+        ] {
+            let mut bytes = RANGE_DOMAIN_CLASS_ID.to_vec();
+            bytes.extend(71_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend([0; 12]);
+            bytes.extend(empty_string.repeat(3));
+            bytes.extend(0_u32.to_le_bytes());
+            bytes.extend(13_u16.to_le_bytes());
+            bytes.extend([0; 14]);
+            let class_offset = bytes.len();
+            bytes.extend(class_id);
+            bytes.extend(72_u32.to_le_bytes());
+            bytes.extend(&body);
+            bytes.extend(9_u16.to_le_bytes());
+            bytes.extend([0; 14]);
+            bytes.extend(ENVELOPE_CLASS_ID);
+            bytes.extend(73_u32.to_le_bytes());
+            bytes.extend(3_u16.to_le_bytes());
+            bytes.extend([0; 36]); // 四个坐标和空 Z/M 标志。
+            bytes.extend(class_id);
+            bytes.extend(72_u32.to_le_bytes());
+            let end = bytes.len();
+            bytes.push(0x53);
+
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let slot = read_domain_slot_10_1(&mut reader, 256, &mut refs).unwrap();
+            let DomainValues10_1::Range([reference, bounds]) = slot.body.unwrap().values else {
+                panic!("应读到范围值域");
+            };
+            let PropertyValueObjectStream10_1::SpatialReference(reference) = reference else {
+                panic!("应读到空间参考 Variant");
+            };
+            assert_eq!((reference.class_id, reference.key), (class_id, 72));
+            assert_eq!(reference.bytes(), body);
+            let decoded_class = match reference.body() {
+                SpatialReferenceEntry10_1::Projected { .. } => PROJECTED_COORDINATE_SYSTEM_CLASS_ID,
+                SpatialReferenceEntry10_1::Geographic { .. } => {
+                    GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID
+                }
+                SpatialReferenceEntry10_1::UnknownCoordinateSystem { .. } => {
+                    UNKNOWN_COORDINATE_SYSTEM_CLASS_ID
+                }
+                other => panic!("应保留新空间参考对象体，读到 {other:?}"),
+            };
+            assert_eq!(decoded_class, class_id);
+            let PropertyValueObjectStream10_1::Geometry(bounds) = bounds else {
+                panic!("应读到带空间参考回引的包络 Variant");
+            };
+            let GeometryBody10_1::Envelope(envelope) = bounds.body() else {
+                panic!("应读到包络对象体");
+            };
+            assert_eq!(
+                envelope.spatial_reference,
+                Some(SpatialReferenceEntry10_1::BackReference { class_id, key: 72 })
+            );
+            assert_eq!(reader.position(), end);
+            assert_eq!(reader.read_bytes(1).unwrap(), [0x53]);
+            assert_eq!(refs.len(), 3);
+
+            let mut unknown = bytes.clone();
+            unknown[class_offset] ^= 0xff;
+            let mut existing = RefTable10_1::new();
+            existing.register(70);
+            for input in (class_offset..end)
+                .map(|cut| &bytes[..cut])
+                .chain([unknown.as_slice()])
+            {
+                let mut reader = Reader::new(input);
+                let mut refs = existing.clone();
+                assert!(read_domain_slot_10_1(&mut reader, 256, &mut refs).is_err());
+                assert_eq!(reader.position(), 0);
+                assert_eq!(refs, existing);
+            }
+        }
+    }
+
+    #[test]
     fn coded_domain_label_and_code_use_distinct_string_lengths() {
+        use crate::layers::raster_dataset_name::LONG_ARRAY_CLASS_ID;
+        use crate::objects::geometry::{GeometryBody10_1, POINT_CLASS_ID};
+        use crate::objects::property_set::VariantArrayObjectValues10_1;
+
         let mut fixture = CODED_VALUE_DOMAIN_CLASS_ID.to_vec();
         fixture.extend(71_u32.to_le_bytes());
         fixture.extend(1_u16.to_le_bytes());
@@ -285,7 +387,7 @@ mod tests {
         }
         fixture.extend(0_u32.to_le_bytes());
         let count_offset = fixture.len();
-        fixture.extend(2_u32.to_le_bytes());
+        fixture.extend(4_u32.to_le_bytes());
         fixture.extend(1_u32.to_le_bytes()); // 自由 ReadString：一个 UTF-16 码元。
         fixture.extend(('甲' as u16).to_le_bytes());
         fixture.extend(0_u16.to_le_bytes());
@@ -299,21 +401,46 @@ mod tests {
         fixture.extend([0; 14]);
         fixture.extend(3_i32.to_le_bytes());
         fixture.extend([0x02, 0x80, 0xff]);
+        fixture.extend(0_u32.to_le_bytes()); // 第三项为空标签。
+        fixture.extend(13_u16.to_le_bytes());
+        fixture.extend([0; 14]);
+        fixture.extend(LONG_ARRAY_CLASS_ID);
+        fixture.extend(72_u32.to_le_bytes());
+        fixture.extend(1_u16.to_le_bytes());
+        fixture.extend(2_i32.to_le_bytes());
+        fixture.extend((-7_i32).to_le_bytes());
+        fixture.extend(24_i32.to_le_bytes());
+        fixture.extend(0_u32.to_le_bytes()); // 第四项为空标签。
+        fixture.extend(13_u16.to_le_bytes());
+        fixture.extend([0; 14]);
+        fixture.extend(POINT_CLASS_ID);
+        fixture.extend(73_u32.to_le_bytes());
+        let point_start = fixture.len();
+        fixture.extend(1_u16.to_le_bytes());
+        fixture.extend(20_i32.to_le_bytes());
+        fixture.extend(1_i32.to_le_bytes());
+        fixture.extend((-0.0_f64).to_le_bytes());
+        fixture.extend(42.5_f64.to_le_bytes());
 
         for cut in 0..fixture.len() {
             let mut reader = Reader::new(&fixture[..cut]);
             let mut refs = RefTable10_1::new();
             assert!(read_domain_slot_10_1(&mut reader, 64, &mut refs).is_err());
             assert_eq!(reader.position(), 0);
-            assert!(!refs.contains(71));
+            assert!(refs.is_empty());
         }
+        let end = fixture.len();
         fixture.push(0x53);
         let mut reader = Reader::new(&fixture);
         let mut refs = RefTable10_1::new();
         let slot = read_domain_slot_10_1(&mut reader, 64, &mut refs).unwrap();
+        let DomainValues10_1::Coded(values) = slot.body.unwrap().values else {
+            panic!("应读到编码值域");
+        };
+        assert_eq!(values.len(), 4);
         assert_eq!(
-            slot.body.unwrap().values,
-            DomainValues10_1::Coded(vec![
+            values[..3],
+            [
                 CodedDomainValue10_1 {
                     label: "甲".into(),
                     code: Inline(PropertyValue10_1::String("乙".into())),
@@ -326,9 +453,29 @@ mod tests {
                         raw: vec![0x02, 0x80, 0xff],
                     })),
                 },
-            ]),
+                CodedDomainValue10_1 {
+                    label: String::new(),
+                    code: PropertyValueObjectStream10_1::ArrayObject {
+                        class_id: LONG_ARRAY_CLASS_ID,
+                        key: 72,
+                        version: 1,
+                        values: VariantArrayObjectValues10_1::Longs(vec![-7, 24]),
+                    },
+                },
+            ],
         );
-        assert!(refs.contains(71));
+        let PropertyValueObjectStream10_1::Geometry(geometry) = &values[3].code else {
+            panic!("应读到点几何代码");
+        };
+        assert_eq!((geometry.class_id, geometry.key), (POINT_CLASS_ID, 73));
+        assert_eq!(geometry.bytes(), &fixture[point_start..end]);
+        assert!(matches!(
+            geometry.body(),
+            GeometryBody10_1::Point(point)
+                if point.record.x.unwrap().to_bits() == (-0.0_f64).to_bits()
+                    && point.record.y == Some(42.5)
+        ));
+        assert!((71..=73).all(|key| refs.contains(key)));
         assert_eq!(reader.read_bytes(1).unwrap(), [0x53]);
 
         fixture[count_offset..count_offset + 4].copy_from_slice(&i32::MAX.to_le_bytes());

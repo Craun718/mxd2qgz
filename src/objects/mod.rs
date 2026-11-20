@@ -2,6 +2,7 @@
 //! 数据集名称分支、属性集、元素类体与 DisplayCore 颜色/简单符号族（接线轮
 //! 自 src 根级移入，消除 objects→layers 依赖倒置）。各自对应独立的证据文档。
 
+pub mod ams_dataset_name;
 pub mod callout_background;
 pub mod color_ramp;
 pub mod dataset_name;

@@ -6,7 +6,12 @@ use mxd2qgz::{
             read_standalone_table_prefix_10_1,
         },
     },
-    objects::workspace_name::WorkspaceNameEntry10_1,
+    objects::{
+        dataset_name_more::{
+            DatasetNameMoreBody10_1, DatasetNameMoreSlot10_1, REFERENCED_TABLE_NAME_CLASS_ID,
+        },
+        workspace_name::WorkspaceNameEntry10_1,
+    },
     storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1},
     stream::reader::Reader,
 };
@@ -26,6 +31,208 @@ fn fixture(workspace: &[u8]) -> Vec<u8> {
     data.extend(2u32.to_le_bytes());
     data.extend([0, 0]);
     data
+}
+
+#[test]
+fn standalone_table_reads_object_class_alias_and_raster_table_names() {
+    use mxd2qgz::layers::raster_dataset_name::{
+        RASTER_BAND_NAME_CLASS_ID, RASTER_CATALOG_NAME_CLASS_ID, RasterDatasetNameEntryBody10_1,
+    };
+    use mxd2qgz::maps::standalone_table::OBJECT_CLASS_NAME_CLASS_ID;
+
+    for id in [
+        OBJECT_CLASS_NAME_CLASS_ID,
+        RASTER_BAND_NAME_CLASS_ID,
+        RASTER_CATALOG_NAME_CLASS_ID,
+    ] {
+        let mut data = 0_u16.to_le_bytes().to_vec();
+        data.extend(id);
+        data.extend(71_u32.to_le_bytes());
+        if id == RASTER_BAND_NAME_CLASS_ID {
+            data.extend(1_u32.to_le_bytes());
+        } else {
+            data.extend(1_u16.to_le_bytes());
+        }
+        for _ in 0..if id == RASTER_CATALOG_NAME_CLASS_ID {
+            4
+        } else {
+            3
+        } {
+            data.extend([2, 0, 0, 0, 0, 0]);
+        }
+        if id == RASTER_CATALOG_NAME_CLASS_ID {
+            data.extend([0; 8]);
+        }
+        if id != OBJECT_CLASS_NAME_CLASS_ID {
+            data.extend([0; 2]);
+        }
+        data.extend([0; 16]); // 空工作空间。
+        data.extend([0; 4]); // 命名对象计数。
+        data.extend([2, 0, 0, 0, 0, 0]); // 表名。
+        let end = data.len();
+        data.push(0xa5);
+
+        let mut r = Reader::new(&data);
+        let mut refs = RefTable10_1::new();
+        let body = read_standalone_table_prefix_10_1(&mut r, &mut refs, 4096, 64).unwrap();
+        assert_eq!(body.stop, StandaloneTableStop10_1::Complete);
+        assert_eq!(r.position(), end);
+        assert!(refs.contains(71));
+        match body.dataset_name_body.unwrap() {
+            StandaloneNameBody10_1::TableName(name) => {
+                assert_eq!(id, OBJECT_CLASS_NAME_CLASS_ID);
+                assert_eq!(name.version, 1);
+            }
+            StandaloneNameBody10_1::OtherTabularName(name) => {
+                let DatasetNameMoreBody10_1::RasterTable(name) = name.as_ref() else {
+                    panic!("应读取栅格属性表名称");
+                };
+                assert!(matches!(
+                    (id, name.as_ref()),
+                    (
+                        RASTER_BAND_NAME_CLASS_ID,
+                        RasterDatasetNameEntryBody10_1::Band(_)
+                    ) | (
+                        RASTER_CATALOG_NAME_CLASS_ID,
+                        RasterDatasetNameEntryBody10_1::Catalog(_)
+                    )
+                ));
+            }
+            other => panic!("{other:?}"),
+        }
+        for cut in 0..end {
+            let mut r = Reader::new(&data[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_standalone_table_prefix_10_1(&mut r, &mut refs, 4096, 64).is_err());
+            assert_eq!(r.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+}
+
+#[test]
+fn standalone_table_reads_schematic_names_with_a_shared_dataset_and_workspace() {
+    use mxd2qgz::objects::dataset_name::WorkspaceNameSlot10_1;
+    use mxd2qgz::objects::dataset_name_more::{
+        SCHEMATIC_DATASET_NAME_CLASS_ID, SCHEMATIC_DIAGRAM_CLASS_NAME_CLASS_ID,
+        SCHEMATIC_ELEMENT_CLASS_NAME_CLASS_ID,
+    };
+    use mxd2qgz::objects::workspace_name::WORKSPACE_NAME_CLASS_ID;
+
+    const EMPTY_STRING: [u8; 6] = [2, 0, 0, 0, 0, 0];
+    let mut bytes = 4_u16.to_le_bytes().to_vec();
+    bytes.extend(SCHEMATIC_DIAGRAM_CLASS_NAME_CLASS_ID);
+    bytes.extend(71_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(EMPTY_STRING.repeat(3));
+    let dataset_offset = bytes.len();
+    bytes.extend(SCHEMATIC_DATASET_NAME_CLASS_ID);
+    bytes.extend(72_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(EMPTY_STRING.repeat(3));
+    bytes.extend(WORKSPACE_NAME_CLASS_ID);
+    bytes.extend(73_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(EMPTY_STRING.repeat(3));
+    bytes.extend([0; 16 + 1 + 4]); // 属性集空槽、工厂标志和尾部 int32。
+    bytes.extend([0; 4]); // 命名对象。
+    bytes.extend(EMPTY_STRING);
+    bytes.extend([0; 4 + 16 + 4]); // 关系数、颜色与序列计数。
+    bytes.extend(SCHEMATIC_ELEMENT_CLASS_NAME_CLASS_ID);
+    bytes.extend(74_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(EMPTY_STRING.repeat(3));
+    bytes.extend(SCHEMATIC_DATASET_NAME_CLASS_ID);
+    bytes.extend(72_u32.to_le_bytes());
+    let end = bytes.len();
+    bytes.push(0xa5);
+
+    let mut refs = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let parsed = read_standalone_table_prefix_10_1(&mut reader, &mut refs, 4096, 64).unwrap();
+    assert_eq!(parsed.stop, StandaloneTableStop10_1::Complete);
+    assert_eq!(reader.position(), end);
+    assert!((71..=74).all(|key| refs.contains(key)));
+    let Some(StandaloneNameBody10_1::OtherTabularName(first)) = parsed.dataset_name_body else {
+        panic!("应读取 SchematicDiagramClassName");
+    };
+    let DatasetNameMoreBody10_1::SchematicClass(first) = first.as_ref() else {
+        panic!("应读取 SchematicDiagramClassName");
+    };
+    let DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::SchematicDataset(dataset)) =
+        &first.dataset
+    else {
+        panic!("应读取 SchematicDatasetName");
+    };
+    assert!(
+        matches!(&dataset.workspace, WorkspaceNameSlot10_1::WorkspaceName(name) if name.key == 73)
+    );
+    let Some(StandaloneNameBody10_1::OtherTabularName(second)) = parsed.secondary_name_body else {
+        panic!("应读取 SchematicElementClassName");
+    };
+    let DatasetNameMoreBody10_1::SchematicClass(second) = second.as_ref() else {
+        panic!("应读取 SchematicElementClassName");
+    };
+    assert!(matches!(
+        second.dataset,
+        DatasetNameMoreSlot10_1::BackReference { key: 72, .. }
+    ));
+
+    for cut in 0..end {
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes[..cut]);
+        assert!(read_standalone_table_prefix_10_1(&mut reader, &mut refs, 4096, 64).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+    bytes[dataset_offset..dataset_offset + 16].fill(0x7a);
+    let mut refs = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let parsed = read_standalone_table_prefix_10_1(&mut reader, &mut refs, 4096, 64).unwrap();
+    assert_eq!(parsed.stop, StandaloneTableStop10_1::NameBody);
+    assert_eq!(reader.position(), dataset_offset);
+    assert!(refs.contains(71));
+    assert!(!refs.contains(72) && !refs.contains(73) && !refs.contains(74));
+}
+
+#[test]
+fn standalone_table_reads_attributed_relationship_class_name() {
+    use mxd2qgz::objects::dataset_name::WorkspaceNameSlot10_1;
+    use mxd2qgz::objects::dataset_name_more::{
+        RELATIONSHIP_CLASS_NAME_CLASS_ID, RelationshipClassTail10_1,
+    };
+
+    const EMPTY_STRING: [u8; 6] = [2, 0, 0, 0, 0, 0];
+    let mut bytes = 0_u16.to_le_bytes().to_vec();
+    bytes.extend(RELATIONSHIP_CLASS_NAME_CLASS_ID);
+    bytes.extend(75_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(EMPTY_STRING.repeat(3));
+    bytes.extend([0; 10]); // 基数、通知模式和复合标志。
+    bytes.extend(1_u16.to_le_bytes()); // 有属性标志。
+    bytes.extend([0; 2 + 16]); // 工作空间选择子及空槽。
+    bytes.extend([0; 4]); // 命名对象数。
+    bytes.extend(EMPTY_STRING);
+    let end = bytes.len();
+    bytes.push(0xa5);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let parsed = read_standalone_table_prefix_10_1(&mut reader, &mut refs, 4096, 64).unwrap();
+    assert_eq!(parsed.stop, StandaloneTableStop10_1::Complete);
+    assert_eq!(reader.position(), end);
+    assert!(refs.contains(75));
+    let Some(StandaloneNameBody10_1::OtherTabularName(name)) = parsed.dataset_name_body else {
+        panic!("应读取 RelationshipClassName");
+    };
+    let DatasetNameMoreBody10_1::RelationshipClass(name) = name.as_ref() else {
+        panic!("应读取 RelationshipClassName");
+    };
+    assert_eq!(name.short_b, 1);
+    assert!(matches!(
+        name.tail,
+        RelationshipClassTail10_1::Workspace(WorkspaceNameSlot10_1::Null)
+    ));
 }
 
 #[test]
@@ -51,6 +258,44 @@ fn tablename_null_workspace_and_truncation() {
         );
         assert_eq!(r.position(), 0);
         assert_eq!(refs.len(), 1);
+    }
+}
+
+#[test]
+fn standalone_referenced_table_name_reuses_source_key() {
+    for version in [0_i16, 1] {
+        let mut data = 0_u16.to_le_bytes().to_vec();
+        data.extend(REFERENCED_TABLE_NAME_CLASS_ID);
+        data.extend(333_u32.to_le_bytes());
+        data.extend(version.to_le_bytes());
+        data.extend(TABLE_NAME_CLASS_ID);
+        data.extend(332_u32.to_le_bytes());
+        data.extend(0_u32.to_le_bytes());
+        data.extend(2_u32.to_le_bytes());
+        data.extend(0_u16.to_le_bytes());
+
+        let mut r = Reader::new(&data);
+        let mut refs = RefTable10_1::new();
+        refs.register(332);
+        let body = read_standalone_table_prefix_10_1(&mut r, &mut refs, 100, 100).unwrap();
+        let Some(StandaloneNameBody10_1::OtherTabularName(name)) = body.dataset_name_body else {
+            panic!("缺少 ReferencedTableName");
+        };
+        let DatasetNameMoreBody10_1::ReferencedTable(name) = *name else {
+            panic!("表名类不符");
+        };
+        assert_eq!(name.version, version);
+        assert_eq!(name.key, 333);
+        assert_eq!(
+            name.source,
+            DatasetNameMoreSlot10_1::BackReference {
+                class_id: TABLE_NAME_CLASS_ID,
+                key: 332,
+            }
+        );
+        assert_eq!(body.stop, StandaloneTableStop10_1::Complete);
+        assert_eq!(r.position(), data.len());
+        assert!(refs.contains(333));
     }
 }
 

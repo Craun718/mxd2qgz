@@ -81,12 +81,10 @@ pub enum PropertySetSlot10_1 {
 
 /// WorkspaceName（GdbCore.dll `0x70a27950`）体的已确认字段。
 #[derive(Debug, Clone, PartialEq)]
-pub struct WorkspaceNamePrefix10_1 {
-    /// 对象头键（样本 34 @`/Maps:0x380`）。
-    ///
-    /// 解析成功时该键已按原生语义登记进调用者的登记表（登记先于对象体解
-    /// 析，见 [`crate::storage::object_refs`]）。
-    pub key: u32,
+pub struct WorkspaceNamePrefix10_1<K = u32> {
+    /// ObjectStream 头的已登记键（样本 34 @`/Maps:0x380`）。
+    /// OLE 内嵌的体使用 `()` 表示该层没有键。
+    pub key: K,
     /// 体首 int16 版本（样本 1）；>1 原生拒绝。
     pub version: u16,
     /// 路径字符串（→ obj+0x20；样本 `..\22.界址点`，敏感路径分享前脱敏）。
@@ -140,6 +138,16 @@ pub fn read_workspace_name_body_10_1(
     table: &mut RefTable10_1,
     key: u32,
 ) -> io::Result<WorkspaceNamePrefix10_1> {
+    read_workspace_name_payload_10_1(reader, max_bytes, table, key)
+}
+
+/// OLE 类标识之后的 WorkspaceName 直接调用 Load，体没有 ObjectStream 键。
+pub(super) fn read_workspace_name_payload_10_1<K>(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: K,
+) -> io::Result<WorkspaceNamePrefix10_1<K>> {
     let mut trial = reader.clone();
     let entry_offset = trial.position();
     let invalid = |reason: String| {

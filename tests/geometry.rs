@@ -185,15 +185,18 @@ fn reads_empty_geometry_record_of_four_bytes() {
 }
 
 #[test]
-fn version_one_skips_spatial_reference_segment() {
+fn old_versions_skip_spatial_reference_segment() {
     // 版本 ≤1：记录之后直接是后续数据（原生 `jl` 跳过 LoadObject 段）。
     let record = record_bytes(3, &COORDS, &[0], &POINTS);
-    let bytes = body_with(1, &record, b"next");
-    let mut table = RefTable10_1::new();
-    let mut reader = Reader::new(&bytes);
-    let body = read_polyline_body_10_1(&mut reader, usize::MAX, &mut table).unwrap();
-    assert_eq!(body.spatial_reference, None);
-    assert_eq!(reader.read_bytes(4).unwrap(), b"next");
+    for version in [0, 1] {
+        let bytes = body_with(version, &record, b"next");
+        let mut table = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        let body = read_polyline_body_10_1(&mut reader, usize::MAX, &mut table).unwrap();
+        assert_eq!(body.version, version);
+        assert_eq!(body.spatial_reference, None);
+        assert_eq!(reader.read_bytes(4).unwrap(), b"next");
+    }
 }
 
 #[test]

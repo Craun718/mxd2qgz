@@ -47,8 +47,9 @@
 //! 普通 IStream 下 `LoadObject` 读取 16 字节类 GUID、无键；类 GUID 全零的
 //! 空对象子集映射为 `PropertyValue10_1::NullObject`，非零类 GUID 显式不支持。
 //! 若调用上下文已确认 ObjectStream，应使用独立 API
-//! [`read_property_set_object_stream_10_1`]：它读 GUID+共享键，并仅分派本类
-//! 已证的 PropertySet 对象体。支持一维定宽数组及 BSTR 数组。
+//! [`read_property_set_object_stream_10_1`]：它读取 GUID 和共享键，分派
+//! PropertySet 及已确认的 SystemCore 数组对象。一维定宽和 BSTR Variant
+//! 数组使用独立的内联布局。
 //!
 //! ## Save `0x7ffd3280`（写方向互证，证据：确定的）
 //!
@@ -90,11 +91,30 @@
 //! 各值的业务语义（DATABASE/连接属性候选）未定性；版本 0 无样本佐证；
 //! 全部结论为静态观察，未经目标软件运行验证。
 
+use crate::layers::feature_layer_tail::{UID_CLASS_ID, UidBody10_1, read_uid_body_10_1};
+use crate::layers::image_server_rules::{
+    RASTER_COLORMAP, RASTER_HISTOGRAM, RASTER_INFO_CLASS_ID, RASTER_INFOS_CLASS_ID,
+    RASTER_STATISTICS, RasterInfoVariantBody10_1, RasterVariantBody10_1,
+    read_raster_info_variant_body_10_1, read_raster_variant_body_10_1,
+};
+use crate::layers::raster_dataset_name::{LONG_ARRAY_CLASS_ID, read_long_array_body};
+use crate::layers::raster_renderer::{
+    DOUBLE_ARRAY_CLASS_ID, STATS_HISTOGRAM_CLASS_ID, read_double_array_body,
+};
+use crate::objects::envelope::{
+    ENVELOPE_CLASS_ID, SpatialReferenceEntry10_1, read_spatial_reference_body_10_1,
+};
+use crate::objects::geometry::{
+    GEOMETRY_BAG_CLASS_ID, GeometryBody10_1, MULTIPATCH_CLASS_ID, MULTIPOINT_CLASS_ID,
+    POINT_CLASS_ID, POLYGON_CLASS_ID, POLYLINE_CLASS_ID, read_geometry_body_10_1,
+};
+use crate::objects::string_array::{STR_ARRAY_CLASS_ID, read_string_array_body_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
 use crate::stream::variant_array::{ClassVariantArray10_1, read_class_variant_array_10_1};
 use std::io::{self, ErrorKind};
+use std::sync::Arc;
 
 /// PropertySet::Load 接受的最大版本：汇编 `cmp word,1; jle` 有符号比较，>1
 /// 拒绝；Save 恒写 1；样本两实例均为 1。
@@ -103,8 +123,26 @@ const MAX_BODY_VERSION: i16 = 1;
 /// 每个属性条目的最小流内字节数：键名 String 最小 4 字节（cb=0 空串）+
 /// 值 Variant 最小 2 字节（无载荷 VARTYPE）。用于计数 ×最小条目的限额预检。
 const MIN_ENTRY_BYTES: usize = 6;
-/// 限制递归 PropertySet 体的嵌套深度，避免恶意输入耗尽栈。
-const MAX_NESTED_PROPERTY_SETS: usize = 64;
+/// 递归 PropertySet 与数组共用一个深度限额。
+const MAX_NESTED_VARIANT_OBJECTS: usize = 64;
+pub(crate) const RASTER_SCALAR_CLASS_ID: [u8; 16] = [
+    0x59, 0xbf, 0xb2, 0xa5, 0x76, 0x78, 0xac, 0x4b, 0xab, 0x34, 0x7c, 0x2f, 0x36, 0x84, 0xb9, 0x5f,
+];
+pub(crate) const RASTER_ARGUMENT_ARRAY_CLASS_ID: [u8; 16] = [
+    0x90, 0xcb, 0x6d, 0x92, 0x33, 0xda, 0xa2, 0x45, 0x8a, 0x24, 0x90, 0x7b, 0x66, 0x36, 0x7a, 0xa9,
+];
+const VAR_ARRAY_CLASS_ID: [u8; 16] = [
+    0x74, 0x04, 0x2f, 0x76, 0xa2, 0xec, 0x5b, 0x47, 0x99, 0xf4, 0x26, 0x67, 0x8d, 0x79, 0x43, 0x6e,
+];
+const VAR_STR_ARRAY_CLASS_ID: [u8; 16] = [
+    0xe7, 0x08, 0x57, 0x48, 0xbd, 0x6e, 0x5f, 0x41, 0xaa, 0x56, 0x7c, 0xd1, 0x78, 0x2a, 0xec, 0xd1,
+];
+const PROPERTY_SET_ARRAY_CLASS_ID: [u8; 16] = [
+    0x8a, 0xbd, 0x4b, 0xc9, 0x33, 0xec, 0x21, 0x49, 0x8e, 0xc3, 0x6a, 0xd4, 0xb3, 0x32, 0x32, 0xc3,
+];
+const VALUE_ARRAY_CLASS_ID: [u8; 16] = [
+    0xb6, 0xbb, 0x78, 0x0d, 0x8b, 0xad, 0x25, 0x4f, 0xa9, 0xf5, 0x44, 0x36, 0xed, 0xf9, 0xd2, 0x17,
+];
 
 /// PropertySet 类标识（CLSID）的 16 字节内存序（Data1-3 小端、Data4 原序）。
 ///
@@ -274,8 +312,89 @@ pub enum PropertyValueObjectStream10_1 {
         key: u32,
         body: Box<PropertySetObjectStream10_1>,
     },
+    /// 有对象头及会话键的 SystemCore 数组。
+    ArrayObject {
+        class_id: [u8; 16],
+        key: u32,
+        version: u16,
+        values: VariantArrayObjectValues10_1,
+    },
+    /// 已有独立 IPersistStream 对象体的 SystemCore UID。
+    Uid(UidBody10_1),
+    Geometry(Box<VariantGeometry10_1>),
+    SpatialReference(Box<EncodedVariantObject10_1<SpatialReferenceEntry10_1>>),
+    RasterInfo(Box<EncodedVariantObject10_1<RasterInfoVariantBody10_1>>),
+    Raster {
+        class_id: [u8; 16],
+        key: u32,
+        body: Box<RasterVariantBody10_1>,
+    },
+    RasterScalar {
+        key: u32,
+        version: u16,
+        value: Box<PropertyValueObjectStream10_1>,
+    },
+    RasterArgumentArray(Box<RasterArgumentArray10_1>),
     /// 同一 ObjectStream 会话中已登记对象的回引，无后续对象体。
-    BackReference { class_id: [u8; 16], key: u32 },
+    BackReference {
+        class_id: [u8; 16],
+        key: u32,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RasterArgumentArray10_1 {
+    pub key: u32,
+    pub version: u16,
+    pub strings: [String; 2],
+    pub declared_count: i32,
+    pub objects: Vec<PropertyValueObjectStream10_1>,
+}
+
+pub type VariantGeometry10_1 = EncodedVariantObject10_1<GeometryBody10_1>;
+
+/// 保留对象体的原字节，以其编码比较坐标、统计量和 NaN 的位模式。
+#[derive(Debug, Clone)]
+pub struct EncodedVariantObject10_1<T> {
+    pub class_id: [u8; 16],
+    pub key: u32,
+    bytes: Arc<[u8]>,
+    body: T,
+}
+
+impl<T> EncodedVariantObject10_1<T> {
+    pub fn body(&self) -> &T {
+        &self.body
+    }
+
+    pub fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+}
+
+impl<T> PartialEq for EncodedVariantObject10_1<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.class_id == other.class_id && self.key == other.key && self.bytes == other.bytes
+    }
+}
+
+impl<T> Eq for EncodedVariantObject10_1<T> {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VariantArrayObjectValues10_1 {
+    Strings(Vec<String>),
+    Longs(Vec<i32>),
+    /// 保留 double 位模式，包括 NaN 的载荷位与有符号零。
+    DoubleBits(Vec<u64>),
+    Variants(Vec<PropertyValueObjectStream10_1>),
+    PropertySets(Vec<PropertySetArrayEntry10_1>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PropertySetArrayEntry10_1 {
+    pub entry: ObjectEntry10_1,
+    /// 回引只有对象头。
+    pub body: Option<PropertySetObjectStream10_1>,
 }
 
 /// ObjectStream 中单个 PropertySet 条目。
@@ -297,9 +416,8 @@ pub struct PropertySetObjectStream10_1 {
 /// 显式按 ObjectStream 会话读取 PropertySet 体，并共享调用者的引用表。
 ///
 /// 本 API 不探测普通 IStream 是否实现 IObjectStream：调用者必须已由外层
-/// 上下文确认 ObjectStream。对象头读取复用 Variant 对象分支读取器；仅当新
-/// 对象 CLSID 等于本类经 SystemCore IPersistStream 虚表确认的 PropertySet
-/// CLSID 时才递归读取其体，其他新类不猜边界。游标和引用表均事务性提交。
+/// 上下文确认 ObjectStream。新对象按 CLSID 分派到已证的 PropertySet 和
+/// SystemCore 数组体。游标和引用表均事务性提交。
 pub fn read_property_set_object_stream_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -385,7 +503,16 @@ pub(crate) fn read_padded_variant_object_stream_10_1(
     max_bytes: usize,
     table: &mut RefTable10_1,
 ) -> io::Result<PropertyValueObjectStream10_1> {
-    read_variant_object_stream_layout_10_1(reader, max_bytes, table, 0, true)
+    read_padded_variant_object_stream_nested_10_1(reader, max_bytes, table, 0)
+}
+
+pub(crate) fn read_padded_variant_object_stream_nested_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<PropertyValueObjectStream10_1> {
+    read_variant_object_stream_layout_10_1(reader, max_bytes, table, depth, true)
 }
 
 fn read_variant_object_stream_layout_10_1(
@@ -407,7 +534,23 @@ fn read_variant_object_stream_layout_10_1(
     }
     let mut trial_table = table.clone();
     let entry = read_object_entry_10_1(&mut trial, &mut trial_table)?;
-    let value = match entry {
+    let value =
+        read_variant_object_body_10_1(&mut trial, max_bytes, &mut trial_table, depth, entry)?;
+    *reader = trial;
+    *table = trial_table;
+    Ok(value)
+}
+
+/// 解析已登记的对象条目。调用者负责在失败时回滚对象头与子槽。
+pub(crate) fn read_variant_object_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+    entry: ObjectEntry10_1,
+) -> io::Result<PropertyValueObjectStream10_1> {
+    let depth = depth.max(table.raster_info_variant_depth());
+    Ok(match entry {
         ObjectEntry10_1::Null => {
             PropertyValueObjectStream10_1::Inline(PropertyValue10_1::NullObject)
         }
@@ -415,36 +558,305 @@ fn read_variant_object_stream_layout_10_1(
             PropertyValueObjectStream10_1::BackReference { class_id, key }
         }
         ObjectEntry10_1::NewObject { class_id, key } if class_id == PROPERTY_SET_CLASS_ID => {
-            if depth >= MAX_NESTED_PROPERTY_SETS {
-                return Err(io::Error::new(
-                    ErrorKind::InvalidData,
-                    format!("PropertySet ObjectStream 对象嵌套深度超过 {MAX_NESTED_PROPERTY_SETS}"),
-                ));
-            }
-            let body = read_property_set_object_stream_nested_10_1(
-                &mut trial,
-                max_bytes,
-                &mut trial_table,
-                depth + 1,
-            )?;
+            check_variant_object_depth(depth)?;
+            let body =
+                read_property_set_object_stream_nested_10_1(reader, max_bytes, table, depth + 1)?;
             PropertyValueObjectStream10_1::Object {
                 class_id,
                 key,
                 body: Box::new(body),
             }
         }
-        ObjectEntry10_1::NewObject { class_id, key } => {
-            return Err(io::Error::new(
-                ErrorKind::Unsupported,
-                format!(
-                    "Variant ObjectStream 类 GUID {class_id:02x?}、键 {key} 无已证对象体分派；边界由类决定"
-                ),
-            ));
+        ObjectEntry10_1::NewObject {
+            class_id: UID_CLASS_ID,
+            key,
+        } => PropertyValueObjectStream10_1::Uid(read_uid_body_10_1(reader, key)?),
+        ObjectEntry10_1::NewObject {
+            class_id: RASTER_SCALAR_CLASS_ID,
+            key,
+        } => {
+            check_variant_object_depth(depth)?;
+            let version = read_raster_argument_version(reader, "Scalar")?;
+            let value =
+                read_padded_variant_object_stream_nested_10_1(reader, max_bytes, table, depth + 1)?;
+            PropertyValueObjectStream10_1::RasterScalar {
+                key,
+                version,
+                value: Box::new(value),
+            }
         }
+        ObjectEntry10_1::NewObject {
+            class_id: RASTER_ARGUMENT_ARRAY_CLASS_ID,
+            key,
+        } => {
+            check_variant_object_depth(depth)?;
+            let mut body = reader
+                .clone()
+                .read_region(max_bytes.min(reader.remaining()))?;
+            let version = read_raster_argument_version(&mut body, "ArgumentArray")?;
+            let strings = [
+                read_string_10_1(&mut body, max_bytes)?,
+                read_string_10_1(&mut body, max_bytes)?,
+            ];
+            let declared_count = body.read_u32_le()? as i32;
+            let count = declared_count.max(0) as usize;
+            if count > body.remaining() / 16 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "ArgumentArray 对象数超过剩余字节",
+                ));
+            }
+            let mut objects = Vec::new();
+            for _ in 0..count {
+                let entry = read_object_entry_10_1(&mut body, table)?;
+                objects.push(read_variant_object_body_10_1(
+                    &mut body,
+                    max_bytes,
+                    table,
+                    depth + 1,
+                    entry,
+                )?);
+            }
+            reader.read_bytes(body.position())?;
+            PropertyValueObjectStream10_1::RasterArgumentArray(Box::new(RasterArgumentArray10_1 {
+                key,
+                version,
+                strings,
+                declared_count,
+                objects,
+            }))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: class_id @ (RASTER_INFO_CLASS_ID | RASTER_INFOS_CLASS_ID),
+            key,
+        } => {
+            check_variant_object_depth(depth)?;
+            let mut wire = reader
+                .clone()
+                .read_region(max_bytes.min(reader.remaining()))?;
+            let body = table.with_raster_info_variant_depth(depth + 1, |table| {
+                read_raster_info_variant_body_10_1(class_id, &mut wire, max_bytes, table)
+            })?;
+            let bytes = Arc::from(reader.read_bytes(wire.position())?);
+            PropertyValueObjectStream10_1::RasterInfo(Box::new(EncodedVariantObject10_1 {
+                class_id,
+                key,
+                bytes,
+                body,
+            }))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id:
+                class_id @ (RASTER_STATISTICS
+                | RASTER_HISTOGRAM
+                | RASTER_COLORMAP
+                | STATS_HISTOGRAM_CLASS_ID),
+            key,
+        } => {
+            check_variant_object_depth(depth)?;
+            let mut raster = reader
+                .clone()
+                .read_region(max_bytes.min(reader.remaining()))?;
+            let body =
+                read_raster_variant_body_10_1(class_id, &mut raster, max_bytes, table, depth + 1)?;
+            reader.read_bytes(raster.position())?;
+            PropertyValueObjectStream10_1::Raster {
+                class_id,
+                key,
+                body: Box::new(body),
+            }
+        }
+        ObjectEntry10_1::NewObject {
+            class_id:
+                class_id @ (POINT_CLASS_ID
+                | MULTIPOINT_CLASS_ID
+                | POLYLINE_CLASS_ID
+                | POLYGON_CLASS_ID
+                | ENVELOPE_CLASS_ID
+                | GEOMETRY_BAG_CLASS_ID
+                | MULTIPATCH_CLASS_ID),
+            key,
+        } => {
+            let mut geometry = reader
+                .clone()
+                .read_region(max_bytes.min(reader.remaining()))?;
+            let body = read_geometry_body_10_1(&class_id, &mut geometry, max_bytes, table)?;
+            let bytes = Arc::from(reader.read_bytes(geometry.position())?);
+            PropertyValueObjectStream10_1::Geometry(Box::new(VariantGeometry10_1 {
+                class_id,
+                key,
+                bytes,
+                body,
+            }))
+        }
+        ObjectEntry10_1::NewObject { class_id, key } => {
+            let mut wire = reader
+                .clone()
+                .read_region(max_bytes.min(reader.remaining()))?;
+            if let Some(body) = read_spatial_reference_body_10_1(&mut wire, max_bytes, &entry)? {
+                let bytes = Arc::from(reader.read_bytes(wire.position())?);
+                return Ok(PropertyValueObjectStream10_1::SpatialReference(Box::new(
+                    EncodedVariantObject10_1 {
+                        class_id,
+                        key,
+                        bytes,
+                        body,
+                    },
+                )));
+            }
+            use VariantArrayObjectValues10_1::{DoubleBits, Longs, Strings};
+            let (version, values) = match class_id {
+                STR_ARRAY_CLASS_ID | VAR_STR_ARRAY_CLASS_ID => {
+                    let (version, values) = read_string_array_body_10_1(reader, max_bytes)?;
+                    (version, Strings(values))
+                }
+                LONG_ARRAY_CLASS_ID => {
+                    let (version, values) = read_long_array_body(reader, max_bytes)?;
+                    (version, Longs(values))
+                }
+                DOUBLE_ARRAY_CLASS_ID => {
+                    let mut body = reader
+                        .clone()
+                        .read_region(reader.remaining().min(max_bytes))?;
+                    let (version, values) = read_double_array_body(&mut body)?;
+                    reader.read_bytes(body.position())?;
+                    (
+                        version,
+                        DoubleBits(values.into_iter().map(f64::to_bits).collect()),
+                    )
+                }
+                VAR_ARRAY_CLASS_ID | PROPERTY_SET_ARRAY_CLASS_ID => {
+                    check_variant_object_depth(depth)?;
+                    read_nested_array_body_10_1(reader, max_bytes, table, depth + 1, class_id)?
+                }
+                VALUE_ARRAY_CLASS_ID => {
+                    // GdbCore 的具体 ValueArray 逐元素读写槽均返回 E_NOTIMPL。
+                    let version = reader.read_u16_le()?;
+                    if version > 1 {
+                        return Err(io::Error::new(
+                            ErrorKind::Unsupported,
+                            format!("未支持的 ValueArray 版本 {version}"),
+                        ));
+                    }
+                    if reader.read_u32_le()? != 0 {
+                        return Err(io::Error::new(
+                            ErrorKind::Unsupported,
+                            "GdbCore ValueArray 仅有空体的读写证据",
+                        ));
+                    }
+                    (version, VariantArrayObjectValues10_1::Variants(Vec::new()))
+                }
+                _ => {
+                    return Err(io::Error::new(
+                        ErrorKind::Unsupported,
+                        format!(
+                            "Variant ObjectStream 类 GUID {class_id:02x?}、键 {key} 无已证对象体分派；边界由类决定"
+                        ),
+                    ));
+                }
+            };
+            PropertyValueObjectStream10_1::ArrayObject {
+                class_id,
+                key,
+                version,
+                values,
+            }
+        }
+    })
+}
+
+fn read_raster_argument_version(reader: &mut Reader<'_>, name: &str) -> io::Result<u16> {
+    let version = reader.read_u16_le()?;
+    if version as i16 > 1 {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            format!("{name} 未支持版本 {version}"),
+        ));
+    }
+    Ok(version)
+}
+
+fn check_variant_object_depth(depth: usize) -> io::Result<()> {
+    if depth >= MAX_NESTED_VARIANT_OBJECTS {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("Variant ObjectStream 对象嵌套深度超过 {MAX_NESTED_VARIANT_OBJECTS}"),
+        ));
+    }
+    Ok(())
+}
+
+fn read_nested_array_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+    class_id: [u8; 16],
+) -> io::Result<(u16, VariantArrayObjectValues10_1)> {
+    let mut body = reader
+        .clone()
+        .read_region(reader.remaining().min(max_bytes))?;
+    let version = body.read_u16_le()?;
+    if version > 1 {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            format!("未支持的 Variant 数组对象版本 {version}"),
+        ));
+    }
+    let count = (body.read_u32_le()? as i32).max(0) as usize;
+    let min_item_bytes = if class_id == VAR_ARRAY_CLASS_ID {
+        16
+    } else {
+        20
     };
-    *reader = trial;
-    *table = trial_table;
-    Ok(value)
+    if count > body.remaining() / min_item_bytes {
+        return Err(io::Error::new(
+            ErrorKind::UnexpectedEof,
+            "Variant 数组对象计数超出可读范围",
+        ));
+    }
+    let values = if class_id == VAR_ARRAY_CLASS_ID {
+        // VarArray 的逐项委派固定调用 Variant::Read(false)。
+        let values = (0..count)
+            .map(|_| {
+                read_variant_object_stream_layout_10_1(&mut body, max_bytes, table, depth, true)
+            })
+            .collect::<io::Result<_>>()?;
+        VariantArrayObjectValues10_1::Variants(values)
+    } else {
+        let mut values = Vec::new();
+        for _ in 0..count {
+            let entry = read_object_entry_10_1(&mut body, table)?;
+            let item = match entry {
+                ObjectEntry10_1::NewObject {
+                    class_id: PROPERTY_SET_CLASS_ID,
+                    ..
+                } => {
+                    check_variant_object_depth(depth)?;
+                    Some(read_property_set_object_stream_nested_10_1(
+                        &mut body,
+                        max_bytes,
+                        table,
+                        depth + 1,
+                    )?)
+                }
+                ObjectEntry10_1::BackReference {
+                    class_id: PROPERTY_SET_CLASS_ID,
+                    ..
+                } => None,
+                _ => {
+                    return Err(io::Error::new(
+                        ErrorKind::Unsupported,
+                        "PropertySetArray 元素必须是可读取的非空 PropertySet",
+                    ));
+                }
+            };
+            values.push(PropertySetArrayEntry10_1 { entry, body: item });
+        }
+        VariantArrayObjectValues10_1::PropertySets(values)
+    };
+    reader.read_bytes(body.position())?;
+    Ok((version, values))
 }
 
 /// 读取一个 `Variant::Read`（AfCore `0x68a7c6a0`）值，失败时
@@ -527,10 +939,422 @@ fn read_variant_layout_10_1(
 
 #[cfg(test)]
 mod tests {
-    use super::read_property_set_10_1;
-    use crate::storage::object_refs::RefTable10_1;
-    use crate::stream::reader::Reader;
-    use std::io::ErrorKind;
+    use super::*;
+
+    fn object(bytes: &mut Vec<u8>, class_id: [u8; 16], key: u32) {
+        bytes.extend(class_id);
+        bytes.extend(key.to_le_bytes());
+    }
+
+    fn variant_array(bytes: &mut Vec<u8>, key: u32, count: u32) {
+        bytes.extend(13_u16.to_le_bytes());
+        bytes.extend([0; 14]);
+        object(bytes, VAR_ARRAY_CLASS_ID, key);
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(count.to_le_bytes());
+    }
+
+    // RasterInfo v1 的首批对象槽及固定标量，直到带保留区的 Variant。
+    fn raster_info_prefix(bytes: &mut Vec<u8>) {
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend([0; 4 * 16 + 2 * 8 + 2 * 4]);
+    }
+
+    #[test]
+    fn property_set_raster_infos_mixes_new_members_and_backreferences() {
+        const EMPTY_STRING: [u8; 6] = [2, 0, 0, 0, 0, 0];
+        let mut bytes = 1_u16.to_le_bytes().to_vec();
+        bytes.extend(2_i32.to_le_bytes());
+        bytes.extend(EMPTY_STRING);
+        bytes.extend(13_u16.to_le_bytes());
+        object(&mut bytes, RASTER_ARGUMENT_ARRAY_CLASS_ID, 10);
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(EMPTY_STRING.repeat(2));
+        bytes.extend(2_i32.to_le_bytes());
+        object(&mut bytes, RASTER_INFOS_CLASS_ID, 11);
+        let collection_start = bytes.len();
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(2_i32.to_le_bytes());
+        object(&mut bytes, RASTER_INFO_CLASS_ID, 12);
+        raster_info_prefix(&mut bytes);
+        bytes.extend([0; 16 + 4 * 4]); // 空 Variant 及后继 LONG。
+        bytes.extend(7_u16.to_le_bytes());
+        object(&mut bytes, RASTER_INFO_CLASS_ID, 12);
+        let collection_end = bytes.len();
+        object(&mut bytes, RASTER_INFO_CLASS_ID, 13);
+        raster_info_prefix(&mut bytes);
+        bytes.extend(13_u16.to_le_bytes());
+        bytes.extend([0; 14]);
+        object(&mut bytes, RASTER_INFOS_CLASS_ID, 11);
+        bytes.extend([0; 4 * 4 + 2]);
+        bytes.extend(EMPTY_STRING);
+        bytes.extend(9_u16.to_le_bytes());
+        object(&mut bytes, RASTER_INFO_CLASS_ID, 13);
+        let end = bytes.len();
+        bytes.push(0xa5);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let parsed = read_property_set_object_stream_10_1(&mut reader, 4096, &mut refs).unwrap();
+        let PropertyValueObjectStream10_1::RasterArgumentArray(array) = &parsed.entries[0].value
+        else {
+            panic!("应读取参数数组");
+        };
+        let PropertyValueObjectStream10_1::RasterInfo(collection) = &array.objects[0] else {
+            panic!("应读取栅格信息集合");
+        };
+        let RasterInfoVariantBody10_1::Infos(infos) = collection.body() else {
+            panic!("应读取 RasterInfos");
+        };
+        assert_eq!(collection.bytes(), &bytes[collection_start..collection_end]);
+        assert_eq!(infos.entries[0].body.as_ref().unwrap().flags, 7);
+        assert!(matches!(
+            infos.entries[1].entry,
+            ObjectEntry10_1::BackReference { key: 12, .. }
+        ));
+        let PropertyValueObjectStream10_1::RasterInfo(second) = &array.objects[1] else {
+            panic!("应读取独立栅格信息");
+        };
+        let RasterInfoVariantBody10_1::Info(info) = second.body() else {
+            panic!("应读取 RasterInfo");
+        };
+        assert_eq!(
+            info.value,
+            PropertyValueObjectStream10_1::BackReference {
+                class_id: RASTER_INFOS_CLASS_ID,
+                key: 11
+            }
+        );
+        assert_eq!(
+            parsed.entries[1].value,
+            PropertyValueObjectStream10_1::BackReference {
+                class_id: RASTER_INFO_CLASS_ID,
+                key: 13
+            }
+        );
+        assert_eq!(reader.position(), end);
+        assert!((10..=13).all(|key| refs.contains(key)));
+
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_property_set_object_stream_10_1(&mut reader, 4096, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+
+    #[test]
+    fn raster_info_reentry_inherits_variant_depth_and_preserves_rollback() {
+        let mut bytes = Vec::new();
+        for key in 0..(MAX_NESTED_VARIANT_OBJECTS - 1) as u32 {
+            variant_array(&mut bytes, key, 1);
+        }
+        bytes.extend(13_u16.to_le_bytes());
+        bytes.extend([0; 14]);
+        object(&mut bytes, RASTER_INFO_CLASS_ID, 100);
+        raster_info_prefix(&mut bytes);
+        let value_offset = bytes.len();
+        variant_array(&mut bytes, 101, 0);
+        bytes.extend([0; 4 * 4 + 2]);
+
+        let mut refs = RefTable10_1::new();
+        refs.register(102);
+        let original = refs.clone();
+        let mut reader = Reader::new(&bytes);
+        let error =
+            read_padded_variant_object_stream_10_1(&mut reader, 8192, &mut refs).unwrap_err();
+        assert!(error.to_string().contains("嵌套深度"));
+        assert_eq!(reader.position(), 0);
+        assert_eq!(refs, original);
+
+        bytes.truncate(value_offset);
+        bytes.extend(13_u16.to_le_bytes());
+        bytes.extend([0; 14]);
+        object(&mut bytes, VAR_ARRAY_CLASS_ID, 0);
+        bytes.extend([0; 4 * 4 + 2]);
+        let mut reader = Reader::new(&bytes);
+        assert!(read_padded_variant_object_stream_10_1(&mut reader, 8192, &mut refs).is_ok());
+        assert_eq!(reader.remaining(), 0);
+        assert!(refs.contains(100));
+        assert!(!refs.contains(101));
+    }
+
+    #[test]
+    fn var_array_reads_padded_items_and_shares_keys_with_property_set_array() {
+        let mut bytes = Vec::new();
+        variant_array(&mut bytes, 1, 3);
+        bytes.extend(9_u16.to_le_bytes());
+        bytes.extend([0; 14]);
+        object(&mut bytes, PROPERTY_SET_ARRAY_CLASS_ID, 2);
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(2_u32.to_le_bytes());
+        object(&mut bytes, PROPERTY_SET_CLASS_ID, 3);
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend([2, 0, 0, 0, 0, 0]); // 空属性名。
+        bytes.extend(13_u16.to_le_bytes()); // PropertySet 属性内的 Variant 无保留区。
+        object(&mut bytes, VAR_STR_ARRAY_CLASS_ID, 4);
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend([4, 0, 0, 0, b'x', 0, 0, 0]);
+        let property_ref_offset = bytes.len();
+        object(&mut bytes, PROPERTY_SET_CLASS_ID, 3);
+        bytes.extend(13_u16.to_le_bytes());
+        bytes.extend([0; 14]);
+        object(&mut bytes, VAR_STR_ARRAY_CLASS_ID, 4);
+        bytes.extend(3_u16.to_le_bytes());
+        bytes.extend([0; 14]);
+        bytes.extend(123_i32.to_le_bytes());
+        let end = bytes.len();
+        bytes.push(0xbb);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let value = read_padded_variant_object_stream_10_1(&mut reader, 1024, &mut refs).unwrap();
+        let PropertyValueObjectStream10_1::ArrayObject {
+            key: 1,
+            values: VariantArrayObjectValues10_1::Variants(values),
+            ..
+        } = value
+        else {
+            panic!("缺少 VarArray");
+        };
+        let [
+            PropertyValueObjectStream10_1::ArrayObject {
+                key: 2,
+                values: VariantArrayObjectValues10_1::PropertySets(sets),
+                ..
+            },
+            PropertyValueObjectStream10_1::BackReference {
+                class_id: VAR_STR_ARRAY_CLASS_ID,
+                key: 4,
+            },
+            PropertyValueObjectStream10_1::Inline(PropertyValue10_1::Raw4(raw)),
+        ] = values.as_slice()
+        else {
+            panic!("VarArray 元素与边界不符");
+        };
+        assert_eq!(*raw, 123_i32.to_le_bytes());
+        assert_eq!(sets.len(), 2);
+        assert_eq!(
+            sets[0].body.as_ref().unwrap().entries[0].value,
+            PropertyValueObjectStream10_1::ArrayObject {
+                class_id: VAR_STR_ARRAY_CLASS_ID,
+                key: 4,
+                version: 1,
+                values: VariantArrayObjectValues10_1::Strings(vec!["x".into()]),
+            }
+        );
+        assert_eq!(
+            sets[1],
+            PropertySetArrayEntry10_1 {
+                entry: ObjectEntry10_1::BackReference {
+                    class_id: PROPERTY_SET_CLASS_ID,
+                    key: 3
+                },
+                body: None,
+            }
+        );
+        assert_eq!(refs.len(), 4);
+        assert_eq!(reader.position(), end);
+        assert_eq!(reader.read_bytes(1).unwrap(), [0xbb]);
+
+        let mut invalid_item = bytes.clone();
+        invalid_item[property_ref_offset..property_ref_offset + 16].fill(0);
+        for invalid in [&invalid_item[..], &bytes[..end - 1]] {
+            let mut reader = Reader::new(invalid);
+            let mut refs = RefTable10_1::new();
+            assert!(read_padded_variant_object_stream_10_1(&mut reader, 1024, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+
+    #[test]
+    fn variant_arrays_keep_the_depth_limit_when_reading_recursive_items() {
+        let mut bytes = Vec::new();
+        for key in 0..MAX_NESTED_VARIANT_OBJECTS as u32 {
+            variant_array(&mut bytes, key, 1);
+        }
+        variant_array(&mut bytes, MAX_NESTED_VARIANT_OBJECTS as u32, 0);
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let error =
+            read_padded_variant_object_stream_10_1(&mut reader, 8192, &mut refs).unwrap_err();
+        assert!(error.to_string().contains("嵌套深度"));
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+
+    #[test]
+    fn raster_variant_and_var_array_share_depth_limit_and_roll_back() {
+        let mut bytes = Vec::new();
+        for key in 0..MAX_NESTED_VARIANT_OBJECTS as u32 {
+            if key % 2 == 0 {
+                bytes.extend(13_u16.to_le_bytes());
+                bytes.extend([0; 14]);
+                object(&mut bytes, RASTER_COLORMAP, key);
+                bytes.extend((-1_i16).to_le_bytes());
+            } else {
+                variant_array(&mut bytes, key, 1);
+            }
+        }
+        let limit_offset = bytes.len();
+        variant_array(&mut bytes, MAX_NESTED_VARIANT_OBJECTS as u32, 0);
+        let mut refs = RefTable10_1::new();
+        refs.register(101);
+        let original = refs.clone();
+        let mut reader = Reader::new(&bytes);
+        let error =
+            read_padded_variant_object_stream_10_1(&mut reader, 8192, &mut refs).unwrap_err();
+        assert!(error.to_string().contains("嵌套深度"));
+        assert_eq!(reader.position(), 0);
+        assert_eq!(refs, original);
+
+        // 达到限额后仍可消费已登记的回引。
+        bytes.truncate(limit_offset);
+        bytes.extend(13_u16.to_le_bytes());
+        bytes.extend([0; 14]);
+        object(&mut bytes, RASTER_COLORMAP, 0);
+        for cut in [limit_offset - 1, bytes.len() - 1] {
+            let mut reader = Reader::new(&bytes[..cut]);
+            assert!(read_padded_variant_object_stream_10_1(&mut reader, 8192, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert_eq!(refs, original);
+        }
+        let mut reader = Reader::new(&bytes);
+        assert!(read_padded_variant_object_stream_10_1(&mut reader, 8192, &mut refs).is_ok());
+        assert_eq!(reader.remaining(), 0);
+        assert_eq!(refs.len(), MAX_NESTED_VARIANT_OBJECTS + 1);
+
+        bytes[36..38].copy_from_slice(&3_u16.to_le_bytes());
+        let mut reader = Reader::new(&bytes);
+        let mut refs = original.clone();
+        let error =
+            read_padded_variant_object_stream_10_1(&mut reader, 8192, &mut refs).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::Unsupported);
+        assert_eq!(reader.position(), 0);
+        assert_eq!(refs, original);
+    }
+
+    #[test]
+    fn variant_value_array_and_uid_have_distinct_body_boundaries() {
+        let mut bytes = Vec::new();
+        variant_array(&mut bytes, 1, 3);
+        bytes.extend(13_u16.to_le_bytes());
+        bytes.extend([0; 14]);
+        object(&mut bytes, VALUE_ARRAY_CLASS_ID, 2);
+        let version_offset = bytes.len();
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(0_u32.to_le_bytes());
+        bytes.extend(13_u16.to_le_bytes());
+        bytes.extend([0; 14]);
+        object(&mut bytes, UID_CLASS_ID, 3);
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.push(1);
+        bytes.extend([0x4d; 16]);
+        bytes.extend((-3_i32).to_le_bytes());
+        bytes.extend(13_u16.to_le_bytes());
+        bytes.extend([0; 14]);
+        object(&mut bytes, UID_CLASS_ID, 3);
+        let end = bytes.len();
+        bytes.push(0xac);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let value = read_padded_variant_object_stream_10_1(&mut reader, 1024, &mut refs).unwrap();
+        let PropertyValueObjectStream10_1::ArrayObject {
+            values: VariantArrayObjectValues10_1::Variants(values),
+            ..
+        } = value
+        else {
+            panic!("缺少 VarArray");
+        };
+        assert_eq!(
+            values,
+            [
+                PropertyValueObjectStream10_1::ArrayObject {
+                    class_id: VALUE_ARRAY_CLASS_ID,
+                    key: 2,
+                    version: 1,
+                    values: VariantArrayObjectValues10_1::Variants(Vec::new()),
+                },
+                PropertyValueObjectStream10_1::Uid(UidBody10_1 {
+                    key: 3,
+                    version: 1,
+                    flag: 1,
+                    guid: [0x4d; 16],
+                    value_18: -3,
+                }),
+                PropertyValueObjectStream10_1::BackReference {
+                    class_id: UID_CLASS_ID,
+                    key: 3,
+                },
+            ],
+        );
+        assert_eq!(refs.len(), 3);
+        assert_eq!(reader.position(), end);
+        assert_eq!(reader.read_bytes(1).unwrap(), [0xac]);
+
+        let mut nonempty = bytes.clone();
+        nonempty[version_offset + 2] = 1;
+        let mut invalid_version = bytes.clone();
+        invalid_version[version_offset] = 2;
+        for invalid in [&nonempty[..], &invalid_version, &bytes[..end - 1]] {
+            let mut reader = Reader::new(invalid);
+            let mut refs = RefTable10_1::new();
+            assert!(read_padded_variant_object_stream_10_1(&mut reader, 1024, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+
+    #[test]
+    fn object_stream_double_array_keeps_bits_and_atomic_boundary() {
+        let bits = [(-0.0_f64).to_bits(), 0x7ff8_0000_0000_0012];
+        for padded in [false, true] {
+            let mut bytes = 13_u16.to_le_bytes().to_vec();
+            if padded {
+                bytes.extend([0xa1; 14]);
+            }
+            bytes.extend(DOUBLE_ARRAY_CLASS_ID);
+            bytes.extend(42_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(2_i32.to_le_bytes());
+            for value in bits {
+                bytes.extend(value.to_le_bytes());
+            }
+            let end = bytes.len();
+            bytes.push(0x2b);
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let value =
+                read_variant_object_stream_layout_10_1(&mut reader, 22, &mut refs, 0, padded)
+                    .unwrap();
+            assert_eq!(
+                value,
+                PropertyValueObjectStream10_1::ArrayObject {
+                    class_id: DOUBLE_ARRAY_CLASS_ID,
+                    key: 42,
+                    version: 1,
+                    values: VariantArrayObjectValues10_1::DoubleBits(bits.to_vec()),
+                }
+            );
+            assert_eq!(reader.position(), end);
+            assert_eq!(reader.read_bytes(1).unwrap(), [0x2b]);
+            assert!(refs.contains(42));
+
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            assert!(
+                read_variant_object_stream_layout_10_1(&mut reader, 21, &mut refs, 0, padded)
+                    .is_err()
+            );
+            assert_eq!(reader.position(), 0);
+            assert!(!refs.contains(42));
+        }
+    }
 
     #[test]
     fn property_set_version_zero_accepts_empty_set() {

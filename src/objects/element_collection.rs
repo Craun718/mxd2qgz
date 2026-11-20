@@ -157,6 +157,7 @@ pub enum ElementEntry10_1 {
     MarkerElement(Box<crate::objects::element_body::MarkerElementBody10_1>),
     /// 新 LineElement 对象：已解析其体。
     LineElement(Box<crate::objects::element_body::LineElementBody10_1>),
+    PolygonElement(Box<crate::objects::element_body::LineOrPolygonElementBody10_1>),
     PictureElement(Box<crate::maps::picture_element::PictureElement10_1>),
 }
 
@@ -168,7 +169,7 @@ impl ElementEntry10_1 {
             Self::TextElement(body) => body.stop.as_ref(),
             Self::ParagraphTextElement(body) => body.stop.as_ref(),
             Self::MarkerElement(body) => body.stop.as_ref(),
-            Self::LineElement(body) => body.stop.as_ref(),
+            Self::LineElement(body) | Self::PolygonElement(body) => body.stop.as_ref(),
             Self::PictureElement(_) => None,
         }
     }
@@ -509,6 +510,7 @@ fn read_stoppable_entry<'a>(
                 }
                 ElementBody10_1::MarkerElement(body) => ElementEntry10_1::MarkerElement(body),
                 ElementBody10_1::LineElement(body) => ElementEntry10_1::LineElement(body),
+                ElementBody10_1::PolygonElement(body) => ElementEntry10_1::PolygonElement(body),
                 ElementBody10_1::PictureElement(body) => ElementEntry10_1::PictureElement(body),
             };
             Ok(Some(entry))

@@ -255,17 +255,16 @@ pub fn read_rgb_color_body_10_1(
 }
 
 /// HsvColor/GrayColor/HlsColor（及同构 RgbColor）共享 Color 核心的已确认
-/// 字段。体长固定：flag==0 为 29 字节（short ×2 + byte + double ×3 +
-/// byte ×2），flag!=0 为 9 字节（short ×2 + byte + int32 + byte ×2）。
+/// 字段。仅核心段占 29 或 9 字节；独立颜色类在核心前另有一个版本 short。
 #[derive(Debug, Clone, PartialEq)]
 pub struct CoreColorBody10_1 {
     /// 对象头键（样本中无实例；RgbColor 样本键为 37/38/154，见前轮记录）。
     ///
     /// 解析成功时该键已按原生语义登记进调用者的登记表。
     pub key: u32,
-    /// 实体 Load `0x6eb3d8b0` 首个 short 版本（写侧恒 1）；>1 原生拒绝。
+    /// 外层颜色对象的版本。内嵌于旧版 CmykColor 时沿用 CmykColor 版本。
     pub version_outer: u16,
-    /// 共享核心 `0x6eb35310` 的第二个 short 版本（写侧恒 1）；>1 原生拒绝。
+    /// 共享核心 `0x6eb35310` 的版本 short（写侧恒 1）；>1 原生拒绝。
     pub version_inner: u16,
     /// 1 字节分支标志：==0 走 3 个 double 分支（经虚表 +0x34 装载），
     /// !=0 走 4 字节分支（经虚表 +0x1c 装载）。
@@ -292,42 +291,44 @@ pub struct CoreColorBody10_1 {
 /// [`read_rgb_color_body_10_1`] 覆盖（字段归属按第七轮记录）。
 pub fn read_core_color_body_10_1(
     reader: &mut Reader<'_>,
-    table: &mut RefTable10_1,
+    _table: &mut RefTable10_1,
     key: u32,
     what: &str,
 ) -> io::Result<CoreColorBody10_1> {
-    let _ = table; // 共享核心体无嵌套对象，登记表仅在签名上保持一致
     let mut trial = reader.clone();
     let entry_offset = trial.position();
-    let invalid = |reason: String| {
-        io::Error::new(
-            ErrorKind::InvalidData,
-            format!("{what} 对象体 offset 0x{entry_offset:x}: {reason}"),
-        )
-    };
+    let version = read_version_short(&mut trial, MAX_CORE_COLOR_VERSION, what, entry_offset)?;
+    let body = read_color_core_10_1(&mut trial, key, what, version)?;
+    *reader = trial;
+    Ok(body)
+}
 
-    // ①② 两个版本 short（实体 + 共享核心，各有符号 >1 拒绝）。
-    let version_outer = read_version_short(&mut trial, MAX_CORE_COLOR_VERSION, what, entry_offset)
-        .map_err(|e| invalid(e.to_string()))?;
-    let version_inner = read_version_short(&mut trial, MAX_CORE_COLOR_VERSION, what, entry_offset)
-        .map_err(|e| invalid(e.to_string()))?;
+// 进入共享 Load 时，外层颜色类已经读过自己的版本。
+fn read_color_core_10_1(
+    reader: &mut Reader<'_>,
+    key: u32,
+    what: &str,
+    version_outer: u16,
+) -> io::Result<CoreColorBody10_1> {
+    let version_inner =
+        read_version_short(reader, MAX_CORE_COLOR_VERSION, what, reader.position())?;
     // ③ 1 字节分支标志。
-    let branch_flag = trial.read_bytes(1)?[0];
+    let branch_flag = reader.read_bytes(1)?[0];
     // 分支：==0 → 3 个 double；!=0 → 4 字节。
     let (doubles, packed_rgb_raw) = if branch_flag == 0 {
         let mut values = [0_f64; 3];
         for slot in values.iter_mut() {
-            *slot = trial.read_f64_le()?;
+            *slot = reader.read_f64_le()?;
         }
         (Some(values), None)
     } else {
-        (None, Some(trial.read_u32_le()?))
+        (None, Some(reader.read_u32_le()?))
     };
     // ④⑤ 尾随两个 1 字节字段（后者装载时取补，读取器保留流内位模式）。
-    let trailing_byte = trial.read_bytes(1)?[0];
-    let complement_byte_raw = trial.read_bytes(1)?[0];
+    let trailing_byte = reader.read_bytes(1)?[0];
+    let complement_byte_raw = reader.read_bytes(1)?[0];
 
-    let result = CoreColorBody10_1 {
+    Ok(CoreColorBody10_1 {
         key,
         version_outer,
         version_inner,
@@ -336,9 +337,7 @@ pub fn read_core_color_body_10_1(
         packed_rgb_raw,
         trailing_byte,
         complement_byte_raw,
-    };
-    *reader = trial;
-    Ok(result)
+    })
 }
 
 /// CmykColor（DisplayCore.dll `0x6eb34850`）体的已确认字段。
@@ -380,10 +379,9 @@ pub struct CmykColorBody10_1 {
 pub fn read_cmyk_color_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
-    table: &mut RefTable10_1,
+    _table: &mut RefTable10_1,
     key: u32,
 ) -> io::Result<CmykColorBody10_1> {
-    let _ = table;
     let mut trial = reader.clone();
     let entry_offset = trial.position();
     let invalid = |reason: String| {
@@ -422,12 +420,7 @@ pub fn read_cmyk_color_body_10_1(
             complement_byte_raw = Some(trial.read_bytes(1)?[0]);
         }
     } else {
-        core = Some(read_core_color_body_10_1(
-            &mut trial,
-            table,
-            key,
-            "CmykColor",
-        )?);
+        core = Some(read_color_core_10_1(&mut trial, key, "CmykColor", version)?);
     }
 
     let result = CmykColorBody10_1 {

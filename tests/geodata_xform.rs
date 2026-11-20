@@ -880,7 +880,7 @@ fn composite_rejects_excessive_nesting_before_committing_keys() {
 }
 
 #[test]
-fn projective_save_layout_is_consumed_in_geometric_object_slot() {
+fn projective_geometry_compatibility_layout_preserves_outer_fields() {
     use mxd2qgz::objects::geodata_xform::{
         GEOMETRIC_XFORM_CLASS_ID, GeometricTransformation10_1, PROJECTIVE_XFORM_CLASS_ID,
     };
@@ -943,6 +943,82 @@ fn projective_save_layout_is_consumed_in_geometric_object_slot() {
     ));
     assert!(refs.contains(120) && refs.contains(121) && refs.contains(122));
     assert_eq!(reader.read_bytes(1).unwrap(), [0x5a]);
+}
+
+#[test]
+fn projective_xform_reads_explicit_projection_references_in_both_positions() {
+    use mxd2qgz::objects::geodata_xform::{
+        PROJECTIVE_TRANSFORMATION_2D_CLASS_ID, PROJECTIVE_XFORM_CLASS_ID,
+    };
+    use mxd2qgz::objects::geometry::MULTIPOINT_CLASS_ID;
+
+    for (geometry_present, empty_transform) in [(false, true), (false, false), (true, false)] {
+        let mut bytes = Vec::new();
+        header(&mut bytes, PROJECTIVE_XFORM_CLASS_ID, 80);
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend([0; 16]); // 空空间参考。
+        if geometry_present {
+            header(&mut bytes, MULTIPOINT_CLASS_ID, 81);
+            bytes.extend(2_u16.to_le_bytes());
+            bytes.extend(4_u32.to_le_bytes());
+            bytes.extend(0_u32.to_le_bytes());
+            bytes.extend([0; 16]);
+        }
+        if empty_transform {
+            bytes.extend([0; 16]);
+        } else {
+            header(&mut bytes, PROJECTIVE_TRANSFORMATION_2D_CLASS_ID, 75);
+        }
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend(1_i32.to_le_bytes());
+        for coordinate in [1.25_f64, 2.0, 3.0, -4.0] {
+            bytes.extend(coordinate.to_le_bytes());
+        }
+        let end = bytes.len();
+        bytes.push(0xa5);
+        let mut refs = RefTable10_1::new();
+        refs.register(75);
+        let mut reader = Reader::new(&bytes);
+        let slot = read_geodata_xform_slot_10_1(&mut reader, 4096, &mut refs).unwrap();
+        let GeodataXformBody10_1::Projective(body) = *slot.body.unwrap() else {
+            panic!("应读取 ProjectiveXform");
+        };
+        assert_eq!(body.geometry.body.is_some(), geometry_present);
+        assert_eq!(
+            body.transformation,
+            (!empty_transform).then_some(ObjectEntry10_1::BackReference {
+                class_id: PROJECTIVE_TRANSFORMATION_2D_CLASS_ID,
+                key: 75,
+            })
+        );
+        assert_eq!(
+            body.point_arrays.unwrap(),
+            [vec![[1.25, 2.0]], vec![[3.0, -4.0]]]
+        );
+        assert_eq!(reader.position(), end);
+        assert_eq!(refs.contains(81), geometry_present);
+
+        if !empty_transform {
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let error = read_geodata_xform_slot_10_1(&mut reader, 4096, &mut refs).unwrap_err();
+            assert_eq!(error.kind(), std::io::ErrorKind::Unsupported);
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            refs.register(75);
+            assert!(
+                read_geodata_xform_slot_10_1(&mut reader, 4096, &mut refs).is_err(),
+                "{cut}"
+            );
+            assert_eq!(reader.position(), 0);
+            assert_eq!(refs.len(), 1);
+        }
+    }
 }
 
 #[test]

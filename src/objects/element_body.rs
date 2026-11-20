@@ -93,12 +93,11 @@
 //!    0.0、100.0、100.0）；byte → this-0x344（样本 1）；double → this-0x33c
 //!    （样本 0.0）；int32 → this-0x330（样本 0）；double → this-0x32c（样本
 //!    88.0）；byte → this-0x320（样本 1）；
-//! 9. 16 字节原样 GUID → 栈（样本为 `{B65A3E74-…}` TextSymbol 自身 CLSID；
-//!    与零 GUID 比较非零时走附加处理——自定义 TextPath CLSID 候选）；
-//! 10. LoadObject（IID `{8FEB6611-2A0D-11D1-9A44-0080C7EC5C96}` = ITextPath）
-//!     → Background getter 存储（仅分类；见 docs/mxd-terra-chain-element.md）；
+//! 9. ITextPath 的实现类 CLSID，由原生实例化，无对象头或键；
+//! 10. LoadObject（IID `{8FEB6611-2A0D-11D1-9A44-0080C7EC5C96}` = ITextBackground）
+//!     → Background getter 存储，解析已取证的四种背景对象；
 //! 11. LoadObject（IID `{F3435802-5779-11D0-98BF-00805F7CED21}` = ISymbol）
-//!     → 符号槽 #1（FillSymbol getter 底层存储，仅分类）；
+//!     → 符号槽 #1（FillSymbol getter 底层存储）；
 //! 12. String → this-0x238（样本 `"T35"`，与外层文本相同）；
 //! 13. double → this-0x1ec（样本 8.0，读后作虚调用实参）；int32 →
 //!     this-0x210（样本 1）；double → this-0x204（样本 1.5）；
@@ -109,12 +108,9 @@
 //!     新对象整体解析——oleaut32 2.40.4275 OleFontImpl 持久化格式 + 样本 37
 //!     处逐字节互证，证据 docs/arcmap-10.1-ole-stdfont.md；其余实现类维持
 //!     停止回退）；
-//! 16. 版本 >1：int16 → this-0x4e4；版本 ≥3：16 字节原样 GUID（与零 GUID 比
-//!     较，非零走附加处理；零时取内置默认 `{D7099B91-E298-499E-9757-
-//!     72BB39E55CF3}`，常量 `0x6ec15a94`）；版本 ≥4：int16 → this-0x384
-//!     （Save 侧常量 -900）。样本版本 4 全读（StdFont 体闭合后可达：尾段实
-//!     测 short 0x0000/0xFFFF、GUID `{D7099B91-…}`、尾 short 0x0000，读侧
-//!     语义未定）。
+//! 16. 版本 ≥2：RotateSymbolsOnConvert 对应的 short；版本 ≥3：ITextParser
+//!     实现类 CLSID（零 GUID 表示清除解析器）；版本 ≥4：CJKCharactersRotation
+//!     的原始 short。见 docs/mxd-terra-round9-text.md。
 //!
 //! 第五轮「TextSymbol 体内键位恒 0 的内嵌 SimpleTextPath」现象在本轮重新归
 //! 因：字段 9 的 16 字节是**原样 GUID 字段**（非对象头、无键），样本值为
@@ -151,7 +147,7 @@
 //! - TextSymbol `{B65A3E74}` 键 1614 @`0x18599`，体 @`0x185ad` 起按上节字段
 //!   序推进到符号槽 #2（`{7914E603}` 键 1593 @`0x186d9`）为止逐字节吻合——
 //!   覆盖两 RgbColor（键 1615/1616）、全部标量组、原样 GUID 字段（TextSymbol
-//!   自身 CLSID）、ITextPath/ISymbol #1 双空标记、`"T35"` String 与 8.0/1/1.5
+//!   自身 CLSID）、ITextBackground/ISymbol #1 双空标记、`"T35"` String 与 8.0/1/1.5
 //!   标量组；停止于符号槽 #2 新对象（体未闭合）。
 //! - 第二实例（键 1850 @`0x1da39`，文本 `"T12"`）同构互证；16 实例的版本 8 +
 //!   EP 版本 6 头部全部一致。
@@ -176,8 +172,8 @@
 //! Multipoint 体整体解析，样本 16 实例原全部停在 TextElement 该槽；证据：
 //! docs/arcmap-10.1-geometry.md「接线建议」与「第二轮落位」）、MarkerElement
 //! 的 IPoint 槽经 [`read_point_slot`] Point 分派；点/线符号槽分别限制
-//! 已知对应类后调用通用符号读取器，嵌套停止透传；TextSymbol 的 ITextPath/
-//! ISymbol #1/IFontDisp 仍仅分类；TextSymbol 体内的嵌套停止上抛为
+//! 已知对应类后调用通用符号读取器，嵌套停止透传；TextSymbol 分派已取证的
+//! ITextBackground、ISymbol 和 IFontDisp 类；TextSymbol 体内的嵌套停止上抛为
 //! TextElement 的停止原因（原实现未透传，见 [`read_text_element_body_10_1`]
 //! 内注释）。`fdo_graphics_layer` 的 ElementCollection 槽已在前轮接入
 //! element_collection。
@@ -191,14 +187,15 @@
 //! 未接入 MXD 解析主链，人工目视验收未做，不得声称已验证。
 //!
 //! 未解决问题（详见研究文档「开放项」）：部分标量字段业务语义未定性；
-//! IGeometry/IMarkerSymbol/ILineSymbol/ISymbol/ITextPath 槽的实现类体未闭
+//! IGeometry/IMarkerSymbol/ILineSymbol/ISymbol 槽的其余实现类体未闭
 //! 合（IFontDisp 槽的 StdFont 实现类本轮已闭合，证据
 //! docs/arcmap-10.1-ole-stdfont.md；该槽其余实现类仍为停止回退）；
 //! TextSymbol 版本门尾段（>1 short、≥3 GUID、≥4 short）StdFont 体闭合后样
-//! 本可达、位模式原样保留（读侧语义未定）；MarkerElement 尾块虽有模板
+//! 本可达、位模式原样保留；MarkerElement 尾块虽有模板
 //! 局部候选，仍未确定语义；TextElement 版本 7/9 精确块无样本佐证；
 //! 全部结论未运行目标软件验证。
 
+use crate::objects::callout_background::{CalloutSlot10_1, read_callout_slot_10_1};
 use crate::objects::display_color::read_color_slot_10_1;
 use crate::objects::display_symbol::{
     DisplaySlotKind10_1, MAX_SYMBOL_NESTING_DEPTH, SymbolSlotFull10_1, SymbolStop10_1,
@@ -258,6 +255,11 @@ pub const MARKER_ELEMENT_CLASS_ID: [u8; 16] = [
 /// 无字节佐证。
 pub const LINE_ELEMENT_CLASS_ID: [u8; 16] = [
     0xe1, 0xfb, 0xb7, 0x8a, 0x71, 0xd8, 0xd0, 0x11, 0x83, 0x89, 0x08, 0x00, 0x09, 0xb9, 0x96, 0xcc,
+];
+
+/// GraphicElements.dll PolygonElement 的 CLSID。
+pub const POLYGON_ELEMENT_CLASS_ID: [u8; 16] = [
+    0xc7, 0x67, 0x97, 0x3a, 0x53, 0xf2, 0xd0, 0x11, 0x83, 0xa4, 0x08, 0x00, 0x09, 0xb9, 0x96, 0xcc,
 ];
 
 /// TextSymbol 类标识（CLSID）的 16 字节内存序。
@@ -363,7 +365,7 @@ pub enum ElementBodyStop10_1 {
         offset: usize,
         class_id: [u8; 16],
         key: u32,
-        /// 槽位说明（ITextPath/ISymbol/IFontDisp 候选）。
+        /// 槽位说明（ITextBackground/ISymbol/IFontDisp）。
         slot: &'static str,
     },
     /// TextSymbol 符号槽 #2 为本轮闭合的 DisplayCore 同族符号且其体内出现
@@ -625,20 +627,20 @@ pub use crate::objects::display_color::ColorSlot10_1;
 /// 号槽的流内体）。
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextSymbolBody10_1 {
-    /// 2 字节版本的无符号位模式（`4 < ver` 拒绝；样本 4）。
+    /// 2 字节版本原始位模式。原生按有符号值判断上限与尾段字段。
     pub version: u16,
     /// 颜色槽 #1（IColor；Color getter 在 FillSymbol 底层槽为空时使用）。
     pub color1: ColorSlot10_1,
-    /// 字段 3 组：未知 int32、VerticalAlignment、HorizontalAlignment，
+    /// 字段 3 组：BreakCharacter、VerticalAlignment、HorizontalAlignment，
     /// 原样保留（this-0x478/-0x470/-0x474；样本 -1、3、1）。
     pub ints_1: [i32; 3],
-    /// 字段 4 组：未知 byte、RightToLeft 原始 byte
+    /// 字段 4 组：Clip、RightToLeft 原始 byte
     /// （this-0x468/-0x467；样本 0、0）。
     pub bytes_1: [u8; 2],
-    /// 字段 5 组：Angle、两个未知 double
+    /// 字段 5 组：Angle、以排版点为单位的 X/Y 偏移输入
     /// （this-0x45c/-0x44c/-0x444；样本均为 0）。
     pub doubles_1: [f64; 3],
-    /// 字段 6 组：int32 ×2 原样位模式（this-0x4fc/-0x4f4；样本 13、0）。
+    /// 字段 6 组：ROP2 和 IMapLevel.MapLevel 原值（this-0x4fc/-0x4f4）。
     pub ints_2: [i32; 2],
     /// 颜色槽 #2（IColor；与 ShadowColor 访问器存储对位）。
     pub color2: ColorSlot10_1,
@@ -658,13 +660,16 @@ pub struct TextSymbolBody10_1 {
     pub double_4: f64,
     /// TypeSetting 的原始 byte（this-0x320；样本 1）。
     pub byte_3: u8,
-    /// 16 字节原样 GUID（样本为 TextSymbol 自身 CLSID；与零 GUID 比较非零
-    /// 走附加处理——自定义 TextPath CLSID 候选；原样保留）。
+    /// ITextPath 实现类的原样 CLSID。样本为 TextSymbol 自身 CLSID。
     pub raw_path_clsid: [u8; 16],
-    /// ITextPath 槽（仅分类）；与 Background getter 存储对位。
+    /// ITextBackground 槽的原有空值或回引分类。新对象体见 `background`。
     pub text_path: NestedEntry10_1,
-    /// ISymbol 符号槽 #1（仅分类）；与 FillSymbol getter 的底层存储对位。
+    /// ITextBackground 槽。未到达或遇到未知 CLSID 时为空。
+    pub background: Option<CalloutSlot10_1>,
+    /// ISymbol 槽 #1 的原有空值或回引分类。新对象体见 `fill_symbol`。
     pub symbol1: NestedEntry10_1,
+    /// FillSymbol 对应的 ISymbol 槽。
+    pub fill_symbol: SymbolSlotFull10_1,
     /// String（this-0x238；与 Text getter 存储对位）。
     pub name_string: String,
     /// Size 相关的 double（this-0x1ec；样本 8.0；Load 读取后还作虚调用）。
@@ -683,13 +688,11 @@ pub struct TextSymbolBody10_1 {
     /// 类，证据 docs/arcmap-10.1-ole-stdfont.md）；未知字体类不出现在本字
     /// 段——映射为停止原因，字段保持 `Null`）。
     pub font: FontSlot10_1,
-    /// 版本 >1 的 int16 原样位模式（this-0x4e4；StdFont 体闭合后样本可达
-    /// ：TextSymbol 字体槽语境观测 0x0000/0xFFFF，语义未定）。
+    /// 版本 ≥2 的 RotateSymbolsOnConvert 原始位模式（this-0x4e4）。
     pub tail_short_1: Option<u16>,
-    /// 版本 ≥3 的 16 字节原样 GUID（与零 GUID 比较选路径；样本观测内置默
-    /// 认 `{D7099B91-E298-499E-9757-72BB39E55CF3}`）。
+    /// 版本 ≥3 的 ITextParser 类标识，零 GUID 表示原生清除解析器。
     pub tail_path_clsid: Option<[u8; 16]>,
-    /// 版本 ≥4 的 int16 原样位模式（this-0x384；样本观测 0x0000）。
+    /// 版本 ≥4 的 CJKCharactersRotation 原始位模式（this-0x384）。
     pub tail_short_2: Option<u16>,
     /// 停止原因；`None` = 本读取器覆盖的字段全部消费（版本门尾段读毕）。
     pub stop: Option<ElementBodyStop10_1>,
@@ -698,6 +701,38 @@ pub struct TextSymbolBody10_1 {
 }
 
 impl TextSymbolBody10_1 {
+    /// 完整读取时返回断行字符的原始 int32，包括原生缺省值 -1。
+    pub fn break_character(&self) -> Option<i32> {
+        self.stop.is_none().then_some(self.ints_1[0])
+    }
+
+    /// 完整读取时返回裁剪开关的原始字节。
+    pub fn clip_raw(&self) -> Option<u8> {
+        self.stop.is_none().then_some(self.bytes_1[0])
+    }
+
+    /// 完整读取时返回存盘的 X/Y 偏移（1/72 英寸），保留流内方向。
+    pub fn offsets_in_points(&self) -> Option<[f64; 2]> {
+        self.stop
+            .is_none()
+            .then_some([self.doubles_1[1], self.doubles_1[2]])
+    }
+
+    /// 完整读取时返回 Symbol.ROP2 的原始枚举值。
+    pub fn rop2(&self) -> Option<i32> {
+        self.stop.is_none().then_some(self.ints_2[0])
+    }
+
+    /// 完整读取时返回 IMapLevel.MapLevel 的存盘值。
+    pub fn map_level(&self) -> Option<i32> {
+        self.stop.is_none().then_some(self.ints_2[1])
+    }
+
+    /// 返回流内的 CJKCharactersRotation 位模式。旧版由原生字体回填。
+    pub fn cjk_characters_rotation_raw(&self) -> Option<u16> {
+        self.tail_short_2
+    }
+
     /// 完整读取时返回流内 MaskStyle 原始值，不转换未知枚举值。
     pub fn mask_style(&self) -> Option<i32> {
         self.stop.is_none().then_some(self.int_4)
@@ -959,18 +994,17 @@ pub struct MarkerElementBody10_1 {
     pub remaining_bytes: usize,
 }
 
-/// 10.1 LineElement::Load（`0x7504a100`）可读取的对象体。
+/// LineElement 和 PolygonElement 的共同持久化字段。
 #[derive(Debug, Clone, PartialEq)]
-pub struct LineElementBody10_1 {
-    /// 2 字节版本的无符号位模式（原生有符号 `>3` 拒绝；负值一并拒绝；无样
-    /// 本佐证）。
+pub struct LineOrPolygonElementBody10_1 {
+    /// 2 字节版本的无符号位模式（原生有符号 `>3` 拒绝；负值一并拒绝）。
     pub version: u16,
     /// ElementProperties 共同前缀（CustomProperty 槽停止时 `None`）。
     pub properties: Option<ElementPropertiesPrefix10_1>,
-    /// ILineSymbol 槽：仅对已知线符号类分派，未知类停在槽头。
+    /// 符号槽按 ILineSymbol 或 IFillSymbol 分派，未知类停在槽头。
     pub symbol: SymbolSlotFull10_1,
     /// IGeometry 几何槽（接线轮起与 TextElement 同经四类类型化分派：
-    /// [`GeometrySlot10_1`]；其余几何类映射为停止原因。参考样本无实例）。
+    /// [`GeometrySlot10_1`]；其余几何类映射为停止原因）。
     pub geometry: GeometrySlot10_1,
     /// 版本 >1 的 int32（this+0x23）。
     pub tail_int32: Option<i32>,
@@ -982,6 +1016,8 @@ pub struct LineElementBody10_1 {
     pub remaining_bytes: usize,
 }
 
+pub use LineOrPolygonElementBody10_1 as LineElementBody10_1;
+
 /// 元素类对象体分派结果。
 #[derive(Debug, Clone, PartialEq)]
 pub enum ElementBody10_1 {
@@ -989,6 +1025,7 @@ pub enum ElementBody10_1 {
     ParagraphTextElement(Box<ParagraphTextElement10_1>),
     MarkerElement(Box<MarkerElementBody10_1>),
     LineElement(Box<LineElementBody10_1>),
+    PolygonElement(Box<LineOrPolygonElementBody10_1>),
     PictureElement(Box<crate::maps::picture_element::PictureElement10_1>),
 }
 
@@ -998,7 +1035,7 @@ impl ElementBody10_1 {
             Self::TextElement(body) => body.stop.as_ref(),
             Self::ParagraphTextElement(body) => body.stop.as_ref(),
             Self::MarkerElement(body) => body.stop.as_ref(),
-            Self::LineElement(body) => body.stop.as_ref(),
+            Self::LineElement(body) | Self::PolygonElement(body) => body.stop.as_ref(),
             Self::PictureElement(_) => None,
         }
     }
@@ -1033,6 +1070,10 @@ pub fn read_element_body_of_class_10_1(
         Ok(ElementBody10_1::LineElement(Box::new(
             read_line_element_body_10_1(reader, max_bytes, table)?,
         )))
+    } else if *class_id == POLYGON_ELEMENT_CLASS_ID {
+        Ok(ElementBody10_1::PolygonElement(Box::new(
+            read_line_or_polygon_element(reader, max_bytes, table, ShapeSymbol::Fill)?,
+        )))
     } else if let Some(kind) = PictureElementKind10_1::from_class(class_id) {
         Ok(ElementBody10_1::PictureElement(Box::new(
             read_picture_element_10_1(reader, max_bytes, table, kind)?,
@@ -1042,37 +1083,6 @@ pub fn read_element_body_of_class_10_1(
             ErrorKind::Unsupported,
             format!("尚不支持元素类 {}", class_id_hex(class_id)),
         ))
-    }
-}
-
-/// 分类一个仅支持空标记/回引的槽位；新对象 = 停止点（回退游标、撤销键登
-/// 记、返回 `None`）。
-fn read_classified_slot<'a>(
-    trial: &mut Reader<'a>,
-    trial_table: &mut RefTable10_1,
-    origin: &Reader<'a>,
-    start: usize,
-    slot: &'static str,
-    stop: &mut Option<ElementBodyStop10_1>,
-) -> io::Result<Option<NestedEntry10_1>> {
-    let slot_offset = trial.position();
-    let saved_table = trial_table.clone();
-    match read_object_entry_10_1(trial, trial_table)? {
-        ObjectEntry10_1::Null => Ok(Some(NestedEntry10_1::Null)),
-        ObjectEntry10_1::BackReference { class_id, key } => {
-            Ok(Some(NestedEntry10_1::BackReference { class_id, key }))
-        }
-        ObjectEntry10_1::NewObject { class_id, key } => {
-            *trial_table = saved_table;
-            *trial = rewind(origin, start, slot_offset);
-            *stop = Some(ElementBodyStop10_1::NestedObjectNotClosed {
-                slot,
-                offset: slot_offset,
-                class_id,
-                key,
-            });
-            Ok(None)
-        }
     }
 }
 
@@ -1170,36 +1180,20 @@ fn read_symbol_slot<'a>(
             });
             Ok(SymbolSlotFull10_1::Null)
         }
-        other_closed @ (SymbolSlotFull10_1::SimpleMarkerSymbol(_)
-        | SymbolSlotFull10_1::SimpleLineSymbol(_)
-        | SymbolSlotFull10_1::SimpleFillSymbol(_)
-        | SymbolSlotFull10_1::MarkerLineSymbol(_)
-        | SymbolSlotFull10_1::CartographicLineSymbol(_)
-        | SymbolSlotFull10_1::HashLineSymbol(_)
-        | SymbolSlotFull10_1::Template(_)
-        | SymbolSlotFull10_1::LineDecoration(_)
-        | SymbolSlotFull10_1::MultiLayerLineSymbol(_)
-        | SymbolSlotFull10_1::MultiLayerMarkerSymbol(_)
-        | SymbolSlotFull10_1::MultiLayerFillSymbol(_)
-        | SymbolSlotFull10_1::CharacterMarkerSymbol(_)
-        | SymbolSlotFull10_1::PictureMarkerSymbol(_)
-        | SymbolSlotFull10_1::PictureLineSymbol(_)
-        | SymbolSlotFull10_1::ArrowMarkerSymbol(_)
-        | SymbolSlotFull10_1::LineFillSymbol(_)
-        | SymbolSlotFull10_1::MarkerFillSymbol(_)
-        | SymbolSlotFull10_1::GradientFillSymbol(_)
-        | SymbolSlotFull10_1::DotDensityFillSymbol(_)) => {
-            // 闭合符号体的嵌套停止透传（游标停在其停止点，已消费字段保持）。
-            if let Some(inner) = slot_full_stop_10_1(&other_closed, DisplaySlotKind10_1::Symbol) {
-                *stop = Some(ElementBodyStop10_1::SymbolSlotNested {
-                    slot,
-                    reason: inner,
-                });
+        body => {
+            if let Some(reason) = slot_full_stop_10_1(&body, DisplaySlotKind10_1::Symbol) {
+                *stop = Some(ElementBodyStop10_1::SymbolSlotNested { slot, reason });
             }
-            Ok(other_closed)
+            Ok(body)
         }
-        other => Ok(other),
     }
+}
+
+#[derive(Clone, Copy)]
+enum ShapeSymbol {
+    Marker,
+    Line,
+    Fill,
 }
 
 /// 在调用通用符号读取器前按槽位接口限制新对象类，避免把填充符号、
@@ -1208,14 +1202,14 @@ fn read_shape_symbol_slot<'a>(
     trial: &mut Reader<'a>,
     max_bytes: usize,
     table: &mut RefTable10_1,
-    marker: bool,
+    kind: ShapeSymbol,
     stop: &mut Option<ElementBodyStop10_1>,
 ) -> io::Result<SymbolSlotFull10_1> {
     use crate::objects::display_symbol as symbols;
-    let slot = if marker {
-        "IMarkerSymbol 符号槽"
-    } else {
-        "ILineSymbol 符号槽"
+    let slot = match kind {
+        ShapeSymbol::Marker => "IMarkerSymbol 符号槽",
+        ShapeSymbol::Line => "ILineSymbol 符号槽",
+        ShapeSymbol::Fill => "IFillSymbol 符号槽",
     };
     let offset = trial.position();
     let mut probe = trial.clone();
@@ -1231,36 +1225,19 @@ fn read_shape_symbol_slot<'a>(
         }
         ObjectEntry10_1::NewObject { class_id, key } => (class_id, key),
     };
-    {
-        let allowed = if marker {
-            [
-                symbols::SIMPLE_MARKER_SYMBOL_CLASS_ID,
-                symbols::MULTI_LAYER_MARKER_SYMBOL_CLASS_ID,
-                symbols::CHARACTER_MARKER_SYMBOL_CLASS_ID,
-                symbols::PICTURE_MARKER_SYMBOL_CLASS_ID,
-                symbols::ARROW_MARKER_SYMBOL_CLASS_ID,
-            ]
-            .contains(&class_id)
-        } else {
-            [
-                symbols::SIMPLE_LINE_SYMBOL_CLASS_ID,
-                symbols::MARKER_LINE_SYMBOL_CLASS_ID,
-                symbols::CARTOGRAPHIC_LINE_SYMBOL_CLASS_ID,
-                symbols::HASH_LINE_SYMBOL_CLASS_ID,
-                symbols::MULTI_LAYER_LINE_SYMBOL_CLASS_ID,
-                symbols::PICTURE_LINE_SYMBOL_CLASS_ID,
-            ]
-            .contains(&class_id)
-        };
-        if !allowed {
-            *stop = Some(ElementBodyStop10_1::NestedObjectNotClosed {
-                slot,
-                offset,
-                class_id,
-                key,
-            });
-            return Ok(SymbolSlotFull10_1::Null);
-        }
+    let allowed = match kind {
+        ShapeSymbol::Marker => symbols::MARKER_SYMBOL_CLASSES.contains(&class_id),
+        ShapeSymbol::Line => symbols::LINE_SYMBOL_CLASSES.contains(&class_id),
+        ShapeSymbol::Fill => symbols::FILL_SYMBOL_CLASSES.contains(&class_id),
+    };
+    if !allowed {
+        *stop = Some(ElementBodyStop10_1::NestedObjectNotClosed {
+            slot,
+            offset,
+            class_id,
+            key,
+        });
+        return Ok(SymbolSlotFull10_1::Null);
     }
     read_symbol_slot(trial, max_bytes, table, slot, stop)
 }
@@ -1368,9 +1345,16 @@ fn read_point_slot<'a>(
 
 /// 从对象头之后的位置读取 10.1 TextSymbol 体（DisplayCore `0x6ebd0a60`）。
 ///
-/// 字段序见模块文档；IColor 槽 RgbColor 分派，ITextPath/ISymbol/IFontDisp
-/// 槽仅分类。`max_bytes` 约束 String 字段；失败不推进游标、不修改登记表。
+/// 字段序见模块文档；按已取证的类分派背景、符号、颜色和字体。`max_bytes` 约束 String 字段；失败不推进游标、不修改登记表。
 pub fn read_text_symbol_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<TextSymbolBody10_1> {
+    table.with_nested_graphics(|table| read_text_symbol_body(reader, max_bytes, table))
+}
+
+fn read_text_symbol_body(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
@@ -1386,12 +1370,12 @@ pub fn read_text_symbol_body_10_1(
     let mut trial = reader.clone();
     let mut trial_table = table.clone();
 
-    // 1. int16 版本：`4 < ver` 拒绝；负值一并拒绝（较原生更严）。
+    // 1. 保留原始位模式，按原生有符号比较判断版本和尾段。
     let version = trial.read_u16_le()?;
-    if (version as i16) > MAX_TEXT_SYMBOL_VERSION || (version as i16) < 0 {
+    let layout_version = version as i16;
+    if layout_version > MAX_TEXT_SYMBOL_VERSION {
         return Err(invalid(format!(
-            "版本位模式 {version}（0x{version:04x}）超出原生接受范围 0..=4（Load 0x6ebd0a60 \
-             比较 >4 拒绝；样本 4；负值位模式本读取器一并拒绝）"
+            "版本 {layout_version}（0x{version:04x}）超过原生上限 {MAX_TEXT_SYMBOL_VERSION}"
         )));
     }
 
@@ -1420,8 +1404,8 @@ pub fn read_text_symbol_body_10_1(
     let mut double_4 = 0_f64;
     let mut byte_3 = 0_u8;
     let mut raw_path_clsid = [0_u8; 16];
-    let mut text_path = NestedEntry10_1::Null;
-    let mut symbol1 = NestedEntry10_1::Null;
+    let mut background = None;
+    let mut fill_symbol = SymbolSlotFull10_1::Null;
     let mut symbol2 = SymbolSlotFull10_1::Null;
     let mut font = FontSlot10_1::Null;
     let mut tail_short_1 = None;
@@ -1468,35 +1452,42 @@ pub fn read_text_symbol_body_10_1(
         int_3 = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
         double_4 = trial.read_f64_le()?;
         byte_3 = trial.read_bytes(1)?[0];
-        // 9. 16 字节原样 GUID（自定义 TextPath CLSID 候选；原样保留）。
+        // 9. 独立的 ITextPath 实现类标识。
         raw_path_clsid = trial.read_bytes(16)?.try_into().expect("固定 16 字节");
-        // 10. ITextPath 槽（仅分类）。
-        match read_classified_slot(
+        // 10. 带键的 ITextBackground 槽。
+        const SLOT: &str = "ITextBackground 文字背景槽";
+        let offset = trial.position();
+        let (body, reason) = read_callout_slot_10_1(
             &mut trial,
+            max_bytes,
             &mut trial_table,
-            &origin,
-            start,
-            "ITextPath 文本路径槽",
-            &mut stop,
-        )? {
-            Some(entry) => text_path = entry,
-            None => {}
-        }
+            MAX_SYMBOL_NESTING_DEPTH,
+            true,
+            DisplaySlotKind10_1::TextBackground,
+        )?;
+        background = body;
+        stop = reason.map(|reason| match reason {
+            SymbolStop10_1::Slot { class_id, key, .. } => {
+                ElementBodyStop10_1::NestedObjectNotClosed {
+                    slot: SLOT,
+                    offset,
+                    class_id,
+                    key,
+                }
+            }
+            reason => ElementBodyStop10_1::SymbolSlotNested { slot: SLOT, reason },
+        });
     }
 
     if stop.is_none() {
-        // 11. ISymbol 符号槽 #1（仅分类）。
-        match read_classified_slot(
+        // 11. ISymbol 符号槽 #1。
+        fill_symbol = read_symbol_slot(
             &mut trial,
+            max_bytes,
             &mut trial_table,
-            &origin,
-            start,
-            "ISymbol 符号槽 #1",
+            "ISymbol 填充符号槽",
             &mut stop,
-        )? {
-            Some(entry) => symbol1 = entry,
-            None => {}
-        }
+        )?;
     }
 
     if stop.is_none() {
@@ -1537,13 +1528,13 @@ pub fn read_text_symbol_body_10_1(
     }
     if stop.is_none() {
         // 16. 版本 >1：int16；版本 ≥3：16 字节原样 GUID；版本 ≥4：int16。
-        if version > 1 {
+        if layout_version >= 2 {
             tail_short_1 = Some(trial.read_u16_le()?);
         }
-        if version >= 3 {
+        if layout_version >= 3 {
             tail_path_clsid = Some(trial.read_bytes(16)?.try_into().expect("固定 16 字节"));
         }
-        if version >= 4 {
+        if layout_version >= 4 {
             tail_short_2 = Some(trial.read_u16_le()?);
         }
     }
@@ -1564,8 +1555,24 @@ pub fn read_text_symbol_body_10_1(
         double_4,
         byte_3,
         raw_path_clsid,
-        text_path,
-        symbol1,
+        text_path: match &background {
+            Some(CalloutSlot10_1::BackReference { class_id, key }) => {
+                NestedEntry10_1::BackReference {
+                    class_id: *class_id,
+                    key: *key,
+                }
+            }
+            _ => NestedEntry10_1::Null,
+        },
+        background,
+        symbol1: match &fill_symbol {
+            SymbolSlotFull10_1::BackReference { class_id, key } => NestedEntry10_1::BackReference {
+                class_id: *class_id,
+                key: *key,
+            },
+            _ => NestedEntry10_1::Null,
+        },
+        fill_symbol,
         name_string,
         double_5,
         int_4,
@@ -1834,7 +1841,13 @@ pub fn read_marker_element_body_10_1(
     let mut raw_envelope = None;
 
     if stop.is_none() {
-        symbol = read_shape_symbol_slot(&mut trial, max_bytes, &mut trial_table, true, &mut stop)?;
+        symbol = read_shape_symbol_slot(
+            &mut trial,
+            max_bytes,
+            &mut trial_table,
+            ShapeSymbol::Marker,
+            &mut stop,
+        )?;
     }
     if stop.is_none() {
         geometry = read_point_slot(
@@ -1877,12 +1890,25 @@ pub fn read_line_element_body_10_1(
     max_bytes: usize,
     table: &mut RefTable10_1,
 ) -> io::Result<LineElementBody10_1> {
+    read_line_or_polygon_element(reader, max_bytes, table, ShapeSymbol::Line)
+}
+
+fn read_line_or_polygon_element(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    kind: ShapeSymbol,
+) -> io::Result<LineOrPolygonElementBody10_1> {
+    let class_name = match kind {
+        ShapeSymbol::Fill => "PolygonElement",
+        _ => "LineElement",
+    };
     let start = reader.position();
     let origin = reader.clone();
     let invalid = |reason: String| {
         io::Error::new(
             ErrorKind::InvalidData,
-            format!("LineElement 对象体 offset 0x{start:x}: {reason}"),
+            format!("{class_name} 对象体 offset 0x{start:x}: {reason}"),
         )
     };
     let mut trial = reader.clone();
@@ -1892,8 +1918,7 @@ pub fn read_line_element_body_10_1(
     let version = trial.read_u16_le()?;
     if (version as i16) > MAX_SHAPE_ELEMENT_VERSION || (version as i16) < 0 {
         return Err(invalid(format!(
-            "版本位模式 {version}（0x{version:04x}）超出原生接受范围 0..=3（Load 0x7504a100 \
-             有符号比较 >3 拒绝 0x80004005；负值位模式原生通过，本读取器一并拒绝）"
+            "版本位模式 {version}（0x{version:04x}）超出读取范围 0..=3"
         )));
     }
 
@@ -1905,14 +1930,14 @@ pub fn read_line_element_body_10_1(
             Err(error) => return Err(invalid(format!("ElementProperties 前缀读取失败：{error}"))),
         };
 
-    // 3. ILineSymbol 符号槽；4. IGeometry 几何槽；5. 版本门尾段。
+    // 依次读取符号槽、IGeometry 槽和版本条件尾段。
     let mut symbol = SymbolSlotFull10_1::Null;
     let mut geometry = GeometrySlot10_1::Null;
     let mut tail_int32 = None;
     let mut tail_short = None;
 
     if stop.is_none() {
-        symbol = read_shape_symbol_slot(&mut trial, max_bytes, &mut trial_table, false, &mut stop)?;
+        symbol = read_shape_symbol_slot(&mut trial, max_bytes, &mut trial_table, kind, &mut stop)?;
     }
     if stop.is_none() {
         match read_geometry_slot(

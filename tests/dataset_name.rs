@@ -153,14 +153,14 @@ fn read_tn_entry(
 }
 
 /// 完整 TN→FDN→WS(new) 链的字节与游标锚点。
-fn full_topology_chain() -> (Vec<u8>, usize, usize) {
+fn full_topology_chain(version: u16) -> (Vec<u8>, usize, usize) {
     // FDN 头 + 体（含 WS 头 + 体）
-    let (mut fdn, fdn_ws_slot) = feature_dataset_prefix(1, 1);
+    let (mut fdn, fdn_ws_slot) = feature_dataset_prefix(version, 1);
     push_entry_header(&mut fdn, &WORKSPACE_NAME_CLASS_ID, WS_KEY);
     fdn.extend(full_workspace_body());
     let fdn_ws_header = fdn_ws_slot;
     // TN 头 + 体（含 FDN 头 + 体）
-    let (mut tn, tn_slot) = topology_prefix(1);
+    let (mut tn, tn_slot) = topology_prefix(version);
     push_entry_header(&mut tn, &FEATURE_DATASET_NAME_CLASS_ID, FDN_KEY);
     tn.extend(fdn.clone());
     // 锚点：TN 的 IDatasetName 槽起点、FDN 的 IWorkspaceName 槽起点（TN 流内）
@@ -395,34 +395,36 @@ fn feature_dataset_name_failures_keep_cursor_and_table_unchanged() {
 
 #[test]
 fn reads_full_topology_name_chain_with_nested_feature_dataset() {
-    let (bytes, _, _) = full_topology_chain();
-    let mut table = RefTable10_1::new();
-    let (key, parsed) = read_tn_entry(&bytes, &mut table).unwrap();
-    assert_eq!(key, TN_KEY);
-    assert_eq!(parsed.version, 1);
-    assert_eq!(parsed.string_a, "拓扑");
-    assert_eq!(parsed.string_b, "");
-    let DatasetNameSlot10_1::FeatureDataset(fdn) = &parsed.dataset else {
-        panic!("数据集槽应解析 FeatureDatasetName 体：{:?}", parsed.dataset);
-    };
-    assert_eq!(fdn.version, 1);
-    assert_eq!(fdn.workspace_path(), Some("D:\\测试.gdb"));
-    assert!(matches!(
-        fdn.workspace,
-        WorkspaceNameSlot10_1::WorkspaceName(_)
-    ));
-    assert_eq!(fdn.stop, None);
-    assert_eq!(parsed.stop, None);
-    assert!(table.contains(TN_KEY));
-    assert!(table.contains(FDN_KEY));
-    assert!(table.contains(WS_KEY));
-    assert_eq!(table.len(), 3);
-    // 新表重读：完整链无剩余字节（避免首读登记把嵌套条目变成回引）。
-    let mut table = RefTable10_1::new();
-    let mut reader = Reader::new(&bytes);
-    read_object_entry_10_1(&mut reader, &mut table).unwrap();
-    read_topology_name_body_10_1(&mut reader, usize::MAX, &mut table, TN_KEY).unwrap();
-    assert_eq!(reader.remaining(), 0);
+    for version in [0, 1] {
+        let (bytes, _, _) = full_topology_chain(version);
+        let mut table = RefTable10_1::new();
+        let (key, parsed) = read_tn_entry(&bytes, &mut table).unwrap();
+        assert_eq!(key, TN_KEY);
+        assert_eq!(parsed.version, version);
+        assert_eq!(parsed.string_a, "拓扑");
+        assert_eq!(parsed.string_b, "");
+        let DatasetNameSlot10_1::FeatureDataset(fdn) = &parsed.dataset else {
+            panic!("数据集槽应解析 FeatureDatasetName 体：{:?}", parsed.dataset);
+        };
+        assert_eq!(fdn.version, version);
+        assert_eq!(fdn.workspace_path(), Some("D:\\测试.gdb"));
+        assert!(matches!(
+            fdn.workspace,
+            WorkspaceNameSlot10_1::WorkspaceName(_)
+        ));
+        assert_eq!(fdn.stop, None);
+        assert_eq!(parsed.stop, None);
+        assert!(table.contains(TN_KEY));
+        assert!(table.contains(FDN_KEY));
+        assert!(table.contains(WS_KEY));
+        assert_eq!(table.len(), 3);
+        // 新表重读：完整链无剩余字节（避免首读登记把嵌套条目变成回引）。
+        let mut table = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        read_object_entry_10_1(&mut reader, &mut table).unwrap();
+        read_topology_name_body_10_1(&mut reader, usize::MAX, &mut table, TN_KEY).unwrap();
+        assert_eq!(reader.remaining(), 0);
+    }
 }
 
 #[test]
@@ -545,7 +547,7 @@ fn topology_name_nested_stop_propagates_to_surface() {
 
 #[test]
 fn topology_name_truncation_is_transactional_and_limit_forwards() {
-    let (bytes, _, _) = full_topology_chain();
+    let (bytes, _, _) = full_topology_chain(1);
     for end in 0..bytes.len() {
         let mut table = RefTable10_1::new();
         let mut reader = Reader::new(&bytes[..end]);

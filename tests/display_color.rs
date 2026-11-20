@@ -67,7 +67,7 @@ fn cmyk_body(version: u16, with_string: bool, with_core: bool) -> Vec<u8> {
             bytes.push(0x43); // 补码字节原样位模式
         }
     } else if with_core {
-        bytes.extend(&core_color_body(0));
+        bytes.extend(&core_color_body(0)[2..]);
     }
     bytes
 }
@@ -169,7 +169,10 @@ fn cmyk_body_covers_all_version_branches() {
             assert_eq!(result.complement_byte_raw, None);
         }
         if with_core {
-            assert_eq!(result.core.unwrap().branch_flag, 0);
+            let core = result.core.unwrap();
+            assert_eq!(core.version_outer, version);
+            assert_eq!(core.version_inner, 1);
+            assert_eq!(core.branch_flag, 0);
         } else {
             assert_eq!(result.core, None);
         }
@@ -183,6 +186,39 @@ fn cmyk_body_covers_all_version_branches() {
     assert_eq!(result.string, None);
     assert_eq!(result.string_short, None);
     assert_eq!(reader.position(), bytes.len());
+}
+
+#[test]
+fn cmyk_v2_reads_packed_core_then_next_object() {
+    let mut bytes = Vec::new();
+    push_entry(&mut bytes, &CMYK_COLOR_CLASS_ID, 99);
+    bytes.extend(2_u16.to_le_bytes());
+    bytes.extend([1, 0]); // 无字符串。
+    bytes.extend(&core_color_body(1)[2..]); // 仅写核心自己的版本。
+    let end = bytes.len();
+    bytes.extend([0; 16]); // 下一个 IColor 槽为空。
+    let mut refs = RefTable10_1::new();
+    for cut in 20..end {
+        let mut reader = Reader::new(&bytes[..cut]);
+        assert!(read_color_slot_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+    let mut reader = Reader::new(&bytes);
+    let ColorSlot10_1::Color {
+        body: ColorBody10_1::Cmyk(color),
+        ..
+    } = read_color_slot_10_1(&mut reader, 1024, &mut refs).unwrap()
+    else {
+        panic!("应读取 CmykColor");
+    };
+    assert_eq!(color.core.unwrap().packed_rgb_raw, Some(0xa1b2_c3d4));
+    assert_eq!(reader.position(), end);
+    assert!(refs.contains(99));
+    assert_eq!(
+        read_color_slot_10_1(&mut reader, 1024, &mut refs).unwrap(),
+        ColorSlot10_1::Null
+    );
 }
 
 #[test]
