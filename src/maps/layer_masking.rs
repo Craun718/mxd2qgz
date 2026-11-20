@@ -2,7 +2,7 @@
 //! docs/mxd-luna-deep-layer-masking-20261118.md，流结构边界见
 //! docs/mxd-terra-round8-mask.md。
 
-use crate::layers::layer_list::read_complete_layer_body_10_1;
+use crate::layers::layer_list::{LayerBodyPrefix10_1, read_complete_layer_body_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
@@ -120,12 +120,14 @@ pub fn known_layer_masking_support_10_1(class_id: &[u8; 16]) -> LayerMaskingSupp
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MaskEntry10_1 {
     /// 被遮罩的 ILayer 对象槽。
     pub object: ObjectEntry10_1,
     /// 提供遮罩的对象槽及其 LevelMasking 字符串。旧版本无此字符串。
     pub targets: Vec<(ObjectEntry10_1, Option<String>)>,
+    /// 本条记录首次出现的完整图层体，按读取顺序保留对象键。
+    pub new_layer_bodies: Vec<(u32, LayerBodyPrefix10_1)>,
 }
 
 impl MaskEntry10_1 {
@@ -170,7 +172,7 @@ pub fn decode_masking_levels_10_1(text: &str) -> Option<MaskingLevels10_1> {
     Some(MaskingLevels10_1::Selected(levels))
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LayerMasking10_1 {
     pub version: u16,
     pub entries: Vec<MaskEntry10_1>,
@@ -203,10 +205,12 @@ fn read_mask_object(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     refs: &mut RefTable10_1,
+    new_layer_bodies: &mut Vec<(u32, LayerBodyPrefix10_1)>,
 ) -> io::Result<ObjectEntry10_1> {
     let entry = read_object_entry_10_1(reader, refs)?;
-    if let ObjectEntry10_1::NewObject { class_id, .. } = entry {
-        read_complete_layer_body_10_1(reader, class_id, max_bytes, refs)?;
+    if let ObjectEntry10_1::NewObject { class_id, key } = entry {
+        let body = read_complete_layer_body_10_1(reader, class_id, max_bytes, refs)?;
+        new_layer_bodies.push((key, body));
     }
     Ok(entry)
 }
@@ -263,7 +267,8 @@ pub fn read_entries_10_1(
     let mut entries = Vec::new();
     let mut total = n;
     for _ in 0..n {
-        let object = read_mask_object(&mut trial, max_bytes, &mut table)?;
+        let mut new_layer_bodies = Vec::new();
+        let object = read_mask_object(&mut trial, max_bytes, &mut table, &mut new_layer_bodies)?;
         let inner = read_masking_count_10_1(&mut trial, max_bytes)?.max(0) as usize;
         total = total
             .checked_add(inner)
@@ -273,7 +278,8 @@ pub fn read_entries_10_1(
         }
         let mut targets = Vec::new();
         for _ in 0..inner {
-            let target = read_mask_object(&mut trial, max_bytes, &mut table)?;
+            let target =
+                read_mask_object(&mut trial, max_bytes, &mut table, &mut new_layer_bodies)?;
             let name = if version as i16 > 1 {
                 Some(read_string_10_1(&mut trial, max_bytes)?)
             } else {
@@ -281,7 +287,11 @@ pub fn read_entries_10_1(
             };
             targets.push((target, name));
         }
-        entries.push(MaskEntry10_1 { object, targets });
+        entries.push(MaskEntry10_1 {
+            object,
+            targets,
+            new_layer_bodies,
+        });
     }
     *reader = trial;
     *refs = table;

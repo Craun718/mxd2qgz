@@ -73,6 +73,7 @@ fn absent_interface_unknown_new_and_bad_counts() {
 #[test]
 fn reads_new_layers_in_both_mask_slots_and_shares_keys() {
     use mxd2qgz::layers::group_layer::GROUP_LAYER_CLASS_ID;
+    use mxd2qgz::layers::layer_list::LayerBodyPrefix10_1;
     use mxd2qgz::storage::object_refs::ObjectEntry10_1;
 
     fn group(key: u32) -> Vec<u8> {
@@ -126,6 +127,13 @@ fn reads_new_layers_in_both_mask_slots_and_shares_keys() {
         Some(mxd2qgz::maps::layer_masking::MaskingLevels10_1::All)
     );
     assert_eq!(result.entries[0].masking_levels(1), None);
+    assert!(matches!(
+        result.entries[0].new_layer_bodies.as_slice(),
+        [
+            (7, LayerBodyPrefix10_1::GroupLayer(_)),
+            (8, LayerBodyPrefix10_1::GroupLayer(_))
+        ]
+    ));
     assert_eq!(reader.remaining(), 0);
     assert!(refs.contains(7) && refs.contains(8));
 }
