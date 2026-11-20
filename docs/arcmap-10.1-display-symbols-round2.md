@@ -542,3 +542,29 @@ x86 调用约定反序压栈，调用 IColor 版 ApplyEffects。三项对应
 逐通道计算 `0x6ed77420` 用第二项调整通道值的加性偏移，用第三项
 改变对比度曲线的斜率和分支。因此流中三个 short 依次是透明度、亮度
 和对比度。读取器保留有符号原值，ArcMap/QGIS 显示效果待目视验证。
+
+### 图片填充的几何属性
+
+在同一 DisplayCore.dll 10.1.0.3035 映像中，PictureFillSymbol 的
+持久化虚表 `0x6ec0febc` 对应完整对象 +0x16c。esriDisplay.olb 的
+IPictureFillSymbol 和 IFillProperties 分别对位 +0x98 的虚表
+`0x6ec0fd24` 及 +0xa0 的虚表 `0x6ec0fda8`。
+用类型库的 getter 槽和原生取数指令确定流内顺序。
+
+| 属性 | getter | 持久化成员 |
+| --- | --- | --- |
+| Angle | 0x6eb79960 | −0x8c |
+| XScale | 0x6eb799c0 | −0x84 |
+| YScale | 0x6eb70510 | −0x7c |
+| XOffset | 0x6eb70f80 | −0x74 |
+| YOffset | 0x6eb70fe0 | −0x6c |
+| XSeparation | 0x6eb71040 | −0x64 |
+| YSeparation | 0x6eb710a0 | −0x5c |
+| SwapForeGroundBackGroundColor | 0x6eb70680 | −0x38 |
+
+公共 ROP2、MapLevel 读取器位于 +0x18 和 +0x24 的接口视图，
+分别取完整对象 +0x58 和 +0x60（对应持久化 −0x114 和 −0x10c）。
+IFillSymbol::Outline `0x6eb70b90` 取其接口 +0x40，确认该槽位
+为持久化 −0x94。读取器照旧保留原始位模式。
+尾部三个 short 和各颜色槽的绘制分支仍待进一步定性，ArcMap/QGIS
+目视验收待补。

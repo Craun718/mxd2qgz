@@ -217,13 +217,13 @@ pub struct PictureFillSymbolBody10_1 {
     pub colors: [Option<ColorSlot10_1>; 3],
     /// 轮廓符号槽 ×1（Save 槽 this−0x94）。
     pub outline: Option<SymbolSlotFull10_1>,
-    /// double ×7 → this−0x8c..−0x5c（语义未定）。
+    /// Angle、XScale、YScale、XOffset、YOffset、XSeparation、YSeparation 的原始位模式。
     pub doubles: [u64; 7],
     /// 读后即弃的图片尺寸 double ×2；按流内位模式原样保留。
     pub discard_doubles: [u64; 2],
-    /// int32 ×2 → this−0x114 / −0x10c。
+    /// ROP2、MapLevel，依次对应 this−0x114、−0x10c。
     pub tail_int32s: [i32; 2],
-    /// byte → this−0x38。
+    /// SwapForeGroundBackGroundColor 原始 byte → this−0x38。
     pub tail_byte: u8,
     /// short ×3 → this−0x26 / −0x24 / −0x22。
     pub tail_shorts: [u16; 3],
