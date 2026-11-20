@@ -203,7 +203,7 @@ pub enum PictureFillImage10_1 {
 pub struct PictureFillSymbolBody10_1 {
     /// 对象头键。
     pub key: u32,
-    /// 体首 short 版本；>8 原生拒绝（≤7 走旧路径）。
+    /// 体首 short 原始位模式。有符号值 >8 拒绝，≤7 走旧路径。
     pub version: u16,
     /// int32 图像类型 → this−0x10（1/2/3）。
     pub image_type: i32,
@@ -238,7 +238,7 @@ fn read_picture_fill_tail_10_1(
     max_bytes: usize,
     staged: &mut RefTable10_1,
     depth: usize,
-    version: u16,
+    version: i16,
     mut stop: Option<SymbolStop10_1>,
 ) -> io::Result<(
     [Option<ColorSlot10_1>; 3],
@@ -327,24 +327,24 @@ pub fn read_picture_fill_symbol_body_10_1(
     let entry_offset = trial.position();
     let raw_version = trial.read_u16_le()?;
     let signed = raw_version as i16;
-    if signed < 0 || signed > MAX_PICTURE_FILL_VERSION {
+    if signed > MAX_PICTURE_FILL_VERSION {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
             format!(
                 "PictureFillSymbol 对象体 offset 0x{entry_offset:x}: 版本位模式 \
-                 {raw_version}（0x{raw_version:04x}）超出原生接受范围 0..={MAX_PICTURE_FILL_VERSION}"
+                 {raw_version}（0x{raw_version:04x}）超过有符号版本上限 {MAX_PICTURE_FILL_VERSION}"
             ),
         ));
     }
     let version = raw_version;
 
-    if version <= 7 {
+    if signed <= 7 {
         // 旧路径（Load `0x6eb74aa0`；对象基址偏移差异不影响流内字节序）。
         let image_type;
         let raw_int32 = 0;
         let mut image = PictureFillImage10_1::Blob(None);
         let mut stop = None;
-        if version < 6 {
+        if signed < 6 {
             image_type = 3;
             let (slot, slot_stop) = read_picture_object_slot_10_1(
                 &mut trial,
@@ -386,7 +386,7 @@ pub fn read_picture_fill_symbol_body_10_1(
                 max_bytes,
                 &mut trial_table,
                 depth,
-                version,
+                signed,
                 stop,
             )?;
         let legacy_bitmap = if stop.is_none() && version == 7 {
@@ -461,14 +461,7 @@ pub fn read_picture_fill_symbol_body_10_1(
         }
     };
     let (colors, outline, doubles, discard, tail_int32s, tail_byte, tail_shorts, stop) =
-        read_picture_fill_tail_10_1(
-            &mut trial,
-            max_bytes,
-            &mut trial_table,
-            depth,
-            version,
-            stop,
-        )?;
+        read_picture_fill_tail_10_1(&mut trial, max_bytes, &mut trial_table, depth, signed, stop)?;
     let result = PictureFillSymbolBody10_1 {
         key,
         version,
@@ -773,7 +766,7 @@ mod tests {
         assert_eq!(body.version, 5);
         assert!(matches!(body.image, PictureFillImage10_1::Picture(_)));
         assert_eq!(reader.remaining(), 0);
-        for version in 0_u16..=4 {
+        for version in [i16::MIN, -1, 0, 1, 2, 3, 4] {
             let omitted = if version < 2 {
                 7
             } else if version < 4 {
@@ -788,7 +781,7 @@ mod tests {
             let mut table = RefTable10_1::new();
             let body = read_picture_fill_symbol_body_10_1(&mut reader, 1024, &mut table, 73, 8)
                 .expect("旧版尾字段应按版本读取");
-            assert_eq!(body.version, version);
+            assert_eq!(body.version, version as u16);
             assert_eq!(reader.read_bytes(8).unwrap(), &[0xaa; 8]);
         }
         // 版本 6：String 非空 → double ×2（无 IPicture 槽）；版本 >6 无 blob
