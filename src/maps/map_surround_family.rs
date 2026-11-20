@@ -61,6 +61,9 @@
 //! 版本门语义沿用 [`read_map_surround_common_prefix_10_1`]。全部结论为
 //! 静态反编译观察，未经目标软件运行验证，不得声称已验证。
 
+use crate::layers::feature_layer_tail::{
+    NumberFormatSlot10_1, read_number_format_body_for_class_10_1,
+};
 use crate::layers::patch::{
     AREA_PATCH_CLASS_ID, LINE_PATCH_CLASS_ID, PatchBody10_1, read_patch_body_10_1,
 };
@@ -1393,6 +1396,7 @@ pub enum ScaleLineField10_1 {
     Text { name: &'static str, value: String },
     TextSymbol(SlotEntry10_1<TextSymbolBody10_1>),
     NumberFormat(SlotEntry10_1<NumericFormatBody10_1>),
+    OtherNumberFormat(Box<NumberFormatSlot10_1>),
     LineSymbol(SymbolSlotFull10_1),
 }
 
@@ -1537,8 +1541,7 @@ fn scale_line_object<T>(
     reader: &mut Reader<'_>,
     table: &mut RefTable10_1,
     slot: &'static str,
-    expected: &[u8; 16],
-    body_reader: impl FnOnce(&mut Reader<'_>, &mut RefTable10_1, u32) -> io::Result<(T, bool)>,
+    body_reader: impl FnOnce(&mut Reader<'_>, &mut RefTable10_1, [u8; 16], u32) -> io::Result<Option<T>>,
 ) -> io::Result<Result<SlotEntry10_1<T>, ScaleLineStop10_1>> {
     let mut trial = reader.clone();
     let mut staged = table.clone();
@@ -1549,23 +1552,14 @@ fn scale_line_object<T>(
             SlotEntry10_1::BackReference { class_id, key }
         }
         ObjectEntry10_1::NewObject { class_id, key } => {
-            if class_id != *expected {
+            let Some(body) = body_reader(&mut trial, &mut staged, class_id, key)? else {
                 return Ok(Err(ScaleLineStop10_1::Object {
                     slot,
                     offset: reader.position(),
                     class_id,
                     key,
                 }));
-            }
-            let (body, complete) = body_reader(&mut trial, &mut staged, key)?;
-            if !complete {
-                return Ok(Err(ScaleLineStop10_1::Object {
-                    slot,
-                    offset: reader.position(),
-                    class_id,
-                    key,
-                }));
-            }
+            };
             SlotEntry10_1::Body(Box::new(body))
         }
     };
@@ -1678,11 +1672,12 @@ pub fn read_scale_line_body_10_1(
                 &mut trial,
                 &mut staged,
                 "label_symbol",
-                &TEXT_SYMBOL_CLASS_ID,
-                |r, t, _| {
+                |r, t, class_id, _| {
+                    if class_id != TEXT_SYMBOL_CLASS_ID {
+                        return Ok(None);
+                    }
                     let body = read_text_symbol_body_10_1(r, max_bytes, t)?;
-                    let complete = body.stop.is_none();
-                    Ok((body, complete))
+                    Ok(body.stop.is_none().then_some(body))
                 }
             ),
             TextSymbol
@@ -1698,26 +1693,42 @@ pub fn read_scale_line_body_10_1(
                 &mut trial,
                 &mut staged,
                 "second_symbol",
-                &TEXT_SYMBOL_CLASS_ID,
-                |r, t, _| {
+                |r, t, class_id, _| {
+                    if class_id != TEXT_SYMBOL_CLASS_ID {
+                        return Ok(None);
+                    }
                     let body = read_text_symbol_body_10_1(r, max_bytes, t)?;
-                    let complete = body.stop.is_none();
-                    Ok((body, complete))
+                    Ok(body.stop.is_none().then_some(body))
                 }
             ),
             TextSymbol
         );
         if base_version >= 2 {
-            object!(
-                scale_line_object(
-                    &mut trial,
-                    &mut staged,
-                    "number_format",
-                    &NUMERIC_FORMAT_CLASS_ID,
-                    |r, t, k| Ok((read_numeric_format_body_10_1(r, t, k)?, true))
-                ),
-                NumberFormat
-            );
+            let slot = scale_line_object(
+                &mut trial,
+                &mut staged,
+                "number_format",
+                |r, t, class_id, key| {
+                    read_number_format_body_for_class_10_1(r, max_bytes, t, class_id, key)
+                },
+            )?;
+            fields.push(match slot {
+                Ok(SlotEntry10_1::Null) => ScaleLineField10_1::NumberFormat(SlotEntry10_1::Null),
+                Ok(SlotEntry10_1::BackReference { class_id, key }) => {
+                    ScaleLineField10_1::NumberFormat(SlotEntry10_1::BackReference { class_id, key })
+                }
+                Ok(SlotEntry10_1::Body(body)) => match *body {
+                    NumberFormatSlot10_1::NumericFormat(body) => {
+                        ScaleLineField10_1::NumberFormat(SlotEntry10_1::Body(body))
+                    }
+                    _ => ScaleLineField10_1::OtherNumberFormat(body),
+                },
+                Ok(SlotEntry10_1::Unsupported { .. }) => unreachable!("未支持槽由 Err 表示"),
+                Err(reason) => {
+                    stop = Some(reason);
+                    return Ok(());
+                }
+            });
         }
         if base_version >= 3 {
             raw!("base_tail_int", 4);
@@ -2953,6 +2964,31 @@ mod tests {
             f,
             ScaleLineField10_1::LineSymbol(SymbolSlotFull10_1::BackReference { key: 55, .. })
         )));
+    }
+
+    #[test]
+    fn scale_line_reads_fraction_format_before_scale_marks() {
+        use crate::objects::number_format::FRACTION_FORMAT_CLASS_ID;
+
+        let (mut data, offsets) = scale_line_fixture(6, 2, true);
+        let mut format = backref_header(&FRACTION_FORMAT_CLASS_ID, 70);
+        format.extend(1_u16.to_le_bytes());
+        format.extend([0; 8]);
+        data.splice(offsets[2]..offsets[2] + 16, format);
+        let mut reader = Reader::new(&data);
+        reader.read_bytes(3).unwrap();
+        let mut table = scale_table();
+        let body = read_stepped_scale_line_10_1(&mut reader, 4096, &mut table, 9).unwrap();
+        assert_eq!(body.stop, None);
+        assert!(table.contains(70));
+        assert!(body.fields.iter().any(|field| matches!(
+            field,
+            ScaleLineField10_1::OtherNumberFormat(format)
+                if matches!(**format, NumberFormatSlot10_1::FractionFormat(_))
+        )));
+        assert!(body.scale_mark_properties().is_some());
+        assert!(body.stepped_bar_height().is_some());
+        assert_eq!(reader.remaining(), 0);
     }
 
     #[test]

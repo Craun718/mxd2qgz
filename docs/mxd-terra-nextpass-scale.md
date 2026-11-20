@@ -158,3 +158,13 @@ Rust 的访问器在流中存在该字段时返回布尔值，旧版保留字段
 基类 v5 增加的 short 在完整对象 +0x1b0，`0x793a1210/0x793a1230`
 分别直接写读它。基类初始化段 `0x7944b820/0x7944b835` 清零两字段。
 v5 的调用方和业务名仍待追踪。ArcMap/QGIS 实档目视验证待补。
+
+## 比例尺线数字格式槽
+
+Map.dll 10.1.0.3035 的 ScaleLine 和 SteppedScaleLine 均调用基类
+Load `0x79451120`。基类 v2 起以 `0x7948c354` 的 INumberFormat IID
+请求 LoadObject，Save `0x79451400` 写出相同槽。解析器现复用
+[SystemCore 的九种已确认持久化体](arcmap-10.1-number-format.md)，并保留
+NumericFormat、空槽和回引在解析结果中的原有表示。未知新类停在槽头并
+撤销其键。构造的 SteppedScaleLine 验证 FractionFormat 后仍能读取刻度
+和高度，并消费到对象边界。实际工程中这类槽及 ArcMap/QGIS 目视仍待验证。
