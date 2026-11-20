@@ -203,6 +203,7 @@
     - [x] 从 PageLayout.dll 实际文档读取链确认分流格式的 `/Maps:0x00` 数量及 `0x04` 首对象入口；记录 Mx Document 优先分支和跨流复用 ObjectStream。对象体与版本适用性仍未闭环（引用表生命周期由 SetStream 条目闭合）。
     - [ ] 闭合跨流复用 ObjectStream 的对象体（已证 LinearRef 的 MapFrame 完整体回引 /Maps 键 31 并接入 parse；Utilities 的装饰框及嵌套 MapFrame 也已走通；MilitaryPortrait 已读通 Graticule 与 LocatorRectangle；66 份安装介质工程及参考工程已读完布局对象体；CustomOverlayGrid 中尚未核对的 IName 扩展及已接入来源的实档、显式带版本文本 9.0 的旧 DEVMODE 宿主、其他打印设置宿主的实档验证和未覆盖扩展仍开放；calibrate 的 Map v19 和 v6 布局已整档读完，见[布局尾段复核](docs/mxd-page-layout-tail-20261118.md)）。
     - [ ] 确定跨流复用 ObjectStream 的版本适用性（10.1 介质中已见 `/Version` 候选 9.2、9.3、10.0 使用实际 MapFrame 跨流回引，10.1 候选中已确认 Africa、USA 等工程的实际跨流回引；另由 calibrate 证实 8.1 候选的 Map v19 和布局 v6 实际跨流回引；仍待核对其余版本边界及其他宿主，见[介质分组](docs/mxd-us-media-renderer-paragraph-20261118.md)）。
+    - [x] 逐份核对 135 份工程中 MapFrame 对首个 Map 的跨流回引，补证 Map v29 与布局 v9 的组合。[版本清点](docs/mxd-us-media-renderer-paragraph-20261118.md#mapframe-跨流回引的版本清点)
     - [x] 确认 SetStream 不重置引用表、对象体之前登记、析构释放、普通/VariantStream 分支的接口 GUID 及局部 HRESULT；缺失引用与新对象不能只靠键区分。完整对象体与版本适用性见上项，替换场景见对象键条目，失败恢复已由对象读取错误恢复条目闭合。
   - [x] 用 Ghidra 桥接工具 确认 10.8 VariantStream 已知 VARTYPE 的固定宽度分支和字符串 `n * 2 + 2` 布局；对象分支、对象体和引用表仍未闭环。
   - [x] 接入 10.1 VariantStream 非空对象分派与 ImageServerLayer 前缀：原生读写对位至扩展、包络和空间参考槽；标准包装和 VariantStreamIO 均由底流决定是否共用对象表，见 [取证与测试](docs/mxd-10.1-variant-image-server-layer.md)。

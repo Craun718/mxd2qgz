@@ -22,3 +22,31 @@
 此前尚未进入布局的 CentralUSA、ConterminousUSA、NortheasternUSA、NorthwesternUSA、SouthernUSA、SouthwesternUSA、USA、USACounties 均完整消费 Basemap、图例和 `/Maps` 根，继续读完整个布局元素列表。USA 有三个根 Map，`/Maps` 主体分别止于 `0x1037b/0x14ab1/0x1d673`，之后布局中的三个地图框分别回引根 Map 键 693、879、38。
 
 10.1 Desktop 安装介质的 66 份 MXD/MXT（版本文本候选：9.2 三份、9.3 三十四份、10.0 十一份、10.1 十八份）全部进入布局并读完声明的元素列表。布局元素之后的尾段仍按原始字节保留；此结果不覆盖任意 MXD、全部图层类或全部对象属性，不等同于完整工程转换。未在 ArcMap 10.1 或 QGIS 中人工打开目视验收。
+
+## MapFrame 跨流回引的版本清点
+
+从参考工程和两套 Desktop 安装介质共 135 份 MXD/MXT 读取
+`/Version`、`/Maps` 和 `/PageLayout`。按当前解析器顺序读取两条
+对象流，逐份检查 Maps 根尾值及布局完成位置均到达对应流末尾。
+遍历顶层地图框、MapSurroundFrame 内联地图框及 GroupElement 的递归
+子项。只统计从已解析地图框的 IMap 槽取得、类型为 Map 且键等于
+`/Maps` 首个 Map 对象键的回引。每份工程各有一个此类回引。
+
+| 介质 | /Version 候选文本 | 工程数 | Map / PageLayout / MapFrame 对象版本 |
+| --- | --- | ---: | --- |
+| 10.1 Desktop | 9.2 | 3 | 30 / 9 / 2 |
+| 10.1 Desktop | 9.3 | 34 | 31 / 10 / 2 |
+| 10.1 Desktop | 10.0 | 11 | 45 / 14 / 4 |
+| 10.1 Desktop | 10.1 | 18 | 51 / 15 / 4 |
+| 10.8 Desktop | 8.1 | 1 | 19 / 6 / 2 |
+| 10.8 Desktop | 9.2 | 12 | 29 / 9 / 2、30 / 9 / 2 |
+| 10.8 Desktop | 9.3 | 18 | 31 / 10 / 2 |
+| 10.8 Desktop | 10.0 | 11 | 45 / 14 / 4 |
+| 10.8 Desktop | 10.1 | 26 | 51 / 15 / 4 |
+| 仓库参考工程 | 10.1 | 1 | 51 / 15 / 4 |
+
+表中候选文本来自 `/Version`，对象版本来自各自流内字段。10.8 是
+安装介质来源，表内结果只证明这些随附工程的实际对象组合。此次新增
+Map v29 与 PageLayout v9、MapFrame v2 共用会话的字节证据，
+以及以上各组逐份复核的计数。其他对象版本组合和回引宿主仍需取证。
+未在 ArcMap 10.1 或 QGIS 中打开工程作目视验证。
