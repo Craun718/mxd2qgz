@@ -55,6 +55,10 @@ const SCHEMATIC_LAYER_CLASS_ID: [u8; 16] = [
     0xd6, 0x82, 0xf0, 0x2e, 0x5f, 0x0b, 0x70, 0x4b, 0x94, 0x16, 0x35, 0xd7, 0x5e, 0xfa, 0x7f, 0xed,
 ];
 
+const TEMPORAL_FEATURE_LAYER_CLASS_ID: [u8; 16] = [
+    0x40, 0xce, 0x34, 0x33, 0x1d, 0x1a, 0xd5, 0x11, 0xb7, 0xcf, 0x00, 0x01, 0x02, 0x65, 0xad, 0xc5,
+];
+
 // 这些类尚无图层体读取器，但已确认不消费遮罩记录。
 pub(crate) fn is_unparsed_layer_without_masking_10_1(class_id: [u8; 16]) -> bool {
     matches!(
@@ -63,6 +67,7 @@ pub(crate) fn is_unparsed_layer_without_masking_10_1(class_id: [u8; 16]) -> bool
             | TOPOLOGY_LAYER_CLASS_ID
             | NETWORK_LAYER_CLASS_ID
             | SCHEMATIC_LAYER_CLASS_ID
+            | TEMPORAL_FEATURE_LAYER_CLASS_ID
     )
 }
 

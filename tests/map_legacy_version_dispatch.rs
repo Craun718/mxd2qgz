@@ -598,27 +598,34 @@ fn map_v28_masking_suffix(layers: &[&[u8]]) -> Vec<u8> {
 }
 
 #[test]
-fn map_v28_skips_bounded_network_layer_and_its_back_reference() {
-    let mut layer = [
-        0x4b, 0xe9, 0xf8, 0xd4, 0xf5, 0x5c, 0x8f, 0x4f, 0x8b, 0x4d, 0x5b, 0x25, 0xae, 0x4c, 0x0a,
-        0xf9,
-    ]
-    .to_vec();
-    layer.extend(90_u32.to_le_bytes());
-    layer.extend([0x12, 0x34]);
-    let mut suffix = map_v28_masking_suffix(&[&layer, &layer[..20]]);
-    let end = suffix.len();
-    suffix.extend(0x1717_u32.to_le_bytes());
-    let (bytes, offset) = map_with_version(28, &suffix);
-    let report = parse_maps_10_1(&bytes).unwrap();
-    assert_eq!(report.confirmed_tail, Some((offset + end, 0x1717)));
+fn map_v28_skips_bounded_native_layers_without_masking_and_their_back_references() {
+    for class_id in [
+        [
+            0x4b, 0xe9, 0xf8, 0xd4, 0xf5, 0x5c, 0x8f, 0x4f, 0x8b, 0x4d, 0x5b, 0x25, 0xae, 0x4c,
+            0x0a, 0xf9,
+        ],
+        [
+            0x40, 0xce, 0x34, 0x33, 0x1d, 0x1a, 0xd5, 0x11, 0xb7, 0xcf, 0x00, 0x01, 0x02, 0x65,
+            0xad, 0xc5,
+        ],
+    ] {
+        let mut layer = class_id.to_vec();
+        layer.extend(90_u32.to_le_bytes());
+        layer.extend([0x12, 0x34]);
+        let mut suffix = map_v28_masking_suffix(&[&layer, &layer[..20]]);
+        let end = suffix.len();
+        suffix.extend(0x1717_u32.to_le_bytes());
+        let (bytes, offset) = map_with_version(28, &suffix);
+        let report = parse_maps_10_1(&bytes).unwrap();
+        assert_eq!(report.confirmed_tail, Some((offset + end, 0x1717)));
 
-    // 未知类即使具备完整的有界体，也不能推定为不消费遮罩。
-    layer[0] ^= 1;
-    let mut suffix = map_v28_masking_suffix(&[&layer, &layer[..20]]);
-    suffix.extend(0x1717_u32.to_le_bytes());
-    let (bytes, _) = map_with_version(28, &suffix);
-    assert!(parse_maps_10_1(&bytes).unwrap().confirmed_tail.is_none());
+        // 未知类即使具备完整的有界体，也不能推定为不消费遮罩。
+        layer[0] ^= 1;
+        let mut suffix = map_v28_masking_suffix(&[&layer, &layer[..20]]);
+        suffix.extend(0x1717_u32.to_le_bytes());
+        let (bytes, _) = map_with_version(28, &suffix);
+        assert!(parse_maps_10_1(&bytes).unwrap().confirmed_tail.is_none());
+    }
 }
 
 #[test]

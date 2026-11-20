@@ -91,6 +91,16 @@ Map 读取器仅在图层列表已经为这些类确定顶层对象体范围后�
 
 两份 mole_data 中有界跳过的第三方子图层暂未找到同版本类实现。ArcMap 与 QGIS 的人工验收未执行。
 
+## TemporalFeatureLayer 的聚合查询
+
+10.1.0.3035 Desktop 的 `TrackingLayer.dll`（PE32，SHA-256 `06b59b5930c643be5244b20a8cc5f7576a16b9d6e5421ee327839e8230a169ab`）与同版本 `esri.clsid.xml` 均将 `3334CE40-1A1D-11D5-B7CF-00010265ADC5` 绑定到 TemporalFeatureLayer。DLL 中 `0x8086eb90` 的 IPersistStream::GetClassID 也返回该 CLSID。用 MSVC RTTI 定位 `CComObject<CoTemporalFeatureLayer>` 主虚表 `0x808a117c`，然后用 `objdump -d -Mintel` 复核：
+
+- 主 QI `0x80884540` 调用 `0x808693f0` 扫描表 `0x808a0340`。表中没有 ILayerMasking 或 IBasemapLayer 的直接项。通配条目 `0x808a05c8` 调用 `0x808886e0`，将原 IID 和输出指针转交给 `this+0x2468` 保存的对象。此成员为空时返回 `E_NOINTERFACE`。外层聚合类的未知 IID 分支 `0x80884690..0x8088469d` 也进入同一张表。
+- `0x80869ee7..0x80869f12` 调用 `CoCreateInstance`，以当前对象为 outer，使用上下文 3，请求 IUnknown，将返回值写入该成员。CLSID 常量 `0x8089f230` 是 FeatureLayer `E663A651-8AAD-11D0-BEC7-00805F7C4268`。同版本 FeatureLayer 工厂返回的非委派 QI 已在上文绑定到 `0x6f6e7a40`，该查询链对 ILayerMasking 无命中。
+- DLL 内对 ILayerMasking 常量 `0x8089ece4` 的两处直接交叉引用 `0x808646b3` 和 `0x80864e58` 都查询 `this+0xec` 指向的另一个对象，与 Map 对 TemporalFeatureLayer 的 QI 分派属于不同调用路径。
+
+读取器保留有界 TemporalFeatureLayer 的原始体，并允许该层及其回引通过逐层遮罩阶段。构造 Map v28 验证后续对象边界和未知类回退。原生 TemporalFeatureLayer 对象体、注册替代类与原生工程人工验收仍待验证。
+
 ## ProcessLayer 的组图层委派及遮罩
 
 用 `objdump -d -Mintel` 及 PE32 虚表复核 10.1.0.3035 的 `GpObjects.dll`，SHA-256 `c9da22687b40e070d7178538846f707c04d26474d2fa835acb01ceaa46d2f896`。同版本 `esri.clsid.xml`、原生 GetClassID `0x7477a220` 和 SDK 工程的顶层对象头均给出 ProcessLayer CLSID `D6E92E16-E656-4119-B8E1-88576F6833E6`。
