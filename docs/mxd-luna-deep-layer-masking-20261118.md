@@ -73,6 +73,10 @@ LayerLib.dll 10.1.0.3035（SHA-256 `55514f054c9e4827d773cf1a9b9a83e7c41c483f7375
 
 `cargo fmt --check`、`git diff --check` 通过。全量测试含忽略项共 1035 项通过。CLI 对仓库样例和 66 份 10.1 介质工程均读完 `/Maps` 与 `/PageLayout`。按实际对象键回查，10.1 介质的 18 份工程共读出 22 条 BasemapLayer 遮罩记录，集合条目数均为 0。68 份 10.8 介质补充对照中，60 份读到地图根尾，41 份读完布局。组层递归和集合内新对象由构造测试覆盖。ArcMap 和 QGIS 人工验收未做。
 
+### 遮罩记录的版本门
+
+复核同一 LayerLib.dll 的原始 x86 指令，`0x786f2041..0x786f204d` 用有符号 `jle` 判断版本上限 2，`0x786f224b..0x786f2255` 用有符号 `jle` 跳过目标名称。Map 自身和逐图层遮罩共用此原生入口。Rust 保留原始 short 位模式，允许负值沿旧版本分支解析，并拒绝正值 3 及以上。构造测试覆盖负值、目标名称边界和逐字节截断，参考工程改写版本测试覆盖 Map 宿主。尚未发现原生写出的负版本记录。
+
 ## DimensionLayer、TopologyLayer 和 NetworkLayer
 
 以 10.1.0.3035 Desktop 安装介质中的 PE32 文件为准。先用同版本 `esri.clsid.xml` 将 SDK 工程顶层有界槽中的 CLSID 对位到类名，再用 PE RTTI 的完整对象定位符绑定主虚表 QueryInterface 槽。复核过程中使用 FeatureLayer 的现有 Ghidra 导出，并用 `objdump -d -Mintel` 补查 Dimension 与 NetworkLayer 的指令。

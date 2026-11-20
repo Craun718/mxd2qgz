@@ -145,6 +145,18 @@ fn read_mask_object(
     Ok(entry)
 }
 
+pub(super) fn read_masking_version_10_1(reader: &mut Reader<'_>) -> io::Result<u16> {
+    let version = reader.read_u16_le()?;
+    // 原生按有符号 short 比较，诊断继续保留原始位模式。
+    if version as i16 > 2 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "遮罩版本不受支持",
+        ));
+    }
+    Ok(version)
+}
+
 /// 读取已确认接口存在时的集合；失败时游标和引用表均不变。
 pub fn read_layer_masking_10_1(
     reader: &mut Reader<'_>,
@@ -153,10 +165,7 @@ pub fn read_layer_masking_10_1(
 ) -> io::Result<LayerMasking10_1> {
     let mut trial = reader.clone();
     let mut table = refs.clone();
-    let version = trial.read_u16_le()?;
-    if version > 2 {
-        return Err(io::Error::new(ErrorKind::InvalidData, "遮罩版本不受支持"));
-    }
+    let version = read_masking_version_10_1(&mut trial)?;
     let n = count(&mut trial, max_bytes)?;
     let entries = read_entries_10_1(&mut trial, max_bytes, &mut table, version, n)?;
     let tail = trial.read_u16_le()?;
@@ -177,7 +186,7 @@ pub fn read_entries_10_1(
     version: u16,
     n: usize,
 ) -> io::Result<Vec<MaskEntry10_1>> {
-    if version > 2 || n.checked_mul(16).is_none_or(|bytes| bytes > max_bytes) {
+    if version as i16 > 2 || n.checked_mul(16).is_none_or(|bytes| bytes > max_bytes) {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
             "遮罩版本或计数不受支持",
@@ -199,7 +208,7 @@ pub fn read_entries_10_1(
         let mut targets = Vec::new();
         for _ in 0..inner {
             let target = read_mask_object(&mut trial, max_bytes, &mut table)?;
-            let name = if version > 1 {
+            let name = if version as i16 > 1 {
                 Some(read_string_10_1(&mut trial, max_bytes)?)
             } else {
                 None

@@ -74,7 +74,7 @@ use crate::layers::layer_list::{
 };
 use crate::maps::layer_masking::{
     LayerMasking10_1, LayerMaskingSupport10_1, MaskEntry10_1, known_layer_masking_support_10_1,
-    read_entries_10_1, read_layer_masking_10_1,
+    read_entries_10_1, read_layer_masking_10_1, read_masking_version_10_1,
 };
 use crate::maps::map_decor::read_map_decor_slot_10_1;
 use crate::maps::map_late_tail::{LateMapTail10_1, read_map_late_tail_10_1};
@@ -2032,7 +2032,7 @@ pub(crate) fn read_map_with_suffix_10_1(
             if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 35 })) {
                 let mut candidate = trial.clone();
                 let offset = candidate.position();
-                if let Ok(version @ 0..=2) = candidate.read_u16_le() {
+                if let Ok(version) = read_masking_version_10_1(&mut candidate) {
                     post_border_tail.masking_version = Some((offset, version));
                     trial = candidate;
                     stop = Some(MapSuffixStop::AfterBorderTail { stage: 36 });

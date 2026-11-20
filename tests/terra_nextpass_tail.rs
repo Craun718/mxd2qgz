@@ -75,11 +75,11 @@ fn map_masking_empty_prefix_and_nonempty_boundary() {
     let (position, stop, _) = parse(&nonempty);
     assert_eq!(position, 0x253bc);
     assert_eq!(stop, MapSuffixStop::AfterBorderTail { stage: 37 });
-    for version in [3_u16, 0xffff] {
-        let mut bad = bytes.clone();
-        bad[0x253b6..0x253b8].copy_from_slice(&version.to_le_bytes());
-        assert_eq!(parse(&bad).0, 0x253b6);
-    }
+    let mut modified = bytes.clone();
+    modified[0x253b6..0x253b8].copy_from_slice(&3_u16.to_le_bytes());
+    assert_eq!(parse(&modified).0, 0x253b6);
+    modified[0x253b6..0x253b8].copy_from_slice(&0xffff_u16.to_le_bytes());
+    assert_eq!(parse(&modified).1, MapSuffixStop::Complete);
 }
 
 #[test]
