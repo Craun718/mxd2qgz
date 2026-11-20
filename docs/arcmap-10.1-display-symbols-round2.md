@@ -526,5 +526,19 @@ Save 的三次颜色对象读取在 `0x6eb7acb4/0x6eb7acd1/0x6eb7aceb`
 按上表顺序取成员。ROP2 和 MapLevel 由 +0x18 和 +0x24 的公共
 接口转发到 DisplayLib，分别取完整对象 +0x58 和 +0x60，对应
 持久化 −0x14c 和 −0x144。字段注释保留线序，单位换算与颜色 getter
-的运行期分支仍由软件处理。尾部三个 short 的语义和 ArcMap/QGIS
-目视验证待补。
+的运行期分支仍由软件处理。ArcMap/QGIS 目视验证待补。
+
+### 图片标记的图像效果
+
+同版 DisplayCore.dll 的绘制入口 `0x6eb7b4f0` 在 `0x6eb7b7c7`
+至 `0x6eb7b7d5` 取完整对象 +0x188、+0x186、+0x184 并按
+x86 调用约定反序压栈，调用 IColor 版 ApplyEffects。三项对应
+持久化视图 −0x20、−0x1e、−0x1c 的读取顺序。
+
+在 DisplayLib.dll 10.1.0.3035（SHA-256
+`e16c4c2610f20896005cf7ae56965dd60a61530b27daa3d566682f6ac11982c6`），
+导出 ApplyEffects `0x6ed775a0` 将第一项传给 ApplyTransparency
+`0x6ed77390`，后两项传给 ApplyBrightnessContrast `0x6ed774e0`。
+逐通道计算 `0x6ed77420` 用第二项调整通道值的加性偏移，用第三项
+改变对比度曲线的斜率和分支。因此流中三个 short 依次是透明度、亮度
+和对比度。读取器保留有符号原值，ArcMap/QGIS 显示效果待目视验证。

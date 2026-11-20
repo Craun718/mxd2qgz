@@ -3324,7 +3324,7 @@ pub struct PictureMarkerSymbolBody10_1 {
     /// `Symbol::GetDefaultRotateWithTransformValue` 覆盖，流内值读取即弃）。
     /// `None` = 前置停止。
     pub short_134: Option<i16>,
-    /// short ×3 → this−0x20/−0x1e/−0x1c，语义未定。`None` = 前置停止。
+    /// 透明度、亮度、对比度的原始 short。旧版本无此段或前置停止时为 None。
     pub shorts: Option<[i16; 3]>,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<SymbolStop10_1>,
