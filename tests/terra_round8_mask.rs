@@ -62,14 +62,12 @@ fn absent_interface_unknown_new_and_bad_counts() {
     assert!(read_optional_layer_masking_10_1(&mut reader, 1024, &mut refs, true).is_err());
     assert_eq!(reader.position(), 0);
     assert!(refs.is_empty());
-    for count in [-1_i32, 1000] {
-        let mut bad = bytes.clone();
-        bad[2..6].copy_from_slice(&count.to_le_bytes());
-        assert!(
-            read_optional_layer_masking_10_1(&mut Reader::new(&bad), 1024, &mut refs, true)
-                .is_err()
-        );
-    }
+    let mut oversized = bytes;
+    oversized[2..6].copy_from_slice(&1000_i32.to_le_bytes());
+    assert!(
+        read_optional_layer_masking_10_1(&mut Reader::new(&oversized), 1024, &mut refs, true)
+            .is_err()
+    );
 }
 
 #[test]

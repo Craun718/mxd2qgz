@@ -77,6 +77,10 @@ LayerLib.dll 10.1.0.3035（SHA-256 `55514f054c9e4827d773cf1a9b9a83e7c41c483f7375
 
 复核同一 LayerLib.dll 的原始 x86 指令，`0x786f2041..0x786f204d` 用有符号 `jle` 判断版本上限 2，`0x786f224b..0x786f2255` 用有符号 `jle` 跳过目标名称。Map 自身和逐图层遮罩共用此原生入口。Rust 保留原始 short 位模式，允许负值沿旧版本分支解析，并拒绝正值 3 及以上。构造测试覆盖负值、目标名称边界和逐字节截断，参考工程改写版本测试覆盖 Map 宿主。尚未发现原生写出的负版本记录。
 
+### 遮罩集合的计数分派
+
+同一 LayerLib.dll 中，`0x786f2125..0x786f2130` 和 `0x786f21ea..0x786f21f5` 分别读取四字节外层、内层计数。`0x786f219d..0x786f21a3` 用有符号 `jle` 跳出外层循环，随后在 `0x786f23a4..0x786f23ab` 读取尾 short。`0x786f2208..0x786f220e` 用同一条件跳过内层循环，外层仍从 `0x786f2359..0x786f2363` 继续迭代。Rust 按该边界处理非正计数，Map 诊断保留外层原始计数，正计数仍受资源上限约束。覆写参考工程验证 Map 解析终点，构造记录验证内层跳过后继续读取下一外层项。原生写出的负计数记录与人工验收仍待验证。
+
 ## DimensionLayer、TopologyLayer 和 NetworkLayer
 
 以 10.1.0.3035 Desktop 安装介质中的 PE32 文件为准。先用同版本 `esri.clsid.xml` 将 SDK 工程顶层有界槽中的 CLSID 对位到类名，再用 PE RTTI 的完整对象定位符绑定主虚表 QueryInterface 槽。复核过程中使用 FeatureLayer 的现有 Ghidra 导出，并用 `objdump -d -Mintel` 补查 Dimension 与 NetworkLayer 的指令。

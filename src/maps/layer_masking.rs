@@ -126,14 +126,17 @@ pub struct LayerMasking10_1 {
     pub tail: u16,
 }
 
-fn count(reader: &mut Reader<'_>, max_bytes: usize) -> io::Result<usize> {
+pub(super) fn read_masking_count_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+) -> io::Result<i32> {
     let value = i32::from_le_bytes(reader.read_bytes(4)?.try_into().unwrap());
-    let n = usize::try_from(value)
-        .map_err(|_| io::Error::new(ErrorKind::InvalidData, "遮罩计数为负"))?;
+    // 原生只循环正数，诊断保留计数的原始有符号值。
+    let n = value.max(0) as usize;
     if n.checked_mul(16).is_none_or(|bytes| bytes > max_bytes) {
         return Err(io::Error::new(ErrorKind::InvalidData, "遮罩计数超过限额"));
     }
-    Ok(n)
+    Ok(value)
 }
 
 // 外层请求 ILayer，内层请求 IUnknown。同一图层体分派适用于两处；
@@ -171,7 +174,7 @@ pub fn read_layer_masking_10_1(
     let mut trial = reader.clone();
     let mut table = refs.clone();
     let version = read_masking_version_10_1(&mut trial)?;
-    let n = count(&mut trial, max_bytes)?;
+    let n = read_masking_count_10_1(&mut trial, max_bytes)?.max(0) as usize;
     let entries = read_entries_10_1(&mut trial, max_bytes, &mut table, version, n)?;
     let tail = trial.read_u16_le()?;
     *reader = trial;
@@ -203,7 +206,7 @@ pub fn read_entries_10_1(
     let mut total = n;
     for _ in 0..n {
         let object = read_mask_object(&mut trial, max_bytes, &mut table)?;
-        let inner = count(&mut trial, max_bytes)?;
+        let inner = read_masking_count_10_1(&mut trial, max_bytes)?.max(0) as usize;
         total = total
             .checked_add(inner)
             .ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "遮罩计数溢出"))?;

@@ -74,7 +74,7 @@ use crate::layers::layer_list::{
 };
 use crate::maps::layer_masking::{
     LayerMasking10_1, LayerMaskingSupport10_1, MaskEntry10_1, known_layer_masking_support_10_1,
-    read_entries_10_1, read_layer_masking_10_1, read_masking_version_10_1,
+    read_entries_10_1, read_layer_masking_10_1, read_masking_count_10_1, read_masking_version_10_1,
 };
 use crate::maps::map_decor::read_map_decor_slot_10_1;
 use crate::maps::map_late_tail::{LateMapTail10_1, read_map_late_tail_10_1};
@@ -2041,7 +2041,7 @@ pub(crate) fn read_map_with_suffix_10_1(
             if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 36 })) {
                 let mut candidate = trial.clone();
                 let offset = candidate.position();
-                if let Ok(count) = read_loop_count(&mut candidate, "LayerMasking", max_bytes) {
+                if let Ok(count) = read_masking_count_10_1(&mut candidate, max_bytes) {
                     post_border_tail.masking_count = Some((offset, count));
                     trial = candidate;
                     stop = Some(MapSuffixStop::AfterBorderTail { stage: 37 });
@@ -2051,7 +2051,7 @@ pub(crate) fn read_map_with_suffix_10_1(
                 let mut candidate = trial.clone();
                 let mut candidate_table = trial_table.clone();
                 let version = post_border_tail.masking_version.unwrap().1;
-                let count = post_border_tail.masking_count.unwrap().1 as usize;
+                let count = post_border_tail.masking_count.unwrap().1.max(0) as usize;
                 if let Ok(entries) = read_entries_10_1(
                     &mut candidate,
                     max_bytes,

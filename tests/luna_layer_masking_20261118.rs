@@ -79,3 +79,36 @@ fn negative_masking_version_omits_target_names_and_preserves_raw_value() {
     assert_eq!(result.tail, 0xffff);
     assert_eq!(reader.position(), bytes.len());
 }
+
+#[test]
+fn nonpositive_masking_counts_skip_only_their_own_loop() {
+    use mxd2qgz::maps::layer_masking::read_layer_masking_10_1;
+    use mxd2qgz::storage::object_refs::RefTable10_1;
+    use mxd2qgz::stream::reader::Reader;
+
+    let mut empty = 2_u16.to_le_bytes().to_vec();
+    empty.extend(i32::MIN.to_le_bytes());
+    empty.extend(0x1234_u16.to_le_bytes());
+    let mut reader = Reader::new(&empty);
+    let mut refs = RefTable10_1::new();
+    let parsed = read_layer_masking_10_1(&mut reader, 0, &mut refs).unwrap();
+    assert!(parsed.entries.is_empty());
+    assert_eq!(parsed.tail, 0x1234);
+
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(2_i32.to_le_bytes());
+    bytes.extend([0; 16]);
+    bytes.extend((-1_i32).to_le_bytes());
+    bytes.extend([0; 16]);
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend([0; 16]);
+    bytes.extend(0x5678_u16.to_le_bytes());
+    let mut reader = Reader::new(&bytes);
+    assert!(read_layer_masking_10_1(&mut reader, 32, &mut refs).is_err());
+    assert_eq!(reader.position(), 0);
+    let parsed = read_layer_masking_10_1(&mut reader, 48, &mut refs).unwrap();
+    assert!(parsed.entries[0].targets.is_empty());
+    assert_eq!(parsed.entries[1].targets.len(), 1);
+    assert_eq!(parsed.tail, 0x5678);
+    assert_eq!(reader.position(), bytes.len());
+}

@@ -83,6 +83,21 @@ fn map_masking_empty_prefix_and_nonempty_boundary() {
 }
 
 #[test]
+fn map_retains_negative_masking_count_and_reaches_end() {
+    let mut bytes = sample();
+    bytes[0x253b8..0x253bc].copy_from_slice(&(-1_i32).to_le_bytes());
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    reader.read_u32_le().unwrap();
+    read_object_entry_10_1(&mut reader, &mut refs).unwrap();
+    let result = read_map_suffix_10_1(&mut reader, 4_000_000, &mut refs).unwrap();
+    assert_eq!(result.post_border_tail.masking_count, Some((0x253b8, -1)));
+    assert_eq!(result.post_border_tail.masking_entries, Some(Vec::new()));
+    assert_eq!(result.stop, MapSuffixStop::Complete);
+    assert_eq!(reader.position(), 0x25569);
+}
+
+#[test]
 fn map_masking_nonempty_back_reference_reaches_post_masking_fields() {
     let bytes = sample();
     let mut modified = bytes[..0x253b8].to_vec();
