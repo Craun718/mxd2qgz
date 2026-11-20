@@ -98,7 +98,8 @@ use crate::layers::feature_layer_tail::{
 use crate::layers::image_server_rules::{
     RASTER_COLORMAP, RASTER_HISTOGRAM, RASTER_INFO_CLASS_ID, RASTER_INFOS_CLASS_ID,
     RASTER_STATISTICS, RasterInfoVariantBody10_1, RasterTemplateInput10_1, RasterVariantBody10_1,
-    read_input_body, read_raster_info_variant_body_10_1, read_raster_variant_body_10_1,
+    function_max_version, read_input_body, read_raster_info_variant_body_10_1,
+    read_raster_variant_body_10_1, supports_function_arguments,
 };
 use crate::layers::raster_dataset_name::{LONG_ARRAY_CLASS_ID, read_long_array_body};
 use crate::layers::raster_renderer::{
@@ -639,6 +640,12 @@ pub(crate) fn read_variant_object_body_10_1(
                 objects,
             }))
         }
+        ObjectEntry10_1::NewObject { class_id, key }
+            if function_max_version(class_id).is_some()
+                || supports_function_arguments(class_id) =>
+        {
+            read_variant_raster_input(reader, max_bytes, table, depth, class_id, key)?
+        }
         ObjectEntry10_1::NewObject {
             class_id: class_id @ (RASTER_INFO_CLASS_ID | RASTER_INFOS_CLASS_ID),
             key,
@@ -839,6 +846,39 @@ pub(crate) fn read_variant_object_body_10_1(
     })
 }
 
+fn read_variant_raster_input(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+    class_id: [u8; 16],
+    key: u32,
+) -> io::Result<PropertyValueObjectStream10_1> {
+    check_variant_object_depth(depth)?;
+    let mut wire = reader
+        .clone()
+        .read_region(max_bytes.min(reader.remaining()))?;
+    let body = table.with_raster_info_variant_depth(depth + 1, |refs| {
+        read_input_body(
+            &mut wire,
+            max_bytes,
+            refs,
+            class_id,
+            key,
+            (MAX_NESTED_VARIANT_OBJECTS - depth).min(16),
+        )
+    })?;
+    let bytes = Arc::from(reader.read_bytes(wire.position())?);
+    Ok(PropertyValueObjectStream10_1::RasterArgumentInput(
+        Box::new(EncodedVariantObject10_1 {
+            class_id,
+            key,
+            bytes,
+            body,
+        }),
+    ))
+}
+
 fn read_argument_array_item(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -855,29 +895,9 @@ fn read_argument_array_item(
         match read_variant_object_body_10_1(&mut trial, max_bytes, &mut staged, depth, entry) {
             Ok(value) => value,
             Err(error) if error.kind() == ErrorKind::Unsupported => {
-                check_variant_object_depth(depth)?;
                 trial = reader.clone();
                 staged = table.clone();
-                let start = trial.position();
-                let body = staged.with_raster_info_variant_depth(depth + 1, |refs| {
-                    read_input_body(
-                        &mut trial,
-                        max_bytes,
-                        refs,
-                        class_id,
-                        key,
-                        (MAX_NESTED_VARIANT_OBJECTS - depth).min(16),
-                    )
-                })?;
-                let bytes = Arc::from(reader.clone().read_bytes(trial.position() - start)?);
-                PropertyValueObjectStream10_1::RasterArgumentInput(Box::new(
-                    EncodedVariantObject10_1 {
-                        class_id,
-                        key,
-                        bytes,
-                        body,
-                    },
-                ))
+                read_variant_raster_input(&mut trial, max_bytes, &mut staged, depth, class_id, key)?
             }
             Err(error) => return Err(error),
         };
@@ -1065,6 +1085,56 @@ mod tests {
     fn object(bytes: &mut Vec<u8>, class_id: [u8; 16], key: u32) {
         bytes.extend(class_id);
         bytes.extend(key.to_le_bytes());
+    }
+
+    #[test]
+    fn variant_reads_raster_function_and_limits_recursive_parameters() {
+        use crate::layers::image_server_rules::{
+            CACHED_RASTER_FUNCTION_ARGUMENTS_CLASS_ID, IDENTITY_FUNCTION_CLASS_ID,
+        };
+
+        let mut bytes = 13_u16.to_le_bytes().to_vec();
+        bytes.extend([0; 14]);
+        object(&mut bytes, IDENTITY_FUNCTION_CLASS_ID, 42);
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(7_i32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        let mut reader = Reader::new(&bytes);
+        let mut table = RefTable10_1::new();
+        let PropertyValueObjectStream10_1::RasterArgumentInput(value) =
+            read_padded_variant_object_stream_10_1(&mut reader, 4096, &mut table).unwrap()
+        else {
+            panic!("应读取 Variant 中的栅格函数");
+        };
+        assert!(
+            matches!(value.body(), RasterTemplateInput10_1::Function(body) if body.base_long == 7)
+        );
+        assert!(table.contains(42));
+        assert_eq!(reader.remaining(), 0);
+
+        let mut bytes = 13_u16.to_le_bytes().to_vec();
+        bytes.extend([0; 14]);
+        for key in 0..=MAX_NESTED_VARIANT_OBJECTS as u32 {
+            object(
+                &mut bytes,
+                CACHED_RASTER_FUNCTION_ARGUMENTS_CLASS_ID,
+                key * 2,
+            );
+            bytes.extend(1_u16.to_le_bytes());
+            object(&mut bytes, PROPERTY_SET_CLASS_ID, key * 2 + 1);
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend([2, 0, 0, 0, 0, 0]); // 空属性名。
+            bytes.extend(13_u16.to_le_bytes()); // 紧凑 Variant 对象值。
+        }
+        bytes.extend([0; 16]);
+        let mut reader = Reader::new(&bytes);
+        let mut table = RefTable10_1::new();
+        let error =
+            read_padded_variant_object_stream_10_1(&mut reader, 4096, &mut table).unwrap_err();
+        assert!(error.to_string().contains("嵌套深度"));
+        assert_eq!(reader.position(), 0);
+        assert!(table.is_empty());
     }
 
     #[test]

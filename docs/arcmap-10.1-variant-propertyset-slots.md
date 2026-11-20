@@ -526,3 +526,14 @@ ObjectStream 对象头后处理版本及 22 字节字段。Variant 的 VT_UNKNOW
 合成验证覆盖带保留区的 NumericFormat 新对象、同键回引、后继边界和
 逐字节截断。九类的各自对象体沿用既有读取器及测试。栅格唯一值、
 统计集合和值域中的数字格式实档实例，以及 ArcMap/QGIS 人工验证待补。
+
+## 栅格函数与参数对象
+
+标准 AfCore 带保留区和紧凑 Variant 的对象分支共用 ObjectStream，
+因此可按 CLSID 复用已有原生证据的 IRasterFunction 和
+IRasterFunctionArguments 读取器。类标识、持久化虚表和版本门见
+[ArcMap 10.1 规则取证](mxd-10.1-image-server-rules.md)。
+新分派保留原始对象体并累计跨属性集和栅格参数的嵌套深度。
+合成输入覆盖 IdentityFunction 及 CachedRasterFunctionArguments
+和 PropertySet 交替嵌套时的限额与回滚。实际栅格类别或值域中的
+此类对象仍待实档取证，ArcMap/QGIS 目视验证待补。

@@ -291,7 +291,7 @@ pub(crate) fn read_mosaic_rule_10_1(
     })
 }
 
-fn function_max_version(class_id: [u8; 16]) -> Option<i16> {
+pub(crate) fn function_max_version(class_id: [u8; 16]) -> Option<i16> {
     Some(match class_id {
         class_ids::MOSAIC_FUNCTION => 9,
         class_ids::RASTER_FUNCTION_TEMPLATE => 3,
@@ -453,7 +453,7 @@ fn read_function_base(
     Ok((version, strings, long))
 }
 
-pub(super) fn supports_function_arguments(class_id: [u8; 16]) -> bool {
+pub(crate) fn supports_function_arguments(class_id: [u8; 16]) -> bool {
     matches!(
         class_id,
         class_ids::MERGE_RASTERS_ARGUMENTS | class_ids::LOCAL_FUNCTION_ARGUMENTS
