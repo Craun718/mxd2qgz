@@ -1440,6 +1440,11 @@ impl ScalebarSubclassBody10_1 {
         self.mid_double
     }
 
+    /// 基类 v6 写出的 IScaleBar2.UseFractionCharacters。
+    pub fn use_fraction_characters(&self) -> Option<bool> {
+        self.tail_short_b.map(|value| value != 0)
+    }
+
     /// 两个刻度符号及其后继标量读完后可用。
     pub fn scale_mark_properties(&self) -> Option<ScaleMarkProperties10_1> {
         let [division_mark_height, subdivision_mark_height] = self.tail_doubles?;
@@ -1461,6 +1466,11 @@ impl ScaleLineBody10_1 {
             }
             _ => None,
         })
+    }
+
+    /// 基类 v6 写出的 IScaleBar2.UseFractionCharacters。
+    pub fn use_fraction_characters(&self) -> Option<bool> {
+        Some(u16::from_le_bytes(self.raw_field("base_tail_short_b")?) != 0)
     }
 
     /// 两个刻度符号及其后继标量读完后可用。
@@ -2503,6 +2513,7 @@ mod tests {
         assert_eq!(body.tail_double, Some(10.0));
         assert_eq!(body.tail_short_a, Some(11));
         assert_eq!(body.tail_short_b, Some(12));
+        assert_eq!(body.use_fraction_characters(), Some(true));
         assert_eq!(body.mid_version, Some(1));
         assert_eq!(body.mid_double, Some(13.0));
         assert_eq!(body.bar_height(), Some(13.0));
@@ -2797,6 +2808,7 @@ mod tests {
                         "base={base} tail={tail} stepped={stepped}"
                     );
                     assert_eq!(body.remaining_bytes, 4);
+                    assert_eq!(body.use_fraction_characters(), (base == 6).then_some(false));
                     assert_eq!(
                         body.scale_mark_properties(),
                         Some(ScaleMarkProperties10_1 {

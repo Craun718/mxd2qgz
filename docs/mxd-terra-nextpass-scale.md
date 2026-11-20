@@ -137,3 +137,19 @@ Hollow、SingleDivision、Alternating、DoubleAlternating 的主虚表
 因此流中该 double 正是 BarHeight。Rust 保留原字段并提供
 `bar_height()`。合成输入验证字段与游标边界，ArcMap 和 QGIS
 实档目视验证仍待补。
+
+## 分数字符开关
+
+esriCarto 10.1 的 IScaleBar2 IID
+`D1658F8E-BE62-4A78-88D3-07170F09120C` 位于 Map.dll `0x7948c384`。
+QueryInterface 在 `0x7944bc91` 比较该 IID，`0x7944bcac` 返回
+入口 this +0xdc。用 HollowScaleBar 的 RTTI 对位完整对象 +0xdc
+的虚表 `0x79483904`。类型库声明 UseFractionCharacters 的 get/put
+在 +0x98/+0x9c，对应指令入口 `0x79450520/0x79450550`，读写接口
+相对 +0xd6 的 short，即完整对象 +0x1b2，对应基类 Save 相对 −0xba。
+`0x7944df7c` 将该 short 按零和非零分支，非零时检查刻度值的分数部分。
+Rust 的访问器在流中存在该字段时返回布尔值，旧版保留字段缺省状态。
+
+基类 v5 增加的 short 在完整对象 +0x1b0，`0x793a1210/0x793a1230`
+分别直接写读它。基类初始化段 `0x7944b820/0x7944b835` 清零两字段。
+v5 的调用方和业务名仍待追踪。ArcMap/QGIS 实档目视验证待补。
