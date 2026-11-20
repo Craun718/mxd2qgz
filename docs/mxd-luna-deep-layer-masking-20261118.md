@@ -105,6 +105,10 @@ Map 读取器仅在图层列表已经为这些类确定顶层对象体范围后�
 
 读取器保留有界 TemporalFeatureLayer 的原始体，并允许该层及其回引通过逐层遮罩阶段。构造 Map v28 验证后续对象边界和未知类回退。原生 TemporalFeatureLayer 对象体、注册替代类与原生工程人工验收仍待验证。
 
+## CompositeGraphicsLayer 的接口分派
+
+复用 [图形容器取证](arcmap-10.1-dep-tail.md) 确认的 CLSID `9646BB83-9512-11D2-A2F6-080009B6F22B`、主 QI `0x6f6b0770` 及同一 10.1.0.3035 FeatureLayer.dll。用 `objdump -d -Mintel` 复核主 QI 的 21 个固定 IID，再沿 `0x6f6b0b0b → 0x6f73c440 → 0x6f73c0d0` 核对基类的四个固定 IID。各比较均不命中 ILayerMasking，末尾 `0x6f73c1bc..0x6f73c1c2` 清空输出并返回 `E_NOINTERFACE`。构造 Map v28 验证完整图层及其回引后可达流尾，内部未知对象仍在逐层遮罩阶段保留停点。未验证原生 MXD 中的对应图层宿主及 ArcMap/QGIS 人工验收。
+
 ## GraphicsLayer3D 的接口分派
 
 复用 [三维图形容器取证](arcmap-10.1-dep-tail.md) 中的 GraphicsLayer3D CLSID `4C87A8F0-01E3-11D4-AB69-0008C73FD50C` 与主 QI `0x7d2a15b0`。复核 10.1.0.3035 Desktop 的 Scene.dll（PE32，SHA-256 `b41f37424a13b0257ce3c5c3258038a3640876aba48b33e05b332f7af3594006`），用 `objdump -d -Mintel` 追踪 QI 并读取比较常量指向的 16 字节 IID。主 QI 的 17 个固定候选均不含 ILayerMasking；未命中时 `0x7d2a18ce` 进入 `0x7d2c1950`，后者仅增加一个固定候选并在 `0x7d2c19a4` 转入 `0x7d2c2c50`。最终三个固定候选也不匹配遮罩接口，`0x7d2c2d3c..0x7d2c2d42` 清空输出并返回 `E_NOINTERFACE`。这些地址为静态 VA。

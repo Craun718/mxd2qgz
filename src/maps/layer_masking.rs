@@ -80,6 +80,7 @@ pub fn known_layer_masking_support_10_1(class_id: &[u8; 16]) -> LayerMaskingSupp
     use crate::layers::cad_layer::{
         CAD_ANNOTATION_LAYER_CLASS_ID, CAD_FEATURE_LAYER_CLASS_ID, CAD_LAYER_CLASS_ID,
     };
+    use crate::layers::composite_graphics::COMPOSITE_GRAPHICS_LAYER_CLASS_ID;
     use crate::layers::coverage_annotation_layer::COVERAGE_ANNOTATION_LAYER_CLASS_ID;
     use crate::layers::fdo_graphics_layer::FDO_GRAPHICS_LAYER_CLASS_ID;
     use crate::layers::fdo_legacy::FDO_GRAPHICS_SUBLAYER_CLASS_ID;
@@ -97,6 +98,7 @@ pub fn known_layer_masking_support_10_1(class_id: &[u8; 16]) -> LayerMaskingSupp
     ) {
         LayerMaskingSupport10_1::Supported
     } else if *class_id == FEATURE_LAYER_CLASS_ID
+        || *class_id == COMPOSITE_GRAPHICS_LAYER_CLASS_ID
         || *class_id == FDO_GRAPHICS_LAYER_CLASS_ID
         || *class_id == FDO_GRAPHICS_SUBLAYER_CLASS_ID
         || *class_id == RASTER_LAYER_CLASS_ID

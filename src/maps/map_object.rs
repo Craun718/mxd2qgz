@@ -590,6 +590,7 @@ impl<'body> LayerMaskingTraversal<'_, '_, 'body> {
         depth: u32,
     ) -> Option<()> {
         use crate::layers::basemap_layer::BasemapStop10_1;
+        use crate::layers::composite_graphics::CompositeGraphicsLayerStop10_1;
         use crate::layers::feature_layer::FEATURE_LAYER_CLASS_ID;
         use crate::layers::group_layer::GroupLayerStop10_1;
 
@@ -671,6 +672,8 @@ impl<'body> LayerMaskingTraversal<'_, '_, 'body> {
                         | LayerBodyPrefix10_1::TiledLayer(_)
                         | LayerBodyPrefix10_1::Graphics3d(_),
                     ) => {}
+                    Some(LayerBodyPrefix10_1::CompositeGraphicsLayer(layer))
+                        if layer.stop == CompositeGraphicsLayerStop10_1::Completed => {}
                     Some(LayerBodyPrefix10_1::WcsLayer(wcs)) => {
                         if let ObjectEntry10_1::NewObject { key, class_id } = wcs.raster.entry {
                             self.known.entry(key).or_insert((class_id, None));

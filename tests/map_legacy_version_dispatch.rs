@@ -778,3 +778,32 @@ fn map_v28_graphics_layers_3d_and_back_references_consume_no_masks() {
         );
     }
 }
+
+#[test]
+fn map_v28_skips_masking_for_complete_composite_graphics_layer() {
+    use mxd2qgz::layers::composite_graphics::COMPOSITE_GRAPHICS_LAYER_CLASS_ID;
+
+    let mut layer = COMPOSITE_GRAPHICS_LAYER_CLASS_ID.to_vec();
+    layer.extend(90_u32.to_le_bytes());
+    layer.extend(1_u16.to_le_bytes());
+    layer.extend(0_u32.to_le_bytes()); // 空元素组。
+    layer.extend(2_u32.to_le_bytes()); // 空名称。
+    layer.extend([0; 2 + 6 + 16 + 12]);
+    let nested_offset = layer.len();
+    layer.extend([0; 16 + 4 + 4 + 16]); // 空嵌套槽、空子层集合和尾字段。
+    let mut suffix = map_v28_masking_suffix(&[&layer, &layer[..20]]);
+    let end = suffix.len();
+    suffix.extend(0x1717_u32.to_le_bytes());
+    let (bytes, offset) = map_with_version(28, &suffix);
+    assert_eq!(
+        parse_maps_10_1(&bytes).unwrap().confirmed_tail,
+        Some((offset + end, 0x1717))
+    );
+
+    // 图层外层边界仍有效，内部未知新对象使遮罩遍历停在原处。
+    layer[nested_offset..nested_offset + 16].fill(0x7d);
+    let mut suffix = map_v28_masking_suffix(&[&layer, &layer[..20]]);
+    suffix.extend(0x1717_u32.to_le_bytes());
+    let (bytes, _) = map_with_version(28, &suffix);
+    assert!(parse_maps_10_1(&bytes).unwrap().confirmed_tail.is_none());
+}
