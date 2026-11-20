@@ -80,9 +80,9 @@ use crate::objects::element_body::{
     read_text_element_body_10_1, read_text_symbol_body_10_1,
 };
 use crate::objects::geometry::{POINT_CLASS_ID, PointBody10_1, read_point_body_10_1};
-use crate::objects::number_format::{
-    NUMERIC_FORMAT_CLASS_ID, NumericFormatBody10_1, read_numeric_format_body_10_1,
-};
+#[cfg(test)]
+use crate::objects::number_format::NUMERIC_FORMAT_CLASS_ID;
+use crate::objects::number_format::NumericFormatBody10_1;
 use crate::objects::ole_font::{STDFONT_CLASS_ID, StdFontBody10_1, read_std_font_body_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -290,6 +290,21 @@ fn read_checked_family_slot<T>(
     target_class: &[u8; 16],
     read_body: impl FnOnce(&mut Reader<'_>, &mut RefTable10_1, u32) -> io::Result<Option<T>>,
 ) -> io::Result<(SlotEntry10_1<T>, Option<FamilyStop10_1>)> {
+    read_dispatched_family_slot(reader, table, slot, |r, t, class_id, key| {
+        if class_id == *target_class {
+            read_body(r, t, key)
+        } else {
+            Ok(None)
+        }
+    })
+}
+
+fn read_dispatched_family_slot<T>(
+    reader: &mut Reader<'_>,
+    table: &mut RefTable10_1,
+    slot: &'static str,
+    read_body: impl FnOnce(&mut Reader<'_>, &mut RefTable10_1, [u8; 16], u32) -> io::Result<Option<T>>,
+) -> io::Result<(SlotEntry10_1<T>, Option<FamilyStop10_1>)> {
     let mut trial = reader.clone();
     let mut staged = table.clone();
     let entry = match read_object_entry_10_1(&mut trial, &mut staged)? {
@@ -298,12 +313,7 @@ fn read_checked_family_slot<T>(
             SlotEntry10_1::BackReference { class_id, key }
         }
         ObjectEntry10_1::NewObject { class_id, key } => {
-            let body = if class_id == *target_class {
-                read_body(&mut trial, &mut staged, key)?
-            } else {
-                None
-            };
-            let Some(body) = body else {
+            let Some(body) = read_body(&mut trial, &mut staged, class_id, key)? else {
                 return Ok((
                     SlotEntry10_1::Unsupported { class_id, key },
                     Some(FamilyStop10_1::SlotUnsupported {
@@ -319,6 +329,37 @@ fn read_checked_family_slot<T>(
     *reader = trial;
     *table = staged;
     Ok((entry, None))
+}
+
+fn read_family_number_format(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<(
+    SlotEntry10_1<NumericFormatBody10_1>,
+    Option<Box<NumberFormatSlot10_1>>,
+    Option<FamilyStop10_1>,
+)> {
+    let (slot, stop) = read_dispatched_family_slot(
+        reader,
+        table,
+        "number_format(INumberFormat)",
+        |r, t, id, key| read_number_format_body_for_class_10_1(r, max_bytes, t, id, key),
+    )?;
+    let (numeric, other) = match slot {
+        SlotEntry10_1::Null => (SlotEntry10_1::Null, None),
+        SlotEntry10_1::BackReference { class_id, key } => {
+            (SlotEntry10_1::BackReference { class_id, key }, None)
+        }
+        SlotEntry10_1::Unsupported { class_id, key } => {
+            (SlotEntry10_1::Unsupported { class_id, key }, None)
+        }
+        SlotEntry10_1::Body(body) => match *body {
+            NumberFormatSlot10_1::NumericFormat(body) => (SlotEntry10_1::Body(body), None),
+            _ => (SlotEntry10_1::Null, Some(body)),
+        },
+    };
+    Ok((numeric, other, stop))
 }
 
 /// 从对象头之后的位置读取 MapTitle（地图标题）对象体。
@@ -564,6 +605,7 @@ pub fn read_scale_text_body_10_1(
 ) -> io::Result<ScaleTextBody10_1> {
     let start = reader.position();
     let mut trial = reader.clone();
+    let mut staged = table.clone();
     let invalid = |reason: String| {
         io::Error::new(
             ErrorKind::InvalidData,
@@ -581,7 +623,7 @@ pub fn read_scale_text_body_10_1(
     }
 
     // 2. 共同前缀。
-    let common = read_map_surround_common_prefix_10_1(&mut trial, max_bytes, table)?;
+    let common = read_map_surround_common_prefix_10_1(&mut trial, max_bytes, &mut staged)?;
 
     // 3. 版本 <2 旧段（10.1 写侧恒写 3，不可达；实现保留分支）。
     let mut legacy_text = None;
@@ -589,8 +631,12 @@ pub fn read_scale_text_body_10_1(
     let mut stop = None;
     if version < 2 {
         legacy_text = Some(read_string_10_1(&mut trial, max_bytes)?);
-        let (slot, reason) =
-            read_family_text_slot(&mut trial, max_bytes, table, "legacy_symbol(ITextSymbol)")?;
+        let (slot, reason) = read_family_text_slot(
+            &mut trial,
+            max_bytes,
+            &mut staged,
+            "legacy_symbol(ITextSymbol)",
+        )?;
         legacy_symbol = slot;
         stop = reason;
     }
@@ -613,6 +659,7 @@ pub fn read_scale_text_body_10_1(
     let mut format_prefix = String::new();
     let mut format_suffix = String::new();
     let mut number_format = SlotEntry10_1::Null;
+    let mut other_number_format = None;
     if stop.is_none() {
         if version < 2 {
             legacy_discard = Some(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
@@ -630,19 +677,10 @@ pub fn read_scale_text_body_10_1(
             if stop.is_none() {
                 format_prefix = read_string_10_1(&mut trial, max_bytes)?;
                 format_suffix = read_string_10_1(&mut trial, max_bytes)?;
-                let (slot, reason) = read_typed_slot_10_1(
-                    &mut trial,
-                    max_bytes,
-                    table,
-                    "number_format(INumberFormat)",
-                    &NUMERIC_FORMAT_CLASS_ID,
-                    |reader, table, slot_key| {
-                        // NumericFormat 体无变长字段；槽位键来自槽位对象头，
-                        // 与 feature_layer_tail 槽位分派同构。
-                        read_numeric_format_body_10_1(reader, table, slot_key)
-                    },
-                )?;
+                let (slot, other, reason) =
+                    read_family_number_format(&mut trial, max_bytes, &mut staged)?;
                 number_format = slot;
+                other_number_format = other;
                 stop = reason;
             }
         }
@@ -656,6 +694,7 @@ pub fn read_scale_text_body_10_1(
 
     let remaining = trial.remaining();
     *reader = trial;
+    *table = staged;
     Ok(ScaleTextBody10_1 {
         key,
         version,
@@ -671,6 +710,7 @@ pub fn read_scale_text_body_10_1(
         format_prefix,
         format_suffix,
         number_format,
+        other_number_format,
         scale_format,
         stop,
         remaining_bytes: remaining,
@@ -709,6 +749,8 @@ pub struct ScaleTextBody10_1 {
     pub format_suffix: String,
     /// 版本 ≥2 的 INumberFormat 槽（`−0x18`；本读取器仅分派 NumericFormat）。
     pub number_format: SlotEntry10_1<NumericFormatBody10_1>,
+    /// 同一槽中的其他已确认数字格式，存在时 number_format 保留为空。
+    pub other_number_format: Option<Box<NumberFormatSlot10_1>>,
     /// 版本 ≥3 的 String（`−0x1c`，格式串候选；<3 时原生写内存默认）。
     pub scale_format: Option<String>,
     /// 停止原因；`None` = 体已完整消费。
@@ -1160,7 +1202,8 @@ pub fn read_scalebar_subclass_body_10_1(
     let mut base_int32_d = None;
     let mut base_double_c = None;
     let mut second_symbol: SlotEntry10_1<TextSymbolBody10_1> = SlotEntry10_1::Null;
-    let mut number_format: SlotEntry10_1<NumericFormatBody10_1> = SlotEntry10_1::Null;
+    let mut number_format = SlotEntry10_1::Null;
+    let mut other_number_format = None;
     let mut tail_int32 = None;
     let mut tail_double = None;
     let mut tail_short_a = None;
@@ -1182,15 +1225,9 @@ pub fn read_scalebar_subclass_body_10_1(
         stop = reason;
     }
     if stop.is_none() && base_version >= 2 {
-        let (slot, reason) = read_typed_slot_10_1(
-            &mut trial,
-            max_bytes,
-            &mut staged,
-            "number_format(INumberFormat)",
-            &NUMERIC_FORMAT_CLASS_ID,
-            |reader, table, slot_key| read_numeric_format_body_10_1(reader, table, slot_key),
-        )?;
+        let (slot, other, reason) = read_family_number_format(&mut trial, max_bytes, &mut staged)?;
         number_format = slot;
+        other_number_format = other;
         stop = reason;
     }
     if stop.is_none() {
@@ -1294,6 +1331,7 @@ pub fn read_scalebar_subclass_body_10_1(
         base_double_c,
         second_symbol,
         number_format,
+        other_number_format,
         tail_int32,
         tail_double,
         tail_short_a,
@@ -1351,6 +1389,8 @@ pub struct ScalebarSubclassBody10_1 {
     pub second_symbol: SlotEntry10_1<TextSymbolBody10_1>,
     /// 基类版本 ≥2 的 INumberFormat 槽（`−0x14c`）。
     pub number_format: SlotEntry10_1<NumericFormatBody10_1>,
+    /// 同一槽中的其他已确认数字格式，存在时 number_format 保留为空。
+    pub other_number_format: Option<Box<NumberFormatSlot10_1>>,
     /// 基类版本 ≥3 的 IScaleBar.ResizeHint。
     pub tail_int32: Option<i32>,
     /// 基类版本 ≥4 的 double（`−0xec`，位模式）。
@@ -2203,6 +2243,54 @@ mod tests {
         }
         assert_eq!(body.scale_format.as_deref(), Some("1:%s"));
         assert_eq!(body.stop, None);
+        assert_eq!(body.remaining_bytes, 0);
+    }
+
+    #[test]
+    fn scale_text_and_filled_scalebar_read_fraction_format() {
+        use crate::objects::number_format::FRACTION_FORMAT_CLASS_ID;
+
+        let mut format = backref_header(&FRACTION_FORMAT_CLASS_ID, 21);
+        format.extend(1_u16.to_le_bytes());
+        format.extend([0; 8]);
+
+        let mut data = scale_text_v3_bytes();
+        let offset = data
+            .windows(16)
+            .position(|part| part == NUMERIC_FORMAT_CLASS_ID)
+            .unwrap();
+        data.splice(
+            offset..offset + 20 + numeric_format_bytes().len(),
+            format.clone(),
+        );
+        let body = read_body(&data, read_scale_text_body_10_1).unwrap();
+        assert!(matches!(
+            body.other_number_format.as_deref(),
+            Some(NumberFormatSlot10_1::FractionFormat(_))
+        ));
+        assert_eq!(body.scale_format.as_deref(), Some("1:%s"));
+        assert_eq!(body.remaining_bytes, 0);
+
+        let mut reader = Reader::new(&data[..data.len() - 1]);
+        reader.read_bytes(20).unwrap();
+        let mut table = RefTable10_1::new();
+        assert!(read_scale_text_body_10_1(&mut reader, 4096, &mut table, 9).is_err());
+        assert_eq!(reader.position(), 20);
+        assert!(!table.contains(21));
+
+        let mut data = subclass_full_bytes();
+        // 基类数字格式槽之后保留 v3–v6 共 16 字节，派生中尾段固定 84 字节。
+        let offset = data.len() - 84 - 16 - 16;
+        data.splice(offset..offset + 16, format);
+        let body = read_body(&data, |r, m, t, k| {
+            read_scalebar_subclass_body_10_1(r, m, t, k, ScalebarSubclassKind10_1::SingleDivision)
+        })
+        .unwrap();
+        assert!(matches!(
+            body.other_number_format.as_deref(),
+            Some(NumberFormatSlot10_1::FractionFormat(_))
+        ));
+        assert_eq!(body.bar_height(), Some(13.0));
         assert_eq!(body.remaining_bytes, 0);
     }
 

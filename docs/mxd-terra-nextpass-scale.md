@@ -168,3 +168,14 @@ Load `0x79451120`。基类 v2 起以 `0x7948c354` 的 INumberFormat IID
 NumericFormat、空槽和回引在解析结果中的原有表示。未知新类停在槽头并
 撤销其键。构造的 SteppedScaleLine 验证 FractionFormat 后仍能读取刻度
 和高度，并消费到对象边界。实际工程中这类槽及 ArcMap/QGIS 目视仍待验证。
+
+## 比例尺文本和填充比例尺数字格式槽
+
+同版 Map.dll 的四类填充比例尺复用 `0x79451120/0x79451400` 的
+基类数字格式槽。ScaleText v2 起也请求 `0x7948c354` 的 INumberFormat
+IID，位于前后缀字符串之后，v3 格式串之前，见
+[原生字段顺序](arcmap-10.1-legend-family.md)。
+这两处接入同一 SystemCore 九类分派。现有 NumericFormat 字段仍保存数字
+格式本类、空槽和回引，其他已知新对象由 `other_number_format` 保存。
+构造测试检查 FractionFormat 后继续读取后继字段，并验证 ScaleText
+后继格式串截断时回滚游标和新登记。ArcMap/QGIS 实档目视验证待补。
