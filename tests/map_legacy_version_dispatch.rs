@@ -746,26 +746,35 @@ fn map_v28_skips_bounded_network_child_and_its_back_references() {
 }
 
 #[test]
-fn map_v28_graphics_layer_3d_and_back_reference_consume_no_masks() {
-    use mxd2qgz::layers::graphics_3d::GRAPHICS_LAYER_3D_CLASS_ID;
+fn map_v28_graphics_layers_3d_and_back_references_consume_no_masks() {
+    use mxd2qgz::layers::graphics_3d::{GLOBE_GRAPHICS_LAYER_CLASS_ID, GRAPHICS_LAYER_3D_CLASS_ID};
     use mxd2qgz::maps::layer_masking::{LayerMaskingSupport10_1, known_layer_masking_support_10_1};
 
-    assert_eq!(
-        known_layer_masking_support_10_1(&GRAPHICS_LAYER_3D_CLASS_ID),
-        LayerMaskingSupport10_1::Unsupported
-    );
+    for (class_id, short_count, tail_bytes) in [
+        (GRAPHICS_LAYER_3D_CLASS_ID, 4, 0),
+        (GLOBE_GRAPHICS_LAYER_CLASS_ID, 2, 8),
+    ] {
+        assert_eq!(
+            known_layer_masking_support_10_1(&class_id),
+            LayerMaskingSupport10_1::Unsupported
+        );
 
-    let mut layer = GRAPHICS_LAYER_3D_CLASS_ID.to_vec();
-    layer.extend(90_u32.to_le_bytes());
-    layer.extend(1_u16.to_le_bytes());
-    layer.extend(2_u32.to_le_bytes());
-    layer.extend([0; 2 + 8 + 16 + 16 + 4]); // 空名称、短字段、空关联层和范围、空元素列表。
-    let mut suffix = map_v28_masking_suffix(&[&layer, &layer[..20]]);
-    let end = suffix.len();
-    suffix.extend(0x1717_u32.to_le_bytes());
-    let (bytes, offset) = map_with_version(28, &suffix);
-    assert_eq!(
-        parse_maps_10_1(&bytes).unwrap().confirmed_tail,
-        Some((offset + end, 0x1717))
-    );
+        let mut layer = class_id.to_vec();
+        layer.extend(90_u32.to_le_bytes());
+        layer.extend(1_u16.to_le_bytes());
+        layer.extend(2_u32.to_le_bytes());
+        // 空名称、短字段、空关联层和范围、空元素列表，以及 Globe 的空扩展和两个 short。
+        layer.resize(
+            layer.len() + 2 + 2 * short_count + 16 + 16 + 4 + tail_bytes,
+            0,
+        );
+        let mut suffix = map_v28_masking_suffix(&[&layer, &layer[..20]]);
+        let end = suffix.len();
+        suffix.extend(0x1717_u32.to_le_bytes());
+        let (bytes, offset) = map_with_version(28, &suffix);
+        assert_eq!(
+            parse_maps_10_1(&bytes).unwrap().confirmed_tail,
+            Some((offset + end, 0x1717))
+        );
+    }
 }

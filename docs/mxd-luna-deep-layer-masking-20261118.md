@@ -109,7 +109,11 @@ Map 读取器仅在图层列表已经为这些类确定顶层对象体范围后�
 
 复用 [三维图形容器取证](arcmap-10.1-dep-tail.md) 中的 GraphicsLayer3D CLSID `4C87A8F0-01E3-11D4-AB69-0008C73FD50C` 与主 QI `0x7d2a15b0`。复核 10.1.0.3035 Desktop 的 Scene.dll（PE32，SHA-256 `b41f37424a13b0257ce3c5c3258038a3640876aba48b33e05b332f7af3594006`），用 `objdump -d -Mintel` 追踪 QI 并读取比较常量指向的 16 字节 IID。主 QI 的 17 个固定候选均不含 ILayerMasking；未命中时 `0x7d2a18ce` 进入 `0x7d2c1950`，后者仅增加一个固定候选并在 `0x7d2c19a4` 转入 `0x7d2c2c50`。最终三个固定候选也不匹配遮罩接口，`0x7d2c2d3c..0x7d2c2d42` 清空输出并返回 `E_NOINTERFACE`。这些地址为静态 VA。
 
-Map 现在可越过完整读取的 GraphicsLayer3D 及其回引。构造 Map v28 验证流尾位置；原生 MXD 中的对应宿主及 ArcMap/QGIS 人工验收仍待验证。GlobeGraphicsLayer 保持未决。
+Map 现在可越过完整读取的 GraphicsLayer3D 及其回引。构造 Map v28 验证流尾位置；原生 MXD 中的对应宿主及 ArcMap/QGIS 人工验收仍待验证。
+
+## GlobeGraphicsLayer 的接口分派
+
+沿用三维图形容器取证确认的 CLSID `A415A073-CF06-4CDC-8664-439D0D5E7169`。复核 10.1.0.3035 Desktop 的 GlobeLayers.dll（PE32，SHA-256 `79346fc1fa0d25c01ac41ae2a7b0ee3014847c38f1661ff7d23cce75fe6fd1b8`）。用 `objdump -d -Mintel` 核对主 QI `0x72f51ad0` 的 21 个固定 IID，再读取未命中路径 `0x72f51e7e → 0x72f6c480` 和 `0x72f6c4d4 → 0x72f6d780` 的其余四个比较常量。所有常量均与 ILayerMasking 不同，`0x72f6d86c..0x72f6d872` 清空输出并返回 `E_NOINTERFACE`。构造 Map v28 验证完整图层及其回引之后的流尾。原生 MXD 宿主及 ArcMap/QGIS 人工验收仍待验证。
 
 ## ProcessLayer 的组图层委派及遮罩
 
