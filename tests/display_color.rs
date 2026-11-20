@@ -73,6 +73,32 @@ fn cmyk_body(version: u16, with_string: bool, with_core: bool) -> Vec<u8> {
 }
 
 #[test]
+fn color_transparency_obeys_the_signed_version_layout() {
+    for (version, expected) in [
+        (0xffff_u16, Some(0x11)),
+        (2, Some(0x11)),
+        (3, None),
+        (4, Some(0xbc)),
+    ] {
+        let mut bytes = cmyk_body(if version == 0xffff { 1 } else { version }, false, true);
+        bytes[..2].copy_from_slice(&version.to_le_bytes());
+        if version == 0xffff {
+            bytes[2..4].copy_from_slice(&0x8000u16.to_le_bytes());
+        }
+        bytes.push(0xad);
+        let mut reader = Reader::new(&bytes);
+        let color =
+            read_cmyk_color_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 2).unwrap();
+        assert_eq!(color.version, version);
+        assert_eq!(
+            ColorBody10_1::Cmyk(Box::new(color)).transparency(),
+            expected
+        );
+        assert_eq!(reader.read_bytes(1).unwrap(), &[0xad]);
+    }
+}
+
+#[test]
 fn core_color_body_parses_both_branches_and_keeps_bit_patterns() {
     for _class_id in [HSV_COLOR_CLASS_ID, GRAY_COLOR_CLASS_ID, HLS_COLOR_CLASS_ID] {
         for flag in [0_u8, 1] {
@@ -101,12 +127,8 @@ fn core_color_body_parses_both_branches_and_keeps_bit_patterns() {
 
 #[test]
 fn core_color_body_rejects_versions_and_truncation_without_advancing() {
-    // 版本超限：外层 2 / 内层 2 / 负值位模式 0x8000 都被拒绝，游标不动。
-    for bad in [
-        [2_u8, 0, 1, 1, 0].as_slice(),
-        &[1, 0, 2, 1, 0][..],
-        &[0xFF, 0xFF, 1, 1, 0][..],
-    ] {
+    // 外层或内层版本超限时拒绝，游标不动。
+    for bad in [[2_u8, 0, 1, 1, 0].as_slice(), &[1, 0, 2, 1, 0][..]] {
         let mut bytes = bad.to_vec();
         bytes.extend(&core_color_body(0)[4..]);
         let mut reader = Reader::new(&bytes);
@@ -223,16 +245,14 @@ fn cmyk_v2_reads_packed_core_then_next_object() {
 
 #[test]
 fn cmyk_body_rejects_versions_limits_and_truncation() {
-    // 版本 5 与负值位模式被拒；游标不动。
-    for version_bytes in [5_u16.to_le_bytes(), 0xFFFF_u16.to_le_bytes()] {
-        let mut bytes = version_bytes.to_vec();
-        bytes.extend(&cmyk_body(4, false, false)[2..]);
-        let mut reader = Reader::new(&bytes);
-        let error =
-            read_cmyk_color_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 1).unwrap_err();
-        assert_eq!(error.kind(), ErrorKind::InvalidData);
-        assert_eq!(reader.position(), 0);
-    }
+    // 版本 5 超过上限，失败时游标不动。
+    let mut bytes = 5_u16.to_le_bytes().to_vec();
+    bytes.extend(&cmyk_body(4, false, false)[2..]);
+    let mut reader = Reader::new(&bytes);
+    let error =
+        read_cmyk_color_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 1).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+    assert_eq!(reader.position(), 0);
     // 字符串声明长度超过限额被拒（含合成边界 u32::MAX）。
     let mut bytes = 2_u16.to_le_bytes().to_vec();
     bytes.push(0);

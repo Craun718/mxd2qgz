@@ -241,22 +241,14 @@ fn rgb_color_reads_cmyk_branch() {
 
 #[test]
 fn rgb_color_rejects_out_of_range_versions() {
-    // 外层/内层版本 >1 与负值位模式（有符号比较）都拒绝。
-    for version in [2_u16, 0x8000, 0xFFFF] {
-        let mut bytes = Vec::new();
-        bytes.extend(version.to_le_bytes());
-        bytes.extend(1_u16.to_le_bytes());
-        bytes.push(0);
-        bytes.extend(0.0_f64.to_le_bytes());
+    for version in [2_u16, 0x7fff] {
+        let mut bytes = rgb_color_body(0);
+        bytes[..2].copy_from_slice(&version.to_le_bytes());
         let mut reader = Reader::new(&bytes);
-        let position = reader.position();
         let mut table = table_with_keys(&[9]);
-        assert!(
-            read_rgb_color_body_10_1(&mut reader, &mut table, 5).is_err(),
-            "版本 {version:#x} 应拒绝"
-        );
-        assert_eq!(reader.position(), position, "失败不得推进游标");
-        assert!(table.contains(9), "失败不得修改登记表");
+        assert!(read_rgb_color_body_10_1(&mut reader, &mut table, 5).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(table.contains(9));
     }
     // 内层版本超限同样拒绝。
     let mut bytes = Vec::new();

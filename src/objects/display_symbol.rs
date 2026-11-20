@@ -167,8 +167,8 @@
 //!   LoadObject（IColor → Save 槽 −0x50）。
 //! - **Template**（虚表 `0x6ec1114c`，Load `0x6eb87ad0`，Save `0x6eb87bb0`，
 //!   GetClassID `0x6eb87aa0`，版本常量 `DAT_6ec0b280`=1）：short 版本
-//!   （>1 拒绝）→ double（−0x94，间隔候选）→ count → count × 16 字节
-//!   （2 double/标记：位置+角度候选；Save 槽 −0x88 数组）。
+//!   （>1 拒绝）→ double（−0x94，Interval）→ count → count × 16 字节
+//!   （2 double/标记：实段长度、空段长度；Save 槽 −0x88 数组）。
 //! - **LineDecoration**（虚表 `0x6ec0e4e4`，Load `0x6eb5c640`，Save
 //!   `0x6eb5c740`，GetClassID `0x6eb5c0a0`，版本常量 `DAT_6ec0b2ec`=1）：
 //!   short 版本（>1 拒绝）→ count → count × LoadObject
@@ -699,19 +699,19 @@ pub struct SimpleMarkerSymbolPrefix10_1 {
     pub version: u16,
     /// IColor 槽（主色）：空标记 / 回引 / 五类闭合颜色体 / 不支持停止。
     pub color: ColorSlot10_1,
-    /// double → obj-0x6c（样本 6.0；尺寸候选）。`None` = 首色槽停止。
+    /// double → obj-0x6c（样本 6.0；Size 的存储值）。`None` = 首色槽停止。
     pub size: Option<f64>,
-    /// int32 → obj-0x70（样本 0），语义未定。
+    /// ISimpleMarkerSymbol.Style（样本 0）。
     pub int32_a: Option<i32>,
-    /// int32 → obj-0xcc（样本 13；marker 样式候选），语义未定。
+    /// ISymbol.ROP2（样本 13）。
     pub int32_b: Option<i32>,
-    /// int32 → obj-0xc4（样本 0），语义未定。
+    /// MapLevel（样本 0）。
     pub int32_c: Option<i32>,
-    /// double ×3 → obj-100/-0x5c/-0x54（样本 0/0/0；X/Y 偏移候选）。
+    /// 依次为 Angle、XOffset、YOffset 的存储值（样本均为 0）。
     pub doubles: Option<[f64; 3]>,
-    /// 1 字节 → obj-0x44（样本 1），语义未定。
+    /// Outline 的原始字节（样本 1）。
     pub byte_flag: Option<u8>,
-    /// double → obj-0x4c（样本 1.0；比例候选）。
+    /// OutlineSize 的存储值（样本 1.0）。
     pub double_ratio: Option<f64>,
     /// 第二个 IColor 槽（轮廓色）。`None` = 在其之前已停止。
     pub outline_color: Option<ColorSlot10_1>,
@@ -832,13 +832,13 @@ pub struct SimpleLineSymbolBody10_1 {
     /// IColor 槽（请求 IID `{20CD40B0-…}`）：空标记 / 回引 / 五类闭合颜色体 /
     /// 不支持停止。
     pub color: ColorSlot10_1,
-    /// double → this−0x24（宽度候选）。`None` = 颜色槽停止。
+    /// double → this−0x24（Width 的持久化值）。`None` = 颜色槽停止。
     pub width: Option<f64>,
-    /// int32 → this−0x28（样式候选），语义未定。`None` = 前置停止。
+    /// ISimpleLineSymbol.Style（this−0x28）。`None` = 前置停止。
     pub style: Option<i32>,
-    /// int32 → this−0x7c，语义未定。`None` = 前置停止。
+    /// ISymbol.ROP2（this−0x7c）。`None` = 前置停止。
     pub int32_7c: Option<i32>,
-    /// int32 → this−0x74，语义未定。`None` = 前置停止。
+    /// MapLevel（this−0x74）。`None` = 前置停止。
     pub int32_74: Option<i32>,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<SymbolStop10_1>,
@@ -907,11 +907,13 @@ pub struct SimpleFillSymbolBody10_1 {
     pub outline: SymbolSlotFull10_1,
     /// IColor 槽（填充色候选，Save 侧槽 `this−0x28`）。`None` = 轮廓槽停止。
     pub color: Option<ColorSlot10_1>,
-    /// int32 → this−0x7c（样式候选）。`None` = 前置停止。
+    /// ISimpleFillSymbol.Style（this−0xc）。`None` = 前置停止。
     pub style: Option<i32>,
-    /// int32 → this−0x74，语义未定。`None` = 前置停止。
+    /// MapLevel（this−0x74）。`None` = 前置停止。
     pub int32_74: Option<i32>,
-    /// int32 → this−0xc，语义未定。`None` = 前置停止。
+    /// ISymbol.ROP2（this−0x7c）。
+    pub int32_7c: Option<i32>,
+    /// Style 的原始值（this−0xc），保留既有字段。`None` = 前置停止。
     pub int32_c: Option<i32>,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<SymbolStop10_1>,
@@ -947,7 +949,7 @@ pub fn read_simple_fill_symbol_body_10_1(
     let mut stop = slot_full_stop_10_1(&outline, DisplaySlotKind10_1::Symbol);
     // ③ IColor 槽 + ④-⑦ 标量段（前置停止时不读取）。
     let mut color = None;
-    let mut style = None;
+    let mut int32_7c = None;
     let mut int32_74 = None;
     let mut int32_c = None;
     if stop.is_none() {
@@ -955,7 +957,7 @@ pub fn read_simple_fill_symbol_body_10_1(
         if let Some(inner) = color_slot_stop(color.as_ref().unwrap()) {
             stop = Some(inner);
         } else {
-            style = Some(read_i32_le(&mut trial)?);
+            int32_7c = Some(read_i32_le(&mut trial)?);
             int32_74 = Some(read_i32_le(&mut trial)?);
             int32_c = Some(read_i32_le(&mut trial)?);
         }
@@ -968,7 +970,8 @@ pub fn read_simple_fill_symbol_body_10_1(
         version,
         outline,
         color,
-        style,
+        style: int32_c,
+        int32_7c,
         int32_74,
         int32_c,
         stop,
@@ -982,30 +985,30 @@ pub struct MarkerLineSymbolBody10_1 {
     pub key: u32,
     /// 体首 short 版本；>2 原生拒绝（Save 恒写 2）。
     pub version: u16,
-    /// byte → this−0x20d8，语义未定。
+    /// byte → this−0x20d8，Flip。
     pub byte_20d8: u8,
-    /// double → this−0x20d4，语义未定。
+    /// double → this−0x20d4，Offset。
     pub double_20d4: f64,
     /// IMarkerSymbol 槽（请求 IID `{E6BDAA7C-…}`）。
-    pub marker_symbol: DisplaySymbolSlot10_1,
+    pub marker_symbol: SymbolSlotFull10_1,
     /// `{7914E5F4}` ITemplate 候选槽；新对象 coclass 体未闭合 = `None` 停止。
     pub template: Option<DecorationSlot10_1>,
     /// `{533D88F0}` ILineDecoration 候选槽；新对象 coclass 体未闭合 = `None`
     /// 停止。`None` 亦表示前置停止未读取。
     pub line_decoration: Option<DecorationSlot10_1>,
-    /// int32 → this−0x2134，语义未定。`None` = 前置停止。
+    /// int32 → this−0x2134，ROP2。`None` = 前置停止。
     pub int32_2134: Option<i32>,
-    /// int32 → this−0x212c，语义未定。`None` = 前置停止。
+    /// int32 → this−0x212c，MapLevel。`None` = 前置停止。
     pub int32_212c: Option<i32>,
-    /// byte → this−0x20ac，语义未定。`None` = 前置停止。
+    /// byte → this−0x20ac，DecorationOnTop。`None` = 前置停止。
     pub byte_20ac: Option<u8>,
-    /// double → this−0x20a4，语义未定。`None` = 前置停止。
+    /// double → this−0x20a4，LineStartOffset。`None` = 前置停止。
     pub double_20a4: Option<f64>,
-    /// 版本 ≥2 的 int32 → this−0x2094。`None` = 版本 ≤1 或前置停止。
+    /// 版本 ≥2 的 Cap（this−0x2094）。`None` = 版本 ≤1 或前置停止。
     pub int32_2094: Option<i32>,
-    /// 版本 ≥2 的 int32 → this−0x2090。`None` = 版本 ≤1 或前置停止。
+    /// 版本 ≥2 的 Join（this−0x2090）。`None` = 版本 ≤1 或前置停止。
     pub int32_2090: Option<i32>,
-    /// 版本 ≥2 的 double → this−0x208c。`None` = 版本 ≤1 或前置停止。
+    /// 版本 ≥2 的 MiterLimit（this−0x208c）。`None` = 版本 ≤1 或前置停止。
     pub double_208c: Option<f64>,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<SymbolStop10_1>,
@@ -1040,8 +1043,8 @@ pub fn read_marker_line_symbol_body_10_1(
     let double_20d4 = trial.read_f64_le()?;
     // ④ IMarkerSymbol 槽（⑤ `FUN_6eb68fc0` 无流内字节，跳过）。
     let marker_symbol =
-        read_display_symbol_slot_10_1(&mut trial, max_bytes, &mut staged, depth - 1)?;
-    let mut stop = slot_stop_10_1(&marker_symbol, DisplaySlotKind10_1::MarkerSymbol);
+        read_symbol_slot_full_10_1(&mut trial, max_bytes, &mut staged, depth.saturating_sub(1))?;
+    let mut stop = slot_full_stop_10_1(&marker_symbol, DisplaySlotKind10_1::MarkerSymbol);
     // ⑥⑦ ITemplate / ILineDecoration 候选槽（coclass 体未闭合）。
     let mut template = None;
     let mut line_decoration = None;
@@ -1119,15 +1122,15 @@ pub struct CartographicLineSymbolBody10_1 {
     pub key: u32,
     /// 体首 short 版本；>1 原生拒绝（Save 恒写 1）。
     pub version: u16,
-    /// int32 → this−0x10a8，语义未定。
+    /// int32 → this−0x10a8，Cap。
     pub int32_10a8: i32,
-    /// int32 → this−0x10a4，语义未定。
+    /// int32 → this−0x10a4，Join。
     pub int32_10a4: i32,
-    /// double → this−0x109c，语义未定。
+    /// double → this−0x109c，Width。
     pub double_109c: f64,
-    /// byte → this−0x1094，语义未定。
+    /// byte → this−0x1094，Flip。
     pub byte_1094: u8,
-    /// double → this−0x108c，语义未定。
+    /// double → this−0x108c，Offset。
     pub double_108c: f64,
     /// IColor 槽（Save 槽 this−0x10ac）。`None` = 前置停止（正常流不可能，
     /// 标量段先于颜色槽，保留 defensive 语义）。
@@ -1136,15 +1139,15 @@ pub struct CartographicLineSymbolBody10_1 {
     pub template: Option<DecorationSlot10_1>,
     /// `{533D88F0}` ILineDecoration 候选槽；新对象 = `None` 停止。
     pub line_decoration: Option<DecorationSlot10_1>,
-    /// int32 → this−0x10fc，语义未定。`None` = 前置停止。
+    /// int32 → this−0x10fc，ROP2。`None` = 前置停止。
     pub int32_10fc: Option<i32>,
-    /// int32 → this−0x10f4，语义未定。`None` = 前置停止。
+    /// int32 → this−0x10f4，MapLevel。`None` = 前置停止。
     pub int32_10f4: Option<i32>,
-    /// byte → this−0x1060，语义未定。`None` = 前置停止。
+    /// byte → this−0x1060，DecorationOnTop。`None` = 前置停止。
     pub byte_1060: Option<u8>,
-    /// double → this−0x105c，语义未定。`None` = 前置停止。
+    /// double → this−0x105c，LineStartOffset。`None` = 前置停止。
     pub double_105c: Option<f64>,
-    /// double → this−0x1054，语义未定。`None` = 前置停止。
+    /// double → this−0x1054，MiterLimit。`None` = 前置停止。
     pub double_1054: Option<f64>,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<SymbolStop10_1>,
@@ -1254,35 +1257,35 @@ pub struct HashLineSymbolBody10_1 {
     pub key: u32,
     /// 体首 short 版本；>1 原生拒绝（Save 恒写 1）。
     pub version: u16,
-    /// double → this−0x2124，语义未定。
+    /// double → this−0x2124，Angle。
     pub double_2124: f64,
-    /// int32 → this−0x2118，语义未定。
+    /// int32 → this−0x2118，Cap。
     pub int32_2118: i32,
-    /// int32 → this−0x2114，语义未定。
+    /// int32 → this−0x2114，Join。
     pub int32_2114: i32,
-    /// double → this−0x2104，语义未定。
+    /// double → this−0x2104，Width。
     pub double_2104: f64,
-    /// byte → this−0x20fc，语义未定。
+    /// byte → this−0x20fc，Flip。
     pub byte_20fc: u8,
-    /// double → this−0x20f4，语义未定。
+    /// double → this−0x20f4，Offset。
     pub double_20f4: f64,
     /// ISymbol 槽（Save 槽 this−0x20e4，语义候选：被刻线的线符号）。
-    pub symbol: Option<DisplaySymbolSlot10_1>,
+    pub symbol: Option<SymbolSlotFull10_1>,
     /// IColor 槽（Save 槽 this−0x211c）。`None` = 前置停止。
     pub color: Option<ColorSlot10_1>,
     /// `{7914E5F4}` ITemplate 候选槽；新对象 = `None` 停止。
     pub template: Option<DecorationSlot10_1>,
     /// `{533D88F0}` ILineDecoration 候选槽；新对象 = `None` 停止。
     pub line_decoration: Option<DecorationSlot10_1>,
-    /// int32 → this−0x217c，语义未定。`None` = 前置停止。
+    /// int32 → this−0x217c，ROP2。`None` = 前置停止。
     pub int32_217c: Option<i32>,
-    /// int32 → this−0x2174，语义未定。`None` = 前置停止。
+    /// int32 → this−0x2174，MapLevel。`None` = 前置停止。
     pub int32_2174: Option<i32>,
-    /// byte → this−0x20a4，语义未定。`None` = 前置停止。
+    /// byte → this−0x20a4，DecorationOnTop。`None` = 前置停止。
     pub byte_20a4: Option<u8>,
-    /// double → this−0x209c，语义未定。`None` = 前置停止。
+    /// double → this−0x209c，LineStartOffset。`None` = 前置停止。
     pub double_209c: Option<f64>,
-    /// double → this−0x210c，语义未定。`None` = 前置停止。
+    /// double → this−0x210c，MiterLimit。`None` = 前置停止。
     pub double_210c: Option<f64>,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<SymbolStop10_1>,
@@ -1292,7 +1295,7 @@ pub struct HashLineSymbolBody10_1 {
 /// 不修改登记表。
 ///
 /// 起点约定：调用者已读取对象头、比对 [`HASH_LINE_SYMBOL_CLASS_ID`] 并取得
-/// 键 `key`。ISymbol 槽经 [`read_display_symbol_slot_10_1`] 分派（未知类或
+/// 键 `key`。ISymbol 槽经 [`read_symbol_slot_full_10_1`] 分派（未知类或
 /// 嵌套体停止时其后的槽位与标量不可达）；ITemplate/ILineDecoration 候选槽
 /// 新对象为成功停止。
 pub fn read_hash_line_symbol_body_10_1(
@@ -1321,13 +1324,13 @@ pub fn read_hash_line_symbol_body_10_1(
     let byte_20fc = trial.read_bytes(1)?[0];
     let double_20f4 = trial.read_f64_le()?;
     // ⑧ ISymbol 槽。
-    let symbol = Some(read_display_symbol_slot_10_1(
+    let symbol = Some(read_symbol_slot_full_10_1(
         &mut trial,
         max_bytes,
         &mut staged,
-        depth - 1,
+        depth.saturating_sub(1),
     )?);
-    let mut stop = slot_stop_10_1(symbol.as_ref().unwrap(), DisplaySlotKind10_1::Symbol);
+    let mut stop = slot_full_stop_10_1(symbol.as_ref().unwrap(), DisplaySlotKind10_1::Symbol);
     // ⑨ IColor 槽（⑩ `FUN_6eb406f0` 无流内字节，跳过）。
     let mut color = None;
     if stop.is_none() {
@@ -2383,11 +2386,11 @@ pub struct TemplateBody10_1 {
     pub key: u32,
     /// 体首 short 版本；>1 原生拒绝（版本常量 `DAT_6ec0b280`=1）。
     pub version: u16,
-    /// double → this−0x94（间隔候选，语义未定）。
+    /// double → this−0x94（ITemplate::Interval）。
     pub interval: f64,
-    /// 流内 int32 循环长度（标记数候选）。
+    /// 流内 int32 循环长度（PatternElementCount）。
     pub mark_count: u32,
-    /// count × 16 字节（每标记 2 个 double：位置 + 角度候选，语义未定；
+    /// count × 16 字节（每个图案元素依次保存实段长度 mark、空段长度 Gap；
     /// Save 槽 this−0x88 数组）。
     pub marks: Vec<[f64; 2]>,
 }
@@ -2413,9 +2416,9 @@ pub fn read_template_body_10_1(
     let mark_count = read_loop_count_10_1(&mut trial, max_bytes, "Template", entry_offset)?;
     let mut marks = Vec::with_capacity((mark_count as usize).min(4096));
     for _ in 0..mark_count {
-        let a = trial.read_f64_le()?;
-        let b = trial.read_f64_le()?;
-        marks.push([a, b]);
+        let mark = trial.read_f64_le()?;
+        let gap = trial.read_f64_le()?;
+        marks.push([mark, gap]);
     }
 
     *reader = trial;
@@ -2568,23 +2571,45 @@ pub struct SimpleLineDecorationElementBody10_1 {
     pub key: u32,
     /// 体首 short 版本；>1 原生拒绝（版本常量 `DAT_6ec0b290`=1）。
     pub version: u16,
-    /// byte → this−0x18，语义未定。
+    /// byte → this−0x18，Rotate 原始值。
     pub byte_18: u8,
-    /// byte → this−0x17，语义未定。
+    /// byte → this−0x17，FlipFirst 原始值。
     pub byte_17: u8,
-    /// byte → this−0x16，语义未定。
+    /// byte → this−0x16，FlipAll 原始值。
     pub byte_16: u8,
-    /// short → this−0x14，语义未定。
+    /// short → this−0x14，PositionAsRatio 原始值。
     pub short_14: i16,
-    /// ISymbol 槽（Save 槽 this−0x24；标记符号候选）经
-    /// [`read_display_symbol_slot_10_1`] 分派。`None` = 槽位停止。
+    /// ISymbol 槽（Save 槽 this−0x24；MarkerSymbol）经
+    /// [`read_symbol_slot_full_10_1`] 分派。
     pub symbol: Option<SymbolSlotFull10_1>,
-    /// 流内 int32 循环长度（位置数候选）。
+    /// 流内 int32 循环长度（PositionCount）。
     pub position_count: u32,
-    /// count × double（→ this−0x40 集合，位置候选）。`None` = 符号槽停止。
+    /// count × double（→ this−0x40 集合，Position）。`None` = 符号槽停止。
     pub positions: Option<Vec<f64>>,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<SymbolStop10_1>,
+}
+
+impl SimpleLineDecorationElementBody10_1 {
+    /// 是否旋转标记以跟随线方向。
+    pub fn rotate(&self) -> bool {
+        self.byte_18 != 0
+    }
+
+    /// 是否翻转首个标记。
+    pub fn flip_first(&self) -> bool {
+        self.byte_17 != 0
+    }
+
+    /// 是否翻转所有标记。
+    pub fn flip_all(&self) -> bool {
+        self.byte_16 != 0
+    }
+
+    /// 是否将位置解释为沿线比例。
+    pub fn position_as_ratio(&self) -> bool {
+        self.short_14 != 0
+    }
 }
 
 /// 从对象头之后的位置读取 10.1 SimpleLineDecorationElement 对象体，失败时
@@ -2620,7 +2645,7 @@ pub fn read_simple_line_decoration_element_body_10_1(
         &mut trial,
         max_bytes,
         &mut staged,
-        depth - 1,
+        depth,
         DisplaySlotKind10_1::Symbol,
     )?;
     let mut position_count = 0;
@@ -2718,7 +2743,7 @@ pub fn read_multi_layer_line_symbol_body_10_1(
             &mut trial,
             max_bytes,
             &mut staged,
-            depth - 1,
+            depth.saturating_sub(1),
             DisplaySlotKind10_1::LineSymbol,
         )?;
         layers.push(slot);
@@ -2853,7 +2878,7 @@ pub fn read_multi_layer_marker_symbol_body_10_1(
             &mut trial,
             max_bytes,
             &mut staged,
-            depth - 1,
+            depth.saturating_sub(1),
             DisplaySlotKind10_1::Symbol,
         )?;
         symbol = Some(slot);
@@ -2871,7 +2896,7 @@ pub fn read_multi_layer_marker_symbol_body_10_1(
                 &mut trial,
                 max_bytes,
                 &mut staged,
-                depth - 1,
+                depth.saturating_sub(1),
                 DisplaySlotKind10_1::MarkerSymbol,
             )?;
             layers.push(slot);
@@ -2888,8 +2913,12 @@ pub fn read_multi_layer_marker_symbol_body_10_1(
             // G 轮接线：IMarkerBackground 槽接 callout_background 槽分派
             //（LineCallout；未知实现类回退并映射为停止原因，
             // 停止语义不变）。
-            let (slot, inner) =
-                read_marker_background_slot_10_1(&mut trial, max_bytes, &mut staged, depth - 1)?;
+            let (slot, inner) = read_marker_background_slot_10_1(
+                &mut trial,
+                max_bytes,
+                &mut staged,
+                depth.saturating_sub(1),
+            )?;
             marker_background = slot;
             if let Some(inner) = inner {
                 stop = Some(inner);
@@ -2994,7 +3023,7 @@ pub fn read_multi_layer_fill_symbol_body_10_1(
                 &mut trial,
                 max_bytes,
                 &mut staged,
-                depth - 1,
+                depth.saturating_sub(1),
                 DisplaySlotKind10_1::FillSymbol,
             )?;
             layers.push(slot);
@@ -3038,48 +3067,55 @@ pub struct CharacterMarkerSymbolBody10_1 {
     pub version: u16,
     /// IColor 槽（→ this−0xc4）。`None` = 前置停止。
     pub color: Option<ColorSlot10_1>,
-    /// int32 → this−0xc0，语义未定。
+    /// int32 → this−0xc0，CharacterIndex。
     pub int32_c0: i32,
-    /// double → this−0xb4，语义未定（尺寸候选）。
+    /// double → this−0xb4，Angle。
     pub double_b4: f64,
-    /// double → this−0xac，语义未定（X 偏移候选）。
+    /// double → this−0xac，Size。
     pub double_ac: f64,
-    /// double → this−0xa4，语义未定（Y 偏移候选）。
+    /// double → this−0xa4，XOffset。
     pub double_a4: f64,
-    /// double → this−0x9c，语义未定（角度候选）。
+    /// double → this−0x9c，YOffset。
     pub double_9c: f64,
-    /// double → this−0x94，语义未定。
+    /// double → this−0x94，XScale。
     pub double_94: f64,
-    /// double → this−0x8c，语义未定。
+    /// double → this−0x8c，YScale。
     pub double_8c: f64,
-    /// 版本 <3 的 IFontDisp 槽（请求 IID `{BEF6E002-A874-101A-8BBA-…}`，
+    /// 版本 <3 的 IFont 槽（请求 IID `{BEF6E002-A874-101A-8BBA-…}`，
     /// Save 槽 this−0xbc；接线轮起 StdFont 分派，其余实现类 = 停止）。
     /// `None` = 版本 ≥3 或前置停止。
     pub font_slot_v3: Option<StdFontSlot10_1>,
-    /// int32 → this−0x124，语义未定。`None` = 前置停止。
+    /// int32 → this−0x124，ROP2。`None` = 前置停止。
     pub int32_124: Option<i32>,
-    /// int32 → this−0x11c，语义未定。`None` = 前置停止。
+    /// int32 → this−0x11c，MapLevel。`None` = 前置停止。
     pub int32_11c: Option<i32>,
     /// 版本 >1 的 RotateWithTransform 原始 short → this−0x10c（读取后原生内存槽被
     /// `Symbol::GetDefaultRotateWithTransformValue` 覆盖，流内值读取即弃；
     /// 反汇编同 ArrowMarker）。`None` = 版本 ≤1 或前置停止。
     pub short_10c: Option<i16>,
-    /// 版本 ≥3 的 String（字体名候选）。`None` = 版本 <3 或前置停止。
+    /// 版本 ≥3 的 String（字体名称）。`None` = 版本 <3 或前置停止。
     pub font_name: Option<String>,
-    /// 版本 ≥3 的 int32 ×4（字体描述符，语义候选 Size/Bold/Italic/
-    /// Underline 顺序未定）。`None` = 版本 <3 或前置停止。
+    /// 版本 ≥3 的 int32 ×4（依次为 Bold、Italic、Underline、Strikethrough）。`None` = 版本 <3 或前置停止。
     pub font_ints_a: Option<[i32; 4]>,
-    /// 版本 ≥3 的 short ×2（语义候选 Weight/Charset 顺序未定）。
+    /// 版本 ≥3 的 short ×2（依次为 Weight、Charset）。
     /// `None` = 版本 <3 或前置停止。
     pub font_shorts: Option<[i16; 2]>,
-    /// 版本 ≥3 的 int32 ×2（语义候选 StrikeThrough/尺寸变体，未定）。
+    /// 版本 ≥3 的 int32 ×2（Size 的 CY 高、低 32 位）。
     /// `None` = 版本 <3 或前置停止。
     pub font_ints_b: Option<[i32; 2]>,
-    /// 版本 >3 的第二 IFontDisp 槽（Save 恒写同槽 this−0xbc 重写；接线轮起
+    /// 版本 >3 的第二 IFont 槽（Save 恒写同槽 this−0xbc 重写；接线轮起
     /// StdFont 分派，其余实现类 = 停止）。`None` = 版本 ≤3 或前置停止。
     pub font_slot_v5: Option<StdFontSlot10_1>,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<SymbolStop10_1>,
+}
+
+impl CharacterMarkerSymbolBody10_1 {
+    /// 按磁盘上的高、低字顺序还原 IFont::Size，单位为万分之一磅。
+    pub fn font_size_cy(&self) -> Option<i64> {
+        self.font_ints_b
+            .map(|[high, low]| (i64::from(high) << 32) | i64::from(low as u32))
+    }
 }
 
 /// 从对象头之后的位置读取 10.1 CharacterMarkerSymbol 对象体，失败时不推进
@@ -3681,20 +3717,20 @@ pub struct LineFillSymbolBody10_1 {
     pub key: u32,
     /// 体首 short 版本；>1 原生拒绝（版本常量 `DAT_6ec0b2e8`=1）。
     pub version: u16,
-    /// IColor 槽（→ this−0x6c，语义候选：线颜色）。`None` = 前置停止。
+    /// IColor 槽（→ this−0x6c，独立颜色槽，公开 Color 从线符号取值）。`None` = 前置停止。
     pub color: Option<ColorSlot10_1>,
-    /// ISymbol 槽 #1（Save 槽 this−0x74，语义候选：填充线符号）。
+    /// ISymbol 槽 #1（Save 槽 this−0x74，LineSymbol）。
     /// `None` = 前置停止。
     pub symbol_a: Option<SymbolSlotFull10_1>,
-    /// ISymbol 槽 #2（Save 槽 this−0x70，语义候选：轮廓符号）。
+    /// ISymbol 槽 #2（Save 槽 this−0x70，IFillSymbol::Outline）。
     /// `None` = 前置停止。
     pub symbol_b: Option<SymbolSlotFull10_1>,
-    /// double ×3（→ this−0x64/−0x5c/−0x54，语义候选角度/偏移/间隔）。
+    /// double ×3（→ this−0x64/−0x5c/−0x54，依次为 Angle、Offset、Separation）。
     /// `None` = 前置停止。
     pub doubles: Option<[f64; 3]>,
-    /// int32 → this−0xc4，语义未定。`None` = 前置停止。
+    /// int32 → this−0xc4，ROP2。`None` = 前置停止。
     pub int32_c4: Option<i32>,
-    /// int32 → this−0xbc，语义未定。`None` = 前置停止。
+    /// int32 → this−0xbc，MapLevel。`None` = 前置停止。
     pub int32_bc: Option<i32>,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<SymbolStop10_1>,
@@ -3738,7 +3774,7 @@ pub fn read_line_fill_symbol_body_10_1(
             &mut trial,
             max_bytes,
             &mut staged,
-            depth - 1,
+            depth.saturating_sub(1),
             DisplaySlotKind10_1::Symbol,
         )?;
         if field == 0 {
@@ -3780,27 +3816,27 @@ pub struct MarkerFillSymbolBody10_1 {
     pub key: u32,
     /// 体首 short 版本；>1 原生拒绝（版本常量 `DAT_6ec0b2e4`=1）。
     pub version: u16,
-    /// int32 → this−0x7c（样式候选），语义未定。
+    /// int32 → this−0x7c，Style。
     pub int32_7c: i32,
-    /// double → this−0x74，语义未定（X 间隔候选）。
+    /// double → this−0x74，XOffset。
     pub double_74: f64,
-    /// double → this−0x6c，语义未定（Y 间隔候选）。
+    /// double → this−0x6c，YOffset。
     pub double_6c: f64,
-    /// double → this−0x64，语义未定（X 偏移候选）。
+    /// double → this−0x64，XSeparation。
     pub double_64: f64,
-    /// double → this−0x5c，语义未定（Y 偏移候选）。
+    /// double → this−0x5c，YSeparation。
     pub double_5c: f64,
-    /// IColor 槽（Save 槽 this−0x34，语义候选：标记底色）。`None` = 前置停止。
+    /// IColor 槽（Save 槽 this−0x34，独立颜色槽，公开 Color 从标记符号取值）。`None` = 前置停止。
     pub color: Option<ColorSlot10_1>,
-    /// ISymbol 槽 #1（Save 槽 this−0x80，语义候选：标记符号）。`None` =
+    /// ISymbol 槽 #1（Save 槽 this−0x80，MarkerSymbol）。`None` =
     /// 前置停止。
     pub symbol_a: Option<SymbolSlotFull10_1>,
-    /// ISymbol 槽 #2（Save 槽 this−0x30，语义候选：轮廓符号）。`None` =
+    /// ISymbol 槽 #2（Save 槽 this−0x30，IFillSymbol::Outline）。`None` =
     /// 前置停止。
     pub symbol_b: Option<SymbolSlotFull10_1>,
-    /// int32 ×2（→ this−0xd4/−0xcc，语义未定）。`None` = 前置停止。
+    /// int32 ×2（→ this−0xd4/−0xcc，依次为 ROP2、MapLevel）。`None` = 前置停止。
     pub int32s: Option<[i32; 2]>,
-    /// double → this−0xc，语义未定（网格角候选）。`None` = 前置停止。
+    /// double → this−0xc，GridAngle。`None` = 前置停止。
     pub double_c: Option<f64>,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<SymbolStop10_1>,
@@ -3848,7 +3884,7 @@ pub fn read_marker_fill_symbol_body_10_1(
             &mut trial,
             max_bytes,
             &mut staged,
-            depth - 1,
+            depth.saturating_sub(1),
             DisplaySlotKind10_1::Symbol,
         )?;
         if field == 0 {
@@ -3896,17 +3932,17 @@ pub struct GradientFillSymbolBody10_1 {
     /// 映射为停止原因，字段保持 `None`——`None` 同时表示前置停止未达，
     /// 见 `stop`）。
     pub color_ramp: Option<ColorRampSlot10_1>,
-    /// IColor 槽（Save 槽 this−0x34，语义候选：渐变起色）。`None` = 前置停止。
+    /// IColor 槽（Save 槽 this−0x34，IFillSymbol::Color）。`None` = 前置停止。
     pub color: Option<ColorSlot10_1>,
-    /// ISymbol 槽（Save 槽 this−0x30，语义候选：轮廓符号）。`None` = 前置停止。
+    /// ISymbol 槽（Save 槽 this−0x30，IFillSymbol::Outline）。`None` = 前置停止。
     pub symbol: Option<SymbolSlotFull10_1>,
-    /// double → this−0x44（角度候选），语义未定。`None` = 前置停止。
+    /// double → this−0x44，GradientPercentage。`None` = 前置停止。
     pub double_44: Option<f64>,
-    /// int32 → this−0x2c（样式候选），语义未定。`None` = 前置停止。
+    /// int32 → this−0x2c，IntervalCount。`None` = 前置停止。
     pub int32_2c: Option<i32>,
-    /// double → this−0x24（间隔候选），语义未定。`None` = 前置停止。
+    /// double → this−0x24，GradientAngle。`None` = 前置停止。
     pub double_24: Option<f64>,
-    /// int32 ×3（→ this−0xc/−0x9c/−0x94，语义未定）。`None` = 前置停止。
+    /// int32 ×3（→ this−0xc/−0x9c/−0x94，依次为 Style、ROP2、MapLevel）。`None` = 前置停止。
     pub int32s: Option<[i32; 3]>,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<SymbolStop10_1>,
@@ -3937,8 +3973,13 @@ pub fn read_gradient_fill_symbol_body_10_1(
     )?;
     // ② IColorRamp 槽（G 轮接线：四类闭合色带整体消费；未知实现类回退并
     //    映射为停止原因，停止语义不变）。
-    let (ramp_slot, ramp_stop) =
-        read_color_ramp_slot_10_1(&mut trial, max_bytes, &mut staged, depth - 1, entry_offset)?;
+    let (ramp_slot, ramp_stop) = read_color_ramp_slot_10_1(
+        &mut trial,
+        max_bytes,
+        &mut staged,
+        depth.saturating_sub(1),
+        entry_offset,
+    )?;
     let color_ramp = ramp_slot;
     let mut stop = ramp_stop;
     let mut color = None;
@@ -3956,7 +3997,7 @@ pub fn read_gradient_fill_symbol_body_10_1(
             &mut trial,
             max_bytes,
             &mut staged,
-            depth - 1,
+            depth.saturating_sub(1),
             DisplaySlotKind10_1::Symbol,
         )?;
         symbol = Some(slot);
@@ -3995,38 +4036,53 @@ pub struct DotDensityFillSymbolBody10_1 {
     pub key: u32,
     /// 体首 short 版本；>1 原生拒绝（版本常量 `DAT_6ec0b2fc`=1）。
     pub version: u16,
-    /// byte → this−0x34（bool，语义未定）。
+    /// byte → this−0x34（FixedPlacement）。
     pub byte_34: u8,
-    /// double → this−0x3c，语义未定（点尺寸候选）。
+    /// double → this−0x3c，DotSpacing。
     pub double_3c: f64,
-    /// byte → this−0x28（bool，语义未定）。
+    /// byte → this−0x28（UseMasking 原始字节）。
     pub byte_28: u8,
-    /// IColor 槽 #1（Save 槽 this−0x54，语义候选：点色）。`None` = 前置停止。
+    /// IColor 槽 #1（Save 槽 this−0x54，独立颜色槽，尚未确认属性名）。`None` = 前置停止。
     pub color_a: Option<ColorSlot10_1>,
-    /// ISymbol 槽（Save 槽 this−0x58，语义候选：轮廓符号）。`None` = 前置停止。
+    /// ISymbol 槽（Save 槽 this−0x58，IFillSymbol::Outline）。`None` = 前置停止。
     pub symbol: Option<SymbolSlotFull10_1>,
-    /// int32 → this−0xd4，语义未定。
+    /// int32 → this−0xd4，ROP2。
     pub int32_d4: i32,
-    /// int32 → this−0xcc，语义未定。
+    /// int32 → this−0xcc，MapLevel。
     pub int32_cc: i32,
-    /// int32 → this−0x1c，语义未定。
+    /// int32 → this−0x1c，RandomSeed。
     pub int32_1c: i32,
-    /// double → this−0x44，语义未定。
+    /// double → this−0x44，DotSize。
     pub double_44: f64,
-    /// byte → this−0x27（bool，语义未定）。
+    /// byte → this−0x27（ExcludeMask 原始字节，仅在标量段已读取时有效）。
     pub byte_27: u8,
     /// 流内 int32 循环长度（点标记数候选；Save 侧标记倒序写出、顺序读取）。
     pub marker_count: u32,
     /// count × LoadObject（IMarkerSymbol `{E6BDAA7C-…}`，Save 槽 this−0x7c
     /// 数组）经 [`read_display_symbol_slot_10_1`] 分派。未知标记符号类 = 停止。
     pub markers: Vec<SymbolSlotFull10_1>,
-    /// count × int32（Save 槽 this−0x68 数组，点值候选）。`None` = 前置停止。
+    /// count × int32（Save 槽 this−0x68 数组，各标记的 DotCount）。`None` = 前置停止。
     pub values: Option<Vec<i32>>,
-    /// IColor 槽 #2（Save 槽 this−0x50，语义候选：轮廓/背景色）。
+    /// IColor 槽 #2（Save 槽 this−0x50，BackgroundColor）。
     /// `None` = 前置停止。
     pub color_b: Option<ColorSlot10_1>,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<SymbolStop10_1>,
+}
+
+impl DotDensityFillSymbolBody10_1 {
+    /// 是否启用点密度掩膜。
+    pub fn use_masking(&self) -> bool {
+        self.byte_28 != 0
+    }
+
+    /// 是否排除掩膜覆盖区域。前置对象槽停止时还未读取该标志。
+    pub fn exclude_mask(&self) -> Option<bool> {
+        self.symbol
+            .as_ref()
+            .filter(|symbol| slot_full_stop_10_1(symbol, DisplaySlotKind10_1::Symbol).is_none())
+            .map(|_| self.byte_27 != 0)
+    }
 }
 
 /// 从对象头之后的位置读取 10.1 DotDensityFillSymbol 对象体，失败时不推进
@@ -4073,7 +4129,7 @@ pub fn read_dot_density_fill_symbol_body_10_1(
             &mut trial,
             max_bytes,
             &mut staged,
-            depth - 1,
+            depth.saturating_sub(1),
             DisplaySlotKind10_1::Symbol,
         )?;
         symbol = Some(slot);
@@ -4093,7 +4149,7 @@ pub fn read_dot_density_fill_symbol_body_10_1(
                 &mut trial,
                 max_bytes,
                 &mut staged,
-                depth - 1,
+                depth.saturating_sub(1),
                 DisplaySlotKind10_1::MarkerSymbol,
             )?;
             markers.push(slot);

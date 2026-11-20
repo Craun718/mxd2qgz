@@ -24,10 +24,10 @@
 //! 3. 1 字节分支标志：==0 → 3 个 double（经 `(this−0x20)` 接口虚表 +0x34
 //!    装载：HsvColor `0x6eb36d30`、其余三类共享 `0x6eb34170`→`0x6eb35130`；
 //!    两实现均做范围校验（第一值 ∈ [−0.0001, 100.0001]、后两值 ∈
-//!    [−120.0001, 120.0001]，越界返回 `0x80070057`），语义候选 HSV/HLS 分量）；
+//!    [−120.0001, 120.0001]，越界返回 `0x80070057`），对应 SetCIELAB）；
 //!    !=0 → 4 字节（虚表 +0x1c：rgb 直拆 `0x6eb3d690`、`RgbToHsv`
 //!    `0x6eb36c10`、`RgbToGray` `0x6eb35d30`、`RgbToHls` `0x6eb36470`——
-//!    流内 4 字节语义候选为 packed RGB）；
+//!    流内 4 字节为 IColor.RGB）；
 //! 4. 1 字节 → `this−8`；
 //! 5. 1 字节 → `this−7`，装载时按 `0xff − 流内字节` 取补（读取器保留流内
 //!    位模式）。
@@ -71,13 +71,11 @@
 //! 读取对象头并比对类常量，从对象头之后的位置调用各读取器；本模块不重复
 //! 读取对象头。全部读取在 trial 游标与 trial 登记表副本上进行，完整成功才
 //! 一并提交；任何错误既不推进游标、也不修改登记表。版本 short 按原生有符号
-//! 比较设上限，负值位模式一并拒绝（较原生更严，与既有读取器一致）。
+//! 比较设上限，保留原始版本位模式。
 //! `max_bytes` 约束 CmykColor 标志分支内 String 的声明长度。
 //!
-//! 未解决问题（详见研究记录开放项）：共享核心两个版本 short 的独立语义、
-//! 3 个 double 的确切颜色分量归属、4 字节分支的 packed RGB 位序（含 bit25
-//! 可见性标志候选）、`this−8`/`this−7` 两字节语义、CmykColor 版本 ≥2 的
-//! byte/String/short 字段语义，均为候选；全部结论未经目标软件运行验证。
+//! 字段与 IColor、IPostScriptColor 的对位见 docs/arcmap-10.1-display-tails.md。
+//! 目标软件的颜色显示效果尚未人工验证。
 
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -89,12 +87,6 @@ const MAX_CORE_COLOR_VERSION: i16 = 1;
 
 /// CmykColor 实体版本上限：`4 < ver` 拒绝；Save 恒写 4（`DAT_6ec0b340`）。
 const MAX_CMYK_VERSION: i16 = 4;
-
-/// RgbColor 两个版本 short 的上限：各 `1 < ver` 拒绝；样本 1/1。
-///
-/// 与共享核心上限同值：RgbColor 实体与 Color 核心的版本 short 各自有符号
-/// `1 < ver` 拒绝（第七轮证据，DisplayCore.dll `0x6eb3d8b0`/`0x6eb35310`）。
-const MAX_RGB_COLOR_VERSION: i16 = 1;
 
 /// RgbColor 类标识（CLSID）的 16 字节内存序。
 ///
@@ -144,8 +136,7 @@ pub const HLS_COLOR_CLASS_ID: [u8; 16] = [
     0x93, 0xc4, 0xe9, 0x7e, 0x23, 0xd1, 0xd0, 0x11, 0x83, 0x83, 0x08, 0x00, 0x09, 0xb9, 0x96, 0xcc,
 ];
 
-/// 读取 int16 版本并按原生有符号比较校验上限；负值位模式一并拒绝
-/// （负值版本无业务意义，较原生更严，与 feature_layer_tail 一致）。
+/// 按原生有符号 short 判断上限，返回流内原始位模式。
 fn read_version_short(
     trial: &mut Reader<'_>,
     max: i16,
@@ -154,12 +145,12 @@ fn read_version_short(
 ) -> io::Result<u16> {
     let version = trial.read_u16_le()?;
     let signed = version as i16;
-    if signed > max || signed < 0 {
+    if signed > max {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
             format!(
                 "{what} 对象体 offset 0x{entry_offset:x}: 版本 {version} 超出 \
-                 {what}::Load 接受范围（有符号比较 >{max} 拒绝；负值位模式一并拒绝）"
+                 {what}::Load 接受范围（有符号比较 >{max} 拒绝）"
             ),
         ));
     }
@@ -169,7 +160,7 @@ fn read_version_short(
 /// RgbColor（DisplayCore.dll `0x6eb3d8b0` + `0x6eb35310`）体的已确认字段。
 ///
 /// 体长取决于分支标志：flag==0 为 31 字节（short ×2 + byte + double ×3 +
-/// byte ×2），flag!=0 为 13 字节（short ×2 + byte + int32 + byte ×2）。
+/// byte ×2），flag!=0 为 11 字节（short ×2 + byte + int32 + byte ×2）。
 #[derive(Debug, Clone, PartialEq)]
 pub struct RgbColorBody10_1 {
     /// 对象头键（样本 37/38/154）。
@@ -181,17 +172,17 @@ pub struct RgbColorBody10_1 {
     /// Color 核心 `0x6eb35310` 的第二个 short 版本（样本 1）；>1 原生拒绝。
     pub version_inner: u16,
     /// 1 字节分支标志（样本 0）：==0 走 3 个 double 分支，!=0 走 4 字节
-    /// CMYK 分支（原生经 Color 虚表 +0x1c 装载）。
+    /// RGB 分支（原生经 Color 虚表 +0x1c 装载）。
     pub branch_flag: u8,
     /// flag==0 分支的 3 个 double（原生经 Color 虚表 +0x34 装载；样本
-    /// 37 ≈ 96.68/-20.42/87.37，语义未定，原样保留）。
+    /// 37 ≈ 96.68/-20.42/87.37，依次为 L*、a*、b*）。
     pub doubles: Option<[f64; 3]>,
-    /// flag!=0 分支的 4 字节 CMYK 位模式（样本无实例，分支已按反编译闭合）。
+    /// flag!=0 分支的 IColor.RGB 的 4 字节位模式，保留历史字段名。
     pub cmyk_raw: Option<u32>,
-    /// 倒数第 2 字节（→ 内存 this-8；样本 0），语义未定。
+    /// UseWindowsDithering 的原始字节。
     pub trailing_byte: u8,
     /// 末字节的原样位模式（→ 内存 this-7，原生按 `0xff - 流内字节` 取补
-    /// 装载；样本 0，即内存值 0xff）。语义未定（透明度候选）。
+    /// 装载；样本 0，即内存值 0xff）。对应 IColor.Transparency。
     pub complement_byte_raw: u8,
 }
 
@@ -206,52 +197,17 @@ pub fn read_rgb_color_body_10_1(
     table: &mut RefTable10_1,
     key: u32,
 ) -> io::Result<RgbColorBody10_1> {
-    let _ = table; // RgbColor 无嵌套对象，登记表仅在签名上保持一致
-    let mut trial = reader.clone();
-    let entry_offset = trial.position();
-    let invalid = |reason: String| {
-        io::Error::new(
-            ErrorKind::InvalidData,
-            format!("RgbColor 对象体 offset 0x{entry_offset:x}: {reason}"),
-        )
-    };
-
-    // ① 实体版本 short（`1 < ver` 拒绝）。
-    let version_outer =
-        read_version_short(&mut trial, MAX_RGB_COLOR_VERSION, "RgbColor", entry_offset)
-            .map_err(|e| invalid(e.to_string()))?;
-    // ② Color 核心版本 short（同上限）。
-    let version_inner =
-        read_version_short(&mut trial, MAX_RGB_COLOR_VERSION, "RgbColor", entry_offset)
-            .map_err(|e| invalid(e.to_string()))?;
-    // ③ 1 字节分支标志。
-    let branch_flag = trial.read_bytes(1)?[0];
-    // ④ 分支：==0 → 3 个 double；!=0 → 4 字节 CMYK。
-    let (doubles, cmyk_raw) = if branch_flag == 0 {
-        let mut values = [0_f64; 3];
-        for slot in values.iter_mut() {
-            *slot = trial.read_f64_le()?;
-        }
-        (Some(values), None)
-    } else {
-        (None, Some(trial.read_u32_le()?))
-    };
-    // ⑤⑥ 尾随两个 1 字节字段（后者原生按补码装载，读取器保留流内位模式）。
-    let trailing_byte = trial.read_bytes(1)?[0];
-    let complement_byte_raw = trial.read_bytes(1)?[0];
-
-    let result = RgbColorBody10_1 {
+    let core = read_core_color_body_10_1(reader, table, key, "RgbColor")?;
+    Ok(RgbColorBody10_1 {
         key,
-        version_outer,
-        version_inner,
-        branch_flag,
-        doubles,
-        cmyk_raw,
-        trailing_byte,
-        complement_byte_raw,
-    };
-    *reader = trial;
-    Ok(result)
+        version_outer: core.version_outer,
+        version_inner: core.version_inner,
+        branch_flag: core.branch_flag,
+        doubles: core.doubles,
+        cmyk_raw: core.packed_rgb_raw,
+        trailing_byte: core.trailing_byte,
+        complement_byte_raw: core.complement_byte_raw,
+    })
 }
 
 /// HsvColor/GrayColor/HlsColor（及同构 RgbColor）共享 Color 核心的已确认
@@ -269,16 +225,16 @@ pub struct CoreColorBody10_1 {
     /// 1 字节分支标志：==0 走 3 个 double 分支（经虚表 +0x34 装载），
     /// !=0 走 4 字节分支（经虚表 +0x1c 装载）。
     pub branch_flag: u8,
-    /// flag==0 分支的 3 个 double（语义候选 HSV/HLS 分量；原生按范围
+    /// flag==0 分支的 3 个 double（CIELAB 分量；原生按范围
     /// [−0.0001, 100.0001]/[−120.0001, 120.0001] 校验，越界 `0x80070057`）。
     pub doubles: Option<[f64; 3]>,
     /// flag!=0 分支的 4 字节位模式（各色类经 `RgbToHsv`/`RgbToGray`/
-    /// `RgbToHls` 解释，语义候选 packed RGB）。样本无实例，分支按反编译闭合。
+    /// `RgbToHls` 解释，packed RGB）。样本无实例，分支按反编译闭合。
     pub packed_rgb_raw: Option<u32>,
-    /// 倒数第 2 字节（→ 内存 this−8），语义未定。
+    /// UseWindowsDithering 的原始字节。
     pub trailing_byte: u8,
     /// 末字节的原样位模式（→ 内存 this−7，装载按 `0xff − 流内字节` 取补）。
-    /// 语义未定。
+    /// 相应的 IColor.Transparency 等于 255 减去此值。
     pub complement_byte_raw: u8,
 }
 
@@ -350,14 +306,14 @@ pub struct CmykColorBody10_1 {
     pub key: u32,
     /// 实体版本 short；>4 原生拒绝（Save 恒写 4）。
     pub version: u16,
-    /// 版本 ≥2 的 1 字节（→ this−0x10），语义未定。`None` = 版本 ≤1。
+    /// 版本 ≥2 的 IPostScriptColor.Overprint 原始字节。`None` = 版本 ≤1。
     pub byte_10: Option<u8>,
-    /// 版本 ≥2 的 1 字节标志（→ this−0xf）：非零时其后为 String + short。
+    /// 版本 ≥2 的 SpotColor 标志（→ this−0xf）：非零时其后为 String + short。
     /// `None` = 版本 ≤1。
     pub string_flag: Option<u8>,
-    /// string_flag 非零时的 String（→ this−0xc），语义未定。
+    /// string_flag 非零时的 SpotDescription 字符串。
     pub string: Option<String>,
-    /// string_flag 非零时的 short（→ this−0x8），语义未定。
+    /// string_flag 非零时的 SpotPercentage 原始 short。
     pub string_short: Option<i16>,
     /// 版本 ≥3 的 4 字节 CMYK 位模式（→ this−0x14）。`None` = 版本 ≤2。
     pub cmyk_raw: Option<u32>,
@@ -454,6 +410,20 @@ pub enum ColorBody10_1 {
     Cmyk(Box<CmykColorBody10_1>),
 }
 
+impl ColorBody10_1 {
+    /// IColor.Transparency 的原生属性值。CMYK v3 没有写入该字段。
+    pub fn transparency(&self) -> Option<u8> {
+        let wire = match self {
+            Self::Rgb(body) => Some(body.complement_byte_raw),
+            Self::Core { body, .. } => Some(body.complement_byte_raw),
+            Self::Cmyk(body) => body
+                .complement_byte_raw
+                .or_else(|| body.core.as_ref().map(|core| core.complement_byte_raw)),
+        };
+        wire.map(|byte| 255 - byte)
+    }
+}
+
 /// IColor 槽位条目的分类结果（五类颜色全部闭合，未知类回退后为停止）。
 #[derive(Debug, Clone, PartialEq)]
 pub enum ColorSlot10_1 {
@@ -482,7 +452,6 @@ pub fn read_color_slot_10_1(
     max_bytes: usize,
     table: &mut RefTable10_1,
 ) -> io::Result<ColorSlot10_1> {
-    let origin = reader.clone();
     let mut trial = reader.clone();
     let mut staged = table.clone();
     let entry = read_object_entry_10_1(&mut trial, &mut staged)?;
@@ -492,52 +461,9 @@ pub fn read_color_slot_10_1(
             ColorSlot10_1::BackReference { class_id, key }
         }
         ObjectEntry10_1::NewObject { class_id, key } => {
-            let body = if class_id == RGB_COLOR_CLASS_ID {
-                ColorBody10_1::Rgb(Box::new(read_rgb_color_body_10_1(
-                    &mut trial,
-                    &mut staged,
-                    key,
-                )?))
-            } else if class_id == HSV_COLOR_CLASS_ID {
-                ColorBody10_1::Core {
-                    class_id,
-                    body: Box::new(read_core_color_body_10_1(
-                        &mut trial,
-                        &mut staged,
-                        key,
-                        "HsvColor",
-                    )?),
-                }
-            } else if class_id == GRAY_COLOR_CLASS_ID {
-                ColorBody10_1::Core {
-                    class_id,
-                    body: Box::new(read_core_color_body_10_1(
-                        &mut trial,
-                        &mut staged,
-                        key,
-                        "GrayColor",
-                    )?),
-                }
-            } else if class_id == HLS_COLOR_CLASS_ID {
-                ColorBody10_1::Core {
-                    class_id,
-                    body: Box::new(read_core_color_body_10_1(
-                        &mut trial,
-                        &mut staged,
-                        key,
-                        "HlsColor",
-                    )?),
-                }
-            } else if class_id == CMYK_COLOR_CLASS_ID {
-                ColorBody10_1::Cmyk(Box::new(read_cmyk_color_body_10_1(
-                    &mut trial,
-                    max_bytes,
-                    &mut staged,
-                    key,
-                )?))
-            } else {
-                // 未知颜色类：回退到槽位起点，不保留该键。
-                *reader = origin;
+            let Some(body) =
+                read_color_body_for_class_10_1(class_id, &mut trial, max_bytes, &mut staged, key)?
+            else {
                 return Ok(ColorSlot10_1::Unsupported { class_id, key });
             };
             ColorSlot10_1::Color { class_id, body }
@@ -546,4 +472,38 @@ pub fn read_color_slot_10_1(
     *reader = trial;
     *table = staged;
     Ok(result)
+}
+
+pub(crate) fn read_color_body_for_class_10_1(
+    class_id: [u8; 16],
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<Option<ColorBody10_1>> {
+    let body = if class_id == RGB_COLOR_CLASS_ID {
+        ColorBody10_1::Rgb(Box::new(read_rgb_color_body_10_1(reader, table, key)?))
+    } else if class_id == HSV_COLOR_CLASS_ID {
+        ColorBody10_1::Core {
+            class_id,
+            body: Box::new(read_core_color_body_10_1(reader, table, key, "HsvColor")?),
+        }
+    } else if class_id == GRAY_COLOR_CLASS_ID {
+        ColorBody10_1::Core {
+            class_id,
+            body: Box::new(read_core_color_body_10_1(reader, table, key, "GrayColor")?),
+        }
+    } else if class_id == HLS_COLOR_CLASS_ID {
+        ColorBody10_1::Core {
+            class_id,
+            body: Box::new(read_core_color_body_10_1(reader, table, key, "HlsColor")?),
+        }
+    } else if class_id == CMYK_COLOR_CLASS_ID {
+        ColorBody10_1::Cmyk(Box::new(read_cmyk_color_body_10_1(
+            reader, max_bytes, table, key,
+        )?))
+    } else {
+        return Ok(None);
+    };
+    Ok(Some(body))
 }

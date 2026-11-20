@@ -191,16 +191,17 @@ pub struct RandomColorRampBody10_1 {
     pub name: String,
     /// 流内请求 Size；Load 读入局部变量后将对应的对象槽清零，原值在此保留。
     pub raw_int32: i32,
-    /// 2 字节 short（整体与零比较后写入 bool this−0x28；原样保留）。
+    /// UseSeed 的原始 short，加载时按非零解释。
     pub bool_short: u16,
-    /// int32 → this−0x2c。
+    /// Seed 的原始 int32。
     pub seed_int32: i32,
-    /// short ×6 → this−0x26(=−0x24)/−0x22/−0x20/−0x1e/−0x1c/−0x1a。
+    /// 六个有符号 short 的原值，线序为 MinValue、MaxValue、MinSaturation、
+    /// MaxSaturation、StartHue、EndHue。公开 getter 将它们符号扩展为 int32。
     pub shorts: [u16; 6],
 }
 
 impl RandomColorRampBody10_1 {
-    /// 原生 Load 对该标志作整字非零判断；标志的业务含义尚未确定。
+    /// 原生 Load 对 UseSeed 作整字非零判断。
     pub fn loaded_flag(&self) -> bool {
         self.bool_short != 0
     }
@@ -603,15 +604,17 @@ pub(crate) fn read_color_ramp_body_for_class_10_1(
     })
 }
 
-/// 归约 MultiPart 子梯度槽的嵌套停止为外层嵌套未完整（与装饰槽分派同型）。
+/// 将子梯度或颜色槽的停止归约为外层对象体未完整。
 pub(crate) fn nested_ramp_stop(slot: &ColorRampSlot10_1) -> Option<SymbolStop10_1> {
-    match slot {
-        ColorRampSlot10_1::MultiPart(body) => body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
-            class_id: MULTI_PART_COLOR_RAMP_CLASS_ID,
-            key: body.key,
-        }),
-        _ => None,
-    }
+    let (stop, class_id, key) = match slot {
+        ColorRampSlot10_1::MultiPart(body) => (body.stop, MULTI_PART_COLOR_RAMP_CLASS_ID, body.key),
+        ColorRampSlot10_1::Preset(body) => (body.stop, PRESET_COLOR_RAMP_CLASS_ID, body.key),
+        ColorRampSlot10_1::Algorithmic(body) => {
+            (body.stop, ALGORITHMIC_COLOR_RAMP_CLASS_ID, body.key)
+        }
+        _ => return None,
+    };
+    stop.map(|_| SymbolStop10_1::NestedIncomplete { class_id, key })
 }
 
 #[cfg(test)]

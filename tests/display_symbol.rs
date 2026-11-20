@@ -230,9 +230,9 @@ fn simple_fill_symbol_nests_line_symbol_outline() {
     bytes.extend(&outline);
     push_entry(&mut bytes, &RGB_COLOR_CLASS_ID, 42); // 填充色
     bytes.extend(&rgb_color_body());
-    bytes.extend(0_i32.to_le_bytes());
-    bytes.extend(0_i32.to_le_bytes());
-    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(13_i32.to_le_bytes()); // ROP2
+    bytes.extend(42_i32.to_le_bytes()); // MapLevel
+    bytes.extend(3_i32.to_le_bytes()); // Style
 
     let mut reader = Reader::new(&bytes);
     let result = read_simple_fill_symbol_body_10_1(
@@ -255,7 +255,10 @@ fn simple_fill_symbol_nests_line_symbol_outline() {
         Some(ColorSlot10_1::Color { class_id, .. }) => assert_eq!(*class_id, RGB_COLOR_CLASS_ID),
         other => panic!("期望填充色体，得到 {other:?}"),
     }
-    assert_eq!(result.style, Some(0));
+    assert_eq!(result.int32_7c, Some(13));
+    assert_eq!(result.int32_74, Some(42));
+    assert_eq!(result.style, Some(3));
+    assert_eq!(result.int32_c, result.style);
     assert_eq!(result.stop, None);
     assert_eq!(reader.position(), bytes.len());
     // 嵌套键已登记（21 = 轮廓符号，41/42 = 颜色）；外层对象键 20 由调用者
@@ -336,7 +339,7 @@ fn marker_line_symbol_versions_and_unclosed_slots() {
     assert_eq!(result.double_20d4, 10.0);
     assert_eq!(
         result.marker_symbol,
-        mxd2qgz::objects::display_symbol::DisplaySymbolSlot10_1::Null
+        mxd2qgz::objects::display_symbol::SymbolSlotFull10_1::Null
     );
     assert_eq!(
         result.template,
@@ -452,7 +455,7 @@ fn marker_line_symbol_nests_marker_symbol() {
     )
     .unwrap();
     match &result.marker_symbol {
-        mxd2qgz::objects::display_symbol::DisplaySymbolSlot10_1::SimpleMarkerSymbol(body) => {
+        mxd2qgz::objects::display_symbol::SymbolSlotFull10_1::SimpleMarkerSymbol(body) => {
             assert_eq!(body.key, 36);
             assert_eq!(body.stop, None);
         }
@@ -535,6 +538,36 @@ fn cartographic_line_symbol_full_body_and_truncation() {
 }
 
 #[test]
+fn hash_line_reads_multilayer_line_and_respects_nested_depth() {
+    use mxd2qgz::objects::display_symbol::MULTI_LAYER_LINE_SYMBOL_CLASS_ID;
+    let mut bytes = 1u16.to_le_bytes().to_vec();
+    bytes.extend([0; 33]); // 角度、端头、连接、宽度、翻转和偏移
+    push_entry(&mut bytes, &MULTI_LAYER_LINE_SYMBOL_CLASS_ID, 22);
+    bytes.extend(2u16.to_le_bytes());
+    bytes.extend([0; 12]); // ROP2、MapLevel、零层
+    for _ in 0..3 {
+        push_null(&mut bytes);
+    }
+    bytes.extend([0; 25]); // 两个整数、一个标志和两个 double
+    let mut table = RefTable10_1::new();
+    let mut limited = Reader::new(&bytes);
+    assert!(read_hash_line_symbol_body_10_1(&mut limited, 1024, &mut table, 1, 0).is_err());
+    assert_eq!(limited.position(), 0);
+    assert!(table.is_empty());
+    let mut reader = Reader::new(&bytes);
+    let body =
+        read_hash_line_symbol_body_10_1(&mut reader, 1024, &mut table, 1, MAX_SYMBOL_NESTING_DEPTH)
+            .unwrap();
+    assert!(matches!(
+        body.symbol,
+        Some(SymbolSlotFull10_1::MultiLayerLineSymbol(_))
+    ));
+    assert!(body.stop.is_none());
+    assert_eq!(reader.remaining(), 0);
+    assert!(table.contains(22));
+}
+
+#[test]
 fn hash_line_symbol_full_body_and_nested_symbol() {
     // ISymbol 槽为 SimpleLineSymbol 新对象（键 22），颜色槽空标记，
     // 模板/装饰槽空标记：完整消费。
@@ -572,7 +605,7 @@ fn hash_line_symbol_full_body_and_nested_symbol() {
     )
     .unwrap();
     match &result.symbol {
-        Some(mxd2qgz::objects::display_symbol::DisplaySymbolSlot10_1::SimpleLineSymbol(body)) => {
+        Some(mxd2qgz::objects::display_symbol::SymbolSlotFull10_1::SimpleLineSymbol(body)) => {
             assert_eq!(body.key, 22);
             assert_eq!(body.width, Some(5.0));
         }
@@ -723,7 +756,7 @@ fn sms_stop_propagates_as_nested_incomplete() {
     )
     .unwrap();
     match &result.marker_symbol {
-        mxd2qgz::objects::display_symbol::DisplaySymbolSlot10_1::SimpleMarkerSymbol(body) => {
+        mxd2qgz::objects::display_symbol::SymbolSlotFull10_1::SimpleMarkerSymbol(body) => {
             // 停止原因携带未知颜色条的类标识与键（该条目键 920）。
             assert!(body.stop.is_some(), "SMS 应在其颜色槽停止");
             match body.stop {
@@ -886,15 +919,16 @@ fn line_decoration_nests_element_and_stops_on_unknown() {
     bytes.extend(&element);
     let mut reader = Reader::new(&bytes);
     let mut table = RefTable10_1::new();
-    let result =
-        read_line_decoration_body_10_1(&mut reader, 1024, &mut table, 80, MAX_SYMBOL_NESTING_DEPTH)
-            .unwrap();
+    let result = read_line_decoration_body_10_1(&mut reader, 1024, &mut table, 80, 1).unwrap();
     assert_eq!(result.element_count, 1);
     assert_eq!(result.elements.len(), 1);
     match &result.elements[0] {
         mxd2qgz::objects::display_symbol::LineDecorationElement10_1::Element(body) => {
             assert_eq!(body.key, 81);
-            assert_eq!(body.short_14, 0);
+            assert!(body.rotate());
+            assert!(!body.flip_first());
+            assert!(body.flip_all());
+            assert!(!body.position_as_ratio());
             assert_eq!(body.positions.as_deref(), Some(&[0.25, 0.75][..]));
             assert_eq!(body.stop, None);
         }
@@ -903,6 +937,21 @@ fn line_decoration_nests_element_and_stops_on_unknown() {
     assert_eq!(result.stop, None);
     assert_eq!(reader.position(), bytes.len());
     assert!(table.contains(81));
+
+    // 将元素内的空槽换成新标记，此时需要第二层限额。
+    let mut nested = bytes[..2 + 4 + 20 + 7].to_vec();
+    push_entry(&mut nested, &SIMPLE_MARKER_SYMBOL_CLASS_ID, 82);
+    nested.extend(sms_body_v1());
+    push_count(&mut nested, 0);
+    let mut reader = Reader::new(&nested);
+    let mut table = RefTable10_1::new();
+    let err = read_line_decoration_body_10_1(&mut reader, 1024, &mut table, 80, 1).unwrap_err();
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    assert_eq!(reader.position(), 0);
+    assert!(table.is_empty());
+    read_line_decoration_body_10_1(&mut reader, 1024, &mut table, 80, 2).unwrap();
+    assert_eq!(reader.position(), nested.len());
+    assert!(table.contains(81) && table.contains(82));
 
     // 元素为未知 ILineDecorationElement 实现类：停止于该条目起点，键不保留。
     let unknown = [0xa7_u8; 16];
@@ -1250,6 +1299,7 @@ fn character_marker_symbol_version_gates() {
     assert_eq!(result.font_ints_a, Some([16, 700, 0, 0]));
     assert_eq!(result.font_shorts, Some([0, 204]));
     assert_eq!(result.font_ints_b, Some([0, 1]));
+    assert_eq!(result.font_size_cy(), Some(1));
     assert_eq!(result.font_slot_v5, Some(StdFontSlot10_1::Null));
     assert_eq!(result.stop, None);
     assert_eq!(reader.position(), bytes.len());
@@ -1800,6 +1850,12 @@ fn dot_density_fill_symbol_markers_values_and_color() {
 
     let mut reader = Reader::new(&bytes);
     let mut table = RefTable10_1::new();
+    // 限额为零仍可越过空轮廓槽，遇到首个新标记时整笔回滚。
+    let error =
+        read_dot_density_fill_symbol_body_10_1(&mut reader, 1024, &mut table, 120, 0).unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    assert_eq!(reader.position(), 0);
+    assert!(table.is_empty());
     let result = read_dot_density_fill_symbol_body_10_1(
         &mut reader,
         1024,
@@ -1808,6 +1864,8 @@ fn dot_density_fill_symbol_markers_values_and_color() {
         MAX_SYMBOL_NESTING_DEPTH,
     )
     .unwrap();
+    assert!(!result.use_masking());
+    assert_eq!(result.exclude_mask(), Some(true));
     assert_eq!(result.marker_count, 2);
     assert_eq!(result.markers.len(), 2);
     assert_eq!(result.values.as_deref(), Some(&[2, 0][..]));
