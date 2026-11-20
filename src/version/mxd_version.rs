@@ -1,7 +1,7 @@
 //! OLE `/Version` 数据流的 MXD 版本识别候选。
 //!
 //! 先按 ArcMap 10.1 严格头部规则解析，再对照已知文本与 short 集合给出候选，
-//! 并按静态闭合的「文本↔保存索引↔short」映射给出候选保存索引；10.1 规则
+//! 并按「文本↔保存索引↔short」候选表给出候选保存索引；10.1 规则
 //! 失败时尝试显式 10.8 头部。所有结果都是候选，未经 ArcMap 或 QGIS 中
 //! 的软件验证，不能据此声明文件的实际保存版本或转换能力。
 
@@ -21,9 +21,9 @@ fn capture_unknown_tail(version_stream: &[u8], start: usize) -> (Vec<u8>, bool) 
     (tail[..capture_len].to_vec(), tail.len() > capture_len)
 }
 
-/// 静态闭合的「文本 ↔ 保存索引（= `esriArcGISVersion` 枚举值）↔ short」候选表。
-/// 9.3/16 由 10.1 安装介质模板字节与 short 静态映射共同支持；它不证明
-/// 10.1 英文资源 ID `0x11a` 的异常候选或运行时写入路径。未经目标软件验证。
+/// 「文本 ↔ 保存索引（= `esriArcGISVersion` 枚举值）↔ short」候选表。
+/// 9.3/16 来自 10.1 安装介质模板。10.1 原生保存片段使用英文资源时，
+/// 索引 3 写出打印错误文本及 short 16，识别时保留该文本并返回未知候选。
 const CANDIDATE_TABLE: [(&str, usize, i16); 6] = [
     ("8.3", 0, 10),
     ("9.0", 1, 13),
@@ -33,19 +33,18 @@ const CANDIDATE_TABLE: [(&str, usize, i16); 6] = [
     ("10.1", 5, 19),
 ];
 
-/// 已知版本文本候选；9.3 来自安装介质模板，其余来自 10.1 英文资源静态分析。
+/// 已知版本文本候选；9.3 来自安装介质模板，其余来自 10.1 英文资源。
 /// 未知文本不得映射为 9.3。
 pub const KNOWN_TEXTS: [&str; 6] = ["8.3", "9.0", "9.2", "9.3", "10.0", "10.1"];
 
 /// ArcMap 10.1 保存入口静态表的六个有符号 short；下标即 `esriArcGISVersion`
-/// 枚举值（83/90/92/93/10/101，Current=101=5）。静态闭合见
-/// docs/arcmap-10.1-native-baseline.md「10.1 磁盘版本映射、属性来源与回填取值
-/// （2026-11-14）」；对应关系未经运行时或目标软件验证。
+/// 枚举值（83/90/92/93/10/101，Current=101=5）。原生片段运行结果见
+/// docs/arcmap-10.1-native-baseline.md「10.1 Version 保存片段运行验证」。
 pub const KNOWN_SHORTS: [i16; 6] = [10, 13, 14, 16, 18, 19];
 
 /// 按「文本与 short 同时命中 [`CANDIDATE_TABLE`] 中同一三元组」给出候选保存
 /// 索引（即 `esriArcGISVersion` 枚举值）。文本或 short 任一未知、或组合不属
-/// 同一索引时返回 `None`。9.3/16 由介质样本和静态 short 表共同支持；
+/// 同一索引时返回 `None`。9.3/16 由介质样本和原生 short 表共同支持；
 /// 这是候选，不能据此声明文件的实际保存版本。
 pub fn candidate_save_index(text: &str, compatibility_short: i16) -> Option<usize> {
     CANDIDATE_TABLE
@@ -78,7 +77,7 @@ impl MxdVersionBranch {
     }
 }
 
-const KNOWN_CANDIDATE_NOTE: &str = "文本与 short 命中静态候选映射所用集合（9.3 文本另有介质样本支持；精确配对结果见候选索引）；映射未经运行时确认，识别结果未在目标软件中验证";
+const KNOWN_CANDIDATE_NOTE: &str = "文本与 short 命中已知候选集合（9.3 文本另有介质样本支持；精确配对结果见候选索引）；六档 short 已通过 10.1 原生保存片段验证，识别结果未在目标软件中验证";
 const UNRECOGNIZED_NOTE: &str = "未识别文本/short；原生接受任意文本，未知文本不映射为 9.3";
 const LAYOUT_10_8_NOTE: &str =
     "仅 10.8 布局候选；不满足 ArcMap 10.1 头部规则，计数用于对象读表容量，适用版本范围未验证";
@@ -90,12 +89,12 @@ pub struct MxdVersionReport {
     pub branch: MxdVersionBranch,
     /// 候选版本文本；原生接受任意文本，不证明文件的实际保存版本。
     pub text: String,
-    /// 有符号 short 的完整位模式；到具体版本的映射未运行时确认。
+    /// 有符号 short 的完整位模式。
     pub compatibility_short: i16,
     /// short 大于 11 时的对象流表计数，按读侧的有符号位模式保留。
     /// 这是容量预估信息，不能解释为图层数。
     pub object_count: Option<i32>,
-    /// 静态闭合映射下的候选保存索引（= `esriArcGISVersion` 枚举值，见
+    /// 按文本和 short 配对得到的候选保存索引（= `esriArcGISVersion` 枚举值，见
     /// [`candidate_save_index`]）；10.8 布局分支恒为 `None`。
     /// 不能据此声明文件的实际保存版本。
     pub candidate_save_index: Option<usize>,
@@ -226,11 +225,21 @@ mod tests {
 
     #[test]
     fn unknown_text_is_never_mapped_to_9_3() {
-        // 索引 3 的英文回退文本（0x11a 打印错误文本）+ short 16 不得映射为 9.3。
-        let error_text = "An unexpected error occured while printing the document.";
-        let report = identify_version(&header_bytes(error_text, 16, Some(7))).unwrap();
-        assert_eq!(report.branch, MxdVersionBranch::ArcMap10_1Unrecognized);
-        assert_eq!(report.candidate_save_index, None);
+        // 0x11a 的英文回退文本与 10.8 简中资源文本都按未知文本保留。
+        for text in [
+            "An unexpected error occured while printing the document.",
+            "打印文档时发生异常错误。",
+        ] {
+            let mut bytes = header_bytes(text, 16, Some(7));
+            bytes.push(0xab);
+            let report = identify_version(&bytes).unwrap();
+            assert_eq!(report.branch, MxdVersionBranch::ArcMap10_1Unrecognized);
+            assert_eq!(report.text, text);
+            assert_eq!(report.compatibility_short, 16);
+            assert_eq!(report.object_count, Some(7));
+            assert_eq!(report.unknown_tail, [0xab]);
+            assert_eq!(report.candidate_save_index, None);
+        }
     }
 
     #[test]

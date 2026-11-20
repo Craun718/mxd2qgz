@@ -7,7 +7,8 @@ use crate::stream::native_string::{read_string_10_1, read_string_10_8};
 use crate::stream::reader::Reader;
 use std::io;
 
-/// 10.1 局部读取分支的输出值，不代表完整版本映射。
+/// PageLayout 10.1 的 short 分类值，同 ArcMap 10.1 的 short 回退分支。
+/// ArcMap 打开 `Mx Document` 成功时另查 Build Number。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompatibilityBranch10_1 {
     Three,

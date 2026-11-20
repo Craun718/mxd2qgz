@@ -56,6 +56,24 @@ pub fn read_bstr_string_10_1(reader: &mut Reader<'_>, max_bytes: usize) -> io::R
     Ok(result)
 }
 
+/// ATL 字节 BSTR：长度含两个终止字节，零长度前缀表示空指针。
+pub(crate) fn read_atl_bstr_10_1(r: &mut Reader<'_>, max: usize) -> io::Result<Option<Vec<u8>>> {
+    let offset = r.position();
+    let size = r.read_u32_le()? as usize;
+    if size == 0 {
+        return Ok(None);
+    }
+    // ATL 先读有效载荷，再消费两个终止字节。保留二进制 BSTR。
+    if size < 2 || size > max.min(0x100000) {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("ATL BSTR offset 0x{offset:x} 字节数无效：{size}"),
+        ));
+    }
+    let bytes = r.read_bytes(size)?;
+    Ok(Some(bytes[..size - 2].to_vec()))
+}
+
 fn read_writer_subset(reader: &mut Reader<'_>, max_bytes: usize) -> io::Result<String> {
     let start = reader.position();
     let invalid = |reason: &str| {

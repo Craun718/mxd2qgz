@@ -33,7 +33,7 @@ fn header_bytes(text: &str, short: i16, count: Option<i32>) -> Vec<u8> {
 }
 
 #[test]
-fn six_save_indices_recognize_the_static_table_candidates() {
+fn six_save_indices_recognize_the_table_candidates() {
     let shorts = [10_i16, 13, 14, 16, 18, 19];
     for (index, short) in shorts.iter().enumerate() {
         let count = (index != 0).then_some(123_i32);
@@ -48,7 +48,7 @@ fn six_save_indices_recognize_the_static_table_candidates() {
         // 其余组合（含 "10.1"+short 16 的索引 3）各自已知但不配对，
         // 不得给出候选索引，尤其不得把 "10.1"+16 映射为 9.3。
         assert_eq!(report.candidate_save_index, (index == 5).then_some(5));
-        assert!(report.note.contains("未经运行时确认"));
+        assert!(report.note.contains("原生保存片段验证"));
         assert!(report.note.contains("未在目标软件中验证"));
     }
     // 原生对超过表末尾的索引截到末项 19；这不表明它是已知版本之外的编号。
@@ -272,7 +272,7 @@ fn version_command_reports_synthetic_stream_fields() {
     assert!(stdout.contains("Save index candidate: 5"), "{stdout}");
     assert!(stdout.contains("Remaining bytes: 0"), "{stdout}");
     assert!(
-        stdout.contains("Note: 文本与 short 命中静态候选映射"),
+        stdout.contains("Note: 文本与 short 命中已知候选集合"),
         "{stdout}"
     );
     assert!(stdout.contains("未在目标软件中验证"), "{stdout}");

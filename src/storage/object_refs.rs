@@ -32,6 +32,9 @@ pub struct RefTable10_1 {
     graphics_nesting: u8,
     // 数据集名称和关联名称也可能经不同槽互相嵌套。
     dataset_name_nesting: u8,
+    // 栅格信息可以经 Variant、工作空间或压缩流重新进入自身。
+    raster_info_nesting: u8,
+    raster_info_variant_depth: usize,
 }
 
 impl RefTable10_1 {
@@ -74,6 +77,50 @@ impl RefTable10_1 {
         self.dataset_name_nesting = depth + 1;
         let result = read(self);
         self.dataset_name_nesting = depth;
+        result
+    }
+
+    pub(crate) fn with_nested_raster_info<T>(
+        &mut self,
+        read: impl FnOnce(&mut Self) -> io::Result<T>,
+    ) -> io::Result<T> {
+        const MAX_RASTER_INFO_NESTING: u8 = 16;
+        let depth = self.raster_info_nesting;
+        if depth >= MAX_RASTER_INFO_NESTING {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "栅格信息对象跨流嵌套超过限额",
+            ));
+        }
+        self.raster_info_nesting = depth + 1;
+        let result = read(self);
+        self.raster_info_nesting = depth;
+        result
+    }
+
+    /// 合并栅格的压缩子流重新分配键，继续受外层栅格信息对象的嵌套限额约束。
+    pub(crate) fn isolated_raster_stream(&self) -> Self {
+        Self {
+            raster_info_nesting: self.raster_info_nesting,
+            raster_info_variant_depth: self.raster_info_variant_depth,
+            ..Self::default()
+        }
+    }
+
+    pub(crate) fn raster_info_variant_depth(&self) -> usize {
+        self.raster_info_variant_depth
+    }
+
+    /// 普通对象、子流或新属性集再次读取 Variant 时，继续计算外层 Variant 的深度。
+    pub(crate) fn with_raster_info_variant_depth<T>(
+        &mut self,
+        depth: usize,
+        read: impl FnOnce(&mut Self) -> io::Result<T>,
+    ) -> io::Result<T> {
+        let old_depth = self.raster_info_variant_depth;
+        self.raster_info_variant_depth = depth;
+        let result = read(self);
+        self.raster_info_variant_depth = old_depth;
         result
     }
 
