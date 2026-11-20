@@ -424,13 +424,12 @@ pub fn read_scalebar_body_10_1(
         )
     };
 
-    // 1. 自身版本 short：原生有符号 `1 < v` 拒绝（负值位模式原生通过，
-    //    一并拒绝较原生更严）。
+    // 原生仅按有符号上限比较，后续字段不再使用自身版本。
     let version = trial.read_u16_le()?;
-    if (version as i16) > MAX_OWN_VERSION_1 || (version as i16) < 0 {
+    if (version as i16) > MAX_OWN_VERSION_1 {
         return Err(invalid(format!(
             "版本位模式 {version}（0x{version:04x}）超出 Scalebar::Load 接受范围（有符号 \
-             >1 拒绝 0x80004005；Save 恒写 1；负值位模式原生通过，此处一并拒绝）"
+             >1 拒绝 0x80004005；Save 恒写 1）"
         )));
     }
 
@@ -558,8 +557,7 @@ pub const SCALEBAR_RAW_TAIL_OFFSETS: [i32; 16] = [
 pub struct ScalebarBody10_1 {
     /// 对象头键。
     pub key: u32,
-    /// int16 自身版本的无符号位模式（有符号 >1 拒绝；Save 恒写 1；负值
-    /// 拒绝较原生更严）。
+    /// int16 自身版本的原始位模式（有符号 >1 拒绝，Save 恒写 1）。
     pub version: u16,
     /// MapSurround 族共同前缀。
     pub common: MapSurroundCommonPrefix10_1,
@@ -2196,6 +2194,23 @@ mod tests {
         assert_eq!(body.last_uint, Some(0x44444444));
         assert_eq!(body.stop, None);
         assert_eq!(body.remaining_bytes, 0);
+    }
+
+    #[test]
+    fn scalebar_uses_native_signed_version_gate() {
+        for version in [i16::MIN, -1, 0, 1] {
+            let mut data = scalebar_full_bytes();
+            data[20..22].copy_from_slice(&version.to_le_bytes());
+            let body = read_body(&data, read_scalebar_body_10_1).unwrap();
+            assert_eq!(body.version, version as u16);
+            assert_eq!(body.last_uint, Some(0x44444444));
+            assert_eq!(body.remaining_bytes, 0);
+        }
+        for version in [2_i16, i16::MAX] {
+            let mut data = scalebar_full_bytes();
+            data[20..22].copy_from_slice(&version.to_le_bytes());
+            assert!(read_body(&data, read_scalebar_body_10_1).is_err());
+        }
     }
 
     #[test]
