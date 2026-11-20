@@ -57,9 +57,11 @@ AfCore `0x68a77660` 调 `0x68a777c0`；后者走 `CoCreateInstance` 或 `Factory
 | FeatureLayer.dll `0x6f70fe97..c0`、`0x6f710540`、`0x6f710570` | GroupLayer 的 ICompositeLayer 视图为 `this+0x30`；计数和索引读取对应同一子层数组。 |
 | FeatureLayer.dll `0x6f7113e9..3fa`、`0x6f7105c0`、`0x6f701c60`、`0x6f7119b0` | Load 按流顺序添加成功读取的子层。Add 检查空指针及自引用或祖先循环，随后以索引 −1 追加；正常追加路径没有同级去重。Save 按索引递增写出该数组。 |
 
-Rust 按上述顺序消费已完整识别的 GroupLayer 自身和子层遮罩，空槽无记录。回引须匹配先前确认的对象键和类，重复回引按各自位置再走一遍子树。畸形回引受递归深度上限保护。遇到未知子层、未完整消费的子层或遮罩截断，整个逐图层循环回退到循环起点。嵌套 BasemapLayer 可以在 Map v28–v39 中产生遮罩记录；其正式子层集合仍限于 PrepareResult 中完整确认的 FeatureLayer 回引。图层树中未识别的图层类接口、不能完整读取的新遮罩对象体及 ArcMap/QGIS 人工验收仍开放。
+Rust 按上述顺序消费已完整识别的 GroupLayer 自身和子层遮罩，空槽无记录。回引须匹配先前确认的对象键和类，重复回引按各自位置再走一遍子树。畸形回引受递归深度上限保护。遇到未确认遮罩接口的子层、尚不能处理的子层体或遮罩截断，整个逐图层循环回退到循环起点。嵌套 BasemapLayer 可以在 Map v28–v39 中产生遮罩记录；其正式子层集合仍限于 PrepareResult 中完整确认的 FeatureLayer 回引。图层树中未识别的图层类接口、不能完整读取的新遮罩对象体及 ArcMap/QGIS 人工验收仍开放。
 
 Map v28 的构造测试覆盖普通组图层子层项、嵌套 Basemap、重复子层回引、顶层回引、错类回引和截断。该测试验证对象停止点和记录顺序，尚缺原生生成的嵌套遮罩实档。
+
+GroupLayer v11–v12 的 ExtraSafe 子层沿用已确认的外层边界。DimensionLayer、TopologyLayer、NetworkLayer 和 SchematicLayer 的类级 ILayerMasking 分派已确认不消费遮罩，因此完整组读取器可保留这些子层的未知体，并在遍历时登记对象键供回引使用。构造的 Map v28 覆盖 NetworkLayer 新子层、同组回引、顶层回引和未知类退回。子层体字段和原生嵌套实档尚未验证。
 
 ## 遮罩集合中的新对象
 

@@ -728,6 +728,16 @@ impl<'body> LayerMaskingTraversal<'_, '_, 'body> {
                 Some(parsed),
                 depth,
             ),
+            GroupChildEntry10_1::SkippedNewObject {
+                class_id,
+                key,
+                parsed: None,
+                ..
+            } if crate::maps::layer_masking::is_unparsed_layer_without_masking_10_1(*class_id) => {
+                // ExtraSafe 已同步到下一条目，此类的子层查询不消费遮罩。
+                self.known.insert(*key, (*class_id, None));
+                Some(())
+            }
             GroupChildEntry10_1::SkippedNewObject { .. } => None,
         }
     }

@@ -689,3 +689,51 @@ fn map_v28_reads_nested_group_masks_in_layer_order_and_rolls_back_on_failure() {
         assert!(parsed.post_border_tail.layer_masking.is_empty());
     }
 }
+
+#[test]
+fn map_v28_skips_bounded_network_child_and_its_back_references() {
+    use mxd2qgz::layers::group_layer::GROUP_LAYER_CLASS_ID;
+
+    let mut layer = [
+        0x4b, 0xe9, 0xf8, 0xd4, 0xf5, 0x5c, 0x8f, 0x4f, 0x8b, 0x4d, 0x5b, 0x25, 0xae, 0x4c, 0x0a,
+        0xf9,
+    ]
+    .to_vec();
+    layer.extend(91_u32.to_le_bytes());
+    layer.extend([0x12, 0x34]);
+
+    let mut group = GROUP_LAYER_CLASS_ID.to_vec();
+    group.extend(90_u32.to_le_bytes());
+    group.extend(11_u16.to_le_bytes());
+    group.extend(2_u32.to_le_bytes());
+    group.extend([0; 2 + 3 * 2 + 2 * 8]);
+    group.extend(2_u32.to_le_bytes());
+    for child in [&layer[..], &layer[..20]] {
+        group.extend((child.len() as u32).to_le_bytes());
+        group.extend(0_u32.to_le_bytes());
+        group.extend(child);
+    }
+    group.extend([0; 2 + 16 + 8 + 4]);
+    group.extend(2_u32.to_le_bytes());
+    group.extend([0; 2 + 2 + 16 + 2 + 6]);
+
+    let mut suffix = map_v28_masking_suffix(&[&group, &layer[..20]]);
+    suffix.extend([0; 8]); // 只有组图层自身消费遮罩。
+    let end = suffix.len();
+    suffix.extend(0x1717_u32.to_le_bytes());
+    let (bytes, offset) = map_with_version(28, &suffix);
+    assert_eq!(
+        parse_maps_10_1(&bytes).unwrap().confirmed_tail,
+        Some((offset + end, 0x1717))
+    );
+
+    // 同时改写子图层和两处回引，未知类仍停在逐图层遮罩之前。
+    let network_class = &layer[..16];
+    let mut unknown = bytes;
+    for pos in 0..=unknown.len() - network_class.len() {
+        if &unknown[pos..pos + network_class.len()] == network_class {
+            unknown[pos] ^= 1;
+        }
+    }
+    assert!(parse_maps_10_1(&unknown).unwrap().confirmed_tail.is_none());
+}

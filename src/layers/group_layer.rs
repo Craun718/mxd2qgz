@@ -399,7 +399,12 @@ fn read_group_layer_10_1(
                         // 制），再把剩余按 A 界跳过；解析失败或类无读取器时
                         // 整个体按未知跳过。
                         let mut parsed = None;
-                        if complete {
+                        // 已确认不消费遮罩的类保留为有界未知体。
+                        let skip_opaque = complete
+                            && crate::maps::layer_masking::is_unparsed_layer_without_masking_10_1(
+                                class_id,
+                            );
+                        if complete && !skip_opaque {
                             let mut region = trial.read_region(full_body_length)?;
                             let body = if class_id == RASTER_LAYER_CLASS_ID {
                                 LayerBodyPrefix10_1::RasterLayer(
@@ -456,7 +461,7 @@ fn read_group_layer_10_1(
                                 parsed =
                                     Some(Box::new(LayerBodyPrefix10_1::WcsLayer(Box::new(body))));
                             }
-                        } else if depth < MAX_RECURSION_DEPTH {
+                        } else if !skip_opaque && depth < MAX_RECURSION_DEPTH {
                             match crate::layers::layer_list::parse_body_prefix(
                                 &mut trial,
                                 class_id,
