@@ -3354,12 +3354,13 @@ pub fn read_picture_marker_symbol_body_10_1(
         )
     };
 
-    let version = read_version_short(
-        &mut trial,
-        MAX_PICTURE_MARKER_VERSION,
-        "PictureMarkerSymbol",
-        entry_offset,
-    )?;
+    let version = trial.read_u16_le()?;
+    let signed = version as i16;
+    if signed > MAX_PICTURE_MARKER_VERSION {
+        return Err(invalid(format!(
+            "有符号版本 {signed} 超过上限 {MAX_PICTURE_MARKER_VERSION}"
+        )));
+    }
     let mut stop = None;
 
     // 图像块：版本 ≤8 历史路径 / 版本 9 分支。槽位停止记入 `stop`，共享
@@ -3413,9 +3414,9 @@ pub fn read_picture_marker_symbol_body_10_1(
             blob_size: None,
             blob_data: None,
         };
-        if version <= 6 {
+        if signed <= 6 {
             // 版本 <4：第一个 IPicture 槽。
-            if version < 4 {
+            if signed < 4 {
                 let (slot, inner) = read_std_picture_slot_10_1(
                     &mut trial,
                     max_bytes,
@@ -3490,13 +3491,13 @@ pub fn read_picture_marker_symbol_body_10_1(
         let b = read_i32_le(&mut trial)?;
         int32s = Some([a, b]);
         // 尾段版本门：版本 9 恒有；历史路径 byte >1、short >2、short ×3 >4。
-        if version == 9 || version > 1 {
+        if signed > 1 {
             byte_48 = Some(trial.read_bytes(1)?[0]);
         }
-        if version == 9 || version > 2 {
+        if signed > 2 {
             short_134 = Some(trial.read_u16_le()? as i16);
         }
-        if version == 9 || version > 4 {
+        if signed > 4 {
             let s1 = trial.read_u16_le()? as i16;
             let s2 = trial.read_u16_le()? as i16;
             let s3 = trial.read_u16_le()? as i16;
@@ -3506,14 +3507,14 @@ pub fn read_picture_marker_symbol_body_10_1(
 
     // 版本 ≤8 的图像附属段（历史路径，位于共享尾段之后）：版本 ==6 的
     // String + byte + double；版本 >7（v8）的 int32 N +（N≠0 时 N 字节）。
-    if stop.is_none() && version <= 8 {
+    if stop.is_none() && signed <= 8 {
         if let PictureImage10_1::Legacy(legacy) = &mut image {
             if version == 6 {
                 legacy.string6 = Some(read_string_10_1(&mut trial, max_bytes)?);
                 legacy.byte6 = Some(trial.read_bytes(1)?[0]);
                 legacy.double6 = Some(trial.read_f64_le()?);
             }
-            if version > 7 {
+            if signed > 7 {
                 let size = read_blob_size(&mut trial, max_bytes, entry_offset)?;
                 legacy.blob_size = Some(size);
                 legacy.blob_data = read_blob_data(&mut trial, size)?;

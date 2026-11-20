@@ -1513,6 +1513,23 @@ fn picture_marker_symbol_v9_type_branches() {
 }
 
 #[test]
+fn picture_marker_signed_legacy_version_keeps_the_successor_unread() {
+    for version in [i16::MIN, -1, 0, 1] {
+        let mut bytes = version.to_le_bytes().to_vec();
+        bytes.extend([0; 5 * 16 + 6 * 8 + 2 * 4]);
+        bytes.push(0xa5);
+        let mut reader = Reader::new(&bytes);
+        let parsed =
+            read_picture_marker_symbol_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 95)
+                .unwrap();
+        assert_eq!(parsed.version, version as u16);
+        assert!(parsed.stop.is_none());
+        assert!(parsed.byte_48.is_none() && parsed.short_134.is_none() && parsed.shorts.is_none());
+        assert_eq!(reader.read_bytes(1).unwrap(), [0xa5]);
+    }
+}
+
+#[test]
 fn picture_marker_symbol_legacy_paths() {
     // 版本 8：String（非空 → double）→ 颜色 ×3 → 标量 → short ×3 → blob。
     let mut bytes = 8_u16.to_le_bytes().to_vec();
