@@ -179,3 +179,23 @@ IID，位于前后缀字符串之后，v3 格式串之前，见
 格式本类、空槽和回引，其他已知新对象由 `other_number_format` 保存。
 构造测试检查 FractionFormat 后继续读取后继字段，并验证 ScaleText
 后继格式串截断时回滚游标和新登记。ArcMap/QGIS 实档目视验证待补。
+
+## 独立 Scalebar 的接口边界
+
+Map.dll 10.1.0.3035（摘要同上）的独立 Scalebar RTTI TypeDescriptor
+`0x794b4c7c`，主虚表 `0x7948b5d4`，持久化视图 `0x7948b7ac`
+位于完整对象 +0x1b4。核对既有反编译和 objdump，主 QI
+`0x79445ee0` 直接处理 IMapSurround 与 IPersistStream 相关 IID，
+其余由 `0x794400b0 → 0x7946b940 → 0x7946c2d0` 比较。
+逐个用 PE 原字节解码比较的 IID，链中没有 IScaleBar
+`6DFAE8E2-ECAA-11D0-8682-0000F8751720` 或 IScaleBar2
+`D1658F8E-BE62-4A78-88D3-07170F09120C`，末端在
+`0x7946c3c2` 返回 E_NOINTERFACE。不能借用现代比例尺的接口偏移为
+独立 Scalebar 的字段定名。
+
+构造器 `0x79445b60` 为完整对象 +0xf8/+0xfc/+0x100/+0x104
+分别写入 10、0、0、0，对应最近补读的持久化偏移
+−0xbc、−0xb8、−0xb4、−0xb0。默认值本身不足以证明业务语义，
+读取器继续保留原始位模式。10.1 介质 132 条、10.8 介质 136 条及
+参考工程两条 Maps/PageLayout 流均未出现独立 Scalebar CLSID 字节。
+绘制或转换侧的字段用途与 ArcMap/QGIS 实档目视验证仍待取证。
