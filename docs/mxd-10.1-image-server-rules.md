@@ -290,6 +290,10 @@ Rust 在有界解压流中复用有键对象和栅格模板输入的已知体分
 135 份对照工程均读至 /Maps 和 /PageLayout 末尾，270 条流中未命中
 MergeRastersFunction 或 MergeRastersFunctionArguments 的 CLSID。
 
+压缩输入中的已知函数及参数类在共享 Variant 扩展后仍沿用栅格输入
+分派。其独立对象表和宿主剩余深度预算一同传入读取器。合成压缩内层体
+验证 IdentityFunction 有预算时完整读取、预算耗尽时返回错误。
+
 ### RasterInfo 二进制对象体
 
 RasterInfo（CLSID `4F1E5FCA-2334-4280-B109-17B3CAF9290E`）的

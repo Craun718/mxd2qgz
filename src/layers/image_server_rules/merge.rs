@@ -1,8 +1,8 @@
 //! FunctionRasterDB.dll 的合并栅格函数和参数压缩体。
 
-use super::RuleSlot10_1;
 use super::raster_info::{self, RasterInfo10_1};
 use super::template::{RasterTemplateInput10_1, read_input_body};
+use super::{RuleSlot10_1, function_max_version, supports_function_arguments};
 use crate::objects::property_set::{PropertyValueObjectStream10_1, read_variant_object_body_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::reader::Reader;
@@ -168,18 +168,26 @@ fn decode_input(
         return Ok(None);
     };
     let mut body = Reader::new(bytes);
-    let object = read_variant_object_body_10_1(&mut body, max, &mut refs.clone(), 0, entry);
-    let decoded = match object {
-        Ok(value) => DecodedMergeRasterInput10_1::Object(value),
-        Err(error) if error.kind() == ErrorKind::Unsupported => {
-            body = Reader::new(bytes);
-            match read_input_body(&mut body, max, refs, class_id, key, depth) {
-                Ok(value) => DecodedMergeRasterInput10_1::RasterInput(value),
-                Err(error) if error.kind() == ErrorKind::Unsupported => return Ok(None),
+    // 函数和参数沿用压缩宿主的剩余深度，避免共用 Variant 入口重建预算。
+    let variant =
+        if function_max_version(class_id).is_some() || supports_function_arguments(class_id) {
+            None
+        } else {
+            match read_variant_object_body_10_1(&mut body, max, &mut refs.clone(), 0, entry) {
+                Ok(value) => Some(value),
+                Err(error) if error.kind() == ErrorKind::Unsupported => None,
                 Err(error) => return Err(error),
             }
+        };
+    let decoded = if let Some(value) = variant {
+        DecodedMergeRasterInput10_1::Object(value)
+    } else {
+        body = Reader::new(bytes);
+        match read_input_body(&mut body, max, refs, class_id, key, depth) {
+            Ok(value) => DecodedMergeRasterInput10_1::RasterInput(value),
+            Err(error) if error.kind() == ErrorKind::Unsupported => return Ok(None),
+            Err(error) => return Err(error),
         }
-        Err(error) => return Err(error),
     };
     if body.remaining() != 0 {
         return Err(invalid("已识别的合并栅格参数对象体之后仍有内层字节"));
@@ -216,4 +224,35 @@ fn read_compressed_variant(r: &mut Reader<'_>, max: usize) -> io::Result<Vec<u8>
 
 fn invalid(message: impl Into<String>) -> io::Error {
     io::Error::new(ErrorKind::InvalidData, message.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::layers::image_server_rules::IDENTITY_FUNCTION_CLASS_ID;
+
+    #[test]
+    fn compressed_function_input_respects_host_depth() {
+        let mut bytes = 1_u16.to_le_bytes().to_vec();
+        bytes.extend(5_i32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        let entry = ObjectEntry10_1::NewObject {
+            class_id: IDENTITY_FUNCTION_CLASS_ID,
+            key: 42,
+        };
+        let mut refs = RefTable10_1::new();
+        refs.register(42);
+        assert!(matches!(
+            decode_input(&bytes, 4096, &mut refs, entry, 1).unwrap(),
+            Some(DecodedMergeRasterInput10_1::RasterInput(
+                RasterTemplateInput10_1::Function(body)
+            )) if body.base_long == 5
+        ));
+        assert_eq!(
+            decode_input(&bytes, 4096, &mut refs, entry, 0)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::InvalidData
+        );
+    }
 }
