@@ -122,8 +122,20 @@ pub fn known_layer_masking_support_10_1(class_id: &[u8; 16]) -> LayerMaskingSupp
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaskEntry10_1 {
+    /// 被遮罩的 ILayer 对象槽。
     pub object: ObjectEntry10_1,
+    /// 提供遮罩的对象槽及其 LevelMasking 字符串。旧版本无此字符串。
     pub targets: Vec<(ObjectEntry10_1, Option<String>)>,
+}
+
+impl MaskEntry10_1 {
+    pub fn masked_layer(&self) -> ObjectEntry10_1 {
+        self.object
+    }
+
+    pub fn masking_layers(&self) -> &[(ObjectEntry10_1, Option<String>)] {
+        &self.targets
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

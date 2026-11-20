@@ -106,18 +106,21 @@ fn reads_new_layers_in_both_mask_slots_and_shares_keys() {
         .unwrap()
         .unwrap();
     assert!(matches!(
-        result.entries[0].object,
+        result.entries[0].masked_layer(),
         ObjectEntry10_1::NewObject { key: 7, .. }
     ));
     assert!(matches!(
-        result.entries[0].targets[0].0,
+        result.entries[0].masking_layers()[0].0,
         ObjectEntry10_1::NewObject { key: 8, .. }
     ));
     assert!(matches!(
-        result.entries[0].targets[1].0,
+        result.entries[0].masking_layers()[1].0,
         ObjectEntry10_1::BackReference { key: 8, .. }
     ));
-    assert_eq!(result.entries[0].targets[1].1.as_deref(), Some("A"));
+    assert_eq!(
+        result.entries[0].masking_layers()[1].1.as_deref(),
+        Some("A")
+    );
     assert_eq!(reader.remaining(), 0);
     assert!(refs.contains(7) && refs.contains(8));
 }

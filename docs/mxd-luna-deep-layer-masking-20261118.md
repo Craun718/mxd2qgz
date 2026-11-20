@@ -73,6 +73,12 @@ LayerLib.dll 10.1.0.3035（SHA-256 `55514f054c9e4827d773cf1a9b9a83e7c41c483f7375
 
 `cargo fmt --check`、`git diff --check` 通过。全量测试含忽略项共 1035 项通过。CLI 对仓库样例和 66 份 10.1 介质工程均读完 `/Maps` 与 `/PageLayout`。按实际对象键回查，10.1 介质的 18 份工程共读出 22 条 BasemapLayer 遮罩记录，集合条目数均为 0。68 份 10.8 介质补充对照中，60 份读到地图根尾，41 份读完布局。组层递归和集合内新对象由构造测试覆盖。ArcMap 和 QGIS 人工验收未做。
 
+### 被遮罩图层、遮罩图层及层级字符串
+
+10.1.0.3035 LayerLib.dll 的 ILayerMasking 虚表 `0x78722ac0` 将 `+0x20`、`+0x18`、`+0x14` 分别绑定到导出的 `get_MaskedLayers 0x786f1510`、`get_MaskingLayers 0x786f13c0`、`put_MaskingLayers 0x786f1100`。Save 从 `get_MaskedLayers` 返回的集合逐项取出外层对象，在 `0x786f1ba1..0x786f1bb2` 用它取得内层遮罩集合。Load 在 `0x786f231a..0x786f232b` 将外层 ILayer 和读出的内层 ISet 传给 `put_MaskingLayers`。
+
+ILevelMasking 虚表 `0x78722aec` 的 `+0x10` 为 `get_LevelMasking 0x786f1690`。Save 在 `0x786f1ce1..0x786f1cfb` 传入外层与内层两个对象，随后用 `String::Write` 写出返回的层级字符串。解析结果保留空字符串与旧版无字段的区别，提供按原生语义命名的槽访问器。图层之间的实际绘制效果尚未做 ArcMap/QGIS 人工验收。
+
 ### 遮罩记录的版本门
 
 复核同一 LayerLib.dll 的原始 x86 指令，`0x786f2041..0x786f204d` 用有符号 `jle` 判断版本上限 2，`0x786f224b..0x786f2255` 用有符号 `jle` 跳过目标名称。Map 自身和逐图层遮罩共用此原生入口。Rust 保留原始 short 位模式，允许负值沿旧版本分支解析，并拒绝正值 3 及以上。构造测试覆盖负值、目标名称边界和逐字节截断，参考工程改写版本测试覆盖 Map 宿主。尚未发现原生写出的负版本记录。
