@@ -91,7 +91,10 @@
 //! 各值的业务语义（DATABASE/连接属性候选）未定性；版本 0 无样本佐证；
 //! 全部结论为静态观察，未经目标软件运行验证。
 
-use crate::layers::feature_layer_tail::{UID_CLASS_ID, UidBody10_1, read_uid_body_10_1};
+use crate::layers::feature_layer_tail::{
+    NumberFormatSlot10_1, UID_CLASS_ID, UidBody10_1, read_number_format_body_for_class_10_1,
+    read_uid_body_10_1,
+};
 use crate::layers::image_server_rules::{
     RASTER_COLORMAP, RASTER_HISTOGRAM, RASTER_INFO_CLASS_ID, RASTER_INFOS_CLASS_ID,
     RASTER_STATISTICS, RasterInfoVariantBody10_1, RasterVariantBody10_1,
@@ -327,6 +330,7 @@ pub enum PropertyValueObjectStream10_1 {
     },
     /// 已有独立 IPersistStream 对象体的 SystemCore UID。
     Uid(UidBody10_1),
+    NumberFormat(Box<EncodedVariantObject10_1<NumberFormatSlot10_1>>),
     Geometry(Box<VariantGeometry10_1>),
     Color(Box<EncodedVariantObject10_1<ColorBody10_1>>),
     ColorRamp(Box<EncodedVariantObject10_1<ColorRampSlot10_1>>),
@@ -800,6 +804,22 @@ pub(crate) fn read_variant_object_body_10_1(
                     (version, VariantArrayObjectValues10_1::Variants(Vec::new()))
                 }
                 _ => {
+                    let mut wire = reader
+                        .clone()
+                        .read_region(reader.remaining().min(max_bytes))?;
+                    if let Some(body) = read_number_format_body_for_class_10_1(
+                        &mut wire, max_bytes, table, class_id, key,
+                    )? {
+                        let bytes = Arc::from(reader.read_bytes(wire.position())?);
+                        return Ok(PropertyValueObjectStream10_1::NumberFormat(Box::new(
+                            EncodedVariantObject10_1 {
+                                class_id,
+                                key,
+                                bytes,
+                                body,
+                            },
+                        )));
+                    }
                     return Err(io::Error::new(
                         ErrorKind::Unsupported,
                         format!(
@@ -997,6 +1017,48 @@ mod tests {
     fn object(bytes: &mut Vec<u8>, class_id: [u8; 16], key: u32) {
         bytes.extend(class_id);
         bytes.extend(key.to_le_bytes());
+    }
+
+    #[test]
+    fn variant_number_format_preserves_body_and_session_key() {
+        use crate::objects::number_format::NUMERIC_FORMAT_CLASS_ID;
+
+        let mut bytes = 13_u16.to_le_bytes().to_vec();
+        bytes.extend([0; 14]);
+        object(&mut bytes, NUMERIC_FORMAT_CLASS_ID, 12);
+        let header_end = bytes.len();
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend([0; 22]);
+        let body_end = bytes.len();
+        bytes.extend(13_u16.to_le_bytes());
+        bytes.extend([0; 14]);
+        object(&mut bytes, NUMERIC_FORMAT_CLASS_ID, 12);
+
+        let mut table = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        let parsed = read_padded_variant_object_stream_10_1(&mut reader, 4096, &mut table).unwrap();
+        let PropertyValueObjectStream10_1::NumberFormat(value) = parsed else {
+            panic!("应读取数字格式对象");
+        };
+        assert_eq!(&*value.bytes, &bytes[header_end..body_end]);
+        assert!(matches!(value.body, NumberFormatSlot10_1::NumericFormat(_)));
+        assert_eq!(reader.position(), body_end);
+        assert_eq!(
+            read_padded_variant_object_stream_10_1(&mut reader, 4096, &mut table).unwrap(),
+            PropertyValueObjectStream10_1::BackReference {
+                class_id: NUMERIC_FORMAT_CLASS_ID,
+                key: 12,
+            }
+        );
+        assert_eq!(reader.remaining(), 0);
+
+        for end in header_end..body_end {
+            let mut reader = Reader::new(&bytes[..end]);
+            let mut table = RefTable10_1::new();
+            assert!(read_padded_variant_object_stream_10_1(&mut reader, 4096, &mut table).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(!table.contains(12));
+        }
     }
 
     fn variant_array(bytes: &mut Vec<u8>, key: u32, count: u32) {

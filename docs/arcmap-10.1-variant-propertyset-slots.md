@@ -513,3 +513,16 @@ AfCore 的普通 ObjectStream Variant 对象分支通过对象头分派持久化
 合成输入覆盖组合渐变内嵌算法渐变、颜色回引、非默认权重、后继字节定位、
 逐字节截断和未知颜色回滚。未取得栅格统计或值域实际写出渐变 Variant 的
 宿主字节，未在 ArcMap 10.1 或 QGIS 目视验证。
+
+## SystemCore 数字格式对象
+
+复用 [SystemCore.dll 10.1.0.3035 的九类 INumberFormat 持久化证据](arcmap-10.1-number-format.md#九类分派接入建议写给整合轮本不改-srclayers)。
+例如 NumericFormat 的 Load/Save `0x7ffce4b0/0x7ffce590` 从标准
+ObjectStream 对象头后处理版本及 22 字节字段。Variant 的 VT_UNKNOWN
+和 VT_DISPATCH 沿用本页已对位的 AfCore LoadObject 路径，因此数字格式
+对象可复用同一套 CLSID 分派与已有版本门。数字格式体按字节预算读取，
+保留原始体和宿主键，后继回引不再读取对象体。
+
+合成验证覆盖带保留区的 NumericFormat 新对象、同键回引、后继边界和
+逐字节截断。九类的各自对象体沿用既有读取器及测试。栅格唯一值、
+统计集合和值域中的数字格式实档实例，以及 ArcMap/QGIS 人工验证待补。
