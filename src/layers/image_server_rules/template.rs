@@ -140,7 +140,7 @@ fn read_input(
     })
 }
 
-pub(in crate::layers) fn read_input_body(
+pub(crate) fn read_input_body(
     r: &mut Reader<'_>,
     max: usize,
     refs: &mut RefTable10_1,

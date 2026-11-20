@@ -97,8 +97,8 @@ use crate::layers::feature_layer_tail::{
 };
 use crate::layers::image_server_rules::{
     RASTER_COLORMAP, RASTER_HISTOGRAM, RASTER_INFO_CLASS_ID, RASTER_INFOS_CLASS_ID,
-    RASTER_STATISTICS, RasterInfoVariantBody10_1, RasterVariantBody10_1,
-    read_raster_info_variant_body_10_1, read_raster_variant_body_10_1,
+    RASTER_STATISTICS, RasterInfoVariantBody10_1, RasterTemplateInput10_1, RasterVariantBody10_1,
+    read_input_body, read_raster_info_variant_body_10_1, read_raster_variant_body_10_1,
 };
 use crate::layers::raster_dataset_name::{LONG_ARRAY_CLASS_ID, read_long_array_body};
 use crate::layers::raster_renderer::{
@@ -347,6 +347,7 @@ pub enum PropertyValueObjectStream10_1 {
         value: Box<PropertyValueObjectStream10_1>,
     },
     RasterArgumentArray(Box<RasterArgumentArray10_1>),
+    RasterArgumentInput(Box<EncodedVariantObject10_1<RasterTemplateInput10_1>>),
     /// 同一 ObjectStream 会话中已登记对象的回引，无后续对象体。
     BackReference {
         class_id: [u8; 16],
@@ -621,7 +622,7 @@ pub(crate) fn read_variant_object_body_10_1(
             let mut objects = Vec::new();
             for _ in 0..count {
                 let entry = read_object_entry_10_1(&mut body, table)?;
-                objects.push(read_variant_object_body_10_1(
+                objects.push(read_argument_array_item(
                     &mut body,
                     max_bytes,
                     table,
@@ -836,6 +837,53 @@ pub(crate) fn read_variant_object_body_10_1(
             }
         }
     })
+}
+
+fn read_argument_array_item(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+    entry: ObjectEntry10_1,
+) -> io::Result<PropertyValueObjectStream10_1> {
+    let ObjectEntry10_1::NewObject { class_id, key } = entry else {
+        return read_variant_object_body_10_1(reader, max_bytes, table, depth, entry);
+    };
+    let mut trial = reader.clone();
+    let mut staged = table.clone();
+    let value =
+        match read_variant_object_body_10_1(&mut trial, max_bytes, &mut staged, depth, entry) {
+            Ok(value) => value,
+            Err(error) if error.kind() == ErrorKind::Unsupported => {
+                check_variant_object_depth(depth)?;
+                trial = reader.clone();
+                staged = table.clone();
+                let start = trial.position();
+                let body = staged.with_raster_info_variant_depth(depth + 1, |refs| {
+                    read_input_body(
+                        &mut trial,
+                        max_bytes,
+                        refs,
+                        class_id,
+                        key,
+                        (MAX_NESTED_VARIANT_OBJECTS - depth).min(16),
+                    )
+                })?;
+                let bytes = Arc::from(reader.clone().read_bytes(trial.position() - start)?);
+                PropertyValueObjectStream10_1::RasterArgumentInput(Box::new(
+                    EncodedVariantObject10_1 {
+                        class_id,
+                        key,
+                        bytes,
+                        body,
+                    },
+                ))
+            }
+            Err(error) => return Err(error),
+        };
+    *reader = trial;
+    *table = staged;
+    Ok(value)
 }
 
 fn read_raster_argument_version(reader: &mut Reader<'_>, name: &str) -> io::Result<u16> {

@@ -267,6 +267,7 @@
   - [x] 按 10.1 的有符号 short 比较读取渲染、镶嵌规则与栅格函数的版本门，保留版本原始位模式。[指令与旧布局验证](docs/mxd-10.1-image-server-rules.md#规则与函数的有符号版本门)
   - [x] 接入栅格模板与参数属性集中的 Scalar、ArgumentArray 及其共享对象键。[工厂与持久化取证](docs/mxd-10.1-image-server-rules.md#scalar-与-argumentarray)
   - [x] 接入栅格模板 IUnknown 输入中的独立 PropertySet 与同键回引。[输入槽取证](docs/mxd-10.1-image-server-rules.md#栅格函数变量的共用-variant-对象)
+  - [x] 接入 ArgumentArray 的已确认栅格对象体成员及同表回引。[数组取证](docs/mxd-10.1-image-server-rules.md#argumentarray-的栅格对象成员)
   - [x] 接入栅格模板中的 RasterInfos 和独立 RasterInfo，登记成员及其嵌套几何键。[集合读写取证](docs/mxd-10.1-image-server-rules.md#rasterinfos-与模板中的-rasterinfo)
   - [x] 接入参数属性集和 ArgumentArray 中的 RasterInfos、RasterInfo 新对象，压缩子流沿用深度限额并独立登记键。[对象槽取证](docs/mxd-10.1-image-server-rules.md#参数属性集与-argumentarray)
   - [x] 解码 MergeRastersFunctionArguments 的 Rasters 和 Footprints 压缩槽内已有对象体。[延迟装载取证](docs/mxd-10.1-image-server-rules.md#rasters-和-footprints-的压缩参数对象)

@@ -818,3 +818,13 @@ PropertySet，其持久化体复用标准 AfCore ObjectStream 入口。模板 Lo
 参数类一致。合成 RenderingRule 检查模板输入中的 PropertySet 首次
 定义及同键回引，并继续消费外层规则的参数与渲染器槽。此处验证读取
 边界，实档写出及 ArcMap/QGIS 目视验证待补。
+
+### ArgumentArray 的栅格对象成员
+
+ArgumentArray 的成员读取在 FunctionRasterDB.dll 10.1.0.3035
+`0x6fc216c6` 请求 IUnknown，写侧 `0x6fc2199b` 按成员写普通对象头。
+共用 Variant 分派之外，数组成员现在可走模板的栅格对象分派，并保留
+原始对象体。两条试读路径隔离游标和登记表。转入栅格分派时继承
+外层 Variant 深度限制，回到 Variant 时继续累计深度。
+合成 RenderingRule 验证数组内 CachedRasterFunctionArguments 新对象
+及同键回引，并核对后续外层属性集和渲染器槽边界。实档与目视验证待补。

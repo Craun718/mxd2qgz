@@ -7,7 +7,7 @@ mod mosaic_arguments;
 mod raster_info;
 mod template;
 
-pub(super) use template::read_input_body;
+pub(crate) use template::read_input_body;
 
 pub use merge::{
     DecodedMergeRasterInput10_1, MergeRasterInput10_1, MergeRastersArguments10_1,
@@ -1743,7 +1743,7 @@ mod tests {
         bytes.extend(21_u32.to_le_bytes());
         bytes.extend(1_u16.to_le_bytes());
         bytes.extend(EMPTY_STRING.repeat(2));
-        bytes.extend(3_i32.to_le_bytes());
+        bytes.extend(5_i32.to_le_bytes());
         bytes.extend(RASTER_SCALAR_CLASS_ID);
         bytes.extend(22_u32.to_le_bytes());
         bytes.extend((-1_i16).to_le_bytes());
@@ -1753,6 +1753,12 @@ mod tests {
         bytes.extend(RASTER_SCALAR_CLASS_ID);
         bytes.extend(22_u32.to_le_bytes());
         bytes.extend([0; 16]); // 保留数组的空对象项。
+        bytes.extend(CACHED_RASTER_FUNCTION_ARGUMENTS_CLASS_ID);
+        bytes.extend(27_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend([0; 16]);
+        bytes.extend(CACHED_RASTER_FUNCTION_ARGUMENTS_CLASS_ID);
+        bytes.extend(27_u32.to_le_bytes());
         bytes.extend(PROPERTY_SET_CLASS_ID);
         bytes.extend(26_u32.to_le_bytes());
         bytes.extend(1_u16.to_le_bytes());
@@ -1810,7 +1816,7 @@ mod tests {
             class_id: RASTER_SCALAR_CLASS_ID,
             key: 22,
         };
-        assert_eq!(array.declared_count, 3);
+        assert_eq!(array.declared_count, 5);
         assert_eq!(
             array.objects[0],
             PropertyValueObjectStream10_1::RasterScalar {
@@ -1825,6 +1831,18 @@ mod tests {
         assert_eq!(
             array.objects[2],
             PropertyValueObjectStream10_1::Inline(PropertyValue10_1::NullObject)
+        );
+        let PropertyValueObjectStream10_1::RasterArgumentInput(item) = &array.objects[3] else {
+            panic!("应读取数组中的栅格参数对象");
+        };
+        assert_eq!(item.key, 27);
+        assert!(matches!(item.body(), RasterTemplateInput10_1::Arguments(_)));
+        assert_eq!(
+            array.objects[4],
+            PropertyValueObjectStream10_1::BackReference {
+                class_id: CACHED_RASTER_FUNCTION_ARGUMENTS_CLASS_ID,
+                key: 27,
+            }
         );
         let properties = rule.arguments.body.unwrap().properties.body.unwrap();
         let PropertyValueObjectStream10_1::RasterArgumentArray(array) =
