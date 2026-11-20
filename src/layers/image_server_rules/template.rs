@@ -158,14 +158,16 @@ pub(in crate::layers) fn read_input_body(
         _ if supports_function_arguments(id) => {
             read_arguments(r, max, refs, id, depth).map(RasterTemplateInput10_1::Arguments)
         }
-        RASTER_SCALAR_CLASS_ID | RASTER_ARGUMENT_ARRAY_CLASS_ID => read_variant_object_body_10_1(
-            r,
-            max,
-            refs,
-            0,
-            ObjectEntry10_1::NewObject { class_id: id, key },
-        )
-        .map(RasterTemplateInput10_1::NativeArgument),
+        PROPERTY_SET_CLASS_ID | RASTER_SCALAR_CLASS_ID | RASTER_ARGUMENT_ARRAY_CLASS_ID => {
+            read_variant_object_body_10_1(
+                r,
+                max,
+                refs,
+                0,
+                ObjectEntry10_1::NewObject { class_id: id, key },
+            )
+            .map(RasterTemplateInput10_1::NativeArgument)
+        }
         raster_info::CLASS_ID => raster_info::read_body(r, max, refs, depth)
             .map(|info| RasterTemplateInput10_1::RasterInfo(Box::new(info))),
         raster_info::RASTER_INFOS_CLASS_ID => {

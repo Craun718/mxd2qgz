@@ -811,3 +811,10 @@ CLSID 和构造常量比对。此条件命中 109 条登记。补以 72 份类�
 
 合成输入验证变量中的 NumericFormat、同键回引和对象体截断回滚。
 实档变量及 ArcMap/QGIS 目视验证待补。
+
+模板与函数栅格名称的 IUnknown 输入槽也可读取独立 SystemCore
+PropertySet，其持久化体复用标准 AfCore ObjectStream 入口。模板 Load
+`0x6fcf2fb0` 请求 IUnknown，核心对象头及引用表规则与同模板中已有
+参数类一致。合成 RenderingRule 检查模板输入中的 PropertySet 首次
+定义及同键回引，并继续消费外层规则的参数与渲染器槽。此处验证读取
+边界，实档写出及 ArcMap/QGIS 目视验证待补。

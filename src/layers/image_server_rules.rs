@@ -1738,7 +1738,7 @@ mod tests {
         bytes.extend(1_u16.to_le_bytes()); // 模板版本。
         bytes.extend(EMPTY_STRING);
         bytes.extend([0; 16]); // 子函数槽。
-        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend(3_i32.to_le_bytes());
         bytes.extend(RASTER_ARGUMENT_ARRAY_CLASS_ID);
         bytes.extend(21_u32.to_le_bytes());
         bytes.extend(1_u16.to_le_bytes());
@@ -1753,6 +1753,12 @@ mod tests {
         bytes.extend(RASTER_SCALAR_CLASS_ID);
         bytes.extend(22_u32.to_le_bytes());
         bytes.extend([0; 16]); // 保留数组的空对象项。
+        bytes.extend(PROPERTY_SET_CLASS_ID);
+        bytes.extend(26_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(0_i32.to_le_bytes());
+        bytes.extend(PROPERTY_SET_CLASS_ID);
+        bytes.extend(26_u32.to_le_bytes());
         bytes.extend(CACHED_RASTER_FUNCTION_ARGUMENTS_CLASS_ID);
         bytes.extend(23_u32.to_le_bytes());
         bytes.extend(1_u16.to_le_bytes());
@@ -1787,6 +1793,19 @@ mod tests {
         else {
             panic!("模板应读取 ArgumentArray");
         };
+        assert!(matches!(
+            template.inputs[1].body.as_deref(),
+            Some(RasterTemplateInput10_1::NativeArgument(
+                PropertyValueObjectStream10_1::Object { key: 26, .. }
+            ))
+        ));
+        assert_eq!(
+            template.inputs[2].entry,
+            ObjectEntry10_1::BackReference {
+                class_id: PROPERTY_SET_CLASS_ID,
+                key: 26,
+            }
+        );
         let reference = PropertyValueObjectStream10_1::BackReference {
             class_id: RASTER_SCALAR_CLASS_ID,
             key: 22,
