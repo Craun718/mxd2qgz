@@ -1425,6 +1425,63 @@ pub struct ScaleLineBody10_1 {
     pub remaining_bytes: usize,
 }
 
+/// Map.dll 的 IScaleMarks 持久化标量。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ScaleMarkProperties10_1 {
+    pub division_mark_height: f64,
+    pub subdivision_mark_height: f64,
+    pub mark_position: i32,
+    pub mark_frequency: i32,
+}
+
+impl ScalebarSubclassBody10_1 {
+    /// 两个刻度符号及其后继标量读完后可用。
+    pub fn scale_mark_properties(&self) -> Option<ScaleMarkProperties10_1> {
+        let [division_mark_height, subdivision_mark_height] = self.tail_doubles?;
+        let [mark_position, mark_frequency] = self.tail_ints?;
+        Some(ScaleMarkProperties10_1 {
+            division_mark_height,
+            subdivision_mark_height,
+            mark_position,
+            mark_frequency,
+        })
+    }
+}
+
+impl ScaleLineBody10_1 {
+    fn raw_field<const N: usize>(&self, key: &str) -> Option<[u8; N]> {
+        self.fields.iter().find_map(|field| match field {
+            ScaleLineField10_1::Raw { name, bytes } if *name == key => {
+                bytes.as_slice().try_into().ok()
+            }
+            _ => None,
+        })
+    }
+
+    /// 两个刻度符号及其后继标量读完后可用。
+    pub fn scale_mark_properties(&self) -> Option<ScaleMarkProperties10_1> {
+        let mark_frequency = match u16::from_le_bytes(self.raw_field("tail_version")?) {
+            0 | 1 => {
+                let flag = u16::from_le_bytes(self.raw_field("tail_legacy_flag")?);
+                if flag == 0 { 0 } else { 5 }
+            }
+            2 => i32::from_le_bytes(self.raw_field("tail_int_b")?),
+            _ => return None,
+        };
+        Some(ScaleMarkProperties10_1 {
+            division_mark_height: f64::from_le_bytes(self.raw_field("tail_double_a")?),
+            subdivision_mark_height: f64::from_le_bytes(self.raw_field("tail_double_b")?),
+            mark_position: i32::from_le_bytes(self.raw_field("tail_int_a")?),
+            mark_frequency,
+        })
+    }
+
+    /// SteppedScaleLine 在共享刻度尾段后保存的 IScaleBar.BarHeight。
+    pub fn stepped_bar_height(&self) -> Option<f64> {
+        Some(f64::from_le_bytes(self.raw_field("stepped_double")?))
+    }
+}
+
 fn scale_line_version(reader: &mut Reader<'_>, max: u16, label: &str) -> io::Result<u16> {
     let offset = reader.position();
     let value = reader.read_u16_le()?;
@@ -2508,6 +2565,7 @@ mod tests {
                 assert_eq!(r.position(), offset);
                 assert_eq!(*t, before);
                 assert!(body.tail_ints.is_none());
+                assert!(body.scale_mark_properties().is_none());
                 Ok(())
             })
             .unwrap();
@@ -2535,6 +2593,10 @@ mod tests {
             })
             .unwrap();
             assert_eq!(body.tail_ints, Some([16, expected]));
+            assert_eq!(
+                body.scale_mark_properties().unwrap().mark_frequency,
+                expected
+            );
             data.pop();
             assert!(
                 read_body(&data, |r, m, t, k| {
@@ -2645,7 +2707,9 @@ mod tests {
         data.extend([0u8; 16]);
         positions.push(data.len());
         data.extend([0u8; 16]);
-        data.extend([0u8; 20]);
+        data.extend(1.25_f64.to_le_bytes());
+        data.extend(2.5_f64.to_le_bytes());
+        data.extend((-3_i32).to_le_bytes());
         if tail >= 2 {
             data.extend(0xabcdef01u32.to_le_bytes());
         }
@@ -2727,6 +2791,19 @@ mod tests {
                         "base={base} tail={tail} stepped={stepped}"
                     );
                     assert_eq!(body.remaining_bytes, 4);
+                    assert_eq!(
+                        body.scale_mark_properties(),
+                        Some(ScaleMarkProperties10_1 {
+                            division_mark_height: 1.25,
+                            subdivision_mark_height: 2.5,
+                            mark_position: -3,
+                            mark_frequency: if tail < 2 { 5 } else { 0xabcdef01_u32 as i32 },
+                        })
+                    );
+                    assert_eq!(
+                        body.stepped_bar_height().map(f64::to_bits),
+                        stepped.then_some(0x7ff8_0000_0000_1234)
+                    );
                     assert_eq!(
                         body.fields.iter().any(|field| matches!(
                             field,
