@@ -3,7 +3,8 @@
 use super::raster_info::{self, RasterInfo10_1, RasterInfos10_1};
 use super::{
     RasterFunctionArgumentsBody10_1, RasterFunctionBody10_1, RuleSlot10_1, class_ids,
-    read_arguments, read_function, signed_version, slot, supports_function_arguments,
+    function_max_version, read_arguments, read_function, signed_version, slot,
+    supports_function_arguments,
 };
 use crate::layers::raster_dataset_name::{RasterDatasetNameEntryBody10_1, read_name_body};
 use crate::objects::property_set::{
@@ -30,6 +31,7 @@ pub struct RasterFunctionTemplate10_1 {
 #[derive(Debug, Clone, PartialEq)]
 pub enum RasterTemplateInput10_1 {
     Arguments(RasterFunctionArgumentsBody10_1),
+    Function(Box<RasterFunctionBody10_1>),
     Variable(RasterFunctionVariable10_1),
     RasterName(RasterDatasetNameEntryBody10_1),
     RasterInfo(Box<RasterInfo10_1>),
@@ -158,6 +160,8 @@ pub(crate) fn read_input_body(
         _ if supports_function_arguments(id) => {
             read_arguments(r, max, refs, id, depth).map(RasterTemplateInput10_1::Arguments)
         }
+        _ if function_max_version(id).is_some() => read_function(r, max, refs, id, depth)
+            .map(|body| RasterTemplateInput10_1::Function(Box::new(body))),
         PROPERTY_SET_CLASS_ID | RASTER_SCALAR_CLASS_ID | RASTER_ARGUMENT_ARRAY_CLASS_ID => {
             read_variant_object_body_10_1(
                 r,

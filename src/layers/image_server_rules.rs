@@ -291,6 +291,25 @@ pub(crate) fn read_mosaic_rule_10_1(
     })
 }
 
+fn function_max_version(class_id: [u8; 16]) -> Option<i16> {
+    Some(match class_id {
+        class_ids::MOSAIC_FUNCTION => 9,
+        class_ids::RASTER_FUNCTION_TEMPLATE => 3,
+        STRETCH_FUNCTION_CLASS_ID
+        | class_ids::GEOMETRIC_FUNCTION
+        | class_ids::MERGE_RASTERS_FUNCTION => 2,
+        class_ids::CACHED_RASTER_FUNCTION
+        | class_ids::RGB32_FUNCTION
+        | class_ids::RASTER_INFO_FUNCTION
+        | class_ids::RASTER_ITEM_FUNCTION
+        | class_ids::RASTER_FUNCTION_COLLECTION
+        | class_ids::LOCAL_FUNCTION => 1,
+        _ if class_ids::LOCAL_FUNCTION_ALIASES.contains(&class_id) => 1,
+        _ if class_ids::FUNCTIONS.contains(&class_id) => 1,
+        _ => return None,
+    })
+}
+
 pub(super) fn read_function(
     r: &mut Reader<'_>,
     max: usize,
@@ -306,21 +325,8 @@ pub(super) fn read_function(
     } else {
         class_id
     };
-    let max_version = match class_id {
-        class_ids::MOSAIC_FUNCTION => 9,
-        class_ids::RASTER_FUNCTION_TEMPLATE => 3,
-        STRETCH_FUNCTION_CLASS_ID
-        | class_ids::GEOMETRIC_FUNCTION
-        | class_ids::MERGE_RASTERS_FUNCTION => 2,
-        class_ids::CACHED_RASTER_FUNCTION
-        | class_ids::RGB32_FUNCTION
-        | class_ids::RASTER_INFO_FUNCTION
-        | class_ids::RASTER_ITEM_FUNCTION
-        | class_ids::RASTER_FUNCTION_COLLECTION
-        | class_ids::LOCAL_FUNCTION => 1,
-        _ if class_ids::FUNCTIONS.contains(&class_id) => 1,
-        _ => return Err(unsupported_class("IRasterFunction", &class_id)),
-    };
+    let max_version = function_max_version(class_id)
+        .ok_or_else(|| unsupported_class("IRasterFunction", &class_id))?;
     let has_basic_function = !matches!(
         class_id,
         class_ids::RGB32_FUNCTION | class_ids::RASTER_FUNCTION_COLLECTION
@@ -1743,7 +1749,7 @@ mod tests {
         bytes.extend(21_u32.to_le_bytes());
         bytes.extend(1_u16.to_le_bytes());
         bytes.extend(EMPTY_STRING.repeat(2));
-        bytes.extend(5_i32.to_le_bytes());
+        bytes.extend(6_i32.to_le_bytes());
         bytes.extend(RASTER_SCALAR_CLASS_ID);
         bytes.extend(22_u32.to_le_bytes());
         bytes.extend((-1_i16).to_le_bytes());
@@ -1759,6 +1765,11 @@ mod tests {
         bytes.extend([0; 16]);
         bytes.extend(CACHED_RASTER_FUNCTION_ARGUMENTS_CLASS_ID);
         bytes.extend(27_u32.to_le_bytes());
+        bytes.extend(IDENTITY_FUNCTION_CLASS_ID);
+        bytes.extend(28_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(7_i32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
         bytes.extend(PROPERTY_SET_CLASS_ID);
         bytes.extend(26_u32.to_le_bytes());
         bytes.extend(1_u16.to_le_bytes());
@@ -1816,7 +1827,7 @@ mod tests {
             class_id: RASTER_SCALAR_CLASS_ID,
             key: 22,
         };
-        assert_eq!(array.declared_count, 5);
+        assert_eq!(array.declared_count, 6);
         assert_eq!(
             array.objects[0],
             PropertyValueObjectStream10_1::RasterScalar {
@@ -1843,6 +1854,13 @@ mod tests {
                 class_id: CACHED_RASTER_FUNCTION_ARGUMENTS_CLASS_ID,
                 key: 27,
             }
+        );
+        let PropertyValueObjectStream10_1::RasterArgumentInput(item) = &array.objects[5] else {
+            panic!("应读取数组中的栅格函数");
+        };
+        assert_eq!(item.key, 28);
+        assert!(
+            matches!(item.body(), RasterTemplateInput10_1::Function(body) if body.base_long == 7)
         );
         let properties = rule.arguments.body.unwrap().properties.body.unwrap();
         let PropertyValueObjectStream10_1::RasterArgumentArray(array) =

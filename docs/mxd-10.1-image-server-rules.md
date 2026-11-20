@@ -828,3 +828,12 @@ ArgumentArray 的成员读取在 FunctionRasterDB.dll 10.1.0.3035
 外层 Variant 深度限制，回到 Variant 时继续累计深度。
 合成 RenderingRule 验证数组内 CachedRasterFunctionArguments 新对象
 及同键回引，并核对后续外层属性集和渲染器槽边界。实档与目视验证待补。
+
+### IUnknown 槽中的栅格函数对象
+
+模板和函数栅格名称的 IUnknown 输入及 ArgumentArray 成员可以按对象头
+CLSID 读取已有持久化证据的 IRasterFunction 对象。它们共享 RenderingRule
+的函数版本分派，继续使用各自宿主剩余的递归预算和引用表。
+合成 RenderingRule 在 ArgumentArray 中读取 IdentityFunction，并验证
+后续输入、参数及渲染器仍按规则边界读取。实际工程中函数作为
+IUnknown 输入的写出和 ArcMap/QGIS 目视验证待补。
