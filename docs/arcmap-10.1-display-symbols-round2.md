@@ -566,5 +566,20 @@ IPictureFillSymbol 和 IFillProperties 分别对位 +0x98 的虚表
 分别取完整对象 +0x58 和 +0x60（对应持久化 −0x114 和 −0x10c）。
 IFillSymbol::Outline `0x6eb70b90` 取其接口 +0x40，确认该槽位
 为持久化 −0x94。读取器照旧保留原始位模式。
-尾部三个 short 和各颜色槽的绘制分支仍待进一步定性，ArcMap/QGIS
-目视验收待补。
+各颜色槽的绘制分支仍待进一步定性，ArcMap/QGIS 目视验收待补。
+
+### 图片填充的图像效果
+
+用同版 DisplayCore.dll 原始指令补核绘制调用。PictureFillSymbol 在
+`0x6eb71eff–0x6eb71f22` 将完整对象 +0x146、+0x148、+0x14a 的
+三个 short 传给 +0x130 的图块供给器虚表 +8 槽。位图供给器表
+`0x6ec0ff18` 和增强图元文件供给器表 `0x6ec0ff40` 的该槽均指向
+`0x6eb6e520`。该函数按实参顺序保存至供给器 +0x2c/+0x2e/+0x30。
+位图绘制分支 `0x6eb6ed60 → 0x6eb6ef20 → 0x6eb6f040` 再将三项
+按相同顺序传给 DisplayLib 的 IColor 版 ApplyEffects。第一项也在
+`0x6eb6e990` 的像素路径单独传给 ApplyTransparency。
+
+因此持久化视图 −0x26/−0x24/−0x22 依次为透明度、亮度、对比度。
+旧式读写 `0x6eb74aa0/0x6eb74740` 使用完整对象上的同三个成员，
+从对象版本 4 起有此字段组。Rust 保留原始位模式。
+ArcMap/QGIS 的显示效果尚待目视验证。

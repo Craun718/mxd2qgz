@@ -225,7 +225,7 @@ pub struct PictureFillSymbolBody10_1 {
     pub tail_int32s: [i32; 2],
     /// SwapForeGroundBackGroundColor 原始 byte → this−0x38。
     pub tail_byte: u8,
-    /// short ×3 → this−0x26 / −0x24 / −0x22。
+    /// 透明度、亮度、对比度的原始 short 位模式，版本 4 起写入。
     pub tail_shorts: [u16; 3],
     /// 嵌套停止（槽位未知实现类时非 None；游标停在该槽起点）。
     pub stop: Option<SymbolStop10_1>,
