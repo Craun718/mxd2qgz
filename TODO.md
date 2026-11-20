@@ -511,7 +511,10 @@
       - [x] 定性 DBTableName 第四个字符串为几何列名称，见 [SqlFDB 字段来源](docs/arcmap-10.1-dataset-name-slots.md#dbtablename-几何列名称与类型)。
       - [x] 定性 DBTableName int32 为几何类型 `esriGeometryType`，见 [SqlFDB 字段来源](docs/arcmap-10.1-dataset-name-slots.md#dbtablename-几何列名称与类型)。
       - [x] 接入 DBTableName 尾部非空 ISpatialReference 中的 PCS、GCS 和 UnknownCoordinateSystem 对象体，复用宿主键表。见 [读写取证](docs/arcmap-10.1-dataset-name-slots.md#dbtablename-尾部空间参考)。
-      - [ ] 定性 Scalebar 族其余标量字段。[比例尺续查](docs/mxd-terra-nextpass-scale.md)
+      - [x] 定性 Scalebar 共用基类中 `IScaleBar.Division` 的两处持久化值和取值优先级。[分段值取证](docs/mxd-terra-nextpass-scale.md#iscalebardivision-的两处持久化值)
+      - [ ] 定性 Scalebar 共用基类版本 5 和 6 增加的两个 short。[比例尺续查](docs/mxd-terra-nextpass-scale.md)
+      - [ ] 定性填充比例尺派生中段的 double。[比例尺续查](docs/mxd-terra-nextpass-scale.md)
+      - [ ] 定性独立 Scalebar 类的其余标量字段。[比例尺续查](docs/mxd-terra-nextpass-scale.md)
       - [x] 定性 MarkerNorthArrow 基类的大小、角度、校准角度、参考点和类型。[属性对位](docs/arcmap-10.1-legend-family.md#指北针的属性)
       - [ ] 确认 MarkerNorthArrow 旧版标记槽前弃读 int32 的历史写侧用途。
       - [x] 定性 MapTitle 的自身版本与共同前缀字段，并按原生有符号比较验证条件字段边界。[原生读写](docs/arcmap-10.1-legend-family.md#一maptitle7a3f91df-体完全闭合证据确定的)

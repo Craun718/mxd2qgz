@@ -103,3 +103,21 @@ esriCarto 10.1 的 IScaleMarks（6DFAE8E7-ECAA-11D0-8682-0000F8751720）
 标量，并通过 `stepped_bar_height()` 读取阶梯比例尺高度。原始字段仍保留。
 构造测试覆盖旧版频率默认值、当前版本的有符号标量、阶梯高度位模式与后继
 字节边界。实档以及 ArcMap 10.1 和 QGIS 目视验证待补。
+
+## IScaleBar.Division 的两处持久化值
+
+复核同一 Map.dll 10.1.0.3035 及 10.1 esriCarto MSFT 类型库
+（SHA-256 `8a70f4094c85b966ce0b0129ad7fa3d9562269c73f87e4f70cbc78c75775b578`）。
+从 IScaleBar 的 TypeInfo 成员记录读得 Division 的 get/put 槽
+`0x34` / `0x38`。在 SteppedScaleLine 虚表 `0x7948e2cc` 中分别落到
+`0x7944f920` / `0x7944f960`。
+
+以 objdump 追踪 getter。它先读接口相对 `+0xa8` 的 double，
+再以 `ucomisd` 与地址 `0x7948ed60` 的零比较。恰等于零时改读
+`+0x18`。由上文确认的位移差 `0x194` 得到两个 Save 成员
+`−0xec` 和 `−0x17c`。前者从基类 v4 起出现，对应 Rust 的
+`tail_double` / `base_tail_double`；后者是共同前缀后的首个 double，
+对应 `base_double_a`。原生 put 将设置值写入 `+0x18` 与另一个
+非持久化成员 `+0xb0`，并把 `+0xa8` 的非零值清零。
+这是 10.1 静态证据。v5/v6 两个 short 的语义、覆盖值的运行时来源以及
+ArcMap/QGIS 的实档目视验证待补。
