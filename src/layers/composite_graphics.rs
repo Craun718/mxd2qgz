@@ -94,7 +94,8 @@ use crate::layers::layer_list::FEATURE_LAYER_CLASS_ID;
 use crate::maps::picture_element::PictureElementKind10_1;
 use crate::objects::element_body::{
     ElementBody10_1, ElementBodyStop10_1, LINE_ELEMENT_CLASS_ID, MARKER_ELEMENT_CLASS_ID,
-    PARAGRAPH_TEXT_ELEMENT_CLASS_ID, TEXT_ELEMENT_CLASS_ID, read_element_body_of_class_10_1,
+    PARAGRAPH_TEXT_ELEMENT_CLASS_ID, POLYGON_ELEMENT_CLASS_ID, TEXT_ELEMENT_CLASS_ID,
+    read_element_body_of_class_10_1,
 };
 use crate::objects::element_collection::{
     ELEMENT_COLLECTION_CLASS_ID, ElementCollection10_1, ElementCollectionStop10_1,
@@ -513,6 +514,7 @@ pub fn read_composite_graphics_layer_prefix_10_1(
                                 PARAGRAPH_TEXT_ELEMENT_CLASS_ID,
                                 MARKER_ELEMENT_CLASS_ID,
                                 LINE_ELEMENT_CLASS_ID,
+                                POLYGON_ELEMENT_CLASS_ID,
                             ]
                             .contains(&class_id)
                                 || PictureElementKind10_1::from_class(&class_id).is_some() =>

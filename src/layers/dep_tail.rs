@@ -250,50 +250,44 @@ pub fn read_time_body_10_1(
     Ok(body)
 }
 
-/// TimeZoneInfo 体内的时间规则块（SystemCore.dll `0x7fff5e90` 读、
-/// `0x7fff5f50` 写，读写对称，各 20 字节）。
-///
-/// 证据：确定的（字段序为两个 helper 的 AfStreamRead/AfStreamWrite 序列：
-/// int32 + short + short + int32 + short + short + int32）。语义为候选
-/// （夏令时/标准时切换规则）。
+/// SystemCore 10.1 的时区规则块，按 `0x7fff5e90` / `0x7fff5f50` 的顺序保存。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TziRule10_1 {
-    /// int32（样本无；语义未定）。
     pub int_a: i32,
-    /// short（语义未定）。
-    pub short_a: i16,
-    /// short（语义未定）。
-    pub short_b: i16,
-    /// int32（语义未定）。
+    /// 第一组定长 UTF-16LE 名称（32 个码元），原样保留。
+    pub name_a: [u8; 64],
+    /// 第一组 16 字节转换日期，原样保留。
+    pub date_a: [u8; 16],
     pub int_b: i32,
-    /// short（语义未定）。
-    pub short_c: i16,
-    /// short（语义未定）。
-    pub short_d: i16,
-    /// int32（语义未定）。
+    /// 第二组定长 UTF-16LE 名称（32 个码元），原样保留。
+    pub name_b: [u8; 64],
+    /// 第二组 16 字节转换日期，原样保留。
+    pub date_b: [u8; 16],
     pub int_c: i32,
 }
 
 impl TziRule10_1 {
+    const BYTE_LEN: usize = 172;
+
     fn read(trial: &mut Reader<'_>) -> io::Result<Self> {
-        Ok(TziRule10_1 {
-            int_a: i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()),
-            short_a: trial.read_u16_le()? as i16,
-            short_b: trial.read_u16_le()? as i16,
-            int_b: i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()),
-            short_c: trial.read_u16_le()? as i16,
-            short_d: trial.read_u16_le()? as i16,
-            int_c: i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()),
+        Ok(Self {
+            int_a: trial.read_u32_le()? as i32,
+            name_a: trial.read_bytes(64)?.try_into().unwrap(),
+            date_a: trial.read_bytes(16)?.try_into().unwrap(),
+            int_b: trial.read_u32_le()? as i32,
+            name_b: trial.read_bytes(64)?.try_into().unwrap(),
+            date_b: trial.read_bytes(16)?.try_into().unwrap(),
+            int_c: trial.read_u32_le()? as i32,
         })
     }
 }
 
-/// TimeZoneInfo 规则数组条目（`0x7fff6010` 循环体，每条 24 字节）。
+/// TimeZoneInfo 规则数组条目（`0x7fff6010` 循环体，每条 176 字节）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TziRuleEntry10_1 {
     /// int32（语义未定）。
     pub int_a: i32,
-    /// 20 字节规则块。
+    /// 172 字节规则块。
     pub rule: TziRule10_1,
 }
 
@@ -302,9 +296,9 @@ pub struct TziRuleEntry10_1 {
 ///
 /// 证据：确定的（定位链见模块文档；Save `0x7fff77f0` 恒写版本常量
 /// `0x8006d040`=2，与读侧版本 2 分支逐字段对称）。字段序：① int16 版本
-/// （`2 < (short)ver` 拒绝；样本无）→ ② 版本 <2：int32（bias 候选，内存
+/// （`2 < (short)ver` 拒绝）→ ② 版本 <2：int32（bias 候选，内存
 /// 缺省 -1）→ ③ String ×3（标准时/夏令时/显示名候选）→ ④ 版本 <2：int32
-/// （内存缺省 -1）→ ⑤ int32（→ this+0xc）→ ⑥ 规则块（20 字节）→
+/// （内存缺省 -1）→ ⑤ int32（→ this+0xc）→ ⑥ 规则块（172 字节）→
 /// ⑦ int16 计数（≤0 不进循环，原样保留）→ ⑧ 计数 × [int32 + 规则块]。
 #[derive(Debug, Clone, PartialEq)]
 pub struct TimeZoneInfoBody10_1 {
@@ -359,10 +353,19 @@ pub fn read_time_zone_info_body_10_1(
     let int_a = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
     let rule = TziRule10_1::read(&mut trial)?;
     let count = trial.read_u16_le()? as i16;
-    let mut rules = Vec::new();
-    for _ in 0..count.max(0) as usize {
-        let int_a = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
-        let rule = TziRule10_1::read(&mut trial)?;
+    let count_usize = count.max(0) as usize;
+    let rules_bytes = count_usize * (4 + TziRule10_1::BYTE_LEN);
+    if rules_bytes > max_bytes {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "TimeZoneInfo 规则数组超过限额",
+        ));
+    }
+    let mut rules_reader = trial.read_region(rules_bytes)?;
+    let mut rules = Vec::with_capacity(count_usize);
+    for _ in 0..count_usize {
+        let int_a = rules_reader.read_u32_le()? as i32;
+        let rule = TziRule10_1::read(&mut rules_reader)?;
         rules.push(TziRuleEntry10_1 { int_a, rule });
     }
     *reader = trial;
@@ -924,24 +927,17 @@ mod tests {
         put_string(&mut buf, "中国夏令时间");
         put_string(&mut buf, "(UTC+08:00)");
         buf.extend_from_slice(&480i32.to_le_bytes());
-        // 规则块：i32 + s + s + i32 + s + s + i32。
-        buf.extend_from_slice(&0i32.to_le_bytes());
-        buf.extend_from_slice(&3i16.to_le_bytes());
-        buf.extend_from_slice(&5i16.to_le_bytes());
-        buf.extend_from_slice(&0i32.to_le_bytes());
-        buf.extend_from_slice(&10i16.to_le_bytes());
-        buf.extend_from_slice(&5i16.to_le_bytes());
-        buf.extend_from_slice(&60i32.to_le_bytes());
-        // 计数 1 + 一条规则条目（i32 + 规则块）。
-        buf.extend_from_slice(&1i16.to_le_bytes());
-        buf.extend_from_slice(&1i32.to_le_bytes());
-        buf.extend_from_slice(&9i32.to_le_bytes());
-        buf.extend_from_slice(&4i16.to_le_bytes());
-        buf.extend_from_slice(&1i16.to_le_bytes());
-        buf.extend_from_slice(&0i32.to_le_bytes());
-        buf.extend_from_slice(&11i16.to_le_bytes());
-        buf.extend_from_slice(&1i16.to_le_bytes());
-        buf.extend_from_slice(&0i32.to_le_bytes());
+        // 基本规则和一条年度规则，名称及日期按定长字段写入。
+        buf.extend(0_i32.to_le_bytes());
+        buf.extend([0x31; 64]);
+        buf.extend([0x32; 16]);
+        buf.extend(9_i32.to_le_bytes());
+        buf.extend([0x41; 64]);
+        buf.extend([0x42; 16]);
+        buf.extend(60_i32.to_le_bytes());
+        buf.extend(1_i16.to_le_bytes());
+        buf.extend(1_i32.to_le_bytes());
+        buf.extend([0; TziRule10_1::BYTE_LEN]);
         buf
     }
 
@@ -978,6 +974,11 @@ mod tests {
                 assert_eq!(tzi.bias_a, None);
                 assert_eq!(tzi.names[0], "中国标准时间");
                 assert_eq!(tzi.int_a, 480);
+                assert_eq!(tzi.rule.name_a, [0x31; 64]);
+                assert_eq!(tzi.rule.date_a, [0x32; 16]);
+                assert_eq!(tzi.rule.int_b, 9);
+                assert_eq!(tzi.rule.name_b, [0x41; 64]);
+                assert_eq!(tzi.rule.date_b, [0x42; 16]);
                 assert_eq!(tzi.rule.int_c, 60);
                 assert_eq!(tzi.count, 1);
                 assert_eq!(tzi.rules.len(), 1);
@@ -1165,7 +1166,7 @@ mod tests {
         put_string(&mut bytes, "");
         bytes.extend_from_slice(&7i32.to_le_bytes());
         bytes.extend_from_slice(&11i32.to_le_bytes());
-        bytes.extend_from_slice(&[0u8; 20]);
+        bytes.extend_from_slice(&[0u8; TziRule10_1::BYTE_LEN]);
         bytes.extend_from_slice(&(-3i16).to_le_bytes());
         let mut reader = Reader::new(&bytes);
         let mut table = RefTable10_1::default();
@@ -1332,5 +1333,16 @@ mod tests {
             assert_eq!(reader.position(), 0, "失败游标不推进（cut={cut}）");
             assert!(table.is_empty(), "失败不修改登记表");
         }
+    }
+
+    #[test]
+    fn time_zone_info_rejects_rule_array_over_resource_limit() {
+        let bytes = time_zone_info_bytes();
+        let mut reader = Reader::new(&bytes);
+        let mut table = RefTable10_1::new();
+        let error = read_time_zone_info_body_10_1(&mut reader, 175, &mut table, 1).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(reader.position(), 0);
+        assert!(table.is_empty());
     }
 }

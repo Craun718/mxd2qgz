@@ -2,6 +2,10 @@
 
 use std::io::{self, ErrorKind};
 
+use super::coverage_annotation_layer::{
+    COVERAGE_ANNOTATION_LAYER_CLASS_ID, CoverageAnnotationLayer10_1,
+    read_coverage_annotation_layer_10_1,
+};
 use crate::layers::feature_layer::{
     FEATURE_LAYER_CLASS_ID, FeatureLayerPrefix10_1, FeatureLayerStop10_1,
     read_feature_layer_prefix_10_1,
@@ -21,6 +25,10 @@ pub const CAD_LAYER_CLASS_ID: [u8; 16] = [
 
 pub const CAD_FEATURE_LAYER_CLASS_ID: [u8; 16] = [
     0xb6, 0x84, 0xf3, 0xe0, 0xc1, 0xe0, 0xd2, 0x11, 0x9b, 0x30, 0, 0xc0, 0x4f, 0xa3, 0x32, 0x99,
+];
+
+pub const CAD_ANNOTATION_LAYER_CLASS_ID: [u8; 16] = [
+    0x79, 0x18, 0xb7, 0xe1, 0xdf, 0xa5, 0xd4, 0x11, 0xa2, 0x15, 0x44, 0x45, 0x53, 0x54, 0x77, 0x77,
 ];
 
 pub const CAD_DRAWING_OBJECT_CLASS_ID: [u8; 16] = [
@@ -63,6 +71,24 @@ pub struct CadFeatureLayer10_1 {
     pub version: u16,
     pub feature_header: ObjectHeader,
     pub feature: Option<Box<FeatureLayerPrefix10_1>>,
+    pub drawing_entry: ObjectEntry10_1,
+    pub drawing: Option<Box<CadDrawingObject10_1>>,
+    pub layer_values: Vec<u16>,
+    pub georeference: Option<String>,
+    pub legacy_georeference_flag: Option<u16>,
+    pub georeference_parameters: Option<[f64; 2]>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CadAnnotationLayer10_1 {
+    pub version: u16,
+    pub annotation_header: ObjectHeader,
+    pub annotation: Option<Box<CoverageAnnotationLayer10_1>>,
+    pub tail: CadSublayerTail10_1,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CadSublayerTail10_1 {
     pub drawing_entry: ObjectEntry10_1,
     pub drawing: Option<Box<CadDrawingObject10_1>>,
     pub layer_values: Vec<u16>,
@@ -189,7 +215,78 @@ pub(crate) fn read_cad_feature_layer_10_1(
             ));
         }
     };
-    let (drawing_entry, drawing) = read_drawing_slot_10_1(&mut r, max, &mut refs)?;
+    let CadSublayerTail10_1 {
+        drawing_entry,
+        drawing,
+        layer_values,
+        georeference,
+        legacy_georeference_flag,
+        georeference_parameters,
+    } = read_cad_sublayer_tail(&mut r, max, &mut refs, version)?;
+    *reader = r;
+    *table = refs;
+    Ok(CadFeatureLayer10_1 {
+        version,
+        feature_header,
+        feature,
+        drawing_entry,
+        drawing,
+        layer_values,
+        georeference,
+        legacy_georeference_flag,
+        georeference_parameters,
+    })
+}
+
+pub(crate) fn read_cad_annotation_layer_10_1(
+    reader: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<CadAnnotationLayer10_1> {
+    let mut r = reader.clone();
+    let mut refs = table.clone();
+    let version = r.read_u16_le()?;
+    if !(1..=4).contains(&version) {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("CadAnnotationLayer 不支持版本 {version}"),
+        ));
+    }
+    // IObjectStream +0x48 的聚合对象头不登记会话键。
+    let annotation_header = read_header_10_1(&mut r)?;
+    let annotation = match annotation_header {
+        ObjectHeader::Null => None,
+        ObjectHeader::Object {
+            class_id: COVERAGE_ANNOTATION_LAYER_CLASS_ID,
+            key,
+        } if !refs.contains(key) => Some(Box::new(read_coverage_annotation_layer_10_1(
+            &mut r, max, &mut refs,
+        )?)),
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                format!("CAD 聚合注记层对象头不匹配或使用已有键：{annotation_header:?}"),
+            ));
+        }
+    };
+    let tail = read_cad_sublayer_tail(&mut r, max, &mut refs, version)?;
+    *reader = r;
+    *table = refs;
+    Ok(CadAnnotationLayer10_1 {
+        version,
+        annotation_header,
+        annotation,
+        tail,
+    })
+}
+
+fn read_cad_sublayer_tail(
+    r: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+    version: u16,
+) -> io::Result<CadSublayerTail10_1> {
+    let (drawing_entry, drawing) = read_drawing_slot_10_1(r, max, refs)?;
     let layer_values = if version >= 2 {
         // 按写入计数消费全部 short。ArcMap 加载时因数据源可达性可少读。
         let count = (r.read_u32_le()? as i32).max(0) as usize;
@@ -204,24 +301,18 @@ pub(crate) fn read_cad_feature_layer_10_1(
     } else {
         Vec::new()
     };
-    let body = CadFeatureLayer10_1 {
-        version,
-        feature_header,
-        feature,
+    Ok(CadSublayerTail10_1 {
         drawing_entry,
         drawing,
         layer_values,
         georeference: (version >= 3)
-            .then(|| read_string_10_1(&mut r, max))
+            .then(|| read_string_10_1(r, max))
             .transpose()?,
         legacy_georeference_flag: (version == 3).then(|| r.read_u16_le()).transpose()?,
         georeference_parameters: (version == 4)
             .then(|| -> io::Result<_> { Ok([r.read_f64_le()?, r.read_f64_le()?]) })
             .transpose()?,
-    };
-    *reader = r;
-    *table = refs;
-    Ok(body)
+    })
 }
 
 /// 读取经类 ID 确认的 CadLayer。图层对象头的登记由调用者完成。

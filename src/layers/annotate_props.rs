@@ -1179,25 +1179,19 @@ pub struct AnnotationExpressionEngineBody10_1 {
     pub body: AnnotationVbscriptEngineBody10_1,
 }
 
-/// HotLinkExpressionProperties 体(实现函数未定位)的样本结构字段。
-///
-/// 证据:样本结构(样本 `/Maps:0x15ec..0x1606` 逐字节)+ 构造函数
-/// `0x78540560` 成员形状(String、short 0xffff、int)旁证;Load 未定位
-/// (QI `0x785406d0` 仅两个接口,无 IPersistStream 形 vtable,负证据见研究
-/// 记录)。字段序:① int16 版本(样本 1)→ ② String(样本空串)→
-/// ③ int16(样本 -1)→ ④ 16 字节原样块(样本全零;GUID 候选)。
+/// HotLinkExpressionProperties 对象体，见 LabelPlacement.dll Load 0x78540850。
 #[derive(Debug, Clone, PartialEq)]
 pub struct HotLinkExpressionPropsBody10_1 {
-    /// 对象头键(样本 85)。
+    /// 对象头键。
     pub key: u32,
-    /// 体首 short 版本(样本 1);无反编译证据,不设上限。
+    /// 架构版本，原生有符号上限为 1。
     pub version: u16,
-    /// String(样本空串;热链接表达式候选)。
+    /// 热链接表达式字符串。
     pub string: String,
-    /// int16(样本 -1),语义未定。
+    /// 原样 short。
     pub short: i16,
-    /// 16 字节原样块(样本全零),语义未定。
-    pub guid_block: [u8; 16],
+    /// IAnnotationExpressionEngine 槽。
+    pub engine: ExpressionEngineSlot10_1,
 }
 
 /// BOLP 槽间 16 字节标量块(槽 2 与槽 3 之间;`0x7853d3a0` 槽间读序
@@ -1214,30 +1208,24 @@ pub struct BolpBetweenBlock10_1 {
     pub short_b: i16,
 }
 
-/// BOLP 体尾段(样本 `0xe99..0xec5` 共 44 字节;`0x7853d3a0` 尾读序
-/// [int32 计数][计数 × double][double][int32][String][int32] 佐证前 24
-/// 字节,计数 0 时无 double;其后 20 字节块读序未定名,原样保留)。
-#[derive(Debug, Clone, PartialEq)]
+/// BOLP 三个对象槽之后的字段，偏移相对于 IPersistStream 视图。
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct BolpTail10_1 {
-    /// int32 计数(样本 0)。负数/零不进循环,原样保留。
+    /// 有符号计数。非正数没有对应的 double。
     pub count: i32,
-    /// 计数 × double(样本计数 0 → 空)。
     pub doubles: Vec<f64>,
-    /// double(样本 0.0)。
-    pub double: f64,
-    /// int32(样本 0)。
-    pub int_a: i32,
-    /// String(样本 cb=0 空串;BSTR 空语义,无终止零载荷)。
-    pub string: String,
-    /// int32(样本 0)。
-    pub int_b: i32,
-    /// 20 字节未定名块:int32 ×2(样本 1、2)+ double(样本 0.0)+
-    /// int16 ×2(样本 0、-1),原样保留。
-    pub block_int_a: i32,
-    pub block_int_b: i32,
-    pub block_double: f64,
-    pub block_short_a: i16,
-    pub block_short_b: i16,
+    pub double_44: f64,
+    pub int_70: i32,
+    /// v0/v1 兼容分支读取后不保存到对象内的字符串和整数。
+    pub legacy_fields: Option<(String, i32)>,
+    /// v3 起读取 -0x24 的 double。
+    pub double_24: Option<f64>,
+    /// v4 起依次读取 -0x1c 的 int32、-0x18 的字符串、-0x14 的 short。
+    pub v4_fields: Option<(i32, String, i16)>,
+    /// v5 起读取 -0x10 的 int32 和 -0x0c 的 short。
+    pub v5_fields: Option<(i32, i16)>,
+    /// v6 起存盘的 -0x5a short，旧版由原生回填。
+    pub short_5a: Option<i16>,
 }
 
 /// BOLP 体读取的停止原因(全部为「成功停止」)。
@@ -1281,22 +1269,14 @@ pub enum PlacementPrioritiesSlot10_1 {
 
 /// BasicOverposterLayerProperties 体的已确认字段。
 ///
-/// 证据:样本结构(样本键 69 体 `0xdb7..0xec5` 共 270 字节逐字节对位)+ 部分反编
-/// 译佐证(`0x7853d3a0` = LabelPlacement.dll 内唯一经 LoadObject 引用
-/// ILineLabelPosition2 `{2442958B}`/ILineLabelPlacementPriorities2
-/// `{261A4376}`/IPointPlacementPriorities2 `{261A4371}` 的函数,位于 BOLP
-/// GetClassID +0x40 邻位;其标量前缀读序 [int16][int16×3][int32×3]、槽间
-/// [int16][int32][double][int16] 与尾段读序与本读取器一致,但函数归属未
-/// 证实,且其无条件尾段(计数循环/double/int32/String/int32)与样本版本
-/// 行为不吻合——见研究记录「BOLP::Load 未定位」节)。字段序(样本逐字
-/// 节对位):① 20 字节标量前缀([int16][int16×3][int32×3],语义候选)→
-/// ② 槽 LineLabelPosition → ③ 槽 LineLabelPlacementPriorities → ④ 16 字
-/// 节标量块 → ⑤ 槽 PointPlacementPriorities → ⑥ 44 字节尾段。
+/// LabelPlacement.dll 的 IPersistStream Load `0x7853d3a0` 和 Save
+/// `0x7853d710` 经虚表对位。样本键 69 为 v6，体位于 `0xdb7..0xec5`。
+/// 版本化字段和对象槽见 docs/arcmap-10.1-featurelayer-tail.md。
 #[derive(Debug, Clone, PartialEq)]
 pub struct BolpBody10_1 {
     /// 对象头键(样本 69)。
     pub key: u32,
-    /// 前缀首 int16(样本 0;版本候选,原样保留,无门)。
+    /// 前缀首 int16（样本 6，按原始位模式保留）。
     pub version: u16,
     /// 前缀 int16 ×3(样本 0、0、0),语义未定。
     pub shorts: [i16; 3],
@@ -1310,7 +1290,7 @@ pub struct BolpBody10_1 {
     pub between: BolpBetweenBlock10_1,
     /// 槽 3 PointPlacementPriorities 分类(样本键 72)。
     pub priorities_point: PlacementPrioritiesSlot10_1,
-    /// 尾段 44 字节(样本值见 [`BolpTail10_1`])。
+    /// 三个对象槽之后的版本化尾段。
     pub tail: BolpTail10_1,
     /// 停止原因;`None` = 体已完整消费(样本形态)。
     pub stop: Option<BolpStop10_1>,
@@ -1320,8 +1300,7 @@ pub struct BolpBody10_1 {
 ///
 /// 与 [`crate::stream::native_string::read_string_10_1`](写方向 String::
 /// Write 布局,恒含终止零,cb≥2)不同:UID/BOLP 尾段/表达式属性等调用
-/// 点经 OleAut BSTR 语义写入,空 BSTR 的流内 cb=0、无载荷(样本
-/// `/Maps:0x14d0` 与 BOLP 尾段 cb=0 佐证)。cb 奇数为错误;cb≥2 时仍要求
+/// 点经 OleAut BSTR 语义写入,空 BSTR 的流内 cb=0、无载荷。cb 奇数为错误;cb≥2 时仍要求
 /// 终止零。
 pub(crate) fn read_stream_string_10_1(
     reader: &mut Reader<'_>,
@@ -1481,27 +1460,30 @@ pub fn read_annotation_expression_engine_body_10_1(
     Ok(AnnotationExpressionEngineBody10_1 { kind, body })
 }
 
-/// 从对象头之后的位置读取 10.1 HotLinkExpressionProperties 体(证据:样
-/// 本结构,见结构体文档)。失败时不推进游标、不修改登记表。
+/// 读取热链接属性体。遇到未知引擎类时停在引擎对象头起点。
 pub fn read_hot_link_expression_props_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
-    _table: &mut RefTable10_1,
+    table: &mut RefTable10_1,
     key: u32,
 ) -> io::Result<HotLinkExpressionPropsBody10_1> {
     let mut trial = reader.clone();
-    let version = trial.read_u16_le()?;
-    let string = read_stream_string_10_1(&mut trial, max_bytes)?;
+    let version = read_version_short(
+        &mut trial,
+        1,
+        "HotLinkExpressionProperties",
+        reader.position(),
+    )?;
+    let string = read_string_10_1(&mut trial, max_bytes)?;
     let short = trial.read_u16_le()? as i16;
-    let mut guid_block = [0u8; 16];
-    guid_block.copy_from_slice(trial.read_bytes(16)?);
+    let engine = read_expression_engine_slot(&mut trial, max_bytes, table)?;
     *reader = trial;
     Ok(HotLinkExpressionPropsBody10_1 {
         key,
         version,
         string,
         short,
-        guid_block,
+        engine,
     })
 }
 
@@ -1555,7 +1537,7 @@ pub enum ExpressionEngineSlot10_1 {
 pub struct DisplayExpressionPropsPrefix10_1 {
     /// 对象头键(样本 83)。
     pub key: u32,
-    /// 体首 short 版本(样本 1);无反编译证据,不设上限。
+    /// 体首 short 版本（样本 1），原生按有符号比较拒绝大于 1。
     pub version: u16,
     /// String(样本 `[BSM]`)。
     pub string: String,
@@ -1576,42 +1558,18 @@ pub fn read_display_expression_props_prefix_10_1(
 ) -> io::Result<DisplayExpressionPropsPrefix10_1> {
     let mut trial = reader.clone();
     let version = trial.read_u16_le()?;
+    if (version as i16) > 1 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!(
+                "DisplayExpressionProperties 对象体 offset 0x{:x}: 版本 {version} 大于 1",
+                reader.position()
+            ),
+        ));
+    }
     let string = read_stream_string_10_1(&mut trial, max_bytes)?;
     let short = trial.read_u16_le()? as i16;
-    let mut staged = table.clone();
-    let slot_offset = trial.position();
-    let mut engine = ExpressionEngineSlot10_1::Null;
-    match read_object_entry_10_1(&mut trial, &mut staged)? {
-        ObjectEntry10_1::Null => {}
-        ObjectEntry10_1::BackReference { class_id, key } => {
-            engine = ExpressionEngineSlot10_1::BackReference { class_id, key };
-        }
-        ObjectEntry10_1::NewObject { class_id, key }
-            if class_id == ANNOTATION_VBSCRIPT_ENGINE_CLASS_ID =>
-        {
-            let body =
-                read_annotation_vbscript_engine_body_10_1(&mut trial, max_bytes, &mut staged, key)?;
-            engine = ExpressionEngineSlot10_1::VbscriptEngine(Box::new(body));
-        }
-        ObjectEntry10_1::NewObject { class_id, key }
-            if AnnotationExpressionEngineKind10_1::from_class_id(class_id).is_some() =>
-        {
-            let body = read_annotation_expression_engine_body_10_1(
-                &mut trial,
-                max_bytes,
-                &mut staged,
-                key,
-                class_id,
-            )?;
-            engine = ExpressionEngineSlot10_1::OtherEngine(Box::new(body));
-        }
-        ObjectEntry10_1::NewObject { class_id, key } => {
-            engine = ExpressionEngineSlot10_1::Unsupported { class_id, key };
-            trial = reposition_to(reader, slot_offset);
-            staged = table.clone();
-        }
-    }
-    *table = staged;
+    let engine = read_expression_engine_slot(&mut trial, max_bytes, table)?;
     *reader = trial;
     Ok(DisplayExpressionPropsPrefix10_1 {
         key,
@@ -1620,6 +1578,46 @@ pub fn read_display_expression_props_prefix_10_1(
         short,
         engine,
     })
+}
+
+fn read_expression_engine_slot(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<ExpressionEngineSlot10_1> {
+    let mut trial = reader.clone();
+    let mut staged = table.clone();
+    let slot = match read_object_entry_10_1(&mut trial, &mut staged)? {
+        ObjectEntry10_1::Null => ExpressionEngineSlot10_1::Null,
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            ExpressionEngineSlot10_1::BackReference { class_id, key }
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: ANNOTATION_VBSCRIPT_ENGINE_CLASS_ID,
+            key,
+        } => ExpressionEngineSlot10_1::VbscriptEngine(Box::new(
+            read_annotation_vbscript_engine_body_10_1(&mut trial, max_bytes, &mut staged, key)?,
+        )),
+        ObjectEntry10_1::NewObject { class_id, key }
+            if AnnotationExpressionEngineKind10_1::from_class_id(class_id).is_some() =>
+        {
+            ExpressionEngineSlot10_1::OtherEngine(Box::new(
+                read_annotation_expression_engine_body_10_1(
+                    &mut trial,
+                    max_bytes,
+                    &mut staged,
+                    key,
+                    class_id,
+                )?,
+            ))
+        }
+        ObjectEntry10_1::NewObject { class_id, key } => {
+            return Ok(ExpressionEngineSlot10_1::Unsupported { class_id, key });
+        }
+    };
+    *table = staged;
+    *reader = trial;
+    Ok(slot)
 }
 
 /// 从对象头之后的位置读取 10.1 BasicOverposterLayerProperties 体,失败时
@@ -1637,9 +1635,17 @@ pub fn read_bolp_body_10_1(
     key: u32,
 ) -> io::Result<BolpBody10_1> {
     let mut trial = reader.clone();
-    // ① 20 字节标量前缀(读序按 0x7853d3a0:[int16][int16 ×3][int32 ×3];
-    //   语义候选,原样保留,无版本门——函数归属未证实)。
+    // ① 版本门为有符号比较，随后固定读取三个 short 和三个 int32。
     let version = trial.read_u16_le()? as i16;
+    if version > 6 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!(
+                "BOLP 对象体 offset 0x{:x}: 版本 {version} 大于 6",
+                reader.position()
+            ),
+        ));
+    }
     let mut shorts = [0i16; 3];
     for slot in &mut shorts {
         *slot = trial.read_u16_le()? as i16;
@@ -1759,49 +1765,44 @@ pub fn read_bolp_body_10_1(
         }
     }
 
-    // ⑥ 尾段 44 字节([int32 计数][计数 × double][double][int32][String]
-    //   [int32] + 20 字节未定名块;String 经 BSTR 空语义,cb=0 无载荷)。
-    let mut tail = BolpTail10_1 {
-        count: 0,
-        doubles: Vec::new(),
-        double: 0.0,
-        int_a: 0,
-        string: String::new(),
-        int_b: 0,
-        block_int_a: 0,
-        block_int_b: 0,
-        block_double: 0.0,
-        block_short_a: 0,
-        block_short_b: 0,
-    };
+    // ⑥ 公共尾段及四个引入后继字段的版本门。
+    let mut tail = BolpTail10_1::default();
     if stop.is_none() {
-        let count = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
-        let mut doubles = Vec::new();
-        for _ in 0..count.max(0) {
-            doubles.push(trial.read_f64_le()?);
+        tail.count = trial.read_u32_le()? as i32;
+        let count = tail.count.max(0) as usize;
+        if count > trial.remaining().min(max_bytes) / 8 {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "BOLP 尾段 double 数量超限",
+            ));
         }
-        let double = trial.read_f64_le()?;
-        let int_a = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
-        let string = read_stream_string_10_1(&mut trial, max_bytes)?;
-        let int_b = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
-        let block_int_a = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
-        let block_int_b = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
-        let block_double = trial.read_f64_le()?;
-        let block_short_a = trial.read_u16_le()? as i16;
-        let block_short_b = trial.read_u16_le()? as i16;
-        tail = BolpTail10_1 {
-            count,
-            doubles,
-            double,
-            int_a,
-            string,
-            int_b,
-            block_int_a,
-            block_int_b,
-            block_double,
-            block_short_a,
-            block_short_b,
-        };
+        tail.doubles = (0..count)
+            .map(|_| trial.read_f64_le())
+            .collect::<io::Result<_>>()?;
+        tail.double_44 = trial.read_f64_le()?;
+        tail.int_70 = trial.read_u32_le()? as i32;
+        if version <= 1 {
+            tail.legacy_fields = Some((
+                read_stream_string_10_1(&mut trial, max_bytes)?,
+                trial.read_u32_le()? as i32,
+            ));
+        }
+        if version >= 3 {
+            tail.double_24 = Some(trial.read_f64_le()?);
+        }
+        if version >= 4 {
+            tail.v4_fields = Some((
+                trial.read_u32_le()? as i32,
+                read_stream_string_10_1(&mut trial, max_bytes)?,
+                trial.read_u16_le()? as i16,
+            ));
+        }
+        if version >= 5 {
+            tail.v5_fields = Some((trial.read_u32_le()? as i32, trial.read_u16_le()? as i16));
+        }
+        if version >= 6 {
+            tail.short_5a = Some(trial.read_u16_le()? as i16);
+        }
     }
 
     let result = BolpBody10_1 {

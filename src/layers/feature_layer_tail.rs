@@ -137,10 +137,10 @@ use crate::layers::annotate_props::{
     ANNOTATE_PROPS_COLLECTION_CLASS_ID, AnnotatePropsBody10_1, AnnotatePropsStop10_1,
     DISPLAY_EXPRESSION_PROPS_CLASS_ID, DisplayExpressionPropsPrefix10_1,
     EDIT_TEMPLATE_MANAGER_CLASS_ID, EditTemplateManagerBody10_1, EditTemplateManagerStop10_1,
-    EnvelopeSlot10_1, HOT_LINK_EXPRESSION_PROPS_CLASS_ID, HotLinkExpressionPropsBody10_1,
-    read_annotate_props_collection_body_10_1, read_display_expression_props_prefix_10_1,
-    read_edit_template_manager_body_10_1, read_hot_link_expression_props_body_10_1,
-    read_stream_string_10_1,
+    EnvelopeSlot10_1, ExpressionEngineSlot10_1, HOT_LINK_EXPRESSION_PROPS_CLASS_ID,
+    HotLinkExpressionPropsBody10_1, read_annotate_props_collection_body_10_1,
+    read_display_expression_props_prefix_10_1, read_edit_template_manager_body_10_1,
+    read_hot_link_expression_props_body_10_1, read_stream_string_10_1,
 };
 use crate::layers::dep_tail::{
     TIME_EXTENT_CLASS_ID, TIME_REFERENCE_CLASS_ID, TimeExtentSlot10_1, TimeReferenceSlot10_1,
@@ -156,14 +156,17 @@ pub use crate::layers::hatch_layer_extension::HATCH_LAYER_EXTENSION_CLASS_ID;
 use crate::layers::hatch_layer_extension::{
     HatchLayerExtension10_1, read_bounded_hatch_layer_extension,
 };
+use crate::layers::layer_extensions::{
+    DYNAMIC_TILED_LAYER_PROPERTIES_CLASS_ID, DynamicTiledLayerProperties10_1,
+    E2LayerExtensionValues10_1, FeatureServiceLayerEditExtension10_1,
+    SERVER_LAYER_EXTENSION_CLASS_ID, ServerLayerExtension10_1,
+    read_bounded_dynamic_tiled_layer_properties, read_bounded_e2_layer_extension_values,
+    read_bounded_extension_property_set, read_bounded_feature_service_layer_edit_extension,
+    read_bounded_representation_layer_extension, read_bounded_server_layer_extension,
+};
 pub use crate::layers::layer_extensions::{
     E2_LAYER_EXTENSION_VALUES_CLASS_ID, FEATURE_SERVICE_LAYER_EDIT_EXTENSION_CLASS_ID,
     REPRESENTATION_LAYER_EXTENSION_CLASS_ID,
-};
-use crate::layers::layer_extensions::{
-    E2LayerExtensionValues10_1, FeatureServiceLayerEditExtension10_1,
-    read_bounded_e2_layer_extension_values, read_bounded_feature_service_layer_edit_extension,
-    read_bounded_representation_layer_extension,
 };
 use crate::layers::legend_format::{
     LEGEND_CLASS_FORMAT_CLASS_ID, LegendClassFormatBody10_1, LegendClassFormatStop10_1,
@@ -172,6 +175,9 @@ use crate::layers::legend_format::{
 pub use crate::layers::route_layer_extension::ROUTE_LAYER_EXTENSION_CLASS_ID;
 use crate::layers::route_layer_extension::{
     RouteLayerExtension10_1, read_bounded_route_layer_extension,
+};
+use crate::layers::scene_layer_properties::{
+    SceneLayerProperties10_1, is_scene_layer_properties, read_bounded_scene_layer_properties,
 };
 pub use crate::layers::time_layer_track_extension::TIME_LAYER_TRACK_EXTENSION_CLASS_ID;
 use crate::layers::time_layer_track_extension::{
@@ -187,6 +193,7 @@ use crate::objects::display_symbol::{
     read_symbol_slot_full_10_1, slot_full_stop_10_1,
 };
 use crate::objects::hyperlink::{HYPERLINK_CLASS_ID, HyperlinkBody10_1, read_hyperlink_body_10_1};
+use crate::objects::property_set::{PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
@@ -1289,10 +1296,10 @@ pub enum SuccessorStop10_1 {
     SymbolSlotUnsupported { class_id: [u8; 16], key: u32 },
     /// IUID 槽（`{1714D59B-…}`，版本 >0x10）的新对象类标识未闭合。
     UidUnsupported { class_id: [u8; 16], key: u32 },
-    /// `{A62B9EC2-…}`（版本 >0x19）的新对象类标识未闭合。
+    /// 显示或热链接表达式属性槽的新对象类，或其内部的引擎类尚未支持。
     ExpressionPropsUnsupported { class_id: [u8; 16], key: u32 },
     /// 版本 0x1c..0x1f 分支（10.1 不写）的槽位新对象类标识未闭合；`which`
-    /// 为槽序（0 = `{F6CBA4A3-…}`，1 = `{BD724B95-…}`，2 = `{E720618B-…}`）。
+    /// 为槽序（0 = `{F6CBA4A3-…}`，1 = `{BD724B95-…}`）。
     LegacyTimeSlotUnsupported {
         class_id: [u8; 16],
         key: u32,
@@ -1370,10 +1377,8 @@ pub enum SuccessorStop10_1 {
 /// `FUN_6f701ad0`、`FUN_6f6dd210`、`FUN_6f6fd550`、`FUN_6f7025b0`（选择集
 /// 刷新路径）经反编译核对均不读流，无流内字节。
 ///
-/// 版本 0x1c..0x1f 分支（`{F6CBA4A3}/{BD724B95}/{E720618B}` 槽 + 标量块，
-/// 10.1 docVersion 不写）：字段序已静态闭合但无样本字节佐证，实现按门
-/// `0x1c ≤ ver ≤ 0x1f` 接入、槽位新对象为停止点（[`SuccessorStop10_1::
-/// LegacyTimeSlotUnsupported`]），并注明较原生更严的负值版本拒绝。
+/// 版本 0x1c..0x1f 先读取旧标量块，0x1d 起读取 ITimeReference，
+/// 0x1e 起读取 ITimeExtent。0x1f 的热链接属性与 0x21 起使用同一读取器。
 #[derive(Debug, Clone, PartialEq)]
 pub struct FeatureLayerSuccessor10_1 {
     /// String → obj+0x154（样本「BSM」；语义未定，字段名样字符串候选）。
@@ -1429,8 +1434,10 @@ pub struct FeatureLayerSuccessor10_1 {
     pub relationship_classes: Vec<RefSlot10_1>,
     /// ㉑ String → obj+0x18c（版本 ≥8；样本 cb=2 空串），语义未定。
     pub string_18c: Option<String>,
-    /// ㉒ IEnvelope 槽分类（版本 >8）；非空时供 ILayer.AreaOfInterest 优先使用。
+    /// ㉒ 显式 AOI 的空引用或回引（版本 >8）。
     pub envelope_1: Option<RefSlot10_1>,
+    /// ㉒ 内联的显式 AOI 包络。缺失时原生范围回退由图层运行环境决定。
+    pub explicit_area_of_interest: Option<Box<crate::objects::envelope::Envelope10_1>>,
     /// ㉓ 范围计数（版本 >9；样本 0）。负数原生不进循环。
     pub range_count: Option<i32>,
     /// ㉓ 已消费的范围 int32（逐元素读）。
@@ -1500,7 +1507,7 @@ pub struct FeatureLayerSuccessor10_1 {
     /// 槽接 dep_tail 体读取器；10.1 docVersion 不写该分支，无样本佐证）。
     /// 仅该版本区间读取。
     pub legacy_time_slots: Option<LegacyTimeSlots10_1>,
-    /// ㊷ {E720618B} 槽分类（版本 >0x20；第十轮起 HLEP 新对象整体解析）。
+    /// ㊷ IHotLinkExpressionProperties 槽（版本 0x1f 或 >0x20）。
     pub hot_link_expression_props: Option<HotLinkSlot10_1>,
     /// ㊸ short → obj+0x2ca（版本 >0x21；样本未达），语义未定。
     pub short_2ca: Option<i16>,
@@ -1606,7 +1613,7 @@ pub enum UidSlot10_1 {
 /// 证据：SystemCore.dll 虚表 `0x80074574` 的 GetClassID、Load、Save 槽及
 /// `0x7fff9320`/`0x7fff9380` 原生读写实现。字段序为 short 版本、u8
 /// 标志、16 字节 GUID、int32；语义未定，均原样保留。
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UidBody10_1 {
     /// 对象头键(样本 82)。
     pub key: u32,
@@ -1679,6 +1686,8 @@ pub enum LayerExtension10_1 {
     /// 体内停止经 `body.stop` 以
     /// [`SuccessorStop10_1::EditTemplateManagerBody`] 传播）。
     EditTemplateManager(Box<EditTemplateManagerBody10_1>),
+    PropertySet(Option<Box<PropertySetObjectStream10_1>>),
+    ServerLayerExtension(Option<Box<ServerLayerExtension10_1>>),
     /// 零长度旧式扩展由原生加载器跳过。
     RepresentationLayerExtension(Option<i16>),
     RouteLayerExtension(Option<Box<RouteLayerExtension10_1>>),
@@ -1687,7 +1696,9 @@ pub enum LayerExtension10_1 {
     E2LayerExtensionValues(Option<E2LayerExtensionValues10_1>),
     FeatureServiceLayerEditExtension(Option<Box<FeatureServiceLayerEditExtension10_1>>),
     GlobeLayerProperties(Option<Box<GlobeLayerProperties10_1>>),
+    SceneLayerProperties(Option<Box<SceneLayerProperties10_1>>),
     TimeLayerTrackExtension(Option<Box<TimeLayerTrackExtension10_1>>),
+    DynamicTiledLayerProperties(Option<Box<DynamicTiledLayerProperties10_1>>),
 }
 
 /// 版本 0x1c..0x1f 分支的标量块（10.1 docVersion 不写；本轮静态闭合，无样
@@ -1715,15 +1726,7 @@ pub struct PreJoinBlock10_1 {
     pub pairs: Vec<(String, String)>,
 }
 
-/// 版本 0x1c..0x1f 分支的时间族槽（A 轮起接 dep_tail 槽位分派；10.1
-/// docVersion 不写该分支，字段序仅有反编译证据，无样本字节佐证）。
-///
-/// 槽序按 FL::Load 反编译的三个 LoadObject 请求 IID
-/// （`DAT_6f7adab4`={F6CBA4A3}=ITimeReference、`DAT_6f7adad4`={BD724B95}=
-/// ITimeExtent、`DAT_6f7adde4`={E720618B}，见 docs/arcmap-10.1-dep-tail.md
-/// 第四节）；前两槽的新对象命中 TimeReference/TimeExtent 时整体解析其体，
-/// 第三槽（{E720618B}）维持新对象停止（其闭合读取器属 ㊷ 槽语境，本分支
-/// 不接线）。
+/// 旧版时间族槽。0x1d 起读取 ITimeReference，0x1e 起读取 ITimeExtent。
 #[derive(Debug, Clone, PartialEq)]
 pub struct LegacyTimeSlots10_1 {
     /// ㊀ {F6CBA4A3}=ITimeReference 槽分类。
@@ -1879,6 +1882,7 @@ pub fn read_feature_layer_successor_10_1(
     let mut relationship_classes = Vec::new();
     let mut string_18c = None;
     let mut envelope_1 = None;
+    let mut explicit_area_of_interest = None;
     let mut range_count = None;
     let mut range_ids = Vec::new();
     let mut extension_count = None;
@@ -2107,8 +2111,7 @@ pub fn read_feature_layer_successor_10_1(
             string_18c = Some(read_string_10_1(&mut trial, max_bytes)?);
         }
 
-        // ㉒ IEnvelope 槽（版本 >8；Envelope 体未在 src/ 闭合，新对象 =
-        //    停止点；样本空标记）。
+        // ㉒ 显式 AOI 的 IEnvelope 槽（版本 >8）。
         if stop.is_none() && (fl_version as i16) > 8 {
             let slot_offset = trial.position();
             let pre_slot_table = staged_table.clone();
@@ -2116,6 +2119,16 @@ pub fn read_feature_layer_successor_10_1(
                 ObjectEntry10_1::Null => envelope_1 = Some(RefSlot10_1::Null),
                 ObjectEntry10_1::BackReference { class_id, key } => {
                     envelope_1 = Some(RefSlot10_1::BackReference { class_id, key });
+                }
+                ObjectEntry10_1::NewObject { class_id, .. }
+                    if class_id == crate::objects::envelope::ENVELOPE_CLASS_ID =>
+                {
+                    explicit_area_of_interest =
+                        Some(Box::new(crate::objects::envelope::read_envelope_10_1(
+                            &mut trial,
+                            max_bytes,
+                            &mut staged_table,
+                        )?));
                 }
                 ObjectEntry10_1::NewObject { class_id, key } => {
                     stop = Some(SuccessorStop10_1::EnvelopeUnsupported {
@@ -2186,7 +2199,9 @@ pub fn read_feature_layer_successor_10_1(
                     extensions.push(LayerExtension10_1::EditTemplateManager(Box::new(body)));
                 } else if matches!(
                     class_id,
-                    REPRESENTATION_LAYER_EXTENSION_CLASS_ID
+                    PROPERTY_SET_CLASS_ID
+                        | SERVER_LAYER_EXTENSION_CLASS_ID
+                        | REPRESENTATION_LAYER_EXTENSION_CLASS_ID
                         | ROUTE_LAYER_EXTENSION_CLASS_ID
                         | HATCH_LAYER_EXTENSION_CLASS_ID
                         | TRACKING_FILTER_LAYER_EXTENSION_CLASS_ID
@@ -2194,7 +2209,9 @@ pub fn read_feature_layer_successor_10_1(
                         | FEATURE_SERVICE_LAYER_EDIT_EXTENSION_CLASS_ID
                         | GLOBE_LAYER_PROPERTIES_CLASS_ID
                         | TIME_LAYER_TRACK_EXTENSION_CLASS_ID
-                ) {
+                        | DYNAMIC_TILED_LAYER_PROPERTIES_CLASS_ID
+                ) || is_scene_layer_properties(class_id)
+                {
                     let size = usize::try_from(size)
                         .ok()
                         .filter(|&size| size <= max_bytes)
@@ -2203,6 +2220,56 @@ pub fn read_feature_layer_successor_10_1(
                         })?;
                     let bytes = (size != 0).then(|| trial.read_bytes(size)).transpose()?;
                     let extension = match class_id {
+                        PROPERTY_SET_CLASS_ID => LayerExtension10_1::PropertySet(
+                            bytes
+                                .map(|bytes| {
+                                    read_bounded_extension_property_set(
+                                        bytes,
+                                        max_bytes,
+                                        &mut staged_table,
+                                    )
+                                })
+                                .transpose()?,
+                        ),
+                        SERVER_LAYER_EXTENSION_CLASS_ID => {
+                            LayerExtension10_1::ServerLayerExtension(
+                                bytes
+                                    .map(|bytes| {
+                                        read_bounded_server_layer_extension(
+                                            bytes,
+                                            max_bytes,
+                                            &mut staged_table,
+                                        )
+                                    })
+                                    .transpose()?,
+                            )
+                        }
+                        class if is_scene_layer_properties(class) => {
+                            LayerExtension10_1::SceneLayerProperties(
+                                bytes
+                                    .map(|bytes| {
+                                        read_bounded_scene_layer_properties(
+                                            bytes,
+                                            max_bytes,
+                                            &mut staged_table,
+                                        )
+                                    })
+                                    .transpose()?,
+                            )
+                        }
+                        DYNAMIC_TILED_LAYER_PROPERTIES_CLASS_ID => {
+                            LayerExtension10_1::DynamicTiledLayerProperties(
+                                bytes
+                                    .map(|bytes| {
+                                        read_bounded_dynamic_tiled_layer_properties(
+                                            bytes,
+                                            max_bytes,
+                                            &mut staged_table,
+                                        )
+                                    })
+                                    .transpose()?,
+                            )
+                        }
                         GLOBE_LAYER_PROPERTIES_CLASS_ID => {
                             LayerExtension10_1::GlobeLayerProperties(
                                 bytes
@@ -2489,6 +2556,10 @@ pub fn read_feature_layer_successor_10_1(
                         &mut staged_table,
                         key,
                     )?;
+                    if let ExpressionEngineSlot10_1::Unsupported { class_id, key } = prefix.engine {
+                        stop =
+                            Some(SuccessorStop10_1::ExpressionPropsUnsupported { class_id, key });
+                    }
                     expression_props = Some(ExpressionPropsSlot10_1::Display(Box::new(prefix)));
                 }
                 ObjectEntry10_1::NewObject { class_id, key } => {
@@ -2509,11 +2580,7 @@ pub fn read_feature_layer_successor_10_1(
             strings_304_308_30c = Some([s1, s2, s3]);
         }
 
-        // ㊶ 版本 0x1c..0x1f 分支（10.1 docVersion 不写；静态闭合，无样本
-        //    字节佐证）：标量块 + 三个时间族槽。A 轮起 ITimeReference/
-        //    ITimeExtent 槽接 dep_tail 体读取器（槽序 = Load 请求 IID 序，
-        //    见 [`LegacyTimeSlots10_1`]）；其余类与第三槽（{E720618B}）的新
-        //    对象维持停止回退。
+        // ㊶ 旧版时间字段，见 FeatureLayer.dll 0x6f6eacc7..0x6f6eae73。
         if stop.is_none() && (fl_version as i16) >= 0x1c && (fl_version as i16) < 0x20 {
             let legacy_short = trial.read_u16_le()? as i16;
             let l1 = read_string_10_1(&mut trial, max_bytes)?;
@@ -2534,8 +2601,8 @@ pub fn read_feature_layer_successor_10_1(
                 time_reference: None,
                 time_extent: None,
             };
-            // 槽 0：{F6CBA4A3}=ITimeReference。
-            {
+            // 槽 0：0x1d 起读取 ITimeReference。
+            if fl_version >= 0x1d {
                 let slot_offset = trial.position();
                 let pre_slot_table = staged_table.clone();
                 match read_object_entry_10_1(&mut trial, &mut staged_table)? {
@@ -2581,8 +2648,8 @@ pub fn read_feature_layer_successor_10_1(
                     }
                 }
             }
-            // 槽 1：{BD724B95}=ITimeExtent（前置停止时不读取）。
-            if stop.is_none() {
+            // 槽 1：0x1e 起读取 ITimeExtent。
+            if stop.is_none() && fl_version >= 0x1e {
                 let slot_offset = trial.position();
                 let pre_slot_table = staged_table.clone();
                 match read_object_entry_10_1(&mut trial, &mut staged_table)? {
@@ -2635,26 +2702,6 @@ pub fn read_feature_layer_successor_10_1(
                     }
                 }
             }
-            // 槽 2：{E720618B}（新对象 = 停止点；不接线）。
-            if stop.is_none() {
-                let slot_offset = trial.position();
-                let pre_slot_table = staged_table.clone();
-                match read_object_entry_10_1(&mut trial, &mut staged_table)? {
-                    ObjectEntry10_1::Null => {}
-                    ObjectEntry10_1::BackReference { class_id, key } => {
-                        let _ = (class_id, key);
-                    }
-                    ObjectEntry10_1::NewObject { class_id, key } => {
-                        stop = Some(SuccessorStop10_1::LegacyTimeSlotUnsupported {
-                            class_id,
-                            key,
-                            which: 2,
-                        });
-                        trial = reposition_to(reader, slot_offset);
-                        staged_table = pre_slot_table;
-                    }
-                }
-            }
             legacy_time_slots_field = Some(legacy_time_slots);
         }
 
@@ -2693,11 +2740,8 @@ pub fn read_feature_layer_successor_10_1(
             time_data_display = family.time_display;
         }
 
-        // ㊷ {E720618B} 槽（版本 >0x20；第十轮起 HotLinkExpressionProperties
-        //    新对象整体解析——样本该槽 = HLEP 新对象键 85;实现函数未定位,
-        //    体字段序为样本结构,证据注于类型文档;其余类维持停止回退)。
-        //    注意：读侧 ==0x1f 的同名槽属 0x1c..0x1f 分支（见上）。
-        if stop.is_none() && (fl_version as i16) > 0x20 {
+        // ㊷ 两条路径均读入同一热链接属性成员。
+        if stop.is_none() && (fl_version == 0x1f || (fl_version as i16) > 0x20) {
             let slot_offset = trial.position();
             let pre_slot_table = staged_table.clone();
             match read_object_entry_10_1(&mut trial, &mut staged_table)? {
@@ -2717,6 +2761,10 @@ pub fn read_feature_layer_successor_10_1(
                         &mut staged_table,
                         key,
                     )?;
+                    if let ExpressionEngineSlot10_1::Unsupported { class_id, key } = body.engine {
+                        stop =
+                            Some(SuccessorStop10_1::ExpressionPropsUnsupported { class_id, key });
+                    }
                     hot_link_expression_props = Some(HotLinkSlot10_1::Body(Box::new(body)));
                 }
                 ObjectEntry10_1::NewObject { class_id, key } => {
@@ -2763,6 +2811,7 @@ pub fn read_feature_layer_successor_10_1(
         relationship_classes,
         string_18c,
         envelope_1,
+        explicit_area_of_interest,
         range_count,
         range_ids,
         extension_count,

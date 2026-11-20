@@ -51,7 +51,7 @@ pub const PANSHARPENING_FILTER_CLASS_ID: [u8; 16] = [
 pub(crate) const STATS_HISTOGRAM_CLASS_ID: [u8; 16] = [
     0xc1, 0x27, 0x30, 0xba, 0xca, 0x49, 0x88, 0x47, 0x8b, 0x5a, 0x3a, 0x6b, 0x38, 0x7d, 0xe7, 0x8c,
 ];
-const DOUBLE_ARRAY_CLASS_ID: [u8; 16] = [
+pub(crate) const DOUBLE_ARRAY_CLASS_ID: [u8; 16] = [
     0xa7, 0x6c, 0xc0, 0x60, 0x9e, 0xe0, 0xd2, 0x11, 0x9f, 0x7b, 0x00, 0xc0, 0x4f, 0x8e, 0xce, 0x27,
 ];
 
@@ -820,13 +820,7 @@ pub(crate) fn read_double_array_slot(
     let body = match entry {
         ObjectEntry10_1::Null | ObjectEntry10_1::BackReference { .. } => None,
         ObjectEntry10_1::NewObject { class_id, .. } if class_id == DOUBLE_ARRAY_CLASS_ID => {
-            // SystemCore.dll 0x800419b0 -> 0x80040520：short、int32 数量、double 循环。
-            let version = reader.read_u16_le()?;
-            if (version as i16) > 1 {
-                return Err(invalid(format!("未支持的 DoubleArray 版本 {version}")));
-            }
-            let len = count(reader, 8)?;
-            Some((version, read_double_sequence(reader, len)?))
+            Some(read_double_array_body(reader)?)
         }
         ObjectEntry10_1::NewObject { class_id, .. } => {
             return Err(invalid(format!(
@@ -836,6 +830,16 @@ pub(crate) fn read_double_array_slot(
         }
     };
     Ok(RasterDoubleArraySlot10_1 { entry, body })
+}
+
+pub(crate) fn read_double_array_body(reader: &mut Reader<'_>) -> io::Result<(u16, Vec<f64>)> {
+    // SystemCore.dll 0x800419b0 -> 0x80040520：short、int32 数量、double 循环。
+    let version = reader.read_u16_le()?;
+    if (version as i16) > 1 {
+        return Err(invalid(format!("未支持的 DoubleArray 版本 {version}")));
+    }
+    let len = count(reader, 8)?;
+    Ok((version, read_double_sequence(reader, len)?))
 }
 
 pub(crate) fn read_load_raster(

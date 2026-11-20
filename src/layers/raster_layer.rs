@@ -280,6 +280,7 @@ fn require_loaded_extensions(tail: &RasterLayerTail10_1) -> io::Result<()> {
     // 有界扩展可保留原始字节。普通图层须确认内部对象键已经读取。
     if tail.legacy_extensions.iter().any(|entry| {
         !entry.raw_body.is_empty()
+            && entry.properties.is_none()
             && entry.edit_template_manager.is_none()
             && entry.server_layer_extension.is_none()
             && entry.representation_layer_extension_version.is_none()
@@ -290,8 +291,11 @@ fn require_loaded_extensions(tail: &RasterLayerTail10_1) -> io::Result<()> {
             && entry.feature_service_layer_edit_extension.is_none()
             && entry.globe_layer_properties.is_none()
             && entry.time_layer_track_extension.is_none()
+            && entry.dynamic_tiled_layer_properties.is_none()
+            && entry.scene_layer_properties.is_none()
     }) || tail.extra_safe_extensions.iter().any(|entry| {
         matches!(entry.entry, ObjectEntry10_1::NewObject { .. })
+            && entry.properties.is_none()
             && entry.edit_template_manager.is_none()
             && entry.server_layer_extension.is_none()
             && entry.representation_layer_extension_version.is_none()
@@ -302,6 +306,8 @@ fn require_loaded_extensions(tail: &RasterLayerTail10_1) -> io::Result<()> {
             && entry.feature_service_layer_edit_extension.is_none()
             && entry.globe_layer_properties.is_none()
             && entry.time_layer_track_extension.is_none()
+            && entry.dynamic_tiled_layer_properties.is_none()
+            && entry.scene_layer_properties.is_none()
     }) {
         return Err(io::Error::new(
             ErrorKind::Unsupported,
@@ -767,6 +773,152 @@ mod tests {
     }
 
     #[test]
+    fn legacy_map_extra_safe_passes_boundary_to_raster_v12_and_wcs() {
+        use crate::layers::layer_list::{
+            LayerBodyPrefix10_1, LayerEntryObject, RASTER_LAYER_CLASS_ID,
+            read_legacy_layer_lists_10_1,
+        };
+        use crate::layers::wcs_layer::WCS_LAYER_CLASS_ID;
+
+        for wrapper in [false, true] {
+            for (pair, truncated) in [(false, false), (true, false), (true, true)] {
+                let mut object = if wrapper {
+                    let mut object = WCS_LAYER_CLASS_ID.to_vec();
+                    object.extend(51_u32.to_le_bytes());
+                    object.extend(1_i32.to_le_bytes());
+                    for text in ["覆盖", "地址", "标识"] {
+                        object.extend(encoded_string(text));
+                    }
+                    object
+                } else {
+                    Vec::new()
+                };
+                object.extend(RASTER_LAYER_CLASS_ID);
+                object.extend(52_u32.to_le_bytes());
+                object.extend(raster_with_empty_slots(12, pair));
+                if truncated {
+                    object.pop();
+                }
+                let mut bytes = 1_i32.to_le_bytes().to_vec();
+                let object_start = bytes.len();
+                if wrapper {
+                    bytes.extend(0_u32.to_le_bytes());
+                    bytes.extend((object.len() as u32).to_le_bytes());
+                } else {
+                    bytes.extend((object.len() as u32).to_le_bytes());
+                    bytes.extend(0_u32.to_le_bytes());
+                }
+                bytes.extend(object);
+                bytes.extend(1_i32.to_le_bytes()); // 第二组复用第一组的栅格层。
+                bytes.extend(RASTER_LAYER_CLASS_ID);
+                bytes.extend(52_u32.to_le_bytes());
+                bytes.extend(0_i32.to_le_bytes());
+                let end = bytes.len();
+                bytes.push(0x53);
+
+                let mut reader = Reader::new(&bytes);
+                let mut refs = RefTable10_1::new();
+                refs.register(5);
+                let list = read_legacy_layer_lists_10_1(&mut reader, 4096, &mut refs, 19).unwrap();
+                if truncated {
+                    assert!(list.stop.is_some());
+                    assert_eq!(reader.position(), object_start);
+                    assert_eq!(refs.len(), 1);
+                    assert!(refs.contains(5));
+                    continue;
+                }
+                let raster = match list.entries[0].parsed.as_ref() {
+                    Some(LayerBodyPrefix10_1::RasterLayer(raster)) => raster,
+                    Some(LayerBodyPrefix10_1::WcsLayer(wcs)) => wcs.raster.body.as_ref().unwrap(),
+                    unexpected => panic!("预期完整有界栅格，读到 {unexpected:?}"),
+                };
+                let tail = raster.tail.as_ref().unwrap();
+                assert_eq!(raster.version, 12);
+                assert_eq!(tail.geodata_xform_v13.is_some(), pair);
+                assert!(matches!(
+                    list.entries[1].object,
+                    LayerEntryObject::Entry(ObjectEntry10_1::BackReference { key: 52, .. })
+                ));
+                assert!(list.stop.is_none());
+                assert_eq!(list.active_index, Some(0));
+                assert!(refs.contains(52) && refs.contains(60));
+                assert_eq!(reader.position(), end);
+                assert_eq!(reader.read_bytes(1).unwrap(), [0x53]);
+            }
+        }
+    }
+
+    #[test]
+    fn bounded_raster_distinguishes_projective_third_null_slot_at_the_layer_end() {
+        use crate::objects::envelope::ENVELOPE_CLASS_ID;
+        use crate::objects::geodata_xform::{GeodataXformBody10_1, PROJECTIVE_XFORM_CLASS_ID};
+        use crate::objects::geometry::MULTIPOINT_CLASS_ID;
+
+        let transform_offset = raster_with_empty_slots(12, false).len();
+        for (version, legacy, geometry) in [
+            (12, false, false),
+            (12, true, false),
+            (12, true, true),
+            (13, true, true),
+            (17, true, true),
+        ] {
+            let mut bytes = raster_with_empty_slots(version, true);
+            let mut pair = PROJECTIVE_XFORM_CLASS_ID.to_vec();
+            pair.extend(71_u32.to_le_bytes());
+            pair.extend(1_i32.to_le_bytes());
+            pair.extend([0; 16]); // 空空间参考。
+            if legacy {
+                if geometry {
+                    pair.extend(MULTIPOINT_CLASS_ID);
+                    pair.extend(72_u32.to_le_bytes());
+                    pair.extend(2_u16.to_le_bytes());
+                    pair.extend(4_u32.to_le_bytes());
+                    pair.extend(0_u32.to_le_bytes());
+                    pair.extend([0; 16]);
+                } else {
+                    pair.extend([0; 16]); // 原生入口实验中的空几何集合。
+                }
+            }
+            pair.extend([0; 16]); // 空投影变换。
+            pair.extend(0_i32.to_le_bytes());
+            pair.extend(0_i32.to_le_bytes());
+            pair.extend(ENVELOPE_CLASS_ID);
+            pair.extend(73_u32.to_le_bytes());
+            pair.extend(1_u16.to_le_bytes());
+            pair.extend([0; 32]);
+            let missing_byte = transform_offset + pair.len() - 1;
+            bytes.splice(transform_offset..transform_offset + 32, pair);
+
+            let mut refs = RefTable10_1::new();
+            let mut reader = Reader::new(&bytes);
+            let layer =
+                read_complete_bounded_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+            assert_eq!(reader.remaining(), 0);
+            let tail = layer.tail.unwrap();
+            let transform = tail.geodata_xform_v13.unwrap();
+            let Some(GeodataXformBody10_1::Projective(projective)) = transform.body.as_deref()
+            else {
+                panic!("应读取 ProjectiveXform");
+            };
+            assert_eq!(
+                projective.transformation,
+                legacy.then_some(ObjectEntry10_1::Null)
+            );
+            assert_eq!(projective.geometry.body.is_some(), geometry);
+            assert_eq!(projective.point_count, 0);
+            assert!(tail.envelope_v13.is_some());
+            assert!(refs.contains(60) && refs.contains(71) && refs.contains(73));
+            assert_eq!(refs.contains(72), geometry);
+
+            let mut reader = Reader::new(&bytes[..missing_byte]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_complete_bounded_raster_body_10_1(&mut reader, 4096, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+
+    #[test]
     fn ordinary_group_can_use_its_extra_safe_raster_child_boundary() {
         use crate::layers::group_layer::{GROUP_LAYER_CLASS_ID, GroupChildEntry10_1};
         use crate::layers::layer_list::{
@@ -854,6 +1006,168 @@ mod tests {
         ));
         assert!(refs.contains(61));
         assert_eq!(reader.position(), end);
+    }
+
+    #[test]
+    fn ordinary_raster_reads_scene_properties_in_both_extension_encodings() {
+        use crate::layers::scene_layer_properties::{
+            RASTER_3D_PROPERTIES_CLASS_ID, SurfaceName10_1,
+        };
+        use crate::objects::envelope::ENVELOPE_CLASS_ID;
+
+        let mut properties = 13_u16.to_le_bytes().to_vec();
+        properties.extend(1_u32.to_le_bytes());
+        // RasterLayer 的首个数据源名称已经登记过。
+        properties.extend(crate::layers::raster_dataset_name::RASTER_DATASET_NAME_CLASS_ID);
+        properties.extend(60_u32.to_le_bytes());
+        properties.extend(encoded_string("地表路径"));
+        properties.extend([0; 20]);
+        properties.extend(encoded_string("偏移"));
+        properties.extend([0; 4]);
+        properties.extend(encoded_string("拉伸"));
+        properties.extend([0; 106]);
+        properties.extend(ENVELOPE_CLASS_ID);
+        properties.extend(71_u32.to_le_bytes());
+        properties.extend(1_u16.to_le_bytes());
+        properties.extend([0; 32]);
+        for version in [3, 8] {
+            let mut bytes = raster_with_empty_slots(version, false);
+            let extension_count = bytes.len() - if version == 3 { 4 } else { 68 };
+            let mut encoded = 1_u32.to_le_bytes().to_vec();
+            let size = properties.len() as u32 + if version == 3 { 0 } else { 20 };
+            encoded.extend(u64::from(size).to_le_bytes());
+            encoded.extend(RASTER_3D_PROPERTIES_CLASS_ID);
+            if version == 8 {
+                encoded.extend(70_u32.to_le_bytes());
+            }
+            encoded.extend(&properties);
+            bytes.splice(extension_count..extension_count + 4, encoded);
+            let end = bytes.len();
+            bytes.push(0xa5);
+
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let raster = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+            let tail = raster.tail.unwrap();
+            let properties = if version == 3 {
+                &tail.legacy_extensions[0].scene_layer_properties
+            } else {
+                &tail.extra_safe_extensions[0].scene_layer_properties
+            }
+            .as_ref()
+            .unwrap();
+            assert!(matches!(
+                properties.surface_name,
+                Some(SurfaceName10_1::Raster(ref name))
+                    if matches!(name.entry, ObjectEntry10_1::BackReference { key: 60, .. })
+            ));
+            assert!(refs.contains(71));
+            assert_eq!(refs.contains(70), version == 8);
+            assert_eq!(reader.position(), end);
+        }
+    }
+
+    #[test]
+    fn ordinary_raster_reads_direct_property_set_and_dynamic_extension_in_both_encodings() {
+        use crate::layers::layer_extensions::DYNAMIC_TILED_LAYER_PROPERTIES_CLASS_ID;
+        use crate::objects::property_set::{PROPERTY_SET_CLASS_ID, PropertyValueObjectStream10_1};
+
+        let mut direct = 1_u16.to_le_bytes().to_vec();
+        direct.extend(1_u32.to_le_bytes());
+        direct.extend(encoded_string("配置"));
+        direct.extend(13_u16.to_le_bytes());
+        direct.extend(PROPERTY_SET_CLASS_ID);
+        direct.extend(72_u32.to_le_bytes());
+        direct.extend(1_u16.to_le_bytes());
+        direct.extend(0_u32.to_le_bytes());
+
+        let mut dynamic = 1_u16.to_le_bytes().to_vec();
+        dynamic.extend(encoded_string("瓦片源"));
+        dynamic.extend(PROPERTY_SET_CLASS_ID);
+        dynamic.extend(72_u32.to_le_bytes());
+        dynamic.extend(encoded_string(""));
+        dynamic.extend(encoded_string(""));
+        dynamic.extend([0; 12]);
+
+        for version in [3, 8] {
+            let build = |direct: &[u8]| {
+                let mut bytes = raster_with_empty_slots(version, false);
+                let extension_count = bytes.len() - if version == 3 { 4 } else { 68 };
+                let mut encoded = 2_u32.to_le_bytes().to_vec();
+                for (class_id, key, body) in [
+                    (PROPERTY_SET_CLASS_ID, 70_u32, direct),
+                    (DYNAMIC_TILED_LAYER_PROPERTIES_CLASS_ID, 71, &dynamic),
+                ] {
+                    let size = body.len() as u32 + if version == 8 { 20 } else { 0 };
+                    encoded.extend(u64::from(size).to_le_bytes());
+                    encoded.extend(class_id);
+                    if version == 8 {
+                        encoded.extend(key.to_le_bytes());
+                    }
+                    encoded.extend(body);
+                }
+                bytes.splice(extension_count..extension_count + 4, encoded);
+                (bytes, extension_count)
+            };
+
+            let (mut bytes, extension_count) = build(&direct);
+            let end = bytes.len();
+            bytes.push(0xa5);
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let result = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+            assert_eq!(reader.position(), end);
+            assert!(refs.contains(72));
+            assert_eq!(refs.contains(70) && refs.contains(71), version == 8);
+            let tail = result.tail.unwrap();
+            let (properties, dynamic) = if version == 3 {
+                let mut legacy = Reader::new(&bytes[extension_count..end]);
+                let mut legacy_refs = RefTable10_1::new();
+                let shared = crate::layers::layer_extensions::read_layer_extensions_10_1(
+                    &mut legacy,
+                    4096,
+                    &mut legacy_refs,
+                )
+                .unwrap();
+                assert_eq!(legacy.remaining(), 0);
+                assert_eq!(shared[0].properties, tail.legacy_extensions[0].properties);
+                assert!(legacy_refs.contains(72));
+                (
+                    tail.legacy_extensions[0].properties.as_deref().unwrap(),
+                    tail.legacy_extensions[1]
+                        .dynamic_tiled_layer_properties
+                        .as_deref()
+                        .unwrap(),
+                )
+            } else {
+                (
+                    tail.extra_safe_extensions[0].properties.as_deref().unwrap(),
+                    tail.extra_safe_extensions[1]
+                        .dynamic_tiled_layer_properties
+                        .as_deref()
+                        .unwrap(),
+                )
+            };
+            assert!(matches!(
+                properties.entries[0].value,
+                PropertyValueObjectStream10_1::Object { key: 72, .. }
+            ));
+            assert!(matches!(
+                dynamic.properties.entry,
+                ObjectEntry10_1::BackReference { key: 72, .. }
+            ));
+
+            let mut excessive = direct.clone();
+            excessive.push(0xa5);
+            for invalid in [&direct[..direct.len() - 1], &excessive] {
+                let (bytes, _) = build(invalid);
+                let mut reader = Reader::new(&bytes);
+                let mut refs = RefTable10_1::new();
+                assert!(read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).is_err());
+                assert_eq!(reader.position(), 0);
+                assert!(refs.is_empty());
+            }
+        }
     }
 
     #[test]

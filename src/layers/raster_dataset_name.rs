@@ -9,7 +9,7 @@
 //!
 //! 调用者先读对象头并登记外层键，再把 RasterDatasetName 对象体的有界 Reader
 //! 传入本模块。读取器最多消费四条顺序 String、IWorkspaceName 槽及该对象体
-//! 版本门控制的两个 int32；未知嵌套类或旧零门值是成功停止点。
+//! 版本门控制的两个 int32；未知嵌套类是成功停止点。
 
 use super::cache_tile_reader::{CacheTileReaderBody10_1, read_tile_reader};
 use super::feature_layer::{FeatureClassNamePrefix10_1, read_feature_class_name_body_10_1};
@@ -95,7 +95,7 @@ pub const AIS_IMAGE_SERVICE_NAME_CLASS_ID: [u8; 16] = [
 pub const RASTER_TYPE_NAME_CLASS_ID: [u8; 16] = [
     0x0b, 0x98, 0x7e, 0x50, 0x38, 0xd3, 0x36, 0x46, 0xa7, 0x29, 0xa9, 0x39, 0xbf, 0xca, 0xa1, 0x24,
 ];
-pub(super) const LONG_ARRAY_CLASS_ID: [u8; 16] = [
+pub(crate) const LONG_ARRAY_CLASS_ID: [u8; 16] = [
     0x08, 0xb8, 0xbf, 0x98, 0x1f, 0xe9, 0xd2, 0x11, 0x9f, 0x81, 0, 0xc0, 0x4f, 0x8e, 0xce, 0x27,
 ];
 pub(super) const MAX_NAME_NESTING: usize = 16;
@@ -113,7 +113,7 @@ pub enum RasterDatasetWorkspaceSlot10_1 {
     Unsupported { class_id: [u8; 16], key: u32 },
 }
 
-fn read_workspace_slot(
+pub(super) fn read_workspace_slot(
     reader: &mut Reader<'_>,
     max: usize,
     table: &mut RefTable10_1,
@@ -135,9 +135,6 @@ fn read_workspace_slot(
 /// RasterDatasetName 对象体的有界停止位置。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RasterDatasetNameStop10_1 {
-    /// 保存版本门为 0；原生把流回退 4 字节后再以 String::Read 解释。
-    /// 该零长度 String 分支超出当前严格 String 子集，故停在体起点。
-    ZeroVersionGateRewinds,
     /// WorkspaceName 体在其 IPropertySet 新对象处遇到未支持的类。
     NestedWorkspaceName(WorkspaceNameStop10_1),
     /// IWorkspaceName 请求槽的新对象类尚无体读取器。
@@ -180,18 +177,12 @@ pub fn read_raster_dataset_name_body_10_1(
     let mut staged_table = table.clone();
     let version_gate = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
 
-    // Load 0x7c0ba5b0 对零门值执行 IStream::Seek(-4, CUR)，随后进入首个
-    // String::Read。严格 String 读取器不支持 AfCore 的零长度旧串，因此在体首停。
+    // 原生 Load 回退四字节后将零门值读作字符串长度，String::Read 返回 E_FAIL。
     if version_gate == 0 {
-        return Ok(RasterDatasetNameBody10_1 {
-            key,
-            version_gate,
-            strings: None,
-            workspace: None,
-            tail_at_6c: None,
-            tail_at_70: None,
-            stop: Some(RasterDatasetNameStop10_1::ZeroVersionGateRewinds),
-        });
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "RasterDatasetName 版本门为零，回退后首个 AfCore 字符串长度为零",
+        ));
     }
 
     let strings = [
@@ -504,7 +495,7 @@ fn unsupported_raster_name_class(class_id: &[u8; 16]) -> io::Error {
 }
 
 /// 读取已知 CLSID 的名称对象体。无键宿主传 0，嵌套对象仍使用宿主表。
-pub(super) fn read_supported_raster_name_body_10_1(
+pub(crate) fn read_supported_raster_name_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
@@ -764,7 +755,8 @@ fn read_function_raster_dataset_name(
         .map(|_| {
             slot(reader, table, |r, refs, class_id, key| {
                 if supports_function_arguments(class_id) {
-                    read_arguments(r, max, refs, class_id).map(FunctionRasterInput10_1::Arguments)
+                    read_arguments(r, max, refs, class_id, child_depth)
+                        .map(FunctionRasterInput10_1::Arguments)
                 } else {
                     read_name_body(r, max, refs, class_id, key, child_depth)
                         .map(FunctionRasterInput10_1::Name)
@@ -1102,32 +1094,7 @@ pub(crate) fn read_long_array_slot(
         ObjectEntry10_1::NewObject {
             class_id: LONG_ARRAY_CLASS_ID,
             ..
-        } => {
-            let version = reader.read_u16_le()?;
-            if version > 1 {
-                return Err(io::Error::new(
-                    io::ErrorKind::Unsupported,
-                    format!("未支持的 LongArray 版本 {version}"),
-                ));
-            }
-            let count = (reader.read_u32_le()? as i32).max(0) as usize;
-            if count > max / 4 {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "LongArray 超过长度限额",
-                ));
-            }
-            if count > reader.remaining() / 4 {
-                return Err(io::Error::new(
-                    io::ErrorKind::UnexpectedEof,
-                    "LongArray 超出剩余范围",
-                ));
-            }
-            let values = (0..count)
-                .map(|_| reader.read_u32_le().map(|value| value as i32))
-                .collect::<io::Result<_>>()?;
-            Some((version, values))
-        }
+        } => Some(read_long_array_body(reader, max)?),
         ObjectEntry10_1::NewObject { class_id, .. } => {
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,
@@ -1139,6 +1106,36 @@ pub(crate) fn read_long_array_slot(
         }
     };
     Ok(RasterLongArraySlot10_1 { entry, body })
+}
+
+pub(crate) fn read_long_array_body(
+    reader: &mut Reader<'_>,
+    max: usize,
+) -> io::Result<(u16, Vec<i32>)> {
+    let version = reader.read_u16_le()?;
+    if version > 1 {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            format!("未支持的 LongArray 版本 {version}"),
+        ));
+    }
+    let count = (reader.read_u32_le()? as i32).max(0) as usize;
+    if count > max / 4 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "LongArray 超过长度限额",
+        ));
+    }
+    if count > reader.remaining() / 4 {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "LongArray 超出剩余范围",
+        ));
+    }
+    let values = (0..count)
+        .map(|_| reader.read_u32_le().map(|value| value as i32))
+        .collect::<io::Result<_>>()?;
+    Ok((version, values))
 }
 
 #[cfg(test)]
@@ -1212,20 +1209,17 @@ mod tests {
     }
 
     #[test]
-    fn zero_gate_stops_at_body_start_after_native_rewind_branch() {
-        let bytes = 0_i32.to_le_bytes();
+    fn zero_gate_rejects_zero_length_first_string_and_rolls_back() {
+        let bytes = body_with_null_workspace(0);
         let mut reader = Reader::new(&bytes);
+        let mut table = RefTable10_1::new();
 
-        let parsed =
-            read_raster_dataset_name_body_10_1(&mut reader, 0x1000, &mut RefTable10_1::new(), 9)
-                .unwrap();
+        let error =
+            read_raster_dataset_name_body_10_1(&mut reader, 0x1000, &mut table, 9).unwrap_err();
 
-        assert_eq!(parsed.version_gate, 0);
-        assert_eq!(
-            parsed.stop,
-            Some(RasterDatasetNameStop10_1::ZeroVersionGateRewinds)
-        );
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
         assert_eq!(reader.position(), 0);
+        assert!(table.is_empty());
     }
 
     #[test]

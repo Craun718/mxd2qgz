@@ -1,7 +1,7 @@
 //! FunctionRasterDB.dll 10.1.0.3035 的共用持久化入口类表。
 //! 各类 CLSID 及虚表依据见 docs/mxd-10.1-image-server-rules.md。
 
-const fn class_id(a: u32, b: u16, c: u16, d: u64) -> [u8; 16] {
+pub(super) const fn class_id(a: u32, b: u16, c: u16, d: u64) -> [u8; 16] {
     let [a0, a1, a2, a3] = a.to_le_bytes();
     let [b0, b1] = b.to_le_bytes();
     let [c0, c1] = c.to_le_bytes();
@@ -23,6 +23,10 @@ pub(super) const MERGE_RASTERS_ARGUMENTS: [u8; 16] =
     class_id(0x9a388281, 0xb984, 0x4bd3, 0xb799348d01a05605);
 pub(super) const RASTER_INFO_FUNCTION: [u8; 16] =
     class_id(0xd44242bf, 0x18e8, 0x4670, 0x9f0a132f0aa58b17);
+pub(super) const RASTER_ITEM_FUNCTION: [u8; 16] =
+    class_id(0x31e67a19, 0xed23, 0x4825, 0xbf1e6a7d7b0ef190);
+pub(super) const RASTER_FUNCTION_COLLECTION: [u8; 16] =
+    class_id(0x1f120f8f, 0x17aa, 0x4b8e, 0x8cd86007e0dedb80);
 pub(super) const MOSAIC_FUNCTION: [u8; 16] =
     class_id(0x7406b10e, 0x6009, 0x4366, 0x85ff5a067b54b2ad);
 pub(super) const RASTER_FUNCTION_TEMPLATE: [u8; 16] =
@@ -33,6 +37,18 @@ pub(super) const LOCAL_FUNCTION: [u8; 16] =
     class_id(0x3ecb15f2, 0x6443, 0x443e, 0x9228659328507fee);
 pub(super) const LOCAL_FUNCTION_ARGUMENTS: [u8; 16] =
     class_id(0x3b4a5e5b, 0x4ace, 0x4219, 0xbaa9289b5c431e74);
+
+// RasterLocalOp.dll 的公开类将 IPersistStream 转发给相应的局部运算实现。
+pub(super) const LOCAL_FUNCTION_ALIASES: [[u8; 16]; 3] = [
+    class_id(0x3dedf3d2, 0x61fc, 0x4f9d, 0x9eae5a3f5358308b), // LocalFunction
+    class_id(0x2e60049f, 0xfe7f, 0x4bcd, 0x9b34b6ac978b1e10), // MathFunction
+    class_id(0xc75db7fb, 0x1bed, 0x46e3, 0x8f9617d24d8a03ce), // ConditionalFunction
+];
+pub(super) const LOCAL_ARGUMENT_ALIASES: [[u8; 16]; 3] = [
+    class_id(0x19da76f9, 0xe143, 0x41b3, 0x955c38033a7189a8), // LocalFunctionArguments
+    class_id(0xde07b947, 0xbd0b, 0x4851, 0xaa703826b4983240), // MathFunctionArguments
+    class_id(0x35591e68, 0x2dc3, 0x4630, 0x8bba48eaea56f834), // ConditionalFunctionArguments
+];
 
 pub(super) const FUNCTIONS: [[u8; 16]; 45] = [
     class_id(0x04e0f604, 0x76f5, 0x4a7a, 0xa1c457f54b9cc4af), // ArithmeticFunction
@@ -83,7 +99,14 @@ pub(super) const FUNCTIONS: [[u8; 16]; 45] = [
     class_id(0xeed089c5, 0x98f5, 0x496d, 0x903cce3f2a1956dc), // RenderedRasterFunction
 ];
 
-pub(super) const ARGUMENTS: [[u8; 16]; 41] = [
+pub(super) const RASTER_FUNCTION_TEMPLATE_ARGUMENTS: [u8; 16] =
+    class_id(0xe7e9fa4f, 0xfcc6, 0x483d, 0x9450ff38b6a2c315);
+pub(super) const RASTER_INFO_FUNCTION_ARGUMENTS: [u8; 16] =
+    class_id(0x877bd868, 0xee05, 0x4493, 0xb586bb71681f0665);
+pub(super) const RASTER_ITEM_FUNCTION_ARGUMENTS: [u8; 16] =
+    class_id(0xa2a534d3, 0xd721, 0x4c8c, 0xbfaf98c6d835daf2);
+
+pub(super) const ARGUMENTS: [[u8; 16]; 44] = [
     class_id(0x082dc874, 0x8acc, 0x4fd8, 0xa1d1aeaf73ca899a), // ReflectanceFunctionArguments
     class_id(0x073c8688, 0x949b, 0x4483, 0x9f348289ed1d1072), // ArithmeticFunctionArguments
     class_id(0x6f19d624, 0x24fe, 0x4eac, 0xbf1fa117928de308), // BandArithmeticFunctionArguments
@@ -120,10 +143,13 @@ pub(super) const ARGUMENTS: [[u8; 16]; 41] = [
     class_id(0xd8261e56, 0x178a, 0x4a52, 0x915b788f9393951c), // StretchFunctionArguments
     class_id(0x4c912271, 0xd13a, 0x43bf, 0xadde722902de115f), // TableFunctionArguments
     class_id(0x954e5bb5, 0x2892, 0x49cb, 0x9bf6033f5a78705b), // TrendFunctionArguments
+    RASTER_FUNCTION_TEMPLATE_ARGUMENTS,
+    RASTER_INFO_FUNCTION_ARGUMENTS,
     // 外部模块中直接委派 BasicFunctionArguments 的类。
     class_id(0x67876aa0, 0x40eb, 0x470a, 0xabc9036085756c53), // LasDatasetToRasterFunctionArguments
     class_id(0xfb8e343b, 0x8014, 0x4ce9, 0xb457e72389d2b339), // LasToRasterFunctionArguments
     class_id(0x8bf576ca, 0x96c8, 0x4106, 0x9020a2d78d221dc4), // TerrainToRasterFunctionArguments
     class_id(0xc1570587, 0xe9ea, 0x43cc, 0xb938545b1ef289fe), // MLClassifyFunctionArguments
     class_id(0xa6e9ca22, 0x4c2b, 0x4b4c, 0xaea5da37566c3130), // RenderedRasterFunctionArguments
+    RASTER_ITEM_FUNCTION_ARGUMENTS,
 ];

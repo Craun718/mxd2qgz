@@ -1,15 +1,17 @@
 //! FunctionRasterDB.dll 10.1 的 RasterFunctionTemplate 与变量对象体。
 
+use super::raster_info::{self, RasterInfo10_1, RasterInfos10_1};
 use super::{
     RasterFunctionArgumentsBody10_1, RasterFunctionBody10_1, RuleSlot10_1, class_ids,
-    read_arguments, read_function, slot, supports_function_arguments, version,
+    read_arguments, read_function, signed_version, slot, supports_function_arguments,
 };
 use crate::layers::raster_dataset_name::{RasterDatasetNameEntryBody10_1, read_name_body};
 use crate::objects::property_set::{
-    PROPERTY_SET_CLASS_ID, PropertyValueObjectStream10_1, read_padded_variant_object_stream_10_1,
+    PROPERTY_SET_CLASS_ID, PropertyValueObjectStream10_1, RASTER_ARGUMENT_ARRAY_CLASS_ID,
+    RASTER_SCALAR_CLASS_ID, read_padded_variant_object_stream_10_1, read_variant_object_body_10_1,
 };
 use crate::objects::string_array::{StringArraySlot10_1, read_string_array_slot_10_1};
-use crate::storage::object_refs::RefTable10_1;
+use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
@@ -30,6 +32,9 @@ pub enum RasterTemplateInput10_1 {
     Arguments(RasterFunctionArgumentsBody10_1),
     Variable(RasterFunctionVariable10_1),
     RasterName(RasterDatasetNameEntryBody10_1),
+    RasterInfo(Box<RasterInfo10_1>),
+    RasterInfos(RasterInfos10_1),
+    NativeArgument(PropertyValueObjectStream10_1),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -60,7 +65,7 @@ pub(super) fn read_template(
     r: &mut Reader<'_>,
     max: usize,
     refs: &mut RefTable10_1,
-    body_version: u16,
+    body_version: i16,
     child_depth: usize,
 ) -> io::Result<RasterFunctionTemplate10_1> {
     let first_string = read_string_10_1(r, max)?;
@@ -105,7 +110,7 @@ fn read_variable(
     refs: &mut RefTable10_1,
     child_depth: usize,
 ) -> io::Result<RasterFunctionVariable10_1> {
-    let version = version(r, 2, "RasterFunctionVariable")?;
+    let version = signed_version(r, 2, "RasterFunctionVariable")?;
     let first_string = read_string_10_1(r, max)?;
     let value = (version == 2)
         .then(|| {
@@ -130,7 +135,20 @@ fn read_input(
     refs: &mut RefTable10_1,
     depth: usize,
 ) -> io::Result<RuleSlot10_1<RasterTemplateInput10_1>> {
-    slot(r, refs, |r, refs, id, key| match id {
+    slot(r, refs, |r, refs, id, key| {
+        read_input_body(r, max, refs, id, key, depth)
+    })
+}
+
+pub(super) fn read_input_body(
+    r: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+    id: [u8; 16],
+    key: u32,
+    depth: usize,
+) -> io::Result<RasterTemplateInput10_1> {
+    match id {
         class_ids::RASTER_FUNCTION_VARIABLE => {
             let child_depth = depth.checked_sub(1).ok_or_else(|| {
                 io::Error::new(ErrorKind::InvalidData, "栅格函数变量嵌套超过限额")
@@ -138,10 +156,24 @@ fn read_input(
             read_variable(r, max, refs, child_depth).map(RasterTemplateInput10_1::Variable)
         }
         _ if supports_function_arguments(id) => {
-            read_arguments(r, max, refs, id).map(RasterTemplateInput10_1::Arguments)
+            read_arguments(r, max, refs, id, depth).map(RasterTemplateInput10_1::Arguments)
+        }
+        RASTER_SCALAR_CLASS_ID | RASTER_ARGUMENT_ARRAY_CLASS_ID => read_variant_object_body_10_1(
+            r,
+            max,
+            refs,
+            0,
+            ObjectEntry10_1::NewObject { class_id: id, key },
+        )
+        .map(RasterTemplateInput10_1::NativeArgument),
+        raster_info::CLASS_ID => raster_info::read_body(r, max, refs, depth)
+            .map(|info| RasterTemplateInput10_1::RasterInfo(Box::new(info))),
+        raster_info::RASTER_INFOS_CLASS_ID => {
+            raster_info::read_collection_body(r, max, refs, depth)
+                .map(RasterTemplateInput10_1::RasterInfos)
         }
         _ => read_name_body(r, max, refs, id, key, depth).map(RasterTemplateInput10_1::RasterName),
-    })
+    }
 }
 
 fn read_variable_value(

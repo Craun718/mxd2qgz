@@ -370,6 +370,8 @@ fn read_group_layer_10_1(
                                 class_id,
                                 crate::layers::cad_layer::CAD_LAYER_CLASS_ID
                                     | crate::layers::cad_layer::CAD_FEATURE_LAYER_CLASS_ID
+                                    | crate::layers::cad_layer::CAD_ANNOTATION_LAYER_CLASS_ID
+                                    | crate::layers::coverage_annotation_layer::COVERAGE_ANNOTATION_LAYER_CLASS_ID
                             );
                         let exact_boundary = complete || bounded_body;
                         // A 的体积语义是写侧观察（读侧原生不消费 A）：A>=20 时

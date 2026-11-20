@@ -1269,6 +1269,47 @@ fn successor_minimal() -> Vec<u8> {
 }
 
 #[test]
+fn successor_loads_explicit_aoi_and_preserves_following_range_ids() {
+    let mut bytes = successor_minimal();
+    push_null_marker(&mut bytes); // 标注集合。
+    bytes.extend(0_i16.to_le_bytes());
+    push_null_marker(&mut bytes); // FeatureIDSet。
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(0_i16.to_le_bytes());
+    push_null_marker(&mut bytes); // IDisplayFilter。
+    bytes.extend([0; 6]); // 三个 short。
+    push_null_marker(&mut bytes); // IName。
+    bytes.extend(0_i32.to_le_bytes()); // 关系类条数。
+    bytes.extend(string_bytes(""));
+    let aoi_at = bytes.len();
+    push_entry_header(&mut bytes, &ENVELOPE_CLASS_ID, 72);
+    bytes.extend(1_u16.to_le_bytes());
+    let coords = [1.0_f64, 2.0, 3.0, 4.0];
+    for coord in coords {
+        bytes.extend(coord.to_le_bytes());
+    }
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(42_i32.to_le_bytes());
+    let end = bytes.len();
+    bytes.push(0xa5);
+
+    let mut table = RefTable10_1::new();
+    for cut in aoi_at..end {
+        let mut truncated = Reader::new(&bytes[..cut]);
+        assert!(read_feature_layer_successor_10_1(&mut truncated, 10, 1024, &mut table).is_err());
+        assert_eq!(truncated.position(), 0);
+        assert!(table.is_empty());
+    }
+    let mut reader = Reader::new(&bytes);
+    let tail = read_feature_layer_successor_10_1(&mut reader, 10, 1024, &mut table).unwrap();
+    assert_eq!(tail.stop, SuccessorStop10_1::TailCompleted);
+    assert_eq!(tail.explicit_area_of_interest.unwrap().coords, coords);
+    assert_eq!(tail.range_ids, [42]);
+    assert!(table.contains(72));
+    assert_eq!(reader.position(), end);
+}
+
+#[test]
 fn successor_reads_minimal_segment_and_completes_field_info_loop() {
     let bytes = successor_minimal();
     let mut reader = Reader::new(&bytes);
@@ -2107,10 +2148,10 @@ mod tail_continuation {
         }
     }
 
-    #[test]
-    fn successor_tail_full_path_through_edit_template_extension_to_completion() {
-        // 合成完整链：ALPC 空条目 → short → FIDSet → 选择集 → IDisplayFilter
-        // → … → 扩展段（ETM+EditTemplate）→ … → TimeData 族 → 终段 short。
+    fn successor_through_short_300() -> Vec<u8> {
+        use mxd2qgz::objects::property_set::PROPERTY_SET_CLASS_ID;
+
+        // 合成含多种扩展及其嵌套键的后继段前缀。
         let mut b = successor_prefix();
         // ALPC：版本 2、计数 0、尾 int32。
         push_entry_header(&mut b, &ANNOTATE_PROPS_COLLECTION_CLASS_ID, 59);
@@ -2135,7 +2176,7 @@ mod tail_continuation {
         push_null_marker(&mut b); // Envelope 槽 1
         b.extend(0_i32.to_le_bytes()); // 范围计数 0
         // 旧式扩展的体长之后写 CLSID 和对象体，无外层对象键。
-        b.extend(8_i32.to_le_bytes());
+        b.extend(11_i32.to_le_bytes());
         let etm_body = edit_template_manager_body(77);
         b.extend((etm_body.len() as i64).to_le_bytes());
         b.extend_from_slice(&EDIT_TEMPLATE_MANAGER_CLASS_ID);
@@ -2183,6 +2224,24 @@ mod tail_continuation {
         b.extend(1_u16.to_le_bytes());
         push_null_marker(&mut b);
         b.extend(0_u32.to_le_bytes()); // 空时间窗口列表。
+        b.extend(6_i64.to_le_bytes());
+        b.extend(PROPERTY_SET_CLASS_ID);
+        b.extend(1_u16.to_le_bytes());
+        b.extend(0_u32.to_le_bytes());
+        let server = [
+            0xc9, 0x0e, 0xfd, 0xf7, 0x15, 0xf2, 0x7f, 0x4e, 0xb1, 0xf8, 0x94, 0xba, 0x0e, 0xb6,
+            0x03, 0xb9,
+        ];
+        for is_new in [true, false] {
+            b.extend((if is_new { 28_i64 } else { 22 }).to_le_bytes());
+            b.extend(server);
+            b.extend(1_u16.to_le_bytes());
+            push_entry_header(&mut b, &PROPERTY_SET_CLASS_ID, 93);
+            if is_new {
+                b.extend(1_u16.to_le_bytes());
+                b.extend(0_u32.to_le_bytes());
+            }
+        }
         b.extend(1.5_f64.to_le_bytes()); // double +0x1e8
         // ISymbol 槽：SMS 新对象（键 90，全闭合符号族整体解析）。
         push_entry_header(&mut b, &SIMPLE_MARKER_SYMBOL_CLASS_ID, 90);
@@ -2223,6 +2282,192 @@ mod tail_continuation {
         for _ in 0..3 {
             b.extend(string_bytes(""));
         }
+        b
+    }
+
+    #[test]
+    fn successor_display_expression_stops_at_unknown_engine() {
+        use mxd2qgz::layers::annotate_props::{
+            DISPLAY_EXPRESSION_PROPS_CLASS_ID, ExpressionEngineSlot10_1,
+        };
+
+        let bytes = successor_through_short_300();
+        let slot_offset = bytes.len() - (16 + 2 + 3 * 6);
+        let mut data = bytes[..slot_offset].to_vec();
+        push_entry_header(&mut data, &DISPLAY_EXPRESSION_PROPS_CLASS_ID, 124);
+        let version_offset = data.len();
+        data.extend(1_u16.to_le_bytes());
+        data.extend(string_bytes("[NAME]"));
+        data.extend((-1_i16).to_le_bytes());
+        let engine_offset = data.len();
+        // 首 6 字节也能按 short 与空字符串读取，便于捕捉误读后继字段。
+        let mut unknown = [0xa5; 16];
+        unknown[..8].copy_from_slice(&[0, 0, 2, 0, 0, 0, 0, 0]);
+        push_entry_header(&mut data, &unknown, 125);
+        data.extend_from_slice(&bytes[slot_offset + 16..]);
+
+        let mut reader = Reader::new(&data);
+        let mut refs = RefTable10_1::new();
+        let layer = read_feature_layer_successor_10_1(&mut reader, 0x1b, 4096, &mut refs).unwrap();
+        assert_eq!(
+            layer.stop,
+            SuccessorStop10_1::ExpressionPropsUnsupported {
+                class_id: unknown,
+                key: 125,
+            },
+        );
+        assert!(layer.short_300.is_none());
+        assert!(matches!(
+            layer.expression_props,
+            Some(mxd2qgz::layers::feature_layer_tail::ExpressionPropsSlot10_1::Display(body))
+                if matches!(body.engine, ExpressionEngineSlot10_1::Unsupported { key: 125, .. })
+        ));
+        assert_eq!(reader.position(), engine_offset);
+        assert!(refs.contains(124) && !refs.contains(125));
+
+        data[version_offset..version_offset + 2].copy_from_slice(&2_u16.to_le_bytes());
+        let mut reader = Reader::new(&data);
+        let mut refs = table_with_keys(&[7]);
+        let before = refs.clone();
+        assert!(read_feature_layer_successor_10_1(&mut reader, 0x1b, 4096, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert_eq!(refs, before);
+    }
+
+    #[test]
+    fn successor_legacy_time_slots_follow_each_version_gate() {
+        use mxd2qgz::layers::annotate_props::{
+            ANNOTATION_VBSCRIPT_ENGINE_CLASS_ID, ExpressionEngineSlot10_1,
+            HOT_LINK_EXPRESSION_PROPS_CLASS_ID,
+        };
+        use mxd2qgz::layers::dep_tail::{
+            TIME_EXTENT_CLASS_ID, TIME_REFERENCE_CLASS_ID, TimeExtentSlot10_1,
+            TimeReferenceSlot10_1,
+        };
+        use mxd2qgz::layers::feature_layer_tail::HotLinkSlot10_1;
+
+        let mut prefix = successor_through_short_300();
+        let legacy_offset = prefix.len();
+        prefix.extend(7_i16.to_le_bytes());
+        for value in ["起点", "终点", "", "时间"] {
+            prefix.extend(string_bytes(value));
+        }
+        prefix.extend((-2_i16).to_le_bytes());
+        prefix.extend(2.5_f64.to_le_bytes());
+        prefix.extend(23_i32.to_le_bytes());
+
+        let mut bytes = prefix;
+        for version in 0x1c..=0x1f {
+            match version {
+                0x1d => {
+                    push_entry_header(&mut bytes, &TIME_REFERENCE_CLASS_ID, 120);
+                    bytes.extend(1_u16.to_le_bytes());
+                    push_null_marker(&mut bytes);
+                    bytes.extend([1, 0, 2, 0]);
+                }
+                0x1e => {
+                    push_entry_header(&mut bytes, &TIME_EXTENT_CLASS_ID, 121);
+                    bytes.extend(2_u16.to_le_bytes());
+                    push_null_marker(&mut bytes);
+                    push_null_marker(&mut bytes);
+                    push_entry_header(&mut bytes, &TIME_REFERENCE_CLASS_ID, 120);
+                    bytes.push(1);
+                }
+                0x1f => {
+                    push_entry_header(&mut bytes, &HOT_LINK_EXPRESSION_PROPS_CLASS_ID, 122);
+                    bytes.extend(1_u16.to_le_bytes());
+                    bytes.extend(string_bytes("[URL]"));
+                    bytes.extend((-1_i16).to_le_bytes());
+                    push_entry_header(&mut bytes, &ANNOTATION_VBSCRIPT_ENGINE_CLASS_ID, 123);
+                    bytes.extend(2_u16.to_le_bytes());
+                    bytes.extend((-1_i16).to_le_bytes());
+                }
+                _ => {}
+            }
+            let body_end = bytes.len();
+            bytes.extend([0xa5; 20]);
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let layer =
+                read_feature_layer_successor_10_1(&mut reader, version, 4096, &mut refs).unwrap();
+            assert_eq!(layer.stop, SuccessorStop10_1::TailCompleted);
+            assert_eq!(reader.position(), body_end, "版本 {version:#x}");
+            let scalars = layer.legacy_scalars.unwrap();
+            assert_eq!(scalars.strings, ["起点", "终点", "", "时间"]);
+            assert_eq!(
+                (
+                    scalars.short_62,
+                    scalars.short_44,
+                    scalars.double_40,
+                    scalars.int32_38
+                ),
+                (7, -2, 2.5, 23)
+            );
+            assert!(layer.time_data.is_none() && layer.short_2ca.is_none());
+            let slots = layer.legacy_time_slots.unwrap();
+            assert_eq!(
+                matches!(slots.time_reference, Some(TimeReferenceSlot10_1::Body(_))),
+                version >= 0x1d
+            );
+            assert_eq!(
+                matches!(slots.time_extent,
+                Some(TimeExtentSlot10_1::Body(value)) if matches!(value.reference,
+                    TimeReferenceSlot10_1::BackReference { key: 120, .. }) && value.tail_byte == Some(1)),
+                version >= 0x1e
+            );
+            assert_eq!(
+                matches!(layer.hot_link_expression_props,
+                Some(HotLinkSlot10_1::Body(value)) if value.string == "[URL]" &&
+                    matches!(&value.engine, ExpressionEngineSlot10_1::VbscriptEngine(engine) if engine.key == 123)),
+                version == 0x1f
+            );
+            assert_eq!(refs.contains(123), version == 0x1f);
+            bytes.truncate(body_end);
+            for end in legacy_offset..body_end {
+                let mut reader = Reader::new(&bytes[..end]);
+                let mut table = table_with_keys(&[7]);
+                assert!(
+                    read_feature_layer_successor_10_1(&mut reader, version, 4096, &mut table)
+                        .is_err()
+                );
+                assert_eq!(reader.position(), 0);
+                assert_eq!(table.len(), 1);
+            }
+        }
+
+        let mut reader = Reader::new(&bytes[..bytes.len() - 4]);
+        let mut table = table_with_keys(&[123]);
+        let layer = read_feature_layer_successor_10_1(&mut reader, 0x1f, 4096, &mut table).unwrap();
+        assert_eq!(layer.stop, SuccessorStop10_1::TailCompleted);
+        assert_eq!(reader.remaining(), 0);
+        assert!(matches!(
+            layer.hot_link_expression_props,
+            Some(HotLinkSlot10_1::Body(value))
+                if matches!(value.engine, ExpressionEngineSlot10_1::BackReference { key: 123, .. })
+        ));
+
+        // 非空热链接对象内的新未知引擎应保留外层键，并在内层对象头处停止。
+        let inner_offset = bytes.len() - 24;
+        let unsupported = [0xa5; 16];
+        bytes[inner_offset..inner_offset + 16].copy_from_slice(&unsupported);
+        let mut reader = Reader::new(&bytes);
+        let mut table = RefTable10_1::new();
+        let layer = read_feature_layer_successor_10_1(&mut reader, 0x1f, 4096, &mut table).unwrap();
+        assert_eq!(
+            layer.stop,
+            SuccessorStop10_1::ExpressionPropsUnsupported {
+                class_id: unsupported,
+                key: 123,
+            }
+        );
+        assert_eq!(reader.position(), inner_offset);
+        assert!(table.contains(122));
+        assert!(!table.contains(123));
+    }
+
+    #[test]
+    fn successor_tail_full_path_through_edit_template_extension_to_completion() {
+        let mut b = successor_through_short_300();
         // TimeData（版本 2）：short、空槽、尾 short。
         b.extend(2_i16.to_le_bytes());
         b.extend(0_i16.to_le_bytes());
@@ -2294,7 +2539,23 @@ mod tail_continuation {
             Some(&[("左表达式".to_owned(), "右表达式".to_owned())][..])
         );
         assert_eq!(result.int32_2c0, Some(0));
-        assert_eq!(result.extension_count, Some(8));
+        assert_eq!(result.extension_count, Some(11));
+        assert!(matches!(
+            &result.extensions[8],
+            LayerExtension10_1::PropertySet(Some(properties)) if properties.count == 0
+        ));
+        assert!(matches!(
+            &result.extensions[9],
+            LayerExtension10_1::ServerLayerExtension(Some(server))
+                if server.properties.body.as_ref().is_some_and(|body| body.count == 0)
+        ));
+        assert!(matches!(
+            &result.extensions[10],
+            LayerExtension10_1::ServerLayerExtension(Some(server))
+                if matches!(server.properties.entry,
+                    mxd2qgz::storage::object_refs::ObjectEntry10_1::BackReference { key: 93, .. })
+        ));
+        assert!(table.contains(93));
         assert_eq!(
             result.extensions[1],
             LayerExtension10_1::RepresentationLayerExtension(Some(1))
@@ -2615,8 +2876,8 @@ mod tail_continuation {
         /// BOLP 体(样本形态,键 69):20B 前缀 + 三槽 + 槽间块 + 44B 尾段。
         fn bolp_body_sample() -> Vec<u8> {
             let mut b = Vec::new();
-            // ① 前缀:ver 0、short ×3 = 0、int ×3 = 0/3/1。
-            b.extend(0_i16.to_le_bytes());
+            // ① 前缀:ver 6、short ×3 = 0、int ×3 = 0/3/1。
+            b.extend(6_i16.to_le_bytes());
             for _ in 0..3 {
                 b.extend(0_i16.to_le_bytes());
             }
@@ -2648,16 +2909,15 @@ mod tail_continuation {
             for value in [2_i32, 2, 1, 2, 2, 3, 3, 3] {
                 b.extend(value.to_le_bytes());
             }
-            // ⑥ 尾段:count 0、double 0.0、int 0、String cb=0、int 0、
-            //    块 int 1/int 2/double 0.0/short 0/short -1。
+            // ⑥ 公共尾段和 v3/v4/v5/v6 的附加字段。
             b.extend(0_i32.to_le_bytes());
             b.extend(0.0_f64.to_le_bytes());
             b.extend(0_i32.to_le_bytes());
-            b.extend(0_u32.to_le_bytes()); // String cb=0(空 BSTR)
-            b.extend(0_i32.to_le_bytes());
+            b.extend(0.0_f64.to_le_bytes());
             b.extend(1_i32.to_le_bytes());
-            b.extend(2_i32.to_le_bytes());
-            b.extend(0.0_f64.to_le_bytes());
+            b.extend(string_bytes(""));
+            b.extend(0_i16.to_le_bytes());
+            b.extend(0_i32.to_le_bytes());
             b.extend(0_i16.to_le_bytes());
             b.extend((-1_i16).to_le_bytes());
             b
@@ -2671,7 +2931,7 @@ mod tail_continuation {
             let mut table = RefTable10_1::new();
             let body = read_bolp_body_10_1(&mut reader, 1024, &mut table, 69).unwrap();
             assert_eq!(body.key, 69);
-            assert_eq!(body.version, 0);
+            assert_eq!(body.version, 6);
             assert_eq!(body.shorts, [0, 0, 0]);
             assert_eq!(body.ints, [0, 3, 1]);
             assert_eq!(body.stop, None);
@@ -2703,16 +2963,81 @@ mod tail_continuation {
             }
             assert_eq!(body.tail.count, 0);
             assert!(body.tail.doubles.is_empty());
-            assert_eq!(body.tail.string, "");
-            assert_eq!(body.tail.block_int_a, 1);
-            assert_eq!(body.tail.block_int_b, 2);
-            assert_eq!(body.tail.block_short_b, -1);
+            assert_eq!(body.tail.double_24, Some(0.0));
+            assert_eq!(body.tail.v4_fields, Some((1, String::new(), 0)));
+            assert_eq!(body.tail.v5_fields, Some((0, 0)));
+            assert_eq!(body.tail.short_5a, Some(-1));
             // 哨兵未消费:BOLP 体完整结束。
             assert_eq!(reader.remaining(), 20);
             // 键已登记(登记先于持久化)。
             assert!(table.contains(70));
             assert!(table.contains(71));
             assert!(table.contains(72));
+        }
+
+        #[test]
+        fn bolp_tail_follows_native_version_gates() {
+            let sample = bolp_body_sample();
+            for version in [-1_i16, 0, 1, 2, 3, 4, 5, 6] {
+                let mut bytes = sample[..sample.len() - 44].to_vec();
+                bytes[..2].copy_from_slice(&version.to_le_bytes());
+                bytes.extend(2_i32.to_le_bytes());
+                bytes.extend(1.5_f64.to_le_bytes());
+                bytes.extend((-2.5_f64).to_le_bytes());
+                bytes.extend(8.0_f64.to_le_bytes());
+                bytes.extend(9_i32.to_le_bytes());
+                if version <= 1 {
+                    bytes.extend(string_bytes("旧"));
+                    bytes.extend((-10_i32).to_le_bytes());
+                }
+                if version >= 3 {
+                    bytes.extend(11.5_f64.to_le_bytes());
+                }
+                if version >= 4 {
+                    bytes.extend(12_i32.to_le_bytes());
+                    bytes.extend(string_bytes("标注"));
+                    bytes.extend((-13_i16).to_le_bytes());
+                }
+                if version >= 5 {
+                    bytes.extend(14_i32.to_le_bytes());
+                    bytes.extend((-15_i16).to_le_bytes());
+                }
+                if version >= 6 {
+                    bytes.extend((-16_i16).to_le_bytes());
+                }
+
+                let end = bytes.len();
+                bytes.push(0xa5);
+                let mut reader = Reader::new(&bytes);
+                let mut refs = RefTable10_1::new();
+                let body = read_bolp_body_10_1(&mut reader, 1024, &mut refs, 69).unwrap();
+                assert_eq!(body.version as i16, version);
+                assert_eq!(body.tail.doubles, [1.5, -2.5]);
+                assert_eq!((body.tail.double_44, body.tail.int_70), (8.0, 9));
+                assert_eq!(
+                    body.tail.legacy_fields,
+                    (version <= 1).then(|| ("旧".into(), -10))
+                );
+                assert_eq!(body.tail.double_24, (version >= 3).then_some(11.5));
+                assert_eq!(
+                    body.tail.v4_fields,
+                    (version >= 4).then(|| (12, "标注".into(), -13))
+                );
+                assert_eq!(body.tail.v5_fields, (version >= 5).then_some((14, -15)));
+                assert_eq!(body.tail.short_5a, (version >= 6).then_some(-16));
+                assert_eq!(reader.position(), end);
+                for cut in sample.len() - 44..end {
+                    let mut reader = Reader::new(&bytes[..cut]);
+                    let mut refs = RefTable10_1::new();
+                    assert!(read_bolp_body_10_1(&mut reader, 1024, &mut refs, 69).is_err());
+                    assert_eq!(reader.position(), 0);
+                    assert!(refs.is_empty());
+                }
+            }
+            let invalid = 7_i16.to_le_bytes();
+            let mut reader = Reader::new(&invalid);
+            assert!(read_bolp_body_10_1(&mut reader, 1024, &mut RefTable10_1::new(), 69).is_err());
+            assert_eq!(reader.position(), 0);
         }
 
         #[test]
@@ -2795,8 +3120,19 @@ mod tail_continuation {
             assert_eq!(body.version, 1);
             assert_eq!(body.string, "");
             assert_eq!(body.short, -1);
-            assert_eq!(body.guid_block, [0u8; 16]);
+            assert!(matches!(
+                body.engine,
+                mxd2qgz::layers::annotate_props::ExpressionEngineSlot10_1::Null
+            ));
             assert_eq!(reader.remaining(), 0);
+
+            b[..2].copy_from_slice(&2_u16.to_le_bytes());
+            let mut reader = Reader::new(&b);
+            assert!(
+                read_hot_link_expression_props_body_10_1(&mut reader, 1024, &mut table, 85)
+                    .is_err()
+            );
+            assert_eq!(reader.position(), 0);
         }
 
         #[test]
@@ -3026,7 +3362,7 @@ mod tail_continuation {
         }
 
         #[test]
-        fn extension_section_sample_shape_parses_without_key() {
+        fn extension_section_and_chart_symbol_leave_the_rest_of_the_tail_aligned() {
             // 样本形态扩展段(层 32):计数 1、尺寸 387(仅体)、CLSID、ETM 体
             // (ver 2、count 1、ET 条目、尾字节 0x01)。
             let mut b = successor_prefix();
@@ -3064,9 +3400,16 @@ mod tail_continuation {
             etm.push(0x01);
             assert_eq!(etm.len(), etm_body.len()); // 尺寸一致性(合成体同长)
             b.extend_from_slice(&etm);
-            // ㉕ double + ㉖ ISymbol 空标记 + ㉗ + ㉘ + ㉙ + ㉚(String cb=0!)…
-            b.extend(98.0_f64.to_le_bytes());
-            push_null_marker(&mut b);
+            // ㉖ 统计图符号之后继续读取 ㉗–㊸。
+            use mxd2qgz::objects::display_symbol::{PIE_CHART_SYMBOL_CLASS_ID, SymbolSlotFull10_1};
+            b.extend(98.0_f64.to_le_bytes()); // ㉕ double
+            push_entry_header(&mut b, &PIE_CHART_SYMBOL_CLASS_ID, 78);
+            b.extend(1_u16.to_le_bytes());
+            b.extend([0; 4 * 8 + 1 + 8 + 4 + 2]); // 饼图首段字段
+            push_null_marker(&mut b); // ILineSymbol
+            b.extend(2_u16.to_le_bytes());
+            b.extend([0; 4 + 4 + 8 + 4]); // 公共标量段和空填充数组
+            push_null_marker(&mut b); // IMarkerBackground
             b.extend((-1_i16).to_le_bytes());
             b.extend(1_i32.to_le_bytes());
             push_null_marker(&mut b); // Envelope 槽 2
@@ -3118,6 +3461,10 @@ mod tail_continuation {
             let result =
                 read_feature_layer_successor_10_1(&mut reader, 34, 4096, &mut table).unwrap();
             assert_eq!(result.stop, SuccessorStop10_1::TailCompleted);
+            assert!(
+                matches!(result.symbol, Some(SymbolSlotFull10_1::ChartSymbol(body)) if body.key == 78)
+            );
+            assert!(table.contains(78));
             assert_eq!(reader.remaining(), 0);
             assert_eq!(result.extension_count, Some(1));
             let LayerExtension10_1::EditTemplateManager(etm) = &result.extensions[0] else {

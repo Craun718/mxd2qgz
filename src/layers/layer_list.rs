@@ -77,10 +77,15 @@
 //! - 图层列表元素的业务语义（绘制顺序、图层树展开方式）不在本模块范围。
 
 use crate::layers::cad_layer::{
-    CAD_FEATURE_LAYER_CLASS_ID, CAD_LAYER_CLASS_ID, CadFeatureLayer10_1, CadLayer10_1,
+    CAD_ANNOTATION_LAYER_CLASS_ID, CAD_FEATURE_LAYER_CLASS_ID, CAD_LAYER_CLASS_ID,
+    CadAnnotationLayer10_1, CadFeatureLayer10_1, CadLayer10_1, read_cad_annotation_layer_10_1,
     read_cad_feature_layer_10_1, read_cad_layer_10_1,
 };
 use crate::layers::composite_graphics::read_composite_graphics_layer_prefix_10_1;
+use crate::layers::coverage_annotation_layer::{
+    COVERAGE_ANNOTATION_LAYER_CLASS_ID, CoverageAnnotationLayer10_1,
+    read_coverage_annotation_layer_10_1,
+};
 use crate::layers::fdo_graphics_layer::{
     FDO_GRAPHICS_LAYER_CLASS_ID, FdoGraphicsLayerPrefix10_1, read_fdo_graphics_layer_prefix_10_1,
 };
@@ -137,6 +142,8 @@ pub enum LayerBodyPrefix10_1 {
     /// GroupLayer 体前缀（名称、三个 short、两个 double、子图层循环、可见性
     /// 等版本条件字段，到首个不可闭合字段为止）。
     GroupLayer(Box<crate::layers::group_layer::GroupLayerPrefix10_1>),
+    /// 使用内嵌组图层提供子层的地理处理图层。
+    ProcessLayer(Box<super::process_layer::ProcessLayer10_1>),
     /// CompositeGraphicsLayer 体前缀（元素组、名称、标量组、子图层循环，到
     /// 首个不可闭合字段为止）。
     CompositeGraphicsLayer(
@@ -153,6 +160,8 @@ pub enum LayerBodyPrefix10_1 {
     TiledLayer(Box<TiledLayer10_1>),
     CadLayer(Box<CadLayer10_1>),
     CadFeatureLayer(Box<CadFeatureLayer10_1>),
+    CadAnnotationLayer(Box<CadAnnotationLayer10_1>),
+    CoverageAnnotationLayer(Box<CoverageAnnotationLayer10_1>),
     /// 有界 ImageServerLayer 的 IPersistVariant 体，可能在未知对象前停止。
     ImageServerLayer(Box<crate::layers::image_server_layer_tail::ImageServerLayerBody10_1>),
     /// 有界 BasemapLayer 的结果对象与子图层回引。
@@ -169,11 +178,16 @@ impl LayerBodyPrefix10_1 {
         match self {
             Self::FeatureLayer(prefix) => &prefix.name,
             Self::GroupLayer(prefix) => &prefix.name,
+            Self::ProcessLayer(body) => &body.group.name,
             Self::CompositeGraphicsLayer(prefix) => &prefix.name,
             Self::Graphics3d(body) => &body.name,
             Self::TiledLayer(body) => body.name(),
             Self::CadLayer(body) => &body.name,
             Self::CadFeatureLayer(body) => body.feature.as_ref().map_or("", |base| &base.name),
+            Self::CadAnnotationLayer(body) => {
+                body.annotation.as_ref().map_or("", |base| base.name())
+            }
+            Self::CoverageAnnotationLayer(body) => body.name(),
             Self::RasterLayer(prefix) => &prefix.first_string,
             Self::WcsLayer(body) => body
                 .raster
@@ -567,9 +581,12 @@ pub fn read_layer_list_10_1(
                 &entry.parsed,
                 Some(
                     LayerBodyPrefix10_1::Graphics3d(_)
+                        | LayerBodyPrefix10_1::ProcessLayer(_)
                         | LayerBodyPrefix10_1::WcsLayer(_)
                         | LayerBodyPrefix10_1::CadLayer(_)
                         | LayerBodyPrefix10_1::CadFeatureLayer(_)
+                        | LayerBodyPrefix10_1::CadAnnotationLayer(_)
+                        | LayerBodyPrefix10_1::CoverageAnnotationLayer(_)
                         | LayerBodyPrefix10_1::TiledLayer(_)
                 )
             );
@@ -676,7 +693,21 @@ pub(crate) fn read_legacy_layer_lists_10_1(
                 let object = read_object_entry_10_1(objects, &mut refs)?;
                 entry.object = LayerEntryObject::Entry(object);
                 if let ObjectEntry10_1::NewObject { class_id, key } = object {
-                    match read_complete_layer_body_10_1(objects, class_id, max_bytes, &mut refs) {
+                    // 旧 Map 的第一组也可用 ExtraSafe；v12 栅格靠这个界区分可选尾部。
+                    let parsed = match (prefix, class_id) {
+                        (Some(_), RASTER_LAYER_CLASS_ID) => {
+                            super::raster_layer::read_complete_bounded_raster_body_10_1(
+                                objects, max_bytes, &mut refs,
+                            )
+                            .map(LayerBodyPrefix10_1::RasterLayer)
+                        }
+                        (Some(_), WCS_LAYER_CLASS_ID) => {
+                            read_wcs_layer_body_10_1(objects, max_bytes, &mut refs, true)
+                                .map(|body| LayerBodyPrefix10_1::WcsLayer(Box::new(body)))
+                        }
+                        _ => read_complete_layer_body_10_1(objects, class_id, max_bytes, &mut refs),
+                    };
+                    match parsed {
                         Ok(parsed) => entry.parsed = Some(parsed),
                         Err(error) => {
                             stop = Some(LayerListStop::LegacyObjectBody {
@@ -813,8 +844,13 @@ fn read_entry(
                     read_complete_layer_body_10_1(trial, *class_id, max_bytes, trial_table)
                         .map(Some)
                 }
-            } else if (matches!(*class_id, CAD_LAYER_CLASS_ID | CAD_FEATURE_LAYER_CLASS_ID)
-                || is_tiled_layer(*class_id)
+            } else if (matches!(
+                *class_id,
+                CAD_LAYER_CLASS_ID
+                    | CAD_FEATURE_LAYER_CLASS_ID
+                    | CAD_ANNOTATION_LAYER_CLASS_ID
+                    | COVERAGE_ANNOTATION_LAYER_CLASS_ID
+            ) || is_tiled_layer(*class_id)
                 || matches!(
                     *class_id,
                     GRAPHICS_LAYER_3D_CLASS_ID | GLOBE_GRAPHICS_LAYER_CLASS_ID
@@ -930,6 +966,24 @@ fn read_entry(
                 }
             } else if *class_id == GROUP_LAYER_CLASS_ID {
                 read_group_layer_list_body(trial, bound.map(|(end, _)| end), max_bytes, trial_table)
+            } else if *class_id == super::process_layer::PROCESS_LAYER_CLASS_ID
+                && let Some((end, _)) = bound
+            {
+                let len = end
+                    .checked_sub(trial.position())
+                    .ok_or_else(|| invalid(offset, "ProcessLayer 外层边界早于对象体"))?;
+                let mut region = trial.clone().read_region(len)?;
+                let mut refs = trial_table.clone();
+                parse_body_prefix(&mut region, *class_id, max_bytes, &mut refs, 0).and_then(
+                    |body| {
+                        if region.remaining() != 0 {
+                            return Err(invalid(offset, "ProcessLayer 未完整消费外层区间"));
+                        }
+                        trial.read_bytes(region.position())?;
+                        *trial_table = refs;
+                        Ok(body)
+                    },
+                )
             } else {
                 parse_body_prefix(trial, *class_id, max_bytes, trial_table, 0)
             };
@@ -1052,6 +1106,9 @@ pub(crate) fn parse_body_prefix(
                 depth,
             )?,
         ))))
+    } else if class_id == super::process_layer::PROCESS_LAYER_CLASS_ID {
+        super::process_layer::read_process_layer_10_1(trial, max_bytes, trial_table)
+            .map(|body| Some(LayerBodyPrefix10_1::ProcessLayer(Box::new(body))))
     } else if class_id == COMPOSITE_GRAPHICS_LAYER_CLASS_ID {
         Ok(Some(LayerBodyPrefix10_1::CompositeGraphicsLayer(Box::new(
             read_composite_graphics_layer_prefix_10_1(trial, max_bytes, trial_table)?,
@@ -1069,6 +1126,12 @@ pub(crate) fn parse_body_prefix(
     } else if class_id == CAD_FEATURE_LAYER_CLASS_ID {
         read_cad_feature_layer_10_1(trial, max_bytes, trial_table)
             .map(|body| Some(LayerBodyPrefix10_1::CadFeatureLayer(Box::new(body))))
+    } else if class_id == CAD_ANNOTATION_LAYER_CLASS_ID {
+        read_cad_annotation_layer_10_1(trial, max_bytes, trial_table)
+            .map(|body| Some(LayerBodyPrefix10_1::CadAnnotationLayer(Box::new(body))))
+    } else if class_id == COVERAGE_ANNOTATION_LAYER_CLASS_ID {
+        read_coverage_annotation_layer_10_1(trial, max_bytes, trial_table)
+            .map(|body| Some(LayerBodyPrefix10_1::CoverageAnnotationLayer(Box::new(body))))
     } else if is_tiled_layer(class_id) {
         read_tiled_layer_10_1(class_id, trial, max_bytes, trial_table)
             .map(|body| Some(LayerBodyPrefix10_1::TiledLayer(Box::new(body))))
@@ -1140,9 +1203,12 @@ pub(crate) fn read_complete_layer_body_10_1(
         }
         LayerBodyPrefix10_1::RasterLayer(body) => body.tail.is_some(),
         LayerBodyPrefix10_1::Graphics3d(_)
+        | LayerBodyPrefix10_1::ProcessLayer(_)
         | LayerBodyPrefix10_1::WcsLayer(_)
         | LayerBodyPrefix10_1::CadLayer(_)
         | LayerBodyPrefix10_1::CadFeatureLayer(_)
+        | LayerBodyPrefix10_1::CadAnnotationLayer(_)
+        | LayerBodyPrefix10_1::CoverageAnnotationLayer(_)
         | LayerBodyPrefix10_1::TiledLayer(_) => true,
         LayerBodyPrefix10_1::BasemapLayer(body) => {
             body.stop == crate::layers::basemap_layer::BasemapStop10_1::Complete

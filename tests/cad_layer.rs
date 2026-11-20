@@ -1,9 +1,14 @@
 use mxd2qgz::layers::cad_layer::{
-    CAD_DRAWING_OBJECT_CLASS_ID, CAD_FEATURE_LAYER_CLASS_ID, CAD_LAYER_CLASS_ID,
+    CAD_ANNOTATION_LAYER_CLASS_ID, CAD_DRAWING_OBJECT_CLASS_ID, CAD_FEATURE_LAYER_CLASS_ID,
+    CAD_LAYER_CLASS_ID,
 };
+use mxd2qgz::layers::coverage_annotation_layer::COVERAGE_ANNOTATION_LAYER_CLASS_ID;
 use mxd2qgz::layers::feature_layer::FEATURE_LAYER_CLASS_ID;
+use mxd2qgz::layers::feature_layer_tail::FIELD_INFO_CLASS_ID;
 use mxd2qgz::layers::layer_list::{LayerBodyPrefix10_1, read_layer_list_10_1};
 use mxd2qgz::objects::dataset_name_more::CAD_DRAWING_NAME_CLASS_ID;
+use mxd2qgz::objects::display_color::RGB_COLOR_CLASS_ID;
+use mxd2qgz::objects::ole_font::STDFONT_CLASS_ID;
 use mxd2qgz::storage::object_refs::RefTable10_1;
 use mxd2qgz::storage::object_stream::ObjectHeader;
 use mxd2qgz::stream::reader::Reader;
@@ -237,5 +242,149 @@ fn malformed_cad_feature_layer_is_skipped_only_with_a_bound() {
             assert_eq!(list.active_index, bounded.then_some(61));
             assert!(!refs.contains(22) && !refs.contains(27));
         }
+    }
+}
+
+fn coverage_annotation_body(version: u16) -> Vec<u8> {
+    let mut body = version.to_le_bytes().to_vec();
+    if version == 5 {
+        feature_layer_body(&mut body);
+    } else {
+        string(&mut body, "旧注记");
+        body.extend([0; 6 + 16 + 16]);
+    }
+    body.extend(1_u32.to_le_bytes());
+    body.extend(FIELD_INFO_CLASS_ID);
+    body.extend(51_u32.to_le_bytes());
+    body.extend([0; 4]);
+    string(&mut body, "Annotation");
+    body.extend([0; 16]);
+    for value in [10_u32, 2, 11, 12, 1] {
+        body.extend(value.to_le_bytes());
+    }
+    body.extend(STDFONT_CLASS_ID);
+    body.extend(52_u32.to_le_bytes());
+    body.extend([0; 9]);
+    body.extend(1_u32.to_le_bytes());
+    body.extend(RGB_COLOR_CLASS_ID);
+    body.extend(53_u32.to_le_bytes());
+    body.extend([1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0]);
+    body.extend(1_u32.to_le_bytes());
+    body.extend([0; 16]);
+    for value in [20_u32, 1, 21, 2] {
+        body.extend(value.to_le_bytes());
+    }
+    body.extend(31_u16.to_le_bytes());
+    body.extend(32_u16.to_le_bytes());
+    body.extend(30_u32.to_le_bytes());
+    body.extend(40_u32.to_le_bytes());
+    body.extend([0; 16]);
+    if version == 5 {
+        body.extend(67_u16.to_le_bytes());
+        body.extend([0; 32]);
+    } else {
+        if version >= 2 {
+            string(&mut body, "selection");
+            string(&mut body, "display");
+            body.extend(23_u16.to_le_bytes());
+        }
+        if version >= 3 {
+            body.extend(5_u32.to_le_bytes());
+            body.extend([0; 16]);
+        }
+        if version == 4 {
+            string(&mut body, "expression");
+            body.extend(24_u16.to_le_bytes());
+        }
+    }
+    body
+}
+
+#[test]
+fn coverage_annotation_layer_reads_legacy_and_inline_base_versions() {
+    for version in 0..=5 {
+        let body = coverage_annotation_body(version);
+        for bounded in [false, true] {
+            let bytes = layer_list(COVERAGE_ANNOTATION_LAYER_CLASS_ID, &body, bounded);
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let list = read_layer_list_10_1(&mut reader, 4096, &mut refs).unwrap();
+            assert_eq!(
+                list.active_index,
+                Some(61),
+                "{:?}",
+                list.entries[0].parse_note
+            );
+            assert_eq!(reader.remaining(), 0);
+            let Some(LayerBodyPrefix10_1::CoverageAnnotationLayer(layer)) = &list.entries[0].parsed
+            else {
+                panic!("未读取 CoverageAnnotationLayer v{version}");
+            };
+            assert_eq!(
+                layer.name(),
+                if version == 5 {
+                    "CAD features"
+                } else {
+                    "旧注记"
+                }
+            );
+            assert_eq!(layer.longs, [10, 20, 30, 40]);
+            assert_eq!(layer.integer_lists, [vec![11, 12], vec![21]]);
+            assert_eq!(layer.short_list, [31, 32]);
+            assert_eq!(layer.annotation_short, (version == 5).then_some(67));
+            assert_eq!(
+                layer.legacy_expression.as_ref().map(|(_, value)| *value),
+                (version == 4).then_some(24)
+            );
+            assert!(refs.contains(51) && refs.contains(52) && refs.contains(53));
+        }
+    }
+}
+
+#[test]
+fn cad_annotation_layer_registers_only_ordinary_nested_objects() {
+    for version in 1_u16..=4 {
+        let mut body = version.to_le_bytes().to_vec();
+        body.extend(COVERAGE_ANNOTATION_LAYER_CLASS_ID);
+        body.extend(27_u32.to_le_bytes());
+        body.extend(coverage_annotation_body(if version >= 3 { 5 } else { 2 }));
+        drawing(&mut body, 2);
+        if version >= 2 {
+            body.extend(1_u32.to_le_bytes());
+            body.extend(9_u16.to_le_bytes());
+        }
+        if version >= 3 {
+            string(&mut body, "world file");
+        }
+        if version == 3 {
+            body.extend(23_u16.to_le_bytes());
+        }
+        if version == 4 {
+            body.extend(13.0_f64.to_le_bytes());
+            body.extend(19.0_f64.to_le_bytes());
+        }
+        let bytes = layer_list(CAD_ANNOTATION_LAYER_CLASS_ID, &body, true);
+        let mut refs = RefTable10_1::new();
+        let list = read_layer_list_10_1(&mut Reader::new(&bytes), 4096, &mut refs).unwrap();
+        let Some(LayerBodyPrefix10_1::CadAnnotationLayer(layer)) = &list.entries[0].parsed else {
+            panic!(
+                "未读取 CadAnnotationLayer v{version}：{:?}",
+                list.entries[0].parse_note
+            );
+        };
+        assert_eq!(list.active_index, Some(61));
+        assert_eq!(layer.tail.drawing.as_ref().unwrap().values, [10, 11]);
+        assert_eq!(layer.annotation.as_ref().unwrap().short_list, [31, 32]);
+        assert!(refs.contains(22) && refs.contains(51) && refs.contains(52) && refs.contains(53));
+        assert!(!refs.contains(27));
+
+        let truncated = layer_list(CAD_ANNOTATION_LAYER_CLASS_ID, &body[..body.len() - 1], true);
+        let mut refs = RefTable10_1::new();
+        let list = read_layer_list_10_1(&mut Reader::new(&truncated), 4096, &mut refs).unwrap();
+        assert!(list.entries[0].parsed.is_none());
+        assert_eq!(list.active_index, Some(61));
+        assert!(
+            !refs.contains(22) && !refs.contains(51) && !refs.contains(52) && !refs.contains(53)
+        );
     }
 }

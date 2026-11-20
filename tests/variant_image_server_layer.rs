@@ -108,6 +108,107 @@ fn image_server_layer() -> (Vec<u8>, usize) {
 }
 
 #[test]
+fn variant_extensions_share_keys_and_end_before_extent() {
+    use mxd2qgz::layers::image_server_layer::ImageServerLayerExtension10_1;
+    use mxd2qgz::maps::standalone_table::TABLE_NAME_CLASS_ID;
+    use mxd2qgz::objects::dataset_name_more::DatasetNameMoreSlot10_1;
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    let dynamic_tiled = [
+        0xd9, 0x35, 0x23, 0x7e, 0x8d, 0x1e, 0x88, 0x44, 0x9e, 0x1e, 0x88, 0x85, 0x57, 0xc3, 0x1b,
+        0x3d,
+    ];
+    let feature_service_edit = [
+        0x48, 0xda, 0x2b, 0x9a, 0x26, 0xad, 0x06, 0x47, 0xbb, 0x88, 0xf4, 0x7d, 0x7b, 0x0c, 0x8f,
+        0x32,
+    ];
+    let mut bytes = layer_properties(22);
+    variant(&mut bytes, 2, &3_i16.to_le_bytes());
+    object(&mut bytes, PROPERTY_SET_CLASS_ID, 71);
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(0_u32.to_le_bytes());
+    object(&mut bytes, dynamic_tiled, 72);
+    bytes.extend(3_u16.to_le_bytes());
+    native_string(&mut bytes, "缓存");
+    bytes.extend(PROPERTY_SET_CLASS_ID);
+    bytes.extend(71_u32.to_le_bytes());
+    native_string(&mut bytes, "");
+    native_string(&mut bytes, "");
+    bytes.extend([0; 4 + 8 + 10]);
+    bytes.extend(23_u16.to_le_bytes());
+    object(&mut bytes, feature_service_edit, 73);
+    bytes.extend(1_u16.to_le_bytes());
+    let name_offset = bytes.len();
+    bytes.extend(TABLE_NAME_CLASS_ID);
+    bytes.extend(74_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    for name in ["来源", "", ""] {
+        native_string(&mut bytes, name);
+    }
+    bytes.extend([0; 16]);
+    bytes.extend(TABLE_NAME_CLASS_ID);
+    bytes.extend(74_u32.to_le_bytes());
+    bytes.extend(1_u32.to_le_bytes());
+    bytes.extend([b'E', 0, 0, 0]); // 自由函数 WriteString 的一个码元及结束零。
+    object(&mut bytes, ENVELOPE_CLASS_ID, 75);
+    bytes.extend(envelope());
+    null_object(&mut bytes);
+    null_object(&mut bytes);
+    let end = bytes.len();
+    bytes.push(0x53);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let parsed = read_image_server_layer_prefix_10_1(&mut reader, 4096, &mut refs).unwrap();
+    let [
+        VariantValue10_1::Object {
+            body: ImageServerLayerExtension10_1::PropertySet(properties),
+            ..
+        },
+        VariantValue10_1::Object {
+            body: ImageServerLayerExtension10_1::DynamicTiledLayerProperties(dynamic),
+            ..
+        },
+        VariantValue10_1::Object {
+            body: ImageServerLayerExtension10_1::FeatureServiceLayerEditExtension(edit),
+            ..
+        },
+    ] = parsed.extensions.as_slice()
+    else {
+        panic!("应读取三个完整扩展");
+    };
+    assert_eq!(properties.count, 0);
+    assert_eq!(dynamic.strings[0], "缓存");
+    assert_eq!(dynamic.version3_short, Some(23));
+    assert!(matches!(
+        dynamic.properties.entry,
+        ObjectEntry10_1::BackReference { key: 71, .. }
+    ));
+    assert!(matches!(
+        edit.names[1],
+        DatasetNameMoreSlot10_1::BackReference { key: 74, .. }
+    ));
+    assert_eq!(edit.text, "E");
+    assert!(
+        matches!(parsed.extent, VariantValue10_1::Object { body, .. } if body.coords == [1.0, 2.0, 10.0, 20.0])
+    );
+    assert_eq!(reader.position(), end);
+    assert_eq!(reader.read_bytes(1).unwrap(), [0x53]);
+    assert!((71..=75).all(|key| refs.contains(key)));
+
+    let mut unknown_name = bytes.clone();
+    unknown_name[name_offset] ^= 0xff;
+    for input in [&unknown_name[..], &bytes[..end - 1]] {
+        let mut reader = Reader::new(input);
+        let mut refs = RefTable10_1::new();
+        refs.register(70);
+        assert!(read_image_server_layer_prefix_10_1(&mut reader, 4096, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.contains(70) && refs.len() == 1);
+    }
+}
+
+#[test]
 fn image_server_extension_dispatch_shares_property_keys_with_the_prefix() {
     use mxd2qgz::layers::image_server_layer::{
         ImageServerLayerExtension10_1, read_image_server_layer_prefix_10_1,

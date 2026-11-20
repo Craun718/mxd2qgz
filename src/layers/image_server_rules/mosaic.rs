@@ -51,9 +51,10 @@ pub(super) fn read_payload(
     r: &mut Reader<'_>,
     max: usize,
     refs: &mut RefTable10_1,
-    version: u16,
+    version: i16,
+    depth: usize,
 ) -> io::Result<MosaicFunction10_1> {
-    let raster_info = raster_info::read_slot(r, max, refs)?;
+    let raster_info = raster_info::read_slot(r, max, refs, depth)?;
     let mut strings = std::array::from_fn(|_| String::new());
     for text in &mut strings[..5] {
         *text = read_string_10_1(r, max)?;

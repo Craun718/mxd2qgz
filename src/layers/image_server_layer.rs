@@ -2,13 +2,19 @@
 //! 原生读写及类证据见 docs/mxd-10.1-variant-image-server-layer.md。
 
 use super::layer_extensions::{
-    SERVER_LAYER_EXTENSION_CLASS_ID, ServerLayerExtension10_1, read_server_layer_extension,
+    DYNAMIC_TILED_LAYER_PROPERTIES_CLASS_ID, DynamicTiledLayerProperties10_1,
+    FEATURE_SERVICE_LAYER_EDIT_EXTENSION_CLASS_ID, FeatureServiceLayerEditExtension10_1,
+    SERVER_LAYER_EXTENSION_CLASS_ID, ServerLayerExtension10_1, read_dynamic_tiled_layer_properties,
+    read_feature_service_layer_edit_extension, read_server_layer_extension,
 };
 use crate::layers::annotate_props::{
     EDIT_TEMPLATE_MANAGER_CLASS_ID, EditTemplateManagerBody10_1,
     read_edit_template_manager_body_10_1,
 };
 use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
+use crate::objects::property_set::{
+    PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1, read_property_set_object_stream_10_1,
+};
 use crate::objects::spatial_reference::{
     PROJECTED_COORDINATE_SYSTEM_CLASS_ID, ProjectedCoordinateSystem10_1,
     read_projected_coordinate_system_10_1,
@@ -51,6 +57,9 @@ pub struct ImageServerLayerPrefix10_1 {
 pub enum ImageServerLayerExtension10_1 {
     EditTemplateManager(Box<EditTemplateManagerBody10_1>),
     ServerLayerExtension(Box<ServerLayerExtension10_1>),
+    PropertySet(Box<PropertySetObjectStream10_1>),
+    DynamicTiledLayerProperties(Box<DynamicTiledLayerProperties10_1>),
+    FeatureServiceLayerEditExtension(Box<FeatureServiceLayerEditExtension10_1>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -120,6 +129,22 @@ pub fn read_image_server_layer_prefix_10_1(
             &mut trial,
             &mut staged,
             |body, header, refs| match header.class_id {
+                PROPERTY_SET_CLASS_ID => {
+                    read_property_set_object_stream_10_1(body, max_bytes, refs)
+                        .map(|body| ImageServerLayerExtension10_1::PropertySet(Box::new(body)))
+                }
+                DYNAMIC_TILED_LAYER_PROPERTIES_CLASS_ID => {
+                    read_dynamic_tiled_layer_properties(body, max_bytes, refs).map(|body| {
+                        ImageServerLayerExtension10_1::DynamicTiledLayerProperties(Box::new(body))
+                    })
+                }
+                FEATURE_SERVICE_LAYER_EDIT_EXTENSION_CLASS_ID => {
+                    read_feature_service_layer_edit_extension(body, max_bytes, refs).map(|body| {
+                        ImageServerLayerExtension10_1::FeatureServiceLayerEditExtension(Box::new(
+                            body,
+                        ))
+                    })
+                }
                 SERVER_LAYER_EXTENSION_CLASS_ID => {
                     read_server_layer_extension(body, max_bytes, refs).map(|body| {
                         ImageServerLayerExtension10_1::ServerLayerExtension(Box::new(body))

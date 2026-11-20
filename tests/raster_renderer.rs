@@ -101,7 +101,7 @@ fn malformed_legacy_rgb_keeps_outer_and_color_keys_uncommitted() {
         assert_transactional_failure(&bytes[..cut]);
     }
     let mut unknown = bytes.clone();
-    unknown[color] ^= 1;
+    unknown[color] ^= 0x80;
     assert_transactional_failure(&unknown);
     let mut invalid_version = bytes.clone();
     invalid_version[shared..shared + 4].copy_from_slice(&0_i32.to_le_bytes());
@@ -386,6 +386,111 @@ fn tagged_rgb_filter_reads_raster_names_and_references_with_the_original_stream(
 }
 
 #[test]
+fn tagged_rgb_filter_reuses_cache_and_netcdf_name_children_across_slots() {
+    use mxd2qgz::layers::raster_dataset_name::{
+        CACHE_RASTER_DATASET_NAME_CLASS_ID, NETCDF_RASTER_DATASET_NAME_CLASS_ID,
+        RasterDatasetWorkspaceSlot10_1,
+    };
+    use mxd2qgz::layers::raster_renderer::{LoadedRasterName10_1, PansharpeningSlot10_1};
+    use mxd2qgz::objects::envelope::ENVELOPE_CLASS_ID;
+    use mxd2qgz::objects::workspace_name::WORKSPACE_NAME_CLASS_ID;
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    let empty_string = [2, 0, 0, 0, 0, 0];
+    let mut bytes = tagged_rgb_filter_prefix();
+    let first_name_offset = bytes.len();
+    bytes.extend(CACHE_RASTER_DATASET_NAME_CLASS_ID);
+    bytes.extend(72_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(empty_string.repeat(2));
+    bytes.extend(WORKSPACE_NAME_CLASS_ID);
+    bytes.extend(73_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(empty_string.repeat(3));
+    bytes.extend([0; 21]);
+    bytes.extend([0; 16]); // 缓存名称的空瓦片读取器。
+    bytes.extend(ENVELOPE_CLASS_ID);
+    bytes.extend(74_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    for ordinate in [1.0_f64, 2.0, 3.0, 4.0] {
+        bytes.extend(ordinate.to_le_bytes());
+    }
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend([0; 16]); // 空栅格变换。
+    bytes.extend(ENVELOPE_CLASS_ID);
+    bytes.extend(74_u32.to_le_bytes());
+
+    let second_name_offset = bytes.len();
+    bytes.extend(NETCDF_RASTER_DATASET_NAME_CLASS_ID);
+    bytes.extend(75_u32.to_le_bytes());
+    bytes.extend(2_i32.to_le_bytes());
+    bytes.extend(empty_string.repeat(8));
+    bytes.extend([0; 32]); // 空名称和值数组。
+    bytes.extend(WORKSPACE_NAME_CLASS_ID);
+    bytes.extend(73_u32.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend([0; 16]);
+    bytes.extend(ENVELOPE_CLASS_ID);
+    bytes.extend(74_u32.to_le_bytes());
+    finish_tagged_rgb_filter(&mut bytes);
+    let end = bytes.len();
+    bytes.push(0x6f);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let renderer = read_raster_renderer_slot_prefix_10_1(&mut reader, 4096, &mut refs)
+        .unwrap()
+        .body
+        .unwrap();
+    let RasterRendererPrefix10_1::Rgb {
+        tail: Some(tail), ..
+    } = renderer
+    else {
+        panic!("应完整读取 RGB 尾段");
+    };
+    let Some(PansharpeningSlot10_1::Filter(filter)) = tail.pansharpening else {
+        panic!("应读取全色锐化过滤器");
+    };
+    let cache = filter.rasters[0].as_ref().unwrap();
+    let netcdf = filter.rasters[1].as_ref().unwrap();
+    assert!(matches!(
+        cache.name_body.as_ref(),
+        Some(LoadedRasterName10_1::Cache(name)) if name.envelope.body.is_some()
+    ));
+    assert!(matches!(
+        netcdf.name_body.as_ref(),
+        Some(LoadedRasterName10_1::NetCdf(name))
+            if matches!(name.workspace, RasterDatasetWorkspaceSlot10_1::BackReference { key: 73, .. })
+    ));
+    for raster in [cache, netcdf] {
+        assert_eq!(
+            raster.extent.entry,
+            ObjectEntry10_1::BackReference {
+                class_id: ENVELOPE_CLASS_ID,
+                key: 74,
+            }
+        );
+    }
+    assert_eq!(tail.tag19, Some(63));
+    assert_eq!(reader.position(), end);
+    assert_eq!(refs.len(), 5);
+
+    let mut unknown = bytes.clone();
+    unknown[second_name_offset] ^= 0xff;
+    for invalid in [&bytes[..second_name_offset + 27], &unknown[..]] {
+        let mut reader = Reader::new(invalid);
+        let mut refs = RefTable10_1::new();
+        let renderer = read_raster_renderer_slot_prefix_10_1(&mut reader, 4096, &mut refs)
+            .unwrap()
+            .body
+            .unwrap();
+        assert!(!renderer.is_complete());
+        assert!(reader.position() < first_name_offset);
+        assert!(refs.contains(71) && refs.len() == 1);
+    }
+}
+
+#[test]
 fn simple_raster_renderer_v1_and_v2_stop_after_their_shared_body() {
     use mxd2qgz::layers::raster_renderer::SIMPLE_RASTER_RENDERER_CLASS_ID;
 
@@ -502,10 +607,13 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
         RasterUniqueValueColorKey10_1, RasterUniqueValueLayout10_1, UNIQUE_VALUES_CLASS_ID,
     };
     use mxd2qgz::objects::color_ramp::ColorRampSlot10_1;
+    use mxd2qgz::objects::geometry::{GEOMETRY_BAG_CLASS_ID, GeometryBody10_1, POINT_CLASS_ID};
     use mxd2qgz::objects::property_set::{
         PROPERTY_SET_CLASS_ID, PropertyValue10_1,
         PropertyValueObjectStream10_1::{self, Inline},
+        VariantArrayObjectValues10_1,
     };
+    use mxd2qgz::objects::string_array::STR_ARRAY_CLASS_ID;
     use mxd2qgz::storage::object_refs::ObjectEntry10_1;
     use mxd2qgz::stream::variant_array::ClassVariantArray10_1;
 
@@ -543,7 +651,7 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
         bytes.extend(1_i32.to_le_bytes()); // 类别数。
         bytes.extend(0xfe76_1234_u32.to_le_bytes());
         let value_count = bytes.len();
-        bytes.extend((if version == 4 { 4_i32 } else { 2 }).to_le_bytes());
+        bytes.extend((if version == 4 { 6_i32 } else { 2 }).to_le_bytes());
         bytes.extend(3_u16.to_le_bytes());
         bytes.extend([0; 14]);
         bytes.extend(19_i32.to_le_bytes());
@@ -560,6 +668,28 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
             bytes.extend(83_u32.to_le_bytes());
             bytes.extend(1_u16.to_le_bytes());
             bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(13_u16.to_le_bytes());
+            bytes.extend([0; 14]);
+            bytes.extend(STR_ARRAY_CLASS_ID);
+            bytes.extend(84_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(1_i32.to_le_bytes());
+            string(&mut bytes, '乙' as u16);
+            bytes.extend(13_u16.to_le_bytes());
+            bytes.extend([0; 14]);
+            bytes.extend(GEOMETRY_BAG_CLASS_ID);
+            bytes.extend(85_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend([0; 16]); // 缓存几何。
+            bytes.extend(POINT_CLASS_ID);
+            bytes.extend(86_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(20_i32.to_le_bytes());
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend(14.5_f64.to_le_bytes());
+            bytes.extend(27.5_f64.to_le_bytes());
+            bytes.extend([0; 17]); // 空空间参考和标志字节。
         }
         bytes.extend(9_u16.to_le_bytes());
         let tail_object = bytes.len();
@@ -588,7 +718,7 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
             bytes.extend(UNIQUE_VALUES_CLASS_ID);
             bytes.extend(82_u32.to_le_bytes());
             bytes.extend(1_i32.to_le_bytes());
-            bytes.extend((if version == 4 { 2_i32 } else { 1 }).to_le_bytes());
+            bytes.extend((if version == 4 { 4_i32 } else { 1 }).to_le_bytes());
             bytes.extend(8_u16.to_le_bytes()); // Variant 的标量 BSTR。
             bytes.extend([0; 14]);
             string(&mut bytes, '项' as u16);
@@ -599,6 +729,16 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
                 bytes.extend(PROPERTY_SET_CLASS_ID);
                 bytes.extend(83_u32.to_le_bytes()); // 回引类别值里的对象。
                 bytes.extend(34_i32.to_le_bytes());
+                bytes.extend(13_u16.to_le_bytes());
+                bytes.extend([0; 14]);
+                bytes.extend(STR_ARRAY_CLASS_ID);
+                bytes.extend(84_u32.to_le_bytes());
+                bytes.extend(35_i32.to_le_bytes());
+                bytes.extend(13_u16.to_le_bytes());
+                bytes.extend([0; 14]);
+                bytes.extend(POINT_CLASS_ID);
+                bytes.extend(86_u32.to_le_bytes()); // 回引几何集合内部登记的点。
+                bytes.extend(36_i32.to_le_bytes());
                 bytes.extend([0; 16]); // v4 自身 IColorRamp。
             }
         }
@@ -641,6 +781,31 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
                 &body.classes[0].values[3],
                 PropertyValueObjectStream10_1::Object { class_id: PROPERTY_SET_CLASS_ID, key: 83, body }
                     if body.version == 1 && body.entries.is_empty()
+            ));
+            assert_eq!(
+                body.classes[0].values[4],
+                PropertyValueObjectStream10_1::ArrayObject {
+                    class_id: STR_ARRAY_CLASS_ID,
+                    key: 84,
+                    version: 1,
+                    values: VariantArrayObjectValues10_1::Strings(vec!["乙".into()]),
+                }
+            );
+            let PropertyValueObjectStream10_1::Geometry(geometry) = &body.classes[0].values[5]
+            else {
+                panic!("应读到 Variant 几何对象");
+            };
+            assert_eq!(
+                (geometry.class_id, geometry.key),
+                (GEOMETRY_BAG_CLASS_ID, 85)
+            );
+            let GeometryBody10_1::GeometryBag(bag) = geometry.body() else {
+                panic!("应读到几何集合");
+            };
+            assert!(matches!(
+                bag.members[0].body.as_deref(),
+                Some(GeometryBody10_1::Point(point)) if point.record.x == Some(14.5)
+                   && point.record.y == Some(27.5)
             ));
         } else {
             assert_eq!(body.classes[0].values.len(), 2);
@@ -709,8 +874,28 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
                             34,
                         )
                     );
+                    assert_eq!(
+                        values[2],
+                        (
+                            PropertyValueObjectStream10_1::BackReference {
+                                class_id: STR_ARRAY_CLASS_ID,
+                                key: 84,
+                            },
+                            35,
+                        )
+                    );
+                    assert_eq!(
+                        values[3],
+                        (
+                            PropertyValueObjectStream10_1::BackReference {
+                                class_id: POINT_CLASS_ID,
+                                key: 86,
+                            },
+                            36,
+                        )
+                    );
                 }
-                assert_eq!(values.len(), if version == 4 { 2 } else { 1 });
+                assert_eq!(values.len(), if version == 4 { 4 } else { 1 });
                 assert_eq!(ramp, (version == 4).then_some(ColorRampSlot10_1::Null));
             }
         }
@@ -719,7 +904,7 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
         assert_eq!(
             refs.len(),
             if version == 4 {
-                3
+                6
             } else if legacy && legacy_colors.is_none() {
                 1
             } else {
@@ -1136,6 +1321,94 @@ fn raster_stretch_reads_versioned_records_and_raw_tail_before_end() {
         if let Some(count) = sample_count {
             bytes[count..count + 4].copy_from_slice(&i32::MAX.to_le_bytes());
             reject(&bytes);
+        }
+    }
+}
+
+#[test]
+#[ignore = "需要本地 10.1 SDK 安装介质提取工程"]
+fn sdk_raster_renderers_consume_color_symbols_and_finish_their_bodies() {
+    use mxd2qgz::layers::feature_layer_tail::{
+        LegendClassEntry10_1, LegendGroupSlot10_1, read_legend_group_body_10_1,
+    };
+    use mxd2qgz::layers::raster_stretch_renderer::RasterStretchLayout10_1;
+    use mxd2qgz::objects::display_symbol::SymbolSlotFull10_1;
+    use std::io::Read;
+
+    for (path, start, end, keys, stretch) in [
+        (
+            "temp/terra-round8-old/sdk-dotnet/BloomfieldTownship.mxd.89833ED7_0681_4032_BE76_9AB6C721CEB2",
+            0x4b73,
+            0x6d0f,
+            &[218, 233, 248][..],
+            true,
+        ),
+        (
+            "temp/terra-round8-old/sdk-java/portland.mxd.4896861F_D89C_46BA_ABEC_17591162B2B1",
+            0x73b30,
+            0x75da0,
+            &[953, 956, 959, 962, 965][..],
+            false,
+        ),
+    ] {
+        let mut doc = cfb::open(path).unwrap();
+        let mut bytes = Vec::new();
+        doc.open_stream("/Maps")
+            .unwrap()
+            .read_to_end(&mut bytes)
+            .unwrap();
+        let mut reader = Reader::new(&bytes);
+        reader.read_bytes(start).unwrap();
+        let mut refs = RefTable10_1::new();
+        let slot =
+            read_raster_renderer_slot_prefix_10_1(&mut reader, 1_000_000, &mut refs).unwrap();
+        let body = slot.body.unwrap();
+        assert!(body.is_complete());
+        assert_eq!(reader.position(), end);
+        let group = match body {
+            RasterRendererPrefix10_1::Stretch(body) if stretch => {
+                let RasterStretchLayout10_1::RasterIo(body) = body.layout else {
+                    panic!("预期 RasterIO 拉伸渲染器");
+                };
+                let mut raw = Reader::new(&body.legend_group);
+                raw.read_bytes(16).unwrap(); // 标签 9 的图例组有 CLSID，无键。
+                let group =
+                    read_legend_group_body_10_1(&mut raw, 1_000_000, &mut RefTable10_1::new(), 0)
+                        .unwrap();
+                assert_eq!(raw.remaining(), 0);
+                group
+            }
+            RasterRendererPrefix10_1::Classify(body) if !stretch => {
+                let LegendGroupSlot10_1::LegendGroup(group) =
+                    body.legend_groups.into_iter().next().unwrap()
+                else {
+                    panic!("预期分类渲染器图例组");
+                };
+                *group
+            }
+            other => panic!("渲染器类型不符: {other:?}"),
+        };
+        assert!(group.stop.is_none());
+        assert_eq!(group.classes.len(), keys.len());
+        for (index, (entry, key)) in group.classes.into_iter().zip(keys).enumerate() {
+            let LegendClassEntry10_1::NewObject(class) = entry else {
+                panic!("预期新建图例类");
+            };
+            assert!(class.stop.is_none());
+            match class.symbol {
+                SymbolSlotFull10_1::ColorRampSymbol(body) if stretch => {
+                    assert_eq!((body.key, body.version), (*key, 5));
+                    assert_eq!(body.tail.unwrap().integer, index as i32);
+                }
+                SymbolSlotFull10_1::ColorSymbol(body) if !stretch => {
+                    assert_eq!(
+                        (body.key, body.version, body.integers),
+                        (*key, 1, Some([13, 0, 0]))
+                    );
+                }
+                slot => panic!("图例符号类不符: {slot:?}"),
+            }
+            assert!(refs.contains(*key));
         }
     }
 }

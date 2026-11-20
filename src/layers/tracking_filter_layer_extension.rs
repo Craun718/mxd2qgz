@@ -5,6 +5,7 @@ use crate::objects::property_set::{
     PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1, read_property_set_object_stream_10_1,
 };
 use crate::storage::object_refs::RefTable10_1;
+use crate::stream::native_string::read_atl_bstr_10_1;
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
@@ -49,22 +50,6 @@ fn read_properties(
     }
 }
 
-fn read_bstr(r: &mut Reader<'_>, max: usize) -> io::Result<Option<Vec<u8>>> {
-    let size = r.read_u32_le()? as usize;
-    if size == 0 {
-        return Ok(None);
-    }
-    // ATL 先读有效载荷，再消费两个终止字节。保留二进制 BSTR。
-    if size < 2 || size > max.min(0x100000) {
-        return Err(io::Error::new(
-            ErrorKind::InvalidData,
-            format!("TrackingFilterLayerExtension BSTR 字节数无效：{size}"),
-        ));
-    }
-    let bytes = r.read_bytes(size)?;
-    Ok(Some(bytes[..size - 2].to_vec()))
-}
-
 pub(super) fn read_bounded_tracking_filter_layer_extension(
     bytes: &[u8],
     max: usize,
@@ -79,7 +64,10 @@ pub(super) fn read_bounded_tracking_filter_layer_extension(
             read_properties(&mut r, max, &mut staged)?,
             read_properties(&mut r, max, &mut staged)?,
         ],
-        strings: [read_bstr(&mut r, max)?, read_bstr(&mut r, max)?],
+        strings: [
+            read_atl_bstr_10_1(&mut r, max)?,
+            read_atl_bstr_10_1(&mut r, max)?,
+        ],
     };
     if r.remaining() != 0 {
         return Err(io::Error::new(

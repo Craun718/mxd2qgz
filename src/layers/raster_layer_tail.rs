@@ -17,13 +17,16 @@ use crate::layers::hatch_layer_extension::{
     HATCH_LAYER_EXTENSION_CLASS_ID, read_bounded_hatch_layer_extension,
 };
 use crate::layers::layer_extensions::{
-    E2_LAYER_EXTENSION_VALUES_CLASS_ID, FEATURE_SERVICE_LAYER_EDIT_EXTENSION_CLASS_ID,
-    REPRESENTATION_LAYER_EXTENSION_CLASS_ID, SERVER_LAYER_EXTENSION_CLASS_ID,
-    read_bounded_e2_layer_extension_values, read_bounded_feature_service_layer_edit_extension,
-    read_bounded_representation_layer_extension, read_bounded_server_layer_extension,
+    DYNAMIC_TILED_LAYER_PROPERTIES_CLASS_ID, E2_LAYER_EXTENSION_VALUES_CLASS_ID,
+    FEATURE_SERVICE_LAYER_EDIT_EXTENSION_CLASS_ID, REPRESENTATION_LAYER_EXTENSION_CLASS_ID,
+    SERVER_LAYER_EXTENSION_CLASS_ID, read_bounded_dynamic_tiled_layer_properties,
+    read_bounded_e2_layer_extension_values, read_bounded_extension_property_set,
+    read_bounded_feature_service_layer_edit_extension, read_bounded_representation_layer_extension,
+    read_bounded_server_layer_extension,
 };
 pub use crate::layers::layer_extensions::{
-    E2LayerExtensionValues10_1, FeatureServiceLayerEditExtension10_1, ServerLayerExtension10_1,
+    DynamicTiledLayerProperties10_1, E2LayerExtensionValues10_1,
+    FeatureServiceLayerEditExtension10_1, ServerLayerExtension10_1,
 };
 use crate::layers::raster_dataset_name::{
     RasterDatasetNameEntryBody10_1, read_supported_raster_name_body_10_1,
@@ -35,6 +38,9 @@ use crate::layers::raster_renderer::{
 pub use crate::layers::route_layer_extension::RouteLayerExtension10_1;
 use crate::layers::route_layer_extension::{
     ROUTE_LAYER_EXTENSION_CLASS_ID, read_bounded_route_layer_extension,
+};
+use crate::layers::scene_layer_properties::{
+    SceneLayerProperties10_1, is_scene_layer_properties, read_bounded_scene_layer_properties,
 };
 pub use crate::layers::time_layer_track_extension::TimeLayerTrackExtension10_1;
 use crate::layers::time_layer_track_extension::{
@@ -51,7 +57,11 @@ use crate::objects::dataset_name_more::{
 };
 use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
 use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
-use crate::objects::geodata_xform::{GeodataXformSlot10_1, read_geodata_xform_slot_10_1};
+use crate::objects::geodata_xform::{
+    GeodataXformSlot10_1, PROJECTIVE_XFORM_CLASS_ID, read_geodata_xform_slot_10_1,
+    read_projective_with_empty_third_slot,
+};
+use crate::objects::property_set::{PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
@@ -96,6 +106,7 @@ pub struct RasterLayerTail10_1 {
 pub struct RasterLayerLegacyExtension10_1 {
     pub class_id: [u8; 16],
     pub raw_body: Vec<u8>,
+    pub properties: Option<Box<PropertySetObjectStream10_1>>,
     pub edit_template_manager: Option<Box<EditTemplateManagerBody10_1>>,
     pub server_layer_extension: Option<Box<ServerLayerExtension10_1>>,
     pub representation_layer_extension_version: Option<i16>,
@@ -106,6 +117,8 @@ pub struct RasterLayerLegacyExtension10_1 {
     pub feature_service_layer_edit_extension: Option<Box<FeatureServiceLayerEditExtension10_1>>,
     pub globe_layer_properties: Option<Box<GlobeLayerProperties10_1>>,
     pub time_layer_track_extension: Option<Box<TimeLayerTrackExtension10_1>>,
+    pub dynamic_tiled_layer_properties: Option<Box<DynamicTiledLayerProperties10_1>>,
+    pub scene_layer_properties: Option<Box<SceneLayerProperties10_1>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -113,6 +126,7 @@ pub struct RasterLayerExtraSafeExtension10_1 {
     pub prefix: [u32; 2],
     pub entry: ObjectEntry10_1,
     pub raw_body: Vec<u8>,
+    pub properties: Option<Box<PropertySetObjectStream10_1>>,
     pub edit_template_manager: Option<Box<EditTemplateManagerBody10_1>>,
     pub server_layer_extension: Option<Box<ServerLayerExtension10_1>>,
     pub representation_layer_extension_version: Option<i16>,
@@ -123,6 +137,8 @@ pub struct RasterLayerExtraSafeExtension10_1 {
     pub feature_service_layer_edit_extension: Option<Box<FeatureServiceLayerEditExtension10_1>>,
     pub globe_layer_properties: Option<Box<GlobeLayerProperties10_1>>,
     pub time_layer_track_extension: Option<Box<TimeLayerTrackExtension10_1>>,
+    pub dynamic_tiled_layer_properties: Option<Box<DynamicTiledLayerProperties10_1>>,
+    pub scene_layer_properties: Option<Box<SceneLayerProperties10_1>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -440,7 +456,15 @@ fn read_legacy_extensions(
                 .filter(|&size| size <= budget)
                 .ok_or_else(|| invalid("旧式扩展对象体长度超过限额"))?;
             let raw_body = reader.read_bytes(size)?;
+            let dynamic_tiled_layer_properties = (class_id
+                == DYNAMIC_TILED_LAYER_PROPERTIES_CLASS_ID
+                && size != 0)
+                .then(|| read_bounded_dynamic_tiled_layer_properties(raw_body, max_bytes, table))
+                .transpose()?;
             // 长度为零时，原生旧式加载器跳过对象体。
+            let properties = (class_id == PROPERTY_SET_CLASS_ID && size != 0)
+                .then(|| read_bounded_extension_property_set(raw_body, max_bytes, table))
+                .transpose()?;
             let edit_template_manager = (class_id == EDIT_TEMPLATE_MANAGER_CLASS_ID && size != 0)
                 .then(|| read_template_extension(raw_body, max_bytes, table, 0))
                 .transpose()?;
@@ -481,10 +505,14 @@ fn read_legacy_extensions(
                 && size != 0)
                 .then(|| read_bounded_time_layer_track_extension(raw_body, max_bytes, table))
                 .transpose()?;
+            let scene_layer_properties = (is_scene_layer_properties(class_id) && size != 0)
+                .then(|| read_bounded_scene_layer_properties(raw_body, max_bytes, table))
+                .transpose()?;
             budget -= size;
             Ok(RasterLayerLegacyExtension10_1 {
                 class_id,
                 raw_body: raw_body.to_vec(),
+                properties,
                 edit_template_manager,
                 server_layer_extension,
                 representation_layer_extension_version,
@@ -495,6 +523,8 @@ fn read_legacy_extensions(
                 feature_service_layer_edit_extension,
                 globe_layer_properties,
                 time_layer_track_extension,
+                dynamic_tiled_layer_properties,
+                scene_layer_properties,
             })
         })
         .collect()
@@ -530,6 +560,34 @@ fn read_extra_safe_extensions(
                 return Err(invalid("ExtraSafe 空对象或回引有多余字节"));
             }
             let raw_body = region.read_bytes(region.remaining())?;
+            let properties = match entry {
+                ObjectEntry10_1::NewObject {
+                    class_id: PROPERTY_SET_CLASS_ID,
+                    ..
+                } => Some(read_bounded_extension_property_set(
+                    raw_body, max_bytes, table,
+                )?),
+                _ => None,
+            };
+            let scene_layer_properties = match entry {
+                ObjectEntry10_1::NewObject { class_id, .. }
+                    if is_scene_layer_properties(class_id) =>
+                {
+                    Some(read_bounded_scene_layer_properties(
+                        raw_body, max_bytes, table,
+                    )?)
+                }
+                _ => None,
+            };
+            let dynamic_tiled_layer_properties = match entry {
+                ObjectEntry10_1::NewObject {
+                    class_id: DYNAMIC_TILED_LAYER_PROPERTIES_CLASS_ID,
+                    ..
+                } => Some(read_bounded_dynamic_tiled_layer_properties(
+                    raw_body, max_bytes, table,
+                )?),
+                _ => None,
+            };
             let edit_template_manager = match entry {
                 ObjectEntry10_1::NewObject {
                     class_id: EDIT_TEMPLATE_MANAGER_CLASS_ID,
@@ -622,6 +680,7 @@ fn read_extra_safe_extensions(
                 prefix: [a, b],
                 entry,
                 raw_body: raw_body.to_vec(),
+                properties,
                 edit_template_manager,
                 server_layer_extension,
                 representation_layer_extension_version,
@@ -632,6 +691,8 @@ fn read_extra_safe_extensions(
                 feature_service_layer_edit_extension,
                 globe_layer_properties,
                 time_layer_track_extension,
+                dynamic_tiled_layer_properties,
+                scene_layer_properties,
             })
         })
         .collect()
@@ -756,46 +817,38 @@ pub(super) fn read_raster_layer_tail(
     // v12 由原生数据集打开结果选择是否读取这对槽，且其后没有其他字段。
     // 父条目到界则省略，有剩余时两槽必须完整读取并恰好到界。
     let has_transform_pair = version >= 13 || (version == 12 && trial.remaining() != 0);
-    let geodata_xform_v13 = has_transform_pair
-        .then(|| read_geodata_xform_slot_10_1(&mut trial, max_bytes, &mut staged))
-        .transpose()?;
-    let envelope_v13 = has_transform_pair
-        .then(|| read_envelope_slot(&mut trial, max_bytes, &mut staged))
-        .transpose()?;
-    let (color_v14, color_indices_v14) = if version >= 14 {
-        let color = read_color_slot_10_1(&mut trial, max_bytes, &mut staged)?;
-        if matches!(color, ColorSlot10_1::Unsupported { .. }) {
-            return Err(unsupported("v14 IColor 类尚未支持"));
+    let end = |reader: &mut Reader<'_>, refs: &mut RefTable10_1, has_empty_third_slot| {
+        read_raster_layer_end(
+            reader,
+            refs,
+            version,
+            max_bytes,
+            boundary,
+            has_transform_pair,
+            has_empty_third_slot,
+        )
+    };
+    // 先验证写侧布局；仅有界 ProjectiveXform 可用完整尾段验证空第三槽。
+    let suffix = if boundary == RasterLayerBoundary::Bounded
+        && has_transform_pair
+        && trial
+            .clone()
+            .read_bytes(16)
+            .is_ok_and(|id| id == PROJECTIVE_XFORM_CLASS_ID)
+    {
+        let mut candidate = trial.clone();
+        let mut candidate_refs = staged.clone();
+        match end(&mut candidate, &mut candidate_refs, false) {
+            Ok(suffix) => {
+                trial = candidate;
+                staged = candidate_refs;
+                suffix
+            }
+            Err(original) => end(&mut trial, &mut staged, true).map_err(|_| original)?,
         }
-        (Some(color), read_color_indices(&mut trial, max_bytes)?)
     } else {
-        (None, Vec::new())
+        end(&mut trial, &mut staged, false)?
     };
-    let time = if version >= 15 {
-        Some(Box::new(RasterLayerTime10_1 {
-            data: read_time_data_segment_10_1(&mut trial, max_bytes, &mut staged)?,
-            display: read_time_display_segment_10_1(&mut trial)?,
-            dimension: read_time_dimension_segment_10_1(&mut trial, max_bytes)?,
-        }))
-    } else {
-        None
-    };
-    let pixel_filter_v16 = (version >= 16)
-        .then(|| read_pixel_filter(&mut trial, max_bytes, &mut staged))
-        .transpose()?;
-    let histograms_v17 = if version >= 17 {
-        read_slots(
-            &mut trial,
-            &mut staged,
-            "v17 IStatsHistogram 列表",
-            read_histogram_slot,
-        )?
-    } else {
-        Vec::new()
-    };
-    if boundary == RasterLayerBoundary::Bounded && trial.remaining() != 0 {
-        return Err(invalid("尾段终点与 ExtraSafe 条目边界不一致"));
-    }
     *table = staged;
     *reader = trial;
     Ok(RasterLayerTail10_1 {
@@ -814,19 +867,231 @@ pub(super) fn read_raster_layer_tail(
         string_128,
         short_v10,
         doubles_12c_134,
-        geodata_xform_v13,
-        envelope_v13,
-        color_v14,
-        color_indices_v14,
+        geodata_xform_v13: suffix.transform,
+        envelope_v13: suffix.envelope,
+        color_v14: suffix.color,
+        color_indices_v14: suffix.color_indices,
+        time: suffix.time,
+        pixel_filter_v16: suffix.pixel_filter,
+        histograms_v17: suffix.histograms,
+    })
+}
+
+struct RasterLayerEnd {
+    transform: Option<GeodataXformSlot10_1>,
+    envelope: Option<RasterLayerEnvelopeSlot10_1>,
+    color: Option<ColorSlot10_1>,
+    color_indices: Vec<i32>,
+    time: Option<Box<RasterLayerTime10_1>>,
+    pixel_filter: Option<RasterLayerPixelFilterSlot10_1>,
+    histograms: Vec<RasterLayerHistogramSlot10_1>,
+}
+
+fn read_raster_layer_end(
+    reader: &mut Reader<'_>,
+    table: &mut RefTable10_1,
+    version: i32,
+    max_bytes: usize,
+    boundary: RasterLayerBoundary,
+    has_transform_pair: bool,
+    has_empty_third_slot: bool,
+) -> io::Result<RasterLayerEnd> {
+    let transform = has_transform_pair
+        .then(|| {
+            if has_empty_third_slot {
+                read_projective_with_empty_third_slot(reader, max_bytes, table)
+            } else {
+                read_geodata_xform_slot_10_1(reader, max_bytes, table)
+            }
+        })
+        .transpose()?;
+    let envelope = has_transform_pair
+        .then(|| read_envelope_slot(reader, max_bytes, table))
+        .transpose()?;
+    let (color, color_indices) = if version >= 14 {
+        let color = read_color_slot_10_1(reader, max_bytes, table)?;
+        if matches!(color, ColorSlot10_1::Unsupported { .. }) {
+            return Err(unsupported("v14 IColor 类尚未支持"));
+        }
+        (Some(color), read_color_indices(reader, max_bytes)?)
+    } else {
+        (None, Vec::new())
+    };
+    let time = if version >= 15 {
+        Some(Box::new(RasterLayerTime10_1 {
+            data: read_time_data_segment_10_1(reader, max_bytes, table)?,
+            display: read_time_display_segment_10_1(reader)?,
+            dimension: read_time_dimension_segment_10_1(reader, max_bytes)?,
+        }))
+    } else {
+        None
+    };
+    let pixel_filter = (version >= 16)
+        .then(|| read_pixel_filter(reader, max_bytes, table))
+        .transpose()?;
+    let histograms = if version >= 17 {
+        read_slots(
+            reader,
+            table,
+            "v17 IStatsHistogram 列表",
+            read_histogram_slot,
+        )?
+    } else {
+        Vec::new()
+    };
+    if boundary == RasterLayerBoundary::Bounded && reader.remaining() != 0 {
+        return Err(invalid("尾段终点与 ExtraSafe 条目边界不一致"));
+    }
+    Ok(RasterLayerEnd {
+        transform,
+        envelope,
+        color,
+        color_indices,
         time,
-        pixel_filter_v16,
-        histograms_v17,
+        pixel_filter,
+        histograms,
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dynamic_tiled_properties_share_nested_keys_in_both_extension_formats() {
+        use crate::objects::property_set::PROPERTY_SET_CLASS_ID;
+
+        fn text(buf: &mut Vec<u8>, text: &str) {
+            let utf16: Vec<_> = text.encode_utf16().chain([0]).collect();
+            buf.extend((utf16.len() as u32 * 2).to_le_bytes());
+            buf.extend(utf16.into_iter().flat_map(u16::to_le_bytes));
+        }
+
+        for host_version in [3, 8] {
+            for version in [1_u16, 2, 3] {
+                let body = |new_properties| {
+                    let mut bytes = version.to_le_bytes().to_vec();
+                    text(&mut bytes, "tile source");
+                    bytes.extend(PROPERTY_SET_CLASS_ID);
+                    bytes.extend(91_u32.to_le_bytes());
+                    if new_properties {
+                        bytes.extend(1_u16.to_le_bytes());
+                        bytes.extend(0_u32.to_le_bytes());
+                    }
+                    text(&mut bytes, "second");
+                    text(&mut bytes, "third");
+                    bytes.extend(4_u16.to_le_bytes());
+                    bytes.extend(5_u16.to_le_bytes());
+                    bytes.extend(123.0_f64.to_le_bytes());
+                    if version >= 2 {
+                        bytes.extend(23_u32.to_le_bytes());
+                        bytes.extend(24_u16.to_le_bytes());
+                        bytes.extend(25_u32.to_le_bytes());
+                    }
+                    if version == 3 {
+                        bytes.extend(31_u16.to_le_bytes());
+                    }
+                    bytes
+                };
+                let second = body(false);
+                let first = body(true);
+                let build = |first_body: &[u8]| {
+                    let mut bytes = vec![0; 26];
+                    bytes.extend(2_u32.to_le_bytes());
+                    for (key, body) in [(80_u32, first_body), (81, &second[..])] {
+                        if host_version == 3 {
+                            bytes.extend((body.len() as u64).to_le_bytes());
+                        } else {
+                            bytes.extend((20 + body.len() as u32).to_le_bytes());
+                            bytes.extend(0_u32.to_le_bytes());
+                        }
+                        bytes.extend(DYNAMIC_TILED_LAYER_PROPERTIES_CLASS_ID);
+                        if host_version == 8 {
+                            bytes.extend(key.to_le_bytes());
+                        }
+                        bytes.extend(body);
+                    }
+                    if host_version == 8 {
+                        bytes.extend([0; 64]);
+                    }
+                    bytes
+                };
+                let bytes = build(&first);
+                let mut reader = Reader::new(&bytes);
+                let mut refs = RefTable10_1::new();
+                let tail = read_raster_layer_tail_10_1(&mut reader, host_version, 4096, &mut refs)
+                    .unwrap();
+                let [first_parsed, second_parsed] = if host_version == 3 {
+                    assert_eq!(refs.len(), 1);
+                    [
+                        tail.legacy_extensions[0]
+                            .dynamic_tiled_layer_properties
+                            .as_deref()
+                            .unwrap(),
+                        tail.legacy_extensions[1]
+                            .dynamic_tiled_layer_properties
+                            .as_deref()
+                            .unwrap(),
+                    ]
+                } else {
+                    assert_eq!(refs.len(), 3);
+                    [
+                        tail.extra_safe_extensions[0]
+                            .dynamic_tiled_layer_properties
+                            .as_deref()
+                            .unwrap(),
+                        tail.extra_safe_extensions[1]
+                            .dynamic_tiled_layer_properties
+                            .as_deref()
+                            .unwrap(),
+                    ]
+                };
+                assert_eq!(first_parsed.strings, ["tile source", "second", "third"]);
+                assert_eq!(first_parsed.value, 123.0);
+                assert_eq!(first_parsed.shorts, [4, 5]);
+                assert_eq!(
+                    first_parsed.version2_fields,
+                    (version >= 2).then_some((23, 24, 25))
+                );
+                assert_eq!(first_parsed.version3_short, (version == 3).then_some(31));
+                assert_eq!(first_parsed.properties.body.as_ref().unwrap().count, 0);
+                assert!(matches!(
+                    second_parsed.properties.entry,
+                    ObjectEntry10_1::BackReference { key: 91, .. }
+                ));
+                assert_eq!(reader.remaining(), 0);
+
+                if host_version == 3 {
+                    let mut reader = Reader::new(&bytes[26..]);
+                    let mut refs = RefTable10_1::new();
+                    let shared = crate::layers::layer_extensions::read_layer_extensions_10_1(
+                        &mut reader,
+                        4096,
+                        &mut refs,
+                    )
+                    .unwrap();
+                    assert_eq!(
+                        shared[1].dynamic_tiled_layer_properties.as_deref(),
+                        Some(second_parsed)
+                    );
+                }
+
+                let mut oversized = first.clone();
+                oversized.push(0);
+                for broken in [&first[..first.len() - 1], &oversized] {
+                    let bytes = build(broken);
+                    let mut reader = Reader::new(&bytes);
+                    let mut refs = RefTable10_1::new();
+                    assert!(
+                        read_raster_layer_tail_10_1(&mut reader, host_version, 4096, &mut refs)
+                            .is_err()
+                    );
+                    assert_eq!(reader.position(), 0);
+                    assert!(refs.is_empty());
+                }
+            }
+        }
+    }
 
     #[test]
     fn tail_v17_reads_supported_filters_before_histograms_and_rolls_back_keys() {
