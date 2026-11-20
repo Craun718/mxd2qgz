@@ -668,7 +668,8 @@ impl<'body> LayerMaskingTraversal<'_, '_, 'body> {
                         | LayerBodyPrefix10_1::CadAnnotationLayer(_)
                         | LayerBodyPrefix10_1::CoverageAnnotationLayer(_)
                         | LayerBodyPrefix10_1::RasterLayer(_)
-                        | LayerBodyPrefix10_1::TiledLayer(_),
+                        | LayerBodyPrefix10_1::TiledLayer(_)
+                        | LayerBodyPrefix10_1::Graphics3d(_),
                     ) => {}
                     Some(LayerBodyPrefix10_1::WcsLayer(wcs)) => {
                         if let ObjectEntry10_1::NewObject { key, class_id } = wcs.raster.entry {

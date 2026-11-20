@@ -84,6 +84,7 @@ pub fn known_layer_masking_support_10_1(class_id: &[u8; 16]) -> LayerMaskingSupp
     use crate::layers::fdo_graphics_layer::FDO_GRAPHICS_LAYER_CLASS_ID;
     use crate::layers::fdo_legacy::FDO_GRAPHICS_SUBLAYER_CLASS_ID;
     use crate::layers::feature_layer::FEATURE_LAYER_CLASS_ID;
+    use crate::layers::graphics_3d::GRAPHICS_LAYER_3D_CLASS_ID;
     use crate::layers::group_layer::GROUP_LAYER_CLASS_ID;
     use crate::layers::process_layer::PROCESS_LAYER_CLASS_ID;
 
@@ -104,6 +105,7 @@ pub fn known_layer_masking_support_10_1(class_id: &[u8; 16]) -> LayerMaskingSupp
         || *class_id == CAD_ANNOTATION_LAYER_CLASS_ID
         || *class_id == COVERAGE_ANNOTATION_LAYER_CLASS_ID
         || *class_id == WCS_LAYER_CLASS_ID
+        || *class_id == GRAPHICS_LAYER_3D_CLASS_ID
         || is_tiled_layer(*class_id)
         || is_unparsed_layer_without_masking_10_1(*class_id)
     {

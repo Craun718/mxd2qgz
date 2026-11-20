@@ -105,6 +105,12 @@ Map 读取器仅在图层列表已经为这些类确定顶层对象体范围后�
 
 读取器保留有界 TemporalFeatureLayer 的原始体，并允许该层及其回引通过逐层遮罩阶段。构造 Map v28 验证后续对象边界和未知类回退。原生 TemporalFeatureLayer 对象体、注册替代类与原生工程人工验收仍待验证。
 
+## GraphicsLayer3D 的接口分派
+
+复用 [三维图形容器取证](arcmap-10.1-dep-tail.md) 中的 GraphicsLayer3D CLSID `4C87A8F0-01E3-11D4-AB69-0008C73FD50C` 与主 QI `0x7d2a15b0`。复核 10.1.0.3035 Desktop 的 Scene.dll（PE32，SHA-256 `b41f37424a13b0257ce3c5c3258038a3640876aba48b33e05b332f7af3594006`），用 `objdump -d -Mintel` 追踪 QI 并读取比较常量指向的 16 字节 IID。主 QI 的 17 个固定候选均不含 ILayerMasking；未命中时 `0x7d2a18ce` 进入 `0x7d2c1950`，后者仅增加一个固定候选并在 `0x7d2c19a4` 转入 `0x7d2c2c50`。最终三个固定候选也不匹配遮罩接口，`0x7d2c2d3c..0x7d2c2d42` 清空输出并返回 `E_NOINTERFACE`。这些地址为静态 VA。
+
+Map 现在可越过完整读取的 GraphicsLayer3D 及其回引。构造 Map v28 验证流尾位置；原生 MXD 中的对应宿主及 ArcMap/QGIS 人工验收仍待验证。GlobeGraphicsLayer 保持未决。
+
 ## ProcessLayer 的组图层委派及遮罩
 
 用 `objdump -d -Mintel` 及 PE32 虚表复核 10.1.0.3035 的 `GpObjects.dll`，SHA-256 `c9da22687b40e070d7178538846f707c04d26474d2fa835acb01ceaa46d2f896`。同版本 `esri.clsid.xml`、原生 GetClassID `0x7477a220` 和 SDK 工程的顶层对象头均给出 ProcessLayer CLSID `D6E92E16-E656-4119-B8E1-88576F6833E6`。
