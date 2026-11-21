@@ -680,6 +680,7 @@
       - [x] 对位 UnknownCoordinateSystem 的工厂初值、复制路径和 CentralUSA 实档四串。[取证](docs/arcmap-10.1-pcs-geometry-slots.md#工厂复制与介质对象的字符串)
       - [x] 定性 GCS 完整对象 `+0xc4` 的置位来源为关联 PCS 指针。[原生取证](docs/mxd-terra-round8-sr.md#pcs-关联对象的置位来源)
       - [x] 核对 PCS 默认容差与 GCS XY 默认容差的 pe/sg 调用链。[空间参考取证](docs/arcmap-10.1-pcs-geometry-slots.md)
+      - [x] 核对 GCS 默认 Z/M 容差及垂向单位有效性检查。[空间参考取证](docs/arcmap-10.1-pcs-geometry-slots.md)
       - [ ] 闭合坐标系容差的 pe/sg 数值推导链。[空间参考取证](docs/arcmap-10.1-pcs-geometry-slots.md)
       - [x] 将 ISRPersistStream 槽 8 定名为 GetPrecisionSizeMax，输出 `0x38`。
       - [x] 核对 10.1 UnknownCoordinateSystem 四条持久化字符串与 ISpatialReferenceInfo 属性的对应关系。[原生取证](docs/arcmap-10.1-pcs-geometry-slots.md#unknowncoordinatesystem-的四条持久化字符串)

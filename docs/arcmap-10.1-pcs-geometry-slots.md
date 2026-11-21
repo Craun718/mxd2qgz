@@ -173,6 +173,16 @@ Geometry.dll 跳板对应到 pe.dll/sg.dll 的命名导出，再检查导出函�
   传入 `a, f*(2-f), 0, 0, 0.001, π/2` 及两个输出参数。将结果转换为 GCS
   角单位后，于 `0x719bd8bc` 调用 AfCore 的二维 `WKSPoint::Norm`，有 XY
   网格时再用 `2.0 / XYscale` 提高下限。
+- GCS 的 Z 默认容差入口 `0x719bd9a0` 将初值 0.001 写入接口 this+0x20。
+  有 VCS 时也通过 VCS vtable +0x28 和单位 vtable +0x20 取因子，但在除法前
+  调用 `_finite`（IAT `0x71a10958`），并检查因子严格大于 0（常量
+  `0x71a2cb88`）。未通过检查时保留初值。PCS 对应实现 `0x719d20d0`
+  在取得单位因子后直接执行除法（`0x719d2126`）。
+- GCS 的 M 默认容差入口 `0x719bdb30` 将初值 0.001 写入接口 this+0x28。
+  GCS 的 Z/M 都检查接口 this+0x6c 的 SgCoordRef 指针和 this+0x70 的对应
+  标志位（Z 为 `0x1`，M 为 `0x2`）。网格组启用时，分别在
+  `0x719bda44`/`0x719bdb62` 调用 sg 取比例因子，再用 `2.0 / scale`
+  提高下限。
 - sg.dll 的 `SgCoordRefGetXY`（`0x7faebd20`）、`SgCoordRefGetZ`
   （`0x7faebea0`）及 `SgCoordRefGetM`（`0x7faebad0`）分别把
   SgCoordRef +0x18、+0x38、+0x58 的 double 写到最后一个输出参数。
@@ -181,7 +191,7 @@ Geometry.dll 跳板对应到 pe.dll/sg.dll 的命名导出，再检查导出函�
 本轮 pe.dll 的 SHA-256 为
 `2c29c819ba6506eebd64834d562ad0664c62c3d3ed6a88bfc963df5121bee7b3`，
 sg.dll 为 `ebbb758571da5619a3396b81057f97801f7107180658ced0837187da9e4e027c`。
-尚待核对 GCS 的 Z/M、UnknownCoordinateSystem 和 AfCore 范数实现，并以原生构造案例
+尚待核对 UnknownCoordinateSystem 和 AfCore 范数实现，并以原生构造案例
 测量自定义单位和各网格组启用时的数值。本轮未在 ArcMap 或 QGIS 中人工验证。
 
 ## 顺手闭合的旧记录开放项（对既有文档的更正，详见文末汇总）
