@@ -803,6 +803,20 @@ CLSID 和构造常量比对。此条件命中 109 条登记。补以 72 份类�
 这轮清点排除了上述登记候选。其他模块的间接实现、旧版别名和第三方
 类仍需要独立原生或真实宿主证据；未做 ArcMap/QGIS 人工验收。
 
+### IRasterFunctionArguments 类型库覆盖
+
+对同一批 10.1 Desktop 介质提取的 72 份 OLB，按 MSFT 类型库的接口
+引用及继承关系，枚举直接或间接声明 `IRasterFunctionArguments`
+（`04AA081E-28B0-47E4-B375-F367046DA924`）的 coclass。共 46 个：
+esriDataSourcesRaster 39 个、esriGeoAnalyst 1 个、
+esriGeoDatabaseExtensions 3 个、esriSpatialAnalyst 3 个。
+逐个用 CLSID 调用解析器的 `supports_function_arguments`，复核这 46 个
+都已命中分派。读取这些类体的原生入口和字段证据见本页各节。
+
+这次清点只涉及类型库声明及现有代码入口。其他模块中的未公开实现、
+第三方扩展和真实规则中的嵌套属性仍需分别核查。ArcMap 10.1 和 QGIS
+人工验证尚未进行。
+
 ### 栅格函数变量的共用 Variant 对象
 
 同版 FunctionRasterDB.dll 的 RasterFunctionVariable v2 Load

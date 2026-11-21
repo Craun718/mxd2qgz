@@ -271,6 +271,7 @@
   - [x] 接入三个外部模块已确认布局的六个栅格函数参数类，见 [外部参数取证](docs/mxd-10.1-image-server-rules.md#外部模块的栅格函数与参数)。
   - [ ] 补齐 RenderingRule 剩余的非空 IRasterFunction 对象体。
   - [ ] 补齐 RenderingRule 剩余的非空 IRasterFunctionArguments 对象体。
+  - [x] 核对 10.1 Desktop 类型库公开的 46 个 IRasterFunctionArguments 类均已接入分派。[类型库覆盖](docs/mxd-10.1-image-server-rules.md#irasterfunctionarguments-类型库覆盖)
   - [x] 复核 RenderingRule 的 10.1 登记候选，排除 RasterFunctionHelper 与 FunctionRasterDataset 两个宿主接口不匹配的类。[登记候选复核](docs/mxd-10.1-image-server-rules.md#renderingrule-登记候选复核)
   - [x] 按 10.1 的有符号 short 比较读取渲染、镶嵌规则与栅格函数的版本门，保留版本原始位模式。[指令与旧布局验证](docs/mxd-10.1-image-server-rules.md#规则与函数的有符号版本门)
   - [x] 接入栅格模板与参数属性集中的 Scalar、ArgumentArray 及其共享对象键。[工厂与持久化取证](docs/mxd-10.1-image-server-rules.md#scalar-与-argumentarray)
