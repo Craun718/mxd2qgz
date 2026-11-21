@@ -603,3 +603,26 @@ Load `0x80439004–0x80439393` 与前三种分级渲染器
 
 已复用分级渲染器读取器，合成验证 v1/v2、非空色带、GUID
 分支、截断及读取终点。待含该类的实档和 ArcMap/QGIS 人工验证。
+
+#### TinNodeValueRenderer 与 TinFaceValueRenderer
+
+同一 TinRenderer.dll 10.1.0.3035 的持久化视图和 GetClassID
+常量如下。两个 Load 的共同段与 TinBreaklineRenderer 对照复核。
+
+| 类 | 持久化视图与虚表 | CLSID 常量 | Load / Save |
+| --- | --- | --- | --- |
+| TinNodeValueRenderer | +0x1c，`0x804557dc` | `0x80454e8c`，`{322934B8-B224-11D2-81FC-00104BC4CD03}` | `0x8043ce10 / 0x8043d150` |
+| TinFaceValueRenderer | +0x24，`0x804549c0` | `0x80454a68`，`{AA8745C8-AA66-11D2-81FA-00104BC4CD03}` | `0x80432d00 / 0x804330a0` |
+
+NodeValue 的 `0x8043ce2c–0x8043d13d` 与 Breakline 按
+相同版本门读取相同序列。FaceValue 的
+`0x80432d1c–0x80432f63` 与该序列的前半一致，尾段
+在 `0x80432fc8` 于第二、第三个 String 之间插入一个 short，
+并在 `0x80433011` 于版本化末尾 String 之前多读一个 short。
+两类都仅在版本恰为 1 时改从资源 `0x2968` 取末尾 String，
+其他版本使用流中的 String。
+
+合成完整 TinLayer 测试覆盖三类分类渲染器的 v0/v1/v2、
+图例组回引、条件字符串、FaceValue 的两个 short、后续渲染器
+边界和异常计数的游标及键回滚。字段业务名和真实图例项组合
+仍待确认，未在 ArcMap 10.1 或 QGIS 中人工验证。

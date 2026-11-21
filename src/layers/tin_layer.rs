@@ -58,10 +58,18 @@ const NODE_ELEVATION: [u8; 16] = [
     0x4c, 0x56, 0x20, 0xba, 0xe3, 0xdb, 0xd2, 0x11, 0x9f, 0x39, 0x00, 0xc0, 0x4f, 0x6b, 0xc6, 0x19,
 ];
 
+const NODE_VALUE: [u8; 16] = [
+    0xb8, 0x34, 0x29, 0x32, 0x24, 0xb2, 0xd2, 0x11, 0x81, 0xfc, 0x00, 0x10, 0x4b, 0xc4, 0xcd, 0x03,
+];
+const FACE_VALUE: [u8; 16] = [
+    0xc8, 0x45, 0x87, 0xaa, 0x66, 0xaa, 0xd2, 0x11, 0x81, 0xfa, 0x00, 0x10, 0x4b, 0xc4, 0xcd, 0x03,
+];
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum TinRenderer10_1 {
     Simple(TinSimpleRenderer10_1),
     Breakline(Box<TinBreaklineRenderer10_1>),
+    Value(Box<TinBreaklineRenderer10_1>),
     Contour(TinContourRenderer10_1),
     ClassifiedSurface(Box<TinClassifiedSurfaceRenderer10_1>),
 }
@@ -109,6 +117,8 @@ pub struct TinBreaklineRenderer10_1 {
     pub first_short: u16,
     pub strings: [String; 3],
     pub tail_shorts: [u16; 2],
+    pub face_middle_short: Option<u16>,
+    pub face_last_short: Option<u16>,
     pub final_string: Option<String>,
 }
 
@@ -221,15 +231,19 @@ fn read_renderer(
             v2_double: (version > 1).then(|| read_double(r)).transpose()?,
         }));
     }
-    if !matches!(class_id, NODE | EDGE | FACE | BREAKLINE) {
+    if !matches!(
+        class_id,
+        NODE | EDGE | FACE | BREAKLINE | NODE_VALUE | FACE_VALUE
+    ) {
         return Err(unsupported("ITinRenderer"));
     }
-    let version = read_version(r, if class_id == BREAKLINE { 2 } else { 1 })?;
+    let categorical = matches!(class_id, BREAKLINE | NODE_VALUE | FACE_VALUE);
+    let version = read_version(r, if categorical { 2 } else { 1 })?;
     let symbol = read_symbol_slot_full_10_1(r, max, refs, MAX_SYMBOL_NESTING_DEPTH)?;
     if slot_full_stop_10_1(&symbol, DisplaySlotKind10_1::Symbol).is_some() {
         return Err(unsupported("ISymbol"));
     }
-    if class_id == BREAKLINE {
+    if categorical {
         let mut legend_groups = Vec::new();
         for _ in 0..read_count(r, max, 16)? {
             legend_groups.push(read_legend_group(r, max, refs)?);
@@ -250,26 +264,36 @@ fn read_renderer(
                     .transpose()?,
             });
         }
-        return Ok(TinRenderer10_1::Breakline(Box::new(
-            TinBreaklineRenderer10_1 {
-                version,
-                symbol,
-                legend_groups,
-                legend_item,
-                records,
-                first_short: r.read_u16_le()?,
-                strings: [
-                    read_string_10_1(r, max)?,
-                    read_string_10_1(r, max)?,
-                    read_string_10_1(r, max)?,
-                ],
-                tail_shorts: [r.read_u16_le()?, r.read_u16_le()?],
-                // 只有 v1 从本地化资源取值，其他版本从流取值。
-                final_string: (version != 1)
-                    .then(|| read_string_10_1(r, max))
-                    .transpose()?,
-            },
-        )));
+        let first_short = r.read_u16_le()?;
+        let first_string = read_string_10_1(r, max)?;
+        let second_string = read_string_10_1(r, max)?;
+        let face_middle_short = (class_id == FACE_VALUE)
+            .then(|| r.read_u16_le())
+            .transpose()?;
+        let third_string = read_string_10_1(r, max)?;
+        let body = Box::new(TinBreaklineRenderer10_1 {
+            version,
+            symbol,
+            legend_groups,
+            legend_item,
+            records,
+            first_short,
+            strings: [first_string, second_string, third_string],
+            tail_shorts: [r.read_u16_le()?, r.read_u16_le()?],
+            face_middle_short,
+            face_last_short: (class_id == FACE_VALUE)
+                .then(|| r.read_u16_le())
+                .transpose()?,
+            // 只有 v1 从本地化资源取值，其他版本从流取值。
+            final_string: (version != 1)
+                .then(|| read_string_10_1(r, max))
+                .transpose()?,
+        });
+        return Ok(if class_id == BREAKLINE {
+            TinRenderer10_1::Breakline(body)
+        } else {
+            TinRenderer10_1::Value(body)
+        });
     }
 
     // Node 与 Edge 共用 Load；Face 在尾部多一个 short。
@@ -588,77 +612,95 @@ mod tests {
     }
 
     #[test]
-    fn breakline_reads_nested_group_and_versioned_strings() {
-        for version in [0_i16, 1, 2] {
-            let mut renderer = BREAKLINE.to_vec();
-            renderer.extend(14_u32.to_le_bytes());
-            renderer.extend(version.to_le_bytes());
-            renderer.extend([0; 16]);
-            renderer.extend(2_i32.to_le_bytes());
-            for index in 0..2 {
-                renderer.extend(LEGEND_GROUP_CLASS_ID);
-                renderer.extend(15_u32.to_le_bytes());
-                if index == 0 {
-                    renderer.extend([1, 0, 0, 0]);
-                    string(&mut renderer, "分组");
-                    renderer.extend(0_i32.to_le_bytes());
+    fn categorical_renderers_read_nested_groups_and_versioned_strings() {
+        for class in [BREAKLINE, NODE_VALUE, FACE_VALUE] {
+            for version in [0_i16, 1, 2] {
+                let mut renderer = class.to_vec();
+                renderer.extend(14_u32.to_le_bytes());
+                renderer.extend(version.to_le_bytes());
+                renderer.extend([0; 16]);
+                renderer.extend(2_i32.to_le_bytes());
+                for index in 0..2 {
+                    renderer.extend(LEGEND_GROUP_CLASS_ID);
+                    renderer.extend(15_u32.to_le_bytes());
+                    if index == 0 {
+                        renderer.extend([1, 0, 0, 0]);
+                        string(&mut renderer, "分组");
+                        renderer.extend(0_i32.to_le_bytes());
+                    }
                 }
-            }
-            renderer.extend([0; 16]);
-            let records_offset = renderer.len();
-            renderer.extend(2_i32.to_le_bytes());
-            for flag in [0_i32, -1] {
-                string(&mut renderer, "折线");
-                for value in [-2_i32, 3, flag] {
-                    renderer.extend(value.to_le_bytes());
+                renderer.extend([0; 16]);
+                let records_offset = renderer.len();
+                renderer.extend(2_i32.to_le_bytes());
+                for flag in [0_i32, -1] {
+                    string(&mut renderer, "折线");
+                    for value in [-2_i32, 3, flag] {
+                        renderer.extend(value.to_le_bytes());
+                    }
+                    if flag != 0 {
+                        string(&mut renderer, "补充");
+                    }
                 }
-                if flag != 0 {
-                    string(&mut renderer, "补充");
+                renderer.extend(7_u16.to_le_bytes());
+                string(&mut renderer, "甲");
+                string(&mut renderer, "乙");
+                if class == FACE_VALUE {
+                    renderer.extend(11_u16.to_le_bytes());
                 }
-            }
-            renderer.extend(7_u16.to_le_bytes());
-            for value in ["甲", "乙", "丙"] {
-                string(&mut renderer, value);
-            }
-            renderer.extend([8, 0, 9, 0]);
-            if version != 1 {
-                string(&mut renderer, "末尾");
-            }
+                string(&mut renderer, "丙");
+                renderer.extend([8, 0, 9, 0]);
+                if class == FACE_VALUE {
+                    renderer.extend(12_u16.to_le_bytes());
+                }
+                if version != 1 {
+                    string(&mut renderer, "末尾");
+                }
 
-            let mut bytes = layer(12);
-            let offset = bytes.windows(16).position(|window| window == NODE).unwrap();
-            bytes[offset - 4..offset].copy_from_slice(&5_i32.to_le_bytes());
-            bytes.splice(offset..offset, renderer);
-            let mut r = Reader::new(&bytes);
-            let mut refs = RefTable10_1::new();
-            let body = read_tin_layer_10_1(&mut r, 4096, &mut refs).unwrap();
-            assert_eq!(r.remaining(), 0);
-            assert!(refs.contains(15));
-            let Some(TinRenderer10_1::Breakline(breakline)) = body.renderers[0].body.as_deref()
-            else {
-                panic!("Breakline 体未读取");
-            };
-            assert_eq!(
-                breakline.legend_groups[0].body.as_ref().unwrap().heading,
-                "分组"
-            );
-            assert!(breakline.legend_groups[1].body.is_none());
-            assert_eq!(breakline.records[0].values, [-2, 3]);
-            assert_eq!(breakline.records[0].extra_text, None);
-            assert_eq!(breakline.records[1].extra_text.as_deref(), Some("补充"));
-            assert_eq!(breakline.tail_shorts, [8, 9]);
-            assert_eq!(
-                breakline.final_string.as_deref(),
-                (version != 1).then_some("末尾")
-            );
+                let mut bytes = layer(12);
+                let offset = bytes.windows(16).position(|window| window == NODE).unwrap();
+                bytes[offset - 4..offset].copy_from_slice(&5_i32.to_le_bytes());
+                bytes.splice(offset..offset, renderer);
+                let mut r = Reader::new(&bytes);
+                let mut refs = RefTable10_1::new();
+                let body = read_tin_layer_10_1(&mut r, 4096, &mut refs).unwrap();
+                assert_eq!(r.remaining(), 0);
+                assert!(refs.contains(15));
+                let breakline = match (class, body.renderers[0].body.as_deref()) {
+                    (BREAKLINE, Some(TinRenderer10_1::Breakline(body))) => body,
+                    (NODE_VALUE | FACE_VALUE, Some(TinRenderer10_1::Value(body))) => body,
+                    _ => panic!("分类渲染器体未读取"),
+                };
+                assert_eq!(
+                    breakline.legend_groups[0].body.as_ref().unwrap().heading,
+                    "分组"
+                );
+                assert!(breakline.legend_groups[1].body.is_none());
+                assert_eq!(breakline.records[0].values, [-2, 3]);
+                assert_eq!(breakline.records[0].extra_text, None);
+                assert_eq!(breakline.records[1].extra_text.as_deref(), Some("补充"));
+                assert_eq!(breakline.tail_shorts, [8, 9]);
+                assert_eq!(breakline.strings, ["甲", "乙", "丙"]);
+                assert_eq!(
+                    breakline.face_middle_short,
+                    (class == FACE_VALUE).then_some(11)
+                );
+                assert_eq!(
+                    breakline.face_last_short,
+                    (class == FACE_VALUE).then_some(12)
+                );
+                assert_eq!(
+                    breakline.final_string.as_deref(),
+                    (version != 1).then_some("末尾")
+                );
 
-            let bad_count = offset + records_offset;
-            bytes[bad_count..bad_count + 4].copy_from_slice(&i32::MAX.to_le_bytes());
-            let mut r = Reader::new(&bytes);
-            let mut refs = RefTable10_1::new();
-            assert!(read_tin_layer_10_1(&mut r, 4096, &mut refs).is_err());
-            assert_eq!(r.position(), 0);
-            assert!(refs.is_empty());
+                let bad_count = offset + records_offset;
+                bytes[bad_count..bad_count + 4].copy_from_slice(&i32::MAX.to_le_bytes());
+                let mut r = Reader::new(&bytes);
+                let mut refs = RefTable10_1::new();
+                assert!(read_tin_layer_10_1(&mut r, 4096, &mut refs).is_err());
+                assert_eq!(r.position(), 0);
+                assert!(refs.is_empty());
+            }
         }
     }
 
