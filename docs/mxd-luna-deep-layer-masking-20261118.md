@@ -557,3 +557,34 @@ Save 写入 `0x804533fc` 的版本常量 2，并在 `0x80428ff7`
 写末尾 double。已接入 TinLayer 的 ITinRenderer 槽，合成测试
 覆盖 v0/v1/v2 的终点、逐字节截断与数值原值。字段业务名、图例
 实档组合及 ArcMap 10.1 和 QGIS 人工验证仍待完成。
+
+#### TinAspectRenderer、TinSlopeRenderer 与 TinElevationRenderer
+
+同一 TinRenderer.dll 10.1.0.3035 中，三个 RTTI 持久化视图均
+位于完整对象 +0x24。GetClassID 从下表列出的常量各复制 16 字节。
+三个 Load 分别对读指令、循环和版本跳转作比对。
+
+| 类 | 持久化虚表 | CLSID 常量 | Load / Save |
+| --- | --- | --- | --- |
+| TinAspectRenderer | `0x804535b0` | `0x80453718` | `0x80421bb0 / 0x80422000` |
+| TinSlopeRenderer | `0x80455900` | `0x80454e7c` | `0x8043ec70 / 0x8043f0c0` |
+| TinElevationRenderer | `0x804543ec` | `0x8045450c` | `0x8042d030 / 0x8042d480` |
+
+以 Aspect 为例，`0x80421c04–0x80421c60` 读取有符号
+short 版本（上限 2）、String、LONG 数量。接着
+`0x80421c7e–0x80421cfa` 用同一数量分别循环读取两个
+double 数组，非正数时均跳过。版本 2 在 `0x80421d1f`
+追加一个 double。接着是 ILegendGroup 和 ILegendItem
+（`0x80421d5d / 0x80421dca`）。Slope 在两槽之间更新内存
+图例集合，不读取流。
+
+`0x80421df9` 按版本分流：小于 2 读取 String，版本 2
+读取一字节标志，非零时追加 16 字节 GUID。最后
+`0x80421ecf–0x80421fdb` 读取 short、IColorRamp
+（IID 常量 `0x80453678`）、short×2、LONG×2、double、
+short、String、short。
+
+合成测试覆盖三个类的相同布局、两段数组顺序、旧字符串、
+GUID 的空和非空分支、新 AlgorithmicColorRamp、数值原值及逐字节截断。
+同时用新 SimpleLineSymbol 验证 TinEdgeRenderer 的符号槽。字段业务名、嵌套
+图例和色带的实档组合仍待确认，未在 ArcMap 10.1 或 QGIS 中人工验证。

@@ -13,8 +13,10 @@ use super::legend_item::{
 };
 use super::raster_layer_tail::{RasterLayerEnvelopeSlot10_1, read_envelope_slot};
 use super::scene_layer_properties::{SurfaceName10_1, TIN_NAME_CLASS_ID, read_surface_name};
+use crate::objects::color_ramp::{ColorRampSlot10_1, read_color_ramp_slot_10_1};
 use crate::objects::display_symbol::{
-    DisplaySlotKind10_1, SymbolSlotFull10_1, read_symbol_slot_full_10_1, slot_full_stop_10_1,
+    DisplaySlotKind10_1, MAX_SYMBOL_NESTING_DEPTH, SymbolSlotFull10_1, read_symbol_slot_full_10_1,
+    slot_full_stop_10_1,
 };
 use crate::objects::envelope::{SpatialReferenceEntry10_1, read_spatial_reference_entry_10_1};
 use crate::storage::object_refs::RefTable10_1;
@@ -42,11 +44,43 @@ const CONTOUR: [u8; 16] = [
     0xc2, 0x5d, 0xf7, 0xbe, 0xe6, 0x20, 0x65, 0x49, 0x85, 0xe5, 0xa3, 0xbc, 0x79, 0x74, 0x70, 0xbc,
 ];
 
+const ASPECT: [u8; 16] = [
+    0xae, 0x2d, 0xbd, 0xbe, 0xc7, 0x8b, 0xd2, 0x11, 0x81, 0xec, 0x00, 0x10, 0x4b, 0xc4, 0xcd, 0x03,
+];
+const SLOPE: [u8; 16] = [
+    0x62, 0x1b, 0xfb, 0x91, 0x44, 0x89, 0xd2, 0x11, 0x81, 0xec, 0x00, 0x10, 0x4b, 0xc4, 0xcd, 0x03,
+];
+const ELEVATION: [u8; 16] = [
+    0x1b, 0x31, 0xb7, 0xeb, 0xf8, 0x99, 0xd2, 0x11, 0x81, 0xed, 0x00, 0x10, 0x4b, 0xc4, 0xcd, 0x03,
+];
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum TinRenderer10_1 {
     Simple(TinSimpleRenderer10_1),
     Breakline(Box<TinBreaklineRenderer10_1>),
     Contour(TinContourRenderer10_1),
+    ClassifiedSurface(Box<TinClassifiedSurfaceRenderer10_1>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TinClassifiedSurfaceRenderer10_1 {
+    pub version: i16,
+    pub label: String,
+    pub arrays: [Vec<u64>; 2],
+    pub v2_double: Option<u64>,
+    pub legend_group: RuleSlot10_1<LegendGroupPrefix10_1>,
+    pub legend_item: RuleSlot10_1<HorizontalLegendItemBody10_1>,
+    pub legacy_string: Option<String>,
+    pub guid_flag: Option<u8>,
+    pub guid: Option<[u8; 16]>,
+    pub first_short: u16,
+    pub color_ramp: Option<ColorRampSlot10_1>,
+    pub shorts: [u16; 2],
+    pub longs: [i32; 2],
+    pub double: u64,
+    pub label_short: u16,
+    pub trailing_label: String,
+    pub trailing_short: u16,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -165,6 +199,11 @@ fn read_renderer(
     refs: &mut RefTable10_1,
     class_id: [u8; 16],
 ) -> io::Result<TinRenderer10_1> {
+    if matches!(class_id, ASPECT | SLOPE | ELEVATION) {
+        return read_classified_surface(r, max, refs)
+            .map(Box::new)
+            .map(TinRenderer10_1::ClassifiedSurface);
+    }
     if class_id == CONTOUR {
         let version = read_version(r, 2)?;
         return Ok(TinRenderer10_1::Contour(TinContourRenderer10_1 {
@@ -182,7 +221,7 @@ fn read_renderer(
         return Err(unsupported("ITinRenderer"));
     }
     let version = read_version(r, if class_id == BREAKLINE { 2 } else { 1 })?;
-    let symbol = read_symbol_slot_full_10_1(r, max, refs, 0)?;
+    let symbol = read_symbol_slot_full_10_1(r, max, refs, MAX_SYMBOL_NESTING_DEPTH)?;
     if slot_full_stop_10_1(&symbol, DisplaySlotKind10_1::Symbol).is_some() {
         return Err(unsupported("ISymbol"));
     }
@@ -240,6 +279,65 @@ fn read_renderer(
         label: read_string_10_1(r, max)?,
         last_short: r.read_u16_le()?,
     }))
+}
+
+fn read_classified_surface(
+    r: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<TinClassifiedSurfaceRenderer10_1> {
+    let version = read_version(r, 2)?;
+    let label = read_string_10_1(r, max)?;
+    // 单个计数供两个相邻 double 数组共用。
+    let count = read_count(r, max, 16)?;
+    let mut arrays = [Vec::new(), Vec::new()];
+    for array in &mut arrays {
+        for _ in 0..count {
+            array.push(read_double(r)?);
+        }
+    }
+    let v2_double = (version >= 2).then(|| read_double(r)).transpose()?;
+    let legend_group = read_legend_group(r, max, refs)?;
+    let legend_item = read_legend_item(r, max, refs)?;
+    let legacy_string = (version < 2)
+        .then(|| read_string_10_1(r, max))
+        .transpose()?;
+    let guid_flag = (version >= 2)
+        .then(|| r.read_bytes(1).map(|bytes| bytes[0]))
+        .transpose()?;
+    let guid = if guid_flag.is_some_and(|flag| flag != 0) {
+        let mut guid = [0; 16];
+        guid.copy_from_slice(r.read_bytes(16)?);
+        Some(guid)
+    } else {
+        None
+    };
+    let first_short = r.read_u16_le()?;
+    let offset = r.position();
+    let (color_ramp, stop) =
+        read_color_ramp_slot_10_1(r, max, refs, MAX_SYMBOL_NESTING_DEPTH, offset)?;
+    if stop.is_some() {
+        return Err(unsupported("IColorRamp"));
+    }
+    Ok(TinClassifiedSurfaceRenderer10_1 {
+        version,
+        label,
+        arrays,
+        v2_double,
+        legend_group,
+        legend_item,
+        legacy_string,
+        guid_flag,
+        guid,
+        first_short,
+        color_ramp,
+        shorts: [r.read_u16_le()?, r.read_u16_le()?],
+        longs: [r.read_u32_le()? as i32, r.read_u32_le()? as i32],
+        double: read_double(r)?,
+        label_short: r.read_u16_le()?,
+        trailing_label: read_string_10_1(r, max)?,
+        trailing_short: r.read_u16_le()?,
+    })
 }
 
 fn read_legend_group(
@@ -370,6 +468,9 @@ pub(crate) fn read_tin_layer_10_1(
 mod tests {
     use super::*;
     use crate::layers::layer_list::{LayerBodyPrefix10_1, parse_body_prefix};
+
+    use crate::objects::color_ramp::ALGORITHMIC_COLOR_RAMP_CLASS_ID;
+    use crate::objects::display_symbol::SIMPLE_LINE_SYMBOL_CLASS_ID;
 
     fn string(bytes: &mut Vec<u8>, value: &str) {
         let units: Vec<_> = value.encode_utf16().chain([0]).collect();
@@ -586,6 +687,101 @@ mod tests {
             for end in 0..bytes.len() - 1 {
                 let mut r = Reader::new(&bytes[..end]);
                 assert!(read_renderer(&mut r, 4096, &mut refs, CONTOUR).is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn edge_consumes_new_symbol_body() {
+        let mut bytes = 1_u16.to_le_bytes().to_vec();
+        bytes.extend(SIMPLE_LINE_SYMBOL_CLASS_ID);
+        bytes.extend(31_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend([0; 16 + 8 + 12]);
+        bytes.extend([0; 32 + 2]);
+        string(&mut bytes, "线");
+        bytes.extend(9_u16.to_le_bytes());
+        let mut r = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let TinRenderer10_1::Simple(body) = read_renderer(&mut r, 4096, &mut refs, EDGE).unwrap()
+        else {
+            panic!("Edge 体未读取");
+        };
+        assert!(matches!(
+            body.symbol,
+            SymbolSlotFull10_1::SimpleLineSymbol(_)
+        ));
+        assert!(refs.contains(31));
+        assert_eq!(body.last_short, 9);
+        assert_eq!(r.remaining(), 0);
+    }
+
+    #[test]
+    fn classified_surfaces_read_arrays_and_versioned_guid() {
+        for class in [ASPECT, SLOPE, ELEVATION] {
+            for (version, flag) in [(1_i16, None), (2, Some(0_u8)), (2, Some(1))] {
+                let mut bytes = version.to_le_bytes().to_vec();
+                string(&mut bytes, "分级");
+                bytes.extend(2_i32.to_le_bytes());
+                for value in [1.0_f64, 2.0, 3.0, 4.0] {
+                    bytes.extend(value.to_le_bytes());
+                }
+                if version == 2 {
+                    bytes.extend(5.0_f64.to_le_bytes());
+                }
+                bytes.extend([0; 32]);
+                match flag {
+                    None => string(&mut bytes, "旧字段"),
+                    Some(flag) => {
+                        bytes.push(flag);
+                        if flag != 0 {
+                            bytes.extend([0xab; 16]);
+                        }
+                    }
+                }
+                bytes.extend(6_u16.to_le_bytes());
+                bytes.extend(ALGORITHMIC_COLOR_RAMP_CLASS_ID);
+                bytes.extend(30_u32.to_le_bytes());
+                bytes.extend(1_u16.to_le_bytes());
+                bytes.extend([0; 4 + 4 + 32]);
+                bytes.extend([7, 0, 8, 0]);
+                bytes.extend(9_i32.to_le_bytes());
+                bytes.extend((-10_i32).to_le_bytes());
+                bytes.extend(11.0_f64.to_le_bytes());
+                bytes.extend(12_u16.to_le_bytes());
+                string(&mut bytes, "末尾");
+                bytes.extend(13_u16.to_le_bytes());
+                bytes.push(0xee);
+
+                let mut refs = RefTable10_1::new();
+                let mut r = Reader::new(&bytes);
+                let TinRenderer10_1::ClassifiedSurface(body) =
+                    read_renderer(&mut r, 4096, &mut refs, class).unwrap()
+                else {
+                    panic!("分级渲染器未读取");
+                };
+                assert_eq!(body.arrays[0], [1.0_f64.to_bits(), 2.0_f64.to_bits()]);
+                assert_eq!(body.arrays[1], [3.0_f64.to_bits(), 4.0_f64.to_bits()]);
+                assert_eq!(body.v2_double, (version == 2).then_some(5.0_f64.to_bits()));
+                assert_eq!(
+                    body.legacy_string.as_deref(),
+                    (version == 1).then_some("旧字段")
+                );
+                assert_eq!(body.guid_flag, flag);
+                assert_eq!(body.guid, (flag == Some(1)).then_some([0xab; 16]));
+                assert!(matches!(
+                    body.color_ramp,
+                    Some(ColorRampSlot10_1::Algorithmic(_))
+                ));
+                assert!(refs.contains(30));
+                assert_eq!(body.longs, [9, -10]);
+                assert_eq!(body.trailing_label, "末尾");
+                assert_eq!(body.trailing_short, 13);
+                assert_eq!(r.read_bytes(1).unwrap(), &[0xee]);
+                for end in 0..bytes.len() - 1 {
+                    let mut r = Reader::new(&bytes[..end]);
+                    assert!(read_renderer(&mut r, 4096, &mut RefTable10_1::new(), class).is_err());
+                }
             }
         }
     }
