@@ -1199,3 +1199,15 @@ NetCDFRasterDataset 的主 QI `0x7ae24f00` 在 `0x7ae24fad` 比较
 Item 路径也能使用 NetCDF 父数据集。读取器在集合键下保留该父名称
 的已确认来源与索引数组。构造回归覆盖父名称回引后再次回引集合，
 并核对重复索引、顺序和后继边界。ArcMap/QGIS 实档目视尚未进行。
+
+### 镶嵌数据集名称与回引
+
+同版 MosaicDB.dll 的 Load 在 `0x7a3f5b83/0x7a3f5b91` 依次
+读取两个 String 至完整对象 +0x28/+0x2c。名称接口入口
+`0x7a5a0160` 经 IAT 委派给 RasterCoreLib.dll 的
+BasicRasterName::get_Name（`0x7bed1100`），以 +0x14 的接口
+视图调用，`0x7bed111c` 取首串对应的 +0x28 成员。另一接口的
+`0x7a5a015a` 委派 get_NameString（`0x7bed10a0`），以 +0x10
+视图调用并访问 +0x2c。解析模型保留原始数据集名和可用的工作空间
+路径，同键回引可恢复这两个值。构造测试覆盖 v1–v4、非空工作空间、
+回引和截断回滚。目标软件实际打开结果尚未人工验证。

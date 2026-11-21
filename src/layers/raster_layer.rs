@@ -2087,7 +2087,13 @@ mod tests {
             for value in ["镶嵌数据集", "数据表"] {
                 bytes.extend(encoded_string(value));
             }
-            bytes.extend([0; 16]); // 空工作空间名称。
+            bytes.extend(crate::objects::workspace_name::WORKSPACE_NAME_CLASS_ID);
+            bytes.extend(78_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            for value in ["mosaic.gdb", "", ""] {
+                bytes.extend(encoded_string(value));
+            }
+            bytes.extend([0; 21]); // 空属性集、空工厂及尾整数。
             if version >= 2 {
                 bytes.extend(7_u16.to_le_bytes());
             }
@@ -2134,6 +2140,21 @@ mod tests {
             };
             assert_eq!(name.version, version);
             assert_eq!(name.strings, ["镶嵌数据集", "数据表"]);
+            let source = parsed.names[0].source_reference.as_ref().unwrap();
+            assert_eq!(source.name.as_ref(), "镶嵌数据集");
+            assert_eq!(source.path.as_deref(), Some("mosaic.gdb"));
+
+            let mut reference = body_prefix(1, 1);
+            reference.extend(MOSAIC_DATASET_NAME_CLASS_ID);
+            reference.extend(76_u32.to_le_bytes());
+            reference.extend(encoded_string(""));
+            reference.extend([0; 16 + 22]);
+            let mut reference_reader = Reader::new(&reference);
+            let referenced =
+                read_bounded_raster_body_10_1(&mut reference_reader, 4096, &mut refs).unwrap();
+            assert!(referenced.names[0].body.is_none());
+            assert_eq!(referenced.names[0].source_reference.as_ref(), Some(source));
+            assert_eq!(reference_reader.remaining(), 0);
             assert_eq!(name.short_44, (version >= 2).then_some(7));
             assert_eq!(name.long_48, (version >= 3).then_some(-12));
             if version >= 4 {

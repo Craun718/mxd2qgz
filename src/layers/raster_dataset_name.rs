@@ -547,8 +547,16 @@ pub(super) fn read_name_slot(
                 name.workspace_path(),
                 None,
             );
-        } else if let RasterDatasetNameEntryBody10_1::NetCdf(name) = body {
-            let path = match &name.workspace {
+        } else if let Some((name, workspace)) = match body {
+            RasterDatasetNameEntryBody10_1::NetCdf(name) => {
+                Some((name.variable(), &name.workspace))
+            }
+            RasterDatasetNameEntryBody10_1::Mosaic(name) => {
+                Some((name.strings[0].as_str(), &name.workspace))
+            }
+            _ => None,
+        } {
+            let path = match workspace {
                 RasterDatasetWorkspaceSlot10_1::WorkspaceName(workspace) => {
                     Some(workspace.path.as_str())
                 }
@@ -560,7 +568,7 @@ pub(super) fn read_name_slot(
                 _ => None,
             };
             let path = path.map(str::to_owned);
-            table.mark_dataset_source(class_id, key, name.variable(), path.as_deref(), None);
+            table.mark_dataset_source(class_id, key, name, path.as_deref(), None);
         } else if let RasterDatasetNameEntryBody10_1::Band(band) = body {
             let (name, path) = match &band.source {
                 RasterBandNameSource10_1::Dataset(slot) => match slot.entry {
