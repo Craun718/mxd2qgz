@@ -142,19 +142,13 @@ pub fn parse_mxd_streams_10_1_with_version(
     page_layout: Option<&[u8]>,
     version: Option<&MxdVersionReport>,
 ) -> io::Result<MapsParseReport10_1> {
-    parse_mxd_streams_10_1_with_limits(
-        maps,
-        page_layout,
-        version.and_then(|report| report.candidate_save_index),
-        MAX_MAP_COUNT,
-        MAX_FIELD_BYTES,
-    )
+    parse_mxd_streams_10_1_with_limits(maps, page_layout, version, MAX_MAP_COUNT, MAX_FIELD_BYTES)
 }
 
 fn parse_mxd_streams_10_1_with_limits(
     maps: &[u8],
     page_layout: Option<&[u8]>,
-    save_index: Option<usize>,
+    version: Option<&MxdVersionReport>,
     max_count: u32,
     max_bytes: usize,
 ) -> io::Result<MapsParseReport10_1> {
@@ -348,7 +342,7 @@ fn parse_mxd_streams_10_1_with_limits(
 
     let page_layout = page_layout.and_then(|page| {
         let result = if confirmed_tail.is_some() && map_unknown.is_empty() {
-            match read_page_layout_elements_10_1(page, max_bytes, &mut refs, save_index, |key| {
+            match read_page_layout_elements_10_1(page, max_bytes, &mut refs, version, |key| {
                 map_indices.contains_key(&key)
             }) {
                 Ok(layout) => {

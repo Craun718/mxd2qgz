@@ -20,6 +20,7 @@ pub(super) enum PrintSaveFormat10_1 {
     Default,
     ArcGis83,
     ArcGis90,
+    LegacyShortDevMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -101,6 +102,15 @@ pub(super) fn read_print_settings_10_1(
         )?)),
         _ => return Err(super::map_frame::unsupported("IPrinter", printer)),
     };
+    if format == PrintSaveFormat10_1::LegacyShortDevMode
+        && (!matches!(printer_body, Some(PrinterBody10_1::Emf { version: 1 }))
+            || trial.remaining() != 0)
+    {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "旧 DEVMODE 后没有完整的流尾 EmfPrinter v1",
+        ));
+    }
     *refs = staged;
     *reader = trial;
     Ok(PrintSettings10_1 {
@@ -117,6 +127,12 @@ fn read_paper(
     format: PrintSaveFormat10_1,
 ) -> io::Result<Paper10_1> {
     let version = version(reader, 3, "Paper")?;
+    if format == PrintSaveFormat10_1::LegacyShortDevMode && version != 2 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "旧 DEVMODE 需要 Paper v2",
+        ));
+    }
     let system_language = (version >= 2).then(|| reader.read_u16_le()).transpose()?;
     let printer_description = (version >= 2)
         .then(|| read_string_10_1(reader, limit))
@@ -129,16 +145,20 @@ fn read_paper(
         // 0x7bcd71c3 按分配长度直接写内存块。
         dev_mode = blob(reader, declared_dev_mode_size, limit)?.to_vec();
     } else if declared_dev_mode_size != 0 {
-        // 分流文档的 ObjectStream 以空版本文本构造，Paper v0–v3 共用此读序。
+        // 10.1 默认读序固定体为 220 字节。Yellowstone 的旧写法仅存 212 字节。
         // 驱动私有字节在流中紧跟固定成员，在内存中却写到 dmSize 所指的偏移。
-        const FIXED_SIZE: usize = 220;
+        let fixed_size = if format == PrintSaveFormat10_1::LegacyShortDevMode {
+            212
+        } else {
+            220
+        };
         let mut probe = reader.clone();
-        let fixed = probe.read_bytes(FIXED_SIZE)?;
+        let fixed = probe.read_bytes(fixed_size)?;
         let dm_size = usize::from(u16::from_le_bytes([fixed[0x44], fixed[0x45]]));
         let extra = usize::from(u16::from_le_bytes([fixed[0x46], fixed[0x47]]));
-        let stored = FIXED_SIZE + extra;
+        let stored = fixed_size + extra;
         let declared = u64::from(declared_dev_mode_size);
-        if declared < FIXED_SIZE.max(dm_size + extra) as u64
+        if declared < fixed_size.max(dm_size + extra) as u64
             || declared > limit as u64
             || stored > limit
         {
@@ -170,7 +190,10 @@ fn read_arc_press(
     let first_flag = reader.read_bytes(1)?[0];
     let driver_class = read_bstr_string_10_1(reader, limit)?;
     // 旧写侧省去整个驱动段，打印机是 /PageLayout 的最后一项。
-    let omit_driver = format != PrintSaveFormat10_1::Default && reader.remaining() == 5 * 4 + 1;
+    let omit_driver = matches!(
+        format,
+        PrintSaveFormat10_1::ArcGis83 | PrintSaveFormat10_1::ArcGis90
+    ) && reader.remaining() == 5 * 4 + 1;
     let driver_data = if version >= 2 && !omit_driver {
         let length = reader.read_u32_le()?;
         Some(blob(reader, length, limit)?.to_vec())

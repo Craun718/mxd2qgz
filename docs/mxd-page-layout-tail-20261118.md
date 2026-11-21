@@ -123,3 +123,23 @@ SDK .NET 的 PrintMultiPage（`/Version` 文本 9.4，PageLayout 架构 v14）�
 `0x3fc10` 流尾。替换为同会话内基本图形层的键 30 时，读取器在
 组包装起点 `0x1e` 停止。构造用例还验证组内地图框可被后续页面元素回引，
 及子体截断时整组不提交。ArcMap 与 QGIS 人工验收未执行。
+
+### Yellowstone 的短 DEVMODE 体
+
+10.1 SDK Java 的 Yellowstone 使用 `/Version` 文本 9.0、short 10，
+布局 v7、打印标记 1、Paper v2。对象体从 `/PageLayout:0x406` 起，
+DEVMODE 数据自 `0x4be` 起，声明分配长度 1172、dmSize 220、
+dmDriverExtra 952。按 220 字节固定体计算会落到 `0x952`。按
+212 字节固定体加 952 字节计算，后接 `0x94a` 的原生 EmfPrinter 类标识、
+对象键 164 与版本 1，结束于流尾 `0x960`。
+
+用 objdump 复核 10.1.0.3035 的 x86 PrintOut.dll（SHA-256
+`ff9bdbf31a6d4c06573fa37e2da529217a93fec44c9715458bbaf1b4ac9a5bde`）。
+`0x7bcd6720` 的版本文本比较常量 `0x7bce0ce8` 确为 9.0；
+该分支对 v2 在 `0x7bcd6a24` 跳过一个 DWORD，又在 `0x7bcd6b05`
+后补读一个 DWORD。样本的短体写出来源仍待定位。
+
+读取器在标准规则失败后，仅在上述版本和标记组合下尝试已观察到的
+212 字节布局。只有完整读出流尾的 EmfPrinter v1 才提交游标和对象键。
+构造测试覆盖短体、缺少版本上下文、截断和流尾附加字节。通过 `parse`
+命令验证 Yellowstone 的布局到达流尾。ArcMap 10.1 和 QGIS 尚未人工核验。

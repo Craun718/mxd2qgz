@@ -285,7 +285,7 @@ pub(super) fn read_page_layout_elements_10_1(
     page: &[u8],
     max_bytes: usize,
     refs: &mut RefTable10_1,
-    save_index: Option<usize>,
+    document_version: Option<&crate::version::mxd_version::MxdVersionReport>,
     is_root_map: impl Fn(u32) -> bool,
 ) -> io::Result<PageLayoutElements10_1> {
     let mut reader = Reader::new(page);
@@ -305,17 +305,38 @@ pub(super) fn read_page_layout_elements_10_1(
                         if flag != 0 {
                             use super::print_settings::PrintSaveFormat10_1;
                             // 写侧版本表 0x7b71c840：8.3 存 v7，9.0 存 v9。
+                            let save_index =
+                                document_version.and_then(|version| version.candidate_save_index);
                             let format = match (save_index, result.prefix.version, flag) {
                                 (Some(0), 7, 1) => PrintSaveFormat10_1::ArcGis83,
                                 (Some(1), 9, 1) => PrintSaveFormat10_1::ArcGis90,
                                 _ => PrintSaveFormat10_1::Default,
                             };
-                            match super::print_settings::read_print_settings_10_1(
+                            let settings = super::print_settings::read_print_settings_10_1(
                                 &mut reader,
                                 max_bytes,
                                 refs,
                                 format,
-                            ) {
+                            );
+                            let settings = settings.or_else(|error| {
+                                if result.prefix.version == 7
+                                    && flag == 1
+                                    && document_version.is_some_and(|version| {
+                                        version.text == "9.0" && version.compatibility_short == 10
+                                    })
+                                {
+                                    super::print_settings::read_print_settings_10_1(
+                                        &mut reader,
+                                        max_bytes,
+                                        refs,
+                                        PrintSaveFormat10_1::LegacyShortDevMode,
+                                    )
+                                    .map_err(|_| error)
+                                } else {
+                                    Err(error)
+                                }
+                            });
+                            match settings {
                                 Ok(settings) => result.print_settings = Some(settings),
                                 Err(error) => {
                                     result.tail_error = Some(format!("打印设置：{error}"))

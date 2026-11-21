@@ -562,3 +562,58 @@ fn ordinary_layout_elements_keep_cross_stream_references_and_body_boundaries() {
         assert_eq!(unknown.bytes, bytes[backref_offset..]);
     }
 }
+
+#[test]
+fn reads_short_devmode_only_with_matching_version_and_complete_emf() {
+    use mxd2qgz::maps::mxd_maps::parse_mxd_streams_10_1_with_version;
+    use mxd2qgz::maps::page_layout_prefix::PAGE_LAYOUT_CLASS_ID;
+    use mxd2qgz::maps::print_settings::{EMF_PRINTER_CLASS_ID, PrinterBody10_1};
+    use mxd2qgz::version::mxd_version::identify_version;
+
+    let version = identify_version(&[8, 0, 0, 0, 57, 0, 46, 0, 48, 0, 0, 0, 10, 0]).unwrap();
+    let mut page = PAGE_LAYOUT_CLASS_ID.to_vec();
+    page.extend(1_u32.to_le_bytes());
+    page.extend(7_u16.to_le_bytes());
+    page.extend([0; 8]);
+    page.extend(layout_tail(7, 0));
+    page.extend(1_u16.to_le_bytes());
+    let paper_start = page.len();
+    page.extend(2_u16.to_le_bytes());
+    page.extend(0x409_u16.to_le_bytes());
+    page.extend(2_u32.to_le_bytes());
+    page.extend([0; 2]);
+    page.extend(0_u32.to_le_bytes());
+    page.extend(240_u32.to_le_bytes());
+    let mut mode = [0; 232];
+    mode[0x44..0x46].copy_from_slice(&220_u16.to_le_bytes());
+    mode[0x46..0x48].copy_from_slice(&20_u16.to_le_bytes());
+    mode[212..].fill(0x5a);
+    page.extend(mode);
+    page.extend(EMF_PRINTER_CLASS_ID);
+    page.extend(7_u32.to_le_bytes());
+    page.extend(1_u16.to_le_bytes());
+
+    let parse = |page: &[u8], version| {
+        parse_mxd_streams_10_1_with_version(&[0; 8], Some(page), version)
+            .unwrap()
+            .page_layout
+            .unwrap()
+    };
+    let layout = parse(&page, Some(&version));
+    assert_eq!(layout.consumed_end_offset(), page.len());
+    let settings = layout.print_settings.unwrap();
+    assert_eq!(settings.paper.dev_mode, mode);
+    assert_eq!(
+        settings.printer_body,
+        Some(PrinterBody10_1::Emf { version: 1 })
+    );
+
+    assert!(parse(&page, None).print_settings.is_none());
+    for end in paper_start..page.len() {
+        let layout = parse(&page[..end], Some(&version));
+        assert!(layout.print_settings.is_none());
+        assert_eq!(layout.consumed_end_offset(), paper_start);
+    }
+    page.push(0);
+    assert!(parse(&page, Some(&version)).print_settings.is_none());
+}
