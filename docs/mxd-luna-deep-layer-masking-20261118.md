@@ -711,3 +711,22 @@ String、LONG 和列表。
 
 合成测试覆盖 v1–v3、负数条目、超界计数、逐字节截断及
 下一字段边界。尚未用该类的实档在 ArcMap 10.1 或 QGIS 中人工验证。
+
+#### TerrainPointElevationRenderer
+
+TinRenderer.dll 10.1.0.3035 的 RTTI `0x8045eeec` 对应
++0xdc 持久化视图 `0x80455f60`。GetClassID
+`0x80443460` 从 `0x80454eac` 返回
+`{D8473F3C-2165-44AA-B8FD-34403E1F9354}`。Load
+为 `0x80443830`，Save 为 `0x80443bd0`。
+
+Load 在 `0x8044389d` 检查有符号版本上限 3。与 TIN
+分级渲染器复用 String、LONG 计数和两组 double 数组。
+`0x80443979` 的额外 double、图例之后 `0x80443a42`
+的一字节 GUID 标志均无版本门，标志非零才读 GUID。
+`0x80443ab1–0x80443b52` 依次读取 short、IColorRamp、
+short×2、double、String、short。v2 追加 short，
+v3 追加 LONG×2（`0x80443b5b–0x80443ba2`）。
+
+合成测试覆盖 v1–v3 的 GUID 与尾段、逐字节截断和结束位置。
+未在 ArcMap 10.1 或 QGIS 中人工验证相关实档。

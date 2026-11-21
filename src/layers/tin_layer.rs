@@ -73,6 +73,10 @@ const TERRAIN_POINT_UNIQUE_VALUE: [u8; 16] = [
     0x40, 0xe0, 0x06, 0x8b, 0xb0, 0x89, 0x57, 0x46, 0x98, 0xa5, 0xb9, 0x42, 0x39, 0x87, 0x45, 0xb8,
 ];
 
+const TERRAIN_POINT_ELEVATION: [u8; 16] = [
+    0x3c, 0x3f, 0x47, 0xd8, 0x65, 0x21, 0xaa, 0x44, 0xb8, 0xfd, 0x34, 0x40, 0x3e, 0x1f, 0x93, 0x54,
+];
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum TinRenderer10_1 {
     Simple(TinSimpleRenderer10_1),
@@ -97,11 +101,13 @@ pub struct TinClassifiedSurfaceRenderer10_1 {
     pub first_short: u16,
     pub color_ramp: Option<ColorRampSlot10_1>,
     pub shorts: [u16; 2],
-    pub longs: [i32; 2],
+    pub longs: Option<[i32; 2]>,
     pub double: u64,
     pub label_short: Option<u16>,
     pub trailing_label: String,
     pub trailing_short: u16,
+    pub v2_tail_short: Option<u16>,
+    pub v3_tail_longs: Option<[i32; 2]>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -229,7 +235,10 @@ pub(super) fn read_renderer(
     refs: &mut RefTable10_1,
     class_id: [u8; 16],
 ) -> io::Result<TinRenderer10_1> {
-    if matches!(class_id, ASPECT | SLOPE | ELEVATION | NODE_ELEVATION) {
+    if matches!(
+        class_id,
+        ASPECT | SLOPE | ELEVATION | NODE_ELEVATION | TERRAIN_POINT_ELEVATION
+    ) {
         return read_classified_surface(r, max, refs, class_id)
             .map(Box::new)
             .map(TinRenderer10_1::ClassifiedSurface);
@@ -354,13 +363,18 @@ pub(super) fn read_renderer(
     }))
 }
 
+fn read_longs(r: &mut Reader<'_>) -> io::Result<[i32; 2]> {
+    Ok([r.read_u32_le()? as i32, r.read_u32_le()? as i32])
+}
+
 fn read_classified_surface(
     r: &mut Reader<'_>,
     max: usize,
     refs: &mut RefTable10_1,
     class_id: [u8; 16],
 ) -> io::Result<TinClassifiedSurfaceRenderer10_1> {
-    let version = read_version(r, 2)?;
+    let terrain = class_id == TERRAIN_POINT_ELEVATION;
+    let version = read_version(r, if terrain { 3 } else { 2 })?;
     let label = read_string_10_1(r, max)?;
     // 单个计数供两个相邻 double 数组共用。
     let count = read_count(r, max, 16)?;
@@ -370,13 +384,15 @@ fn read_classified_surface(
             array.push(read_double(r)?);
         }
     }
-    let v2_double = (version >= 2).then(|| read_double(r)).transpose()?;
+    let v2_double = (terrain || version >= 2)
+        .then(|| read_double(r))
+        .transpose()?;
     let legend_group = read_legend_group(r, max, refs)?;
     let legend_item = read_legend_item(r, max, refs)?;
-    let legacy_string = (version < 2)
+    let legacy_string = (!terrain && version < 2)
         .then(|| read_string_10_1(r, max))
         .transpose()?;
-    let guid_flag = (version >= 2)
+    let guid_flag = (terrain || version >= 2)
         .then(|| r.read_bytes(1).map(|bytes| bytes[0]))
         .transpose()?;
     let guid = if guid_flag.is_some_and(|flag| flag != 0) {
@@ -406,13 +422,19 @@ fn read_classified_surface(
         first_short,
         color_ramp,
         shorts: [r.read_u16_le()?, r.read_u16_le()?],
-        longs: [r.read_u32_le()? as i32, r.read_u32_le()? as i32],
+        longs: (!terrain).then(|| read_longs(r)).transpose()?,
         double: read_double(r)?,
-        label_short: (class_id != NODE_ELEVATION)
+        label_short: (!terrain && class_id != NODE_ELEVATION)
             .then(|| r.read_u16_le())
             .transpose()?,
         trailing_label: read_string_10_1(r, max)?,
         trailing_short: r.read_u16_le()?,
+        v2_tail_short: (terrain && version >= 2)
+            .then(|| r.read_u16_le())
+            .transpose()?,
+        v3_tail_longs: (terrain && version >= 3)
+            .then(|| read_longs(r))
+            .transpose()?,
     })
 }
 
@@ -870,7 +892,7 @@ mod tests {
                     Some(ColorRampSlot10_1::Algorithmic(_))
                 ));
                 assert!(refs.contains(30));
-                assert_eq!(body.longs, [9, -10]);
+                assert_eq!(body.longs, Some([9, -10]));
                 assert_eq!(body.label_short, (class != NODE_ELEVATION).then_some(12));
                 assert_eq!(body.trailing_label, "末尾");
                 assert_eq!(body.trailing_short, 13);
@@ -929,6 +951,53 @@ mod tests {
                 )
                 .is_err()
             );
+        }
+    }
+
+    #[test]
+    fn terrain_point_elevation_reads_guid_and_double_in_v1_and_versioned_tail() {
+        for version in 1_u16..=3 {
+            let mut bytes = version.to_le_bytes().to_vec();
+            string(&mut bytes, "点高程");
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(2.0_f64.to_le_bytes());
+            bytes.extend([0; 32]);
+            bytes.push(1);
+            bytes.extend([3; 16]);
+            bytes.extend(4_u16.to_le_bytes());
+            bytes.extend([0; 16]);
+            bytes.extend([5, 0, 6, 0]);
+            bytes.extend(7.0_f64.to_le_bytes());
+            string(&mut bytes, "末尾");
+            bytes.extend(8_u16.to_le_bytes());
+            if version >= 2 {
+                bytes.extend(9_u16.to_le_bytes());
+            }
+            if version >= 3 {
+                bytes.extend((-10_i32).to_le_bytes());
+                bytes.extend(11_i32.to_le_bytes());
+            }
+            let length = bytes.len();
+            bytes.push(0xee);
+            let mut r = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let TinRenderer10_1::ClassifiedSurface(body) =
+                read_renderer(&mut r, 4096, &mut refs, TERRAIN_POINT_ELEVATION).unwrap()
+            else {
+                panic!("TerrainPointElevationRenderer 未分派");
+            };
+            assert_eq!(body.v2_double, Some(2.0_f64.to_bits()));
+            assert_eq!(body.guid, Some([3; 16]));
+            assert_eq!(body.longs, None);
+            assert_eq!(body.label_short, None);
+            assert_eq!(body.trailing_short, 8);
+            assert_eq!(body.v2_tail_short, (version >= 2).then_some(9));
+            assert_eq!(body.v3_tail_longs, (version >= 3).then_some([-10, 11]));
+            assert_eq!(r.read_bytes(1).unwrap(), &[0xee]);
+            for end in 0..length {
+                let mut r = Reader::new(&bytes[..end]);
+                assert!(read_renderer(&mut r, 4096, &mut refs, TERRAIN_POINT_ELEVATION).is_err());
+            }
         }
     }
 
