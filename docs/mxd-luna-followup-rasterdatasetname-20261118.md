@@ -106,3 +106,19 @@ BasicRasterName 原生实现。
 
 Name getter 另有依赖工作空间状态及名称检测的分支
 （`0x7bed1127..0x7bed1158`）。模型保留存盘 Name 原文，运行时路径处理仍待取证。
+
+### 第四条字符串的私有接口
+
+同一 10.1 RasterDB.dll 的 Load `0x7c0ba65c` 和 Save
+`0x7c0ba80e` 对位 IPersistStream 指针 `+0x4c`，即完整对象
+`+0x64`。主 QI 在 `0x7c0b9bc3..0x7c0b9be4` 对
+`{BC25E11F-168B-11D2-8D25-0000F8780535}` 返回对象 `+0x40`。
+同一类的 MSVC RTTI（COL `0x7c148bc0`）在该偏移标明
+IRasterDatasetNameImpl。虚表 `0x7c13366c` 的 `+0x0c/+0x10`
+分别指向 `0x7c0ba260/0x7c0ba290`，读写接口指针 `+0x24`，
+与持久化槽对到同一存储。读侧调用 AfCore String::MakeBSTR，
+写侧调用 String 的宽字符串赋值。
+
+本轮闭合了第四条字符串的访问器身份。该私有接口的成员名称及业务
+语义仍需调用点证据，读取器继续保留原始字段。ArcMap 与 QGIS 人工
+验收尚未进行。

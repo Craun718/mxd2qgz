@@ -779,6 +779,7 @@
   - [x] 从 FeatureLayer 的 FeatureClassName 回引恢复要素类名和工作空间路径。[数据源键缓存](docs/arcmap-10.1-dataset-name.md#整个要素类名称的回引)
   - [x] 解析普通及委派 RasterDatasetName 的 WorkspaceName 回引路径，并将单名称栅格的已知工作空间接入图层模型。[样本和回引验证](docs/mxd-luna-followup-rasterdatasetname-20261118.md#栅格图层的工作空间路径)
   - [x] 对位 RasterDatasetName 前三个字符串的名称访问器，将数据集名接入栅格模型。[原生访问器](docs/mxd-luna-followup-rasterdatasetname-20261118.md#栅格名称字符串对位)
+  - [x] 定位 RasterDatasetName 第四条字符串的 IRasterDatasetNameImpl 访问器。[私有接口取证](docs/mxd-luna-followup-rasterdatasetname-20261118.md#第四条字符串的私有接口)
 - [ ] 转换 Shapefile 数据源路径（相对、绝对、缺失文件）。
 - [x] 构造模型支持明确 EPSG:4326/3857、不同地图/图层 CRS 和主画布范围；其他定义保留并诊断，未猜 EPSG。非法或溢出范围拒绝。
 - [ ] 将 MXD 坐标系定义映射为 QGIS CRS（含非 EPSG:4326/3857 定义的识别策略）。
