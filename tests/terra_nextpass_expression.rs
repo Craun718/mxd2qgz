@@ -165,6 +165,28 @@ fn alpc_reads_maplex_version_gates_and_stops_before_an_unknown_placement_body() 
         assert_eq!(reader.position(), bytes.len());
 
         if version == 11 {
+            let mut with_placement = bytes.clone();
+            let mut placement = vec![
+                0x08, 0x48, 0x66, 0x20, 0xc9, 0x41, 0xd1, 0x11, 0x88, 0x0a, 0x08, 0x00, 0x09, 0xec,
+                0x73, 0x2a,
+            ];
+            placement.extend(18_u32.to_le_bytes());
+            placement.extend(4_u16.to_le_bytes());
+            placement.extend([0; 50 + 4 + 16 + 42 + 16 + 16 + 16 + 26]);
+            with_placement.splice(placement_offset..placement_offset + 16, placement);
+            let mut reader = Reader::new(&with_placement);
+            let mut refs = RefTable10_1::new();
+            let result =
+                read_annotate_props_collection_body_10_1(&mut reader, 1024, &mut refs, 1).unwrap();
+            let AlpcEntrySlot10_1::MaplexLabelEngineProps(body) = &result.entries[0].slot else {
+                panic!("应读取 Maplex 标注类");
+            };
+            assert_eq!(body.maplex_placement.as_ref().unwrap().version, 4);
+            assert_eq!(body.annotation_class_id, Some(51));
+            assert_eq!(result.entries[0].entry_key, Some(41));
+            assert_eq!(reader.position(), with_placement.len());
+            assert!(refs.contains(18));
+
             bytes.splice(
                 placement_offset..placement_offset + 16,
                 [0x7e; 16].into_iter().chain(19_u32.to_le_bytes()),

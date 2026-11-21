@@ -252,6 +252,8 @@ pub enum LelpStop10_1 {
     OverposterBody(BolpStop10_1),
     /// Maplex 放置属性槽的新对象体尚未确认。
     MaplexOverposterSlotUnsupported { class_id: [u8; 16], key: u32 },
+    /// Maplex 放置属性体在未知子对象处停止。
+    MaplexPlacementBody(super::maplex_placement::MaplexPlacementStop10_1),
     /// ⑲ Envelope 体内部错误不属于本枚举（嵌套空间参考非投影坐标系为
     /// 硬错误，向上传播）；本变体保留供未来扩展。
     #[allow(dead_code)]
@@ -416,8 +418,9 @@ pub struct LelpBody10_1 {
     /// ㉗ 版本 ==6 的旧 short；10.1 Load 读到栈上后丢弃。
     /// `None` = 版本 ≠6 或前置停止。
     pub short_ver6: Option<i16>,
-    /// Maplex v5 起的放置属性槽，已读到的空槽或回引。
+    /// Maplex v5 起的放置属性槽。
     pub maplex_overposter_slot: Option<ObjectEntry10_1>,
+    pub maplex_placement: Option<Box<super::maplex_placement::MaplexPlacement10_1>>,
     /// Maplex v6 专有 LONG、v9 专有 short，原生读后丢弃。
     pub maplex_legacy_fields: (Option<i32>, Option<i16>),
     /// 停止原因；`None` 表示该版本的对象体已完整消费。
@@ -622,6 +625,7 @@ fn read_label_engine_body(
     let mut annotation_class_id = None;
     let mut short_ver6 = None;
     let mut maplex_overposter_slot = None;
+    let mut maplex_placement = None;
     let mut maplex_legacy_fields = (None, None);
     if stop.is_none() {
         scale_ratio = Some(trial.read_f64_le()?);
@@ -683,6 +687,24 @@ fn read_label_engine_body(
             let mut slot_reader = trial.clone();
             let mut slot_table = staged_table.clone();
             match read_object_entry_10_1(&mut slot_reader, &mut slot_table)? {
+                entry @ ObjectEntry10_1::NewObject {
+                    class_id: super::maplex_placement::MAPLEX_OVERPOSTER_LAYER_PROPS_CLASS_ID,
+                    ..
+                } => {
+                    let placement = super::maplex_placement::read_maplex_placement(
+                        &mut slot_reader,
+                        max_bytes,
+                        &mut slot_table,
+                    )?;
+                    stop = placement
+                        .stop
+                        .clone()
+                        .map(LelpStop10_1::MaplexPlacementBody);
+                    maplex_placement = Some(Box::new(placement));
+                    maplex_overposter_slot = Some(entry);
+                    trial = slot_reader;
+                    staged_table = slot_table;
+                }
                 ObjectEntry10_1::NewObject { class_id, key } => {
                     stop = Some(LelpStop10_1::MaplexOverposterSlotUnsupported { class_id, key });
                 }
@@ -741,6 +763,7 @@ fn read_label_engine_body(
         annotation_class_id,
         short_ver6,
         maplex_overposter_slot,
+        maplex_placement,
         maplex_legacy_fields,
         stop,
     };

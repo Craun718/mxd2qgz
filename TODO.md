@@ -802,6 +802,7 @@
   - [x] 定位 Maplex 标注类的持久化入口、版本门和流内对象槽。[原生取证](docs/mxd-terra-nextpass-expression.md#maplex-标注类的持久化入口)
   - [x] 接入 ALPC 中的 Maplex 标注类共用字段与版本门，未确认放置对象体保留停止位置。[读取边界](docs/mxd-terra-nextpass-expression.md#maplex-标注类接线)
   - [x] 对位 MaplexOverposterLayerProperties v4–v22 的流序和六个嵌套槽 IID。[版本布局](docs/mxd-terra-nextpass-expression.md#maplexoverposterlayerproperties-的版本布局)
+  - [x] 接入 Maplex 放置属性的版本化标量区段、点放置优先级和 v22 PropertySet 路径。[读取验证](docs/mxd-terra-nextpass-expression.md#maplex-放置属性读取器)
 - [ ] 转换标注位置/放置属性。
 - [x] 解析 FeatureLayer 总开关与 LELP 标注类开关的原始值。[原生取证及样本](docs/mxd-terra-nextpass-expression.md#图层与标注类的显示开关)
 - [ ] 转换标注可见性。
