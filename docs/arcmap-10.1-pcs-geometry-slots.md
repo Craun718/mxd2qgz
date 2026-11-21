@@ -145,17 +145,44 @@ M(-100000.0, 10000.0)：Z/M 比例因子 10000 ↔ 分辨率 1e-4（esri 默认 
   读写 +0x148（`0x719d2080`/`0x719d20b0`/`0x719d2200`/`0x719d2230`/
   `0x719d2330`/`0x719d2360` 反编译）；Save `0x719d3690` 直接写
   `param_1+0xf0/+0xf8/+0x100`（this=+0x48 视角即 +0x138/+0x140/+0x148）。
-- 默认容差公式（槽 3/7/11 = SetDefault*Tolerance，`0x719d1f90`/`0x719d20d0`/
-  `0x719d2250` 反编译）：XY 容差 = max(**0.001 / 单位因子**, **2.0 / XYscale**)，
-  常量 `DAT_71a11da0` = **0.001**、`DAT_71a2cbd8` = **2.0**（单位因子经
-  `pe_projcs_unit`/`pe_unit_factor`）；Z/M 同式（有垂向单位时除以单位因子）。
-  样本交叉验证：0.001/1 = 0.001 > 2.0/450265407 = 4.4e-9 → XY 容差 0.001 ✓，
-  Z/M 无垂向 → 0.001 ✓（样本 3 个尾随 double 均 0.001，公式复现样本值）。
+- PCS 默认容差（槽 3/7/11，`0x719d1f90`/`0x719d20d0`/`0x719d2250`）。
+  XY 初值为 `0.001 / pe_unit_factor(pe_projcs_unit(projcs))`。Z 初值为 0.001，
+  有 VCS 时通过 VCS vtable +0x28 取单位，再通过单位 vtable +0x20 取因子并除以该因子。
+  M 初值恒为 0.001。相应网格组存在时，才用 `2.0 / scale` 提高该组容差的下限。
+  XY/Z/M 的标志位分别为 `0x4/0x1/0x2`，Z/M 还检查 SgCoordRef 指针。
+  参考样本的 XY 单位因子为 1，`2.0 / 450265407` 约为 4.4e-9，与流内 XY 容差
+  0.001 一致。该样本的 Z/M 字段也都是 0.001。
 - 旧版本恢复路径（版本 <6 的 Load）：按 SgCoordRef 标志位调 ISpatialReference
   Tolerance 的槽 4/8/12（`0x719d2010`/`0x719d2190`/`0x719d22c0`），把容差置为
   **2.0 / 对应 scale**（无对应组时报 `0x80040202`）——即旧容差 = 2 个网格
   单位（与 sg.dll `SgCoordRefSetDefault*ClusterTol` 导出族的「簇容差」概念
   对应）。版本 ≥5/≥6 直接读流（PCS ≥5、GCS/容差段 ≥6，见下文版本表）。
+
+### 默认容差的跨模块来源
+
+依据为 ArcMap 10.1 Desktop 介质的 PE32 模块及 `objdump -d -Mintel`。用导入表将
+Geometry.dll 跳板对应到 pe.dll/sg.dll 的命名导出，再检查导出函数体。这里的地址
+为模块首选加载地址下的虚拟地址。
+
+- pe.dll 的 `pe_projcs_unit`（`0x7b8eada0`）与 `pe_geogcs_unit`（`0x7b8d7650`）
+  提供单位对象。`pe_unit_factor`（`0x7b8f0830`）对符合对象签名和单位类型掩码
+  `0x300` 的对象读取 +0x278 的 double，否则返回 1。
+- GCS 的 XY 默认容差入口 `0x719bd7b0` 先取得角单位因子的倒数，再经
+  `pe_geogcs_datum`、`pe_datum_spheroid` 取得椭球。从椭球提取半长轴 `a`
+  和扁率 `f`，于 `0x719bd851` 向 `pe_geodesic_coordinate`（`0x7b8b3940`）
+  传入 `a, f*(2-f), 0, 0, 0.001, π/2` 及两个输出参数。将结果转换为 GCS
+  角单位后，于 `0x719bd8bc` 调用 AfCore 的二维 `WKSPoint::Norm`，有 XY
+  网格时再用 `2.0 / XYscale` 提高下限。
+- sg.dll 的 `SgCoordRefGetXY`（`0x7faebd20`）、`SgCoordRefGetZ`
+  （`0x7faebea0`）及 `SgCoordRefGetM`（`0x7faebad0`）分别把
+  SgCoordRef +0x18、+0x38、+0x58 的 double 写到最后一个输出参数。
+  这些值是 Geometry.dll 默认容差网格下限所用的除数。
+
+本轮 pe.dll 的 SHA-256 为
+`2c29c819ba6506eebd64834d562ad0664c62c3d3ed6a88bfc963df5121bee7b3`，
+sg.dll 为 `ebbb758571da5619a3396b81057f97801f7107180658ced0837187da9e4e027c`。
+尚待核对 GCS 的 Z/M、UnknownCoordinateSystem 和 AfCore 范数实现，并以原生构造案例
+测量自定义单位和各网格组启用时的数值。本轮未在 ArcMap 或 QGIS 中人工验证。
 
 ## 顺手闭合的旧记录开放项（对既有文档的更正，详见文末汇总）
 
