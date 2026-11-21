@@ -674,3 +674,20 @@ WorkspaceName getter，操作不读取流。Save 对照
 合成图层体覆盖 v0–v9、FeatureDatasetName 键、v6 坐标标志为零、
 外部连续字段、逐字节截断和未知类回滚。字段业务名、真实
 TerrainName 数据集组合及 ArcMap 10.1/QGIS 人工验收仍待完成。
+
+#### TerrainDirtyAreaRenderer
+
+TinRenderer.dll 10.1.0.3035 的 RTTI 描述符 `0x8045e784`
+对应 +0x20 持久化视图，虚表 `0x80454070` 绑定 GetClassID
+`0x80429e70`、Load `0x80429eb0`、Save `0x80429fe0`。
+CLSID 常量 `0x80454128` 为 `{3362C3A9-BA4A-4F39-A7B1-FC4400CF2102}`。
+Load 读取有符号上限 1 的 short，接着依次读取 ISymbol、
+ILegendGroup、ILegendItem（`0x80429f21`、`0x80429f43`、
+`0x80429f85`），最后读取 short、String、short
+（`0x80429fa3–0x80429fc3`）。两图例槽之间的调用更新内存
+图例集合。该流布局可复用 TinNodeRenderer 和 TinEdgeRenderer
+的读取器。
+
+合成 TerrainLayer 用例覆盖此类的新对象键、后续字段终点
+和逐字节截断回滚。含该类的实档尚未在 ArcMap 10.1 或 QGIS
+中人工验证。

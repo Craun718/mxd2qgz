@@ -65,6 +65,10 @@ const FACE_VALUE: [u8; 16] = [
     0xc8, 0x45, 0x87, 0xaa, 0x66, 0xaa, 0xd2, 0x11, 0x81, 0xfa, 0x00, 0x10, 0x4b, 0xc4, 0xcd, 0x03,
 ];
 
+pub(super) const TERRAIN_DIRTY_AREA: [u8; 16] = [
+    0xa9, 0xc3, 0x62, 0x33, 0x4a, 0xba, 0x39, 0x4f, 0xa7, 0xb1, 0xfc, 0x44, 0x00, 0xcf, 0x21, 0x02,
+];
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum TinRenderer10_1 {
     Simple(TinSimpleRenderer10_1),
@@ -233,7 +237,7 @@ pub(super) fn read_renderer(
     }
     if !matches!(
         class_id,
-        NODE | EDGE | FACE | BREAKLINE | NODE_VALUE | FACE_VALUE
+        NODE | EDGE | FACE | BREAKLINE | NODE_VALUE | FACE_VALUE | TERRAIN_DIRTY_AREA
     ) {
         return Err(unsupported("ITinRenderer"));
     }

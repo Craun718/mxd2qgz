@@ -233,8 +233,8 @@ pub(crate) fn read_terrain_layer_10_1(
 mod tests {
     use super::*;
     use crate::layers::layer_list::{LayerBodyPrefix10_1, read_complete_layer_body_10_1};
+    use crate::layers::tin_layer::TERRAIN_DIRTY_AREA;
     use crate::objects::dataset_name::FEATURE_DATASET_NAME_CLASS_ID;
-    use crate::storage::object_refs::ObjectEntry10_1;
 
     fn string(bytes: &mut Vec<u8>, value: &str) {
         let raw: Vec<_> = value
@@ -277,7 +277,13 @@ mod tests {
         string(&mut bytes, "显示");
         bytes.extend([0; 16]);
         bytes.extend(1_i32.to_le_bytes());
-        bytes.extend([0; 16]);
+        bytes.extend(TERRAIN_DIRTY_AREA);
+        bytes.extend(63_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend([0; 3 * 16]);
+        bytes.extend(23_u16.to_le_bytes());
+        string(&mut bytes, "脏区");
+        bytes.extend(24_u16.to_le_bytes());
         if version >= 2 {
             bytes.extend(0_i32.to_le_bytes());
         }
@@ -329,7 +335,12 @@ mod tests {
                 (version >= 6).then_some(10.0_f64.to_bits())
             );
             assert_eq!(body.display_string, "显示");
-            assert_eq!(body.renderers[0].entry, ObjectEntry10_1::Null);
+            let Some(TinRenderer10_1::Simple(renderer)) = body.renderers[0].body.as_deref() else {
+                panic!("TerrainDirtyAreaRenderer 未分派");
+            };
+            assert!(refs.contains(63));
+            assert_eq!((renderer.first_short, renderer.last_short), (23, 24));
+            assert_eq!(renderer.label, "脏区");
             assert_eq!(
                 body.v3,
                 (version >= 3).then_some((16, -17, 18.0_f64.to_bits()))
