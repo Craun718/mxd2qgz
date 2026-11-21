@@ -212,6 +212,9 @@ pub struct NaContextPrefix10_1 {
     pub workspace_prefix: Option<Box<NetworkAnalysisWorkspacePrefix10_1>>,
     pub dataset: Option<(ObjectEntry10_1, Option<Box<NetworkDatasetName10_1>>)>,
     pub solver: Option<(ObjectEntry10_1, Option<NaRouteSolverPrefix10_1>)>,
+    /// 求解器之后、属性集之前的对象槽。
+    pub post_solver_object: Option<ObjectEntry10_1>,
+    pub properties: Option<(ObjectEntry10_1, Option<Box<PropertySetObjectStream10_1>>)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -239,8 +242,7 @@ pub struct NaNamedSet10_1 {
 /// NetworkAnalysisWorkspace::Load `0x7af7ec40` 读取有符号版本上限 1 后委派
 /// GdbCoreLib.dll 10.1.0.3035 的 InMemoryWorkspaceBase::LoadWorkspace
 /// `0x70d31ca0`。后者依次读取三个 AfCore String、一个 IPropertySet 对象，
-/// 再读取四个字节的命名项计数。本函数目前停在计数之前，后续 NAClass
-/// 条目仍由外层有界未知区保留。
+/// 再读取四个字节的命名项计数。上下文后续槽仅在前一对象体完整读取后推进。
 pub(super) fn read_na_context_prefix_10_1(
     reader: &mut Reader<'_>,
     max: usize,
@@ -281,6 +283,15 @@ pub(super) fn read_na_context_prefix_10_1(
             let dataset = read_na_network_name_10_1(&mut trial, max, &mut keys)?;
             // 求解器只读取已确认前缀，失败时保留其对象头与后续字节。
             let solver = read_na_route_solver_prefix(&mut trial, max, &mut keys).ok();
+            let solver_complete = solver
+                .as_ref()
+                .is_some_and(|(_, body)| body.as_ref().is_none_or(|body| body.tail.is_some()));
+            let post_solver_object = solver_complete
+                .then(|| read_na_context_post_solver_slot(&mut trial, &mut keys).ok())
+                .flatten();
+            let properties = post_solver_object
+                .as_ref()
+                .and_then(|_| read_na_property_set_slot(&mut trial, max, &mut keys).ok());
             Some(Box::new(NaContextPrefix10_1 {
                 version,
                 name,
@@ -288,6 +299,8 @@ pub(super) fn read_na_context_prefix_10_1(
                 workspace_prefix,
                 dataset: Some(dataset),
                 solver,
+                post_solver_object,
+                properties,
             }))
         }
         ObjectEntry10_1::NewObject { .. } => {
@@ -306,6 +319,24 @@ pub(super) fn read_na_context_prefix_10_1(
 const NA_ROUTE_SOLVER_CLASS_ID: [u8; 16] = [
     0x08, 0xa2, 0x8a, 0x1a, 0x4a, 0x3d, 0x0f, 0x42, 0xb8, 0x2c, 0xf5, 0x81, 0x94, 0xa7, 0x2c, 0xb0,
 ];
+
+fn read_na_context_post_solver_slot(
+    reader: &mut Reader<'_>,
+    refs: &mut RefTable10_1,
+) -> io::Result<ObjectEntry10_1> {
+    let mut trial = reader.clone();
+    let mut keys = refs.clone();
+    let entry = read_object_entry_10_1(&mut trial, &mut keys)?;
+    if matches!(entry, ObjectEntry10_1::NewObject { .. }) {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "NAContext 求解器后首个对象体未支持",
+        ));
+    }
+    *reader = trial;
+    *refs = keys;
+    Ok(entry)
+}
 
 fn read_na_route_solver_prefix(
     reader: &mut Reader<'_>,
@@ -339,7 +370,7 @@ fn read_na_route_solver_prefix(
                 .and_then(|_| read_na_route_hierarchy(&mut trial, max).ok());
             let properties = hierarchy
                 .as_ref()
-                .and_then(|_| read_na_route_properties(&mut trial, max, &mut keys).ok());
+                .and_then(|_| read_na_property_set_slot(&mut trial, max, &mut keys).ok());
             let tail = properties
                 .as_ref()
                 .and_then(|_| read_na_route_tail(&mut trial, max, &mut keys, version).ok());
@@ -467,7 +498,7 @@ fn read_na_route_hierarchy(
     })
 }
 
-fn read_na_route_properties(
+fn read_na_property_set_slot(
     reader: &mut Reader<'_>,
     max: usize,
     refs: &mut RefTable10_1,
@@ -485,7 +516,7 @@ fn read_na_route_properties(
         ObjectEntry10_1::NewObject { .. } => {
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,
-                "NARouteSolver 属性对象体未支持",
+                "网络分析属性对象体未支持",
             ));
         }
         _ => None,
@@ -746,11 +777,29 @@ mod tests {
             assert!(refs.is_empty());
         }
 
+        bytes.extend([0; 16]); // 空求解器。
+        bytes.extend([0; 16]); // 求解器后的空槽。
+        let property_at = bytes.len();
+        bytes.extend(PROPERTY_SET_CLASS_ID);
+        bytes.extend(41_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(0_u32.to_le_bytes());
+        for end in property_at..bytes.len() {
+            let mut refs = RefTable10_1::new();
+            let mut reader = Reader::new(&bytes[..end]);
+            let (_, context) = read_na_context_prefix_10_1(&mut reader, 1024, &mut refs).unwrap();
+            assert!(context.unwrap().properties.is_none());
+            assert_eq!(reader.position(), property_at);
+            assert!(!refs.contains(41));
+        }
         bytes.push(0x7f);
         let mut refs = RefTable10_1::new();
         let mut reader = Reader::new(&bytes);
         let (_, context) = read_na_context_prefix_10_1(&mut reader, 1024, &mut refs).unwrap();
         let context = context.unwrap();
+        assert_eq!(context.post_solver_object, Some(ObjectEntry10_1::Null));
+        assert!(context.properties.unwrap().1.is_some());
+        assert!(refs.contains(41));
         let workspace = context.workspace_prefix.unwrap();
         assert_eq!(context.version, 0);
         assert_eq!(workspace.version, 1);

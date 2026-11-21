@@ -237,3 +237,9 @@ NALayer 已沿 NAContext 的求解器槽读出两份 SanFrancisco SDK 工程的 
 NetworkAnalystSolvers.dll 10.1.0.3035 的共用读取器 `0x7b12ba00` 在属性集后读取 short，v1 起再读一个 short，v2 起读取参数数组槽，v3 再读 double 和 LONG。外层读取器 `0x7b0fcdf0` 在版本非零时另外读取 double 与 short。反编译记录见 `temp/network-na/solver-7b12ba00.c` 与 `temp/network-na/solver-7b0fcdf0.c`。
 
 同版注册表给出参数数组 CLSID `61939E6B-8011-40C5-B672-73EA1E026FEC`。持久化表 `0x7b1fe700` 的 Load `0x7b09f110` 读取 short 版本及 LONG 计数，计数为正进入逐项读取。两份 SanFrancisco SDK 工程均从 `0x76d1` 读取键 249 的空数组，经 v3 字段到求解器末端 `0x7705`。构造测试覆盖 v0 至 v3、逐字节截断和非空数组回退。非空数组、后续 NAContext 槽和 ArcMap/QGIS 人工验收待验证。
+
+### NAContext 求解器后的对象槽
+
+NetworkAnalyst.dll 10.1.0.3035（SHA-256 `8c4ebaee71aad63c25616aa806674018479829d97bc01c7ed3b8845813698532`）的 NAContext::Load `0x7af12a10` 在求解器之后连续调用两次 LoadObject，请求 IID 常量分别位于 `0x7af9e7bc` 和 `0x7af9e71c`。DLL 的 .rdata 显示后者为 IPropertySet（`F0BA6ABC-8E9F-11D0-B4AB-0000F8037368`）。对应 Save `0x7af132d0` 的两个槽依次取自对象偏移 `+0x14`（特定分支写空）和 `+0x24`。
+
+两份 SanFrancisco SDK 工程均从 `0x7705` 读过 16 字节空槽，再从 `0x7715` 读过键 250 的空 PropertySet，停在 `0x772f`。该处新键 251 的 CLSID `4319ADE1-D6E5-4818-8380-8EE389D148EA` 在 10.1 的 esri.clsid.xml 注册为 NALocator。首槽中新对象的持久化体、NALocator 及后续槽仍待读取。构造测试验证属性集截断时保留已确认前缀并回滚新键。ArcMap/QGIS 人工验收未验证。
