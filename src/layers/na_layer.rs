@@ -403,6 +403,8 @@ pub struct NaRouteSolverTail10_1 {
     pub route_specific: Option<(u64, u16)>,
     pub closest_facility_specific: Option<(u64, i32)>,
     pub service_area_specific: Option<NaServiceAreaSolverTail10_1>,
+    pub od_cost_matrix_v3: Option<(i32, u16)>,
+    pub od_cost_matrix_v5: Option<(u64, i32)>,
 }
 
 const NA_LOCATOR_CLASS_ID: [u8; 16] = [
@@ -618,6 +620,10 @@ pub(super) fn read_na_context_prefix_10_1(
     *refs = keys;
     Ok((context, body))
 }
+
+const NA_OD_COST_MATRIX_SOLVER_CLASS_ID: [u8; 16] = [
+    0x73, 0xe1, 0x5b, 0x86, 0x20, 0x5d, 0x11, 0x4f, 0x90, 0x16, 0xff, 0x27, 0xbc, 0xa1, 0x67, 0xe2,
+];
 
 const NA_SERVICE_AREA_SOLVER_CLASS_ID: [u8; 16] = [
     0x3c, 0x4d, 0xc7, 0xcf, 0x8a, 0x99, 0x33, 0x4d, 0xb7, 0xb2, 0x5d, 0x27, 0x9c, 0xaf, 0x07, 0x63,
@@ -943,17 +949,17 @@ fn read_na_solver_prefix(
             class_id:
                 class_id @ (NA_ROUTE_SOLVER_CLASS_ID
                 | NA_CLOSEST_FACILITY_SOLVER_CLASS_ID
-                | NA_SERVICE_AREA_SOLVER_CLASS_ID),
+                | NA_SERVICE_AREA_SOLVER_CLASS_ID
+                | NA_OD_COST_MATRIX_SOLVER_CLASS_ID),
             ..
         } => {
             let version = trial.read_u16_le()?;
-            if version as i16
-                > if class_id == NA_ROUTE_SOLVER_CLASS_ID {
-                    3
-                } else {
-                    4
-                }
-            {
+            let max_version = match class_id {
+                NA_ROUTE_SOLVER_CLASS_ID => 3,
+                NA_OD_COST_MATRIX_SOLVER_CLASS_ID => 5,
+                _ => 4,
+            };
+            if version as i16 > max_version {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     "网络分析求解器版本超过支持范围",
@@ -1141,7 +1147,10 @@ fn read_na_solver_tail(
     let mut trial = reader.clone();
     let mut keys = refs.clone();
     // 原生先验有符号上限，再将 0、1、2 之外的值映射到共用 v3 分支。
-    let common_version = version.min(3);
+    let common_version = match (class_id, version) {
+        (NA_OD_COST_MATRIX_SOLVER_CLASS_ID, 3) => 2,
+        _ => version.min(3),
+    };
     let first = trial.read_u16_le()?;
     let second = (common_version >= 1)
         .then(|| trial.read_u16_le())
@@ -1194,6 +1203,12 @@ fn read_na_solver_tail(
     let service_area_specific = (class_id == NA_SERVICE_AREA_SOLVER_CLASS_ID && version != 0)
         .then(|| read_na_service_area_tail(&mut trial, version as i16))
         .transpose()?;
+    let od_cost_matrix_v3 = (class_id == NA_OD_COST_MATRIX_SOLVER_CLASS_ID && version as i16 >= 3)
+        .then(|| Ok::<_, io::Error>((trial.read_u32_le()? as i32, trial.read_u16_le()?)))
+        .transpose()?;
+    let od_cost_matrix_v5 = (class_id == NA_OD_COST_MATRIX_SOLVER_CLASS_ID && version == 5)
+        .then(|| Ok::<_, io::Error>((trial.read_f64_le()?.to_bits(), trial.read_u32_le()? as i32)))
+        .transpose()?;
     if trial.position() - reader.position() > max {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -1209,6 +1224,8 @@ fn read_na_solver_tail(
         route_specific,
         closest_facility_specific,
         service_area_specific,
+        od_cost_matrix_v3,
+        od_cost_matrix_v5,
     })
 }
 
@@ -1646,6 +1663,55 @@ mod tests {
         assert_eq!(tail.flag, Some(9));
         assert!(refs.contains(252));
         assert_eq!(reader.remaining(), 0);
+    }
+
+    #[test]
+    fn od_cost_matrix_tail_maps_outer_versions_and_checks_truncation() {
+        for version in 2..=5 {
+            let mut bytes = vec![0; 4 + 16];
+            if version >= 4 {
+                bytes.extend([0; 12]);
+            }
+            if version >= 3 {
+                bytes.extend((-3_i32).to_le_bytes());
+                bytes.extend(7_u16.to_le_bytes());
+            }
+            if version == 5 {
+                bytes.extend(1.5_f64.to_le_bytes());
+                bytes.extend(9_i32.to_le_bytes());
+            }
+            let mut refs = RefTable10_1::new();
+            for end in 0..bytes.len() {
+                let mut reader = Reader::new(&bytes[..end]);
+                assert!(
+                    read_na_solver_tail(
+                        &mut reader,
+                        128,
+                        &mut refs,
+                        version,
+                        NA_OD_COST_MATRIX_SOLVER_CLASS_ID
+                    )
+                    .is_err()
+                );
+                assert_eq!(reader.position(), 0);
+            }
+            let mut reader = Reader::new(&bytes);
+            let tail = read_na_solver_tail(
+                &mut reader,
+                128,
+                &mut refs,
+                version,
+                NA_OD_COST_MATRIX_SOLVER_CLASS_ID,
+            )
+            .unwrap();
+            assert_eq!(tail.common_v3.is_some(), version >= 4);
+            assert_eq!(tail.od_cost_matrix_v3, (version >= 3).then_some((-3, 7)));
+            assert_eq!(
+                tail.od_cost_matrix_v5,
+                (version == 5).then_some((1.5_f64.to_bits(), 9))
+            );
+            assert_eq!(reader.remaining(), 0);
+        }
     }
 
     #[test]

@@ -303,3 +303,9 @@ NetworkAnalystSolvers.dll 10.1.0.3035 的 GetClassID `0x7b0c4960` 引用 `0x7b1f
 NetworkAnalystSolvers.dll 10.1.0.3035 的 GetClassID `0x7b111e10` 引用 CLSID 常量 `0x7b1fed24`，与注册表 NAServiceAreaSolver 一致。持久化表 Load 槽 `0x7b203408` 指向 `0x7b114870`。原始指令显示外层有符号上限为 4，调用共用读取器 `0x7b12ba00`。外层版本非零时追加三个 short、double、LONG，v2 起再读 short，v4 再读 double 和 LONG。
 
 两份 SanFrancisco SDK 工程均读取 `0x27886` 的 v3 求解器键 1514，并完整消费 Service Area 图层声明区间。构造测试覆盖 v3/v4 差异和 v4 截断回滚。其他求解器与 ArcMap/QGIS 人工验收仍待完成。
+
+### OD 成本矩阵求解器
+
+NetworkAnalystSolvers.dll 10.1.0.3035 的持久化 Load 槽 `0x7b202420` 指向 `0x7b0f2eb0`。对象 CLSID `865BE173-5D20-4F11-9016-FF27BCA167E2` 与注册表中的 NAODCostMatrixSolver 一致。原始指令显示有符号版本上限为 5。`0x7b0f2f2c–0x7b0f2f58` 将外层 v2/v3 都映射到共用 v2，v4/v5 使用共用 v3。外层 v3 起在共用体后追加 LONG 和 short，v5 再追加 double 和 LONG。
+
+两份 SanFrancisco SDK 工程均读取 `0x3662f` 的 v4 求解器键 2094，并完整消费 OD Cost Matrix 图层声明区间。构造测试覆盖 v2 至 v5 及逐字节截断回滚。其他求解器与 ArcMap/QGIS 人工验收仍待完成。
