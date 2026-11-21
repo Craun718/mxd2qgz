@@ -980,7 +980,20 @@ fn read_entry(
                             max_bytes,
                             trial_table,
                         ) {
-                            Ok(name) => body.network_name = Some(name),
+                            Ok(name) => {
+                                body.network_name = Some(name);
+                                match super::na_layer::read_na_context_prefix_10_1(
+                                    &mut region,
+                                    max_bytes,
+                                    trial_table,
+                                ) {
+                                    Ok(context) => body.context = Some(context),
+                                    Err(error) => {
+                                        parse_note =
+                                            Some(format!("NALayer 上下文槽未读取：{error}"))
+                                    }
+                                }
+                            }
                             Err(error) => {
                                 parse_note = Some(format!("NALayer 名称槽未读取：{error}"))
                             }

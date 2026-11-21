@@ -3,6 +3,9 @@
 use crate::objects::dataset_name::{
     FEATURE_DATASET_NAME_CLASS_ID, FeatureDatasetNameBody10_1, read_feature_dataset_name_body_10_1,
 };
+use crate::objects::property_set::{
+    PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1, read_property_set_object_stream_10_1,
+};
 use crate::objects::workspace_name::{
     WORKSPACE_NAME_CLASS_ID, WorkspaceNamePrefix10_1, read_workspace_name_body_10_1,
 };
@@ -21,6 +24,7 @@ pub struct NaLayerPrefix10_1 {
     pub shorts: [u16; 3],
     pub double_bits: [u64; 2],
     pub network_name: Option<(ObjectEntry10_1, Option<Box<NetworkDatasetName10_1>>)>,
+    pub context: Option<(ObjectEntry10_1, Option<Box<NaContextPrefix10_1>>)>,
 }
 
 pub(super) fn read_na_layer_prefix_10_1(
@@ -52,6 +56,7 @@ pub(super) fn read_na_layer_prefix_10_1(
         shorts,
         double_bits,
         network_name: None,
+        context: None,
     })
 }
 
@@ -151,6 +156,136 @@ fn unsupported_name(slot: &str) -> io::Error {
     )
 }
 
+const NA_CONTEXT_CLASS_ID: [u8; 16] = [
+    0x5b, 0xb9, 0x22, 0xe3, 0x89, 0xb6, 0x57, 0x4c, 0x99, 0x7f, 0xbd, 0xb2, 0x21, 0x20, 0x47, 0x38,
+];
+const NETWORK_ANALYSIS_WORKSPACE_CLASS_ID: [u8; 16] = [
+    0xca, 0xb0, 0x00, 0xec, 0xb9, 0x1c, 0x38, 0x41, 0x8c, 0x88, 0x3a, 0x18, 0xfc, 0xf8, 0xd7, 0x08,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NaContextPrefix10_1 {
+    pub version: u16,
+    pub name: String,
+    pub workspace: ObjectEntry10_1,
+    pub workspace_prefix: Option<Box<NetworkAnalysisWorkspacePrefix10_1>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NetworkAnalysisWorkspacePrefix10_1 {
+    pub version: u16,
+    pub strings: [String; 3],
+    pub properties: ObjectEntry10_1,
+    pub property_set: Option<Box<PropertySetObjectStream10_1>>,
+}
+
+/// 读取目前已确认的上下文和工作空间前缀，游标停在首个未读字段。
+///
+/// 证据：NetworkAnalyst.dll 10.1.0.3035 的 NAContext::Load `0x7af12a10`
+/// 读取有符号版本上限 0、AfCore String 和首个工作空间对象；
+/// NetworkAnalysisWorkspace::Load `0x7af7ec40` 读取有符号版本上限 1 后委派
+/// GdbCoreLib.dll 10.1.0.3035 的 InMemoryWorkspaceBase::LoadWorkspace
+/// `0x70d31ca0`。后者依次读取三个 AfCore String、一个 IPropertySet 对象，
+/// 再读取四个字节的命名项计数。本函数目前停在计数之前，后续 NAClass
+/// 条目仍由外层有界未知区保留。
+pub(super) fn read_na_context_prefix_10_1(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<(ObjectEntry10_1, Option<Box<NaContextPrefix10_1>>)> {
+    let mut trial = reader.clone();
+    let mut keys = refs.clone();
+    let context = read_object_entry_10_1(&mut trial, &mut keys)?;
+    let body = match context {
+        ObjectEntry10_1::NewObject {
+            class_id: NA_CONTEXT_CLASS_ID,
+            ..
+        } => {
+            let version = trial.read_u16_le()?;
+            if version as i16 > 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "NAContext 版本超过 0",
+                ));
+            }
+            let name = read_string_10_1(&mut trial, max)?;
+            let workspace = read_object_entry_10_1(&mut trial, &mut keys)?;
+            let workspace_prefix = match workspace {
+                ObjectEntry10_1::NewObject {
+                    class_id: NETWORK_ANALYSIS_WORKSPACE_CLASS_ID,
+                    ..
+                } => Some(Box::new(read_na_workspace_prefix(
+                    &mut trial, max, &mut keys,
+                )?)),
+                ObjectEntry10_1::NewObject { .. } => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Unsupported,
+                        "NAContext 工作空间对象体未支持",
+                    ));
+                }
+                _ => None,
+            };
+            Some(Box::new(NaContextPrefix10_1 {
+                version,
+                name,
+                workspace,
+                workspace_prefix,
+            }))
+        }
+        ObjectEntry10_1::NewObject { .. } => {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "NALayer 上下文对象体未支持",
+            ));
+        }
+        _ => None,
+    };
+    *reader = trial;
+    *refs = keys;
+    Ok((context, body))
+}
+
+fn read_na_workspace_prefix(
+    reader: &mut Reader<'_>,
+    max: usize,
+    keys: &mut RefTable10_1,
+) -> io::Result<NetworkAnalysisWorkspacePrefix10_1> {
+    let version = reader.read_u16_le()?;
+    if version as i16 > 1 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "NetworkAnalysisWorkspace 版本超过 1",
+        ));
+    }
+    let strings = [
+        read_string_10_1(reader, max)?,
+        read_string_10_1(reader, max)?,
+        read_string_10_1(reader, max)?,
+    ];
+    let properties = read_object_entry_10_1(reader, keys)?;
+    let property_set = match properties {
+        ObjectEntry10_1::NewObject {
+            class_id: PROPERTY_SET_CLASS_ID,
+            ..
+        } => Some(Box::new(read_property_set_object_stream_10_1(
+            reader, max, keys,
+        )?)),
+        ObjectEntry10_1::NewObject { .. } => {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "NetworkAnalysisWorkspace 属性对象体未支持",
+            ));
+        }
+        _ => None,
+    };
+    Ok(NetworkAnalysisWorkspacePrefix10_1 {
+        version,
+        strings,
+        properties,
+        property_set,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -210,5 +345,58 @@ mod tests {
         assert!(body.dataset.1.is_some());
         assert!(refs.contains(17) && refs.contains(18));
         assert_eq!(reader.remaining(), 0);
+    }
+
+    #[test]
+    fn context_prefix_reads_workspace_property_set_transactionally() {
+        fn push_string(bytes: &mut Vec<u8>, value: &str) {
+            let utf16 = value.encode_utf16().collect::<Vec<_>>();
+            let cb = u32::try_from((utf16.len() + 1) * 2).unwrap();
+            bytes.extend(cb.to_le_bytes());
+            for unit in utf16 {
+                bytes.extend(unit.to_le_bytes());
+            }
+            bytes.extend(0_u16.to_le_bytes());
+        }
+
+        let mut bytes = NA_CONTEXT_CLASS_ID.to_vec();
+        bytes.extend(35_u32.to_le_bytes());
+        bytes.extend(0_u16.to_le_bytes());
+        push_string(&mut bytes, "Route");
+        bytes.extend(NETWORK_ANALYSIS_WORKSPACE_CLASS_ID);
+        bytes.extend(36_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        push_string(&mut bytes, "Route");
+        push_string(&mut bytes, "Route:{08932E9A-AAED-4D8A-842D-2B2B0AEC6080}");
+        push_string(&mut bytes, "{08932E9A-AAED-4D8A-842D-2B2B0AEC6080}");
+        bytes.extend([0x11, 0x5a, 0x8e, 0x58, 0x9b, 0xd0, 0xd1, 0x11]);
+        bytes.extend([0xaa, 0x7c, 0x00, 0xc0, 0x4f, 0xa3, 0x3a, 0x15]);
+        bytes.extend(37_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(0_u32.to_le_bytes());
+
+        for end in 0..bytes.len() {
+            let mut refs = RefTable10_1::new();
+            let mut reader = Reader::new(&bytes[..end]);
+            assert!(
+                read_na_context_prefix_10_1(&mut reader, 1024, &mut refs).is_err(),
+                "截断前缀 {end} 不应被接受"
+            );
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+
+        bytes.push(0x7f);
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        let (_, context) = read_na_context_prefix_10_1(&mut reader, 1024, &mut refs).unwrap();
+        let context = context.unwrap();
+        let workspace = context.workspace_prefix.unwrap();
+        assert_eq!(context.version, 0);
+        assert_eq!(workspace.version, 1);
+        assert_eq!(workspace.strings[0], "Route");
+        assert_eq!(workspace.property_set.as_ref().unwrap().count, 0);
+        assert!(refs.contains(35) && refs.contains(36) && refs.contains(37));
+        assert_eq!(reader.read_bytes(1).unwrap(), [0x7f]);
     }
 }

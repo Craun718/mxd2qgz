@@ -189,3 +189,13 @@ SDK .NET 的 `USA_Data_ClipTools` 在 `/Maps:0x1a68` 定义 ProcessLayer v1（�
 NALayer Load 在 `0x7af200da` 调到 `0x7af23830`，后者在 `0x7af2389f..0x7af238a8` 请求 IName `4BA33331-D55F-11D1-8882-0000F877762D`。两份实档首例均为 NetworkDatasetName，键 32。10.1.0.3035 GdbNetwork.dll（PE32，SHA-256 `36b1fcd7ea5951aea6c53e03855993a2fcbb2b78c3e8b068642a890c44a0995c`）的持久化虚表 `0x71196ca0` 由 GetClassID `0x71044240` 核对为 `8167FE6A-E992-4ECB-B6AE-E5DFE4655247`。Load `0x71044ff0` 读取有符号版本上限 1，在 `0x71045030 / 0x7104503a` 读两个字符串，随后在 `0x71045084 / 0x710450ae` 读 IDatasetName 和 IWorkspaceName 槽。两个 IID 来自 `0x71196700 / 0x71196d80`。
 
 本次复用 FeatureDatasetName 和 WorkspaceName 读取器。两个嵌套槽完整读取后才提交名称槽及其对象键。SanFrancisco 两份实档中键 31 的停止点由 `0x19a` 推进到 `0x370`。下一个对象和后续 UID 回引仍待接入，ArcMap/QGIS 人工验收未验证。
+
+### NALayer 的上下文与工作空间前缀
+
+继续沿 NetworkAnalyst.dll 10.1.0.3035 的 NALayer::Load `0x7af1ffc0` 和 Save `0x7af20be0` 对位，首个 IName 槽之后是普通 ObjectStream 对象槽，保存 `NAContext`。NAContext 的持久化接口虚表由主 QI `0x7af0f6c0` 的 IPersistStream IID `00000109-0000-0000-C000-000000000046` 分支返回对象 `+0x38`；GetClassID `0x7af0f350`、Load `0x7af12a10`、Save `0x7af132d0`。CLSID 为 `E322B95B-B689-4C57-997F-BDB221204738`，与 esri.clsid.xml 的 `NAContext` progID 一致。Load 先读有符号上限 0 的 short，再读 AfCore String 和首个工作空间对象。
+
+两份 SanFrancisco 实档在 NAContext 头 `0x370`（键 35）、版本 0 和名称 `Route` 之后，均出现 NetworkAnalysisWorkspace 对象头 `0x396`（键 36）。NetworkAnalyst.dll 的类 QI `0x7af7d040`、IPersistStream 虚表 `0x7afa35a0` 将 GetClassID/Load/Save 定位为 `0x7af7ebe0 / 0x7af7ec40 / 0x7af7ed20`。Load 读取有符号上限 1 的 short 后，委派 GdbCoreLib.dll 10.1.0.3035（SHA-256 `10e0af85e3e3825647733f99d573c969d69ccaf47203365e51323fce07008baa`）的 `InMemoryWorkspaceBase::LoadWorkspace 0x70d31ca0`。该函数依次读取三个 AfCore String、一个 IPropertySet 对象，再读取四个字节的命名项计数。SaveWorkspace `0x70d32220` 按同一顺序写出。
+
+实档工作空间版本 1 的三个字符串从 `0x3ac` 起，分别为 `Route`、`Route:{08932E9A-AAED-4D8A-842D-2B2B0AEC6080}` 和 `{08932E9A-AAED-4D8A-842D-2B2B0AEC6080}`。IPropertySet 对象头在 `0x46c`（键 37），其 ObjectStream 体在 `0x480` 开始，版本 1、计数 2，两个条目为 `CLSID` 和 `DATABASE`。Rust 现已读取这些已确认字段并事务性登记键 35、36、37；两份实档的首个 NALayer 体停点由 `0x370` 推进到命名项计数 `0x512`。
+
+计数之后每项是 AfCore String 加一个 NAClass 对象。第一项键 `polylinebarriers` 后的 NAClass 对象头在 `0x53c`（键 38），体起点 `0x550`。NAClass::Load `0x7aeffcb0` 先调用 GdbCoreLib `InMemoryClassBase::Load 0x70d192a0`，后者读取版本、两个字符串、16 字节 GUID、对象槽、Fields/Field 槽、记录计数及记录体，再返回 NAClass 读取自身版本和后续对象槽。两份实档中的跨层 UID 键 358 位于这些 NAClass/记录嵌套体之后，当前仍由外层有界未知区保留。因此上下文与前缀已接好，但尚未取得该 UID 的首次登记；后续回引、ArcMap/QGIS 人工验收仍未验证。
