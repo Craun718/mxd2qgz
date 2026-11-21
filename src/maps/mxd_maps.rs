@@ -1653,7 +1653,16 @@ fn annotate_placement_note(
             );
         }
         if let Some(rotation) = &body.rotation {
-            let _ = write!(note, "；旋转配置字符串 {:?}", rotation.text);
+            let rotation_type = rotation.rotation_type_name().unwrap_or("未知枚举值");
+            let _ = write!(
+                note,
+                "；旋转配置（Enable {}，RotationType {} {rotation_type}，RotationField {:?}，PerpendicularToAngle {}，AlignLabelToAngle {:?}）",
+                rotation.enable,
+                rotation.rotation_type,
+                rotation.rotation_field,
+                rotation.perpendicular_to_angle,
+                rotation.align_label_to_angle,
+            );
         }
     } else if let Some(crate::storage::object_refs::ObjectEntry10_1::BackReference {
         key, ..

@@ -809,6 +809,7 @@
   - [x] 按 10.1 类型库映射 Maplex 沿线偏移的 DistanceUnit 枚举。[单位枚举证据](docs/mxd-terra-nextpass-expression.md#沿线偏移的距离单位)
   - [x] 按 10.1 类型库映射 Maplex 沿线偏移的 PlacementMethod 和 LabelAnchorPoint 枚举。[枚举证据](docs/mxd-terra-nextpass-expression.md#沿线偏移的放置方式和锚点)
   - [x] 接入 MaplexRotationProperties 的字符串、标量和 v2 尾字段。[旋转属性取证](docs/mxd-terra-nextpass-expression.md#maplex-旋转属性)
+  - [x] 对位 Maplex 旋转的五个持久化属性及 RotationType 枚举。[访问器与枚举](docs/mxd-terra-nextpass-expression.md#maplex-旋转字段与角度类型)
   - [x] 接入 Maplex 放置属性 v8–v13 的旧词典槽和共享引用键。[词典槽取证](docs/mxd-terra-nextpass-expression.md#maplex-放置属性的旧词典槽)
   - [x] 从 `parse` 输出 Maplex 放置对象及已读子属性的诊断。[命令行与介质核对](docs/mxd-terra-nextpass-expression.md#maplex-放置属性诊断)
 - [ ] 转换标注位置/放置属性。

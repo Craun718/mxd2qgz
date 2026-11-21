@@ -337,3 +337,25 @@ esriMaplexNearestSideOfLabel、esriMaplexFurthestSideOfLabel。
 
 `parse` 保留原始数值并输出已知成员名。构造测试覆盖已知放置方式和
 未知锚点值。实际绘制及目标软件人工验收仍开放。
+
+#### Maplex 旋转字段与角度类型
+
+10.1 Carto 类型库的 IMaplexRotationProperties 五组属性访问器与同版
+LabelPlacement.dll 的 QI、虚表和 Load 指令逐项对位。构造器在
+`0x7856c659` 安装对象 `+0x18` 的接口表 `0x7857f0d0`，在
+`0x7856c66a` 按虚基表 `0x7857d59c` 的 `+4 = 0x28` 安装
+对象 `+0x3c` 的持久化接口。两接口相差 `0x24`。
+
+| 属性 | getter | 属性接口 / Load 偏移 |
+| --- | --- | --- |
+| Enable | `0x7856c830` | `+0x08 / -0x1c` |
+| RotationType | `0x7856c880` | `+0x0c / -0x18` |
+| RotationField | `0x7856c8b0` | `+0x10 / -0x14` |
+| PerpendicularToAngle | `0x7855b370` | `+0x14 / -0x10` |
+| AlignLabelToAngle（v2） | `0x7855b3c0` | `+0x16 / -0x0e` |
+
+沿 RotationType setter 的类型库引用（memid `0x60010002`）得到
+VT_I4 值 0–3，依次为 esriRotateLabelGeographic、esriRotateLabelArithmetic、
+esriRotateLabelRadians、esriRotateLabelAV3。`parse` 以属性名输出，
+保留原始枚举值和开关值。构造测试覆盖四个成员及未知值。实际角度
+计算和 ArcMap/QGIS 人工验收仍开放。

@@ -32,11 +32,23 @@ const MAPLEX_ROTATION_PROPERTIES_CLASS_ID: [u8; 16] = [
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaplexRotation10_1 {
     pub version: i16,
-    pub leading_short: i16,
-    pub long: i32,
-    pub text: String,
-    pub trailing_short: i16,
-    pub v2_short: Option<i16>,
+    pub enable: i16,
+    pub rotation_type: i32,
+    pub rotation_field: String,
+    pub perpendicular_to_angle: i16,
+    pub align_label_to_angle: Option<i16>,
+}
+
+impl MaplexRotation10_1 {
+    pub fn rotation_type_name(&self) -> Option<&'static str> {
+        match self.rotation_type {
+            0 => Some("esriRotateLabelGeographic"),
+            1 => Some("esriRotateLabelArithmetic"),
+            2 => Some("esriRotateLabelRadians"),
+            3 => Some("esriRotateLabelAV3"),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -383,11 +395,11 @@ fn read_rotation(reader: &mut Reader<'_>, max: usize) -> io::Result<MaplexRotati
     }
     Ok(MaplexRotation10_1 {
         version,
-        leading_short: reader.read_u16_le()? as i16,
-        long: reader.read_u32_le()? as i32,
-        text: read_stream_string_10_1(reader, max)?,
-        trailing_short: reader.read_u16_le()? as i16,
-        v2_short: (version == 2)
+        enable: reader.read_u16_le()? as i16,
+        rotation_type: reader.read_u32_le()? as i32,
+        rotation_field: read_stream_string_10_1(reader, max)?,
+        perpendicular_to_angle: reader.read_u16_le()? as i16,
+        align_label_to_angle: (version == 2)
             .then(|| reader.read_u16_le().map(|value| value as i16))
             .transpose()?,
     })
@@ -451,9 +463,21 @@ mod tests {
         assert_eq!(
             read_rotation(&mut Reader::new(&bytes), 64)
                 .unwrap()
-                .v2_short,
+                .align_label_to_angle,
             Some(0)
         );
+        for (value, name) in [
+            (0, Some("esriRotateLabelGeographic")),
+            (1, Some("esriRotateLabelArithmetic")),
+            (2, Some("esriRotateLabelRadians")),
+            (3, Some("esriRotateLabelAV3")),
+            (42, None),
+        ] {
+            bytes[4..8].copy_from_slice(&i32::to_le_bytes(value));
+            let body = read_rotation(&mut Reader::new(&bytes), 64).unwrap();
+            assert_eq!(body.rotation_type, value);
+            assert_eq!(body.rotation_type_name(), name);
+        }
         bytes[..2].copy_from_slice(&3_i16.to_le_bytes());
         assert!(read_rotation(&mut Reader::new(&bytes), 64).is_err());
     }
@@ -616,11 +640,11 @@ mod tests {
             }
             if version >= 12 {
                 let rotation = body.rotation.unwrap();
-                assert_eq!(rotation.text, "ANG");
-                assert_eq!(rotation.leading_short, -1);
-                assert_eq!(rotation.long, 42);
-                assert_eq!(rotation.trailing_short, 3);
-                assert_eq!(rotation.v2_short, (version > 12).then_some(-7));
+                assert_eq!(rotation.rotation_field, "ANG");
+                assert_eq!(rotation.enable, -1);
+                assert_eq!(rotation.rotation_type, 42);
+                assert_eq!(rotation.perpendicular_to_angle, 3);
+                assert_eq!(rotation.align_label_to_angle, (version > 12).then_some(-7));
             }
             assert_eq!(
                 body.legacy_dictionary.is_some(),
