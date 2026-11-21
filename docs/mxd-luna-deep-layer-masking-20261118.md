@@ -173,3 +173,11 @@ Map 现在可越过完整读取的 GraphicsLayer3D 及其回引。构造 Map v28
 SDK .NET 的 `USA_Data_ClipTools` 在 `/Maps:0x1a68` 定义 ProcessLayer v1（键 113）。其 GroupLayer v11（键 114）有一个完整 FeatureLayer 子层（键 115）。独立进程流长 14,513 字节，尾 short 为零。Map v30 的逐层遮罩在 `0xbf3d` 消费一条属于键 113 的 v1 空记录，组本身没有独立记录。Map 对象于 `0xbf4d` 结束，随后四字节流尾值为 1。构造体覆盖非空进程流、全部截断位置及超过限额的体长。
 
 当前将 MdProcess 字节原样保留，支持 IGroupLayer 槽定义新 GroupLayer 的分支。委派槽回引、替代 IGroupLayer 类、非标准版本及进程运行时行为仍需取证。ArcMap 与 QGIS 的人工验收未执行。
+
+### SanFrancisco 组图层的首个未确认字段
+
+两份 SDK 工程在 /Maps 同一偏移上复现。顶层 GroupLayer 键 4501 的体从 `0x72d5e` 开始，首个 ExtraSafe 子对象为 FeatureLayer v34、键 4502、体起点 `0x72dba`。临时读取跟踪确认完整组读取失败于该 FeatureLayer 的后继字段 `+0x28c`，并非组尾或遮罩记录读取失败。
+
+按流内对象头定位到 UID 键 358，体始于 /Maps `0x73b7c`，版本字为 2。沿当前 UID 23 字节规则，下一个字符串始于 `0x73b93`，读取到的四字节长度为 `0x00ffff00`，与该有界图层的剩余区间不符。向前移三字节虽可取得零长度及紧随的 `0xffff`，这只是字节对位候选。
+
+复核 10.1.0.3035 SystemCore.dll 的 UID 读写伪代码 `0x7fff9320 / 0x7fff9380`，当前流持久化入口固定读取或写出 23 字节，Save 写版本 1。FeatureLayer.dll 的 `0x6f6e9940` 在 UID 槽后调用 AfCore String::Read 读取 `+0x28c`，10.1 的 `0x68ab46f0` 固定读取四字节长度。现有证据无法解释样本中两者相邻边界，需定位旧写入者或其他持久化入口。未按候选偏移改写读取规则，未验证目标软件中的打开和绘制行为。
