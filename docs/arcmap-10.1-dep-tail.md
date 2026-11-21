@@ -634,3 +634,19 @@ GraphicAttributeList。
 规则及三种符号层共用该效果列表读取器。逐类构造测试覆盖 v2 名称、
 v1 无名称、规则与符号层之间的键回引，以及 ExtraSafe 边界回滚。
 效果槽内其他类体和属性组合仍待核查。尚无真实 MXD 或目标软件人工验证。
+
+### LinePattern 与 GradientPattern
+
+10.1 Desktop 类型库声明三种 IFillPattern。除 SolidColorPattern 外，
+复核同版 DisplayRepresentation.dll 的以下两个持久化虚表：
+
+| 类 | CLSID | GetClassID | IPersistStream 虚表 |
+| --- | --- | --- | --- |
+| LinePattern | `444F0F52-DABF-4639-B239-9A88B3C3F830` | `0x6ee60d10` | `0x6ee99ffc` |
+| GradientPattern | `00F11C2D-FCBB-4B7F-8135-E7AF481CE592` | `0x6ee4d730` | `0x6ee98b24` |
+
+两表的 Load `0x6ee4d770` 和 Save `0x6ee60d70` 直接委派给
+DisplayLib 的 GraphicAttributeList。两类已接入 BasicFillSymbol 的
+IFillPattern 槽，沿用图形属性和共享键读取。构造测试覆盖三种图案的
+非空属性、回引及截断回滚。实档上的属性对象组合和 ArcMap 10.1、
+QGIS 人工验证仍待完成。

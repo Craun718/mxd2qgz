@@ -473,6 +473,7 @@
       - [x] 读取 RepresentationRule 的非空覆盖值与次序列表。[原生循环布局](docs/arcmap-10.1-dep-tail.md#representationrule-的覆盖值和次序列表)
       - [x] 定位 RepresentationRule 中三种 IBasicSymbol 的原生 Load 入口与子槽边界。[持久化分派](docs/arcmap-10.1-dep-tail.md#representationrule-的-ibasicsymbol-持久化分派)
       - [x] 接入无效果成员的 BasicFillSymbol、SolidColorPattern 属性表及对象键回引。[原生委派](docs/arcmap-10.1-dep-tail.md#basicfillsymbol-与-solidcolorpattern)
+      - [x] 接入 LinePattern 与 GradientPattern，覆盖 10.1 类型库声明的三种 IFillPattern。[原生委派](docs/arcmap-10.1-dep-tail.md#linepattern-与-gradientpattern)
       - [x] 接入无效果成员的 BasicLineSymbol、LineStroke 属性表及对象键回引。[原生委派](docs/arcmap-10.1-dep-tail.md#basiclinesymbol-与-linestroke)
       - [x] 接入无效果成员的 BasicMarkerSymbol、MarkerPlacementOnPoint 属性与 ExtraSafe 回引。[原生边界](docs/arcmap-10.1-dep-tail.md#basicmarkersymbol-与-markerplacementonpoint)
       - [x] 接入另外十种共用属性表的标记布置类，覆盖 10.1 类型库公开的 11 种 IMarkerPlacement。[虚表核对](docs/arcmap-10.1-dep-tail.md#共用属性表的-11-种标记布置类)

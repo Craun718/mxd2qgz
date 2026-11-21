@@ -566,6 +566,13 @@ pub const SOLID_COLOR_PATTERN_CLASS_ID: [u8; 16] = [
     0x05, 0x2a, 0x74, 0x29, 0x99, 0x59, 0xe7, 0x43, 0x9f, 0xa1, 0x53, 0x70, 0xc6, 0x84, 0xf4, 0x9e,
 ];
 
+pub const LINE_PATTERN_CLASS_ID: [u8; 16] = [
+    0x52, 0x0f, 0x4f, 0x44, 0xbf, 0xda, 0x39, 0x46, 0xb2, 0x39, 0x9a, 0x88, 0xb3, 0xc3, 0xf8, 0x30,
+];
+pub const GRADIENT_PATTERN_CLASS_ID: [u8; 16] = [
+    0x2d, 0x1c, 0xf1, 0x00, 0xbb, 0xfc, 0x7f, 0x4b, 0x81, 0x35, 0xe7, 0xaf, 0x48, 0x1c, 0xe5, 0x92,
+];
+
 pub const BASIC_LINE_SYMBOL_CLASS_ID: [u8; 16] = [
     0x23, 0xb8, 0x8f, 0xed, 0xfa, 0x10, 0x8b, 0x46, 0x8d, 0xcd, 0x43, 0x27, 0xc0, 0xdf, 0x0b, 0x22,
 ];
@@ -787,7 +794,7 @@ pub struct BasicFillSymbol10_1 {
     pub effect_count: i32,
     pub effects: Vec<GeometricEffectEntry10_1>,
     pub pattern: ObjectEntry10_1,
-    pub pattern_body: Option<SolidColorPattern10_1>,
+    pub pattern_body: Option<GraphicAttributeList10_1>,
     pub trailing_value: i32,
 }
 
@@ -941,7 +948,8 @@ fn read_basic_fill_symbol_10_1(
     let pattern = read_object_entry_10_1(reader, refs)?;
     let pattern_body = match pattern {
         ObjectEntry10_1::NewObject {
-            class_id: SOLID_COLOR_PATTERN_CLASS_ID,
+            class_id:
+                SOLID_COLOR_PATTERN_CLASS_ID | LINE_PATTERN_CLASS_ID | GRADIENT_PATTERN_CLASS_ID,
             ..
         } if depth > 1 => {
             let Some(body) = read_graphic_attribute_list_10_1(reader, max_bytes, refs)? else {
@@ -950,7 +958,8 @@ fn read_basic_fill_symbol_10_1(
             Some(body)
         }
         ObjectEntry10_1::BackReference {
-            class_id: SOLID_COLOR_PATTERN_CLASS_ID,
+            class_id:
+                SOLID_COLOR_PATTERN_CLASS_ID | LINE_PATTERN_CLASS_ID | GRADIENT_PATTERN_CLASS_ID,
             ..
         } => None,
         _ => return Ok(None),

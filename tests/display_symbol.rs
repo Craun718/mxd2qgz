@@ -2929,15 +2929,18 @@ fn symbol_mimic_preserves_rule_body_and_reuses_rule_key() {
 #[test]
 fn representation_rule_reads_fill_and_line_attribute_lists_and_keys() {
     use mxd2qgz::objects::display_symbol::{
-        BASIC_FILL_SYMBOL_CLASS_ID, BASIC_LINE_SYMBOL_CLASS_ID, LINE_STROKE_CLASS_ID,
-        REPRESENTATION_RULE_CLASS_ID, SOLID_COLOR_PATTERN_CLASS_ID, SYMBOL_MIMIC_CLASS_ID,
-        SymbolSlotFull10_1, read_symbol_slot_full_10_1,
+        BASIC_FILL_SYMBOL_CLASS_ID, BASIC_LINE_SYMBOL_CLASS_ID, GRADIENT_PATTERN_CLASS_ID,
+        LINE_PATTERN_CLASS_ID, LINE_STROKE_CLASS_ID, REPRESENTATION_RULE_CLASS_ID,
+        SOLID_COLOR_PATTERN_CLASS_ID, SYMBOL_MIMIC_CLASS_ID, SymbolSlotFull10_1,
+        read_symbol_slot_full_10_1,
     };
     use mxd2qgz::objects::property_set::{PropertyValue10_1, PropertyValueObjectStream10_1};
     use mxd2qgz::storage::object_refs::ObjectEntry10_1;
 
     for (symbol_class, style_class) in [
         (BASIC_FILL_SYMBOL_CLASS_ID, SOLID_COLOR_PATTERN_CLASS_ID),
+        (BASIC_FILL_SYMBOL_CLASS_ID, LINE_PATTERN_CLASS_ID),
+        (BASIC_FILL_SYMBOL_CLASS_ID, GRADIENT_PATTERN_CLASS_ID),
         (BASIC_LINE_SYMBOL_CLASS_ID, LINE_STROKE_CLASS_ID),
     ] {
         let mut bytes = Vec::new();
