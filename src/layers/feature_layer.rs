@@ -429,7 +429,7 @@ pub struct FeatureLayerPrefix10_1 {
     /// [`DataSource10_1`]）。
     pub data_source: DataSource10_1,
     /// 从已读要素类名称回引恢复的数据源原文。
-    pub data_source_reference: Option<crate::storage::object_refs::FeatureClassSource10_1>,
+    pub data_source_reference: Option<crate::storage::object_refs::DatasetSource10_1>,
     /// 数据源之后的首个嵌套对象槽（请求 IID `{40A9E884-…}`=
     /// IFeatureRenderer）分类。`None` = 因数据源体内停止未读取。
     pub renderer: Option<RendererSlot10_1>,
@@ -511,10 +511,10 @@ fn mark_feature_class_source(
         }
         _ => body.workspace_back_reference_path.as_deref(),
     };
-    table.mark_feature_class_source(class_id, body.key, &body.name, path);
+    table.mark_dataset_source(class_id, body.key, &body.name, path);
 }
 
-fn read_feature_class_name_payload(
+pub(crate) fn read_feature_class_name_payload(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
@@ -1075,8 +1075,13 @@ pub fn read_feature_layer_prefix_10_1(
     };
 
     let data_source_reference = match &data_source {
-        DataSource10_1::BackReference { class_id, key } => {
-            staged_table.feature_class_source(*class_id, *key).cloned()
+        DataSource10_1::BackReference { class_id, key }
+            if matches!(
+                *class_id,
+                FEATURE_CLASS_NAME_CLASS_ID | FGDB_FEATURE_CLASS_NAME_CLASS_ID
+            ) =>
+        {
+            staged_table.dataset_source(*class_id, *key).cloned()
         }
         _ => None,
     };

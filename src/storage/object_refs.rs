@@ -19,9 +19,9 @@ use std::collections::{HashMap, HashSet};
 use std::io;
 use std::sync::Arc;
 
-/// 从已确认的要素类名称体提取的路径与名称原文。
+/// 从已确认的数据集名称体提取的路径与名称原文。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FeatureClassSource10_1 {
+pub struct DatasetSource10_1 {
     pub name: Arc<str>,
     pub path: Option<Arc<str>>,
 }
@@ -38,7 +38,7 @@ pub struct RefTable10_1 {
     map_keys: HashSet<u32>,
     workspace_paths: HashMap<u32, Arc<str>>,
     feature_dataset_paths: HashMap<u32, Arc<str>>,
-    feature_class_sources: HashMap<([u8; 16], u32), FeatureClassSource10_1>,
+    dataset_sources: HashMap<([u8; 16], u32), DatasetSource10_1>,
     legend_group_counts: HashMap<u32, usize>,
     // 共享键表的试读副本也继承跨类图形对象的当前递归深度。
     graphics_nesting: u8,
@@ -178,7 +178,7 @@ impl RefTable10_1 {
         self.feature_dataset_paths.get(&key).map(AsRef::as_ref)
     }
 
-    pub(crate) fn mark_feature_class_source(
+    pub(crate) fn mark_dataset_source(
         &mut self,
         class_id: [u8; 16],
         key: u32,
@@ -186,9 +186,9 @@ impl RefTable10_1 {
         path: Option<&str>,
     ) {
         if self.contains(key) {
-            self.feature_class_sources.insert(
+            self.dataset_sources.insert(
                 (class_id, key),
-                FeatureClassSource10_1 {
+                DatasetSource10_1 {
                     name: Arc::from(name),
                     path: path.map(Arc::from),
                 },
@@ -196,12 +196,12 @@ impl RefTable10_1 {
         }
     }
 
-    pub(crate) fn feature_class_source(
+    pub(crate) fn dataset_source(
         &self,
         class_id: [u8; 16],
         key: u32,
-    ) -> Option<&FeatureClassSource10_1> {
-        self.feature_class_sources.get(&(class_id, key))
+    ) -> Option<&DatasetSource10_1> {
+        self.dataset_sources.get(&(class_id, key))
     }
 
     /// 键是否已在本会话登记过；命中即回引。

@@ -2073,31 +2073,32 @@ fn raster_node(
     }
     use crate::layers::raster_dataset_name::RasterDatasetNameEntryBody10_1;
 
-    let dataset = match prefix.names.as_slice() {
-        [entry] if prefix.names_stop.is_none() => match &entry.body {
-            Some(RasterDatasetNameEntryBody10_1::Dataset(name))
-            | Some(RasterDatasetNameEntryBody10_1::Dataset83 { name, .. }) => Some(name.as_ref()),
-            Some(RasterDatasetNameEntryBody10_1::FileGeodatabase { name, .. }) => {
-                Some(&name.delegated_name)
-            }
-            Some(RasterDatasetNameEntryBody10_1::Database(name)) => Some(&name.delegated_name),
-            _ => None,
-        },
+    let source = match prefix.names.as_slice() {
+        [entry] if prefix.names_stop.is_none() => {
+            let fields = entry
+                .body
+                .as_ref()
+                .and_then(RasterDatasetNameEntryBody10_1::dataset_name_body)
+                .map(|name| (name.workspace_path(), name.dataset_name()))
+                .or_else(|| {
+                    entry
+                        .source_reference
+                        .as_ref()
+                        .map(|source| (source.path.as_deref(), Some(source.name.as_ref())))
+                });
+            fields.and_then(|(path, name)| {
+                let path = path.map(str::to_owned);
+                let connection = name.filter(|name| !name.is_empty()).map(str::to_owned);
+                (path.is_some() || connection.is_some()).then_some(DataSource {
+                    provider: None,
+                    path,
+                    connection,
+                    unknown_fields: Vec::new(),
+                })
+            })
+        }
         _ => None,
     };
-    let source = dataset.and_then(|name| {
-        let path = name.workspace_path().map(str::to_owned);
-        let connection = name
-            .dataset_name()
-            .filter(|name| !name.is_empty())
-            .map(str::to_owned);
-        (path.is_some() || connection.is_some()).then_some(DataSource {
-            provider: None,
-            path,
-            connection,
-            unknown_fields: Vec::new(),
-        })
-    });
     Some(LayerNode::Layer(Layer {
         name: prefix.first_string.clone(),
         visible,

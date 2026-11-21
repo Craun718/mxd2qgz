@@ -12,7 +12,7 @@
 //! 版本门控制的两个 int32；未知嵌套类是成功停止点。
 
 use super::cache_tile_reader::{CacheTileReaderBody10_1, read_tile_reader};
-use super::feature_layer::{FeatureClassNamePrefix10_1, read_feature_class_name_body_10_1};
+use super::feature_layer::{FeatureClassNamePrefix10_1, read_feature_class_name_payload};
 use super::fgdb_raster_dataset_name::{
     FGDB_RASTER_DATASET_NAME_CLASS_ID, FgdbRasterDatasetNamePrefix10_1, FgdbRasterIoPrefix10_1,
     read_fgdb_raster_dataset_name_prefix_10_1, read_fgdb_raster_io_prefix_10_1,
@@ -294,6 +294,17 @@ pub enum RasterDatasetNameEntryBody10_1 {
     RasterType(Box<RasterTypeName10_1>),
 }
 
+impl RasterDatasetNameEntryBody10_1 {
+    pub(crate) fn dataset_name_body(&self) -> Option<&RasterDatasetNameBody10_1> {
+        match self {
+            Self::Dataset(name) | Self::Dataset83 { name, .. } => Some(name),
+            Self::FileGeodatabase { name, .. } => Some(&name.delegated_name),
+            Self::Database(name) => Some(&name.delegated_name),
+            _ => None,
+        }
+    }
+}
+
 /// MapServerLayer.dll 10.1 的 InternetTiledLayerName。
 #[derive(Debug, Clone, PartialEq)]
 pub struct InternetTiledLayerName10_1 {
@@ -509,6 +520,19 @@ pub(super) fn read_name_slot(
             return Err(unsupported_raster_name_class(&class_id));
         }
     };
+    if let ObjectEntry10_1::NewObject { class_id, key } = entry
+        && let Some(name) = body
+            .as_ref()
+            .and_then(RasterDatasetNameEntryBody10_1::dataset_name_body)
+        && name.stop.is_none()
+    {
+        table.mark_dataset_source(
+            class_id,
+            key,
+            name.dataset_name().unwrap_or_default(),
+            name.workspace_path(),
+        );
+    }
     Ok(RasterNameSlot10_1 { entry, body })
 }
 
@@ -677,7 +701,7 @@ pub(super) fn read_name_body(
         }
         RASTER_CATALOG_NAME_CLASS_ID => {
             // 构造器内建 FeatureClassName，直接委派同一流的 Load。
-            let name = read_feature_class_name_body_10_1(reader, max_bytes, table, key)?;
+            let name = read_feature_class_name_payload(reader, max_bytes, table, key, 0)?;
             if let Some(stop) = &name.stop {
                 return Err(incomplete(format!(
                     "RasterCatalogName 委派体未读完：{stop:?}"
@@ -937,7 +961,7 @@ fn read_database_raster_records(
     let tag6_name = match class_id {
         id if id == [0; 16] => None,
         FEATURE_CLASS_NAME_CLASS_ID => {
-            let name = read_feature_class_name_body_10_1(reader, max, table, 0)?;
+            let name = read_feature_class_name_payload(reader, max, table, 0, 0)?;
             if let Some(stop) = &name.stop {
                 return Err(io::Error::new(
                     io::ErrorKind::Unsupported,
