@@ -213,3 +213,9 @@ InMemoryClassBase 按已解析的 Fields 确定记录布局，`0x70d20220` 按 O
 10.1.0.3035 NetworkAnalystSolvers.dll（PE32，SHA-256 `a88f590573b8115a05921d624258214f9ea73baa7eaa720d182b7b5c2798234c`）的 NARouteSolver 类标识是 `1A8AA208-3D4A-420F-B82C-F58194A72CB0`。主 QI `0x7b0fb850` 的基类入口 `0x7b122b10` 在 `0x7b122c39..0x7b122d13` 对 IPersistStream 返回对象 `+0x2c`。RTTI 对应虚表 `0x7b202cec`，Load 为 `0x7b0fcdf0`。补导出伪代码并以 objdump 核对，Load 先读有符号上限 3 的 short，再调用 `0x7b12ba00` 读取 BSTR 属性名及一个 short。这个 short 非零时额外读取一个集合，随后进入共用的下一集合。
 
 NALayer 已沿 NAContext 的求解器槽读出两份 SanFrancisco SDK 工程的 NARouteSolver v3、属性名 TravelTime 和标志 `0xffff`，首个 NALayer 停点由 `0x73d9` 推进到 `0x740b`。集合、后续求解器字段及 UID 键 358 的首次定义仍待读取。ArcMap/QGIS 人工验收仍未验证。
+
+### NARouteSolver 的内联字符串集合
+
+同版 NetworkAnalystSolvers.dll 的求解器共用读取器 `0x7b12ba00` 在集合标志非零时，先构造并读取额外集合，随后无条件读取第二个集合。两次均经 `0x7b138cd0` 创建对象，其中 `0x7b138cf6..0x7b138cfb` 将 `0x7b1fd854` 的 CLSID 传给 AfCreateInstance。其值为 SystemCore StrArray `A7F92065-36CE-47B6-A463-4763DA947CC2`。两处均直接调用新对象的持久化 Load，因此流内只有对象体，复用 StrArray 对象体读取器。
+
+两份 SanFrancisco SDK 工程的首个求解器均从 `0x740b` 读过空的额外集合和含五个属性名的第二个集合，到达 `0x74c7` 的 ExtraSafe 槽。构造测试覆盖标志两种形态和逐字节截断。后面的 ExtraSafe 槽、剩余求解器字段和目标软件人工验收仍待验证。

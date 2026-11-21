@@ -6,6 +6,7 @@ use crate::objects::dataset_name::{
 use crate::objects::property_set::{
     PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1, read_property_set_object_stream_10_1,
 };
+use crate::objects::string_array::read_string_array_body_10_1;
 use crate::objects::workspace_name::{
     WORKSPACE_NAME_CLASS_ID, WorkspaceNamePrefix10_1, read_workspace_name_body_10_1,
 };
@@ -171,6 +172,13 @@ pub struct NaRouteSolverPrefix10_1 {
     pub version: u16,
     pub attribute_name: String,
     pub extra_collection_flag: u16,
+    pub inline_collections: Option<NaRouteCollections10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NaRouteCollections10_1 {
+    pub extra: Option<(u16, Vec<String>)>,
+    pub attributes: (u16, Vec<String>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -298,10 +306,13 @@ fn read_na_route_solver_prefix(
             }
             let attribute_name = read_bstr_string_10_1(&mut trial, max)?;
             let extra_collection_flag = trial.read_u16_le()?;
+            let inline_collections =
+                read_na_route_collections(&mut trial, max, extra_collection_flag).ok();
             Some(NaRouteSolverPrefix10_1 {
                 version,
                 attribute_name,
                 extra_collection_flag,
+                inline_collections,
             })
         }
         ObjectEntry10_1::NewObject { .. } => {
@@ -315,6 +326,20 @@ fn read_na_route_solver_prefix(
     *reader = trial;
     *refs = keys;
     Ok((entry, body))
+}
+
+fn read_na_route_collections(
+    reader: &mut Reader<'_>,
+    max: usize,
+    extra_collection_flag: u16,
+) -> io::Result<NaRouteCollections10_1> {
+    let mut trial = reader.clone();
+    let extra = (extra_collection_flag != 0)
+        .then(|| read_string_array_body_10_1(&mut trial, max))
+        .transpose()?;
+    let attributes = read_string_array_body_10_1(&mut trial, max)?;
+    *reader = trial;
+    Ok(NaRouteCollections10_1 { extra, attributes })
 }
 
 fn read_na_workspace_prefix(
@@ -541,5 +566,33 @@ mod tests {
         );
         assert!(refs.contains(246));
         assert_eq!(reader.read_bytes(1).unwrap(), [0x7f]);
+    }
+
+    #[test]
+    fn route_collections_read_both_flag_forms_and_roll_back_on_truncation() {
+        let mut bytes = 1_u16.to_le_bytes().to_vec();
+        bytes.extend(0_u32.to_le_bytes());
+        let attributes_at = bytes.len();
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend(4_u32.to_le_bytes());
+        bytes.extend([b'X', 0, 0, 0]);
+        for end in 0..bytes.len() {
+            let mut reader = Reader::new(&bytes[..end]);
+            assert!(read_na_route_collections(&mut reader, 64, 0xffff).is_err());
+            assert_eq!(reader.position(), 0);
+        }
+
+        let mut reader = Reader::new(&bytes);
+        let collections = read_na_route_collections(&mut reader, 64, 0xffff).unwrap();
+        assert_eq!(collections.extra, Some((1, Vec::new())));
+        assert_eq!(collections.attributes, (1, vec![String::from("X")]));
+        assert_eq!(reader.remaining(), 0);
+
+        let mut reader = Reader::new(&bytes[attributes_at..]);
+        let collections = read_na_route_collections(&mut reader, 64, 0).unwrap();
+        assert!(collections.extra.is_none());
+        assert_eq!(collections.attributes, (1, vec![String::from("X")]));
+        assert_eq!(reader.remaining(), 0);
     }
 }
