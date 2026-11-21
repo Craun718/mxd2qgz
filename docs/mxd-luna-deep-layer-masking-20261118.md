@@ -309,3 +309,9 @@ NetworkAnalystSolvers.dll 10.1.0.3035 的 GetClassID `0x7b111e10` 引用 CLSID �
 NetworkAnalystSolvers.dll 10.1.0.3035 的持久化 Load 槽 `0x7b202420` 指向 `0x7b0f2eb0`。对象 CLSID `865BE173-5D20-4F11-9016-FF27BCA167E2` 与注册表中的 NAODCostMatrixSolver 一致。原始指令显示有符号版本上限为 5。`0x7b0f2f2c–0x7b0f2f58` 将外层 v2/v3 都映射到共用 v2，v4/v5 使用共用 v3。外层 v3 起在共用体后追加 LONG 和 short，v5 再追加 double 和 LONG。
 
 两份 SanFrancisco SDK 工程均读取 `0x3662f` 的 v4 求解器键 2094，并完整消费 OD Cost Matrix 图层声明区间。构造测试覆盖 v2 至 v5 及逐字节截断回滚。其他求解器与 ArcMap/QGIS 人工验收仍待完成。
+
+### 车辆路径求解器
+
+NetworkAnalystSolvers.dll 10.1.0.3035 的 NAVRPSolver CLSID `52B62278-735F-4DA1-8A4E-2E6F4E3BCD60` 位于 `0x7b1fed64`，持久化 Load 槽 `0x7b206ed0` 指向 `0x7b14b230`。原始指令和 Ghidra 导出确认版本有符号上限为 2，外层 v0/v1 使用共用 v2，v2 使用共用 v3。共用体后读取 LONG、short、两个 LONG、double、LONG、四个 double、LONG。外层版本非零时追加 ExtraSafe 对象槽，接口常量位于 `0x7b207044`。
+
+两份 SanFrancisco SDK 工程均完整读取 `0x5061c` 的 v2 求解器键 3018 和 ExtraSafe 内的 NAStreetDirectionsAgent 键 3021，随后继续读取 NAContext 和子图层，遇到 `0x5e692` 的 StandaloneTable（`EE7C5047-E3DB-11D3-A096-00C04F6BC626`）。构造测试覆盖 v0 至 v2 和逐字节截断回滚。剩余子图层及 ArcMap/QGIS 人工验收仍待完成。

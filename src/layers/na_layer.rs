@@ -405,6 +405,7 @@ pub struct NaRouteSolverTail10_1 {
     pub service_area_specific: Option<NaServiceAreaSolverTail10_1>,
     pub od_cost_matrix_v3: Option<(i32, u16)>,
     pub od_cost_matrix_v5: Option<(u64, i32)>,
+    pub vrp: Option<NaVrpSolverTail10_1>,
 }
 
 const NA_LOCATOR_CLASS_ID: [u8; 16] = [
@@ -414,6 +415,18 @@ const NA_LOCATOR_CLASS_ID: [u8; 16] = [
 const NA_LOCATOR_FEATURE_AGENT_CLASS_ID: [u8; 16] = [
     0xab, 0xc9, 0xb4, 0x22, 0xfa, 0x32, 0x86, 0x46, 0x8f, 0x5e, 0x8a, 0x2a, 0x37, 0x0b, 0x33, 0x50,
 ];
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NaVrpSolverTail10_1 {
+    pub mode: i32,
+    pub flag: u16,
+    pub options: [i32; 2],
+    pub primary_bits: u64,
+    pub primary_mode: i32,
+    pub remaining_scalar_bits: [u64; 4],
+    pub final_mode: i32,
+    pub extra: Option<(ObjectEntry10_1, Option<NaDirectionsAgent10_1>)>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NaServiceAreaSolverTail10_1 {
@@ -461,7 +474,7 @@ const NA_COMPACT_DIRECTIONS_AGENT_CLASS_ID: [u8; 16] = [
     0x09, 0x0a, 0xab, 0xf2, 0xc3, 0x43, 0xe3, 0x4b, 0xbb, 0x74, 0x1b, 0x60, 0xe0, 0x4b, 0x3d, 0xd0,
 ];
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NaDirectionsAgent10_1 {
     pub version: i32,
     pub mode: Option<i32>,
@@ -621,6 +634,10 @@ pub(super) fn read_na_context_prefix_10_1(
     Ok((context, body))
 }
 
+const NA_VRP_SOLVER_CLASS_ID: [u8; 16] = [
+    0x78, 0x22, 0xb6, 0x52, 0x5f, 0x73, 0xa1, 0x4d, 0x8a, 0x4e, 0x2e, 0x6f, 0x4e, 0x3b, 0xcd, 0x60,
+];
+
 const NA_OD_COST_MATRIX_SOLVER_CLASS_ID: [u8; 16] = [
     0x73, 0xe1, 0x5b, 0x86, 0x20, 0x5d, 0x11, 0x4f, 0x90, 0x16, 0xff, 0x27, 0xbc, 0xa1, 0x67, 0xe2,
 ];
@@ -729,23 +746,9 @@ fn read_na_locator_slot(
     keys: &mut RefTable10_1,
     agent_slot: bool,
 ) -> io::Result<(ObjectEntry10_1, Option<NaLocatorFeatureAgent10_1>)> {
-    let a = reader.read_u32_le()? as usize;
-    let b = reader.read_u32_le()? as i32;
-    if a == 0 && b == 0 {
+    let Some(mut region) = read_na_extra_safe_region(reader, max)? else {
         return Ok((ObjectEntry10_1::Null, None));
-    }
-    let length = if b == 0 {
-        a
-    } else {
-        usize::try_from(b).unwrap_or_default()
     };
-    if !(16..=max).contains(&length) {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "定位器 ExtraSafe 槽边界无效",
-        ));
-    }
-    let mut region = reader.read_region(length)?;
     let entry = read_object_entry_10_1(&mut region, keys)?;
     let body = match entry {
         ObjectEntry10_1::NewObject {
@@ -790,6 +793,29 @@ fn read_na_locator_slot(
         ));
     }
     Ok((entry, body))
+}
+
+fn read_na_extra_safe_region<'a>(
+    reader: &mut Reader<'a>,
+    max: usize,
+) -> io::Result<Option<Reader<'a>>> {
+    let a = reader.read_u32_le()? as usize;
+    let b = reader.read_u32_le()? as i32;
+    if a == 0 && b == 0 {
+        return Ok(None);
+    }
+    let length = if b == 0 {
+        a
+    } else {
+        usize::try_from(b).unwrap_or_default()
+    };
+    if !(16..=max).contains(&length) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "网络分析 ExtraSafe 槽边界无效",
+        ));
+    }
+    reader.read_region(length).map(Some)
 }
 
 /// NamedSet::Load 0x7af43920 逐项读取 AfCore String 和普通对象槽。
@@ -950,11 +976,13 @@ fn read_na_solver_prefix(
                 class_id @ (NA_ROUTE_SOLVER_CLASS_ID
                 | NA_CLOSEST_FACILITY_SOLVER_CLASS_ID
                 | NA_SERVICE_AREA_SOLVER_CLASS_ID
-                | NA_OD_COST_MATRIX_SOLVER_CLASS_ID),
+                | NA_OD_COST_MATRIX_SOLVER_CLASS_ID
+                | NA_VRP_SOLVER_CLASS_ID),
             ..
         } => {
             let version = trial.read_u16_le()?;
             let max_version = match class_id {
+                NA_VRP_SOLVER_CLASS_ID => 2,
                 NA_ROUTE_SOLVER_CLASS_ID => 3,
                 NA_OD_COST_MATRIX_SOLVER_CLASS_ID => 5,
                 _ => 4,
@@ -1149,6 +1177,13 @@ fn read_na_solver_tail(
     // 原生先验有符号上限，再将 0、1、2 之外的值映射到共用 v3 分支。
     let common_version = match (class_id, version) {
         (NA_OD_COST_MATRIX_SOLVER_CLASS_ID, 3) => 2,
+        (NA_VRP_SOLVER_CLASS_ID, _) => {
+            if version as i16 > 1 {
+                3
+            } else {
+                2
+            }
+        }
         _ => version.min(3),
     };
     let first = trial.read_u16_le()?;
@@ -1209,6 +1244,9 @@ fn read_na_solver_tail(
     let od_cost_matrix_v5 = (class_id == NA_OD_COST_MATRIX_SOLVER_CLASS_ID && version == 5)
         .then(|| Ok::<_, io::Error>((trial.read_f64_le()?.to_bits(), trial.read_u32_le()? as i32)))
         .transpose()?;
+    let vrp = (class_id == NA_VRP_SOLVER_CLASS_ID)
+        .then(|| read_na_vrp_tail(&mut trial, max, &mut keys, version))
+        .transpose()?;
     if trial.position() - reader.position() > max {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -1226,6 +1264,71 @@ fn read_na_solver_tail(
         service_area_specific,
         od_cost_matrix_v3,
         od_cost_matrix_v5,
+        vrp,
+    })
+}
+
+// NAVRPSolver::Load 0x7b14b230.
+fn read_na_vrp_tail(
+    reader: &mut Reader<'_>,
+    max: usize,
+    keys: &mut RefTable10_1,
+    version: u16,
+) -> io::Result<NaVrpSolverTail10_1> {
+    let mode = reader.read_u32_le()? as i32;
+    let flag = reader.read_u16_le()?;
+    let options = [reader.read_u32_le()? as i32, reader.read_u32_le()? as i32];
+    let primary_bits = reader.read_f64_le()?.to_bits();
+    let primary_mode = reader.read_u32_le()? as i32;
+    let remaining_scalar_bits = [
+        reader.read_f64_le()?.to_bits(),
+        reader.read_f64_le()?.to_bits(),
+        reader.read_f64_le()?.to_bits(),
+        reader.read_f64_le()?.to_bits(),
+    ];
+    let final_mode = reader.read_u32_le()? as i32;
+    let extra = if version != 0 {
+        if let Some(mut region) = read_na_extra_safe_region(reader, max)? {
+            let entry = read_object_entry_10_1(&mut region, keys)?;
+            let agent = match entry {
+                ObjectEntry10_1::NewObject {
+                    class_id: NA_STREET_DIRECTIONS_AGENT_CLASS_ID,
+                    ..
+                } => Some(read_na_directions_agent(&mut region, max, true)?),
+                ObjectEntry10_1::NewObject {
+                    class_id: NA_COMPACT_DIRECTIONS_AGENT_CLASS_ID,
+                    ..
+                } => Some(read_na_directions_agent(&mut region, max, false)?),
+                ObjectEntry10_1::NewObject { .. } => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Unsupported,
+                        "车辆路径求解器 ExtraSafe 对象体未支持",
+                    ));
+                }
+                _ => None,
+            };
+            if region.remaining() != 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "车辆路径求解器 ExtraSafe 槽未消费声明范围",
+                ));
+            }
+            Some((entry, agent))
+        } else {
+            Some((ObjectEntry10_1::Null, None))
+        }
+    } else {
+        None
+    };
+    Ok(NaVrpSolverTail10_1 {
+        mode,
+        flag,
+        options,
+        primary_bits,
+        primary_mode,
+        remaining_scalar_bits,
+        final_mode,
+        extra,
     })
 }
 
@@ -1663,6 +1766,48 @@ mod tests {
         assert_eq!(tail.flag, Some(9));
         assert!(refs.contains(252));
         assert_eq!(reader.remaining(), 0);
+    }
+
+    #[test]
+    fn vrp_solver_tail_maps_versions_and_checks_truncation() {
+        for version in 0..=2 {
+            let mut bytes = vec![0; 4 + 16];
+            if version == 2 {
+                bytes.extend([0; 12]);
+            }
+            bytes.extend([0; 4 + 2 + 8 + 8 + 4 + 32]);
+            bytes.extend(11_i32.to_le_bytes());
+            if version != 0 {
+                bytes.extend([0; 8]);
+            }
+            let mut refs = RefTable10_1::new();
+            for end in 0..bytes.len() {
+                let mut reader = Reader::new(&bytes[..end]);
+                assert!(
+                    read_na_solver_tail(
+                        &mut reader,
+                        128,
+                        &mut refs,
+                        version,
+                        NA_VRP_SOLVER_CLASS_ID
+                    )
+                    .is_err()
+                );
+                assert_eq!(reader.position(), 0);
+            }
+            let mut reader = Reader::new(&bytes);
+            let tail =
+                read_na_solver_tail(&mut reader, 128, &mut refs, version, NA_VRP_SOLVER_CLASS_ID)
+                    .unwrap();
+            assert_eq!(tail.common_v3.is_some(), version == 2);
+            let vrp = tail.vrp.unwrap();
+            assert_eq!(vrp.final_mode, 11);
+            assert_eq!(
+                vrp.extra,
+                (version != 0).then_some((ObjectEntry10_1::Null, None))
+            );
+            assert_eq!(reader.remaining(), 0);
+        }
     }
 
     #[test]
