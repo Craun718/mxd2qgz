@@ -2309,7 +2309,7 @@ mod tests {
         assert_eq!(reader.position(), 20);
         assert!(!table.contains(21));
 
-        let mut data = subclass_full_bytes();
+        let mut data = subclass_full_bytes(6);
         // 基类数字格式槽之后保留 v3–v6 共 16 字节，派生中尾段固定 84 字节。
         let offset = data.len() - 84 - 16 - 16;
         data.splice(offset..offset + 16, format);
@@ -2600,11 +2600,11 @@ mod tests {
     }
 
     /// 比例尺子类完身体（SingleDivision：中段 1 个填充槽）。
-    fn subclass_full_bytes() -> Vec<u8> {
+    fn subclass_full_bytes(base_version: u16) -> Vec<u8> {
         let mut data = vec![0xaau8; 16];
         data.extend_from_slice(&9u32.to_le_bytes());
         data.extend(1u16.to_le_bytes()); // 自身版本
-        data.extend(6u16.to_le_bytes()); // 基类版本
+        data.extend(base_version.to_le_bytes()); // 基类版本
         data.extend_from_slice(&common_prefix_bytes());
         data.extend(1.0f64.to_le_bytes()); // −0x17c
         for _ in 0..3 {
@@ -2623,7 +2623,9 @@ mod tests {
         data.extend(9i32.to_le_bytes()); // −0x138（≥3）
         data.extend(10.0f64.to_le_bytes()); // −0xec（≥4）
         data.extend(11u16.to_le_bytes()); // −0xbc（≥5）
-        data.extend(12u16.to_le_bytes()); // −0xba（≥6）
+        if base_version >= 6 {
+            data.extend(12u16.to_le_bytes()); // −0xba（≥6）
+        }
         // 中段：版本 1 + double + 1 个 IFillSymbol 槽（空标记）。
         data.extend(1u16.to_le_bytes());
         data.extend(13.0f64.to_le_bytes());
@@ -2640,7 +2642,7 @@ mod tests {
     }
 
     fn subclass_full_bytes_two_fills() -> Vec<u8> {
-        let data = subclass_full_bytes();
+        let data = subclass_full_bytes(6);
         // 在中段填充槽后再补一个填充槽（Hollow/Alt/DblAlt 共 2 个）。
         // 尾段总长：版本 2 + 两符号槽 16×2 + double ×2 + int32 ×2 = 58；
         // 第二个填充槽插在尾段起点（即首个填充槽之后）。
@@ -2653,8 +2655,29 @@ mod tests {
     }
 
     #[test]
+    fn filled_scale_bar_v5_reads_one_short_before_subclass_fields() {
+        let data = subclass_full_bytes(5);
+        let body = read_body(&data, |reader, limit, table, key| {
+            read_scalebar_subclass_body_10_1(
+                reader,
+                limit,
+                table,
+                key,
+                ScalebarSubclassKind10_1::SingleDivision,
+            )
+        })
+        .expect("SingleDivision v5 体");
+        assert_eq!(body.stop, None);
+        assert_eq!(body.base_version, 5);
+        assert_eq!(body.tail_short_a, Some(11));
+        assert_eq!(body.use_fraction_characters(), None);
+        assert_eq!(body.bar_height(), Some(13.0));
+        assert_eq!(body.tail_version, Some(2));
+    }
+
+    #[test]
     fn reads_single_division_full_body() {
-        let data = subclass_full_bytes();
+        let data = subclass_full_bytes(6);
         let body = read_body(&data, |r, m, t, k| {
             read_scalebar_subclass_body_10_1(r, m, t, k, ScalebarSubclassKind10_1::SingleDivision)
         })
@@ -2684,7 +2707,7 @@ mod tests {
     #[test]
     fn filled_scalebar_stops_at_incomplete_symbol_headers() {
         use crate::objects::display_symbol::SIMPLE_LINE_SYMBOL_CLASS_ID;
-        let fixture = subclass_full_bytes();
+        let fixture = subclass_full_bytes(6);
         let tail = fixture.len() - 58;
         let label =
             24 + common_prefix_bytes().len() + 8 + 6 + 4 + string_bytes("#,##0").len() + 4 + 8;
@@ -2746,7 +2769,7 @@ mod tests {
     #[test]
     fn legacy_scalebar_tail_leaves_successor_unread() {
         for (version, flag, expected) in [(0_u16, 0_u16, 0), (1, 0xffff, 5)] {
-            let mut data = subclass_full_bytes();
+            let mut data = subclass_full_bytes(6);
             let start = data.len() - 58;
             data.truncate(data.len() - 4);
             data.splice(
@@ -2811,7 +2834,7 @@ mod tests {
     #[test]
     fn rejects_subclass_version_out_of_range() {
         // 自身版本 >1。
-        let mut data = subclass_full_bytes();
+        let mut data = subclass_full_bytes(6);
         data[20] = 2;
         assert!(
             read_body(&data, |r, m, t, k| {
@@ -2820,7 +2843,7 @@ mod tests {
             .is_err()
         );
         // 基类版本 >6。
-        let mut data = subclass_full_bytes();
+        let mut data = subclass_full_bytes(6);
         data[22] = 7;
         assert!(
             read_body(&data, |r, m, t, k| {
