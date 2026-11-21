@@ -154,6 +154,7 @@ pub enum LayerBodyPrefix10_1 {
     FdoGraphicsLayer(Box<FdoGraphicsLayerPrefix10_1>),
     /// Scene 或 Globe 图形层完整对象体。
     Graphics3d(Box<Graphics3dLayer10_1>),
+    NaLayer(crate::layers::na_layer::NaLayerPrefix10_1),
     /// 有界 RasterLayer 的已确认前缀。
     RasterLayer(crate::layers::raster_layer::RasterLayerPrefix10_1),
     WcsLayer(Box<WcsLayer10_1>),
@@ -181,6 +182,7 @@ impl LayerBodyPrefix10_1 {
             Self::ProcessLayer(body) => &body.group.name,
             Self::CompositeGraphicsLayer(prefix) => &prefix.name,
             Self::Graphics3d(body) => &body.name,
+            Self::NaLayer(body) => &body.name,
             Self::TiledLayer(body) => body.name(),
             Self::CadLayer(body) => &body.name,
             Self::CadFeatureLayer(body) => body.feature.as_ref().map_or("", |base| &base.name),
@@ -964,6 +966,19 @@ fn read_entry(
                     }
                     Err(error) => Err(error),
                 }
+            } else if *class_id == super::na_layer::NA_LAYER_CLASS_ID
+                && let Some((end, _)) = bound
+            {
+                let len = end
+                    .checked_sub(trial.position())
+                    .ok_or_else(|| invalid(offset, "NALayer 外层边界早于对象体"))?;
+                let mut region = trial.clone().read_region(len)?;
+                super::na_layer::read_na_layer_prefix_10_1(&mut region, max_bytes).and_then(
+                    |body| {
+                        trial.read_bytes(region.position())?;
+                        Ok(Some(LayerBodyPrefix10_1::NaLayer(body)))
+                    },
+                )
             } else if *class_id == GROUP_LAYER_CLASS_ID {
                 read_group_layer_list_body(trial, bound.map(|(end, _)| end), max_bytes, trial_table)
             } else if *class_id == super::process_layer::PROCESS_LAYER_CLASS_ID
@@ -1202,6 +1217,7 @@ pub(crate) fn read_complete_layer_body_10_1(
             body.stop == crate::layers::group_layer::GroupLayerStop10_1::Complete
         }
         LayerBodyPrefix10_1::RasterLayer(body) => body.tail.is_some(),
+        LayerBodyPrefix10_1::NaLayer(_) => false,
         LayerBodyPrefix10_1::Graphics3d(_)
         | LayerBodyPrefix10_1::ProcessLayer(_)
         | LayerBodyPrefix10_1::WcsLayer(_)

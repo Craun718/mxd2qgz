@@ -174,10 +174,12 @@ SDK .NET 的 `USA_Data_ClipTools` 在 `/Maps:0x1a68` 定义 ProcessLayer v1（�
 
 当前将 MdProcess 字节原样保留，支持 IGroupLayer 槽定义新 GroupLayer 的分支。委派槽回引、替代 IGroupLayer 类、非标准版本及进程运行时行为仍需取证。ArcMap 与 QGIS 的人工验收未执行。
 
-### SanFrancisco 组图层的首个未确认字段
+### SanFrancisco 组图层的跨图层 UID 回引
 
-两份 SDK 工程在 /Maps 同一偏移上复现。顶层 GroupLayer 键 4501 的体从 `0x72d5e` 开始，首个 ExtraSafe 子对象为 FeatureLayer v34、键 4502、体起点 `0x72dba`。临时读取跟踪确认完整组读取失败于该 FeatureLayer 的后继字段 `+0x28c`，并非组尾或遮罩记录读取失败。
+两份 SDK 工程在 /Maps 同一偏移上复现。顶层 GroupLayer 键 4501 的体从 `0x72d5e` 开始，首个 ExtraSafe 子对象为 FeatureLayer v34、键 4502、体起点 `0x72dba`。其 UID 槽 `0x73b68` 的类和键 358 与较早的 `0x98e8` 完全一致。较早对象位于首个 NALayer 的有界体内，头之后可逐字段识别出 UID v1 的 23 字节体。跳过 NALayer 略过了该键的首次登记。较晚位置头后的 `02 00 00 00 00 00` 为 FeatureLayer `+0x28c` 的空字符串，与 `0x6f6e9940` 的读取顺序相符。此前推定的 UID v2 短体来自将回引后的字段当成对象版本。
 
-按流内对象头定位到 UID 键 358，体始于 /Maps `0x73b7c`，版本字为 2。沿当前 UID 23 字节规则，下一个字符串始于 `0x73b93`，读取到的四字节长度为 `0x00ffff00`，与该有界图层的剩余区间不符。向前移三字节虽可取得零长度及紧随的 `0xffff`，这只是字节对位候选。
+另从 10.8 Desktop 安装介质提取 SystemCore.dll 10.8.0.12790，SHA-256 `48cbd921972d12156119d524f9c3923225fd30795e33c22c65c87db3a6c89aca`。RTTI 对位 UID 的 IPersistStream 表 `0x101035fc`，GetClassID `0x100a1740`、Load `0x100a1f90`、Save `0x100a1ff0`。读取顺序仍为 2、1、16、4 字节，写出版本 1，与 10.1 原生入口相符。
 
-复核 10.1.0.3035 SystemCore.dll 的 UID 读写伪代码 `0x7fff9320 / 0x7fff9380`，当前流持久化入口固定读取或写出 23 字节，Save 写版本 1。FeatureLayer.dll 的 `0x6f6e9940` 在 UID 槽后调用 AfCore String::Read 读取 `+0x28c`，10.1 的 `0x68ab46f0` 固定读取四字节长度。现有证据无法解释样本中两者相邻边界，需定位旧写入者或其他持久化入口。未按候选偏移改写读取规则，未验证目标软件中的打开和绘制行为。
+### NALayer 的有界对象体前缀
+
+上节 10.1 NetworkAnalyst.dll 的 RTTI 虚表 `0x7af9f48c` 将 GetClassID、Load、Save 绑定到 `0x7af210d0 / 0x7af1ffc0 / 0x7af20be0`。GetClassID 返回 `0x7af9b1d8` 的 NALayer CLSID。Load 在 `0x7af2000d..0x7af2002b` 读取 short，以有符号比较拒绝大于 3 的版本，随后在 `0x7af20031..0x7af200b8` 读取 AfCore String、三个 short 和两个 double。Rust 在已确认外层边界的图层条目中保留这些字段，剩余体仍按原边界保存。两份 SanFrancisco 工程均从键 31 读取名称 Route，前缀止于 `0x19a`，逐层遮罩仍停在组层键 4501。嵌套对象体及其共享键、ArcMap/QGIS 人工验收仍待验证。
