@@ -1491,9 +1491,11 @@ fn annotate_chain_note(
         return;
     };
     for entry in &alpc.entries {
-        let crate::layers::annotate_props::AlpcEntrySlot10_1::LabelEngineProps(lelp) = &entry.slot
-        else {
-            continue;
+        use crate::layers::annotate_props::AlpcEntrySlot10_1;
+        let (lelp, kind) = match &entry.slot {
+            AlpcEntrySlot10_1::LabelEngineProps(body) => (body, "LELP"),
+            AlpcEntrySlot10_1::MaplexLabelEngineProps(body) => (body, "MaplexLELP"),
+            _ => continue,
         };
         annotate_placement_note(lelp, entry_index, diagnostics);
         let text_symbol_note = match &lelp.text_symbol {
@@ -1540,7 +1542,7 @@ fn annotate_chain_note(
             .map(|id| format!("（标注类 ID {id}）"))
             .unwrap_or_default();
         diagnostics.push(format!(
-            "条目 {}：标注属性集合（键 {}）条目 LELP（键 {}，版本 {}）：表达式 {:?}、\
+            "条目 {}：标注属性集合（键 {}）条目 {kind}（键 {}，版本 {}）：表达式 {:?}、\
              标注类名 {:?}{}；标注类开关（DisplayAnnotation 原始值 {}）；{}{}；条目键 {}",
             entry_index + 1,
             alpc.key,

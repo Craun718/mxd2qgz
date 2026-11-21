@@ -158,3 +158,16 @@ Load、Save 分别由槽调整器进入 `0x78566d00`、`0x78566d40`、
 `0x78563ba0`。该类与 Map 层级的 MaplexOverposterProperties 分属不同 CLSID。
 后续仍须核对 MaplexOverposterLayerProperties 的持久化体及其嵌套子槽，
 并从 ALPC 接入 Maplex 标注类。尚未以实档或 ArcMap 运行验证。
+
+### Maplex 标注类接线
+
+沿用上节 10.1 PE 证据。Maplex v3 起请求的 `0x7857cb7c` 与标准
+LELP 的 IGraphicsContainer IID 相同，复用图形容器分派。Maplex 的
+AnnotationClassID 访问器位于对象 `+0x24` 的虚表 `0x7857d7a4`，
+getter/setter `0x7855be40/0x7855fda0` 访问接口 `+0x10`。
+它与 v8 起的 Load 目的地址一致，均为完整对象 `+0x34`。
+
+ALPC 接入两个标注类的共有字段。Maplex 放置属性槽可读空值或回引，
+新对象暂在槽头停止，保留已读标注类并撤回该未知对象的登记。构造
+v1/v6/v9/v11 验证尾段差异、逐前缀截断回滚及未知放置体停止。
+参考工程仅验证既有标准标注路径。Maplex 放置对象体和目标软件人工验收仍开放。

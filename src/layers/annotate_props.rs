@@ -250,6 +250,8 @@ pub enum LelpStop10_1 {
     /// ⑰ BOLP 体内部停止（原因透传，游标停在其停止点；槽键按「登记先于
     /// 持久化」保留）。
     OverposterBody(BolpStop10_1),
+    /// Maplex 放置属性槽的新对象体尚未确认。
+    MaplexOverposterSlotUnsupported { class_id: [u8; 16], key: u32 },
     /// ⑲ Envelope 体内部错误不属于本枚举（嵌套空间参考非投影坐标系为
     /// 硬错误，向上传播）；本变体保留供未来扩展。
     #[allow(dead_code)]
@@ -273,8 +275,8 @@ pub enum LelpTextSymbolSlot10_1 {
 /// AnnotateLayerPropertiesCollection 体读取的停止原因。
 #[derive(Debug, Clone, PartialEq)]
 pub enum AnnotatePropsStop10_1 {
-    /// ③ 循环第 `index` 条（0 起）的新对象类标识不是
-    /// LabelEngineLayerProperties：游标回退到该条目对象头起点，条目键与
+    /// ③ 循环第 `index` 条（0 起）的新对象类标识未支持。
+    /// 游标回退到该条目对象头起点，条目键与
     /// 尾 int32 不可达。
     EntryUnsupported {
         class_id: [u8; 16],
@@ -306,6 +308,11 @@ pub struct AlpcEntry10_1 {
     pub entry_key: Option<i32>,
 }
 
+/// ArcMap 10.1 MaplexLabelEngineLayerProperties CLSID。
+pub const MAPLEX_LABEL_ENGINE_PROPS_CLASS_ID: [u8; 16] = [
+    0x08, 0x48, 0x66, 0x20, 0x1c, 0x0d, 0xd2, 0x11, 0xa2, 0x6f, 0x08, 0x00, 0x09, 0xb6, 0xf2, 0x2b,
+];
+
 /// ALPC 条目的对象分类。
 #[derive(Debug, Clone, PartialEq)]
 pub enum AlpcEntrySlot10_1 {
@@ -316,6 +323,8 @@ pub enum AlpcEntrySlot10_1 {
     /// 新 LabelEngineLayerProperties 对象：已解析体（体内停止经
     /// [`AnnotatePropsStop10_1::LelpBody`] 传播）。
     LabelEngineProps(Box<LelpBody10_1>),
+    /// Maplex 标注类，共用标准标注类的前缀表示。
+    MaplexLabelEngineProps(Box<LelpBody10_1>),
 }
 
 /// AnnotateLayerPropertiesCollection（LabelPlacement.dll `0x78531be0`）体的
@@ -407,7 +416,11 @@ pub struct LelpBody10_1 {
     /// ㉗ 版本 ==6 的旧 short；10.1 Load 读到栈上后丢弃。
     /// `None` = 版本 ≠6 或前置停止。
     pub short_ver6: Option<i16>,
-    /// 停止原因；`None` = 体已完整消费（10.1 写侧版本 ≤7 全部字段）。
+    /// Maplex v5 起的放置属性槽，已读到的空槽或回引。
+    pub maplex_overposter_slot: Option<ObjectEntry10_1>,
+    /// Maplex v6 专有 LONG、v9 专有 short，原生读后丢弃。
+    pub maplex_legacy_fields: (Option<i32>, Option<i16>),
+    /// 停止原因；`None` 表示该版本的对象体已完整消费。
     pub stop: Option<LelpStop10_1>,
 }
 
@@ -423,11 +436,22 @@ pub fn read_label_engine_props_body_10_1(
     table: &mut RefTable10_1,
     key: u32,
 ) -> io::Result<LelpBody10_1> {
+    read_label_engine_body(reader, max_bytes, table, key, false)
+}
+
+fn read_label_engine_body(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+    maplex: bool,
+) -> io::Result<LelpBody10_1> {
     let mut trial = reader.clone();
     let entry_offset = trial.position();
 
     // ① 版本 short（有符号 >7 拒绝）。
-    let version = read_version_short(&mut trial, MAX_LELP_VERSION, "LELP", entry_offset)?;
+    let max_version = if maplex { 11 } else { MAX_LELP_VERSION };
+    let version = read_version_short(&mut trial, max_version, "LELP", entry_offset)?;
     // ②③ String + short。
     let expression = read_string_10_1(&mut trial, max_bytes)?;
     let short_74 = trial.read_u16_le()? as i16;
@@ -495,8 +519,8 @@ pub fn read_label_engine_props_body_10_1(
             }
         }
     }
-    // ⑰ BOLP 槽。
-    if stop.is_none() {
+    // Maplex v11 不再写入旧 BOLP 槽。
+    if stop.is_none() && (!maplex || (version as i16) < 11) {
         let slot_offset = trial.position();
         let pre_slot_table = staged_table.clone();
         match read_object_entry_10_1(&mut trial, &mut staged_table)? {
@@ -597,6 +621,8 @@ pub fn read_label_engine_props_body_10_1(
     let mut short_46 = None;
     let mut annotation_class_id = None;
     let mut short_ver6 = None;
+    let mut maplex_overposter_slot = None;
+    let mut maplex_legacy_fields = (None, None);
     if stop.is_none() {
         scale_ratio = Some(trial.read_f64_le()?);
         reference_scale = Some(trial.read_f64_le()?);
@@ -653,11 +679,33 @@ pub fn read_label_engine_props_body_10_1(
         if stop.is_none() && (version as i16) >= 4 {
             short_46 = Some(trial.read_u16_le()? as i16);
         }
-        if stop.is_none() && (version as i16) >= 5 {
+        if maplex && stop.is_none() && (version as i16) >= 5 {
+            let mut slot_reader = trial.clone();
+            let mut slot_table = staged_table.clone();
+            match read_object_entry_10_1(&mut slot_reader, &mut slot_table)? {
+                ObjectEntry10_1::NewObject { class_id, key } => {
+                    stop = Some(LelpStop10_1::MaplexOverposterSlotUnsupported { class_id, key });
+                }
+                entry => {
+                    maplex_overposter_slot = Some(entry);
+                    trial = slot_reader;
+                    staged_table = slot_table;
+                }
+            }
+        }
+        if stop.is_none() && maplex && version == 6 {
+            maplex_legacy_fields.0 =
+                Some(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
+        }
+        let class_id_version = if maplex { 8 } else { 5 };
+        if stop.is_none() && (version as i16) >= class_id_version {
             annotation_class_id =
                 Some(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
         }
-        if stop.is_none() && (version as i16) == 6 {
+        if stop.is_none() && maplex && version == 9 {
+            maplex_legacy_fields.1 = Some(trial.read_u16_le()? as i16);
+        }
+        if stop.is_none() && !maplex && version == 6 {
             short_ver6 = Some(trial.read_u16_le()? as i16);
         }
     }
@@ -692,6 +740,8 @@ pub fn read_label_engine_props_body_10_1(
         short_46,
         annotation_class_id,
         short_ver6,
+        maplex_overposter_slot,
+        maplex_legacy_fields,
         stop,
     };
     *table = staged_table;
@@ -704,7 +754,7 @@ pub fn read_label_engine_props_body_10_1(
 ///
 /// 起点约定：调用者已读取对象头、比对
 /// [`ANNOTATE_PROPS_COLLECTION_CLASS_ID`] 并取得键 `key`。循环条目的新对象
-/// 仅支持 LabelEngineLayerProperties（其余为成功停止，回退到该条目对象头
+/// 支持标准和 Maplex 标注类（其余为成功停止，回退到该条目对象头
 /// 起点、不保留该键）；LELP 体内停止传播为
 /// [`AnnotatePropsStop10_1::LelpBody`]。截断与版本超限为错误。
 pub fn read_annotate_props_collection_body_10_1(
@@ -742,18 +792,22 @@ pub fn read_annotate_props_collection_body_10_1(
                 entry.slot = AlpcEntrySlot10_1::BackReference { class_id, key };
             }
             ObjectEntry10_1::NewObject { class_id, key }
-                if class_id == LABEL_ENGINE_PROPS_CLASS_ID =>
+                if matches!(
+                    class_id,
+                    LABEL_ENGINE_PROPS_CLASS_ID | MAPLEX_LABEL_ENGINE_PROPS_CLASS_ID
+                ) =>
             {
-                let body = read_label_engine_props_body_10_1(
-                    &mut trial,
-                    max_bytes,
-                    &mut staged_table,
-                    key,
-                )?;
+                let maplex = class_id == MAPLEX_LABEL_ENGINE_PROPS_CLASS_ID;
+                let body =
+                    read_label_engine_body(&mut trial, max_bytes, &mut staged_table, key, maplex)?;
                 if let Some(inner) = body.stop.clone() {
                     stop = Some(AnnotatePropsStop10_1::LelpBody(inner));
                 }
-                entry.slot = AlpcEntrySlot10_1::LabelEngineProps(Box::new(body));
+                entry.slot = if maplex {
+                    AlpcEntrySlot10_1::MaplexLabelEngineProps(Box::new(body))
+                } else {
+                    AlpcEntrySlot10_1::LabelEngineProps(Box::new(body))
+                };
             }
             ObjectEntry10_1::NewObject { class_id, key } => {
                 stop = Some(AnnotatePropsStop10_1::EntryUnsupported {

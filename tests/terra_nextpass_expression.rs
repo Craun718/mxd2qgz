@@ -88,3 +88,101 @@ fn parse_reports_label_properties_from_reference_mxd() {
         }));
     }
 }
+
+#[test]
+fn alpc_reads_maplex_version_gates_and_stops_before_an_unknown_placement_body() {
+    use mxd2qgz::layers::annotate_props::{
+        AnnotatePropsStop10_1, LelpStop10_1, MAPLEX_LABEL_ENGINE_PROPS_CLASS_ID,
+    };
+
+    for version in [1_u16, 6, 9, 11] {
+        let mut bytes = 2_u16.to_le_bytes().to_vec();
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend(MAPLEX_LABEL_ENGINE_PROPS_CLASS_ID);
+        bytes.extend(17_u32.to_le_bytes());
+        bytes.extend(version.to_le_bytes());
+        bytes.extend([4, 0, 0, 0, b'X', 0, 0, 0]);
+        bytes.extend([0; 2]);
+        if version == 1 {
+            bytes.extend([0; 2]);
+        }
+        bytes.extend([0; 40]);
+        for _ in 0..2 {
+            bytes.extend([2, 0, 0, 0, 0, 0]);
+        }
+        bytes.extend([0; 48]);
+        if version < 11 {
+            bytes.extend([0; 16]);
+        }
+        bytes.extend([0; 24]);
+        if version >= 3 {
+            bytes.extend([0; 16]);
+        }
+        if version >= 4 {
+            bytes.extend([0; 2]);
+        }
+        let placement_offset = bytes.len();
+        if version >= 5 {
+            bytes.extend([0; 16]);
+        }
+        if version == 6 {
+            bytes.extend(123_i32.to_le_bytes());
+        }
+        if version >= 8 {
+            bytes.extend(51_i32.to_le_bytes());
+        }
+        if version == 9 {
+            bytes.extend(9_i16.to_le_bytes());
+        }
+        bytes.extend(41_i32.to_le_bytes());
+        bytes.extend(42_i32.to_le_bytes());
+
+        for cut in 0..bytes.len() {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(
+                read_annotate_props_collection_body_10_1(&mut reader, 1024, &mut refs, 1).is_err()
+            );
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let result =
+            read_annotate_props_collection_body_10_1(&mut reader, 1024, &mut refs, 1).unwrap();
+        let AlpcEntrySlot10_1::MaplexLabelEngineProps(body) = &result.entries[0].slot else {
+            panic!("应读取 Maplex 标注类");
+        };
+        assert_eq!(body.expression, "X");
+        assert_eq!(body.annotation_class_id, (version >= 8).then_some(51));
+        assert_eq!(
+            body.maplex_legacy_fields,
+            ((version == 6).then_some(123), (version == 9).then_some(9))
+        );
+        assert_eq!(result.entries[0].entry_key, Some(41));
+        assert_eq!(result.trailing_int32, Some(42));
+        assert_eq!(reader.position(), bytes.len());
+
+        if version == 11 {
+            bytes.splice(
+                placement_offset..placement_offset + 16,
+                [0x7e; 16].into_iter().chain(19_u32.to_le_bytes()),
+            );
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let result =
+                read_annotate_props_collection_body_10_1(&mut reader, 1024, &mut refs, 1).unwrap();
+            assert!(matches!(
+                result.stop,
+                Some(AnnotatePropsStop10_1::LelpBody(
+                    LelpStop10_1::MaplexOverposterSlotUnsupported { key: 19, .. }
+                ))
+            ));
+            assert_eq!(result.entries[0].entry_key, None);
+            assert_eq!(reader.position(), placement_offset);
+            assert!(refs.contains(17));
+            assert!(!refs.contains(19));
+        }
+    }
+}
