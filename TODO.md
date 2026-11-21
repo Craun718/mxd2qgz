@@ -624,7 +624,7 @@
       - [x] 从比例尺解析结果读取已定性的 IScaleMarks 标量和 SteppedScaleLine 高度，覆盖旧版频率默认值。[刻度属性与边界](docs/mxd-terra-nextpass-scale.md#iscalemarks-尾段)
       - [x] 接入比例尺线两类对象的九种已确认 INumberFormat 实现。[数字格式槽取证](docs/mxd-terra-nextpass-scale.md#比例尺线数字格式槽)
       - [x] 接入 ScaleText 和四类填充比例尺的九种已确认 INumberFormat 实现。[槽位取证](docs/mxd-terra-nextpass-scale.md#比例尺文本和填充比例尺数字格式槽)
-      - [ ] 定性 PCS/GCS 的第四条域串。[原生字段映射](docs/mxd-terra-integrate-sr.md#pcs-与-gcs-域串的属性映射)
+      - [x] 定性 PCS/GCS 的第四条域串为 Usage，并确认两类 Define 的四槽赋值路径。[原生字段映射](docs/mxd-terra-integrate-sr.md#pcs-与-gcs-域串的属性映射)
       - [ ] 定位 PCS/GCS 域串在编辑和创建路径中的其他填充来源。
       - [x] 将 PCS/GCS 的前三条域串绑定到 Alias、Abbreviation 和 Remarks，确认空串初始化及 PCS 复制路径。[原生字段映射](docs/mxd-terra-integrate-sr.md#pcs-与-gcs-域串的属性映射)
       - [ ] 核对旧写方是否以 UnknownCoordinateSystem 的第二串保存 Alias。

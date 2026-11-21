@@ -47,6 +47,7 @@ pub struct DomainBlock {
     /// 4 个长度前缀域字符串的原始字节（样本中全部为空，语义未确认）。
     ///
     /// 原生写出 BSTR 的 UTF-16LE 字节；此处不校验编码，保留原始流字节。
+    /// 流内顺序为 Alias、Abbreviation、Remarks、Usage。
     pub strings: [Vec<u8>; 4],
     /// 1 字节垂向域标志，原样保留、不校验。
     ///

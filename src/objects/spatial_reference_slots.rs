@@ -73,6 +73,7 @@ pub struct DomainBlock {
     ///
     /// 原生按 UTF-16 宽字符消费（长度为偶数字节、末尾补宽终止零后转 BSTR），
     /// 本读取器不做编码校验、原样保留，与投影坐标系读取器的域串策略一致。
+    /// 流内顺序为 Alias、Abbreviation、Remarks、Usage。
     pub strings: [Vec<u8>; 4],
     /// 1 字节垂向标志，原样保留、不校验。
     ///

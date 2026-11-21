@@ -40,9 +40,27 @@ GCS 使用 `0x71a26614`。以下 getter 均取同一结构中的 BSTR。
 | 1 | `+0x04` | Alias | `0x719d39b0` | `0x719bf520` |
 | 2 | `+0x08` | Abbreviation | `0x719d3a00` | `0x719bf570` |
 | 3 | `+0x0c` | Remarks | `0x719d3a30` | `0x719bf5b0` |
-| 4 | `+0x10` | 待定 | | |
+| 4 | `+0x10` | Usage（类型库参数拼写为 `useage`） | | |
 
 辅助结构构造器 `0x719baaa0` 与 `0x719bab40` 用 AfCore
 BString 构造器初始化四个空串。PCS 复制入口中的 `0x719d053d–0x719d0574`
-将四个槽逐项复制。第四串的业务用途和各槽除持久化加载、初始化与复制外
-的赋值来源仍待核查。ArcMap 10.1 和 QGIS 尚未人工验证。
+将四个槽逐项复制。
+
+同版类型库 TypeInfo 75 和 108 的 `+0x0c` 槽分别是
+`IGeographicCoordinateSystemEdit::Define` 与
+`IProjectedCoordinateSystemEdit::Define`。二者的前五个显式参数均为 BSTR，
+依次是 Name、Alias、Abbreviation、Remarks、`useage`。
+
+- GCS 主 QI 在 `0x719bc4b7` 比对编辑 IID，成功路径在
+  `0x719bc530` 返回完整对象 `+0x28`。虚表 `0x71a26800` 的 Define
+  为 `0x719c02d0`。其 `0x719c04db–0x719c0525` 路径采用 AfCore
+  BString 赋值（IAT `0x71a102fc`），将四个非空指针参数分别写到
+  `+0x04/+0x08/+0x0c/+0x10`。最后一个参数从 `[ebp+0x1c]`
+  经局部变量 `[ebp-0x78]` 转入第四槽。
+- PCS 主 QI 在 `0x719d08f9` 比对编辑 IID，成功路径在
+  `0x719d0953` 返回完整对象 `+0x30`。虚表 `0x71a29c28` 的 Define
+  为 `0x719d5d50`。其 `0x719d60a2–0x719d60e6` 以同一顺序赋值，
+  最后一个参数从 `[ebp+0x1c]` 经 `[ebp-0x78]` 转入第四槽。
+
+这两条 Define 路径确认第四串为 Usage，并确认四串可由编辑接口填充。
+其他赋值入口仍待核查。ArcMap 10.1 和 QGIS 尚未人工验证。
