@@ -4,6 +4,7 @@
 
 use crate::layers::layer_list::{LayerBodyPrefix10_1, read_complete_layer_body_10_1};
 use crate::layers::na_layer::NA_LAYER_CLASS_ID;
+use crate::layers::terrain_layer::TERRAIN_LAYER_CLASS_ID;
 use crate::layers::tin_layer::TIN_LAYER_CLASS_ID;
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -59,10 +60,6 @@ const SCHEMATIC_LAYER_CLASS_ID: [u8; 16] = [
 
 const TEMPORAL_FEATURE_LAYER_CLASS_ID: [u8; 16] = [
     0x40, 0xce, 0x34, 0x33, 0x1d, 0x1a, 0xd5, 0x11, 0xb7, 0xcf, 0x00, 0x01, 0x02, 0x65, 0xad, 0xc5,
-];
-
-const TERRAIN_LAYER_CLASS_ID: [u8; 16] = [
-    0xdd, 0x19, 0x7c, 0x5c, 0xf0, 0xd2, 0x31, 0x4a, 0x9c, 0x70, 0xf8, 0x7e, 0x3a, 0x20, 0x3c, 0x28,
 ];
 
 const WMS_LAYER_CLASS_ID: [u8; 16] = [

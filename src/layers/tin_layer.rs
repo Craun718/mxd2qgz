@@ -207,7 +207,7 @@ fn read_count(r: &mut Reader<'_>, max: usize, min_size: usize) -> io::Result<usi
     Ok(count)
 }
 
-fn read_renderer(
+pub(super) fn read_renderer(
     r: &mut Reader<'_>,
     max: usize,
     refs: &mut RefTable10_1,
@@ -371,7 +371,7 @@ fn read_classified_surface(
     })
 }
 
-fn read_legend_group(
+pub(super) fn read_legend_group(
     r: &mut Reader<'_>,
     max: usize,
     refs: &mut RefTable10_1,

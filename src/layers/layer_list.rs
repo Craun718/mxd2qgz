@@ -154,6 +154,7 @@ pub enum LayerBodyPrefix10_1 {
     FdoGraphicsLayer(Box<FdoGraphicsLayerPrefix10_1>),
     /// Scene 或 Globe 图形层完整对象体。
     Graphics3d(Box<Graphics3dLayer10_1>),
+    TerrainLayer(Box<super::terrain_layer::TerrainLayer10_1>),
     TinLayer(Box<super::tin_layer::TinLayer10_1>),
     NetworkLayer(Box<super::network_layer::NetworkLayerPrefix10_1>),
     NaLayer(crate::layers::na_layer::NaLayerPrefix10_1),
@@ -184,6 +185,7 @@ impl LayerBodyPrefix10_1 {
             Self::ProcessLayer(body) => &body.group.name,
             Self::CompositeGraphicsLayer(prefix) => &prefix.name,
             Self::Graphics3d(body) => &body.name,
+            Self::TerrainLayer(body) => &body.name,
             Self::TinLayer(body) => &body.name,
             Self::NetworkLayer(body) => &body.name,
             Self::NaLayer(body) => &body.name,
@@ -988,7 +990,9 @@ fn read_entry(
                 read_group_layer_list_body(trial, bound.map(|(end, _)| end), max_bytes, trial_table)
             } else if matches!(
                 *class_id,
-                super::process_layer::PROCESS_LAYER_CLASS_ID | super::tin_layer::TIN_LAYER_CLASS_ID
+                super::process_layer::PROCESS_LAYER_CLASS_ID
+                    | super::tin_layer::TIN_LAYER_CLASS_ID
+                    | super::terrain_layer::TERRAIN_LAYER_CLASS_ID
             ) && let Some((end, _)) = bound
             {
                 let len = end
@@ -1123,6 +1127,10 @@ pub(crate) fn parse_body_prefix(
         return super::network_layer::read_network_layer_prefix_10_1(trial, max_bytes, trial_table)
             .map(|body| Some(LayerBodyPrefix10_1::NetworkLayer(Box::new(body))));
     }
+    if class_id == super::terrain_layer::TERRAIN_LAYER_CLASS_ID {
+        return super::terrain_layer::read_terrain_layer_10_1(trial, max_bytes, trial_table)
+            .map(|body| Some(LayerBodyPrefix10_1::TerrainLayer(Box::new(body))));
+    }
     if class_id == super::tin_layer::TIN_LAYER_CLASS_ID {
         return super::tin_layer::read_tin_layer_10_1(trial, max_bytes, trial_table)
             .map(|body| Some(LayerBodyPrefix10_1::TinLayer(Box::new(body))));
@@ -1248,6 +1256,7 @@ pub(crate) fn read_complete_layer_body_10_1(
         | LayerBodyPrefix10_1::CadFeatureLayer(_)
         | LayerBodyPrefix10_1::CadAnnotationLayer(_)
         | LayerBodyPrefix10_1::CoverageAnnotationLayer(_)
+        | LayerBodyPrefix10_1::TerrainLayer(_)
         | LayerBodyPrefix10_1::TinLayer(_)
         | LayerBodyPrefix10_1::TiledLayer(_) => true,
         LayerBodyPrefix10_1::BasemapLayer(body) => {

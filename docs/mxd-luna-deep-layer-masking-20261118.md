@@ -626,3 +626,51 @@ NodeValue 的 `0x8043ce2c–0x8043d13d` 与 Breakline 按
 图例组回引、条件字符串、FaceValue 的两个 short、后续渲染器
 边界和异常计数的游标及键回滚。字段业务名和真实图例项组合
 仍待确认，未在 ArcMap 10.1 或 QGIS 中人工验证。
+
+### TerrainLayer 普通对象体
+
+沿用上表的 TerrainLayer.dll 10.1.0.3035。主 QI
+`0x80231c60` 对 IPersistStream 和 IPersist 的两次比较
+位于 `0x80231f9d` 与 `0x80231fb1`，在 `0x802320ca`
+返回 +0x60 视图。虚表 `0x80243f30` 绑定 GetClassID
+`0x802315d0`、Load `0x80236460` 和 Save `0x80235980`。
+Save 版本表 `0x80243408` 为 -1、-1、7、8、9、9。
+Load 的版本上限为有符号 9。
+
+| 版本 | 按流顺序读取的字段 | Load 指令 |
+| --- | --- | --- |
+| 全部 | short 版本、String、short×2、double、IName、short×2 | `0x80236475–0x80236563` |
+| ≥6 | short、double×5。short 只控制四个坐标是否应用，五个 double 始终消费 | `0x8023656b–0x80236666` |
+| 全部 | short×3、double×2、String、ISpatialReference | `0x80236684–0x80236765` |
+| 全部 | LONG 计数和 ITinRenderer 普通对象循环，非正计数跳过 | `0x802367fc–0x80236877` |
+| ≥2 | LayerLib 旧式扩展序列 | `0x80236879–0x8023689b` |
+| ≥3、≥4 | short、LONG、double，≥4 追加 double | `0x802368a1–0x80236931` |
+| ≥5 | IDisplayFilter、short×3、String | `0x80236935–0x80236a18` |
+| ≥7 | String、double×2 | `0x80236ad8–0x80236bdd` |
+| ≥8、≥9 | ILegendGroup，≥9 追加 short | `0x80236be3–0x80236c85` |
+
+IName、ISpatialReference、ITinRenderer、IDisplayFilter、
+ILegendGroup 分别请求 `0x802434a0`、`0x802434e0`、
+`0x80243750`、`0x80243520`、`0x80243630` 的 IID。
+ITinRenderer 的 IID 与 TinLayer `0x80411754` 一致。
+已复用受支持的 TIN 渲染器分派。Terrain 专有渲染器的新对象体
+仍待逐类取证，遇到后回滚图层游标与引用表，有外层边界时保留原始体。
+
+#### TerrainName
+
+Terrain.dll PE32 的版本为 10.1.0.3035，SHA-256 为
+`f1fe54301fe60fab17efbc40ad0a6fcb5308fc1da274800f988dcbe82cd41fc5`。
+RTTI 描述符 `0x801de2a4` 对应 TerrainName。主 QI
+`0x8016fa20` 将 IPersistStream/IPersist 转到 +0x1c，
+虚表 `0x801c2560` 绑定 GetClassID `0x801700e0`、
+Load `0x80170130` 和 Save `0x801701f0`。CLSID
+常量 `0x801be4c0` 为 `{4CED9311-6566-44F6-B135-657D6F48143E}`。
+
+Load 依次读取有符号上限为 1 的 short、String×3 和
+IDatasetName（`0x80170145–0x801701aa`）。成功后在
+`0x801701de` 从 IDatasetName 虚表 +0x20 调用
+WorkspaceName getter，操作不读取流。Save 对照
+`0x8017020f–0x8017024e`。已复用 IDatasetName 分派，
+合成图层体覆盖 v0–v9、FeatureDatasetName 键、v6 坐标标志为零、
+外部连续字段、逐字节截断和未知类回滚。字段业务名、真实
+TerrainName 数据集组合及 ArcMap 10.1/QGIS 人工验收仍待完成。
