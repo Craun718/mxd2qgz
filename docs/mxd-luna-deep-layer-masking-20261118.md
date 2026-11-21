@@ -508,3 +508,25 @@ TransparencyDisplayFilter、FieldInfo、旧式扩展列表和 Envelope 读取器
 合成测试覆盖有符号版本门、三类渲染器、回引、v9 单独的 short、
 逐字节截断与未知渲染器。其他 ITinRenderer 实现及图例项类别仍待取证。
 本轮没有含 TIN 图层的实档在 ArcMap 与 QGIS 中进行人工验证。
+
+#### TinBreaklineRenderer
+
+同一 TinRenderer.dll 10.1.0.3035 中，RTTI 描述符
+`0x8045e254` 对应此类。主 QI `0x80423c50` 接受
+IPersistStream 与 IPersist，在 `0x80423d5a` 返回 +0x20。
+该视图虚表 `0x80453a58` 绑定 GetClassID `0x80423120`、
+Load `0x80425170`、Save `0x804254b0`。GetClassID
+复制 `0x80453b2c` 的 `{BA20564F-DBE3-11D2-9F39-00C04F6BC619}`。
+
+| Load 指令 | 流字段 |
+| --- | --- |
+| `0x8042518a–0x804251ef` | 有符号 short 版本（上限 2），ISymbol |
+| `0x804251fb–0x8042525f` | LONG 计数，随后每项 ILegendGroup |
+| `0x8042526a–0x8042528e` | ILegendItem |
+| `0x8042529f–0x804253c3` | LONG 计数，每项 String、LONG×3，第三个 LONG 非零时追加 String |
+| `0x804253c9–0x80425438` | short、String×3、short×2 |
+
+两个 LONG 计数均在非正时跳过循环。版本低于 1 时，末尾
+分支加载本地化资源，不再消费流。上述序列可在 Save
+`0x804254df–0x80425798` 逐项对照。字段业务名、嵌套图例
+对象的实档组合及目标软件人工验证仍待确认。
