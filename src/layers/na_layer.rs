@@ -204,6 +204,20 @@ pub struct NaRouteSolverTail10_1 {
     pub route_specific: Option<(u64, u16)>,
 }
 
+const NA_LOCATOR_CLASS_ID: [u8; 16] = [
+    0xe1, 0xad, 0x19, 0x43, 0xe5, 0xd6, 0x18, 0x48, 0x83, 0x80, 0x8e, 0xe3, 0x89, 0xd1, 0x48, 0xea,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NaLocatorPrefix10_1 {
+    pub version: u16,
+    pub scalar_bits: [u64; 2],
+    pub mode: i32,
+    pub flag: u16,
+    pub spatial_reference: ObjectEntry10_1,
+    pub agent_count: i32,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct NaContextPrefix10_1 {
     pub version: u16,
@@ -215,6 +229,7 @@ pub struct NaContextPrefix10_1 {
     /// 求解器之后、属性集之前的对象槽。
     pub post_solver_object: Option<ObjectEntry10_1>,
     pub properties: Option<(ObjectEntry10_1, Option<Box<PropertySetObjectStream10_1>>)>,
+    pub locator: Option<(ObjectEntry10_1, Option<NaLocatorPrefix10_1>)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -292,6 +307,9 @@ pub(super) fn read_na_context_prefix_10_1(
             let properties = post_solver_object
                 .as_ref()
                 .and_then(|_| read_na_property_set_slot(&mut trial, max, &mut keys).ok());
+            let locator = properties
+                .as_ref()
+                .and_then(|_| read_na_locator_prefix(&mut trial, max, &mut keys).ok());
             Some(Box::new(NaContextPrefix10_1 {
                 version,
                 name,
@@ -301,6 +319,7 @@ pub(super) fn read_na_context_prefix_10_1(
                 solver,
                 post_solver_object,
                 properties,
+                locator,
             }))
         }
         ObjectEntry10_1::NewObject { .. } => {
@@ -319,6 +338,82 @@ pub(super) fn read_na_context_prefix_10_1(
 const NA_ROUTE_SOLVER_CLASS_ID: [u8; 16] = [
     0x08, 0xa2, 0x8a, 0x1a, 0x4a, 0x3d, 0x0f, 0x42, 0xb8, 0x2c, 0xf5, 0x81, 0x94, 0xa7, 0x2c, 0xb0,
 ];
+
+/// NALocator::Load 0x7af31e90 读取固定字段、ExtraSafe 空间参考槽及代理数量。
+fn read_na_locator_prefix(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<(ObjectEntry10_1, Option<NaLocatorPrefix10_1>)> {
+    let mut trial = reader.clone();
+    let mut keys = refs.clone();
+    let entry = read_object_entry_10_1(&mut trial, &mut keys)?;
+    let body = match entry {
+        ObjectEntry10_1::NewObject {
+            class_id: NA_LOCATOR_CLASS_ID,
+            ..
+        } => {
+            let version = trial.read_u16_le()?;
+            if version as i16 > 3 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "NALocator 版本超过 3",
+                ));
+            }
+            let scalar_bits = [
+                trial.read_f64_le()?.to_bits(),
+                trial.read_f64_le()?.to_bits(),
+            ];
+            let mode = trial.read_u32_le()? as i32;
+            let flag = trial.read_u16_le()?;
+            let a = trial.read_u32_le()? as usize;
+            let b = trial.read_u32_le()? as i32;
+            let spatial_reference = if a == 0 && b == 0 {
+                ObjectEntry10_1::Null
+            } else {
+                let length = if b == 0 {
+                    a
+                } else {
+                    usize::try_from(b).unwrap_or_default()
+                };
+                if !(16..=max).contains(&length) {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "NALocator 空间参考槽边界无效",
+                    ));
+                }
+                let mut region = trial.read_region(length)?;
+                let entry = read_object_entry_10_1(&mut region, &mut keys)?;
+                if matches!(entry, ObjectEntry10_1::NewObject { .. }) || region.remaining() != 0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Unsupported,
+                        "NALocator 空间参考对象体未支持",
+                    ));
+                }
+                entry
+            };
+            let agent_count = trial.read_u32_le()? as i32;
+            Some(NaLocatorPrefix10_1 {
+                version,
+                scalar_bits,
+                mode,
+                flag,
+                spatial_reference,
+                agent_count,
+            })
+        }
+        ObjectEntry10_1::NewObject { .. } => {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "NAContext 定位器类未支持",
+            ));
+        }
+        _ => None,
+    };
+    *reader = trial;
+    *refs = keys;
+    Ok((entry, body))
+}
 
 fn read_na_context_post_solver_slot(
     reader: &mut Reader<'_>,
@@ -811,6 +906,36 @@ mod tests {
         assert_eq!(definition.uid.1.as_ref().unwrap().key, 40);
         assert!(refs.contains(38) && refs.contains(39) && refs.contains(40));
         assert!(refs.contains(35) && refs.contains(36) && refs.contains(37));
+        assert_eq!(reader.read_bytes(1).unwrap(), [0x7f]);
+    }
+
+    #[test]
+    fn locator_prefix_registers_key_only_after_agent_count() {
+        let mut bytes = NA_LOCATOR_CLASS_ID.to_vec();
+        bytes.extend(251_u32.to_le_bytes());
+        bytes.extend(3_u16.to_le_bytes());
+        bytes.extend(1.25_f64.to_le_bytes());
+        bytes.extend(2.5_f64.to_le_bytes());
+        bytes.extend(9_i32.to_le_bytes());
+        bytes.extend(0xffff_u16.to_le_bytes());
+        bytes.extend(16_u32.to_le_bytes());
+        bytes.extend([0; 20]); // 同步长度和空对象头。
+        bytes.extend(2_i32.to_le_bytes());
+        let mut refs = RefTable10_1::new();
+        for end in 0..bytes.len() {
+            let mut reader = Reader::new(&bytes[..end]);
+            assert!(read_na_locator_prefix(&mut reader, 128, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+        bytes.push(0x7f);
+        let mut reader = Reader::new(&bytes);
+        let (_, locator) = read_na_locator_prefix(&mut reader, 128, &mut refs).unwrap();
+        let locator = locator.unwrap();
+        assert_eq!(locator.scalar_bits, [1.25_f64.to_bits(), 2.5_f64.to_bits()]);
+        assert_eq!(locator.spatial_reference, ObjectEntry10_1::Null);
+        assert_eq!(locator.agent_count, 2);
+        assert!(refs.contains(251));
         assert_eq!(reader.read_bytes(1).unwrap(), [0x7f]);
     }
 

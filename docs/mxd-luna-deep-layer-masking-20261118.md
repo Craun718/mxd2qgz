@@ -243,3 +243,9 @@ NetworkAnalystSolvers.dll 10.1.0.3035 的共用读取器 `0x7b12ba00` 在属性�
 NetworkAnalyst.dll 10.1.0.3035（SHA-256 `8c4ebaee71aad63c25616aa806674018479829d97bc01c7ed3b8845813698532`）的 NAContext::Load `0x7af12a10` 在求解器之后连续调用两次 LoadObject，请求 IID 常量分别位于 `0x7af9e7bc` 和 `0x7af9e71c`。DLL 的 .rdata 显示后者为 IPropertySet（`F0BA6ABC-8E9F-11D0-B4AB-0000F8037368`）。对应 Save `0x7af132d0` 的两个槽依次取自对象偏移 `+0x14`（特定分支写空）和 `+0x24`。
 
 两份 SanFrancisco SDK 工程均从 `0x7705` 读过 16 字节空槽，再从 `0x7715` 读过键 250 的空 PropertySet，停在 `0x772f`。该处新键 251 的 CLSID `4319ADE1-D6E5-4818-8380-8EE389D148EA` 在 10.1 的 esri.clsid.xml 注册为 NALocator。首槽中新对象的持久化体、NALocator 及后续槽仍待读取。构造测试验证属性集截断时保留已确认前缀并回滚新键。ArcMap/QGIS 人工验收未验证。
+
+### NALocator 的代理记录前缀
+
+同版 NetworkAnalyst.dll 的 GetClassID `0x7af31e50` 读取 CLSID 常量 `0x7af9b1f8`，通过调整 thunk `0x7af365c0` 与持久化虚表对位。该虚表的 Load 槽经 `0x7af365b0` 跳到 `0x7af31e90`，Save 经 `0x7af36540` 跳到 `0x7af322d0`。Ghidra 补充导出见 `temp/network-na/7af31e90.c`。Load 依次读取有符号上限 3 的 short、两个 double、LONG、short、ExtraSafe 空间参考槽（接口常量 `0x7afa0378`）与 LONG 代理计数。正数计数每项调用一次 ExtraSafeReadObject（接口常量 `0x7afa0388`）。代理循环后 v2 以上追加 double，v3 再读 short，v1 的单位换算走内存路径。
+
+两份 SanFrancisco SDK 工程从 `0x772f` 读取键 251、v3 定位器、带 16 字节空头的空间参考槽及计数 2，到达首个代理封装 `0x7777`。该封装 A=56、B=0，内层 CLSID `22B4C9AB-32FA-4686-8F5E-8A2A370B3350` 与 10.1 注册表的 NALocatorFeatureAgent 一致。构造测试覆盖逐字节截断和键回滚。新空间参考对象体、代理循环、版本尾字段及 ArcMap/QGIS 人工验收仍待验证。
