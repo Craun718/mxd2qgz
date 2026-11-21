@@ -872,3 +872,34 @@ GpRasterFunctions.dll 10.1.0.3035 仅有一份该 IID 常量
 对象的虚表第 0 项，之后调用其 Release。这里是接口消费方。
 其他模块尚未逐一核对，未知扩展与旧档类体仍待证据。ArcMap 10.1
 和 QGIS 人工验证尚未进行。
+
+### RenderingRule 接口的跨模块指令复查
+
+对现有 10.1 Desktop 解包目录中的 1115 个 DLL 文件搜索两种
+接口 IID 的内存序，34 个文件命中。将文件偏移换算为映像地址，
+再用 `objdump -d -Mintel` 查直接引用。用 `mov` 装入 IID
+地址的模块是 ImageServerLayer、RasterRenderer、FunctionRasterDB、
+_3DToRasterFunctions、RasterLocalOp 和 SARasterFunction，均在
+已有对象体研究范围内。使用 `push` 的引用也包括宿主读取及
+调用者查询，单凭引用数无法判定有哪些类实现该接口。
+AISClient、AISGlobalLib 和 AISServerManager 命中原始字节，
+本次未找到对应的原生指令直接引用。
+
+对其中两个模块的四个 `mov` 引用，按 RTTI 主虚表定位 QI，
+再核对匹配分支返回对象偏移。两模块均为 PE32，FileVersion
+10.1.0.3035。ImageServerLayer 的 SHA-256 见本页函数集合段，
+RasterRenderer 的 SHA-256 为
+`cc56825cdf91d4b5aed88d0f766ee253ad30000c3079c40a21a2e9e6c6ce1390`。
+
+| 实现 | 主 QI / IID 比较 | 成功返回 |
+| --- | --- | --- |
+| RasterItemFunction | `0x78020f30 / 0x78020f37` | `0x78020f55` 返回 +0x10 |
+| RasterItemFunctionArguments | `0x78022860 / 0x78022867` | `0x78022885` 返回 +0x10 |
+| RenderedRasterFunction | `0x7c988970 / 0x7c988977` | `0x7c988995` 返回 +0x10 |
+| RenderedRasterFunctionArguments | `0x7c9891f0 / 0x7c9891f7` | `0x7c989215` 返回 +0x10 |
+
+四个类均已接入函数或参数分派。作为对照，ImageServer.dll
+10.1.0.3035 的 `0x77f865a2 / 0x77f865c0` 把 IID 交给
+RenderingRule 的 LoadObject，属于宿主消费。直接地址引用扫描
+不能覆盖运行期构造 IID、间接表或第三方模块。剩余类待办保留。
+本轮为静态取证，未在 ArcMap 10.1 或 QGIS 中人工验证。
