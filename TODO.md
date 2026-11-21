@@ -623,6 +623,7 @@
       - [x] 定性 Scalebar 共用基类中 `IScaleBar.Division` 的两处持久化值和取值优先级，并从解析结果提供该值。[分段值取证](docs/mxd-terra-nextpass-scale.md#iscalebardivision-的两处持久化值)
       - [x] 定性 Scalebar 共用基类 v6 的 short 为 IScaleBar2.UseFractionCharacters，并从解析结果提供该值。[分数字符取证](docs/mxd-terra-nextpass-scale.md#分数字符开关)
       - [ ] 定性 Scalebar 共用基类 v5 增加的 short。[比例尺续查](docs/mxd-terra-nextpass-scale.md#分数字符开关)
+      - [x] 定位共用基类 v5 short 的跨模块接口访问及独立 Scalebar 的零返回分支。[虚调用取证](docs/mxd-terra-nextpass-scale.md#共用基类-v5-标量的接口访问)
       - [x] 定性四类填充比例尺派生中段的 double 为 IScaleBar.BarHeight，并从解析结果提供该值。[高度取证](docs/mxd-terra-nextpass-scale.md#填充比例尺高度)
       - [ ] 定性独立 Scalebar 类的其余标量字段。[比例尺续查](docs/mxd-terra-nextpass-scale.md)
       - [x] 核对独立 Scalebar 的接口分派和新增四项默认值。[接口边界](docs/mxd-terra-nextpass-scale.md#独立-scalebar-的接口边界)
