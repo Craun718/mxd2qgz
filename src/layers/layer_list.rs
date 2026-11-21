@@ -987,7 +987,26 @@ fn read_entry(
                                     max_bytes,
                                     trial_table,
                                 ) {
-                                    Ok(context) => body.context = Some(context),
+                                    Ok(context) => {
+                                        let complete = context
+                                            .1
+                                            .as_ref()
+                                            .is_none_or(|context| context.secondary_set.is_some());
+                                        body.context = Some(context);
+                                        if complete {
+                                            match super::na_layer::read_na_layer_children(
+                                                &mut region,
+                                                max_bytes,
+                                                trial_table,
+                                            ) {
+                                                Ok(children) => {
+                                                    parse_note = children.stop.clone();
+                                                    body.children = Some(children);
+                                                }
+                                                Err(error) => parse_note = Some(error.to_string()),
+                                            }
+                                        }
+                                    }
                                     Err(error) => {
                                         parse_note =
                                             Some(format!("NALayer 上下文槽未读取：{error}"))

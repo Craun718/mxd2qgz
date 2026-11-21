@@ -267,3 +267,9 @@ NetworkAnalyst.dll 10.1.0.3035（SHA-256 `8c4ebaee71aad63c25616aa806674018479829
 同版 Directions.dll 的街道方向代理持久化虚表 `0x6eadc0d4` 指向 Load/Save `0x6ea2d510 / 0x6ea2d770`，紧凑街道方向代理虚表 `0x6eadb3ac` 指向 `0x6ea224a0 / 0x6ea226b0`。Ghidra 导出确认两者都使用有符号 LONG 版本。v0 起读取 LONG 和 AfCore String，街道方向类在字符串前后各多读一个 LONG。v1 起追加一个 AfCore String，v2 起追加 LONG 和 AfCore String。读取器限制到已核对的 v2，复用 NamedSet 的对象表事务。
 
 两份 SanFrancisco SDK 工程均读完第二个集合键 255 及方向代理键 256、257，停在 `0x7a73`。其后出现数值 5 及键 258 的 FeatureLayer，对应上层持久化边界仍待确认。构造测试覆盖两种代理及逐字节截断时的集合回滚。ArcMap/QGIS 人工验收尚未进行。
+
+### NALayer 的首个子图层循环
+
+同版 NetworkAnalyst.dll 的 NALayer::Load `0x7af1ffc0` 在上下文返回后读取有符号 LONG，正数逐次调用普通 LoadObject，IID 常量 `0x7af9f5e0` 为 ILayer（`34C20002-4D3C-11D0-92D8-00805F7C28B0`）。Save `0x7af20be0` 从数组 `+0xc` 写出经过过滤的计数和对象。循环没有单项长度，FeatureLayer 必须达到自身的完整停止点，才能提交对象键并进入下一项。
+
+两份 SanFrancisco SDK 工程均在 `0x7a73` 读出计数 5。首项 FeatureLayer 键 258 从 `0x7a77` 开始，读取到名为 Stops 的子图层中键 261 的渲染器槽。10.1 注册表将该类 `7CF9F6E3-376A-49B2-BAEE-C8300798AECE` 定名为 NAStopRenderer。首项未完时游标和键退回项首，外层保留剩余字节。构造测试覆盖已完成的回引、未支持的新对象和短计数区。NAStopRenderer 对象体、后续子图层与 ArcMap/QGIS 人工验收仍待验证。

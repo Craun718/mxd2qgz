@@ -24,6 +24,16 @@ pub(crate) const NA_LAYER_CLASS_ID: [u8; 16] = [
 ];
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct NaLayerChildren10_1 {
+    pub declared_count: i32,
+    pub entries: Vec<(
+        ObjectEntry10_1,
+        Option<Box<super::feature_layer::FeatureLayerPrefix10_1>>,
+    )>,
+    pub stop: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct NaLayerPrefix10_1 {
     pub version: u16,
     pub name: String,
@@ -31,6 +41,7 @@ pub struct NaLayerPrefix10_1 {
     pub double_bits: [u64; 2],
     pub network_name: Option<(ObjectEntry10_1, Option<Box<NetworkDatasetName10_1>>)>,
     pub context: Option<(ObjectEntry10_1, Option<Box<NaContextPrefix10_1>>)>,
+    pub children: Option<NaLayerChildren10_1>,
 }
 
 pub(super) fn read_na_layer_prefix_10_1(
@@ -63,7 +74,87 @@ pub(super) fn read_na_layer_prefix_10_1(
         double_bits,
         network_name: None,
         context: None,
+        children: None,
     })
+}
+
+/// NALayer::Load 0x7af1ffc0 在完整上下文之后读取 LONG 和普通 ILayer 槽。
+pub(super) fn read_na_layer_children(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<NaLayerChildren10_1> {
+    let mut trial = reader.clone();
+    let declared_count = trial.read_u32_le()? as i32;
+    let count = declared_count.max(0) as usize;
+    if count > trial.remaining().min(max) / 16 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "NALayer 子图层数量超出可读范围",
+        ));
+    }
+    *reader = trial;
+    let mut entries = Vec::new();
+    let mut stop = None;
+    for _ in 0..count {
+        let mut trial = reader.clone();
+        let mut keys = refs.clone();
+        match read_na_child_layer(&mut trial, max, &mut keys) {
+            Ok(child) => {
+                *reader = trial;
+                *refs = keys;
+                entries.push(child);
+            }
+            Err(error) => {
+                stop = Some(error.to_string());
+                break;
+            }
+        }
+    }
+    Ok(NaLayerChildren10_1 {
+        declared_count,
+        entries,
+        stop,
+    })
+}
+
+fn read_na_child_layer(
+    reader: &mut Reader<'_>,
+    max: usize,
+    keys: &mut RefTable10_1,
+) -> io::Result<(
+    ObjectEntry10_1,
+    Option<Box<super::feature_layer::FeatureLayerPrefix10_1>>,
+)> {
+    use super::feature_layer::{
+        FEATURE_LAYER_CLASS_ID, FeatureLayerStop10_1, read_feature_layer_prefix_10_1,
+    };
+    use super::feature_layer_tail::SuccessorStop10_1;
+
+    let entry = read_object_entry_10_1(reader, keys)?;
+    let body = match entry {
+        ObjectEntry10_1::NewObject {
+            class_id: FEATURE_LAYER_CLASS_ID,
+            ..
+        } => {
+            let body = read_feature_layer_prefix_10_1(reader, max, keys)?;
+            if body.stop != FeatureLayerStop10_1::Successor(SuccessorStop10_1::TailCompleted) {
+                return Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    format!("NALayer 子图层 {:?} 读取至 {:?}", body.name, body.stop),
+                ));
+            }
+            Some(Box::new(body))
+        }
+        ObjectEntry10_1::NewObject { class_id, .. } => {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                format!("NALayer 子图层类 {class_id:02x?} 未支持"),
+            ));
+        }
+        _ => None,
+    };
+    Ok((entry, body))
 }
 
 const NETWORK_DATASET_NAME_CLASS_ID: [u8; 16] = [
@@ -1186,6 +1277,33 @@ mod tests {
         assert!(refs.contains(38) && refs.contains(39) && refs.contains(40));
         assert!(refs.contains(35) && refs.contains(36) && refs.contains(37));
         assert_eq!(reader.read_bytes(1).unwrap(), [0x7f]);
+    }
+
+    #[test]
+    fn na_children_keep_confirmed_references_and_roll_back_unknown_child() {
+        let class_id = super::super::feature_layer::FEATURE_LAYER_CLASS_ID;
+        let mut bytes = 2_i32.to_le_bytes().to_vec();
+        bytes.extend(class_id);
+        bytes.extend(258_u32.to_le_bytes());
+        let second = bytes.len();
+        bytes.extend([0xa5; 16]);
+        bytes.extend(259_u32.to_le_bytes());
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        refs.register(258);
+        let children = read_na_layer_children(&mut reader, 128, &mut refs).unwrap();
+        assert_eq!(children.declared_count, 2);
+        assert_eq!(
+            children.entries,
+            [(ObjectEntry10_1::BackReference { class_id, key: 258 }, None)]
+        );
+        assert!(children.stop.is_some());
+        assert_eq!(reader.position(), second);
+        assert!(!refs.contains(259));
+
+        let mut reader = Reader::new(&bytes[..second]);
+        assert!(read_na_layer_children(&mut reader, 128, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
     }
 
     #[test]
