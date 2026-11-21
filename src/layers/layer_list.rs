@@ -154,6 +154,7 @@ pub enum LayerBodyPrefix10_1 {
     FdoGraphicsLayer(Box<FdoGraphicsLayerPrefix10_1>),
     /// Scene 或 Globe 图形层完整对象体。
     Graphics3d(Box<Graphics3dLayer10_1>),
+    TinLayer(Box<super::tin_layer::TinLayer10_1>),
     NetworkLayer(Box<super::network_layer::NetworkLayerPrefix10_1>),
     NaLayer(crate::layers::na_layer::NaLayerPrefix10_1),
     /// 有界 RasterLayer 的已确认前缀。
@@ -183,6 +184,7 @@ impl LayerBodyPrefix10_1 {
             Self::ProcessLayer(body) => &body.group.name,
             Self::CompositeGraphicsLayer(prefix) => &prefix.name,
             Self::Graphics3d(body) => &body.name,
+            Self::TinLayer(body) => &body.name,
             Self::NetworkLayer(body) => &body.name,
             Self::NaLayer(body) => &body.name,
             Self::TiledLayer(body) => body.name(),
@@ -984,18 +986,20 @@ fn read_entry(
                 )
             } else if *class_id == GROUP_LAYER_CLASS_ID {
                 read_group_layer_list_body(trial, bound.map(|(end, _)| end), max_bytes, trial_table)
-            } else if *class_id == super::process_layer::PROCESS_LAYER_CLASS_ID
-                && let Some((end, _)) = bound
+            } else if matches!(
+                *class_id,
+                super::process_layer::PROCESS_LAYER_CLASS_ID | super::tin_layer::TIN_LAYER_CLASS_ID
+            ) && let Some((end, _)) = bound
             {
                 let len = end
                     .checked_sub(trial.position())
-                    .ok_or_else(|| invalid(offset, "ProcessLayer 外层边界早于对象体"))?;
+                    .ok_or_else(|| invalid(offset, "图层外层边界早于对象体"))?;
                 let mut region = trial.clone().read_region(len)?;
                 let mut refs = trial_table.clone();
                 parse_body_prefix(&mut region, *class_id, max_bytes, &mut refs, 0).and_then(
                     |body| {
                         if region.remaining() != 0 {
-                            return Err(invalid(offset, "ProcessLayer 未完整消费外层区间"));
+                            return Err(invalid(offset, "图层未完整消费外层区间"));
                         }
                         trial.read_bytes(region.position())?;
                         *trial_table = refs;
@@ -1119,6 +1123,10 @@ pub(crate) fn parse_body_prefix(
         return super::network_layer::read_network_layer_prefix_10_1(trial, max_bytes, trial_table)
             .map(|body| Some(LayerBodyPrefix10_1::NetworkLayer(Box::new(body))));
     }
+    if class_id == super::tin_layer::TIN_LAYER_CLASS_ID {
+        return super::tin_layer::read_tin_layer_10_1(trial, max_bytes, trial_table)
+            .map(|body| Some(LayerBodyPrefix10_1::TinLayer(Box::new(body))));
+    }
     if class_id == FEATURE_LAYER_CLASS_ID {
         Ok(Some(LayerBodyPrefix10_1::FeatureLayer(Box::new(
             read_feature_layer_prefix_10_1(trial, max_bytes, trial_table)?,
@@ -1240,6 +1248,7 @@ pub(crate) fn read_complete_layer_body_10_1(
         | LayerBodyPrefix10_1::CadFeatureLayer(_)
         | LayerBodyPrefix10_1::CadAnnotationLayer(_)
         | LayerBodyPrefix10_1::CoverageAnnotationLayer(_)
+        | LayerBodyPrefix10_1::TinLayer(_)
         | LayerBodyPrefix10_1::TiledLayer(_) => true,
         LayerBodyPrefix10_1::BasemapLayer(body) => {
             body.stop == crate::layers::basemap_layer::BasemapStop10_1::Complete

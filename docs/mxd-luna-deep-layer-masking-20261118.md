@@ -499,4 +499,12 @@ LoadObject 请求 ISymbol（`0x80453aac`）、ILegendGroup
 Save 指令及版本常量分别在 `0x8042bb20 / 0x804533f4`、
 `0x80430cd0 / 0x804533dc`，均写 v1，且字段顺序与读取一致。
 Load 对图例组结果调用其虚表，因此合成全空子槽只可验证字节边界，
-无法代表原生成功打开。解析器接入、其他渲染器及实档仍待完成。
+无法代表原生成功打开。
+
+`src/layers/tin_layer.rs` 已接入上述图层版本门和三类渲染器，并
+复用 TinName、空间参考、符号、LegendGroup、HorizontalLegendItem、
+TransparencyDisplayFilter、FieldInfo、旧式扩展列表和 Envelope 读取器。
+出现未知新对象或只读到子对象前缀时，图层体读取失败并回滚游标与引用表。
+合成测试覆盖有符号版本门、三类渲染器、回引、v9 单独的 short、
+逐字节截断与未知渲染器。其他 ITinRenderer 实现及图例项类别仍待取证。
+本轮没有含 TIN 图层的实档在 ArcMap 与 QGIS 中进行人工验证。

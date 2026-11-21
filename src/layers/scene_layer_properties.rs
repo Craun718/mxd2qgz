@@ -23,7 +23,7 @@ pub const RASTER_3D_PROPERTIES_CLASS_ID: [u8; 16] = [
 pub const FEATURE_3D_PROPERTIES_CLASS_ID: [u8; 16] = [
     0xe4, 0xec, 0x4c, 0x4a, 0x3a, 0xf5, 0xd3, 0x11, 0x80, 0xd9, 0, 0xc0, 0x4f, 0xa0, 0xad, 0xf8,
 ];
-const TIN_NAME_CLASS_ID: [u8; 16] = [
+pub(super) const TIN_NAME_CLASS_ID: [u8; 16] = [
     0x16, 0xf4, 0x13, 0x5f, 0xbc, 0x42, 0xd2, 0x11, 0xa5, 0x69, 0, 0, 0xf8, 0x77, 0x4f, 0x0f,
 ];
 
@@ -69,7 +69,7 @@ pub struct SceneLayerProperties10_1 {
     pub envelope: Option<RasterLayerEnvelopeSlot10_1>,
 }
 
-fn read_surface_name(
+pub(super) fn read_surface_name(
     reader: &mut Reader<'_>,
     max: usize,
     refs: &mut RefTable10_1,

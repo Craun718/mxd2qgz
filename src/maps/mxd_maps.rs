@@ -865,6 +865,7 @@ fn frame_from_body(
             Some(
                 LayerBodyPrefix10_1::BasemapLayer(_)
                 | LayerBodyPrefix10_1::NaLayer(_)
+                | LayerBodyPrefix10_1::TinLayer(_)
                 | LayerBodyPrefix10_1::NetworkLayer(_)
                 | LayerBodyPrefix10_1::TiledLayer(_)
                 | LayerBodyPrefix10_1::CadLayer(_),
@@ -1985,6 +1986,7 @@ fn body_prefix_node(
         )),
         LayerBodyPrefix10_1::BasemapLayer(_)
         | LayerBodyPrefix10_1::NaLayer(_)
+        | LayerBodyPrefix10_1::TinLayer(_)
         | LayerBodyPrefix10_1::NetworkLayer(_) => None,
         LayerBodyPrefix10_1::CadAnnotationLayer(_)
         | LayerBodyPrefix10_1::CoverageAnnotationLayer(_) => {

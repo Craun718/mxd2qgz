@@ -718,6 +718,7 @@ impl<'body> LayerMaskingTraversal<'_, '_, 'body> {
                         | LayerBodyPrefix10_1::TiledLayer(_)
                         | LayerBodyPrefix10_1::Graphics3d(_)
                         | LayerBodyPrefix10_1::NaLayer(_)
+                        | LayerBodyPrefix10_1::TinLayer(_)
                         | LayerBodyPrefix10_1::NetworkLayer(_),
                     ) => {}
                     Some(LayerBodyPrefix10_1::CompositeGraphicsLayer(layer))
