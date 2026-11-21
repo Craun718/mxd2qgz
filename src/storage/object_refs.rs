@@ -40,6 +40,7 @@ pub struct RefTable10_1 {
     workspace_paths: HashMap<u32, Arc<str>>,
     feature_dataset_paths: HashMap<u32, Arc<str>>,
     dataset_sources: HashMap<([u8; 16], u32), DatasetSource10_1>,
+    long_arrays: HashMap<u32, (u16, Arc<[i32]>)>,
     legend_group_counts: HashMap<u32, usize>,
     // 共享键表的试读副本也继承跨类图形对象的当前递归深度。
     graphics_nesting: u8,
@@ -205,6 +206,18 @@ impl RefTable10_1 {
         key: u32,
     ) -> Option<&DatasetSource10_1> {
         self.dataset_sources.get(&(class_id, key))
+    }
+
+    pub(crate) fn mark_long_array(&mut self, key: u32, version: u16, values: &[i32]) {
+        if self.contains(key) {
+            self.long_arrays.insert(key, (version, Arc::from(values)));
+        }
+    }
+
+    pub(crate) fn long_array(&self, key: u32) -> Option<(u16, &[i32])> {
+        self.long_arrays
+            .get(&key)
+            .map(|(version, values)| (*version, values.as_ref()))
     }
 
     /// 键是否已在本会话登记过；命中即回引。

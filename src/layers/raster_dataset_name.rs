@@ -1189,11 +1189,22 @@ pub(crate) fn read_long_array_slot(
 ) -> io::Result<RasterLongArraySlot10_1> {
     let entry = read_object_entry_10_1(reader, table)?;
     let body = match entry {
+        ObjectEntry10_1::BackReference {
+            class_id: LONG_ARRAY_CLASS_ID,
+            key,
+        } => table
+            .long_array(key)
+            .filter(|(_, values)| values.len() <= max / 4)
+            .map(|(version, values)| (version, values.to_vec())),
         ObjectEntry10_1::Null | ObjectEntry10_1::BackReference { .. } => None,
         ObjectEntry10_1::NewObject {
             class_id: LONG_ARRAY_CLASS_ID,
-            ..
-        } => Some(read_long_array_body(reader, max)?),
+            key,
+        } => {
+            let body = read_long_array_body(reader, max)?;
+            table.mark_long_array(key, body.0, &body.1);
+            Some(body)
+        }
         ObjectEntry10_1::NewObject { class_id, .. } => {
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,
@@ -1265,6 +1276,39 @@ mod tests {
             bytes.extend(0x5566_7788_i32.to_le_bytes());
         }
         bytes
+    }
+
+    #[test]
+    fn band_collection_resolves_ordered_long_array_back_reference() {
+        let mut definition = LONG_ARRAY_CLASS_ID.to_vec();
+        definition.extend(27_u32.to_le_bytes());
+        definition.extend(1_u16.to_le_bytes());
+        definition.extend(3_i32.to_le_bytes());
+        for index in [2_i32, 0, 2] {
+            definition.extend(index.to_le_bytes());
+        }
+        let mut refs = RefTable10_1::new();
+        read_long_array_slot(&mut Reader::new(&definition), 1024, &mut refs).unwrap();
+
+        let mut bytes = 1_u16.to_le_bytes().to_vec();
+        bytes.extend(encoded_string("组合"));
+        bytes.extend([0; 16]);
+        let array_offset = bytes.len();
+        bytes.extend(LONG_ARRAY_CLASS_ID);
+        bytes.extend(27_u32.to_le_bytes());
+        let mut reader = Reader::new(&bytes);
+        let body = read_band_collection_name(&mut reader, 1024, &mut refs, 16).unwrap();
+        assert!(matches!(
+            body.array_entry,
+            ObjectEntry10_1::BackReference { key: 27, .. }
+        ));
+        assert_eq!(body.array, Some((1, vec![2, 0, 2])));
+        assert_eq!(reader.position(), bytes.len());
+
+        bytes[array_offset..array_offset + 16].fill(0x42);
+        let body =
+            read_band_collection_name(&mut Reader::new(&bytes), 1024, &mut refs, 16).unwrap();
+        assert_eq!(body.array, None);
     }
 
     #[test]

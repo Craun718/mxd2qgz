@@ -777,6 +777,7 @@ pub(crate) fn read_variant_object_body_10_1(
                 }
                 LONG_ARRAY_CLASS_ID => {
                     let (version, values) = read_long_array_body(reader, max_bytes)?;
+                    table.mark_long_array(key, version, &values);
                     (version, Longs(values))
                 }
                 DOUBLE_ARRAY_CLASS_ID => {
