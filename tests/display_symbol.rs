@@ -2777,3 +2777,54 @@ fn url_picture_marker_preserves_strings_and_reads_the_embedded_marker() {
     assert_eq!(reader.position(), slot_start);
     assert!(!refs.contains(70));
 }
+
+#[test]
+fn symbol_mimic_reads_empty_rule_and_rolls_back_on_unknown_rule() {
+    use mxd2qgz::objects::display_symbol::{
+        SYMBOL_MIMIC_CLASS_ID, SymbolSlotFull10_1, read_symbol_slot_full_10_1,
+    };
+
+    let mut bytes = Vec::new();
+    push_entry(&mut bytes, &SYMBOL_MIMIC_CLASS_ID, 11);
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend((-23_i32).to_le_bytes());
+    let rule_start = bytes.len();
+    bytes.extend([0; 16]);
+    bytes.extend(19_i32.to_le_bytes());
+
+    let mut refs = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    assert_eq!(
+        read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 2).unwrap(),
+        SymbolSlotFull10_1::SymbolMimic {
+            key: 11,
+            version: 1,
+            leading_value: -23,
+            trailing_value: 19,
+        }
+    );
+    assert_eq!(reader.remaining(), 0);
+    assert!(refs.contains(11));
+    for end in 0..bytes.len() {
+        let mut reader = Reader::new(&bytes[..end]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 2).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(!refs.contains(11));
+    }
+
+    bytes.truncate(rule_start);
+    push_entry(&mut bytes, &[0xff; 16], 12);
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    assert_eq!(
+        read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 2).unwrap(),
+        SymbolSlotFull10_1::Unsupported {
+            class_id: SYMBOL_MIMIC_CLASS_ID,
+            key: 11,
+        }
+    );
+    assert_eq!(reader.position(), 0);
+    assert!(!refs.contains(11));
+    assert!(!refs.contains(12));
+}

@@ -262,6 +262,7 @@ use crate::objects::picture_fill_symbol::{
     read_picture_fill_symbol_body_10_1, read_picture_fill_symbol_slot_10_1,
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
@@ -545,6 +546,11 @@ fn read_signed_symbol_version(
 fn read_i32_le(trial: &mut Reader<'_>) -> io::Result<i32> {
     Ok(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()))
 }
+
+/// DisplayRepresentation.dll 的 SymbolMimic。
+pub const SYMBOL_MIMIC_CLASS_ID: [u8; 16] = [
+    0x86, 0x47, 0x28, 0xec, 0x94, 0xa3, 0xe9, 0x44, 0x94, 0xaa, 0xaa, 0x05, 0x83, 0x07, 0x47, 0xe2,
+];
 
 pub(crate) const MARKER_SYMBOL_CLASSES: &[[u8; 16]] = &[
     SIMPLE_MARKER_SYMBOL_CLASS_ID,
@@ -1583,6 +1589,13 @@ pub enum SymbolSlotFull10_1 {
     PictureMarkerSymbol(Box<PictureMarkerSymbolBody10_1>),
     /// WMSLayer.dll 的 URL 图像标记符号。
     UrlPictureMarkerSymbol(Box<UrlPictureMarkerSymbolBody10_1>),
+    /// SymbolMimic 的 IRepresentationRule 槽为空。
+    SymbolMimic {
+        key: u32,
+        version: u16,
+        leading_value: i32,
+        trailing_value: i32,
+    },
     /// 新 PictureLineSymbol 对象。
     PictureLineSymbol(Box<PictureLineSymbolBody10_1>),
     /// 新 PictureFillSymbol 对象。
@@ -1771,7 +1784,7 @@ pub fn slot_full_stop_10_1(
                 key: body.key,
             })
         }
-        SymbolSlotFull10_1::ChartSymbol(_) => None,
+        SymbolSlotFull10_1::ChartSymbol(_) | SymbolSlotFull10_1::SymbolMimic { .. } => None,
         SymbolSlotFull10_1::TextSymbol { body, key } => {
             body.stop.clone().map(|_| SymbolStop10_1::NestedIncomplete {
                 class_id: TEXT_SYMBOL_CLASS_ID,
@@ -2002,6 +2015,19 @@ pub fn read_symbol_slot_full_10_1(
                     &mut staged,
                     key,
                 )?))
+            } else if class_id == SYMBOL_MIMIC_CLASS_ID {
+                let version =
+                    read_signed_symbol_version(&mut trial, 1, "SymbolMimic", origin.position())?;
+                let leading_value = read_i32_le(&mut trial)?;
+                if !matches!(read_header_10_1(&mut trial)?, ObjectHeader::Null) {
+                    return Ok(SymbolSlotFull10_1::Unsupported { class_id, key });
+                }
+                SymbolSlotFull10_1::SymbolMimic {
+                    key,
+                    version,
+                    leading_value,
+                    trailing_value: read_i32_le(&mut trial)?,
+                }
             } else if class_id == COLOR_RAMP_SYMBOL_CLASS_ID {
                 SymbolSlotFull10_1::ColorRampSymbol(Box::new(read_color_ramp_symbol_body_10_1(
                     &mut trial,

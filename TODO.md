@@ -468,6 +468,7 @@
       - [x] 接入普通 ILayer 槽中的 InternetTiledLayer 与 WMTSLayer，覆盖独立图层、组图层和三维关联图层。[接口及对象体证据](docs/mxd-10.1-raster-layer-tail.md#瓦片图层的独立-ilayer-宿主)
       - [ ] 补齐两类 3D 图形容器尚未支持的非空元素、空间对象和扩展实现。
       - [ ] FeatureLayer 后继段 ㉖ 槽中未支持的 ISymbol 实现类体（已接入类和跨模块候选见[符号续研](docs/arcmap-10.1-dep-tail.md#featurelayer-符号槽的栅格和-wms-实现)）。
+      - [x] 接入 SymbolMimic 的空 IRepresentationRule 槽及两项标量。[原生持久化入口](docs/arcmap-10.1-dep-tail.md#symbolmimic-的持久化入口)
       - [x] 接入 FeatureLayer 后继段 ㉖ 的 BarChartSymbol、PieChartSymbol、StackedChartSymbol 对象体。[原生读写](docs/arcmap-10.1-dep-tail.md#featurelayer-后继段的统计图符号)
       - [x] 接入 ISymbol 槽的 ColorSymbol、ColorRampSymbol 和 RasterRGBSymbol，并对位两个 SDK 工程的非空栅格渲染器。[原生读写和实档边界](docs/arcmap-10.1-dep-tail.md#featurelayer-符号槽的栅格和-wms-实现)
       - [x] 接入 ISymbol 槽的 URLPictureMarkerSymbol，复用内嵌 PictureMarkerSymbol 读取器。[WMSLayer 指令取证](docs/arcmap-10.1-dep-tail.md#featurelayer-符号槽的栅格和-wms-实现)

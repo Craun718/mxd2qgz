@@ -438,5 +438,11 @@ PictureMarkerSymbol。两字符串按原始顺序保留，解析不访问 URL。
 （`0x6eeb224c` 初值 1）、int32、对象槽、int32。对象槽请求 IID
 `2B7BE3AB-BB72-49D0-A6EE-63ACD1F9068C`（`0x6ee9ac20`），
 `esriDisplay.olb` 第 408 项定名 IRepresentationRule。
-同模块 RepresentationRule 的 QI `0x6ee73a50` 直接接受该接口。非空
-IRepresentationRule 实现和 SymbolMimic 的宿主接线仍待解析。
+同模块 RepresentationRule 的 QI `0x6ee73a50` 直接接受该接口。
+Load 在 `0x6ee7a815` 以有符号比较拒绝大于 1 的版本。规则槽返回非负
+HRESULT 时，`0x6ee7a854` 继续读取尾随 int32，包含空槽的 S_FALSE。
+
+共享 ISymbol 读取器已接入空规则的 SymbolMimic，因此 FeatureLayer 后继
+槽可按正常分派读取。合成测试覆盖两项原始值、完整边界、逐字节截断及遇到
+非空槽时回退外层对象和键。非空 IRepresentationRule 的读取仍开放，
+尚无实档及 ArcMap 10.1、QGIS 人工验证。
