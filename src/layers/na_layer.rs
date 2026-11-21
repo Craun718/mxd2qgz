@@ -238,6 +238,17 @@ pub struct NaLocatorPrefix10_1 {
     pub tail: Option<NaLocatorTail10_1>,
 }
 
+const NA_NAMED_SET_CLASS_ID: [u8; 16] = [
+    0x84, 0xfe, 0xb4, 0xf6, 0x02, 0x7a, 0x69, 0x49, 0x9e, 0x72, 0x11, 0xb4, 0xf8, 0x37, 0x71, 0x55,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NaNamedSetBody10_1 {
+    pub version: u16,
+    pub declared_count: i32,
+    pub items: Vec<NaNamedSet10_1>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct NaContextPrefix10_1 {
     pub version: u16,
@@ -250,6 +261,8 @@ pub struct NaContextPrefix10_1 {
     pub post_solver_object: Option<ObjectEntry10_1>,
     pub properties: Option<(ObjectEntry10_1, Option<Box<PropertySetObjectStream10_1>>)>,
     pub locator: Option<(ObjectEntry10_1, Option<NaLocatorPrefix10_1>)>,
+    pub class_set: Option<(ObjectEntry10_1, Option<NaNamedSetBody10_1>)>,
+    pub secondary_set: Option<(ObjectEntry10_1, Option<NaNamedSetBody10_1>)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -330,6 +343,15 @@ pub(super) fn read_na_context_prefix_10_1(
             let locator = properties
                 .as_ref()
                 .and_then(|_| read_na_locator_prefix(&mut trial, max, &mut keys).ok());
+            let locator_complete = locator
+                .as_ref()
+                .is_some_and(|(_, body)| body.as_ref().is_none_or(|body| body.tail.is_some()));
+            let class_set = locator_complete
+                .then(|| read_na_named_set(&mut trial, max, &mut keys).ok())
+                .flatten();
+            let secondary_set = class_set
+                .as_ref()
+                .and_then(|_| read_na_named_set(&mut trial, max, &mut keys).ok());
             Some(Box::new(NaContextPrefix10_1 {
                 version,
                 name,
@@ -340,6 +362,8 @@ pub(super) fn read_na_context_prefix_10_1(
                 post_solver_object,
                 properties,
                 locator,
+                class_set,
+                secondary_set,
             }))
         }
         ObjectEntry10_1::NewObject { .. } => {
@@ -511,6 +535,67 @@ fn read_na_locator_slot(
             "定位器 ExtraSafe 对象未消费声明范围",
         ));
     }
+    Ok((entry, body))
+}
+
+/// NamedSet::Load 0x7af43920 逐项读取 AfCore String 和普通对象槽。
+fn read_na_named_set(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<(ObjectEntry10_1, Option<NaNamedSetBody10_1>)> {
+    let mut trial = reader.clone();
+    let mut keys = refs.clone();
+    let entry = read_object_entry_10_1(&mut trial, &mut keys)?;
+    let body = match entry {
+        ObjectEntry10_1::NewObject {
+            class_id: NA_NAMED_SET_CLASS_ID,
+            ..
+        } => {
+            let version = trial.read_u16_le()?;
+            if version as i16 > 1 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "NamedSet 版本超过 1",
+                ));
+            }
+            let declared_count = trial.read_u32_le()? as i32;
+            let count = declared_count.max(0) as usize;
+            // 每项至少有六字节空字符串和十六字节对象头。
+            if count > trial.remaining().min(max) / 22 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "NamedSet 条目数量超出可读范围",
+                ));
+            }
+            let mut items = Vec::new();
+            for _ in 0..count {
+                let name = read_string_10_1(&mut trial, max)?;
+                let class = super::na_class::read_na_class_10_1(&mut trial, max, &mut keys)?;
+                if matches!(class.0, ObjectEntry10_1::Null) {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "NamedSet 条目对象为空",
+                    ));
+                }
+                items.push(NaNamedSet10_1 { name, class });
+            }
+            Some(NaNamedSetBody10_1 {
+                version,
+                declared_count,
+                items,
+            })
+        }
+        ObjectEntry10_1::NewObject { .. } => {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "NAContext 命名集合类未支持",
+            ));
+        }
+        _ => None,
+    };
+    *reader = trial;
+    *refs = keys;
     Ok((entry, body))
 }
 
@@ -855,6 +940,16 @@ fn read_na_workspace_prefix(
 mod tests {
     use super::*;
 
+    fn push_string(bytes: &mut Vec<u8>, value: &str) {
+        let utf16 = value.encode_utf16().collect::<Vec<_>>();
+        let cb = u32::try_from((utf16.len() + 1) * 2).unwrap();
+        bytes.extend(cb.to_le_bytes());
+        for unit in utf16 {
+            bytes.extend(unit.to_le_bytes());
+        }
+        bytes.extend(0_u16.to_le_bytes());
+    }
+
     #[test]
     fn reads_prefix_and_leaves_nested_objects_for_the_host() {
         let mut bytes = 3_u16.to_le_bytes().to_vec();
@@ -914,16 +1009,6 @@ mod tests {
 
     #[test]
     fn context_prefix_reads_workspace_named_class_and_uid_transactionally() {
-        fn push_string(bytes: &mut Vec<u8>, value: &str) {
-            let utf16 = value.encode_utf16().collect::<Vec<_>>();
-            let cb = u32::try_from((utf16.len() + 1) * 2).unwrap();
-            bytes.extend(cb.to_le_bytes());
-            for unit in utf16 {
-                bytes.extend(unit.to_le_bytes());
-            }
-            bytes.extend(0_u16.to_le_bytes());
-        }
-
         let mut bytes = NA_CONTEXT_CLASS_ID.to_vec();
         bytes.extend(35_u32.to_le_bytes());
         bytes.extend(0_u16.to_le_bytes());
@@ -1006,6 +1091,35 @@ mod tests {
         assert!(refs.contains(38) && refs.contains(39) && refs.contains(40));
         assert!(refs.contains(35) && refs.contains(36) && refs.contains(37));
         assert_eq!(reader.read_bytes(1).unwrap(), [0x7f]);
+    }
+
+    #[test]
+    fn named_set_resolves_prior_class_key_and_rolls_back_on_truncation() {
+        let mut bytes = NA_NAMED_SET_CLASS_ID.to_vec();
+        bytes.extend(254_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(1_i32.to_le_bytes());
+        push_string(&mut bytes, "Stops");
+        bytes.extend(super::super::na_class::NA_CLASS_CLASS_ID);
+        bytes.extend(178_u32.to_le_bytes());
+        let mut refs = RefTable10_1::new();
+        refs.register(178);
+        for end in 0..bytes.len() {
+            let mut reader = Reader::new(&bytes[..end]);
+            assert!(read_na_named_set(&mut reader, 128, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(!refs.contains(254));
+        }
+        let mut reader = Reader::new(&bytes);
+        let (_, body) = read_na_named_set(&mut reader, 128, &mut refs).unwrap();
+        let body = body.unwrap();
+        assert_eq!(body.items[0].name, "Stops");
+        assert!(matches!(
+            body.items[0].class.0,
+            ObjectEntry10_1::BackReference { key: 178, .. }
+        ));
+        assert!(refs.contains(254));
+        assert_eq!(reader.remaining(), 0);
     }
 
     #[test]
