@@ -682,6 +682,7 @@
       - [x] 核对 PCS 默认容差与 GCS XY 默认容差的 pe/sg 调用链。[空间参考取证](docs/arcmap-10.1-pcs-geometry-slots.md)
       - [x] 核对 GCS 默认 Z/M 容差及垂向单位有效性检查。[空间参考取证](docs/arcmap-10.1-pcs-geometry-slots.md)
       - [x] 核对 GCS 默认 XY 容差所用的 AfCore 范数实现。[空间参考取证](docs/arcmap-10.1-pcs-geometry-slots.md)
+      - [x] 核对未知坐标系的默认容差与旧版网格恢复分支。[空间参考取证](docs/arcmap-10.1-pcs-geometry-slots.md)
       - [ ] 闭合坐标系容差的 pe/sg 数值推导链。[空间参考取证](docs/arcmap-10.1-pcs-geometry-slots.md)
       - [x] 将 ISRPersistStream 槽 8 定名为 GetPrecisionSizeMax，输出 `0x38`。
       - [x] 核对 10.1 UnknownCoordinateSystem 四条持久化字符串与 ISpatialReferenceInfo 属性的对应关系。[原生取证](docs/arcmap-10.1-pcs-geometry-slots.md#unknowncoordinatesystem-的四条持久化字符串)
