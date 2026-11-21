@@ -675,7 +675,8 @@
       - [x] 核对 PCS 延迟创建关联 GCS 时四条域串的初值与辅助结构来源。[原生取证](docs/mxd-terra-integrate-sr.md#pcs-创建关联-gcs-时的域串来源)
       - [x] 确认 PCS/GCS 的 DefineEx 将字符串参数转换为 BSTR，再委派 Define 写入持久化域串。[原生委派路径](docs/mxd-terra-integrate-sr.md#defineex-的域串写入路径)
       - [x] 将 PCS/GCS 的前三条域串绑定到 Alias、Abbreviation 和 Remarks，确认空串初始化及 PCS 复制路径。[原生字段映射](docs/mxd-terra-integrate-sr.md#pcs-与-gcs-域串的属性映射)
-      - [ ] 核对旧写方是否以 UnknownCoordinateSystem 的第二串保存 Alias。
+      - [ ] 核对早期 ArcMap 自身写出的 UnknownCoordinateSystem 第二串是否为 Alias。
+      - [x] 核对 ArcMap 10.1 降版保存 UnknownCoordinateSystem 时第二串仍为 Abbreviation。[取证](docs/arcmap-10.1-pcs-geometry-slots.md#101-保存到旧文档版本)
       - [ ] 定位 UnknownCoordinateSystem 字符串在编辑和创建路径中的其他填充来源。
       - [x] 定位 UnknownCoordinateSystem 构造接口的缓存对象初始字符串来源。[取证](docs/arcmap-10.1-pcs-geometry-slots.md#icloneassign-的字符串写入路径)
       - [x] 定位 UnknownCoordinateSystem 的 Assign 字符串写入与构造接口委派。[取证](docs/arcmap-10.1-pcs-geometry-slots.md#icloneassign-的字符串写入路径)

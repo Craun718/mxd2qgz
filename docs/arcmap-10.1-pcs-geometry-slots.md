@@ -437,6 +437,20 @@ Load 按上述相同顺序写成员，以第三串覆盖第二串。解析器保
 旧写方是否曾在第二串保存 Alias 仍待原生证据。下文记录 10.1 的 Assign 写入路径。ArcMap 10.1 人工验证尚未执行。
 
 
+### 10.1 保存到旧文档版本
+
+Geometry.dll 10.1.0.3035 的 Save `0x719ed310` 在 `0x719ed320`
+调用 `AfStreamGetDocumentVersion`，随后将版本表 `0x71a11d68`
+（三个 short，`[1, 1, 3]`）传给 `AfStreamGetSaveVersion`。
+写完对象保存版本后，四串由 `0x719ed367–0x719ed3ea` 的共用路径
+写出。此段只在写失败时提前返回，第二串和第三串始终取持久化接口
+this+0x4c，即完整对象 +0x7c 的 Abbreviation。首次按文档版本显式分支
+发生在第四串之后的 `0x719ed40b`，该分支选择精度与容差布局。
+
+因此即使 10.1 将对象写成 v1，第二串仍为 Abbreviation。原生早期版本
+自身的写方仍需用早期二进制或可区分 Alias 与 Abbreviation 的实档验证。
+本轮为静态取证，未在 ArcMap 或 QGIS 中人工验证。
+
 ### IClone::Assign 的字符串写入路径
 
 同一 ArcMap 10.1 Geometry.dll 的 IClone 查询比较点 `0x719eace5`
