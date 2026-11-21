@@ -2097,6 +2097,12 @@ fn raster_node(
                             Some(crate::model::RasterBandSource {
                                 class_id,
                                 object_key: key,
+                                band_name: match &name.body {
+                                    Some(crate::layers::raster_dataset_name::RasterDatasetNameEntryBody10_1::Band(band)) => {
+                                        band.dataset_band_name().map(str::to_owned)
+                                    }
+                                    _ => None,
+                                },
                                 source: raster_name_source(name),
                             })
                         }

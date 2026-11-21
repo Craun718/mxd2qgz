@@ -60,6 +60,8 @@ pub struct Layer {
 pub struct RasterBandSource {
     pub class_id: [u8; 16],
     pub object_key: u32,
+    /// Band name as used for lookup within the dataset, when known.
+    pub band_name: Option<String>,
     pub source: Option<DataSource>,
 }
 

@@ -1449,7 +1449,7 @@ mod tests {
         bytes.extend(RASTER_BAND_NAME_CLASS_ID);
         bytes.extend(71_u32.to_le_bytes());
         bytes.extend(1_u32.to_le_bytes());
-        for value in ["首波段", "", ""] {
+        for value in ["目录\\首波段", "", ""] {
             bytes.extend(encoded_string(value));
         }
         bytes.extend(1_u16.to_le_bytes());
@@ -1508,6 +1508,7 @@ mod tests {
             panic!("预期 RasterBandName");
         };
         assert!(band.has_version_marker);
+        assert_eq!(band.dataset_band_name(), Some("首波段"));
         let RasterBandNameSource10_1::Dataset(dataset) = &band.source else {
             panic!("预期 IDatasetName");
         };
@@ -1519,6 +1520,7 @@ mod tests {
             panic!("预期内嵌 RasterBandName");
         };
         assert!(!legacy_band.has_version_marker);
+        assert_eq!(legacy_band.dataset_band_name(), None);
         assert!(matches!(
             legacy_band.source,
             RasterBandNameSource10_1::Workspace(RasterDatasetWorkspaceSlot10_1::WorkspaceName(_))

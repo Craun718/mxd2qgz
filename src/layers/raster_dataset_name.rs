@@ -445,6 +445,16 @@ pub struct RasterBandName10_1 {
     pub source: RasterBandNameSource10_1,
 }
 
+impl RasterBandName10_1 {
+    /// 数据集分支传给 IRasterBandCollection::BandByName 的名称。
+    pub fn dataset_band_name(&self) -> Option<&str> {
+        if !matches!(self.source, RasterBandNameSource10_1::Dataset(_)) {
+            return None;
+        }
+        self.strings[0].rsplit('\\').next()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum RasterBandNameSource10_1 {
     Workspace(RasterDatasetWorkspaceSlot10_1),

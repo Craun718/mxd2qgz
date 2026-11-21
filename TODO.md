@@ -783,6 +783,7 @@
   - [x] 按原生有效名称数量处理含空槽的 RasterLayer 名称列表。[计数与模型验证](docs/mxd-10.1-raster-layer-tail.md#空名称与有效名称数量)
   - [x] 核对多名称 RasterLayer 的逐项波段追加行为，并报告单一模型数据源留空的原因。[原生组合链](docs/mxd-10.1-raster-layer-tail.md#多名称栅格的波段追加)
   - [x] 将多名称栅格的已保存波段来源和未解析占位按顺序接入图层模型。[模型字段与覆盖范围](docs/mxd-10.1-raster-layer-tail.md#组合栅格的模型来源)
+  - [x] 对位 RasterBandName 的数据集内波段名称，并传入组合栅格模型。[BandByName 取证](docs/mxd-10.1-raster-layer-tail.md#数据集内波段名称)
   - [x] 定位 RasterDatasetName 第四条字符串的 IRasterDatasetNameImpl 访问器。[私有接口取证](docs/mxd-luna-followup-rasterdatasetname-20261118.md#第四条字符串的私有接口)
 - [ ] 转换 Shapefile 数据源路径（相对、绝对、缺失文件）。
 - [x] 构造模型支持明确 EPSG:4326/3857、不同地图/图层 CRS 和主画布范围；其他定义保留并诊断，未猜 EPSG。非法或溢出范围拒绝。
