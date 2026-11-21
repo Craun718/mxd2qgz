@@ -49,7 +49,7 @@ pub struct RasterLayerPrefix10_1 {
 pub struct RasterLayerName10_1 {
     pub entry: ObjectEntry10_1,
     pub body: Option<RasterDatasetNameEntryBody10_1>,
-    /// 已确认名称回引的路径和数据集名。
+    /// 已确认的路径、数据集名和波段名。
     pub source_reference: Option<crate::storage::object_refs::DatasetSource10_1>,
     pub suffix: Option<String>,
     /// v5–v8 的 int32 选择子，非零时带一个 int32。
@@ -206,7 +206,8 @@ fn read_raster_layer_names(
                 })
                 .transpose()?;
             let source_reference = match &entry {
-                ObjectEntry10_1::BackReference { class_id, key } => {
+                ObjectEntry10_1::NewObject { class_id, key }
+                | ObjectEntry10_1::BackReference { class_id, key } => {
                     staged.dataset_source(*class_id, *key).cloned()
                 }
                 _ => None,

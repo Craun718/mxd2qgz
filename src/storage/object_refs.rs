@@ -24,6 +24,7 @@ use std::sync::Arc;
 pub struct DatasetSource10_1 {
     pub name: Arc<str>,
     pub path: Option<Arc<str>>,
+    pub band_name: Option<Arc<str>>,
 }
 
 /// 跨流共享的已见键登记表（对应原生 ObjectStream 读表）。
@@ -184,6 +185,7 @@ impl RefTable10_1 {
         key: u32,
         name: &str,
         path: Option<&str>,
+        band_name: Option<&str>,
     ) {
         if self.contains(key) {
             self.dataset_sources.insert(
@@ -191,6 +193,7 @@ impl RefTable10_1 {
                 DatasetSource10_1 {
                     name: Arc::from(name),
                     path: path.map(Arc::from),
+                    band_name: band_name.map(Arc::from),
                 },
             );
         }

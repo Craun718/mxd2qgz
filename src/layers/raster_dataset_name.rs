@@ -531,17 +531,35 @@ pub(super) fn read_name_slot(
         }
     };
     if let ObjectEntry10_1::NewObject { class_id, key } = entry
-        && let Some(name) = body
-            .as_ref()
-            .and_then(RasterDatasetNameEntryBody10_1::dataset_name_body)
-        && name.stop.is_none()
+        && let Some(body) = &body
     {
-        table.mark_dataset_source(
-            class_id,
-            key,
-            name.dataset_name().unwrap_or_default(),
-            name.workspace_path(),
-        );
+        if let Some(name) = body.dataset_name_body().filter(|name| name.stop.is_none()) {
+            table.mark_dataset_source(
+                class_id,
+                key,
+                name.dataset_name().unwrap_or_default(),
+                name.workspace_path(),
+                None,
+            );
+        } else if let RasterDatasetNameEntryBody10_1::Band(band) = body
+            && let RasterBandNameSource10_1::Dataset(slot) = &band.source
+        {
+            let (name, path) = match slot.entry {
+                ObjectEntry10_1::NewObject { class_id, key }
+                | ObjectEntry10_1::BackReference { class_id, key } => table
+                    .dataset_source(class_id, key)
+                    .map(|source| (source.name.clone(), source.path.clone())),
+                ObjectEntry10_1::Null => None,
+            }
+            .unwrap_or_default();
+            table.mark_dataset_source(
+                class_id,
+                key,
+                &name,
+                path.as_deref(),
+                band.dataset_band_name(),
+            );
+        }
     }
     Ok(RasterNameSlot10_1 { entry, body })
 }
@@ -1232,6 +1250,50 @@ mod tests {
             bytes.extend(0x5566_7788_i32.to_le_bytes());
         }
         bytes
+    }
+
+    #[test]
+    fn band_name_back_reference_resolves_its_parent_dataset_fields() {
+        let mut refs = RefTable10_1::new();
+        refs.register(12);
+        refs.mark_dataset_source(
+            RASTER_DATASET_NAME_CLASS_ID,
+            12,
+            "image",
+            Some("rasters.gdb"),
+            None,
+        );
+
+        let mut bytes = RASTER_BAND_NAME_CLASS_ID.to_vec();
+        bytes.extend(13_u32.to_le_bytes());
+        bytes.extend(1_u32.to_le_bytes());
+        for text in ["image\\Band_2", "", ""] {
+            bytes.extend(encoded_string(text));
+        }
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(RASTER_DATASET_NAME_CLASS_ID);
+        bytes.extend(12_u32.to_le_bytes());
+        let first_end = bytes.len();
+        bytes.extend(RASTER_BAND_NAME_CLASS_ID);
+        bytes.extend(13_u32.to_le_bytes());
+
+        let mut reader = Reader::new(&bytes);
+        read_name_slot(&mut reader, 1024, &mut refs, 16).unwrap();
+        assert_eq!(reader.position(), first_end);
+        let slot = read_name_slot(&mut reader, 1024, &mut refs, 16).unwrap();
+        assert!(matches!(
+            slot.entry,
+            ObjectEntry10_1::BackReference { key: 13, .. }
+        ));
+        let source = refs.dataset_source(RASTER_BAND_NAME_CLASS_ID, 13).unwrap();
+        assert_eq!(source.name.as_ref(), "image");
+        assert_eq!(source.path.as_deref(), Some("rasters.gdb"));
+        assert_eq!(source.band_name.as_deref(), Some("Band_2"));
+        assert!(
+            refs.dataset_source(RASTER_DATASET_NAME_CLASS_ID, 13)
+                .is_none()
+        );
+        assert_eq!(reader.position(), bytes.len());
     }
 
     #[test]

@@ -2101,7 +2101,7 @@ fn raster_node(
                                     Some(crate::layers::raster_dataset_name::RasterDatasetNameEntryBody10_1::Band(band)) => {
                                         band.dataset_band_name().map(str::to_owned)
                                     }
-                                    _ => None,
+                                    _ => name.source_reference.as_ref().and_then(|source| source.band_name.as_deref()).map(str::to_owned),
                                 },
                                 source: raster_name_source(name),
                             })
@@ -2573,6 +2573,7 @@ mod tests {
                 key: key + 100,
             };
             second_name.body = None;
+            second_name.source_reference = None;
             with_empty_slots.names.push(second_name);
             let mut multi_diagnostics = Vec::new();
             let Some(LayerNode::Layer(multi)) =

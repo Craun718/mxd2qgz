@@ -511,7 +511,7 @@ fn mark_feature_class_source(
         }
         _ => body.workspace_back_reference_path.as_deref(),
     };
-    table.mark_dataset_source(class_id, body.key, &body.name, path);
+    table.mark_dataset_source(class_id, body.key, &body.name, path, None);
 }
 
 pub(crate) fn read_feature_class_name_payload(
