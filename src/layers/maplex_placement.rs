@@ -50,10 +50,12 @@ pub struct MaplexOffsetAlongLine10_1 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaplexOffsetAlongLineFields10_1 {
-    pub leading_longs: [i32; 2],
-    pub doubles: [f64; 2],
-    pub trailing_long: i32,
-    pub trailing_short: i16,
+    pub placement_method: i32,
+    pub label_anchor_point: i32,
+    pub distance: f64,
+    pub tolerance: f64,
+    pub distance_unit: i32,
+    pub use_line_direction: i16,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -323,10 +325,12 @@ fn read_offset_along_line(
     }
     if version == 2 {
         body.fields = Some(MaplexOffsetAlongLineFields10_1 {
-            leading_longs: [reader.read_u32_le()? as i32, reader.read_u32_le()? as i32],
-            doubles: [reader.read_f64_le()?, reader.read_f64_le()?],
-            trailing_long: reader.read_u32_le()? as i32,
-            trailing_short: reader.read_u16_le()? as i16,
+            placement_method: reader.read_u32_le()? as i32,
+            label_anchor_point: reader.read_u32_le()? as i32,
+            distance: reader.read_f64_le()?,
+            tolerance: reader.read_f64_le()?,
+            distance_unit: reader.read_u32_le()? as i32,
+            use_line_direction: reader.read_u16_le()? as i16,
         });
     }
     Ok(body)
@@ -518,10 +522,12 @@ mod tests {
             assert_eq!(stacking.trailing_longs, Some([4, 8, 16]));
             if version >= 9 {
                 let offset = body.offset_along_line.unwrap().fields.unwrap();
-                assert_eq!(offset.leading_longs, [3, 4]);
-                assert_eq!(offset.doubles, [1.25, -2.5]);
-                assert_eq!(offset.trailing_long, 5);
-                assert_eq!(offset.trailing_short, -1);
+                assert_eq!(offset.placement_method, 3);
+                assert_eq!(offset.label_anchor_point, 4);
+                assert_eq!(offset.distance, 1.25);
+                assert_eq!(offset.tolerance, -2.5);
+                assert_eq!(offset.distance_unit, 5);
+                assert_eq!(offset.use_line_direction, -1);
             }
             if version >= 12 {
                 let rotation = body.rotation.unwrap();

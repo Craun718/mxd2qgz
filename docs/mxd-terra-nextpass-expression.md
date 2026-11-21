@@ -290,3 +290,23 @@ ArcMap 和 QGIS 人工验收仍未进行。
 均正常退出，均未输出 Maplex 放置体诊断。退出状态不保证输入中的
 所有对象已读取。Maplex 放置路径仍以构造测试和 10.1 原生静态取证为依据，
 真实 Maplex 工程及 ArcMap/QGIS 人工验收尚待完成。
+
+#### 沿线偏移的属性对位
+
+10.1 Carto 类型库由 Wine `LoadTypeLibEx` 读出
+IMaplexOffsetAlongLineProperties 的六组访问器。QI 返回的对象
+`+0x18` 使用虚表 `0x7857db24`。构造指令 `0x78563673` 设置
+虚基表 `0x7857b274`，`+4` 表项为 `0x30`；`0x785636b1`
+据此在对象 `+0x44` 安装持久化表。两个接口相差 `0x2c`。
+
+| v2 流字段 | 属性 | getter | 属性接口 / Load 偏移 |
+| --- | --- | --- | --- |
+| LONG 1 | PlacementMethod | `0x7856d840` | `+0x04 / -0x28` |
+| LONG 2 | LabelAnchorPoint | `0x78547a40` | `+0x08 / -0x24` |
+| double 1 | Distance | `0x785637e0` | `+0x10 / -0x1c` |
+| double 2 | Tolerance | `0x78563830` | `+0x18 / -0x14` |
+| LONG 3 | DistanceUnit | `0x78563880` | `+0x20 / -0x0c` |
+| short | UseLineDirection | `0x785645e0` | `+0x24 / -0x08` |
+
+读取器和命令行采用这些属性名，保留枚举和开关的原始数值。
+单位枚举的语义映射、坐标与纸面距离换算以及目标软件人工验收仍开放。

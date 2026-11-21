@@ -1638,7 +1638,16 @@ fn annotate_placement_note(
         if let Some(offset) = &body.offset_along_line
             && let Some(fields) = &offset.fields
         {
-            let _ = write!(note, "；沿线偏移 double 原始值 {:?}", fields.doubles);
+            let _ = write!(
+                note,
+                "；沿线偏移（PlacementMethod {}，LabelAnchorPoint {}，Distance {}，Tolerance {}，DistanceUnit {}，UseLineDirection {}）",
+                fields.placement_method,
+                fields.label_anchor_point,
+                fields.distance,
+                fields.tolerance,
+                fields.distance_unit,
+                fields.use_line_direction,
+            );
         }
         if let Some(rotation) = &body.rotation {
             let _ = write!(note, "；旋转配置字符串 {:?}", rotation.text);
