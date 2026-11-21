@@ -219,3 +219,9 @@ NALayer 已沿 NAContext 的求解器槽读出两份 SanFrancisco SDK 工程的 
 同版 NetworkAnalystSolvers.dll 的求解器共用读取器 `0x7b12ba00` 在集合标志非零时，先构造并读取额外集合，随后无条件读取第二个集合。两次均经 `0x7b138cd0` 创建对象，其中 `0x7b138cf6..0x7b138cfb` 将 `0x7b1fd854` 的 CLSID 传给 AfCreateInstance。其值为 SystemCore StrArray `A7F92065-36CE-47B6-A463-4763DA947CC2`。两处均直接调用新对象的持久化 Load，因此流内只有对象体，复用 StrArray 对象体读取器。
 
 两份 SanFrancisco SDK 工程的首个求解器均从 `0x740b` 读过空的额外集合和含五个属性名的第二个集合，到达 `0x74c7` 的 ExtraSafe 槽。构造测试覆盖标志两种形态和逐字节截断。后面的 ExtraSafe 槽、剩余求解器字段和目标软件人工验收仍待验证。
+
+### NARouteSolver 的 ExtraSafe 字符串数组
+
+同版 NetworkAnalystSolvers.dll 的 `0x7b12ba00` 在两处内联集合之后调用 ExtraSafeReadObject，`0x7b12bbc4` 传入 `0x7b1fd834` 的 IStringArray IID `206216C9-7253-4A4D-92DD-60329FD9D792`。两份 SanFrancisco SDK 工程在 `0x74c7` 的该槽均给出 A=80、B=0，内含 StrArray v1，键 247，值为 Oneway 和 RestrictedTurns。
+
+读取器复用有键的 StrArray 槽，以 A 确认写出体范围，或在非零 B 时使用原生同步边界。只有解析结果与声明边界一致时才提交游标和对象键。构造测试覆盖新对象、B 同步回引、所有截断和边界过长。实档槽末端为 `0x751f`。后续求解器字段、UID 首次定义和人工验收仍待验证。

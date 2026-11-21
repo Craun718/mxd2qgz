@@ -6,7 +6,9 @@ use crate::objects::dataset_name::{
 use crate::objects::property_set::{
     PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1, read_property_set_object_stream_10_1,
 };
-use crate::objects::string_array::read_string_array_body_10_1;
+use crate::objects::string_array::{
+    StringArraySlot10_1, read_string_array_body_10_1, read_string_array_slot_10_1,
+};
 use crate::objects::workspace_name::{
     WORKSPACE_NAME_CLASS_ID, WorkspaceNamePrefix10_1, read_workspace_name_body_10_1,
 };
@@ -173,6 +175,7 @@ pub struct NaRouteSolverPrefix10_1 {
     pub attribute_name: String,
     pub extra_collection_flag: u16,
     pub inline_collections: Option<NaRouteCollections10_1>,
+    pub stored_strings: Option<StringArraySlot10_1>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -308,11 +311,15 @@ fn read_na_route_solver_prefix(
             let extra_collection_flag = trial.read_u16_le()?;
             let inline_collections =
                 read_na_route_collections(&mut trial, max, extra_collection_flag).ok();
+            let stored_strings = inline_collections
+                .as_ref()
+                .and_then(|_| read_na_route_string_slot(&mut trial, max, &mut keys).ok());
             Some(NaRouteSolverPrefix10_1 {
                 version,
                 attribute_name,
                 extra_collection_flag,
                 inline_collections,
+                stored_strings,
             })
         }
         ObjectEntry10_1::NewObject { .. } => {
@@ -340,6 +347,48 @@ fn read_na_route_collections(
     let attributes = read_string_array_body_10_1(&mut trial, max)?;
     *reader = trial;
     Ok(NaRouteCollections10_1 { extra, attributes })
+}
+
+fn read_na_route_string_slot(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<StringArraySlot10_1> {
+    let mut trial = reader.clone();
+    let a = trial.read_u32_le()?;
+    let b = trial.read_u32_le()? as i32;
+    if a == 0 && b == 0 {
+        *reader = trial;
+        return Ok(StringArraySlot10_1 {
+            entry: ObjectEntry10_1::Null,
+            body: None,
+        });
+    }
+
+    // B 非零时是原生同步边界，否则 A 给出写侧对象头和体的总长度。
+    let invalid = || {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "求解器 ExtraSafe 字符串数组边界无效",
+        )
+    };
+    let length = if b == 0 {
+        a as usize
+    } else {
+        usize::try_from(b).map_err(|_| invalid())?
+    };
+    if length < 16 || length > max {
+        return Err(invalid());
+    }
+    let mut body = trial.read_region(length)?;
+    let mut keys = refs.clone();
+    let slot = read_string_array_slot_10_1(&mut body, max, &mut keys)?;
+    if body.remaining() != 0 {
+        return Err(invalid());
+    }
+    *reader = trial;
+    *refs = keys;
+    Ok(slot)
 }
 
 fn read_na_workspace_prefix(
@@ -593,6 +642,51 @@ mod tests {
         let collections = read_na_route_collections(&mut reader, 64, 0).unwrap();
         assert!(collections.extra.is_none());
         assert_eq!(collections.attributes, (1, vec![String::from("X")]));
+        assert_eq!(reader.remaining(), 0);
+    }
+
+    #[test]
+    fn route_string_slot_honors_boundary_and_rolls_back_keys() {
+        use crate::objects::string_array::STR_ARRAY_CLASS_ID;
+
+        let mut bytes = 26_u32.to_le_bytes().to_vec();
+        bytes.extend(0_u32.to_le_bytes());
+        bytes.extend(STR_ARRAY_CLASS_ID);
+        bytes.extend(247_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(0_u32.to_le_bytes());
+
+        let mut refs = RefTable10_1::new();
+        for end in 0..bytes.len() {
+            let mut reader = Reader::new(&bytes[..end]);
+            assert!(read_na_route_string_slot(&mut reader, 64, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+        let mut oversized = bytes.clone();
+        oversized[..4].copy_from_slice(&27_u32.to_le_bytes());
+        oversized.push(0x7f);
+        let mut reader = Reader::new(&oversized);
+        assert!(read_na_route_string_slot(&mut reader, 64, &mut refs).is_err());
+        assert!(refs.is_empty());
+
+        bytes.push(0x7f);
+        let mut reader = Reader::new(&bytes);
+        let slot = read_na_route_string_slot(&mut reader, 64, &mut refs).unwrap();
+        assert_eq!(slot.body, Some((1, Vec::new())));
+        assert_eq!(reader.read_bytes(1).unwrap(), [0x7f]);
+        assert!(refs.contains(247));
+
+        let mut reference = 0_u32.to_le_bytes().to_vec();
+        reference.extend(20_u32.to_le_bytes());
+        reference.extend(STR_ARRAY_CLASS_ID);
+        reference.extend(247_u32.to_le_bytes());
+        let mut reader = Reader::new(&reference);
+        let slot = read_na_route_string_slot(&mut reader, 64, &mut refs).unwrap();
+        assert!(matches!(
+            slot.entry,
+            ObjectEntry10_1::BackReference { key: 247, .. }
+        ));
         assert_eq!(reader.remaining(), 0);
     }
 }

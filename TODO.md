@@ -318,6 +318,7 @@
   - [ ] 补齐地图级标注属性后尚未支持的逐图层遮罩分支。剩余未确认图层类的接口分派及集合内尚不能读取的新对象体。
   - [ ] 读取 NALayer 中定义的嵌套对象并登记其键，以解析 SanFrancisco SDK 工程的后续回引。[实档停点与原生证据](docs/mxd-luna-deep-layer-masking-20261118.md#sanfrancisco-组图层的跨图层-uid-回引)
   - [x] 接入 NALayer 的 NAContext、NetworkAnalysisWorkspace 三字符串和 IPropertySet 前缀，两份 SanFrancisco 实档的体停点由 `0x370` 推进到 `0x512`。[上下文与工作空间前缀](docs/mxd-luna-deep-layer-masking-20261118.md#nalayer-的上下文与工作空间前缀)
+  - [x] 读取 NARouteSolver 的 ExtraSafe IStringArray 槽及对象键。[对象槽取证](docs/mxd-luna-deep-layer-masking-20261118.md#naroutesolver-的-extrasafe-字符串数组)
   - [x] 读取 NARouteSolver 两个内联 StrArray 集合及其存在条件。[集合取证](docs/mxd-luna-deep-layer-masking-20261118.md#naroutesolver-的内联字符串集合)
   - [x] 读取 NARouteSolver 的版本、属性名与集合标志。[求解器取证](docs/mxd-luna-deep-layer-masking-20261118.md#naroutesolver-的版本与属性名前缀)
   - [x] 读取网络分析工作空间的命名项、已确认 NAClass 记录边界及定义体。[原生取证](docs/mxd-luna-deep-layer-masking-20261118.md#网络分析工作空间命名项与-naclass)
