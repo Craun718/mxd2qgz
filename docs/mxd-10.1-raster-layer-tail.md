@@ -1220,3 +1220,13 @@ BasicRasterName::get_Name（`0x7bed1100`），以 +0x14 的接口
 读取同一字符串成员。带键名称现在登记该覆盖标识，供新对象和回引
 恢复。连接属性仍由名称体保留。构造名称列表验证两条记录与后继边界，
 尚无实际 MXD 和 ArcMap/QGIS 人工验证。
+
+### 缓存栅格名称来源回引
+
+同版 MapServerLayer.dll 的 CacheRasterDatasetName Load 在
+`0x79e22a82/0x79e22a90` 把两个字符串读至完整对象 +0x28/+0x2c。
+对象 +0x14 的虚表 `0x79ebc1d8` 通过 `0x79eacb92` 和
+IAT `0x79ebb634` 调用 BasicRasterName::get_Name。其读取的接口
++0x14 对应首串的 +0x28 成员。带键名称现在登记该原始数据集名称和
+可用的工作空间路径。构造名称列表验证新对象、同键回引和后继边界。
+ArcMap/QGIS 实际打开和目视核验尚未进行。

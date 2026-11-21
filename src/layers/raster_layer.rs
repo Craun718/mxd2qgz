@@ -1840,6 +1840,43 @@ mod tests {
     }
 
     #[test]
+    fn cache_raster_name_reference_retains_workspace_and_dataset() {
+        use super::super::raster_dataset_name::CACHE_RASTER_DATASET_NAME_CLASS_ID;
+        use crate::objects::workspace_name::WORKSPACE_NAME_CLASS_ID;
+
+        let mut bytes = body_prefix(9, 2);
+        bytes.extend(CACHE_RASTER_DATASET_NAME_CLASS_ID);
+        bytes.extend(76_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(encoded_string("cache_dataset"));
+        bytes.extend(encoded_string("显示名称"));
+        bytes.extend(WORKSPACE_NAME_CLASS_ID);
+        bytes.extend(77_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        for value in ["cache", "", ""] {
+            bytes.extend(encoded_string(value));
+        }
+        bytes.extend([0; 21]); // 空属性集、空工厂及尾整数。
+        bytes.extend([0; 32]); // 空瓦片读取器及包络。
+        bytes.extend(encoded_string(""));
+        bytes.extend(CACHE_RASTER_DATASET_NAME_CLASS_ID);
+        bytes.extend(76_u32.to_le_bytes());
+        bytes.extend(encoded_string(""));
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let parsed = read_bounded_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+        assert!(parsed.names_stop.is_none());
+        assert_eq!(parsed.names.len(), 2);
+        let source = parsed.names[0].source_reference.as_ref().unwrap();
+        assert_eq!(source.name.as_ref(), "cache_dataset");
+        assert_eq!(source.path.as_deref(), Some("cache"));
+        assert!(parsed.names[1].body.is_none());
+        assert_eq!(parsed.names[1].source_reference.as_ref(), Some(source));
+        assert_eq!(reader.remaining(), 0);
+    }
+
+    #[test]
     fn wcs_coverage_name_reference_retains_identifier() {
         use crate::layers::wcs_name::WCS_COVERAGE_NAME_CLASS_ID;
 

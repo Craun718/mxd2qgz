@@ -556,6 +556,9 @@ pub(super) fn read_name_slot(
             RasterDatasetNameEntryBody10_1::Mosaic(name) => {
                 Some((name.strings[0].as_str(), &name.workspace))
             }
+            RasterDatasetNameEntryBody10_1::Cache(name) => {
+                Some((name.strings[0].as_str(), &name.workspace))
+            }
             _ => None,
         } {
             let path = match workspace {
