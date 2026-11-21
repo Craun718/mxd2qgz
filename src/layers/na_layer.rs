@@ -1,5 +1,9 @@
 //! 已确认的 NetworkAnalyst.dll 10.1 NALayer 持久化前缀。
 
+use crate::maps::standalone_table::{
+    STANDALONE_TABLE_CLASS_ID, StandaloneTablePrefix10_1, StandaloneTableStop10_1,
+    read_standalone_table_prefix_10_1,
+};
 use crate::objects::dataset_name::{
     FEATURE_DATASET_NAME_CLASS_ID, FeatureDatasetNameBody10_1, read_feature_dataset_name_body_10_1,
 };
@@ -41,13 +45,19 @@ pub struct NaLayerBitSet10_1 {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct NaLayerTables10_1 {
+    pub declared_count: i32,
+    pub entries: Vec<(ObjectEntry10_1, Option<Box<StandaloneTablePrefix10_1>>)>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct NaLayerTail10_1 {
     pub first_flag: u16,
     pub object: ObjectEntry10_1,
     pub scalar_bits: [u64; 3],
     pub name: String,
     pub second_flag: u16,
-    pub secondary_children: Option<NaLayerChildren10_1>,
+    pub tables: Option<NaLayerTables10_1>,
     pub version_two_flag: Option<u16>,
     pub bitsets: Option<[NaLayerBitSet10_1; 2]>,
 }
@@ -205,15 +215,9 @@ pub(super) fn read_na_layer_tail(
         trial.read_f64_le()?.to_bits(),
     ];
     let version = version as i16;
-    let secondary_children = (version >= 1)
-        .then(|| read_na_layer_children(&mut trial, max, &mut keys))
+    let tables = (version >= 1)
+        .then(|| read_na_layer_tables(&mut trial, max, &mut keys))
         .transpose()?;
-    if let Some(stop) = secondary_children
-        .as_ref()
-        .and_then(|children| children.stop.as_ref())
-    {
-        return Err(io::Error::new(io::ErrorKind::Unsupported, stop.clone()));
-    }
     let version_two_flag = (version >= 2).then(|| trial.read_u16_le()).transpose()?;
     let bitsets = (version >= 3)
         .then(|| {
@@ -231,9 +235,64 @@ pub(super) fn read_na_layer_tail(
         scalar_bits,
         name,
         second_flag,
-        secondary_children,
+        tables,
         version_two_flag,
         bitsets,
+    })
+}
+
+/// NALayer::Load 的第二组对象槽请求 IStandaloneTable。
+fn read_na_layer_tables(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<NaLayerTables10_1> {
+    let declared_count = reader.read_u32_le()? as i32;
+    let count = declared_count.max(0) as usize;
+    if count > reader.remaining().min(max) / 16 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "NALayer 独立表数量超出可读范围",
+        ));
+    }
+    let mut entries = Vec::new();
+    for _ in 0..count {
+        let offset = reader.position();
+        let entry = read_object_entry_10_1(reader, refs)?;
+        let body = match entry {
+            ObjectEntry10_1::NewObject {
+                class_id: STANDALONE_TABLE_CLASS_ID,
+                key,
+            } => {
+                let body = read_standalone_table_prefix_10_1(reader, refs, max, max)?;
+                if body.stop != StandaloneTableStop10_1::Complete {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Unsupported,
+                        format!(
+                            "NALayer 独立表 offset 0x{offset:x} 键 {key} 读取至 {:?}",
+                            body.stop
+                        ),
+                    ));
+                }
+                Some(Box::new(body))
+            }
+            ObjectEntry10_1::Null
+            | ObjectEntry10_1::BackReference {
+                class_id: STANDALONE_TABLE_CLASS_ID,
+                ..
+            } => None,
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    format!("NALayer 独立表 offset 0x{offset:x} 的对象类未支持"),
+                ));
+            }
+        };
+        entries.push((entry, body));
+    }
+    Ok(NaLayerTables10_1 {
+        declared_count,
+        entries,
     })
 }
 
@@ -1572,6 +1631,45 @@ mod tests {
         assert!(refs.contains(38) && refs.contains(39) && refs.contains(40));
         assert!(refs.contains(35) && refs.contains(36) && refs.contains(37));
         assert_eq!(reader.read_bytes(1).unwrap(), [0x7f]);
+    }
+
+    #[test]
+    fn na_layer_tail_resolves_standalone_table_references() {
+        let mut bytes = vec![0; 2 + 16 + 8 + 4];
+        push_string(&mut bytes, "");
+        bytes.extend([0; 2 + 16]);
+        bytes.extend(2_i32.to_le_bytes());
+        bytes.extend(STANDALONE_TABLE_CLASS_ID);
+        bytes.extend(77_u32.to_le_bytes());
+        bytes.extend([0; 16]);
+        let mut refs = RefTable10_1::new();
+        refs.register(77);
+        for end in 0..bytes.len() {
+            let mut reader = Reader::new(&bytes[..end]);
+            assert!(read_na_layer_tail(&mut reader, 128, &mut refs, 1).is_err());
+            assert_eq!(reader.position(), 0);
+            assert_eq!(refs.len(), 1);
+        }
+        let mut reader = Reader::new(&bytes);
+        let tables = read_na_layer_tail(&mut reader, 128, &mut refs, 1)
+            .unwrap()
+            .tables
+            .unwrap();
+        assert_eq!(tables.declared_count, 2);
+        assert_eq!(
+            tables.entries,
+            [
+                (
+                    ObjectEntry10_1::BackReference {
+                        class_id: STANDALONE_TABLE_CLASS_ID,
+                        key: 77
+                    },
+                    None
+                ),
+                (ObjectEntry10_1::Null, None),
+            ]
+        );
+        assert_eq!(reader.remaining(), 0);
     }
 
     #[test]

@@ -315,3 +315,9 @@ NetworkAnalystSolvers.dll 10.1.0.3035 的持久化 Load 槽 `0x7b202420` 指向 
 NetworkAnalystSolvers.dll 10.1.0.3035 的 NAVRPSolver CLSID `52B62278-735F-4DA1-8A4E-2E6F4E3BCD60` 位于 `0x7b1fed64`，持久化 Load 槽 `0x7b206ed0` 指向 `0x7b14b230`。原始指令和 Ghidra 导出确认版本有符号上限为 2，外层 v0/v1 使用共用 v2，v2 使用共用 v3。共用体后读取 LONG、short、两个 LONG、double、LONG、四个 double、LONG。外层版本非零时追加 ExtraSafe 对象槽，接口常量位于 `0x7b207044`。
 
 两份 SanFrancisco SDK 工程均完整读取 `0x5061c` 的 v2 求解器键 3018 和 ExtraSafe 内的 NAStreetDirectionsAgent 键 3021，随后继续读取 NAContext 和子图层，遇到 `0x5e692` 的 StandaloneTable（`EE7C5047-E3DB-11D3-A096-00C04F6BC626`）。构造测试覆盖 v0 至 v2 和逐字节截断回滚。剩余子图层及 ArcMap/QGIS 人工验收仍待完成。
+
+### NALayer 的独立表集合
+
+同版 NetworkAnalyst.dll 的 NALayer::Load `0x7af1ffc0` 对 v1 起的第二个计数循环请求 `0x7af9f760` 的 IID，即 `FFC6B179-E3EC-11D3-A096-00C04F6BC626`（IStandaloneTable）。Save `0x7af20be0` 写出数组 `+0x20` 的普通对象。读取器复用 Map 独立表的对象体读取规则，并要求表体完整后才进入下一项。
+
+两份 SanFrancisco SDK 工程的车辆路径图层先前因整段回滚而报在尾部起点 `0x5e692`，首个 StandaloneTable 对象头实际位于 `0x5e6cc`。接入后两份工程均读完四张独立表及随后的位集，到达图层声明边界。构造测试覆盖独立表回引、空槽和逐字节截断回滚。ArcMap/QGIS 人工验收尚未进行。
