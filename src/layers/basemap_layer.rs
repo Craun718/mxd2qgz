@@ -49,6 +49,7 @@ pub struct BasemapPrefix10_1 {
     /// 已完整读取并登记的结果列表 FeatureLayer 键。
     pub feature_keys: Vec<u32>,
     pub sublayers: Vec<ObjectEntry10_1>,
+    pub sublayer_bodies: Vec<(u32, Box<super::layer_list::LayerBodyPrefix10_1>)>,
     pub stop: BasemapStop10_1,
 }
 fn count(reader: &mut Reader<'_>, limit: usize) -> io::Result<u32> {
@@ -142,6 +143,7 @@ pub fn read_basemap_prefix_10_1(
     let mut result_count = None;
     let mut feature_keys = Vec::new();
     let mut sublayers = Vec::new();
+    let mut sublayer_bodies = Vec::new();
     let stop = 'parse: {
         if v > 2
             && let Some(s) = slot(&mut r, &mut t, max_bytes, &mut feature_keys, false)?
@@ -232,6 +234,34 @@ pub fn read_basemap_prefix_10_1(
                     "Basemap 非空子图层条目缺少对象头",
                 ));
             };
+            if !t.contains(key)
+                && matches!(
+                    class_id,
+                    super::group_layer::GROUP_LAYER_CLASS_ID
+                        | super::feature_layer::FEATURE_LAYER_CLASS_ID
+                )
+            {
+                let length = if b == 0 { a } else { b };
+                if length >= 20 && length as usize <= max_bytes {
+                    let mut candidate = probe.clone();
+                    let mut region = candidate.read_region(length as usize - 20)?;
+                    let mut refs = t.clone();
+                    refs.register(key);
+                    if let Ok(body) = super::layer_list::read_complete_layer_body_10_1(
+                        &mut region,
+                        class_id,
+                        max_bytes,
+                        &mut refs,
+                    ) && region.remaining() == 0
+                    {
+                        sublayer_bodies.push((key, Box::new(body)));
+                        sublayers.push(ObjectEntry10_1::NewObject { class_id, key });
+                        r = candidate;
+                        t = refs;
+                        continue;
+                    }
+                }
+            }
             if !t.contains(key) {
                 break 'parse BasemapStop10_1::NewObject {
                     offset,
@@ -274,6 +304,7 @@ pub fn read_basemap_prefix_10_1(
         results_count: result_count,
         feature_keys,
         sublayers,
+        sublayer_bodies,
         stop,
     })
 }

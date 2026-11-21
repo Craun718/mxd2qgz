@@ -665,20 +665,18 @@ impl<'body> LayerMaskingTraversal<'_, '_, 'body> {
                         .or_insert((FEATURE_LAYER_CLASS_ID, None));
                 }
                 if depth != 0 || !self.skip_top_level_basemap {
-                    // 正式子层集合仅支持身份已由 PrepareResult 确认的 FeatureLayer。
-                    let features: std::collections::HashSet<_> =
-                        basemap.feature_keys.iter().copied().collect();
-                    if !basemap.sublayers.iter().all(|slot| {
-                        matches!(slot,
-                            ObjectEntry10_1::BackReference { class_id: FEATURE_LAYER_CLASS_ID, key }
-                                if features.contains(key))
-                    }) {
-                        return Err(format!(
-                            "底图图层键 {key} 的正式子层未全部确认，类 {}",
-                            class_id_hex(&class_id)
-                        ));
-                    }
                     self.read_record(key)?;
+                    for &slot in &basemap.sublayers {
+                        let parsed = match slot {
+                            ObjectEntry10_1::NewObject { key, .. } => basemap
+                                .sublayer_bodies
+                                .iter()
+                                .find(|(body_key, _)| *body_key == key)
+                                .map(|(_, body)| body.as_ref()),
+                            _ => None,
+                        };
+                        self.visit(slot, parsed, depth + 1)?;
+                    }
                 }
             }
             _ if known_layer_masking_support_10_1(&class_id)

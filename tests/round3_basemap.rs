@@ -220,3 +220,43 @@ fn globe_graphics_reads_basemap_through_its_ordinary_ilayer_slot() {
     assert_eq!(reader.position(), end);
     assert_eq!(reader.read_bytes(2).unwrap(), [0xa5, 0x5a]);
 }
+
+#[test]
+fn formal_basemap_sublayer_consumes_bounded_group() {
+    use mxd2qgz::layers::group_layer::GROUP_LAYER_CLASS_ID;
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(2_u32.to_le_bytes());
+    bytes.extend([0; 2 + 6 + 18]);
+    bytes.extend(1_u32.to_le_bytes());
+    let slot_offset = bytes.len();
+    let mut group = 1_u16.to_le_bytes().to_vec();
+    group.extend(2_u32.to_le_bytes());
+    group.extend([0; 2 + 6 + 16 + 4]);
+    let size = (20 + group.len()) as u32;
+    bytes.extend(size.to_le_bytes());
+    bytes.extend(0_u32.to_le_bytes());
+    bytes.extend(GROUP_LAYER_CLASS_ID);
+    bytes.extend(77_u32.to_le_bytes());
+    bytes.extend(group);
+
+    let mut refs = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let body = read_basemap_prefix_10_1(&mut reader, 1024, &mut refs).unwrap();
+    assert_eq!(body.stop, BasemapStop10_1::Complete);
+    assert_eq!(body.sublayer_bodies[0].0, 77);
+    assert!(refs.contains(77));
+    assert_eq!(reader.remaining(), 0);
+
+    // 声明区间有一个多余字节时，回退到子层封装起点。
+    bytes[slot_offset..slot_offset + 4].copy_from_slice(&(size + 1).to_le_bytes());
+    bytes.push(0);
+    let mut refs = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let body = read_basemap_prefix_10_1(&mut reader, 1024, &mut refs).unwrap();
+    assert!(matches!(
+        body.stop,
+        BasemapStop10_1::NewObject { key: 77, .. }
+    ));
+    assert!(refs.is_empty());
+    assert_eq!(reader.position(), slot_offset);
+}

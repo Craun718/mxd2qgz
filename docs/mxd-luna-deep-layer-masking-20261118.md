@@ -331,3 +331,9 @@ NetworkAnalystSolvers.dll 10.1.0.3035 的 NAVRPSolver CLSID `52B62278-735F-4DA1-
 ### SanFrancisco UID 回引复验
 
 在分级渲染器与网络分析图层的解析接入后，以当前命令行对 .NET 和 Java 两份 SanFrancisco SDK 工程复验。六个顶层 NALayer 和键 4501 的 Analysis Inputs 组均完整消费其声明区间。这验证了前述 UID 键 358 的共享引用路径，逐图层遮罩已越过该组。两份工程现在都在底图层键 5146 停止。底图读取器报告 `/Maps:0xd2107` 的新建 GroupLayer 键 5148，当前正式子层分派尚不能处理。该底图缺口单列于 TODO。ArcMap/QGIS 人工验收尚未进行。
+
+### SanFrancisco 底图正式子层
+
+BasemapLayer.dll 10.1.0.3035 的 Load `0x6b646260` 在 `0x6b6464eb` 对正式子层调用 ExtraSafeReadObject 并请求 ILayer。读取器以封装边界复用完整 GroupLayer 和 FeatureLayer 读侧，只在精确消费范围后登记子层及其嵌套键。构造样例验证多余字节触发游标和键回滚。
+
+两份 SanFrancisco SDK 工程均读取键 5148 的 GroupLayer 和后续 FeatureLayer，底图对象在 `/Maps:0xdb52d` 到达声明边界。逐层遮罩已进入底图分派，目前在尝试读取键 5148 的遮罩时停止。底图对遮罩遍历暴露的子层枚举仍需核对。ArcMap/QGIS 人工验收尚未进行。
