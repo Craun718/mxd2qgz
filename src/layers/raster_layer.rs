@@ -1333,7 +1333,7 @@ mod tests {
         };
         use crate::layers::cache_tile_reader::CacheTileReaderBody10_1;
 
-        let mut bytes = body_prefix(17, 3);
+        let mut bytes = body_prefix(17, 4);
         bytes.extend(INTERNET_TILED_LAYER_NAME_CLASS_ID);
         bytes.extend(60_u32.to_le_bytes());
         bytes.extend(1_u16.to_le_bytes());
@@ -1362,6 +1362,9 @@ mod tests {
         bytes.extend(INTERNET_TILED_LAYER_NAME_CLASS_ID);
         bytes.extend(60_u32.to_le_bytes());
         bytes.extend(encoded_string("回引后缀"));
+        bytes.extend(AIS_IMAGE_SERVICE_NAME_CLASS_ID);
+        bytes.extend(62_u32.to_le_bytes());
+        bytes.extend(encoded_string(""));
         bytes.extend(SIMPLE_RASTER_RENDERER_CLASS_ID);
         bytes.extend(63_u32.to_le_bytes());
         bytes.extend(1_i32.to_le_bytes());
@@ -1392,6 +1395,16 @@ mod tests {
                 key: 60,
             }
         );
+        for (definition, reference, expected) in [(0, 2, "瓦片"), (1, 3, "service")] {
+            let source = result.names[definition].source_reference.as_ref().unwrap();
+            assert_eq!(source.name.as_ref(), expected);
+            assert!(source.path.is_none());
+            assert!(result.names[reference].body.is_none());
+            assert_eq!(
+                result.names[reference].source_reference.as_ref(),
+                Some(source)
+            );
+        }
         assert!(matches!(
             result.renderer.unwrap().body,
             Some(RasterRendererPrefix10_1::Simple { .. })

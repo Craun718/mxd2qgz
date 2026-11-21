@@ -1230,3 +1230,12 @@ IAT `0x79ebb634` 调用 BasicRasterName::get_Name。其读取的接口
 +0x14 对应首串的 +0x28 成员。带键名称现在登记该原始数据集名称和
 可用的工作空间路径。构造名称列表验证新对象、同键回引和后继边界。
 ArcMap/QGIS 实际打开和目视核验尚未进行。
+
+### 瓦片与 AIS 服务名称回引
+
+上述两个 10.1 原生 IName::NameString 访问器分别对位
+InternetTiledLayerName 的单条字符串与 AISImageServiceName 的首串。
+共享名称读取器将这两个值登记为带键的来源名称，RasterLayer 的
+首次定义与回引均可取回。瓦片读取器和服务的其余字符串仍由原始
+名称体保留。构造 v17 名称列表覆盖两种定义、两次回引、后继渲染器
+及结束位置。ArcMap 10.1 和 QGIS 人工验证尚未进行。

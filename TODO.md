@@ -732,6 +732,7 @@
 - [ ] 补齐 RasterLayer 名称列表中的其他 IName 对象类。
   - [x] 保留 WCS 覆盖名称及回引的标识。[原生访问器](docs/mxd-10.1-raster-layer-tail.md#wcs-覆盖标识回引)
   - [x] 恢复缓存栅格名称与回引的数据集名和工作空间路径。[原生名称访问器](docs/mxd-10.1-raster-layer-tail.md#缓存栅格名称来源回引)
+  - [x] 恢复瓦片与 AIS 服务名称回引的 NameString。[原生名称字段](docs/mxd-10.1-raster-layer-tail.md#瓦片与-ais-服务名称回引)
   - [x] 对位 NetCDF 栅格变量名并通过对象键恢复名称来源。[原生访问器](docs/mxd-10.1-raster-layer-tail.md#netcdf-变量名与数据源回引)
   - [x] 恢复镶嵌数据集名称新对象与回引的名称和路径。[原生名称访问器](docs/mxd-10.1-raster-layer-tail.md#镶嵌数据集名称与回引)
   - [x] 保留 NetCDF 父数据集经波段集合名称回引的来源及索引。[接口证据](docs/mxd-10.1-raster-layer-tail.md#netcdf-变量名与数据源回引)

@@ -547,8 +547,15 @@ pub(super) fn read_name_slot(
                 name.workspace_path(),
                 None,
             );
-        } else if let RasterDatasetNameEntryBody10_1::WcsCoverage(name) = body {
-            table.mark_dataset_source(class_id, key, &name.identifier, None, None);
+        } else if let Some(name) = match body {
+            RasterDatasetNameEntryBody10_1::WcsCoverage(name) => Some(name.identifier.as_str()),
+            RasterDatasetNameEntryBody10_1::InternetTiledLayer(name) => {
+                Some(name.name_string.as_str())
+            }
+            RasterDatasetNameEntryBody10_1::AisImageService(name) => Some(name.strings[0].as_str()),
+            _ => None,
+        } {
+            table.mark_dataset_source(class_id, key, name, None, None);
         } else if let Some((name, workspace)) = match body {
             RasterDatasetNameEntryBody10_1::NetCdf(name) => {
                 Some((name.variable(), &name.workspace))
