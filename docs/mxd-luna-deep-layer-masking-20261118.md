@@ -231,3 +231,9 @@ NALayer 已沿 NAContext 的求解器槽读出两份 SanFrancisco SDK 工程的 
 同版 NetworkAnalystSolvers.dll 的共用读取器 `0x7b12ba00` 在 ExtraSafe 槽后读取 short、LONG、BSTR 和声明计数。原始指令 `0x7b12bccc`、`0x7b12bd9d` 分别核对两个列表计数，`0x7b12bd57`、`0x7b12bdf2` 核对各列表从 1 开始的连续索引。每项为索引与一个四字节值，最后一项也消费该值。随后 `0x7b12be36` 用 `0x7b200d08` 的 IID 请求 IPropertySet。
 
 两份 SanFrancisco SDK 工程在 `0x751f` 读到属性名 HierarchyMultiNet 和两份三项列表，再读完键 248 的 PropertySet，到达 `0x76d1`。构造数据验证重复计数、索引和截断回退。剩余版本字段、后续对象键及 ArcMap/QGIS 人工验收仍待验证。
+
+### NARouteSolver 的版本尾段
+
+NetworkAnalystSolvers.dll 10.1.0.3035 的共用读取器 `0x7b12ba00` 在属性集后读取 short，v1 起再读一个 short，v2 起读取参数数组槽，v3 再读 double 和 LONG。外层读取器 `0x7b0fcdf0` 在版本非零时另外读取 double 与 short。反编译记录见 `temp/network-na/solver-7b12ba00.c` 与 `temp/network-na/solver-7b0fcdf0.c`。
+
+同版注册表给出参数数组 CLSID `61939E6B-8011-40C5-B672-73EA1E026FEC`。持久化表 `0x7b1fe700` 的 Load `0x7b09f110` 读取 short 版本及 LONG 计数，计数为正进入逐项读取。两份 SanFrancisco SDK 工程均从 `0x76d1` 读取键 249 的空数组，经 v3 字段到求解器末端 `0x7705`。构造测试覆盖 v0 至 v3、逐字节截断和非空数组回退。非空数组、后续 NAContext 槽和 ArcMap/QGIS 人工验收待验证。

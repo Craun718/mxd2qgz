@@ -319,6 +319,8 @@
   - [ ] 读取 NALayer 中定义的嵌套对象并登记其键，以解析 SanFrancisco SDK 工程的后续回引。[实档停点与原生证据](docs/mxd-luna-deep-layer-masking-20261118.md#sanfrancisco-组图层的跨图层-uid-回引)
   - [x] 接入 NALayer 的 NAContext、NetworkAnalysisWorkspace 三字符串和 IPropertySet 前缀，两份 SanFrancisco 实档的体停点由 `0x370` 推进到 `0x512`。[上下文与工作空间前缀](docs/mxd-luna-deep-layer-masking-20261118.md#nalayer-的上下文与工作空间前缀)
   - [x] 读取 NARouteSolver 的层级列表与属性集。[层级与属性取证](docs/mxd-luna-deep-layer-masking-20261118.md#naroutesolver-的层级列表与属性集)
+  - [x] 读取 NARouteSolver 的版本尾段及空参数数组。[版本尾段取证](docs/mxd-luna-deep-layer-masking-20261118.md#naroutesolver-的版本尾段)
+  - [ ] 读取非空 NAAttributeParameterValueArray 的逐项对象体。
   - [x] 读取 NARouteSolver 的 ExtraSafe IStringArray 槽及对象键。[对象槽取证](docs/mxd-luna-deep-layer-masking-20261118.md#naroutesolver-的-extrasafe-字符串数组)
   - [x] 读取 NARouteSolver 两个内联 StrArray 集合及其存在条件。[集合取证](docs/mxd-luna-deep-layer-masking-20261118.md#naroutesolver-的内联字符串集合)
   - [x] 读取 NARouteSolver 的版本、属性名与集合标志。[求解器取证](docs/mxd-luna-deep-layer-masking-20261118.md#naroutesolver-的版本与属性名前缀)

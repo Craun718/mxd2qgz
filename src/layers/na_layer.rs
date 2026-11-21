@@ -178,6 +178,7 @@ pub struct NaRouteSolverPrefix10_1 {
     pub stored_strings: Option<StringArraySlot10_1>,
     pub hierarchy: Option<NaRouteHierarchy10_1>,
     pub properties: Option<(ObjectEntry10_1, Option<Box<PropertySetObjectStream10_1>>)>,
+    pub tail: Option<NaRouteSolverTail10_1>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -193,6 +194,14 @@ pub struct NaRouteHierarchy10_1 {
     pub attribute_name: String,
     pub declared_count: i32,
     pub indexed_values: [Vec<i32>; 2],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NaRouteSolverTail10_1 {
+    pub shorts: (u16, Option<u16>),
+    pub parameters: Option<(ObjectEntry10_1, Option<(u16, i32)>)>,
+    pub common_v3: Option<(u64, i32)>,
+    pub route_specific: Option<(u64, u16)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -331,6 +340,9 @@ fn read_na_route_solver_prefix(
             let properties = hierarchy
                 .as_ref()
                 .and_then(|_| read_na_route_properties(&mut trial, max, &mut keys).ok());
+            let tail = properties
+                .as_ref()
+                .and_then(|_| read_na_route_tail(&mut trial, max, &mut keys, version).ok());
             Some(NaRouteSolverPrefix10_1 {
                 version,
                 attribute_name,
@@ -339,6 +351,7 @@ fn read_na_route_solver_prefix(
                 stored_strings,
                 hierarchy,
                 properties,
+                tail,
             })
         }
         ObjectEntry10_1::NewObject { .. } => {
@@ -480,6 +493,81 @@ fn read_na_route_properties(
     *reader = trial;
     *refs = keys;
     Ok((entry, body))
+}
+
+const NA_ATTRIBUTE_PARAMETER_VALUE_ARRAY_CLASS_ID: [u8; 16] = [
+    0x6b, 0x9e, 0x93, 0x61, 0x11, 0x80, 0xc5, 0x40, 0xb6, 0x72, 0x73, 0xea, 0x1e, 0x02, 0x6f, 0xec,
+];
+
+fn read_na_route_tail(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+    version: u16,
+) -> io::Result<NaRouteSolverTail10_1> {
+    let mut trial = reader.clone();
+    let mut keys = refs.clone();
+    // 原生先验有符号上限，再将 0、1、2 之外的值映射到共用 v3 分支。
+    let common_version = version.min(3);
+    let first = trial.read_u16_le()?;
+    let second = (common_version >= 1)
+        .then(|| trial.read_u16_le())
+        .transpose()?;
+    let parameters = if common_version >= 2 {
+        let entry = read_object_entry_10_1(&mut trial, &mut keys)?;
+        let array_header = match entry {
+            ObjectEntry10_1::NewObject {
+                class_id: NA_ATTRIBUTE_PARAMETER_VALUE_ARRAY_CLASS_ID,
+                ..
+            } => {
+                let version = trial.read_u16_le()?;
+                if version as i16 > 1 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "网络属性参数数组版本超过 1",
+                    ));
+                }
+                let count = trial.read_u32_le()? as i32;
+                if count > 0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Unsupported,
+                        "非空网络属性参数数组尚未支持",
+                    ));
+                }
+                Some((version, count))
+            }
+            ObjectEntry10_1::NewObject { .. } => {
+                return Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    "求解器参数槽对象体未支持",
+                ));
+            }
+            _ => None,
+        };
+        Some((entry, array_header))
+    } else {
+        None
+    };
+    let common_v3 = (common_version == 3)
+        .then(|| Ok::<_, io::Error>((trial.read_f64_le()?.to_bits(), trial.read_u32_le()? as i32)))
+        .transpose()?;
+    let route_specific = (version != 0)
+        .then(|| Ok::<_, io::Error>((trial.read_f64_le()?.to_bits(), trial.read_u16_le()?)))
+        .transpose()?;
+    if trial.position() - reader.position() > max {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "求解器尾字段超过资源限额",
+        ));
+    }
+    *reader = trial;
+    *refs = keys;
+    Ok(NaRouteSolverTail10_1 {
+        shorts: (first, second),
+        parameters,
+        common_v3,
+        route_specific,
+    })
 }
 
 fn read_na_workspace_prefix(
@@ -706,6 +794,64 @@ mod tests {
         );
         assert!(refs.contains(246));
         assert_eq!(reader.read_bytes(1).unwrap(), [0x7f]);
+    }
+
+    #[test]
+    fn route_tail_reads_versioned_fields_and_rolls_back() {
+        for version in 0..=3 {
+            let mut bytes = 11_u16.to_le_bytes().to_vec();
+            if version >= 1 {
+                bytes.extend(12_u16.to_le_bytes());
+            }
+            if version >= 2 {
+                bytes.extend(NA_ATTRIBUTE_PARAMETER_VALUE_ARRAY_CLASS_ID);
+                bytes.extend(249_u32.to_le_bytes());
+                bytes.extend(1_u16.to_le_bytes());
+                bytes.extend(0_u32.to_le_bytes());
+            }
+            if version == 3 {
+                bytes.extend(1.25_f64.to_le_bytes());
+                bytes.extend((-4_i32).to_le_bytes());
+            }
+            if version != 0 {
+                bytes.extend(2.5_f64.to_le_bytes());
+                bytes.extend(13_u16.to_le_bytes());
+            }
+            let mut refs = RefTable10_1::new();
+            for end in 0..bytes.len() {
+                let mut reader = Reader::new(&bytes[..end]);
+                assert!(read_na_route_tail(&mut reader, 128, &mut refs, version).is_err());
+                assert_eq!(reader.position(), 0);
+                assert!(refs.is_empty());
+            }
+            bytes.push(0x7f);
+            let mut reader = Reader::new(&bytes);
+            let tail = read_na_route_tail(&mut reader, 128, &mut refs, version).unwrap();
+            assert_eq!(tail.shorts, (11, (version >= 1).then_some(12)));
+            assert_eq!(
+                tail.common_v3,
+                (version == 3).then_some((1.25_f64.to_bits(), -4))
+            );
+            assert_eq!(
+                tail.route_specific,
+                (version != 0).then_some((2.5_f64.to_bits(), 13))
+            );
+            assert_eq!(refs.contains(249), version >= 2);
+            assert_eq!(reader.read_bytes(1).unwrap(), [0x7f]);
+            if version >= 2 {
+                bytes[26] = 1;
+                let mut reader = Reader::new(&bytes);
+                let mut refs = RefTable10_1::new();
+                assert_eq!(
+                    read_na_route_tail(&mut reader, 128, &mut refs, version)
+                        .unwrap_err()
+                        .kind(),
+                    io::ErrorKind::Unsupported
+                );
+                assert_eq!(reader.position(), 0);
+                assert!(refs.is_empty());
+            }
+        }
     }
 
     #[test]
