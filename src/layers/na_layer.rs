@@ -7,6 +7,7 @@ use crate::maps::standalone_table::{
 use crate::objects::dataset_name::{
     FEATURE_DATASET_NAME_CLASS_ID, FeatureDatasetNameBody10_1, read_feature_dataset_name_body_10_1,
 };
+use crate::objects::envelope::{SpatialReferenceEntry10_1, read_spatial_reference_entry_10_1};
 use crate::objects::property_set::{
     PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1, PropertyValueObjectStream10_1,
     read_padded_variant_object_stream_10_1, read_property_set_object_stream_10_1,
@@ -528,7 +529,7 @@ pub struct NaLocatorPrefix10_1 {
     pub scalar_bits: [u64; 2],
     pub mode: i32,
     pub flag: u16,
-    pub spatial_reference: ObjectEntry10_1,
+    pub spatial_reference: SpatialReferenceEntry10_1,
     pub agent_count: i32,
     pub tail: Option<NaLocatorTail10_1>,
 }
@@ -755,7 +756,7 @@ fn read_na_locator_prefix(
             ];
             let mode = trial.read_u32_le()? as i32;
             let flag = trial.read_u16_le()?;
-            let (spatial_reference, _) = read_na_locator_slot(&mut trial, max, &mut keys, false)?;
+            let spatial_reference = read_na_locator_spatial_reference(&mut trial, max, &mut keys)?;
             let agent_count = trial.read_u32_le()? as i32;
             let tail = read_na_locator_tail(&mut trial, max, &mut keys, version, agent_count).ok();
             Some(NaLocatorPrefix10_1 {
@@ -799,7 +800,7 @@ fn read_na_locator_tail(
     }
     let mut agents = Vec::new();
     for _ in 0..count {
-        agents.push(read_na_locator_slot(&mut trial, max, &mut keys, true)?);
+        agents.push(read_na_locator_agent(&mut trial, max, &mut keys)?);
     }
     let distance_bits = (version as i16 >= 2)
         .then(|| trial.read_f64_le().map(f64::to_bits))
@@ -814,11 +815,29 @@ fn read_na_locator_tail(
     })
 }
 
-fn read_na_locator_slot(
+/// NALocator::Load 0x7af31e90 的 ExtraSafe ISpatialReference 槽。
+fn read_na_locator_spatial_reference(
     reader: &mut Reader<'_>,
     max: usize,
     keys: &mut RefTable10_1,
-    agent_slot: bool,
+) -> io::Result<SpatialReferenceEntry10_1> {
+    let Some(mut region) = read_na_extra_safe_region(reader, max)? else {
+        return Ok(SpatialReferenceEntry10_1::Null);
+    };
+    let spatial_reference = read_spatial_reference_entry_10_1(&mut region, max, keys)?;
+    if region.remaining() != 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "NALocator 空间参考未消费声明范围",
+        ));
+    }
+    Ok(spatial_reference)
+}
+
+fn read_na_locator_agent(
+    reader: &mut Reader<'_>,
+    max: usize,
+    keys: &mut RefTable10_1,
 ) -> io::Result<(ObjectEntry10_1, Option<NaLocatorFeatureAgent10_1>)> {
     let Some(mut region) = read_na_extra_safe_region(reader, max)? else {
         return Ok((ObjectEntry10_1::Null, None));
@@ -828,7 +847,7 @@ fn read_na_locator_slot(
         ObjectEntry10_1::NewObject {
             class_id: NA_LOCATOR_FEATURE_AGENT_CLASS_ID,
             ..
-        } if agent_slot => {
+        } => {
             let version = region.read_u16_le()?;
             if version as i16 > 2 {
                 return Err(io::Error::new(
@@ -1928,6 +1947,42 @@ mod tests {
     }
 
     #[test]
+    fn locator_prefix_reads_new_spatial_reference_within_envelope() {
+        use crate::objects::spatial_reference_slots::UNKNOWN_COORDINATE_SYSTEM_CLASS_ID;
+
+        let mut spatial = UNKNOWN_COORDINATE_SYSTEM_CLASS_ID.to_vec();
+        spatial.extend(252_u32.to_le_bytes());
+        spatial.extend(0_u16.to_le_bytes());
+        for _ in 0..4 {
+            push_string(&mut spatial, "");
+        }
+        let mut bytes = NA_LOCATOR_CLASS_ID.to_vec();
+        bytes.extend(251_u32.to_le_bytes());
+        bytes.extend([0; 2 + 16 + 4 + 2]);
+        let offset = bytes.len();
+        bytes.extend((spatial.len() as u32).to_le_bytes());
+        bytes.extend(0_u32.to_le_bytes());
+        bytes.extend(&spatial);
+        bytes.extend(0_i32.to_le_bytes());
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        let (_, locator) = read_na_locator_prefix(&mut reader, 128, &mut refs).unwrap();
+        assert!(matches!(
+            locator.unwrap().spatial_reference,
+            SpatialReferenceEntry10_1::UnknownCoordinateSystem { key: 252, .. }
+        ));
+        assert!(refs.contains(251) && refs.contains(252));
+        assert_eq!(reader.remaining(), 0);
+
+        bytes[offset..offset + 4].copy_from_slice(&(spatial.len() as u32 + 1).to_le_bytes());
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        assert!(read_na_locator_prefix(&mut reader, 128, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+
+    #[test]
     fn locator_prefix_registers_key_only_after_agent_count() {
         let mut bytes = NA_LOCATOR_CLASS_ID.to_vec();
         bytes.extend(251_u32.to_le_bytes());
@@ -1951,7 +2006,7 @@ mod tests {
         let (_, locator) = read_na_locator_prefix(&mut reader, 128, &mut refs).unwrap();
         let locator = locator.unwrap();
         assert_eq!(locator.scalar_bits, [1.25_f64.to_bits(), 2.5_f64.to_bits()]);
-        assert_eq!(locator.spatial_reference, ObjectEntry10_1::Null);
+        assert_eq!(locator.spatial_reference, SpatialReferenceEntry10_1::Null);
         assert_eq!(locator.agent_count, 2);
         assert!(refs.contains(251));
         assert_eq!(reader.read_bytes(1).unwrap(), [0x7f]);

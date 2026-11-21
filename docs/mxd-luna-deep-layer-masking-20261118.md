@@ -379,3 +379,7 @@ NetworkLayer.dll 10.1.0.3035 的 NetworkTrafficRenderer 持久化槽指向 Load/
 NetworkAnalystSolvers.dll 10.1.0.3035 的数组 Load `0x7b09f110` 经虚表 `0x7b1fe6b8` 的项读取函数 `0x7b09ec60` 调用普通 LoadObject，再查询参数值接口，故新对象及回引用同一对象键表。参数值 CLSID `F8ED3FA8-0B8B-4A56-A5B1-22973B3290C9` 的持久化虚表 `0x7b200510` 经 `0x7b0befe0` 到 Load `0x7b0bd1c0`。原始指令和导入表确认它读取有符号上限 0 的 short、两个 AfCore BSTR、LONG，最后在 `0x7b0bd255` 调用 Variant::Read(false)。读取器复用该填充式 Variant 分派，逐项读取后随求解器尾段一起提交键。
 
 构造测试覆盖新参数、同键回引和逐字节截断。两份 SanFrancisco SDK 工程用于回归现有空数组路径。非空数组尚缺真实样例和 ArcMap/QGIS 人工验收。
+
+### NALocator 的空间参考对象
+
+NetworkAnalyst.dll 10.1.0.3035 的 NALocator::Load `0x7af31e90` 使用 `0x7afa0378` 的 IID `4434D680-F4DA-11D1-BCA6-0000F875BCCE` 请求 ISpatialReference。该 ExtraSafe 槽复用普通对象流的 PCS、GCS、UnknownCoordinateSystem 及回引分派，只有完整消费封装长度才提交新键。构造测试覆盖新 UnknownCoordinateSystem 及声明边界多出一字节时的回滚。两份 SanFrancisco 工程的此槽均为空，非空形态尚无真实宿主与人工验收。
