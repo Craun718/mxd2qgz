@@ -71,6 +71,10 @@ const WMS_MAP_LAYER_CLASS_ID: [u8; 16] = [
     0xc0, 0x56, 0x8a, 0xe3, 0xbd, 0xd5, 0x99, 0x48, 0xb0, 0x89, 0xc8, 0xed, 0x4e, 0x38, 0xb7, 0x7f,
 ];
 
+const NA_LAYER_CLASS_ID: [u8; 16] = [
+    0x71, 0x85, 0xbd, 0x5f, 0x60, 0xa5, 0x4f, 0x49, 0x9f, 0xaf, 0x3e, 0xdc, 0xed, 0x5a, 0x78, 0x90,
+];
+
 // 这些类尚无图层体读取器，但已确认不消费遮罩记录。
 pub(crate) fn is_unparsed_layer_without_masking_10_1(class_id: [u8; 16]) -> bool {
     matches!(
@@ -78,6 +82,7 @@ pub(crate) fn is_unparsed_layer_without_masking_10_1(class_id: [u8; 16]) -> bool
         DIMENSION_LAYER_CLASS_ID
             | TOPOLOGY_LAYER_CLASS_ID
             | NETWORK_LAYER_CLASS_ID
+            | NA_LAYER_CLASS_ID
             | SCHEMATIC_LAYER_CLASS_ID
             | TEMPORAL_FEATURE_LAYER_CLASS_ID
             | WMS_LAYER_CLASS_ID

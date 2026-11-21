@@ -153,6 +153,12 @@ Map 现在可越过完整读取的 GraphicsLayer3D 及其回引。构造 Map v28
 
 同一 10.1.0.3035 模块及注册表将 WMSGroupLayer 绑定到 `F677BA62-7CA7-400A-9C59-62930A282CEB`，WMSMapLayer 绑定到 `E38A56C0-D5BD-4899-B089-C8ED4E38B77F`。零偏移 RTTI 定位符分别指向主虚表 `0x80d8c934` 和 `0x80d8da74`。用 objdump 复核首项 `0x80d66660` 和 `0x80d77830` 的 21 和 40 个固定 IID 比较，包含条件分支。两种遮罩探测 IID 均无命中，分别在 `0x80d669d7` 和 `0x80d77e94` 调用共用后备 `0x80d847b0`，沿上节证据返回 `E_NOINTERFACE`。构造 Map v28 验证两类有界图层及回引。原生持久化体和目标软件人工验收仍未验证。
 
+## NALayer 的接口分派
+
+10.1.0.3035 Desktop 的 NetworkAnalyst.dll（PE32，SHA-256 `8c4ebaee71aad63c25616aa806674018479829d97bc01c7ed3b8845813698532`）与同版本注册表将 NALayer 绑定到 `5FBD8571-A560-494F-9FAF-3EDCED5A7890`。MSVC RTTI 的零偏移定位符 `0x7afab62c` 将主虚表 `0x7af9f0cc` 绑定到 NALayer，首项为 `0x7af195c0`。用 objdump 复核该入口的 35 个固定 IID 以及 `0x7af19b1e → 0x7af82c80`、`0x7af82cd4 → 0x7af82280` 的四个后备 IID，均不匹配 ILayerMasking 或 IBasemapLayer。最终 `0x7af8236c..0x7af82372` 清空结果并返回 `E_NOINTERFACE`。
+
+重跑 10.1 SDK .NET 和 Java 两份 SanFrancisco 工程，逐层遮罩解析越过六个有界 NALayer，首个未确认项从键 31 推进到键 4501 的 GroupLayer。构造 Map v28 覆盖 NALayer 有界体及回引，并验证未知类仍停止。NALayer 体字段、后续 GroupLayer 子树及 ArcMap/QGIS 人工验收仍待验证。
+
 ## ProcessLayer 的组图层委派及遮罩
 
 用 `objdump -d -Mintel` 及 PE32 虚表复核 10.1.0.3035 的 `GpObjects.dll`，SHA-256 `c9da22687b40e070d7178538846f707c04d26474d2fa835acb01ceaa46d2f896`。同版本 `esri.clsid.xml`、原生 GetClassID `0x7477a220` 和 SDK 工程的顶层对象头均给出 ProcessLayer CLSID `D6E92E16-E656-4119-B8E1-88576F6833E6`。
