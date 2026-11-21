@@ -672,6 +672,7 @@
       - [x] 接入 ScaleText 和四类填充比例尺的九种已确认 INumberFormat 实现。[槽位取证](docs/mxd-terra-nextpass-scale.md#比例尺文本和填充比例尺数字格式槽)
       - [x] 定性 PCS/GCS 的第四条域串为 Usage，并确认两类 Define 的四槽赋值路径。[原生字段映射](docs/mxd-terra-integrate-sr.md#pcs-与-gcs-域串的属性映射)
       - [ ] 定位 PCS/GCS 域串在其他创建路径中的填充来源。
+      - [x] 核对 PCS/GCS Define 对既有辅助结构的原位域串写入。[原生取证](docs/mxd-terra-integrate-sr.md#define-对现有辅助结构的写入)
       - [x] 核对 PRJ 字符串创建 PCS/GCS 时的域串初值和缓存复用路径。[原生取证](docs/mxd-terra-integrate-sr.md#prj-字符串工厂的域串)
       - [x] 核对按 WKID 创建坐标系时新辅助结构的域串初值。[原生取证](docs/mxd-terra-integrate-sr.md#wkid-工厂首次分配的域串)
       - [x] 核对 PCS 延迟创建关联 GCS 时四条域串的初值与辅助结构来源。[原生取证](docs/mxd-terra-integrate-sr.md#pcs-创建关联-gcs-时的域串来源)
