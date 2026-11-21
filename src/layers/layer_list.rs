@@ -975,63 +975,9 @@ fn read_entry(
                     .checked_sub(trial.position())
                     .ok_or_else(|| invalid(offset, "NALayer 外层边界早于对象体"))?;
                 let mut region = trial.clone().read_region(len)?;
-                super::na_layer::read_na_layer_prefix_10_1(&mut region, max_bytes).and_then(
-                    |mut body| {
-                        match super::na_layer::read_na_network_name_10_1(
-                            &mut region,
-                            max_bytes,
-                            trial_table,
-                        ) {
-                            Ok(name) => {
-                                body.network_name = Some(name);
-                                match super::na_layer::read_na_context_prefix_10_1(
-                                    &mut region,
-                                    max_bytes,
-                                    trial_table,
-                                ) {
-                                    Ok(context) => {
-                                        let complete = context
-                                            .1
-                                            .as_ref()
-                                            .is_none_or(|context| context.secondary_set.is_some());
-                                        body.context = Some(context);
-                                        if complete {
-                                            match super::na_layer::read_na_layer_children(
-                                                &mut region,
-                                                max_bytes,
-                                                trial_table,
-                                            ) {
-                                                Ok(children) => {
-                                                    parse_note = children.stop.clone();
-                                                    if children.stop.is_none() {
-                                                        match super::na_layer::read_na_layer_tail(
-                                                            &mut region,
-                                                            max_bytes,
-                                                            trial_table,
-                                                            body.version,
-                                                        ) {
-                                                            Ok(tail) => body.tail = Some(tail),
-                                                            Err(error) => {
-                                                                parse_note = Some(error.to_string())
-                                                            }
-                                                        }
-                                                    }
-                                                    body.children = Some(children);
-                                                }
-                                                Err(error) => parse_note = Some(error.to_string()),
-                                            }
-                                        }
-                                    }
-                                    Err(error) => {
-                                        parse_note =
-                                            Some(format!("NALayer 上下文槽未读取：{error}"))
-                                    }
-                                }
-                            }
-                            Err(error) => {
-                                parse_note = Some(format!("NALayer 名称槽未读取：{error}"))
-                            }
-                        }
+                super::na_layer::read_na_layer_body(&mut region, max_bytes, trial_table).and_then(
+                    |(body, note)| {
+                        parse_note = note;
                         trial.read_bytes(region.position())?;
                         Ok(Some(LayerBodyPrefix10_1::NaLayer(body)))
                     },
@@ -1165,6 +1111,10 @@ pub(crate) fn parse_body_prefix(
     trial_table: &mut RefTable10_1,
     depth: u32,
 ) -> io::Result<Option<LayerBodyPrefix10_1>> {
+    if class_id == super::na_layer::NA_LAYER_CLASS_ID {
+        let (body, _) = super::na_layer::read_na_layer_body(trial, max_bytes, trial_table)?;
+        return Ok(Some(LayerBodyPrefix10_1::NaLayer(body)));
+    }
     if class_id == crate::maps::layer_masking::NETWORK_LAYER_CLASS_ID {
         return super::network_layer::read_network_layer_prefix_10_1(trial, max_bytes, trial_table)
             .map(|body| Some(LayerBodyPrefix10_1::NetworkLayer(Box::new(body))));
@@ -1278,7 +1228,7 @@ pub(crate) fn read_complete_layer_body_10_1(
             body.stop == crate::layers::group_layer::GroupLayerStop10_1::Complete
         }
         LayerBodyPrefix10_1::RasterLayer(body) => body.tail.is_some(),
-        LayerBodyPrefix10_1::NaLayer(_) => false,
+        LayerBodyPrefix10_1::NaLayer(body) => body.tail.is_some(),
         LayerBodyPrefix10_1::NetworkLayer(body) => body
             .display
             .as_ref()

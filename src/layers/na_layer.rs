@@ -117,6 +117,36 @@ pub(super) fn read_na_layer_prefix_10_1(
     })
 }
 
+/// 按原生顺序读取普通和有界宿主共用的 NALayer 对象体。
+pub(super) fn read_na_layer_body(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<(NaLayerPrefix10_1, Option<String>)> {
+    let mut body = read_na_layer_prefix_10_1(reader, max)?;
+    let note = (|| -> io::Result<Option<String>> {
+        body.network_name = Some(read_na_network_name_10_1(reader, max, refs)?);
+        let context = read_na_context_prefix_10_1(reader, max, refs)?;
+        let complete = context
+            .1
+            .as_ref()
+            .is_none_or(|body| body.secondary_set.is_some());
+        body.context = Some(context);
+        if !complete {
+            return Ok(None);
+        }
+        let children = read_na_layer_children(reader, max, refs)?;
+        let stop = children.stop.clone();
+        body.children = Some(children);
+        if stop.is_none() {
+            body.tail = Some(read_na_layer_tail(reader, max, refs, body.version)?);
+        }
+        Ok(stop)
+    })()
+    .unwrap_or_else(|error| Some(format!("NALayer：{error}")));
+    Ok((body, note))
+}
+
 /// NALayer::Load 0x7af1ffc0 在完整上下文之后读取 LONG 和普通 ILayer 槽。
 pub(super) fn read_na_layer_children(
     reader: &mut Reader<'_>,
@@ -1827,6 +1857,32 @@ mod tests {
         assert_eq!(definition.uid.1.as_ref().unwrap().key, 40);
         assert!(refs.contains(38) && refs.contains(39) && refs.contains(40));
         assert!(refs.contains(35) && refs.contains(36) && refs.contains(37));
+        assert_eq!(reader.read_bytes(1).unwrap(), [0x7f]);
+    }
+
+    #[test]
+    fn ordinary_na_layer_rejects_partial_body_without_committing() {
+        use super::super::layer_list::{LayerBodyPrefix10_1, read_complete_layer_body_10_1};
+
+        let mut bytes = 0_u16.to_le_bytes().to_vec();
+        push_string(&mut bytes, "Route");
+        bytes.extend([0; 6 + 16 + 16 + 16 + 4]);
+        bytes.extend([0; 2 + 16 + 8 + 4]);
+        push_string(&mut bytes, "");
+        bytes.extend([0; 2 + 16]);
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes[..bytes.len() - 1]);
+        assert!(
+            read_complete_layer_body_10_1(&mut reader, NA_LAYER_CLASS_ID, 256, &mut refs).is_err()
+        );
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+
+        bytes.push(0x7f);
+        let mut reader = Reader::new(&bytes);
+        let body =
+            read_complete_layer_body_10_1(&mut reader, NA_LAYER_CLASS_ID, 256, &mut refs).unwrap();
+        assert!(matches!(body, LayerBodyPrefix10_1::NaLayer(layer) if layer.tail.is_some()));
         assert_eq!(reader.read_bytes(1).unwrap(), [0x7f]);
     }
 

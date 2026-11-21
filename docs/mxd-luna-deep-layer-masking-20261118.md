@@ -395,3 +395,7 @@ NetworkAnalyst.dll 10.1.0.3035 的 Load `0x7af1ffc0` 在 IEnvelope 槽与 double
 ### 定位器的位置字段代理
 
 NetworkAnalyst.dll 10.1.0.3035 的持久化虚表 `0x7afa0bb0` 经跳板 `0x7af430b0 / 0x7af43150` 调到 Load/Save `0x7af423b0 / 0x7af425a0`。GetClassID `0x7af42370` 返回注册表中 NALocatorLocationFieldsAgent 的 CLSID。Ghidra 补充导出确认版本 short 的有符号上限为 2，随后四个 AfCore BSTR，v2 再追加一个。对象通过 NALocator 的已有 ExtraSafe 槽读取并校验完整边界。构造测试覆盖 v1/v2、后继字节和截断回滚；真实宿主与 ArcMap/QGIS 人工验收仍待验证。
+
+### NALayer 的普通对象宿主
+
+NetworkAnalyst.dll 10.1.0.3035 的持久化 Load `0x7af1ffc0` 与 Save `0x7af20be0` 按对象自身字段顺序读写。ExtraSafe 边界由外部宿主提供。普通 LoadObject 和有界图层共用同一个读取器，普通入口只有读完上下文、子图层循环和版本尾段才提交。构造测试覆盖完整对象后接其他字段以及截断时的游标和键回滚。两份 SanFrancisco SDK 工程继续用于有界入口回归，普通入口尚缺真实宿主及 ArcMap/QGIS 人工验收。
