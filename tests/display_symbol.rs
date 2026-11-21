@@ -3027,84 +3027,85 @@ fn representation_rule_reads_fill_and_line_attribute_lists_and_keys() {
 #[test]
 fn representation_rule_reads_basic_marker_and_bounded_placement() {
     use mxd2qgz::objects::display_symbol::{
-        BASIC_MARKER_SYMBOL_CLASS_ID, MARKER_PLACEMENT_ON_POINT_CLASS_ID,
-        REPRESENTATION_RULE_CLASS_ID, SYMBOL_MIMIC_CLASS_ID, SymbolSlotFull10_1,
-        read_symbol_slot_full_10_1,
+        BASIC_MARKER_SYMBOL_CLASS_ID, MARKER_PLACEMENT_CLASSES_10_1, REPRESENTATION_RULE_CLASS_ID,
+        SYMBOL_MIMIC_CLASS_ID, SymbolSlotFull10_1, read_symbol_slot_full_10_1,
     };
     use mxd2qgz::storage::object_refs::ObjectEntry10_1;
 
-    let mut bytes = Vec::new();
-    push_entry(&mut bytes, &SYMBOL_MIMIC_CLASS_ID, 11);
-    bytes.extend([1, 0, 0, 0, 0, 0]);
-    push_entry(&mut bytes, &REPRESENTATION_RULE_CLASS_ID, 12);
-    bytes.extend([1, 0, 2, 0]);
-    for value in [0_i32, 0, 3] {
-        bytes.extend(value.to_le_bytes());
-    }
-    let mut placement_size_offset = 0;
-    for (key, version) in [(13, 1_u16), (14, 2), (15, 2)] {
-        push_entry(&mut bytes, &BASIC_MARKER_SYMBOL_CLASS_ID, key);
-        bytes.extend(version.to_le_bytes());
-        bytes.extend([2, 0, 0, 0, 0, 0]);
+    for placement_class in MARKER_PLACEMENT_CLASSES_10_1 {
+        let mut bytes = Vec::new();
+        push_entry(&mut bytes, &SYMBOL_MIMIC_CLASS_ID, 11);
         bytes.extend([1, 0, 0, 0, 0, 0]);
-        if version == 2 {
-            push_string(&mut bytes, "点上");
+        push_entry(&mut bytes, &REPRESENTATION_RULE_CLASS_ID, 12);
+        bytes.extend([1, 0, 2, 0]);
+        for value in [0_i32, 0, 3] {
+            bytes.extend(value.to_le_bytes());
         }
-        if key == 13 {
-            bytes.extend([0; 8]);
-        } else {
-            let size = if key == 14 {
-                placement_size_offset = bytes.len();
-                26_u32
-            } else {
-                20
-            };
-            bytes.extend(size.to_le_bytes());
-            bytes.extend(0_u32.to_le_bytes());
-            push_entry(&mut bytes, &MARKER_PLACEMENT_ON_POINT_CLASS_ID, 16);
-            if key == 14 {
-                bytes.extend([1, 0, 0, 0, 0, 0]);
+        let mut placement_size_offset = 0;
+        for (key, version) in [(13, 1_u16), (14, 2), (15, 2)] {
+            push_entry(&mut bytes, &BASIC_MARKER_SYMBOL_CLASS_ID, key);
+            bytes.extend(version.to_le_bytes());
+            bytes.extend([2, 0, 0, 0, 0, 0]);
+            bytes.extend([1, 0, 0, 0, 0, 0]);
+            if version == 2 {
+                push_string(&mut bytes, "点上");
             }
+            if key == 13 {
+                bytes.extend([0; 8]);
+            } else {
+                let size = if key == 14 {
+                    placement_size_offset = bytes.len();
+                    26_u32
+                } else {
+                    20
+                };
+                bytes.extend(size.to_le_bytes());
+                bytes.extend(0_u32.to_le_bytes());
+                push_entry(&mut bytes, &placement_class, 16);
+                if key == 14 {
+                    bytes.extend([1, 0, 0, 0, 0, 0]);
+                }
+            }
+            bytes.extend(33_i32.to_le_bytes());
         }
-        bytes.extend(33_i32.to_le_bytes());
-    }
-    for value in [0_i32, 0, 0, 44] {
-        bytes.extend(value.to_le_bytes());
-    }
+        for value in [0_i32, 0, 0, 44] {
+            bytes.extend(value.to_le_bytes());
+        }
 
-    let mut reader = Reader::new(&bytes);
-    let mut refs = RefTable10_1::new();
-    let SymbolSlotFull10_1::SymbolMimic {
-        rule_body: Some(rule),
-        trailing_value: 44,
-        ..
-    } = read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 4).unwrap()
-    else {
-        panic!("未读出标记符号层");
-    };
-    let markers: Vec<_> = rule
-        .layers
-        .iter()
-        .map(|entry| entry.marker.as_ref().unwrap())
-        .collect();
-    assert_eq!(markers[0].placement_name, None);
-    assert_eq!(markers[0].placement, ObjectEntry10_1::Null);
-    assert_eq!(markers[1].placement_name.as_deref(), Some("点上"));
-    assert_eq!(markers[1].placement_body.as_ref().unwrap().version, 1);
-    assert!(matches!(
-        markers[2].placement,
-        ObjectEntry10_1::BackReference { key: 16, .. }
-    ));
-    assert_eq!(markers[2].trailing_value, 33);
-    assert_eq!(reader.remaining(), 0);
-
-    for bad_length in [25_u32, 27] {
-        bytes[placement_size_offset..placement_size_offset + 4]
-            .copy_from_slice(&bad_length.to_le_bytes());
         let mut reader = Reader::new(&bytes);
         let mut refs = RefTable10_1::new();
-        assert!(read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 4).is_err());
-        assert_eq!(reader.position(), 0);
-        assert!(!refs.contains(16));
+        let SymbolSlotFull10_1::SymbolMimic {
+            rule_body: Some(rule),
+            trailing_value: 44,
+            ..
+        } = read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 4).unwrap()
+        else {
+            panic!("未读出标记符号层");
+        };
+        let markers: Vec<_> = rule
+            .layers
+            .iter()
+            .map(|entry| entry.marker.as_ref().unwrap())
+            .collect();
+        assert_eq!(markers[0].placement_name, None);
+        assert_eq!(markers[0].placement, ObjectEntry10_1::Null);
+        assert_eq!(markers[1].placement_name.as_deref(), Some("点上"));
+        assert_eq!(markers[1].placement_body.as_ref().unwrap().version, 1);
+        assert!(matches!(
+            markers[2].placement,
+            ObjectEntry10_1::BackReference { key: 16, .. }
+        ));
+        assert_eq!(markers[2].trailing_value, 33);
+        assert_eq!(reader.remaining(), 0);
+
+        for bad_length in [25_u32, 27] {
+            bytes[placement_size_offset..placement_size_offset + 4]
+                .copy_from_slice(&bad_length.to_le_bytes());
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            assert!(read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 4).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(!refs.contains(16));
+        }
     }
 }

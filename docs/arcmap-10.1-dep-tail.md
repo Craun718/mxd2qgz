@@ -563,3 +563,31 @@ MarkerPlacementOnPoint 新对象及其同类键回引。ExtraSafe 有界对象�
 读到声明终点才提交键。合成测试覆盖 v1/v2、名称、空槽、
 新对象、回引及声明长度偏小或偏大时的回滚。其余布置类、非空效果、
 实际 MXD 以及 ArcMap 10.1、QGIS 人工验证仍待完成。
+
+### 共用属性表的 11 种标记布置类
+
+从 10.1 Desktop 类型库枚举声明 IMarkerPlacement 的 11 个 coclass。
+在 DisplayRepresentation.dll 10.1.0.3035 中，逐项核对传入
+`0x6ee2fa20` 的 CLSID 与构造后完整对象 `+0x30` 的虚表。
+下列虚表的 GetClassID、Load、Save 槽均指向
+`0x6ee2fee0`、`0x6ee2ff40`、`0x6ee26520`。
+Load 和 Save 直接委派给 GraphicAttributeList 的读写入口。
+
+| MarkerPlacement 类后缀 | 构造调用点 | 持久化虚表 |
+| --- | --- | --- |
+| AlongLine | `0x6ee27ea4` | `0x6ee96b14` |
+| Decoration | `0x6ee29843` | `0x6ee96d0c` |
+| InsidePolygon | `0x6ee2a360` | `0x6ee96eec` |
+| AtExtremities | `0x6ee2c044` | `0x6ee9709c` |
+| OnLine | `0x6ee2ca64` | `0x6ee971f4` |
+| OnPoint | `0x6ee2d48f` | `0x6ee97334` |
+| OnVertices | `0x6ee2dc66` | `0x6ee974f4` |
+| PolygonCenter | `0x6ee2ecc4` | `0x6ee9762c` |
+| RandomAlongLine | `0x6ee30144` | `0x6ee978b4` |
+| RandomInPolygon | `0x6ee31d94` | `0x6ee97a44` |
+| VariableAlongLine | `0x6ee32ae0` | `0x6ee97c44` |
+
+解析器在 BasicMarkerSymbol 的 ExtraSafe 槽接入全部 11 个 CLSID，
+保留布置对象的属性 ID 和 Variant，并支持同类键回引。构造测试逐类
+验证新对象、回引及声明范围不符时的回滚。未公开布置类仍需原生证据。
+尚无真实 MXD 样本及 ArcMap 10.1、QGIS 人工验证。
