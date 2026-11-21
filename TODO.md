@@ -788,6 +788,7 @@
   - [x] 恢复 RasterBandName 直接工作空间分支的路径及波段查找名称。[原生打开链与回归](docs/mxd-10.1-raster-layer-tail.md#波段名称的直接工作空间分支)
   - [x] 对位 RasterBandCollectionName 的索引数组并保留到栅格模型。[原生索引查找](docs/mxd-10.1-raster-layer-tail.md#波段集合的索引选择)
   - [x] 按对象键恢复 RasterBandCollectionName 的 LongArray 回引索引。[数组回引验证](docs/mxd-10.1-raster-layer-tail.md#波段索引数组的回引)
+  - [x] 恢复整个 RasterBandCollectionName 回引的来源和索引序列。[集合名称回引](docs/mxd-10.1-raster-layer-tail.md#整个波段集合名称的回引)
   - [x] 定位 RasterDatasetName 第四条字符串的 IRasterDatasetNameImpl 访问器。[私有接口取证](docs/mxd-luna-followup-rasterdatasetname-20261118.md#第四条字符串的私有接口)
 - [ ] 转换 Shapefile 数据源路径（相对、绝对、缺失文件）。
 - [x] 构造模型支持明确 EPSG:4326/3857、不同地图/图层 CRS 和主画布范围；其他定义保留并诊断，未猜 EPSG。非法或溢出范围拒绝。

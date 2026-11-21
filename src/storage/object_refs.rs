@@ -25,6 +25,7 @@ pub struct DatasetSource10_1 {
     pub name: Arc<str>,
     pub path: Option<Arc<str>>,
     pub band_name: Option<Arc<str>>,
+    pub band_indices: Option<Arc<[i32]>>,
 }
 
 /// 跨流共享的已见键登记表（对应原生 ObjectStream 读表）。
@@ -195,6 +196,30 @@ impl RefTable10_1 {
                     name: Arc::from(name),
                     path: path.map(Arc::from),
                     band_name: band_name.map(Arc::from),
+                    band_indices: None,
+                },
+            );
+        }
+    }
+
+    pub(crate) fn mark_band_collection_source(
+        &mut self,
+        class_id: [u8; 16],
+        key: u32,
+        parent: Option<DatasetSource10_1>,
+        indices: Option<&[i32]>,
+    ) {
+        if self.contains(key) {
+            self.dataset_sources.insert(
+                (class_id, key),
+                DatasetSource10_1 {
+                    name: parent
+                        .as_ref()
+                        .map(|source| source.name.clone())
+                        .unwrap_or_default(),
+                    path: parent.and_then(|source| source.path),
+                    band_name: None,
+                    band_indices: indices.map(Arc::from),
                 },
             );
         }

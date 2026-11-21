@@ -2086,9 +2086,16 @@ fn raster_node(
             .filter(|name| name.entry != ObjectEntry10_1::Null);
         if let Some(first) = names.next() {
             let second = names.next();
+            use crate::layers::raster_dataset_name::RASTER_BAND_COLLECTION_NAME_CLASS_ID;
             let is_collection = matches!(
-                first.body,
-                Some(crate::layers::raster_dataset_name::RasterDatasetNameEntryBody10_1::BandCollection(_))
+                first.entry,
+                ObjectEntry10_1::NewObject {
+                    class_id: RASTER_BAND_COLLECTION_NAME_CLASS_ID,
+                    ..
+                } | ObjectEntry10_1::BackReference {
+                    class_id: RASTER_BAND_COLLECTION_NAME_CLASS_ID,
+                    ..
+                }
             );
             if second.is_some() || is_collection {
                 if second.is_some() {
@@ -2114,7 +2121,7 @@ fn raster_node(
                                     Some(crate::layers::raster_dataset_name::RasterDatasetNameEntryBody10_1::BandCollection(collection)) => {
                                         collection.array.as_ref().map(|(_, values)| values.clone())
                                     }
-                                    _ => None,
+                                    _ => name.source_reference.as_ref().and_then(|source| source.band_indices.as_deref()).map(<[i32]>::to_vec),
                                 },
                                 source: raster_name_source(name),
                             })
