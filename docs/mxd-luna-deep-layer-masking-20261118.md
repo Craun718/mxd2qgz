@@ -361,3 +361,9 @@ NetworkLayer.dll 10.1.0.3035 的 Load `0x7b2903d0` 在名称之后请求 `0x7b2a
 NetworkLayer.dll 10.1.0.3035 的 Load `0x7b2903d0` 在计数之后逐项读取 short、普通对象槽（IID 位于 `0x7b2a7a20`）及 16 字节字段。NetworkDirtyAreaRenderer GetClassID `0x7b284810` 返回 `0x7b2a7a60` 的 CLSID，持久化虚表 `0x7b2a8d64` 的 Load/Save 为 `0x7b285590 / 0x7b285490`。Ghidra 补充导出确认体内只有有符号上限 1 的 short 和 ILegendGroup 槽。完整读取一项后提交它及嵌套对象键。
 
 两份 SanFrancisco SDK 工程均从 `0xd080e` 读完脏区渲染器键 5057，停于 `0xd0954` 的第二项，其渲染器键 5064。构造测试覆盖项尾及逐字节截断回滚。其余网络渲染器与 ArcMap/QGIS 人工验收仍待处理。
+
+### 简单网络渲染器
+
+NetworkLayer.dll 10.1.0.3035 的 SimpleNetworkRenderer GetClassID `0x7b29e810` 引用 `0x7b2a7a50` 的 CLSID。持久化表 `0x7b2aaab4` 的 Load/Save 为 `0x7b29e770 / 0x7b29e650`。Load 读取版本上限 2 的 short，经共用体 `0x7b298990` 读取版本上限 3 的 short、String、两个 LONG、String 和三个 ISymbol 槽。共用 v2 起有三个 short，v3 起有来源计数及逐项 String、字节、String。外层最后读取 ILegendGroup 槽。Ghidra 补充导出与共用 Save `0x7b298550` 可复核。
+
+两份 SanFrancisco SDK 工程均读过键 5064 的简单网络渲染器，解析推进至 `/Maps:0xd0d78` 的下一未支持项，键 5079。构造测试覆盖来源列表、项尾与逐字节截断回滚。ArcMap/QGIS 人工验收尚未进行。
