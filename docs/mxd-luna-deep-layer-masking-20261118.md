@@ -321,3 +321,9 @@ NetworkAnalystSolvers.dll 10.1.0.3035 的 NAVRPSolver CLSID `52B62278-735F-4DA1-
 同版 NetworkAnalyst.dll 的 NALayer::Load `0x7af1ffc0` 对 v1 起的第二个计数循环请求 `0x7af9f760` 的 IID，即 `FFC6B179-E3EC-11D3-A096-00C04F6BC626`（IStandaloneTable）。Save `0x7af20be0` 写出数组 `+0x20` 的普通对象。读取器复用 Map 独立表的对象体读取规则，并要求表体完整后才进入下一项。
 
 两份 SanFrancisco SDK 工程的车辆路径图层先前因整段回滚而报在尾部起点 `0x5e692`，首个 StandaloneTable 对象头实际位于 `0x5e6cc`。接入后两份工程均读完四张独立表及随后的位集，到达图层声明边界。构造测试覆盖独立表回引、空槽和逐字节截断回滚。ArcMap/QGIS 人工验收尚未进行。
+
+### 位置分配求解器
+
+同版 NetworkAnalystSolvers.dll 的持久化槽 `0x7b201b30` 指向 Load `0x7b0d2cb0`，10.1 注册表将 CLSID `659CC65B-D656-4F32-87F2-FD0D3058DDF9` 定名为 NALocationAllocationSolver。Ghidra 补充导出及原始指令确认有符号上限 4，外层 v0/v1 使用共用 v2，v2 起使用共用 v3。随后读取四个 LONG、三个 double 和 LONG。外层 v3 新增 double 和 LONG，v4 再新增 double。
+
+两份 SanFrancisco SDK 工程均从 `0x68bb2` 读取 v2 求解器键 4003，直至完整消费 Location-Allocation 图层的声明区间。构造测试覆盖 v0 至 v4 和逐字节截断回滚。遮罩组图层键 4501 的未完整子层及 ArcMap/QGIS 人工验收仍待处理。

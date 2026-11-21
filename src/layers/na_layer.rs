@@ -465,6 +465,7 @@ pub struct NaRouteSolverTail10_1 {
     pub od_cost_matrix_v3: Option<(i32, u16)>,
     pub od_cost_matrix_v5: Option<(u64, i32)>,
     pub vrp: Option<NaVrpSolverTail10_1>,
+    pub location_allocation: Option<NaLocationAllocationSolverTail10_1>,
 }
 
 const NA_LOCATOR_CLASS_ID: [u8; 16] = [
@@ -474,6 +475,15 @@ const NA_LOCATOR_CLASS_ID: [u8; 16] = [
 const NA_LOCATOR_FEATURE_AGENT_CLASS_ID: [u8; 16] = [
     0xab, 0xc9, 0xb4, 0x22, 0xfa, 0x32, 0x86, 0x46, 0x8f, 0x5e, 0x8a, 0x2a, 0x37, 0x0b, 0x33, 0x50,
 ];
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NaLocationAllocationSolverTail10_1 {
+    pub options: [i32; 4],
+    pub scalar_bits: [u64; 3],
+    pub mode: i32,
+    pub version_three_values: Option<(u64, i32)>,
+    pub version_four_bits: Option<u64>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NaVrpSolverTail10_1 {
@@ -692,6 +702,10 @@ pub(super) fn read_na_context_prefix_10_1(
     *refs = keys;
     Ok((context, body))
 }
+
+const NA_LOCATION_ALLOCATION_SOLVER_CLASS_ID: [u8; 16] = [
+    0x5b, 0xc6, 0x9c, 0x65, 0x56, 0xd6, 0x32, 0x4f, 0x87, 0xf2, 0xfd, 0x0d, 0x30, 0x58, 0xdd, 0xf9,
+];
 
 const NA_VRP_SOLVER_CLASS_ID: [u8; 16] = [
     0x78, 0x22, 0xb6, 0x52, 0x5f, 0x73, 0xa1, 0x4d, 0x8a, 0x4e, 0x2e, 0x6f, 0x4e, 0x3b, 0xcd, 0x60,
@@ -1036,7 +1050,8 @@ fn read_na_solver_prefix(
                 | NA_CLOSEST_FACILITY_SOLVER_CLASS_ID
                 | NA_SERVICE_AREA_SOLVER_CLASS_ID
                 | NA_OD_COST_MATRIX_SOLVER_CLASS_ID
-                | NA_VRP_SOLVER_CLASS_ID),
+                | NA_VRP_SOLVER_CLASS_ID
+                | NA_LOCATION_ALLOCATION_SOLVER_CLASS_ID),
             ..
         } => {
             let version = trial.read_u16_le()?;
@@ -1236,12 +1251,8 @@ fn read_na_solver_tail(
     // 原生先验有符号上限，再将 0、1、2 之外的值映射到共用 v3 分支。
     let common_version = match (class_id, version) {
         (NA_OD_COST_MATRIX_SOLVER_CLASS_ID, 3) => 2,
-        (NA_VRP_SOLVER_CLASS_ID, _) => {
-            if version as i16 > 1 {
-                3
-            } else {
-                2
-            }
+        (NA_VRP_SOLVER_CLASS_ID | NA_LOCATION_ALLOCATION_SOLVER_CLASS_ID, _) => {
+            if version as i16 > 1 { 3 } else { 2 }
         }
         _ => version.min(3),
     };
@@ -1306,6 +1317,9 @@ fn read_na_solver_tail(
     let vrp = (class_id == NA_VRP_SOLVER_CLASS_ID)
         .then(|| read_na_vrp_tail(&mut trial, max, &mut keys, version))
         .transpose()?;
+    let location_allocation = (class_id == NA_LOCATION_ALLOCATION_SOLVER_CLASS_ID)
+        .then(|| read_na_location_allocation_tail(&mut trial, version as i16))
+        .transpose()?;
     if trial.position() - reader.position() > max {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -1324,6 +1338,44 @@ fn read_na_solver_tail(
         od_cost_matrix_v3,
         od_cost_matrix_v5,
         vrp,
+        location_allocation,
+    })
+}
+
+// NALocationAllocationSolver::Load 0x7b0d2cb0.
+fn read_na_location_allocation_tail(
+    reader: &mut Reader<'_>,
+    version: i16,
+) -> io::Result<NaLocationAllocationSolverTail10_1> {
+    let options = [
+        reader.read_u32_le()? as i32,
+        reader.read_u32_le()? as i32,
+        reader.read_u32_le()? as i32,
+        reader.read_u32_le()? as i32,
+    ];
+    let scalar_bits = [
+        reader.read_f64_le()?.to_bits(),
+        reader.read_f64_le()?.to_bits(),
+        reader.read_f64_le()?.to_bits(),
+    ];
+    let mode = reader.read_u32_le()? as i32;
+    let version_three_values = (version >= 3)
+        .then(|| {
+            Ok::<_, io::Error>((
+                reader.read_f64_le()?.to_bits(),
+                reader.read_u32_le()? as i32,
+            ))
+        })
+        .transpose()?;
+    let version_four_bits = (version >= 4)
+        .then(|| reader.read_f64_le().map(f64::to_bits))
+        .transpose()?;
+    Ok(NaLocationAllocationSolverTail10_1 {
+        options,
+        scalar_bits,
+        mode,
+        version_three_values,
+        version_four_bits,
     })
 }
 
@@ -1864,6 +1916,61 @@ mod tests {
         assert_eq!(tail.flag, Some(9));
         assert!(refs.contains(252));
         assert_eq!(reader.remaining(), 0);
+    }
+
+    #[test]
+    fn location_allocation_tail_uses_native_version_mapping() {
+        for version in 0..=4 {
+            let mut bytes = vec![0; 4 + 16];
+            if version >= 2 {
+                bytes.extend([0; 12]);
+            }
+            bytes.extend([0; 16 + 24]);
+            bytes.extend(42_i32.to_le_bytes());
+            if version >= 3 {
+                bytes.extend(1.5_f64.to_le_bytes());
+                bytes.extend((-7_i32).to_le_bytes());
+            }
+            if version >= 4 {
+                bytes.extend(2.5_f64.to_le_bytes());
+            }
+            let mut refs = RefTable10_1::new();
+            for end in 0..bytes.len() {
+                let mut reader = Reader::new(&bytes[..end]);
+                assert!(
+                    read_na_solver_tail(
+                        &mut reader,
+                        128,
+                        &mut refs,
+                        version,
+                        NA_LOCATION_ALLOCATION_SOLVER_CLASS_ID
+                    )
+                    .is_err()
+                );
+                assert_eq!(reader.position(), 0);
+            }
+            let mut reader = Reader::new(&bytes);
+            let tail = read_na_solver_tail(
+                &mut reader,
+                128,
+                &mut refs,
+                version,
+                NA_LOCATION_ALLOCATION_SOLVER_CLASS_ID,
+            )
+            .unwrap();
+            assert_eq!(tail.common_v3.is_some(), version >= 2);
+            let body = tail.location_allocation.unwrap();
+            assert_eq!(body.mode, 42);
+            assert_eq!(
+                body.version_three_values,
+                (version >= 3).then_some((1.5_f64.to_bits(), -7))
+            );
+            assert_eq!(
+                body.version_four_bits,
+                (version >= 4).then_some(2.5_f64.to_bits())
+            );
+            assert_eq!(reader.remaining(), 0);
+        }
     }
 
     #[test]
