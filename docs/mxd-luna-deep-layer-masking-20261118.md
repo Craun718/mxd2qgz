@@ -327,3 +327,7 @@ NetworkAnalystSolvers.dll 10.1.0.3035 的 NAVRPSolver CLSID `52B62278-735F-4DA1-
 同版 NetworkAnalystSolvers.dll 的持久化槽 `0x7b201b30` 指向 Load `0x7b0d2cb0`，10.1 注册表将 CLSID `659CC65B-D656-4F32-87F2-FD0D3058DDF9` 定名为 NALocationAllocationSolver。Ghidra 补充导出及原始指令确认有符号上限 4，外层 v0/v1 使用共用 v2，v2 起使用共用 v3。随后读取四个 LONG、三个 double 和 LONG。外层 v3 新增 double 和 LONG，v4 再新增 double。
 
 两份 SanFrancisco SDK 工程均从 `0x68bb2` 读取 v2 求解器键 4003，直至完整消费 Location-Allocation 图层的声明区间。构造测试覆盖 v0 至 v4 和逐字节截断回滚。遮罩组图层键 4501 的未完整子层及 ArcMap/QGIS 人工验收仍待处理。
+
+### SanFrancisco UID 回引复验
+
+在分级渲染器与网络分析图层的解析接入后，以当前命令行对 .NET 和 Java 两份 SanFrancisco SDK 工程复验。六个顶层 NALayer 和键 4501 的 Analysis Inputs 组均完整消费其声明区间。这验证了前述 UID 键 358 的共享引用路径，逐图层遮罩已越过该组。两份工程现在都在底图层键 5146 停止。底图读取器报告 `/Maps:0xd2107` 的新建 GroupLayer 键 5148，当前正式子层分派尚不能处理。该底图缺口单列于 TODO。ArcMap/QGIS 人工验收尚未进行。
