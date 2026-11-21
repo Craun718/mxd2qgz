@@ -399,3 +399,9 @@ NetworkAnalyst.dll 10.1.0.3035 的持久化虚表 `0x7afa0bb0` 经跳板 `0x7af4
 ### NALayer 的普通对象宿主
 
 NetworkAnalyst.dll 10.1.0.3035 的持久化 Load `0x7af1ffc0` 与 Save `0x7af20be0` 按对象自身字段顺序读写。ExtraSafe 边界由外部宿主提供。普通 LoadObject 和有界图层共用同一个读取器，普通入口只有读完上下文、子图层循环和版本尾段才提交。构造测试覆盖完整对象后接其他字段以及截断时的游标和键回滚。两份 SanFrancisco SDK 工程继续用于有界入口回归，普通入口尚缺真实宿主及 ArcMap/QGIS 人工验收。
+
+### NAContext 的遍历结果
+
+NetworkAnalyst.dll 10.1.0.3035 的 NATraversalResult 主 QI `0x7af70300` 实现 NAContext 求解器后对象槽的 IID `9E92A2AD-551E-4BE0-BF57-AAC552789DAE`，并将 IPersistStream 映射到对象 `+0x20`。对应虚表 `0x7afa2f2c` 的 GetClassID、Load 和 Save 为 `0x7af72e70 / 0x7af72ed0 / 0x7af73910`。Ghidra 导出确认有符号上限 0 的 short、IPropertySet、字节、工作空间、三个表槽、计数及逐项 LONG 和来源对象槽，最后两个字节。读取器复用现有工作空间、NAClass 和属性集对象体支持。来源槽目前支持回引，新对象体仍待接入。
+
+构造测试验证空来源列表、尾部标志和截断回滚。两份 SanFrancisco SDK 工程在此槽均为空。非空实例与 ArcMap/QGIS 人工验收尚未验证。

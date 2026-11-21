@@ -333,6 +333,8 @@
   - [x] 读取 NARouteSolver 的层级列表与属性集。[层级与属性取证](docs/mxd-luna-deep-layer-masking-20261118.md#naroutesolver-的层级列表与属性集)
   - [x] 读取 NARouteSolver 的版本尾段及空参数数组。[版本尾段取证](docs/mxd-luna-deep-layer-masking-20261118.md#naroutesolver-的版本尾段)
   - [x] 读取 NAContext 求解器后的空槽、回引及紧随的属性集。[上下文对象槽取证](docs/mxd-luna-deep-layer-masking-20261118.md#nacontext-求解器后的对象槽)
+  - [x] 读取 NAContext 求解器后的 NATraversalResult 对象体及已支持的子槽。
+  - [ ] 读取 NATraversalResult 中新建的来源对象。
   - [x] 读取 NALocator 的版本、固定字段、空空间参考槽和代理计数。[定位器取证](docs/mxd-luna-deep-layer-masking-20261118.md#nalocator-的代理记录前缀)
   - [x] 读取 NALocatorFeatureAgent 及 NALocator 代理循环与版本尾字段。[代理取证](docs/mxd-luna-deep-layer-masking-20261118.md#nalocator-的要素代理与版本尾段)
   - [x] 读取 NALocatorLocationFieldsAgent 的版本化位置字段。

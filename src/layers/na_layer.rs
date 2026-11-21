@@ -641,7 +641,7 @@ pub struct NaContextPrefix10_1 {
     pub dataset: Option<(ObjectEntry10_1, Option<Box<NetworkDatasetName10_1>>)>,
     pub solver: Option<(ObjectEntry10_1, Option<NaRouteSolverPrefix10_1>)>,
     /// 求解器之后、属性集之前的对象槽。
-    pub post_solver_object: Option<ObjectEntry10_1>,
+    pub post_solver_object: Option<(ObjectEntry10_1, Option<Box<NaTraversalResult10_1>>)>,
     pub properties: Option<(ObjectEntry10_1, Option<Box<PropertySetObjectStream10_1>>)>,
     pub locator: Option<(ObjectEntry10_1, Option<NaLocatorPrefix10_1>)>,
     pub class_set: Option<(ObjectEntry10_1, Option<NaNamedSetBody10_1>)>,
@@ -718,7 +718,7 @@ pub(super) fn read_na_context_prefix_10_1(
                 .as_ref()
                 .is_some_and(|(_, body)| body.as_ref().is_none_or(|body| body.tail.is_some()));
             let post_solver_object = solver_complete
-                .then(|| read_na_context_post_solver_slot(&mut trial, &mut keys).ok())
+                .then(|| read_na_context_post_solver_slot(&mut trial, max, &mut keys).ok())
                 .flatten();
             let properties = post_solver_object
                 .as_ref()
@@ -1120,22 +1120,118 @@ fn read_na_directions_agent(
     })
 }
 
+const NA_TRAVERSAL_RESULT_CLASS_ID: [u8; 16] = [
+    0x60, 0x52, 0x22, 0x68, 0xb3, 0xee, 0xbd, 0x4d, 0xb2, 0xb1, 0x75, 0xf8, 0x3e, 0xff, 0xc9, 0x72,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NaTraversalResult10_1 {
+    pub version: u16,
+    pub properties: (ObjectEntry10_1, Option<Box<PropertySetObjectStream10_1>>),
+    pub flags: [u8; 3],
+    pub workspace: (
+        ObjectEntry10_1,
+        Option<Box<NetworkAnalysisWorkspacePrefix10_1>>,
+    ),
+    pub tables: [NaTraversalTableSlot; 3],
+    pub sources: Vec<(i32, ObjectEntry10_1)>,
+}
+
+type NaTraversalTableSlot = (
+    ObjectEntry10_1,
+    Option<Box<super::na_class::NaClassBody10_1>>,
+);
+
 fn read_na_context_post_solver_slot(
     reader: &mut Reader<'_>,
+    max: usize,
     refs: &mut RefTable10_1,
-) -> io::Result<ObjectEntry10_1> {
+) -> io::Result<(ObjectEntry10_1, Option<Box<NaTraversalResult10_1>>)> {
     let mut trial = reader.clone();
     let mut keys = refs.clone();
     let entry = read_object_entry_10_1(&mut trial, &mut keys)?;
-    if matches!(entry, ObjectEntry10_1::NewObject { .. }) {
-        return Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "NAContext 求解器后首个对象体未支持",
-        ));
-    }
+    let body = match entry {
+        ObjectEntry10_1::NewObject {
+            class_id: NA_TRAVERSAL_RESULT_CLASS_ID,
+            ..
+        } => Some(Box::new(read_na_traversal_result(
+            &mut trial, max, &mut keys,
+        )?)),
+        ObjectEntry10_1::NewObject { .. } => {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "NAContext 遍历结果类未支持",
+            ));
+        }
+        _ => None,
+    };
     *reader = trial;
     *refs = keys;
-    Ok(entry)
+    Ok((entry, body))
+}
+
+/// NATraversalResult::Load 0x7af72ed0。
+fn read_na_traversal_result(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<NaTraversalResult10_1> {
+    let version = reader.read_u16_le()?;
+    if version as i16 > 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "NATraversalResult 版本超过 0",
+        ));
+    }
+    let properties = read_na_property_set_slot(reader, max, refs)?;
+    let first = reader.read_bytes(1)?[0];
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let workspace = match entry {
+        ObjectEntry10_1::NewObject {
+            class_id: NETWORK_ANALYSIS_WORKSPACE_CLASS_ID,
+            ..
+        } => Some(Box::new(read_na_workspace_prefix(reader, max, refs)?)),
+        ObjectEntry10_1::NewObject { .. } => {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "遍历结果工作空间类未支持",
+            ));
+        }
+        _ => None,
+    };
+    let tables = [
+        super::na_class::read_na_class_10_1(reader, max, refs)?,
+        super::na_class::read_na_class_10_1(reader, max, refs)?,
+        super::na_class::read_na_class_10_1(reader, max, refs)?,
+    ];
+    let count = (reader.read_u32_le()? as i32).max(0) as usize;
+    if count > reader.remaining().min(max) / 20 {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "遍历结果来源数量超出范围",
+        ));
+    }
+    let mut sources = Vec::new();
+    for _ in 0..count {
+        let index = reader.read_u32_le()? as i32;
+        let source = read_object_entry_10_1(reader, refs)?;
+        if !matches!(source, ObjectEntry10_1::BackReference { .. }) {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "遍历结果来源对象体未支持",
+            ));
+        }
+        sources.push((index, source));
+    }
+    let flags = [first, reader.read_bytes(1)?[0], reader.read_bytes(1)?[0]];
+    Ok(NaTraversalResult10_1 {
+        version,
+        properties,
+        flags,
+        workspace: (entry, workspace),
+        tables,
+        sources,
+    })
 }
 
 fn read_na_solver_prefix(
@@ -1843,7 +1939,10 @@ mod tests {
         let mut reader = Reader::new(&bytes);
         let (_, context) = read_na_context_prefix_10_1(&mut reader, 1024, &mut refs).unwrap();
         let context = context.unwrap();
-        assert_eq!(context.post_solver_object, Some(ObjectEntry10_1::Null));
+        assert_eq!(
+            context.post_solver_object,
+            Some((ObjectEntry10_1::Null, None))
+        );
         assert!(context.properties.unwrap().1.is_some());
         assert!(refs.contains(41));
         let workspace = context.workspace_prefix.unwrap();
@@ -2479,6 +2578,30 @@ mod tests {
             .is_err()
         );
         assert_eq!(reader.position(), 0);
+    }
+
+    #[test]
+    fn traversal_result_commits_slot_only_after_final_flags() {
+        let mut bytes = NA_TRAVERSAL_RESULT_CLASS_ID.to_vec();
+        bytes.extend(75_u32.to_le_bytes());
+        bytes.extend(0_u16.to_le_bytes());
+        bytes.extend([0; 16]);
+        bytes.push(1);
+        bytes.extend([0; 16 * 4]);
+        bytes.extend(0_i32.to_le_bytes());
+        bytes.extend([2, 3]);
+        let mut refs = RefTable10_1::new();
+        for end in 0..bytes.len() {
+            let mut reader = Reader::new(&bytes[..end]);
+            assert!(read_na_context_post_solver_slot(&mut reader, 256, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+        let mut reader = Reader::new(&bytes);
+        let (_, result) = read_na_context_post_solver_slot(&mut reader, 256, &mut refs).unwrap();
+        assert_eq!(result.unwrap().flags, [1, 2, 3]);
+        assert!(refs.contains(75));
+        assert_eq!(reader.remaining(), 0);
     }
 
     #[test]
