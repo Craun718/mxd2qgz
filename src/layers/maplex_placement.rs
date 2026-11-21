@@ -109,18 +109,25 @@ impl MaplexOffsetAlongLineFields10_1 {
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaplexLabelStacking10_1 {
     pub version: i16,
-    /// 原生对象的首个 LONG。
-    pub first_long: i32,
+    pub stack_justification: i32,
     pub separator_count: Option<i32>,
     pub separators: Vec<MaplexStackingSeparator10_1>,
-    pub trailing_longs: Option<[i32; 3]>,
+    pub line_limits: Option<MaplexStackingLineLimits10_1>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaplexStackingSeparator10_1 {
     pub text: String,
-    /// 三组分隔符标志，保留流内原始值。
-    pub flags: [i16; 3],
+    pub visible: i16,
+    pub split_forced: i16,
+    pub split_after: i16,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaplexStackingLineLimits10_1 {
+    pub maximum_number_of_lines: i32,
+    pub minimum_number_of_chars_per_line: i32,
+    pub maximum_number_of_chars_per_line: i32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -296,7 +303,7 @@ fn read_label_stacking(reader: &mut Reader<'_>, max: usize) -> io::Result<Maplex
             format!("MaplexLabelStackingProperties 版本 {version} 超出 3"),
         ));
     }
-    let first_long = reader.read_u32_le()? as i32;
+    let stack_justification = reader.read_u32_le()? as i32;
     let mut separator_count = None;
     let mut separators = Vec::new();
     if version >= 2 {
@@ -311,29 +318,29 @@ fn read_label_stacking(reader: &mut Reader<'_>, max: usize) -> io::Result<Maplex
         }
         for _ in 0..count {
             let text = read_stream_string_10_1(reader, max)?;
-            let flags = [
-                reader.read_u16_le()? as i16,
-                reader.read_u16_le()? as i16,
-                reader.read_u16_le()? as i16,
-            ];
-            separators.push(MaplexStackingSeparator10_1 { text, flags });
+            separators.push(MaplexStackingSeparator10_1 {
+                text,
+                visible: reader.read_u16_le()? as i16,
+                split_forced: reader.read_u16_le()? as i16,
+                split_after: reader.read_u16_le()? as i16,
+            });
         }
     }
-    let trailing_longs = if version >= 3 {
-        Some([
-            reader.read_u32_le()? as i32,
-            reader.read_u32_le()? as i32,
-            reader.read_u32_le()? as i32,
-        ])
+    let line_limits = if version >= 3 {
+        Some(MaplexStackingLineLimits10_1 {
+            maximum_number_of_lines: reader.read_u32_le()? as i32,
+            minimum_number_of_chars_per_line: reader.read_u32_le()? as i32,
+            maximum_number_of_chars_per_line: reader.read_u32_le()? as i32,
+        })
     } else {
         None
     };
     Ok(MaplexLabelStacking10_1 {
         version,
-        first_long,
+        stack_justification,
         separator_count,
         separators,
-        trailing_longs,
+        line_limits,
     })
 }
 
@@ -502,7 +509,7 @@ mod tests {
         let mut bytes = 1_i16.to_le_bytes().to_vec();
         bytes.extend(4_i32.to_le_bytes());
         let body = read_label_stacking(&mut Reader::new(&bytes), 64).unwrap();
-        assert_eq!(body.first_long, 4);
+        assert_eq!(body.stack_justification, 4);
         assert_eq!(body.separator_count, None);
 
         bytes[..2].copy_from_slice(&2_i16.to_le_bytes());
@@ -510,7 +517,7 @@ mod tests {
         let body = read_label_stacking(&mut Reader::new(&bytes), 64).unwrap();
         assert_eq!(body.separator_count, Some(-1));
         assert!(body.separators.is_empty());
-        assert_eq!(body.trailing_longs, None);
+        assert_eq!(body.line_limits, None);
 
         bytes[6..10].copy_from_slice(&1_i32.to_le_bytes());
         assert!(read_label_stacking(&mut Reader::new(&bytes), 64).is_err());
@@ -622,8 +629,13 @@ mod tests {
             );
             let stacking = body.stacking.unwrap();
             assert_eq!(stacking.separators[0].text, "/");
-            assert_eq!(stacking.separators[0].flags, [-1, 0, 1]);
-            assert_eq!(stacking.trailing_longs, Some([4, 8, 16]));
+            assert_eq!(stacking.separators[0].visible, -1);
+            assert_eq!(stacking.separators[0].split_forced, 0);
+            assert_eq!(stacking.separators[0].split_after, 1);
+            let limits = stacking.line_limits.unwrap();
+            assert_eq!(limits.maximum_number_of_lines, 4);
+            assert_eq!(limits.minimum_number_of_chars_per_line, 8);
+            assert_eq!(limits.maximum_number_of_chars_per_line, 16);
             if version >= 9 {
                 let offset = body.offset_along_line.unwrap().fields.unwrap();
                 assert_eq!(offset.placement_method, 3);

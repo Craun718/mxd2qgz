@@ -359,3 +359,23 @@ VT_I4 值 0–3，依次为 esriRotateLabelGeographic、esriRotateLabelArithmeti
 esriRotateLabelRadians、esriRotateLabelAV3。`parse` 以属性名输出，
 保留原始枚举值和开关值。构造测试覆盖四个成员及未知值。实际角度
 计算和 ArcMap/QGIS 人工验收仍开放。
+
+#### 堆叠分隔符和行限制的属性对位
+
+10.1 Carto 类型库的 IMaplexLabelStackingProperties 与同版
+LabelPlacement.dll 的接口表 `0x7857d92c` 对位。RTTI 和构造指令
+`0x78562449..0x78562452` 确认属性接口与持久化接口分别在完整对象
+`+0x18` 和 `+0x80`。Load 首个 LONG（持久化接口 `-0x64`）
+对应 StackJustification（getter `0x7856d840`，属性接口 `+0x04`）。
+
+QuerySeparator `0x78562700` 按类型库参数顺序返回 Visible、
+SplitForced、SplitAfter，访问属性接口 `+0x20/+0x34/+0x48`
+的数组指针。Load 的三个 short 按同一顺序加入对应数组
+（`0x78562a2d..0x78562a97`）。v3 尾三个 LONG 对应
+MaximumNumberOfLines、MinimumNumberOfCharsPerLine、
+MaximumNumberOfCharsPerLine。getter `0x78564a00/0x78562890/0x785628e0`
+读取属性接口 `+0x58/+0x5c/+0x60`，与 Load 的
+`-0x10/-0x0c/-0x08` 一致。
+
+读取器和诊断采用属性名，保留开关和对齐枚举原值。非零构造输入覆盖
+三个标志和三个行限制。实际堆叠行为及目标软件人工验收仍待核对。

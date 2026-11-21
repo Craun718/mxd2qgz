@@ -1628,12 +1628,30 @@ fn annotate_placement_note(
             let _ = write!(note, "；点放置优先级 {:?}", point.ints);
         }
         if let Some(stacking) = &body.stacking {
-            let separators: Vec<_> = stacking
-                .separators
-                .iter()
-                .map(|separator| separator.text.as_str())
-                .collect();
-            let _ = write!(note, "；堆叠分隔符 {separators:?}");
+            let _ = write!(
+                note,
+                "；StackJustification {}",
+                stacking.stack_justification
+            );
+            for separator in &stacking.separators {
+                let _ = write!(
+                    note,
+                    "；堆叠分隔符 {:?}（Visible {}，SplitForced {}，SplitAfter {}）",
+                    separator.text,
+                    separator.visible,
+                    separator.split_forced,
+                    separator.split_after,
+                );
+            }
+            if let Some(limits) = &stacking.line_limits {
+                let _ = write!(
+                    note,
+                    "；堆叠上限（MaximumNumberOfLines {}，MinimumNumberOfCharsPerLine {}，MaximumNumberOfCharsPerLine {}）",
+                    limits.maximum_number_of_lines,
+                    limits.minimum_number_of_chars_per_line,
+                    limits.maximum_number_of_chars_per_line,
+                );
+            }
         }
         if let Some(offset) = &body.offset_along_line
             && let Some(fields) = &offset.fields
