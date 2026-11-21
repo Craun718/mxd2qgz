@@ -30,6 +30,19 @@ RGB 图层为 `/Maps:0x16e8c`。
 | `0x126` | ≥17：int32 数量 + IStatsHistogram（IID `2B9062E8-…`） | 空、回引和 StatsHistogram；与 RGB 的无键 RasterIO 对象共用体读取器，此处使用 ObjectStream 键 |
 | `0x12a` | 对象体结束 | 两个条目都与外部 ExtraSafe 边界一致（`0x145a3` / `0x16fb6`） |
 
+## 两个包络槽的加载用途
+
+对上述 10.1.0.3035 DLL 用 objdump 复核。Load 在 `0x7c73c3c1` 将
+持久化接口相对偏移 `+0xf0` 的成员作为 v7 起 IEnvelope 槽的读取目标。
+后一个 IEnvelope 在 `0x7c73c73c` 读入局部变量。Load 随后检查对象
+是否存在、能否从成员 `+0xb0` 取得接口以及包络是否为空，再进入
+`0x7c73c79e–0x7c73c8ef` 的处理。这里根据接口查询结果走不同分支，
+其中一支将查询得到的接口和包络一起传给 `0x7c760efe`，另一支
+从包络取出接口后调用成员上的方法。局部包络在 `0x7c73c90c` 释放。
+这些静态证据只确认了包络参与有条件的加载处理。仍须定位图层范围
+和空间参考 getter 的数据来源，才能把持久化包络投影到转换模型。
+目前保留原始读取结果，ArcMap 10.1 和 QGIS 的人工检查尚未进行。
+
 IGeodataXform 也是 ImageServerLayer v20 的请求接口；RGB 的 RasterIO tag 18
 另经 `0x7c99da10` 调 QueryInterface（IID `A9D01E68-…`，
 esriDataSourcesRaster 中的 IPansharpeningFilter）。已接入的 IGeodataXform 类见[对象体记录](mxd-10.1-geodata-xform.md)；
