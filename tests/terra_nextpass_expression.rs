@@ -39,3 +39,24 @@ fn alpc_v2_null_has_no_id_before_a_back_reference() {
         assert!(staged.contains(17));
     }
 }
+
+#[test]
+fn parse_reports_label_class_expressions_from_reference_mxd() {
+    let sample = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples/测试底图.mxd");
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_mxd2qgz"))
+        .arg("parse")
+        .arg(sample)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    for expression in ["[JZDH]", "[收购合同号]", "[DJZQMC]"] {
+        let expected = format!("表达式 {expression:?}、标注类名");
+        assert!(
+            stdout
+                .lines()
+                .any(|line| line.contains("条目 LELP") && line.contains(&expected)),
+            "未在标注类诊断中读到 {expression:?}"
+        );
+    }
+}

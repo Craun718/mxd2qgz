@@ -54,3 +54,11 @@ QI `0x785313d0` 将集合接口 `{1D5849F2-0D33-11D2-A26F-080009B6F22B}` 和集�
 `cargo fmt --check`、`cargo test` 和 `git diff --check` 均通过；Cargo 报全局缓存自动清理权限不足，但编译和测试成功。本轮只有注释及研究文档变更，没有新增解析行为或新增测试；现有测试不能验证本文新绑定的属性语义，也尚未覆盖上述 ALPC 空项差异。
 
 主审按上述 Load 条件修复 ALPC：保留流内空槽用于定位，但仅非空条目消费 ID。构造一个空项后紧跟回引，验证其 ID、尾计数器、后继字节和逐字节截断回滚，见 `tests/terra_nextpass_expression.rs`。LELP 的未定字段和保存器是否会写出空项仍开放。
+
+## parse 命令读取标注表达式
+
+按上文 LabelPlacement.dll 10.1 的 `Expression` 访问器及 Load 字段对位，
+`parse` 从 `/Maps` 的 FeatureLayer 进入 ALPC，再从 LELP 读取表达式原文。
+仓库参考工程到达三条 LELP v7，键为 60、202、239。命令行回归逐条
+检查三个已知表达式出现在 LELP 标注类诊断中，以区分同一图层上的
+DisplayExpressionProperties。表达式求值、转换和 ArcMap/QGIS 人工检查仍未进行。
