@@ -1638,10 +1638,12 @@ fn annotate_placement_note(
         if let Some(offset) = &body.offset_along_line
             && let Some(fields) = &offset.fields
         {
+            let method_name = fields.placement_method_name().unwrap_or("未知枚举值");
+            let anchor_name = fields.label_anchor_point_name().unwrap_or("未知枚举值");
             let unit_name = fields.distance_unit_name().unwrap_or("未知枚举值");
             let _ = write!(
                 note,
-                "；沿线偏移（PlacementMethod {}，LabelAnchorPoint {}，Distance {}，Tolerance {}，DistanceUnit {} {unit_name}，UseLineDirection {}）",
+                "；沿线偏移（PlacementMethod {} {method_name}，LabelAnchorPoint {} {anchor_name}，Distance {}，Tolerance {}，DistanceUnit {} {unit_name}，UseLineDirection {}）",
                 fields.placement_method,
                 fields.label_anchor_point,
                 fields.distance,

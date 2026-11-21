@@ -322,3 +322,18 @@ VT_I4 常量。0 为 esriMaplexUnitMap，1 为 esriMaplexUnitMM，
 2 为 esriMaplexUnitInch，3 为 esriMaplexUnitPoint，4 为
 esriMaplexUnitPercentage。命令行同时输出原值和成员名，未知值原样保留。
 测试覆盖五项和两侧未知值。比例基准、距离换算和 ArcMap/QGIS 人工验收仍开放。
+
+#### 沿线偏移的放置方式和锚点
+
+在同一 10.1 Carto 类型库上，沿 IMaplexOffsetAlongLineProperties
+的 PlacementMethod 和 LabelAnchorPoint setter（memid
+`0x60010000`、`0x60010002`）的用户定义参数调用
+`GetRefTypeInfo` 和 `GetVarDesc`。PlacementMethod 的 VT_I4
+值 0–4 依次为 esriMaplexBestPositionAlongLine、
+esriMaplexBeforeStartOfLine、esriMaplexAlongLineFromStart、
+esriMaplexAlongLineFromEnd、esriMaplexAfterEndOfLine。
+LabelAnchorPoint 的值 0–2 依次为 esriMaplexCenterOfLabel、
+esriMaplexNearestSideOfLabel、esriMaplexFurthestSideOfLabel。
+
+`parse` 保留原始数值并输出已知成员名。构造测试覆盖已知放置方式和
+未知锚点值。实际绘制及目标软件人工验收仍开放。

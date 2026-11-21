@@ -59,6 +59,28 @@ pub struct MaplexOffsetAlongLineFields10_1 {
 }
 
 impl MaplexOffsetAlongLineFields10_1 {
+    /// ArcMap 10.1 Carto 类型库中的放置方式成员名。
+    pub fn placement_method_name(&self) -> Option<&'static str> {
+        match self.placement_method {
+            0 => Some("esriMaplexBestPositionAlongLine"),
+            1 => Some("esriMaplexBeforeStartOfLine"),
+            2 => Some("esriMaplexAlongLineFromStart"),
+            3 => Some("esriMaplexAlongLineFromEnd"),
+            4 => Some("esriMaplexAfterEndOfLine"),
+            _ => None,
+        }
+    }
+
+    /// ArcMap 10.1 Carto 类型库中的标注锚点成员名。
+    pub fn label_anchor_point_name(&self) -> Option<&'static str> {
+        match self.label_anchor_point {
+            0 => Some("esriMaplexCenterOfLabel"),
+            1 => Some("esriMaplexNearestSideOfLabel"),
+            2 => Some("esriMaplexFurthestSideOfLabel"),
+            _ => None,
+        }
+    }
+
     /// ArcMap 10.1 Carto 类型库中的 esriMaplexUnit 成员名。
     pub fn distance_unit_name(&self) -> Option<&'static str> {
         match self.distance_unit {
@@ -376,7 +398,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn offset_distance_unit_reports_the_type_library_names() {
+    fn offset_enums_report_the_type_library_names() {
         let mut fields = MaplexOffsetAlongLineFields10_1 {
             placement_method: 0,
             label_anchor_point: 0,
@@ -385,6 +407,26 @@ mod tests {
             distance_unit: 0,
             use_line_direction: 0,
         };
+        for (value, name) in [
+            (0, Some("esriMaplexBestPositionAlongLine")),
+            (1, Some("esriMaplexBeforeStartOfLine")),
+            (2, Some("esriMaplexAlongLineFromStart")),
+            (3, Some("esriMaplexAlongLineFromEnd")),
+            (4, Some("esriMaplexAfterEndOfLine")),
+            (5, None),
+        ] {
+            fields.placement_method = value;
+            assert_eq!(fields.placement_method_name(), name);
+        }
+        for (value, name) in [
+            (0, Some("esriMaplexCenterOfLabel")),
+            (1, Some("esriMaplexNearestSideOfLabel")),
+            (2, Some("esriMaplexFurthestSideOfLabel")),
+            (3, None),
+        ] {
+            fields.label_anchor_point = value;
+            assert_eq!(fields.label_anchor_point_name(), name);
+        }
         for (value, name) in [
             (-1, None),
             (0, Some("esriMaplexUnitMap")),
@@ -561,7 +603,12 @@ mod tests {
             if version >= 9 {
                 let offset = body.offset_along_line.unwrap().fields.unwrap();
                 assert_eq!(offset.placement_method, 3);
+                assert_eq!(
+                    offset.placement_method_name(),
+                    Some("esriMaplexAlongLineFromEnd")
+                );
                 assert_eq!(offset.label_anchor_point, 4);
+                assert_eq!(offset.label_anchor_point_name(), None);
                 assert_eq!(offset.distance, 1.25);
                 assert_eq!(offset.tolerance, -2.5);
                 assert_eq!(offset.distance_unit, 5);
