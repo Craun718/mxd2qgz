@@ -194,3 +194,52 @@ fn page_element_rejects_bad_wrapper_without_mutation() {
         assert!(table.is_empty());
     }
 }
+
+#[test]
+#[ignore = "需要本地提取的 LetterPortrait MXT 和 MXD 介质文件"]
+fn old_letter_portrait_first_element_reads_unknown_spatial_reference() {
+    for (extension, expected_key) in [("mxt", 79), ("mxd", 76)] {
+        let path = format!(
+            "temp/arcmap108-media-mxd/letterportrait.{extension}.F2F14775_5E82_4B7F_B0D4_CF54BF98AFB6"
+        );
+        let mut document = cfb::open(&path).unwrap_or_else(|error| panic!("{path}: {error}"));
+        let mut data = Vec::new();
+        document
+            .open_stream("/PageLayout")
+            .unwrap()
+            .read_to_end(&mut data)
+            .unwrap();
+        let mut table = RefTable10_1::new();
+        let mut reader = Reader::new(&data);
+        assert!(matches!(
+            read_object_entry_10_1(&mut reader, &mut table).unwrap(),
+            ObjectEntry10_1::NewObject {
+                class_id: PAGE_LAYOUT_CLASS_ID,
+                ..
+            }
+        ));
+        let prefix = read_page_layout_prefix_10_1(&mut reader, 100).unwrap();
+        assert!(prefix.element_count > 0);
+        assert_eq!(reader.position(), 0x1e);
+
+        let (_, element) =
+            read_page_layout_element_10_1(&mut reader, 1_000_000, &mut table).unwrap();
+        assert!(element.stop().is_none());
+        let ElementBody10_1::TextElement(text) = element else {
+            panic!("{path}: 首元素应为文本");
+        };
+        let GeometrySlot10_1::Point(point) = text.geometry else {
+            panic!("{path}: 文本元素应包含点几何");
+        };
+        let Some(SpatialReferenceEntry10_1::UnknownCoordinateSystem { key, body }) =
+            point.spatial_reference
+        else {
+            panic!("{path}: 点几何应包含未知坐标系定义");
+        };
+        assert_eq!(key, expected_key);
+        assert_eq!(body.save_version, 3);
+        assert_eq!(body.strings, ["Unknown", "", "", ""]);
+        assert!(table.contains(key));
+        assert_eq!(reader.position(), 0x336);
+    }
+}
