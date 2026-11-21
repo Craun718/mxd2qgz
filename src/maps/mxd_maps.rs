@@ -2084,19 +2084,23 @@ fn raster_node(
             .filter(|name| name.entry != ObjectEntry10_1::Null);
         if let Some(first) = names.next() {
             let second = names.next();
-            use crate::layers::raster_dataset_name::RASTER_BAND_COLLECTION_NAME_CLASS_ID;
-            let is_collection = matches!(
+            use crate::layers::raster_dataset_name::{
+                RASTER_BAND_COLLECTION_NAME_CLASS_ID, RASTER_BAND_NAME_CLASS_ID,
+            };
+            let is_band_source = matches!(
                 first.entry,
                 ObjectEntry10_1::NewObject {
-                    class_id: RASTER_BAND_COLLECTION_NAME_CLASS_ID,
+                    class_id: RASTER_BAND_NAME_CLASS_ID | RASTER_BAND_COLLECTION_NAME_CLASS_ID,
                     ..
                 } | ObjectEntry10_1::BackReference {
-                    class_id: RASTER_BAND_COLLECTION_NAME_CLASS_ID,
+                    class_id: RASTER_BAND_NAME_CLASS_ID | RASTER_BAND_COLLECTION_NAME_CLASS_ID,
                     ..
                 }
             );
-            let legacy_band = first.legacy.and_then(|(_, index)| index);
-            if second.is_some() || is_collection || legacy_band.is_some() {
+            if second.is_some()
+                || is_band_source
+                || first.legacy.is_some_and(|(_, index)| index.is_some())
+            {
                 if second.is_some() {
                     diagnostics.push(format!(
                         "条目 {}：栅格包含多条非空名称，ArcMap 逐项打开并追加波段，单一数据源字段留空",
@@ -2634,6 +2638,27 @@ mod tests {
                 Some(&[2][..])
             );
             assert_eq!(legacy_band.raster_band_sources[0].source, node.source);
+
+            let mut with_band_reference = raster.clone();
+            let band = &mut with_band_reference.names[0];
+            band.entry = ObjectEntry10_1::BackReference {
+                class_id: crate::layers::raster_dataset_name::RASTER_BAND_NAME_CLASS_ID,
+                key: key + 100,
+            };
+            band.body = None;
+            band.source_reference.as_mut().unwrap().band_name = Some("Band_2".into());
+            let Some(LayerNode::Layer(single_band)) =
+                raster_node(&with_band_reference, index, &mut Vec::new())
+            else {
+                panic!("波段名称回引应保留图层节点");
+            };
+            assert!(single_band.source.is_none());
+            assert_eq!(single_band.raster_band_sources.len(), 1);
+            assert_eq!(
+                single_band.raster_band_sources[0].band_name.as_deref(),
+                Some("Band_2")
+            );
+            assert_eq!(single_band.raster_band_sources[0].source, node.source);
 
             let mut with_collection = raster.clone();
             let name = &mut with_collection.names[0];

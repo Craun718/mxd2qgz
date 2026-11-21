@@ -1166,3 +1166,13 @@ IRasterBandCollection，随后 `0x7c73b546–0x7c73b54e`
 模型保留原始容器来源和请求的波段索引，避免把旧单波段请求当成
 整个栅格数据集。构造回归覆盖 v8 非零选择子及已知父数据源。
 ArcMap 10.1 中实际打开的波段及 QGIS 目视验证待补。
+
+### 仅含一条波段名称的图层
+
+同版 RasterLayer.dll 的单项分支在 `0x7c73b752` 调用 IName::Open，
+经 `0x7c74b3f0` 查询 IRasterDataset（IID 常量 `0x7c769370`）。
+未取得该接口时，后续路径可在 `0x7c73b88e` 经 `0x7c74bb40`
+查询 IRasterBand。10.1 类型库同时声明 RasterBand 实现
+IRasterDataset 和 IRasterBand，因此进入单项分支也可能仍是波段来源。
+模型对单个 RasterBandName 的新对象和回引均保留查找名称及可用的父
+数据源。构造回归验证回引的波段名与父数据源。ArcMap/QGIS 目视待补。
