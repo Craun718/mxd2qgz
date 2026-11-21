@@ -730,3 +730,20 @@ v3 追加 LONG×2（`0x80443b5b–0x80443ba2`）。
 
 合成测试覆盖 v1–v3 的 GUID 与尾段、逐字节截断和结束位置。
 未在 ArcMap 10.1 或 QGIS 中人工验证相关实档。
+
+#### TerrainPointAttributeRenderer
+
+TinRenderer.dll 10.1.0.3035 的 RTTI `0x8045ee08` 对应
++0x24 持久化视图 `0x80455cd0`。GetClassID
+`0x8043f910` 从 `0x80454ebc` 返回
+`{D3FC15C5-0CBE-4900-BCA8-DC09A12F304C}`。Load
+为 `0x80440920`，Save 为 `0x80440d50`。
+
+Load `0x8044096e–0x80440c2c` 与点高程渲染器共用
+布局和有符号版本上限 3，读到第一个尾 short。随后
+`0x80440c40` 读取属性名称 String，`0x80440cae` 和
+`0x80440cd0` 读取 LONG 数量和同类型条目。非正数量跳过
+列表。v3 仍追加两个 LONG（`0x80440cfb–0x80440d1f`）。
+
+合成测试覆盖 v1–v3 的完整边界、负数属性条目和逐字节截断。
+尚未用相关实档在 ArcMap 10.1 或 QGIS 中人工验证。

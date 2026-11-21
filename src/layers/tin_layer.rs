@@ -77,6 +77,10 @@ const TERRAIN_POINT_ELEVATION: [u8; 16] = [
     0x3c, 0x3f, 0x47, 0xd8, 0x65, 0x21, 0xaa, 0x44, 0xb8, 0xfd, 0x34, 0x40, 0x3e, 0x1f, 0x93, 0x54,
 ];
 
+const TERRAIN_POINT_ATTRIBUTE: [u8; 16] = [
+    0xc5, 0x15, 0xfc, 0xd3, 0xbe, 0x0c, 0x00, 0x49, 0xbc, 0xa8, 0xdc, 0x09, 0xa1, 0x2f, 0x30, 0x4c,
+];
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum TinRenderer10_1 {
     Simple(TinSimpleRenderer10_1),
@@ -107,7 +111,14 @@ pub struct TinClassifiedSurfaceRenderer10_1 {
     pub trailing_label: String,
     pub trailing_short: u16,
     pub v2_tail_short: Option<u16>,
+    pub attribute: Option<TerrainPointAttribute10_1>,
     pub v3_tail_longs: Option<[i32; 2]>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TerrainPointAttribute10_1 {
+    pub name: String,
+    pub values: Vec<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -237,7 +248,12 @@ pub(super) fn read_renderer(
 ) -> io::Result<TinRenderer10_1> {
     if matches!(
         class_id,
-        ASPECT | SLOPE | ELEVATION | NODE_ELEVATION | TERRAIN_POINT_ELEVATION
+        ASPECT
+            | SLOPE
+            | ELEVATION
+            | NODE_ELEVATION
+            | TERRAIN_POINT_ELEVATION
+            | TERRAIN_POINT_ATTRIBUTE
     ) {
         return read_classified_surface(r, max, refs, class_id)
             .map(Box::new)
@@ -334,10 +350,7 @@ pub(super) fn read_renderer(
             BREAKLINE => TinRenderer10_1::Breakline(body),
             TERRAIN_POINT_UNIQUE_VALUE => {
                 let attribute = read_string_10_1(r, max)?;
-                let mut values = Vec::new();
-                for _ in 0..read_count(r, max, 4)? {
-                    values.push(r.read_u32_le()? as i32);
-                }
+                let values = read_long_list(r, max)?;
                 TinRenderer10_1::TerrainPointUniqueValue(Box::new(
                     TerrainPointUniqueValueRenderer10_1 {
                         base: *body,
@@ -363,6 +376,14 @@ pub(super) fn read_renderer(
     }))
 }
 
+fn read_long_list(r: &mut Reader<'_>, max: usize) -> io::Result<Vec<i32>> {
+    let mut values = Vec::new();
+    for _ in 0..read_count(r, max, 4)? {
+        values.push(r.read_u32_le()? as i32);
+    }
+    Ok(values)
+}
+
 fn read_longs(r: &mut Reader<'_>) -> io::Result<[i32; 2]> {
     Ok([r.read_u32_le()? as i32, r.read_u32_le()? as i32])
 }
@@ -373,7 +394,7 @@ fn read_classified_surface(
     refs: &mut RefTable10_1,
     class_id: [u8; 16],
 ) -> io::Result<TinClassifiedSurfaceRenderer10_1> {
-    let terrain = class_id == TERRAIN_POINT_ELEVATION;
+    let terrain = matches!(class_id, TERRAIN_POINT_ELEVATION | TERRAIN_POINT_ATTRIBUTE);
     let version = read_version(r, if terrain { 3 } else { 2 })?;
     let label = read_string_10_1(r, max)?;
     // 单个计数供两个相邻 double 数组共用。
@@ -429,9 +450,17 @@ fn read_classified_surface(
             .transpose()?,
         trailing_label: read_string_10_1(r, max)?,
         trailing_short: r.read_u16_le()?,
-        v2_tail_short: (terrain && version >= 2)
+        v2_tail_short: (class_id == TERRAIN_POINT_ELEVATION && version >= 2)
             .then(|| r.read_u16_le())
             .transpose()?,
+        attribute: if class_id == TERRAIN_POINT_ATTRIBUTE {
+            Some(TerrainPointAttribute10_1 {
+                name: read_string_10_1(r, max)?,
+                values: read_long_list(r, max)?,
+            })
+        } else {
+            None
+        },
         v3_tail_longs: (terrain && version >= 3)
             .then(|| read_longs(r))
             .transpose()?,
@@ -955,48 +984,64 @@ mod tests {
     }
 
     #[test]
-    fn terrain_point_elevation_reads_guid_and_double_in_v1_and_versioned_tail() {
-        for version in 1_u16..=3 {
-            let mut bytes = version.to_le_bytes().to_vec();
-            string(&mut bytes, "点高程");
-            bytes.extend(0_i32.to_le_bytes());
-            bytes.extend(2.0_f64.to_le_bytes());
-            bytes.extend([0; 32]);
-            bytes.push(1);
-            bytes.extend([3; 16]);
-            bytes.extend(4_u16.to_le_bytes());
-            bytes.extend([0; 16]);
-            bytes.extend([5, 0, 6, 0]);
-            bytes.extend(7.0_f64.to_le_bytes());
-            string(&mut bytes, "末尾");
-            bytes.extend(8_u16.to_le_bytes());
-            if version >= 2 {
-                bytes.extend(9_u16.to_le_bytes());
-            }
-            if version >= 3 {
-                bytes.extend((-10_i32).to_le_bytes());
-                bytes.extend(11_i32.to_le_bytes());
-            }
-            let length = bytes.len();
-            bytes.push(0xee);
-            let mut r = Reader::new(&bytes);
-            let mut refs = RefTable10_1::new();
-            let TinRenderer10_1::ClassifiedSurface(body) =
-                read_renderer(&mut r, 4096, &mut refs, TERRAIN_POINT_ELEVATION).unwrap()
-            else {
-                panic!("TerrainPointElevationRenderer 未分派");
-            };
-            assert_eq!(body.v2_double, Some(2.0_f64.to_bits()));
-            assert_eq!(body.guid, Some([3; 16]));
-            assert_eq!(body.longs, None);
-            assert_eq!(body.label_short, None);
-            assert_eq!(body.trailing_short, 8);
-            assert_eq!(body.v2_tail_short, (version >= 2).then_some(9));
-            assert_eq!(body.v3_tail_longs, (version >= 3).then_some([-10, 11]));
-            assert_eq!(r.read_bytes(1).unwrap(), &[0xee]);
-            for end in 0..length {
-                let mut r = Reader::new(&bytes[..end]);
-                assert!(read_renderer(&mut r, 4096, &mut refs, TERRAIN_POINT_ELEVATION).is_err());
+    fn terrain_point_renderers_read_guid_and_double_in_v1_and_versioned_tails() {
+        for class in [TERRAIN_POINT_ELEVATION, TERRAIN_POINT_ATTRIBUTE] {
+            for version in 1_u16..=3 {
+                let mut bytes = version.to_le_bytes().to_vec();
+                string(&mut bytes, "点高程");
+                bytes.extend(0_i32.to_le_bytes());
+                bytes.extend(2.0_f64.to_le_bytes());
+                bytes.extend([0; 32]);
+                bytes.push(1);
+                bytes.extend([3; 16]);
+                bytes.extend(4_u16.to_le_bytes());
+                bytes.extend([0; 16]);
+                bytes.extend([5, 0, 6, 0]);
+                bytes.extend(7.0_f64.to_le_bytes());
+                string(&mut bytes, "末尾");
+                bytes.extend(8_u16.to_le_bytes());
+                if class == TERRAIN_POINT_ATTRIBUTE {
+                    string(&mut bytes, "字段");
+                    bytes.extend(1_i32.to_le_bytes());
+                    bytes.extend((-12_i32).to_le_bytes());
+                } else if version >= 2 {
+                    bytes.extend(9_u16.to_le_bytes());
+                }
+                if version >= 3 {
+                    bytes.extend((-10_i32).to_le_bytes());
+                    bytes.extend(11_i32.to_le_bytes());
+                }
+                let length = bytes.len();
+                bytes.push(0xee);
+                let mut r = Reader::new(&bytes);
+                let mut refs = RefTable10_1::new();
+                let TinRenderer10_1::ClassifiedSurface(body) =
+                    read_renderer(&mut r, 4096, &mut refs, class).unwrap()
+                else {
+                    panic!("地形点渲染器未分派");
+                };
+                assert_eq!(body.v2_double, Some(2.0_f64.to_bits()));
+                assert_eq!(body.guid, Some([3; 16]));
+                assert_eq!(body.longs, None);
+                assert_eq!(body.label_short, None);
+                assert_eq!(body.trailing_short, 8);
+                assert_eq!(
+                    body.v2_tail_short,
+                    (class == TERRAIN_POINT_ELEVATION && version >= 2).then_some(9)
+                );
+                assert_eq!(
+                    body.attribute,
+                    (class == TERRAIN_POINT_ATTRIBUTE).then(|| TerrainPointAttribute10_1 {
+                        name: "字段".into(),
+                        values: vec![-12],
+                    })
+                );
+                assert_eq!(body.v3_tail_longs, (version >= 3).then_some([-10, 11]));
+                assert_eq!(r.read_bytes(1).unwrap(), &[0xee]);
+                for end in 0..length {
+                    let mut r = Reader::new(&bytes[..end]);
+                    assert!(read_renderer(&mut r, 4096, &mut refs, class).is_err());
+                }
             }
         }
     }
