@@ -1497,7 +1497,7 @@ fn annotate_chain_note(
             AlpcEntrySlot10_1::MaplexLabelEngineProps(body) => (body, "MaplexLELP"),
             _ => continue,
         };
-        annotate_placement_note(lelp, entry_index, diagnostics);
+        annotate_placement_note(lelp, kind, entry_index, diagnostics);
         let text_symbol_note = match &lelp.text_symbol {
             crate::layers::annotate_props::LelpTextSymbolSlot10_1::TextSymbol(body) => format!(
                 "ITextSymbol 槽 TextSymbol 体（版本 {}）已解析{}",
@@ -1565,6 +1565,7 @@ fn annotate_chain_note(
 /// 输出标注放置对象已读取的属性，保留未定性的字段顺序和回引。
 fn annotate_placement_note(
     lelp: &crate::layers::annotate_props::LelpBody10_1,
+    kind: &str,
     entry_index: usize,
     diagnostics: &mut Vec<String>,
 ) {
@@ -1574,7 +1575,7 @@ fn annotate_placement_note(
     use std::fmt::Write;
 
     let mut note = format!(
-        "条目 {}：标注类 LELP（键 {}）放置属性（Offset {}，Priority {:?}）",
+        "条目 {}：标注类 {kind}（键 {}）放置属性（Offset {}，Priority {:?}）",
         entry_index + 1,
         lelp.key,
         lelp.double_54,
@@ -1620,6 +1621,33 @@ fn annotate_placement_note(
             let _ = write!(note, "；BasicOverposterLayerProperties 回引键 {key}");
         }
         BolpSlot10_1::Null => {}
+    }
+    if let Some(body) = &lelp.maplex_placement {
+        let _ = write!(note, "；MaplexOverposterLayerProperties v{}", body.version);
+        if let Some(point) = &body.point_priorities {
+            let _ = write!(note, "；点放置优先级 {:?}", point.ints);
+        }
+        if let Some(stacking) = &body.stacking {
+            let separators: Vec<_> = stacking
+                .separators
+                .iter()
+                .map(|separator| separator.text.as_str())
+                .collect();
+            let _ = write!(note, "；堆叠分隔符 {separators:?}");
+        }
+        if let Some(offset) = &body.offset_along_line
+            && let Some(fields) = &offset.fields
+        {
+            let _ = write!(note, "；沿线偏移 double 原始值 {:?}", fields.doubles);
+        }
+        if let Some(rotation) = &body.rotation {
+            let _ = write!(note, "；旋转配置字符串 {:?}", rotation.text);
+        }
+    } else if let Some(crate::storage::object_refs::ObjectEntry10_1::BackReference {
+        key, ..
+    }) = &lelp.maplex_overposter_slot
+    {
+        let _ = write!(note, "；MaplexOverposterLayerProperties 回引键 {key}");
     }
     diagnostics.push(note);
 }
