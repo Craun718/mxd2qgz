@@ -391,3 +391,7 @@ NetworkAnalyst.dll 10.1.0.3035 的 Load `0x7af1ffc0` 在首组子图层及其后
 ### NALayer 尾部的扩展序列
 
 NetworkAnalyst.dll 10.1.0.3035 的 Load `0x7af1ffc0` 在 IEnvelope 槽与 double 后调用 LayerLib 的 ExtensionHelper::LoadExtensions，Save `0x7af20be0` 在对应位置调用 SaveExtensions。复用同版 LayerLib `0x786c22e0` 对应的读取器，序列为 LONG 计数、每项八字节长度、CLSID 和体。已支持的扩展按声明边界解析，未知非空类保持尾段停止。构造测试覆盖 PropertySet 扩展、后续字符串边界及长度不一致时的回滚；非空 NALayer 扩展仍缺真实工程及 ArcMap/QGIS 人工验收。
+
+### 定位器的位置字段代理
+
+NetworkAnalyst.dll 10.1.0.3035 的持久化虚表 `0x7afa0bb0` 经跳板 `0x7af430b0 / 0x7af43150` 调到 Load/Save `0x7af423b0 / 0x7af425a0`。GetClassID `0x7af42370` 返回注册表中 NALocatorLocationFieldsAgent 的 CLSID。Ghidra 补充导出确认版本 short 的有符号上限为 2，随后四个 AfCore BSTR，v2 再追加一个。对象通过 NALocator 的已有 ExtraSafe 槽读取并校验完整边界。构造测试覆盖 v1/v2、后继字节和截断回滚；真实宿主与 ArcMap/QGIS 人工验收仍待验证。

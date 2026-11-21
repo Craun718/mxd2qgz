@@ -521,6 +521,20 @@ pub struct NaServiceAreaSolverTail10_1 {
     pub version_four_values: Option<(u64, i32)>,
 }
 
+const NA_LOCATOR_LOCATION_FIELDS_AGENT_CLASS_ID: [u8; 16] = [
+    0xf2, 0xaf, 0x79, 0x94, 0xde, 0x7f, 0x59, 0x4c, 0xb7, 0x51, 0x0c, 0xca, 0xd3, 0x8b, 0x08, 0x9e,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum NaLocatorAgent10_1 {
+    Feature(NaLocatorFeatureAgent10_1),
+    LocationFields {
+        version: u16,
+        fields: [String; 4],
+        extra: Option<String>,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct NaLocatorFeatureAgent10_1 {
     pub version: u16,
@@ -531,7 +545,7 @@ pub struct NaLocatorFeatureAgent10_1 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NaLocatorTail10_1 {
-    pub agents: Vec<(ObjectEntry10_1, Option<NaLocatorFeatureAgent10_1>)>,
+    pub agents: Vec<(ObjectEntry10_1, Option<NaLocatorAgent10_1>)>,
     pub distance_bits: Option<u64>,
     pub flag: Option<u16>,
 }
@@ -851,7 +865,7 @@ fn read_na_locator_agent(
     reader: &mut Reader<'_>,
     max: usize,
     keys: &mut RefTable10_1,
-) -> io::Result<(ObjectEntry10_1, Option<NaLocatorFeatureAgent10_1>)> {
+) -> io::Result<(ObjectEntry10_1, Option<NaLocatorAgent10_1>)> {
     let Some(mut region) = read_na_extra_safe_region(reader, max)? else {
         return Ok((ObjectEntry10_1::Null, None));
     };
@@ -877,10 +891,36 @@ fn read_na_locator_agent(
             let extra = (version == 2)
                 .then(|| read_bstr_string_10_1(&mut region, max))
                 .transpose()?;
-            Some(NaLocatorFeatureAgent10_1 {
+            Some(NaLocatorAgent10_1::Feature(NaLocatorFeatureAgent10_1 {
                 version,
                 scalars,
                 source,
+                extra,
+            }))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: NA_LOCATOR_LOCATION_FIELDS_AGENT_CLASS_ID,
+            ..
+        } => {
+            let version = region.read_u16_le()?;
+            if version as i16 > 2 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "定位器位置字段代理版本超过 2",
+                ));
+            }
+            let fields = [
+                read_bstr_string_10_1(&mut region, max)?,
+                read_bstr_string_10_1(&mut region, max)?,
+                read_bstr_string_10_1(&mut region, max)?,
+                read_bstr_string_10_1(&mut region, max)?,
+            ];
+            let extra = (version == 2)
+                .then(|| read_bstr_string_10_1(&mut region, max))
+                .transpose()?;
+            Some(NaLocatorAgent10_1::LocationFields {
+                version,
+                fields,
                 extra,
             })
         }
@@ -2080,6 +2120,41 @@ mod tests {
     }
 
     #[test]
+    fn locator_location_fields_version_gate_preserves_item_boundary() {
+        for version in [1_u16, 2] {
+            let mut object = NA_LOCATOR_LOCATION_FIELDS_AGENT_CLASS_ID.to_vec();
+            object.extend(252_u32.to_le_bytes());
+            object.extend(version.to_le_bytes());
+            object.extend([0; 16]);
+            if version == 2 {
+                object.extend(1_u32.to_le_bytes());
+                object.extend([b'X', 0, 0, 0]);
+            }
+            let mut bytes = (object.len() as u32).to_le_bytes().to_vec();
+            bytes.extend(0_u32.to_le_bytes());
+            bytes.extend(object);
+            let mut refs = RefTable10_1::new();
+            for end in 0..bytes.len() {
+                let mut reader = Reader::new(&bytes[..end]);
+                assert!(read_na_locator_tail(&mut reader, 128, &mut refs, 0, 1).is_err());
+                assert_eq!(reader.position(), 0);
+                assert!(refs.is_empty());
+            }
+            bytes.push(0x7f);
+            let mut reader = Reader::new(&bytes);
+            let tail = read_na_locator_tail(&mut reader, 128, &mut refs, 0, 1).unwrap();
+            let Some(NaLocatorAgent10_1::LocationFields { fields, extra, .. }) = &tail.agents[0].1
+            else {
+                panic!("应读到位置字段代理");
+            };
+            assert!(fields.iter().all(String::is_empty));
+            assert_eq!(extra.as_deref(), (version == 2).then_some("X"));
+            assert!(refs.contains(252));
+            assert_eq!(reader.read_bytes(1).unwrap(), [0x7f]);
+        }
+    }
+
+    #[test]
     fn locator_tail_reads_feature_agent_and_rolls_back_on_truncation() {
         let mut object = NA_LOCATOR_FEATURE_AGENT_CLASS_ID.to_vec();
         object.extend(252_u32.to_le_bytes());
@@ -2104,7 +2179,9 @@ mod tests {
         }
         let mut reader = Reader::new(&bytes);
         let tail = read_na_locator_tail(&mut reader, 128, &mut refs, 3, 1).unwrap();
-        let agent = tail.agents[0].1.as_ref().unwrap();
+        let Some(NaLocatorAgent10_1::Feature(agent)) = tail.agents[0].1.as_ref() else {
+            panic!("应读到定位器要素代理");
+        };
         assert_eq!(agent.source, "X");
         assert_eq!(agent.extra.as_deref(), Some(""));
         assert_eq!(tail.distance_bits, Some(1.5_f64.to_bits()));
