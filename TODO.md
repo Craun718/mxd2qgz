@@ -801,6 +801,7 @@
   - [x] 对位 LineLabelPosition 的位置开关、Offset 和曲线标注开关并输出具名值。[访问器取证](docs/mxd-terra-nextpass-expression.md#line-label-position-字段对位)
   - [x] 定位 Maplex 标注类的持久化入口、版本门和流内对象槽。[原生取证](docs/mxd-terra-nextpass-expression.md#maplex-标注类的持久化入口)
   - [x] 接入 ALPC 中的 Maplex 标注类共用字段与版本门，未确认放置对象体保留停止位置。[读取边界](docs/mxd-terra-nextpass-expression.md#maplex-标注类接线)
+  - [x] 对位 MaplexOverposterLayerProperties v4–v22 的流序和六个嵌套槽 IID。[版本布局](docs/mxd-terra-nextpass-expression.md#maplexoverposterlayerproperties-的版本布局)
 - [ ] 转换标注位置/放置属性。
 - [x] 解析 FeatureLayer 总开关与 LELP 标注类开关的原始值。[原生取证及样本](docs/mxd-terra-nextpass-expression.md#图层与标注类的显示开关)
 - [ ] 转换标注可见性。

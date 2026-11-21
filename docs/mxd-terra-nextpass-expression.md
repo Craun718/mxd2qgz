@@ -155,7 +155,7 @@ Load 在 `0x78561617` 拒绝有符号版本大于 11，Save 从 `0x7857972c` 写
 MaplexOverposterLayerProperties `20664808-41C9-11D1-880A-080009EC732A`
 构造指令 `0x78563cde` 安装持久化虚表 `0x7857ec80`；GetClassID、
 Load、Save 分别由槽调整器进入 `0x78566d00`、`0x78566d40`、
-`0x78563ba0`。该类与 Map 层级的 MaplexOverposterProperties 分属不同 CLSID。
+`0x785675b0`。该类与 Map 层级的 MaplexOverposterProperties 分属不同 CLSID。
 后续仍须核对 MaplexOverposterLayerProperties 的持久化体及其嵌套子槽，
 并从 ALPC 接入 Maplex 标注类。尚未以实档或 ArcMap 运行验证。
 
@@ -171,3 +171,39 @@ ALPC 接入两个标注类的共有字段。Maplex 放置属性槽可读空值�
 新对象暂在槽头停止，保留已读标注类并撤回该未知对象的登记。构造
 v1/v6/v9/v11 验证尾段差异、逐前缀截断回滚及未知放置体停止。
 参考工程仅验证既有标准标注路径。Maplex 放置对象体和目标软件人工验收仍开放。
+
+### MaplexOverposterLayerProperties 的版本布局
+
+在相同的 10.1.0.3035 LabelPlacement.dll 中，复核持久化虚表
+`0x7857ec80` 的 +0x14 和 +0x18。调整器 `0x7856a6e0` 跳到
+Load `0x78566d40`，调整器 `0x7856a5b0` 跳到 Save `0x785675b0`。
+`0x78563ba0` 对应 IsDirty。Load 接受有符号版本 4–22。
+Save 在 `0x785675db` 将版本表 `0x78579718`（前三项 -1、21、22）
+与参数 3 传入版本选择助手，仍须复核目标文档版本与表项的具体映射。
+
+下表按 10.1 Load 顺序列出流形态。short、LONG 和 double 分别为
+2、4、8 字节；旧版混合宽度见表。
+对象槽的地址后括号内为 IID，供按接口继续追到实现类。
+
+| 版本条件 | 顺序 | 指令范围 |
+| --- | --- | --- |
+| 全部 | 3 short、4 LONG、2 short、double、LONG、double、LONG | `0x78566da3..0x78566f0a` |
+| ≤11 | ReadString 形式的 BSTR，读取后释放 | `0x78566f17..0x78566f57` |
+| 全部 | 对象槽（`261A4371-D9D5-11D2-A806-CC9F870BCD5A`）、3 short、double、short、3 double、short | `0x78566f71..0x7856706b` |
+| 全部 | 对象槽（`20664808-3A22-12A1-FA09-0A56FF3C731A`）、short、double、3 short | `0x78567090..0x78567118` |
+| ≥7 / <7 | 4 double；旧版改为 LONG、float、LONG、float，读取后接回公共字段 | `0x78567129..0x7856718b`、`0x7856754d..0x7856759f` |
+| 全部 | short、3 LONG、2 short、double | `0x785671aa..0x7856724a` |
+| ≥6 | short | `0x7856725b..0x7856726e` |
+| ≥7 | short、double | `0x7856727b..0x785672ae` |
+| 8–13 | 临时对象槽（`20664808-0A3A-1EAC-91D3-F3EF422A61A5`），加载后释放 | `0x785672bf..0x78567300` |
+| ≥9 | short、对象槽（`20664808-1A42-1FA1-FCD1-0B532F3C8FFA`） | `0x78567302..0x7856734d` |
+| ≥10 | 读入临时 LONG | `0x78567355..0x7856736b` |
+| ≥12 | 对象槽（`20664808-77AF-65E1-FAEF-18E6F9EC732A`） | `0x78567398..0x785673b2` |
+| ≥13 / ≥15 | LONG / AfCore String | `0x785673c1..0x785673f3` |
+| ≥16、≥17、≥18、≥19 | 每个版本门各加一个 short | `0x785673f9..0x7856746c` |
+| ≥20 / ≥21 | short、double / 两个 LONG | `0x78567479..0x785674e4` |
+| ≥22 | IPropertySet 对象槽（`F0BA6ABC-8E9F-11D0-B4AB-0000F8037368`） | `0x785674ed..0x78567505` |
+
+Load 在 `0x78567519` 调用结束处理再返回。当前仅完成静态流序和
+IID 对位，嵌套对象仍需逐类定位 Load，字段的业务语义也需访问器证据。
+未在真实 Maplex 工程或 ArcMap 中验证。
