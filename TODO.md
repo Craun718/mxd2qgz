@@ -91,6 +91,7 @@
   - [x] 接入 RasterBandName 与 RasterCatalogName 的表名称分派。[接口取证](docs/mxd-terra-round9-table.md#objectclassname-与栅格表名称)
   - [x] 核对 SdeRasterTableName 的普通持久化入口，确认 10.1 实现无法加载对象体。[原生取证](docs/mxd-terra-round9-old.md#sderastertablename-的持久化入口)
   - [x] 清点 10.1 注册表中按表名、要素类名、查询名和波段名筛选出的候选。[注册项与筛选范围](docs/mxd-terra-round9-old.md#旧表名称注册项清点)
+  - [x] 核对 UnknownDatasetName 的 IName::Open，确认旧 Map 无法借此取得 ITable。[虚表与指令](docs/mxd-terra-round9-old.md#unknowndatasetname-在旧表槽中的-open)
   - [x] 核对旧 Map 表槽空 IName 的停止边界并补回归覆盖。
   - [x] 接入 Schematic 图表类和元素类名称的表名称分派。[原生读写取证](docs/mxd-terra-round9-table.md#schematic-图表类和元素类名称)
   - [x] 接入可打开有属性关系类的 RelationshipClassName 表名称分派。[FileGDB 打开路径](docs/mxd-terra-round9-table.md#有属性的关系类名称)

@@ -488,3 +488,17 @@ RelQueryTableName、NetCDFFeatureClassName、TableQueryName 和 FeatureQueryName
 剩余 SdeRasterTableName 的读写入口见上一节。该筛选仅清点命名符合条件的注册项。
 原生槽请求 IName，随后以 ITable 查询 Open 的结果，因此还需按接口检查其它命名形式
 以及第三方类；本次未做目标软件运行验证。
+
+### UnknownDatasetName 在旧表槽中的 Open
+
+复核 Desktop 10.1.0.3035 的 GdbCore.dll（SHA-256
+`ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4`）
+和本篇已核对的同版 Map.dll。UnknownDatasetName 主 QI `0x709ba910` 在
+`0x709ba917` 比较的 IID 常量 `0x70ab84e4` 与旧 Map LoadObject 使用的
+`0x79482c08` 同为 IName `{4BA33331-D55F-11D1-8882-0000F877762D}`。
+匹配时在 `0x709ba931` 返回对象 `+0x10`，对应虚表 `0x70ad0908`。
+Map 在 `0x793ffc73` 选用该接口的 `+0x14` 项，实际入口 `0x709baa40`
+对有效输出槽写入 `-1`，调用错误助手传入 `0x80040315` 并返回其结果。
+因此这个 10.1 GdbCore 实现只提供失败的 Open 路径，无法为旧 Map 提供
+ITable。读取器继续在该未确认对象体前停止。本结论来自指令与虚表，未在
+ArcMap 运行验证，也未推及其它 DLL 的实现。
