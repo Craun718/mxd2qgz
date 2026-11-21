@@ -52,7 +52,7 @@ pub struct RasterLayerName10_1 {
     /// 已确认的路径、数据集名和波段名。
     pub source_reference: Option<crate::storage::object_refs::DatasetSource10_1>,
     pub suffix: Option<String>,
-    /// v5–v8 的 int32 选择子，非零时带一个 int32。
+    /// v5–v8 的 int32 选择子，非零时带原生波段集合的索引。
     pub legacy: Option<(i32, Option<i32>)>,
 }
 
