@@ -788,6 +788,7 @@
   - [x] 将同一长度检查接入共用 LayerLib 扩展列表与 StandaloneTable 逐条入口。[共用扩展边界](docs/mxd-10.1-raster-layer-tail.md#v0v7-尾段)
 - [ ] 解析 RasterLayer v8 起的 ExtraSafe 扩展对象体及其嵌套对象键。
   - [x] 核对 XmlPropertySet 的持久化接口，排除其作为已知 PropertySet 布局接入。[接口证据](docs/mxd-10.1-raster-layer-tail.md#xmlpropertyset-扩展候选)
+  - [x] 核对 CIMMapLayerProperties 和 CIM3DLayerProperties 的二进制持久化接口。[候选取证](docs/mxd-10.1-raster-layer-tail.md#cimmaplayerproperties-与-cim3dlayerproperties-候选)
 - [x] 接入两代 RasterLayer 扩展包装中的独立 PropertySet 及内部对象键。[原生取证](docs/mxd-10.1-raster-layer-tail.md#独立-propertyset-扩展与普通图层入口)
 - [x] 修正普通 RasterLayer 完整性检查漏判 DynamicTiledLayerProperties。[入口复核](docs/mxd-10.1-raster-layer-tail.md#独立-propertyset-扩展与普通图层入口)
 - [x] 接入 RasterLayer 两代扩展列表的 EditTemplateManager，并登记嵌套 EditTemplate 键，见 [扩展对象体取证](docs/mxd-10.1-raster-layer-tail.md#扩展对象体与嵌套键)。

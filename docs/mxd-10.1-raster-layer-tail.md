@@ -1267,3 +1267,27 @@ IPersistStream 的 IID（`0x68c6dc88/0x68c6dc78`）。因此，仅凭
 XmlPropertySet 的 IPropertySet 和 IPersistStreamInit，不能把它作为
 旧 LayerLib IPersistStream 扩展或普通 ExtraSafe 对象接入。继续保留
 未知体的边界。未在 ArcMap 运行验证。
+
+### CIMMapLayerProperties 与 CIM3DLayerProperties 候选
+
+10.1 Desktop 登记文件将 `{B5E7EBB6-01DD-4219-80F4-B9C9352E8810}`
+和 `{24A16361-9259-4779-8E80-624A5F8119B3}` 分别登记为
+CIMMapLayerProperties 与 CIM3DLayerProperties。CIM.dll PE32
+版本资源为 10.1.0.3035，SHA-256 为
+`ab6d55b8fb888e289f7303cefa91bd1903616f8b24ec2542ea31627323548f88`。
+
+RTTI 的完整对象主虚表分别是 `0x6d0f8174`、`0x6d0e8940`，
+对应 QI `0x6d034220`、`0x6cfb0b60`。两者对
+IXMLSerialize 的 IID `0x6d0e5720` 返回 +0x18，分别进入
+虚表 `0x6d0f8204`、`0x6d0e8a04`。主入口的 IID 比较以及
+共用后备 `0x6d095040` 均无 IPersistStream
+`{00000109-0000-0000-C000-000000000046}` 或 IPersistVariant
+`{67A4D651-69E0-11D2-8500-0000F875B9C6}`。后备未匹配时在
+`0x6d095132` 返回 E_NOINTERFACE。两张 +0x14 视图虽有
+持久化形状的虚表，但 +0x14/+0x18 均指向直接返回
+E_NOTIMPL 的 `0x6d01b980`。
+
+这两个名称含 LayerProperties 的登记类无法按已核对的
+二进制路径作为旧式扩展或 ExtraSafe 新对象读取。若真实输入
+出现对应类标识，仍须分析具体序列化路径。此次为静态核对，
+未在 ArcMap 10.1 或 QGIS 人工验证。
