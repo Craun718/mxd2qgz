@@ -111,7 +111,21 @@ ILevelMasking 虚表 `0x78722aec` 的 `+0x10` 为 `get_LevelMasking 0x786f1690`�
 
 Map 读取器仅在图层列表已经为这些类确定顶层对象体范围后登记图层键，随后继续逐层遮罩遍历。仍保留图层原始体及其边界依据。SDK .NET 的 Montgomery 和 MontgomerySimple（Map v44）及 SDK Java 的 portland（Map v45）都复用原有 ExtraSafe `A - 20` 边界推定。三个工程此前停于阶段 38，现分别在 `0x1d7c4`、`0x9484`、`0x77373` 结束 Map 对象，随后均恰好剩下四字节 Maps 流尾值。构造用例验证顶层 NetworkLayer 和同键回引均不消费遮罩，并验证未知 CLSID 仍停在阶段 38。
 
-两份 mole_data 中有界跳过的第三方子图层暂未找到同版本类实现。ArcMap 与 QGIS 的人工验收未执行。
+### SDK mole_data 的未识别子图层
+
+使用当前 Rust 读取器复跑 SDK .NET 与 Java 的两份 `mole_data`，从
+GroupLayer 已分类的 ExtraSafe 子层头取得两种 CLSID 及其体边界。
+下表偏移均相对于 `/Maps`，长度由外层条目给出。
+
+| CLSID | SDK .NET 体起点和长度 | SDK Java 体起点和长度 |
+| --- | --- | --- |
+| `5EC4067F-9D88-4139-A822-DE1C16BFD8E3` | `0x1398`，6342 字节 | `0x0f10`，5822 字节 |
+| `4F646AA4-85C3-46E7-8C16-6E598B63ABFA` | `0x3ed7` / `0x5e7f` / `0x8141`，3893 / 4397 / 4039 字节 | `0x319a` / `0x4939` / `0x57d1`，3393 / 682 / 684 字节 |
+
+在 10.1 Desktop 已提取的 1204 个 DLL 和 OLB 中检索两种 CLSID 的
+内存序字节，并在同版本 `esri.clsid.xml` 中检索其文本，均未命中。
+类名、独立组件归属及 ILayerMasking 的接口结果待确认。解析器保留这八段
+有界对象体，并停在逐图层遮罩阶段 38。ArcMap 10.1 与 QGIS 人工验收未执行。
 
 ## TemporalFeatureLayer 的聚合查询
 
