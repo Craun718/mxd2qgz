@@ -2,12 +2,10 @@
 
 use crate::maps::map_frame::{
     BaseFrameElement10_1, FrameGeometrySlot10_1, MapFrame10_1, base_frame, envelope_slot,
-    geometry_slot, read_map_frame_tail,
+    geometry_slot,
 };
 use crate::maps::map_object::{MapSurroundElement10_1, read_map_surround_body_10_1};
-use crate::maps::page_layout_prefix::{
-    MAP_FRAME_CLASS_ID, check_root_map_link, read_map_frame_prefix,
-};
+use crate::maps::page_layout_prefix::{MAP_FRAME_CLASS_ID, read_map_frame};
 use crate::objects::envelope::Envelope10_1;
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
@@ -105,11 +103,14 @@ pub(crate) fn read_surround_frame_10_1(
             ));
         }
     };
-    let map_frame_body = if let ObjectEntry10_1::NewObject { key, .. } = map_frame {
-        let prefix = read_map_frame_prefix(reader, region_offset, refs)?;
-        check_root_map_link(&prefix, is_root_map)?;
-        refs.register(key);
-        Some(Box::new(read_map_frame_tail(reader, limit, refs, prefix)?))
+    let map_frame_body = if matches!(map_frame, ObjectEntry10_1::NewObject { .. }) {
+        Some(Box::new(read_map_frame(
+            reader,
+            region_offset,
+            limit,
+            refs,
+            is_root_map,
+        )?))
     } else {
         *reader = probe;
         None

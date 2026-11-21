@@ -20,6 +20,13 @@ pub const LOCATOR_RECTANGLE_CLASS_ID: [u8; 16] = [
 #[derive(Debug, Clone, PartialEq)]
 pub struct MapFrame10_1 {
     pub prefix: PageLayoutMapFramePrefix10_1,
+    /// IMap 槽中首次定义的完整 Map。
+    pub embedded_map: Option<
+        Box<(
+            super::map_object::MapPrefix10_1,
+            super::map_object::MapSuffix10_1,
+        )>,
+    >,
     pub extent_settings: Option<MapFrameExtent10_1>,
     pub legacy_frame: Option<MapFrameLegacy10_1>,
     pub grids: Vec<super::map_grid::GridSlot10_1>,
@@ -124,6 +131,7 @@ pub(super) fn read_map_frame_tail(
     };
     Ok(MapFrame10_1 {
         prefix,
+        embedded_map: None,
         extent_settings,
         legacy_frame,
         grids,

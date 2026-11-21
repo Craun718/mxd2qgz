@@ -459,3 +459,41 @@ fn scene_graphics_consumes_surround_frames_and_references() {
         assert_eq!(reader.position(), end);
     }
 }
+
+#[test]
+fn standalone_layout_reads_new_map_inside_map_frame() {
+    use mxd2qgz::maps::map_object::MapSuffixStop;
+
+    let mut doc = cfb::open("samples/测试底图.mxd").unwrap();
+    let mut maps = Vec::new();
+    doc.open_stream("/Maps")
+        .unwrap()
+        .read_to_end(&mut maps)
+        .unwrap();
+    let base = surround_frame(2);
+    let base = &base[20 + 2 + 48..];
+    let mut frame = MAP_FRAME_CLASS_ID.to_vec();
+    frame.extend(0x7fff_u32.to_le_bytes());
+    frame.extend(4_u16.to_le_bytes());
+    frame.extend(&maps[4..0x25569]); // 参考 Map 的完整对象头和对象体。
+    frame.extend([0; 8]);
+    frame.extend(base);
+    let mut page = layout_root(1);
+    push_element(&mut page, &frame);
+
+    let layout = parse_mxd_streams_10_1(&[0; 8], Some(&page))
+        .unwrap()
+        .page_layout
+        .unwrap();
+    assert!(layout.stop.is_none(), "{:?}", layout.stop);
+    assert_eq!(layout.end_offset, page.len());
+    let frame = &layout.map_frames[0];
+    assert!(matches!(
+        frame.prefix.map,
+        ObjectEntry10_1::NewObject { .. }
+    ));
+    assert_eq!(
+        frame.embedded_map.as_ref().unwrap().1.stop,
+        MapSuffixStop::Complete
+    );
+}

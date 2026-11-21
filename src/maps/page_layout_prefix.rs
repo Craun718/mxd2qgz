@@ -62,30 +62,15 @@ pub fn read_page_layout_map_frame_10_1(
     table: &mut RefTable10_1,
 ) -> io::Result<super::map_frame::MapFrame10_1> {
     let (prefix, mut region) = read_extra_safe_element_region(reader, max_bytes)?;
-    let frame = read_map_frame_prefix(&mut region, prefix.position(), table)?;
-    read_bounded_map_frame_tail(reader, prefix, region, max_bytes, table, frame)
-}
-
-fn read_bounded_map_frame_tail<'a>(
-    reader: &mut Reader<'a>,
-    mut prefix: Reader<'a>,
-    mut region: Reader<'a>,
-    max_bytes: usize,
-    table: &mut RefTable10_1,
-    frame: PageLayoutMapFramePrefix10_1,
-) -> io::Result<super::map_frame::MapFrame10_1> {
+    let mut prefix = prefix;
     let mut refs = table.clone();
-    refs.register(frame.frame_key);
-    let body = super::map_frame::read_map_frame_tail(&mut region, max_bytes, &mut refs, frame)
-        .map_err(|err| {
-            io::Error::new(
-                err.kind(),
-                format!(
-                    "MapFrame /PageLayout:0x{:x}：{err}",
-                    prefix.position() + region.position()
-                ),
-            )
-        })?;
+    let body = read_map_frame(
+        &mut region,
+        prefix.position(),
+        max_bytes,
+        &mut refs,
+        &|_| true,
+    )?;
     if region.remaining() != 0 {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
@@ -102,6 +87,15 @@ pub(super) fn read_map_frame_prefix(
     region: &mut Reader<'_>,
     region_offset: usize,
     table: &RefTable10_1,
+) -> io::Result<PageLayoutMapFramePrefix10_1> {
+    read_map_frame_prefix_inner(region, region_offset, table, false)
+}
+
+fn read_map_frame_prefix_inner(
+    region: &mut Reader<'_>,
+    region_offset: usize,
+    table: &RefTable10_1,
+    allow_new_map: bool,
 ) -> io::Result<PageLayoutMapFramePrefix10_1> {
     let ObjectHeader::Object {
         class_id,
@@ -131,6 +125,13 @@ pub(super) fn read_map_frame_prefix(
         {
             ObjectEntry10_1::BackReference { class_id, key }
         }
+        ObjectHeader::Object {
+            class_id: MAP_CLASS_ID,
+            key,
+        } if allow_new_map => ObjectEntry10_1::NewObject {
+            class_id: MAP_CLASS_ID,
+            key,
+        },
         ObjectHeader::Object { key, .. } => {
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
@@ -593,10 +594,40 @@ pub(crate) fn read_map_frame(
     refs: &mut RefTable10_1,
     is_root_map: &impl Fn(u32) -> bool,
 ) -> io::Result<super::map_frame::MapFrame10_1> {
-    let prefix = read_map_frame_prefix(reader, start, refs)?;
-    check_root_map_link(&prefix, is_root_map)?;
-    refs.register(prefix.frame_key);
-    super::map_frame::read_map_frame_tail(reader, max_bytes, refs, prefix)
+    let mut trial = reader.clone();
+    let mut staged = refs.clone();
+    let mut prefix = read_map_frame_prefix_inner(&mut trial, start, &staged, true)?;
+    check_root_map_link(&prefix, &|key| is_root_map(key) || staged.contains_map(key))?;
+    staged.register(prefix.frame_key);
+    let embedded_map = if let ObjectEntry10_1::NewObject { key, .. } = prefix.map {
+        if staged.contains(key) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "MapFrame 与内嵌 Map 的键重复",
+            ));
+        }
+        Some(staged.with_nested_graphics(|refs| {
+            refs.register(key);
+            refs.mark_map(key);
+            let body = super::map_object::read_map_with_suffix_10_1(&mut trial, max_bytes, refs)?;
+            if body.1.stop != super::map_object::MapSuffixStop::Complete {
+                return Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    body.1.stop.describe(),
+                ));
+            }
+            Ok(Box::new(body))
+        })?)
+    } else {
+        None
+    };
+    prefix.remaining_in_element = trial.remaining();
+    let mut frame =
+        super::map_frame::read_map_frame_tail(&mut trial, max_bytes, &mut staged, prefix)?;
+    frame.embedded_map = embedded_map;
+    *reader = trial;
+    *refs = staged;
+    Ok(frame)
 }
 
 pub(super) fn check_root_map_link(

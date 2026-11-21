@@ -14,3 +14,17 @@ SDK Java LinearRef 实档：元素包装位于 `/PageLayout:0x1e`，IMap 回引�
 `parse` 现在在 /Maps 根尾与根循环结束位置确认后把同一引用表用于 /PageLayout 根及受支持的 ExtraSafe 集合，报告地图框键、回引位置和根 Map 键。其余布局字段原样保留；未进入布局或遇到未知布局元素时仍报告未知流范围，不按 GUID 扫描恢复同步。对于 66 份 10.1 介质工程，48 份进入布局元素集合，共确认 36 个 MapFrame → Map 回引；14 份遇到暂未支持的 MapSurroundFrame。这些计数只描述当前顺序读取结果。
 
 `cargo fmt --check`、`git diff --check` 与 `cargo test --no-fail-fast -- --include-ignored` 通过（881 项）。验证覆盖 v0–v4 读侧门、逐字节长度修正后的内层截断、未知网格不能登记新键及孤立 /PageLayout 无法解出实档回引；使用 LinearRef 从 `parse` 实际输出核对跨流位置。未做 ArcMap 10.1 或 QGIS 人工验收。完整 PageLayout 尾部、部分布局元素和跨流的其他类仍开放。
+
+## IMap 槽的首次定义
+
+MapElements.dll 10.1.0.3035（模块摘要见
+[跨流研究](mxd-map-tail-cross-stream-20261118.md)）的 MapFrame Load
+在 `0x79570aa2–0x79570ab0` 将 IMap IID 和当前流交给普通
+LoadObject，调用方未限制其必须为回引。完整 MapFrame 读取器现
+从同一流解析首次定义的 Map，要求 Map 后缀完整消费，并为跨容器
+递归沿用已有深度上限。内嵌 Map 体、后继地图框字段及新对象键一并
+提交，失败回滚。仅读取地图框前缀的接口仍要求空 IMap 或已登记回引。
+
+以仓库参考工程已知边界内的完整 Map 构造布局元素，验证独立布局
+可读取该内嵌 Map 并继续读完地图框。该布局为构造用例，ArcMap
+10.1 和 QGIS 实档目视尚未执行。
