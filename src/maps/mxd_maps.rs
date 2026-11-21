@@ -1422,6 +1422,11 @@ fn feature_layer_successor_note(
         return;
     };
     diagnostics.push(format!(
+        "条目 {}：图层标注开关（IGeoFeatureLayer::DisplayAnnotation 原始值 {}）",
+        entry_index + 1,
+        successor.short_168,
+    ));
+    diagnostics.push(format!(
         "条目 {}：渲染器槽后的后继字段段已消费至 {:?} 停止（FieldInfo 循环声明 {} 条、\
          已消费 {} 条；IHyperlink 循环声明 {} 条、已消费 {} 条；+0x154 字符串 {:?} 不解释\
          语义），其后字节保留未知",
@@ -1520,7 +1525,7 @@ fn annotate_chain_note(
             .unwrap_or_default();
         diagnostics.push(format!(
             "条目 {}：标注属性集合（键 {}）条目 LELP（键 {}，版本 {}）：表达式 {:?}、\
-             标注类名 {:?}{}；{}{}；条目键 {}",
+             标注类名 {:?}{}；标注类开关（DisplayAnnotation 原始值 {}）；{}{}；条目键 {}",
             entry_index + 1,
             alpc.key,
             lelp.key,
@@ -1528,6 +1533,7 @@ fn annotate_chain_note(
             lelp.expression,
             lelp.name,
             annotation_class_id_note,
+            lelp.short_48,
             text_symbol_note,
             lelp_stop_note,
             match entry.entry_key {

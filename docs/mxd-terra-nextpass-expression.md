@@ -62,3 +62,23 @@ QI `0x785313d0` 将集合接口 `{1D5849F2-0D33-11D2-A26F-080009B6F22B}` 和集�
 仓库参考工程到达三条 LELP v7，键为 60、202、239。命令行回归逐条
 检查三个已知表达式出现在 LELP 标注类诊断中，以区分同一图层上的
 DisplayExpressionProperties。表达式求值、转换和 ArcMap/QGIS 人工检查仍未进行。
+
+## 图层与标注类的显示开关
+
+复核 FeatureLayer.dll 10.1.0.3035 x86（SHA-256
+`2baf870615bb75b6f30ccea173ba4303fdd0b1a6571e11b9197c5fcf7298bb60`）。
+用 Wine 的 `LoadTypeLibEx` 读取 10.1 Carto 类型库，得到 IGeoFeatureLayer
+IID `E156D7E5-22AF-11D3-9F99-00C04F6BC78E`。DisplayAnnotation
+访问器的 x86 虚表偏移为 `0x90/0x94`。原始指令中主 QI
+`0x6f6e7a40` 将该 IID 映射到完整对象 `+0xd8`。
+构造链 `0x6f6dc367` 安装虚表 `0x6f7acfec`，对应访问器
+`0x6f6e52c0/0x6f6e52f0` 读写接口指针 `+0x160` 的 short，
+即完整对象 `+0x238`。同一构造链在 `0x6f6dc353` 安装完整对象
+`+0xd0` 的持久化虚表 `0x6f7acfb0`，其 Load/Save 分别在
+`0x6f6e9ad4` 和 `0x6f6eb3ea` 按该接口指针 `+0x168` 读写
+同一个 short。这对应读取器现有的 `short_168`。
+
+命令行保留图层开关和 LELP 类开关各自的原始值。参考工程三个图层的
+图层开关分别为 `0, 0, -1`，对应三个标注类均为 `-1`，回归分别断言
+两级值。实际绘制还受图层可见性、比例尺等条件影响，ArcMap 与 QGIS
+人工验收尚未进行。

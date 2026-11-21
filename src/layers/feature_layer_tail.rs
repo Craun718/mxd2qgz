@@ -1400,7 +1400,7 @@ pub struct FeatureLayerSuccessor10_1 {
     pub double_158: f64,
     /// double → obj+0x160（样本 0.0），语义未定。
     pub double_160: f64,
-    /// short → obj+0x168（样本 0），语义未定。
+    /// IGeoFeatureLayer::DisplayAnnotation 原始 BOOL，持久化接口 +0x168。
     pub short_168: i16,
     /// IHyperlink 循环声明计数（样本 0）。负数原生不进循环，原样保留。
     pub hyperlink_count: i32,
