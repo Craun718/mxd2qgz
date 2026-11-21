@@ -38,10 +38,27 @@ const BREAKLINE: [u8; 16] = [
     0x4f, 0x56, 0x20, 0xba, 0xe3, 0xdb, 0xd2, 0x11, 0x9f, 0x39, 0x00, 0xc0, 0x4f, 0x6b, 0xc6, 0x19,
 ];
 
+const CONTOUR: [u8; 16] = [
+    0xc2, 0x5d, 0xf7, 0xbe, 0xe6, 0x20, 0x65, 0x49, 0x85, 0xe5, 0xa3, 0xbc, 0x79, 0x74, 0x70, 0xbc,
+];
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum TinRenderer10_1 {
     Simple(TinSimpleRenderer10_1),
     Breakline(Box<TinBreaklineRenderer10_1>),
+    Contour(TinContourRenderer10_1),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TinContourRenderer10_1 {
+    pub version: i16,
+    pub label: String,
+    pub shorts: [u16; 2],
+    pub legend_group: RuleSlot10_1<LegendGroupPrefix10_1>,
+    pub legend_item: RuleSlot10_1<HorizontalLegendItemBody10_1>,
+    pub doubles: [u64; 2],
+    pub value: i32,
+    pub v2_double: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -148,6 +165,19 @@ fn read_renderer(
     refs: &mut RefTable10_1,
     class_id: [u8; 16],
 ) -> io::Result<TinRenderer10_1> {
+    if class_id == CONTOUR {
+        let version = read_version(r, 2)?;
+        return Ok(TinRenderer10_1::Contour(TinContourRenderer10_1 {
+            version,
+            label: read_string_10_1(r, max)?,
+            shorts: [r.read_u16_le()?, r.read_u16_le()?],
+            legend_group: read_legend_group(r, max, refs)?,
+            legend_item: read_legend_item(r, max, refs)?,
+            doubles: read_doubles(r)?,
+            value: r.read_u32_le()? as i32,
+            v2_double: (version > 1).then(|| read_double(r)).transpose()?,
+        }));
+    }
     if !matches!(class_id, NODE | EDGE | FACE | BREAKLINE) {
         return Err(unsupported("ITinRenderer"));
     }
@@ -521,6 +551,42 @@ mod tests {
             assert!(read_tin_layer_10_1(&mut r, 4096, &mut refs).is_err());
             assert_eq!(r.position(), 0);
             assert!(refs.is_empty());
+        }
+    }
+
+    #[test]
+    fn contour_reads_versioned_double_without_crossing_body_boundary() {
+        for version in [0_i16, 1, 2] {
+            let mut bytes = version.to_le_bytes().to_vec();
+            string(&mut bytes, "等高线");
+            bytes.extend([3, 0, 4, 0]);
+            bytes.extend([0; 32]);
+            bytes.extend(5.0_f64.to_le_bytes());
+            bytes.extend(6.0_f64.to_le_bytes());
+            bytes.extend((-7_i32).to_le_bytes());
+            if version == 2 {
+                bytes.extend(8.0_f64.to_le_bytes());
+            }
+            bytes.push(0xee);
+
+            let mut r = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let TinRenderer10_1::Contour(body) =
+                read_renderer(&mut r, 4096, &mut refs, CONTOUR).unwrap()
+            else {
+                panic!("Contour 体未读取");
+            };
+            assert_eq!(body.label, "等高线");
+            assert_eq!(body.shorts, [3, 4]);
+            assert_eq!(body.doubles, [5.0_f64.to_bits(), 6.0_f64.to_bits()]);
+            assert_eq!(body.value, -7);
+            assert_eq!(body.v2_double, (version == 2).then_some(8.0_f64.to_bits()));
+            assert_eq!(r.read_bytes(1).unwrap(), &[0xee]);
+
+            for end in 0..bytes.len() - 1 {
+                let mut r = Reader::new(&bytes[..end]);
+                assert!(read_renderer(&mut r, 4096, &mut refs, CONTOUR).is_err());
+            }
         }
     }
 

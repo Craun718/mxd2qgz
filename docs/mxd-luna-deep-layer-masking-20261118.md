@@ -536,3 +536,24 @@ AfCore String。Save 写入 `0x80453400` 的版本常量 2，
 条件字符串、v0/v1/v2 末尾字段、异常计数及游标和键回滚。
 字段业务名、嵌套图例实档组合仍待确认。本轮未在 ArcMap 10.1
 或 QGIS 中人工检查含此类的实档。
+
+#### TinContourRenderer
+
+同一 TinRenderer.dll 10.1.0.3035 的 RTTI 描述符为
+`0x8045e6e8`。主 QI `0x80427c30` 在 `0x80427d7a`
+返回 IPersistStream/IPersist 的 +0x20 视图，虚表
+`0x80453df8` 绑定 GetClassID `0x80428da0`、Load
+`0x80428de0`、Save `0x80428f10`。GetClassID 读取
+`0x80453e90` 的 `{BEF75DC2-20E6-4965-85E5-A3BC797470BC}`。
+
+| Load 指令 | 流字段 |
+| --- | --- |
+| `0x80428dfc–0x80428e60` | 有符号 short 版本（上限 2）、AfCore String、short×2 |
+| `0x80428e66–0x80428ea0` | ILegendGroup、ILegendItem |
+| `0x80428ea2–0x80428ee0` | double×2、LONG |
+| `0x80428ee2–0x80428ef9` | 版本大于 1 时再读一个 double |
+
+Save 写入 `0x804533fc` 的版本常量 2，并在 `0x80428ff7`
+写末尾 double。已接入 TinLayer 的 ITinRenderer 槽，合成测试
+覆盖 v0/v1/v2 的终点、逐字节截断与数值原值。字段业务名、图例
+实档组合及 ArcMap 10.1 和 QGIS 人工验证仍待完成。
