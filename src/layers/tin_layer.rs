@@ -54,6 +54,10 @@ const ELEVATION: [u8; 16] = [
     0x1b, 0x31, 0xb7, 0xeb, 0xf8, 0x99, 0xd2, 0x11, 0x81, 0xed, 0x00, 0x10, 0x4b, 0xc4, 0xcd, 0x03,
 ];
 
+const NODE_ELEVATION: [u8; 16] = [
+    0x4c, 0x56, 0x20, 0xba, 0xe3, 0xdb, 0xd2, 0x11, 0x9f, 0x39, 0x00, 0xc0, 0x4f, 0x6b, 0xc6, 0x19,
+];
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum TinRenderer10_1 {
     Simple(TinSimpleRenderer10_1),
@@ -78,7 +82,7 @@ pub struct TinClassifiedSurfaceRenderer10_1 {
     pub shorts: [u16; 2],
     pub longs: [i32; 2],
     pub double: u64,
-    pub label_short: u16,
+    pub label_short: Option<u16>,
     pub trailing_label: String,
     pub trailing_short: u16,
 }
@@ -199,8 +203,8 @@ fn read_renderer(
     refs: &mut RefTable10_1,
     class_id: [u8; 16],
 ) -> io::Result<TinRenderer10_1> {
-    if matches!(class_id, ASPECT | SLOPE | ELEVATION) {
-        return read_classified_surface(r, max, refs)
+    if matches!(class_id, ASPECT | SLOPE | ELEVATION | NODE_ELEVATION) {
+        return read_classified_surface(r, max, refs, class_id)
             .map(Box::new)
             .map(TinRenderer10_1::ClassifiedSurface);
     }
@@ -285,6 +289,7 @@ fn read_classified_surface(
     r: &mut Reader<'_>,
     max: usize,
     refs: &mut RefTable10_1,
+    class_id: [u8; 16],
 ) -> io::Result<TinClassifiedSurfaceRenderer10_1> {
     let version = read_version(r, 2)?;
     let label = read_string_10_1(r, max)?;
@@ -334,7 +339,9 @@ fn read_classified_surface(
         shorts: [r.read_u16_le()?, r.read_u16_le()?],
         longs: [r.read_u32_le()? as i32, r.read_u32_le()? as i32],
         double: read_double(r)?,
-        label_short: r.read_u16_le()?,
+        label_short: (class_id != NODE_ELEVATION)
+            .then(|| r.read_u16_le())
+            .transpose()?,
         trailing_label: read_string_10_1(r, max)?,
         trailing_short: r.read_u16_le()?,
     })
@@ -718,7 +725,7 @@ mod tests {
 
     #[test]
     fn classified_surfaces_read_arrays_and_versioned_guid() {
-        for class in [ASPECT, SLOPE, ELEVATION] {
+        for class in [ASPECT, SLOPE, ELEVATION, NODE_ELEVATION] {
             for (version, flag) in [(1_i16, None), (2, Some(0_u8)), (2, Some(1))] {
                 let mut bytes = version.to_le_bytes().to_vec();
                 string(&mut bytes, "分级");
@@ -748,7 +755,9 @@ mod tests {
                 bytes.extend(9_i32.to_le_bytes());
                 bytes.extend((-10_i32).to_le_bytes());
                 bytes.extend(11.0_f64.to_le_bytes());
-                bytes.extend(12_u16.to_le_bytes());
+                if class != NODE_ELEVATION {
+                    bytes.extend(12_u16.to_le_bytes());
+                }
                 string(&mut bytes, "末尾");
                 bytes.extend(13_u16.to_le_bytes());
                 bytes.push(0xee);
@@ -775,6 +784,7 @@ mod tests {
                 ));
                 assert!(refs.contains(30));
                 assert_eq!(body.longs, [9, -10]);
+                assert_eq!(body.label_short, (class != NODE_ELEVATION).then_some(12));
                 assert_eq!(body.trailing_label, "末尾");
                 assert_eq!(body.trailing_short, 13);
                 assert_eq!(r.read_bytes(1).unwrap(), &[0xee]);

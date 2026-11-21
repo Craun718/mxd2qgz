@@ -588,3 +588,18 @@ short、String、short。
 GUID 的空和非空分支、新 AlgorithmicColorRamp、数值原值及逐字节截断。
 同时用新 SimpleLineSymbol 验证 TinEdgeRenderer 的符号槽。字段业务名、嵌套
 图例和色带的实档组合仍待确认，未在 ArcMap 10.1 或 QGIS 中人工验证。
+
+#### TinNodeElevationRenderer
+
+同一 TinRenderer.dll 10.1.0.3035 的 RTTI 描述符为
+`0x8045ed7c`。+0xdc 持久化视图虚表 `0x8045559c`
+绑定 GetClassID `0x80438c50`、Load `0x80438fb0`、
+Save `0x804393b0`。GetClassID 复制 `0x80454e9c` 的
+`{BA20564C-DBE3-11D2-9F39-00C04F6BC619}`。
+Load `0x80439004–0x80439393` 与前三种分级渲染器
+共用字段顺序和版本门，唯 `0x80439369` 读取 double 后
+直接在 `0x8043937d` 读取 String，最后读 short。Save
+`0x80439643–0x80439670` 对应写 double、String、short。
+
+已复用分级渲染器读取器，合成验证 v1/v2、非空色带、GUID
+分支、截断及读取终点。待含该类的实档和 ArcMap/QGIS 人工验证。
