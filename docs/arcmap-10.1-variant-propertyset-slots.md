@@ -537,3 +537,19 @@ IRasterFunctionArguments 读取器。类标识、持久化虚表和版本门见
 合成输入覆盖 IdentityFunction 及 CachedRasterFunctionArguments
 和 PropertySet 交替嵌套时的限额与回滚。实际栅格类别或值域中的
 此类对象仍待实档取证，ArcMap/QGIS 目视验证待补。
+
+### 时间对象
+
+ObjectStream Variant 的普通与带保留区对象分支均复用
+SystemCore.dll 10.1.0.3035 的时间类对象体。其 Load 分别为
+Time `0x7ffe1780`、TimeReference `0x7ffebbf0`、
+TimeExtent `0x7ffe81f0`。类标识、对应 Save 和子槽顺序见
+`src/layers/dep_tail.rs` 的原生记录。对象头与嵌套键沿用同一
+ObjectStream 会话。时间体不完整时回滚整个 Variant，包括已读取的
+时间端点与引用键。TimeExtent 的引用对象遇到未知时区时回到
+ITimeReference 槽起点，避免将未知时区 CLSID 的首字节读成尾字段。
+
+合成测试以 TimeExtent 嵌套 Time、同键回引和 TimeReference，
+核对两种 Variant 对象头编码、时间体原始字节、后继字段、
+逐字节截断和未知时区槽的回滚。尚无此三类作为栅格唯一值或
+统计值的真实 MXD 证据，未在 ArcMap 10.1 或 QGIS 人工验证。

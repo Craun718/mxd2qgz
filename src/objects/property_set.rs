@@ -91,6 +91,11 @@
 //! 各值的业务语义（DATABASE/连接属性候选）未定性；版本 0 无样本佐证；
 //! 全部结论为静态观察，未经目标软件运行验证。
 
+use crate::layers::dep_tail::{
+    TIME_CLASS_ID, TIME_EXTENT_CLASS_ID, TIME_REFERENCE_CLASS_ID, TimeBody10_1, TimeExtentBody10_1,
+    TimeReferenceBody10_1, TimeZoneInfoSlot10_1, read_time_body_10_1, read_time_extent_body_10_1,
+    read_time_reference_body_10_1,
+};
 use crate::layers::feature_layer_tail::{
     NumberFormatSlot10_1, UID_CLASS_ID, UidBody10_1, read_number_format_body_for_class_10_1,
     read_uid_body_10_1,
@@ -335,6 +340,7 @@ pub enum PropertyValueObjectStream10_1 {
     /// 已有独立 IPersistStream 对象体的 SystemCore UID。
     Uid(UidBody10_1),
     NumberFormat(Box<EncodedVariantObject10_1<NumberFormatSlot10_1>>),
+    Time(Box<EncodedVariantObject10_1<VariantTimeBody10_1>>),
     Geometry(Box<VariantGeometry10_1>),
     Color(Box<EncodedVariantObject10_1<ColorBody10_1>>),
     ColorRamp(Box<EncodedVariantObject10_1<ColorRampSlot10_1>>),
@@ -358,6 +364,13 @@ pub enum PropertyValueObjectStream10_1 {
         class_id: [u8; 16],
         key: u32,
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum VariantTimeBody10_1 {
+    Time(TimeBody10_1),
+    Reference(TimeReferenceBody10_1),
+    Extent(TimeExtentBody10_1),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -689,6 +702,46 @@ pub(crate) fn read_variant_object_body_10_1(
                 key,
                 body: Box::new(body),
             }
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: class_id @ (TIME_CLASS_ID | TIME_REFERENCE_CLASS_ID | TIME_EXTENT_CLASS_ID),
+            key,
+        } => {
+            let mut wire = reader
+                .clone()
+                .read_region(max_bytes.min(reader.remaining()))?;
+            let body = match class_id {
+                TIME_CLASS_ID => VariantTimeBody10_1::Time(read_time_body_10_1(
+                    &mut wire, max_bytes, table, key,
+                )?),
+                TIME_REFERENCE_CLASS_ID => {
+                    let body = read_time_reference_body_10_1(&mut wire, max_bytes, table, key)?;
+                    if matches!(body.zone_info, TimeZoneInfoSlot10_1::Unsupported { .. }) {
+                        return Err(io::Error::new(
+                            ErrorKind::Unsupported,
+                            "TimeReference 时区槽未闭合",
+                        ));
+                    }
+                    VariantTimeBody10_1::Reference(body)
+                }
+                _ => {
+                    let body = read_time_extent_body_10_1(&mut wire, max_bytes, table, key)?;
+                    if body.stop.is_some() {
+                        return Err(io::Error::new(
+                            ErrorKind::Unsupported,
+                            "TimeExtent 子槽未闭合",
+                        ));
+                    }
+                    VariantTimeBody10_1::Extent(body)
+                }
+            };
+            let bytes = Arc::from(reader.read_bytes(wire.position())?);
+            PropertyValueObjectStream10_1::Time(Box::new(EncodedVariantObject10_1 {
+                class_id,
+                key,
+                bytes,
+                body,
+            }))
         }
         ObjectEntry10_1::NewObject {
             class_id:
@@ -1714,6 +1767,71 @@ mod tests {
             let mut reader = Reader::new(invalid);
             let mut refs = RefTable10_1::new();
             assert!(read_padded_variant_object_stream_10_1(&mut reader, 1024, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+
+    #[test]
+    fn variant_time_extent_preserves_nested_keys_and_rolls_back_unknown_slot() {
+        for padded in [false, true] {
+            let mut bytes = 13_u16.to_le_bytes().to_vec();
+            if padded {
+                bytes.extend([0; 14]);
+            }
+            bytes.extend(TIME_EXTENT_CLASS_ID);
+            bytes.extend(41_u32.to_le_bytes());
+            let body_offset = bytes.len();
+            bytes.extend(2_u16.to_le_bytes());
+            bytes.extend(TIME_CLASS_ID);
+            bytes.extend(42_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend(27.0_f64.to_le_bytes());
+            bytes.extend(TIME_CLASS_ID);
+            bytes.extend(42_u32.to_le_bytes());
+            bytes.extend(TIME_REFERENCE_CLASS_ID);
+            bytes.extend(43_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            let zone_offset = bytes.len();
+            bytes.extend([0; 16]);
+            bytes.extend([2, 0, 3, 0]);
+            bytes.push(1);
+            let end = bytes.len();
+            bytes.push(0xee);
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let PropertyValueObjectStream10_1::Time(value) =
+                read_variant_object_stream_layout_10_1(&mut reader, 4096, &mut refs, 0, padded)
+                    .unwrap()
+            else {
+                panic!("TimeExtent 未分派");
+            };
+            let VariantTimeBody10_1::Extent(body) = value.body else {
+                panic!("缺少 TimeExtent 体");
+            };
+            assert_eq!(body.tail_byte, Some(1));
+            assert_eq!(&*value.bytes, &bytes[body_offset..end]);
+            assert!(refs.contains(41) && refs.contains(42) && refs.contains(43));
+            assert_eq!(reader.read_bytes(1).unwrap(), &[0xee]);
+
+            for end in 0..end {
+                let mut reader = Reader::new(&bytes[..end]);
+                let mut refs = RefTable10_1::new();
+                assert!(
+                    read_variant_object_stream_layout_10_1(&mut reader, 4096, &mut refs, 0, padded)
+                        .is_err()
+                );
+                assert_eq!(reader.position(), 0);
+                assert!(refs.is_empty());
+            }
+            bytes[zone_offset..zone_offset + 16].fill(0x7d);
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            assert!(
+                read_variant_object_stream_layout_10_1(&mut reader, 4096, &mut refs, 0, padded)
+                    .is_err()
+            );
             assert_eq!(reader.position(), 0);
             assert!(refs.is_empty());
         }

@@ -495,7 +495,7 @@ pub enum TimeExtentStop10_1 {
         key: u32,
         which: u8,
     },
-    /// ITimeReference 槽未知类。
+    /// ITimeReference 槽未闭合，包括引用对象内的未知时区。
     ReferenceSlot { class_id: [u8; 16], key: u32 },
 }
 
@@ -584,7 +584,15 @@ pub fn read_time_extent_body_10_1(
             }
             ObjectEntry10_1::NewObject { class_id, key } if class_id == TIME_REFERENCE_CLASS_ID => {
                 let body = read_time_reference_body_10_1(&mut trial, max_bytes, &mut staged, key)?;
-                reference = TimeReferenceSlot10_1::Body(Box::new(body));
+                if matches!(body.zone_info, TimeZoneInfoSlot10_1::Unsupported { .. }) {
+                    // 时区体边界未知，整个 ITimeReference 槽均未读完。
+                    trial = reposition_to(reader, slot_offset);
+                    staged = pre_slot_table;
+                    stop = Some(TimeExtentStop10_1::ReferenceSlot { class_id, key });
+                    reference = TimeReferenceSlot10_1::Unsupported { class_id, key };
+                } else {
+                    reference = TimeReferenceSlot10_1::Body(Box::new(body));
+                }
             }
             ObjectEntry10_1::NewObject { class_id, key } => {
                 trial = reposition_to(&reader.clone(), slot_offset);
