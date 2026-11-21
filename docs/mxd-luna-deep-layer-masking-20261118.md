@@ -297,3 +297,9 @@ NetworkAnalyst.dll 10.1.0.3035 的 Load `0x7af6a360` 和 Save `0x7af6a5e0` 在�
 NetworkAnalystSolvers.dll 10.1.0.3035 的 GetClassID `0x7b0c4960` 引用 `0x7b1fed34`，与 10.1 注册表中 NAClosestFacilitySolver 的 CLSID `771F83D4-C698-4836-8222-C0B689A85827` 一致。原始指令及持久化表中的 `0x7b200c68` 将 Load 定位至 `0x7b0c6120`。该函数限制有符号版本上限为 4，依照与路径求解器相同的规则把外层版本映射到 `0x7b12ba00` 的共用版本。只有外层 v4 在共用体之后再读 double 和 LONG。
 
 两份 SanFrancisco SDK 工程从 `0x17a0f` 的键 876 读取 v3 求解器，随后均完整消费 Closest Facility 图层声明区间。构造测试检验 v3 与 v4 的边界和 v4 截断回滚。其他网络求解器及 ArcMap/QGIS 人工验收仍待完成。
+
+### 服务区求解器
+
+NetworkAnalystSolvers.dll 10.1.0.3035 的 GetClassID `0x7b111e10` 引用 CLSID 常量 `0x7b1fed24`，与注册表 NAServiceAreaSolver 一致。持久化表 Load 槽 `0x7b203408` 指向 `0x7b114870`。原始指令显示外层有符号上限为 4，调用共用读取器 `0x7b12ba00`。外层版本非零时追加三个 short、double、LONG，v2 起再读 short，v4 再读 double 和 LONG。
+
+两份 SanFrancisco SDK 工程均读取 `0x27886` 的 v3 求解器键 1514，并完整消费 Service Area 图层声明区间。构造测试覆盖 v3/v4 差异和 v4 截断回滚。其他求解器与 ArcMap/QGIS 人工验收仍待完成。

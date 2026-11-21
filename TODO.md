@@ -330,6 +330,7 @@
   - [x] 从已完整读取的 LegendGroup 回引恢复 NAStopRenderer 分类数组长度。[回引取证](docs/mxd-luna-deep-layer-masking-20261118.md#nastoprenderer-的图例组回引)
   - [x] 读取 Route NALayer 的子图层后字段及版本位集尾段。[尾段取证](docs/mxd-luna-deep-layer-masking-20261118.md#nalayer-的版本尾段)
   - [x] 读取 NAClosestFacilitySolver 的共用字段和 v4 专有尾段。[最近设施求解器取证](docs/mxd-luna-deep-layer-masking-20261118.md#最近设施求解器)
+  - [x] 读取 NAServiceAreaSolver 的共用字段和版本尾段。[服务区求解器取证](docs/mxd-luna-deep-layer-masking-20261118.md#服务区求解器)
   - [ ] 读取非空 NAAttributeParameterValueArray 的逐项对象体。
   - [x] 读取 NARouteSolver 的 ExtraSafe IStringArray 槽及对象键。[对象槽取证](docs/mxd-luna-deep-layer-masking-20261118.md#naroutesolver-的-extrasafe-字符串数组)
   - [x] 读取 NARouteSolver 两个内联 StrArray 集合及其存在条件。[集合取证](docs/mxd-luna-deep-layer-masking-20261118.md#naroutesolver-的内联字符串集合)
