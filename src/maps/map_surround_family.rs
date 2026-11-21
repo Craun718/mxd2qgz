@@ -2861,7 +2861,7 @@ mod tests {
             data.extend([0u8; 8]);
         }
         if base >= 5 {
-            data.extend([0u8; 2]);
+            data.extend(0x8123_u16.to_le_bytes());
         }
         if base >= 6 {
             data.extend([0u8; 2]);
@@ -2964,6 +2964,10 @@ mod tests {
                     );
                     assert_eq!(body.remaining_bytes, 4);
                     assert_eq!(body.division(), Some(2.0));
+                    assert_eq!(
+                        body.raw_field("base_tail_short_a").map(u16::from_le_bytes),
+                        (base >= 5).then_some(0x8123)
+                    );
                     assert_eq!(body.use_fraction_characters(), (base == 6).then_some(false));
                     assert_eq!(
                         body.scale_mark_properties(),
