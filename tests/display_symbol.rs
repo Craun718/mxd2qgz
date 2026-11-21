@@ -2956,11 +2956,24 @@ fn representation_rule_reads_fill_and_line_attribute_lists_and_keys() {
         bytes.extend([1, 0, 2, 0, 0, 0, 0, 0]);
         push_entry(&mut bytes, &style_class, 14);
         bytes.extend(1_u16.to_le_bytes());
-        bytes.extend(1_i32.to_le_bytes());
-        bytes.extend(7_i32.to_le_bytes());
-        bytes.extend(3_u16.to_le_bytes());
-        bytes.extend([0; 14]);
-        bytes.extend(19_i32.to_le_bytes());
+        if style_class == GRADIENT_PATTERN_CLASS_ID {
+            bytes.extend(2_i32.to_le_bytes());
+            for id in [0_i32, 1] {
+                bytes.extend(id.to_le_bytes());
+                bytes.extend(13_u16.to_le_bytes());
+                bytes.extend([0; 14]);
+                push_entry(&mut bytes, &RGB_COLOR_CLASS_ID, 16);
+                if id == 0 {
+                    bytes.extend([1, 0, 1, 0, 1, 4, 3, 2, 1, 0, 255]);
+                }
+            }
+        } else {
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend(7_i32.to_le_bytes());
+            bytes.extend(3_u16.to_le_bytes());
+            bytes.extend([0; 14]);
+            bytes.extend(19_i32.to_le_bytes());
+        }
         bytes.extend(20_i32.to_le_bytes());
 
         push_entry(&mut bytes, &symbol_class, 15);
@@ -3003,15 +3016,33 @@ fn representation_rule_reads_fill_and_line_attribute_lists_and_keys() {
             ));
             &first.stroke_body.as_ref().unwrap().attributes
         };
-        assert_eq!(
-            attributes,
-            &vec![(
-                7,
-                PropertyValueObjectStream10_1::Inline(PropertyValue10_1::Raw4(
-                    19_i32.to_le_bytes()
-                ))
-            )]
-        );
+        if style_class == GRADIENT_PATTERN_CLASS_ID {
+            assert_eq!(attributes.len(), 2);
+            assert!(matches!(
+                &attributes[0],
+                (0, PropertyValueObjectStream10_1::Color(color)) if color.key == 16
+            ));
+            assert_eq!(
+                attributes[1],
+                (
+                    1,
+                    PropertyValueObjectStream10_1::BackReference {
+                        class_id: RGB_COLOR_CLASS_ID,
+                        key: 16,
+                    }
+                )
+            );
+        } else {
+            assert_eq!(
+                attributes,
+                &vec![(
+                    7,
+                    PropertyValueObjectStream10_1::Inline(PropertyValue10_1::Raw4(
+                        19_i32.to_le_bytes()
+                    ))
+                )]
+            );
+        }
         assert!(matches!(
             rule.layers[2].entry,
             ObjectEntry10_1::BackReference { key: 13, .. }
@@ -3024,6 +3055,7 @@ fn representation_rule_reads_fill_and_line_attribute_lists_and_keys() {
             assert!(read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 4).is_err());
             assert_eq!(reader.position(), 0);
             assert!(!refs.contains(14));
+            assert!(!refs.contains(16));
         }
     }
 }

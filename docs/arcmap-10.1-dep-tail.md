@@ -664,3 +664,18 @@ DisplayLib.dll 10.1.0.3035 的 GraphicAttributeList::Load
 字节。递归读取继续消耗同一个 Variant 深度预算。构造测试覆盖嵌套线式、
 后续键回引、逐字节截断和深度越界时的回滚。实档中哪些属性 ID 会保存
 各类对象仍待核查，尚无 ArcMap 10.1 或 QGIS 人工验证。
+
+### GradientPattern 的颜色属性
+
+同版 DisplayRepresentation.dll 的 `0x6ee4d7f8` 和 `0x6ee4d869`
+分别以属性 ID 0、1 调用 GraphicAttributeList::GetValueAsObject。
+两处结果均交给 `0x6ee4e420`；该助手在 `0x6ee4e459` 推入
+`0x6ee9874c` 的 IColor IID `20CD40B0-8F3D-11D0-8590-0800091A2A72`。
+因此这两个属性可以承载颜色对象。构造用例通过 SymbolMimic 和
+RepresentationRule 的正常分派读取带两个颜色属性的 GradientPattern，
+验证 RgbColor 新对象、同键回引、后续符号层对位与截断回滚。
+
+附带检查了本地参考、安装介质和 SDK 语料中可打开的 186 个 MXD/MXT
+容器的可读流。SymbolMimic、RepresentationRule 和三种 BasicSymbol
+的 CLSID 字节均未命中。该检查仅用于寻找可验证对象。
+尚无实档或 ArcMap 10.1、QGIS 人工验证。
