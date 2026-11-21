@@ -383,3 +383,7 @@ NetworkAnalystSolvers.dll 10.1.0.3035 的数组 Load `0x7b09f110` 经虚表 `0x7
 ### NALocator 的空间参考对象
 
 NetworkAnalyst.dll 10.1.0.3035 的 NALocator::Load `0x7af31e90` 使用 `0x7afa0378` 的 IID `4434D680-F4DA-11D1-BCA6-0000F875BCCE` 请求 ISpatialReference。该 ExtraSafe 槽复用普通对象流的 PCS、GCS、UnknownCoordinateSystem 及回引分派，只有完整消费封装长度才提交新键。构造测试覆盖新 UnknownCoordinateSystem 及声明边界多出一字节时的回滚。两份 SanFrancisco 工程的此槽均为空，非空形态尚无真实宿主与人工验收。
+
+### NALayer 尾部的 IEnvelope
+
+NetworkAnalyst.dll 10.1.0.3035 的 Load `0x7af1ffc0` 在首组子图层及其后 short 之后，以普通 LoadObject 请求 `0x7af9f570` 的 IID `1B077914-38C5-11D0-92D2-00805F7C28B0`（IEnvelope），与 Save `0x7af20be0` 的对象槽对位。读取器复用 Envelope 体及空间参考分派，尾段完整后提交新键。构造测试覆盖非空范围和逐字节截断回滚。两份 SanFrancisco SDK 工程用于现有路径的回归验证。非空槽尚缺真实工程及 ArcMap/QGIS 人工验收。

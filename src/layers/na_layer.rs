@@ -7,7 +7,10 @@ use crate::maps::standalone_table::{
 use crate::objects::dataset_name::{
     FEATURE_DATASET_NAME_CLASS_ID, FeatureDatasetNameBody10_1, read_feature_dataset_name_body_10_1,
 };
-use crate::objects::envelope::{SpatialReferenceEntry10_1, read_spatial_reference_entry_10_1};
+use crate::objects::envelope::{
+    ENVELOPE_CLASS_ID, Envelope10_1, SpatialReferenceEntry10_1, read_envelope_10_1,
+    read_spatial_reference_entry_10_1,
+};
 use crate::objects::property_set::{
     PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1, PropertyValueObjectStream10_1,
     read_padded_variant_object_stream_10_1, read_property_set_object_stream_10_1,
@@ -56,6 +59,7 @@ pub struct NaLayerTables10_1 {
 pub struct NaLayerTail10_1 {
     pub first_flag: u16,
     pub object: ObjectEntry10_1,
+    pub envelope: Option<Box<Envelope10_1>>,
     pub scalar_bits: [u64; 3],
     pub name: String,
     pub second_flag: u16,
@@ -202,9 +206,16 @@ pub(super) fn read_na_layer_tail(
     let unsupported = |message| io::Error::new(io::ErrorKind::Unsupported, message);
     let first_flag = trial.read_u16_le()?;
     let object = read_object_entry_10_1(&mut trial, &mut keys)?;
-    if matches!(object, ObjectEntry10_1::NewObject { .. }) {
-        return Err(unsupported("NALayer 尾部普通槽的新对象未支持"));
-    }
+    let envelope = match object {
+        ObjectEntry10_1::NewObject {
+            class_id: ENVELOPE_CLASS_ID,
+            ..
+        } => Some(Box::new(read_envelope_10_1(&mut trial, max, &mut keys)?)),
+        ObjectEntry10_1::NewObject { .. } => {
+            return Err(unsupported("NALayer 尾部 IEnvelope 对象类未支持"));
+        }
+        _ => None,
+    };
     let scalar = trial.read_f64_le()?.to_bits();
     if trial.read_u32_le()? != 0 {
         return Err(unsupported("NALayer 非空扩展序列未支持"));
@@ -234,6 +245,7 @@ pub(super) fn read_na_layer_tail(
     Ok(NaLayerTail10_1 {
         first_flag,
         object,
+        envelope,
         scalar_bits,
         name,
         second_flag,
@@ -1775,6 +1787,33 @@ mod tests {
         assert!(refs.contains(38) && refs.contains(39) && refs.contains(40));
         assert!(refs.contains(35) && refs.contains(36) && refs.contains(37));
         assert_eq!(reader.read_bytes(1).unwrap(), [0x7f]);
+    }
+
+    #[test]
+    fn na_layer_tail_reads_envelope_and_rolls_back_its_key_on_truncation() {
+        let mut bytes = vec![0; 2];
+        bytes.extend(ENVELOPE_CLASS_ID);
+        bytes.extend(54_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        for value in [1.0_f64, 2.0, 3.0, 4.0] {
+            bytes.extend(value.to_le_bytes());
+        }
+        bytes.extend([0; 8 + 4]);
+        push_string(&mut bytes, "");
+        bytes.extend([0; 2 + 16]);
+
+        let mut refs = RefTable10_1::new();
+        for end in 0..bytes.len() {
+            let mut reader = Reader::new(&bytes[..end]);
+            assert!(read_na_layer_tail(&mut reader, 256, &mut refs, 0).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+        let mut reader = Reader::new(&bytes);
+        let tail = read_na_layer_tail(&mut reader, 256, &mut refs, 0).unwrap();
+        assert_eq!(tail.envelope.unwrap().coords, [1.0, 2.0, 3.0, 4.0]);
+        assert!(refs.contains(54));
+        assert_eq!(reader.remaining(), 0);
     }
 
     #[test]
