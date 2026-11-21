@@ -126,10 +126,13 @@ fn central_usa_first_two_elements_use_real_reference_definition() {
     let GeometrySlot10_1::Point(point) = text.geometry else {
         panic!("应为点几何")
     };
-    assert!(matches!(
-        point.spatial_reference,
-        Some(SpatialReferenceEntry10_1::UnknownCoordinateSystem { key: 743, .. })
-    ));
+    let Some(SpatialReferenceEntry10_1::UnknownCoordinateSystem { key: 743, body }) =
+        point.spatial_reference
+    else {
+        panic!("应为新建的 UnknownCoordinateSystem 对象");
+    };
+    assert_eq!(body.save_version, 3);
+    assert_eq!(body.strings, ["Unknown", "", "", ""]);
     assert_eq!(reader.position(), 0xa04);
     assert_eq!(table.len(), 8);
     for key in 736..=743 {

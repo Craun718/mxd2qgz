@@ -676,6 +676,7 @@
       - [x] 将 PCS/GCS 的前三条域串绑定到 Alias、Abbreviation 和 Remarks，确认空串初始化及 PCS 复制路径。[原生字段映射](docs/mxd-terra-integrate-sr.md#pcs-与-gcs-域串的属性映射)
       - [ ] 核对旧写方是否以 UnknownCoordinateSystem 的第二串保存 Alias。
       - [ ] 定位 UnknownCoordinateSystem 字符串在编辑和创建路径中的其他填充来源。
+      - [x] 对位 UnknownCoordinateSystem 的工厂初值、复制路径和 CentralUSA 实档四串。[取证](docs/arcmap-10.1-pcs-geometry-slots.md#工厂复制与介质对象的字符串)
       - [ ] 定性 GCS 完整对象 `+0xc4` 的置位来源。
       - [ ] 闭合坐标系容差的 pe/sg 数值推导链。[空间参考取证](docs/arcmap-10.1-pcs-geometry-slots.md)
       - [x] 将 ISRPersistStream 槽 8 定名为 GetPrecisionSizeMax，输出 `0x38`。

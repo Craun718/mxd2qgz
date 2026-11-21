@@ -225,8 +225,9 @@ GetClassID `0x719bc190`（判空 → movq 写 `DAT_71a13078`，全镜像唯一�
 定位链：esriGeometry coclass #130 + esri.clsid 声明；CLSID 常量 `0x71a130c8`；
 GetClassID `0x719eab80`（movq 写 `DAT_71a130c8`）→ 身份虚表 `0x71a2c0cc`
 （+0x14 槽）、持久化虚表 `0x71a2c320`（+0x0c 槽），COL `0x71a4436c`/
-`0x71a442a4` TD 均 `.?AVUnknownCoordinateSystem@@` @`0x71a6bb68`；构造器三个
-重载（`0x719edc60`/`0x719ede70`/`0x719ee050`）在对象 **+0x30** 安装 `0x71a2c320`；
+`0x71a442a4` TD 均 `.?AVUnknownCoordinateSystem@@` @`0x71a6bb68`；默认构造器
+`0x719edc60`、复制构造器 `0x719ede70`、析构入口 `0x719ee050`
+均在对象 **+0x30** 安装 `0x71a2c320`；
 主 QI `0x719eabd0` 比较标准 `{0000010C}`/`{00000109}` 命中 → `ADD EAX,0x30`
 （`0x719eaf1e`）；持久化 QI 槽 `0x7193f2d0` 为薄调整器转发主 QI。
 
@@ -379,3 +380,26 @@ Remarks 为空串，Name 为 `Unknown`。Save 的四处成员读取分别在
 Load 按上述相同顺序写成员，以第三串覆盖第二串。解析器保留原始四串。
 旧写方是否曾在第二串保存 Alias，以及编辑或创建路径能否改写这些值，
 仍待原生证据。ArcMap 10.1 人工验证尚未执行。
+
+
+### 工厂、复制与介质对象的字符串
+
+同一 Geometry.dll 中，UnknownCoordinateSystem 的类工厂 RTTI
+虚表 `0x71a1dc38` 的 +0x0c 为 `0x718c4250`。
+入口分别于 `0x718c42b4`、`0x718c4337` 调用默认构造器，
+因此两条工厂路径都用 Name 为 Unknown、其余三项为空的初值。
+`0x7198f135` 的缓存创建路径也调用默认构造器，随后的
+`0x7198f182–0x7198f1c4` 在 +0x24 接口上设置数值参数。
+完整对象 +0x10 的虚表 `0x71a2c0f8` 在 +0x0c 提供
+`0x719ebf60`，调用复制构造器。它在
+`0x719edfde–0x719ee028` 逐项复制 Alias、Abbreviation、
+Remarks、Name。此前列出的 `0x719ee050` 则调用 BSTR 释放，
+属于析构入口。
+
+10.1 Desktop 介质的 CentralUSA.mxd（SHA-256
+`b3b594837ab29c9435c2214793d1dcc65d2985a73d26b6619d83704f99005bac`）
+的 /Version 为 10.1/19。由 /PageLayout 根和首个文本元素读取到
+`0x96e` 的空间参考键 743，体从 `0x982` 起为 v3，
+四串依次为 Unknown、空、空、空；后继折线回引同一键。
+这是实档边界验证。两个空串无法区分旧写方是否使用 Alias，
+也尚未核对属性编辑路径或在 ArcMap 10.1 和 QGIS 中人工验证。
