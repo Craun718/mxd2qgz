@@ -427,3 +427,20 @@ NetworkAnalyst.dll 10.1.0.3035 的 NATraversalResultSource 持久化虚表 `0x7a
 ### 组图层内的有界网络子层
 
 FeatureLayer.dll 10.1.0.3035 的 GroupLayer::Load `0x6f711270` 在 v11 起通过 ExtraSafeReadObject 装入子层。NetworkLayer 与 NALayer 不消费遮罩记录，但其持久化对象体可以定义供后续对象引用的键。完整组读取器现在尝试在声明范围内消费这两类子层，只有确认体完整且到达边界才提交内部键。仍可按原规则同步未支持的分支。构造测试验证组内 NetworkLayer 的 NetworkDatasetName 键登记，既有测试继续覆盖有界未知网络体及回引。真实嵌套工程及 ArcMap/QGIS 人工验收尚未验证。
+
+## TinLayer 与 TerrainLayer 的接口分派
+
+Desktop 10.1.0.3035 的注册文件分别将 TinLayer
+`FE308F38-BDCA-11D1-A523-0000F8774F0F` 和 TerrainLayer
+`5C7C19DD-D2F0-4A31-9C70-F87E3A203C28` 绑定到各自的原生 DLL。
+两份 PE32 原件用版本资源、RTTI 和 objdump 指令复核。
+
+| 模块及 SHA-256 | 主虚表与 QI | 未命中链及返回点 |
+| --- | --- | --- |
+| TinLayer.dll `9cbb52643f21fc7482baf504567612778a4a9727d903f5713bebcd0e49326ba3` | `0x80411b14 / 0x80401e40` | `0x8040cee0 → 0x8040c6e0`，`0x8040c7d2` 返回 E_NOINTERFACE |
+| TerrainLayer.dll `e1ef15604ad45459362b850dc91024161b89f4559455a4c76cd75dcca8c24bb1` | `0x80243c68 / 0x80231c60` | `0x8023e920 → 0x8023e0e0`，`0x8023e1d2` 返回 E_NOINTERFACE |
+
+逐级接口比较没有 ILayerMasking 或 IBasemapLayer；未命中的最终路径
+不转发原始 IID。Map 的分派可越过已经有外层边界的这两类未解析图层，
+而不额外读取遮罩记录。回归覆盖分派分类。普通对象体及 ArcMap/QGIS
+实档人工验证仍待完成。
