@@ -462,9 +462,9 @@ Load 先读有符号 short（上限 1），再于 `0x6ee73f10` 调用内联效�
 非正计数。IBasicSymbol 的接口身份由 `0x6ee97f44` 的 IID 与同版
 esriDisplay 类型库对位。
 
-共享符号读取器支持同类对象键回引，并读取没有效果或符号层成员的
+共享符号读取器支持同类对象键回引，并读取没有效果成员、符号层类型已知的
 RepresentationRule。覆盖值和次序列表可含成员，具体布局见下节。
-效果或符号层正计数会在对应循环前回退整个 SymbolMimic。实档及
+有效果成员或遇到未支持的符号层时会回退整个 SymbolMimic。实档及
 ArcMap 10.1、QGIS 人工验证仍待完成。
 
 ### RepresentationRule 的覆盖值和次序列表
@@ -511,3 +511,18 @@ GraphicAttributeList、v2 起的 AfCore String、ExtraSafe 对象槽和
 
 三类的非空效果及图案、线式和标记子对象仍待接入读取器。
 本轮没有进行实档、ArcMap 10.1 或 QGIS 人工验证。
+
+
+### BasicFillSymbol 与 SolidColorPattern
+
+同版 DisplayRepresentation.dll 的 SolidColorPattern
+（`29742A05-5999-43E7-9FA1-5370C684F49E`）通过
+`0x6ee78840` 输出 CLSID。持久化虚表 `0x6ee9b124` 的 Load
+`0x6ee788a0` 和 Save `0x6ee788c0` 分别委派给 DisplayLib 的
+GraphicAttributeList::Load 和 Save。图案体直接使用属性列表布局。
+属性值复用带保留区的 AfCore Variant 对象流读取器，属性 ID 及值按流序保留。
+
+已接入无效果成员且使用 SolidColorPattern 的 BasicFillSymbol。
+规则、符号层、图案及属性值沿用同一对象键表。构造测试覆盖新填充符号、
+非空属性表、图案和符号层回引及逐字节截断回滚。其他图案类、效果成员、
+实际 MXD 和 ArcMap 10.1、QGIS 人工验证仍待完成。

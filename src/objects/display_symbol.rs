@@ -261,6 +261,9 @@ use crate::objects::picture_fill_symbol::{
     PICTURE_FILL_SYMBOL_CLASS_ID, PictureFillSymbolBody10_1, PictureFillSymbolSlot10_1,
     read_picture_fill_symbol_body_10_1, read_picture_fill_symbol_slot_10_1,
 };
+use crate::objects::property_set::{
+    PropertyValueObjectStream10_1, read_padded_variant_object_stream_10_1,
+};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
@@ -556,6 +559,101 @@ pub const REPRESENTATION_RULE_CLASS_ID: [u8; 16] = [
     0x0a, 0xe4, 0x79, 0x10, 0xc1, 0x83, 0x7b, 0x46, 0xb8, 0x28, 0xe5, 0xc0, 0x6e, 0xf5, 0xf6, 0xb7,
 ];
 
+pub const BASIC_FILL_SYMBOL_CLASS_ID: [u8; 16] = [
+    0x64, 0xc4, 0x38, 0xbc, 0x02, 0x8b, 0x0c, 0x4b, 0x81, 0xd5, 0x82, 0x37, 0x84, 0x7a, 0x46, 0xce,
+];
+pub const SOLID_COLOR_PATTERN_CLASS_ID: [u8; 16] = [
+    0x05, 0x2a, 0x74, 0x29, 0x99, 0x59, 0xe7, 0x43, 0x9f, 0xa1, 0x53, 0x70, 0xc6, 0x84, 0xf4, 0x9e,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BasicFillSymbol10_1 {
+    pub version: u16,
+    pub effect_list_version: u16,
+    pub effect_count: i32,
+    pub pattern: ObjectEntry10_1,
+    pub pattern_body: Option<SolidColorPattern10_1>,
+    pub trailing_value: i32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SolidColorPattern10_1 {
+    pub version: u16,
+    pub declared_count: i32,
+    pub attributes: Vec<(i32, PropertyValueObjectStream10_1)>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RepresentationRuleLayer10_1 {
+    pub entry: ObjectEntry10_1,
+    pub fill: Option<BasicFillSymbol10_1>,
+}
+
+fn read_basic_fill_symbol_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<Option<BasicFillSymbol10_1>> {
+    let version = read_signed_symbol_version(reader, 1, "BasicFillSymbol", reader.position())?;
+    let effect_list_version =
+        read_signed_symbol_version(reader, 2, "BasicFillSymbol 效果列表", reader.position())?;
+    let effect_count = read_i32_le(reader)?;
+    if effect_count > 0 {
+        return Ok(None);
+    }
+    let pattern = read_object_entry_10_1(reader, refs)?;
+    let pattern_body = match pattern {
+        ObjectEntry10_1::NewObject {
+            class_id: SOLID_COLOR_PATTERN_CLASS_ID,
+            ..
+        } if depth > 1 => {
+            let version = read_signed_symbol_version(
+                reader,
+                1,
+                "SolidColorPattern 属性表",
+                reader.position(),
+            )?;
+            let declared_count = read_i32_le(reader)?;
+            let count = declared_count.max(0) as usize;
+            if count > reader.remaining().min(max_bytes) / 20 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "SolidColorPattern 属性计数超出剩余字节或限额",
+                ));
+            }
+            let mut attributes = Vec::new();
+            for _ in 0..count {
+                let id = read_i32_le(reader)?;
+                let value = match read_padded_variant_object_stream_10_1(reader, max_bytes, refs) {
+                    Ok(value) => value,
+                    Err(error) if error.kind() == ErrorKind::Unsupported => return Ok(None),
+                    Err(error) => return Err(error),
+                };
+                attributes.push((id, value));
+            }
+            Some(SolidColorPattern10_1 {
+                version,
+                declared_count,
+                attributes,
+            })
+        }
+        ObjectEntry10_1::BackReference {
+            class_id: SOLID_COLOR_PATTERN_CLASS_ID,
+            ..
+        } => None,
+        _ => return Ok(None),
+    };
+    Ok(Some(BasicFillSymbol10_1 {
+        version,
+        effect_list_version,
+        effect_count,
+        pattern,
+        pattern_body,
+        trailing_value: read_i32_le(reader)?,
+    }))
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct RepresentationRuleBody10_1 {
     pub version: u16,
@@ -563,6 +661,7 @@ pub struct RepresentationRuleBody10_1 {
     pub effect_count: i32,
     pub leading_value: i32,
     pub layer_count: i32,
+    pub layers: Vec<RepresentationRuleLayer10_1>,
     pub override_count: i32,
     pub overrides: Vec<RepresentationRuleOverride10_1>,
     pub order_count: i32,
@@ -579,6 +678,8 @@ pub struct RepresentationRuleOverride10_1 {
 fn read_representation_rule_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
 ) -> io::Result<Option<RepresentationRuleBody10_1>> {
     let version = read_signed_symbol_version(reader, 1, "RepresentationRule", reader.position())?;
     let effect_list_version =
@@ -589,8 +690,34 @@ fn read_representation_rule_body_10_1(
     }
     let leading_value = read_i32_le(reader)?;
     let layer_count = read_i32_le(reader)?;
-    if layer_count > 0 {
-        return Ok(None);
+    let count = layer_count.max(0) as usize;
+    if count > reader.remaining().min(max_bytes) / 16 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "RepresentationRule 符号层计数超出剩余字节或限额",
+        ));
+    }
+    let mut layers = Vec::new();
+    for _ in 0..count {
+        let entry = read_object_entry_10_1(reader, refs)?;
+        let fill = match entry {
+            ObjectEntry10_1::NewObject {
+                class_id: BASIC_FILL_SYMBOL_CLASS_ID,
+                ..
+            } if depth > 1 => {
+                let Some(body) = read_basic_fill_symbol_10_1(reader, max_bytes, refs, depth - 1)?
+                else {
+                    return Ok(None);
+                };
+                Some(body)
+            }
+            ObjectEntry10_1::BackReference {
+                class_id: BASIC_FILL_SYMBOL_CLASS_ID,
+                ..
+            } => None,
+            _ => return Ok(None),
+        };
+        layers.push(RepresentationRuleLayer10_1 { entry, fill });
     }
     let override_count = read_i32_le(reader)?;
     let overrides_len = override_count.max(0) as usize;
@@ -623,6 +750,7 @@ fn read_representation_rule_body_10_1(
         effect_count,
         leading_value,
         layer_count,
+        layers,
         override_count,
         overrides,
         order_count,
@@ -2111,7 +2239,12 @@ pub fn read_symbol_slot_full_10_1(
                         class_id: REPRESENTATION_RULE_CLASS_ID,
                         ..
                     } if depth > 1 => {
-                        let Some(body) = read_representation_rule_body_10_1(&mut trial, max_bytes)?
+                        let Some(body) = read_representation_rule_body_10_1(
+                            &mut trial,
+                            max_bytes,
+                            &mut staged,
+                            depth - 1,
+                        )?
                         else {
                             return Ok(SymbolSlotFull10_1::Unsupported { class_id, key });
                         };
