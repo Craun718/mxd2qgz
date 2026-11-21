@@ -467,6 +467,7 @@
       - [x] 闭合 IDatasetName 槽其余实现类（GdbCore 范围）：MemoryRelationshipClassName `{6DBA211B}`/QueryTableName `{793873DE}`（版本门无符号，0 被原生拒绝）/RelQueryTableName `{DAB3EE10}`/DBTableName `{4C9307B2}`（无版本字段）四类体闭合；方法学修正：RTTI BCDD 数组会产生伪 COL，候选虚表必须以 GetClassID 反编译写出 CLSID 收尾；FeatureQueryName/TableQueryName（独立确认的 IPersistStream 形态）与 ObjectClassName 及其他模块实现另列开放项，见 [研究记录](docs/arcmap-10.1-dataset-name-slots.md)。
       - [x] 接入 FeatureBookmark IName 槽的 FgdbFeatureClassName、FeatureQueryName 与 TableQueryName，见 [书签名称接线](docs/mxd-terra-round9-bookmark.md#filegdb-与查询名称的后续接线)。
       - [x] 接入 FeatureBookmark 的 AMSDatasetName，读取 ATL BSTR 与 OLE 内嵌 WorkspaceName，保留工作空间内部的 ObjectStream 共享键。[跟踪工作空间取证](docs/mxd-terra-round9-bookmark.md#trackingworkspace-的-amsdatasetname)
+      - [x] 接入 FeatureBookmark 的 ObjectClassName 与 QueryTableName，分别复用 FdbTableName 和查询名称读取器；未知查询描述停止时整书签回滚，见[书签续查](docs/mxd-terra-round9-bookmark.md#objectclassname-与-querytablename-的后续接线)。
       - [ ] 补齐 FeatureBookmark 中尚未核对的 IName 实现。原生先调用 IName::Open，再对返回对象查询 IFeatureClass。[书签续查](docs/mxd-terra-round9-bookmark.md)
       - [x] 在 FeatureBookmark 和 CustomOverlayGrid 中读取 RasterCatalogName 与 RelQueryTableName。[名称槽取证](docs/mxd-terra-round9-bookmark.md#栅格目录与关系查询名称)
       - [x] 闭合 FDOGraphicsLayer 版本 4 探测分支：三依赖降为两项并全部定位闭合（整流绝对 0 访问成立单独已足；IObjectStream QI 门控主流键读、分支 B 经返回接口读键且前后无条件 Seek 复位）；「不实现」结论维持，见 [研究记录](docs/arcmap-10.1-save-side.md)。

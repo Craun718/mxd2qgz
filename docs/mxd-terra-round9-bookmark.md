@@ -78,6 +78,38 @@ v3 尾字段、后续书签名、未知关系类与截断回滚。合成 MapFram
 尚未通过结构遍历确认它在书签槽内出现，两种查询名称也没有类标识命中。
 其余 IName 实现仍需核对，软件实际打开和人工验收待补。
 
+## ObjectClassName 与 QueryTableName 的后续接线
+
+2026-11-21 继续按书签宿主核对两类已闭合名称体。证据仍为 Desktop
+10.1.0.3035 的静态反编译和合成流，没有在 ArcMap/QGIS 中打开，也没有在
+真实书签中观察到这两类新对象。
+
+- ObjectClassName `{905CEC64-0B2C-11D4-A060-00C04F6BDD84}` 的 GdbCore
+  注册工厂初始化位于 `0x70a808c5`，写入的类名是 `ObjectClassName`；
+  工厂实际创建实例的 RTTI 为 `.?AVFdbTableName@@`。其持久化因此复用
+  TableName/FdbTableName 的 GdbCoreLib `FdbDatasetName::Load/Save` 跳板
+  `0x70a63662/0x70a63668`，对应导出 `0x70d4e980/0x70d4ea10`：有符号版本
+  门（本读取器保守拒绝负值）、三条字符串和 IWorkspaceName 槽。书签读取器
+  复用 `read_table_name_body_10_1`，但保留
+  `BookmarkNameEntry10_1::ObjectClassName`，避免把流内身份折叠为
+  `TableName`。参考样本和已遍历介质对象中没有该类书签实例。
+- QueryTableName `{793873DE-C0BB-48F4-A6BF-F6F83FA3C1BC}` 由 GdbCore
+  GetClassID `0x709329d0`、Load `0x70932a10`、Save `0x70932ae0` 定名。
+  Load 的无符号版本门仅接受 1/2；体依次为三条字符串、IWorkspaceName
+  槽和 IQueryDescription 槽。工作空间只接入空值、回引和已闭合
+  WorkspaceName；查询描述只保留空值与回引，新对象没有已确认体，作为停止点
+  返回 `Unsupported`。
+
+`tests/terra_round9_bookmark.rs` 新增 ObjectClassName 的空工作空间、回引、
+新 WorkspaceName 和逐前缀截断测试，以及 QueryTableName v1/v2、查询槽
+空值/回引、未知查询描述和逐前缀截断测试。所有失败均断言书签游标停在 0、
+引用表不变。定向测试 13 项通过，`cargo fmt --check` 通过。
+
+原生 FeatureBookmark 在 `LoadObject` 后调用 IName::Open，再对返回对象查询
+IFeatureClass；本次仍只校验 IPersistStream 对象体，不模拟打开数据源、对象
+替换、Open 或 QI。因此能够完整读取名称体不等于该名称在 10.1 中一定能返回
+IFeatureClass。其余已注册 IName 实现和真实书签运行结果仍作独立开放项。
+
 ## TrackingWorkspace 的 AMSDatasetName
 
 Desktop 介质中的 `TrackingWorkspace.dll` 为 PE32 x86，版本资源的文件版本和产品

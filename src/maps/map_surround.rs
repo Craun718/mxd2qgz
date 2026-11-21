@@ -59,8 +59,9 @@
 //! （`this+4`，IFeatureBookmark.FeatureId，原样保留）→ ③ `LoadObject`（请求 IID
 //! `{4BA33331-…}` IName，名称对象）→ ④ String（书签名称）。Save
 //! `0x793b5d70` 恒写版本 1（`DAT_79480e94`）+ int32 + `SaveObject` +
-//! `String::Write`，对称。名称对象支持 FeatureClassName 和 TableName 的
-//! 保守子集；证据与版本门差异见 `docs/mxd-terra-round9-bookmark.md`。
+//! `String::Write`，对称。名称对象按已闭合且完整消费的实现分派，包括要素
+//! 类、表类、查询表和事件源等；证据与版本门差异见
+//! `docs/mxd-terra-round9-bookmark.md`。
 //!
 //! ## Legend（图例，已确认前缀）
 //!
@@ -130,16 +131,19 @@ use crate::maps::map_surround_family::{
     FamilyStop10_1, LEGEND_FORMAT_CLASS_ID as FAMILY_LEGEND_FORMAT_CLASS_ID, LegendFormatBody10_1,
     read_legend_format_body_10_1,
 };
-use crate::maps::standalone_table::{TABLE_NAME_CLASS_ID, read_table_name_body_10_1};
+use crate::maps::standalone_table::{
+    OBJECT_CLASS_NAME_CLASS_ID, TABLE_NAME_CLASS_ID, read_table_name_body_10_1,
+};
 use crate::objects::ams_dataset_name::{
     AMS_DATASET_NAME_CLASS_ID, AmsDatasetName10_1, read_ams_dataset_name_10_1,
 };
 use crate::objects::dataset_name_more::{
     FEATURE_QUERY_NAME_CLASS_ID, FeatureQueryNameBody10_1, NETCDF_FEATURE_CLASS_NAME_CLASS_ID,
-    NetCdfFeatureClassNameBody10_1, REL_QUERY_TABLE_NAME_CLASS_ID, RelQueryTableNameBody10_1,
-    TABLE_QUERY_NAME_CLASS_ID, TableQueryNameBody10_1, XY_EVENT_SOURCE_NAME_CLASS_ID,
-    XyEventSourceNameBody10_1, read_feature_query_name_body_10_1,
-    read_netcdf_feature_class_name_body_10_1, read_rel_query_table_name_body_10_1,
+    NetCdfFeatureClassNameBody10_1, QUERY_TABLE_NAME_CLASS_ID, QueryTableNameBody10_1,
+    REL_QUERY_TABLE_NAME_CLASS_ID, RelQueryTableNameBody10_1, TABLE_QUERY_NAME_CLASS_ID,
+    TableQueryNameBody10_1, XY_EVENT_SOURCE_NAME_CLASS_ID, XyEventSourceNameBody10_1,
+    read_feature_query_name_body_10_1, read_netcdf_feature_class_name_body_10_1,
+    read_query_table_name_body_10_1, read_rel_query_table_name_body_10_1,
     read_table_query_name_body_10_1, read_xy_event_source_name_body_10_1,
 };
 use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
@@ -281,6 +285,11 @@ pub enum BookmarkNameEntry10_1 {
     RasterCatalogName(Box<FeatureClassNamePrefix10_1>),
     /// 内联表名称对象；不代表能够打开为要素类。
     TableName(Box<crate::maps::standalone_table::TableNameBody10_1>),
+    /// ObjectClassName 工厂实际创建的 FdbTableName；持久化体与 TableName
+    /// 相同，但保留流内身份。
+    ObjectClassName(Box<crate::maps::standalone_table::TableNameBody10_1>),
+    /// 查询表名称；查询描述新对象未闭合时作为停止点。
+    QueryTableName(Box<QueryTableNameBody10_1>),
     FeatureQueryName(Box<FeatureQueryNameBody10_1>),
     NetCdfFeatureClassName(Box<NetCdfFeatureClassNameBody10_1>),
     XyEventSourceName(Box<XyEventSourceNameBody10_1>),
@@ -706,18 +715,46 @@ pub fn read_feature_bookmark_10_1(
                 BookmarkNameEntry10_1::FeatureClassName(Box::new(body))
             }
         }
-        ObjectEntry10_1::NewObject { class_id, .. } if class_id == TABLE_NAME_CLASS_ID => {
+        ObjectEntry10_1::NewObject {
+            class_id: class_id @ (TABLE_NAME_CLASS_ID | OBJECT_CLASS_NAME_CLASS_ID),
+            ..
+        } => {
             let (body, stopped) =
                 read_table_name_body_10_1(&mut trial, &mut trial_table, max_bytes)?;
             if stopped {
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,
                     format!(
-                        "FeatureBookmark 名称对象槽 offset 0x{name_offset:x}: TableName 未读完"
+                        "FeatureBookmark 名称对象槽 offset 0x{name_offset:x}: {} 未读完",
+                        if class_id == OBJECT_CLASS_NAME_CLASS_ID {
+                            "ObjectClassName"
+                        } else {
+                            "TableName"
+                        }
                     ),
                 ));
             }
-            BookmarkNameEntry10_1::TableName(Box::new(body))
+            if class_id == OBJECT_CLASS_NAME_CLASS_ID {
+                BookmarkNameEntry10_1::ObjectClassName(Box::new(body))
+            } else {
+                BookmarkNameEntry10_1::TableName(Box::new(body))
+            }
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: QUERY_TABLE_NAME_CLASS_ID,
+            key,
+        } => {
+            let body =
+                read_query_table_name_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?;
+            if let Some(stop) = &body.stop {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!(
+                        "FeatureBookmark 名称对象槽 offset 0x{name_offset:x}: QueryTableName 未读完（{stop:?}）"
+                    ),
+                ));
+            }
+            BookmarkNameEntry10_1::QueryTableName(Box::new(body))
         }
         ObjectEntry10_1::NewObject {
             class_id: NETCDF_FEATURE_CLASS_NAME_CLASS_ID,

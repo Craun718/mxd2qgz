@@ -5,12 +5,14 @@ use mxd2qgz::{
     },
     maps::{
         map_surround::{BookmarkNameEntry10_1, read_feature_bookmark_10_1},
-        standalone_table::TABLE_NAME_CLASS_ID,
+        standalone_table::{OBJECT_CLASS_NAME_CLASS_ID, TABLE_NAME_CLASS_ID},
     },
     objects::{
+        dataset_name::WorkspaceNameSlot10_1,
         dataset_name_more::{
-            DatasetNameMoreSlot10_1, FEATURE_QUERY_NAME_CLASS_ID, REL_QUERY_TABLE_NAME_CLASS_ID,
-            RELATIONSHIP_CLASS_NAME_CLASS_ID, TABLE_QUERY_NAME_CLASS_ID,
+            DatasetNameMoreSlot10_1, FEATURE_QUERY_NAME_CLASS_ID, QUERY_TABLE_NAME_CLASS_ID,
+            REL_QUERY_TABLE_NAME_CLASS_ID, RELATIONSHIP_CLASS_NAME_CLASS_ID,
+            TABLE_QUERY_NAME_CLASS_ID, UnknownSlot10_1,
         },
         workspace_name::WorkspaceNameEntry10_1,
     },
@@ -166,9 +168,13 @@ fn bookmark_reads_relationship_query_and_its_relationship_reference() {
 }
 
 fn fixture(workspace: &[u8]) -> Vec<u8> {
+    fixture_for(TABLE_NAME_CLASS_ID, workspace)
+}
+
+fn fixture_for(class_id: [u8; 16], workspace: &[u8]) -> Vec<u8> {
     let mut b = 1u16.to_le_bytes().to_vec();
     b.extend(42i32.to_le_bytes());
-    b.extend(TABLE_NAME_CLASS_ID);
+    b.extend(class_id);
     b.extend(17u32.to_le_bytes());
     b.extend(1u16.to_le_bytes());
     for _ in 0..3 {
@@ -179,6 +185,160 @@ fn fixture(workspace: &[u8]) -> Vec<u8> {
     b.extend(2u32.to_le_bytes());
     b.extend([0, 0]);
     b
+}
+
+#[test]
+fn object_class_name_keeps_distinct_identity_and_transaction_boundary() {
+    let mut new_workspace = {
+        use mxd2qgz::objects::workspace_name::WORKSPACE_NAME_CLASS_ID;
+        let mut bytes = WORKSPACE_NAME_CLASS_ID.to_vec();
+        bytes.extend(18_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend([2, 0, 0, 0, 0, 0].repeat(3));
+        bytes.extend([0; 16]);
+        bytes.push(0);
+        bytes.extend(0_u32.to_le_bytes());
+        bytes
+    };
+    let null = vec![0; 16];
+    let back_reference = {
+        let mut bytes = vec![0x31; 16];
+        bytes.extend(7_u32.to_le_bytes());
+        bytes
+    };
+    let fixtures = [
+        (null, false),
+        (back_reference, false),
+        (std::mem::take(&mut new_workspace), true),
+    ];
+
+    for (workspace, is_new) in fixtures {
+        let data = fixture_for(OBJECT_CLASS_NAME_CLASS_ID, &workspace);
+        let mut refs = RefTable10_1::new();
+        refs.register(7);
+        let before = refs.clone();
+        let mut reader = Reader::new(&data);
+        let bookmark = read_feature_bookmark_10_1(&mut reader, 4096, &mut refs).unwrap();
+        let BookmarkNameEntry10_1::ObjectClassName(body) = bookmark.name_object else {
+            panic!("ObjectClassName 不得折叠为 TableName");
+        };
+        assert_eq!(body.version, 1);
+        assert_eq!(body.strings, [String::new(), String::new(), String::new()]);
+        assert_eq!(body.fgdb_wrapper, None);
+        assert!(match body.workspace {
+            WorkspaceNameEntry10_1::Null => !is_new,
+            WorkspaceNameEntry10_1::BackReference { key: 7, .. } => !is_new,
+            WorkspaceNameEntry10_1::BackReference { .. } => false,
+            WorkspaceNameEntry10_1::NewObject(workspace) => is_new && workspace.key == 18,
+            WorkspaceNameEntry10_1::Unsupported { .. } => false,
+        });
+        assert_eq!(bookmark.name, "");
+        assert_eq!(reader.position(), data.len());
+        assert!(refs.contains(17));
+        assert_eq!(refs.contains(18), is_new);
+
+        for end in 0..data.len() {
+            let mut reader = Reader::new(&data[..end]);
+            let mut refs = before.clone();
+            assert!(
+                read_feature_bookmark_10_1(&mut reader, 4096, &mut refs).is_err(),
+                "ObjectClassName 前缀 {end} 应失败"
+            );
+            assert_eq!(reader.position(), 0);
+            assert_eq!(refs, before);
+        }
+    }
+
+    let mut unknown_workspace = vec![0x45; 16];
+    unknown_workspace.extend(19_u32.to_le_bytes());
+    let data = fixture_for(OBJECT_CLASS_NAME_CLASS_ID, &unknown_workspace);
+    let mut reader = Reader::new(&data);
+    let mut refs = RefTable10_1::new();
+    assert_eq!(
+        read_feature_bookmark_10_1(&mut reader, 4096, &mut refs)
+            .unwrap_err()
+            .kind(),
+        std::io::ErrorKind::Unsupported
+    );
+    assert_eq!(reader.position(), 0);
+    assert_eq!(refs, RefTable10_1::new());
+}
+
+#[test]
+fn query_table_name_reads_versions_and_rolls_back_unknown_query_description() {
+    const EMPTY: [u8; 6] = [2, 0, 0, 0, 0, 0];
+    const NAME: [u8; 8] = [4, 0, 0, 0, b'Q', 0, 0, 0];
+
+    for version in [1_u16, 2] {
+        let mut data = 1_u16.to_le_bytes().to_vec();
+        data.extend(42_i32.to_le_bytes());
+        data.extend(QUERY_TABLE_NAME_CLASS_ID);
+        data.extend(17_u32.to_le_bytes());
+        data.extend(version.to_le_bytes());
+        data.extend(EMPTY.repeat(3));
+        data.extend([0; 16]);
+        let query_offset = data.len();
+        if version == 1 {
+            data.extend([0; 16]);
+        } else {
+            data.extend([0x44; 16]);
+            data.extend(8_u32.to_le_bytes());
+        }
+        data.extend(NAME);
+        let end = data.len();
+        data.push(0x5a);
+
+        let mut refs = RefTable10_1::new();
+        refs.register(8);
+        let before = refs.clone();
+        let mut reader = Reader::new(&data);
+        let bookmark = read_feature_bookmark_10_1(&mut reader, 4096, &mut refs).unwrap();
+        let BookmarkNameEntry10_1::QueryTableName(body) = bookmark.name_object else {
+            panic!("应读取 QueryTableName");
+        };
+        assert_eq!(body.version, version);
+        assert_eq!(
+            [&body.string_a, &body.string_b, &body.string_c],
+            [&String::new(), &String::new(), &String::new()]
+        );
+        assert_eq!(body.workspace, WorkspaceNameSlot10_1::Null);
+        assert!(match body.query_slot {
+            UnknownSlot10_1::Null => version == 1,
+            UnknownSlot10_1::BackReference { class_id, key } => {
+                version == 2 && class_id == [0x44; 16] && key == 8
+            }
+            UnknownSlot10_1::Unsupported { .. } => false,
+        });
+        assert_eq!(bookmark.name, "Q");
+        assert_eq!(reader.position(), end);
+        assert_eq!(reader.read_bytes(1).unwrap(), [0x5a]);
+        assert!(refs.contains(17));
+
+        for cut in 0..data.len() - 1 {
+            let mut reader = Reader::new(&data[..cut]);
+            let mut refs = before.clone();
+            assert!(
+                read_feature_bookmark_10_1(&mut reader, 4096, &mut refs).is_err(),
+                "QueryTableName v{version} 前缀 {cut} 应失败"
+            );
+            assert_eq!(reader.position(), 0);
+            assert_eq!(refs, before);
+        }
+
+        let mut unknown = data.clone();
+        unknown[query_offset..query_offset + 16].fill(0x66);
+        unknown[query_offset + 16..query_offset + 20].copy_from_slice(&19_u32.to_le_bytes());
+        let mut reader = Reader::new(&unknown);
+        let mut refs = before.clone();
+        assert_eq!(
+            read_feature_bookmark_10_1(&mut reader, 4096, &mut refs)
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::Unsupported
+        );
+        assert_eq!(reader.position(), 0);
+        assert_eq!(refs, before);
+    }
 }
 
 #[test]
