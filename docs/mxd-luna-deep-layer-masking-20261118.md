@@ -349,3 +349,9 @@ BasemapLayer.dll 10.1.0.3035 的 `0x6b6436b0 / 0x6b6436f0` 从当前集合返回
 同版 NetworkLayer.dll 的持久化虚表 `0x7b2a9ed4` 将 Load/Save 定位到 `0x7b2903d0 / 0x7b2908a0`。Ghidra 补充导出与原始指令确认 Load 读取有符号上限 0 的 short、AfCore String，再经 `0x7b291140` 以 `0x7b2a9fa4` 的 IName IID 调用 LoadObject。读取器复用 NALayer 的 NetworkDatasetName 分派。构造测试覆盖名称回引和逐字节截断。
 
 两份 SanFrancisco SDK 工程的键 5053 从 `/Maps:0xd05b4` 开始读到名称 Streets_ND，消费网络名称对象及嵌套键后停于 `0xd07a6`。Map 根尾与 PageLayout 对象和打印尾部均已读取。NetworkLayer 后续对象和 ArcMap/QGIS 人工验收仍待进行。
+
+### NetworkLayer 的显示属性与渲染器计数
+
+NetworkLayer.dll 10.1.0.3035 的 Load `0x7b2903d0` 在名称之后请求 `0x7b2a9fe4` 的 ISpatialReference 和 `0x7b2aa004` 的 IDisplayFilter。其后由 Ghidra 导出和 Save `0x7b2908a0` 核对 short、String、short、两个 double、两个 short、double、ExtensionHelper 序列、String、两个 double，以及 LONG 渲染器计数。读取器复用现有空间参考、显示过滤器和扩展分派，截断时回滚这个字段段落的游标和键。
+
+两份 SanFrancisco SDK 工程从 `/Maps:0xd07a6` 读取 GCS 键 30 回引和空过滤器，读出渲染器计数 5，停于 `0xd080e` 的首项 short。随后对象键 5057 对应 NetworkDirtyAreaRenderer。渲染器循环和 ArcMap/QGIS 人工验收尚待处理。
