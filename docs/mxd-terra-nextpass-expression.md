@@ -252,3 +252,18 @@ LONG、short（`0x785639db..0x78563a4a`）；Save 写 v2。其余接受版本
 无后继体。读取器保留上述原始值，沿宿主表登记对象键。
 构造测试验证 v1 截断与 v2 非零字段及父对象边界，实际偏移单位及
 ArcMap/QGIS 人工验收仍待核对。
+
+### Maplex 旋转属性
+
+同版 LabelPlacement.dll 的 MaplexRotationProperties 主 QI
+`0x7856c7a0` 对第五槽 IID 常量 `0x7857ecd8` 返回对象 `+0x18`。
+RTTI 定位持久化虚表 `0x7857f128`。GetClassID、Load 和 Save 的
+调整器分别跳转到 `0x7856cb70`、`0x7856cbb0`、`0x7856cc70`。
+CLSID 常量 `0x7857c6e4` 为 `20664808-BBA1-CCD2-8967-F453C9ED732A`，
+与介质登记表一致。Load 拒绝有符号版本大于 2，之后依次读 short、
+LONG、AfCore String 和 short；v2 增加一个 short
+（`0x7856cbf8..0x7856cc4c`）。Save 在 `0x7856cc90` 引用的
+版本常量为 2。
+
+合成放置体覆盖 v1/v2 旋转对象、非空字符串、对象键与后继字段，
+另测逐字节截断和超限版本。各标量的业务语义及真实工程验收仍待核对。

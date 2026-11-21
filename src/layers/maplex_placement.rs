@@ -24,6 +24,20 @@ const MAPLEX_OFFSET_ALONG_LINE_PROPERTIES_CLASS_ID: [u8; 16] = [
     0x08, 0x48, 0x66, 0x20, 0xa1, 0x4f, 0xd1, 0xc1, 0x8c, 0x0a, 0x08, 0xa2, 0xc9, 0xed, 0x53, 0x1a,
 ];
 
+const MAPLEX_ROTATION_PROPERTIES_CLASS_ID: [u8; 16] = [
+    0x08, 0x48, 0x66, 0x20, 0xa1, 0xbb, 0xd2, 0xcc, 0x89, 0x67, 0xf4, 0x53, 0xc9, 0xed, 0x73, 0x2a,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaplexRotation10_1 {
+    pub version: i16,
+    pub leading_short: i16,
+    pub long: i32,
+    pub text: String,
+    pub trailing_short: i16,
+    pub v2_short: Option<i16>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaplexOffsetAlongLine10_1 {
     pub version: i16,
@@ -65,6 +79,7 @@ pub struct MaplexPlacement10_1 {
     pub raw_body: Vec<u8>,
     /// 顺序固定，版本中不存在或因前置停止未读到时为 None。
     pub slots: [Option<ObjectEntry10_1>; 6],
+    pub rotation: Option<MaplexRotation10_1>,
     pub offset_along_line: Option<MaplexOffsetAlongLine10_1>,
     pub stacking: Option<MaplexLabelStacking10_1>,
     pub point_priorities: Option<PointPlacementPrioritiesBody10_1>,
@@ -97,6 +112,7 @@ pub(super) fn read_maplex_placement(
         version,
         raw_body: Vec::new(),
         slots: [None; 6],
+        rotation: None,
         offset_along_line: None,
         stacking: None,
         point_priorities: None,
@@ -188,6 +204,9 @@ fn read_slot(
             }
             (3, MAPLEX_OFFSET_ALONG_LINE_PROPERTIES_CLASS_ID) => {
                 body.offset_along_line = Some(read_offset_along_line(&mut trial, max)?);
+            }
+            (4, MAPLEX_ROTATION_PROPERTIES_CLASS_ID) => {
+                body.rotation = Some(read_rotation(&mut trial, max)?);
             }
             (5, PROPERTY_SET_CLASS_ID) => {
                 body.properties = Some(read_property_set_object_stream_10_1(
@@ -307,9 +326,47 @@ fn read_offset_along_line(
     Ok(body)
 }
 
+fn read_rotation(reader: &mut Reader<'_>, max: usize) -> io::Result<MaplexRotation10_1> {
+    // LabelPlacement.dll 0x7856cbb0：v2 在共有字段末尾追加一个 short。
+    let version = reader.read_u16_le()? as i16;
+    if version > 2 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("MaplexRotationProperties 版本 {version} 超出 2"),
+        ));
+    }
+    Ok(MaplexRotation10_1 {
+        version,
+        leading_short: reader.read_u16_le()? as i16,
+        long: reader.read_u32_le()? as i32,
+        text: read_stream_string_10_1(reader, max)?,
+        trailing_short: reader.read_u16_le()? as i16,
+        v2_short: (version == 2)
+            .then(|| reader.read_u16_le().map(|value| value as i16))
+            .transpose()?,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rotation_rejects_truncated_version_two_tail_and_unknown_versions() {
+        let mut bytes = 2_i16.to_le_bytes().to_vec();
+        bytes.extend([0; 14]);
+        for cut in 0..bytes.len() {
+            assert!(read_rotation(&mut Reader::new(&bytes[..cut]), 64).is_err());
+        }
+        assert_eq!(
+            read_rotation(&mut Reader::new(&bytes), 64)
+                .unwrap()
+                .v2_short,
+            Some(0)
+        );
+        bytes[..2].copy_from_slice(&3_i16.to_le_bytes());
+        assert!(read_rotation(&mut Reader::new(&bytes), 64).is_err());
+    }
 
     #[test]
     fn offset_along_line_reads_legacy_rows_and_rejects_truncation() {
@@ -397,9 +454,23 @@ mod tests {
                 bytes.extend(5_i32.to_le_bytes());
                 bytes.extend((-1_i16).to_le_bytes());
             }
+            if version >= 10 {
+                bytes.extend([0; 4]);
+            }
+            if version >= 12 {
+                bytes.extend(MAPLEX_ROTATION_PROPERTIES_CLASS_ID);
+                bytes.extend(16_u32.to_le_bytes());
+                let rotation_version = if version == 12 { 1_i16 } else { 2_i16 };
+                bytes.extend(rotation_version.to_le_bytes());
+                bytes.extend((-1_i16).to_le_bytes());
+                bytes.extend(42_i32.to_le_bytes());
+                bytes.extend([8, 0, 0, 0, b'A', 0, b'N', 0, b'G', 0, 0, 0]);
+                bytes.extend(3_i16.to_le_bytes());
+                if rotation_version == 2 {
+                    bytes.extend((-7_i16).to_le_bytes());
+                }
+            }
             for (first_version, len) in [
-                (10, 4),
-                (12, 16),
                 (13, 4),
                 (15, 4),
                 (16, 2),
@@ -442,6 +513,15 @@ mod tests {
                 assert_eq!(offset.trailing_long, 5);
                 assert_eq!(offset.trailing_short, -1);
             }
+            if version >= 12 {
+                let rotation = body.rotation.unwrap();
+                assert_eq!(rotation.text, "ANG");
+                assert_eq!(rotation.leading_short, -1);
+                assert_eq!(rotation.long, 42);
+                assert_eq!(rotation.trailing_short, 3);
+                assert_eq!(rotation.v2_short, (version > 12).then_some(-7));
+            }
+            assert_eq!(refs.contains(16), version >= 12);
             assert_eq!(refs.contains(15), version >= 9);
             assert!(refs.contains(14));
             assert!(refs.contains(11));

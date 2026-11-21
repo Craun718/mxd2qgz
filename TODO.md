@@ -805,6 +805,7 @@
   - [x] 接入 Maplex 放置属性的版本化标量区段、点放置优先级和 v22 PropertySet 路径。[读取验证](docs/mxd-terra-nextpass-expression.md#maplex-放置属性读取器)
   - [x] 接入 MaplexLabelStackingProperties 及其分隔符列表和对象键。[原生取证](docs/mxd-terra-nextpass-expression.md#maplex-标注堆叠属性)
   - [x] 接入 MaplexOffsetAlongLineProperties 的旧兼容列表和 v2 固定字段。[沿线偏移取证](docs/mxd-terra-nextpass-expression.md#maplex-沿线偏移)
+  - [x] 接入 MaplexRotationProperties 的字符串、标量和 v2 尾字段。[旋转属性取证](docs/mxd-terra-nextpass-expression.md#maplex-旋转属性)
 - [ ] 转换标注位置/放置属性。
 - [x] 解析 FeatureLayer 总开关与 LELP 标注类开关的原始值。[原生取证及样本](docs/mxd-terra-nextpass-expression.md#图层与标注类的显示开关)
 - [ ] 转换标注可见性。
