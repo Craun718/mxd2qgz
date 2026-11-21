@@ -404,7 +404,28 @@ fn read_group_layer_10_1(
                             && crate::maps::layer_masking::is_unparsed_layer_without_masking_10_1(
                                 class_id,
                             );
-                        if complete && !skip_opaque {
+                        let network_layer = matches!(
+                            class_id,
+                            super::na_layer::NA_LAYER_CLASS_ID
+                                | crate::maps::layer_masking::NETWORK_LAYER_CLASS_ID
+                        );
+                        if skip_opaque && network_layer && (b == 0 || b == a) {
+                            // 已知图层体完整时登记内部键；未知分支仍按封装同步。
+                            let mut candidate = trial.clone();
+                            let mut region = candidate.read_region(full_body_length)?;
+                            let mut refs = trial_table.clone();
+                            if let Ok(body) = read_complete_layer_body_10_1(
+                                &mut region,
+                                class_id,
+                                max_bytes,
+                                &mut refs,
+                            ) && region.remaining() == 0
+                            {
+                                trial = candidate;
+                                trial_table = refs;
+                                parsed = Some(Box::new(body));
+                            }
+                        } else if complete && !skip_opaque {
                             let mut region = trial.read_region(full_body_length)?;
                             let body = if class_id == RASTER_LAYER_CLASS_ID {
                                 LayerBodyPrefix10_1::RasterLayer(
@@ -784,4 +805,49 @@ fn read_group_layer_tail(
         v10_shorts,
         display_filter,
     })
+}
+
+#[cfg(test)]
+mod network_child_tests {
+    use super::*;
+
+    #[test]
+    fn complete_bounded_network_child_registers_nested_name_key() {
+        let empty = [2, 0, 0, 0, 0, 0];
+        let mut child = crate::maps::layer_masking::NETWORK_LAYER_CLASS_ID.to_vec();
+        child.extend(91_u32.to_le_bytes());
+        child.extend(0_u16.to_le_bytes());
+        child.extend(empty);
+        child.extend([
+            0x6a, 0xfe, 0x67, 0x81, 0x92, 0xe9, 0xcb, 0x4e, 0xb6, 0xae, 0xe5, 0xdf, 0xe4, 0x65,
+            0x52, 0x47,
+        ]);
+        child.extend(92_u32.to_le_bytes());
+        child.extend(1_u16.to_le_bytes());
+        child.extend(empty);
+        child.extend(empty);
+        child.extend([0; 32]); // 名称下的两个对象槽。
+        child.extend([0; 32 + 2]);
+        child.extend(empty);
+        child.extend([0; 2 + 16 + 4 + 8 + 4]);
+        child.extend(empty);
+        child.extend([0; 16 + 4]);
+
+        let mut bytes = 11_u16.to_le_bytes().to_vec();
+        bytes.extend(empty);
+        bytes.extend([0; 6 + 16]);
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend((child.len() as u32).to_le_bytes());
+        bytes.extend(0_u32.to_le_bytes());
+        bytes.extend(child);
+        bytes.extend([0; 2 + 16 + 8 + 4]);
+        bytes.extend(empty);
+        bytes.extend([0; 2 + 16 + 2 + 6]);
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let group = read_group_layer_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+        assert_eq!(group.stop, GroupLayerStop10_1::Complete);
+        assert!(refs.contains(91) && refs.contains(92));
+        assert_eq!(reader.remaining(), 0);
+    }
 }

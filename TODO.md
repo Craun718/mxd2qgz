@@ -348,6 +348,7 @@
   - [x] 读取 NALayer 尾部 IEnvelope 槽中的新 Envelope 对象。
   - [x] 接入 NALayer 尾部已支持的非空 LayerLib 扩展。
   - [x] 接入普通 LoadObject 中可完整读取的 NALayer。
+  - [x] 组图层的有界网络子层完整读取时保留嵌套对象键。
   - [x] 读取 NAClosestFacilitySolver 的共用字段和 v4 专有尾段。[最近设施求解器取证](docs/mxd-luna-deep-layer-masking-20261118.md#最近设施求解器)
   - [x] 读取 NAServiceAreaSolver 的共用字段和版本尾段。[服务区求解器取证](docs/mxd-luna-deep-layer-masking-20261118.md#服务区求解器)
   - [x] 读取 NAODCostMatrixSolver 的版本映射及专有尾段。[OD 成本矩阵取证](docs/mxd-luna-deep-layer-masking-20261118.md#od-成本矩阵求解器)

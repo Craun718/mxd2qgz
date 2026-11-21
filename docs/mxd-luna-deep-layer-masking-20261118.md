@@ -409,3 +409,7 @@ NetworkAnalyst.dll 10.1.0.3035 的 NATraversalResult 主 QI `0x7af70300` 实现 
 ### 遍历结果的来源对象
 
 NetworkAnalyst.dll 10.1.0.3035 的 NATraversalResultSource 持久化虚表 `0x7afa3358` 将 Load/Save 对位到 `0x7af7ca20 / 0x7af7cc00`。Ghidra 导出确认有符号上限 0 的 short、AfCore String、三个四字节整数和普通对象槽。槽请求 `0x7afa33b4` 的 IDatasetName，复用既有名称体分派，未知或部分解析的名称对象使整个遍历结果回滚。构造测试在同一个结果中放入新来源、同键回引和后继标志，并逐字节验证截断不会登记新键。真实非空来源宿主及 ArcMap/QGIS 人工验收尚未验证。
+
+### 组图层内的有界网络子层
+
+FeatureLayer.dll 10.1.0.3035 的 GroupLayer::Load `0x6f711270` 在 v11 起通过 ExtraSafeReadObject 装入子层。NetworkLayer 与 NALayer 不消费遮罩记录，但其持久化对象体可以定义供后续对象引用的键。完整组读取器现在尝试在声明范围内消费这两类子层，只有确认体完整且到达边界才提交内部键。仍可按原规则同步未支持的分支。构造测试验证组内 NetworkLayer 的 NetworkDatasetName 键登记，既有测试继续覆盖有界未知网络体及回引。真实嵌套工程及 ArcMap/QGIS 人工验收尚未验证。
