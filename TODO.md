@@ -624,7 +624,13 @@
       - [x] 从比例尺解析结果读取已定性的 IScaleMarks 标量和 SteppedScaleLine 高度，覆盖旧版频率默认值。[刻度属性与边界](docs/mxd-terra-nextpass-scale.md#iscalemarks-尾段)
       - [x] 接入比例尺线两类对象的九种已确认 INumberFormat 实现。[数字格式槽取证](docs/mxd-terra-nextpass-scale.md#比例尺线数字格式槽)
       - [x] 接入 ScaleText 和四类填充比例尺的九种已确认 INumberFormat 实现。[槽位取证](docs/mxd-terra-nextpass-scale.md#比例尺文本和填充比例尺数字格式槽)
-      - [ ] 定性 F 轮 PCS/GCS/Unknown 域串与 Unknown 四串业务语义及填充来源；ISRPersistStream 的 GetPrecisionSizeMax（slot 8，写出 0x38）已定名；GCS `完整对象+0xc4` 非零守卫语义；容差公式 pe/sg 数值推导链，见 [研究记录](docs/arcmap-10.1-pcs-geometry-slots.md)。
+      - [ ] 定性 PCS/GCS 的四条域串及其填充来源。[空间参考取证](docs/arcmap-10.1-pcs-geometry-slots.md)
+      - [ ] 核对旧写方是否以 UnknownCoordinateSystem 的第二串保存 Alias。
+      - [ ] 定位 UnknownCoordinateSystem 字符串在编辑和创建路径中的其他填充来源。
+      - [ ] 定性 GCS 完整对象 `+0xc4` 的置位来源。
+      - [ ] 闭合坐标系容差的 pe/sg 数值推导链。[空间参考取证](docs/arcmap-10.1-pcs-geometry-slots.md)
+      - [x] 将 ISRPersistStream 槽 8 定名为 GetPrecisionSizeMax，输出 `0x38`。
+      - [x] 核对 10.1 UnknownCoordinateSystem 四条持久化字符串与 ISpatialReferenceInfo 属性的对应关系。[原生取证](docs/arcmap-10.1-pcs-geometry-slots.md#unknowncoordinatesystem-的四条持久化字符串)
       - [x] 确认 GCS 加载守卫也控制 IGeographicCoordinateSystemEdit 的接口查询。[类型库与原生分派](docs/mxd-terra-integrate-sr.md#gcs-守卫与槽位)
       - [x] 定性 G 轮三个静态观察：RandomColorRamp 的 Size 请求值读取后不回填，PictureFillSymbol 保存时计算的两个尺寸读取后不使用，MultiPart 的子渐变权重在旧版本默认 1.0；见 [DisplayCore 续查](docs/mxd-terra-host-color.md)。运行行为另验。
       - [x] 裁决 FL 后继段 ㊱ 六字节错位：原生 PreJoin 无保留头，前序 UID 少读四字节并误读空字符串导致累计错位六字节；已按 10.1 原生读写与样本边界修复并覆盖截断，见 [复核记录](docs/mxd-boundary-luna.md)。

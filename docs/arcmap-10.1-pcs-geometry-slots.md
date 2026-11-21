@@ -355,3 +355,27 @@ max(0.001/单位因子, 2.0/scale) 的复现值 ✓。该交叉验证为静态�
 | 「save 版本 <6 时 `pe_projcs_from_string`、域串 ANSI」（同上） | 版本门与编码如上更正；版本表补充 GCS [3,4,7,7]、Unknown [1,1,3] |
 | TODO「MXD 解析」第 76/77/78/149/161 行 | 接口 IID、标志语义、double 语义、ISpatialReference 槽实现类体（GCS/Unknown 分支）、CircularArc 持久化定位均闭合；「接入中间模型」仍开放（见接线建议） |
 | 「`.?AVCircularArc` RTTI 未命中，虚表未定位」（geometry 2026-11-15 第二轮未解决事项 4） | COM 类实现为 `ESRI::Arc`（RTTI `.?AVArc@ESRI@@`）；无持久化虚表，构造性不存在，事项闭合 |
+
+## UnknownCoordinateSystem 的四条持久化字符串
+
+用 objdump 复核同一份 x86 Geometry.dll 10.1.0.3035（SHA-256
+`c57d154f207ee249adc69136574cf274771370ff93a15eb0be5682ce828f0d47`）。
+主 QI `0x719eac95` 比较 `0x71a24884` 的
+`4DA0FE00-1DD2-11B2-BF49-08002022F573`，命中后跳至
+`0x719eaf50`，返回完整对象的 `+0x18`。构造器 `0x719edd44`
+给该子对象安装虚表 `0x71a2c134`。同版本 esriGeometry.olb 的
+TypeInfo 4 将接口定名为 ISpatialReferenceInfo，并给出下表的槽位。
+
+| 属性 | 槽位 | getter | 完整对象成员 | Save 中的流序号 |
+| --- | --- | --- | --- | --- |
+| Name | `+0x0c` | `0x719ec3d0` | `+0x84` | 1 |
+| Alias | `+0x10` | `0x719ec400` | `+0x78` | 无 |
+| Abbreviation | `+0x14` | `0x719ec450` | `+0x7c` | 2、3 |
+| Remarks | `+0x18` | `0x719ec480` | `+0x80` | 4 |
+
+构造器 `0x719eddeb–0x719ede24` 初始化 Alias、Abbreviation 和
+Remarks 为空串，Name 为 `Unknown`。Save 的四处成员读取分别在
+`0x719ed367`、`0x719ed38e`、`0x719ed3be`、`0x719ed3df`。
+Load 按上述相同顺序写成员，以第三串覆盖第二串。解析器保留原始四串。
+旧写方是否曾在第二串保存 Alias，以及编辑或创建路径能否改写这些值，
+仍待原生证据。ArcMap 10.1 人工验证尚未执行。

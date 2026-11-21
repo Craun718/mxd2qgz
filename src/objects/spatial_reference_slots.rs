@@ -141,9 +141,8 @@ pub struct UnknownCoordinateSystem10_1 {
     pub save_version: u16,
     /// 4 个 AfCore `String::Read` 布局字符串（流内顺序原样保留）。
     ///
-    /// 原生成员为 +0x54/+0x4c/+0x4c/+0x50：第 2、3 串写入同一成员，第 2 串
-    /// 在读取后实际被第 3 串覆盖（Load/Save 反编译逐行一致）；本读取器不做
-    /// 该合并，保留流内 4 串。
+    /// 10.1 写侧顺序为 Name、Abbreviation、Abbreviation、Remarks。
+    /// 原生读取用第三串覆盖第二串，解析结果保留流内四项。
     pub strings: [String; 4],
     /// 精度块：版本 ==1 为无标志 7 double（`flags` 恒 0），版本 >=2 为标志
     /// + 7 double；版本 0 为 `None`。
