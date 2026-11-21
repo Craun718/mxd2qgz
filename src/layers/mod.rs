@@ -28,6 +28,7 @@ pub mod legend_item;
 pub mod legend_item_family;
 pub(crate) mod na_class;
 pub mod na_layer;
+pub mod na_stop_renderer;
 pub mod patch;
 pub mod process_layer;
 pub mod raster_classify_renderer;

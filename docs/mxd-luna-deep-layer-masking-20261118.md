@@ -273,3 +273,9 @@ NetworkAnalyst.dll 10.1.0.3035（SHA-256 `8c4ebaee71aad63c25616aa806674018479829
 同版 NetworkAnalyst.dll 的 NALayer::Load `0x7af1ffc0` 在上下文返回后读取有符号 LONG，正数逐次调用普通 LoadObject，IID 常量 `0x7af9f5e0` 为 ILayer（`34C20002-4D3C-11D0-92D8-00805F7C28B0`）。Save `0x7af20be0` 从数组 `+0xc` 写出经过过滤的计数和对象。循环没有单项长度，FeatureLayer 必须达到自身的完整停止点，才能提交对象键并进入下一项。
 
 两份 SanFrancisco SDK 工程均在 `0x7a73` 读出计数 5。首项 FeatureLayer 键 258 从 `0x7a77` 开始，读取到名为 Stops 的子图层中键 261 的渲染器槽。10.1 注册表将该类 `7CF9F6E3-376A-49B2-BAEE-C8300798AECE` 定名为 NAStopRenderer。首项未完时游标和键退回项首，外层保留剩余字节。构造测试覆盖已完成的回引、未支持的新对象和短计数区。NAStopRenderer 对象体、后续子图层与 ArcMap/QGIS 人工验收仍待验证。
+
+### NAStopRenderer 的图例与分类数组
+
+同版 NetworkAnalyst.dll 的 NAStopRenderer GetClassID `0x7af688c0` 在持久化虚表 `0x7afa2870` 对应 Load/Save `0x7af6a360 / 0x7af6a5e0`。Ghidra 导出显示 Load 先探测 16 字节：LegendGroup CLSID 表示旧版并回退到对象头，零 GUID 表示随后有版本 short。三个普通槽依次请求 ILegendGroup、IColor、ITextSymbol。版本至少 2 时，按图例组分类数读取整组可见性 short，再读整组索引 LONG。带分类数组的图例组回引需要恢复原组计数，当前仍待支持。
+
+两份 SanFrancisco SDK 工程均读完键 261 的 v2 渲染器及首个 Route NALayer 的五个子图层，停点从 `0x7a77` 推进到 `0xed73`，该 NALayer 尚余 94 字节。此前遮罩组层的 UID 回引停点随对象键登记推进到了另一个未完整的子层类。构造测试覆盖分类数组和逐字节截断回滚。ArcMap/QGIS 人工验收尚未进行。

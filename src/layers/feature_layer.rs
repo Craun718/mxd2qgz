@@ -360,6 +360,7 @@ pub enum RendererSlot10_1 {
     /// RgbColor、LegendGroup、LegendClass 嵌套链）；体内停止时经
     /// [`FeatureLayerStop10_1::RendererBody`] 携带原因。
     SimpleRenderer(Box<SimpleRendererPrefix10_1>),
+    NaStopRenderer(Box<super::na_stop_renderer::NaStopRenderer10_1>),
     UniqueValueRenderer(Box<crate::layers::unique_value_renderer::UniqueValueRenderer10_1>),
     /// 不支持的新渲染器类：停止点，
     /// 游标回退到该对象头起点。
@@ -961,6 +962,16 @@ pub fn read_feature_layer_prefix_10_1(
                         .map(FeatureLayerStop10_1::UniqueValueRendererBody);
                     RendererSlot10_1::UniqueValueRenderer(Box::new(body))
                 }
+                ObjectEntry10_1::NewObject {
+                    class_id: super::na_stop_renderer::NA_STOP_RENDERER_CLASS_ID,
+                    ..
+                } => RendererSlot10_1::NaStopRenderer(Box::new(
+                    super::na_stop_renderer::read_na_stop_renderer(
+                        &mut trial,
+                        max_bytes,
+                        &mut staged_table,
+                    )?,
+                )),
                 ObjectEntry10_1::NewObject { class_id, key } => {
                     // 其他渲染器类：体未知且无外部长度，回退到槽位起点（不
                     // 保留该键），其后字段不可达。
