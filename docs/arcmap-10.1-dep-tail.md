@@ -444,5 +444,26 @@ HRESULT 时，`0x6ee7a854` 继续读取尾随 int32，包含空槽的 S_FALSE。
 
 共享 ISymbol 读取器已接入空规则的 SymbolMimic，因此 FeatureLayer 后继
 槽可按正常分派读取。合成测试覆盖两项原始值、完整边界、逐字节截断及遇到
-非空槽时回退外层对象和键。非空 IRepresentationRule 的读取仍开放，
-尚无实档及 ArcMap 10.1、QGIS 人工验证。
+非空槽时回退外层对象和键。非空规则的读取范围见下节。尚无实档及
+ArcMap 10.1、QGIS 人工验证。
+
+### SymbolMimic 中的 RepresentationRule
+
+同版 DisplayRepresentation.dll 的 GetClassID `0x6ee73550` 返回
+`1079E40A-83C1-467B-B828-E5C06EF5F6B7`。主 QI
+`0x6ee73bab–0x6ee73d21` 对 IPersist 和 IPersistStream 返回完整对象
+`+0x80`。构造指令 `0x6ee736bd` 写入虚表 `0x6ee9ab7c`，
+其 Load / Save 分别为 `0x6ee73eb0` / `0x6ee74220`。
+
+Load 先读有符号 short（上限 1），再于 `0x6ee73f10` 调用内联效果
+列表读取器 `0x6ee4c300`。该列表读取 short（上限 2）、int32 计数。
+效果列表之后按序读取一个 int32、IBasicSymbol 计数及循环、覆盖值
+计数及循环、次序索引计数及循环、尾随 int32。各循环以有符号比较跳过
+非正计数。IBasicSymbol 的接口身份由 `0x6ee97f44` 的 IID 与同版
+esriDisplay 类型库对位。
+
+共享符号读取器读取全部计数非正的普通 RepresentationRule，并支持同类
+对象键回引。正计数会在对应循环前回退整个 SymbolMimic，保留原始字节
+和调用前引用表。构造测试覆盖非零负计数、规则键复用、截断和四处
+未支持的正计数。非空集合、实际 MXD 和 ArcMap 10.1、QGIS 人工验证
+仍待完成。

@@ -262,7 +262,6 @@ use crate::objects::picture_fill_symbol::{
     read_picture_fill_symbol_body_10_1, read_picture_fill_symbol_slot_10_1,
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
-use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
@@ -551,6 +550,58 @@ fn read_i32_le(trial: &mut Reader<'_>) -> io::Result<i32> {
 pub const SYMBOL_MIMIC_CLASS_ID: [u8; 16] = [
     0x86, 0x47, 0x28, 0xec, 0x94, 0xa3, 0xe9, 0x44, 0x94, 0xaa, 0xaa, 0x05, 0x83, 0x07, 0x47, 0xe2,
 ];
+
+/// DisplayRepresentation.dll 的 RepresentationRule。
+pub const REPRESENTATION_RULE_CLASS_ID: [u8; 16] = [
+    0x0a, 0xe4, 0x79, 0x10, 0xc1, 0x83, 0x7b, 0x46, 0xb8, 0x28, 0xe5, 0xc0, 0x6e, 0xf5, 0xf6, 0xb7,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RepresentationRuleBody10_1 {
+    pub version: u16,
+    pub effect_list_version: u16,
+    pub effect_count: i32,
+    pub leading_value: i32,
+    pub layer_count: i32,
+    pub override_count: i32,
+    pub order_count: i32,
+    pub trailing_value: i32,
+}
+
+fn read_representation_rule_body_10_1(
+    reader: &mut Reader<'_>,
+) -> io::Result<Option<RepresentationRuleBody10_1>> {
+    let version = read_signed_symbol_version(reader, 1, "RepresentationRule", reader.position())?;
+    let effect_list_version =
+        read_signed_symbol_version(reader, 2, "RepresentationRule 效果列表", reader.position())?;
+    let effect_count = read_i32_le(reader)?;
+    if effect_count > 0 {
+        return Ok(None);
+    }
+    let leading_value = read_i32_le(reader)?;
+    let layer_count = read_i32_le(reader)?;
+    if layer_count > 0 {
+        return Ok(None);
+    }
+    let override_count = read_i32_le(reader)?;
+    if override_count > 0 {
+        return Ok(None);
+    }
+    let order_count = read_i32_le(reader)?;
+    if order_count > 0 {
+        return Ok(None);
+    }
+    Ok(Some(RepresentationRuleBody10_1 {
+        version,
+        effect_list_version,
+        effect_count,
+        leading_value,
+        layer_count,
+        override_count,
+        order_count,
+        trailing_value: read_i32_le(reader)?,
+    }))
+}
 
 pub(crate) const MARKER_SYMBOL_CLASSES: &[[u8; 16]] = &[
     SIMPLE_MARKER_SYMBOL_CLASS_ID,
@@ -1589,11 +1640,13 @@ pub enum SymbolSlotFull10_1 {
     PictureMarkerSymbol(Box<PictureMarkerSymbolBody10_1>),
     /// WMSLayer.dll 的 URL 图像标记符号。
     UrlPictureMarkerSymbol(Box<UrlPictureMarkerSymbolBody10_1>),
-    /// SymbolMimic 的 IRepresentationRule 槽为空。
+    /// SymbolMimic 及其表示规则槽。
     SymbolMimic {
         key: u32,
         version: u16,
         leading_value: i32,
+        rule: ObjectEntry10_1,
+        rule_body: Option<RepresentationRuleBody10_1>,
         trailing_value: i32,
     },
     /// 新 PictureLineSymbol 对象。
@@ -2019,13 +2072,30 @@ pub fn read_symbol_slot_full_10_1(
                 let version =
                     read_signed_symbol_version(&mut trial, 1, "SymbolMimic", origin.position())?;
                 let leading_value = read_i32_le(&mut trial)?;
-                if !matches!(read_header_10_1(&mut trial)?, ObjectHeader::Null) {
-                    return Ok(SymbolSlotFull10_1::Unsupported { class_id, key });
-                }
+                let rule = read_object_entry_10_1(&mut trial, &mut staged)?;
+                let rule_body = match rule {
+                    ObjectEntry10_1::Null
+                    | ObjectEntry10_1::BackReference {
+                        class_id: REPRESENTATION_RULE_CLASS_ID,
+                        ..
+                    } => None,
+                    ObjectEntry10_1::NewObject {
+                        class_id: REPRESENTATION_RULE_CLASS_ID,
+                        ..
+                    } if depth > 1 => {
+                        let Some(body) = read_representation_rule_body_10_1(&mut trial)? else {
+                            return Ok(SymbolSlotFull10_1::Unsupported { class_id, key });
+                        };
+                        Some(body)
+                    }
+                    _ => return Ok(SymbolSlotFull10_1::Unsupported { class_id, key }),
+                };
                 SymbolSlotFull10_1::SymbolMimic {
                     key,
                     version,
                     leading_value,
+                    rule,
+                    rule_body,
                     trailing_value: read_i32_le(&mut trial)?,
                 }
             } else if class_id == COLOR_RAMP_SYMBOL_CLASS_ID {

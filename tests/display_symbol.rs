@@ -2800,6 +2800,8 @@ fn symbol_mimic_reads_empty_rule_and_rolls_back_on_unknown_rule() {
             key: 11,
             version: 1,
             leading_value: -23,
+            rule: mxd2qgz::storage::object_refs::ObjectEntry10_1::Null,
+            rule_body: None,
             trailing_value: 19,
         }
     );
@@ -2827,4 +2829,88 @@ fn symbol_mimic_reads_empty_rule_and_rolls_back_on_unknown_rule() {
     assert_eq!(reader.position(), 0);
     assert!(!refs.contains(11));
     assert!(!refs.contains(12));
+}
+
+#[test]
+fn symbol_mimic_preserves_rule_body_and_reuses_rule_key() {
+    use mxd2qgz::objects::display_symbol::{
+        REPRESENTATION_RULE_CLASS_ID, RepresentationRuleBody10_1, SYMBOL_MIMIC_CLASS_ID,
+        SymbolSlotFull10_1, read_symbol_slot_full_10_1,
+    };
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    let mut bytes = Vec::new();
+    push_entry(&mut bytes, &SYMBOL_MIMIC_CLASS_ID, 21);
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    push_entry(&mut bytes, &REPRESENTATION_RULE_CLASS_ID, 22);
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(2_u16.to_le_bytes());
+    let counts_start = bytes.len();
+    for value in [-1_i32, 81, 0, -2, 0, 82, 9] {
+        bytes.extend(value.to_le_bytes());
+    }
+    let first_end = bytes.len();
+    push_entry(&mut bytes, &SYMBOL_MIMIC_CLASS_ID, 23);
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    push_entry(&mut bytes, &REPRESENTATION_RULE_CLASS_ID, 22);
+    bytes.extend(10_i32.to_le_bytes());
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let SymbolSlotFull10_1::SymbolMimic {
+        rule_body: Some(body),
+        trailing_value: 9,
+        ..
+    } = read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 2).unwrap()
+    else {
+        panic!("未读出 RepresentationRule");
+    };
+    assert_eq!(
+        body,
+        RepresentationRuleBody10_1 {
+            version: 1,
+            effect_list_version: 2,
+            effect_count: -1,
+            leading_value: 81,
+            layer_count: 0,
+            override_count: -2,
+            order_count: 0,
+            trailing_value: 82,
+        }
+    );
+    assert_eq!(reader.position(), first_end);
+    assert!(refs.contains(22));
+    assert!(matches!(
+        read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 2).unwrap(),
+        SymbolSlotFull10_1::SymbolMimic {
+            rule: ObjectEntry10_1::BackReference { key: 22, .. },
+            rule_body: None,
+            trailing_value: 10,
+            ..
+        }
+    ));
+    assert_eq!(reader.remaining(), 0);
+    for end in counts_start..first_end {
+        let mut reader = Reader::new(&bytes[..end]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 2).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(!refs.contains(22));
+    }
+    for count_index in [0, 2, 3, 4] {
+        let mut unsupported = bytes[..first_end].to_vec();
+        let start = counts_start + 4 * count_index;
+        unsupported[start..start + 4].copy_from_slice(&1_i32.to_le_bytes());
+        let mut reader = Reader::new(&unsupported);
+        let mut refs = RefTable10_1::new();
+        assert!(matches!(
+            read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 2).unwrap(),
+            SymbolSlotFull10_1::Unsupported { key: 21, .. }
+        ));
+        assert_eq!(reader.position(), 0);
+        assert!(!refs.contains(21));
+        assert!(!refs.contains(22));
+    }
 }
