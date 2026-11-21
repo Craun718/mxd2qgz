@@ -478,6 +478,7 @@
       - [x] 接入无效果成员的 BasicMarkerSymbol、MarkerPlacementOnPoint 属性与 ExtraSafe 回引。[原生边界](docs/arcmap-10.1-dep-tail.md#basicmarkersymbol-与-markerplacementonpoint)
       - [x] 接入另外十种共用属性表的标记布置类，覆盖 10.1 类型库公开的 11 种 IMarkerPlacement。[虚表核对](docs/arcmap-10.1-dep-tail.md#共用属性表的-11-种标记布置类)
       - [x] 接入规则及符号层的 22 种共用属性表几何效果，覆盖 v1/v2 名称分支和 ExtraSafe 回引。[原生分派](docs/arcmap-10.1-dep-tail.md#representationrule-与符号层的非空几何效果)
+      - [x] 在共用 Variant 对象值中接入已确认的图形属性对象体，并验证递归预算和共享键。[对象值取证](docs/arcmap-10.1-dep-tail.md#variant-中的图形属性对象)
       - [x] 接入 FeatureLayer 后继段 ㉖ 的 BarChartSymbol、PieChartSymbol、StackedChartSymbol 对象体。[原生读写](docs/arcmap-10.1-dep-tail.md#featurelayer-后继段的统计图符号)
       - [x] 接入 ISymbol 槽的 ColorSymbol、ColorRampSymbol 和 RasterRGBSymbol，并对位两个 SDK 工程的非空栅格渲染器。[原生读写和实档边界](docs/arcmap-10.1-dep-tail.md#featurelayer-符号槽的栅格和-wms-实现)
       - [x] 接入 ISymbol 槽的 URLPictureMarkerSymbol，复用内嵌 PictureMarkerSymbol 读取器。[WMSLayer 指令取证](docs/arcmap-10.1-dep-tail.md#featurelayer-符号槽的栅格和-wms-实现)

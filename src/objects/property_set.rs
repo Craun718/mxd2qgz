@@ -111,6 +111,9 @@ use crate::objects::color_ramp::{
     read_color_ramp_body_for_class_10_1,
 };
 use crate::objects::display_color::{ColorBody10_1, read_color_body_for_class_10_1};
+use crate::objects::display_symbol::{
+    GraphicAttributeList10_1, is_graphic_attribute_object, read_graphic_attribute_list_10_1,
+};
 use crate::objects::envelope::{
     ENVELOPE_CLASS_ID, SpatialReferenceEntry10_1, read_spatial_reference_body_10_1,
 };
@@ -335,6 +338,7 @@ pub enum PropertyValueObjectStream10_1 {
     Geometry(Box<VariantGeometry10_1>),
     Color(Box<EncodedVariantObject10_1<ColorBody10_1>>),
     ColorRamp(Box<EncodedVariantObject10_1<ColorRampSlot10_1>>),
+    GraphicAttributes(Box<EncodedVariantObject10_1<GraphicAttributeList10_1>>),
     SpatialReference(Box<EncodedVariantObject10_1<SpatialReferenceEntry10_1>>),
     RasterInfo(Box<EncodedVariantObject10_1<RasterInfoVariantBody10_1>>),
     Raster {
@@ -735,6 +739,23 @@ pub(crate) fn read_variant_object_body_10_1(
             })?;
             let bytes = Arc::from(reader.read_bytes(wire.position())?);
             PropertyValueObjectStream10_1::ColorRamp(Box::new(EncodedVariantObject10_1 {
+                class_id,
+                key,
+                bytes,
+                body,
+            }))
+        }
+        ObjectEntry10_1::NewObject { class_id, key } if is_graphic_attribute_object(class_id) => {
+            check_variant_object_depth(depth)?;
+            let mut wire = reader
+                .clone()
+                .read_region(max_bytes.min(reader.remaining()))?;
+            let body = read_graphic_attribute_list_10_1(&mut wire, max_bytes, table, depth + 1)?
+                .ok_or_else(|| {
+                    io::Error::new(ErrorKind::Unsupported, "Variant 图形属性对象体未读完")
+                })?;
+            let bytes = Arc::from(reader.read_bytes(wire.position())?);
+            PropertyValueObjectStream10_1::GraphicAttributes(Box::new(EncodedVariantObject10_1 {
                 class_id,
                 key,
                 bytes,
@@ -1470,6 +1491,69 @@ mod tests {
         assert_eq!(error.kind(), ErrorKind::Unsupported);
         assert_eq!(reader.position(), 0);
         assert_eq!(refs, original);
+    }
+
+    #[test]
+    fn graphic_attribute_variant_shares_keys_and_limits_recursion() {
+        use crate::objects::display_symbol::LINE_STROKE_CLASS_ID;
+
+        let mut bytes = Vec::new();
+        for key in 1..=2_u32 {
+            bytes.extend(13_u16.to_le_bytes());
+            bytes.extend([0; 14]);
+            object(&mut bytes, LINE_STROKE_CLASS_ID, key);
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(u32::from(key == 1).to_le_bytes());
+            if key == 1 {
+                bytes.extend(5_i32.to_le_bytes());
+            }
+        }
+        let end = bytes.len();
+        bytes.extend(13_u16.to_le_bytes());
+        bytes.extend([0; 14]);
+        object(&mut bytes, LINE_STROKE_CLASS_ID, 2);
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let PropertyValueObjectStream10_1::GraphicAttributes(outer) =
+            read_padded_variant_object_stream_10_1(&mut reader, 1024, &mut refs).unwrap()
+        else {
+            panic!("未读出图形属性对象");
+        };
+        let (id, value) = &outer.body().attributes[0];
+        assert_eq!(*id, 5);
+        assert!(
+            matches!(value, PropertyValueObjectStream10_1::GraphicAttributes(value) if value.key == 2)
+        );
+        assert_eq!(reader.position(), end);
+        assert_eq!(
+            read_padded_variant_object_stream_10_1(&mut reader, 1024, &mut refs).unwrap(),
+            PropertyValueObjectStream10_1::BackReference {
+                class_id: LINE_STROKE_CLASS_ID,
+                key: 2
+            }
+        );
+
+        for end in 0..end {
+            let mut reader = Reader::new(&bytes[..end]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_padded_variant_object_stream_10_1(&mut reader, 1024, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert_eq!(refs.len(), 0);
+        }
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        assert!(
+            read_padded_variant_object_stream_nested_10_1(
+                &mut reader,
+                1024,
+                &mut refs,
+                MAX_NESTED_VARIANT_OBJECTS - 1,
+            )
+            .is_err()
+        );
+        assert_eq!(reader.position(), 0);
+        assert_eq!(refs.len(), 0);
     }
 
     #[test]

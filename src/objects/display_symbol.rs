@@ -262,7 +262,7 @@ use crate::objects::picture_fill_symbol::{
     read_picture_fill_symbol_body_10_1, read_picture_fill_symbol_slot_10_1,
 };
 use crate::objects::property_set::{
-    PropertyValueObjectStream10_1, read_padded_variant_object_stream_10_1,
+    PropertyValueObjectStream10_1, read_padded_variant_object_stream_nested_10_1,
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -807,10 +807,22 @@ pub struct GraphicAttributeList10_1 {
 
 pub type SolidColorPattern10_1 = GraphicAttributeList10_1;
 
-fn read_graphic_attribute_list_10_1(
+pub(crate) fn is_graphic_attribute_object(class_id: [u8; 16]) -> bool {
+    matches!(
+        class_id,
+        SOLID_COLOR_PATTERN_CLASS_ID
+            | LINE_PATTERN_CLASS_ID
+            | GRADIENT_PATTERN_CLASS_ID
+            | LINE_STROKE_CLASS_ID
+    ) || MARKER_PLACEMENT_CLASSES_10_1.contains(&class_id)
+        || GEOMETRIC_EFFECT_CLASSES_10_1.contains(&class_id)
+}
+
+pub(crate) fn read_graphic_attribute_list_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     refs: &mut RefTable10_1,
+    variant_depth: usize,
 ) -> io::Result<Option<GraphicAttributeList10_1>> {
     let version = read_signed_symbol_version(reader, 1, "GraphicAttributeList", reader.position())?;
     let declared_count = read_i32_le(reader)?;
@@ -824,7 +836,12 @@ fn read_graphic_attribute_list_10_1(
     let mut attributes = Vec::new();
     for _ in 0..count {
         let id = read_i32_le(reader)?;
-        let value = match read_padded_variant_object_stream_10_1(reader, max_bytes, refs) {
+        let value = match read_padded_variant_object_stream_nested_10_1(
+            reader,
+            max_bytes,
+            refs,
+            variant_depth,
+        ) {
             Ok(value) => value,
             Err(error) if error.kind() == ErrorKind::Unsupported => return Ok(None),
             Err(error) => return Err(error),
@@ -871,7 +888,8 @@ fn read_extra_safe_attributes_10_1(
         ObjectEntry10_1::Null => None,
         ObjectEntry10_1::BackReference { class_id, .. } if classes.contains(&class_id) => None,
         ObjectEntry10_1::NewObject { class_id, .. } if depth > 1 && classes.contains(&class_id) => {
-            let Some(body) = read_graphic_attribute_list_10_1(&mut region, max_bytes, refs)? else {
+            let Some(body) = read_graphic_attribute_list_10_1(&mut region, max_bytes, refs, 0)?
+            else {
                 return Ok(None);
             };
             Some(body)
@@ -952,7 +970,7 @@ fn read_basic_fill_symbol_10_1(
                 SOLID_COLOR_PATTERN_CLASS_ID | LINE_PATTERN_CLASS_ID | GRADIENT_PATTERN_CLASS_ID,
             ..
         } if depth > 1 => {
-            let Some(body) = read_graphic_attribute_list_10_1(reader, max_bytes, refs)? else {
+            let Some(body) = read_graphic_attribute_list_10_1(reader, max_bytes, refs, 0)? else {
                 return Ok(None);
             };
             Some(body)
@@ -1002,7 +1020,7 @@ fn read_basic_line_symbol_10_1(
             class_id: LINE_STROKE_CLASS_ID,
             ..
         } if depth > 1 => {
-            let Some(body) = read_graphic_attribute_list_10_1(reader, max_bytes, refs)? else {
+            let Some(body) = read_graphic_attribute_list_10_1(reader, max_bytes, refs, 0)? else {
                 return Ok(None);
             };
             Some(body)
@@ -1045,7 +1063,7 @@ fn read_basic_marker_symbol_10_1(
     else {
         return Ok(None);
     };
-    let Some(attributes) = read_graphic_attribute_list_10_1(reader, max_bytes, refs)? else {
+    let Some(attributes) = read_graphic_attribute_list_10_1(reader, max_bytes, refs, 0)? else {
         return Ok(None);
     };
     let placement_name = ((version as i16) >= 2)

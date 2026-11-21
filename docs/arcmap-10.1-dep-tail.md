@@ -650,3 +650,17 @@ DisplayLib 的 GraphicAttributeList。两类已接入 BasicFillSymbol 的
 IFillPattern 槽，沿用图形属性和共享键读取。构造测试覆盖三种图案的
 非空属性、回引及截断回滚。实档上的属性对象组合和 ArcMap 10.1、
 QGIS 人工验证仍待完成。
+
+### Variant 中的图形属性对象
+
+DisplayLib.dll 10.1.0.3035 的 GraphicAttributeList::Load
+`0x6ed896e0` 对每项调用 AfCore Variant::Read(stream, true)。
+该调用的对象值分支在读取保留区后复用宿主 ObjectStream，详见
+[Variant 对象值布局](arcmap-10.1-variant-propertyset-slots.md#带保留区的-objectstream-对象值)。
+上述图案、线式、标记布置和几何效果类的 IPersistStream 已分别核对，
+其对象头之后直接进入 GraphicAttributeList。
+
+共用 Variant 分派现在可读取这些对象，保留类标识、键、对象体及其原始
+字节。递归读取继续消耗同一个 Variant 深度预算。构造测试覆盖嵌套线式、
+后续键回引、逐字节截断和深度越界时的回滚。实档中哪些属性 ID 会保存
+各类对象仍待核查，尚无 ArcMap 10.1 或 QGIS 人工验证。
