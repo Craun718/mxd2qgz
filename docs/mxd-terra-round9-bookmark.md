@@ -148,3 +148,35 @@ GdbCore WorkspaceName。书签分派复用其 Load 读取器。OLE 头只有 CLS
 错误 Variant 类型、空和未知工作空间的事务回滚。参考工程与 134 份安装介质
 工程的 /Maps 和 /PageLayout 均读取到流尾，两流均未扫描到 AMSDatasetName
 的 CLSID。仍待真实书签宿主字节和 ArcMap 10.1/QGIS 人工验证。
+
+## 关系类名称的后续接线
+
+继续在 FeatureBookmark 的 IName 槽接入 GdbCore.dll 10.1.0.3035 的
+RelationshipClassName `{311C2EE1-DA65-11D2-8A54-000000000000}` 与
+MemoryRelationshipClassName `{6DBA211B-EBDB-11D3-9F84-00C04F6BC886}`。
+对象体字段序、Load/Save 地址及版本门沿用
+[IDatasetName 槽实现记录](arcmap-10.1-dataset-name-slots.md#字段序load-反编译save-逐字段对称互证)：
+
+- RelationshipClassName Load `0x70a3b330`：版本、AfCore String 三条、
+  int32 两条、int16 两条、int16 选择子。选择子为零时保存
+  IWorkspaceName，非零时保存 IDatasetName；两个分支分别对应
+  WorkspaceNameSlot10_1 和 DatasetNameMoreSlot10_1。
+- MemoryRelationshipClassName Load `0x70a402e0`：版本、AfCore String
+  三条、int32 两条、int16 两条、两个请求 IName 的 LoadObject 槽，以及
+  正向路径标签、反向路径标签、OriginPrimaryKey、OriginForeignKey 四条
+  AfCore String。端点槽复用表、要素类和查询名称读取器，并共享外层书签
+  的引用表。
+
+书签分派保留两个独立枚举变体，不把类别折叠成查询表名称。两个读取器在
+嵌套槽返回停止点时，外层 FeatureBookmark 返回 `Unsupported`，候选游标和
+引用表均不提交。`tests/terra_round9_bookmark.rs` 覆盖关系类的零/非零
+选择子，空值、回引和新建 WorkspaceName，内存关系类的新 FeatureClassName
+端点、表名称回引及四条尾串；未知嵌套类和每个截断前缀均断言整个书签回滚
+到偏移 0 且引用表不变。定向测试 15 项通过。
+
+10.1 类型库确认两个类都实现 IName、IPersist、IPersistStream 和
+IDatasetName，但没有直接实现 IFeatureClass。FeatureBookmark Load 的
+后续仍会调用 IName::Open，再对打开结果查询 IFeatureClass。因此本次只证明
+持久化对象体可完整读取并完成宿主接线，不证明 Open 成功、返回对象提供
+IFeatureClass，也不证明真实书签中一定出现这两类名称。仓库参考样本没有
+提供这两类的非空书签实例，ArcMap 10.1 和 QGIS 中也未做运行或目视验证。

@@ -10,9 +10,10 @@ use mxd2qgz::{
     objects::{
         dataset_name::WorkspaceNameSlot10_1,
         dataset_name_more::{
-            DatasetNameMoreSlot10_1, FEATURE_QUERY_NAME_CLASS_ID, QUERY_TABLE_NAME_CLASS_ID,
+            DatasetNameMoreBody10_1, DatasetNameMoreSlot10_1, FEATURE_QUERY_NAME_CLASS_ID,
+            MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID, QUERY_TABLE_NAME_CLASS_ID,
             REL_QUERY_TABLE_NAME_CLASS_ID, RELATIONSHIP_CLASS_NAME_CLASS_ID,
-            TABLE_QUERY_NAME_CLASS_ID, UnknownSlot10_1,
+            RelationshipClassTail10_1, TABLE_QUERY_NAME_CLASS_ID, UnknownSlot10_1,
         },
         workspace_name::WorkspaceNameEntry10_1,
     },
@@ -164,6 +165,271 @@ fn bookmark_reads_relationship_query_and_its_relationship_reference() {
         assert!(read_feature_bookmark_10_1(&mut reader, 4096, &mut refs).is_err());
         assert_eq!(reader.position(), 0);
         assert_eq!(refs, existing);
+    }
+}
+
+const BOOKMARK_EMPTY_STRING: [u8; 6] = [2, 0, 0, 0, 0, 0];
+
+fn bookmark_string_10_1(text: &str) -> Vec<u8> {
+    let mut bytes = ((text.encode_utf16().count() * 2 + 2) as u32)
+        .to_le_bytes()
+        .to_vec();
+    for unit in text.encode_utf16() {
+        bytes.extend(unit.to_le_bytes());
+    }
+    bytes.extend(0_u16.to_le_bytes());
+    bytes
+}
+
+fn bookmark_entry_10_1(class_id: &[u8; 16], key: u32) -> Vec<u8> {
+    let mut bytes = class_id.to_vec();
+    bytes.extend(key.to_le_bytes());
+    bytes
+}
+
+fn bookmark_header_10_1(class_id: &[u8; 16], key: u32) -> Vec<u8> {
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(42_i32.to_le_bytes());
+    bytes.extend(class_id);
+    bytes.extend(key.to_le_bytes());
+    bytes
+}
+
+fn relationship_class_body_10_1(selector: u16, tail: &[u8]) -> Vec<u8> {
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    for text in ["源类", "目标类", "关系类"] {
+        bytes.extend(bookmark_string_10_1(text));
+    }
+    bytes.extend(7_i32.to_le_bytes());
+    bytes.extend((-9_i32).to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(2_u16.to_le_bytes());
+    bytes.extend(selector.to_le_bytes());
+    bytes.extend(tail);
+    bytes
+}
+
+fn feature_class_endpoint_body_10_1() -> Vec<u8> {
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(BOOKMARK_EMPTY_STRING.repeat(4));
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend([0; 16]);
+    bytes
+}
+
+fn memory_relationship_prefix_10_1() -> Vec<u8> {
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    for text in ["内存关系", "源类", "关系类"] {
+        bytes.extend(bookmark_string_10_1(text));
+    }
+    bytes.extend(3_i32.to_le_bytes());
+    bytes.extend((-4_i32).to_le_bytes());
+    bytes.extend(5_u16.to_le_bytes());
+    bytes.extend(6_u16.to_le_bytes());
+    bytes
+}
+
+fn memory_relationship_class_body_10_1(slot_a: &[u8], slot_b: &[u8]) -> Vec<u8> {
+    let mut bytes = memory_relationship_prefix_10_1();
+    bytes.extend(slot_a);
+    bytes.extend(slot_b);
+    for text in ["正向", "反向", "OID", "OriginID"] {
+        bytes.extend(bookmark_string_10_1(text));
+    }
+    bytes
+}
+
+fn assert_bookmark_read_error(
+    input: &[u8],
+    existing: &RefTable10_1,
+    expected_kind: Option<std::io::ErrorKind>,
+) {
+    let mut reader = Reader::new(input);
+    let mut refs = existing.clone();
+    let error = read_feature_bookmark_10_1(&mut reader, 4096, &mut refs).unwrap_err();
+    if let Some(expected) = expected_kind {
+        assert_eq!(error.kind(), expected);
+    }
+    assert_eq!(reader.position(), 0);
+    assert_eq!(refs, *existing);
+}
+
+#[test]
+fn bookmark_reads_relationship_class_name_branches_transactionally() {
+    use mxd2qgz::objects::workspace_name::WORKSPACE_NAME_CLASS_ID;
+
+    let null = [0; 16].to_vec();
+    let back_reference = bookmark_entry_10_1(&RELATIONSHIP_CLASS_NAME_CLASS_ID, 7);
+    let new_workspace = {
+        let mut bytes = bookmark_entry_10_1(&WORKSPACE_NAME_CLASS_ID, 18);
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(BOOKMARK_EMPTY_STRING.repeat(3));
+        bytes.extend([0; 16]);
+        bytes.push(1);
+        bytes.extend([0xa5; 16]);
+        bytes.extend(0_i32.to_le_bytes());
+        bytes
+    };
+
+    for (selector, tail, new_workspace_key) in [
+        (0_u16, null.as_slice(), None),
+        (0, back_reference.as_slice(), None),
+        (0, new_workspace.as_slice(), Some(18)),
+        (1, null.as_slice(), None),
+        (1, back_reference.as_slice(), None),
+    ] {
+        let mut data = bookmark_header_10_1(&RELATIONSHIP_CLASS_NAME_CLASS_ID, 17);
+        let tail_offset = data.len() + relationship_class_body_10_1(selector, &[]).len();
+        data.extend(relationship_class_body_10_1(selector, tail));
+        data.extend(bookmark_string_10_1("R"));
+        let end = data.len();
+        data.push(0xa5);
+
+        let mut existing = RefTable10_1::new();
+        existing.register(7);
+        let before = existing.clone();
+        let mut refs = existing.clone();
+        let mut reader = Reader::new(&data);
+        let bookmark = read_feature_bookmark_10_1(&mut reader, 4096, &mut refs).unwrap();
+        let BookmarkNameEntry10_1::RelationshipClassName(body) = bookmark.name_object else {
+            panic!("RelationshipClassName 不得折叠为其他名称类");
+        };
+        assert_eq!(body.key, 17);
+        assert_eq!(body.version, 1);
+        assert_eq!(
+            [&body.string_a, &body.string_b, &body.string_c],
+            [
+                &"源类".to_string(),
+                &"目标类".to_string(),
+                &"关系类".to_string()
+            ]
+        );
+        assert_eq!((body.int_a, body.int_b), (7, -9));
+        assert_eq!((body.short_a, body.short_b), (1, 2));
+        assert_eq!(body.selector, selector);
+        assert_eq!(body.stop, None);
+        match &body.tail {
+            RelationshipClassTail10_1::Workspace(workspace) => {
+                assert_eq!(selector, 0);
+                match workspace {
+                    WorkspaceNameSlot10_1::Null => assert!(tail.iter().all(|byte| *byte == 0)),
+                    WorkspaceNameSlot10_1::BackReference { key: 7, .. } => {
+                        assert_eq!(tail, &back_reference)
+                    }
+                    WorkspaceNameSlot10_1::WorkspaceName(workspace) => {
+                        assert_eq!(new_workspace_key, Some(workspace.key));
+                    }
+                    other => panic!("未预期的 WorkspaceName 槽：{other:?}"),
+                }
+            }
+            RelationshipClassTail10_1::Dataset(dataset) => {
+                assert_eq!(selector, 1);
+                match dataset {
+                    DatasetNameMoreSlot10_1::Null => assert!(tail.iter().all(|byte| *byte == 0)),
+                    DatasetNameMoreSlot10_1::BackReference { key: 7, .. } => {
+                        assert_eq!(tail, &back_reference)
+                    }
+                    other => panic!("未预期的 IDatasetName 槽：{other:?}"),
+                }
+            }
+        }
+        assert_eq!(bookmark.name, "R");
+        assert_eq!(reader.position(), end);
+        assert_eq!(reader.read_bytes(1).unwrap(), [0xa5]);
+        assert!(refs.contains(17));
+        assert_eq!(refs.contains(18), new_workspace_key.is_some());
+
+        for cut in 0..end {
+            assert_bookmark_read_error(&data[..cut], &before, None);
+        }
+
+        let mut unknown = data.clone();
+        unknown[tail_offset..tail_offset + 16].fill(0x66);
+        unknown[tail_offset + 16..tail_offset + 20].copy_from_slice(&19_u32.to_le_bytes());
+        assert_bookmark_read_error(&unknown, &before, Some(std::io::ErrorKind::Unsupported));
+    }
+}
+
+#[test]
+fn bookmark_reads_memory_relationship_class_name_endpoints_transactionally() {
+    use mxd2qgz::layers::feature_layer::FEATURE_CLASS_NAME_CLASS_ID;
+
+    let new_feature_class = {
+        let mut bytes = bookmark_entry_10_1(&FEATURE_CLASS_NAME_CLASS_ID, 18);
+        bytes.extend(feature_class_endpoint_body_10_1());
+        bytes
+    };
+    let back_reference = bookmark_entry_10_1(&TABLE_NAME_CLASS_ID, 7);
+    let mut data = bookmark_header_10_1(&MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID, 17);
+    let slot_a_offset = data.len() + memory_relationship_prefix_10_1().len();
+    let slot_b_offset = slot_a_offset + new_feature_class.len();
+    data.extend(memory_relationship_class_body_10_1(
+        &new_feature_class,
+        &back_reference,
+    ));
+    data.extend(bookmark_string_10_1("M"));
+    let end = data.len();
+    data.push(0xc3);
+
+    let mut existing = RefTable10_1::new();
+    existing.register(7);
+    let before = existing.clone();
+    let mut refs = existing.clone();
+    let mut reader = Reader::new(&data);
+    let bookmark = read_feature_bookmark_10_1(&mut reader, 4096, &mut refs).unwrap();
+    let BookmarkNameEntry10_1::MemoryRelationshipClassName(body) = bookmark.name_object else {
+        panic!("MemoryRelationshipClassName 不得折叠为其他名称类");
+    };
+    assert_eq!(body.key, 17);
+    assert_eq!(body.version, 1);
+    assert_eq!(
+        body.strings_a,
+        [
+            "内存关系".to_string(),
+            "源类".to_string(),
+            "关系类".to_string()
+        ]
+    );
+    assert_eq!((body.int_a, body.int_b), (3, -4));
+    assert_eq!((body.short_a, body.short_b), (5, 6));
+    assert!(matches!(
+        body.slot_a,
+        DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::FeatureClassName(ref feature))
+            if feature.key == 18
+    ));
+    assert!(matches!(
+        body.slot_b,
+        DatasetNameMoreSlot10_1::BackReference {
+            class_id: TABLE_NAME_CLASS_ID,
+            key: 7
+        }
+    ));
+    assert_eq!(
+        body.strings_b,
+        [
+            "正向".to_string(),
+            "反向".to_string(),
+            "OID".to_string(),
+            "OriginID".to_string()
+        ]
+    );
+    assert_eq!(body.stop, None);
+    assert_eq!(bookmark.name, "M");
+    assert_eq!(reader.position(), end);
+    assert_eq!(reader.read_bytes(1).unwrap(), [0xc3]);
+    assert!(refs.contains(17) && refs.contains(18) && refs.contains(7));
+
+    for cut in 0..end {
+        assert_bookmark_read_error(&data[..cut], &before, None);
+    }
+
+    for offset in [slot_a_offset, slot_b_offset] {
+        let mut unknown = data.clone();
+        unknown[offset..offset + 16].fill(0x67);
+        unknown[offset + 16..offset + 20].copy_from_slice(&19_u32.to_le_bytes());
+        assert_bookmark_read_error(&unknown, &before, Some(std::io::ErrorKind::Unsupported));
     }
 }
 
