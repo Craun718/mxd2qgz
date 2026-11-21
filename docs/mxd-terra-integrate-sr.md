@@ -21,3 +21,28 @@
 ## 验证范围与剩余工作
 
 定向合成测试检查 PCS/GCS v2 四串边界、GCS v2 无范围、PCS 非零垂向段后精度对齐、逐字节截断回滚和限额；仅验证 Rust 读取器，不是原生运行结果。Unknown 四串业务名称、slot 8 名称、守卫置位来源及含义仍待进一步取证；GCS/Unknown 未在参考 MXD 中确认实例。ArcMap 10.1 和 QGIS 人工目视检查均未执行。
+
+### PCS 与 GCS 域串的属性映射
+
+用 objdump 复核同一份 x86 Geometry.dll 10.1.0.3035。Load 辅助函数
+`0x719babf0` 按序装入独立结构的 `+0x04/+0x08/+0x0c/+0x10`，
+Save `0x719bad00` 按相同顺序取值。PCS 从持久化接口 `+0x20`
+传入该结构（`0x719d344e`），GCS 从持久化接口 `+0x8c`
+传入（`0x719beede`）。
+
+两类的 ISpatialReferenceInfo 都位于完整对象 `+0x18`，分别由
+QI `0x719d0967` 与 `0x719bc485` 的 IID 比对确认。按同版
+esriGeometry.olb TypeInfo 4 对位，PCS 使用虚表 `0x71a297ac`，
+GCS 使用 `0x71a26614`。以下 getter 均取同一结构中的 BSTR。
+
+| 流序号 | 结构偏移 | 属性 | PCS getter | GCS getter |
+| --- | --- | --- | --- | --- |
+| 1 | `+0x04` | Alias | `0x719d39b0` | `0x719bf520` |
+| 2 | `+0x08` | Abbreviation | `0x719d3a00` | `0x719bf570` |
+| 3 | `+0x0c` | Remarks | `0x719d3a30` | `0x719bf5b0` |
+| 4 | `+0x10` | 待定 | | |
+
+辅助结构构造器 `0x719baaa0` 与 `0x719bab40` 用 AfCore
+BString 构造器初始化四个空串。PCS 复制入口中的 `0x719d053d–0x719d0574`
+将四个槽逐项复制。第四串的业务用途和各槽除持久化加载、初始化与复制外
+的赋值来源仍待核查。ArcMap 10.1 和 QGIS 尚未人工验证。
