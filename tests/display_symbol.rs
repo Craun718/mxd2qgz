@@ -2877,6 +2877,7 @@ fn symbol_mimic_preserves_rule_body_and_reuses_rule_key() {
             version: 1,
             effect_list_version: 2,
             effect_count: -1,
+            effects: Vec::new(),
             leading_value: 81,
             layer_count: 0,
             layers: Vec::new(),
@@ -2909,7 +2910,7 @@ fn symbol_mimic_preserves_rule_body_and_reuses_rule_key() {
         assert_eq!(reader.position(), 0);
         assert!(!refs.contains(22));
     }
-    for count_index in [0, 2] {
+    for count_index in [2] {
         let mut unsupported = bytes[..first_end].to_vec();
         let start = counts_start + 4 * count_index;
         unsupported[start..start + 4].copy_from_slice(&1_i32.to_le_bytes());
@@ -3107,5 +3108,73 @@ fn representation_rule_reads_basic_marker_and_bounded_placement() {
             assert_eq!(reader.position(), 0);
             assert!(!refs.contains(16));
         }
+    }
+}
+
+#[test]
+fn representation_rule_reads_known_effects_and_shares_keys_with_marker_layers() {
+    use mxd2qgz::objects::display_symbol::{
+        BASIC_MARKER_SYMBOL_CLASS_ID, GEOMETRIC_EFFECT_CLASSES_10_1, REPRESENTATION_RULE_CLASS_ID,
+        SYMBOL_MIMIC_CLASS_ID, SymbolSlotFull10_1, read_symbol_slot_full_10_1,
+    };
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    for effect_class in GEOMETRIC_EFFECT_CLASSES_10_1 {
+        let mut bytes = Vec::new();
+        push_entry(&mut bytes, &SYMBOL_MIMIC_CLASS_ID, 11);
+        bytes.extend([1, 0, 0, 0, 0, 0]);
+        push_entry(&mut bytes, &REPRESENTATION_RULE_CLASS_ID, 12);
+        bytes.extend([1, 0, 2, 0]);
+        bytes.extend(1_i32.to_le_bytes());
+        push_string(&mut bytes, "效果");
+        let size_offset = bytes.len();
+        bytes.extend(26_u32.to_le_bytes());
+        bytes.extend(0_u32.to_le_bytes());
+        push_entry(&mut bytes, &effect_class, 13);
+        bytes.extend([1, 0, 0, 0, 0, 0]);
+        bytes.extend(0_i32.to_le_bytes());
+        bytes.extend(1_i32.to_le_bytes());
+        push_entry(&mut bytes, &BASIC_MARKER_SYMBOL_CLASS_ID, 14);
+        bytes.extend([1, 0, 1, 0]);
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend(20_u32.to_le_bytes());
+        bytes.extend(0_u32.to_le_bytes());
+        push_entry(&mut bytes, &effect_class, 13);
+        bytes.extend([1, 0, 0, 0, 0, 0]);
+        bytes.extend([0; 8]);
+        for value in [25_i32, 0, 0, 0, 44] {
+            bytes.extend(value.to_le_bytes());
+        }
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let SymbolSlotFull10_1::SymbolMimic {
+            rule_body: Some(rule),
+            trailing_value: 44,
+            ..
+        } = read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 4).unwrap()
+        else {
+            panic!("未读出几何效果");
+        };
+        assert_eq!(rule.effects[0].name.as_deref(), Some("效果"));
+        assert_eq!(rule.effects[0].body.as_ref().unwrap().declared_count, 0);
+        let marker = rule.layers[0].marker.as_ref().unwrap();
+        assert_eq!(marker.effects[0].name, None);
+        assert_eq!(
+            marker.effects[0].entry,
+            ObjectEntry10_1::BackReference {
+                class_id: effect_class,
+                key: 13
+            }
+        );
+        assert_eq!(marker.trailing_value, 25);
+        assert_eq!(reader.remaining(), 0);
+
+        bytes[size_offset..size_offset + 4].copy_from_slice(&27_u32.to_le_bytes());
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        assert!(read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 4).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(!refs.contains(13));
     }
 }

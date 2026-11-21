@@ -635,11 +635,133 @@ pub const MARKER_PLACEMENT_CLASSES_10_1: [[u8; 16]; 11] = [
     ],
 ];
 
+/// 10.1 中使用 GraphicAttributeList 持久化的几何效果类。
+pub const GEOMETRIC_EFFECT_CLASSES_10_1: [[u8; 16]; 22] = [
+    // GeometricEffectRadial
+    [
+        0x0a, 0x4c, 0xd0, 0x18, 0xbf, 0x69, 0x0a, 0x49, 0x8d, 0x47, 0x37, 0xa7, 0x85, 0x48, 0x50,
+        0x7a,
+    ],
+    // GeometricEffectDash
+    [
+        0x33, 0x52, 0x0e, 0x76, 0xe3, 0x1b, 0x73, 0x4c, 0x8c, 0x2d, 0x7c, 0x2d, 0xbf, 0xc0, 0x48,
+        0x8a,
+    ],
+    // GeometricEffectAddControlPoints
+    [
+        0xb6, 0x6f, 0xf8, 0xf3, 0x32, 0xf7, 0x80, 0x45, 0x8e, 0xd9, 0xe9, 0x91, 0x12, 0x80, 0x7b,
+        0x1b,
+    ],
+    // GeometricEffectOffset
+    [
+        0x99, 0x6d, 0x5e, 0x8d, 0x5f, 0x74, 0x4e, 0x42, 0x81, 0xab, 0xa2, 0xc3, 0xbf, 0xef, 0xbe,
+        0xb7,
+    ],
+    // GeometricEffectBuffer
+    [
+        0xb7, 0x7a, 0x46, 0x8f, 0x02, 0x8c, 0xed, 0x42, 0x9e, 0x3b, 0x15, 0x21, 0x77, 0x30, 0x40,
+        0x5a,
+    ],
+    // GeometricEffectReverse
+    [
+        0x7b, 0x91, 0xbc, 0x10, 0xa5, 0x1f, 0x20, 0x45, 0xa4, 0xfa, 0xd9, 0x79, 0xae, 0xd1, 0x53,
+        0x06,
+    ],
+    // GeometricEffectCut
+    [
+        0xb9, 0x49, 0x18, 0xba, 0x40, 0x46, 0xb2, 0x42, 0xab, 0xcf, 0xd7, 0xf4, 0xcb, 0xf2, 0xf3,
+        0xd1,
+    ],
+    // GeometricEffectArrow
+    [
+        0x47, 0x51, 0x19, 0x2b, 0xed, 0x95, 0x63, 0x48, 0xae, 0xbc, 0xb8, 0x76, 0xe1, 0xa4, 0x76,
+        0x6c,
+    ],
+    // GeometricEffectJog
+    [
+        0xe5, 0xbc, 0x21, 0x95, 0xf1, 0xb2, 0x3a, 0x47, 0xa5, 0x33, 0xd8, 0xe9, 0x4f, 0x0b, 0x8b,
+        0xed,
+    ],
+    // GeometricEffectDonut
+    [
+        0x37, 0x6e, 0x42, 0xa2, 0x61, 0xfb, 0x39, 0x43, 0x83, 0xf5, 0x70, 0xd3, 0xf8, 0x86, 0xec,
+        0x3a,
+    ],
+    // GeometricEffectEnclosingPolygon
+    [
+        0xb3, 0x9f, 0x3b, 0xde, 0x10, 0xc7, 0x43, 0x4f, 0xbc, 0x7e, 0x35, 0xb5, 0xb3, 0xad, 0xac,
+        0xb7,
+    ],
+    // GeometricEffectSimplify
+    [
+        0x84, 0xd1, 0x19, 0x3d, 0x20, 0xb8, 0xfb, 0x49, 0x95, 0x3e, 0x8f, 0xf9, 0x6c, 0xad, 0x5d,
+        0x11,
+    ],
+    // GeometricEffectSmooth
+    [
+        0x3d, 0x65, 0x7d, 0xca, 0x35, 0xf0, 0x1d, 0x46, 0x93, 0xaa, 0xfb, 0xb2, 0xec, 0xa5, 0x65,
+        0xef,
+    ],
+    // GeometricEffectRegularPolygon
+    [
+        0xee, 0x3a, 0x6a, 0xe1, 0x5c, 0xa3, 0x1f, 0x46, 0x9a, 0x2a, 0xbb, 0xb4, 0x1c, 0x0b, 0x77,
+        0x7f,
+    ],
+    // GeometricEffectWave
+    [
+        0x97, 0x2a, 0x35, 0x74, 0xc6, 0x64, 0x5d, 0x47, 0x88, 0xa2, 0xa8, 0xe0, 0x52, 0x36, 0xba,
+        0x07,
+    ],
+    // GeometricEffectTaperedPolygon
+    [
+        0x56, 0xbd, 0xa7, 0xb8, 0x56, 0xbb, 0xb7, 0x4b, 0x81, 0x55, 0x56, 0x74, 0x1d, 0x01, 0xd8,
+        0xb5,
+    ],
+    // GeometricEffectMove
+    [
+        0x6e, 0xd7, 0x00, 0x8e, 0x54, 0x5a, 0x2d, 0x4c, 0x92, 0x18, 0xf7, 0xf5, 0xfc, 0x06, 0x9e,
+        0xce,
+    ],
+    // GeometricEffectRotate
+    [
+        0xcf, 0xf3, 0xa1, 0xab, 0x07, 0x32, 0x89, 0x4c, 0x8c, 0xe3, 0x7a, 0x2a, 0x8f, 0xd8, 0xd2,
+        0x21,
+    ],
+    // GeometricEffectScale
+    [
+        0x91, 0x3e, 0x79, 0xe9, 0x8a, 0x69, 0x45, 0x4c, 0x8f, 0x09, 0xb4, 0x36, 0x83, 0xe4, 0x9b,
+        0x93,
+    ],
+    // GeometricEffectExtension
+    [
+        0x78, 0x74, 0xac, 0xf1, 0xeb, 0x67, 0x77, 0x4c, 0xad, 0xc4, 0x54, 0x91, 0xbb, 0x44, 0xf1,
+        0x40,
+    ],
+    // GeometricEffectOffsetTangent
+    [
+        0xa2, 0x2e, 0x2e, 0xdc, 0xca, 0x2b, 0x4b, 0x4d, 0x95, 0xee, 0x51, 0xcf, 0x72, 0x43, 0x80,
+        0xe8,
+    ],
+    // GeometricEffectSuppress
+    [
+        0xd7, 0x52, 0xa1, 0xb6, 0x82, 0xa8, 0x14, 0x40, 0x93, 0x80, 0xc9, 0x60, 0xe5, 0x24, 0x42,
+        0x7e,
+    ],
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GeometricEffectEntry10_1 {
+    pub name: Option<String>,
+    pub entry: ObjectEntry10_1,
+    pub body: Option<GraphicAttributeList10_1>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct BasicMarkerSymbol10_1 {
     pub version: u16,
     pub effect_list_version: u16,
     pub effect_count: i32,
+    pub effects: Vec<GeometricEffectEntry10_1>,
     pub attributes: GraphicAttributeList10_1,
     pub placement_name: Option<String>,
     pub placement: ObjectEntry10_1,
@@ -652,6 +774,7 @@ pub struct BasicLineSymbol10_1 {
     pub version: u16,
     pub effect_list_version: u16,
     pub effect_count: i32,
+    pub effects: Vec<GeometricEffectEntry10_1>,
     pub stroke: ObjectEntry10_1,
     pub stroke_body: Option<GraphicAttributeList10_1>,
     pub trailing_value: i32,
@@ -662,6 +785,7 @@ pub struct BasicFillSymbol10_1 {
     pub version: u16,
     pub effect_list_version: u16,
     pub effect_count: i32,
+    pub effects: Vec<GeometricEffectEntry10_1>,
     pub pattern: ObjectEntry10_1,
     pub pattern_body: Option<SolidColorPattern10_1>,
     pub trailing_value: i32,
@@ -715,6 +839,84 @@ pub struct RepresentationRuleLayer10_1 {
     pub marker: Option<BasicMarkerSymbol10_1>,
 }
 
+fn read_extra_safe_attributes_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+    classes: &[[u8; 16]],
+) -> io::Result<Option<(ObjectEntry10_1, Option<GraphicAttributeList10_1>)>> {
+    let (a, b) = (reader.read_u32_le()?, reader.read_u32_le()?);
+    let size = if b == 0 { a } else { b } as usize;
+    if size > max_bytes {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "ExtraSafe 属性对象长度超过限额",
+        ));
+    }
+    let mut region = reader.read_region(size)?;
+    let entry = if size == 0 {
+        ObjectEntry10_1::Null
+    } else {
+        read_object_entry_10_1(&mut region, refs)?
+    };
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, .. } if classes.contains(&class_id) => None,
+        ObjectEntry10_1::NewObject { class_id, .. } if depth > 1 && classes.contains(&class_id) => {
+            let Some(body) = read_graphic_attribute_list_10_1(&mut region, max_bytes, refs)? else {
+                return Ok(None);
+            };
+            Some(body)
+        }
+        _ => return Ok(None),
+    };
+    if region.remaining() != 0 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "ExtraSafe 属性对象与 ExtraSafe 边界不符",
+        ));
+    }
+    Ok(Some((entry, body)))
+}
+
+fn read_geometric_effects_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+    version: u16,
+    declared_count: i32,
+) -> io::Result<Option<Vec<GeometricEffectEntry10_1>>> {
+    let count = declared_count.max(0) as usize;
+    let has_name = (version as i16) >= 2;
+    let minimum_size = if has_name { 14 } else { 8 };
+    if count > reader.remaining().min(max_bytes) / minimum_size {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "几何效果计数超出剩余字节或限额",
+        ));
+    }
+    let mut effects = Vec::new();
+    for _ in 0..count {
+        let name = has_name
+            .then(|| read_string_10_1(reader, max_bytes))
+            .transpose()?;
+        let Some((entry, body)) = read_extra_safe_attributes_10_1(
+            reader,
+            max_bytes,
+            refs,
+            depth,
+            &GEOMETRIC_EFFECT_CLASSES_10_1,
+        )?
+        else {
+            return Ok(None);
+        };
+        effects.push(GeometricEffectEntry10_1 { name, entry, body });
+    }
+    Ok(Some(effects))
+}
+
 fn read_basic_fill_symbol_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -725,9 +927,17 @@ fn read_basic_fill_symbol_10_1(
     let effect_list_version =
         read_signed_symbol_version(reader, 2, "BasicFillSymbol 效果列表", reader.position())?;
     let effect_count = read_i32_le(reader)?;
-    if effect_count > 0 {
+    let Some(effects) = read_geometric_effects_10_1(
+        reader,
+        max_bytes,
+        refs,
+        depth,
+        effect_list_version,
+        effect_count,
+    )?
+    else {
         return Ok(None);
-    }
+    };
     let pattern = read_object_entry_10_1(reader, refs)?;
     let pattern_body = match pattern {
         ObjectEntry10_1::NewObject {
@@ -749,6 +959,7 @@ fn read_basic_fill_symbol_10_1(
         version,
         effect_list_version,
         effect_count,
+        effects,
         pattern,
         pattern_body,
         trailing_value: read_i32_le(reader)?,
@@ -765,9 +976,17 @@ fn read_basic_line_symbol_10_1(
     let effect_list_version =
         read_signed_symbol_version(reader, 2, "BasicLineSymbol 效果列表", reader.position())?;
     let effect_count = read_i32_le(reader)?;
-    if effect_count > 0 {
+    let Some(effects) = read_geometric_effects_10_1(
+        reader,
+        max_bytes,
+        refs,
+        depth,
+        effect_list_version,
+        effect_count,
+    )?
+    else {
         return Ok(None);
-    }
+    };
     let stroke = read_object_entry_10_1(reader, refs)?;
     let stroke_body = match stroke {
         ObjectEntry10_1::NewObject {
@@ -789,6 +1008,7 @@ fn read_basic_line_symbol_10_1(
         version,
         effect_list_version,
         effect_count,
+        effects,
         stroke,
         stroke_body,
         trailing_value: read_i32_le(reader)?,
@@ -805,9 +1025,17 @@ fn read_basic_marker_symbol_10_1(
     let effect_list_version =
         read_signed_symbol_version(reader, 2, "BasicMarkerSymbol 效果列表", reader.position())?;
     let effect_count = read_i32_le(reader)?;
-    if effect_count > 0 {
+    let Some(effects) = read_geometric_effects_10_1(
+        reader,
+        max_bytes,
+        refs,
+        depth,
+        effect_list_version,
+        effect_count,
+    )?
+    else {
         return Ok(None);
-    }
+    };
     let Some(attributes) = read_graphic_attribute_list_10_1(reader, max_bytes, refs)? else {
         return Ok(None);
     };
@@ -815,47 +1043,21 @@ fn read_basic_marker_symbol_10_1(
         .then(|| read_string_10_1(reader, max_bytes))
         .transpose()?;
 
-    let (a, b) = (reader.read_u32_le()?, reader.read_u32_le()?);
-    let size = if b == 0 { a } else { b } as usize;
-    if size > max_bytes {
-        return Err(io::Error::new(
-            ErrorKind::InvalidData,
-            "BasicMarkerSymbol 布置对象长度超过限额",
-        ));
-    }
-    let mut region = reader.read_region(size)?;
-    let placement = if size == 0 {
-        ObjectEntry10_1::Null
-    } else {
-        read_object_entry_10_1(&mut region, refs)?
+    let Some((placement, placement_body)) = read_extra_safe_attributes_10_1(
+        reader,
+        max_bytes,
+        refs,
+        depth,
+        &MARKER_PLACEMENT_CLASSES_10_1,
+    )?
+    else {
+        return Ok(None);
     };
-    let placement_body = match placement {
-        ObjectEntry10_1::Null => None,
-        ObjectEntry10_1::BackReference { class_id, .. }
-            if MARKER_PLACEMENT_CLASSES_10_1.contains(&class_id) =>
-        {
-            None
-        }
-        ObjectEntry10_1::NewObject { class_id, .. }
-            if depth > 1 && MARKER_PLACEMENT_CLASSES_10_1.contains(&class_id) =>
-        {
-            let Some(body) = read_graphic_attribute_list_10_1(&mut region, max_bytes, refs)? else {
-                return Ok(None);
-            };
-            Some(body)
-        }
-        _ => return Ok(None),
-    };
-    if region.remaining() != 0 {
-        return Err(io::Error::new(
-            ErrorKind::InvalidData,
-            "BasicMarkerSymbol 布置对象与 ExtraSafe 边界不符",
-        ));
-    }
     Ok(Some(BasicMarkerSymbol10_1 {
         version,
         effect_list_version,
         effect_count,
+        effects,
         attributes,
         placement_name,
         placement,
@@ -869,6 +1071,7 @@ pub struct RepresentationRuleBody10_1 {
     pub version: u16,
     pub effect_list_version: u16,
     pub effect_count: i32,
+    pub effects: Vec<GeometricEffectEntry10_1>,
     pub leading_value: i32,
     pub layer_count: i32,
     pub layers: Vec<RepresentationRuleLayer10_1>,
@@ -895,9 +1098,17 @@ fn read_representation_rule_body_10_1(
     let effect_list_version =
         read_signed_symbol_version(reader, 2, "RepresentationRule 效果列表", reader.position())?;
     let effect_count = read_i32_le(reader)?;
-    if effect_count > 0 {
+    let Some(effects) = read_geometric_effects_10_1(
+        reader,
+        max_bytes,
+        refs,
+        depth,
+        effect_list_version,
+        effect_count,
+    )?
+    else {
         return Ok(None);
-    }
+    };
     let leading_value = read_i32_le(reader)?;
     let layer_count = read_i32_le(reader)?;
     let count = layer_count.max(0) as usize;
@@ -986,6 +1197,7 @@ fn read_representation_rule_body_10_1(
         version,
         effect_list_version,
         effect_count,
+        effects,
         leading_value,
         layer_count,
         layers,

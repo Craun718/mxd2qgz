@@ -462,9 +462,9 @@ Load 先读有符号 short（上限 1），再于 `0x6ee73f10` 调用内联效�
 非正计数。IBasicSymbol 的接口身份由 `0x6ee97f44` 的 IID 与同版
 esriDisplay 类型库对位。
 
-共享符号读取器支持同类对象键回引，并读取没有效果成员、符号层类型已知的
+共享符号读取器支持同类对象键回引，并读取效果和符号层类型已知的
 RepresentationRule。覆盖值和次序列表可含成员，具体布局见下节。
-有效果成员或遇到未支持的符号层时会回退整个 SymbolMimic。实档及
+遇到未支持的效果或符号层时会回退整个 SymbolMimic。实档及
 ArcMap 10.1、QGIS 人工验证仍待完成。
 
 ### RepresentationRule 的覆盖值和次序列表
@@ -591,3 +591,46 @@ Load 和 Save 直接委派给 GraphicAttributeList 的读写入口。
 保留布置对象的属性 ID 和 Variant，并支持同类键回引。构造测试逐类
 验证新对象、回引及声明范围不符时的回滚。未公开布置类仍需原生证据。
 尚无真实 MXD 样本及 ArcMap 10.1、QGIS 人工验证。
+
+
+### RepresentationRule 与符号层的非空几何效果
+
+DisplayRepresentation.dll 10.1.0.3035 的效果列表 Load
+`0x6ee4c300` 与 Save `0x6ee4c4d0` 按有符号 short 版本及 int32
+计数分派。v2 起每项先通过 AfCore String 读写名称，所有版本随后通过
+ExtraSafe 读写 IGeometricEffect。读取器保留原始空槽，旧版空槽由原生
+在运行时实例化默认效果的行为留待人工核对。
+
+同版 72 份类型库列出 22 种专用几何效果类，以及 RepresentationRule 和
+三个符号层类。以下为 22 种专用类的构造 CLSID 引用及持久化虚表。
+它们的 Load / Save 一律为 `0x6ee2ff40 / 0x6ee26520`，直接委派给
+GraphicAttributeList。
+
+| GeometricEffect 类后缀 | 构造 CLSID 引用 | 持久化虚表 |
+| --- | --- | --- |
+| Radial | `0x6ee1c8d7` | `0x6ee95bbc` |
+| Dash | `0x6ee149c8` | `0x6ee94e14` |
+| AddControlPoints | `0x6ee110c7` | `0x6ee94714` |
+| Offset | `0x6ee1b0c8` | `0x6ee95924` |
+| Buffer | `0x6ee139b7` | `0x6ee94af4` |
+| Reverse | `0x6ee1e097` | `0x6ee95e94` |
+| Cut | `0x6ee13fb7` | `0x6ee94c84` |
+| Arrow | `0x6ee117fb` | `0x6ee948ec` |
+| Jog | `0x6ee1995a` | `0x6ee95674` |
+| Donut | `0x6ee16e38` | `0x6ee9517c` |
+| EnclosingPolygon | `0x6ee18378` | `0x6ee9530c` |
+| Simplify | `0x6ee1f7a7` | `0x6ee96274` |
+| Smooth | `0x6ee1fd47` | `0x6ee963dc` |
+| RegularPolygon | `0x6ee1d26a` | `0x6ee95d2c` |
+| Wave | `0x6ee247cb` | `0x6ee9687c` |
+| TaperedPolygon | `0x6ee235da` | `0x6ee9672c` |
+| Move | `0x6ee1a75a` | `0x6ee957c4` |
+| Rotate | `0x6ee1e59a` | `0x6ee95fb4` |
+| Scale | `0x6ee1ef0a` | `0x6ee96124` |
+| Extension | `0x6ee18ac8` | `0x6ee954cc` |
+| OffsetTangent | `0x6ee1becb` | `0x6ee95a74` |
+| Suppress | `0x6ee22517` | `0x6ee9658c` |
+
+规则及三种符号层共用该效果列表读取器。逐类构造测试覆盖 v2 名称、
+v1 无名称、规则与符号层之间的键回引，以及 ExtraSafe 边界回滚。
+效果槽内其他类体和属性组合仍待核查。尚无真实 MXD 或目标软件人工验证。
