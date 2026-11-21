@@ -542,3 +542,24 @@ GraphicAttributeList::Load 和 Save。属性体与 SolidColorPattern
 和 Variant 值，并沿用规则的对象键表。构造测试同时验证填充、线符号
 及各自子对象的回引、非空属性值和逐字节截断回滚。效果成员、实际 MXD
 及 ArcMap 10.1、QGIS 人工验证仍待完成。
+
+### BasicMarkerSymbol 与 MarkerPlacementOnPoint
+
+同版 DisplayRepresentation.dll 的 BasicMarkerSymbol Load
+`0x6ee38f62–0x6ee38f6c` 仅在版本 ≥2 时读取布置名称，随后
+`0x6ee38fa2` 调用 ExtraSafeReadObject，IID
+`43A0A7C4-B01C-491A-9481-BF9EE1584D42` 在同版 esriDisplay
+类型库中定名为 IMarkerPlacement。Load 在 `0x6ee39030` 读取尾 int32。
+
+MarkerPlacementOnPoint 的构造指令 `0x6ee2d475` 将
+CLSID `160C7BFF-2237-4A67-B163-89C223DB0A1D` 传给内联初始化，
+`0x6ee2d4bb` 在完整对象 `+0x30` 安装虚表 `0x6ee97334`。
+`0x6ee2d641–0x6ee2d6e4` 的 QI 确认该偏移对应 IPersistStream。
+Load `0x6ee2ff40` 通过 IAT `0x6ee94184` 委派至
+DisplayLib 的 GraphicAttributeList::Load，复用同一属性表布局。
+
+读取器接入无效果成员的 BasicMarkerSymbol，支持空布置槽、
+MarkerPlacementOnPoint 新对象及其同类键回引。ExtraSafe 有界对象必须
+读到声明终点才提交键。合成测试覆盖 v1/v2、名称、空槽、
+新对象、回引及声明长度偏小或偏大时的回滚。其余布置类、非空效果、
+实际 MXD 以及 ArcMap 10.1、QGIS 人工验证仍待完成。

@@ -573,6 +573,25 @@ pub const LINE_STROKE_CLASS_ID: [u8; 16] = [
     0x5c, 0x7f, 0x2a, 0xbd, 0x8b, 0x1d, 0x21, 0x42, 0xb3, 0xb0, 0x7f, 0x40, 0xb0, 0x30, 0x55, 0x03,
 ];
 
+pub const BASIC_MARKER_SYMBOL_CLASS_ID: [u8; 16] = [
+    0xa0, 0x73, 0xff, 0x1b, 0x34, 0xd1, 0x88, 0x4e, 0x8b, 0xc5, 0x78, 0x8b, 0xd3, 0x51, 0xb1, 0x2d,
+];
+pub const MARKER_PLACEMENT_ON_POINT_CLASS_ID: [u8; 16] = [
+    0xff, 0x7b, 0x0c, 0x16, 0x37, 0x22, 0x67, 0x4a, 0xb1, 0x63, 0x89, 0xc2, 0x23, 0xdb, 0x0a, 0x1d,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BasicMarkerSymbol10_1 {
+    pub version: u16,
+    pub effect_list_version: u16,
+    pub effect_count: i32,
+    pub attributes: GraphicAttributeList10_1,
+    pub placement_name: Option<String>,
+    pub placement: ObjectEntry10_1,
+    pub placement_body: Option<GraphicAttributeList10_1>,
+    pub trailing_value: i32,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct BasicLineSymbol10_1 {
     pub version: u16,
@@ -638,6 +657,7 @@ pub struct RepresentationRuleLayer10_1 {
     pub entry: ObjectEntry10_1,
     pub fill: Option<BasicFillSymbol10_1>,
     pub line: Option<BasicLineSymbol10_1>,
+    pub marker: Option<BasicMarkerSymbol10_1>,
 }
 
 fn read_basic_fill_symbol_10_1(
@@ -720,6 +740,75 @@ fn read_basic_line_symbol_10_1(
     }))
 }
 
+fn read_basic_marker_symbol_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<Option<BasicMarkerSymbol10_1>> {
+    let version = read_signed_symbol_version(reader, 2, "BasicMarkerSymbol", reader.position())?;
+    let effect_list_version =
+        read_signed_symbol_version(reader, 2, "BasicMarkerSymbol 效果列表", reader.position())?;
+    let effect_count = read_i32_le(reader)?;
+    if effect_count > 0 {
+        return Ok(None);
+    }
+    let Some(attributes) = read_graphic_attribute_list_10_1(reader, max_bytes, refs)? else {
+        return Ok(None);
+    };
+    let placement_name = ((version as i16) >= 2)
+        .then(|| read_string_10_1(reader, max_bytes))
+        .transpose()?;
+
+    let (a, b) = (reader.read_u32_le()?, reader.read_u32_le()?);
+    let size = if b == 0 { a } else { b } as usize;
+    if size > max_bytes {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "BasicMarkerSymbol 布置对象长度超过限额",
+        ));
+    }
+    let mut region = reader.read_region(size)?;
+    let placement = if size == 0 {
+        ObjectEntry10_1::Null
+    } else {
+        read_object_entry_10_1(&mut region, refs)?
+    };
+    let placement_body = match placement {
+        ObjectEntry10_1::Null
+        | ObjectEntry10_1::BackReference {
+            class_id: MARKER_PLACEMENT_ON_POINT_CLASS_ID,
+            ..
+        } => None,
+        ObjectEntry10_1::NewObject {
+            class_id: MARKER_PLACEMENT_ON_POINT_CLASS_ID,
+            ..
+        } if depth > 1 => {
+            let Some(body) = read_graphic_attribute_list_10_1(&mut region, max_bytes, refs)? else {
+                return Ok(None);
+            };
+            Some(body)
+        }
+        _ => return Ok(None),
+    };
+    if region.remaining() != 0 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "BasicMarkerSymbol 布置对象与 ExtraSafe 边界不符",
+        ));
+    }
+    Ok(Some(BasicMarkerSymbol10_1 {
+        version,
+        effect_list_version,
+        effect_count,
+        attributes,
+        placement_name,
+        placement,
+        placement_body,
+        trailing_value: read_i32_le(reader)?,
+    }))
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct RepresentationRuleBody10_1 {
     pub version: u16,
@@ -766,7 +855,7 @@ fn read_representation_rule_body_10_1(
     let mut layers = Vec::new();
     for _ in 0..count {
         let entry = read_object_entry_10_1(reader, refs)?;
-        let (fill, line) = match entry {
+        let (fill, line, marker) = match entry {
             ObjectEntry10_1::NewObject {
                 class_id: BASIC_FILL_SYMBOL_CLASS_ID,
                 ..
@@ -775,7 +864,7 @@ fn read_representation_rule_body_10_1(
                 else {
                     return Ok(None);
                 };
-                (Some(body), None)
+                (Some(body), None, None)
             }
             ObjectEntry10_1::NewObject {
                 class_id: BASIC_LINE_SYMBOL_CLASS_ID,
@@ -785,15 +874,33 @@ fn read_representation_rule_body_10_1(
                 else {
                     return Ok(None);
                 };
-                (None, Some(body))
+                (None, Some(body), None)
+            }
+            ObjectEntry10_1::NewObject {
+                class_id: BASIC_MARKER_SYMBOL_CLASS_ID,
+                ..
+            } if depth > 1 => {
+                let Some(body) = read_basic_marker_symbol_10_1(reader, max_bytes, refs, depth - 1)?
+                else {
+                    return Ok(None);
+                };
+                (None, None, Some(body))
             }
             ObjectEntry10_1::BackReference {
-                class_id: BASIC_FILL_SYMBOL_CLASS_ID | BASIC_LINE_SYMBOL_CLASS_ID,
+                class_id:
+                    BASIC_FILL_SYMBOL_CLASS_ID
+                    | BASIC_LINE_SYMBOL_CLASS_ID
+                    | BASIC_MARKER_SYMBOL_CLASS_ID,
                 ..
-            } => (None, None),
+            } => (None, None, None),
             _ => return Ok(None),
         };
-        layers.push(RepresentationRuleLayer10_1 { entry, fill, line });
+        layers.push(RepresentationRuleLayer10_1 {
+            entry,
+            fill,
+            line,
+            marker,
+        });
     }
     let override_count = read_i32_le(reader)?;
     let overrides_len = override_count.max(0) as usize;
