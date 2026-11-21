@@ -349,16 +349,24 @@ pub struct LayerExtensionEntry10_1 {
     pub scene_layer_properties: Option<Box<SceneLayerProperties10_1>>,
 }
 
+pub(super) const LEGACY_EXTENSION_HEADER_SIZE: usize = 24;
+
 pub(super) fn read_layer_extensions_10_1(
     r: &mut Reader<'_>,
     max: usize,
     refs: &mut RefTable10_1,
 ) -> io::Result<Vec<LayerExtensionEntry10_1>> {
     let count = (r.read_u32_le()? as i32).max(0) as usize;
-    if count > r.remaining() / 24 {
+    if count > r.remaining() / LEGACY_EXTENSION_HEADER_SIZE {
         return Err(io::Error::new(
             ErrorKind::UnexpectedEof,
             "图层扩展计数超出剩余字节",
+        ));
+    }
+    if count > max / LEGACY_EXTENSION_HEADER_SIZE {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "图层扩展头累计长度超过限额",
         ));
     }
     let mut budget = max;
@@ -378,10 +386,12 @@ pub(crate) fn read_layer_extension_entry_10_1(
     // LayerLib ExtensionHelper 的长度覆盖对象体，CLSID 后没有键。
     let length = u64::from_le_bytes(r.read_bytes(8)?.try_into().unwrap());
     let class_id = r.read_bytes(16)?.try_into().unwrap();
-    let length = usize::try_from(length)
+    let entry_len = usize::try_from(length)
         .ok()
-        .filter(|length| *length <= *budget)
-        .ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "图形容器扩展体长度超过限额"))?;
+        .and_then(|length| length.checked_add(LEGACY_EXTENSION_HEADER_SIZE))
+        .filter(|&length| length <= *budget)
+        .ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "图层扩展长度超过限额"))?;
+    let length = entry_len - LEGACY_EXTENSION_HEADER_SIZE;
     let mut template_manager = None;
     let mut properties = None;
     let mut server_layer_extension = None;
@@ -495,7 +505,7 @@ pub(crate) fn read_layer_extension_entry_10_1(
             _ => return Err(unsupported_class("图层扩展", &class_id)),
         }
     }
-    *budget -= length;
+    *budget -= entry_len;
     Ok(LayerExtensionEntry10_1 {
         class_id,
         template_manager,
@@ -518,6 +528,32 @@ pub(crate) fn read_layer_extension_entry_10_1(
 mod tests {
     use super::*;
     use crate::layers::raster_layer_tail::read_raster_layer_tail_10_1;
+
+    #[test]
+    fn extension_list_budget_counts_headers_even_for_empty_entries() {
+        let mut bytes = 2_u32.to_le_bytes().to_vec();
+        bytes.extend([0; 2 * LEGACY_EXTENSION_HEADER_SIZE]);
+        let mut refs = RefTable10_1::new();
+        let error =
+            read_layer_extensions_10_1(&mut Reader::new(&bytes), 47, &mut refs).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::InvalidData);
+
+        let mut reader = Reader::new(&bytes);
+        let entries = read_layer_extensions_10_1(&mut reader, 48, &mut refs).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(reader.remaining(), 0);
+
+        let mut budget = 23;
+        let error = read_layer_extension_entry_10_1(
+            &mut Reader::new(&bytes[4..]),
+            23,
+            &mut refs,
+            &mut budget,
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::InvalidData);
+        assert_eq!(budget, 23);
+    }
 
     #[test]
     fn e2_extension_keeps_description_boundary_in_both_wrappers() {

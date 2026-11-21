@@ -389,6 +389,11 @@ LayerLib.dll 的摘要与[版本资源记录](mxd-terra-depth-legend.md)一致�
 头部超限及累计体长超限。未知扩展仍按其声明边界保留，内部键和
 ArcMap/QGIS 实档行为尚待验证。
 
+共用 LayerLib 读取器和 StandaloneTable 的逐条入口同样按每条
+24 字节头加声明体长扣减限额。体长加头部使用检查加法，成功读完
+条目才扣减。合成用例验证多个空体仍累计固定头，并覆盖逐条入口
+头部超限及恰好到限额。
+
 ## v8 起的 ExtraSafe 扩展列表
 
 RasterLayer.dll `0x7c73ded0` 读取 int32 数量后逐项调用

@@ -18,11 +18,11 @@ use crate::layers::hatch_layer_extension::{
 };
 use crate::layers::layer_extensions::{
     DYNAMIC_TILED_LAYER_PROPERTIES_CLASS_ID, E2_LAYER_EXTENSION_VALUES_CLASS_ID,
-    FEATURE_SERVICE_LAYER_EDIT_EXTENSION_CLASS_ID, REPRESENTATION_LAYER_EXTENSION_CLASS_ID,
-    SERVER_LAYER_EXTENSION_CLASS_ID, read_bounded_dynamic_tiled_layer_properties,
-    read_bounded_e2_layer_extension_values, read_bounded_extension_property_set,
-    read_bounded_feature_service_layer_edit_extension, read_bounded_representation_layer_extension,
-    read_bounded_server_layer_extension,
+    FEATURE_SERVICE_LAYER_EDIT_EXTENSION_CLASS_ID, LEGACY_EXTENSION_HEADER_SIZE,
+    REPRESENTATION_LAYER_EXTENSION_CLASS_ID, SERVER_LAYER_EXTENSION_CLASS_ID,
+    read_bounded_dynamic_tiled_layer_properties, read_bounded_e2_layer_extension_values,
+    read_bounded_extension_property_set, read_bounded_feature_service_layer_edit_extension,
+    read_bounded_representation_layer_extension, read_bounded_server_layer_extension,
 };
 pub use crate::layers::layer_extensions::{
     DynamicTiledLayerProperties10_1, E2LayerExtensionValues10_1,
@@ -442,11 +442,12 @@ fn read_legacy_extensions(
     count: usize,
     max_bytes: usize,
 ) -> io::Result<Vec<RasterLayerLegacyExtension10_1>> {
-    const HEADER_SIZE: usize = 24;
-    if count > reader.remaining() / HEADER_SIZE || count > max_bytes / HEADER_SIZE {
+    if count > reader.remaining() / LEGACY_EXTENSION_HEADER_SIZE
+        || count > max_bytes / LEGACY_EXTENSION_HEADER_SIZE
+    {
         return Err(invalid("旧式扩展列表计数超出可读范围或限额"));
     }
-    let mut budget = max_bytes - count * HEADER_SIZE;
+    let mut budget = max_bytes - count * LEGACY_EXTENSION_HEADER_SIZE;
     (0..count)
         .map(|_| {
             // LayerLib ExtensionHelper 的长度仅覆盖对象体，CLSID 后无对象键。
