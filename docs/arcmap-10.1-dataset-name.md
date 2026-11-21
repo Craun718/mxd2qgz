@@ -265,3 +265,13 @@ FeatureDatasetName 完整读取且解析到工作空间路径时，以自身已�
 查询缓存并传到图层模型。内联 CoverageName 沿用字段读取器，其外层键不
 登记为 FeatureDatasetName。构造回归覆盖整个数据集的回引及 CLSID 不匹配，
 尚未在 ArcMap 或 QGIS 中人工验收。
+
+### 整个要素类名称的回引
+
+按同一 ObjectStream 证据，GdbCore FeatureClassName 或 FileGDB
+FgdbFeatureClassName 完整读取后，以实际外层 CLSID 与对象键登记要素类名
+和已确认的路径。FileGDB 委派体与 Coverage 内联体不额外登记为 GdbCore
+FeatureClassName。FeatureLayer 的数据源槽遇到整个名称对象的回引时，
+按类标识和键恢复模型原文，原始回引仍保留。构造回归覆盖常规
+FeatureClassName 的首次定义及回引，也验证误标类不返回路径。
+ArcMap 与 QGIS 人工验收尚未进行。

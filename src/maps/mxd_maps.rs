@@ -1851,11 +1851,22 @@ fn feature_layer_source(
         }
         DataSource10_1::Null => None,
         DataSource10_1::BackReference { key, .. } => {
+            let source = prefix.data_source_reference.as_ref();
+            let state = if source.is_some() {
+                "已解析名称"
+            } else {
+                "缺少已确认的名称"
+            };
             diagnostics.push(format!(
-                "条目 {}：数据源为回引条目（键 {key}），无体可解析，source 保留为 None",
+                "条目 {}：数据源回引键 {key}，{state}",
                 entry_index + 1
             ));
-            None
+            source.map(|source| DataSource {
+                provider: None,
+                path: source.path.as_deref().map(str::to_owned),
+                connection: Some(source.name.to_string()),
+                unknown_fields: Vec::new(),
+            })
         }
     }
 }
@@ -2741,6 +2752,26 @@ mod tests {
         let source = feature_layer_source(&prefix, 0, &mut Vec::new()).unwrap();
         assert_eq!(source.path.as_deref(), Some("..\\data.gdb"));
         assert_eq!(source.connection.as_deref(), Some("道路"));
+
+        let mut source_reference = body.clone();
+        source_reference.drain(source_offset + 20..after_workspace + 2);
+        for (class_id, resolved) in [
+            (FEATURE_CLASS_NAME_CLASS_ID, true),
+            (WORKSPACE_NAME_CLASS_ID, false),
+        ] {
+            source_reference[source_offset..source_offset + 16].copy_from_slice(&class_id);
+            let mut reader = Reader::new(&source_reference);
+            let prefix =
+                read_feature_layer_prefix_10_1(&mut reader, 1024, &mut refs.clone()).unwrap();
+            let source = feature_layer_source(&prefix, 0, &mut Vec::new());
+            if resolved {
+                let source = source.unwrap();
+                assert_eq!(source.path.as_deref(), Some("..\\data.gdb"));
+                assert_eq!(source.connection.as_deref(), Some("道路"));
+            } else {
+                assert!(source.is_none());
+            }
+        }
 
         let mut dataset_reference = body.clone();
         dataset_reference[source_offset + 16..source_offset + 20]

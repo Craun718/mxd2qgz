@@ -428,6 +428,8 @@ pub struct FeatureLayerPrefix10_1 {
     /// Load 第 5 步嵌套数据源条目的分类结果（请求 IID=IName，见
     /// [`DataSource10_1`]）。
     pub data_source: DataSource10_1,
+    /// 从已读要素类名称回引恢复的数据源原文。
+    pub data_source_reference: Option<crate::storage::object_refs::FeatureClassSource10_1>,
     /// 数据源之后的首个嵌套对象槽（请求 IID `{40A9E884-…}`=
     /// IFeatureRenderer）分类。`None` = 因数据源体内停止未读取。
     pub renderer: Option<RendererSlot10_1>,
@@ -476,6 +478,43 @@ pub fn read_feature_class_name_body_10_1(
 }
 
 pub(crate) fn read_feature_class_name_body_with_depth_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+    depth: usize,
+) -> io::Result<FeatureClassNamePrefix10_1> {
+    let body = read_feature_class_name_payload(reader, max_bytes, table, key, depth)?;
+    mark_feature_class_source(table, FEATURE_CLASS_NAME_CLASS_ID, &body);
+    Ok(body)
+}
+
+fn mark_feature_class_source(
+    table: &mut RefTable10_1,
+    class_id: [u8; 16],
+    body: &FeatureClassNamePrefix10_1,
+) {
+    use crate::objects::dataset_name_more::DatasetNameMoreBody10_1;
+
+    if body.stop.is_some() {
+        return;
+    }
+    let path = match &body.nested {
+        FeatureClassNameNested10_1::WorkspaceName(WorkspaceNameEntry10_1::NewObject(ws)) => {
+            Some(ws.path.as_str())
+        }
+        FeatureClassNameNested10_1::DatasetName(DatasetNameEntry10_1::NewObject(dataset)) => {
+            match dataset.as_ref() {
+                DatasetNameMoreBody10_1::FeatureDataset(dataset) => dataset.workspace_path(),
+                _ => None,
+            }
+        }
+        _ => body.workspace_back_reference_path.as_deref(),
+    };
+    table.mark_feature_class_source(class_id, body.key, &body.name, path);
+}
+
+fn read_feature_class_name_payload(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
@@ -727,19 +766,15 @@ pub fn read_fgdb_feature_class_name_body_10_1(
     }
     let unknown_short = trial.read_u16_le()?;
     let mut staged_table = table.clone();
-    let feature_class = read_feature_class_name_body_with_depth_10_1(
-        &mut trial,
-        max_bytes,
-        &mut staged_table,
-        key,
-        0,
-    )?;
+    let feature_class =
+        read_feature_class_name_payload(&mut trial, max_bytes, &mut staged_table, key, 0)?;
 
     let mut result = feature_class;
     result.fgdb_wrapper = Some(FgdbFeatureClassNameHeader10_1 {
         version,
         unknown_short,
     });
+    mark_feature_class_source(&mut staged_table, FGDB_FEATURE_CLASS_NAME_CLASS_ID, &result);
     *table = staged_table;
     *reader = trial;
     Ok(result)
@@ -762,7 +797,7 @@ pub(crate) fn read_coverage_feature_class_name_body_10_1(
     }
     let longs = [trial.read_u32_le()? as i32, trial.read_u32_le()? as i32];
     let flag = trial.read_bytes(1)?[0];
-    let mut body = read_feature_class_name_body_10_1(&mut trial, max_bytes, table, key)?;
+    let mut body = read_feature_class_name_payload(&mut trial, max_bytes, table, key, 0)?;
     body.coverage_wrapper = Some(CoverageFeatureClassNameHeader10_1 {
         version,
         longs,
@@ -1039,6 +1074,12 @@ pub fn read_feature_layer_prefix_10_1(
         }
     };
 
+    let data_source_reference = match &data_source {
+        DataSource10_1::BackReference { class_id, key } => {
+            staged_table.feature_class_source(*class_id, *key).cloned()
+        }
+        _ => None,
+    };
     let result = FeatureLayerPrefix10_1 {
         version,
         name,
@@ -1047,6 +1088,7 @@ pub fn read_feature_layer_prefix_10_1(
         unknown_short_a,
         unknown_short_b,
         data_source,
+        data_source_reference,
         renderer,
         guid_after_renderer,
         successor: successor_result,
