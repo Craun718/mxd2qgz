@@ -1,3 +1,4 @@
+use mxd2qgz::layers::dep_tail::{TIME_CLASS_ID, TIME_EXTENT_CLASS_ID, TIME_REFERENCE_CLASS_ID};
 use mxd2qgz::layers::feature_layer::FEATURE_CLASS_NAME_CLASS_ID;
 use mxd2qgz::maps::standalone_table::{
     StandaloneNameBody10_1, StandaloneTableStop10_1, StandaloneTableTailBody10_1,
@@ -268,6 +269,7 @@ fn empty_sequences_reach_version_boundaries_and_secondary_name() {
                 b.extend([0; 8]);
             }
         }
+        let mut extent_offset = None;
         if version >= 12 {
             b.extend(2u16.to_le_bytes());
             b.extend(0u16.to_le_bytes());
@@ -277,6 +279,7 @@ fn empty_sequences_reach_version_boundaries_and_secondary_name() {
             for _ in 0..4 {
                 string(&mut b);
             }
+            extent_offset = Some(b.len());
             b.extend([0; 16]);
             b.extend(1u16.to_le_bytes());
             string(&mut b);
@@ -289,6 +292,43 @@ fn empty_sequences_reach_version_boundaries_and_secondary_name() {
             b.extend(0u32.to_le_bytes());
         }
         let expected = b.len();
+        if let Some(offset) = extent_offset {
+            let mut extent = TIME_EXTENT_CLASS_ID.to_vec();
+            extent.extend(51u32.to_le_bytes());
+            extent.extend(2u16.to_le_bytes());
+            extent.extend(TIME_CLASS_ID);
+            extent.extend(52u32.to_le_bytes());
+            extent.extend(1u16.to_le_bytes());
+            extent.extend(1i32.to_le_bytes());
+            extent.extend(45.0_f64.to_le_bytes());
+            extent.extend([0; 16]);
+            extent.extend(TIME_REFERENCE_CLASS_ID);
+            extent.extend(53u32.to_le_bytes());
+            extent.extend(1u16.to_le_bytes());
+            let zone_offset = extent.len();
+            extent.extend([0; 16]);
+            extent.extend([0; 4]);
+            extent.push(1);
+            let mut timed = b.clone();
+            timed.splice(offset..offset + 16, extent);
+            let mut r = Reader::new(&timed);
+            let mut refs = RefTable10_1::new();
+            let table = read_standalone_table_prefix_10_1(&mut r, &mut refs, 10, 100).unwrap();
+            assert_eq!(table.stop, StandaloneTableStop10_1::Complete);
+            assert_eq!(r.remaining(), 0);
+            assert!((51..=53).all(|key| refs.contains(key)));
+
+            let zone = offset + zone_offset;
+            timed[zone..zone + 16].fill(0x7d);
+            timed[zone + 16..zone + 20].copy_from_slice(&54u32.to_le_bytes());
+            let mut r = Reader::new(&timed);
+            let mut refs = RefTable10_1::new();
+            let table = read_standalone_table_prefix_10_1(&mut r, &mut refs, 10, 100).unwrap();
+            assert_eq!(table.stop, StandaloneTableStop10_1::TimeFamily);
+            assert_eq!(r.position(), offset);
+            assert!(refs.contains(41));
+            assert!((51..=54).all(|key| !refs.contains(key)));
+        }
         if version == 14 {
             let mut with_extension = b.clone();
             with_extension[expected - 4..].copy_from_slice(&2u32.to_le_bytes());

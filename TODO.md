@@ -327,6 +327,7 @@
   - [x] 接入 StandaloneTable 关系名称循环和压缩序列前的 IColor 对象槽。[独立表槽位取证](docs/mxd-terra-round9-table.md#关系名称序列颜色和后续对象)
   - [x] 接入 StandaloneTable 后续版本的 DisplayExpressionProperties、UID 和标注集合槽。[独立表槽位取证](docs/mxd-terra-round9-table.md#关系名称序列颜色和后续对象)
   - [x] 接入 StandaloneTable v14 的已支持 LayerLib 扩展类体及嵌套键。[独立表槽位取证](docs/mxd-terra-round9-table.md#关系名称序列颜色和后续对象)
+  - [x] 修正 StandaloneTable 时间范围子槽未闭合时的停止位置与键回滚。[时间槽取证](docs/mxd-terra-round9-table.md#独立表中的-timeextent-停止点)
   - [x] 清点 10.1 介质类型库公开的 Map 坐标变换类，核对 14 个公开类及通用 GeoTransformation 均已接入。[实现清点](docs/mxd-terra-host-geo.md#101-安装介质的接口实现清点)
   - [x] 定性 Map 坐标变换条目的方向字段及 v12/v13 的缺省规则。[方向取证](docs/mxd-terra-chain-map.md#map-变换条目的存盘方向)
   - [ ] 定位额外组件提供的 Map 坐标变换持久化类。GEOCONTransformation 与 NADCON5Transformation 在 10.1 Desktop 介质中仅见注册声明。[实现清点](docs/mxd-terra-host-geo.md#101-安装介质的接口实现清点)

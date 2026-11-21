@@ -146,3 +146,18 @@ v3、v6 以及 v0 StandaloneTable 验证三类的新对象、旧 Map 同键回�
 
 同批 135 份工程的两条根流均读至末尾，未命中 RelationshipClassName CLSID。
 有属性关系类的 ArcMap/QGIS 人工验收尚未进行。
+
+### 独立表中的 TimeExtent 停止点
+
+StandaloneTable v12 起复用 LayerLib TimeData 族读取器。
+TimeTableDefinition Load `0x7870df80` 的 ITimeExtent 槽
+委派到 SystemCore 10.1.0.3035 的 TimeExtent Load `0x7ffe81f0`。
+其端点和时间参考的任一子槽未闭合时，TimeTableDefinition
+的后继段无法定位。共享读取器现在在整个 ITimeExtent 槽
+起点停止，保留已消费的 TimeData 和其他独立表前缀，
+并撤销 TimeExtent 及其子对象的键。
+
+合成 StandaloneTable v12–v14 测试覆盖非空 TimeExtent、
+内嵌 Time 和 TimeReference、后继时间段与 v14 扩展边界。
+替换为未知时区后，验证恢复到外层槽起点并撤销嵌套键。
+尚未在 ArcMap 10.1 或 QGIS 人工验证这组对象。

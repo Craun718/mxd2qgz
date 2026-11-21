@@ -750,15 +750,19 @@ pub fn read_time_data_family_10_1(
             ObjectEntry10_1::BackReference { class_id, key } => {
                 slot = TimeExtentSlot10_1::BackReference { class_id, key };
             }
-            ObjectEntry10_1::NewObject { class_id, key } if class_id == TIME_EXTENT_CLASS_ID => {
-                let body = read_time_extent_body_10_1(&mut trial, max_bytes, &mut staged, key)?;
-                slot = TimeExtentSlot10_1::Body(Box::new(body));
-            }
             ObjectEntry10_1::NewObject { class_id, key } => {
-                trial = reposition_to(&reader.clone(), slot_offset);
-                staged = pre_slot_table;
-                slot = TimeExtentSlot10_1::Unsupported { class_id, key };
-                stop = Some(TimeFamilyStop10_1::TimeTableSlot { class_id, key });
+                if class_id == TIME_EXTENT_CLASS_ID {
+                    let body = read_time_extent_body_10_1(&mut trial, max_bytes, &mut staged, key)?;
+                    if body.stop.is_none() {
+                        slot = TimeExtentSlot10_1::Body(Box::new(body));
+                    }
+                }
+                if matches!(slot, TimeExtentSlot10_1::Null) {
+                    // 对象头已登记，体未闭合时回退到整个 ITimeExtent 槽。
+                    trial = reposition_to(reader, slot_offset);
+                    staged = pre_slot_table;
+                    stop = Some(TimeFamilyStop10_1::TimeTableSlot { class_id, key });
+                }
             }
         }
         if stop.is_none() {
