@@ -157,7 +157,25 @@ Rust 的访问器在流中存在该字段时返回布尔值，旧版保留字段
 
 基类 v5 增加的 short 在完整对象 +0x1b0，`0x793a1210/0x793a1230`
 分别直接写读它。基类初始化段 `0x7944b820/0x7944b835` 清零两字段。
-v5 的调用方和业务名仍待追踪。ArcMap/QGIS 实档目视验证待补。
+用 Map.dll 10.1.0.3035 的 PE32 虚表和 RTTI 复核，SHA-256 为
+`1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`。
+两个入口在下列七张完整对象虚表中分别位于 +0x98 和 +0x9c，
+各表前一指针所指的 RTTI Complete Object Locator 的偏移均为 0。
+
+| 类型 | 完整对象虚表 |
+| --- | --- |
+| AlternatingScaleBar | `0x79480ee4` |
+| DoubleAlternatingScaleBar | `0x79482444` |
+| HollowScaleBar | `0x79483624` |
+| ScaleBar | `0x7948bf54` |
+| ScaleLine | `0x7948c3dc` |
+| SingleDivisionScaleBar | `0x7948ce54` |
+| SteppedScaleLine | `0x7948e0b4` |
+
+这两个入口使用 ECX 传递 this，与上文 IScaleBar2 子对象虚表中
+同偏移的 COM 访问器不同。Map.dll 直接调用扫描未找到这两个地址的
+`call` 或 `jmp`。间接调用者和 v5 字段的业务名仍待追踪。
+ArcMap/QGIS 实档目视验证待补。
 
 ## 比例尺线数字格式槽
 
