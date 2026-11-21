@@ -693,3 +693,23 @@ BasicFillSymbol、BasicLineSymbol 和 BasicMarkerSymbol 的 QueryInterface
 ExtraSafe 声明体内必须恰好读完，错误时回滚整个符号及其新键。
 构造测试覆盖规则、标记符号层、后续规则回引和深度不足的回滚。
 其他属性对象组合、实际 MXD 和目标软件人工验证仍待完成。
+
+### 表示规则槽的跨模块候选
+
+复查 ArcGIS Desktop 10.1 安装介质中的 72 个可解析类型库，按接口
+继承追踪 `IRepresentationRule`，声明该接口的 coclass 为
+DisplayRepresentation.dll 的 RepresentationRule。Desktop 的
+`esri.clsid.xml` 还注册了以下两个名称相近的类。按 CLSID、原生
+GetClassID 和 QueryInterface 复核了安装介质中的同版 PE：
+
+| 类 | 模块，文件版本 10.1.0.3035 | CLSID | GetClassID | QueryInterface |
+| --- | --- | --- | --- | --- |
+| BGLRepresentationRule | BGLSymbols.dll | `F506F6BF-05B2-4D27-9AB1-6CBAC3961F60` | `0x6bf1b663` | `0x6bf1b880` |
+| MERepresentationRule | MappingCore.dll | `44D3082B-E2EB-44DD-B0BE-A664DB75FCC9` | `0x799575b3` | `0x79956fb0` |
+
+objdump 指令与 PE 数据常量显示，两者均接受 IPersistStream。两个类
+入口及其通用回退（分别为 `0x6bf4d2e0` 和 `0x79a0d0b0`）均
+未将 SymbolMimic 请求的 IID `2B7BE3AB-BB72-49D0-A6EE-63ACD1F9068C`
+列为可返回的接口，对未识别 IID 返回 E_NOINTERFACE。因此该槽的
+解析保持现有分派。证据范围限于这两个候选和上述类型库，未覆盖
+第三方注册组件，也未进行 ArcMap 10.1 或 QGIS 人工验证。

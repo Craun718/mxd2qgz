@@ -470,6 +470,7 @@
       - [ ] FeatureLayer 后继段 ㉖ 槽中未支持的 ISymbol 实现类体（已接入类和跨模块候选见[符号续研](docs/arcmap-10.1-dep-tail.md#featurelayer-符号槽的栅格和-wms-实现)）。
       - [x] 接入 SymbolMimic 的空 IRepresentationRule 槽及两项标量。[原生持久化入口](docs/arcmap-10.1-dep-tail.md#symbolmimic-的持久化入口)
       - [x] 接入 SymbolMimic 中各集合为空的 RepresentationRule 对象体及同类键回引。[原生边界](docs/arcmap-10.1-dep-tail.md#symbolmimic-中的-representationrule)
+      - [x] 核对 BGLRepresentationRule 与 MERepresentationRule 是否能进入 SymbolMimic 的规则槽。[跨模块接口证据](docs/arcmap-10.1-dep-tail.md#表示规则槽的跨模块候选)
       - [x] 读取 RepresentationRule 的非空覆盖值与次序列表。[原生循环布局](docs/arcmap-10.1-dep-tail.md#representationrule-的覆盖值和次序列表)
       - [x] 定位 RepresentationRule 中三种 IBasicSymbol 的原生 Load 入口与子槽边界。[持久化分派](docs/arcmap-10.1-dep-tail.md#representationrule-的-ibasicsymbol-持久化分派)
       - [x] 接入无效果成员的 BasicFillSymbol、SolidColorPattern 属性表及对象键回引。[原生委派](docs/arcmap-10.1-dep-tail.md#basicfillsymbol-与-solidcolorpattern)
