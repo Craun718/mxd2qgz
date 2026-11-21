@@ -291,3 +291,9 @@ NetworkAnalyst.dll 10.1.0.3035（SHA-256 `8c4ebaee71aad63c25616aa806674018479829
 NetworkAnalyst.dll 10.1.0.3035 的 Load `0x7af6a360` 和 Save `0x7af6a5e0` 在回引与新对象路径汇合后，均调用已取得图例组的虚表 `+0x24` 获得分类数。v2 的可见性和索引数组由该计数定界，回引后没有额外计数字段。读取器随 ObjectStream 键表保存已完整解析的 LegendGroup 分类数。内联图例组没有独立键，不登记此元数据。如果只见对象键而缺少完整定义，则保留渲染器停止边界。
 
 构造测试使用一次新图例组和随后同键回引，核对两次得到相同的数组，并验证缺少分类数时回滚。ArcMap/QGIS 人工验收尚未进行。
+
+### 最近设施求解器
+
+NetworkAnalystSolvers.dll 10.1.0.3035 的 GetClassID `0x7b0c4960` 引用 `0x7b1fed34`，与 10.1 注册表中 NAClosestFacilitySolver 的 CLSID `771F83D4-C698-4836-8222-C0B689A85827` 一致。原始指令及持久化表中的 `0x7b200c68` 将 Load 定位至 `0x7b0c6120`。该函数限制有符号版本上限为 4，依照与路径求解器相同的规则把外层版本映射到 `0x7b12ba00` 的共用版本。只有外层 v4 在共用体之后再读 double 和 LONG。
+
+两份 SanFrancisco SDK 工程从 `0x17a0f` 的键 876 读取 v3 求解器，随后均完整消费 Closest Facility 图层声明区间。构造测试检验 v3 与 v4 的边界和 v4 截断回滚。其他网络求解器及 ArcMap/QGIS 人工验收仍待完成。

@@ -401,6 +401,7 @@ pub struct NaRouteSolverTail10_1 {
     pub parameters: Option<(ObjectEntry10_1, Option<(u16, i32)>)>,
     pub common_v3: Option<(u64, i32)>,
     pub route_specific: Option<(u64, u16)>,
+    pub closest_facility_specific: Option<(u64, i32)>,
 }
 
 const NA_LOCATOR_CLASS_ID: [u8; 16] = [
@@ -559,7 +560,7 @@ pub(super) fn read_na_context_prefix_10_1(
             };
             let dataset = read_na_network_name_10_1(&mut trial, max, &mut keys)?;
             // 求解器只读取已确认前缀，失败时保留其对象头与后续字节。
-            let solver = read_na_route_solver_prefix(&mut trial, max, &mut keys).ok();
+            let solver = read_na_solver_prefix(&mut trial, max, &mut keys).ok();
             let solver_complete = solver
                 .as_ref()
                 .is_some_and(|(_, body)| body.as_ref().is_none_or(|body| body.tail.is_some()));
@@ -607,6 +608,10 @@ pub(super) fn read_na_context_prefix_10_1(
     *refs = keys;
     Ok((context, body))
 }
+
+const NA_CLOSEST_FACILITY_SOLVER_CLASS_ID: [u8; 16] = [
+    0xd4, 0x83, 0x1f, 0x77, 0x98, 0xc6, 0x36, 0x48, 0x82, 0x22, 0xc0, 0xb6, 0x89, 0xa8, 0x58, 0x27,
+];
 
 const NA_ROUTE_SOLVER_CLASS_ID: [u8; 16] = [
     0x08, 0xa2, 0x8a, 0x1a, 0x4a, 0x3d, 0x0f, 0x42, 0xb8, 0x2c, 0xf5, 0x81, 0x94, 0xa7, 0x2c, 0xb0,
@@ -911,7 +916,7 @@ fn read_na_context_post_solver_slot(
     Ok(entry)
 }
 
-fn read_na_route_solver_prefix(
+fn read_na_solver_prefix(
     reader: &mut Reader<'_>,
     max: usize,
     refs: &mut RefTable10_1,
@@ -921,14 +926,15 @@ fn read_na_route_solver_prefix(
     let entry = read_object_entry_10_1(&mut trial, &mut keys)?;
     let body = match entry {
         ObjectEntry10_1::NewObject {
-            class_id: NA_ROUTE_SOLVER_CLASS_ID,
+            class_id: class_id @ (NA_ROUTE_SOLVER_CLASS_ID | NA_CLOSEST_FACILITY_SOLVER_CLASS_ID),
             ..
         } => {
             let version = trial.read_u16_le()?;
-            if version as i16 > 3 {
+            let closest_facility = class_id == NA_CLOSEST_FACILITY_SOLVER_CLASS_ID;
+            if version as i16 > if closest_facility { 4 } else { 3 } {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
-                    "NARouteSolver 版本超过 3",
+                    "网络分析求解器版本超过支持范围",
                 ));
             }
             let attribute_name = read_bstr_string_10_1(&mut trial, max)?;
@@ -944,9 +950,9 @@ fn read_na_route_solver_prefix(
             let properties = hierarchy
                 .as_ref()
                 .and_then(|_| read_na_property_set_slot(&mut trial, max, &mut keys).ok());
-            let tail = properties
-                .as_ref()
-                .and_then(|_| read_na_route_tail(&mut trial, max, &mut keys, version).ok());
+            let tail = properties.as_ref().and_then(|_| {
+                read_na_solver_tail(&mut trial, max, &mut keys, version, closest_facility).ok()
+            });
             Some(NaRouteSolverPrefix10_1 {
                 version,
                 attribute_name,
@@ -1103,11 +1109,12 @@ const NA_ATTRIBUTE_PARAMETER_VALUE_ARRAY_CLASS_ID: [u8; 16] = [
     0x6b, 0x9e, 0x93, 0x61, 0x11, 0x80, 0xc5, 0x40, 0xb6, 0x72, 0x73, 0xea, 0x1e, 0x02, 0x6f, 0xec,
 ];
 
-fn read_na_route_tail(
+fn read_na_solver_tail(
     reader: &mut Reader<'_>,
     max: usize,
     refs: &mut RefTable10_1,
     version: u16,
+    closest_facility: bool,
 ) -> io::Result<NaRouteSolverTail10_1> {
     let mut trial = reader.clone();
     let mut keys = refs.clone();
@@ -1155,8 +1162,11 @@ fn read_na_route_tail(
     let common_v3 = (common_version == 3)
         .then(|| Ok::<_, io::Error>((trial.read_f64_le()?.to_bits(), trial.read_u32_le()? as i32)))
         .transpose()?;
-    let route_specific = (version != 0)
+    let route_specific = (!closest_facility && version != 0)
         .then(|| Ok::<_, io::Error>((trial.read_f64_le()?.to_bits(), trial.read_u16_le()?)))
+        .transpose()?;
+    let closest_facility_specific = (closest_facility && version == 4)
+        .then(|| Ok::<_, io::Error>((trial.read_f64_le()?.to_bits(), trial.read_u32_le()? as i32)))
         .transpose()?;
     if trial.position() - reader.position() > max {
         return Err(io::Error::new(
@@ -1171,6 +1181,7 @@ fn read_na_route_tail(
         parameters,
         common_v3,
         route_specific,
+        closest_facility_specific,
     })
 }
 
@@ -1582,6 +1593,35 @@ mod tests {
     }
 
     #[test]
+    fn closest_facility_adds_its_own_tail_only_at_version_four() {
+        let mut bytes = vec![0; 4 + 16 + 12];
+        let shared_end = bytes.len();
+        bytes.extend(1.5_f64.to_le_bytes());
+        bytes.extend((-7_i32).to_le_bytes());
+        let mut refs = RefTable10_1::new();
+        for version in [3, 4] {
+            let mut reader = Reader::new(&bytes);
+            let tail = read_na_solver_tail(&mut reader, 128, &mut refs, version, true).unwrap();
+            assert!(tail.route_specific.is_none());
+            assert_eq!(
+                tail.closest_facility_specific,
+                (version == 4).then_some((1.5_f64.to_bits(), -7))
+            );
+            assert_eq!(
+                reader.position(),
+                if version == 4 {
+                    bytes.len()
+                } else {
+                    shared_end
+                }
+            );
+        }
+        let mut reader = Reader::new(&bytes[..bytes.len() - 1]);
+        assert!(read_na_solver_tail(&mut reader, 128, &mut refs, 4, true).is_err());
+        assert_eq!(reader.position(), 0);
+    }
+
+    #[test]
     fn route_solver_prefix_commits_only_after_the_flag() {
         let mut bytes = NA_ROUTE_SOLVER_CLASS_ID.to_vec();
         bytes.extend(246_u32.to_le_bytes());
@@ -1592,13 +1632,13 @@ mod tests {
         let mut refs = RefTable10_1::new();
         for end in 0..bytes.len() {
             let mut reader = Reader::new(&bytes[..end]);
-            assert!(read_na_route_solver_prefix(&mut reader, 64, &mut refs).is_err());
+            assert!(read_na_solver_prefix(&mut reader, 64, &mut refs).is_err());
             assert_eq!(reader.position(), 0);
             assert!(refs.is_empty());
         }
         bytes.push(0x7f);
         let mut reader = Reader::new(&bytes);
-        let (_, solver) = read_na_route_solver_prefix(&mut reader, 64, &mut refs).unwrap();
+        let (_, solver) = read_na_solver_prefix(&mut reader, 64, &mut refs).unwrap();
         let solver = solver.unwrap();
         assert_eq!(
             (
@@ -1636,13 +1676,13 @@ mod tests {
             let mut refs = RefTable10_1::new();
             for end in 0..bytes.len() {
                 let mut reader = Reader::new(&bytes[..end]);
-                assert!(read_na_route_tail(&mut reader, 128, &mut refs, version).is_err());
+                assert!(read_na_solver_tail(&mut reader, 128, &mut refs, version, false).is_err());
                 assert_eq!(reader.position(), 0);
                 assert!(refs.is_empty());
             }
             bytes.push(0x7f);
             let mut reader = Reader::new(&bytes);
-            let tail = read_na_route_tail(&mut reader, 128, &mut refs, version).unwrap();
+            let tail = read_na_solver_tail(&mut reader, 128, &mut refs, version, false).unwrap();
             assert_eq!(tail.shorts, (11, (version >= 1).then_some(12)));
             assert_eq!(
                 tail.common_v3,
@@ -1659,7 +1699,7 @@ mod tests {
                 let mut reader = Reader::new(&bytes);
                 let mut refs = RefTable10_1::new();
                 assert_eq!(
-                    read_na_route_tail(&mut reader, 128, &mut refs, version)
+                    read_na_solver_tail(&mut reader, 128, &mut refs, version, false)
                         .unwrap_err()
                         .kind(),
                     io::ErrorKind::Unsupported
