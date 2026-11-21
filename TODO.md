@@ -325,6 +325,7 @@
   - [x] 接入 Map v38 与 v44 的 ITimeValue TimeInstant 实现，读完 SanFrancisco 的 Map 尾段。
   - [x] 读取 NetworkLayer 前缀及 NetworkDatasetName 对象槽。
   - [x] 读取 NetworkLayer 的空间参考、显示属性和渲染器计数。
+  - [x] 读取 NetworkLayer 渲染器循环项及 NetworkDirtyAreaRenderer 对象体。
   - [ ] 读取 NetworkLayer 网络名称之后的对象槽和尾段。
   - [x] 接入 NALayer 的 NAContext、NetworkAnalysisWorkspace 三字符串和 IPropertySet 前缀，两份 SanFrancisco 实档的体停点由 `0x370` 推进到 `0x512`。[上下文与工作空间前缀](docs/mxd-luna-deep-layer-masking-20261118.md#nalayer-的上下文与工作空间前缀)
   - [x] 读取 NARouteSolver 的层级列表与属性集。[层级与属性取证](docs/mxd-luna-deep-layer-masking-20261118.md#naroutesolver-的层级列表与属性集)

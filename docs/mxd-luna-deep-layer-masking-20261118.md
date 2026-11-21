@@ -355,3 +355,9 @@ BasemapLayer.dll 10.1.0.3035 的 `0x6b6436b0 / 0x6b6436f0` 从当前集合返回
 NetworkLayer.dll 10.1.0.3035 的 Load `0x7b2903d0` 在名称之后请求 `0x7b2a9fe4` 的 ISpatialReference 和 `0x7b2aa004` 的 IDisplayFilter。其后由 Ghidra 导出和 Save `0x7b2908a0` 核对 short、String、short、两个 double、两个 short、double、ExtensionHelper 序列、String、两个 double，以及 LONG 渲染器计数。读取器复用现有空间参考、显示过滤器和扩展分派，截断时回滚这个字段段落的游标和键。
 
 两份 SanFrancisco SDK 工程从 `/Maps:0xd07a6` 读取 GCS 键 30 回引和空过滤器，读出渲染器计数 5，停于 `0xd080e` 的首项 short。随后对象键 5057 对应 NetworkDirtyAreaRenderer。渲染器循环和 ArcMap/QGIS 人工验收尚待处理。
+
+### NetworkLayer 的脏区渲染器
+
+NetworkLayer.dll 10.1.0.3035 的 Load `0x7b2903d0` 在计数之后逐项读取 short、普通对象槽（IID 位于 `0x7b2a7a20`）及 16 字节字段。NetworkDirtyAreaRenderer GetClassID `0x7b284810` 返回 `0x7b2a7a60` 的 CLSID，持久化虚表 `0x7b2a8d64` 的 Load/Save 为 `0x7b285590 / 0x7b285490`。Ghidra 补充导出确认体内只有有符号上限 1 的 short 和 ILegendGroup 槽。完整读取一项后提交它及嵌套对象键。
+
+两份 SanFrancisco SDK 工程均从 `0xd080e` 读完脏区渲染器键 5057，停于 `0xd0954` 的第二项，其渲染器键 5064。构造测试覆盖项尾及逐字节截断回滚。其余网络渲染器与 ArcMap/QGIS 人工验收仍待处理。
