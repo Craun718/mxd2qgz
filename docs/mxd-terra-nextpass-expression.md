@@ -128,3 +128,33 @@ v2 尾 short `-0x28` 对应 ProduceCurvedLabels（getter
 
 命令行保留原始值，参考工程的三个标注类均有回归覆盖。Maplex 放置配置、
 单位转换及 ArcMap/QGIS 人工验证仍待完成。
+
+### Maplex 标注类的持久化入口
+
+复用上节同一 SHA-256 的 LabelPlacement.dll 10.1.0.3035，从注册 CLSID、
+MSVC RTTI 和 objdump 三处定位。MaplexLabelEngineLayerProperties
+`20664808-0D1C-11D2-A26F-080009B6F22B` 的构造器在
+`0x7856077a` 安装持久化虚表 `0x7857d844`，其 GetClassID、Load 和 Save
+由调整器跳转到 `0x78560650`、`0x785615e0`、`0x785618f0`。
+Load 在 `0x78561617` 拒绝有符号版本大于 11，Save 从 `0x7857972c` 写 v11。
+该类具有自己的 Load 入口和版本序列。
+
+| 条件 | Load 流序 | 指令范围 |
+| --- | --- | --- |
+| 固定前缀 | 版本 short、String、short；版本 ≤1 另读一个 short；double、LONG、三个 short、LONG、两个 double、short、两个 String | `0x7856160a..0x785616ea` |
+| 固定对象段 | ITextSymbol；版本 <11 插入一个请求 BasicOverposterLayerProperties 对应接口的旧槽；表达式引擎、IEnvelope | `0x78561718..0x785617d0` |
+| 固定标量段 | 两个 double、两个 LONG | `0x785617df..0x7856180f` |
+| 版本化对象及标量 | ≥3 对象（请求 IID 常量 `0x7857cb7c`）；≥4 short；≥5 对象（请求 IID 常量 `0x7857d86c`）；仅 v6 一个 LONG；≥8 一个 LONG；仅 v9 一个 short | `0x78561818..0x785618c7` |
+
+固定对象段的 IID 依次由 `0x7857cb5c`、`0x7857afdc`（旧分支）、
+`0x7857a248`、`0x7857cb4c` 给出。旧对象读取到临时槽，紧接着释放；
+即使忽略其业务属性也须消费对象体与共享键。v11 Save 在 `0x78561a43`
+将 ≥3 的槽写为空标记，在 `0x78561a5d` 写成员 `-0x10`。
+该成员对应归档对象的接口与 v5 起的读侧请求一致。
+
+MaplexOverposterLayerProperties `20664808-41C9-11D1-880A-080009EC732A`
+构造指令 `0x78563cde` 安装持久化虚表 `0x7857ec80`；GetClassID、
+Load、Save 分别由槽调整器进入 `0x78566d00`、`0x78566d40`、
+`0x78563ba0`。该类与 Map 层级的 MaplexOverposterProperties 分属不同 CLSID。
+后续仍须核对 MaplexOverposterLayerProperties 的持久化体及其嵌套子槽，
+并从 ALPC 接入 Maplex 标注类。尚未以实档或 ArcMap 运行验证。
