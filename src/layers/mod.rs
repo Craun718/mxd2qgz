@@ -4,6 +4,7 @@ pub mod annotate_props;
 pub mod basemap_layer;
 pub mod cache_tile_reader;
 pub mod cad_layer;
+pub mod class_breaks_renderer;
 pub mod composite_graphics;
 pub mod coverage_annotation_layer;
 pub mod dep_tail;

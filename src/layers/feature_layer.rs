@@ -360,6 +360,7 @@ pub enum RendererSlot10_1 {
     /// RgbColor、LegendGroup、LegendClass 嵌套链）；体内停止时经
     /// [`FeatureLayerStop10_1::RendererBody`] 携带原因。
     SimpleRenderer(Box<SimpleRendererPrefix10_1>),
+    ClassBreaksRenderer(Box<super::class_breaks_renderer::ClassBreaksRenderer10_1>),
     NaStopRenderer(Box<super::na_stop_renderer::NaStopRenderer10_1>),
     UniqueValueRenderer(Box<crate::layers::unique_value_renderer::UniqueValueRenderer10_1>),
     /// 不支持的新渲染器类：停止点，
@@ -387,6 +388,7 @@ pub enum FeatureLayerStop10_1 {
     /// 渲染器槽的 SimpleRenderer 体自身的停止点（原因透传，见
     /// [`SimpleRendererStop10_1`]）：游标停在其停止点。
     RendererBody(SimpleRendererStop10_1),
+    ClassBreaksRendererBody(super::class_breaks_renderer::ClassBreaksRendererStop10_1),
     UniqueValueRendererBody(crate::layers::unique_value_renderer::UniqueValueRendererStop10_1),
     /// 渲染器槽之后的后继字段段（+0x144 GUID 后的 String/double/short、
     /// IHyperlink 循环、IColor 槽、String ×2/int32、FieldInfo 计数循环）的
@@ -972,6 +974,22 @@ pub fn read_feature_layer_prefix_10_1(
                         &mut staged_table,
                     )?,
                 )),
+                ObjectEntry10_1::NewObject {
+                    class_id: super::class_breaks_renderer::CLASS_BREAKS_RENDERER_CLASS_ID,
+                    key,
+                } => {
+                    let body = super::class_breaks_renderer::read_class_breaks_renderer_10_1(
+                        &mut trial,
+                        max_bytes,
+                        &mut staged_table,
+                        key,
+                    )?;
+                    renderer_stop = body
+                        .stop
+                        .clone()
+                        .map(FeatureLayerStop10_1::ClassBreaksRendererBody);
+                    RendererSlot10_1::ClassBreaksRenderer(Box::new(body))
+                }
                 ObjectEntry10_1::NewObject { class_id, key } => {
                     // 其他渲染器类：体未知且无外部长度，回退到槽位起点（不
                     // 保留该键），其后字段不可达。
@@ -1035,8 +1053,102 @@ mod fgdb_feature_class_name_tests {
         bytes.extend(value.to_le_bytes());
     }
 
+    fn push_i32(bytes: &mut Vec<u8>, value: i32) {
+        bytes.extend(value.to_le_bytes());
+    }
+
+    fn push_f64(bytes: &mut Vec<u8>, value: f64) {
+        bytes.extend(value.to_le_bytes());
+    }
+
+    fn push_string(bytes: &mut Vec<u8>, value: &str) {
+        let mut units: Vec<u16> = value.encode_utf16().collect();
+        units.push(0);
+        push_u32(bytes, (units.len() * 2) as u32);
+        for unit in units {
+            push_u16(bytes, unit);
+        }
+    }
+
     fn push_empty_string(bytes: &mut Vec<u8>) {
         bytes.extend([2, 0, 0, 0, 0, 0]);
+    }
+
+    fn push_feature_layer_prefix(bytes: &mut Vec<u8>, version: u16) {
+        push_u16(bytes, version);
+        push_empty_string(bytes);
+        push_empty_string(bytes);
+        push_u16(bytes, 0xffff);
+        push_u16(bytes, 0);
+        push_u16(bytes, 0);
+    }
+
+    fn push_class_breaks_body(bytes: &mut Vec<u8>, unsupported_legend_group: bool) {
+        push_u16(bytes, 8);
+        push_string(bytes, "FIELD");
+        push_string(bytes, "SECOND");
+        push_i32(bytes, 2);
+        for value in [1.0, 2.0, 3.0, 4.0] {
+            push_f64(bytes, value);
+        }
+        push_f64(bytes, 5.5);
+        if unsupported_legend_group {
+            bytes.extend([0xaa; 16]);
+            push_u32(bytes, 601);
+        } else {
+            bytes.extend([0; 16]);
+        }
+        bytes.extend([0; 16]); // LegendItem
+        bytes.push(0); // 无可选 GUID
+        push_u16(bytes, 21);
+        bytes.extend([0; 16]); // NumberFormat
+        push_string(bytes, "label");
+        push_u16(bytes, 23);
+        push_u16(bytes, 24);
+        push_i32(bytes, 25);
+        push_i32(bytes, 26);
+        push_u16(bytes, 1);
+        push_string(bytes, "rotation-field");
+        push_i32(bytes, 27);
+        push_f64(bytes, 28.0);
+        bytes.extend([0; 16]); // FillSymbol
+        push_i32(bytes, 29);
+        push_f64(bytes, 30.0);
+        push_i32(bytes, 31);
+        push_u16(bytes, 1);
+        bytes.extend([0; 16]); // DataExclusion::LegendGroup
+        push_string(bytes, "excluded");
+        push_u16(bytes, 32);
+        push_u16(bytes, 1);
+        push_i32(bytes, 33);
+        push_i32(bytes, 34);
+        for value in ["rotation-a", "rotation-b", "rotation-c"] {
+            push_string(bytes, value);
+        }
+        for value in 35..=40 {
+            push_f64(bytes, value as f64);
+        }
+        push_u16(bytes, 1);
+        push_i32(bytes, 41);
+        push_string(bytes, "size");
+        push_f64(bytes, 42.0);
+        push_f64(bytes, 43.0);
+        bytes.extend([0; 16]); // ColorRamp
+        bytes.extend([0; 16]); // Symbol
+        push_u16(bytes, 44);
+    }
+
+    fn push_successor_prefix_to_field_info_end(bytes: &mut Vec<u8>) {
+        push_string(bytes, "BSM");
+        push_f64(bytes, 0.0);
+        push_f64(bytes, 0.0);
+        push_u16(bytes, 0);
+        push_i32(bytes, 0); // Hyperlink 计数
+        bytes.extend([0; 16]); // IColor
+        push_empty_string(bytes);
+        push_empty_string(bytes);
+        push_i32(bytes, 0);
+        push_i32(bytes, 0); // FieldInfo 计数
     }
 
     fn push_feature_class_body(
@@ -1152,5 +1264,81 @@ mod fgdb_feature_class_name_tests {
         ));
         assert!(table.contains(55));
         assert!(!table.contains(77));
+    }
+
+    #[test]
+    fn feature_layer_dispatches_complete_class_breaks_renderer_successor() {
+        let mut bytes = Vec::new();
+        push_feature_layer_prefix(&mut bytes, 8);
+        bytes.extend([0; 16]); // 数据源为空
+        bytes.extend(crate::layers::class_breaks_renderer::CLASS_BREAKS_RENDERER_CLASS_ID);
+        push_u32(&mut bytes, 55);
+        push_class_breaks_body(&mut bytes, false);
+        bytes.extend([0x42; 16]); // FeatureLayer +0x144 GUID
+        push_successor_prefix_to_field_info_end(&mut bytes);
+        bytes.extend([0xcc; 8]); // ALPC 槽不足一个对象头，保留成功停止点
+        let mut reader = Reader::new(&bytes);
+        let mut table = RefTable10_1::new();
+
+        let layer = read_feature_layer_prefix_10_1(&mut reader, 1 << 20, &mut table)
+            .expect("完整分级渲染器应进入后继段");
+
+        let RendererSlot10_1::ClassBreaksRenderer(body) = layer.renderer.unwrap() else {
+            panic!("ClassBreaksRenderer 应走专用渲染器分支");
+        };
+        assert_eq!(body.key, 55);
+        assert_eq!(body.version, 8);
+        assert_eq!(body.field, "FIELD");
+        assert_eq!(body.secondary_field, "SECOND");
+        assert_eq!(body.breaks.len(), 2);
+        assert_eq!(body.secondary_breaks.len(), 2);
+        assert!(body.stop.is_none());
+        assert_eq!(layer.guid_after_renderer, Some([0x42; 16]));
+        assert_eq!(
+            layer.stop,
+            FeatureLayerStop10_1::Successor(SuccessorStop10_1::FieldInfoLoopCompleted)
+        );
+        assert_eq!(reader.remaining(), 8);
+        assert!(table.contains(55));
+    }
+
+    #[test]
+    fn class_breaks_inner_stop_keeps_prefix_and_does_not_read_successor() {
+        let mut bytes = Vec::new();
+        push_feature_layer_prefix(&mut bytes, 8);
+        bytes.extend([0; 16]); // 数据源为空
+        bytes.extend(crate::layers::class_breaks_renderer::CLASS_BREAKS_RENDERER_CLASS_ID);
+        push_u32(&mut bytes, 55);
+        let body_start = bytes.len();
+        push_class_breaks_body(&mut bytes, true);
+        let unsupported_offset = body_start
+            + bytes[body_start..]
+                .windows(20)
+                .position(|window| {
+                    window[..16] == [0xaa; 16] && window[16..20] == 601_u32.to_le_bytes()
+                })
+                .expect("测试体应包含不支持的 LegendGroup 对象头");
+        bytes.extend([0x42; 16]); // 不应读取
+        push_successor_prefix_to_field_info_end(&mut bytes); // 不应读取
+        let mut reader = Reader::new(&bytes);
+        let mut table = RefTable10_1::new();
+
+        let layer = read_feature_layer_prefix_10_1(&mut reader, 1 << 20, &mut table)
+            .expect("分级体内的成功停止应透传");
+
+        assert!(matches!(
+            layer.stop,
+            FeatureLayerStop10_1::ClassBreaksRendererBody(
+                crate::layers::class_breaks_renderer::ClassBreaksRendererStop10_1::LegendGroupUnsupported {
+                    key: 601,
+                    ..
+                }
+            )
+        ));
+        assert!(layer.guid_after_renderer.is_none());
+        assert!(layer.successor.is_none());
+        assert_eq!(reader.position(), unsupported_offset);
+        assert!(table.contains(55));
+        assert!(!table.contains(601));
     }
 }

@@ -115,6 +115,9 @@
 
 - [x] 2026-11-18 介质续查：接入 UniqueValueRenderer、CoordinateFrameTransformation、TransparencyDisplayFilter 和 ParagraphTextElement；纠正四类色带名称的 AfCore BSTR 长度单位。66 份 10.1 安装介质 MXD/MXT 均读完了布局元素列表，见[原生调用与实档复核](docs/mxd-us-media-renderer-paragraph-20261118.md)。
 
+- [x] 接入 FeatureLayer `IFeatureRenderer` 槽的 ClassBreaksRenderer v1–v8 对象体，覆盖断点数组、版本门、四类图例项、NumberFormat、DataExclusion、RotationRenderer、SizeRenderer、ColorRamp、最终 Symbol 及嵌套停止点，见[原生布局](docs/mxd-10.1-class-breaks-renderer.md)。
+- [x] 2026-11-21 ClassBreaksRenderer 自动验证：`cargo fmt --check`、`cargo test` 和参考样本 `parse` 通过；参考工程结束位置不变。尚未进行 ArcMap/QGIS 人工目视验收。
+
 - [x] 2026-11-18 Basemap 续查：读通空图层列表的内嵌 Map、正式子图层回引、空扩展尾部和已确认类型的逐层遮罩。10.1 候选工程中新有 10 份到达布局，9 份读完元素列表，见[原生复核与介质统计](docs/mxd-basemap-continuation-20261118.md)。
 
 - [x] 2026-11-18 布局续查：读通 Graticule、DMSGridLabel、SimpleMapGridBorder 和 LocatorRectangle；接通 SimpleFillSymbol 的多图层线轮廓。10.1 介质中进入页面元素集合的 48 份均读完集合，见[网格与定位框复核](docs/mxd-page-layout-grid-20261118.md)。
