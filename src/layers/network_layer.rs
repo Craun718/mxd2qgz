@@ -6,6 +6,8 @@ use super::feature_layer_tail::{
 };
 use super::layer_extensions::{LayerExtensionEntry10_1, read_layer_extensions_10_1};
 use super::na_layer::{NetworkDatasetName10_1, read_na_network_name_10_1};
+use super::raster_renderer::{RasterDoubleArraySlot10_1, read_double_array_slot};
+use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
 use crate::objects::display_symbol::{
     DisplaySlotKind10_1, MAX_SYMBOL_NESTING_DEPTH, SymbolSlotFull10_1, read_symbol_slot_full_10_1,
     slot_full_stop_10_1,
@@ -23,9 +25,36 @@ const SIMPLE_NETWORK_RENDERER_CLASS_ID: [u8; 16] = [
     0xd1, 0xbf, 0x30, 0x1c, 0x91, 0xdb, 0xf1, 0x48, 0xb3, 0xc1, 0x6a, 0x2f, 0xeb, 0x0c, 0x71, 0x04,
 ];
 
+const NETWORK_TRAFFIC_RENDERER_CLASS_ID: [u8; 16] = [
+    0x18, 0x21, 0x9a, 0x17, 0x69, 0xf4, 0x0c, 0x4a, 0xa3, 0x3d, 0xa4, 0x02, 0x28, 0xa9, 0x3a, 0x13,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NetworkTrafficRenderer10_1 {
+    pub version: u16,
+    pub base: NetworkRendererBase10_1,
+    pub attribute: String,
+    pub legend: LegendGroupSlot10_1,
+    pub values: Vec<u64>,
+    pub version_two: Option<NetworkTrafficRendererV2_10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NetworkTrafficRendererV2_10_1 {
+    pub flags: [u16; 5],
+    pub arrays: [RasterDoubleArraySlot10_1; 2],
+    pub color: ColorSlot10_1,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct SimpleNetworkRenderer10_1 {
     pub version: u16,
+    pub base: NetworkRendererBase10_1,
+    pub legend: LegendGroupSlot10_1,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NetworkRendererBase10_1 {
     pub base_version: u16,
     pub name: String,
     pub modes: [i32; 2],
@@ -33,7 +62,6 @@ pub struct SimpleNetworkRenderer10_1 {
     pub symbols: [SymbolSlotFull10_1; 3],
     pub flags: Option<[u16; 3]>,
     pub sources: Vec<(String, u8, String)>,
-    pub legend: LegendGroupSlot10_1,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -42,6 +70,7 @@ pub struct NetworkRendererEntry10_1 {
     pub entry: ObjectEntry10_1,
     pub dirty_area: Option<(u16, LegendGroupSlot10_1)>,
     pub simple: Option<Box<SimpleNetworkRenderer10_1>>,
+    pub traffic: Option<Box<NetworkTrafficRenderer10_1>>,
     pub trailer: [u8; 16],
 }
 
@@ -183,7 +212,7 @@ fn read_renderer(
             Some((version, legend))
         }
         ObjectEntry10_1::NewObject {
-            class_id: SIMPLE_NETWORK_RENDERER_CLASS_ID,
+            class_id: SIMPLE_NETWORK_RENDERER_CLASS_ID | NETWORK_TRAFFIC_RENDERER_CLASS_ID,
             ..
         } => None,
         ObjectEntry10_1::NewObject { .. } => {
@@ -203,6 +232,15 @@ fn read_renderer(
     )
     .then(|| read_simple_network_renderer(&mut trial, max, &mut keys).map(Box::new))
     .transpose()?;
+    let traffic = matches!(
+        entry,
+        ObjectEntry10_1::NewObject {
+            class_id: NETWORK_TRAFFIC_RENDERER_CLASS_ID,
+            ..
+        }
+    )
+    .then(|| read_traffic_renderer(&mut trial, max, &mut keys).map(Box::new))
+    .transpose()?;
     let trailer = trial.read_bytes(16)?.try_into().expect("固定 16 字节");
     *reader = trial;
     *refs = keys;
@@ -211,6 +249,7 @@ fn read_renderer(
         entry,
         dirty_area,
         simple,
+        traffic,
         trailer,
     })
 }
@@ -222,11 +261,31 @@ fn read_simple_network_renderer(
     refs: &mut RefTable10_1,
 ) -> io::Result<SimpleNetworkRenderer10_1> {
     let version = reader.read_u16_le()?;
-    let base_version = reader.read_u16_le()?;
-    if version as i16 > 2 || base_version as i16 > 3 {
+    if version as i16 > 2 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "SimpleNetworkRenderer 版本超限",
+        ));
+    }
+    let base = read_network_renderer_base(reader, max, refs)?;
+    let legend = read_network_legend(reader, max, refs)?;
+    Ok(SimpleNetworkRenderer10_1 {
+        version,
+        base,
+        legend,
+    })
+}
+
+fn read_network_renderer_base(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<NetworkRendererBase10_1> {
+    let base_version = reader.read_u16_le()?;
+    if base_version as i16 > 3 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "网络渲染器共用版本超限",
         ));
     }
     let name = read_string_10_1(reader, max)?;
@@ -269,9 +328,7 @@ fn read_simple_network_renderer(
             ));
         }
     }
-    let legend = read_network_legend(reader, max, refs)?;
-    Ok(SimpleNetworkRenderer10_1 {
-        version,
+    Ok(NetworkRendererBase10_1 {
         base_version,
         name,
         modes,
@@ -279,7 +336,70 @@ fn read_simple_network_renderer(
         symbols,
         flags,
         sources,
+    })
+}
+
+/// 0x7b29b380 在共用体后读取图例，并按分类数读取 double。
+fn read_traffic_renderer(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<NetworkTrafficRenderer10_1> {
+    let version = reader.read_u16_le()?;
+    if version as i16 > 2 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "NetworkTrafficRenderer 版本超限",
+        ));
+    }
+    let base = read_network_renderer_base(reader, max, refs)?;
+    let attribute = read_string_10_1(reader, max)?;
+    let legend = read_network_legend(reader, max, refs)?;
+    let count = match &legend {
+        LegendGroupSlot10_1::LegendGroup(group) => Some(group.classes.len()),
+        LegendGroupSlot10_1::BackReference { key, .. } => refs.legend_group_count(*key),
+        _ => None,
+    }
+    .ok_or_else(|| io::Error::new(io::ErrorKind::Unsupported, "路况渲染器缺少图例分类数"))?;
+    if count > reader.remaining().min(max) / 8 {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "路况渲染器分类值超出范围",
+        ));
+    }
+    let mut values = Vec::new();
+    for _ in 0..count {
+        values.push(reader.read_f64_le()?.to_bits());
+    }
+    let version_two = if version == 2 {
+        let a = reader.read_u16_le()?;
+        let b = reader.read_u16_le()?;
+        let first = read_double_array_slot(reader, refs)?;
+        let c = reader.read_u16_le()?;
+        let second = read_double_array_slot(reader, refs)?;
+        let flags = [a, b, c, reader.read_u16_le()?, reader.read_u16_le()?];
+        let color = read_color_slot_10_1(reader, max, refs)?;
+        if matches!(color, ColorSlot10_1::Unsupported { .. }) {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "路况渲染器颜色未支持",
+            ));
+        }
+        Some(NetworkTrafficRendererV2_10_1 {
+            flags,
+            arrays: [first, second],
+            color,
+        })
+    } else {
+        None
+    };
+    Ok(NetworkTrafficRenderer10_1 {
+        version,
+        base,
+        attribute,
         legend,
+        values,
+        version_two,
     })
 }
 
@@ -324,6 +444,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn traffic_renderer_uses_referenced_legend_count_before_version_two_slots() {
+        let empty = [2, 0, 0, 0, 0, 0];
+        let mut bytes = 2_u16.to_le_bytes().to_vec();
+        bytes.extend(0_u16.to_le_bytes());
+        bytes.extend(empty);
+        bytes.extend([0; 8]);
+        bytes.extend(empty);
+        bytes.extend([0; 48]);
+        bytes.extend(empty);
+        bytes.extend(LEGEND_GROUP_CLASS_ID);
+        bytes.extend(21_u32.to_le_bytes());
+        bytes.extend(2.25_f64.to_le_bytes());
+        bytes.extend([0; 4 + 16 + 2 + 16 + 4 + 16]);
+        bytes.push(0x7f);
+        let mut refs = RefTable10_1::new();
+        refs.register(21);
+        refs.mark_legend_group(21, 1);
+        let mut reader = Reader::new(&bytes);
+        let renderer = read_traffic_renderer(&mut reader, 256, &mut refs).unwrap();
+        assert_eq!(renderer.values, [2.25_f64.to_bits()]);
+        assert_eq!(renderer.version_two.unwrap().flags, [0; 5]);
+        assert_eq!(reader.read_bytes(1).unwrap(), [0x7f]);
+    }
+
+    #[test]
     fn simple_renderer_reads_version_three_sources_with_item_rollback() {
         let mut bytes = 8_u16.to_le_bytes().to_vec();
         bytes.extend(SIMPLE_NETWORK_RENDERER_CLASS_ID);
@@ -351,7 +496,7 @@ mod tests {
         let mut reader = Reader::new(&bytes);
         let renderer = read_renderer(&mut reader, 128, &mut refs).unwrap();
         assert_eq!(
-            renderer.simple.unwrap().sources,
+            renderer.simple.unwrap().base.sources,
             [(String::new(), 1, String::new())]
         );
         assert_eq!(renderer.trailer, [0x33; 16]);

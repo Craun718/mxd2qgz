@@ -367,3 +367,9 @@ NetworkLayer.dll 10.1.0.3035 的 Load `0x7b2903d0` 在计数之后逐项读取 s
 NetworkLayer.dll 10.1.0.3035 的 SimpleNetworkRenderer GetClassID `0x7b29e810` 引用 `0x7b2a7a50` 的 CLSID。持久化表 `0x7b2aaab4` 的 Load/Save 为 `0x7b29e770 / 0x7b29e650`。Load 读取版本上限 2 的 short，经共用体 `0x7b298990` 读取版本上限 3 的 short、String、两个 LONG、String 和三个 ISymbol 槽。共用 v2 起有三个 short，v3 起有来源计数及逐项 String、字节、String。外层最后读取 ILegendGroup 槽。Ghidra 补充导出与共用 Save `0x7b298550` 可复核。
 
 两份 SanFrancisco SDK 工程均读过键 5064 的简单网络渲染器，解析推进至 `/Maps:0xd0d78` 的下一未支持项，键 5079。构造测试覆盖来源列表、项尾与逐字节截断回滚。ArcMap/QGIS 人工验收尚未进行。
+
+### 网络路况渲染器
+
+NetworkLayer.dll 10.1.0.3035 的 NetworkTrafficRenderer 持久化槽指向 Load/Save `0x7b29b380 / 0x7b29b070`。Ghidra 补充导出和原始指令确认版本上限 2，读共用体 `0x7b298990` 后读 String 和 ILegendGroup，并按图例虚表 `+0x24` 返回的分类数读取 double。v2 追加两 short、IDoubleArray、short、IDoubleArray、两 short 和 IColor。构造测试用已登记的图例组回引定界分级数组并核对 v2 槽位边界。
+
+两份 SanFrancisco SDK 工程均从 `/Maps:0xd0d78` 继续读完声明的五个条目，NetworkLayer 完整抵达外层声明边界。ArcMap/QGIS 人工验收尚未进行。

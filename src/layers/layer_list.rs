@@ -1278,7 +1278,11 @@ pub(crate) fn read_complete_layer_body_10_1(
             body.stop == crate::layers::group_layer::GroupLayerStop10_1::Complete
         }
         LayerBodyPrefix10_1::RasterLayer(body) => body.tail.is_some(),
-        LayerBodyPrefix10_1::NaLayer(_) | LayerBodyPrefix10_1::NetworkLayer(_) => false,
+        LayerBodyPrefix10_1::NaLayer(_) => false,
+        LayerBodyPrefix10_1::NetworkLayer(body) => body
+            .display
+            .as_ref()
+            .is_some_and(|display| display.renderer_count.max(0) as usize == body.renderers.len()),
         LayerBodyPrefix10_1::Graphics3d(_)
         | LayerBodyPrefix10_1::ProcessLayer(_)
         | LayerBodyPrefix10_1::WcsLayer(_)
