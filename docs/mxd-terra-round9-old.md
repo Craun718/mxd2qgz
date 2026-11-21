@@ -474,3 +474,17 @@ IAMSWorkspace 虚表 `0x80ad1d44` 的 `0x80a64010`，在
 ### 旧 Map 表槽中的空 IName
 
 Map.dll 10.1.0.3035 的旧表循环 `0x793ffc30` 先清零输出指针，`0x793ffc4c` 调 LoadObject 后仅检查负 HRESULT。紧接的 `0x793ffc6b..0x793ffc73` 直接解引用该输出并定位 IName::Open，没有空指针检查，也没有跳到下一条的分支。空对象头不会产生 IName 实例，Rust 保留现有行为，在这一项起点停止并保留字节。构造回归将旧表条目替换为空标记，验证游标停在项首、未登记对象键。该异常输入未在 ArcMap 中运行。
+
+### 旧表名称注册项清点
+
+Desktop 10.1.0.3035 的 `esri.clsid.xml`（SHA-256
+`13a72c90856b258dbd065b4cbc9a2eedf744b411edfa9ccb56b64ce5074eedce`）
+按 ProgID 后缀 `TableName`、`FeatureClassName`、`ObjectClassName`、
+`TableQueryName`、`FeatureQueryName` 和 `RasterBandName` 筛选。表名称读取器已接入
+TableName、FeatureClassName、NetCDFTableName、DBTableName、
+CoverageFeatureClassName、FgdbFeatureClassName、QueryTableName、
+FgdbTableName、ObjectClassName、ReferencedTableName、RasterBandName、
+RelQueryTableName、NetCDFFeatureClassName、TableQueryName 和 FeatureQueryName。
+剩余 SdeRasterTableName 的读写入口见上一节。该筛选仅清点命名符合条件的注册项。
+原生槽请求 IName，随后以 ITable 查询 Open 的结果，因此还需按接口检查其它命名形式
+以及第三方类；本次未做目标软件运行验证。
