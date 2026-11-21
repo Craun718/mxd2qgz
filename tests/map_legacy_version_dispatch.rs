@@ -435,16 +435,29 @@ fn map_v0_to_v13_read_version_gated_tail_fields() {
                 names[1].1,
                 DatasetNameMoreSlot10_1::BackReference { key: 90, .. }
             ));
-            let mut unknown = bytes.clone();
             let at = offset + table_offset;
-            unknown[at..at + 16].fill(0x7d);
-            let mut reader = Reader::new(&unknown);
-            reader.read_bytes(24).unwrap();
-            let mut refs = RefTable10_1::new();
-            let stopped = read_map_suffix_10_1(&mut reader, 4096, &mut refs).unwrap();
-            assert!(stopped.legacy_table_names.is_empty());
-            assert_eq!(reader.position(), at);
-            assert!(!refs.contains(90));
+            // FileName 和 ShortcutName 虽然实现 IName，Open 只返回空指针。
+            for class in [
+                [0x7d; 16],
+                [
+                    0xdf, 0x75, 0xda, 0x53, 0x1a, 0xd0, 0xd2, 0x11, 0x9f, 0x27, 0x00, 0xc0, 0x4f,
+                    0x6b, 0xc6, 0x9e,
+                ],
+                [
+                    0xe4, 0x09, 0xeb, 0x3b, 0x41, 0x39, 0x07, 0x4a, 0x9d, 0x1a, 0xec, 0x2b, 0x43,
+                    0xba, 0x7d, 0x50,
+                ],
+            ] {
+                let mut unknown = bytes.clone();
+                unknown[at..at + 16].copy_from_slice(&class);
+                let mut reader = Reader::new(&unknown);
+                reader.read_bytes(24).unwrap();
+                let mut refs = RefTable10_1::new();
+                let stopped = read_map_suffix_10_1(&mut reader, 4096, &mut refs).unwrap();
+                assert!(stopped.legacy_table_names.is_empty());
+                assert_eq!(reader.position(), at);
+                assert!(!refs.contains(90));
+            }
             let mut empty = bytes.clone();
             empty[at..at + 16].fill(0);
             let mut reader = Reader::new(&empty);

@@ -523,3 +523,19 @@ RepresentationWorkspaceExtension（CLSID 位于 `0x7cb41988`）
 属于接口消费。72 份 Desktop MSFT 类型库也未声明 RepresentationClass
 实现 ITable。旧表读取器仍沿用现有分派。这里核对的是内置表示类，
 未运行 ArcMap 或验证替代工作空间扩展的返回对象。
+
+### FileName 与 ShortcutName 的旧表槽判定
+
+SystemCore.dll PE32 版本资源为 10.1.0.3035，SHA-256 为
+`f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`。
+FileName `{53DA75DF-D01A-11D2-9F27-00C04F6BC69E}`
+和 ShortcutName `{3BEB09E4-3941-4A07-9D1A-EC2B43BA7D50}`
+的主 QI 分别在 `0x7ffc35e7` 和 `0x7ffdc047`
+比较同一 IName IID 常量 `0x8006f8fc`，返回 +0x10 视图。
+两张虚表 `0x8006f8a8`、`0x800727b0` 的 Open 槽
+（+0x14）共用 `0x7ffdc190`。有效输出参数收到空指针，
+随后返回 S_FALSE。两类均无法向旧 Map 提供 ITable。
+
+合成旧表测试使用这两个真实类标识，验证读取器在条目起点
+保留字节且不登记对象键。未在 ArcMap 10.1 或 QGIS 中运行
+这两种合成输入。
