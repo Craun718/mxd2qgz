@@ -267,3 +267,14 @@ LONG、AfCore String 和 short；v2 增加一个 short
 
 合成放置体覆盖 v1/v2 旋转对象、非空字符串、对象键与后继字段，
 另测逐字节截断和超限版本。各标量的业务语义及真实工程验收仍待核对。
+
+### Maplex 放置属性的旧词典槽
+
+同版 LabelPlacement.dll 的 MaplexDictionary 主 QI `0x7855bde0`
+在 `0x7855bde7` 比较放置体 v8–v13 临时槽所请求的
+`20664808-0A3A-1EAC-91D3-F3EF422A61A5`，匹配时返回对象
+`+0x18`。RTTI 对位该类的持久化虚表 `0x7857d2a0`，复用已确认的
+[MaplexDictionary Load 与 Save](mxd-terra-round9-old.md#maplex-标注引擎与地图级属性)。
+原生 Load 在读取后释放临时指针，Rust 仍完整消费体并沿宿主表登记对象键。
+构造测试覆盖 v8–v13 的首次定义和后续字段，其他版本验证不消费该槽。
+ArcMap 和 QGIS 人工验收仍未进行。

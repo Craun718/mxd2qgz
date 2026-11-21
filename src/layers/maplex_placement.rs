@@ -6,6 +6,7 @@ use super::annotate_props::{
     POINT_PLACEMENT_PRIORITIES_CLASS_ID, PointPlacementPrioritiesBody10_1,
     read_point_placement_priorities_body_10_1, read_stream_string_10_1,
 };
+use crate::maps::maplex::{DICTIONARY, MaplexDictionary10_1, read_dictionary};
 use crate::objects::property_set::{
     PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1, read_property_set_object_stream_10_1,
 };
@@ -79,6 +80,7 @@ pub struct MaplexPlacement10_1 {
     pub raw_body: Vec<u8>,
     /// 顺序固定，版本中不存在或因前置停止未读到时为 None。
     pub slots: [Option<ObjectEntry10_1>; 6],
+    pub legacy_dictionary: Option<MaplexDictionary10_1>,
     pub rotation: Option<MaplexRotation10_1>,
     pub offset_along_line: Option<MaplexOffsetAlongLine10_1>,
     pub stacking: Option<MaplexLabelStacking10_1>,
@@ -112,6 +114,7 @@ pub(super) fn read_maplex_placement(
         version,
         raw_body: Vec::new(),
         slots: [None; 6],
+        legacy_dictionary: None,
         rotation: None,
         offset_along_line: None,
         stacking: None,
@@ -201,6 +204,9 @@ fn read_slot(
             }
             (1, MAPLEX_LABEL_STACKING_PROPERTIES_CLASS_ID) => {
                 body.stacking = Some(read_label_stacking(&mut trial, max)?);
+            }
+            (2, DICTIONARY) => {
+                body.legacy_dictionary = Some(read_dictionary(&mut trial, max, &mut staged)?);
             }
             (3, MAPLEX_OFFSET_ALONG_LINE_PROPERTIES_CLASS_ID) => {
                 body.offset_along_line = Some(read_offset_along_line(&mut trial, max)?);
@@ -440,7 +446,11 @@ mod tests {
                 bytes.extend([0; 10]);
             }
             if (8..=13).contains(&version) {
-                bytes.extend([0; 16]);
+                bytes.extend(DICTIONARY);
+                bytes.extend(17_u32.to_le_bytes());
+                bytes.extend(2_u16.to_le_bytes());
+                bytes.extend(0_i32.to_le_bytes());
+                bytes.extend([4, 0, 0, 0, b'D', 0, 0, 0]);
             }
             if version >= 9 {
                 bytes.extend([0; 2]);
@@ -521,6 +531,11 @@ mod tests {
                 assert_eq!(rotation.trailing_short, 3);
                 assert_eq!(rotation.v2_short, (version > 12).then_some(-7));
             }
+            assert_eq!(
+                body.legacy_dictionary.is_some(),
+                (8..=13).contains(&version)
+            );
+            assert_eq!(refs.contains(17), (8..=13).contains(&version));
             assert_eq!(refs.contains(16), version >= 12);
             assert_eq!(refs.contains(15), version >= 9);
             assert!(refs.contains(14));

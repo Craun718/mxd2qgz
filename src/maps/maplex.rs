@@ -15,7 +15,7 @@ pub const MAPLEX_OVERPOSTER_PROPERTIES_CLASS_ID: [u8; 16] = [
 const DICTIONARIES: [u8; 16] = [
     8, 0x48, 0x66, 0x20, 0xdb, 0x56, 0x28, 0xbd, 0x67, 0xdc, 2, 0xe3, 0x3d, 0xec, 0xf3, 0x21,
 ];
-const DICTIONARY: [u8; 16] = [
+pub(crate) const DICTIONARY: [u8; 16] = [
     8, 0x48, 0x66, 0x20, 0xe2, 0x3d, 0xd1, 0x1c, 0x8a, 9, 8, 0xe0, 0x0d, 0xec, 0x73, 0x21,
 ];
 const DICTIONARY_ENTRY: [u8; 16] = [
@@ -203,7 +203,7 @@ pub(super) fn read_overposter_properties(
     })
 }
 
-fn read_dictionary(
+pub(crate) fn read_dictionary(
     reader: &mut Reader<'_>,
     limit: usize,
     refs: &mut RefTable10_1,
