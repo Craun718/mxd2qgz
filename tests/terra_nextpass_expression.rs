@@ -76,5 +76,14 @@ fn parse_reports_label_properties_from_reference_mxd() {
             "条目 {index}：标注类 LELP（键 {key}）字体 StdFont（名称字节 [cb, ce, cc, e5]，字符集 Some(134)，字重 400，字号 CY {size_cy}，样式位 0x00）"
         );
         assert!(stdout.lines().any(|line| line.ends_with(&font_note)));
+
+        let placement_note = format!("条目 {index}：标注类 LELP（键 {key}）放置属性");
+        assert!(stdout.lines().any(|line| {
+            line.contains(&placement_note)
+                && line.contains("Offset 0")
+                && line.contains("LineLabelPosition")
+                && line.contains("线放置优先级 [0, 3, 3, 3, 0, 0, 3, 3, 3, 0, 0, 3, 3, 3, 0]")
+                && line.contains("点放置优先级 [2, 2, 1, 2, 2, 3, 3, 3]")
+        }));
     }
 }

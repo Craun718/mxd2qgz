@@ -1495,6 +1495,7 @@ fn annotate_chain_note(
         else {
             continue;
         };
+        annotate_placement_note(lelp, entry_index, diagnostics);
         let text_symbol_note = match &lelp.text_symbol {
             crate::layers::annotate_props::LelpTextSymbolSlot10_1::TextSymbol(body) => format!(
                 "ITextSymbol 槽 TextSymbol 体（版本 {}）已解析{}",
@@ -1557,6 +1558,49 @@ fn annotate_chain_note(
             }
         ));
     }
+}
+
+/// 输出标注放置对象已读取的属性，保留未定性的字段顺序和回引。
+fn annotate_placement_note(
+    lelp: &crate::layers::annotate_props::LelpBody10_1,
+    entry_index: usize,
+    diagnostics: &mut Vec<String>,
+) {
+    use crate::layers::annotate_props::{
+        BolpSlot10_1, LineLabelPositionSlot10_1, PlacementPrioritiesSlot10_1,
+    };
+    use std::fmt::Write;
+
+    let mut note = format!(
+        "条目 {}：标注类 LELP（键 {}）放置属性（Offset {}，Priority {:?}）",
+        entry_index + 1,
+        lelp.key,
+        lelp.double_54,
+        lelp.int32_2c,
+    );
+    match &lelp.overposter {
+        BolpSlot10_1::Bolp(body) => {
+            let _ = write!(note, "；BasicOverposterLayerProperties 键 {}", body.key);
+            if let LineLabelPositionSlot10_1::Body(position) = &body.label_position {
+                let _ = write!(
+                    note,
+                    "；LineLabelPosition（键 {}，short {:?}，double {}，尾 short {:?}）",
+                    position.key, position.shorts, position.double, position.tail_short,
+                );
+            }
+            if let PlacementPrioritiesSlot10_1::Line(line) = &body.priorities_line {
+                let _ = write!(note, "；线放置优先级 {:?}", line.ints);
+            }
+            if let PlacementPrioritiesSlot10_1::Point(point) = &body.priorities_point {
+                let _ = write!(note, "；点放置优先级 {:?}", point.ints);
+            }
+        }
+        BolpSlot10_1::BackReference { key, .. } => {
+            let _ = write!(note, "；BasicOverposterLayerProperties 回引键 {key}");
+        }
+        BolpSlot10_1::Null => {}
+    }
+    diagnostics.push(note);
 }
 
 /// 由 FeatureLayer 前缀构造数据源模型项与诊断（FCN 名称 → connection，

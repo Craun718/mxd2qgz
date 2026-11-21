@@ -96,3 +96,13 @@ LELP 的 ITextSymbol 槽进入 DisplayCore TextSymbol Load
 参考 MXD 的 LELP 键 60、202、239 都到达 StdFont。三个名称均为字节
 `cb ce cc e5`，字符集为 134，字重为 400，字号分别为 12、8、16 磅。
 命令行回归逐条断言原始值。字体转换及 ArcMap/QGIS 人工验收尚未进行。
+
+## 标准标注引擎的放置属性
+
+LELP 的 Offset、Priority 由上文访问器对位确认。标准引擎使用的放置属性
+对象及其三个子槽复用 [LabelPlacement.dll 10.1.0.3035 的 Load 证据](arcmap-10.1-featurelayer-tail.md#bolp-的原生版本门和标注对象宿主)。
+`parse` 输出 LineLabelPosition 的原始字段和线、点优先级数组。参考工程中
+三个 LELP 的 Offset 均为 0、Priority 分别为 1、2、3，三者均到达点和线的
+优先级数组。回归验证三个类均在各自的诊断中输出放置属性。
+LineLabelPosition 各标志的属性对位、Maplex 放置配置及 ArcMap/QGIS
+人工验证仍待完成。

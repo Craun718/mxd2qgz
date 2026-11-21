@@ -797,6 +797,7 @@
 - [x] 解析标注类 TextSymbol 中的 StdFont，输出字体名称原始字节、字符集、字重、字号和样式位。[解析与参考工程验证](docs/mxd-terra-nextpass-expression.md#标注字体)
 - [ ] 转换标注字体。
 - [ ] 解析标注位置/放置属性。
+  - [x] 从 FeatureLayer 标注类输出 LELP 的 Offset、Priority 及标准引擎的线位置记录和点线优先级。[取证与参考工程](docs/mxd-terra-nextpass-expression.md#标准标注引擎的放置属性)
 - [ ] 转换标注位置/放置属性。
 - [x] 解析 FeatureLayer 总开关与 LELP 标注类开关的原始值。[原生取证及样本](docs/mxd-terra-nextpass-expression.md#图层与标注类的显示开关)
 - [ ] 转换标注可见性。
