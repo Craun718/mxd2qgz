@@ -171,8 +171,12 @@ Geometry.dll 跳板对应到 pe.dll/sg.dll 的命名导出，再检查导出函�
   `pe_geogcs_datum`、`pe_datum_spheroid` 取得椭球。从椭球提取半长轴 `a`
   和扁率 `f`，于 `0x719bd851` 向 `pe_geodesic_coordinate`（`0x7b8b3940`）
   传入 `a, f*(2-f), 0, 0, 0.001, π/2` 及两个输出参数。将结果转换为 GCS
-  角单位后，于 `0x719bd8bc` 调用 AfCore 的二维 `WKSPoint::Norm`，有 XY
-  网格时再用 `2.0 / XYscale` 提高下限。
+  角单位并减去同单位的起点后，于 `0x719bd8bc` 调用 AfCore 的
+  `WKSPoint::Norm(2)`。参数 2 是范数阶数。ArcMap 10.1 AfCore.dll 的命名导出
+  `?Norm@WKSPoint@@QBENJ@Z`（`0x68aca870`）在该分支计算
+  `sqrt(dx² + dy²)`。现有伪代码 `AfCore/functions/0x68aca870.c` 给出
+  `_CIsqrt` 调用，平方和由 `0x68aca8f0–0x68aca8f6` 的 x87 指令复核。
+  有 XY 网格时再用 `2.0 / XYscale` 提高下限。
 - GCS 的 Z 默认容差入口 `0x719bd9a0` 将初值 0.001 写入接口 this+0x20。
   有 VCS 时也通过 VCS vtable +0x28 和单位 vtable +0x20 取因子，但在除法前
   调用 `_finite`（IAT `0x71a10958`），并检查因子严格大于 0（常量
@@ -188,10 +192,12 @@ Geometry.dll 跳板对应到 pe.dll/sg.dll 的命名导出，再检查导出函�
   SgCoordRef +0x18、+0x38、+0x58 的 double 写到最后一个输出参数。
   这些值是 Geometry.dll 默认容差网格下限所用的除数。
 
+AfCore.dll 的 SHA-256 为
+`031858c414c0105b3b978c754f3d0f31ba1d98f15d44ff15b1589c9adcc47c17`。
 本轮 pe.dll 的 SHA-256 为
 `2c29c819ba6506eebd64834d562ad0664c62c3d3ed6a88bfc963df5121bee7b3`，
 sg.dll 为 `ebbb758571da5619a3396b81057f97801f7107180658ced0837187da9e4e027c`。
-尚待核对 UnknownCoordinateSystem 和 AfCore 范数实现，并以原生构造案例
+尚待核对 UnknownCoordinateSystem 的默认容差，并以原生构造案例
 测量自定义单位和各网格组启用时的数值。本轮未在 ArcMap 或 QGIS 中人工验证。
 
 ## 顺手闭合的旧记录开放项（对既有文档的更正，详见文末汇总）
