@@ -730,6 +730,7 @@
 - [x] 保留 RasterLayer v5–v8 名称列表请求的内联波段索引及父数据源。[原生 Item 调用](docs/mxd-10.1-raster-layer-tail.md#v5v8-的内联波段索引)
 - [x] 保留 RasterLayer 单个 RasterBandName 及回引的波段来源。[单名称分派](docs/mxd-10.1-raster-layer-tail.md#仅含一条波段名称的图层)
 - [ ] 补齐 RasterLayer 名称列表中的其他 IName 对象类。
+  - [x] 保留 WCS 覆盖名称及回引的标识。[原生访问器](docs/mxd-10.1-raster-layer-tail.md#wcs-覆盖标识回引)
   - [x] 对位 NetCDF 栅格变量名并通过对象键恢复名称来源。[原生访问器](docs/mxd-10.1-raster-layer-tail.md#netcdf-变量名与数据源回引)
   - [x] 恢复镶嵌数据集名称新对象与回引的名称和路径。[原生名称访问器](docs/mxd-10.1-raster-layer-tail.md#镶嵌数据集名称与回引)
   - [x] 保留 NetCDF 父数据集经波段集合名称回引的来源及索引。[接口证据](docs/mxd-10.1-raster-layer-tail.md#netcdf-变量名与数据源回引)

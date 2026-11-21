@@ -547,6 +547,8 @@ pub(super) fn read_name_slot(
                 name.workspace_path(),
                 None,
             );
+        } else if let RasterDatasetNameEntryBody10_1::WcsCoverage(name) = body {
+            table.mark_dataset_source(class_id, key, &name.identifier, None, None);
         } else if let Some((name, workspace)) = match body {
             RasterDatasetNameEntryBody10_1::NetCdf(name) => {
                 Some((name.variable(), &name.workspace))

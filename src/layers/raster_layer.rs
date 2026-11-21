@@ -1840,6 +1840,39 @@ mod tests {
     }
 
     #[test]
+    fn wcs_coverage_name_reference_retains_identifier() {
+        use crate::layers::wcs_name::WCS_COVERAGE_NAME_CLASS_ID;
+
+        let mut bytes = body_prefix(9, 2);
+        bytes.extend(WCS_COVERAGE_NAME_CLASS_ID);
+        bytes.extend(76_u32.to_le_bytes());
+        bytes.extend(1_i16.to_le_bytes());
+        let identifier = "coverage_a";
+        bytes.extend((identifier.len() as u32).to_le_bytes());
+        for unit in identifier.encode_utf16() {
+            bytes.extend(unit.to_le_bytes());
+        }
+        bytes.extend(0_u16.to_le_bytes());
+        bytes.extend([0; 16]); // 空连接名称。
+        bytes.extend(encoded_string(""));
+        bytes.extend(WCS_COVERAGE_NAME_CLASS_ID);
+        bytes.extend(76_u32.to_le_bytes());
+        bytes.extend(encoded_string(""));
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let parsed = read_bounded_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+        assert!(parsed.names_stop.is_none());
+        assert_eq!(parsed.names.len(), 2);
+        let source = parsed.names[0].source_reference.as_ref().unwrap();
+        assert_eq!(source.name.as_ref(), identifier);
+        assert!(source.path.is_none());
+        assert!(parsed.names[1].body.is_none());
+        assert_eq!(parsed.names[1].source_reference.as_ref(), Some(source));
+        assert_eq!(reader.remaining(), 0);
+    }
+
+    #[test]
     fn netcdf_name_keeps_array_keys_and_respects_v1_envelope_gate() {
         use super::super::raster_dataset_name::{
             LONG_ARRAY_CLASS_ID, NETCDF_RASTER_DATASET_NAME_CLASS_ID,
