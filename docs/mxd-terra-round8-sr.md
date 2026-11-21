@@ -81,3 +81,24 @@ GCS Save `0x719bf34c..0x719bf353` 将持久化接口 this+0x8c 的指针放入 E
 本轮只增加研究记录，没有更改 Rust 实现或格式解析，因此不声称新增解析能力。
 已核对文件摘要、PE 版本、接口元数据、原生汇编与独立 pyghidra 反编译；相关
 方法与条件均未在 ArcMap 运行验证，QGIS 转换结果也未人工验证。
+
+### PCS 关联对象的置位来源
+
+复核 Geometry.dll 10.1.0.3035（SHA-256
+`c57d154f207ee249adc69136574cf274771370ff93a15eb0be5682ce828f0d47`）。
+PCS 的辅助函数 `0x719d76d0` 在完整对象 +0x6c 已有值时
+直接返回。否则在 `0x719d776f` 调 GCS 构造器
+`0x719c3330`，在 `0x719d7780` 把新 GCS 指针保存到
+PCS +0x6c，再于 `0x719d779d` 取回该指针。
+`0x719d77a0` 执行 `mov [eax+0xc4],esi`，其中 EAX
+是新 GCS，ESI 来自辅助函数入参 ECX，即完整 PCS 指针。
+PCS 的 +0x18 接口路径在 `0x719d0fbd–0x719d0fc0`
+先减去视图位移再调用辅助函数；+0x24 路径在
+`0x719d45d9–0x719d45dc` 作同样的调整。
+
+因此 +0xc4 的非零值来自关联的 PCS 指针。GCS Load
+`0x719beca5` 检查该指针，并在失败路径传入资源 ID
+`0x1ca`。Geometry.dll 的英语 RT_STRING 对应文本为
+`cannot modify gcs associated with a pcs`，与拒绝编辑接口
+的 QI 分支一致。这是原生对象之间的内存关联，流内没有对应
+字段。静态取证已确认置位来源，尚未在 ArcMap 中运行验证。
