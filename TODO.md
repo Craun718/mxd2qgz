@@ -327,6 +327,7 @@
   - [x] 读取 NAContext 第二个 NamedSet 的方向代理条目。[方向代理取证](docs/mxd-luna-deep-layer-masking-20261118.md#第二个-namedset-的方向代理)
   - [x] 接入 NALayer 首个普通 ILayer 子图层循环的计数和 FeatureLayer 分派。[子图层循环取证](docs/mxd-luna-deep-layer-masking-20261118.md#nalayer-的首个子图层循环)
   - [x] 读取 NALayer 首个 FeatureLayer 内的 NAStopRenderer 对象体。[渲染器取证](docs/mxd-luna-deep-layer-masking-20261118.md#nastoprenderer-的图例与分类数组)
+  - [x] 从已完整读取的 LegendGroup 回引恢复 NAStopRenderer 分类数组长度。[回引取证](docs/mxd-luna-deep-layer-masking-20261118.md#nastoprenderer-的图例组回引)
   - [x] 读取 Route NALayer 的子图层后字段及版本位集尾段。[尾段取证](docs/mxd-luna-deep-layer-masking-20261118.md#nalayer-的版本尾段)
   - [ ] 读取非空 NAAttributeParameterValueArray 的逐项对象体。
   - [x] 读取 NARouteSolver 的 ExtraSafe IStringArray 槽及对象键。[对象槽取证](docs/mxd-luna-deep-layer-masking-20261118.md#naroutesolver-的-extrasafe-字符串数组)

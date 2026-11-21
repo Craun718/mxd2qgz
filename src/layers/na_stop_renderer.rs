@@ -51,19 +51,27 @@ pub(super) fn read_na_stop_renderer(
             if body.stop.is_some() {
                 return Err(unsupported("NAStopRenderer 图例组未完整读取"));
             }
-            let count = body.class_count.max(0) as usize;
+            let count = body.classes.len();
             (LegendGroupSlot10_1::LegendGroup(Box::new(body)), count)
         }
         ObjectEntry10_1::BackReference {
             class_id: LEGEND_GROUP_CLASS_ID,
             key,
-        } if version < 2 => (
-            LegendGroupSlot10_1::BackReference {
-                class_id: LEGEND_GROUP_CLASS_ID,
-                key,
-            },
-            0,
-        ),
+        } => {
+            let count = if version < 2 {
+                0
+            } else {
+                keys.legend_group_count(key)
+                    .ok_or_else(|| unsupported("NAStopRenderer 图例组回引缺少分类数"))?
+            };
+            (
+                LegendGroupSlot10_1::BackReference {
+                    class_id: LEGEND_GROUP_CLASS_ID,
+                    key,
+                },
+                count,
+            )
+        }
         _ => return Err(unsupported("NAStopRenderer 图例组或回引分类数未支持")),
     };
     let color = read_color_slot_10_1(&mut trial, max, &mut keys)?;
@@ -133,6 +141,22 @@ mod tests {
         assert_eq!(body.visibility, [0xffff]);
         assert_eq!(body.indices, [4]);
         assert!(refs.contains(262));
+        assert_eq!(reader.remaining(), 0);
+
+        let mut reference = bytes[..38].to_vec(); // 版本字段和图例组对象头。
+        reference.extend(&bytes[bytes.len() - 38..]); // 两个空对象槽和分类数组。
+        let mut unparsed = RefTable10_1::new();
+        unparsed.register(262);
+        let mut reader = Reader::new(&reference);
+        assert!(read_na_stop_renderer(&mut reader, 512, &mut unparsed).is_err());
+        assert_eq!(reader.position(), 0);
+        let body = read_na_stop_renderer(&mut reader, 512, &mut refs).unwrap();
+        assert!(matches!(
+            body.legend,
+            LegendGroupSlot10_1::BackReference { key: 262, .. }
+        ));
+        assert_eq!(body.visibility, [0xffff]);
+        assert_eq!(body.indices, [4]);
         assert_eq!(reader.remaining(), 0);
     }
 }

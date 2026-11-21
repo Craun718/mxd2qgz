@@ -28,6 +28,7 @@ use std::io;
 pub struct RefTable10_1 {
     seen: HashMap<u32, u32>,
     map_keys: HashSet<u32>,
+    legend_group_counts: HashMap<u32, usize>,
     // 共享键表的试读副本也继承跨类图形对象的当前递归深度。
     graphics_nesting: u8,
     // 数据集名称和关联名称也可能经不同槽互相嵌套。
@@ -132,6 +133,17 @@ impl RefTable10_1 {
 
     pub(crate) fn contains_map(&self, key: u32) -> bool {
         self.map_keys.contains(&key)
+    }
+
+    /// 只记录完整读取且通过对象头登记的图例组。
+    pub(crate) fn mark_legend_group(&mut self, key: u32, count: usize) {
+        if self.contains(key) {
+            self.legend_group_counts.insert(key, count);
+        }
+    }
+
+    pub(crate) fn legend_group_count(&self, key: u32) -> Option<usize> {
+        self.legend_group_counts.get(&key).copied()
     }
 
     /// 键是否已在本会话登记过；命中即回引。

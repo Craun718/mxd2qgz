@@ -637,6 +637,19 @@ pub fn read_legend_group_body_10_1(
     table: &mut RefTable10_1,
     key: u32,
 ) -> io::Result<LegendGroupPrefix10_1> {
+    let group = read_inline_legend_group_body_10_1(reader, max_bytes, table, key)?;
+    if group.stop.is_none() {
+        table.mark_legend_group(key, group.classes.len());
+    }
+    Ok(group)
+}
+
+pub(super) fn read_inline_legend_group_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<LegendGroupPrefix10_1> {
     let mut trial = reader.clone();
     let entry_offset = trial.position();
 

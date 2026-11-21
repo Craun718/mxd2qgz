@@ -1,7 +1,7 @@
 //! RasterRenderer.dll 10.1 的 RasterStretchRenderer。
 
 use super::feature_layer_tail::{
-    LEGEND_GROUP_CLASS_ID, LegendGroupSlot10_1, read_legend_group_body_10_1,
+    LEGEND_GROUP_CLASS_ID, LegendGroupSlot10_1, read_inline_legend_group_body_10_1,
 };
 use super::raster_renderer::{
     RasterHistogramSlot10_1, RasterRendererShared10_1, next_is_tag, optional_long_record,
@@ -157,7 +157,7 @@ fn read_no_key_object(
             read_core_color_body_10_1(r, table, 0, label)?;
         }
         (9, LEGEND_GROUP_CLASS_ID) => {
-            let group = read_legend_group_body_10_1(r, max, table, 0)?;
+            let group = read_inline_legend_group_body_10_1(r, max, table, 0)?;
             if let Some(stop) = group.stop {
                 return Err(invalid(format!("栅格拉伸渲染器图例组未闭合：{stop:?}")));
             }

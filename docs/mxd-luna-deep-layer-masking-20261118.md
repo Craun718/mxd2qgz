@@ -285,3 +285,9 @@ NetworkAnalyst.dll 10.1.0.3035（SHA-256 `8c4ebaee71aad63c25616aa806674018479829
 同版 NetworkAnalyst.dll 的 Load/Save `0x7af1ffc0 / 0x7af20be0` 在首组子图层之后读写 short、普通对象槽（IID 常量 `0x7af9f570`）、double、ExtensionHelper 序列、AfCore String、short 和两个 double。v1 起追加普通对象计数循环，v2 追加 short，v3 追加两个位集。位集读侧 `0x7af24900` 消费四个 LONG 和一个字节。该字节非零时按第四个 LONG 再读取对应数量的四字节字，原始指令 `0x7af249cf` 和 `0x7af24a30` 附近可核对此分支。
 
 两份 SanFrancisco SDK 工程均从 `0xed73` 完整读完 Route NALayer 尾部 94 字节，结束于 `0xedd1`，包含空扩展序列和空第二组子图层。构造测试覆盖内联位集字及逐字节截断。尾部普通槽的新对象、非空扩展序列和其他网络求解器仍有缺口。ArcMap/QGIS 人工验收尚未进行。
+
+### NAStopRenderer 的图例组回引
+
+NetworkAnalyst.dll 10.1.0.3035 的 Load `0x7af6a360` 和 Save `0x7af6a5e0` 在回引与新对象路径汇合后，均调用已取得图例组的虚表 `+0x24` 获得分类数。v2 的可见性和索引数组由该计数定界，回引后没有额外计数字段。读取器随 ObjectStream 键表保存已完整解析的 LegendGroup 分类数。内联图例组没有独立键，不登记此元数据。如果只见对象键而缺少完整定义，则保留渲染器停止边界。
+
+构造测试使用一次新图例组和随后同键回引，核对两次得到相同的数组，并验证缺少分类数时回滚。ArcMap/QGIS 人工验收尚未进行。
