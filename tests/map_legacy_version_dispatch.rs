@@ -445,6 +445,16 @@ fn map_v0_to_v13_read_version_gated_tail_fields() {
             assert!(stopped.legacy_table_names.is_empty());
             assert_eq!(reader.position(), at);
             assert!(!refs.contains(90));
+            let mut empty = bytes.clone();
+            empty[at..at + 16].fill(0);
+            let mut reader = Reader::new(&empty);
+            reader.read_bytes(24).unwrap();
+            let mut refs = RefTable10_1::new();
+            let stopped = read_map_suffix_10_1(&mut reader, 4096, &mut refs).unwrap();
+            assert!(stopped.legacy_table_names.is_empty());
+            assert_eq!(reader.position(), at);
+            assert!(!refs.contains(90));
+
             if fgdb_wrapper.is_some() || netcdf || referenced {
                 let mut bad_version = bytes.clone();
                 bad_version[at + 20..at + 22].copy_from_slice(&2_u16.to_le_bytes());

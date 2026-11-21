@@ -470,3 +470,7 @@ IAMSWorkspace 虚表 `0x80ad1d44` 的 `0x80a64010`，在
 ### SdeRasterTableName 的持久化入口
 
 检查 Desktop 10.1.0.3035 的 RasterSDE8x.dll（SHA-256 `085aa62b32a0fac60a8f02b9244c9d1940ada727603f4ca3a79b4758246c482c`）。RTTI 标识 SdeRasterTableName，构造路径 `0x7c9e28e7` 安装持久化虚表 `0x7c9e8928`。GetClassID `0x7c9e2e20` 返回 `0x7c9e8588` 的 `942AC1C0-FEC4-11D3-8D6F-00C04F5B87B2`，与同版注册表一致。该表的 Load 和 Save 槽分别是 `0x7c9e2e70` 和 `0x7c9e2e60`。原始指令显示两个入口均直接返回 `E_FAIL`，无流读取、写入或委派。旧 Map 表槽继续保留该类为未知体。其他实现及历史版本未由本证据覆盖。
+
+### 旧 Map 表槽中的空 IName
+
+Map.dll 10.1.0.3035 的旧表循环 `0x793ffc30` 先清零输出指针，`0x793ffc4c` 调 LoadObject 后仅检查负 HRESULT。紧接的 `0x793ffc6b..0x793ffc73` 直接解引用该输出并定位 IName::Open，没有空指针检查，也没有跳到下一条的分支。空对象头不会产生 IName 实例，Rust 保留现有行为，在这一项起点停止并保留字节。构造回归将旧表条目替换为空标记，验证游标停在项首、未登记对象键。该异常输入未在 ArcMap 中运行。
