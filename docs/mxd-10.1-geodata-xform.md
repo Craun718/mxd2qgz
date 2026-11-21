@@ -155,7 +155,12 @@ Rust 在有明确 ExtraSafe 边界的 RasterLayer 中先验证现有布局。若
 
 合成测试覆盖写侧空槽、两种明确的回引位置、前后对象边界、新对象拒绝
 和任意截断回滚。参考工程与两套介质共 135 份工程的 /Maps 和 /PageLayout
-均读至末尾，270 条流未出现上述两个 CLSID。ArcMap 和 QGIS 人工验收尚未进行。
+均读至末尾，270 条流未出现上述两个 CLSID。随后对同一批介质和
+参考工程扩大到所有 CFB 流，按 ProjectiveXform 的 Windows GUID 磁盘序
+`26 c2 7d cb d2 5a 40 4a 88 f4 3c ed b5 d6 3b de` 扫描。
+10.1 介质 66 份共 2415 条流，10.8 介质 68 份共 2504 条流，
+参考工程 1 份共 31 条流，三组均无命中。扫描范围包括其他流，
+结果仍不足以验证旧档空第三槽的真实位置。ArcMap 和 QGIS 人工验收尚未进行。
 
 ## Geometric、LSR 与 Pictometry
 
