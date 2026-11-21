@@ -1239,3 +1239,21 @@ InternetTiledLayerName 的单条字符串与 AISImageServiceName 的首串。
 首次定义与回引均可取回。瓦片读取器和服务的其余字符串仍由原始
 名称体保留。构造 v17 名称列表覆盖两种定义、两次回引、后继渲染器
 及结束位置。ArcMap 10.1 和 QGIS 人工验证尚未进行。
+
+### XmlPropertySet 扩展候选
+
+Desktop 将 `99F50761-C137-11D2-9F83-00C04F8ED211` 注册为
+XmlPropertySet。GdbCore.dll 10.1.0.3035（SHA-256
+`ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4`）
+的 RTTI 与 GetClassID `0x70a2a320` 对位。主 QI `0x70a2a5d0`
+对 IPropertySet 返回对象 +0x14，对 IPersistStreamInit
+（`0x70a889cc`）和 IPersist 返回 +0x10。主入口及
+`0x70a60800` 回退均未匹配 IPersistStream 或 IPersistVariant，
+回退在 `0x70a608f2` 返回 E_NOINTERFACE。
+
+复核同版 AfCore.dll。对象持久化查询助手
+`0x68a7c320` 和 `0x68a7c390` 使用 IPersistVariant 和
+IPersistStream 的 IID（`0x68c6dc88/0x68c6dc78`）。因此，仅凭
+XmlPropertySet 的 IPropertySet 和 IPersistStreamInit，不能把它作为
+旧 LayerLib IPersistStream 扩展或普通 ExtraSafe 对象接入。继续保留
+未知体的边界。未在 ArcMap 运行验证。

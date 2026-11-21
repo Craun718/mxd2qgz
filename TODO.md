@@ -758,6 +758,7 @@
 - [x] 读取 RasterLayer v8 起的非空 ExtraSafe 扩展列表边界并保留未知对象体，见 [扩展列表边界](docs/mxd-10.1-raster-layer-tail.md#v8-起的-extrasafe-扩展列表)。
 - [ ] 解析 RasterLayer v3–v7 旧式扩展的对象体及其嵌套对象键。
 - [ ] 解析 RasterLayer v8 起的 ExtraSafe 扩展对象体及其嵌套对象键。
+  - [x] 核对 XmlPropertySet 的持久化接口，排除其作为已知 PropertySet 布局接入。[接口证据](docs/mxd-10.1-raster-layer-tail.md#xmlpropertyset-扩展候选)
 - [x] 接入两代 RasterLayer 扩展包装中的独立 PropertySet 及内部对象键。[原生取证](docs/mxd-10.1-raster-layer-tail.md#独立-propertyset-扩展与普通图层入口)
 - [x] 修正普通 RasterLayer 完整性检查漏判 DynamicTiledLayerProperties。[入口复核](docs/mxd-10.1-raster-layer-tail.md#独立-propertyset-扩展与普通图层入口)
 - [x] 接入 RasterLayer 两代扩展列表的 EditTemplateManager，并登记嵌套 EditTemplate 键，见 [扩展对象体取证](docs/mxd-10.1-raster-layer-tail.md#扩展对象体与嵌套键)。
