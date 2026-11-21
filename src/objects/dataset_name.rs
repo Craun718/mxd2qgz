@@ -195,6 +195,8 @@ pub struct FeatureDatasetNameBody10_1 {
     pub flag: u8,
     /// 第 4 步 IWorkspaceName 槽（请求 IID `{FADD975C-…}`）分类结果。
     pub workspace: WorkspaceNameSlot10_1,
+    /// 已确认的 WorkspaceName 回引路径。
+    pub workspace_back_reference_path: Option<String>,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<FeatureDatasetNameStop10_1>,
     /// CoverageName 外层版本及原始 LONG。
@@ -212,18 +214,19 @@ impl FeatureDatasetNameBody10_1 {
         self.flag == 1
     }
 
-    /// 返回已解析 WorkspaceName 体中的路径原文。
+    /// 返回已解析 WorkspaceName 体或已确认回引中的路径原文。
     ///
     /// 已知 WorkspaceName 即使在 PropertySet 子槽处停止，路径字段仍已先行
     /// 完整读取，因此仍可返回；调用方可同时检查 [`Self::stop`] 保留诊断。
-    /// 返回 `None` 时，空、回引和未知类等状态仍由 [`Self::workspace`] 原样
+    /// 返回 `None` 时，空、未解析回引和未知类等状态仍由 [`Self::workspace`] 原样
     /// 保留，调用方应检查该槽以输出相应诊断。路径不做规范化或本机存在性判断。
     pub fn workspace_path(&self) -> Option<&str> {
         match &self.workspace {
             WorkspaceNameSlot10_1::WorkspaceName(workspace) => Some(&workspace.path),
-            WorkspaceNameSlot10_1::Null
-            | WorkspaceNameSlot10_1::BackReference { .. }
-            | WorkspaceNameSlot10_1::Unsupported { .. } => None,
+            WorkspaceNameSlot10_1::BackReference { .. } => {
+                self.workspace_back_reference_path.as_deref()
+            }
+            WorkspaceNameSlot10_1::Null | WorkspaceNameSlot10_1::Unsupported { .. } => None,
         }
     }
 }
@@ -304,6 +307,21 @@ pub fn read_feature_dataset_name_body_10_1(
     table: &mut RefTable10_1,
     key: u32,
 ) -> io::Result<FeatureDatasetNameBody10_1> {
+    let body = read_feature_dataset_name_payload(reader, max_bytes, table, key)?;
+    if body.stop.is_none()
+        && let Some(path) = body.workspace_path()
+    {
+        table.mark_feature_dataset_path(key, path);
+    }
+    Ok(body)
+}
+
+fn read_feature_dataset_name_payload(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<FeatureDatasetNameBody10_1> {
     // 全部字段在 trial 游标与 trial 登记表上读取，完整成功（含停止点）才提交。
     let mut trial = reader.clone();
     let entry_offset = trial.position();
@@ -370,6 +388,14 @@ pub fn read_feature_dataset_name_body_10_1(
         }
     };
 
+    let workspace_back_reference_path = match &workspace {
+        WorkspaceNameSlot10_1::BackReference { class_id, key }
+            if *class_id == WORKSPACE_NAME_CLASS_ID =>
+        {
+            staged_table.workspace_path(*key).map(str::to_owned)
+        }
+        _ => None,
+    };
     let result = FeatureDatasetNameBody10_1 {
         key,
         version,
@@ -379,6 +405,7 @@ pub fn read_feature_dataset_name_body_10_1(
         string_d,
         flag,
         workspace,
+        workspace_back_reference_path,
         stop,
         coverage_wrapper: None,
     };
@@ -403,7 +430,7 @@ pub(crate) fn read_coverage_name_body_10_1(
         ));
     }
     let long = trial.read_u32_le()? as i32;
-    let mut body = read_feature_dataset_name_body_10_1(&mut trial, max_bytes, table, key)?;
+    let mut body = read_feature_dataset_name_payload(&mut trial, max_bytes, table, key)?;
     body.coverage_wrapper = Some((version, long));
     *reader = trial;
     Ok(body)

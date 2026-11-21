@@ -1770,10 +1770,7 @@ fn feature_layer_source(
                             ),
                         };
                         (
-                            dataset
-                                .workspace_path()
-                                .map(str::to_owned)
-                                .or_else(|| fcn.workspace_back_reference_path.clone()),
+                            dataset.workspace_path().map(str::to_owned),
                             Some(format!(
                                 "FeatureDatasetName（键 {}）：{detail}",
                                 dataset.key
@@ -1785,6 +1782,18 @@ fn feature_layer_source(
                             Some("IDatasetName 当前类未映射工作空间路径".to_string()),
                         )
                     }
+                }
+                FeatureClassNameNested10_1::DatasetName(DatasetNameEntry10_1::BackReference {
+                    key,
+                    ..
+                }) => {
+                    let path = fcn.workspace_back_reference_path.clone();
+                    let state = if path.is_some() {
+                        "已解析路径"
+                    } else {
+                        "缺少已确认的路径"
+                    };
+                    (path, Some(format!("数据集名称回引键 {key}，{state}")))
                 }
                 FeatureClassNameNested10_1::DatasetName(_) => (
                     None,
@@ -2732,6 +2741,22 @@ mod tests {
         let source = feature_layer_source(&prefix, 0, &mut Vec::new()).unwrap();
         assert_eq!(source.path.as_deref(), Some("..\\data.gdb"));
         assert_eq!(source.connection.as_deref(), Some("道路"));
+
+        let mut dataset_reference = body.clone();
+        dataset_reference[source_offset + 16..source_offset + 20]
+            .copy_from_slice(&30_u32.to_le_bytes());
+        dataset_reference.drain(dataset_offset + 20..after_workspace);
+        for (class_id, expected) in [
+            (FEATURE_DATASET_NAME_CLASS_ID, Some("..\\data.gdb")),
+            (WORKSPACE_NAME_CLASS_ID, None),
+        ] {
+            dataset_reference[dataset_offset..dataset_offset + 16].copy_from_slice(&class_id);
+            let mut reader = Reader::new(&dataset_reference);
+            let prefix =
+                read_feature_layer_prefix_10_1(&mut reader, 1024, &mut refs.clone()).unwrap();
+            let source = feature_layer_source(&prefix, 0, &mut Vec::new()).unwrap();
+            assert_eq!(source.path.as_deref(), expected);
+        }
 
         body[source_offset + 16..source_offset + 20].copy_from_slice(&20_u32.to_le_bytes());
         body[dataset_offset + 16..dataset_offset + 20].copy_from_slice(&21_u32.to_le_bytes());

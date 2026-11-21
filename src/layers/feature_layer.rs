@@ -659,29 +659,20 @@ pub(crate) fn read_feature_class_name_body_with_depth_10_1(
         }
     }
 
-    use crate::objects::dataset_name::WorkspaceNameSlot10_1;
-    use crate::objects::dataset_name_more::DatasetNameMoreBody10_1;
+    use crate::objects::dataset_name::FEATURE_DATASET_NAME_CLASS_ID;
 
-    let workspace_ref = match &nested {
+    let workspace_back_reference_path = match &nested {
         FeatureClassNameNested10_1::WorkspaceName(WorkspaceNameEntry10_1::BackReference {
             class_id,
             key,
-        }) => Some((class_id, key)),
-        FeatureClassNameNested10_1::DatasetName(DatasetNameEntry10_1::NewObject(body)) => {
-            match body.as_ref() {
-                DatasetNameMoreBody10_1::FeatureDataset(dataset) => match &dataset.workspace {
-                    WorkspaceNameSlot10_1::BackReference { class_id, key } => Some((class_id, key)),
-                    _ => None,
-                },
-                _ => None,
-            }
-        }
+        }) if *class_id == WORKSPACE_NAME_CLASS_ID => staged_table.workspace_path(*key),
+        FeatureClassNameNested10_1::DatasetName(DatasetNameEntry10_1::BackReference {
+            class_id,
+            key,
+        }) if *class_id == FEATURE_DATASET_NAME_CLASS_ID => staged_table.feature_dataset_path(*key),
         _ => None,
-    };
-    let workspace_back_reference_path = workspace_ref
-        .filter(|(class_id, _)| **class_id == WORKSPACE_NAME_CLASS_ID)
-        .and_then(|(_, key)| staged_table.workspace_path(*key))
-        .map(str::to_owned);
+    }
+    .map(str::to_owned);
     let result = FeatureClassNamePrefix10_1 {
         key,
         version,

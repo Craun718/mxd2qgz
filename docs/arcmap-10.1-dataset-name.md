@@ -255,5 +255,13 @@ FCN 的非零 TopologyName 选择子实档及 ArcMap/QGIS 人工验收仍待取�
 FeatureClassName 直接工作空间槽及其内联 FeatureDatasetName 的工作空间
 槽只在回引 CLSID 与 WorkspaceName 一致时查询该键，将命中路径传到图层模型。
 构造回归覆盖两种槽的首次定义后回引以及错误 CLSID，原始回引分类仍保留。
-独立数据源类和整个 FeatureDatasetName 对象的回引另待处理。
+独立数据源类的路径回引另待处理。
 ArcMap 和 QGIS 人工验收尚未进行。
+
+
+FeatureDatasetName 完整读取且解析到工作空间路径时，以自身已登记的键
+缓存路径。该路径可来自新 WorkspaceName 或已确认回引。FeatureClassName
+的 IDatasetName 槽如果回引整个 FeatureDatasetName，会按其 CLSID 和键
+查询缓存并传到图层模型。内联 CoverageName 沿用字段读取器，其外层键不
+登记为 FeatureDatasetName。构造回归覆盖整个数据集的回引及 CLSID 不匹配，
+尚未在 ArcMap 或 QGIS 中人工验收。
