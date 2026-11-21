@@ -176,12 +176,23 @@ pub struct NaRouteSolverPrefix10_1 {
     pub extra_collection_flag: u16,
     pub inline_collections: Option<NaRouteCollections10_1>,
     pub stored_strings: Option<StringArraySlot10_1>,
+    pub hierarchy: Option<NaRouteHierarchy10_1>,
+    pub properties: Option<(ObjectEntry10_1, Option<Box<PropertySetObjectStream10_1>>)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NaRouteCollections10_1 {
     pub extra: Option<(u16, Vec<String>)>,
     pub attributes: (u16, Vec<String>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NaRouteHierarchy10_1 {
+    pub flag: u16,
+    pub mode: i32,
+    pub attribute_name: String,
+    pub declared_count: i32,
+    pub indexed_values: [Vec<i32>; 2],
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -314,12 +325,20 @@ fn read_na_route_solver_prefix(
             let stored_strings = inline_collections
                 .as_ref()
                 .and_then(|_| read_na_route_string_slot(&mut trial, max, &mut keys).ok());
+            let hierarchy = stored_strings
+                .as_ref()
+                .and_then(|_| read_na_route_hierarchy(&mut trial, max).ok());
+            let properties = hierarchy
+                .as_ref()
+                .and_then(|_| read_na_route_properties(&mut trial, max, &mut keys).ok());
             Some(NaRouteSolverPrefix10_1 {
                 version,
                 attribute_name,
                 extra_collection_flag,
                 inline_collections,
                 stored_strings,
+                hierarchy,
+                properties,
             })
         }
         ObjectEntry10_1::NewObject { .. } => {
@@ -389,6 +408,78 @@ fn read_na_route_string_slot(
     *reader = trial;
     *refs = keys;
     Ok(slot)
+}
+
+fn read_na_route_hierarchy(
+    reader: &mut Reader<'_>,
+    max: usize,
+) -> io::Result<NaRouteHierarchy10_1> {
+    let mut trial = reader.clone();
+    let flag = trial.read_u16_le()?;
+    let mode = trial.read_u32_le()? as i32;
+    let attribute_name = read_bstr_string_10_1(&mut trial, max)?;
+    let declared_count = trial.read_u32_le()? as i32;
+    let count = declared_count.max(0) as usize;
+    let mut indexed_values = [Vec::new(), Vec::new()];
+    for list in &mut indexed_values {
+        if trial.read_u32_le()? as i32 != declared_count {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "求解器列表计数不一致",
+            ));
+        }
+        if count > trial.remaining().min(max) / 8 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "求解器索引列表超出可读范围",
+            ));
+        }
+        for index in 1..=count {
+            if trial.read_u32_le()? as usize != index {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "求解器列表索引不连续",
+                ));
+            }
+            list.push(trial.read_u32_le()? as i32);
+        }
+    }
+    *reader = trial;
+    Ok(NaRouteHierarchy10_1 {
+        flag,
+        mode,
+        attribute_name,
+        declared_count,
+        indexed_values,
+    })
+}
+
+fn read_na_route_properties(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<(ObjectEntry10_1, Option<Box<PropertySetObjectStream10_1>>)> {
+    let mut trial = reader.clone();
+    let mut keys = refs.clone();
+    let entry = read_object_entry_10_1(&mut trial, &mut keys)?;
+    let body = match entry {
+        ObjectEntry10_1::NewObject {
+            class_id: PROPERTY_SET_CLASS_ID,
+            ..
+        } => Some(Box::new(read_property_set_object_stream_10_1(
+            &mut trial, max, &mut keys,
+        )?)),
+        ObjectEntry10_1::NewObject { .. } => {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "NARouteSolver 属性对象体未支持",
+            ));
+        }
+        _ => None,
+    };
+    *reader = trial;
+    *refs = keys;
+    Ok((entry, body))
 }
 
 fn read_na_workspace_prefix(
@@ -688,5 +779,40 @@ mod tests {
             ObjectEntry10_1::BackReference { key: 247, .. }
         ));
         assert_eq!(reader.remaining(), 0);
+    }
+
+    #[test]
+    fn route_hierarchy_checks_both_counts_and_each_index() {
+        let mut bytes = 0xffff_u16.to_le_bytes().to_vec();
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend(0_u32.to_le_bytes()); // 空 BSTR。
+        bytes.extend(2_i32.to_le_bytes());
+        for values in [[2_i32, i32::MAX], [9, 1]] {
+            bytes.extend(2_i32.to_le_bytes());
+            for (index, value) in (1_i32..).zip(values) {
+                bytes.extend(index.to_le_bytes());
+                bytes.extend(value.to_le_bytes());
+            }
+        }
+
+        for end in 0..bytes.len() {
+            let mut reader = Reader::new(&bytes[..end]);
+            assert!(read_na_route_hierarchy(&mut reader, 128).is_err());
+            assert_eq!(reader.position(), 0);
+        }
+        for offset in [14, 18, 34, 38] {
+            let mut invalid = bytes.clone();
+            invalid[offset] = 0;
+            let mut reader = Reader::new(&invalid);
+            assert!(read_na_route_hierarchy(&mut reader, 128).is_err());
+            assert_eq!(reader.position(), 0);
+        }
+
+        bytes.push(0x7f);
+        let mut reader = Reader::new(&bytes);
+        let hierarchy = read_na_route_hierarchy(&mut reader, 128).unwrap();
+        assert_eq!(hierarchy.declared_count, 2);
+        assert_eq!(hierarchy.indexed_values, [vec![2, i32::MAX], vec![9, 1]]);
+        assert_eq!(reader.read_bytes(1).unwrap(), [0x7f]);
     }
 }

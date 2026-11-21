@@ -225,3 +225,9 @@ NALayer 已沿 NAContext 的求解器槽读出两份 SanFrancisco SDK 工程的 
 同版 NetworkAnalystSolvers.dll 的 `0x7b12ba00` 在两处内联集合之后调用 ExtraSafeReadObject，`0x7b12bbc4` 传入 `0x7b1fd834` 的 IStringArray IID `206216C9-7253-4A4D-92DD-60329FD9D792`。两份 SanFrancisco SDK 工程在 `0x74c7` 的该槽均给出 A=80、B=0，内含 StrArray v1，键 247，值为 Oneway 和 RestrictedTurns。
 
 读取器复用有键的 StrArray 槽，以 A 确认写出体范围，或在非零 B 时使用原生同步边界。只有解析结果与声明边界一致时才提交游标和对象键。构造测试覆盖新对象、B 同步回引、所有截断和边界过长。实档槽末端为 `0x751f`。后续求解器字段、UID 首次定义和人工验收仍待验证。
+
+### NARouteSolver 的层级列表与属性集
+
+同版 NetworkAnalystSolvers.dll 的共用读取器 `0x7b12ba00` 在 ExtraSafe 槽后读取 short、LONG、BSTR 和声明计数。原始指令 `0x7b12bccc`、`0x7b12bd9d` 分别核对两个列表计数，`0x7b12bd57`、`0x7b12bdf2` 核对各列表从 1 开始的连续索引。每项为索引与一个四字节值，最后一项也消费该值。随后 `0x7b12be36` 用 `0x7b200d08` 的 IID 请求 IPropertySet。
+
+两份 SanFrancisco SDK 工程在 `0x751f` 读到属性名 HierarchyMultiNet 和两份三项列表，再读完键 248 的 PropertySet，到达 `0x76d1`。构造数据验证重复计数、索引和截断回退。剩余版本字段、后续对象键及 ArcMap/QGIS 人工验收仍待验证。
