@@ -757,6 +757,7 @@
 - [x] 接入 RasterLayer v14 起的颜色索引连续区段，见 [索引编码](docs/mxd-10.1-raster-layer-tail.md#v14-颜色索引)。
 - [x] 读取 RasterLayer v8 起的非空 ExtraSafe 扩展列表边界并保留未知对象体，见 [扩展列表边界](docs/mxd-10.1-raster-layer-tail.md#v8-起的-extrasafe-扩展列表)。
 - [ ] 解析 RasterLayer v3–v7 旧式扩展的对象体及其嵌套对象键。
+  - [x] 按旧式扩展的 24 字节固定头和累计对象体检查列表读取限额。[扩展边界](docs/mxd-10.1-raster-layer-tail.md#v0v7-尾段)
 - [ ] 解析 RasterLayer v8 起的 ExtraSafe 扩展对象体及其嵌套对象键。
   - [x] 核对 XmlPropertySet 的持久化接口，排除其作为已知 PropertySet 布局接入。[接口证据](docs/mxd-10.1-raster-layer-tail.md#xmlpropertyset-扩展候选)
 - [x] 接入两代 RasterLayer 扩展包装中的独立 PropertySet 及内部对象键。[原生取证](docs/mxd-10.1-raster-layer-tail.md#独立-propertyset-扩展与普通图层入口)

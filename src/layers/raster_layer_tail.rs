@@ -442,10 +442,11 @@ fn read_legacy_extensions(
     count: usize,
     max_bytes: usize,
 ) -> io::Result<Vec<RasterLayerLegacyExtension10_1>> {
-    if count > reader.remaining() / 24 {
-        return Err(invalid("旧式扩展列表计数超出可读范围"));
+    const HEADER_SIZE: usize = 24;
+    if count > reader.remaining() / HEADER_SIZE || count > max_bytes / HEADER_SIZE {
+        return Err(invalid("旧式扩展列表计数超出可读范围或限额"));
     }
-    let mut budget = max_bytes;
+    let mut budget = max_bytes - count * HEADER_SIZE;
     (0..count)
         .map(|_| {
             // LayerLib ExtensionHelper 的长度仅覆盖对象体，CLSID 后无对象键。
@@ -956,6 +957,29 @@ fn read_raster_layer_end(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_raster_extension_budget_counts_headers_and_bodies() {
+        let mut bytes = Vec::new();
+        for value in [0x11, 0x22] {
+            bytes.extend(1_u64.to_le_bytes());
+            bytes.extend([0x53; 16]);
+            bytes.push(value);
+        }
+
+        let mut refs = RefTable10_1::new();
+        for limit in [47, 49] {
+            let error =
+                read_legacy_extensions(&mut Reader::new(&bytes), &mut refs, 2, limit).unwrap_err();
+            assert_eq!(error.kind(), ErrorKind::InvalidData);
+        }
+
+        let mut reader = Reader::new(&bytes);
+        let entries = read_legacy_extensions(&mut reader, &mut refs, 2, 50).unwrap();
+        assert_eq!(entries[0].raw_body, [0x11]);
+        assert_eq!(entries[1].raw_body, [0x22]);
+        assert_eq!(reader.remaining(), 0);
+    }
 
     #[test]
     fn dynamic_tiled_properties_share_nested_keys_in_both_extension_formats() {
