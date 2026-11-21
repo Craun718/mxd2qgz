@@ -89,6 +89,7 @@
   - [x] 解码 MosaicDB 的 ReferencedTableName 包装体，接入旧 Map 表名与独立表的 IName 槽，保留兼容版本 -1 和内层引用。[读写取证](docs/mxd-terra-round9-old.md#referencedtablename)
   - [x] 接入 ObjectClassName 的 TableName 委派体，覆盖旧 Map 与独立表名称槽。[跨模块取证](docs/mxd-terra-round9-table.md#objectclassname-与栅格表名称)
   - [x] 接入 RasterBandName 与 RasterCatalogName 的表名称分派。[接口取证](docs/mxd-terra-round9-table.md#objectclassname-与栅格表名称)
+  - [x] 核对 SdeRasterTableName 的普通持久化入口，确认 10.1 实现无法加载对象体。[原生取证](docs/mxd-terra-round9-old.md#sderastertablename-的持久化入口)
   - [x] 接入 Schematic 图表类和元素类名称的表名称分派。[原生读写取证](docs/mxd-terra-round9-table.md#schematic-图表类和元素类名称)
   - [x] 接入可打开有属性关系类的 RelationshipClassName 表名称分派。[FileGDB 打开路径](docs/mxd-terra-round9-table.md#有属性的关系类名称)
 - [x] 接入 Map v28 完成逐图层遮罩后的对象结束位置。[版本门复核](docs/mxd-terra-nextpass-tail.md#map-v23v28-的对象结束位置)

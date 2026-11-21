@@ -466,3 +466,7 @@ IAMSWorkspace 虚表 `0x80ad1d44` 的 `0x80a64010`，在
 合成 Map v7 验证新名称对象、后续回引和内嵌 WorkspaceName 的带键属性集，
 也验证截断后回滚整个条目及两个新键。真实旧 Map 中的该名称尚无样本，
 原生 Open 及 ArcMap/QGIS 人工验收尚未执行。
+
+### SdeRasterTableName 的持久化入口
+
+检查 Desktop 10.1.0.3035 的 RasterSDE8x.dll（SHA-256 `085aa62b32a0fac60a8f02b9244c9d1940ada727603f4ca3a79b4758246c482c`）。RTTI 标识 SdeRasterTableName，构造路径 `0x7c9e28e7` 安装持久化虚表 `0x7c9e8928`。GetClassID `0x7c9e2e20` 返回 `0x7c9e8588` 的 `942AC1C0-FEC4-11D3-8D6F-00C04F5B87B2`，与同版注册表一致。该表的 Load 和 Save 槽分别是 `0x7c9e2e70` 和 `0x7c9e2e60`。原始指令显示两个入口均直接返回 `E_FAIL`，无流读取、写入或委派。旧 Map 表槽继续保留该类为未知体。其他实现及历史版本未由本证据覆盖。
