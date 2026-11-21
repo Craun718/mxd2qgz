@@ -341,6 +341,7 @@
     - [x] 核对并接入 TinNodeValueRenderer 与 TinFaceValueRenderer 的分类记录和尾段。[原生布局](docs/mxd-luna-deep-layer-masking-20261118.md#tinnodevaluerenderer-与-tinfacevaluerenderer)
     - [x] 核对并接入 TerrainLayer 版本化对象体和 TerrainName 的 IDatasetName 槽。[原生布局](docs/mxd-luna-deep-layer-masking-20261118.md#terrainlayer-普通对象体)
     - [x] 核对并接入 TerrainDirtyAreaRenderer 的普通对象体。[原生布局](docs/mxd-luna-deep-layer-masking-20261118.md#terraindirtyarearenderer)
+    - [x] 核对并接入 TerrainPointUniqueValueRenderer 的公共段和 LONG 列表。[原生布局](docs/mxd-luna-deep-layer-masking-20261118.md#terrainpointuniquevaluerenderer)
   - [x] 从两份 SDK mole_data 的 GroupLayer 条目确认尚未识别的两个子图层 CLSID 和八段对象体的边界。[宿主取证](docs/mxd-luna-deep-layer-masking-20261118.md#sdk-mole_data-的未识别子图层)
   - [x] 读取 NALayer 中定义的嵌套对象并登记其键，以解析 SanFrancisco SDK 工程的后续回引。[实档停点与原生证据](docs/mxd-luna-deep-layer-masking-20261118.md#sanfrancisco-组图层的跨图层-uid-回引)
   - [x] 读取 SanFrancisco 底图正式子层集合中新建的 GroupLayer（键 5148）。

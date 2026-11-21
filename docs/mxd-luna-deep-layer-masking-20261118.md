@@ -691,3 +691,23 @@ ILegendGroup、ILegendItem（`0x80429f21`、`0x80429f43`、
 合成 TerrainLayer 用例覆盖此类的新对象键、后续字段终点
 和逐字节截断回滚。含该类的实档尚未在 ArcMap 10.1 或 QGIS
 中人工验证。
+
+#### TerrainPointUniqueValueRenderer
+
+TinRenderer.dll 10.1.0.3035 的 RTTI 描述符 `0x8045ef18`
+对应 +0x20 持久化视图 `0x804560f0`。构造器在
+`0x804451c2` 安装虚表，在 `0x80445209–0x8044521e`
+把 `0x80454ecc` 的类标识写入完整对象 +0x3c，即 GetClassID
+`0x8044d050` 从视图 +0x1c 返回的
+`{8B06E040-89B0-4657-98A5-B942398745B8}`。
+
+Load `0x80445420` 先委派给 `0x8044c9d0`，其字段布局
+与 TinBreaklineRenderer 一致，版本上限改为 3。该公共段
+只在 v1 从资源取末尾字符串（`0x8044cca3`）。
+返回后 `0x80445442` 读取 String，`0x8044547d`
+读取 LONG 数量，`0x80445499` 逐个读取 LONG。非正
+数量跳过循环。Save `0x804454d0` 同样先写公共段，再写
+String、LONG 和列表。
+
+合成测试覆盖 v1–v3、负数条目、超界计数、逐字节截断及
+下一字段边界。尚未用该类的实档在 ArcMap 10.1 或 QGIS 中人工验证。

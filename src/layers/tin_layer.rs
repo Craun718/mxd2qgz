@@ -69,11 +69,16 @@ pub(super) const TERRAIN_DIRTY_AREA: [u8; 16] = [
     0xa9, 0xc3, 0x62, 0x33, 0x4a, 0xba, 0x39, 0x4f, 0xa7, 0xb1, 0xfc, 0x44, 0x00, 0xcf, 0x21, 0x02,
 ];
 
+const TERRAIN_POINT_UNIQUE_VALUE: [u8; 16] = [
+    0x40, 0xe0, 0x06, 0x8b, 0xb0, 0x89, 0x57, 0x46, 0x98, 0xa5, 0xb9, 0x42, 0x39, 0x87, 0x45, 0xb8,
+];
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum TinRenderer10_1 {
     Simple(TinSimpleRenderer10_1),
     Breakline(Box<TinBreaklineRenderer10_1>),
     Value(Box<TinBreaklineRenderer10_1>),
+    TerrainPointUniqueValue(Box<TerrainPointUniqueValueRenderer10_1>),
     Contour(TinContourRenderer10_1),
     ClassifiedSurface(Box<TinClassifiedSurfaceRenderer10_1>),
 }
@@ -132,6 +137,13 @@ pub struct TinBreaklineRecord10_1 {
     pub values: [i32; 2],
     pub string_flag: i32,
     pub extra_text: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TerrainPointUniqueValueRenderer10_1 {
+    pub base: TinBreaklineRenderer10_1,
+    pub attribute: String,
+    pub values: Vec<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -237,12 +249,28 @@ pub(super) fn read_renderer(
     }
     if !matches!(
         class_id,
-        NODE | EDGE | FACE | BREAKLINE | NODE_VALUE | FACE_VALUE | TERRAIN_DIRTY_AREA
+        NODE | EDGE
+            | FACE
+            | BREAKLINE
+            | NODE_VALUE
+            | FACE_VALUE
+            | TERRAIN_DIRTY_AREA
+            | TERRAIN_POINT_UNIQUE_VALUE
     ) {
         return Err(unsupported("ITinRenderer"));
     }
-    let categorical = matches!(class_id, BREAKLINE | NODE_VALUE | FACE_VALUE);
-    let version = read_version(r, if categorical { 2 } else { 1 })?;
+    let categorical = matches!(
+        class_id,
+        BREAKLINE | NODE_VALUE | FACE_VALUE | TERRAIN_POINT_UNIQUE_VALUE
+    );
+    let upper_version = if class_id == TERRAIN_POINT_UNIQUE_VALUE {
+        3
+    } else if categorical {
+        2
+    } else {
+        1
+    };
+    let version = read_version(r, upper_version)?;
     let symbol = read_symbol_slot_full_10_1(r, max, refs, MAX_SYMBOL_NESTING_DEPTH)?;
     if slot_full_stop_10_1(&symbol, DisplaySlotKind10_1::Symbol).is_some() {
         return Err(unsupported("ISymbol"));
@@ -293,10 +321,23 @@ pub(super) fn read_renderer(
                 .then(|| read_string_10_1(r, max))
                 .transpose()?,
         });
-        return Ok(if class_id == BREAKLINE {
-            TinRenderer10_1::Breakline(body)
-        } else {
-            TinRenderer10_1::Value(body)
+        return Ok(match class_id {
+            BREAKLINE => TinRenderer10_1::Breakline(body),
+            TERRAIN_POINT_UNIQUE_VALUE => {
+                let attribute = read_string_10_1(r, max)?;
+                let mut values = Vec::new();
+                for _ in 0..read_count(r, max, 4)? {
+                    values.push(r.read_u32_le()? as i32);
+                }
+                TinRenderer10_1::TerrainPointUniqueValue(Box::new(
+                    TerrainPointUniqueValueRenderer10_1 {
+                        base: *body,
+                        attribute,
+                        values,
+                    },
+                ))
+            }
+            _ => TinRenderer10_1::Value(body),
         });
     }
 
@@ -839,6 +880,55 @@ mod tests {
                     assert!(read_renderer(&mut r, 4096, &mut RefTable10_1::new(), class).is_err());
                 }
             }
+        }
+    }
+
+    #[test]
+    fn terrain_point_unique_value_consumes_attribute_and_signed_values() {
+        for version in [1_u16, 2, 3] {
+            let mut bytes = version.to_le_bytes().to_vec();
+            bytes.extend([0; 16 + 4 + 16 + 4 + 2]);
+            for value in ["甲", "乙", "丙"] {
+                string(&mut bytes, value);
+            }
+            bytes.extend([0; 4]);
+            if version != 1 {
+                string(&mut bytes, "末尾");
+            }
+            string(&mut bytes, "分类字段");
+            let count_offset = bytes.len();
+            bytes.extend(2_i32.to_le_bytes());
+            bytes.extend((-3_i32).to_le_bytes());
+            bytes.extend(8_i32.to_le_bytes());
+            let length = bytes.len();
+            bytes.push(0xee);
+            let mut r = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let TinRenderer10_1::TerrainPointUniqueValue(body) =
+                read_renderer(&mut r, 4096, &mut refs, TERRAIN_POINT_UNIQUE_VALUE).unwrap()
+            else {
+                panic!("TerrainPointUniqueValueRenderer 未分派");
+            };
+            assert_eq!(body.base.version, version as i16);
+            assert_eq!(body.attribute, "分类字段");
+            assert_eq!(body.values, [-3, 8]);
+            assert_eq!(r.read_bytes(1).unwrap(), &[0xee]);
+            for end in 0..length {
+                let mut r = Reader::new(&bytes[..end]);
+                assert!(
+                    read_renderer(&mut r, 4096, &mut refs, TERRAIN_POINT_UNIQUE_VALUE).is_err()
+                );
+            }
+            bytes[count_offset..count_offset + 4].copy_from_slice(&i32::MAX.to_le_bytes());
+            assert!(
+                read_renderer(
+                    &mut Reader::new(&bytes),
+                    4096,
+                    &mut refs,
+                    TERRAIN_POINT_UNIQUE_VALUE
+                )
+                .is_err()
+            );
         }
     }
 
