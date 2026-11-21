@@ -2085,12 +2085,19 @@ fn raster_node(
             .iter()
             .filter(|name| name.entry != ObjectEntry10_1::Null);
         if let Some(first) = names.next() {
-            if let Some(second) = names.next() {
-                diagnostics.push(format!(
-                    "条目 {}：栅格包含多条非空名称，ArcMap 逐项打开并追加波段，单一数据源字段留空",
-                    entry_index + 1
-                ));
-                raster_band_sources.extend([first, second].into_iter().chain(names).filter_map(
+            let second = names.next();
+            let is_collection = matches!(
+                first.body,
+                Some(crate::layers::raster_dataset_name::RasterDatasetNameEntryBody10_1::BandCollection(_))
+            );
+            if second.is_some() || is_collection {
+                if second.is_some() {
+                    diagnostics.push(format!(
+                        "条目 {}：栅格包含多条非空名称，ArcMap 逐项打开并追加波段，单一数据源字段留空",
+                        entry_index + 1
+                    ));
+                }
+                raster_band_sources.extend(std::iter::once(first).chain(second).chain(names).filter_map(
                     |name| match name.entry {
                         ObjectEntry10_1::NewObject { class_id, key }
                         | ObjectEntry10_1::BackReference { class_id, key } => {
@@ -2102,6 +2109,12 @@ fn raster_node(
                                         Some(band.band_lookup_name().to_owned())
                                     }
                                     _ => name.source_reference.as_ref().and_then(|source| source.band_name.as_deref()).map(str::to_owned),
+                                },
+                                band_indices: match &name.body {
+                                    Some(crate::layers::raster_dataset_name::RasterDatasetNameEntryBody10_1::BandCollection(collection)) => {
+                                        collection.array.as_ref().map(|(_, values)| values.clone())
+                                    }
+                                    _ => None,
                                 },
                                 source: raster_name_source(name),
                             })
@@ -2137,6 +2150,9 @@ fn raster_name_source(
             RasterBandNameSource10_1::Dataset(slot) => slot.body.as_ref(),
             RasterBandNameSource10_1::Workspace(_) => None,
         },
+        Some(RasterDatasetNameEntryBody10_1::BandCollection(collection)) => {
+            collection.name.body.as_ref()
+        }
         body => body,
     };
     let (path, connection) = dataset
@@ -2592,6 +2608,40 @@ mod tests {
                     .iter()
                     .any(|note| note.contains("逐项打开并追加波段"))
             );
+            use crate::layers::raster_dataset_name::{
+                RASTER_BAND_COLLECTION_NAME_CLASS_ID, RasterBandCollectionName10_1,
+                RasterDatasetNameEntryBody10_1, RasterNameSlot10_1,
+            };
+            let mut with_collection = raster.clone();
+            let name = &mut with_collection.names[0];
+            name.body = Some(RasterDatasetNameEntryBody10_1::BandCollection(Box::new(
+                RasterBandCollectionName10_1 {
+                    version: 1,
+                    text: String::new(),
+                    name: RasterNameSlot10_1 {
+                        entry: name.entry,
+                        body: name.body.take(),
+                    },
+                    array_entry: ObjectEntry10_1::Null,
+                    array: Some((1, vec![2, 0, 2])),
+                },
+            )));
+            name.entry = ObjectEntry10_1::NewObject {
+                class_id: RASTER_BAND_COLLECTION_NAME_CLASS_ID,
+                key: key + 100,
+            };
+            let Some(LayerNode::Layer(collection)) =
+                raster_node(&with_collection, index, &mut Vec::new())
+            else {
+                panic!("波段集合应保留图层节点");
+            };
+            assert!(collection.source.is_none());
+            assert_eq!(collection.raster_band_sources.len(), 1);
+            assert_eq!(
+                collection.raster_band_sources[0].band_indices.as_deref(),
+                Some(&[2, 0, 2][..])
+            );
+            assert_eq!(collection.raster_band_sources[0].source, node.source);
             let source = node.source.as_ref().expect("栅格名称应提供工作空间路径");
             assert!(source.path.as_deref().is_some_and(|path| !path.is_empty()));
             let name = match &raster.names[0].body {

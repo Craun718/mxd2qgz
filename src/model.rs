@@ -62,6 +62,8 @@ pub struct RasterBandSource {
     pub object_key: u32,
     /// Band name as used for lookup within the dataset, when known.
     pub band_name: Option<String>,
+    /// Ordered zero-based indices from a saved band collection, when available.
+    pub band_indices: Option<Vec<i32>>,
     pub source: Option<DataSource>,
 }
 
