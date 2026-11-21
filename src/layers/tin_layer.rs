@@ -34,8 +34,39 @@ const FACE: [u8; 16] = [
     0xf0, 0x6d, 0x2e, 0xf1, 0x4c, 0x38, 0xd2, 0x11, 0xb1, 0xf2, 0x00, 0xc0, 0x4f, 0x8e, 0xde, 0xff,
 ];
 
+const BREAKLINE: [u8; 16] = [
+    0x4f, 0x56, 0x20, 0xba, 0xe3, 0xdb, 0xd2, 0x11, 0x9f, 0x39, 0x00, 0xc0, 0x4f, 0x6b, 0xc6, 0x19,
+];
+
 #[derive(Debug, Clone, PartialEq)]
-pub struct TinRenderer10_1 {
+pub enum TinRenderer10_1 {
+    Simple(TinSimpleRenderer10_1),
+    Breakline(Box<TinBreaklineRenderer10_1>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TinBreaklineRenderer10_1 {
+    pub version: i16,
+    pub symbol: SymbolSlotFull10_1,
+    pub legend_groups: Vec<RuleSlot10_1<LegendGroupPrefix10_1>>,
+    pub legend_item: RuleSlot10_1<HorizontalLegendItemBody10_1>,
+    pub records: Vec<TinBreaklineRecord10_1>,
+    pub first_short: u16,
+    pub strings: [String; 3],
+    pub tail_shorts: [u16; 2],
+    pub final_string: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TinBreaklineRecord10_1 {
+    pub text: String,
+    pub values: [i32; 2],
+    pub string_flag: i32,
+    pub extra_text: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TinSimpleRenderer10_1 {
     pub version: i16,
     pub symbol: SymbolSlotFull10_1,
     pub legend_group: RuleSlot10_1<LegendGroupPrefix10_1>,
@@ -97,20 +128,16 @@ fn read_doubles(r: &mut Reader<'_>) -> io::Result<[u64; 2]> {
     Ok([read_double(r)?, read_double(r)?])
 }
 
-fn read_count(r: &mut Reader<'_>, max: usize) -> io::Result<usize> {
+fn read_count(r: &mut Reader<'_>, max: usize, min_size: usize) -> io::Result<usize> {
     let count = (r.read_u32_le()? as i32).max(0) as usize;
-    // 空槽是最短的普通对象条目，仅含 16 字节 CLSID。
-    if count > r.remaining() / 16 {
+    if count > r.remaining() / min_size {
         return Err(io::Error::new(
             ErrorKind::UnexpectedEof,
-            "TIN 对象计数超出剩余字节",
+            "TIN 计数超出剩余字节",
         ));
     }
-    if count > max / 16 {
-        return Err(io::Error::new(
-            ErrorKind::InvalidData,
-            "TIN 对象计数超出限额",
-        ));
+    if count > max / min_size {
+        return Err(io::Error::new(ErrorKind::InvalidData, "TIN 计数超出限额"));
     }
     Ok(count)
 }
@@ -121,16 +148,76 @@ fn read_renderer(
     refs: &mut RefTable10_1,
     class_id: [u8; 16],
 ) -> io::Result<TinRenderer10_1> {
-    // Node 与 Edge 共用 Load；Face 仅在尾部多一个 short。
-    if !matches!(class_id, NODE | EDGE | FACE) {
+    if !matches!(class_id, NODE | EDGE | FACE | BREAKLINE) {
         return Err(unsupported("ITinRenderer"));
     }
-    let version = read_version(r, 1)?;
+    let version = read_version(r, if class_id == BREAKLINE { 2 } else { 1 })?;
     let symbol = read_symbol_slot_full_10_1(r, max, refs, 0)?;
     if slot_full_stop_10_1(&symbol, DisplaySlotKind10_1::Symbol).is_some() {
         return Err(unsupported("ISymbol"));
     }
-    let legend_group = slot(r, refs, |r, refs, class_id, key| {
+    if class_id == BREAKLINE {
+        let mut legend_groups = Vec::new();
+        for _ in 0..read_count(r, max, 16)? {
+            legend_groups.push(read_legend_group(r, max, refs)?);
+        }
+        let legend_item = read_legend_item(r, max, refs)?;
+        let mut records = Vec::new();
+        // 每项至少有字符串长度前缀和三个 LONG。
+        for _ in 0..read_count(r, max, 16)? {
+            let text = read_string_10_1(r, max)?;
+            let values = [r.read_u32_le()? as i32, r.read_u32_le()? as i32];
+            let string_flag = r.read_u32_le()? as i32;
+            records.push(TinBreaklineRecord10_1 {
+                text,
+                values,
+                string_flag,
+                extra_text: (string_flag != 0)
+                    .then(|| read_string_10_1(r, max))
+                    .transpose()?,
+            });
+        }
+        return Ok(TinRenderer10_1::Breakline(Box::new(
+            TinBreaklineRenderer10_1 {
+                version,
+                symbol,
+                legend_groups,
+                legend_item,
+                records,
+                first_short: r.read_u16_le()?,
+                strings: [
+                    read_string_10_1(r, max)?,
+                    read_string_10_1(r, max)?,
+                    read_string_10_1(r, max)?,
+                ],
+                tail_shorts: [r.read_u16_le()?, r.read_u16_le()?],
+                // 只有 v1 从本地化资源取值，其他版本从流取值。
+                final_string: (version != 1)
+                    .then(|| read_string_10_1(r, max))
+                    .transpose()?,
+            },
+        )));
+    }
+
+    // Node 与 Edge 共用 Load；Face 在尾部多一个 short。
+    Ok(TinRenderer10_1::Simple(TinSimpleRenderer10_1 {
+        version,
+        symbol,
+        legend_group: read_legend_group(r, max, refs)?,
+        legend_item: read_legend_item(r, max, refs)?,
+        first_short: r.read_u16_le()?,
+        face_short: (class_id == FACE).then(|| r.read_u16_le()).transpose()?,
+        label: read_string_10_1(r, max)?,
+        last_short: r.read_u16_le()?,
+    }))
+}
+
+fn read_legend_group(
+    r: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<RuleSlot10_1<LegendGroupPrefix10_1>> {
+    slot(r, refs, |r, refs, class_id, key| {
         if class_id != LEGEND_GROUP_CLASS_ID {
             return Err(unsupported("ILegendGroup"));
         }
@@ -139,8 +226,15 @@ fn read_renderer(
             return Err(unsupported("ILegendGroup"));
         }
         Ok(group)
-    })?;
-    let legend_item = slot(r, refs, |r, refs, class_id, key| {
+    })
+}
+
+fn read_legend_item(
+    r: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<RuleSlot10_1<HorizontalLegendItemBody10_1>> {
+    slot(r, refs, |r, refs, class_id, key| {
         if class_id != HORIZONTAL_LEGEND_ITEM_CLASS_ID {
             return Err(unsupported("ILegendItem"));
         }
@@ -149,16 +243,6 @@ fn read_renderer(
             return Err(unsupported("ILegendItem"));
         }
         Ok(item)
-    })?;
-    Ok(TinRenderer10_1 {
-        version,
-        symbol,
-        legend_group,
-        legend_item,
-        first_short: r.read_u16_le()?,
-        face_short: (class_id == FACE).then(|| r.read_u16_le()).transpose()?,
-        label: read_string_10_1(r, max)?,
-        last_short: r.read_u16_le()?,
     })
 }
 
@@ -178,7 +262,7 @@ pub(crate) fn read_tin_layer_10_1(
     }
     let source = read_surface_name(r, max, &mut keys)?;
     let mut renderers = Vec::new();
-    for _ in 0..read_count(r, max)? {
+    for _ in 0..read_count(r, max, 16)? {
         renderers.push(slot(r, &mut keys, |r, refs, class_id, _| {
             read_renderer(r, max, refs, class_id)
         })?);
@@ -200,7 +284,7 @@ pub(crate) fn read_tin_layer_10_1(
     let v2_shorts = (version >= 2).then(|| read_shorts(r)).transpose()?;
     let mut fields = Vec::new();
     if version >= 3 {
-        for _ in 0..read_count(r, max)? {
+        for _ in 0..read_count(r, max, 16)? {
             fields.push(slot(r, &mut keys, |r, refs, class_id, key| {
                 if class_id != FIELD_INFO_CLASS_ID {
                     return Err(unsupported("IFieldInfo"));
@@ -345,12 +429,15 @@ mod tests {
             assert!(refs.contains(10));
             assert!(refs.contains(13));
             assert_eq!(body.renderers.len(), 4);
-            assert_eq!(body.renderers[0].body.as_ref().unwrap().face_short, None);
-            assert_eq!(
-                body.renderers[2].body.as_ref().unwrap().face_short,
-                Some(22)
-            );
-            assert_eq!(body.renderers[2].body.as_ref().unwrap().label, "图例");
+            let Some(TinRenderer10_1::Simple(node)) = body.renderers[0].body.as_deref() else {
+                panic!("Node 体未读取");
+            };
+            let Some(TinRenderer10_1::Simple(face)) = body.renderers[2].body.as_deref() else {
+                panic!("Face 体未读取");
+            };
+            assert_eq!(node.face_short, None);
+            assert_eq!(face.face_short, Some(22));
+            assert_eq!(face.label, "图例");
             assert!(body.renderers[3].body.is_none());
             assert_eq!(body.fields.len(), usize::from(version >= 3));
             assert_eq!(body.v9_short, (version == 9).then_some(25));
@@ -359,6 +446,81 @@ mod tests {
                 (version >= 11).then_some(11.0_f64.to_bits())
             );
             assert_eq!(r.read_bytes(1).unwrap(), &[0xee]);
+        }
+    }
+
+    #[test]
+    fn breakline_reads_nested_group_and_versioned_strings() {
+        for version in [0_i16, 1, 2] {
+            let mut renderer = BREAKLINE.to_vec();
+            renderer.extend(14_u32.to_le_bytes());
+            renderer.extend(version.to_le_bytes());
+            renderer.extend([0; 16]);
+            renderer.extend(2_i32.to_le_bytes());
+            for index in 0..2 {
+                renderer.extend(LEGEND_GROUP_CLASS_ID);
+                renderer.extend(15_u32.to_le_bytes());
+                if index == 0 {
+                    renderer.extend([1, 0, 0, 0]);
+                    string(&mut renderer, "分组");
+                    renderer.extend(0_i32.to_le_bytes());
+                }
+            }
+            renderer.extend([0; 16]);
+            let records_offset = renderer.len();
+            renderer.extend(2_i32.to_le_bytes());
+            for flag in [0_i32, -1] {
+                string(&mut renderer, "折线");
+                for value in [-2_i32, 3, flag] {
+                    renderer.extend(value.to_le_bytes());
+                }
+                if flag != 0 {
+                    string(&mut renderer, "补充");
+                }
+            }
+            renderer.extend(7_u16.to_le_bytes());
+            for value in ["甲", "乙", "丙"] {
+                string(&mut renderer, value);
+            }
+            renderer.extend([8, 0, 9, 0]);
+            if version != 1 {
+                string(&mut renderer, "末尾");
+            }
+
+            let mut bytes = layer(12);
+            let offset = bytes.windows(16).position(|window| window == NODE).unwrap();
+            bytes[offset - 4..offset].copy_from_slice(&5_i32.to_le_bytes());
+            bytes.splice(offset..offset, renderer);
+            let mut r = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let body = read_tin_layer_10_1(&mut r, 4096, &mut refs).unwrap();
+            assert_eq!(r.remaining(), 0);
+            assert!(refs.contains(15));
+            let Some(TinRenderer10_1::Breakline(breakline)) = body.renderers[0].body.as_deref()
+            else {
+                panic!("Breakline 体未读取");
+            };
+            assert_eq!(
+                breakline.legend_groups[0].body.as_ref().unwrap().heading,
+                "分组"
+            );
+            assert!(breakline.legend_groups[1].body.is_none());
+            assert_eq!(breakline.records[0].values, [-2, 3]);
+            assert_eq!(breakline.records[0].extra_text, None);
+            assert_eq!(breakline.records[1].extra_text.as_deref(), Some("补充"));
+            assert_eq!(breakline.tail_shorts, [8, 9]);
+            assert_eq!(
+                breakline.final_string.as_deref(),
+                (version != 1).then_some("末尾")
+            );
+
+            let bad_count = offset + records_offset;
+            bytes[bad_count..bad_count + 4].copy_from_slice(&i32::MAX.to_le_bytes());
+            let mut r = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            assert!(read_tin_layer_10_1(&mut r, 4096, &mut refs).is_err());
+            assert_eq!(r.position(), 0);
+            assert!(refs.is_empty());
         }
     }
 

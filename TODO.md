@@ -334,6 +334,7 @@
     - [x] 核对 TinNodeRenderer、TinEdgeRenderer、TinFaceRenderer 的持久化体及三类子槽。[原生读取器](docs/mxd-luna-deep-layer-masking-20261118.md#tinnoderenderertinedgerenderer-与-tinfacerenderer)
     - [x] 接入 TinLayer 的普通对象体及 Node、Edge、Face 三类渲染器。[解析边界](docs/mxd-luna-deep-layer-masking-20261118.md#tinnoderenderertinedgerenderer-与-tinfacerenderer)
     - [x] 核对 TinBreaklineRenderer 的普通对象体、计数及条件字符串。[原生布局](docs/mxd-luna-deep-layer-masking-20261118.md#tinbreaklinerenderer)
+    - [x] 接入 TinBreaklineRenderer 普通对象体，包括图例组循环、条件字符串和 v1 末尾分支。[解析边界](docs/mxd-luna-deep-layer-masking-20261118.md#tinbreaklinerenderer)
   - [x] 从两份 SDK mole_data 的 GroupLayer 条目确认尚未识别的两个子图层 CLSID 和八段对象体的边界。[宿主取证](docs/mxd-luna-deep-layer-masking-20261118.md#sdk-mole_data-的未识别子图层)
   - [x] 读取 NALayer 中定义的嵌套对象并登记其键，以解析 SanFrancisco SDK 工程的后续回引。[实档停点与原生证据](docs/mxd-luna-deep-layer-masking-20261118.md#sanfrancisco-组图层的跨图层-uid-回引)
   - [x] 读取 SanFrancisco 底图正式子层集合中新建的 GroupLayer（键 5148）。
