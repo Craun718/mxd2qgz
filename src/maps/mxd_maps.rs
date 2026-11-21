@@ -2073,25 +2073,30 @@ fn raster_node(
     }
     use crate::layers::raster_dataset_name::RasterDatasetNameEntryBody10_1;
 
-    let source = match prefix.names.as_slice() {
+    let dataset = match prefix.names.as_slice() {
         [entry] if prefix.names_stop.is_none() => match &entry.body {
             Some(RasterDatasetNameEntryBody10_1::Dataset(name))
-            | Some(RasterDatasetNameEntryBody10_1::Dataset83 { name, .. }) => name.workspace_path(),
+            | Some(RasterDatasetNameEntryBody10_1::Dataset83 { name, .. }) => Some(name.as_ref()),
             Some(RasterDatasetNameEntryBody10_1::FileGeodatabase { name, .. }) => {
-                name.delegated_name.workspace_path()
+                Some(&name.delegated_name)
             }
-            Some(RasterDatasetNameEntryBody10_1::Database(name)) => {
-                name.delegated_name.workspace_path()
-            }
+            Some(RasterDatasetNameEntryBody10_1::Database(name)) => Some(&name.delegated_name),
             _ => None,
         },
         _ => None,
-    }
-    .map(|path| DataSource {
-        provider: None,
-        path: Some(path.to_owned()),
-        connection: None,
-        unknown_fields: Vec::new(),
+    };
+    let source = dataset.and_then(|name| {
+        let path = name.workspace_path().map(str::to_owned);
+        let connection = name
+            .dataset_name()
+            .filter(|name| !name.is_empty())
+            .map(str::to_owned);
+        (path.is_some() || connection.is_some()).then_some(DataSource {
+            provider: None,
+            path,
+            connection,
+            unknown_fields: Vec::new(),
+        })
     });
     Some(LayerNode::Layer(Layer {
         name: prefix.first_string.clone(),
@@ -2496,6 +2501,21 @@ mod tests {
             assert_eq!(node.visible, expected_visible);
             let source = node.source.as_ref().expect("栅格名称应提供工作空间路径");
             assert!(source.path.as_deref().is_some_and(|path| !path.is_empty()));
+            let name = match &raster.names[0].body {
+                Some(crate::layers::raster_dataset_name::RasterDatasetNameEntryBody10_1::Dataset(name)) => name.as_ref(),
+                Some(crate::layers::raster_dataset_name::RasterDatasetNameEntryBody10_1::FileGeodatabase { name, .. }) => &name.delegated_name,
+                other => panic!("参考样本栅格名称体类型异常：{other:?}"),
+            };
+            assert_eq!(
+                source.connection.as_deref(),
+                name.strings.as_ref().map(|strings| strings[0].as_str())
+            );
+            assert!(
+                source
+                    .connection
+                    .as_deref()
+                    .is_some_and(|name| !name.is_empty())
+            );
             let tail = raster.tail.as_ref().expect("参考样本栅格图层应读到体末尾");
             assert_eq!(list.entries[index].body.unwrap().len, 0);
             assert_eq!(tail.raster_io.as_ref().unwrap().shorts_35_to_37, [0, 0, 0]);

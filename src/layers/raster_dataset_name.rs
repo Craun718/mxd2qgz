@@ -149,8 +149,7 @@ pub struct RasterDatasetNameBody10_1 {
     /// Load 先读取的 4 字节原值。Save 侧由 AfStreamGetSaveVersion 产生；
     /// 这里保留整数，不把它改写成字段或成员名称。
     pub version_gate: i32,
-    /// Load 顺序读取并存入对象偏移 +0x10、+0x14、+0x18、+0x4c 的四条 String；
-    /// 语义不在本模块命名。
+    /// 前三条分别对应 Name、NameString 和 Category，第四条保留原文。
     pub strings: Option<[String; 4]>,
     /// 紧随四条 String 的 LoadObject（请求 IWorkspaceName IID）。
     pub workspace: Option<RasterDatasetWorkspaceSlot10_1>,
@@ -165,6 +164,11 @@ pub struct RasterDatasetNameBody10_1 {
 }
 
 impl RasterDatasetNameBody10_1 {
+    /// IDatasetName::Name 的持久化原文。
+    pub fn dataset_name(&self) -> Option<&str> {
+        self.strings.as_ref().map(|strings| strings[0].as_str())
+    }
+
     pub fn workspace_path(&self) -> Option<&str> {
         match &self.workspace {
             Some(RasterDatasetWorkspaceSlot10_1::WorkspaceName(body)) => Some(&body.path),

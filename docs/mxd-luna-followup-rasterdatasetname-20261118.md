@@ -82,3 +82,27 @@ RasterDatasetName 键 1545 的体起点 `/Maps:0x14621`：
 
 参考工程的两个栅格节点均取得非空工作空间路径。构造回归覆盖匹配及不匹配
 CLSID 的栅格工作空间回引，保持后继字段对位。ArcMap 和 QGIS 人工验收仍未进行。
+
+## 栅格名称字符串对位
+
+复核同一 10.1 RasterDB.dll 及 RasterCoreLib.dll（SHA-256
+`6d89601832b788177aac492e7fdfb0f1b012db86e2a75e6e480e6e647508eb1f`）。
+RasterDatasetName 主 QI 返回对象 `+0x10` 的 IName（虚表
+`0x7c1335b8`）和 `+0x14` 的 IDatasetName（虚表 `0x7c1335d8`）。
+IPersistStream 的 Load 以完整对象 `+0x18` 为接口起点。
+RasterDB 的访问器跳板经导入表对到 RasterCoreLib 的
+BasicRasterName 原生实现。
+
+| 流内顺序 | 属性 | RasterCoreLib getter | 完整对象偏移 |
+| --- | --- | --- | --- |
+| 1 | IDatasetName::Name | `0x7bed1100`，访问 IDatasetName 指针 `+0x14` | `+0x28` |
+| 2 | IName::NameString | `0x7bed10a0`，访问 IName 指针 `+0x1c` | `+0x2c` |
+| 3 | IDatasetName::Category | `0x7bed10a0`，访问 IDatasetName 指针 `+0x1c` | `+0x30` |
+
+该顺序与 Load 的 `0x7c0ba62d`、`0x7c0ba640`、`0x7c0ba64e` 一致。
+单名称栅格图层现将第一条非空 Name 连同已读取的工作空间路径传到模型。
+参考工程的两条栅格名称均验证了模型中的名称原文。第四条字符串、多名称
+图层的选择规则和目标软件人工验收仍开放。
+
+Name getter 另有依赖工作空间状态及名称检测的分支
+（`0x7bed1127..0x7bed1158`）。模型保留存盘 Name 原文，运行时路径处理仍待取证。
