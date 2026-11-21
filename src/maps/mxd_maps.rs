@@ -360,8 +360,13 @@ fn parse_mxd_streams_10_1_with_limits(
                             .filter_map(|frame| frame.map_frame_body.as_deref()),
                     ) {
                         if let ObjectEntry10_1::BackReference { key, .. } = frame.prefix.map {
+                            let target = if map_indices.contains_key(&key) {
+                                "/Maps 的 Map"
+                            } else {
+                                "内嵌 Map"
+                            };
                             diagnostics.push(format!(
-                                "MapFrame 键 {} 在 /PageLayout:0x{:x} 回引 /Maps 的 Map 键 {key}",
+                                "MapFrame 键 {} 在 /PageLayout:0x{:x} 回引 {target} 键 {key}",
                                 frame.prefix.frame_key, frame.prefix.map_offset
                             ));
                         }

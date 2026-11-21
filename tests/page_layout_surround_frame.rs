@@ -478,22 +478,50 @@ fn standalone_layout_reads_new_map_inside_map_frame() {
     frame.extend(&maps[4..0x25569]); // 参考 Map 的完整对象头和对象体。
     frame.extend([0; 8]);
     frame.extend(base);
-    let mut page = layout_root(1);
+    let mut reference = MAP_FRAME_CLASS_ID.to_vec();
+    reference.extend(0x8000_u32.to_le_bytes());
+    reference.extend(4_u16.to_le_bytes());
+    reference.extend(&maps[4..24]); // 同一 Map 的对象头。
+    reference.extend([0; 8]);
+    reference.extend(base);
+    let mut page = layout_root(2);
     push_element(&mut page, &frame);
+    push_element(&mut page, &reference);
 
-    let layout = parse_mxd_streams_10_1(&[0; 8], Some(&page))
-        .unwrap()
-        .page_layout
-        .unwrap();
+    let report = parse_mxd_streams_10_1(&[0; 8], Some(&page)).unwrap();
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|note| note.contains("回引 内嵌 Map 键"))
+    );
+    let layout = report.page_layout.unwrap();
     assert!(layout.stop.is_none(), "{:?}", layout.stop);
     assert_eq!(layout.end_offset, page.len());
-    let frame = &layout.map_frames[0];
+    let parsed_frame = &layout.map_frames[0];
     assert!(matches!(
-        frame.prefix.map,
+        parsed_frame.prefix.map,
         ObjectEntry10_1::NewObject { .. }
     ));
     assert_eq!(
-        frame.embedded_map.as_ref().unwrap().1.stop,
+        parsed_frame.embedded_map.as_ref().unwrap().1.stop,
         MapSuffixStop::Complete
     );
+    assert!(matches!(
+        layout.map_frames[1].prefix.map,
+        ObjectEntry10_1::BackReference { .. }
+    ));
+    assert!(layout.map_frames[1].embedded_map.is_none());
+
+    use mxd2qgz::maps::page_layout_prefix::read_page_layout_map_frame_10_1;
+    use mxd2qgz::storage::object_refs::RefTable10_1;
+    use mxd2qgz::stream::reader::Reader;
+
+    let mut truncated = Vec::new();
+    push_element(&mut truncated, &frame[..frame.len() - 1]);
+    let mut refs = RefTable10_1::new();
+    let mut reader = Reader::new(&truncated);
+    assert!(read_page_layout_map_frame_10_1(&mut reader, 4_000_000, &mut refs).is_err());
+    assert!(refs.is_empty());
+    assert_eq!(reader.position(), 0);
 }
