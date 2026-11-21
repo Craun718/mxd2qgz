@@ -565,7 +565,7 @@ LELP ⑰⑱⑲ 槽分派）、`src/layers/feature_layer_tail.rs`（㉖㉘㉙㊴�
 
 | 类 | CLSID | Load | 证据强度 | 样本对位 |
 | --- | --- | --- | --- | --- |
-| LineLabelPosition | {2442958C-D711-11D2-9F41-00C04F6BC6A5} | 0x7855b4e0（转发调整器 0x7855b7b0 → IPersistStream 适配虚表 0x7857d0f0 槽 +0x14；Save 0x7855b650 对称） | 确定的 | 键 70 @0xdcb：ver 2、11 short [-1,0,0,0,0,-1,0,0,-1,0,0]、d 0.0、尾 0 |
+| LineLabelPosition | {2442958C-D711-11D2-9F41-00C04F6BC6A5} | 0x7855b4e0（转发调整器 0x7855b7b0 → IPersistStream 适配虚表 0x7857d0f4 槽 +0x14；Save 0x7855b650 对称） | 确定的 | 键 70 @0xdcb：ver 2、11 short [-1,0,0,0,0,-1,0,0,-1,0,0]、d 0.0、尾 0 |
 | LineLabelPlacementPriorities | {261A4377-D9D5-11D2-A806-CC9F870BCD5A} | 0x7855ae10（GetClassID +0x40 邻位，15×int32 循环） | 确定的 | 键 71 @0xe01：ver 1、ints [0,3,3,3,0,0,3,3,3,0,0,3,3,3,0] |
 | PointPlacementPriorities | {261A4372-D9D5-11D2-A806-CC9F870BCD5A} | 0x7856d920（+0x290 邻位，8×int32 循环） | 确定的 | 键 72 @0xe63：ver 1、ints [2,2,1,2,2,3,3,3] |
 | AnnotationVBScriptEngine | {AA157207-E079-11D2-9F48-00C04F6BC6A5} | 0x785361d0（适配虚表 0x7857a1fc 槽 +0x18；Save 0x78536240 写常量 2） | 确定的 | 键 73 @0xec5：ver 2、short -1 |

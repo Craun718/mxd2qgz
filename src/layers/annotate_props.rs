@@ -943,8 +943,8 @@ pub const BASIC_OVERPOSTER_LAYER_PROPS_CLASS_ID: [u8; 16] = [
     0x89, 0x52, 0x53, 0xee, 0xc9, 0x41, 0xd1, 0x11, 0x88, 0x0a, 0x08, 0x00, 0x09, 0xec, 0x73, 0x2a,
 ];
 
-/// LineLabelPosition 类标识(CLSID,与 ILineLabelPosition IID 同值)的 16
-/// 字节内存序。
+/// LineLabelPosition CLSID 的 16 字节内存序。
+/// ILineLabelPosition 的 IID 首段为 `2442958B`。
 ///
 /// GUID `{2442958C-D711-11D2-9F41-00C04F6BC6A5}`。证据:esri.clsid 声明;
 /// GetClassID `0x7855afb0`(常量拷贝形,常量 `0x7857b02c`);样本
@@ -1049,22 +1049,23 @@ pub const DISPLAY_EXPRESSION_PROPS_CLASS_ID: [u8; 16] = [
 ///
 /// 证据:确定的。定位链:GetClassID `0x7855afb0`(常量拷贝)→ 名字 getter
 /// `0x7855afa0`(`L"LineLabelPosition"`)→ IPersistStream 适配虚表
-/// `0x7857d0f0` 槽 +0x14 = 转发调整器 `0x7855b7b0` → Load `0x7855b4e0`;
+/// `0x7857d0f4` 槽 +0x14 = 转发调整器 `0x7855b7b0` → Load `0x7855b4e0`;
 /// Save `0x7855b650`(槽 +0x18 经 `0x7855b810`)逐字段对称互证。字段序:
 /// ① int16 版本(`2 < ver` 有符号拒绝 `0x7fffbffb`;样本 2)→ ② int16 ×11
 /// → ③ double → ④ 版本 ≥2:int16。样本 11 个 short =
-/// [-1,0,0,0,0,-1,0,0,-1,0,0]、double 0.0、尾 short 0(布尔开关候选)。
+/// [-1,0,0,0,0,-1,0,0,-1,0,0]、double 0.0、尾 short 0。
 #[derive(Debug, Clone, PartialEq)]
 pub struct LineLabelPositionBody10_1 {
     /// 对象头键(样本 70)。
     pub key: u32,
     /// 体首 short 版本(样本 2);有符号 >2 拒绝(较原生更严:负值一并拒绝)。
     pub version: u16,
-    /// 11 个 int16(位置开关候选;样本 -1/0 混合,原样保留)。
+    /// 顺序为 Above、Below、OnTop、Left、Right、InLine、AtStart、AtEnd、
+    /// Parallel、Perpendicular、Horizontal。保留原始 BOOL 值。
     pub shorts: [i16; 11],
-    /// double(样本 0.0),语义未定。
+    /// ILineLabelPosition::Offset。
     pub double: f64,
-    /// 版本 ≥2 的尾 int16(样本 0)。`None` = 版本 ≤1。
+    /// 版本 ≥2 的 ProduceCurvedLabels 原始 BOOL。`None` = 版本 ≤1。
     pub tail_short: Option<i16>,
 }
 

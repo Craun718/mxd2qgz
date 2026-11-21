@@ -82,6 +82,7 @@ fn parse_reports_label_properties_from_reference_mxd() {
             line.contains(&placement_note)
                 && line.contains("Offset 0")
                 && line.contains("LineLabelPosition")
+                && line.contains("Above -1，Below 0，OnTop 0，Left 0，Right 0，InLine -1，AtStart 0，AtEnd 0，Parallel -1，Perpendicular 0，Horizontal 0，Offset 0，ProduceCurvedLabels 0")
                 && line.contains("线放置优先级 [0, 3, 3, 3, 0, 0, 3, 3, 3, 0, 0, 3, 3, 3, 0]")
                 && line.contains("点放置优先级 [2, 2, 1, 2, 2, 3, 3, 3]")
         }));

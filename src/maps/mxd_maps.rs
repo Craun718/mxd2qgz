@@ -1582,11 +1582,30 @@ fn annotate_placement_note(
         BolpSlot10_1::Bolp(body) => {
             let _ = write!(note, "；BasicOverposterLayerProperties 键 {}", body.key);
             if let LineLabelPositionSlot10_1::Body(position) = &body.label_position {
-                let _ = write!(
-                    note,
-                    "；LineLabelPosition（键 {}，short {:?}，double {}，尾 short {:?}）",
-                    position.key, position.shorts, position.double, position.tail_short,
-                );
+                let _ = write!(note, "；LineLabelPosition（键 {}", position.key);
+                for (property, value) in [
+                    "Above",
+                    "Below",
+                    "OnTop",
+                    "Left",
+                    "Right",
+                    "InLine",
+                    "AtStart",
+                    "AtEnd",
+                    "Parallel",
+                    "Perpendicular",
+                    "Horizontal",
+                ]
+                .into_iter()
+                .zip(position.shorts)
+                {
+                    let _ = write!(note, "，{property} {value}");
+                }
+                let _ = write!(note, "，Offset {}", position.double);
+                if let Some(value) = position.tail_short {
+                    let _ = write!(note, "，ProduceCurvedLabels {value}");
+                }
+                note.push('）');
             }
             if let PlacementPrioritiesSlot10_1::Line(line) = &body.priorities_line {
                 let _ = write!(note, "；线放置优先级 {:?}", line.ints);

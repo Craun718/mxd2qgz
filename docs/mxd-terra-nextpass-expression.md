@@ -106,3 +106,25 @@ LELP 的 Offset、Priority 由上文访问器对位确认。标准引擎使用�
 优先级数组。回归验证三个类均在各自的诊断中输出放置属性。
 LineLabelPosition 各标志的属性对位、Maplex 放置配置及 ArcMap/QGIS
 人工验证仍待完成。
+
+### Line Label Position 字段对位
+
+使用 10.1 Carto 类型库和 LabelPlacement.dll 10.1.0.3035（SHA-256
+`8415f63c1889e269ba6ae585538f601130c20cef02e4556e875a52217d35ea3d`）。
+类型库导出的 ILineLabelPosition IID 首段为 `2442958B`，GetClassID
+`0x7855afb0` 使用常量 `0x7857b02c`，CLSID 首段为 `2442958C`。
+
+构造指令 `0x7855b037` 将接口表 `0x7857d07c` 安装至对象
+`+0x18`。同一构造函数使用虚基表 `0x7857b274` 的
+`+4 = 0x30`，把持久化表安装到对象 `+0x44`。Load thunk
+`0x7855b7b0` 经对象调整值把该指针传给 `0x7855b4e0`。
+两个接口相差 `0x2c`。据 PE 虚表和访问器指令，Load 的连续 short
+`-0x26..-0x12` 对应 ILineLabelPosition 的 `+0x06..+0x1a`，
+顺序为 Above、Below、OnTop、Left、Right、InLine、AtStart、AtEnd、
+Parallel、Perpendicular、Horizontal。后续 double `-0x0c`
+对应 Offset（getter `0x7855b4b0`，接口 `+0x20`）。
+v2 尾 short `-0x28` 对应 ProduceCurvedLabels（getter
+`0x7855b190`，接口 `+0x04`）。v0/v1 原始流没有尾 short。
+
+命令行保留原始值，参考工程的三个标注类均有回归覆盖。Maplex 放置配置、
+单位转换及 ArcMap/QGIS 人工验证仍待完成。
