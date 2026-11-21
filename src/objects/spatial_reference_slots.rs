@@ -149,7 +149,8 @@ pub struct UnknownCoordinateSystem10_1 {
     /// + 7 double；版本 0 为 `None`。
     pub precision: Option<PrecisionBlock>,
     /// 版本 >=3 分支的 3 个容差 double `[XY, Z, M]`（原生 NaN 或 <=0 时按
-    /// 默认容差重置，本读取器原样保留）；版本 <3 为 `None`。
+    /// 默认容差重置，本读取器原样保留）。版本 <3 从原生网格恢复容差，流内无该字段，
+    /// 本读取器返回 `None`。
     pub tolerances: Option<[f64; 3]>,
 }
 
@@ -605,6 +606,31 @@ mod tests {
         assert!(body.strings[1..].iter().all(String::is_empty));
         assert_eq!(body.precision.unwrap().flags, 1);
         assert_eq!(body.tolerances, Some([0.001, 0.001, 0.001]));
+    }
+
+    #[test]
+    fn unknown_version3_preserves_serialized_tolerance_bits() {
+        let mut bytes = 3u16.to_le_bytes().to_vec();
+        for name in ["Unknown", "", "", ""] {
+            push_unk_string(&mut bytes, name);
+        }
+        push_precision(&mut bytes, 1);
+        // ArcMap 加载时会重置这三个值。读取器应保留磁盘上的位模式。
+        let bits = [
+            0x7ff8_0000_0000_0042_u64,
+            (-0.0_f64).to_bits(),
+            (-2.0_f64).to_bits(),
+        ];
+        for value in bits {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        let end = bytes.len();
+        bytes.extend_from_slice(&[0xab, 0xcd]);
+
+        let mut reader = Reader::new(&bytes);
+        let body = read_unknown_coordinate_system_10_1(&mut reader, 4096).unwrap();
+        assert_eq!(body.tolerances.unwrap().map(f64::to_bits), bits);
+        assert_eq!(reader.position(), end);
     }
 
     #[test]
