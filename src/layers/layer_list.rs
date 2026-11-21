@@ -154,6 +154,7 @@ pub enum LayerBodyPrefix10_1 {
     FdoGraphicsLayer(Box<FdoGraphicsLayerPrefix10_1>),
     /// Scene 或 Globe 图形层完整对象体。
     Graphics3d(Box<Graphics3dLayer10_1>),
+    NetworkLayer(Box<super::network_layer::NetworkLayerPrefix10_1>),
     NaLayer(crate::layers::na_layer::NaLayerPrefix10_1),
     /// 有界 RasterLayer 的已确认前缀。
     RasterLayer(crate::layers::raster_layer::RasterLayerPrefix10_1),
@@ -182,6 +183,7 @@ impl LayerBodyPrefix10_1 {
             Self::ProcessLayer(body) => &body.group.name,
             Self::CompositeGraphicsLayer(prefix) => &prefix.name,
             Self::Graphics3d(body) => &body.name,
+            Self::NetworkLayer(body) => &body.name,
             Self::NaLayer(body) => &body.name,
             Self::TiledLayer(body) => body.name(),
             Self::CadLayer(body) => &body.name,
@@ -1163,6 +1165,10 @@ pub(crate) fn parse_body_prefix(
     trial_table: &mut RefTable10_1,
     depth: u32,
 ) -> io::Result<Option<LayerBodyPrefix10_1>> {
+    if class_id == crate::maps::layer_masking::NETWORK_LAYER_CLASS_ID {
+        return super::network_layer::read_network_layer_prefix_10_1(trial, max_bytes, trial_table)
+            .map(|body| Some(LayerBodyPrefix10_1::NetworkLayer(Box::new(body))));
+    }
     if class_id == FEATURE_LAYER_CLASS_ID {
         Ok(Some(LayerBodyPrefix10_1::FeatureLayer(Box::new(
             read_feature_layer_prefix_10_1(trial, max_bytes, trial_table)?,
@@ -1272,7 +1278,7 @@ pub(crate) fn read_complete_layer_body_10_1(
             body.stop == crate::layers::group_layer::GroupLayerStop10_1::Complete
         }
         LayerBodyPrefix10_1::RasterLayer(body) => body.tail.is_some(),
-        LayerBodyPrefix10_1::NaLayer(_) => false,
+        LayerBodyPrefix10_1::NaLayer(_) | LayerBodyPrefix10_1::NetworkLayer(_) => false,
         LayerBodyPrefix10_1::Graphics3d(_)
         | LayerBodyPrefix10_1::ProcessLayer(_)
         | LayerBodyPrefix10_1::WcsLayer(_)

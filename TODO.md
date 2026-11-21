@@ -323,6 +323,8 @@
   - [x] 读取 SanFrancisco 底图正式子层集合中新建的 GroupLayer（键 5148）。
   - [x] 核对 BasemapLayer 遮罩遍历时是否枚举正式子层，解决 SanFrancisco 键 5148 的遮罩错位。
   - [x] 接入 Map v38 与 v44 的 ITimeValue TimeInstant 实现，读完 SanFrancisco 的 Map 尾段。
+  - [x] 读取 NetworkLayer 前缀及 NetworkDatasetName 对象槽。
+  - [ ] 读取 NetworkLayer 网络名称之后的对象槽和尾段。
   - [x] 接入 NALayer 的 NAContext、NetworkAnalysisWorkspace 三字符串和 IPropertySet 前缀，两份 SanFrancisco 实档的体停点由 `0x370` 推进到 `0x512`。[上下文与工作空间前缀](docs/mxd-luna-deep-layer-masking-20261118.md#nalayer-的上下文与工作空间前缀)
   - [x] 读取 NARouteSolver 的层级列表与属性集。[层级与属性取证](docs/mxd-luna-deep-layer-masking-20261118.md#naroutesolver-的层级列表与属性集)
   - [x] 读取 NARouteSolver 的版本尾段及空参数数组。[版本尾段取证](docs/mxd-luna-deep-layer-masking-20261118.md#naroutesolver-的版本尾段)

@@ -343,3 +343,9 @@ BasemapLayer.dll 10.1.0.3035 的 Load `0x6b646260` 在 `0x6b6464eb` 对正式子
 BasemapLayer.dll 10.1.0.3035 的 `0x6b6436b0 / 0x6b6436f0` 从当前集合返回计数和图层包装接口。Load 通过集合插入路径 `0x6b64b0a0 → 0x6b644000` 装入正式子层。包装类 QI 的后备 `0x6b64ad04 → 0x6b69ebc0` 只处理固定 IID，对 ILayerMasking 在 `0x6b69ecaa` 返回 E_NOINTERFACE。Map.dll `0x79403bc0` 收到空遮罩接口后直接返回，因此底图内包装的组不消费独立遮罩记录。读取器对已完整确认的组和要素子层应用此规则，对其他正式子层保持停止。
 
 两份 SanFrancisco SDK 工程均越过键 5148 的旧错位，读取两条逐图层遮罩记录并进入后续 Map 版本段。两份目前共同停在阶段 40，未知尾部起于 `/Maps:0xdbc13`，余 86 字节。ArcMap/QGIS 人工验收尚未进行。
+
+### NetworkLayer 的数据集名称
+
+同版 NetworkLayer.dll 的持久化虚表 `0x7b2a9ed4` 将 Load/Save 定位到 `0x7b2903d0 / 0x7b2908a0`。Ghidra 补充导出与原始指令确认 Load 读取有符号上限 0 的 short、AfCore String，再经 `0x7b291140` 以 `0x7b2a9fa4` 的 IName IID 调用 LoadObject。读取器复用 NALayer 的 NetworkDatasetName 分派。构造测试覆盖名称回引和逐字节截断。
+
+两份 SanFrancisco SDK 工程的键 5053 从 `/Maps:0xd05b4` 开始读到名称 Streets_ND，消费网络名称对象及嵌套键后停于 `0xd07a6`。Map 根尾与 PageLayout 对象和打印尾部均已读取。NetworkLayer 后续对象和 ArcMap/QGIS 人工验收仍待进行。

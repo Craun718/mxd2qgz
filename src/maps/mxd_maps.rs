@@ -864,6 +864,7 @@ fn frame_from_body(
             Some(
                 LayerBodyPrefix10_1::BasemapLayer(_)
                 | LayerBodyPrefix10_1::NaLayer(_)
+                | LayerBodyPrefix10_1::NetworkLayer(_)
                 | LayerBodyPrefix10_1::TiledLayer(_)
                 | LayerBodyPrefix10_1::CadLayer(_),
             ) => None,
@@ -1787,7 +1788,9 @@ fn body_prefix_node(
             entry_index,
             diagnostics,
         )),
-        LayerBodyPrefix10_1::BasemapLayer(_) | LayerBodyPrefix10_1::NaLayer(_) => None,
+        LayerBodyPrefix10_1::BasemapLayer(_)
+        | LayerBodyPrefix10_1::NaLayer(_)
+        | LayerBodyPrefix10_1::NetworkLayer(_) => None,
         LayerBodyPrefix10_1::CadAnnotationLayer(_)
         | LayerBodyPrefix10_1::CoverageAnnotationLayer(_) => {
             diagnostics.push(format!(
