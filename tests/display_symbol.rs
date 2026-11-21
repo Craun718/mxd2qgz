@@ -2834,8 +2834,8 @@ fn symbol_mimic_reads_empty_rule_and_rolls_back_on_unknown_rule() {
 #[test]
 fn symbol_mimic_preserves_rule_body_and_reuses_rule_key() {
     use mxd2qgz::objects::display_symbol::{
-        REPRESENTATION_RULE_CLASS_ID, RepresentationRuleBody10_1, SYMBOL_MIMIC_CLASS_ID,
-        SymbolSlotFull10_1, read_symbol_slot_full_10_1,
+        REPRESENTATION_RULE_CLASS_ID, RepresentationRuleBody10_1, RepresentationRuleOverride10_1,
+        SYMBOL_MIMIC_CLASS_ID, SymbolSlotFull10_1, read_symbol_slot_full_10_1,
     };
     use mxd2qgz::storage::object_refs::ObjectEntry10_1;
 
@@ -2847,7 +2847,11 @@ fn symbol_mimic_preserves_rule_body_and_reuses_rule_key() {
     bytes.extend(1_u16.to_le_bytes());
     bytes.extend(2_u16.to_le_bytes());
     let counts_start = bytes.len();
-    for value in [-1_i32, 81, 0, -2, 0, 82, 9] {
+    for value in [-1_i32, 81, 0, 1, -2, 3] {
+        bytes.extend(value.to_le_bytes());
+    }
+    push_string(&mut bytes, "覆盖值");
+    for value in [2_i32, -2, 3, 82, 9] {
         bytes.extend(value.to_le_bytes());
     }
     let first_end = bytes.len();
@@ -2875,8 +2879,13 @@ fn symbol_mimic_preserves_rule_body_and_reuses_rule_key() {
             effect_count: -1,
             leading_value: 81,
             layer_count: 0,
-            override_count: -2,
-            order_count: 0,
+            override_count: 1,
+            overrides: vec![RepresentationRuleOverride10_1 {
+                ids: [-2, 3],
+                value: "覆盖值".into(),
+            }],
+            order_count: 2,
+            order_ids: vec![-2, 3],
             trailing_value: 82,
         }
     );
@@ -2899,7 +2908,7 @@ fn symbol_mimic_preserves_rule_body_and_reuses_rule_key() {
         assert_eq!(reader.position(), 0);
         assert!(!refs.contains(22));
     }
-    for count_index in [0, 2, 3, 4] {
+    for count_index in [0, 2] {
         let mut unsupported = bytes[..first_end].to_vec();
         let start = counts_start + 4 * count_index;
         unsupported[start..start + 4].copy_from_slice(&1_i32.to_le_bytes());

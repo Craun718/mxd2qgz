@@ -564,12 +564,21 @@ pub struct RepresentationRuleBody10_1 {
     pub leading_value: i32,
     pub layer_count: i32,
     pub override_count: i32,
+    pub overrides: Vec<RepresentationRuleOverride10_1>,
     pub order_count: i32,
+    pub order_ids: Vec<i32>,
     pub trailing_value: i32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RepresentationRuleOverride10_1 {
+    pub ids: [i32; 2],
+    pub value: String,
 }
 
 fn read_representation_rule_body_10_1(
     reader: &mut Reader<'_>,
+    max_bytes: usize,
 ) -> io::Result<Option<RepresentationRuleBody10_1>> {
     let version = read_signed_symbol_version(reader, 1, "RepresentationRule", reader.position())?;
     let effect_list_version =
@@ -584,13 +593,30 @@ fn read_representation_rule_body_10_1(
         return Ok(None);
     }
     let override_count = read_i32_le(reader)?;
-    if override_count > 0 {
-        return Ok(None);
+    let overrides_len = override_count.max(0) as usize;
+    if overrides_len > reader.remaining().min(max_bytes) / 14 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "RepresentationRule 覆盖值计数超出剩余字节或限额",
+        ));
     }
+    let mut overrides = Vec::new();
+    for _ in 0..overrides_len {
+        overrides.push(RepresentationRuleOverride10_1 {
+            ids: [read_i32_le(reader)?, read_i32_le(reader)?],
+            value: read_string_10_1(reader, max_bytes)?,
+        });
+    }
+
     let order_count = read_i32_le(reader)?;
-    if order_count > 0 {
-        return Ok(None);
+    let order_len = order_count.max(0) as u32;
+    if order_len as usize > reader.remaining().min(max_bytes) / 4 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "RepresentationRule 次序计数超出剩余字节或限额",
+        ));
     }
+    let order_ids = read_i32_vec(reader, order_len)?;
     Ok(Some(RepresentationRuleBody10_1 {
         version,
         effect_list_version,
@@ -598,7 +624,9 @@ fn read_representation_rule_body_10_1(
         leading_value,
         layer_count,
         override_count,
+        overrides,
         order_count,
+        order_ids,
         trailing_value: read_i32_le(reader)?,
     }))
 }
@@ -2083,7 +2111,8 @@ pub fn read_symbol_slot_full_10_1(
                         class_id: REPRESENTATION_RULE_CLASS_ID,
                         ..
                     } if depth > 1 => {
-                        let Some(body) = read_representation_rule_body_10_1(&mut trial)? else {
+                        let Some(body) = read_representation_rule_body_10_1(&mut trial, max_bytes)?
+                        else {
                             return Ok(SymbolSlotFull10_1::Unsupported { class_id, key });
                         };
                         Some(body)
