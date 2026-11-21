@@ -1011,3 +1011,18 @@ WMTSLayer GetClassID `0x79e82370` 对位独立类标识，构造指令 `0x79e81e
 AGSServerObjectName（CLSID `6C22971C-D450-4B4D-9422-EE96A40FACC5`）取证来自 AGSClient.dll 10.1.0.3035（SHA-256 `3bebe94f58b3aed1dca1294aecaf8e080f235a92b9c6aa51376e16ae7cbe351c`）。主 QI `0x697e8480` 对 IPersistStream 返回 `+0x24`，虚表 `0x698d7a30` 的 GetClassID、Load、Save 分别是 `0x697e9880`、`0x697e9b30`、`0x697e98b0`。对象体为 short 版本（≤3）、三个 AfCore 自由函数 ReadString 的 BSTR 前缀字符串、IAGSServerConnectionName 普通槽，v2 加两个 BSTR 字符串，v3 加第三个。其连接名 CLSID 为 `CBA35C3F-EDEF-408F-8B51-510784C78EB9`，Load/Save 为 `0x697e6070 / 0x697e6170`，读取 short 版本（≤2）、IPropertySet，v2 起追加一个 AfCore 成员函数 String::Read 字段。Rust 按各自字符串编码读取，并复用 PropertySet 对象表。
 
 构造用例覆盖四类读取器的版本分支、配置中 LODInfo 首次定义与回引、TileCacheInfo v1–v3 及 TileImageInfo；内联 MapServerREST 测试覆盖 v1–v5、非空 JSON、PropertySet 新键与截断。栅格尾段测试从 RasterIO tag 30 继续读到新读取器后的 Envelope 和 tag 35–37。参考工程命令行解析输出与上一轮一致。另覆盖七类提供器、WMTS 集合和同键循环、AGS 连接名及 PropertySet 新键和截断。当前无真实新瓦片读取器样本，尚未在 ArcMap 或 QGIS 中人工验收。
+
+### 空名称与有效名称数量
+
+同版 RasterLayer.dll 的 `0x7c73b445..0x7c73b461` 只将非空 IName
+交给原生数组追加助手 `0x7c75e670`。空槽仍消费它的版本化后缀字节。
+循环后 `0x7c73b6eb..0x7c73b701` 取得数组首元素；随后
+`0x7c73b71d` 对数组中的实际名称数区分单项与多项路径。
+据此，图层模型在完整列表里恰有一条非空名称时仍提取该数据源，
+即使它前后有空槽。多条非空名称依然保留在解析结果中。多项原生分支
+也打开首项，但另走 `0x7c73b9c6` 开始的逻辑，尚不能据此推定首项
+足以表示整个图层的数据源。
+
+使用参考工程的已读栅格对象构造首尾空槽变体，验证模型仍给出同一
+数据源。再加入第二条非空名称，验证保留图层及多名称解析结果。
+未在 ArcMap 中人工打开这些变体。

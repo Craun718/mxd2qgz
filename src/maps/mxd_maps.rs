@@ -2073,8 +2073,12 @@ fn raster_node(
     }
     use crate::layers::raster_dataset_name::RasterDatasetNameEntryBody10_1;
 
-    let source = match prefix.names.as_slice() {
-        [entry] if prefix.names_stop.is_none() => {
+    let mut names = prefix
+        .names
+        .iter()
+        .filter(|name| name.entry != ObjectEntry10_1::Null);
+    let source = match (names.next(), names.next()) {
+        (Some(entry), None) if prefix.names_stop.is_none() => {
             let fields = entry
                 .body
                 .as_ref()
@@ -2500,6 +2504,28 @@ mod tests {
             assert!(!node.name.is_empty());
             assert_eq!(node.name, raster.first_string);
             assert_eq!(node.visible, expected_visible);
+            let mut with_empty_slots = raster.clone();
+            let empty = crate::layers::raster_layer::RasterLayerName10_1 {
+                entry: ObjectEntry10_1::Null,
+                body: None,
+                source_reference: None,
+                suffix: Some(String::new()),
+                legacy: None,
+            };
+            with_empty_slots.names.insert(0, empty.clone());
+            with_empty_slots.names.push(empty);
+            assert_eq!(
+                raster_node(&with_empty_slots, index, &mut Vec::new()),
+                Some(model_node.clone()),
+            );
+            let second_name = with_empty_slots.names[1].clone();
+            with_empty_slots.names.push(second_name);
+            let Some(LayerNode::Layer(multi)) =
+                raster_node(&with_empty_slots, index, &mut Vec::new())
+            else {
+                panic!("多名称栅格应保留图层节点");
+            };
+            assert!(multi.source.is_none());
             let source = node.source.as_ref().expect("栅格名称应提供工作空间路径");
             assert!(source.path.as_deref().is_some_and(|path| !path.is_empty()));
             let name = match &raster.names[0].body {
