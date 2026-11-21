@@ -524,6 +524,23 @@ E2LayerDescriptionValues（CLSID `FD7E95FC-F4F8-486F-A3DE-FBAF111404F5`）
 E2LayerDescriptionValues 缺少从普通 ObjectStream 读取首次定义所需的
 持久化接口，不能按该类的 XML 体推断流字节。其他实现和原生回引来源仍开放。
 
+### E2LayerPropertiesValues 候选
+
+同版 NMFDocument.dll 的类工厂记录 `0x7b3333dc` 指向注册 CLSID
+`DB77093F-1BA5-43EC-947B-5F220F0586C9`。用 RTTI 将
+`CComObject<CE2LayerPropertiesValues>` 的主虚表 `0x7b3287ac` 对到
+QI `0x7b30b260`，再以 objdump 和 PE 原始字节核对它使用的 ATL 接口表
+`0x7b32871c`。表中两条具名接口分别是私有接口
+`BF234C64-B7E6-4A7E-A968-3C20CB1F5D1D`（偏移 0）和
+IXMLSerialize `C8545045-6615-48E3-AF27-52A0E5FC35E2`（偏移 4）。
+第三条为无 IID 的回调 `0x7b30bf20`，写出原对象指针并返回成功；
+随后在 `0x7b328740` 终止。该回调没有返回独立的持久化虚表。
+
+这组虚表及接口表未提供用于两代 RasterLayer 扩展包装的 IPersistStream
+对象体，不能沿用 E2LayerExtensionValues 的二进制读法。旧式包装可以包含
+零长度条目，以上证据仅限定首次定义的对象体，不推断条目是否出现。聚合宿主
+提供的额外接口仍待取证，未在 ArcMap 中运行验证。
+
 ### FeatureServiceLayerEditExtension
 
 介质将 `{9A2BDA48-AD26-4706-BB88-F47D7B0C8F32}` 注册到

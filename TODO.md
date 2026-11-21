@@ -725,6 +725,7 @@
 - [x] 接入 HatchLayerExtension 的 HatchClass、HatchTemplate、线及标记定义和嵌套引用键，见 [刻度扩展取证](docs/mxd-10.1-raster-layer-tail.md#hatchlayerextension)。
 - [x] 接入 TrackingFilterLayerExtension 原生写出的 ATL 对象槽、PropertySet 嵌套键和 BSTR，见 [跟踪过滤扩展取证](docs/mxd-10.1-raster-layer-tail.md#trackingfilterlayerextension)。
 - [x] 接入 E2LayerExtensionValues 的版本、描述空槽与回引及布尔字节，见 [扩展取证](docs/mxd-10.1-raster-layer-tail.md#e2layerextensionvalues)。
+- [x] 核对 E2LayerPropertiesValues 的 ATL 接口表及默认回调，确认现有证据不支持接入二进制对象体。[候选取证](docs/mxd-10.1-raster-layer-tail.md#e2layerpropertiesvalues-候选)
 - [x] 接入 FeatureServiceLayerEditExtension 的两处 IName 对象及 BSTR，覆盖两代 RasterLayer 扩展包装。[原生取证](docs/mxd-10.1-raster-layer-tail.md#featureservicelayereditextension)
 - [x] 接入 TimeLayerTrackExtension 的 LongArray、TimeWindow 及嵌套对象键，覆盖两代 RasterLayer 扩展包装。[原生取证](docs/mxd-10.1-raster-layer-tail.md#timelayertrackextension)
 - [x] 接入 DynamicTiledLayerProperties 的版本字段、IPropertySet 和跨条目回引，覆盖两代 RasterLayer 扩展包装。[原生取证](docs/mxd-10.1-raster-layer-tail.md#dynamictiledlayerproperties)
