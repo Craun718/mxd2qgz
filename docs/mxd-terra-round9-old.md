@@ -502,3 +502,24 @@ Map 在 `0x793ffc73` 选用该接口的 `+0x14` 项，实际入口 `0x709baa40`
 因此这个 10.1 GdbCore 实现只提供失败的 Open 路径，无法为旧 Map 提供
 ITable。读取器继续在该未确认对象体前停止。本结论来自指令与虚表，未在
 ArcMap 运行验证，也未推及其它 DLL 的实现。
+
+### RepresentationClassName 在旧表槽中的 Open
+
+Desktop 10.1.0.3035 的 RepresentationDB.dll（SHA-256
+`e9595cf4febf06df301eb0c1e3eeedf28f694e2d0b16526f61779d0932fe32af`）
+中，注册类 RepresentationClassName
+`4E74AA22-A1B6-47D4-9914-20F8C6C2B699` 的 QI
+`0x7cb28880` 在 `0x7cb288cb` 比较 IName，返回对象 +0x14
+的虚表 `0x7cb42590`。该表的 Open `0x7cb28e60`
+先于 `0x7cb28ed4` 打开内层名称，再通过
+RepresentationWorkspaceExtension（CLSID 位于 `0x7cb41988`）
+于 `0x7cb2902c` 另行打开表示类，并于 `0x7cb2904e` 查询其 IUnknown。
+因此旧 Map 槽的 ITable 查询落在表示类上，不能以其内层名称打开的表
+作为该槽支持此类的依据。
+
+表示类主虚表 `0x7cb41fd4` 的 QI `0x7cb20510` 及回退
+`0x7cb3a480` 未直接接受 ITable。模块唯一的 ITable IID 常量
+`0x7cb422c0` 在 `0x7cb26839` 被作为参数交给现有对象的 QI，
+属于接口消费。72 份 Desktop MSFT 类型库也未声明 RepresentationClass
+实现 ITable。旧表读取器仍沿用现有分派。这里核对的是内置表示类，
+未运行 ArcMap 或验证替代工作空间扩展的返回对象。
