@@ -272,6 +272,7 @@
   - [x] 接入三个外部模块已确认布局的六个栅格函数类，见 [外部函数取证](docs/mxd-10.1-image-server-rules.md#外部模块的栅格函数与参数)。
   - [x] 接入三个外部模块已确认布局的六个栅格函数参数类，见 [外部参数取证](docs/mxd-10.1-image-server-rules.md#外部模块的栅格函数与参数)。
   - [ ] 补齐 RenderingRule 剩余的非空 IRasterFunction 对象体。
+  - [x] 逐项验证 10.1 Desktop 类型库声明的 56 个 IRasterFunction coclass 均可进入读取分派。[类型库与分派核对](docs/mxd-10.1-image-server-rules.md#irasterfunction-类型库覆盖)
   - [ ] 补齐 RenderingRule 剩余的非空 IRasterFunctionArguments 对象体。
   - [x] 核对 10.1 Desktop 类型库公开的 46 个 IRasterFunctionArguments 类均已接入分派。[类型库覆盖](docs/mxd-10.1-image-server-rules.md#irasterfunctionarguments-类型库覆盖)
   - [x] 复核 RenderingRule 的 10.1 登记候选，排除 RasterFunctionHelper 与 FunctionRasterDataset 两个宿主接口不匹配的类。[登记候选复核](docs/mxd-10.1-image-server-rules.md#renderingrule-登记候选复核)

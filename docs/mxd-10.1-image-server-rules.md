@@ -855,3 +855,20 @@ CLSID 读取已有持久化证据的 IRasterFunction 对象。它们共享 Rende
 合成 RenderingRule 在 ArgumentArray 中读取 IdentityFunction，并验证
 后续输入、参数及渲染器仍按规则边界读取。实际工程中函数作为
 IUnknown 输入的写出和 ArcMap/QGIS 目视验证待补。
+
+### IRasterFunction 类型库覆盖
+
+枚举同批 Desktop 10.1 介质的 72 份 MSFT 类型库，沿接口继承树
+查找 `IRasterFunction`（`CF7B7F99-3698-4F1F-AFF8-E3430E106B1E`）。
+共得 56 个 coclass CLSID：esriDataSourcesRaster 49 个、
+esriGeoAnalyst 1 个、esriGeoDatabaseExtensions 3 个、esriSpatialAnalyst
+3 个。将 GUID 转为对象头的内存字节序，逐项直接调用
+`function_max_version`，56 项均返回可读取的版本上限。该检查验证
+RenderingRule 函数槽的类分派，类体的原生读写证据见本页各节。
+
+另复核 Desktop 解包 DLL 中接口常量的一处跨模块引用。
+GpRasterFunctions.dll 10.1.0.3035 仅有一份该 IID 常量
+`0x748a8ed4`，其指令引用 `0x7487c900` 将 IID 与输出槽交给现有
+对象的虚表第 0 项，之后调用其 Release。这里是接口消费方。
+其他模块尚未逐一核对，未知扩展与旧档类体仍待证据。ArcMap 10.1
+和 QGIS 人工验证尚未进行。
