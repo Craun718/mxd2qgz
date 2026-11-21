@@ -154,12 +154,26 @@ pub struct RasterDatasetNameBody10_1 {
     pub strings: Option<[String; 4]>,
     /// 紧随四条 String 的 LoadObject（请求 IWorkspaceName IID）。
     pub workspace: Option<RasterDatasetWorkspaceSlot10_1>,
+    /// 已从当前对象流的工作空间回引确认的路径。
+    pub workspace_back_reference_path: Option<String>,
     /// `version_gate >= 3` 时读取的 4 字节原值（对象偏移 +0x6c）。
     pub tail_at_6c: Option<i32>,
     /// `version_gate >= 4` 时读取的 4 字节原值（对象偏移 +0x70）。
     pub tail_at_70: Option<i32>,
     /// 成功停止点；`None` 表示已消费本类 Load 当前已闭合的字段序列。
     pub stop: Option<RasterDatasetNameStop10_1>,
+}
+
+impl RasterDatasetNameBody10_1 {
+    pub fn workspace_path(&self) -> Option<&str> {
+        match &self.workspace {
+            Some(RasterDatasetWorkspaceSlot10_1::WorkspaceName(body)) => Some(&body.path),
+            Some(RasterDatasetWorkspaceSlot10_1::BackReference { .. }) => {
+                self.workspace_back_reference_path.as_deref()
+            }
+            _ => None,
+        }
+    }
 }
 
 /// 从已确定且已由调用者限定范围的 RasterDatasetName 对象体起点读取 10.1 字段。
@@ -227,6 +241,14 @@ pub fn read_raster_dataset_name_body_10_1(
         (None, None)
     };
 
+    let workspace_back_reference_path = match &workspace {
+        RasterDatasetWorkspaceSlot10_1::BackReference { class_id, key }
+            if *class_id == WORKSPACE_NAME_CLASS_ID =>
+        {
+            staged_table.workspace_path(*key).map(str::to_owned)
+        }
+        _ => None,
+    };
     *reader = trial;
     *table = staged_table;
     Ok(RasterDatasetNameBody10_1 {
@@ -234,6 +256,7 @@ pub fn read_raster_dataset_name_body_10_1(
         version_gate,
         strings: Some(strings),
         workspace: Some(workspace),
+        workspace_back_reference_path,
         tail_at_6c,
         tail_at_70,
         stop,
@@ -1171,6 +1194,32 @@ mod tests {
             bytes.extend(0x5566_7788_i32.to_le_bytes());
         }
         bytes
+    }
+
+    #[test]
+    fn workspace_back_reference_requires_the_matching_class() {
+        let mut bytes = body_with_null_workspace(4);
+        let offset = bytes.len() - 24;
+        bytes.splice(
+            offset..offset + 16,
+            WORKSPACE_NAME_CLASS_ID
+                .into_iter()
+                .chain(12_u32.to_le_bytes()),
+        );
+        let mut refs = RefTable10_1::new();
+        refs.register(12);
+        refs.mark_workspace_path(12, "raster.gdb");
+
+        for (class, expected) in [
+            (WORKSPACE_NAME_CLASS_ID, Some("raster.gdb")),
+            ([0x42; 16], None),
+        ] {
+            bytes[offset..offset + 16].copy_from_slice(&class);
+            let mut reader = Reader::new(&bytes);
+            let body = read_raster_dataset_name_body_10_1(&mut reader, 1024, &mut refs, 9).unwrap();
+            assert_eq!(body.workspace_path(), expected);
+            assert_eq!(reader.position(), bytes.len());
+        }
     }
 
     #[test]

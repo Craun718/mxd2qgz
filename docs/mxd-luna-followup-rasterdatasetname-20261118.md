@@ -71,3 +71,14 @@ RasterDatasetName 键 1545 的体起点 `/Maps:0x14621`：
 5 项均通过。样本解析确认完整消费至 `0x14862`，嵌套 WorkspaceName 登记键 1546，
 且未越过父条目界。格式检查使用 Rust 2024 rustfmt。未在 ArcMap 10.1 或 QGIS
 实机验证；REA/静态结果不是原生运行或转换验收。
+
+## 栅格图层的工作空间路径
+
+根据前文 10.1 Load 的 IWorkspaceName 槽，复用 ObjectStream 的已登记路径。
+槽回引只有在 CLSID 与 WorkspaceName 一致时才取得路径。单名称且名称列表
+已读完的 RasterLayer 将该路径原文传到图层模型，覆盖普通名称、83 名称和
+委派读取该体的 FileGDB、数据库名称。多名称图层的主数据源选择仍待取证。
+四个字符串的语义仍待对位。
+
+参考工程的两个栅格节点均取得非空工作空间路径。构造回归覆盖匹配及不匹配
+CLSID 的栅格工作空间回引，保持后继字段对位。ArcMap 和 QGIS 人工验收仍未进行。

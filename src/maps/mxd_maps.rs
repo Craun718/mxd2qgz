@@ -2071,10 +2071,32 @@ fn raster_node(
     if let Some(note) = note {
         diagnostics.push(format!("条目 {}：{note}", entry_index + 1));
     }
+    use crate::layers::raster_dataset_name::RasterDatasetNameEntryBody10_1;
+
+    let source = match prefix.names.as_slice() {
+        [entry] if prefix.names_stop.is_none() => match &entry.body {
+            Some(RasterDatasetNameEntryBody10_1::Dataset(name))
+            | Some(RasterDatasetNameEntryBody10_1::Dataset83 { name, .. }) => name.workspace_path(),
+            Some(RasterDatasetNameEntryBody10_1::FileGeodatabase { name, .. }) => {
+                name.delegated_name.workspace_path()
+            }
+            Some(RasterDatasetNameEntryBody10_1::Database(name)) => {
+                name.delegated_name.workspace_path()
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+    .map(|path| DataSource {
+        provider: None,
+        path: Some(path.to_owned()),
+        connection: None,
+        unknown_fields: Vec::new(),
+    });
     Some(LayerNode::Layer(Layer {
         name: prefix.first_string.clone(),
         visible,
-        source: None,
+        source,
         crs: None,
         extent: None,
         unknown_fields: Vec::new(),
@@ -2472,6 +2494,8 @@ mod tests {
             assert!(!node.name.is_empty());
             assert_eq!(node.name, raster.first_string);
             assert_eq!(node.visible, expected_visible);
+            let source = node.source.as_ref().expect("栅格名称应提供工作空间路径");
+            assert!(source.path.as_deref().is_some_and(|path| !path.is_empty()));
             let tail = raster.tail.as_ref().expect("参考样本栅格图层应读到体末尾");
             assert_eq!(list.entries[index].body.unwrap().len, 0);
             assert_eq!(tail.raster_io.as_ref().unwrap().shorts_35_to_37, [0, 0, 0]);
