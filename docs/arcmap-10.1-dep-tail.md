@@ -723,3 +723,13 @@ IElement。图形容器的普通元素槽现复用 GraphicElements.dll
 [原生矩形体](mxd-page-layout-surround-20261118.md)记录了矩形几何、
 元素属性及填充符号的顺序。构造 Scene 容器验证首次定义、同键回引、
 后继字节和截断回滚，尚未在 ArcMap 或 QGIS 人工验证。
+
+### 三维图形容器中的组元素
+
+10.1 esriCarto 类型库声明 GroupElement
+`803577D2-F8A3-11D0-83AF-080009B996CC` 实现两类容器请求的
+IElement。两类容器复用 GraphicElements.dll `0x75035ef0` 的
+[组元素布局](mxd-page-layout-tail-20261118.md)，沿用容器对象键表
+和组递归上限。容器入口没有布局根 Map 上下文，因此组内需要
+该上下文的地图框回引仍待处理。构造 Scene 用例验证组内和容器
+列表内的同键回引及后继字节。ArcMap/QGIS 人工验证待补。

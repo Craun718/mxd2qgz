@@ -901,3 +901,51 @@ fn scene_graphics_reads_rectangle_and_its_back_reference() {
     assert_eq!(reader.position(), 0);
     assert!(refs.is_empty());
 }
+
+#[test]
+fn scene_graphics_reads_group_and_its_back_reference() {
+    use mxd2qgz::layers::graphics_3d::{GRAPHICS_LAYER_3D_CLASS_ID, read_graphics_3d_layer_10_1};
+    use mxd2qgz::maps::group_element::{GROUP_ELEMENT_CLASS_ID, GroupChild10_1};
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    let properties = |bytes: &mut Vec<u8>| {
+        bytes.extend(0_u16.to_le_bytes());
+        empty_string(bytes);
+        empty_string(bytes);
+        bytes.extend([0; 4 + 16]); // 旧标量和空自定义属性。
+    };
+    let mut data = scene_version_one(&[0; 16]);
+    data.truncate(data.len() - 4);
+    data.extend(2_u32.to_le_bytes());
+    let entry = [GROUP_ELEMENT_CLASS_ID.as_slice(), &74_u32.to_le_bytes()].concat();
+    data.extend(&entry);
+    data.extend(2_u16.to_le_bytes());
+    properties(&mut data);
+    data.extend(1_u32.to_le_bytes());
+    data.extend(&entry); // 组的已登记键。
+    data.extend([0; 2 + 2 + 16]); // BaseFrameElement 和矩形几何前缀。
+    properties(&mut data);
+    data.extend([0; 16 + 16 + 2]); // 边框、背景及草稿模式。
+    data.extend(&entry);
+    let end = data.len();
+    data.push(0xa5);
+
+    let mut refs = RefTable10_1::new();
+    let mut reader = Reader::new(&data);
+    let layer =
+        read_graphics_3d_layer_10_1(&GRAPHICS_LAYER_3D_CLASS_ID, &mut reader, 4096, &mut refs)
+            .unwrap();
+    let group = layer.elements[0].group.as_ref().unwrap();
+    assert!(matches!(
+        group.children.as_slice(),
+        [GroupChild10_1::Indirect(ObjectEntry10_1::BackReference {
+            key: 74,
+            ..
+        })]
+    ));
+    assert!(matches!(
+        layer.elements[1].element.entry,
+        ObjectEntry10_1::BackReference { key: 74, .. }
+    ));
+    assert_eq!(reader.position(), end);
+}

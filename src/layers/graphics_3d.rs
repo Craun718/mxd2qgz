@@ -4,6 +4,9 @@
 pub use crate::layers::layer_extensions::LayerExtensionEntry10_1 as Graphics3dExtension10_1;
 use crate::layers::layer_extensions::{LayerExtensionEntry10_1, read_layer_extensions_10_1};
 use crate::layers::layer_list::{LayerBodyPrefix10_1, read_complete_layer_body_10_1};
+use crate::maps::group_element::{
+    GROUP_ELEMENT_CLASS_ID, GroupElement10_1, read_group_element_10_1,
+};
 use crate::maps::rectangle_element::{
     RECTANGLE_ELEMENT_CLASS_ID, RectangleElement10_1, read_rectangle_element_10_1,
 };
@@ -37,6 +40,8 @@ pub struct Graphics3dElement10_1 {
     pub element: Graphics3dObject10_1<ElementBody10_1>,
     /// 矩形的新对象体；对象头仍保存在 element.entry。
     pub rectangle: Option<Box<RectangleElement10_1>>,
+    /// 组的新对象体；对象头仍保存在 element.entry。
+    pub group: Option<Box<GroupElement10_1>>,
     pub globe_properties: Option<GlobeElementProperties10_1>,
 }
 
@@ -182,7 +187,7 @@ pub fn read_graphics_3d_layer_10_1(
     let (element_count, iterations) = read_count(&mut r, 16)?;
     let mut elements = Vec::new();
     for _ in 0..iterations {
-        let (element, rectangle) = match read_header_10_1(&mut r.clone())? {
+        let (element, rectangle, group) = match read_header_10_1(&mut r.clone())? {
             ObjectHeader::Object {
                 class_id: RECTANGLE_ELEMENT_CLASS_ID,
                 key,
@@ -197,6 +202,24 @@ pub fn read_graphics_3d_layer_10_1(
                         body: None,
                     },
                     Some(Box::new(rectangle)),
+                    None,
+                )
+            }
+            ObjectHeader::Object {
+                class_id: GROUP_ELEMENT_CLASS_ID,
+                key,
+            } if !refs.contains(key) => {
+                let group = read_group_element_10_1(&mut r, 0, max, &mut refs, &|_| false)?;
+                (
+                    Graphics3dObject10_1 {
+                        entry: ObjectEntry10_1::NewObject {
+                            class_id: GROUP_ELEMENT_CLASS_ID,
+                            key,
+                        },
+                        body: None,
+                    },
+                    None,
+                    Some(Box::new(group)),
                 )
             }
             _ => (
@@ -208,6 +231,7 @@ pub fn read_graphics_3d_layer_10_1(
                     Ok(body)
                 })?,
                 None,
+                None,
             ),
         };
         let globe_properties = (globe && version >= 2)
@@ -216,6 +240,7 @@ pub fn read_graphics_3d_layer_10_1(
         elements.push(Graphics3dElement10_1 {
             element,
             rectangle,
+            group,
             globe_properties,
         });
     }

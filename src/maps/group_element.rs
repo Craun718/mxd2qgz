@@ -42,7 +42,7 @@ pub struct GroupElement10_1 {
 }
 
 /// 从已知边界读取组，子元素继续使用同一键表。未知体或超限时回滚整组。
-pub(super) fn read_group_element_10_1(
+pub(crate) fn read_group_element_10_1(
     r: &mut Reader<'_>,
     region_offset: usize,
     limit: usize,
