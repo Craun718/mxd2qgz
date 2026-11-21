@@ -50,3 +50,19 @@
 Map v29 与 PageLayout v9、MapFrame v2 共用会话的字节证据，
 以及以上各组逐份复核的计数。其他对象版本组合和回引宿主仍需取证。
 未在 ArcMap 10.1 或 QGIS 中打开工程作目视验证。
+
+### 9.0 候选的 SDK MapFrame 回引
+
+复跑 10.1 Java SDK 的两份工程，`parse` 在 `/PageLayout:0x3c` 读到
+MapFrame v2 的 IMap 槽，并用同一引用表命中 `/Maps` 根 Map 键 31。
+两个工程的 Maps 根尾值、布局对象及打印设置均读到对应流末尾。
+
+| 工程 | /Version 文本及 short | Map / PageLayout / MapFrame 版本 | MapFrame 键 |
+| --- | --- | --- | ---: |
+| Yellowstone | 9.0 / 10 | 24 / 7 / 2 | 153 |
+| portland_shp | 9.0 / 13 | 29 / 9 / 2 | 133 |
+
+原生 10.1 文档加载器共享 ObjectStream 的证据见
+[布局分流读取](mxd-page-layout-tail-20261118.md#旧版-paper-的分流读取)。
+以上实档结果覆盖两种 9.0 头部组合，其他版本与宿主仍需核查。
+ArcMap 10.1 和 QGIS 人工验证尚未进行。
