@@ -1001,6 +1001,19 @@ fn read_entry(
                                             ) {
                                                 Ok(children) => {
                                                     parse_note = children.stop.clone();
+                                                    if children.stop.is_none() {
+                                                        match super::na_layer::read_na_layer_tail(
+                                                            &mut region,
+                                                            max_bytes,
+                                                            trial_table,
+                                                            body.version,
+                                                        ) {
+                                                            Ok(tail) => body.tail = Some(tail),
+                                                            Err(error) => {
+                                                                parse_note = Some(error.to_string())
+                                                            }
+                                                        }
+                                                    }
                                                     body.children = Some(children);
                                                 }
                                                 Err(error) => parse_note = Some(error.to_string()),

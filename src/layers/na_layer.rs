@@ -34,6 +34,25 @@ pub struct NaLayerChildren10_1 {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct NaLayerBitSet10_1 {
+    pub header: [u32; 4],
+    pub has_words: u8,
+    pub words: Vec<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NaLayerTail10_1 {
+    pub first_flag: u16,
+    pub object: ObjectEntry10_1,
+    pub scalar_bits: [u64; 3],
+    pub name: String,
+    pub second_flag: u16,
+    pub secondary_children: Option<NaLayerChildren10_1>,
+    pub version_two_flag: Option<u16>,
+    pub bitsets: Option<[NaLayerBitSet10_1; 2]>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct NaLayerPrefix10_1 {
     pub version: u16,
     pub name: String,
@@ -42,6 +61,7 @@ pub struct NaLayerPrefix10_1 {
     pub network_name: Option<(ObjectEntry10_1, Option<Box<NetworkDatasetName10_1>>)>,
     pub context: Option<(ObjectEntry10_1, Option<Box<NaContextPrefix10_1>>)>,
     pub children: Option<NaLayerChildren10_1>,
+    pub tail: Option<NaLayerTail10_1>,
 }
 
 pub(super) fn read_na_layer_prefix_10_1(
@@ -75,6 +95,7 @@ pub(super) fn read_na_layer_prefix_10_1(
         network_name: None,
         context: None,
         children: None,
+        tail: None,
     })
 }
 
@@ -155,6 +176,93 @@ fn read_na_child_layer(
         _ => None,
     };
     Ok((entry, body))
+}
+
+/// 读取 NALayer::Load 首组子图层之后的字段及版本段。
+pub(super) fn read_na_layer_tail(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+    version: u16,
+) -> io::Result<NaLayerTail10_1> {
+    let mut trial = reader.clone();
+    let mut keys = refs.clone();
+    let unsupported = |message| io::Error::new(io::ErrorKind::Unsupported, message);
+    let first_flag = trial.read_u16_le()?;
+    let object = read_object_entry_10_1(&mut trial, &mut keys)?;
+    if matches!(object, ObjectEntry10_1::NewObject { .. }) {
+        return Err(unsupported("NALayer 尾部普通槽的新对象未支持"));
+    }
+    let scalar = trial.read_f64_le()?.to_bits();
+    if trial.read_u32_le()? != 0 {
+        return Err(unsupported("NALayer 非空扩展序列未支持"));
+    }
+    let name = read_string_10_1(&mut trial, max)?;
+    let second_flag = trial.read_u16_le()?;
+    let scalar_bits = [
+        scalar,
+        trial.read_f64_le()?.to_bits(),
+        trial.read_f64_le()?.to_bits(),
+    ];
+    let version = version as i16;
+    let secondary_children = (version >= 1)
+        .then(|| read_na_layer_children(&mut trial, max, &mut keys))
+        .transpose()?;
+    if let Some(stop) = secondary_children
+        .as_ref()
+        .and_then(|children| children.stop.as_ref())
+    {
+        return Err(io::Error::new(io::ErrorKind::Unsupported, stop.clone()));
+    }
+    let version_two_flag = (version >= 2).then(|| trial.read_u16_le()).transpose()?;
+    let bitsets = (version >= 3)
+        .then(|| {
+            Ok::<_, io::Error>([
+                read_na_layer_bitset(&mut trial, max)?,
+                read_na_layer_bitset(&mut trial, max)?,
+            ])
+        })
+        .transpose()?;
+    *reader = trial;
+    *refs = keys;
+    Ok(NaLayerTail10_1 {
+        first_flag,
+        object,
+        scalar_bits,
+        name,
+        second_flag,
+        secondary_children,
+        version_two_flag,
+        bitsets,
+    })
+}
+
+fn read_na_layer_bitset(reader: &mut Reader<'_>, max: usize) -> io::Result<NaLayerBitSet10_1> {
+    let header = [
+        reader.read_u32_le()?,
+        reader.read_u32_le()?,
+        reader.read_u32_le()?,
+        reader.read_u32_le()?,
+    ];
+    let has_words = reader.read_bytes(1)?[0];
+    let mut words = Vec::new();
+    if has_words != 0 {
+        let count = header[3] as usize;
+        if count > reader.remaining().min(max) / 4 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "NALayer 位集字数超出可读范围",
+            ));
+        }
+        for _ in 0..count {
+            words.push(reader.read_u32_le()?);
+        }
+    }
+    Ok(NaLayerBitSet10_1 {
+        header,
+        has_words,
+        words,
+    })
 }
 
 const NETWORK_DATASET_NAME_CLASS_ID: [u8; 16] = [
@@ -1277,6 +1385,34 @@ mod tests {
         assert!(refs.contains(38) && refs.contains(39) && refs.contains(40));
         assert!(refs.contains(35) && refs.contains(36) && refs.contains(37));
         assert_eq!(reader.read_bytes(1).unwrap(), [0x7f]);
+    }
+
+    #[test]
+    fn na_layer_tail_reads_version_three_bitsets_and_rolls_back() {
+        let mut bytes = vec![0; 2 + 16 + 8 + 4];
+        push_string(&mut bytes, "");
+        bytes.extend([0; 2 + 16 + 4]);
+        bytes.extend(0xffff_u16.to_le_bytes());
+        for value in [5_u32, 5, 5, 1] {
+            bytes.extend(value.to_le_bytes());
+        }
+        bytes.push(1);
+        bytes.extend(0b10101_u32.to_le_bytes());
+        bytes.extend([0; 17]);
+        let mut refs = RefTable10_1::new();
+        for end in 0..bytes.len() {
+            let mut reader = Reader::new(&bytes[..end]);
+            assert!(read_na_layer_tail(&mut reader, 128, &mut refs, 3).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+        let mut reader = Reader::new(&bytes);
+        let tail = read_na_layer_tail(&mut reader, 128, &mut refs, 3).unwrap();
+        assert_eq!(tail.version_two_flag, Some(0xffff));
+        let [first, second] = tail.bitsets.unwrap();
+        assert_eq!(first.words, [0b10101]);
+        assert!(second.words.is_empty());
+        assert_eq!(reader.remaining(), 0);
     }
 
     #[test]

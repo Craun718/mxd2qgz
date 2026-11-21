@@ -279,3 +279,9 @@ NetworkAnalyst.dll 10.1.0.3035（SHA-256 `8c4ebaee71aad63c25616aa806674018479829
 同版 NetworkAnalyst.dll 的 NAStopRenderer GetClassID `0x7af688c0` 在持久化虚表 `0x7afa2870` 对应 Load/Save `0x7af6a360 / 0x7af6a5e0`。Ghidra 导出显示 Load 先探测 16 字节：LegendGroup CLSID 表示旧版并回退到对象头，零 GUID 表示随后有版本 short。三个普通槽依次请求 ILegendGroup、IColor、ITextSymbol。版本至少 2 时，按图例组分类数读取整组可见性 short，再读整组索引 LONG。带分类数组的图例组回引需要恢复原组计数，当前仍待支持。
 
 两份 SanFrancisco SDK 工程均读完键 261 的 v2 渲染器及首个 Route NALayer 的五个子图层，停点从 `0x7a77` 推进到 `0xed73`，该 NALayer 尚余 94 字节。此前遮罩组层的 UID 回引停点随对象键登记推进到了另一个未完整的子层类。构造测试覆盖分类数组和逐字节截断回滚。ArcMap/QGIS 人工验收尚未进行。
+
+### NALayer 的版本尾段
+
+同版 NetworkAnalyst.dll 的 Load/Save `0x7af1ffc0 / 0x7af20be0` 在首组子图层之后读写 short、普通对象槽（IID 常量 `0x7af9f570`）、double、ExtensionHelper 序列、AfCore String、short 和两个 double。v1 起追加普通对象计数循环，v2 追加 short，v3 追加两个位集。位集读侧 `0x7af24900` 消费四个 LONG 和一个字节。该字节非零时按第四个 LONG 再读取对应数量的四字节字，原始指令 `0x7af249cf` 和 `0x7af24a30` 附近可核对此分支。
+
+两份 SanFrancisco SDK 工程均从 `0xed73` 完整读完 Route NALayer 尾部 94 字节，结束于 `0xedd1`，包含空扩展序列和空第二组子图层。构造测试覆盖内联位集字及逐字节截断。尾部普通槽的新对象、非空扩展序列和其他网络求解器仍有缺口。ArcMap/QGIS 人工验收尚未进行。
