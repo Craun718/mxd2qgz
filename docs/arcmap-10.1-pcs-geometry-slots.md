@@ -434,9 +434,32 @@ TypeInfo 4 将接口定名为 ISpatialReferenceInfo，并给出下表的槽位�
 Remarks 为空串，Name 为 `Unknown`。Save 的四处成员读取分别在
 `0x719ed367`、`0x719ed38e`、`0x719ed3be`、`0x719ed3df`。
 Load 按上述相同顺序写成员，以第三串覆盖第二串。解析器保留原始四串。
-旧写方是否曾在第二串保存 Alias，以及编辑或创建路径能否改写这些值，
-仍待原生证据。ArcMap 10.1 人工验证尚未执行。
+旧写方是否曾在第二串保存 Alias 仍待原生证据。下文记录 10.1 的 Assign 写入路径。ArcMap 10.1 人工验证尚未执行。
 
+
+### IClone::Assign 的字符串写入路径
+
+同一 ArcMap 10.1 Geometry.dll 的 IClone 查询比较点 `0x719eace5`
+引用 IID `9BFF8AEB-E415-11D0-943C-080009EEBECB`，返回完整对象
++0x10。虚表 `0x71a2c0f8` 的槽 4 为 Assign（`0x719ebfb0`）。
+该方法先查询源对象的持久化接口，再于 `0x719ec02f` 取源 CLSID，
+并在 `0x719ec044` 和 UnknownCoordinateSystem 的 CLSID 比较。
+通过后查询源 ISpatialReference（`0x719ec087`）。下面四次虚调用
+通过输出指针把字符串写入目标成员，偏移已按完整对象换算。
+
+| 调用点 | 源接口槽偏移 | 目标成员 | 属性 |
+| --- | --- | --- | --- |
+| `0x719ec0ff` | +0x10 | +0x78 | Alias |
+| `0x719ec145` | +0x14 | +0x7c | Abbreviation |
+| `0x719ec168` | +0x18 | +0x80 | Remarks |
+| `0x719ec18b` | +0x0c | +0x84 | Name |
+
+该路径可改写 Alias，但 10.1 Save 仍两次取 Abbreviation。另由
+esriGeometry.olb TypeInfo 77 和主 QI 确认 IConstructUnknownCoordinateSystem
+对应完整对象 +0x48，槽 3 为 `0x719eaf90`。这个入口从输入空间参考取
+范围或使用常量范围，经 `0x7198f050` 取得对象后，再于 `0x719eb055`
+委派给 Assign。该入口自身不接收字符串。其缓存来源和其他编辑入口仍待
+核对，本轮未在 ArcMap 或 QGIS 中人工验证。
 
 ### 工厂、复制与介质对象的字符串
 
