@@ -48,9 +48,19 @@ pub struct Layer {
     pub name: String,
     pub visible: bool,
     pub source: Option<DataSource>,
+    /// Ordered saved names used to build a composite raster.
+    pub raster_band_sources: Vec<RasterBandSource>,
     pub crs: Option<CoordinateSystem>,
     pub extent: Option<Extent>,
     pub unknown_fields: Vec<UnknownField>,
+}
+
+/// A saved raster name and the source fields resolved from that entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RasterBandSource {
+    pub class_id: [u8; 16],
+    pub object_key: u32,
+    pub source: Option<DataSource>,
 }
 
 /// Source details as recorded; paths are not resolved or normalized here.

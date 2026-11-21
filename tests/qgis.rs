@@ -33,6 +33,7 @@ fn layer(name: &str, path: &str, visible: bool) -> LayerNode {
             connection: None,
             unknown_fields: vec![],
         }),
+        raster_band_sources: Vec::new(),
         crs: Some(crs("EPSG:4326")),
         extent: Some(extent()),
         unknown_fields: vec![],

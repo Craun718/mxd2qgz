@@ -634,6 +634,7 @@ fn frame_from_body(
                     name: prefix.name.clone(),
                     visible,
                     source,
+                    raster_band_sources: Vec::new(),
                     crs,
                     extent: None,
                     unknown_fields: Vec::new(),
@@ -721,6 +722,7 @@ fn frame_from_body(
                             name: associated.name.clone(),
                             visible,
                             source,
+                            raster_band_sources: Vec::new(),
                             crs,
                             extent: None,
                             unknown_fields: Vec::new(),
@@ -1894,6 +1896,7 @@ fn body_prefix_node(
                 name: fl.name.clone(),
                 visible,
                 source,
+                raster_band_sources: Vec::new(),
                 crs,
                 extent: None,
                 unknown_fields: Vec::new(),
@@ -1912,6 +1915,7 @@ fn body_prefix_node(
                     name: associated.name.clone(),
                     visible,
                     source,
+                    raster_band_sources: Vec::new(),
                     crs,
                     extent: None,
                     unknown_fields: Vec::new(),
@@ -2007,6 +2011,7 @@ fn body_prefix_node(
                 name: base.name.clone(),
                 visible,
                 source: None,
+                raster_band_sources: Vec::new(),
                 crs,
                 extent: None,
                 unknown_fields: Vec::new(),
@@ -2055,6 +2060,7 @@ fn image_server_layer_node(
         name: prefix.name.clone(),
         visible,
         source: None,
+        raster_band_sources: Vec::new(),
         crs: None,
         extent: None,
         unknown_fields: Vec::new(),
@@ -2071,53 +2077,80 @@ fn raster_node(
     if let Some(note) = note {
         diagnostics.push(format!("条目 {}：{note}", entry_index + 1));
     }
-    use crate::layers::raster_dataset_name::RasterDatasetNameEntryBody10_1;
-
-    let mut names = prefix
-        .names
-        .iter()
-        .filter(|name| name.entry != ObjectEntry10_1::Null);
-    let source = match (names.next(), names.next()) {
-        (Some(entry), None) if prefix.names_stop.is_none() => {
-            let fields = entry
-                .body
-                .as_ref()
-                .and_then(RasterDatasetNameEntryBody10_1::dataset_name_body)
-                .map(|name| (name.workspace_path(), name.dataset_name()))
-                .or_else(|| {
-                    entry
-                        .source_reference
-                        .as_ref()
-                        .map(|source| (source.path.as_deref(), Some(source.name.as_ref())))
-                });
-            fields.and_then(|(path, name)| {
-                let path = path.map(str::to_owned);
-                let connection = name.filter(|name| !name.is_empty()).map(str::to_owned);
-                (path.is_some() || connection.is_some()).then_some(DataSource {
-                    provider: None,
-                    path,
-                    connection,
-                    unknown_fields: Vec::new(),
-                })
-            })
+    let mut source = None;
+    let mut raster_band_sources = Vec::new();
+    if prefix.names_stop.is_none() {
+        let mut names = prefix
+            .names
+            .iter()
+            .filter(|name| name.entry != ObjectEntry10_1::Null);
+        if let Some(first) = names.next() {
+            if let Some(second) = names.next() {
+                diagnostics.push(format!(
+                    "条目 {}：栅格包含多条非空名称，ArcMap 逐项打开并追加波段，单一数据源字段留空",
+                    entry_index + 1
+                ));
+                raster_band_sources.extend([first, second].into_iter().chain(names).filter_map(
+                    |name| match name.entry {
+                        ObjectEntry10_1::NewObject { class_id, key }
+                        | ObjectEntry10_1::BackReference { class_id, key } => {
+                            Some(crate::model::RasterBandSource {
+                                class_id,
+                                object_key: key,
+                                source: raster_name_source(name),
+                            })
+                        }
+                        ObjectEntry10_1::Null => None,
+                    },
+                ));
+            } else {
+                source = raster_name_source(first);
+            }
         }
-        (Some(_), Some(_)) if prefix.names_stop.is_none() => {
-            diagnostics.push(format!(
-                "条目 {}：栅格包含多条非空名称，ArcMap 逐项打开并追加波段，单一数据源字段留空",
-                entry_index + 1
-            ));
-            None
-        }
-        _ => None,
-    };
+    }
     Some(LayerNode::Layer(Layer {
         name: prefix.first_string.clone(),
         visible,
         source,
+        raster_band_sources,
         crs: None,
         extent: None,
         unknown_fields: Vec::new(),
     }))
+}
+
+fn raster_name_source(
+    name: &crate::layers::raster_layer::RasterLayerName10_1,
+) -> Option<DataSource> {
+    use crate::layers::raster_dataset_name::{
+        RasterBandNameSource10_1, RasterDatasetNameEntryBody10_1,
+    };
+
+    let dataset = match name.body.as_ref() {
+        Some(RasterDatasetNameEntryBody10_1::Band(band)) => match &band.source {
+            RasterBandNameSource10_1::Dataset(slot) => slot.body.as_ref(),
+            RasterBandNameSource10_1::Workspace(_) => None,
+        },
+        body => body,
+    };
+    let (path, connection) = dataset
+        .and_then(RasterDatasetNameEntryBody10_1::dataset_name_body)
+        .map(|name| (name.workspace_path(), name.dataset_name()))
+        .or_else(|| {
+            name.source_reference
+                .as_ref()
+                .map(|source| (source.path.as_deref(), Some(source.name.as_ref())))
+        })?;
+    let path = path.map(str::to_owned);
+    let connection = connection
+        .filter(|name| !name.is_empty())
+        .map(str::to_owned);
+    (path.is_some() || connection.is_some()).then_some(DataSource {
+        provider: None,
+        path,
+        connection,
+        unknown_fields: Vec::new(),
+    })
 }
 
 /// 输出后缀对象槽位（MapSurround / 书签条目）的诊断行。
@@ -2525,7 +2558,15 @@ mod tests {
                 raster_node(&with_empty_slots, index, &mut Vec::new()),
                 Some(model_node.clone()),
             );
-            let second_name = with_empty_slots.names[1].clone();
+            let mut second_name = with_empty_slots.names[1].clone();
+            let ObjectEntry10_1::NewObject { class_id, key } = second_name.entry else {
+                panic!("参考工程应首次定义栅格名称");
+            };
+            second_name.entry = ObjectEntry10_1::BackReference {
+                class_id,
+                key: key + 100,
+            };
+            second_name.body = None;
             with_empty_slots.names.push(second_name);
             let mut multi_diagnostics = Vec::new();
             let Some(LayerNode::Layer(multi)) =
@@ -2534,6 +2575,11 @@ mod tests {
                 panic!("多名称栅格应保留图层节点");
             };
             assert!(multi.source.is_none());
+            assert_eq!(multi.raster_band_sources.len(), 2);
+            assert_eq!(multi.raster_band_sources[0].object_key, key);
+            assert_eq!(multi.raster_band_sources[0].source, node.source);
+            assert_eq!(multi.raster_band_sources[1].object_key, key + 100);
+            assert_eq!(multi.raster_band_sources[1].source, None);
             assert!(
                 multi_diagnostics
                     .iter()
