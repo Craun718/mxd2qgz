@@ -679,3 +679,17 @@ RepresentationRule 的正常分派读取带两个颜色属性的 GradientPattern
 容器的可读流。SymbolMimic、RepresentationRule 和三种 BasicSymbol
 的 CLSID 字节均未命中。该检查仅用于寻找可验证对象。
 尚无实档或 ArcMap 10.1、QGIS 人工验证。
+
+### 效果槽中的嵌套规则与符号层
+
+DisplayRepresentation.dll 10.1.0.3035 的效果列表在
+`0x6ee4c3d5–0x6ee4c3e2` 将 `0x6ee9478c` 的 IGeometricEffect IID
+交给 ExtraSafeReadObject。除专用效果类外，RepresentationRule、
+BasicFillSymbol、BasicLineSymbol 和 BasicMarkerSymbol 的 QueryInterface
+也比较并接受该 IID，对应指令分别在 `0x6ee73b15`、`0x6ee34f9f`、
+`0x6ee3654f`、`0x6ee3766f`。其持久化体沿用本页已确认的布局。
+
+效果槽现可解析上述嵌套对象和回引。首次定义消耗同一符号递归预算，
+ExtraSafe 声明体内必须恰好读完，错误时回滚整个符号及其新键。
+构造测试覆盖规则、标记符号层、后续规则回引和深度不足的回滚。
+其他属性对象组合、实际 MXD 和目标软件人工验证仍待完成。

@@ -761,6 +761,8 @@ pub struct GeometricEffectEntry10_1 {
     pub name: Option<String>,
     pub entry: ObjectEntry10_1,
     pub body: Option<GraphicAttributeList10_1>,
+    pub rule: Option<Box<RepresentationRuleBody10_1>>,
+    pub layer: Option<Box<RepresentationRuleLayer10_1>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -863,13 +865,11 @@ pub struct RepresentationRuleLayer10_1 {
     pub marker: Option<BasicMarkerSymbol10_1>,
 }
 
-fn read_extra_safe_attributes_10_1(
-    reader: &mut Reader<'_>,
+fn read_extra_safe_symbol_entry_10_1<'a>(
+    reader: &mut Reader<'a>,
     max_bytes: usize,
     refs: &mut RefTable10_1,
-    depth: usize,
-    classes: &[[u8; 16]],
-) -> io::Result<Option<(ObjectEntry10_1, Option<GraphicAttributeList10_1>)>> {
+) -> io::Result<(Reader<'a>, ObjectEntry10_1)> {
     let (a, b) = (reader.read_u32_le()?, reader.read_u32_le()?);
     let size = if b == 0 { a } else { b } as usize;
     if size > max_bytes {
@@ -884,6 +884,27 @@ fn read_extra_safe_attributes_10_1(
     } else {
         read_object_entry_10_1(&mut region, refs)?
     };
+    Ok((region, entry))
+}
+
+fn finish_extra_safe_symbol_entry_10_1(region: &Reader<'_>) -> io::Result<()> {
+    if region.remaining() != 0 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "对象体与 ExtraSafe 边界不符",
+        ));
+    }
+    Ok(())
+}
+
+fn read_extra_safe_attributes_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+    classes: &[[u8; 16]],
+) -> io::Result<Option<(ObjectEntry10_1, Option<GraphicAttributeList10_1>)>> {
+    let (mut region, entry) = read_extra_safe_symbol_entry_10_1(reader, max_bytes, refs)?;
     let body = match entry {
         ObjectEntry10_1::Null => None,
         ObjectEntry10_1::BackReference { class_id, .. } if classes.contains(&class_id) => None,
@@ -896,12 +917,7 @@ fn read_extra_safe_attributes_10_1(
         }
         _ => return Ok(None),
     };
-    if region.remaining() != 0 {
-        return Err(io::Error::new(
-            ErrorKind::InvalidData,
-            "ExtraSafe 属性对象与 ExtraSafe 边界不符",
-        ));
-    }
+    finish_extra_safe_symbol_entry_10_1(&region)?;
     Ok(Some((entry, body)))
 }
 
@@ -927,17 +943,59 @@ fn read_geometric_effects_10_1(
         let name = has_name
             .then(|| read_string_10_1(reader, max_bytes))
             .transpose()?;
-        let Some((entry, body)) = read_extra_safe_attributes_10_1(
-            reader,
-            max_bytes,
-            refs,
-            depth,
-            &GEOMETRIC_EFFECT_CLASSES_10_1,
-        )?
-        else {
-            return Ok(None);
+        let (mut region, entry) = read_extra_safe_symbol_entry_10_1(reader, max_bytes, refs)?;
+        let mut effect = GeometricEffectEntry10_1 {
+            name,
+            entry,
+            body: None,
+            rule: None,
+            layer: None,
         };
-        effects.push(GeometricEffectEntry10_1 { name, entry, body });
+        match entry {
+            ObjectEntry10_1::Null => {}
+            ObjectEntry10_1::BackReference { class_id, .. }
+                if GEOMETRIC_EFFECT_CLASSES_10_1.contains(&class_id)
+                    || class_id == REPRESENTATION_RULE_CLASS_ID
+                    || is_representation_layer(class_id) => {}
+            ObjectEntry10_1::NewObject { class_id, .. }
+                if depth > 1 && GEOMETRIC_EFFECT_CLASSES_10_1.contains(&class_id) =>
+            {
+                let Some(body) = read_graphic_attribute_list_10_1(&mut region, max_bytes, refs, 0)?
+                else {
+                    return Ok(None);
+                };
+                effect.body = Some(body);
+            }
+            ObjectEntry10_1::NewObject {
+                class_id: REPRESENTATION_RULE_CLASS_ID,
+                ..
+            } if depth > 1 => {
+                let Some(rule) =
+                    read_representation_rule_body_10_1(&mut region, max_bytes, refs, depth - 1)?
+                else {
+                    return Ok(None);
+                };
+                effect.rule = Some(Box::new(rule));
+            }
+            ObjectEntry10_1::NewObject { class_id, .. }
+                if depth > 1 && is_representation_layer(class_id) =>
+            {
+                let Some(layer) = read_representation_layer_body_10_1(
+                    &mut region,
+                    max_bytes,
+                    refs,
+                    depth - 1,
+                    entry,
+                )?
+                else {
+                    return Ok(None);
+                };
+                effect.layer = Some(Box::new(layer));
+            }
+            _ => return Ok(None),
+        }
+        finish_extra_safe_symbol_entry_10_1(&region)?;
+        effects.push(effect);
     }
     Ok(Some(effects))
 }
@@ -1115,6 +1173,63 @@ pub struct RepresentationRuleOverride10_1 {
     pub value: String,
 }
 
+fn is_representation_layer(class_id: [u8; 16]) -> bool {
+    matches!(
+        class_id,
+        BASIC_FILL_SYMBOL_CLASS_ID | BASIC_LINE_SYMBOL_CLASS_ID | BASIC_MARKER_SYMBOL_CLASS_ID
+    )
+}
+
+fn read_representation_layer_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+    entry: ObjectEntry10_1,
+) -> io::Result<Option<RepresentationRuleLayer10_1>> {
+    let (fill, line, marker) = match entry {
+        ObjectEntry10_1::NewObject {
+            class_id: BASIC_FILL_SYMBOL_CLASS_ID,
+            ..
+        } => {
+            let Some(body) = read_basic_fill_symbol_10_1(reader, max_bytes, refs, depth)? else {
+                return Ok(None);
+            };
+            (Some(body), None, None)
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: BASIC_LINE_SYMBOL_CLASS_ID,
+            ..
+        } => {
+            let Some(body) = read_basic_line_symbol_10_1(reader, max_bytes, refs, depth)? else {
+                return Ok(None);
+            };
+            (None, Some(body), None)
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: BASIC_MARKER_SYMBOL_CLASS_ID,
+            ..
+        } => {
+            let Some(body) = read_basic_marker_symbol_10_1(reader, max_bytes, refs, depth)? else {
+                return Ok(None);
+            };
+            (None, None, Some(body))
+        }
+        ObjectEntry10_1::BackReference {
+            class_id:
+                BASIC_FILL_SYMBOL_CLASS_ID | BASIC_LINE_SYMBOL_CLASS_ID | BASIC_MARKER_SYMBOL_CLASS_ID,
+            ..
+        } => (None, None, None),
+        _ => return Ok(None),
+    };
+    Ok(Some(RepresentationRuleLayer10_1 {
+        entry,
+        fill,
+        line,
+        marker,
+    }))
+}
+
 fn read_representation_rule_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -1148,52 +1263,20 @@ fn read_representation_rule_body_10_1(
     let mut layers = Vec::new();
     for _ in 0..count {
         let entry = read_object_entry_10_1(reader, refs)?;
-        let (fill, line, marker) = match entry {
-            ObjectEntry10_1::NewObject {
-                class_id: BASIC_FILL_SYMBOL_CLASS_ID,
-                ..
-            } if depth > 1 => {
-                let Some(body) = read_basic_fill_symbol_10_1(reader, max_bytes, refs, depth - 1)?
-                else {
-                    return Ok(None);
-                };
-                (Some(body), None, None)
-            }
-            ObjectEntry10_1::NewObject {
-                class_id: BASIC_LINE_SYMBOL_CLASS_ID,
-                ..
-            } if depth > 1 => {
-                let Some(body) = read_basic_line_symbol_10_1(reader, max_bytes, refs, depth - 1)?
-                else {
-                    return Ok(None);
-                };
-                (None, Some(body), None)
-            }
-            ObjectEntry10_1::NewObject {
-                class_id: BASIC_MARKER_SYMBOL_CLASS_ID,
-                ..
-            } if depth > 1 => {
-                let Some(body) = read_basic_marker_symbol_10_1(reader, max_bytes, refs, depth - 1)?
-                else {
-                    return Ok(None);
-                };
-                (None, None, Some(body))
-            }
-            ObjectEntry10_1::BackReference {
-                class_id:
-                    BASIC_FILL_SYMBOL_CLASS_ID
-                    | BASIC_LINE_SYMBOL_CLASS_ID
-                    | BASIC_MARKER_SYMBOL_CLASS_ID,
-                ..
-            } => (None, None, None),
-            _ => return Ok(None),
-        };
-        layers.push(RepresentationRuleLayer10_1 {
+        if depth <= 1 && matches!(entry, ObjectEntry10_1::NewObject { .. }) {
+            return Ok(None);
+        }
+        let Some(layer) = read_representation_layer_body_10_1(
+            reader,
+            max_bytes,
+            refs,
+            depth.saturating_sub(1),
             entry,
-            fill,
-            line,
-            marker,
-        });
+        )?
+        else {
+            return Ok(None);
+        };
+        layers.push(layer);
     }
     let override_count = read_i32_le(reader)?;
     let overrides_len = override_count.max(0) as usize;

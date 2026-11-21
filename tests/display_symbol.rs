@@ -3213,3 +3213,62 @@ fn representation_rule_reads_known_effects_and_shares_keys_with_marker_layers() 
         assert!(!refs.contains(13));
     }
 }
+
+#[test]
+fn geometric_effect_slots_read_bounded_rules_and_symbol_layers() {
+    use mxd2qgz::objects::display_symbol::{
+        BASIC_MARKER_SYMBOL_CLASS_ID, REPRESENTATION_RULE_CLASS_ID, SYMBOL_MIMIC_CLASS_ID,
+        SymbolSlotFull10_1, read_symbol_slot_full_10_1,
+    };
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    let mut bytes = Vec::new();
+    push_entry(&mut bytes, &SYMBOL_MIMIC_CLASS_ID, 11);
+    bytes.extend([1, 0, 0, 0, 0, 0]);
+    push_entry(&mut bytes, &REPRESENTATION_RULE_CLASS_ID, 12);
+    bytes.extend([1, 0, 1, 0]);
+    bytes.extend(3_i32.to_le_bytes());
+    for (class, key, body) in [
+        (REPRESENTATION_RULE_CLASS_ID, 13, &[0; 28][..]),
+        (BASIC_MARKER_SYMBOL_CLASS_ID, 14, &[0; 26][..]),
+    ] {
+        bytes.extend((20_u32 + body.len() as u32).to_le_bytes());
+        bytes.extend([0; 4]);
+        push_entry(&mut bytes, &class, key);
+        bytes.extend(body);
+    }
+    bytes.extend(20_u32.to_le_bytes());
+    bytes.extend([0; 4]);
+    push_entry(&mut bytes, &REPRESENTATION_RULE_CLASS_ID, 13);
+    for value in [0_i32, 0, 0, 0, 41, 42] {
+        bytes.extend(value.to_le_bytes());
+    }
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let SymbolSlotFull10_1::SymbolMimic {
+        rule_body: Some(rule),
+        trailing_value: 42,
+        ..
+    } = read_symbol_slot_full_10_1(&mut reader, 2048, &mut refs, 3).unwrap()
+    else {
+        panic!("未读出嵌套几何效果");
+    };
+    assert!(rule.effects[0].rule.is_some());
+    assert!(rule.effects[1].layer.as_ref().unwrap().marker.is_some());
+    assert!(matches!(
+        rule.effects[2].entry,
+        ObjectEntry10_1::BackReference { key: 13, .. }
+    ));
+    assert_eq!(rule.trailing_value, 41);
+    assert_eq!(reader.remaining(), 0);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    assert!(matches!(
+        read_symbol_slot_full_10_1(&mut reader, 2048, &mut refs, 2).unwrap(),
+        SymbolSlotFull10_1::Unsupported { key: 11, .. }
+    ));
+    assert_eq!(reader.position(), 0);
+    assert_eq!(refs.len(), 0);
+}
