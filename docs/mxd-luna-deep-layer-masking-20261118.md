@@ -337,3 +337,9 @@ NetworkAnalystSolvers.dll 10.1.0.3035 的 NAVRPSolver CLSID `52B62278-735F-4DA1-
 BasemapLayer.dll 10.1.0.3035 的 Load `0x6b646260` 在 `0x6b6464eb` 对正式子层调用 ExtraSafeReadObject 并请求 ILayer。读取器以封装边界复用完整 GroupLayer 和 FeatureLayer 读侧，只在精确消费范围后登记子层及其嵌套键。构造样例验证多余字节触发游标和键回滚。
 
 两份 SanFrancisco SDK 工程均读取键 5148 的 GroupLayer 和后续 FeatureLayer，底图对象在 `/Maps:0xdb52d` 到达声明边界。逐层遮罩已进入底图分派，目前在尝试读取键 5148 的遮罩时停止。底图对遮罩遍历暴露的子层枚举仍需核对。ArcMap/QGIS 人工验收尚未进行。
+
+### 底图正式子层的遮罩分派
+
+BasemapLayer.dll 10.1.0.3035 的 `0x6b6436b0 / 0x6b6436f0` 从当前集合返回计数和图层包装接口。Load 通过集合插入路径 `0x6b64b0a0 → 0x6b644000` 装入正式子层。包装类 QI 的后备 `0x6b64ad04 → 0x6b69ebc0` 只处理固定 IID，对 ILayerMasking 在 `0x6b69ecaa` 返回 E_NOINTERFACE。Map.dll `0x79403bc0` 收到空遮罩接口后直接返回，因此底图内包装的组不消费独立遮罩记录。读取器对已完整确认的组和要素子层应用此规则，对其他正式子层保持停止。
+
+两份 SanFrancisco SDK 工程均越过键 5148 的旧错位，读取两条逐图层遮罩记录并进入后续 Map 版本段。两份目前共同停在阶段 40，未知尾部起于 `/Maps:0xdbc13`，余 86 字节。ArcMap/QGIS 人工验收尚未进行。

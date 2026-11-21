@@ -594,7 +594,7 @@ impl<'body> LayerMaskingTraversal<'_, '_, 'body> {
         use crate::layers::basemap_layer::BasemapStop10_1;
         use crate::layers::composite_graphics::CompositeGraphicsLayerStop10_1;
         use crate::layers::feature_layer::FEATURE_LAYER_CLASS_ID;
-        use crate::layers::group_layer::GroupLayerStop10_1;
+        use crate::layers::group_layer::{GROUP_LAYER_CLASS_ID, GroupLayerStop10_1};
 
         // 防止异常回引造成无限递归，复用 GroupLayer 读取器的深度限制。
         if depth > crate::layers::group_layer::MAX_RECURSION_DEPTH {
@@ -665,18 +665,42 @@ impl<'body> LayerMaskingTraversal<'_, '_, 'body> {
                         .or_insert((FEATURE_LAYER_CLASS_ID, None));
                 }
                 if depth != 0 || !self.skip_top_level_basemap {
-                    self.read_record(key)?;
-                    for &slot in &basemap.sublayers {
-                        let parsed = match slot {
-                            ObjectEntry10_1::NewObject { key, .. } => basemap
-                                .sublayer_bodies
-                                .iter()
-                                .find(|(body_key, _)| *body_key == key)
-                                .map(|(_, body)| body.as_ref()),
-                            _ => None,
-                        };
-                        self.visit(slot, parsed, depth + 1)?;
+                    // 底图枚举的是集合中的包装层；其 QI 不转发 ILayerMasking。
+                    let confirmed = basemap.sublayers.iter().all(|slot| match slot {
+                        ObjectEntry10_1::NewObject { class_id, key } => {
+                            matches!(*class_id, GROUP_LAYER_CLASS_ID | FEATURE_LAYER_CLASS_ID)
+                                && basemap
+                                    .sublayer_bodies
+                                    .iter()
+                                    .any(|(body_key, _)| body_key == key)
+                        }
+                        ObjectEntry10_1::BackReference {
+                            class_id: FEATURE_LAYER_CLASS_ID,
+                            key,
+                        } => {
+                            basemap.feature_keys.contains(key)
+                                || basemap.sublayer_bodies.iter().any(|(body_key, body)| {
+                                    body_key == key
+                                        && matches!(
+                                            body.as_ref(),
+                                            LayerBodyPrefix10_1::FeatureLayer(_)
+                                        )
+                                })
+                        }
+                        ObjectEntry10_1::BackReference {
+                            class_id: GROUP_LAYER_CLASS_ID,
+                            key,
+                        } => basemap.sublayer_bodies.iter().any(|(body_key, body)| {
+                            body_key == key
+                                && matches!(body.as_ref(), LayerBodyPrefix10_1::GroupLayer(_))
+                        }),
+                        ObjectEntry10_1::Null => true,
+                        _ => false,
+                    });
+                    if !confirmed {
+                        return Err(format!("底图图层键 {key} 的正式子层未全部确认"));
                     }
+                    self.read_record(key)?;
                 }
             }
             _ if known_layer_masking_support_10_1(&class_id)
