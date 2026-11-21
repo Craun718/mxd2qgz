@@ -8,7 +8,8 @@ use crate::objects::dataset_name::{
     FEATURE_DATASET_NAME_CLASS_ID, FeatureDatasetNameBody10_1, read_feature_dataset_name_body_10_1,
 };
 use crate::objects::property_set::{
-    PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1, read_property_set_object_stream_10_1,
+    PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1, PropertyValueObjectStream10_1,
+    read_padded_variant_object_stream_10_1, read_property_set_object_stream_10_1,
 };
 use crate::objects::string_array::{
     StringArraySlot10_1, read_string_array_body_10_1, read_string_array_slot_10_1,
@@ -454,10 +455,10 @@ pub struct NaRouteHierarchy10_1 {
     pub indexed_values: [Vec<i32>; 2],
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NaRouteSolverTail10_1 {
     pub shorts: (u16, Option<u16>),
-    pub parameters: Option<(ObjectEntry10_1, Option<(u16, i32)>)>,
+    pub parameters: Option<(ObjectEntry10_1, Option<NaParameterArray10_1>)>,
     pub common_v3: Option<(u64, i32)>,
     pub route_specific: Option<(u64, u16)>,
     pub closest_facility_specific: Option<(u64, i32)>,
@@ -1235,6 +1236,94 @@ fn read_na_property_set_slot(
     Ok((entry, body))
 }
 
+const NA_ATTRIBUTE_PARAMETER_VALUE_CLASS_ID: [u8; 16] = [
+    0xa8, 0x3f, 0xed, 0xf8, 0x8b, 0x0b, 0x56, 0x4a, 0xa5, 0xb1, 0x22, 0x97, 0x3b, 0x32, 0x90, 0xc9,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NaParameterArray10_1 {
+    pub version: u16,
+    pub declared_count: i32,
+    pub items: Vec<(ObjectEntry10_1, Option<NaParameterValue10_1>)>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NaParameterValue10_1 {
+    pub version: u16,
+    pub attribute: String,
+    pub parameter: String,
+    pub mode: i32,
+    pub value: PropertyValueObjectStream10_1,
+}
+
+/// 数组 Load 0x7b09f110 经 0x7b09ec60 逐项读取普通对象。
+fn read_na_parameter_array(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<NaParameterArray10_1> {
+    let version = reader.read_u16_le()?;
+    if version as i16 > 1 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "网络属性参数数组版本超过 1",
+        ));
+    }
+    let declared_count = reader.read_u32_le()? as i32;
+    let count = declared_count.max(0) as usize;
+    if count > reader.remaining().min(max) / 20 {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "网络属性参数数量超出可读范围",
+        ));
+    }
+    let mut items = Vec::new();
+    for _ in 0..count {
+        let entry = read_object_entry_10_1(reader, refs)?;
+        let body = match entry {
+            ObjectEntry10_1::BackReference {
+                class_id: NA_ATTRIBUTE_PARAMETER_VALUE_CLASS_ID,
+                ..
+            } => None,
+            ObjectEntry10_1::NewObject {
+                class_id: NA_ATTRIBUTE_PARAMETER_VALUE_CLASS_ID,
+                ..
+            } => {
+                let version = reader.read_u16_le()?;
+                if version as i16 > 0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "网络属性参数版本超过 0",
+                    ));
+                }
+                let attribute = read_bstr_string_10_1(reader, max)?;
+                let parameter = read_bstr_string_10_1(reader, max)?;
+                let mode = reader.read_u32_le()? as i32;
+                let value = read_padded_variant_object_stream_10_1(reader, max, refs)?;
+                Some(NaParameterValue10_1 {
+                    version,
+                    attribute,
+                    parameter,
+                    mode,
+                    value,
+                })
+            }
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    "网络属性参数项对象类未支持",
+                ));
+            }
+        };
+        items.push((entry, body));
+    }
+    Ok(NaParameterArray10_1 {
+        version,
+        declared_count,
+        items,
+    })
+}
+
 const NA_ATTRIBUTE_PARAMETER_VALUE_ARRAY_CLASS_ID: [u8; 16] = [
     0x6b, 0x9e, 0x93, 0x61, 0x11, 0x80, 0xc5, 0x40, 0xb6, 0x72, 0x73, 0xea, 0x1e, 0x02, 0x6f, 0xec,
 ];
@@ -1266,23 +1355,7 @@ fn read_na_solver_tail(
             ObjectEntry10_1::NewObject {
                 class_id: NA_ATTRIBUTE_PARAMETER_VALUE_ARRAY_CLASS_ID,
                 ..
-            } => {
-                let version = trial.read_u16_le()?;
-                if version as i16 > 1 {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "网络属性参数数组版本超过 1",
-                    ));
-                }
-                let count = trial.read_u32_le()? as i32;
-                if count > 0 {
-                    return Err(io::Error::new(
-                        io::ErrorKind::Unsupported,
-                        "非空网络属性参数数组尚未支持",
-                    ));
-                }
-                Some((version, count))
-            }
+            } => Some(read_na_parameter_array(&mut trial, max, &mut keys)?),
             ObjectEntry10_1::NewObject { .. } => {
                 return Err(io::Error::new(
                     io::ErrorKind::Unsupported,
@@ -2154,6 +2227,53 @@ mod tests {
     }
 
     #[test]
+    fn solver_parameters_read_new_item_and_reference_transactionally() {
+        let mut bytes = vec![0; 4];
+        bytes.extend(NA_ATTRIBUTE_PARAMETER_VALUE_ARRAY_CLASS_ID);
+        bytes.extend(249_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(2_i32.to_le_bytes());
+        bytes.extend(NA_ATTRIBUTE_PARAMETER_VALUE_CLASS_ID);
+        bytes.extend(250_u32.to_le_bytes());
+        bytes.extend([0; 2 + 8 + 4 + 16]); // 参数版本、两个空 BSTR、LONG 和 VT_EMPTY。
+        bytes.extend(NA_ATTRIBUTE_PARAMETER_VALUE_CLASS_ID);
+        bytes.extend(250_u32.to_le_bytes());
+        let mut refs = RefTable10_1::new();
+        for end in 0..bytes.len() {
+            let mut reader = Reader::new(&bytes[..end]);
+            assert!(
+                read_na_solver_tail(
+                    &mut reader,
+                    256,
+                    &mut refs,
+                    2,
+                    NA_CLOSEST_FACILITY_SOLVER_CLASS_ID
+                )
+                .is_err()
+            );
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+        let mut reader = Reader::new(&bytes);
+        let tail = read_na_solver_tail(
+            &mut reader,
+            256,
+            &mut refs,
+            2,
+            NA_CLOSEST_FACILITY_SOLVER_CLASS_ID,
+        )
+        .unwrap();
+        let items = tail.parameters.unwrap().1.unwrap().items;
+        assert!(items[0].1.is_some());
+        assert!(matches!(
+            items[1].0,
+            ObjectEntry10_1::BackReference { key: 250, .. }
+        ));
+        assert!(refs.contains(249) && refs.contains(250));
+        assert_eq!(reader.remaining(), 0);
+    }
+
+    #[test]
     fn route_solver_prefix_commits_only_after_the_flag() {
         let mut bytes = NA_ROUTE_SOLVER_CLASS_ID.to_vec();
         bytes.extend(246_u32.to_le_bytes());
@@ -2242,25 +2362,6 @@ mod tests {
             );
             assert_eq!(refs.contains(249), version >= 2);
             assert_eq!(reader.read_bytes(1).unwrap(), [0x7f]);
-            if version >= 2 {
-                bytes[26] = 1;
-                let mut reader = Reader::new(&bytes);
-                let mut refs = RefTable10_1::new();
-                assert_eq!(
-                    read_na_solver_tail(
-                        &mut reader,
-                        128,
-                        &mut refs,
-                        version,
-                        NA_ROUTE_SOLVER_CLASS_ID
-                    )
-                    .unwrap_err()
-                    .kind(),
-                    io::ErrorKind::Unsupported
-                );
-                assert_eq!(reader.position(), 0);
-                assert!(refs.is_empty());
-            }
         }
     }
 

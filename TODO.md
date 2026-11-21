@@ -347,7 +347,7 @@
   - [x] 读取 NAVRPSolver 的版本尾段及 ExtraSafe 方向代理。[车辆路径求解器取证](docs/mxd-luna-deep-layer-masking-20261118.md#车辆路径求解器)
   - [x] 读取 NALocationAllocationSolver 的外层版本映射和专有尾段。[位置分配取证](docs/mxd-luna-deep-layer-masking-20261118.md#位置分配求解器)
   - [x] 接入 NALayer 尾部的 IStandaloneTable 集合。[独立表集合取证](docs/mxd-luna-deep-layer-masking-20261118.md#nalayer-的独立表集合)
-  - [ ] 读取非空 NAAttributeParameterValueArray 的逐项对象体。
+  - [x] 读取非空 NAAttributeParameterValueArray 的逐项对象体。
   - [x] 读取 NARouteSolver 的 ExtraSafe IStringArray 槽及对象键。[对象槽取证](docs/mxd-luna-deep-layer-masking-20261118.md#naroutesolver-的-extrasafe-字符串数组)
   - [x] 读取 NARouteSolver 两个内联 StrArray 集合及其存在条件。[集合取证](docs/mxd-luna-deep-layer-masking-20261118.md#naroutesolver-的内联字符串集合)
   - [x] 读取 NARouteSolver 的版本、属性名与集合标志。[求解器取证](docs/mxd-luna-deep-layer-masking-20261118.md#naroutesolver-的版本与属性名前缀)

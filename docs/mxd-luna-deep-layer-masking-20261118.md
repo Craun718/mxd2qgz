@@ -373,3 +373,9 @@ NetworkLayer.dll 10.1.0.3035 的 SimpleNetworkRenderer GetClassID `0x7b29e810` �
 NetworkLayer.dll 10.1.0.3035 的 NetworkTrafficRenderer 持久化槽指向 Load/Save `0x7b29b380 / 0x7b29b070`。Ghidra 补充导出和原始指令确认版本上限 2，读共用体 `0x7b298990` 后读 String 和 ILegendGroup，并按图例虚表 `+0x24` 返回的分类数读取 double。v2 追加两 short、IDoubleArray、short、IDoubleArray、两 short 和 IColor。构造测试用已登记的图例组回引定界分级数组并核对 v2 槽位边界。
 
 两份 SanFrancisco SDK 工程均从 `/Maps:0xd0d78` 继续读完声明的五个条目，NetworkLayer 完整抵达外层声明边界。ArcMap/QGIS 人工验收尚未进行。
+
+### 非空网络属性参数数组
+
+NetworkAnalystSolvers.dll 10.1.0.3035 的数组 Load `0x7b09f110` 经虚表 `0x7b1fe6b8` 的项读取函数 `0x7b09ec60` 调用普通 LoadObject，再查询参数值接口，故新对象及回引用同一对象键表。参数值 CLSID `F8ED3FA8-0B8B-4A56-A5B1-22973B3290C9` 的持久化虚表 `0x7b200510` 经 `0x7b0befe0` 到 Load `0x7b0bd1c0`。原始指令和导入表确认它读取有符号上限 0 的 short、两个 AfCore BSTR、LONG，最后在 `0x7b0bd255` 调用 Variant::Read(false)。读取器复用该填充式 Variant 分派，逐项读取后随求解器尾段一起提交键。
+
+构造测试覆盖新参数、同键回引和逐字节截断。两份 SanFrancisco SDK 工程用于回归现有空数组路径。非空数组尚缺真实样例和 ArcMap/QGIS 人工验收。
