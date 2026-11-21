@@ -2099,7 +2099,7 @@ fn raster_node(
                                 object_key: key,
                                 band_name: match &name.body {
                                     Some(crate::layers::raster_dataset_name::RasterDatasetNameEntryBody10_1::Band(band)) => {
-                                        band.dataset_band_name().map(str::to_owned)
+                                        Some(band.band_lookup_name().to_owned())
                                     }
                                     _ => name.source_reference.as_ref().and_then(|source| source.band_name.as_deref()).map(str::to_owned),
                                 },

@@ -446,12 +446,11 @@ pub struct RasterBandName10_1 {
 }
 
 impl RasterBandName10_1 {
-    /// 数据集分支传给 IRasterBandCollection::BandByName 的名称。
-    pub fn dataset_band_name(&self) -> Option<&str> {
-        if !matches!(self.source, RasterBandNameSource10_1::Dataset(_)) {
-            return None;
-        }
-        self.strings[0].rsplit('\\').next()
+    /// 原生成功打开栅格后，传给 IRasterBandCollection::BandByName 的名称。
+    pub fn band_lookup_name(&self) -> &str {
+        self.strings[0]
+            .rsplit_once('\\')
+            .map_or(self.strings[0].as_str(), |(_, name)| name)
     }
 }
 
@@ -541,23 +540,39 @@ pub(super) fn read_name_slot(
                 name.workspace_path(),
                 None,
             );
-        } else if let RasterDatasetNameEntryBody10_1::Band(band) = body
-            && let RasterBandNameSource10_1::Dataset(slot) = &band.source
-        {
-            let (name, path) = match slot.entry {
-                ObjectEntry10_1::NewObject { class_id, key }
-                | ObjectEntry10_1::BackReference { class_id, key } => table
-                    .dataset_source(class_id, key)
-                    .map(|source| (source.name.clone(), source.path.clone())),
-                ObjectEntry10_1::Null => None,
-            }
-            .unwrap_or_default();
+        } else if let RasterDatasetNameEntryBody10_1::Band(band) = body {
+            let (name, path) = match &band.source {
+                RasterBandNameSource10_1::Dataset(slot) => match slot.entry {
+                    ObjectEntry10_1::NewObject { class_id, key }
+                    | ObjectEntry10_1::BackReference { class_id, key } => table
+                        .dataset_source(class_id, key)
+                        .map(|source| (source.name.as_ref(), source.path.as_deref()))
+                        .unwrap_or_default(),
+                    ObjectEntry10_1::Null => ("", None),
+                },
+                RasterBandNameSource10_1::Workspace(workspace) => (
+                    "",
+                    match workspace {
+                        RasterDatasetWorkspaceSlot10_1::WorkspaceName(body) => {
+                            Some(body.path.as_str())
+                        }
+                        RasterDatasetWorkspaceSlot10_1::BackReference { class_id, key }
+                            if *class_id == WORKSPACE_NAME_CLASS_ID =>
+                        {
+                            table.workspace_path(*key)
+                        }
+                        _ => None,
+                    },
+                ),
+            };
+            let name = name.to_owned();
+            let path = path.map(str::to_owned);
             table.mark_dataset_source(
                 class_id,
                 key,
                 &name,
                 path.as_deref(),
-                band.dataset_band_name(),
+                Some(band.band_lookup_name()),
             );
         }
     }
