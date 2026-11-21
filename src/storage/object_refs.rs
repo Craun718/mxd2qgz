@@ -17,6 +17,7 @@ use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
 use crate::stream::reader::Reader;
 use std::collections::{HashMap, HashSet};
 use std::io;
+use std::sync::Arc;
 
 /// 跨流共享的已见键登记表（对应原生 ObjectStream 读表）。
 ///
@@ -28,6 +29,7 @@ use std::io;
 pub struct RefTable10_1 {
     seen: HashMap<u32, u32>,
     map_keys: HashSet<u32>,
+    workspace_paths: HashMap<u32, Arc<str>>,
     legend_group_counts: HashMap<u32, usize>,
     // 共享键表的试读副本也继承跨类图形对象的当前递归深度。
     graphics_nesting: u8,
@@ -144,6 +146,17 @@ impl RefTable10_1 {
 
     pub(crate) fn legend_group_count(&self, key: u32) -> Option<usize> {
         self.legend_group_counts.get(&key).copied()
+    }
+
+    /// 只缓存完整读取且已登记的 WorkspaceName 路径。
+    pub(crate) fn mark_workspace_path(&mut self, key: u32, path: &str) {
+        if self.contains(key) {
+            self.workspace_paths.insert(key, Arc::from(path));
+        }
+    }
+
+    pub(crate) fn workspace_path(&self, key: u32) -> Option<&str> {
+        self.workspace_paths.get(&key).map(AsRef::as_ref)
     }
 
     /// 键是否已在本会话登记过；命中即回引。

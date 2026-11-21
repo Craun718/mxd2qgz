@@ -243,3 +243,17 @@ v1、v0 两组 103 字节对象体的 SHA-256 分别为
 `a80860074d0b3857612d723606dbd1dfb5349d8c94ddb762d0614d3720d46b1f`。
 此试验覆盖原生对象体及指定的子槽形态。真实旧 MXD 中的 v0 实例、
 FCN 的非零 TopologyName 选择子实档及 ArcMap/QGIS 人工验收仍待取得。
+
+## FeatureLayer 工作空间路径回引
+
+按 [10.1 ObjectStream 的对象键证据](arcmap-10.1-object-body.md#101-对象键分配与回引写侧闭合2026-11-14-第五轮)，
+回引和新定义的头同形，只有当前会话已登记的键可识别为回引。
+现有 WorkspaceName 读取器完整消费且该键已登记时，将路径原文放入
+同一会话的键表。试读副本继承该表，失败时随原有对象键一起回滚。
+无键的 OLE 包装、解析中途停止的 WorkspaceName 或未知类都不会写入路径缓存。
+
+FeatureClassName 直接工作空间槽及其内联 FeatureDatasetName 的工作空间
+槽只在回引 CLSID 与 WorkspaceName 一致时查询该键，将命中路径传到图层模型。
+构造回归覆盖两种槽的首次定义后回引以及错误 CLSID，原始回引分类仍保留。
+独立数据源类和整个 FeatureDatasetName 对象的回引另待处理。
+ArcMap 和 QGIS 人工验收尚未进行。

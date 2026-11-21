@@ -1734,8 +1734,19 @@ fn feature_layer_source(
                     );
                     (Some(ws.path.clone()), Some(note))
                 }
+                FeatureClassNameNested10_1::WorkspaceName(
+                    WorkspaceNameEntry10_1::BackReference { key, .. },
+                ) => {
+                    let path = fcn.workspace_back_reference_path.clone();
+                    let state = if path.is_some() {
+                        "已解析路径"
+                    } else {
+                        "缺少已确认的路径"
+                    };
+                    (path, Some(format!("工作空间回引键 {key}，{state}")))
+                }
                 FeatureClassNameNested10_1::WorkspaceName(_) => {
-                    (None, Some("工作空间槽为空标记/回引，无路径".to_string()))
+                    (None, Some("工作空间槽为空或未支持".to_string()))
                 }
                 FeatureClassNameNested10_1::DatasetName(DatasetNameEntry10_1::NewObject(body)) => {
                     use crate::objects::dataset_name::WorkspaceNameSlot10_1;
@@ -1751,7 +1762,7 @@ fn feature_layer_source(
                             },
                             WorkspaceNameSlot10_1::Null => "工作空间槽为空".to_string(),
                             WorkspaceNameSlot10_1::BackReference { key, .. } => {
-                                format!("工作空间槽回引键 {key}，当前条目无路径体")
+                                format!("工作空间槽回引键 {key}")
                             }
                             WorkspaceNameSlot10_1::Unsupported { class_id, key } => format!(
                                 "工作空间槽类 {}（键 {key}）未解析",
@@ -1759,7 +1770,10 @@ fn feature_layer_source(
                             ),
                         };
                         (
-                            dataset.workspace_path().map(str::to_owned),
+                            dataset
+                                .workspace_path()
+                                .map(str::to_owned)
+                                .or_else(|| fcn.workspace_back_reference_path.clone()),
                             Some(format!(
                                 "FeatureDatasetName（键 {}）：{detail}",
                                 dataset.key
@@ -2681,6 +2695,7 @@ mod tests {
         body.extend(encoded("道路层"));
         body.extend(encoded(""));
         body.extend([0; 6]); // 可见性等三个 short
+        let source_offset = body.len();
         body.extend(FEATURE_CLASS_NAME_CLASS_ID);
         body.extend(10_u32.to_le_bytes());
         body.extend(2_u16.to_le_bytes());
@@ -2688,7 +2703,9 @@ mod tests {
             body.extend(encoded(value));
         }
         body.extend([0; 8]); // 两个 int32
+        let selector_offset = body.len();
         body.extend(1_u16.to_le_bytes()); // 选择 IDatasetName
+        let dataset_offset = body.len();
         body.extend(FEATURE_DATASET_NAME_CLASS_ID);
         body.extend(11_u32.to_le_bytes());
         body.extend(1_u16.to_le_bytes());
@@ -2696,22 +2713,52 @@ mod tests {
             body.extend(encoded(value));
         }
         body.push(0);
+        let workspace_offset = body.len();
         body.extend(WORKSPACE_NAME_CLASS_ID);
         body.extend(12_u32.to_le_bytes());
+        let workspace_body = body.len();
         body.extend(1_u16.to_le_bytes());
         for value in ["..\\data.gdb", "", "File Geodatabase"] {
             body.extend(encoded(value));
         }
         body.extend([0; 16 + 1 + 4]); // 空 PropertySet、工厂标志 0、尾 int32
+        let after_workspace = body.len();
         body.extend(0_u16.to_le_bytes()); // 不含 TopologyName
         body.extend([0xa5; 20]); // 未知渲染器，读取器在该槽停止
 
         let mut reader = Reader::new(&body);
-        let prefix =
-            read_feature_layer_prefix_10_1(&mut reader, 1024, &mut RefTable10_1::new()).unwrap();
+        let mut refs = RefTable10_1::new();
+        let prefix = read_feature_layer_prefix_10_1(&mut reader, 1024, &mut refs).unwrap();
         let source = feature_layer_source(&prefix, 0, &mut Vec::new()).unwrap();
         assert_eq!(source.path.as_deref(), Some("..\\data.gdb"));
         assert_eq!(source.connection.as_deref(), Some("道路"));
+
+        body[source_offset + 16..source_offset + 20].copy_from_slice(&20_u32.to_le_bytes());
+        body[dataset_offset + 16..dataset_offset + 20].copy_from_slice(&21_u32.to_le_bytes());
+        body.drain(workspace_body..after_workspace);
+
+        for direct in [false, true] {
+            let mut bytes = body.clone();
+            let mut staged = refs.clone();
+            let slot = if direct {
+                bytes[selector_offset..dataset_offset].copy_from_slice(&0_u16.to_le_bytes());
+                bytes.drain(dataset_offset..workspace_offset);
+                dataset_offset
+            } else {
+                workspace_offset
+            };
+            let mut reader = Reader::new(&bytes);
+            let prefix = read_feature_layer_prefix_10_1(&mut reader, 1024, &mut staged).unwrap();
+            let source = feature_layer_source(&prefix, 0, &mut Vec::new()).unwrap();
+            assert_eq!(source.path.as_deref(), Some("..\\data.gdb"));
+
+            bytes[slot..slot + 16].fill(0x45);
+            let mut reader = Reader::new(&bytes);
+            let prefix =
+                read_feature_layer_prefix_10_1(&mut reader, 1024, &mut refs.clone()).unwrap();
+            let source = feature_layer_source(&prefix, 0, &mut Vec::new()).unwrap();
+            assert_eq!(source.path, None);
+        }
     }
 
     #[test]

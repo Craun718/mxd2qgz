@@ -138,7 +138,11 @@ pub fn read_workspace_name_body_10_1(
     table: &mut RefTable10_1,
     key: u32,
 ) -> io::Result<WorkspaceNamePrefix10_1> {
-    read_workspace_name_payload_10_1(reader, max_bytes, table, key)
+    let body = read_workspace_name_payload_10_1(reader, max_bytes, table, key)?;
+    if body.stop.is_none() {
+        table.mark_workspace_path(key, &body.path);
+    }
+    Ok(body)
 }
 
 /// OLE 类标识之后的 WorkspaceName 直接调用 Load，体没有 ObjectStream 键。
