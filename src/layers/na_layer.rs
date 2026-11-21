@@ -208,6 +208,25 @@ const NA_LOCATOR_CLASS_ID: [u8; 16] = [
     0xe1, 0xad, 0x19, 0x43, 0xe5, 0xd6, 0x18, 0x48, 0x83, 0x80, 0x8e, 0xe3, 0x89, 0xd1, 0x48, 0xea,
 ];
 
+const NA_LOCATOR_FEATURE_AGENT_CLASS_ID: [u8; 16] = [
+    0xab, 0xc9, 0xb4, 0x22, 0xfa, 0x32, 0x86, 0x46, 0x8f, 0x5e, 0x8a, 0x2a, 0x37, 0x0b, 0x33, 0x50,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NaLocatorFeatureAgent10_1 {
+    pub version: u16,
+    pub scalars: (i32, u16, i32),
+    pub source: String,
+    pub extra: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NaLocatorTail10_1 {
+    pub agents: Vec<(ObjectEntry10_1, Option<NaLocatorFeatureAgent10_1>)>,
+    pub distance_bits: Option<u64>,
+    pub flag: Option<u16>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct NaLocatorPrefix10_1 {
     pub version: u16,
@@ -216,6 +235,7 @@ pub struct NaLocatorPrefix10_1 {
     pub flag: u16,
     pub spatial_reference: ObjectEntry10_1,
     pub agent_count: i32,
+    pub tail: Option<NaLocatorTail10_1>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -366,33 +386,9 @@ fn read_na_locator_prefix(
             ];
             let mode = trial.read_u32_le()? as i32;
             let flag = trial.read_u16_le()?;
-            let a = trial.read_u32_le()? as usize;
-            let b = trial.read_u32_le()? as i32;
-            let spatial_reference = if a == 0 && b == 0 {
-                ObjectEntry10_1::Null
-            } else {
-                let length = if b == 0 {
-                    a
-                } else {
-                    usize::try_from(b).unwrap_or_default()
-                };
-                if !(16..=max).contains(&length) {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "NALocator 空间参考槽边界无效",
-                    ));
-                }
-                let mut region = trial.read_region(length)?;
-                let entry = read_object_entry_10_1(&mut region, &mut keys)?;
-                if matches!(entry, ObjectEntry10_1::NewObject { .. }) || region.remaining() != 0 {
-                    return Err(io::Error::new(
-                        io::ErrorKind::Unsupported,
-                        "NALocator 空间参考对象体未支持",
-                    ));
-                }
-                entry
-            };
+            let (spatial_reference, _) = read_na_locator_slot(&mut trial, max, &mut keys, false)?;
             let agent_count = trial.read_u32_le()? as i32;
+            let tail = read_na_locator_tail(&mut trial, max, &mut keys, version, agent_count).ok();
             Some(NaLocatorPrefix10_1 {
                 version,
                 scalar_bits,
@@ -400,6 +396,7 @@ fn read_na_locator_prefix(
                 flag,
                 spatial_reference,
                 agent_count,
+                tail,
             })
         }
         ObjectEntry10_1::NewObject { .. } => {
@@ -412,6 +409,108 @@ fn read_na_locator_prefix(
     };
     *reader = trial;
     *refs = keys;
+    Ok((entry, body))
+}
+
+fn read_na_locator_tail(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+    version: u16,
+    agent_count: i32,
+) -> io::Result<NaLocatorTail10_1> {
+    let mut trial = reader.clone();
+    let mut keys = refs.clone();
+    let count = agent_count.max(0) as usize;
+    if count > trial.remaining().min(max) / 8 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "定位器代理数量超出可读范围",
+        ));
+    }
+    let mut agents = Vec::new();
+    for _ in 0..count {
+        agents.push(read_na_locator_slot(&mut trial, max, &mut keys, true)?);
+    }
+    let distance_bits = (version as i16 >= 2)
+        .then(|| trial.read_f64_le().map(f64::to_bits))
+        .transpose()?;
+    let flag = (version == 3).then(|| trial.read_u16_le()).transpose()?;
+    *reader = trial;
+    *refs = keys;
+    Ok(NaLocatorTail10_1 {
+        agents,
+        distance_bits,
+        flag,
+    })
+}
+
+fn read_na_locator_slot(
+    reader: &mut Reader<'_>,
+    max: usize,
+    keys: &mut RefTable10_1,
+    agent_slot: bool,
+) -> io::Result<(ObjectEntry10_1, Option<NaLocatorFeatureAgent10_1>)> {
+    let a = reader.read_u32_le()? as usize;
+    let b = reader.read_u32_le()? as i32;
+    if a == 0 && b == 0 {
+        return Ok((ObjectEntry10_1::Null, None));
+    }
+    let length = if b == 0 {
+        a
+    } else {
+        usize::try_from(b).unwrap_or_default()
+    };
+    if !(16..=max).contains(&length) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "定位器 ExtraSafe 槽边界无效",
+        ));
+    }
+    let mut region = reader.read_region(length)?;
+    let entry = read_object_entry_10_1(&mut region, keys)?;
+    let body = match entry {
+        ObjectEntry10_1::NewObject {
+            class_id: NA_LOCATOR_FEATURE_AGENT_CLASS_ID,
+            ..
+        } if agent_slot => {
+            let version = region.read_u16_le()?;
+            if version as i16 > 2 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "定位器要素代理版本超过 2",
+                ));
+            }
+            let scalars = (
+                region.read_u32_le()? as i32,
+                region.read_u16_le()?,
+                region.read_u32_le()? as i32,
+            );
+            let source = read_bstr_string_10_1(&mut region, max)?;
+            let extra = (version == 2)
+                .then(|| read_bstr_string_10_1(&mut region, max))
+                .transpose()?;
+            Some(NaLocatorFeatureAgent10_1 {
+                version,
+                scalars,
+                source,
+                extra,
+            })
+        }
+        ObjectEntry10_1::NewObject { .. } => {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "定位器 ExtraSafe 对象体未支持",
+            ));
+        }
+        _ => None,
+    };
+    if region.remaining() != 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "定位器 ExtraSafe 对象未消费声明范围",
+        ));
+    }
     Ok((entry, body))
 }
 
@@ -937,6 +1036,40 @@ mod tests {
         assert_eq!(locator.agent_count, 2);
         assert!(refs.contains(251));
         assert_eq!(reader.read_bytes(1).unwrap(), [0x7f]);
+    }
+
+    #[test]
+    fn locator_tail_reads_feature_agent_and_rolls_back_on_truncation() {
+        let mut object = NA_LOCATOR_FEATURE_AGENT_CLASS_ID.to_vec();
+        object.extend(252_u32.to_le_bytes());
+        object.extend(2_u16.to_le_bytes());
+        object.extend(4_i32.to_le_bytes());
+        object.extend(0_u16.to_le_bytes());
+        object.extend((-1_i32).to_le_bytes());
+        object.extend(1_u32.to_le_bytes());
+        object.extend([b'X', 0, 0, 0]);
+        object.extend(0_u32.to_le_bytes());
+        let mut bytes = (object.len() as u32).to_le_bytes().to_vec();
+        bytes.extend(0_u32.to_le_bytes());
+        bytes.extend(object);
+        bytes.extend(1.5_f64.to_le_bytes());
+        bytes.extend(9_u16.to_le_bytes());
+        let mut refs = RefTable10_1::new();
+        for end in 0..bytes.len() {
+            let mut reader = Reader::new(&bytes[..end]);
+            assert!(read_na_locator_tail(&mut reader, 128, &mut refs, 3, 1).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(!refs.contains(252));
+        }
+        let mut reader = Reader::new(&bytes);
+        let tail = read_na_locator_tail(&mut reader, 128, &mut refs, 3, 1).unwrap();
+        let agent = tail.agents[0].1.as_ref().unwrap();
+        assert_eq!(agent.source, "X");
+        assert_eq!(agent.extra.as_deref(), Some(""));
+        assert_eq!(tail.distance_bits, Some(1.5_f64.to_bits()));
+        assert_eq!(tail.flag, Some(9));
+        assert!(refs.contains(252));
+        assert_eq!(reader.remaining(), 0);
     }
 
     #[test]

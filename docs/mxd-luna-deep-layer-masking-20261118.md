@@ -249,3 +249,9 @@ NetworkAnalyst.dll 10.1.0.3035（SHA-256 `8c4ebaee71aad63c25616aa806674018479829
 同版 NetworkAnalyst.dll 的 GetClassID `0x7af31e50` 读取 CLSID 常量 `0x7af9b1f8`，通过调整 thunk `0x7af365c0` 与持久化虚表对位。该虚表的 Load 槽经 `0x7af365b0` 跳到 `0x7af31e90`，Save 经 `0x7af36540` 跳到 `0x7af322d0`。Ghidra 补充导出见 `temp/network-na/7af31e90.c`。Load 依次读取有符号上限 3 的 short、两个 double、LONG、short、ExtraSafe 空间参考槽（接口常量 `0x7afa0378`）与 LONG 代理计数。正数计数每项调用一次 ExtraSafeReadObject（接口常量 `0x7afa0388`）。代理循环后 v2 以上追加 double，v3 再读 short，v1 的单位换算走内存路径。
 
 两份 SanFrancisco SDK 工程从 `0x772f` 读取键 251、v3 定位器、带 16 字节空头的空间参考槽及计数 2，到达首个代理封装 `0x7777`。该封装 A=56、B=0，内层 CLSID `22B4C9AB-32FA-4686-8F5E-8A2A370B3350` 与 10.1 注册表的 NALocatorFeatureAgent 一致。构造测试覆盖逐字节截断和键回滚。新空间参考对象体、代理循环、版本尾字段及 ArcMap/QGIS 人工验收仍待验证。
+
+### NALocator 的要素代理与版本尾段
+
+同版 NetworkAnalyst.dll 的要素代理持久化虚表 `0x7afa0764` 中 GetClassID `0x7af394c0` 引用 CLSID 常量 `0x7af9b208`，Load/Save 为 `0x7af39500 / 0x7af39760`。Ghidra 补充导出核对为 short 版本（有符号上限 2）、LONG、short、LONG、AfCore BSTR，v2 再追加一个 AfCore BSTR。代理封装在声明边界内完整消费才提交键；若代理循环或随后定位器版本尾段截断，则回到第一个代理封装之前并撤销该段新键。
+
+两份 SanFrancisco SDK 工程读取了键 252 和 253 的 v2 要素代理及 v3 定位器尾段，到达 `0x781b` 的 NamedSet 对象头。定位器空间参考的新对象、其他代理类和 NAContext 后续槽仍待读取。ArcMap/QGIS 人工验收尚未进行。
