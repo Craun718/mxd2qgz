@@ -1846,6 +1846,7 @@ mod tests {
         };
         use crate::objects::envelope::ENVELOPE_CLASS_ID;
         use crate::objects::string_array::STR_ARRAY_CLASS_ID;
+        use crate::objects::workspace_name::WORKSPACE_NAME_CLASS_ID;
 
         for version in [1_i32, 2] {
             let mut bytes = body_prefix(1, 1);
@@ -1853,7 +1854,7 @@ mod tests {
             bytes.extend(NETCDF_RASTER_DATASET_NAME_CLASS_ID);
             bytes.extend(76_u32.to_le_bytes());
             bytes.extend(version.to_le_bytes());
-            for value in ["栅格变量", "", "", "", "", "", "", ""] {
+            for value in ["首串", "", "", "", "栅格变量", "", "", ""] {
                 bytes.extend(encoded_string(value));
             }
             if version == 1 {
@@ -1874,7 +1875,13 @@ mod tests {
             let count_offset = bytes.len();
             bytes.extend(1_i32.to_le_bytes());
             bytes.extend(2026_i32.to_le_bytes());
-            bytes.extend([0; 16]); // 空工作空间。
+            bytes.extend(WORKSPACE_NAME_CLASS_ID);
+            bytes.extend(80_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            for value in ["climate.nc", "", ""] {
+                bytes.extend(encoded_string(value));
+            }
+            bytes.extend([0; 21]); // 空属性集、空工厂及尾整数。
             bytes.extend(encoded_string("图层名称后缀"));
             let end = bytes.len();
             bytes.extend([0; 16 + 22]);
@@ -1885,13 +1892,32 @@ mod tests {
             let Some(RasterDatasetNameEntryBody10_1::NetCdf(name)) = &result.names[0].body else {
                 panic!("预期 NetCDFRasterDatasetName");
             };
-            assert_eq!(name.strings[0], "栅格变量");
+            assert_eq!(name.strings[0], "首串");
+            assert_eq!(name.variable(), "栅格变量");
+            let source = result.names[0].source_reference.as_ref().unwrap();
+            assert_eq!(source.name.as_ref(), "栅格变量");
+            assert_eq!(source.path.as_deref(), Some("climate.nc"));
+            assert_eq!(
+                refs.dataset_source(NETCDF_RASTER_DATASET_NAME_CLASS_ID, 76),
+                Some(source)
+            );
             assert_eq!(name.legacy.is_some(), version == 1);
             assert_eq!(name.labels.body.as_ref().unwrap().1, ["时间"]);
             assert_eq!(name.values.body, Some((1, vec![2026])));
             assert!(refs.contains(76) && refs.contains(77) && refs.contains(78));
             assert_eq!(refs.contains(79), version == 1);
             assert!(result.tail.is_some());
+            assert_eq!(reader.remaining(), 0);
+
+            let mut reference = body_prefix(1, 1);
+            reference.extend(NETCDF_RASTER_DATASET_NAME_CLASS_ID);
+            reference.extend(76_u32.to_le_bytes());
+            reference.extend(encoded_string(""));
+            reference.extend([0; 16 + 22]);
+            let mut reader = Reader::new(&reference);
+            let referenced = read_bounded_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+            assert!(referenced.names[0].body.is_none());
+            assert_eq!(referenced.names[0].source_reference.as_ref(), Some(source));
             assert_eq!(reader.remaining(), 0);
 
             let mut invalid = bytes.clone();

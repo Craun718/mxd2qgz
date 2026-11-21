@@ -1176,3 +1176,19 @@ ArcMap 10.1 中实际打开的波段及 QGIS 目视验证待补。
 IRasterDataset 和 IRasterBand，因此进入单项分支也可能仍是波段来源。
 模型对单个 RasterBandName 的新对象和回引均保留查找名称及可用的父
 数据源。构造回归验证回引的波段名与父数据源。ArcMap/QGIS 目视待补。
+
+### NetCDF 变量名与数据源回引
+
+NetCDFDB.dll 10.1.0.3035 的 NetCDFRasterDatasetName 主 QI
+`0x7ae28bf0` 对 IMDRasterDatasetView（IID 常量 `0x7ae617a8`）
+返回完整对象 +0x24。类型库的 Variable getter 位于接口表
+`0x7ae61654` 的 +0x24，入口 `0x7ae29a80` 读接口相对 +0x60，
+即完整对象 +0x84。持久化接口位于完整对象 +0x18，
+Load `0x7ae29e30` 在 `0x7ae29eca` 读取第五条 String 至
+持久化接口 +0x6c，对应同一成员。模块摘要见本篇基础栅格类小节。
+
+共享名称读取器在成功读取带键 NetCDF 名称后登记变量名及可用的
+工作空间路径，RasterLayer 的新对象与同键回引都能取得这些值。
+构造测试覆盖名称 v1/v2、不同的首串与变量名、非空工作空间、回引
+及名称体截断回滚。维度选择仍由原始名称体保留，ArcMap 10.1 和
+QGIS 中的实际数据源打开结果尚未人工验证。

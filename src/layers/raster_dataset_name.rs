@@ -397,6 +397,13 @@ pub struct NetCdfRasterDatasetName10_1 {
     pub workspace: RasterDatasetWorkspaceSlot10_1,
 }
 
+impl NetCdfRasterDatasetName10_1 {
+    /// IMDRasterDatasetView::Variable 对应 Load 中的第五条 String。
+    pub fn variable(&self) -> &str {
+        &self.strings[4]
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RasterLongArraySlot10_1 {
     pub entry: ObjectEntry10_1,
@@ -540,6 +547,20 @@ pub(super) fn read_name_slot(
                 name.workspace_path(),
                 None,
             );
+        } else if let RasterDatasetNameEntryBody10_1::NetCdf(name) = body {
+            let path = match &name.workspace {
+                RasterDatasetWorkspaceSlot10_1::WorkspaceName(workspace) => {
+                    Some(workspace.path.as_str())
+                }
+                RasterDatasetWorkspaceSlot10_1::BackReference { class_id, key }
+                    if *class_id == WORKSPACE_NAME_CLASS_ID =>
+                {
+                    table.workspace_path(*key)
+                }
+                _ => None,
+            };
+            let path = path.map(str::to_owned);
+            table.mark_dataset_source(class_id, key, name.variable(), path.as_deref(), None);
         } else if let RasterDatasetNameEntryBody10_1::Band(band) = body {
             let (name, path) = match &band.source {
                 RasterBandNameSource10_1::Dataset(slot) => match slot.entry {

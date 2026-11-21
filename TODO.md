@@ -730,6 +730,7 @@
 - [x] 保留 RasterLayer v5–v8 名称列表请求的内联波段索引及父数据源。[原生 Item 调用](docs/mxd-10.1-raster-layer-tail.md#v5v8-的内联波段索引)
 - [x] 保留 RasterLayer 单个 RasterBandName 及回引的波段来源。[单名称分派](docs/mxd-10.1-raster-layer-tail.md#仅含一条波段名称的图层)
 - [ ] 补齐 RasterLayer 名称列表中的其他 IName 对象类。
+  - [x] 对位 NetCDF 栅格变量名并通过对象键恢复名称来源。[原生访问器](docs/mxd-10.1-raster-layer-tail.md#netcdf-变量名与数据源回引)
   - [x] 核对 Access、SDE、FileGDB、镶嵌和影像服务数据集与波段的 FullName 分派。[取证](docs/mxd-10.1-raster-layer-tail.md#三个名称宿主的接口与-fullname-来源)
   - [x] 核对 Grid 包装层、CompositeRasterDataset 与基础栅格类的名称来源，以及 RasterLayer 保存名称列表时对现有名称的复用。[取证](docs/mxd-10.1-raster-layer-tail.md#grid-与基础栅格类的名称来源复核)
   - [x] 按 RasterDB 与 AfCore 的失败分支拒绝 RasterDatasetName 零版本门，并验证游标及对象表回滚。[取证](docs/mxd-luna-followup-rasterdatasetname-20261118.md#iat-与控制字)
