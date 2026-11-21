@@ -477,3 +477,26 @@ IEnvelope 的 IID 常量分别位于 `0x804114a4`、`0x80411754`、
 类型库公开了 TinFaceRenderer、TinEdgeRenderer、TinNodeRenderer 等
 实现；普通槽的新对象体仍需逐类核对。v7 字符串后的相对路径处理和
 v12 的数值比较均没有附加流读取。字段业务名与实档待验证。
+
+#### TinNodeRenderer、TinEdgeRenderer 与 TinFaceRenderer
+
+TinRenderer.dll PE32 的版本资源为 10.1.0.3035，SHA-256 为
+`291c39023377582050b8695b8674e019b01d16d78eb3ed16fa6dee02e2409b87`。
+按类型库中的 ITinRenderer coclass、PE RTTI、主 QI 和持久化
+虚表复核以下三个实现。
+
+| 类 | 主 QI 到 IPersistStream | 持久化虚表 | Load / Save |
+| --- | --- | --- | --- |
+| TinNodeRenderer | `0x8043a560` 在 `0x8043a66d` 返回 +0x20 | `0x804556bc` | `0x8042b9f0 / 0x8043b040` |
+| TinEdgeRenderer | `0x8042aa50` 在 `0x8042ab8a` 返回 +0x24 | `0x8045429c` | `0x8042b9f0 / 0x8042bb20` |
+| TinFaceRenderer | `0x80430270 → 0x80446b20`，在 `0x80446c52` 返回 +0x24 | `0x80454834` | `0x80430b70 / 0x80430cd0` |
+
+两处 Load 均先读有符号上限为 1 的 short，再逐项调用
+LoadObject 请求 ISymbol（`0x80453aac`）、ILegendGroup
+（`0x804536b8`）和 ILegendItem（`0x804536c8`）。Node 和 Edge
+接 short、AfCore String、short。Face 在首个尾 short 后多读
+一个 short，之后才读 String 和末尾 short。Edge 与 Face 的
+Save 指令及版本常量分别在 `0x8042bb20 / 0x804533f4`、
+`0x80430cd0 / 0x804533dc`，均写 v1，且字段顺序与读取一致。
+Load 对图例组结果调用其虚表，因此合成全空子槽只可验证字节边界，
+无法代表原生成功打开。解析器接入、其他渲染器及实档仍待完成。
