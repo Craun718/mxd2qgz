@@ -8,6 +8,7 @@ use crate::maps::standalone_table::{
 use crate::objects::dataset_name::{
     FEATURE_DATASET_NAME_CLASS_ID, FeatureDatasetNameBody10_1, read_feature_dataset_name_body_10_1,
 };
+use crate::objects::dataset_name_more::{DatasetNameMoreSlot10_1, read_dataset_name_slot_10_1};
 use crate::objects::envelope::{
     ENVELOPE_CLASS_ID, Envelope10_1, SpatialReferenceEntry10_1, read_envelope_10_1,
     read_spatial_reference_entry_10_1,
@@ -1134,7 +1135,19 @@ pub struct NaTraversalResult10_1 {
         Option<Box<NetworkAnalysisWorkspacePrefix10_1>>,
     ),
     pub tables: [NaTraversalTableSlot; 3],
-    pub sources: Vec<(i32, ObjectEntry10_1)>,
+    pub sources: Vec<(i32, ObjectEntry10_1, Option<NaTraversalResultSource10_1>)>,
+}
+
+const NA_TRAVERSAL_SOURCE_CLASS_ID: [u8; 16] = [
+    0xe1, 0x44, 0x86, 0x70, 0x04, 0xeb, 0xc3, 0x4f, 0x9b, 0x2e, 0x0a, 0x71, 0x29, 0x6a, 0x82, 0xca,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NaTraversalResultSource10_1 {
+    pub version: u16,
+    pub name: String,
+    pub scalars: [i32; 3],
+    pub dataset_name: DatasetNameMoreSlot10_1,
 }
 
 type NaTraversalTableSlot = (
@@ -1215,13 +1228,50 @@ fn read_na_traversal_result(
     for _ in 0..count {
         let index = reader.read_u32_le()? as i32;
         let source = read_object_entry_10_1(reader, refs)?;
-        if !matches!(source, ObjectEntry10_1::BackReference { .. }) {
-            return Err(io::Error::new(
-                io::ErrorKind::Unsupported,
-                "遍历结果来源对象体未支持",
-            ));
-        }
-        sources.push((index, source));
+        let body = match source {
+            ObjectEntry10_1::BackReference { .. } => None,
+            ObjectEntry10_1::NewObject {
+                class_id: NA_TRAVERSAL_SOURCE_CLASS_ID,
+                ..
+            } => {
+                let version = reader.read_u16_le()?;
+                if version as i16 > 0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "遍历结果来源版本超过 0",
+                    ));
+                }
+                let name = read_string_10_1(reader, max)?;
+                let scalars = [
+                    reader.read_u32_le()? as i32,
+                    reader.read_u32_le()? as i32,
+                    reader.read_u32_le()? as i32,
+                ];
+                let mut stop = None;
+                let dataset_name = read_dataset_name_slot_10_1(reader, max, refs, &mut stop)?;
+                if stop.is_some()
+                    || matches!(dataset_name, DatasetNameMoreSlot10_1::Unsupported { .. })
+                {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Unsupported,
+                        "遍历结果来源数据集名称未完整读取",
+                    ));
+                }
+                Some(NaTraversalResultSource10_1 {
+                    version,
+                    name,
+                    scalars,
+                    dataset_name,
+                })
+            }
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    "遍历结果来源对象体未支持",
+                ));
+            }
+        };
+        sources.push((index, source, body));
     }
     let flags = [first, reader.read_bytes(1)?[0], reader.read_bytes(1)?[0]];
     Ok(NaTraversalResult10_1 {
@@ -2588,7 +2638,16 @@ mod tests {
         bytes.extend([0; 16]);
         bytes.push(1);
         bytes.extend([0; 16 * 4]);
-        bytes.extend(0_i32.to_le_bytes());
+        bytes.extend(2_i32.to_le_bytes());
+        bytes.extend(9_i32.to_le_bytes());
+        bytes.extend(NA_TRAVERSAL_SOURCE_CLASS_ID);
+        bytes.extend(76_u32.to_le_bytes());
+        bytes.extend(0_u16.to_le_bytes());
+        push_string(&mut bytes, "Roads");
+        bytes.extend([0; 12 + 16]);
+        bytes.extend(10_i32.to_le_bytes());
+        bytes.extend(NA_TRAVERSAL_SOURCE_CLASS_ID);
+        bytes.extend(76_u32.to_le_bytes());
         bytes.extend([2, 3]);
         let mut refs = RefTable10_1::new();
         for end in 0..bytes.len() {
@@ -2599,7 +2658,14 @@ mod tests {
         }
         let mut reader = Reader::new(&bytes);
         let (_, result) = read_na_context_post_solver_slot(&mut reader, 256, &mut refs).unwrap();
-        assert_eq!(result.unwrap().flags, [1, 2, 3]);
+        let result = result.unwrap();
+        assert_eq!(result.flags, [1, 2, 3]);
+        assert_eq!(result.sources[0].2.as_ref().unwrap().name, "Roads");
+        assert!(matches!(
+            result.sources[1].1,
+            ObjectEntry10_1::BackReference { key: 76, .. }
+        ));
+        assert!(refs.contains(76));
         assert!(refs.contains(75));
         assert_eq!(reader.remaining(), 0);
     }

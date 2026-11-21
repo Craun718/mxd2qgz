@@ -405,3 +405,7 @@ NetworkAnalyst.dll 10.1.0.3035 的持久化 Load `0x7af1ffc0` 与 Save `0x7af20b
 NetworkAnalyst.dll 10.1.0.3035 的 NATraversalResult 主 QI `0x7af70300` 实现 NAContext 求解器后对象槽的 IID `9E92A2AD-551E-4BE0-BF57-AAC552789DAE`，并将 IPersistStream 映射到对象 `+0x20`。对应虚表 `0x7afa2f2c` 的 GetClassID、Load 和 Save 为 `0x7af72e70 / 0x7af72ed0 / 0x7af73910`。Ghidra 导出确认有符号上限 0 的 short、IPropertySet、字节、工作空间、三个表槽、计数及逐项 LONG 和来源对象槽，最后两个字节。读取器复用现有工作空间、NAClass 和属性集对象体支持。来源槽目前支持回引，新对象体仍待接入。
 
 构造测试验证空来源列表、尾部标志和截断回滚。两份 SanFrancisco SDK 工程在此槽均为空。非空实例与 ArcMap/QGIS 人工验收尚未验证。
+
+### 遍历结果的来源对象
+
+NetworkAnalyst.dll 10.1.0.3035 的 NATraversalResultSource 持久化虚表 `0x7afa3358` 将 Load/Save 对位到 `0x7af7ca20 / 0x7af7cc00`。Ghidra 导出确认有符号上限 0 的 short、AfCore String、三个四字节整数和普通对象槽。槽请求 `0x7afa33b4` 的 IDatasetName，复用既有名称体分派，未知或部分解析的名称对象使整个遍历结果回滚。构造测试在同一个结果中放入新来源、同键回引和后继标志，并逐字节验证截断不会登记新键。真实非空来源宿主及 ArcMap/QGIS 人工验收尚未验证。
