@@ -744,3 +744,12 @@ IElement。两类容器复用 GraphicElements.dll `0x75035ef0` 的
 进入容器时已确认的 Map 键。构造 Scene 用例让组内地图框与容器
 列表中的独立地图框引用同一个 Map，验证各自的新键和容器终点。
 首次定义的内嵌 Map 与目标软件人工验证仍待补。
+
+### 三维图形容器中的独立装饰框
+
+10.1 esriCarto 类型库声明 MapSurroundFrame
+`83FFCAE1-EDCA-11D0-8683-0000F8751720` 实现 IElement。
+两个三维容器的元素槽复用 MapElements.dll 10.1.0.3035
+`0x7957b870` 对应的[装饰框读取器](mxd-page-layout-surround-20261118.md)。
+构造 Scene 用例覆盖 v0–v3 的装饰框、同键回引及容器终点。
+ArcMap/QGIS 实档目视尚未进行。

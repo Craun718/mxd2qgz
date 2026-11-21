@@ -425,3 +425,37 @@ fn group_element_reads_nested_map_frame_and_rolls_back_truncation() {
     assert!(layout.groups.is_empty());
     assert!(layout.stop.is_some());
 }
+
+#[test]
+fn scene_graphics_consumes_surround_frames_and_references() {
+    use mxd2qgz::layers::graphics_3d::{GRAPHICS_LAYER_3D_CLASS_ID, read_graphics_3d_layer_10_1};
+    use mxd2qgz::storage::object_refs::RefTable10_1;
+    use mxd2qgz::stream::reader::Reader;
+
+    for version in 0..=3 {
+        let frame = surround_frame(version);
+        let mut bytes = 1_u16.to_le_bytes().to_vec();
+        bytes.extend([2, 0, 0, 0, 0, 0]); // 空容器名称。
+        bytes.extend([0; 8 + 16 + 16]); // 定宽前缀、关联图层和包络。
+        bytes.extend(2_u32.to_le_bytes());
+        bytes.extend(&frame);
+        bytes.extend(&frame[..20]);
+        let end = bytes.len();
+        bytes.push(0xa5);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let layer =
+            read_graphics_3d_layer_10_1(&GRAPHICS_LAYER_3D_CLASS_ID, &mut reader, 4096, &mut refs)
+                .unwrap();
+        assert_eq!(
+            layer.elements[0].surround_frame.as_ref().unwrap().version,
+            version
+        );
+        assert!(matches!(
+            layer.elements[1].element.entry,
+            ObjectEntry10_1::BackReference { key: 7, .. }
+        ));
+        assert_eq!(reader.position(), end);
+    }
+}

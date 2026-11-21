@@ -42,7 +42,7 @@ pub enum SurroundFrameBounds10_1 {
 }
 
 // 调用者持有试读游标及临时键表；这里的失败由宿主回滚整个元素。
-pub(super) fn read_surround_frame_10_1(
+pub(crate) fn read_surround_frame_10_1(
     reader: &mut Reader<'_>,
     region_offset: usize,
     limit: usize,

@@ -12,6 +12,9 @@ use crate::maps::page_layout_prefix::{MAP_FRAME_CLASS_ID, read_map_frame};
 use crate::maps::rectangle_element::{
     RECTANGLE_ELEMENT_CLASS_ID, RectangleElement10_1, read_rectangle_element_10_1,
 };
+use crate::maps::surround_frame::{
+    MAP_SURROUND_FRAME_CLASS_ID, MapSurroundFrame10_1, read_surround_frame_10_1,
+};
 use crate::objects::element_body::{ElementBody10_1, read_element_body_of_class_10_1};
 use crate::objects::envelope::{
     ENVELOPE_CLASS_ID, Envelope10_1, SpatialReferenceEntry10_1, read_envelope_10_1,
@@ -46,6 +49,8 @@ pub struct Graphics3dElement10_1 {
     pub group: Option<Box<GroupElement10_1>>,
     /// 地图框的新对象体；对象头仍保存在 element.entry。
     pub map_frame: Option<Box<MapFrame10_1>>,
+    /// 装饰框的新对象体；对象头仍保存在 element.entry。
+    pub surround_frame: Option<Box<MapSurroundFrame10_1>>,
     pub globe_properties: Option<GlobeElementProperties10_1>,
 }
 
@@ -191,87 +196,60 @@ pub fn read_graphics_3d_layer_10_1(
     let (element_count, iterations) = read_count(&mut r, 16)?;
     let mut elements = Vec::new();
     for _ in 0..iterations {
-        let (element, rectangle, group, map_frame) = match read_header_10_1(&mut r.clone())? {
-            ObjectHeader::Object {
-                class_id: RECTANGLE_ELEMENT_CLASS_ID,
-                key,
-            } if !refs.contains(key) => {
-                let rectangle = read_rectangle_element_10_1(&mut r, max, &mut refs)?;
-                (
-                    Graphics3dObject10_1 {
-                        entry: ObjectEntry10_1::NewObject {
-                            class_id: RECTANGLE_ELEMENT_CLASS_ID,
-                            key,
-                        },
-                        body: None,
-                    },
-                    Some(Box::new(rectangle)),
-                    None,
-                    None,
-                )
-            }
-            ObjectHeader::Object {
-                class_id: GROUP_ELEMENT_CLASS_ID,
-                key,
-            } if !refs.contains(key) => {
-                let group = read_group_element_10_1(&mut r, 0, max, &mut refs, &|key| {
-                    table.contains_map(key)
-                })?;
-                (
-                    Graphics3dObject10_1 {
-                        entry: ObjectEntry10_1::NewObject {
-                            class_id: GROUP_ELEMENT_CLASS_ID,
-                            key,
-                        },
-                        body: None,
-                    },
-                    None,
-                    Some(Box::new(group)),
-                    None,
-                )
-            }
-            ObjectHeader::Object {
-                class_id: MAP_FRAME_CLASS_ID,
-                key,
-            } if !refs.contains(key) => {
-                let frame =
-                    read_map_frame(&mut r, 0, max, &mut refs, &|key| table.contains_map(key))?;
-                (
-                    Graphics3dObject10_1 {
-                        entry: ObjectEntry10_1::NewObject {
-                            class_id: MAP_FRAME_CLASS_ID,
-                            key,
-                        },
-                        body: None,
-                    },
-                    None,
-                    None,
-                    Some(Box::new(frame)),
-                )
-            }
-            _ => (
-                read_object(&mut r, &mut refs, |cls, r, refs| {
-                    let body = read_element_body_of_class_10_1(cls, r, max, refs)?;
+        let header = read_header_10_1(&mut r.clone())?;
+        let mut item = Graphics3dElement10_1 {
+            element: Graphics3dObject10_1 {
+                entry: ObjectEntry10_1::Null,
+                body: None,
+            },
+            rectangle: None,
+            group: None,
+            map_frame: None,
+            surround_frame: None,
+            globe_properties: None,
+        };
+        if let ObjectHeader::Object { class_id, key } = header
+            && !refs.contains(key)
+        {
+            let is_map = |key| table.contains_map(key);
+            item.element.entry = ObjectEntry10_1::NewObject { class_id, key };
+            match class_id {
+                RECTANGLE_ELEMENT_CLASS_ID => {
+                    item.rectangle = Some(Box::new(read_rectangle_element_10_1(
+                        &mut r, max, &mut refs,
+                    )?));
+                }
+                GROUP_ELEMENT_CLASS_ID => {
+                    item.group = Some(Box::new(read_group_element_10_1(
+                        &mut r, 0, max, &mut refs, &is_map,
+                    )?));
+                }
+                MAP_FRAME_CLASS_ID => {
+                    item.map_frame = Some(Box::new(read_map_frame(
+                        &mut r, 0, max, &mut refs, &is_map,
+                    )?));
+                }
+                MAP_SURROUND_FRAME_CLASS_ID => {
+                    item.surround_frame = Some(Box::new(read_surround_frame_10_1(
+                        &mut r, 0, max, &mut refs, &is_map,
+                    )?));
+                }
+                _ => {
+                    read_object_entry_10_1(&mut r, &mut refs)?;
+                    let body = read_element_body_of_class_10_1(&class_id, &mut r, max, &mut refs)?;
                     if let Some(stop) = body.stop() {
                         return Err(io::Error::new(ErrorKind::Unsupported, stop.describe()));
                     }
-                    Ok(body)
-                })?,
-                None,
-                None,
-                None,
-            ),
-        };
-        let globe_properties = (globe && version >= 2)
+                    item.element.body = Some(Box::new(body));
+                }
+            }
+        } else {
+            item.element.entry = read_object_entry_10_1(&mut r, &mut refs)?;
+        }
+        item.globe_properties = (globe && version >= 2)
             .then(|| read_globe_element_properties(&mut r, max, &mut refs, version))
             .transpose()?;
-        elements.push(Graphics3dElement10_1 {
-            element,
-            rectangle,
-            group,
-            map_frame,
-            globe_properties,
-        });
+        elements.push(item);
     }
     let tail = if globe {
         let extensions = read_layer_extensions_10_1(&mut r, max, &mut refs)?;
