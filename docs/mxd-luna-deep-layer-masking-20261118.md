@@ -183,3 +183,9 @@ SDK .NET 的 `USA_Data_ClipTools` 在 `/Maps:0x1a68` 定义 ProcessLayer v1（�
 ### NALayer 的有界对象体前缀
 
 上节 10.1 NetworkAnalyst.dll 的 RTTI 虚表 `0x7af9f48c` 将 GetClassID、Load、Save 绑定到 `0x7af210d0 / 0x7af1ffc0 / 0x7af20be0`。GetClassID 返回 `0x7af9b1d8` 的 NALayer CLSID。Load 在 `0x7af2000d..0x7af2002b` 读取 short，以有符号比较拒绝大于 3 的版本，随后在 `0x7af20031..0x7af200b8` 读取 AfCore String、三个 short 和两个 double。Rust 在已确认外层边界的图层条目中保留这些字段，剩余体仍按原边界保存。两份 SanFrancisco 工程均从键 31 读取名称 Route，前缀止于 `0x19a`，逐层遮罩仍停在组层键 4501。嵌套对象体及其共享键、ArcMap/QGIS 人工验收仍待验证。
+
+### NALayer 首个 IName 槽
+
+NALayer Load 在 `0x7af200da` 调到 `0x7af23830`，后者在 `0x7af2389f..0x7af238a8` 请求 IName `4BA33331-D55F-11D1-8882-0000F877762D`。两份实档首例均为 NetworkDatasetName，键 32。10.1.0.3035 GdbNetwork.dll（PE32，SHA-256 `36b1fcd7ea5951aea6c53e03855993a2fcbb2b78c3e8b068642a890c44a0995c`）的持久化虚表 `0x71196ca0` 由 GetClassID `0x71044240` 核对为 `8167FE6A-E992-4ECB-B6AE-E5DFE4655247`。Load `0x71044ff0` 读取有符号版本上限 1，在 `0x71045030 / 0x7104503a` 读两个字符串，随后在 `0x71045084 / 0x710450ae` 读 IDatasetName 和 IWorkspaceName 槽。两个 IID 来自 `0x71196700 / 0x71196d80`。
+
+本次复用 FeatureDatasetName 和 WorkspaceName 读取器。两个嵌套槽完整读取后才提交名称槽及其对象键。SanFrancisco 两份实档中键 31 的停止点由 `0x19a` 推进到 `0x370`。下一个对象和后续 UID 回引仍待接入，ArcMap/QGIS 人工验收未验证。

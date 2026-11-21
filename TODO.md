@@ -317,6 +317,7 @@
   - [ ] 定位额外组件提供的 Map 坐标变换持久化类。GEOCONTransformation 与 NADCON5Transformation 在 10.1 Desktop 介质中仅见注册声明。[实现清点](docs/mxd-terra-host-geo.md#101-安装介质的接口实现清点)
   - [ ] 补齐地图级标注属性后尚未支持的逐图层遮罩分支。剩余未确认图层类的接口分派及集合内尚不能读取的新对象体。
   - [ ] 读取 NALayer 中定义的嵌套对象并登记其键，以解析 SanFrancisco SDK 工程的后续回引。[实档停点与原生证据](docs/mxd-luna-deep-layer-masking-20261118.md#sanfrancisco-组图层的跨图层-uid-回引)
+  - [x] 接入 NALayer 首个 IName 槽的 NetworkDatasetName 及两个名称子槽。[名称体取证](docs/mxd-luna-deep-layer-masking-20261118.md#nalayer-首个-iname-槽)
   - [x] 接入有界 NALayer 的版本、名称和标量前缀。[原生读侧取证](docs/mxd-luna-deep-layer-masking-20261118.md#nalayer-的有界对象体前缀)
   - [x] 确认 NALayer 不消费逐图层遮罩，推进两份 SanFrancisco SDK 工程的停点。[接口分派取证](docs/mxd-luna-deep-layer-masking-20261118.md#nalayer-的接口分派)
   - [x] 保留逐图层遮罩循环首个失败原因及可识别的图层身份。[停点与回退取证](docs/mxd-luna-deep-layer-masking-20261118.md#grouplayer-子层遍历)

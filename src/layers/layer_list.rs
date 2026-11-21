@@ -974,7 +974,17 @@ fn read_entry(
                     .ok_or_else(|| invalid(offset, "NALayer 外层边界早于对象体"))?;
                 let mut region = trial.clone().read_region(len)?;
                 super::na_layer::read_na_layer_prefix_10_1(&mut region, max_bytes).and_then(
-                    |body| {
+                    |mut body| {
+                        match super::na_layer::read_na_network_name_10_1(
+                            &mut region,
+                            max_bytes,
+                            trial_table,
+                        ) {
+                            Ok(name) => body.network_name = Some(name),
+                            Err(error) => {
+                                parse_note = Some(format!("NALayer 名称槽未读取：{error}"))
+                            }
+                        }
                         trial.read_bytes(region.position())?;
                         Ok(Some(LayerBodyPrefix10_1::NaLayer(body)))
                     },
