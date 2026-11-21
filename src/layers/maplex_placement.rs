@@ -58,6 +58,20 @@ pub struct MaplexOffsetAlongLineFields10_1 {
     pub use_line_direction: i16,
 }
 
+impl MaplexOffsetAlongLineFields10_1 {
+    /// ArcMap 10.1 Carto 类型库中的 esriMaplexUnit 成员名。
+    pub fn distance_unit_name(&self) -> Option<&'static str> {
+        match self.distance_unit {
+            0 => Some("esriMaplexUnitMap"),
+            1 => Some("esriMaplexUnitMM"),
+            2 => Some("esriMaplexUnitInch"),
+            3 => Some("esriMaplexUnitPoint"),
+            4 => Some("esriMaplexUnitPercentage"),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaplexLabelStacking10_1 {
     pub version: i16,
@@ -360,6 +374,30 @@ fn read_rotation(reader: &mut Reader<'_>, max: usize) -> io::Result<MaplexRotati
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn offset_distance_unit_reports_the_type_library_names() {
+        let mut fields = MaplexOffsetAlongLineFields10_1 {
+            placement_method: 0,
+            label_anchor_point: 0,
+            distance: 0.0,
+            tolerance: 0.0,
+            distance_unit: 0,
+            use_line_direction: 0,
+        };
+        for (value, name) in [
+            (-1, None),
+            (0, Some("esriMaplexUnitMap")),
+            (1, Some("esriMaplexUnitMM")),
+            (2, Some("esriMaplexUnitInch")),
+            (3, Some("esriMaplexUnitPoint")),
+            (4, Some("esriMaplexUnitPercentage")),
+            (5, None),
+        ] {
+            fields.distance_unit = value;
+            assert_eq!(fields.distance_unit_name(), name);
+        }
+    }
 
     #[test]
     fn rotation_rejects_truncated_version_two_tail_and_unknown_versions() {

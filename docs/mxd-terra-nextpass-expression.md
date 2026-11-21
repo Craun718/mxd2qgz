@@ -310,3 +310,15 @@ IMaplexOffsetAlongLineProperties 的六组访问器。QI 返回的对象
 
 读取器和命令行采用这些属性名，保留枚举和开关的原始数值。
 单位枚举的语义映射、坐标与纸面距离换算以及目标软件人工验收仍开放。
+
+#### 沿线偏移的距离单位
+
+直接核对 10.1 Carto 类型库（SHA-256
+`8a70f4094c85b966ce0b0129ad7fa3d9562269c73f87e4f70cbc78c75775b578`）。
+用 `ITypeInfo::GetFuncDesc` 取得 IMaplexOffsetAlongLineProperties
+的 DistanceUnit setter（memid `0x60010008`），沿用户定义参数的
+`hreftype` 调用 `GetRefTypeInfo`，从 `GetVarDesc` 得到五个
+VT_I4 常量。0 为 esriMaplexUnitMap，1 为 esriMaplexUnitMM，
+2 为 esriMaplexUnitInch，3 为 esriMaplexUnitPoint，4 为
+esriMaplexUnitPercentage。命令行同时输出原值和成员名，未知值原样保留。
+测试覆盖五项和两侧未知值。比例基准、距离换算和 ArcMap/QGIS 人工验收仍开放。
