@@ -480,3 +480,34 @@ Save 在 `0x6ee7431f`、`0x6ee7433f`、`0x6ee74363` 按相同顺序
 `0x6ee7444f` 对位。解析器记录原始序列，包括重复值，并在循环前核验
 计数、资源限额和剩余字节。合成测试覆盖非空覆盖值、非空次序列表、
 截断回滚和后续规则回引。尚无实际 MXD 或目标软件的验证结果。
+
+### RepresentationRule 的 IBasicSymbol 持久化分派
+
+同版 DisplayRepresentation.dll 的 CLSID、GetClassID 和持久化虚表
+按下表对位。三类均由 RepresentationRule 的 IBasicSymbol 槽承载。
+
+| 类 | CLSID | GetClassID | IPersistStream 虚表 | Load / Save |
+| --- | --- | --- | --- | --- |
+| BasicFillSymbol | `BC38C464-8B02-4B0C-81D5-8237847A46CE` | `0x6ee356d0` | `0x6ee97e7c` | `0x6ee35790 / 0x6ee358a0` |
+| BasicLineSymbol | `ED8FB823-10FA-468B-8DCD-4327C0DF0B22` | `0x6ee369d0` | `0x6ee98184` | `0x6ee36a10 / 0x6ee36b20` |
+| BasicMarkerSymbol | `1BFF73A0-D134-4E88-8BC5-788BD351B12D` | `0x6ee38e20` | `0x6ee984a0` | `0x6ee38ee0 / 0x6ee39090` |
+
+Fill 和 Line 的 Load 依次读取有符号 short（上限 1）、内联效果列表、
+普通对象槽及尾 int32。槽的 IID 分别取自 `0x6ee97f34` 和
+`0x6ee981f0`，与 10.1 类型库的 IFillPattern、ILineStroke 一致。
+Fill 在构造期间使用 `0x6ee97f84` 的 SolidColorPattern CLSID，
+Line 的 ILineStroke 在类型库中由 LineStroke 实现。
+
+Marker 的 Load 读取有符号 short（上限 2）、内联效果列表、
+GraphicAttributeList、v2 起的 AfCore String、ExtraSafe 对象槽和
+尾 int32。ExtraSafe 槽在 `0x6ee38fa2` 调用
+`ExtraSafeReadObject`，请求 `0x6ee96b90` 的 IID。
+`0x6ee38f4b` 调用 DisplayLib.dll 的 GraphicAttributeList::Load。
+同版 DisplayLib.dll（SHA-256
+`e16c4c2610f20896005cf7ae56965dd60a61530b27daa3d566682f6ac11982c6`）
+的导出表和现有反编译将入口绑定到 `0x6ed896e0`。其布局为
+有符号 short（上限 1）、int32 计数，每项为 int32 属性标识加
+`Variant::Read(stream, true)`。解码后的值按属性标识应用到预置属性表。
+
+三类的非空效果及图案、线式和标记子对象仍待接入读取器。
+本轮没有进行实档、ArcMap 10.1 或 QGIS 人工验证。

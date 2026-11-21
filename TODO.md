@@ -471,6 +471,7 @@
       - [x] 接入 SymbolMimic 的空 IRepresentationRule 槽及两项标量。[原生持久化入口](docs/arcmap-10.1-dep-tail.md#symbolmimic-的持久化入口)
       - [x] 接入 SymbolMimic 中各集合为空的 RepresentationRule 对象体及同类键回引。[原生边界](docs/arcmap-10.1-dep-tail.md#symbolmimic-中的-representationrule)
       - [x] 读取 RepresentationRule 的非空覆盖值与次序列表。[原生循环布局](docs/arcmap-10.1-dep-tail.md#representationrule-的覆盖值和次序列表)
+      - [x] 定位 RepresentationRule 中三种 IBasicSymbol 的原生 Load 入口与子槽边界。[持久化分派](docs/arcmap-10.1-dep-tail.md#representationrule-的-ibasicsymbol-持久化分派)
       - [x] 接入 FeatureLayer 后继段 ㉖ 的 BarChartSymbol、PieChartSymbol、StackedChartSymbol 对象体。[原生读写](docs/arcmap-10.1-dep-tail.md#featurelayer-后继段的统计图符号)
       - [x] 接入 ISymbol 槽的 ColorSymbol、ColorRampSymbol 和 RasterRGBSymbol，并对位两个 SDK 工程的非空栅格渲染器。[原生读写和实档边界](docs/arcmap-10.1-dep-tail.md#featurelayer-符号槽的栅格和-wms-实现)
       - [x] 接入 ISymbol 槽的 URLPictureMarkerSymbol，复用内嵌 PictureMarkerSymbol 读取器。[WMSLayer 指令取证](docs/arcmap-10.1-dep-tail.md#featurelayer-符号槽的栅格和-wms-实现)
