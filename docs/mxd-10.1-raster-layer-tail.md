@@ -37,11 +37,27 @@ RGB 图层为 `/Maps:0x16e8c`。
 后一个 IEnvelope 在 `0x7c73c73c` 读入局部变量。Load 随后检查对象
 是否存在、能否从成员 `+0xb0` 取得接口以及包络是否为空，再进入
 `0x7c73c79e–0x7c73c8ef` 的处理。这里根据接口查询结果走不同分支，
-其中一支将查询得到的接口和包络一起传给 `0x7c760efe`，另一支
-从包络取出接口后调用成员上的方法。局部包络在 `0x7c73c90c` 释放。
-这些静态证据只确认了包络参与有条件的加载处理。仍须定位图层范围
-和空间参考 getter 的数据来源，才能把持久化包络投影到转换模型。
-目前保留原始读取结果，ArcMap 10.1 和 QGIS 的人工检查尚未进行。
+其中一支通过 IAT `0x7c7675d0` 调用导入的
+`CopySensorXformProperties(IGeodataXform *, IUnknown *)`，将查询得到的变换接口
+和局部包络作为实参。另一支从包络取出接口后调用成员上的方法。
+局部包络在 `0x7c73c90c` 释放。
+
+构造函数 `0x7c7367c0` 将完整对象 `+0x88` 设为 IGeoDataset 子对象，
+虚表位于 `0x7c76c114`。按 10.1 类型库槽位，空间参考与范围 getter 分别
+为 `0x7c73a0d0` 和 `0x7c73a170`。两者都检查 IGeoDataset 相对
+`+0xc4`，即完整对象 `+0x14c`，与 Load 的数据集成员 `+0xb0` 对位。
+范围 getter 在该成员为空时于 `0x7c73a29c` 返回空指针和 `S_FALSE`，
+有数据集时于 `0x7c73a1d2` 调用数据集范围槽，并在后续处理里读取
+IGeoDataset 相对 `+0xe0` 的空间参考成员。ILayer2 虚表
+`0x7c76c22c` 的 AOI 槽 `+0x18` 经 `0x7c74d9b0 → 0x7c737550`
+转调同一 IGeoDataset 范围 getter。
+
+v7 持久化包络位于完整对象 `+0x18c`。这里确认的范围 getter 在数据集
+缺失时返回空值，v13 包络则参与加载期的变换属性恢复。解析器继续保留
+两个包络的原始读取结果。数据集打开后的地理变换效果仍需在 ArcMap 10.1
+及 QGIS 中人工核对。
+
+## 对象分派与读取边界
 
 IGeodataXform 也是 ImageServerLayer v20 的请求接口；RGB 的 RasterIO tag 18
 另经 `0x7c99da10` 调 QueryInterface（IID `A9D01E68-…`，
