@@ -2101,6 +2101,13 @@ fn raster_node(
                 })
             })
         }
+        (Some(_), Some(_)) if prefix.names_stop.is_none() => {
+            diagnostics.push(format!(
+                "条目 {}：栅格包含多条非空名称，ArcMap 逐项打开并追加波段，单一数据源字段留空",
+                entry_index + 1
+            ));
+            None
+        }
         _ => None,
     };
     Some(LayerNode::Layer(Layer {
@@ -2520,12 +2527,18 @@ mod tests {
             );
             let second_name = with_empty_slots.names[1].clone();
             with_empty_slots.names.push(second_name);
+            let mut multi_diagnostics = Vec::new();
             let Some(LayerNode::Layer(multi)) =
-                raster_node(&with_empty_slots, index, &mut Vec::new())
+                raster_node(&with_empty_slots, index, &mut multi_diagnostics)
             else {
                 panic!("多名称栅格应保留图层节点");
             };
             assert!(multi.source.is_none());
+            assert!(
+                multi_diagnostics
+                    .iter()
+                    .any(|note| note.contains("逐项打开并追加波段"))
+            );
             let source = node.source.as_ref().expect("栅格名称应提供工作空间路径");
             assert!(source.path.as_deref().is_some_and(|path| !path.is_empty()));
             let name = match &raster.names[0].body {

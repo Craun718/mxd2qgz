@@ -1026,3 +1026,19 @@ AGSServerObjectName（CLSID `6C22971C-D450-4B4D-9422-EE96A40FACC5`）取证来�
 使用参考工程的已读栅格对象构造首尾空槽变体，验证模型仍给出同一
 数据源。再加入第二条非空名称，验证保留图层及多名称解析结果。
 未在 ArcMap 中人工打开这些变体。
+
+### 多名称栅格的波段追加
+
+复用本篇同 SHA-256 的 RasterLayer.dll。多项路径先对数组首项执行
+IName::Open（`0x7c73b9f8`），用 `0x7c74bb40` 对打开结果请求
+IID `31E6C041-EC46-11D1-8D21-0000F8780535`。成功时执行初始化，
+并以 `0x7c7145c0` 查询 `7ACA3D10-0629-11D2-8D24-0000F8780535`。
+10.1 esriDataSourcesRaster 类型库确认后者是 IRasterBandCollection，
+其 x86 虚表 `+0x14` 为 Clear，`+0x30` 为 AppendBand。
+指令 `0x7c73bb41` 清空集合，`0x7c73bb4d` 追加首个波段。
+随后 `0x7c73bb60..0x7c73bbca` 按原始顺序逐项调用剩余名称的 Open，
+对每个成功取得波段接口的结果调用 AppendBand（`0x7c73bbbe`）。
+
+因此模型中单一 DataSource 无法完整表达这条组合路径。解析保留各名称
+条目并报告原因，构造变体检查多名称诊断。集合成员在 ArcMap 中实际
+打开的结果及 QGIS 表达仍未验证。
