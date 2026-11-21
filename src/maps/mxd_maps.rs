@@ -1513,6 +1513,21 @@ fn annotate_chain_note(
                 format!("ITextSymbol 槽为回引（键 {key}）")
             }
         };
+        if let crate::layers::annotate_props::LelpTextSymbolSlot10_1::TextSymbol(body) =
+            &lelp.text_symbol
+            && let crate::objects::element_body::FontSlot10_1::StdFont(font) = &body.font
+        {
+            diagnostics.push(format!(
+                "条目 {}：标注类 LELP（键 {}）字体 StdFont（名称字节 {:02x?}，字符集 {:?}，字重 {}，字号 CY {}，样式位 0x{:02x}）",
+                entry_index + 1,
+                lelp.key,
+                font.name_bytes,
+                font.charset,
+                font.weight,
+                font.size_cy_lo,
+                font.flags,
+            ));
+        }
         // LELP 体内的停止（接线轮起 typed 槽链可达 ⑰ BOLP 体等，停止原因
         // 透传；风格循 TextSymbol 体内停止的 {:?} 透传）。
         let lelp_stop_note = match &lelp.stop {

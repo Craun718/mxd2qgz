@@ -82,3 +82,17 @@ IID `E156D7E5-22AF-11D3-9F99-00C04F6BC78E`。DisplayAnnotation
 图层开关分别为 `0, 0, -1`，对应三个标注类均为 `-1`，回归分别断言
 两级值。实际绘制还受图层可见性、比例尺等条件影响，ArcMap 与 QGIS
 人工验收尚未进行。
+
+## 标注字体
+
+LELP 的 ITextSymbol 槽进入 DisplayCore TextSymbol Load
+`0x6ebd0a60`，按[对象字段序](arcmap-10.1-element-bodies.md)
+进入 IFont 槽。新 StdFont 对象复用
+[oleaut32 持久化布局](arcmap-10.1-ole-stdfont.md)，输出名称原始字节、
+字符集、字重、字号 CY 和样式位。名称编码由写侧系统 ANSI 代码页决定，
+读取器保留原始字节。字体槽及文字符号槽的回引仍保留在解析对象中，
+未将其解析成共享字体的属性。
+
+参考 MXD 的 LELP 键 60、202、239 都到达 StdFont。三个名称均为字节
+`cb ce cc e5`，字符集为 134，字重为 400，字号分别为 12、8、16 磅。
+命令行回归逐条断言原始值。字体转换及 ArcMap/QGIS 人工验收尚未进行。

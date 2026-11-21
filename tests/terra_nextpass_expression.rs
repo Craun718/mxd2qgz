@@ -41,7 +41,7 @@ fn alpc_v2_null_has_no_id_before_a_back_reference() {
 }
 
 #[test]
-fn parse_reports_label_expressions_and_visibility_from_reference_mxd() {
+fn parse_reports_label_properties_from_reference_mxd() {
     let sample = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples/测试底图.mxd");
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_mxd2qgz"))
         .arg("parse")
@@ -50,10 +50,10 @@ fn parse_reports_label_expressions_and_visibility_from_reference_mxd() {
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    for (index, expression, layer_flag) in [
-        (1, "[JZDH]", 0),
-        (3, "[收购合同号]", 0),
-        (4, "[DJZQMC]", -1),
+    for (index, key, expression, layer_flag, size_cy) in [
+        (1, 60, "[JZDH]", 0, 120000),
+        (3, 202, "[收购合同号]", 0, 80000),
+        (4, 239, "[DJZQMC]", -1, 160000),
     ] {
         let layer_note = format!(
             "条目 {index}：图层标注开关（IGeoFeatureLayer::DisplayAnnotation 原始值 {layer_flag}）"
@@ -71,5 +71,10 @@ fn parse_reports_label_expressions_and_visibility_from_reference_mxd() {
             }),
             "未在条目 {index} 读到预期的表达式与标注类开关"
         );
+
+        let font_note = format!(
+            "条目 {index}：标注类 LELP（键 {key}）字体 StdFont（名称字节 [cb, ce, cc, e5]，字符集 Some(134)，字重 400，字号 CY {size_cy}，样式位 0x00）"
+        );
+        assert!(stdout.lines().any(|line| line.ends_with(&font_note)));
     }
 }

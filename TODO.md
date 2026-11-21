@@ -794,7 +794,7 @@
 - [ ] 将栅格渲染方式转换为 QGIS 渲染器。
 - [x] 解析标注表达式原文，沿 FeatureLayer → ALPC → LELP 输出，并用参考工程验证命令行入口。[字段证据及验证](docs/mxd-terra-nextpass-expression.md#parse-命令读取标注表达式)
 - [ ] 转换标注表达式。
-- [ ] 解析标注字体。
+- [x] 解析标注类 TextSymbol 中的 StdFont，输出字体名称原始字节、字符集、字重、字号和样式位。[解析与参考工程验证](docs/mxd-terra-nextpass-expression.md#标注字体)
 - [ ] 转换标注字体。
 - [ ] 解析标注位置/放置属性。
 - [ ] 转换标注位置/放置属性。
