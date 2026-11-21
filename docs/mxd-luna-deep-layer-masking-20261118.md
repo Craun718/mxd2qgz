@@ -207,3 +207,9 @@ NALayer Load 在 `0x7af200da` 调到 `0x7af23830`，后者在 `0x7af2389f..0x7af
 InMemoryClassBase 按已解析的 Fields 确定记录布局，`0x70d20220` 按 OID、可选带长度几何及其余字段的类型标签消费字节。当前保留已识别的类和字段定义，以及原始记录计数。记录值用于确定边界，尚未建模；未知标签或未展开的字段对象会停读，避免猜测长度。构造测试验证非空命名项和 UID 登记，并逐字节截断检查回退。
 
 两份 SanFrancisco SDK 工程的首个 NALayer 从 `0x512` 推进到 `0x73d9`，跨过工作空间命名项和后续 IName 槽。该处下一个对象是 NARouteSolver（键 246）。UID 键 358 的首次定义仍未读到，逐层遮罩停在 GroupLayer 键 4501。ArcMap/QGIS 人工验收仍未验证。
+
+### NARouteSolver 的版本与属性名前缀
+
+10.1.0.3035 NetworkAnalystSolvers.dll（PE32，SHA-256 `a88f590573b8115a05921d624258214f9ea73baa7eaa720d182b7b5c2798234c`）的 NARouteSolver 类标识是 `1A8AA208-3D4A-420F-B82C-F58194A72CB0`。主 QI `0x7b0fb850` 的基类入口 `0x7b122b10` 在 `0x7b122c39..0x7b122d13` 对 IPersistStream 返回对象 `+0x2c`。RTTI 对应虚表 `0x7b202cec`，Load 为 `0x7b0fcdf0`。补导出伪代码并以 objdump 核对，Load 先读有符号上限 3 的 short，再调用 `0x7b12ba00` 读取 BSTR 属性名及一个 short。这个 short 非零时额外读取一个集合，随后进入共用的下一集合。
+
+NALayer 已沿 NAContext 的求解器槽读出两份 SanFrancisco SDK 工程的 NARouteSolver v3、属性名 TravelTime 和标志 `0xffff`，首个 NALayer 停点由 `0x73d9` 推进到 `0x740b`。集合、后续求解器字段及 UID 键 358 的首次定义仍待读取。ArcMap/QGIS 人工验收仍未验证。

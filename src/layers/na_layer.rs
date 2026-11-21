@@ -10,7 +10,10 @@ use crate::objects::workspace_name::{
     WORKSPACE_NAME_CLASS_ID, WorkspaceNamePrefix10_1, read_workspace_name_body_10_1,
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
-use crate::stream::{native_string::read_string_10_1, reader::Reader};
+use crate::stream::{
+    native_string::{read_bstr_string_10_1, read_string_10_1},
+    reader::Reader,
+};
 use std::io;
 
 pub(crate) const NA_LAYER_CLASS_ID: [u8; 16] = [
@@ -164,12 +167,20 @@ const NETWORK_ANALYSIS_WORKSPACE_CLASS_ID: [u8; 16] = [
 ];
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct NaRouteSolverPrefix10_1 {
+    pub version: u16,
+    pub attribute_name: String,
+    pub extra_collection_flag: u16,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct NaContextPrefix10_1 {
     pub version: u16,
     pub name: String,
     pub workspace: ObjectEntry10_1,
     pub workspace_prefix: Option<Box<NetworkAnalysisWorkspacePrefix10_1>>,
     pub dataset: Option<(ObjectEntry10_1, Option<Box<NetworkDatasetName10_1>>)>,
+    pub solver: Option<(ObjectEntry10_1, Option<NaRouteSolverPrefix10_1>)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -237,12 +248,15 @@ pub(super) fn read_na_context_prefix_10_1(
                 _ => None,
             };
             let dataset = read_na_network_name_10_1(&mut trial, max, &mut keys)?;
+            // 求解器只读取已确认前缀，失败时保留其对象头与后续字节。
+            let solver = read_na_route_solver_prefix(&mut trial, max, &mut keys).ok();
             Some(Box::new(NaContextPrefix10_1 {
                 version,
                 name,
                 workspace,
                 workspace_prefix,
                 dataset: Some(dataset),
+                solver,
             }))
         }
         ObjectEntry10_1::NewObject { .. } => {
@@ -256,6 +270,51 @@ pub(super) fn read_na_context_prefix_10_1(
     *reader = trial;
     *refs = keys;
     Ok((context, body))
+}
+
+const NA_ROUTE_SOLVER_CLASS_ID: [u8; 16] = [
+    0x08, 0xa2, 0x8a, 0x1a, 0x4a, 0x3d, 0x0f, 0x42, 0xb8, 0x2c, 0xf5, 0x81, 0x94, 0xa7, 0x2c, 0xb0,
+];
+
+fn read_na_route_solver_prefix(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<(ObjectEntry10_1, Option<NaRouteSolverPrefix10_1>)> {
+    let mut trial = reader.clone();
+    let mut keys = refs.clone();
+    let entry = read_object_entry_10_1(&mut trial, &mut keys)?;
+    let body = match entry {
+        ObjectEntry10_1::NewObject {
+            class_id: NA_ROUTE_SOLVER_CLASS_ID,
+            ..
+        } => {
+            let version = trial.read_u16_le()?;
+            if version as i16 > 3 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "NARouteSolver 版本超过 3",
+                ));
+            }
+            let attribute_name = read_bstr_string_10_1(&mut trial, max)?;
+            let extra_collection_flag = trial.read_u16_le()?;
+            Some(NaRouteSolverPrefix10_1 {
+                version,
+                attribute_name,
+                extra_collection_flag,
+            })
+        }
+        ObjectEntry10_1::NewObject { .. } => {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "NAContext 求解器类未支持",
+            ));
+        }
+        _ => None,
+    };
+    *reader = trial;
+    *refs = keys;
+    Ok((entry, body))
 }
 
 fn read_na_workspace_prefix(
@@ -450,6 +509,37 @@ mod tests {
         assert_eq!(definition.uid.1.as_ref().unwrap().key, 40);
         assert!(refs.contains(38) && refs.contains(39) && refs.contains(40));
         assert!(refs.contains(35) && refs.contains(36) && refs.contains(37));
+        assert_eq!(reader.read_bytes(1).unwrap(), [0x7f]);
+    }
+
+    #[test]
+    fn route_solver_prefix_commits_only_after_the_flag() {
+        let mut bytes = NA_ROUTE_SOLVER_CLASS_ID.to_vec();
+        bytes.extend(246_u32.to_le_bytes());
+        bytes.extend(3_u16.to_le_bytes());
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend([b'T', 0, 0, 0]);
+        bytes.extend(0xffff_u16.to_le_bytes());
+        let mut refs = RefTable10_1::new();
+        for end in 0..bytes.len() {
+            let mut reader = Reader::new(&bytes[..end]);
+            assert!(read_na_route_solver_prefix(&mut reader, 64, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+        bytes.push(0x7f);
+        let mut reader = Reader::new(&bytes);
+        let (_, solver) = read_na_route_solver_prefix(&mut reader, 64, &mut refs).unwrap();
+        let solver = solver.unwrap();
+        assert_eq!(
+            (
+                solver.version,
+                solver.attribute_name.as_str(),
+                solver.extra_collection_flag
+            ),
+            (3, "T", 0xffff)
+        );
+        assert!(refs.contains(246));
         assert_eq!(reader.read_bytes(1).unwrap(), [0x7f]);
     }
 }
