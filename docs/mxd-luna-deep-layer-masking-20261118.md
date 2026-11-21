@@ -387,3 +387,7 @@ NetworkAnalyst.dll 10.1.0.3035 的 NALocator::Load `0x7af31e90` 使用 `0x7afa03
 ### NALayer 尾部的 IEnvelope
 
 NetworkAnalyst.dll 10.1.0.3035 的 Load `0x7af1ffc0` 在首组子图层及其后 short 之后，以普通 LoadObject 请求 `0x7af9f570` 的 IID `1B077914-38C5-11D0-92D2-00805F7C28B0`（IEnvelope），与 Save `0x7af20be0` 的对象槽对位。读取器复用 Envelope 体及空间参考分派，尾段完整后提交新键。构造测试覆盖非空范围和逐字节截断回滚。两份 SanFrancisco SDK 工程用于现有路径的回归验证。非空槽尚缺真实工程及 ArcMap/QGIS 人工验收。
+
+### NALayer 尾部的扩展序列
+
+NetworkAnalyst.dll 10.1.0.3035 的 Load `0x7af1ffc0` 在 IEnvelope 槽与 double 后调用 LayerLib 的 ExtensionHelper::LoadExtensions，Save `0x7af20be0` 在对应位置调用 SaveExtensions。复用同版 LayerLib `0x786c22e0` 对应的读取器，序列为 LONG 计数、每项八字节长度、CLSID 和体。已支持的扩展按声明边界解析，未知非空类保持尾段停止。构造测试覆盖 PropertySet 扩展、后续字符串边界及长度不一致时的回滚；非空 NALayer 扩展仍缺真实工程及 ArcMap/QGIS 人工验收。

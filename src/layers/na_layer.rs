@@ -1,5 +1,6 @@
 //! 已确认的 NetworkAnalyst.dll 10.1 NALayer 持久化前缀。
 
+use super::layer_extensions::{LayerExtensionEntry10_1, read_layer_extensions_10_1};
 use crate::maps::standalone_table::{
     STANDALONE_TABLE_CLASS_ID, StandaloneTablePrefix10_1, StandaloneTableStop10_1,
     read_standalone_table_prefix_10_1,
@@ -60,6 +61,7 @@ pub struct NaLayerTail10_1 {
     pub first_flag: u16,
     pub object: ObjectEntry10_1,
     pub envelope: Option<Box<Envelope10_1>>,
+    pub extensions: Vec<LayerExtensionEntry10_1>,
     pub scalar_bits: [u64; 3],
     pub name: String,
     pub second_flag: u16,
@@ -217,9 +219,7 @@ pub(super) fn read_na_layer_tail(
         _ => None,
     };
     let scalar = trial.read_f64_le()?.to_bits();
-    if trial.read_u32_le()? != 0 {
-        return Err(unsupported("NALayer 非空扩展序列未支持"));
-    }
+    let extensions = read_layer_extensions_10_1(&mut trial, max, &mut keys)?;
     let name = read_string_10_1(&mut trial, max)?;
     let second_flag = trial.read_u16_le()?;
     let scalar_bits = [
@@ -246,6 +246,7 @@ pub(super) fn read_na_layer_tail(
         first_flag,
         object,
         envelope,
+        extensions,
         scalar_bits,
         name,
         second_flag,
@@ -1787,6 +1788,33 @@ mod tests {
         assert!(refs.contains(38) && refs.contains(39) && refs.contains(40));
         assert!(refs.contains(35) && refs.contains(36) && refs.contains(37));
         assert_eq!(reader.read_bytes(1).unwrap(), [0x7f]);
+    }
+
+    #[test]
+    fn na_layer_tail_reads_bounded_property_set_extension() {
+        let mut bytes = vec![0; 2 + 16 + 8];
+        bytes.extend(1_u32.to_le_bytes());
+        let length_offset = bytes.len();
+        bytes.extend(6_u64.to_le_bytes());
+        bytes.extend(PROPERTY_SET_CLASS_ID);
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(0_u32.to_le_bytes());
+        push_string(&mut bytes, "Tail");
+        bytes.extend([0; 2 + 16]);
+
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        let body = read_na_layer_tail(&mut reader, 128, &mut refs, 0).unwrap();
+        assert_eq!(body.name, "Tail");
+        assert_eq!(body.extensions.len(), 1);
+        assert!(body.extensions[0].properties.is_some());
+        assert_eq!(reader.remaining(), 0);
+
+        bytes[length_offset..length_offset + 8].copy_from_slice(&7_u64.to_le_bytes());
+        let mut reader = Reader::new(&bytes);
+        assert!(read_na_layer_tail(&mut reader, 128, &mut refs, 0).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
     }
 
     #[test]
