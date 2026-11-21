@@ -586,7 +586,7 @@ fn read_page_frame(
 }
 
 /// 在宿主已建立的读事务中读取地图框，校验回引后使用同一张引用表。
-pub(super) fn read_map_frame(
+pub(crate) fn read_map_frame(
     reader: &mut Reader<'_>,
     start: usize,
     max_bytes: usize,

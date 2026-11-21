@@ -473,6 +473,7 @@
       - [x] 接入三维图形容器 IElement 槽中的 RectangleElement。[类型库和对象体证据](docs/arcmap-10.1-dep-tail.md#三维图形容器中的矩形元素)
       - [x] 接入三维图形容器 IElement 槽中的 GroupElement。[类型库和对象体证据](docs/arcmap-10.1-dep-tail.md#三维图形容器中的组元素)
       - [x] 验证三维组元素内 MapFrame 到共享表已确认 Map 的回引。[对象键证据](docs/arcmap-10.1-dep-tail.md#三维图形容器中的组元素)
+      - [x] 接入三维图形容器 IElement 槽中的独立 MapFrame。[类型库和对象体证据](docs/arcmap-10.1-dep-tail.md#三维图形容器中的独立地图框)
       - [ ] FeatureLayer 后继段 ㉖ 槽中未支持的 ISymbol 实现类体（已接入类和跨模块候选见[符号续研](docs/arcmap-10.1-dep-tail.md#featurelayer-符号槽的栅格和-wms-实现)）。
       - [x] 接入 SymbolMimic 的空 IRepresentationRule 槽及两项标量。[原生持久化入口](docs/arcmap-10.1-dep-tail.md#symbolmimic-的持久化入口)
       - [x] 接入 SymbolMimic 中各集合为空的 RepresentationRule 对象体及同类键回引。[原生边界](docs/arcmap-10.1-dep-tail.md#symbolmimic-中的-representationrule)

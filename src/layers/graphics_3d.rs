@@ -7,6 +7,8 @@ use crate::layers::layer_list::{LayerBodyPrefix10_1, read_complete_layer_body_10
 use crate::maps::group_element::{
     GROUP_ELEMENT_CLASS_ID, GroupElement10_1, read_group_element_10_1,
 };
+use crate::maps::map_frame::MapFrame10_1;
+use crate::maps::page_layout_prefix::{MAP_FRAME_CLASS_ID, read_map_frame};
 use crate::maps::rectangle_element::{
     RECTANGLE_ELEMENT_CLASS_ID, RectangleElement10_1, read_rectangle_element_10_1,
 };
@@ -42,6 +44,8 @@ pub struct Graphics3dElement10_1 {
     pub rectangle: Option<Box<RectangleElement10_1>>,
     /// 组的新对象体；对象头仍保存在 element.entry。
     pub group: Option<Box<GroupElement10_1>>,
+    /// 地图框的新对象体；对象头仍保存在 element.entry。
+    pub map_frame: Option<Box<MapFrame10_1>>,
     pub globe_properties: Option<GlobeElementProperties10_1>,
 }
 
@@ -187,7 +191,7 @@ pub fn read_graphics_3d_layer_10_1(
     let (element_count, iterations) = read_count(&mut r, 16)?;
     let mut elements = Vec::new();
     for _ in 0..iterations {
-        let (element, rectangle, group) = match read_header_10_1(&mut r.clone())? {
+        let (element, rectangle, group, map_frame) = match read_header_10_1(&mut r.clone())? {
             ObjectHeader::Object {
                 class_id: RECTANGLE_ELEMENT_CLASS_ID,
                 key,
@@ -202,6 +206,7 @@ pub fn read_graphics_3d_layer_10_1(
                         body: None,
                     },
                     Some(Box::new(rectangle)),
+                    None,
                     None,
                 )
             }
@@ -222,6 +227,26 @@ pub fn read_graphics_3d_layer_10_1(
                     },
                     None,
                     Some(Box::new(group)),
+                    None,
+                )
+            }
+            ObjectHeader::Object {
+                class_id: MAP_FRAME_CLASS_ID,
+                key,
+            } if !refs.contains(key) => {
+                let frame =
+                    read_map_frame(&mut r, 0, max, &mut refs, &|key| table.contains_map(key))?;
+                (
+                    Graphics3dObject10_1 {
+                        entry: ObjectEntry10_1::NewObject {
+                            class_id: MAP_FRAME_CLASS_ID,
+                            key,
+                        },
+                        body: None,
+                    },
+                    None,
+                    None,
+                    Some(Box::new(frame)),
                 )
             }
             _ => (
@@ -234,6 +259,7 @@ pub fn read_graphics_3d_layer_10_1(
                 })?,
                 None,
                 None,
+                None,
             ),
         };
         let globe_properties = (globe && version >= 2)
@@ -243,6 +269,7 @@ pub fn read_graphics_3d_layer_10_1(
             element,
             rectangle,
             group,
+            map_frame,
             globe_properties,
         });
     }
@@ -298,7 +325,6 @@ mod tests {
     use super::*;
     use crate::maps::group_element::GroupChild10_1;
     use crate::maps::map_object::MAP_CLASS_ID;
-    use crate::maps::page_layout_prefix::MAP_FRAME_CLASS_ID;
 
     #[test]
     fn scene_group_resolves_only_confirmed_map_keys() {
@@ -315,7 +341,7 @@ mod tests {
         let mut bytes = 1_u16.to_le_bytes().to_vec();
         bytes.extend([2, 0, 0, 0, 0, 0]); // 容器名称。
         bytes.extend([0; 8 + 16 + 16]); // 定宽头、关联图层、包络。
-        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend(2_u32.to_le_bytes());
         bytes.extend(GROUP_ELEMENT_CLASS_ID);
         bytes.extend(2_u32.to_le_bytes());
         bytes.extend(2_u16.to_le_bytes());
@@ -328,6 +354,14 @@ mod tests {
         bytes.extend(1_u32.to_le_bytes());
         bytes.extend([0; 8]); // 地图框的两个空集合。
         base_frame(&mut bytes);
+        base_frame(&mut bytes);
+
+        bytes.extend(MAP_FRAME_CLASS_ID);
+        bytes.extend(4_u32.to_le_bytes());
+        bytes.extend(4_u16.to_le_bytes());
+        bytes.extend(MAP_CLASS_ID);
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend([0; 8]);
         base_frame(&mut bytes);
 
         let mut refs = RefTable10_1::new();
@@ -357,7 +391,10 @@ mod tests {
             frame.prefix.map,
             ObjectEntry10_1::BackReference { key: 1, .. }
         ));
-        assert!(refs.contains(2) && refs.contains(3));
+        let direct = layer.elements[1].map_frame.as_ref().unwrap();
+        assert_eq!(direct.prefix.frame_key, 4);
+        assert_eq!(direct.prefix.map, frame.prefix.map);
+        assert!(refs.contains(2) && refs.contains(3) && refs.contains(4));
         assert_eq!(reader.remaining(), 0);
     }
 }
