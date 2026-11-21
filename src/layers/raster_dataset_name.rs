@@ -606,6 +606,7 @@ pub(super) fn read_name_slot(
                             | FGDB_RASTER_DATASET_NAME_CLASS_ID
                             | ACCESS_RASTER_DATASET_NAME_CLASS_ID
                             | SDE_RASTER_DATASET_NAME_CLASS_ID
+                            | NETCDF_RASTER_DATASET_NAME_CLASS_ID
                     ) =>
                 {
                     table.dataset_source(class_id, key).cloned()
@@ -1327,48 +1328,47 @@ mod tests {
 
     #[test]
     fn band_collection_back_reference_retains_source_and_indices() {
-        let mut refs = RefTable10_1::new();
-        refs.register(21);
-        refs.mark_dataset_source(
+        for parent_class in [
             RASTER_DATASET_NAME_CLASS_ID,
-            21,
-            "raster",
-            Some("data.gdb"),
-            None,
-        );
+            NETCDF_RASTER_DATASET_NAME_CLASS_ID,
+        ] {
+            let mut refs = RefTable10_1::new();
+            refs.register(21);
+            refs.mark_dataset_source(parent_class, 21, "raster", Some("data.gdb"), None);
 
-        let mut bytes = RASTER_BAND_COLLECTION_NAME_CLASS_ID.to_vec();
-        bytes.extend(22_u32.to_le_bytes());
-        bytes.extend(1_u16.to_le_bytes());
-        bytes.extend(encoded_string("集合"));
-        bytes.extend(RASTER_DATASET_NAME_CLASS_ID);
-        bytes.extend(21_u32.to_le_bytes());
-        bytes.extend(LONG_ARRAY_CLASS_ID);
-        bytes.extend(23_u32.to_le_bytes());
-        bytes.extend(1_u16.to_le_bytes());
-        bytes.extend(3_i32.to_le_bytes());
-        for index in [2_i32, 0, 2] {
-            bytes.extend(index.to_le_bytes());
+            let mut bytes = RASTER_BAND_COLLECTION_NAME_CLASS_ID.to_vec();
+            bytes.extend(22_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(encoded_string("集合"));
+            bytes.extend(parent_class);
+            bytes.extend(21_u32.to_le_bytes());
+            bytes.extend(LONG_ARRAY_CLASS_ID);
+            bytes.extend(23_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(3_i32.to_le_bytes());
+            for index in [2_i32, 0, 2] {
+                bytes.extend(index.to_le_bytes());
+            }
+            let first_end = bytes.len();
+            bytes.extend(RASTER_BAND_COLLECTION_NAME_CLASS_ID);
+            bytes.extend(22_u32.to_le_bytes());
+
+            let mut reader = Reader::new(&bytes);
+            read_name_slot(&mut reader, 1024, &mut refs, 16).unwrap();
+            assert_eq!(reader.position(), first_end);
+            let reference = read_name_slot(&mut reader, 1024, &mut refs, 16).unwrap();
+            assert!(matches!(
+                reference.entry,
+                ObjectEntry10_1::BackReference { key: 22, .. }
+            ));
+            let source = refs
+                .dataset_source(RASTER_BAND_COLLECTION_NAME_CLASS_ID, 22)
+                .unwrap();
+            assert_eq!(source.name.as_ref(), "raster");
+            assert_eq!(source.path.as_deref(), Some("data.gdb"));
+            assert_eq!(source.band_indices.as_deref(), Some(&[2, 0, 2][..]));
+            assert_eq!(reader.position(), bytes.len());
         }
-        let first_end = bytes.len();
-        bytes.extend(RASTER_BAND_COLLECTION_NAME_CLASS_ID);
-        bytes.extend(22_u32.to_le_bytes());
-
-        let mut reader = Reader::new(&bytes);
-        read_name_slot(&mut reader, 1024, &mut refs, 16).unwrap();
-        assert_eq!(reader.position(), first_end);
-        let reference = read_name_slot(&mut reader, 1024, &mut refs, 16).unwrap();
-        assert!(matches!(
-            reference.entry,
-            ObjectEntry10_1::BackReference { key: 22, .. }
-        ));
-        let source = refs
-            .dataset_source(RASTER_BAND_COLLECTION_NAME_CLASS_ID, 22)
-            .unwrap();
-        assert_eq!(source.name.as_ref(), "raster");
-        assert_eq!(source.path.as_deref(), Some("data.gdb"));
-        assert_eq!(source.band_indices.as_deref(), Some(&[2, 0, 2][..]));
-        assert_eq!(reader.position(), bytes.len());
     }
 
     #[test]

@@ -1192,3 +1192,10 @@ Load `0x7ae29e30` 在 `0x7ae29eca` 读取第五条 String 至
 构造测试覆盖名称 v1/v2、不同的首串与变量名、非空工作空间、回引
 及名称体截断回滚。维度选择仍由原始名称体保留，ArcMap 10.1 和
 QGIS 中的实际数据源打开结果尚未人工验证。
+
+NetCDFRasterDataset 的主 QI `0x7ae24f00` 在 `0x7ae24fad` 比较
+`0x7ae613d4` 的 IRasterBandCollection IID，匹配时返回完整对象
++0x10 的虚表 `0x7ae60f7c`。因此 RasterBandCollectionName 的
+Item 路径也能使用 NetCDF 父数据集。读取器在集合键下保留该父名称
+的已确认来源与索引数组。构造回归覆盖父名称回引后再次回引集合，
+并核对重复索引、顺序和后继边界。ArcMap/QGIS 实档目视尚未进行。
