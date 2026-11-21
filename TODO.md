@@ -675,6 +675,7 @@
       - [x] 核对 PCS 改变单位时复制原结构四条域串的路径。[原生取证](docs/mxd-terra-integrate-sr.md#pcs-改变单位时保留域串)
       - [x] 核对 PCS 的 IClone Clone 与 Assign 复用源域串辅助结构。[原生取证](docs/mxd-terra-integrate-sr.md#pcs-的-iclone-clone-与-assign)
       - [x] 核对 GCS Assign 复用源域串辅助结构的分支。[原生取证](docs/mxd-terra-integrate-sr.md#gcs-assign-的域串来源)
+      - [x] 核对 PCS/GCS 编辑查询在单例管理器缺失时保留原结构的早返回。[原生取证](docs/mxd-terra-integrate-sr.md#编辑前复制辅助结构的单例管理器)
       - [x] 定位 PCS/GCS 编辑前复制四条域串的单例管理器槽。[原生取证](docs/mxd-terra-integrate-sr.md#编辑前复制辅助结构的单例管理器)
       - [x] 核对 GCS Clone 对域串辅助结构的共享和 PCS/GCS 编辑接口的引用计数分支。[原生取证](docs/mxd-terra-integrate-sr.md#gcs-clone-共享域串与编辑接口的分离条件)
       - [x] 核对 PCS/GCS Define 对既有辅助结构的原位域串写入。[原生取证](docs/mxd-terra-integrate-sr.md#define-对现有辅助结构的写入)
