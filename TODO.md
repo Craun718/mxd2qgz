@@ -672,6 +672,7 @@
       - [x] 接入 ScaleText 和四类填充比例尺的九种已确认 INumberFormat 实现。[槽位取证](docs/mxd-terra-nextpass-scale.md#比例尺文本和填充比例尺数字格式槽)
       - [x] 定性 PCS/GCS 的第四条域串为 Usage，并确认两类 Define 的四槽赋值路径。[原生字段映射](docs/mxd-terra-integrate-sr.md#pcs-与-gcs-域串的属性映射)
       - [ ] 定位 PCS/GCS 域串在其他创建路径中的填充来源。
+      - [x] 核对 PCS 改变单位时复制原结构四条域串的路径。[原生取证](docs/mxd-terra-integrate-sr.md#pcs-改变单位时保留域串)
       - [x] 核对 PCS 的 IClone Clone 与 Assign 复用源域串辅助结构。[原生取证](docs/mxd-terra-integrate-sr.md#pcs-的-iclone-clone-与-assign)
       - [x] 核对 GCS Assign 复用源域串辅助结构的分支。[原生取证](docs/mxd-terra-integrate-sr.md#gcs-assign-的域串来源)
       - [x] 定位 PCS/GCS 编辑前复制四条域串的单例管理器槽。[原生取证](docs/mxd-terra-integrate-sr.md#编辑前复制辅助结构的单例管理器)
