@@ -16,7 +16,7 @@
 //!   字节（无终止零）；
 //! - 版本 >=2：4 组（4 字节长度 + 原样域字符串）+ 1 字节垂向域标志；
 //!   非零标志后读取垂向单位段；
-//! - 版本 >=4：2 字节标志 + 7 个 double；
+//! - 版本 >=3：7 个 double，版本 >=4 增加前导 2 字节标志；
 //! - 版本 >=5：再读 3 个 double；
 //! - 版本 >7：原生经 `0x719f1570` 记录 `0x80004005` 并退出，本读取器拒绝。
 //!
@@ -56,10 +56,10 @@ pub struct DomainBlock {
     pub vertical_unit: Option<VerticalUnitSegment>,
 }
 
-/// 版本 >=4 分支读取的标志与 7 个 double（对应原生 `0x719bae60(1)`）。
+/// 版本 >=3 分支读取的精度段（对应原生 `0x719bae60`）。
 #[derive(Debug, Clone, PartialEq)]
 pub struct PrecisionBlock {
-    /// 2 字节标志，原样保留、不校验。
+    /// v4 起的 2 字节标志，原样保留、不校验。v3 未写入标志，此处为 0。
     ///
     /// 保存侧为 `SgCoordRefGetPrecision` 结果 bit6（样本 0x0001），完整语义
     /// 未确认。
@@ -89,7 +89,7 @@ pub struct ProjectedCoordinateSystem10_1 {
     pub wkt: String,
     /// 版本 >=2 分支的域字符串块；版本 <2 时为 `None`。
     pub domains: Option<DomainBlock>,
-    /// 版本 >=4 分支的标志与 7 个 double；与 `domains` 同现。
+    /// 版本 >=3 的精度段，标志从 v4 起存在。
     pub precision: Option<PrecisionBlock>,
     /// 版本 >=5 分支再读的 3 个小端 double，仅原样保留（样本均为 0.001）。
     ///
@@ -169,9 +169,13 @@ pub fn read_projected_coordinate_system_10_1(
         None
     };
 
-    // 4. 版本 >=4：2 字节标志 + 7 个 double。
-    let precision = if save_version >= 4 {
-        let flags = trial.read_u16_le()?;
+    // 4. 版本 >=3：7 个 double，版本 >=4 额外读取前导标志。
+    let precision = if save_version >= 3 {
+        let flags = if save_version >= 4 {
+            trial.read_u16_le()?
+        } else {
+            0
+        };
         let mut doubles = [0.0; 7];
         for slot in &mut doubles {
             // 10 个 double 一律按小端 f64 原样保留，不解释、不判 NaN 或范围。

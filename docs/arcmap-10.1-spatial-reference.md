@@ -35,7 +35,7 @@
   4. `0x719bad00`（伪代码副本 `0x719bad00.c`）：连续写 4 个字符串，各为「4 字节长度 + BSTR 的 UTF-16LE 字节」；与 WKT 的窄字符路径不同。原 ANSI 转码说法由 [后续指令复核](mxd-terra-integrate-sr.md) 更正。
   5. 1 字节零。
   6. 文档版本非零时调用 `0x719bb150`（伪代码副本 `0x719bb150.c`）：参数 1 时先写 2 字节标志（`SgCoordRefGetPrecision` 结果 bit6），再写 7 个 double——`SgCoordRefGetXY` 3 个、`SgCoordRefGetZ` 2 个、`SgCoordRefGetM` 2 个，缺省值为 `DAT_71a66f20`；随后该保存方法再写 3 个 double（`this+0xf0/+0xf8/+0x100`）。`SgCoordRef*` 为 sg.dll 导入。
-- `0x719d3230`（伪代码副本 `0x719d3230.c`）为对应读取方法：读 2 字节 short，大于 7 时经 `0x719f1570` 记录 `0x80004005`（第二参数 `0x1c4`）并退出；读 4 字节长度与该字节数的文本并在栈缓冲（反编译显示 3072 字节）上补终止零，反编译未见长度上限检查；保存版本 <6 时 `pe_projcs_from_string`，≥6 时 `pe_hvcoordsys_from_string` 并可选重建垂向分量；版本 ≥2 时读域字符串（`0x719babf0`）与 1 字节标志，非零时读取垂向单位段（`0x719ea140`）；版本 ≥4 时 `0x719bae60(1)` 读回标志与 7 个 double；版本 ≥5 时直接读 3 个 double 到 `this+0xf0..+0x104`，更旧版本从标志位恢复。函数末尾调用 `this-0x30` 接口虚表 `+0x74`，其归属未闭合。
+- `0x719d3230`（伪代码副本 `0x719d3230.c`）为对应读取方法：读 2 字节 short，大于 7 时经 `0x719f1570` 记录 `0x80004005`（第二参数 `0x1c4`）并退出；读 4 字节长度与该字节数的文本并在栈缓冲（反编译显示 3072 字节）上补终止零，反编译未见长度上限检查；保存版本 <6 时 `pe_projcs_from_string`，≥6 时 `pe_hvcoordsys_from_string` 并可选重建垂向分量；版本 ≥2 时读域字符串（`0x719babf0`）与 1 字节标志，非零时读取垂向单位段（`0x719ea140`）；版本 3 时 `0x719bae60(0)` 读回 7 个 double，版本 ≥4 时 `0x719bae60(1)` 另读前导标志；版本 ≥5 时直接读 3 个 double 到 `this+0xf0..+0x104`，更旧版本从标志位恢复。函数末尾调用 `this-0x30` 接口虚表 `+0x74`，其归属未闭合。
 - MappingCoreLib.dll：图层类 CLSID 候选 `{7EE9C496-D123-11D0-8383-080009B996CC}` 数据位于 VA `0x79bfccf0`，Map 类 CLSID 候选 `{E6BDAA76-4D35-11D0-98BE-00805F7CED21}` 数据位于 VA `0x79bfce70`（均为本地静态计算；两个 GUID 同时见于 PageLayout/ArcMap.exe 等模块）。`0x79b85d00`（伪代码副本 `0x79b85d00.c`）以 `AfCreateInstance(&DAT_79bfccf0, ...)` 创建实例，随后 `OleRun` 与 `QueryInterface(&DAT_79bfd338)`；对象身份未闭合。字符串清单（`ev_f53dfc98f07362202aa7634bf1244b7ff1ecaf093fc10677baaea09e0179f67b`）含 PDB 残留装饰名 `?InstallWebMercator@@YAJPAUIMap@@PAPAUISpatialReference@@PAUtagVARIANT@@@Z` 与 `?UninstallWebMercator@@...`，支持「Map 级空间引用操作存在于该模块」的候选判断，但不构成调用链证明。
 - 字符串搜索（`ev_70b20d89...`、`ev_fa6e9c81...`）确认 `PROJCS` 不在 MappingCore.dll 与 MappingCoreLib.dll 的已定义字符串清单中；`PROJCS`/`GEOGCS` 常量在 pe.dll 的两个条目内（本地二进制筛选），与 WKT 由 pe API 生成的反编译观察一致。
 
@@ -281,3 +281,21 @@ Git 历史 `c17b324:docs/maps-analysis.md` 记录 10.8 历史样本 `/Maps:0x46.
 - Map 对象体与图层对象体触发空间参考子对象写出的调用点未定位；Map 级范围字段未定位。`{34B2EF83-F4AC-11D1-A245-080009B6F22B}`、`{D661941C-DA8A-11d3-9F60-00C04F6BDD7F}` 的类身份未确认；GEOGTRAN 文本的写出者未定位。[更新：Map 级范围字段已由写方向轮闭合（`0x24f64`）；`{34B2EF83}` 经第六轮与 AnnoLayer GetClassID `0x6b195e60` 证实为 FDOGraphicsLayer；`{D661941C}` 仍开放。]
 - 两个 `pe.dll` 条目（10.1.0.679）与 Desktop 10.1.0.3035 的组件版本关系未核对。
 - 本轮未运行 ArcMap；10.1 源工程在 ArcMap 中与转换结果在 QGIS 中的人工目视检查均未进行。上述布局不构成转换能力，也不得声称已经验证。
+
+
+## PCS v3 的无标志精度段
+
+复核 10.1.0.3035 的 x86 Geometry.dll，SHA-256
+`c57d154f207ee249adc69136574cf274771370ff93a15eb0be5682ce828f0d47`。
+PCS Load `0x719d3230` 在 `0x719d350e–0x719d351f` 将 v3 分派给
+`0x719bae60(0)`。辅助函数在 `0x719bae69–0x719bae79` 按参数跳过
+2 字节标志，再在 `0x719bae99–0x719baf4f` 连续读取七个 double。
+v4 起传 1，读取相同七项及前导标志。中间模型只在流中存在标志时
+填充该字段。
+
+SDK Java 的 Yellowstone 与 portland_shp 在根 Map 中均使用 PCS v3。
+解析精度段后，图层列表分别从 `/Maps:0x23f` 和 `/Maps:0x2bc`
+读取，计数分别为 1 和 2。两份工程均读到 `/Maps` 根尾，
+portland_shp 的 `/PageLayout` 也读到流尾。Yellowstone 仍停在
+`/PageLayout:0x406` 的打印设置段，待独立研究。合成测试覆盖 v3
+字段边界和精度段截断回滚。ArcMap 10.1 与 QGIS 人工验证尚未执行。

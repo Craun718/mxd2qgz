@@ -129,12 +129,12 @@ fn reads_455_byte_wkt_matching_reference_sample_length() {
 #[test]
 fn every_version_branch_reads_exactly_the_native_field_set() {
     // 字段存在性与原生 Load 分支一致：1（及无表证据的 0）仅 WKT；2 加
-    // 域块；4 加标志与 7 个 double；5/6/7 再加 3 个 double。
+    // 域块；3 加 7 个 double；4 加前导标志；5/6/7 再加 3 个 double。
     for (version, domains, precision, trailing) in [
         (0_u16, false, false, false),
         (1, false, false, false),
         (2, true, false, false),
-        (3, true, false, false),
+        (3, true, true, false),
         (4, true, true, false),
         (5, true, true, true),
         (6, true, true, true),
@@ -144,7 +144,11 @@ fn every_version_branch_reads_exactly_the_native_field_set() {
         if domains {
             push_domain_block(&mut bytes, &[b"a", b"", b"c", b""], 0x00);
         }
-        if precision {
+        if version == 3 {
+            for value in SAMPLE_SEVEN_DOUBLES {
+                bytes.extend(value.to_le_bytes());
+            }
+        } else if precision {
             push_precision_block(&mut bytes, 0x0001, &SAMPLE_SEVEN_DOUBLES);
         }
         if trailing {
@@ -161,6 +165,17 @@ fn every_version_branch_reads_exactly_the_native_field_set() {
             trailing,
             "version={version}"
         );
+        if let Some(block) = body.precision {
+            assert_eq!(block.flags, u16::from(version >= 4));
+            assert_eq!(block.doubles, SAMPLE_SEVEN_DOUBLES);
+        }
+        if version == 3 {
+            for end in body_length - 56..body_length {
+                let mut truncated = Reader::new(&bytes[..end]);
+                assert!(read_projected_coordinate_system_10_1(&mut truncated, 1024).is_err());
+                assert_eq!(truncated.position(), 0);
+            }
+        }
         if let Some(domain_block) = body.domains {
             assert_eq!(
                 domain_block.strings,
@@ -260,8 +275,8 @@ fn rejects_over_limit_lengths_before_reading_or_allocating() {
     );
     assert_eq!(reader.position(), 0);
 
-    // 域字符串长度同样受限额约束（版本 3 分支）。
-    let mut bytes = wkt_body(3, wkt);
+    // 域字符串长度同样受限额约束（版本 2 分支）。
+    let mut bytes = wkt_body(2, wkt);
     bytes.extend(1025_u32.to_le_bytes());
     let mut reader = Reader::new(&bytes);
     assert_eq!(
@@ -272,7 +287,7 @@ fn rejects_over_limit_lengths_before_reading_or_allocating() {
     );
     assert_eq!(reader.position(), 0);
     // 长度等于限额的第一个域字符串可读，其余域为空、垂向标志正常。
-    let mut bytes = wkt_body(3, wkt);
+    let mut bytes = wkt_body(2, wkt);
     bytes.extend(1024_u32.to_le_bytes());
     bytes.extend([0x41; 1024]);
     bytes.extend([0_u8; 12]); // 三个空域字符串的长度前缀。
@@ -303,7 +318,7 @@ fn rejects_non_ascii_and_nul_wkt_stricter_than_native() {
 #[test]
 fn preserves_domain_bytes_without_ascii_or_encoding_validation() {
     // 域字符串原样保留，包括非完整 UTF-16 和内嵌 NUL。
-    let mut bytes = wkt_body(3, "PROJCS[\"x\"]");
+    let mut bytes = wkt_body(2, "PROJCS[\"x\"]");
     push_domain_block(
         &mut bytes,
         &[b"\x80\x81\xd6\xd0", b"abc\0", b"", b"\xff"],

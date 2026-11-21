@@ -1320,7 +1320,11 @@ fn map_spatial_reference_to_model(
                     save_version: pcs.save_version,
                     domains: pcs.domains.as_ref().map(|domains| domains.strings.clone()),
                     vertical_flag: pcs.domains.as_ref().map(|domains| domains.vertical_flag),
-                    precision_flags: pcs.precision.as_ref().map(|p| p.flags),
+                    precision_flags: pcs
+                        .precision
+                        .as_ref()
+                        .filter(|_| pcs.save_version >= 4)
+                        .map(|p| p.flags),
                     precision_doubles: pcs.precision.as_ref().map(|p| p.doubles),
                     trailing_doubles: pcs.trailing_doubles,
                 }),
