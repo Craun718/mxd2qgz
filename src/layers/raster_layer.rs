@@ -890,8 +890,16 @@ mod tests {
                 }
             }
             pair.extend([0; 16]); // 空投影变换。
-            pair.extend(0_i32.to_le_bytes());
-            pair.extend(0_i32.to_le_bytes());
+            let points = (version == 17).then_some([[1.0_f64, 2.0], [3.0, 4.0]]);
+            let point_count = i32::from(points.is_some());
+            pair.extend(point_count.to_le_bytes());
+            pair.extend(point_count.to_le_bytes());
+            if let Some(points) = points {
+                for coordinate in points.into_iter().flatten() {
+                    pair.extend(coordinate.to_le_bytes());
+                }
+            }
+            let point_end = transform_offset + pair.len();
             pair.extend(ENVELOPE_CLASS_ID);
             pair.extend(73_u32.to_le_bytes());
             pair.extend(1_u16.to_le_bytes());
@@ -915,16 +923,24 @@ mod tests {
                 legacy.then_some(ObjectEntry10_1::Null)
             );
             assert_eq!(projective.geometry.body.is_some(), geometry);
-            assert_eq!(projective.point_count, 0);
+            assert_eq!(projective.point_count, point_count as usize);
+            assert_eq!(
+                projective.point_arrays,
+                points.map(|points| points.map(|point| vec![point]))
+            );
             assert!(tail.envelope_v13.is_some());
             assert!(refs.contains(60) && refs.contains(71) && refs.contains(73));
             assert_eq!(refs.contains(72), geometry);
 
-            let mut reader = Reader::new(&bytes[..missing_byte]);
-            let mut refs = RefTable10_1::new();
-            assert!(read_complete_bounded_raster_body_10_1(&mut reader, 4096, &mut refs).is_err());
-            assert_eq!(reader.position(), 0);
-            assert!(refs.is_empty());
+            for end in [point_end - 1, missing_byte] {
+                let mut reader = Reader::new(&bytes[..end]);
+                let mut refs = RefTable10_1::new();
+                assert!(
+                    read_complete_bounded_raster_body_10_1(&mut reader, 4096, &mut refs).is_err()
+                );
+                assert_eq!(reader.position(), 0);
+                assert!(refs.is_empty());
+            }
         }
     }
 

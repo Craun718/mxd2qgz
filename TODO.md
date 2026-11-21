@@ -304,6 +304,7 @@
   - [x] 接入 ProjectiveXform v1 的尾部控制点数组，保留早期读取器支持的非空几何集合体，见[取证](docs/mxd-10.1-geodata-xform.md#projectivexform-的读写差异)。
   - [x] 更正 ProjectiveXform 的 Save 槽身份并接入 Save、Load 两种布局里可识别的投影变换回引。[取证](docs/mxd-10.1-geodata-xform.md#projectivexform-的读写差异)
   - [ ] 闭合 ProjectiveXform 含空第三槽的旧档边界。[读写差异](docs/mxd-10.1-geodata-xform.md#projectivexform-的读写差异)
+  - [x] 验证有界 RasterLayer 中 ProjectiveXform 空第三槽后的非空控制点数组及截断回滚。[控制点与后继对象](docs/mxd-10.1-geodata-xform.md#projectivexform-的读写差异)
   - [x] 接入有界 RasterLayer 中 ProjectiveXform 的空第三槽，按完整尾段与声明边界判定。[边界取证](docs/mxd-10.1-geodata-xform.md#projectivexform-的读写差异)
   - [x] 接入 FrameXform v1–v7、Formosat2Xform v1、SPOT5Xform v1/v2 的数组槽与栅格记录，见 [传感器变换取证](docs/mxd-10.1-geodata-xform.md#frameformosat2-与-spot5)。
   - [x] 接入 CSMXform v1/v2 的版本、标志和两段窄字符状态原值，见 [Mensuration 取证](docs/mxd-10.1-geodata-xform.md#csmxform)。
