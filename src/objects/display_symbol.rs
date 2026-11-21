@@ -566,6 +566,23 @@ pub const SOLID_COLOR_PATTERN_CLASS_ID: [u8; 16] = [
     0x05, 0x2a, 0x74, 0x29, 0x99, 0x59, 0xe7, 0x43, 0x9f, 0xa1, 0x53, 0x70, 0xc6, 0x84, 0xf4, 0x9e,
 ];
 
+pub const BASIC_LINE_SYMBOL_CLASS_ID: [u8; 16] = [
+    0x23, 0xb8, 0x8f, 0xed, 0xfa, 0x10, 0x8b, 0x46, 0x8d, 0xcd, 0x43, 0x27, 0xc0, 0xdf, 0x0b, 0x22,
+];
+pub const LINE_STROKE_CLASS_ID: [u8; 16] = [
+    0x5c, 0x7f, 0x2a, 0xbd, 0x8b, 0x1d, 0x21, 0x42, 0xb3, 0xb0, 0x7f, 0x40, 0xb0, 0x30, 0x55, 0x03,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BasicLineSymbol10_1 {
+    pub version: u16,
+    pub effect_list_version: u16,
+    pub effect_count: i32,
+    pub stroke: ObjectEntry10_1,
+    pub stroke_body: Option<GraphicAttributeList10_1>,
+    pub trailing_value: i32,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct BasicFillSymbol10_1 {
     pub version: u16,
@@ -577,16 +594,50 @@ pub struct BasicFillSymbol10_1 {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct SolidColorPattern10_1 {
+pub struct GraphicAttributeList10_1 {
     pub version: u16,
     pub declared_count: i32,
     pub attributes: Vec<(i32, PropertyValueObjectStream10_1)>,
+}
+
+pub type SolidColorPattern10_1 = GraphicAttributeList10_1;
+
+fn read_graphic_attribute_list_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<Option<GraphicAttributeList10_1>> {
+    let version = read_signed_symbol_version(reader, 1, "GraphicAttributeList", reader.position())?;
+    let declared_count = read_i32_le(reader)?;
+    let count = declared_count.max(0) as usize;
+    if count > reader.remaining().min(max_bytes) / 20 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "GraphicAttributeList 属性计数超出剩余字节或限额",
+        ));
+    }
+    let mut attributes = Vec::new();
+    for _ in 0..count {
+        let id = read_i32_le(reader)?;
+        let value = match read_padded_variant_object_stream_10_1(reader, max_bytes, refs) {
+            Ok(value) => value,
+            Err(error) if error.kind() == ErrorKind::Unsupported => return Ok(None),
+            Err(error) => return Err(error),
+        };
+        attributes.push((id, value));
+    }
+    Ok(Some(GraphicAttributeList10_1 {
+        version,
+        declared_count,
+        attributes,
+    }))
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RepresentationRuleLayer10_1 {
     pub entry: ObjectEntry10_1,
     pub fill: Option<BasicFillSymbol10_1>,
+    pub line: Option<BasicLineSymbol10_1>,
 }
 
 fn read_basic_fill_symbol_10_1(
@@ -608,35 +659,10 @@ fn read_basic_fill_symbol_10_1(
             class_id: SOLID_COLOR_PATTERN_CLASS_ID,
             ..
         } if depth > 1 => {
-            let version = read_signed_symbol_version(
-                reader,
-                1,
-                "SolidColorPattern 属性表",
-                reader.position(),
-            )?;
-            let declared_count = read_i32_le(reader)?;
-            let count = declared_count.max(0) as usize;
-            if count > reader.remaining().min(max_bytes) / 20 {
-                return Err(io::Error::new(
-                    ErrorKind::InvalidData,
-                    "SolidColorPattern 属性计数超出剩余字节或限额",
-                ));
-            }
-            let mut attributes = Vec::new();
-            for _ in 0..count {
-                let id = read_i32_le(reader)?;
-                let value = match read_padded_variant_object_stream_10_1(reader, max_bytes, refs) {
-                    Ok(value) => value,
-                    Err(error) if error.kind() == ErrorKind::Unsupported => return Ok(None),
-                    Err(error) => return Err(error),
-                };
-                attributes.push((id, value));
-            }
-            Some(SolidColorPattern10_1 {
-                version,
-                declared_count,
-                attributes,
-            })
+            let Some(body) = read_graphic_attribute_list_10_1(reader, max_bytes, refs)? else {
+                return Ok(None);
+            };
+            Some(body)
         }
         ObjectEntry10_1::BackReference {
             class_id: SOLID_COLOR_PATTERN_CLASS_ID,
@@ -650,6 +676,46 @@ fn read_basic_fill_symbol_10_1(
         effect_count,
         pattern,
         pattern_body,
+        trailing_value: read_i32_le(reader)?,
+    }))
+}
+
+fn read_basic_line_symbol_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<Option<BasicLineSymbol10_1>> {
+    let version = read_signed_symbol_version(reader, 1, "BasicLineSymbol", reader.position())?;
+    let effect_list_version =
+        read_signed_symbol_version(reader, 2, "BasicLineSymbol 效果列表", reader.position())?;
+    let effect_count = read_i32_le(reader)?;
+    if effect_count > 0 {
+        return Ok(None);
+    }
+    let stroke = read_object_entry_10_1(reader, refs)?;
+    let stroke_body = match stroke {
+        ObjectEntry10_1::NewObject {
+            class_id: LINE_STROKE_CLASS_ID,
+            ..
+        } if depth > 1 => {
+            let Some(body) = read_graphic_attribute_list_10_1(reader, max_bytes, refs)? else {
+                return Ok(None);
+            };
+            Some(body)
+        }
+        ObjectEntry10_1::BackReference {
+            class_id: LINE_STROKE_CLASS_ID,
+            ..
+        } => None,
+        _ => return Ok(None),
+    };
+    Ok(Some(BasicLineSymbol10_1 {
+        version,
+        effect_list_version,
+        effect_count,
+        stroke,
+        stroke_body,
         trailing_value: read_i32_le(reader)?,
     }))
 }
@@ -700,7 +766,7 @@ fn read_representation_rule_body_10_1(
     let mut layers = Vec::new();
     for _ in 0..count {
         let entry = read_object_entry_10_1(reader, refs)?;
-        let fill = match entry {
+        let (fill, line) = match entry {
             ObjectEntry10_1::NewObject {
                 class_id: BASIC_FILL_SYMBOL_CLASS_ID,
                 ..
@@ -709,15 +775,25 @@ fn read_representation_rule_body_10_1(
                 else {
                     return Ok(None);
                 };
-                Some(body)
+                (Some(body), None)
+            }
+            ObjectEntry10_1::NewObject {
+                class_id: BASIC_LINE_SYMBOL_CLASS_ID,
+                ..
+            } if depth > 1 => {
+                let Some(body) = read_basic_line_symbol_10_1(reader, max_bytes, refs, depth - 1)?
+                else {
+                    return Ok(None);
+                };
+                (None, Some(body))
             }
             ObjectEntry10_1::BackReference {
-                class_id: BASIC_FILL_SYMBOL_CLASS_ID,
+                class_id: BASIC_FILL_SYMBOL_CLASS_ID | BASIC_LINE_SYMBOL_CLASS_ID,
                 ..
-            } => None,
+            } => (None, None),
             _ => return Ok(None),
         };
-        layers.push(RepresentationRuleLayer10_1 { entry, fill });
+        layers.push(RepresentationRuleLayer10_1 { entry, fill, line });
     }
     let override_count = read_i32_le(reader)?;
     let overrides_len = override_count.max(0) as usize;

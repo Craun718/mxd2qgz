@@ -526,3 +526,19 @@ GraphicAttributeList::Load 和 Save。图案体直接使用属性列表布局。
 规则、符号层、图案及属性值沿用同一对象键表。构造测试覆盖新填充符号、
 非空属性表、图案和符号层回引及逐字节截断回滚。其他图案类、效果成员、
 实际 MXD 和 ArcMap 10.1、QGIS 人工验证仍待完成。
+
+### BasicLineSymbol 与 LineStroke
+
+同版 DisplayRepresentation.dll 的 LineStroke
+（`BD2A7F5C-1D8B-4221-B3B0-7F40B0305503`）通过
+`0x6ee625a0` 输出 CLSID。持久化虚表 `0x6ee9a168` 的 Load
+`0x6ee62600` 与 Save `0x6ee62620` 分别经 IAT
+`0x6ee94184`、`0x6ee94188` 委派给 DisplayLib 的
+GraphicAttributeList::Load 和 Save。属性体与 SolidColorPattern
+复用同一读取器。BasicLineSymbol 的 `0x6ee36a89` 读取 ILineStroke，
+随后在 `0x6ee36acd` 读取尾 int32。
+
+已接入无效果成员且使用 LineStroke 的 BasicLineSymbol，保留属性 ID
+和 Variant 值，并沿用规则的对象键表。构造测试同时验证填充、线符号
+及各自子对象的回引、非空属性值和逐字节截断回滚。效果成员、实际 MXD
+及 ArcMap 10.1、QGIS 人工验证仍待完成。

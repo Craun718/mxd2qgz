@@ -2926,79 +2926,100 @@ fn symbol_mimic_preserves_rule_body_and_reuses_rule_key() {
 }
 
 #[test]
-fn representation_rule_reads_basic_fill_and_solid_pattern_keys() {
+fn representation_rule_reads_fill_and_line_attribute_lists_and_keys() {
     use mxd2qgz::objects::display_symbol::{
-        BASIC_FILL_SYMBOL_CLASS_ID, REPRESENTATION_RULE_CLASS_ID, SOLID_COLOR_PATTERN_CLASS_ID,
-        SYMBOL_MIMIC_CLASS_ID, SymbolSlotFull10_1, read_symbol_slot_full_10_1,
+        BASIC_FILL_SYMBOL_CLASS_ID, BASIC_LINE_SYMBOL_CLASS_ID, LINE_STROKE_CLASS_ID,
+        REPRESENTATION_RULE_CLASS_ID, SOLID_COLOR_PATTERN_CLASS_ID, SYMBOL_MIMIC_CLASS_ID,
+        SymbolSlotFull10_1, read_symbol_slot_full_10_1,
     };
     use mxd2qgz::objects::property_set::{PropertyValue10_1, PropertyValueObjectStream10_1};
     use mxd2qgz::storage::object_refs::ObjectEntry10_1;
 
-    let mut bytes = Vec::new();
-    push_entry(&mut bytes, &SYMBOL_MIMIC_CLASS_ID, 11);
-    bytes.extend([1, 0, 0, 0, 0, 0]);
-    push_entry(&mut bytes, &REPRESENTATION_RULE_CLASS_ID, 12);
-    bytes.extend([1, 0, 2, 0]);
-    for value in [0_i32, 0, 3] {
-        bytes.extend(value.to_le_bytes());
-    }
+    for (symbol_class, style_class) in [
+        (BASIC_FILL_SYMBOL_CLASS_ID, SOLID_COLOR_PATTERN_CLASS_ID),
+        (BASIC_LINE_SYMBOL_CLASS_ID, LINE_STROKE_CLASS_ID),
+    ] {
+        let mut bytes = Vec::new();
+        push_entry(&mut bytes, &SYMBOL_MIMIC_CLASS_ID, 11);
+        bytes.extend([1, 0, 0, 0, 0, 0]);
+        push_entry(&mut bytes, &REPRESENTATION_RULE_CLASS_ID, 12);
+        bytes.extend([1, 0, 2, 0]);
+        for value in [0_i32, 0, 3] {
+            bytes.extend(value.to_le_bytes());
+        }
 
-    push_entry(&mut bytes, &BASIC_FILL_SYMBOL_CLASS_ID, 13);
-    bytes.extend([1, 0, 2, 0, 0, 0, 0, 0]);
-    push_entry(&mut bytes, &SOLID_COLOR_PATTERN_CLASS_ID, 14);
-    bytes.extend(1_u16.to_le_bytes());
-    bytes.extend(1_i32.to_le_bytes());
-    bytes.extend(7_i32.to_le_bytes());
-    bytes.extend(3_u16.to_le_bytes());
-    bytes.extend([0; 14]);
-    bytes.extend(19_i32.to_le_bytes());
-    bytes.extend(20_i32.to_le_bytes());
+        push_entry(&mut bytes, &symbol_class, 13);
+        bytes.extend([1, 0, 2, 0, 0, 0, 0, 0]);
+        push_entry(&mut bytes, &style_class, 14);
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend(7_i32.to_le_bytes());
+        bytes.extend(3_u16.to_le_bytes());
+        bytes.extend([0; 14]);
+        bytes.extend(19_i32.to_le_bytes());
+        bytes.extend(20_i32.to_le_bytes());
 
-    push_entry(&mut bytes, &BASIC_FILL_SYMBOL_CLASS_ID, 15);
-    bytes.extend([1, 0, 2, 0, 0, 0, 0, 0]);
-    push_entry(&mut bytes, &SOLID_COLOR_PATTERN_CLASS_ID, 14);
-    bytes.extend(21_i32.to_le_bytes());
-    push_entry(&mut bytes, &BASIC_FILL_SYMBOL_CLASS_ID, 13);
-    for value in [0_i32, 0, 0, 22] {
-        bytes.extend(value.to_le_bytes());
-    }
+        push_entry(&mut bytes, &symbol_class, 15);
+        bytes.extend([1, 0, 2, 0, 0, 0, 0, 0]);
+        push_entry(&mut bytes, &style_class, 14);
+        bytes.extend(21_i32.to_le_bytes());
+        push_entry(&mut bytes, &symbol_class, 13);
+        for value in [0_i32, 0, 0, 22] {
+            bytes.extend(value.to_le_bytes());
+        }
 
-    let mut reader = Reader::new(&bytes);
-    let mut refs = RefTable10_1::new();
-    let SymbolSlotFull10_1::SymbolMimic {
-        rule_body: Some(rule),
-        trailing_value: 22,
-        ..
-    } = read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 4).unwrap()
-    else {
-        panic!("未读出符号层");
-    };
-    let first = rule.layers[0].fill.as_ref().unwrap();
-    assert_eq!(first.trailing_value, 20);
-    assert_eq!(
-        first.pattern_body.as_ref().unwrap().attributes,
-        vec![(
-            7,
-            PropertyValueObjectStream10_1::Inline(PropertyValue10_1::Raw4(19_i32.to_le_bytes()))
-        )]
-    );
-    let second = rule.layers[1].fill.as_ref().unwrap();
-    assert!(matches!(
-        second.pattern,
-        ObjectEntry10_1::BackReference { key: 14, .. }
-    ));
-    assert_eq!(second.trailing_value, 21);
-    assert!(matches!(
-        rule.layers[2].entry,
-        ObjectEntry10_1::BackReference { key: 13, .. }
-    ));
-    assert_eq!(reader.remaining(), 0);
-
-    for end in 0..bytes.len() {
-        let mut reader = Reader::new(&bytes[..end]);
+        let mut reader = Reader::new(&bytes);
         let mut refs = RefTable10_1::new();
-        assert!(read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 4).is_err());
-        assert_eq!(reader.position(), 0);
-        assert!(!refs.contains(14));
+        let SymbolSlotFull10_1::SymbolMimic {
+            rule_body: Some(rule),
+            trailing_value: 22,
+            ..
+        } = read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 4).unwrap()
+        else {
+            panic!("未读出符号层");
+        };
+        let attributes = if symbol_class == BASIC_FILL_SYMBOL_CLASS_ID {
+            let first = rule.layers[0].fill.as_ref().unwrap();
+            let second = rule.layers[1].fill.as_ref().unwrap();
+            assert_eq!(first.trailing_value, 20);
+            assert_eq!(second.trailing_value, 21);
+            assert!(matches!(
+                second.pattern,
+                ObjectEntry10_1::BackReference { key: 14, .. }
+            ));
+            &first.pattern_body.as_ref().unwrap().attributes
+        } else {
+            let first = rule.layers[0].line.as_ref().unwrap();
+            let second = rule.layers[1].line.as_ref().unwrap();
+            assert_eq!(first.trailing_value, 20);
+            assert_eq!(second.trailing_value, 21);
+            assert!(matches!(
+                second.stroke,
+                ObjectEntry10_1::BackReference { key: 14, .. }
+            ));
+            &first.stroke_body.as_ref().unwrap().attributes
+        };
+        assert_eq!(
+            attributes,
+            &vec![(
+                7,
+                PropertyValueObjectStream10_1::Inline(PropertyValue10_1::Raw4(
+                    19_i32.to_le_bytes()
+                ))
+            )]
+        );
+        assert!(matches!(
+            rule.layers[2].entry,
+            ObjectEntry10_1::BackReference { key: 13, .. }
+        ));
+        assert_eq!(reader.remaining(), 0);
+
+        for end in 0..bytes.len() {
+            let mut reader = Reader::new(&bytes[..end]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 4).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(!refs.contains(14));
+        }
     }
 }
