@@ -318,6 +318,7 @@
   - [ ] 补齐地图级标注属性后尚未支持的逐图层遮罩分支。剩余未确认图层类的接口分派及集合内尚不能读取的新对象体。
   - [ ] 读取 NALayer 中定义的嵌套对象并登记其键，以解析 SanFrancisco SDK 工程的后续回引。[实档停点与原生证据](docs/mxd-luna-deep-layer-masking-20261118.md#sanfrancisco-组图层的跨图层-uid-回引)
   - [x] 接入 NALayer 的 NAContext、NetworkAnalysisWorkspace 三字符串和 IPropertySet 前缀，两份 SanFrancisco 实档的体停点由 `0x370` 推进到 `0x512`。[上下文与工作空间前缀](docs/mxd-luna-deep-layer-masking-20261118.md#nalayer-的上下文与工作空间前缀)
+  - [x] 读取网络分析工作空间的命名项、已确认 NAClass 记录边界及定义体。[原生取证](docs/mxd-luna-deep-layer-masking-20261118.md#网络分析工作空间命名项与-naclass)
   - [x] 接入 NALayer 首个 IName 槽的 NetworkDatasetName 及两个名称子槽。[名称体取证](docs/mxd-luna-deep-layer-masking-20261118.md#nalayer-首个-iname-槽)
   - [x] 接入有界 NALayer 的版本、名称和标量前缀。[原生读侧取证](docs/mxd-luna-deep-layer-masking-20261118.md#nalayer-的有界对象体前缀)
   - [x] 确认 NALayer 不消费逐图层遮罩，推进两份 SanFrancisco SDK 工程的停点。[接口分派取证](docs/mxd-luna-deep-layer-masking-20261118.md#nalayer-的接口分派)

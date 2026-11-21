@@ -26,6 +26,7 @@ pub mod layer_list;
 pub mod legend_format;
 pub mod legend_item;
 pub mod legend_item_family;
+pub(crate) mod na_class;
 pub mod na_layer;
 pub mod patch;
 pub mod process_layer;

@@ -169,6 +169,7 @@ pub struct NaContextPrefix10_1 {
     pub name: String,
     pub workspace: ObjectEntry10_1,
     pub workspace_prefix: Option<Box<NetworkAnalysisWorkspacePrefix10_1>>,
+    pub dataset: Option<(ObjectEntry10_1, Option<Box<NetworkDatasetName10_1>>)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -177,6 +178,16 @@ pub struct NetworkAnalysisWorkspacePrefix10_1 {
     pub strings: [String; 3],
     pub properties: ObjectEntry10_1,
     pub property_set: Option<Box<PropertySetObjectStream10_1>>,
+    pub named_sets: Vec<NaNamedSet10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NaNamedSet10_1 {
+    pub name: String,
+    pub class: (
+        ObjectEntry10_1,
+        Option<Box<super::na_class::NaClassBody10_1>>,
+    ),
 }
 
 /// 读取目前已确认的上下文和工作空间前缀，游标停在首个未读字段。
@@ -225,11 +236,13 @@ pub(super) fn read_na_context_prefix_10_1(
                 }
                 _ => None,
             };
+            let dataset = read_na_network_name_10_1(&mut trial, max, &mut keys)?;
             Some(Box::new(NaContextPrefix10_1 {
                 version,
                 name,
                 workspace,
                 workspace_prefix,
+                dataset: Some(dataset),
             }))
         }
         ObjectEntry10_1::NewObject { .. } => {
@@ -278,11 +291,26 @@ fn read_na_workspace_prefix(
         }
         _ => None,
     };
+    let count = usize::try_from(reader.read_u32_le()? as i32)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "NALayer 命名项数量为负"))?;
+    if count > reader.remaining() / 10 {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "NALayer 命名项数量超出可读范围",
+        ));
+    }
+    let mut named_sets = Vec::with_capacity(count);
+    for _ in 0..count {
+        let name = read_string_10_1(reader, max)?;
+        let class = super::na_class::read_na_class_10_1(reader, max, keys)?;
+        named_sets.push(NaNamedSet10_1 { name, class });
+    }
     Ok(NetworkAnalysisWorkspacePrefix10_1 {
         version,
         strings,
         properties,
         property_set,
+        named_sets,
     })
 }
 
@@ -348,7 +376,7 @@ mod tests {
     }
 
     #[test]
-    fn context_prefix_reads_workspace_property_set_transactionally() {
+    fn context_prefix_reads_workspace_named_class_and_uid_transactionally() {
         fn push_string(bytes: &mut Vec<u8>, value: &str) {
             let utf16 = value.encode_utf16().collect::<Vec<_>>();
             let cb = u32::try_from((utf16.len() + 1) * 2).unwrap();
@@ -374,6 +402,26 @@ mod tests {
         bytes.extend(37_u32.to_le_bytes());
         bytes.extend(1_u16.to_le_bytes());
         bytes.extend(0_u32.to_le_bytes());
+        bytes.extend(1_u32.to_le_bytes()); // 命名项计数。
+        push_string(&mut bytes, "routes");
+        bytes.extend(super::super::na_class::NA_CLASS_CLASS_ID);
+        bytes.extend(38_u32.to_le_bytes());
+        bytes.extend(2_u16.to_le_bytes());
+        push_string(&mut bytes, "");
+        push_string(&mut bytes, "routes");
+        bytes.extend([0; 16 + 4 + 4 + 4]); // 类标识、标量、要素类型、标记。
+        bytes.extend([0; 16 * 3 + 8]); // 三个空对象槽、标量与记录计数。
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(super::super::na_class::NA_CLASS_DEFINITION_CLASS_ID);
+        bytes.extend(39_u32.to_le_bytes());
+        bytes.extend(0_u16.to_le_bytes());
+        bytes.extend(0_u32.to_le_bytes()); // 空 BSTR。
+        bytes.extend(crate::layers::feature_layer_tail::UID_CLASS_ID);
+        bytes.extend(40_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend([0; 21]); // UID 标志、GUID、末尾整数。
+        bytes.extend([0; 16 + 4 * 3 + 2 * 2]); // 空 Fields、边界及空字段类型列表。
+        bytes.extend([0; 16]); // NAContext 的 IName 槽。
 
         for end in 0..bytes.len() {
             let mut refs = RefTable10_1::new();
@@ -396,6 +444,11 @@ mod tests {
         assert_eq!(workspace.version, 1);
         assert_eq!(workspace.strings[0], "Route");
         assert_eq!(workspace.property_set.as_ref().unwrap().count, 0);
+        let class = workspace.named_sets[0].class.1.as_ref().unwrap();
+        assert_eq!(class.class_base.name, "routes");
+        let definition = class.definition.1.as_ref().unwrap();
+        assert_eq!(definition.uid.1.as_ref().unwrap().key, 40);
+        assert!(refs.contains(38) && refs.contains(39) && refs.contains(40));
         assert!(refs.contains(35) && refs.contains(36) && refs.contains(37));
         assert_eq!(reader.read_bytes(1).unwrap(), [0x7f]);
     }

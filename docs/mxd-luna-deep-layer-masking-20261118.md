@@ -199,3 +199,11 @@ NALayer Load 在 `0x7af200da` 调到 `0x7af23830`，后者在 `0x7af2389f..0x7af
 实档工作空间版本 1 的三个字符串从 `0x3ac` 起，分别为 `Route`、`Route:{08932E9A-AAED-4D8A-842D-2B2B0AEC6080}` 和 `{08932E9A-AAED-4D8A-842D-2B2B0AEC6080}`。IPropertySet 对象头在 `0x46c`（键 37），其 ObjectStream 体在 `0x480` 开始，版本 1、计数 2，两个条目为 `CLSID` 和 `DATABASE`。Rust 现已读取这些已确认字段并事务性登记键 35、36、37；两份实档的首个 NALayer 体停点由 `0x370` 推进到命名项计数 `0x512`。
 
 计数之后每项是 AfCore String 加一个 NAClass 对象。第一项键 `polylinebarriers` 后的 NAClass 对象头在 `0x53c`（键 38），体起点 `0x550`。NAClass::Load `0x7aeffcb0` 先调用 GdbCoreLib `InMemoryClassBase::Load 0x70d192a0`，后者读取版本、两个字符串、16 字节 GUID、对象槽、Fields/Field 槽、记录计数及记录体，再返回 NAClass 读取自身版本和后续对象槽。两份实档中的跨层 UID 键 358 位于这些 NAClass/记录嵌套体之后，当前仍由外层有界未知区保留。因此上下文与前缀已接好，但尚未取得该 UID 的首次登记；后续回引、ArcMap/QGIS 人工验收仍未验证。
+
+### 网络分析工作空间命名项与 NAClass
+
+继续使用上述 10.1.0.3035 NetworkAnalyst.dll 和 GdbCoreLib.dll。补导出的伪代码在忽略目录 `temp/network-na/`，并与原始指令核对。GdbCoreLib 的 LoadWorkspace `0x70d31ca0` 在属性集后读取计数，依次读取每项的 AfCore String 与对象槽。实档该槽出现 NAClass `CF7AF4E6-4FBA-4FB2-A417-92B074B88C90`。其 Load `0x7aeffcb0` 委派 InMemoryClassBase `0x70d192a0`，随后读取自身 short 与 NAClassDefinition 槽。后者的 Load `0x7af022f0` 读取 BSTR、IUID、IFields、两个整数边界、两个 short 与字段类型项。
+
+InMemoryClassBase 按已解析的 Fields 确定记录布局，`0x70d20220` 按 OID、可选带长度几何及其余字段的类型标签消费字节。当前保留已识别的类和字段定义，以及原始记录计数。记录值用于确定边界，尚未建模；未知标签或未展开的字段对象会停读，避免猜测长度。构造测试验证非空命名项和 UID 登记，并逐字节截断检查回退。
+
+两份 SanFrancisco SDK 工程的首个 NALayer 从 `0x512` 推进到 `0x73d9`，跨过工作空间命名项和后续 IName 槽。该处下一个对象是 NARouteSolver（键 246）。UID 键 358 的首次定义仍未读到，逐层遮罩停在 GroupLayer 键 4501。ArcMap/QGIS 人工验收仍未验证。
