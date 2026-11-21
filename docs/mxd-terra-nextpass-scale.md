@@ -177,6 +177,24 @@ Rust 的访问器在流中存在该字段时返回布尔值，旧版保留字段
 `call` 或 `jmp`。间接调用者和 v5 字段的业务名仍待追踪。
 ArcMap/QGIS 实档目视验证待补。
 
+### 介质文档实测的 v5 short
+
+从 10.1 和 10.8 安装介质中的 MXD/MXT 打开 `/Maps`，按根计数和
+对象键表调用 Rust Map 后缀读取器，统计可到达的 MapSurround 比例尺
+对象体。只记录已经从对象体读取的字段，跳过无法到达的对象。
+
+| 介质 | 解析类型 | 基类版本 | 原始值 | 数量 |
+| --- | --- | ---: | --- | ---: |
+| 10.1 | DoubleAlternating | 6 | `0x0000` | 19 |
+| 10.8 | DoubleAlternating | 6 | `0x0000` | 19 |
+| 10.8 | ScaleLine | 6 | `0xffff` | 16 |
+
+还读到基类 v3/v4 的 DoubleAlternating、Hollow、SteppedScaleLine，
+这些对象体没有该字段。此次遍历没有读到基类版本恰为 v5 的对象。
+`0xffff` 证明该字段在实档中可以为非零，字段的业务含义仍需调用者
+或原生运行证据。10.8 介质的观察仅用于提供取证线索。本轮未在
+ArcMap 或 QGIS 中人工验证。
+
 ## 比例尺线数字格式槽
 
 Map.dll 10.1.0.3035 的 ScaleLine 和 SteppedScaleLine 均调用基类
