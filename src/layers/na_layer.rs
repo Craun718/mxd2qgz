@@ -242,11 +242,41 @@ const NA_NAMED_SET_CLASS_ID: [u8; 16] = [
     0x84, 0xfe, 0xb4, 0xf6, 0x02, 0x7a, 0x69, 0x49, 0x9e, 0x72, 0x11, 0xb4, 0xf8, 0x37, 0x71, 0x55,
 ];
 
+const NA_STREET_DIRECTIONS_AGENT_CLASS_ID: [u8; 16] = [
+    0xa1, 0xc9, 0x1b, 0xc2, 0x84, 0xb7, 0xf1, 0x48, 0x8f, 0xe7, 0xdf, 0x7f, 0x12, 0xf7, 0x7d, 0x72,
+];
+const NA_COMPACT_DIRECTIONS_AGENT_CLASS_ID: [u8; 16] = [
+    0x09, 0x0a, 0xab, 0xf2, 0xc3, 0x43, 0xe3, 0x4b, 0xbb, 0x74, 0x1b, 0x60, 0xe0, 0x4b, 0x3d, 0xd0,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NaDirectionsAgent10_1 {
+    pub version: i32,
+    pub mode: Option<i32>,
+    pub street_fields: Option<[i32; 2]>,
+    pub attribute: Option<String>,
+    pub locale: Option<String>,
+    pub profile: Option<(i32, String)>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum NaNamedSetObject10_1 {
+    Class(Box<super::na_class::NaClassBody10_1>),
+    Directions(NaDirectionsAgent10_1),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NaNamedSetItem10_1 {
+    pub name: String,
+    pub entry: ObjectEntry10_1,
+    pub body: Option<NaNamedSetObject10_1>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct NaNamedSetBody10_1 {
     pub version: u16,
     pub declared_count: i32,
-    pub items: Vec<NaNamedSet10_1>,
+    pub items: Vec<NaNamedSetItem10_1>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -571,14 +601,39 @@ fn read_na_named_set(
             let mut items = Vec::new();
             for _ in 0..count {
                 let name = read_string_10_1(&mut trial, max)?;
-                let class = super::na_class::read_na_class_10_1(&mut trial, max, &mut keys)?;
-                if matches!(class.0, ObjectEntry10_1::Null) {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "NamedSet 条目对象为空",
-                    ));
-                }
-                items.push(NaNamedSet10_1 { name, class });
+                let entry = read_object_entry_10_1(&mut trial, &mut keys)?;
+                let body = match entry {
+                    ObjectEntry10_1::BackReference { .. } => None,
+                    ObjectEntry10_1::NewObject {
+                        class_id: super::na_class::NA_CLASS_CLASS_ID,
+                        ..
+                    } => Some(NaNamedSetObject10_1::Class(Box::new(
+                        super::na_class::read_na_class_body(&mut trial, max, &mut keys)?,
+                    ))),
+                    ObjectEntry10_1::NewObject {
+                        class_id:
+                            class_id @ (NA_STREET_DIRECTIONS_AGENT_CLASS_ID
+                            | NA_COMPACT_DIRECTIONS_AGENT_CLASS_ID),
+                        ..
+                    } => Some(NaNamedSetObject10_1::Directions(read_na_directions_agent(
+                        &mut trial,
+                        max,
+                        class_id == NA_STREET_DIRECTIONS_AGENT_CLASS_ID,
+                    )?)),
+                    ObjectEntry10_1::Null => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "NamedSet 条目对象为空",
+                        ));
+                    }
+                    ObjectEntry10_1::NewObject { .. } => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::Unsupported,
+                            "NamedSet 条目对象体未支持",
+                        ));
+                    }
+                };
+                items.push(NaNamedSetItem10_1 { name, entry, body });
             }
             Some(NaNamedSetBody10_1 {
                 version,
@@ -597,6 +652,46 @@ fn read_na_named_set(
     *reader = trial;
     *refs = keys;
     Ok((entry, body))
+}
+
+/// Directions.dll 的街道和紧凑街道方向代理读侧分别为 0x6ea2d510、0x6ea224a0。
+fn read_na_directions_agent(
+    reader: &mut Reader<'_>,
+    max: usize,
+    street: bool,
+) -> io::Result<NaDirectionsAgent10_1> {
+    let version = reader.read_u32_le()? as i32;
+    if version > 2 {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "方向代理版本超过 2",
+        ));
+    }
+    let read_long = |reader: &mut Reader<'_>| reader.read_u32_le().map(|value| value as i32);
+    let mode = (version >= 0).then(|| read_long(reader)).transpose()?;
+    let street_before = (street && version >= 0)
+        .then(|| read_long(reader))
+        .transpose()?;
+    let attribute = (version >= 0)
+        .then(|| read_string_10_1(reader, max))
+        .transpose()?;
+    let street_fields = street_before
+        .map(|before| Ok::<_, io::Error>([before, read_long(reader)?]))
+        .transpose()?;
+    let locale = (version >= 1)
+        .then(|| read_string_10_1(reader, max))
+        .transpose()?;
+    let profile = (version >= 2)
+        .then(|| Ok::<_, io::Error>((read_long(reader)?, read_string_10_1(reader, max)?)))
+        .transpose()?;
+    Ok(NaDirectionsAgent10_1 {
+        version,
+        mode,
+        street_fields,
+        attribute,
+        locale,
+        profile,
+    })
 }
 
 fn read_na_context_post_solver_slot(
@@ -1115,10 +1210,56 @@ mod tests {
         let body = body.unwrap();
         assert_eq!(body.items[0].name, "Stops");
         assert!(matches!(
-            body.items[0].class.0,
+            body.items[0].entry,
             ObjectEntry10_1::BackReference { key: 178, .. }
         ));
         assert!(refs.contains(254));
+        assert_eq!(reader.remaining(), 0);
+    }
+
+    #[test]
+    fn named_set_reads_both_directions_agents_and_rolls_back() {
+        let mut bytes = NA_NAMED_SET_CLASS_ID.to_vec();
+        bytes.extend(255_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(2_i32.to_le_bytes());
+        for (class_id, key, street) in [
+            (NA_STREET_DIRECTIONS_AGENT_CLASS_ID, 256_u32, true),
+            (NA_COMPACT_DIRECTIONS_AGENT_CLASS_ID, 257, false),
+        ] {
+            push_string(&mut bytes, "Agent");
+            bytes.extend(class_id);
+            bytes.extend(key.to_le_bytes());
+            bytes.extend(2_i32.to_le_bytes());
+            bytes.extend(5_i32.to_le_bytes());
+            if street {
+                bytes.extend((-1_i32).to_le_bytes());
+            }
+            push_string(&mut bytes, "TravelTime");
+            if street {
+                bytes.extend(9_i32.to_le_bytes());
+            }
+            push_string(&mut bytes, "en-US");
+            bytes.extend(0_i32.to_le_bytes());
+            push_string(&mut bytes, "NA Desktop");
+        }
+        let mut refs = RefTable10_1::new();
+        for end in 0..bytes.len() {
+            let mut reader = Reader::new(&bytes[..end]);
+            assert!(read_na_named_set(&mut reader, 512, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+        let mut reader = Reader::new(&bytes);
+        let (_, set) = read_na_named_set(&mut reader, 512, &mut refs).unwrap();
+        for (item, fields) in set.unwrap().items.iter().zip([Some([-1, 9]), None]) {
+            let Some(NaNamedSetObject10_1::Directions(agent)) = item.body.as_ref() else {
+                panic!("应读到方向代理");
+            };
+            assert_eq!(agent.street_fields, fields);
+            assert_eq!(agent.attribute.as_deref(), Some("TravelTime"));
+        }
+        assert!(refs.contains(255) && refs.contains(256) && refs.contains(257));
         assert_eq!(reader.remaining(), 0);
     }
 

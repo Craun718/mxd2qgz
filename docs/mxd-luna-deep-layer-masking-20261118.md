@@ -261,3 +261,9 @@ NetworkAnalyst.dll 10.1.0.3035（SHA-256 `8c4ebaee71aad63c25616aa806674018479829
 同版 NetworkAnalyst.dll 的 NAContext::Load `0x7af12a10` 在定位器后两次请求位于 `0x7af9e76c` 的接口。NamedSet（CLSID `F6B4FE84-7A02-4969-9E72-11B4F8377155`）的持久化虚表 `0x7afa0ce4` 将读写定位到 `0x7af43920 / 0x7af43ba0`。Ghidra 导出显示 Load 读取 short（有符号上限 1）、LONG 计数，每项依次为 AfCore String 与请求 IUnknown 的普通对象槽（IID 常量 `0x7af98bac`）。读取器复用 NAClass 分派及共享回引表，条目截断或遇到未支持的新对象时回滚整个集合。
 
 两份 SanFrancisco SDK 工程在 `0x781b` 的首个集合键 254 中读出五个 NAClass 回引，到达 `0x791b` 的第二个集合。第二个集合键 255 的首项对象键 256 注册为 NAStreetDirectionsAgent，CLSID `C21BC9A1-B784-48F1-8FE7-DF7F12F77D72`。同版 Directions.dll（SHA-256 `5b06cec21feb2bcbe72d304f214058a1ce6902abc2391116f1c696f77857945f`）在 `0x6eadc130` 保存该 CLSID，代码引用位于 `0x6ea2d4c7` 和 `0x6ead53f7`。方向代理对象体及 ArcMap/QGIS 人工验收仍待验证。
+
+### 第二个 NamedSet 的方向代理
+
+同版 Directions.dll 的街道方向代理持久化虚表 `0x6eadc0d4` 指向 Load/Save `0x6ea2d510 / 0x6ea2d770`，紧凑街道方向代理虚表 `0x6eadb3ac` 指向 `0x6ea224a0 / 0x6ea226b0`。Ghidra 导出确认两者都使用有符号 LONG 版本。v0 起读取 LONG 和 AfCore String，街道方向类在字符串前后各多读一个 LONG。v1 起追加一个 AfCore String，v2 起追加 LONG 和 AfCore String。读取器限制到已核对的 v2，复用 NamedSet 的对象表事务。
+
+两份 SanFrancisco SDK 工程均读完第二个集合键 255 及方向代理键 256、257，停在 `0x7a73`。其后出现数值 5 及键 258 的 FeatureLayer，对应上层持久化边界仍待确认。构造测试覆盖两种代理及逐字节截断时的集合回滚。ArcMap/QGIS 人工验收尚未进行。

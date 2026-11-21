@@ -86,7 +86,7 @@ pub(super) fn read_na_class_10_1(
     Ok((entry, body))
 }
 
-fn read_na_class_body(
+pub(super) fn read_na_class_body(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     refs: &mut RefTable10_1,
