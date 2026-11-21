@@ -209,7 +209,9 @@ pub fn read_graphics_3d_layer_10_1(
                 class_id: GROUP_ELEMENT_CLASS_ID,
                 key,
             } if !refs.contains(key) => {
-                let group = read_group_element_10_1(&mut r, 0, max, &mut refs, &|_| false)?;
+                let group = read_group_element_10_1(&mut r, 0, max, &mut refs, &|key| {
+                    table.contains_map(key)
+                })?;
                 (
                     Graphics3dObject10_1 {
                         entry: ObjectEntry10_1::NewObject {
@@ -289,4 +291,73 @@ pub fn read_graphics_3d_layer_10_1(
         elements,
         tail,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::maps::group_element::GroupChild10_1;
+    use crate::maps::map_object::MAP_CLASS_ID;
+    use crate::maps::page_layout_prefix::MAP_FRAME_CLASS_ID;
+
+    #[test]
+    fn scene_group_resolves_only_confirmed_map_keys() {
+        let properties = |bytes: &mut Vec<u8>| {
+            bytes.extend(0_u16.to_le_bytes());
+            bytes.extend([2, 0, 0, 0, 0, 0].repeat(2)); // 两条空字符串。
+            bytes.extend([0; 4 + 16]); // 旧标量和空自定义属性。
+        };
+        let base_frame = |bytes: &mut Vec<u8>| {
+            bytes.extend([0; 2 + 2 + 16]); // 两段版本和空几何。
+            properties(bytes);
+            bytes.extend([0; 16 + 16 + 2]); // 空边框、背景和草稿模式。
+        };
+        let mut bytes = 1_u16.to_le_bytes().to_vec();
+        bytes.extend([2, 0, 0, 0, 0, 0]); // 容器名称。
+        bytes.extend([0; 8 + 16 + 16]); // 定宽头、关联图层、包络。
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend(GROUP_ELEMENT_CLASS_ID);
+        bytes.extend(2_u32.to_le_bytes());
+        bytes.extend(2_u16.to_le_bytes());
+        properties(&mut bytes);
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend(MAP_FRAME_CLASS_ID);
+        bytes.extend(3_u32.to_le_bytes());
+        bytes.extend(4_u16.to_le_bytes());
+        bytes.extend(MAP_CLASS_ID);
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend([0; 8]); // 地图框的两个空集合。
+        base_frame(&mut bytes);
+        base_frame(&mut bytes);
+
+        let mut refs = RefTable10_1::new();
+        refs.register(1);
+        let mut reader = Reader::new(&bytes);
+        let error =
+            read_graphics_3d_layer_10_1(&GRAPHICS_LAYER_3D_CLASS_ID, &mut reader, 4096, &mut refs)
+                .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::Unsupported);
+        assert_eq!(reader.position(), 0);
+        assert_eq!(refs.len(), 1);
+
+        refs.mark_map(1);
+        let layer =
+            read_graphics_3d_layer_10_1(&GRAPHICS_LAYER_3D_CLASS_ID, &mut reader, 4096, &mut refs)
+                .unwrap();
+        let [GroupChild10_1::MapFrame(frame)] = layer.elements[0]
+            .group
+            .as_ref()
+            .unwrap()
+            .children
+            .as_slice()
+        else {
+            panic!("预期组内地图框");
+        };
+        assert!(matches!(
+            frame.prefix.map,
+            ObjectEntry10_1::BackReference { key: 1, .. }
+        ));
+        assert!(refs.contains(2) && refs.contains(3));
+        assert_eq!(reader.remaining(), 0);
+    }
 }

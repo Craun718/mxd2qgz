@@ -730,6 +730,7 @@ IElement。图形容器的普通元素槽现复用 GraphicElements.dll
 `803577D2-F8A3-11D0-83AF-080009B996CC` 实现两类容器请求的
 IElement。两类容器复用 GraphicElements.dll `0x75035ef0` 的
 [组元素布局](mxd-page-layout-tail-20261118.md)，沿用容器对象键表
-和组递归上限。容器入口没有布局根 Map 上下文，因此组内需要
-该上下文的地图框回引仍待处理。构造 Scene 用例验证组内和容器
-列表内的同键回引及后继字节。ArcMap/QGIS 人工验证待补。
+和组递归上限。组内 MapFrame 复用已有 IMap 槽读取与回引校验，
+从进入容器时共享表已标记的 Map 键确认目标。构造 Scene 用例覆盖
+已确认 Map 键、只有普通登记的同键、失败回滚，以及组内和容器列表内
+的元素回引。容器中新出现的 Map 对象与 ArcMap/QGIS 人工验证待补。
