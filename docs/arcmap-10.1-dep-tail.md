@@ -713,3 +713,13 @@ objdump 指令与 PE 数据常量显示，两者均接受 IPersistStream。两�
 列为可返回的接口，对未识别 IID 返回 E_NOINTERFACE。因此该槽的
 解析保持现有分派。证据范围限于这两个候选和上述类型库，未覆盖
 第三方注册组件，也未进行 ArcMap 10.1 或 QGIS 人工验证。
+
+### 三维图形容器中的矩形元素
+
+10.1 esriCarto 类型库的 RectangleElement
+`3A9767C2-F253-11D0-83A4-080009B996CC` 声明两类容器所请求的
+IElement。图形容器的普通元素槽现复用 GraphicElements.dll
+`0x7505a400` 对应的矩形读取器，共用宿主对象键。
+[原生矩形体](mxd-page-layout-surround-20261118.md)记录了矩形几何、
+元素属性及填充符号的顺序。构造 Scene 容器验证首次定义、同键回引、
+后继字节和截断回滚，尚未在 ArcMap 或 QGIS 人工验证。

@@ -856,3 +856,48 @@ fn fdo_container_and_globe_associated_object_read_reference_fdo_body() {
         assert_eq!(parsed.annotation_class_id, Some(33));
     }
 }
+
+#[test]
+fn scene_graphics_reads_rectangle_and_its_back_reference() {
+    use mxd2qgz::layers::graphics_3d::{GRAPHICS_LAYER_3D_CLASS_ID, read_graphics_3d_layer_10_1};
+    use mxd2qgz::maps::rectangle_element::RECTANGLE_ELEMENT_CLASS_ID;
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    let mut data = scene_version_one(&[0; 16]);
+    data.truncate(data.len() - 4);
+    data.extend(2_u32.to_le_bytes());
+    data.extend(RECTANGLE_ELEMENT_CLASS_ID);
+    data.extend(74_u32.to_le_bytes());
+    data.extend(1_u16.to_le_bytes());
+    data.extend(1_u16.to_le_bytes());
+    data.extend([0; 16]); // 矩形几何。
+    data.extend(4_u16.to_le_bytes());
+    empty_string(&mut data);
+    empty_string(&mut data);
+    data.extend([0; 4 + 16]); // 空属性、自动变换和填充符号。
+    data.extend(RECTANGLE_ELEMENT_CLASS_ID);
+    data.extend(74_u32.to_le_bytes());
+    let end = data.len();
+    data.push(0xa5);
+
+    let mut reader = Reader::new(&data);
+    let mut refs = RefTable10_1::new();
+    let layer =
+        read_graphics_3d_layer_10_1(&GRAPHICS_LAYER_3D_CLASS_ID, &mut reader, 4096, &mut refs)
+            .unwrap();
+    assert_eq!(layer.elements[0].rectangle.as_ref().unwrap().key, 74);
+    assert!(matches!(
+        layer.elements[1].element.entry,
+        ObjectEntry10_1::BackReference { key: 74, .. }
+    ));
+    assert_eq!(reader.position(), end);
+
+    let mut reader = Reader::new(&data[..end - 1]);
+    let mut refs = RefTable10_1::new();
+    assert!(
+        read_graphics_3d_layer_10_1(&GRAPHICS_LAYER_3D_CLASS_ID, &mut reader, 4096, &mut refs)
+            .is_err()
+    );
+    assert_eq!(reader.position(), 0);
+    assert!(refs.is_empty());
+}

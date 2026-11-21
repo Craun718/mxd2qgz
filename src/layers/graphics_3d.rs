@@ -4,6 +4,9 @@
 pub use crate::layers::layer_extensions::LayerExtensionEntry10_1 as Graphics3dExtension10_1;
 use crate::layers::layer_extensions::{LayerExtensionEntry10_1, read_layer_extensions_10_1};
 use crate::layers::layer_list::{LayerBodyPrefix10_1, read_complete_layer_body_10_1};
+use crate::maps::rectangle_element::{
+    RECTANGLE_ELEMENT_CLASS_ID, RectangleElement10_1, read_rectangle_element_10_1,
+};
 use crate::objects::element_body::{ElementBody10_1, read_element_body_of_class_10_1};
 use crate::objects::envelope::{
     ENVELOPE_CLASS_ID, Envelope10_1, SpatialReferenceEntry10_1, read_envelope_10_1,
@@ -11,6 +14,7 @@ use crate::objects::envelope::{
 };
 use crate::objects::geometry::{GeometryBody10_1, read_geometry_body_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
@@ -31,6 +35,8 @@ pub struct Graphics3dObject10_1<T> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Graphics3dElement10_1 {
     pub element: Graphics3dObject10_1<ElementBody10_1>,
+    /// 矩形的新对象体；对象头仍保存在 element.entry。
+    pub rectangle: Option<Box<RectangleElement10_1>>,
     pub globe_properties: Option<GlobeElementProperties10_1>,
 }
 
@@ -176,18 +182,40 @@ pub fn read_graphics_3d_layer_10_1(
     let (element_count, iterations) = read_count(&mut r, 16)?;
     let mut elements = Vec::new();
     for _ in 0..iterations {
-        let element = read_object(&mut r, &mut refs, |cls, r, refs| {
-            let body = read_element_body_of_class_10_1(cls, r, max, refs)?;
-            if let Some(stop) = body.stop() {
-                return Err(io::Error::new(ErrorKind::Unsupported, stop.describe()));
+        let (element, rectangle) = match read_header_10_1(&mut r.clone())? {
+            ObjectHeader::Object {
+                class_id: RECTANGLE_ELEMENT_CLASS_ID,
+                key,
+            } if !refs.contains(key) => {
+                let rectangle = read_rectangle_element_10_1(&mut r, max, &mut refs)?;
+                (
+                    Graphics3dObject10_1 {
+                        entry: ObjectEntry10_1::NewObject {
+                            class_id: RECTANGLE_ELEMENT_CLASS_ID,
+                            key,
+                        },
+                        body: None,
+                    },
+                    Some(Box::new(rectangle)),
+                )
             }
-            Ok(body)
-        })?;
+            _ => (
+                read_object(&mut r, &mut refs, |cls, r, refs| {
+                    let body = read_element_body_of_class_10_1(cls, r, max, refs)?;
+                    if let Some(stop) = body.stop() {
+                        return Err(io::Error::new(ErrorKind::Unsupported, stop.describe()));
+                    }
+                    Ok(body)
+                })?,
+                None,
+            ),
+        };
         let globe_properties = (globe && version >= 2)
             .then(|| read_globe_element_properties(&mut r, max, &mut refs, version))
             .transpose()?;
         elements.push(Graphics3dElement10_1 {
             element,
+            rectangle,
             globe_properties,
         });
     }

@@ -24,7 +24,7 @@ pub struct RectangleElement10_1 {
     pub fill: SymbolSlotFull10_1,
 }
 
-pub(super) fn read_rectangle_element_10_1(
+pub(crate) fn read_rectangle_element_10_1(
     r: &mut Reader<'_>,
     limit: usize,
     refs: &mut RefTable10_1,
