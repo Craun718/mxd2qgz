@@ -1628,9 +1628,10 @@ fn annotate_placement_note(
             let _ = write!(note, "；点放置优先级 {:?}", point.ints);
         }
         if let Some(stacking) = &body.stacking {
+            let justification = stacking.stack_justification_name().unwrap_or("未知枚举值");
             let _ = write!(
                 note,
-                "；StackJustification {}",
+                "；StackJustification {} {justification}",
                 stacking.stack_justification
             );
             for separator in &stacking.separators {

@@ -115,6 +115,20 @@ pub struct MaplexLabelStacking10_1 {
     pub line_limits: Option<MaplexStackingLineLimits10_1>,
 }
 
+impl MaplexLabelStacking10_1 {
+    /// ArcMap 10.1 Carto 类型库中的堆叠对齐成员名。
+    pub fn stack_justification_name(&self) -> Option<&'static str> {
+        match self.stack_justification {
+            0 => Some("esriMaplexChooseBestJustification"),
+            1 => Some("esriMaplexConstrainJustificationLeftOrRight"),
+            2 => Some("esriMaplexConstrainJustificationLeft"),
+            3 => Some("esriMaplexConstrainJustificationRight"),
+            4 => Some("esriMaplexConstrainJustificationCenter"),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaplexStackingSeparator10_1 {
     pub text: String,
@@ -509,6 +523,19 @@ mod tests {
         let mut bytes = 1_i16.to_le_bytes().to_vec();
         bytes.extend(4_i32.to_le_bytes());
         let body = read_label_stacking(&mut Reader::new(&bytes), 64).unwrap();
+        for (value, name) in [
+            (0, Some("esriMaplexChooseBestJustification")),
+            (1, Some("esriMaplexConstrainJustificationLeftOrRight")),
+            (2, Some("esriMaplexConstrainJustificationLeft")),
+            (3, Some("esriMaplexConstrainJustificationRight")),
+            (4, Some("esriMaplexConstrainJustificationCenter")),
+            (-1, None),
+            (5, None),
+        ] {
+            let mut body = body.clone();
+            body.stack_justification = value;
+            assert_eq!(body.stack_justification_name(), name);
+        }
         assert_eq!(body.stack_justification, 4);
         assert_eq!(body.separator_count, None);
 

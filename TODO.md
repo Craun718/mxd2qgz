@@ -805,6 +805,7 @@
   - [x] 接入 Maplex 放置属性的版本化标量区段、点放置优先级和 v22 PropertySet 路径。[读取验证](docs/mxd-terra-nextpass-expression.md#maplex-放置属性读取器)
   - [x] 接入 MaplexLabelStackingProperties 及其分隔符列表和对象键。[原生取证](docs/mxd-terra-nextpass-expression.md#maplex-标注堆叠属性)
   - [x] 对位 Maplex 堆叠对齐字段、分隔符标志及行数和字符数限制。[访问器证据](docs/mxd-terra-nextpass-expression.md#堆叠分隔符和行限制的属性对位)
+  - [x] 按 10.1 类型库映射 Maplex 堆叠对齐枚举。[枚举证据](docs/mxd-terra-nextpass-expression.md#堆叠对齐枚举)
   - [x] 接入 MaplexOffsetAlongLineProperties 的旧兼容列表和 v2 固定字段。[沿线偏移取证](docs/mxd-terra-nextpass-expression.md#maplex-沿线偏移)
   - [x] 对位 Maplex 沿线偏移 v2 的距离、容差、单位和位置配置访问器。[属性证据](docs/mxd-terra-nextpass-expression.md#沿线偏移的属性对位)
   - [x] 按 10.1 类型库映射 Maplex 沿线偏移的 DistanceUnit 枚举。[单位枚举证据](docs/mxd-terra-nextpass-expression.md#沿线偏移的距离单位)

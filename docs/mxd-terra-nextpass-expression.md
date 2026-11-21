@@ -379,3 +379,16 @@ MaximumNumberOfCharsPerLine。getter `0x78564a00/0x78562890/0x785628e0`
 
 读取器和诊断采用属性名，保留开关和对齐枚举原值。非零构造输入覆盖
 三个标志和三个行限制。实际堆叠行为及目标软件人工验收仍待核对。
+
+#### 堆叠对齐枚举
+
+读取 10.1 Carto 类型库中 IMaplexLabelStackingProperties 的
+StackJustification setter（memid `0x60010000`），沿参数的
+`hreftype` 调用 `GetRefTypeInfo` 与 `GetVarDesc`。
+VT_I4 值 0–4 依次为 esriMaplexChooseBestJustification、
+esriMaplexConstrainJustificationLeftOrRight、
+esriMaplexConstrainJustificationLeft、
+esriMaplexConstrainJustificationRight、
+esriMaplexConstrainJustificationCenter。
+命令行输出原始值和已知成员名。构造测试覆盖全部成员和未知值，
+实际绘制与 ArcMap/QGIS 人工验收仍待验证。
