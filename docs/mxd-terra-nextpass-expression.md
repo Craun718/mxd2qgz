@@ -236,3 +236,19 @@ v3 另读三个 LONG（`0x78562ac0..0x78562af4`），Save 写 v3。
 Maplex 放置对象第二槽现可读取该类的首次定义，透传外层键登记。
 合成放置测试覆盖非空分隔符、原始标志、尾字段和父对象结束位置。
 字段业务含义及 ArcMap/QGIS 人工验收仍待完成。
+
+### Maplex 沿线偏移
+
+同版 LabelPlacement.dll 的 MaplexOffsetAlongLineProperties 主 QI
+`0x78563760` 对放置体第四槽 IID `0x7857db84` 返回对象 `+0x18`。
+RTTI 与虚表 `0x7857db64` 对位 GetClassID `0x78563610`、
+Load `0x785638d0` 和 Save `0x78563a90`。GetClassID 写出
+`20664808-4FA1-C1D1-8C0A-08A2C9ED531A`，与登记表一致。
+
+Load 拒绝有符号版本大于 2。v1 读 LONG 计数与若干内联
+BSTR、double、double 记录（`0x7856392b..0x785639ce`），非正计数
+跳过循环，旧记录在原生内不保留。v2 读取两个 LONG、两个 double、
+LONG、short（`0x785639db..0x78563a4a`）；Save 写 v2。其余接受版本
+无后继体。读取器保留上述原始值，沿宿主表登记对象键。
+构造测试验证 v1 截断与 v2 非零字段及父对象边界，实际偏移单位及
+ArcMap/QGIS 人工验收仍待核对。

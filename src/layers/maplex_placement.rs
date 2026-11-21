@@ -20,6 +20,27 @@ const MAPLEX_LABEL_STACKING_PROPERTIES_CLASS_ID: [u8; 16] = [
     0x08, 0x48, 0x66, 0x20, 0xc9, 0x41, 0xd1, 0x11, 0x84, 0x0a, 0x08, 0xab, 0xc9, 0xed, 0x73, 0x1a,
 ];
 
+const MAPLEX_OFFSET_ALONG_LINE_PROPERTIES_CLASS_ID: [u8; 16] = [
+    0x08, 0x48, 0x66, 0x20, 0xa1, 0x4f, 0xd1, 0xc1, 0x8c, 0x0a, 0x08, 0xa2, 0xc9, 0xed, 0x53, 0x1a,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaplexOffsetAlongLine10_1 {
+    pub version: i16,
+    /// v1 的流内计数与兼容记录，原生读完后丢弃。
+    pub legacy_count: Option<i32>,
+    pub legacy_entries: Vec<(String, [f64; 2])>,
+    pub fields: Option<MaplexOffsetAlongLineFields10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaplexOffsetAlongLineFields10_1 {
+    pub leading_longs: [i32; 2],
+    pub doubles: [f64; 2],
+    pub trailing_long: i32,
+    pub trailing_short: i16,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaplexLabelStacking10_1 {
     pub version: i16,
@@ -44,6 +65,7 @@ pub struct MaplexPlacement10_1 {
     pub raw_body: Vec<u8>,
     /// 顺序固定，版本中不存在或因前置停止未读到时为 None。
     pub slots: [Option<ObjectEntry10_1>; 6],
+    pub offset_along_line: Option<MaplexOffsetAlongLine10_1>,
     pub stacking: Option<MaplexLabelStacking10_1>,
     pub point_priorities: Option<PointPlacementPrioritiesBody10_1>,
     pub properties: Option<PropertySetObjectStream10_1>,
@@ -75,6 +97,7 @@ pub(super) fn read_maplex_placement(
         version,
         raw_body: Vec::new(),
         slots: [None; 6],
+        offset_along_line: None,
         stacking: None,
         point_priorities: None,
         properties: None,
@@ -163,6 +186,9 @@ fn read_slot(
             (1, MAPLEX_LABEL_STACKING_PROPERTIES_CLASS_ID) => {
                 body.stacking = Some(read_label_stacking(&mut trial, max)?);
             }
+            (3, MAPLEX_OFFSET_ALONG_LINE_PROPERTIES_CLASS_ID) => {
+                body.offset_along_line = Some(read_offset_along_line(&mut trial, max)?);
+            }
             (5, PROPERTY_SET_CLASS_ID) => {
                 body.properties = Some(read_property_set_object_stream_10_1(
                     &mut trial,
@@ -236,9 +262,69 @@ fn read_label_stacking(reader: &mut Reader<'_>, max: usize) -> io::Result<Maplex
     })
 }
 
+fn read_offset_along_line(
+    reader: &mut Reader<'_>,
+    max: usize,
+) -> io::Result<MaplexOffsetAlongLine10_1> {
+    // LabelPlacement.dll 0x785638d0：v1 兼容记录与 v2 固定字段互斥。
+    let version = reader.read_u16_le()? as i16;
+    if version > 2 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("MaplexOffsetAlongLineProperties 版本 {version} 超出 2"),
+        ));
+    }
+    let mut body = MaplexOffsetAlongLine10_1 {
+        version,
+        legacy_count: None,
+        legacy_entries: Vec::new(),
+        fields: None,
+    };
+    if version == 1 {
+        let count = reader.read_u32_le()? as i32;
+        body.legacy_count = Some(count);
+        let count = count.max(0) as usize;
+        if count > reader.remaining() / 20 || count > max / 20 {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "Maplex 沿线偏移记录计数超出可读范围",
+            ));
+        }
+        for _ in 0..count {
+            let text = read_stream_string_10_1(reader, max)?;
+            let values = [reader.read_f64_le()?, reader.read_f64_le()?];
+            body.legacy_entries.push((text, values));
+        }
+    }
+    if version == 2 {
+        body.fields = Some(MaplexOffsetAlongLineFields10_1 {
+            leading_longs: [reader.read_u32_le()? as i32, reader.read_u32_le()? as i32],
+            doubles: [reader.read_f64_le()?, reader.read_f64_le()?],
+            trailing_long: reader.read_u32_le()? as i32,
+            trailing_short: reader.read_u16_le()? as i16,
+        });
+    }
+    Ok(body)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn offset_along_line_reads_legacy_rows_and_rejects_truncation() {
+        let mut bytes = 1_i16.to_le_bytes().to_vec();
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend([4, 0, 0, 0, b'X', 0, 0, 0]);
+        bytes.extend(1.25_f64.to_le_bytes());
+        bytes.extend((-2.5_f64).to_le_bytes());
+        for cut in 0..bytes.len() {
+            assert!(read_offset_along_line(&mut Reader::new(&bytes[..cut]), 64).is_err());
+        }
+        let body = read_offset_along_line(&mut Reader::new(&bytes), 64).unwrap();
+        assert_eq!(body.legacy_entries, vec![("X".into(), [1.25, -2.5])]);
+        assert_eq!(body.fields, None);
+    }
 
     #[test]
     fn stacking_distinguishes_legacy_versions_and_bounds_the_separator_count() {
@@ -290,10 +376,28 @@ mod tests {
             bytes.extend([0; 16]);
             bytes.resize(bytes.len() + if version < 7 { 16 } else { 32 }, 0);
             bytes.extend([0; 26]);
+            if version >= 6 {
+                bytes.extend([0; 2]);
+            }
+            if version >= 7 {
+                bytes.extend([0; 10]);
+            }
+            if (8..=13).contains(&version) {
+                bytes.extend([0; 16]);
+            }
+            if version >= 9 {
+                bytes.extend([0; 2]);
+                bytes.extend(MAPLEX_OFFSET_ALONG_LINE_PROPERTIES_CLASS_ID);
+                bytes.extend(15_u32.to_le_bytes());
+                bytes.extend(2_i16.to_le_bytes());
+                bytes.extend(3_i32.to_le_bytes());
+                bytes.extend(4_i32.to_le_bytes());
+                bytes.extend(1.25_f64.to_le_bytes());
+                bytes.extend((-2.5_f64).to_le_bytes());
+                bytes.extend(5_i32.to_le_bytes());
+                bytes.extend((-1_i16).to_le_bytes());
+            }
             for (first_version, len) in [
-                (6, 2),
-                (7, 10),
-                (9, 18),
                 (10, 4),
                 (12, 16),
                 (13, 4),
@@ -308,9 +412,6 @@ mod tests {
                 if version >= first_version {
                     bytes.resize(bytes.len() + len, 0);
                 }
-            }
-            if (8..=13).contains(&version) {
-                bytes.extend([0; 16]);
             }
             if version == 22 {
                 bytes.extend(PROPERTY_SET_CLASS_ID);
@@ -334,6 +435,14 @@ mod tests {
             assert_eq!(stacking.separators[0].text, "/");
             assert_eq!(stacking.separators[0].flags, [-1, 0, 1]);
             assert_eq!(stacking.trailing_longs, Some([4, 8, 16]));
+            if version >= 9 {
+                let offset = body.offset_along_line.unwrap().fields.unwrap();
+                assert_eq!(offset.leading_longs, [3, 4]);
+                assert_eq!(offset.doubles, [1.25, -2.5]);
+                assert_eq!(offset.trailing_long, 5);
+                assert_eq!(offset.trailing_short, -1);
+            }
+            assert_eq!(refs.contains(15), version >= 9);
             assert!(refs.contains(14));
             assert!(refs.contains(11));
             assert_eq!(refs.contains(12), version == 22);
