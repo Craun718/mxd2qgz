@@ -330,6 +330,7 @@
   - [ ] 定位额外组件提供的 Map 坐标变换持久化类。GEOCONTransformation 与 NADCON5Transformation 在 10.1 Desktop 介质中仅见注册声明。[实现清点](docs/mxd-terra-host-geo.md#101-安装介质的接口实现清点)
   - [ ] 补齐地图级标注属性后尚未支持的逐图层遮罩分支。剩余未确认图层类的接口分派及集合内尚不能读取的新对象体。
     - [x] 核对 TinLayer 和 TerrainLayer 的逐图层遮罩分派。[原生 QI](docs/mxd-luna-deep-layer-masking-20261118.md#tinlayer-与-terrainlayer-的接口分派)
+    - [x] 定位 TinLayer 普通对象体的 Load、Save 版本表及嵌套接口槽。[原生布局](docs/mxd-luna-deep-layer-masking-20261118.md#tinlayer-普通对象体)
   - [x] 从两份 SDK mole_data 的 GroupLayer 条目确认尚未识别的两个子图层 CLSID 和八段对象体的边界。[宿主取证](docs/mxd-luna-deep-layer-masking-20261118.md#sdk-mole_data-的未识别子图层)
   - [x] 读取 NALayer 中定义的嵌套对象并登记其键，以解析 SanFrancisco SDK 工程的后续回引。[实档停点与原生证据](docs/mxd-luna-deep-layer-masking-20261118.md#sanfrancisco-组图层的跨图层-uid-回引)
   - [x] 读取 SanFrancisco 底图正式子层集合中新建的 GroupLayer（键 5148）。

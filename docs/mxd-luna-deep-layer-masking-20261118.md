@@ -450,3 +450,30 @@ TerrainLayer。每类均覆盖子层首次定义、组内回引及 Map 层列表
 并检查只有组本身消费遮罩，随后到达根尾标记。将同一类标识改为
 未知值后，解析仍在遮罩阶段停下。另扫描本地 288 个可打开 MXD/MXT
 容器的可读数据流，未命中这两个 CLSID。目标软件人工核验仍待补。
+
+### TinLayer 普通对象体
+
+沿用上表的 TinLayer.dll 10.1.0.3035。主 QI
+`0x80401ec5` 比较 IPersistStream（常量 `0x804112ac`），在
+`0x80402285` 返回完整对象 +0x34。该视图的虚表
+`0x80411c1c` 绑定 GetClassID `0x80401770`、Load
+`0x80403650`、Save `0x80403c70`。Save 的 short 版本表
+`0x804113e0` 为 8、10、11、11、11、12。Load 的有符号上限为 12。
+
+| 版本 | 按流顺序读取的字段 | Load 指令 |
+| --- | --- | --- |
+| 全部 | short 版本、String、IName、LONG 数量及 ITinRenderer 槽循环 | `0x80403669–0x8040378e` |
+| 全部 | ISpatialReference、short×3、double×2、String | `0x804037c0–0x80403852` |
+| ≥2 | IDisplayFilter、short×3 | `0x80403864–0x804038f2` |
+| ≥3 | LONG 数量及 IFieldInfo 槽循环，索引由循环生成 | `0x80403951–0x804039b5` |
+| ≥4、≥5、≥6、≥7 | short、LayerLib 旧式扩展列表、double、String，各由对应版本门控制 | `0x804039b7–0x80403a3d` |
+| ≥8 | IEnvelope | `0x80403a95–0x80403ab4` |
+| ≥9 | String，恰为 v9 时再读 short | `0x80403afb–0x80403b2d` |
+| ≥10、≥11 | double×2，≥11 追加 double | `0x80403b3e–0x80403b8f` |
+
+IName、ITinRenderer、ISpatialReference、IDisplayFilter、IFieldInfo、
+IEnvelope 的 IID 常量分别位于 `0x804114a4`、`0x80411754`、
+`0x80411504`、`0x80411544`、`0x804115a4`、`0x80411524`。
+类型库公开了 TinFaceRenderer、TinEdgeRenderer、TinNodeRenderer 等
+实现；普通槽的新对象体仍需逐类核对。v7 字符串后的相对路径处理和
+v12 的数值比较均没有附加流读取。字段业务名与实档待验证。
