@@ -197,7 +197,7 @@ pub(super) fn slot<'a, T>(
     Ok(RuleSlot10_1 { entry, body })
 }
 
-fn read_time_value(
+pub(crate) fn read_time_value(
     r: &mut Reader<'_>,
     refs: &mut RefTable10_1,
     max: usize,

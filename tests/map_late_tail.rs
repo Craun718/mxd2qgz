@@ -211,3 +211,44 @@ fn map_v51_reads_paragraph_element_and_keeps_next_root_field() {
         assert!(refs.is_empty());
     }
 }
+
+#[test]
+fn map_time_value_reads_time_instant_and_commits_nested_key() {
+    use mxd2qgz::layers::dep_tail::TIME_CLASS_ID;
+    use mxd2qgz::layers::image_server_rules::TIME_INSTANT_CLASS_ID;
+
+    let mut bytes = vec![0; 102 + 16]; // ITimeValue 前含空的 ITimeExtent。
+    let offset = bytes.len();
+    bytes.extend(TIME_INSTANT_CLASS_ID);
+    bytes.extend(5644_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(TIME_CLASS_ID);
+    bytes.extend(5645_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(2_u32.to_le_bytes());
+    bytes.extend(0x07da_u16.to_le_bytes());
+    bytes.extend([0; 14]);
+    bytes.extend([0; 16]); // TimeInstant 的空 ITimeReference。
+    let end = bytes.len();
+    bytes.extend([0; 16]); // Map 的空 ITimeReference。
+
+    let mut refs = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let tail = read_map_late_tail_10_1(&mut reader, &mut refs, 4096, 38).unwrap();
+    assert!(tail.stop.is_none(), "{:?}", tail.stop);
+    assert!(matches!(
+        tail.fields[tail.fields.len() - 2].value,
+        LateMapValue10_1::TimeInstant { key: 5644, .. }
+    ));
+    assert!(refs.contains(5644) && refs.contains(5645));
+    assert_eq!(reader.remaining(), 0);
+
+    for length in offset..end {
+        let mut reader = Reader::new(&bytes[..length]);
+        let mut refs = RefTable10_1::new();
+        let tail = read_map_late_tail_10_1(&mut reader, &mut refs, 4096, 38).unwrap();
+        assert!(tail.stop.unwrap().contains("ITimeValue"));
+        assert_eq!(reader.position(), offset);
+        assert!(refs.is_empty());
+    }
+}

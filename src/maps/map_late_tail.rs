@@ -5,6 +5,9 @@ use crate::layers::dep_tail::{
     TIME_EXTENT_CLASS_ID, TIME_REFERENCE_CLASS_ID, TimeExtentBody10_1, TimeReferenceBody10_1,
     read_time_extent_body_10_1, read_time_reference_body_10_1,
 };
+use crate::layers::image_server_rules::{
+    MosaicTimeValue10_1, TIME_INSTANT_CLASS_ID, read_time_value,
+};
 use crate::objects::element_body::{
     PARAGRAPH_TEXT_ELEMENT_CLASS_ID, ParagraphTextElement10_1, read_paragraph_text_element_10_1,
 };
@@ -31,6 +34,10 @@ pub enum LateMapValue10_1 {
         body: Box<ParagraphTextElement10_1>,
     },
     TimeExtent(Box<TimeExtentBody10_1>),
+    TimeInstant {
+        key: u32,
+        body: Box<MosaicTimeValue10_1>,
+    },
     TimeReference(Box<TimeReferenceBody10_1>),
 }
 
@@ -107,6 +114,7 @@ impl TailReader<'_, '_> {
         })
     }
 
+    // TIME_INSTANT_CLASS_ID 表示 ITimeValue 槽，兼容 TimeExtent 实现。
     fn object(&mut self, name: &'static str, new_class: Option<[u8; 16]>) -> io::Result<()> {
         let limit = self.max_bytes;
         self.field(name, |r, refs| {
@@ -116,7 +124,11 @@ impl TailReader<'_, '_> {
                     (ObjectEntry10_1::BackReference { class_id, key }, None)
                 }
                 ObjectHeader::Object { class_id, key }
-                    if Some(class_id) == new_class && class_id == TIME_EXTENT_CLASS_ID =>
+                    if class_id == TIME_EXTENT_CLASS_ID
+                        && matches!(
+                            new_class,
+                            Some(TIME_EXTENT_CLASS_ID | TIME_INSTANT_CLASS_ID)
+                        ) =>
                 {
                     let mut refs_trial = refs.clone();
                     refs_trial.register(key);
@@ -129,6 +141,20 @@ impl TailReader<'_, '_> {
                     }
                     *refs = refs_trial;
                     return Ok(LateMapValue10_1::TimeExtent(Box::new(body)));
+                }
+                ObjectHeader::Object {
+                    class_id: TIME_INSTANT_CLASS_ID,
+                    key,
+                } if new_class == Some(TIME_INSTANT_CLASS_ID) => {
+                    let mut refs_trial = refs.clone();
+                    refs_trial.register(key);
+                    let body =
+                        read_time_value(r, &mut refs_trial, limit, TIME_INSTANT_CLASS_ID, key)?;
+                    *refs = refs_trial;
+                    return Ok(LateMapValue10_1::TimeInstant {
+                        key,
+                        body: Box::new(body),
+                    });
                 }
                 ObjectHeader::Object { class_id, key }
                     if Some(class_id) == new_class && class_id == TIME_REFERENCE_CLASS_ID =>
@@ -212,7 +238,7 @@ impl TailReader<'_, '_> {
             self.long("+0x410")?;
             self.double("+0x418")?;
             self.object("+0x420", Some(TIME_EXTENT_CLASS_ID))?;
-            self.object("v38 ITimeValue", Some(TIME_EXTENT_CLASS_ID))?;
+            self.object("v38 ITimeValue", Some(TIME_INSTANT_CLASS_ID))?;
             self.object("v38 ITimeReference", Some(TIME_REFERENCE_CLASS_ID))?;
         }
         if version >= 39 {
@@ -245,7 +271,7 @@ impl TailReader<'_, '_> {
         }
         if version >= 44 {
             // 0x794011e4
-            self.object("+0x44c", None)?;
+            self.object("+0x44c", Some(TIME_INSTANT_CLASS_ID))?;
         }
         if version >= 45 {
             // 0x79401217

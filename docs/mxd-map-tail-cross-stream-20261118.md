@@ -112,3 +112,9 @@ Maps 根尾写在 `0x2c4a7`，其后没有未读字节；PageLayout 也读至流
 实档回归验证四个根槽与布局，构造测试验证内嵌体截断时的游标和引用表。
 当前覆盖该 IMap 槽内的标准 Map 实现。未知集合类和其他宿主的新 Map
 仍需独立证据，ArcMap 与 QGIS 人工验收未执行。
+
+### Map v44 的 TimeInstant
+
+Map.dll 10.1.0.3035 在 `0x794011e4..0x79401209` 对 v44 起的 `+0x44c` 执行 LoadObject，使用与 v38 临时槽相同的 ITimeValue IID 常量 `0x79487e20`。两处均复用已由 SystemCore.dll 10.1 核实的 TimeInstant 读侧，消费版本、ITime 和 ITimeReference。对象体完整才登记外层及嵌套键。
+
+两份 SanFrancisco SDK 工程在 `/Maps:0xdbc13` 读取 TimeInstant 键 5644 和 Time 键 5645，随后读完 Map 对象，并在 `0xdbc65` 消费根循环尾值 1。流中仍有此前的有界未知图层数据，PageLayout 仍有未知内容。构造测试覆盖 ITimeValue 槽和逐字节截断回滚。ArcMap/QGIS 人工验收尚未进行。
