@@ -12,7 +12,7 @@
 
 | 原行号 | 状态 | 证据、实现与边界 |
 | --- | --- | --- |
-| 25：AfCore SaveObject/LoadObject 对象头写出内部路径 | 部分 | AfCore 10.1 `SaveObject 0x68a7b640` → `SimpleSaveObject 0x68a7af70` 已确认；普通分支写 CLSID 后调用 `IPersistStream::Save`，不写键。ObjectStream 写出器 `SystemCore 0x7ffcf7e0` 另行写 CLSID、键并在新对象时委派对象体。两个局部事实成立，但 AfCore 对 ObjectStream 的完整 QI/写侧转接路径没有逐分支闭合，不能声称完整路径已证。 |
+| 25：AfCore SaveObject/LoadObject 对象头分派 | 已静态闭合 | 后续原始指令复核确认两个导出先查询流的 IObjectStream，分别委派到 +0x40/+0x44。普通流保存回退到 SimpleSaveObject，只处理 GUID 和对象体。运行验证另见第 40 项。[读写委派证据](mxd-simple-object-dispatch-20261118.md#导出入口) |
 | 31：纸张创建分支的 CLSID | 已纠正 | 后续复核确认 `0x7b70e819` 将 `0x7b7207ec` 压栈，随后调用创建函数。该地址是 esriOutput Paper 的 CLSID。原记录中的 `558c4e63` 为同一地址的误记。[原始字节复核](arcmap-10.1-native-baseline.md#纸张创建分支的-clsid-勘误) |
 | 37：动态验证对象读取错误恢复 EH 展开 | 待验证 | 静态失败路径记录在 `docs/arcmap-10.1-object-body.md`；本轮未运行 ArcMap，也未获得运行期异常观察。 |
 | 40：在 ArcMap 10.1 中运行验证 ObjectStream 调用链 | 待验证 | 未执行目标软件运行取证。静态 Ghidra/PyGhidra 证据不能代替此项。 |

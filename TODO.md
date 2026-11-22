@@ -22,7 +22,7 @@
   - [x] 闭合 10.1 PageLayout 的 Version 局部读取格式：AfCore String 后接有符号 short；该入口的分类初值为 5，short 小于 `0x12` 时为 3。该读点以外的尾部语义和运行验证另列，见 [Version 复核](docs/mxd-luna-20261118-version.md)。
   - [x] 核对 10.1 AfCore 的 String 读写导出及其局部短读行为，区分另一组 ReadString/WriteString；Version 流对象转发和写入调用者已由后续条目闭合。
   - [x] 闭合文档打开与保存调用点：MapDocument 类工厂链（CLSID `2fe5e68e-3da5-4bda-baf1-103c55115a1c`，运行期构建类表）与两条静态打开链汇合于主读取器 `0x7b708d00`；ArcMap 命令层经同一 CLSID 跨模块创建实例，MFC 路径串接 Version 头读取 `0x4764d0`；SaveObject/LoadObject 为 AfCore 跨模块导出，见 [研究记录](docs/arcmap-10.1-document-open-save.md)。
-  - [ ] 闭合 AfCore SaveObject/LoadObject 的对象头写出内部路径。
+  - [x] 闭合 AfCore SaveObject/LoadObject 的对象头分派。IObjectStream 命中后由 SystemCore 读写共享键，普通流由 AfCore 处理 GUID 和对象体。[读写委派证据](docs/mxd-simple-object-dispatch-20261118.md#导出入口)
   - [x] 实现显式 10.1 AfCore String 普通写出布局的严格读取子集，并覆盖构造输入和异常；MXD 字段接入与原生短读/磁盘流转发由后续条目闭合。
   - [x] 闭合 AfCore String 读写的流转发与短读边界：两函数直接走调用方 IStream 虚表（读 +0x0c、写 +0x10），短读不检查完成量与终止零；确认两族导出格式不可混用，10.1 未见 10.8 记录的 cb 掩码，见 [研究记录](docs/arcmap-10.1-native-baseline.md#101-afcore-string-流转发与写入调用者2026-11-14)。
   - [ ] 复核 10.1 是否存在 10.8 记录的 cb 掩码。
