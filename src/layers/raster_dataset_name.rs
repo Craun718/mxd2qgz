@@ -1245,7 +1245,7 @@ fn read_band_collection_name(
     child_depth: usize,
 ) -> io::Result<RasterBandCollectionName10_1> {
     let version = reader.read_u16_le()?;
-    if version > 1 {
+    if (version as i16) < 0 {
         return Err(io::Error::new(
             io::ErrorKind::Unsupported,
             format!("未支持的 RasterBandCollectionName 版本 {version}"),
@@ -1480,6 +1480,21 @@ mod tests {
         assert_eq!(body.array, Some((1, vec![2, 0, 2])));
         assert_eq!(reader.position(), bytes.len());
 
+        for version in [0_u16, 2, i16::MAX as u16] {
+            bytes[..2].copy_from_slice(&version.to_le_bytes());
+            let mut reader = Reader::new(&bytes);
+            let body = read_band_collection_name(&mut reader, 1024, &mut refs, 16).unwrap();
+            assert_eq!(body.version, version);
+            assert_eq!(body.array, Some((1, vec![2, 0, 2])));
+            assert_eq!(reader.remaining(), 0);
+        }
+
+        bytes[..2].copy_from_slice(&(-1_i16).to_le_bytes());
+        let err =
+            read_band_collection_name(&mut Reader::new(&bytes), 1024, &mut refs, 16).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::Unsupported);
+
+        bytes[..2].copy_from_slice(&1_u16.to_le_bytes());
         bytes[array_offset..array_offset + 16].fill(0x42);
         let body =
             read_band_collection_name(&mut Reader::new(&bytes), 1024, &mut refs, 16).unwrap();

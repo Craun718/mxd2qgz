@@ -212,6 +212,12 @@ RasterBandName 的 Save 写 int32 版本 1，Load 在首 int32 不等于 1 时
 的请求共用同一对象体分派。
 
 RasterBandCollectionName 依次读 short 版本、String、IName 和 ILongArray。
+在 RasterDB.dll 10.1.0.3035（SHA-256
+`97207d5cc5307bfe126e030792b5e92c085668953a736a6875d35e72d7e86400`）
+的 Load `0x7c052da0` 中，objdump 显示 `0x7c052dcb / 0x7c052dd0`
+用 `cmpw $0 / jge` 排除负版本，随后各槽均直接读取。构造测试覆盖
+0、2、32767 的相同体边界和 LongArray 回引，以及负版本拒绝。
+这些版本的真实宿主及原生打开仍待验证。
 Save 版本表 `0x7c123680` 为 `[-1,-1,-1,-1,1]`。末槽请求
 `{54F9FFB6-E91F-11D2-9F81-00C04F8ECE27}`，由同版 esriSystem TypeInfo 92
 定名 ILongArray。SystemCore.dll（10.1.0.3035，SHA-256
