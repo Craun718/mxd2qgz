@@ -418,12 +418,6 @@ pub(crate) fn read_raster_renderer_body_10_1(
         }
         SIMPLE_RASTER_RENDERER_CLASS_ID => {
             let version = signed_long(&mut trial)?;
-            // 0x7c9969c0 不设上限；仅接受 Save 版本表产出的 1、2。
-            if !(1..=2).contains(&version) {
-                return Err(invalid(format!(
-                    "未支持的 SimpleRasterRenderer 版本 {version}"
-                )));
-            }
             let short = (version >= 2).then(|| trial.read_u16_le()).transpose()?;
             let shared = read_shared_tail(&mut trial, max_bytes, &mut staged)?;
             RasterRendererPrefix10_1::Simple {

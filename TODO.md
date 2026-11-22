@@ -235,6 +235,7 @@
   - [x] 接入 ImageServerLayer 的 RasterColormapRenderer 完整体分派；体未闭合时回退到 Variant 槽头，见 [栅格渲染器取证](docs/mxd-10.1-raster-renderer.md)。
   - [x] 接入 RasterRGBRenderer 参考档 v9 完整体，读取三个无键直方图和四个带键数组，并由普通 RasterLayer 与 ImageServerLayer 共用，见 [栅格渲染器补查](docs/mxd-10.1-raster-renderer.md#rgb-的两个嵌套对象)。
   - [x] 接入 SimpleRasterRenderer v1/v2 对象体，见 [原生读写顺序](docs/mxd-10.1-raster-renderer.md#simplerasterrenderer)。
+  - [x] 按 10.1 Load 的有符号版本条件读取 SimpleRasterRenderer 专属 short。
   - [x] 接入 RasterDiscreteColorRenderer v1 对象体，读取颜色数组、字符串和独立梯度，见 [离散色原生取证](docs/mxd-10.1-raster-renderer.md#rasterdiscretecolorrenderer)。
   - [x] 接入 RasterUniqueValueRenderer v1–v4 已确认布局及 UniqueValues v1，见 [唯一值原生取证](docs/mxd-10.1-raster-renderer.md#rasteruniquevaluerenderer)。
   - [x] 接入旧版 RasterUniqueValueRenderer 的 RasterUniqueValueColors v1 对象体，读取数值键、字符串键及颜色原值列表，见 [旧枚举取证](docs/mxd-10.1-raster-renderer.md#旧版唯一值颜色枚举)。

@@ -548,14 +548,14 @@ fn tagged_rgb_filter_reuses_cache_and_netcdf_name_children_across_slots() {
 }
 
 #[test]
-fn simple_raster_renderer_v1_and_v2_stop_after_their_shared_body() {
+fn simple_raster_renderer_uses_signed_short_field_gate() {
     use mxd2qgz::layers::raster_renderer::SIMPLE_RASTER_RENDERER_CLASS_ID;
 
-    for version in [1_i32, 2] {
+    for version in [i32::MIN, -1, 0, 1, 2, 3, i32::MAX] {
         let mut bytes = SIMPLE_RASTER_RENDERER_CLASS_ID.to_vec();
         bytes.extend(76_u32.to_le_bytes());
         bytes.extend(version.to_le_bytes());
-        if version == 2 {
+        if version >= 2 {
             bytes.extend(0x8123_u16.to_le_bytes());
         }
         bytes.extend(1_i32.to_le_bytes()); // 共用体版本。
@@ -581,7 +581,7 @@ fn simple_raster_renderer_v1_and_v2_stop_after_their_shared_body() {
             panic!("应读到 SimpleRasterRenderer");
         };
         assert_eq!(actual, version);
-        assert_eq!(short, (version == 2).then_some(0x8123));
+        assert_eq!(short, (version >= 2).then_some(0x8123));
         assert_eq!(
             shared.layout,
             RasterRendererSharedLayout10_1::Legacy([2, 3, 4, 5])
