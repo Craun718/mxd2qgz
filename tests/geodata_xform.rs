@@ -509,6 +509,57 @@ fn geometric_reads_persisted_transformation_before_its_tail() {
 }
 
 #[test]
+fn spline_reads_multipatch_as_a_point_collection() {
+    use mxd2qgz::objects::geodata_xform::SPLINE_XFORM_CLASS_ID;
+    use mxd2qgz::objects::geometry::{GeometryBody10_1, MULTIPATCH_CLASS_ID};
+
+    let mut bytes = Vec::new();
+    header(&mut bytes, SPLINE_XFORM_CLASS_ID, 101);
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend([0; 16]);
+    header(&mut bytes, MULTIPATCH_CLASS_ID, 102);
+    let mut record = 0x1f_u32.to_le_bytes().to_vec();
+    record.extend([0; 32]);
+    for value in [1_u32, 3, 0, 0x100] {
+        record.extend(value.to_le_bytes());
+    }
+    record.extend([0; 11 * 8]);
+    bytes.extend(2_u16.to_le_bytes());
+    bytes.extend((record.len() as u32).to_le_bytes());
+    bytes.extend(record);
+    bytes.extend([0; 16]);
+    header(&mut bytes, MULTIPATCH_CLASS_ID, 102);
+    let end = bytes.len();
+    bytes.push(0xaa);
+
+    let mut refs = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let result = read_geodata_xform_slot_10_1(&mut reader, 4096, &mut refs).unwrap();
+    let GeodataXformBody10_1::Spline { points, .. } = *result.body.unwrap() else {
+        panic!("缺少 SplineXform");
+    };
+    assert!(matches!(
+        points[0].body.as_deref(),
+        Some(GeometryBody10_1::MultiPatch(_))
+    ));
+    assert!(matches!(
+        points[1].entry,
+        ObjectEntry10_1::BackReference {
+            class_id: MULTIPATCH_CLASS_ID,
+            key: 102,
+        }
+    ));
+    assert!(refs.contains(101) && refs.contains(102));
+    assert_eq!(reader.position(), end);
+
+    let mut reader = Reader::new(&bytes[..end - 1]);
+    let mut refs = RefTable10_1::new();
+    assert!(read_geodata_xform_slot_10_1(&mut reader, 4096, &mut refs).is_err());
+    assert_eq!(reader.position(), 0);
+    assert!(refs.is_empty());
+}
+
+#[test]
 fn spline_reads_both_point_collections_in_the_host_table() {
     use mxd2qgz::objects::geodata_xform::SPLINE_XFORM_CLASS_ID;
     use mxd2qgz::objects::geometry::{GeometryBody10_1, MULTIPOINT_CLASS_ID};

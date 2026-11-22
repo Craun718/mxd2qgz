@@ -325,3 +325,11 @@ Geometry.dll 10.1.0.3035 的 GeometryBag QI（`0x7186f650`）在
 IID，命中后由 `0x718ddc17` 返回对象 +0x54 的接口视图。
 地理变换的 IGeometryCollection 槽据此接入已有 MultiPatch 体，
 合成 ProjectiveXform 验证控制点边界和截断回滚。实档和人工验收待核对。
+
+### SplineXform 的 MultiPatch 点集合
+
+Geometry.dll 10.1.0.3035 的 MultiPatch QI 在 `0x718ddc2b`
+引用 `0x71a13ac8` 的 IPointCollection IID，命中后在
+`0x718ddc39` 转往返回接口视图的分支。该 IID 与 GdalRasterDB.dll
+的 SplineXform 两槽一致。合成 SplineXform 验证 MultiPatch 新对象、
+第二槽回引和截断回滚。ArcMap 10.1 和 QGIS 人工验收未进行。

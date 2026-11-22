@@ -317,9 +317,8 @@ fn read_geometry_collection(
     let accepts = |class| {
         matches!(
             class,
-            POLYLINE_CLASS_ID | POLYGON_CLASS_ID | MULTIPOINT_CLASS_ID
-        ) || (matches!(interface, CollectionInterface::Geometry)
-            && matches!(class, GEOMETRY_BAG_CLASS_ID | MULTIPATCH_CLASS_ID))
+            POLYLINE_CLASS_ID | POLYGON_CLASS_ID | MULTIPOINT_CLASS_ID | MULTIPATCH_CLASS_ID
+        ) || (matches!(interface, CollectionInterface::Geometry) && class == GEOMETRY_BAG_CLASS_ID)
     };
     let mut entry = read_object_entry_10_1(r, table)?;
     if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
