@@ -77,7 +77,7 @@ fn unsupported_class(kind: &str, class_id: &[u8; 16]) -> io::Error {
     io::Error::new(
         ErrorKind::Unsupported,
         format!(
-            "{kind} 未支持的新对象类 {}",
+            "{kind} 未支持的对象类 {}",
             crate::storage::class_id_hex(class_id)
         ),
     )
@@ -104,7 +104,15 @@ pub(crate) fn read_fields_body_nested_10_1(
     let count = bounded_count(&mut r, if version >= 2 { 20 } else { 16 })?;
     let mut fields = Vec::new();
     for _ in 0..count {
-        let entry = read_object_entry_10_1(&mut r, &mut staged)?;
+        let mut entry = read_object_entry_10_1(&mut r, &mut staged)?;
+        if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+            && let Some(registered) = staged.registered_class(*key)
+        {
+            if registered != FIELD_CLASS_ID {
+                return Err(unsupported_class("IField 回引", &registered));
+            }
+            *class_id = registered;
+        }
         let body = match entry {
             ObjectEntry10_1::Null | ObjectEntry10_1::BackReference { .. } => None,
             ObjectEntry10_1::NewObject {
@@ -178,4 +186,50 @@ pub(crate) fn read_field_body_10_1(
         geometry_def,
         raster_def,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn field_reference_uses_the_registered_class() {
+        for (registered, claimed) in [
+            (FIELD_CLASS_ID, FIELDS_CLASS_ID),
+            (FIELDS_CLASS_ID, FIELD_CLASS_ID),
+        ] {
+            let mut header = registered.to_vec();
+            header.extend(41_u32.to_le_bytes());
+            let mut refs = RefTable10_1::new();
+            read_object_entry_10_1(&mut Reader::new(&header), &mut refs).unwrap();
+            let before = refs.clone();
+
+            let mut bytes = 2_u16.to_le_bytes().to_vec();
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend(claimed);
+            bytes.extend(41_u32.to_le_bytes());
+            bytes.extend(19_i32.to_le_bytes());
+            let end = bytes.len();
+            bytes.push(0xaa);
+            let mut reader = Reader::new(&bytes);
+            let result = read_fields_body_10_1(&mut reader, 128, &mut refs);
+            assert_eq!(refs, before);
+
+            if registered == FIELD_CLASS_ID {
+                let fields = result.unwrap();
+                assert_eq!(
+                    fields.fields[0].entry,
+                    ObjectEntry10_1::BackReference {
+                        class_id: FIELD_CLASS_ID,
+                        key: 41,
+                    }
+                );
+                assert_eq!(fields.longs_v2, Some(vec![19]));
+                assert_eq!(reader.position(), end);
+            } else {
+                assert_eq!(result.unwrap_err().kind(), ErrorKind::Unsupported);
+                assert_eq!(reader.position(), 0);
+            }
+        }
+    }
 }

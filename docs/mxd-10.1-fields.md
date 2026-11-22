@@ -199,3 +199,12 @@ Load `0x709e1730` 与 `0x709e8840` 读取。共享 ObjectStream Variant
 合成测试覆盖默认值中的 Fields 对象、共享键、边界及递归超限回滚。
 除已记录的 ImageServerLayer 专用槽外，通用 Variant 宿主尚缺实档观测。
 ArcMap 10.1 与 QGIS 人工验收未进行。
+
+### 字段集合回引
+
+GdbCore.dll 10.1.0.3035 的 Fields Load `0x709e8840` 使用
+`0x70ac4ca8` 的 IField IID 读取成员。SystemCore 的对象流在
+`0x7ffd0063` 先按键取得实例，再查询所请求的接口。读取器以已登记
+的 Field 类分派回引。合成 v2 测试验证有效回引后的整数、错误回引
+的整体回滚及已有键保留。计数门的进一步复核和 ArcMap 10.1、QGIS
+人工验收仍待进行。
