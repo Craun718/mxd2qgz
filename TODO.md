@@ -243,6 +243,7 @@
   - [x] 接入 ObjectStream Variant 中的 UniqueValues 对象体。
   - [x] 接入 ObjectStream Variant 中的 RasterUniqueValueColors 对象体。
   - [x] 复核 RasterUniqueValueColors 的 v1 版本门及 Variant 回滚。
+  - [x] 按登记类校验旧版唯一值颜色枚举槽的回引。
   - [x] 按原生有符号循环门读取 UniqueValues 非正计数。
   - [x] 保留 UniqueValues 读取路径中的原始版本值。
   - [x] 按登记类校验渲染器 IUniqueValues 槽的回引。

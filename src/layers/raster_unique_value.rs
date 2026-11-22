@@ -213,7 +213,12 @@ fn read_legacy_colors(
     max: usize,
     table: &mut RefTable10_1,
 ) -> io::Result<RasterUniqueValueColorsSlot10_1> {
-    let entry = read_object_entry_10_1(reader, table)?;
+    let mut entry = read_object_entry_10_1(reader, table)?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+        && let Some(registered) = table.registered_class(*key)
+    {
+        *class_id = registered;
+    }
     let body = match entry {
         ObjectEntry10_1::Null
         | ObjectEntry10_1::BackReference {
@@ -417,6 +422,40 @@ pub(crate) fn read_unique_values_body(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_colors_slot_checks_the_registered_class() {
+        for (registered, claimed) in [
+            (RASTER_UNIQUE_VALUE_COLORS_CLASS_ID, UNIQUE_VALUES_CLASS_ID),
+            (UNIQUE_VALUES_CLASS_ID, RASTER_UNIQUE_VALUE_COLORS_CLASS_ID),
+        ] {
+            let mut bytes = registered.to_vec();
+            bytes.extend(12_u32.to_le_bytes());
+            let mut table = RefTable10_1::new();
+            read_object_entry_10_1(&mut Reader::new(&bytes), &mut table).unwrap();
+            let before = table.clone();
+
+            bytes[..16].copy_from_slice(&claimed);
+            bytes.push(0xaa);
+            let mut reader = Reader::new(&bytes);
+            let result = read_legacy_colors(&mut reader, 128, &mut table);
+            if registered == RASTER_UNIQUE_VALUE_COLORS_CLASS_ID {
+                let slot = result.unwrap();
+                assert_eq!(
+                    slot.entry,
+                    ObjectEntry10_1::BackReference {
+                        class_id: registered,
+                        key: 12
+                    }
+                );
+                assert!(slot.body.is_none());
+                assert_eq!(reader.read_bytes(1).unwrap(), &[0xaa]);
+            } else {
+                assert_eq!(result.unwrap_err().kind(), ErrorKind::Unsupported);
+            }
+            assert_eq!(table, before);
+        }
+    }
 
     #[test]
     fn legacy_color_variant_reads_numeric_key_and_rolls_back_on_short_color() {

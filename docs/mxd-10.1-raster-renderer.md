@@ -412,3 +412,8 @@ IPersistStream Load（`0x10069ad0`）也接入共享 Variant 分派。
 同摘要 RasterRendererUI.dll 的 Load 在 `0x10069b18..0x10069b1c`
 使用等值比较，仅版本 1 进入后续字段。合成 Variant 测试验证版本零、
 版本 2 和最小有符号版本均失败，保留已登记键及入口游标。
+
+旧版枚举槽按 SystemCore.dll 10.1.0.3035 的查键路径（`0x7ffd0063`）
+识别回引实例。合成用例交叉使用 RasterUniqueValueColors 与 UniqueValues
+的类标识，验证分派依据是登记类，并核对有效回引后的字节和已有键表。
+ArcMap 10.1 与 QGIS 人工验收待验证。
