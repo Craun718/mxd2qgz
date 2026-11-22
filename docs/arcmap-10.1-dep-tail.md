@@ -146,6 +146,9 @@ ElementCollection 体读取器已在 `src/objects/element_collection.rs` 闭合
 - **TimeReference::Load**：① int16（`1 < (short)ver` 拒绝）→ ② LoadObject
   (ITimeZoneInfo `{0F8FD6AB-CE6D-4BB2-A5EF-2F6035E304C5}`，`0x80073924`) →
   ③ short（this+0xc）→ ④ short（this+0xe）。
+  同版 ObjectStream 在 `0x7ffd0063` 查键后对原实例请求 ITimeZoneInfo。
+  Rust 按登记类校验回引。构造测试验证合法回引读至体末尾，误引 Time 时
+  停在时区槽首并保留原有键。该回引尚无实档或人工验证。
 - **TimeExtent::Load**：① int16（`2 < ver` 拒绝）→ ② LoadObject(ITime
   `{66810D21-8DE0-44EE-B26E-465AC09F161F}`，`0x800730fc`；起点）→ ③ 同 IID
   （终点）→ ④ LoadObject(ITimeReference `{F6CBA4A3}`，`0x8007361c`) →

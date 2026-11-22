@@ -426,14 +426,22 @@ pub fn read_time_reference_body_10_1(
         let pre_slot_table = staged.clone();
         match read_object_entry_10_1(&mut trial, &mut staged)? {
             ObjectEntry10_1::Null => TimeZoneInfoSlot10_1::Null,
-            ObjectEntry10_1::BackReference { class_id, key } => {
-                TimeZoneInfoSlot10_1::BackReference { class_id, key }
+            ObjectEntry10_1::BackReference { class_id, key }
+                if staged
+                    .registered_class(key)
+                    .is_none_or(|id| id == TIME_ZONE_INFO_CLASS_ID) =>
+            {
+                TimeZoneInfoSlot10_1::BackReference {
+                    class_id: staged.registered_class(key).unwrap_or(class_id),
+                    key,
+                }
             }
             ObjectEntry10_1::NewObject { class_id, key } if class_id == TIME_ZONE_INFO_CLASS_ID => {
                 let body = read_time_zone_info_body_10_1(&mut trial, max_bytes, &mut staged, key)?;
                 TimeZoneInfoSlot10_1::Body(Box::new(body))
             }
-            ObjectEntry10_1::NewObject { class_id, key } => {
+            ObjectEntry10_1::BackReference { class_id, key }
+            | ObjectEntry10_1::NewObject { class_id, key } => {
                 trial = reposition_to(&reader.clone(), slot_offset);
                 staged = pre_slot_table;
                 TimeZoneInfoSlot10_1::Unsupported { class_id, key }
@@ -1057,6 +1065,41 @@ mod tests {
         assert_eq!(body.short_b, None);
         assert_eq!(reader.position(), 2);
         assert!(!table.contains(5), "停止路径不保留键");
+    }
+
+    #[test]
+    fn time_reference_zone_back_reference_uses_registered_class() {
+        for registered in [TIME_ZONE_INFO_CLASS_ID, TIME_CLASS_ID] {
+            let mut previous = Vec::new();
+            object_entry(&mut previous, &registered, 5);
+            let mut table = RefTable10_1::new();
+            read_object_entry_10_1(&mut Reader::new(&previous), &mut table).unwrap();
+            let before = table.clone();
+
+            let mut entry = Vec::new();
+            object_entry(&mut entry, &[0xab; 16], 5);
+            let bytes = time_reference_bytes(Some(&entry));
+            let mut reader = Reader::new(&bytes);
+            let body = read_time_reference_body_10_1(&mut reader, 256, &mut table, 7).unwrap();
+            if registered == TIME_ZONE_INFO_CLASS_ID {
+                assert_eq!(
+                    body.zone_info,
+                    TimeZoneInfoSlot10_1::BackReference {
+                        class_id: TIME_ZONE_INFO_CLASS_ID,
+                        key: 5,
+                    }
+                );
+                assert_eq!(reader.position(), bytes.len());
+            } else {
+                assert!(matches!(
+                    body.zone_info,
+                    TimeZoneInfoSlot10_1::Unsupported { key: 5, .. }
+                ));
+                assert_eq!(body.short_a, None);
+                assert_eq!(reader.position(), 2);
+            }
+            assert_eq!(table, before);
+        }
     }
 
     #[test]
