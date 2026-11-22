@@ -146,11 +146,19 @@ pub(crate) fn read_raster_def(
     max_bytes: usize,
     refs: &mut RefTable10_1,
 ) -> io::Result<RasterDef10_1> {
-    let version = version(r, 2, "RasterDef")?;
+    let version = r.read_u16_le()?;
+    if (version as i16) > 2 {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            format!("RasterDef 未支持版本 {version}"),
+        ));
+    }
     let string_c = read_string_10_1(r, max_bytes)?;
     let spatial_reference = read_spatial_reference_entry_10_1(r, max_bytes, refs)?;
     let shorts_14_16 = [r.read_u16_le()?, r.read_u16_le()?];
-    let short_18 = (version >= 2).then(|| r.read_u16_le()).transpose()?;
+    let short_18 = ((version as i16) >= 2)
+        .then(|| r.read_u16_le())
+        .transpose()?;
     Ok(RasterDef10_1 {
         version,
         string_c,
@@ -224,7 +232,7 @@ mod tests {
 
     #[test]
     fn raster_def_only_reads_the_third_short_from_version_two() {
-        for version in [1_u16, 2] {
+        for version in [i16::MIN as u16, u16::MAX, 0, 1, 2] {
             let mut bytes = RASTER_DEF_CLASS_ID.to_vec();
             bytes.extend(25_u32.to_le_bytes());
             bytes.extend(version.to_le_bytes());
@@ -241,6 +249,7 @@ mod tests {
             let mut refs = RefTable10_1::new();
             let slot = read_raster_def_slot_10_1(&mut reader, 64, &mut refs).unwrap();
             let body = slot.body.unwrap();
+            assert_eq!(body.version, version);
             assert_eq!(body.shorts_14_16, [6, 7]);
             assert_eq!(body.short_18, (version == 2).then_some(8));
             assert_eq!(reader.read_bytes(1).unwrap(), [0xa1]);

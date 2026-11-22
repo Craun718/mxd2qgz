@@ -147,7 +147,7 @@ RasterCatalog.dll 10.1.0.3035 x86（ImageBase `0x7be30000`，SHA-256
   Load 的空间参考 IID 在 `0x70ab8504`；与 Save 字段逐项对称。主 QI
   `0x709ec770` 把 IPersist/IPersistStream 映射到 +0x20；+0x1c 的接口
   走另一套方法，不能用其入口推断该二进制体。
-- RasterDef：short 版本（原生有符号 >2 拒绝，本实现也拒绝负值）、AfCore
+- RasterDef：short 版本（有符号 >2 拒绝）、AfCore
   String、LoadObject(ISpatialReference)、short×2、版本 ≥2 再读 short。
   Load 的空间参考 IID 在 `0x7be4047c`；Save 版本表 `0x7be3f664`
   为 `[-1,1,1,1,2]`。
@@ -183,3 +183,10 @@ RasterCatalog.dll 的 RasterDef（Load `0x7be37540`）均有
 IPersistStream 入口，ObjectStream Variant 复用 Field 槽的二进制体
 读取器。合成测试覆盖两类定义、引用键、宿主后继字节与短读回滚。
 尚缺真实 Variant 宿主观测，ArcMap 10.1 与 QGIS 人工验收未进行。
+
+
+RasterCatalog.dll 10.1.0.3035 的 RasterDef Load 经 objdump 复核，
+`0x7be3756f..0x7be37574` 用有符号 `jg` 拒绝大于 2 的版本，
+`0x7be375eb..0x7be375f0` 用 `jl` 跳过旧版第三个 short。共享读取器
+据此让负值走旧布局并保留版本位模式。合成用例覆盖两个负值和后续字节；
+尚无负版本实档或 ArcMap 10.1、QGIS 人工验收。
