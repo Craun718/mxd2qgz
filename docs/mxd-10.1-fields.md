@@ -170,3 +170,8 @@ AfCore 对象 Variant 在同一 ObjectStream 中按持久化接口委派，
 因此共用两类值域对象体读取器，并将子 Variant 纳入同一递归限额。
 合成范围值域覆盖嵌套编码值域、同键回引和截断回滚。此组合尚缺
 真实 MXD 观测；ArcMap 10.1 与 QGIS 人工验收未进行。
+
+位掩码值域也通过 NetworkAnalystSolvers.dll 10.1.0.3035 的
+IPersistStream Load `0x7b0904c0` 进入共用 Variant 分派。合成用例
+验证 ExtraSafe 标签顺序、宿主键表、后继字段及截断回滚。尚缺真实
+MXD 中的 Variant 宿主观察，ArcMap 10.1 与 QGIS 人工验收未进行。

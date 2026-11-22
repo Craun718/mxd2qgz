@@ -260,6 +260,28 @@ mod tests {
         assert!(refs.contains(81) && refs.contains(82));
         assert_eq!(reader.read_u16_le().unwrap(), 0x1234);
 
+        let mut variant = 13_u16.to_le_bytes().to_vec();
+        variant.extend([0; 14]);
+        variant.extend(&bytes);
+        let mut reader = Reader::new(&variant);
+        let mut refs = RefTable10_1::new();
+        let value =
+            read_padded_variant_object_stream_nested_10_1(&mut reader, 4096, &mut refs, 0).unwrap();
+        assert!(matches!(value, PropertyValueObjectStream10_1::Domain {
+            class_id: BIT_MASK_CODED_VALUE_DOMAIN_CLASS_ID, key: 81, body,
+        } if matches!(&body.values, DomainValues10_1::BitMask { labels, .. }
+            if labels.body == Some((1, vec!["甲".to_owned(), "乙".to_owned()])))));
+        assert!(refs.contains(81) && refs.contains(82));
+        assert_eq!(reader.read_u16_le().unwrap(), 0x1234);
+
+        let mut reader = Reader::new(&variant[..16 + end - 1]);
+        let mut refs = RefTable10_1::new();
+        assert!(
+            read_padded_variant_object_stream_nested_10_1(&mut reader, 4096, &mut refs, 0).is_err()
+        );
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+
         let mut wrong_count = bytes.clone();
         wrong_count[count_offset..count_offset + 4].copy_from_slice(&1_i32.to_le_bytes());
         for input in (0..end)

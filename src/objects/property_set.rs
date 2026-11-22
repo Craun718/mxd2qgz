@@ -587,7 +587,8 @@ pub(crate) fn read_variant_object_body_10_1(
 ) -> io::Result<PropertyValueObjectStream10_1> {
     let depth = depth.max(table.raster_info_variant_depth());
     use crate::objects::domain::{
-        CODED_VALUE_DOMAIN_CLASS_ID, RANGE_DOMAIN_CLASS_ID, read_domain_body_10_1,
+        BIT_MASK_CODED_VALUE_DOMAIN_CLASS_ID, CODED_VALUE_DOMAIN_CLASS_ID, RANGE_DOMAIN_CLASS_ID,
+        read_domain_body_10_1,
     };
     Ok(match entry {
         ObjectEntry10_1::Null => {
@@ -597,7 +598,10 @@ pub(crate) fn read_variant_object_body_10_1(
             PropertyValueObjectStream10_1::BackReference { class_id, key }
         }
         ObjectEntry10_1::NewObject {
-            class_id: class_id @ (RANGE_DOMAIN_CLASS_ID | CODED_VALUE_DOMAIN_CLASS_ID),
+            class_id:
+                class_id @ (RANGE_DOMAIN_CLASS_ID
+                | CODED_VALUE_DOMAIN_CLASS_ID
+                | BIT_MASK_CODED_VALUE_DOMAIN_CLASS_ID),
             key,
         } => {
             check_variant_object_depth(depth)?;
