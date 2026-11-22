@@ -339,6 +339,10 @@ pub enum PropertyValueObjectStream10_1 {
     RasterDef(Box<EncodedVariantObject10_1<crate::objects::field_defs::RasterDef10_1>>),
     Field(Box<EncodedVariantObject10_1<crate::objects::fields::FieldBody10_1>>),
     Fields(Box<EncodedVariantObject10_1<crate::objects::fields::FieldsBody10_1>>),
+    FeatureIdSet {
+        class_id: [u8; 16],
+        body: Box<crate::layers::feature_id_set::FeatureIdSetBody10_1>,
+    },
     /// 有对象头及会话键的 SystemCore 数组。
     ArrayObject {
         class_id: [u8; 16],
@@ -590,6 +594,10 @@ pub(crate) fn read_variant_object_body_10_1(
     entry: ObjectEntry10_1,
 ) -> io::Result<PropertyValueObjectStream10_1> {
     let depth = depth.max(table.raster_info_variant_depth());
+    use crate::layers::feature_id_set::{
+        FEATURE_ID_SET_CLASS_ID, FID_SET_CLASS_ID, read_feature_id_set_body_10_1,
+        read_fid_set_body_10_1,
+    };
     use crate::objects::domain::{
         BIT_MASK_CODED_VALUE_DOMAIN_CLASS_ID, CODED_VALUE_DOMAIN_CLASS_ID, RANGE_DOMAIN_CLASS_ID,
         read_domain_body_10_1,
@@ -634,6 +642,24 @@ pub(crate) fn read_variant_object_body_10_1(
             class_id: class_id @ (GEOMETRY_DEF_CLASS_ID | RASTER_DEF_CLASS_ID),
             key,
         } => return read_variant_field_definition(reader, max_bytes, table, class_id, key),
+        ObjectEntry10_1::NewObject {
+            class_id: class_id @ (FEATURE_ID_SET_CLASS_ID | FID_SET_CLASS_ID),
+            key,
+        } => {
+            let mut wire = reader
+                .clone()
+                .read_region(reader.remaining().min(max_bytes))?;
+            let body = if class_id == FID_SET_CLASS_ID {
+                read_fid_set_body_10_1(&mut wire, table, key)?
+            } else {
+                read_feature_id_set_body_10_1(&mut wire, table, key)?
+            };
+            reader.read_bytes(wire.position())?;
+            PropertyValueObjectStream10_1::FeatureIdSet {
+                class_id,
+                body: Box::new(body),
+            }
+        }
         ObjectEntry10_1::NewObject { class_id, key } if class_id == PROPERTY_SET_CLASS_ID => {
             check_variant_object_depth(depth)?;
             let body =
@@ -1517,6 +1543,44 @@ mod tests {
         assert_eq!(reader.remaining(), 0);
         assert!(refs.contains(100));
         assert!(!refs.contains(101));
+    }
+
+    #[test]
+    fn variant_reads_fid_set_classes_and_keeps_their_distinct_id_rules() {
+        use crate::layers::feature_id_set::{FEATURE_ID_SET_CLASS_ID, FID_SET_CLASS_ID};
+
+        for (class_id, expected) in [
+            (FEATURE_ID_SET_CLASS_ID, &[-2, 7][..]),
+            (FID_SET_CLASS_ID, &[7][..]),
+        ] {
+            let mut bytes = 13_u16.to_le_bytes().to_vec();
+            bytes.extend([0; 14]);
+            object(&mut bytes, class_id, 18);
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(3_i32.to_le_bytes());
+            for id in [-2_i32, 7, 7] {
+                bytes.extend(id.to_le_bytes());
+            }
+            let end = bytes.len();
+            bytes.push(0xaa);
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let value =
+                read_padded_variant_object_stream_10_1(&mut reader, 128, &mut refs).unwrap();
+            assert!(
+                matches!(value, PropertyValueObjectStream10_1::FeatureIdSet {
+                class_id: actual, body,
+            } if actual == class_id && body.key == 18 && body.count == 3 && body.ids == expected)
+            );
+            assert_eq!(reader.position(), end);
+            assert!(refs.contains(18));
+
+            let mut reader = Reader::new(&bytes[..end - 1]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_padded_variant_object_stream_10_1(&mut reader, 128, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
     }
 
     #[test]

@@ -55,7 +55,7 @@ pub const FID_SET_CLASS_ID: [u8; 16] = [
 const MAX_FEATURE_ID_SET_VERSION: i16 = 1;
 
 /// FeatureIDSet（FeatureLayer.dll `0x6f6d97d0`）体的已确认字段。
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FeatureIdSetBody10_1 {
     /// 对象头键（样本 75）。解析成功时该键已按原生语义登记进调用者的
     /// 登记表（由调用者的分派层完成；本读取器自身无嵌套对象）。

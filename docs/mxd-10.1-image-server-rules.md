@@ -903,3 +903,12 @@ RasterRenderer 的 SHA-256 为
 RenderingRule 的 LoadObject，属于宿主消费。直接地址引用扫描
 不能覆盖运行期构造 IID、间接表或第三方模块。剩余类待办保留。
 本轮为静态取证，未在 ArcMap 10.1 或 QGIS 中人工验证。
+
+### Variant 中的要素 ID 集合
+
+GdbCore.dll 10.1.0.3035 的 FIDSet Load `0x709da710` 与
+FeatureLayer.dll 同版的 FeatureIDSet Load `0x6f6d97d0` 均已有
+普通对象持久化体取证。共享 Variant 按各自 CLSID 分派。两类均去重，
+FIDSet 还按原生插入规则过滤负 OID。合成测试验证不同成员结果、存盘
+计数、后继字节、对象键及截断回滚。尚缺真实 Variant 槽实档，
+ArcMap 10.1 与 QGIS 人工验收未进行。
