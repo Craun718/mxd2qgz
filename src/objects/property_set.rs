@@ -368,6 +368,9 @@ pub enum PropertyValueObjectStream10_1 {
             >,
         >,
     ),
+    RasterRenderer(
+        Box<EncodedVariantObject10_1<crate::layers::raster_renderer::RasterRendererPrefix10_1>>,
+    ),
     GeodataXform(
         Box<EncodedVariantObject10_1<crate::objects::geodata_xform::GeodataXformBody10_1>>,
     ),
@@ -649,6 +652,11 @@ pub(crate) fn read_variant_object_body_10_1(
                 class_id: table.registered_class(key).unwrap_or(class_id),
                 key,
             }
+        }
+        ObjectEntry10_1::NewObject { class_id, key }
+            if crate::layers::raster_renderer::supports_raster_renderer_body_10_1(class_id) =>
+        {
+            return read_variant_raster_renderer(reader, max_bytes, table, depth, class_id, key);
         }
         ObjectEntry10_1::NewObject { class_id, key }
             if supports_geodata_xform_body_10_1(class_id) =>
@@ -1079,6 +1087,41 @@ pub(crate) fn read_variant_object_body_10_1(
             }
         }
     })
+}
+
+#[inline(never)]
+fn read_variant_raster_renderer(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+    class_id: [u8; 16],
+    key: u32,
+) -> io::Result<PropertyValueObjectStream10_1> {
+    check_variant_object_depth(depth)?;
+    let mut wire = reader
+        .clone()
+        .read_region(max_bytes.min(reader.remaining()))?;
+    let body = table.with_raster_info_variant_depth(depth + 1, |table| {
+        crate::layers::raster_renderer::read_raster_renderer_body_10_1(
+            &mut wire, max_bytes, table, class_id,
+        )
+    })?;
+    if !body.is_complete() {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            "Variant 栅格渲染器对象体未闭合",
+        ));
+    }
+    let bytes = Arc::from(reader.read_bytes(wire.position())?);
+    Ok(PropertyValueObjectStream10_1::RasterRenderer(Box::new(
+        EncodedVariantObject10_1 {
+            class_id,
+            key,
+            bytes,
+            body,
+        },
+    )))
 }
 
 fn read_variant_raster_input(
@@ -1780,6 +1823,45 @@ mod tests {
         assert_eq!(reader.remaining(), 0);
         assert!(refs.contains(100));
         assert!(!refs.contains(101));
+    }
+
+    #[test]
+    fn variant_raster_renderer_rejects_partial_colormap_bodies() {
+        use crate::layers::raster_renderer::{
+            RASTER_COLORMAP_RENDERER_CLASS_ID, RasterRendererPrefix10_1,
+        };
+
+        let mut bytes = 13_u16.to_le_bytes().to_vec();
+        bytes.extend([0; 14]);
+        object(&mut bytes, RASTER_COLORMAP_RENDERER_CLASS_ID, 11);
+        bytes.extend(2_i32.to_le_bytes());
+        bytes.extend([0; 8]);
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend([0; 16]);
+        bytes.extend(29_i32.to_le_bytes());
+        let end = bytes.len();
+        bytes.push(0xaa);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let value = read_padded_variant_object_stream_10_1(&mut reader, 128, &mut refs).unwrap();
+        assert!(matches!(
+            value,
+            PropertyValueObjectStream10_1::RasterRenderer(value)
+                if matches!(value.body(), RasterRendererPrefix10_1::Colormap { tail: Some(tail), .. }
+                    if tail.colormap_values == [29])
+        ));
+        assert_eq!(reader.position(), end);
+        assert_eq!(
+            refs.registered_class(11),
+            Some(RASTER_COLORMAP_RENDERER_CLASS_ID)
+        );
+
+        let mut reader = Reader::new(&bytes[..end - 1]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_padded_variant_object_stream_10_1(&mut reader, 128, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
     }
 
     #[test]
