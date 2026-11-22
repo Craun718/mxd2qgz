@@ -594,16 +594,17 @@ pub(crate) fn read_variant_object_body_10_1(
         BIT_MASK_CODED_VALUE_DOMAIN_CLASS_ID, CODED_VALUE_DOMAIN_CLASS_ID, RANGE_DOMAIN_CLASS_ID,
         read_domain_body_10_1,
     };
-    use crate::objects::field_defs::{
-        GEOMETRY_DEF_CLASS_ID, RASTER_DEF_CLASS_ID, read_geometry_def, read_raster_def,
-    };
+    use crate::objects::field_defs::{GEOMETRY_DEF_CLASS_ID, RASTER_DEF_CLASS_ID};
     use crate::objects::fields::{FIELD_CLASS_ID, FIELDS_CLASS_ID};
     Ok(match entry {
         ObjectEntry10_1::Null => {
             PropertyValueObjectStream10_1::Inline(PropertyValue10_1::NullObject)
         }
         ObjectEntry10_1::BackReference { class_id, key } => {
-            PropertyValueObjectStream10_1::BackReference { class_id, key }
+            PropertyValueObjectStream10_1::BackReference {
+                class_id: table.registered_class(key).unwrap_or(class_id),
+                key,
+            }
         }
         ObjectEntry10_1::NewObject {
             class_id:
@@ -630,37 +631,9 @@ pub(crate) fn read_variant_object_body_10_1(
             key,
         } => return read_variant_field_object(reader, max_bytes, table, depth, class_id, key),
         ObjectEntry10_1::NewObject {
-            class_id: class_id @ GEOMETRY_DEF_CLASS_ID,
+            class_id: class_id @ (GEOMETRY_DEF_CLASS_ID | RASTER_DEF_CLASS_ID),
             key,
-        } => {
-            let mut wire = reader
-                .clone()
-                .read_region(reader.remaining().min(max_bytes))?;
-            let body = read_geometry_def(&mut wire, max_bytes, table)?;
-            let bytes = Arc::from(reader.read_bytes(wire.position())?);
-            PropertyValueObjectStream10_1::GeometryDef(Box::new(EncodedVariantObject10_1 {
-                class_id,
-                key,
-                bytes,
-                body,
-            }))
-        }
-        ObjectEntry10_1::NewObject {
-            class_id: class_id @ RASTER_DEF_CLASS_ID,
-            key,
-        } => {
-            let mut wire = reader
-                .clone()
-                .read_region(reader.remaining().min(max_bytes))?;
-            let body = read_raster_def(&mut wire, max_bytes, table)?;
-            let bytes = Arc::from(reader.read_bytes(wire.position())?);
-            PropertyValueObjectStream10_1::RasterDef(Box::new(EncodedVariantObject10_1 {
-                class_id,
-                key,
-                bytes,
-                body,
-            }))
-        }
+        } => return read_variant_field_definition(reader, max_bytes, table, class_id, key),
         ObjectEntry10_1::NewObject { class_id, key } if class_id == PROPERTY_SET_CLASS_ID => {
             check_variant_object_depth(depth)?;
             let body =
@@ -1029,6 +1002,45 @@ fn read_variant_raster_input(
             body,
         }),
     ))
+}
+
+// 定义体只在对应分支分配栈空间，避免扩大共用递归分派的栈帧。
+#[inline(never)]
+fn read_variant_field_definition(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    class_id: [u8; 16],
+    key: u32,
+) -> io::Result<PropertyValueObjectStream10_1> {
+    use crate::objects::field_defs::{GEOMETRY_DEF_CLASS_ID, read_geometry_def, read_raster_def};
+
+    let mut wire = reader
+        .clone()
+        .read_region(reader.remaining().min(max_bytes))?;
+    if class_id == GEOMETRY_DEF_CLASS_ID {
+        let body = read_geometry_def(&mut wire, max_bytes, table)?;
+        let bytes = Arc::from(reader.read_bytes(wire.position())?);
+        Ok(PropertyValueObjectStream10_1::GeometryDef(Box::new(
+            EncodedVariantObject10_1 {
+                class_id,
+                key,
+                bytes,
+                body,
+            },
+        )))
+    } else {
+        let body = read_raster_def(&mut wire, max_bytes, table)?;
+        let bytes = Arc::from(reader.read_bytes(wire.position())?);
+        Ok(PropertyValueObjectStream10_1::RasterDef(Box::new(
+            EncodedVariantObject10_1 {
+                class_id,
+                key,
+                bytes,
+                body,
+            },
+        )))
+    }
 }
 
 #[inline(never)]

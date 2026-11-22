@@ -415,7 +415,7 @@ mod tests {
         bytes.extend(0_u32.to_le_bytes());
         bytes.extend(13_u16.to_le_bytes());
         bytes.extend([0; 14]);
-        header(&mut bytes, CODED_VALUE_DOMAIN_CLASS_ID, 2);
+        header(&mut bytes, [0x7d; 16], 2);
 
         let mut reader = Reader::new(&bytes);
         let mut refs = RefTable10_1::new();
