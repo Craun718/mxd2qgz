@@ -279,6 +279,7 @@
   - [x] 接入 Field 非空 GeometryDef，读取网格列表与空间参考，见 [定义对象取证](docs/mxd-10.1-fields.md#几何定义与栅格定义)。
   - [x] 接入 Field 非空 RasterDef，支持原生 v1/v2 尾字段与空间参考，见 [定义对象取证](docs/mxd-10.1-fields.md#几何定义与栅格定义)。
   - [x] 按 RasterCatalog.dll 的有符号版本门读取 RasterDef。[版本取证](docs/mxd-10.1-fields.md#variant-中的字段定义对象)
+  - [x] 按原生分配器的非正计数分支读取 GeometryDef 网格。[网格计数取证](docs/mxd-10.1-fields.md#几何定义的网格计数)
   - [x] 接入 ImageServerLayer 的 MosaicRule 及时间值、点、FIDSet 子槽的已知实现，见 [规则取证](docs/mxd-10.1-image-server-rules.md)。
   - [x] 接入 ImageServerLayer 的 RenderingRule 体，复用已闭合的 IRasterRenderer，见 [规则取证](docs/mxd-10.1-image-server-rules.md)。
   - [x] 接入 RenderingRule 的 IdentityFunction 和 CachedRasterFunctionArguments，见 [函数与参数取证](docs/mxd-10.1-image-server-rules.md#非空栅格函数与参数)。

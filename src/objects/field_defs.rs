@@ -117,8 +117,8 @@ pub(crate) fn read_geometry_def(
 ) -> io::Result<GeometryDef10_1> {
     let version = version(r, 1, "GeometryDef")?;
     let geometry_type = r.read_u32_le()? as i32;
-    let count = usize::try_from(r.read_u32_le()? as i32)
-        .map_err(|_| io::Error::new(ErrorKind::InvalidData, "GeometryDef 网格数量为负"))?;
+    // 原生网格分配器将非正计数归零。
+    let count = (r.read_u32_le()? as i32).max(0) as usize;
     if count > r.remaining() / 8 {
         return Err(io::Error::new(
             ErrorKind::UnexpectedEof,
@@ -171,6 +171,35 @@ pub(crate) fn read_raster_def(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn geometry_def_reads_following_fields_with_nonpositive_grid_counts() {
+        for count in [i32::MIN, -1, 0] {
+            let mut bytes = GEOMETRY_DEF_CLASS_ID.to_vec();
+            bytes.extend(21_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(3_i32.to_le_bytes());
+            bytes.extend(count.to_le_bytes());
+            bytes.extend(19_i32.to_le_bytes());
+            bytes.extend([0; 16]);
+            bytes.extend(6_u16.to_le_bytes());
+            bytes.extend(7_u16.to_le_bytes());
+            let end = bytes.len();
+            bytes.push(0xaa);
+
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let body = read_geometry_def_slot_10_1(&mut reader, 128, &mut refs)
+                .unwrap()
+                .body
+                .unwrap();
+            assert!(body.grid_sizes.is_empty());
+            assert_eq!(body.long_14, 19);
+            assert_eq!(body.shorts_1c_1e, [6, 7]);
+            assert!(refs.contains(21));
+            assert_eq!(reader.position(), end);
+        }
+    }
 
     #[test]
     fn typed_definition_bodies_can_be_read_from_variant_slots() {
