@@ -1341,3 +1341,8 @@ MapAnimation.dll 10.1.0.3035 的 TimeWindow IPersistStream Load
 `0x794f6fe0` 亦用于共享 Variant 对象体分派。合成 v3 测试覆盖
 版本字段、原流后继字节以及截断时的游标和键回滚。尚缺真实 Variant
 槽实档与 ArcMap 10.1、QGIS 人工验收。
+
+MapAnimation.dll 10.1.0.3035 的 TimeLayerTrackExtension
+IPersistStream Load（`0x794f5450`）以窗口循环和版本尾字段确定体边界。
+共享 Variant 使用同一读取器，有界扩展包装仍检查完整消费。合成 v1/v2
+验证嵌套键、后继字节及截断回滚。真实 Variant 宿主和人工验收待验证。

@@ -361,6 +361,13 @@ pub enum PropertyValueObjectStream10_1 {
     /// 已有独立 IPersistStream 对象体的 SystemCore UID。
     Uid(UidBody10_1),
     NumberFormat(Box<EncodedVariantObject10_1<NumberFormatSlot10_1>>),
+    TimeLayerTrack(
+        Box<
+            EncodedVariantObject10_1<
+                crate::layers::time_layer_track_extension::TimeLayerTrackExtension10_1,
+            >,
+        >,
+    ),
     Time(Box<EncodedVariantObject10_1<VariantTimeBody10_1>>),
     Geometry(Box<VariantGeometry10_1>),
     Color(Box<EncodedVariantObject10_1<ColorBody10_1>>),
@@ -627,6 +634,12 @@ pub(crate) fn read_variant_object_body_10_1(
                 key,
             }
         }
+        ObjectEntry10_1::NewObject {
+            class_id:
+                class_id
+                @ crate::layers::time_layer_track_extension::TIME_LAYER_TRACK_EXTENSION_CLASS_ID,
+            key,
+        } => return read_variant_time_layer_track(reader, max_bytes, table, class_id, key),
         ObjectEntry10_1::NewObject {
             class_id:
                 class_id @ (RANGE_DOMAIN_CLASS_ID
@@ -1103,6 +1116,31 @@ fn read_variant_filter_definition(
             },
         )))
     }
+}
+
+#[inline(never)]
+fn read_variant_time_layer_track(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    class_id: [u8; 16],
+    key: u32,
+) -> io::Result<PropertyValueObjectStream10_1> {
+    let mut wire = reader
+        .clone()
+        .read_region(reader.remaining().min(max_bytes))?;
+    let body = crate::layers::time_layer_track_extension::read_time_layer_track_body_10_1(
+        &mut wire, max_bytes, table,
+    )?;
+    let bytes = Arc::from(reader.read_bytes(wire.position())?);
+    Ok(PropertyValueObjectStream10_1::TimeLayerTrack(Box::new(
+        EncodedVariantObject10_1 {
+            class_id,
+            key,
+            bytes,
+            body,
+        },
+    )))
 }
 
 #[inline(never)]

@@ -37,6 +37,22 @@ pub(super) fn read_bounded_time_layer_track_extension(
 ) -> io::Result<Box<TimeLayerTrackExtension10_1>> {
     let mut body = Reader::new(bytes);
     let mut staged = refs.clone();
+    let track = read_time_layer_track_body_10_1(&mut body, max, &mut staged)?;
+    if body.remaining() != 0 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "TimeLayerTrackExtension 对象体消费与声明长度不一致",
+        ));
+    }
+    *refs = staged;
+    Ok(Box::new(track))
+}
+
+pub(crate) fn read_time_layer_track_body_10_1(
+    body: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<TimeLayerTrackExtension10_1> {
     let version = body.read_u16_le()?;
     if !(1..=2).contains(&version) {
         return Err(io::Error::new(
@@ -44,7 +60,7 @@ pub(super) fn read_bounded_time_layer_track_extension(
             "不支持的 TimeLayerTrackExtension 版本",
         ));
     }
-    let long_array = read_long_array_slot(&mut body, max, &mut staged)?;
+    let long_array = read_long_array_slot(body, max, refs)?;
     let count = (body.read_u32_le()? as i32).max(0) as usize;
     if count > body.remaining().min(max) / 16 {
         return Err(io::Error::new(
@@ -54,14 +70,14 @@ pub(super) fn read_bounded_time_layer_track_extension(
     }
     let windows = (0..count)
         .map(|_| {
-            let mut window = slot(&mut body, &mut staged, |r, _, class_id, _| {
+            let mut window = slot(body, refs, |r, _, class_id, _| {
                 if class_id != TIME_WINDOW_CLASS_ID {
                     return Err(unsupported_class("ITimeWindow", &class_id));
                 }
                 read_time_window(r, max)
             })?;
             if let ObjectEntry10_1::BackReference { class_id, key } = &mut window.entry
-                && let Some(registered) = staged.registered_class(*key)
+                && let Some(registered) = refs.registered_class(*key)
             {
                 if registered != TIME_WINDOW_CLASS_ID {
                     return Err(unsupported_class("ITimeWindow 回引", &registered));
@@ -80,19 +96,12 @@ pub(super) fn read_bounded_time_layer_track_extension(
             ])
         })
         .transpose()?;
-    if body.remaining() != 0 {
-        return Err(io::Error::new(
-            ErrorKind::InvalidData,
-            "TimeLayerTrackExtension 对象体消费与声明长度不一致",
-        ));
-    }
-    *refs = staged;
-    Ok(Box::new(TimeLayerTrackExtension10_1 {
+    Ok(TimeLayerTrackExtension10_1 {
         version,
         long_array,
         windows,
         shorts_v2,
-    }))
+    })
 }
 
 pub(crate) fn read_time_window(reader: &mut Reader<'_>, max: usize) -> io::Result<TimeWindow10_1> {
@@ -210,6 +219,33 @@ mod tests {
             if version == 2 {
                 track.extend([1, 0, 2, 0, 3, 0]);
             }
+
+            let mut variant = 13_u16.to_le_bytes().to_vec();
+            variant.extend([0; 14]);
+            variant.extend(TIME_LAYER_TRACK_EXTENSION_CLASS_ID);
+            variant.extend(90_u32.to_le_bytes());
+            variant.extend(&track);
+            let end = variant.len();
+            variant.push(0xaa);
+            use crate::objects::property_set::{
+                PropertyValueObjectStream10_1, read_padded_variant_object_stream_10_1,
+            };
+            let mut reader = Reader::new(&variant);
+            let mut refs = RefTable10_1::new();
+            let value =
+                read_padded_variant_object_stream_10_1(&mut reader, 4096, &mut refs).unwrap();
+            assert!(
+                matches!(value, PropertyValueObjectStream10_1::TimeLayerTrack(track)
+                if track.body().windows.len() == 4 && track.key == 90)
+            );
+            assert!(refs.contains(90) && refs.contains(91) && refs.contains(103));
+            assert_eq!(reader.position(), end);
+
+            let mut reader = Reader::new(&variant[..end - 1]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_padded_variant_object_stream_10_1(&mut reader, 4096, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
 
             let wrap = |track: &[u8]| {
                 let mut bytes = vec![0; 26];
