@@ -556,3 +556,12 @@ QueryFilter、SpatialFilter 和 FilterDefs 的版本上限。
 XMLFilterDef 在 `0x70a29fd0` 以 `je` 仅接受版本 1。
 读取器保留原始版本位模式。合成测试覆盖定义对象版本门及成功边界。
 ArcMap 10.1 与 QGIS 人工验收尚未进行。
+
+### 过滤器回引
+
+GdbCore.dll 10.1.0.3035 的 FilterDefs 成员读取路径
+`0x7090125c → 0x708fd250` 请求 IFilterDef。SystemCore 同版本
+在 `0x7ffd0063` 按键取得已有实例。过滤器、定义集合、XML 定义
+及 FIDSet 槽用已知登记类检查回引；几何与空间参考槽保留宽松接收规则。
+合成测试核对 XML 成员回引头与登记类不一致时的分派、停止点和键表。
+ArcMap 10.1 与 QGIS 人工验收未进行。

@@ -115,6 +115,7 @@ fn read_slot<T>(
     reader: &mut Reader<'_>,
     table: &mut RefTable10_1,
     stop: &mut Stop,
+    accepts_reference: impl FnOnce([u8; 16]) -> bool,
     read: impl FnOnce(
         &mut Reader<'_>,
         &mut RefTable10_1,
@@ -128,6 +129,12 @@ fn read_slot<T>(
     let slot = match read_object_entry_10_1(&mut trial, &mut staged)? {
         ObjectEntry10_1::Null => QueryFilterObject10_1::Null,
         ObjectEntry10_1::BackReference { class_id, key } => {
+            let registered = staged.registered_class(key);
+            let class_id = registered.unwrap_or(class_id);
+            if registered.is_some() && !accepts_reference(class_id) {
+                *stop = Some(DatasetNameMoreStop10_1::SlotUnsupported { class_id, key });
+                return Ok(QueryFilterObject10_1::Unsupported { class_id, key });
+            }
             QueryFilterObject10_1::BackReference { class_id, key }
         }
         ObjectEntry10_1::NewObject { class_id, key } => {
@@ -201,12 +208,18 @@ fn read_definitions(
     }
     let mut entries = Vec::new();
     for _ in 0..count {
-        entries.push(read_slot(reader, table, stop, |reader, _, class, _, _| {
-            if class != XML_FILTER_DEF_CLASS_ID {
-                return Ok(None);
-            }
-            read_xml_filter_def_body_10_1(reader, max).map(Some)
-        })?);
+        entries.push(read_slot(
+            reader,
+            table,
+            stop,
+            |class| class == XML_FILTER_DEF_CLASS_ID,
+            |reader, _, class, _, _| {
+                if class != XML_FILTER_DEF_CLASS_ID {
+                    return Ok(None);
+                }
+                read_xml_filter_def_body_10_1(reader, max).map(Some)
+            },
+        )?);
         if stop.is_some() {
             break;
         }
@@ -224,9 +237,19 @@ fn read_core(
     let sub_fields = read_string_10_1(reader, max)?;
     let where_clause = read_string_10_1(reader, max)?;
     let string_c = read_string_10_1(reader, max)?;
-    let output_reference = read_slot(reader, table, stop, |reader, _, class_id, key, _| {
-        read_spatial_reference_body_10_1(reader, max, &ObjectEntry10_1::NewObject { class_id, key })
-    })?;
+    let output_reference = read_slot(
+        reader,
+        table,
+        stop,
+        |_| true,
+        |reader, _, class_id, key, _| {
+            read_spatial_reference_body_10_1(
+                reader,
+                max,
+                &ObjectEntry10_1::NewObject { class_id, key },
+            )
+        },
+    )?;
     let mut core = QueryFilterCore10_1 {
         version,
         sub_fields,
@@ -247,6 +270,7 @@ fn read_core(
         reader,
         table,
         stop,
+        |class| class == FID_SET_CLASS_ID,
         |reader, table, class, key, _| {
             if class == FID_SET_CLASS_ID {
                 read_fid_set_body_10_1(reader, table, key).map(Some)
@@ -266,6 +290,7 @@ fn read_core(
             reader,
             table,
             stop,
+            |class| class == FILTER_DEFS_CLASS_ID,
             |reader, table, class, _, stop| {
                 if class != FILTER_DEFS_CLASS_ID {
                     return Ok(None);
@@ -289,19 +314,25 @@ fn read_spatial_fields(
     let search_order = reader.read_u32_le()? as i32;
     let spatial_rel = reader.read_u32_le()? as i32;
     let spatial_rel_description = read_string_10_1(reader, max)?;
-    let geometry = read_slot(reader, table, stop, |reader, table, class, _, _| {
-        Ok(Some(match class {
-            ENVELOPE_CLASS_ID => {
-                SpatialFilterGeometry10_1::Envelope(read_envelope_10_1(reader, max, table)?)
-            }
-            POINT_CLASS_ID | MULTIPOINT_CLASS_ID | POLYLINE_CLASS_ID | POLYGON_CLASS_ID => {
-                SpatialFilterGeometry10_1::Geometry(read_geometry_body_10_1(
-                    &class, reader, max, table,
-                )?)
-            }
-            _ => return Ok(None),
-        }))
-    })?;
+    let geometry = read_slot(
+        reader,
+        table,
+        stop,
+        |_| true,
+        |reader, table, class, _, _| {
+            Ok(Some(match class {
+                ENVELOPE_CLASS_ID => {
+                    SpatialFilterGeometry10_1::Envelope(read_envelope_10_1(reader, max, table)?)
+                }
+                POINT_CLASS_ID | MULTIPOINT_CLASS_ID | POLYLINE_CLASS_ID | POLYGON_CLASS_ID => {
+                    SpatialFilterGeometry10_1::Geometry(read_geometry_body_10_1(
+                        &class, reader, max, table,
+                    )?)
+                }
+                _ => return Ok(None),
+            }))
+        },
+    )?;
     let (geometry_field, filter_owns_geometry) = if stop.is_none() {
         (
             Some(read_string_10_1(reader, max)?),
@@ -326,9 +357,15 @@ pub(crate) fn read_query_filter_slot_10_1(
     table: &mut RefTable10_1,
     stop: &mut Stop,
 ) -> io::Result<QueryFilterObject10_1<QueryFilterBody10_1>> {
-    read_slot(reader, table, stop, |reader, table, class, _, stop| {
-        read_query_filter_body_10_1(reader, max, table, class, stop)
-    })
+    read_slot(
+        reader,
+        table,
+        stop,
+        |class| matches!(class, QUERY_FILTER_CLASS_ID | SPATIAL_FILTER_CLASS_ID),
+        |reader, table, class, _, stop| {
+            read_query_filter_body_10_1(reader, max, table, class, stop)
+        },
+    )
 }
 
 pub(crate) fn read_query_filter_body_10_1(
@@ -367,6 +404,50 @@ mod tests {
     fn append_header(bytes: &mut Vec<u8>, class: [u8; 16], key: u32) {
         bytes.extend(class);
         bytes.extend(key.to_le_bytes());
+    }
+
+    #[test]
+    fn xml_filter_member_reference_checks_the_registered_class() {
+        for registered in [XML_FILTER_DEF_CLASS_ID, FILTER_DEFS_CLASS_ID] {
+            let mut header = Vec::new();
+            append_header(&mut header, registered, 11);
+            let mut refs = RefTable10_1::new();
+            read_object_entry_10_1(&mut Reader::new(&header), &mut refs).unwrap();
+            let before = refs.clone();
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(1_u32.to_le_bytes());
+            let claimed = if registered == XML_FILTER_DEF_CLASS_ID {
+                FILTER_DEFS_CLASS_ID
+            } else {
+                XML_FILTER_DEF_CLASS_ID
+            };
+            append_header(&mut bytes, claimed, 11);
+            let mut reader = Reader::new(&bytes);
+            let mut stop = None;
+            let body = read_filter_defs_body_10_1(&mut reader, 128, &mut refs, &mut stop).unwrap();
+            assert_eq!(refs, before);
+            if registered == XML_FILTER_DEF_CLASS_ID {
+                assert!(stop.is_none());
+                assert_eq!(
+                    body.entries,
+                    [QueryFilterObject10_1::BackReference {
+                        class_id: registered,
+                        key: 11,
+                    }]
+                );
+                assert_eq!(reader.position(), bytes.len());
+            } else {
+                assert!(stop.is_some());
+                assert_eq!(
+                    body.entries,
+                    [QueryFilterObject10_1::Unsupported {
+                        class_id: registered,
+                        key: 11,
+                    }]
+                );
+                assert_eq!(reader.position(), 6);
+            }
+        }
     }
 
     #[test]
