@@ -333,3 +333,9 @@ Geometry.dll 10.1.0.3035 的 MultiPatch QI 在 `0x718ddc2b`
 `0x718ddc39` 转往返回接口视图的分支。该 IID 与 GdalRasterDB.dll
 的 SplineXform 两槽一致。合成 SplineXform 验证 MultiPatch 新对象、
 第二槽回引和截断回滚。ArcMap 10.1 和 QGIS 人工验收未进行。
+
+RasterDB.dll 10.1.0.3035 的 ProjectiveXform Load 在
+`0x7c03bcaa` 读取控制点计数，`0x7c03bcd9` 读取标志。
+objdump 确认 `0x7c03bced` 在标志为零时直接跳过数组分配和读取，
+因此保留该路径的原始有符号计数。标志非零且计数为负时，Rust
+在分配前拒绝。合成用例验证后继边界与错误回滚；实档及人工验收待核对。

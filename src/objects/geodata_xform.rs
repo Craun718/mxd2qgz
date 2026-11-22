@@ -242,7 +242,7 @@ pub struct ProjectiveXform10_1 {
     pub geometry: GeometryCollectionSlot10_1,
     /// 已确认的投影变换槽，包含有界旧档的空槽。
     pub transformation: Option<ObjectEntry10_1>,
-    pub point_count: usize,
+    pub point_count: i32,
     pub points_flag: i32,
     pub point_arrays: Option<[Vec<[f64; 2]>; 2]>,
 }
@@ -500,13 +500,14 @@ fn read_projective_xform(
             };
             (geometry, transformation)
         };
-    let point_count = nonnegative_count(r)?;
+    let point_count = long(r)?;
     let points_flag = long(r)?;
     let point_arrays = (points_flag != 0)
         .then(|| {
-            pair_of_arrays(r, point_count, 16, |r| {
-                Ok([r.read_f64_le()?, r.read_f64_le()?])
-            })
+            let count = usize::try_from(point_count).map_err(|_| {
+                io::Error::new(ErrorKind::InvalidData, "ProjectiveXform 点数组数量为负")
+            })?;
+            pair_of_arrays(r, count, 16, |r| Ok([r.read_f64_le()?, r.read_f64_le()?]))
         })
         .transpose()?;
     Ok(ProjectiveXform10_1 {

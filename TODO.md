@@ -351,6 +351,7 @@
   - [x] 接入地理变换 IGeometryCollection 槽的 GeometryBag。[接口取证](docs/mxd-10.1-geodata-xform.md#地理变换的-geometrybag-槽)
   - [x] 接入地理变换 IGeometryCollection 槽的 MultiPatch。[接口取证](docs/mxd-10.1-geodata-xform.md#地理变换的-geometrybag-槽)
   - [x] 接入 SplineXform 的 MultiPatch 点集合。[接口取证](docs/mxd-10.1-geodata-xform.md#splinexform-的-multipatch-点集合)
+  - [x] 保留 ProjectiveXform 无点数组时的有符号计数。
   - [x] 验证有界 RasterLayer 中 ProjectiveXform 空第三槽后的非空控制点数组及截断回滚。[控制点与后继对象](docs/mxd-10.1-geodata-xform.md#projectivexform-的读写差异)
   - [x] 接入有界 RasterLayer 中 ProjectiveXform 的空第三槽，按完整尾段与声明边界判定。[边界取证](docs/mxd-10.1-geodata-xform.md#projectivexform-的读写差异)
   - [x] 接入 FrameXform v1–v7、Formosat2Xform v1、SPOT5Xform v1/v2 的数组槽与栅格记录，见 [传感器变换取证](docs/mxd-10.1-geodata-xform.md#frameformosat2-与-spot5)。

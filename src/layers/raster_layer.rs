@@ -923,7 +923,7 @@ mod tests {
                 legacy.then_some(ObjectEntry10_1::Null)
             );
             assert_eq!(projective.geometry.body.is_some(), geometry);
-            assert_eq!(projective.point_count, point_count as usize);
+            assert_eq!(projective.point_count, point_count);
             assert_eq!(
                 projective.point_arrays,
                 points.map(|points| points.map(|point| vec![point]))

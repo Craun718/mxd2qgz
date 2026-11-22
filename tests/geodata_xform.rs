@@ -1228,3 +1228,35 @@ fn geometric_object_branch_reuses_other_module_xform_and_limits_nesting() {
     assert_eq!(reader.position(), 0);
     assert!(refs.is_empty());
 }
+
+#[test]
+fn projective_preserves_negative_count_when_arrays_are_absent() {
+    use mxd2qgz::objects::geodata_xform::PROJECTIVE_XFORM_CLASS_ID;
+
+    for flag in [0_i32, 1] {
+        let mut bytes = Vec::new();
+        header(&mut bytes, PROJECTIVE_XFORM_CLASS_ID, 80);
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend([0; 32]);
+        bytes.extend((-1_i32).to_le_bytes());
+        bytes.extend(flag.to_le_bytes());
+        let end = bytes.len();
+        bytes.push(0xaa);
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let result = read_geodata_xform_slot_10_1(&mut reader, 256, &mut refs);
+        if flag == 0 {
+            let GeodataXformBody10_1::Projective(body) = *result.unwrap().body.unwrap() else {
+                panic!("缺少 ProjectiveXform");
+            };
+            assert_eq!(body.point_count, -1);
+            assert!(body.point_arrays.is_none());
+            assert_eq!(reader.position(), end);
+            assert!(refs.contains(80));
+        } else {
+            assert!(result.is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+}
