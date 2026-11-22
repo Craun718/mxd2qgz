@@ -278,6 +278,7 @@
   - [x] 按 10.1 Load 的有符号上限读取 SAIRenderer 版本。
   - [x] 核对 10.1 类注册表其余 IRasterRenderer 候选的持久化实现。Raster3DRenderer 的普通新实例无法查询持久化接口，VectorFieldRenderer 不在原生导出工厂表中，见 [类工厂与接口取证](docs/mxd-10.1-raster-renderer.md#其余注册候选的持久化核对)。
   - [x] 接入 RasterRGBRenderer v1–v3 旧式对象体及共用体 v1，复用两个带键颜色槽；原生拒绝 v0，见 [旧版取证](docs/mxd-10.1-raster-renderer.md#rgb-v1v3-与共用体-v1)。
+  - [x] 接入共用体 tag 6 与 RGB tag 12 中其余已确认的无键 IColor 对象体。
   - [x] 接入 RasterRGBRenderer tag 18 的 PansharpeningFilter v1 体（两个 LoadRaster 空槽），见 [全色锐化取证](docs/mxd-10.1-raster-renderer.md#rgb-tag-18全色锐化)。
   - [x] 接入 RasterRGBRenderer tag 18 非空 LoadRaster 槽，读取普通及 FileGDB 栅格名称、波段名、变换和包络，并复用宿主键表。
   - [x] 保留 LoadRaster 的有符号波段计数，并确认非正值跳过名称循环后继续读取变换及包络。[原生读取顺序](docs/mxd-10.1-raster-renderer.md#rgb-tag-18全色锐化)

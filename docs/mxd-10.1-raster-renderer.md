@@ -36,7 +36,7 @@ IRasterRenderer，请求 IID 位于 `0x7c769b44`，为
   共用版本 4/5/6/7/8/9 依次增加 short/int32/int32/byte/short/IColorRamp；
   总对象体末端是色表版本 ≥2 的一个 int32、≥3 的两个 int32。色表 Save 版本表
   `0x7c9b1190` 为 `[-1,1,1,2,2,3]`。共用体读取支持版本 2–9，
-  tag 6 暂支持空与 RgbColor；ILegendGroup 和 IColorRamp 复用已有分派。
+  tag 6 支持空与五种已确认的 IColor 实现；ILegendGroup 和 IColorRamp 复用已有分派。
   RasterIO 对象的 16 字节 CLSID 后直接进入对象体，不登记外层 ObjectStream 键。
 - RGB：版本 4–9 进入同一 magic 的 RGB 专用 RasterIO 段，tag 1/2/3 为
   红绿蓝零基波段索引；tag 4–11 的长度经写侧对位；tag 12 是无键颜色，
@@ -62,6 +62,12 @@ RasterRenderer.dll 10.1.0.3035 的色表 Load `0x7c962350` 未设置类体
 版本范围，尾部仅在 `0x7c9624ab` 和 `0x7c9624c5` 以有符号比较选择
 附加字段。构造输入覆盖负版本、0、1、2、3 和最大 int32，验证读取
 0、1 或 3 个尾部整数后的边界。写侧常规版本之外尚无实档或人工验证。
+
+共用体 tag 6 通过 `0x7c983bd0 → 0x7c983db0` 查询 IColor，
+RGB tag 12 通过 `0x7c99d9a0` 查询同一 IID（`0x7c9b17ac`）。
+两槽复用 DisplayCore 五类颜色的已确认对象体，无键外壳不进入宿主
+引用表。构造 RGB tag 12 的 HsvColor 验证后续 tag 18 和共用体边界。
+非 RGB 组合尚无实档或 ArcMap/QGIS 人工验证。
 
 ### RGB 的两个嵌套对象
 

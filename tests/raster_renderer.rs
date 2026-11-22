@@ -288,6 +288,29 @@ fn finish_tagged_rgb_filter(bytes: &mut Vec<u8>) {
 }
 
 #[test]
+fn tagged_rgb_accepts_hsv_color_without_an_object_key() {
+    use mxd2qgz::objects::display_color::HSV_COLOR_CLASS_ID;
+
+    let mut bytes = tagged_rgb_filter_prefix();
+    let color_offset = bytes.len() - 4 - 24 - 16;
+    let mut color = HSV_COLOR_CLASS_ID.to_vec();
+    color.extend(1_u16.to_le_bytes());
+    color.extend(1_u16.to_le_bytes());
+    color.extend([1, 1, 2, 3, 4, 0x11, 0xee]);
+    bytes.splice(color_offset..color_offset + 16, color);
+    bytes.extend([0; 32]); // 两个空栅格名称。
+    finish_tagged_rgb_filter(&mut bytes);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let slot = read_raster_renderer_slot_prefix_10_1(&mut reader, 4096, &mut refs).unwrap();
+    assert!(slot.body.unwrap().is_complete());
+    assert_eq!(reader.position(), bytes.len());
+    assert_eq!(refs.len(), 1);
+    assert!(refs.contains(71));
+}
+
+#[test]
 fn tagged_rgb_filter_consumes_empty_rasters_and_preserves_next_record() {
     use mxd2qgz::layers::raster_renderer::{PansharpeningFilter10_1, PansharpeningSlot10_1};
 

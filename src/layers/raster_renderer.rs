@@ -18,7 +18,7 @@ use crate::layers::raster_unique_value::{
 };
 use crate::objects::color_ramp::{ColorRampSlot10_1, read_color_ramp_slot_10_1};
 use crate::objects::display_color::{
-    ColorSlot10_1, RGB_COLOR_CLASS_ID, read_color_slot_10_1, read_rgb_color_body_10_1,
+    ColorSlot10_1, read_color_body_for_class_10_1, read_color_slot_10_1,
 };
 use crate::objects::display_symbol::MAX_SYMBOL_NESTING_DEPTH;
 use crate::objects::geodata_xform::{
@@ -667,7 +667,7 @@ pub(super) fn read_shared_tail(
             ));
         }
     }
-    let raster_io_color = read_raster_io_color(reader, 6)?;
+    let raster_io_color = read_raster_io_color(reader, 6, max_bytes)?;
     let mut doubles = Reader::new(raster_io_record(reader, 7, 24)?);
     let raster_io_doubles = [
         doubles.read_f64_le()?,
@@ -716,21 +716,22 @@ pub(super) fn raster_io_object_class(reader: &mut Reader<'_>, tag: i32) -> io::R
     Ok(reader.read_bytes(16)?.try_into().unwrap())
 }
 
-fn read_raster_io_color(reader: &mut Reader<'_>, tag: i32) -> io::Result<Vec<u8>> {
+fn read_raster_io_color(
+    reader: &mut Reader<'_>,
+    tag: i32,
+    max_bytes: usize,
+) -> io::Result<Vec<u8>> {
     let start = reader.clone();
     let class_id = raster_io_object_class(reader, tag)?;
-    match class_id {
-        NULL_CLASS_ID_10_1 => (),
-        RGB_COLOR_CLASS_ID => {
-            // RasterIO 不使用 ObjectStream 键；复用 RGB 布局检查，不保留虚拟键。
-            read_rgb_color_body_10_1(reader, &mut RefTable10_1::new(), 0)?;
-        }
-        _ => {
-            return Err(invalid(format!(
-                "栅格渲染器 RasterIO tag {tag} 存在未知颜色类 {}",
-                crate::storage::class_id_hex(&class_id)
-            )));
-        }
+    // RasterIO 的外壳不带对象键。
+    if class_id != NULL_CLASS_ID_10_1
+        && read_color_body_for_class_10_1(class_id, reader, max_bytes, &mut RefTable10_1::new(), 0)?
+            .is_none()
+    {
+        return Err(invalid(format!(
+            "栅格渲染器 RasterIO tag {tag} 存在未知颜色类 {}",
+            crate::storage::class_id_hex(&class_id)
+        )));
     }
     let mut bytes = start;
     bytes.read_bytes(8)?;
@@ -946,7 +947,7 @@ fn read_rgb_tail(
     table: &mut RefTable10_1,
     version: i32,
 ) -> io::Result<RgbTail10_1> {
-    let color = read_raster_io_color(reader, 12)?;
+    let color = read_raster_io_color(reader, 12, max_bytes)?;
     let tag13 = optional_long_record(reader, 13)?;
     let red = read_raster_histogram(reader, 14)?;
     let green = read_raster_histogram(reader, 15)?;
