@@ -446,6 +446,35 @@ fn map_v0_to_v13_read_version_gated_tail_fields() {
             if netcdf {
                 let indices = names[1].0 - (20 + 2 + 4 + 4);
                 let dimensions = indices - 20;
+                let workspace = at + 20 + 2 + 3 * 6;
+                let workspace_class = mxd2qgz::layers::feature_layer::WORKSPACE_NAME_CLASS_ID;
+                for (registered, claimed) in
+                    [(workspace_class, [0x7d; 16]), ([0x7d; 16], workspace_class)]
+                {
+                    let mut input = bytes.clone();
+                    let mut header = claimed.to_vec();
+                    header.extend(110_u32.to_le_bytes());
+                    input.splice(workspace..workspace + 16, header);
+                    let mut header = registered.to_vec();
+                    header.extend(110_u32.to_le_bytes());
+                    let mut refs = RefTable10_1::new();
+                    mxd2qgz::storage::object_refs::read_object_entry_10_1(
+                        &mut Reader::new(&header),
+                        &mut refs,
+                    )
+                    .unwrap();
+                    let mut reader = Reader::new(&input);
+                    reader.read_bytes(24).unwrap();
+                    let parsed = read_map_suffix_10_1(&mut reader, 4096, &mut refs).unwrap();
+                    assert!(refs.contains(110));
+                    if registered == workspace_class {
+                        assert_eq!(parsed.legacy_table_names.len(), 2);
+                    } else {
+                        assert!(parsed.legacy_table_names.is_empty());
+                        assert_eq!(reader.position(), at);
+                        assert!(!refs.contains(90));
+                    }
+                }
                 let mut input = bytes.clone();
                 input[dimensions..dimensions + 16].fill(0x7d);
                 let mut reader = Reader::new(&input);

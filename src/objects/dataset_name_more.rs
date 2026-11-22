@@ -1439,14 +1439,20 @@ fn read_workspace_slot_10_1(
     stop_out: &mut Option<DatasetNameMoreStop10_1>,
 ) -> io::Result<WorkspaceNameSlot10_1> {
     let at_slot = reader.clone();
-    let saved_table = table.clone();
     let mut staged_table = table.clone();
     match read_object_entry_10_1(reader, &mut staged_table)? {
         ObjectEntry10_1::Null => Ok(WorkspaceNameSlot10_1::Null),
-        ObjectEntry10_1::BackReference { class_id, key } => {
-            *table = staged_table;
-            Ok(WorkspaceNameSlot10_1::BackReference { class_id, key })
-        }
+        ObjectEntry10_1::BackReference { class_id, key } => match table.registered_class(key) {
+            Some(class_id) if class_id != WORKSPACE_NAME_CLASS_ID => {
+                *reader = at_slot;
+                *stop_out = Some(DatasetNameMoreStop10_1::SlotUnsupported { class_id, key });
+                Ok(WorkspaceNameSlot10_1::Unsupported { class_id, key })
+            }
+            registered => Ok(WorkspaceNameSlot10_1::BackReference {
+                class_id: registered.unwrap_or(class_id),
+                key,
+            }),
+        },
         ObjectEntry10_1::NewObject { class_id, key } if class_id == WORKSPACE_NAME_CLASS_ID => {
             let body = read_workspace_name_body_10_1(reader, max_bytes, &mut staged_table, key)?;
             if let Some(WorkspaceNameStop10_1::PropertySetNewObject { class_id, key }) = body.stop {
@@ -1456,7 +1462,6 @@ fn read_workspace_slot_10_1(
             Ok(WorkspaceNameSlot10_1::WorkspaceName(Box::new(body)))
         }
         ObjectEntry10_1::NewObject { class_id, key } => {
-            *table = saved_table;
             *reader = at_slot;
             *stop_out = Some(DatasetNameMoreStop10_1::SlotUnsupported { class_id, key });
             Ok(WorkspaceNameSlot10_1::Unsupported { class_id, key })
