@@ -1346,3 +1346,9 @@ MapAnimation.dll 10.1.0.3035 的 TimeLayerTrackExtension
 IPersistStream Load（`0x794f5450`）以窗口循环和版本尾字段确定体边界。
 共享 Variant 使用同一读取器，有界扩展包装仍检查完整消费。合成 v1/v2
 验证嵌套键、后继字节及截断回滚。真实 Variant 宿主和人工验收待验证。
+
+RasterDB.dll 10.1.0.3035 的栅格名称读取路径请求 IWorkspaceName
+（IID 常量 `0x7c131138`）。共享栅格工作空间槽依据 SystemCore
+同版 `0x7ffd0063` 的查键行为，以登记类校验回引。合成测试覆盖
+恢复工作空间路径，以及不适用的登记类在槽起点停止并保留既有键。
+ArcMap 10.1 与 QGIS 人工验收未进行。

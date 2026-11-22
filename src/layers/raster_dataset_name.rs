@@ -121,7 +121,15 @@ pub(super) fn read_workspace_slot(
     use RasterDatasetWorkspaceSlot10_1 as Slot;
     Ok(match read_object_entry_10_1(reader, table)? {
         ObjectEntry10_1::Null => Slot::Null,
-        ObjectEntry10_1::BackReference { class_id, key } => Slot::BackReference { class_id, key },
+        ObjectEntry10_1::BackReference { class_id, key } => match table.registered_class(key) {
+            Some(class_id) if class_id != WORKSPACE_NAME_CLASS_ID => {
+                Slot::Unsupported { class_id, key }
+            }
+            registered => Slot::BackReference {
+                class_id: registered.unwrap_or(class_id),
+                key,
+            },
+        },
         ObjectEntry10_1::NewObject {
             class_id: WORKSPACE_NAME_CLASS_ID,
             key,
@@ -1507,6 +1515,44 @@ mod tests {
             let body = read_raster_dataset_name_body_10_1(&mut reader, 1024, &mut refs, 9).unwrap();
             assert_eq!(body.workspace_path(), expected);
             assert_eq!(reader.position(), bytes.len());
+        }
+    }
+
+    #[test]
+    fn workspace_back_reference_uses_the_registered_class() {
+        for registered in [WORKSPACE_NAME_CLASS_ID, [0x42; 16]] {
+            let mut refs = RefTable10_1::new();
+            let mut header = registered.to_vec();
+            header.extend(12_u32.to_le_bytes());
+            read_object_entry_10_1(&mut Reader::new(&header), &mut refs).unwrap();
+            refs.mark_workspace_path(12, "raster.gdb");
+            let before = refs.clone();
+
+            let mut bytes = body_with_null_workspace(4);
+            let offset = bytes.len() - 24;
+            let claimed = if registered == WORKSPACE_NAME_CLASS_ID {
+                [0x42; 16]
+            } else {
+                WORKSPACE_NAME_CLASS_ID
+            };
+            bytes.splice(
+                offset..offset + 16,
+                claimed.into_iter().chain(12_u32.to_le_bytes()),
+            );
+            let mut reader = Reader::new(&bytes);
+            let body = read_raster_dataset_name_body_10_1(&mut reader, 1024, &mut refs, 9).unwrap();
+            assert_eq!(refs, before);
+            if registered == WORKSPACE_NAME_CLASS_ID {
+                assert_eq!(body.workspace_path(), Some("raster.gdb"));
+                assert_eq!(reader.position(), bytes.len());
+            } else {
+                assert!(
+                    matches!(body.stop, Some(RasterDatasetNameStop10_1::UnsupportedWorkspaceClass {
+                    class_id, key: 12,
+                }) if class_id == registered)
+                );
+                assert_eq!(reader.position(), offset);
+            }
         }
     }
 

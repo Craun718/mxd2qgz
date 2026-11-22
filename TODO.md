@@ -261,6 +261,7 @@
   - [x] 在 RasterRGBRenderer tag 18 的两处 LoadRaster 间验证缓存栅格和 NetCDF 名称的嵌套对象键回引。[共享键测试](docs/mxd-10.1-raster-renderer.md#rgb-tag-18全色锐化)
   - [ ] 补齐 RasterRGBRenderer tag 18 非空 LoadRaster 槽中未支持的 IName 类。[已核对的 FullName 来源](docs/mxd-10.1-raster-layer-tail.md#三个名称宿主的接口与-fullname-来源)
   - [x] 按登记对象的类分派 LoadRaster 名称回引。[原生接口取证](docs/mxd-10.1-raster-layer-tail.md#三个名称宿主的接口与-fullname-来源)
+  - [x] 按登记类校验栅格名称的 IWorkspaceName 回引。
   - [x] 按登记类校验 LoadRaster 与 RasterLayer 共用包络槽的回引。
   - [x] 按登记类校验栅格变换槽的回引。
   - [x] 接入 ImageServerLayer 非空 Fields 及 Field 的已确认对象体；默认值复用 AfCore Variant 读取器，见 [字段集合取证](docs/mxd-10.1-fields.md)。
