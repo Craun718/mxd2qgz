@@ -321,6 +321,19 @@ typekind：3 = TKIND_INTERFACE（接口 IID），5 = TKIND_COCLASS（组件类 C
 `FUN_7b70e800`：`ev_4d9173c8f48cc45565bf7027879cd807e1dbbbfaa346a8ed6ecad2d0e734674b`/
 `ev_a4b557cfa3527572bd02113abb9e580021855c2d5b476bc2ae210652bad6b6c9`。
 
+### 纸张创建分支的 CLSID 勘误
+
+历史提交 `04641d4` 将 `FUN_7b70e800` 的
+`AfCreateInstance` 参数地址 `0x7b7207ec` 记为
+`558c4e63-3f11-11d1-885e-0000f87808ee`，由此产生了内部类名待办。
+复核 10.1 PageLayout.dll（SHA-256
+`ba9e71f42e00d06a2311a1492fc3d1aeca544c96d9ebd3926140a11b8de9d69f`），
+布局分支 `0x7b709518` 调用 `0x7b70e800`，该参数地址的 16 字节为
+`63 4e 8c e2 55 3f d1 11 88 5e 00 00 f8 78 08 ee`，对应
+esriOutput Paper 的 CLSID `E28C4E63-3F55-11D1-885E-0000F87808EE`，
+与类型库和 PrintOut.dll 的 GetClassID 一致。旧待办针对的是同一
+地址的误记，至此关闭。此处为静态身份复核，未在 ArcMap 中运行。
+
 ### 与既有记录的衔接
 
 - 「Version 流对象身份」节中「创建 043731d0 后 QI 18a45ba7」现可读作：创建 esriSystem
