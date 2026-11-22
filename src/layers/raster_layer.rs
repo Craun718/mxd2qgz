@@ -932,7 +932,8 @@ mod tests {
             assert!(refs.contains(60) && refs.contains(71) && refs.contains(73));
             assert_eq!(refs.contains(72), geometry);
 
-            for end in [point_end - 1, missing_byte] {
+            bytes.push(0xa5);
+            for end in [point_end - 1, missing_byte, bytes.len()] {
                 let mut reader = Reader::new(&bytes[..end]);
                 let mut refs = RefTable10_1::new();
                 assert!(
