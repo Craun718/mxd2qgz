@@ -368,6 +368,9 @@ pub enum PropertyValueObjectStream10_1 {
             >,
         >,
     ),
+    GeodataXform(
+        Box<EncodedVariantObject10_1<crate::objects::geodata_xform::GeodataXformBody10_1>>,
+    ),
     RasterUniqueValueColors(
         Box<
             EncodedVariantObject10_1<
@@ -643,6 +646,25 @@ pub(crate) fn read_variant_object_body_10_1(
                 class_id: table.registered_class(key).unwrap_or(class_id),
                 key,
             }
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: class_id @ crate::objects::geodata_xform::IDENTITY_XFORM_CLASS_ID,
+            key,
+        } => {
+            check_variant_object_depth(depth)?;
+            let mut wire = reader
+                .clone()
+                .read_region(max_bytes.min(reader.remaining()))?;
+            let body = crate::objects::geodata_xform::read_geodata_xform_body_10_1(
+                &mut wire, max_bytes, table, class_id,
+            )?;
+            let bytes = Arc::from(reader.read_bytes(wire.position())?);
+            PropertyValueObjectStream10_1::GeodataXform(Box::new(EncodedVariantObject10_1 {
+                class_id,
+                key,
+                bytes,
+                body,
+            }))
         }
         ObjectEntry10_1::NewObject {
             class_id:
@@ -1756,6 +1778,37 @@ mod tests {
         assert_eq!(reader.remaining(), 0);
         assert!(refs.contains(100));
         assert!(!refs.contains(101));
+    }
+
+    #[test]
+    fn variant_identity_transform_keeps_its_body_boundary() {
+        use crate::objects::geodata_xform::{GeodataXformBody10_1, IDENTITY_XFORM_CLASS_ID};
+
+        let mut bytes = 13_u16.to_le_bytes().to_vec();
+        bytes.extend([0; 14]);
+        object(&mut bytes, IDENTITY_XFORM_CLASS_ID, 11);
+        bytes.extend(2_i32.to_le_bytes());
+        bytes.extend([0; 16]); // 空空间参考。
+        let end = bytes.len();
+        bytes.push(0xaa);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let value = read_padded_variant_object_stream_10_1(&mut reader, 128, &mut refs).unwrap();
+        assert!(matches!(
+            value,
+            PropertyValueObjectStream10_1::GeodataXform(value)
+                if value.key == 11 && matches!(value.body(),
+                    GeodataXformBody10_1::Identity { version: 2, reference: Some(_) })
+        ));
+        assert_eq!(reader.position(), end);
+        assert_eq!(refs.registered_class(11), Some(IDENTITY_XFORM_CLASS_ID));
+
+        let mut reader = Reader::new(&bytes[..end - 1]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_padded_variant_object_stream_10_1(&mut reader, 128, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
     }
 
     #[test]

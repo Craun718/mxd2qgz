@@ -248,6 +248,7 @@
   - [x] 接入旧版 RasterUniqueValueRenderer 的 RasterUniqueValueColors v1 对象体，读取数值键、字符串键及颜色原值列表，见 [旧枚举取证](docs/mxd-10.1-raster-renderer.md#旧版唯一值颜色枚举)。
   - [x] 接入带保留区的 Variant 对象值（空对象、PropertySet 和同会话回引），覆盖栅格唯一值、值域与 MosaicRule，见 [AfCore 取证](docs/arcmap-10.1-variant-propertyset-slots.md#带保留区的-objectstream-对象值)。
   - [ ] 补齐栅格唯一值类别及统计集合内其他新对象类的 Variant 体分派。
+  - [x] 接入 ObjectStream Variant 中的 IdentityXform 对象体。
   - [x] 接入 ObjectStream Variant 中的 UniqueValues 对象体。
   - [x] 验证 ObjectStream Variant 中 StatsHistogram 对象体的边界及截断回滚。
   - [x] 按 10.1 Load 的有符号版本上限读取 StatsHistogram。
