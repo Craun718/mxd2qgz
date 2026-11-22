@@ -392,6 +392,20 @@ fn empty_sequences_reach_version_boundaries_and_secondary_name() {
             assert!((51..=54).all(|key| !refs.contains(key)));
         }
         if version == 14 {
+            for count in [i32::MIN, -1] {
+                let mut negative = b.clone();
+                negative[expected - 4..expected].copy_from_slice(&count.to_le_bytes());
+                negative.push(0xaa);
+                let mut reader = Reader::new(&negative);
+                let mut refs = RefTable10_1::new();
+                let table =
+                    read_standalone_table_prefix_10_1(&mut reader, &mut refs, 10, 100).unwrap();
+                assert_eq!(table.stop, StandaloneTableStop10_1::Complete);
+                assert_eq!(table.extension_count, Some(count));
+                assert!(table.extensions.is_empty());
+                assert_eq!(reader.position(), expected);
+                assert!(refs.contains(41));
+            }
             let mut with_extension = b.clone();
             with_extension[expected - 4..].copy_from_slice(&2u32.to_le_bytes());
             let mut track = 1u16.to_le_bytes().to_vec();

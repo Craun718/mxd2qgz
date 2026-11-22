@@ -273,17 +273,6 @@ fn read_name(
     ))
 }
 
-fn count(r: &mut Reader<'_>, max_entries: usize) -> io::Result<i32> {
-    let n = signed_count(r, max_entries)?;
-    if n < 0 {
-        return Err(io::Error::new(
-            ErrorKind::InvalidData,
-            "StandaloneTable 条目计数为负",
-        ));
-    }
-    Ok(n)
-}
-
 fn signed_count(r: &mut Reader<'_>, max_entries: usize) -> io::Result<i32> {
     let n = r.read_u32_le()? as i32;
     if n.max(0) as usize > max_entries {
@@ -599,7 +588,7 @@ pub fn read_standalone_table_prefix_10_1(
         }
     }
     if version >= 14 {
-        let n = count(&mut r, max_entries)?;
+        let n = signed_count(&mut r, max_entries)?;
         result.extension_count = Some(n);
         let mut budget = max_string_bytes;
         for _ in 0..n {
