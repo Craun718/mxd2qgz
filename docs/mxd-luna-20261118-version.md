@@ -170,7 +170,7 @@ DocumentInfo 的 `0x7b691650` 和 `0x7b691b50` 在外部文档版本
 | 2 | 六个 AfCore 字符串 | +0x24 至 +0x38，名称同上表前六项 |
 | 3 | 4 字节 | +0x3c |
 | 4 | 四个 AfCore 字符串 | +0x40 HyperlinkBase、+0x44 未定名、+0x48 Credits、+0x50 Path |
-| 5 | 三个 8 字节值 | +0x58、+0x60、+0x68 |
+| 5 | 三个 8 字节 OLE DATE | +0x58 DateSaved、+0x60 DatePrinted、+0x68 DateExported |
 | 6 | 4 字节 | +0x4c RelativePaths |
 | 7 | AfCore 字符串 | +0x74 |
 
@@ -230,3 +230,8 @@ Rust 的 `storage::document_metadata::read_document_metadata_10_1`
 显示为缺省。11 份 v3 中 6 份启用、5 份禁用，18 份 v4 均启用。
 CLI 按唯一完整匹配识别布局。该验证覆盖实际命令入口及诊断，
 尚未在原生 ArcMap 中逐一比对属性显示。
+
+三项日期按 esriCarto TypeInfo 744 的 getter 槽 +0x68、+0x6c、+0x70
+对位到 PageLayout.dll 10.1.0.3035 的 `0x7b6927e0`、`0x7b692840`、
+`0x7b6928a0`。它们从接口 this+0x40/+0x48/+0x50 读取 double，
+与保存顺序一致。Rust 保留原始位模式。尚未在 ArcMap 中比对日期显示。

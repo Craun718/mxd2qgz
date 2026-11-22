@@ -27,6 +27,7 @@ pub struct DocumentMetadata10_1 {
     /// 按文件顺序保留尚未核对语义的字符串与数值。
     pub unknown_strings: Vec<String>,
     pub unknown_words: Vec<u32>,
+    /// DateSaved、DatePrinted、DateExported 的 OLE DATE 原始位模式。
     pub date_bits: Option<[u64; 3]>,
 }
 
