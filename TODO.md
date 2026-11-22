@@ -933,6 +933,7 @@
 - [x] 按 10.1 esriDataSourcesRaster 类型库核对其余 IPixelFilter 候选的持久化入口，见 [候选类虚表取证](docs/mxd-10.1-raster-layer-tail.md#v16-像素过滤器)。
 - [x] 接入 RasterLayer v16 起 IPixelFilter 槽中的 LutFilter 和 HistogramSpecification，见 [对象体取证](docs/mxd-10.1-raster-layer-tail.md#v16-像素过滤器)。
 - [x] 按登记类校验 RasterLayer v16 起的 IPixelFilter 槽回引。
+- [x] 按 RasterDB 的有符号版本门读取 LutFilter。
 - [x] 闭合参考工程两个 RasterLayer v17 的渲染器后尾段：到达各自 ExtraSafe 边界，复用 LayerLib 时间段与 IStatsHistogram 读取器，见 [栅格图层尾段取证](docs/mxd-10.1-raster-layer-tail.md)。
 
 

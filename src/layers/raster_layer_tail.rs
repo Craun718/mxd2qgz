@@ -244,7 +244,7 @@ fn read_pixel_filter(
             ..
         } => {
             let version = reader.read_u16_le()?;
-            if version > 1 {
+            if version as i16 > 1 {
                 return Err(unsupported(&format!("LutFilter 版本 {version}")));
             }
             let longs = [read_long(reader)?, read_long(reader)?];
@@ -1289,20 +1289,23 @@ mod tests {
         }
         let lut_end = filter_start + lut.len();
         bytes.splice(filter_start..filter_end, lut);
-        let mut refs = RefTable10_1::new();
-        let mut reader = Reader::new(&bytes);
-        let tail = read_raster_layer_tail_10_1(&mut reader, 17, 4096, &mut refs).unwrap();
-        assert_eq!(
-            tail.pixel_filter_v16.unwrap().body,
-            Some(RasterLayerPixelFilterBody10_1::Lut {
-                version: 1,
-                longs: [4, 8],
-                values: vec![17, -9],
-            })
-        );
-        assert!(refs.contains(54));
-        assert_eq!(tail.histograms_v17[0].body.as_ref().unwrap().bins, [10.0]);
-        assert_eq!(reader.remaining(), 0);
+        for version in [1_u16, 0, u16::MAX] {
+            bytes[filter_start + 20..filter_start + 22].copy_from_slice(&version.to_le_bytes());
+            let mut refs = RefTable10_1::new();
+            let mut reader = Reader::new(&bytes);
+            let tail = read_raster_layer_tail_10_1(&mut reader, 17, 4096, &mut refs).unwrap();
+            assert_eq!(
+                tail.pixel_filter_v16.unwrap().body,
+                Some(RasterLayerPixelFilterBody10_1::Lut {
+                    version,
+                    longs: [4, 8],
+                    values: vec![17, -9],
+                })
+            );
+            assert!(refs.contains(54));
+            assert_eq!(tail.histograms_v17[0].body.as_ref().unwrap().bins, [10.0]);
+            assert_eq!(reader.remaining(), 0);
+        }
 
         for count in [-1_i32, i32::MAX] {
             bytes[filter_start + 30..filter_start + 34].copy_from_slice(&count.to_le_bytes());
