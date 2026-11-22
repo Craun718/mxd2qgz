@@ -49,6 +49,11 @@ IRasterRenderer，请求 IID 位于 `0x7c769b44`，为
   类及已知但不完整的体回退到 VARTYPE 起点，不登记渲染器或其嵌套对象的键。
   普通 RasterLayer 仍有按外层范围保留的未知后缀。
 
+SystemCore.dll 10.1.0.3035 在 `0x7ffd0063` 按键取回对象后查询
+ILegendGroup。共享读取器按登记类校验。构造色表渲染器 v1 验证合法
+回引后可读取共用体，误引 RGB 颜色则回滚游标和新建的渲染器键。
+该组合尚无实档或 ArcMap/QGIS 人工验证。
+
 ### RGB 的两个嵌套对象
 
 - `StatsHistogram {BA3027C1-49CA-4788-8B5A-3A6B387DE78C}`：

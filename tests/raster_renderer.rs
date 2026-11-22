@@ -42,6 +42,46 @@ fn renderer_reference_uses_registered_class() {
     }
 }
 
+#[test]
+fn raster_colormap_legend_group_reference_checks_registered_class() {
+    use mxd2qgz::layers::feature_layer_tail::{LEGEND_GROUP_CLASS_ID, LegendGroupSlot10_1};
+    use mxd2qgz::layers::raster_renderer::RASTER_COLORMAP_RENDERER_CLASS_ID;
+    use mxd2qgz::storage::object_refs::read_object_entry_10_1;
+
+    for registered in [LEGEND_GROUP_CLASS_ID, RGB_COLOR_CLASS_ID] {
+        let mut previous = registered.to_vec();
+        previous.extend(72_u32.to_le_bytes());
+        let mut refs = RefTable10_1::new();
+        read_object_entry_10_1(&mut Reader::new(&previous), &mut refs).unwrap();
+        let before = refs.clone();
+        let mut bytes = RASTER_COLORMAP_RENDERER_CLASS_ID.to_vec();
+        bytes.extend(71_u32.to_le_bytes());
+        bytes.extend(1_i32.to_le_bytes()); // 色表版本。
+        bytes.extend(1_i32.to_le_bytes()); // 一个图例组。
+        bytes.extend(RASTER_COLORMAP_RENDERER_CLASS_ID);
+        bytes.extend(72_u32.to_le_bytes());
+        bytes.extend(0_i32.to_le_bytes()); // 无色表项。
+        bytes.extend(1_i32.to_le_bytes()); // 共用体版本。
+        bytes.extend([0; 16]);
+        let mut reader = Reader::new(&bytes);
+        let result = read_raster_renderer_slot_prefix_10_1(&mut reader, 4096, &mut refs);
+        if registered == LEGEND_GROUP_CLASS_ID {
+            assert!(matches!(
+                result.unwrap().body,
+                Some(RasterRendererPrefix10_1::Colormap { legend_groups, tail: Some(_), .. })
+                    if legend_groups == [LegendGroupSlot10_1::BackReference {
+                        class_id: LEGEND_GROUP_CLASS_ID, key: 72,
+                    }]
+            ));
+            assert_eq!(reader.position(), bytes.len());
+        } else {
+            assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::InvalidData);
+            assert_eq!(reader.position(), 0);
+            assert_eq!(refs, before);
+        }
+    }
+}
+
 fn rgb(version: i32) -> (Vec<u8>, usize, usize) {
     let mut bytes = RASTER_RGB_RENDERER_CLASS_ID.to_vec();
     bytes.extend(71_u32.to_le_bytes());

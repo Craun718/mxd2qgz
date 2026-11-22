@@ -474,7 +474,16 @@ pub(super) fn read_renderer_legend_group(
     Ok(match read_object_entry_10_1(reader, table)? {
         ObjectEntry10_1::Null => LegendGroupSlot10_1::Null,
         ObjectEntry10_1::BackReference { class_id, key } => {
-            LegendGroupSlot10_1::BackReference { class_id, key }
+            let registered = table.registered_class(key);
+            if registered.is_some_and(|id| id != LEGEND_GROUP_CLASS_ID) {
+                return Err(invalid(format!(
+                    "ILegendGroup 回引键 {key} 的登记类不受支持"
+                )));
+            }
+            LegendGroupSlot10_1::BackReference {
+                class_id: registered.unwrap_or(class_id),
+                key,
+            }
         }
         ObjectEntry10_1::NewObject {
             class_id: LEGEND_GROUP_CLASS_ID,
