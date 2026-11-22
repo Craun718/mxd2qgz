@@ -450,6 +450,23 @@ mod tests {
         assert_eq!(reader.position(), end);
         assert!(refs.contains(12));
 
+        for invalid in [i32::MIN, 0, 2] {
+            let mut input = bytes.clone();
+            input[36..40].copy_from_slice(&invalid.to_le_bytes());
+            let mut reader = Reader::new(&input);
+            let mut keys = RefTable10_1::new();
+            keys.register(42);
+            let before = keys.clone();
+            assert_eq!(
+                read_padded_variant_object_stream_10_1(&mut reader, 128, &mut keys,)
+                    .unwrap_err()
+                    .kind(),
+                ErrorKind::InvalidData,
+            );
+            assert_eq!(reader.position(), 0);
+            assert_eq!(keys, before);
+        }
+
         let mut reader = Reader::new(&bytes[..end - 1]);
         let mut refs = RefTable10_1::new();
         assert!(read_padded_variant_object_stream_10_1(&mut reader, 128, &mut refs).is_err());

@@ -408,3 +408,7 @@ RasterRendererUI.dll 10.1.0.3035 的 RasterUniqueValueColors
 IPersistStream Load（`0x10069ad0`）也接入共享 Variant 分派。
 合成测试验证数值键、原始色值、后继字节及截断回滚。
 真实 Variant 宿主和 ArcMap 10.1、QGIS 人工验收仍待验证。
+
+同摘要 RasterRendererUI.dll 的 Load 在 `0x10069b18..0x10069b1c`
+使用等值比较，仅版本 1 进入后续字段。合成 Variant 测试验证版本零、
+版本 2 和最小有符号版本均失败，保留已登记键及入口游标。
