@@ -317,6 +317,50 @@ fn tablename_unknown_workspace_stops_before_header() {
 }
 
 #[test]
+fn workspace_reference_dispatch_uses_the_registered_class() {
+    use mxd2qgz::layers::feature_layer::WORKSPACE_NAME_CLASS_ID;
+    use mxd2qgz::storage::object_refs::read_object_entry_10_1;
+
+    for (registered, claimed) in [
+        (WORKSPACE_NAME_CLASS_ID, [0x37; 16]),
+        ([0x37; 16], WORKSPACE_NAME_CLASS_ID),
+    ] {
+        let mut header = registered.to_vec();
+        header.extend(7_u32.to_le_bytes());
+        let mut refs = RefTable10_1::new();
+        read_object_entry_10_1(&mut Reader::new(&header), &mut refs).unwrap();
+
+        let mut workspace = claimed.to_vec();
+        workspace.extend(7_u32.to_le_bytes());
+        let data = fixture(&workspace);
+        let mut reader = Reader::new(&data);
+        let result = read_standalone_table_prefix_10_1(&mut reader, &mut refs, 100, 100).unwrap();
+        let Some(StandaloneNameBody10_1::TableName(body)) = result.dataset_name_body else {
+            panic!("缺少 TableName");
+        };
+        assert!(refs.contains(7) && refs.contains(332));
+        if registered == WORKSPACE_NAME_CLASS_ID {
+            assert!(matches!(
+                body.workspace,
+                WorkspaceNameEntry10_1::BackReference {
+                    class_id: WORKSPACE_NAME_CLASS_ID,
+                    key: 7,
+                }
+            ));
+            assert_eq!(result.stop, StandaloneTableStop10_1::Complete);
+        } else {
+            assert!(
+                matches!(body.workspace, WorkspaceNameEntry10_1::Unsupported {
+                class_id, key: 7,
+            } if class_id == registered)
+            );
+            assert_eq!(result.stop, StandaloneTableStop10_1::NameBody);
+            assert_eq!(reader.position(), 42);
+        }
+    }
+}
+
+#[test]
 fn tablename_version_limits_and_workspace_backreference() {
     for version in [2u16, 0xffff] {
         let mut data = fixture(&[0; 16]);

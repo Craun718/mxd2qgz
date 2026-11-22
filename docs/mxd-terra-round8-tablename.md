@@ -82,3 +82,11 @@ StandaloneTable 名称槽，不能推广为所有 IDatasetName 宿主均支持 T
 解析、其他 TableName 宿主、UnknownDatasetName/ObjectClassName，或 ArcMap/QGIS
 人工验收。IPersistVariant 在其他聚合/调用情形是否介入、不同版本运行兼容性
 仍未由本次静态取证排除或验证。
+
+## 工作空间回引
+
+GdbCoreLib.dll 10.1.0.3035 的 `FdbDatasetName::Load`（`0x70d4e980`）
+请求 IWorkspaceName。SystemCore 同版本在 `0x7ffd0063` 通过键查询
+原对象并请求接口。TableName 据已登记类判断回引；仅有键时继续保留
+该回引。合成测试覆盖两个类标识不一致的方向，验证停止位置和已登记键。
+ArcMap 10.1 与 QGIS 人工验收未进行。

@@ -104,10 +104,19 @@ pub(crate) fn read_table_name_body_10_1(
     let before = refs.clone();
     let (workspace, stopped) = match read_object_entry_10_1(&mut r, &mut refs)? {
         ObjectEntry10_1::Null => (WorkspaceNameEntry10_1::Null, false),
-        ObjectEntry10_1::BackReference { class_id, key } => (
-            WorkspaceNameEntry10_1::BackReference { class_id, key },
-            false,
-        ),
+        ObjectEntry10_1::BackReference { class_id, key } => match refs.registered_class(key) {
+            Some(class_id) if class_id != WORKSPACE_NAME_CLASS_ID => {
+                r = slot_start;
+                (WorkspaceNameEntry10_1::Unsupported { class_id, key }, true)
+            }
+            registered => (
+                WorkspaceNameEntry10_1::BackReference {
+                    class_id: registered.unwrap_or(class_id),
+                    key,
+                },
+                false,
+            ),
+        },
         ObjectEntry10_1::NewObject { class_id, key } if class_id == WORKSPACE_NAME_CLASS_ID => {
             let body = read_workspace_name_body_10_1(&mut r, max_bytes, &mut refs, key)?;
             let stopped = body.stop.is_some();
