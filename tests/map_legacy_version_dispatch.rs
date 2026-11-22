@@ -457,6 +457,17 @@ fn map_v0_to_v13_read_version_gated_tail_fields() {
                 assert!(stopped.legacy_table_names.is_empty());
                 assert_eq!(reader.position(), at);
                 assert!(!refs.contains(90));
+
+                // 同一类已登记时，回引也须通过当前槽的类分派。
+                let mut reader = Reader::new(&unknown);
+                reader.read_bytes(24).unwrap();
+                let mut entry = Reader::new(&unknown[at..at + 20]);
+                mxd2qgz::storage::object_refs::read_object_entry_10_1(&mut entry, &mut refs)
+                    .unwrap();
+                let stopped = read_map_suffix_10_1(&mut reader, 4096, &mut refs).unwrap();
+                assert!(stopped.legacy_table_names.is_empty());
+                assert_eq!(reader.position(), at);
+                assert!(refs.contains(90));
             }
             let mut empty = bytes.clone();
             empty[at..at + 16].fill(0);

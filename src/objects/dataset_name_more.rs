@@ -1359,7 +1359,7 @@ fn read_name_slot_with_depth_10_1(
     table: &mut RefTable10_1,
     stop_out: &mut Option<DatasetNameMoreStop10_1>,
     depth: usize,
-    accepts: impl FnOnce([u8; 16]) -> bool,
+    accepts: impl Fn([u8; 16]) -> bool,
 ) -> io::Result<DatasetNameMoreSlot10_1> {
     // 整体事务：入口克隆 trial 游标与暂存登记表，成功返回（含停止）才提交；
     // 任何失败（截断、嵌套体错误）与未知类回退路径都不推进调用者游标、
@@ -1369,16 +1369,19 @@ fn read_name_slot_with_depth_10_1(
     let result = (|| -> io::Result<DatasetNameMoreSlot10_1> {
         match read_object_entry_10_1(&mut trial, &mut staged)? {
             ObjectEntry10_1::Null => Ok(DatasetNameMoreSlot10_1::Null),
+            ObjectEntry10_1::BackReference { class_id, key }
+            | ObjectEntry10_1::NewObject { class_id, key }
+                if !accepts(class_id) =>
+            {
+                staged = table.clone();
+                trial = reader.clone();
+                *stop_out = Some(DatasetNameMoreStop10_1::SlotUnsupported { class_id, key });
+                Ok(DatasetNameMoreSlot10_1::Unsupported { class_id, key })
+            }
             ObjectEntry10_1::BackReference { class_id, key } => {
                 Ok(DatasetNameMoreSlot10_1::BackReference { class_id, key })
             }
             ObjectEntry10_1::NewObject { class_id, key } => {
-                if !accepts(class_id) {
-                    staged = table.clone();
-                    trial = reader.clone();
-                    *stop_out = Some(DatasetNameMoreStop10_1::SlotUnsupported { class_id, key });
-                    return Ok(DatasetNameMoreSlot10_1::Unsupported { class_id, key });
-                }
                 if class_id == FEATURE_CLASS_NAME_CLASS_ID {
                     if depth >= MAX_FEATURE_CLASS_NAME_NESTING_DEPTH {
                         return Err(io::Error::new(
