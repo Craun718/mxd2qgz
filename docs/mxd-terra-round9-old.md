@@ -572,3 +572,8 @@ IStringArray 和 ILongArray。SystemCore 同版本在 `0x7ffd0063`
 体长度，同一会话的后续回引可在当前限额内恢复数组。合成书签用例
 核对非空名称回引、有索引时的读取，以及缺少索引时的事务回滚。
 ArcMap 10.1 与 QGIS 人工验收未进行。
+
+属性集的 ObjectStream Variant 槽也可先遇到 SystemCore StrArray。
+读取该类体时同步登记内容，使后续 IStringArray 槽能按键恢复数组。
+合成测试串接 Variant 和有类型的槽，验证体长度限额及后继游标。
+ArcMap 10.1 与 QGIS 人工验收未进行。

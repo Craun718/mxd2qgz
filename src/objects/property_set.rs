@@ -846,7 +846,11 @@ pub(crate) fn read_variant_object_body_10_1(
             use VariantArrayObjectValues10_1::{DoubleBits, Longs, Strings};
             let (version, values) = match class_id {
                 STR_ARRAY_CLASS_ID | VAR_STR_ARRAY_CLASS_ID => {
+                    let start = reader.position();
                     let (version, values) = read_string_array_body_10_1(reader, max_bytes)?;
+                    if class_id == STR_ARRAY_CLASS_ID {
+                        table.mark_string_array(key, version, reader.position() - start, &values);
+                    }
                     (version, Strings(values))
                 }
                 LONG_ARRAY_CLASS_ID => {
@@ -1386,6 +1390,34 @@ mod tests {
         assert_eq!(reader.remaining(), 0);
         assert!(refs.contains(100));
         assert!(!refs.contains(101));
+    }
+
+    #[test]
+    fn property_set_str_array_can_be_resolved_from_a_typed_slot() {
+        use crate::objects::string_array::read_string_array_slot_10_1;
+
+        let mut bytes = 13_u16.to_le_bytes().to_vec();
+        bytes.extend([0; 14]);
+        object(&mut bytes, STR_ARRAY_CLASS_ID, 4);
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend([4, 0, 0, 0, b'x', 0, 0, 0]);
+        let boundary = bytes.len();
+        object(&mut bytes, STR_ARRAY_CLASS_ID, 4);
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        read_padded_variant_object_stream_10_1(&mut reader, 1024, &mut refs).unwrap();
+        assert_eq!(reader.position(), boundary);
+        let mut limited = reader.clone();
+        assert!(
+            read_string_array_slot_10_1(&mut limited, 13, &mut refs)
+                .unwrap()
+                .body
+                .is_none()
+        );
+        let array = read_string_array_slot_10_1(&mut reader, 14, &mut refs).unwrap();
+        assert_eq!(array.body, Some((1, vec!["x".to_owned()])));
+        assert_eq!(reader.position(), bytes.len());
     }
 
     #[test]
