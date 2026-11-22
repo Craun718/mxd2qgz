@@ -24,6 +24,7 @@ pub struct DocumentMetadata10_1 {
     pub credits: Option<String>,
     pub path: Option<String>,
     pub relative_paths: Option<bool>,
+    pub access_constraints: Option<String>,
     /// 按文件顺序保留尚未核对语义的字符串与数值。
     pub unknown_strings: Vec<String>,
     pub unknown_words: Vec<u32>,
@@ -63,6 +64,7 @@ pub fn read_document_metadata_10_1(
         credits: None,
         path: None,
         relative_paths: None,
+        access_constraints: None,
         unknown_strings: Vec::new(),
         unknown_words: Vec::new(),
         date_bits: None,
@@ -98,9 +100,7 @@ pub fn read_document_metadata_10_1(
             metadata.relative_paths = Some(reader.read_u32_le()? != 0);
         }
         if version >= 4 {
-            metadata
-                .unknown_strings
-                .push(read_string_10_1(&mut reader, max_string_bytes)?);
+            metadata.access_constraints = Some(read_string_10_1(&mut reader, max_string_bytes)?);
         }
     } else if matches!(layout, MetadataLayout10_1::LegacyScene { has_tail: true }) {
         metadata.relative_paths = Some(reader.read_u32_le()? != 0);
@@ -198,6 +198,10 @@ mod tests {
             }
             assert_eq!(metadata.title, "标题");
             assert_eq!(metadata.hyperlink_base, "base");
+            assert_eq!(
+                metadata.access_constraints.as_deref(),
+                matches!(layout, MetadataLayout10_1::Versioned).then_some("tail")
+            );
             assert_eq!(
                 metadata.relative_paths,
                 match layout {

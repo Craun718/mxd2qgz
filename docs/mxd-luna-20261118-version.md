@@ -172,7 +172,7 @@ DocumentInfo 的 `0x7b691650` 和 `0x7b691b50` 在外部文档版本
 | 4 | 四个 AfCore 字符串 | +0x40 HyperlinkBase、+0x44 未定名、+0x48 Credits、+0x50 Path |
 | 5 | 三个 8 字节 OLE DATE | +0x58 DateSaved、+0x60 DatePrinted、+0x68 DateExported |
 | 6 | 4 字节 | +0x4c RelativePaths |
-| 7 | AfCore 字符串 | +0x74 |
+| 7 | AfCore 字符串 | +0x74 AccessConstraints |
 
 读侧在体版本 <2 时，分别在 +0x48 和 +0x50 字符串之后
 多读一个临时字符串。只有体版本 ≥3 才读 RelativePaths，≥4
@@ -235,3 +235,9 @@ CLI 按唯一完整匹配识别布局。该验证覆盖实际命令入口及诊�
 对位到 PageLayout.dll 10.1.0.3035 的 `0x7b6927e0`、`0x7b692840`、
 `0x7b6928a0`。它们从接口 this+0x40/+0x48/+0x50 读取 double，
 与保存顺序一致。Rust 保留原始位模式。尚未在 ArcMap 中比对日期显示。
+
+Metadata v4 最后一串的属性名来自 esriCarto TypeInfo 745。
+`IDocumentInfo3.AccessConstraints` 的 get/put 位于 +0x74/+0x78，
+DocumentInfo 虚表 `0x7b71cb24` 对应 `0x7b692950/0x7b692980`，
+均访问接口 this+0x5c，即完整对象 +0x74。Rust 现在由具名
+字段返回该字符串，旧版本保持缺省。未在 ArcMap 中比对属性显示。
