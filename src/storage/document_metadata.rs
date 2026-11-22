@@ -157,6 +157,50 @@ mod tests {
     }
 
     #[test]
+    fn reads_early_versioned_metadata_with_conditional_strings() {
+        for version in 0_u16..=2 {
+            let mut bytes = version.to_le_bytes().to_vec();
+            for value in ["题名", "作者", "备注", "主题", "类别", "关键字"] {
+                string(&mut bytes, value);
+            }
+            bytes.extend(7_u32.to_le_bytes());
+            for value in ["base", "raw", "credits"] {
+                string(&mut bytes, value);
+            }
+            if version < 2 {
+                string(&mut bytes, "after credits");
+            }
+            string(&mut bytes, "path");
+            if version < 2 {
+                string(&mut bytes, "after path");
+            }
+            let dates = [4.0_f64, 8.0, 12.0];
+            for date in dates {
+                bytes.extend(date.to_le_bytes());
+            }
+
+            let layout = MetadataLayout10_1::Versioned;
+            let metadata = read_document_metadata_10_1(&bytes, layout, 128).unwrap();
+            assert_eq!(metadata.version, Some(version));
+            assert_eq!(metadata.credits.as_deref(), Some("credits"));
+            assert_eq!(metadata.path.as_deref(), Some("path"));
+            let unknown = if version < 2 {
+                &["raw", "after credits", "after path"][..]
+            } else {
+                &["raw"][..]
+            };
+            assert_eq!(metadata.unknown_strings, unknown);
+            assert_eq!(metadata.date_bits, Some(dates.map(f64::to_bits)));
+            assert_eq!(metadata.relative_paths, None);
+            assert_eq!(metadata.access_constraints, None);
+
+            for end in 0..bytes.len() {
+                assert!(read_document_metadata_10_1(&bytes[..end], layout, 128).is_err());
+            }
+        }
+    }
+
+    #[test]
     fn reads_versioned_and_legacy_metadata_to_stream_end() {
         for layout in [
             MetadataLayout10_1::Versioned,
