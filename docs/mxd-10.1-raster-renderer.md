@@ -380,3 +380,8 @@ VectorFieldRenderer（`BF3B4791-C58D-4FDF-A8FA-D0D8D7DA7061`）
 合成宿主分别嵌入色表合成体与 RGB 实档体，验证渲染器后能继续读取，且遇
 截断、未知类时回退到槽位起点，不提交渲染器及嵌套对象的新键。未做
 ArcMap 或 QGIS 人工验收。
+
+RasterDB.dll 10.1 的 UniqueValues IPersistStream Load
+`0x7c108c00` 亦用于共用 Variant 分派。子 Variant 沿用宿主键表和
+递归限额。合成测试覆盖嵌套集合、后继字段、截断和超限回滚。
+真实 Variant 宿主与 ArcMap 10.1、QGIS 人工验收待核对。

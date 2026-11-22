@@ -368,6 +368,9 @@ pub enum PropertyValueObjectStream10_1 {
             >,
         >,
     ),
+    UniqueValues(
+        Box<EncodedVariantObject10_1<crate::layers::raster_unique_value::UniqueValues10_1>>,
+    ),
     Time(Box<EncodedVariantObject10_1<VariantTimeBody10_1>>),
     Geometry(Box<VariantGeometry10_1>),
     Color(Box<EncodedVariantObject10_1<ColorBody10_1>>),
@@ -634,6 +637,10 @@ pub(crate) fn read_variant_object_body_10_1(
                 key,
             }
         }
+        ObjectEntry10_1::NewObject {
+            class_id: class_id @ crate::layers::raster_unique_value::UNIQUE_VALUES_CLASS_ID,
+            key,
+        } => return read_variant_unique_values(reader, max_bytes, table, depth, class_id, key),
         ObjectEntry10_1::NewObject {
             class_id:
                 class_id
@@ -1069,6 +1076,36 @@ fn read_variant_raster_input(
             body,
         }),
     ))
+}
+
+#[inline(never)]
+fn read_variant_unique_values(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+    class_id: [u8; 16],
+    key: u32,
+) -> io::Result<PropertyValueObjectStream10_1> {
+    check_variant_object_depth(depth)?;
+    let mut wire = reader
+        .clone()
+        .read_region(reader.remaining().min(max_bytes))?;
+    let body = crate::layers::raster_unique_value::read_unique_values_body(
+        &mut wire,
+        max_bytes,
+        table,
+        depth + 1,
+    )?;
+    let bytes = Arc::from(reader.read_bytes(wire.position())?);
+    Ok(PropertyValueObjectStream10_1::UniqueValues(Box::new(
+        EncodedVariantObject10_1 {
+            class_id,
+            key,
+            bytes,
+            body,
+        },
+    )))
 }
 
 #[inline(never)]
@@ -1685,6 +1722,48 @@ mod tests {
         assert_eq!(reader.remaining(), 0);
         assert!(refs.contains(100));
         assert!(!refs.contains(101));
+    }
+
+    #[test]
+    fn variant_unique_values_reads_members_and_keeps_depth_budget() {
+        use crate::layers::raster_unique_value::UNIQUE_VALUES_CLASS_ID;
+
+        let mut bytes = 13_u16.to_le_bytes().to_vec();
+        bytes.extend([0; 14]);
+        object(&mut bytes, UNIQUE_VALUES_CLASS_ID, 11);
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend(13_u16.to_le_bytes());
+        bytes.extend([0; 14]);
+        object(&mut bytes, UNIQUE_VALUES_CLASS_ID, 12);
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend(0_i32.to_le_bytes());
+        bytes.extend(17_i32.to_le_bytes());
+        let end = bytes.len();
+        bytes.push(0xaa);
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let value = read_padded_variant_object_stream_10_1(&mut reader, 256, &mut refs).unwrap();
+        let PropertyValueObjectStream10_1::UniqueValues(value) = value else {
+            panic!("缺少唯一值集合");
+        };
+        assert!(matches!(value.body().values.as_slice(),
+            [(PropertyValueObjectStream10_1::UniqueValues(child), 17)] if child.key == 12));
+        assert!(refs.contains(11) && refs.contains(12));
+        assert_eq!(reader.position(), end);
+        for (bytes, depth) in [
+            (&bytes[..end - 1], 0),
+            (&bytes[..], MAX_NESTED_VARIANT_OBJECTS - 1),
+        ] {
+            let mut reader = Reader::new(bytes);
+            let mut refs = RefTable10_1::new();
+            assert!(
+                read_padded_variant_object_stream_nested_10_1(&mut reader, 256, &mut refs, depth)
+                    .is_err()
+            );
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
     }
 
     #[test]

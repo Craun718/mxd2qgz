@@ -282,21 +282,7 @@ pub(super) fn read_unique_values(
         ObjectEntry10_1::NewObject {
             class_id: UNIQUE_VALUES_CLASS_ID,
             ..
-        } => {
-            let version = long(r)?;
-            if version != 1 {
-                return Err(invalid(format!("未支持的 UniqueValues 版本 {version}")));
-            }
-            let values = (0..length(r, max, 20)?)
-                .map(|_| {
-                    Ok((
-                        read_padded_variant_object_stream_10_1(r, max, table)?,
-                        long(r)?,
-                    ))
-                })
-                .collect::<io::Result<_>>()?;
-            Some(UniqueValues10_1 { version, values })
-        }
+        } => Some(read_unique_values_body(r, max, table, 0)?),
         ObjectEntry10_1::NewObject { class_id, .. }
         | ObjectEntry10_1::BackReference { class_id, .. } => {
             return Err(io::Error::new(
@@ -382,4 +368,27 @@ pub(super) fn read_renderer_legend_item(
             ));
         }
     })
+}
+
+pub(crate) fn read_unique_values_body(
+    r: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<UniqueValues10_1> {
+    use crate::objects::property_set::read_padded_variant_object_stream_nested_10_1;
+
+    let version = long(r)?;
+    if version != 1 {
+        return Err(invalid(format!("未支持的 UniqueValues 版本 {version}")));
+    }
+    let values = (0..length(r, max, 20)?)
+        .map(|_| {
+            Ok((
+                read_padded_variant_object_stream_nested_10_1(r, max, table, depth)?,
+                long(r)?,
+            ))
+        })
+        .collect::<io::Result<_>>()?;
+    Ok(UniqueValues10_1 { version, values })
 }
