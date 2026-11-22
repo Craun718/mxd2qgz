@@ -748,7 +748,17 @@ pub fn read_time_data_family_10_1(
         match read_object_entry_10_1(&mut trial, &mut staged)? {
             ObjectEntry10_1::Null => {}
             ObjectEntry10_1::BackReference { class_id, key } => {
-                slot = TimeExtentSlot10_1::BackReference { class_id, key };
+                let registered = staged.registered_class(key);
+                if registered.is_some_and(|id| id != TIME_EXTENT_CLASS_ID) {
+                    trial = reposition_to(reader, slot_offset);
+                    staged = pre_slot_table;
+                    stop = Some(TimeFamilyStop10_1::TimeTableSlot { class_id, key });
+                } else {
+                    slot = TimeExtentSlot10_1::BackReference {
+                        class_id: registered.unwrap_or(class_id),
+                        key,
+                    };
+                }
             }
             ObjectEntry10_1::NewObject { class_id, key } => {
                 if class_id == TIME_EXTENT_CLASS_ID {
@@ -1289,6 +1299,7 @@ mod tests {
         for _ in 0..4 {
             put_string(&mut bytes, "");
         }
+        let extent_offset = bytes.len();
         bytes.extend_from_slice(&te_entry);
         bytes.extend_from_slice(&1u16.to_le_bytes());
         put_string(&mut bytes, "");
@@ -1324,6 +1335,23 @@ mod tests {
         }
         assert!(table.contains(10) && table.contains(11));
         assert_eq!(reader.position(), bytes.len());
+
+        let mut wrong = bytes[..extent_offset].to_vec();
+        object_entry(&mut wrong, &TIME_EXTENT_CLASS_ID, 10);
+        wrong.extend_from_slice(&bytes[extent_offset + te_entry.len()..]);
+        let mut reader = Reader::new(&wrong);
+        let mut table = RefTable10_1::new();
+        let family = read_time_data_family_10_1(&mut reader, 256, &mut table).unwrap();
+        assert!(matches!(
+            family.stop,
+            Some(TimeFamilyStop10_1::TimeTableSlot {
+                class_id: TIME_EXTENT_CLASS_ID,
+                key: 10,
+            })
+        ));
+        assert_eq!(reader.position(), extent_offset);
+        assert_eq!(table.registered_class(10), Some(TIME_REFERENCE_CLASS_ID));
+        assert_eq!(table.len(), 1);
     }
 
     #[test]

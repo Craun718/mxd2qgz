@@ -162,6 +162,11 @@ TimeTableDefinition Load `0x7870df80` 的 ITimeExtent 槽
 替换为未知时区后，验证恢复到外层槽起点并撤销嵌套键。
 尚未在 ArcMap 10.1 或 QGIS 人工验证这组对象。
 
+SystemCore 同版在 `0x7ffd0063` 先按键定位原实例，再请求 ITimeExtent。
+共享 TimeTableDefinition 读取器据此按登记类判断回引。构造输入让该槽
+误引前一 TimeData 的 TimeReference，验证游标停在 ITimeExtent 槽首，
+已登记的 TimeReference 键仍可用。该回引尚无实档或人工验证。
+
 ## StandaloneTable 版本门
 
 Map.dll 10.1.0.3035 的 Ghidra 导出 `Map/7945d630.c` 中，
