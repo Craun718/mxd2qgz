@@ -505,6 +505,30 @@ fn map_v0_to_v13_read_version_gated_tail_fields() {
                     }
                 }
 
+                // 名称非空而索引数组较短时，保留两个数组的存盘内容。
+                let mut shorter = bytes.clone();
+                let index_count = indices + 20 + 2;
+                shorter[index_count..index_count + 4].fill(0);
+                shorter.drain(index_count + 4..names[1].0);
+                let mut reader = Reader::new(&shorter);
+                reader.read_bytes(24).unwrap();
+                let mut refs = RefTable10_1::new();
+                let parsed = read_map_suffix_10_1(&mut reader, 4096, &mut refs).unwrap();
+                assert_eq!(parsed.legacy_table_names.len(), 2);
+                let DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::NetCdfTable(name)) =
+                    &parsed.legacy_table_names[0].1
+                else {
+                    panic!("缺少 NetCDFTableName");
+                };
+                assert_eq!(
+                    name.arrays.as_ref().unwrap()[2].body,
+                    Some((1, vec!["x".to_owned()])),
+                );
+                assert_eq!(
+                    name.dimension_indices.as_ref().unwrap().body,
+                    Some((1, vec![]))
+                );
+
                 // 长整数数组槽用字符串数组的键，即使头部仍声明 LongArray。
                 input[indices + 16..indices + 20].copy_from_slice(&101_u32.to_le_bytes());
                 let mut reader = Reader::new(&input);
