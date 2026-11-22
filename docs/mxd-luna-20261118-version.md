@@ -196,3 +196,11 @@ PageLayout.dll 的同版伪代码及 PE 中 `0x7b71c72c` 的 IID。
 `0x7b71c8b4` 指向的 `Preview`，随后调用图片接口保存。
 故此调用不扩展 Metadata 流的内联字段边界。本轮未执行
 ArcMap 的预览加载或保存。
+
+对 10.1 安装介质的 66 份 MXD/MXT 从 CFB 根独立打开
+`/Metadata` 和 `/Preview`。66 份均有非空 Metadata 和独立
+Preview，均无 `/Mx Document Preview`。其中 18 份的 Metadata
+以 `04 00` 开头，按本节位宽调用 Rust Reader 和
+`read_string_10_1`，全部恰好消费到该流末尾。其余 48 份未按 v4
+布局解释。该实验确认了 v4 的实档边界和预览流分离，未验证图片内容
+或 ArcMap 打开时实际使用的分支。
