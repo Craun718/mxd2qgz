@@ -9,8 +9,8 @@ use crate::objects::envelope::{
     read_spatial_reference_body_10_1,
 };
 use crate::objects::geometry::{
-    GeometryBody10_1, MULTIPOINT_CLASS_ID, POINT_CLASS_ID, POLYGON_CLASS_ID, POLYLINE_CLASS_ID,
-    read_geometry_body_10_1,
+    GEOMETRY_BAG_CLASS_ID, GeometryBody10_1, MULTIPATCH_CLASS_ID, MULTIPOINT_CLASS_ID,
+    POINT_CLASS_ID, POLYGON_CLASS_ID, POLYLINE_CLASS_ID, read_geometry_body_10_1,
 };
 use crate::objects::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
 use crate::objects::spatial_reference_slots::{
@@ -337,6 +337,8 @@ fn read_spatial_fields(
                     | MULTIPOINT_CLASS_ID
                     | POLYLINE_CLASS_ID
                     | POLYGON_CLASS_ID
+                    | GEOMETRY_BAG_CLASS_ID
+                    | MULTIPATCH_CLASS_ID
             )
         },
         |reader, table, class, _, _| {
@@ -344,11 +346,14 @@ fn read_spatial_fields(
                 ENVELOPE_CLASS_ID => {
                     SpatialFilterGeometry10_1::Envelope(read_envelope_10_1(reader, max, table)?)
                 }
-                POINT_CLASS_ID | MULTIPOINT_CLASS_ID | POLYLINE_CLASS_ID | POLYGON_CLASS_ID => {
-                    SpatialFilterGeometry10_1::Geometry(read_geometry_body_10_1(
-                        &class, reader, max, table,
-                    )?)
-                }
+                POINT_CLASS_ID
+                | MULTIPOINT_CLASS_ID
+                | POLYLINE_CLASS_ID
+                | POLYGON_CLASS_ID
+                | GEOMETRY_BAG_CLASS_ID
+                | MULTIPATCH_CLASS_ID => SpatialFilterGeometry10_1::Geometry(
+                    read_geometry_body_10_1(&class, reader, max, table)?,
+                ),
                 _ => return Ok(None),
             }))
         },
@@ -424,6 +429,30 @@ mod tests {
     fn append_header(bytes: &mut Vec<u8>, class: [u8; 16], key: u32) {
         bytes.extend(class);
         bytes.extend(key.to_le_bytes());
+    }
+
+    #[test]
+    fn spatial_filter_reads_geometry_bag_and_its_following_fields() {
+        let mut bytes = vec![0; 8];
+        bytes.extend([2, 0, 0, 0, 0, 0]);
+        append_header(&mut bytes, GEOMETRY_BAG_CLASS_ID, 17);
+        bytes.extend([0; 2 + 4 + 16 + 16 + 1]);
+        bytes.extend([4, 0, 0, 0, b'g', 0, 0, 0]);
+        bytes.extend(1_u16.to_le_bytes());
+        let end = bytes.len();
+        bytes.push(0xaa);
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let mut stop = None;
+        let body = read_spatial_fields(&mut reader, 128, &mut refs, &mut stop).unwrap();
+        assert!(
+            matches!(body.geometry, QueryFilterObject10_1::Body { key: 17, body }
+            if matches!(*body, SpatialFilterGeometry10_1::Geometry(GeometryBody10_1::GeometryBag(_))))
+        );
+        assert_eq!(body.geometry_field.as_deref(), Some("g"));
+        assert_eq!(body.filter_owns_geometry, Some(1));
+        assert!(refs.contains(17) && stop.is_none());
+        assert_eq!(reader.position(), end);
     }
 
     #[test]

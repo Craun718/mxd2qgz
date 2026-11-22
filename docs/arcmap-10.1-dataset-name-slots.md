@@ -566,3 +566,12 @@ GdbCore.dll 10.1.0.3035 的 FilterDefs 成员读取路径
 也按各自已接入的类分派。合成 QueryFilter 测试核对空间参考槽的停止边界。
 合成测试核对 XML 成员回引头与登记类不一致时的分派、停止点和键表。
 ArcMap 10.1 与 QGIS 人工验收未进行。
+
+### 空间过滤器的复合几何
+
+GdbCore.dll 10.1.0.3035 的 SpatialFilter Load `0x70a007d0` 请求
+IGeometry。Geometry.dll 同版本的 GeometryBag 和 MultiPatch 均实现
+该接口及 IPersistStream，见[类虚表与布局](mxd-round4-map-spatial-20261117.md)。
+空间过滤器复用两类对象体及引用表。合成宿主验证 GeometryBag 和后继
+字段对位；MultiPatch 对象体由现有几何测试覆盖，空间过滤器实档待核对。
+ArcMap 10.1 与 QGIS 人工验收未进行。
