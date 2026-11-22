@@ -1826,6 +1826,80 @@ mod tests {
     }
 
     #[test]
+    fn variant_unique_renderer_propagates_depth_and_child_keys() {
+        use crate::layers::raster_renderer::RasterRendererPrefix10_1;
+        use crate::layers::raster_unique_value::RASTER_UNIQUE_VALUE_RENDERER_CLASS_ID;
+        use crate::objects::geodata_xform::IDENTITY_XFORM_CLASS_ID;
+
+        let mut bytes = 13_u16.to_le_bytes().to_vec();
+        bytes.extend([0; 14]);
+        object(&mut bytes, RASTER_UNIQUE_VALUE_RENDERER_CLASS_ID, 11);
+        bytes.extend(3_i32.to_le_bytes());
+        for _ in 0..3 {
+            bytes.extend([2, 0, 0, 0, 0, 0]);
+        }
+        bytes.extend([0; 2 + 16]); // short 及空符号。
+        bytes.extend([2, 0, 0, 0, 0, 0]); // 空标签。
+        bytes.extend(0_i32.to_le_bytes()); // 空图例组。
+        for field in [1_i32, 77, 2] {
+            bytes.extend(field.to_le_bytes());
+        }
+        for new in [true, false] {
+            bytes.extend(13_u16.to_le_bytes());
+            bytes.extend([0; 14]);
+            object(&mut bytes, IDENTITY_XFORM_CLASS_ID, 12);
+            if new {
+                bytes.extend(1_i32.to_le_bytes());
+            }
+        }
+        bytes.extend([0; 2 + 16]); // short 及空 IUniqueValues。
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend([0; 16]);
+        let end = bytes.len();
+        bytes.push(0xaa);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let value = read_padded_variant_object_stream_nested_10_1(
+            &mut reader,
+            4096,
+            &mut refs,
+            MAX_NESTED_VARIANT_OBJECTS - 2,
+        )
+        .unwrap();
+        let PropertyValueObjectStream10_1::RasterRenderer(renderer) = value else {
+            panic!("缺少栅格渲染器");
+        };
+        let RasterRendererPrefix10_1::UniqueValue(body) = renderer.body() else {
+            panic!("缺少唯一值渲染器");
+        };
+        assert!(matches!(
+            &body.classes[0].values[..],
+            [PropertyValueObjectStream10_1::GeodataXform(value),
+             PropertyValueObjectStream10_1::BackReference {
+                class_id: IDENTITY_XFORM_CLASS_ID, key: 12
+             }] if value.key == 12
+        ));
+        assert_eq!(reader.position(), end);
+        assert_eq!(refs.raster_info_variant_depth(), 0);
+        assert!(refs.contains(11) && refs.contains(12));
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let error = read_padded_variant_object_stream_nested_10_1(
+            &mut reader,
+            4096,
+            &mut refs,
+            MAX_NESTED_VARIANT_OBJECTS - 1,
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::InvalidData);
+        assert!(error.to_string().contains("深度"));
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+
+    #[test]
     fn variant_raster_renderer_rejects_partial_colormap_bodies() {
         use crate::layers::raster_renderer::{
             RASTER_COLORMAP_RENDERER_CLASS_ID, RasterRendererPrefix10_1,

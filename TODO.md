@@ -253,6 +253,7 @@
   - [x] 接入 ObjectStream Variant 中的 CompositeXform 对象体及其子对象键。
   - [x] 将 ObjectStream Variant 接入其余已确认的 IGeodataXform 类体分派。
   - [x] 将 ObjectStream Variant 接入已确认的 IRasterRenderer 类体分派。
+  - [x] 验证唯一值渲染器跨 Variant 的引用表及深度边界。
   - [x] 接入 ObjectStream Variant 中的 UniqueValues 对象体。
   - [x] 验证 ObjectStream Variant 中 StatsHistogram 对象体的边界及截断回滚。
   - [x] 按 10.1 Load 的有符号版本上限读取 StatsHistogram。

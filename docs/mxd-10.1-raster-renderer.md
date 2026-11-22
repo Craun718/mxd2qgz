@@ -69,6 +69,10 @@ RGB tag 12 通过 `0x7c99d9a0` 查询同一 IID（`0x7c9b17ac`）。
 引用表。构造 RGB tag 12 的 HsvColor 验证后续 tag 18 和共用体边界。
 非 RGB 组合尚无实档或 ArcMap/QGIS 人工验证。
 
+构造唯一值渲染器 v3 包含两个类别值，分别为新建 IdentityXform 和同键
+回引。测试验证渲染器内的 Variant 共用键表，在外层只剩一层深度时
+整体回滚。尚无这一嵌套组合的实档或人工验证。
+
 ### RGB 的两个嵌套对象
 
 - `StatsHistogram {BA3027C1-49CA-4788-8B5A-3A6B387DE78C}`：
