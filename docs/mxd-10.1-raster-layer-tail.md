@@ -891,6 +891,10 @@ v17 合成测试验证三种有键过滤器后继续读取直方图，覆盖逐�
 负数和超限 LUT 数量时的尾段回滚。LutFilter 与 HistogramSpecification
 没有 ArcMap 载入验证。
 
+同版 SystemCore 在 `0x7ffd0063` 先按键定位原实例，再查询
+IPixelFilter。Rust 以登记类校验回引。构造 v17 误引先前登记的
+包络键时，图层尾段的游标和对象键全部回滚。尚无该组合的实档或人工验证。
+
 ## RasterIO tag 30 名称槽
 
 `RasterLayer::Load 0x7c73bd40` 在 ReadObj(30) 后调用 `0x7c731840`，

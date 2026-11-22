@@ -217,7 +217,20 @@ fn read_pixel_filter(
     max_bytes: usize,
     table: &mut RefTable10_1,
 ) -> io::Result<RasterLayerPixelFilterSlot10_1> {
-    let entry = read_object_entry_10_1(reader, table)?;
+    let mut entry = read_object_entry_10_1(reader, table)?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+        && let Some(registered) = table.registered_class(*key)
+    {
+        if !matches!(
+            registered,
+            PANSHARPENING_FILTER_CLASS_ID | LUT_FILTER_CLASS_ID | HISTOGRAM_SPECIFICATION_CLASS_ID
+        ) {
+            return Err(unsupported(&format!(
+                "v16 IPixelFilter 回引键 {key} 的登记类不受支持"
+            )));
+        }
+        *class_id = registered;
+    }
     let body = match entry {
         ObjectEntry10_1::Null | ObjectEntry10_1::BackReference { .. } => None,
         ObjectEntry10_1::NewObject {
@@ -1224,6 +1237,22 @@ mod tests {
         let mut wrong = bytes.clone();
         wrong[reference..reference + 16].copy_from_slice(&STATS_HISTOGRAM_CLASS_ID);
         wrong[reference + 16..reference + 20].copy_from_slice(&54_u32.to_le_bytes());
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&wrong);
+        assert_eq!(
+            read_raster_layer_tail_10_1(&mut reader, 17, 4096, &mut refs)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::Unsupported
+        );
+        assert!(refs.is_empty());
+        assert_eq!(reader.position(), 0);
+
+        let mut wrong = bytes.clone();
+        let reference = PANSHARPENING_FILTER_CLASS_ID
+            .into_iter()
+            .chain(51_u32.to_le_bytes());
+        wrong.splice(filter_start..filter_end, reference);
         let mut refs = RefTable10_1::new();
         let mut reader = Reader::new(&wrong);
         assert_eq!(
