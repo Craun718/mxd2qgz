@@ -540,6 +540,7 @@
       - [x] 接入 GroupLayer 完整体尾段及普通关联图层入口（由子对象完整性决定是否提交；SDK brazil.mxd 首个 v11 体完整对位）。
       - [x] 接入普通关联 ILayer 与 Map 普通图层条目的 RasterLayer v0–11、v13–17，保留后继对象边界。
       - [ ] 支持无外层长度的普通 RasterLayer v12 对象体；原生依赖数据集打开结果，有界体已覆盖两种形态。
+      - [x] 排查普通 RasterLayer v12 空名称列表的原生失败边界。[取证](docs/mxd-10.1-raster-layer-tail.md#v12-空名称列表的原生边界)
       - [x] 追踪 RasterLayer v12 数据集指针的赋值，并执行 10.1 原始指令测定两种尾段消费长度。[原生读取实验](docs/mxd-10.1-raster-layer-tail.md#v12-尾段的原生读取实验)
       - [x] 将旧 Map 双列表的 ExtraSafe 条目边界传给 RasterLayer v12 和嵌套它的 WCSLayer。[原生分派及回引验证](docs/mxd-10.1-raster-layer-tail.md#旧-map-的-extrasafe-图层)
       - [ ] 补齐两类 3D 容器的关联 ILayer 槽中其余未支持的类体；已接入类的共用子槽缺口见各自条目。
