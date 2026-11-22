@@ -28,6 +28,11 @@ Save `0x7ffeaa50` 为 short 版本、ITime、ITimeReference，本轮接入。
 
 RenderingRule 是 short 版本（有符号 >1 拒绝）、AfCore String×2、
 IRasterFunction、IRasterFunctionArguments、AfCore String、IRasterRenderer。
+
+SystemCore 10.1.0.3035 在 `0x7ffd0063` 按键查找原实例后查询
+槽请求的接口。RenderingRule 对函数和参数按各自已确认的登记类
+校验回引。构造用例将两槽分别误引 PropertySet，均返回不支持。
+该组合尚无实档或 ArcMap/QGIS 人工验证。
 10.1 Save 版本表 `0x77f9ae04` 为 `[-1,-1,-1,-1,1]`。
 请求 IID `CF7B7F99-…/04AA081E-…/6F5322D1-…`，分别由 esriDataSourcesRaster
 和 esriCarto 类型库定名。[下节](#非空栅格函数与参数)接入 IdentityFunction 和

@@ -525,6 +525,23 @@ pub(super) fn read_arguments(
     })
 }
 
+fn check_rule_reference(
+    entry: &mut ObjectEntry10_1,
+    refs: &RefTable10_1,
+    label: &str,
+    supports: impl FnOnce([u8; 16]) -> bool,
+) -> io::Result<()> {
+    if let ObjectEntry10_1::BackReference { class_id, key } = entry
+        && let Some(registered) = refs.registered_class(*key)
+    {
+        if !supports(registered) {
+            return Err(unsupported_class(label, &registered));
+        }
+        *class_id = registered;
+    }
+    Ok(())
+}
+
 pub(crate) fn read_rendering_rule_10_1(
     r: &mut Reader<'_>,
     max: usize,
@@ -533,7 +550,7 @@ pub(crate) fn read_rendering_rule_10_1(
     let version = signed_version(r, 1, "RenderingRule")?;
     let first = read_string_10_1(r, max)?;
     let second = read_string_10_1(r, max)?;
-    let function = slot(r, refs, |r, refs, class_id, _| {
+    let mut function = slot(r, refs, |r, refs, class_id, _| {
         read_function(
             r,
             max,
@@ -542,7 +559,10 @@ pub(crate) fn read_rendering_rule_10_1(
             super::raster_dataset_name::MAX_NAME_NESTING,
         )
     })?;
-    let arguments = slot(r, refs, |r, refs, class_id, _| {
+    check_rule_reference(&mut function.entry, refs, "IRasterFunction", |id| {
+        function_max_version(id).is_some()
+    })?;
+    let mut arguments = slot(r, refs, |r, refs, class_id, _| {
         read_arguments(
             r,
             max,
@@ -551,6 +571,12 @@ pub(crate) fn read_rendering_rule_10_1(
             super::raster_dataset_name::MAX_NAME_NESTING,
         )
     })?;
+    check_rule_reference(
+        &mut arguments.entry,
+        refs,
+        "IRasterFunctionArguments",
+        supports_function_arguments,
+    )?;
     let third = read_string_10_1(r, max)?;
     let renderer = read_raster_renderer_slot_prefix_10_1(r, max, refs)?;
     if renderer
@@ -576,6 +602,31 @@ mod tests {
     use std::io::Write;
 
     const EMPTY_STRING: [u8; 6] = [2, 0, 0, 0, 0, 0];
+
+    #[test]
+    fn rendering_rule_rejects_cross_interface_back_references() {
+        use crate::objects::property_set::PROPERTY_SET_CLASS_ID;
+
+        for function_slot in [true, false] {
+            let mut prior = PROPERTY_SET_CLASS_ID.to_vec();
+            prior.extend(12_u32.to_le_bytes());
+            let mut refs = RefTable10_1::new();
+            read_object_entry_10_1(&mut Reader::new(&prior), &mut refs).unwrap();
+            let mut bytes = rendering_rule_with_arguments(PROPERTY_SET_CLASS_ID, &[]);
+            if function_slot {
+                bytes[14..50].rotate_left(16);
+            }
+            let mut reader = Reader::new(&bytes);
+            let error = read_rendering_rule_10_1(&mut reader, 1024, &mut refs).unwrap_err();
+            assert_eq!(error.kind(), ErrorKind::Unsupported);
+            let label = if function_slot {
+                "IRasterFunction"
+            } else {
+                "IRasterFunctionArguments"
+            };
+            assert!(error.to_string().contains(label));
+        }
+    }
 
     fn rendering_rule_with_arguments(id: [u8; 16], arguments: &[u8]) -> Vec<u8> {
         let mut bytes = 1_u16.to_le_bytes().to_vec();
