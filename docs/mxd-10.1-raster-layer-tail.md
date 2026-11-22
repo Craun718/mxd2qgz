@@ -1336,3 +1336,8 @@ ArcMap 10.1 与 QGIS 人工验收未进行。
 与 1、2 比较，分别限定为 1–2 和 1–3。合成用例补验两个对象
 遇到零、超限值和 `0xffff` 时，两种包装均保留入口位置及既有键。
 ArcMap 10.1 与 QGIS 人工验收未进行。
+
+MapAnimation.dll 10.1.0.3035 的 TimeWindow IPersistStream Load
+`0x794f6fe0` 亦用于共享 Variant 对象体分派。合成 v3 测试覆盖
+版本字段、原流后继字节以及截断时的游标和键回滚。尚缺真实 Variant
+槽实档与 ArcMap 10.1、QGIS 人工验收。

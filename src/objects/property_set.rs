@@ -110,6 +110,9 @@ use crate::layers::raster_dataset_name::{LONG_ARRAY_CLASS_ID, read_long_array_bo
 use crate::layers::raster_renderer::{
     DOUBLE_ARRAY_CLASS_ID, STATS_HISTOGRAM_CLASS_ID, read_double_array_body,
 };
+use crate::layers::time_layer_track_extension::{
+    TIME_WINDOW_CLASS_ID, TimeWindow10_1, read_time_window,
+};
 use crate::objects::color_ramp::{
     ALGORITHMIC_COLOR_RAMP_CLASS_ID, ColorRampSlot10_1, MULTI_PART_COLOR_RAMP_CLASS_ID,
     PRESET_COLOR_RAMP_CLASS_ID, RANDOM_COLOR_RAMP_CLASS_ID, nested_ramp_stop,
@@ -389,6 +392,7 @@ pub enum VariantTimeBody10_1 {
     Time(TimeBody10_1),
     Reference(TimeReferenceBody10_1),
     Extent(TimeExtentBody10_1),
+    Window(TimeWindow10_1),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -793,7 +797,11 @@ pub(crate) fn read_variant_object_body_10_1(
             }
         }
         ObjectEntry10_1::NewObject {
-            class_id: class_id @ (TIME_CLASS_ID | TIME_REFERENCE_CLASS_ID | TIME_EXTENT_CLASS_ID),
+            class_id:
+                class_id @ (TIME_CLASS_ID
+                | TIME_REFERENCE_CLASS_ID
+                | TIME_EXTENT_CLASS_ID
+                | TIME_WINDOW_CLASS_ID),
             key,
         } => {
             let mut wire = reader
@@ -812,6 +820,9 @@ pub(crate) fn read_variant_object_body_10_1(
                         ));
                     }
                     VariantTimeBody10_1::Reference(body)
+                }
+                TIME_WINDOW_CLASS_ID => {
+                    VariantTimeBody10_1::Window(read_time_window(&mut wire, max_bytes)?)
                 }
                 _ => {
                     let body = read_time_extent_body_10_1(&mut wire, max_bytes, table, key)?;

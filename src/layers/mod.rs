@@ -44,7 +44,7 @@ pub mod raster_unique_value;
 mod route_layer_extension;
 pub mod scene_layer_properties;
 pub mod terrain_layer;
-mod time_layer_track_extension;
+pub(crate) mod time_layer_track_extension;
 pub mod tin_layer;
 mod tracking_filter_layer_extension;
 pub mod unique_value_renderer;

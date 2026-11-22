@@ -386,6 +386,7 @@
   - [x] 验证独立表 v14 已知扩展遇未知 ITimeWindow 时的条目回滚。
   - [x] 按登记类校验共享时间轨道扩展的 ITimeWindow 回引。
   - [x] 核对时间轨道扩展和 TimeWindow 的版本门及失败回滚。
+  - [x] 接入共享 ObjectStream Variant 中的 TimeWindow 对象体。
   - [x] 按 LayerLib 的有符号计数门读取独立表 v14 扩展列表。[扩展计数取证](docs/mxd-terra-round9-table.md#独立表的未知扩展)
   - [x] 校验独立表三个尾部接口槽的回引类。[尾槽取证](docs/mxd-terra-round9-table.md#独立表尾槽回引)
   - [x] 按已登记对象的类校验独立表颜色槽回引。[颜色槽取证](docs/mxd-terra-round9-table.md#独立表颜色槽回引)

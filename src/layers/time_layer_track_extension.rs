@@ -10,7 +10,7 @@ use std::io::{self, ErrorKind};
 pub const TIME_LAYER_TRACK_EXTENSION_CLASS_ID: [u8; 16] = [
     0xc5, 0x44, 0xdf, 0x99, 0xd3, 0x02, 0xf2, 0x4c, 0xad, 0x42, 0x59, 0xfd, 0x26, 0xb6, 0x14, 0xfa,
 ];
-const TIME_WINDOW_CLASS_ID: [u8; 16] = [
+pub(crate) const TIME_WINDOW_CLASS_ID: [u8; 16] = [
     0x3a, 0x3b, 0xba, 0x01, 0xab, 0x80, 0x3b, 0x42, 0xbb, 0x7c, 0x93, 0x13, 0x7c, 0xda, 0xaf, 0xe5,
 ];
 
@@ -95,7 +95,7 @@ pub(super) fn read_bounded_time_layer_track_extension(
     }))
 }
 
-fn read_time_window(reader: &mut Reader<'_>, max: usize) -> io::Result<TimeWindow10_1> {
+pub(crate) fn read_time_window(reader: &mut Reader<'_>, max: usize) -> io::Result<TimeWindow10_1> {
     let version = reader.read_u16_le()?;
     if !(1..=3).contains(&version) {
         return Err(io::Error::new(
@@ -135,6 +135,43 @@ mod tests {
     use crate::layers::raster_dataset_name::LONG_ARRAY_CLASS_ID;
     use crate::layers::raster_layer_tail::read_raster_layer_tail_10_1;
     use crate::storage::object_refs::ObjectEntry10_1;
+
+    #[test]
+    fn time_window_variant_reads_versioned_body_and_rolls_back_on_truncation() {
+        use crate::objects::property_set::{
+            PropertyValueObjectStream10_1, VariantTimeBody10_1,
+            read_padded_variant_object_stream_10_1,
+        };
+
+        let mut bytes = 13_u16.to_le_bytes().to_vec();
+        bytes.extend([0; 14]);
+        bytes.extend(TIME_WINDOW_CLASS_ID);
+        bytes.extend(21_u32.to_le_bytes());
+        bytes.extend(3_u16.to_le_bytes());
+        bytes.extend([2, 0, 0, 0, 0, 0].repeat(4));
+        bytes.extend(7_u16.to_le_bytes());
+        bytes.extend([4, 0, 0, 0, b'x', 0, 0, 0]);
+        let end = bytes.len();
+        bytes.push(0xaa);
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let result = read_padded_variant_object_stream_10_1(&mut reader, 128, &mut refs).unwrap();
+        let PropertyValueObjectStream10_1::Time(value) = result else {
+            panic!("缺少时间对象");
+        };
+        assert_eq!(value.key, 21);
+        assert!(matches!(value.body(), VariantTimeBody10_1::Window(window)
+            if window.fields_v2.as_ref().map(|(_, flag)| *flag) == Some(7)
+                && window.string_v3.as_deref() == Some("x")));
+        assert!(refs.contains(21));
+        assert_eq!(reader.position(), end);
+
+        let mut reader = Reader::new(&bytes[..end - 1]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_padded_variant_object_stream_10_1(&mut reader, 128, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
 
     #[test]
     fn time_track_window_keys_and_version_fields_in_both_raster_wrappers() {
