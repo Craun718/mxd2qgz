@@ -179,3 +179,20 @@ DocumentInfo 的 `0x7b691650` 和 `0x7b691b50` 在外部文档版本
 才读取 +0x74 并进入随后的存储操作。+0x44 在带头与旧无头布局
 中均出现，仍缺正式属性名。本轮未核对存储操作的额外流，也未在
 ArcMap 中执行读写。
+
+### Metadata v4 后的预览流
+
+读取 v4 末串成功后，DocumentInfo 调用 `0x7b693260`，
+将同一个 IStorage 传入。该函数首先尝试打开独立的
+`Mx Document Preview` 流，成功取得流时先读 4 字节版本，
+大于 1 则返回错误。若未取得该流，则尝试打开 `Preview`，
+这个回退分支不预读版本。两条路径随后经 OLEAUT32 ordinal 418
+请求 IID `7BF80980-BF32-101A-8BBB-00AA00300CAB`（IPicture），
+输出存到 DocumentInfo 完整对象 +0x78。以上路径取自 ArcMap 10.1
+PageLayout.dll 的同版伪代码及 PE 中 `0x7b71c72c` 的 IID。
+
+写端的对应函数 `0x7b692f40` 处理已有独立预览流。根据
+`0x7b69307a–0x7b69308b` 的指令，创建时实际传入
+`0x7b71c8b4` 指向的 `Preview`，随后调用图片接口保存。
+故此调用不扩展 Metadata 流的内联字段边界。本轮未执行
+ArcMap 的预览加载或保存。
