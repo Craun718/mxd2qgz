@@ -385,3 +385,9 @@ RasterDB.dll 10.1 的 UniqueValues IPersistStream Load
 `0x7c108c00` 亦用于共用 Variant 分派。子 Variant 沿用宿主键表和
 递归限额。合成测试覆盖嵌套集合、后继字段、截断和超限回滚。
 真实 Variant 宿主与 ArcMap 10.1、QGIS 人工验收待核对。
+
+RasterDB.dll 10.1.0.3035（SHA-256
+`97207d5cc5307bfe126e030792b5e92c085668953a736a6875d35e72d7e86400`）
+的 UniqueValues Load 在 `0x7c108c5b..0x7c108c68` 用有符号
+`jle` 跳过非正条目计数。共享对象体保留原始计数。合成 Variant
+测试验证空集合及下一字节位置。实档和人工验收待验证。

@@ -1725,6 +1725,30 @@ mod tests {
     }
 
     #[test]
+    fn variant_unique_values_preserves_nonpositive_counts() {
+        use crate::layers::raster_unique_value::UNIQUE_VALUES_CLASS_ID;
+
+        for count in [i32::MIN, -1, 0] {
+            let mut bytes = 13_u16.to_le_bytes().to_vec();
+            bytes.extend([0; 14]);
+            object(&mut bytes, UNIQUE_VALUES_CLASS_ID, 11);
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend(count.to_le_bytes());
+            bytes.push(0xaa);
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let result =
+                read_padded_variant_object_stream_10_1(&mut reader, 128, &mut refs).unwrap();
+            assert!(
+                matches!(result, PropertyValueObjectStream10_1::UniqueValues(value)
+                if value.body().declared_count == count && value.body().values.is_empty())
+            );
+            assert_eq!(reader.read_bytes(1).unwrap(), &[0xaa]);
+            assert!(refs.contains(11));
+        }
+    }
+
+    #[test]
     fn variant_unique_values_reads_members_and_keeps_depth_budget() {
         use crate::layers::raster_unique_value::UNIQUE_VALUES_CLASS_ID;
 

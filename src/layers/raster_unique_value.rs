@@ -107,6 +107,7 @@ pub struct UniqueValuesSlot10_1 {
 #[derive(Debug, Clone, PartialEq)]
 pub struct UniqueValues10_1 {
     pub version: i32,
+    pub declared_count: i32,
     pub values: Vec<(PropertyValueObjectStream10_1, i32)>,
 }
 
@@ -120,6 +121,10 @@ fn long(r: &mut Reader<'_>) -> io::Result<i32> {
 
 fn length(r: &mut Reader<'_>, budget: usize, width: usize) -> io::Result<usize> {
     let n = usize::try_from(long(r)?).map_err(|_| invalid("栅格唯一值计数为负"))?;
+    check_length(r, n, budget, width)
+}
+
+fn check_length(r: &Reader<'_>, n: usize, budget: usize, width: usize) -> io::Result<usize> {
     if n > budget / width {
         return Err(invalid("栅格唯一值计数超过资源限额"));
     }
@@ -382,7 +387,9 @@ pub(crate) fn read_unique_values_body(
     if version != 1 {
         return Err(invalid(format!("未支持的 UniqueValues 版本 {version}")));
     }
-    let values = (0..length(r, max, 20)?)
+    let declared_count = long(r)?;
+    let count = check_length(r, declared_count.max(0) as usize, max, 20)?;
+    let values = (0..count)
         .map(|_| {
             Ok((
                 read_padded_variant_object_stream_nested_10_1(r, max, table, depth)?,
@@ -390,5 +397,9 @@ pub(crate) fn read_unique_values_body(
             ))
         })
         .collect::<io::Result<_>>()?;
-    Ok(UniqueValues10_1 { version, values })
+    Ok(UniqueValues10_1 {
+        version,
+        declared_count,
+        values,
+    })
 }
