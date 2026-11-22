@@ -264,9 +264,11 @@ fn formosat2_reads_fourteen_arrays_then_polynomial_and_raster() {
     bytes.extend(19.25_f64.to_le_bytes());
     bytes.extend([0; 12 * 16]);
     header(&mut bytes, DOUBLE_ARRAY, 115);
+    let polynomial_start = bytes.len();
     header(&mut bytes, POLYNOMIAL_XFORM_CLASS_ID, 116);
     bytes.extend(1_i32.to_le_bytes());
     bytes.extend([0; 16 + 12 + 16 + 12]); // 空空间参考、计数与选择子。
+    let polynomial_end = bytes.len();
     for value in [20.25_f64, 21.25, 22.25] {
         bytes.extend(value.to_le_bytes());
     }
@@ -317,6 +319,43 @@ fn formosat2_reads_fourteen_arrays_then_polynomial_and_raster() {
     ));
     assert_eq!(refs.len(), 4);
     assert_eq!(reader.position(), end);
+
+    let mut reference = Vec::new();
+    header(&mut reference, IDENTITY_XFORM_CLASS_ID, 116);
+    bytes.splice(polynomial_start..polynomial_end, reference);
+    for registered in [POLYNOMIAL_XFORM_CLASS_ID, IDENTITY_XFORM_CLASS_ID] {
+        let mut existing = Vec::new();
+        header(&mut existing, registered, 116);
+        let mut refs = RefTable10_1::new();
+        refs.register(70);
+        mxd2qgz::storage::object_refs::read_object_entry_10_1(
+            &mut Reader::new(&existing),
+            &mut refs,
+        )
+        .unwrap();
+        let before = refs.clone();
+        let mut reader = Reader::new(&bytes);
+        let result = read_geodata_xform_slot_10_1(&mut reader, 4096, &mut refs);
+        if registered == POLYNOMIAL_XFORM_CLASS_ID {
+            let GeodataXformBody10_1::Formosat2(body) = *result.unwrap().body.unwrap() else {
+                panic!("预期 Formosat2Xform");
+            };
+            assert_eq!(
+                body.polynomial.entry,
+                ObjectEntry10_1::BackReference {
+                    class_id: POLYNOMIAL_XFORM_CLASS_ID,
+                    key: 116,
+                }
+            );
+            assert!(body.polynomial.body.is_none());
+            assert_eq!(body.shorts_36_34, [23, 24]);
+            assert_eq!(reader.read_bytes(1).unwrap(), &[0xf3]);
+        } else {
+            assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::Unsupported);
+            assert_eq!(reader.position(), 0);
+            assert_eq!(refs, before);
+        }
+    }
 }
 
 #[test]

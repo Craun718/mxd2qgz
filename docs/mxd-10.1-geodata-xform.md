@@ -272,6 +272,12 @@ IPolynomialXform 请求常量 `0x7c1282ec` 对位 esriDataSourcesRaster
 的分派。所有嵌套对象沿用宿主表，LoadRaster 内再次进入 IGeodataXform
 时与普通子变换共用深度限额。
 
+RasterDB.dll 10.1.0.3035 的 Formosat2 Load 在 `0x7bfe0c4a` 传入
+IPolynomialXform IID，在 `0x7bfe0c66` 检查读取失败。按 SystemCore
+`0x7ffd0063` 先查键再请求接口的行为，Rust 以登记类校验该回引。
+构造输入覆盖合法回引之后的 short、LoadRaster 和宿主结束位置，
+以及误引 IdentityXform 后的键与游标回滚。该回引尚无实档或人工验证。
+
 参考工程及 66 份 10.1 介质 /Maps 流均未检出三类 CLSID。合成测试
 覆盖各版本门、新数组与回引、Formosat2 中栅格回引已有 PolynomialXform
 和逐字节截断回滚。未做 ArcMap/QGIS 人工验收。
