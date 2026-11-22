@@ -152,6 +152,10 @@ ElementCollection 体读取器已在 `src/objects/element_collection.rs` 闭合
   ⑤ 版本 >1：1 字节（this+0x14；Save 恒写）。第 ⑤ 字节与 FL 版本 0x1c..0x1f
   分支的 `{BD724B95}` 槽（map-object IID 表）非同一层——该分支请求的
   ITimeExtent 实现类即本类。
+  SystemCore 10.1.0.3035 的 ObjectStream 在 `0x7ffd0063` 按键定位实例后
+  请求相应接口。TimeExtent 读取器对三个槽按登记类校验回引。构造用例
+  分别将起点和终点误引为 TimeReference、将时间参考误引为 Time，确认停在
+  对应槽首且保留原有键。尚无该组合的实档或人工验证。
 - **Time::Load**：① int16（`ver < 2` 接受，即 0/1）→ ② int32 判别值：
   ==1 → 8 字节整块（OA 日期 double 候选，`PANK`）；==2 → 16 字节整块
   （`WKSDateTime`，`PAU_WKSDateTime__K`）；其他 → 原生 `0x80004005`。

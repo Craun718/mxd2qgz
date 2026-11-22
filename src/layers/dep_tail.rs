@@ -524,14 +524,22 @@ pub fn read_time_extent_body_10_1(
         let pre_slot_table = staged.clone();
         match read_object_entry_10_1(&mut trial, &mut staged)? {
             ObjectEntry10_1::Null => TimeSlot10_1::Null,
-            ObjectEntry10_1::BackReference { class_id, key } => {
-                TimeSlot10_1::BackReference { class_id, key }
+            ObjectEntry10_1::BackReference { class_id, key }
+                if staged
+                    .registered_class(key)
+                    .is_none_or(|id| id == TIME_CLASS_ID) =>
+            {
+                TimeSlot10_1::BackReference {
+                    class_id: staged.registered_class(key).unwrap_or(class_id),
+                    key,
+                }
             }
             ObjectEntry10_1::NewObject { class_id, key } if class_id == TIME_CLASS_ID => {
                 let body = read_time_body_10_1(&mut trial, max_bytes, &mut staged, key)?;
                 TimeSlot10_1::Body(Box::new(body))
             }
-            ObjectEntry10_1::NewObject { class_id, key } => {
+            ObjectEntry10_1::BackReference { class_id, key }
+            | ObjectEntry10_1::NewObject { class_id, key } => {
                 trial = reposition_to(&reader.clone(), slot_offset);
                 staged = pre_slot_table;
                 stop = Some(TimeExtentStop10_1::TimeSlot {
@@ -553,14 +561,22 @@ pub fn read_time_extent_body_10_1(
         let pre_slot_table = staged.clone();
         match read_object_entry_10_1(&mut trial, &mut staged)? {
             ObjectEntry10_1::Null => {}
-            ObjectEntry10_1::BackReference { class_id, key } => {
-                end = TimeSlot10_1::BackReference { class_id, key };
+            ObjectEntry10_1::BackReference { class_id, key }
+                if staged
+                    .registered_class(key)
+                    .is_none_or(|id| id == TIME_CLASS_ID) =>
+            {
+                end = TimeSlot10_1::BackReference {
+                    class_id: staged.registered_class(key).unwrap_or(class_id),
+                    key,
+                };
             }
             ObjectEntry10_1::NewObject { class_id, key } if class_id == TIME_CLASS_ID => {
                 let body = read_time_body_10_1(&mut trial, max_bytes, &mut staged, key)?;
                 end = TimeSlot10_1::Body(Box::new(body));
             }
-            ObjectEntry10_1::NewObject { class_id, key } => {
+            ObjectEntry10_1::BackReference { class_id, key }
+            | ObjectEntry10_1::NewObject { class_id, key } => {
                 trial = reposition_to(&reader.clone(), slot_offset);
                 staged = pre_slot_table;
                 stop = Some(TimeExtentStop10_1::TimeSlot {
@@ -579,8 +595,15 @@ pub fn read_time_extent_body_10_1(
         let pre_slot_table = staged.clone();
         match read_object_entry_10_1(&mut trial, &mut staged)? {
             ObjectEntry10_1::Null => {}
-            ObjectEntry10_1::BackReference { class_id, key } => {
-                reference = TimeReferenceSlot10_1::BackReference { class_id, key };
+            ObjectEntry10_1::BackReference { class_id, key }
+                if staged
+                    .registered_class(key)
+                    .is_none_or(|id| id == TIME_REFERENCE_CLASS_ID) =>
+            {
+                reference = TimeReferenceSlot10_1::BackReference {
+                    class_id: staged.registered_class(key).unwrap_or(class_id),
+                    key,
+                };
             }
             ObjectEntry10_1::NewObject { class_id, key } if class_id == TIME_REFERENCE_CLASS_ID => {
                 let body = read_time_reference_body_10_1(&mut trial, max_bytes, &mut staged, key)?;
@@ -594,7 +617,8 @@ pub fn read_time_extent_body_10_1(
                     reference = TimeReferenceSlot10_1::Body(Box::new(body));
                 }
             }
-            ObjectEntry10_1::NewObject { class_id, key } => {
+            ObjectEntry10_1::BackReference { class_id, key }
+            | ObjectEntry10_1::NewObject { class_id, key } => {
                 trial = reposition_to(&reader.clone(), slot_offset);
                 staged = pre_slot_table;
                 stop = Some(TimeExtentStop10_1::ReferenceSlot { class_id, key });
@@ -1101,6 +1125,42 @@ mod tests {
         );
         assert_eq!(reader.position(), 2, "游标应停在槽位起点");
         assert!(!table.contains(4));
+    }
+
+    #[test]
+    fn time_extent_rejects_back_references_to_wrong_interfaces() {
+        for (index, expected, wrong) in [
+            (0, TIME_CLASS_ID, TIME_REFERENCE_CLASS_ID),
+            (1, TIME_CLASS_ID, TIME_REFERENCE_CLASS_ID),
+            (2, TIME_REFERENCE_CLASS_ID, TIME_CLASS_ID),
+        ] {
+            let mut registered = Vec::new();
+            object_entry(&mut registered, &wrong, 4);
+            let mut table = RefTable10_1::new();
+            read_object_entry_10_1(&mut Reader::new(&registered), &mut table).unwrap();
+            let before = table.clone();
+            let mut bytes = 2_u16.to_le_bytes().to_vec();
+            bytes.resize(2 + 16 * index, 0);
+            let offset = bytes.len();
+            object_entry(&mut bytes, &expected, 4);
+            let mut reader = Reader::new(&bytes);
+            let body = read_time_extent_body_10_1(&mut reader, 256, &mut table, 9).unwrap();
+            let stop = if index == 2 {
+                TimeExtentStop10_1::ReferenceSlot {
+                    class_id: expected,
+                    key: 4,
+                }
+            } else {
+                TimeExtentStop10_1::TimeSlot {
+                    class_id: expected,
+                    key: 4,
+                    which: index as u8,
+                }
+            };
+            assert_eq!(body.stop, Some(stop));
+            assert_eq!(reader.position(), offset);
+            assert_eq!(table, before);
+        }
     }
 
     #[test]
