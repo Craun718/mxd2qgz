@@ -320,3 +320,8 @@ Geometry.dll 10.1.0.3035 的 GeometryBag QI（`0x7186f650`）在
 以 DLL 原始字节和 objdump 复核。GeometricXform 与 ProjectiveXform 的
 该接口槽复用 GeometryBag 持久化体。合成 ProjectiveXform 覆盖控制点
 字段对位与截断回滚。ArcMap 10.1 和 QGIS 人工验收未进行。
+
+同一 Geometry.dll 中，MultiPatch 的 QI 在 `0x718ddbf9` 比较相同
+IID，命中后由 `0x718ddc17` 返回对象 +0x54 的接口视图。
+地理变换的 IGeometryCollection 槽据此接入已有 MultiPatch 体，
+合成 ProjectiveXform 验证控制点边界和截断回滚。实档和人工验收待核对。

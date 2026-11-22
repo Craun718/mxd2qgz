@@ -946,38 +946,58 @@ fn projective_geometry_compatibility_layout_preserves_outer_fields() {
 }
 
 #[test]
-fn projective_xform_reads_geometry_bag_before_control_points() {
+fn projective_xform_reads_geometry_collections_before_control_points() {
     use mxd2qgz::objects::geodata_xform::PROJECTIVE_XFORM_CLASS_ID;
-    use mxd2qgz::objects::geometry::{GEOMETRY_BAG_CLASS_ID, GeometryBody10_1};
-
-    let mut bytes = Vec::new();
-    header(&mut bytes, PROJECTIVE_XFORM_CLASS_ID, 80);
-    bytes.extend(1_i32.to_le_bytes());
-    bytes.extend([0; 16]);
-    header(&mut bytes, GEOMETRY_BAG_CLASS_ID, 81);
-    bytes.extend([0; 2 + 4 + 16 + 16 + 1]);
-    bytes.extend([0; 8]);
-    let end = bytes.len();
-    bytes.push(0xaa);
-    let mut refs = RefTable10_1::new();
-    let mut reader = Reader::new(&bytes);
-    let slot = read_geodata_xform_slot_10_1(&mut reader, 128, &mut refs).unwrap();
-    let GeodataXformBody10_1::Projective(body) = *slot.body.unwrap() else {
-        panic!("缺少 ProjectiveXform");
+    use mxd2qgz::objects::geometry::{
+        GEOMETRY_BAG_CLASS_ID, GeometryBody10_1, MULTIPATCH_CLASS_ID,
     };
-    assert!(matches!(
-        body.geometry.body.as_deref(),
-        Some(GeometryBody10_1::GeometryBag(_))
-    ));
-    assert_eq!(body.point_count, 0);
-    assert_eq!(reader.position(), end);
-    assert!(refs.contains(80) && refs.contains(81));
 
-    let mut reader = Reader::new(&bytes[..end - 1]);
-    let mut refs = RefTable10_1::new();
-    assert!(read_geodata_xform_slot_10_1(&mut reader, 128, &mut refs).is_err());
-    assert_eq!(reader.position(), 0);
-    assert!(refs.is_empty());
+    for class in [GEOMETRY_BAG_CLASS_ID, MULTIPATCH_CLASS_ID] {
+        let mut bytes = Vec::new();
+        header(&mut bytes, PROJECTIVE_XFORM_CLASS_ID, 80);
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend([0; 16]);
+        header(&mut bytes, class, 81);
+        if class == GEOMETRY_BAG_CLASS_ID {
+            bytes.extend([0; 2 + 4 + 16 + 16 + 1]);
+        } else {
+            let mut record = 0x1f_u32.to_le_bytes().to_vec();
+            record.extend([0; 32]);
+            for value in [1_u32, 3, 0, 0x100] {
+                record.extend(value.to_le_bytes());
+            }
+            record.extend([0; 11 * 8]);
+            bytes.extend(2_u16.to_le_bytes());
+            bytes.extend((record.len() as u32).to_le_bytes());
+            bytes.extend(record);
+            bytes.extend([0; 16]);
+        }
+        bytes.extend([0; 8]);
+        let end = bytes.len();
+        bytes.push(0xaa);
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        let slot = read_geodata_xform_slot_10_1(&mut reader, 256, &mut refs).unwrap();
+        let GeodataXformBody10_1::Projective(body) = *slot.body.unwrap() else {
+            panic!("缺少 ProjectiveXform");
+        };
+        assert!(matches!(
+            (class, body.geometry.body.as_deref()),
+            (
+                GEOMETRY_BAG_CLASS_ID,
+                Some(GeometryBody10_1::GeometryBag(_))
+            ) | (MULTIPATCH_CLASS_ID, Some(GeometryBody10_1::MultiPatch(_)))
+        ));
+        assert_eq!(body.point_count, 0);
+        assert_eq!(reader.position(), end);
+        assert!(refs.contains(80) && refs.contains(81));
+
+        let mut reader = Reader::new(&bytes[..end - 1]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_geodata_xform_slot_10_1(&mut reader, 256, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
 }
 
 #[test]
