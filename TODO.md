@@ -24,8 +24,8 @@
   - [x] 闭合文档打开与保存调用点：MapDocument 类工厂链（CLSID `2fe5e68e-3da5-4bda-baf1-103c55115a1c`，运行期构建类表）与两条静态打开链汇合于主读取器 `0x7b708d00`；ArcMap 命令层经同一 CLSID 跨模块创建实例，MFC 路径串接 Version 头读取 `0x4764d0`；SaveObject/LoadObject 为 AfCore 跨模块导出，见 [研究记录](docs/arcmap-10.1-document-open-save.md)。
   - [x] 闭合 AfCore SaveObject/LoadObject 的对象头分派。IObjectStream 命中后由 SystemCore 读写共享键，普通流由 AfCore 处理 GUID 和对象体。[读写委派证据](docs/mxd-simple-object-dispatch-20261118.md#导出入口)
   - [x] 实现显式 10.1 AfCore String 普通写出布局的严格读取子集，并覆盖构造输入和异常；MXD 字段接入与原生短读/磁盘流转发由后续条目闭合。
-  - [x] 闭合 AfCore String 读写的流转发与短读边界：两函数直接走调用方 IStream 虚表（读 +0x0c、写 +0x10），短读不检查完成量与终止零；确认两族导出格式不可混用，10.1 未见 10.8 记录的 cb 掩码，见 [研究记录](docs/arcmap-10.1-native-baseline.md#101-afcore-string-流转发与写入调用者2026-11-14)。
-  - [ ] 复核 10.1 是否存在 10.8 记录的 cb 掩码。
+  - [x] 闭合 AfCore String 读写的流转发与短读边界：两函数直接走调用方 IStream 虚表（读 +0x0c、写 +0x10），短读不检查完成量与终止零；确认两族导出格式不可混用，10.1 字符串写端有等价的 cb 高位清除，见 [研究记录](docs/arcmap-10.1-native-baseline.md#101-afcore-string-流转发与写入调用者2026-11-14)。
+  - [x] 确认 10.1 String::Write 前缀等价于 `cb & 0x7fffffff`，AfStreamWrite 直接转发。[原始指令](docs/arcmap-10.1-native-baseline.md#101-afcore-string-流转发与写入调用者2026-11-14)
   - [x] 闭合 Version 流对象身份：CLSID `043731d0` 经 AfCore `AfCreateInstance`→FactoryCache/CoCreateInstance 创建，+0x38 为底层流连接槽位；复核 `0x7b708d00` 主干（Mx Document/Maps/PageLayout 存储及四个接口 GUID），与 [文档打开链](docs/arcmap-10.1-document-open-save.md) 汇合，见 [研究记录](docs/arcmap-10.1-native-baseline.md#101-version-流对象身份与文档打开链2026-11-14)。
   - [x] 闭合各 GUID 语义（类型库 `LoadTypeLibEx` 解析 + 主干行为双证据，纠正此前手工解析的 IVariantStreamIO/IPageLayout 误判）：`043731d0` 为 esriSystem coclass **ObjectStream**（主接口 IObjectStream `18a45ba7`），主干四接口为 IDocumentVersion/IPageLayout/IActiveView 与打印设置分支 IPaper/IPrinter，另证 Array 收集容器与 esriOutput Paper 类；仅闭合 IID 语义，各对象体字段布局不在其内，见 [研究记录](docs/arcmap-10.1-native-baseline.md#101-version-流对象接口-guid-语义考证2026-11-14)。
   - [x] 纠正纸张创建分支的 CLSID 误记，确认同一调用点创建 esriOutput Paper。[原始字节复核](docs/arcmap-10.1-native-baseline.md#纸张创建分支的-clsid-勘误)

@@ -167,7 +167,7 @@ SystemCore 其他 IID 匹配分支的构造与虚表复核见下节。保存版�
 
 ### String::Read / String::Write 的流转发
 - `String::Read`（0x68ab46f0）与 `String::Write`（0x68ab4680）的 stream 参数即调用方传入的 IStream COM 对象：读走 vtbl+0x0c、写走 vtbl+0x10（`ev_76ae0975fe419888dda3be7cdc4c54f8a8f41712f1ef1a19adb991a755dbb9d9`、`ev_99c7d298b3dfb63012a9da350b69078b53f82ba9f4670af3bdba995f384083cf`）。二者内部不调用 AfStreamRead/AfStreamWrite；到磁盘/命名流的跳转发生在 IStream 实现对象内部。
-- String::Write 的长度前缀取自数据指针前 4 字节（wchar 计数），写入 cb = len*2+2 字节；第一写失败即返回，第二写 HRESULT 仅作返回值、不分支（`ev_99c7d298…`）。10.1 反汇编未见 10.8 记录中的 `cb & 0x7fffffff` 掩码，该说法标记为 10.8 特有/待复核。
+- String::Write 的长度前缀取自数据指针前 4 字节（wchar 计数），写入 cb = len*2+2 字节；第一写失败即返回，第二写 HRESULT 仅作返回值、不分支（`ev_99c7d298…`）。复核同版 AfCore.dll（SHA-256 `031858c414c0105b3b978c754f3d0f31ba1d98f15d44ff15b1589c9adcc47c17`）的 `0x68ab4696–0x68ab46a3`：EBX 持有 32 位 cb，`lea ecx,[ebx+ebx]` 接 `shr ecx,1` 等价于 `cb & 0x7fffffff`。首个 Write 使用该前缀，第二个 Write 在 `0x68ab46cb` 仍压入原 EBX。
 
 ### 短读边界（汇编确认）
 - String::Read 先读 4 字节长度并 malloc(length)；第二次 Read 后只要 pcb>0 即把整个缓冲赋给输出——不检查 pcb==length、不校验终止零；长度 0、pcb 为空或分配失败返回 `0x80004005`（`ev_76ae0975…`）。原生行为比 `read_string_10_1` 严格读取器宽松：声明长度与实际不符时原生仍接受（尾部为残留内容）。Rust 侧报错为有意收紧，不是原生等价，需保持标注。
@@ -187,7 +187,7 @@ SystemCore 其他 IID 匹配分支的构造与虚表复核见下节。保存版�
 
 ### 未解决问题
 - 0x7b6be580 上游的流命名/槽位归属（需运行时观察）。
-- 10.1 是否存在带 cb 掩码的其他写路径（AfStreamWrite 0x68a84850 本体未逐条复核）。
+- AfStreamWrite `0x68a84850–0x68a8486b` 原样传递缓冲区与字节数到 IStream +0x10，掩码在上游 String::Write。
 - AfCore 内 0x68a7cb50 / 0x68a7c6a0 的所属功能未展开。
 
 ## 10.1 Version 写入路径与写入调用者（2026-11-14）
