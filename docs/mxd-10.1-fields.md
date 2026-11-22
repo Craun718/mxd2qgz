@@ -245,3 +245,11 @@ IDomain。SystemCore 同版本在 `0x7ffd0063` 按键取得原对象后查询
 接口。值域槽对已知登记类使用已核对的三种 IDomain 实现分派。
 合成测试覆盖三类有效回引、伪装成值域的其他类以及失败回滚。
 ArcMap 10.1 与 QGIS 人工验收未进行。
+
+### 字段定义回引
+
+GdbCore.dll 10.1.0.3035 的 Field Load（`0x709e1730`）在定义槽
+分别请求 IGeometryDef 与 IRasterDef。SystemCore 同版本按键取得原
+对象后查询接口。两个定义槽按各自已验证的登记类分派回引。合成测试
+覆盖有效回引、类型不匹配、游标和已有键。
+ArcMap 10.1 与 QGIS 人工验收未进行。

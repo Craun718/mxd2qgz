@@ -78,7 +78,18 @@ fn read_definition_slot<T>(
 ) -> io::Result<FieldDefinitionSlot10_1<T>> {
     let mut trial = reader.clone();
     let mut staged = refs.clone();
-    let entry = read_object_entry_10_1(&mut trial, &mut staged)?;
+    let mut entry = read_object_entry_10_1(&mut trial, &mut staged)?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+        && let Some(registered) = staged.registered_class(*key)
+    {
+        if registered != expected_class {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                format!("{interface} 回引键 {key} 的登记类不受支持"),
+            ));
+        }
+        *class_id = registered;
+    }
     let body = match entry {
         ObjectEntry10_1::Null | ObjectEntry10_1::BackReference { .. } => None,
         ObjectEntry10_1::NewObject { class_id, .. } if class_id == expected_class => {
@@ -171,6 +182,46 @@ pub(crate) fn read_raster_def(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn definition_references_check_the_class_registered_for_each_interface() {
+        for expected in [GEOMETRY_DEF_CLASS_ID, RASTER_DEF_CLASS_ID] {
+            for registered in [expected, [0x7d; 16]] {
+                let mut header = registered.to_vec();
+                header.extend(41_u32.to_le_bytes());
+                let mut refs = RefTable10_1::new();
+                read_object_entry_10_1(&mut Reader::new(&header), &mut refs).unwrap();
+                let before = refs.clone();
+                let claimed = if registered == expected {
+                    [0x7d; 16]
+                } else {
+                    expected
+                };
+                header[..16].copy_from_slice(&claimed);
+                header.push(0xaa);
+                let mut reader = Reader::new(&header);
+                let result = if expected == GEOMETRY_DEF_CLASS_ID {
+                    read_geometry_def_slot_10_1(&mut reader, 128, &mut refs).map(|slot| slot.entry)
+                } else {
+                    read_raster_def_slot_10_1(&mut reader, 128, &mut refs).map(|slot| slot.entry)
+                };
+                assert_eq!(refs, before);
+                if registered == expected {
+                    assert_eq!(
+                        result.unwrap(),
+                        ObjectEntry10_1::BackReference {
+                            class_id: expected,
+                            key: 41,
+                        }
+                    );
+                    assert_eq!(reader.position(), 20);
+                } else {
+                    assert_eq!(result.unwrap_err().kind(), ErrorKind::Unsupported);
+                    assert_eq!(reader.position(), 0);
+                }
+            }
+        }
+    }
 
     #[test]
     fn geometry_def_reads_following_fields_with_nonpositive_grid_counts() {

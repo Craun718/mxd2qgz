@@ -271,6 +271,7 @@
   - [x] 接入共享 ObjectStream Variant 中的 Field 与 Fields 对象体。[字段对象取证](docs/mxd-10.1-fields.md#variant-中的字段与字段集合)
   - [x] 按登记对象的类校验 Fields 的 IField 回引。[字段回引取证](docs/mxd-10.1-fields.md#字段集合回引)
   - [x] 按登记对象的类校验 Field 的 IDomain 回引。[值域回引取证](docs/mxd-10.1-fields.md#字段值域回引)
+  - [x] 按登记对象的类校验 Field 的几何与栅格定义回引。[定义回引取证](docs/mxd-10.1-fields.md#字段定义回引)
   - [x] 复核 Fields 的负计数错误和空集合读取边界。[计数取证](docs/mxd-10.1-fields.md#字段集合计数)
   - [x] 按 GdbCore 的有符号循环门读取 CodedValueDomain 计数。[计数取证](docs/mxd-10.1-fields.md#编码值域计数)
   - [x] 在共享 ObjectStream Variant 中接入投影、地理与未知坐标系三类对象体，并验证范围值域内包络的空间参考键回引。[取证](docs/arcmap-10.1-variant-propertyset-slots.md#geometrydll-的有键空间参考对象)
