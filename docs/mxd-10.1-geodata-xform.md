@@ -306,3 +306,9 @@ RasterLayer，验证数组各自的值、后继 Envelope 新键和图层终点�
 字节的结果。另在仓库、10.1 介质目录和本机共享样本目录打开 173
 个可读 MXD/MXT 容器，扫描可读数据流，两个投影变换 CLSID 均未命中。
 无界旧档的第三槽边界仍待真实宿主佐证。
+
+ProjectiveXform 的几何集合槽请求 IGeometryCollection（RasterDB.dll
+10.1.0.3035，`0x7c03bc20..0x7c03bc42`）。共享集合槽按 SystemCore
+同版查键规则使用已登记类，并沿用已有的集合类支持范围。合成测试核对
+Multipoint 回引的边界及 Point 类型不匹配时的整体回滚。普通流中空第三
+槽的歧义仍待实档验证，ArcMap 10.1 与 QGIS 人工验收未进行。

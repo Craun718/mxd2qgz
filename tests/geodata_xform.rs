@@ -946,6 +946,46 @@ fn projective_geometry_compatibility_layout_preserves_outer_fields() {
 }
 
 #[test]
+fn projective_geometry_reference_checks_the_registered_class() {
+    use mxd2qgz::objects::geodata_xform::PROJECTIVE_XFORM_CLASS_ID;
+    use mxd2qgz::objects::geometry::{MULTIPOINT_CLASS_ID, POINT_CLASS_ID};
+    use mxd2qgz::storage::object_refs::read_object_entry_10_1;
+
+    for class_id in [MULTIPOINT_CLASS_ID, POINT_CLASS_ID] {
+        let mut previous = Vec::new();
+        header(&mut previous, class_id, 71);
+        let mut refs = RefTable10_1::new();
+        read_object_entry_10_1(&mut Reader::new(&previous), &mut refs).unwrap();
+        let before = refs.clone();
+        let mut bytes = Vec::new();
+        header(&mut bytes, PROJECTIVE_XFORM_CLASS_ID, 80);
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend([0; 16]);
+        header(&mut bytes, MULTIPOINT_CLASS_ID, 71);
+        bytes.extend([0; 8]);
+        let mut reader = Reader::new(&bytes);
+        let result = read_geodata_xform_slot_10_1(&mut reader, 128, &mut refs);
+        if class_id == MULTIPOINT_CLASS_ID {
+            let GeodataXformBody10_1::Projective(body) = *result.unwrap().body.unwrap() else {
+                panic!("缺少 ProjectiveXform");
+            };
+            assert!(matches!(
+                body.geometry.entry,
+                ObjectEntry10_1::BackReference {
+                    class_id: MULTIPOINT_CLASS_ID,
+                    key: 71,
+                }
+            ));
+            assert_eq!(reader.position(), bytes.len());
+        } else {
+            assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::Unsupported);
+            assert_eq!(reader.position(), 0);
+            assert_eq!(refs, before);
+        }
+    }
+}
+
+#[test]
 fn projective_xform_reads_explicit_projection_references_in_both_positions() {
     use mxd2qgz::objects::geodata_xform::{
         PROJECTIVE_TRANSFORMATION_2D_CLASS_ID, PROJECTIVE_XFORM_CLASS_ID,
