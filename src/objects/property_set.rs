@@ -344,6 +344,10 @@ pub enum PropertyValueObjectStream10_1 {
         body: Box<crate::layers::feature_id_set::FeatureIdSetBody10_1>,
     },
     QueryFilter(Box<EncodedVariantObject10_1<crate::objects::query_filter::QueryFilterBody10_1>>),
+    FilterDefinitions(
+        Box<EncodedVariantObject10_1<crate::objects::query_filter::FilterDefinitionsBody10_1>>,
+    ),
+    XmlFilterDef(Box<EncodedVariantObject10_1<crate::objects::query_filter::XmlFilterDef10_1>>),
     /// 有对象头及会话键的 SystemCore 数组。
     ArrayObject {
         class_id: [u8; 16],
@@ -605,7 +609,10 @@ pub(crate) fn read_variant_object_body_10_1(
     };
     use crate::objects::field_defs::{GEOMETRY_DEF_CLASS_ID, RASTER_DEF_CLASS_ID};
     use crate::objects::fields::{FIELD_CLASS_ID, FIELDS_CLASS_ID};
-    use crate::objects::query_filter::{QUERY_FILTER_CLASS_ID, SPATIAL_FILTER_CLASS_ID};
+    use crate::objects::query_filter::{
+        FILTER_DEFS_CLASS_ID, QUERY_FILTER_CLASS_ID, SPATIAL_FILTER_CLASS_ID,
+        XML_FILTER_DEF_CLASS_ID,
+    };
     Ok(match entry {
         ObjectEntry10_1::Null => {
             PropertyValueObjectStream10_1::Inline(PropertyValue10_1::NullObject)
@@ -666,6 +673,10 @@ pub(crate) fn read_variant_object_body_10_1(
             class_id: class_id @ (QUERY_FILTER_CLASS_ID | SPATIAL_FILTER_CLASS_ID),
             key,
         } => return read_variant_query_filter(reader, max_bytes, table, class_id, key),
+        ObjectEntry10_1::NewObject {
+            class_id: class_id @ (FILTER_DEFS_CLASS_ID | XML_FILTER_DEF_CLASS_ID),
+            key,
+        } => return read_variant_filter_definition(reader, max_bytes, table, class_id, key),
         ObjectEntry10_1::NewObject { class_id, key } if class_id == PROPERTY_SET_CLASS_ID => {
             check_variant_object_depth(depth)?;
             let body =
@@ -1034,6 +1045,53 @@ fn read_variant_raster_input(
             body,
         }),
     ))
+}
+
+#[inline(never)]
+fn read_variant_filter_definition(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    class_id: [u8; 16],
+    key: u32,
+) -> io::Result<PropertyValueObjectStream10_1> {
+    use crate::objects::query_filter::{
+        FILTER_DEFS_CLASS_ID, read_filter_defs_body_10_1, read_xml_filter_def_body_10_1,
+    };
+
+    let mut wire = reader
+        .clone()
+        .read_region(reader.remaining().min(max_bytes))?;
+    if class_id == FILTER_DEFS_CLASS_ID {
+        let mut stop = None;
+        let body = read_filter_defs_body_10_1(&mut wire, max_bytes, table, &mut stop)?;
+        if stop.is_some() {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "Variant 过滤定义集合含未支持对象",
+            ));
+        }
+        let bytes = Arc::from(reader.read_bytes(wire.position())?);
+        Ok(PropertyValueObjectStream10_1::FilterDefinitions(Box::new(
+            EncodedVariantObject10_1 {
+                class_id,
+                key,
+                bytes,
+                body,
+            },
+        )))
+    } else {
+        let body = read_xml_filter_def_body_10_1(&mut wire, max_bytes)?;
+        let bytes = Arc::from(reader.read_bytes(wire.position())?);
+        Ok(PropertyValueObjectStream10_1::XmlFilterDef(Box::new(
+            EncodedVariantObject10_1 {
+                class_id,
+                key,
+                bytes,
+                body,
+            },
+        )))
+    }
 }
 
 #[inline(never)]

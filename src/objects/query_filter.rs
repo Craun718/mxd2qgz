@@ -23,10 +23,10 @@ pub const QUERY_FILTER_CLASS_ID: [u8; 16] = [
 pub const SPATIAL_FILTER_CLASS_ID: [u8; 16] = [
     0x96, 0xbd, 0xfe, 0xfd, 0x75, 0xed, 0xd0, 0x11, 0x9a, 0x95, 0x08, 0x00, 0x09, 0xec, 0x73, 0x4b,
 ];
-const FILTER_DEFS_CLASS_ID: [u8; 16] = [
+pub(crate) const FILTER_DEFS_CLASS_ID: [u8; 16] = [
     0x1a, 0x15, 0x31, 0x31, 0x5c, 0x4b, 0x26, 0x45, 0x98, 0xbe, 0x71, 0x17, 0x46, 0xb0, 0x3d, 0xf8,
 ];
-const XML_FILTER_DEF_CLASS_ID: [u8; 16] = [
+pub(crate) const XML_FILTER_DEF_CLASS_ID: [u8; 16] = [
     0xdb, 0x75, 0xf9, 0x47, 0xc0, 0x77, 0x8c, 0x4a, 0xb8, 0xa0, 0x8e, 0x9f, 0xe7, 0x7a, 0x97, 0x95,
 ];
 
@@ -153,6 +153,31 @@ fn read_slot<T>(
     Ok(slot)
 }
 
+pub(crate) fn read_xml_filter_def_body_10_1(
+    reader: &mut Reader<'_>,
+    max: usize,
+) -> io::Result<XmlFilterDef10_1> {
+    Ok(XmlFilterDef10_1 {
+        version: read_version(reader, 1, "XMLFilterDef")?,
+        strings: [
+            read_bstr_string_10_1(reader, max)?,
+            read_bstr_string_10_1(reader, max)?,
+        ],
+    })
+}
+
+pub(crate) fn read_filter_defs_body_10_1(
+    reader: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+    stop: &mut Stop,
+) -> io::Result<FilterDefinitionsBody10_1> {
+    Ok(FilterDefinitionsBody10_1 {
+        version: read_version(reader, 1, "FilterDefs")?,
+        entries: read_definitions(reader, max, table, stop)?,
+    })
+}
+
 fn read_definitions(
     reader: &mut Reader<'_>,
     max: usize,
@@ -174,13 +199,7 @@ fn read_definitions(
             if class != XML_FILTER_DEF_CLASS_ID {
                 return Ok(None);
             }
-            Ok(Some(XmlFilterDef10_1 {
-                version: read_version(reader, 1, "XMLFilterDef")?,
-                strings: [
-                    read_bstr_string_10_1(reader, max)?,
-                    read_bstr_string_10_1(reader, max)?,
-                ],
-            }))
+            read_xml_filter_def_body_10_1(reader, max).map(Some)
         })?);
         if stop.is_some() {
             break;
@@ -245,10 +264,7 @@ fn read_core(
                 if class != FILTER_DEFS_CLASS_ID {
                     return Ok(None);
                 }
-                Ok(Some(FilterDefinitionsBody10_1 {
-                    version: read_version(reader, 1, "FilterDefs")?,
-                    entries: read_definitions(reader, max, table, stop)?,
-                }))
+                read_filter_defs_body_10_1(reader, max, table, stop).map(Some)
             },
         )?)
     });
@@ -345,6 +361,52 @@ mod tests {
     fn append_header(bytes: &mut Vec<u8>, class: [u8; 16], key: u32) {
         bytes.extend(class);
         bytes.extend(key.to_le_bytes());
+    }
+
+    #[test]
+    fn filter_definition_variants_preserve_nested_keys_and_boundaries() {
+        use crate::objects::property_set::{
+            PropertyValueObjectStream10_1, read_padded_variant_object_stream_10_1,
+        };
+
+        for collection in [false, true] {
+            let mut bytes = 13_u16.to_le_bytes().to_vec();
+            bytes.extend([0; 14]);
+            if collection {
+                append_header(&mut bytes, FILTER_DEFS_CLASS_ID, 4);
+                bytes.extend(1_u16.to_le_bytes());
+                bytes.extend(1_u32.to_le_bytes());
+            }
+            append_header(&mut bytes, XML_FILTER_DEF_CLASS_ID, 5);
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend([0; 8]); // 两个空 BSTR。
+            let end = bytes.len();
+            bytes.push(0xaa);
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let value =
+                read_padded_variant_object_stream_10_1(&mut reader, 128, &mut refs).unwrap();
+            match value {
+                PropertyValueObjectStream10_1::FilterDefinitions(value) => {
+                    assert!(collection);
+                    assert_eq!(value.body().entries.len(), 1);
+                    assert!(refs.contains(4));
+                }
+                PropertyValueObjectStream10_1::XmlFilterDef(value) => {
+                    assert!(!collection);
+                    assert_eq!(value.body().strings, ["", ""]);
+                }
+                other => panic!("过滤定义分派错误：{other:?}"),
+            }
+            assert!(refs.contains(5));
+            assert_eq!(reader.position(), end);
+
+            let mut reader = Reader::new(&bytes[..end - 1]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_padded_variant_object_stream_10_1(&mut reader, 128, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
     }
 
     #[test]

@@ -533,3 +533,9 @@ SpatialFilter Load `0x70a007d0` 由 IPersistStream 虚表提供。
 共享 ObjectStream Variant 复用上述对象体；内部未知对象会使外层
 Variant 返回错误并回滚。合成测试验证两类过滤器、引用键、后继字节
 与截断回滚。尚缺真实 Variant 槽实档，ArcMap 10.1 与 QGIS 人工验收未进行。
+
+GdbCore.dll 同版 FilterDefs Load `0x709011c0` 与 XMLFilterDef Load
+`0x70a29fa0` 也经 IPersistStream 分派。共享 Variant 复用查询
+过滤器的集合与 XML 定义体读取器。合成测试验证独立定义、集合内子键、
+后继字节和截断回滚。真实 Variant 宿主及 ArcMap 10.1、QGIS 人工
+验收尚未验证。
