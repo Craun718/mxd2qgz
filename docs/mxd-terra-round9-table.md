@@ -189,3 +189,9 @@ Map.dll 10.1.0.3035 的 Ghidra 导出 `Map/7945d630.c` 在读取字段表、
 展开缓冲区。读取器对这三处的非正计数跳过循环，并保留序列原始
 计数。合成 v5 测试覆盖 0、-1 和最小有符号值，验证后续整数和
 第二名称槽的边界。原生实档与 ArcMap/QGIS 人工验收待验证。
+
+Map.dll 同一函数在 v10 起调用 LayerLib.dll 的
+`CInternalLayerBase::ReadPreJoinDefExpressions`（`0x786c5d30`）。
+该辅助函数只对正计数读取字符串对，见[委派函数证据](mxd-boundary-luna.md)。
+独立表读取器据此对负计数返回空表达式列表。合成 v11 测试验证下一条
+非空字符串、尾对象槽和截断回滚；ArcMap 10.1 与 QGIS 人工验收未进行。

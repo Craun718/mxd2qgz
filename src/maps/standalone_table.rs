@@ -520,7 +520,7 @@ pub fn read_standalone_table_prefix_10_1(
     }
     if version >= 10 {
         let mut pairs = Vec::new();
-        for _ in 0..count(&mut r, max_entries)? {
+        for _ in 0..signed_count(&mut r, max_entries)? {
             pairs.push((
                 read_string_10_1(&mut r, max_string_bytes)?,
                 read_string_10_1(&mut r, max_string_bytes)?,

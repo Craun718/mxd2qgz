@@ -240,6 +240,40 @@ fn standalone_reads_query_name_relationship_and_color_before_sequence() {
 }
 
 #[test]
+fn pre_join_negative_count_leaves_display_expression_aligned() {
+    let mut data = 11_u16.to_le_bytes().to_vec();
+    data.extend([0; 16 + 4]);
+    string(&mut data);
+    data.extend([0; 4 + 16 + 4 + 4 + 16]);
+    string(&mut data);
+    string(&mut data);
+    let count = data.len();
+    data.extend((-1_i32).to_le_bytes());
+    let text = "表达式";
+    let units: Vec<_> = text.encode_utf16().chain([0]).collect();
+    data.extend(((units.len() * 2) as u32).to_le_bytes());
+    data.extend(units.into_iter().flat_map(u16::to_le_bytes));
+    data.extend([0; 16 + 2 + 16 + 16]);
+    let mut reader = Reader::new(&data);
+    let mut refs = RefTable10_1::new();
+    let result = read_standalone_table_prefix_10_1(&mut reader, &mut refs, 0, 100).unwrap();
+    assert_eq!(result.pre_join, Some(Vec::new()));
+    assert_eq!(
+        result.version_strings.last().map(String::as_str),
+        Some(text)
+    );
+    assert_eq!(result.stop, StandaloneTableStop10_1::Complete);
+    assert_eq!(reader.position(), data.len());
+
+    for len in count..data.len() {
+        let mut reader = Reader::new(&data[..len]);
+        assert!(read_standalone_table_prefix_10_1(&mut reader, &mut refs, 0, 100).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+}
+
+#[test]
 fn empty_sequences_reach_version_boundaries_and_secondary_name() {
     use mxd2qgz::layers::annotate_props::{
         ANNOTATE_PROPS_COLLECTION_CLASS_ID, DISPLAY_EXPRESSION_PROPS_CLASS_ID,
