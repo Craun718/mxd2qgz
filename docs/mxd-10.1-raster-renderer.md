@@ -403,3 +403,8 @@ RasterDB.dll 10.1.0.3035（SHA-256
 10.1.0.3035 的 `0x7ffd0063` 查键路径，槽读取器使用已登记对象的
 类判定回引。构造测试覆盖有效回引、错误登记类及既有引用表保留。
 ArcMap 10.1 与 QGIS 人工验收未进行。
+
+RasterRendererUI.dll 10.1.0.3035 的 RasterUniqueValueColors
+IPersistStream Load（`0x10069ad0`）也接入共享 Variant 分派。
+合成测试验证数值键、原始色值、后继字节及截断回滚。
+真实 Variant 宿主和 ArcMap 10.1、QGIS 人工验收仍待验证。

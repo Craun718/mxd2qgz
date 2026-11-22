@@ -368,6 +368,13 @@ pub enum PropertyValueObjectStream10_1 {
             >,
         >,
     ),
+    RasterUniqueValueColors(
+        Box<
+            EncodedVariantObject10_1<
+                crate::layers::raster_unique_value::RasterUniqueValueColors10_1,
+            >,
+        >,
+    ),
     UniqueValues(
         Box<EncodedVariantObject10_1<crate::layers::raster_unique_value::UniqueValues10_1>>,
     ),
@@ -637,6 +644,11 @@ pub(crate) fn read_variant_object_body_10_1(
                 key,
             }
         }
+        ObjectEntry10_1::NewObject {
+            class_id:
+                class_id @ crate::layers::raster_unique_value::RASTER_UNIQUE_VALUE_COLORS_CLASS_ID,
+            key,
+        } => return read_variant_raster_unique_colors(reader, max_bytes, class_id, key),
         ObjectEntry10_1::NewObject {
             class_id: class_id @ crate::layers::raster_unique_value::UNIQUE_VALUES_CLASS_ID,
             key,
@@ -1069,6 +1081,28 @@ fn read_variant_raster_input(
     })?;
     let bytes = Arc::from(reader.read_bytes(wire.position())?);
     Ok(PropertyValueObjectStream10_1::RasterArgumentInput(
+        Box::new(EncodedVariantObject10_1 {
+            class_id,
+            key,
+            bytes,
+            body,
+        }),
+    ))
+}
+
+#[inline(never)]
+fn read_variant_raster_unique_colors(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    class_id: [u8; 16],
+    key: u32,
+) -> io::Result<PropertyValueObjectStream10_1> {
+    let mut wire = reader
+        .clone()
+        .read_region(reader.remaining().min(max_bytes))?;
+    let body = crate::layers::raster_unique_value::read_legacy_colors_body(&mut wire, max_bytes)?;
+    let bytes = Arc::from(reader.read_bytes(wire.position())?);
+    Ok(PropertyValueObjectStream10_1::RasterUniqueValueColors(
         Box::new(EncodedVariantObject10_1 {
             class_id,
             key,

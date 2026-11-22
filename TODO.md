@@ -241,6 +241,7 @@
   - [x] 接入带保留区的 Variant 对象值（空对象、PropertySet 和同会话回引），覆盖栅格唯一值、值域与 MosaicRule，见 [AfCore 取证](docs/arcmap-10.1-variant-propertyset-slots.md#带保留区的-objectstream-对象值)。
   - [ ] 补齐栅格唯一值类别及统计集合内其他新对象类的 Variant 体分派。
   - [x] 接入 ObjectStream Variant 中的 UniqueValues 对象体。
+  - [x] 接入 ObjectStream Variant 中的 RasterUniqueValueColors 对象体。
   - [x] 按原生有符号循环门读取 UniqueValues 非正计数。
   - [x] 保留 UniqueValues 读取路径中的原始版本值。
   - [x] 按登记类校验渲染器 IUniqueValues 槽的回引。
