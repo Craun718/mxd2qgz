@@ -3021,16 +3021,14 @@ mod tests {
         dataset_reference[source_offset + 16..source_offset + 20]
             .copy_from_slice(&30_u32.to_le_bytes());
         dataset_reference.drain(dataset_offset + 20..after_workspace);
-        for (class_id, expected) in [
-            (FEATURE_DATASET_NAME_CLASS_ID, Some("..\\data.gdb")),
-            (WORKSPACE_NAME_CLASS_ID, None),
-        ] {
+        // 数据集名称回引按已登记对象的类解析，忽略回引头的类标识。
+        for class_id in [FEATURE_DATASET_NAME_CLASS_ID, WORKSPACE_NAME_CLASS_ID] {
             dataset_reference[dataset_offset..dataset_offset + 16].copy_from_slice(&class_id);
             let mut reader = Reader::new(&dataset_reference);
             let prefix =
                 read_feature_layer_prefix_10_1(&mut reader, 1024, &mut refs.clone()).unwrap();
             let source = feature_layer_source(&prefix, 0, &mut Vec::new()).unwrap();
-            assert_eq!(source.path.as_deref(), expected);
+            assert_eq!(source.path.as_deref(), Some("..\\data.gdb"));
         }
 
         body[source_offset + 16..source_offset + 20].copy_from_slice(&20_u32.to_le_bytes());

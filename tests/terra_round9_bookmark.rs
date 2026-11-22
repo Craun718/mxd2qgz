@@ -1291,8 +1291,18 @@ fn ams_bookmark_reads_ole_workspace_and_preserves_object_stream_keys() {
     assert_eq!(reader.position(), end);
     assert_eq!(reader.read_bytes(1).unwrap(), [0xa5]);
     let mut expected_refs = RefTable10_1::new();
-    expected_refs.register(17);
-    expected_refs.register(18);
+    for (class_id, key) in [
+        (AMS_DATASET_NAME_CLASS_ID, 17_u32),
+        (PROPERTY_SET_CLASS_ID, 18),
+    ] {
+        let mut header = class_id.to_vec();
+        header.extend(key.to_le_bytes());
+        mxd2qgz::storage::object_refs::read_object_entry_10_1(
+            &mut Reader::new(&header),
+            &mut expected_refs,
+        )
+        .unwrap();
+    }
     assert_eq!(refs, expected_refs);
 
     let verify_failure = |input: &[u8], max_bytes| {

@@ -468,7 +468,29 @@ fn map_v0_to_v13_read_version_gated_tail_fields() {
                 assert!(stopped.legacy_table_names.is_empty());
                 assert_eq!(reader.position(), at);
                 assert!(refs.contains(90));
+
+                // 回引头即使写成可接受的类，也不能改变已登记对象的类型。
+                let mut reader = Reader::new(&bytes);
+                reader.read_bytes(24).unwrap();
+                let stopped = read_map_suffix_10_1(&mut reader, 4096, &mut refs).unwrap();
+                assert!(stopped.legacy_table_names.is_empty());
+                assert_eq!(reader.position(), at);
+                assert!(refs.contains(90));
             }
+            // 已登记的表名称可回引，回引头中的不同类标识不影响读取。
+            let reference = names[1].0;
+            let mut mismatched = bytes.clone();
+            mismatched[reference..reference + 16].fill(0x7d);
+            let mut reader = Reader::new(&mismatched);
+            reader.read_bytes(24).unwrap();
+            let mut refs = RefTable10_1::new();
+            let map = read_map_suffix_10_1(&mut reader, 4096, &mut refs).unwrap();
+            assert!(matches!(
+                map.legacy_table_names[1].1,
+                DatasetNameMoreSlot10_1::BackReference { class_id, key: 90 }
+                    if class_id == bytes[at..at + 16]
+            ));
+
             let mut empty = bytes.clone();
             empty[at..at + 16].fill(0);
             let mut reader = Reader::new(&empty);

@@ -31,12 +31,12 @@ pub struct DatasetSource10_1 {
 /// 跨流共享的已见键登记表（对应原生 ObjectStream 读表）。
 ///
 /// 原生 `SetStream` 不清空该表，因此同一文档会话的全部流共用一个实例。
-/// 本表只保留读侧已见键及显式重复登记次数，不保存 COM 对象指针。
+/// 本表保留已见键、已知类标识及显式重复登记次数，不保存 COM 对象指针。
 /// 写侧插入器另有同键替换分支；正常读侧先查表，命中后直接作为回引返回，
 /// 不会再次登记。因此这里的重复登记计数不能当作写侧替换行为的模拟。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RefTable10_1 {
-    seen: HashMap<u32, u32>,
+    seen: HashMap<u32, (u32, Option<[u8; 16]>)>,
     map_keys: HashSet<u32>,
     workspace_paths: HashMap<u32, Arc<str>>,
     feature_dataset_paths: HashMap<u32, Arc<str>>,
@@ -257,15 +257,20 @@ impl RefTable10_1 {
     /// 正常条目读取遇到已见键时会返回回引，不调用本方法。
     pub fn register(&mut self, key: u32) -> bool {
         match self.seen.get_mut(&key) {
-            Some(count) => {
+            Some((count, _)) => {
                 *count = count.saturating_add(1);
                 true
             }
             None => {
-                self.seen.insert(key, 1);
+                self.seen.insert(key, (1, None));
                 false
             }
         }
+    }
+
+    /// 读取该键首次登记的类标识。仅登记了键时没有类信息。
+    pub(crate) fn registered_class(&self, key: u32) -> Option<[u8; 16]> {
+        self.seen.get(&key).and_then(|(_, class_id)| *class_id)
     }
 
     /// 当前已登记的不同键数。
@@ -308,7 +313,7 @@ pub fn read_object_entry_10_1(
             if table.contains(key) {
                 Ok(ObjectEntry10_1::BackReference { class_id, key })
             } else {
-                table.register(key);
+                table.seen.insert(key, (1, Some(class_id)));
                 Ok(ObjectEntry10_1::NewObject { class_id, key })
             }
         }

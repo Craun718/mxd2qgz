@@ -1367,7 +1367,15 @@ fn read_name_slot_with_depth_10_1(
     let mut trial = reader.clone();
     let mut staged = table.clone();
     let result = (|| -> io::Result<DatasetNameMoreSlot10_1> {
-        match read_object_entry_10_1(&mut trial, &mut staged)? {
+        let entry = match read_object_entry_10_1(&mut trial, &mut staged)? {
+            ObjectEntry10_1::BackReference { class_id, key } => {
+                // 原生按键取回对象并请求接口，回引头中的类标识不参与接口查询。
+                let class_id = staged.registered_class(key).unwrap_or(class_id);
+                ObjectEntry10_1::BackReference { class_id, key }
+            }
+            entry => entry,
+        };
+        match entry {
             ObjectEntry10_1::Null => Ok(DatasetNameMoreSlot10_1::Null),
             ObjectEntry10_1::BackReference { class_id, key }
             | ObjectEntry10_1::NewObject { class_id, key }
