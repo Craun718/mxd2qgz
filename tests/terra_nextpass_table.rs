@@ -563,6 +563,7 @@ fn empty_sequences_reach_version_boundaries_and_secondary_name() {
             assert_eq!(r.remaining(), 0);
 
             with_extension[expected - 4..expected].copy_from_slice(&3_u32.to_le_bytes());
+            let unknown_offset = with_extension.len();
             with_extension.extend(3_i64.to_le_bytes());
             with_extension.extend([4; 16]);
             with_extension.extend([9; 3]);
@@ -580,6 +581,31 @@ fn empty_sequences_reach_version_boundaries_and_secondary_name() {
             assert_eq!(p.extensions[2].class_id, [5; 16]);
             assert!(refs.contains(44));
             assert_eq!(r.position(), end);
+
+            let extension_bytes = end - expected;
+            let mut r = Reader::new(&with_extension);
+            let mut refs = RefTable10_1::new();
+            let result =
+                read_standalone_table_prefix_10_1(&mut r, &mut refs, 10, extension_bytes).unwrap();
+            assert_eq!(result.stop, StandaloneTableStop10_1::Complete);
+            assert_eq!(r.position(), end);
+
+            let mut overflow = with_extension.clone();
+            overflow[unknown_offset..unknown_offset + 8].copy_from_slice(&u64::MAX.to_le_bytes());
+            for (input, limit) in [
+                (&with_extension[..], extension_bytes - 1),
+                (&overflow[..], extension_bytes),
+            ] {
+                let mut r = Reader::new(input);
+                let mut refs = RefTable10_1::new();
+                refs.register(99);
+                let before = refs.clone();
+                let error =
+                    read_standalone_table_prefix_10_1(&mut r, &mut refs, 10, limit).unwrap_err();
+                assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+                assert_eq!(r.position(), 0);
+                assert_eq!(refs, before);
+            }
 
             for len in [end - 25, end - 1] {
                 let mut r = Reader::new(&with_extension[..len]);
