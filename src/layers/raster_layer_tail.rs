@@ -573,11 +573,16 @@ fn read_extra_safe_extensions(
             }
             budget -= size;
             let mut region = reader.read_region(size)?;
-            let entry = if size == 0 {
+            let mut entry = if size == 0 {
                 ObjectEntry10_1::Null
             } else {
                 read_object_entry_10_1(&mut region, table)?
             };
+            if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+                && let Some(registered) = table.registered_class(*key)
+            {
+                *class_id = registered;
+            }
             if !matches!(entry, ObjectEntry10_1::NewObject { .. }) && region.remaining() != 0 {
                 return Err(invalid("ExtraSafe 空对象或回引有多余字节"));
             }
@@ -2235,7 +2240,7 @@ mod tests {
                 bytes.extend([2, 4, 6]);
                 bytes.extend(0_u32.to_le_bytes());
                 bytes.extend(20_u32.to_le_bytes()); // B 同步边界。
-                bytes.extend([0x49; 16]);
+                bytes.extend([0x50; 16]);
                 bytes.extend(81_u32.to_le_bytes());
             } else if version >= 9 {
                 bytes.extend(0_i32.to_le_bytes());
@@ -2310,10 +2315,14 @@ mod tests {
                 assert_eq!(extensions[1].prefix, [23, 0]);
                 assert_eq!(extensions[1].raw_body, [2, 4, 6]);
                 assert_eq!(extensions[2].prefix, [0, 20]);
-                assert!(matches!(
+                assert_eq!(
                     extensions[2].entry,
-                    ObjectEntry10_1::BackReference { key: 81, .. }
-                ));
+                    ObjectEntry10_1::BackReference {
+                        key: 81,
+                        class_id: [0x49; 16]
+                    },
+                );
+                assert!(extensions[2].raw_body.is_empty());
                 assert!(refs.contains(81));
             }
             assert_eq!(tail.string_128.as_deref(), (version >= 10).then_some("x"));
