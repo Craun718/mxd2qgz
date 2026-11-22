@@ -1,4 +1,5 @@
 use mxd2qgz::maps::mxd_maps;
+use mxd2qgz::storage::document_metadata::detect_document_metadata_10_1;
 use mxd2qgz::version::mxd_version;
 
 mod input;
@@ -179,6 +180,42 @@ fn run() -> io::Result<()> {
                 report
                     .diagnostics
                     .push(format!("无法读取 /PageLayout：{error}"));
+            }
+            match document.open_stream("/Metadata") {
+                Ok(stream) => {
+                    // 已知布局至多 13 个字符串，预留定长字段和长度前缀。
+                    const MAX_METADATA_BYTES: usize = 14 * mxd_maps::MAX_FIELD_BYTES;
+                    let mut bytes = Vec::new();
+                    let metadata = stream
+                        .take((MAX_METADATA_BYTES + 1) as u64)
+                        .read_to_end(&mut bytes)
+                        .and_then(|size| {
+                            if size > MAX_METADATA_BYTES {
+                                return Err(io::Error::new(
+                                    io::ErrorKind::InvalidData,
+                                    "Metadata 流超过读取限额",
+                                ));
+                            }
+                            detect_document_metadata_10_1(&bytes, mxd_maps::MAX_FIELD_BYTES)
+                        });
+                    report.diagnostics.push(match metadata {
+                        Ok(metadata) => format!(
+                            "/Metadata：{}；相对路径标志 {}",
+                            metadata.version.map_or_else(
+                                || "旧式无版本头".to_string(),
+                                |version| format!("对象版本 {version}")
+                            ),
+                            metadata.relative_paths.map_or("缺省", |value| {
+                                if value { "启用" } else { "禁用" }
+                            })
+                        ),
+                        Err(error) => format!("无法解析 /Metadata：{error}"),
+                    });
+                }
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) => report
+                    .diagnostics
+                    .push(format!("无法读取 /Metadata：{error}")),
             }
             // /Version 识别候选并入报告与输出：复用 version 命令的识别逻辑；
             // /Version 缺失或识别失败按同样诊断输出，不使 parse 失败。
