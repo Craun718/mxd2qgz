@@ -525,3 +525,11 @@ IID）。全部合成输入（样本 0 实例），通过不代表 MXD 格式已
   会话临时目录，未入库）。
 - 原始 MXD 样本与诊断输出可能包含敏感路径；本记录中的合成字符串已检查，
   公开分享前仍需复核脱敏。
+
+### Variant 中的查询过滤器
+
+GdbCore.dll 10.1.0.3035 的 QueryFilter Load `0x709ff8b0` 与
+SpatialFilter Load `0x70a007d0` 由 IPersistStream 虚表提供。
+共享 ObjectStream Variant 复用上述对象体；内部未知对象会使外层
+Variant 返回错误并回滚。合成测试验证两类过滤器、引用键、后继字节
+与截断回滚。尚缺真实 Variant 槽实档，ArcMap 10.1 与 QGIS 人工验收未进行。

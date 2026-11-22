@@ -273,6 +273,7 @@
   - [x] 接入共享 ObjectStream Variant 中的 Field 与 Fields 对象体。[字段对象取证](docs/mxd-10.1-fields.md#variant-中的字段与字段集合)
   - [x] 以登记对象的类标识返回 ObjectStream Variant 回引。[回引取证](docs/mxd-10.1-fields.md#variant-中的值域对象)
   - [x] 接入共享 ObjectStream Variant 中的 FIDSet 与 FeatureIDSet。[对象体取证](docs/mxd-10.1-image-server-rules.md#variant-中的要素-id-集合)
+  - [x] 接入共享 ObjectStream Variant 中的 QueryFilter 与 SpatialFilter。[过滤器取证](docs/arcmap-10.1-dataset-name-slots.md#variant-中的查询过滤器)
   - [x] 按登记对象的类校验 Fields 的 IField 回引。[字段回引取证](docs/mxd-10.1-fields.md#字段集合回引)
   - [x] 按登记对象的类校验 Field 的 IDomain 回引。[值域回引取证](docs/mxd-10.1-fields.md#字段值域回引)
   - [x] 按登记对象的类校验 Field 的几何与栅格定义回引。[定义回引取证](docs/mxd-10.1-fields.md#字段定义回引)

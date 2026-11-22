@@ -343,6 +343,7 @@ pub enum PropertyValueObjectStream10_1 {
         class_id: [u8; 16],
         body: Box<crate::layers::feature_id_set::FeatureIdSetBody10_1>,
     },
+    QueryFilter(Box<EncodedVariantObject10_1<crate::objects::query_filter::QueryFilterBody10_1>>),
     /// 有对象头及会话键的 SystemCore 数组。
     ArrayObject {
         class_id: [u8; 16],
@@ -604,6 +605,7 @@ pub(crate) fn read_variant_object_body_10_1(
     };
     use crate::objects::field_defs::{GEOMETRY_DEF_CLASS_ID, RASTER_DEF_CLASS_ID};
     use crate::objects::fields::{FIELD_CLASS_ID, FIELDS_CLASS_ID};
+    use crate::objects::query_filter::{QUERY_FILTER_CLASS_ID, SPATIAL_FILTER_CLASS_ID};
     Ok(match entry {
         ObjectEntry10_1::Null => {
             PropertyValueObjectStream10_1::Inline(PropertyValue10_1::NullObject)
@@ -660,6 +662,10 @@ pub(crate) fn read_variant_object_body_10_1(
                 body: Box::new(body),
             }
         }
+        ObjectEntry10_1::NewObject {
+            class_id: class_id @ (QUERY_FILTER_CLASS_ID | SPATIAL_FILTER_CLASS_ID),
+            key,
+        } => return read_variant_query_filter(reader, max_bytes, table, class_id, key),
         ObjectEntry10_1::NewObject { class_id, key } if class_id == PROPERTY_SET_CLASS_ID => {
             check_variant_object_depth(depth)?;
             let body =
@@ -1028,6 +1034,35 @@ fn read_variant_raster_input(
             body,
         }),
     ))
+}
+
+#[inline(never)]
+fn read_variant_query_filter(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    class_id: [u8; 16],
+    key: u32,
+) -> io::Result<PropertyValueObjectStream10_1> {
+    let mut wire = reader
+        .clone()
+        .read_region(reader.remaining().min(max_bytes))?;
+    let mut stop = None;
+    let body = crate::objects::query_filter::read_query_filter_body_10_1(
+        &mut wire, max_bytes, table, class_id, &mut stop,
+    )?;
+    let body = body.filter(|_| stop.is_none()).ok_or_else(|| {
+        io::Error::new(io::ErrorKind::Unsupported, "Variant 查询过滤器含未支持对象")
+    })?;
+    let bytes = Arc::from(reader.read_bytes(wire.position())?);
+    Ok(PropertyValueObjectStream10_1::QueryFilter(Box::new(
+        EncodedVariantObject10_1 {
+            class_id,
+            key,
+            bytes,
+            body,
+        },
+    )))
 }
 
 // 定义体只在对应分支分配栈空间，避免扩大共用递归分派的栈帧。

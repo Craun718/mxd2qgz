@@ -305,27 +305,37 @@ pub(crate) fn read_query_filter_slot_10_1(
     stop: &mut Stop,
 ) -> io::Result<QueryFilterObject10_1<QueryFilterBody10_1>> {
     read_slot(reader, table, stop, |reader, table, class, _, stop| {
-        Ok(Some(match class {
-            QUERY_FILTER_CLASS_ID => {
-                QueryFilterBody10_1::Query(Box::new(read_core(reader, max, table, stop)?))
-            }
-            SPATIAL_FILTER_CLASS_ID => {
-                let version = read_version(reader, 1, "SpatialFilter")?;
-                let core = Box::new(read_core(reader, max, table, stop)?);
-                let spatial = if stop.is_none() {
-                    Some(Box::new(read_spatial_fields(reader, max, table, stop)?))
-                } else {
-                    None
-                };
-                QueryFilterBody10_1::Spatial {
-                    version,
-                    core,
-                    spatial,
-                }
-            }
-            _ => return Ok(None),
-        }))
+        read_query_filter_body_10_1(reader, max, table, class, stop)
     })
+}
+
+pub(crate) fn read_query_filter_body_10_1(
+    reader: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+    class: [u8; 16],
+    stop: &mut Stop,
+) -> io::Result<Option<QueryFilterBody10_1>> {
+    Ok(Some(match class {
+        QUERY_FILTER_CLASS_ID => {
+            QueryFilterBody10_1::Query(Box::new(read_core(reader, max, table, stop)?))
+        }
+        SPATIAL_FILTER_CLASS_ID => {
+            let version = read_version(reader, 1, "SpatialFilter")?;
+            let core = Box::new(read_core(reader, max, table, stop)?);
+            let spatial = if stop.is_none() {
+                Some(Box::new(read_spatial_fields(reader, max, table, stop)?))
+            } else {
+                None
+            };
+            QueryFilterBody10_1::Spatial {
+                version,
+                core,
+                spatial,
+            }
+        }
+        _ => return Ok(None),
+    }))
 }
 
 #[cfg(test)]
@@ -335,6 +345,56 @@ mod tests {
     fn append_header(bytes: &mut Vec<u8>, class: [u8; 16], key: u32) {
         bytes.extend(class);
         bytes.extend(key.to_le_bytes());
+    }
+
+    #[test]
+    fn variant_filter_reads_body_and_leaves_following_byte() {
+        use crate::objects::property_set::{
+            PropertyValueObjectStream10_1, read_padded_variant_object_stream_10_1,
+        };
+
+        for class_id in [QUERY_FILTER_CLASS_ID, SPATIAL_FILTER_CLASS_ID] {
+            let spatial = class_id == SPATIAL_FILTER_CLASS_ID;
+            let mut bytes = 13_u16.to_le_bytes().to_vec();
+            bytes.extend([0; 14]);
+            append_header(&mut bytes, class_id, 19);
+            if spatial {
+                bytes.extend(1_u16.to_le_bytes());
+            }
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend([2, 0, 0, 0, 0, 0].repeat(3));
+            bytes.extend([0; 16 + 8 + 16]);
+            if spatial {
+                bytes.extend([0; 8]);
+                bytes.extend([2, 0, 0, 0, 0, 0]);
+                bytes.extend([0; 16]);
+                bytes.extend([2, 0, 0, 0, 0, 0]);
+                bytes.extend(1_u16.to_le_bytes());
+            }
+            let end = bytes.len();
+            bytes.push(0xaa);
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let value =
+                read_padded_variant_object_stream_10_1(&mut reader, 128, &mut refs).unwrap();
+            let PropertyValueObjectStream10_1::QueryFilter(value) = value else {
+                panic!("缺少查询过滤器");
+            };
+            assert_eq!(value.class_id, class_id);
+            assert_eq!(value.key, 19);
+            assert_eq!(
+                matches!(value.body(), QueryFilterBody10_1::Spatial { .. }),
+                spatial
+            );
+            assert!(refs.contains(19));
+            assert_eq!(reader.position(), end);
+
+            let mut reader = Reader::new(&bytes[..end - 1]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_padded_variant_object_stream_10_1(&mut reader, 128, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
     }
 
     #[test]
