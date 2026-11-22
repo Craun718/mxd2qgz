@@ -324,6 +324,11 @@ IRasterStatistics 和 IRasterHistogram。
 | RasterHistogram | `B01293EA-88D0-4E7D-AF82-A0B10BAC9B33` | `0x7c134184 / 0x7c0c82e0` | short（≤1）、Variant(false)、三个 double、一个 int32、int32 个数及对应的 double 序列 |
 | RasterColormap | `92195722-5732-11D2-AAAD-00C04FA375FB` | `0x7c131fec / 0x7c09cdb0` | short（≤2），v2 先读一个 Variant(false)，各版本再读一个 Variant(false)；QI `0x7c09b910` 匹配宿主 v5 的 IID `7E7E6105-FA34-11D1-8D22-0000F8780535` |
 
+SystemCore.dll 10.1.0.3035 在 `0x7ffd0063` 先查键再对原实例
+查询该槽的接口。Rust 对这三个槽以登记类判定回引。构造 RasterInfo v7
+同时覆盖登记类与流内写入类不同的有效统计回引、误引色表时整个 Variant
+的游标和引用表回滚。该组合尚无实档或 ArcMap/QGIS 人工验证。
+
 已从 RasterInfoFunction（`0x6fcf98e0/0x6fcf9960`，基类体、
 派生 short 后装入 IRasterInfo）及合并函数的内层流两处接入。
 合成 v7 包含同键回引、非空统计、直方图、色表与末尾 int32，覆盖两个

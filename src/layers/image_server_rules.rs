@@ -1357,7 +1357,8 @@ mod tests {
         info.extend([0; 14]);
         info.extend(RASTER_COLORMAP);
         info.extend(20_u32.to_le_bytes()); // 回引前面 Variant 内的色表。
-        info.extend(RASTER_STATISTICS);
+        let statistics_reference = info.len();
+        info.extend(RASTER_COLORMAP);
         info.extend(15_u32.to_le_bytes());
         info.extend(1_i32.to_le_bytes());
         info.extend(RASTER_HISTOGRAM);
@@ -1444,7 +1445,10 @@ mod tests {
         assert_eq!(histogram.double_a.map(f64::to_bits), Some(nan_bits));
         assert!(matches!(
             body.statistics[1].entry,
-            ObjectEntry10_1::BackReference { key: 15, .. }
+            ObjectEntry10_1::BackReference {
+                class_id: RASTER_STATISTICS,
+                key: 15
+            }
         ));
         assert_eq!(body.histograms[0].body.as_ref().unwrap().bins, [8.25]);
         assert_eq!(
@@ -1459,6 +1463,27 @@ mod tests {
         );
         assert!((13..=21).all(|key| refs.contains(key)));
         assert_eq!(reader.remaining(), 0);
+
+        let mut wrong = info.clone();
+        wrong[statistics_reference + 16..statistics_reference + 20]
+            .copy_from_slice(&20_u32.to_le_bytes());
+        let mut wrapped = 13_u16.to_le_bytes().to_vec();
+        wrapped.extend([0; 14]);
+        wrapped.extend(wrong);
+        let mut wrong_reader = Reader::new(&wrapped);
+        let mut wrong_refs = RefTable10_1::new();
+        assert_eq!(
+            crate::objects::property_set::read_padded_variant_object_stream_10_1(
+                &mut wrong_reader,
+                4096,
+                &mut wrong_refs,
+            )
+            .unwrap_err()
+            .kind(),
+            ErrorKind::Unsupported
+        );
+        assert_eq!(wrong_reader.position(), 0);
+        assert!(wrong_refs.is_empty());
 
         info.extend(1_i32.to_le_bytes());
         let rectangle = [1.0_f64, 2.0, 3.0, 4.0];

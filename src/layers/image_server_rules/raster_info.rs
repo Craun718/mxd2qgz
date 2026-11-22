@@ -14,7 +14,7 @@ use crate::objects::property_set::{
     PropertyValueObjectStream10_1, read_padded_variant_object_stream_10_1,
     read_padded_variant_object_stream_nested_10_1,
 };
-use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
+use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
@@ -261,6 +261,35 @@ pub(super) fn read_body(
     refs.with_nested_raster_info(|refs| read_info(r, max, refs, depth))
 }
 
+fn read_info_member<'a, T>(
+    r: &mut Reader<'a>,
+    refs: &mut RefTable10_1,
+    expected: [u8; 16],
+    label: &str,
+    read_body: impl FnOnce(&mut Reader<'a>, &mut RefTable10_1) -> io::Result<T>,
+) -> io::Result<RuleSlot10_1<T>> {
+    let mut entry = read_object_entry_10_1(r, refs)?;
+    let body = match &mut entry {
+        ObjectEntry10_1::NewObject { class_id, .. } => {
+            if *class_id != expected {
+                return Err(unsupported_class(label, class_id));
+            }
+            Some(Box::new(read_body(r, refs)?))
+        }
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            if let Some(registered) = refs.registered_class(*key) {
+                if registered != expected {
+                    return Err(unsupported_class(label, &registered));
+                }
+                *class_id = registered;
+            }
+            None
+        }
+        ObjectEntry10_1::Null => None,
+    };
+    Ok(RuleSlot10_1 { entry, body })
+}
+
 fn read_info(
     r: &mut Reader<'_>,
     max: usize,
@@ -294,20 +323,18 @@ fn read_info(
     let (statistics, histograms) = if body_version >= 4 {
         let statistics = (0..read_count(r, max, 16)?)
             .map(|_| {
-                slot(r, refs, |r, refs, id, _| {
-                    if id != RASTER_STATISTICS {
-                        return Err(unsupported_class("IRasterStatistics", &id));
-                    }
-                    read_statistics(r, max, refs, 0)
-                })
+                read_info_member(
+                    r,
+                    refs,
+                    RASTER_STATISTICS,
+                    "IRasterStatistics",
+                    |r, refs| read_statistics(r, max, refs, 0),
+                )
             })
             .collect::<io::Result<Vec<_>>>()?;
         let histograms = (0..read_count(r, max, 16)?)
             .map(|_| {
-                slot(r, refs, |r, refs, id, _| {
-                    if id != RASTER_HISTOGRAM {
-                        return Err(unsupported_class("IRasterHistogram", &id));
-                    }
+                read_info_member(r, refs, RASTER_HISTOGRAM, "IRasterHistogram", |r, refs| {
                     read_histogram(r, max, refs, 0)
                 })
             })
@@ -318,12 +345,13 @@ fn read_info(
     };
     let colormap = (body_version >= 5)
         .then(|| {
-            slot(r, refs, |r, refs, id, _| {
-                if id != RASTER_COLORMAP {
-                    return Err(unsupported_class("RasterInfo IRasterColormap", &id));
-                }
-                read_colormap(r, max, refs, 0)
-            })
+            read_info_member(
+                r,
+                refs,
+                RASTER_COLORMAP,
+                "RasterInfo IRasterColormap",
+                |r, refs| read_colormap(r, max, refs, 0),
+            )
         })
         .transpose()?;
     let v6_entry = (body_version >= 6)
