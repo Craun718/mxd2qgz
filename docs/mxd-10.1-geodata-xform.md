@@ -124,6 +124,10 @@ CompositeXform 复用 RasterDB.dll 10.1.0.3035 的 Load `0x7bfbf580`
 对应布局，以及子变换的引用表和递归限额。构造 v2 验证子对象、
 同键回引、尾 short 与截断时的整体回滚。该组合尚无实档或人工验证。
 
+Variant 按共用类表分派其余已确认的 IGeodataXform 类。构造
+AdjustXform v1 验证标量、内层 IdentityXform 键及截断回滚。
+该分派沿用各类的既有体边界。尚无这些新增 Variant 组合的实档或人工验证。
+
 ## ProjectiveXform 的读写差异
 
 RasterDB.dll 10.1.0.3035 的 GetClassID `0x7c03be20` 从 `0x7c12d53c` 写出

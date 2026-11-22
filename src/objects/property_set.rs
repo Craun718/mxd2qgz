@@ -634,7 +634,7 @@ pub(crate) fn read_variant_object_body_10_1(
     use crate::objects::field_defs::{GEOMETRY_DEF_CLASS_ID, RASTER_DEF_CLASS_ID};
     use crate::objects::fields::{FIELD_CLASS_ID, FIELDS_CLASS_ID};
     use crate::objects::geodata_xform::{
-        COMPOSITE_XFORM_CLASS_ID, IDENTITY_XFORM_CLASS_ID, POLYNOMIAL_XFORM_CLASS_ID,
+        read_geodata_xform_body_10_1, supports_geodata_xform_body_10_1,
     };
     use crate::objects::query_filter::{
         FILTER_DEFS_CLASS_ID, QUERY_FILTER_CLASS_ID, SPATIAL_FILTER_CLASS_ID,
@@ -650,21 +650,15 @@ pub(crate) fn read_variant_object_body_10_1(
                 key,
             }
         }
-        ObjectEntry10_1::NewObject {
-            class_id:
-                class_id @ (COMPOSITE_XFORM_CLASS_ID
-                | IDENTITY_XFORM_CLASS_ID
-                | POLYNOMIAL_XFORM_CLASS_ID),
-            key,
-        } => {
+        ObjectEntry10_1::NewObject { class_id, key }
+            if supports_geodata_xform_body_10_1(class_id) =>
+        {
             check_variant_object_depth(depth)?;
             let mut wire = reader
                 .clone()
                 .read_region(max_bytes.min(reader.remaining()))?;
             let body = table.with_raster_info_variant_depth(depth + 1, |table| {
-                crate::objects::geodata_xform::read_geodata_xform_body_10_1(
-                    &mut wire, max_bytes, table, class_id,
-                )
+                read_geodata_xform_body_10_1(&mut wire, max_bytes, table, class_id)
             })?;
             let bytes = Arc::from(reader.read_bytes(wire.position())?);
             PropertyValueObjectStream10_1::GeodataXform(Box::new(EncodedVariantObject10_1 {
@@ -1786,6 +1780,43 @@ mod tests {
         assert_eq!(reader.remaining(), 0);
         assert!(refs.contains(100));
         assert!(!refs.contains(101));
+    }
+
+    #[test]
+    fn variant_adjust_transform_reuses_geodata_dispatch() {
+        use crate::objects::geodata_xform::{
+            ADJUST_XFORM_CLASS_ID, GeodataXformBody10_1, IDENTITY_XFORM_CLASS_ID,
+        };
+
+        let mut bytes = 13_u16.to_le_bytes().to_vec();
+        bytes.extend([0; 14]);
+        object(&mut bytes, ADJUST_XFORM_CLASS_ID, 11);
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend(7_u16.to_le_bytes());
+        bytes.extend(23_i32.to_le_bytes());
+        bytes.extend([0; 16]);
+        object(&mut bytes, IDENTITY_XFORM_CLASS_ID, 12);
+        bytes.extend(1_i32.to_le_bytes());
+        let end = bytes.len();
+        bytes.push(0xaa);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let value = read_padded_variant_object_stream_10_1(&mut reader, 128, &mut refs).unwrap();
+        assert!(matches!(
+            value,
+            PropertyValueObjectStream10_1::GeodataXform(value) if matches!(value.body(),
+                GeodataXformBody10_1::Adjust { short_c8: 7, long_a8: 23, inner, .. }
+                    if inner.body.is_some())
+        ));
+        assert_eq!(reader.position(), end);
+        assert_eq!(refs.registered_class(12), Some(IDENTITY_XFORM_CLASS_ID));
+
+        let mut reader = Reader::new(&bytes[..end - 1]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_padded_variant_object_stream_10_1(&mut reader, 128, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
     }
 
     #[test]

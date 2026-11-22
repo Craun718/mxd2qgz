@@ -896,6 +896,10 @@ pub(crate) fn read_geodata_xform_body_10_1(
     read_body(r, max, table, class_id, MAX_XFORM_NESTING)
 }
 
+pub(crate) fn supports_geodata_xform_body_10_1(class_id: [u8; 16]) -> bool {
+    xform_layout(class_id).is_some()
+}
+
 fn xform_layout(class_id: [u8; 16]) -> Option<(&'static str, std::ops::RangeInclusive<i32>)> {
     Some(match class_id {
         IDENTITY_XFORM_CLASS_ID => ("IdentityXform", 0..=2),
