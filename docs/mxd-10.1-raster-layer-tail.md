@@ -407,6 +407,12 @@ RasterLayer.dll 10.1.0.3035 的 Load 在 `0x7c73c19a` 使用
 对象体及工作空间槽。构造 v6 验证该名称读至关系列表，并验证列表误引
 同一个 TableName 键时回滚。尚无相同组合的实档或人工验证。
 
+同一可选槽接入 FileGDB.dll 10.1.0.3035 的 FgdbTableName。
+Load `0x6fa33290` 读两个 short 后委派至 TableName，复用
+[原生读写证据](mxd-terra-round9-old.md#fgdbtablename)中的读取器。
+构造 v6 验证包装字段、列表边界及关系槽误引时的回滚。
+尚无该组合的实档或 ArcMap/QGIS 人工验证。
+
 ## v8 起的 ExtraSafe 扩展列表
 
 RasterLayer.dll `0x7c73ded0` 读取 int32 数量后逐项调用

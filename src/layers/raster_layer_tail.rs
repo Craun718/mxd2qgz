@@ -51,7 +51,8 @@ use crate::layers::tracking_filter_layer_extension::{
     TRACKING_FILTER_LAYER_EXTENSION_CLASS_ID, read_bounded_tracking_filter_layer_extension,
 };
 use crate::maps::standalone_table::{
-    TABLE_NAME_CLASS_ID, TableNameBody10_1, read_table_name_body_10_1,
+    FGDB_TABLE_NAME_CLASS_ID, TABLE_NAME_CLASS_ID, TableNameBody10_1,
+    read_fgdb_table_name_body_10_1, read_table_name_body_10_1,
 };
 use crate::objects::dataset_name_more::{
     MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID, MemoryRelationshipClassNameBody10_1,
@@ -337,10 +338,14 @@ fn read_relationship_slot(
             Some(MemoryRelationship(Box::new(body)))
         }
         ObjectEntry10_1::NewObject {
-            class_id: TABLE_NAME_CLASS_ID,
+            class_id: class_id @ (TABLE_NAME_CLASS_ID | FGDB_TABLE_NAME_CLASS_ID),
             ..
         } if allows_table_name => {
-            let (body, stopped) = read_table_name_body_10_1(reader, table, max_bytes)?;
+            let (body, stopped) = if class_id == FGDB_TABLE_NAME_CLASS_ID {
+                read_fgdb_table_name_body_10_1(reader, table, max_bytes)?
+            } else {
+                read_table_name_body_10_1(reader, table, max_bytes)?
+            };
             if stopped {
                 return Err(unsupported("RasterLayer TableName 含未闭合的工作空间槽"));
             }
@@ -2264,42 +2269,51 @@ mod tests {
 
     #[test]
     fn raster_related_name_reads_table_before_relationship_list() {
-        let mut bytes = vec![0; 26 + 4 + 8 + 32];
-        bytes.extend(1_i32.to_le_bytes());
-        bytes.extend(TABLE_NAME_CLASS_ID);
-        bytes.extend(71_u32.to_le_bytes());
-        bytes.extend(1_u16.to_le_bytes());
-        for _ in 0..3 {
-            bytes.extend(2_u32.to_le_bytes());
-            bytes.extend(0_u16.to_le_bytes());
-        }
-        bytes.extend([0; 16]); // 空工作空间。
-        let list_offset = bytes.len();
-        bytes.extend(0_i32.to_le_bytes());
-        let mut refs = RefTable10_1::new();
-        let mut reader = Reader::new(&bytes);
-        let tail = read_raster_layer_tail_10_1(&mut reader, 6, 4096, &mut refs).unwrap();
-        assert!(matches!(
-            tail.related_name.unwrap().body,
-            Some(RasterLayerRelationshipBody10_1::TableName(_))
-        ));
-        assert!(tail.related_objects.is_empty());
-        assert_eq!(reader.position(), bytes.len());
-        assert_eq!(refs.registered_class(71), Some(TABLE_NAME_CLASS_ID));
+        for (class_id, wrapper) in [
+            (TABLE_NAME_CLASS_ID, None),
+            (FGDB_TABLE_NAME_CLASS_ID, Some((1_u16, 17_u16))),
+        ] {
+            let mut bytes = vec![0; 26 + 4 + 8 + 32];
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend(class_id);
+            bytes.extend(71_u32.to_le_bytes());
+            if let Some((version, flags)) = wrapper {
+                bytes.extend(version.to_le_bytes());
+                bytes.extend(flags.to_le_bytes());
+            }
+            bytes.extend(1_u16.to_le_bytes());
+            for _ in 0..3 {
+                bytes.extend(2_u32.to_le_bytes());
+                bytes.extend(0_u16.to_le_bytes());
+            }
+            bytes.extend([0; 16]); // 空工作空间。
+            let list_offset = bytes.len();
+            bytes.extend(0_i32.to_le_bytes());
+            let mut refs = RefTable10_1::new();
+            let mut reader = Reader::new(&bytes);
+            let tail = read_raster_layer_tail_10_1(&mut reader, 6, 4096, &mut refs).unwrap();
+            assert!(matches!(
+                tail.related_name.unwrap().body,
+                Some(RasterLayerRelationshipBody10_1::TableName(body)) if body.fgdb_wrapper == wrapper
+            ));
+            assert!(tail.related_objects.is_empty());
+            assert_eq!(reader.position(), bytes.len());
+            assert_eq!(refs.registered_class(71), Some(class_id));
 
-        bytes[list_offset..].copy_from_slice(&1_i32.to_le_bytes());
-        bytes.extend(TABLE_NAME_CLASS_ID);
-        bytes.extend(71_u32.to_le_bytes());
-        let mut refs = RefTable10_1::new();
-        let mut reader = Reader::new(&bytes);
-        assert_eq!(
-            read_raster_layer_tail_10_1(&mut reader, 6, 4096, &mut refs)
-                .unwrap_err()
-                .kind(),
-            ErrorKind::Unsupported
-        );
-        assert_eq!(reader.position(), 0);
-        assert!(refs.is_empty());
+            bytes[list_offset..].copy_from_slice(&1_i32.to_le_bytes());
+            bytes.extend(class_id);
+            bytes.extend(71_u32.to_le_bytes());
+            let mut refs = RefTable10_1::new();
+            let mut reader = Reader::new(&bytes);
+            assert_eq!(
+                read_raster_layer_tail_10_1(&mut reader, 6, 4096, &mut refs)
+                    .unwrap_err()
+                    .kind(),
+                ErrorKind::Unsupported
+            );
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
     }
 
     #[test]
