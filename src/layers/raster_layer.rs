@@ -871,6 +871,7 @@ mod tests {
             (12, true, true, 0),
             (13, true, true, 0),
             (13, true, true, -1),
+            (14, true, true, 0),
             (17, true, true, 1),
         ] {
             let mut bytes = raster_with_empty_slots(version, true);
@@ -907,6 +908,13 @@ mod tests {
             pair.extend([0; 32]);
             let missing_byte = transform_offset + pair.len() - 1;
             bytes.splice(transform_offset..transform_offset + 32, pair);
+            if version == 14 {
+                // 保留空颜色槽，追加一个非空索引序列。
+                let count = bytes.len() - 4;
+                bytes[count..].copy_from_slice(&2_i32.to_le_bytes());
+                bytes.extend(4_i32.to_le_bytes());
+                bytes.extend(7_i32.to_le_bytes());
+            }
 
             let mut refs = RefTable10_1::new();
             let mut reader = Reader::new(&bytes);
@@ -931,6 +939,10 @@ mod tests {
                 points.map(|points| points.map(|point| vec![point]))
             );
             assert!(tail.envelope_v13.is_some());
+            assert_eq!(
+                tail.color_indices_v14,
+                if version == 14 { &[4, 7][..] } else { &[] }
+            );
             assert!(refs.contains(60) && refs.contains(71) && refs.contains(73));
             assert_eq!(refs.contains(72), geometry);
 
