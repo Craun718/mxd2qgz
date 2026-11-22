@@ -2,7 +2,7 @@
 
 use super::image_server_rules::{RuleSlot10_1, slot, unsupported_class};
 use super::raster_dataset_name::{RasterLongArraySlot10_1, read_long_array_slot};
-use crate::storage::object_refs::RefTable10_1;
+use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
@@ -54,12 +54,21 @@ pub(super) fn read_bounded_time_layer_track_extension(
     }
     let windows = (0..count)
         .map(|_| {
-            slot(&mut body, &mut staged, |r, _, class_id, _| {
+            let mut window = slot(&mut body, &mut staged, |r, _, class_id, _| {
                 if class_id != TIME_WINDOW_CLASS_ID {
                     return Err(unsupported_class("ITimeWindow", &class_id));
                 }
                 read_time_window(r, max)
-            })
+            })?;
+            if let ObjectEntry10_1::BackReference { class_id, key } = &mut window.entry
+                && let Some(registered) = staged.registered_class(*key)
+            {
+                if registered != TIME_WINDOW_CLASS_ID {
+                    return Err(unsupported_class("ITimeWindow 回引", &registered));
+                }
+                *class_id = registered;
+            }
+            Ok(window)
         })
         .collect::<io::Result<_>>()?;
     let shorts_v2 = (version >= 2)
@@ -158,7 +167,8 @@ mod tests {
                     track.extend(0_u16.to_le_bytes());
                 }
             }
-            track.extend(TIME_WINDOW_CLASS_ID);
+            let reference_offset = track.len();
+            track.extend([0x7d; 16]);
             track.extend(101_u32.to_le_bytes());
             if version == 2 {
                 track.extend([1, 0, 2, 0, 3, 0]);
@@ -228,10 +238,22 @@ mod tests {
             );
             assert!(matches!(
                 track_body.windows[3].entry,
-                ObjectEntry10_1::BackReference { key: 101, .. }
+                ObjectEntry10_1::BackReference {
+                    class_id: TIME_WINDOW_CLASS_ID,
+                    key: 101
+                }
             ));
             assert_eq!(track_body.shorts_v2, (version == 2).then_some([1, 2, 3]));
             assert_eq!(reader.remaining(), 0);
+
+            let mut wrong = track.clone();
+            wrong[reference_offset + 16..reference_offset + 20]
+                .copy_from_slice(&91_u32.to_le_bytes());
+            let mut staged = RefTable10_1::new();
+            let error =
+                read_bounded_time_layer_track_extension(&wrong, 4096, &mut staged).unwrap_err();
+            assert_eq!(error.kind(), ErrorKind::Unsupported);
+            assert!(staged.is_empty());
 
             let bytes = wrap(&track[..track.len() - 1]);
             let mut reader = Reader::new(&bytes);

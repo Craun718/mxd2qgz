@@ -1325,3 +1325,8 @@ RasterLayer v12 尾部的 IEnvelope IID 来自 RasterLayer.dll 10.1.0.3035
 的 `0x7c768fa0`。与 LoadRaster 共用的包络槽遵循 SystemCore 按键
 拣取登记实例的规则。RGB tag 18 合成测试验证包络回引的类匹配及
 误引变换键时的外层回滚。ArcMap 10.1 与 QGIS 人工验收未进行。
+
+TimeLayerTrackExtension 的 ITimeWindow 槽以登记实例的类校验回引，
+沿用 10.1 MapAnimation.dll `0x794f5450` 路径请求的接口及 SystemCore
+按键查询规则。合成时间轨道用例验证有效回引和误引 LongArray 后的键回滚。
+ArcMap 10.1 与 QGIS 人工验收未进行。
