@@ -121,6 +121,58 @@ fn nonpositive_counts_skip_fields_relationships_and_sequence_tokens() {
 }
 
 #[test]
+fn sequence_color_reference_uses_registered_class() {
+    use mxd2qgz::objects::display_color::RGB_COLOR_CLASS_ID;
+    use mxd2qgz::storage::object_refs::{ObjectEntry10_1, read_object_entry_10_1};
+
+    let mut prefix = 3_u16.to_le_bytes().to_vec();
+    prefix.extend([0; 16 + 4]);
+    string(&mut prefix);
+    prefix.extend(0_u32.to_le_bytes());
+    let slot = prefix.len();
+
+    for (registered, claimed) in [
+        (RGB_COLOR_CLASS_ID, [0x7d; 16]),
+        ([0x7d; 16], RGB_COLOR_CLASS_ID),
+    ] {
+        let mut refs = RefTable10_1::new();
+        let mut header = registered.to_vec();
+        header.extend(90_u32.to_le_bytes());
+        read_object_entry_10_1(&mut Reader::new(&header), &mut refs).unwrap();
+        let before = refs.clone();
+        let mut bytes = prefix.clone();
+        bytes.extend(claimed);
+        bytes.extend(90_u32.to_le_bytes());
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend(7_i32.to_le_bytes());
+        let mut reader = Reader::new(&bytes);
+        let table = read_standalone_table_prefix_10_1(&mut reader, &mut refs, 10, 100).unwrap();
+        assert_eq!(refs, before);
+        if registered == RGB_COLOR_CLASS_ID {
+            assert_eq!(table.stop, StandaloneTableStop10_1::Complete);
+            assert_eq!(
+                table.sequence_object,
+                Some(ObjectEntry10_1::BackReference {
+                    class_id: registered,
+                    key: 90,
+                })
+            );
+            assert_eq!(table.sequence_values, [7]);
+            assert_eq!(reader.position(), bytes.len());
+        } else {
+            assert_eq!(
+                table.stop,
+                StandaloneTableStop10_1::SequenceObject {
+                    class_id: registered,
+                    key: 90,
+                }
+            );
+            assert_eq!(reader.position(), slot);
+        }
+    }
+}
+
+#[test]
 fn compressed_sequence_checks_expansion_and_overflow() {
     let mut b = 3u16.to_le_bytes().to_vec();
     b.extend([0; 16]);

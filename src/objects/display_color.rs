@@ -458,7 +458,23 @@ pub fn read_color_slot_10_1(
     let result = match entry {
         ObjectEntry10_1::Null => ColorSlot10_1::Null,
         ObjectEntry10_1::BackReference { class_id, key } => {
-            ColorSlot10_1::BackReference { class_id, key }
+            let registered_class = staged.registered_class(key);
+            if let Some(class_id) = registered_class
+                && !matches!(
+                    class_id,
+                    RGB_COLOR_CLASS_ID
+                        | HSV_COLOR_CLASS_ID
+                        | GRAY_COLOR_CLASS_ID
+                        | HLS_COLOR_CLASS_ID
+                        | CMYK_COLOR_CLASS_ID
+                )
+            {
+                return Ok(ColorSlot10_1::Unsupported { class_id, key });
+            }
+            ColorSlot10_1::BackReference {
+                class_id: registered_class.unwrap_or(class_id),
+                key,
+            }
         }
         ObjectEntry10_1::NewObject { class_id, key } => {
             let Some(body) =
