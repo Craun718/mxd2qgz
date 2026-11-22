@@ -200,6 +200,12 @@ Rust 在有明确 ExtraSafe 边界的 RasterLayer 中先验证现有布局。若
 覆盖版本门、内联与带键分支、几何体边界、空字符串及截断回滚。
 未做 ArcMap/QGIS 人工验收。
 
+LSRXform Load 在 `0x7c020855` 传入 IPoint IID，并在
+`0x7c02086c` 检查读取失败；FrameXform 在 `0x7bfe4b84` 和 `0x7bfe4ba9` 请求同一接口。
+SystemCore 同版在 `0x7ffd0063` 按键查找原实例后查询接口。
+两个宿主的共用读取器按登记类校验回引。构造 LSR v1 验证 Point 回引、
+后继 double 的边界及误引 MultiPoint 时的回滚。该回引尚无实档或人工验证。
+
 ### GeometricXform 的跨模块 ITransformation
 
 `0x7bfed651` 压入的 `0x7c123c90` 是 ITransformation IID

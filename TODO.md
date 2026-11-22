@@ -352,6 +352,7 @@
   - [x] 接入 CoordinateXform v1 的对象体边界及空或回引操作集槽，见 [RasterDB 续查](docs/mxd-10.1-geodata-xform.md#其他五种-rasterdb-变换)。
   - [x] 核对 CoordinateXform 的 10.1 内置 IGeoTransformationOperationSet 实现及其空槽写入规则，见 [操作集取证](docs/mxd-10.1-geodata-xform.md#coordinatexform-操作集)。
   - [x] 接入 GeometricXform 的几何集合及内联变换、LSRXform 的 Point 槽及数值、PictometryXform 的写侧字符串布局，见 [对象体取证](docs/mxd-10.1-geodata-xform.md#geometriclsr-与-pictometry)。
+  - [x] 按登记类校验 LSRXform 与 FrameXform 的 IPoint 槽回引。
   - [x] 接入 GeometricXform 对象分支中 Geometry.dll 可独立持久化的 ITransformation 实现，见 [几何变换类取证](docs/mxd-terra-host-geo.md#geometry-类型库与派生变换)。
   - [x] 核对 10.1 内置模块中已定位的 ITransformation 实现并补齐 GeometricXform 已确认类体的对象分派，见[跨模块取证](docs/mxd-10.1-geodata-xform.md#geometricxform-的跨模块-itransformation)。
   - [x] 按登记类校验 GeometricXform 的 ITransformation 槽回引。

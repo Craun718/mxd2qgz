@@ -398,6 +398,52 @@ fn lsr_reads_short_version_and_point_before_doubles() {
 }
 
 #[test]
+fn lsr_point_reference_uses_registered_class() {
+    use mxd2qgz::objects::geodata_xform::LSR_XFORM_CLASS_ID;
+    use mxd2qgz::objects::geometry::{MULTIPOINT_CLASS_ID, POINT_CLASS_ID};
+    use mxd2qgz::storage::object_refs::read_object_entry_10_1;
+
+    for (registered, claimed) in [
+        (POINT_CLASS_ID, MULTIPOINT_CLASS_ID),
+        (MULTIPOINT_CLASS_ID, POINT_CLASS_ID),
+    ] {
+        let mut previous = Vec::new();
+        header(&mut previous, registered, 94);
+        let mut refs = RefTable10_1::new();
+        read_object_entry_10_1(&mut Reader::new(&previous), &mut refs).unwrap();
+        let before = refs.clone();
+
+        let mut bytes = Vec::new();
+        header(&mut bytes, LSR_XFORM_CLASS_ID, 93);
+        bytes.extend(1_u16.to_le_bytes());
+        header(&mut bytes, claimed, 94);
+        bytes.extend([0; 88]);
+        let end = bytes.len();
+        bytes.push(0xaa);
+
+        let mut reader = Reader::new(&bytes);
+        let result = read_geodata_xform_slot_10_1(&mut reader, 4096, &mut refs);
+        if registered == POINT_CLASS_ID {
+            let GeodataXformBody10_1::Lsr(body) = *result.unwrap().body.unwrap() else {
+                panic!("缺少 LSRXform");
+            };
+            assert_eq!(
+                body.point_entry,
+                ObjectEntry10_1::BackReference {
+                    class_id: POINT_CLASS_ID,
+                    key: 94,
+                }
+            );
+            assert_eq!(reader.position(), end);
+        } else {
+            assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::Unsupported);
+            assert_eq!(reader.position(), 0);
+            assert_eq!(refs, before);
+        }
+    }
+}
+
+#[test]
 fn geometric_reads_collection_and_inline_or_object_transform() {
     use mxd2qgz::objects::geodata_xform::{GEOMETRIC_XFORM_CLASS_ID, GeometricTransformation10_1};
     use mxd2qgz::objects::geometry::{GeometryBody10_1, MULTIPOINT_CLASS_ID};

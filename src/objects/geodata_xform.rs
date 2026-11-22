@@ -552,7 +552,18 @@ fn read_point_slot(
     table: &mut RefTable10_1,
     label: &str,
 ) -> io::Result<XformPointSlot10_1> {
-    let entry = read_object_entry_10_1(r, table)?;
+    let mut entry = read_object_entry_10_1(r, table)?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+        && let Some(registered) = table.registered_class(*key)
+    {
+        if registered != POINT_CLASS_ID {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                format!("{label} IPoint 回引键 {key} 的登记类不受支持"),
+            ));
+        }
+        *class_id = registered;
+    }
     let body = match entry {
         ObjectEntry10_1::Null | ObjectEntry10_1::BackReference { .. } => None,
         ObjectEntry10_1::NewObject {
