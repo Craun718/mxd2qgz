@@ -168,7 +168,8 @@ pub(super) fn read_raster_unique_value(
     let class_count = long(r)?.max(0) as usize;
     for _ in 0..check_length(r, class_count, max, 8)? {
         let raw_key = r.read_u32_le()?;
-        let values = (0..length(r, max, 16)?)
+        let value_count = long(r)?.max(0) as usize;
+        let values = (0..check_length(r, value_count, max, 16)?)
             .map(|_| read_padded_variant_object_stream_10_1(r, max, table))
             .collect::<io::Result<_>>()?;
         classes.push(RasterUniqueClass10_1 { raw_key, values });

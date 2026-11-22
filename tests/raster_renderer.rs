@@ -1150,6 +1150,21 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
             assert_eq!(reader.read_bytes(1).unwrap(), &[0x7e]);
         }
 
+        if matches!(version, 1 | 3) {
+            let mut negative_values = bytes.clone();
+            negative_values.splice(value_count..tail_object - 2, i32::MIN.to_le_bytes());
+            let mut reader = Reader::new(&negative_values);
+            let mut refs = RefTable10_1::new();
+            let slot = read_raster_renderer_slot_prefix_10_1(&mut reader, 4096, &mut refs).unwrap();
+            assert!(matches!(
+                slot.body,
+                Some(RasterRendererPrefix10_1::UniqueValue(body))
+                    if body.classes.len() == 1 && body.classes[0].values.is_empty()
+                        && body.classes[0].raw_key == 0xfe76_1234 && body.second_short == 9
+            ));
+            assert_eq!(reader.read_bytes(1).unwrap(), &[0x7e]);
+        }
+
         let assert_rollback = |input: &[u8]| {
             let mut reader = Reader::new(input);
             let mut refs = RefTable10_1::new();
