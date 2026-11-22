@@ -274,8 +274,19 @@ fn read_name(
 }
 
 fn count(r: &mut Reader<'_>, max_entries: usize) -> io::Result<i32> {
+    let n = signed_count(r, max_entries)?;
+    if n < 0 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "StandaloneTable 条目计数为负",
+        ));
+    }
+    Ok(n)
+}
+
+fn signed_count(r: &mut Reader<'_>, max_entries: usize) -> io::Result<i32> {
     let n = r.read_u32_le()? as i32;
-    if n < 0 || n as usize > max_entries {
+    if n.max(0) as usize > max_entries {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
             "StandaloneTable 条目计数无效或超过限额",
@@ -338,7 +349,7 @@ pub fn read_standalone_table_prefix_10_1(
         *refs = table;
         return Ok(result);
     }
-    for _ in 0..count(&mut r, max_entries)? {
+    for _ in 0..signed_count(&mut r, max_entries)? {
         let name = read_string_10_1(&mut r, max_string_bytes)?;
         let mut slot_reader = r.clone();
         let mut slot_refs = table.clone();
@@ -387,7 +398,7 @@ pub fn read_standalone_table_prefix_10_1(
     }
     result.trailing_string = Some(read_string_10_1(&mut r, max_string_bytes)?);
     if version >= 2 {
-        for _ in 0..count(&mut r, max_entries)? {
+        for _ in 0..signed_count(&mut r, max_entries)? {
             let header = read_header_10_1(&mut r.clone())?;
             let mut trial = r.clone();
             let mut staged = table.clone();
@@ -449,10 +460,11 @@ pub fn read_standalone_table_prefix_10_1(
                 return Ok(result);
             }
         });
-        let n = count(&mut r, max_entries)?;
-        result.sequence_count = Some(n);
+        let stored_count = signed_count(&mut r, max_entries)?;
+        result.sequence_count = Some(stored_count);
+        let n = stored_count.max(0) as usize;
         let mut previous = -2i32;
-        while result.sequence_values.len() < n as usize {
+        while result.sequence_values.len() < n {
             let token = r.read_u32_le()? as i32;
             result.sequence_tokens.push(token);
             if token >= 0 {
@@ -463,7 +475,7 @@ pub fn read_standalone_table_prefix_10_1(
                     io::Error::new(ErrorKind::InvalidData, "StandaloneTable 压缩序列值溢出")
                 })?;
                 let span = i64::from(end) - i64::from(previous);
-                let remaining = n as usize - result.sequence_values.len();
+                let remaining = n - result.sequence_values.len();
                 if span <= 0 || span as u64 > remaining as u64 {
                     return Err(io::Error::new(
                         ErrorKind::InvalidData,

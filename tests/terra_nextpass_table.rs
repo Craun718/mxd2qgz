@@ -93,6 +93,34 @@ fn nested_unknown_stops_and_truncation_rolls_back() {
 }
 
 #[test]
+fn nonpositive_counts_skip_fields_relationships_and_sequence_tokens() {
+    for count in [i32::MIN, -1, 0] {
+        let mut data = 5_u16.to_le_bytes().to_vec();
+        data.extend([0; 16]);
+        data.extend(count.to_le_bytes());
+        string(&mut data);
+        data.extend(count.to_le_bytes());
+        data.extend([0; 16]);
+        data.extend(count.to_le_bytes());
+        data.extend(0x12345678_i32.to_le_bytes());
+        data.extend([0; 16]);
+        let end = data.len();
+        data.push(0xaa);
+        let mut reader = Reader::new(&data);
+        let mut refs = RefTable10_1::new();
+        let table = read_standalone_table_prefix_10_1(&mut reader, &mut refs, 0, 100).unwrap();
+        assert_eq!(table.stop, StandaloneTableStop10_1::Complete);
+        assert!(table.named_objects.is_empty());
+        assert!(table.relationships.is_empty());
+        assert_eq!(table.sequence_count, Some(count));
+        assert!(table.sequence_values.is_empty());
+        assert_eq!(table.raw_int32, Some(0x12345678));
+        assert_eq!(reader.position(), end);
+        assert!(refs.is_empty());
+    }
+}
+
+#[test]
 fn compressed_sequence_checks_expansion_and_overflow() {
     let mut b = 3u16.to_le_bytes().to_vec();
     b.extend([0; 16]);
