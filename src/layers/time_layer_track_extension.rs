@@ -246,6 +246,26 @@ mod tests {
             assert_eq!(track_body.shorts_v2, (version == 2).then_some([1, 2, 3]));
             assert_eq!(reader.remaining(), 0);
 
+            // 旧式和 ExtraSafe 包装均须回滚不受支持的版本。
+            let first_window_version = 2 + 20 + 2 + 4 + 4 + 4 + 20;
+            for (offset, limit) in [(0, 2_u16), (first_window_version, 3)] {
+                for invalid in [0_u16, limit + 1, u16::MAX] {
+                    let mut wrong_version = track.clone();
+                    wrong_version[offset..offset + 2].copy_from_slice(&invalid.to_le_bytes());
+                    let bytes = wrap(&wrong_version);
+                    let mut reader = Reader::new(&bytes);
+                    let mut refs = RefTable10_1::new();
+                    refs.register(7);
+                    let before = refs.clone();
+                    let error =
+                        read_raster_layer_tail_10_1(&mut reader, raster_version, 4096, &mut refs)
+                            .unwrap_err();
+                    assert_eq!(error.kind(), ErrorKind::Unsupported);
+                    assert_eq!(reader.position(), 0);
+                    assert_eq!(refs, before);
+                }
+            }
+
             let mut wrong = track.clone();
             wrong[reference_offset + 16..reference_offset + 20]
                 .copy_from_slice(&91_u32.to_le_bytes());

@@ -1330,3 +1330,9 @@ TimeLayerTrackExtension 的 ITimeWindow 槽以登记实例的类校验回引，
 沿用 10.1 MapAnimation.dll `0x794f5450` 路径请求的接口及 SystemCore
 按键查询规则。合成时间轨道用例验证有效回引和误引 LongArray 后的键回滚。
 ArcMap 10.1 与 QGIS 人工验收未进行。
+
+复查同版 MapAnimation.dll 的版本判断。`0x794f548a..0x794f548f`
+与 `0x794f700e..0x794f7013` 先将版本减一，再按无符号 16 位值
+与 1、2 比较，分别限定为 1–2 和 1–3。合成用例补验两个对象
+遇到零、超限值和 `0xffff` 时，两种包装均保留入口位置及既有键。
+ArcMap 10.1 与 QGIS 人工验收未进行。
