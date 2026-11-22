@@ -105,6 +105,7 @@
   - [x] 按 NetCDFDB.dll 的有符号版本门读取 NetCDFTableName。[版本门取证](docs/mxd-terra-round9-old.md#netcdftablename)
   - [x] 校验 NetCDF 名称维度数组回引的登记类。[维度槽取证](docs/mxd-terra-round9-old.md#netcdftablename)
   - [x] 解析 NetCDF 维度名称回引的字符串数组内容。[维度槽取证](docs/mxd-terra-round9-old.md#netcdf-名称的数组回引)
+  - [x] 读取 NetCDF 表名中的空维度名称和空索引组合。[维度循环取证](docs/mxd-terra-round9-old.md#netcdftablename)
   - [x] 将属性集 Variant 中读完的 StrArray 接入共用回引表。[跨槽回引](docs/mxd-terra-round9-old.md#netcdf-名称的数组回引)
   - [x] 接入 Schematic 图表类和元素类名称的表名称分派。[原生读写取证](docs/mxd-terra-round9-table.md#schematic-图表类和元素类名称)
   - [x] 接入可打开有属性关系类的 RelationshipClassName 表名称分派。[FileGDB 打开路径](docs/mxd-terra-round9-table.md#有属性的关系类名称)

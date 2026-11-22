@@ -831,7 +831,20 @@ fn read_netcdf_arrays(
         read_string_array_slot_10_1(r, max, refs)?,
         read_string_array_slot_10_1(r, max, refs)?,
     ];
-    Ok((names, read_long_array_slot(r, max, refs)?))
+    let indices = read_long_array_slot(r, max, refs)?;
+    // 原生仅对非空维度名称逐项取索引。
+    if names[2]
+        .body
+        .as_ref()
+        .is_some_and(|(_, values)| !values.is_empty())
+        && matches!(indices.entry, ObjectEntry10_1::Null)
+    {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "NetCDF 名称的非空维度名称缺少索引数组",
+        ));
+    }
+    Ok((names, indices))
 }
 
 /// NetCDFDB.dll 0x7ae1fd40。额外的四个字符串只在 v2 中出现。
@@ -858,18 +871,6 @@ pub(crate) fn read_netcdf_feature_class_name_body_10_1(
         (None, None, None)
     } else {
         let (arrays, indices) = read_netcdf_arrays(&mut r, max, &mut staged)?;
-        // 原生仅在维度名称已知且非空时逐项取索引。
-        if arrays[2]
-            .body
-            .as_ref()
-            .is_some_and(|(_, values)| !values.is_empty())
-            && matches!(indices.entry, ObjectEntry10_1::Null)
-        {
-            return Err(io::Error::new(
-                ErrorKind::InvalidData,
-                "NetCDFFeatureClassName 的非空维度名称缺少索引数组",
-            ));
-        }
         let strings_v2 = (version >= 2)
             .then(|| -> io::Result<_> {
                 Ok([
@@ -938,14 +939,6 @@ pub(crate) fn read_netcdf_table_name_body_10_1(
         (None, None)
     } else {
         let (arrays, indices) = read_netcdf_arrays(&mut r, max, &mut staged)?;
-        if matches!(arrays[2].entry, ObjectEntry10_1::Null)
-            || matches!(indices.entry, ObjectEntry10_1::Null)
-        {
-            return Err(io::Error::new(
-                ErrorKind::InvalidData,
-                "NetCDFTableName 的维度数组为空对象",
-            ));
-        }
         (Some(arrays), Some(indices))
     };
     *reader = r;
