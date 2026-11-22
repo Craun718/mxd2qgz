@@ -501,8 +501,8 @@ fn read_discrete_color_renderer(
     table: &mut RefTable10_1,
 ) -> io::Result<DiscreteColorRenderer10_1> {
     let version = signed_long(reader)?;
-    // 0x7c967c60 对版本只设上限；写侧的表只产出 v1。
-    if version != 1 {
+    // 0x7c967ca2 按有符号比较拒绝大于 1 的版本。
+    if version > 1 {
         return Err(invalid(format!(
             "未支持的 RasterDiscreteColorRenderer 版本 {version}"
         )));

@@ -637,6 +637,20 @@ fn discrete_renderer_preserves_unsigned_colors_and_the_ramp_key() {
     assert_eq!(reader.read_bytes(1).unwrap(), [0x76]);
     assert!(refs.contains(71) && refs.contains(72));
 
+    for version in [0_i32, -1, i32::MIN] {
+        bytes[20..24].copy_from_slice(&version.to_le_bytes());
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let slot = read_raster_renderer_slot_prefix_10_1(&mut reader, 1024, &mut refs).unwrap();
+        assert!(matches!(
+            slot.body,
+            Some(RasterRendererPrefix10_1::Discrete(body))
+                if body.version == version && body.colors.len() == 2 && body.shared.version == 1
+        ));
+        assert_eq!(reader.position(), end);
+        assert!(refs.contains(71) && refs.contains(72));
+    }
+
     let assert_failure = |input: &[u8], budget| {
         let mut reader = Reader::new(input);
         let mut refs = RefTable10_1::new();
@@ -647,6 +661,9 @@ fn discrete_renderer_preserves_unsigned_colors_and_the_ramp_key() {
     for cut in 0..end {
         assert_failure(&bytes[..cut], 1024);
     }
+    let mut newer = bytes.clone();
+    newer[20..24].copy_from_slice(&2_i32.to_le_bytes());
+    assert_failure(&newer, 1024);
     assert_failure(&bytes, 7);
     let mut unknown = bytes.clone();
     unknown[ramp_offset] ^= 1;

@@ -208,6 +208,11 @@ TypeDescriptor `0x7c9c4910`）定位 IPersistStream 虚表；GetClassID 复制
 后继偏移、非法长度、资源限额和逐字节截断时的游标与登记表回退；未做 ArcMap
 运行验证。
 
+同版 RasterRenderer.dll 的 Load 在 `0x7c967ca2` 按有符号比较拒绝版本
+大于 1 的输入。较低版本仍进入相同的颜色数组、梯度和共用体布局。
+构造版本 0、-1 和最小 int32 验证边界，版本 2 验证回滚。
+较低版本尚无实档或 ArcMap/QGIS 人工验证。
+
 ### RasterUniqueValueRenderer
 
 CLSID 与入口见上表。用 pyghidra 补充现代 Load/Save 与旧体专用
