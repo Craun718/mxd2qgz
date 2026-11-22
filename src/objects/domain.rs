@@ -142,8 +142,8 @@ pub(crate) fn read_domain_body_10_1(
             read_padded_variant_object_stream_nested_10_1(r, max_bytes, refs, depth)?,
         ])
     } else {
-        let count = usize::try_from(long(r)?)
-            .map_err(|_| io::Error::new(ErrorKind::InvalidData, "编码值域计数为负"))?;
+        // GdbCore 用有符号比较决定是否进入编码条目循环。
+        let count = long(r)?.max(0) as usize;
         if count > r.remaining() / 20 {
             return Err(io::Error::new(
                 ErrorKind::UnexpectedEof,
@@ -300,6 +300,36 @@ mod tests {
             let mut reader = Reader::new(input);
             let mut refs = RefTable10_1::new();
             assert!(read_domain_slot_10_1(&mut reader, 4096, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+
+    #[test]
+    fn coded_domain_skips_entries_for_nonpositive_counts() {
+        for count in [i32::MIN, -1, 0] {
+            let mut bytes = CODED_VALUE_DOMAIN_CLASS_ID.to_vec();
+            bytes.extend(42_u32.to_le_bytes());
+            bytes.extend([0; 4 + 12]);
+            bytes.extend([2, 0, 0, 0, 0, 0].repeat(3));
+            bytes.extend(0_i32.to_le_bytes());
+            let count_offset = bytes.len();
+            bytes.extend(count.to_le_bytes());
+            let end = bytes.len();
+            bytes.push(0xaa);
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let result = read_domain_slot_10_1(&mut reader, 128, &mut refs).unwrap();
+            assert!(
+                matches!(result.body.unwrap().values, DomainValues10_1::Coded(values)
+                if values.is_empty())
+            );
+            assert_eq!(reader.position(), end);
+            assert!(refs.contains(42));
+
+            let mut reader = Reader::new(&bytes[..count_offset + 3]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_domain_slot_10_1(&mut reader, 128, &mut refs).is_err());
             assert_eq!(reader.position(), 0);
             assert!(refs.is_empty());
         }
