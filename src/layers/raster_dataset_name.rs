@@ -887,7 +887,7 @@ fn read_function_raster_dataset_name(
     table: &mut RefTable10_1,
     child_depth: usize,
 ) -> io::Result<FunctionRasterDatasetName10_1> {
-    let version = reader.read_u16_le()?;
+    let version = reader.read_u16_le()? as i16;
     if version > 7 {
         return Err(io::Error::new(
             io::ErrorKind::Unsupported,
@@ -969,7 +969,7 @@ fn read_function_raster_dataset_name(
         })
         .transpose()?;
     Ok(FunctionRasterDatasetName10_1 {
-        version,
+        version: version as u16,
         strings,
         workspace,
         path,

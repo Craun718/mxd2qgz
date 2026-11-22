@@ -1784,7 +1784,7 @@ mod tests {
             PROPERTY_SET_CLASS_ID, PropertyValueObjectStream10_1, RASTER_SCALAR_CLASS_ID,
         };
 
-        for version in [1_u16, 4, 7] {
+        for version in [i16::MIN, -1, 1, 4, 7] {
             let mut bytes = body_prefix(1, 1);
             let start = bytes.len();
             bytes.extend(FUNCTION_RASTER_DATASET_NAME_CLASS_ID);
@@ -1850,6 +1850,7 @@ mod tests {
             let Some(RasterDatasetNameEntryBody10_1::Function(name)) = &result.names[0].body else {
                 panic!("预期 FunctionRasterDatasetName");
             };
+            assert_eq!(name.version as i16, version);
             assert_eq!(name.path, "栅格.afr");
             assert_eq!(name.function.body.as_ref().unwrap().base_long, 9);
             assert!(matches!(

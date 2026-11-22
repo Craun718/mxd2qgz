@@ -361,6 +361,7 @@
   - [x] 核对 10.1 Desktop 类型库公开的 46 个 IRasterFunctionArguments 类均已接入分派。[类型库覆盖](docs/mxd-10.1-image-server-rules.md#irasterfunctionarguments-类型库覆盖)
   - [x] 按登记类校验 RenderingRule 的函数和参数接口回引。
   - [x] 按登记类校验 FunctionRasterDatasetName 的 IRasterFunction 回引。
+  - [x] 按 FunctionRasterDB 的有符号版本门读取 FunctionRasterDatasetName。
   - [x] 复核 RenderingRule 的 10.1 登记候选，排除 RasterFunctionHelper 与 FunctionRasterDataset 两个宿主接口不匹配的类。[登记候选复核](docs/mxd-10.1-image-server-rules.md#renderingrule-登记候选复核)
   - [x] 复查 Desktop 解包 DLL 的两种 RenderingRule 接口 IID 直接指令引用，核对栅格项与已渲染栅格函数及参数的 QI。[跨模块取证](docs/mxd-10.1-image-server-rules.md#renderingrule-接口的跨模块指令复查)
   - [x] 按 10.1 的有符号 short 比较读取渲染、镶嵌规则与栅格函数的版本门，保留版本原始位模式。[指令与旧布局验证](docs/mxd-10.1-image-server-rules.md#规则与函数的有符号版本门)
