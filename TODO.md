@@ -280,6 +280,7 @@
   - [x] 按登记类校验过滤定义集合成员及相关过滤器回引。[回引取证](docs/arcmap-10.1-dataset-name-slots.md#过滤器回引)
   - [x] 按登记类校验查询过滤器的空间参考及几何回引。[回引取证](docs/arcmap-10.1-dataset-name-slots.md#过滤器回引)
   - [x] 接入 SpatialFilter 几何槽的 GeometryBag 与 MultiPatch。[几何槽取证](docs/arcmap-10.1-dataset-name-slots.md#空间过滤器的复合几何)
+  - [x] 验证 SpatialFilter Variant 中 MultiPatch 的后继字段和截断回滚。
   - [x] 按登记对象的类校验 Fields 的 IField 回引。[字段回引取证](docs/mxd-10.1-fields.md#字段集合回引)
   - [x] 按登记对象的类校验 Field 的 IDomain 回引。[值域回引取证](docs/mxd-10.1-fields.md#字段值域回引)
   - [x] 按登记对象的类校验 Field 的几何与栅格定义回引。[定义回引取证](docs/mxd-10.1-fields.md#字段定义回引)

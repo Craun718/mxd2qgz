@@ -432,6 +432,65 @@ mod tests {
     }
 
     #[test]
+    fn spatial_filter_variant_reads_multipatch_and_rolls_back_on_short_geometry() {
+        use crate::objects::property_set::{
+            PropertyValueObjectStream10_1, read_padded_variant_object_stream_10_1,
+        };
+
+        let mut bytes = 13_u16.to_le_bytes().to_vec();
+        bytes.extend([0; 14]);
+        append_header(&mut bytes, SPATIAL_FILTER_CLASS_ID, 16);
+        bytes.extend([1, 0, 1, 0]); // 空间过滤器与基础过滤器版本。
+        bytes.extend([2, 0, 0, 0, 0, 0].repeat(3));
+        bytes.extend([0; 16 + 8 + 16]); // 空输出坐标系、分辨率和空 FIDSet。
+        bytes.extend([0; 8]);
+        bytes.extend([2, 0, 0, 0, 0, 0]);
+        append_header(&mut bytes, MULTIPATCH_CLASS_ID, 17);
+        let mut record = 0x1f_u32.to_le_bytes().to_vec();
+        record.extend([0; 32]); // XY 范围。
+        for value in [1_u32, 3, 0, 0x100] {
+            record.extend(value.to_le_bytes());
+        }
+        record.extend([0; 6 * 8 + 5 * 8]); // 三点的 XY、Z 范围与 Z 值。
+        bytes.extend(2_u16.to_le_bytes());
+        bytes.extend((record.len() as u32).to_le_bytes());
+        bytes.extend(record);
+        bytes.extend([0; 16]);
+        let end_geometry = bytes.len();
+        bytes.extend([4, 0, 0, 0, b'g', 0, 0, 0]);
+        bytes.extend(1_u16.to_le_bytes());
+        let end = bytes.len();
+        bytes.push(0xaa);
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let result = read_padded_variant_object_stream_10_1(&mut reader, 512, &mut refs).unwrap();
+        let PropertyValueObjectStream10_1::QueryFilter(filter) = result else {
+            panic!("缺少空间过滤器");
+        };
+        let QueryFilterBody10_1::Spatial {
+            spatial: Some(spatial),
+            ..
+        } = filter.body()
+        else {
+            panic!("缺少空间字段");
+        };
+        assert!(
+            matches!(&spatial.geometry, QueryFilterObject10_1::Body { key: 17, body }
+            if matches!(body.as_ref(), SpatialFilterGeometry10_1::Geometry(GeometryBody10_1::MultiPatch(_))))
+        );
+        assert_eq!(spatial.geometry_field.as_deref(), Some("g"));
+        assert_eq!(spatial.filter_owns_geometry, Some(1));
+        assert!(refs.contains(16) && refs.contains(17));
+        assert_eq!(reader.position(), end);
+
+        let mut reader = Reader::new(&bytes[..end_geometry - 1]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_padded_variant_object_stream_10_1(&mut reader, 512, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+
+    #[test]
     fn spatial_filter_reads_geometry_bag_and_its_following_fields() {
         let mut bytes = vec![0; 8];
         bytes.extend([2, 0, 0, 0, 0, 0]);

@@ -573,5 +573,5 @@ GdbCore.dll 10.1.0.3035 的 SpatialFilter Load `0x70a007d0` 请求
 IGeometry。Geometry.dll 同版本的 GeometryBag 和 MultiPatch 均实现
 该接口及 IPersistStream，见[类虚表与布局](mxd-round4-map-spatial-20261117.md)。
 空间过滤器复用两类对象体及引用表。合成宿主验证 GeometryBag 和后继
-字段对位；MultiPatch 对象体由现有几何测试覆盖，空间过滤器实档待核对。
+字段对位；合成 Variant 宿主验证 MultiPatch、后继字段和几何短读回滚。空间过滤器实档待核对。
 ArcMap 10.1 与 QGIS 人工验收未进行。
