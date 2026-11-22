@@ -327,7 +327,17 @@ fn read_histogram_slot(
     reader: &mut Reader<'_>,
     table: &mut RefTable10_1,
 ) -> io::Result<RasterLayerHistogramSlot10_1> {
-    let entry = read_object_entry_10_1(reader, table)?;
+    let mut entry = read_object_entry_10_1(reader, table)?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+        && let Some(registered) = table.registered_class(*key)
+    {
+        if registered != STATS_HISTOGRAM_CLASS_ID {
+            return Err(unsupported(&format!(
+                "v17 IStatsHistogram 回引键 {key} 的登记类不受支持"
+            )));
+        }
+        *class_id = registered;
+    }
     let body = match entry {
         ObjectEntry10_1::Null | ObjectEntry10_1::BackReference { .. } => None,
         ObjectEntry10_1::NewObject {
@@ -1171,7 +1181,7 @@ mod tests {
         bytes.extend(2_i32.to_le_bytes()); // 锐化方法。
         bytes.extend([0; 32]); // 四个权重。
         let filter_end = bytes.len();
-        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend(2_u32.to_le_bytes());
         bytes.extend(STATS_HISTOGRAM_CLASS_ID);
         bytes.extend(52_u32.to_le_bytes());
         bytes.extend(5_u32.to_le_bytes());
@@ -1180,6 +1190,9 @@ mod tests {
         bytes.extend(10_f64.to_le_bytes());
         bytes.extend([0; 16]); // 从版本 2 与 4 起的 double。
         bytes.extend(0_u32.to_le_bytes()); // v5 空追加数组。
+        let reference = bytes.len();
+        bytes.extend([0x7d; 16]);
+        bytes.extend(52_u32.to_le_bytes());
 
         let mut refs = RefTable10_1::new();
         let mut reader = Reader::new(&bytes);
@@ -1194,6 +1207,28 @@ mod tests {
         assert!(tail.pixel_filter_v16.unwrap().body.is_some());
         assert_eq!(tail.histograms_v17[0].body.as_ref().unwrap().bins, [10.0]);
         assert_eq!(reader.remaining(), 0);
+
+        assert_eq!(
+            tail.histograms_v17[1].entry,
+            ObjectEntry10_1::BackReference {
+                class_id: STATS_HISTOGRAM_CLASS_ID,
+                key: 52,
+            }
+        );
+
+        let mut wrong = bytes.clone();
+        wrong[reference..reference + 16].copy_from_slice(&STATS_HISTOGRAM_CLASS_ID);
+        wrong[reference + 16..reference + 20].copy_from_slice(&54_u32.to_le_bytes());
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&wrong);
+        assert_eq!(
+            read_raster_layer_tail_10_1(&mut reader, 17, 4096, &mut refs)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::Unsupported
+        );
+        assert!(refs.is_empty());
+        assert_eq!(reader.position(), 0);
 
         let complete_end = bytes.len();
         bytes.push(0x90);
