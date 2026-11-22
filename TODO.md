@@ -892,6 +892,7 @@
 - [x] 按登记类校验 RasterLayer v6 起的关系名称列表回引。
 - [x] 接入 RasterLayer v6 起可选 IName 槽的 TableName 对象体。
 - [x] 接入 RasterLayer v6 起可选 IName 槽的 FgdbTableName 对象体。
+- [x] 将 RasterLayer 可选关联 IName 槽接入已有对象体证据的共用表名分派。
 - [x] 接入 RasterLayer v14 起的颜色索引连续区段，见 [索引编码](docs/mxd-10.1-raster-layer-tail.md#v14-颜色索引)。
 - [x] 读取 RasterLayer v8 起的非空 ExtraSafe 扩展列表边界并保留未知对象体，见 [扩展列表边界](docs/mxd-10.1-raster-layer-tail.md#v8-起的-extrasafe-扩展列表)。
 - [ ] 解析 RasterLayer v3–v7 旧式扩展的对象体及其嵌套对象键。

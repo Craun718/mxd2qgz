@@ -413,6 +413,11 @@ Load `0x6fa33290` 读两个 short 后委派至 TableName，复用
 构造 v6 验证包装字段、列表边界及关系槽误引时的回滚。
 尚无该组合的实档或 ArcMap/QGIS 人工验证。
 
+可选槽复用独立表的 IName 分派和嵌套停止规则。新增构造
+ObjectClassName，同一字节布局已由 [10.1 GdbCoreLib 的持久化委派](mxd-terra-round9-table.md#objectclassname-与栅格表名称)
+确认。其他共用表名复用各自已核对的对象体。未知类或未闭合的体仍在宿主
+事务内停止。尚无这些名称作为该槽实档的证据，未做 ArcMap/QGIS 人工验证。
+
 ## v8 起的 ExtraSafe 扩展列表
 
 RasterLayer.dll `0x7c73ded0` 读取 int32 数量后逐项调用

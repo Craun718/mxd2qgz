@@ -50,14 +50,12 @@ pub use crate::layers::tracking_filter_layer_extension::TrackingFilterLayerExten
 use crate::layers::tracking_filter_layer_extension::{
     TRACKING_FILTER_LAYER_EXTENSION_CLASS_ID, read_bounded_tracking_filter_layer_extension,
 };
-use crate::maps::standalone_table::{
-    FGDB_TABLE_NAME_CLASS_ID, TABLE_NAME_CLASS_ID, TableNameBody10_1,
-    read_fgdb_table_name_body_10_1, read_table_name_body_10_1,
-};
+use crate::maps::standalone_table::TableNameBody10_1;
 use crate::objects::dataset_name_more::{
-    MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID, MemoryRelationshipClassNameBody10_1,
-    RELATIONSHIP_CLASS_NAME_CLASS_ID, RelationshipClassNameBody10_1,
-    read_memory_relationship_class_name_body_10_1, read_relationship_class_name_body_10_1,
+    DatasetNameMoreBody10_1, DatasetNameMoreSlot10_1, MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID,
+    MemoryRelationshipClassNameBody10_1, RELATIONSHIP_CLASS_NAME_CLASS_ID,
+    RelationshipClassNameBody10_1, read_memory_relationship_class_name_body_10_1,
+    read_relationship_class_name_body_10_1, read_tabular_name_slot_10_1,
 };
 use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
 use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
@@ -67,6 +65,7 @@ use crate::objects::geodata_xform::{
 };
 use crate::objects::property_set::{PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
@@ -167,6 +166,7 @@ pub enum RasterLayerPixelFilterBody10_1 {
 #[derive(Debug, Clone, PartialEq)]
 pub enum RasterLayerRelationshipBody10_1 {
     TableName(Box<TableNameBody10_1>),
+    TabularName(Box<DatasetNameMoreBody10_1>),
     Relationship(Box<RelationshipClassNameBody10_1>),
     MemoryRelationship(Box<MemoryRelationshipClassNameBody10_1>),
 }
@@ -299,11 +299,43 @@ fn read_slots<T>(
     (0..count).map(|_| read_entry(reader, table)).collect()
 }
 
+fn read_related_name(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<RasterLayerRelationshipSlot10_1> {
+    if let ObjectHeader::Object { class_id, key } = read_header_10_1(&mut reader.clone())?
+        && !table.contains(key)
+        && !matches!(
+            class_id,
+            RELATIONSHIP_CLASS_NAME_CLASS_ID | MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID
+        )
+    {
+        let mut stop = None;
+        let name = read_tabular_name_slot_10_1(reader, max_bytes, table, &mut stop)?;
+        if let DatasetNameMoreSlot10_1::Body(body) = name
+            && stop.is_none()
+        {
+            let body = match body {
+                DatasetNameMoreBody10_1::Table(body) => {
+                    RasterLayerRelationshipBody10_1::TableName(body)
+                }
+                body => RasterLayerRelationshipBody10_1::TabularName(Box::new(body)),
+            };
+            return Ok(RasterLayerRelationshipSlot10_1 {
+                entry: ObjectEntry10_1::NewObject { class_id, key },
+                body: Some(body),
+            });
+        }
+        return Err(unsupported(&format!("关联 IName 槽未闭合：{stop:?}")));
+    }
+    read_relationship_slot(reader, max_bytes, table)
+}
+
 fn read_relationship_slot(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
-    allows_table_name: bool,
 ) -> io::Result<RasterLayerRelationshipSlot10_1> {
     let mut entry = read_object_entry_10_1(reader, table)?;
     if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
@@ -336,20 +368,6 @@ fn read_relationship_slot(
                 ));
             }
             Some(MemoryRelationship(Box::new(body)))
-        }
-        ObjectEntry10_1::NewObject {
-            class_id: class_id @ (TABLE_NAME_CLASS_ID | FGDB_TABLE_NAME_CLASS_ID),
-            ..
-        } if allows_table_name => {
-            let (body, stopped) = if class_id == FGDB_TABLE_NAME_CLASS_ID {
-                read_fgdb_table_name_body_10_1(reader, table, max_bytes)?
-            } else {
-                read_table_name_body_10_1(reader, table, max_bytes)?
-            };
-            if stopped {
-                return Err(unsupported("RasterLayer TableName 含未闭合的工作空间槽"));
-            }
-            Some(RasterLayerRelationshipBody10_1::TableName(Box::new(body)))
         }
         ObjectEntry10_1::NewObject { class_id, .. } => {
             return Err(unsupported(&format!(
@@ -856,10 +874,10 @@ pub(super) fn read_raster_layer_tail(
         .transpose()?;
     let (related_name, related_objects) = if version >= 6 {
         let name = (read_long(&mut trial)? != 0)
-            .then(|| read_relationship_slot(&mut trial, max_bytes, &mut staged, true))
+            .then(|| read_related_name(&mut trial, max_bytes, &mut staged))
             .transpose()?;
         let objects = read_slots(&mut trial, &mut staged, "关联对象列表", |r, t| {
-            let slot = read_relationship_slot(r, max_bytes, t, false)?;
+            let slot = read_relationship_slot(r, max_bytes, t)?;
             if let ObjectEntry10_1::BackReference { key, .. } = slot.entry
                 && t.registered_class(key).is_some_and(|class| {
                     !matches!(
@@ -2269,8 +2287,12 @@ mod tests {
 
     #[test]
     fn raster_related_name_reads_table_before_relationship_list() {
+        use crate::maps::standalone_table::OBJECT_CLASS_NAME_CLASS_ID;
+        use crate::maps::standalone_table::{FGDB_TABLE_NAME_CLASS_ID, TABLE_NAME_CLASS_ID};
+
         for (class_id, wrapper) in [
             (TABLE_NAME_CLASS_ID, None),
+            (OBJECT_CLASS_NAME_CLASS_ID, None),
             (FGDB_TABLE_NAME_CLASS_ID, Some((1_u16, 17_u16))),
         ] {
             let mut bytes = vec![0; 26 + 4 + 8 + 32];
