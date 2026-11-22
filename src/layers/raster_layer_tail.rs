@@ -349,7 +349,17 @@ pub(super) fn read_envelope_slot(
     max_bytes: usize,
     table: &mut RefTable10_1,
 ) -> io::Result<RasterLayerEnvelopeSlot10_1> {
-    let entry = read_object_entry_10_1(reader, table)?;
+    let mut entry = read_object_entry_10_1(reader, table)?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+        && let Some(registered) = table.registered_class(*key)
+    {
+        if registered != ENVELOPE_CLASS_ID {
+            return Err(unsupported(&format!(
+                "IEnvelope 回引键 {key} 的登记类不受支持"
+            )));
+        }
+        *class_id = registered;
+    }
     let body = match entry {
         ObjectEntry10_1::Null | ObjectEntry10_1::BackReference { .. } => None,
         ObjectEntry10_1::NewObject {

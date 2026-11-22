@@ -1320,3 +1320,8 @@ GlobeHeightProperties 的图层本身带 ExtraSafe 尺寸，Map 和 GroupLayer
 其 Reader 的剩余字节可能包含其他对象与父字段。合成 WCSLayer 用例
 验证同一 v12 子体在有界路径中读完，在无界路径中保留游标和引用表。
 普通 v12 的数据源打开结果仍待取证，ArcMap 10.1 与 QGIS 人工验收未进行。
+
+RasterLayer v12 尾部的 IEnvelope IID 来自 RasterLayer.dll 10.1.0.3035
+的 `0x7c768fa0`。与 LoadRaster 共用的包络槽遵循 SystemCore 按键
+拣取登记实例的规则。RGB tag 18 合成测试验证包络回引的类匹配及
+误引变换键时的外层回滚。ArcMap 10.1 与 QGIS 人工验收未进行。

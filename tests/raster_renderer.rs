@@ -291,7 +291,8 @@ fn tagged_rgb_filter_reads_raster_names_and_references_with_the_original_stream(
             string(&mut bytes, "全色");
         }
         entry(&mut bytes, IDENTITY_XFORM_CLASS_ID, 73);
-        entry(&mut bytes, ENVELOPE_CLASS_ID, 74);
+        let envelope_reference = bytes.len();
+        entry(&mut bytes, [0x7d; 16], 74);
         finish_tagged_rgb_filter(&mut bytes);
         let end = bytes.len();
         bytes.push(0x6f);
@@ -361,7 +362,10 @@ fn tagged_rgb_filter_reads_raster_names_and_references_with_the_original_stream(
         ));
         assert!(matches!(
             second.extent.entry,
-            ObjectEntry10_1::BackReference { key: 74, .. }
+            ObjectEntry10_1::BackReference {
+                class_id: ENVELOPE_CLASS_ID,
+                key: 74
+            }
         ));
         assert_eq!(tail.tag19, Some(63));
         assert_eq!(refs.len(), 4);
@@ -382,6 +386,12 @@ fn tagged_rgb_filter_reads_raster_names_and_references_with_the_original_stream(
         wrong_class[reference..reference + 16].copy_from_slice(&class_id);
         wrong_class[reference + 16..reference + 20].copy_from_slice(&73_u32.to_le_bytes());
         assert_uncommitted(&wrong_class);
+        let mut wrong_envelope = bytes.clone();
+        wrong_envelope[envelope_reference..envelope_reference + 16]
+            .copy_from_slice(&ENVELOPE_CLASS_ID);
+        wrong_envelope[envelope_reference + 16..envelope_reference + 20]
+            .copy_from_slice(&73_u32.to_le_bytes());
+        assert_uncommitted(&wrong_envelope);
         for cut in first_raster..end {
             assert_uncommitted(&bytes[..cut]);
         }
