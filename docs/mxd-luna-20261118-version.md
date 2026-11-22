@@ -44,3 +44,23 @@
 随后使用本机 Ghidra 12.2 随附 PyGhidra。离线安装步骤将随附 wheel 安装进本轮专用 venv；一次 headless 启动因无 X11 失败。设置 `java.awt.headless=true` 后，后续系统执行器因全局 `/tmp` 仅剩 33 MiB、tmpfs 已达 100% 而无法启动（`No space left on device`），所以没有得到 PyGhidra 反编译输出。对应启动日志保存在上述临时工作区。此次补导未成功；本记录中的 10.1 结论来自已有完整 PageLayout/AfCore 导出、现成原始 DLL 和 objdump 静态复核。
 
 本轮没有发现需要新增到 Rust 代码的已证实解析规则：现有 `version_stream` 已实现上述受支持的严格子集，且现有测试覆盖常规头部、条件计数、未知尾字节保留和截断失败。故本轮不改 `src/version`、`tests/version_stream.rs`，也未运行测试。没有运行 ArcMap 10.1/10.8 或进行 QGIS/ArcMap 人工验收；所有状态均保留相应运行验证缺口。
+
+### PageLayout 分类后的版本属性调用
+
+在 PageLayout.dll 10.1.0.3035（SHA-256
+`ba9e71f42e00d06a2311a1492fc3d1aeca544c96d9ebd3926140a11b8de9d69f`）中，
+分类入口 `0x7b70a8e0` 的 `+0x28(0x12)` 调用接收者来自
+`0x7b6a7ae0 → 0x7b6a8590`。后者在 `0x7b6a85e3` 将
+`0x7b71e02c` 的 IID 传给 QI。原始字节解码为
+`E8E5589D-215A-4322-BA68-E52F187363EE`，与 Metadata 路径
+[已对位的接口](mxd-terra-round9-save.md) 相同。
+
+- DocumentInfo 的接口虚表 `0x7b71ca9c` 在 +0x28 指向
+  `0x7b692320`。该入口把传入 short 写到接口 this+0x60，
+  即完整对象 +0x70，返回 S_OK。
+- MapDocument 的同 IID 虚表 `0x7b71decc` 在 +0x28 指向
+  `0x7b691050`，直接返回 E_NOTIMPL。
+
+这里写入的实参固定为 18，与返回给分类调用者的 3 或 5 分开。
+接收者在实际打开过程中的身份与字段的后续消费者仍待核对。
+本轮使用本地伪代码和 objdump，未在 ArcMap 或 QGIS 中人工验证。
