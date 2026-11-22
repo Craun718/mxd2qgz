@@ -900,6 +900,7 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
         }
         bytes.extend(9_u16.to_le_bytes());
         let tail_object = bytes.len();
+        let mut sample_count_offset = None;
         if legacy {
             if let Some(string_flag) = legacy_colors {
                 bytes.extend(RASTER_UNIQUE_VALUE_COLORS_CLASS_ID);
@@ -919,6 +920,7 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
                 bytes.extend([0; 16]);
             }
             bytes.extend(1_i32.to_le_bytes());
+            sample_count_offset = Some(bytes.len() - 4);
             bytes.extend(13.25_f64.to_le_bytes());
             bytes.extend(23_i32.to_le_bytes());
         } else {
@@ -1161,6 +1163,21 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
                 Some(RasterRendererPrefix10_1::UniqueValue(body))
                     if body.classes.len() == 1 && body.classes[0].values.is_empty()
                         && body.classes[0].raw_key == 0xfe76_1234 && body.second_short == 9
+            ));
+            assert_eq!(reader.read_bytes(1).unwrap(), &[0x7e]);
+        }
+
+        if let Some(offset) = sample_count_offset {
+            let mut negative_samples = bytes.clone();
+            negative_samples.splice(offset..offset + 16, (-1_i32).to_le_bytes());
+            let mut reader = Reader::new(&negative_samples);
+            let mut refs = RefTable10_1::new();
+            let slot = read_raster_renderer_slot_prefix_10_1(&mut reader, 4096, &mut refs).unwrap();
+            assert!(matches!(
+                slot.body,
+                Some(RasterRendererPrefix10_1::UniqueValue(body))
+                    if matches!(&body.layout, RasterUniqueValueLayout10_1::Legacy { samples, .. }
+                        if samples.is_empty())
             ));
             assert_eq!(reader.read_bytes(1).unwrap(), &[0x7e]);
         }

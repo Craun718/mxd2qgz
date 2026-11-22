@@ -177,7 +177,8 @@ pub(super) fn read_raster_unique_value(
     let second_short = r.read_u16_le()?;
     let layout = if let (Some(before_groups), Some(legend_item)) = (before_groups, legend_item) {
         let colors = read_legacy_colors(r, max, table)?;
-        let samples = (0..length(r, max, 12)?)
+        let sample_count = long(r)?.max(0) as usize;
+        let samples = (0..check_length(r, sample_count, max, 12)?)
             .map(|_| Ok((r.read_f64_le()?, long(r)?)))
             .collect::<io::Result<_>>()?;
         RasterUniqueValueLayout10_1::Legacy {
