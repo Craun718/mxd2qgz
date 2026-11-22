@@ -256,6 +256,7 @@
   - [x] 按登记类校验 RasterLayer 与 ImageServerLayer 共用的 IRasterRenderer 槽回引。
   - [x] 按登记类校验栅格渲染器共用的 ILegendGroup 槽回引。
   - [x] 按登记类校验栅格渲染器共用的 ILegendItem 槽回引。
+  - [x] 按 10.1 Load 的有符号版本条件读取 RasterColormapRenderer 尾字段。
   - [x] 按登记类校验 RasterLayer v17 IStatsHistogram 列表回引。
   - [x] 接入 Time、TimeReference 和 TimeExtent 的 ObjectStream Variant 对象体分派。[取证](docs/arcmap-10.1-variant-propertyset-slots.md#时间对象)
   - [x] 将已确认的栅格函数和参数对象接入 ObjectStream Variant，覆盖相互嵌套的深度限制。[分派取证](docs/arcmap-10.1-variant-propertyset-slots.md#栅格函数与参数对象)

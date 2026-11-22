@@ -348,9 +348,6 @@ pub(crate) fn read_raster_renderer_body_10_1(
     let body = match class_id {
         RASTER_COLORMAP_RENDERER_CLASS_ID => {
             let version = signed_long(&mut trial)?;
-            if !(1..=3).contains(&version) {
-                return Err(invalid(format!("未支持的色表渲染器版本 {version}")));
-            }
             let legend_groups = (0..count(&mut trial, 16)?)
                 .map(|_| read_renderer_legend_group(&mut trial, max_bytes, &mut staged))
                 .collect::<io::Result<_>>()?;
@@ -563,7 +560,7 @@ fn read_colormap_tail(
 ) -> io::Result<ColormapTail10_1> {
     let shared = read_shared_tail(reader, max_bytes, table)?;
     let colormap_values = (0..match colormap_version {
-        1 => 0,
+        ..=1 => 0,
         2 => 1,
         _ => 3,
     })

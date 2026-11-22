@@ -82,6 +82,40 @@ fn raster_colormap_legend_group_reference_checks_registered_class() {
     }
 }
 
+#[test]
+fn raster_colormap_reads_native_version_thresholds() {
+    use mxd2qgz::layers::raster_renderer::RASTER_COLORMAP_RENDERER_CLASS_ID;
+
+    for (version, values) in [
+        (i32::MIN, &[][..]),
+        (0, &[][..]),
+        (1, &[][..]),
+        (2, &[10_i32][..]),
+        (3, &[10, 11, 12][..]),
+        (i32::MAX, &[10, 11, 12][..]),
+    ] {
+        let mut bytes = RASTER_COLORMAP_RENDERER_CLASS_ID.to_vec();
+        bytes.extend(71_u32.to_le_bytes());
+        bytes.extend(version.to_le_bytes());
+        bytes.extend([0; 8]); // 空图例组及色表。
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend([0; 16]); // 共用体。
+        bytes.extend(values.iter().flat_map(|value| value.to_le_bytes()));
+        bytes.push(0xaa);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let slot = read_raster_renderer_slot_prefix_10_1(&mut reader, 4096, &mut refs).unwrap();
+        assert!(matches!(
+            slot.body,
+            Some(RasterRendererPrefix10_1::Colormap { version: actual, tail: Some(tail), .. })
+                if actual == version && tail.colormap_values == values
+        ));
+        assert_eq!(reader.read_bytes(1).unwrap(), &[0xaa]);
+        assert!(refs.contains(71));
+    }
+}
+
 fn rgb(version: i32) -> (Vec<u8>, usize, usize) {
     let mut bytes = RASTER_RGB_RENDERER_CLASS_ID.to_vec();
     bytes.extend(71_u32.to_le_bytes());
