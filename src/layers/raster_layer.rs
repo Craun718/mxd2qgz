@@ -865,12 +865,13 @@ mod tests {
         use crate::objects::geometry::MULTIPOINT_CLASS_ID;
 
         let transform_offset = raster_with_empty_slots(12, false).len();
-        for (version, legacy, geometry) in [
-            (12, false, false),
-            (12, true, false),
-            (12, true, true),
-            (13, true, true),
-            (17, true, true),
+        for (version, legacy, geometry, point_count) in [
+            (12, false, false, 0_i32),
+            (12, true, false, 0),
+            (12, true, true, 0),
+            (13, true, true, 0),
+            (13, true, true, -1),
+            (17, true, true, 1),
         ] {
             let mut bytes = raster_with_empty_slots(version, true);
             let mut pair = PROJECTIVE_XFORM_CLASS_ID.to_vec();
@@ -890,10 +891,10 @@ mod tests {
                 }
             }
             pair.extend([0; 16]); // 空投影变换。
-            let points = (version == 17).then_some([[1.0_f64, 2.0], [3.0, 4.0]]);
-            let point_count = i32::from(points.is_some());
+            let points = (point_count > 0).then_some([[1.0_f64, 2.0], [3.0, 4.0]]);
+            let points_flag = i32::from(points.is_some());
             pair.extend(point_count.to_le_bytes());
-            pair.extend(point_count.to_le_bytes());
+            pair.extend(points_flag.to_le_bytes());
             if let Some(points) = points {
                 for coordinate in points.into_iter().flatten() {
                     pair.extend(coordinate.to_le_bytes());
@@ -924,6 +925,7 @@ mod tests {
             );
             assert_eq!(projective.geometry.body.is_some(), geometry);
             assert_eq!(projective.point_count, point_count);
+            assert_eq!(projective.points_flag, points_flag);
             assert_eq!(
                 projective.point_arrays,
                 points.map(|points| points.map(|point| vec![point]))
