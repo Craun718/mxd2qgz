@@ -260,6 +260,7 @@
   - [x] 保留 LoadRaster 的有符号波段计数，并确认非正值跳过名称循环后继续读取变换及包络。[原生读取顺序](docs/mxd-10.1-raster-renderer.md#rgb-tag-18全色锐化)
   - [x] 在 RasterRGBRenderer tag 18 的两处 LoadRaster 间验证缓存栅格和 NetCDF 名称的嵌套对象键回引。[共享键测试](docs/mxd-10.1-raster-renderer.md#rgb-tag-18全色锐化)
   - [ ] 补齐 RasterRGBRenderer tag 18 非空 LoadRaster 槽中未支持的 IName 类。[已核对的 FullName 来源](docs/mxd-10.1-raster-layer-tail.md#三个名称宿主的接口与-fullname-来源)
+  - [x] 按登记对象的类分派 LoadRaster 名称回引。[原生接口取证](docs/mxd-10.1-raster-layer-tail.md#三个名称宿主的接口与-fullname-来源)
   - [x] 接入 ImageServerLayer 非空 Fields 及 Field 的已确认对象体；默认值复用 AfCore Variant 读取器，见 [字段集合取证](docs/mxd-10.1-fields.md)。
   - [x] 接入 Field 的 RangeDomain 与 CodedValueDomain，读取标量的 Variant::Read(false) 值，见 [值域取证](docs/mxd-10.1-fields.md#idomain范围值域与编码值域)。
   - [x] 接入 AfCore Variant 的已证单维定宽和 BSTR 数组；PropertySet、Field 默认值、值域和 EditTemplate 共用数组读取器，见 [数组取证](docs/arcmap-10.1-variant-propertyset-slots.md#单维数组接入)。

@@ -279,7 +279,8 @@ fn tagged_rgb_filter_reads_raster_names_and_references_with_the_original_stream(
         for ordinate in [1.0_f64, 2.0, 3.0, 4.0] {
             bytes.extend(ordinate.to_le_bytes());
         }
-        entry(&mut bytes, class_id, 72); // 回引名称之后仍写本槽的波段与对象。
+        let reference = bytes.len();
+        entry(&mut bytes, [0x7d; 16], 72); // 以登记对象的类为准。
         let second_band_count = if class_id == RASTER_DATASET_NAME83_CLASS_ID {
             -1_i32
         } else {
@@ -377,6 +378,10 @@ fn tagged_rgb_filter_reads_raster_names_and_references_with_the_original_stream(
             assert!(r.position() < first_raster);
             assert!(refs.contains(71) && refs.len() == 1);
         };
+        let mut wrong_class = bytes.clone();
+        wrong_class[reference..reference + 16].copy_from_slice(&class_id);
+        wrong_class[reference + 16..reference + 20].copy_from_slice(&73_u32.to_le_bytes());
+        assert_uncommitted(&wrong_class);
         for cut in first_raster..end {
             assert_uncommitted(&bytes[..cut]);
         }

@@ -504,7 +504,12 @@ pub(super) fn read_name_slot(
     table: &mut RefTable10_1,
     depth: usize,
 ) -> io::Result<RasterNameSlot10_1> {
-    let entry = read_object_entry_10_1(reader, table)?;
+    let mut entry = read_object_entry_10_1(reader, table)?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+        && let Some(registered_class) = table.registered_class(*key)
+    {
+        *class_id = registered_class;
+    }
     let body = match entry {
         ObjectEntry10_1::Null
         | ObjectEntry10_1::BackReference {
