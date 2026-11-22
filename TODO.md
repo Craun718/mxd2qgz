@@ -278,6 +278,7 @@
   - [x] 按有符号计数读取 FilterDefs 与 QueryFilter v2 内联列表。[列表计数取证](docs/arcmap-10.1-dataset-name-slots.md#过滤定义列表计数)
   - [x] 对齐过滤器及过滤定义对象的原生版本门。[版本取证](docs/arcmap-10.1-dataset-name-slots.md#过滤器版本门)
   - [x] 按登记类校验过滤定义集合成员及相关过滤器回引。[回引取证](docs/arcmap-10.1-dataset-name-slots.md#过滤器回引)
+  - [x] 按登记类校验查询过滤器的空间参考及几何回引。[回引取证](docs/arcmap-10.1-dataset-name-slots.md#过滤器回引)
   - [x] 按登记对象的类校验 Fields 的 IField 回引。[字段回引取证](docs/mxd-10.1-fields.md#字段集合回引)
   - [x] 按登记对象的类校验 Field 的 IDomain 回引。[值域回引取证](docs/mxd-10.1-fields.md#字段值域回引)
   - [x] 按登记对象的类校验 Field 的几何与栅格定义回引。[定义回引取证](docs/mxd-10.1-fields.md#字段定义回引)

@@ -12,6 +12,10 @@ use crate::objects::geometry::{
     GeometryBody10_1, MULTIPOINT_CLASS_ID, POINT_CLASS_ID, POLYGON_CLASS_ID, POLYLINE_CLASS_ID,
     read_geometry_body_10_1,
 };
+use crate::objects::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
+use crate::objects::spatial_reference_slots::{
+    GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID, UNKNOWN_COORDINATE_SYSTEM_CLASS_ID,
+};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::{read_bstr_string_10_1, read_string_10_1};
 use crate::stream::reader::Reader;
@@ -241,7 +245,14 @@ fn read_core(
         reader,
         table,
         stop,
-        |_| true,
+        |class| {
+            matches!(
+                class,
+                PROJECTED_COORDINATE_SYSTEM_CLASS_ID
+                    | GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID
+                    | UNKNOWN_COORDINATE_SYSTEM_CLASS_ID
+            )
+        },
         |reader, _, class_id, key, _| {
             read_spatial_reference_body_10_1(
                 reader,
@@ -318,7 +329,16 @@ fn read_spatial_fields(
         reader,
         table,
         stop,
-        |_| true,
+        |class| {
+            matches!(
+                class,
+                ENVELOPE_CLASS_ID
+                    | POINT_CLASS_ID
+                    | MULTIPOINT_CLASS_ID
+                    | POLYLINE_CLASS_ID
+                    | POLYGON_CLASS_ID
+            )
+        },
         |reader, table, class, _, _| {
             Ok(Some(match class {
                 ENVELOPE_CLASS_ID => {
@@ -404,6 +424,39 @@ mod tests {
     fn append_header(bytes: &mut Vec<u8>, class: [u8; 16], key: u32) {
         bytes.extend(class);
         bytes.extend(key.to_le_bytes());
+    }
+
+    #[test]
+    fn output_reference_checks_registered_spatial_reference_class() {
+        for registered in [PROJECTED_COORDINATE_SYSTEM_CLASS_ID, QUERY_FILTER_CLASS_ID] {
+            let mut header = Vec::new();
+            append_header(&mut header, registered, 7);
+            let mut refs = RefTable10_1::new();
+            read_object_entry_10_1(&mut Reader::new(&header), &mut refs).unwrap();
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend([2, 0, 0, 0, 0, 0].repeat(3));
+            let offset = bytes.len();
+            append_header(&mut bytes, PROJECTED_COORDINATE_SYSTEM_CLASS_ID, 7);
+            bytes.extend([0; 8 + 16]);
+            let mut reader = Reader::new(&bytes);
+            let mut stop = None;
+            let body = read_core(&mut reader, 128, &mut refs, &mut stop).unwrap();
+            if registered == PROJECTED_COORDINATE_SYSTEM_CLASS_ID {
+                assert!(matches!(
+                    body.output_reference,
+                    QueryFilterObject10_1::BackReference { key: 7, .. }
+                ));
+                assert_eq!(reader.position(), bytes.len());
+            } else {
+                assert!(matches!(
+                    body.output_reference,
+                    QueryFilterObject10_1::Unsupported { key: 7, .. }
+                ));
+                assert_eq!(reader.position(), offset);
+                assert!(stop.is_some());
+            }
+            assert!(refs.contains(7));
+        }
     }
 
     #[test]
