@@ -39,6 +39,47 @@ fn fixture(unknown_format: bool) -> (Vec<u8>, usize) {
 }
 
 #[test]
+fn named_field_info_reference_uses_the_registered_class() {
+    let (mut data, body_slot) = fixture(false);
+    let slot = 2 + 16 + 4 + string("字段").len();
+    data.drain(slot + 20..body_slot + 16);
+    for actual in [FIELD_INFO_CLASS_ID, [0x55; 16]] {
+        let mut refs = RefTable10_1::new();
+        let mut header = actual.to_vec();
+        header.extend(334_u32.to_le_bytes());
+        read_object_entry_10_1(&mut Reader::new(&header), &mut refs).unwrap();
+
+        let accepted = actual == FIELD_INFO_CLASS_ID;
+        let claimed = if accepted {
+            [0x55; 16]
+        } else {
+            FIELD_INFO_CLASS_ID
+        };
+        data[slot..slot + 16].copy_from_slice(&claimed);
+        let mut reader = Reader::new(&data);
+        let original_refs = refs.clone();
+        let result = read_standalone_table_prefix_10_1(&mut reader, &mut refs, 10, 100).unwrap();
+        assert_eq!(refs, original_refs);
+        if accepted {
+            assert_eq!(result.stop, StandaloneTableStop10_1::Complete);
+            assert_eq!(
+                result.named_objects[0].1,
+                ObjectEntry10_1::BackReference {
+                    class_id: FIELD_INFO_CLASS_ID,
+                    key: 334,
+                }
+            );
+            assert_eq!(reader.position(), data.len());
+        } else {
+            assert!(matches!(result.stop, StandaloneTableStop10_1::NamedObject {
+                class_id, key: 334, ..
+            } if class_id == actual));
+            assert_eq!(reader.position(), slot);
+        }
+    }
+}
+
+#[test]
 fn field_info_v2_consumed_and_truncation_rolls_back() {
     let (data, _) = fixture(false);
     let mut r = Reader::new(&data);

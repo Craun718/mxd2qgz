@@ -342,7 +342,13 @@ pub fn read_standalone_table_prefix_10_1(
         let name = read_string_10_1(&mut r, max_string_bytes)?;
         let mut slot_reader = r.clone();
         let mut slot_refs = table.clone();
-        let entry = read_object_entry_10_1(&mut slot_reader, &mut slot_refs)?;
+        let entry = match read_object_entry_10_1(&mut slot_reader, &mut slot_refs)? {
+            ObjectEntry10_1::BackReference { class_id, key } => ObjectEntry10_1::BackReference {
+                class_id: slot_refs.registered_class(key).unwrap_or(class_id),
+                key,
+            },
+            entry => entry,
+        };
         let body = match entry {
             ObjectEntry10_1::NewObject { class_id, key } if class_id == FIELD_INFO_CLASS_ID => {
                 Some(read_field_info_body_10_1(
@@ -352,7 +358,10 @@ pub fn read_standalone_table_prefix_10_1(
                     key,
                 )?)
             }
-            ObjectEntry10_1::NewObject { class_id, key } => {
+            ObjectEntry10_1::NewObject { class_id, key }
+            | ObjectEntry10_1::BackReference { class_id, key }
+                if class_id != FIELD_INFO_CLASS_ID && slot_refs.registered_class(key).is_some() =>
+            {
                 result.stop = StandaloneTableStop10_1::NamedObject {
                     name,
                     class_id,
