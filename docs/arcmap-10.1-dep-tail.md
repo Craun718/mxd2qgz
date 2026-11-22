@@ -143,6 +143,15 @@ ElementCollection 体读取器已在 `src/objects/element_collection.rs` 闭合
 | Time | `{E1721810-8210-45B1-8590-FC4C911FBA20}` | `0x7ffe14a0` | `0x7ffe1780` | `0x7ffe1870`（1，`0x8006d0c0`） | `0x80073084` |
 | TimeZoneInfo | `{78FAD5F1-60FA-458A-8D93-630DA920448D}` | `0x7fff6330` | `0x7fff7790` | `0x7fff77f0`（2，`0x8006d040`） | `0x80074158` |
 
+经 objdump 复核 SystemCore.dll 10.1.0.3035（SHA-256
+`f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`），
+Time、TimeReference、TimeExtent、TimeZoneInfo 分别在 `0x7ffe17aa`、
+`0x7ffebc26`、`0x7ffe8226`、`0x7fff77c8` 使用有符号上限跳转。
+TimeExtent 在 `0x7ffe82ba` 对版本 ≤1 跳过尾字节；时区体在
+`0x7fff603b`、`0x7fff6094` 对版本 ≥2 跳过旧偏移字段。
+构造时区用例覆盖 v1、-1 和最小有符号值的旧字段与体末尾。
+负版本尚无实档或人工验证。
+
 - **TimeReference::Load**：① int16（`1 < (short)ver` 拒绝）→ ② LoadObject
   (ITimeZoneInfo `{0F8FD6AB-CE6D-4BB2-A5EF-2F6035E304C5}`，`0x80073924`) →
   ③ short（this+0xc）→ ④ short（this+0xe）。

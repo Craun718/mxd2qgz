@@ -98,8 +98,7 @@ pub const TIME_ZONE_INFO_CLASS_ID: [u8; 16] = [
     0xf1, 0xd5, 0xfa, 0x78, 0xfa, 0x60, 0x8a, 0x45, 0x8d, 0x93, 0x63, 0x0d, 0xa9, 0x20, 0x44, 0x8d,
 ];
 
-/// 读取 int16 版本并按原生有符号比较校验上限；负值位模式一并拒绝
-/// （负值版本无业务意义，较原生更严，与仓库既有读取器一致）。
+/// 按原生有符号比较校验版本上限，保留原始位模式。
 fn read_version_short(
     trial: &mut Reader<'_>,
     max: i16,
@@ -108,25 +107,13 @@ fn read_version_short(
 ) -> io::Result<u16> {
     let version = trial.read_u16_le()?;
     let signed = version as i16;
-    if signed > max || signed < 0 {
+    if signed > max {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
             format!(
                 "{what} 对象体 offset 0x{entry_offset:x}: 版本 {version} 超出 \
-                 {what}::Load 接受范围（有符号比较 >{max} 拒绝；负值位模式一并拒绝）"
+                 {what}::Load 接受范围（有符号比较 >{max} 拒绝）"
             ),
-        ));
-    }
-    Ok(version)
-}
-
-/// LayerLib 的四个时间段按有符号版本比较上限。
-fn read_time_segment_version(reader: &mut Reader<'_>, max: i16, label: &str) -> io::Result<u16> {
-    let version = reader.read_u16_le()?;
-    if version as i16 > max {
-        return Err(io::Error::new(
-            ErrorKind::InvalidData,
-            format!("{label} 版本 {version} 超出上限 {max}"),
         ));
     }
     Ok(version)
@@ -204,7 +191,7 @@ pub enum TimeExtentSlot10_1 {
 pub struct TimeBody10_1 {
     /// 对象头键（槽位新对象时由宿主传入；登记由对象头读取完成）。
     pub key: u32,
-    /// 体首 short 版本（接受 0/1；负值位模式拒绝，较原生更严）。
+    /// 体首 short 版本（有符号 >1 拒绝，保留原始位模式）。
     pub version: u16,
     /// 判别后的值。
     pub value: TimeValue10_1,
@@ -316,7 +303,7 @@ pub struct TziRuleEntry10_1 {
 pub struct TimeZoneInfoBody10_1 {
     /// 对象头键（槽位新对象时由宿主传入）。
     pub key: u32,
-    /// 体首 short 版本（≤2；负值位模式拒绝，较原生更严）。
+    /// 体首 short 版本（≤2，保留原始位模式）。
     pub version: u16,
     /// 版本 <2 的 int32（bias 候选）。`None` = 版本 ≥2。
     pub bias_a: Option<i32>,
@@ -348,7 +335,7 @@ pub fn read_time_zone_info_body_10_1(
     let entry_offset = reader.position();
     let mut trial = reader.clone();
     let version = read_version_short(&mut trial, 2, "TimeZoneInfo", entry_offset)?;
-    let bias_a = if version < 2 {
+    let bias_a = if (version as i16) < 2 {
         Some(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()))
     } else {
         None
@@ -357,7 +344,7 @@ pub fn read_time_zone_info_body_10_1(
     for name in &mut names {
         *name = read_stream_string_10_1(&mut trial, max_bytes)?;
     }
-    let bias_b = if version < 2 {
+    let bias_b = if (version as i16) < 2 {
         Some(i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()))
     } else {
         None
@@ -405,7 +392,7 @@ pub fn read_time_zone_info_body_10_1(
 pub struct TimeReferenceBody10_1 {
     /// 对象头键（槽位新对象时由宿主传入）。
     pub key: u32,
-    /// 体首 short 版本（≤1；负值位模式拒绝，较原生更严）。
+    /// 体首 short 版本（≤1，保留原始位模式）。
     pub version: u16,
     /// ITimeZoneInfo 槽分类。
     pub zone_info: TimeZoneInfoSlot10_1,
@@ -492,7 +479,7 @@ pub fn read_time_reference_body_10_1(
 pub struct TimeExtentBody10_1 {
     /// 对象头键（槽位新对象时由宿主传入）。
     pub key: u32,
-    /// 体首 short 版本（≤2；负值位模式拒绝，较原生更严）。
+    /// 体首 short 版本（≤2，保留原始位模式）。
     pub version: u16,
     /// ITime 起点槽。
     pub start: TimeSlot10_1,
@@ -648,7 +635,7 @@ pub fn read_time_extent_body_10_1(
     }
 
     // ⑤ 版本 >1：1 字节（前置停止时不读取）。
-    if stop.is_none() && version > 1 {
+    if stop.is_none() && version as i16 > 1 {
         tail_byte = Some(trial.read_bytes(1)?[0]);
     }
 
@@ -780,7 +767,8 @@ pub fn read_time_data_family_10_1(
     // ② TimeTableDefinition（版本 ≤1）。
     let mut time_table = None;
     if stop.is_none() {
-        let version = read_time_segment_version(&mut trial, 1, "TimeTableDefinition")?;
+        let offset = trial.position();
+        let version = read_version_short(&mut trial, 1, "TimeTableDefinition", offset)?;
         let mut strings: [String; 4] = Default::default();
         for s in &mut strings {
             *s = read_stream_string_10_1(&mut trial, max_bytes)?;
@@ -877,7 +865,8 @@ fn read_time_data_segment(
     max_bytes: usize,
     table: &mut RefTable10_1,
 ) -> io::Result<Result<TimeDataSegment10_1, TimeFamilyStop10_1>> {
-    let version = read_time_segment_version(reader, 2, "TimeData")?;
+    let offset = reader.position();
+    let version = read_version_short(reader, 2, "TimeData", offset)?;
     let short_a = reader.read_u16_le()? as i16;
     let mut trial = reader.clone();
     let mut staged = table.clone();
@@ -922,7 +911,8 @@ pub(crate) fn read_time_dimension_segment_10_1(
     max_bytes: usize,
 ) -> io::Result<TimeDimensionSegment10_1> {
     let mut trial = reader.clone();
-    let version = read_time_segment_version(&mut trial, 1, "TimeDimensionDefinition")?;
+    let offset = trial.position();
+    let version = read_version_short(&mut trial, 1, "TimeDimensionDefinition", offset)?;
     let strings = [
         read_stream_string_10_1(&mut trial, max_bytes)?,
         read_stream_string_10_1(&mut trial, max_bytes)?,
@@ -935,7 +925,8 @@ pub(crate) fn read_time_display_segment_10_1(
     reader: &mut Reader<'_>,
 ) -> io::Result<TimeDisplaySegment10_1> {
     let mut trial = reader.clone();
-    let version = read_time_segment_version(&mut trial, 1, "TimeDataDisplay")?;
+    let offset = trial.position();
+    let version = read_version_short(&mut trial, 1, "TimeDataDisplay", offset)?;
     let short_a = trial.read_u16_le()? as i16;
     let double_a = trial.read_f64_le()?;
     let int_a = trial.read_u32_le()? as i32;
@@ -1284,22 +1275,10 @@ mod tests {
                 .kind(),
             io::ErrorKind::InvalidData
         );
-
-        // TimeZoneInfo 版本 0xffff（负值位模式）→ 拒绝。
-        let mut bytes = vec![0xff, 0xff];
-        bytes.extend_from_slice(&[0u8; 8]);
-        let mut reader = Reader::new(&bytes);
-        let mut table = RefTable10_1::default();
-        assert_eq!(
-            read_time_zone_info_body_10_1(&mut reader, 64, &mut table, 1)
-                .unwrap_err()
-                .kind(),
-            io::ErrorKind::InvalidData
-        );
     }
 
     #[test]
-    fn time_zone_info_version_1_has_bias_fields() {
+    fn time_zone_info_legacy_versions_have_bias_fields() {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&1u16.to_le_bytes());
         bytes.extend_from_slice(&(-60i32).to_le_bytes());
@@ -1310,15 +1289,19 @@ mod tests {
         bytes.extend_from_slice(&11i32.to_le_bytes());
         bytes.extend_from_slice(&[0u8; TziRule10_1::BYTE_LEN]);
         bytes.extend_from_slice(&(-3i16).to_le_bytes());
-        let mut reader = Reader::new(&bytes);
-        let mut table = RefTable10_1::default();
-        let body = read_time_zone_info_body_10_1(&mut reader, 256, &mut table, 2).unwrap();
-        assert_eq!(body.bias_a, Some(-60));
-        assert_eq!(body.bias_b, Some(7));
-        assert_eq!(body.int_a, 11);
-        assert_eq!(body.count, -3);
-        assert!(body.rules.is_empty(), "负计数不进循环");
-        assert_eq!(reader.position(), bytes.len());
+        for version in [1_i16, -1, i16::MIN] {
+            bytes[..2].copy_from_slice(&version.to_le_bytes());
+            let mut reader = Reader::new(&bytes);
+            let mut table = RefTable10_1::default();
+            let body = read_time_zone_info_body_10_1(&mut reader, 256, &mut table, 2).unwrap();
+            assert_eq!(body.bias_a, Some(-60));
+            assert_eq!(body.bias_b, Some(7));
+            assert_eq!(body.int_a, 11);
+            assert_eq!(body.count, -3);
+            assert!(body.rules.is_empty(), "负计数不进循环");
+            assert_eq!(reader.position(), bytes.len());
+            assert_eq!(body.version as i16, version);
+        }
     }
 
     #[test]
