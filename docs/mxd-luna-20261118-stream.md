@@ -13,7 +13,7 @@
 | 原行号 | 状态 | 证据、实现与边界 |
 | --- | --- | --- |
 | 25：AfCore SaveObject/LoadObject 对象头写出内部路径 | 部分 | AfCore 10.1 `SaveObject 0x68a7b640` → `SimpleSaveObject 0x68a7af70` 已确认；普通分支写 CLSID 后调用 `IPersistStream::Save`，不写键。ObjectStream 写出器 `SystemCore 0x7ffcf7e0` 另行写 CLSID、键并在新对象时委派对象体。两个局部事实成立，但 AfCore 对 ObjectStream 的完整 QI/写侧转接路径没有逐分支闭合，不能声称完整路径已证。 |
-| 31：闭合 `558c4e63` 类名 | 待验证 | 本轮材料说明该候选组件对外提供 `IPaper`，但未找到可把该内部类标识定名的 10.1 原生证据。它不影响对象键和体边界读取器，不据 GUID 或字符串扫描猜类名。 |
+| 31：纸张创建分支的 CLSID | 已纠正 | 后续复核确认 `0x7b70e819` 将 `0x7b7207ec` 压栈，随后调用创建函数。该地址是 esriOutput Paper 的 CLSID。原记录中的 `558c4e63` 为同一地址的误记。[原始字节复核](arcmap-10.1-native-baseline.md#纸张创建分支的-clsid-勘误) |
 | 37：动态验证对象读取错误恢复 EH 展开 | 待验证 | 静态失败路径记录在 `docs/arcmap-10.1-object-body.md`；本轮未运行 ArcMap，也未获得运行期异常观察。 |
 | 40：在 ArcMap 10.1 中运行验证 ObjectStream 调用链 | 待验证 | 未执行目标软件运行取证。静态 Ghidra/PyGhidra 证据不能代替此项。 |
 | 124：跨流复用 ObjectStream 的对象体 | 部分 | ObjectStream 实例经 `SetStream 0x7ffcf7a0` 更换底流时不清引用表；`0x7ffcff70` 在读完 16 字节类 GUID 与 4 字节键后，登记新对象再调用对象类的 `Load(ObjectStream)` 或 `Load(VariantStream)`。体没有外层长度，结束位置由各类 `Load` 决定。仓库的 `object_refs` 只分类头并登记键，类体读取器在已支持的类上分别接续；未知/未实现类无法通用跳过，故不宣称跨流任意对象体闭合。 |
