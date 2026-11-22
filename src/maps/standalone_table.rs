@@ -527,7 +527,27 @@ pub fn read_standalone_table_prefix_10_1(
             }
             let mut trial = r.clone();
             let mut staged = table.clone();
-            let entry = read_object_entry_10_1(&mut trial, &mut staged)?;
+            let mut entry = read_object_entry_10_1(&mut trial, &mut staged)?;
+            if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+                && let Some(registered_class) = staged.registered_class(*key)
+            {
+                *class_id = registered_class;
+                let expected_class = [
+                    DISPLAY_EXPRESSION_PROPS_CLASS_ID,
+                    UID_CLASS_ID,
+                    ANNOTATE_PROPS_COLLECTION_CLASS_ID,
+                ][usize::from(slot)];
+                if registered_class != expected_class {
+                    result.stop = StandaloneTableStop10_1::TailObject {
+                        slot,
+                        class_id: registered_class,
+                        key: *key,
+                    };
+                    *reader = r;
+                    *refs = table;
+                    return Ok(result);
+                }
+            }
             let body = if let ObjectEntry10_1::NewObject { class_id, key } = entry {
                 let body = match (slot, class_id) {
                     (0, DISPLAY_EXPRESSION_PROPS_CLASS_ID) => {

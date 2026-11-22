@@ -240,6 +240,84 @@ fn standalone_reads_query_name_relationship_and_color_before_sequence() {
 }
 
 #[test]
+fn tail_references_resolve_against_the_registered_class() {
+    use mxd2qgz::layers::annotate_props::{
+        ANNOTATE_PROPS_COLLECTION_CLASS_ID, DISPLAY_EXPRESSION_PROPS_CLASS_ID,
+    };
+    use mxd2qgz::layers::feature_layer_tail::UID_CLASS_ID;
+    use mxd2qgz::storage::object_refs::{ObjectEntry10_1, read_object_entry_10_1};
+
+    let mut prefix = 11_u16.to_le_bytes().to_vec();
+    prefix.extend([0; 16 + 4]);
+    string(&mut prefix);
+    prefix.extend([0; 4 + 16 + 4 + 4 + 16]);
+    string(&mut prefix);
+    string(&mut prefix);
+    prefix.extend(0_u32.to_le_bytes());
+    string(&mut prefix);
+    for (slot, expected) in [
+        DISPLAY_EXPRESSION_PROPS_CLASS_ID,
+        UID_CLASS_ID,
+        ANNOTATE_PROPS_COLLECTION_CLASS_ID,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        for registered in [expected, [0x7d; 16]] {
+            let mut header = registered.to_vec();
+            header.extend(90_u32.to_le_bytes());
+            let mut refs = RefTable10_1::new();
+            read_object_entry_10_1(&mut Reader::new(&header), &mut refs).unwrap();
+            let before = refs.clone();
+            let mut bytes = prefix.clone();
+            let mut offset = 0;
+            for index in 0..3 {
+                if index == 1 {
+                    bytes.extend(0_u16.to_le_bytes());
+                }
+                if index == slot {
+                    offset = bytes.len();
+                    let claimed = if registered == expected {
+                        [0x7d; 16]
+                    } else {
+                        expected
+                    };
+                    bytes.extend(claimed);
+                    bytes.extend(90_u32.to_le_bytes());
+                } else {
+                    bytes.extend([0; 16]);
+                }
+            }
+            let mut reader = Reader::new(&bytes);
+            let result =
+                read_standalone_table_prefix_10_1(&mut reader, &mut refs, 10, 100).unwrap();
+            assert_eq!(refs, before);
+            if registered == expected {
+                assert_eq!(result.stop, StandaloneTableStop10_1::Complete);
+                assert_eq!(
+                    result.tail_objects[slot],
+                    ObjectEntry10_1::BackReference {
+                        class_id: expected,
+                        key: 90,
+                    }
+                );
+                assert_eq!(reader.position(), bytes.len());
+            } else {
+                assert_eq!(
+                    result.stop,
+                    StandaloneTableStop10_1::TailObject {
+                        slot: slot as u8,
+                        class_id: registered,
+                        key: 90,
+                    }
+                );
+                assert_eq!(reader.position(), offset);
+            }
+        }
+    }
+}
+
+#[test]
 fn pre_join_negative_count_leaves_display_expression_aligned() {
     let mut data = 11_u16.to_le_bytes().to_vec();
     data.extend([0; 16 + 4]);
