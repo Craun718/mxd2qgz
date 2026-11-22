@@ -34,11 +34,20 @@ pub(crate) fn read_string_array_slot_10_1(
         *class_id = registered;
     }
     let body = match entry {
+        ObjectEntry10_1::BackReference {
+            class_id: STR_ARRAY_CLASS_ID,
+            key,
+        } => refs.string_array(key, max),
         ObjectEntry10_1::Null | ObjectEntry10_1::BackReference { .. } => None,
         ObjectEntry10_1::NewObject {
             class_id: STR_ARRAY_CLASS_ID,
-            ..
-        } => Some(read_string_array_body_10_1(reader, max)?),
+            key,
+        } => {
+            let start = reader.position();
+            let body = read_string_array_body_10_1(reader, max)?;
+            refs.mark_string_array(key, body.0, reader.position() - start, &body.1);
+            Some(body)
+        }
         ObjectEntry10_1::NewObject { class_id, .. } => {
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,

@@ -749,6 +749,7 @@ fn netcdf_feature_name_preserves_keys_and_boundaries_across_hosts() {
         name.extend([0; 16]);
         name.extend(STR_ARRAY_CLASS_ID);
         name.extend(18_u32.to_le_bytes());
+        let indices_offset = name.len();
         name.extend(LONG_ARRAY);
         name.extend(19_u32.to_le_bytes());
         name.extend(1_u16.to_le_bytes());
@@ -768,6 +769,19 @@ fn netcdf_feature_name_preserves_keys_and_boundaries_across_hosts() {
         let BookmarkNameEntry10_1::NetCdfFeatureClassName(body) = parsed.name_object else {
             panic!("缺少 NetCDF 要素类名称");
         };
+        assert_eq!(
+            body.arrays.as_ref().unwrap()[2].body,
+            Some((1, vec!["x".to_owned()])),
+        );
+        let mut no_indices = bookmark.clone();
+        let offset = 6 + indices_offset;
+        no_indices.splice(offset..offset + 30, [0; 16]);
+        let mut invalid = Reader::new(&no_indices);
+        let mut invalid_refs = RefTable10_1::new();
+        assert!(read_feature_bookmark_10_1(&mut invalid, 4096, &mut invalid_refs).is_err());
+        assert_eq!(invalid.position(), 0);
+        assert!(invalid_refs.is_empty());
+
         assert_eq!(parsed.name, "x");
         assert_eq!(body.version, version);
         assert_eq!(body.longs, [-1, 24]);

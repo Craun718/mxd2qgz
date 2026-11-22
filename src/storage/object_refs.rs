@@ -41,6 +41,7 @@ pub struct RefTable10_1 {
     workspace_paths: HashMap<u32, Arc<str>>,
     feature_dataset_paths: HashMap<u32, Arc<str>>,
     dataset_sources: HashMap<([u8; 16], u32), DatasetSource10_1>,
+    string_arrays: HashMap<u32, (u16, usize, Arc<[String]>)>,
     long_arrays: HashMap<u32, (u16, Arc<[i32]>)>,
     legend_group_counts: HashMap<u32, usize>,
     // 共享键表的试读副本也继承跨类图形对象的当前递归深度。
@@ -231,6 +232,24 @@ impl RefTable10_1 {
         key: u32,
     ) -> Option<&DatasetSource10_1> {
         self.dataset_sources.get(&(class_id, key))
+    }
+
+    pub(crate) fn mark_string_array(
+        &mut self,
+        key: u32,
+        version: u16,
+        bytes: usize,
+        values: &[String],
+    ) {
+        self.string_arrays
+            .insert(key, (version, bytes, Arc::from(values)));
+    }
+
+    pub(crate) fn string_array(&self, key: u32, max: usize) -> Option<(u16, Vec<String>)> {
+        self.string_arrays
+            .get(&key)
+            .filter(|(_, bytes, _)| *bytes <= max)
+            .map(|(version, _, values)| (*version, values.to_vec()))
     }
 
     pub(crate) fn mark_long_array(&mut self, key: u32, version: u16, values: &[i32]) {

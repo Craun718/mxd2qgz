@@ -566,3 +566,9 @@ IStringArray 和 ILongArray。SystemCore 同版本在 `0x7ffd0063`
 返回有效条目。旧 Map 合成测试覆盖头部不一致的有效字符串数组回引、
 长整数数组槽误引字符串数组时的停止位置及回滚。ArcMap 10.1 与 QGIS
 人工验收未进行。
+
+同模块的 NetCDFFeatureClassName Load（`0x7ae1fd40`）按维度名称
+数组内容决定是否逐项取索引。共享 IStringArray 槽登记读完的数组与
+体长度，同一会话的后续回引可在当前限额内恢复数组。合成书签用例
+核对非空名称回引、有索引时的读取，以及缺少索引时的事务回滚。
+ArcMap 10.1 与 QGIS 人工验收未进行。
