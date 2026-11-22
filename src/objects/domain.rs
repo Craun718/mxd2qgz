@@ -83,7 +83,18 @@ pub(crate) fn read_domain_slot_nested_10_1(
 ) -> io::Result<DomainSlot10_1> {
     let mut r = reader.clone();
     let mut staged = refs.clone();
-    let entry = read_object_entry_10_1(&mut r, &mut staged)?;
+    let mut entry = read_object_entry_10_1(&mut r, &mut staged)?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+        && let Some(registered) = staged.registered_class(*key)
+    {
+        if !is_domain_class(registered) {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                format!("IDomain 回引键 {key} 的登记类不受支持"),
+            ));
+        }
+        *class_id = registered;
+    }
     let body = match entry {
         ObjectEntry10_1::Null | ObjectEntry10_1::BackReference { .. } => None,
         ObjectEntry10_1::NewObject { class_id, .. } => Some(Box::new(read_domain_body_10_1(
@@ -99,6 +110,13 @@ pub(crate) fn read_domain_slot_nested_10_1(
     Ok(DomainSlot10_1 { entry, body })
 }
 
+fn is_domain_class(class_id: [u8; 16]) -> bool {
+    matches!(
+        class_id,
+        RANGE_DOMAIN_CLASS_ID | CODED_VALUE_DOMAIN_CLASS_ID | BIT_MASK_CODED_VALUE_DOMAIN_CLASS_ID
+    )
+}
+
 pub(crate) fn read_domain_body_10_1(
     r: &mut Reader<'_>,
     max_bytes: usize,
@@ -106,10 +124,7 @@ pub(crate) fn read_domain_body_10_1(
     class_id: [u8; 16],
     depth: usize,
 ) -> io::Result<DomainBody10_1> {
-    if !matches!(
-        class_id,
-        RANGE_DOMAIN_CLASS_ID | CODED_VALUE_DOMAIN_CLASS_ID | BIT_MASK_CODED_VALUE_DOMAIN_CLASS_ID
-    ) {
+    if !is_domain_class(class_id) {
         return Err(io::Error::new(
             ErrorKind::Unsupported,
             format!(
@@ -217,6 +232,49 @@ mod tests {
         PROPERTY_SET_CLASS_ID, PropertyValue10_1, PropertyValueObjectStream10_1::Inline,
     };
     use crate::stream::variant_array::ClassVariantArray10_1;
+
+    #[test]
+    fn domain_references_use_the_registered_class() {
+        for registered in [
+            RANGE_DOMAIN_CLASS_ID,
+            CODED_VALUE_DOMAIN_CLASS_ID,
+            BIT_MASK_CODED_VALUE_DOMAIN_CLASS_ID,
+            [0x7d; 16],
+        ] {
+            let mut header = registered.to_vec();
+            header.extend(42_u32.to_le_bytes());
+            let mut refs = RefTable10_1::new();
+            read_object_entry_10_1(&mut Reader::new(&header), &mut refs).unwrap();
+            let before = refs.clone();
+
+            let supported = registered != [0x7d; 16];
+            let claimed = if supported {
+                [0x7d; 16]
+            } else {
+                RANGE_DOMAIN_CLASS_ID
+            };
+            header[..16].copy_from_slice(&claimed);
+            header.push(0xaa);
+            let mut reader = Reader::new(&header);
+            let result = read_domain_slot_10_1(&mut reader, 128, &mut refs);
+            assert_eq!(refs, before);
+            if supported {
+                let slot = result.unwrap();
+                assert_eq!(
+                    slot.entry,
+                    ObjectEntry10_1::BackReference {
+                        class_id: registered,
+                        key: 42,
+                    }
+                );
+                assert!(slot.body.is_none());
+                assert_eq!(reader.position(), 20);
+            } else {
+                assert_eq!(result.unwrap_err().kind(), ErrorKind::Unsupported);
+                assert_eq!(reader.position(), 0);
+            }
+        }
+    }
 
     #[test]
     fn bit_mask_domain_reads_bounded_labels_and_shares_their_key() {
