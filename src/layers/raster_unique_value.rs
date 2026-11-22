@@ -165,7 +165,8 @@ pub(super) fn read_raster_unique_value(
         .then(|| read_renderer_legend_item(r, max, table))
         .transpose()?;
     let mut classes = Vec::new();
-    for _ in 0..length(r, max, 8)? {
+    let class_count = long(r)?.max(0) as usize;
+    for _ in 0..check_length(r, class_count, max, 8)? {
         let raw_key = r.read_u32_le()?;
         let values = (0..length(r, max, 16)?)
             .map(|_| read_padded_variant_object_stream_10_1(r, max, table))

@@ -854,6 +854,7 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
         if legacy {
             bytes.extend([0; 16]); // ILegendItem。
         }
+        let class_count_offset = bytes.len();
         bytes.extend(1_i32.to_le_bytes()); // 类别数。
         bytes.extend(0xfe76_1234_u32.to_le_bytes());
         let value_count = bytes.len();
@@ -1131,6 +1132,20 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
                 slot.body,
                 Some(RasterRendererPrefix10_1::UniqueValue(body))
                     if body.legend_groups.is_empty() && !body.classes.is_empty()
+            ));
+            assert_eq!(reader.read_bytes(1).unwrap(), &[0x7e]);
+        }
+
+        if matches!(version, 1 | 3) {
+            let mut negative_classes = bytes.clone();
+            negative_classes.splice(class_count_offset..tail_object - 2, (-1_i32).to_le_bytes());
+            let mut reader = Reader::new(&negative_classes);
+            let mut refs = RefTable10_1::new();
+            let slot = read_raster_renderer_slot_prefix_10_1(&mut reader, 4096, &mut refs).unwrap();
+            assert!(matches!(
+                slot.body,
+                Some(RasterRendererPrefix10_1::UniqueValue(body))
+                    if body.classes.is_empty() && body.second_short == 9
             ));
             assert_eq!(reader.read_bytes(1).unwrap(), &[0x7e]);
         }
