@@ -89,7 +89,7 @@ pub(crate) fn read_table_name_body_10_1(
     let mut r = reader.clone();
     let mut refs = table.clone();
     let version = r.read_u16_le()?;
-    if version > 1 {
+    if (version as i16) > 1 {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
             "TableName 版本不支持",

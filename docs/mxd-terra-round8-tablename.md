@@ -59,8 +59,7 @@ TableName，不据此推断 UnknownDatasetName 或 ObjectClassName 的行为。
 `src/maps/standalone_table.rs` 对两个 IName 槽新增 TableName 类分派：版本、
 三字符串、IWorkspaceName 空槽/回引/新 WorkspaceName；未知工作空间对象在其
 头前停止且不登记该键，WorkspaceName 内部停止则向外传递。错误时游标和引用表
-整体回滚，资源限额沿用调用者值。读取器接受 0..=1 并拒绝负值位模式，较
-原生有符号版本门更严；不模拟 QI、对象创建或访问实际数据源。当前只接入
+整体回滚，资源限额沿用调用者值。读取器按有符号值判断版本上限，并保留版本字段的原始位模式。当前只接入
 StandaloneTable 名称槽，不能推广为所有 IDatasetName 宿主均支持 TableName。
 
 独立测试从 `/Maps` 根开始、共享引用表读取，按已有读取器到达首个表；其中部分
@@ -90,3 +89,12 @@ GdbCoreLib.dll 10.1.0.3035 的 `FdbDatasetName::Load`（`0x70d4e980`）
 原对象并请求接口。TableName 据已登记类判断回引；仅有键时继续保留
 该回引。合成测试覆盖两个类标识不一致的方向，验证停止位置和已登记键。
 ArcMap 10.1 与 QGIS 人工验收未进行。
+
+
+## TableName 版本门复核
+
+以 10.1.0.3035 的 GdbCoreLib.dll 复查 `0x70d4e9ab` 至
+`0x70d4ea0b`。`cmp word ptr [ebp+0xc],1` 后的有符号 `jle`
+直接进入三条字符串和 IWorkspaceName 的公共路径。合成独立表测试
+覆盖 -32768、-1、0、1、超限正值及后续字节位置。负版本实档及
+ArcMap 10.1、QGIS 人工验收尚未验证。

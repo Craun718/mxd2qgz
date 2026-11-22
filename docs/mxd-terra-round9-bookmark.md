@@ -19,7 +19,7 @@
 
 ## 实现与验证
 
-`map_surround` 中书签名称槽一次读取对象头并按空值、回引、FeatureClassName、TableName 分派；TableName 复用 `standalone_table::read_table_name_body_10_1`，该函数仅扩大为模块内可见。TableName 嵌套工作空间或其子对象未读完时书签返回 Unsupported，整个书签游标和引用表回滚；不模拟原生实例创建、Open、QI 或数据源访问。由于限定修改范围，原先 `dataset_name_more` 的独立书签槽助手没有扩展；此新能力属于 FeatureBookmark 入口。TableName 读取器的版本限制同样比原生有符号门更严。
+`map_surround` 中书签名称槽一次读取对象头并按空值、回引、FeatureClassName、TableName 分派；TableName 复用 `standalone_table::read_table_name_body_10_1`，该函数仅扩大为模块内可见。TableName 嵌套工作空间或其子对象未读完时书签返回 Unsupported，整个书签游标和引用表回滚；不模拟原生实例创建、Open、QI 或数据源访问。由于限定修改范围，原先 `dataset_name_more` 的独立书签槽助手没有扩展；此新能力属于 FeatureBookmark 入口。TableName 版本门见[独立表名称取证](mxd-terra-round8-tablename.md#tablename-版本门复核)。
 
 `tests/terra_round9_bookmark.rs` 的合成测试覆盖 TableName 空工作空间、回引、新 WorkspaceName、嵌套未知对象停止、截断、版本及字符串限额，核对成功位置和失败事务回滚。专门测试 3 项通过；`cargo fmt --check` 通过；`cargo test --offline` 全量通过（794 项通过、16 项默认忽略）。
 

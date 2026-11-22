@@ -361,8 +361,28 @@ fn workspace_reference_dispatch_uses_the_registered_class() {
 }
 
 #[test]
+fn tablename_signed_versions_preserve_the_common_body_boundary() {
+    for version in [i16::MIN, -1, 0, 1] {
+        let mut data = fixture(&[0; 16]);
+        data[22..24].copy_from_slice(&version.to_le_bytes());
+        let end = data.len();
+        data.push(0xaa);
+        let mut reader = Reader::new(&data);
+        let mut refs = RefTable10_1::new();
+        let result = read_standalone_table_prefix_10_1(&mut reader, &mut refs, 100, 100).unwrap();
+        assert_eq!(result.stop, StandaloneTableStop10_1::Complete);
+        assert!(
+            matches!(result.dataset_name_body, Some(StandaloneNameBody10_1::TableName(body))
+            if body.version == version as u16 && matches!(body.workspace, WorkspaceNameEntry10_1::Null))
+        );
+        assert_eq!(reader.position(), end);
+        assert!(refs.contains(332));
+    }
+}
+
+#[test]
 fn tablename_version_limits_and_workspace_backreference() {
-    for version in [2u16, 0xffff] {
+    for version in [2_u16, i16::MAX as u16] {
         let mut data = fixture(&[0; 16]);
         data[22..24].copy_from_slice(&version.to_le_bytes());
         let mut r = Reader::new(&data);
