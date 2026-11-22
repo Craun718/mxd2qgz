@@ -299,7 +299,12 @@ fn read_relationship_slot(
     max_bytes: usize,
     table: &mut RefTable10_1,
 ) -> io::Result<RasterLayerRelationshipSlot10_1> {
-    let entry = read_object_entry_10_1(reader, table)?;
+    let mut entry = read_object_entry_10_1(reader, table)?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+        && let Some(registered) = table.registered_class(*key)
+    {
+        *class_id = registered;
+    }
     use RasterLayerRelationshipBody10_1::{MemoryRelationship, Relationship};
     let body = match entry {
         ObjectEntry10_1::Null | ObjectEntry10_1::BackReference { .. } => None,
@@ -834,7 +839,18 @@ pub(super) fn read_raster_layer_tail(
             .then(|| read_relationship_slot(&mut trial, max_bytes, &mut staged))
             .transpose()?;
         let objects = read_slots(&mut trial, &mut staged, "关联对象列表", |r, t| {
-            read_relationship_slot(r, max_bytes, t)
+            let slot = read_relationship_slot(r, max_bytes, t)?;
+            if let ObjectEntry10_1::BackReference { key, .. } = slot.entry
+                && t.registered_class(key).is_some_and(|class| {
+                    !matches!(
+                        class,
+                        RELATIONSHIP_CLASS_NAME_CLASS_ID | MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID
+                    )
+                })
+            {
+                return Err(unsupported("RasterLayer 关系名称列表回引的登记类不受支持"));
+            }
+            Ok(slot)
         })?;
         (name, objects)
     } else {
@@ -2228,6 +2244,32 @@ mod tests {
                 assert_eq!(reader.position(), 0);
                 assert!(refs.is_empty());
             }
+        }
+    }
+
+    #[test]
+    fn raster_relationship_list_checks_registered_class() {
+        for registered in [RELATIONSHIP_CLASS_NAME_CLASS_ID, ENVELOPE_CLASS_ID] {
+            let mut previous = registered.to_vec();
+            previous.extend(71_u32.to_le_bytes());
+            let mut refs = RefTable10_1::new();
+            read_object_entry_10_1(&mut Reader::new(&previous), &mut refs).unwrap();
+            let before = refs.clone();
+
+            let mut bytes = vec![0; 26 + 4 + 8 + 32 + 4];
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend(RELATIONSHIP_CLASS_NAME_CLASS_ID);
+            bytes.extend(71_u32.to_le_bytes());
+            let mut reader = Reader::new(&bytes);
+            let result = read_raster_layer_tail_10_1(&mut reader, 6, 4096, &mut refs);
+            if registered == RELATIONSHIP_CLASS_NAME_CLASS_ID {
+                assert_eq!(result.unwrap().related_objects.len(), 1);
+                assert_eq!(reader.position(), bytes.len());
+            } else {
+                assert_eq!(result.unwrap_err().kind(), ErrorKind::Unsupported);
+                assert_eq!(reader.position(), 0);
+            }
+            assert_eq!(refs, before);
         }
     }
 

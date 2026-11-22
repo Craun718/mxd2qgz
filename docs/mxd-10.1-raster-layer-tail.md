@@ -394,6 +394,12 @@ ArcMap/QGIS 实档行为尚待验证。
 条目才扣减。合成用例验证多个空体仍累计固定头，并覆盖逐条入口
 头部超限及恰好到限额。
 
+RasterLayer v6 的关系名称列表请求 IRelationshipClassName。依据同版
+SystemCore 在 `0x7ffd0063` 先查键再查询接口的规则，列表按登记类
+校验回引。其前面的可选 IName 槽仍使用各自的接口范围。构造 v6 验证
+关系名称回引到达图层尾部，误引 Envelope 时回滚。尚无相同组合的
+实档或 ArcMap/QGIS 人工验证。
+
 ## v8 起的 ExtraSafe 扩展列表
 
 RasterLayer.dll `0x7c73ded0` 读取 int32 数量后逐项调用
