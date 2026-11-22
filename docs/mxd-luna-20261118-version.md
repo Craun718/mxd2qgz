@@ -117,3 +117,25 @@ DocumentInfo 的 QI 命中该 IID 时返回完整对象 +0x18
 临时值置零并写出 4 字节。现有证据可确认字段宽度、读入位置与
 10.1 写出值，其早期业务含义仍未知。Rust 当前没有独立的 Metadata
 读取入口，本轮没有为此引入未验证的布局选择。
+
+### 旧式 Metadata 的字符串顺序
+
+以 PageLayout.dll 10.1.0.3035 的旧式写函数 `0x7b692e00` 为准，
+七次 AfCore String::Write 对应下表。属性名来自 esriCarto
+TypeInfo 744 的 IDocumentInfo2 公开槽。表中读取入口是
+DocumentInfo 虚表 `0x7b71cb24` 的 getter 经调整器到达的函数，
+成员偏移按完整对象表示。
+
+| 流顺序 | 成员 | 属性 | getter 函数 |
+| ---: | ---: | --- | --- |
+| 1 | +0x24 | DocumentTitle | `0x7b692340` |
+| 2 | +0x28 | Author | `0x7b6923e0` |
+| 3 | +0x2c | Comments | `0x7b692480` |
+| 4 | +0x30 | Subject | `0x7b692390` |
+| 5 | +0x34 | Category | `0x7b692430` |
+| 6 | +0x38 | Keywords | `0x7b6924d0` |
+| 7 | +0x40 | HyperlinkBase | `0x7b692520` |
+
+该布局在七串之后才按完整对象 +0x70 的版本值判断是否写两个
+4 字节尾字段。它只描述这个旧式入口，其他 Metadata 读写布局
+与原生运行仍需独立验证。
