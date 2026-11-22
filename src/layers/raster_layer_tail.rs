@@ -1844,10 +1844,10 @@ mod tests {
         first.extend(0_u32.to_le_bytes());
 
         for version in [3, 8] {
-            let build = |first_body: &[u8]| {
+            let build = |first_body: &[u8], second_body: &[u8]| {
                 let mut bytes = vec![0; 26];
                 bytes.extend(2_i32.to_le_bytes());
-                for (key, body) in [(81_u32, first_body), (82, second.as_slice())] {
+                for (key, body) in [(81_u32, first_body), (82, second_body)] {
                     if version == 3 {
                         bytes.extend((body.len() as u64).to_le_bytes());
                         bytes.extend(SERVER_LAYER_EXTENSION_CLASS_ID);
@@ -1864,7 +1864,9 @@ mod tests {
                 }
                 bytes
             };
-            let bytes = build(&first);
+            let mut reference = second.clone();
+            reference[2..18].copy_from_slice(&SERVER_LAYER_EXTENSION_CLASS_ID);
+            let bytes = build(&first, &reference);
             let mut reader = Reader::new(&bytes);
             let mut refs = RefTable10_1::new();
             let tail = read_raster_layer_tail_10_1(&mut reader, version, 4096, &mut refs).unwrap();
@@ -1889,7 +1891,10 @@ mod tests {
             assert_eq!(first_parsed.properties.body.as_ref().unwrap().count, 0);
             assert!(matches!(
                 parsed[1].unwrap().properties.entry,
-                ObjectEntry10_1::BackReference { key: 83, .. }
+                ObjectEntry10_1::BackReference {
+                    key: 83,
+                    class_id: PROPERTY_SET_CLASS_ID
+                }
             ));
             assert!(refs.contains(83));
             assert_eq!(reader.remaining(), 0);
@@ -1908,10 +1913,27 @@ mod tests {
                 assert_eq!(reader.remaining(), 0);
             }
 
+            reference[18..22].copy_from_slice(&84_u32.to_le_bytes());
+            let mut existing = SERVER_LAYER_EXTENSION_CLASS_ID.to_vec();
+            existing.extend(84_u32.to_le_bytes());
+            let mut refs = RefTable10_1::new();
+            read_object_entry_10_1(&mut Reader::new(&existing), &mut refs).unwrap();
+            let invalid = build(&first, &reference);
+            let mut reader = Reader::new(&invalid);
+            assert_eq!(
+                read_raster_layer_tail_10_1(&mut reader, version, 4096, &mut refs)
+                    .unwrap_err()
+                    .kind(),
+                io::ErrorKind::Unsupported
+            );
+            assert_eq!(reader.position(), 0);
+            assert_eq!(refs.len(), 1);
+            assert!(refs.contains(84));
+
             let mut too_long = first.clone();
             too_long.push(0);
             for body in [&first[..first.len() - 1], too_long.as_slice()] {
-                let bytes = build(body);
+                let bytes = build(body, &second);
                 let mut reader = Reader::new(&bytes);
                 let mut refs = RefTable10_1::new();
                 assert!(

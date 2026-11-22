@@ -482,6 +482,12 @@ ExtraSafe 跨条目的嵌套键回引。
 
 ServerLayerExtension（CLSID `F7FD0EC9-F215-4E7F-B1F8-94BA0EB603B9`）由 LayerLib 在 `0x786c2d16` 创建。MapServer.dll 10.1.0.3035（SHA-256 `1da625c8b314283b9fed35b3118d1637bf7dade21a973cadc78173000edd0270`）的主 QI `0x79dcb320` 将 IPersistStream 映射至 `+0x14`。GetClassID `0x79dcb5e0` 和虚表 `0x79df65ec` 对位 Load/Save `0x79dcb620 / 0x79dcb6a0`。体为版本 short（≤1）和 IPropertySet 普通对象槽（IID `F0BA6ABC-8E9F-11D0-B4AB-0000F8037368`，常量 `0x79df6634`）。两代 RasterLayer 扩展及共享 LayerLib 扩展读取器都按声明长度读取，保留属性集的新键与回引。构造测试验证两种包装内跨条目回引、对象体截断和多余字节回滚。
 
+ServerLayerExtension 的属性回引沿用同版 SystemCore 的按键查询规则
+（`0x7ffd0063`）。结合 MapServer Load `0x79dcb620` 请求的
+IPropertySet，读取器按登记实例的类校验回引。两种构造包装均验证头部
+CLSID 不同而登记类匹配时恢复登记类，以及错引其他类时回滚整段。
+ArcMap 真实扩展宿主尚未验证。
+
 ### RepresentationLayerExtension
 
 10.1 介质注册该类为 `DE7C3791-49E4-48EA-BFE3-7363DD47CD49`。

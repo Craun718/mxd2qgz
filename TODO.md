@@ -943,6 +943,7 @@
 - [x] 修正普通 RasterLayer 完整性检查漏判 DynamicTiledLayerProperties。[入口复核](docs/mxd-10.1-raster-layer-tail.md#独立-propertyset-扩展与普通图层入口)
 - [x] 接入 RasterLayer 两代扩展列表的 EditTemplateManager，并登记嵌套 EditTemplate 键，见 [扩展对象体取证](docs/mxd-10.1-raster-layer-tail.md#扩展对象体与嵌套键)。
 - [x] 接入 RasterLayer 两代扩展列表的 ServerLayerExtension，并登记其 IPropertySet 对象键。
+- [x] 按登记实例校验两代 RasterLayer 扩展中 ServerLayerExtension 的 IPropertySet 回引。[接口证据](docs/mxd-10.1-raster-layer-tail.md#扩展对象体与嵌套键)
 - [x] 接入两代 RasterLayer 扩展列表及旧式扩展宿主的 RepresentationLayerExtension 版本体，见 [原生取证](docs/mxd-10.1-raster-layer-tail.md#representationlayerextension)。
 - [x] 接入 RouteLayerExtension、两个属性子对象及其过滤器和符号键，见 [路线扩展取证](docs/mxd-10.1-raster-layer-tail.md#routelayerextension)。
 - [x] 接入 HatchLayerExtension 的 HatchClass、HatchTemplate、线及标记定义和嵌套引用键，见 [刻度扩展取证](docs/mxd-10.1-raster-layer-tail.md#hatchlayerextension)。

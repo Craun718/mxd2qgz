@@ -7,7 +7,7 @@ use super::scene_layer_properties::{
 use super::hatch_layer_extension::{
     HATCH_LAYER_EXTENSION_CLASS_ID, HatchLayerExtension10_1, read_bounded_hatch_layer_extension,
 };
-use super::image_server_rules::{RuleSlot10_1, slot, unsupported_class};
+use super::image_server_rules::{RuleSlot10_1, check_rule_reference, slot, unsupported_class};
 use super::route_layer_extension::{
     ROUTE_LAYER_EXTENSION_CLASS_ID, RouteLayerExtension10_1, read_bounded_route_layer_extension,
 };
@@ -218,7 +218,7 @@ pub(super) fn read_server_layer_extension(
             format!("ServerLayerExtension 未支持版本 {version}"),
         ));
     }
-    let properties = slot(r, refs, |r, refs, class, _| {
+    let mut properties = slot(r, refs, |r, refs, class, _| {
         if class != PROPERTY_SET_CLASS_ID {
             return Err(unsupported_class(
                 "ServerLayerExtension IPropertySet",
@@ -227,6 +227,12 @@ pub(super) fn read_server_layer_extension(
         }
         read_property_set_object_stream_10_1(r, max, refs)
     })?;
+    check_rule_reference(
+        &mut properties.entry,
+        refs,
+        "ServerLayerExtension IPropertySet",
+        |class| class == PROPERTY_SET_CLASS_ID,
+    )?;
     Ok(ServerLayerExtension10_1 {
         version,
         properties,
