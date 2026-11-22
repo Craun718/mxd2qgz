@@ -209,14 +209,13 @@ fn read_bit_mask_values(
     } else {
         read_string_array_slot_10_1(&mut region, max_bytes, refs)?
     };
-    // 非空数组逐项与第一个 int32 数量对应，回引的标签保留在原对象上。
+    // 原生按声明计数取标签；额外标签仍保留为存盘内容。
     let saved_count = match &labels.body {
         Some((_, strings)) => Some(strings.len()),
         None if labels.entry == ObjectEntry10_1::Null => Some(0),
         None => None,
     };
-    if region.remaining() != 0 || count < 0 || saved_count.is_some_and(|len| len != count as usize)
-    {
+    if region.remaining() != 0 || count < 0 || saved_count.is_some_and(|len| len < count as usize) {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
             "BitMaskCodedValueDomain 的标签数量或 ExtraSafe 边界不符",
@@ -349,8 +348,37 @@ mod tests {
         assert_eq!(reader.position(), 0);
         assert!(refs.is_empty());
 
+        // 第二个值域引用同一标签数组，只从其中取一个标签。
+        let mut reference = bytes[..count_offset].to_vec();
+        reference[16..20].copy_from_slice(&83_u32.to_le_bytes());
+        reference.extend(1_i32.to_le_bytes());
+        reference.extend(20_u32.to_le_bytes());
+        reference.extend(0_u32.to_le_bytes());
+        reference.extend(STR_ARRAY_CLASS_ID);
+        reference.extend(82_u32.to_le_bytes());
+        read_domain_slot_10_1(&mut Reader::new(&bytes), 4096, &mut refs).unwrap();
+        let mut reader = Reader::new(&reference);
+        let body = read_domain_slot_10_1(&mut reader, 4096, &mut refs)
+            .unwrap()
+            .body
+            .unwrap();
+        assert_eq!(body.long_before_values, 1);
+        assert!(
+            matches!(body.values, DomainValues10_1::BitMask { labels, .. }
+            if labels.body == Some((1, vec!["甲".to_owned(), "乙".to_owned()])))
+        );
+        assert_eq!(reader.position(), reference.len());
+
+        reference[count_offset..count_offset + 4].copy_from_slice(&3_i32.to_le_bytes());
+        reference[16..20].copy_from_slice(&84_u32.to_le_bytes());
+        let mut reader = Reader::new(&reference);
+        let before = refs.clone();
+        assert!(read_domain_slot_10_1(&mut reader, 4096, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert_eq!(refs, before);
+
         let mut wrong_count = bytes.clone();
-        wrong_count[count_offset..count_offset + 4].copy_from_slice(&1_i32.to_le_bytes());
+        wrong_count[count_offset..count_offset + 4].copy_from_slice(&3_i32.to_le_bytes());
         for input in (0..end)
             .map(|cut| &bytes[..cut])
             .chain([wrong_count.as_slice()])
