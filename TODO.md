@@ -244,6 +244,7 @@
   - [ ] 补齐栅格唯一值类别及统计集合内其他新对象类的 Variant 体分派。
   - [x] 接入 ObjectStream Variant 中的 UniqueValues 对象体。
   - [x] 验证 ObjectStream Variant 中 StatsHistogram 对象体的边界及截断回滚。
+  - [x] 按 10.1 Load 的有符号版本上限读取 StatsHistogram。
   - [x] 按登记类校验 RasterInfo 的统计、直方图与色表槽回引。
   - [x] 接入 ObjectStream Variant 中的 RasterUniqueValueColors 对象体。
   - [x] 复核 RasterUniqueValueColors 的 v1 版本门及 Variant 回滚。

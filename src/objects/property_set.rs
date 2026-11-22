@@ -1759,6 +1759,41 @@ mod tests {
     }
 
     #[test]
+    fn variant_stats_histogram_legacy_versions_end_after_fixed_buckets() {
+        let mut bytes = 13_u16.to_le_bytes().to_vec();
+        bytes.extend([0; 14]);
+        object(&mut bytes, STATS_HISTOGRAM_CLASS_ID, 11);
+        let version_offset = bytes.len();
+        bytes.extend([0; 4 + 48 + 256 * 8]);
+        let end = bytes.len();
+        bytes.push(0xaa);
+
+        for version in [i32::MIN, -1, 0, 1] {
+            bytes[version_offset..version_offset + 4].copy_from_slice(&version.to_le_bytes());
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let value =
+                read_padded_variant_object_stream_10_1(&mut reader, 4096, &mut refs).unwrap();
+            assert!(matches!(
+                value,
+                PropertyValueObjectStream10_1::Raster { body, .. }
+                    if matches!(body.as_ref(), RasterVariantBody10_1::StatsHistogram(histogram)
+                        if histogram.version == version && histogram.bins.len() == 256
+                            && histogram.double_a.is_none())
+            ));
+            assert_eq!(reader.position(), end);
+            assert!(refs.contains(11));
+        }
+
+        bytes[version_offset..version_offset + 4].copy_from_slice(&6_i32.to_le_bytes());
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        assert!(read_padded_variant_object_stream_10_1(&mut reader, 4096, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+
+    #[test]
     fn variant_stats_histogram_commits_only_complete_body() {
         use crate::layers::raster_renderer::STATS_HISTOGRAM_CLASS_ID;
 

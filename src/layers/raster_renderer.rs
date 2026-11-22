@@ -804,7 +804,7 @@ pub(crate) fn read_stats_histogram_body_10_1(
     reader: &mut Reader<'_>,
 ) -> io::Result<RasterHistogram10_1> {
     let version = signed_long(reader)?;
-    if !(1..=5).contains(&version) {
+    if version > 5 {
         return Err(invalid(format!("未支持的 StatsHistogram 版本 {version}")));
     }
     let mut statistics = [0.0; 6];
