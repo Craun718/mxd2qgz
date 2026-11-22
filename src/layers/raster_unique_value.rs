@@ -340,7 +340,25 @@ pub(super) fn read_renderer_legend_item(
     Ok(match read_object_entry_10_1(r, table)? {
         ObjectEntry10_1::Null => LegendItemSlot10_1::Null,
         ObjectEntry10_1::BackReference { class_id, key } => {
-            LegendItemSlot10_1::BackReference { class_id, key }
+            let registered = table.registered_class(key);
+            if registered.is_some_and(|id| {
+                !matches!(
+                    id,
+                    HORIZONTAL_LEGEND_ITEM_CLASS_ID
+                        | HORIZONTAL_BAR_LEGEND_ITEM_CLASS_ID
+                        | NESTED_LEGEND_ITEM_CLASS_ID
+                        | VERTICAL_LEGEND_ITEM_CLASS_ID
+                )
+            }) {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!("ILegendItem 回引键 {key} 的登记类不受支持"),
+                ));
+            }
+            LegendItemSlot10_1::BackReference {
+                class_id: registered.unwrap_or(class_id),
+                key,
+            }
         }
         ObjectEntry10_1::NewObject {
             class_id: HORIZONTAL_LEGEND_ITEM_CLASS_ID,
@@ -425,6 +443,38 @@ pub(crate) fn read_unique_values_body(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legend_item_reference_checks_registered_class() {
+        use crate::objects::display_color::RGB_COLOR_CLASS_ID;
+
+        for registered in [HORIZONTAL_LEGEND_ITEM_CLASS_ID, RGB_COLOR_CLASS_ID] {
+            let mut previous = registered.to_vec();
+            previous.extend(72_u32.to_le_bytes());
+            let mut refs = RefTable10_1::new();
+            read_object_entry_10_1(&mut Reader::new(&previous), &mut refs).unwrap();
+            let before = refs.clone();
+
+            let mut bytes = VERTICAL_LEGEND_ITEM_CLASS_ID.to_vec();
+            bytes.extend(72_u32.to_le_bytes());
+            bytes.push(0xaa);
+            let mut reader = Reader::new(&bytes);
+            let result = read_renderer_legend_item(&mut reader, 128, &mut refs);
+            if registered == HORIZONTAL_LEGEND_ITEM_CLASS_ID {
+                assert_eq!(
+                    result.unwrap(),
+                    LegendItemSlot10_1::BackReference {
+                        class_id: registered,
+                        key: 72,
+                    }
+                );
+                assert_eq!(reader.read_bytes(1).unwrap(), &[0xaa]);
+            } else {
+                assert_eq!(result.unwrap_err().kind(), ErrorKind::Unsupported);
+            }
+            assert_eq!(refs, before);
+        }
+    }
 
     #[test]
     fn legacy_colors_slot_checks_the_registered_class() {
