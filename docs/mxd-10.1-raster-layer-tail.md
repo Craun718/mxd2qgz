@@ -264,7 +264,10 @@ String、IWorkspaceName，再依次读取 v2 起的 short、v3 起的 int32
 和 v4 起的 IStringArray。IStringArray 的 IID 在 `0x7a5ff048`，
 与介质 esriSystem.tlb 的 TypeInfo 94 一致。Save `0x7a3f5c80` 的
 目标版本表位于 `0x7a5f8754`，可写版本为 2、4，v4 追加 int32
-和字符串数组。Rust 对超出已支持版本范围的值保留原槽位并报告停止。
+和字符串数组。Load 在 `0x7a3f5b64 / 0x7a3f5b69` 以 `cmpw / jle` 接受有符号
+short ≤4，并在 `0x7a3f5bcb`、`0x7a3f5beb`、`0x7a3f5c25` 以
+有符号 `jl` 跳过尚未引入的字段。Rust 保留原始版本位模式，正版本
+超限时保留原槽位并报告停止。
 
 SystemCore.dll 10.1.0.3035 的 StrArray
 `{A7F92065-36CE-47B6-A463-4763DA947CC2}` 使用 IPersistStream 表
@@ -329,6 +332,10 @@ short 版本、六条 AfCore String、int32、IWorkspaceName、IName。
 v2 起追加一条 String，v3 起再追加一条 String，v4 起追加 IGeodataXform。
 读侧三个请求 IID 分别在 `0x78031e64`、`0x78030630`、`0x78031e54`。
 Save 版本表 `0x7802ca7c` 的有效项为 1、3、4。
+objdump 显示 `0x78012bdf / 0x78012be4` 以 `cmpw / jle` 接受有符号
+short ≤4，`0x78012caa`、`0x78012cbf`、`0x78012cd4` 的有符号
+`jl` 控制后缀。两类名称均用构造数据验证负值、零、正版本 5
+和后继图层字段边界。负值版本的真实旧档尚未在 ArcMap 中验证。
 ImageServer.dll 中 ImageServerName 的 QI `0x77f4f4e0` 使用
 `0x77f9b200` 处的 IName IID，解析复用
 [已证的 ImageServerName 体](mxd-10.1-image-server-layer-tail.md#imageservername-对象体)。

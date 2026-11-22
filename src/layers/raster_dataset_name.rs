@@ -994,7 +994,7 @@ fn read_is_raster_dataset_name(
     table: &mut RefTable10_1,
     child_depth: usize,
 ) -> io::Result<IsRasterDatasetName10_1> {
-    let version = reader.read_u16_le()?;
+    let version = reader.read_u16_le()? as i16;
     if version > 4 {
         return Err(io::Error::new(
             io::ErrorKind::Unsupported,
@@ -1006,7 +1006,7 @@ fn read_is_raster_dataset_name(
         *string = read_string_10_1(reader, max)?;
     }
     Ok(IsRasterDatasetName10_1 {
-        version,
+        version: version as u16,
         strings,
         long_44: reader.read_u32_le()? as i32,
         workspace: read_complete_workspace_slot(reader, max, table, "ISRasterDatasetName")?,
@@ -1214,7 +1214,7 @@ fn read_mosaic_dataset_name(
     max: usize,
     table: &mut RefTable10_1,
 ) -> io::Result<MosaicDatasetName10_1> {
-    let version = reader.read_u16_le()?;
+    let version = reader.read_u16_le()? as i16;
     if version > 4 {
         return Err(io::Error::new(
             io::ErrorKind::Unsupported,
@@ -1222,7 +1222,7 @@ fn read_mosaic_dataset_name(
         ));
     }
     Ok(MosaicDatasetName10_1 {
-        version,
+        version: version as u16,
         strings: [
             read_string_10_1(reader, max)?,
             read_string_10_1(reader, max)?,

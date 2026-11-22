@@ -1653,7 +1653,7 @@ mod tests {
         use crate::objects::geodata_xform::IDENTITY_XFORM_CLASS_ID;
         use crate::objects::property_set::PROPERTY_SET_CLASS_ID;
 
-        for version in 1_u16..=4 {
+        for version in [i16::MIN, -1, 0, 1, 2, 3, 4] {
             let mut bytes = body_prefix(1, 1);
             let start = bytes.len();
             bytes.extend(IS_RASTER_DATASET_NAME_CLASS_ID);
@@ -1687,6 +1687,16 @@ mod tests {
             bytes.extend(encoded_string("图层后缀"));
             let end = bytes.len();
             bytes.extend([0; 16 + 22]);
+            let mut unsupported = bytes.clone();
+            unsupported[start + 20..start + 22].copy_from_slice(&5_u16.to_le_bytes());
+            let mut unsupported_reader = Reader::new(&unsupported);
+            let mut unsupported_refs = RefTable10_1::new();
+            let unsupported_result =
+                read_bounded_raster_body_10_1(&mut unsupported_reader, 4096, &mut unsupported_refs)
+                    .unwrap();
+            assert!(unsupported_result.names_stop.is_some());
+            assert_eq!(unsupported_reader.position(), start);
+            assert!(unsupported_refs.is_empty());
             let mut reader = Reader::new(&bytes);
             let mut refs = RefTable10_1::new();
             let result = read_bounded_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
@@ -1701,6 +1711,7 @@ mod tests {
             };
             assert_eq!(server.text, "影像服务");
             assert!(server.new_properties.is_some());
+            assert_eq!(name.version, version as u16);
             assert_eq!(name.long_44, 7);
             assert_eq!(
                 name.string_50.as_deref(),
@@ -2221,7 +2232,7 @@ mod tests {
         use super::super::raster_dataset_name::MOSAIC_DATASET_NAME_CLASS_ID;
         use crate::objects::string_array::STR_ARRAY_CLASS_ID;
 
-        for version in 1_u16..=4 {
+        for version in [i16::MIN, -1, 0, 1, 2, 3, 4] {
             let mut bytes = body_prefix(1, 1);
             let name_start = bytes.len();
             bytes.extend(MOSAIC_DATASET_NAME_CLASS_ID);
@@ -2265,6 +2276,9 @@ mod tests {
                 assert_eq!(reader.position(), name_start);
                 assert!(refs.is_empty());
             };
+            let mut unsupported = bytes.clone();
+            unsupported[name_start + 20..name_start + 22].copy_from_slice(&5_u16.to_le_bytes());
+            assert_rollback(&unsupported);
             for cut in name_start..name_end {
                 assert_rollback(&bytes[..cut]);
             }
@@ -2281,7 +2295,7 @@ mod tests {
             let Some(RasterDatasetNameEntryBody10_1::Mosaic(name)) = &parsed.names[0].body else {
                 panic!("预期 MosaicDatasetName");
             };
-            assert_eq!(name.version, version);
+            assert_eq!(name.version, version as u16);
             assert_eq!(name.strings, ["镶嵌数据集", "数据表"]);
             let source = parsed.names[0].source_reference.as_ref().unwrap();
             assert_eq!(source.name.as_ref(), "镶嵌数据集");
