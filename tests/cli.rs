@@ -280,3 +280,39 @@ fn parse_merges_version_candidates_into_report() {
     assert!(output.contains("Version candidate: 识别失败"), "{output}");
     assert!(output.contains("Frame count candidate: 1"), "{output}");
 }
+
+#[test]
+fn parse_reports_metadata_without_losing_map_output() {
+    let fixture = Fixture::new();
+    let mut valid = 3_u16.to_le_bytes().to_vec();
+    let empty_string = [2, 0, 0, 0, 0, 0];
+    valid.extend(empty_string.repeat(6));
+    valid.extend(0_u32.to_le_bytes());
+    valid.extend(empty_string.repeat(4));
+    valid.extend([0; 24]);
+    valid.extend(1_u32.to_le_bytes());
+    for (name, metadata, note) in [
+        (
+            "metadata-v3.mxd",
+            valid.as_slice(),
+            "/Metadata：对象版本 3；相对路径标志 启用",
+        ),
+        (
+            "metadata-truncated.mxd",
+            &valid[..valid.len() - 1],
+            "无法解析 /Metadata",
+        ),
+    ] {
+        let path = stream_fixture(&fixture.0, name, &maps_stream_10_1());
+        let mut document = cfb::open_rw(path).unwrap();
+        document
+            .create_stream("/Metadata")
+            .unwrap()
+            .write_all(metadata)
+            .unwrap();
+        drop(document);
+        let output = success(fixture.run(&["parse", name]));
+        assert!(output.contains(note), "{output}");
+        assert!(output.contains("Frame count candidate: 1"), "{output}");
+    }
+}
