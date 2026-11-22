@@ -848,6 +848,7 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
         if legacy {
             bytes.extend(17_i32.to_le_bytes());
         }
+        let legend_count_offset = bytes.len();
         bytes.extend(1_i32.to_le_bytes()); // 一个空 ILegendGroup 槽。
         bytes.extend([0; 16]);
         if legacy {
@@ -1116,6 +1117,23 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
                 2
             }
         );
+
+        if matches!(version, 1 | 3) {
+            let mut negative_groups = bytes.clone();
+            negative_groups.splice(
+                legend_count_offset..legend_count_offset + 20,
+                i32::MIN.to_le_bytes(),
+            );
+            let mut reader = Reader::new(&negative_groups);
+            let mut refs = RefTable10_1::new();
+            let slot = read_raster_renderer_slot_prefix_10_1(&mut reader, 4096, &mut refs).unwrap();
+            assert!(matches!(
+                slot.body,
+                Some(RasterRendererPrefix10_1::UniqueValue(body))
+                    if body.legend_groups.is_empty() && !body.classes.is_empty()
+            ));
+            assert_eq!(reader.read_bytes(1).unwrap(), &[0x7e]);
+        }
 
         let assert_rollback = |input: &[u8]| {
             let mut reader = Reader::new(input);

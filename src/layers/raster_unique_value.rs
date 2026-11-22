@@ -157,7 +157,8 @@ pub(super) fn read_raster_unique_value(
     }
     let label = read_string_10_1(r, max)?;
     let before_groups = legacy.then(|| long(r)).transpose()?;
-    let legend_groups = (0..length(r, max, 16)?)
+    let legend_count = long(r)?.max(0) as usize;
+    let legend_groups = (0..check_length(r, legend_count, max, 16)?)
         .map(|_| read_renderer_legend_group(r, max, table))
         .collect::<io::Result<_>>()?;
     let legend_item = legacy
