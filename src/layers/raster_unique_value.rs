@@ -273,7 +273,10 @@ pub(crate) fn read_legacy_colors_body(
         } else {
             RasterUniqueValueColorKey10_1::Number(r.read_f64_le()?)
         };
-        let colors = (0..length(r, max, 4)?)
+        // 原生读取器用有符号比较进入颜色循环，负数和零均为空列表。
+        let color_count = long(r)?.max(0) as usize;
+        let color_count = check_length(r, color_count, max, 4)?;
+        let colors = (0..color_count)
             .map(|_| r.read_u32_le())
             .collect::<io::Result<_>>()?;
         entries.push(RasterUniqueValueColorEntry10_1 { value, colors });
@@ -454,6 +457,29 @@ mod tests {
                 assert_eq!(result.unwrap_err().kind(), ErrorKind::Unsupported);
             }
             assert_eq!(table, before);
+        }
+    }
+
+    #[test]
+    fn legacy_color_counts_follow_signed_inner_loop() {
+        for empty_count in [0_i32, -1, i32::MIN] {
+            let mut bytes = Vec::new();
+            for field in [1_i32, 2, 0] {
+                bytes.extend(field.to_le_bytes());
+            }
+            bytes.extend(1.0_f64.to_le_bytes());
+            bytes.extend(empty_count.to_le_bytes());
+            bytes.extend(2.0_f64.to_le_bytes());
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend(7_u32.to_le_bytes());
+            let end = bytes.len();
+            bytes.push(0xaa);
+
+            let mut reader = Reader::new(&bytes);
+            let body = read_legacy_colors_body(&mut reader, 128).unwrap();
+            assert!(body.entries[0].colors.is_empty());
+            assert_eq!(body.entries[1].colors, [7]);
+            assert_eq!(reader.position(), end);
         }
     }
 
