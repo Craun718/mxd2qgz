@@ -99,3 +99,12 @@ DocumentInfo 的 QI 命中该 IID 时返回完整对象 +0x18
 因此旧版分类决定是否更新 DocumentInfo，两个文档布局各自的流内
 值决定更新为 0 还是 1。上述路径以主读取器成功及后续调用分支命中为
 前提，未在目标软件中执行验证。
+
+10.1 esriCarto 类型库 TypeInfo 744（IID
+`D3E5C54F-2A84-11D4-9FF2-00C04F6BC78E`）的 MSFT 函数记录将
++0x54/+0x58 定名为 `IDocumentInfo2.RelativePaths` 的 get/put。
+读槽 `0x7b692610` 将完整对象 +0x4c 的非零值转换为
+`VARIANT_TRUE`（-1）；写槽 `0x7b692640` 将 -1 存为 1，
+其余输入存为 0。由此可将旧式 Metadata 尾部首个 4 字节成员
+定名为相对路径标志。该结论来自本地类型库与 PE 交叉核对，
+未在 ArcMap 或 QGIS 中运行验证。
