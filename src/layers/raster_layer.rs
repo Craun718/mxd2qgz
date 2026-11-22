@@ -664,6 +664,25 @@ mod tests {
             body.extend(52_u32.to_le_bytes());
             body.extend(raster_with_empty_slots(raster, raster == 12));
 
+            if raster == 12 {
+                let mut unbounded = body.clone();
+                unbounded.extend([0xa5; 16]); // 外层流还有后继字段。
+                let mut reader = Reader::new(&unbounded);
+                let mut refs = RefTable10_1::new();
+                refs.register(5);
+                let before = refs.clone();
+                let error = crate::layers::wcs_layer::read_wcs_layer_body_10_1(
+                    &mut reader,
+                    4096,
+                    &mut refs,
+                    false,
+                )
+                .unwrap_err();
+                assert_eq!(error.kind(), io::ErrorKind::Unsupported);
+                assert_eq!(reader.position(), 0);
+                assert_eq!(refs, before);
+            }
+
             let mut truncated = Reader::new(&body[..body.len() - 1]);
             let mut refs = RefTable10_1::new();
             refs.register(5);

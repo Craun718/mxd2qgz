@@ -1309,3 +1309,14 @@ IName 请求读取名称。SystemCore 同版本的回引路径在 `0x7ffd0063`
 零名称计数不能用于推出一个成功的普通 v12 无尾布局。
 普通 v12 的成功路径仍需要可证的数据源打开结果或独立宿主边界。
 本次为静态核对，ArcMap 10.1 和 QGIS 人工验收未进行。
+
+### v12 直接宿主的边界传播
+
+普通图层分派和无界 WCSLayer 进入 `read_inline_raster_body_10_1`。
+RasterLayer.dll 10.1.0.3035 的 WCSLayer Load 在底层普通对象槽后结束，
+所以 WCSLayer 带 ExtraSafe 外界时，剩余区间可作为子 RasterLayer 的边界。
+GlobeHeightProperties 的图层本身带 ExtraSafe 尺寸，Map 和 GroupLayer
+的有界图层条目也直接传递声明区间。普通图层分派会被多个宿主共用，
+其 Reader 的剩余字节可能包含其他对象与父字段。合成 WCSLayer 用例
+验证同一 v12 子体在有界路径中读完，在无界路径中保留游标和引用表。
+普通 v12 的数据源打开结果仍待取证，ArcMap 10.1 与 QGIS 人工验收未进行。
