@@ -1802,6 +1802,7 @@ mod tests {
                 bytes.extend(12_i32.to_le_bytes());
                 bytes.extend([0; 16]); // 旧版 IName。
             }
+            let function_offset = bytes.len();
             bytes.extend(IDENTITY_FUNCTION_CLASS_ID);
             bytes.extend(81_u32.to_le_bytes());
             bytes.extend(1_u16.to_le_bytes());
@@ -1889,6 +1890,16 @@ mod tests {
             assert_eq!(refs.contains(83), version >= 3);
             assert!(result.tail.is_some());
             assert_eq!(reader.remaining(), 0);
+            let mut wrong = bytes.clone();
+            wrong[function_offset + 16..function_offset + 20]
+                .copy_from_slice(&80_u32.to_le_bytes());
+            let mut reader = Reader::new(&wrong);
+            let mut refs = RefTable10_1::new();
+            let result = read_bounded_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+            assert!(result.names.is_empty());
+            assert_eq!(reader.position(), start);
+            assert!(refs.is_empty());
+
             for cut in start..end {
                 let mut reader = Reader::new(&bytes[..cut]);
                 let mut refs = RefTable10_1::new();

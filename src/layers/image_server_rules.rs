@@ -525,7 +525,7 @@ pub(super) fn read_arguments(
     })
 }
 
-fn check_rule_reference(
+pub(super) fn check_rule_reference(
     entry: &mut ObjectEntry10_1,
     refs: &RefTable10_1,
     label: &str,

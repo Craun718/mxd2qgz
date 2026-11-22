@@ -22,7 +22,7 @@ use super::image_server_layer_tail::{
 };
 use super::image_server_rules::{
     RasterFunctionArgumentsBody10_1, RasterFunctionBody10_1, RasterTemplateInput10_1, RuleSlot10_1,
-    read_function, read_input_body, slot,
+    check_rule_reference, function_max_version, read_function, read_input_body, slot,
 };
 use super::raster_layer_tail::{RasterLayerEnvelopeSlot10_1, read_envelope_slot};
 use super::raster_renderer::{raster_io_record, read_raster_io_end};
@@ -913,8 +913,11 @@ fn read_function_raster_dataset_name(
             })
         })
         .transpose()?;
-    let function = slot(reader, table, |r, refs, class_id, _| {
+    let mut function = slot(reader, table, |r, refs, class_id, _| {
         read_function(r, max, refs, class_id, child_depth)
+    })?;
+    check_rule_reference(&mut function.entry, table, "IRasterFunction", |id| {
+        function_max_version(id).is_some()
     })?;
     let input_count = (version >= 2)
         .then(|| reader.read_u32_le().map(|n| n as i32))

@@ -349,6 +349,10 @@ String。输入槽从 v2 起先读 int32 数量，正值按数量读 IUnknown；
 `0x6fd40994` 的 IID 对位。Save `0x6fc9e110` 的 `0x6fd3f4b0`
 版本表提供 v7。
 
+IRasterFunction 槽沿用 SystemCore 同版 `0x7ffd0063` 的查键和
+接口查询顺序。构造 v1、v4、v7 误引宿主名称的自身键时，在名称
+对象起点停止并撤销登记。此回引尚无实档或人工验证。
+
 函数及已知参数复用 [IdentityFunction、CachedRasterFunctionArguments 读取器](mxd-10.1-image-server-rules.md#非空栅格函数与参数)。
 输入槽另按 CLSID 分派已知栅格名称，属性集与几何槽复用对应读取器。
 合成 v1、v4、v7 覆盖旧版单输入、零计数回退、正计数和键回引，
