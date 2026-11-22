@@ -323,7 +323,10 @@ Load 在 `0x10069e03` 以有符号比较检查色值索引和当前类别的色�
 
 沿用已核验的 RasterRenderer.dll 10.1，补充 pyghidra 的旧 Load
 `0x7c97fde0` 并用 objdump 复核。Save 表 `0x7c9b10e4` 为
-`[3,4,4,4,6,9]`，Load 以 3 为分界；读取器支持已对位的 1–9。
+`[3,4,4,4,6,9]`。Load 在 `0x7c97f119` 以有符号版本 3 为分界，
+旧体在 `0x7c97fe2e` 拒绝低于 1 的值。RasterIO 路径未设上限，
+在 `0x7c97f626` 对版本 ≥9 读取最后一对 double。构造版本 10 与最大
+int32 验证该字段与共用体边界，尚无这些版本的实档或人工验证。
 
 - v1/v2：波段 int32、AfCore String、0x930 字节查找表、int32、double、
   int32×2、double，随后依次是 IColorRamp、IColor×2、ILegendGroup、

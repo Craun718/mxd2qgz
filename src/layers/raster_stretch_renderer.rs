@@ -222,7 +222,7 @@ pub(super) fn read_raster_stretch_renderer(
     table: &mut RefTable10_1,
 ) -> io::Result<RasterStretchRenderer10_1> {
     let version = long(r)?;
-    if !(1..=9).contains(&version) {
+    if version < 1 {
         return Err(invalid(format!(
             "未支持的 RasterStretchRenderer 版本 {version}"
         )));

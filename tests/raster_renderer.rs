@@ -1332,7 +1332,7 @@ fn raster_stretch_reads_versioned_records_and_raw_tail_before_end() {
         bytes.extend(class_id);
     }
 
-    for version in 1_i32..=9 {
+    for version in (1_i32..=10).chain([i32::MAX]) {
         let mut bytes = RASTER_STRETCH_RENDERER_CLASS_ID.to_vec();
         bytes.extend(91_u32.to_le_bytes());
         bytes.extend(version.to_le_bytes());
@@ -1359,7 +1359,7 @@ fn raster_stretch_reads_versioned_records_and_raw_tail_before_end() {
             record(&mut bytes, 4, &1.5_f64.to_le_bytes());
             record(&mut bytes, 5, &5_i32.to_le_bytes());
             record(&mut bytes, 6, &2.5_f64.to_le_bytes());
-            if version == 9 {
+            if version >= 9 {
                 obj(&mut bytes, 7, RANDOM_COLOR_RAMP_CLASS_ID);
                 bytes.extend(1_u16.to_le_bytes());
                 bytes.extend(0_u32.to_le_bytes()); // BSTR 码元数。
@@ -1370,8 +1370,8 @@ fn raster_stretch_reads_versioned_records_and_raw_tail_before_end() {
             bytes.extend(1_u16.to_le_bytes());
             bytes.extend(2_u16.to_le_bytes());
             text(&mut bytes, b'g'.into());
-            bytes.extend(i32::from(version == 9).to_le_bytes());
-            if version == 9 {
+            bytes.extend(i32::from(version >= 9).to_le_bytes());
+            if version >= 9 {
                 bytes.extend(LEGEND_CLASS_CLASS_ID);
                 bytes.extend(92_u32.to_le_bytes());
                 bytes.extend(1_u16.to_le_bytes());
@@ -1388,7 +1388,7 @@ fn raster_stretch_reads_versioned_records_and_raw_tail_before_end() {
                 .flat_map(f64::to_le_bytes)
                 .collect();
             record(&mut bytes, 13, &pair);
-            if version == 9 {
+            if version >= 9 {
                 obj(
                     &mut bytes,
                     17,
@@ -1409,9 +1409,9 @@ fn raster_stretch_reads_versioned_records_and_raw_tail_before_end() {
                 record(&mut bytes, 20, &83_i32.to_le_bytes());
                 sample_count = Some(bytes.len() + 8);
                 record(&mut bytes, 21, &1_i32.to_le_bytes());
-                record(&mut bytes, 22, &i32::from(version == 9).to_le_bytes());
+                record(&mut bytes, 22, &i32::from(version >= 9).to_le_bytes());
                 bytes.extend(9.5_f64.to_le_bytes());
-                if version == 9 {
+                if version >= 9 {
                     text(&mut bytes, '色' as u16);
                 }
             }
@@ -1421,7 +1421,7 @@ fn raster_stretch_reads_versioned_records_and_raw_tail_before_end() {
             if version >= 7 {
                 bytes.extend((-1_i32).to_le_bytes());
             }
-            if version == 9 {
+            if version >= 9 {
                 bytes.extend(&pair);
             }
             bytes.extend([0xff; 8]);
@@ -1439,6 +1439,7 @@ fn raster_stretch_reads_versioned_records_and_raw_tail_before_end() {
         let Some(RasterRendererPrefix10_1::Stretch(body)) = slot.body else {
             panic!("应读到栅格拉伸渲染器");
         };
+        assert_eq!(body.version, version);
         assert_eq!(
             (body.band, body.label.as_str(), body.stretch_type),
             (2, "s", 8)
@@ -1463,7 +1464,7 @@ fn raster_stretch_reads_versioned_records_and_raw_tail_before_end() {
                 assert_eq!(
                     io.extra.as_ref().map(|extra| &extra.values[..]),
                     (version >= 5)
-                        .then(|| if version == 9 {
+                        .then(|| if version >= 9 {
                             [(9.5, Some("色".into()))]
                         } else {
                             [(9.5, None)]
@@ -1473,8 +1474,8 @@ fn raster_stretch_reads_versioned_records_and_raw_tail_before_end() {
                 );
                 assert_eq!(io.pair_v6, (version >= 6).then_some([7.5, 8.5]));
                 assert_eq!(io.long_v7, (version >= 7).then_some(-1));
-                assert_eq!(io.pair_v9, (version == 9).then_some([7.5, 8.5]));
-                if version == 9 {
+                assert_eq!(io.pair_v9, (version >= 9).then_some([7.5, 8.5]));
+                if version >= 9 {
                     assert_eq!(io.ramp.as_ref().unwrap()[..16], RANDOM_COLOR_RAMP_CLASS_ID);
                     assert_eq!(io.color.as_ref().unwrap(), &[0; 16]);
                     assert_eq!(io.legend_group[..16], LEGEND_GROUP_CLASS_ID);
@@ -1486,8 +1487,8 @@ fn raster_stretch_reads_versioned_records_and_raw_tail_before_end() {
             }
         }
         assert_eq!(reader.read_bytes(1).unwrap(), [0x52]);
-        assert_eq!(refs.len(), if version == 9 { 2 } else { 1 });
-        assert_eq!(refs.contains(92), version == 9);
+        assert_eq!(refs.len(), if version >= 9 { 2 } else { 1 });
+        assert_eq!(refs.contains(92), version >= 9);
 
         let reject = |input: &[u8]| {
             let mut reader = Reader::new(input);
