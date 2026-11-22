@@ -351,7 +351,11 @@ pub(crate) fn read_raster_renderer_body_10_1(
             let legend_groups = (0..count(&mut trial, 16)?)
                 .map(|_| read_renderer_legend_group(&mut trial, max_bytes, &mut staged))
                 .collect::<io::Result<_>>()?;
-            let palette_values = (0..count(&mut trial, 4)?)
+            let palette_count = signed_long(&mut trial)?;
+            if palette_count < 0 {
+                return Err(invalid("色表渲染器色值计数为负"));
+            }
+            let palette_values = (0..bounded_count(&trial, palette_count, 4)?)
                 .map(|_| signed_long(&mut trial))
                 .collect::<io::Result<_>>()?;
             let mut tail_trial = trial.clone();

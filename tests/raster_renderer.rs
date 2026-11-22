@@ -116,6 +116,38 @@ fn raster_colormap_reads_native_version_thresholds() {
     }
 }
 
+#[test]
+fn raster_colormap_distinguishes_legend_and_palette_counts() {
+    use mxd2qgz::layers::raster_renderer::RASTER_COLORMAP_RENDERER_CLASS_ID;
+
+    for negative in [-1_i32, i32::MIN] {
+        let mut bytes = RASTER_COLORMAP_RENDERER_CLASS_ID.to_vec();
+        bytes.extend(71_u32.to_le_bytes());
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend(negative.to_le_bytes()); // 图例组数。
+        bytes.extend(0_i32.to_le_bytes()); // 色值数。
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend([0; 16]);
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let slot = read_raster_renderer_slot_prefix_10_1(&mut reader, 4096, &mut refs).unwrap();
+        assert!(slot.body.unwrap().is_complete());
+        assert_eq!(reader.position(), bytes.len());
+
+        bytes[28..32].copy_from_slice(&negative.to_le_bytes());
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        assert_eq!(
+            read_raster_renderer_slot_prefix_10_1(&mut reader, 4096, &mut refs)
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::InvalidData
+        );
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+}
+
 fn rgb(version: i32) -> (Vec<u8>, usize, usize) {
     let mut bytes = RASTER_RGB_RENDERER_CLASS_ID.to_vec();
     bytes.extend(71_u32.to_le_bytes());
