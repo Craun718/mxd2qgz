@@ -72,6 +72,15 @@ pub fn read_domain_slot_10_1(
     max_bytes: usize,
     refs: &mut RefTable10_1,
 ) -> io::Result<DomainSlot10_1> {
+    read_domain_slot_nested_10_1(reader, max_bytes, refs, 0)
+}
+
+pub(crate) fn read_domain_slot_nested_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<DomainSlot10_1> {
     let mut r = reader.clone();
     let mut staged = refs.clone();
     let entry = read_object_entry_10_1(&mut r, &mut staged)?;
@@ -82,7 +91,7 @@ pub fn read_domain_slot_10_1(
             max_bytes,
             &mut staged,
             class_id,
-            0,
+            depth,
         )?)),
     };
     *reader = r;

@@ -1,6 +1,6 @@
 //! ArcMap 10.1 GdbCore 的 Fields 和 Field 对象体；证据见 docs/mxd-10.1-fields.md。
 
-use crate::objects::domain::{DomainSlot10_1, read_domain_slot_10_1};
+use crate::objects::domain::{DomainSlot10_1, read_domain_slot_nested_10_1};
 use crate::objects::field_defs::{
     FieldDefinitionSlot10_1, GeometryDef10_1, RasterDef10_1, read_geometry_def_slot_10_1,
     read_raster_def_slot_10_1,
@@ -89,6 +89,15 @@ pub fn read_fields_body_10_1(
     max_bytes: usize,
     refs: &mut RefTable10_1,
 ) -> io::Result<FieldsBody10_1> {
+    read_fields_body_nested_10_1(reader, max_bytes, refs, 0)
+}
+
+pub(crate) fn read_fields_body_nested_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<FieldsBody10_1> {
     let mut r = reader.clone();
     let mut staged = refs.clone();
     let version = version(&mut r, 2, "Fields")?;
@@ -101,7 +110,12 @@ pub fn read_fields_body_10_1(
             ObjectEntry10_1::NewObject {
                 class_id: FIELD_CLASS_ID,
                 ..
-            } => Some(Box::new(read_field_body(&mut r, max_bytes, &mut staged)?)),
+            } => Some(Box::new(read_field_body_10_1(
+                &mut r,
+                max_bytes,
+                &mut staged,
+                depth,
+            )?)),
             ObjectEntry10_1::NewObject { class_id, .. } => {
                 return Err(unsupported_class("IField", &class_id));
             }
@@ -124,10 +138,11 @@ pub fn read_fields_body_10_1(
     })
 }
 
-fn read_field_body(
+pub(crate) fn read_field_body_10_1(
     r: &mut Reader<'_>,
     max_bytes: usize,
     refs: &mut RefTable10_1,
+    depth: usize,
 ) -> io::Result<FieldBody10_1> {
     let field_version = version(r, 2, "Field")?;
     let gp_value_version = version(r, 1, "GPValue")?;
@@ -139,13 +154,13 @@ fn read_field_body(
     let c = read_string_10_1(r, max_bytes)?;
     let d = read_string_10_1(r, max_bytes)?;
     let flag_c = r.read_bytes(1)?[0];
-    let default = read_variant_object_stream_value_10_1(r, max_bytes, refs, 0)?;
+    let default = read_variant_object_stream_value_10_1(r, max_bytes, refs, depth)?;
     let mut longs_74_to_80 = [0; 4];
     for long in &mut longs_74_to_80 {
         *long = r.read_u32_le()? as i32;
     }
     let trailing_flags = r.read_bytes(5)?.try_into().unwrap();
-    let domain = read_domain_slot_10_1(r, max_bytes, refs)?;
+    let domain = read_domain_slot_nested_10_1(r, max_bytes, refs, depth)?;
     let geometry_def = read_geometry_def_slot_10_1(r, max_bytes, refs)?;
     let raster_def = (field_version >= 2 && longs_74_to_80[0] == 9)
         .then(|| read_raster_def_slot_10_1(r, max_bytes, refs))

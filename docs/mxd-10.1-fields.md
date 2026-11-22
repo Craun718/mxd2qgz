@@ -190,3 +190,12 @@ RasterCatalog.dll 10.1.0.3035 的 RasterDef Load 经 objdump 复核，
 `0x7be375eb..0x7be375f0` 用 `jl` 跳过旧版第三个 short。共享读取器
 据此让负值走旧布局并保留版本位模式。合成用例覆盖两个负值和后续字节；
 尚无负版本实档或 ArcMap 10.1、QGIS 人工验收。
+
+### Variant 中的字段与字段集合
+
+GdbCore.dll 10.1.0.3035 的 Field 与 Fields 分别通过 IPersistStream
+Load `0x709e1730` 与 `0x709e8840` 读取。共享 ObjectStream Variant
+分派复用这两类体的读取器，字段默认值和字段值域继承当前递归深度。
+合成测试覆盖默认值中的 Fields 对象、共享键、边界及递归超限回滚。
+除已记录的 ImageServerLayer 专用槽外，通用 Variant 宿主尚缺实档观测。
+ArcMap 10.1 与 QGIS 人工验收未进行。

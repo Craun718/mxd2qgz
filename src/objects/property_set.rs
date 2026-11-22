@@ -337,6 +337,8 @@ pub enum PropertyValueObjectStream10_1 {
     },
     GeometryDef(Box<EncodedVariantObject10_1<crate::objects::field_defs::GeometryDef10_1>>),
     RasterDef(Box<EncodedVariantObject10_1<crate::objects::field_defs::RasterDef10_1>>),
+    Field(Box<EncodedVariantObject10_1<crate::objects::fields::FieldBody10_1>>),
+    Fields(Box<EncodedVariantObject10_1<crate::objects::fields::FieldsBody10_1>>),
     /// 有对象头及会话键的 SystemCore 数组。
     ArrayObject {
         class_id: [u8; 16],
@@ -595,6 +597,7 @@ pub(crate) fn read_variant_object_body_10_1(
     use crate::objects::field_defs::{
         GEOMETRY_DEF_CLASS_ID, RASTER_DEF_CLASS_ID, read_geometry_def, read_raster_def,
     };
+    use crate::objects::fields::{FIELD_CLASS_ID, FIELDS_CLASS_ID};
     Ok(match entry {
         ObjectEntry10_1::Null => {
             PropertyValueObjectStream10_1::Inline(PropertyValue10_1::NullObject)
@@ -622,6 +625,10 @@ pub(crate) fn read_variant_object_body_10_1(
                 )?),
             }
         }
+        ObjectEntry10_1::NewObject {
+            class_id: class_id @ (FIELD_CLASS_ID | FIELDS_CLASS_ID),
+            key,
+        } => return read_variant_field_object(reader, max_bytes, table, depth, class_id, key),
         ObjectEntry10_1::NewObject {
             class_id: class_id @ GEOMETRY_DEF_CLASS_ID,
             key,
@@ -1022,6 +1029,48 @@ fn read_variant_raster_input(
             body,
         }),
     ))
+}
+
+#[inline(never)]
+fn read_variant_field_object(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+    class_id: [u8; 16],
+    key: u32,
+) -> io::Result<PropertyValueObjectStream10_1> {
+    use crate::objects::fields::{
+        FIELD_CLASS_ID, read_field_body_10_1, read_fields_body_nested_10_1,
+    };
+
+    check_variant_object_depth(depth)?;
+    let mut wire = reader
+        .clone()
+        .read_region(reader.remaining().min(max_bytes))?;
+    if class_id == FIELD_CLASS_ID {
+        let body = read_field_body_10_1(&mut wire, max_bytes, table, depth + 1)?;
+        let bytes = Arc::from(reader.read_bytes(wire.position())?);
+        Ok(PropertyValueObjectStream10_1::Field(Box::new(
+            EncodedVariantObject10_1 {
+                class_id,
+                key,
+                bytes,
+                body,
+            },
+        )))
+    } else {
+        let body = read_fields_body_nested_10_1(&mut wire, max_bytes, table, depth + 1)?;
+        let bytes = Arc::from(reader.read_bytes(wire.position())?);
+        Ok(PropertyValueObjectStream10_1::Fields(Box::new(
+            EncodedVariantObject10_1 {
+                class_id,
+                key,
+                bytes,
+                body,
+            },
+        )))
+    }
 }
 
 fn read_argument_array_item(
@@ -1456,6 +1505,57 @@ mod tests {
         assert_eq!(reader.remaining(), 0);
         assert!(refs.contains(100));
         assert!(!refs.contains(101));
+    }
+
+    #[test]
+    fn field_variants_share_the_depth_budget_with_default_values() {
+        use crate::objects::fields::{FIELD_CLASS_ID, FIELDS_CLASS_ID};
+
+        let mut bytes = 13_u16.to_le_bytes().to_vec();
+        bytes.extend([0; 14]);
+        object(&mut bytes, FIELD_CLASS_ID, 11);
+        bytes.extend([0; 6]);
+        for (index, flag) in [true, true, false, true].into_iter().enumerate() {
+            bytes.extend([2, 0, 0, 0, 0, 0]);
+            if flag {
+                bytes.push(index as u8);
+            }
+        }
+        bytes.extend(13_u16.to_le_bytes());
+        object(&mut bytes, FIELDS_CLASS_ID, 12);
+        bytes.extend(2_u16.to_le_bytes());
+        bytes.extend(0_u32.to_le_bytes());
+        bytes.extend([0; 16 + 5 + 16 + 16]);
+        let end = bytes.len();
+        bytes.push(0xaa);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let parsed = read_padded_variant_object_stream_10_1(&mut reader, 1024, &mut refs).unwrap();
+        let PropertyValueObjectStream10_1::Field(field) = parsed else {
+            panic!("缺少字段对象");
+        };
+        assert_eq!(field.key, 11);
+        assert!(
+            matches!(&field.body().default, PropertyValueObjectStream10_1::Fields(fields)
+            if fields.key == 12 && fields.body().fields.is_empty())
+        );
+        assert!(refs.contains(11) && refs.contains(12));
+        assert_eq!(reader.position(), end);
+
+        for (input, depth) in [
+            (&bytes[..end - 1], 0),
+            (&bytes[..], MAX_NESTED_VARIANT_OBJECTS - 1),
+        ] {
+            let mut reader = Reader::new(input);
+            let mut refs = RefTable10_1::new();
+            assert!(
+                read_padded_variant_object_stream_nested_10_1(&mut reader, 1024, &mut refs, depth)
+                    .is_err()
+            );
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
     }
 
     #[test]
