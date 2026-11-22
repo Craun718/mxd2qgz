@@ -193,6 +193,32 @@ mod tests {
     use super::*;
 
     #[test]
+    fn fields_reject_negative_counts_and_accept_empty_collections() {
+        for version in [1_u16, 2] {
+            for count in [i32::MIN, -1, 0] {
+                let mut bytes = version.to_le_bytes().to_vec();
+                bytes.extend(count.to_le_bytes());
+                bytes.push(0xaa);
+                let mut reader = Reader::new(&bytes);
+                let mut refs = RefTable10_1::new();
+                refs.register(41);
+                let before = refs.clone();
+                let result = read_fields_body_10_1(&mut reader, 128, &mut refs);
+                assert_eq!(refs, before);
+                if count == 0 {
+                    let fields = result.unwrap();
+                    assert!(fields.fields.is_empty());
+                    assert_eq!(fields.longs_v2, (version == 2).then(Vec::new));
+                    assert_eq!(reader.position(), 6);
+                } else {
+                    assert_eq!(result.unwrap_err().kind(), ErrorKind::InvalidData);
+                    assert_eq!(reader.position(), 0);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn field_reference_uses_the_registered_class() {
         for (registered, claimed) in [
             (FIELD_CLASS_ID, FIELDS_CLASS_ID),
