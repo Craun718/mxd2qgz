@@ -239,6 +239,7 @@
   - [x] 接入 RasterDiscreteColorRenderer v1 对象体，读取颜色数组、字符串和独立梯度，见 [离散色原生取证](docs/mxd-10.1-raster-renderer.md#rasterdiscretecolorrenderer)。
   - [x] 按 10.1 Load 的有符号上限读取 RasterDiscreteColorRenderer 版本。
   - [x] 接入 RasterUniqueValueRenderer v1–v4 已确认布局及 UniqueValues v1，见 [唯一值原生取证](docs/mxd-10.1-raster-renderer.md#rasteruniquevaluerenderer)。
+  - [x] 按 10.1 Load 的有符号下限和梯度槽条件读取 RasterUniqueValueRenderer。
   - [x] 接入旧版 RasterUniqueValueRenderer 的 RasterUniqueValueColors v1 对象体，读取数值键、字符串键及颜色原值列表，见 [旧枚举取证](docs/mxd-10.1-raster-renderer.md#旧版唯一值颜色枚举)。
   - [x] 接入带保留区的 Variant 对象值（空对象、PropertySet 和同会话回引），覆盖栅格唯一值、值域与 MosaicRule，见 [AfCore 取证](docs/arcmap-10.1-variant-propertyset-slots.md#带保留区的-objectstream-对象值)。
   - [ ] 补齐栅格唯一值类别及统计集合内其他新对象类的 Variant 体分派。

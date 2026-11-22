@@ -235,7 +235,9 @@ TypeDescriptor `0x7c9c4910`）定位 IPersistStream 虚表；GetClassID 复制
 CLSID 与入口见上表。用 pyghidra 补充现代 Load/Save 与旧体专用
 Load `0x7c9a3960` / Save `0x7c9a40b0`，并对照 IAT 和分支指令。
 Save 版本表 `0x7c9b0f80` 为 `[2,3,4]`，旧 Load 拒绝小于 1；
-现代 Load 没有上限门，本实现限于已经对位的 1–4。
+现代 Load 没有上限门，`0x7c99f47d` 对有符号版本大于 3 时读取梯度槽。
+构造版本 5 与最大 int32 验证梯度槽、共用体边界与逐字节截断回滚。
+这两种版本尚无实档或 ArcMap/QGIS 人工验证。
 
 - v1/v2：两个 AfCore String、short、ISymbol、String、int32、计数加
   ILegendGroup 循环、ILegendItem，随后读分组值。后接 short、旧统计对象槽、

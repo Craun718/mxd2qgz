@@ -809,6 +809,8 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
         (2, Some(1)),
         (3, None),
         (4, None),
+        (5, None),
+        (i32::MAX, None),
     ] {
         let legacy = version < 3;
         let mut bytes = RASTER_UNIQUE_VALUE_RENDERER_CLASS_ID.to_vec();
@@ -831,7 +833,7 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
         bytes.extend(1_i32.to_le_bytes()); // 类别数。
         bytes.extend(0xfe76_1234_u32.to_le_bytes());
         let value_count = bytes.len();
-        bytes.extend((if version == 4 { 6_i32 } else { 2 }).to_le_bytes());
+        bytes.extend((if version >= 4 { 6_i32 } else { 2 }).to_le_bytes());
         bytes.extend(3_u16.to_le_bytes());
         bytes.extend([0; 14]);
         bytes.extend(19_i32.to_le_bytes());
@@ -839,7 +841,7 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
         bytes.extend([0; 14]);
         bytes.extend(2_i32.to_le_bytes());
         bytes.extend([0x80, 0xff]);
-        if version == 4 {
+        if version >= 4 {
             bytes.extend(9_u16.to_le_bytes());
             bytes.extend([0; 30]); // 保留区及空 GUID，无键。
             bytes.extend(13_u16.to_le_bytes());
@@ -898,12 +900,12 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
             bytes.extend(UNIQUE_VALUES_CLASS_ID);
             bytes.extend(82_u32.to_le_bytes());
             bytes.extend(1_i32.to_le_bytes());
-            bytes.extend((if version == 4 { 4_i32 } else { 1 }).to_le_bytes());
+            bytes.extend((if version >= 4 { 4_i32 } else { 1 }).to_le_bytes());
             bytes.extend(8_u16.to_le_bytes()); // Variant 的标量 BSTR。
             bytes.extend([0; 14]);
             string(&mut bytes, '项' as u16);
             bytes.extend(33_i32.to_le_bytes());
-            if version == 4 {
+            if version >= 4 {
                 bytes.extend(9_u16.to_le_bytes());
                 bytes.extend([0; 14]);
                 bytes.extend(PROPERTY_SET_CLASS_ID);
@@ -952,7 +954,7 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
                 })),
             ]
         );
-        if version == 4 {
+        if version >= 4 {
             assert_eq!(
                 body.classes[0].values[2],
                 Inline(PropertyValue10_1::NullObject)
@@ -1043,7 +1045,7 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
                     values[0],
                     (Inline(PropertyValue10_1::String("项".into())), 33)
                 );
-                if version == 4 {
+                if version >= 4 {
                     assert_eq!(
                         values[1],
                         (
@@ -1075,15 +1077,15 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
                         )
                     );
                 }
-                assert_eq!(values.len(), if version == 4 { 4 } else { 1 });
-                assert_eq!(ramp, (version == 4).then_some(ColorRampSlot10_1::Null));
+                assert_eq!(values.len(), if version >= 4 { 4 } else { 1 });
+                assert_eq!(ramp, (version >= 4).then_some(ColorRampSlot10_1::Null));
             }
         }
         assert_eq!(reader.read_bytes(1).unwrap(), [0x7e]);
         assert_eq!(reader.position(), end + 1);
         assert_eq!(
             refs.len(),
-            if version == 4 {
+            if version >= 4 {
                 6
             } else if legacy && legacy_colors.is_none() {
                 1

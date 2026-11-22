@@ -143,7 +143,7 @@ pub(super) fn read_raster_unique_value(
     table: &mut RefTable10_1,
 ) -> io::Result<RasterUniqueValueRenderer10_1> {
     let version = long(r)?;
-    if !(1..=4).contains(&version) {
+    if version < 1 {
         return Err(invalid(format!("未支持的栅格唯一值渲染器版本 {version}")));
     }
     let legacy = version < 3;
