@@ -243,6 +243,7 @@
   - [x] 接入 ObjectStream Variant 中的 UniqueValues 对象体。
   - [x] 按原生有符号循环门读取 UniqueValues 非正计数。
   - [x] 保留 UniqueValues 读取路径中的原始版本值。
+  - [x] 按登记类校验渲染器 IUniqueValues 槽的回引。
   - [x] 按登记类校验 RasterLayer v17 IStatsHistogram 列表回引。
   - [x] 接入 Time、TimeReference 和 TimeExtent 的 ObjectStream Variant 对象体分派。[取证](docs/arcmap-10.1-variant-propertyset-slots.md#时间对象)
   - [x] 将已确认的栅格函数和参数对象接入 ObjectStream Variant，覆盖相互嵌套的深度限制。[分派取证](docs/arcmap-10.1-variant-propertyset-slots.md#栅格函数与参数对象)

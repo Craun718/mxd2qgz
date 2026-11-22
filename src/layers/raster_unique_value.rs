@@ -277,7 +277,12 @@ pub(super) fn read_unique_values(
     max: usize,
     table: &mut RefTable10_1,
 ) -> io::Result<UniqueValuesSlot10_1> {
-    let entry = read_object_entry_10_1(r, table)?;
+    let mut entry = read_object_entry_10_1(r, table)?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+        && let Some(registered) = table.registered_class(*key)
+    {
+        *class_id = registered;
+    }
     let body = match entry {
         ObjectEntry10_1::Null
         | ObjectEntry10_1::BackReference {
@@ -399,4 +404,44 @@ pub(crate) fn read_unique_values_body(
         declared_count,
         values,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unique_values_slot_checks_the_registered_class() {
+        let other = [0x7d; 16];
+        for (registered, claimed) in [
+            (UNIQUE_VALUES_CLASS_ID, other),
+            (other, UNIQUE_VALUES_CLASS_ID),
+        ] {
+            let mut bytes = registered.to_vec();
+            bytes.extend(12_u32.to_le_bytes());
+            let mut table = RefTable10_1::new();
+            read_object_entry_10_1(&mut Reader::new(&bytes), &mut table).unwrap();
+            let before = table.clone();
+
+            bytes[..16].copy_from_slice(&claimed);
+            bytes.push(0xaa);
+            let mut reader = Reader::new(&bytes);
+            let result = read_unique_values(&mut reader, 128, &mut table);
+            if registered == UNIQUE_VALUES_CLASS_ID {
+                let slot = result.unwrap();
+                assert_eq!(
+                    slot.entry,
+                    ObjectEntry10_1::BackReference {
+                        class_id: UNIQUE_VALUES_CLASS_ID,
+                        key: 12,
+                    }
+                );
+                assert!(slot.body.is_none());
+                assert_eq!(reader.read_bytes(1).unwrap(), &[0xaa]);
+            } else {
+                assert_eq!(result.unwrap_err().kind(), ErrorKind::Unsupported);
+            }
+            assert_eq!(table, before);
+        }
+    }
 }
