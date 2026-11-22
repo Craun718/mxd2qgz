@@ -331,6 +331,10 @@ Load 在 `0x10069e03` 以有符号比较检查色值索引和当前类别的色�
 的查键及接口查询顺序。构造输入在该槽误引此前的 CurrencyFormat，
 验证整个渲染器游标和引用表回滚。尚无该组合的实档或人工验证。
 
+INumberFormat（请求常量 `0x7c9b29e4`）同样按 SystemCore 的查键顺序
+校验。构造 v2 验证 CurrencyFormat 回引后的字段边界，以及误引 RGB
+颜色时的游标和键表回滚。该组合尚无实档或人工验证。
+
 ### RasterStretchRenderer
 
 沿用已核验的 RasterRenderer.dll 10.1，补充 pyghidra 的旧 Load

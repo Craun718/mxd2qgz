@@ -1189,6 +1189,7 @@ fn raster_classify_reads_legacy_and_current_versions_with_optional_raster_io() {
         bytes.extend(2_i32.to_le_bytes());
         bytes.extend(10.0_f64.to_le_bytes());
         bytes.extend(20.5_f64.to_le_bytes());
+        let format_offset = bytes.len() + 2;
         if version >= 2 {
             bytes.extend(4_u16.to_le_bytes());
             bytes.extend(CURRENCY_FORMAT_CLASS_ID);
@@ -1330,6 +1331,41 @@ fn raster_classify_reads_legacy_and_current_versions_with_optional_raster_io() {
             assert_eq!(reader.position(), 0);
             assert!(refs.is_empty());
         };
+        if version == 2 {
+            let mut reference = bytes.clone();
+            reference[format_offset..format_offset + 16].copy_from_slice(&RGB_COLOR_CLASS_ID);
+            reference.drain(format_offset + 20..format_offset + 22);
+            for registered in [CURRENCY_FORMAT_CLASS_ID, RGB_COLOR_CLASS_ID] {
+                let mut prior = registered.to_vec();
+                prior.extend(92_u32.to_le_bytes());
+                let mut refs = RefTable10_1::new();
+                mxd2qgz::storage::object_refs::read_object_entry_10_1(
+                    &mut Reader::new(&prior),
+                    &mut refs,
+                )
+                .unwrap();
+                let before = refs.clone();
+                let mut reader = Reader::new(&reference);
+                let slot = read_raster_renderer_slot_prefix_10_1(&mut reader, 1024, &mut refs);
+                if registered == CURRENCY_FORMAT_CLASS_ID {
+                    let Some(RasterRendererPrefix10_1::Classify(body)) = slot.unwrap().body else {
+                        panic!("缺少分级渲染器");
+                    };
+                    assert!(matches!(
+                        body.numeric_fields.unwrap().format,
+                        NumberFormatSlot10_1::BackReference {
+                            class_id: CURRENCY_FORMAT_CLASS_ID,
+                            key: 92
+                        }
+                    ));
+                    assert_eq!(reader.read_bytes(1).unwrap(), &[0xa7]);
+                } else {
+                    assert_eq!(slot.unwrap_err().kind(), std::io::ErrorKind::InvalidData);
+                    assert_eq!(reader.position(), 0);
+                    assert_eq!(refs, before);
+                }
+            }
+        }
         if let Some(offset) = legend_offset {
             let mut wrong = bytes.clone();
             wrong[offset + 16..offset + 20].copy_from_slice(&92_u32.to_le_bytes());

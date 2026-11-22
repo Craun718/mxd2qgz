@@ -12,6 +12,11 @@ use super::raster_unique_value::{
     UniqueValuesSlot10_1, read_renderer_legend_item, read_unique_values,
 };
 use crate::maps::map_surround::LegendItemSlot10_1;
+use crate::objects::number_format::{
+    ANGLE_FORMAT_CLASS_ID, CURRENCY_FORMAT_CLASS_ID, CUSTOM_NUMBER_FORMAT_CLASS_ID,
+    FRACTION_FORMAT_CLASS_ID, LATLON_FORMAT_CLASS_ID, NUMERIC_FORMAT_CLASS_ID,
+    PERCENTAGE_FORMAT_CLASS_ID, RATE_FORMAT_CLASS_ID, SCIENTIFIC_FORMAT_CLASS_ID,
+};
 use crate::objects::property_set::{
     PropertyValueObjectStream10_1, read_padded_variant_object_stream_10_1,
 };
@@ -111,7 +116,29 @@ fn read_format(
     Ok(match read_object_entry_10_1(r, table)? {
         ObjectEntry10_1::Null => NumberFormatSlot10_1::Null,
         ObjectEntry10_1::BackReference { class_id, key } => {
-            NumberFormatSlot10_1::BackReference { class_id, key }
+            let registered = table.registered_class(key);
+            if registered.is_some_and(|id| {
+                !matches!(
+                    id,
+                    ANGLE_FORMAT_CLASS_ID
+                        | CURRENCY_FORMAT_CLASS_ID
+                        | CUSTOM_NUMBER_FORMAT_CLASS_ID
+                        | FRACTION_FORMAT_CLASS_ID
+                        | LATLON_FORMAT_CLASS_ID
+                        | NUMERIC_FORMAT_CLASS_ID
+                        | PERCENTAGE_FORMAT_CLASS_ID
+                        | RATE_FORMAT_CLASS_ID
+                        | SCIENTIFIC_FORMAT_CLASS_ID
+                )
+            }) {
+                return Err(invalid(format!(
+                    "INumberFormat 回引键 {key} 的登记类不受支持"
+                )));
+            }
+            NumberFormatSlot10_1::BackReference {
+                class_id: registered.unwrap_or(class_id),
+                key,
+            }
         }
         ObjectEntry10_1::NewObject { class_id, key } => read_number_format_body_for_class_10_1(
             r, max, table, class_id, key,
