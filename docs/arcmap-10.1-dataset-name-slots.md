@@ -539,3 +539,11 @@ GdbCore.dll 同版 FilterDefs Load `0x709011c0` 与 XMLFilterDef Load
 过滤器的集合与 XML 定义体读取器。合成测试验证独立定义、集合内子键、
 后继字节和截断回滚。真实 Variant 宿主及 ArcMap 10.1、QGIS 人工
 验收尚未验证。
+
+### 过滤定义列表计数
+
+对上述 GdbCore.dll 10.1.0.3035 用 objdump 交叉核验：
+FilterDefs Load 在 `0x70901232..0x70901235`，QueryFilter v2 内联
+列表在 `0x709ffa1f..0x709ffa28`，均用有符号 `jle` 跳过非正计数。
+共享列表读取器据此返回空列表。合成测试验证两个宿主的零与负数，
+以及后续字节边界。负计数实档和 ArcMap 10.1、QGIS 人工验收尚未验证。

@@ -184,9 +184,8 @@ fn read_definitions(
     table: &mut RefTable10_1,
     stop: &mut Stop,
 ) -> io::Result<Vec<QueryFilterObject10_1<XmlFilterDef10_1>>> {
-    let count = reader.read_u32_le()? as i32;
-    let count = usize::try_from(count)
-        .map_err(|_| io::Error::new(ErrorKind::InvalidData, "FilterDefs 数量为负"))?;
+    // 两个原生宿主均仅在有符号计数为正时进入循环。
+    let count = (reader.read_u32_le()? as i32).max(0) as usize;
     if count > reader.remaining() / 16 {
         return Err(io::Error::new(
             ErrorKind::UnexpectedEof,
@@ -361,6 +360,44 @@ mod tests {
     fn append_header(bytes: &mut Vec<u8>, class: [u8; 16], key: u32) {
         bytes.extend(class);
         bytes.extend(key.to_le_bytes());
+    }
+
+    #[test]
+    fn filter_definition_lists_skip_nonpositive_counts() {
+        for count in [i32::MIN, -1, 0] {
+            let mut defs = 1_u16.to_le_bytes().to_vec();
+            defs.extend(count.to_le_bytes());
+            defs.push(0xaa);
+            let mut reader = Reader::new(&defs);
+            let mut refs = RefTable10_1::new();
+            let body = read_filter_defs_body_10_1(&mut reader, 128, &mut refs, &mut None).unwrap();
+            assert!(body.entries.is_empty());
+            assert_eq!(reader.read_bytes(1).unwrap(), &[0xaa]);
+
+            let mut query = Vec::new();
+            append_header(&mut query, QUERY_FILTER_CLASS_ID, 31);
+            query.extend(2_u16.to_le_bytes());
+            query.extend([2, 0, 0, 0, 0, 0].repeat(3));
+            query.extend([0; 16 + 8 + 16 + 4]); // 空空间参考、分辨率、空 FIDSet 和空后缀。
+            query.extend(count.to_le_bytes());
+            query.push(0xaa);
+            let mut reader = Reader::new(&query);
+            let mut stop = None;
+            let result =
+                read_query_filter_slot_10_1(&mut reader, 128, &mut refs, &mut stop).unwrap();
+            let QueryFilterObject10_1::Body { body, .. } = result else {
+                panic!("缺少过滤器对象体");
+            };
+            let QueryFilterBody10_1::Query(body) = *body else {
+                panic!("缺少 QueryFilter");
+            };
+            assert!(
+                matches!(body.definitions, Some(FilterDefinitions10_1::Inline(entries))
+                if entries.is_empty())
+            );
+            assert!(stop.is_none() && refs.contains(31));
+            assert_eq!(reader.read_bytes(1).unwrap(), &[0xaa]);
+        }
     }
 
     #[test]
