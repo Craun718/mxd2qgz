@@ -397,6 +397,7 @@
   - [x] 按登记类校验共享 TimeTableDefinition 的 ITimeExtent 槽回引。
   - [x] 按登记类校验 TimeExtent 的起止时间与时间参考回引。
   - [x] 按登记类校验 TimeReference 的 ITimeZoneInfo 回引。
+  - [x] 按登记类校验 TimeData 的 ITimeReference 回引。
   - [x] 按 10.1 有符号版本门读取 StandaloneTable 公共前缀。[独立表版本取证](docs/mxd-terra-round9-table.md#standalonetable-版本门)
   - [x] 按已登记对象的类校验 StandaloneTable 字段表回引。[字段槽取证](docs/mxd-terra-round9-table.md#字段表回引)
   - [x] 按 10.1 有符号计数读取独立表字段、关系名和压缩序列。[计数取证](docs/mxd-terra-round9-table.md#独立表的有符号计数)

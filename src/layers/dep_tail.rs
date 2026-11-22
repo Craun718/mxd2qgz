@@ -874,7 +874,14 @@ fn read_time_data_segment(
     let slot = match read_object_entry_10_1(&mut trial, &mut staged)? {
         ObjectEntry10_1::Null => TimeReferenceSlot10_1::Null,
         ObjectEntry10_1::BackReference { class_id, key } => {
-            TimeReferenceSlot10_1::BackReference { class_id, key }
+            let registered = staged.registered_class(key);
+            if registered.is_some_and(|id| id != TIME_REFERENCE_CLASS_ID) {
+                return Ok(Err(TimeFamilyStop10_1::TimeDataSlot { class_id, key }));
+            }
+            TimeReferenceSlot10_1::BackReference {
+                class_id: registered.unwrap_or(class_id),
+                key,
+            }
         }
         ObjectEntry10_1::NewObject { class_id, key } if class_id == TIME_REFERENCE_CLASS_ID => {
             let body = read_time_reference_body_10_1(&mut trial, max_bytes, &mut staged, key)?;
@@ -1370,6 +1377,35 @@ mod tests {
         assert!(family.time_table.is_none());
         assert_eq!(reader.position(), 4);
         assert!(!table.contains(8));
+    }
+
+    #[test]
+    fn time_data_rejects_a_reference_to_time_extent() {
+        let mut previous = Vec::new();
+        object_entry(&mut previous, &TIME_EXTENT_CLASS_ID, 10);
+        let mut table = RefTable10_1::new();
+        read_object_entry_10_1(&mut Reader::new(&previous), &mut table).unwrap();
+        let before = table.clone();
+
+        let mut bytes = vec![2, 0, 0, 0];
+        object_entry(&mut bytes, &TIME_REFERENCE_CLASS_ID, 10);
+        let mut reader = Reader::new(&bytes);
+        let family = read_time_data_family_10_1(&mut reader, 256, &mut table).unwrap();
+        assert_eq!(
+            family.stop,
+            Some(TimeFamilyStop10_1::TimeDataSlot {
+                class_id: TIME_REFERENCE_CLASS_ID,
+                key: 10,
+            })
+        );
+        assert_eq!(reader.position(), 4);
+        assert_eq!(table, before);
+
+        let mut reader = Reader::new(&bytes);
+        let error = read_time_data_segment_10_1(&mut reader, 256, &mut table).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::Unsupported);
+        assert_eq!(reader.position(), 0);
+        assert_eq!(table, before);
     }
 
     #[test]

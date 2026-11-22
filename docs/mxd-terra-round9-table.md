@@ -167,6 +167,11 @@ SystemCore 同版在 `0x7ffd0063` 先按键定位原实例，再请求 ITimeExte
 误引前一 TimeData 的 TimeReference，验证游标停在 ITimeExtent 槽首，
 已登记的 TimeReference 键仍可用。该回引尚无实档或人工验证。
 
+LayerLib.dll 10.1.0.3035 的 TimeData Load `0x7870d8b0` 请求
+ITimeReference。共享读取器沿用 SystemCore 的查键顺序，以登记类判定。
+构造输入以旧键误引 TimeExtent 时，四段读取器停在引用头，单段读取器
+回滚至段首，两者均保留此前登记的键。尚无相同组合的实档或人工验证。
+
 ## StandaloneTable 版本门
 
 Map.dll 10.1.0.3035 的 Ghidra 导出 `Map/7945d630.c` 中，
