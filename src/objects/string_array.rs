@@ -67,7 +67,7 @@ pub(crate) fn read_string_array_body_10_1(
 ) -> io::Result<(u16, Vec<String>)> {
     let mut body = reader.clone().read_region(reader.remaining().min(max))?;
     let version = body.read_u16_le()?;
-    if version > 1 {
+    if version as i16 > 1 {
         return Err(io::Error::new(
             io::ErrorKind::Unsupported,
             format!("未支持的 StrArray 版本 {version}"),

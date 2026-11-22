@@ -1318,7 +1318,7 @@ pub(crate) fn read_long_array_body(
     max: usize,
 ) -> io::Result<(u16, Vec<i32>)> {
     let version = reader.read_u16_le()?;
-    if version > 1 {
+    if version as i16 > 1 {
         return Err(io::Error::new(
             io::ErrorKind::Unsupported,
             format!("未支持的 LongArray 版本 {version}"),
@@ -1371,6 +1371,41 @@ mod tests {
             bytes.extend(0x5566_7788_i32.to_le_bytes());
         }
         bytes
+    }
+
+    #[test]
+    fn system_core_arrays_use_signed_version_gate() {
+        let mut longs = vec![0xff, 0xff, 1, 0, 0, 0];
+        longs.extend_from_slice(&42i32.to_le_bytes());
+        longs.push(0xaa);
+        let mut reader = Reader::new(&longs);
+        assert_eq!(
+            read_long_array_body(&mut reader, 1024).unwrap(),
+            (0xffff, vec![42])
+        );
+        assert_eq!(reader.read_bytes(1).unwrap(), &[0xaa]);
+
+        let strings = [0, 0x80, 0, 0, 0, 0, 0xaa];
+        let mut reader = Reader::new(&strings);
+        use crate::objects::string_array::read_string_array_body_10_1;
+        assert_eq!(
+            read_string_array_body_10_1(&mut reader, 1024).unwrap(),
+            (0x8000, vec![])
+        );
+        assert_eq!(reader.read_bytes(1).unwrap(), &[0xaa]);
+
+        assert_eq!(
+            read_long_array_body(&mut Reader::new(&[2, 0]), 1024)
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::Unsupported
+        );
+        assert_eq!(
+            read_string_array_body_10_1(&mut Reader::new(&[2, 0]), 1024)
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::Unsupported
+        );
     }
 
     #[test]
