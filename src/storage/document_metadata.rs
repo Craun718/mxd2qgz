@@ -114,6 +114,35 @@ pub fn read_document_metadata_10_1(
     Ok(metadata)
 }
 
+/// 在缺少宿主信息时，只接受恰好匹配一种已知布局的完整流。
+pub fn detect_document_metadata_10_1(
+    bytes: &[u8],
+    max_string_bytes: usize,
+) -> io::Result<DocumentMetadata10_1> {
+    let layouts = [
+        MetadataLayout10_1::Versioned,
+        MetadataLayout10_1::LegacyMap,
+        MetadataLayout10_1::LegacyScene { has_tail: false },
+        MetadataLayout10_1::LegacyScene { has_tail: true },
+    ];
+    let mut matches = layouts
+        .into_iter()
+        .filter_map(|layout| read_document_metadata_10_1(bytes, layout, max_string_bytes).ok());
+    let Some(metadata) = matches.next() else {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "无法匹配 Metadata 布局",
+        ));
+    };
+    if matches.next().is_some() {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "Metadata 布局不唯一",
+        ));
+    }
+    Ok(metadata)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -157,6 +186,15 @@ mod tests {
                 MetadataLayout10_1::LegacyScene { .. } => bytes.extend([0; 8]),
             }
             let metadata = read_document_metadata_10_1(&bytes, layout, 128).unwrap();
+            if matches!(
+                layout,
+                MetadataLayout10_1::Versioned | MetadataLayout10_1::LegacyMap
+            ) {
+                assert_eq!(
+                    detect_document_metadata_10_1(&bytes, 128).unwrap(),
+                    metadata
+                );
+            }
             assert_eq!(metadata.title, "标题");
             assert_eq!(metadata.hyperlink_base, "base");
             assert_eq!(
