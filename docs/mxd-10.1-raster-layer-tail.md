@@ -400,6 +400,13 @@ SystemCore 在 `0x7ffd0063` 先查键再查询接口的规则，列表按登记�
 关系名称回引到达图层尾部，误引 Envelope 时回滚。尚无相同组合的
 实档或 ArcMap/QGIS 人工验证。
 
+RasterLayer.dll 10.1.0.3035 的 Load 在 `0x7c73c19a` 使用
+`0x7c76c8a4` 的 IName IID (`4BA33331-D55F-11D1-8882-0000F877762D`)；
+既有反编译表明读完后调用 IName::Open。后续关系列表在 `0x7c73c2d0`
+请求 IRelationshipClassName。可选 IName 槽复用已确认的 TableName
+对象体及工作空间槽。构造 v6 验证该名称读至关系列表，并验证列表误引
+同一个 TableName 键时回滚。尚无相同组合的实档或人工验证。
+
 ## v8 起的 ExtraSafe 扩展列表
 
 RasterLayer.dll `0x7c73ded0` 读取 int32 数量后逐项调用

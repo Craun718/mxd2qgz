@@ -50,6 +50,9 @@ pub use crate::layers::tracking_filter_layer_extension::TrackingFilterLayerExten
 use crate::layers::tracking_filter_layer_extension::{
     TRACKING_FILTER_LAYER_EXTENSION_CLASS_ID, read_bounded_tracking_filter_layer_extension,
 };
+use crate::maps::standalone_table::{
+    TABLE_NAME_CLASS_ID, TableNameBody10_1, read_table_name_body_10_1,
+};
 use crate::objects::dataset_name_more::{
     MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID, MemoryRelationshipClassNameBody10_1,
     RELATIONSHIP_CLASS_NAME_CLASS_ID, RelationshipClassNameBody10_1,
@@ -162,6 +165,7 @@ pub enum RasterLayerPixelFilterBody10_1 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RasterLayerRelationshipBody10_1 {
+    TableName(Box<TableNameBody10_1>),
     Relationship(Box<RelationshipClassNameBody10_1>),
     MemoryRelationship(Box<MemoryRelationshipClassNameBody10_1>),
 }
@@ -298,6 +302,7 @@ fn read_relationship_slot(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
+    allows_table_name: bool,
 ) -> io::Result<RasterLayerRelationshipSlot10_1> {
     let mut entry = read_object_entry_10_1(reader, table)?;
     if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
@@ -330,6 +335,16 @@ fn read_relationship_slot(
                 ));
             }
             Some(MemoryRelationship(Box::new(body)))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: TABLE_NAME_CLASS_ID,
+            ..
+        } if allows_table_name => {
+            let (body, stopped) = read_table_name_body_10_1(reader, table, max_bytes)?;
+            if stopped {
+                return Err(unsupported("RasterLayer TableName 含未闭合的工作空间槽"));
+            }
+            Some(RasterLayerRelationshipBody10_1::TableName(Box::new(body)))
         }
         ObjectEntry10_1::NewObject { class_id, .. } => {
             return Err(unsupported(&format!(
@@ -836,10 +851,10 @@ pub(super) fn read_raster_layer_tail(
         .transpose()?;
     let (related_name, related_objects) = if version >= 6 {
         let name = (read_long(&mut trial)? != 0)
-            .then(|| read_relationship_slot(&mut trial, max_bytes, &mut staged))
+            .then(|| read_relationship_slot(&mut trial, max_bytes, &mut staged, true))
             .transpose()?;
         let objects = read_slots(&mut trial, &mut staged, "关联对象列表", |r, t| {
-            let slot = read_relationship_slot(r, max_bytes, t)?;
+            let slot = read_relationship_slot(r, max_bytes, t, false)?;
             if let ObjectEntry10_1::BackReference { key, .. } = slot.entry
                 && t.registered_class(key).is_some_and(|class| {
                     !matches!(
@@ -2245,6 +2260,46 @@ mod tests {
                 assert!(refs.is_empty());
             }
         }
+    }
+
+    #[test]
+    fn raster_related_name_reads_table_before_relationship_list() {
+        let mut bytes = vec![0; 26 + 4 + 8 + 32];
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend(TABLE_NAME_CLASS_ID);
+        bytes.extend(71_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        for _ in 0..3 {
+            bytes.extend(2_u32.to_le_bytes());
+            bytes.extend(0_u16.to_le_bytes());
+        }
+        bytes.extend([0; 16]); // 空工作空间。
+        let list_offset = bytes.len();
+        bytes.extend(0_i32.to_le_bytes());
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        let tail = read_raster_layer_tail_10_1(&mut reader, 6, 4096, &mut refs).unwrap();
+        assert!(matches!(
+            tail.related_name.unwrap().body,
+            Some(RasterLayerRelationshipBody10_1::TableName(_))
+        ));
+        assert!(tail.related_objects.is_empty());
+        assert_eq!(reader.position(), bytes.len());
+        assert_eq!(refs.registered_class(71), Some(TABLE_NAME_CLASS_ID));
+
+        bytes[list_offset..].copy_from_slice(&1_i32.to_le_bytes());
+        bytes.extend(TABLE_NAME_CLASS_ID);
+        bytes.extend(71_u32.to_le_bytes());
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        assert_eq!(
+            read_raster_layer_tail_10_1(&mut reader, 6, 4096, &mut refs)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::Unsupported
+        );
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
     }
 
     #[test]
