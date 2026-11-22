@@ -120,6 +120,18 @@ fn read_version_short(
     Ok(version)
 }
 
+/// LayerLib 的四个时间段按有符号版本比较上限。
+fn read_time_segment_version(reader: &mut Reader<'_>, max: i16, label: &str) -> io::Result<u16> {
+    let version = reader.read_u16_le()?;
+    if version as i16 > max {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("{label} 版本 {version} 超出上限 {max}"),
+        ));
+    }
+    Ok(version)
+}
+
 /// 回退到 `target`（必须在停止前的已读范围内）。
 fn reposition_to<'a>(origin: &Reader<'a>, target: usize) -> Reader<'a> {
     let mut positioned = origin.clone();
@@ -660,7 +672,7 @@ pub fn read_time_extent_body_10_1(
 /// 解析为体，未知类为 [`TimeReferenceSlot10_1::Unsupported`] 停止点。
 #[derive(Debug, Clone, PartialEq)]
 pub struct TimeDataSegment10_1 {
-    /// 体首 short 版本（有符号 >2 拒绝；负值位模式一并拒绝，较原生更严）。
+    /// 体首 short 版本（有符号 >2 拒绝，保留原始位模式）。
     pub version: u16,
     /// short（→ this+6），语义未定。
     pub short_a: i16,
@@ -677,7 +689,7 @@ pub struct TimeDataSegment10_1 {
 /// 未知类为 [`TimeExtentSlot10_1::Unsupported`] 停止点。
 #[derive(Debug, Clone, PartialEq)]
 pub struct TimeTableSegment10_1 {
-    /// 体首 short 版本（有符号 >1 拒绝；负值位模式一并拒绝）。
+    /// 体首 short 版本（有符号 >1 拒绝，保留原始位模式）。
     pub version: u16,
     /// String ×4（→ this+8/+0xc/+0x10/+0x14；时间字段名候选），语义未定。
     pub strings: [String; 4],
@@ -689,7 +701,7 @@ pub struct TimeTableSegment10_1 {
 /// 字段（无槽位、无停止点）。
 #[derive(Debug, Clone, PartialEq)]
 pub struct TimeDimensionSegment10_1 {
-    /// 体首 short 版本（有符号 >1 拒绝；负值位模式一并拒绝）。
+    /// 体首 short 版本（有符号 >1 拒绝，保留原始位模式）。
     pub version: u16,
     /// String ×2（→ this+4/+8；时间维度名/格式候选），语义未定。
     pub strings: [String; 2],
@@ -699,7 +711,7 @@ pub struct TimeDimensionSegment10_1 {
 /// （无槽位、无停止点）。
 #[derive(Debug, Clone, PartialEq)]
 pub struct TimeDisplaySegment10_1 {
-    /// 体首 short 版本（有符号 >1 拒绝；负值位模式一并拒绝）。
+    /// 体首 short 版本（有符号 >1 拒绝，保留原始位模式）。
     pub version: u16,
     /// short（→ this+4），语义未定。
     pub short_a: i16,
@@ -768,8 +780,7 @@ pub fn read_time_data_family_10_1(
     // ② TimeTableDefinition（版本 ≤1）。
     let mut time_table = None;
     if stop.is_none() {
-        let entry_offset = trial.position();
-        let version = read_version_short(&mut trial, 1, "TimeTableDefinition", entry_offset)?;
+        let version = read_time_segment_version(&mut trial, 1, "TimeTableDefinition")?;
         let mut strings: [String; 4] = Default::default();
         for s in &mut strings {
             *s = read_stream_string_10_1(&mut trial, max_bytes)?;
@@ -866,8 +877,7 @@ fn read_time_data_segment(
     max_bytes: usize,
     table: &mut RefTable10_1,
 ) -> io::Result<Result<TimeDataSegment10_1, TimeFamilyStop10_1>> {
-    let start = reader.position();
-    let version = read_version_short(reader, 2, "TimeData", start)?;
+    let version = read_time_segment_version(reader, 2, "TimeData")?;
     let short_a = reader.read_u16_le()? as i16;
     let mut trial = reader.clone();
     let mut staged = table.clone();
@@ -894,7 +904,7 @@ fn read_time_data_segment(
             return Ok(Err(TimeFamilyStop10_1::TimeDataSlot { class_id, key }));
         }
     };
-    let tail_short = (version >= 2)
+    let tail_short = (version as i16 >= 2)
         .then(|| trial.read_u16_le().map(|value| value as i16))
         .transpose()?;
     *reader = trial;
@@ -912,7 +922,7 @@ pub(crate) fn read_time_dimension_segment_10_1(
     max_bytes: usize,
 ) -> io::Result<TimeDimensionSegment10_1> {
     let mut trial = reader.clone();
-    let version = read_version_short(&mut trial, 1, "TimeDimensionDefinition", reader.position())?;
+    let version = read_time_segment_version(&mut trial, 1, "TimeDimensionDefinition")?;
     let strings = [
         read_stream_string_10_1(&mut trial, max_bytes)?,
         read_stream_string_10_1(&mut trial, max_bytes)?,
@@ -925,7 +935,7 @@ pub(crate) fn read_time_display_segment_10_1(
     reader: &mut Reader<'_>,
 ) -> io::Result<TimeDisplaySegment10_1> {
     let mut trial = reader.clone();
-    let version = read_version_short(&mut trial, 1, "TimeDataDisplay", reader.position())?;
+    let version = read_time_segment_version(&mut trial, 1, "TimeDataDisplay")?;
     let short_a = trial.read_u16_le()? as i16;
     let double_a = trial.read_f64_le()?;
     let int_a = trial.read_u32_le()? as i32;
@@ -1377,6 +1387,36 @@ mod tests {
         assert!(family.time_table.is_none());
         assert_eq!(reader.position(), 4);
         assert!(!table.contains(8));
+    }
+
+    #[test]
+    fn time_family_preserves_negative_segment_versions() {
+        let mut bytes = (-1_i16).to_le_bytes().to_vec();
+        bytes.extend([0; 2 + 16]);
+        bytes.extend(i16::MIN.to_le_bytes());
+        for _ in 0..4 {
+            put_string(&mut bytes, "");
+        }
+        null_slot(&mut bytes);
+        bytes.extend((-2_i16).to_le_bytes());
+        for _ in 0..2 {
+            put_string(&mut bytes, "");
+        }
+        bytes.extend((-3_i16).to_le_bytes());
+        bytes.extend([0; 2 + 8 + 4 + 8 + 4]);
+        let end = bytes.len();
+        bytes.push(0xaa);
+
+        let mut reader = Reader::new(&bytes);
+        let family =
+            read_time_data_family_10_1(&mut reader, 256, &mut RefTable10_1::new()).unwrap();
+        let data = family.time_data.unwrap();
+        assert_eq!(data.version as i16, -1);
+        assert_eq!(data.tail_short, None);
+        assert_eq!(family.time_table.unwrap().version as i16, i16::MIN);
+        assert_eq!(family.time_dimension.unwrap().version as i16, -2);
+        assert_eq!(family.time_display.unwrap().version as i16, -3);
+        assert_eq!(reader.position(), end);
     }
 
     #[test]
