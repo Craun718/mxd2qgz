@@ -327,6 +327,10 @@ Load 在 `0x10069e03` 以有符号比较检查色值索引和当前类别的色�
 合成测试覆盖五个版本、非空数字格式和图例类、选择子 −1、RasterIO 缺省及
 存在、非法数量和逐字节截断回退。未做 ArcMap 运行验证。
 
+分级渲染器的 ILegendClass 回引沿用同版 SystemCore `0x7ffd0063`
+的查键及接口查询顺序。构造输入在该槽误引此前的 CurrencyFormat，
+验证整个渲染器游标和引用表回滚。尚无该组合的实档或人工验证。
+
 ### RasterStretchRenderer
 
 沿用已核验的 RasterRenderer.dll 10.1，补充 pyghidra 的旧 Load

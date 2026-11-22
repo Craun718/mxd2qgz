@@ -130,7 +130,17 @@ fn read_legend_class(
     max: usize,
     table: &mut RefTable10_1,
 ) -> io::Result<ClassificationLegendSlot10_1> {
-    let entry = read_object_entry_10_1(r, table)?;
+    let mut entry = read_object_entry_10_1(r, table)?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+        && let Some(registered) = table.registered_class(*key)
+    {
+        if registered != LEGEND_CLASS_CLASS_ID {
+            return Err(invalid(format!(
+                "ILegendClass 回引键 {key} 的登记类不受支持"
+            )));
+        }
+        *class_id = registered;
+    }
     let body = match entry {
         ObjectEntry10_1::Null | ObjectEntry10_1::BackReference { .. } => None,
         ObjectEntry10_1::NewObject {

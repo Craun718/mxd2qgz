@@ -1197,6 +1197,7 @@ fn raster_classify_reads_legacy_and_current_versions_with_optional_raster_io() {
             bytes.extend(3_u16.to_le_bytes());
             bytes.extend(0.125_f64.to_le_bytes());
         }
+        let mut legend_offset = None;
         if version >= 3 {
             for value in [2_i32, 15] {
                 bytes.extend(3_u16.to_le_bytes());
@@ -1207,6 +1208,7 @@ fn raster_classify_reads_legacy_and_current_versions_with_optional_raster_io() {
                 bytes.extend((-1_i16).to_le_bytes());
             } else {
                 bytes.extend(0_u16.to_le_bytes());
+                legend_offset = Some(bytes.len());
                 bytes.extend(LEGEND_CLASS_CLASS_ID);
                 bytes.extend(93_u32.to_le_bytes());
                 bytes.extend(1_u16.to_le_bytes());
@@ -1328,6 +1330,11 @@ fn raster_classify_reads_legacy_and_current_versions_with_optional_raster_io() {
             assert_eq!(reader.position(), 0);
             assert!(refs.is_empty());
         };
+        if let Some(offset) = legend_offset {
+            let mut wrong = bytes.clone();
+            wrong[offset + 16..offset + 20].copy_from_slice(&92_u32.to_le_bytes());
+            reject(&wrong);
+        }
         for cut in 0..end {
             reject(&bytes[..cut]);
         }
