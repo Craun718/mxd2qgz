@@ -56,7 +56,7 @@ fn errors_are_transactional_for_truncation_version_and_limits() {
     data.extend(1u32.to_le_bytes());
     data.extend(string("a"));
     data.extend([0; 15]);
-    for bytes in [&data[..], &[15, 0][..], &[0xff, 0xff][..]] {
+    for bytes in [&data[..], &[15, 0][..]] {
         let mut refs = RefTable10_1::new();
         refs.register(99);
         let mut r = Reader::new(bytes);
@@ -86,4 +86,30 @@ fn stops_at_named_new_object_after_consuming_its_name() {
     );
     assert_eq!(r.position(), slot);
     assert!(refs.is_empty());
+}
+
+#[test]
+fn signed_legacy_versions_use_the_common_prefix() {
+    for version in [i16::MIN, -1, 0, 1] {
+        let mut data = version.to_le_bytes().to_vec();
+        data.extend([0; 16]);
+        data.extend(0_u32.to_le_bytes());
+        data.extend(string("表"));
+        let end = data.len();
+        data.push(0xaa);
+        let mut reader = Reader::new(&data);
+        let mut refs = RefTable10_1::new();
+        let table = read_standalone_table_prefix_10_1(&mut reader, &mut refs, 1, 100).unwrap();
+        assert_eq!(table.version, version as u16);
+        assert_eq!(table.trailing_string.as_deref(), Some("表"));
+        assert_eq!(table.stop, StandaloneTableStop10_1::Complete);
+        assert_eq!(reader.position(), end);
+        assert!(refs.is_empty());
+        for len in 0..end {
+            let mut reader = Reader::new(&data[..len]);
+            assert!(read_standalone_table_prefix_10_1(&mut reader, &mut refs, 1, 100).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
 }

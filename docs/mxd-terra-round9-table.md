@@ -161,3 +161,13 @@ TimeTableDefinition Load `0x7870df80` 的 ITimeExtent 槽
 内嵌 Time 和 TimeReference、后继时间段与 v14 扩展边界。
 替换为未知时区后，验证恢复到外层槽起点并撤销嵌套键。
 尚未在 ArcMap 10.1 或 QGIS 人工验证这组对象。
+
+## StandaloneTable 版本门
+
+Map.dll 10.1.0.3035 的 Ghidra 导出 `Map/7945d630.c` 中，
+`StandaloneTable::Load` 读入有符号 `short`，只拒绝大于 14 的值。
+关系循环的首个版本门为 `1 < local_8[0]`，此后的版本段也按
+有符号值比较。负值因此与 0、1 共享首个 IName、字段表和尾字符串布局。
+读取器保留版本原始位模式。合成测试验证两种负值的消费边界和逐字节
+截断回滚；介质中尚未确认带负版本值的独立表，ArcMap 10.1 和 QGIS
+人工验收未进行。

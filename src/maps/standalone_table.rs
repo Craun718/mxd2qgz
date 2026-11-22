@@ -294,8 +294,8 @@ pub fn read_standalone_table_prefix_10_1(
 ) -> io::Result<StandaloneTablePrefix10_1> {
     let mut r = reader.clone();
     let mut table = refs.clone();
-    let version = r.read_u16_le()?;
-    // 原生使用有符号比较；此安全子集拒绝负值位模式。
+    // 原生用有符号 short 比较，结果保留存盘位模式。
+    let version = r.read_u16_le()? as i16;
     if version > 14 {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
@@ -303,7 +303,7 @@ pub fn read_standalone_table_prefix_10_1(
         ));
     }
     let mut result = StandaloneTablePrefix10_1 {
-        version,
+        version: version as u16,
         dataset_name: None,
         dataset_name_body: None,
         named_objects: Vec::new(),
