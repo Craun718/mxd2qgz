@@ -828,6 +828,7 @@
       - [x] 运行 10.1 Point、Multipoint、Polyline 和 Polygon 的 v0/v1 Load，核对记录与体结束位置。[原生取证](docs/arcmap-10.1-geometry.md#四类几何的-v0v1-和-s_false)
       - [x] 运行四类几何版本字段的 S_FALSE 分支，确认 ObjectStream 透传短读、SetEmpty 和原生返回值。[原生取证](docs/arcmap-10.1-geometry.md#四类几何的-v0v1-和-s_false)
       - [x] 核对 FeatureLayer 后继段 0x1c–0x1f 的原生读取，修正逐版本槽门与对象结束位置。[原生取证](docs/arcmap-10.1-featurelayer-tail.md#旧版时间字段与热链接属性)
+      - [x] 按登记类校验 FeatureLayer 旧版时间参考与范围槽回引。
       - [x] 接入 0x1f 与 0x21 起共用的热链接属性体及其表达式引擎对象槽。[原生取证](docs/arcmap-10.1-featurelayer-tail.md#旧版时间字段与热链接属性)
       - [x] SDK Java 旧档的 13 个 FeatureLayer 顺序完整消费 TimeData 四段（宿主版本 34，四段版本均为 1），见 [旧档复核](docs/mxd-luna-deep-timedata-20261118.md)。嵌套 TimeReference 和 TimeExtent 均为空槽。
       - [ ] 取得 PropertySet 版本 0 分支的真实旧档字节；静态和合成测试已覆盖该读取布局。

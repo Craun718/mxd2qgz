@@ -2620,9 +2620,16 @@ pub fn read_feature_layer_successor_10_1(
                 let pre_slot_table = staged_table.clone();
                 match read_object_entry_10_1(&mut trial, &mut staged_table)? {
                     ObjectEntry10_1::Null => {}
-                    ObjectEntry10_1::BackReference { class_id, key } => {
+                    ObjectEntry10_1::BackReference { class_id, key }
+                        if staged_table
+                            .registered_class(key)
+                            .is_none_or(|id| id == TIME_REFERENCE_CLASS_ID) =>
+                    {
                         legacy_time_slots.time_reference =
-                            Some(TimeReferenceSlot10_1::BackReference { class_id, key });
+                            Some(TimeReferenceSlot10_1::BackReference {
+                                class_id: staged_table.registered_class(key).unwrap_or(class_id),
+                                key,
+                            });
                     }
                     ObjectEntry10_1::NewObject { class_id, key }
                         if class_id == TIME_REFERENCE_CLASS_ID =>
@@ -2650,7 +2657,8 @@ pub fn read_feature_layer_successor_10_1(
                         legacy_time_slots.time_reference =
                             Some(TimeReferenceSlot10_1::Body(Box::new(body)));
                     }
-                    ObjectEntry10_1::NewObject { class_id, key } => {
+                    ObjectEntry10_1::BackReference { class_id, key }
+                    | ObjectEntry10_1::NewObject { class_id, key } => {
                         stop = Some(SuccessorStop10_1::LegacyTimeSlotUnsupported {
                             class_id,
                             key,
@@ -2667,9 +2675,15 @@ pub fn read_feature_layer_successor_10_1(
                 let pre_slot_table = staged_table.clone();
                 match read_object_entry_10_1(&mut trial, &mut staged_table)? {
                     ObjectEntry10_1::Null => {}
-                    ObjectEntry10_1::BackReference { class_id, key } => {
-                        legacy_time_slots.time_extent =
-                            Some(TimeExtentSlot10_1::BackReference { class_id, key });
+                    ObjectEntry10_1::BackReference { class_id, key }
+                        if staged_table
+                            .registered_class(key)
+                            .is_none_or(|id| id == TIME_EXTENT_CLASS_ID) =>
+                    {
+                        legacy_time_slots.time_extent = Some(TimeExtentSlot10_1::BackReference {
+                            class_id: staged_table.registered_class(key).unwrap_or(class_id),
+                            key,
+                        });
                     }
                     ObjectEntry10_1::NewObject { class_id, key }
                         if class_id == TIME_EXTENT_CLASS_ID =>
@@ -2704,7 +2718,8 @@ pub fn read_feature_layer_successor_10_1(
                         legacy_time_slots.time_extent =
                             Some(TimeExtentSlot10_1::Body(Box::new(body)));
                     }
-                    ObjectEntry10_1::NewObject { class_id, key } => {
+                    ObjectEntry10_1::BackReference { class_id, key }
+                    | ObjectEntry10_1::NewObject { class_id, key } => {
                         stop = Some(SuccessorStop10_1::LegacyTimeSlotUnsupported {
                             class_id,
                             key,

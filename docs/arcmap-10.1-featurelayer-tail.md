@@ -701,6 +701,11 @@ IID（`0x6f7adde4`），并写入同一成员（以持久化接口视图为基�
 修复前 Rust 对 0x1c～0x1e 试读尚未出现的槽，在 0x1f 的非空热链接
 属性对象头处停下。
 
+同版 SystemCore ObjectStream 在 `0x7ffd0063` 按键定位实例后请求相应
+时间接口。Rust 按登记类校验两个旧版槽的回引。构造 FeatureLayer
+0x1d/0x1e 让时间参考和时间范围槽分别引用对方的类，验证停在槽首、
+保留原有键。该组合尚无实档或人工验证。
+
 LabelPlacement.dll 10.1.0.3035（SHA-256
 `8415f63c1889e269ba6ae585538f601130c20cef02e4556e875a52217d35ea3d`）
 HotLinkExpressionProperties 的持久化虚表位于 `0x7857b7a8`，

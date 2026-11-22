@@ -2348,6 +2348,40 @@ mod tail_continuation {
         prefix.extend(2.5_f64.to_le_bytes());
         prefix.extend(23_i32.to_le_bytes());
 
+        for (version, which, registered, claimed) in [
+            (0x1d, 0, TIME_EXTENT_CLASS_ID, TIME_REFERENCE_CLASS_ID),
+            (0x1e, 1, TIME_REFERENCE_CLASS_ID, TIME_EXTENT_CLASS_ID),
+        ] {
+            let mut bytes = prefix.clone();
+            if which == 1 {
+                push_null_marker(&mut bytes);
+            }
+            let offset = bytes.len();
+            push_entry_header(&mut bytes, &claimed, 120);
+
+            let mut prior = Vec::new();
+            push_entry_header(&mut prior, &registered, 120);
+            let mut refs = RefTable10_1::new();
+            mxd2qgz::storage::object_refs::read_object_entry_10_1(
+                &mut Reader::new(&prior),
+                &mut refs,
+            )
+            .unwrap();
+            let mut reader = Reader::new(&bytes);
+            let layer =
+                read_feature_layer_successor_10_1(&mut reader, version, 4096, &mut refs).unwrap();
+            assert_eq!(
+                layer.stop,
+                SuccessorStop10_1::LegacyTimeSlotUnsupported {
+                    class_id: claimed,
+                    key: 120,
+                    which,
+                }
+            );
+            assert_eq!(reader.position(), offset);
+            assert!(refs.contains(120));
+        }
+
         let mut bytes = prefix;
         for version in 0x1c..=0x1f {
             match version {
