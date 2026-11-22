@@ -383,6 +383,7 @@
   - [x] 对独立表 PreJoin 表达式应用 LayerLib 的正计数循环门。[委派取证](docs/mxd-terra-round9-table.md#独立表的有符号计数)
   - [x] 按长度保留独立表 v14 的未知扩展并继续读取后续条目。[扩展取证](docs/mxd-terra-round9-table.md#独立表的未知扩展)
   - [x] 验证独立表 v14 未知扩展的累计长度及溢出回滚。
+  - [x] 验证独立表 v14 已知扩展遇未知 ITimeWindow 时的条目回滚。
   - [x] 按 LayerLib 的有符号计数门读取独立表 v14 扩展列表。[扩展计数取证](docs/mxd-terra-round9-table.md#独立表的未知扩展)
   - [x] 校验独立表三个尾部接口槽的回引类。[尾槽取证](docs/mxd-terra-round9-table.md#独立表尾槽回引)
   - [x] 按已登记对象的类校验独立表颜色槽回引。[颜色槽取证](docs/mxd-terra-round9-table.md#独立表颜色槽回引)

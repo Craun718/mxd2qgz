@@ -562,6 +562,29 @@ fn empty_sequences_reach_version_boundaries_and_secondary_name() {
             assert!(refs.contains(44));
             assert_eq!(r.remaining(), 0);
 
+            let mut unsupported_window = complete.clone();
+            let window_count = unsupported_window.len() - 4;
+            unsupported_window[window_count..].copy_from_slice(&1_u32.to_le_bytes());
+            unsupported_window.extend([0x7d; 16]);
+            unsupported_window.extend(45_u32.to_le_bytes());
+            let body_size = (unsupported_window.len() - expected - 24) as i64;
+            unsupported_window[expected..expected + 8].copy_from_slice(&body_size.to_le_bytes());
+            let mut reader = Reader::new(&unsupported_window);
+            let mut refs = RefTable10_1::new();
+            let result =
+                read_standalone_table_prefix_10_1(&mut reader, &mut refs, 10, 128).unwrap();
+            assert_eq!(
+                result.stop,
+                StandaloneTableStop10_1::Extension {
+                    class_id: TIME_LAYER_TRACK_EXTENSION_CLASS_ID,
+                    size: body_size,
+                }
+            );
+            assert!(result.extensions.is_empty());
+            assert_eq!(reader.position(), expected);
+            assert!(refs.contains(41));
+            assert!(!refs.contains(44) && !refs.contains(45));
+
             with_extension[expected - 4..expected].copy_from_slice(&3_u32.to_le_bytes());
             let unknown_offset = with_extension.len();
             with_extension.extend(3_i64.to_le_bytes());
