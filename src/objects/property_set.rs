@@ -330,6 +330,11 @@ pub enum PropertyValueObjectStream10_1 {
         key: u32,
         body: Box<PropertySetObjectStream10_1>,
     },
+    Domain {
+        class_id: [u8; 16],
+        key: u32,
+        body: Box<crate::objects::domain::DomainBody10_1>,
+    },
     /// 有对象头及会话键的 SystemCore 数组。
     ArrayObject {
         class_id: [u8; 16],
@@ -581,12 +586,32 @@ pub(crate) fn read_variant_object_body_10_1(
     entry: ObjectEntry10_1,
 ) -> io::Result<PropertyValueObjectStream10_1> {
     let depth = depth.max(table.raster_info_variant_depth());
+    use crate::objects::domain::{
+        CODED_VALUE_DOMAIN_CLASS_ID, RANGE_DOMAIN_CLASS_ID, read_domain_body_10_1,
+    };
     Ok(match entry {
         ObjectEntry10_1::Null => {
             PropertyValueObjectStream10_1::Inline(PropertyValue10_1::NullObject)
         }
         ObjectEntry10_1::BackReference { class_id, key } => {
             PropertyValueObjectStream10_1::BackReference { class_id, key }
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: class_id @ (RANGE_DOMAIN_CLASS_ID | CODED_VALUE_DOMAIN_CLASS_ID),
+            key,
+        } => {
+            check_variant_object_depth(depth)?;
+            PropertyValueObjectStream10_1::Domain {
+                class_id,
+                key,
+                body: Box::new(read_domain_body_10_1(
+                    reader,
+                    max_bytes,
+                    table,
+                    class_id,
+                    depth + 1,
+                )?),
+            }
         }
         ObjectEntry10_1::NewObject { class_id, key } if class_id == PROPERTY_SET_CLASS_ID => {
             check_variant_object_depth(depth)?;

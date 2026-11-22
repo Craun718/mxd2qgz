@@ -161,3 +161,12 @@ RasterCatalog.dll 10.1.0.3035 x86（ImageBase `0x7be30000`，SHA-256
 /Maps 参考档和已提取的 199 个介质流无上述两个 CLSID 命中。
 合成测试验证计数、RasterDef v1/v2 尾段区别、空间参考回引，以及异常计数或
 截断时外层 Fields 回退且不提交定义对象的新键。未做 ArcMap/QGIS 人工验收。
+
+### Variant 中的值域对象
+
+GdbCore.dll 10.1.0.3035 的 RangeDomain 与 CodedValueDomain
+分别经 IPersistStream 的 `0x70935390`、`0x708d5320` 读取。
+AfCore 对象 Variant 在同一 ObjectStream 中按持久化接口委派，
+因此共用两类值域对象体读取器，并将子 Variant 纳入同一递归限额。
+合成范围值域覆盖嵌套编码值域、同键回引和截断回滚。此组合尚缺
+真实 MXD 观测；ArcMap 10.1 与 QGIS 人工验收未进行。

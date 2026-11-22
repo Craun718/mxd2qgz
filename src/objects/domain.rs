@@ -1,7 +1,7 @@
 //! 10.1 Field 的 IDomain 对象，见 docs/mxd-10.1-fields.md。
 
 use crate::objects::property_set::{
-    PropertyValueObjectStream10_1, read_padded_variant_object_stream_10_1,
+    PropertyValueObjectStream10_1, read_padded_variant_object_stream_nested_10_1,
 };
 use crate::objects::string_array::{StringArraySlot10_1, read_string_array_slot_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
@@ -77,11 +77,12 @@ pub fn read_domain_slot_10_1(
     let entry = read_object_entry_10_1(&mut r, &mut staged)?;
     let body = match entry {
         ObjectEntry10_1::Null | ObjectEntry10_1::BackReference { .. } => None,
-        ObjectEntry10_1::NewObject { class_id, .. } => Some(Box::new(read_body(
+        ObjectEntry10_1::NewObject { class_id, .. } => Some(Box::new(read_domain_body_10_1(
             &mut r,
             max_bytes,
             &mut staged,
             class_id,
+            0,
         )?)),
     };
     *reader = r;
@@ -89,11 +90,12 @@ pub fn read_domain_slot_10_1(
     Ok(DomainSlot10_1 { entry, body })
 }
 
-fn read_body(
+pub(crate) fn read_domain_body_10_1(
     r: &mut Reader<'_>,
     max_bytes: usize,
     refs: &mut RefTable10_1,
     class_id: [u8; 16],
+    depth: usize,
 ) -> io::Result<DomainBody10_1> {
     if !matches!(
         class_id,
@@ -127,8 +129,8 @@ fn read_body(
         read_bit_mask_values(r, max_bytes, refs, long_before_values)?
     } else if class_id == RANGE_DOMAIN_CLASS_ID {
         DomainValues10_1::Range([
-            read_padded_variant_object_stream_10_1(r, max_bytes, refs)?,
-            read_padded_variant_object_stream_10_1(r, max_bytes, refs)?,
+            read_padded_variant_object_stream_nested_10_1(r, max_bytes, refs, depth)?,
+            read_padded_variant_object_stream_nested_10_1(r, max_bytes, refs, depth)?,
         ])
     } else {
         let count = usize::try_from(long(r)?)
@@ -144,7 +146,7 @@ fn read_body(
             entries.push(CodedDomainValue10_1 {
                 // 自由函数 ReadString 用码元数量，后跟 Variant::Read(false) 的值。
                 label: read_bstr_string_10_1(r, max_bytes)?,
-                code: read_padded_variant_object_stream_10_1(r, max_bytes, refs)?,
+                code: read_padded_variant_object_stream_nested_10_1(r, max_bytes, refs, depth)?,
             });
         }
         DomainValues10_1::Coded(entries)
@@ -270,6 +272,56 @@ mod tests {
             assert_eq!(reader.position(), 0);
             assert!(refs.is_empty());
         }
+    }
+
+    #[test]
+    fn range_domain_reads_a_nested_coded_domain_and_its_reference() {
+        fn header(bytes: &mut Vec<u8>, class: [u8; 16], key: u32) {
+            bytes.extend(class);
+            bytes.extend(key.to_le_bytes());
+        }
+        fn base(bytes: &mut Vec<u8>) {
+            bytes.extend([0; 4 + 12]);
+            bytes.extend([2, 0, 0, 0, 0, 0].repeat(3));
+            bytes.extend([0; 4]);
+        }
+
+        let mut bytes = Vec::new();
+        header(&mut bytes, RANGE_DOMAIN_CLASS_ID, 1);
+        base(&mut bytes);
+        bytes.extend(13_u16.to_le_bytes());
+        bytes.extend([0; 14]);
+        header(&mut bytes, CODED_VALUE_DOMAIN_CLASS_ID, 2);
+        base(&mut bytes);
+        bytes.extend(0_u32.to_le_bytes());
+        bytes.extend(13_u16.to_le_bytes());
+        bytes.extend([0; 14]);
+        header(&mut bytes, CODED_VALUE_DOMAIN_CLASS_ID, 2);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let parsed = read_domain_slot_10_1(&mut reader, 4096, &mut refs).unwrap();
+        let DomainValues10_1::Range([lower, upper]) = parsed.body.unwrap().values else {
+            panic!("缺少范围值域");
+        };
+        assert!(matches!(lower, PropertyValueObjectStream10_1::Domain {
+            class_id: CODED_VALUE_DOMAIN_CLASS_ID, key: 2, body,
+        } if matches!(&body.values, DomainValues10_1::Coded(values) if values.is_empty())));
+        assert_eq!(
+            upper,
+            PropertyValueObjectStream10_1::BackReference {
+                class_id: CODED_VALUE_DOMAIN_CLASS_ID,
+                key: 2,
+            }
+        );
+        assert_eq!(reader.position(), bytes.len());
+        assert_eq!(refs.len(), 2);
+
+        let mut reader = Reader::new(&bytes[..bytes.len() - 1]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_domain_slot_10_1(&mut reader, 4096, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
     }
 
     #[test]
