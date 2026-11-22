@@ -391,7 +391,20 @@ fn read_geometric_xform(
             }
         }
     } else {
-        let entry = read_object_entry_10_1(r, table)?;
+        let mut entry = read_object_entry_10_1(r, table)?;
+        if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+            && let Some(registered) = table.registered_class(*key)
+        {
+            if xform_layout(registered).is_none()
+                && !supports_geo_transformation_body_10_1(registered)
+            {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!("GeometricXform ITransformation 回引键 {key} 的登记类不受支持"),
+                ));
+            }
+            *class_id = registered;
+        }
         match entry {
             ObjectEntry10_1::Null | ObjectEntry10_1::BackReference { .. } => {
                 GeometricTransformation10_1::Object {
@@ -411,31 +424,13 @@ fn read_geometric_xform(
                     )?)),
                 }
             }
-            ObjectEntry10_1::NewObject {
-                class_id:
-                    class_id @ (IDENTITY_XFORM_CLASS_ID
-                    | POLYNOMIAL_XFORM_CLASS_ID
-                    | COMPOSITE_XFORM_CLASS_ID
-                    | ADJUST_XFORM_CLASS_ID
-                    | APPROXIMATION_XFORM_CLASS_ID
-                    | GCS_SHIFT_XFORM_CLASS_ID
-                    | COORDINATE_XFORM_CLASS_ID
-                    | RPC_XFORM_CLASS_ID
-                    | GEOMETRIC_XFORM_CLASS_ID
-                    | LSR_XFORM_CLASS_ID
-                    | PICTOMETRY_XFORM_CLASS_ID
-                    | SPLINE_XFORM_CLASS_ID
-                    | FRAME_XFORM_CLASS_ID
-                    | FORMOSAT2_XFORM_CLASS_ID
-                    | SPOT5_XFORM_CLASS_ID
-                    | CSM_XFORM_CLASS_ID
-                    | PROJECTIVE_XFORM_CLASS_ID),
-                ..
-            } => GeometricTransformation10_1::RasterObject {
-                selector,
-                entry,
-                body: Box::new(read_body(r, max, table, class_id, child_depth)?),
-            },
+            ObjectEntry10_1::NewObject { class_id, .. } if xform_layout(class_id).is_some() => {
+                GeometricTransformation10_1::RasterObject {
+                    selector,
+                    entry,
+                    body: Box::new(read_body(r, max, table, class_id, child_depth)?),
+                }
+            }
             ObjectEntry10_1::NewObject { class_id, .. } => {
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,

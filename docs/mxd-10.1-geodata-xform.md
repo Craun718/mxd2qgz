@@ -226,6 +226,13 @@ PiecewiseTransformation 见[先前取证](mxd-terra-host-geo.md#geometry-类型�
 这些判断限定于核对的内置实现和标准 ObjectStream。未发现的间接接口实现、
 扩展模块或旧档类仍需针对实档取证。
 
+RasterDB.dll 10.1.0.3035 的 GeometricXform Load 在 `0x7bfed651` 传入
+ITransformation IID，并在 `0x7bfed66d` 处理读取失败。SystemCore 同版在
+`0x7ffd0063` 先按键查询原实例，再对原实例请求该接口。Rust 按已登记类
+校验回引，沿用新对象已支持的类范围。构造输入验证流中类标识与登记类
+不一致时仍可读取有效回引，也验证误引 Point 时整个变换槽回滚。尚无该
+回引的实档或 ArcMap/QGIS 人工验证。
+
 ## Frame、Formosat2 与 SPOT5
 
 用同一 RasterDB.dll 10.1.0.3035 原件补充 pyghidra 导出，原始指令和

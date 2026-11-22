@@ -467,6 +467,59 @@ fn geometric_reads_collection_and_inline_or_object_transform() {
 }
 
 #[test]
+fn geometric_transformation_reference_uses_registered_class() {
+    use mxd2qgz::objects::geodata_xform::{GEOMETRIC_XFORM_CLASS_ID, GeometricTransformation10_1};
+    use mxd2qgz::objects::geometry::POINT_CLASS_ID;
+    use mxd2qgz::storage::object_refs::read_object_entry_10_1;
+
+    for (registered, claimed) in [
+        (IDENTITY_XFORM_CLASS_ID, POINT_CLASS_ID),
+        (POINT_CLASS_ID, IDENTITY_XFORM_CLASS_ID),
+    ] {
+        let mut previous = Vec::new();
+        header(&mut previous, registered, 71);
+        let mut refs = RefTable10_1::new();
+        read_object_entry_10_1(&mut Reader::new(&previous), &mut refs).unwrap();
+        let before = refs.clone();
+
+        let mut bytes = Vec::new();
+        header(&mut bytes, GEOMETRIC_XFORM_CLASS_ID, 80);
+        bytes.extend(2_i32.to_le_bytes());
+        bytes.extend([0; 32]);
+        bytes.push(1);
+        header(&mut bytes, claimed, 71);
+        bytes.extend(6.75_f64.to_le_bytes());
+        let end = bytes.len();
+        bytes.push(0xaa);
+
+        let mut reader = Reader::new(&bytes);
+        let result = read_geodata_xform_slot_10_1(&mut reader, 128, &mut refs);
+        if registered == IDENTITY_XFORM_CLASS_ID {
+            let GeodataXformBody10_1::Geometric(body) = *result.unwrap().body.unwrap() else {
+                panic!("缺少 GeometricXform");
+            };
+            assert!(matches!(
+                body.transformation,
+                GeometricTransformation10_1::Object {
+                    entry: ObjectEntry10_1::BackReference {
+                        class_id: IDENTITY_XFORM_CLASS_ID,
+                        key: 71,
+                    },
+                    body: None,
+                    ..
+                }
+            ));
+            assert_eq!(body.double_ac, Some(6.75));
+            assert_eq!(reader.position(), end);
+        } else {
+            assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::Unsupported);
+            assert_eq!(reader.position(), 0);
+            assert_eq!(refs, before);
+        }
+    }
+}
+
+#[test]
 fn geometric_reads_persisted_transformation_before_its_tail() {
     use mxd2qgz::objects::geo_transformation::HARN_TRANSFORMATION_CLASS_ID;
     use mxd2qgz::objects::geodata_xform::{GEOMETRIC_XFORM_CLASS_ID, GeometricTransformation10_1};
