@@ -133,7 +133,23 @@ pub(crate) fn read_spatial_reference_entry_10_1(
     table: &mut RefTable10_1,
 ) -> io::Result<SpatialReferenceEntry10_1> {
     let offset = reader.position();
-    let entry = read_object_entry_10_1(reader, table)?;
+    let mut entry = read_object_entry_10_1(reader, table)?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+        && let Some(registered) = table.registered_class(*key)
+    {
+        if !matches!(
+            registered,
+            PROJECTED_COORDINATE_SYSTEM_CLASS_ID
+                | GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID
+                | UNKNOWN_COORDINATE_SYSTEM_CLASS_ID
+        ) {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                format!("ISpatialReference 槽 offset 0x{offset:x}: 回引键 {key} 的登记类不受支持"),
+            ));
+        }
+        *class_id = registered;
+    }
     if let Some(reference) = read_spatial_reference_body_10_1(reader, max_bytes, &entry)? {
         return Ok(reference);
     }

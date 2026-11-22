@@ -253,3 +253,12 @@ GdbCore.dll 10.1.0.3035 的 Field Load（`0x709e1730`）在定义槽
 对象后查询接口。两个定义槽按各自已验证的登记类分派回引。合成测试
 覆盖有效回引、类型不匹配、游标和已有键。
 ArcMap 10.1 与 QGIS 人工验收未进行。
+
+### 字段定义的空间参考回引
+
+GdbCore.dll 10.1.0.3035 的 GeometryDef（`0x709ed730`）和
+RasterCatalog.dll 同版的 RasterDef（`0x7be37540`）都请求
+ISpatialReference。SystemCore 在 `0x7ffd0063` 按键查询原实例；
+共享空间参考读取器据已登记类分派已知三种空间参考。合成 RasterDef
+验证有效回引后的字段边界及错误登记类导致的游标和键表回滚。
+ArcMap 10.1 与 QGIS 人工验收未进行。

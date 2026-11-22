@@ -184,6 +184,45 @@ mod tests {
     use super::*;
 
     #[test]
+    fn raster_definition_spatial_reference_resolves_registered_object() {
+        use crate::objects::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
+
+        let crs = PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
+        for (registered, claimed) in [(crs, RASTER_DEF_CLASS_ID), (RASTER_DEF_CLASS_ID, crs)] {
+            let mut header = registered.to_vec();
+            header.extend(31_u32.to_le_bytes());
+            let mut refs = RefTable10_1::new();
+            read_object_entry_10_1(&mut Reader::new(&header), &mut refs).unwrap();
+            let before = refs.clone();
+            let mut bytes = RASTER_DEF_CLASS_ID.to_vec();
+            bytes.extend(32_u32.to_le_bytes());
+            bytes.extend([1, 0, 2, 0, 0, 0, 0, 0]);
+            bytes.extend(claimed);
+            bytes.extend(31_u32.to_le_bytes());
+            bytes.extend([6, 0, 7, 0]);
+            let mut reader = Reader::new(&bytes);
+            let result = read_raster_def_slot_10_1(&mut reader, 128, &mut refs);
+            if registered == crs {
+                let body = result.unwrap().body.unwrap();
+                assert_eq!(
+                    body.spatial_reference,
+                    SpatialReferenceEntry10_1::BackReference {
+                        class_id: crs,
+                        key: 31,
+                    }
+                );
+                assert_eq!(body.shorts_14_16, [6, 7]);
+                assert_eq!(reader.position(), bytes.len());
+                assert!(refs.contains(32));
+            } else {
+                assert_eq!(result.unwrap_err().kind(), ErrorKind::Unsupported);
+                assert_eq!(reader.position(), 0);
+                assert_eq!(refs, before);
+            }
+        }
+    }
+
+    #[test]
     fn definition_references_check_the_class_registered_for_each_interface() {
         for expected in [GEOMETRY_DEF_CLASS_ID, RASTER_DEF_CLASS_ID] {
             for registered in [expected, [0x7d; 16]] {
