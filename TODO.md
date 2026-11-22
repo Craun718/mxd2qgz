@@ -274,6 +274,7 @@
   - [x] 按 10.1 Load 的有符号下限与字段条件读取 RasterClassifyRenderer。
   - [x] 接入 RasterStretchRenderer v1–v9 已确认布局，读取定长旧体、无键 RasterIO 对象和结束标记前的采样数组，见 [拉伸原生取证](docs/mxd-10.1-raster-renderer.md#rasterstretchrenderer)。
   - [x] 按 10.1 Load 的有符号下限与字段条件读取 RasterStretchRenderer。
+  - [x] 复用拉伸渲染器 tag 8 的 IColor 分派并验证非空 GrayColor 边界。
   - [x] 接入 SAIRenderer v1 的 short、两个 double 和共用渲染器体，见 [注册与持久化入口](docs/mxd-10.1-raster-renderer.md#sairenderer)。
   - [x] 按 10.1 Load 的有符号上限读取 SAIRenderer 版本。
   - [x] 核对 10.1 类注册表其余 IRasterRenderer 候选的持久化实现。Raster3DRenderer 的普通新实例无法查询持久化接口，VectorFieldRenderer 不在原生导出工厂表中，见 [类工厂与接口取证](docs/mxd-10.1-raster-renderer.md#其余注册候选的持久化核对)。

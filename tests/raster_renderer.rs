@@ -1344,6 +1344,7 @@ fn raster_stretch_reads_versioned_records_and_raw_tail_before_end() {
         RASTER_STRETCH_RENDERER_CLASS_ID, RasterStretchLayout10_1,
     };
     use mxd2qgz::objects::color_ramp::RANDOM_COLOR_RAMP_CLASS_ID;
+    use mxd2qgz::objects::display_color::GRAY_COLOR_CLASS_ID;
 
     fn text(bytes: &mut Vec<u8>, c: u16) {
         bytes.extend(4_u32.to_le_bytes());
@@ -1389,7 +1390,10 @@ fn raster_stretch_reads_versioned_records_and_raw_tail_before_end() {
                 bytes.extend(1_u16.to_le_bytes());
                 bytes.extend(0_u32.to_le_bytes()); // BSTR 码元数。
                 bytes.extend([0; 22]); // 随机梯度的三个标量及六个 short。
-                obj(&mut bytes, 8, [0; 16]);
+                obj(&mut bytes, 8, GRAY_COLOR_CLASS_ID);
+                bytes.extend(1_u16.to_le_bytes());
+                bytes.extend(1_u16.to_le_bytes());
+                bytes.extend([1, 1, 2, 3, 4, 0x11, 0xee]);
             }
             obj(&mut bytes, 9, LEGEND_GROUP_CLASS_ID);
             bytes.extend(1_u16.to_le_bytes());
@@ -1502,7 +1506,10 @@ fn raster_stretch_reads_versioned_records_and_raw_tail_before_end() {
                 assert_eq!(io.pair_v9, (version >= 9).then_some([7.5, 8.5]));
                 if version >= 9 {
                     assert_eq!(io.ramp.as_ref().unwrap()[..16], RANDOM_COLOR_RAMP_CLASS_ID);
-                    assert_eq!(io.color.as_ref().unwrap(), &[0; 16]);
+                    let color = io.color.as_ref().unwrap();
+                    assert_eq!(color[..16], GRAY_COLOR_CLASS_ID);
+                    assert_eq!(&color[16..], &[1, 0, 1, 0, 1, 1, 2, 3, 4, 0x11, 0xee]);
+                    assert!(!refs.contains(0));
                     assert_eq!(io.legend_group[..16], LEGEND_GROUP_CLASS_ID);
                     assert_eq!(io.tag10, Some(53));
                     assert!(

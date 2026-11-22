@@ -349,6 +349,8 @@ int32 验证该字段与共用体边界，尚无这些版本的实档或人工�
   与 CLSID 地址 `0x7c9b16e0` 互证；tag 17 经 `0x7c983ba0` /
   `0x7c983d00` 查询 `0x7c9b43d0` 的 IStatsHistogram。RasterIO
   把原流传给对象体，其内部 LoadObject 可沿用宿主键表，不为无键根登记键。
+  tag 8 的五种颜色复用 IColor 对象体分派。构造 v9 及以上的
+  GrayColor 验证原始对象字节、无键边界及后继记录。该组合尚无实档或人工验证。
 - tag 10 只在 tag 9 读到非空图例组后尝试读取，为 int32。tag 11–16
   依次为 int32、short、两个 double、int32、int32、double。v5 起
   增加 tag 18–22：int32、double、int32、计数 int32、字符串开关 int32。

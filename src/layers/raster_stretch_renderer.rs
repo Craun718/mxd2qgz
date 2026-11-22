@@ -14,9 +14,7 @@ use crate::objects::color_ramp::{
     ColorRampSlot10_1, nested_ramp_stop, read_color_ramp_body_for_class_10_1,
 };
 use crate::objects::display_color::{
-    CMYK_COLOR_CLASS_ID, ColorSlot10_1, GRAY_COLOR_CLASS_ID, HLS_COLOR_CLASS_ID,
-    HSV_COLOR_CLASS_ID, RGB_COLOR_CLASS_ID, read_cmyk_color_body_10_1, read_color_slot_10_1,
-    read_core_color_body_10_1, read_rgb_color_body_10_1,
+    ColorSlot10_1, read_color_body_for_class_10_1, read_color_slot_10_1,
 };
 use crate::objects::display_symbol::MAX_SYMBOL_NESTING_DEPTH;
 use crate::storage::{class_id_hex, object_refs::RefTable10_1};
@@ -140,21 +138,13 @@ fn read_no_key_object(
                 return Err(invalid(format!("栅格拉伸渲染器梯度未闭合：{stop:?}")));
             }
         }
-        (8, RGB_COLOR_CLASS_ID) => {
-            read_rgb_color_body_10_1(r, table, 0)?;
-        }
-        (8, CMYK_COLOR_CLASS_ID) => {
-            read_cmyk_color_body_10_1(r, max, table, 0)?;
-        }
-        (8, class_id @ (HSV_COLOR_CLASS_ID | HLS_COLOR_CLASS_ID | GRAY_COLOR_CLASS_ID)) => {
-            let label = if class_id == HSV_COLOR_CLASS_ID {
-                "HsvColor"
-            } else if class_id == HLS_COLOR_CLASS_ID {
-                "HlsColor"
-            } else {
-                "GrayColor"
-            };
-            read_core_color_body_10_1(r, table, 0, label)?;
+        (8, class_id) => {
+            read_color_body_for_class_10_1(class_id, r, max, table, 0)?.ok_or_else(|| {
+                invalid(format!(
+                    "栅格拉伸渲染器 tag 8 的类 {} 未支持",
+                    class_id_hex(&class_id)
+                ))
+            })?;
         }
         (9, LEGEND_GROUP_CLASS_ID) => {
             let group = read_inline_legend_group_body_10_1(r, max, table, 0)?;
