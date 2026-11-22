@@ -268,6 +268,7 @@
   - [x] 接入共享 ObjectStream Variant 中的 RangeDomain 与 CodedValueDomain 对象体。[值域取证](docs/mxd-10.1-fields.md#idomain范围值域与编码值域)
   - [x] 接入共享 ObjectStream Variant 中的 BitMaskCodedValueDomain 对象体。[持久化入口](docs/mxd-10.1-fields.md#bitmaskcodedvaluedomain)
   - [x] 按声明计数处理位掩码值域的标签数组回引。[标签循环取证](docs/mxd-10.1-fields.md#位掩码标签计数)
+  - [x] 保留位掩码值域非正计数及其 ExtraSafe 标签槽。[非正计数取证](docs/mxd-10.1-fields.md#位掩码标签计数)
   - [x] 接入共享 ObjectStream Variant 中的 GeometryDef 与 RasterDef 对象体。[定义对象取证](docs/mxd-10.1-fields.md#几何定义与栅格定义)
   - [x] 接入共享 ObjectStream Variant 中的 Field 与 Fields 对象体。[字段对象取证](docs/mxd-10.1-fields.md#variant-中的字段与字段集合)
   - [x] 以登记对象的类标识返回 ObjectStream Variant 回引。[回引取证](docs/mxd-10.1-fields.md#variant-中的值域对象)

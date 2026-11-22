@@ -215,7 +215,7 @@ fn read_bit_mask_values(
         None if labels.entry == ObjectEntry10_1::Null => Some(0),
         None => None,
     };
-    if region.remaining() != 0 || count < 0 || saved_count.is_some_and(|len| len < count as usize) {
+    if region.remaining() != 0 || saved_count.is_some_and(|len| len < count.max(0) as usize) {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
             "BitMaskCodedValueDomain 的标签数量或 ExtraSafe 边界不符",
@@ -376,6 +376,24 @@ mod tests {
         assert!(read_domain_slot_10_1(&mut reader, 4096, &mut refs).is_err());
         assert_eq!(reader.position(), 0);
         assert_eq!(refs, before);
+
+        for count in [i32::MIN, -1, 0] {
+            let mut input = bytes.clone();
+            input[count_offset..count_offset + 4].copy_from_slice(&count.to_le_bytes());
+            let mut reader = Reader::new(&input);
+            let mut refs = RefTable10_1::new();
+            let body = read_domain_slot_10_1(&mut reader, 4096, &mut refs)
+                .unwrap()
+                .body
+                .unwrap();
+            assert_eq!(body.long_before_values, count);
+            assert!(
+                matches!(body.values, DomainValues10_1::BitMask { labels, .. }
+                if labels.body == Some((1, vec!["甲".to_owned(), "乙".to_owned()])))
+            );
+            assert!(refs.contains(81) && refs.contains(82));
+            assert_eq!(reader.read_u16_le().unwrap(), 0x1234);
+        }
 
         let mut wrong_count = bytes.clone();
         wrong_count[count_offset..count_offset + 4].copy_from_slice(&3_i32.to_le_bytes());
