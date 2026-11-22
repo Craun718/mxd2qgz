@@ -274,6 +274,7 @@
   - [x] 按 10.1 Load 的有符号下限与字段条件读取 RasterClassifyRenderer。
   - [x] 按登记类校验 RasterClassifyRenderer 的 ILegendClass 回引。
   - [x] 按登记类校验 RasterClassifyRenderer 的 INumberFormat 回引。
+  - [x] 按有符号循环门读取 RasterClassifyRenderer 的图例组计数。
   - [x] 接入 RasterStretchRenderer v1–v9 已确认布局，读取定长旧体、无键 RasterIO 对象和结束标记前的采样数组，见 [拉伸原生取证](docs/mxd-10.1-raster-renderer.md#rasterstretchrenderer)。
   - [x] 按 10.1 Load 的有符号下限与字段条件读取 RasterStretchRenderer。
   - [x] 复用拉伸渲染器 tag 8 的 IColor 分派并验证非空 GrayColor 边界。

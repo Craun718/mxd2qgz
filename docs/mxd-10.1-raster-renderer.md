@@ -335,6 +335,12 @@ INumberFormat（请求常量 `0x7c9b29e4`）同样按 SystemCore 的查键顺序
 校验。构造 v2 验证 CurrencyFormat 回引后的字段边界，以及误引 RGB
 颜色时的游标和键表回滚。该组合尚无实档或人工验证。
 
+同版 Load 在 `0x7c971c83..0x7c971c90` 对图例组数直接执行
+有符号循环门。v1 旧值数组和断点数组则先把计数交给容器调整函数
+（`0x7c971d2f`、`0x7c971dab`），Rust 仍实查其非负范围。
+构造 v1 验证负图例组数后能继续读取图例项、断点和共用体。
+负计数组合尚无实档或人工验证。
+
 ### RasterStretchRenderer
 
 沿用已核验的 RasterRenderer.dll 10.1，补充 pyghidra 的旧 Load

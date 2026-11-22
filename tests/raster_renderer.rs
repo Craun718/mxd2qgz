@@ -1177,6 +1177,7 @@ fn raster_classify_reads_legacy_and_current_versions_with_optional_raster_io() {
             bytes.extend([0x4e; 16]); // 内联 GUID 无 ObjectStream 键。
         }
         text(&mut bytes, b'c'.into());
+        let legend_group_count = bytes.len();
         bytes.extend(1_i32.to_le_bytes()); // 一个空 ILegendGroup。
         bytes.extend([0; 16]);
         bytes.extend([0; 16]); // ILegendItem。
@@ -1331,6 +1332,23 @@ fn raster_classify_reads_legacy_and_current_versions_with_optional_raster_io() {
             assert_eq!(reader.position(), 0);
             assert!(refs.is_empty());
         };
+        if version == 1 {
+            let mut negative_groups = bytes.clone();
+            negative_groups.splice(
+                legend_group_count..legend_group_count + 20,
+                i32::MIN.to_le_bytes(),
+            );
+            let mut reader = Reader::new(&negative_groups);
+            let mut refs = RefTable10_1::new();
+            let renderer =
+                read_raster_renderer_slot_prefix_10_1(&mut reader, 1024, &mut refs).unwrap();
+            assert!(matches!(
+                renderer.body,
+                Some(RasterRendererPrefix10_1::Classify(body))
+                    if body.legend_groups.is_empty() && body.breaks == [10.0, 20.5]
+            ));
+            assert_eq!(reader.read_bytes(1).unwrap(), &[0xa7]);
+        }
         if version == 2 {
             let mut reference = bytes.clone();
             reference[format_offset..format_offset + 16].copy_from_slice(&RGB_COLOR_CLASS_ID);

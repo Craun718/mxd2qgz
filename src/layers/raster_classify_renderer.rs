@@ -96,6 +96,10 @@ fn invalid(msg: impl Into<String>) -> io::Error {
 
 fn length(r: &mut Reader<'_>, max: usize, width: usize) -> io::Result<usize> {
     let n = usize::try_from(long(r)?).map_err(|_| invalid("栅格分类渲染器计数为负"))?;
+    check_length(r, n, max, width)
+}
+
+fn check_length(r: &Reader<'_>, n: usize, max: usize, width: usize) -> io::Result<usize> {
     if n > max / width {
         return Err(invalid("栅格分类渲染器计数超过资源限额"));
     }
@@ -216,7 +220,8 @@ pub(super) fn read_raster_classify_renderer(
         ClassificationMethod10_1::Guid { flag, value }
     };
     let third = read_string_10_1(r, max)?;
-    let legend_groups = (0..length(r, max, 16)?)
+    let legend_count = long(r)?.max(0) as usize;
+    let legend_groups = (0..check_length(r, legend_count, max, 16)?)
         .map(|_| read_renderer_legend_group(r, max, table))
         .collect::<io::Result<_>>()?;
     let legend_item = read_renderer_legend_item(r, max, table)?;
