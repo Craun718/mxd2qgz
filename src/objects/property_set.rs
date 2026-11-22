@@ -1755,12 +1755,12 @@ mod tests {
         let mut bytes = 13_u16.to_le_bytes().to_vec();
         bytes.extend([0; 14]);
         object(&mut bytes, UNIQUE_VALUES_CLASS_ID, 11);
-        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend(2_i32.to_le_bytes());
         bytes.extend(1_i32.to_le_bytes());
         bytes.extend(13_u16.to_le_bytes());
         bytes.extend([0; 14]);
         object(&mut bytes, UNIQUE_VALUES_CLASS_ID, 12);
-        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend((-1_i32).to_le_bytes());
         bytes.extend(0_i32.to_le_bytes());
         bytes.extend(17_i32.to_le_bytes());
         let end = bytes.len();
@@ -1772,7 +1772,8 @@ mod tests {
             panic!("缺少唯一值集合");
         };
         assert!(matches!(value.body().values.as_slice(),
-            [(PropertyValueObjectStream10_1::UniqueValues(child), 17)] if child.key == 12));
+            [(PropertyValueObjectStream10_1::UniqueValues(child), 17)] if child.key == 12 && child.body().version == -1));
+        assert_eq!(value.body().version, 2);
         assert!(refs.contains(11) && refs.contains(12));
         assert_eq!(reader.position(), end);
         for (bytes, depth) in [

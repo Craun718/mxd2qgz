@@ -384,9 +384,6 @@ pub(crate) fn read_unique_values_body(
     use crate::objects::property_set::read_padded_variant_object_stream_nested_10_1;
 
     let version = long(r)?;
-    if version != 1 {
-        return Err(invalid(format!("未支持的 UniqueValues 版本 {version}")));
-    }
     let declared_count = long(r)?;
     let count = check_length(r, declared_count.max(0) as usize, max, 20)?;
     let values = (0..count)
