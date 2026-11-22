@@ -921,7 +921,7 @@ pub(crate) fn read_netcdf_table_name_body_10_1(
     let mut r = reader.clone();
     let mut staged = table.clone();
     let version = r.read_u16_le()?;
-    if version > 1 {
+    if (version as i16) > 1 {
         return Err(io::Error::new(
             ErrorKind::Unsupported,
             "NetCDFTableName 版本不支持",

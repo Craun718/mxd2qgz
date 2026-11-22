@@ -120,7 +120,10 @@ GetClassID `0x7ae2fd80` 写出 `0x7ae5f7f0` 的
 Load `0x7ae2fdc0`、Save `0x7ae2fff0`，确认 short 版本、三个
 AfCore String，随后五个普通 LoadObject 槽，顺序为 IWorkspaceName、
 两个成员 IStringArray、维度名称 IStringArray 和维度索引 ILongArray。
-Load 的有符号上限为 1，Save 写 1。Rust 读取 0–1。
+Load 的有符号上限为 1，Save 写 1。共享名称读取器按有符号上限比较，
+并保留原始版本位模式。旧 Map 合成测试覆盖 1、-1、最小有符号值和
+超限版本，核对数组、后继回引及停止位置。负版本实档及 ArcMap 10.1、
+QGIS 人工验收尚未验证。
 
 Save `0x7ae300a6`、`0x7ae300b5` 分别创建 StrArray 与 LongArray
 以写出后两个槽。读取后原生立即使用维度数组的虚表，Rust 对这两个槽拒绝空对象。

@@ -210,6 +210,11 @@ fn map_v0_to_v13_read_version_gated_tail_fields() {
         let fgdb_wrapper = (version % 3 == 1 && !referenced && !ams)
             .then_some((if version == 1 { 1 } else { u16::MAX }, 0x4c2a_u16));
         let netcdf = version % 3 == 2;
+        let table_name_version = match version {
+            5 => u16::MAX,
+            8 => i16::MIN as u16,
+            _ => 1,
+        };
         let table_offset = (version < 11).then(|| {
             suffix.extend(2_u32.to_le_bytes());
             let offset = suffix.len();
@@ -263,7 +268,7 @@ fn map_v0_to_v13_read_version_gated_tail_fields() {
             if version == 3 {
                 suffix.extend(1_u32.to_le_bytes()); // RasterBandName 版本标记。
             } else {
-                suffix.extend(1_u16.to_le_bytes());
+                suffix.extend(table_name_version.to_le_bytes());
             }
             for _ in 0..if version == 6 { 4 } else { 3 } {
                 suffix.extend(2_u32.to_le_bytes());
@@ -418,6 +423,7 @@ fn map_v0_to_v13_read_version_gated_tail_fields() {
                 DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::NetCdfTable(name))
                     if netcdf =>
                 {
+                    assert_eq!(name.version, table_name_version);
                     let arrays = name.arrays.as_ref().unwrap();
                     assert_eq!(arrays[0].body, Some((1, vec!["x".to_owned()])));
                     assert!(matches!(
