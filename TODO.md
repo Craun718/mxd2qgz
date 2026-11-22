@@ -897,6 +897,7 @@
 - [ ] 解析 RasterLayer v8 起的 ExtraSafe 扩展对象体及其嵌套对象键。
 - [x] 核对两代 RasterLayer 扩展列表对非正计数的原生循环门。
 - [x] 按已登记实例的类保留 RasterLayer ExtraSafe 扩展回引。
+- [x] 拒绝 RasterLayer v14 颜色索引的负展开数量。
   - [x] 核对 XmlPropertySet 的持久化接口，排除其作为已知 PropertySet 布局接入。[接口证据](docs/mxd-10.1-raster-layer-tail.md#xmlpropertyset-扩展候选)
   - [x] 核对 CIMMapLayerProperties 和 CIM3DLayerProperties 的二进制持久化接口。[候选取证](docs/mxd-10.1-raster-layer-tail.md#cimmaplayerproperties-与-cim3dlayerproperties-候选)
 - [x] 接入两代 RasterLayer 扩展包装中的独立 PropertySet 及内部对象键。[原生取证](docs/mxd-10.1-raster-layer-tail.md#独立-propertyset-扩展与普通图层入口)

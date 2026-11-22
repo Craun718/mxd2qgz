@@ -726,7 +726,7 @@ fn read_extra_safe_extensions(
 }
 
 fn read_color_indices(reader: &mut Reader<'_>, max_bytes: usize) -> io::Result<Vec<i32>> {
-    let count = read_long(reader)?.max(0) as usize;
+    let count = usize::try_from(read_long(reader)?).map_err(|_| invalid("颜色索引展开数量为负"))?;
     if count > max_bytes / 4 {
         return Err(invalid("颜色索引展开长度超过限额"));
     }
@@ -1303,6 +1303,8 @@ mod tests {
     #[test]
     fn color_indices_reject_overflow_and_invalid_runs() {
         for encoded in [
+            [-1, 1, 2],
+            [i32::MIN, 1, 2],
             [32, 1, 2],
             [2, 3, -7],
             [2, 3, -3],
