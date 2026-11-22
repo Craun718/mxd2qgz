@@ -198,6 +198,11 @@ mod tests {
             }
             assert_eq!(metadata.title, "标题");
             assert_eq!(metadata.hyperlink_base, "base");
+            if matches!(layout, MetadataLayout10_1::LegacyScene { .. }) {
+                assert!(metadata.unknown_strings.is_empty());
+            } else {
+                assert_eq!(metadata.unknown_strings, ["raw"]);
+            }
             assert_eq!(
                 metadata.access_constraints.as_deref(),
                 matches!(layout, MetadataLayout10_1::Versioned).then_some("tail")
