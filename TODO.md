@@ -250,6 +250,7 @@
   - [ ] 补齐栅格唯一值类别及统计集合内其他新对象类的 Variant 体分派。
   - [x] 接入 ObjectStream Variant 中的 IdentityXform 对象体。
   - [x] 接入 ObjectStream Variant 中的 PolynomialXform 对象体。
+  - [x] 接入 ObjectStream Variant 中的 CompositeXform 对象体及其子对象键。
   - [x] 接入 ObjectStream Variant 中的 UniqueValues 对象体。
   - [x] 验证 ObjectStream Variant 中 StatsHistogram 对象体的边界及截断回滚。
   - [x] 按 10.1 Load 的有符号版本上限读取 StatsHistogram。
