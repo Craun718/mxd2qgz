@@ -308,7 +308,7 @@ XMLFilterDef 的 QI 主入口分别为 `0x709fe890`、`0x70a00520`、
 - **FilterDefs** 读取 short v0/v1 和 int32 数量。循环中 `0x7090125c`
   经主虚表 `0x70abdfec` 的 `+0x2c` 到 `0x708fd250`，调用
   LoadObject，再对结果查询 IFilterDef。**XMLFilterDef** 读取 short
-  v0/v1，再调用自由函数 ReadString 两次。此路径保持宿主键表，复用
+  版本 1，再调用自由函数 ReadString 两次。此路径保持宿主键表，复用
   已有 ISpatialReference 和 FIDSet 读取器。
 
 构造测试覆盖两类过滤器的版本体边界、空间几何、非空 FIDSet 和 FilterDefs、
@@ -547,3 +547,12 @@ FilterDefs Load 在 `0x70901232..0x70901235`，QueryFilter v2 内联
 列表在 `0x709ffa1f..0x709ffa28`，均用有符号 `jle` 跳过非正计数。
 共享列表读取器据此返回空列表。合成测试验证两个宿主的零与负数，
 以及后续字节边界。负计数实档和 ArcMap 10.1、QGIS 人工验收尚未验证。
+
+### 过滤器版本门
+
+GdbCore.dll 10.1.0.3035 的 objdump 指令在 `0x709ff8e9`、
+`0x70a00809` 和 `0x709011fc` 分别以有符号 `jle` 检查
+QueryFilter、SpatialFilter 和 FilterDefs 的版本上限。
+XMLFilterDef 在 `0x70a29fd0` 以 `je` 仅接受版本 1。
+读取器保留原始版本位模式。合成测试覆盖定义对象版本门及成功边界。
+ArcMap 10.1 与 QGIS 人工验收尚未进行。

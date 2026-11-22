@@ -100,9 +100,9 @@ pub struct SpatialFilterFields10_1 {
 
 type Stop = Option<DatasetNameMoreStop10_1>;
 
-fn read_version(reader: &mut Reader<'_>, max: u16, class: &str) -> io::Result<u16> {
+fn read_version(reader: &mut Reader<'_>, max: i16, class: &str) -> io::Result<u16> {
     let version = reader.read_u16_le()?;
-    if version > max {
+    if (version as i16) > max {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
             format!("{class} 不支持版本 {version}"),
@@ -157,8 +157,15 @@ pub(crate) fn read_xml_filter_def_body_10_1(
     reader: &mut Reader<'_>,
     max: usize,
 ) -> io::Result<XmlFilterDef10_1> {
+    let version = reader.read_u16_le()?;
+    if version != 1 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("XMLFilterDef 不支持版本 {version}"),
+        ));
+    }
     Ok(XmlFilterDef10_1 {
-        version: read_version(reader, 1, "XMLFilterDef")?,
+        version,
         strings: [
             read_bstr_string_10_1(reader, max)?,
             read_bstr_string_10_1(reader, max)?,
@@ -360,6 +367,28 @@ mod tests {
     fn append_header(bytes: &mut Vec<u8>, class: [u8; 16], key: u32) {
         bytes.extend(class);
         bytes.extend(key.to_le_bytes());
+    }
+
+    #[test]
+    fn filter_versions_follow_native_comparisons() {
+        for (version, supported) in [(u16::MAX, true), (0, true), (1, true), (2, false)] {
+            let mut bytes = version.to_le_bytes().to_vec();
+            bytes.extend([0; 8]);
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let defs = read_filter_defs_body_10_1(&mut reader, 128, &mut refs, &mut None);
+            assert_eq!(defs.is_ok(), supported);
+            if let Ok(defs) = defs {
+                assert_eq!(defs.version, version);
+                assert_eq!(reader.position(), 6);
+            }
+            let mut reader = Reader::new(&bytes);
+            let xml = read_xml_filter_def_body_10_1(&mut reader, 128);
+            assert_eq!(xml.is_ok(), version == 1);
+            if xml.is_ok() {
+                assert_eq!(reader.position(), 10);
+            }
+        }
     }
 
     #[test]

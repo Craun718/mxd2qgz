@@ -276,6 +276,7 @@
   - [x] 接入共享 ObjectStream Variant 中的 QueryFilter 与 SpatialFilter。[过滤器取证](docs/arcmap-10.1-dataset-name-slots.md#variant-中的查询过滤器)
   - [x] 接入共享 ObjectStream Variant 中的 FilterDefs 与 XMLFilterDef。[过滤定义取证](docs/arcmap-10.1-dataset-name-slots.md#variant-中的查询过滤器)
   - [x] 按有符号计数读取 FilterDefs 与 QueryFilter v2 内联列表。[列表计数取证](docs/arcmap-10.1-dataset-name-slots.md#过滤定义列表计数)
+  - [x] 对齐过滤器及过滤定义对象的原生版本门。[版本取证](docs/arcmap-10.1-dataset-name-slots.md#过滤器版本门)
   - [x] 按登记对象的类校验 Fields 的 IField 回引。[字段回引取证](docs/mxd-10.1-fields.md#字段集合回引)
   - [x] 按登记对象的类校验 Field 的 IDomain 回引。[值域回引取证](docs/mxd-10.1-fields.md#字段值域回引)
   - [x] 按登记对象的类校验 Field 的几何与栅格定义回引。[定义回引取证](docs/mxd-10.1-fields.md#字段定义回引)
