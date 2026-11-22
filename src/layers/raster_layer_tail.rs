@@ -2193,6 +2193,27 @@ mod tests {
     }
 
     #[test]
+    fn nonpositive_extension_counts_reach_later_raster_fields() {
+        for count in [0_i32, -1, i32::MIN] {
+            let mut bytes = vec![0; 26];
+            bytes.extend(count.to_le_bytes());
+            bytes.extend(2.5_f64.to_le_bytes());
+            bytes.extend([0; 32 + 8 + 16]);
+            for version in [7, 8] {
+                let mut reader = Reader::new(&bytes);
+                let mut refs = RefTable10_1::new();
+                let tail =
+                    read_raster_layer_tail_10_1(&mut reader, version, 4096, &mut refs).unwrap();
+                assert!(tail.legacy_extensions.is_empty());
+                assert!(tail.extra_safe_extensions.is_empty());
+                assert_eq!(tail.double_104, Some(2.5));
+                assert_eq!(reader.position(), bytes.len());
+                assert!(refs.is_empty());
+            }
+        }
+    }
+
+    #[test]
     fn old_tail_versions_end_at_their_own_fields() {
         for version in 0..=12 {
             let mut bytes = vec![0; 22];

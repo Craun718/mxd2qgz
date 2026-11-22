@@ -402,6 +402,12 @@ AfCore `ExtraSafeReadObject 0x68a7be60`。读取器沿用[图层条目边界依�
 已登记键用来识别回引，新对象的顶层键进入暂存表。合成 v8 测试覆盖空项、
 新对象、回引、A/B 边界和逐字节截断回滚。
 
+复核 10.1.0.3035 原生循环门。LayerLib 的旧式读取器在
+`0x786c237e..0x786c2386` 对非正计数跳过循环；RasterLayer 的
+ExtraSafe 读取器在 `0x7c73df64..0x7c73df6a` 同样使用有符号比较，
+回边 `0x7c73dfda` 使用有符号小于。构造 v7/v8 尾段验证零、-1
+及最小 int32 均保留后续 double 和尾段边界。负计数尚无实档或人工验证。
+
 ## 扩展对象体与嵌套键
 
 RasterLayer.dll `0x7c73ded0` 的请求 GUID `0x7c76775c` 为 IID_IUnknown
