@@ -110,7 +110,7 @@ fn version(r: &mut Reader<'_>, max: u16, label: &str) -> io::Result<u16> {
     Ok(version)
 }
 
-fn read_geometry_def(
+pub(crate) fn read_geometry_def(
     r: &mut Reader<'_>,
     max_bytes: usize,
     refs: &mut RefTable10_1,
@@ -141,7 +141,7 @@ fn read_geometry_def(
     })
 }
 
-fn read_raster_def(
+pub(crate) fn read_raster_def(
     r: &mut Reader<'_>,
     max_bytes: usize,
     refs: &mut RefTable10_1,
@@ -163,6 +163,64 @@ fn read_raster_def(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn typed_definition_bodies_can_be_read_from_variant_slots() {
+        use crate::objects::property_set::{
+            PropertyValueObjectStream10_1, read_padded_variant_object_stream_10_1,
+        };
+
+        for class_id in [GEOMETRY_DEF_CLASS_ID, RASTER_DEF_CLASS_ID] {
+            let mut bytes = 13_u16.to_le_bytes().to_vec();
+            bytes.extend([0; 14]);
+            bytes.extend(class_id);
+            bytes.extend(25_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            if class_id == GEOMETRY_DEF_CLASS_ID {
+                bytes.extend(3_i32.to_le_bytes());
+                bytes.extend(1_i32.to_le_bytes());
+                bytes.extend(16_f64.to_le_bytes());
+                bytes.extend(0_i32.to_le_bytes());
+            } else {
+                bytes.extend([2, 0, 0, 0, 0, 0]);
+            }
+            bytes.extend([0; 16]);
+            bytes.extend(6_u16.to_le_bytes());
+            bytes.extend(7_u16.to_le_bytes());
+            let end = bytes.len();
+            bytes.push(0xa1);
+
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let value =
+                read_padded_variant_object_stream_10_1(&mut reader, 128, &mut refs).unwrap();
+            match value {
+                PropertyValueObjectStream10_1::GeometryDef(encoded) => {
+                    assert_eq!(encoded.key, 25);
+                    let body = encoded.body();
+                    assert_eq!(class_id, GEOMETRY_DEF_CLASS_ID);
+                    assert_eq!(body.grid_sizes, [16.0]);
+                    assert_eq!(body.shorts_1c_1e, [6, 7]);
+                }
+                PropertyValueObjectStream10_1::RasterDef(encoded) => {
+                    assert_eq!(encoded.key, 25);
+                    let body = encoded.body();
+                    assert_eq!(class_id, RASTER_DEF_CLASS_ID);
+                    assert_eq!(body.shorts_14_16, [6, 7]);
+                    assert_eq!(body.short_18, None);
+                }
+                other => panic!("定义对象分派错误：{other:?}"),
+            }
+            assert!(refs.contains(25));
+            assert_eq!(reader.read_bytes(1).unwrap(), [0xa1]);
+
+            let mut reader = Reader::new(&bytes[..end - 1]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_padded_variant_object_stream_10_1(&mut reader, 128, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
 
     #[test]
     fn raster_def_only_reads_the_third_short_from_version_two() {

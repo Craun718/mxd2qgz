@@ -175,3 +175,11 @@ AfCore 对象 Variant 在同一 ObjectStream 中按持久化接口委派，
 IPersistStream Load `0x7b0904c0` 进入共用 Variant 分派。合成用例
 验证 ExtraSafe 标签顺序、宿主键表、后继字段及截断回滚。尚缺真实
 MXD 中的 Variant 宿主观察，ArcMap 10.1 与 QGIS 人工验收未进行。
+
+### Variant 中的字段定义对象
+
+同版 GdbCore.dll 的 GeometryDef（Load `0x709ed730`）和
+RasterCatalog.dll 的 RasterDef（Load `0x7be37540`）均有
+IPersistStream 入口，ObjectStream Variant 复用 Field 槽的二进制体
+读取器。合成测试覆盖两类定义、引用键、宿主后继字节与短读回滚。
+尚缺真实 Variant 宿主观测，ArcMap 10.1 与 QGIS 人工验收未进行。

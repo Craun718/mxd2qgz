@@ -267,6 +267,7 @@
   - [ ] 补齐范围或编码值域中其他新对象类的 Variant 体分派。
   - [x] 接入共享 ObjectStream Variant 中的 RangeDomain 与 CodedValueDomain 对象体。[值域取证](docs/mxd-10.1-fields.md#idomain范围值域与编码值域)
   - [x] 接入共享 ObjectStream Variant 中的 BitMaskCodedValueDomain 对象体。[持久化入口](docs/mxd-10.1-fields.md#bitmaskcodedvaluedomain)
+  - [x] 接入共享 ObjectStream Variant 中的 GeometryDef 与 RasterDef 对象体。[定义对象取证](docs/mxd-10.1-fields.md#几何定义与栅格定义)
   - [x] 在共享 ObjectStream Variant 中接入投影、地理与未知坐标系三类对象体，并验证范围值域内包络的空间参考键回引。[取证](docs/arcmap-10.1-variant-propertyset-slots.md#geometrydll-的有键空间参考对象)
   - [x] 确认范围或编码值域的其余 Variant 数组元素分派，见 [AfCore 与 OLE 分发表](docs/arcmap-10.1-variant-propertyset-slots.md#值域数组的读写分发表复核)。
   - [x] 核对 Field 的非空 IDomain 实现并覆盖 10.1 Desktop 介质中确认的三类，见 [类型库与原生接口证据](docs/mxd-10.1-fields.md#field-的-idomain-实现范围)。

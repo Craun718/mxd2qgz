@@ -335,6 +335,8 @@ pub enum PropertyValueObjectStream10_1 {
         key: u32,
         body: Box<crate::objects::domain::DomainBody10_1>,
     },
+    GeometryDef(Box<EncodedVariantObject10_1<crate::objects::field_defs::GeometryDef10_1>>),
+    RasterDef(Box<EncodedVariantObject10_1<crate::objects::field_defs::RasterDef10_1>>),
     /// 有对象头及会话键的 SystemCore 数组。
     ArrayObject {
         class_id: [u8; 16],
@@ -590,6 +592,9 @@ pub(crate) fn read_variant_object_body_10_1(
         BIT_MASK_CODED_VALUE_DOMAIN_CLASS_ID, CODED_VALUE_DOMAIN_CLASS_ID, RANGE_DOMAIN_CLASS_ID,
         read_domain_body_10_1,
     };
+    use crate::objects::field_defs::{
+        GEOMETRY_DEF_CLASS_ID, RASTER_DEF_CLASS_ID, read_geometry_def, read_raster_def,
+    };
     Ok(match entry {
         ObjectEntry10_1::Null => {
             PropertyValueObjectStream10_1::Inline(PropertyValue10_1::NullObject)
@@ -616,6 +621,38 @@ pub(crate) fn read_variant_object_body_10_1(
                     depth + 1,
                 )?),
             }
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: class_id @ GEOMETRY_DEF_CLASS_ID,
+            key,
+        } => {
+            let mut wire = reader
+                .clone()
+                .read_region(reader.remaining().min(max_bytes))?;
+            let body = read_geometry_def(&mut wire, max_bytes, table)?;
+            let bytes = Arc::from(reader.read_bytes(wire.position())?);
+            PropertyValueObjectStream10_1::GeometryDef(Box::new(EncodedVariantObject10_1 {
+                class_id,
+                key,
+                bytes,
+                body,
+            }))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: class_id @ RASTER_DEF_CLASS_ID,
+            key,
+        } => {
+            let mut wire = reader
+                .clone()
+                .read_region(reader.remaining().min(max_bytes))?;
+            let body = read_raster_def(&mut wire, max_bytes, table)?;
+            let bytes = Arc::from(reader.read_bytes(wire.position())?);
+            PropertyValueObjectStream10_1::RasterDef(Box::new(EncodedVariantObject10_1 {
+                class_id,
+                key,
+                bytes,
+                body,
+            }))
         }
         ObjectEntry10_1::NewObject { class_id, key } if class_id == PROPERTY_SET_CLASS_ID => {
             check_variant_object_depth(depth)?;
