@@ -866,7 +866,7 @@ fn rendering_rule_reads_stretch_histograms_and_derived_arguments() {
     rule.extend(1_i32.to_le_bytes());
     rule.extend(10_f64.to_le_bytes());
     rule.extend(2_f64.to_le_bytes());
-    rule.extend(histogram);
+    rule.extend(PROPERTY_SET_CLASS_ID);
     rule.extend(86_u32.to_le_bytes());
     rule.extend(stretch_args);
     rule.extend(87_u32.to_le_bytes());
@@ -909,10 +909,13 @@ fn rendering_rule_reads_stretch_histograms_and_derived_arguments() {
         .as_ref()
         .unwrap();
     assert_eq!(histograms[0].body.as_ref().unwrap().bins, [10.0]);
-    assert!(matches!(
+    assert_eq!(
         histograms[1].entry,
-        ObjectEntry10_1::BackReference { key: 86, .. }
-    ));
+        ObjectEntry10_1::BackReference {
+            class_id: histogram,
+            key: 86
+        }
+    );
     assert!(
         parsed
             .arguments

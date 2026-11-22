@@ -98,6 +98,9 @@ v22 合成宿主验证非空函数、参数和嵌套 PropertySet 的后继边界
   （CLSID `BA3027C1-49CA-4788-8B5A-3A6B387DE78C` 位于
   `0x6fd450b0`），并查询 IStatsHistogram（IID 位于 `0x6fd45360`）。
   解析复用现有 StatsHistogram 读取器，列表沿用规则的引用表。
+  Load `0x6fd22686` 请求 IUnknown；按 SystemCore `0x7ffd0063`
+  的查键顺序，回引保留已登记的类。构造用例将回引头的 CLSID 换成
+  PropertySet，确认仍指向先前的 StatsHistogram。尚无人工验证。
 
 两组共用入口同时用于 RenderingRule 与 FunctionRasterDatasetName 的
 相应对象槽。表中各 CLSID 在参考工程 /Maps 和已抽取的 199 个

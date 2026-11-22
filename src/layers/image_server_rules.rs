@@ -370,12 +370,18 @@ pub(super) fn read_function(
         }
         let items = (0..count)
             .map(|_| {
-                slot(r, refs, |r, _, id, _| {
+                let mut item = slot(r, refs, |r, _, id, _| {
                     if id != STATS_HISTOGRAM_CLASS_ID {
                         return Err(unsupported_class("StretchFunction 直方图", &id));
                     }
                     read_stats_histogram_body_10_1(r)
-                })
+                })?;
+                if let ObjectEntry10_1::BackReference { class_id, key } = &mut item.entry
+                    && let Some(registered) = refs.registered_class(*key)
+                {
+                    *class_id = registered;
+                }
+                Ok(item)
             })
             .collect::<io::Result<_>>()?;
         Some(items)
