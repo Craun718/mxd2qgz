@@ -161,7 +161,7 @@ pub(super) fn read_raster_classify_renderer(
     table: &mut RefTable10_1,
 ) -> io::Result<RasterClassifyRenderer10_1> {
     let version = long(r)?;
-    if !(1..=5).contains(&version) {
+    if version < 1 {
         return Err(invalid(format!(
             "未支持的 RasterClassifyRenderer 版本 {version}"
         )));

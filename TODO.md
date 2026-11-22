@@ -270,6 +270,7 @@
   - [x] 接入 VarArray、VarStrArray 和 PropertySetArray 的 Variant 对象体，核对内层布局、回引和累计嵌套深度。[嵌套数组取证](docs/arcmap-10.1-variant-propertyset-slots.md#systemcore-嵌套数组)
   - [x] 接入 UID 和空 ValueArray 的 Variant 对象体，执行 10.1 原生指令核对 ValueArray 空体边界、版本门和非空保存失败。[原生取证](docs/arcmap-10.1-variant-propertyset-slots.md#valuearray-与-uid)
   - [x] 接入 RasterClassifyRenderer v1–v5 的已确认布局、分类断点及图例与数值格式槽，见 [分类原生取证](docs/mxd-10.1-raster-renderer.md#rasterclassifyrenderer)。
+  - [x] 按 10.1 Load 的有符号下限与字段条件读取 RasterClassifyRenderer。
   - [x] 接入 RasterStretchRenderer v1–v9 已确认布局，读取定长旧体、无键 RasterIO 对象和结束标记前的采样数组，见 [拉伸原生取证](docs/mxd-10.1-raster-renderer.md#rasterstretchrenderer)。
   - [x] 接入 SAIRenderer v1 的 short、两个 double 和共用渲染器体，见 [注册与持久化入口](docs/mxd-10.1-raster-renderer.md#sairenderer)。
   - [x] 按 10.1 Load 的有符号上限读取 SAIRenderer 版本。

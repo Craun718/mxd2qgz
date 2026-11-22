@@ -1134,7 +1134,7 @@ fn raster_classify_reads_legacy_and_current_versions_with_optional_raster_io() {
         bytes.extend(0_u16.to_le_bytes());
     }
 
-    for version in 1_i32..=5 {
+    for version in [1_i32, 2, 3, 4, 5, 6, i32::MAX] {
         let mut bytes = RASTER_CLASSIFY_RENDERER_CLASS_ID.to_vec();
         bytes.extend(91_u32.to_le_bytes());
         bytes.extend(version.to_le_bytes());
@@ -1197,13 +1197,13 @@ fn raster_classify_reads_legacy_and_current_versions_with_optional_raster_io() {
             bytes.extend(1_i32.to_le_bytes());
             bytes.extend(0_i32.to_le_bytes());
             record(&mut bytes, 0xff00ff, &[]);
-            if version == 5 {
+            if version >= 5 {
                 record(&mut bytes, 1, &47_i32.to_le_bytes());
             }
             record(&mut bytes, 2, &3.5_f64.to_le_bytes());
             bytes.extend([0xff; 8]);
         }
-        if version == 5 {
+        if version >= 5 {
             bytes.extend(17_u16.to_le_bytes());
         }
         bytes.extend(1_i32.to_le_bytes()); // 共用体。
@@ -1218,6 +1218,7 @@ fn raster_classify_reads_legacy_and_current_versions_with_optional_raster_io() {
         let Some(RasterRendererPrefix10_1::Classify(body)) = slot.body else {
             panic!("应读到栅格分类渲染器");
         };
+        assert_eq!(body.version, version);
         assert_eq!(body.strings, ["a", "b", "c"]);
         assert_eq!(body.breaks, [10.0, 20.5]);
         assert_eq!(body.legend_groups.len(), 1);
@@ -1278,11 +1279,11 @@ fn raster_classify_reads_legacy_and_current_versions_with_optional_raster_io() {
         assert_eq!(
             body.records,
             (version >= 4).then_some(ClassificationIo10_1 {
-                tag1: (version == 5).then_some(47),
+                tag1: (version >= 5).then_some(47),
                 tag2: Some(3.5),
             })
         );
-        assert_eq!(body.trailing_short, (version == 5).then_some(17));
+        assert_eq!(body.trailing_short, (version >= 5).then_some(17));
         assert_eq!(body.shared.version, 1);
         assert_eq!(reader.read_bytes(1).unwrap(), [0xa7]);
         assert_eq!(reader.position(), end + 1);
