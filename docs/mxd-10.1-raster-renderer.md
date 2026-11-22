@@ -60,6 +60,9 @@ IRasterRenderer，请求 IID 位于 `0x7c769b44`，为
   在数组前读 int32 数量；≥2、≥4 各追加一个 double，≥5 追加带 int32
   计数的 double 数组。读侧 v5 的容器调整通过 `0x7c101550` 保留正计数。
   参考工程三个对象均为 v5，各含 256 桶和 4 个追加值。
+  AfCore 的 ObjectStream Variant 通用对象分派也复用该体读取器。
+  参考工程的三个实例来自 RGB 专用槽。Variant 包装仅经构造输入检验，
+  覆盖 v3 的结束位置和截断时的游标及登记键回滚，尚无该包装的实档或人工验收。
 - `DoubleArray {60C06CA7-E09E-11D2-9F7B-00C04F8ECE27}`：
   类型库与 RasterRenderer.dll 请求的 `IDoubleArray {60C06CA6-…}` 对位。
   使用仓外现有 SystemCore.dll 10.1 反编译。虚表 `0x8007c22c` 的 Load

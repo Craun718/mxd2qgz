@@ -1759,6 +1759,48 @@ mod tests {
     }
 
     #[test]
+    fn variant_stats_histogram_commits_only_complete_body() {
+        use crate::layers::raster_renderer::STATS_HISTOGRAM_CLASS_ID;
+
+        let mut bytes = 13_u16.to_le_bytes().to_vec();
+        bytes.extend([0; 14]);
+        object(&mut bytes, STATS_HISTOGRAM_CLASS_ID, 11);
+        bytes.extend(3_i32.to_le_bytes());
+        bytes.extend([0; 48]);
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend(5.0_f64.to_le_bytes());
+        bytes.extend(2.0_f64.to_le_bytes());
+        let end = bytes.len();
+        bytes.push(0xaa);
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let value = read_padded_variant_object_stream_10_1(&mut reader, 128, &mut refs).unwrap();
+        let PropertyValueObjectStream10_1::Raster {
+            class_id,
+            key,
+            body,
+        } = value
+        else {
+            panic!("缺少栅格 Variant 对象");
+        };
+        assert_eq!(class_id, STATS_HISTOGRAM_CLASS_ID);
+        assert_eq!(key, 11);
+        let RasterVariantBody10_1::StatsHistogram(histogram) = *body else {
+            panic!("缺少统计直方图");
+        };
+        assert_eq!(histogram.bins, [5.0]);
+        assert_eq!(histogram.double_a, Some(2.0));
+        assert_eq!(reader.position(), end);
+        assert_eq!(refs.registered_class(11), Some(STATS_HISTOGRAM_CLASS_ID));
+
+        let mut reader = Reader::new(&bytes[..end - 1]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_padded_variant_object_stream_10_1(&mut reader, 128, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(!refs.contains(11));
+    }
+
+    #[test]
     fn variant_unique_values_preserves_nonpositive_counts() {
         use crate::layers::raster_unique_value::UNIQUE_VALUES_CLASS_ID;
 
