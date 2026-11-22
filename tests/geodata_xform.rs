@@ -946,6 +946,41 @@ fn projective_geometry_compatibility_layout_preserves_outer_fields() {
 }
 
 #[test]
+fn projective_xform_reads_geometry_bag_before_control_points() {
+    use mxd2qgz::objects::geodata_xform::PROJECTIVE_XFORM_CLASS_ID;
+    use mxd2qgz::objects::geometry::{GEOMETRY_BAG_CLASS_ID, GeometryBody10_1};
+
+    let mut bytes = Vec::new();
+    header(&mut bytes, PROJECTIVE_XFORM_CLASS_ID, 80);
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend([0; 16]);
+    header(&mut bytes, GEOMETRY_BAG_CLASS_ID, 81);
+    bytes.extend([0; 2 + 4 + 16 + 16 + 1]);
+    bytes.extend([0; 8]);
+    let end = bytes.len();
+    bytes.push(0xaa);
+    let mut refs = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let slot = read_geodata_xform_slot_10_1(&mut reader, 128, &mut refs).unwrap();
+    let GeodataXformBody10_1::Projective(body) = *slot.body.unwrap() else {
+        panic!("缺少 ProjectiveXform");
+    };
+    assert!(matches!(
+        body.geometry.body.as_deref(),
+        Some(GeometryBody10_1::GeometryBag(_))
+    ));
+    assert_eq!(body.point_count, 0);
+    assert_eq!(reader.position(), end);
+    assert!(refs.contains(80) && refs.contains(81));
+
+    let mut reader = Reader::new(&bytes[..end - 1]);
+    let mut refs = RefTable10_1::new();
+    assert!(read_geodata_xform_slot_10_1(&mut reader, 128, &mut refs).is_err());
+    assert_eq!(reader.position(), 0);
+    assert!(refs.is_empty());
+}
+
+#[test]
 fn projective_geometry_reference_checks_the_registered_class() {
     use mxd2qgz::objects::geodata_xform::PROJECTIVE_XFORM_CLASS_ID;
     use mxd2qgz::objects::geometry::{MULTIPOINT_CLASS_ID, POINT_CLASS_ID};

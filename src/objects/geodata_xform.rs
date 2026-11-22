@@ -10,8 +10,8 @@ use crate::objects::geo_transformation::{
     supports_geo_transformation_body_10_1,
 };
 use crate::objects::geometry::{
-    GeometryBody10_1, MULTIPOINT_CLASS_ID, POINT_CLASS_ID, POLYGON_CLASS_ID, POLYLINE_CLASS_ID,
-    PointBody10_1, read_geometry_body_10_1, read_point_body_10_1,
+    GEOMETRY_BAG_CLASS_ID, GeometryBody10_1, MULTIPOINT_CLASS_ID, POINT_CLASS_ID, POLYGON_CLASS_ID,
+    POLYLINE_CLASS_ID, PointBody10_1, read_geometry_body_10_1, read_point_body_10_1,
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -300,20 +300,30 @@ fn long(reader: &mut Reader<'_>) -> io::Result<i32> {
     Ok(reader.read_u32_le()? as i32)
 }
 
+#[derive(Clone, Copy)]
+enum CollectionInterface {
+    Geometry,
+    Point,
+}
+
 fn read_geometry_collection(
     r: &mut Reader<'_>,
     max: usize,
     table: &mut RefTable10_1,
     label: &str,
+    interface: CollectionInterface,
 ) -> io::Result<GeometryCollectionSlot10_1> {
+    let accepts = |class| {
+        matches!(
+            class,
+            POLYLINE_CLASS_ID | POLYGON_CLASS_ID | MULTIPOINT_CLASS_ID
+        ) || (matches!(interface, CollectionInterface::Geometry) && class == GEOMETRY_BAG_CLASS_ID)
+    };
     let mut entry = read_object_entry_10_1(r, table)?;
     if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
         && let Some(registered) = table.registered_class(*key)
     {
-        if !matches!(
-            registered,
-            POLYLINE_CLASS_ID | POLYGON_CLASS_ID | MULTIPOINT_CLASS_ID
-        ) {
+        if !accepts(registered) {
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
                 format!("{label} 回引键 {key} 的登记类不受支持"),
@@ -323,10 +333,9 @@ fn read_geometry_collection(
     }
     let body = match entry {
         ObjectEntry10_1::Null | ObjectEntry10_1::BackReference { .. } => None,
-        ObjectEntry10_1::NewObject {
-            class_id: class_id @ (POLYLINE_CLASS_ID | POLYGON_CLASS_ID | MULTIPOINT_CLASS_ID),
-            ..
-        } => Some(Box::new(read_geometry_body_10_1(&class_id, r, max, table)?)),
+        ObjectEntry10_1::NewObject { class_id, .. } if accepts(class_id) => {
+            Some(Box::new(read_geometry_body_10_1(&class_id, r, max, table)?))
+        }
         ObjectEntry10_1::NewObject { class_id, .. } => {
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
@@ -348,7 +357,13 @@ fn read_geometric_xform(
     child_depth: usize,
 ) -> io::Result<GeometricXform10_1> {
     let reference = read_spatial_reference_entry_10_1(r, max, table)?;
-    let geometry = read_geometry_collection(r, max, table, "GeometricXform IGeometryCollection")?;
+    let geometry = read_geometry_collection(
+        r,
+        max,
+        table,
+        "GeometricXform IGeometryCollection",
+        CollectionInterface::Geometry,
+    )?;
     let selector = r.read_bytes(1)?[0];
     let transformation = if selector == 0 {
         match r.read_bytes(1)?[0] {
@@ -461,7 +476,13 @@ fn read_projective_xform(
                 Some(read_projective_transformation_reference(r, table)?),
             )
         } else {
-            let geometry = read_geometry_collection(r, max, table, "ProjectiveXform 第二对象槽")?;
+            let geometry = read_geometry_collection(
+                r,
+                max,
+                table,
+                "ProjectiveXform 第二对象槽",
+                CollectionInterface::Geometry,
+            )?;
             // 空 GUID 与两个零计数字段可能重合。只按明确的 CLSID 接受额外槽。
             let transformation = if has_empty_third_slot {
                 if r.read_bytes(16)? != [0; 16] {
@@ -945,8 +966,20 @@ fn read_body(
             version,
             reference: Box::new(read_spatial_reference_entry_10_1(r, max, table)?),
             points: [
-                read_geometry_collection(r, max, table, "SplineXform IPointCollection")?,
-                read_geometry_collection(r, max, table, "SplineXform IPointCollection")?,
+                read_geometry_collection(
+                    r,
+                    max,
+                    table,
+                    "SplineXform IPointCollection",
+                    CollectionInterface::Point,
+                )?,
+                read_geometry_collection(
+                    r,
+                    max,
+                    table,
+                    "SplineXform IPointCollection",
+                    CollectionInterface::Point,
+                )?,
             ],
         },
         IDENTITY_XFORM_CLASS_ID => GeodataXformBody10_1::Identity {

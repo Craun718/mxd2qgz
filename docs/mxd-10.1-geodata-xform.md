@@ -312,3 +312,11 @@ ProjectiveXform 的几何集合槽请求 IGeometryCollection（RasterDB.dll
 同版查键规则使用已登记类，并沿用已有的集合类支持范围。合成测试核对
 Multipoint 回引的边界及 Point 类型不匹配时的整体回滚。普通流中空第三
 槽的歧义仍待实档验证，ArcMap 10.1 与 QGIS 人工验收未进行。
+
+### 地理变换的 GeometryBag 槽
+
+Geometry.dll 10.1.0.3035 的 GeometryBag QI（`0x7186f650`）在
+`0x7186f657` 比较 `0x71a12d34` 的 IGeometryCollection IID，
+以 DLL 原始字节和 objdump 复核。GeometricXform 与 ProjectiveXform 的
+该接口槽复用 GeometryBag 持久化体。合成 ProjectiveXform 覆盖控制点
+字段对位与截断回滚。ArcMap 10.1 和 QGIS 人工验收未进行。
