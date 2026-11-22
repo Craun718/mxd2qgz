@@ -443,6 +443,28 @@ fn map_v0_to_v13_read_version_gated_tail_fields() {
                 DatasetNameMoreSlot10_1::BackReference { key: 90, .. }
             ));
             let at = offset + table_offset;
+            if netcdf {
+                let indices = names[1].0 - (20 + 2 + 4 + 4);
+                let dimensions = indices - 20;
+                let mut input = bytes.clone();
+                input[dimensions..dimensions + 16].fill(0x7d);
+                let mut reader = Reader::new(&input);
+                reader.read_bytes(24).unwrap();
+                let mut refs = RefTable10_1::new();
+                let parsed = read_map_suffix_10_1(&mut reader, 4096, &mut refs).unwrap();
+                assert_eq!(parsed.legacy_table_names.len(), 2);
+                assert!(refs.contains(101));
+
+                // 长整数数组槽用字符串数组的键，即使头部仍声明 LongArray。
+                input[indices + 16..indices + 20].copy_from_slice(&101_u32.to_le_bytes());
+                let mut reader = Reader::new(&input);
+                reader.read_bytes(24).unwrap();
+                let mut refs = RefTable10_1::new();
+                let parsed = read_map_suffix_10_1(&mut reader, 4096, &mut refs).unwrap();
+                assert!(parsed.legacy_table_names.is_empty());
+                assert_eq!(reader.position(), at);
+                assert!(!refs.contains(90) && !refs.contains(101));
+            }
             // FileName 和 ShortcutName 虽然实现 IName，Open 只返回空指针。
             for class in [
                 [0x7d; 16],

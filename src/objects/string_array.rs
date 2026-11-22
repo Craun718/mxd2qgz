@@ -21,7 +21,18 @@ pub(crate) fn read_string_array_slot_10_1(
     max: usize,
     refs: &mut RefTable10_1,
 ) -> io::Result<StringArraySlot10_1> {
-    let entry = read_object_entry_10_1(reader, refs)?;
+    let mut entry = read_object_entry_10_1(reader, refs)?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+        && let Some(registered) = refs.registered_class(*key)
+    {
+        if registered != STR_ARRAY_CLASS_ID {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                format!("IStringArray 回引键 {key} 的登记类不受支持"),
+            ));
+        }
+        *class_id = registered;
+    }
     let body = match entry {
         ObjectEntry10_1::Null | ObjectEntry10_1::BackReference { .. } => None,
         ObjectEntry10_1::NewObject {

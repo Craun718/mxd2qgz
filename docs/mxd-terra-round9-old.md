@@ -557,3 +557,12 @@ SystemCore.dll 10.1.0.3035 的 ObjectStream 读取器在 `0x7ffd0063`
 合成测试覆盖两种类标识不一致的情况：有效表名仍能回引，已登记的
 不适用类仍停在当前条目。指令来源见[重复键与替换调用点补查](arcmap-10.1-object-body.md#重复键与替换调用点补查)。
 ArcMap 10.1 与 QGIS 人工验收未进行。
+
+### NetCDF 名称的数组回引
+
+NetCDFDB.dll 10.1.0.3035 的 `0x7ae2fdc0` 表名读取路径请求
+IStringArray 和 ILongArray。SystemCore 同版本在 `0x7ffd0063`
+按键找到原实例后查询接口。共享数组槽据登记类检查回引，并以登记类
+返回有效条目。旧 Map 合成测试覆盖头部不一致的有效字符串数组回引、
+长整数数组槽误引字符串数组时的停止位置及回滚。ArcMap 10.1 与 QGIS
+人工验收未进行。

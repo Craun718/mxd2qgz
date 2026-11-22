@@ -1255,7 +1255,18 @@ pub(crate) fn read_long_array_slot(
     max: usize,
     table: &mut RefTable10_1,
 ) -> io::Result<RasterLongArraySlot10_1> {
-    let entry = read_object_entry_10_1(reader, table)?;
+    let mut entry = read_object_entry_10_1(reader, table)?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+        && let Some(registered) = table.registered_class(*key)
+    {
+        if registered != LONG_ARRAY_CLASS_ID {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                format!("ILongArray 回引键 {key} 的登记类不受支持"),
+            ));
+        }
+        *class_id = registered;
+    }
     let body = match entry {
         ObjectEntry10_1::BackReference {
             class_id: LONG_ARRAY_CLASS_ID,
@@ -1421,7 +1432,7 @@ mod tests {
         bytes[array_offset..array_offset + 16].fill(0x42);
         let body =
             read_band_collection_name(&mut Reader::new(&bytes), 1024, &mut refs, 16).unwrap();
-        assert_eq!(body.array, None);
+        assert_eq!(body.array, Some((1, vec![2, 0, 2])));
     }
 
     #[test]
