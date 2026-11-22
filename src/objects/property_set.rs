@@ -633,6 +633,7 @@ pub(crate) fn read_variant_object_body_10_1(
     };
     use crate::objects::field_defs::{GEOMETRY_DEF_CLASS_ID, RASTER_DEF_CLASS_ID};
     use crate::objects::fields::{FIELD_CLASS_ID, FIELDS_CLASS_ID};
+    use crate::objects::geodata_xform::{IDENTITY_XFORM_CLASS_ID, POLYNOMIAL_XFORM_CLASS_ID};
     use crate::objects::query_filter::{
         FILTER_DEFS_CLASS_ID, QUERY_FILTER_CLASS_ID, SPATIAL_FILTER_CLASS_ID,
         XML_FILTER_DEF_CLASS_ID,
@@ -648,7 +649,7 @@ pub(crate) fn read_variant_object_body_10_1(
             }
         }
         ObjectEntry10_1::NewObject {
-            class_id: class_id @ crate::objects::geodata_xform::IDENTITY_XFORM_CLASS_ID,
+            class_id: class_id @ (IDENTITY_XFORM_CLASS_ID | POLYNOMIAL_XFORM_CLASS_ID),
             key,
         } => {
             check_variant_object_depth(depth)?;
@@ -1778,6 +1779,50 @@ mod tests {
         assert_eq!(reader.remaining(), 0);
         assert!(refs.contains(100));
         assert!(!refs.contains(101));
+    }
+
+    #[test]
+    fn variant_polynomial_transform_reads_coefficients_before_next_field() {
+        use crate::objects::geodata_xform::{GeodataXformBody10_1, POLYNOMIAL_XFORM_CLASS_ID};
+
+        let mut bytes = 13_u16.to_le_bytes().to_vec();
+        bytes.extend([0; 14]);
+        object(&mut bytes, POLYNOMIAL_XFORM_CLASS_ID, 11);
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend([0; 16]);
+        for field in [7_i32, 1, 0] {
+            bytes.extend(field.to_le_bytes());
+        }
+        bytes.extend([0; 16]);
+        for flag in [1_i32, 0, 0] {
+            bytes.extend(flag.to_le_bytes());
+        }
+        bytes.extend(2.5_f64.to_le_bytes());
+        bytes.extend(3.5_f64.to_le_bytes());
+        let end = bytes.len();
+        bytes.push(0xaa);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let value = read_padded_variant_object_stream_10_1(&mut reader, 128, &mut refs).unwrap();
+        let PropertyValueObjectStream10_1::GeodataXform(value) = value else {
+            panic!("缺少地理变换对象");
+        };
+        let GeodataXformBody10_1::Polynomial(body) = value.body() else {
+            panic!("缺少多项式变换");
+        };
+        assert_eq!(
+            body.coefficients_e4.as_ref().unwrap(),
+            &[vec![2.5], vec![3.5]]
+        );
+        assert_eq!(reader.position(), end);
+        assert_eq!(refs.registered_class(11), Some(POLYNOMIAL_XFORM_CLASS_ID));
+
+        let mut reader = Reader::new(&bytes[..end - 1]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_padded_variant_object_stream_10_1(&mut reader, 128, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
     }
 
     #[test]

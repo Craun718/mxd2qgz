@@ -109,12 +109,16 @@ Rust v1 复用 GeometricXform 的几何集合体读取器及宿主对象键表�
 首个 Multipoint 新对象、第二槽回引、边界和逐字节截断回滚。参考工程和 66 份
 10.1 介质 /Maps 流未检出 CLSID，尚未在 ArcMap 中运行验证。
 
-## ObjectStream Variant 中的 IdentityXform
+## ObjectStream Variant 中的恒等与多项式变换
 
 AfCore.dll 10.1 的 [Variant 对象包装](arcmap-10.1-variant-propertyset-slots.md#带保留区的-objectstream-对象值)
 按流内类标识分派持久化对象。IdentityXform 复用本文件已确认的
 RasterDB.dll 对象体。构造 v2 验证空空间参考后的终点、键登记及截断回滚。
 该 Variant 宿主组合尚无实档或 ArcMap/QGIS 人工验证。
+
+PolynomialXform 同样复用 RasterDB.dll 10.1.0.3035 的已确认体
+（Load `0x7c036a20`）。构造 v1 验证两组系数、对象终点和系数
+截断时的 Variant 回滚。尚无该组合的实档或人工验证。
 
 ## ProjectiveXform 的读写差异
 
