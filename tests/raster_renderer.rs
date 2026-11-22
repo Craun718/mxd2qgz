@@ -290,7 +290,8 @@ fn tagged_rgb_filter_reads_raster_names_and_references_with_the_original_stream(
         if second_band_count > 0 {
             string(&mut bytes, "全色");
         }
-        entry(&mut bytes, IDENTITY_XFORM_CLASS_ID, 73);
+        let transform_reference = bytes.len();
+        entry(&mut bytes, [0x7d; 16], 73);
         let envelope_reference = bytes.len();
         entry(&mut bytes, [0x7d; 16], 74);
         finish_tagged_rgb_filter(&mut bytes);
@@ -358,7 +359,10 @@ fn tagged_rgb_filter_reads_raster_names_and_references_with_the_original_stream(
         }
         assert!(matches!(
             second.transform.entry,
-            ObjectEntry10_1::BackReference { key: 73, .. }
+            ObjectEntry10_1::BackReference {
+                class_id: IDENTITY_XFORM_CLASS_ID,
+                key: 73
+            }
         ));
         assert!(matches!(
             second.extent.entry,
@@ -392,6 +396,10 @@ fn tagged_rgb_filter_reads_raster_names_and_references_with_the_original_stream(
         wrong_envelope[envelope_reference + 16..envelope_reference + 20]
             .copy_from_slice(&73_u32.to_le_bytes());
         assert_uncommitted(&wrong_envelope);
+        let mut wrong_transform = bytes.clone();
+        wrong_transform[transform_reference + 16..transform_reference + 20]
+            .copy_from_slice(&74_u32.to_le_bytes());
+        assert_uncommitted(&wrong_transform);
         for cut in first_raster..end {
             assert_uncommitted(&bytes[..cut]);
         }

@@ -805,7 +805,15 @@ pub(crate) fn read_geodata_xform_slot_with_depth(
     table: &mut RefTable10_1,
     depth: usize,
 ) -> io::Result<GeodataXformSlot10_1> {
-    let entry = read_object_entry_10_1(r, table)?;
+    let mut entry = read_object_entry_10_1(r, table)?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+        && let Some(registered) = table.registered_class(*key)
+    {
+        if xform_layout(registered).is_none() {
+            return Err(unsupported_xform(registered));
+        }
+        *class_id = registered;
+    }
     let body = if let ObjectEntry10_1::NewObject { class_id, .. } = entry {
         Some(Box::new(read_body(r, max, table, class_id, depth)?))
     } else {
@@ -871,20 +879,8 @@ pub(crate) fn read_geodata_xform_body_10_1(
     read_body(r, max, table, class_id, MAX_XFORM_NESTING)
 }
 
-fn read_body(
-    r: &mut Reader<'_>,
-    max: usize,
-    table: &mut RefTable10_1,
-    class_id: [u8; 16],
-    depth: usize,
-) -> io::Result<GeodataXformBody10_1> {
-    if depth == 0 {
-        return Err(io::Error::new(
-            ErrorKind::InvalidData,
-            "变换对象嵌套深度超过限额",
-        ));
-    }
-    let (label, versions) = match class_id {
+fn xform_layout(class_id: [u8; 16]) -> Option<(&'static str, std::ops::RangeInclusive<i32>)> {
+    Some(match class_id {
         IDENTITY_XFORM_CLASS_ID => ("IdentityXform", 0..=2),
         POLYNOMIAL_XFORM_CLASS_ID => ("PolynomialXform", 0..=2),
         COMPOSITE_XFORM_CLASS_ID => ("CompositeXform", 0..=2),
@@ -902,16 +898,34 @@ fn read_body(
         FORMOSAT2_XFORM_CLASS_ID => ("Formosat2Xform", 1..=1),
         SPOT5_XFORM_CLASS_ID => ("SPOT5Xform", 1..=2),
         CSM_XFORM_CLASS_ID => ("CSMXform", 1..=2),
-        _ => {
-            return Err(io::Error::new(
-                ErrorKind::Unsupported,
-                format!(
-                    "IGeodataXform 未支持的类 {}",
-                    crate::storage::class_id_hex(&class_id),
-                ),
-            ));
-        }
-    };
+        _ => return None,
+    })
+}
+
+fn unsupported_xform(class_id: [u8; 16]) -> io::Error {
+    io::Error::new(
+        ErrorKind::Unsupported,
+        format!(
+            "IGeodataXform 未支持的类 {}",
+            crate::storage::class_id_hex(&class_id)
+        ),
+    )
+}
+
+fn read_body(
+    r: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+    class_id: [u8; 16],
+    depth: usize,
+) -> io::Result<GeodataXformBody10_1> {
+    if depth == 0 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "变换对象嵌套深度超过限额",
+        ));
+    }
+    let (label, versions) = xform_layout(class_id).ok_or_else(|| unsupported_xform(class_id))?;
     let version = if matches!(
         class_id,
         LSR_XFORM_CLASS_ID
