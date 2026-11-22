@@ -495,7 +495,16 @@ fn read_projective_transformation_reference(
     table: &mut RefTable10_1,
 ) -> io::Result<ObjectEntry10_1> {
     let entry = read_object_entry_10_1(r, table)?;
-    if matches!(entry, ObjectEntry10_1::BackReference { .. }) {
+    if let ObjectEntry10_1::BackReference { key, .. } = entry {
+        if table
+            .registered_class(key)
+            .is_some_and(|class| class != PROJECTIVE_TRANSFORMATION_2D_CLASS_ID)
+        {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                format!("ProjectiveTransformation2D 回引键 {key} 的登记类不受支持"),
+            ));
+        }
         return Ok(entry);
     }
     // Geometry.dll 的 ProjectiveTransformation2D Load 返回 E_NOTIMPL。

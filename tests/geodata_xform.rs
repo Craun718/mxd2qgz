@@ -999,6 +999,22 @@ fn projective_xform_reads_explicit_projection_references_in_both_positions() {
         assert_eq!(refs.contains(81), geometry_present);
 
         if !empty_transform {
+            let mut wrong_header = Vec::new();
+            header(&mut wrong_header, MULTIPOINT_CLASS_ID, 75);
+            let mut wrong_refs = RefTable10_1::new();
+            mxd2qgz::storage::object_refs::read_object_entry_10_1(
+                &mut Reader::new(&wrong_header),
+                &mut wrong_refs,
+            )
+            .unwrap();
+            let before = wrong_refs.clone();
+            let mut wrong_reader = Reader::new(&bytes);
+            assert!(
+                read_geodata_xform_slot_10_1(&mut wrong_reader, 4096, &mut wrong_refs).is_err()
+            );
+            assert_eq!(wrong_reader.position(), 0);
+            assert_eq!(wrong_refs, before);
+
             let mut reader = Reader::new(&bytes);
             let mut refs = RefTable10_1::new();
             let error = read_geodata_xform_slot_10_1(&mut reader, 4096, &mut refs).unwrap_err();
