@@ -356,6 +356,11 @@ QI `0x7d4ada40` 以 `0x7d4ba0f4` 的 IID 匹配 IRasterRenderer，
 SimpleRasterRenderer、SAIRenderer 和 VectorFieldRenderer。前两类
 已按原生 QI 和持久化入口接入。
 
+同版 SystemCore 在 `0x7ffd0063` 查键命中后对原实例请求
+IRasterRenderer。共用槽按已登记的类判定，构造用例验证 RGB 渲染器
+回引可读至后继标记，误引 RGB 颜色时游标及引用表回滚。
+该组合尚无实档或人工验证。
+
 RasterRenderer.dll 10.1.0.3035 的导出 DllGetClassObject
 `0x7c96b420` 跳到 `0x7c9a76f0`。后者以 0x34 为步长扫描
 `0x7c9c45a0` 起的类表，并在空指针处返回

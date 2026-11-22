@@ -301,7 +301,27 @@ pub fn read_raster_renderer_slot_prefix_10_1(
 ) -> io::Result<RasterRendererSlot10_1> {
     let mut trial = reader.clone();
     let mut staged = table.clone();
-    let entry = read_object_entry_10_1(&mut trial, &mut staged)?;
+    let mut entry = read_object_entry_10_1(&mut trial, &mut staged)?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+        && let Some(registered) = staged.registered_class(*key)
+    {
+        if !matches!(
+            registered,
+            RASTER_COLORMAP_RENDERER_CLASS_ID
+                | RASTER_RGB_RENDERER_CLASS_ID
+                | SIMPLE_RASTER_RENDERER_CLASS_ID
+                | SAI_RENDERER_CLASS_ID
+                | DISCRETE_COLOR_RENDERER_CLASS_ID
+                | RASTER_UNIQUE_VALUE_RENDERER_CLASS_ID
+                | RASTER_CLASSIFY_RENDERER_CLASS_ID
+                | RASTER_STRETCH_RENDERER_CLASS_ID
+        ) {
+            return Err(invalid(format!(
+                "IRasterRenderer 回引键 {key} 的登记类不受支持"
+            )));
+        }
+        *class_id = registered;
+    }
     let body = match entry {
         ObjectEntry10_1::NewObject { class_id, .. } => Some(read_raster_renderer_body_10_1(
             &mut trial,
