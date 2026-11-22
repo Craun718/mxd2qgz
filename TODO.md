@@ -19,6 +19,7 @@
 - [x] 使用 Ghidra 桥接工具 追踪 10.1 文档打开、Version 读写及 ObjectStream 持久化调用链，逐项复核现有 10.8 结论，记录相同点、差异和未知项；各链已闭合至可记录的静态边界，见下列子项与研究记录。
   - [x] 核对 10.1 PageLayout 的 Version 局部读取、一个静态调用者及独立构建号流；与 10.8 对照发现默认输出差异，见 [原生文件基线](docs/arcmap-10.1-native-baseline.md#101-version-局部读取和构建号2026-11-13)。
   - [ ] 闭合 10.1 PageLayout Version 的完整调用链。
+  - [x] 接入 /Metadata 的唯一完整布局判定和 CLI 诊断，逐份复核 66 条介质流。[实档记录](docs/mxd-luna-20261118-version.md#metadata-v4-后的预览流)
   - [x] 定性旧式 Metadata 尾部首个 4 字节成员为 RelativePaths。[静态取证](docs/mxd-luna-20261118-version.md#旧文档分类后的-documentinfo-标志)
   - [x] 对位 PageLayout Version 分类后固定写入 18 的接口槽与两类实现。[静态取证](docs/mxd-luna-20261118-version.md#pagelayout-分类后的版本属性调用)
   - [x] 闭合 10.1 PageLayout 的 Version 局部读取格式：AfCore String 后接有符号 short；该入口的分类初值为 5，short 小于 `0x12` 时为 3。该读点以外的尾部语义和运行验证另列，见 [Version 复核](docs/mxd-luna-20261118-version.md)。
