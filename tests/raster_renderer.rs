@@ -971,6 +971,14 @@ fn raster_unique_value_reads_both_layouts_and_nested_values() {
         assert_eq!(body.legend_groups.len(), 1);
         assert_eq!(body.classes[0].raw_key, 0xfe76_1234);
         assert_eq!(
+            body.classes[0].key,
+            if version == 1 {
+                0x1234_fe76
+            } else {
+                0xfe76_1234
+            }
+        );
+        assert_eq!(
             body.classes[0].values[..2],
             [
                 Inline(PropertyValue10_1::Raw4(19_i32.to_le_bytes())),

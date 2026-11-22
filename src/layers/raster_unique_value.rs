@@ -54,6 +54,8 @@ pub struct RasterUniqueValueRenderer10_1 {
 pub struct RasterUniqueClass10_1 {
     /// 保留流内原值；v1 在原生加载时会交换高低半字。
     pub raw_key: u32,
+    /// 原生 Load 用于索引类别的键。
+    pub key: u32,
     pub values: Vec<PropertyValueObjectStream10_1>,
 }
 
@@ -172,7 +174,16 @@ pub(super) fn read_raster_unique_value(
         let values = (0..check_length(r, value_count, max, 16)?)
             .map(|_| read_padded_variant_object_stream_10_1(r, max, table))
             .collect::<io::Result<_>>()?;
-        classes.push(RasterUniqueClass10_1 { raw_key, values });
+        let key = if version == 1 {
+            raw_key.rotate_left(16)
+        } else {
+            raw_key
+        };
+        classes.push(RasterUniqueClass10_1 {
+            raw_key,
+            key,
+            values,
+        });
     }
     let second_short = r.read_u16_le()?;
     let layout = if let (Some(before_groups), Some(legend_item)) = (before_groups, legend_item) {

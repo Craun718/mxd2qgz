@@ -248,7 +248,9 @@ Save 版本表 `0x7c9b0f80` 为 `[2,3,4]`，旧 Load 拒绝小于 1；
 - v1/v2：两个 AfCore String、short、ISymbol、String、int32、计数加
   ILegendGroup 循环、ILegendItem，随后读分组值。后接 short、旧统计对象槽、
   int32 数量与 `double + int32` 对循环，最后进入共用体。v1 会交换分组键的
-  高低半字，读取器保留原值。10.1 旧体 Save 在统计槽恒写空对象；原生也请求
+  高低半字（`0x7c9a3bb4..0x7c9a3bbd`）。读取器同时保留流内原值和
+  原生使用的类别键。构造用例验证 v1 交换、v2 及后续版本保留顺序；
+  尚无旧版实档或人工验证。10.1 旧体 Save 在统计槽恒写空对象；原生也请求
   `{FAFDB8B5-5FE3-11D2-9F24-00C04F8ED1D7}`，与 esriCarto 10.1
   TypeInfo 46 的 `IEnumRasterUniqueValueColor` 对位；非空体见
   [旧版唯一值颜色枚举](#旧版唯一值颜色枚举)。
