@@ -333,6 +333,8 @@ pub(super) fn read_bounded_extension_property_set(
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayerExtensionEntry10_1 {
     pub class_id: [u8; 16],
+    /// 未识别类的有界原始体。
+    pub unknown_body: Option<Vec<u8>>,
     /// 零长度条目没有对象体。
     pub template_manager: Option<EditTemplateManagerBody10_1>,
     pub properties: Option<Box<PropertySetObjectStream10_1>>,
@@ -372,7 +374,13 @@ pub(super) fn read_layer_extensions_10_1(
     let mut budget = max;
     let mut extensions = Vec::new();
     for _ in 0..count {
-        extensions.push(read_layer_extension_entry_10_1(r, max, refs, &mut budget)?);
+        extensions.push(read_layer_extension_entry_10_1(
+            r,
+            max,
+            refs,
+            &mut budget,
+            false,
+        )?);
     }
     Ok(extensions)
 }
@@ -382,6 +390,7 @@ pub(crate) fn read_layer_extension_entry_10_1(
     max: usize,
     refs: &mut RefTable10_1,
     budget: &mut usize,
+    preserve_unknown: bool,
 ) -> io::Result<LayerExtensionEntry10_1> {
     // LayerLib ExtensionHelper 的长度覆盖对象体，CLSID 后没有键。
     let length = u64::from_le_bytes(r.read_bytes(8)?.try_into().unwrap());
@@ -392,6 +401,7 @@ pub(crate) fn read_layer_extension_entry_10_1(
         .filter(|&length| length <= *budget)
         .ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "图层扩展长度超过限额"))?;
     let length = entry_len - LEGACY_EXTENSION_HEADER_SIZE;
+    let mut unknown_body = None;
     let mut template_manager = None;
     let mut properties = None;
     let mut server_layer_extension = None;
@@ -502,12 +512,14 @@ pub(crate) fn read_layer_extension_entry_10_1(
                 }
                 template_manager = Some(parsed);
             }
+            _ if preserve_unknown => unknown_body = Some(r.read_bytes(length)?.to_vec()),
             _ => return Err(unsupported_class("图层扩展", &class_id)),
         }
     }
     *budget -= entry_len;
     Ok(LayerExtensionEntry10_1 {
         class_id,
+        unknown_body,
         template_manager,
         properties,
         server_layer_extension,
@@ -549,6 +561,7 @@ mod tests {
             23,
             &mut refs,
             &mut budget,
+            false,
         )
         .unwrap_err();
         assert_eq!(error.kind(), ErrorKind::InvalidData);

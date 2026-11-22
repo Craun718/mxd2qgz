@@ -610,6 +610,7 @@ pub fn read_standalone_table_prefix_10_1(
                 max_string_bytes,
                 &mut staged,
                 &mut budget,
+                true,
             ) {
                 Ok(extension) => {
                     r = trial;

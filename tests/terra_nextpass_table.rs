@@ -407,7 +407,6 @@ fn empty_sequences_reach_version_boundaries_and_secondary_name() {
             with_extension.extend((track.len() as u64).to_le_bytes());
             with_extension.extend(TIME_LAYER_TRACK_EXTENSION_CLASS_ID);
             with_extension.extend(track);
-            let unknown_start = with_extension.len();
             let mut complete = with_extension.clone();
             complete[expected - 4..expected].copy_from_slice(&1u32.to_le_bytes());
             let mut r = Reader::new(&complete);
@@ -419,19 +418,32 @@ fn empty_sequences_reach_version_boundaries_and_secondary_name() {
             assert!(refs.contains(44));
             assert_eq!(r.remaining(), 0);
 
-            with_extension.extend(3i64.to_le_bytes());
+            with_extension[expected - 4..expected].copy_from_slice(&3_u32.to_le_bytes());
+            with_extension.extend(3_i64.to_le_bytes());
             with_extension.extend([4; 16]);
             with_extension.extend([9; 3]);
+            with_extension.extend(0_i64.to_le_bytes());
+            with_extension.extend([5; 16]);
+            let end = with_extension.len();
+            with_extension.push(0xaa);
             let mut r = Reader::new(&with_extension);
             let mut refs = RefTable10_1::new();
-            let p = read_standalone_table_prefix_10_1(&mut r, &mut refs, 10, 100).unwrap();
-            assert!(matches!(
-                p.stop,
-                StandaloneTableStop10_1::Extension { size: 3, .. }
-            ));
-            assert_eq!(p.extensions.len(), 1);
+            let p = read_standalone_table_prefix_10_1(&mut r, &mut refs, 10, 128).unwrap();
+            assert_eq!(p.stop, StandaloneTableStop10_1::Complete);
+            assert_eq!(p.extensions.len(), 3);
+            assert_eq!(p.extensions[1].class_id, [4; 16]);
+            assert_eq!(p.extensions[1].unknown_body.as_deref(), Some(&[9; 3][..]));
+            assert_eq!(p.extensions[2].class_id, [5; 16]);
             assert!(refs.contains(44));
-            assert_eq!(r.position(), unknown_start);
+            assert_eq!(r.position(), end);
+
+            for len in [end - 25, end - 1] {
+                let mut r = Reader::new(&with_extension[..len]);
+                let mut refs = RefTable10_1::new();
+                assert!(read_standalone_table_prefix_10_1(&mut r, &mut refs, 10, 128).is_err());
+                assert_eq!(r.position(), 0);
+                assert!(refs.is_empty());
+            }
         }
         b.push(0xaa);
         let mut r = Reader::new(&b);
