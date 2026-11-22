@@ -428,7 +428,7 @@ pub(crate) fn read_raster_renderer_body_10_1(
         }
         SAI_RENDERER_CLASS_ID => {
             let version = signed_long(&mut trial)?;
-            if version != 1 {
+            if version > 1 {
                 return Err(invalid(format!("未支持的 SAIRenderer 版本 {version}")));
             }
             // 新对象构造器将共用状态位清零，Load 在此状态下读取两项 double。

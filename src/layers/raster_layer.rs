@@ -1468,27 +1468,41 @@ mod tests {
         bytes.extend(2.5_f64.to_le_bytes()); // 图层尾段。
         bytes.extend([0; 14]);
 
+        let version_offset = renderer_start + 20;
+        for version in [1_i32, 0, -1, i32::MIN] {
+            bytes[version_offset..version_offset + 4].copy_from_slice(&version.to_le_bytes());
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let result = read_bounded_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+            match result.renderer.unwrap().body.unwrap() {
+                RasterRendererPrefix10_1::Sai {
+                    version: actual_version,
+                    short,
+                    doubles,
+                    shared,
+                } => {
+                    assert_eq!(
+                        (actual_version, short, doubles, shared.version),
+                        (version, 17, [0.75, 19.0], 1)
+                    );
+                }
+                other => panic!("预期 SAIRenderer，实际为 {other:?}"),
+            }
+            assert_eq!(result.tail.unwrap().doubles_bc_c4, [2.5, 0.0]);
+            assert_eq!(reader.remaining(), 0);
+            assert!(refs.contains(61));
+        }
+
+        bytes[version_offset..version_offset + 4].copy_from_slice(&2_i32.to_le_bytes());
         let mut reader = Reader::new(&bytes);
         let mut refs = RefTable10_1::new();
         let result = read_bounded_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
-        match result.renderer.unwrap().body.unwrap() {
-            RasterRendererPrefix10_1::Sai {
-                version,
-                short,
-                doubles,
-                shared,
-            } => {
-                assert_eq!(
-                    (version, short, doubles, shared.version),
-                    (1, 17, [0.75, 19.0], 1)
-                );
-            }
-            other => panic!("预期 SAIRenderer，实际为 {other:?}"),
-        }
-        assert_eq!(result.tail.unwrap().doubles_bc_c4, [2.5, 0.0]);
-        assert_eq!(reader.remaining(), 0);
-        assert!(refs.contains(61));
+        assert!(result.renderer_stop.is_some());
+        assert_eq!(reader.position(), renderer_start);
+        assert!(refs.contains(60));
+        assert!(!refs.contains(61));
 
+        bytes[version_offset..version_offset + 4].copy_from_slice(&1_i32.to_le_bytes());
         for cut in renderer_start..renderer_end {
             let mut reader = Reader::new(&bytes[..cut]);
             let mut refs = RefTable10_1::new();
