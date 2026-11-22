@@ -70,6 +70,11 @@ IRasterRenderer，请求 IID 位于 `0x7c769b44`，为
   调虚表；主表 `0x8007c1dc` 的 +0x28 槽 `0x80040520` 每项读 8 字节。
   这四个对象与 RGB 渲染器共用外层 ObjectStream 表；三个无键直方图不进表。
 
+  SystemCore 10.1.0.3035 在 `0x7ffd0063` 先按键查找原实例，再查询
+  IDoubleArray。栅格渲染器和传感器变换共用的读取器按登记类校验回引。
+  Formosat2 v1 构造输入覆盖类标识不同的有效回引及误引 RasterDatasetName
+  时的整体回滚。该回引尚无实档或 ArcMap/QGIS 人工验证。
+
 ### RGB v1–v3 与共用体 v1
 
 用 objdump 复核同一 10.1 RasterRenderer.dll：Load `0x7c99ad10` 先读 int32

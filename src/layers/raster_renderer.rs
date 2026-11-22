@@ -816,7 +816,17 @@ pub(crate) fn read_double_array_slot(
     reader: &mut Reader<'_>,
     table: &mut RefTable10_1,
 ) -> io::Result<RasterDoubleArraySlot10_1> {
-    let entry = read_object_entry_10_1(reader, table)?;
+    let mut entry = read_object_entry_10_1(reader, table)?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+        && let Some(registered) = table.registered_class(*key)
+    {
+        if registered != DOUBLE_ARRAY_CLASS_ID {
+            return Err(invalid(format!(
+                "IDoubleArray 回引键 {key} 的登记类不受支持"
+            )));
+        }
+        *class_id = registered;
+    }
     let body = match entry {
         ObjectEntry10_1::Null | ObjectEntry10_1::BackReference { .. } => None,
         ObjectEntry10_1::NewObject { class_id, .. } if class_id == DOUBLE_ARRAY_CLASS_ID => {

@@ -263,7 +263,8 @@ fn formosat2_reads_fourteen_arrays_then_polynomial_and_raster() {
     bytes.extend(1_i32.to_le_bytes());
     bytes.extend(19.25_f64.to_le_bytes());
     bytes.extend([0; 12 * 16]);
-    header(&mut bytes, DOUBLE_ARRAY, 115);
+    let array_reference = bytes.len();
+    header(&mut bytes, IDENTITY_XFORM_CLASS_ID, 115);
     let polynomial_start = bytes.len();
     header(&mut bytes, POLYNOMIAL_XFORM_CLASS_ID, 116);
     bytes.extend(1_i32.to_le_bytes());
@@ -305,7 +306,10 @@ fn formosat2_reads_fourteen_arrays_then_polynomial_and_raster() {
     assert_eq!(body.double_arrays[0].body, Some((1, vec![19.25])));
     assert!(matches!(
         body.double_arrays[13].entry,
-        ObjectEntry10_1::BackReference { key: 115, .. }
+        ObjectEntry10_1::BackReference {
+            class_id: DOUBLE_ARRAY,
+            key: 115
+        }
     ));
     assert!(matches!(
         body.polynomial.body.as_deref(),
@@ -319,6 +323,27 @@ fn formosat2_reads_fourteen_arrays_then_polynomial_and_raster() {
     ));
     assert_eq!(refs.len(), 4);
     assert_eq!(reader.position(), end);
+
+    let mut wrong = bytes.clone();
+    wrong[array_reference + 16..array_reference + 20].copy_from_slice(&70_u32.to_le_bytes());
+    let mut wrong_refs = RefTable10_1::new();
+    let mut existing = Vec::new();
+    header(&mut existing, RASTER_DATASET_NAME_CLASS_ID, 70);
+    mxd2qgz::storage::object_refs::read_object_entry_10_1(
+        &mut Reader::new(&existing),
+        &mut wrong_refs,
+    )
+    .unwrap();
+    let before = wrong_refs.clone();
+    let mut wrong_reader = Reader::new(&wrong);
+    assert_eq!(
+        read_geodata_xform_slot_10_1(&mut wrong_reader, 4096, &mut wrong_refs)
+            .unwrap_err()
+            .kind(),
+        std::io::ErrorKind::InvalidData
+    );
+    assert_eq!(wrong_reader.position(), 0);
+    assert_eq!(wrong_refs, before);
 
     let mut reference = Vec::new();
     header(&mut reference, IDENTITY_XFORM_CLASS_ID, 116);

@@ -373,6 +373,7 @@
   - [x] 接入有界 RasterLayer 中 ProjectiveXform 的空第三槽，按完整尾段与声明边界判定。[边界取证](docs/mxd-10.1-geodata-xform.md#projectivexform-的读写差异)
   - [x] 接入 FrameXform v1–v7、Formosat2Xform v1、SPOT5Xform v1/v2 的数组槽与栅格记录，见 [传感器变换取证](docs/mxd-10.1-geodata-xform.md#frameformosat2-与-spot5)。
   - [x] 按登记类校验 Formosat2Xform 的 IPolynomialXform 槽回引。
+  - [x] 按登记类校验栅格渲染及传感器变换共用的 IDoubleArray 槽回引。
   - [x] 接入 CSMXform v1/v2 的版本、标志和两段窄字符状态原值，见 [Mensuration 取证](docs/mxd-10.1-geodata-xform.md#csmxform)。
   - [ ] 闭合 VariantStream 对象分支的引用表（10.1 标准包装与 VariantStreamIO 已静态对位；仍缺真实宿主键序及其他包装路径的佐证，见 [取证](docs/mxd-10.1-variant-image-server-layer.md#两种对象头与引用表)）。
   - [x] 实现显式 10.1 ObjectStream 上下文的 Variant 对象头读取：区分空标记、新对象和会话键回引，见 [AfCore/SystemCore 续查](docs/mxd-luna-followup-stream-20261118.md)。
