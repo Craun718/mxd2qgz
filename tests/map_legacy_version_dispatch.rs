@@ -207,7 +207,8 @@ fn map_v0_to_v13_read_version_gated_tail_fields() {
         suffix.extend([0; 2 + 8 + 2]);
         let referenced = version == 10;
         let ams = version == 7;
-        let fgdb_wrapper = (version % 3 == 1 && !referenced && !ams).then_some((1_u16, 0x4c2a_u16));
+        let fgdb_wrapper = (version % 3 == 1 && !referenced && !ams)
+            .then_some((if version == 1 { 1 } else { u16::MAX }, 0x4c2a_u16));
         let netcdf = version % 3 == 2;
         let table_offset = (version < 11).then(|| {
             suffix.extend(2_u32.to_le_bytes());

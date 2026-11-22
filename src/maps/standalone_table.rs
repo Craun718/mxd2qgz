@@ -68,7 +68,7 @@ pub(crate) fn read_fgdb_table_name_body_10_1(
 ) -> io::Result<(TableNameBody10_1, bool)> {
     let mut trial = reader.clone();
     let version = trial.read_u16_le()?;
-    if version > 1 {
+    if (version as i16) > 1 {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
             "FgdbTableName 版本不支持",

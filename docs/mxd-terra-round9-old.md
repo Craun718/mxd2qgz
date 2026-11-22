@@ -102,8 +102,11 @@ Load `0x6fa33290` 读取 short 版本和完整对象 `+0x28` 的 short，
 随后在 `0x6fa332f7` 经内层 IPersistStream `+0x14` 将同一流交给
 TableName。Save `0x6fa33310` 写版本 1 和相同 short，再调用
 内层 Save。内层沿用 [TableName 读写链](mxd-terra-round8-tablename.md)，
-没有独立对象头。Rust 从旧 Map 表槽及 StandaloneTable 读这层包装，拒绝
-超出 0–1 的版本。构造 Map 验证新对象、回引、无效版本处游标和引用表回滚。
+没有独立对象头。对相同摘要的 DLL 用 objdump 复核，
+`0x6fa332be` 比较 16 位版本和 1，`0x6fa332c3` 以有符号 `jle`
+接受不大于 1 的值。旧 Map 表槽及 StandaloneTable 共用此分派并保留
+原始版本位模式。构造 Map 验证版本 1、-1、新对象、回引，以及超限版本
+处游标和引用表回滚。ArcMap 10.1 与 QGIS 人工验收未进行。
 旧 Map 中实际出现该类的版本和样本仍待验证。
 
 ### NetCDFTableName
