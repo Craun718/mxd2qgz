@@ -381,7 +381,11 @@ RasterDB.dll 映像中，它们共用主 QI `0x7c0337c0`，两个直接比较项
 `0x7c12215c / 0x7c1221dc / 0x7c1368e4`，未命中返回
 E_NOINTERFACE。两张主表 `0x7c12ebd0 / 0x7c12ec3c` 均没有可用于
 普通 ObjectStream 新对象的 IPersistStream 或 IPersistVariant 分派。
-IPnt 空槽和回引可解析，其他实现写出的非空新对象仍待原生证据。
+IPnt 空槽和已支持类的回引可解析。按 SystemCore 10.1.0.3035 的
+`0x7ffd0063` 查键后查询接口的规则，RasterInfo 和 MosaicFunction
+共用的读取器按登记类校验回引。构造 RasterInfo v7 的 IPnt 槽误引
+RasterStatistics 时，整个 Variant 的游标及对象键回滚。其他实现写出的
+非空新对象仍待原生证据，尚无该组合的实档或人工验证。
 参考工程及 199 个介质流未发现前述 MosaicFunction、MosaicLODInfos、
 FIDSet 和 Pnt 四种类的标识。
 合成 v1–v9 覆盖版本分支、非空 MosaicLODInfos、FIDSet 的重复及负 ID、

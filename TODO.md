@@ -339,6 +339,7 @@
   - [x] 接入共用 IUnknown 输入槽中的已确认 IRasterFunction 对象体。[输入对象取证](docs/mxd-10.1-image-server-rules.md#iunknown-槽中的栅格函数对象)
   - [x] 合并栅格压缩输入中的函数和参数继续沿用宿主的递归预算。[压缩对象边界](docs/mxd-10.1-image-server-rules.md#rasters-和-footprints-的压缩参数对象)
   - [x] 接入栅格模板中的 RasterInfos 和独立 RasterInfo，登记成员及其嵌套几何键。[集合读写取证](docs/mxd-10.1-image-server-rules.md#rasterinfos-与模板中的-rasterinfo)
+  - [x] 按登记类校验 RasterInfo 与 MosaicFunction 共用的 IPnt 槽回引。
   - [x] 接入参数属性集和 ArgumentArray 中的 RasterInfos、RasterInfo 新对象，压缩子流沿用深度限额并独立登记键。[对象槽取证](docs/mxd-10.1-image-server-rules.md#参数属性集与-argumentarray)
   - [x] 解码 MergeRastersFunctionArguments 的 Rasters 和 Footprints 压缩槽内已有对象体。[延迟装载取证](docs/mxd-10.1-image-server-rules.md#rasters-和-footprints-的压缩参数对象)
   - [x] 接入 RasterFunctionCollection 的子函数列表和 RasterItemFunction 的 RasterInfo 槽，支持 RasterFunctionTemplate、RasterInfoFunction 和 RasterItemFunction 的参数类。[取证](docs/mxd-10.1-image-server-rules.md#函数集合栅格项与三个参数体)

@@ -1371,6 +1371,7 @@ mod tests {
         info.extend(17_u32.to_le_bytes());
         info.extend(2_u16.to_le_bytes());
         info.extend([0; 2 * 16]);
+        let pnt_slot = info.len();
         info.extend([0; 16]); // v6 槽为空。
         info.extend(170_i32.to_le_bytes());
 
@@ -1467,23 +1468,28 @@ mod tests {
         let mut wrong = info.clone();
         wrong[statistics_reference + 16..statistics_reference + 20]
             .copy_from_slice(&20_u32.to_le_bytes());
-        let mut wrapped = 13_u16.to_le_bytes().to_vec();
-        wrapped.extend([0; 14]);
-        wrapped.extend(wrong);
-        let mut wrong_reader = Reader::new(&wrapped);
-        let mut wrong_refs = RefTable10_1::new();
-        assert_eq!(
-            crate::objects::property_set::read_padded_variant_object_stream_10_1(
-                &mut wrong_reader,
-                4096,
-                &mut wrong_refs,
-            )
-            .unwrap_err()
-            .kind(),
-            ErrorKind::Unsupported
-        );
-        assert_eq!(wrong_reader.position(), 0);
-        assert!(wrong_refs.is_empty());
+        let mut wrong_pnt = info.clone();
+        let pnt_reference = RASTER_STATISTICS.into_iter().chain(15_u32.to_le_bytes());
+        wrong_pnt.splice(pnt_slot..pnt_slot + 16, pnt_reference);
+        for wrong in [wrong, wrong_pnt] {
+            let mut wrapped = 13_u16.to_le_bytes().to_vec();
+            wrapped.extend([0; 14]);
+            wrapped.extend(wrong);
+            let mut wrong_reader = Reader::new(&wrapped);
+            let mut wrong_refs = RefTable10_1::new();
+            assert_eq!(
+                crate::objects::property_set::read_padded_variant_object_stream_10_1(
+                    &mut wrong_reader,
+                    4096,
+                    &mut wrong_refs,
+                )
+                .unwrap_err()
+                .kind(),
+                ErrorKind::Unsupported
+            );
+            assert_eq!(wrong_reader.position(), 0);
+            assert!(wrong_refs.is_empty());
+        }
 
         info.extend(1_i32.to_le_bytes());
         let rectangle = [1.0_f64, 2.0, 3.0, 4.0];

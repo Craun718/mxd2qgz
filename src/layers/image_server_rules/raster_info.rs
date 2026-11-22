@@ -475,10 +475,30 @@ pub(super) fn read_pnt_slot(
     r: &mut Reader<'_>,
     refs: &mut RefTable10_1,
 ) -> io::Result<ObjectEntry10_1> {
-    slot(r, refs, |_, _, id, _| {
-        Err::<(), _>(unsupported_class("IPnt", &id))
-    })
-    .map(|result| result.entry)
+    const PNT_CLASS_ID: [u8; 16] = [
+        0xe4, 0x87, 0x40, 0x06, 0xb9, 0x09, 0x92, 0x48, 0xa8, 0x93, 0xfc, 0xa8, 0x9b, 0xb1, 0x71,
+        0xd1,
+    ];
+    const DBL_PNT_CLASS_ID: [u8; 16] = [
+        0x25, 0x27, 0x1a, 0x1f, 0x9d, 0x6b, 0xa5, 0x44, 0xb7, 0x5e, 0x9e, 0x4c, 0xd9, 0xb9, 0xf9,
+        0x0a,
+    ];
+    let mut entry = read_object_entry_10_1(r, refs)?;
+    match &mut entry {
+        ObjectEntry10_1::NewObject { class_id, .. } => {
+            return Err(unsupported_class("IPnt", class_id));
+        }
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            if let Some(registered) = refs.registered_class(*key) {
+                if !matches!(registered, PNT_CLASS_ID | DBL_PNT_CLASS_ID) {
+                    return Err(unsupported_class("IPnt", &registered));
+                }
+                *class_id = registered;
+            }
+        }
+        ObjectEntry10_1::Null => {}
+    }
+    Ok(entry)
 }
 
 fn read_count(r: &mut Reader<'_>, max: usize, min_bytes: usize) -> io::Result<usize> {
