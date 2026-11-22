@@ -71,3 +71,21 @@ short 符号扩展并与 7 比较。达到 7 且此前操作成功时，继续�
 因此固定值 18 若保留到这些入口，会通过 Metadata 尾段的版本门。
 分类调用的实际接收者及从分类到 Metadata 的值传递仍待核对。
 本轮使用本地伪代码和 objdump，未在 ArcMap 或 QGIS 中人工验证。
+
+### 旧文档分类后的 DocumentInfo 标志
+
+在同一 PageLayout.dll 中，链 B 从上下文 +0x08 取接口，
+于 `0x7b69f90f` 调用 +0x58 槽。实参由打开例程的局部输出
+归一化为 0 或 -1（`0x7b69f8f5–0x7b69f8fc`）。
+在使用 DocumentInfo 的路径上，初始化例程 `0x7b70aba0`
+将上下文 +0x08 的地址传给创建助手 `0x7b70e560`，
+后者创建 DocumentInfo 并查询 IDocumentInfo2。
+DocumentInfo 的 QI 命中该 IID 时返回完整对象 +0x18
+（`0x7b69149e`），构造器在此安装虚表 `0x7b71cb24`。
+
+该表 +0x58 的指针位于 `0x7b71cb7c`，指向 `0x7b692640`。
+该入口将实参解释为有符号 short，并把是否等于 -1 的 0/1
+结果写入接口 this+0x34，即完整对象 +0x4c。这个成员正是
+旧式 Metadata 尾部读写的首个 4 字节字段。以上绑定以调用时
+上下文 +0x08 仍持有该 DocumentInfo 为条件，尚未在 ArcMap
+或 QGIS 中运行验证。
