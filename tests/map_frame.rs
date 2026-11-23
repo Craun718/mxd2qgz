@@ -12,7 +12,7 @@ fn wrap(body: &[u8]) -> Vec<u8> {
     bytes
 }
 
-fn frame_body(version: u16) -> Vec<u8> {
+fn frame_body(version: i16) -> Vec<u8> {
     let mut bytes = version.to_le_bytes().to_vec();
     bytes.extend(MAP_CLASS_ID);
     bytes.extend(42_u32.to_le_bytes());
@@ -53,14 +53,15 @@ fn frame_body(version: u16) -> Vec<u8> {
 }
 
 #[test]
-fn parses_the_v0_to_v4_map_frame_gates() {
-    for version in 0..=4 {
+fn parses_the_signed_map_frame_version_gates() {
+    for version in [i16::MIN, -1, 0, 1, 2, 3, 4] {
         let bytes = wrap(&frame_body(version));
         let mut r = Reader::new(&bytes);
         let mut refs = RefTable10_1::new();
         refs.register(42);
         let frame = read_page_layout_map_frame_10_1(&mut r, 4096, &mut refs).unwrap();
         assert_eq!(r.remaining(), 0);
+        assert_eq!(frame.prefix.version, version as u16);
         assert_eq!(
             frame.prefix.map,
             ObjectEntry10_1::BackReference {
@@ -76,6 +77,14 @@ fn parses_the_v0_to_v4_map_frame_gates() {
         assert_eq!(frame.base.geometry_short, Some(0x5060));
         assert_eq!(frame.base.draft_mode_bits, 0xffff);
     }
+
+    let bytes = wrap(&5_u16.to_le_bytes());
+    let mut r = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let err = read_page_layout_map_frame_10_1(&mut r, 4096, &mut refs).unwrap_err();
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+    assert_eq!(r.position(), 0);
+    assert!(refs.is_empty());
 }
 
 #[test]

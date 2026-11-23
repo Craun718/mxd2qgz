@@ -112,7 +112,7 @@ fn read_map_frame_prefix_inner(
         ));
     }
     let version = region.read_u16_le()?;
-    if version > 4 {
+    if version as i16 > 4 {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
             "不支持的 MapFrame 版本",

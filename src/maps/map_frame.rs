@@ -95,7 +95,7 @@ pub(super) fn read_map_frame_tail(
     region_offset: usize,
     is_root_map: &impl Fn(u32) -> bool,
 ) -> io::Result<MapFrame10_1> {
-    let version = prefix.version;
+    let version = prefix.version as i16;
     let extent_settings = if version < 4 {
         let mode_bits = r.read_u32_le()?;
         let scale_bits = r.read_f64_le()?.to_bits();
