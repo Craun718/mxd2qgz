@@ -1402,3 +1402,17 @@ Save `0x74698be0` 在 `0x74698c2f` 对称写入该字符串。
 
 构造书签覆盖文本、对象回引、后继字段、超限版本和逐字节截断
 回滚。真实书签和 ArcMap/QGIS 人工验收待验证。
+
+#### GPRouteMeasureEventProperties
+
+GpObjects.dll 10.1.0.3035 的 PE RTTI `0x74804b04` 对应持久化
+虚表 `0x747bbd4c`。类标识常量 `0x747bba68` 与 Desktop
+互操作程序集的 `35527F95-BB45-4BCE-A813-EA1369E735BC` 相符。
+QI 在 `0x7477468a` 引用编码域请求的 IGPValue IID。
+Load `0x74774d50` 检查无符号 short 版本上限 1，调用 GPValue
+基类后，于 `0x74774dae / 0x74774de2 / 0x74774df9 / 0x74774e10`
+连续调用 AfCore String::Read。Save `0x74774e90` 对称写四个字符串。
+保留流中字段顺序及原值。
+
+构造书签覆盖字符串顺序、回引、后继字段、超限版本和逐字节截断
+回滚。四字段的业务名、真实书签以及 ArcMap/QGIS 人工验收待验证。

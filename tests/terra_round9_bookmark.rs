@@ -5673,3 +5673,19 @@ fn feature_bookmark_reads_gp_calculator_expression_value() {
         GpCodedValue10_1::CalculatorExpression(expression.into()),
     );
 }
+
+#[test]
+fn feature_bookmark_reads_gp_route_measure_event_properties() {
+    use mxd2qgz::maps::map_surround::{
+        GP_ROUTE_MEASURE_EVENT_PROPERTIES_CLASS_ID, GpCodedValue10_1,
+    };
+
+    let strings = ["路线号", "LINE", "起点", "终点"];
+    let payload: Vec<_> = strings.into_iter().flat_map(bookmark_string_10_1).collect();
+    assert_legacy_topo_coded_value(
+        GP_ROUTE_MEASURE_EVENT_PROPERTIES_CLASS_ID,
+        1,
+        &payload,
+        GpCodedValue10_1::RouteMeasureEventProperties(strings.map(String::from)),
+    );
+}

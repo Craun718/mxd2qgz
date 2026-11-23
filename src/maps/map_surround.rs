@@ -441,6 +441,10 @@ pub const GP_CALCULATOR_EXPRESSION_CLASS_ID: [u8; 16] = [
     0xa0, 0x38, 0x2c, 0x95, 0xef, 0x4c, 0x8a, 0x48, 0x8c, 0x99, 0x7d, 0x19, 0xb6, 0xf7, 0x4f, 0x91,
 ];
 
+pub const GP_ROUTE_MEASURE_EVENT_PROPERTIES_CLASS_ID: [u8; 16] = [
+    0x95, 0x7f, 0x52, 0x35, 0x45, 0xbb, 0xce, 0x4b, 0xa8, 0x13, 0xea, 0x13, 0x69, 0xe7, 0x35, 0xbc,
+];
+
 pub const GP_SPATIAL_REFERENCE_CLASS_ID: [u8; 16] = [
     0xea, 0x07, 0x33, 0x50, 0x31, 0x41, 0x6b, 0x45, 0x9b, 0x9a, 0x15, 0x98, 0x95, 0x34, 0xbe, 0x4d,
 ];
@@ -492,6 +496,7 @@ pub enum GpCodedValue10_1 {
     SqlExpression(String),
     InfoExpression(String),
     CalculatorExpression(String),
+    RouteMeasureEventProperties([String; 4]),
     Long(i32),
     DoubleBits(u64),
     Boolean(u16),
@@ -1670,6 +1675,7 @@ fn read_gp_coded_value_slot(
                     | GP_SQL_EXPRESSION_CLASS_ID
                     | GP_INFO_EXPRESSION_CLASS_ID
                     | GP_CALCULATOR_EXPRESSION_CLASS_ID
+                    | GP_ROUTE_MEASURE_EVENT_PROPERTIES_CLASS_ID
                     | GP_ENCRYPTED_STRING_CLASS_ID
                     | GP_LONG_CLASS_ID
                     | GP_DOUBLE_CLASS_ID
@@ -1700,6 +1706,7 @@ fn read_gp_coded_value_slot(
                 | GP_SQL_EXPRESSION_CLASS_ID
                 | GP_INFO_EXPRESSION_CLASS_ID
                 | GP_CALCULATOR_EXPRESSION_CLASS_ID
+                | GP_ROUTE_MEASURE_EVENT_PROPERTIES_CLASS_ID
                 | GP_ENCRYPTED_STRING_CLASS_ID
                 | GP_LONG_CLASS_ID
                 | GP_DOUBLE_CLASS_ID
@@ -1767,6 +1774,14 @@ fn read_gp_coded_value_slot(
                 }
                 GP_CALCULATOR_EXPRESSION_CLASS_ID => {
                     GpCodedValue10_1::CalculatorExpression(read_string_10_1(reader, max_bytes)?)
+                }
+                GP_ROUTE_MEASURE_EVENT_PROPERTIES_CLASS_ID => {
+                    GpCodedValue10_1::RouteMeasureEventProperties([
+                        read_string_10_1(reader, max_bytes)?,
+                        read_string_10_1(reader, max_bytes)?,
+                        read_string_10_1(reader, max_bytes)?,
+                        read_string_10_1(reader, max_bytes)?,
+                    ])
                 }
                 GP_DOUBLE_CLASS_ID => GpCodedValue10_1::DoubleBits(reader.read_f64_le()?.to_bits()),
                 GP_POINT_CLASS_ID => GpCodedValue10_1::Point {
