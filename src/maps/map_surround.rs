@@ -335,6 +335,14 @@ pub struct AoiBookmark10_1 {
 
 const MAX_BOOKMARK_NAME_NESTING: usize = 16;
 
+pub const GP_TABLES_DOMAIN_CLASS_ID: [u8; 16] = [
+    0x02, 0x00, 0xda, 0x5b, 0x74, 0x25, 0x2e, 0x49, 0xa3, 0x97, 0x82, 0x55, 0xfd, 0xff, 0x2d, 0x58,
+];
+
+pub const GP_LAYERS_AND_TABLES_DOMAIN_CLASS_ID: [u8; 16] = [
+    0x0d, 0xa4, 0xe7, 0xec, 0x9c, 0xc0, 0xa1, 0x4d, 0xbe, 0x5d, 0x1a, 0x6d, 0x17, 0xfe, 0x6a, 0x82,
+];
+
 pub const GP_ROUTE_DOMAIN_CLASS_ID: [u8; 16] = [
     0x2f, 0xff, 0x3f, 0x19, 0x23, 0xc9, 0x0b, 0x43, 0x87, 0x9f, 0x50, 0xbf, 0x65, 0xf6, 0x17, 0x03,
 ];
@@ -405,6 +413,12 @@ pub const GP_FILE_DOMAIN_CLASS_ID: [u8; 16] = [
 pub enum GpTopoDomain10_1 {
     Numeric(GpNumericDomain10_1),
     Field(GpFieldDomain10_1),
+    Tables {
+        version: i16,
+    },
+    LayersAndTables {
+        version: i16,
+    },
     Route {
         version: i16,
     },
@@ -1253,6 +1267,8 @@ fn read_gp_topo_domain_slot_10_1(
                     | GP_VIRTUAL_TABLE_DOMAIN_CLASS_ID
                     | GP_ROUTE_MEASURE_EVENT_DOMAIN_CLASS_ID
                     | GP_ROUTE_DOMAIN_CLASS_ID
+                    | GP_LAYERS_AND_TABLES_DOMAIN_CLASS_ID
+                    | GP_TABLES_DOMAIN_CLASS_ID
                     | GP_QUERY_TABLE_FIELDS_DOMAIN_CLASS_ID
             ) =>
         {
@@ -1268,6 +1284,18 @@ fn read_gp_topo_domain_slot_10_1(
             middle_shorts: [reader.read_u16_le()?, reader.read_u16_le()?],
             second_double_bits: reader.read_f64_le()?.to_bits(),
         }))),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_TABLES_DOMAIN_CLASS_ID,
+            ..
+        } => Some(Box::new(GpTopoDomain10_1::Tables {
+            version: read_gp_name_version(reader, 1, "GPTablesDomain")?,
+        })),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_LAYERS_AND_TABLES_DOMAIN_CLASS_ID,
+            ..
+        } => Some(Box::new(GpTopoDomain10_1::LayersAndTables {
+            version: read_gp_name_version(reader, 1, "GPLayersAndTablesDomain")?,
+        })),
         ObjectEntry10_1::NewObject {
             class_id: GP_ROUTE_DOMAIN_CLASS_ID,
             ..

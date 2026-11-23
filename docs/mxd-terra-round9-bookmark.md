@@ -992,3 +992,18 @@ Save `0x74778650` 在 `0x7477866d` 写出两个字节。构造测试
 
 各 Save 只写两个字节。构造测试覆盖两类身份、负版本、超限版本、
 后续书签字段及逐字节截断回滚。真实 ArcMap 书签和 QGIS 人工验收待验证。
+
+### GPTablesDomain 与 GPLayersAndTablesDomain
+
+GpCoreFunctions.dll 10.1.0.3035 的 SHA-256 为
+`7048e718213b98fceae3f57267fcaa52d000287bcd94de42a5d32c27a0dee381`。
+PE RTTI 和原生虚表对应如下。
+
+| 类 | CLSID | RTTI | 持久化虚表 | Save |
+| --- | --- | --- | --- | --- |
+| GPTablesDomain | `5BDA0002-2574-492E-A397-8255FDFF2D58` | `0x7411074c` | `0x73feb6c0` | `0x7382b530` |
+| GPLayersAndTablesDomain | `ECE7A40D-C09C-4DA1-BE5D-1A6D17FE6A82` | `0x74110608` | `0x73feaab0` | `0x7381e6e0` |
+
+共用 Load `0x7381e690` 只读有符号 short，版本上限为 1。
+两个 Save 均只写 short。构造测试覆盖两类身份、负版本、超限、
+后继书签字段与逐字节截断回滚。真实书签及 ArcMap/QGIS 人工验收待验证。
