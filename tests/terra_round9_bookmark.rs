@@ -2839,3 +2839,63 @@ fn feature_bookmark_reads_cadastral_fabric_name() {
     assert_eq!(reader.position(), 0);
     assert!(refs.is_empty());
 }
+
+#[test]
+fn feature_bookmark_reads_ags_server_names() {
+    use mxd2qgz::layers::cache_tile_reader::{AGS_SERVER_CONNECTION_NAME, AGS_SERVER_OBJECT_NAME};
+    use mxd2qgz::objects::property_set::PROPERTY_SET_CLASS_ID;
+
+    let bstr = [1, 0, 0, 0, b's', 0, 0, 0];
+    for class in [AGS_SERVER_CONNECTION_NAME, AGS_SERVER_OBJECT_NAME] {
+        let mut bytes = bookmark_header_10_1(&class, 17);
+        if class == AGS_SERVER_OBJECT_NAME {
+            bytes.extend(3_i16.to_le_bytes());
+            bytes.extend(bstr.repeat(3));
+            bytes.extend(AGS_SERVER_CONNECTION_NAME);
+            bytes.extend(18_u32.to_le_bytes());
+        }
+        bytes.extend(2_i16.to_le_bytes());
+        bytes.extend(PROPERTY_SET_CLASS_ID);
+        bytes.extend(19_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(0_u32.to_le_bytes());
+        bytes.extend(bookmark_string_10_1("连接"));
+        if class == AGS_SERVER_OBJECT_NAME {
+            bytes.extend(bstr.repeat(3));
+        }
+        bytes.extend(bookmark_string_10_1("书签"));
+        let end = bytes.len();
+        bytes.push(0xa5);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+        let connection = match (class, result.name_object) {
+            (AGS_SERVER_OBJECT_NAME, BookmarkNameEntry10_1::AgsServerObjectName(name)) => {
+                assert_eq!(name.strings, ["s", "s", "s"]);
+                assert_eq!(name.extra_strings.unwrap(), ["s", "s"]);
+                assert_eq!(name.last_string.as_deref(), Some("s"));
+                assert!(refs.contains(18));
+                name.connection.body.unwrap()
+            }
+            (AGS_SERVER_CONNECTION_NAME, BookmarkNameEntry10_1::AgsServerConnectionName(name)) => {
+                name
+            }
+            _ => panic!("应保留 AGS 名称的原始类型"),
+        };
+        assert_eq!(connection.version, 2);
+        assert_eq!(connection.extra_string.as_deref(), Some("连接"));
+        assert_eq!(connection.properties.body.unwrap().count, 0);
+        assert_eq!(result.name, "书签");
+        assert_eq!(reader.position(), end);
+        assert!(refs.contains(17) && refs.contains(19));
+
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+}

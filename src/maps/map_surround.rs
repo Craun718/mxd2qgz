@@ -110,6 +110,11 @@
 //! 调用语义仍未闭合（见 `docs/mxd-terra-integrate-page.md`）；共同前缀版本 0/1
 //! （docVersion 83..93 写 2）无门字段差异之外的真实流字节佐证。
 
+use crate::layers::cache_tile_reader::{
+    AGS_SERVER_CONNECTION_NAME, AGS_SERVER_OBJECT_NAME, AgsServerConnectionName10_1,
+    AgsServerObjectName10_1, read_ags_server_connection_name_body,
+    read_ags_server_object_name_body,
+};
 use crate::layers::feature_layer::{
     COVERAGE_FEATURE_CLASS_NAME_CLASS_ID, FEATURE_CLASS_NAME_CLASS_ID,
     FGDB_FEATURE_CLASS_NAME_CLASS_ID, FeatureClassNamePrefix10_1,
@@ -374,6 +379,8 @@ pub enum BookmarkNameEntry10_1 {
     NetworkDatasetName(Box<NetworkDatasetName10_1>),
     TinName(Box<TinName10_1>),
     LasDatasetName(Box<LasDatasetName10_1>),
+    AgsServerObjectName(Box<AgsServerObjectName10_1>),
+    AgsServerConnectionName(Box<AgsServerConnectionName10_1>),
     CadastralFabricName(Box<CadastralFabricName10_1>),
     TerrainName(Box<TerrainName10_1>),
     TopologyName(Box<TopologyNameBody10_1>),
@@ -1157,6 +1164,18 @@ pub fn read_feature_bookmark_10_1(
             max_bytes,
             &mut trial_table,
         )?)),
+        ObjectEntry10_1::NewObject {
+            class_id: AGS_SERVER_OBJECT_NAME,
+            ..
+        } => BookmarkNameEntry10_1::AgsServerObjectName(Box::new(
+            read_ags_server_object_name_body(&mut trial, max_bytes, &mut trial_table)?,
+        )),
+        ObjectEntry10_1::NewObject {
+            class_id: AGS_SERVER_CONNECTION_NAME,
+            ..
+        } => BookmarkNameEntry10_1::AgsServerConnectionName(Box::new(
+            read_ags_server_connection_name_body(&mut trial, max_bytes, &mut trial_table)?,
+        )),
         ObjectEntry10_1::NewObject {
             class_id: CADASTRAL_FABRIC_NAME_CLASS_ID,
             ..

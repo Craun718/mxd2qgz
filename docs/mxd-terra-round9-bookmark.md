@@ -551,3 +551,17 @@ IWorkspaceName（`FADD975C-E36F-11D1-AA81-00C04FA33A15`）。
 Save `0x6c1faf20` 确认字段顺序。构造测试覆盖空数据集槽、
 新建工作空间、后继书签文本、未知数据集类与逐字节截断回滚。
 字符串业务含义、真实书签宿主、原生 Open 和 QGIS 人工验收待查。
+
+## AGSServerObjectName 与 AGSServerConnectionName
+
+ArcMap 10.1 的 esriGISClient 类型库列出两个 AGS 名称类的 IName，
+CLSID 分别为 `6C22971C-D450-4B4D-9422-EE96A40FACC5` 和
+`CBA35C3F-EDEF-408F-8B51-510784C78EB9`。书签复用
+[AGSClient.dll 10.1.0.3035 的持久化布局](mxd-10.1-raster-layer-tail.md)
+和瓦片读取器使用的对象体分派。objdump 核对对象名的 `0x697e85be`
+与连接名的 `0x697e5335` 都比较 `0x698e8174` 的 IName IID，
+分别在 `0x697e85f3` 和 `0x697e536a` 返回完整对象 +0x18。对象名 Load `0x697e9b30` 读取 BSTR
+字段与连接名称槽，连接名 Load `0x697e6070` 读取属性集及 v2 的
+AfCore 成员 String。构造测试覆盖直接连接、嵌入连接、对象键、
+后继书签文本及逐字节截断回滚。真实书签宿主、原生 Open 和
+QGIS 人工验收待验证。

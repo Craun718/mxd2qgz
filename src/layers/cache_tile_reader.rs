@@ -15,7 +15,11 @@ use std::io;
 
 mod ags_name;
 mod provider;
-pub use ags_name::{AgsServerConnectionName10_1, AgsServerObjectName10_1};
+pub use ags_name::{
+    AGS_SERVER_CONNECTION_NAME, AGS_SERVER_OBJECT_NAME, AgsServerConnectionName10_1,
+    AgsServerObjectName10_1,
+};
+pub(crate) use ags_name::{read_ags_server_connection_name_body, read_ags_server_object_name_body};
 pub use provider::{
     CacheInfo10_1, INTERNET_TILED_LAYER_CLASS_ID, ImsProvider10_1, InternetTileProvider10_1,
     InternetTiledLayer10_1, InternetTiledLayerV2Fields10_1, TiledLayer10_1, WMTS_LAYER_CLASS_ID,

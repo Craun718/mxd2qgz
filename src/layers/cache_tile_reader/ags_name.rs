@@ -7,10 +7,10 @@ use super::{
 use crate::stream::native_string::read_bstr_string_10_1;
 use std::io;
 
-const AGS_SERVER_OBJECT_NAME: [u8; 16] = [
+pub const AGS_SERVER_OBJECT_NAME: [u8; 16] = [
     0x1c, 0x97, 0x22, 0x6c, 0x50, 0xd4, 0x4d, 0x4b, 0x94, 0x22, 0xee, 0x96, 0xa4, 0x0f, 0xac, 0xc5,
 ];
-const AGS_SERVER_CONNECTION_NAME: [u8; 16] = [
+pub const AGS_SERVER_CONNECTION_NAME: [u8; 16] = [
     0x3f, 0x5c, 0xa3, 0xcb, 0xef, 0xed, 0x8f, 0x40, 0x8b, 0x51, 0x51, 0x07, 0x84, 0xc7, 0x8e, 0xb9,
 ];
 
@@ -39,43 +39,59 @@ pub(super) fn read_server_object_name_slot(
         if class != AGS_SERVER_OBJECT_NAME {
             return Err(unsupported_class("AGSServerObjectName", &class));
         }
-        let version = version(r, 3, "AGSServerObjectName")?;
-        let strings = [
+        read_ags_server_object_name_body(r, max, refs)
+    })
+}
+
+pub(crate) fn read_ags_server_object_name_body(
+    r: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<AgsServerObjectName10_1> {
+    let version = version(r, 3, "AGSServerObjectName")?;
+    let strings = [
+        read_bstr_string_10_1(r, max)?,
+        read_bstr_string_10_1(r, max)?,
+        read_bstr_string_10_1(r, max)?,
+    ];
+    let connection = slot(r, refs, |r, refs, class, _| {
+        if class != AGS_SERVER_CONNECTION_NAME {
+            return Err(unsupported_class("IAGSServerConnectionName", &class));
+        }
+        read_ags_server_connection_name_body(r, max, refs)
+    })?;
+    let extra_strings = if version >= 2 {
+        Some([
             read_bstr_string_10_1(r, max)?,
             read_bstr_string_10_1(r, max)?,
-            read_bstr_string_10_1(r, max)?,
-        ];
-        let connection = slot(r, refs, |r, refs, class, _| {
-            if class != AGS_SERVER_CONNECTION_NAME {
-                return Err(unsupported_class("IAGSServerConnectionName", &class));
-            }
-            let version = super::version(r, 2, "AGSServerConnectionName")?;
-            Ok(AgsServerConnectionName10_1 {
-                version,
-                properties: read_properties_slot(r, max, refs)?,
-                extra_string: (version >= 2)
-                    .then(|| read_string_10_1(r, max))
-                    .transpose()?,
-            })
-        })?;
-        let extra_strings = if version >= 2 {
-            Some([
-                read_bstr_string_10_1(r, max)?,
-                read_bstr_string_10_1(r, max)?,
-            ])
-        } else {
-            None
-        };
-        let last_string = (version >= 3)
-            .then(|| read_bstr_string_10_1(r, max))
-            .transpose()?;
-        Ok(AgsServerObjectName10_1 {
-            version,
-            strings,
-            connection,
-            extra_strings,
-            last_string,
-        })
+        ])
+    } else {
+        None
+    };
+    let last_string = (version >= 3)
+        .then(|| read_bstr_string_10_1(r, max))
+        .transpose()?;
+    Ok(AgsServerObjectName10_1 {
+        version,
+        strings,
+        connection,
+        extra_strings,
+        last_string,
+    })
+}
+
+pub(crate) fn read_ags_server_connection_name_body(
+    r: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<AgsServerConnectionName10_1> {
+    let version = super::version(r, 2, "AGSServerConnectionName")?;
+    Ok(AgsServerConnectionName10_1 {
+        version,
+        properties: read_properties_slot(r, max, refs)?,
+        extra_string: (version >= 2)
+            .then(|| read_string_10_1(r, max))
+            .transpose()?,
     })
 }
 
