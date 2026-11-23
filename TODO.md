@@ -821,6 +821,7 @@
       - [x] 按原生循环门读取 MapFrame 的网格和定位框非正计数。[取证](docs/mxd-map-frame-body-20261118.md#两个集合的非正计数)
       - [x] 按登记类校验 MapFrame 网格与定位框集合的回引。[取证](docs/mxd-map-frame-body-20261118.md#网格与定位框集合的对象回引)
       - [x] 按登记类校验网格内部 IGridLabel 和 IMapGridBorder 回引。[原生取证](docs/mxd-page-layout-grid-20261118.md#网格标签与边框回引)
+      - [x] 按有符号版本门读取 MapGrid 基类和 SimpleMapGridBorder。[指令取证](docs/mxd-page-layout-grid-20261118.md#mapgrid-和-simplemapgridborder-的版本上限)
       - [x] 按原生有符号版本门读取 LocatorRectangle 及其尾字段。[指令取证](docs/mxd-page-layout-grid-20261118.md#定位框首次定义地图框)
       - [x] 按登记类校验 MapSurroundFrame 的 IMapSurround 回引。[取证](docs/mxd-page-layout-surround-20261118.md)
       - [x] 按原生有符号版本门读取 MapSurroundFrame 的旧几何槽。[指令取证](docs/mxd-page-layout-surround-20261118.md)

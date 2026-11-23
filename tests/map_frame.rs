@@ -164,7 +164,7 @@ fn graticule_version_gates_and_truncation_preserve_map_frame_transaction() {
         let mut grid = GRATICULE_CLASS_ID.to_vec();
         grid.extend(44_u32.to_le_bytes());
         grid.extend(version.to_le_bytes());
-        grid.extend(1_u16.to_le_bytes());
+        grid.extend(i16::MIN.to_le_bytes());
         let name: Vec<_> = "格网\0".encode_utf16().flat_map(u16::to_le_bytes).collect();
         grid.extend((name.len() as u32).to_le_bytes());
         grid.extend(name);
@@ -176,7 +176,7 @@ fn graticule_version_gates_and_truncation_preserve_map_frame_transaction() {
         grid.extend([0; 16 + 8 + 2 + 16 + 8 + 8]);
         grid.extend(SIMPLE_MAP_GRID_BORDER_CLASS_ID);
         grid.extend(46_u32.to_le_bytes());
-        grid.extend(1_u16.to_le_bytes());
+        grid.extend((-1_i16).to_le_bytes());
         grid.extend([0; 16]);
         grid.extend([0; 2 + 4 * 8 + 4]);
         if version >= 2 {
@@ -201,7 +201,8 @@ fn graticule_version_gates_and_truncation_preserve_map_frame_transaction() {
             read_page_layout_map_frame_10_1(&mut Reader::new(&bytes), 4096, &mut refs).unwrap();
         let grid = frame.grids[0].graticule.as_ref().unwrap();
         assert_eq!(grid.base.name, "格网");
-        assert!(grid.base.simple_border.is_some());
+        assert_eq!(grid.base.version, 0x8000);
+        assert_eq!(grid.base.simple_border.as_ref().unwrap().version, 0xffff);
         assert!(grid.base.dms_label.is_some());
         assert_eq!(grid.v3.is_some(), version >= 3);
         assert_eq!(grid.double_24.is_some(), version >= 4);

@@ -476,7 +476,7 @@ fn read_base_grid(
     limit: usize,
     refs: &mut RefTable10_1,
 ) -> io::Result<MapGrid10_1> {
-    let version = read_version(r, 1, "MapGrid")?;
+    let version = read_signed_version(r, 1, "MapGrid")? as u16;
     let name = read_string_10_1(r, limit)?;
     let line_64 = symbol(r, limit, refs, Kind::LineSymbol)?;
     let marker_60 = symbol(r, limit, refs, Kind::MarkerSymbol)?;
@@ -526,7 +526,7 @@ fn read_base_grid(
             ..
         } => {
             simple_border = Some(Box::new(SimpleMapGridBorder10_1 {
-                version: read_version(r, 1, "SimpleMapGridBorder")?,
+                version: read_signed_version(r, 1, "SimpleMapGridBorder")? as u16,
                 line: symbol(r, limit, refs, Kind::LineSymbol)?,
             }))
         }

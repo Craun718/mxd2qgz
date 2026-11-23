@@ -153,3 +153,10 @@ MapElements.dll 10.1.0.3035 的 MapGrid Load `0x79576ec0` 由
 两槽按 SystemCore `0x7ffd0063` 的对象键查询使用登记类。
 构造地图框验证标签与边框回引保留已登记的类，误引填充符号时
 停止并回滚布局元素。ArcMap 人工验证尚未进行。
+
+### MapGrid 和 SimpleMapGridBorder 的版本上限
+
+MapElements.dll 10.1.0.3035 的 `0x79576efa / 0x79576eff`
+及 `0x7958ee45 / 0x7958ee4a` 均用有符号比较拒绝版本大于 1。
+构造 Graticule 覆盖两个负版本值的原始位模式和后续字段边界，
+并沿用逐前缀截断回滚检查。真实负版本工程尚未验证。
