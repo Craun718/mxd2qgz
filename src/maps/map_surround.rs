@@ -329,7 +329,11 @@ pub struct AoiBookmark10_1 {
     pub remaining_bytes: usize,
 }
 
-const MAX_SHORTCUT_NAME_NESTING: usize = 16;
+const MAX_BOOKMARK_NAME_NESTING: usize = 16;
+
+pub const LOCATOR_WORKSPACE_NAME_CLASS_ID: [u8; 16] = [
+    0xf0, 0xca, 0x85, 0x96, 0x13, 0xbf, 0x83, 0x42, 0xb3, 0x88, 0xa5, 0x73, 0x03, 0x52, 0xc7, 0x78,
+];
 
 pub const SHORTCUT_NAME_CLASS_ID: [u8; 16] = [
     0xe4, 0x09, 0xeb, 0x3b, 0x41, 0x39, 0x07, 0x4a, 0x9d, 0x1a, 0xec, 0x2b, 0x43, 0xba, 0x7d, 0x50,
@@ -420,6 +424,11 @@ pub enum BookmarkNameEntry10_1 {
     TinName(Box<TinName10_1>),
     LasDatasetName(Box<LasDatasetName10_1>),
     RepresentationClassName(Box<RepresentationClassName10_1>),
+    LocatorWorkspaceName {
+        version: i16,
+        strings: [String; 2],
+        source: Box<BookmarkNameEntry10_1>,
+    },
     ShortcutName {
         version: i16,
         name_string: String,
@@ -851,7 +860,7 @@ fn read_bookmark_name_slot_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
-    shortcut_depth: usize,
+    name_depth: usize,
 ) -> io::Result<BookmarkNameEntry10_1> {
     let name_offset = reader.position();
     Ok(match read_object_entry_10_1(reader, table)? {
@@ -1212,10 +1221,39 @@ fn read_bookmark_name_slot_10_1(
             reader, max_bytes, table,
         )?)),
         ObjectEntry10_1::NewObject {
+            class_id: LOCATOR_WORKSPACE_NAME_CLASS_ID,
+            ..
+        } => {
+            if name_depth == MAX_BOOKMARK_NAME_NESTING {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "LocatorWorkspaceName 嵌套层数超限",
+                ));
+            }
+            let version = reader.read_u16_le()? as i16;
+            if version > 2 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    format!("LocatorWorkspaceName 版本 {version} 超出 10.1 上限"),
+                ));
+            }
+            let strings = [
+                read_string_10_1(reader, max_bytes)?,
+                read_string_10_1(reader, max_bytes)?,
+            ];
+            // v1 请求 IName，其余版本请求 IUnknown，磁盘上均为普通对象槽。
+            let source = read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth + 1)?;
+            BookmarkNameEntry10_1::LocatorWorkspaceName {
+                version,
+                strings,
+                source: Box::new(source),
+            }
+        }
+        ObjectEntry10_1::NewObject {
             class_id: SHORTCUT_NAME_CLASS_ID,
             ..
         } => {
-            if shortcut_depth == MAX_SHORTCUT_NAME_NESTING {
+            if name_depth == MAX_BOOKMARK_NAME_NESTING {
                 return Err(io::Error::new(
                     ErrorKind::InvalidData,
                     "ShortcutName 嵌套层数超限",
@@ -1230,8 +1268,7 @@ fn read_bookmark_name_slot_10_1(
             }
             let name_string =
                 crate::stream::native_string::read_bstr_string_10_1(reader, max_bytes)?;
-            let target =
-                read_bookmark_name_slot_10_1(reader, max_bytes, table, shortcut_depth + 1)?;
+            let target = read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth + 1)?;
             BookmarkNameEntry10_1::ShortcutName {
                 version,
                 name_string,

@@ -690,3 +690,21 @@ Load `0x7d6f5c00` 检查有符号 short 上限 1，在
 书签复用与 SchematicDatasetName 相同的字段布局，保留类身份。
 构造测试覆盖有符号版本、工作空间新键、后继书签字段及逐字节
 截断回滚。真实书签宿主、原生 Open 和 QGIS 人工验收待验证。
+
+## LocatorWorkspaceName
+
+Geocoding.dll 10.1.0.3035 的 SHA-256 为
+`e5dc7d6cf515b7c7e9fd9e0342780818d261c2762ebbd348c5c2fc318c71819c`。
+PE RTTI `0x71550e98` 关联持久化虚表 `0x714fa8a0`，
+注册 CLSID 为 `9685CAF0-BF13-4283-B388-A5730352C778`。
+QI `0x71367150` 比较 `0x714f6454` 的 IName IID，匹配时返回
+对象 +0x10。Load `0x71367ac0` 检查有符号 short 上限 2，
+在 `0x71367b4f / 0x71367b5d` 读取两个 AfCore String。
+v1 在 `0x71367b97` 通过 IName IID 读取普通对象，其余版本
+在 `0x71367bcf` 请求 IUnknown。后续接口转换使用已读取的对象。
+
+书签共用现有名称分派，消费空槽、回引或已支持名称的新对象。
+LocatorWorkspaceName 与 ShortcutName 共用 16 层嵌套限制。
+构造测试覆盖有符号版本、v1 内嵌 FileName、其余版本空槽、
+后继书签字段边界和截断回滚。v2 IUnknown 槽的其他持久化类、
+真实书签宿主、原生 Open 和 QGIS 人工验收待验证。

@@ -3320,3 +3320,59 @@ fn feature_bookmark_reads_schematic_workspace_name() {
         assert!(refs.is_empty());
     }
 }
+
+#[test]
+fn feature_bookmark_reads_locator_workspace_name_versions() {
+    use mxd2qgz::maps::map_surround::{FILE_NAME_CLASS_ID, LOCATOR_WORKSPACE_NAME_CLASS_ID};
+
+    for version in [-1_i16, 0, 1, 2] {
+        let mut bytes = bookmark_header_10_1(&LOCATOR_WORKSPACE_NAME_CLASS_ID, 17);
+        bytes.extend(version.to_le_bytes());
+        bytes.extend(bookmark_string_10_1("定位器"));
+        bytes.extend(bookmark_string_10_1("工作空间"));
+        if version == 1 {
+            bytes.extend(FILE_NAME_CLASS_ID);
+            bytes.extend(18_u32.to_le_bytes());
+            bytes.extend(1_i16.to_le_bytes());
+            bytes.extend([1, 0, 0, 0, b'F', 0, 0, 0]);
+        } else {
+            bytes.extend([0; 16]);
+        }
+        bytes.extend(bookmark_string_10_1("书签"));
+        let end = bytes.len();
+        bytes.push(0xa5);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+        let BookmarkNameEntry10_1::LocatorWorkspaceName {
+            version: actual,
+            strings,
+            source,
+        } = result.name_object
+        else {
+            panic!("应读取定位器工作空间名称");
+        };
+        assert_eq!(actual, version);
+        assert_eq!(strings, ["定位器", "工作空间"]);
+        if version == 1 {
+            assert!(
+                matches!(*source, BookmarkNameEntry10_1::FileName { name_string, .. } if name_string == "F")
+            );
+        } else {
+            assert_eq!(*source, BookmarkNameEntry10_1::Null);
+        }
+        assert_eq!(result.name, "书签");
+        assert_eq!(reader.position(), end);
+        assert!(refs.contains(17));
+        assert_eq!(refs.contains(18), version == 1);
+
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+}
