@@ -335,6 +335,10 @@ pub struct AoiBookmark10_1 {
 
 const MAX_BOOKMARK_NAME_NESTING: usize = 16;
 
+pub const GP_ARC_INFO_ITEM_DOMAIN_CLASS_ID: [u8; 16] = [
+    0x8c, 0xff, 0xc5, 0x01, 0x1b, 0xe0, 0x6d, 0x4a, 0xa9, 0x65, 0xe7, 0xe3, 0x02, 0x49, 0xe6, 0x41,
+];
+
 pub const GP_FEATURE_CLASS_DOMAIN_CLASS_ID: [u8; 16] = [
     0xff, 0xc5, 0x2e, 0x65, 0x72, 0x17, 0xab, 0x49, 0xb7, 0xc7, 0x43, 0x91, 0x43, 0xd4, 0x4d, 0x56,
 ];
@@ -358,6 +362,13 @@ pub const GP_FILE_DOMAIN_CLASS_ID: [u8; 16] = [
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpTopoDomain10_1 {
     Numeric(GpNumericDomain10_1),
+    ArcInfoItem {
+        version: i16,
+        raw_count: i32,
+        values: Vec<i32>,
+        trailing_long: i32,
+        trailing_shorts: [u16; 4],
+    },
     FeatureClass {
         version: i16,
         raw_count: i32,
@@ -1151,6 +1162,7 @@ fn read_gp_topo_domain_slot_10_1(
                     | GP_WORKSPACE_DOMAIN_CLASS_ID
                     | GP_DATASET_DOMAIN_CLASS_ID
                     | GP_FEATURE_CLASS_DOMAIN_CLASS_ID
+                    | GP_ARC_INFO_ITEM_DOMAIN_CLASS_ID
             ) =>
         {
             None
@@ -1165,6 +1177,28 @@ fn read_gp_topo_domain_slot_10_1(
             middle_shorts: [reader.read_u16_le()?, reader.read_u16_le()?],
             second_double_bits: reader.read_f64_le()?.to_bits(),
         }))),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_ARC_INFO_ITEM_DOMAIN_CLASS_ID,
+            ..
+        } => {
+            let version = read_gp_name_version(reader, 1, "GPArcInfoItemDomain")?;
+            let (raw_count, values) =
+                read_gp_domain_longs(reader, max_bytes, "GPArcInfoItemDomain")?;
+            let trailing_long = reader.read_u32_le()? as i32;
+            let trailing_shorts = [
+                reader.read_u16_le()?,
+                reader.read_u16_le()?,
+                reader.read_u16_le()?,
+                reader.read_u16_le()?,
+            ];
+            Some(Box::new(GpTopoDomain10_1::ArcInfoItem {
+                version,
+                raw_count,
+                values,
+                trailing_long,
+                trailing_shorts,
+            }))
+        }
         ObjectEntry10_1::NewObject {
             class_id: GP_FEATURE_CLASS_DOMAIN_CLASS_ID,
             ..
