@@ -789,3 +789,41 @@ fn legend_horizontal_legend_item_internal_stop_propagates() {
     assert!(table.contains(21), "条目键登记（对象头已消费）");
     assert!(!table.contains(30), "嵌套未知键不保留");
 }
+
+#[test]
+fn aoi_bookmark_envelope_reference_checks_registration() {
+    use mxd2qgz::storage::object_refs::read_object_entry_10_1;
+
+    for (registered, header) in [
+        (ENVELOPE_CLASS_ID, [0x42; 16]),
+        ([0x42; 16], ENVELOPE_CLASS_ID),
+    ] {
+        let mut definition = Vec::new();
+        push_entry_header(&mut definition, &registered, 5);
+        let mut refs = RefTable10_1::new();
+        read_object_entry_10_1(&mut Reader::new(&definition), &mut refs).unwrap();
+        let saved = refs.clone();
+
+        let mut bytes = 1_u16.to_le_bytes().to_vec();
+        push_entry_header(&mut bytes, &header, 5);
+        bytes.extend(string_bytes("回引"));
+        let mut reader = Reader::new(&bytes);
+        let result = read_aoi_bookmark_10_1(&mut reader, 1024, &mut refs);
+        if registered == ENVELOPE_CLASS_ID {
+            let bookmark = result.unwrap();
+            assert_eq!(
+                bookmark.envelope,
+                BookmarkEnvelopeEntry10_1::BackReference {
+                    class_id: ENVELOPE_CLASS_ID,
+                    key: 5,
+                }
+            );
+            assert_eq!(bookmark.name, "回引");
+            assert_eq!(reader.remaining(), 0);
+        } else {
+            assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::Unsupported);
+            assert_eq!(reader.position(), 0);
+        }
+        assert_eq!(refs, saved);
+    }
+}

@@ -632,7 +632,19 @@ pub fn read_aoi_bookmark_10_1(
     let envelope = match read_object_entry_10_1(&mut trial, &mut trial_table)? {
         ObjectEntry10_1::Null => BookmarkEnvelopeEntry10_1::Null,
         ObjectEntry10_1::BackReference { class_id, key } => {
-            BookmarkEnvelopeEntry10_1::BackReference { class_id, key }
+            let registered = trial_table.registered_class(key);
+            if registered.is_some_and(|class| class != ENVELOPE_CLASS_ID) {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!(
+                        "AOIBookmark 位置包络槽 offset 0x{envelope_offset:x}: 回引键 {key} 的登记类不受支持"
+                    ),
+                ));
+            }
+            BookmarkEnvelopeEntry10_1::BackReference {
+                class_id: registered.unwrap_or(class_id),
+                key,
+            }
         }
         ObjectEntry10_1::NewObject { class_id, key } if class_id == ENVELOPE_CLASS_ID => {
             // Envelope 全部版本分支已闭合：整体消费对象体（含嵌套空间参考）。
