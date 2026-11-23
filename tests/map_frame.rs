@@ -732,11 +732,30 @@ fn locator_rectangle_reads_a_new_map_frame_with_shared_keys() {
     assert!(refs.contains(50) && refs.contains(51));
     assert_eq!(reader.remaining(), 0);
 
+    let version_offset = 8 + 20 + 30 + 20;
+    for version in [i16::MIN, -1, 0] {
+        let mut old = bytes.clone();
+        old[version_offset..version_offset + 2].copy_from_slice(&version.to_le_bytes());
+        let mut reader = Reader::new(&old);
+        let mut refs = RefTable10_1::new();
+        refs.register(42);
+        let frame = read_page_layout_map_frame_10_1(&mut reader, 4096, &mut refs).unwrap();
+        let locator = frame.locator_rectangles[0].body.as_ref().unwrap();
+        assert_eq!(locator.version, version as u16);
+        assert_eq!(locator.short_1c, 17);
+        assert!(locator.shadow.is_none());
+        assert_eq!(locator.short_24, None);
+        assert!(locator.map_frame_body.is_some());
+        assert_eq!(reader.remaining(), 0);
+    }
+
+    let mut unsupported = bytes.clone();
+    unsupported[version_offset..version_offset + 2].copy_from_slice(&4_u16.to_le_bytes());
     let mut truncated = bytes.clone();
     truncated.pop();
     let size = (truncated.len() as u32 - 8).to_le_bytes();
     truncated[..4].copy_from_slice(&size);
-    for invalid in [truncated, wrap(&body_with_locator(50, 9))] {
+    for invalid in [unsupported, truncated, wrap(&body_with_locator(50, 9))] {
         let mut refs = RefTable10_1::new();
         refs.register(42);
         let saved = refs.clone();

@@ -139,3 +139,9 @@ MapElements.dll 10.1.0.3035 的 LocatorRectangle Load 在
 嵌套新对象受现有图形深度预算约束。构造测试覆盖内联地图框、
 根 Map 回引、定位框后继字段、截断及超深回滚。
 MilitaryPortrait 仍提供回引分支实档。首次定义分支暂无实档及 ArcMap 人工验证。
+
+LocatorRectangle 的版本门也按有符号 short 比较。MapElements.dll
+10.1.0.3035 的 `0x7956ab75 / 0x7956ab7a` 拒绝大于 3 的值，
+`0x7956ac36 / 0x7956ac3a` 及 `0x7956ac65 / 0x7956ac6c`
+分别控制阴影槽与尾 short。构造测试覆盖负版本的内联地图框、
+后继字段边界及大于 3 时的回滚。真实负版本定位框仍待取证。

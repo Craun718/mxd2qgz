@@ -306,7 +306,7 @@ fn read_locator_rectangle_slot(
             class_id: LOCATOR_RECTANGLE_CLASS_ID,
             ..
         } => {
-            let version = r.read_u16_le()?;
+            let version = r.read_u16_le()? as i16;
             if version > 3 {
                 return Err(io::Error::new(
                     ErrorKind::InvalidData,
@@ -355,7 +355,7 @@ fn read_locator_rectangle_slot(
                 .transpose()?;
             let short_24 = (version >= 3).then(|| r.read_u16_le()).transpose()?;
             Some(Box::new(LocatorRectangle10_1 {
-                version,
+                version: version as u16,
                 map_frame,
                 map_frame_body,
                 border,
