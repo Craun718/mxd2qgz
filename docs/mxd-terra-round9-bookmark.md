@@ -495,3 +495,12 @@ RasterTypeName 的 IName 映到完整对象 +0x18。FeatureBookmark
 构造书签验证两个字符串、有符号 InstanceID、内嵌 MosaicDatasetName、
 后继书签文本和逐字节截断回滚。真实书签宿主、原生 Open 结果和
 QGIS 人工检查待验证。
+
+## NetworkDatasetName
+
+ArcMap 10.1.0.3035 的 NALayer 通过同一 IName IID 读取真实
+NetworkDatasetName 对象。GdbNetwork.dll 的 GetClassID `0x71044240`
+和 Load `0x71044ff0` 已由[原生取证](mxd-luna-deep-layer-masking-20261118.md)
+确认。书签复用 NALayer 已使用的对象体读取器，保留 IDatasetName
+和 IWorkspaceName 槽。构造测试验证字段、后继书签文本和逐字节
+截断回滚。真实书签宿主、原生 Open 结果和 QGIS 人工检查待验证。

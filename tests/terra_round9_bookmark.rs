@@ -2645,3 +2645,39 @@ fn feature_bookmark_reads_raster_type_name_with_mosaic_dataset() {
         assert!(refs.is_empty());
     }
 }
+
+#[test]
+fn feature_bookmark_reads_network_dataset_name() {
+    use mxd2qgz::layers::na_layer::NETWORK_DATASET_NAME_CLASS_ID;
+
+    let mut bytes = bookmark_header_10_1(&NETWORK_DATASET_NAME_CLASS_ID, 17);
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(bookmark_string_10_1("路网"));
+    bytes.extend(bookmark_string_10_1("数据集"));
+    bytes.extend([0; 32]);
+    bytes.extend(bookmark_string_10_1("书签"));
+    let end = bytes.len();
+    bytes.push(0xa5);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    let BookmarkNameEntry10_1::NetworkDatasetName(name) = result.name_object else {
+        panic!("应读取网络数据集名称");
+    };
+    assert_eq!(name.version, 1);
+    assert_eq!(name.name, "路网");
+    assert_eq!(name.second_string, "数据集");
+    assert!(name.dataset.1.is_none() && name.workspace.1.is_none());
+    assert_eq!(result.name, "书签");
+    assert_eq!(reader.position(), end);
+    assert!(refs.contains(17));
+
+    for cut in 0..end {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+}

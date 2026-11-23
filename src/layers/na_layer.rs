@@ -370,7 +370,7 @@ fn read_na_layer_bitset(reader: &mut Reader<'_>, max: usize) -> io::Result<NaLay
     })
 }
 
-const NETWORK_DATASET_NAME_CLASS_ID: [u8; 16] = [
+pub const NETWORK_DATASET_NAME_CLASS_ID: [u8; 16] = [
     0x6a, 0xfe, 0x67, 0x81, 0x92, 0xe9, 0xcb, 0x4e, 0xb6, 0xae, 0xe5, 0xdf, 0xe4, 0x65, 0x52, 0x47,
 ];
 
@@ -406,7 +406,7 @@ pub(super) fn read_na_network_name_10_1(
     Ok((entry, body))
 }
 
-fn read_network_dataset_name(
+pub(crate) fn read_network_dataset_name(
     r: &mut Reader<'_>,
     max: usize,
     keys: &mut RefTable10_1,

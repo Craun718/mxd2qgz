@@ -128,6 +128,9 @@ use crate::layers::legend_item_family::{
     VerticalLegendItemBody10_1, read_horizontal_bar_legend_item_body_10_1,
     read_nested_legend_item_body_10_1, read_vertical_legend_item_body_10_1,
 };
+use crate::layers::na_layer::{
+    NETWORK_DATASET_NAME_CLASS_ID, NetworkDatasetName10_1, read_network_dataset_name,
+};
 use crate::layers::raster_dataset_name::RASTER_CATALOG_NAME_CLASS_ID;
 use crate::layers::raster_dataset_name::{
     ACCESS_RASTER_DATASET_NAME_CLASS_ID, AIS_IMAGE_SERVICE_NAME_CLASS_ID,
@@ -337,6 +340,7 @@ pub enum BookmarkNameEntry10_1 {
     NetCdfTableName(Box<NetCdfTableNameBody10_1>),
     DbTableName(Box<DbTableNameBody10_1>),
     GeometricNetworkName(Box<GeometricNetworkNameBody10_1>),
+    NetworkDatasetName(Box<NetworkDatasetName10_1>),
     TopologyName(Box<TopologyNameBody10_1>),
     FeatureDatasetName(Box<FeatureDatasetNameBody10_1>),
     CoverageName(Box<FeatureDatasetNameBody10_1>),
@@ -1110,6 +1114,14 @@ pub fn read_feature_bookmark_10_1(
             }
             BookmarkNameEntry10_1::MemoryRelationshipClassName(Box::new(body))
         }
+        ObjectEntry10_1::NewObject {
+            class_id: NETWORK_DATASET_NAME_CLASS_ID,
+            ..
+        } => BookmarkNameEntry10_1::NetworkDatasetName(Box::new(read_network_dataset_name(
+            &mut trial,
+            max_bytes,
+            &mut trial_table,
+        )?)),
         ObjectEntry10_1::NewObject {
             class_id: AMS_DATASET_NAME_CLASS_ID,
             key: _,
