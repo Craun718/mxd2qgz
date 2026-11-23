@@ -65,17 +65,18 @@ fn surround_frame_uses_version_gates_and_indirect_entries_occupy_whole_slots() {
         );
         assert_eq!(
             layout.indirect_elements,
-            [
-                (
-                    1,
-                    backref_offset,
-                    ObjectEntry10_1::BackReference {
-                        class_id: MAP_SURROUND_FRAME_CLASS_ID,
-                        key: 7
-                    }
-                ),
-                (2, null_offset, ObjectEntry10_1::Null)
-            ]
+            [(
+                1,
+                backref_offset,
+                ObjectEntry10_1::BackReference {
+                    class_id: MAP_SURROUND_FRAME_CLASS_ID,
+                    key: 7
+                }
+            ),]
+        );
+        assert_eq!(
+            layout.placeholder_elements,
+            [(2, null_offset, page[null_offset..].to_vec())]
         );
     }
 }

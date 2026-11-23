@@ -558,7 +558,12 @@ fn read_page_frame(
     match header {
         ObjectHeader::Null => {
             *reader = probe;
-            Ok(PageFrame::Indirect(ObjectEntry10_1::Null))
+            // 新版布局的 IsValidElement 对空指针返回 false。
+            Ok(if extra_safe {
+                PageFrame::Placeholder
+            } else {
+                PageFrame::Indirect(ObjectEntry10_1::Null)
+            })
         }
         ObjectHeader::Object { key, .. } if refs.contains_map(key) || is_root_map(key) => {
             // 普通 LoadObject 对登记实例查询 IElement，Map 无此接口。

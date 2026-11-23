@@ -191,11 +191,11 @@ PageLayout.dll 10.1.0.3035 的 Load `0x7b6e4e30` 在
 
 PageLayout.dll 10.1.0.3035 的 `0x7b6e4f25` 在 v0–v6
 调用普通 LoadObject 请求 IElement。Load 返回负 HRESULT 时直接退出。
-SystemCore.dll 同版本 `0x7ffd0063` 对按键找到的登记实例查询接口，
-因此回引头即使写着 MapFrame，若实际目标为已确认的 Map，普通元素
-读取也应在该槽停止。回归测试使用参考工程的 `/Maps` 加构造布局，
-保留错引前已消费的地图框，并验证游标停在错引头。v7 及以后存在
-ExtraSafe 占位恢复分支，仍待核对其对象与键表行为。未做 ArcMap 人工验证。
+SystemCore.dll 同版本 `0x7ffd0063` 对按键找到的登记实例查询接口。
+当前 Rust 读取器遇到已确认的 Map 错引会保留该槽及后续字节。
+续查确认原生表命中路径会用 S_OK 覆盖 QueryInterface 的返回值，
+因此普通槽可能收到空输出并继续。实际错引宿主的空输出处理仍待复核。
+回归测试以参考工程的 `/Maps` 加构造布局覆盖当前停读边界。
 
 ### ExtraSafe 元素占位恢复
 
@@ -224,3 +224,17 @@ AfCore.dll 10.1.0.3035 在 `0x68a7be89–0x68a7be95` 对完整的零长度
 Rust 记录这 8 字节的占位包装并接续，不向共享键表登记空槽。
 v7–v15 的构造布局验证后一元素、布局尾段和截断前缀。
 真实零长度包装及 ArcMap 人工验收待补充。
+
+#### 包装内的空对象头
+
+SystemCore.dll 10.1.0.3035 的 `0x7ffcff70` 对全零 CLSID
+返回 S_FALSE 并保留空输出。即使调用包装将空输出归一为 S_OK，
+PageLayout.dll 的 `0x7b6e4fc0` 仍用 IsValidElement 检查该指针。
+该导入指向 LayerLib.dll 10.1.0.3035（SHA-256
+`55514f054c9e4827d773cf1a9b9a83e7c41c483f73758965244625165f330e02`）
+的 `0x786bd090`，空指针在 `0x786bd173` 跳到
+`0x786bd1b3` 返回 false。宿主据此进入 PlaceholderElement 恢复。
+GraphicElements.dll 的 `0x75054ecd–0x75054ed4` 在全零 CLSID 时
+跳过键与版本探读。构造测试覆盖 v7–v15 的完整 24 字节包装、
+截断及之后的布局尾段。v0–v6 的普通空引用由原有测试覆盖。
+真实实档与 ArcMap 人工验证待补充。
