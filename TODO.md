@@ -945,10 +945,10 @@
 - [x] 将 RasterLayer 可选关联 IName 槽接入已有对象体证据的共用表名分派。
 - [x] 接入 RasterLayer v14 起的颜色索引连续区段，见 [索引编码](docs/mxd-10.1-raster-layer-tail.md#v14-颜色索引)。
 - [x] 读取 RasterLayer v8 起的非空 ExtraSafe 扩展列表边界并保留未知对象体，见 [扩展列表边界](docs/mxd-10.1-raster-layer-tail.md#v8-起的-extrasafe-扩展列表)。
-- [ ] 解析 RasterLayer v3–v7 旧式扩展的对象体及其嵌套对象键。
+- [x] 解析 RasterLayer v3–v7 旧式扩展的对象体及其嵌套对象键；已确认的内置 IPersistStream 扩展全部进入共用类分派。[类表覆盖](docs/mxd-10.1-raster-layer-tail.md#扩展对象体与嵌套键)
   - [x] 按旧式扩展的 24 字节固定头和累计对象体检查列表读取限额。[扩展边界](docs/mxd-10.1-raster-layer-tail.md#v0v7-尾段)
   - [x] 将同一长度检查接入共用 LayerLib 扩展列表与 StandaloneTable 逐条入口。[共用扩展边界](docs/mxd-10.1-raster-layer-tail.md#v0v7-尾段)
-- [ ] 解析 RasterLayer v8 起的 ExtraSafe 扩展对象体及其嵌套对象键。
+- [x] 解析 RasterLayer v8 起的 ExtraSafe 扩展对象体及其嵌套对象键；与旧式包装共用类表和嵌套引用表。[类表覆盖](docs/mxd-10.1-raster-layer-tail.md#扩展对象体与嵌套键)
 - [x] 核对两代 RasterLayer 扩展列表对非正计数的原生循环门。
 - [x] 按已登记实例的类保留 RasterLayer ExtraSafe 扩展回引。
 - [x] 拒绝 RasterLayer v14 颜色索引的负展开数量。

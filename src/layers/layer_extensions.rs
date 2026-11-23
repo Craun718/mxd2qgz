@@ -581,6 +581,50 @@ mod tests {
     }
 
     #[test]
+    fn confirmed_extension_classes_share_the_legacy_and_extra_safe_dispatch() {
+        let classes = [
+            super::super::scene_layer_properties::BASIC_3D_PROPERTIES_CLASS_ID,
+            super::super::scene_layer_properties::TIN_3D_PROPERTIES_CLASS_ID,
+            super::super::scene_layer_properties::RASTER_3D_PROPERTIES_CLASS_ID,
+            super::super::scene_layer_properties::FEATURE_3D_PROPERTIES_CLASS_ID,
+            DYNAMIC_TILED_LAYER_PROPERTIES_CLASS_ID,
+            GLOBE_LAYER_PROPERTIES_CLASS_ID,
+            TIME_LAYER_TRACK_EXTENSION_CLASS_ID,
+            FEATURE_SERVICE_LAYER_EDIT_EXTENSION_CLASS_ID,
+            E2_LAYER_EXTENSION_VALUES_CLASS_ID,
+            TRACKING_FILTER_LAYER_EXTENSION_CLASS_ID,
+            HATCH_LAYER_EXTENSION_CLASS_ID,
+            ROUTE_LAYER_EXTENSION_CLASS_ID,
+            REPRESENTATION_LAYER_EXTENSION_CLASS_ID,
+            SERVER_LAYER_EXTENSION_CLASS_ID,
+            PROPERTY_SET_CLASS_ID,
+            EDIT_TEMPLATE_MANAGER_CLASS_ID,
+        ];
+
+        for class_id in classes {
+            let mut bytes = 1_u64.to_le_bytes().to_vec();
+            bytes.extend(class_id);
+            bytes.push(0);
+            let mut refs = RefTable10_1::new();
+            let mut budget = 4096;
+            let result = read_layer_extension_entry_10_1(
+                &mut Reader::new(&bytes),
+                4096,
+                &mut refs,
+                &mut budget,
+                false,
+            );
+            if let Err(error) = result {
+                assert!(
+                    !error.to_string().contains("图层扩展 未支持的新对象类"),
+                    "扩展类 {} 未进入专属体读取器：{error}",
+                    crate::storage::class_id_hex(&class_id),
+                );
+            }
+        }
+    }
+
+    #[test]
     fn e2_extension_keeps_description_boundary_in_both_wrappers() {
         let class = E2_LAYER_EXTENSION_VALUES_CLASS_ID;
         let mut empty = 1_i16.to_le_bytes().to_vec();

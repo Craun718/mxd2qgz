@@ -472,6 +472,18 @@ RasterLayer.dll `0x7c73ded0` 的请求 GUID `0x7c76775c` 为 IID_IUnknown
 CLSID 创建对象，直接调用 IPersistStream，零长度时跳过对象体。
 两条路径都没有在读取前按具体扩展类筛选。
 
+两代包装现已共用同一个类分派器。对 10.1 中已确认具有 IPersistStream
+对象体的内置扩展，测试逐项送入 SceneFilters 四类 3DProperties、
+DynamicTiledLayerProperties、GlobeLayerProperties、
+TimeLayerTrackExtension、FeatureServiceLayerEditExtension、
+E2LayerExtensionValues、TrackingFilterLayerExtension、HatchLayerExtension、
+RouteLayerExtension、RepresentationLayerExtension、ServerLayerExtension、
+PropertySet 和 EditTemplateManager。每个类标识都必须进入专属体读取器，
+不能再落到“未支持的图层扩展”分支。各类正常体、嵌套键、长度不符和截断
+回滚仍由本页对应小节的专用测试覆盖；E2LayerDescriptionValues 没有二进制
+持久化接口，GlobeLayerExtensionsImporter 也没有 IPersistStream，二者不会
+作为首次定义对象体进入列表。ArcMap 10.1 与 QGIS 人工验证尚未进行。
+
 EditTemplateManager `{A0162E85-E170-4B10-A370-CEE08D8D4B8C}`
 沿用 FeatureLayer.dll 10.1.0.3035 的 Load `0x6f6d0a80` /
 Save `0x6f6d0bc0` 和[模板键取证](arcmap-10.1-featurelayer-tail.md#扩展段格式修正第九轮记录撤销)。
