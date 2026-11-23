@@ -132,7 +132,8 @@ use crate::maps::map_surround_family::{
     read_legend_format_body_10_1,
 };
 use crate::maps::standalone_table::{
-    OBJECT_CLASS_NAME_CLASS_ID, TABLE_NAME_CLASS_ID, read_table_name_body_10_1,
+    FGDB_TABLE_NAME_CLASS_ID, OBJECT_CLASS_NAME_CLASS_ID, TABLE_NAME_CLASS_ID,
+    read_fgdb_table_name_body_10_1, read_table_name_body_10_1,
 };
 use crate::objects::ams_dataset_name::{
     AMS_DATASET_NAME_CLASS_ID, AmsDatasetName10_1, read_ams_dataset_name_10_1,
@@ -294,6 +295,8 @@ pub enum BookmarkNameEntry10_1 {
     RasterCatalogName(Box<FeatureClassNamePrefix10_1>),
     /// 内联表名称对象；不代表能够打开为要素类。
     TableName(Box<crate::maps::standalone_table::TableNameBody10_1>),
+    /// FileGDB 表名称包装；内联 TableName 体沿用同一读取器。
+    FgdbTableName(Box<crate::maps::standalone_table::TableNameBody10_1>),
     /// ObjectClassName 工厂实际创建的 FdbTableName；持久化体与 TableName
     /// 相同，但保留流内身份。
     ObjectClassName(Box<crate::maps::standalone_table::TableNameBody10_1>),
@@ -734,28 +737,34 @@ pub fn read_feature_bookmark_10_1(
             }
         }
         ObjectEntry10_1::NewObject {
-            class_id: class_id @ (TABLE_NAME_CLASS_ID | OBJECT_CLASS_NAME_CLASS_ID),
+            class_id:
+                class_id @ (TABLE_NAME_CLASS_ID | FGDB_TABLE_NAME_CLASS_ID | OBJECT_CLASS_NAME_CLASS_ID),
             ..
         } => {
-            let (body, stopped) =
-                read_table_name_body_10_1(&mut trial, &mut trial_table, max_bytes)?;
+            let (body, stopped) = if class_id == FGDB_TABLE_NAME_CLASS_ID {
+                read_fgdb_table_name_body_10_1(&mut trial, &mut trial_table, max_bytes)?
+            } else {
+                read_table_name_body_10_1(&mut trial, &mut trial_table, max_bytes)?
+            };
             if stopped {
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,
                     format!(
                         "FeatureBookmark 名称对象槽 offset 0x{name_offset:x}: {} 未读完",
-                        if class_id == OBJECT_CLASS_NAME_CLASS_ID {
-                            "ObjectClassName"
-                        } else {
-                            "TableName"
+                        match class_id {
+                            OBJECT_CLASS_NAME_CLASS_ID => "ObjectClassName",
+                            FGDB_TABLE_NAME_CLASS_ID => "FgdbTableName",
+                            _ => "TableName",
                         }
                     ),
                 ));
             }
-            if class_id == OBJECT_CLASS_NAME_CLASS_ID {
-                BookmarkNameEntry10_1::ObjectClassName(Box::new(body))
-            } else {
-                BookmarkNameEntry10_1::TableName(Box::new(body))
+            match class_id {
+                OBJECT_CLASS_NAME_CLASS_ID => {
+                    BookmarkNameEntry10_1::ObjectClassName(Box::new(body))
+                }
+                FGDB_TABLE_NAME_CLASS_ID => BookmarkNameEntry10_1::FgdbTableName(Box::new(body)),
+                _ => BookmarkNameEntry10_1::TableName(Box::new(body)),
             }
         }
         ObjectEntry10_1::NewObject {

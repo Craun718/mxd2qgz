@@ -194,6 +194,13 @@ Map.dll 10.1.0.3035 的书签 Load `0x793b5c50` 使用普通 IName 槽。
 的持久化虚表及 Load 由其自身类体证据确认。FgdbTableName 的 IName
 路径以及两类名称在书签里的真实宿主仍待核对。
 
+后续接线将 FgdbTableName `{846C88C5-6CC5-49C7-A6FE-8FA03D79BD07}`
+直接加入书签名称分派。FileGDB.dll Load `0x6fa33290` 先读包装版本和
+一个 short，再把同一流交给内联 TableName；`read_fgdb_table_name_body_10_1`
+沿用该已闭合布局。合成书签验证包装字段、空工作空间、后继书签名、
+版本越界和每个截断前缀的整书签回滚。真实书签实例、IName::Open 的
+返回对象及 IFeatureClass 查询仍未运行验证。
+
 ## NetCDF 表名称
 
 NetCDFDB.dll 10.1.0.3035（SHA-256

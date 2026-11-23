@@ -5,7 +5,9 @@ use mxd2qgz::{
     },
     maps::{
         map_surround::{BookmarkNameEntry10_1, read_feature_bookmark_10_1},
-        standalone_table::{OBJECT_CLASS_NAME_CLASS_ID, TABLE_NAME_CLASS_ID},
+        standalone_table::{
+            FGDB_TABLE_NAME_CLASS_ID, OBJECT_CLASS_NAME_CLASS_ID, TABLE_NAME_CLASS_ID,
+        },
     },
     objects::{
         dataset_name::WorkspaceNameSlot10_1,
@@ -528,6 +530,54 @@ fn object_class_name_keeps_distinct_identity_and_transaction_boundary() {
     );
     assert_eq!(reader.position(), 0);
     assert_eq!(refs, RefTable10_1::new());
+}
+
+#[test]
+fn bookmark_reads_fgdb_table_name_wrapper() {
+    let mut data = bookmark_header_10_1(&FGDB_TABLE_NAME_CLASS_ID, 17);
+    let wrapper_offset = data.len();
+    data.extend(1_u16.to_le_bytes());
+    data.extend(0x1234_u16.to_le_bytes());
+    data.extend(1_u16.to_le_bytes());
+    data.extend(BOOKMARK_EMPTY_STRING.repeat(3));
+    data.extend([0; 16]);
+    data.extend(bookmark_string_10_1("X"));
+    let end = data.len();
+    data.push(0x6d);
+
+    let mut reader = Reader::new(&data);
+    let mut refs = RefTable10_1::new();
+    let bookmark = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    let BookmarkNameEntry10_1::FgdbTableName(body) = bookmark.name_object else {
+        panic!("FgdbTableName 不得折叠为普通 TableName");
+    };
+    assert_eq!(body.version, 1);
+    assert_eq!(body.fgdb_wrapper, Some((1, 0x1234)));
+    assert_eq!(body.strings, [String::new(), String::new(), String::new()]);
+    assert!(matches!(body.workspace, WorkspaceNameEntry10_1::Null));
+    assert_eq!(bookmark.name, "X");
+    assert_eq!(reader.position(), end);
+    assert_eq!(reader.read_bytes(1).unwrap(), [0x6d]);
+    assert!(refs.contains(17));
+
+    for cut in 0..end {
+        let mut reader = Reader::new(&data[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(
+            read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err(),
+            "FgdbTableName 前缀 {cut} 应失败"
+        );
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+
+    let mut bad_version = data.clone();
+    bad_version[wrapper_offset..wrapper_offset + 2].copy_from_slice(&2_u16.to_le_bytes());
+    let mut reader = Reader::new(&bad_version);
+    let mut refs = RefTable10_1::new();
+    assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+    assert_eq!(reader.position(), 0);
+    assert!(refs.is_empty());
 }
 
 #[test]
