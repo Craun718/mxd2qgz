@@ -676,3 +676,17 @@ AfCore String。随后调用 String::Empty 清空运行时字段，
 
 构造用例覆盖三串、嵌套图表类名、后继书签字段以及错类和逐字节截断
 回滚。真实书签宿主、原生 Open 和 QGIS 人工验收待验证。
+
+## SchematicWorkspaceName
+
+同版 SchematicDB.dll 的 RTTI `0x7d72a5f4` 关联持久化虚表
+`0x7d70ebe4`。GetClassID `0x7d6f5ba0` 对应
+`AF54E472-0A8A-4CDA-A9ED-B350A0BA9EBB`。QI `0x7d6f5520`
+比较 `0x7d7092f0` 的 IName IID，在 `0x7d6f5545` 返回对象 +0x10。
+Load `0x7d6f5c00` 检查有符号 short 上限 1，在
+`0x7d6f5c4b / 0x7d6f5c55 / 0x7d6f5c5f` 读取三个 AfCore String，
+然后在 `0x7d6f5c76` 用 `0x7d709350` 指向的 IWorkspaceName IID
+调用 LoadObject。Save `0x7d6f5ca0` 对称写出三串和子对象。
+书签复用与 SchematicDatasetName 相同的字段布局，保留类身份。
+构造测试覆盖有符号版本、工作空间新键、后继书签字段及逐字节
+截断回滚。真实书签宿主、原生 Open 和 QGIS 人工验收待验证。

@@ -335,6 +335,10 @@ pub const SHORTCUT_NAME_CLASS_ID: [u8; 16] = [
     0xe4, 0x09, 0xeb, 0x3b, 0x41, 0x39, 0x07, 0x4a, 0x9d, 0x1a, 0xec, 0x2b, 0x43, 0xba, 0x7d, 0x50,
 ];
 
+pub const SCHEMATIC_WORKSPACE_NAME_CLASS_ID: [u8; 16] = [
+    0x72, 0xe4, 0x54, 0xaf, 0x8a, 0x0a, 0xda, 0x4c, 0xa9, 0xed, 0xb3, 0x50, 0xa0, 0xba, 0x9e, 0xbb,
+];
+
 pub const FILE_NAME_CLASS_ID: [u8; 16] = [
     0xdf, 0x75, 0xda, 0x53, 0x1a, 0xd0, 0xd2, 0x11, 0x9f, 0x27, 0x00, 0xc0, 0x4f, 0x6b, 0xc6, 0x9e,
 ];
@@ -398,6 +402,8 @@ pub enum BookmarkNameEntry10_1 {
     /// Schematic 图表类或元素类名称；内层数据源名称共享对象表。
     SchematicClassName(Box<SchematicClassNameBody10_1>),
     SchematicDatasetName(Box<SchematicDatasetNameBody10_1>),
+    /// 与 SchematicDatasetName 共用持久化字段布局。
+    SchematicWorkspaceName(Box<SchematicDatasetNameBody10_1>),
     SchematicFolderName(Box<SchematicFolderNameBody10_1>),
     SchematicDiagramName(Box<SchematicDiagramNameBody10_1>),
     /// ObjectClassName 工厂实际创建的 FdbTableName；持久化体与 TableName
@@ -1438,20 +1444,31 @@ fn read_bookmark_name_slot_10_1(
             BookmarkNameEntry10_1::SchematicFolderName(Box::new(body))
         }
         ObjectEntry10_1::NewObject {
-            class_id: SCHEMATIC_DATASET_NAME_CLASS_ID,
+            class_id:
+                class_id @ (SCHEMATIC_DATASET_NAME_CLASS_ID | SCHEMATIC_WORKSPACE_NAME_CLASS_ID),
             key,
         } => {
             let (body, stop) =
                 read_schematic_dataset_name_body_10_1(reader, max_bytes, table, key)?;
+            let is_workspace = class_id == SCHEMATIC_WORKSPACE_NAME_CLASS_ID;
             if let Some(stop) = stop {
+                let class_name = if is_workspace {
+                    "SchematicWorkspaceName"
+                } else {
+                    "SchematicDatasetName"
+                };
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,
                     format!(
-                        "FeatureBookmark 名称对象槽 offset 0x{name_offset:x}: SchematicDatasetName 未读完（{stop:?}）"
+                        "FeatureBookmark 名称对象槽 offset 0x{name_offset:x}: {class_name} 未读完（{stop:?}）"
                     ),
                 ));
             }
-            BookmarkNameEntry10_1::SchematicDatasetName(Box::new(body))
+            if is_workspace {
+                BookmarkNameEntry10_1::SchematicWorkspaceName(Box::new(body))
+            } else {
+                BookmarkNameEntry10_1::SchematicDatasetName(Box::new(body))
+            }
         }
         ObjectEntry10_1::NewObject { class_id, key } => {
             return Err(io::Error::new(
