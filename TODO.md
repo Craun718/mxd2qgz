@@ -672,6 +672,7 @@
       - [x] 接入 FeatureBookmark 的 DBTableName 持久化体。[接口取证](docs/mxd-terra-round9-bookmark.md#数据库表名称)
       - [x] 接入 FeatureBookmark 的 CadDrawingName 持久化体。[接口取证](docs/mxd-terra-round9-bookmark.md#cad-图纸名称)
       - [x] 接入 FeatureBookmark 的 ReferencedTableName，并按原生有符号上限读取版本。[取证](docs/mxd-terra-round9-bookmark.md#referencedtablename)
+      - [x] 接入 FeatureBookmark 的 GeometricNetworkName 持久化体。[接口取证](docs/mxd-terra-round9-bookmark.md#几何网络名称)
       - [x] 在 FeatureBookmark 和 CustomOverlayGrid 中读取 RasterCatalogName 与 RelQueryTableName。[名称槽取证](docs/mxd-terra-round9-bookmark.md#栅格目录与关系查询名称)
       - [x] 闭合 FDOGraphicsLayer 版本 4 探测分支：三依赖降为两项并全部定位闭合（整流绝对 0 访问成立单独已足；IObjectStream QI 门控主流键读、分支 B 经返回接口读键且前后无条件 Seek 复位）；「不实现」结论维持，见 [研究记录](docs/arcmap-10.1-save-side.md)。
       - [x] 闭合委派注记图层数据源 `{75E10086-4226-42AC-AFEC-CBB9B748F847}`：FileGDB.dll 10.1.0.3035 的 FgdbFeatureClassName，体为版本 short + 原样 short + 内嵌 GdbCore FeatureClassName 体（无第二对象头）；按精确 CLSID 接入，覆盖异常回滚和逐前缀截断。样本委派 FeatureLayer 体完整消费至 `0x2c01`；见 [本轮数据源记录](docs/mxd-open-dataset-20261116.md)。

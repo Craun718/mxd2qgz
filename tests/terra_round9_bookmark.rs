@@ -1522,3 +1522,36 @@ fn bookmark_reads_a_referenced_table_and_its_child_key() {
         assert!(refs.is_empty());
     }
 }
+
+#[test]
+fn bookmark_reads_geometric_network_name_before_its_label() {
+    use mxd2qgz::objects::dataset_name_more::GEOMETRIC_NETWORK_NAME_CLASS_ID;
+
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(GEOMETRIC_NETWORK_NAME_CLASS_ID);
+    bytes.extend(17_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    for value in [b'N', b'D', b'C'] {
+        bytes.extend([4, 0, 0, 0, value, 0, 0, 0]);
+    }
+    bytes.extend([0; 16]);
+    bytes.extend([4, 0, 0, 0, b'X', 0, 0, 0]);
+
+    let mut refs = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let bookmark = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    assert!(
+        matches!(bookmark.name_object, BookmarkNameEntry10_1::GeometricNetworkName(body)
+        if body.key == 17 && body.string_a == "N" && body.dataset == DatasetNameMoreSlot10_1::Null)
+    );
+    assert_eq!(bookmark.name, "X");
+    assert_eq!(reader.remaining(), 0);
+    assert!(refs.contains(17));
+
+    let mut refs = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes[..bytes.len() - 9]);
+    assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+    assert_eq!(reader.position(), 0);
+    assert!(refs.is_empty());
+}

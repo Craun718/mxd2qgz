@@ -233,3 +233,12 @@ MosaicDB.dll 10.1.0.3035 的 QI `0x7a59a9eb..0x7a59aa05`
 详见[模块摘要及子槽取证](mxd-terra-round9-old.md#referencedtablename)。
 构造书签验证负版本、子表键、后继字符串及失败回滚。
 实际书签宿主和原生 Open 结果仍待验证。
+
+## 几何网络名称
+
+GdbCore.dll 10.1.0.3035（摘要同数据库表名称）的
+GeometricNetworkName 构造路径 `0x709b8633` 安装主虚表
+`0x70ad05b8`。QI `0x709b87d0` 比较 `0x70ab84e4` 的 IName
+IID，命中后在 `0x709b87f5` 返回对象 `+0x10`。书签复用 Load
+`0x709b8ca0` 对应的读取器。构造测试覆盖名称键、空数据集槽、后继
+书签字符串及截断回滚。实际书签工程和原生 Open 结果仍待验证。
