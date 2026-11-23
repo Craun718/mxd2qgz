@@ -63,9 +63,7 @@ v3 尾字段、后续书签名、未知关系类与截断回滚。合成 MapFram
 
 - FgdbFeatureClassName（`75E10086-4226-42AC-AFEC-CBB9B748F847`）构造器
   在 `0x6fa31731..0x6fa31745` 以外层对象为聚合者，创建 GdbCore
-  FeatureClassName 并保存其非委派 IUnknown。外层 QI 在
-  `0x6fa3317d..0x6fa3318d` 将 IName 请求交给该内置对象。
-  外层 IPersistStream 仍使用独立的 `0x6fafe0c4` 虚表和
+  FeatureClassName 并保存其非委派 IUnknown。外层 IPersistStream 仍使用独立的 `0x6fafe0c4` 虚表和
   `0x6fa33290` Load，因此书签直接复用读取 FileGDB 包装和内嵌名称体的入口。
 - TableQueryName 的 QI `0x708f4960` 在 `0x708f4967` 比对
   `0x70ab84e4` 的 IName IID，返回对象 +0x10；该视图的 Open 槽
@@ -180,3 +178,18 @@ IDatasetName，但没有直接实现 IFeatureClass。FeatureBookmark Load 的
 持久化对象体可完整读取并完成宿主接线，不证明 Open 成功、返回对象提供
 IFeatureClass，也不证明真实书签中一定出现这两类名称。仓库参考样本没有
 提供这两类的非空书签实例，ArcMap 10.1 和 QGIS 中也未做运行或目视验证。
+
+## IName 回引与 FileGDB 接口复核
+
+Map.dll 10.1.0.3035 的书签 Load `0x793b5c50` 使用普通 IName 槽。
+同版 SystemCore 在 `0x7ffd0063` 按对象键查询登记实例的接口。
+合成测试以 FgdbFeatureClassName 登记键，使用不同类标识的回引头，
+验证书签保留登记类并正确读取后继名称。该测试未执行 IName::Open。
+
+复查上述摘要的 FileGDB.dll 时，发现 `0x6fa3317d..0x6fa3318d`
+所属函数是 FgdbTableName 主虚表 `0x6fafeca4` 的 QI
+`0x6fa33080`。该分支比较的 `0x6fafe10c` 字节对应
+`{9F9650F1-5F49-4041-BA0F-D10BAFF1D7BC}`。此前把这段指令
+归为 FgdbFeatureClassName 的 IName 分支有误。FgdbFeatureClassName
+的持久化虚表及 Load 由其自身类体证据确认。FgdbTableName 的 IName
+路径以及两类名称在书签里的真实宿主仍待核对。

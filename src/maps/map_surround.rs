@@ -681,9 +681,10 @@ pub fn read_feature_bookmark_10_1(
     let name_offset = trial.position();
     let name_object = match read_object_entry_10_1(&mut trial, &mut trial_table)? {
         ObjectEntry10_1::Null => BookmarkNameEntry10_1::Null,
-        ObjectEntry10_1::BackReference { class_id, key } => {
-            BookmarkNameEntry10_1::BackReference { class_id, key }
-        }
+        ObjectEntry10_1::BackReference { class_id, key } => BookmarkNameEntry10_1::BackReference {
+            class_id: trial_table.registered_class(key).unwrap_or(class_id),
+            key,
+        },
         ObjectEntry10_1::NewObject {
             class_id:
                 class_id @ (FEATURE_CLASS_NAME_CLASS_ID

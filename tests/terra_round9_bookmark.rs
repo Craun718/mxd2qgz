@@ -1348,3 +1348,32 @@ fn ams_bookmark_reads_ole_workspace_and_preserves_object_stream_keys() {
     null_workspace[workspace_offset..workspace_offset + 16].fill(0);
     assert_eq!(verify_failure(&null_workspace, 4096), InvalidData);
 }
+
+#[test]
+fn bookmark_name_reference_retains_the_registered_class() {
+    use mxd2qgz::storage::object_refs::read_object_entry_10_1;
+
+    let mut definition = FGDB_FEATURE_CLASS_NAME_CLASS_ID.to_vec();
+    definition.extend(17_u32.to_le_bytes());
+    let mut refs = RefTable10_1::new();
+    read_object_entry_10_1(&mut Reader::new(&definition), &mut refs).unwrap();
+    let saved = refs.clone();
+
+    let mut body = 1_u16.to_le_bytes().to_vec();
+    body.extend(42_i32.to_le_bytes());
+    body.extend(TABLE_NAME_CLASS_ID);
+    body.extend(17_u32.to_le_bytes());
+    body.extend([4, 0, 0, 0, b'X', 0, 0, 0, 0x42]);
+    let mut reader = Reader::new(&body);
+    let bookmark = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    assert_eq!(
+        bookmark.name_object,
+        BookmarkNameEntry10_1::BackReference {
+            class_id: FGDB_FEATURE_CLASS_NAME_CLASS_ID,
+            key: 17,
+        }
+    );
+    assert_eq!(bookmark.name, "X");
+    assert_eq!(reader.read_bytes(1).unwrap(), &[0x42]);
+    assert_eq!(refs, saved);
+}
