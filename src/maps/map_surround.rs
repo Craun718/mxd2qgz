@@ -319,6 +319,10 @@ pub struct AoiBookmark10_1 {
     pub remaining_bytes: usize,
 }
 
+pub const FILE_NAME_CLASS_ID: [u8; 16] = [
+    0xdf, 0x75, 0xda, 0x53, 0x1a, 0xd0, 0xd2, 0x11, 0x9f, 0x27, 0x00, 0xc0, 0x4f, 0x6b, 0xc6, 0x9e,
+];
+
 pub const CADASTRAL_FABRIC_NAME_CLASS_ID: [u8; 16] = [
     0x20, 0x72, 0x94, 0x5c, 0xb5, 0xff, 0x71, 0x4e, 0xa0, 0x59, 0xaf, 0x20, 0x1a, 0xe0, 0x81, 0xa6,
 ];
@@ -379,6 +383,10 @@ pub enum BookmarkNameEntry10_1 {
     NetworkDatasetName(Box<NetworkDatasetName10_1>),
     TinName(Box<TinName10_1>),
     LasDatasetName(Box<LasDatasetName10_1>),
+    FileName {
+        version: i16,
+        name_string: String,
+    },
     AgsServerObjectName(Box<AgsServerObjectName10_1>),
     AgsServerConnectionName(Box<AgsServerConnectionName10_1>),
     CadastralFabricName(Box<CadastralFabricName10_1>),
@@ -1164,6 +1172,24 @@ pub fn read_feature_bookmark_10_1(
             max_bytes,
             &mut trial_table,
         )?)),
+        ObjectEntry10_1::NewObject {
+            class_id: FILE_NAME_CLASS_ID,
+            ..
+        } => {
+            let version = trial.read_u16_le()? as i16;
+            if version > 1 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    format!("FileName 版本 {version} 超出 10.1 上限"),
+                ));
+            }
+            BookmarkNameEntry10_1::FileName {
+                version,
+                name_string: crate::stream::native_string::read_bstr_string_10_1(
+                    &mut trial, max_bytes,
+                )?,
+            }
+        }
         ObjectEntry10_1::NewObject {
             class_id: AGS_SERVER_OBJECT_NAME,
             ..

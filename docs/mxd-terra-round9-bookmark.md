@@ -565,3 +565,17 @@ CLSID 分别为 `6C22971C-D450-4B4D-9422-EE96A40FACC5` 和
 AfCore 成员 String。构造测试覆盖直接连接、嵌入连接、对象键、
 后继书签文本及逐字节截断回滚。真实书签宿主、原生 Open 和
 QGIS 人工验收待验证。
+
+## FileName
+
+在[已核对身份的 SystemCore.dll 10.1.0.3035](mxd-terra-round9-old.md#filename-与-shortcutname-的旧表槽判定)
+中，PE RTTI `0x800a62e4` 指向 FileName，持久化虚表
+`0x8006f8dc` 关联 Load `0x7ffc3730` 和 Save `0x7ffc37b0`。
+objdump 显示 Load 在 `0x7ffc376a` 比较有符号 short 上限 1，
+再在 `0x7ffc3783` 调用 AfCore 自由函数 ReadString
+（导入槽 `0x8006b228`，输出 BSTR）。Save 在 `0x7ffc37f7`
+调用对应的 WriteString。构造测试覆盖负版本、超上限版本、
+UTF-16 BSTR、后继书签字段及逐字节截断回滚。静态证据显示
+FileName 的 Open 写空输出并返回 S_FALSE，真实书签出现情况
+与 ArcMap/QGIS 人工检查待验证。ShortcutName 有独立 Load
+`0x7ffdc250`，其字符串后还有 IName 子槽，留待单独接入。

@@ -2899,3 +2899,53 @@ fn feature_bookmark_reads_ags_server_names() {
         }
     }
 }
+
+#[test]
+fn feature_bookmark_reads_file_name_bstr() {
+    use mxd2qgz::maps::map_surround::FILE_NAME_CLASS_ID;
+
+    let mut bytes = bookmark_header_10_1(&FILE_NAME_CLASS_ID, 17);
+    let version_offset = bytes.len();
+    bytes.extend((-1_i16).to_le_bytes());
+    bytes.extend(2_u32.to_le_bytes());
+    for code in "文件".encode_utf16() {
+        bytes.extend(code.to_le_bytes());
+    }
+    bytes.extend(0_u16.to_le_bytes());
+    bytes.extend(bookmark_string_10_1("书签"));
+    let end = bytes.len();
+    bytes.push(0xa5);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    assert_eq!(
+        result.name_object,
+        BookmarkNameEntry10_1::FileName {
+            version: -1,
+            name_string: "文件".into(),
+        }
+    );
+    assert_eq!(result.name, "书签");
+    assert_eq!(reader.position(), end);
+    assert!(refs.contains(17));
+
+    for cut in 0..end {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+    bytes[version_offset..version_offset + 2].copy_from_slice(&2_i16.to_le_bytes());
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    assert_eq!(
+        read_feature_bookmark_10_1(&mut reader, 1024, &mut refs)
+            .unwrap_err()
+            .kind(),
+        std::io::ErrorKind::InvalidData
+    );
+    assert_eq!(reader.position(), 0);
+    assert!(refs.is_empty());
+}
