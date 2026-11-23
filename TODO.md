@@ -748,6 +748,7 @@
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPCodedValueDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldinfodomain-与-gpcodedvaluedomain)
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPFieldInfoDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldinfodomain-与-gpcodedvaluedomain)
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
+      - [x] 接入 GPCodedValueDomain 中的 GPSAFuzzyFunction 和递归值参数。[取证](docs/mxd-terra-round9-bookmark.md#gpsafuzzyfunction)
       - [x] 接入三种共用旧 IName 槽的空间分析值 GPSARadius、GPEvaluationScale、GPSAMapAlgebraExp。[取证](docs/mxd-terra-round9-bookmark.md#空间分析值的旧-iname-槽)
       - [x] 接入 GPCodedValueDomain 中的 GPSACellSize。[取证](docs/mxd-terra-round9-bookmark.md#gpsacellsize)
       - [x] 接入 GPCodedValueDomain 中共用读取体的 GPSQLExpression 和 GPINFOExpression。[取证](docs/mxd-terra-round9-bookmark.md#gpsqlexpression-与-gpinfoexpression)

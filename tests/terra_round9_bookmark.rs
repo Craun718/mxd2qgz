@@ -5774,3 +5774,53 @@ fn feature_bookmark_reads_spatial_analyst_values_with_legacy_name_slots() {
         );
     }
 }
+
+#[test]
+fn feature_bookmark_reads_gp_sa_fuzzy_function_arguments() {
+    use mxd2qgz::layers::image_server_rules::RuleSlot10_1;
+    use mxd2qgz::maps::map_surround::{
+        GP_LONG_CLASS_ID, GP_SA_FUZZY_FUNCTION_CLASS_ID, GpCodedValue10_1, GpCodedValueBody10_1,
+    };
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    let mut payload = bookmark_entry_10_1(&GP_LONG_CLASS_ID, 20);
+    payload.extend([1, 0, 1, 0, 7, 0]);
+    payload.extend((-6_i32).to_le_bytes());
+    payload.extend(bookmark_entry_10_1(&GP_LONG_CLASS_ID, 20));
+    payload.extend([0; 16]);
+    let raw_flags = [0, 0xf0];
+    payload.extend(raw_flags);
+    assert_legacy_topo_coded_value(
+        GP_SA_FUZZY_FUNCTION_CLASS_ID,
+        1,
+        &payload,
+        GpCodedValue10_1::SaFuzzyFunction {
+            arguments: [
+                RuleSlot10_1 {
+                    entry: ObjectEntry10_1::NewObject {
+                        class_id: GP_LONG_CLASS_ID,
+                        key: 20,
+                    },
+                    body: Some(Box::new(GpCodedValueBody10_1 {
+                        version: 1,
+                        base_version: 1,
+                        base_short: 7,
+                        value: GpCodedValue10_1::Long(-6),
+                    })),
+                },
+                RuleSlot10_1 {
+                    entry: ObjectEntry10_1::BackReference {
+                        class_id: GP_LONG_CLASS_ID,
+                        key: 20,
+                    },
+                    body: None,
+                },
+                RuleSlot10_1 {
+                    entry: ObjectEntry10_1::Null,
+                    body: None,
+                },
+            ],
+            raw_flags,
+        },
+    );
+}

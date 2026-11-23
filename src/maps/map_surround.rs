@@ -425,6 +425,10 @@ pub const GP_POINT_CLASS_ID: [u8; 16] = [
     0x82, 0x30, 0xe9, 0xa1, 0xbe, 0xba, 0x44, 0x4d, 0x8c, 0xe3, 0x46, 0x37, 0x74, 0x8e, 0xdd, 0xdd,
 ];
 
+pub const GP_SA_FUZZY_FUNCTION_CLASS_ID: [u8; 16] = [
+    0x96, 0xfc, 0x1d, 0xf3, 0xe0, 0x01, 0x01, 0x4f, 0x96, 0x2b, 0x06, 0x4d, 0x48, 0xd5, 0xc2, 0x46,
+];
+
 pub const GP_SA_RADIUS_CLASS_ID: [u8; 16] = [
     0x7f, 0xc0, 0x3f, 0x2b, 0x3b, 0x10, 0xc4, 0x41, 0xaa, 0x42, 0x34, 0xa2, 0x43, 0xfd, 0x7b, 0x87,
 ];
@@ -494,6 +498,10 @@ pub enum GpCodedValue10_1 {
     Point {
         x_bits: u64,
         y_bits: u64,
+    },
+    SaFuzzyFunction {
+        arguments: [RuleSlot10_1<GpCodedValueBody10_1>; 3],
+        raw_flags: [u8; 2],
     },
     SaRadius {
         legacy_name: Option<Box<BookmarkNameEntry10_1>>,
@@ -1700,6 +1708,7 @@ fn read_gp_coded_value_slot(
                     | GP_POINT_CLASS_ID
                     | GP_CELL_SIZE_XY_CLASS_ID
                     | GP_SA_CELL_SIZE_CLASS_ID
+                    | GP_SA_FUZZY_FUNCTION_CLASS_ID
                     | GP_SA_RADIUS_CLASS_ID
                     | GP_EVALUATION_SCALE_CLASS_ID
                     | GP_SA_MAP_ALGEBRA_EXP_CLASS_ID
@@ -1735,6 +1744,7 @@ fn read_gp_coded_value_slot(
                 | GP_POINT_CLASS_ID
                 | GP_CELL_SIZE_XY_CLASS_ID
                 | GP_SA_CELL_SIZE_CLASS_ID
+                | GP_SA_FUZZY_FUNCTION_CLASS_ID
                 | GP_SA_RADIUS_CLASS_ID
                 | GP_EVALUATION_SCALE_CLASS_ID
                 | GP_SA_MAP_ALGEBRA_EXP_CLASS_ID
@@ -1870,6 +1880,22 @@ fn read_gp_coded_value_slot(
                             legacy_name,
                             expression: read_bstr_string_10_1(reader, max_bytes)?,
                         },
+                    }
+                }
+                GP_SA_FUZZY_FUNCTION_CLASS_ID => {
+                    if depth >= MAX_BOOKMARK_NAME_NESTING {
+                        return Err(io::Error::new(
+                            ErrorKind::InvalidData,
+                            "GPSAFuzzyFunction 嵌套层数超限",
+                        ));
+                    }
+                    GpCodedValue10_1::SaFuzzyFunction {
+                        arguments: [
+                            read_gp_coded_value_slot(reader, max_bytes, table, depth + 1)?,
+                            read_gp_coded_value_slot(reader, max_bytes, table, depth + 1)?,
+                            read_gp_coded_value_slot(reader, max_bytes, table, depth + 1)?,
+                        ],
+                        raw_flags: reader.read_bytes(2)?.try_into().unwrap(),
                     }
                 }
                 GP_SA_CELL_SIZE_CLASS_ID => GpCodedValue10_1::SaCellSize {
