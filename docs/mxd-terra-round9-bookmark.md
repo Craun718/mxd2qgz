@@ -1295,3 +1295,17 @@ GpObjects.dll 10.1.0.3035 的 RTTI `0x74801d60` 对应持久化虚表
 
 构造书签覆盖 v1–v3、旧域、UID、后续字段及逐字节截断回滚。
 LONG 的业务含义、真实书签和 ArcMap/QGIS 人工验收待验证。
+
+#### GPPoint
+
+在 10.1 Desktop 互操作程序集的 IGPValue 元数据中定位候选，
+再以 GpObjects.dll 10.1.0.3035 的 PE RTTI 和 objdump 复核。
+RTTI `0x74801504` 对应持久化虚表 `0x747b6184`，构造函数
+从 `0x747b5dd8` 复制 CLSID `A1E93082-BABE-4D44-8CE3-4637748EDDDD`。
+Load `0x74709d50` 用无符号 short 上限 1 检查版本，调用
+DECoreLib::GPValue::Load 后，在 `0x74709db7 / 0x74709dc9` 通过
+AfCore 的 double 重载依次读取两个坐标。Save `0x74709df0` 在
+`0x74709e55 / 0x74709e67` 对称写入。解析保留两个浮点位模式。
+
+构造书签覆盖坐标、回引、后继字段、超限版本及逐字节截断回滚。
+真实书签和 ArcMap/QGIS 人工验收待验证。

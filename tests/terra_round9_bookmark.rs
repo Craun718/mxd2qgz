@@ -5455,3 +5455,89 @@ fn feature_bookmark_reads_gp_value_table_type_name_columns() {
         }
     }
 }
+
+fn assert_legacy_topo_coded_value(
+    class_id: [u8; 16],
+    payload: &[u8],
+    expected: mxd2qgz::maps::map_surround::GpCodedValue10_1,
+) {
+    use mxd2qgz::maps::map_surround::{
+        GP_CODED_VALUE_DOMAIN_CLASS_ID, GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID, GpTopoDomain10_1,
+    };
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    let mut bytes = bookmark_header_10_1(&GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID, 17);
+    bytes.extend(1_i16.to_le_bytes());
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend([0; 16]);
+    bytes.extend(bookmark_entry_10_1(&GP_CODED_VALUE_DOMAIN_CLASS_ID, 18));
+    bytes.extend(1_i16.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(2_i32.to_le_bytes());
+    bytes.extend(bookmark_entry_10_1(&class_id, 19));
+    let version_offset = bytes.len();
+    bytes.extend([1, 0, 1, 0, 7, 0]);
+    bytes.extend(payload);
+    bytes.extend(bookmark_entry_10_1(&class_id, 19));
+    bytes.extend(bookmark_string_10_1("拓扑"));
+    bytes.extend(9_i32.to_le_bytes());
+    bytes.extend(bookmark_string_10_1("书签"));
+    let end = bytes.len();
+    bytes.push(0xa5);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    let BookmarkNameEntry10_1::GpSaTopoFeaturesTypeName(body) = result.name_object else {
+        panic!("应读取拓扑要素类型名称");
+    };
+    let domain = body.legacy_entries[0].legacy_domain.as_ref().unwrap();
+    let Some(GpTopoDomain10_1::CodedValue(domain)) = domain.body.as_deref() else {
+        panic!("应读取编码值域");
+    };
+    let value = domain.values[0].body.as_deref().unwrap();
+    assert_eq!(
+        (value.version, value.base_version, value.base_short),
+        (1, 1, 7)
+    );
+    assert_eq!(value.value, expected);
+    assert_eq!(
+        domain.values[1].entry,
+        ObjectEntry10_1::BackReference { class_id, key: 19 }
+    );
+    assert!(domain.values[1].body.is_none());
+    assert_eq!(result.name, "书签");
+    assert_eq!(reader.position(), end);
+
+    for cut in 0..end {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+    bytes[version_offset..version_offset + 2].copy_from_slice(&u16::MAX.to_le_bytes());
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    assert_eq!(
+        read_feature_bookmark_10_1(&mut reader, 1024, &mut refs)
+            .unwrap_err()
+            .kind(),
+        std::io::ErrorKind::InvalidData
+    );
+    assert_eq!(reader.position(), 0);
+    assert!(refs.is_empty());
+}
+
+#[test]
+fn feature_bookmark_reads_gp_point_coded_value() {
+    use mxd2qgz::maps::map_surround::{GP_POINT_CLASS_ID, GpCodedValue10_1};
+
+    let (x_bits, y_bits) = ((-0.0_f64).to_bits(), 0x7ff8_0000_0000_0042_u64);
+    let payload = [x_bits.to_le_bytes(), y_bits.to_le_bytes()].concat();
+    assert_legacy_topo_coded_value(
+        GP_POINT_CLASS_ID,
+        &payload,
+        GpCodedValue10_1::Point { x_bits, y_bits },
+    );
+}

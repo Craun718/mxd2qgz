@@ -748,6 +748,7 @@
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPCodedValueDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldinfodomain-与-gpcodedvaluedomain)
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPFieldInfoDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldinfodomain-与-gpcodedvaluedomain)
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
+      - [x] 接入 GPCodedValueDomain 中的 GPPoint。[取证](docs/mxd-terra-round9-bookmark.md#gppoint)
       - [x] 接入 GPCodedValueDomain 中的 GPDouble。[取证](docs/mxd-terra-round9-bookmark.md#gpdoublegpbooleangpdate)
       - [x] 接入 GPCodedValueDomain 中的 GPLinearUnit。[取证](docs/mxd-terra-round9-bookmark.md#gplinearunit-与-gpvariant)
       - [x] 接入 GPCodedValueDomain 中的 GPArealUnit。[取证](docs/mxd-terra-round9-bookmark.md#gparealunit)

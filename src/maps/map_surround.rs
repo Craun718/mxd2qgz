@@ -417,8 +417,17 @@ pub const GP_LONG_CLASS_ID: [u8; 16] = [
     0x47, 0x7f, 0xed, 0x30, 0xd9, 0x12, 0x9b, 0x4c, 0xbe, 0x8b, 0x7a, 0x0a, 0xe3, 0x86, 0xe5, 0x74,
 ];
 
+/// GPPoint 的 CLSID，按对象流中的字节序排列。
+pub const GP_POINT_CLASS_ID: [u8; 16] = [
+    0x82, 0x30, 0xe9, 0xa1, 0xbe, 0xba, 0x44, 0x4d, 0x8c, 0xe3, 0x46, 0x37, 0x74, 0x8e, 0xdd, 0xdd,
+];
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpCodedValue10_1 {
+    Point {
+        x_bits: u64,
+        y_bits: u64,
+    },
     String(String),
     EncryptedString(String),
     Long(i32),
@@ -1575,6 +1584,7 @@ fn read_gp_coded_value_slot(
             if matches!(
                 table.registered_class(key).unwrap_or(class_id),
                 GP_STRING_CLASS_ID
+                    | GP_POINT_CLASS_ID
                     | GP_ENCRYPTED_STRING_CLASS_ID
                     | GP_LONG_CLASS_ID
                     | GP_DOUBLE_CLASS_ID
@@ -1593,6 +1603,7 @@ fn read_gp_coded_value_slot(
         ObjectEntry10_1::NewObject {
             class_id:
                 class_id @ (GP_STRING_CLASS_ID
+                | GP_POINT_CLASS_ID
                 | GP_ENCRYPTED_STRING_CLASS_ID
                 | GP_LONG_CLASS_ID
                 | GP_DOUBLE_CLASS_ID
@@ -1628,6 +1639,10 @@ fn read_gp_coded_value_slot(
                     GpCodedValue10_1::EncryptedString(read_string_10_1(reader, max_bytes)?)
                 }
                 GP_DOUBLE_CLASS_ID => GpCodedValue10_1::DoubleBits(reader.read_f64_le()?.to_bits()),
+                GP_POINT_CLASS_ID => GpCodedValue10_1::Point {
+                    x_bits: reader.read_f64_le()?.to_bits(),
+                    y_bits: reader.read_f64_le()?.to_bits(),
+                },
                 GP_BOOLEAN_CLASS_ID => GpCodedValue10_1::Boolean(reader.read_u16_le()?),
                 GP_DATE_CLASS_ID => GpCodedValue10_1::Date(Box::new(
                     read_padded_variant_object_stream_nested_10_1(reader, max_bytes, table, depth)?,
