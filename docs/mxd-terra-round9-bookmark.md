@@ -1220,3 +1220,17 @@ AfCore 成员 String::Read。Save `0x746bf6d0` 的版本分支最后均
 
 构造书签覆盖 v2、对象回引、后续字段、超限版本和逐字节截断回滚。
 真实书签和 ArcMap/QGIS 人工验收待验证。
+
+#### GPRandomNumberGenerator
+
+GpObjects.dll 10.1.0.3035 的 RTTI `0x74800e24` 对应持久化虚表
+`0x747b3c6c`，构造函数从 `0x747b3d38` 复制类标识
+`A5C6674B-BCA6-46C8-8205-B5B958EEAEB9`。QI 在 `0x746f4c5b`
+使用编码域请求的 IGPValue IID。Load `0x746f5970` 检查无符号
+short 版本上限 1，读取 GPValue 基类后在 `0x746f59eb` 和
+`0x746f59f6` 依次读取种子和生成器选择码两个 LONG。原生将
+0、1、2 之外的选择码回退为 1，再用两个参数初始化内嵌生成器。
+Save `0x746f5a40` 按相同顺序写两个 LONG。解析器保留原始选择码。
+
+构造书签验证两个有符号字段、未知选择码、对象回引、后续字段和
+逐字节截断回滚。真实书签及 ArcMap/QGIS 人工验收待验证。

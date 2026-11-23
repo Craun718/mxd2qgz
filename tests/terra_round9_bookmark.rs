@@ -4929,7 +4929,8 @@ fn feature_bookmark_reads_legacy_topo_composite_domain() {
 fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
     use mxd2qgz::maps::map_surround::{
         GP_AREAL_UNIT_CLASS_ID, GP_BOOLEAN_CLASS_ID, GP_DATE_CLASS_ID, GP_DOUBLE_CLASS_ID,
-        GP_ENCRYPTED_STRING_CLASS_ID, GP_LINEAR_UNIT_CLASS_ID, GP_VARIANT_CLASS_ID,
+        GP_ENCRYPTED_STRING_CLASS_ID, GP_LINEAR_UNIT_CLASS_ID, GP_RANDOM_NUMBER_GENERATOR_CLASS_ID,
+        GP_VARIANT_CLASS_ID,
     };
     use mxd2qgz::maps::map_surround::{
         GP_CODED_VALUE_DOMAIN_CLASS_ID, GP_FIELD_INFO_DOMAIN_CLASS_ID, GP_LONG_CLASS_ID,
@@ -4954,7 +4955,7 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
         bytes.extend(1_i16.to_le_bytes());
         bytes.extend(1_i32.to_le_bytes());
         bytes.extend(bookmark_string_10_1("标签"));
-        bytes.extend(13_i32.to_le_bytes());
+        bytes.extend(15_i32.to_le_bytes());
         for (class, key) in [(GP_STRING_CLASS_ID, 20_u32), (GP_LONG_CLASS_ID, 21)] {
             bytes.extend(class);
             bytes.extend(key.to_le_bytes());
@@ -5027,6 +5028,15 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
         bytes.extend(bookmark_string_10_1("synthetic-persisted-value"));
         bytes.extend(GP_ENCRYPTED_STRING_CLASS_ID);
         bytes.extend(28_u32.to_le_bytes());
+        bytes.extend(GP_RANDOM_NUMBER_GENERATOR_CLASS_ID);
+        bytes.extend(29_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(7_u16.to_le_bytes());
+        bytes.extend((-79_i32).to_le_bytes());
+        bytes.extend((-9_i32).to_le_bytes());
+        bytes.extend(GP_RANDOM_NUMBER_GENERATOR_CLASS_ID);
+        bytes.extend(29_u32.to_le_bytes());
         bytes.extend(bookmark_string_10_1("拓扑"));
         bytes.extend(9_i32.to_le_bytes());
         bytes.extend(bookmark_string_10_1("书签"));
@@ -5054,7 +5064,22 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
             _ => panic!("应读取编码值域"),
         };
         assert_eq!(coded.labels, (1, vec!["标签".into()]));
-        assert_eq!(coded.raw_value_count, 13);
+        assert_eq!(coded.raw_value_count, 15);
+        assert_eq!(
+            coded.values[13].body.as_ref().unwrap().value,
+            GpCodedValue10_1::RandomNumberGenerator {
+                seed: -79,
+                raw_generator: -9
+            }
+        );
+        assert_eq!(
+            coded.values[14].entry,
+            ObjectEntry10_1::BackReference {
+                class_id: GP_RANDOM_NUMBER_GENERATOR_CLASS_ID,
+                key: 29
+            }
+        );
+        assert!(coded.values[14].body.is_none());
         let encrypted = coded.values[11].body.as_ref().unwrap();
         assert_eq!(encrypted.version, 2);
         assert_eq!(

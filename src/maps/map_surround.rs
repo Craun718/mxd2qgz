@@ -397,6 +397,10 @@ pub const GP_AREAL_UNIT_CLASS_ID: [u8; 16] = [
     0x96, 0x8a, 0xc2, 0x62, 0x4e, 0xb8, 0xf8, 0x49, 0xac, 0xf5, 0x0b, 0x1b, 0x5a, 0x87, 0xef, 0x08,
 ];
 
+pub const GP_RANDOM_NUMBER_GENERATOR_CLASS_ID: [u8; 16] = [
+    0x4b, 0x67, 0xc6, 0xa5, 0xa6, 0xbc, 0xc8, 0x46, 0x82, 0x05, 0xb5, 0xb9, 0x58, 0xee, 0xae, 0xb9,
+];
+
 pub const GP_VARIANT_CLASS_ID: [u8; 16] = [
     0x5e, 0xff, 0x82, 0x5b, 0x15, 0x31, 0xe4, 0x40, 0xba, 0xc8, 0xe6, 0x21, 0x05, 0xca, 0x28, 0x11,
 ];
@@ -416,6 +420,7 @@ pub enum GpCodedValue10_1 {
     LinearUnit { value_bits: u64, unit: i32 },
     ArealUnit { value_bits: u64, unit: i32 },
     Variant(Box<PropertyValueObjectStream10_1>),
+    RandomNumberGenerator { seed: i32, raw_generator: i32 },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1506,6 +1511,7 @@ fn read_gp_coded_value_domain(
                         | GP_LINEAR_UNIT_CLASS_ID
                         | GP_AREAL_UNIT_CLASS_ID
                         | GP_VARIANT_CLASS_ID
+                        | GP_RANDOM_NUMBER_GENERATOR_CLASS_ID
                 ) =>
             {
                 None
@@ -1520,7 +1526,8 @@ fn read_gp_coded_value_domain(
                     | GP_DATE_CLASS_ID
                     | GP_LINEAR_UNIT_CLASS_ID
                     | GP_AREAL_UNIT_CLASS_ID
-                    | GP_VARIANT_CLASS_ID),
+                    | GP_VARIANT_CLASS_ID
+                    | GP_RANDOM_NUMBER_GENERATOR_CLASS_ID),
                 ..
             } => {
                 let version = reader.read_u16_le()?;
@@ -1566,6 +1573,12 @@ fn read_gp_coded_value_domain(
                             reader, max_bytes, table, depth,
                         )?,
                     )),
+                    GP_RANDOM_NUMBER_GENERATOR_CLASS_ID => {
+                        GpCodedValue10_1::RandomNumberGenerator {
+                            seed: reader.read_u32_le()? as i32,
+                            raw_generator: reader.read_u32_le()? as i32,
+                        }
+                    }
                     _ => GpCodedValue10_1::Long(reader.read_u32_le()? as i32),
                 };
                 Some(Box::new(GpCodedValueBody10_1 {
