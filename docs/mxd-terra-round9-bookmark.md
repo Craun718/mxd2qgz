@@ -1550,3 +1550,38 @@ Save `0x748e5d00` 的尺寸分派、内嵌 Variant 和成员 String
 构造书签覆盖 v1/v2、各选择码、内嵌 Variant、路径、未知选择码、
 对象回引、后继字段及逐字节截断回滚。内嵌数组的真实取值与
 ArcMap/QGIS 实档验收待查。
+
+### GPSAHorizontalFactor 与 GPSAVerticalFactor
+
+两类来自 ArcMap 10.1.0.3035 的 `GPSACore.dll`。沿 RTTI 确认持久化接口
+`+0x1c` 后，水平 Load/Save 为 `0x748e00f0/0x748e01b0`，垂直为
+`0x748fead0/0x748feb90`。两者读版本 0 或 1、共有 GPValue 基类体及
+一个 LoadObject 槽，写侧固定写版本 1。对象槽分别请求 IID
+`{6FD6F6E0-EFB0-42BC-8BA2-843FFDFE77CE}` 与
+`{42AA082B-2FC2-4939-AD2E-92F563E4356F}`。同模块的构造引用和 10.1
+安装介质的类注册清单将槽的常规实现对应到 PathDistanceHorizontalFactor
+`{9FDAFBBC-A491-43D7-9D41-D288BBA568E1}` 与 PathDistanceVerticalFactor
+`{1D4EFECC-B85C-4EB9-B09B-CEF8C225B5A3}`。
+
+内层证据为 `RasterDistanceOp.dll` 10.1.0.3035（SHA-256
+`338c4149bcc91d2b503544270c72e80aaf89c7bec54b95a8a28154d455eccaae`）。
+持久化接口虚表 `0x7c1d9070/0x7c1d9850` 的 Load/Save 分别为
+`0x7c1cf6c0/0x7c1cfb00`、`0x7c1d30d0/0x7c1d3ba0`。GetClassID 写入
+的常量位于 `0x7c1d8cac/0x7c1d8cbc`。两类接受版本 0 或 1，均先读
+u16 版本和 LONG 选择子。按 Load 跳转表 `0x7c1cfae0/0x7c1d3b78` 与
+AfCore 的读写调用复核其余段：
+
+| 内层类 | 选择子 | 顺序消费 |
+| --- | --- | --- |
+| 水平 | 1、2 | 2 个 double |
+| 水平 | 3、4 | 3 个 double |
+| 水平 | 5 | `String::Read` 路径 |
+| 垂直 | 1、7、8 | 3 个 double |
+| 垂直 | 2、3、5、6、9、10 | 4 个 double |
+| 垂直 | 4 | `String::Read` 路径 |
+| 两类 | 其他值 | 无后继字段 |
+
+解析保留选择子、原始 double 位模式和路径，支持空对象、同类回引及完整对象体。
+遇到不同对象类无法确定边界，沿用外层 FeatureBookmark 的事务回退。
+合成工程覆盖各选择子、版本和截断。路径读出后 ArcMap 尝试加载外部因子表，
+本解析器仅保留路径文本。实际工具参数及 ArcMap 工程读写待实档验证。

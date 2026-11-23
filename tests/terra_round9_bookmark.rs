@@ -5971,3 +5971,74 @@ fn feature_bookmark_reads_all_spatial_analyst_neighborhood_branches() {
         );
     }
 }
+
+#[test]
+fn feature_bookmark_reads_horizontal_and_vertical_distance_factors() {
+    use mxd2qgz::layers::image_server_rules::RuleSlot10_1;
+    use mxd2qgz::maps::map_surround::{
+        GP_SA_HORIZONTAL_FACTOR_CLASS_ID, GP_SA_VERTICAL_FACTOR_CLASS_ID, GpCodedValue10_1,
+        PATH_DISTANCE_HORIZONTAL_FACTOR_CLASS_ID, PATH_DISTANCE_VERTICAL_FACTOR_CLASS_ID,
+        PathDistanceFactor10_1, PathDistanceFactorParameters10_1 as Parameters,
+    };
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    let numbers = [1.5_f64.to_bits(), (-0.0_f64).to_bits(), u64::MAX, 0];
+    for (wrapper, nested, counts) in [
+        (
+            GP_SA_HORIZONTAL_FACTOR_CLASS_ID,
+            PATH_DISTANCE_HORIZONTAL_FACTOR_CLASS_ID,
+            &[2, 2, 3, 3, 0][..],
+        ),
+        (
+            GP_SA_VERTICAL_FACTOR_CLASS_ID,
+            PATH_DISTANCE_VERTICAL_FACTOR_CLASS_ID,
+            &[3, 4, 4, 0, 4, 4, 3, 3, 4, 4][..],
+        ),
+    ] {
+        assert_legacy_topo_coded_value(
+            wrapper,
+            1,
+            &[0; 16],
+            GpCodedValue10_1::SaDistanceFactor(RuleSlot10_1 {
+                entry: ObjectEntry10_1::Null,
+                body: None,
+            }),
+        );
+        for (kind, count) in (1_i32..).zip(counts.iter().copied()).chain([(-7, 0)]) {
+            for version in [0_u16, 1] {
+                let mut payload = bookmark_entry_10_1(&nested, 20);
+                payload.extend(version.to_le_bytes());
+                payload.extend(kind.to_le_bytes());
+                let parameters = match (count, kind) {
+                    (_, -7) => Parameters::None,
+                    (0, _) => {
+                        let name = "距离因子.txt";
+                        payload.extend(bookmark_string_10_1(name));
+                        Parameters::Path(name.to_owned())
+                    }
+                    _ => {
+                        let numbers = numbers[..count].to_vec();
+                        payload.extend(numbers.iter().flat_map(|bits| bits.to_le_bytes()));
+                        Parameters::Numbers(numbers)
+                    }
+                };
+                assert_legacy_topo_coded_value(
+                    wrapper,
+                    version,
+                    &payload,
+                    GpCodedValue10_1::SaDistanceFactor(RuleSlot10_1 {
+                        entry: ObjectEntry10_1::NewObject {
+                            class_id: nested,
+                            key: 20,
+                        },
+                        body: Some(Box::new(PathDistanceFactor10_1 {
+                            version,
+                            kind,
+                            parameters,
+                        })),
+                    }),
+                );
+            }
+        }
+    }
+}

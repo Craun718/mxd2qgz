@@ -429,6 +429,22 @@ pub const GP_SA_FUZZY_FUNCTION_CLASS_ID: [u8; 16] = [
     0x96, 0xfc, 0x1d, 0xf3, 0xe0, 0x01, 0x01, 0x4f, 0x96, 0x2b, 0x06, 0x4d, 0x48, 0xd5, 0xc2, 0x46,
 ];
 
+pub const GP_SA_HORIZONTAL_FACTOR_CLASS_ID: [u8; 16] = [
+    0x23, 0x70, 0xd2, 0x74, 0xe7, 0x49, 0xee, 0x4c, 0xb7, 0x69, 0x07, 0x46, 0x15, 0xe8, 0x09, 0xbd,
+];
+
+pub const GP_SA_VERTICAL_FACTOR_CLASS_ID: [u8; 16] = [
+    0x10, 0x7d, 0x12, 0xa2, 0x8d, 0x81, 0x0b, 0x44, 0xbd, 0x0e, 0xfa, 0x76, 0xcf, 0x75, 0xc3, 0x5b,
+];
+
+pub const PATH_DISTANCE_HORIZONTAL_FACTOR_CLASS_ID: [u8; 16] = [
+    0xbc, 0xfb, 0xda, 0x9f, 0x91, 0xa4, 0xd7, 0x43, 0x9d, 0x41, 0xd2, 0x88, 0xbb, 0xa5, 0x68, 0xe1,
+];
+
+pub const PATH_DISTANCE_VERTICAL_FACTOR_CLASS_ID: [u8; 16] = [
+    0xcc, 0xfe, 0x4e, 0x1d, 0x5c, 0xb8, 0xb9, 0x4e, 0xb0, 0x9b, 0xce, 0xf8, 0xc2, 0x25, 0xb5, 0xa3,
+];
+
 pub const GP_SA_NEIGHBORHOOD_CLASS_ID: [u8; 16] = [
     0xf7, 0x35, 0xa4, 0x6f, 0x46, 0x90, 0x2b, 0x48, 0x86, 0xcc, 0x08, 0x9e, 0x16, 0x82, 0xea, 0x3f,
 ];
@@ -515,6 +531,7 @@ pub enum GpCodedValue10_1 {
         arguments: [RuleSlot10_1<GpCodedValueBody10_1>; 3],
         raw_flags: [u8; 2],
     },
+    SaDistanceFactor(RuleSlot10_1<PathDistanceFactor10_1>),
     SaNeighborhood(Box<GpSaNeighborhood10_1>),
     SaRemap(Box<GpSaRemap10_1>),
     SaRadius {
@@ -581,6 +598,20 @@ pub enum GpCodedValue10_1 {
         seed: i32,
         raw_generator: i32,
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PathDistanceFactor10_1 {
+    pub version: u16,
+    pub kind: i32,
+    pub parameters: PathDistanceFactorParameters10_1,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PathDistanceFactorParameters10_1 {
+    None,
+    Numbers(Vec<u64>),
+    Path(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1767,6 +1798,8 @@ fn read_gp_coded_value_slot(
                     | GP_SA_CELL_SIZE_CLASS_ID
                     | GP_SA_FUZZY_FUNCTION_CLASS_ID
                     | GP_SA_NUMBER_REMAP_CLASS_ID
+                    | GP_SA_HORIZONTAL_FACTOR_CLASS_ID
+                    | GP_SA_VERTICAL_FACTOR_CLASS_ID
                     | GP_SA_NEIGHBORHOOD_CLASS_ID
                     | GP_SA_STRING_REMAP_CLASS_ID
                     | GP_SA_RADIUS_CLASS_ID
@@ -1806,6 +1839,8 @@ fn read_gp_coded_value_slot(
                 | GP_SA_CELL_SIZE_CLASS_ID
                 | GP_SA_FUZZY_FUNCTION_CLASS_ID
                 | GP_SA_NUMBER_REMAP_CLASS_ID
+                | GP_SA_HORIZONTAL_FACTOR_CLASS_ID
+                | GP_SA_VERTICAL_FACTOR_CLASS_ID
                 | GP_SA_NEIGHBORHOOD_CLASS_ID
                 | GP_SA_STRING_REMAP_CLASS_ID
                 | GP_SA_RADIUS_CLASS_ID
@@ -1933,6 +1968,14 @@ fn read_gp_coded_value_slot(
                         },
                     }
                 }
+                GP_SA_HORIZONTAL_FACTOR_CLASS_ID | GP_SA_VERTICAL_FACTOR_CLASS_ID => {
+                    GpCodedValue10_1::SaDistanceFactor(read_path_distance_factor_slot(
+                        reader,
+                        max_bytes,
+                        table,
+                        class_id == GP_SA_VERTICAL_FACTOR_CLASS_ID,
+                    )?)
+                }
                 GP_SA_NEIGHBORHOOD_CLASS_ID => GpCodedValue10_1::SaNeighborhood(Box::new(
                     read_gp_sa_neighborhood(reader, max_bytes, table, depth, version)?,
                 )),
@@ -2051,6 +2094,73 @@ fn read_gp_sa_legacy_name(
     }
     read_bookmark_name_slot_10_1(reader, max_bytes, table, depth + 1)
         .map(|name| Some(Box::new(name)))
+}
+
+fn read_path_distance_factor_slot(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    vertical: bool,
+) -> io::Result<RuleSlot10_1<PathDistanceFactor10_1>> {
+    use PathDistanceFactorParameters10_1 as Parameters;
+
+    let expected_class = if vertical {
+        PATH_DISTANCE_VERTICAL_FACTOR_CLASS_ID
+    } else {
+        PATH_DISTANCE_HORIZONTAL_FACTOR_CLASS_ID
+    };
+    let entry = read_object_entry_10_1(reader, table)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if table.registered_class(key).unwrap_or(class_id) == expected_class =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject { class_id, .. } if class_id == expected_class => {
+            let version = reader.read_u16_le()?;
+            if version > 1 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "距离因子对象版本超出 10.1 上限",
+                ));
+            }
+            let kind = reader.read_u32_le()? as i32;
+            // 分支依据 RasterDistanceOp 的两个 Load 跳转表，保留原始 double 位模式。
+            let parameters = match (vertical, kind) {
+                (false, 5) | (true, 4) => Parameters::Path(read_string_10_1(reader, max_bytes)?),
+                _ => {
+                    let count = match (vertical, kind) {
+                        (false, 1 | 2) => 2,
+                        (false, 3 | 4) | (true, 1 | 7 | 8) => 3,
+                        (true, 2 | 3 | 5 | 6 | 9 | 10) => 4,
+                        _ => 0,
+                    };
+                    if count == 0 {
+                        Parameters::None
+                    } else {
+                        Parameters::Numbers(
+                            (0..count)
+                                .map(|_| reader.read_f64_le().map(f64::to_bits))
+                                .collect::<io::Result<_>>()?,
+                        )
+                    }
+                }
+            };
+            Some(Box::new(PathDistanceFactor10_1 {
+                version,
+                kind,
+                parameters,
+            }))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "距离因子槽的对象类不受支持",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
 }
 
 fn read_gp_sa_neighborhood(

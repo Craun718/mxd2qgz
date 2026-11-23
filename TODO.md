@@ -755,6 +755,8 @@
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPCodedValueDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldinfodomain-与-gpcodedvaluedomain)
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPFieldInfoDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldinfodomain-与-gpcodedvaluedomain)
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
+      - [x] 接入 GPCodedValueDomain 中的 GPSAHorizontalFactor 及其内嵌水平距离因子。[取证](docs/mxd-terra-round9-bookmark.md#gpsahorizontalfactor-与-gpsaverticalfactor)
+      - [x] 接入 GPCodedValueDomain 中的 GPSAVerticalFactor 及其内嵌垂直距离因子。[取证](docs/mxd-terra-round9-bookmark.md#gpsahorizontalfactor-与-gpsaverticalfactor)
       - [x] 接入 GPCodedValueDomain 中的 GPSANeighborhood 及尺寸、路径和内嵌 Variant 分支。[取证](docs/mxd-terra-round9-bookmark.md#gpsaneighborhood)
       - [x] 接入 GPCodedValueDomain 中共用版本前缀的 GPSANumberRemap 和 GPSAStringRemap。[取证](docs/mxd-terra-round9-bookmark.md#gpsanumberremap-与-gpsastringremap)
       - [x] 接入 GPCodedValueDomain 中的 GPSAFuzzyFunction 和递归值参数。[取证](docs/mxd-terra-round9-bookmark.md#gpsafuzzyfunction)
