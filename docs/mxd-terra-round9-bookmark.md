@@ -1037,3 +1037,14 @@ ArcMap/QGIS 人工验收待验证。
 GPSATextTableNameDomain 在 `0x748f52f3` 读取 AfCore 成员 String。
 构造测试覆盖两类独立身份、尾部字段、后继书签边界和截断回滚。
 字段业务含义、真实 ArcMap 书签及 QGIS 人工验收待验证。
+
+### GPSARemapDomain
+
+同版 GPSACore.dll 的 RTTI `0x749469bc` 对应持久化虚表
+`0x74930aa4`，CLSID 为 `ACA8516D-30D9-4002-8744-6241350E6F73`。
+QI `0x748efb40` 在 `0x748efb79` 比较 IGPDomain IID，匹配时返回 +0x10。
+Load `0x748eff50` 检查有符号 short 上限 1，于 `0x748effa8`
+读取有符号 LONG 计数，正计数逐项在 `0x748effd9` 读取 LONG。
+Save `0x748f0030` 同序写出。构造测试覆盖正负计数、数值、
+后继书签边界及逐字节截断回滚。字段业务含义和真实 ArcMap/QGIS
+人工验收待验证。

@@ -335,6 +335,10 @@ pub struct AoiBookmark10_1 {
 
 const MAX_BOOKMARK_NAME_NESTING: usize = 16;
 
+pub const GP_SA_REMAP_DOMAIN_CLASS_ID: [u8; 16] = [
+    0x6d, 0x51, 0xa8, 0xac, 0xd9, 0x30, 0x02, 0x40, 0x87, 0x44, 0x62, 0x41, 0x35, 0x0e, 0x6f, 0x73,
+];
+
 pub const GP_SA_NAME_DOMAIN_CLASS_ID: [u8; 16] = [
     0x4e, 0x8f, 0xa7, 0xc6, 0xf5, 0xa1, 0x1a, 0x42, 0xad, 0x8c, 0xc4, 0xc9, 0xec, 0x85, 0x4a, 0x40,
 ];
@@ -434,6 +438,11 @@ pub const GP_FILE_DOMAIN_CLASS_ID: [u8; 16] = [
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpTopoDomain10_1 {
+    SaRemap {
+        version: i16,
+        raw_count: i32,
+        values: Vec<i32>,
+    },
     SaName {
         version: i16,
         long: i32,
@@ -1305,6 +1314,7 @@ fn read_gp_topo_domain_slot_10_1(
                     | GP_SA_GEO_DATA_DOMAIN_CLASS_ID
                     | GP_SA_TEXT_TABLE_NAME_DOMAIN_CLASS_ID
                     | GP_SA_NAME_DOMAIN_CLASS_ID
+                    | GP_SA_REMAP_DOMAIN_CLASS_ID
                     | GP_TABLES_DOMAIN_CLASS_ID
                     | GP_QUERY_TABLE_FIELDS_DOMAIN_CLASS_ID
             ) =>
@@ -1321,6 +1331,18 @@ fn read_gp_topo_domain_slot_10_1(
             middle_shorts: [reader.read_u16_le()?, reader.read_u16_le()?],
             second_double_bits: reader.read_f64_le()?.to_bits(),
         }))),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_SA_REMAP_DOMAIN_CLASS_ID,
+            ..
+        } => {
+            let version = read_gp_name_version(reader, 1, "GPSARemapDomain")?;
+            let (raw_count, values) = read_gp_domain_longs(reader, max_bytes, "GPSARemapDomain")?;
+            Some(Box::new(GpTopoDomain10_1::SaRemap {
+                version,
+                raw_count,
+                values,
+            }))
+        }
         ObjectEntry10_1::NewObject {
             class_id: GP_SA_NAME_DOMAIN_CLASS_ID,
             ..
