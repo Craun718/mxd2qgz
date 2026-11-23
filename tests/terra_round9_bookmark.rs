@@ -5689,3 +5689,24 @@ fn feature_bookmark_reads_gp_route_measure_event_properties() {
         GpCodedValue10_1::RouteMeasureEventProperties(strings.map(String::from)),
     );
 }
+
+#[test]
+fn feature_bookmark_reads_gp_sa_cell_size() {
+    use mxd2qgz::maps::map_surround::{GP_SA_CELL_SIZE_CLASS_ID, GpCodedValue10_1};
+
+    let raw_mode = -2_i32;
+    let (x_bits, y_bits) = (30.0_f64.to_bits(), (-0.0_f64).to_bits());
+    let mut payload = raw_mode.to_le_bytes().to_vec();
+    payload.extend(x_bits.to_le_bytes());
+    payload.extend(y_bits.to_le_bytes());
+    assert_legacy_topo_coded_value(
+        GP_SA_CELL_SIZE_CLASS_ID,
+        1,
+        &payload,
+        GpCodedValue10_1::SaCellSize {
+            raw_mode,
+            x_bits,
+            y_bits,
+        },
+    );
+}

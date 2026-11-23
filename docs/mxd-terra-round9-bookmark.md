@@ -1443,3 +1443,18 @@ Load `0x74774d50` 检查无符号 short 版本上限 1，调用 GPValue
 相同的类和版本，且普通 ObjectStream 无对象长度。
 当前保留这两类的停止边界，等待真实档案或运行取证确认
 编码值域实际使用的字段顺序。尚未在 ArcMap/QGIS 人工验证。
+
+#### GPSACellSize
+
+GPSACore.dll 10.1.0.3035 的 SHA-256 为
+`0aa35b1be22c61742f36a651679e3028c363c40eebe859cda285fa6c6c2a5292`。
+RTTI `0x749461d4` 对应持久化虚表 `0x7492d69c`，类标识常量
+`0x7492d71c` 与 10.1 Desktop 互操作程序集声明的
+`0882F404-551D-4DAC-9842-3DC2F27F5B53` 一致。用 objdump 核对，
+Load `0x748d6a70` 检查无符号 short 版本上限 1，读取 GPValue
+基类后在 `0x748d6aca / 0x748d6afa / 0x748d6b0c` 依次读取
+LONG、double、double。Save `0x748d6b40` 按相同顺序写入。
+解析保留模式值和两个 double 的原始位模式。
+
+构造书签覆盖字段、对象回引、超限版本、后继字符串和逐字节截断回滚。
+模式枚举、真实书签和 ArcMap/QGIS 人工验收待验证。

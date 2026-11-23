@@ -425,6 +425,10 @@ pub const GP_POINT_CLASS_ID: [u8; 16] = [
     0x82, 0x30, 0xe9, 0xa1, 0xbe, 0xba, 0x44, 0x4d, 0x8c, 0xe3, 0x46, 0x37, 0x74, 0x8e, 0xdd, 0xdd,
 ];
 
+pub const GP_SA_CELL_SIZE_CLASS_ID: [u8; 16] = [
+    0x04, 0xf4, 0x82, 0x08, 0x1d, 0x55, 0xac, 0x4d, 0x98, 0x42, 0x3d, 0xc2, 0xf2, 0x7f, 0x5b, 0x53,
+];
+
 pub const GP_CELL_SIZE_XY_CLASS_ID: [u8; 16] = [
     0x6a, 0x89, 0xb9, 0x4e, 0xb8, 0x27, 0xc2, 0x4c, 0xa0, 0xc2, 0x55, 0xe4, 0x0d, 0x2e, 0x92, 0x8c,
 ];
@@ -476,6 +480,11 @@ pub const GP_EXTENT_CLASS_ID: [u8; 16] = [
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpCodedValue10_1 {
     Point {
+        x_bits: u64,
+        y_bits: u64,
+    },
+    SaCellSize {
+        raw_mode: i32,
         x_bits: u64,
         y_bits: u64,
     },
@@ -1665,6 +1674,7 @@ fn read_gp_coded_value_slot(
                 GP_STRING_CLASS_ID
                     | GP_POINT_CLASS_ID
                     | GP_CELL_SIZE_XY_CLASS_ID
+                    | GP_SA_CELL_SIZE_CLASS_ID
                     | GP_ENVELOPE_CLASS_ID
                     | GP_EXTENT_CLASS_ID
                     | GP_SPATIAL_REFERENCE_CLASS_ID
@@ -1696,6 +1706,7 @@ fn read_gp_coded_value_slot(
                 class_id @ (GP_STRING_CLASS_ID
                 | GP_POINT_CLASS_ID
                 | GP_CELL_SIZE_XY_CLASS_ID
+                | GP_SA_CELL_SIZE_CLASS_ID
                 | GP_ENVELOPE_CLASS_ID
                 | GP_EXTENT_CLASS_ID
                 | GP_SPATIAL_REFERENCE_CLASS_ID
@@ -1785,6 +1796,11 @@ fn read_gp_coded_value_slot(
                 }
                 GP_DOUBLE_CLASS_ID => GpCodedValue10_1::DoubleBits(reader.read_f64_le()?.to_bits()),
                 GP_POINT_CLASS_ID => GpCodedValue10_1::Point {
+                    x_bits: reader.read_f64_le()?.to_bits(),
+                    y_bits: reader.read_f64_le()?.to_bits(),
+                },
+                GP_SA_CELL_SIZE_CLASS_ID => GpCodedValue10_1::SaCellSize {
+                    raw_mode: reader.read_u32_le()? as i32,
                     x_bits: reader.read_f64_le()?.to_bits(),
                     y_bits: reader.read_f64_le()?.to_bits(),
                 },
