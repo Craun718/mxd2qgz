@@ -884,3 +884,16 @@ QI `0x7475a090` 在 `0x7475a0fb` 比较 IGPDomain IID，
 构造旧记录覆盖负计数、有符号列表值、后继字段边界以及截断和
 超量计数回滚。列表值的业务含义、真实 ArcMap 书签和 QGIS
 人工验收待验证。
+
+### GPDatasetDomain
+
+同版 GpObjects.dll 的 RTTI `0x747ff86c` 对应持久化虚表
+`0x747ac768`，类标识为 `507CDA98-CEFD-4BFC-BF14-21A41B773E2D`。
+QI `0x746ab560` 在 `0x746ab5cb` 比较 IGPDomain IID，匹配时
+返回 +0x10。Load `0x746abec0` 检查有符号 short 上限 1，
+在 `0x746abf0c` 读取有符号 int32 计数，正计数逐项读取 LONG。
+随后无条件读取四个 short（`0x746abf6d / 0x746abf7f /
+0x746abf91 / 0x746abfa3`）。Save `0x746abfd0` 同序写出。
+
+构造测试覆盖正计数、负计数时仍读取四个 short、后继书签文本
+及逐字节截断回滚。字段含义、真实书签及 ArcMap/QGIS 人工验收待验证。

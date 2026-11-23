@@ -4005,3 +4005,67 @@ fn feature_bookmark_reads_legacy_topo_workspace_domain() {
         assert!(refs.is_empty());
     }
 }
+
+#[test]
+fn feature_bookmark_reads_legacy_topo_dataset_domain() {
+    use mxd2qgz::maps::map_surround::{
+        GP_DATASET_DOMAIN_CLASS_ID, GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID, GpTopoDomain10_1,
+    };
+
+    for raw_count in [-1_i32, 2] {
+        let mut bytes = bookmark_header_10_1(&GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID, 17);
+        bytes.extend(1_i16.to_le_bytes());
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend([0; 16]);
+        bytes.extend(GP_DATASET_DOMAIN_CLASS_ID);
+        bytes.extend(18_u32.to_le_bytes());
+        bytes.extend(1_i16.to_le_bytes());
+        bytes.extend(raw_count.to_le_bytes());
+        let values = if raw_count > 0 {
+            vec![-5_i32, 7]
+        } else {
+            vec![]
+        };
+        for value in &values {
+            bytes.extend(value.to_le_bytes());
+        }
+        let trailing_shorts = [1_u16, 2, 0xffff, 4];
+        for value in trailing_shorts {
+            bytes.extend(value.to_le_bytes());
+        }
+        bytes.extend(bookmark_string_10_1("拓扑"));
+        bytes.extend(9_i32.to_le_bytes());
+        bytes.extend(bookmark_string_10_1("书签"));
+        let end = bytes.len();
+        bytes.push(0xa5);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+        let BookmarkNameEntry10_1::GpSaTopoFeaturesTypeName(body) = result.name_object else {
+            panic!("应读取拓扑要素类型名称");
+        };
+        let entry = &body.legacy_entries[0];
+        assert_eq!(
+            entry.legacy_domain.as_ref().unwrap().body.as_deref(),
+            Some(&GpTopoDomain10_1::Dataset {
+                version: 1,
+                raw_count,
+                values,
+                trailing_shorts
+            })
+        );
+        assert_eq!(entry.string, "拓扑");
+        assert_eq!(result.name, "书签");
+        assert_eq!(reader.position(), end);
+        assert!(refs.contains(17) && refs.contains(18));
+
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+}

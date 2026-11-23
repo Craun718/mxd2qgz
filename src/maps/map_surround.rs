@@ -335,6 +335,10 @@ pub struct AoiBookmark10_1 {
 
 const MAX_BOOKMARK_NAME_NESTING: usize = 16;
 
+pub const GP_DATASET_DOMAIN_CLASS_ID: [u8; 16] = [
+    0x98, 0xda, 0x7c, 0x50, 0xfd, 0xce, 0xfc, 0x4b, 0xbf, 0x14, 0x21, 0xa4, 0x1b, 0x77, 0x3e, 0x2d,
+];
+
 pub const GP_WORKSPACE_DOMAIN_CLASS_ID: [u8; 16] = [
     0x1e, 0x38, 0x38, 0x02, 0x3f, 0x08, 0x29, 0x4d, 0x93, 0x3d, 0x09, 0xb4, 0x6e, 0xcc, 0xcf, 0x73,
 ];
@@ -350,6 +354,12 @@ pub const GP_FILE_DOMAIN_CLASS_ID: [u8; 16] = [
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpTopoDomain10_1 {
     Numeric(GpNumericDomain10_1),
+    Dataset {
+        version: i16,
+        raw_count: i32,
+        values: Vec<i32>,
+        trailing_shorts: [u16; 4],
+    },
     Workspace {
         version: i16,
         raw_count: i32,
@@ -1093,6 +1103,25 @@ fn read_gp_function_name_body_10_1(
     })
 }
 
+fn read_gp_domain_longs(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    class: &str,
+) -> io::Result<(i32, Vec<i32>)> {
+    let raw_count = reader.read_u32_le()? as i32;
+    let count = raw_count.max(0) as usize;
+    if count > reader.remaining().min(max_bytes) / 4 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("{class} 条目数量超限"),
+        ));
+    }
+    let values = (0..count)
+        .map(|_| reader.read_u32_le().map(|value| value as i32))
+        .collect::<io::Result<Vec<_>>>()?;
+    Ok((raw_count, values))
+}
+
 fn read_gp_topo_domain_slot_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -1108,6 +1137,7 @@ fn read_gp_topo_domain_slot_10_1(
                     | GP_FILE_DOMAIN_CLASS_ID
                     | GP_RANGE_DOMAIN_CLASS_ID
                     | GP_WORKSPACE_DOMAIN_CLASS_ID
+                    | GP_DATASET_DOMAIN_CLASS_ID
             ) =>
         {
             None
@@ -1123,21 +1153,30 @@ fn read_gp_topo_domain_slot_10_1(
             second_double_bits: reader.read_f64_le()?.to_bits(),
         }))),
         ObjectEntry10_1::NewObject {
+            class_id: GP_DATASET_DOMAIN_CLASS_ID,
+            ..
+        } => {
+            let version = read_gp_name_version(reader, 1, "GPDatasetDomain")?;
+            let (raw_count, values) = read_gp_domain_longs(reader, max_bytes, "GPDatasetDomain")?;
+            let trailing_shorts = [
+                reader.read_u16_le()?,
+                reader.read_u16_le()?,
+                reader.read_u16_le()?,
+                reader.read_u16_le()?,
+            ];
+            Some(Box::new(GpTopoDomain10_1::Dataset {
+                version,
+                raw_count,
+                values,
+                trailing_shorts,
+            }))
+        }
+        ObjectEntry10_1::NewObject {
             class_id: GP_WORKSPACE_DOMAIN_CLASS_ID,
             ..
         } => {
             let version = read_gp_name_version(reader, 1, "GPWorkspaceDomain")?;
-            let raw_count = reader.read_u32_le()? as i32;
-            let count = raw_count.max(0) as usize;
-            if count > reader.remaining().min(max_bytes) / 4 {
-                return Err(io::Error::new(
-                    ErrorKind::InvalidData,
-                    "GPWorkspaceDomain 条目数量超限",
-                ));
-            }
-            let values = (0..count)
-                .map(|_| reader.read_u32_le().map(|value| value as i32))
-                .collect::<io::Result<Vec<_>>>()?;
+            let (raw_count, values) = read_gp_domain_longs(reader, max_bytes, "GPWorkspaceDomain")?;
             Some(Box::new(GpTopoDomain10_1::Workspace {
                 version,
                 raw_count,
