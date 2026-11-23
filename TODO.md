@@ -877,7 +877,7 @@
       - [x] 核对 GCS 默认 Z/M 容差及垂向单位有效性检查。[空间参考取证](docs/arcmap-10.1-pcs-geometry-slots.md)
       - [x] 核对 GCS 默认 XY 容差所用的 AfCore 范数实现。[空间参考取证](docs/arcmap-10.1-pcs-geometry-slots.md)
       - [x] 核对未知坐标系的默认容差与旧版网格恢复分支。[空间参考取证](docs/arcmap-10.1-pcs-geometry-slots.md)
-      - [ ] 闭合坐标系容差的 pe/sg 数值推导链。[空间参考取证](docs/arcmap-10.1-pcs-geometry-slots.md)
+      - [x] 闭合坐标系容差的 pe/sg 数值推导链。[空间参考取证](docs/arcmap-10.1-pcs-geometry-slots.md)
       - [x] 核对旧版 UnknownCoordinateSystem 无网格句柄时的容差读取路径。[取证](docs/arcmap-10.1-pcs-geometry-slots.md#旧版-unknowncoordinatesystem-缺失网格时的容差取证)
       - [x] 在原生 sg.dll 中验证网格设置成功及失败后的比例因子。[取证](docs/arcmap-10.1-pcs-geometry-slots.md#网格比例因子的原生-dll-运行验证)
       - [x] 运行验证旧版 UnknownCoordinateSystem 的三个原生网格容差函数。[取证](docs/arcmap-10.1-pcs-geometry-slots.md#旧版未知坐标系的网格容差函数运行验证)
@@ -887,6 +887,7 @@
       - [x] 原生验证 GCS 的 XY 默认容差角单位换算和网格下限。[取证](docs/arcmap-10.1-pcs-geometry-slots.md#gcs-的-xy-默认容差角单位换算运行验证)
       - [x] 原生验证 PCS 与 GCS 的 Z 默认容差单位换算和网格下限。[取证](docs/arcmap-10.1-pcs-geometry-slots.md#pcs-与-gcs-的-z-默认容差单位换算运行验证)
       - [x] 原生验证 PCS 与 GCS 的 M 默认容差及网格下限。[取证](docs/arcmap-10.1-pcs-geometry-slots.md#pcs-与-gcs-的-m-默认容差运行验证)
+      - [x] 原生验证 PCS v4 与 GCS v5 的 Load 自动网格容差。[取证](docs/arcmap-10.1-pcs-geometry-slots.md#pcs-v4-与-gcs-v5-的-load-自动恢复容差)
       - [x] 将 ISRPersistStream 槽 8 定名为 GetPrecisionSizeMax，输出 `0x38`。
       - [x] 核对 10.1 UnknownCoordinateSystem 四条持久化字符串与 ISpatialReferenceInfo 属性的对应关系。[原生取证](docs/arcmap-10.1-pcs-geometry-slots.md#unknowncoordinatesystem-的四条持久化字符串)
       - [x] 确认 GCS 加载守卫也控制 IGeographicCoordinateSystemEdit 的接口查询。[类型库与原生分派](docs/mxd-terra-integrate-sr.md#gcs-守卫与槽位)
