@@ -800,6 +800,7 @@
       - [x] 定位共用基类 v5 short 的跨模块接口访问及独立 Scalebar 的零返回分支。[虚调用取证](docs/mxd-terra-nextpass-scale.md#共用基类-v5-标量的接口访问)
       - [x] 定性四类填充比例尺派生中段的 double 为 IScaleBar.BarHeight，并从解析结果提供该值。[高度取证](docs/mxd-terra-nextpass-scale.md#填充比例尺高度)
       - [ ] 定性独立 Scalebar 类的其余标量字段。[比例尺续查](docs/mxd-terra-nextpass-scale.md)
+      - [x] 静态核对独立 Scalebar 的 QueryBounds 主表派发。[取证](docs/mxd-terra-nextpass-scale.md#独立-scalebar-的边界计算派发)
       - [x] 核对独立 Scalebar 的接口分派和新增四项默认值。[接口边界](docs/mxd-terra-nextpass-scale.md#独立-scalebar-的接口边界)
       - [x] 核对独立 Scalebar 的 IMapSurround::Draw 实现。[绘制入口](docs/mxd-terra-nextpass-scale.md#独立-scalebar-的绘制入口)
       - [x] 补读独立 Scalebar 首个字体槽前漏掉的四个 32 位值，并验证截断回滚。[原生读写](docs/arcmap-10.1-legend-family.md#二scalebar7a3f91db-体完全闭合证据确定的)
