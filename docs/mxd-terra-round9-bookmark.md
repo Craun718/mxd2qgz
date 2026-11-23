@@ -352,3 +352,13 @@ GdbCore FeatureDatasetName，后者已确认支持 IName。
 书签复用 [Load 及可选 RasterIO 记录读取器](mxd-10.1-raster-layer-tail.md#rasterdatasetname83)。
 构造测试覆盖有无记录、记录后的书签文本与对象边界、逐字节截断回滚。
 真实书签宿主和原生 Open 返回对象仍待 ArcMap 10.1 验证。
+
+## RasterBandCollectionName
+
+复用同版 RasterDB.dll 的 IName 与 IPersistStream 取证，见
+[波段名称与集合](mxd-10.1-raster-layer-tail.md#波段名称与集合)。
+Load `0x7c052da0` 的共用读取器已接入 FeatureBookmark。
+构造书签读取集合版本 2、内联 RasterDatasetName 和 LongArray，
+确认波段索引按顺序保留重复项，三个键在同一对象表登记；
+后继书签字符串及逐字节截断回滚均纳入测试。
+真实书签宿主及原生 Open 结果仍待 ArcMap 10.1 验证。

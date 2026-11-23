@@ -1967,3 +1967,56 @@ fn feature_bookmark_raster_dataset_name83_preserves_optional_record_boundary() {
         }
     }
 }
+
+#[test]
+fn feature_bookmark_reads_raster_band_collection_and_its_array() {
+    use mxd2qgz::layers::raster_dataset_name::{
+        RASTER_BAND_COLLECTION_NAME_CLASS_ID, RASTER_DATASET_NAME_CLASS_ID,
+        RasterDatasetNameEntryBody10_1,
+    };
+
+    let mut bytes = bookmark_header_10_1(&RASTER_BAND_COLLECTION_NAME_CLASS_ID, 17);
+    bytes.extend(2_u16.to_le_bytes());
+    bytes.extend(bookmark_string_10_1("波段集合"));
+    bytes.extend(RASTER_DATASET_NAME_CLASS_ID);
+    bytes.extend(18_u32.to_le_bytes());
+    bytes.extend(2_i32.to_le_bytes());
+    for text in ["image.tif", "", "", ""] {
+        bytes.extend(bookmark_string_10_1(text));
+    }
+    bytes.extend([0; 16]);
+    bytes.extend([
+        0x08, 0xb8, 0xbf, 0x98, 0x1f, 0xe9, 0xd2, 0x11, 0x9f, 0x81, 0, 0xc0, 0x4f, 0x8e, 0xce, 0x27,
+    ]); // LongArray
+    bytes.extend(19_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    for value in [3_i32, 2, 0, 2] {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes.extend(bookmark_string_10_1("书签"));
+    let end = bytes.len();
+    bytes.push(0xa5);
+
+    let mut refs = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    let BookmarkNameEntry10_1::RasterDatasetName(body) = result.name_object else {
+        panic!("应读取栅格名称");
+    };
+    let RasterDatasetNameEntryBody10_1::BandCollection(collection) = *body else {
+        panic!("应读取波段集合");
+    };
+    assert_eq!(collection.array, Some((1, vec![2, 0, 2])));
+    assert_eq!(collection.version, 2);
+    assert_eq!(result.name, "书签");
+    assert_eq!(reader.position(), end);
+    assert!([17, 18, 19].into_iter().all(|key| refs.contains(key)));
+
+    for cut in 0..end {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+}
