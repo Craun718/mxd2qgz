@@ -335,6 +335,13 @@ pub struct AoiBookmark10_1 {
 
 const MAX_BOOKMARK_NAME_NESTING: usize = 16;
 
+pub const GP_QUERY_TABLE_IDS_DOMAIN_CLASS_ID: [u8; 16] = [
+    0x60, 0xb0, 0xf6, 0x74, 0xb6, 0x5e, 0x51, 0x48, 0x8f, 0xfd, 0x8b, 0x18, 0x8a, 0x84, 0x5f, 0x37,
+];
+pub const GP_QUERY_TABLE_FIELDS_DOMAIN_CLASS_ID: [u8; 16] = [
+    0x68, 0x36, 0xc4, 0x9c, 0xd8, 0x43, 0x82, 0x41, 0x98, 0x20, 0xb2, 0xd6, 0x20, 0x30, 0x5b, 0xed,
+];
+
 pub const GP_ROUTE_ID_FIELDS_DOMAIN_CLASS_ID: [u8; 16] = [
     0xb0, 0x70, 0x4f, 0x4a, 0x3c, 0x91, 0x82, 0x4a, 0xa3, 0x3f, 0xe1, 0x90, 0xff, 0xa4, 0x09, 0xea,
 ];
@@ -386,6 +393,12 @@ pub const GP_FILE_DOMAIN_CLASS_ID: [u8; 16] = [
 pub enum GpTopoDomain10_1 {
     Numeric(GpNumericDomain10_1),
     Field(GpFieldDomain10_1),
+    QueryTableIds {
+        version: i16,
+    },
+    QueryTableFields {
+        version: i16,
+    },
     RouteIdFields {
         version: i16,
     },
@@ -1215,6 +1228,8 @@ fn read_gp_topo_domain_slot_10_1(
                     | GP_FIELD_DOMAIN_CLASS_ID
                     | GP_MEASURE_FIELDS_DOMAIN_CLASS_ID
                     | GP_ROUTE_ID_FIELDS_DOMAIN_CLASS_ID
+                    | GP_QUERY_TABLE_IDS_DOMAIN_CLASS_ID
+                    | GP_QUERY_TABLE_FIELDS_DOMAIN_CLASS_ID
             ) =>
         {
             None
@@ -1229,6 +1244,18 @@ fn read_gp_topo_domain_slot_10_1(
             middle_shorts: [reader.read_u16_le()?, reader.read_u16_le()?],
             second_double_bits: reader.read_f64_le()?.to_bits(),
         }))),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_QUERY_TABLE_IDS_DOMAIN_CLASS_ID,
+            ..
+        } => Some(Box::new(GpTopoDomain10_1::QueryTableIds {
+            version: read_gp_name_version(reader, 1, "GPQueryTableIDsDomain")?,
+        })),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_QUERY_TABLE_FIELDS_DOMAIN_CLASS_ID,
+            ..
+        } => Some(Box::new(GpTopoDomain10_1::QueryTableFields {
+            version: read_gp_name_version(reader, 1, "GPQueryTableFieldsDomain")?,
+        })),
         ObjectEntry10_1::NewObject {
             class_id: GP_ROUTE_ID_FIELDS_DOMAIN_CLASS_ID,
             ..

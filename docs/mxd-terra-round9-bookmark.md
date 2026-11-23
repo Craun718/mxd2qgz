@@ -956,3 +956,17 @@ Save `0x74778fb0` 同样只写一个 short。
 
 构造测试分别核对两种类的身份、负版本、超限版本、后继字段及
 逐字节截断回滚。真实 ArcMap 书签和 QGIS 人工验收待验证。
+
+### GPQueryTableIDsDomain 与 GPQueryTableFieldsDomain
+
+GpObjects.dll 10.1.0.3035 的 PE RTTI 和持久化虚表对应关系如下。
+
+| 类 | CLSID | RTTI | 持久化虚表 | Save |
+| --- | --- | --- | --- | --- |
+| GPQueryTableIDsDomain | `74F6B060-5EB6-4851-8FFD-8B188A845F37` | `0x74804a74` | `0x747bc0c8` | `0x74777eb0` |
+| GPQueryTableFieldsDomain | `9CC43668-43D8-4182-9820-B2D620305BED` | `0x74804a98` | `0x747bbfc4` | `0x747772d0` |
+
+两个虚表共用 Load `0x74779a00`，只读取有符号版本 short，
+上限为 1。各自 Save 也只写一个 short。
+构造测试核对各自的类身份、负版本、超限版本、后继字段边界
+和逐字节截断回滚。真实 ArcMap 书签及 QGIS 人工验收待验证。

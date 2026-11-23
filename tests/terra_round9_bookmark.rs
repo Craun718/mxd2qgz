@@ -4347,3 +4347,19 @@ fn assert_legacy_topo_version_only_domain(
     assert_eq!(reader.position(), 0);
     assert!(refs.is_empty());
 }
+
+#[test]
+fn feature_bookmark_reads_legacy_topo_query_table_domains() {
+    use mxd2qgz::maps::map_surround::{
+        GP_QUERY_TABLE_FIELDS_DOMAIN_CLASS_ID, GP_QUERY_TABLE_IDS_DOMAIN_CLASS_ID, GpTopoDomain10_1,
+    };
+
+    assert_legacy_topo_version_only_domain(
+        GP_QUERY_TABLE_IDS_DOMAIN_CLASS_ID,
+        GpTopoDomain10_1::QueryTableIds { version: -1 },
+    );
+    assert_legacy_topo_version_only_domain(
+        GP_QUERY_TABLE_FIELDS_DOMAIN_CLASS_ID,
+        GpTopoDomain10_1::QueryTableFields { version: -1 },
+    );
+}
