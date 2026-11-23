@@ -428,6 +428,27 @@ NetworkAnalyst.dll 10.1.0.3035 的 NATraversalResultSource 持久化虚表 `0x7a
 
 FeatureLayer.dll 10.1.0.3035 的 GroupLayer::Load `0x6f711270` 在 v11 起通过 ExtraSafeReadObject 装入子层。NetworkLayer 与 NALayer 不消费遮罩记录，但其持久化对象体可以定义供后续对象引用的键。完整组读取器现在尝试在声明范围内消费这两类子层，只有确认体完整且到达边界才提交内部键。仍可按原规则同步未支持的分支。构造测试验证组内 NetworkLayer 的 NetworkDatasetName 键登记，既有测试继续覆盖有界未知网络体及回引。真实嵌套工程及 ArcMap/QGIS 人工验收尚未验证。
 
+### 其余内置 ILayer 实现
+
+从同版 esriCarto 类型库解析 ILayer 实现者，并对剩余五类做 QI 指令复核。
+Layer.dll（SHA-256 `fe52bd9988b66f9d6f906b014e5684f28fc20e9b97b53c90909fa3d44e9efed8`）
+中 DummyLayer 与 DummyGraduatedMarkerLayer 共用主 QI `0x7865cf90`，
+未命中后进入 `0x786672b0`；两条路径都没有比较 ILayerMasking IID，
+最终返回 `E_NOINTERFACE`。FeatureLayer.dll 中 GraphicsSubLayer 的主 QI
+`0x6f70e6a0` 完成固定接口比较后调用 `0x6f73c440`，同样不命中遮罩接口。
+RasterLayer.dll 中 GdbRasterCatalogLayer 的主 QI `0x7c716d20` 走
+RasterLayer 基类接口表，RasterLayer 已确认不返回 ILayerMasking。
+BasemapLayer.dll（SHA-256
+`c8f4692970c5311e5d591f317c5e6c0379e9e6b9ad62a2383c71ecb6c8f64aad`）
+中 RasterBasemapLayer 的主 QI `0x6b688f40` 和后备
+`0x6b64dd00` 都未比较遮罩 IID；模块内唯一遮罩 IID 数据位于
+`0x6b6ac464`，不被这两段查询链引用。
+
+这五类因此加入 `is_unparsed_layer_without_masking_10_1`，逐图层遮罩遇到
+它们时可以按“查询失败，不消费遮罩记录”的静态结果继续保留图层体。
+类表测试覆盖新对象和回引中的已知支持、已知不支持及未知类三分状态。
+这里仍不等同于 ArcMap 运行时 QI，也不外推到插件替换或代理对象。
+
 ## TinLayer 与 TerrainLayer 的接口分派
 
 Desktop 10.1.0.3035 的注册文件分别将 TinLayer

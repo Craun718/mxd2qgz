@@ -458,7 +458,7 @@
   - [x] 清点 10.1 介质类型库公开的 Map 坐标变换类，核对 14 个公开类及通用 GeoTransformation 均已接入。[实现清点](docs/mxd-terra-host-geo.md#101-安装介质的接口实现清点)
   - [x] 定性 Map 坐标变换条目的方向字段及 v12/v13 的缺省规则。[方向取证](docs/mxd-terra-chain-map.md#map-变换条目的存盘方向)
   - [ ] 定位额外组件提供的 Map 坐标变换持久化类。GEOCONTransformation 与 NADCON5Transformation 在 10.1 Desktop 介质中仅见注册声明。[实现清点](docs/mxd-terra-host-geo.md#101-安装介质的接口实现清点)
-  - [ ] 补齐地图级标注属性后尚未支持的逐图层遮罩分支。剩余未确认图层类的接口分派及集合内尚不能读取的新对象体。
+  - [x] 补齐地图级标注属性后的逐图层遮罩分支：esriCarto 类型库全部 ILayer 实现者以及已知外部模块图层均归入支持、不支持或显式停止；DummyLayer、DummyGraduatedMarkerLayer、GraphicsSubLayer、GdbRasterCatalogLayer 和 RasterBasemapLayer 的 QI 负结果已接入。[内置 ILayer 清点](docs/mxd-luna-deep-layer-masking-20261118.md#其余内置-ilayer-实现)
     - [x] 核对 TinLayer 和 TerrainLayer 的逐图层遮罩分派。[原生 QI](docs/mxd-luna-deep-layer-masking-20261118.md#tinlayer-与-terrainlayer-的接口分派)
     - [x] 定位 TinLayer 普通对象体的 Load、Save 版本表及嵌套接口槽。[原生布局](docs/mxd-luna-deep-layer-masking-20261118.md#tinlayer-普通对象体)
     - [x] 核对 TinNodeRenderer、TinEdgeRenderer、TinFaceRenderer 的持久化体及三类子槽。[原生读取器](docs/mxd-luna-deep-layer-masking-20261118.md#tinnoderenderertinedgerenderer-与-tinfacerenderer)
