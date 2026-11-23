@@ -334,6 +334,10 @@ pub struct AoiBookmark10_1 {
 
 const MAX_BOOKMARK_NAME_NESTING: usize = 16;
 
+pub const GP_MULTI_VALUE_TYPE_NAME_CLASS_ID: [u8; 16] = [
+    0x70, 0x33, 0xde, 0x35, 0x8e, 0x67, 0xfb, 0x40, 0x9b, 0x7e, 0xff, 0xaf, 0x08, 0x22, 0x4b, 0x99,
+];
+
 pub const GP_DATA_TYPE_NAME_CLASS_ID: [u8; 16] = [
     0x2a, 0xb0, 0x0c, 0x96, 0xaf, 0x8c, 0x2b, 0x44, 0xac, 0xf7, 0x6b, 0x62, 0x56, 0xfc, 0x19, 0xf9,
 ];
@@ -446,6 +450,10 @@ pub enum BookmarkNameEntry10_1 {
     LasDatasetName(Box<LasDatasetName10_1>),
     RepresentationClassName(Box<RepresentationClassName10_1>),
     GpDataTypeName(Box<GpDataTypeName10_1>),
+    GpMultiValueTypeName {
+        version: i16,
+        element_type: Box<BookmarkNameEntry10_1>,
+    },
     LocatorName {
         version: i16,
         strings: [String; 4],
@@ -1311,6 +1319,45 @@ fn read_bookmark_name_slot_10_1(
         } => BookmarkNameEntry10_1::TerrainName(Box::new(read_terrain_name_body_10_1(
             reader, max_bytes, table,
         )?)),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_MULTI_VALUE_TYPE_NAME_CLASS_ID,
+            ..
+        } => {
+            if name_depth == MAX_BOOKMARK_NAME_NESTING {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "GPMultiValueTypeName 嵌套层数超限",
+                ));
+            }
+            let version = reader.read_u16_le()? as i16;
+            if version > 1 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    format!("GPMultiValueTypeName 版本 {version} 超出 10.1 上限"),
+                ));
+            }
+            let element_type =
+                read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth + 1)?;
+            if !matches!(
+                element_type,
+                BookmarkNameEntry10_1::Null
+                    | BookmarkNameEntry10_1::GpDataTypeName(_)
+                    | BookmarkNameEntry10_1::GpMultiValueTypeName { .. }
+                    | BookmarkNameEntry10_1::BackReference {
+                        class_id: GP_DATA_TYPE_NAME_CLASS_ID | GP_MULTI_VALUE_TYPE_NAME_CLASS_ID,
+                        ..
+                    }
+            ) {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    "GPMultiValueTypeName 的 IGPName 类未支持",
+                ));
+            }
+            BookmarkNameEntry10_1::GpMultiValueTypeName {
+                version,
+                element_type: Box::new(element_type),
+            }
+        }
         ObjectEntry10_1::NewObject {
             class_id: GP_DATA_TYPE_NAME_CLASS_ID,
             ..

@@ -773,3 +773,21 @@ Save `0x6f622c60` 和 GPName::Save `0x6e954c00` 对应新版布局。
 
 构造测试覆盖版本组合、UID 新键和回引、后继书签字段和截断回滚。
 字段业务含义、真实书签宿主、原生 Open 和 QGIS 人工验收待验证。
+
+## GPMultiValueTypeName
+
+GpObjects.dll 10.1.0.3035 的 SHA-256 为
+`c9da22687b40e070d7178538846f707c04d26474d2fa835acb01ceaa46d2f896`。
+PE RTTI `0x74800b5c` 关联持久化虚表 `0x747b25a4`，
+GetClassID `0x746f0ca0` 对应
+`35DE3370-678E-40FB-9B7E-FFAF08224B99`。QI `0x746f0810`
+于 `0x746f0817` 比较 IName IID，于 `0x746f0835` 返回 +0x10。
+Load `0x746f0d00` 读取有符号上限为 1 的 short，
+再于 `0x746f0d68` 以 `0x747ab0ec` 的 IGPName IID
+`17A47938-E1ED-4D82-A1D1-D274465FCBC4` 调用 LoadObject。
+Save `0x746f0d90` 写出版本和同一个子槽。
+
+书签共用名称读取和深度预算，并按 IGPName 类型约束接受已支持的
+GPDataTypeName 和 GPMultiValueTypeName。构造测试覆盖内嵌 GP
+数据类型、后继书签字段、错类及逐字节截断回滚。
+其余 IGPName 实现、真实书签宿主、原生 Open 和 QGIS 人工验收待查。

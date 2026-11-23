@@ -3551,3 +3551,56 @@ fn feature_bookmark_reads_gp_data_type_name_versioned_uid_slots() {
         }
     }
 }
+
+#[test]
+fn feature_bookmark_reads_gp_multi_value_type_name() {
+    use mxd2qgz::maps::map_surround::{
+        FILE_NAME_CLASS_ID, GP_DATA_TYPE_NAME_CLASS_ID, GP_MULTI_VALUE_TYPE_NAME_CLASS_ID,
+    };
+
+    let mut bytes = bookmark_header_10_1(&GP_MULTI_VALUE_TYPE_NAME_CLASS_ID, 17);
+    bytes.extend(1_i16.to_le_bytes());
+    let child_offset = bytes.len();
+    bytes.extend(GP_DATA_TYPE_NAME_CLASS_ID);
+    bytes.extend(18_u32.to_le_bytes());
+    bytes.extend(2_i16.to_le_bytes());
+    bytes.extend(2_i16.to_le_bytes());
+    bytes.extend([1, 0, 0, 0, b'g', 0, 0, 0].repeat(4));
+    bytes.extend(bookmark_string_10_1("书签"));
+    let end = bytes.len();
+    bytes.push(0xa5);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    assert!(matches!(
+        result.name_object,
+        BookmarkNameEntry10_1::GpMultiValueTypeName { version: 1, element_type }
+            if matches!(element_type.as_ref(), BookmarkNameEntry10_1::GpDataTypeName(body)
+                if body.strings == ["g", "g", "g", "g"])
+    ));
+    assert_eq!(result.name, "书签");
+    assert_eq!(reader.position(), end);
+    assert!(refs.contains(17) && refs.contains(18));
+
+    for cut in 0..end {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+
+    let mut wrong_class = bytes[..child_offset].to_vec();
+    wrong_class.extend(FILE_NAME_CLASS_ID);
+    wrong_class.extend(18_u32.to_le_bytes());
+    wrong_class.extend(1_i16.to_le_bytes());
+    wrong_class.extend([1, 0, 0, 0, b'f', 0, 0, 0]);
+    wrong_class.extend(bookmark_string_10_1("书签"));
+    let mut reader = Reader::new(&wrong_class);
+    let mut refs = RefTable10_1::new();
+    let err = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap_err();
+    assert_eq!(err.kind(), std::io::ErrorKind::Unsupported);
+    assert_eq!(reader.position(), 0);
+    assert!(refs.is_empty());
+}
