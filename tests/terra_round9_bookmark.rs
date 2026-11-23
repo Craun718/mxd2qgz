@@ -5600,3 +5600,49 @@ fn feature_bookmark_reads_gp_values_with_spatial_references() {
         );
     }
 }
+
+#[test]
+fn feature_bookmark_reads_gp_envelope_and_extent_values() {
+    use mxd2qgz::maps::map_surround::{
+        BookmarkEnvelopeEntry10_1, GP_ENVELOPE_CLASS_ID, GP_EXTENT_CLASS_ID, GpCodedValue10_1,
+    };
+    use mxd2qgz::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1};
+
+    let coords = [-12.0_f64, -8.0, 11.0, 17.0];
+    let mut envelope_bytes = bookmark_entry_10_1(&ENVELOPE_CLASS_ID, 20);
+    envelope_bytes.extend(1_u16.to_le_bytes());
+    envelope_bytes.extend(coords.into_iter().flat_map(f64::to_le_bytes));
+
+    assert_legacy_topo_coded_value(
+        GP_ENVELOPE_CLASS_ID,
+        1,
+        &envelope_bytes,
+        GpCodedValue10_1::Envelope {
+            envelope: Box::new(BookmarkEnvelopeEntry10_1::Envelope {
+                key: 20,
+                body: Envelope10_1 {
+                    version: 1,
+                    coords,
+                    attribute_flags: None,
+                    z_domain: None,
+                    m_domain: None,
+                    spatial_reference: None,
+                },
+            }),
+            raw_mode: None,
+        },
+    );
+
+    let mode = -3_i32;
+    let mut extent_bytes = mode.to_le_bytes().to_vec();
+    extent_bytes.extend([0; 16]);
+    assert_legacy_topo_coded_value(
+        GP_EXTENT_CLASS_ID,
+        1,
+        &extent_bytes,
+        GpCodedValue10_1::Envelope {
+            envelope: Box::new(BookmarkEnvelopeEntry10_1::Null),
+            raw_mode: Some(mode),
+        },
+    );
+}

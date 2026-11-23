@@ -453,6 +453,14 @@ pub const GP_M_DOMAIN_CLASS_ID: [u8; 16] = [
     0x9e, 0x9b, 0x25, 0x84, 0xc9, 0x73, 0x2a, 0x46, 0xbe, 0xb1, 0x3b, 0xb3, 0x05, 0x1e, 0x59, 0x3a,
 ];
 
+pub const GP_ENVELOPE_CLASS_ID: [u8; 16] = [
+    0x6b, 0x67, 0xa9, 0x01, 0x51, 0xe2, 0x40, 0x4a, 0x85, 0x44, 0x5e, 0x5b, 0x65, 0xe2, 0x98, 0x3c,
+];
+
+pub const GP_EXTENT_CLASS_ID: [u8; 16] = [
+    0xdc, 0x9c, 0x4f, 0x75, 0x51, 0xee, 0x2a, 0x41, 0x97, 0xea, 0xe5, 0x73, 0x07, 0x7c, 0x55, 0x9f,
+];
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpCodedValue10_1 {
     Point {
@@ -464,6 +472,10 @@ pub enum GpCodedValue10_1 {
     SpatialReference {
         reference: Box<SpatialReferenceEntry10_1>,
         legacy_short: Option<u16>,
+    },
+    Envelope {
+        envelope: Box<BookmarkEnvelopeEntry10_1>,
+        raw_mode: Option<i32>,
     },
     SqlExpression(String),
     InfoExpression(String),
@@ -1305,41 +1317,12 @@ pub fn read_aoi_bookmark_10_1(
     }
 
     // 2. LoadObject(IEnvelope {1B077914-…})：位置包络。
-    let envelope_offset = trial.position();
-    let envelope = match read_object_entry_10_1(&mut trial, &mut trial_table)? {
-        ObjectEntry10_1::Null => BookmarkEnvelopeEntry10_1::Null,
-        ObjectEntry10_1::BackReference { class_id, key } => {
-            let registered = trial_table.registered_class(key);
-            if registered.is_some_and(|class| class != ENVELOPE_CLASS_ID) {
-                return Err(io::Error::new(
-                    ErrorKind::Unsupported,
-                    format!(
-                        "AOIBookmark 位置包络槽 offset 0x{envelope_offset:x}: 回引键 {key} 的登记类不受支持"
-                    ),
-                ));
-            }
-            BookmarkEnvelopeEntry10_1::BackReference {
-                class_id: registered.unwrap_or(class_id),
-                key,
-            }
-        }
-        ObjectEntry10_1::NewObject { class_id, key } if class_id == ENVELOPE_CLASS_ID => {
-            // Envelope 全部版本分支已闭合：整体消费对象体（含嵌套空间参考）。
-            let body = read_envelope_10_1(&mut trial, max_bytes, &mut trial_table)?;
-            BookmarkEnvelopeEntry10_1::Envelope { key, body }
-        }
-        ObjectEntry10_1::NewObject { class_id, key } => {
-            return Err(io::Error::new(
-                ErrorKind::Unsupported,
-                format!(
-                    "AOIBookmark 位置包络槽 offset 0x{envelope_offset:x}: 类标识 {}（键 \
-                     {key}）不是 Envelope；本读取器仅支持 Envelope 新对象嵌套，且对象体\
-                     无外部长度字段，无法跳过未知类继续读取",
-                    class_id_hex(&class_id)
-                ),
-            ));
-        }
-    };
+    let envelope = read_surround_envelope_slot(
+        &mut trial,
+        max_bytes,
+        &mut trial_table,
+        "AOIBookmark 位置包络槽",
+    )?;
 
     // 3. 书签名称（String::Read → this+8）。
     let name = read_string_10_1(&mut trial, max_bytes)?;
@@ -1353,6 +1336,47 @@ pub fn read_aoi_bookmark_10_1(
     *reader = trial;
     *table = trial_table;
     Ok(result)
+}
+
+fn read_surround_envelope_slot(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    slot: &str,
+) -> io::Result<BookmarkEnvelopeEntry10_1> {
+    let envelope_offset = reader.position();
+    Ok(match read_object_entry_10_1(reader, table)? {
+        ObjectEntry10_1::Null => BookmarkEnvelopeEntry10_1::Null,
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            let registered = table.registered_class(key);
+            if registered.is_some_and(|class| class != ENVELOPE_CLASS_ID) {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!("{slot} offset 0x{envelope_offset:x}: 回引键 {key} 的登记类不受支持"),
+                ));
+            }
+            BookmarkEnvelopeEntry10_1::BackReference {
+                class_id: registered.unwrap_or(class_id),
+                key,
+            }
+        }
+        ObjectEntry10_1::NewObject { class_id, key } if class_id == ENVELOPE_CLASS_ID => {
+            // Envelope 全部版本分支已闭合：整体消费对象体（含嵌套空间参考）。
+            let body = read_envelope_10_1(reader, max_bytes, table)?;
+            BookmarkEnvelopeEntry10_1::Envelope { key, body }
+        }
+        ObjectEntry10_1::NewObject { class_id, key } => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                format!(
+                    "{slot} offset 0x{envelope_offset:x}: 类标识 {}（键 \
+                     {key}）不是 Envelope；本读取器仅支持 Envelope 新对象嵌套，且对象体\
+                     无外部长度字段，无法跳过未知类继续读取",
+                    class_id_hex(&class_id)
+                ),
+            ));
+        }
+    })
 }
 
 /// 从对象头之后读取 FeatureBookmark；错误时游标及登记表不变。
@@ -1622,6 +1646,8 @@ fn read_gp_coded_value_slot(
                 table.registered_class(key).unwrap_or(class_id),
                 GP_STRING_CLASS_ID
                     | GP_POINT_CLASS_ID
+                    | GP_ENVELOPE_CLASS_ID
+                    | GP_EXTENT_CLASS_ID
                     | GP_SPATIAL_REFERENCE_CLASS_ID
                     | GP_COORDINATE_SYSTEM_CLASS_ID
                     | GP_XY_DOMAIN_CLASS_ID
@@ -1648,6 +1674,8 @@ fn read_gp_coded_value_slot(
             class_id:
                 class_id @ (GP_STRING_CLASS_ID
                 | GP_POINT_CLASS_ID
+                | GP_ENVELOPE_CLASS_ID
+                | GP_EXTENT_CLASS_ID
                 | GP_SPATIAL_REFERENCE_CLASS_ID
                 | GP_COORDINATE_SYSTEM_CLASS_ID
                 | GP_XY_DOMAIN_CLASS_ID
@@ -1688,6 +1716,17 @@ fn read_gp_coded_value_slot(
                 }
                 GP_ENCRYPTED_STRING_CLASS_ID => {
                     GpCodedValue10_1::EncryptedString(read_string_10_1(reader, max_bytes)?)
+                }
+                GP_ENVELOPE_CLASS_ID | GP_EXTENT_CLASS_ID => {
+                    let raw_mode = (class_id == GP_EXTENT_CLASS_ID)
+                        .then(|| reader.read_u32_le().map(|mode| mode as i32))
+                        .transpose()?;
+                    let envelope =
+                        read_surround_envelope_slot(reader, max_bytes, table, "GP IEnvelope 槽")?;
+                    GpCodedValue10_1::Envelope {
+                        envelope: Box::new(envelope),
+                        raw_mode,
+                    }
                 }
                 GP_SPATIAL_REFERENCE_CLASS_ID
                 | GP_COORDINATE_SYSTEM_CLASS_ID

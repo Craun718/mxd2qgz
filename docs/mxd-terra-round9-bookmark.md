@@ -1356,3 +1356,24 @@ ISpatialReference 对象槽，并保留 v2 的原始值。
 构造书签覆盖五个类、空空间参考、GPSpatialReference v1–v3、
 值对象回引、后继字段、超限版本和逐字节截断回滚。真实书签
 及 ArcMap/QGIS 人工验收待验证。
+
+#### GPEnvelope 与 GPExtent
+
+在 ArcMap 10.1 Desktop 互操作程序集定位两类，并用 GpObjects.dll
+10.1.0.3035 的 PE RTTI、虚表及 objdump 复核流边界。
+
+| 类 | CLSID | RTTI / 持久化虚表 | Load / Save |
+| --- | --- | --- | --- |
+| GPEnvelope | `01A9676B-E251-4A40-8544-5E5B65E2983C` | `0x748013bc / 0x747b5b38` | `0x74706c00 / 0x74706c90` |
+| GPExtent | `754F9CDC-EE51-412A-97EA-E573077C559F` | `0x747ffad0 / 0x747adc80` | `0x746c54c0 / 0x746c5570` |
+
+两类 Load 都检查无符号 short 上限 1，调用 GPValue 基类，
+再于 `0x74706c5d / 0x746c553b` 请求同一个 IEnvelope
+IID `1B077914-38C5-11D0-92D2-00805F7C28B0`。GPExtent 在
+该对象槽前于 `0x746c5517` 额外读取一个 LONG，Save 在
+`0x746c55ca` 对称写出。解析保留原始模式值，共用 AOIBookmark
+包络槽的对象边界和回引类校验。
+
+构造书签覆盖非空 Envelope、空槽、有符号模式值、值对象回引、
+后继字段、超限版本和逐字节截断回滚。模式枚举、真实书签及
+ArcMap/QGIS 人工验收待验证。
