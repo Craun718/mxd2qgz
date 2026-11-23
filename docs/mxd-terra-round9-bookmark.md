@@ -1069,3 +1069,15 @@ LONG 列表，再在 `0x7486a2ab / 0x7486a2c1` 读取两个 short。
 字符串调用点为 `0x7486a30d / 0x7486a370`。Save 入口为
 `0x7486a3e0`。构造测试覆盖负计数、后继字段和逐字节截断回滚。
 字段含义及 ArcMap/QGIS 人工验收待验证。
+
+### GPRepresentationLayerDomain
+
+GPCartography.dll 10.1.0.3035 的 SHA-256 为
+`325443ba4efaafb9b9e308f8a0aeda90fd2791fdf2353eb17619b8511897bbba`。
+RTTI `0x7328236c` 对应持久化虚表 `0x7325e634` 和 CLSID
+`821ACB85-5063-48A3-B2D5-3A95F1C8C73D`。Load `0x731f5860`
+检查有符号版本上限 2，版本不大于 1 时只消费 short。
+v2 在 `0x731f58b7` 读取有符号计数，正计数在 `0x731f58df`
+逐项读取 LONG。Save `0x731f5920` 对应 v2 布局。
+构造测试覆盖两个版本、正负计数、后续字段和截断回滚。
+列表业务含义、真实书签及 ArcMap/QGIS 人工验收待验证。

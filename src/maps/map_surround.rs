@@ -335,6 +335,10 @@ pub struct AoiBookmark10_1 {
 
 const MAX_BOOKMARK_NAME_NESTING: usize = 16;
 
+pub const GP_REPRESENTATION_LAYER_DOMAIN_CLASS_ID: [u8; 16] = [
+    0x85, 0xcb, 0x1a, 0x82, 0x63, 0x50, 0xa3, 0x48, 0xb2, 0xd5, 0x3a, 0x95, 0xf1, 0xc8, 0xc7, 0x3d,
+];
+
 pub const GP_RA_FIELD_DOMAIN_CLASS_ID: [u8; 16] = [
     0x58, 0xa8, 0x6c, 0x4b, 0x16, 0x57, 0xc3, 0x4a, 0xa2, 0xee, 0x70, 0xee, 0x2d, 0x29, 0xc1, 0xbd,
 ];
@@ -454,6 +458,10 @@ pub const GP_FILE_DOMAIN_CLASS_ID: [u8; 16] = [
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpTopoDomain10_1 {
+    RepresentationLayer {
+        version: i16,
+        v2_list: Option<(i32, Vec<i32>)>,
+    },
     RaField(GpRaFieldDomain10_1),
     SaNeighborhood {
         version: i16,
@@ -1339,6 +1347,7 @@ fn read_gp_topo_domain_slot_10_1(
                     | GP_SA_REMAP_DOMAIN_CLASS_ID
                     | GP_SA_NEIGHBORHOOD_DOMAIN_CLASS_ID
                     | GP_RA_FIELD_DOMAIN_CLASS_ID
+                    | GP_REPRESENTATION_LAYER_DOMAIN_CLASS_ID
                     | GP_TABLES_DOMAIN_CLASS_ID
                     | GP_QUERY_TABLE_FIELDS_DOMAIN_CLASS_ID
             ) =>
@@ -1355,6 +1364,19 @@ fn read_gp_topo_domain_slot_10_1(
             middle_shorts: [reader.read_u16_le()?, reader.read_u16_le()?],
             second_double_bits: reader.read_f64_le()?.to_bits(),
         }))),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_REPRESENTATION_LAYER_DOMAIN_CLASS_ID,
+            ..
+        } => {
+            let version = read_gp_name_version(reader, 2, "GPRepresentationLayerDomain")?;
+            let v2_list = (version == 2)
+                .then(|| read_gp_domain_longs(reader, max_bytes, "GPRepresentationLayerDomain"))
+                .transpose()?;
+            Some(Box::new(GpTopoDomain10_1::RepresentationLayer {
+                version,
+                v2_list,
+            }))
+        }
         ObjectEntry10_1::NewObject {
             class_id: GP_RA_FIELD_DOMAIN_CLASS_ID,
             ..
