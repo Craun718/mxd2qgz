@@ -706,6 +706,35 @@ pub(crate) fn read_schematic_dataset_name_body_10_1(
     ))
 }
 
+pub const SCHEMATIC_DIAGRAM_NAME_CLASS_ID: [u8; 16] = [
+    0x66, 0x49, 0xb5, 0xe6, 0x84, 0x9b, 0xee, 0x42, 0xb4, 0x56, 0x2e, 0x0d, 0xeb, 0x81, 0x59, 0xbc,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SchematicDiagramNameBody10_1 {
+    pub version: i16,
+    pub strings: [String; 3],
+    pub diagram_class: DatasetNameMoreSlot10_1,
+}
+
+pub(crate) fn read_schematic_diagram_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    stop: &mut Option<DatasetNameMoreStop10_1>,
+) -> io::Result<SchematicDiagramNameBody10_1> {
+    let (version, strings) = read_schematic_name_prefix(reader, max_bytes)?;
+    let diagram_class =
+        read_name_slot_with_depth_10_1(reader, max_bytes, table, stop, 0, |class_id| {
+            class_id == SCHEMATIC_DIAGRAM_CLASS_NAME_CLASS_ID
+        })?;
+    Ok(SchematicDiagramNameBody10_1 {
+        version,
+        strings,
+        diagram_class,
+    })
+}
+
 pub const SCHEMATIC_FOLDER_NAME_CLASS_ID: [u8; 16] = [
     0x02, 0x05, 0xab, 0x9d, 0x39, 0x61, 0x10, 0x43, 0x9f, 0xa0, 0x1a, 0x0e, 0xdc, 0xb9, 0x1c, 0x7b,
 ];

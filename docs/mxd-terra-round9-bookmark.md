@@ -659,3 +659,20 @@ Save `0x7d6e8030` 的字段顺序与之对应。
 书签复用已有的示意图数据集名称槽读取器。构造测试覆盖内嵌数据集、
 两级对象键、后继书签字段边界和逐字节截断回滚。
 字段业务语义、真实书签宿主、原生 Open 和 QGIS 人工验收待验证。
+
+## SchematicDiagramName
+
+同版 SchematicDB.dll 的 RTTI `0x7d729ba8` 对应
+SchematicDiagramName，持久化虚表为 `0x7d70c2c0`。
+GetClassID `0x7d6d7e00` 对应 CLSID
+`E6B54966-9B84-42EE-B456-2E0DEB8159BC`，主 QI
+`0x7d6d80f0` 对 IName 返回完整对象 +0x10。
+Load `0x7d6d88c0` 检查有符号 short 上限 1，读取三个
+AfCore String。随后调用 String::Empty 清空运行时字段，
+并于 `0x7d6d8944` 以 `0x7d709380` 的 IID
+`4560DEDE-1591-4699-BF88-D856FD46F194` 调用 LoadObject。
+同版 SchematicDiagramClassName 的接口查询在 `0x7d6d6091`
+引用该 IID。Save `0x7d6d8840` 写出三串和子对象。
+
+构造用例覆盖三串、嵌套图表类名、后继书签字段以及错类和逐字节截断
+回滚。真实书签宿主、原生 Open 和 QGIS 人工验收待验证。
