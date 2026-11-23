@@ -816,6 +816,7 @@
       - [x] 按原生有符号版本门读取 MapFrame 及两个旧字段组。[取证](docs/mxd-map-frame-body-20261118.md#mapframe-的有符号版本判断)
       - [x] 按登记类识别 MapFrame 的 IMap 回引。[原生取证](docs/mxd-map-frame-body-20261118.md#mapframe-的-imap-回引)
       - [x] 按 LayerLib 有符号版本门读取边框和矩形几何两级基类。[取证](docs/mxd-map-frame-body-20261118.md#边框基类和矩形几何基类的版本门)
+      - [x] 按登记类校验地图框和装饰框共用的 IEnvelope 回引。[取证](docs/mxd-map-frame-body-20261118.md#布局包络回引)
       - [x] 按原生有符号版本门读取 LocatorRectangle 及其尾字段。[指令取证](docs/mxd-page-layout-grid-20261118.md#定位框首次定义地图框)
       - [x] 按登记类校验 MapSurroundFrame 的 IMapSurround 回引。[取证](docs/mxd-page-layout-surround-20261118.md)
       - [x] 按原生有符号版本门读取 MapSurroundFrame 的旧几何槽。[指令取证](docs/mxd-page-layout-surround-20261118.md)

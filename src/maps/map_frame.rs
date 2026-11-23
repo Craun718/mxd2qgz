@@ -243,7 +243,15 @@ pub(super) fn envelope_slot(
     limit: usize,
     refs: &mut RefTable10_1,
 ) -> io::Result<(ObjectEntry10_1, Option<Envelope10_1>)> {
-    let entry = read_object_entry_10_1(r, refs)?;
+    let mut entry = read_object_entry_10_1(r, refs)?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+        && let Some(registered) = refs.registered_class(*key)
+    {
+        if registered != ENVELOPE_CLASS_ID {
+            return Err(unsupported("IEnvelope", entry));
+        }
+        *class_id = registered;
+    }
     let body = match entry {
         ObjectEntry10_1::NewObject { class_id, .. } if class_id == ENVELOPE_CLASS_ID => {
             Some(read_envelope_10_1(r, limit, refs)?)

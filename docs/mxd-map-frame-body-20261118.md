@@ -96,3 +96,12 @@ LayerLib.dll 10.1.0.3035（SHA-256
 阴影门 `0x7869b4ec`、几何 LONG 门 `0x786d0163` 和 short 门
 `0x786d0184` 同样采用有符号条件。构造地图框验证两级负版本
 保留原始位模式、跳过后增字段并读完 DraftMode。真实负版本与原生打开仍待验证。
+
+### 布局包络回引
+
+MapElements.dll 10.1.0.3035 的 MapFrame Load `0x79570a20` 在
+旧范围设置内请求 IEnvelope。MapSurroundFrame Load `0x7957ba14`
+也请求此接口。共享包络槽按 SystemCore `0x7ffd0063` 的对象键
+查询规则恢复登记类。构造 MapFrame 验证回引头类标识不同时仍能
+读取登记的 Envelope，以及误引 Map 时整体回滚。
+ArcMap 人工验证尚未进行。

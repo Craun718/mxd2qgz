@@ -907,3 +907,41 @@ fn base_frame_and_rect_shape_use_signed_version_gates() {
     assert!(frame.base.shadow.is_none());
     assert_eq!(reader.remaining(), 0);
 }
+
+#[test]
+fn map_frame_extent_uses_registered_envelope_class() {
+    use mxd2qgz::objects::envelope::ENVELOPE_CLASS_ID;
+    use mxd2qgz::storage::object_refs::read_object_entry_10_1;
+
+    for registered in [ENVELOPE_CLASS_ID, MAP_CLASS_ID] {
+        let mut refs = RefTable10_1::new();
+        refs.register(42);
+        let mut definition = registered.to_vec();
+        definition.extend(51_u32.to_le_bytes());
+        read_object_entry_10_1(&mut Reader::new(&definition), &mut refs).unwrap();
+        let saved = refs.clone();
+
+        let mut body = frame_body(2);
+        let mut reference = MAP_CLASS_ID.to_vec();
+        reference.extend(51_u32.to_le_bytes());
+        body.splice(34..50, reference);
+        let bytes = wrap(&body);
+        let mut reader = Reader::new(&bytes);
+        let result = read_page_layout_map_frame_10_1(&mut reader, 4096, &mut refs);
+        if registered == ENVELOPE_CLASS_ID {
+            let extent = result.unwrap().extent_settings.unwrap();
+            assert_eq!(
+                extent.envelope,
+                ObjectEntry10_1::BackReference {
+                    class_id: ENVELOPE_CLASS_ID,
+                    key: 51,
+                }
+            );
+            assert_eq!(reader.remaining(), 0);
+        } else {
+            assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::Unsupported);
+            assert_eq!(reader.position(), 0);
+            assert_eq!(refs, saved);
+        }
+    }
+}
