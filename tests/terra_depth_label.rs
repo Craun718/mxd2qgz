@@ -949,3 +949,75 @@ fn scene_graphics_reads_group_and_its_back_reference() {
     ));
     assert_eq!(reader.position(), end);
 }
+
+#[test]
+fn graphics_3d_reads_circle_and_ellipse_bodies() {
+    use mxd2qgz::layers::graphics_3d::{
+        GLOBE_GRAPHICS_LAYER_CLASS_ID, GRAPHICS_LAYER_3D_CLASS_ID, read_graphics_3d_layer_10_1,
+    };
+    use mxd2qgz::maps::rectangle_element::{CIRCLE_ELEMENT_CLASS_ID, ELLIPSE_ELEMENT_CLASS_ID};
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    for (layer_class, globe) in [
+        (GRAPHICS_LAYER_3D_CLASS_ID, false),
+        (GLOBE_GRAPHICS_LAYER_CLASS_ID, true),
+    ] {
+        for class_id in [CIRCLE_ELEMENT_CLASS_ID, ELLIPSE_ELEMENT_CLASS_ID] {
+            let mut data = 1_u16.to_le_bytes().to_vec();
+            empty_string(&mut data);
+            data.extend(vec![0; if globe { 4 } else { 8 }]);
+            data.extend([0; 32]); // 空关联图层和包络。
+            data.extend(2_i32.to_le_bytes());
+            let header = [class_id.as_slice(), &74_u32.to_le_bytes()].concat();
+            data.extend(&header);
+            let version_offset = data.len();
+            data.extend((-1_i16).to_le_bytes());
+            data.extend(1_u16.to_le_bytes());
+            data.extend([0; 16]);
+            data.extend(4_u16.to_le_bytes());
+            empty_string(&mut data);
+            empty_string(&mut data);
+            data.extend([0; 4 + 16]); // 元素属性尾段和空填充符号。
+            data.extend(&header);
+            if globe {
+                data.extend([0; 4 + 4]); // 空扩展列表和两个 short。
+            }
+            let end = data.len();
+            data.push(0xa5);
+
+            let mut reader = Reader::new(&data);
+            let mut refs = RefTable10_1::new();
+            let layer =
+                read_graphics_3d_layer_10_1(&layer_class, &mut reader, 4096, &mut refs).unwrap();
+            let shape = layer.elements[0].circle_or_ellipse.as_ref().unwrap();
+            assert_eq!((shape.key, shape.version), (74, u16::MAX));
+            assert_eq!(
+                layer.elements[1].element.entry,
+                ObjectEntry10_1::BackReference { class_id, key: 74 }
+            );
+            assert_eq!(reader.position(), end);
+
+            for cut in 0..end {
+                let mut reader = Reader::new(&data[..cut]);
+                let mut refs = RefTable10_1::new();
+                assert!(
+                    read_graphics_3d_layer_10_1(&layer_class, &mut reader, 4096, &mut refs)
+                        .is_err()
+                );
+                assert_eq!(reader.position(), 0);
+                assert!(refs.is_empty());
+            }
+            data[version_offset..version_offset + 2].copy_from_slice(&2_u16.to_le_bytes());
+            let mut reader = Reader::new(&data);
+            let mut refs = RefTable10_1::new();
+            assert_eq!(
+                read_graphics_3d_layer_10_1(&layer_class, &mut reader, 4096, &mut refs)
+                    .unwrap_err()
+                    .kind(),
+                std::io::ErrorKind::InvalidData
+            );
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+}

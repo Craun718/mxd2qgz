@@ -10,7 +10,9 @@ use crate::maps::group_element::{
 use crate::maps::map_frame::MapFrame10_1;
 use crate::maps::page_layout_prefix::{MAP_FRAME_CLASS_ID, read_map_frame};
 use crate::maps::rectangle_element::{
-    RECTANGLE_ELEMENT_CLASS_ID, RectangleElement10_1, read_rectangle_element_10_1,
+    CIRCLE_ELEMENT_CLASS_ID, ELLIPSE_ELEMENT_CLASS_ID, RECTANGLE_ELEMENT_CLASS_ID,
+    RectShapeElement10_1, RectangleElement10_1, read_rect_shape_element_10_1,
+    read_rectangle_element_10_1,
 };
 use crate::maps::surround_frame::{
     MAP_SURROUND_FRAME_CLASS_ID, MapSurroundFrame10_1, read_surround_frame_10_1,
@@ -45,6 +47,8 @@ pub struct Graphics3dElement10_1 {
     pub element: Graphics3dObject10_1<ElementBody10_1>,
     /// 矩形的新对象体；对象头仍保存在 element.entry。
     pub rectangle: Option<Box<RectangleElement10_1>>,
+    /// 圆或椭圆的新对象体，类由 element.entry 区分。
+    pub circle_or_ellipse: Option<Box<RectShapeElement10_1>>,
     /// 组的新对象体；对象头仍保存在 element.entry。
     pub group: Option<Box<GroupElement10_1>>,
     /// 地图框的新对象体；对象头仍保存在 element.entry。
@@ -203,6 +207,7 @@ pub fn read_graphics_3d_layer_10_1(
                 body: None,
             },
             rectangle: None,
+            circle_or_ellipse: None,
             group: None,
             map_frame: None,
             surround_frame: None,
@@ -217,6 +222,11 @@ pub fn read_graphics_3d_layer_10_1(
                 RECTANGLE_ELEMENT_CLASS_ID => {
                     item.rectangle = Some(Box::new(read_rectangle_element_10_1(
                         &mut r, max, &mut refs,
+                    )?));
+                }
+                CIRCLE_ELEMENT_CLASS_ID | ELLIPSE_ELEMENT_CLASS_ID => {
+                    item.circle_or_ellipse = Some(Box::new(read_rect_shape_element_10_1(
+                        &mut r, max, &mut refs, class_id,
                     )?));
                 }
                 GROUP_ELEMENT_CLASS_ID => {

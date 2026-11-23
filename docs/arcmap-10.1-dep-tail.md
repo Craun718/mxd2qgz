@@ -769,3 +769,24 @@ IElement。两类容器复用 GraphicElements.dll `0x75035ef0` 的
 `0x7957b870` 对应的[装饰框读取器](mxd-page-layout-surround-20261118.md)。
 构造 Scene 用例覆盖 v0–v3 的装饰框、同键回引及容器终点。
 ArcMap/QGIS 实档目视尚未进行。
+
+### 三维图形容器中的圆和椭圆元素
+
+GraphicElements.dll 10.1.0.3035 的 SHA-256 为
+`f24451c8bf25cce7c1906ea67e5fa3ce351b8f9918c6ddcd2a40083151f77ae9`。
+PE RTTI 和 objdump 对位 CircleElement 的持久化虚表
+`0x7506e9ac`，以及 EllipseElement 的 `0x7506eebc`。
+GetClassID `0x75031010 / 0x75032e20` 分别返回
+`974111DB-C5D2-11D2-9F28-00C04F6BC8DD` 和
+`4EDA1081-12EA-11D3-9F8F-00C04F6BC8DD`。
+10.1 的 Carto 互操作程序集同样登记这两个 CLSID，并为两类声明 IElement。
+两者共享 Load `0x75033760`，在 `0x75033795` 按有符号
+short 拒绝大于 1 的版本，接着依次读 RectShapeElement、
+ElementProperties 和 IFillSymbol（`0x750337a3 / 0x750337ae /
+0x750337e1`）。两个独立 Save `0x75031990 / 0x75033820`
+采用同一字段顺序。矩形的独立 Load 在 `0x7505a435` 也用有符号
+上限比较，三类复用相同字段读取器。
+
+Scene 和 Globe 容器保留圆与椭圆体及原对象类标识。构造用例
+覆盖两种容器、两种元素、回引、负版本、越界版本、后继字节
+与截断回滚。其他宿主的覆盖和 ArcMap/QGIS 人工验收待验证。
