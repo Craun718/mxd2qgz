@@ -1377,3 +1377,35 @@ fn bookmark_name_reference_retains_the_registered_class() {
     assert_eq!(reader.read_bytes(1).unwrap(), &[0x42]);
     assert_eq!(refs, saved);
 }
+
+#[test]
+fn bookmark_reads_a_netcdf_table_name() {
+    use mxd2qgz::objects::dataset_name_more::NETCDF_TABLE_NAME_CLASS_ID;
+
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(42_i32.to_le_bytes());
+    bytes.extend(NETCDF_TABLE_NAME_CLASS_ID);
+    bytes.extend(17_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    for _ in 0..3 {
+        bytes.extend([2, 0, 0, 0, 0, 0]);
+    }
+    bytes.extend([0; 16 * 5]);
+    bytes.extend([4, 0, 0, 0, b'X', 0, 0, 0]);
+    let mut refs = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let bookmark = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    assert!(
+        matches!(bookmark.name_object, BookmarkNameEntry10_1::NetCdfTableName(body)
+        if body.version == 1 && body.arrays.is_some())
+    );
+    assert_eq!(bookmark.name, "X");
+    assert_eq!(reader.remaining(), 0);
+    assert!(refs.contains(17));
+
+    let mut refs = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes[..bytes.len() - 9]);
+    assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+    assert_eq!(reader.position(), 0);
+    assert!(refs.is_empty());
+}

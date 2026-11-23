@@ -193,3 +193,13 @@ Map.dll 10.1.0.3035 的书签 Load `0x793b5c50` 使用普通 IName 槽。
 归为 FgdbFeatureClassName 的 IName 分支有误。FgdbFeatureClassName
 的持久化虚表及 Load 由其自身类体证据确认。FgdbTableName 的 IName
 路径以及两类名称在书签里的真实宿主仍待核对。
+
+## NetCDF 表名称
+
+NetCDFDB.dll 10.1.0.3035（SHA-256
+`e78ea582fdd66f45dfa717eb22346e9f691e1bb4e26587a1d09f72b0d1bc5ebd`）
+的 NetCDFTableName QI `0x7ae2eff0` 首先比较 `0x7ae5ffac` 的
+IName IID，命中后在 `0x7ae2f015` 返回完整对象的 `+0x10`。
+书签复用 Load `0x7ae2fdc0` 对应的已知表名读取器。
+构造测试覆盖对象键、五个空子槽、后继书签字符串和截断回滚。
+真实书签宿主和 Open 结果仍待 ArcMap 10.1 验证。
