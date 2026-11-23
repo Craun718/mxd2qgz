@@ -1757,3 +1757,13 @@ v0/v1 的 `0x74876ae4` 将固定长度 4 传给 AfCore
 解析器保留原字节。v2/v3 的 `0x74876ab8` 改用自由函数 ReadString，
 保存侧 `0x74876b70` 固定写 v3 和 BSTR。合成测试覆盖四版、旧字段后继
 边界、BSTR 结束符和截断回滚。四字节的历史用途与实档仍待验证。
+
+### GPAnalysisCellSize
+
+同版 `GpRasterFunctions.dll` 的 RTTI `0x748b8134` 对应持久化虚表
+`0x748a4cf4`，CLSID `{D042DFF8-EAA2-4706-B3DE-6E62CFEDA76A}` 位于
+`0x748a4e5c`。Load `0x748621c0` 接受 0 或 1，读取 GPValue 基类，
+在 `0x74862223` 读取 double，随后 `0x74862235` 调 AfCore 成员函数
+String::Read。Save `0x748622b0` 写固定版本 1，然后写基类、double 和
+成员 String。合成书签覆盖两种版本、数值位模式、空和非空文本、回引和截断。
+文本后续用途及真实 ArcMap 参数工程仍待验证。

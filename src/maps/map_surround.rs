@@ -429,6 +429,10 @@ pub const GP_POINT_CLASS_ID: [u8; 16] = [
     0x82, 0x30, 0xe9, 0xa1, 0xbe, 0xba, 0x44, 0x4d, 0x8c, 0xe3, 0x46, 0x37, 0x74, 0x8e, 0xdd, 0xdd,
 ];
 
+pub const GP_ANALYSIS_CELL_SIZE_CLASS_ID: [u8; 16] = [
+    0xf8, 0xdf, 0x42, 0xd0, 0xa2, 0xea, 0x06, 0x47, 0xb3, 0xde, 0x6e, 0x62, 0xcf, 0xed, 0xa7, 0x6a,
+];
+
 pub const GP_RASTER_GDB_ENV_COMPRESSION_CLASS_ID: [u8; 16] = [
     0x97, 0xa8, 0xaf, 0x21, 0xae, 0x84, 0x1f, 0x41, 0x9b, 0xf9, 0x14, 0x04, 0x48, 0xe3, 0xb0, 0x70,
 ];
@@ -578,6 +582,10 @@ pub enum GpCodedValue10_1 {
     Point {
         x_bits: u64,
         y_bits: u64,
+    },
+    AnalysisCellSize {
+        size_bits: u64,
+        raw_text: String,
     },
     RasterEnvironment(Box<GpRasterEnvironment10_1>),
     RasterCalculatorExpression {
@@ -1980,6 +1988,7 @@ fn read_gp_coded_value_entry(
                     | GP_POINT_CLASS_ID
                     | GP_CELL_SIZE_XY_CLASS_ID
                     | GP_SA_CELL_SIZE_CLASS_ID
+                    | GP_ANALYSIS_CELL_SIZE_CLASS_ID
                     | GP_RASTER_GDB_ENV_COMPRESSION_CLASS_ID
                     | GP_RASTER_GDB_ENV_PYRAMID_CLASS_ID
                     | GP_RASTER_GDB_ENV_STATISTICS_CLASS_ID
@@ -2033,6 +2042,7 @@ fn read_gp_coded_value_entry(
                 | GP_POINT_CLASS_ID
                 | GP_CELL_SIZE_XY_CLASS_ID
                 | GP_SA_CELL_SIZE_CLASS_ID
+                | GP_ANALYSIS_CELL_SIZE_CLASS_ID
                 | GP_RASTER_GDB_ENV_COMPRESSION_CLASS_ID
                 | GP_RASTER_GDB_ENV_PYRAMID_CLASS_ID
                 | GP_RASTER_GDB_ENV_STATISTICS_CLASS_ID
@@ -2206,6 +2216,10 @@ fn read_gp_coded_value_entry(
                 | GP_SA_STRING_REMAP_CLASS_ID => GpCodedValue10_1::SaRemap(Box::new(
                     read_gp_sa_remap(reader, max_bytes, table, depth, version, class_id)?,
                 )),
+                GP_ANALYSIS_CELL_SIZE_CLASS_ID => GpCodedValue10_1::AnalysisCellSize {
+                    size_bits: reader.read_f64_le()?.to_bits(),
+                    raw_text: read_string_10_1(reader, max_bytes)?,
+                },
                 GP_RASTER_GDB_ENV_COMPRESSION_CLASS_ID
                 | GP_RASTER_GDB_ENV_PYRAMID_CLASS_ID
                 | GP_RASTER_GDB_ENV_STATISTICS_CLASS_ID

@@ -6724,3 +6724,25 @@ fn feature_bookmark_reads_raster_statistics_versioned_ignore_values() {
         );
     }
 }
+
+#[test]
+fn feature_bookmark_reads_analysis_cell_size_and_member_string() {
+    use mxd2qgz::maps::map_surround::{GP_ANALYSIS_CELL_SIZE_CLASS_ID, GpCodedValue10_1};
+
+    for (version, size_bits, raw_text) in [
+        (0_u16, (-0.0_f64).to_bits(), ""),
+        (1, 12.5_f64.to_bits(), "栅格"),
+    ] {
+        let mut payload = size_bits.to_le_bytes().to_vec();
+        payload.extend(bookmark_string_10_1(raw_text));
+        assert_legacy_topo_coded_value(
+            GP_ANALYSIS_CELL_SIZE_CLASS_ID,
+            version,
+            &payload,
+            GpCodedValue10_1::AnalysisCellSize {
+                size_bits,
+                raw_text: raw_text.to_owned(),
+            },
+        );
+    }
+}
