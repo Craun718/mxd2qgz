@@ -689,3 +689,60 @@ fn map_frame_reads_mgrs_and_custom_overlay_grid_bodies() {
         assert_eq!(refs, original);
     }
 }
+
+#[test]
+fn locator_rectangle_reads_a_new_map_frame_with_shared_keys() {
+    use mxd2qgz::maps::map_frame::LOCATOR_RECTANGLE_CLASS_ID;
+
+    fn body_with_locator(key: u32, count: u32) -> Vec<u8> {
+        let mut body = frame_body(4);
+        if count == 0 {
+            return body;
+        }
+        let mut locator = LOCATOR_RECTANGLE_CLASS_ID.to_vec();
+        locator.extend(key.to_le_bytes());
+        locator.extend(1_u16.to_le_bytes());
+        locator.extend(MAP_FRAME_CLASS_ID);
+        locator.extend((key + 1).to_le_bytes());
+        locator.extend(body_with_locator(key + 2, count - 1));
+        locator.extend([0; 16 * 3]);
+        locator.extend(17_u16.to_le_bytes());
+        body[26..30].copy_from_slice(&1_u32.to_le_bytes());
+        body.splice(30..30, locator);
+        body
+    }
+
+    let bytes = wrap(&body_with_locator(50, 1));
+    let mut refs = RefTable10_1::new();
+    refs.register(42);
+    let mut reader = Reader::new(&bytes);
+    let outer = read_page_layout_map_frame_10_1(&mut reader, 4096, &mut refs).unwrap();
+    let locator = outer.locator_rectangles[0].body.as_ref().unwrap();
+    assert_eq!(locator.short_1c, 17);
+    let inner = locator.map_frame_body.as_ref().unwrap();
+    assert_eq!(inner.prefix.frame_key, 51);
+    assert_eq!(inner.prefix.map_offset, 8 + 20 + 30 + 20 + 2 + 20 + 2);
+    assert_eq!(
+        inner.prefix.map,
+        ObjectEntry10_1::BackReference {
+            class_id: MAP_CLASS_ID,
+            key: 42
+        }
+    );
+    assert!(refs.contains(50) && refs.contains(51));
+    assert_eq!(reader.remaining(), 0);
+
+    let mut truncated = bytes.clone();
+    truncated.pop();
+    let size = (truncated.len() as u32 - 8).to_le_bytes();
+    truncated[..4].copy_from_slice(&size);
+    for invalid in [truncated, wrap(&body_with_locator(50, 9))] {
+        let mut refs = RefTable10_1::new();
+        refs.register(42);
+        let saved = refs.clone();
+        let mut reader = Reader::new(&invalid);
+        assert!(read_page_layout_map_frame_10_1(&mut reader, 4096, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert_eq!(refs, saved);
+    }
+}

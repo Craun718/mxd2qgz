@@ -128,4 +128,14 @@ MapElements.dll 10.1.0.3035 的 LocatorRectangle Load
 查询登记实例。MapFrame 读取器登记键及类，定位框据此恢复登记类。MilitaryPortrait 的
 `/PageLayout:0x2232` 引用键 158。修改构造副本的头部类标识仍能读到
 相同布局边界，改为 Graticule 键 159 则保留整个失败布局元素。
-新地图框递归分支及 ArcMap 人工验证仍待补充。
+新地图框递归分支见下节。ArcMap 人工验证仍待补充。
+
+### 定位框首次定义地图框
+
+MapElements.dll 10.1.0.3035 的 LocatorRectangle Load 在
+`0x7956ab9c / 0x7956aba8` 把 IMapFrame IID `0x7959c180`
+交给普通 LoadObject，成功后从 `0x7956abb9` 读取边框槽。
+首次出现的 MapFrame 复用布局地图框读取器、同一对象表和流偏移，
+嵌套新对象受现有图形深度预算约束。构造测试覆盖内联地图框、
+根 Map 回引、定位框后继字段、截断及超深回滚。
+MilitaryPortrait 仍提供回引分支实档。首次定义分支暂无实档及 ArcMap 人工验证。

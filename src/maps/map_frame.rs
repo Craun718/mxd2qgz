@@ -85,6 +85,8 @@ pub(super) fn read_map_frame_tail(
     limit: usize,
     refs: &mut RefTable10_1,
     prefix: PageLayoutMapFramePrefix10_1,
+    region_offset: usize,
+    is_root_map: &impl Fn(u32) -> bool,
 ) -> io::Result<MapFrame10_1> {
     let version = prefix.version;
     let extent_settings = if version < 4 {
@@ -115,7 +117,7 @@ pub(super) fn read_map_frame_tail(
         .collect::<io::Result<_>>()?;
     let locator_count = collection_count(r, limit, "ILocatorRectangle")?;
     let locator_rectangles = (0..locator_count)
-        .map(|_| read_locator_rectangle_slot(r, limit, refs))
+        .map(|_| read_locator_rectangle_slot(r, limit, refs, region_offset, is_root_map))
         .collect::<io::Result<_>>()?;
     let base = base_frame(r, limit, refs)?;
     let version_three_tail = if version == 3 {
@@ -278,6 +280,7 @@ pub struct LocatorRectangleSlot10_1 {
 pub struct LocatorRectangle10_1 {
     pub version: u16,
     pub map_frame: ObjectEntry10_1,
+    pub map_frame_body: Option<Box<MapFrame10_1>>,
     pub border: DecorSlot10_1,
     pub background: DecorSlot10_1,
     pub symbol: crate::objects::display_symbol::SymbolSlotFull10_1,
@@ -286,11 +289,13 @@ pub struct LocatorRectangle10_1 {
     pub short_24: Option<u16>,
 }
 
-// MapElements.dll 0x7956ab40；继承宿主事务，不递归读取新的 IMapFrame。
+// MapElements.dll 0x7956ab40；继承宿主事务。
 fn read_locator_rectangle_slot(
     r: &mut Reader<'_>,
     limit: usize,
     refs: &mut RefTable10_1,
+    region_offset: usize,
+    is_root_map: &impl Fn(u32) -> bool,
 ) -> io::Result<LocatorRectangleSlot10_1> {
     use crate::objects::display_symbol::{
         DisplaySlotKind10_1, read_symbol_slot_full_10_1, slot_full_stop_10_1,
@@ -308,15 +313,33 @@ fn read_locator_rectangle_slot(
                     "不支持的 LocatorRectangle 版本",
                 ));
             }
-            let map_frame = reference_slot(r, refs, "LocatorRectangle IMapFrame")?;
-            if matches!(map_frame, ObjectEntry10_1::BackReference { class_id, .. }
+            let mut probe = r.clone();
+            let mut staged = refs.clone();
+            let mut map_frame = read_object_entry_10_1(&mut probe, &mut staged)?;
+            if let ObjectEntry10_1::BackReference { class_id, key } = &mut map_frame {
+                *class_id = refs.registered_class(*key).unwrap_or(*class_id);
+            }
+            if matches!(map_frame,
+                ObjectEntry10_1::BackReference { class_id, .. }
+                | ObjectEntry10_1::NewObject { class_id, .. }
                 if class_id != super::page_layout_prefix::MAP_FRAME_CLASS_ID)
             {
-                return Err(io::Error::new(
-                    ErrorKind::Unsupported,
-                    "LocatorRectangle 的 IMapFrame 类不受支持",
-                ));
+                return Err(unsupported("LocatorRectangle IMapFrame", map_frame));
             }
+            let map_frame_body = if matches!(map_frame, ObjectEntry10_1::NewObject { .. }) {
+                Some(Box::new(refs.with_nested_graphics(|refs| {
+                    super::page_layout_prefix::read_map_frame(
+                        r,
+                        region_offset,
+                        limit,
+                        refs,
+                        is_root_map,
+                    )
+                })?))
+            } else {
+                *r = probe;
+                None
+            };
             let border = decor(r, limit, refs, DecorKind10_1::Border)?;
             let background = decor(r, limit, refs, DecorKind10_1::Background)?;
             let symbol = read_symbol_slot_full_10_1(r, limit, refs, 16)?;
@@ -334,6 +357,7 @@ fn read_locator_rectangle_slot(
             Some(Box::new(LocatorRectangle10_1 {
                 version,
                 map_frame,
+                map_frame_body,
                 border,
                 background,
                 symbol,

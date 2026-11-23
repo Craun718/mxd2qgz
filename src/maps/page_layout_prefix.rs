@@ -623,8 +623,14 @@ pub(crate) fn read_map_frame(
         None
     };
     prefix.remaining_in_element = trial.remaining();
-    let mut frame =
-        super::map_frame::read_map_frame_tail(&mut trial, max_bytes, &mut staged, prefix)?;
+    let mut frame = super::map_frame::read_map_frame_tail(
+        &mut trial,
+        max_bytes,
+        &mut staged,
+        prefix,
+        start,
+        is_root_map,
+    )?;
     frame.embedded_map = embedded_map;
     *reader = trial;
     *refs = staged;

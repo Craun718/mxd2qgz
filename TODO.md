@@ -810,6 +810,7 @@
       - [x] 用 LandscapeClassic 实档验证 MarkerNorthArrow v2 与布局框的跨流回引。[实档](docs/arcmap-10.1-legend-family.md#markernortharrow-版本分支复核)
       - [x] 按登记类校验 MapSurroundFrame 的 IMapFrame 回引。[取证](docs/mxd-page-layout-surround-20261118.md)
       - [x] 按登记类校验 LocatorRectangle 的 IMapFrame 回引。[实档与取证](docs/mxd-page-layout-grid-20261118.md#定位框的地图框回引)
+      - [x] 接入 LocatorRectangle 首次定义的内联 MapFrame。[指令取证](docs/mxd-page-layout-grid-20261118.md#定位框首次定义地图框)
       - [x] 按登记类校验 MapSurroundFrame 的 IMapSurround 回引。[取证](docs/mxd-page-layout-surround-20261118.md)
       - [x] 按原生有符号版本门读取 MapSurroundFrame 的旧几何槽。[指令取证](docs/mxd-page-layout-surround-20261118.md)
       - [x] 按原生有符号版本分支读取 MarkerNorthArrow 的新旧标记槽。[指令取证](docs/arcmap-10.1-legend-family.md#markernortharrow-版本分支复核)
