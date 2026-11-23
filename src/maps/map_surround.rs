@@ -132,6 +132,7 @@ use crate::layers::na_layer::{
     NETWORK_DATASET_NAME_CLASS_ID, NetworkDatasetName10_1, read_network_dataset_name,
 };
 use crate::layers::raster_dataset_name::RASTER_CATALOG_NAME_CLASS_ID;
+use crate::layers::raster_dataset_name::RasterDatasetWorkspaceSlot10_1;
 use crate::layers::raster_dataset_name::{
     ACCESS_RASTER_DATASET_NAME_CLASS_ID, AIS_IMAGE_SERVICE_NAME_CLASS_ID,
     CACHE_RASTER_DATASET_NAME_CLASS_ID, FUNCTION_RASTER_DATASET_NAME_CLASS_ID,
@@ -187,6 +188,7 @@ use crate::objects::dataset_name_more::{
     read_schematic_class_name_body_10_1, read_table_query_name_body_10_1,
     read_xy_event_source_name_body_10_1,
 };
+use crate::objects::dataset_name_more::{DatasetNameMoreSlot10_1, read_dataset_name_slot_10_1};
 use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
 use crate::objects::route_event_name::{
     ROUTE_EVENT_SOURCE_NAME_CLASS_ID, RouteEventSourceNameBody10_1,
@@ -312,6 +314,18 @@ pub struct AoiBookmark10_1 {
     pub remaining_bytes: usize,
 }
 
+pub const CADASTRAL_FABRIC_NAME_CLASS_ID: [u8; 16] = [
+    0x20, 0x72, 0x94, 0x5c, 0xb5, 0xff, 0x71, 0x4e, 0xa0, 0x59, 0xaf, 0x20, 0x1a, 0xe0, 0x81, 0xa6,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CadastralFabricName10_1 {
+    pub version: i16,
+    pub strings: [String; 2],
+    pub dataset: DatasetNameMoreSlot10_1,
+    pub workspace: RasterDatasetWorkspaceSlot10_1,
+}
+
 pub const LAS_DATASET_NAME_CLASS_ID: [u8; 16] = [
     0x94, 0xa9, 0x29, 0x20, 0xc0, 0x9b, 0x94, 0x40, 0xa1, 0xc7, 0xe5, 0x38, 0x18, 0x69, 0xe4, 0xe3,
 ];
@@ -360,6 +374,7 @@ pub enum BookmarkNameEntry10_1 {
     NetworkDatasetName(Box<NetworkDatasetName10_1>),
     TinName(Box<TinName10_1>),
     LasDatasetName(Box<LasDatasetName10_1>),
+    CadastralFabricName(Box<CadastralFabricName10_1>),
     TerrainName(Box<TerrainName10_1>),
     TopologyName(Box<TopologyNameBody10_1>),
     FeatureDatasetName(Box<FeatureDatasetNameBody10_1>),
@@ -1142,6 +1157,43 @@ pub fn read_feature_bookmark_10_1(
             max_bytes,
             &mut trial_table,
         )?)),
+        ObjectEntry10_1::NewObject {
+            class_id: CADASTRAL_FABRIC_NAME_CLASS_ID,
+            ..
+        } => {
+            let version = trial.read_u16_le()? as i16;
+            if version > 1 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    format!("CadastralFabricName 版本 {version} 超出 10.1 上限"),
+                ));
+            }
+            let strings = [
+                read_string_10_1(&mut trial, max_bytes)?,
+                read_string_10_1(&mut trial, max_bytes)?,
+            ];
+            let mut stop = None;
+            let dataset =
+                read_dataset_name_slot_10_1(&mut trial, max_bytes, &mut trial_table, &mut stop)?;
+            if let Some(stop) = stop {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!("CadastralFabricName 数据集名称槽未读完（{stop:?}）"),
+                ));
+            }
+            let workspace = read_surface_workspace_name_10_1(
+                &mut trial,
+                max_bytes,
+                &mut trial_table,
+                "CadastralFabricName",
+            )?;
+            BookmarkNameEntry10_1::CadastralFabricName(Box::new(CadastralFabricName10_1 {
+                version,
+                strings,
+                dataset,
+                workspace,
+            }))
+        }
         ObjectEntry10_1::NewObject {
             class_id: LAS_DATASET_NAME_CLASS_ID,
             ..

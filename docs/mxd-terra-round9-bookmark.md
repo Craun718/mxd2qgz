@@ -533,3 +533,21 @@ Save `0x785ae080` 对称写出上述字段。构造测试覆盖负版本、
 超上限版本、新建工作空间、后继书签文本与逐字节截断回滚。
 三个字符串的业务含义、真实书签宿主、原生 Open 与 QGIS
 人工检查待验证。
+
+## CadastralFabricName
+
+核对 CadastralFabric.dll PE32 10.1.0.3035，SHA-256 为
+`ccaff2b3cd3379b7a7630ea6f2a41c06c75ef6f68969e8ec8f51f2f05133bfd6`。
+objdump 与 PE RTTI 共同定位类描述符 `0x6c2d12e0`。
+QI `0x6c1fa440` 在 `0x6c1fa4f7` 比较 IName IID，匹配时
+于 `0x6c1fa515` 返回完整对象 +0x18。持久化虚表 `0x6c29d63c`
+的 GetClassID `0x6c1fae00` 写出 `0x6c296400` 的
+`5C947220-FFB5-4E71-A059-AF201AE081A6`，与同版类型库一致。
+
+Load `0x6c1fae40` 依次读取有符号上限为 1 的 short、两个
+AfCore String，再由 `0x6c1faed4` 和 `0x6c1faefe` 读取
+IDatasetName（`89E75917-C287-11D1-AA77-00C04FA33A15`）和
+IWorkspaceName（`FADD975C-E36F-11D1-AA81-00C04FA33A15`）。
+Save `0x6c1faf20` 确认字段顺序。构造测试覆盖空数据集槽、
+新建工作空间、后继书签文本、未知数据集类与逐字节截断回滚。
+字符串业务含义、真实书签宿主、原生 Open 和 QGIS 人工验收待查。
