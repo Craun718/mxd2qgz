@@ -340,6 +340,8 @@ fn preserves_domain_bytes_without_ascii_or_encoding_validation() {
         &[b"\x80\x81\xd6\xd0", b"abc\0", b"", b"\xff"],
         0x2a,
     );
+    let segment_offset = bytes.len() - (2 + 4 + 3);
+    bytes[segment_offset..segment_offset + 2].copy_from_slice(&(-1_i16).to_le_bytes());
     let mut reader = Reader::new(&bytes);
     let body = read_projected_coordinate_system_10_1(&mut reader, 1024).unwrap();
     let domains = body.domains.unwrap();
@@ -353,7 +355,9 @@ fn preserves_domain_bytes_without_ascii_or_encoding_validation() {
         ]
     );
     assert_eq!(domains.vertical_flag, 0x2a);
-    assert_eq!(domains.vertical_unit.unwrap().unit_wkt, b"met");
+    let unit = domains.vertical_unit.unwrap();
+    assert_eq!(unit.save_version, u16::MAX);
+    assert_eq!(unit.unit_wkt, b"met");
     assert_eq!(body.precision, None);
     assert_eq!(reader.remaining(), 0);
 }

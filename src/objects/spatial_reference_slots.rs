@@ -87,7 +87,7 @@ pub struct DomainBlock {
 /// 垂向标志非零时的垂向单位段（原生子函数 `0x719ea140`，证据：反编译）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VerticalUnitSegment {
-    /// 2 字节段版本，原生大于 2 报 `0x80004005`。
+    /// 2 字节段版本的原始位模式；原生按有符号上限 2 判断。
     pub save_version: u16,
     /// 单位 WKT 文本的原样字节（4 字节字节长前缀不含终止零；原生经
     /// `pe_unit_from_string` 解析，生成侧为 ASCII，读取器不强制校验）。
@@ -332,7 +332,7 @@ pub(crate) fn read_vertical_unit_segment(
     invalid: &dyn Fn(&str) -> io::Error,
 ) -> io::Result<VerticalUnitSegment> {
     let save_version = trial.read_u16_le()?;
-    if save_version > 2 {
+    if (save_version as i16) > 2 {
         return Err(invalid(&format!(
             "垂向单位段版本 {save_version} 超出原生接受范围（>2 报 0x80004005）"
         )));
@@ -490,28 +490,30 @@ mod tests {
 
     #[test]
     fn gcs_vertical_flag_consumes_unit_segment() {
-        // 垂向标志非零：紧跟 [u16 ≤2][u32 长度][原样字节]（0x719ea140）。
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(&7u16.to_le_bytes());
-        push_wkt(&mut bytes, "GEOGCS[\"X\"]");
-        for _ in 0..4 {
-            bytes.extend_from_slice(&0u32.to_le_bytes());
+        // 垂向标志非零：紧跟 [i16 ≤2][u32 长度][原样字节]（0x719ea140）。
+        for version in [i16::MIN, -1, 0, 1, 2] {
+            let mut bytes = Vec::new();
+            bytes.extend_from_slice(&7u16.to_le_bytes());
+            push_wkt(&mut bytes, "GEOGCS[\"X\"]");
+            for _ in 0..4 {
+                bytes.extend_from_slice(&0u32.to_le_bytes());
+            }
+            bytes.push(1);
+            bytes.extend_from_slice(&version.to_le_bytes());
+            let unit = b"LINEAR_UNIT[\"Meter\",1.0]";
+            bytes.extend_from_slice(&(unit.len() as u32).to_le_bytes());
+            bytes.extend_from_slice(unit);
+            bytes.extend_from_slice(&0.0f64.to_le_bytes());
+            bytes.extend_from_slice(&1.0f64.to_le_bytes());
+            push_precision(&mut bytes, 1);
+            bytes.extend_from_slice(&[0u8; 24]);
+            let mut reader = Reader::new(&bytes);
+            let body = read_geographic_coordinate_system_10_1(&mut reader, 4096).unwrap();
+            assert_eq!(reader.position(), bytes.len());
+            let segment = body.domains.unwrap().vertical_unit.unwrap();
+            assert_eq!(segment.save_version, version as u16);
+            assert_eq!(segment.unit_wkt, unit.to_vec());
         }
-        bytes.push(1);
-        bytes.extend_from_slice(&2u16.to_le_bytes());
-        let unit = b"LINEAR_UNIT[\"Meter\",1.0]";
-        bytes.extend_from_slice(&(unit.len() as u32).to_le_bytes());
-        bytes.extend_from_slice(unit);
-        bytes.extend_from_slice(&0.0f64.to_le_bytes());
-        bytes.extend_from_slice(&1.0f64.to_le_bytes());
-        push_precision(&mut bytes, 1);
-        bytes.extend_from_slice(&[0u8; 24]);
-        let mut reader = Reader::new(&bytes);
-        let body = read_geographic_coordinate_system_10_1(&mut reader, 4096).unwrap();
-        assert_eq!(reader.position(), bytes.len());
-        let segment = body.domains.unwrap().vertical_unit.unwrap();
-        assert_eq!(segment.save_version, 2);
-        assert_eq!(segment.unit_wkt, unit.to_vec());
     }
 
     #[test]
