@@ -1545,8 +1545,8 @@ impl ScaleLineBody10_1 {
 
     /// 两个刻度符号及其后继标量读完后可用。
     pub fn scale_mark_properties(&self) -> Option<ScaleMarkProperties10_1> {
-        let mark_frequency = match u16::from_le_bytes(self.raw_field("tail_version")?) {
-            0 | 1 => {
+        let mark_frequency = match i16::from_le_bytes(self.raw_field("tail_version")?) {
+            ..=1 => {
                 let flag = u16::from_le_bytes(self.raw_field("tail_legacy_flag")?);
                 if flag == 0 { 0 } else { 5 }
             }
@@ -1567,14 +1567,13 @@ impl ScaleLineBody10_1 {
     }
 }
 
-fn scale_line_version(reader: &mut Reader<'_>, max: u16, label: &str) -> io::Result<u16> {
+fn scale_line_version(reader: &mut Reader<'_>, max: i16, label: &str) -> io::Result<i16> {
     let offset = reader.position();
-    let value = reader.read_u16_le()?;
-    // 负值原生比较可通过，但不属于已确认的写侧版本。
-    if (value as i16) < 0 || value > max {
+    let value = reader.read_u16_le()? as i16;
+    if value > max {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
-            format!("{label} 版本 {value} 在 0x{offset:x} 超出 0..={max}"),
+            format!("{label} 版本 {value} 在 0x{offset:x} 超出上限 {max}"),
         ));
     }
     Ok(value)
@@ -1828,8 +1827,8 @@ pub fn read_scale_line_body_10_1(
     Ok(ScaleLineBody10_1 {
         key,
         kind,
-        version,
-        base_version,
+        version: version as u16,
+        base_version: base_version as u16,
         common,
         fields,
         stop,
@@ -2887,7 +2886,7 @@ mod tests {
     }
 
     // 返回各对象槽与版本字段的位置，供边界和回滚测试定位。
-    fn scale_line_fixture(base: u16, tail: u16, stepped: bool) -> (Vec<u8>, Vec<usize>) {
+    fn scale_line_fixture(base: i16, tail: i16, stepped: bool) -> (Vec<u8>, Vec<usize>) {
         let mut data = vec![0xabu8; 3];
         let mut positions = Vec::new();
         data.extend(1u16.to_le_bytes());
@@ -2996,10 +2995,15 @@ mod tests {
 
     #[test]
     fn scale_line_reads_all_legacy_and_current_boundaries() {
-        for base in 0..=6 {
-            for tail in 0..=2 {
+        for base in [i16::MIN, -1, 0, 1, 2, 3, 4, 5, 6] {
+            for tail in [i16::MIN, -1, 0, 1, 2] {
                 for stepped in [false, true] {
-                    let (mut data, _) = scale_line_fixture(base, tail, stepped);
+                    let (mut data, offsets) = scale_line_fixture(base, tail, stepped);
+                    let line_offset = offsets[if base >= 2 { 3 } else { 2 }];
+                    if base < 0 {
+                        data[3..5].copy_from_slice(&base.to_le_bytes());
+                        data[line_offset..line_offset + 2].copy_from_slice(&base.to_le_bytes());
+                    }
                     let end = data.len();
                     data.extend([0xde, 0xad, 0xbe, 0xef]);
                     let mut reader = Reader::new(&data);
@@ -3012,6 +3016,11 @@ mod tests {
                     };
                     let body =
                         read_scale_line_body_10_1(&mut reader, 4096, &mut table, 9, kind).unwrap();
+                    let own = if base < 0 { base } else { 1 };
+                    assert_eq!(body.version, own as u16);
+                    assert_eq!(body.base_version, base as u16);
+                    assert_eq!(body.raw_field("line_version"), Some(own.to_le_bytes()));
+                    assert_eq!(body.raw_field("tail_version"), Some(tail.to_le_bytes()));
                     assert_eq!(body.stop, None);
                     assert_eq!(
                         reader.position(),
