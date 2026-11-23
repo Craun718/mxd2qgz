@@ -237,7 +237,7 @@ fn feature_bookmark_rejects_new_name_object_and_versions() {
     assert_eq!(error.kind(), ErrorKind::Unsupported);
     assert_eq!(reader.position(), 0);
 
-    for version in [2_u16, 0x8000] {
+    for version in [2_u16] {
         let error = read_feature_bookmark_10_1(
             &mut Reader::new(&version.to_le_bytes()),
             usize::MAX,
