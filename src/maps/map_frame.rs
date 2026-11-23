@@ -53,6 +53,7 @@ pub struct MapFrameLegacy10_1 {
 #[derive(Debug, Clone, PartialEq)]
 pub struct MapFrameVersionThree10_1 {
     pub map_frame: ObjectEntry10_1,
+    pub map_frame_body: Option<Box<MapFrame10_1>>,
     pub mode_bits: u32,
     pub scale_bits: u64,
     pub extra_bits: u32,
@@ -121,8 +122,11 @@ pub(super) fn read_map_frame_tail(
         .collect::<io::Result<_>>()?;
     let base = base_frame(r, limit, refs)?;
     let version_three_tail = if version == 3 {
+        let (map_frame, map_frame_body) =
+            read_nested_map_frame(r, limit, refs, region_offset, is_root_map)?;
         Some(MapFrameVersionThree10_1 {
-            map_frame: reference_slot(r, refs, "IMapFrame")?,
+            map_frame,
+            map_frame_body,
             mode_bits: r.read_u32_le()?,
             scale_bits: r.read_f64_le()?.to_bits(),
             extra_bits: r.read_u32_le()?,
@@ -313,33 +317,8 @@ fn read_locator_rectangle_slot(
                     "不支持的 LocatorRectangle 版本",
                 ));
             }
-            let mut probe = r.clone();
-            let mut staged = refs.clone();
-            let mut map_frame = read_object_entry_10_1(&mut probe, &mut staged)?;
-            if let ObjectEntry10_1::BackReference { class_id, key } = &mut map_frame {
-                *class_id = refs.registered_class(*key).unwrap_or(*class_id);
-            }
-            if matches!(map_frame,
-                ObjectEntry10_1::BackReference { class_id, .. }
-                | ObjectEntry10_1::NewObject { class_id, .. }
-                if class_id != super::page_layout_prefix::MAP_FRAME_CLASS_ID)
-            {
-                return Err(unsupported("LocatorRectangle IMapFrame", map_frame));
-            }
-            let map_frame_body = if matches!(map_frame, ObjectEntry10_1::NewObject { .. }) {
-                Some(Box::new(refs.with_nested_graphics(|refs| {
-                    super::page_layout_prefix::read_map_frame(
-                        r,
-                        region_offset,
-                        limit,
-                        refs,
-                        is_root_map,
-                    )
-                })?))
-            } else {
-                *r = probe;
-                None
-            };
+            let (map_frame, map_frame_body) =
+                read_nested_map_frame(r, limit, refs, region_offset, is_root_map)?;
             let border = decor(r, limit, refs, DecorKind10_1::Border)?;
             let background = decor(r, limit, refs, DecorKind10_1::Background)?;
             let symbol = read_symbol_slot_full_10_1(r, limit, refs, 16)?;
@@ -370,6 +349,37 @@ fn read_locator_rectangle_slot(
         _ => None,
     };
     Ok(LocatorRectangleSlot10_1 { entry, body })
+}
+
+fn read_nested_map_frame(
+    r: &mut Reader<'_>,
+    limit: usize,
+    refs: &mut RefTable10_1,
+    region_offset: usize,
+    is_root_map: &impl Fn(u32) -> bool,
+) -> io::Result<(ObjectEntry10_1, Option<Box<MapFrame10_1>>)> {
+    let mut probe = r.clone();
+    let mut staged = refs.clone();
+    let mut map_frame = read_object_entry_10_1(&mut probe, &mut staged)?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut map_frame {
+        *class_id = refs.registered_class(*key).unwrap_or(*class_id);
+    }
+    if matches!(map_frame,
+        ObjectEntry10_1::BackReference { class_id, .. }
+        | ObjectEntry10_1::NewObject { class_id, .. }
+        if class_id != super::page_layout_prefix::MAP_FRAME_CLASS_ID)
+    {
+        return Err(unsupported("IMapFrame", map_frame));
+    }
+    let map_frame_body = if matches!(map_frame, ObjectEntry10_1::NewObject { .. }) {
+        Some(Box::new(refs.with_nested_graphics(|refs| {
+            super::page_layout_prefix::read_map_frame(r, region_offset, limit, refs, is_root_map)
+        })?))
+    } else {
+        *r = probe;
+        None
+    };
+    Ok((map_frame, map_frame_body))
 }
 
 fn collection_count(r: &mut Reader<'_>, limit: usize, name: &str) -> io::Result<usize> {

@@ -765,3 +765,41 @@ fn locator_rectangle_reads_a_new_map_frame_with_shared_keys() {
         assert_eq!(refs, saved);
     }
 }
+
+#[test]
+fn old_map_frame_tail_reads_a_new_map_frame_before_its_scalars() {
+    let mut outer = frame_body(3);
+    let slot = outer.len() - (16 + 4 + 8 + 4 + 16);
+    let mut inner = MAP_FRAME_CLASS_ID.to_vec();
+    inner.extend(51_u32.to_le_bytes());
+    inner.extend(frame_body(4));
+    outer.splice(slot..slot + 16, inner);
+    let bytes = wrap(&outer);
+    let mut refs = RefTable10_1::new();
+    refs.register(42);
+    let mut reader = Reader::new(&bytes);
+    let frame = read_page_layout_map_frame_10_1(&mut reader, 4096, &mut refs).unwrap();
+    let tail = frame.version_three_tail.unwrap();
+    assert_eq!(tail.map_frame_body.unwrap().prefix.frame_key, 51);
+    assert_eq!(tail.mode_bits, 0xffff_0001);
+    assert_eq!(tail.scale_bits, 1000_f64.to_bits());
+    assert!(refs.contains(51));
+    assert_eq!(reader.remaining(), 0);
+
+    outer.splice(slot..slot + 20 + frame_body(4).len(), {
+        let mut wrong = MAP_FRAME_CLASS_ID.to_vec();
+        wrong.extend(42_u32.to_le_bytes());
+        wrong
+    });
+    let mut refs = RefTable10_1::new();
+    let mut map = MAP_CLASS_ID.to_vec();
+    map.extend(42_u32.to_le_bytes());
+    mxd2qgz::storage::object_refs::read_object_entry_10_1(&mut Reader::new(&map), &mut refs)
+        .unwrap();
+    let saved = refs.clone();
+    let bytes = wrap(&outer);
+    let mut reader = Reader::new(&bytes);
+    assert!(read_page_layout_map_frame_10_1(&mut reader, 4096, &mut refs).is_err());
+    assert_eq!(reader.position(), 0);
+    assert_eq!(refs, saved);
+}

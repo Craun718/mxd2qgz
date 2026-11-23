@@ -51,3 +51,11 @@ LoadObject，调用方未限制其必须为回引。完整 MapFrame 读取器现
 见[子层类证据](mxd-luna-deep-layer-masking-20261118.md#sdk-mole_data-的未识别子图层)。
 已进入的布局没有地图框停点。此次样本仅验证现有路径的解析边界，
 首次定义仍由构造回归覆盖。ArcMap/QGIS 人工核验未做。
+
+### MapFrame v3 尾段的内联地图框
+
+MapElements.dll 10.1.0.3035 的 MapFrame Load `0x79570a20`
+在 v3 尾段通过普通 LoadObject 请求 IMapFrame。该槽与 LocatorRectangle
+共用地图框分派、登记类检查和图形深度限额。构造数据验证首次定义的
+地图框、其后的标量，以及误引根 Map 时整个外层地图框回滚。
+v3 尾段的非空 IFeatureLayer 新对象及真实内联地图框仍待取证。
