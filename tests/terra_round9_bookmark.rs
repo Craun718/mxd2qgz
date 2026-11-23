@@ -4547,16 +4547,40 @@ fn feature_bookmark_reads_legacy_topo_spatial_analyst_name_domains() {
 
 #[test]
 fn feature_bookmark_reads_legacy_topo_sa_remap_domain() {
-    use mxd2qgz::maps::map_surround::{
-        GP_SA_REMAP_DOMAIN_CLASS_ID, GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID, GpTopoDomain10_1,
-    };
+    use mxd2qgz::maps::map_surround::{GP_SA_REMAP_DOMAIN_CLASS_ID, GpTopoDomain10_1};
+    assert_legacy_topo_long_list_domain(GP_SA_REMAP_DOMAIN_CLASS_ID, |raw_count, values| {
+        GpTopoDomain10_1::SaRemap {
+            version: 1,
+            raw_count,
+            values,
+        }
+    });
+}
+
+#[test]
+fn feature_bookmark_reads_legacy_topo_sa_neighborhood_domain() {
+    use mxd2qgz::maps::map_surround::{GP_SA_NEIGHBORHOOD_DOMAIN_CLASS_ID, GpTopoDomain10_1};
+    assert_legacy_topo_long_list_domain(GP_SA_NEIGHBORHOOD_DOMAIN_CLASS_ID, |raw_count, values| {
+        GpTopoDomain10_1::SaNeighborhood {
+            version: 1,
+            raw_count,
+            values,
+        }
+    });
+}
+
+fn assert_legacy_topo_long_list_domain(
+    class_id: [u8; 16],
+    expected: impl Fn(i32, Vec<i32>) -> mxd2qgz::maps::map_surround::GpTopoDomain10_1,
+) {
+    use mxd2qgz::maps::map_surround::GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID;
 
     for count in [-2_i32, 2] {
         let mut bytes = bookmark_header_10_1(&GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID, 17);
         bytes.extend(1_i16.to_le_bytes());
         bytes.extend(1_i32.to_le_bytes());
         bytes.extend([0; 16]);
-        bytes.extend(GP_SA_REMAP_DOMAIN_CLASS_ID);
+        bytes.extend(class_id);
         bytes.extend(18_u32.to_le_bytes());
         bytes.extend(1_i16.to_le_bytes());
         bytes.extend(count.to_le_bytes());
@@ -4583,11 +4607,7 @@ fn feature_bookmark_reads_legacy_topo_sa_remap_domain() {
                 .unwrap()
                 .body
                 .as_deref(),
-            Some(&GpTopoDomain10_1::SaRemap {
-                version: 1,
-                raw_count: count,
-                values
-            }),
+            Some(&expected(count, values)),
         );
         assert_eq!(result.name, "书签");
         assert_eq!(reader.position(), end);
