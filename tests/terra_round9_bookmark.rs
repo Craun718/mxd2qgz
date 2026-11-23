@@ -6772,3 +6772,82 @@ fn feature_bookmark_reads_arc_info_item_fields_in_stream_order() {
         );
     }
 }
+
+#[test]
+fn feature_bookmark_reads_gp_data_file_transport_and_properties() {
+    use mxd2qgz::layers::image_server_rules::RuleSlot10_1;
+    use mxd2qgz::maps::map_surround::{
+        GDS_DATA_CLASS_ID, GP_DATA_FILE_CLASS_ID, GdsData10_1, GpCodedValue10_1,
+    };
+    use mxd2qgz::objects::property_set::{PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1};
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    let strings = ["数据文件", "输出", ""].map(str::to_owned);
+    let trailer = strings
+        .iter()
+        .flat_map(|value| bookmark_string_10_1(value))
+        .collect::<Vec<_>>();
+    for version in [-1_i16, 0, 1, 2, 3] {
+        let data = [0, 0xff, 0x81, 1, 0];
+        let mut payload = bookmark_entry_10_1(&GDS_DATA_CLASS_ID, 20);
+        payload.extend(version.to_le_bytes());
+        payload.extend((data.len() as u32).to_le_bytes());
+        payload.extend(data);
+        payload.extend(bookmark_string_10_1("表"));
+        payload.extend((-12_i32).to_le_bytes());
+        payload.extend(0xffff_u16.to_le_bytes());
+        let extension = (version == 3).then(|| "扩展".to_owned());
+        let extension_bytes = extension
+            .as_deref()
+            .map(bookmark_string_10_1)
+            .unwrap_or_default();
+        let properties = (version >= 2).then(|| {
+            payload.extend(bookmark_entry_10_1(&PROPERTY_SET_CLASS_ID, 21));
+            payload.extend(1_u16.to_le_bytes());
+            payload.extend(0_u32.to_le_bytes());
+            let following_fields = 20
+                + bookmark_string_10_1("拓扑").len()
+                + 4
+                + bookmark_string_10_1("书签").len()
+                + 1;
+            RuleSlot10_1 {
+                entry: ObjectEntry10_1::NewObject {
+                    class_id: PROPERTY_SET_CLASS_ID,
+                    key: 21,
+                },
+                body: Some(Box::new(PropertySetObjectStream10_1 {
+                    version: 1,
+                    count: 0,
+                    entries: Vec::new(),
+                    remaining_bytes: extension_bytes.len() + trailer.len() + following_fields,
+                })),
+            }
+        });
+        payload.extend(extension_bytes);
+        payload.extend(&trailer);
+
+        assert_legacy_topo_coded_value(
+            GP_DATA_FILE_CLASS_ID,
+            1,
+            &payload,
+            GpCodedValue10_1::DataFile {
+                data: RuleSlot10_1 {
+                    entry: ObjectEntry10_1::NewObject {
+                        class_id: GDS_DATA_CLASS_ID,
+                        key: 20,
+                    },
+                    body: Some(Box::new(GdsData10_1 {
+                        version,
+                        bytes: data.to_vec(),
+                        name: "表".to_owned(),
+                        raw_long: -12,
+                        raw_short: 0xffff,
+                        properties,
+                        extra_string: extension,
+                    })),
+                },
+                strings: strings.clone(),
+            },
+        );
+    }
+}

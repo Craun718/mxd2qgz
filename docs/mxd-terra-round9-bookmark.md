@@ -1779,3 +1779,28 @@ Load 接受 v0/v1，GPValue 基类后依次读两个 AfCore 成员 String、
 五个 LONG、三个 short。Save 对称写入。读取器按流序保留标量。
 合成书签覆盖两种版本、非空名称、后继字段、回引、超限版本和逐字节
 截断回滚。成员语义及原生书签待实档验证。
+
+### GPDataFile 和 GDSData
+
+ArcMap 10.1.0.3035 的 `GpObjects.dll` RTTI `0x747ff7f4` 对应持久化
+虚表 `0x747ac59c`，CLSID `{763035E4-E5C9-4AAF-A60C-65C38ADDB5EF}`
+位于 `0x747ac65c`。Load `0x746aac00` 接受版本 0 或 1，先读 GPValue，
+再于 `0x746aac69` 读取请求 IID
+`{BDFD716D-E902-4907-9C97-65DA73F02AE9}` 的对象，最后连续读取三个
+AfCore 成员 String。Save `0x746aacc0` 顺序相同。同版
+`esriGeoDatabaseDistributed.olb` 条目 85 将该 IID 定名为 IGDSData。
+
+内层证据来自 `GeoDataServer.dll` 10.1.0.3035（SHA-256
+`2c89c12ffc1097e2fe4ebf769683ca5940f40ba1933f4edf18aebbd25742bc17`）。
+GDSData 的持久化虚表 `0x71718994` 经 RTTI `0x717240c0` 对位，
+CLSID `{8B77E69C-2A95-42E3-88E3-22A612B69752}` 位于 `0x71718a70`。
+Load `0x716f1a20` 读取有符号 short 版本（上限 3），随后顺序读取
+LONG 长度、该长度的原字节、成员 String、LONG、short。v2 增加
+IPropertySet 槽（`0x716f1b34`），v3 追加成员 String
+（`0x716f1b4c`）。Save 入口 `0x716f1b70` 按文档版本选择布局。
+用 objdump 和 PE 导入表核对读写调用。
+
+读取器保留原字节，限制长度，且复用 PropertySet 及共享引用表。
+合成书签覆盖 v0 至 v3、有符号版本比较、非空数据和属性对象、
+父对象后继字符串及逐字节截断回滚。负数据长度作为无效输入拒绝。
+嵌入数据的内部编码和真实 ArcMap 工程待查。

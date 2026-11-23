@@ -210,7 +210,8 @@ use crate::objects::envelope::{
     read_spatial_reference_entry_10_1,
 };
 use crate::objects::property_set::{
-    PropertyValueObjectStream10_1, read_padded_variant_object_stream_nested_10_1,
+    PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1, PropertyValueObjectStream10_1,
+    read_padded_variant_object_stream_nested_10_1, read_property_set_object_stream_10_1,
     read_variant_object_body_10_1,
 };
 use crate::objects::route_event_name::{
@@ -429,6 +430,14 @@ pub const GP_POINT_CLASS_ID: [u8; 16] = [
     0x82, 0x30, 0xe9, 0xa1, 0xbe, 0xba, 0x44, 0x4d, 0x8c, 0xe3, 0x46, 0x37, 0x74, 0x8e, 0xdd, 0xdd,
 ];
 
+pub const GP_DATA_FILE_CLASS_ID: [u8; 16] = [
+    0xe4, 0x35, 0x30, 0x76, 0xc9, 0xe5, 0xaf, 0x4a, 0xa6, 0x0c, 0x65, 0xc3, 0x8a, 0xdd, 0xb5, 0xef,
+];
+
+pub const GDS_DATA_CLASS_ID: [u8; 16] = [
+    0x9c, 0xe6, 0x77, 0x8b, 0x95, 0x2a, 0xe3, 0x42, 0x88, 0xe3, 0x22, 0xa6, 0x12, 0xb6, 0x97, 0x52,
+];
+
 pub const GP_ARC_INFO_ITEM_CLASS_ID: [u8; 16] = [
     0xb2, 0xbb, 0xdd, 0x6d, 0xdc, 0x41, 0x12, 0x4f, 0x91, 0x3e, 0x80, 0x31, 0x96, 0xeb, 0x33, 0xfa,
 ];
@@ -587,6 +596,10 @@ pub enum GpCodedValue10_1 {
         x_bits: u64,
         y_bits: u64,
     },
+    DataFile {
+        data: RuleSlot10_1<GdsData10_1>,
+        strings: [String; 3],
+    },
     ArcInfoItem {
         strings: [String; 2],
         raw_longs: [i32; 5],
@@ -684,6 +697,17 @@ pub enum GpCodedValue10_1 {
         seed: i32,
         raw_generator: i32,
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GdsData10_1 {
+    pub version: i16,
+    pub bytes: Vec<u8>,
+    pub name: String,
+    pub raw_long: i32,
+    pub raw_short: u16,
+    pub properties: Option<RuleSlot10_1<PropertySetObjectStream10_1>>,
+    pub extra_string: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1997,6 +2021,7 @@ fn read_gp_coded_value_entry(
                     | GP_POINT_CLASS_ID
                     | GP_CELL_SIZE_XY_CLASS_ID
                     | GP_SA_CELL_SIZE_CLASS_ID
+                    | GP_DATA_FILE_CLASS_ID
                     | GP_ARC_INFO_ITEM_CLASS_ID
                     | GP_ANALYSIS_CELL_SIZE_CLASS_ID
                     | GP_RASTER_GDB_ENV_COMPRESSION_CLASS_ID
@@ -2052,6 +2077,7 @@ fn read_gp_coded_value_entry(
                 | GP_POINT_CLASS_ID
                 | GP_CELL_SIZE_XY_CLASS_ID
                 | GP_SA_CELL_SIZE_CLASS_ID
+                | GP_DATA_FILE_CLASS_ID
                 | GP_ARC_INFO_ITEM_CLASS_ID
                 | GP_ANALYSIS_CELL_SIZE_CLASS_ID
                 | GP_RASTER_GDB_ENV_COMPRESSION_CLASS_ID
@@ -2227,6 +2253,14 @@ fn read_gp_coded_value_entry(
                 | GP_SA_STRING_REMAP_CLASS_ID => GpCodedValue10_1::SaRemap(Box::new(
                     read_gp_sa_remap(reader, max_bytes, table, depth, version, class_id)?,
                 )),
+                GP_DATA_FILE_CLASS_ID => GpCodedValue10_1::DataFile {
+                    data: read_gp_data_file_transport(reader, max_bytes, table)?,
+                    strings: [
+                        read_string_10_1(reader, max_bytes)?,
+                        read_string_10_1(reader, max_bytes)?,
+                        read_string_10_1(reader, max_bytes)?,
+                    ],
+                },
                 GP_ARC_INFO_ITEM_CLASS_ID => GpCodedValue10_1::ArcInfoItem {
                     strings: [
                         read_string_10_1(reader, max_bytes)?,
@@ -2396,6 +2430,90 @@ fn read_gp_coded_value_entry(
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
                 "GPCodedValueDomain 的 IGPValue 类未支持",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_gp_data_file_transport(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<RuleSlot10_1<GdsData10_1>> {
+    let entry = read_object_entry_10_1(reader, table)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if table.registered_class(key).unwrap_or(class_id) == GDS_DATA_CLASS_ID =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: GDS_DATA_CLASS_ID,
+            ..
+        } => {
+            let version = read_gp_name_version(reader, 3, "GDSData")?;
+            let length = reader.read_u32_le()? as i32;
+            if length < 0 || length as usize > max_bytes {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "GDSData 数据长度超限",
+                ));
+            }
+            let bytes = reader.read_bytes(length as usize)?.to_vec();
+            let name = read_string_10_1(reader, max_bytes)?;
+            let raw_long = reader.read_u32_le()? as i32;
+            let raw_short = reader.read_u16_le()?;
+            let properties = (version >= 2)
+                .then(|| read_gds_data_properties(reader, max_bytes, table))
+                .transpose()?;
+            let extra_string = (version >= 3)
+                .then(|| read_string_10_1(reader, max_bytes))
+                .transpose()?;
+            Some(Box::new(GdsData10_1 {
+                version,
+                bytes,
+                name,
+                raw_long,
+                raw_short,
+                properties,
+                extra_string,
+            }))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "GPDataFile 的 IGDSData 槽包含不支持的类",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_gds_data_properties(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<RuleSlot10_1<PropertySetObjectStream10_1>> {
+    let entry = read_object_entry_10_1(reader, table)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if table.registered_class(key).unwrap_or(class_id) == PROPERTY_SET_CLASS_ID =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: PROPERTY_SET_CLASS_ID,
+            ..
+        } => Some(Box::new(read_property_set_object_stream_10_1(
+            reader, max_bytes, table,
+        )?)),
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "GDSData 的 IPropertySet 槽包含不支持的类",
             ));
         }
     };
