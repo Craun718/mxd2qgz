@@ -794,24 +794,10 @@ pub fn read_marker_north_arrow_body_10_1(
         )
     };
 
-    // 1. 自身版本 short：原生无拒绝门；仅接受 0..=2（Save 恒写 2，>2 与
-    //    负值无字节佐证，一并拒绝较原生更严）。
-    let version = trial.read_u16_le()?;
-    if version > 2 {
-        return Err(invalid(format!(
-            "版本位模式 {version}（0x{version:04x}）超出本读取器接受范围 0..=2（Load \
-             0x79444b80 无拒绝门；Save 恒写 2，其余值无字节佐证，拒绝）"
-        )));
-    }
-
-    // 2. BaseNorthArrow 基类段。
-    let base_version = trial.read_u16_le()?;
-    if (base_version as i16) > MAX_BASE_NORTH_ARROW_VERSION || (base_version as i16) < 0 {
-        return Err(invalid(format!(
-            "BaseNorthArrow 版本位模式 {base_version}（0x{base_version:04x}）超出接受范围 \
-             0..=4（Load 0x793a3b90 有符号 >4 拒绝 0x80004005；Save 版本表 DAT_79480ea0 \
-             = [3,3,3,3,3,4]，10.1 恒写 4）"
-        )));
+    let version = trial.read_u16_le()? as i16;
+    let base_version = trial.read_u16_le()? as i16;
+    if base_version > MAX_BASE_NORTH_ARROW_VERSION {
+        return Err(invalid(format!("不支持的指北针基类版本 {base_version}")));
     }
     let common = read_map_surround_common_prefix_10_1(&mut trial, max_bytes, table)?;
     let base_double_a = trial.read_f64_le()?;
@@ -874,8 +860,8 @@ pub fn read_marker_north_arrow_body_10_1(
     *reader = trial;
     Ok(MarkerNorthArrowBody10_1 {
         key,
-        version,
-        base_version,
+        version: version as u16,
+        base_version: base_version as u16,
         common,
         base_double_a,
         base_double_b,
@@ -894,11 +880,9 @@ pub fn read_marker_north_arrow_body_10_1(
 pub struct MarkerNorthArrowBody10_1 {
     /// 对象头键。
     pub key: u32,
-    /// int16 自身版本的无符号位模式（原生无拒绝门；Save 恒写 2；读取器
-    /// 仅接受 0..=2，较原生更严）。
+    /// 自身版本位模式，按有符号值选择标记槽。
     pub version: u16,
-    /// BaseNorthArrow 基类版本的无符号位模式（有符号 >4 拒绝；10.1 恒写
-    /// 4；负值拒绝较原生更严）。
+    /// 基类版本位模式，有符号上限为 4。
     pub base_version: u16,
     /// MapSurround 族共同前缀。
     pub common: MapSurroundCommonPrefix10_1,
@@ -2453,11 +2437,29 @@ mod tests {
     }
 
     #[test]
-    fn rejects_marker_north_arrow_version_out_of_range() {
-        // 自身版本 3 拒绝（>2 无写侧来源）。
+    fn marker_north_arrow_follows_native_signed_version_branches() {
         let mut data = mna_v2_bytes();
         data[20] = 3;
-        assert!(read_body(&data, read_marker_north_arrow_body_10_1).is_err());
+        let arrow = read_body(&data, read_marker_north_arrow_body_10_1).unwrap();
+        assert_eq!(arrow.version, 3);
+        assert_eq!(arrow.remaining_bytes, 0);
+
+        let mut data = vec![0xaa; 16];
+        data.extend(9_u32.to_le_bytes());
+        data.extend((-1_i16).to_le_bytes());
+        data.extend(i16::MIN.to_le_bytes());
+        data.extend(common_prefix_bytes());
+        data.extend([0; 16]); // 基类的两个 double。
+        data.extend(42_i32.to_le_bytes()); // 旧布局弃读的 LONG。
+        data.extend([0; 16]); // 空标记符号。
+        let arrow = read_body(&data, read_marker_north_arrow_body_10_1).unwrap();
+        assert_eq!(arrow.version, u16::MAX);
+        assert_eq!(arrow.base_version, 0x8000);
+        assert!(arrow.base_double_c.is_none());
+        assert!(arrow.base_int32.is_none());
+        assert_eq!(arrow.stop, None);
+        assert_eq!(arrow.remaining_bytes, 0);
+
         // 基类版本 5 拒绝（>4 原生 0x80004005）。
         let mut data = mna_v2_bytes();
         data[22] = 5;
