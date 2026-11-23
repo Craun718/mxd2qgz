@@ -3376,3 +3376,49 @@ fn feature_bookmark_reads_locator_workspace_name_versions() {
         }
     }
 }
+
+#[test]
+fn feature_bookmark_reads_locator_workspace_v2_ags_connection_name() {
+    use mxd2qgz::layers::cache_tile_reader::AGS_SERVER_CONNECTION_NAME;
+    use mxd2qgz::maps::map_surround::LOCATOR_WORKSPACE_NAME_CLASS_ID;
+
+    let mut bytes = bookmark_header_10_1(&LOCATOR_WORKSPACE_NAME_CLASS_ID, 17);
+    bytes.extend(2_i16.to_le_bytes());
+    bytes.extend(bookmark_string_10_1("定位器"));
+    bytes.extend(bookmark_string_10_1("工作空间"));
+    let source_offset = bytes.len();
+    bytes.extend(AGS_SERVER_CONNECTION_NAME);
+    bytes.extend(18_u32.to_le_bytes());
+    bytes.extend(2_i16.to_le_bytes());
+    bytes.extend([0; 16]);
+    bytes.extend(bookmark_string_10_1("服务连接"));
+    bytes.extend(bookmark_string_10_1("书签"));
+    let end = bytes.len();
+    bytes.push(0xa5);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    assert!(matches!(
+        result.name_object,
+        BookmarkNameEntry10_1::LocatorWorkspaceName { version: 2, source, .. }
+            if matches!(source.as_ref(), BookmarkNameEntry10_1::AgsServerConnectionName(connection)
+                if connection.extra_string.as_deref() == Some("服务连接"))
+    ));
+    assert_eq!(result.name, "书签");
+    assert_eq!(reader.position(), end);
+    assert!(refs.contains(17) && refs.contains(18));
+
+    // AGSServerConnection 本身的 CLSID 与可持久化连接名称不同。
+    let live_connection_class = [
+        0xd0, 0xef, 0x9d, 0xb4, 0xc0, 0x85, 0xf4, 0x46, 0x91, 0x8b, 0x1f, 0xb7, 0xe0, 0x2a, 0x8c,
+        0x70,
+    ];
+    bytes[source_offset..source_offset + 16].copy_from_slice(&live_connection_class);
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let error = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::Unsupported);
+    assert_eq!(reader.position(), 0);
+    assert!(refs.is_empty());
+}

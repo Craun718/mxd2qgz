@@ -708,3 +708,30 @@ LocatorWorkspaceName 与 ShortcutName 共用 16 层嵌套限制。
 构造测试覆盖有符号版本、v1 内嵌 FileName、其余版本空槽、
 后继书签字段边界和截断回滚。v2 IUnknown 槽的其他持久化类、
 真实书签宿主、原生 Open 和 QGIS 人工验收待验证。
+
+### IUnknown 子槽的接口复核
+
+沿 Geocoding.dll 10.1.0.3035 的 Load `0x71367ac0` 跟踪
+IUnknown 子对象的后续 QueryInterface。以同版 72 个 Desktop
+类型库核对帮助函数的 IID 名称。
+
+| QI 帮助函数 | 请求接口 |
+| --- | --- |
+| `0x71368170` | IWorkspaceName |
+| `0x71368220` | IName |
+| `0x713682d0` | IAGSServerConnectionName |
+| `0x71368380` | IAGSServerConnection |
+| `0x71368430` | IAGSServerObjectName |
+
+后三个接口的公开内置类分别为 AGSServerConnectionName、
+AGSServerConnection、AGSServerObjectName。前后两个名称类已有
+持久化读取器。AGSClient.dll 10.1.0.3035（SHA-256
+`3bebe94f58b3aed1dca1294aecaf8e080f235a92b9c6aa51376e16ae7cbe351c`）
+中的 AGSServerConnection（CLSID `B49DEFD0-85C0-46F4-918B-1FB7E02A8C70`）
+由 RTTI `0x6990d3d4` 定位。QI `0x697c83c0` 及其回退
+`0x697c1230` 均无 IPersistStream 分支。普通对象流要求此接口，
+所以读取器保持该类的新对象停止点。
+
+构造 v2 书签验证可持久化的 AGSServerConnectionName 能读到
+后继书签文本，将同一子槽改为 AGSServerConnection 则回滚。
+原生转换路径、其他注册实现和真实书签中的子类仍待运行取证。
