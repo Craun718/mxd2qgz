@@ -1585,3 +1585,21 @@ AfCore 的读写调用复核其余段：
 遇到不同对象类无法确定边界，沿用外层 FeatureBookmark 的事务回退。
 合成工程覆盖各选择子、版本和截断。路径读出后 ArcMap 尝试加载外部因子表，
 本解析器仅保留路径文本。实际工具参数及 ArcMap 工程读写待实档验证。
+
+### GPSASemiVariogram
+
+ArcMap 10.1.0.3035 的 `GPSACore.dll` RTTI `0x74946a20` 对应持久化
+虚表 `0x74930d60`，CLSID `{7A732377-B6B8-41AB-AD2D-C2051E82A494}`
+位于 `0x74930e3c`，与安装介质类注册清单一致。用 objdump 检查 Load
+`0x748f2030` 和 Save `0x748f2290`。Load 读版本 0 至 3、GPValue
+基类体、仅 v1 存在的 IName 槽（IID 常量 `0x7492ce50`）及 LONG
+变异函数类型。v0 至 v2 的 Lag 以 LONG 字节数加原始窄字符存储，
+读取后将文本 `#` 视作缺省标记。v3 的 Lag 改为 double。其后依次读取
+Range、PartialSill、Nugget 三个 double，Save 固定写 v3。
+
+字段名与安装介质 `esriSpatialAnalyst.olb` 的 IGPSASemiVariogram
+类型库条目 88 对照。Save 经 `+0x14`、`+0x28`、`+0x18`、
+`+0x20`、`+0x1c` 取值，分别对应 VariogramType、Lag、Range、
+PartialSill、Nugget。读取器保留原始枚举和 double 位模式，旧 Lag
+保留窄字符字节。合成测试覆盖 0 至 3 版、回引和逐字节截断回滚。
+旧值的实际代码页及 ArcMap 工程内对象待实档验证。

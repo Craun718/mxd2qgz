@@ -453,6 +453,10 @@ pub const GP_SA_NUMBER_REMAP_CLASS_ID: [u8; 16] = [
     0xff, 0xc3, 0x56, 0x31, 0xce, 0x80, 0x8f, 0x49, 0xb1, 0x6f, 0xf3, 0xa8, 0x1a, 0x45, 0x90, 0x8f,
 ];
 
+pub const GP_SA_SEMI_VARIOGRAM_CLASS_ID: [u8; 16] = [
+    0x77, 0x23, 0x73, 0x7a, 0xb8, 0xb6, 0xab, 0x41, 0xad, 0x2d, 0xc2, 0x05, 0x1e, 0x82, 0xa4, 0x94,
+];
+
 pub const GP_SA_STRING_REMAP_CLASS_ID: [u8; 16] = [
     0x89, 0x20, 0x53, 0xd0, 0x4d, 0x34, 0x23, 0x4d, 0xa6, 0x7c, 0x5d, 0xfc, 0xd1, 0x4d, 0x66, 0x94,
 ];
@@ -534,6 +538,7 @@ pub enum GpCodedValue10_1 {
     SaDistanceFactor(RuleSlot10_1<PathDistanceFactor10_1>),
     SaNeighborhood(Box<GpSaNeighborhood10_1>),
     SaRemap(Box<GpSaRemap10_1>),
+    SaSemiVariogram(Box<GpSaSemiVariogram10_1>),
     SaRadius {
         legacy_name: Option<Box<BookmarkNameEntry10_1>>,
         raw_longs: [i32; 2],
@@ -612,6 +617,22 @@ pub enum PathDistanceFactorParameters10_1 {
     None,
     Numbers(Vec<u64>),
     Path(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpSaSemiVariogram10_1 {
+    pub legacy_name: Option<Box<BookmarkNameEntry10_1>>,
+    pub variogram_type: i32,
+    pub lag: GpSaSemiVariogramLag10_1,
+    pub range_bits: u64,
+    pub partial_sill_bits: u64,
+    pub nugget_bits: u64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum GpSaSemiVariogramLag10_1 {
+    LegacyText(Vec<u8>),
+    Number(u64),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1801,6 +1822,7 @@ fn read_gp_coded_value_slot(
                     | GP_SA_HORIZONTAL_FACTOR_CLASS_ID
                     | GP_SA_VERTICAL_FACTOR_CLASS_ID
                     | GP_SA_NEIGHBORHOOD_CLASS_ID
+                    | GP_SA_SEMI_VARIOGRAM_CLASS_ID
                     | GP_SA_STRING_REMAP_CLASS_ID
                     | GP_SA_RADIUS_CLASS_ID
                     | GP_EVALUATION_SCALE_CLASS_ID
@@ -1842,6 +1864,7 @@ fn read_gp_coded_value_slot(
                 | GP_SA_HORIZONTAL_FACTOR_CLASS_ID
                 | GP_SA_VERTICAL_FACTOR_CLASS_ID
                 | GP_SA_NEIGHBORHOOD_CLASS_ID
+                | GP_SA_SEMI_VARIOGRAM_CLASS_ID
                 | GP_SA_STRING_REMAP_CLASS_ID
                 | GP_SA_RADIUS_CLASS_ID
                 | GP_EVALUATION_SCALE_CLASS_ID
@@ -1873,7 +1896,7 @@ fn read_gp_coded_value_slot(
             let version = reader.read_u16_le()?;
             let base_version = reader.read_u16_le()?;
             let max_version = match class_id {
-                GP_SPATIAL_REFERENCE_CLASS_ID => 3,
+                GP_SPATIAL_REFERENCE_CLASS_ID | GP_SA_SEMI_VARIOGRAM_CLASS_ID => 3,
                 GP_SA_NUMBER_REMAP_CLASS_ID | GP_SA_STRING_REMAP_CLASS_ID => 4,
                 GP_ENCRYPTED_STRING_CLASS_ID
                 | GP_SA_RADIUS_CLASS_ID
@@ -1976,6 +1999,9 @@ fn read_gp_coded_value_slot(
                         class_id == GP_SA_VERTICAL_FACTOR_CLASS_ID,
                     )?)
                 }
+                GP_SA_SEMI_VARIOGRAM_CLASS_ID => GpCodedValue10_1::SaSemiVariogram(Box::new(
+                    read_gp_sa_semi_variogram(reader, max_bytes, table, depth, version)?,
+                )),
                 GP_SA_NEIGHBORHOOD_CLASS_ID => GpCodedValue10_1::SaNeighborhood(Box::new(
                     read_gp_sa_neighborhood(reader, max_bytes, table, depth, version)?,
                 )),
@@ -2206,6 +2232,41 @@ fn read_gp_sa_neighborhood(
     })
 }
 
+fn read_gp_sa_semi_variogram(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+    version: u16,
+) -> io::Result<GpSaSemiVariogram10_1> {
+    let legacy_name = read_gp_sa_legacy_name(reader, max_bytes, table, depth, version)?;
+    let variogram_type = reader.read_u32_le()? as i32;
+    let lag = if version == 3 {
+        GpSaSemiVariogramLag10_1::Number(reader.read_f64_le()?.to_bits())
+    } else {
+        GpSaSemiVariogramLag10_1::LegacyText(read_gp_narrow_text(reader, max_bytes)?)
+    };
+    Ok(GpSaSemiVariogram10_1 {
+        legacy_name,
+        variogram_type,
+        lag,
+        range_bits: reader.read_f64_le()?.to_bits(),
+        partial_sill_bits: reader.read_f64_le()?.to_bits(),
+        nugget_bits: reader.read_f64_le()?.to_bits(),
+    })
+}
+
+fn read_gp_narrow_text(reader: &mut Reader<'_>, max_bytes: usize) -> io::Result<Vec<u8>> {
+    let length = reader.read_u32_le()? as usize;
+    if length > max_bytes {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "空间分析值的窄字符文本长度超限",
+        ));
+    }
+    Ok(reader.read_bytes(length)?.to_vec())
+}
+
 fn read_gp_sa_remap(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -2231,17 +2292,6 @@ fn read_gp_sa_remap(
         ));
     }
 
-    fn read_text_bytes(reader: &mut Reader<'_>, max_bytes: usize) -> io::Result<Vec<u8>> {
-        let length = reader.read_u32_le()? as usize;
-        if length > max_bytes {
-            return Err(io::Error::new(
-                ErrorKind::InvalidData,
-                "空间分析重分类文本长度超限",
-            ));
-        }
-        Ok(reader.read_bytes(length)?.to_vec())
-    }
-
     let mut rows = Vec::new();
     for _ in 0..count {
         let row = if numeric {
@@ -2251,13 +2301,13 @@ fn read_gp_sa_remap(
                     reader.read_f64_le()?.to_bits(),
                 ],
                 raw_long: reader.read_u32_le()? as i32,
-                text_bytes: read_text_bytes(reader, max_bytes)?,
+                text_bytes: read_gp_narrow_text(reader, max_bytes)?,
             }
         } else {
             GpSaRemapRow10_1::String {
-                source_bytes: read_text_bytes(reader, max_bytes)?,
+                source_bytes: read_gp_narrow_text(reader, max_bytes)?,
                 raw_long: reader.read_u32_le()? as i32,
-                text_bytes: read_text_bytes(reader, max_bytes)?,
+                text_bytes: read_gp_narrow_text(reader, max_bytes)?,
             }
         };
         rows.push(row);

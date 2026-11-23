@@ -6042,3 +6042,54 @@ fn feature_bookmark_reads_horizontal_and_vertical_distance_factors() {
         }
     }
 }
+
+#[test]
+fn feature_bookmark_reads_all_semivariogram_versions() {
+    use mxd2qgz::maps::map_surround::{
+        GP_SA_SEMI_VARIOGRAM_CLASS_ID, GpCodedValue10_1, GpSaSemiVariogram10_1,
+        GpSaSemiVariogramLag10_1 as Lag,
+    };
+
+    let [range_bits, partial_sill_bits, nugget_bits] =
+        [15.0_f64.to_bits(), (-0.0_f64).to_bits(), u64::MAX];
+    for version in 0_u16..=3 {
+        let mut payload = Vec::new();
+        let legacy_name = (version == 1).then(|| {
+            payload.extend([0; 16]);
+            Box::new(BookmarkNameEntry10_1::Null)
+        });
+        payload.extend((-3_i32).to_le_bytes());
+        let lag = if version == 3 {
+            let bits = 2.5_f64.to_bits();
+            payload.extend(bits.to_le_bytes());
+            Lag::Number(bits)
+        } else {
+            let bytes: &[u8] = match version {
+                0 => b"#\0",
+                1 => b"12.5\0",
+                _ => &[0xe9, 0],
+            };
+            payload.extend((bytes.len() as u32).to_le_bytes());
+            payload.extend(bytes);
+            Lag::LegacyText(bytes.to_vec())
+        };
+        payload.extend(
+            [range_bits, partial_sill_bits, nugget_bits]
+                .iter()
+                .flat_map(|bits| bits.to_le_bytes()),
+        );
+        assert_legacy_topo_coded_value(
+            GP_SA_SEMI_VARIOGRAM_CLASS_ID,
+            version,
+            &payload,
+            GpCodedValue10_1::SaSemiVariogram(Box::new(GpSaSemiVariogram10_1 {
+                legacy_name,
+                variogram_type: -3,
+                lag,
+                range_bits,
+                partial_sill_bits,
+                nugget_bits,
+            })),
+        );
+    }
+}
