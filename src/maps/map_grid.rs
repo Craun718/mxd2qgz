@@ -453,6 +453,24 @@ fn read_graticule(
     })
 }
 
+fn read_grid_member_entry(
+    r: &mut Reader<'_>,
+    refs: &mut RefTable10_1,
+    interface: &str,
+    supports: impl FnOnce([u8; 16]) -> bool,
+) -> io::Result<ObjectEntry10_1> {
+    let mut entry = read_object_entry_10_1(r, refs)?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+        && let Some(registered) = refs.registered_class(*key)
+    {
+        if !supports(registered) {
+            return Err(unsupported(interface, entry));
+        }
+        *class_id = registered;
+    }
+    Ok(entry)
+}
+
 fn read_base_grid(
     r: &mut Reader<'_>,
     limit: usize,
@@ -462,7 +480,15 @@ fn read_base_grid(
     let name = read_string_10_1(r, limit)?;
     let line_64 = symbol(r, limit, refs, Kind::LineSymbol)?;
     let marker_60 = symbol(r, limit, refs, Kind::MarkerSymbol)?;
-    let label = read_object_entry_10_1(r, refs)?;
+    let label = read_grid_member_entry(r, refs, "IGridLabel", |class| {
+        matches!(
+            class,
+            DMS_GRID_LABEL_CLASS_ID
+                | FORMATTED_GRID_LABEL_CLASS_ID
+                | MIXED_FONT_GRID_LABEL_CLASS_ID
+                | CORNER_GRID_LABEL_CLASS_ID
+        )
+    })?;
     let mut dms_label = None;
     let mut numeric_label = None;
     match label {
@@ -486,7 +512,12 @@ fn read_base_grid(
     let line_48 = symbol(r, limit, refs, Kind::LineSymbol)?;
     let double_44 = r.read_f64_le()?.to_bits();
     let shorts_3c = shorts(r)?;
-    let border = read_object_entry_10_1(r, refs)?;
+    let border = read_grid_member_entry(r, refs, "IMapGridBorder", |class| {
+        matches!(
+            class,
+            SIMPLE_MAP_GRID_BORDER_CLASS_ID | CALIBRATED_MAP_GRID_BORDER_CLASS_ID
+        )
+    })?;
     let mut simple_border = None;
     let mut calibrated_border = None;
     match border {

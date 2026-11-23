@@ -285,7 +285,8 @@ fn map_frame_reads_measured_and_index_grids_with_a_shared_calibrated_border() {
     grids.extend(46_u32.to_le_bytes());
     grids.extend(1_u16.to_le_bytes());
     grid_base(&mut grids);
-    grids.extend(CALIBRATED_MAP_GRID_BORDER_CLASS_ID);
+    let border_ref_offset = grids.len();
+    grids.extend([0x42; 16]);
     grids.extend(51_u32.to_le_bytes());
     grids.extend(4_i32.to_le_bytes());
     grids.extend(6_i32.to_le_bytes());
@@ -355,10 +356,18 @@ fn map_frame_reads_measured_and_index_grids_with_a_shared_calibrated_border() {
     let mut invalid_border = body.clone();
     let border_version = grids_offset + border_version_offset;
     invalid_border[border_version..border_version + 2].copy_from_slice(&2_u16.to_le_bytes());
+    let mut wrong_border_ref = body.clone();
+    let key = grids_offset + border_ref_offset + 16;
+    wrong_border_ref[key..key + 4].copy_from_slice(&52_u32.to_le_bytes());
     let mut invalid_index = body.clone();
     let index_count = grids_offset + index_count_offset;
     invalid_index[index_count..index_count + 4].copy_from_slice(&i32::MAX.to_le_bytes());
-    for invalid in [&invalid_border, &invalid_index, &body[..body.len() - 1]] {
+    for invalid in [
+        &invalid_border,
+        &wrong_border_ref,
+        &invalid_index,
+        &body[..body.len() - 1],
+    ] {
         let bytes = wrap(invalid);
         let mut reader = Reader::new(&bytes);
         let mut refs = original.clone();
@@ -428,6 +437,30 @@ fn map_frame_reads_numeric_grid_label_versions_and_rolls_back_truncation() {
             let mut body = frame_body(2);
             body[count..count + 4].copy_from_slice(&1_u32.to_le_bytes());
             body.splice(count + 4..count + 4, grid);
+            let label_start = count + 4 + 20 + 2 + 2 + 6 + 32;
+            let mut referenced = body.clone();
+            referenced.drain(label_start + 20..count + 4 + label_end);
+            referenced[label_start..label_start + 16].fill(0x42);
+            let referenced = wrap(&referenced);
+            let mut refs = RefTable10_1::new();
+            refs.register(42);
+            let mut header = class_id.to_vec();
+            header.extend(45_u32.to_le_bytes());
+            mxd2qgz::storage::object_refs::read_object_entry_10_1(
+                &mut Reader::new(&header),
+                &mut refs,
+            )
+            .unwrap();
+            let mut reader = Reader::new(&referenced);
+            let result = read_page_layout_map_frame_10_1(&mut reader, 4096, &mut refs).unwrap();
+            let base = &result.grids[0].graticule.as_ref().unwrap().base;
+            assert_eq!(
+                base.label,
+                ObjectEntry10_1::BackReference { class_id, key: 45 }
+            );
+            assert!(base.numeric_label.is_none());
+            assert_eq!(reader.remaining(), 0);
+
             let bytes = wrap(&body);
             let mut reader = Reader::new(&bytes);
             let mut refs = RefTable10_1::new();

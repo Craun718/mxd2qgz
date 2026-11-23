@@ -145,3 +145,11 @@ LocatorRectangle 的版本门也按有符号 short 比较。MapElements.dll
 `0x7956ac36 / 0x7956ac3a` 及 `0x7956ac65 / 0x7956ac6c`
 分别控制阴影槽与尾 short。构造测试覆盖负版本的内联地图框、
 后继字段边界及大于 3 时的回滚。真实负版本定位框仍待取证。
+
+### 网格标签与边框回引
+
+MapElements.dll 10.1.0.3035 的 MapGrid Load `0x79576ec0` 由
+`0x79576f83` 和 `0x795770a9` 读取 IGridLabel 与 IMapGridBorder。
+两槽按 SystemCore `0x7ffd0063` 的对象键查询使用登记类。
+构造地图框验证标签与边框回引保留已登记的类，误引填充符号时
+停止并回滚布局元素。ArcMap 人工验证尚未进行。
