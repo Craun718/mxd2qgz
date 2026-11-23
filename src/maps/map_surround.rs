@@ -389,6 +389,10 @@ pub const GP_LINEAR_UNIT_CLASS_ID: [u8; 16] = [
     0xc7, 0xe5, 0x2d, 0x84, 0xfb, 0x80, 0x41, 0x4c, 0x86, 0x21, 0x69, 0xde, 0xad, 0x3c, 0xc0, 0x24,
 ];
 
+pub const GP_AREAL_UNIT_CLASS_ID: [u8; 16] = [
+    0x96, 0x8a, 0xc2, 0x62, 0x4e, 0xb8, 0xf8, 0x49, 0xac, 0xf5, 0x0b, 0x1b, 0x5a, 0x87, 0xef, 0x08,
+];
+
 pub const GP_VARIANT_CLASS_ID: [u8; 16] = [
     0x5e, 0xff, 0x82, 0x5b, 0x15, 0x31, 0xe4, 0x40, 0xba, 0xc8, 0xe6, 0x21, 0x05, 0xca, 0x28, 0x11,
 ];
@@ -405,6 +409,7 @@ pub enum GpCodedValue10_1 {
     Boolean(u16),
     Date(Box<PropertyValueObjectStream10_1>),
     LinearUnit { value_bits: u64, unit: i32 },
+    ArealUnit { value_bits: u64, unit: i32 },
     Variant(Box<PropertyValueObjectStream10_1>),
 }
 
@@ -1493,6 +1498,7 @@ fn read_gp_coded_value_domain(
                         | GP_BOOLEAN_CLASS_ID
                         | GP_DATE_CLASS_ID
                         | GP_LINEAR_UNIT_CLASS_ID
+                        | GP_AREAL_UNIT_CLASS_ID
                         | GP_VARIANT_CLASS_ID
                 ) =>
             {
@@ -1506,6 +1512,7 @@ fn read_gp_coded_value_domain(
                     | GP_BOOLEAN_CLASS_ID
                     | GP_DATE_CLASS_ID
                     | GP_LINEAR_UNIT_CLASS_ID
+                    | GP_AREAL_UNIT_CLASS_ID
                     | GP_VARIANT_CLASS_ID),
                 ..
             } => {
@@ -1532,6 +1539,10 @@ fn read_gp_coded_value_domain(
                         )?,
                     )),
                     GP_LINEAR_UNIT_CLASS_ID => GpCodedValue10_1::LinearUnit {
+                        value_bits: reader.read_f64_le()?.to_bits(),
+                        unit: reader.read_u32_le()? as i32,
+                    },
+                    GP_AREAL_UNIT_CLASS_ID => GpCodedValue10_1::ArealUnit {
                         value_bits: reader.read_f64_le()?.to_bits(),
                         unit: reader.read_u32_le()? as i32,
                     },

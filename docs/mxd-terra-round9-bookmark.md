@@ -1194,3 +1194,16 @@ GPValue::Load。GPLinearUnit 在 `0x746ea905` 和 `0x746ea91b`
 构造书签覆盖线性单位数值与有符号单位码、VT_I4、GPVariant 回引、
 后续字段和逐字节截断回滚。单位码映射、真实书签及 ArcMap/QGIS
 人工验收待验证。
+
+#### GPArealUnit
+
+同版 GpObjects.dll 的 RTTI `0x747fef48` 对应持久化虚表
+`0x747a9ca8`。构造函数在 `0x74694aa5` 和 `0x74694ab2`
+从 `0x747a9dac` 复制 CLSID `62C28A96-B84E-49F8-ACF5-0B1B5A87EF08`。
+QI 在 `0x74694bf9` 使用编码域请求的 IGPValue IID。
+GPArealUnit 复用 GPLinearUnit 的 Load `0x746ea8b0`，先读版本和
+GPValue 基类，再读 double 和有符号 LONG。独立 Save `0x74695450`
+在 `0x746954a4` 和 `0x746954ba` 按相同顺序写值。
+
+构造书签核对面积数值、原始单位码、对象回引、后续字段边界和
+逐字节截断回滚。单位码映射、真实书签及 ArcMap/QGIS 人工验收待验证。

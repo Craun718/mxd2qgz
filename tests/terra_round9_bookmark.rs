@@ -4928,8 +4928,8 @@ fn feature_bookmark_reads_legacy_topo_composite_domain() {
 #[test]
 fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
     use mxd2qgz::maps::map_surround::{
-        GP_BOOLEAN_CLASS_ID, GP_DATE_CLASS_ID, GP_DOUBLE_CLASS_ID, GP_LINEAR_UNIT_CLASS_ID,
-        GP_VARIANT_CLASS_ID,
+        GP_AREAL_UNIT_CLASS_ID, GP_BOOLEAN_CLASS_ID, GP_DATE_CLASS_ID, GP_DOUBLE_CLASS_ID,
+        GP_LINEAR_UNIT_CLASS_ID, GP_VARIANT_CLASS_ID,
     };
     use mxd2qgz::maps::map_surround::{
         GP_CODED_VALUE_DOMAIN_CLASS_ID, GP_FIELD_INFO_DOMAIN_CLASS_ID, GP_LONG_CLASS_ID,
@@ -4954,7 +4954,7 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
         bytes.extend(1_i16.to_le_bytes());
         bytes.extend(1_i32.to_le_bytes());
         bytes.extend(bookmark_string_10_1("标签"));
-        bytes.extend(9_i32.to_le_bytes());
+        bytes.extend(11_i32.to_le_bytes());
         for (class, key) in [(GP_STRING_CLASS_ID, 20_u32), (GP_LONG_CLASS_ID, 21)] {
             bytes.extend(class);
             bytes.extend(key.to_le_bytes());
@@ -5001,6 +5001,11 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
                 ]
                 .concat(),
             ),
+            (
+                GP_AREAL_UNIT_CLASS_ID,
+                27,
+                [(3.25_f64).to_le_bytes().as_slice(), &(-2_i32).to_le_bytes()].concat(),
+            ),
         ] {
             bytes.extend(class_id);
             bytes.extend(key.to_le_bytes());
@@ -5011,6 +5016,8 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
         }
         bytes.extend(GP_VARIANT_CLASS_ID);
         bytes.extend(26_u32.to_le_bytes());
+        bytes.extend(GP_AREAL_UNIT_CLASS_ID);
+        bytes.extend(27_u32.to_le_bytes());
         bytes.extend(bookmark_string_10_1("拓扑"));
         bytes.extend(9_i32.to_le_bytes());
         bytes.extend(bookmark_string_10_1("书签"));
@@ -5038,7 +5045,7 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
             _ => panic!("应读取编码值域"),
         };
         assert_eq!(coded.labels, (1, vec!["标签".into()]));
-        assert_eq!(coded.raw_value_count, 9);
+        assert_eq!(coded.raw_value_count, 11);
         assert_eq!(
             coded.values[6].body.as_ref().unwrap().value,
             GpCodedValue10_1::LinearUnit {
@@ -5053,13 +5060,28 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
             )))
         );
         assert_eq!(
-            coded.values[8].entry,
+            coded.values[9].entry,
             ObjectEntry10_1::BackReference {
                 class_id: GP_VARIANT_CLASS_ID,
                 key: 26,
             }
         );
-        assert!(coded.values[8].body.is_none());
+        assert!(coded.values[9].body.is_none());
+        assert_eq!(
+            coded.values[8].body.as_ref().unwrap().value,
+            GpCodedValue10_1::ArealUnit {
+                value_bits: 3.25_f64.to_bits(),
+                unit: -2,
+            }
+        );
+        assert_eq!(
+            coded.values[10].entry,
+            ObjectEntry10_1::BackReference {
+                class_id: GP_AREAL_UNIT_CLASS_ID,
+                key: 27
+            }
+        );
+        assert!(coded.values[10].body.is_none());
         assert_eq!(
             coded.values[3].body.as_ref().unwrap().value,
             GpCodedValue10_1::DoubleBits((-0.0_f64).to_bits())
