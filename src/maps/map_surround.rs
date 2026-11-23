@@ -141,6 +141,9 @@ use crate::maps::standalone_table::{
 use crate::objects::ams_dataset_name::{
     AMS_DATASET_NAME_CLASS_ID, AmsDatasetName10_1, read_ams_dataset_name_10_1,
 };
+use crate::objects::dataset_name::{
+    TOPOLOGY_NAME_CLASS_ID, TopologyNameBody10_1, read_topology_name_body_10_1,
+};
 use crate::objects::dataset_name_more::{
     CAD_DRAWING_NAME_CLASS_ID, CadDrawingNameBody10_1, DB_TABLE_NAME_CLASS_ID, DbTableNameBody10_1,
     FEATURE_QUERY_NAME_CLASS_ID, FeatureQueryNameBody10_1, GEOMETRIC_NETWORK_NAME_CLASS_ID,
@@ -316,6 +319,7 @@ pub enum BookmarkNameEntry10_1 {
     NetCdfTableName(Box<NetCdfTableNameBody10_1>),
     DbTableName(Box<DbTableNameBody10_1>),
     GeometricNetworkName(Box<GeometricNetworkNameBody10_1>),
+    TopologyName(Box<TopologyNameBody10_1>),
     CadDrawingName(Box<CadDrawingNameBody10_1>),
     ReferencedTableName(Box<ReferencedTableNameBody10_1>),
     XyEventSourceName(Box<XyEventSourceNameBody10_1>),
@@ -837,6 +841,21 @@ pub fn read_feature_bookmark_10_1(
                 ));
             }
             BookmarkNameEntry10_1::CadDrawingName(Box::new(body))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: TOPOLOGY_NAME_CLASS_ID,
+            key,
+        } => {
+            let body = read_topology_name_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?;
+            if let Some(stop) = &body.stop {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!(
+                        "FeatureBookmark 名称对象槽 offset 0x{name_offset:x}: TopologyName 未读完（{stop:?}）"
+                    ),
+                ));
+            }
+            BookmarkNameEntry10_1::TopologyName(Box::new(body))
         }
         ObjectEntry10_1::NewObject {
             class_id: GEOMETRIC_NETWORK_NAME_CLASS_ID,

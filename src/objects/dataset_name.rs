@@ -472,12 +472,11 @@ pub fn read_topology_name_body_10_1(
         )
     };
 
-    // 1. 版本 short：原生 `cmp word,1; jg fail` 有符号比较（>1 拒绝）；负值
-    //    位模式一并拒绝（较原生更严）。
+    // 1. 版本 short：原生 `cmp word,1; jg fail` 有符号比较（>1 拒绝）。
     let version = trial.read_u16_le()?;
-    if (version as i16) > MAX_BODY_VERSION || (version as i16) < 0 {
+    if (version as i16) > MAX_BODY_VERSION {
         return Err(invalid(format!(
-            "架构版本 {version} 超出 TopologyName::Load 接受范围（>1 拒绝；负值位模式一并拒绝）"
+            "架构版本 {version} 超出 TopologyName::Load 接受范围（有符号 >1 拒绝）"
         )));
     }
 

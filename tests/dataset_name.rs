@@ -483,8 +483,14 @@ fn topology_name_dataset_slot_null_back_reference_and_unknown() {
 }
 
 #[test]
-fn topology_name_version_gate_is_signed_and_strict() {
-    for (version, ok) in [(0_u16, true), (1, true), (2, false), (0xFFFF, false)] {
+fn topology_name_uses_the_signed_version_gate() {
+    for (version, ok) in [
+        (0_u16, true),
+        (1, true),
+        (2, false),
+        (0xFFFF, true),
+        (0x8000, true),
+    ] {
         let (mut body, _) = topology_prefix(version);
         body.extend([0_u8; 16]);
         let mut bytes = Vec::new();
