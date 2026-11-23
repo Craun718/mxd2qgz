@@ -1021,3 +1021,57 @@ fn graphics_3d_reads_circle_and_ellipse_bodies() {
         }
     }
 }
+
+#[test]
+fn graphics_3d_reads_a_standalone_frame_and_its_back_reference() {
+    use mxd2qgz::layers::graphics_3d::{GRAPHICS_LAYER_3D_CLASS_ID, read_graphics_3d_layer_10_1};
+    use mxd2qgz::maps::page_layout_prefix::FRAME_ELEMENT_CLASS_ID;
+    use mxd2qgz::objects::element_body::ElementBody10_1;
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    let mut data = scene_version_one(&[0; 16]);
+    data.truncate(data.len() - 4);
+    data.extend(2_i32.to_le_bytes());
+    let header = [FRAME_ELEMENT_CLASS_ID.as_slice(), &74_u32.to_le_bytes()].concat();
+    data.extend(&header);
+    data.extend(2_i16.to_le_bytes()); // BaseFrameElement v2。
+    data.extend([0; 2 + 16 + 2]); // RectShapeElement、空几何、ElementProperties v0。
+    empty_string(&mut data);
+    empty_string(&mut data);
+    data.extend([0; 4 + 16 + 16 + 16]);
+    data.extend(7_u16.to_le_bytes());
+    data.extend([0; 16]); // v2 的阴影槽。
+    data.extend(&header);
+    let end = data.len();
+    data.push(0xa5);
+
+    let mut reader = Reader::new(&data);
+    let mut refs = RefTable10_1::new();
+    let result =
+        read_graphics_3d_layer_10_1(&GRAPHICS_LAYER_3D_CLASS_ID, &mut reader, 4096, &mut refs)
+            .unwrap();
+    assert!(matches!(
+        result.elements[0].element.body.as_deref(),
+        Some(ElementBody10_1::FrameElement(body)) if body.version == 2 && body.draft_mode_bits == 7
+    ));
+    assert!(refs.contains(74));
+    assert_eq!(
+        result.elements[1].element.entry,
+        ObjectEntry10_1::BackReference {
+            class_id: FRAME_ELEMENT_CLASS_ID,
+            key: 74,
+        }
+    );
+    assert_eq!(reader.position(), end);
+
+    for cut in 0..end {
+        let mut reader = Reader::new(&data[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(
+            read_graphics_3d_layer_10_1(&GRAPHICS_LAYER_3D_CLASS_ID, &mut reader, 4096, &mut refs)
+                .is_err()
+        );
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+}

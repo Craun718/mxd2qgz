@@ -1026,6 +1026,7 @@ pub enum ElementBody10_1 {
     MarkerElement(Box<MarkerElementBody10_1>),
     LineElement(Box<LineElementBody10_1>),
     PolygonElement(Box<LineOrPolygonElementBody10_1>),
+    FrameElement(Box<crate::maps::map_frame::BaseFrameElement10_1>),
     PictureElement(Box<crate::maps::picture_element::PictureElement10_1>),
 }
 
@@ -1036,7 +1037,7 @@ impl ElementBody10_1 {
             Self::ParagraphTextElement(body) => body.stop.as_ref(),
             Self::MarkerElement(body) => body.stop.as_ref(),
             Self::LineElement(body) | Self::PolygonElement(body) => body.stop.as_ref(),
-            Self::PictureElement(_) => None,
+            Self::PictureElement(_) | Self::FrameElement(_) => None,
         }
     }
 }
@@ -1074,6 +1075,13 @@ pub fn read_element_body_of_class_10_1(
         Ok(ElementBody10_1::PolygonElement(Box::new(
             read_line_or_polygon_element(reader, max_bytes, table, ShapeSymbol::Fill)?,
         )))
+    } else if *class_id == crate::maps::page_layout_prefix::FRAME_ELEMENT_CLASS_ID {
+        let mut candidate = reader.clone();
+        let mut refs = table.clone();
+        let body = crate::maps::map_frame::base_frame(&mut candidate, max_bytes, &mut refs)?;
+        *reader = candidate;
+        *table = refs;
+        Ok(ElementBody10_1::FrameElement(Box::new(body)))
     } else if let Some(kind) = PictureElementKind10_1::from_class(class_id) {
         Ok(ElementBody10_1::PictureElement(Box::new(
             read_picture_element_10_1(reader, max_bytes, table, kind)?,

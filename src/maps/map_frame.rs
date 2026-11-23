@@ -162,7 +162,7 @@ pub(super) fn read_map_frame_tail(
     })
 }
 
-pub(super) fn base_frame(
+pub(crate) fn base_frame(
     r: &mut Reader<'_>,
     limit: usize,
     refs: &mut RefTable10_1,

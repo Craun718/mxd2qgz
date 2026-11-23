@@ -665,15 +665,6 @@ fn read_page_frame(
             )?),
         ),
         ObjectHeader::Object {
-            class_id: FRAME_ELEMENT_CLASS_ID,
-            key,
-        } => {
-            *reader = probe;
-            refs.register(key);
-            let body = super::map_frame::base_frame(reader, max_bytes, refs)?;
-            PageFrame::Base(key, Box::new(body))
-        }
-        ObjectHeader::Object {
             class_id: super::group_element::GROUP_ELEMENT_CLASS_ID,
             ..
         } => {
@@ -689,6 +680,7 @@ fn read_page_frame(
         ObjectHeader::Object { key, .. } => {
             let (_, body) = read_complete_element_body(reader, max_bytes, refs)?;
             match body {
+                ElementBody10_1::FrameElement(body) => PageFrame::Base(key, body),
                 ElementBody10_1::ParagraphTextElement(body) => PageFrame::Paragraph(key, body),
                 ElementBody10_1::PictureElement(body) => PageFrame::Picture(key, body),
                 _ => PageFrame::Other,

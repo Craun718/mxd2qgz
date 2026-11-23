@@ -790,3 +790,15 @@ ElementProperties 和 IFillSymbol（`0x750337a3 / 0x750337ae /
 Scene 和 Globe 容器保留圆与椭圆体及原对象类标识。构造用例
 覆盖两种容器、两种元素、回引、负版本、越界版本、后继字节
 与截断回滚。其他宿主的覆盖和 ArcMap/QGIS 人工验收待验证。
+
+### 三维和组元素中的 FrameElement
+
+ArcMap 10.1 的 Carto 互操作程序集把 FrameElement
+`E01BA2C5-24B2-11D3-B8AA-00600802E603` 列为 IElement。
+同版 Layer.dll 持久化虚表 `0x7866df48` 的
+Load/Save `0x7865b9c0 / 0x7865b9d0` 直接委派给
+LayerLib 的 BaseFrameElement，见[原生边界](mxd-page-layout-surround-20261118.md)。
+现在通用 IElement 分派沿用这个读取器。三维容器和布局内组
+可读取独立 FrameElement，布局顶层也使用同一分派并登记实际 CLSID。
+构造 Scene 用例验证 v2 阴影槽、登记类、回引、后继字节与
+逐字节截断回滚。ArcMap/QGIS 实档目视待验证。
