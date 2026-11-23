@@ -373,3 +373,12 @@ NetCDFDB.dll 10.1.0.3035（摘要同 NetCDF 表名称）中，
 该读取器据此允许负版本通过版本门。构造书签覆盖变量名、v1
 特有字符串与包络槽、维度标签对象键、后继书签名及逐字节回滚。
 真实书签宿主和原生 Open 返回值仍待 ArcMap 10.1 验证。
+
+## CacheRasterDatasetName
+
+MapServerLayer.dll 10.1.0.3035 的 CacheRasterDatasetName
+主 QI `0x79e21ec0` 接受 IName，Load `0x79e22a40`
+对应[共享栅格名称体](mxd-10.1-raster-layer-tail.md)。书签复用
+该读取器。构造测试覆盖原始版本字、两串、空工作空间和瓦片读取器、
+非空包络与后继书签字段，以及逐字节截断回滚。真实书签宿主和
+原生 Open 结果仍待 ArcMap 10.1 验证。
