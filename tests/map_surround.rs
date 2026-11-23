@@ -573,7 +573,7 @@ fn legend_stops_at_new_item_object() {
 }
 
 #[test]
-fn legend_rejects_version_overflow_negative_count_and_limit() {
+fn legend_rejects_version_overflow_and_count_over_limit() {
     // 版本 6：原生按有符号值拒绝大于 5 的版本。
     for version in [6_u16, i16::MAX as u16] {
         let bytes = version.to_le_bytes().to_vec();
@@ -585,21 +585,6 @@ fn legend_rejects_version_overflow_negative_count_and_limit() {
         .unwrap_err();
         assert_eq!(error.kind(), ErrorKind::InvalidData, "版本 {version:#x}");
     }
-
-    // 负计数拒绝（原生负数跳过循环，此处拒绝避免静默错位）。
-    let mut bytes = 5_u16.to_le_bytes().to_vec();
-    bytes.extend(common_prefix_bytes(3, "图例", None));
-    push_null_marker(&mut bytes);
-    bytes.extend(string_bytes("t"));
-    bytes.extend([0_u8; 8]);
-    bytes.extend((-1_i32).to_le_bytes());
-    let mut reader = Reader::new(&bytes);
-    let position = reader.position();
-    let mut table = RefTable10_1::new();
-    let error = read_legend_prefix_10_1(&mut reader, usize::MAX, &mut table).unwrap_err();
-    assert_eq!(error.kind(), ErrorKind::InvalidData);
-    assert_eq!(reader.position(), position, "失败不得推进游标");
-    assert_eq!(table.len(), 0, "失败不得修改登记表");
 
     // 计数 × 最小条目字节数超过限额：读取条目之前拒绝。
     let mut bytes = 5_u16.to_le_bytes().to_vec();
@@ -848,6 +833,42 @@ fn aoi_bookmark_envelope_reference_checks_registration() {
             assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::Unsupported);
             assert_eq!(reader.position(), 0);
         }
+        assert_eq!(refs, saved);
+    }
+}
+
+#[test]
+fn legend_nonpositive_item_count_preserves_the_version_five_tail() {
+    for count in [i32::MIN, -1, 0] {
+        let mut bytes = 5_u16.to_le_bytes().to_vec();
+        bytes.extend(common_prefix_bytes(3, "图例", None));
+        push_null_marker(&mut bytes);
+        bytes.extend(string_bytes("t"));
+        bytes.extend([0; 8]);
+        bytes.extend(count.to_le_bytes());
+        for value in [11_u16, 12, 13, 14, 15] {
+            bytes.extend(value.to_le_bytes());
+        }
+        bytes.extend(4.5_f64.to_le_bytes());
+        let end = bytes.len();
+        bytes.push(0x42);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let legend = read_legend_prefix_10_1(&mut reader, 1024, &mut refs).unwrap();
+        assert_eq!(legend.item_count, count);
+        assert!(legend.items.is_empty());
+        assert_eq!(legend.tail_short_1, Some(11));
+        assert_eq!(legend.tail_short_2, Some(12));
+        let tail = legend.tail_group.unwrap();
+        assert_eq!(tail.shorts, [13, 14, 15]);
+        assert_eq!(tail.value, 4.5);
+        assert_eq!(reader.read_bytes(1).unwrap(), &[0x42]);
+
+        let mut truncated = Reader::new(&bytes[..end - 1]);
+        let saved = refs.clone();
+        assert!(read_legend_prefix_10_1(&mut truncated, 1024, &mut refs).is_err());
+        assert_eq!(truncated.position(), 0);
         assert_eq!(refs, saved);
     }
 }

@@ -508,7 +508,7 @@ pub struct LegendPrefix10_1 {
     pub shorts: [u16; 3],
     /// 第 7 字段 int16 原样位模式；10.1 Load 不使用该值，Save 恒写 `0xFFFF`。
     pub selection_short: u16,
-    /// 条目循环 int32 计数原始值（第 8 字段；负数拒绝，较原生更严）。
+    /// 条目循环的 int32 计数原始值。非正值不读取条目。
     pub item_count: i32,
     /// 已消费的条目（按流内顺序；末位可能是触发停止的新对象头）。
     pub items: Vec<LegendItemEntry10_1>,
@@ -1203,14 +1203,9 @@ pub fn read_legend_prefix_10_1(
         // 8. int32 条目计数 + 循环 LoadObject(ILegendItem {52AA5BC0-…})。
         let count_offset = trial.position();
         let count = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
-        if count < 0 {
-            return Err(invalid(format!(
-                "条目计数 offset 0x{count_offset:x}: 计数为负数（{count}）；原生读取仅\
-                 正数进入循环（负数跳过），本读取器拒绝以避免静默错位"
-            )));
-        }
         item_count = count;
-        let count_usize = usize::try_from(count).expect("计数已确认为非负");
+        // 原生在计数非正时直接进入版本化尾段。
+        let count_usize = usize::try_from(count.max(0)).expect("计数已确认为非负");
         let min_total = count_usize
             .checked_mul(MIN_ENTRY_BYTES)
             .ok_or_else(|| invalid("条目计数 × 最小条目字节数溢出".to_string()))?;
