@@ -868,9 +868,16 @@ Load `0x746f7020` 检查有符号 short 上限 1，随后读取一个
 LONG，再于 `0x746f70fb` 和 `0x746f711e` 调用 AfCore 全局
 Variant Read（IAT `0x747a32bc`）。Save `0x746f71e0` 同序写出。
 端点复用[紧凑 VariantStream 布局](arcmap-10.1-variant-stream.md)；
-非空对象端点仍需取证。构造旧版拓扑记录验证 LONG、两个
+非空对象端点的宿主行为见下段。构造旧版拓扑记录验证 LONG、两个
 紧凑数值端点、后继字段边界及逐字节截断时的回滚。
 真实 ArcMap 书签及 QGIS 人工验收待验证。
+
+GPRangeDomain 的两个全局 Read 调用直接传入宿主 IStream。
+AfCore 全局 Read `0x68a7b9a0` 对 VT_DISPATCH、VT_UNKNOWN
+转发 LoadObject，使用宿主 ObjectStream 键表。Rust 共用现有
+Variant 对象体分派。构造测试以 PropertySet 验证新键、第二端点
+回引、未知类停止和逐字节截断回滚。真实工程中非空端点的类分布
+及其在 ArcMap 中的语义待验证。
 
 ### GPWorkspaceDomain
 
@@ -1147,7 +1154,7 @@ AfCore String 和 LONG。合成测试覆盖直接及内嵌编码值域、
 字段语义及 ArcMap/QGIS 人工验收待验证。
 
 对照 72 个同版 Desktop 类型库，33 个公开 IGPDomain 类均已有分派。
-编码值域中的其余 IGPValue 实现及范围域的非空 Variant 对象端点
+编码值域中的其余 IGPValue 实现及范围域中其余未确认的 Variant 对象类
 仍是各自的子槽缺口。
 
 #### GPDouble、GPBoolean、GPDate

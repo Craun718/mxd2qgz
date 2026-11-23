@@ -5057,3 +5057,86 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
         }
     }
 }
+
+#[test]
+fn feature_bookmark_reads_object_endpoints_in_legacy_topo_range_domain() {
+    use mxd2qgz::maps::map_surround::{
+        GP_RANGE_DOMAIN_CLASS_ID, GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID, GpTopoDomain10_1,
+    };
+    use mxd2qgz::objects::property_set::{PROPERTY_SET_CLASS_ID, PropertyValueObjectStream10_1};
+    use mxd2qgz::stream::variant_stream::{VariantObjectHeader10_1, VariantValue10_1};
+
+    let mut bytes = bookmark_header_10_1(&GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID, 17);
+    bytes.extend(1_i16.to_le_bytes());
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend([0; 16]);
+    bytes.extend(GP_RANGE_DOMAIN_CLASS_ID);
+    bytes.extend(18_u32.to_le_bytes());
+    bytes.extend(1_i16.to_le_bytes());
+    bytes.extend(5_u32.to_le_bytes());
+    bytes.extend(13_u16.to_le_bytes());
+    let class_offset = bytes.len();
+    bytes.extend(PROPERTY_SET_CLASS_ID);
+    bytes.extend(19_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(13_u16.to_le_bytes());
+    bytes.extend(PROPERTY_SET_CLASS_ID);
+    bytes.extend(19_u32.to_le_bytes());
+    bytes.extend(bookmark_string_10_1("拓扑"));
+    bytes.extend(9_i32.to_le_bytes());
+    bytes.extend(bookmark_string_10_1("书签"));
+    let end = bytes.len();
+    bytes.push(0xa5);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    let BookmarkNameEntry10_1::GpSaTopoFeaturesTypeName(body) = result.name_object else {
+        panic!("应读取拓扑要素类型名称");
+    };
+    let Some(GpTopoDomain10_1::Range { bounds, .. }) = body.legacy_entries[0]
+        .legacy_domain
+        .as_ref()
+        .unwrap()
+        .body
+        .as_deref()
+    else {
+        panic!("应读取范围域");
+    };
+    assert!(matches!(
+        &bounds[0],
+        VariantValue10_1::Object {
+            value_type: 13,
+            header: VariantObjectHeader10_1 { class_id: PROPERTY_SET_CLASS_ID, key: Some(19) },
+            body,
+        } if matches!(body.as_ref(), PropertyValueObjectStream10_1::Object { key: 19, body, .. }
+            if body.count == 0)
+    ));
+    assert!(matches!(
+        bounds[1],
+        VariantValue10_1::BackReference {
+            value_type: 13,
+            class_id: PROPERTY_SET_CLASS_ID,
+            key: 19
+        }
+    ));
+    assert_eq!(result.name, "书签");
+    assert_eq!(reader.position(), end);
+    assert!([17, 18, 19].into_iter().all(|key| refs.contains(key)));
+
+    for cut in 0..end {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+    bytes[class_offset..class_offset + 16].fill(0xaa);
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let error = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::Unsupported);
+    assert_eq!(reader.position(), 0);
+    assert!(refs.is_empty());
+}

@@ -208,6 +208,7 @@ use crate::objects::dataset_name_more::{
 use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
 use crate::objects::property_set::{
     PropertyValueObjectStream10_1, read_padded_variant_object_stream_nested_10_1,
+    read_variant_object_body_10_1,
 };
 use crate::objects::route_event_name::{
     ROUTE_EVENT_SOURCE_NAME_CLASS_ID, ROUTE_MEASURE_LOCATOR_NAME_CLASS_ID,
@@ -221,7 +222,9 @@ use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_ent
 use crate::stream::native_string::read_bstr_string_10_1;
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
-use crate::stream::variant_stream::{VariantValue10_1, read_value_10_1};
+use crate::stream::variant_stream::{
+    VariantObjectContext10_1, VariantValue10_1, read_value_with_objects_10_1,
+};
 use std::io::{self, ErrorKind};
 
 /// AOIBookmark（空间书签）类标识（CLSID）的 16 字节内存序。
@@ -661,7 +664,7 @@ pub enum GpTopoDomain10_1 {
     Range {
         version: i16,
         flags: u32,
-        bounds: [VariantValue10_1; 2],
+        bounds: [VariantValue10_1<Box<PropertyValueObjectStream10_1>>; 2],
     },
     File {
         version: i16,
@@ -2005,10 +2008,35 @@ fn read_gp_topo_domain_slot_10_1(
             let version = read_gp_name_version(reader, 1, "GPRangeDomain")?;
             let flags = reader.read_u32_le()?;
             let max_units = u32::try_from(max_bytes / 2).unwrap_or(u32::MAX);
-            let bounds = [
-                read_value_10_1(reader, max_units)?,
-                read_value_10_1(reader, max_units)?,
-            ];
+            let mut read_bound = || {
+                read_value_with_objects_10_1(
+                    reader,
+                    max_units,
+                    VariantObjectContext10_1::ObjectStream(table),
+                    |reader, header, context| {
+                        let (Some(key), VariantObjectContext10_1::ObjectStream(table)) =
+                            (header.key, context)
+                        else {
+                            return Err(io::Error::new(
+                                ErrorKind::InvalidData,
+                                "GPRangeDomain 缺少对象流上下文",
+                            ));
+                        };
+                        read_variant_object_body_10_1(
+                            reader,
+                            max_bytes,
+                            table,
+                            name_depth,
+                            ObjectEntry10_1::NewObject {
+                                class_id: header.class_id,
+                                key,
+                            },
+                        )
+                        .map(Box::new)
+                    },
+                )
+            };
+            let bounds = [read_bound()?, read_bound()?];
             Some(Box::new(GpTopoDomain10_1::Range {
                 version,
                 flags,

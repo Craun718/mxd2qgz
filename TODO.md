@@ -716,6 +716,7 @@
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPNumericDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpnumericdomain)
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPFileDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpfiledomain)
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPRangeDomain 标量端点。[取证](docs/mxd-terra-round9-bookmark.md#gprangedomain)
+      - [x] 接入 GPRangeDomain 端点中已有持久化读取器的紧凑 Variant 对象和回引。[取证](docs/mxd-terra-round9-bookmark.md#gprangedomain)
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPWorkspaceDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpworkspacedomain)
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPDatasetDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpdatasetdomain)
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPFeatureClassDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpfeatureclassdomain)
