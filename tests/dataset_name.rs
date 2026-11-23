@@ -335,8 +335,8 @@ fn feature_dataset_name_propset_stop_propagates_with_cursor_at_slot() {
 }
 
 #[test]
-fn feature_dataset_name_version_gate_is_signed_and_strict() {
-    for (version, ok) in [(0_u16, true), (1, true), (2, false), (0xFFFF, false)] {
+fn feature_dataset_name_uses_the_signed_version_gate() {
+    for (version, ok) in [(0_u16, true), (1, true), (2, false), (0xFFFF, true)] {
         let (mut body, _) = feature_dataset_prefix(version, 0);
         body.extend([0_u8; 16]);
         let mut bytes = Vec::new();

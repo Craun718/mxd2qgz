@@ -297,3 +297,14 @@ RTTI 给出主虚表 `0x70aca364`，其 QI `0x7095e160` 在
 构造测试覆盖负版本、两个名称串、空 IDatasetName、后继书签
 字符串和截断回滚。真实书签宿主、Open 返回对象和 ArcMap
 人工验证仍待补充。
+
+## FeatureDatasetName
+
+GdbCore.dll 10.1.0.3035（摘要同 TopologyName）的
+FeatureDatasetName 主虚表 `0x70ad03e8` 指向 QI `0x709b6560`，
+命中 IName 时在 `0x709b6581` 返回对象 +0x10。
+Load `0x709b7c90` 在 `0x709b7cc2–0x709b7cc7` 使用有符号
+上限 1，接受负版本。书签复用原有名称体，包括四串、标志、
+WorkspaceName 槽及子槽停止语义。构造测试覆盖负版本、空工作
+空间、后继书签字符串以及逐字节截断回滚。实际书签宿主、
+Open 返回对象和 ArcMap 人工验证仍待补充。

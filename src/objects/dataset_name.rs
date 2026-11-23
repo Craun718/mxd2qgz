@@ -80,8 +80,7 @@
 //! 先发生在调用者登记表的副本上，全部成功后才整体提交。
 //!
 //! 这是仅覆盖上述已闭合字段的严格安全子集：长度/偏移/溢出经
-//! [`crate::stream::reader::Reader`] 检查；版本超出 0..=1（含负值位模式，较原生
-//! 有符号比较更严）拒绝；未知选择子语义不存在（原生只区分零/非零）；首个
+//! [`crate::stream::reader::Reader`] 检查；有符号版本大于 1 时拒绝；未知选择子语义不存在（原生只区分零/非零）；首个
 //! 未闭合字段（槽位新对象非预期类、WorkspaceName 体内 PropertySet 新对象）
 //! 处停止并保留剩余；任何失败不推进调用者游标、不修改登记表。未接入 MXD
 //! 解析（`feature_layer` 的 FCN 读取器在两个槽位的新对象处停止的既有行为
@@ -332,13 +331,11 @@ fn read_feature_dataset_name_payload(
         )
     };
 
-    // 1. 版本 short：原生 `cmp word,1; jle` 有符号比较（>1 拒绝）。负值位
-    //    模式按原生有符号解释会通过检查，此处一并拒绝（较原生更严，与
-    //    FCN/WorkspaceName 读取器口径一致）。
+    // 1. 原生用有符号 short 比较版本上限 1。
     let version = trial.read_u16_le()?;
-    if (version as i16) > MAX_BODY_VERSION || (version as i16) < 0 {
+    if (version as i16) > MAX_BODY_VERSION {
         return Err(invalid(format!(
-            "架构版本 {version} 超出 FeatureDatasetName::Load 接受范围（>1 拒绝；负值位模式一并拒绝）"
+            "架构版本 {version} 超出 FeatureDatasetName::Load 接受范围（有符号 >1 拒绝）"
         )));
     }
 

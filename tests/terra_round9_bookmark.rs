@@ -1757,3 +1757,42 @@ fn feature_bookmark_reads_topology_name_and_leaves_host_suffix() {
         assert!(refs.is_empty());
     }
 }
+
+#[test]
+fn feature_bookmark_reads_feature_dataset_name_and_leaves_host_suffix() {
+    use mxd2qgz::objects::dataset_name::{FEATURE_DATASET_NAME_CLASS_ID, WorkspaceNameSlot10_1};
+
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(42_i32.to_le_bytes());
+    bytes.extend(FEATURE_DATASET_NAME_CLASS_ID);
+    bytes.extend(17_u32.to_le_bytes());
+    bytes.extend((-1_i16).to_le_bytes());
+    for value in [b'T', b'C', b'D', b'E'] {
+        bytes.extend([4, 0, 0, 0, value, 0, 0, 0]);
+    }
+    bytes.push(1);
+    bytes.extend([0; 16]);
+    bytes.extend([4, 0, 0, 0, b'X', 0, 0, 0]);
+    let end = bytes.len();
+    bytes.push(0xa5);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    assert!(matches!(
+        result.name_object, BookmarkNameEntry10_1::FeatureDatasetName(body)
+            if body.key == 17 && body.version == u16::MAX && body.string_a == "T"
+                && body.string_b == "C" && body.flag == 1 && body.workspace == WorkspaceNameSlot10_1::Null
+    ));
+    assert_eq!(result.name, "X");
+    assert_eq!(reader.position(), end);
+    assert!(refs.contains(17));
+
+    for cut in 0..end {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+}
