@@ -128,7 +128,8 @@ use crate::layers::legend_item_family::{
 };
 use crate::layers::raster_dataset_name::RASTER_CATALOG_NAME_CLASS_ID;
 use crate::layers::raster_dataset_name::{
-    RASTER_BAND_NAME_CLASS_ID, RasterDatasetNameEntryBody10_1, read_supported_raster_name_body_10_1,
+    RASTER_BAND_NAME_CLASS_ID, RASTER_DATASET_NAME_CLASS_ID, RasterDatasetNameEntryBody10_1,
+    read_supported_raster_name_body_10_1,
 };
 use crate::maps::map_surround_family::{
     FamilyStop10_1, LEGEND_FORMAT_CLASS_ID as FAMILY_LEGEND_FORMAT_CLASS_ID, LegendFormatBody10_1,
@@ -312,6 +313,7 @@ pub enum BookmarkNameEntry10_1 {
     FgdbTableName(Box<crate::maps::standalone_table::TableNameBody10_1>),
     /// 栅格波段名称。
     RasterBandName(Box<RasterDatasetNameEntryBody10_1>),
+    RasterDatasetName(Box<RasterDatasetNameEntryBody10_1>),
     /// Schematic 图表类或元素类名称；内层数据源名称共享对象表。
     SchematicClassName(Box<SchematicClassNameBody10_1>),
     /// ObjectClassName 工厂实际创建的 FdbTableName；持久化体与 TableName
@@ -1106,7 +1108,7 @@ pub fn read_feature_bookmark_10_1(
             &mut trial_table,
         )?)),
         ObjectEntry10_1::NewObject {
-            class_id: class_id @ RASTER_BAND_NAME_CLASS_ID,
+            class_id: class_id @ (RASTER_BAND_NAME_CLASS_ID | RASTER_DATASET_NAME_CLASS_ID),
             key,
         } => {
             let body = read_supported_raster_name_body_10_1(
@@ -1116,7 +1118,11 @@ pub fn read_feature_bookmark_10_1(
                 class_id,
                 key,
             )?;
-            BookmarkNameEntry10_1::RasterBandName(Box::new(body))
+            if class_id == RASTER_BAND_NAME_CLASS_ID {
+                BookmarkNameEntry10_1::RasterBandName(Box::new(body))
+            } else {
+                BookmarkNameEntry10_1::RasterDatasetName(Box::new(body))
+            }
         }
         ObjectEntry10_1::NewObject {
             class_id:

@@ -672,6 +672,7 @@
       - [x] 接入 FeatureBookmark 的 FeatureDatasetName 实现和原生版本门。[取证](docs/mxd-terra-round9-bookmark.md#featuredatasetname)
       - [x] 接入 FeatureBookmark 的 CoverageName 聚合名称及外层版本门。[取证](docs/mxd-terra-round9-bookmark.md#coveragename)
       - [x] 接入 FeatureBookmark 的 WorkspaceName 实现和原生版本门。[取证](docs/mxd-terra-round9-bookmark.md#workspacename)
+      - [x] 接入 FeatureBookmark 的普通 RasterDatasetName 实现。[取证](docs/mxd-terra-round9-bookmark.md#rasterdatasetname)
         - [x] 接入 FeatureBookmark 的 FgdbTableName 包装体，复用两个 short 后的内联 TableName 读取器并覆盖整书签回滚。[FileGDB 名称接线](docs/mxd-terra-round9-bookmark.md#iname-回引与-filegdb-接口复核)
         - [x] 接入 FeatureBookmark 的 RasterBandName 和 SchematicDiagramClassName / SchematicElementClassName，复用已确认的栅格名称及 Schematic 名称体。[共享名称接线](docs/mxd-terra-round9-bookmark.md#iname-回引与-filegdb-接口复核)
         - [x] 清点 79 份 10.1 OLB 的 65 个公开 IName coclass，确认书签分派已覆盖全部已确认可产生要素类/表的实现；其余类按工作空间、数据集、栅格、服务、GP、定位器和示意图容器分类保留停止点。[IName 全集审计](docs/mxd-terra-round9-bookmark.md#iname-回引与-filegdb-接口复核)

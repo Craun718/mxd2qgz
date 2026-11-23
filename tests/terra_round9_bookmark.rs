@@ -1878,3 +1878,41 @@ fn feature_bookmark_reads_workspace_name_without_opening_it() {
         assert!(refs.is_empty());
     }
 }
+
+#[test]
+fn feature_bookmark_reads_raster_dataset_name_before_bookmark_text() {
+    use mxd2qgz::layers::raster_dataset_name::{
+        RASTER_DATASET_NAME_CLASS_ID, RasterDatasetNameEntryBody10_1,
+    };
+
+    let mut bytes = bookmark_header_10_1(&RASTER_DATASET_NAME_CLASS_ID, 17);
+    bytes.extend(4_i32.to_le_bytes());
+    for text in ["image.tif", "", "Raster Dataset", ""] {
+        bytes.extend(bookmark_string_10_1(text));
+    }
+    bytes.extend([0; 16]);
+    bytes.extend(10_i32.to_le_bytes());
+    bytes.extend(20_i32.to_le_bytes());
+    bytes.extend(bookmark_string_10_1("书签"));
+    let end = bytes.len();
+    bytes.push(0xa5);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    assert!(matches!(
+        result.name_object, BookmarkNameEntry10_1::RasterDatasetName(body)
+            if matches!(*body, RasterDatasetNameEntryBody10_1::Dataset(_))
+    ));
+    assert_eq!(result.name, "书签");
+    assert_eq!(reader.position(), end);
+    assert!(refs.contains(17));
+
+    for cut in 0..end {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+}

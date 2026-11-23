@@ -332,3 +332,14 @@ GdbCore FeatureDatasetName，后者已确认支持 IName。
 书签复用现有 WorkspaceName 读取器，包括路径缓存及子槽停止。
 构造测试覆盖负版本、空属性集、后继书签字段及截断回滚。
 真实书签宿主、原生 Open 结果和 ArcMap 人工验证仍待补充。
+
+## RasterDatasetName
+
+用 RasterDB.dll 10.1.0.3035 原始 PE 复核
+`0x7c1335b8` 的 IName 虚表。类的主 QI 返回完整对象 +0x10，
+持久化 Load `0x7c0ba5b0` 对应已确认的共享栅格名称体。
+模块摘要、类标识及[原生字段顺序](mxd-luna-followup-rasterdatasetname-20261118.md)
+与栅格图层分派相同。书签复用该体读取器及工作空间子槽处理。
+构造测试覆盖控制值 4、四串、空工作空间、两个后继 LONG、
+书签名及每个截断前缀的回滚。真实书签宿主和原生 Open
+结果仍待 ArcMap 10.1 验证。
