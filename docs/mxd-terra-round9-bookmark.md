@@ -382,3 +382,12 @@ MapServerLayer.dll 10.1.0.3035 的 CacheRasterDatasetName
 该读取器。构造测试覆盖原始版本字、两串、空工作空间和瓦片读取器、
 非空包络与后继书签字段，以及逐字节截断回滚。真实书签宿主和
 原生 Open 结果仍待 ArcMap 10.1 验证。
+
+## MosaicDatasetName
+
+同版 MosaicDB.dll 的主虚表 `0x7a6026ac` 指向 QI
+`0x7a3f4ab0`。`0x7a3f4af1` 引用 `0x7a5ff008` 的
+IName IID，命中后在 `0x7a3f4b0c` 返回对象 +0x10。
+书签复用 [Load `0x7a3f5b30` 对应的共享名称体](mxd-10.1-raster-layer-tail.md#mosaicdatasetname)。
+构造测试覆盖负版本、v4 标量与字符串数组子键、后继书签名和逐字节截断。
+真实宿主及原生 Open 结果仍待 ArcMap 10.1 验证。
