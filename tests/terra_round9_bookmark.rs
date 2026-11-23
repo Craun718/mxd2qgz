@@ -6851,3 +6851,25 @@ fn feature_bookmark_reads_gp_data_file_transport_and_properties() {
         );
     }
 }
+
+#[test]
+fn feature_bookmark_reads_workspace_extension_value_guid() {
+    use mxd2qgz::maps::map_surround::{GP_WORKSPACE_EXTENSION_CLASS_ID, GpCodedValue10_1};
+
+    let extension_guid = [
+        1, 0, 0xff, 0x81, 2, 0, 3, 0, 0xa0, 0x16, 0xef, 0x02, 9, 0, 0x98, 7,
+    ];
+    for (version, name) in [(0, ""), (1, "工作空间扩展")] {
+        let mut payload = bookmark_string_10_1(name);
+        payload.extend(extension_guid);
+        assert_legacy_topo_coded_value(
+            GP_WORKSPACE_EXTENSION_CLASS_ID,
+            version,
+            &payload,
+            GpCodedValue10_1::WorkspaceExtension {
+                name: name.to_owned(),
+                extension_guid,
+            },
+        );
+    }
+}

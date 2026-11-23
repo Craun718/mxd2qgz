@@ -430,6 +430,10 @@ pub const GP_POINT_CLASS_ID: [u8; 16] = [
     0x82, 0x30, 0xe9, 0xa1, 0xbe, 0xba, 0x44, 0x4d, 0x8c, 0xe3, 0x46, 0x37, 0x74, 0x8e, 0xdd, 0xdd,
 ];
 
+pub const GP_WORKSPACE_EXTENSION_CLASS_ID: [u8; 16] = [
+    0xbe, 0x3d, 0x23, 0x8b, 0x91, 0x05, 0x9b, 0x45, 0xbf, 0xd1, 0x46, 0x8d, 0x2d, 0xb5, 0x26, 0x7d,
+];
+
 pub const GP_DATA_FILE_CLASS_ID: [u8; 16] = [
     0xe4, 0x35, 0x30, 0x76, 0xc9, 0xe5, 0xaf, 0x4a, 0xa6, 0x0c, 0x65, 0xc3, 0x8a, 0xdd, 0xb5, 0xef,
 ];
@@ -595,6 +599,10 @@ pub enum GpCodedValue10_1 {
     Point {
         x_bits: u64,
         y_bits: u64,
+    },
+    WorkspaceExtension {
+        name: String,
+        extension_guid: [u8; 16],
     },
     DataFile {
         data: RuleSlot10_1<GdsData10_1>,
@@ -2021,6 +2029,7 @@ fn read_gp_coded_value_entry(
                     | GP_POINT_CLASS_ID
                     | GP_CELL_SIZE_XY_CLASS_ID
                     | GP_SA_CELL_SIZE_CLASS_ID
+                    | GP_WORKSPACE_EXTENSION_CLASS_ID
                     | GP_DATA_FILE_CLASS_ID
                     | GP_ARC_INFO_ITEM_CLASS_ID
                     | GP_ANALYSIS_CELL_SIZE_CLASS_ID
@@ -2077,6 +2086,7 @@ fn read_gp_coded_value_entry(
                 | GP_POINT_CLASS_ID
                 | GP_CELL_SIZE_XY_CLASS_ID
                 | GP_SA_CELL_SIZE_CLASS_ID
+                | GP_WORKSPACE_EXTENSION_CLASS_ID
                 | GP_DATA_FILE_CLASS_ID
                 | GP_ARC_INFO_ITEM_CLASS_ID
                 | GP_ANALYSIS_CELL_SIZE_CLASS_ID
@@ -2253,6 +2263,10 @@ fn read_gp_coded_value_entry(
                 | GP_SA_STRING_REMAP_CLASS_ID => GpCodedValue10_1::SaRemap(Box::new(
                     read_gp_sa_remap(reader, max_bytes, table, depth, version, class_id)?,
                 )),
+                GP_WORKSPACE_EXTENSION_CLASS_ID => GpCodedValue10_1::WorkspaceExtension {
+                    name: read_string_10_1(reader, max_bytes)?,
+                    extension_guid: reader.read_bytes(16)?.try_into().unwrap(),
+                },
                 GP_DATA_FILE_CLASS_ID => GpCodedValue10_1::DataFile {
                     data: read_gp_data_file_transport(reader, max_bytes, table)?,
                     strings: [

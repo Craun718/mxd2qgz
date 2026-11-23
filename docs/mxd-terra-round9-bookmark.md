@@ -1804,3 +1804,15 @@ IPropertySet 槽（`0x716f1b34`），v3 追加成员 String
 合成书签覆盖 v0 至 v3、有符号版本比较、非空数据和属性对象、
 父对象后继字符串及逐字节截断回滚。负数据长度作为无效输入拒绝。
 嵌入数据的内部编码和真实 ArcMap 工程待查。
+
+### GPWorkspaceExtension
+
+ArcMap 10.1.0.3035 的 `FeatureDataElements.dll`（SHA-256
+`7cd1153712d8af23f6c2263b6444c1a77e16b818fb5fb946d0c3d9106be5f429`）
+RTTI `0x6f680da0` 对应持久化虚表 `0x6f663a80`，CLSID
+`{8B233DBE-0591-459B-BFD1-468D2DB5267D}` 位于 `0x6f663b00`。
+用 objdump 核对 Load `0x6f63a730`、Save `0x6f63a7b0`。
+Load 接受 v0/v1，读 GPValue 基类，随后于 `0x6f63a780` 调用
+AfCore String::Read，再于 `0x6f63a793` 读 16 字节 GUID。
+Save 以相同顺序写出这两个字段。读取器保留名称及 GUID 原字节。
+合成书签覆盖两种版本、后继字段和截断回滚。真实 ArcMap 参数工程待验证。
