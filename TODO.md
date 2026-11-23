@@ -752,6 +752,7 @@
       - [x] 接入 GPCodedValueDomain 中共用 ISpatialReference 槽的五个值类。[取证](docs/mxd-terra-round9-bookmark.md#gp-空间参考值)
       - [x] 接入 GPCodedValueDomain 中共用 IEnvelope 槽的 GPEnvelope 和 GPExtent。[取证](docs/mxd-terra-round9-bookmark.md#gpenvelope-与-gpextent)
       - [x] 接入 GPCodedValueDomain 中的 GPCellSizeXY。[取证](docs/mxd-terra-round9-bookmark.md#gpcellsizexy)
+      - [x] 接入 GPCodedValueDomain 中的 GPCalculatorExpression。[取证](docs/mxd-terra-round9-bookmark.md#gpcalculatorexpression)
       - [x] 接入 GPCodedValueDomain 中的 GPPoint。[取证](docs/mxd-terra-round9-bookmark.md#gppoint)
       - [x] 接入 GPCodedValueDomain 中的 GPDouble。[取证](docs/mxd-terra-round9-bookmark.md#gpdoublegpbooleangpdate)
       - [x] 接入 GPCodedValueDomain 中的 GPLinearUnit。[取证](docs/mxd-terra-round9-bookmark.md#gplinearunit-与-gpvariant)

@@ -1389,3 +1389,16 @@ GPValue 基类及两个 double。objdump 复核独立 Save `0x74699ca0`
 
 构造书签覆盖两轴像元大小、对象回引、后继字段、超限版本和
 逐字节截断回滚。真实书签和 ArcMap/QGIS 人工验收待验证。
+
+#### GPCalculatorExpression
+
+GpObjects.dll 10.1.0.3035 的 PE RTTI `0x747ff218` 对应持久化
+虚表 `0x747aa6f0`。PE 类标识常量 `0x747aa7e0` 与 Desktop
+互操作程序集的 `952C38A0-4CEF-488A-8C99-7D19B6F74F91` 相符。
+Load `0x74698b60` 以无符号 short 检查类版本上限 1，调用
+GPValue::Load 后，于 `0x74698bb0` 读取 AfCore 成员 String。
+Save `0x74698be0` 在 `0x74698c2f` 对称写入该字符串。
+解析保留表达式文本。
+
+构造书签覆盖文本、对象回引、后继字段、超限版本和逐字节截断
+回滚。真实书签和 ArcMap/QGIS 人工验收待验证。

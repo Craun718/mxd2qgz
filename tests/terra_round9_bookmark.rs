@@ -5660,3 +5660,16 @@ fn feature_bookmark_reads_gp_cell_size_xy_coded_value() {
         GpCodedValue10_1::CellSizeXy { x_bits, y_bits },
     );
 }
+
+#[test]
+fn feature_bookmark_reads_gp_calculator_expression_value() {
+    use mxd2qgz::maps::map_surround::{GP_CALCULATOR_EXPRESSION_CLASS_ID, GpCodedValue10_1};
+
+    let expression = "[面积] * 2";
+    assert_legacy_topo_coded_value(
+        GP_CALCULATOR_EXPRESSION_CLASS_ID,
+        1,
+        &bookmark_string_10_1(expression),
+        GpCodedValue10_1::CalculatorExpression(expression.into()),
+    );
+}

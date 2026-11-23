@@ -437,6 +437,10 @@ pub const GP_INFO_EXPRESSION_CLASS_ID: [u8; 16] = [
     0xa6, 0x65, 0xa2, 0x32, 0xd2, 0x78, 0xa5, 0x49, 0xa6, 0x5b, 0x57, 0x29, 0x73, 0xa7, 0xb6, 0xa0,
 ];
 
+pub const GP_CALCULATOR_EXPRESSION_CLASS_ID: [u8; 16] = [
+    0xa0, 0x38, 0x2c, 0x95, 0xef, 0x4c, 0x8a, 0x48, 0x8c, 0x99, 0x7d, 0x19, 0xb6, 0xf7, 0x4f, 0x91,
+];
+
 pub const GP_SPATIAL_REFERENCE_CLASS_ID: [u8; 16] = [
     0xea, 0x07, 0x33, 0x50, 0x31, 0x41, 0x6b, 0x45, 0x9b, 0x9a, 0x15, 0x98, 0x95, 0x34, 0xbe, 0x4d,
 ];
@@ -487,6 +491,7 @@ pub enum GpCodedValue10_1 {
     },
     SqlExpression(String),
     InfoExpression(String),
+    CalculatorExpression(String),
     Long(i32),
     DoubleBits(u64),
     Boolean(u16),
@@ -1664,6 +1669,7 @@ fn read_gp_coded_value_slot(
                     | GP_M_DOMAIN_CLASS_ID
                     | GP_SQL_EXPRESSION_CLASS_ID
                     | GP_INFO_EXPRESSION_CLASS_ID
+                    | GP_CALCULATOR_EXPRESSION_CLASS_ID
                     | GP_ENCRYPTED_STRING_CLASS_ID
                     | GP_LONG_CLASS_ID
                     | GP_DOUBLE_CLASS_ID
@@ -1693,6 +1699,7 @@ fn read_gp_coded_value_slot(
                 | GP_M_DOMAIN_CLASS_ID
                 | GP_SQL_EXPRESSION_CLASS_ID
                 | GP_INFO_EXPRESSION_CLASS_ID
+                | GP_CALCULATOR_EXPRESSION_CLASS_ID
                 | GP_ENCRYPTED_STRING_CLASS_ID
                 | GP_LONG_CLASS_ID
                 | GP_DOUBLE_CLASS_ID
@@ -1757,6 +1764,9 @@ fn read_gp_coded_value_slot(
                 }
                 GP_INFO_EXPRESSION_CLASS_ID => {
                     GpCodedValue10_1::InfoExpression(read_string_10_1(reader, max_bytes)?)
+                }
+                GP_CALCULATOR_EXPRESSION_CLASS_ID => {
+                    GpCodedValue10_1::CalculatorExpression(read_string_10_1(reader, max_bytes)?)
                 }
                 GP_DOUBLE_CLASS_ID => GpCodedValue10_1::DoubleBits(reader.read_f64_le()?.to_bits()),
                 GP_POINT_CLASS_ID => GpCodedValue10_1::Point {
