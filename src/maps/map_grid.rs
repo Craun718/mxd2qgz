@@ -581,7 +581,12 @@ fn read_numeric_label(
     };
     let version = read_signed_version(r, max, name)?;
     let text_symbol = symbol(r, limit, refs, Kind::Symbol)?;
-    let format_entry = read_object_entry_10_1(r, refs)?;
+    let format_entry = read_grid_member_entry(
+        r,
+        refs,
+        "INumberFormat",
+        crate::layers::feature_layer_tail::supports_number_format_class,
+    )?;
     let format = match format_entry {
         ObjectEntry10_1::Null => NumberFormatSlot10_1::Null,
         ObjectEntry10_1::BackReference { class_id, key } => {

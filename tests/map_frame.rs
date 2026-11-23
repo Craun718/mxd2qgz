@@ -499,6 +499,55 @@ fn map_frame_reads_numeric_grid_label_versions_and_rolls_back_truncation() {
             assert!(base.numeric_label.is_none());
             assert_eq!(reader.remaining(), 0);
 
+            let format_start = label_start + 20 + 2 + 16;
+            let mut format_ref = body.clone();
+            format_ref.drain(format_start + 20..format_start + 22);
+            format_ref[format_start..format_start + 16].fill(0x42);
+
+            let mut header = CURRENCY_FORMAT_CLASS_ID.to_vec();
+            header.extend(46_u32.to_le_bytes());
+            let mut refs = RefTable10_1::new();
+            refs.register(42);
+            mxd2qgz::storage::object_refs::read_object_entry_10_1(
+                &mut Reader::new(&header),
+                &mut refs,
+            )
+            .unwrap();
+            let serialized = wrap(&format_ref);
+            let mut reader = Reader::new(&serialized);
+            let result = read_page_layout_map_frame_10_1(&mut reader, 4096, &mut refs).unwrap();
+            let label = result.grids[0]
+                .graticule
+                .as_ref()
+                .unwrap()
+                .base
+                .numeric_label
+                .as_ref()
+                .unwrap();
+            assert!(matches!(
+                label.format,
+                NumberFormatSlot10_1::BackReference {
+                    class_id: CURRENCY_FORMAT_CLASS_ID,
+                    key: 46,
+                }
+            ));
+            assert_eq!(reader.remaining(), 0);
+
+            format_ref[format_start + 16..format_start + 20].copy_from_slice(&45_u32.to_le_bytes());
+            let serialized = wrap(&format_ref);
+            let mut reader = Reader::new(&serialized);
+            let mut refs = RefTable10_1::new();
+            refs.register(42);
+            let saved = refs.clone();
+            assert_eq!(
+                read_page_layout_map_frame_10_1(&mut reader, 4096, &mut refs)
+                    .unwrap_err()
+                    .kind(),
+                std::io::ErrorKind::Unsupported
+            );
+            assert_eq!(reader.position(), 0);
+            assert_eq!(refs, saved);
+
             let bytes = wrap(&body);
             let mut reader = Reader::new(&bytes);
             let mut refs = RefTable10_1::new();

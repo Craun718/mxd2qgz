@@ -824,6 +824,7 @@
       - [x] 按有符号版本门读取 MapGrid 基类和 SimpleMapGridBorder。[指令取证](docs/mxd-page-layout-grid-20261118.md#mapgrid-和-simplemapgridborder-的版本上限)
       - [x] 按有符号版本门读取 Graticule 与 DMSGridLabel 的旧字段。[指令取证](docs/mxd-page-layout-grid-20261118.md#graticule-与-dmsgridlabel-的旧版本字段)
       - [x] 按登记类校验 DMSGridLabel 的 ILatLonFormat 回引。[取证](docs/mxd-page-layout-grid-20261118.md#经纬网标签的格式回引)
+      - [x] 按登记类校验三类数值网格标签的 INumberFormat 回引。[取证](docs/mxd-page-layout-grid-20261118.md#数值网格标签的格式回引)
       - [x] 按原生有符号版本门读取 LocatorRectangle 及其尾字段。[指令取证](docs/mxd-page-layout-grid-20261118.md#定位框首次定义地图框)
       - [x] 按登记类校验 MapSurroundFrame 的 IMapSurround 回引。[取证](docs/mxd-page-layout-surround-20261118.md)
       - [x] 按原生有符号版本门读取 MapSurroundFrame 的旧几何槽。[指令取证](docs/mxd-page-layout-surround-20261118.md)

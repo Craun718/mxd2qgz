@@ -1016,6 +1016,21 @@ pub enum NumberFormatSlot10_1 {
 }
 
 /// 从已登记的 INumberFormat 新对象头之后按 CLSID 读取对象体。
+pub(crate) fn supports_number_format_class(class_id: [u8; 16]) -> bool {
+    matches!(
+        class_id,
+        NUMERIC_FORMAT_CLASS_ID
+            | PERCENTAGE_FORMAT_CLASS_ID
+            | FRACTION_FORMAT_CLASS_ID
+            | RATE_FORMAT_CLASS_ID
+            | CURRENCY_FORMAT_CLASS_ID
+            | LATLON_FORMAT_CLASS_ID
+            | ANGLE_FORMAT_CLASS_ID
+            | SCIENTIFIC_FORMAT_CLASS_ID
+            | CUSTOM_NUMBER_FORMAT_CLASS_ID
+    )
+}
+
 pub(crate) fn read_number_format_body_for_class_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -1162,20 +1177,7 @@ pub fn read_field_info_body_10_1(
         ObjectEntry10_1::Null => (NumberFormatSlot10_1::Null, None),
         ObjectEntry10_1::BackReference { class_id, key } => {
             match staged_table.registered_class(key) {
-                Some(registered)
-                    if !matches!(
-                        registered,
-                        NUMERIC_FORMAT_CLASS_ID
-                            | PERCENTAGE_FORMAT_CLASS_ID
-                            | FRACTION_FORMAT_CLASS_ID
-                            | RATE_FORMAT_CLASS_ID
-                            | CURRENCY_FORMAT_CLASS_ID
-                            | LATLON_FORMAT_CLASS_ID
-                            | ANGLE_FORMAT_CLASS_ID
-                            | SCIENTIFIC_FORMAT_CLASS_ID
-                            | CUSTOM_NUMBER_FORMAT_CLASS_ID
-                    ) =>
-                {
+                Some(registered) if !supports_number_format_class(registered) => {
                     trial = reposition_to(reader, slot_offset);
                     staged_table = saved_table;
                     (

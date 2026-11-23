@@ -177,3 +177,11 @@ MapElements.dll 10.1.0.3035 的 DMSGridLabel Load `0x79551400`
 按 SystemCore `0x7ffd0063` 的对象键查询规则，读取器保留登记的
 LatLonFormat 类。构造地图框验证格式回引头类标识不一致时继续读取，
 以及误引地图框自身时整体回滚。ArcMap 人工验证尚未进行。
+
+### 数值网格标签的格式回引
+
+MapElements.dll 10.1.0.3035 的三类数值标签加载路径请求
+`0x7959a334` 的 INumberFormat。按 SystemCore 同版 `0x7ffd0063`
+的规则，标签和 FieldInfo 共享已支持格式的登记类检查。
+构造测试覆盖三类标签的有效 CurrencyFormat 回引、误引标签自身及
+失败时的游标与对象键回滚。真实回引宿主和 ArcMap 人工验证尚待补充。
