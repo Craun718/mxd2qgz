@@ -353,6 +353,16 @@ fn parse_mxd_streams_10_1_with_limits(
                         layout.map_frames.len(),
                         layout.surround_frames.len()
                     ));
+                    for (index, offset, bytes) in &layout.placeholder_elements {
+                        diagnostics.push(format!(
+                            "/PageLayout:0x{offset:x} 元素 {index} 的 IElement 回引触发占位恢复"
+                        ));
+                        map_unknown.push(UnknownField {
+                            stream: "/PageLayout".into(),
+                            offset: *offset as u64,
+                            bytes: bytes.clone(),
+                        });
+                    }
                     for frame in layout.map_frames.iter().chain(
                         layout
                             .surround_frames

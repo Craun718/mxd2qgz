@@ -164,15 +164,14 @@ fn read_extra_safe_element_region<'a>(
     max_bytes: usize,
 ) -> io::Result<(Reader<'a>, Reader<'a>)> {
     let mut prefix = reader.clone();
-    let size = prefix.read_u32_le()? as usize;
-    let seek = prefix.read_u32_le()?;
-    if seek != 0 || size < 16 || size > max_bytes {
+    let size = u64::from_le_bytes(prefix.read_bytes(8)?.try_into().unwrap());
+    if size < 16 || size > max_bytes as u64 {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
             "不支持的页面元素范围",
         ));
     }
-    let region = prefix.clone().read_region(size)?;
+    let region = prefix.clone().read_region(size as usize)?;
     Ok((prefix, region))
 }
 
@@ -267,6 +266,8 @@ pub struct PageLayoutElements10_1 {
     pub surround_frames: Vec<super::surround_frame::MapSurroundFrame10_1>,
     /// 不带对象体的元素槽，保存其序号、槽起点和条目。
     pub indirect_elements: Vec<(u32, usize, ObjectEntry10_1)>,
+    /// 已确认走占位恢复的元素，保留序号、包装起点及完整包装字节。
+    pub placeholder_elements: Vec<(u32, usize, Vec<u8>)>,
     pub rectangles: Vec<super::rectangle_element::RectangleElement10_1>,
     pub frame_elements: Vec<(u32, super::map_frame::BaseFrameElement10_1)>,
     pub paragraphs: Vec<(u32, ParagraphTextElement10_1)>,
@@ -409,6 +410,7 @@ fn read_page_layout_body(
         map_frames: Vec::new(),
         surround_frames: Vec::new(),
         indirect_elements: Vec::new(),
+        placeholder_elements: Vec::new(),
         rectangles: Vec::new(),
         frame_elements: Vec::new(),
         paragraphs: Vec::new(),
@@ -424,6 +426,7 @@ fn read_page_layout_body(
     };
     for index in 0..result.prefix.element_count {
         let offset = reader.position();
+        let mut original = reader.clone();
         match read_element_or_map_frame(
             reader,
             max_bytes,
@@ -437,6 +440,12 @@ fn read_page_layout_body(
                     PageFrame::Surround(frame) => result.surround_frames.push(*frame),
                     PageFrame::Indirect(entry) => {
                         result.indirect_elements.push((index, offset, entry))
+                    }
+                    PageFrame::Placeholder => {
+                        let bytes = original.read_bytes(reader.position() - offset)?;
+                        result
+                            .placeholder_elements
+                            .push((index, offset, bytes.to_vec()));
                     }
                     PageFrame::Rectangle(rect) => result.rectangles.push(*rect),
                     PageFrame::Base(key, body) => result.frame_elements.push((key, *body)),
@@ -474,6 +483,7 @@ enum PageFrame {
     Map(Box<super::map_frame::MapFrame10_1>),
     Surround(Box<super::surround_frame::MapSurroundFrame10_1>),
     Indirect(ObjectEntry10_1),
+    Placeholder,
     Rectangle(Box<super::rectangle_element::RectangleElement10_1>),
     Base(u32, Box<super::map_frame::BaseFrameElement10_1>),
     Paragraph(u32, Box<ParagraphTextElement10_1>),
@@ -546,10 +556,12 @@ fn read_page_frame(
             *reader = probe;
             Ok(PageFrame::Indirect(ObjectEntry10_1::Null))
         }
-        ObjectHeader::Object { key, .. }
-            if !extra_safe && (refs.contains_map(key) || is_root_map(key)) =>
-        {
+        ObjectHeader::Object { key, .. } if refs.contains_map(key) || is_root_map(key) => {
             // 普通 LoadObject 对登记实例查询 IElement，Map 无此接口。
+            if extra_safe && probe.remaining() == 0 {
+                *reader = probe;
+                return Ok(PageFrame::Placeholder);
+            }
             Err(io::Error::new(
                 ErrorKind::InvalidData,
                 format!("页面元素 IElement 槽回引 Map 键 {key}"),

@@ -786,3 +786,60 @@ fn old_layout_nonpositive_element_count_reaches_the_tail() {
         assert_eq!(layout.consumed_end_offset(), page.len());
     }
 }
+
+#[test]
+fn extra_safe_layout_preserves_wrong_map_reference_and_reads_the_next_element() {
+    use mxd2qgz::maps::page_layout_prefix::{MAP_FRAME_CLASS_ID, PAGE_LAYOUT_CLASS_ID};
+
+    let mut document = cfb::open("samples/测试底图.mxd").unwrap();
+    let mut maps = Vec::new();
+    document
+        .open_stream("/Maps")
+        .unwrap()
+        .read_to_end(&mut maps)
+        .unwrap();
+    let version = 9_u16;
+    let mut page = PAGE_LAYOUT_CLASS_ID.to_vec();
+    page.extend(9_999_u32.to_le_bytes());
+    page.extend(version.to_le_bytes());
+    page.extend(0_u32.to_le_bytes());
+    page.extend(2_u32.to_le_bytes());
+    let wrong_offset = page.len();
+    page.extend(20_u64.to_le_bytes());
+    page.extend(MAP_FRAME_CLASS_ID);
+    page.extend(29_u32.to_le_bytes());
+    let next_offset = page.len();
+    page.extend(16_u64.to_le_bytes());
+    page.extend([0; 16]);
+    page.extend(layout_tail(version, 2));
+    page.extend(0_u16.to_le_bytes());
+
+    let report = parse_mxd_streams_10_1(&maps, Some(&page)).unwrap();
+    let layout = report.page_layout.unwrap();
+    let raw = &page[wrong_offset..next_offset];
+    assert_eq!(
+        layout.placeholder_elements,
+        [(0, wrong_offset, raw.to_vec())]
+    );
+    assert_eq!(
+        layout.indirect_elements,
+        [(1, next_offset, ObjectEntry10_1::Null)]
+    );
+    assert_eq!(layout.consumed_end_offset(), page.len());
+    assert!(
+        report
+            .map
+            .unknown_fields
+            .iter()
+            .any(|field| field.stream == "/PageLayout"
+                && field.offset == wrong_offset as u64
+                && field.bytes == raw)
+    );
+
+    for end in wrong_offset..next_offset {
+        let report = parse_mxd_streams_10_1(&maps, Some(&page[..end])).unwrap();
+        let layout = report.page_layout.unwrap();
+        assert!(layout.placeholder_elements.is_empty());
+        assert_eq!(layout.consumed_end_offset(), wrong_offset);
+    }
+}

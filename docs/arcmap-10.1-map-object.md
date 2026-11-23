@@ -260,9 +260,9 @@ Map.dll PE ImageBase = `0x793a0000`（pefile 复核），AfCore 导入经 IAT �
 
 ### ExtraSafeReadObject / ExtraSafeWriteObject（证据：确定的；闭合未解决事项 4）
 
-AfCore `ExtraSafeReadObject(0x68a7be60)`：先 `IStream::Read` **8 字节前缀 `[A:int32][B:int32]`**；`A==0 && B==0` 时返回 1（调用方按"空条目"跳过）；否则 `LoadObject`（16 字节类标识 + 4 字节键 + 对象体，与普通嵌套对象完全同布局），之后 `Seek(0, SEEK_CUR)` 取实际终点，仅当 `B != 0` 时强同步（Seek 回 `前缀后位置 + B`）。即前缀不改变对象体布局：**B=0 表示信任 LoadObject 自封闭**，B≠0 是"预期体积"恢复路径。流内布局与 GroupLayer ≥0xb 分支观察一致。
+AfCore `ExtraSafeReadObject(0x68a7be60)` 先读 8 字节小端长度。两字均为零时在 `0x68a7be93` 返回 1。否则 `0x68a7beb9 / 0x68a7bec4` 以 `add / adc` 把长度加到前缀后的 64 位流偏移，再调用普通 LoadObject。加载返回值非零或实际终点偏离预期时，`0x68a7bf03` 按该终点调整流位置，最终交还原 LoadObject 返回值。对象体采用普通嵌套对象布局。
 
-AfCore `ExtraSafeWriteObject(0x68a7bd70)`：`Seek(0,SEEK_CUR)` 记起点 → 写 8 字节零占位 → `SaveObject`（16 字节 GUID + 键 + 未登记对象的体）→ 记终点 → 回写占位为 `[A][B]`，样本中观察到 `[A=对象总体积（头 20 字节+体）][B=0]`（占位补丁的逐字段语义以反编译为准，样本只给出观察值）。
+AfCore `ExtraSafeWriteObject(0x68a7bd70)` 预写 8 字节占位，调用 SaveObject 后补写对象区长度。 `0x68a7be05 / 0x68a7be17` 的 `sub / sbb` 生成长度的低高两字。当前常见样本的高字为零。
 
 ### Map::Save 主体顺序（0x79401850，证据：确定的）
 
