@@ -373,6 +373,10 @@ pub const GP_STRING_CLASS_ID: [u8; 16] = [
     0x33, 0x85, 0x34, 0x6a, 0x67, 0xb6, 0x05, 0x4a, 0xab, 0xb0, 0x00, 0x24, 0x11, 0x0d, 0x17, 0xf0,
 ];
 
+pub const GP_ENCRYPTED_STRING_CLASS_ID: [u8; 16] = [
+    0xdb, 0xd4, 0x6c, 0xb7, 0x3b, 0x84, 0x23, 0x47, 0xb1, 0x74, 0xa0, 0x83, 0x30, 0x95, 0xf8, 0x66,
+];
+
 pub const GP_DOUBLE_CLASS_ID: [u8; 16] = [
     0x74, 0x45, 0x4c, 0x37, 0x6e, 0x5d, 0x77, 0x4d, 0x9a, 0x67, 0x54, 0x89, 0xc6, 0xbb, 0xe9, 0x32,
 ];
@@ -404,6 +408,7 @@ pub const GP_LONG_CLASS_ID: [u8; 16] = [
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpCodedValue10_1 {
     String(String),
+    EncryptedString(String),
     Long(i32),
     DoubleBits(u64),
     Boolean(u16),
@@ -1493,6 +1498,7 @@ fn read_gp_coded_value_domain(
                 if matches!(
                     table.registered_class(key).unwrap_or(class_id),
                     GP_STRING_CLASS_ID
+                        | GP_ENCRYPTED_STRING_CLASS_ID
                         | GP_LONG_CLASS_ID
                         | GP_DOUBLE_CLASS_ID
                         | GP_BOOLEAN_CLASS_ID
@@ -1507,6 +1513,7 @@ fn read_gp_coded_value_domain(
             ObjectEntry10_1::NewObject {
                 class_id:
                     class_id @ (GP_STRING_CLASS_ID
+                    | GP_ENCRYPTED_STRING_CLASS_ID
                     | GP_LONG_CLASS_ID
                     | GP_DOUBLE_CLASS_ID
                     | GP_BOOLEAN_CLASS_ID
@@ -1518,7 +1525,12 @@ fn read_gp_coded_value_domain(
             } => {
                 let version = reader.read_u16_le()?;
                 let base_version = reader.read_u16_le()?;
-                if version > 1 || base_version > 1 {
+                let max_version = if class_id == GP_ENCRYPTED_STRING_CLASS_ID {
+                    2
+                } else {
+                    1
+                };
+                if version > max_version || base_version > 1 {
                     return Err(io::Error::new(
                         ErrorKind::InvalidData,
                         "GP 编码值对象或 GPValue 版本超出 10.1 上限",
@@ -1528,6 +1540,9 @@ fn read_gp_coded_value_domain(
                 let value = match class_id {
                     GP_STRING_CLASS_ID => {
                         GpCodedValue10_1::String(read_string_10_1(reader, max_bytes)?)
+                    }
+                    GP_ENCRYPTED_STRING_CLASS_ID => {
+                        GpCodedValue10_1::EncryptedString(read_string_10_1(reader, max_bytes)?)
                     }
                     GP_DOUBLE_CLASS_ID => {
                         GpCodedValue10_1::DoubleBits(reader.read_f64_le()?.to_bits())

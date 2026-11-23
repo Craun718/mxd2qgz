@@ -1207,3 +1207,16 @@ GPValue 基类，再读 double 和有符号 LONG。独立 Save `0x74695450`
 
 构造书签核对面积数值、原始单位码、对象回引、后续字段边界和
 逐字节截断回滚。单位码映射、真实书签及 ArcMap/QGIS 人工验收待验证。
+
+#### GPEncryptedString
+
+GpObjects.dll 10.1.0.3035 的 RTTI `0x747ff9c8` 对应持久化虚表
+`0x747ad728`。构造函数从 `0x747ad7f4` 复制类标识
+`B76CD4DB-843B-4723-B174-A0833095F866`，QI 在 `0x746bf1cb`
+使用编码域请求的 IGPValue IID。Load `0x746bf650` 以无符号 short
+检查类版本上限 2，调用 GPValue::Load 后，在 `0x746bf6a0` 调用
+AfCore 成员 String::Read。Save `0x746bf6d0` 的版本分支最后均
+调用成员 String::Write。解析器保留磁盘中的字符串内容。
+
+构造书签覆盖 v2、对象回引、后续字段、超限版本和逐字节截断回滚。
+真实书签和 ArcMap/QGIS 人工验收待验证。

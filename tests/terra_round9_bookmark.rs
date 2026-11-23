@@ -4929,7 +4929,7 @@ fn feature_bookmark_reads_legacy_topo_composite_domain() {
 fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
     use mxd2qgz::maps::map_surround::{
         GP_AREAL_UNIT_CLASS_ID, GP_BOOLEAN_CLASS_ID, GP_DATE_CLASS_ID, GP_DOUBLE_CLASS_ID,
-        GP_LINEAR_UNIT_CLASS_ID, GP_VARIANT_CLASS_ID,
+        GP_ENCRYPTED_STRING_CLASS_ID, GP_LINEAR_UNIT_CLASS_ID, GP_VARIANT_CLASS_ID,
     };
     use mxd2qgz::maps::map_surround::{
         GP_CODED_VALUE_DOMAIN_CLASS_ID, GP_FIELD_INFO_DOMAIN_CLASS_ID, GP_LONG_CLASS_ID,
@@ -4954,7 +4954,7 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
         bytes.extend(1_i16.to_le_bytes());
         bytes.extend(1_i32.to_le_bytes());
         bytes.extend(bookmark_string_10_1("标签"));
-        bytes.extend(11_i32.to_le_bytes());
+        bytes.extend(13_i32.to_le_bytes());
         for (class, key) in [(GP_STRING_CLASS_ID, 20_u32), (GP_LONG_CLASS_ID, 21)] {
             bytes.extend(class);
             bytes.extend(key.to_le_bytes());
@@ -5018,6 +5018,15 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
         bytes.extend(26_u32.to_le_bytes());
         bytes.extend(GP_AREAL_UNIT_CLASS_ID);
         bytes.extend(27_u32.to_le_bytes());
+        bytes.extend(GP_ENCRYPTED_STRING_CLASS_ID);
+        bytes.extend(28_u32.to_le_bytes());
+        let encrypted_version_offset = bytes.len();
+        bytes.extend(2_u16.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(7_u16.to_le_bytes());
+        bytes.extend(bookmark_string_10_1("synthetic-persisted-value"));
+        bytes.extend(GP_ENCRYPTED_STRING_CLASS_ID);
+        bytes.extend(28_u32.to_le_bytes());
         bytes.extend(bookmark_string_10_1("拓扑"));
         bytes.extend(9_i32.to_le_bytes());
         bytes.extend(bookmark_string_10_1("书签"));
@@ -5045,7 +5054,21 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
             _ => panic!("应读取编码值域"),
         };
         assert_eq!(coded.labels, (1, vec!["标签".into()]));
-        assert_eq!(coded.raw_value_count, 11);
+        assert_eq!(coded.raw_value_count, 13);
+        let encrypted = coded.values[11].body.as_ref().unwrap();
+        assert_eq!(encrypted.version, 2);
+        assert_eq!(
+            encrypted.value,
+            GpCodedValue10_1::EncryptedString("synthetic-persisted-value".into())
+        );
+        assert_eq!(
+            coded.values[12].entry,
+            ObjectEntry10_1::BackReference {
+                class_id: GP_ENCRYPTED_STRING_CLASS_ID,
+                key: 28,
+            }
+        );
+        assert!(coded.values[12].body.is_none());
         assert_eq!(
             coded.values[6].body.as_ref().unwrap().value,
             GpCodedValue10_1::LinearUnit {
@@ -5118,6 +5141,13 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
             assert_eq!(reader.position(), 0);
             assert!(refs.is_empty());
         }
+        bytes[encrypted_version_offset] = 3;
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let error = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
     }
 }
 
