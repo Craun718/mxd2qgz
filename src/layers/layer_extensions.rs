@@ -181,7 +181,7 @@ pub(super) fn read_dynamic_tiled_layer_properties(
         ));
     }
     let first = read_string_10_1(r, max)?;
-    let properties = slot(r, refs, |r, refs, class, _| {
+    let mut properties = slot(r, refs, |r, refs, class, _| {
         if class != PROPERTY_SET_CLASS_ID {
             return Err(unsupported_class(
                 "DynamicTiledLayerProperties IPropertySet",
@@ -190,6 +190,12 @@ pub(super) fn read_dynamic_tiled_layer_properties(
         }
         read_property_set_object_stream_10_1(r, max, refs)
     })?;
+    check_rule_reference(
+        &mut properties.entry,
+        refs,
+        "DynamicTiledLayerProperties IPropertySet",
+        |class| class == PROPERTY_SET_CLASS_ID,
+    )?;
     Ok(DynamicTiledLayerProperties10_1 {
         version,
         strings: [first, read_string_10_1(r, max)?, read_string_10_1(r, max)?],

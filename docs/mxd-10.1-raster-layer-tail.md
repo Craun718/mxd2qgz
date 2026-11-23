@@ -716,6 +716,12 @@ RasterLayer 宿主仍须实档验证。
 `/Maps` 和 `/PageLayout` 均读至流末尾，两个流中未命中本类 CLSID。
 ArcMap 与 QGIS 人工验收未做。
 
+objdump 复核同一 DynamicDisplay.dll，`0x6ef8792d` 将 IPropertySet
+IID 地址 `0x6efc1b0c` 传入 `0x6ef8793b` 的 LoadObject 调用。
+同版 SystemCore 在 `0x7ffd0063` 按键查询登记实例的接口。两代
+RasterLayer 扩展的构造测试覆盖登记类匹配时采用登记类，以及错引
+非属性集对象时回滚整个尾段。真实宿主仍待 ArcMap 10.1 验证。
+
 ### GlobeLayerProperties
 
 GlobeLayers.dll 10.1.0.3035（SHA-256

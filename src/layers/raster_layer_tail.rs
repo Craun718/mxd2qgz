@@ -1086,11 +1086,11 @@ mod tests {
 
         for host_version in [3, 8] {
             for version in [1_u16, 2, 3] {
-                let body = |new_properties| {
+                let body = |new_properties, class_id, key: u32| {
                     let mut bytes = version.to_le_bytes().to_vec();
                     text(&mut bytes, "tile source");
-                    bytes.extend(PROPERTY_SET_CLASS_ID);
-                    bytes.extend(91_u32.to_le_bytes());
+                    bytes.extend(class_id);
+                    bytes.extend(key.to_le_bytes());
                     if new_properties {
                         bytes.extend(1_u16.to_le_bytes());
                         bytes.extend(0_u32.to_le_bytes());
@@ -1110,12 +1110,12 @@ mod tests {
                     }
                     bytes
                 };
-                let second = body(false);
-                let first = body(true);
-                let build = |first_body: &[u8]| {
+                let second = body(false, DYNAMIC_TILED_LAYER_PROPERTIES_CLASS_ID, 91);
+                let first = body(true, PROPERTY_SET_CLASS_ID, 91);
+                let build = |first_body: &[u8], second_body: &[u8]| {
                     let mut bytes = vec![0; 26];
                     bytes.extend(2_u32.to_le_bytes());
-                    for (key, body) in [(80_u32, first_body), (81, &second[..])] {
+                    for (key, body) in [(80_u32, first_body), (81, second_body)] {
                         if host_version == 3 {
                             bytes.extend((body.len() as u64).to_le_bytes());
                         } else {
@@ -1133,7 +1133,7 @@ mod tests {
                     }
                     bytes
                 };
-                let bytes = build(&first);
+                let bytes = build(&first, &second);
                 let mut reader = Reader::new(&bytes);
                 let mut refs = RefTable10_1::new();
                 let tail = read_raster_layer_tail_10_1(&mut reader, host_version, 4096, &mut refs)
@@ -1174,7 +1174,10 @@ mod tests {
                 assert_eq!(first_parsed.properties.body.as_ref().unwrap().count, 0);
                 assert!(matches!(
                     second_parsed.properties.entry,
-                    ObjectEntry10_1::BackReference { key: 91, .. }
+                    ObjectEntry10_1::BackReference {
+                        key: 91,
+                        class_id: PROPERTY_SET_CLASS_ID
+                    }
                 ));
                 assert_eq!(reader.remaining(), 0);
 
@@ -1193,10 +1196,27 @@ mod tests {
                     );
                 }
 
+                let wrong_reference = body(false, PROPERTY_SET_CLASS_ID, 92);
+                let invalid = build(&first, &wrong_reference);
+                let mut reader = Reader::new(&invalid);
+                let mut refs = RefTable10_1::new();
+                let mut existing = DYNAMIC_TILED_LAYER_PROPERTIES_CLASS_ID.to_vec();
+                existing.extend(92_u32.to_le_bytes());
+                read_object_entry_10_1(&mut Reader::new(&existing), &mut refs).unwrap();
+                assert_eq!(
+                    read_raster_layer_tail_10_1(&mut reader, host_version, 4096, &mut refs)
+                        .unwrap_err()
+                        .kind(),
+                    io::ErrorKind::Unsupported
+                );
+                assert_eq!(reader.position(), 0);
+                assert_eq!(refs.len(), 1);
+                assert!(refs.contains(92));
+
                 let mut oversized = first.clone();
                 oversized.push(0);
                 for broken in [&first[..first.len() - 1], &oversized] {
-                    let bytes = build(broken);
+                    let bytes = build(broken, &second);
                     let mut reader = Reader::new(&bytes);
                     let mut refs = RefTable10_1::new();
                     assert!(
