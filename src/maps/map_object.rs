@@ -2546,6 +2546,19 @@ pub(super) enum SurroundBodyStop10_1 {
     ScaleLine(ScaleLineStop10_1),
 }
 
+pub(super) fn supports_map_surround_class(class_id: [u8; 16]) -> bool {
+    matches!(
+        class_id,
+        LEGEND_CLASS_ID
+            | MAP_TITLE_CLASS_ID
+            | SCALEBAR_CLASS_ID
+            | SCALE_TEXT_CLASS_ID
+            | MARKER_NORTH_ARROW_CLASS_ID
+            | SCALE_LINE_CLASS_ID
+            | STEPPED_SCALE_LINE_CLASS_ID
+    ) || scalebar_subclass_kind(&class_id).is_some()
+}
+
 /// 允许 Map 和 PageLayout 使用同一套装饰物类读取器。
 pub(super) fn read_map_surround_body_10_1(
     class_id: [u8; 16],

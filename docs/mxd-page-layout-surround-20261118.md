@@ -52,3 +52,8 @@ MapElements.dll 10.1.0.3035 的 objdump 指令确认版本上限与后缀均
 `0x7957ba58 / 0x7957ba5c` 在版本小于 3 时跳过两个 double。
 合成布局验证负值选择旧 IGeometry 槽、保留版本位模式以及后继元素。
 真实负版本装饰框仍待 ArcMap 10.1 验证。
+
+MapElements.dll 10.1.0.3035 的 `0x7957b8f9` 请求 IMapSurround，
+按 SystemCore `0x7ffd0063` 的规则对登记实例查询接口。布局装饰框据此
+按登记类校验回引。构造用例验证伪装成指北针的装饰框键使当前条目回滚，
+LandscapeClassic 实档覆盖同键指北针回引。ArcMap 人工验证待补。

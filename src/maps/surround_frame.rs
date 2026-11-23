@@ -4,7 +4,9 @@ use crate::maps::map_frame::{
     BaseFrameElement10_1, FrameGeometrySlot10_1, MapFrame10_1, base_frame, envelope_slot,
     geometry_slot,
 };
-use crate::maps::map_object::{MapSurroundElement10_1, read_map_surround_body_10_1};
+use crate::maps::map_object::{
+    MapSurroundElement10_1, read_map_surround_body_10_1, supports_map_surround_class,
+};
 use crate::maps::page_layout_prefix::{MAP_FRAME_CLASS_ID, read_map_frame};
 use crate::objects::envelope::Envelope10_1;
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
@@ -64,7 +66,18 @@ pub(crate) fn read_surround_frame_10_1(
             "不支持的 MapSurroundFrame 版本",
         ));
     }
-    let surround = read_object_entry_10_1(reader, refs)?;
+    let mut surround = read_object_entry_10_1(reader, refs)?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut surround
+        && let Some(registered) = refs.registered_class(*key)
+    {
+        if !supports_map_surround_class(registered) {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                format!("IMapSurround 回引键 {key} 的登记类不受支持"),
+            ));
+        }
+        *class_id = registered;
+    }
     let surround_body = if let ObjectEntry10_1::NewObject { class_id, key } = surround {
         let (body, stop) = read_map_surround_body_10_1(class_id, key, reader, limit, refs)?;
         if let Some(stop) = stop {
