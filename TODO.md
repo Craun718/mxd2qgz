@@ -882,6 +882,7 @@
       - [x] 在原生 sg.dll 中验证网格设置成功及失败后的比例因子。[取证](docs/arcmap-10.1-pcs-geometry-slots.md#网格比例因子的原生-dll-运行验证)
       - [x] 运行验证旧版 UnknownCoordinateSystem 的三个原生网格容差函数。[取证](docs/arcmap-10.1-pcs-geometry-slots.md#旧版未知坐标系的网格容差函数运行验证)
       - [x] 通过原生 IPersistStream::Load 验证 UnknownCoordinateSystem v2/v3 网格容差和对象边界。[取证](docs/arcmap-10.1-pcs-geometry-slots.md#unknowncoordinatesystem-v2v3-的原生-load-容差验证)
+      - [x] 原生验证 UnknownCoordinateSystem v2/v3 的部分 Z/M 网格容差。[取证](docs/arcmap-10.1-pcs-geometry-slots.md#部分启用的-zm-网格)
       - [x] 将 ISRPersistStream 槽 8 定名为 GetPrecisionSizeMax，输出 `0x38`。
       - [x] 核对 10.1 UnknownCoordinateSystem 四条持久化字符串与 ISpatialReferenceInfo 属性的对应关系。[原生取证](docs/arcmap-10.1-pcs-geometry-slots.md#unknowncoordinatesystem-的四条持久化字符串)
       - [x] 确认 GCS 加载守卫也控制 IGeographicCoordinateSystemEdit 的接口查询。[类型库与原生分派](docs/mxd-terra-integrate-sr.md#gcs-守卫与槽位)
