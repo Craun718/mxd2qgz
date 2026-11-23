@@ -385,6 +385,14 @@ pub const GP_DATE_CLASS_ID: [u8; 16] = [
     0x2b, 0xf2, 0xd6, 0xbe, 0x8e, 0xad, 0x0e, 0x44, 0x8d, 0xd5, 0xb4, 0x16, 0x39, 0x6b, 0x6f, 0xd4,
 ];
 
+pub const GP_LINEAR_UNIT_CLASS_ID: [u8; 16] = [
+    0xc7, 0xe5, 0x2d, 0x84, 0xfb, 0x80, 0x41, 0x4c, 0x86, 0x21, 0x69, 0xde, 0xad, 0x3c, 0xc0, 0x24,
+];
+
+pub const GP_VARIANT_CLASS_ID: [u8; 16] = [
+    0x5e, 0xff, 0x82, 0x5b, 0x15, 0x31, 0xe4, 0x40, 0xba, 0xc8, 0xe6, 0x21, 0x05, 0xca, 0x28, 0x11,
+];
+
 pub const GP_LONG_CLASS_ID: [u8; 16] = [
     0x47, 0x7f, 0xed, 0x30, 0xd9, 0x12, 0x9b, 0x4c, 0xbe, 0x8b, 0x7a, 0x0a, 0xe3, 0x86, 0xe5, 0x74,
 ];
@@ -396,6 +404,8 @@ pub enum GpCodedValue10_1 {
     DoubleBits(u64),
     Boolean(u16),
     Date(Box<PropertyValueObjectStream10_1>),
+    LinearUnit { value_bits: u64, unit: i32 },
+    Variant(Box<PropertyValueObjectStream10_1>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1482,14 +1492,21 @@ fn read_gp_coded_value_domain(
                         | GP_DOUBLE_CLASS_ID
                         | GP_BOOLEAN_CLASS_ID
                         | GP_DATE_CLASS_ID
+                        | GP_LINEAR_UNIT_CLASS_ID
+                        | GP_VARIANT_CLASS_ID
                 ) =>
             {
                 None
             }
             ObjectEntry10_1::NewObject {
                 class_id:
-                    class_id @ (GP_STRING_CLASS_ID | GP_LONG_CLASS_ID | GP_DOUBLE_CLASS_ID
-                    | GP_BOOLEAN_CLASS_ID | GP_DATE_CLASS_ID),
+                    class_id @ (GP_STRING_CLASS_ID
+                    | GP_LONG_CLASS_ID
+                    | GP_DOUBLE_CLASS_ID
+                    | GP_BOOLEAN_CLASS_ID
+                    | GP_DATE_CLASS_ID
+                    | GP_LINEAR_UNIT_CLASS_ID
+                    | GP_VARIANT_CLASS_ID),
                 ..
             } => {
                 let version = reader.read_u16_le()?;
@@ -1510,6 +1527,15 @@ fn read_gp_coded_value_domain(
                     }
                     GP_BOOLEAN_CLASS_ID => GpCodedValue10_1::Boolean(reader.read_u16_le()?),
                     GP_DATE_CLASS_ID => GpCodedValue10_1::Date(Box::new(
+                        read_padded_variant_object_stream_nested_10_1(
+                            reader, max_bytes, table, depth,
+                        )?,
+                    )),
+                    GP_LINEAR_UNIT_CLASS_ID => GpCodedValue10_1::LinearUnit {
+                        value_bits: reader.read_f64_le()?.to_bits(),
+                        unit: reader.read_u32_le()? as i32,
+                    },
+                    GP_VARIANT_CLASS_ID => GpCodedValue10_1::Variant(Box::new(
                         read_padded_variant_object_stream_nested_10_1(
                             reader, max_bytes, table, depth,
                         )?,

@@ -749,6 +749,8 @@
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPFieldInfoDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldinfodomain-与-gpcodedvaluedomain)
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
       - [x] 接入 GPCodedValueDomain 中的 GPDouble。[取证](docs/mxd-terra-round9-bookmark.md#gpdoublegpbooleangpdate)
+      - [x] 接入 GPCodedValueDomain 中的 GPLinearUnit。[取证](docs/mxd-terra-round9-bookmark.md#gplinearunit-与-gpvariant)
+      - [x] 接入 GPCodedValueDomain 中的 GPVariant。[取证](docs/mxd-terra-round9-bookmark.md#gplinearunit-与-gpvariant)
       - [x] 接入 GPCodedValueDomain 中的 GPBoolean。[取证](docs/mxd-terra-round9-bookmark.md#gpdoublegpbooleangpdate)
       - [x] 接入 GPCodedValueDomain 中的 GPDate。[取证](docs/mxd-terra-round9-bookmark.md#gpdoublegpbooleangpdate)
       - [ ] 补齐 LocatorWorkspaceName 的 IUnknown 子槽中尚未核对的持久化类。

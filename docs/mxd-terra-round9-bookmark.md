@@ -1173,3 +1173,24 @@ Variant::Read(false)（`0x74704c82`，导入槽 `0x747a32e8`）。
 GPDate 复用带 14 字节保留区的 Variant 读取器。构造测试覆盖
 负零位模式、布尔 short、VT_DATE、后续书签字段和截断回滚。
 真实书签及 ArcMap/QGIS 人工验收待验证。
+
+#### GPLinearUnit 与 GPVariant
+
+GpObjects.dll 10.1.0.3035 的 PE RTTI、持久化虚表和读写入口如下。
+
+| 类 | CLSID | RTTI | 持久化虚表 | Load | Save |
+| --- | --- | --- | --- | --- | --- |
+| GPLinearUnit | `842DE5C7-80FB-4C41-8621-69DEAD3CC024` | `0x748008c0` | `0x747b1a94` | `0x746ea8b0` | `0x746ea940` |
+| GPVariant | `5B82FF5E-3115-40E4-BAC8-E62105CA2811` | `0x74801e2c` | `0x747b9a00` | `0x74758980` | `0x74758a00` |
+
+构造路径分别从 `0x747b1b34` 和 `0x747b9ae0` 复制 CLSID。
+QI 在 `0x746ea07b` 和 `0x74758173` 使用编码域请求的同一
+IGPValue IID。Load 均先检查无符号 short 版本上限 1，再调用
+GPValue::Load。GPLinearUnit 在 `0x746ea905` 和 `0x746ea91b`
+按顺序读 double 和有符号 LONG。GPVariant 在 `0x747589d2`
+调用与 GPDate 相同的 AfCore Variant::Read(false)，复用带 14 字节
+保留区的 Variant 读取器。
+
+构造书签覆盖线性单位数值与有符号单位码、VT_I4、GPVariant 回引、
+后续字段和逐字节截断回滚。单位码映射、真实书签及 ArcMap/QGIS
+人工验收待验证。
