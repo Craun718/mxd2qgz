@@ -6554,3 +6554,72 @@ fn feature_bookmark_reads_weighted_overlay_object_rows() {
         );
     }
 }
+
+#[test]
+fn feature_bookmark_reads_topo_features_value_table() {
+    use mxd2qgz::layers::image_server_rules::RuleSlot10_1;
+    use mxd2qgz::maps::map_surround::{
+        GP_DATA_TYPE_NAME_CLASS_ID, GP_LONG_CLASS_ID, GP_SA_TOPO_FEATURES_CLASS_ID,
+        GpCodedValue10_1, GpCodedValueBody10_1, GpDataTypeName10_1,
+    };
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    let column = bookmark_entry_10_1(&GP_DATA_TYPE_NAME_CLASS_ID, 20);
+    let value = bookmark_entry_10_1(&GP_LONG_CLASS_ID, 21);
+    let mut payload = 2_i32.to_le_bytes().to_vec();
+    payload.extend(&column);
+    payload.extend([2, 0, 2, 0]);
+    payload.extend([0; 16]);
+    payload.extend(&column);
+    payload.extend(1_i32.to_le_bytes());
+    payload.extend(&value);
+    payload.extend([1, 0, 1, 0, 0, 0]);
+    payload.extend(42_i32.to_le_bytes());
+    payload.extend(&value);
+
+    let column_type = Box::new(GpDataTypeName10_1 {
+        version: 2,
+        base_version: 2,
+        strings: std::array::from_fn(|_| String::new()),
+        legacy_string: None,
+        base_uid: None,
+        legacy_uid: None,
+    });
+    assert_legacy_topo_coded_value(
+        GP_SA_TOPO_FEATURES_CLASS_ID,
+        1,
+        &payload,
+        GpCodedValue10_1::ValueTable {
+            raw_column_count: 2,
+            column_types: vec![
+                BookmarkNameEntry10_1::GpDataTypeName(column_type),
+                BookmarkNameEntry10_1::BackReference {
+                    class_id: GP_DATA_TYPE_NAME_CLASS_ID,
+                    key: 20,
+                },
+            ],
+            raw_row_count: 1,
+            cells: vec![
+                RuleSlot10_1 {
+                    entry: ObjectEntry10_1::NewObject {
+                        class_id: GP_LONG_CLASS_ID,
+                        key: 21,
+                    },
+                    body: Some(Box::new(GpCodedValueBody10_1 {
+                        version: 1,
+                        base_version: 1,
+                        base_short: 0,
+                        value: GpCodedValue10_1::Long(42),
+                    })),
+                },
+                RuleSlot10_1 {
+                    entry: ObjectEntry10_1::BackReference {
+                        class_id: GP_LONG_CLASS_ID,
+                        key: 21,
+                    },
+                    body: None,
+                },
+            ],
+        },
+    );
+}

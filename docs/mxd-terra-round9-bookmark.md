@@ -1710,3 +1710,16 @@ GPSARemap、GPSANumberRemap、GPSAStringRemap。
 读取器保留旧行原字节、表行边界和回引，沿用 FeatureBookmark 的事务回退。
 合成测试覆盖三种版本、旧行空计数、新对象、跨行回引和逐字节截断。
 实际 ArcMap 加权叠加表中的三列对象及旧 IName 的打开结果待实档验证。
+
+### GPSATopoFeatures
+
+ArcMap 10.1.0.3035 的 `GPSACore.dll` RTTI `0x74946c50` 对应持久化
+虚表 `0x749316f8`，CLSID `{8371765F-0F0B-4868-B786-015B2E2C1C10}`
+位于 `0x74931830`。用 objdump 将 Load/Save 的跳板
+`0x749215b4/0x749215ba` 对到导入表 `0x7492c248/0x7492c244`，
+目标是 GeoprocessingLib.dll 的 GPValueTableBase
+`0x71de7e50/0x71de8090`，与 [GPValueTable](#gpvaluetable) 共用流布局。
+
+读取器沿用列 IName、行列计数和 IGPValue 单元格解析。合成书签
+验证列名和单元格的回引、后继字段及逐字节截断回滚。
+拓扑工具生成的真实工程和其他列 IName 的类覆盖仍待验证。

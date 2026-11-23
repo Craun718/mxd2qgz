@@ -408,6 +408,10 @@ pub const GP_MULTI_VALUE_CLASS_ID: [u8; 16] = [
     0x94, 0xbc, 0x34, 0x6a, 0xb2, 0x06, 0x1b, 0x48, 0xb1, 0x04, 0x66, 0x63, 0xc4, 0xa3, 0x44, 0xef,
 ];
 
+pub const GP_SA_TOPO_FEATURES_CLASS_ID: [u8; 16] = [
+    0x5f, 0x76, 0x71, 0x83, 0x0b, 0x0f, 0x68, 0x48, 0xb7, 0x86, 0x01, 0x5b, 0x2e, 0x2c, 0x1c, 0x10,
+];
+
 pub const GP_VALUE_TABLE_CLASS_ID: [u8; 16] = [
     0xcd, 0xa0, 0xa7, 0x98, 0x82, 0x32, 0xcd, 0x44, 0x90, 0xb7, 0x4f, 0x39, 0xcd, 0xb8, 0x5b, 0x84,
 ];
@@ -1966,6 +1970,7 @@ fn read_gp_coded_value_entry(
                     | GP_AREAL_UNIT_CLASS_ID
                     | GP_VARIANT_CLASS_ID
                     | GP_MULTI_VALUE_CLASS_ID
+                    | GP_SA_TOPO_FEATURES_CLASS_ID
                     | GP_VALUE_TABLE_CLASS_ID
                     | GP_RANDOM_NUMBER_GENERATOR_CLASS_ID
             ) =>
@@ -2014,6 +2019,7 @@ fn read_gp_coded_value_entry(
                 | GP_AREAL_UNIT_CLASS_ID
                 | GP_VARIANT_CLASS_ID
                 | GP_MULTI_VALUE_CLASS_ID
+                | GP_SA_TOPO_FEATURES_CLASS_ID
                 | GP_VALUE_TABLE_CLASS_ID
                 | GP_RANDOM_NUMBER_GENERATOR_CLASS_ID),
             ..
@@ -2263,7 +2269,9 @@ fn read_gp_coded_value_entry(
                         values,
                     }
                 }
-                GP_VALUE_TABLE_CLASS_ID => read_gp_value_table(reader, max_bytes, table, depth)?,
+                GP_SA_TOPO_FEATURES_CLASS_ID | GP_VALUE_TABLE_CLASS_ID => {
+                    read_gp_value_table(reader, max_bytes, table, depth)?
+                }
                 _ => GpCodedValue10_1::Long(reader.read_u32_le()? as i32),
             };
             Some(Box::new(GpCodedValueBody10_1 {
