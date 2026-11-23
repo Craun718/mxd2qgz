@@ -812,6 +812,7 @@
       - [x] 按登记类校验 LocatorRectangle 的 IMapFrame 回引。[实档与取证](docs/mxd-page-layout-grid-20261118.md#定位框的地图框回引)
       - [x] 接入 LocatorRectangle 首次定义的内联 MapFrame。[指令取证](docs/mxd-page-layout-grid-20261118.md#定位框首次定义地图框)
       - [x] 接入 MapFrame v3 尾段首次定义的 IMapFrame 及登记类校验。[原生取证](docs/mxd-map-frame-body-20261118.md#mapframe-v3-尾段的内联地图框)
+      - [x] 接入 MapFrame v3 尾段内联的普通 FeatureLayer。[取证](docs/mxd-map-frame-body-20261118.md#mapframe-v3-尾段的内联要素图层)
       - [x] 按原生有符号版本门读取 LocatorRectangle 及其尾字段。[指令取证](docs/mxd-page-layout-grid-20261118.md#定位框首次定义地图框)
       - [x] 按登记类校验 MapSurroundFrame 的 IMapSurround 回引。[取证](docs/mxd-page-layout-surround-20261118.md)
       - [x] 按原生有符号版本门读取 MapSurroundFrame 的旧几何槽。[指令取证](docs/mxd-page-layout-surround-20261118.md)

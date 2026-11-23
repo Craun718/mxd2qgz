@@ -1,6 +1,11 @@
 //! 10.1 MapFrame 及其委派的 BaseFrameElement 对象体。
 //! MapElements.dll 0x79570a20、LayerLib.dll 0x7869b410 及其助手 0x786d00d0。
 
+use crate::layers::feature_layer::{
+    FEATURE_LAYER_CLASS_ID, FeatureLayerPrefix10_1, FeatureLayerStop10_1,
+    read_feature_layer_prefix_10_1,
+};
+use crate::layers::feature_layer_tail::SuccessorStop10_1;
 use crate::maps::page_layout_prefix::PageLayoutMapFramePrefix10_1;
 use crate::objects::element_body::{
     ElementPropertiesPrefix10_1, PrefixOutcome10_1, read_element_properties_prefix_10_1,
@@ -58,6 +63,7 @@ pub struct MapFrameVersionThree10_1 {
     pub scale_bits: u64,
     pub extra_bits: u32,
     pub layer: ObjectEntry10_1,
+    pub layer_body: Option<Box<FeatureLayerPrefix10_1>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -124,13 +130,18 @@ pub(super) fn read_map_frame_tail(
     let version_three_tail = if version == 3 {
         let (map_frame, map_frame_body) =
             read_nested_map_frame(r, limit, refs, region_offset, is_root_map)?;
+        let mode_bits = r.read_u32_le()?;
+        let scale_bits = r.read_f64_le()?.to_bits();
+        let extra_bits = r.read_u32_le()?;
+        let (layer, layer_body) = read_feature_layer_slot(r, limit, refs)?;
         Some(MapFrameVersionThree10_1 {
             map_frame,
             map_frame_body,
-            mode_bits: r.read_u32_le()?,
-            scale_bits: r.read_f64_le()?.to_bits(),
-            extra_bits: r.read_u32_le()?,
-            layer: reference_slot(r, refs, "IFeatureLayer")?,
+            mode_bits,
+            scale_bits,
+            extra_bits,
+            layer,
+            layer_body,
         })
     } else {
         None
@@ -399,21 +410,39 @@ fn collection_count(r: &mut Reader<'_>, limit: usize, name: &str) -> io::Result<
     Ok(count)
 }
 
-fn reference_slot(
+fn read_feature_layer_slot(
     r: &mut Reader<'_>,
+    limit: usize,
     refs: &mut RefTable10_1,
-    name: &str,
-) -> io::Result<ObjectEntry10_1> {
+) -> io::Result<(ObjectEntry10_1, Option<Box<FeatureLayerPrefix10_1>>)> {
     let mut entry = read_object_entry_10_1(r, refs)?;
-    if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
-        && let Some(registered) = refs.registered_class(*key)
-    {
-        *class_id = registered;
-    }
-    if matches!(entry, ObjectEntry10_1::NewObject { .. }) {
-        return Err(unsupported(name, entry));
-    }
-    Ok(entry)
+    let body = match &mut entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            if let Some(registered) = refs.registered_class(*key) {
+                if registered != FEATURE_LAYER_CLASS_ID {
+                    return Err(unsupported("IFeatureLayer", entry));
+                }
+                *class_id = registered;
+            }
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: FEATURE_LAYER_CLASS_ID,
+            ..
+        } => {
+            let body = read_feature_layer_prefix_10_1(r, limit, refs)?;
+            if body.stop != FeatureLayerStop10_1::Successor(SuccessorStop10_1::TailCompleted) {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!("MapFrame 的 IFeatureLayer 未读完：{:?}", body.stop),
+                ));
+            }
+            Some(Box::new(body))
+        }
+        _ => return Err(unsupported("IFeatureLayer", entry)),
+    };
+    Ok((entry, body))
 }
 
 pub(super) fn unsupported(name: &str, entry: ObjectEntry10_1) -> io::Error {

@@ -58,4 +58,13 @@ MapElements.dll 10.1.0.3035 的 MapFrame Load `0x79570a20`
 在 v3 尾段通过普通 LoadObject 请求 IMapFrame。该槽与 LocatorRectangle
 共用地图框分派、登记类检查和图形深度限额。构造数据验证首次定义的
 地图框、其后的标量，以及误引根 Map 时整个外层地图框回滚。
-v3 尾段的非空 IFeatureLayer 新对象及真实内联地图框仍待取证。
+真实内联地图框仍待取证。
+
+### MapFrame v3 尾段的内联要素图层
+
+MapElements.dll 10.1.0.3035 的 MapFrame Load `0x79570a20`
+反编译中在三个标量后调用普通 LoadObject，请求 `0x7959c8b0`
+的 IFeatureLayer IID。已接入普通 FeatureLayer 的首次定义及登记类回引，
+只在图层完整消费后提交外层地图框。构造测试验证旧版图层体、
+对象键及短读回滚。其他 IFeatureLayer 实现、真实宿主与 ArcMap
+人工验证仍待补充。

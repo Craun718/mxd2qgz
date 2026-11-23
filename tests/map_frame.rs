@@ -803,3 +803,44 @@ fn old_map_frame_tail_reads_a_new_map_frame_before_its_scalars() {
     assert_eq!(reader.position(), 0);
     assert_eq!(refs, saved);
 }
+
+#[test]
+fn old_map_frame_reads_a_complete_inline_feature_layer() {
+    use mxd2qgz::layers::feature_layer::FEATURE_LAYER_CLASS_ID;
+
+    let mut body = frame_body(3);
+    let slot = body.len() - 16;
+    body.truncate(slot);
+    body.extend(FEATURE_LAYER_CLASS_ID);
+    body.extend(51_u32.to_le_bytes());
+    body.extend(1_u16.to_le_bytes());
+    for _ in 0..2 {
+        body.extend([2, 0, 0, 0, 0, 0]);
+    }
+    body.extend([0; 6 + 16 * 3]); // 三个 short、名称、渲染器及 GUID。
+    body.extend([2, 0, 0, 0, 0, 0]);
+    body.extend([0; 16 + 2 + 4 + 16]); // 比例值、short、空超链接循环和颜色。
+    for _ in 0..2 {
+        body.extend([2, 0, 0, 0, 0, 0]);
+    }
+    body.extend([0; 4 + 4 + 16 + 2 + 16 + 4 + 2]);
+    let bytes = wrap(&body);
+    let mut refs = RefTable10_1::new();
+    refs.register(42);
+    let mut reader = Reader::new(&bytes);
+    let frame = read_page_layout_map_frame_10_1(&mut reader, 4096, &mut refs).unwrap();
+    let layer = frame.version_three_tail.unwrap();
+    assert_eq!(layer.layer_body.unwrap().version, 1);
+    assert!(refs.contains(51));
+    assert_eq!(reader.remaining(), 0);
+
+    body.pop();
+    let truncated = wrap(&body);
+    let mut refs = RefTable10_1::new();
+    refs.register(42);
+    let saved = refs.clone();
+    let mut reader = Reader::new(&truncated);
+    assert!(read_page_layout_map_frame_10_1(&mut reader, 4096, &mut refs).is_err());
+    assert_eq!(reader.position(), 0);
+    assert_eq!(refs, saved);
+}
