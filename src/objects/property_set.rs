@@ -1600,6 +1600,172 @@ mod tests {
     }
 
     #[test]
+    fn shared_variant_object_dispatch_covers_domain_and_raster_value_classes() {
+        use crate::layers::dep_tail::{
+            TIME_CLASS_ID, TIME_EXTENT_CLASS_ID, TIME_REFERENCE_CLASS_ID,
+        };
+        use crate::layers::feature_id_set::{FEATURE_ID_SET_CLASS_ID, FID_SET_CLASS_ID};
+        use crate::layers::raster_classify_renderer::RASTER_CLASSIFY_RENDERER_CLASS_ID;
+        use crate::layers::raster_dataset_name::LONG_ARRAY_CLASS_ID;
+        use crate::layers::raster_renderer::{
+            DOUBLE_ARRAY_CLASS_ID, RASTER_COLORMAP_RENDERER_CLASS_ID, RASTER_RGB_RENDERER_CLASS_ID,
+            SIMPLE_RASTER_RENDERER_CLASS_ID, STATS_HISTOGRAM_CLASS_ID,
+        };
+        use crate::layers::raster_stretch_renderer::RASTER_STRETCH_RENDERER_CLASS_ID;
+        use crate::layers::raster_unique_value::{
+            RASTER_UNIQUE_VALUE_COLORS_CLASS_ID, RASTER_UNIQUE_VALUE_RENDERER_CLASS_ID,
+            UNIQUE_VALUES_CLASS_ID,
+        };
+        use crate::layers::time_layer_track_extension::TIME_WINDOW_CLASS_ID;
+        use crate::objects::display_color::{
+            CMYK_COLOR_CLASS_ID, GRAY_COLOR_CLASS_ID, HLS_COLOR_CLASS_ID, HSV_COLOR_CLASS_ID,
+            RGB_COLOR_CLASS_ID,
+        };
+        use crate::objects::domain::{
+            BIT_MASK_CODED_VALUE_DOMAIN_CLASS_ID, CODED_VALUE_DOMAIN_CLASS_ID,
+            RANGE_DOMAIN_CLASS_ID,
+        };
+        use crate::objects::envelope::ENVELOPE_CLASS_ID;
+        use crate::objects::field_defs::{GEOMETRY_DEF_CLASS_ID, RASTER_DEF_CLASS_ID};
+        use crate::objects::fields::{FIELD_CLASS_ID, FIELDS_CLASS_ID};
+        use crate::objects::geodata_xform::{
+            ADJUST_XFORM_CLASS_ID, COMPOSITE_XFORM_CLASS_ID, COORDINATE_XFORM_CLASS_ID,
+            CSM_XFORM_CLASS_ID, FORMOSAT2_XFORM_CLASS_ID, FRAME_XFORM_CLASS_ID,
+            GCS_SHIFT_XFORM_CLASS_ID, GEOMETRIC_XFORM_CLASS_ID, IDENTITY_XFORM_CLASS_ID,
+            LSR_XFORM_CLASS_ID, PICTOMETRY_XFORM_CLASS_ID, POLYNOMIAL_XFORM_CLASS_ID,
+            PROJECTIVE_XFORM_CLASS_ID, RPC_XFORM_CLASS_ID, SPLINE_XFORM_CLASS_ID,
+            SPOT5_XFORM_CLASS_ID,
+        };
+        use crate::objects::geometry::{
+            GEOMETRY_BAG_CLASS_ID, MULTIPATCH_CLASS_ID, MULTIPOINT_CLASS_ID, POINT_CLASS_ID,
+            POLYGON_CLASS_ID, POLYLINE_CLASS_ID,
+        };
+        use crate::objects::number_format::{
+            ANGLE_FORMAT_CLASS_ID, CURRENCY_FORMAT_CLASS_ID, CUSTOM_NUMBER_FORMAT_CLASS_ID,
+            FRACTION_FORMAT_CLASS_ID, LATLON_FORMAT_CLASS_ID, NUMERIC_FORMAT_CLASS_ID,
+            PERCENTAGE_FORMAT_CLASS_ID, RATE_FORMAT_CLASS_ID, SCIENTIFIC_FORMAT_CLASS_ID,
+        };
+        use crate::objects::query_filter::{
+            FILTER_DEFS_CLASS_ID, QUERY_FILTER_CLASS_ID, SPATIAL_FILTER_CLASS_ID,
+            XML_FILTER_DEF_CLASS_ID,
+        };
+        use crate::objects::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
+        use crate::objects::spatial_reference_slots::{
+            GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID, UNKNOWN_COORDINATE_SYSTEM_CLASS_ID,
+        };
+
+        let classes = [
+            RASTER_UNIQUE_VALUE_COLORS_CLASS_ID,
+            UNIQUE_VALUES_CLASS_ID,
+            RANGE_DOMAIN_CLASS_ID,
+            CODED_VALUE_DOMAIN_CLASS_ID,
+            BIT_MASK_CODED_VALUE_DOMAIN_CLASS_ID,
+            FIELD_CLASS_ID,
+            FIELDS_CLASS_ID,
+            GEOMETRY_DEF_CLASS_ID,
+            RASTER_DEF_CLASS_ID,
+            FEATURE_ID_SET_CLASS_ID,
+            FID_SET_CLASS_ID,
+            QUERY_FILTER_CLASS_ID,
+            SPATIAL_FILTER_CLASS_ID,
+            FILTER_DEFS_CLASS_ID,
+            XML_FILTER_DEF_CLASS_ID,
+            PROPERTY_SET_CLASS_ID,
+            UID_CLASS_ID,
+            RASTER_SCALAR_CLASS_ID,
+            RASTER_ARGUMENT_ARRAY_CLASS_ID,
+            crate::layers::image_server_rules::RASTER_INFO_CLASS_ID,
+            crate::layers::image_server_rules::RASTER_INFOS_CLASS_ID,
+            crate::layers::image_server_rules::RASTER_STATISTICS,
+            crate::layers::image_server_rules::RASTER_HISTOGRAM,
+            crate::layers::image_server_rules::RASTER_COLORMAP,
+            STATS_HISTOGRAM_CLASS_ID,
+            TIME_CLASS_ID,
+            TIME_REFERENCE_CLASS_ID,
+            TIME_EXTENT_CLASS_ID,
+            TIME_WINDOW_CLASS_ID,
+            POINT_CLASS_ID,
+            MULTIPOINT_CLASS_ID,
+            POLYLINE_CLASS_ID,
+            POLYGON_CLASS_ID,
+            ENVELOPE_CLASS_ID,
+            GEOMETRY_BAG_CLASS_ID,
+            MULTIPATCH_CLASS_ID,
+            crate::objects::color_ramp::RANDOM_COLOR_RAMP_CLASS_ID,
+            crate::objects::color_ramp::MULTI_PART_COLOR_RAMP_CLASS_ID,
+            crate::objects::color_ramp::PRESET_COLOR_RAMP_CLASS_ID,
+            crate::objects::color_ramp::ALGORITHMIC_COLOR_RAMP_CLASS_ID,
+            STR_ARRAY_CLASS_ID,
+            LONG_ARRAY_CLASS_ID,
+            DOUBLE_ARRAY_CLASS_ID,
+            VAR_ARRAY_CLASS_ID,
+            VAR_STR_ARRAY_CLASS_ID,
+            PROPERTY_SET_ARRAY_CLASS_ID,
+            VALUE_ARRAY_CLASS_ID,
+            NUMERIC_FORMAT_CLASS_ID,
+            PERCENTAGE_FORMAT_CLASS_ID,
+            FRACTION_FORMAT_CLASS_ID,
+            RATE_FORMAT_CLASS_ID,
+            CURRENCY_FORMAT_CLASS_ID,
+            LATLON_FORMAT_CLASS_ID,
+            ANGLE_FORMAT_CLASS_ID,
+            SCIENTIFIC_FORMAT_CLASS_ID,
+            CUSTOM_NUMBER_FORMAT_CLASS_ID,
+            RGB_COLOR_CLASS_ID,
+            CMYK_COLOR_CLASS_ID,
+            HSV_COLOR_CLASS_ID,
+            GRAY_COLOR_CLASS_ID,
+            HLS_COLOR_CLASS_ID,
+            PROJECTED_COORDINATE_SYSTEM_CLASS_ID,
+            GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID,
+            UNKNOWN_COORDINATE_SYSTEM_CLASS_ID,
+            IDENTITY_XFORM_CLASS_ID,
+            POLYNOMIAL_XFORM_CLASS_ID,
+            COMPOSITE_XFORM_CLASS_ID,
+            ADJUST_XFORM_CLASS_ID,
+            crate::objects::geodata_xform::APPROXIMATION_XFORM_CLASS_ID,
+            GCS_SHIFT_XFORM_CLASS_ID,
+            COORDINATE_XFORM_CLASS_ID,
+            RPC_XFORM_CLASS_ID,
+            GEOMETRIC_XFORM_CLASS_ID,
+            LSR_XFORM_CLASS_ID,
+            PICTOMETRY_XFORM_CLASS_ID,
+            SPLINE_XFORM_CLASS_ID,
+            FRAME_XFORM_CLASS_ID,
+            FORMOSAT2_XFORM_CLASS_ID,
+            SPOT5_XFORM_CLASS_ID,
+            CSM_XFORM_CLASS_ID,
+            PROJECTIVE_XFORM_CLASS_ID,
+            RASTER_COLORMAP_RENDERER_CLASS_ID,
+            RASTER_RGB_RENDERER_CLASS_ID,
+            SIMPLE_RASTER_RENDERER_CLASS_ID,
+            RASTER_UNIQUE_VALUE_RENDERER_CLASS_ID,
+            RASTER_CLASSIFY_RENDERER_CLASS_ID,
+            RASTER_STRETCH_RENDERER_CLASS_ID,
+            crate::layers::raster_renderer::DISCRETE_COLOR_RENDERER_CLASS_ID,
+            crate::layers::raster_renderer::SAI_RENDERER_CLASS_ID,
+        ];
+
+        for class_id in classes {
+            let entry = ObjectEntry10_1::NewObject { class_id, key: 1 };
+            let result = read_variant_object_body_10_1(
+                &mut Reader::new(&[]),
+                64,
+                &mut RefTable10_1::new(),
+                0,
+                entry,
+            );
+            if let Err(error) = result {
+                assert!(
+                    !error.to_string().contains("无已证对象体分派"),
+                    "Variant 类 {} 未进入专属分派：{error}",
+                    crate::storage::class_id_hex(&class_id),
+                );
+            }
+        }
+    }
+
+    #[test]
     fn variant_reads_raster_function_and_limits_recursive_parameters() {
         use crate::layers::image_server_rules::{
             CACHED_RASTER_FUNCTION_ARGUMENTS_CLASS_ID, IDENTITY_FUNCTION_CLASS_ID,

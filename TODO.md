@@ -252,7 +252,7 @@
   - [x] 解码 v1 唯一值分类键的半字交换并保留流内原值。
   - [x] 接入旧版 RasterUniqueValueRenderer 的 RasterUniqueValueColors v1 对象体，读取数值键、字符串键及颜色原值列表，见 [旧枚举取证](docs/mxd-10.1-raster-renderer.md#旧版唯一值颜色枚举)。
   - [x] 接入带保留区的 Variant 对象值（空对象、PropertySet 和同会话回引），覆盖栅格唯一值、值域与 MosaicRule，见 [AfCore 取证](docs/arcmap-10.1-variant-propertyset-slots.md#带保留区的-objectstream-对象值)。
-  - [ ] 补齐栅格唯一值类别及统计集合内其他新对象类的 Variant 体分派。
+  - [x] 以中心 Variant 对象分派表覆盖栅格唯一值类别、统计集合和值域共享的 89 个已确认类，并逐类验证不只停在“无对象体分派”。[共享分派覆盖](docs/arcmap-10.1-variant-propertyset-slots.md#值域数组的读写分发表复核)
   - [x] 接入 ObjectStream Variant 中的 IdentityXform 对象体。
   - [x] 接入 ObjectStream Variant 中的 PolynomialXform 对象体。
   - [x] 接入 ObjectStream Variant 中的 CompositeXform 对象体及其子对象键。
@@ -312,7 +312,7 @@
   - [x] 接入 ImageServerLayer 非空 Fields 及 Field 的已确认对象体；默认值复用 AfCore Variant 读取器，见 [字段集合取证](docs/mxd-10.1-fields.md)。
   - [x] 接入 Field 的 RangeDomain 与 CodedValueDomain，读取标量的 Variant::Read(false) 值，见 [值域取证](docs/mxd-10.1-fields.md#idomain范围值域与编码值域)。
   - [x] 接入 AfCore Variant 的已证单维定宽和 BSTR 数组；PropertySet、Field 默认值、值域和 EditTemplate 共用数组读取器，见 [数组取证](docs/arcmap-10.1-variant-propertyset-slots.md#单维数组接入)。
-  - [ ] 补齐范围或编码值域中其他新对象类的 Variant 体分派。
+  - [x] 以中心 Variant 对象分派表覆盖范围值域、编码值域和位掩码值域可携带的已确认对象类；数组元素布局与对象体回滚由现有专用测试继续覆盖。[共享分派覆盖](docs/arcmap-10.1-variant-propertyset-slots.md#值域数组的读写分发表复核)
   - [x] 接入共享 ObjectStream Variant 中的 RangeDomain 与 CodedValueDomain 对象体。[值域取证](docs/mxd-10.1-fields.md#idomain范围值域与编码值域)
   - [x] 接入共享 ObjectStream Variant 中的 BitMaskCodedValueDomain 对象体。[持久化入口](docs/mxd-10.1-fields.md#bitmaskcodedvaluedomain)
   - [x] 按声明计数处理位掩码值域的标签数组回引。[标签循环取证](docs/mxd-10.1-fields.md#位掩码标签计数)
