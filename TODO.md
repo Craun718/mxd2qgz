@@ -58,6 +58,7 @@
 2026-11-18 的六组原生取证、样本结果和剩余边界见 [并行复核记录](docs/mxd-luna-20261118-review.md)。
 
 - [x] 接入分流 /PageLayout 的打印设置：读取 Paper v3 的非空 DEVMODE、v0–v3 的空 DEVMODE，以及 EmfPrinter、PsPrinter、ArcPressPrinter 的已确认布局。见[打印设置取证](docs/mxd-page-layout-tail-20261118.md#非空打印设置)。
+- [x] 按登记实例校验分流布局的 IPrinter 回引。[原生取证](docs/mxd-page-layout-tail-20261118.md#分流-iprinter-回引)
 
 - [x] 接入分流 ObjectStream 默认版本文本下 Paper v0–v2 的非空 DEVMODE，区分流字节数与原生结构的分配大小。[旧 Paper 取证](docs/mxd-page-layout-tail-20261118.md#旧版-paper-的分流读取)
 

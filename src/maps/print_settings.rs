@@ -70,8 +70,13 @@ pub(super) fn read_print_settings_10_1(
     let mut staged = refs.clone();
     let paper = read_paper(&mut trial, limit, format)
         .map_err(|error| io::Error::new(error.kind(), format!("IPaper：{error}")))?;
-    let printer = read_object_entry_10_1(&mut trial, &mut staged)
+    let mut printer = read_object_entry_10_1(&mut trial, &mut staged)
         .map_err(|error| io::Error::new(error.kind(), format!("IPrinter 对象头：{error}")))?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut printer
+        && let Some(registered) = staged.registered_class(*key)
+    {
+        *class_id = registered;
+    }
     let printer_body = match printer {
         ObjectEntry10_1::Null => None,
         ObjectEntry10_1::BackReference { class_id, .. }
@@ -234,4 +239,47 @@ fn blob<'a>(reader: &mut Reader<'a>, size: u32, limit: usize) -> io::Result<&'a 
         .filter(|&size| size <= limit)
         .ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "打印设置数据长度超过限额"))?;
     reader.read_bytes(size)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn printer_reference_uses_registered_class() {
+        let mut bytes = vec![0; 10]; // Paper v0，空 DEVNAMES 和 DEVMODE。
+        bytes.extend(EMF_PRINTER_CLASS_ID);
+        bytes.extend(7_u32.to_le_bytes());
+        bytes.push(0x42);
+
+        for registered in [PS_PRINTER_CLASS_ID, super::super::map_object::MAP_CLASS_ID] {
+            let mut definition = registered.to_vec();
+            definition.extend(7_u32.to_le_bytes());
+            let mut refs = RefTable10_1::new();
+            read_object_entry_10_1(&mut Reader::new(&definition), &mut refs).unwrap();
+            let mut reader = Reader::new(&bytes);
+            let result = read_print_settings_10_1(
+                &mut reader,
+                4096,
+                &mut refs,
+                PrintSaveFormat10_1::Default,
+            );
+            if registered == PS_PRINTER_CLASS_ID {
+                let settings = result.unwrap();
+                assert_eq!(
+                    settings.printer,
+                    ObjectEntry10_1::BackReference {
+                        class_id: registered,
+                        key: 7,
+                    }
+                );
+                assert!(settings.printer_body.is_none());
+                assert_eq!(reader.read_bytes(1).unwrap(), &[0x42]);
+            } else {
+                assert_eq!(result.unwrap_err().kind(), ErrorKind::Unsupported);
+                assert_eq!(reader.position(), 0);
+            }
+            assert_eq!(refs.registered_class(7), Some(registered));
+        }
+    }
 }

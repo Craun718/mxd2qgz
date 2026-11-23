@@ -152,3 +152,11 @@ YellowstoneGDB
 校验 Paper v3 及打印设置结束于 `0x1296`。两份工程均从
 `/Version`、`/Maps`、`/PageLayout` 入口验证，布局无未解析区间。
 这两份工程仍缺显式设置 ObjectStream 版本文本为 9.0 的运行期证据。
+
+### 分流 IPrinter 回引
+
+PageLayout.dll 10.1.0.3035 的 `0x7b7095af` 通过共享
+ObjectStream 请求 IPrinter。SystemCore.dll 同版本的 `0x7ffd0063`
+按键找到登记实例后查询接口。因此分流读取器用登记类校验 IPrinter
+回引。构造测试覆盖引用头与登记类不同但接口匹配时的读取边界，
+以及错引 Map 时的游标和对象键回滚。真实 IPrinter 回引宿主待验证。
