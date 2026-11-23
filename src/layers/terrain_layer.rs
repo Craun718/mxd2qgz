@@ -16,7 +16,7 @@ use std::io::{self, ErrorKind};
 pub(crate) const TERRAIN_LAYER_CLASS_ID: [u8; 16] = [
     0xdd, 0x19, 0x7c, 0x5c, 0xf0, 0xd2, 0x31, 0x4a, 0x9c, 0x70, 0xf8, 0x7e, 0x3a, 0x20, 0x3c, 0x28,
 ];
-const TERRAIN_NAME_CLASS_ID: [u8; 16] = [
+pub const TERRAIN_NAME_CLASS_ID: [u8; 16] = [
     0x11, 0x93, 0xed, 0x4c, 0x66, 0x65, 0xf6, 0x44, 0xb1, 0x35, 0x65, 0x7d, 0x6f, 0x48, 0x14, 0x3e,
 ];
 
@@ -89,15 +89,11 @@ fn read_shorts(r: &mut Reader<'_>) -> io::Result<[u16; 3]> {
     Ok([r.read_u16_le()?, r.read_u16_le()?, r.read_u16_le()?])
 }
 
-fn read_name(
+pub(crate) fn read_terrain_name_body_10_1(
     r: &mut Reader<'_>,
     max: usize,
     refs: &mut RefTable10_1,
-    class_id: [u8; 16],
 ) -> io::Result<TerrainName10_1> {
-    if class_id != TERRAIN_NAME_CLASS_ID {
-        return Err(unsupported("IName"));
-    }
     let version = read_version(r, 1)?;
     let strings = [
         read_string_10_1(r, max)?,
@@ -130,7 +126,10 @@ pub(crate) fn read_terrain_layer_10_1(
     let initial_shorts = [r.read_u16_le()?, r.read_u16_le()?];
     let initial_double = read_double(r)?;
     let source = slot(r, &mut refs, |r, refs, class_id, _| {
-        read_name(r, max, refs, class_id)
+        if class_id != TERRAIN_NAME_CLASS_ID {
+            return Err(unsupported("IName"));
+        }
+        read_terrain_name_body_10_1(r, max, refs)
     })?;
     let source_shorts = [r.read_u16_le()?, r.read_u16_le()?];
     let extent = if version >= 6 {

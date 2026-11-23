@@ -141,6 +141,12 @@ use crate::layers::raster_dataset_name::{
     RASTER_DATASET_NAME83_CLASS_ID, RASTER_TYPE_NAME_CLASS_ID, RasterDatasetNameEntryBody10_1,
     SDE_RASTER_DATASET_NAME_CLASS_ID, read_supported_raster_name_body_10_1,
 };
+use crate::layers::scene_layer_properties::{
+    TIN_NAME_CLASS_ID, TinName10_1, read_tin_name_body_10_1,
+};
+use crate::layers::terrain_layer::{
+    TERRAIN_NAME_CLASS_ID, TerrainName10_1, read_terrain_name_body_10_1,
+};
 use crate::layers::wcs_name::{
     WCS_CONNECTION_NAME_CLASS_ID, WCS_COVERAGE_NAME_CLASS_ID, WMS_CONNECTION_NAME_CLASS_ID,
     WMTS_CONNECTION_NAME_CLASS_ID,
@@ -341,6 +347,8 @@ pub enum BookmarkNameEntry10_1 {
     DbTableName(Box<DbTableNameBody10_1>),
     GeometricNetworkName(Box<GeometricNetworkNameBody10_1>),
     NetworkDatasetName(Box<NetworkDatasetName10_1>),
+    TinName(Box<TinName10_1>),
+    TerrainName(Box<TerrainName10_1>),
     TopologyName(Box<TopologyNameBody10_1>),
     FeatureDatasetName(Box<FeatureDatasetNameBody10_1>),
     CoverageName(Box<FeatureDatasetNameBody10_1>),
@@ -1114,6 +1122,22 @@ pub fn read_feature_bookmark_10_1(
             }
             BookmarkNameEntry10_1::MemoryRelationshipClassName(Box::new(body))
         }
+        ObjectEntry10_1::NewObject {
+            class_id: TERRAIN_NAME_CLASS_ID,
+            ..
+        } => BookmarkNameEntry10_1::TerrainName(Box::new(read_terrain_name_body_10_1(
+            &mut trial,
+            max_bytes,
+            &mut trial_table,
+        )?)),
+        ObjectEntry10_1::NewObject {
+            class_id: TIN_NAME_CLASS_ID,
+            ..
+        } => BookmarkNameEntry10_1::TinName(Box::new(read_tin_name_body_10_1(
+            &mut trial,
+            max_bytes,
+            &mut trial_table,
+        )?)),
         ObjectEntry10_1::NewObject {
             class_id: NETWORK_DATASET_NAME_CLASS_ID,
             ..

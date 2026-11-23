@@ -23,7 +23,7 @@ pub const RASTER_3D_PROPERTIES_CLASS_ID: [u8; 16] = [
 pub const FEATURE_3D_PROPERTIES_CLASS_ID: [u8; 16] = [
     0xe4, 0xec, 0x4c, 0x4a, 0x3a, 0xf5, 0xd3, 0x11, 0x80, 0xd9, 0, 0xc0, 0x4f, 0xa0, 0xad, 0xf8,
 ];
-pub(super) const TIN_NAME_CLASS_ID: [u8; 16] = [
+pub const TIN_NAME_CLASS_ID: [u8; 16] = [
     0x16, 0xf4, 0x13, 0x5f, 0xbc, 0x42, 0xd2, 0x11, 0xa5, 0x69, 0, 0, 0xf8, 0x77, 0x4f, 0x0f,
 ];
 
@@ -80,52 +80,60 @@ pub(super) fn read_surface_name(
 
     let entry = read_object_entry_10_1(reader, refs)?;
     let body = if matches!(entry, ObjectEntry10_1::NewObject { .. }) {
-        // TinDB.dll TinName::Load 使用有符号 short 上限 1。
-        let version = reader.read_u16_le()? as i16;
-        if version > 1 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("TinName 版本 {version} 超出 10.1 上限"),
-            ));
-        }
-        let strings = [
-            read_string_10_1(reader, max)?,
-            read_string_10_1(reader, max)?,
-            read_string_10_1(reader, max)?,
-        ];
-        let workspace = read_workspace_slot(reader, max, refs)?;
-        match &workspace {
-            RasterDatasetWorkspaceSlot10_1::WorkspaceName(body) if body.stop.is_some() => {
-                return Err(io::Error::new(
-                    io::ErrorKind::Unsupported,
-                    "TinName 工作空间体未完整读取",
-                ));
-            }
-            RasterDatasetWorkspaceSlot10_1::Unsupported { .. } => {
-                return Err(io::Error::new(
-                    io::ErrorKind::Unsupported,
-                    "TinName 工作空间类未支持",
-                ));
-            }
-            RasterDatasetWorkspaceSlot10_1::BackReference { class_id, .. }
-                if *class_id != WORKSPACE_NAME_CLASS_ID =>
-            {
-                return Err(io::Error::new(
-                    io::ErrorKind::Unsupported,
-                    "TinName 工作空间回引类未支持",
-                ));
-            }
-            _ => {}
-        }
-        Some(Box::new(TinName10_1 {
-            version,
-            strings,
-            workspace,
-        }))
+        Some(Box::new(read_tin_name_body_10_1(reader, max, refs)?))
     } else {
         None
     };
     Ok(SurfaceName10_1::Tin { entry, body })
+}
+
+pub(crate) fn read_tin_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<TinName10_1> {
+    // TinDB.dll TinName::Load 使用有符号 short 上限 1。
+    let version = reader.read_u16_le()? as i16;
+    if version > 1 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("TinName 版本 {version} 超出 10.1 上限"),
+        ));
+    }
+    let strings = [
+        read_string_10_1(reader, max)?,
+        read_string_10_1(reader, max)?,
+        read_string_10_1(reader, max)?,
+    ];
+    let workspace = read_workspace_slot(reader, max, refs)?;
+    match &workspace {
+        RasterDatasetWorkspaceSlot10_1::WorkspaceName(body) if body.stop.is_some() => {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "TinName 工作空间体未完整读取",
+            ));
+        }
+        RasterDatasetWorkspaceSlot10_1::Unsupported { .. } => {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "TinName 工作空间类未支持",
+            ));
+        }
+        RasterDatasetWorkspaceSlot10_1::BackReference { class_id, .. }
+            if *class_id != WORKSPACE_NAME_CLASS_ID =>
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "TinName 工作空间回引类未支持",
+            ));
+        }
+        _ => {}
+    }
+    Ok(TinName10_1 {
+        version,
+        strings,
+        workspace,
+    })
 }
 
 pub(super) fn read_bounded_scene_layer_properties(

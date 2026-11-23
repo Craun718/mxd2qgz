@@ -2681,3 +2681,42 @@ fn feature_bookmark_reads_network_dataset_name() {
         assert!(refs.is_empty());
     }
 }
+
+#[test]
+fn feature_bookmark_reads_tin_and_terrain_names() {
+    use mxd2qgz::layers::scene_layer_properties::TIN_NAME_CLASS_ID;
+    use mxd2qgz::layers::terrain_layer::TERRAIN_NAME_CLASS_ID;
+
+    for class in [TIN_NAME_CLASS_ID, TERRAIN_NAME_CLASS_ID] {
+        let mut bytes = bookmark_header_10_1(&class, 17);
+        bytes.extend(1_u16.to_le_bytes());
+        for value in ["地表", "数据", "名称"] {
+            bytes.extend(bookmark_string_10_1(value));
+        }
+        bytes.extend([0; 16]);
+        bytes.extend(bookmark_string_10_1("书签"));
+        let end = bytes.len();
+        bytes.push(0xa5);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+        let strings = match (class, result.name_object) {
+            (TIN_NAME_CLASS_ID, BookmarkNameEntry10_1::TinName(name)) => name.strings,
+            (TERRAIN_NAME_CLASS_ID, BookmarkNameEntry10_1::TerrainName(name)) => name.strings,
+            _ => panic!("应保留地表名称的原始类型"),
+        };
+        assert_eq!(strings, ["地表", "数据", "名称"]);
+        assert_eq!(result.name, "书签");
+        assert_eq!(reader.position(), end);
+        assert!(refs.contains(17));
+
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+}

@@ -504,3 +504,13 @@ NetworkDatasetName 对象。GdbNetwork.dll 的 GetClassID `0x71044240`
 确认。书签复用 NALayer 已使用的对象体读取器，保留 IDatasetName
 和 IWorkspaceName 槽。构造测试验证字段、后继书签文本和逐字节
 截断回滚。真实书签宿主、原生 Open 结果和 QGIS 人工检查待验证。
+
+## TinName 与 TerrainName
+
+ArcMap 10.1.0.3035 的 3D 图层属性和 TerrainLayer 都通过
+IName 装载地表名称。书签复用 [TinDB.dll Load `0x803540e0`](mxd-10.1-raster-layer-tail.md)
+及 [Terrain.dll Load `0x80170130`](mxd-luna-deep-layer-masking-20261118.md#terrainname)
+的读取规则。两类都读版本和三条字符串，TinName 的尾槽是
+IWorkspaceName，TerrainName 的尾槽是 IDatasetName。构造测试覆盖
+两类分派、空子槽、后继书签文本和逐字节截断回滚。真实书签宿主、
+原生 Open 结果和 QGIS 人工检查待验证。
