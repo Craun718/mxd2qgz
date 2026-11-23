@@ -883,6 +883,14 @@ esriGeoAnalyst 1 个、esriGeoDatabaseExtensions 3 个、esriSpatialAnalyst
 `function_max_version`，56 项均返回可读取的版本上限。该检查验证
 RenderingRule 函数槽的类分派，类体的原生读写证据见本页各节。
 
+对共用 `0x6fd2ce74` 函数 Load 入口的表内 45 个类，新增表驱动测试
+逐个构造 `BasicFunction v0 + int32 + 派生 short` 非空体，全部消费到
+对象体末尾；对共用 `0x6fd2ce68` 参数 Load 入口的 44 个类，逐个构造
+`BasicFunctionArguments v0 + 空 IPropertySet` 非空体并验证完整消费。
+专用入口的 MosaicDB 布局仍由独立测试覆盖，不混入共用基础体。
+这组测试闭合了共用表中的剩余非空对象体边界；外部类和第三方扩展仍按
+其注册入口另行取证，ArcMap 10.1 与 QGIS 人工验证尚未进行。
+
 另复核 Desktop 解包 DLL 中接口常量的一处跨模块引用。
 GpRasterFunctions.dll 10.1.0.3035 仅有一份该 IID 常量
 `0x748a8ed4`，其指令引用 `0x7487c900` 将 IID 与输出槽交给现有

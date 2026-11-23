@@ -2185,6 +2185,38 @@ mod tests {
     }
 
     #[test]
+    fn common_function_and_argument_tables_read_nonempty_minimal_bodies() {
+        for class_id in class_ids::FUNCTIONS {
+            let mut bytes = 0_u16.to_le_bytes().to_vec();
+            bytes.extend(7_i32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            let mut reader = Reader::new(&bytes);
+            let body =
+                read_function(&mut reader, 4096, &mut RefTable10_1::new(), class_id, 2).unwrap();
+            assert!(body.has_basic_function);
+            assert_eq!(body.base_version, 0);
+            assert_eq!(body.base_long, 7);
+            assert_eq!(body.version, 1);
+            assert_eq!(reader.remaining(), 0);
+        }
+
+        for class_id in class_ids::ARGUMENTS {
+            if mosaic_arguments::layout(class_id).is_some() {
+                continue;
+            }
+            let mut bytes = 0_u16.to_le_bytes().to_vec();
+            bytes.extend([0; 16]);
+            let mut reader = Reader::new(&bytes);
+            let body =
+                read_arguments(&mut reader, 4096, &mut RefTable10_1::new(), class_id, 2).unwrap();
+            assert!(body.has_basic_arguments);
+            assert_eq!(body.version, 0);
+            assert_eq!(body.properties.entry, ObjectEntry10_1::Null);
+            assert_eq!(reader.remaining(), 0);
+        }
+    }
+
+    #[test]
     fn mosaic_rule_uses_signed_versions_for_optional_objects() {
         for version in [-1_i16, 4] {
             let mut bytes = version.to_le_bytes().to_vec();

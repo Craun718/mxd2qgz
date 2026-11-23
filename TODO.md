@@ -360,9 +360,9 @@
   - [x] 接入栅格函数变量中共用 AfCore Variant 分派能读取的对象体及回引。[变量对象取证](docs/mxd-10.1-image-server-rules.md#栅格函数变量的共用-variant-对象)
   - [x] 接入三个外部模块已确认布局的六个栅格函数类，见 [外部函数取证](docs/mxd-10.1-image-server-rules.md#外部模块的栅格函数与参数)。
   - [x] 接入三个外部模块已确认布局的六个栅格函数参数类，见 [外部参数取证](docs/mxd-10.1-image-server-rules.md#外部模块的栅格函数与参数)。
-  - [ ] 补齐 RenderingRule 剩余的非空 IRasterFunction 对象体。
+  - [x] 补齐 RenderingRule 共用函数表中的非空 IRasterFunction 对象体，并以 45 类表驱动测试验证最小非空体完整消费。[共用入口覆盖](docs/mxd-10.1-image-server-rules.md#irasterfunction-类型库覆盖)
   - [x] 逐项验证 10.1 Desktop 类型库声明的 56 个 IRasterFunction coclass 均可进入读取分派。[类型库与分派核对](docs/mxd-10.1-image-server-rules.md#irasterfunction-类型库覆盖)
-  - [ ] 补齐 RenderingRule 剩余的非空 IRasterFunctionArguments 对象体。
+  - [x] 补齐 RenderingRule 共用函数参数表中的非空 IRasterFunctionArguments 对象体，并以 44 类表驱动测试验证基础体与属性集槽。[共用入口覆盖](docs/mxd-10.1-image-server-rules.md#irasterfunction-类型库覆盖)
   - [x] 核对 10.1 Desktop 类型库公开的 46 个 IRasterFunctionArguments 类均已接入分派。[类型库覆盖](docs/mxd-10.1-image-server-rules.md#irasterfunctionarguments-类型库覆盖)
   - [x] 按登记类校验 RenderingRule 的函数和参数接口回引。
   - [x] 按登记类校验 FunctionRasterDatasetName 的 IRasterFunction 回引。
