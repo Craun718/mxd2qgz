@@ -1330,3 +1330,29 @@ QI 分别在 `0x7470ed7e` 和 `0x746e75fe` 引用编码域请求的 IGPValue IID
 
 构造书签覆盖两个类的字符串、回引、后继字段、超限版本和逐字节截断回滚。
 真实书签和 ArcMap/QGIS 人工验收待验证。
+
+#### GP 空间参考值
+
+10.1 Desktop 互操作程序集将下列五类列为 IGPValue 实现。
+用 GpObjects.dll 10.1.0.3035 的 RTTI、虚表和 objdump 复核
+持久化入口。类标识也在同版 PE 的构造数据中核对。
+
+| 类 | CLSID | 持久化虚表 | Load / Save |
+| --- | --- | --- | --- |
+| GPSpatialReference | `503307EA-4131-456B-9B9A-15989534BE4D` | `0x747b6668` | `0x7470e1d0 / 0x7470e270` |
+| GPCoordinateSystem | `B3E1D7ED-A8D6-44A7-A911-817C361B574C` | `0x747abeac` | `0x746a50c0 / 0x746a5150` |
+| GPXYDomain | `9776287B-3D47-4DB7-801C-D679D7AA6872` | `0x747b9e6c` | `0x746ebdb0 / 0x7475c240` |
+| GPZDomain | `44F4FE86-8870-4375-A9C2-96AEBB9DE3BC` | `0x747ba01c` | `0x746ebdb0 / 0x7475d230` |
+| GPMDomain | `84259B9E-73C9-462A-BEB1-3BB3051E593A` | `0x747b1cd4` | `0x746ebdb0 / 0x746ebe40` |
+
+Load 首先读取无符号 short 版本，GPSpatialReference 上限为 3，
+其余上限为 1。接着读 GPValue 基类，在
+`0x7470e22e / 0x746a511d / 0x746ebe0d` 请求同一个
+ISpatialReference IID `4434D680-F4DA-11D1-BCA6-0000F875BCCE`。
+GPSpatialReference 仅在版本恰为 2 时于 `0x7470e24c` 读一个
+short 至局部栈变量。Save 写 v3，省略此 short。解析复用已有
+ISpatialReference 对象槽，并保留 v2 的原始值。
+
+构造书签覆盖五个类、空空间参考、GPSpatialReference v1–v3、
+值对象回引、后继字段、超限版本和逐字节截断回滚。真实书签
+及 ArcMap/QGIS 人工验收待验证。

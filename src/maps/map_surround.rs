@@ -205,7 +205,10 @@ use crate::objects::dataset_name_more::{
     SCHEMATIC_DIAGRAM_NAME_CLASS_ID, SchematicDiagramNameBody10_1,
     read_schematic_diagram_name_body_10_1,
 };
-use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
+use crate::objects::envelope::{
+    ENVELOPE_CLASS_ID, Envelope10_1, SpatialReferenceEntry10_1, read_envelope_10_1,
+    read_spatial_reference_entry_10_1,
+};
 use crate::objects::property_set::{
     PropertyValueObjectStream10_1, read_padded_variant_object_stream_nested_10_1,
     read_variant_object_body_10_1,
@@ -430,6 +433,26 @@ pub const GP_INFO_EXPRESSION_CLASS_ID: [u8; 16] = [
     0xa6, 0x65, 0xa2, 0x32, 0xd2, 0x78, 0xa5, 0x49, 0xa6, 0x5b, 0x57, 0x29, 0x73, 0xa7, 0xb6, 0xa0,
 ];
 
+pub const GP_SPATIAL_REFERENCE_CLASS_ID: [u8; 16] = [
+    0xea, 0x07, 0x33, 0x50, 0x31, 0x41, 0x6b, 0x45, 0x9b, 0x9a, 0x15, 0x98, 0x95, 0x34, 0xbe, 0x4d,
+];
+
+pub const GP_COORDINATE_SYSTEM_CLASS_ID: [u8; 16] = [
+    0xed, 0xd7, 0xe1, 0xb3, 0xd6, 0xa8, 0xa7, 0x44, 0xa9, 0x11, 0x81, 0x7c, 0x36, 0x1b, 0x57, 0x4c,
+];
+
+pub const GP_XY_DOMAIN_CLASS_ID: [u8; 16] = [
+    0x7b, 0x28, 0x76, 0x97, 0x47, 0x3d, 0xb7, 0x4d, 0x80, 0x1c, 0xd6, 0x79, 0xd7, 0xaa, 0x68, 0x72,
+];
+
+pub const GP_Z_DOMAIN_CLASS_ID: [u8; 16] = [
+    0x86, 0xfe, 0xf4, 0x44, 0x70, 0x88, 0x75, 0x43, 0xa9, 0xc2, 0x96, 0xae, 0xbb, 0x9d, 0xe3, 0xbc,
+];
+
+pub const GP_M_DOMAIN_CLASS_ID: [u8; 16] = [
+    0x9e, 0x9b, 0x25, 0x84, 0xc9, 0x73, 0x2a, 0x46, 0xbe, 0xb1, 0x3b, 0xb3, 0x05, 0x1e, 0x59, 0x3a,
+];
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpCodedValue10_1 {
     Point {
@@ -438,6 +461,10 @@ pub enum GpCodedValue10_1 {
     },
     String(String),
     EncryptedString(String),
+    SpatialReference {
+        reference: Box<SpatialReferenceEntry10_1>,
+        legacy_short: Option<u16>,
+    },
     SqlExpression(String),
     InfoExpression(String),
     Long(i32),
@@ -1595,6 +1622,11 @@ fn read_gp_coded_value_slot(
                 table.registered_class(key).unwrap_or(class_id),
                 GP_STRING_CLASS_ID
                     | GP_POINT_CLASS_ID
+                    | GP_SPATIAL_REFERENCE_CLASS_ID
+                    | GP_COORDINATE_SYSTEM_CLASS_ID
+                    | GP_XY_DOMAIN_CLASS_ID
+                    | GP_Z_DOMAIN_CLASS_ID
+                    | GP_M_DOMAIN_CLASS_ID
                     | GP_SQL_EXPRESSION_CLASS_ID
                     | GP_INFO_EXPRESSION_CLASS_ID
                     | GP_ENCRYPTED_STRING_CLASS_ID
@@ -1616,6 +1648,11 @@ fn read_gp_coded_value_slot(
             class_id:
                 class_id @ (GP_STRING_CLASS_ID
                 | GP_POINT_CLASS_ID
+                | GP_SPATIAL_REFERENCE_CLASS_ID
+                | GP_COORDINATE_SYSTEM_CLASS_ID
+                | GP_XY_DOMAIN_CLASS_ID
+                | GP_Z_DOMAIN_CLASS_ID
+                | GP_M_DOMAIN_CLASS_ID
                 | GP_SQL_EXPRESSION_CLASS_ID
                 | GP_INFO_EXPRESSION_CLASS_ID
                 | GP_ENCRYPTED_STRING_CLASS_ID
@@ -1633,10 +1670,10 @@ fn read_gp_coded_value_slot(
         } => {
             let version = reader.read_u16_le()?;
             let base_version = reader.read_u16_le()?;
-            let max_version = if class_id == GP_ENCRYPTED_STRING_CLASS_ID {
-                2
-            } else {
-                1
+            let max_version = match class_id {
+                GP_SPATIAL_REFERENCE_CLASS_ID => 3,
+                GP_ENCRYPTED_STRING_CLASS_ID => 2,
+                _ => 1,
             };
             if version > max_version || base_version > 1 {
                 return Err(io::Error::new(
@@ -1651,6 +1688,20 @@ fn read_gp_coded_value_slot(
                 }
                 GP_ENCRYPTED_STRING_CLASS_ID => {
                     GpCodedValue10_1::EncryptedString(read_string_10_1(reader, max_bytes)?)
+                }
+                GP_SPATIAL_REFERENCE_CLASS_ID
+                | GP_COORDINATE_SYSTEM_CLASS_ID
+                | GP_XY_DOMAIN_CLASS_ID
+                | GP_Z_DOMAIN_CLASS_ID
+                | GP_M_DOMAIN_CLASS_ID => {
+                    let reference = read_spatial_reference_entry_10_1(reader, max_bytes, table)?;
+                    let legacy_short = (class_id == GP_SPATIAL_REFERENCE_CLASS_ID && version == 2)
+                        .then(|| reader.read_u16_le())
+                        .transpose()?;
+                    GpCodedValue10_1::SpatialReference {
+                        reference: Box::new(reference),
+                        legacy_short,
+                    }
                 }
                 GP_SQL_EXPRESSION_CLASS_ID => {
                     GpCodedValue10_1::SqlExpression(read_string_10_1(reader, max_bytes)?)

@@ -5458,6 +5458,7 @@ fn feature_bookmark_reads_gp_value_table_type_name_columns() {
 
 fn assert_legacy_topo_coded_value(
     class_id: [u8; 16],
+    version: u16,
     payload: &[u8],
     expected: mxd2qgz::maps::map_surround::GpCodedValue10_1,
 ) {
@@ -5476,7 +5477,8 @@ fn assert_legacy_topo_coded_value(
     bytes.extend(2_i32.to_le_bytes());
     bytes.extend(bookmark_entry_10_1(&class_id, 19));
     let version_offset = bytes.len();
-    bytes.extend([1, 0, 1, 0, 7, 0]);
+    bytes.extend(version.to_le_bytes());
+    bytes.extend([1, 0, 7, 0]);
     bytes.extend(payload);
     bytes.extend(bookmark_entry_10_1(&class_id, 19));
     bytes.extend(bookmark_string_10_1("拓扑"));
@@ -5498,7 +5500,7 @@ fn assert_legacy_topo_coded_value(
     let value = domain.values[0].body.as_deref().unwrap();
     assert_eq!(
         (value.version, value.base_version, value.base_short),
-        (1, 1, 7)
+        (version, 1, 7)
     );
     assert_eq!(value.value, expected);
     assert_eq!(
@@ -5537,6 +5539,7 @@ fn feature_bookmark_reads_gp_point_coded_value() {
     let payload = [x_bits.to_le_bytes(), y_bits.to_le_bytes()].concat();
     assert_legacy_topo_coded_value(
         GP_POINT_CLASS_ID,
+        1,
         &payload,
         GpCodedValue10_1::Point { x_bits, y_bits },
     );
@@ -5551,6 +5554,7 @@ fn feature_bookmark_reads_gp_expression_coded_values() {
     let sql = "类别 = '河流'";
     assert_legacy_topo_coded_value(
         GP_SQL_EXPRESSION_CLASS_ID,
+        1,
         &bookmark_string_10_1(sql),
         GpCodedValue10_1::SqlExpression(sql.into()),
     );
@@ -5558,7 +5562,41 @@ fn feature_bookmark_reads_gp_expression_coded_values() {
     let info = "AREA GT 0";
     assert_legacy_topo_coded_value(
         GP_INFO_EXPRESSION_CLASS_ID,
+        1,
         &bookmark_string_10_1(info),
         GpCodedValue10_1::InfoExpression(info.into()),
     );
+}
+
+#[test]
+fn feature_bookmark_reads_gp_values_with_spatial_references() {
+    use mxd2qgz::maps::map_surround::{
+        GP_COORDINATE_SYSTEM_CLASS_ID, GP_M_DOMAIN_CLASS_ID, GP_SPATIAL_REFERENCE_CLASS_ID,
+        GP_XY_DOMAIN_CLASS_ID, GP_Z_DOMAIN_CLASS_ID, GpCodedValue10_1,
+    };
+    use mxd2qgz::objects::envelope::SpatialReferenceEntry10_1;
+
+    for (class_id, version, legacy_short) in [
+        (GP_COORDINATE_SYSTEM_CLASS_ID, 1, None),
+        (GP_XY_DOMAIN_CLASS_ID, 1, None),
+        (GP_Z_DOMAIN_CLASS_ID, 1, None),
+        (GP_M_DOMAIN_CLASS_ID, 1, None),
+        (GP_SPATIAL_REFERENCE_CLASS_ID, 1, None),
+        (GP_SPATIAL_REFERENCE_CLASS_ID, 2, Some(0xf123_u16)),
+        (GP_SPATIAL_REFERENCE_CLASS_ID, 3, None),
+    ] {
+        let mut payload = vec![0; 16];
+        if let Some(raw) = legacy_short {
+            payload.extend(raw.to_le_bytes());
+        }
+        assert_legacy_topo_coded_value(
+            class_id,
+            version,
+            &payload,
+            GpCodedValue10_1::SpatialReference {
+                reference: Box::new(SpatialReferenceEntry10_1::Null),
+                legacy_short,
+            },
+        );
+    }
 }
