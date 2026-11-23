@@ -755,6 +755,7 @@
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPCodedValueDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldinfodomain-与-gpcodedvaluedomain)
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPFieldInfoDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldinfodomain-与-gpcodedvaluedomain)
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
+      - [x] 接入 GPRasterGDBEnvStatistics 的旧四字节与 BSTR 两种忽略值布局。[取证](docs/mxd-terra-round9-bookmark.md#gprastergdbenvstatistics)
       - [x] 接入 GPRasterGDBEnvCompression 的压缩参数。[取证](docs/mxd-terra-round9-bookmark.md#栅格环境的压缩金字塔与分块大小)
       - [x] 接入 GPRasterGDBEnvPyramid 的版本化金字塔参数。[取证](docs/mxd-terra-round9-bookmark.md#栅格环境的压缩金字塔与分块大小)
       - [x] 接入 GPRasterGDBEnvTileSize 的分块大小参数。[取证](docs/mxd-terra-round9-bookmark.md#栅格环境的压缩金字塔与分块大小)

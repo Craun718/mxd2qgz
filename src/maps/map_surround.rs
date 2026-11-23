@@ -437,6 +437,10 @@ pub const GP_RASTER_GDB_ENV_PYRAMID_CLASS_ID: [u8; 16] = [
     0xca, 0x67, 0xfb, 0x23, 0xad, 0x72, 0x7b, 0x4a, 0xb4, 0xac, 0x37, 0x05, 0xc1, 0xc5, 0xd6, 0xcf,
 ];
 
+pub const GP_RASTER_GDB_ENV_STATISTICS_CLASS_ID: [u8; 16] = [
+    0x26, 0x16, 0xf8, 0x94, 0x2e, 0x00, 0x51, 0x4c, 0x88, 0x29, 0xa0, 0x4c, 0x6c, 0xb5, 0xe8, 0xea,
+];
+
 pub const GP_RASTER_GDB_ENV_TILE_SIZE_CLASS_ID: [u8; 16] = [
     0xf3, 0xff, 0x32, 0xce, 0x5f, 0xf7, 0x15, 0x49, 0xb9, 0xe0, 0x2a, 0x6d, 0x42, 0xe5, 0xfb, 0x20,
 ];
@@ -675,12 +679,23 @@ pub struct GpRasterEnvironment10_1 {
 pub enum GpRasterEnvironmentParameters10_1 {
     Compression([i32; 2]),
     TileSize([i32; 2]),
+    Statistics {
+        raw_short: u16,
+        raw_longs: [i32; 2],
+        ignore_values: GpRasterStatisticsIgnoreValues10_1,
+    },
     Pyramid {
         raw_short: u16,
         raw_longs: [i32; 2],
         version_three_longs: Option<[i32; 2]>,
         version_four_short: Option<u16>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum GpRasterStatisticsIgnoreValues10_1 {
+    LegacyBytes([u8; 4]),
+    Text(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1967,6 +1982,7 @@ fn read_gp_coded_value_entry(
                     | GP_SA_CELL_SIZE_CLASS_ID
                     | GP_RASTER_GDB_ENV_COMPRESSION_CLASS_ID
                     | GP_RASTER_GDB_ENV_PYRAMID_CLASS_ID
+                    | GP_RASTER_GDB_ENV_STATISTICS_CLASS_ID
                     | GP_RASTER_GDB_ENV_TILE_SIZE_CLASS_ID
                     | GP_RASTER_CALCULATOR_EXPRESSION_CLASS_ID
                     | GP_SA_WEIGHTED_OVERLAY_TABLE_CLASS_ID
@@ -2019,6 +2035,7 @@ fn read_gp_coded_value_entry(
                 | GP_SA_CELL_SIZE_CLASS_ID
                 | GP_RASTER_GDB_ENV_COMPRESSION_CLASS_ID
                 | GP_RASTER_GDB_ENV_PYRAMID_CLASS_ID
+                | GP_RASTER_GDB_ENV_STATISTICS_CLASS_ID
                 | GP_RASTER_GDB_ENV_TILE_SIZE_CLASS_ID
                 | GP_RASTER_CALCULATOR_EXPRESSION_CLASS_ID
                 | GP_SA_WEIGHTED_OVERLAY_TABLE_CLASS_ID
@@ -2064,7 +2081,9 @@ fn read_gp_coded_value_entry(
             let version = reader.read_u16_le()?;
             let base_version = reader.read_u16_le()?;
             let max_version = match class_id {
-                GP_SPATIAL_REFERENCE_CLASS_ID | GP_SA_SEMI_VARIOGRAM_CLASS_ID => 3,
+                GP_SPATIAL_REFERENCE_CLASS_ID
+                | GP_SA_SEMI_VARIOGRAM_CLASS_ID
+                | GP_RASTER_GDB_ENV_STATISTICS_CLASS_ID => 3,
                 GP_SA_REMAP_CLASS_ID => 5,
                 GP_SA_NUMBER_REMAP_CLASS_ID
                 | GP_SA_STRING_REMAP_CLASS_ID
@@ -2144,7 +2163,7 @@ fn read_gp_coded_value_entry(
                 | GP_EVALUATION_SCALE_CLASS_ID
                 | GP_SA_MAP_ALGEBRA_EXP_CLASS_ID => {
                     let legacy_name =
-                        read_gp_legacy_name(reader, max_bytes, table, depth, version)?;
+                        read_gp_legacy_name(reader, max_bytes, table, depth, version == 1)?;
                     match class_id {
                         GP_SA_RADIUS_CLASS_ID => GpCodedValue10_1::SaRadius {
                             legacy_name,
@@ -2189,6 +2208,7 @@ fn read_gp_coded_value_entry(
                 )),
                 GP_RASTER_GDB_ENV_COMPRESSION_CLASS_ID
                 | GP_RASTER_GDB_ENV_PYRAMID_CLASS_ID
+                | GP_RASTER_GDB_ENV_STATISTICS_CLASS_ID
                 | GP_RASTER_GDB_ENV_TILE_SIZE_CLASS_ID => {
                     GpCodedValue10_1::RasterEnvironment(Box::new(read_gp_raster_environment(
                         reader, max_bytes, table, depth, version, class_id,
@@ -2349,13 +2369,30 @@ fn read_gp_raster_environment(
 ) -> io::Result<GpRasterEnvironment10_1> {
     use GpRasterEnvironmentParameters10_1 as Parameters;
 
-    let legacy_name = read_gp_legacy_name(reader, max_bytes, table, depth, version)?;
+    let name_version = if class_id == GP_RASTER_GDB_ENV_STATISTICS_CLASS_ID {
+        2
+    } else {
+        1
+    };
+    let legacy_name =
+        read_gp_legacy_name(reader, max_bytes, table, depth, version == name_version)?;
     let read_longs = |reader: &mut Reader<'_>| -> io::Result<[i32; 2]> {
         Ok([reader.read_u32_le()? as i32, reader.read_u32_le()? as i32])
     };
     let parameters = match class_id {
         GP_RASTER_GDB_ENV_COMPRESSION_CLASS_ID => Parameters::Compression(read_longs(reader)?),
         GP_RASTER_GDB_ENV_TILE_SIZE_CLASS_ID => Parameters::TileSize(read_longs(reader)?),
+        GP_RASTER_GDB_ENV_STATISTICS_CLASS_ID => Parameters::Statistics {
+            raw_short: reader.read_u16_le()?,
+            raw_longs: read_longs(reader)?,
+            ignore_values: if version <= 1 {
+                GpRasterStatisticsIgnoreValues10_1::LegacyBytes(
+                    reader.read_bytes(4)?.try_into().unwrap(),
+                )
+            } else {
+                GpRasterStatisticsIgnoreValues10_1::Text(read_bstr_string_10_1(reader, max_bytes)?)
+            },
+        },
         _ => Parameters::Pyramid {
             raw_short: reader.read_u16_le()?,
             raw_longs: read_longs(reader)?,
@@ -2374,9 +2411,9 @@ fn read_gp_legacy_name(
     max_bytes: usize,
     table: &mut RefTable10_1,
     depth: usize,
-    version: u16,
+    has_legacy_name: bool,
 ) -> io::Result<Option<Box<BookmarkNameEntry10_1>>> {
-    if version != 1 {
+    if !has_legacy_name {
         return Ok(None);
     }
     if depth >= MAX_BOOKMARK_NAME_NESTING {
@@ -2523,7 +2560,7 @@ fn read_gp_sa_neighborhood(
 ) -> io::Result<GpSaNeighborhood10_1> {
     use GpSaNeighborhoodParameters10_1 as Parameters;
 
-    let legacy_name = read_gp_legacy_name(reader, max_bytes, table, depth, version)?;
+    let legacy_name = read_gp_legacy_name(reader, max_bytes, table, depth, version == 1)?;
     let storage_kind = reader.read_u32_le()? as i32;
     let shape_kind = reader.read_u32_le()? as i32;
     let raw_long = reader.read_u32_le()? as i32;
@@ -2661,7 +2698,7 @@ fn read_gp_sa_semi_variogram(
     depth: usize,
     version: u16,
 ) -> io::Result<GpSaSemiVariogram10_1> {
-    let legacy_name = read_gp_legacy_name(reader, max_bytes, table, depth, version)?;
+    let legacy_name = read_gp_legacy_name(reader, max_bytes, table, depth, version == 1)?;
     let variogram_type = reader.read_u32_le()? as i32;
     let lag = if version == 3 {
         GpSaSemiVariogramLag10_1::Number(reader.read_f64_le()?.to_bits())
@@ -2708,7 +2745,7 @@ fn read_gp_sa_remap(
     version: u16,
     class_id: [u8; 16],
 ) -> io::Result<GpSaRemap10_1> {
-    let legacy_name = read_gp_legacy_name(reader, max_bytes, table, depth, version)?;
+    let legacy_name = read_gp_legacy_name(reader, max_bytes, table, depth, version == 1)?;
     let raw_long = reader.read_u32_le()? as i32;
     let raw_count = reader.read_u32_le()? as i32;
     let version_three_fields = if version >= 3 {

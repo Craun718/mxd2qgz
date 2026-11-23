@@ -1741,3 +1741,19 @@ Load/Save。类标识与安装介质的注册清单及 PE 内 GUID 一致。
 IName 槽，IID 常量位于 `0x748a614c`。复用现有名称分派，参数保留原始位模式。
 合成书签测试覆盖各版本、回引、后继数据及截断回滚。枚举语义以及真实
 ArcMap 书签中的参数值待验证。
+
+### GPRasterGDBEnvStatistics
+
+同版 `GpRasterFunctions.dll` 的 RTTI `0x748b9cf0` 对应持久化虚表
+`0x748a844c`，CLSID `{94F81626-002E-4C51-8829-A04C6CB5E8EA}` 位于
+`0x748a84e4`。Load `0x748769d0` 接受版本 0 至 3，读 GPValue 基类后
+仅 v2 消费 IName。接着读一个 short、两个 LONG 和版本化忽略值。
+同版 `esriGeoprocessing.olb` 中的 IGPRasterGDBEnvStatistics 声明依次为
+CalculateStatistics、XSkipFactor、YSkipFactor、IgnoreValue。
+
+v0/v1 的 `0x74876ae4` 将固定长度 4 传给 AfCore
+`AfStreamRead(IStream*, wchar_t*, …)`。同版 AfCore 入口 `0x68a84830`
+原样将长度传给 IStream::Read。这四字节读入随后释放的临时槽，
+解析器保留原字节。v2/v3 的 `0x74876ab8` 改用自由函数 ReadString，
+保存侧 `0x74876b70` 固定写 v3 和 BSTR。合成测试覆盖四版、旧字段后继
+边界、BSTR 结束符和截断回滚。四字节的历史用途与实档仍待验证。

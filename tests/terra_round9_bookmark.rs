@@ -6680,3 +6680,47 @@ fn feature_bookmark_reads_raster_environment_options() {
         }
     }
 }
+
+#[test]
+fn feature_bookmark_reads_raster_statistics_versioned_ignore_values() {
+    use mxd2qgz::maps::map_surround::{
+        GP_RASTER_GDB_ENV_STATISTICS_CLASS_ID, GpCodedValue10_1, GpRasterEnvironment10_1,
+        GpRasterEnvironmentParameters10_1, GpRasterStatisticsIgnoreValues10_1 as IgnoreValues,
+    };
+
+    for version in 0_u16..=3 {
+        let mut payload = Vec::new();
+        let legacy_name = (version == 2).then(|| {
+            payload.extend([0; 16]);
+            Box::new(BookmarkNameEntry10_1::Null)
+        });
+        let raw_short = 0xffff_u16;
+        let raw_longs = [7_i32, -8];
+        payload.extend(raw_short.to_le_bytes());
+        payload.extend(raw_longs.iter().flat_map(|value| value.to_le_bytes()));
+        let ignore_values = if version <= 1 {
+            let bytes = [1, 0, 0xfd, 0xff];
+            payload.extend(bytes);
+            IgnoreValues::LegacyBytes(bytes)
+        } else {
+            let text = "-1 0";
+            payload.extend(4_u32.to_le_bytes());
+            payload.extend(text.encode_utf16().flat_map(u16::to_le_bytes));
+            payload.extend([0, 0]);
+            IgnoreValues::Text(text.to_owned())
+        };
+        assert_legacy_topo_coded_value(
+            GP_RASTER_GDB_ENV_STATISTICS_CLASS_ID,
+            version,
+            &payload,
+            GpCodedValue10_1::RasterEnvironment(Box::new(GpRasterEnvironment10_1 {
+                legacy_name,
+                parameters: GpRasterEnvironmentParameters10_1::Statistics {
+                    raw_short,
+                    raw_longs,
+                    ignore_values,
+                },
+            })),
+        );
+    }
+}
