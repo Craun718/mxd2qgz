@@ -116,8 +116,7 @@ pub struct PrecisionBlock {
 /// 10.1 GeographicCoordinateSystem 对象体；字段存在性见模块文档的版本分支。
 #[derive(Debug, Clone, PartialEq)]
 pub struct GeographicCoordinateSystem10_1 {
-    /// 2 字节保存版本 short，按无符号位模式保留；原生接受 0..=8（有符号
-    /// 比较 >8 报 `0x80004005`），本读取器拒绝其余位模式（负值一并拒绝）。
+    /// 2 字节保存版本 short 的原始位模式；原生按有符号上限 8 判断。
     pub save_version: u16,
     /// 纯 ASCII WKT 文本，无终止零；4 字节长度前缀同样不含终止零。
     pub wkt: String,
@@ -137,8 +136,7 @@ pub struct GeographicCoordinateSystem10_1 {
 /// 10.1 UnknownCoordinateSystem 对象体；字段存在性见模块文档的版本分支。
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnknownCoordinateSystem10_1 {
-    /// 2 字节保存版本 short；原生接受 0..=3（`3 < ver` 有符号拒绝），本
-    /// 读取器拒绝其余位模式。
+    /// 2 字节保存版本 short 的原始位模式；原生按有符号上限 3 判断。
     pub save_version: u16,
     /// 4 个 AfCore `String::Read` 布局字符串（流内顺序原样保留）。
     ///
@@ -172,20 +170,21 @@ pub fn read_geographic_coordinate_system_10_1(
     let mut trial = reader.clone();
 
     let save_version = trial.read_u16_le()?;
-    if save_version > 8 {
+    let version = save_version as i16;
+    if version > 8 {
         return Err(invalid(&format!(
             "保存版本 {save_version} 超出原生读取方法的接受范围（>8 报 0x80004005）"
         )));
     }
     let wkt = read_wkt_block(&mut trial, max_bytes, &invalid)?;
 
-    let domains = if save_version >= 2 {
+    let domains = if version >= 2 {
         Some(read_domain_block(&mut trial, max_bytes, &invalid)?)
     } else {
         None
     };
 
-    let extent = if save_version > 2 {
+    let extent = if version > 2 {
         let min = trial.read_f64_le()?;
         let max = trial.read_f64_le()?;
         Some([min, max])
@@ -193,19 +192,19 @@ pub fn read_geographic_coordinate_system_10_1(
         None
     };
 
-    let precision = if save_version == 4 {
+    let precision = if version == 4 {
         let mut doubles = [0.0; 7];
         for slot in &mut doubles {
             *slot = trial.read_f64_le()?;
         }
         Some(PrecisionBlock { flags: 0, doubles })
-    } else if save_version >= 5 {
+    } else if version >= 5 {
         Some(read_precision_block(&mut trial)?)
     } else {
         None
     };
 
-    let tolerances = if save_version >= 6 {
+    let tolerances = if version >= 6 {
         Some(read_tolerances(&mut trial)?)
     } else {
         None
@@ -237,7 +236,8 @@ pub fn read_unknown_coordinate_system_10_1(
     let mut trial = reader.clone();
 
     let save_version = trial.read_u16_le()?;
-    if save_version > 3 {
+    let version = save_version as i16;
+    if version > 3 {
         return Err(invalid(&format!(
             "保存版本 {save_version} 超出原生读取方法的接受范围（>3 报 0x80004005）"
         )));
@@ -248,19 +248,19 @@ pub fn read_unknown_coordinate_system_10_1(
             .map_err(|err| invalid(&format!("字符串读取失败：{err}")))?;
     }
 
-    let precision = if save_version == 1 {
+    let precision = if version == 1 {
         let mut doubles = [0.0; 7];
         for slot in &mut doubles {
             *slot = trial.read_f64_le()?;
         }
         Some(PrecisionBlock { flags: 0, doubles })
-    } else if save_version >= 2 {
+    } else if version >= 2 {
         Some(read_precision_block(&mut trial)?)
     } else {
         None
     };
 
-    let tolerances = if save_version >= 3 {
+    let tolerances = if version >= 3 {
         Some(read_tolerances(&mut trial)?)
     } else {
         None
@@ -665,6 +665,37 @@ mod tests {
         );
         assert!(body.precision.is_none());
         assert!(body.tolerances.is_none());
+    }
+
+    #[test]
+    fn spatial_reference_negative_versions_use_the_earliest_body_layouts() {
+        for version in [i16::MIN, -1, 0] {
+            let mut gcs = version.to_le_bytes().to_vec();
+            gcs.extend(3_u32.to_le_bytes());
+            gcs.extend(b"GCS");
+            let gcs_end = gcs.len();
+            gcs.extend([0xab, 0xcd]);
+            let mut reader = Reader::new(&gcs);
+            let body = read_geographic_coordinate_system_10_1(&mut reader, 4096).unwrap();
+            assert_eq!(body.save_version, version as u16);
+            assert_eq!(body.wkt, "GCS");
+            assert!(body.domains.is_none() && body.extent.is_none());
+            assert!(body.precision.is_none() && body.tolerances.is_none());
+            assert_eq!(reader.position(), gcs_end);
+
+            let mut unknown = version.to_le_bytes().to_vec();
+            for value in ["Unknown", "second", "third", "Remarks"] {
+                push_unk_string(&mut unknown, value);
+            }
+            let unknown_end = unknown.len();
+            unknown.extend([0xab, 0xcd]);
+            let mut reader = Reader::new(&unknown);
+            let body = read_unknown_coordinate_system_10_1(&mut reader, 4096).unwrap();
+            assert_eq!(body.save_version, version as u16);
+            assert_eq!(body.strings, ["Unknown", "second", "third", "Remarks"]);
+            assert!(body.precision.is_none() && body.tolerances.is_none());
+            assert_eq!(reader.position(), unknown_end);
+        }
     }
 
     #[test]

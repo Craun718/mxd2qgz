@@ -1110,7 +1110,7 @@ fn tail_spatial_reference_dispatch_and_invalid_bodies_are_transactional() {
             assert!(!table.contains(99));
         }
         let mut invalid = bytes.clone();
-        invalid[offset + 20..offset + 22].copy_from_slice(&0xffff_u16.to_le_bytes());
+        invalid[offset + 20..offset + 22].copy_from_slice(&9_u16.to_le_bytes());
         let mut reader = Reader::new(&invalid);
         let mut table = RefTable10_1::new();
         assert!(read_composite_graphics_layer_prefix_10_1(&mut reader, 1024, &mut table).is_err());

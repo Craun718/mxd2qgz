@@ -538,3 +538,19 @@ Remarks、Name。此前列出的 `0x719ee050` 则调用 BSTR 释放，
 四串依次为 Unknown、空、空、空；后继折线回引同一键。
 这是实档边界验证。两个空串无法区分旧写方是否使用 Alias，
 也尚未核对属性编辑路径或在 ArcMap 10.1 和 QGIS 中人工验证。
+
+### GCS 与 UnknownCoordinateSystem 的有符号版本门
+
+Geometry.dll 10.1.0.3035（摘要同上）的 objdump 指令显示，
+GCS 的 `0x719bece7/0x719becef`、UnknownCoordinateSystem 的
+`0x719ecdaa/0x719ecdb0` 以有符号 short 限定上限 8 和 3。
+GCS 的 `0x719beed2`、`0x719bef90`、`0x719bf02d`、
+`0x719bf051`、`0x719bf07c` 按有符号版本选择后续段。
+UnknownCoordinateSystem 在 `0x719ece82` 和 `0x719ed290`
+按有符号版本跳过精度段，`0x719ecfb7` 所在版本门也跳过流内
+容差。因此负版本依次消费 GCS 的 WKT 或 UnknownCoordinateSystem
+的四串，而后续字段留给宿主。Rust 保留原始版本字，使用有符号
+比较分派。构造输入覆盖负版本、零版本、两条不同的中间字符串，
+以及对象末端和宿主后继字节的边界。
+这项取证不能区分早期写方的 Alias 与 Abbreviation。真实负版本
+工程及 ArcMap 人工验证仍待补充。
