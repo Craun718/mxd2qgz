@@ -506,3 +506,14 @@ MarkerNorthArrow 的旧标记分支在 `0x79444be5` 将 LONG 读入
 将另一栈槽 `[ebp-4]` 中的符号接口交给 setter。旧 LONG
 未参与设置，解析结果保留它的原始值以便比对旧档。
 10.1 保存端恒写自身版本 2，历史写侧用途及真实旧档仍待核对。
+
+从本地 142 份按 SHA-256 去重的 OLE MXD/MXT 成功提取 280 条
+`/Maps` 和 `/PageLayout` 流。MarkerNorthArrow 类标识在两类流各有
+26 处命中。Maps 命中后的 +20 两字节均为 2，布局命中后的 +20 值
+均为 55152。扫描值只用于筛选，不能当作对象版本。
+
+10.1 Desktop 的 LandscapeClassic 实档通过 Map 根入口定位
+`/Maps:0x885` 的 MarkerNorthArrow v2，确认无旧 LONG。
+随后从双流入口读至布局流末尾，同键 MapSurroundFrame 插槽解析为
+回引，因而该处 +20 两字节属于后续字段。早期写侧用途仍待取证，
+ArcMap 10.1 人工验证未进行。

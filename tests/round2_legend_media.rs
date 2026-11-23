@@ -62,6 +62,25 @@ fn media_templates_read_surrounds_and_legend_items_from_map_root() {
             else {
                 panic!("第二个装饰物不是 MarkerNorthArrow");
             };
+            assert_eq!(arrow.version, 2);
+            assert_eq!(arrow.legacy_marker_long, None);
+            let mut page = Vec::new();
+            doc.open_stream("/PageLayout")
+                .unwrap()
+                .read_to_end(&mut page)
+                .unwrap();
+            let parsed =
+                mxd2qgz::maps::mxd_maps::parse_mxd_streams_10_1(&maps, Some(&page)).unwrap();
+            let layout = parsed.page_layout.unwrap();
+            assert_eq!(layout.consumed_end_offset(), page.len());
+            assert!(layout.surround_frames.iter().any(|frame| {
+                frame.surround
+                    == ObjectEntry10_1::BackReference {
+                        class_id: mxd2qgz::maps::map_surround_family::MARKER_NORTH_ARROW_CLASS_ID,
+                        key: arrow.key,
+                    }
+                    && frame.surround_body.is_none()
+            }));
             assert!(arrow.stop.is_none());
             let SlotEntry10_1::Body(marker) = &arrow.marker_element else {
                 panic!("没有内联 MarkerElement");
