@@ -425,6 +425,10 @@ pub const GP_POINT_CLASS_ID: [u8; 16] = [
     0x82, 0x30, 0xe9, 0xa1, 0xbe, 0xba, 0x44, 0x4d, 0x8c, 0xe3, 0x46, 0x37, 0x74, 0x8e, 0xdd, 0xdd,
 ];
 
+pub const GP_CELL_SIZE_XY_CLASS_ID: [u8; 16] = [
+    0x6a, 0x89, 0xb9, 0x4e, 0xb8, 0x27, 0xc2, 0x4c, 0xa0, 0xc2, 0x55, 0xe4, 0x0d, 0x2e, 0x92, 0x8c,
+];
+
 pub const GP_SQL_EXPRESSION_CLASS_ID: [u8; 16] = [
     0x74, 0xfb, 0x66, 0xf9, 0x71, 0xea, 0xc7, 0x41, 0xa8, 0x48, 0x8d, 0x26, 0xa7, 0x1d, 0xb9, 0x1a,
 ];
@@ -464,6 +468,10 @@ pub const GP_EXTENT_CLASS_ID: [u8; 16] = [
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpCodedValue10_1 {
     Point {
+        x_bits: u64,
+        y_bits: u64,
+    },
+    CellSizeXy {
         x_bits: u64,
         y_bits: u64,
     },
@@ -1646,6 +1654,7 @@ fn read_gp_coded_value_slot(
                 table.registered_class(key).unwrap_or(class_id),
                 GP_STRING_CLASS_ID
                     | GP_POINT_CLASS_ID
+                    | GP_CELL_SIZE_XY_CLASS_ID
                     | GP_ENVELOPE_CLASS_ID
                     | GP_EXTENT_CLASS_ID
                     | GP_SPATIAL_REFERENCE_CLASS_ID
@@ -1674,6 +1683,7 @@ fn read_gp_coded_value_slot(
             class_id:
                 class_id @ (GP_STRING_CLASS_ID
                 | GP_POINT_CLASS_ID
+                | GP_CELL_SIZE_XY_CLASS_ID
                 | GP_ENVELOPE_CLASS_ID
                 | GP_EXTENT_CLASS_ID
                 | GP_SPATIAL_REFERENCE_CLASS_ID
@@ -1750,6 +1760,10 @@ fn read_gp_coded_value_slot(
                 }
                 GP_DOUBLE_CLASS_ID => GpCodedValue10_1::DoubleBits(reader.read_f64_le()?.to_bits()),
                 GP_POINT_CLASS_ID => GpCodedValue10_1::Point {
+                    x_bits: reader.read_f64_le()?.to_bits(),
+                    y_bits: reader.read_f64_le()?.to_bits(),
+                },
+                GP_CELL_SIZE_XY_CLASS_ID => GpCodedValue10_1::CellSizeXy {
                     x_bits: reader.read_f64_le()?.to_bits(),
                     y_bits: reader.read_f64_le()?.to_bits(),
                 },

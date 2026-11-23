@@ -1377,3 +1377,15 @@ IID `1B077914-38C5-11D0-92D2-00805F7C28B0`。GPExtent 在
 构造书签覆盖非空 Envelope、空槽、有符号模式值、值对象回引、
 后继字段、超限版本和逐字节截断回滚。模式枚举、真实书签及
 ArcMap/QGIS 人工验收待验证。
+
+#### GPCellSizeXY
+
+GpObjects.dll 10.1.0.3035 的 PE RTTI `0x747ff310` 对应持久化
+虚表 `0x747aa9c4`。PE 类标识常量 `0x747aaa64` 与 Desktop
+互操作程序集的 `4EB9896A-27B8-4CC2-A0C2-55E40D2E928C` 相符。
+该类复用 GPPoint 的 Load `0x74709d50`，按序读取类版本、
+GPValue 基类及两个 double。objdump 复核独立 Save `0x74699ca0`
+在 `0x74699d05 / 0x74699d17` 写入两个 double。
+
+构造书签覆盖两轴像元大小、对象回引、后继字段、超限版本和
+逐字节截断回滚。真实书签和 ArcMap/QGIS 人工验收待验证。

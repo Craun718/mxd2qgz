@@ -5646,3 +5646,17 @@ fn feature_bookmark_reads_gp_envelope_and_extent_values() {
         },
     );
 }
+
+#[test]
+fn feature_bookmark_reads_gp_cell_size_xy_coded_value() {
+    use mxd2qgz::maps::map_surround::{GP_CELL_SIZE_XY_CLASS_ID, GpCodedValue10_1};
+
+    let (x_bits, y_bits) = (4.5_f64.to_bits(), 2.75_f64.to_bits());
+    let payload = [x_bits.to_le_bytes(), y_bits.to_le_bytes()].concat();
+    assert_legacy_topo_coded_value(
+        GP_CELL_SIZE_XY_CLASS_ID,
+        1,
+        &payload,
+        GpCodedValue10_1::CellSizeXy { x_bits, y_bits },
+    );
+}
