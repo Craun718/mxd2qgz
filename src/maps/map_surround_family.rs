@@ -1170,14 +1170,7 @@ pub fn read_scalebar_subclass_body_10_1(
         )
     };
 
-    // 1. 自身版本 short：有符号 `1 < v` 拒绝。
-    let version = trial.read_u16_le()?;
-    if (version as i16) > MAX_OWN_VERSION_1 || (version as i16) < 0 {
-        return Err(invalid(format!(
-            "版本位模式 {version}（0x{version:04x}）超出比例尺子类 Load 接受范围（有符号 \
-             >1 拒绝 0x80004005；Save 恒写 1；负值位模式原生通过，此处一并拒绝）"
-        )));
-    }
+    let version = read_scale_version(&mut trial, MAX_OWN_VERSION_1, "填充比例尺")? as u16;
 
     // 2. 基类段。
     let base_version = trial.read_u16_le()? as i16;
@@ -1253,14 +1246,8 @@ pub fn read_scalebar_subclass_body_10_1(
     let mut mid_double = None;
     let mut fill_symbols: Vec<SymbolSlotFull10_1> = Vec::new();
     if stop.is_none() {
-        let mid = trial.read_u16_le()?;
-        if (mid as i16) > MAX_SCALEBAR_MID_VERSION || (mid as i16) < 0 {
-            return Err(invalid(format!(
-                "中段版本位模式 {mid}（0x{mid:04x}）超出接受范围 0..=1（Load 0x793b3bf0/\
-                 0x79459000 有符号 >1 拒绝 0x80004005；Save 恒写 1）"
-            )));
-        }
-        mid_version = Some(mid);
+        let mid = read_scale_version(&mut trial, MAX_SCALEBAR_MID_VERSION, "填充比例尺中段")?;
+        mid_version = Some(mid as u16);
         mid_double = Some(trial.read_f64_le()?);
         stop = read_scalebar_symbols(
             &mut trial,
@@ -1279,14 +1266,8 @@ pub fn read_scalebar_subclass_body_10_1(
     let mut tail_doubles: Option<[f64; 2]> = None;
     let mut tail_ints: Option<[i32; 2]> = None;
     if stop.is_none() {
-        let tail = trial.read_u16_le()?;
-        if (tail as i16) > MAX_SCALEBAR_TAIL_VERSION || (tail as i16) < 0 {
-            return Err(invalid(format!(
-                "尾段版本位模式 {tail}（0x{tail:04x}）超出接受范围 0..=2（Load 0x79454ee0 \
-                 有符号 >2 拒绝 0x80004005；Save 恒写 2）"
-            )));
-        }
-        tail_version = Some(tail);
+        let tail = read_scale_version(&mut trial, MAX_SCALEBAR_TAIL_VERSION, "填充比例尺尾段")?;
+        tail_version = Some(tail as u16);
         if tail < 2 {
             legacy_flag = Some(trial.read_u16_le()?);
         }
@@ -1567,7 +1548,7 @@ impl ScaleLineBody10_1 {
     }
 }
 
-fn scale_line_version(reader: &mut Reader<'_>, max: i16, label: &str) -> io::Result<i16> {
+fn read_scale_version(reader: &mut Reader<'_>, max: i16, label: &str) -> io::Result<i16> {
     let offset = reader.position();
     let value = reader.read_u16_le()? as i16;
     if value > max {
@@ -1674,8 +1655,8 @@ pub fn read_scale_line_body_10_1(
 ) -> io::Result<ScaleLineBody10_1> {
     let mut trial = reader.clone();
     let mut staged = table.clone();
-    let version = scale_line_version(&mut trial, 1, "ScaleLine")?;
-    let base_version = scale_line_version(&mut trial, 6, "ScaleLine 基类")?;
+    let version = read_scale_version(&mut trial, 1, "ScaleLine")?;
+    let base_version = read_scale_version(&mut trial, 6, "ScaleLine 基类")?;
     let common = read_map_surround_common_prefix_10_1(&mut trial, max_bytes, &mut staged)?;
     let mut fields = Vec::new();
     let mut stop = None;
@@ -1784,7 +1765,7 @@ pub fn read_scale_line_body_10_1(
         if base_version >= 6 {
             raw!("base_tail_short_b", 2);
         }
-        let mid = scale_line_version(&mut trial, 1, "ScaleLineImpl")?;
+        let mid = read_scale_version(&mut trial, 1, "ScaleLineImpl")?;
         fields.push(ScaleLineField10_1::Raw {
             name: "line_version",
             bytes: mid.to_le_bytes().to_vec(),
@@ -1793,7 +1774,7 @@ pub fn read_scale_line_body_10_1(
             scale_line_symbol(&mut trial, &mut staged, max_bytes, "line_symbol"),
             LineSymbol
         );
-        let tail = scale_line_version(&mut trial, 2, "ScaleLine 尾段")?;
+        let tail = read_scale_version(&mut trial, 2, "ScaleLine 尾段")?;
         fields.push(ScaleLineField10_1::Raw {
             name: "tail_version",
             bytes: tail.to_le_bytes().to_vec(),
@@ -2684,6 +2665,36 @@ mod tests {
             assert_eq!(body.bar_height(), Some(13.0));
             assert_eq!(body.tail_version, Some(2));
         }
+    }
+
+    #[test]
+    fn filled_scale_bar_uses_signed_subclass_versions() {
+        let mut bytes = subclass_full_bytes(6);
+        let tail = bytes.len() - 58;
+        let mid = tail - 26;
+        bytes[20..22].copy_from_slice(&(-1_i16).to_le_bytes());
+        bytes[mid..mid + 2].copy_from_slice(&i16::MIN.to_le_bytes());
+        bytes[tail..tail + 2].copy_from_slice(&(-1_i16).to_le_bytes());
+        bytes.truncate(bytes.len() - 4);
+        bytes.splice(tail + 2..tail + 2, 1_u16.to_le_bytes());
+
+        let body = read_body(&bytes, |reader, limit, table, key| {
+            read_scalebar_subclass_body_10_1(
+                reader,
+                limit,
+                table,
+                key,
+                ScalebarSubclassKind10_1::SingleDivision,
+            )
+        })
+        .unwrap();
+        assert_eq!(body.stop, None);
+        assert_eq!(body.version, u16::MAX);
+        assert_eq!(body.mid_version, Some(0x8000));
+        assert_eq!(body.tail_version, Some(u16::MAX));
+        assert_eq!(body.legacy_flag, Some(1));
+        assert_eq!(body.tail_ints, Some([16, 5]));
+        assert_eq!(body.remaining_bytes, 0);
     }
 
     #[test]
