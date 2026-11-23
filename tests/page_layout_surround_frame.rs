@@ -181,7 +181,18 @@ fn military_portrait_reads_graticule_label_border_and_locator_reference() {
     use mxd2qgz::maps::map_grid::{
         DMS_GRID_LABEL_CLASS_ID, GRATICULE_CLASS_ID, SIMPLE_MAP_GRID_BORDER_CLASS_ID,
     };
-    let report = parse_media_document("MilitaryPortrait.mxd");
+    let mut doc = cfb::open("temp/arcmap101-media-mxd/MilitaryPortrait.mxd").unwrap();
+    let mut read = |name: &str| {
+        let mut bytes = Vec::new();
+        doc.open_stream(name)
+            .unwrap()
+            .read_to_end(&mut bytes)
+            .unwrap();
+        bytes
+    };
+    let maps = read("/Maps");
+    let mut page = read("/PageLayout");
+    let report = parse_mxd_streams_10_1(&maps, Some(&page)).unwrap();
     let layout = report.page_layout.unwrap();
     assert_eq!(layout.consumed_elements, 11);
     assert!(layout.stop.is_none(), "{:?}", layout.stop);
@@ -235,6 +246,30 @@ fn military_portrait_reads_graticule_label_border_and_locator_reference() {
             class_id: MAP_FRAME_CLASS_ID,
             key: 158
         }
+    );
+
+    let reference = 0x2232;
+    assert_eq!(page[reference..reference + 16], MAP_FRAME_CLASS_ID);
+    assert_eq!(page[reference + 16..reference + 20], 158_u32.to_le_bytes());
+    page[reference..reference + 16].fill(0x42);
+    let edited = parse_mxd_streams_10_1(&maps, Some(&page))
+        .unwrap()
+        .page_layout
+        .unwrap();
+    assert_eq!(edited.end_offset, layout.end_offset, "{:?}", edited.stop);
+    assert_eq!(edited.map_frames, layout.map_frames);
+    assert_eq!(edited.surround_frames, layout.surround_frames);
+
+    // 键 159 是前面已经读取的 Graticule。
+    page[reference..reference + 16].copy_from_slice(&MAP_FRAME_CLASS_ID);
+    page[reference + 16..reference + 20].copy_from_slice(&159_u32.to_le_bytes());
+    let edited = parse_mxd_streams_10_1(&maps, Some(&page)).unwrap();
+    let stopped = edited.page_layout.unwrap();
+    assert!(stopped.stop.is_some());
+    assert!(stopped.end_offset < reference);
+    assert_eq!(
+        edited.map.unknown_fields.last().unwrap().bytes,
+        page[stopped.end_offset..]
     );
 }
 

@@ -120,3 +120,12 @@ GdbCore.dll 的 Load `0x70a5a530 / 0x70a3b330` 编码。
 测试经 MapFrame 入口确认两个对象键及后继格网字符串的位置。
 此测试验证持久化分派，SDK 和介质中仍待取得该格网的真实宿主，
 实际 Open 返回的接口及原生显示尚未验证。
+
+### 定位框的地图框回引
+
+MapElements.dll 10.1.0.3035 的 LocatorRectangle Load
+`0x7956ab40` 请求 IMapFrame。SystemCore `0x7ffd0063` 按键
+查询登记实例。MapFrame 读取器登记键及类，定位框据此恢复登记类。MilitaryPortrait 的
+`/PageLayout:0x2232` 引用键 158。修改构造副本的头部类标识仍能读到
+相同布局边界，改为 Graticule 键 159 则保留整个失败布局元素。
+新地图框递归分支及 ArcMap 人工验证仍待补充。

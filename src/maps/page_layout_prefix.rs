@@ -48,10 +48,11 @@ pub fn read_page_layout_map_frame_prefix_10_1(
     table: &mut RefTable10_1,
 ) -> io::Result<PageLayoutMapFramePrefix10_1> {
     let (mut prefix, mut region) = read_extra_safe_element_region(reader, max_bytes)?;
+    let mut header = region.clone();
     let frame = read_map_frame_prefix(&mut region, prefix.position(), table)?;
     prefix.read_bytes(region.position())?;
     *reader = prefix;
-    table.register(frame.frame_key);
+    read_object_entry_10_1(&mut header, table)?;
     Ok(frame)
 }
 
@@ -598,7 +599,7 @@ pub(crate) fn read_map_frame(
     let mut staged = refs.clone();
     let mut prefix = read_map_frame_prefix_inner(&mut trial, start, &staged, true)?;
     check_root_map_link(&prefix, &|key| is_root_map(key) || staged.contains_map(key))?;
-    staged.register(prefix.frame_key);
+    read_object_entry_10_1(&mut reader.clone(), &mut staged)?;
     let embedded_map = if let ObjectEntry10_1::NewObject { key, .. } = prefix.map {
         if staged.contains(key) {
             return Err(io::Error::new(

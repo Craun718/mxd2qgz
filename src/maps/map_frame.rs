@@ -370,7 +370,12 @@ fn reference_slot(
     refs: &mut RefTable10_1,
     name: &str,
 ) -> io::Result<ObjectEntry10_1> {
-    let entry = read_object_entry_10_1(r, refs)?;
+    let mut entry = read_object_entry_10_1(r, refs)?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+        && let Some(registered) = refs.registered_class(*key)
+    {
+        *class_id = registered;
+    }
     if matches!(entry, ObjectEntry10_1::NewObject { .. }) {
         return Err(unsupported(name, entry));
     }
