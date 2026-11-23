@@ -1228,3 +1228,59 @@ fn scene_graphics_reads_text_3d_strings_anchor_and_tail() {
     assert_eq!(reader.position(), 0);
     assert!(refs.is_empty());
 }
+
+#[test]
+fn scene_graphics_reads_a_pmf_title_through_the_text_element_layout() {
+    use mxd2qgz::layers::graphics_3d::{GRAPHICS_LAYER_3D_CLASS_ID, read_graphics_3d_layer_10_1};
+    use mxd2qgz::objects::element_body::{ElementBody10_1, PMF_TITLE_TEXT_ELEMENT_CLASS_ID};
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    let mut data = scene_version_one(&[0; 16]);
+    data.truncate(data.len() - 4);
+    data.extend(2_i32.to_le_bytes());
+    let header = [
+        PMF_TITLE_TEXT_ELEMENT_CLASS_ID.as_slice(),
+        &74_u32.to_le_bytes(),
+    ]
+    .concat();
+    data.extend(&header);
+    data.extend([0; 2 + 2]); // 内嵌 TextElement 与 ElementProperties 的版本。
+    empty_string(&mut data);
+    empty_string(&mut data);
+    data.extend([0; 4 + 16]);
+    data.extend(6_u32.to_le_bytes());
+    data.extend("标题".encode_utf16().chain([0]).flat_map(u16::to_le_bytes));
+    data.extend([0; 4 + 16 + 16]); // 标志、符号和几何。
+    data.extend(&header);
+    let end = data.len();
+    data.push(0xa5);
+
+    let mut reader = Reader::new(&data);
+    let mut refs = RefTable10_1::new();
+    let result =
+        read_graphics_3d_layer_10_1(&GRAPHICS_LAYER_3D_CLASS_ID, &mut reader, 4096, &mut refs)
+            .unwrap();
+    assert!(matches!(
+        result.elements[0].element.body.as_deref(),
+        Some(ElementBody10_1::PmfTitleTextElement(body)) if body.text == "标题"
+    ));
+    assert_eq!(
+        result.elements[1].element.entry,
+        ObjectEntry10_1::BackReference {
+            class_id: PMF_TITLE_TEXT_ELEMENT_CLASS_ID,
+            key: 74
+        }
+    );
+    assert_eq!(reader.position(), end);
+
+    for cut in 0..end {
+        let mut reader = Reader::new(&data[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(
+            read_graphics_3d_layer_10_1(&GRAPHICS_LAYER_3D_CLASS_ID, &mut reader, 4096, &mut refs)
+                .is_err()
+        );
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+}

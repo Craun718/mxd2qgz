@@ -841,3 +841,19 @@ Save 的版本表 `0x7506e7b0` 为 `[-1,1]`，写出时顺序一致。
 构造 Scene 验证字符串、标量位模式、几何与 IPoint 共用对象键、
 错误登记类和逐字节截断回滚。标量业务意义及 ArcMap/QGIS
 实档目视待验证。
+
+### 三维图形容器中的 PMFTitleTextElement
+
+同版 GraphicElements.dll 的 RTTI `0x75081348` 对应持久化虚表
+`0x750720b0`。GetClassID 经 `0x75056e00 → 0x750568b0` 从
+`0x75071138` 复制类标识 `1F44BE49-3113-4D58-B1CE-C326328569ED`，
+与 10.1 Carto 互操作程序集的 IElement 类一致。构造器在
+`0x75056683` 创建 `0x75071f90` 所指的 TextElement，并于
+`0x7505669c` 查询其 IPersistStream。Load 经
+`0x75056dd0 → 0x75056910` 调内嵌持久化接口 +0x14。
+Save 经 `0x75056d70 → 0x75056930` 调同一接口 +0x18。
+委派前后无额外流字段或第二个对象头。通用 IElement 读取器据此保留
+PMF 包装类，并复用 TextElement 的体读取器。
+
+构造 Scene 验证文本、外层对象键、同类回引、后继字节及逐字节
+截断回滚。ArcMap/QGIS 实档目视待验证。

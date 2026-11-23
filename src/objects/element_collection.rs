@@ -152,6 +152,7 @@ pub enum ElementEntry10_1 {
     /// 新 TextElement 对象：已解析其体（体内嵌套停止经
     /// [`ElementCollectionStop10_1::ElementBodyIncomplete`] 上抛）。
     TextElement(Box<crate::objects::element_body::TextElementBody10_1>),
+    PmfTitleTextElement(Box<crate::objects::element_body::TextElementBody10_1>),
     ParagraphTextElement(Box<crate::objects::element_body::ParagraphTextElement10_1>),
     /// 新 MarkerElement 对象：已解析其体。
     MarkerElement(Box<crate::objects::element_body::MarkerElementBody10_1>),
@@ -169,7 +170,7 @@ impl ElementEntry10_1 {
     pub fn body_stop(&self) -> Option<&ElementBodyStop10_1> {
         match self {
             Self::Null | Self::BackReference { .. } => None,
-            Self::TextElement(body) => body.stop.as_ref(),
+            Self::TextElement(body) | Self::PmfTitleTextElement(body) => body.stop.as_ref(),
             Self::ParagraphTextElement(body) => body.stop.as_ref(),
             Self::MarkerElement(body) => body.stop.as_ref(),
             Self::LineElement(body) | Self::PolygonElement(body) => body.stop.as_ref(),
@@ -511,6 +512,9 @@ fn read_stoppable_entry<'a>(
             }
             let entry = match body {
                 ElementBody10_1::TextElement(body) => ElementEntry10_1::TextElement(body),
+                ElementBody10_1::PmfTitleTextElement(body) => {
+                    ElementEntry10_1::PmfTitleTextElement(body)
+                }
                 ElementBody10_1::ParagraphTextElement(body) => {
                     ElementEntry10_1::ParagraphTextElement(body)
                 }

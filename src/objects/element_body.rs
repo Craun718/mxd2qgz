@@ -238,6 +238,10 @@ pub const TEXT_ELEMENT_CLASS_ID: [u8; 16] = [
     0xd3, 0x34, 0x40, 0x20, 0xea, 0xf6, 0xd0, 0x11, 0x83, 0xad, 0x08, 0x00, 0x09, 0xb9, 0x96, 0xcc,
 ];
 
+pub const PMF_TITLE_TEXT_ELEMENT_CLASS_ID: [u8; 16] = [
+    0x49, 0xbe, 0x44, 0x1f, 0x13, 0x31, 0x58, 0x4d, 0xb1, 0xce, 0xc3, 0x26, 0x32, 0x85, 0x69, 0xed,
+];
+
 /// MarkerElement 类标识（CLSID）的 16 字节内存序。
 ///
 /// GUID 字符串形式为 `{530FD712-EF0C-11D0-83A0-080009B996CC}`。证据：
@@ -1056,6 +1060,7 @@ pub struct Text3dElement10_1 {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ElementBody10_1 {
     TextElement(Box<TextElementBody10_1>),
+    PmfTitleTextElement(Box<TextElementBody10_1>),
     ParagraphTextElement(Box<ParagraphTextElement10_1>),
     MarkerElement(Box<MarkerElementBody10_1>),
     LineElement(Box<LineElementBody10_1>),
@@ -1069,7 +1074,7 @@ pub enum ElementBody10_1 {
 impl ElementBody10_1 {
     pub fn stop(&self) -> Option<&ElementBodyStop10_1> {
         match self {
-            Self::TextElement(body) => body.stop.as_ref(),
+            Self::TextElement(body) | Self::PmfTitleTextElement(body) => body.stop.as_ref(),
             Self::ParagraphTextElement(body) => body.stop.as_ref(),
             Self::MarkerElement(body) => body.stop.as_ref(),
             Self::LineElement(body) | Self::PolygonElement(body) => body.stop.as_ref(),
@@ -1096,6 +1101,10 @@ pub fn read_element_body_of_class_10_1(
 
     if *class_id == TEXT_ELEMENT_CLASS_ID {
         Ok(ElementBody10_1::TextElement(Box::new(
+            read_text_element_body_10_1(reader, max_bytes, table)?,
+        )))
+    } else if *class_id == PMF_TITLE_TEXT_ELEMENT_CLASS_ID {
+        Ok(ElementBody10_1::PmfTitleTextElement(Box::new(
             read_text_element_body_10_1(reader, max_bytes, table)?,
         )))
     } else if *class_id == PARAGRAPH_TEXT_ELEMENT_CLASS_ID {
