@@ -246,6 +246,37 @@ mod tests {
     use super::*;
 
     #[test]
+    fn print_settings_reject_high_bit_versions_and_roll_back() {
+        let paper = [0; 10]; // Paper v0，空 DEVNAMES 和 DEVMODE。
+        let mut cases = vec![0x8000_u16.to_le_bytes().to_vec()];
+        for class_id in [
+            EMF_PRINTER_CLASS_ID,
+            PS_PRINTER_CLASS_ID,
+            ARC_PRESS_PRINTER_CLASS_ID,
+        ] {
+            let mut bytes = paper.to_vec();
+            bytes.extend(class_id);
+            bytes.extend(7_u32.to_le_bytes());
+            bytes.extend(0xffff_u16.to_le_bytes());
+            cases.push(bytes);
+        }
+        for bytes in cases {
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let error = read_print_settings_10_1(
+                &mut reader,
+                4096,
+                &mut refs,
+                PrintSaveFormat10_1::Default,
+            )
+            .unwrap_err();
+            assert_eq!(error.kind(), ErrorKind::Unsupported);
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+
+    #[test]
     fn printer_reference_uses_registered_class() {
         let mut bytes = vec![0; 10]; // Paper v0，空 DEVNAMES 和 DEVMODE。
         bytes.extend(EMF_PRINTER_CLASS_ID);

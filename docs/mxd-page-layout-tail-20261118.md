@@ -160,3 +160,20 @@ ObjectStream 请求 IPrinter。SystemCore.dll 同版本的 `0x7ffd0063`
 按键找到登记实例后查询接口。因此分流读取器用登记类校验 IPrinter
 回引。构造测试覆盖引用头与登记类不同但接口匹配时的读取边界，
 以及错引 Map 时的游标和对象键回滚。真实 IPrinter 回引宿主待验证。
+
+### 打印设置对象的版本比较与实档检索
+
+对前述 10.1.0.3035 PE32 映像补查 objdump 指令。PrintOut.dll
+的 Paper 在 `0x7bcd6c34 / 0x7bcd6c39` 以 `cmpw / jbe` 接受
+无符号版本 0–3；EmfPrinter 和 PsPrinter 共用入口在
+`0x7bcd1d4d / 0x7bcd1d51` 以低 16 位比较的借位标志拒绝版本大于 1。
+ArcPressPlugin.dll（SHA-256
+`547cbef6e256f78af2ed3518f534848039a6212600071cc11b3ea662226ca9a3`）
+的 `0x100021c1 / 0x100021c7` 同样以无符号比较接受 0–2，
+`0x10002382 / 0x1000238e` 跳过 v0/v1 的驱动段。Rust 的原有
+无符号读取规则与上述指令一致，构造测试补验高位值拒绝及打印设置回滚。
+
+从本地 `temp/` 下按 SHA-256 去重后的 142 份 OLE MXD/MXT
+提取到 140 条 `/PageLayout` 流。扫描 PsPrinter 和 ArcPressPrinter
+的 CLSID 内存序，两类均无命中。此检索限于可提取的分流布局。
+两类打印机的真实宿主和 ArcMap 人工验证仍待补充。
