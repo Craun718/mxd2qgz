@@ -634,3 +634,25 @@ XY 通过栈传句柄，Z/M 通过 EDX 传句柄，三者均从 XMM0 取 double�
 有有效网格句柄时的这三次除法已在原生代码中验证。
 本探针未调用完整 Load 或打开 MXD，宿主网格分派、PCS/GCS
 单位换算及 ArcMap 人工验证仍待完成。
+
+### UnknownCoordinateSystem v2/v3 的原生 Load 容差验证
+
+继续使用上文同一份 Geometry.dll、sg.dll 及 Wine 11.22。
+32 位 PE 探针用 Geometry.dll 的 `DllGetClassObject` 取得
+UnknownCoordinateSystem（`{B286C06B-0879-11D2-AACA-00C04FA33C20}`）
+的工厂，创建 IPersistStream 实例，再经该接口 +0x14 的 Load
+槽加载 `SHCreateMemStream` 提供的内存流。读取 Load 后持久化
+接口相对 +0x28、+0x30、+0x38 的三个 double，并用流 Seek
+查询读到的位置。输入为构造的对象体，每次新建实例。
+
+| 版本 | 精度块与容差输入 | Load 后的 XY/Z/M | 已消费 |
+| --- | --- | --- | --- |
+| v2 | 标志 1，三个轴比例因子 4000、800、200，无流内容差 | 0.0005、0.0025、0.01 | 102 字节 |
+| v3 | 同样的精度块，流内容差为带负载 NaN、负零、−1 | 0.001、0.0025、0.01 | 126 字节 |
+
+每个对象体后附一个 `0x5a`，两个场景均停在该字节之前。
+运行探针逐项校验返回值与结束位置，退出码为 0。v2 证明
+`2.0 / scale` 经过原生网格重建后的 Load 路径；v3 证明无效
+容差由对应轴的默认值及网格下限恢复。Rust 的结构仍表示序列化字段，
+不把原生重建值误记为文件中的值。真实 MXD、不同网格组合、
+PCS/GCS 的单位换算及 ArcMap 人工验证仍待补充。
