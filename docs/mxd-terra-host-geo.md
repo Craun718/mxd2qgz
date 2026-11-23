@@ -106,3 +106,16 @@ HVCompositeDatumTransformation 均无对应表项。参考 MXD 及两套介质�
 以 IID `9273BB60-C611-11D2-BD08-0000F875BCCE` 为起点，扫描同一套 10.1 Desktop 介质中的 72 个可读 MSFT 类型库，跨库合并 GUID，按接口继承和 coclass RefTab 枚举实现。得到 14 个公开 coclass，均位于 esriGeometry，且均已接入共同文本体或组合变换体。另有只在原生工厂中定位的通用 `GeoTransformation`，也已接入。AffineTransformation2D、AffineTransformation3D、ProjectiveTransformation2D 是一般 `ITransformation` 的实现，Map 的请求 IID 为 `IGeoTransformation`。
 
 对同一提取目录的 1203 个 PE 文件搜索两个未匹配注册项的 CLSID 原始字节及 ASCII 类名。`GEOCONTransformation` 和 `NADCON5Transformation` 均无命中，与 Geometry.dll 导出工厂及类型库的结果一致。安装配置中的注册声明仍在。此结果覆盖已提取的介质映像和公开类清单，不能排除补丁、额外组件、运行时注册或应用自有的私有变换类。未知对象仍停在其头部，由后续证据决定如何接入。
+
+继续核对本机 10.1 安装介质的 CAB 条目。Desktop `Setup1.cab` 对
+`geocon`/`nadcon`/`datum`/`transformation` 的命中只有
+`geographic_transformations.pdf`、`gdal_datum.csv`、`gt_datum.csv`
+和已接入的 `RasterTransformationOp.dll`；`Setup2.cab` 无相关条目。
+DataInterop `Setup1.cab` 的命中是 FME 的 `geoconcept.db`、
+`geoconcept.dll`、备份格式和 datum 字典，不包含 ArcGIS 的
+GEOCONTransformation 或 NADCON5Transformation 实现。
+
+因此，在目标 ArcGIS 10.1 Desktop 安装介质范围内，这两个 CLSID 只有
+注册声明，没有可定位的持久化类实现；解析器继续把它们作为未知对象体
+停止。补丁、独立扩展或第三方运行期注册若提供真实实现，仍需以其二进制
+和对象流宿主另立证据后接入。
