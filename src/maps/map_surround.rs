@@ -1145,7 +1145,19 @@ pub fn read_legend_prefix_10_1(
             None
         }
         ObjectEntry10_1::BackReference { class_id, key } => {
-            legend_format = LegendFormatEntry10_1::BackReference { class_id, key };
+            let registered = trial_table.registered_class(key);
+            if registered.is_some_and(|class| class != FAMILY_LEGEND_FORMAT_CLASS_ID) {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!(
+                        "Legend 格式槽 offset 0x{format_offset:x}: 回引键 {key} 的登记类不受支持"
+                    ),
+                ));
+            }
+            legend_format = LegendFormatEntry10_1::BackReference {
+                class_id: registered.unwrap_or(class_id),
+                key,
+            };
             None
         }
         ObjectEntry10_1::NewObject { class_id, key }
@@ -1221,7 +1233,27 @@ pub fn read_legend_prefix_10_1(
             let entry = match raw {
                 ObjectEntry10_1::Null => LegendItemSlot10_1::Null,
                 ObjectEntry10_1::BackReference { class_id, key } => {
-                    LegendItemSlot10_1::BackReference { class_id, key }
+                    let registered = trial_table.registered_class(key);
+                    if registered.is_some_and(|class| {
+                        !matches!(
+                            class,
+                            HORIZONTAL_LEGEND_ITEM_CLASS_ID
+                                | HORIZONTAL_BAR_LEGEND_ITEM_CLASS_ID
+                                | NESTED_LEGEND_ITEM_CLASS_ID
+                                | VERTICAL_LEGEND_ITEM_CLASS_ID
+                        )
+                    }) {
+                        return Err(io::Error::new(
+                            ErrorKind::Unsupported,
+                            format!(
+                                "Legend 条目槽 offset 0x{offset:x}: 回引键 {key} 的登记类不受支持"
+                            ),
+                        ));
+                    }
+                    LegendItemSlot10_1::BackReference {
+                        class_id: registered.unwrap_or(class_id),
+                        key,
+                    }
                 }
                 ObjectEntry10_1::NewObject { class_id, key }
                     if class_id == HORIZONTAL_LEGEND_ITEM_CLASS_ID =>

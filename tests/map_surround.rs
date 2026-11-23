@@ -872,3 +872,57 @@ fn legend_nonpositive_item_count_preserves_the_version_five_tail() {
         assert_eq!(refs, saved);
     }
 }
+
+#[test]
+fn legend_typed_references_use_registered_classes() {
+    use mxd2qgz::layers::legend_item::HORIZONTAL_LEGEND_ITEM_CLASS_ID;
+    use mxd2qgz::maps::map_surround::LegendItemSlot10_1;
+    use mxd2qgz::storage::object_refs::read_object_entry_10_1;
+
+    let mut bytes = 0_u16.to_le_bytes().to_vec();
+    bytes.extend(common_prefix_bytes(0, "", None));
+    push_entry_header(&mut bytes, &[0x42; 16], 10);
+    bytes.extend(string_bytes("图例"));
+    bytes.extend([0; 8]);
+    bytes.extend(1_i32.to_le_bytes());
+    push_entry_header(&mut bytes, &[0x42; 16], 11);
+    bytes.push(0x42);
+    for (format, item) in [
+        (LEGEND_FORMAT_CLASS_ID, HORIZONTAL_LEGEND_ITEM_CLASS_ID),
+        (ENVELOPE_CLASS_ID, HORIZONTAL_LEGEND_ITEM_CLASS_ID),
+        (LEGEND_FORMAT_CLASS_ID, ENVELOPE_CLASS_ID),
+    ] {
+        let mut refs = RefTable10_1::new();
+        for (class, key) in [(format, 10), (item, 11)] {
+            let mut header = Vec::new();
+            push_entry_header(&mut header, &class, key);
+            read_object_entry_10_1(&mut Reader::new(&header), &mut refs).unwrap();
+        }
+        let saved = refs.clone();
+        let mut reader = Reader::new(&bytes);
+        let result = read_legend_prefix_10_1(&mut reader, 1024, &mut refs);
+        if format == ENVELOPE_CLASS_ID || item == ENVELOPE_CLASS_ID {
+            assert_eq!(result.unwrap_err().kind(), ErrorKind::Unsupported);
+            assert_eq!(reader.position(), 0);
+        } else {
+            let legend = result.unwrap();
+            assert_eq!(legend.title, "图例");
+            assert!(matches!(
+                legend.legend_format,
+                LegendFormatEntry10_1::BackReference {
+                    class_id: LEGEND_FORMAT_CLASS_ID,
+                    key: 10,
+                }
+            ));
+            assert!(matches!(
+                legend.items[0].entry,
+                LegendItemSlot10_1::BackReference {
+                    class_id: HORIZONTAL_LEGEND_ITEM_CLASS_ID,
+                    key: 11,
+                }
+            ));
+            assert_eq!(reader.read_bytes(1).unwrap(), &[0x42]);
+        }
+        assert_eq!(refs, saved);
+    }
+}
