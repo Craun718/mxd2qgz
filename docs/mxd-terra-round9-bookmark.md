@@ -415,3 +415,14 @@ QI `0x6fc9d8a0`，在 `0x6fc9d8b9` 比较 `0x6fd4422c`
 构造测试覆盖 IdentityFunction 新键及 v7 后置字符串，验证
 后继书签文本和逐字节截断回滚。真实宿主和原生 Open
 结果仍待 ArcMap 10.1 验证。
+
+## ISRasterDatasetName
+
+ImageServerLayer.dll 10.1.0.3035 的 ISRasterDatasetName RTTI
+对应主虚表 `0x78031cb4`。QI `0x780123b0` 在
+`0x780123c9` 比较 `0x78030630` 的 IName IID，命中后
+于 `0x780123e4` 返回对象 +0x10。书签复用
+[Load `0x78012bb0` 对应的共享读取器](mxd-10.1-raster-layer-tail.md)。
+构造用例验证 v4 名称中的后置字符串、IdentityXform 新键、
+后继书签名及逐字节截断回滚。真实书签宿主和原生 Open
+结果仍待 ArcMap 10.1 验证。
