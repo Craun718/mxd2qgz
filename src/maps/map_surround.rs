@@ -335,6 +335,21 @@ pub struct AoiBookmark10_1 {
 
 const MAX_BOOKMARK_NAME_NESTING: usize = 16;
 
+pub const GP_FIELD_DOMAIN_CLASS_ID: [u8; 16] = [
+    0xf1, 0xaf, 0xff, 0xd7, 0x90, 0x59, 0x28, 0x48, 0x82, 0x63, 0xaa, 0x93, 0xc1, 0xc0, 0xbd, 0x6a,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpFieldDomain10_1 {
+    pub version: i16,
+    pub raw_count: i32,
+    pub values: Vec<i32>,
+    pub shorts: [u16; 2],
+    pub v2_strings: Option<(i32, Vec<String>)>,
+    pub v3_strings: Option<(i32, Vec<String>)>,
+    pub v4_short: Option<u16>,
+}
+
 pub const GP_ARC_INFO_ITEM_DOMAIN_CLASS_ID: [u8; 16] = [
     0x8c, 0xff, 0xc5, 0x01, 0x1b, 0xe0, 0x6d, 0x4a, 0xa9, 0x65, 0xe7, 0xe3, 0x02, 0x49, 0xe6, 0x41,
 ];
@@ -362,6 +377,7 @@ pub const GP_FILE_DOMAIN_CLASS_ID: [u8; 16] = [
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpTopoDomain10_1 {
     Numeric(GpNumericDomain10_1),
+    Field(GpFieldDomain10_1),
     ArcInfoItem {
         version: i16,
         raw_count: i32,
@@ -1145,6 +1161,25 @@ fn read_gp_domain_longs(
     Ok((raw_count, values))
 }
 
+fn read_gp_domain_strings(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    class: &str,
+) -> io::Result<(i32, Vec<String>)> {
+    let raw_count = reader.read_u32_le()? as i32;
+    let count = raw_count.max(0) as usize;
+    if count > reader.remaining().min(max_bytes) / 6 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("{class} 字符串数量超限"),
+        ));
+    }
+    let strings = (0..count)
+        .map(|_| read_string_10_1(reader, max_bytes))
+        .collect::<io::Result<Vec<_>>>()?;
+    Ok((raw_count, strings))
+}
+
 fn read_gp_topo_domain_slot_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -1163,6 +1198,7 @@ fn read_gp_topo_domain_slot_10_1(
                     | GP_DATASET_DOMAIN_CLASS_ID
                     | GP_FEATURE_CLASS_DOMAIN_CLASS_ID
                     | GP_ARC_INFO_ITEM_DOMAIN_CLASS_ID
+                    | GP_FIELD_DOMAIN_CLASS_ID
             ) =>
         {
             None
@@ -1177,6 +1213,30 @@ fn read_gp_topo_domain_slot_10_1(
             middle_shorts: [reader.read_u16_le()?, reader.read_u16_le()?],
             second_double_bits: reader.read_f64_le()?.to_bits(),
         }))),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_FIELD_DOMAIN_CLASS_ID,
+            ..
+        } => {
+            let version = read_gp_name_version(reader, 4, "GPFieldDomain")?;
+            let (raw_count, values) = read_gp_domain_longs(reader, max_bytes, "GPFieldDomain")?;
+            let shorts = [reader.read_u16_le()?, reader.read_u16_le()?];
+            let v2_strings = (version >= 2)
+                .then(|| read_gp_domain_strings(reader, max_bytes, "GPFieldDomain"))
+                .transpose()?;
+            let v3_strings = (version >= 3)
+                .then(|| read_gp_domain_strings(reader, max_bytes, "GPFieldDomain"))
+                .transpose()?;
+            let v4_short = (version >= 4).then(|| reader.read_u16_le()).transpose()?;
+            Some(Box::new(GpTopoDomain10_1::Field(GpFieldDomain10_1 {
+                version,
+                raw_count,
+                values,
+                shorts,
+                v2_strings,
+                v3_strings,
+                v4_short,
+            })))
+        }
         ObjectEntry10_1::NewObject {
             class_id: GP_ARC_INFO_ITEM_DOMAIN_CLASS_ID,
             ..
@@ -1282,17 +1342,7 @@ fn read_gp_topo_domain_slot_10_1(
             ..
         } => {
             let version = read_gp_name_version(reader, 1, "GPFileDomain")?;
-            let raw_count = reader.read_u32_le()? as i32;
-            let count = raw_count.max(0) as usize;
-            if count > reader.remaining().min(max_bytes) / 6 {
-                return Err(io::Error::new(
-                    ErrorKind::InvalidData,
-                    "GPFileDomain 字符串数量超限",
-                ));
-            }
-            let strings = (0..count)
-                .map(|_| read_string_10_1(reader, max_bytes))
-                .collect::<io::Result<Vec<_>>>()?;
+            let (raw_count, strings) = read_gp_domain_strings(reader, max_bytes, "GPFileDomain")?;
             Some(Box::new(GpTopoDomain10_1::File {
                 version,
                 raw_count,

@@ -922,3 +922,15 @@ QI `0x74692c00` 在 `0x74692c39` 比较 IGPDomain IID，匹配时
 
 构造测试覆盖正负计数、尾部字段、后续书签文本和逐字节截断回滚。
 字段含义、真实书签及 ArcMap/QGIS 人工验收待验证。
+
+### GPFieldDomain
+
+同版 GpObjects.dll 的 RTTI `0x7480011c` 对应持久化虚表
+`0x747af028`，注册 CLSID 为 `D7FFAFF1-5990-4828-8263-AA93C1C0BD6A`。
+Load `0x746d15b0` 使用有符号版本上限 4，先读有符号计数、
+LONG 列表和两个 short。v2、v3 分别在 `0x746d1694`、
+`0x746d1702` 起追加带有符号计数的 AfCore 成员 String 列表，
+v4 在 `0x746d176c` 再读一个 short。Save 入口为 `0x746d17a0`。
+
+构造测试覆盖 v1–v4、负计数字符串列表、后续书签字段和逐字节截断
+回滚。字段业务含义、真实书签及 ArcMap/QGIS 人工验收待验证。
