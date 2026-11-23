@@ -190,12 +190,14 @@ PageLayout.dll 10.1.0.3035 的 Load `0x7b6e4e30` 在
 ### 旧版布局元素错引 Map
 
 PageLayout.dll 10.1.0.3035 的 `0x7b6e4f25` 在 v0–v6
-调用普通 LoadObject 请求 IElement。Load 返回负 HRESULT 时直接退出。
-SystemCore.dll 同版本 `0x7ffd0063` 对按键找到的登记实例查询接口。
-当前 Rust 读取器遇到已确认的 Map 错引会保留该槽及后续字节。
-续查确认原生表命中路径会用 S_OK 覆盖 QueryInterface 的返回值，
-因此普通槽可能收到空输出并继续。实际错引宿主的空输出处理仍待复核。
-回归测试以参考工程的 `/Maps` 加构造布局覆盖当前停读边界。
+调用普通 LoadObject 请求 IElement。SystemCore.dll 同版本
+`0x7ffd0063` 向登记实例查询接口后交还 S_OK。Map 的 IElement
+输出为空。PageLayout 的 `0x7b6dcfd0` 跳过空元素的接口调用，
+`0x7b6c9540` 构造 SuperElement 时调用 `0x7b6c9720`，该函数
+允许保存空内部指针。随后 `0x7b6eead0` 插入该包装，循环继续。
+因此原先在此槽停止的 Rust 处理已改为保留未解析的回引信息并接续。
+测试使用参考工程的 `/Maps` 和构造布局，验证下一元素与布局尾段。
+真实错引工程及 ArcMap 人工验证仍待补充。
 
 ### ExtraSafe 元素占位恢复
 

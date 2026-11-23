@@ -265,6 +265,8 @@ pub struct PageLayoutElements10_1 {
     pub surround_frames: Vec<super::surround_frame::MapSurroundFrame10_1>,
     /// 不带对象体的元素槽，保存其序号、槽起点和条目。
     pub indirect_elements: Vec<(u32, usize, ObjectEntry10_1)>,
+    /// 普通元素槽查询 IElement 后得到空输出，保留序号、偏移和原回引。
+    pub unresolved_element_references: Vec<(u32, usize, ObjectEntry10_1)>,
     /// 已确认走占位恢复的元素，保留序号、包装起点及完整包装字节。
     pub placeholder_elements: Vec<(u32, usize, Vec<u8>)>,
     pub rectangles: Vec<super::rectangle_element::RectangleElement10_1>,
@@ -409,6 +411,7 @@ fn read_page_layout_body(
         map_frames: Vec::new(),
         surround_frames: Vec::new(),
         indirect_elements: Vec::new(),
+        unresolved_element_references: Vec::new(),
         placeholder_elements: Vec::new(),
         rectangles: Vec::new(),
         frame_elements: Vec::new(),
@@ -439,6 +442,11 @@ fn read_page_layout_body(
                     PageFrame::Surround(frame) => result.surround_frames.push(*frame),
                     PageFrame::Indirect(entry) => {
                         result.indirect_elements.push((index, offset, entry))
+                    }
+                    PageFrame::UnresolvedReference(entry) => {
+                        result
+                            .unresolved_element_references
+                            .push((index, offset, entry));
                     }
                     PageFrame::Placeholder => {
                         let bytes = original.read_bytes(reader.position() - offset)?;
@@ -482,6 +490,7 @@ enum PageFrame {
     Map(Box<super::map_frame::MapFrame10_1>),
     Surround(Box<super::surround_frame::MapSurroundFrame10_1>),
     Indirect(ObjectEntry10_1),
+    UnresolvedReference(ObjectEntry10_1),
     Placeholder,
     Rectangle(Box<super::rectangle_element::RectangleElement10_1>),
     Base(u32, Box<super::map_frame::BaseFrameElement10_1>),
@@ -565,16 +574,14 @@ fn read_page_frame(
                 PageFrame::Indirect(ObjectEntry10_1::Null)
             })
         }
-        ObjectHeader::Object { key, .. } if refs.contains_map(key) || is_root_map(key) => {
-            // 普通 LoadObject 对登记实例查询 IElement，Map 无此接口。
-            if extra_safe && probe.remaining() == 0 {
-                *reader = probe;
-                return Ok(PageFrame::Placeholder);
-            }
-            Err(io::Error::new(
-                ErrorKind::InvalidData,
-                format!("页面元素 IElement 槽回引 Map 键 {key}"),
-            ))
+        ObjectHeader::Object { class_id, key } if refs.contains_map(key) || is_root_map(key) => {
+            // IElement 查询输出为空，普通槽仍插入空元素，新版则恢复为占位。
+            *reader = probe;
+            Ok(if extra_safe {
+                PageFrame::Placeholder
+            } else {
+                PageFrame::UnresolvedReference(ObjectEntry10_1::BackReference { class_id, key })
+            })
         }
         ObjectHeader::Object { class_id, key } if refs.contains(key) => {
             *reader = probe;

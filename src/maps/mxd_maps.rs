@@ -353,6 +353,11 @@ fn parse_mxd_streams_10_1_with_limits(
                         layout.map_frames.len(),
                         layout.surround_frames.len()
                     ));
+                    for (index, offset, _) in &layout.unresolved_element_references {
+                        diagnostics.push(format!(
+                            "/PageLayout:0x{offset:x} 元素 {index} 回引 Map，IElement 输出为空"
+                        ));
+                    }
                     for (index, offset, bytes) in &layout.placeholder_elements {
                         diagnostics.push(format!(
                             "/PageLayout:0x{offset:x} 元素 {index} 使用 ExtraSafe 占位恢复"

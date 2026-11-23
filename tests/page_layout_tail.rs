@@ -549,10 +549,24 @@ fn ordinary_layout_elements_keep_cross_stream_references_and_body_boundaries() {
     wrong_target[backref_offset + 16..backref_offset + 20].copy_from_slice(&map_key.to_le_bytes());
     let report = parse_mxd_streams_10_1(&maps, Some(&wrong_target)).unwrap();
     let layout = report.page_layout.unwrap();
-    assert_eq!(layout.consumed_elements, 1);
-    assert_eq!(layout.consumed_end_offset(), backref_offset);
-    assert!(layout.stop.unwrap().contains("IElement 槽回引 Map 键"));
-    assert!(layout.indirect_elements.is_empty());
+    assert_eq!(layout.consumed_elements, 3);
+    assert_eq!(layout.consumed_end_offset(), wrong_target.len());
+    assert!(layout.stop.is_none());
+    assert_eq!(
+        layout.unresolved_element_references,
+        [(
+            1,
+            backref_offset,
+            ObjectEntry10_1::BackReference {
+                class_id: MAP_FRAME_CLASS_ID,
+                key: map_key,
+            }
+        )]
+    );
+    assert_eq!(
+        layout.indirect_elements,
+        [(2, null_offset, ObjectEntry10_1::Null)]
+    );
 
     // 第一个已完成的体仍然可用，未知体及其后的字节一并保留。
     page[backref_offset..backref_offset + 16].fill(0xa5);

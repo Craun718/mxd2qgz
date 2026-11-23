@@ -820,7 +820,7 @@
       - [x] 保留布局 IGeometry 回引的登记类。[取证](docs/mxd-map-frame-body-20261118.md#布局几何回引)
       - [x] 按原生循环门读取 MapFrame 的网格和定位框非正计数。[取证](docs/mxd-map-frame-body-20261118.md#两个集合的非正计数)
       - [x] 按原生循环门读取 PageLayout 元素的非正计数。[取证](docs/mxd-page-layout-tail-20261118.md#布局元素的非正计数)
-      - [x] 在普通 PageLayout 元素槽拒绝指向已确认 Map 键的 IElement 错引。[取证](docs/mxd-page-layout-tail-20261118.md#旧版布局元素错引-map)
+      - [x] 在普通 PageLayout 元素槽保留 Map 错引的空输出并接续。[取证](docs/mxd-page-layout-tail-20261118.md#旧版布局元素错引-map)
       - [x] 恢复新版 PageLayout 的有界 Map 错引占位元素并保留包装字节。[取证](docs/mxd-page-layout-tail-20261118.md#extrasafe-元素占位恢复)
       - [x] 读取新版 PageLayout 的零长度 ExtraSafe 占位包装。[取证](docs/mxd-page-layout-tail-20261118.md#零长度包装)
       - [x] 将新版 PageLayout 的 ExtraSafe 空对象头记录为占位。[取证](docs/mxd-page-layout-tail-20261118.md#包装内的空对象头)
