@@ -206,6 +206,9 @@ use crate::objects::dataset_name_more::{
     read_schematic_diagram_name_body_10_1,
 };
 use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
+use crate::objects::property_set::{
+    PropertyValueObjectStream10_1, read_padded_variant_object_stream_nested_10_1,
+};
 use crate::objects::route_event_name::{
     ROUTE_EVENT_SOURCE_NAME_CLASS_ID, ROUTE_MEASURE_LOCATOR_NAME_CLASS_ID,
     RouteEventSourceNameBody10_1, RouteMeasureLocatorName10_1,
@@ -367,6 +370,18 @@ pub const GP_STRING_CLASS_ID: [u8; 16] = [
     0x33, 0x85, 0x34, 0x6a, 0x67, 0xb6, 0x05, 0x4a, 0xab, 0xb0, 0x00, 0x24, 0x11, 0x0d, 0x17, 0xf0,
 ];
 
+pub const GP_DOUBLE_CLASS_ID: [u8; 16] = [
+    0x74, 0x45, 0x4c, 0x37, 0x6e, 0x5d, 0x77, 0x4d, 0x9a, 0x67, 0x54, 0x89, 0xc6, 0xbb, 0xe9, 0x32,
+];
+
+pub const GP_BOOLEAN_CLASS_ID: [u8; 16] = [
+    0x59, 0xd5, 0xe9, 0x66, 0x0e, 0x5e, 0xb4, 0x45, 0xad, 0xa8, 0xd7, 0xc2, 0x07, 0xba, 0x6b, 0x49,
+];
+
+pub const GP_DATE_CLASS_ID: [u8; 16] = [
+    0x2b, 0xf2, 0xd6, 0xbe, 0x8e, 0xad, 0x0e, 0x44, 0x8d, 0xd5, 0xb4, 0x16, 0x39, 0x6b, 0x6f, 0xd4,
+];
+
 pub const GP_LONG_CLASS_ID: [u8; 16] = [
     0x47, 0x7f, 0xed, 0x30, 0xd9, 0x12, 0x9b, 0x4c, 0xbe, 0x8b, 0x7a, 0x0a, 0xe3, 0x86, 0xe5, 0x74,
 ];
@@ -375,6 +390,9 @@ pub const GP_LONG_CLASS_ID: [u8; 16] = [
 pub enum GpCodedValue10_1 {
     String(String),
     Long(i32),
+    DoubleBits(u64),
+    Boolean(u16),
+    Date(Box<PropertyValueObjectStream10_1>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1436,6 +1454,7 @@ fn read_gp_coded_value_domain(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
+    depth: usize,
 ) -> io::Result<GpCodedValueDomain10_1> {
     let version = read_gp_name_version(reader, 1, "GPCodedValueDomain")?;
     let labels = read_gp_domain_strings(reader, max_bytes, "GPCodedValueDomain")?;
@@ -1455,13 +1474,19 @@ fn read_gp_coded_value_domain(
             ObjectEntry10_1::BackReference { class_id, key }
                 if matches!(
                     table.registered_class(key).unwrap_or(class_id),
-                    GP_STRING_CLASS_ID | GP_LONG_CLASS_ID
+                    GP_STRING_CLASS_ID
+                        | GP_LONG_CLASS_ID
+                        | GP_DOUBLE_CLASS_ID
+                        | GP_BOOLEAN_CLASS_ID
+                        | GP_DATE_CLASS_ID
                 ) =>
             {
                 None
             }
             ObjectEntry10_1::NewObject {
-                class_id: class_id @ (GP_STRING_CLASS_ID | GP_LONG_CLASS_ID),
+                class_id:
+                    class_id @ (GP_STRING_CLASS_ID | GP_LONG_CLASS_ID | GP_DOUBLE_CLASS_ID
+                    | GP_BOOLEAN_CLASS_ID | GP_DATE_CLASS_ID),
                 ..
             } => {
                 let version = reader.read_u16_le()?;
@@ -1469,14 +1494,24 @@ fn read_gp_coded_value_domain(
                 if version > 1 || base_version > 1 {
                     return Err(io::Error::new(
                         ErrorKind::InvalidData,
-                        "GPString / GPLong 或 GPValue 版本超出 10.1 上限",
+                        "GP 编码值对象或 GPValue 版本超出 10.1 上限",
                     ));
                 }
                 let base_short = reader.read_u16_le()?;
-                let value = if class_id == GP_STRING_CLASS_ID {
-                    GpCodedValue10_1::String(read_string_10_1(reader, max_bytes)?)
-                } else {
-                    GpCodedValue10_1::Long(reader.read_u32_le()? as i32)
+                let value = match class_id {
+                    GP_STRING_CLASS_ID => {
+                        GpCodedValue10_1::String(read_string_10_1(reader, max_bytes)?)
+                    }
+                    GP_DOUBLE_CLASS_ID => {
+                        GpCodedValue10_1::DoubleBits(reader.read_f64_le()?.to_bits())
+                    }
+                    GP_BOOLEAN_CLASS_ID => GpCodedValue10_1::Boolean(reader.read_u16_le()?),
+                    GP_DATE_CLASS_ID => GpCodedValue10_1::Date(Box::new(
+                        read_padded_variant_object_stream_nested_10_1(
+                            reader, max_bytes, table, depth,
+                        )?,
+                    )),
+                    _ => GpCodedValue10_1::Long(reader.read_u32_le()? as i32),
                 };
                 Some(Box::new(GpCodedValueBody10_1 {
                     version,
@@ -1621,7 +1656,7 @@ fn read_gp_topo_domain_slot_10_1(
             class_id: GP_CODED_VALUE_DOMAIN_CLASS_ID,
             ..
         } => Some(Box::new(GpTopoDomain10_1::CodedValue(
-            read_gp_coded_value_domain(reader, max_bytes, table)?,
+            read_gp_coded_value_domain(reader, max_bytes, table, name_depth)?,
         ))),
         ObjectEntry10_1::NewObject {
             class_id: GP_FIELD_INFO_DOMAIN_CLASS_ID,
@@ -1641,7 +1676,7 @@ fn read_gp_topo_domain_slot_10_1(
                     class_id: GP_CODED_VALUE_DOMAIN_CLASS_ID,
                     ..
                 } => Some(Box::new(read_gp_coded_value_domain(
-                    reader, max_bytes, table,
+                    reader, max_bytes, table, name_depth,
                 )?)),
                 _ => {
                     return Err(io::Error::new(

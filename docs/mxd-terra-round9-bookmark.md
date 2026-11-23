@@ -1149,3 +1149,20 @@ AfCore String 和 LONG。合成测试覆盖直接及内嵌编码值域、
 对照 72 个同版 Desktop 类型库，33 个公开 IGPDomain 类均已有分派。
 编码值域中的其余 IGPValue 实现及范围域的非空 Variant 对象端点
 仍是各自的子槽缺口。
+
+#### GPDouble、GPBoolean、GPDate
+
+同版 GpObjects.dll 的持久化虚表和原生读写入口如下。
+
+| 类 | CLSID | 虚表 | Load | Save |
+| --- | --- | --- | --- | --- |
+| GPDouble | `374C4574-5D6E-4D77-9A67-5489C6BBE932` | `0x747b5900` | `0x74705930` | `0x747059b0` |
+| GPBoolean | `66E9D559-5E0E-45B4-ADA8-D7C207BA6B49` | `0x747b530c` | `0x74702c70` | `0x74702cf0` |
+| GPDate | `BED6F22B-AD8E-440E-8DD5-B416396B6FD4` | `0x747b56e8` | `0x74704c30` | `0x74704cb0` |
+
+三类均检查无符号版本上限 1，再调用 GPValue::Load。随后
+分别读取 8 字节 double、2 字节 short，以及 AfCore
+Variant::Read(false)（`0x74704c82`，导入槽 `0x747a32e8`）。
+GPDate 复用带 14 字节保留区的 Variant 读取器。构造测试覆盖
+负零位模式、布尔 short、VT_DATE、后续书签字段和截断回滚。
+真实书签及 ArcMap/QGIS 人工验收待验证。

@@ -4927,11 +4927,13 @@ fn feature_bookmark_reads_legacy_topo_composite_domain() {
 
 #[test]
 fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
+    use mxd2qgz::maps::map_surround::{GP_BOOLEAN_CLASS_ID, GP_DATE_CLASS_ID, GP_DOUBLE_CLASS_ID};
     use mxd2qgz::maps::map_surround::{
         GP_CODED_VALUE_DOMAIN_CLASS_ID, GP_FIELD_INFO_DOMAIN_CLASS_ID, GP_LONG_CLASS_ID,
         GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID, GP_STRING_CLASS_ID, GpCodedValue10_1,
         GpTopoDomain10_1,
     };
+    use mxd2qgz::objects::property_set::{PropertyValue10_1, PropertyValueObjectStream10_1};
     use mxd2qgz::storage::object_refs::ObjectEntry10_1;
 
     for nested in [false, true] {
@@ -4949,7 +4951,7 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
         bytes.extend(1_i16.to_le_bytes());
         bytes.extend(1_i32.to_le_bytes());
         bytes.extend(bookmark_string_10_1("标签"));
-        bytes.extend(3_i32.to_le_bytes());
+        bytes.extend(6_i32.to_le_bytes());
         for (class, key) in [(GP_STRING_CLASS_ID, 20_u32), (GP_LONG_CLASS_ID, 21)] {
             bytes.extend(class);
             bytes.extend(key.to_le_bytes());
@@ -4964,6 +4966,31 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
         }
         bytes.extend(GP_LONG_CLASS_ID);
         bytes.extend(21_u32.to_le_bytes());
+        for (class_id, key, payload) in [
+            (
+                GP_DOUBLE_CLASS_ID,
+                22_u32,
+                (-0.0_f64).to_le_bytes().to_vec(),
+            ),
+            (GP_BOOLEAN_CLASS_ID, 23, 0xffff_u16.to_le_bytes().to_vec()),
+            (
+                GP_DATE_CLASS_ID,
+                24,
+                [
+                    7_u16.to_le_bytes().as_slice(),
+                    &[0; 14],
+                    &45000.5_f64.to_le_bytes(),
+                ]
+                .concat(),
+            ),
+        ] {
+            bytes.extend(class_id);
+            bytes.extend(key.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(7_u16.to_le_bytes());
+            bytes.extend(payload);
+        }
         bytes.extend(bookmark_string_10_1("拓扑"));
         bytes.extend(9_i32.to_le_bytes());
         bytes.extend(bookmark_string_10_1("书签"));
@@ -4991,7 +5018,21 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
             _ => panic!("应读取编码值域"),
         };
         assert_eq!(coded.labels, (1, vec!["标签".into()]));
-        assert_eq!(coded.raw_value_count, 3);
+        assert_eq!(coded.raw_value_count, 6);
+        assert_eq!(
+            coded.values[3].body.as_ref().unwrap().value,
+            GpCodedValue10_1::DoubleBits((-0.0_f64).to_bits())
+        );
+        assert_eq!(
+            coded.values[4].body.as_ref().unwrap().value,
+            GpCodedValue10_1::Boolean(0xffff)
+        );
+        assert_eq!(
+            coded.values[5].body.as_ref().unwrap().value,
+            GpCodedValue10_1::Date(Box::new(PropertyValueObjectStream10_1::Inline(
+                PropertyValue10_1::Raw8(45000.5_f64.to_le_bytes())
+            )))
+        );
         assert_eq!(
             coded.values[0].body.as_ref().unwrap().value,
             GpCodedValue10_1::String("值".into())
