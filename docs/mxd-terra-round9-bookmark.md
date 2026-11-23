@@ -897,3 +897,15 @@ QI `0x746ab560` 在 `0x746ab5cb` 比较 IGPDomain IID，匹配时
 
 构造测试覆盖正计数、负计数时仍读取四个 short、后继书签文本
 及逐字节截断回滚。字段含义、真实书签及 ArcMap/QGIS 人工验收待验证。
+
+### GPFeatureClassDomain
+
+同版 GpObjects.dll 的 RTTI `0x747ffb38` 对应持久化虚表
+`0x747adeb8`，CLSID 为 `652EC5FF-1772-49AB-B7C7-439143D44D56`。
+QI `0x746c63f0` 在 `0x746c645b` 比较 IGPDomain IID，匹配时返回 +0x10。
+Load `0x746c71e0` 检查有符号 short 上限 3，读取带有符号
+计数的 LONG 列表和两个 short。v2 起在 `0x746c72d6` 至
+`0x746c7314` 读取四个附加 short。v3 在 `0x746c7335` 起
+读取第二个带有符号计数的 LONG 列表。Save `0x746c73a0`
+对应 v3 布局。构造测试覆盖 v1–v3、后续书签字段和截断回滚。
+字段业务含义、真实书签及 ArcMap/QGIS 人工验收待验证。

@@ -335,6 +335,10 @@ pub struct AoiBookmark10_1 {
 
 const MAX_BOOKMARK_NAME_NESTING: usize = 16;
 
+pub const GP_FEATURE_CLASS_DOMAIN_CLASS_ID: [u8; 16] = [
+    0xff, 0xc5, 0x2e, 0x65, 0x72, 0x17, 0xab, 0x49, 0xb7, 0xc7, 0x43, 0x91, 0x43, 0xd4, 0x4d, 0x56,
+];
+
 pub const GP_DATASET_DOMAIN_CLASS_ID: [u8; 16] = [
     0x98, 0xda, 0x7c, 0x50, 0xfd, 0xce, 0xfc, 0x4b, 0xbf, 0x14, 0x21, 0xa4, 0x1b, 0x77, 0x3e, 0x2d,
 ];
@@ -354,6 +358,14 @@ pub const GP_FILE_DOMAIN_CLASS_ID: [u8; 16] = [
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpTopoDomain10_1 {
     Numeric(GpNumericDomain10_1),
+    FeatureClass {
+        version: i16,
+        raw_count: i32,
+        values: Vec<i32>,
+        shorts: [u16; 2],
+        v2_shorts: Option<[u16; 4]>,
+        v3_list: Option<(i32, Vec<i32>)>,
+    },
     Dataset {
         version: i16,
         raw_count: i32,
@@ -1138,6 +1150,7 @@ fn read_gp_topo_domain_slot_10_1(
                     | GP_RANGE_DOMAIN_CLASS_ID
                     | GP_WORKSPACE_DOMAIN_CLASS_ID
                     | GP_DATASET_DOMAIN_CLASS_ID
+                    | GP_FEATURE_CLASS_DOMAIN_CLASS_ID
             ) =>
         {
             None
@@ -1152,6 +1165,36 @@ fn read_gp_topo_domain_slot_10_1(
             middle_shorts: [reader.read_u16_le()?, reader.read_u16_le()?],
             second_double_bits: reader.read_f64_le()?.to_bits(),
         }))),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_FEATURE_CLASS_DOMAIN_CLASS_ID,
+            ..
+        } => {
+            let version = read_gp_name_version(reader, 3, "GPFeatureClassDomain")?;
+            let (raw_count, values) =
+                read_gp_domain_longs(reader, max_bytes, "GPFeatureClassDomain")?;
+            let shorts = [reader.read_u16_le()?, reader.read_u16_le()?];
+            let v2_shorts = (version >= 2)
+                .then(|| -> io::Result<_> {
+                    Ok([
+                        reader.read_u16_le()?,
+                        reader.read_u16_le()?,
+                        reader.read_u16_le()?,
+                        reader.read_u16_le()?,
+                    ])
+                })
+                .transpose()?;
+            let v3_list = (version >= 3)
+                .then(|| read_gp_domain_longs(reader, max_bytes, "GPFeatureClassDomain"))
+                .transpose()?;
+            Some(Box::new(GpTopoDomain10_1::FeatureClass {
+                version,
+                raw_count,
+                values,
+                shorts,
+                v2_shorts,
+                v3_list,
+            }))
+        }
         ObjectEntry10_1::NewObject {
             class_id: GP_DATASET_DOMAIN_CLASS_ID,
             ..
