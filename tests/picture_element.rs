@@ -2,9 +2,9 @@ use mxd2qgz::maps::mxd_maps::parse_mxd_streams_10_1;
 use mxd2qgz::maps::page_layout_prefix::PAGE_LAYOUT_CLASS_ID;
 use mxd2qgz::maps::picture_element::{
     BMP_PICTURE_ELEMENT_CLASS_ID, EMF_PICTURE_ELEMENT_CLASS_ID, GIF_PICTURE_ELEMENT_CLASS_ID,
-    JP2_PICTURE_ELEMENT_CLASS_ID, JPG_PICTURE_ELEMENT_CLASS_ID, PICTURE_ELEMENT_CLASS_ID,
-    PNG_PICTURE_ELEMENT_CLASS_ID, PictureElementBase10_1, PictureElementKind10_1,
-    TIF_PICTURE_ELEMENT_CLASS_ID,
+    IMG_PICTURE_ELEMENT_CLASS_ID, JP2_PICTURE_ELEMENT_CLASS_ID, JPG_PICTURE_ELEMENT_CLASS_ID,
+    PICTURE_ELEMENT_CLASS_ID, PNG_PICTURE_ELEMENT_CLASS_ID, PictureElementBase10_1,
+    PictureElementKind10_1, SID_PICTURE_ELEMENT_CLASS_ID, TIF_PICTURE_ELEMENT_CLASS_ID,
 };
 use mxd2qgz::objects::element_body::{ElementBody10_1, read_element_body_of_class_10_1};
 use mxd2qgz::objects::ole_font::STDPICTURE_CLASS_ID;
@@ -159,7 +159,10 @@ fn layout_dispatches_all_picture_classes_and_resolves_element_and_picture_refs()
         (TIF_PICTURE_ELEMENT_CLASS_ID, PictureElementKind10_1::Tif),
         (PNG_PICTURE_ELEMENT_CLASS_ID, PictureElementKind10_1::Png),
         (JP2_PICTURE_ELEMENT_CLASS_ID, PictureElementKind10_1::Jp2),
+        (IMG_PICTURE_ELEMENT_CLASS_ID, PictureElementKind10_1::Img),
+        (SID_PICTURE_ELEMENT_CLASS_ID, PictureElementKind10_1::Sid),
     ];
+    let reference_index = classes.len() as u32;
     let mut layout = PAGE_LAYOUT_CLASS_ID.to_vec();
     layout.extend(1_u32.to_le_bytes());
     layout.extend(9_u16.to_le_bytes());
@@ -186,11 +189,16 @@ fn layout_dispatches_all_picture_classes_and_resolves_element_and_picture_refs()
         .unwrap()
         .page_layout
         .unwrap();
-    assert_eq!(parsed.consumed_elements, 9, "{:?}", parsed.stop);
+    assert_eq!(
+        parsed.consumed_elements,
+        reference_index + 1,
+        "{:?}",
+        parsed.stop
+    );
     assert_eq!(parsed.end_offset, layout.len());
     assert_eq!(
         parsed.element_reference_suffixes,
-        [(8, suffix_offset, vec![0x34, 0x12])]
+        [(reference_index, suffix_offset, vec![0x34, 0x12])]
     );
     assert_eq!(
         parsed
@@ -206,6 +214,6 @@ fn layout_dispatches_all_picture_classes_and_resolves_element_and_picture_refs()
     ));
     assert!(matches!(
         &parsed.indirect_elements[..],
-        [(8, _, ObjectEntry10_1::BackReference { key: 100, .. })]
+        [(index, _, ObjectEntry10_1::BackReference { key: 100, .. })] if *index == reference_index
     ));
 }

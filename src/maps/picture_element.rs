@@ -24,6 +24,8 @@ pub enum PictureElementKind10_1 {
     Tif,
     Png,
     Jp2,
+    Img,
+    Sid,
 }
 
 pub const PICTURE_ELEMENT_CLASS_ID: [u8; 16] = [
@@ -50,6 +52,12 @@ pub const PNG_PICTURE_ELEMENT_CLASS_ID: [u8; 16] = [
 pub const JP2_PICTURE_ELEMENT_CLASS_ID: [u8; 16] = [
     0x3b, 0x86, 0xbf, 0x8b, 0xc7, 0xd0, 0x5f, 0x4b, 0x88, 0xb0, 0x21, 0xd5, 0xa4, 0xca, 0x06, 0xfd,
 ];
+pub const IMG_PICTURE_ELEMENT_CLASS_ID: [u8; 16] = [
+    0x20, 0x9b, 0x0d, 0x1c, 0x53, 0x19, 0xd3, 0x11, 0xa3, 0xee, 0x00, 0x04, 0xac, 0x1b, 0x1d, 0x86,
+];
+pub const SID_PICTURE_ELEMENT_CLASS_ID: [u8; 16] = [
+    0x60, 0xfc, 0x6e, 0x35, 0x53, 0x19, 0xd3, 0x11, 0xa3, 0xee, 0x00, 0x04, 0xac, 0x1b, 0x1d, 0x86,
+];
 
 impl PictureElementKind10_1 {
     pub(crate) fn from_class(class_id: &[u8; 16]) -> Option<Self> {
@@ -62,6 +70,8 @@ impl PictureElementKind10_1 {
             TIF_PICTURE_ELEMENT_CLASS_ID => Self::Tif,
             PNG_PICTURE_ELEMENT_CLASS_ID => Self::Png,
             JP2_PICTURE_ELEMENT_CLASS_ID => Self::Jp2,
+            IMG_PICTURE_ELEMENT_CLASS_ID => Self::Img,
+            SID_PICTURE_ELEMENT_CLASS_ID => Self::Sid,
             _ => return None,
         })
     }
