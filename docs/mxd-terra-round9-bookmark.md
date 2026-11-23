@@ -514,3 +514,22 @@ IName 装载地表名称。书签复用 [TinDB.dll Load `0x803540e0`](mxd-10.1-r
 IWorkspaceName，TerrainName 的尾槽是 IDatasetName。构造测试覆盖
 两类分派、空子槽、后继书签文本和逐字节截断回滚。真实书签宿主、
 原生 Open 结果和 QGIS 人工检查待验证。
+
+## LasDatasetName
+
+使用 objdump 补查 10.1.0.3035 的 LasDataset.dll PE32，SHA-256 为
+`2f116940021eb5264dcc578f0e42385b0e4f4fa6e0acfac62ced4cced4ca1f3d`。
+RTTI `0x78604720` 指向 LasDatasetName。QI `0x785adc20` 比较
+`0x785f4650` 的 IName IID，匹配后在 `0x785adc45` 返回完整对象
++0x10。IPersistStream 视图位于 +0x18，虚表 `0x785f45d4` 的
+GetClassID `0x785ad990` 从 `0x785f38c0` 复制
+`2029A994-9BC0-4094-A1C7-E5381869E4E3`，与类型库一致。
+
+Load `0x785ae120` 读取 short，并在 `0x785ae14b` 以有符号上限 1
+校验。在 `0x785ae16b / 0x785ae175 / 0x785ae17f` 读取三个 AfCore
+String，再在 `0x785ae196` 调用 LoadObject，所请求 IID 为
+`FADD975C-E36F-11D1-AA81-00C04FA33A15`（IWorkspaceName）。
+Save `0x785ae080` 对称写出上述字段。构造测试覆盖负版本、
+超上限版本、新建工作空间、后继书签文本与逐字节截断回滚。
+三个字符串的业务含义、真实书签宿主、原生 Open 与 QGIS
+人工检查待验证。

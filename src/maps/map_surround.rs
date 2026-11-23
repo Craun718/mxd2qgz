@@ -142,7 +142,7 @@ use crate::layers::raster_dataset_name::{
     SDE_RASTER_DATASET_NAME_CLASS_ID, read_supported_raster_name_body_10_1,
 };
 use crate::layers::scene_layer_properties::{
-    TIN_NAME_CLASS_ID, TinName10_1, read_tin_name_body_10_1,
+    TIN_NAME_CLASS_ID, TinName10_1, read_surface_workspace_name_10_1, read_tin_name_body_10_1,
 };
 use crate::layers::terrain_layer::{
     TERRAIN_NAME_CLASS_ID, TerrainName10_1, read_terrain_name_body_10_1,
@@ -312,6 +312,17 @@ pub struct AoiBookmark10_1 {
     pub remaining_bytes: usize,
 }
 
+pub const LAS_DATASET_NAME_CLASS_ID: [u8; 16] = [
+    0x94, 0xa9, 0x29, 0x20, 0xc0, 0x9b, 0x94, 0x40, 0xa1, 0xc7, 0xe5, 0x38, 0x18, 0x69, 0xe4, 0xe3,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LasDatasetName10_1 {
+    pub version: i16,
+    pub strings: [String; 3],
+    pub workspace: crate::layers::raster_dataset_name::RasterDatasetWorkspaceSlot10_1,
+}
+
 /// FeatureBookmark 名称对象槽（请求 IID `{4BA33331-…}` IName）的分类结果。
 ///
 /// 支持已取证且完整消费的名称体。
@@ -348,6 +359,7 @@ pub enum BookmarkNameEntry10_1 {
     GeometricNetworkName(Box<GeometricNetworkNameBody10_1>),
     NetworkDatasetName(Box<NetworkDatasetName10_1>),
     TinName(Box<TinName10_1>),
+    LasDatasetName(Box<LasDatasetName10_1>),
     TerrainName(Box<TerrainName10_1>),
     TopologyName(Box<TopologyNameBody10_1>),
     FeatureDatasetName(Box<FeatureDatasetNameBody10_1>),
@@ -1130,6 +1142,34 @@ pub fn read_feature_bookmark_10_1(
             max_bytes,
             &mut trial_table,
         )?)),
+        ObjectEntry10_1::NewObject {
+            class_id: LAS_DATASET_NAME_CLASS_ID,
+            ..
+        } => {
+            let version = trial.read_u16_le()? as i16;
+            if version > 1 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    format!("LasDatasetName 版本 {version} 超出 10.1 上限"),
+                ));
+            }
+            let strings = [
+                read_string_10_1(&mut trial, max_bytes)?,
+                read_string_10_1(&mut trial, max_bytes)?,
+                read_string_10_1(&mut trial, max_bytes)?,
+            ];
+            let workspace = read_surface_workspace_name_10_1(
+                &mut trial,
+                max_bytes,
+                &mut trial_table,
+                "LasDatasetName",
+            )?;
+            BookmarkNameEntry10_1::LasDatasetName(Box::new(LasDatasetName10_1 {
+                version,
+                strings,
+                workspace,
+            }))
+        }
         ObjectEntry10_1::NewObject {
             class_id: TIN_NAME_CLASS_ID,
             ..

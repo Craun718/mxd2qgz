@@ -2720,3 +2720,62 @@ fn feature_bookmark_reads_tin_and_terrain_names() {
         }
     }
 }
+
+#[test]
+fn feature_bookmark_reads_las_dataset_name_and_workspace() {
+    use mxd2qgz::layers::raster_dataset_name::RasterDatasetWorkspaceSlot10_1;
+    use mxd2qgz::maps::map_surround::LAS_DATASET_NAME_CLASS_ID;
+    use mxd2qgz::objects::workspace_name::WORKSPACE_NAME_CLASS_ID;
+
+    let mut bytes = bookmark_header_10_1(&LAS_DATASET_NAME_CLASS_ID, 17);
+    let version_offset = bytes.len();
+    bytes.extend((-1_i16).to_le_bytes());
+    for value in ["点云", "路径", "名称"] {
+        bytes.extend(bookmark_string_10_1(value));
+    }
+    bytes.extend(WORKSPACE_NAME_CLASS_ID);
+    bytes.extend(18_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    for value in ["工作空间", "", ""] {
+        bytes.extend(bookmark_string_10_1(value));
+    }
+    bytes.extend([0; 16]);
+    bytes.push(0);
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(bookmark_string_10_1("书签"));
+    let end = bytes.len();
+    bytes.push(0xa5);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    let BookmarkNameEntry10_1::LasDatasetName(name) = result.name_object else {
+        panic!("应读取 LAS 数据集名称");
+    };
+    assert_eq!(name.version, -1);
+    assert_eq!(name.strings, ["点云", "路径", "名称"]);
+    assert!(matches!(
+        name.workspace,
+        RasterDatasetWorkspaceSlot10_1::WorkspaceName(workspace)
+            if workspace.path == "工作空间" && workspace.key == 18
+    ));
+    assert_eq!(result.name, "书签");
+    assert_eq!(reader.position(), end);
+    assert!(refs.contains(17) && refs.contains(18));
+
+    for cut in 0..end {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+
+    bytes[version_offset..version_offset + 2].copy_from_slice(&2_i16.to_le_bytes());
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let err = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap_err();
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+    assert_eq!(reader.position(), 0);
+    assert!(refs.is_empty());
+}

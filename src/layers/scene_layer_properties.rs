@@ -105,18 +105,32 @@ pub(crate) fn read_tin_name_body_10_1(
         read_string_10_1(reader, max)?,
         read_string_10_1(reader, max)?,
     ];
+    let workspace = read_surface_workspace_name_10_1(reader, max, refs, "TinName")?;
+    Ok(TinName10_1 {
+        version,
+        strings,
+        workspace,
+    })
+}
+
+pub(crate) fn read_surface_workspace_name_10_1(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+    name_class: &str,
+) -> io::Result<RasterDatasetWorkspaceSlot10_1> {
     let workspace = read_workspace_slot(reader, max, refs)?;
     match &workspace {
         RasterDatasetWorkspaceSlot10_1::WorkspaceName(body) if body.stop.is_some() => {
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,
-                "TinName 工作空间体未完整读取",
+                format!("{name_class} 工作空间体未完整读取"),
             ));
         }
         RasterDatasetWorkspaceSlot10_1::Unsupported { .. } => {
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,
-                "TinName 工作空间类未支持",
+                format!("{name_class} 工作空间类未支持"),
             ));
         }
         RasterDatasetWorkspaceSlot10_1::BackReference { class_id, .. }
@@ -124,16 +138,12 @@ pub(crate) fn read_tin_name_body_10_1(
         {
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,
-                "TinName 工作空间回引类未支持",
+                format!("{name_class} 工作空间回引类未支持"),
             ));
         }
         _ => {}
     }
-    Ok(TinName10_1 {
-        version,
-        strings,
-        workspace,
-    })
+    Ok(workspace)
 }
 
 pub(super) fn read_bounded_scene_layer_properties(
