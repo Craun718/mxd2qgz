@@ -6,6 +6,10 @@
 //! 跨流引用表。此处不跳过元素体，也不猜测未知成员的业务含义。
 
 use crate::maps::map_object::MAP_CLASS_ID;
+use crate::maps::rectangle_element::{
+    CIRCLE_ELEMENT_CLASS_ID, ELLIPSE_ELEMENT_CLASS_ID, RectShapeElement10_1,
+    read_rect_shape_element_10_1,
+};
 use crate::objects::element_body::{
     ElementBody10_1, ParagraphTextElement10_1, read_element_body_of_class_10_1,
 };
@@ -272,6 +276,8 @@ pub struct PageLayoutElements10_1 {
     /// ExtraSafe 回引头之后的原始字节，保存序号与流偏移。
     pub element_reference_suffixes: Vec<(u32, usize, Vec<u8>)>,
     pub rectangles: Vec<super::rectangle_element::RectangleElement10_1>,
+    /// 圆和椭圆元素，保留各自的类标识。
+    pub circles_and_ellipses: Vec<([u8; 16], RectShapeElement10_1)>,
     pub frame_elements: Vec<(u32, super::map_frame::BaseFrameElement10_1)>,
     pub paragraphs: Vec<(u32, ParagraphTextElement10_1)>,
     pub pictures: Vec<(u32, super::picture_element::PictureElement10_1)>,
@@ -417,6 +423,7 @@ fn read_page_layout_body(
         placeholder_elements: Vec::new(),
         element_reference_suffixes: Vec::new(),
         rectangles: Vec::new(),
+        circles_and_ellipses: Vec::new(),
         frame_elements: Vec::new(),
         paragraphs: Vec::new(),
         pictures: Vec::new(),
@@ -465,6 +472,9 @@ fn read_page_layout_body(
                             .push((index, offset, bytes.to_vec()));
                     }
                     PageFrame::Rectangle(rect) => result.rectangles.push(*rect),
+                    PageFrame::CircleOrEllipse(class_id, body) => {
+                        result.circles_and_ellipses.push((class_id, *body));
+                    }
                     PageFrame::Base(key, body) => result.frame_elements.push((key, *body)),
                     PageFrame::Paragraph(key, body) => result.paragraphs.push((key, *body)),
                     PageFrame::Picture(key, body) => result.pictures.push((key, *body)),
@@ -503,6 +513,7 @@ enum PageFrame {
     UnresolvedReference(ObjectEntry10_1),
     Placeholder,
     Rectangle(Box<super::rectangle_element::RectangleElement10_1>),
+    CircleOrEllipse([u8; 16], Box<RectShapeElement10_1>),
     Base(u32, Box<super::map_frame::BaseFrameElement10_1>),
     Paragraph(u32, Box<ParagraphTextElement10_1>),
     Picture(u32, Box<super::picture_element::PictureElement10_1>),
@@ -560,6 +571,8 @@ fn read_element_or_map_frame(
                         MAP_FRAME_CLASS_ID
                             | super::surround_frame::MAP_SURROUND_FRAME_CLASS_ID
                             | super::rectangle_element::RECTANGLE_ELEMENT_CLASS_ID
+                            | CIRCLE_ELEMENT_CLASS_ID
+                            | ELLIPSE_ELEMENT_CLASS_ID
                             | super::group_element::GROUP_ELEMENT_CLASS_ID
                     )
                 ))
@@ -642,6 +655,15 @@ fn read_page_frame(
                 super::rectangle_element::read_rectangle_element_10_1(reader, max_bytes, refs)?;
             PageFrame::Rectangle(Box::new(rect))
         }
+        ObjectHeader::Object {
+            class_id: class_id @ (CIRCLE_ELEMENT_CLASS_ID | ELLIPSE_ELEMENT_CLASS_ID),
+            ..
+        } => PageFrame::CircleOrEllipse(
+            class_id,
+            Box::new(read_rect_shape_element_10_1(
+                reader, max_bytes, refs, class_id,
+            )?),
+        ),
         ObjectHeader::Object {
             class_id: FRAME_ELEMENT_CLASS_ID,
             key,

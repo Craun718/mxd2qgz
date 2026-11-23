@@ -2,7 +2,9 @@
 use super::map_frame::{BaseFrameElement10_1, MapFrame10_1, base_frame};
 use super::page_layout_prefix::{MAP_FRAME_CLASS_ID, read_map_frame};
 use super::rectangle_element::{
-    RECTANGLE_ELEMENT_CLASS_ID, RectangleElement10_1, read_rectangle_element_10_1,
+    CIRCLE_ELEMENT_CLASS_ID, ELLIPSE_ELEMENT_CLASS_ID, RECTANGLE_ELEMENT_CLASS_ID,
+    RectShapeElement10_1, RectangleElement10_1, read_rect_shape_element_10_1,
+    read_rectangle_element_10_1,
 };
 use super::surround_frame::{
     MAP_SURROUND_FRAME_CLASS_ID, MapSurroundFrame10_1, read_surround_frame_10_1,
@@ -26,6 +28,7 @@ pub enum GroupChild10_1 {
     Indirect(ObjectEntry10_1),
     Group(Box<GroupElement10_1>),
     Rectangle(Box<RectangleElement10_1>),
+    CircleOrEllipse([u8; 16], Box<RectShapeElement10_1>),
     MapFrame(Box<MapFrame10_1>),
     SurroundFrame(Box<MapSurroundFrame10_1>),
     Element(u32, Box<ElementBody10_1>),
@@ -123,6 +126,13 @@ fn read_group(
             } if !refs.contains(key) => {
                 GroupChild10_1::Rectangle(Box::new(read_rectangle_element_10_1(r, limit, refs)?))
             }
+            ObjectHeader::Object {
+                class_id: class_id @ (CIRCLE_ELEMENT_CLASS_ID | ELLIPSE_ELEMENT_CLASS_ID),
+                key,
+            } if !refs.contains(key) => GroupChild10_1::CircleOrEllipse(
+                class_id,
+                Box::new(read_rect_shape_element_10_1(r, limit, refs, class_id)?),
+            ),
             ObjectHeader::Object {
                 class_id: MAP_FRAME_CLASS_ID,
                 key,

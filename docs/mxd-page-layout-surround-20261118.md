@@ -57,3 +57,14 @@ MapElements.dll 10.1.0.3035 的 `0x7957b8f9` 请求 IMapSurround，
 按 SystemCore `0x7ffd0063` 的规则对登记实例查询接口。布局装饰框据此
 按登记类校验回引。构造用例验证伪装成指北针的装饰框键使当前条目回滚，
 LandscapeClassic 实档覆盖同键指北针回引。ArcMap 人工验证待补。
+
+### 布局中的圆和椭圆元素
+
+PageLayout.dll 10.1.0.3035 的元素循环 `0x7b6e4e30` 根据版本
+选择普通或 ExtraSafe IElement 槽。GroupElement 在 GraphicElements.dll
+`0x75035ef0` 内通过普通 IElement 槽加载子项。圆与椭圆的接口和
+对象体按[共享 Load](arcmap-10.1-dep-tail.md#三维图形容器中的圆和椭圆元素)
+核对，两处布局宿主复用该读取器并保留各自 CLSID。构造 v6 和 v9
+布局验证顶层圆、组内椭圆及两个方向的元素回引，并验证组尾截断时
+仅保留在截断组之前读完的元素。圆与椭圆的真实布局及 ArcMap/QGIS
+人工验收待验证。

@@ -628,3 +628,80 @@ fn surround_frame_rejects_surround_reference_to_another_class() {
         page[boundary..]
     );
 }
+
+#[test]
+fn page_layout_reads_circle_and_grouped_ellipse_in_both_element_loops() {
+    use mxd2qgz::maps::group_element::{GROUP_ELEMENT_CLASS_ID, GroupChild10_1};
+    use mxd2qgz::maps::rectangle_element::{CIRCLE_ELEMENT_CLASS_ID, ELLIPSE_ELEMENT_CLASS_ID};
+
+    let shape = |class_id: [u8; 16], key: u32| {
+        let mut data = class_id.to_vec();
+        data.extend(key.to_le_bytes());
+        data.extend(1_u16.to_le_bytes());
+        data.extend([0; 2 + 16]); // RectShapeElement v0，空几何。
+        data.extend([0; 2]); // ElementProperties v0。
+        data.extend([2, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0]);
+        data.extend([0; 4 + 16 + 16]); // 旧 LONG、自定义属性、填充符号。
+        data
+    };
+    let circle = shape(CIRCLE_ELEMENT_CLASS_ID, 10);
+    let ellipse = shape(ELLIPSE_ELEMENT_CLASS_ID, 12);
+    let mut group = GROUP_ELEMENT_CLASS_ID.to_vec();
+    group.extend(11_u32.to_le_bytes());
+    group.extend(2_u16.to_le_bytes());
+    group.extend(0_u16.to_le_bytes());
+    group.extend([2, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0]);
+    group.extend([0; 4 + 16]);
+    group.extend(2_u32.to_le_bytes());
+    group.extend(&ellipse);
+    group.extend(&circle[..20]);
+    let frame = surround_frame(2);
+    group.extend(&frame[20 + 2 + 48..]);
+
+    for version in [6_u16, 9] {
+        let mut page = layout_root(3);
+        page[20..22].copy_from_slice(&version.to_le_bytes());
+        let push = |page: &mut Vec<u8>, bytes: &[u8]| {
+            if version < 7 {
+                page.extend(bytes);
+            } else {
+                push_element(page, bytes);
+            }
+        };
+        push(&mut page, &circle);
+        let group_offset = page.len();
+        push(&mut page, &group);
+        push(&mut page, &ellipse[..20]);
+
+        let layout = parse_mxd_streams_10_1(&[0; 8], Some(&page))
+            .unwrap()
+            .page_layout
+            .unwrap();
+        assert_eq!(layout.consumed_elements, 3, "{:?}", layout.stop);
+        assert_eq!(layout.end_offset, page.len());
+        assert!(matches!(
+            &layout.circles_and_ellipses[..],
+            [(CIRCLE_ELEMENT_CLASS_ID, body)] if body.key == 10
+        ));
+        assert!(matches!(
+            &layout.groups[0].children[..],
+            [GroupChild10_1::CircleOrEllipse(ELLIPSE_ELEMENT_CLASS_ID, ellipse),
+             GroupChild10_1::Indirect(ObjectEntry10_1::BackReference { key: 10, .. })]
+             if ellipse.key == 12
+        ));
+        assert!(matches!(
+            &layout.indirect_elements[..],
+            [(2, _, ObjectEntry10_1::BackReference { key: 12, .. })]
+        ));
+
+        page.truncate(group_offset);
+        push(&mut page, &group[..group.len() - 1]);
+        let layout = parse_mxd_streams_10_1(&[0; 8], Some(&page))
+            .unwrap()
+            .page_layout
+            .unwrap();
+        assert_eq!(layout.consumed_elements, 1);
+        assert_eq!(layout.end_offset, group_offset);
+        assert!(layout.groups.is_empty());
+    }
+}
