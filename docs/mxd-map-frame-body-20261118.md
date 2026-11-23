@@ -105,3 +105,11 @@ MapElements.dll 10.1.0.3035 的 MapFrame Load `0x79570a20` 在
 查询规则恢复登记类。构造 MapFrame 验证回引头类标识不同时仍能
 读取登记的 Envelope，以及误引 Map 时整体回滚。
 ArcMap 人工验证尚未进行。
+
+### 布局几何回引
+
+LayerLib.dll 10.1.0.3035 的 RectShapeElement Load `0x786d00d0`
+通过普通对象槽请求 IGeometry，配合 SystemCore `0x7ffd0063` 的
+按键查询规则。共享布局几何槽在已有类标识时用登记类返回回引。
+构造地图框以已登记 Envelope 验证回引头不一致时的登记类恢复，
+并检查后继几何字段的对位。ArcMap 人工验证尚未进行。

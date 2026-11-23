@@ -945,3 +945,33 @@ fn map_frame_extent_uses_registered_envelope_class() {
         }
     }
 }
+
+#[test]
+fn rect_shape_geometry_reference_retains_registered_class() {
+    use mxd2qgz::objects::envelope::ENVELOPE_CLASS_ID;
+    use mxd2qgz::storage::object_refs::read_object_entry_10_1;
+
+    let mut refs = RefTable10_1::new();
+    refs.register(42);
+    let mut definition = ENVELOPE_CLASS_ID.to_vec();
+    definition.extend(51_u32.to_le_bytes());
+    read_object_entry_10_1(&mut Reader::new(&definition), &mut refs).unwrap();
+
+    let mut body = frame_body(4);
+    let mut reference = [0x42; 16].to_vec();
+    reference.extend(51_u32.to_le_bytes());
+    body.splice(34..50, reference);
+    let bytes = wrap(&body);
+    let mut reader = Reader::new(&bytes);
+    let frame = read_page_layout_map_frame_10_1(&mut reader, 4096, &mut refs).unwrap();
+    assert_eq!(
+        frame.base.geometry.entry,
+        ObjectEntry10_1::BackReference {
+            class_id: ENVELOPE_CLASS_ID,
+            key: 51,
+        }
+    );
+    assert!(frame.base.geometry.body.is_none());
+    assert_eq!(frame.base.geometry_long, Some(0x1020_3040));
+    assert_eq!(reader.remaining(), 0);
+}

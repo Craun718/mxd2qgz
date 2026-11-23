@@ -267,7 +267,12 @@ pub(super) fn geometry_slot(
     limit: usize,
     refs: &mut RefTable10_1,
 ) -> io::Result<FrameGeometrySlot10_1> {
-    let entry = read_object_entry_10_1(r, refs)?;
+    let mut entry = read_object_entry_10_1(r, refs)?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+        && let Some(registered) = refs.registered_class(*key)
+    {
+        *class_id = registered;
+    }
     let body = match entry {
         ObjectEntry10_1::NewObject { class_id, .. } => Some(Box::new(read_geometry_body_10_1(
             &class_id, r, limit, refs,
