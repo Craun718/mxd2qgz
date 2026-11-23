@@ -1007,3 +1007,18 @@ PE RTTI 和原生虚表对应如下。
 共用 Load `0x7381e690` 只读有符号 short，版本上限为 1。
 两个 Save 均只写 short。构造测试覆盖两类身份、负版本、超限、
 后继书签字段与逐字节截断回滚。真实书签及 ArcMap/QGIS 人工验收待验证。
+
+### GPSAGeoDataDomain
+
+GpRasterFunctions.dll 10.1.0.3035 的 SHA-256 为
+`2922bd518dedfb15444de5a57fffb22f21c38432cea9b323e4ba931f12eed964`。
+RTTI `0x748ba028` 对应持久化虚表 `0x748a9e78` 和 CLSID
+`616F905F-756D-46C1-A5E9-A77076C8C740`。Load `0x74894920`
+检查有符号 short 上限 1。首个有符号计数控制普通 IName 对象循环，
+`0x748949c2` 请求 `0x748a614c` 的 IName IID。随后是两个各带
+有符号计数的 LONG 列表，末尾依次为 short 和 AfCore String
+（`0x74894b1d / 0x74894b2e`）。Save `0x74894b80` 对应同一顺序。
+
+名称槽复用书签名称分派及现有嵌套上限。构造用例覆盖名称新对象与
+回引、负计数、尾部字段及逐字节截断回滚。字段语义、真实书签及
+ArcMap/QGIS 人工验收待验证。

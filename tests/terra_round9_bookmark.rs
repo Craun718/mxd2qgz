@@ -4405,3 +4405,73 @@ fn feature_bookmark_reads_legacy_topo_layers_and_tables_domains() {
         GpTopoDomain10_1::LayersAndTables { version: -1 },
     );
 }
+
+#[test]
+fn feature_bookmark_reads_legacy_topo_sa_geo_data_domain() {
+    use mxd2qgz::maps::map_surround::{
+        FILE_NAME_CLASS_ID, GP_SA_GEO_DATA_DOMAIN_CLASS_ID, GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID,
+        GpTopoDomain10_1,
+    };
+
+    let mut bytes = bookmark_header_10_1(&GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID, 17);
+    bytes.extend(1_i16.to_le_bytes());
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend([0; 16]);
+    bytes.extend(GP_SA_GEO_DATA_DOMAIN_CLASS_ID);
+    bytes.extend(18_u32.to_le_bytes());
+    bytes.extend(1_i16.to_le_bytes());
+    bytes.extend(2_i32.to_le_bytes());
+    bytes.extend(FILE_NAME_CLASS_ID);
+    bytes.extend(19_u32.to_le_bytes());
+    bytes.extend(1_i16.to_le_bytes());
+    bytes.extend([1, 0, 0, 0, b'f', 0, 0, 0]);
+    bytes.extend(FILE_NAME_CLASS_ID);
+    bytes.extend(19_u32.to_le_bytes());
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend((-8_i32).to_le_bytes());
+    bytes.extend((-2_i32).to_le_bytes());
+    bytes.extend(7_u16.to_le_bytes());
+    bytes.extend(bookmark_string_10_1("域"));
+    bytes.extend(bookmark_string_10_1("拓扑"));
+    bytes.extend(9_i32.to_le_bytes());
+    bytes.extend(bookmark_string_10_1("书签"));
+    let end = bytes.len();
+    bytes.push(0xa5);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    let BookmarkNameEntry10_1::GpSaTopoFeaturesTypeName(body) = result.name_object else {
+        panic!("应读取拓扑要素类型名称");
+    };
+    let Some(GpTopoDomain10_1::SaGeoData(domain)) = body.legacy_entries[0]
+        .legacy_domain
+        .as_ref()
+        .unwrap()
+        .body
+        .as_deref()
+    else {
+        panic!("应读取地理数据域");
+    };
+    assert_eq!(domain.version, 1);
+    assert_eq!(domain.raw_name_count, 2);
+    assert!(matches!(&domain.names[..], [
+        BookmarkNameEntry10_1::FileName { name_string, .. },
+        BookmarkNameEntry10_1::BackReference { class_id: FILE_NAME_CLASS_ID, key: 19 },
+    ] if name_string == "f"));
+    assert_eq!(domain.first_list, (1, vec![-8]));
+    assert_eq!(domain.second_list, (-2, vec![]));
+    assert_eq!(domain.trailing_short, 7);
+    assert_eq!(domain.trailing_string, "域");
+    assert_eq!(result.name, "书签");
+    assert_eq!(reader.position(), end);
+    assert!([17, 18, 19].into_iter().all(|key| refs.contains(key)));
+
+    for cut in 0..end {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+}

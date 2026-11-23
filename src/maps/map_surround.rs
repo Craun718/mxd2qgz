@@ -335,6 +335,21 @@ pub struct AoiBookmark10_1 {
 
 const MAX_BOOKMARK_NAME_NESTING: usize = 16;
 
+pub const GP_SA_GEO_DATA_DOMAIN_CLASS_ID: [u8; 16] = [
+    0x5f, 0x90, 0x6f, 0x61, 0x6d, 0x75, 0xc1, 0x46, 0xa5, 0xe9, 0xa7, 0x70, 0x76, 0xc8, 0xc7, 0x40,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpSaGeoDataDomain10_1 {
+    pub version: i16,
+    pub raw_name_count: i32,
+    pub names: Vec<BookmarkNameEntry10_1>,
+    pub first_list: (i32, Vec<i32>),
+    pub second_list: (i32, Vec<i32>),
+    pub trailing_short: u16,
+    pub trailing_string: String,
+}
+
 pub const GP_TABLES_DOMAIN_CLASS_ID: [u8; 16] = [
     0x02, 0x00, 0xda, 0x5b, 0x74, 0x25, 0x2e, 0x49, 0xa3, 0x97, 0x82, 0x55, 0xfd, 0xff, 0x2d, 0x58,
 ];
@@ -411,6 +426,7 @@ pub const GP_FILE_DOMAIN_CLASS_ID: [u8; 16] = [
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpTopoDomain10_1 {
+    SaGeoData(GpSaGeoDataDomain10_1),
     Numeric(GpNumericDomain10_1),
     Field(GpFieldDomain10_1),
     Tables {
@@ -1246,6 +1262,7 @@ fn read_gp_topo_domain_slot_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
+    name_depth: usize,
 ) -> io::Result<RuleSlot10_1<GpTopoDomain10_1>> {
     let entry = read_object_entry_10_1(reader, table)?;
     let body = match entry {
@@ -1268,6 +1285,7 @@ fn read_gp_topo_domain_slot_10_1(
                     | GP_ROUTE_MEASURE_EVENT_DOMAIN_CLASS_ID
                     | GP_ROUTE_DOMAIN_CLASS_ID
                     | GP_LAYERS_AND_TABLES_DOMAIN_CLASS_ID
+                    | GP_SA_GEO_DATA_DOMAIN_CLASS_ID
                     | GP_TABLES_DOMAIN_CLASS_ID
                     | GP_QUERY_TABLE_FIELDS_DOMAIN_CLASS_ID
             ) =>
@@ -1284,6 +1302,41 @@ fn read_gp_topo_domain_slot_10_1(
             middle_shorts: [reader.read_u16_le()?, reader.read_u16_le()?],
             second_double_bits: reader.read_f64_le()?.to_bits(),
         }))),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_SA_GEO_DATA_DOMAIN_CLASS_ID,
+            ..
+        } => {
+            let version = read_gp_name_version(reader, 1, "GPSAGeoDataDomain")?;
+            let raw_name_count = reader.read_u32_le()? as i32;
+            let count = raw_name_count.max(0) as usize;
+            if count > reader.remaining().min(max_bytes) / 16 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "GPSAGeoDataDomain 名称数量超限",
+                ));
+            }
+            let mut names = Vec::new();
+            for _ in 0..count {
+                names.push(read_bookmark_name_slot_10_1(
+                    reader, max_bytes, table, name_depth,
+                )?);
+            }
+            let first_list = read_gp_domain_longs(reader, max_bytes, "GPSAGeoDataDomain")?;
+            let second_list = read_gp_domain_longs(reader, max_bytes, "GPSAGeoDataDomain")?;
+            let trailing_short = reader.read_u16_le()?;
+            let trailing_string = read_string_10_1(reader, max_bytes)?;
+            Some(Box::new(GpTopoDomain10_1::SaGeoData(
+                GpSaGeoDataDomain10_1 {
+                    version,
+                    raw_name_count,
+                    names,
+                    first_list,
+                    second_list,
+                    trailing_short,
+                    trailing_string,
+                },
+            )))
+        }
         ObjectEntry10_1::NewObject {
             class_id: GP_TABLES_DOMAIN_CLASS_ID,
             ..
@@ -1531,7 +1584,7 @@ fn read_gp_sa_topo_features_type_name_body_10_1(
             ));
         }
         let legacy_domain = (version < 2)
-            .then(|| read_gp_topo_domain_slot_10_1(reader, max_bytes, table))
+            .then(|| read_gp_topo_domain_slot_10_1(reader, max_bytes, table, name_depth + 1))
             .transpose()?;
         let string = read_string_10_1(reader, max_bytes)?;
         let value = reader.read_u32_le()? as i32;
