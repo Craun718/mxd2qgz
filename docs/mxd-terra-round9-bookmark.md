@@ -824,7 +824,7 @@ Load `0x748f99c0` 的有符号版本上限为 4，v4 仅消费版本。
 `0x748f9a6d` 另请求 IGPDomain，随后读 AfCore 成员 String
 与 LONG。v3 在 `0x748f9ad3` 追加 IUID。Save `0x748f9b70`
 写 v4。当前 v2–v3 分派支持已确认的数据类型和 UID，
-更早版本的正计数在未支持的域记录前回滚。
+更早版本已支持空域以及下述 GPNumericDomain，遇其余未确认类时回滚。
 
 构造书签验证多值名称中的 v2–v4 子对象、旧记录、后继字段边界
 和逐字节截断回滚。旧域子体、真实书签宿主、原生 Open 及
@@ -833,3 +833,16 @@ ArcMap/QGIS 人工验收仍待验证。
 同版 72 个 Desktop 类型库共列出四个公开 IGPName 类，
 GPMultiValueTypeName 子槽已接入这四类。GPSATopoFeaturesTypeName
 内部旧 IGPDomain 槽作为独立缺口继续跟踪。
+
+### GPNumericDomain
+
+同版 GpObjects.dll 的 RTTI `0x74800ecc` 对应持久化虚表
+`0x747b296c`，类标识为 `ADDDE180-3922-48F7-87C8-342FFAE41161`。
+QI `0x746f2390` 在 `0x746f23c9` 比较 IGPDomain IID，匹配时
+返回完整对象 +0x10。Load `0x746f2800` 接受有符号版本 <=1，
+随后按 short、double、short、short、double 读取，
+两个 double 的导入槽为 `0x747a31b0`。Save `0x746f28c0` 同序写出。
+
+书签旧记录读取空、新建 GPNumericDomain 或登记类匹配的回引，
+保留 double 的磁盘位。构造测试覆盖三种槽值、后继字段边界及
+逐字节截断回滚。其余域类以及 ArcMap/QGIS 人工验收待查。

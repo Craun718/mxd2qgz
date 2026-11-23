@@ -712,6 +712,7 @@
       - [x] 接入 GPMultiValueTypeName 子槽中 72 个 Desktop 类型库公开的四个 IGPName 类。
       - [x] 接入 GPSATopoFeaturesTypeName 的 v4 与 v2–v3 旧记录。[取证](docs/mxd-terra-round9-bookmark.md#gpsatopofeaturestypename)
       - [ ] 补齐 GPSATopoFeaturesTypeName 旧记录中的 IGPDomain 槽。
+      - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPNumericDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpnumericdomain)
       - [ ] 补齐 LocatorWorkspaceName 的 IUnknown 子槽中尚未核对的持久化类。
       - [x] 核对 LocatorWorkspaceName 的 IUnknown 子槽接口与内置 AGS 连接停止边界。[取证](docs/mxd-terra-round9-bookmark.md#iunknown-子槽的接口复核)
         - [x] 接入 FeatureBookmark 的 FgdbTableName 包装体，复用两个 short 后的内联 TableName 读取器并覆盖整书签回滚。[FileGDB 名称接线](docs/mxd-terra-round9-bookmark.md#iname-回引与-filegdb-接口复核)

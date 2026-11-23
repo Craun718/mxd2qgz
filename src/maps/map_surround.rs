@@ -334,6 +334,19 @@ pub struct AoiBookmark10_1 {
 
 const MAX_BOOKMARK_NAME_NESTING: usize = 16;
 
+pub const GP_NUMERIC_DOMAIN_CLASS_ID: [u8; 16] = [
+    0x80, 0xe1, 0xdd, 0xad, 0x22, 0x39, 0xf7, 0x48, 0x87, 0xc8, 0x34, 0x2f, 0xfa, 0xe4, 0x11, 0x61,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpNumericDomain10_1 {
+    pub version: i16,
+    pub first_short: u16,
+    pub first_double_bits: u64,
+    pub middle_shorts: [u16; 2],
+    pub second_double_bits: u64,
+}
+
 pub const GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID: [u8; 16] = [
     0x7f, 0x55, 0x10, 0xaa, 0x72, 0x0b, 0x35, 0x43, 0x90, 0xad, 0x00, 0x65, 0x5b, 0x0d, 0x8b, 0xbe,
 ];
@@ -348,6 +361,7 @@ pub struct GpSaTopoFeaturesTypeName10_1 {
 #[derive(Debug, Clone, PartialEq)]
 pub struct GpSaTopoFeaturesTypeEntry10_1 {
     pub data_type: BookmarkNameEntry10_1,
+    pub legacy_domain: Option<RuleSlot10_1<GpNumericDomain10_1>>,
     pub string: String,
     pub value: i32,
     pub uid: Option<RuleSlot10_1<UidBody10_1>>,
@@ -1046,6 +1060,38 @@ fn read_gp_function_name_body_10_1(
     })
 }
 
+fn read_gp_topo_domain_slot_10_1(
+    reader: &mut Reader<'_>,
+    table: &mut RefTable10_1,
+) -> io::Result<RuleSlot10_1<GpNumericDomain10_1>> {
+    let entry = read_object_entry_10_1(reader, table)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if table.registered_class(key).unwrap_or(class_id) == GP_NUMERIC_DOMAIN_CLASS_ID =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: GP_NUMERIC_DOMAIN_CLASS_ID,
+            ..
+        } => Some(Box::new(GpNumericDomain10_1 {
+            version: read_gp_name_version(reader, 1, "GPNumericDomain")?,
+            first_short: reader.read_u16_le()?,
+            first_double_bits: reader.read_f64_le()?.to_bits(),
+            middle_shorts: [reader.read_u16_le()?, reader.read_u16_le()?],
+            second_double_bits: reader.read_f64_le()?.to_bits(),
+        })),
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "GPSATopoFeaturesTypeName 的 IGPDomain 类未支持",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
+}
+
 fn read_gp_sa_topo_features_type_name_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -1057,12 +1103,6 @@ fn read_gp_sa_topo_features_type_name_body_10_1(
         .then(|| reader.read_u32_le().map(|value| value as i32))
         .transpose()?;
     let count = legacy_count.unwrap_or(0).max(0) as usize;
-    if count > 0 && version < 2 {
-        return Err(io::Error::new(
-            ErrorKind::Unsupported,
-            "GPSATopoFeaturesTypeName 旧版 IGPDomain 槽未支持",
-        ));
-    }
     if count > 0 && name_depth == MAX_BOOKMARK_NAME_NESTING {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
@@ -1070,7 +1110,7 @@ fn read_gp_sa_topo_features_type_name_body_10_1(
         ));
     }
     // 每条至少占一个 16 字节对象头、一个 6 字节空字符串及一个 LONG。
-    let minimum_entry_bytes = if version == 3 { 42 } else { 26 };
+    let minimum_entry_bytes = if version == 2 { 26 } else { 42 };
     if count > reader.remaining().min(max_bytes) / minimum_entry_bytes {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
@@ -1098,6 +1138,9 @@ fn read_gp_sa_topo_features_type_name_body_10_1(
                 "GPSATopoFeaturesTypeName 的 IGPDataTypeName 类未支持",
             ));
         }
+        let legacy_domain = (version < 2)
+            .then(|| read_gp_topo_domain_slot_10_1(reader, table))
+            .transpose()?;
         let string = read_string_10_1(reader, max_bytes)?;
         let value = reader.read_u32_le()? as i32;
         let uid = (version == 3)
@@ -1105,6 +1148,7 @@ fn read_gp_sa_topo_features_type_name_body_10_1(
             .transpose()?;
         legacy_entries.push(GpSaTopoFeaturesTypeEntry10_1 {
             data_type,
+            legacy_domain,
             string,
             value,
             uid,

@@ -3731,3 +3731,74 @@ fn feature_bookmark_reads_gp_sa_topo_features_type_name() {
         }
     }
 }
+
+#[test]
+fn feature_bookmark_reads_legacy_topo_numeric_domain() {
+    use mxd2qgz::maps::map_surround::{
+        GP_NUMERIC_DOMAIN_CLASS_ID, GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID,
+    };
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    let mut bytes = bookmark_header_10_1(&GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID, 17);
+    bytes.extend(1_i16.to_le_bytes());
+    bytes.extend(3_i32.to_le_bytes());
+    for index in 0..3 {
+        bytes.extend([0; 16]);
+        if index == 2 {
+            bytes.extend([0; 16]);
+        } else {
+            bytes.extend(GP_NUMERIC_DOMAIN_CLASS_ID);
+            bytes.extend(18_u32.to_le_bytes());
+            if index == 0 {
+                bytes.extend(1_i16.to_le_bytes());
+                bytes.extend(2_u16.to_le_bytes());
+                bytes.extend((-0.0_f64).to_le_bytes());
+                bytes.extend(3_u16.to_le_bytes());
+                bytes.extend(4_u16.to_le_bytes());
+                bytes.extend(8.5_f64.to_le_bytes());
+            }
+        }
+        bytes.extend(bookmark_string_10_1("拓扑"));
+        bytes.extend((-9_i32).to_le_bytes());
+    }
+    bytes.extend(bookmark_string_10_1("书签"));
+    let end = bytes.len();
+    bytes.push(0xa5);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    let BookmarkNameEntry10_1::GpSaTopoFeaturesTypeName(body) = result.name_object else {
+        panic!("应读取拓扑要素类型名称");
+    };
+    let [first, second, third] = body.legacy_entries.as_slice() else {
+        panic!("应读取三条旧版记录");
+    };
+    let domain = first.legacy_domain.as_ref().unwrap().body.as_ref().unwrap();
+    assert_eq!(domain.version, 1);
+    assert_eq!(domain.first_short, 2);
+    assert_eq!(domain.first_double_bits, (-0.0_f64).to_bits());
+    assert_eq!(domain.middle_shorts, [3, 4]);
+    assert_eq!(domain.second_double_bits, 8.5_f64.to_bits());
+    assert!(matches!(
+        second.legacy_domain.as_ref().unwrap().entry,
+        ObjectEntry10_1::BackReference { key: 18, .. }
+    ));
+    assert_eq!(
+        third.legacy_domain.as_ref().unwrap().entry,
+        ObjectEntry10_1::Null
+    );
+    assert_eq!(third.string, "拓扑");
+    assert_eq!(third.value, -9);
+    assert_eq!(result.name, "书签");
+    assert_eq!(reader.position(), end);
+    assert!(refs.contains(17) && refs.contains(18));
+
+    for cut in 0..end {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+}
