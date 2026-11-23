@@ -1458,3 +1458,29 @@ LONG、double、double。Save `0x748d6b40` 按相同顺序写入。
 
 构造书签覆盖字段、对象回引、超限版本、后继字符串和逐字节截断回滚。
 模式枚举、真实书签和 ArcMap/QGIS 人工验收待验证。
+
+#### 空间分析值的旧 IName 槽
+
+对照 ArcMap 10.1 Desktop 互操作程序集的 CLSID，用同版
+GPSACore.dll 的 PE RTTI、虚表和 objdump 查证三种 IGPValue。
+
+| 类 | CLSID | 持久化虚表 | Load / Save |
+| --- | --- | --- | --- |
+| GPSARadius | `2B3FC07F-103B-41C4-AA42-34A243FD7B87` | `0x749305b0` | `0x748ec1c0 / 0x748ec2e0` |
+| GPEvaluationScale | `C81671B5-B23C-4AAE-BFA8-B8A66FC173B7` | `0x7492cdac` | `0x748d2130 / 0x748d2260` |
+| GPSAMapAlgebraExp | `ACEABE44-324C-455B-B635-C8764FDB0029` | `0x7492f8f8` | `0x748e18b0 / 0x748e19d0` |
+
+三个 Load 均用无符号 short 拒绝大于 2 的版本，随后读 GPValue
+基类。只有版本恰为 1 时分别在 `0x748ec240 / 0x748d21b0 /
+0x748e192e` 请求 `0x7492ce50` 的 IName IID
+`4BA33331-D55F-11D1-8882-0000F877762D` 并释放返回对象。
+该槽复用书签名称的共享键表和嵌套预算。
+
+随后 GPSARadius 在 `0x748ec274 / 0x748ec28c / 0x748ec29e` 读
+两个 LONG 和一个 double。GPEvaluationScale 在 `0x748d21e4 /
+0x748d21f6 / 0x748d2208` 连读三个 LONG。GPSAMapAlgebraExp 在
+`0x748e1965` 调自由函数 AfCore ReadString，Save 在 `0x748e1a29`
+调配对 WriteString，采用 UTF-16 码元数量前缀。三个 Save 均省略
+旧名称对象槽。构造测试涵盖 v1 的空名称槽、v2、省略与空槽的区分、
+共享值回引、后继字段和逐字节截断回滚。其余名称实现、数值属性的
+具体含义与 ArcMap/QGIS 实档验收待验证。

@@ -425,6 +425,18 @@ pub const GP_POINT_CLASS_ID: [u8; 16] = [
     0x82, 0x30, 0xe9, 0xa1, 0xbe, 0xba, 0x44, 0x4d, 0x8c, 0xe3, 0x46, 0x37, 0x74, 0x8e, 0xdd, 0xdd,
 ];
 
+pub const GP_SA_RADIUS_CLASS_ID: [u8; 16] = [
+    0x7f, 0xc0, 0x3f, 0x2b, 0x3b, 0x10, 0xc4, 0x41, 0xaa, 0x42, 0x34, 0xa2, 0x43, 0xfd, 0x7b, 0x87,
+];
+
+pub const GP_EVALUATION_SCALE_CLASS_ID: [u8; 16] = [
+    0xb5, 0x71, 0x16, 0xc8, 0x3c, 0xb2, 0xae, 0x4a, 0xbf, 0xa8, 0xb8, 0xa6, 0x6f, 0xc1, 0x73, 0xb7,
+];
+
+pub const GP_SA_MAP_ALGEBRA_EXP_CLASS_ID: [u8; 16] = [
+    0x44, 0xbe, 0xea, 0xac, 0x4c, 0x32, 0x5b, 0x45, 0xb6, 0x35, 0xc8, 0x76, 0x4f, 0xdb, 0x00, 0x29,
+];
+
 pub const GP_SA_CELL_SIZE_CLASS_ID: [u8; 16] = [
     0x04, 0xf4, 0x82, 0x08, 0x1d, 0x55, 0xac, 0x4d, 0x98, 0x42, 0x3d, 0xc2, 0xf2, 0x7f, 0x5b, 0x53,
 ];
@@ -482,6 +494,19 @@ pub enum GpCodedValue10_1 {
     Point {
         x_bits: u64,
         y_bits: u64,
+    },
+    SaRadius {
+        legacy_name: Option<Box<BookmarkNameEntry10_1>>,
+        raw_longs: [i32; 2],
+        distance_bits: u64,
+    },
+    EvaluationScale {
+        legacy_name: Option<Box<BookmarkNameEntry10_1>>,
+        raw_longs: [i32; 3],
+    },
+    SaMapAlgebraExpression {
+        legacy_name: Option<Box<BookmarkNameEntry10_1>>,
+        expression: String,
     },
     SaCellSize {
         raw_mode: i32,
@@ -1675,6 +1700,9 @@ fn read_gp_coded_value_slot(
                     | GP_POINT_CLASS_ID
                     | GP_CELL_SIZE_XY_CLASS_ID
                     | GP_SA_CELL_SIZE_CLASS_ID
+                    | GP_SA_RADIUS_CLASS_ID
+                    | GP_EVALUATION_SCALE_CLASS_ID
+                    | GP_SA_MAP_ALGEBRA_EXP_CLASS_ID
                     | GP_ENVELOPE_CLASS_ID
                     | GP_EXTENT_CLASS_ID
                     | GP_SPATIAL_REFERENCE_CLASS_ID
@@ -1707,6 +1735,9 @@ fn read_gp_coded_value_slot(
                 | GP_POINT_CLASS_ID
                 | GP_CELL_SIZE_XY_CLASS_ID
                 | GP_SA_CELL_SIZE_CLASS_ID
+                | GP_SA_RADIUS_CLASS_ID
+                | GP_EVALUATION_SCALE_CLASS_ID
+                | GP_SA_MAP_ALGEBRA_EXP_CLASS_ID
                 | GP_ENVELOPE_CLASS_ID
                 | GP_EXTENT_CLASS_ID
                 | GP_SPATIAL_REFERENCE_CLASS_ID
@@ -1735,7 +1766,10 @@ fn read_gp_coded_value_slot(
             let base_version = reader.read_u16_le()?;
             let max_version = match class_id {
                 GP_SPATIAL_REFERENCE_CLASS_ID => 3,
-                GP_ENCRYPTED_STRING_CLASS_ID => 2,
+                GP_ENCRYPTED_STRING_CLASS_ID
+                | GP_SA_RADIUS_CLASS_ID
+                | GP_EVALUATION_SCALE_CLASS_ID
+                | GP_SA_MAP_ALGEBRA_EXP_CLASS_ID => 2,
                 _ => 1,
             };
             if version > max_version || base_version > 1 {
@@ -1799,6 +1833,45 @@ fn read_gp_coded_value_slot(
                     x_bits: reader.read_f64_le()?.to_bits(),
                     y_bits: reader.read_f64_le()?.to_bits(),
                 },
+                GP_SA_RADIUS_CLASS_ID
+                | GP_EVALUATION_SCALE_CLASS_ID
+                | GP_SA_MAP_ALGEBRA_EXP_CLASS_ID => {
+                    let legacy_name = if version == 1 {
+                        if depth >= MAX_BOOKMARK_NAME_NESTING {
+                            return Err(io::Error::new(
+                                ErrorKind::InvalidData,
+                                "空间分析值的旧 IName 槽嵌套层数超限",
+                            ));
+                        }
+                        Some(Box::new(read_bookmark_name_slot_10_1(
+                            reader,
+                            max_bytes,
+                            table,
+                            depth + 1,
+                        )?))
+                    } else {
+                        None
+                    };
+                    match class_id {
+                        GP_SA_RADIUS_CLASS_ID => GpCodedValue10_1::SaRadius {
+                            legacy_name,
+                            raw_longs: [reader.read_u32_le()? as i32, reader.read_u32_le()? as i32],
+                            distance_bits: reader.read_f64_le()?.to_bits(),
+                        },
+                        GP_EVALUATION_SCALE_CLASS_ID => GpCodedValue10_1::EvaluationScale {
+                            legacy_name,
+                            raw_longs: [
+                                reader.read_u32_le()? as i32,
+                                reader.read_u32_le()? as i32,
+                                reader.read_u32_le()? as i32,
+                            ],
+                        },
+                        _ => GpCodedValue10_1::SaMapAlgebraExpression {
+                            legacy_name,
+                            expression: read_bstr_string_10_1(reader, max_bytes)?,
+                        },
+                    }
+                }
                 GP_SA_CELL_SIZE_CLASS_ID => GpCodedValue10_1::SaCellSize {
                     raw_mode: reader.read_u32_le()? as i32,
                     x_bits: reader.read_f64_le()?.to_bits(),

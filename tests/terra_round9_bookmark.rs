@@ -5710,3 +5710,67 @@ fn feature_bookmark_reads_gp_sa_cell_size() {
         },
     );
 }
+
+#[test]
+fn feature_bookmark_reads_spatial_analyst_values_with_legacy_name_slots() {
+    use mxd2qgz::maps::map_surround::{
+        GP_EVALUATION_SCALE_CLASS_ID, GP_SA_MAP_ALGEBRA_EXP_CLASS_ID, GP_SA_RADIUS_CLASS_ID,
+        GpCodedValue10_1,
+    };
+
+    for version in [1_u16, 2] {
+        let legacy_name = (version == 1).then(|| Box::new(BookmarkNameEntry10_1::Null));
+        let prefix = if version == 1 {
+            vec![0; 16]
+        } else {
+            Vec::new()
+        };
+        let raw_longs = [-3_i32, 17];
+        let distance_bits = 10.75_f64.to_bits();
+        let mut payload = prefix.clone();
+        payload.extend(raw_longs.into_iter().flat_map(i32::to_le_bytes));
+        payload.extend(distance_bits.to_le_bytes());
+        assert_legacy_topo_coded_value(
+            GP_SA_RADIUS_CLASS_ID,
+            version,
+            &payload,
+            GpCodedValue10_1::SaRadius {
+                legacy_name: legacy_name.clone(),
+                raw_longs,
+                distance_bits,
+            },
+        );
+
+        let raw_longs = [-7_i32, 12, 4];
+        let mut payload = prefix.clone();
+        payload.extend(raw_longs.into_iter().flat_map(i32::to_le_bytes));
+        assert_legacy_topo_coded_value(
+            GP_EVALUATION_SCALE_CLASS_ID,
+            version,
+            &payload,
+            GpCodedValue10_1::EvaluationScale {
+                legacy_name: legacy_name.clone(),
+                raw_longs,
+            },
+        );
+
+        let expression = "[高程] / 2";
+        let mut payload = prefix;
+        payload.extend((expression.encode_utf16().count() as u32).to_le_bytes());
+        payload.extend(
+            expression
+                .encode_utf16()
+                .chain([0])
+                .flat_map(u16::to_le_bytes),
+        );
+        assert_legacy_topo_coded_value(
+            GP_SA_MAP_ALGEBRA_EXP_CLASS_ID,
+            version,
+            &payload,
+            GpCodedValue10_1::SaMapAlgebraExpression {
+                legacy_name,
+                expression: expression.into(),
+            },
+        );
+    }
+}
