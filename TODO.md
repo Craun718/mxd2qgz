@@ -886,7 +886,8 @@
       - [x] 定性 10.1 NumberFormat 九类体中的两个持久化 String：RateFormat 的 RateString、CustomNumberFormat 的 FormatString，见 [访问器对位](docs/mxd-terra-integrate-numeric.md)。
       - [x] 执行 10.1 原生 Save 和 Load，验证 Percentage/Rate/LatLon/Angle 的内嵌 NumericFormat 核心与各自外壳字段分别保存和恢复。见 [四类写读取证](docs/arcmap-10.1-number-format.md#内嵌核心与旧版对象体的原生取证)。
       - [x] 区分 Geometry 记录的 esriShapeType 与公开 esriGeometryType：按 10.1 类型库对照 shape 各基础类别及 Z/M 变体，并以真实解析分支核对空值、折线、多边形及通用点、多点。见 [第三轮空间记录](docs/mxd-round3-display-spatial-20261117.md#233记录类型和公开几何类型)。
-      - [ ] Geometry 内核移交链（+0xc8 内嵌指针虚表 +0x1cc 槽）运行期装配定位。
+      - [ ] 在 ArcMap 10.1 中捕获 Geometry Load 实际命中的形状模式及编辑路径接收者。
+      - [x] 静态核对 Geometry 形状装配与移交，区分 +0xc0 形状指针和 +0xc8 模式标志，并定位 EditPolyline/EditPolygon 的 +0x1cc 槽。[构造与派发证据](docs/arcmap-10.1-geometry.md#polylinepolygon-的形状对象装配)
       - [x] 闭合 FDO 版本 4 探测依赖：三依赖降为两项并逐指令定位（整流绝对 0 访问成立；IObjectStream QI `{18A45BA7}` 门控主流键读、分支 B 经返回接口读键）；三处旧记录修正（第七轮「从返回接口读」系误记、「分支 B 不复位」撤销——汇编在 ==9 比较前无条件 Seek(P)、探测真条件=两探测槽至少一空）；分支 A ≠4 路径为死分支，「不实现」结论维持，见 [研究记录](docs/arcmap-10.1-save-side.md)。
       - [x] 闭合 FDO「Map 架构版本 9」历史布局解读（静态）：Map::Save 版本表 [22,29,30,31,45,51]→10.1 可写最小 Map 架构版本=22（8.3），版本 9 只可能来自 pre-8.3 文档；与 FDO 表 [5,11] 互证 FDO v4=8.3 之前布局（legacy+收尾 String）；分支 B 两种根前缀（带/不带 int32 计数）闭合；「9 对应哪个具体产品版本」10.1 二进制不可证，保持开放。
       - [x] 定名 `{7453C805-9D64-44A6-BF2F-73E477DCE18F}` 为 esriCarto `IPublishLayer`，见 [类型库复核](docs/mxd-iid-research-20261116.md)。

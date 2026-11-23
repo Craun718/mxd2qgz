@@ -79,12 +79,13 @@ SaveObject 空间参考。与 Load 版本 2 路径逐字段对称。
 
 ## 记录字节块内部布局（ShapePolyline::Parse `0x7197fc50`；证据：确定的）
 
-`this−0x8` 接口 `+0x38` 槽（`0x7192c950`）构造 `ESRI::ShapePolyline` 栈对
-象（对象 `+0x10` 写自身类型标记 **3**；对象类目为 Polygon 时改构造
-`ESRI::ShapePolygon`，标记 **5**），以其虚表 `+0x94` 槽（`0x7197fc50`）解
-析缓冲区，再经对象 `+0xc8` 内嵌指针的虚表 `+0x1cc` 槽移交几何内核（内核虚
-表运行期装配，静态未定位）。解析前标志经 `& 0xfffffeff` 清除 `0x100` 位
-→ **读路径标志恒 0**。布局（小端，`param_4` 为缓冲基址，`int*` 索引）：
+`this−0x8` 接口 `+0x38` 槽（`0x7192c950`）按对象的形状模式选择导入路径。
+默认模式直接调用堆上 `ESRI::ShapePolyline` 或 `ESRI::ShapePolygon` 的
+`+0x94` 槽（`0x7197fc50`）。编辑模式下，Load 传入的标志 `0x100` 使导入入口
+先构造对应的栈上 Shape，解析成功后通过编辑对象的 `+0x1cc` 槽移交结果。
+两条路径都会在调用 Parse 前清除 `0x100` 位，因此 **Parse 收到的标志为 0**。
+具体的对象偏移和构造路径见[形状对象装配](#polylinepolygon-的形状对象装配)。
+布局（小端，`param_4` 为缓冲基址，`int*` 索引）：
 
 | 偏移 | 字段 | 解析行为 |
 | --- | --- | --- |
@@ -205,6 +206,38 @@ LoadObject ISpatialReference 空引用）。
 4. 停止点类型无需新增：Polyline 体读取要么完整成功、要么错误上抛，无样本
    内停止点。
 
+## Polyline/Polygon 的形状对象装配
+
+证据来自 ArcMap 10.1 的 `Geometry.dll`（10.1.0.3035，SHA-256
+`c57d154f207ee249adc69136574cf274771370ff93a15eb0be5682ce828f0d47`）。
+以下地址为 PE 首选加载地址。使用 `objdump -d -Mintel` 检查调用和赋值，
+从 PE 虚表前的 RTTI Complete Object Locator 核对接口偏移及类名。
+
+- Polyline/Polygon 持久化接口位于完整对象 `+0x2c`（虚表 `0x71a22bd4` /
+  `0x71a220d4`）。Load `0x7192db20` 在 `0x7192dc1e` 调用 `this−8`
+  接口的 `+0x38` 槽。导入接口位于完整对象 `+0x24`（虚表
+  `0x71a22b7c` / `0x71a2207c`），其槽指向 `0x7192c950`。因此导入入口的
+  `[this+0x9c]` 是完整对象 `+0xc0` 的形状指针，而 `[this+0xa4]` 是
+  完整对象 `+0xc8` 的单字节模式标志。
+- 默认构造在 `0x71942f2e` / `0x7193e882` 保存形状指针，在
+  `0x71942f68` / `0x7193e8be` 将标志清零。两类形状的虚表
+  `0x71a245e4` / `0x71a244ac` 分别对应 RTTI `ESRI::ShapePolyline` /
+  `ESRI::ShapePolygon`。标志为零时导入跳到 `0x7192cbbb`，直接经形状
+  虚表 `+0x94` 调用 Parse。
+- 编辑转换在 `0x719429a7` / `0x7193e1ec` 换入由 `0x7184b9a0` /
+  `0x718450e0` 构造的编辑形状，在 `0x719429bb` / `0x7193e2c8` 将标志
+  置一。编辑形状的虚表 `0x71a1455c` / `0x71a13eac` 分别对应 RTTI
+  `ESRI::EditPolyline` / `ESRI::EditPolygon`。标志置一且导入标志含
+  `0x100` 时，栈上形状经 `+0x94` 解析成功后在 `0x7192cac3` 移交。
+  两类编辑对象的 `+0x1cc` 槽均为 `0x7183c0c0`，接收者通过
+  `ECX` 传入，形状地址通过栈传入。
+- 编辑模式下若导入标志缺 `0x100`，`0x7192cafe` 分支会释放原形状，
+  在 `0x7192cb8f` 换入默认形状并清除模式标志，随后直接 Parse。该分支
+  使用不同的导入参数，MXD 持久化 Load 的调用点固定传入 `0x100`。
+
+以上为静态对位。尚未在 ArcMap 进程中记录参考工程的形状模式、实际接收者
+或调用栈。
+
 ## 未解决事项（开放项单列）
 
 1. 记录类型值的语义：内部 shape 类别（ShapePolyline 标记 3、ShapePolygon
@@ -217,8 +250,8 @@ LoadObject ISpatialReference 空引用）。
 4. Point/Polygon/Multipoint/Path/Ring/BezierCurve/EllipticArc/Line/
    CircularArc 的记录字节块内部布局未开放；Path 等「Save 空桩」类的持久
    化虚表归属为候选。
-5. 几何内核移交链（对象 `+0xc8` 内嵌指针虚表 `+0x1cc` 槽）运行期装配，静
-   态未定位；内核侧语义（路径起始的合法性校验等）未核。
+5. [形状对象装配](#polylinepolygon-的形状对象装配)已静态定位默认和编辑两条路径。
+   ArcMap 10.1 进程中实际命中的路径、调用栈和内核校验行为待运行取证。
 6. < −1e38 坐标的原生钳位（`DAT_71a66f20`）未在读取器中实现（原样保留）。
 7. 嵌套空间参考仅支持投影坐标系；GeographicCoordinateSystem、
    UnknownCoordinateSystem 等无样本与分派证据。
@@ -265,15 +298,15 @@ ArcMap。样本 0 实例的类全部由合成测试覆盖，不声称样本验�
   `0x7192dcb0`（与 Polyline 同函数，上轮已证，本轮虚表槽直读复核）。
 - **解析器为同一函数**：`ESRI::ShapePolyline::vftable`（基址 `0x71a245e4`）
   与 `ESRI::ShapePolygon::vftable`（基址 `0x71a244ac`）的 `+0x94` 槽直读均
-  为 `0x7197fc50`。导入入口 `0x7192c950` 按几何类目（4 = Polygon）构造
-  `ShapePolygon` 栈对象（标记 5），解析逻辑与 Polyline 分支共用同一代码：
+  为 `0x7197fc50`。导入入口 `0x7192c950` 的编辑模式按几何类目（4 =
+  Polygon）构造 `ShapePolygon` 栈对象（标记 5）。解析逻辑与 Polyline 分支
+  共用同一代码：
   字段布局、空几何（4 字节、回填标记按分支取 3/5）、负计数拒
   `0x80040253`、**点数 1 拒 `0x80040221`（无条件尾部检查，不分区分类别）**
   完全一致。
 - 上轮「Polygon 带环方向等差异属内核解析器形状分支」的候选：本轮反编译
   证实**记录布局层面无环方向处理**——多环即「环数 A + 环起始数组（每环首
-  点序号）+ 点序」，与折线路径同构；环方向/闭合等语义属几何内核移交链（静
-  态未定位），不在记录字节内。
+  点序号）+ 点序」，与折线路径同构；环方向和闭合在内核中的处理仍待核对。
 - 包装字段序（版本 ≤2、声明长度、版本 >1 的 LoadObject ISpatialReference）
   与 Save 的固定版本常量 `02 00` 全部与 Polyline 相同（同一函数）。
 
