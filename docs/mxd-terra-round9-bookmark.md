@@ -1312,3 +1312,21 @@ AfCore 的 double 重载依次读取两个坐标。Save `0x74709df0` 在
 
 构造书签覆盖坐标、回引、后继字段、超限版本及逐字节截断回滚。
 真实书签和 ArcMap/QGIS 人工验收待验证。
+
+#### GPSQLExpression 与 GPINFOExpression
+
+10.1 Desktop 互操作程序集的两类 CLSID 与 GpObjects.dll
+10.1.0.3035 的构造路径一致。原始指令和虚表复核如下。
+
+| 类 | CLSID | RTTI / 持久化虚表 | Save |
+| --- | --- | --- | --- |
+| GPSQLExpression | `F966FB74-EA71-41C7-A848-8D26A71DB91A` | `0x748016ec / 0x747b6940` | `0x7470f3d0` |
+| GPINFOExpression | `32A265A6-78D2-49A5-A65B-572973A7B6A0` | `0x74800724 / 0x747b10f8` | `0x746e7a80` |
+
+QI 分别在 `0x7470ed7e` 和 `0x746e75fe` 引用编码域请求的 IGPValue IID。
+共同 Load `0x7470f350` 检查无符号 short 版本上限 1，读取 GPValue
+基类，然后于 `0x7470f3a0` 读取 AfCore 成员 String。两类 Save
+均按此顺序写入。解析保留表达式文本及其具体类型。
+
+构造书签覆盖两个类的字符串、回引、后继字段、超限版本和逐字节截断回滚。
+真实书签和 ArcMap/QGIS 人工验收待验证。

@@ -5541,3 +5541,24 @@ fn feature_bookmark_reads_gp_point_coded_value() {
         GpCodedValue10_1::Point { x_bits, y_bits },
     );
 }
+
+#[test]
+fn feature_bookmark_reads_gp_expression_coded_values() {
+    use mxd2qgz::maps::map_surround::{
+        GP_INFO_EXPRESSION_CLASS_ID, GP_SQL_EXPRESSION_CLASS_ID, GpCodedValue10_1,
+    };
+
+    let sql = "类别 = '河流'";
+    assert_legacy_topo_coded_value(
+        GP_SQL_EXPRESSION_CLASS_ID,
+        &bookmark_string_10_1(sql),
+        GpCodedValue10_1::SqlExpression(sql.into()),
+    );
+
+    let info = "AREA GT 0";
+    assert_legacy_topo_coded_value(
+        GP_INFO_EXPRESSION_CLASS_ID,
+        &bookmark_string_10_1(info),
+        GpCodedValue10_1::InfoExpression(info.into()),
+    );
+}
