@@ -2020,3 +2020,55 @@ fn feature_bookmark_reads_raster_band_collection_and_its_array() {
         assert!(refs.is_empty());
     }
 }
+
+#[test]
+fn feature_bookmark_reads_netcdf_raster_name_with_versioned_dimensions() {
+    use mxd2qgz::layers::raster_dataset_name::{
+        NETCDF_RASTER_DATASET_NAME_CLASS_ID, RasterDatasetNameEntryBody10_1,
+    };
+    use mxd2qgz::objects::string_array::STR_ARRAY_CLASS_ID;
+
+    for version in [-1_i32, 1, 2] {
+        let mut bytes = bookmark_header_10_1(&NETCDF_RASTER_DATASET_NAME_CLASS_ID, 17);
+        bytes.extend(version.to_le_bytes());
+        for text in ["name", "", "", "", "temperature", "", "", ""] {
+            bytes.extend(bookmark_string_10_1(text));
+        }
+        if version == 1 {
+            bytes.extend(bookmark_string_10_1("旧版字段"));
+            bytes.extend([0; 16]);
+        }
+        bytes.extend(STR_ARRAY_CLASS_ID);
+        bytes.extend(18_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend(bookmark_string_10_1("time"));
+        bytes.extend([0; 32]); // 空维度值数组和工作空间。
+        bytes.extend(bookmark_string_10_1("书签"));
+        let end = bytes.len();
+        bytes.push(0xa5);
+
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+        let BookmarkNameEntry10_1::RasterDatasetName(body) = result.name_object else {
+            panic!("应读取栅格名称");
+        };
+        let RasterDatasetNameEntryBody10_1::NetCdf(name) = *body else {
+            panic!("应读取 NetCDF 栅格名称");
+        };
+        assert_eq!(name.version, version);
+        assert_eq!(name.variable(), "temperature");
+        assert_eq!(name.legacy.is_some(), version == 1);
+        assert_eq!(result.name, "书签");
+        assert_eq!(reader.position(), end);
+        assert!(refs.contains(17) && refs.contains(18));
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+}

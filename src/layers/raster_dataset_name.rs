@@ -1041,7 +1041,7 @@ fn read_netcdf_dataset_name(
     table: &mut RefTable10_1,
 ) -> io::Result<NetCdfRasterDatasetName10_1> {
     let version = reader.read_u32_le()? as i32;
-    if !(0..=2).contains(&version) {
+    if version > 2 {
         return Err(io::Error::new(
             io::ErrorKind::Unsupported,
             format!("未支持的 NetCDFRasterDatasetName 版本 {version}"),
