@@ -80,27 +80,22 @@ pub(crate) fn read_surround_frame_10_1(
     let mut probe = reader.clone();
     let map_frame = match read_header_10_1(&mut probe)? {
         ObjectHeader::Null => ObjectEntry10_1::Null,
-        ObjectHeader::Object {
-            class_id: MAP_FRAME_CLASS_ID,
-            key,
-        } => {
+        ObjectHeader::Object { class_id, key } => {
+            let registered = refs.registered_class(key).unwrap_or(class_id);
+            if registered != MAP_FRAME_CLASS_ID {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!("不支持的 IMapFrame 类，键 {key}"),
+                ));
+            }
             if refs.contains(key) {
                 ObjectEntry10_1::BackReference {
-                    class_id: MAP_FRAME_CLASS_ID,
+                    class_id: registered,
                     key,
                 }
             } else {
-                ObjectEntry10_1::NewObject {
-                    class_id: MAP_FRAME_CLASS_ID,
-                    key,
-                }
+                ObjectEntry10_1::NewObject { class_id, key }
             }
-        }
-        _ => {
-            return Err(io::Error::new(
-                ErrorKind::Unsupported,
-                "不支持的 IMapFrame 类",
-            ));
         }
     };
     let map_frame_body = if matches!(map_frame, ObjectEntry10_1::NewObject { .. }) {

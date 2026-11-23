@@ -525,3 +525,26 @@ fn standalone_layout_reads_new_map_inside_map_frame() {
     assert!(refs.is_empty());
     assert_eq!(reader.position(), 0);
 }
+
+#[test]
+fn surround_frame_rejects_map_frame_reference_to_another_class() {
+    let mut page = layout_root(2);
+    push_element(&mut page, &surround_frame(2));
+    let boundary = page.len();
+
+    let mut second = surround_frame(2);
+    second[16..20].copy_from_slice(&8_u32.to_le_bytes());
+    let mut frame_reference = MAP_FRAME_CLASS_ID.to_vec();
+    frame_reference.extend(7_u32.to_le_bytes());
+    second.splice(38..54, frame_reference);
+    push_element(&mut page, &second);
+
+    let report = parse_mxd_streams_10_1(&[0; 8], Some(&page)).unwrap();
+    let layout = report.page_layout.unwrap();
+    assert_eq!(layout.consumed_elements, 1);
+    assert_eq!(layout.end_offset, boundary);
+    assert_eq!(
+        report.map.unknown_fields.last().unwrap().bytes,
+        page[boundary..]
+    );
+}
