@@ -6271,3 +6271,66 @@ fn feature_bookmark_reads_solar_time_configuration_records() {
         }
     }
 }
+
+#[test]
+fn feature_bookmark_reads_weighted_sum_in_triples() {
+    use mxd2qgz::layers::image_server_rules::RuleSlot10_1;
+    use mxd2qgz::maps::map_surround::{
+        GP_DOUBLE_CLASS_ID, GP_SA_WEIGHTED_SUM_CLASS_ID, GpCodedValue10_1, GpCodedValueBody10_1,
+    };
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    let weight_bits = 0.25_f64.to_bits();
+    let mut payload = 2_i32.to_le_bytes().to_vec();
+    let double_object = bookmark_entry_10_1(&GP_DOUBLE_CLASS_ID, 20);
+    payload.extend([0; 32]);
+    payload.extend(&double_object);
+    payload.extend([1, 0, 1, 0, 0, 0]);
+    payload.extend(weight_bits.to_le_bytes());
+    payload.extend([0; 32]);
+    payload.extend(&double_object);
+    let weight = RuleSlot10_1 {
+        entry: ObjectEntry10_1::NewObject {
+            class_id: GP_DOUBLE_CLASS_ID,
+            key: 20,
+        },
+        body: Some(Box::new(GpCodedValueBody10_1 {
+            version: 1,
+            base_version: 1,
+            base_short: 0,
+            value: GpCodedValue10_1::DoubleBits(weight_bits),
+        })),
+    };
+    let reference = RuleSlot10_1 {
+        entry: ObjectEntry10_1::BackReference {
+            class_id: GP_DOUBLE_CLASS_ID,
+            key: 20,
+        },
+        body: None,
+    };
+    let null = RuleSlot10_1 {
+        entry: ObjectEntry10_1::Null,
+        body: None,
+    };
+    assert_legacy_topo_coded_value(
+        GP_SA_WEIGHTED_SUM_CLASS_ID,
+        1,
+        &payload,
+        GpCodedValue10_1::SaWeightedSum {
+            raw_count: 2,
+            rows: vec![
+                [null.clone(), null.clone(), weight],
+                [null.clone(), null, reference],
+            ],
+        },
+    );
+    assert_legacy_topo_coded_value(
+        GP_SA_WEIGHTED_SUM_CLASS_ID,
+        0,
+        &(-1_i32).to_le_bytes(),
+        GpCodedValue10_1::SaWeightedSum {
+            raw_count: -1,
+            rows: Vec::new(),
+        },
+    );
+}

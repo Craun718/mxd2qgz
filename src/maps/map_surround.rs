@@ -473,6 +473,10 @@ pub const TIME_CONFIGURATION_CLASS_ID: [u8; 16] = [
     0x80, 0x19, 0xa3, 0x0a, 0x44, 0x3d, 0x9a, 0x43, 0xa8, 0xbf, 0xc7, 0xd4, 0xc9, 0xd8, 0xf3, 0x0b,
 ];
 
+pub const GP_SA_WEIGHTED_SUM_CLASS_ID: [u8; 16] = [
+    0x99, 0xb6, 0x1d, 0x1f, 0x5c, 0xd0, 0x50, 0x4c, 0xb9, 0x51, 0xb7, 0x96, 0x9e, 0x03, 0x97, 0xe3,
+];
+
 pub const GP_SA_STRING_REMAP_CLASS_ID: [u8; 16] = [
     0x89, 0x20, 0x53, 0xd0, 0x4d, 0x34, 0x23, 0x4d, 0xa6, 0x7c, 0x5d, 0xfc, 0xd1, 0x4d, 0x66, 0x94,
 ];
@@ -555,6 +559,10 @@ pub enum GpCodedValue10_1 {
     SaExtractValues {
         raw_count: i32,
         rows: Vec<[RuleSlot10_1<GpCodedValueBody10_1>; 2]>,
+    },
+    SaWeightedSum {
+        raw_count: i32,
+        rows: Vec<[RuleSlot10_1<GpCodedValueBody10_1>; 3]>,
     },
     SaFuzzyFunction {
         arguments: [RuleSlot10_1<GpCodedValueBody10_1>; 3],
@@ -1871,6 +1879,7 @@ fn read_gp_coded_value_slot(
                     | GP_CELL_SIZE_XY_CLASS_ID
                     | GP_SA_CELL_SIZE_CLASS_ID
                     | GP_RASTER_CALCULATOR_EXPRESSION_CLASS_ID
+                    | GP_SA_WEIGHTED_SUM_CLASS_ID
                     | GP_SA_EXTRACT_VALUES_CLASS_ID
                     | GP_SA_FUZZY_FUNCTION_CLASS_ID
                     | GP_SA_NUMBER_REMAP_CLASS_ID
@@ -1916,6 +1925,7 @@ fn read_gp_coded_value_slot(
                 | GP_CELL_SIZE_XY_CLASS_ID
                 | GP_SA_CELL_SIZE_CLASS_ID
                 | GP_RASTER_CALCULATOR_EXPRESSION_CLASS_ID
+                | GP_SA_WEIGHTED_SUM_CLASS_ID
                 | GP_SA_EXTRACT_VALUES_CLASS_ID
                 | GP_SA_FUZZY_FUNCTION_CLASS_ID
                 | GP_SA_NUMBER_REMAP_CLASS_ID
@@ -2109,6 +2119,24 @@ fn read_gp_coded_value_slot(
                         ]);
                     }
                     GpCodedValue10_1::SaExtractValues { raw_count, rows }
+                }
+                GP_SA_WEIGHTED_SUM_CLASS_ID => {
+                    if depth >= MAX_BOOKMARK_NAME_NESTING {
+                        return Err(io::Error::new(
+                            ErrorKind::InvalidData,
+                            "GPSAWeightedSum 嵌套层数超限",
+                        ));
+                    }
+                    let (raw_count, count) = read_gp_coded_value_count(reader, max_bytes, 48)?;
+                    let mut rows = Vec::new();
+                    for _ in 0..count {
+                        rows.push([
+                            read_gp_coded_value_slot(reader, max_bytes, table, depth + 1)?,
+                            read_gp_coded_value_slot(reader, max_bytes, table, depth + 1)?,
+                            read_gp_coded_value_slot(reader, max_bytes, table, depth + 1)?,
+                        ]);
+                    }
+                    GpCodedValue10_1::SaWeightedSum { raw_count, rows }
                 }
                 GP_SA_FUZZY_FUNCTION_CLASS_ID => {
                     if depth >= MAX_BOOKMARK_NAME_NESTING {
