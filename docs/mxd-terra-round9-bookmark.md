@@ -1684,3 +1684,29 @@ v4 及以后在列表之后再读一个 short 和两个 LONG，读取点为
 现有两个固定模式类继续按各自类标识确定行布局。合成书签覆盖通用类
 的六个版本、两类行、后继字符串和截断回滚。旧文本的实际代码页及
 通用对象在加权叠加表中的真实工程记录待验证。
+
+### GPSAWeightedOverlayTable
+
+ArcMap 10.1.0.3035 的 `GPSACore.dll` RTTI `0x74946e80` 对应持久化
+虚表 `0x74932a34`，CLSID `{96017C94-F471-42A7-86EF-633B40650F8C}`
+位于 `0x74932c30`。用 objdump 核对 Load `0x74902bf0`、Save
+`0x74903160`。Load 接受版本 0 至 2，先读 GPValue 基类，再读下面两种
+结构。Save 写 v2，键与其他同流对象共用 ObjectStream。
+
+| 版本 | 行计数前 | 每行的三个 IGPValue 槽之后 |
+| --- | --- | --- |
+| 1 | IName、两个 double、一个 LONG | 带符号 LONG 重分类行数，以及每行的窄字符来源值、LONG 目标值、窄字符说明 |
+| 0、2 | IGPEvaluationScale 对象槽 | IGPSARemap 对象槽 |
+
+v1 数值读取点为 `0x74902d0d/0x74902d20/0x74902d33`，旧行数据由
+`0x74902f04` 起的循环读取。普通 IGPValue 三列的读取点为
+`0x74902e80/0x74902ea7/0x74902ece`。新版槽分别请求
+`{B465C093-81F8-4DEA-A133-F2231D1D1DBC}` 和
+`{B60AF0D2-4C41-4B41-BB28-C37728BA1FBB}`。根据同版
+`esriSpatialAnalyst.olb` 条目 78、81 的接口和 coclass 关联，以及
+GPSACore 的类型实现，比例尺度槽接入 GPEvaluationScale，重分类槽复用
+GPSARemap、GPSANumberRemap、GPSAStringRemap。
+
+读取器保留旧行原字节、表行边界和回引，沿用 FeatureBookmark 的事务回退。
+合成测试覆盖三种版本、旧行空计数、新对象、跨行回引和逐字节截断。
+实际 ArcMap 加权叠加表中的三列对象及旧 IName 的打开结果待实档验证。

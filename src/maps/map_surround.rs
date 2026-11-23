@@ -477,6 +477,10 @@ pub const TIME_CONFIGURATION_CLASS_ID: [u8; 16] = [
     0x80, 0x19, 0xa3, 0x0a, 0x44, 0x3d, 0x9a, 0x43, 0xa8, 0xbf, 0xc7, 0xd4, 0xc9, 0xd8, 0xf3, 0x0b,
 ];
 
+pub const GP_SA_WEIGHTED_OVERLAY_TABLE_CLASS_ID: [u8; 16] = [
+    0x94, 0x7c, 0x01, 0x96, 0x71, 0xf4, 0xa7, 0x42, 0x86, 0xef, 0x63, 0x3b, 0x40, 0x65, 0x0f, 0x8c,
+];
+
 pub const GP_SA_WEIGHTED_SUM_CLASS_ID: [u8; 16] = [
     0x99, 0xb6, 0x1d, 0x1f, 0x5c, 0xd0, 0x50, 0x4c, 0xb9, 0x51, 0xb7, 0x96, 0x9e, 0x03, 0x97, 0xe3,
 ];
@@ -564,6 +568,7 @@ pub enum GpCodedValue10_1 {
         raw_count: i32,
         rows: Vec<[RuleSlot10_1<GpCodedValueBody10_1>; 2]>,
     },
+    SaWeightedOverlayTable(Box<GpSaWeightedOverlayTable10_1>),
     SaWeightedSum {
         raw_count: i32,
         rows: Vec<[RuleSlot10_1<GpCodedValueBody10_1>; 3]>,
@@ -689,6 +694,38 @@ pub enum TimeConfigurationParameters10_1 {
     },
     Longs([i32; 3]),
     Long(i32),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpSaWeightedOverlayTable10_1 {
+    pub scale: GpSaOverlayScale10_1,
+    pub raw_count: i32,
+    pub rows: Vec<GpSaOverlayRow10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum GpSaOverlayScale10_1 {
+    Legacy {
+        name: Box<BookmarkNameEntry10_1>,
+        limits_bits: [u64; 2],
+        raw_long: i32,
+    },
+    Object(RuleSlot10_1<GpCodedValueBody10_1>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpSaOverlayRow10_1 {
+    pub values: [RuleSlot10_1<GpCodedValueBody10_1>; 3],
+    pub remap: GpSaOverlayRemap10_1,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum GpSaOverlayRemap10_1 {
+    Legacy {
+        raw_count: i32,
+        rows: Vec<GpSaRemapRow10_1>,
+    },
+    Object(RuleSlot10_1<GpCodedValueBody10_1>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1874,6 +1911,16 @@ fn read_gp_coded_value_slot(
     depth: usize,
 ) -> io::Result<RuleSlot10_1<GpCodedValueBody10_1>> {
     let entry = read_object_entry_10_1(reader, table)?;
+    read_gp_coded_value_entry(reader, max_bytes, table, depth, entry)
+}
+
+fn read_gp_coded_value_entry(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+    entry: ObjectEntry10_1,
+) -> io::Result<RuleSlot10_1<GpCodedValueBody10_1>> {
     let body = match entry {
         ObjectEntry10_1::Null => None,
         ObjectEntry10_1::BackReference { class_id, key }
@@ -1884,6 +1931,7 @@ fn read_gp_coded_value_slot(
                     | GP_CELL_SIZE_XY_CLASS_ID
                     | GP_SA_CELL_SIZE_CLASS_ID
                     | GP_RASTER_CALCULATOR_EXPRESSION_CLASS_ID
+                    | GP_SA_WEIGHTED_OVERLAY_TABLE_CLASS_ID
                     | GP_SA_WEIGHTED_SUM_CLASS_ID
                     | GP_SA_EXTRACT_VALUES_CLASS_ID
                     | GP_SA_FUZZY_FUNCTION_CLASS_ID
@@ -1931,6 +1979,7 @@ fn read_gp_coded_value_slot(
                 | GP_CELL_SIZE_XY_CLASS_ID
                 | GP_SA_CELL_SIZE_CLASS_ID
                 | GP_RASTER_CALCULATOR_EXPRESSION_CLASS_ID
+                | GP_SA_WEIGHTED_OVERLAY_TABLE_CLASS_ID
                 | GP_SA_WEIGHTED_SUM_CLASS_ID
                 | GP_SA_EXTRACT_VALUES_CLASS_ID
                 | GP_SA_FUZZY_FUNCTION_CLASS_ID
@@ -1979,7 +2028,8 @@ fn read_gp_coded_value_slot(
                 | GP_SA_RADIUS_CLASS_ID
                 | GP_EVALUATION_SCALE_CLASS_ID
                 | GP_SA_MAP_ALGEBRA_EXP_CLASS_ID
-                | GP_SA_NEIGHBORHOOD_CLASS_ID => 2,
+                | GP_SA_NEIGHBORHOOD_CLASS_ID
+                | GP_SA_WEIGHTED_OVERLAY_TABLE_CLASS_ID => 2,
                 _ => 1,
             };
             if version > max_version || base_version > 1 {
@@ -2122,6 +2172,11 @@ fn read_gp_coded_value_slot(
                         ]);
                     }
                     GpCodedValue10_1::SaExtractValues { raw_count, rows }
+                }
+                GP_SA_WEIGHTED_OVERLAY_TABLE_CLASS_ID => {
+                    GpCodedValue10_1::SaWeightedOverlayTable(Box::new(read_gp_sa_weighted_overlay(
+                        reader, max_bytes, table, depth, version,
+                    )?))
                 }
                 GP_SA_WEIGHTED_SUM_CLASS_ID => {
                     if depth >= MAX_BOOKMARK_NAME_NESTING {
@@ -2416,6 +2471,103 @@ fn read_gp_sa_neighborhood(
     })
 }
 
+fn read_gp_sa_weighted_overlay(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+    version: u16,
+) -> io::Result<GpSaWeightedOverlayTable10_1> {
+    if depth >= MAX_BOOKMARK_NAME_NESTING {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "GPSAWeightedOverlayTable 嵌套层数超限",
+        ));
+    }
+    let depth = depth + 1;
+    let legacy = version == 1;
+    let scale = if legacy {
+        GpSaOverlayScale10_1::Legacy {
+            name: Box::new(read_bookmark_name_slot_10_1(
+                reader, max_bytes, table, depth,
+            )?),
+            limits_bits: [
+                reader.read_f64_le()?.to_bits(),
+                reader.read_f64_le()?.to_bits(),
+            ],
+            raw_long: reader.read_u32_le()? as i32,
+        }
+    } else {
+        GpSaOverlayScale10_1::Object(read_gp_overlay_value_slot(
+            reader,
+            max_bytes,
+            table,
+            depth,
+            &[GP_EVALUATION_SCALE_CLASS_ID],
+        )?)
+    };
+    let (raw_count, count) =
+        read_gp_coded_value_count(reader, max_bytes, if legacy { 52 } else { 64 })?;
+    let mut rows = Vec::new();
+    for _ in 0..count {
+        let values = [
+            read_gp_coded_value_slot(reader, max_bytes, table, depth)?,
+            read_gp_coded_value_slot(reader, max_bytes, table, depth)?,
+            read_gp_coded_value_slot(reader, max_bytes, table, depth)?,
+        ];
+        let remap = if legacy {
+            let (raw_count, count) = read_gp_coded_value_count(reader, max_bytes, 12)?;
+            let mut rows = Vec::new();
+            for _ in 0..count {
+                rows.push(read_gp_string_remap_row(reader, max_bytes)?);
+            }
+            GpSaOverlayRemap10_1::Legacy { raw_count, rows }
+        } else {
+            GpSaOverlayRemap10_1::Object(read_gp_overlay_value_slot(
+                reader,
+                max_bytes,
+                table,
+                depth,
+                &[
+                    GP_SA_REMAP_CLASS_ID,
+                    GP_SA_NUMBER_REMAP_CLASS_ID,
+                    GP_SA_STRING_REMAP_CLASS_ID,
+                ],
+            )?)
+        };
+        rows.push(GpSaOverlayRow10_1 { values, remap });
+    }
+    Ok(GpSaWeightedOverlayTable10_1 {
+        scale,
+        raw_count,
+        rows,
+    })
+}
+
+fn read_gp_overlay_value_slot(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+    classes: &[[u8; 16]],
+) -> io::Result<RuleSlot10_1<GpCodedValueBody10_1>> {
+    let entry = read_object_entry_10_1(reader, table)?;
+    let class = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            Some(table.registered_class(key).unwrap_or(class_id))
+        }
+        ObjectEntry10_1::NewObject { class_id, .. } => Some(class_id),
+    };
+    if class.is_some_and(|class| !classes.contains(&class)) {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            "加权叠加表的比例尺或重分类槽包含不支持的类",
+        ));
+    }
+    read_gp_coded_value_entry(reader, max_bytes, table, depth, entry)
+}
+
 fn read_gp_sa_semi_variogram(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -2449,6 +2601,17 @@ fn read_gp_narrow_text(reader: &mut Reader<'_>, max_bytes: usize) -> io::Result<
         ));
     }
     Ok(reader.read_bytes(length)?.to_vec())
+}
+
+fn read_gp_string_remap_row(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+) -> io::Result<GpSaRemapRow10_1> {
+    Ok(GpSaRemapRow10_1::String {
+        source_bytes: read_gp_narrow_text(reader, max_bytes)?,
+        raw_long: reader.read_u32_le()? as i32,
+        text_bytes: read_gp_narrow_text(reader, max_bytes)?,
+    })
 }
 
 fn read_gp_sa_remap(
@@ -2490,11 +2653,7 @@ fn read_gp_sa_remap(
                 text_bytes: read_gp_narrow_text(reader, max_bytes)?,
             }
         } else {
-            GpSaRemapRow10_1::String {
-                source_bytes: read_gp_narrow_text(reader, max_bytes)?,
-                raw_long: reader.read_u32_le()? as i32,
-                text_bytes: read_gp_narrow_text(reader, max_bytes)?,
-            }
+            read_gp_string_remap_row(reader, max_bytes)?
         };
         rows.push(row);
     }

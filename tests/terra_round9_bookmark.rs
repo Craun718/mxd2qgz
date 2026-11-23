@@ -6400,3 +6400,157 @@ fn feature_bookmark_reads_generic_remap_modes_and_versioned_tail() {
         }
     }
 }
+
+#[test]
+fn feature_bookmark_reads_weighted_overlay_legacy_rows() {
+    use mxd2qgz::layers::image_server_rules::RuleSlot10_1;
+    use mxd2qgz::maps::map_surround::{
+        GP_SA_WEIGHTED_OVERLAY_TABLE_CLASS_ID, GpCodedValue10_1, GpSaOverlayRemap10_1,
+        GpSaOverlayRow10_1, GpSaOverlayScale10_1, GpSaRemapRow10_1, GpSaWeightedOverlayTable10_1,
+    };
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    let limits_bits = [1.5_f64.to_bits(), 9.0_f64.to_bits()];
+    let mut payload = vec![0; 16];
+    payload.extend(limits_bits.iter().flat_map(|bits| bits.to_le_bytes()));
+    payload.extend(3_i32.to_le_bytes());
+    payload.extend(2_i32.to_le_bytes());
+    payload.extend([0; 48]);
+    payload.extend(1_i32.to_le_bytes());
+    payload.extend(2_u32.to_le_bytes());
+    payload.extend([0xe9, b'A']);
+    payload.extend((-5_i32).to_le_bytes());
+    payload.extend(7_u32.to_le_bytes());
+    payload.extend(b"ValueTo");
+    payload.extend([0; 48]);
+    payload.extend((-1_i32).to_le_bytes());
+    let null = || RuleSlot10_1 {
+        entry: ObjectEntry10_1::Null,
+        body: None,
+    };
+    assert_legacy_topo_coded_value(
+        GP_SA_WEIGHTED_OVERLAY_TABLE_CLASS_ID,
+        1,
+        &payload,
+        GpCodedValue10_1::SaWeightedOverlayTable(Box::new(GpSaWeightedOverlayTable10_1 {
+            scale: GpSaOverlayScale10_1::Legacy {
+                name: Box::new(BookmarkNameEntry10_1::Null),
+                limits_bits,
+                raw_long: 3,
+            },
+            raw_count: 2,
+            rows: vec![
+                GpSaOverlayRow10_1 {
+                    values: std::array::from_fn(|_| null()),
+                    remap: GpSaOverlayRemap10_1::Legacy {
+                        raw_count: 1,
+                        rows: vec![GpSaRemapRow10_1::String {
+                            source_bytes: vec![0xe9, b'A'],
+                            raw_long: -5,
+                            text_bytes: b"ValueTo".to_vec(),
+                        }],
+                    },
+                },
+                GpSaOverlayRow10_1 {
+                    values: std::array::from_fn(|_| null()),
+                    remap: GpSaOverlayRemap10_1::Legacy {
+                        raw_count: -1,
+                        rows: Vec::new(),
+                    },
+                },
+            ],
+        })),
+    );
+}
+
+#[test]
+fn feature_bookmark_reads_weighted_overlay_object_rows() {
+    use mxd2qgz::layers::image_server_rules::RuleSlot10_1;
+    use mxd2qgz::maps::map_surround::{
+        GP_EVALUATION_SCALE_CLASS_ID, GP_SA_REMAP_CLASS_ID, GP_SA_WEIGHTED_OVERLAY_TABLE_CLASS_ID,
+        GpCodedValue10_1, GpCodedValueBody10_1, GpSaOverlayRemap10_1, GpSaOverlayRow10_1,
+        GpSaOverlayScale10_1, GpSaRemap10_1, GpSaWeightedOverlayTable10_1,
+    };
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    let scale_values = [1_i32, 9, 2];
+    let mut payload = bookmark_entry_10_1(&GP_EVALUATION_SCALE_CLASS_ID, 20);
+    payload.extend([2, 0, 1, 0, 0, 0]);
+    payload.extend(scale_values.iter().flat_map(|value| value.to_le_bytes()));
+    payload.extend(2_i32.to_le_bytes());
+    let remap_header = bookmark_entry_10_1(&GP_SA_REMAP_CLASS_ID, 21);
+    payload.extend([0; 48]);
+    payload.extend(&remap_header);
+    payload.extend([2, 0, 1, 0, 0, 0]);
+    payload.extend(1_i32.to_le_bytes());
+    payload.extend((-1_i32).to_le_bytes());
+    payload.extend([0; 48]);
+    payload.extend(&remap_header);
+
+    let scale = RuleSlot10_1 {
+        entry: ObjectEntry10_1::NewObject {
+            class_id: GP_EVALUATION_SCALE_CLASS_ID,
+            key: 20,
+        },
+        body: Some(Box::new(GpCodedValueBody10_1 {
+            version: 2,
+            base_version: 1,
+            base_short: 0,
+            value: GpCodedValue10_1::EvaluationScale {
+                legacy_name: None,
+                raw_longs: scale_values,
+            },
+        })),
+    };
+    let remap = RuleSlot10_1 {
+        entry: ObjectEntry10_1::NewObject {
+            class_id: GP_SA_REMAP_CLASS_ID,
+            key: 21,
+        },
+        body: Some(Box::new(GpCodedValueBody10_1 {
+            version: 2,
+            base_version: 1,
+            base_short: 0,
+            value: GpCodedValue10_1::SaRemap(Box::new(GpSaRemap10_1 {
+                legacy_name: None,
+                raw_long: 1,
+                raw_count: -1,
+                version_three_fields: None,
+                version_four_fields: None,
+                rows: Vec::new(),
+            })),
+        })),
+    };
+    let reference = RuleSlot10_1 {
+        entry: ObjectEntry10_1::BackReference {
+            class_id: GP_SA_REMAP_CLASS_ID,
+            key: 21,
+        },
+        body: None,
+    };
+    let null = || RuleSlot10_1 {
+        entry: ObjectEntry10_1::Null,
+        body: None,
+    };
+    for version in [0, 2] {
+        assert_legacy_topo_coded_value(
+            GP_SA_WEIGHTED_OVERLAY_TABLE_CLASS_ID,
+            version,
+            &payload,
+            GpCodedValue10_1::SaWeightedOverlayTable(Box::new(GpSaWeightedOverlayTable10_1 {
+                scale: GpSaOverlayScale10_1::Object(scale.clone()),
+                raw_count: 2,
+                rows: vec![
+                    GpSaOverlayRow10_1 {
+                        values: std::array::from_fn(|_| null()),
+                        remap: GpSaOverlayRemap10_1::Object(remap.clone()),
+                    },
+                    GpSaOverlayRow10_1 {
+                        values: std::array::from_fn(|_| null()),
+                        remap: GpSaOverlayRemap10_1::Object(reference.clone()),
+                    },
+                ],
+            })),
+        );
+    }
+}
