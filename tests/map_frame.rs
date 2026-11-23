@@ -975,3 +975,21 @@ fn rect_shape_geometry_reference_retains_registered_class() {
     assert_eq!(frame.base.geometry_long, Some(0x1020_3040));
     assert_eq!(reader.remaining(), 0);
 }
+
+#[test]
+fn map_frame_nonpositive_collection_counts_preserve_the_base_frame() {
+    let mut body = frame_body(4);
+    body[22..26].copy_from_slice(&i32::MIN.to_le_bytes());
+    body[26..30].copy_from_slice(&(-1_i32).to_le_bytes());
+    let bytes = wrap(&body);
+    let mut refs = RefTable10_1::new();
+    refs.register(42);
+    let mut reader = Reader::new(&bytes);
+    let frame = read_page_layout_map_frame_10_1(&mut reader, 4096, &mut refs).unwrap();
+    assert_eq!(frame.grid_count_raw, i32::MIN);
+    assert_eq!(frame.locator_count_raw, -1);
+    assert!(frame.grids.is_empty());
+    assert!(frame.locator_rectangles.is_empty());
+    assert_eq!(frame.base.draft_mode_bits, 0xffff);
+    assert_eq!(reader.remaining(), 0);
+}

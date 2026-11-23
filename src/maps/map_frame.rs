@@ -34,6 +34,8 @@ pub struct MapFrame10_1 {
     >,
     pub extent_settings: Option<MapFrameExtent10_1>,
     pub legacy_frame: Option<MapFrameLegacy10_1>,
+    pub grid_count_raw: i32,
+    pub locator_count_raw: i32,
     pub grids: Vec<super::map_grid::GridSlot10_1>,
     pub locator_rectangles: Vec<LocatorRectangleSlot10_1>,
     pub base: BaseFrameElement10_1,
@@ -118,11 +120,11 @@ pub(super) fn read_map_frame_tail(
     } else {
         None
     };
-    let grid_count = collection_count(r, limit, "IMapGrid")?;
+    let (grid_count_raw, grid_count) = collection_count(r, limit, "IMapGrid")?;
     let grids = (0..grid_count)
         .map(|_| super::map_grid::read_grid_slot_10_1(r, limit, refs))
         .collect::<io::Result<_>>()?;
-    let locator_count = collection_count(r, limit, "ILocatorRectangle")?;
+    let (locator_count_raw, locator_count) = collection_count(r, limit, "ILocatorRectangle")?;
     let locator_rectangles = (0..locator_count)
         .map(|_| read_locator_rectangle_slot(r, limit, refs, region_offset, is_root_map))
         .collect::<io::Result<_>>()?;
@@ -151,6 +153,8 @@ pub(super) fn read_map_frame_tail(
         embedded_map: None,
         extent_settings,
         legacy_frame,
+        grid_count_raw,
+        locator_count_raw,
         grids,
         locator_rectangles,
         base,
@@ -406,10 +410,9 @@ fn read_nested_map_frame(
     Ok((map_frame, map_frame_body))
 }
 
-fn collection_count(r: &mut Reader<'_>, limit: usize, name: &str) -> io::Result<usize> {
-    let count = r.read_u32_le()? as i32;
-    let count = usize::try_from(count)
-        .map_err(|_| io::Error::new(ErrorKind::InvalidData, format!("{name} 计数为负")))?;
+fn collection_count(r: &mut Reader<'_>, limit: usize, name: &str) -> io::Result<(i32, usize)> {
+    let raw = r.read_u32_le()? as i32;
+    let count = raw.max(0) as usize;
     let min = count
         .checked_mul(16)
         .filter(|&n| n <= limit)
@@ -420,7 +423,7 @@ fn collection_count(r: &mut Reader<'_>, limit: usize, name: &str) -> io::Result<
             format!("{name} 集合超出地图框范围"),
         ));
     }
-    Ok(count)
+    Ok((raw, count))
 }
 
 fn read_feature_layer_slot(
