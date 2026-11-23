@@ -82,3 +82,11 @@ FCN 与九类格式已有对应接线；无证据表明需要新增共享模块�
 | esriHyperlinkTypeScript | 3 |
 
 一次性导出器为 `temp/dataset-format-media-20261117/memberdump.c`。该类型库枚举值足以支持原行 225；不证明 Hyperlink Load 的 int32 对应哪个接口属性，原行 226–227 仍开放。
+
+### TopologyName 槽的引用类
+
+FeatureClassName 的第二选择子非零时，GdbCore.dll 10.1.0.3035 的 Load `0x709b5080` 请求
+ITopologyName。SystemCore 同版在 `0x7ffd0063` 按键查询登记实例的接口。
+构造测试确认：头部类标识与登记类不一致时，以登记类判定；误引
+WorkspaceName 时保留该槽及其后字节，已有对象键不变。
+仍缺第二选择子非零的真实工程和 ArcMap 10.1 打开验证。

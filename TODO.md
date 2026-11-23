@@ -833,6 +833,7 @@
       - [x] 确认 FCN 的 FeatureDatasetName 与 TopologyName 选择子在样本 11 处全为 0。
       - [x] 验证 FCN 的 FeatureDatasetName 非零选择子：介质模板 Africa 的 FileGDB 对象体经 Rust 局部读取，消费 FeatureDatasetName v1 和 WorkspaceName，并校验三个新对象键和体边界，见 [样本记录](docs/mxd-dataset-format-evidence-20261117.md)。
       - [ ] 取得 FCN 的 TopologyName 非零选择子实档字节；解析器已接入该选择子和已知类体。
+      - [x] 按登记实例校验 FCN 第二选择子的 ITopologyName 回引。[取证](docs/mxd-dataset-format-evidence-20261117.md#topologyname-槽的引用类)
       - [ ] 取得 FDO 旧加载器体的真实对象样本。
       - [x] FDOGraphicsSublayer 体：参考样本一个内联实例经完整 FDO 链读取，见 [研究记录](docs/mxd-layer-luna.md)。
       - [x] 在 10.1 安装介质 LandscapeClassic 模板中，从 Map 根读取完整的非空 MapSurround 循环（3 条），随后读到地图范围，见 [实样验证](docs/mxd-round2-review-20261117.md)。

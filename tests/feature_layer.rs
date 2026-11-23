@@ -1069,3 +1069,50 @@ fn workspace_property_set_truncated_body_fails_without_advancing() {
     assert_eq!(error.kind(), ErrorKind::InvalidData, "{error}");
     assert_eq!(reader.position(), 0, "失败不得推进游标");
 }
+
+#[test]
+fn topology_selector_checks_the_registered_reference_class() {
+    use mxd2qgz::storage::object_refs::read_object_entry_10_1;
+
+    let mut bytes = feature_class_name_body();
+    bytes.truncate(bytes.len() - 2);
+    bytes.extend(5_u16.to_le_bytes());
+    let slot_offset = bytes.len();
+
+    for (registered, header) in [
+        (TOPOLOGY_NAME_CLASS_ID, WORKSPACE_NAME_CLASS_ID),
+        (WORKSPACE_NAME_CLASS_ID, TOPOLOGY_NAME_CLASS_ID),
+    ] {
+        let mut refs = RefTable10_1::new();
+        let definition = entry_bytes(&registered, 99);
+        read_object_entry_10_1(&mut Reader::new(&definition), &mut refs).unwrap();
+        bytes.truncate(slot_offset);
+        bytes.extend(entry_bytes(&header, 99));
+        bytes.push(0x42);
+        let mut reader = Reader::new(&bytes);
+        let name = read_feature_class_name_body_10_1(&mut reader, 1024, &mut refs, 58).unwrap();
+        if registered == TOPOLOGY_NAME_CLASS_ID {
+            assert_eq!(name.stop, None);
+            assert_eq!(
+                name.topology_slot,
+                Some(TopologyNameEntry10_1::BackReference {
+                    class_id: TOPOLOGY_NAME_CLASS_ID,
+                    key: 99,
+                })
+            );
+            assert_eq!(reader.read_bytes(1).unwrap(), &[0x42]);
+        } else {
+            assert_eq!(
+                name.stop,
+                Some(FeatureClassNameStop10_1::TopologyNameBackReference {
+                    class_id: WORKSPACE_NAME_CLASS_ID,
+                    key: 99,
+                })
+            );
+            assert_eq!(reader.position(), slot_offset);
+        }
+        assert_eq!(refs.len(), 2);
+        assert!(refs.contains(99));
+        assert!(refs.contains(34));
+    }
+}

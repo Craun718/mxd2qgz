@@ -258,6 +258,8 @@ pub enum FeatureClassNameStop10_1 {
     /// 版本 >1 且第二选择子非 0：ITopologyName 槽（请求 IID
     /// `{505B6FDD-…}`）的新对象类标识不是 TopologyName。
     TopologyNameNewObject { class_id: [u8; 16], key: u32 },
+    /// 已登记对象的类无法用于 ITopologyName 槽。
+    TopologyNameBackReference { class_id: [u8; 16], key: u32 },
     /// 版本 >1 且第二选择子非 0：ITopologyName 槽的 TopologyName 体自身的
     /// 停止点（原因透传，见 [`TopologyNameStop10_1`]）。
     TopologyNameBodyStopped(TopologyNameStop10_1),
@@ -670,7 +672,18 @@ pub(crate) fn read_feature_class_name_payload(
             let slot = match entry {
                 ObjectEntry10_1::Null => TopologyNameEntry10_1::Null,
                 ObjectEntry10_1::BackReference { class_id, key } => {
-                    TopologyNameEntry10_1::BackReference { class_id, key }
+                    let registered = staged_table.registered_class(key);
+                    let class_id = registered.unwrap_or(class_id);
+                    if registered.is_some() && class_id != TOPOLOGY_NAME_CLASS_ID {
+                        stop = Some(FeatureClassNameStop10_1::TopologyNameBackReference {
+                            class_id,
+                            key,
+                        });
+                        trial = reader.reposition_to(topo_offset);
+                        TopologyNameEntry10_1::Unsupported { class_id, key }
+                    } else {
+                        TopologyNameEntry10_1::BackReference { class_id, key }
+                    }
                 }
                 ObjectEntry10_1::NewObject { class_id, key }
                     if class_id == TOPOLOGY_NAME_CLASS_ID =>
