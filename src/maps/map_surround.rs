@@ -127,6 +127,9 @@ use crate::layers::legend_item_family::{
     read_nested_legend_item_body_10_1, read_vertical_legend_item_body_10_1,
 };
 use crate::layers::raster_dataset_name::RASTER_CATALOG_NAME_CLASS_ID;
+use crate::layers::raster_dataset_name::{
+    RASTER_BAND_NAME_CLASS_ID, RasterDatasetNameEntryBody10_1, read_supported_raster_name_body_10_1,
+};
 use crate::maps::map_surround_family::{
     FamilyStop10_1, LEGEND_FORMAT_CLASS_ID as FAMILY_LEGEND_FORMAT_CLASS_ID, LegendFormatBody10_1,
     read_legend_format_body_10_1,
@@ -146,14 +149,16 @@ use crate::objects::dataset_name_more::{
     NETCDF_TABLE_NAME_CLASS_ID, NetCdfFeatureClassNameBody10_1, NetCdfTableNameBody10_1,
     QUERY_TABLE_NAME_CLASS_ID, QueryTableNameBody10_1, REFERENCED_TABLE_NAME_CLASS_ID,
     REL_QUERY_TABLE_NAME_CLASS_ID, RELATIONSHIP_CLASS_NAME_CLASS_ID, ReferencedTableNameBody10_1,
-    RelQueryTableNameBody10_1, RelationshipClassNameBody10_1, TABLE_QUERY_NAME_CLASS_ID,
-    TableQueryNameBody10_1, XY_EVENT_SOURCE_NAME_CLASS_ID, XyEventSourceNameBody10_1,
-    read_cad_drawing_name_body_10_1, read_db_table_name_body_10_1,
-    read_feature_query_name_body_10_1, read_geometric_network_name_body_10_1,
-    read_memory_relationship_class_name_body_10_1, read_netcdf_feature_class_name_body_10_1,
-    read_netcdf_table_name_body_10_1, read_query_table_name_body_10_1,
-    read_referenced_table_name_body_10_1, read_rel_query_table_name_body_10_1,
-    read_relationship_class_name_body_10_1, read_table_query_name_body_10_1,
+    RelQueryTableNameBody10_1, RelationshipClassNameBody10_1,
+    SCHEMATIC_DIAGRAM_CLASS_NAME_CLASS_ID, SCHEMATIC_ELEMENT_CLASS_NAME_CLASS_ID,
+    SchematicClassNameBody10_1, TABLE_QUERY_NAME_CLASS_ID, TableQueryNameBody10_1,
+    XY_EVENT_SOURCE_NAME_CLASS_ID, XyEventSourceNameBody10_1, read_cad_drawing_name_body_10_1,
+    read_db_table_name_body_10_1, read_feature_query_name_body_10_1,
+    read_geometric_network_name_body_10_1, read_memory_relationship_class_name_body_10_1,
+    read_netcdf_feature_class_name_body_10_1, read_netcdf_table_name_body_10_1,
+    read_query_table_name_body_10_1, read_referenced_table_name_body_10_1,
+    read_rel_query_table_name_body_10_1, read_relationship_class_name_body_10_1,
+    read_schematic_class_name_body_10_1, read_table_query_name_body_10_1,
     read_xy_event_source_name_body_10_1,
 };
 use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
@@ -297,6 +302,10 @@ pub enum BookmarkNameEntry10_1 {
     TableName(Box<crate::maps::standalone_table::TableNameBody10_1>),
     /// FileGDB 表名称包装；内联 TableName 体沿用同一读取器。
     FgdbTableName(Box<crate::maps::standalone_table::TableNameBody10_1>),
+    /// 栅格波段名称。
+    RasterBandName(Box<RasterDatasetNameEntryBody10_1>),
+    /// Schematic 图表类或元素类名称；内层数据源名称共享对象表。
+    SchematicClassName(Box<SchematicClassNameBody10_1>),
     /// ObjectClassName 工厂实际创建的 FdbTableName；持久化体与 TableName
     /// 相同，但保留流内身份。
     ObjectClassName(Box<crate::maps::standalone_table::TableNameBody10_1>),
@@ -1023,6 +1032,42 @@ pub fn read_feature_bookmark_10_1(
             max_bytes,
             &mut trial_table,
         )?)),
+        ObjectEntry10_1::NewObject {
+            class_id: class_id @ RASTER_BAND_NAME_CLASS_ID,
+            key,
+        } => {
+            let body = read_supported_raster_name_body_10_1(
+                &mut trial,
+                max_bytes,
+                &mut trial_table,
+                class_id,
+                key,
+            )?;
+            BookmarkNameEntry10_1::RasterBandName(Box::new(body))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id:
+                class_id @ (SCHEMATIC_DIAGRAM_CLASS_NAME_CLASS_ID
+                | SCHEMATIC_ELEMENT_CLASS_NAME_CLASS_ID),
+            key,
+        } => {
+            let (body, stopped) =
+                read_schematic_class_name_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?;
+            if let Some(stop) = stopped {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!(
+                        "FeatureBookmark 名称对象槽 offset 0x{name_offset:x}: {} 未读完（{stop:?}）",
+                        if class_id == SCHEMATIC_DIAGRAM_CLASS_NAME_CLASS_ID {
+                            "SchematicDiagramClassName"
+                        } else {
+                            "SchematicElementClassName"
+                        }
+                    ),
+                ));
+            }
+            BookmarkNameEntry10_1::SchematicClassName(Box::new(body))
+        }
         ObjectEntry10_1::NewObject { class_id, key } => {
             return Err(io::Error::new(
                 ErrorKind::Unsupported,

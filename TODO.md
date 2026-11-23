@@ -668,6 +668,7 @@
       - [x] 接入 FeatureBookmark 的 RelationshipClassName 与 MemoryRelationshipClassName，覆盖选择子、端点槽、四条尾串及未知嵌套停止时整书签回滚，见[书签续查](docs/mxd-terra-round9-bookmark.md#关系类名称的后续接线)。
       - [ ] 补齐 FeatureBookmark 中尚未核对的 IName 实现。原生先调用 IName::Open，再对返回对象查询 IFeatureClass。[书签续查](docs/mxd-terra-round9-bookmark.md)
         - [x] 接入 FeatureBookmark 的 FgdbTableName 包装体，复用两个 short 后的内联 TableName 读取器并覆盖整书签回滚。[FileGDB 名称接线](docs/mxd-terra-round9-bookmark.md#iname-回引与-filegdb-接口复核)
+        - [x] 接入 FeatureBookmark 的 RasterBandName 和 SchematicDiagramClassName / SchematicElementClassName，复用已确认的栅格名称及 Schematic 名称体。[共享名称接线](docs/mxd-terra-round9-bookmark.md#iname-回引与-filegdb-接口复核)
       - [x] 保留 FeatureBookmark 的 IName 回引登记类。[取证](docs/mxd-terra-round9-bookmark.md#iname-回引与-filegdb-接口复核)
       - [x] 接入 FeatureBookmark 的 NetCDFTableName 持久化体。[接口取证](docs/mxd-terra-round9-bookmark.md#netcdf-表名称)
       - [x] 接入 FeatureBookmark 的 DBTableName 持久化体。[接口取证](docs/mxd-terra-round9-bookmark.md#数据库表名称)

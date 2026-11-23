@@ -201,6 +201,15 @@ Map.dll 10.1.0.3035 的书签 Load `0x793b5c50` 使用普通 IName 槽。
 版本越界和每个截断前缀的整书签回滚。真实书签实例、IName::Open 的
 返回对象及 IFeatureClass 查询仍未运行验证。
 
+同一轮把共享表名分派中已闭合、但书签入口漏掉的
+RasterBandName `{9F9650F1-5F49-4041-BA0F-D10BAFF1D7BC}`、
+SchematicDiagramClassName 与 SchematicElementClassName 接入书签。
+RasterBandName 沿用版本标记、三串、选择子及工作空间/父名称槽；
+两个 Schematic 类沿用版本、三串及 SchematicDatasetName 槽，并由
+`read_schematic_class_name_body_10_1` 保持嵌套读取的事务边界。
+合成书签覆盖两类 Schematic、栅格波段名称、共享键和逐前缀截断回滚。
+仍未执行这些名称的 IName::Open、IFeatureClass 查询或目标软件验收。
+
 ## NetCDF 表名称
 
 NetCDFDB.dll 10.1.0.3035（SHA-256

@@ -699,6 +699,37 @@ fn read_schematic_name_prefix(r: &mut Reader<'_>, max: usize) -> io::Result<(i16
     Ok((version, strings))
 }
 
+pub(crate) fn read_schematic_class_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<(SchematicClassNameBody10_1, Option<DatasetNameMoreStop10_1>)> {
+    let mut trial = reader.clone();
+    let mut staged = table.clone();
+    let (version, strings) = read_schematic_name_prefix(&mut trial, max_bytes)?;
+    let mut stop = None;
+    let dataset = read_name_slot_with_depth_10_1(
+        &mut trial,
+        max_bytes,
+        &mut staged,
+        &mut stop,
+        0,
+        |class_id| class_id == SCHEMATIC_DATASET_NAME_CLASS_ID,
+    )?;
+    *reader = trial;
+    *table = staged;
+    Ok((
+        SchematicClassNameBody10_1 {
+            key,
+            version,
+            strings,
+            dataset,
+        },
+        stop,
+    ))
+}
+
 pub const REFERENCED_TABLE_NAME_CLASS_ID: [u8; 16] = [
     0x5e, 0x4e, 0x14, 0xab, 0x75, 0x94, 0x3e, 0x47, 0xb0, 0x78, 0x4e, 0x95, 0x44, 0x0c, 0x52, 0xfe,
 ];
@@ -1021,23 +1052,9 @@ fn read_dataset_name_object_body_10_1(
             ))
         }
         SCHEMATIC_DIAGRAM_CLASS_NAME_CLASS_ID | SCHEMATIC_ELEMENT_CLASS_NAME_CLASS_ID => {
-            let (version, strings) = read_schematic_name_prefix(reader, max_bytes)?;
-            let mut stop = None;
-            let dataset = read_name_slot_with_depth_10_1(
-                reader,
-                max_bytes,
-                table,
-                &mut stop,
-                0,
-                |class_id| class_id == SCHEMATIC_DATASET_NAME_CLASS_ID,
-            )?;
+            let (body, stop) = read_schematic_class_name_body_10_1(reader, max_bytes, table, key)?;
             Ok((
-                DatasetNameMoreBody10_1::SchematicClass(Box::new(SchematicClassNameBody10_1 {
-                    key,
-                    version,
-                    strings,
-                    dataset,
-                })),
+                DatasetNameMoreBody10_1::SchematicClass(Box::new(body)),
                 stop,
             ))
         }

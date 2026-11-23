@@ -1,7 +1,7 @@
 use mxd2qgz::{
     layers::{
         feature_layer::FGDB_FEATURE_CLASS_NAME_CLASS_ID,
-        raster_dataset_name::RASTER_CATALOG_NAME_CLASS_ID,
+        raster_dataset_name::{RASTER_BAND_NAME_CLASS_ID, RASTER_CATALOG_NAME_CLASS_ID},
     },
     maps::{
         map_surround::{BookmarkNameEntry10_1, read_feature_bookmark_10_1},
@@ -15,7 +15,9 @@ use mxd2qgz::{
             DatasetNameMoreBody10_1, DatasetNameMoreSlot10_1, FEATURE_QUERY_NAME_CLASS_ID,
             MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID, QUERY_TABLE_NAME_CLASS_ID,
             REL_QUERY_TABLE_NAME_CLASS_ID, RELATIONSHIP_CLASS_NAME_CLASS_ID,
-            RelationshipClassTail10_1, TABLE_QUERY_NAME_CLASS_ID, UnknownSlot10_1,
+            RelationshipClassTail10_1, SCHEMATIC_DATASET_NAME_CLASS_ID,
+            SCHEMATIC_DIAGRAM_CLASS_NAME_CLASS_ID, SCHEMATIC_ELEMENT_CLASS_NAME_CLASS_ID,
+            TABLE_QUERY_NAME_CLASS_ID, UnknownSlot10_1,
         },
         workspace_name::WorkspaceNameEntry10_1,
     },
@@ -578,6 +580,94 @@ fn bookmark_reads_fgdb_table_name_wrapper() {
     assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
     assert_eq!(reader.position(), 0);
     assert!(refs.is_empty());
+}
+
+#[test]
+fn bookmark_reads_raster_band_and_schematic_names() {
+    let mut raster = bookmark_header_10_1(&RASTER_BAND_NAME_CLASS_ID, 17);
+    raster.extend(1_u32.to_le_bytes());
+    for text in ["image\\Band_1", "", ""] {
+        raster.extend(bookmark_string_10_1(text));
+    }
+    raster.extend(0_u16.to_le_bytes());
+    raster.extend([0; 16]);
+    raster.extend(bookmark_string_10_1("R"));
+    let raster_end = raster.len();
+
+    let mut reader = Reader::new(&raster);
+    let mut refs = RefTable10_1::new();
+    let bookmark = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    let BookmarkNameEntry10_1::RasterBandName(body) = bookmark.name_object else {
+        panic!("RasterBandName 未进入书签分派");
+    };
+    assert!(matches!(
+        *body,
+        mxd2qgz::layers::raster_dataset_name::RasterDatasetNameEntryBody10_1::Band(_)
+    ));
+    assert_eq!(bookmark.name, "R");
+    assert_eq!(reader.position(), raster_end);
+    assert!(refs.contains(17));
+
+    for class_id in [
+        SCHEMATIC_DIAGRAM_CLASS_NAME_CLASS_ID,
+        SCHEMATIC_ELEMENT_CLASS_NAME_CLASS_ID,
+    ] {
+        let mut data = bookmark_header_10_1(&class_id, 17);
+        data.extend(1_i16.to_le_bytes());
+        for text in ["图表", "元素", "名称"] {
+            data.extend(bookmark_string_10_1(text));
+        }
+        data.extend(SCHEMATIC_DATASET_NAME_CLASS_ID);
+        data.extend(18_u32.to_le_bytes());
+        data.extend(1_i16.to_le_bytes());
+        for text in ["数据集", "", "类别"] {
+            data.extend(bookmark_string_10_1(text));
+        }
+        data.extend([0; 16]);
+        data.extend(bookmark_string_10_1("S"));
+        let end = data.len();
+
+        let mut reader = Reader::new(&data);
+        let mut refs = RefTable10_1::new();
+        let bookmark = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+        let BookmarkNameEntry10_1::SchematicClassName(body) = bookmark.name_object else {
+            panic!("Schematic 名称未进入书签分派");
+        };
+        assert_eq!(body.version, 1);
+        assert_eq!(
+            body.strings,
+            ["图表".to_string(), "元素".to_string(), "名称".to_string()]
+        );
+        assert!(matches!(
+            body.dataset,
+            DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::SchematicDataset(_))
+        ));
+        assert_eq!(bookmark.name, "S");
+        assert_eq!(reader.position(), end);
+        assert!(refs.contains(17) && refs.contains(18));
+
+        for cut in 0..end {
+            let mut reader = Reader::new(&data[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(
+                read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err(),
+                "Schematic 名称前缀 {cut} 应失败"
+            );
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+
+    for cut in 0..raster_end {
+        let mut reader = Reader::new(&raster[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(
+            read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err(),
+            "RasterBandName 前缀 {cut} 应失败"
+        );
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
 }
 
 #[test]
