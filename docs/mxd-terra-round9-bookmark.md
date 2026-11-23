@@ -979,3 +979,16 @@ GpObjects.dll 10.1.0.3035 的 PE RTTI 和持久化虚表对应关系如下。
 Save `0x74778650` 在 `0x7477866d` 写出两个字节。构造测试
 核对类身份、负版本、超限版本、后继书签字段和截断回滚。
 真实 ArcMap 书签及 QGIS 人工验收待验证。
+
+### GPRouteDomain 与 GPRouteMeasureEventDomain
+
+同版 GpObjects.dll 中，两类的 IPersistStream 虚表共用 Load
+`0x74779a00`，只读取有符号 short，版本上限为 1。
+
+| 类 | CLSID | 持久化虚表 | Save |
+| --- | --- | --- | --- |
+| GPRouteDomain | `193FFF2F-C923-430B-879F-50BF65F61703` | `0x747bbe34` | `0x74775df0` |
+| GPRouteMeasureEventDomain | `5B7D4CF9-95E0-4990-AD6E-D25EF89BAEA8` | `0x747bbefc` | `0x74776630` |
+
+各 Save 只写两个字节。构造测试覆盖两类身份、负版本、超限版本、
+后续书签字段及逐字节截断回滚。真实 ArcMap 书签和 QGIS 人工验收待验证。

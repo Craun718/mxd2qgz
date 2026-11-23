@@ -4373,3 +4373,19 @@ fn feature_bookmark_reads_legacy_topo_virtual_table_domain() {
         GpTopoDomain10_1::VirtualTable { version: -1 },
     );
 }
+
+#[test]
+fn feature_bookmark_reads_legacy_topo_route_domains() {
+    use mxd2qgz::maps::map_surround::{
+        GP_ROUTE_DOMAIN_CLASS_ID, GP_ROUTE_MEASURE_EVENT_DOMAIN_CLASS_ID, GpTopoDomain10_1,
+    };
+
+    assert_legacy_topo_version_only_domain(
+        GP_ROUTE_DOMAIN_CLASS_ID,
+        GpTopoDomain10_1::Route { version: -1 },
+    );
+    assert_legacy_topo_version_only_domain(
+        GP_ROUTE_MEASURE_EVENT_DOMAIN_CLASS_ID,
+        GpTopoDomain10_1::RouteMeasureEvent { version: -1 },
+    );
+}

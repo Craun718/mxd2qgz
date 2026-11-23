@@ -335,6 +335,14 @@ pub struct AoiBookmark10_1 {
 
 const MAX_BOOKMARK_NAME_NESTING: usize = 16;
 
+pub const GP_ROUTE_DOMAIN_CLASS_ID: [u8; 16] = [
+    0x2f, 0xff, 0x3f, 0x19, 0x23, 0xc9, 0x0b, 0x43, 0x87, 0x9f, 0x50, 0xbf, 0x65, 0xf6, 0x17, 0x03,
+];
+
+pub const GP_ROUTE_MEASURE_EVENT_DOMAIN_CLASS_ID: [u8; 16] = [
+    0xf9, 0x4c, 0x7d, 0x5b, 0xe0, 0x95, 0x90, 0x49, 0xad, 0x6e, 0xd2, 0x5e, 0xf8, 0x9b, 0xae, 0xa8,
+];
+
 pub const GP_VIRTUAL_TABLE_DOMAIN_CLASS_ID: [u8; 16] = [
     0x40, 0x53, 0x35, 0xbe, 0xa9, 0xb5, 0x32, 0x44, 0xb2, 0xf4, 0x49, 0x7a, 0x50, 0xe0, 0x51, 0x15,
 ];
@@ -397,6 +405,12 @@ pub const GP_FILE_DOMAIN_CLASS_ID: [u8; 16] = [
 pub enum GpTopoDomain10_1 {
     Numeric(GpNumericDomain10_1),
     Field(GpFieldDomain10_1),
+    Route {
+        version: i16,
+    },
+    RouteMeasureEvent {
+        version: i16,
+    },
     VirtualTable {
         version: i16,
     },
@@ -1237,6 +1251,8 @@ fn read_gp_topo_domain_slot_10_1(
                     | GP_ROUTE_ID_FIELDS_DOMAIN_CLASS_ID
                     | GP_QUERY_TABLE_IDS_DOMAIN_CLASS_ID
                     | GP_VIRTUAL_TABLE_DOMAIN_CLASS_ID
+                    | GP_ROUTE_MEASURE_EVENT_DOMAIN_CLASS_ID
+                    | GP_ROUTE_DOMAIN_CLASS_ID
                     | GP_QUERY_TABLE_FIELDS_DOMAIN_CLASS_ID
             ) =>
         {
@@ -1252,6 +1268,18 @@ fn read_gp_topo_domain_slot_10_1(
             middle_shorts: [reader.read_u16_le()?, reader.read_u16_le()?],
             second_double_bits: reader.read_f64_le()?.to_bits(),
         }))),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_ROUTE_DOMAIN_CLASS_ID,
+            ..
+        } => Some(Box::new(GpTopoDomain10_1::Route {
+            version: read_gp_name_version(reader, 1, "GPRouteDomain")?,
+        })),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_ROUTE_MEASURE_EVENT_DOMAIN_CLASS_ID,
+            ..
+        } => Some(Box::new(GpTopoDomain10_1::RouteMeasureEvent {
+            version: read_gp_name_version(reader, 1, "GPRouteMeasureEventDomain")?,
+        })),
         ObjectEntry10_1::NewObject {
             class_id: GP_VIRTUAL_TABLE_DOMAIN_CLASS_ID,
             ..
