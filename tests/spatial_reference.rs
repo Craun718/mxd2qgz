@@ -190,10 +190,26 @@ fn every_version_branch_reads_exactly_the_native_field_set() {
 }
 
 #[test]
+fn negative_projected_versions_use_the_wkt_only_layout() {
+    for version in [i16::MIN, -1, 0, 1] {
+        let mut bytes = wkt_body(version as u16, "PROJCS[\"x\"]");
+        let body_end = bytes.len();
+        bytes.extend([0xab, 0xcd]);
+        let mut reader = Reader::new(&bytes);
+        let body = read_projected_coordinate_system_10_1(&mut reader, 1024).unwrap();
+        assert_eq!(body.save_version, version as u16);
+        assert_eq!(body.wkt, "PROJCS[\"x\"]");
+        assert!(body.domains.is_none());
+        assert!(body.precision.is_none());
+        assert!(body.trailing_doubles.is_none());
+        assert_eq!(reader.position(), body_end);
+    }
+}
+
+#[test]
 fn rejects_versions_above_native_limit_without_advancing() {
-    // 原生对 >7 记录 0x80004005；0x8000.. 位模式在无符号解释下同样大于 7，
-    // 若原生为有符号比较则严格子集更严（负值无保存表证据）。
-    for version in [8_u16, 9, 100, 0x1234, 0x8000, 0xffff] {
+    // 原生按有符号版本比较，对大于 7 的值返回 0x80004005。
+    for version in [8_u16, 9, 100, 0x1234, 0x7fff] {
         let bytes = wkt_body(version, "PROJCS[\"x\"]");
         let mut reader = Reader::new(&bytes);
         let error = read_projected_coordinate_system_10_1(&mut reader, 1024).unwrap_err();

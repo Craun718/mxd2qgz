@@ -79,9 +79,8 @@ pub struct ProjectedCoordinateSystem10_1 {
     /// 2 字节保存版本 short，按无符号位模式保留。
     ///
     /// 原生读取方法对大于 7 的版本报 `0x80004005`；保存侧版本表为
-    /// `[2,3,6,6]`（文档版本 5，即 10.x，写出表末项 6，样本为 6）。本读取
-    /// 器接受 0..=7 并拒绝其余位模式：0x8000.. 在无符号解释下同样大于 7，
-    /// 若原生为有符号比较则此处更严（负值无保存表证据）。
+    /// `[2,3,6,6]`（文档版本 5，即 10.x，写出表末项 6，样本为 6）。
+    /// 版本门采用有符号比较，负值沿用旧布局。
     pub save_version: u16,
     /// 纯 ASCII WKT 文本，无终止零；4 字节长度前缀同样不含终止零。
     ///
@@ -121,7 +120,8 @@ pub fn read_projected_coordinate_system_10_1(
 
     // 1. 2 字节保存版本 short：无符号解释，拒绝 >7（原生记 0x80004005）。
     let save_version = trial.read_u16_le()?;
-    if save_version > 7 {
+    let version = save_version as i16;
+    if version > 7 {
         return Err(invalid(&format!(
             "保存版本 {save_version} 超出原生读取方法的接受范围（>7 报 0x80004005）"
         )));
@@ -144,7 +144,7 @@ pub fn read_projected_coordinate_system_10_1(
     let wkt = String::from_utf8(wkt_bytes.to_vec()).map_err(|_| invalid("WKT 不是合法 UTF-8"))?;
 
     // 3. 版本 >=2：4 组域字符串、垂向标志及可选单位段。
-    let domains = if save_version >= 2 {
+    let domains = if version >= 2 {
         let mut strings: [Vec<u8>; 4] = Default::default();
         for slot in &mut strings {
             let length = usize::try_from(trial.read_u32_le()?)
@@ -171,8 +171,8 @@ pub fn read_projected_coordinate_system_10_1(
     };
 
     // 4. 版本 >=3：7 个 double，版本 >=4 额外读取前导标志。
-    let precision = if save_version >= 3 {
-        let flags = if save_version >= 4 {
+    let precision = if version >= 3 {
+        let flags = if version >= 4 {
             trial.read_u16_le()?
         } else {
             0
@@ -188,7 +188,7 @@ pub fn read_projected_coordinate_system_10_1(
     };
 
     // 5. 版本 >=5：再读 3 个 double。
-    let trailing_doubles = if save_version >= 5 {
+    let trailing_doubles = if version >= 5 {
         let mut doubles = [0.0; 3];
         for slot in &mut doubles {
             *slot = trial.read_f64_le()?;

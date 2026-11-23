@@ -866,6 +866,7 @@
       - [ ] 核对早期 ArcMap 自身写出的 UnknownCoordinateSystem 第二串是否为 Alias。
       - [x] 核对 ArcMap 10.1 降版保存 UnknownCoordinateSystem 时第二串仍为 Abbreviation。[取证](docs/arcmap-10.1-pcs-geometry-slots.md#101-保存到旧文档版本)
       - [x] 按有符号版本门读取 GCS 与 UnknownCoordinateSystem 的旧版体。[取证](docs/arcmap-10.1-pcs-geometry-slots.md#gcs-与-unknowncoordinatesystem-的有符号版本门)
+      - [x] 按有符号版本门读取 PCS 的旧版体。[取证](docs/arcmap-10.1-pcs-geometry-slots.md#pcs-的有符号版本门)
       - [ ] 定位 UnknownCoordinateSystem 字符串在编辑和创建路径中的其他填充来源。
       - [x] 定位 UnknownCoordinateSystem 构造接口的缓存对象初始字符串来源。[取证](docs/arcmap-10.1-pcs-geometry-slots.md#icloneassign-的字符串写入路径)
       - [x] 定位 UnknownCoordinateSystem 的 Assign 字符串写入与构造接口委派。[取证](docs/arcmap-10.1-pcs-geometry-slots.md#icloneassign-的字符串写入路径)
