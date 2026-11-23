@@ -31,7 +31,7 @@ fn page_layout_prefix_checks_versions_counts_and_truncation() {
         assert!(read_page_layout_prefix_10_1(&mut reader, 1).is_err());
         assert_eq!(reader.position(), 0);
     }
-    for (version, count) in [(16_u16, 0_i32), (1, -1)] {
+    for (version, count) in [(16_u16, 0_i32), (u16::MAX, 0)] {
         let mut bytes = version.to_le_bytes().to_vec();
         bytes.extend(0_u32.to_le_bytes());
         bytes.extend(count.to_le_bytes());

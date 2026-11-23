@@ -180,6 +180,7 @@ fn read_extra_safe_element_region<'a>(
 pub struct PageLayoutPrefix10_1 {
     pub version: u16,
     pub raw_member: u32,
+    pub element_count_raw: i32,
     pub element_count: u32,
     pub extra_safe: bool,
 }
@@ -199,7 +200,8 @@ pub fn read_page_layout_prefix_10_1(
     }
     let raw_member = u32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
     let count = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
-    if count < 0 || count as u32 > max_elements {
+    let element_count = count.max(0) as u32;
+    if element_count > max_elements {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
             "PageLayout 元素数量无效或超过限额",
@@ -208,7 +210,8 @@ pub fn read_page_layout_prefix_10_1(
     let prefix = PageLayoutPrefix10_1 {
         version,
         raw_member,
-        element_count: count as u32,
+        element_count_raw: count,
+        element_count,
         extra_safe: version >= 7,
     };
     *reader = trial;

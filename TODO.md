@@ -819,6 +819,7 @@
       - [x] 按登记类校验地图框和装饰框共用的 IEnvelope 回引。[取证](docs/mxd-map-frame-body-20261118.md#布局包络回引)
       - [x] 保留布局 IGeometry 回引的登记类。[取证](docs/mxd-map-frame-body-20261118.md#布局几何回引)
       - [x] 按原生循环门读取 MapFrame 的网格和定位框非正计数。[取证](docs/mxd-map-frame-body-20261118.md#两个集合的非正计数)
+      - [x] 按原生循环门读取 PageLayout 元素的非正计数。[取证](docs/mxd-page-layout-tail-20261118.md#布局元素的非正计数)
       - [x] 按登记类校验 MapFrame 网格与定位框集合的回引。[取证](docs/mxd-map-frame-body-20261118.md#网格与定位框集合的对象回引)
       - [x] 按登记类校验网格内部 IGridLabel 和 IMapGridBorder 回引。[原生取证](docs/mxd-page-layout-grid-20261118.md#网格标签与边框回引)
       - [x] 按有符号版本门读取 MapGrid 基类和 SimpleMapGridBorder。[指令取证](docs/mxd-page-layout-grid-20261118.md#mapgrid-和-simplemapgridborder-的版本上限)

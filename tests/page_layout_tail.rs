@@ -754,3 +754,25 @@ fn reads_cross_stream_map_references_with_unmapped_version_headers() {
         );
     }
 }
+
+#[test]
+fn old_layout_nonpositive_element_count_reaches_the_tail() {
+    use mxd2qgz::maps::page_layout_prefix::PAGE_LAYOUT_CLASS_ID;
+
+    for count in [i32::MIN, -1, 0] {
+        let mut page = PAGE_LAYOUT_CLASS_ID.to_vec();
+        page.extend(1_u32.to_le_bytes());
+        page.extend(6_u16.to_le_bytes());
+        page.extend(0_u32.to_le_bytes());
+        page.extend(count.to_le_bytes());
+        page.extend(layout_tail(6, 0));
+        page.extend(0_u16.to_le_bytes());
+        let report = parse_mxd_streams_10_1(&[0; 8], Some(&page)).unwrap();
+        let layout = report.page_layout.unwrap();
+        assert_eq!(layout.prefix.element_count_raw, count);
+        assert_eq!(layout.prefix.element_count, 0);
+        assert_eq!(layout.consumed_elements, 0);
+        assert_eq!(layout.print_settings_flag, Some(0));
+        assert_eq!(layout.consumed_end_offset(), page.len());
+    }
+}
