@@ -57,7 +57,7 @@ pub(crate) fn read_surround_frame_10_1(
             "此槽不是新 MapSurroundFrame 对象",
         ));
     };
-    let version = reader.read_u16_le()?;
+    let version = reader.read_u16_le()? as i16;
     if version > 3 {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
@@ -130,7 +130,7 @@ pub(crate) fn read_surround_frame_10_1(
     };
     Ok(MapSurroundFrame10_1 {
         key,
-        version,
+        version: version as u16,
         surround,
         surround_body,
         map_frame,

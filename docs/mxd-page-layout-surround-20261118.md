@@ -45,3 +45,10 @@ SystemCore 同版在 `0x7ffd0063` 按键查询登记实例。装饰框按登记�
 识别回引。构造用例将 IMapFrame 头指向此前登记的 MapSurroundFrame，
 验证保留整个 ExtraSafe 元素及后续字节。Utilities 实档继续用于复核
 内联地图框与跨流 Map 回引。ArcMap 人工验证尚未进行。
+
+MapElements.dll 10.1.0.3035 的 objdump 指令确认版本上限与后缀均
+按有符号 short 比较。`0x7957b8ac / 0x7957b8b1` 拒绝大于 3，
+`0x7957b96b / 0x7957b97c` 在版本不小于 2 时进入 IEnvelope 分支，
+`0x7957ba58 / 0x7957ba5c` 在版本小于 3 时跳过两个 double。
+合成布局验证负值选择旧 IGeometry 槽、保留版本位模式以及后继元素。
+真实负版本装饰框仍待 ArcMap 10.1 验证。

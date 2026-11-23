@@ -809,6 +809,7 @@
       - [x] 保留 MarkerNorthArrow 旧符号槽前原生弃读的 LONG 值。[指令取证](docs/arcmap-10.1-legend-family.md#markernortharrow-版本分支复核)
       - [x] 用 LandscapeClassic 实档验证 MarkerNorthArrow v2 与布局框的跨流回引。[实档](docs/arcmap-10.1-legend-family.md#markernortharrow-版本分支复核)
       - [x] 按登记类校验 MapSurroundFrame 的 IMapFrame 回引。[取证](docs/mxd-page-layout-surround-20261118.md)
+      - [x] 按原生有符号版本门读取 MapSurroundFrame 的旧几何槽。[指令取证](docs/mxd-page-layout-surround-20261118.md)
       - [x] 按原生有符号版本分支读取 MarkerNorthArrow 的新旧标记槽。[指令取证](docs/arcmap-10.1-legend-family.md#markernortharrow-版本分支复核)
       - [x] 定性 MapTitle 的自身版本与共同前缀字段，并按原生有符号比较验证条件字段边界。[原生读写](docs/arcmap-10.1-legend-family.md#一maptitle7a3f91df-体完全闭合证据确定的)
       - [x] 定性 HorizontalBar、Nested、Vertical 三类 LegendItem 的派生标量，并对位两个符号属性。[派生字段与属性](docs/arcmap-10.1-legend-family.md#三种图例项的派生属性)

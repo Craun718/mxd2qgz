@@ -19,7 +19,7 @@ fn push_element(layout: &mut Vec<u8>, element: &[u8]) {
     layout.extend(element);
 }
 
-fn surround_frame(version: u16) -> Vec<u8> {
+fn surround_frame(version: i16) -> Vec<u8> {
     let mut body = MAP_SURROUND_FRAME_CLASS_ID.to_vec();
     body.extend(7_u32.to_le_bytes());
     body.extend(version.to_le_bytes());
@@ -40,7 +40,7 @@ fn surround_frame(version: u16) -> Vec<u8> {
 
 #[test]
 fn surround_frame_uses_version_gates_and_indirect_entries_occupy_whole_slots() {
-    for version in 0..=3 {
+    for version in [i16::MIN, -1, 0, 1, 2, 3] {
         let mut page = layout_root(3);
         push_element(&mut page, &surround_frame(version));
         let backref_offset = page.len();
@@ -57,7 +57,7 @@ fn surround_frame_uses_version_gates_and_indirect_entries_occupy_whole_slots() {
         assert_eq!(layout.end_offset, page.len());
         assert_eq!(layout.surround_frames.len(), 1);
         let frame = &layout.surround_frames[0];
-        assert_eq!(frame.version, version);
+        assert_eq!(frame.version, version as u16);
         assert!(matches!(frame.bounds, SurroundFrameBounds10_1::Geometry(_)) == (version < 2));
         assert_eq!(
             frame.version_three_double_bits,
@@ -450,7 +450,7 @@ fn scene_graphics_consumes_surround_frames_and_references() {
                 .unwrap();
         assert_eq!(
             layer.elements[0].surround_frame.as_ref().unwrap().version,
-            version
+            version as u16
         );
         assert!(matches!(
             layer.elements[1].element.entry,
