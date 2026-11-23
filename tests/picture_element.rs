@@ -176,10 +176,11 @@ fn layout_dispatches_all_picture_classes_and_resolves_element_and_picture_refs()
         layout.extend((100 + index as u32).to_le_bytes());
         layout.extend(body);
     }
-    layout.extend(20_u32.to_le_bytes());
-    layout.extend([0; 4]);
-    layout.extend(PICTURE_ELEMENT_CLASS_ID);
+    layout.extend(22_u64.to_le_bytes());
+    layout.extend([0xa5; 16]); // 回引按键识别已读取的元素。
     layout.extend(100_u32.to_le_bytes());
+    let suffix_offset = layout.len();
+    layout.extend([0x34, 0x12]);
 
     let parsed = parse_mxd_streams_10_1(&[0; 8], Some(&layout))
         .unwrap()
@@ -187,6 +188,10 @@ fn layout_dispatches_all_picture_classes_and_resolves_element_and_picture_refs()
         .unwrap();
     assert_eq!(parsed.consumed_elements, 9, "{:?}", parsed.stop);
     assert_eq!(parsed.end_offset, layout.len());
+    assert_eq!(
+        parsed.element_reference_suffixes,
+        [(8, suffix_offset, vec![0x34, 0x12])]
+    );
     assert_eq!(
         parsed
             .pictures

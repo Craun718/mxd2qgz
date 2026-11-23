@@ -826,6 +826,7 @@
       - [x] 将新版 PageLayout 的 ExtraSafe 空对象头记录为占位。[取证](docs/mxd-page-layout-tail-20261118.md#包装内的空对象头)
       - [x] 保留 ExtraSafe 空对象占位包装内空头之后的原始字节。[取证](docs/mxd-page-layout-tail-20261118.md#空对象头之后的占位字节)
       - [x] 按声明边界接续 ExtraSafe 已确认元素回引并保留尾字节。[取证](docs/mxd-page-layout-tail-20261118.md#已登记元素回引的声明边界)
+      - [x] 以已完整读取的页面元素键作为 ExtraSafe 回引续读依据。[取证](docs/mxd-page-layout-tail-20261118.md#已登记元素回引的声明边界)
       - [x] 按登记类校验 MapFrame 网格与定位框集合的回引。[取证](docs/mxd-map-frame-body-20261118.md#网格与定位框集合的对象回引)
       - [x] 按登记类校验网格内部 IGridLabel 和 IMapGridBorder 回引。[原生取证](docs/mxd-page-layout-grid-20261118.md#网格标签与边框回引)
       - [x] 按有符号版本门读取 MapGrid 基类和 SimpleMapGridBorder。[指令取证](docs/mxd-page-layout-grid-20261118.md#mapgrid-和-simplemapgridborder-的版本上限)

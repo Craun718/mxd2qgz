@@ -553,15 +553,16 @@ fn read_element_or_map_frame(
     let mut suffix = Vec::new();
     if extra_safe && region.remaining() != 0 {
         if let PageFrame::Indirect(ObjectEntry10_1::BackReference { key, .. }) = &element
-            && matches!(
-                refs.registered_class(*key),
-                Some(
-                    MAP_FRAME_CLASS_ID
-                        | super::surround_frame::MAP_SURROUND_FRAME_CLASS_ID
-                        | super::rectangle_element::RECTANGLE_ELEMENT_CLASS_ID
-                        | super::group_element::GROUP_ELEMENT_CLASS_ID
-                )
-            )
+            && (refs.contains_page_element(*key)
+                || matches!(
+                    refs.registered_class(*key),
+                    Some(
+                        MAP_FRAME_CLASS_ID
+                            | super::surround_frame::MAP_SURROUND_FRAME_CLASS_ID
+                            | super::rectangle_element::RECTANGLE_ELEMENT_CLASS_ID
+                            | super::group_element::GROUP_ELEMENT_CLASS_ID
+                    )
+                ))
         {
             // 已确认的元素回引没有新对象体，ExtraSafe 按声明边界接续。
             suffix = region.read_bytes(region.remaining())?.to_vec();
@@ -590,47 +591,48 @@ fn read_page_frame(
 
     let mut probe = reader.clone();
     let header = read_header_10_1(&mut probe)?;
-    match header {
+    let new_key = match header {
+        ObjectHeader::Object { key, .. } if !refs.contains(key) && !is_root_map(key) => Some(key),
+        _ => None,
+    };
+    let element = match header {
         ObjectHeader::Null => {
             if extra_safe {
                 // 占位对象复制整个包装，并定位到声明范围末尾。
                 probe.read_bytes(probe.remaining())?;
                 *reader = probe;
-                Ok(PageFrame::Placeholder)
+                PageFrame::Placeholder
             } else {
                 *reader = probe;
-                Ok(PageFrame::Indirect(ObjectEntry10_1::Null))
+                PageFrame::Indirect(ObjectEntry10_1::Null)
             }
         }
         ObjectHeader::Object { class_id, key } if refs.contains_map(key) || is_root_map(key) => {
             // IElement 查询输出为空，普通槽仍插入空元素，新版则恢复为占位。
             *reader = probe;
-            Ok(if extra_safe {
+            if extra_safe {
                 PageFrame::Placeholder
             } else {
                 PageFrame::UnresolvedReference(ObjectEntry10_1::BackReference { class_id, key })
-            })
+            }
         }
         ObjectHeader::Object { class_id, key } if refs.contains(key) => {
             *reader = probe;
-            Ok(PageFrame::Indirect(ObjectEntry10_1::BackReference {
-                class_id,
-                key,
-            }))
+            PageFrame::Indirect(ObjectEntry10_1::BackReference { class_id, key })
         }
         ObjectHeader::Object {
             class_id: MAP_FRAME_CLASS_ID,
             ..
         } => {
             let frame = read_map_frame(reader, start, max_bytes, refs, is_root_map)?;
-            Ok(PageFrame::Map(Box::new(frame)))
+            PageFrame::Map(Box::new(frame))
         }
         ObjectHeader::Object {
             class_id: MAP_SURROUND_FRAME_CLASS_ID,
             ..
         } => {
             let frame = read_surround_frame_10_1(reader, start, max_bytes, refs, is_root_map)?;
-            Ok(PageFrame::Surround(Box::new(frame)))
+            PageFrame::Surround(Box::new(frame))
         }
         ObjectHeader::Object {
             class_id: super::rectangle_element::RECTANGLE_ELEMENT_CLASS_ID,
@@ -638,7 +640,7 @@ fn read_page_frame(
         } => {
             let rect =
                 super::rectangle_element::read_rectangle_element_10_1(reader, max_bytes, refs)?;
-            Ok(PageFrame::Rectangle(Box::new(rect)))
+            PageFrame::Rectangle(Box::new(rect))
         }
         ObjectHeader::Object {
             class_id: FRAME_ELEMENT_CLASS_ID,
@@ -647,7 +649,7 @@ fn read_page_frame(
             *reader = probe;
             refs.register(key);
             let body = super::map_frame::base_frame(reader, max_bytes, refs)?;
-            Ok(PageFrame::Base(key, Box::new(body)))
+            PageFrame::Base(key, Box::new(body))
         }
         ObjectHeader::Object {
             class_id: super::group_element::GROUP_ELEMENT_CLASS_ID,
@@ -660,17 +662,21 @@ fn read_page_frame(
                 refs,
                 is_root_map,
             )?;
-            Ok(PageFrame::Group(Box::new(body)))
+            PageFrame::Group(Box::new(body))
         }
         ObjectHeader::Object { key, .. } => {
             let (_, body) = read_complete_element_body(reader, max_bytes, refs)?;
-            Ok(match body {
+            match body {
                 ElementBody10_1::ParagraphTextElement(body) => PageFrame::Paragraph(key, body),
                 ElementBody10_1::PictureElement(body) => PageFrame::Picture(key, body),
                 _ => PageFrame::Other,
-            })
+            }
         }
+    };
+    if let Some(key) = new_key {
+        refs.mark_page_element(key);
     }
+    Ok(element)
 }
 
 /// 在宿主已建立的读事务中读取地图框，校验回引后使用同一张引用表。

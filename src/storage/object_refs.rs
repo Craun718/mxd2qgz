@@ -38,6 +38,7 @@ pub struct DatasetSource10_1 {
 pub struct RefTable10_1 {
     seen: HashMap<u32, (u32, Option<[u8; 16]>)>,
     map_keys: HashSet<u32>,
+    page_element_keys: HashSet<u32>,
     workspace_paths: HashMap<u32, Arc<str>>,
     feature_dataset_paths: HashMap<u32, Arc<str>>,
     dataset_sources: HashMap<([u8; 16], u32), DatasetSource10_1>,
@@ -148,6 +149,16 @@ impl RefTable10_1 {
 
     pub(crate) fn contains_map(&self, key: u32) -> bool {
         self.map_keys.contains(&key)
+    }
+
+    /// 记录已从 PageLayout 元素槽成功读取的对象键。
+    pub(crate) fn mark_page_element(&mut self, key: u32) {
+        debug_assert!(self.contains(key));
+        self.page_element_keys.insert(key);
+    }
+
+    pub(crate) fn contains_page_element(&self, key: u32) -> bool {
+        self.page_element_keys.contains(&key)
     }
 
     /// 只记录完整读取且通过对象头登记的图例组。
