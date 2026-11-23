@@ -466,3 +466,12 @@ OGCClient.dll 10.1.0.3035 的 WCSCoverageName 主 QI
 [Load `0x7b424bd0` 的覆盖名称及连接槽读取器](mxd-10.1-raster-layer-tail.md)。
 构造书签验证 BSTR 覆盖标识、v3 连接名称、属性集回引、书签文本和
 逐字节截断回滚。真实书签宿主及原生 Open 结果仍待 ArcMap 10.1 验证。
+
+## WMSConnectionName 与 WMTSConnectionName
+
+同一 OGCClient.dll 10.1.0.3035 的 RTTI 和 esriGISClient 类型库
+确认两类的 IName 视图均位于完整对象 +0x18，IPersistStream 位于
++0x1c 并委派给共用 Load `0x7b420ee0`。FeatureBookmark 复用
+[现有 OGC 连接名称分派](mxd-10.1-raster-layer-tail.md)，保留原类标识。
+构造两类 v3 连接，验证属性集新键和回引、后续书签名及逐字节截断回滚。
+真实宿主、原生 Open 结果和 ArcMap 人工验证仍待补充。

@@ -138,7 +138,9 @@ use crate::layers::raster_dataset_name::{
     RASTER_DATASET_NAME83_CLASS_ID, RasterDatasetNameEntryBody10_1,
     SDE_RASTER_DATASET_NAME_CLASS_ID, read_supported_raster_name_body_10_1,
 };
-use crate::layers::wcs_name::WCS_COVERAGE_NAME_CLASS_ID;
+use crate::layers::wcs_name::{
+    WCS_COVERAGE_NAME_CLASS_ID, WMS_CONNECTION_NAME_CLASS_ID, WMTS_CONNECTION_NAME_CLASS_ID,
+};
 use crate::maps::map_surround_family::{
     FamilyStop10_1, LEGEND_FORMAT_CLASS_ID as FAMILY_LEGEND_FORMAT_CLASS_ID, LegendFormatBody10_1,
     read_legend_format_body_10_1,
@@ -1132,7 +1134,9 @@ pub fn read_feature_bookmark_10_1(
                 | SDE_RASTER_DATASET_NAME_CLASS_ID
                 | INTERNET_TILED_LAYER_NAME_CLASS_ID
                 | AIS_IMAGE_SERVICE_NAME_CLASS_ID
-                | WCS_COVERAGE_NAME_CLASS_ID),
+                | WCS_COVERAGE_NAME_CLASS_ID
+                | WMS_CONNECTION_NAME_CLASS_ID
+                | WMTS_CONNECTION_NAME_CLASS_ID),
             key,
         } => {
             let body = read_supported_raster_name_body_10_1(
