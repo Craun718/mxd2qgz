@@ -1723,3 +1723,21 @@ ArcMap 10.1.0.3035 的 `GPSACore.dll` RTTI `0x74946c50` 对应持久化
 读取器沿用列 IName、行列计数和 IGPValue 单元格解析。合成书签
 验证列名和单元格的回引、后继字段及逐字节截断回滚。
 拓扑工具生成的真实工程和其他列 IName 的类覆盖仍待验证。
+
+### 栅格环境的压缩、金字塔与分块大小
+
+证据来自 ArcMap 10.1.0.3035 的 `GpRasterFunctions.dll`（SHA-256
+`2922bd518dedfb15444de5a57fffb22f21c38432cea9b323e4ba931f12eed964`）。
+用 RTTI 对位完整对象的 `+0x1c` 持久化接口，按 objdump 和导入表核对
+Load/Save。类标识与安装介质的注册清单及 PE 内 GUID 一致。
+
+| 对象 | RTTI／持久化虚表 | Load／Save | Load 版本与参数 |
+| --- | --- | --- | --- |
+| GPRasterGDBEnvCompression | `0x748b9b28 / 0x748a7de0` | `0x74873930 / 0x74873a30` | v0–v2，两个 LONG |
+| GPRasterGDBEnvPyramid | `0x748b9bd8 / 0x748a812c` | `0x748752c0 / 0x74875460` | v0–v4，short 和两个 LONG；v3 起再加两个 LONG，v4 再加 short |
+| GPRasterGDBEnvTileSize | `0x748b9d98 / 0x748a8698` | `0x74877c50 / 0x74877d50` | v0–v2，两个 LONG |
+
+三类均先读自身版本和 GPValue 基类。仅 v1 在表中参数之前读取一个
+IName 槽，IID 常量位于 `0x748a614c`。复用现有名称分派，参数保留原始位模式。
+合成书签测试覆盖各版本、回引、后继数据及截断回滚。枚举语义以及真实
+ArcMap 书签中的参数值待验证。

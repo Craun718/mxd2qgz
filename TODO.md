@@ -755,6 +755,9 @@
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPCodedValueDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldinfodomain-与-gpcodedvaluedomain)
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPFieldInfoDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldinfodomain-与-gpcodedvaluedomain)
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
+      - [x] 接入 GPRasterGDBEnvCompression 的压缩参数。[取证](docs/mxd-terra-round9-bookmark.md#栅格环境的压缩金字塔与分块大小)
+      - [x] 接入 GPRasterGDBEnvPyramid 的版本化金字塔参数。[取证](docs/mxd-terra-round9-bookmark.md#栅格环境的压缩金字塔与分块大小)
+      - [x] 接入 GPRasterGDBEnvTileSize 的分块大小参数。[取证](docs/mxd-terra-round9-bookmark.md#栅格环境的压缩金字塔与分块大小)
       - [x] 接入 GPSATopoFeatures，复用 GPValueTableBase 的列类型及单元格读取。[取证](docs/mxd-terra-round9-bookmark.md#gpsatopofeatures)
       - [x] 接入 GPSAWeightedOverlayTable 的旧重分类行和新版对象槽。[取证](docs/mxd-terra-round9-bookmark.md#gpsaweightedoverlaytable)
       - [x] 接入通用 GPSARemap 的模式选择与版本化尾段。[取证](docs/mxd-terra-round9-bookmark.md#gpsaremap)

@@ -6623,3 +6623,60 @@ fn feature_bookmark_reads_topo_features_value_table() {
         },
     );
 }
+
+#[test]
+fn feature_bookmark_reads_raster_environment_options() {
+    use mxd2qgz::maps::map_surround::{
+        GP_RASTER_GDB_ENV_COMPRESSION_CLASS_ID, GP_RASTER_GDB_ENV_PYRAMID_CLASS_ID,
+        GP_RASTER_GDB_ENV_TILE_SIZE_CLASS_ID, GpCodedValue10_1, GpRasterEnvironment10_1,
+        GpRasterEnvironmentParameters10_1 as Parameters,
+    };
+
+    for (class_id, max_version) in [
+        (GP_RASTER_GDB_ENV_COMPRESSION_CLASS_ID, 2_u16),
+        (GP_RASTER_GDB_ENV_TILE_SIZE_CLASS_ID, 2),
+        (GP_RASTER_GDB_ENV_PYRAMID_CLASS_ID, 4),
+    ] {
+        for version in 0..=max_version {
+            let mut payload = Vec::new();
+            let legacy_name = (version == 1).then(|| {
+                payload.extend([0; 16]);
+                Box::new(BookmarkNameEntry10_1::Null)
+            });
+            let raw_longs = [128_i32, -9];
+            let raw_short = 0xffff_u16;
+            if class_id == GP_RASTER_GDB_ENV_PYRAMID_CLASS_ID {
+                payload.extend(raw_short.to_le_bytes());
+            }
+            payload.extend(raw_longs.iter().flat_map(|value| value.to_le_bytes()));
+            let version_three_longs = (version >= 3).then(|| {
+                let longs = [7_i32, -8];
+                payload.extend(longs.iter().flat_map(|value| value.to_le_bytes()));
+                longs
+            });
+            let version_four_short = (version >= 4).then(|| {
+                payload.extend(0x8001_u16.to_le_bytes());
+                0x8001
+            });
+            let parameters = match class_id {
+                GP_RASTER_GDB_ENV_COMPRESSION_CLASS_ID => Parameters::Compression(raw_longs),
+                GP_RASTER_GDB_ENV_TILE_SIZE_CLASS_ID => Parameters::TileSize(raw_longs),
+                _ => Parameters::Pyramid {
+                    raw_short,
+                    raw_longs,
+                    version_three_longs,
+                    version_four_short,
+                },
+            };
+            assert_legacy_topo_coded_value(
+                class_id,
+                version,
+                &payload,
+                GpCodedValue10_1::RasterEnvironment(Box::new(GpRasterEnvironment10_1 {
+                    legacy_name,
+                    parameters,
+                })),
+            );
+        }
+    }
+}
