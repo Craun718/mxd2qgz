@@ -500,16 +500,23 @@ fn read_element_or_map_frame(
     };
     let start = prefix.position();
     let mut staged = refs.clone();
-    let element = read_page_frame(&mut region, start, max_bytes, &mut staged, is_root_map)
-        .map_err(|error| {
-            io::Error::new(
-                error.kind(),
-                format!(
-                    "页面元素 /PageLayout:0x{:x}：{error}",
-                    start + region.position()
-                ),
-            )
-        })?;
+    let element = read_page_frame(
+        &mut region,
+        start,
+        max_bytes,
+        &mut staged,
+        is_root_map,
+        extra_safe,
+    )
+    .map_err(|error| {
+        io::Error::new(
+            error.kind(),
+            format!(
+                "页面元素 /PageLayout:0x{:x}：{error}",
+                start + region.position()
+            ),
+        )
+    })?;
     if extra_safe && region.remaining() != 0 {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
@@ -528,6 +535,7 @@ fn read_page_frame(
     max_bytes: usize,
     refs: &mut RefTable10_1,
     is_root_map: &impl Fn(u32) -> bool,
+    extra_safe: bool,
 ) -> io::Result<PageFrame> {
     use super::surround_frame::{MAP_SURROUND_FRAME_CLASS_ID, read_surround_frame_10_1};
 
@@ -537,6 +545,15 @@ fn read_page_frame(
         ObjectHeader::Null => {
             *reader = probe;
             Ok(PageFrame::Indirect(ObjectEntry10_1::Null))
+        }
+        ObjectHeader::Object { key, .. }
+            if !extra_safe && (refs.contains_map(key) || is_root_map(key)) =>
+        {
+            // 普通 LoadObject 对登记实例查询 IElement，Map 无此接口。
+            Err(io::Error::new(
+                ErrorKind::InvalidData,
+                format!("页面元素 IElement 槽回引 Map 键 {key}"),
+            ))
         }
         ObjectHeader::Object { class_id, key } if refs.contains(key) => {
             *reader = probe;

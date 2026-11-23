@@ -544,6 +544,16 @@ fn ordinary_layout_elements_keep_cross_stream_references_and_body_boundaries() {
         ]
     );
 
+    // 回引头仍写 MapFrame 的 CLSID，但键实际指向 /Maps 的 Map。
+    let mut wrong_target = page.clone();
+    wrong_target[backref_offset + 16..backref_offset + 20].copy_from_slice(&map_key.to_le_bytes());
+    let report = parse_mxd_streams_10_1(&maps, Some(&wrong_target)).unwrap();
+    let layout = report.page_layout.unwrap();
+    assert_eq!(layout.consumed_elements, 1);
+    assert_eq!(layout.consumed_end_offset(), backref_offset);
+    assert!(layout.stop.unwrap().contains("IElement 槽回引 Map 键"));
+    assert!(layout.indirect_elements.is_empty());
+
     // 第一个已完成的体仍然可用，未知体及其后的字节一并保留。
     page[backref_offset..backref_offset + 16].fill(0xa5);
     page[backref_offset + 16..backref_offset + 20].copy_from_slice(&(frame_key + 1).to_le_bytes());
