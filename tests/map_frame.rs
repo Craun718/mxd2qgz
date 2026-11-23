@@ -993,3 +993,58 @@ fn map_frame_nonpositive_collection_counts_preserve_the_base_frame() {
     assert_eq!(frame.base.draft_mode_bits, 0xffff);
     assert_eq!(reader.remaining(), 0);
 }
+
+#[test]
+fn map_frame_collections_use_registered_grid_and_locator_classes() {
+    use mxd2qgz::maps::map_frame::LOCATOR_RECTANGLE_CLASS_ID;
+    use mxd2qgz::maps::map_grid::GRATICULE_CLASS_ID;
+    use mxd2qgz::storage::object_refs::read_object_entry_10_1;
+
+    let mut body = frame_body(4);
+    let mut collections = Vec::new();
+    for key in [50_u32, 51] {
+        collections.extend(1_i32.to_le_bytes());
+        collections.extend([0x42; 16]);
+        collections.extend(key.to_le_bytes());
+    }
+    body.splice(22..30, collections);
+    let bytes = wrap(&body);
+    for (grid, locator) in [
+        (GRATICULE_CLASS_ID, LOCATOR_RECTANGLE_CLASS_ID),
+        (MAP_CLASS_ID, LOCATOR_RECTANGLE_CLASS_ID),
+        (GRATICULE_CLASS_ID, MAP_CLASS_ID),
+    ] {
+        let mut refs = RefTable10_1::new();
+        refs.register(42);
+        for (class_id, key) in [(grid, 50_u32), (locator, 51)] {
+            let mut header = class_id.to_vec();
+            header.extend(key.to_le_bytes());
+            read_object_entry_10_1(&mut Reader::new(&header), &mut refs).unwrap();
+        }
+        let saved = refs.clone();
+        let mut reader = Reader::new(&bytes);
+        let result = read_page_layout_map_frame_10_1(&mut reader, 4096, &mut refs);
+        if grid == MAP_CLASS_ID || locator == MAP_CLASS_ID {
+            assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::Unsupported);
+            assert_eq!(reader.position(), 0);
+            assert_eq!(refs, saved);
+        } else {
+            let frame = result.unwrap();
+            assert_eq!(
+                frame.grids[0].entry,
+                ObjectEntry10_1::BackReference {
+                    class_id: grid,
+                    key: 50
+                }
+            );
+            assert_eq!(
+                frame.locator_rectangles[0].entry,
+                ObjectEntry10_1::BackReference {
+                    class_id: locator,
+                    key: 51
+                }
+            );
+            assert_eq!(reader.remaining(), 0);
+        }
+    }
+}

@@ -332,7 +332,15 @@ fn read_locator_rectangle_slot(
     use crate::objects::display_symbol::{
         DisplaySlotKind10_1, read_symbol_slot_full_10_1, slot_full_stop_10_1,
     };
-    let entry = read_object_entry_10_1(r, refs)?;
+    let mut entry = read_object_entry_10_1(r, refs)?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+        && let Some(registered) = refs.registered_class(*key)
+    {
+        if !matches!(registered, LOCATOR_RECTANGLE_CLASS_ID) {
+            return Err(unsupported("ILocatorRectangle", entry));
+        }
+        *class_id = registered;
+    }
     let body = match entry {
         ObjectEntry10_1::NewObject {
             class_id: LOCATOR_RECTANGLE_CLASS_ID,

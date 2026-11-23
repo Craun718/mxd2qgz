@@ -225,7 +225,22 @@ pub(super) fn read_grid_slot_10_1(
     limit: usize,
     refs: &mut RefTable10_1,
 ) -> io::Result<GridSlot10_1> {
-    let entry = read_object_entry_10_1(r, refs)?;
+    let mut entry = read_object_entry_10_1(r, refs)?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+        && let Some(registered) = refs.registered_class(*key)
+    {
+        if !matches!(
+            registered,
+            GRATICULE_CLASS_ID
+                | MEASURED_GRID_CLASS_ID
+                | INDEX_GRID_CLASS_ID
+                | CUSTOM_OVERLAY_GRID_CLASS_ID
+                | MGRS_GRID_CLASS_ID
+        ) {
+            return Err(unsupported("IMapGrid", entry));
+        }
+        *class_id = registered;
+    }
     let mut grid = GridSlot10_1 {
         entry,
         graticule: None,
