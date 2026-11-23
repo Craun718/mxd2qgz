@@ -2430,3 +2430,65 @@ fn feature_bookmark_reads_access_and_sde_raster_records() {
         }
     }
 }
+
+#[test]
+fn feature_bookmark_reads_tiled_layer_and_ais_image_service_names() {
+    use mxd2qgz::layers::raster_dataset_name::{
+        AIS_IMAGE_SERVICE_NAME_CLASS_ID, INTERNET_TILED_LAYER_NAME_CLASS_ID,
+        RasterDatasetNameEntryBody10_1,
+    };
+
+    for class in [
+        INTERNET_TILED_LAYER_NAME_CLASS_ID,
+        AIS_IMAGE_SERVICE_NAME_CLASS_ID,
+    ] {
+        let mut bytes = bookmark_header_10_1(&class, 17);
+        if class == INTERNET_TILED_LAYER_NAME_CLASS_ID {
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(bookmark_string_10_1("瓦片图层"));
+            bytes.extend(9_i32.to_le_bytes());
+            bytes.extend([0; 16]); // 空 ITileReader。
+        } else {
+            bytes.extend(1_i32.to_le_bytes());
+            for value in ["影像服务", "名称", ""] {
+                bytes.extend(bookmark_string_10_1(value));
+            }
+        }
+        bytes.extend(bookmark_string_10_1("书签"));
+        let end = bytes.len();
+        bytes.push(0xa5);
+
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+        let BookmarkNameEntry10_1::RasterDatasetName(body) = result.name_object else {
+            panic!("应读取栅格名称");
+        };
+        match (class, *body) {
+            (
+                INTERNET_TILED_LAYER_NAME_CLASS_ID,
+                RasterDatasetNameEntryBody10_1::InternetTiledLayer(name),
+            ) => {
+                assert_eq!(name.name_string, "瓦片图层");
+                assert_eq!(name.integer, 9);
+            }
+            (
+                AIS_IMAGE_SERVICE_NAME_CLASS_ID,
+                RasterDatasetNameEntryBody10_1::AisImageService(name),
+            ) => {
+                assert_eq!(name.strings, ["影像服务", "名称", ""]);
+            }
+            _ => panic!("书签名称类型与对象头不符"),
+        }
+        assert_eq!(result.name, "书签");
+        assert_eq!(reader.position(), end);
+        assert!(refs.contains(17));
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+}

@@ -447,3 +447,14 @@ SdeRasterDB.dll 的主虚表 `0x7f62fce8` 指向 QI
 构造测试覆盖各类有无记录、Access 有 tag 7、SDE 直接结束、
 后继书签名以及逐字节截断回滚。真实书签宿主及原生 Open
 结果仍待 ArcMap 10.1 验证。
+
+## InternetTiledLayerName 与 AISImageServiceName
+
+MapServerLayer.dll 10.1.0.3035 的 InternetTiledLayerName QI
+`0x79e36b30` 与同版 ImageServer.dll 的 AISImageServiceName QI
+`0x77f011f0` 均把 IName 映到完整对象 +0x14。
+[模块摘要、Load 与接口证据](mxd-10.1-raster-layer-tail.md#瓦片图层与-ais-影像服务名称)
+已用于栅格名称读取器，FeatureBookmark 复用同一分派。
+构造测试验证瓦片名称的 short、LONG 和空 ITileReader 及 AIS
+名称的 LONG 和三串，检查后继书签文本、边界和逐字节截断回滚。
+真实书签宿主及 Open 结果仍待 ArcMap 10.1 验证。
