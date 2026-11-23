@@ -808,3 +808,28 @@ Save `0x746e10e0` 对应新版布局。截断时回滚整个书签及引用表�
 构造测试覆盖外层 v1–v4、共享 GPName 基类和 GPMultiValueTypeName
 中的嵌套 v4 对象。数值业务含义、真实书签宿主、原生 Open
 和 ArcMap/QGIS 人工验收待验证。
+
+## GPSATopoFeaturesTypeName
+
+GPSACore.dll PE32 10.1.0.3035 的 SHA-256 为
+`0aa35b1be22c61742f36a651679e3028c363c40eebe859cda285fa6c6c2a5292`。
+PE RTTI `0x74946cd8` 对应持久化虚表 `0x749319a8`。
+GetClassID `0x748f9960` 对应
+`AA10557F-0B72-4335-90AD-00655B0D8BBE`。QI `0x748f9600`
+对 IName、IGPName、IGPDataTypeName 分别返回 +0x10、+0x14、+0x18。
+
+Load `0x748f99c0` 的有符号版本上限为 4，v4 仅消费版本。
+较早版本读取有符号记录数，非正数跳过循环。每条在
+`0x748f9a43` 请求 IGPDataTypeName，版本小于 2 在
+`0x748f9a6d` 另请求 IGPDomain，随后读 AfCore 成员 String
+与 LONG。v3 在 `0x748f9ad3` 追加 IUID。Save `0x748f9b70`
+写 v4。当前 v2–v3 分派支持已确认的数据类型和 UID，
+更早版本的正计数在未支持的域记录前回滚。
+
+构造书签验证多值名称中的 v2–v4 子对象、旧记录、后继字段边界
+和逐字节截断回滚。旧域子体、真实书签宿主、原生 Open 及
+ArcMap/QGIS 人工验收仍待验证。
+
+同版 72 个 Desktop 类型库共列出四个公开 IGPName 类，
+GPMultiValueTypeName 子槽已接入这四类。GPSATopoFeaturesTypeName
+内部旧 IGPDomain 槽作为独立缺口继续跟踪。

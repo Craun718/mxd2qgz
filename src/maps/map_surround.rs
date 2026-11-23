@@ -334,6 +334,25 @@ pub struct AoiBookmark10_1 {
 
 const MAX_BOOKMARK_NAME_NESTING: usize = 16;
 
+pub const GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID: [u8; 16] = [
+    0x7f, 0x55, 0x10, 0xaa, 0x72, 0x0b, 0x35, 0x43, 0x90, 0xad, 0x00, 0x65, 0x5b, 0x0d, 0x8b, 0xbe,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpSaTopoFeaturesTypeName10_1 {
+    pub version: i16,
+    pub legacy_count: Option<i32>,
+    pub legacy_entries: Vec<GpSaTopoFeaturesTypeEntry10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpSaTopoFeaturesTypeEntry10_1 {
+    pub data_type: BookmarkNameEntry10_1,
+    pub string: String,
+    pub value: i32,
+    pub uid: Option<RuleSlot10_1<UidBody10_1>>,
+}
+
 pub const GP_FUNCTION_NAME_CLASS_ID: [u8; 16] = [
     0x42, 0x2f, 0x33, 0x9a, 0x7f, 0x37, 0x13, 0x42, 0x95, 0x4b, 0xb6, 0x8c, 0xc8, 0xb9, 0xce, 0x46,
 ];
@@ -472,6 +491,7 @@ pub enum BookmarkNameEntry10_1 {
     RepresentationClassName(Box<RepresentationClassName10_1>),
     GpDataTypeName(Box<GpDataTypeName10_1>),
     GpFunctionName(Box<GpFunctionName10_1>),
+    GpSaTopoFeaturesTypeName(Box<GpSaTopoFeaturesTypeName10_1>),
     GpMultiValueTypeName {
         version: i16,
         element_type: Box<BookmarkNameEntry10_1>,
@@ -1026,6 +1046,77 @@ fn read_gp_function_name_body_10_1(
     })
 }
 
+fn read_gp_sa_topo_features_type_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    name_depth: usize,
+) -> io::Result<GpSaTopoFeaturesTypeName10_1> {
+    let version = read_gp_name_version(reader, 4, "GPSATopoFeaturesTypeName")?;
+    let legacy_count = (version < 4)
+        .then(|| reader.read_u32_le().map(|value| value as i32))
+        .transpose()?;
+    let count = legacy_count.unwrap_or(0).max(0) as usize;
+    if count > 0 && version < 2 {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            "GPSATopoFeaturesTypeName 旧版 IGPDomain 槽未支持",
+        ));
+    }
+    if count > 0 && name_depth == MAX_BOOKMARK_NAME_NESTING {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "GPSATopoFeaturesTypeName 嵌套层数超限",
+        ));
+    }
+    // 每条至少占一个 16 字节对象头、一个 6 字节空字符串及一个 LONG。
+    let minimum_entry_bytes = if version == 3 { 42 } else { 26 };
+    if count > reader.remaining().min(max_bytes) / minimum_entry_bytes {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "GPSATopoFeaturesTypeName 条目数量超限",
+        ));
+    }
+    let mut legacy_entries = Vec::new();
+    for _ in 0..count {
+        let data_type = read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth + 1)?;
+        if !matches!(
+            data_type,
+            BookmarkNameEntry10_1::Null
+                | BookmarkNameEntry10_1::GpDataTypeName(_)
+                | BookmarkNameEntry10_1::GpMultiValueTypeName { .. }
+                | BookmarkNameEntry10_1::GpSaTopoFeaturesTypeName(_)
+                | BookmarkNameEntry10_1::BackReference {
+                    class_id: GP_DATA_TYPE_NAME_CLASS_ID
+                        | GP_MULTI_VALUE_TYPE_NAME_CLASS_ID
+                        | GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID,
+                    ..
+                }
+        ) {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "GPSATopoFeaturesTypeName 的 IGPDataTypeName 类未支持",
+            ));
+        }
+        let string = read_string_10_1(reader, max_bytes)?;
+        let value = reader.read_u32_le()? as i32;
+        let uid = (version == 3)
+            .then(|| read_gp_name_uid_slot(reader, table))
+            .transpose()?;
+        legacy_entries.push(GpSaTopoFeaturesTypeEntry10_1 {
+            data_type,
+            string,
+            value,
+            uid,
+        });
+    }
+    Ok(GpSaTopoFeaturesTypeName10_1 {
+        version,
+        legacy_count,
+        legacy_entries,
+    })
+}
+
 // 调用者负责将名称槽及其宿主的读取作为同一事务提交。
 fn read_bookmark_name_slot_10_1(
     reader: &mut Reader<'_>,
@@ -1415,11 +1506,13 @@ fn read_bookmark_name_slot_10_1(
                 BookmarkNameEntry10_1::Null
                     | BookmarkNameEntry10_1::GpDataTypeName(_)
                     | BookmarkNameEntry10_1::GpFunctionName(_)
+                    | BookmarkNameEntry10_1::GpSaTopoFeaturesTypeName(_)
                     | BookmarkNameEntry10_1::GpMultiValueTypeName { .. }
                     | BookmarkNameEntry10_1::BackReference {
                         class_id: GP_DATA_TYPE_NAME_CLASS_ID
                             | GP_MULTI_VALUE_TYPE_NAME_CLASS_ID
-                            | GP_FUNCTION_NAME_CLASS_ID,
+                            | GP_FUNCTION_NAME_CLASS_ID
+                            | GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID,
                         ..
                     }
             ) {
@@ -1433,6 +1526,12 @@ fn read_bookmark_name_slot_10_1(
                 element_type: Box::new(element_type),
             }
         }
+        ObjectEntry10_1::NewObject {
+            class_id: GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID,
+            ..
+        } => BookmarkNameEntry10_1::GpSaTopoFeaturesTypeName(Box::new(
+            read_gp_sa_topo_features_type_name_body_10_1(reader, max_bytes, table, name_depth)?,
+        )),
         ObjectEntry10_1::NewObject {
             class_id: GP_FUNCTION_NAME_CLASS_ID,
             ..
