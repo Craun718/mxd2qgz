@@ -322,3 +322,13 @@ GdbCore FeatureDatasetName，后者已确认支持 IName。
 书签复用 CoverageName 读取器。构造测试覆盖负外层版本、原始 LONG、
 委派的名称体、后继书签名和逐字节截断回滚。只登记外层实际对象键。
 真实书签宿主和原生 Open 结果仍待 ArcMap 10.1 验证。
+
+## WorkspaceName
+
+同版 GdbCore.dll 的 WorkspaceName 主虚表 `0x70ada828`
+指向 QI `0x70a26e30`。`0x70a26e37` 比较 IName IID，
+`0x70a26e55` 返回对象 +0x10。Load `0x70a27950` 在
+`0x70a2799d/0x70a279a2` 通过有符号 short 判断上限 1。
+书签复用现有 WorkspaceName 读取器，包括路径缓存及子槽停止。
+构造测试覆盖负版本、空属性集、后继书签字段及截断回滚。
+真实书签宿主、原生 Open 结果和 ArcMap 人工验证仍待补充。

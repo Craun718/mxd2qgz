@@ -171,6 +171,9 @@ use crate::objects::route_event_name::{
     ROUTE_EVENT_SOURCE_NAME_CLASS_ID, RouteEventSourceNameBody10_1,
     read_route_event_source_name_body_10_1,
 };
+use crate::objects::workspace_name::{
+    WORKSPACE_NAME_CLASS_ID, WorkspaceNamePrefix10_1, read_workspace_name_body_10_1,
+};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
@@ -324,6 +327,7 @@ pub enum BookmarkNameEntry10_1 {
     TopologyName(Box<TopologyNameBody10_1>),
     FeatureDatasetName(Box<FeatureDatasetNameBody10_1>),
     CoverageName(Box<FeatureDatasetNameBody10_1>),
+    WorkspaceName(Box<WorkspaceNamePrefix10_1>),
     CadDrawingName(Box<CadDrawingNameBody10_1>),
     ReferencedTableName(Box<ReferencedTableNameBody10_1>),
     XyEventSourceName(Box<XyEventSourceNameBody10_1>),
@@ -860,6 +864,21 @@ pub fn read_feature_bookmark_10_1(
                 ));
             }
             BookmarkNameEntry10_1::TopologyName(Box::new(body))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: WORKSPACE_NAME_CLASS_ID,
+            key,
+        } => {
+            let body = read_workspace_name_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?;
+            if let Some(stop) = &body.stop {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!(
+                        "FeatureBookmark 名称对象槽 offset 0x{name_offset:x}: WorkspaceName 未读完（{stop:?}）"
+                    ),
+                ));
+            }
+            BookmarkNameEntry10_1::WorkspaceName(Box::new(body))
         }
         ObjectEntry10_1::NewObject {
             class_id: class_id @ (FEATURE_DATASET_NAME_CLASS_ID | COVERAGE_NAME_CLASS_ID),

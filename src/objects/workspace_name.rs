@@ -161,12 +161,11 @@ pub(super) fn read_workspace_name_payload_10_1<K>(
         )
     };
 
-    // 1. 版本 short:原生 `1 < ver` 拒绝。汇编符号性未逐条复核,按有符号
-    //    解释;负值位模式一并拒绝(负值版本无业务意义,较原生更严)。
+    // 原生以有符号 short 比较版本上限。
     let version = trial.read_u16_le()?;
-    if (version as i16) > MAX_WS_VERSION || (version as i16) < 0 {
+    if (version as i16) > MAX_WS_VERSION {
         return Err(invalid(format!(
-            "架构版本 {version} 超出 WorkspaceName::Load 接受范围（>1 拒绝；负值位模式一并拒绝）"
+            "架构版本 {version} 超出 WorkspaceName::Load 接受范围（有符号 >1 拒绝）"
         )));
     }
 

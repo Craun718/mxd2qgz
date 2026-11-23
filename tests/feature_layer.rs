@@ -506,7 +506,7 @@ fn topology_selector_reads_topology_name_body() {
 #[test]
 fn workspace_body_reader_rejects_version_above_one() {
     // WorkspaceName::Load 的版本上限 1：版本 2 拒绝（原生 `1 < ver`）。
-    for version in [2_u16, 7, 0x8000] {
+    for version in [2_u16, 7, i16::MAX as u16] {
         let mut bytes = version.to_le_bytes().to_vec();
         bytes.extend(encoded("p"));
         let mut reader = Reader::new(&bytes);

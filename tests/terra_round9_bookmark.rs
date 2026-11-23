@@ -1838,3 +1838,43 @@ fn feature_bookmark_reads_coverage_name_and_leaves_host_suffix() {
         assert!(refs.is_empty());
     }
 }
+
+#[test]
+fn feature_bookmark_reads_workspace_name_without_opening_it() {
+    use mxd2qgz::objects::workspace_name::{PropertySetSlot10_1, WORKSPACE_NAME_CLASS_ID};
+
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(42_i32.to_le_bytes());
+    bytes.extend(WORKSPACE_NAME_CLASS_ID);
+    bytes.extend(17_u32.to_le_bytes());
+    bytes.extend((-1_i16).to_le_bytes());
+    for value in [b'W', b'P', b'T'] {
+        bytes.extend([4, 0, 0, 0, value, 0, 0, 0]);
+    }
+    bytes.extend([0; 16]);
+    bytes.push(0);
+    bytes.extend(13_i32.to_le_bytes());
+    bytes.extend([4, 0, 0, 0, b'X', 0, 0, 0]);
+    let end = bytes.len();
+    bytes.push(0xa5);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    assert!(matches!(
+        result.name_object, BookmarkNameEntry10_1::WorkspaceName(body)
+            if body.key == 17 && body.version == u16::MAX && body.path == "W"
+                && body.property_set == PropertySetSlot10_1::Null
+    ));
+    assert_eq!(result.name, "X");
+    assert_eq!(reader.position(), end);
+    assert!(refs.contains(17));
+
+    for cut in 0..end {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+}
