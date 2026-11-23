@@ -1444,3 +1444,39 @@ fn bookmark_reads_db_table_name_without_a_version() {
     assert_eq!(reader.position(), 0);
     assert!(refs.is_empty());
 }
+
+#[test]
+fn bookmark_reads_cad_drawing_name() {
+    use mxd2qgz::objects::dataset_name_more::CAD_DRAWING_NAME_CLASS_ID;
+
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(CAD_DRAWING_NAME_CLASS_ID);
+    bytes.extend(17_u32.to_le_bytes());
+    let name_start = bytes.len();
+    bytes.extend(1_u16.to_le_bytes());
+    for value in [b'D', b'N', b'C'] {
+        bytes.extend([4, 0, 0, 0, value, 0, 0, 0]);
+    }
+    bytes.extend([0; 16]);
+    bytes.extend([4, 0, 0, 0, b'X', 0, 0, 0]);
+
+    let mut refs = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let bookmark = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    assert!(
+        matches!(bookmark.name_object, BookmarkNameEntry10_1::CadDrawingName(body)
+        if body.key == 17 && body.strings == ["D", "N", "C"])
+    );
+    assert_eq!(bookmark.name, "X");
+    assert_eq!(reader.remaining(), 0);
+    assert!(refs.contains(17));
+
+    for end in name_start..bytes.len() {
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes[..end]);
+        assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+}

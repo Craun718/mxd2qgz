@@ -212,3 +212,14 @@ DBTableName QI `0x708d7cc0` 在 `0x708d7d0b` 比较
 完整对象的 `+0x10`。书签复用 Load `0x708d7a40` 对应的读取器。
 构造测试从无版本字段的首串读到书签名称，并检查截断后游标和键回滚。
 DBTableName 的实际书签宿主、Open 结果及 ArcMap 10.1 人工验证尚待补充。
+
+## CAD 图纸名称
+
+CadFDB.dll 10.1.0.3035（摘要及持久化入口见
+[旧表名称取证](mxd-terra-round9-old.md#caddrawingname)）的
+CadDrawingName 主虚表 `0x6cad93d4` 指向 QI `0x6cab6b60`。
+该函数在 `0x6cab6b67` 取 `0x6cad911c` 的 IName IID，
+命中后在 `0x6cab6b85` 返回对象 `+0x10`。
+书签复用 Load `0x6cab7030` 对应的名称读取器。构造测试验证
+三串、名称键、后继书签名及逐前缀截断的回滚。
+原生 Open 的结果和实际书签工程仍待 ArcMap 10.1 验证。
