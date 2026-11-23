@@ -356,8 +356,22 @@ fn read_feature_dataset_name_payload(
     let saved_table = table.clone();
     let mut staged_table = table.clone();
     let mut stop = None;
-    let workspace = match read_object_entry_10_1(&mut trial, &mut staged_table)? {
+    let mut entry = read_object_entry_10_1(&mut trial, &mut staged_table)?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+        && let Some(registered) = staged_table.registered_class(*key)
+    {
+        *class_id = registered;
+    }
+    let workspace = match entry {
         ObjectEntry10_1::Null => WorkspaceNameSlot10_1::Null,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if staged_table.registered_class(key).is_some()
+                && class_id != WORKSPACE_NAME_CLASS_ID =>
+        {
+            stop = Some(FeatureDatasetNameStop10_1::WorkspaceUnsupported { class_id, key });
+            trial = reposition_to(reader, slot_offset);
+            WorkspaceNameSlot10_1::Unsupported { class_id, key }
+        }
         ObjectEntry10_1::BackReference { class_id, key } => {
             WorkspaceNameSlot10_1::BackReference { class_id, key }
         }

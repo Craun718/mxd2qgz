@@ -588,3 +588,42 @@ fn non_canonical_flag_byte_is_preserved_verbatim() {
     assert!(!parsed.enumerates_as_single_feature_class());
     assert_eq!(parsed.stop, None);
 }
+
+#[test]
+fn feature_dataset_workspace_reference_checks_registration() {
+    for (registered, header) in [
+        (WORKSPACE_NAME_CLASS_ID, UNKNOWN_CLASS_ID),
+        (UNKNOWN_CLASS_ID, WORKSPACE_NAME_CLASS_ID),
+    ] {
+        let mut refs = RefTable10_1::new();
+        let mut definition = Vec::new();
+        push_entry_header(&mut definition, &registered, WS_KEY);
+        read_object_entry_10_1(&mut Reader::new(&definition), &mut refs).unwrap();
+        let (mut body, slot_offset) = feature_dataset_prefix(1, 0);
+        push_entry_header(&mut body, &header, WS_KEY);
+        let mut reader = Reader::new(&body);
+        let parsed =
+            read_feature_dataset_name_body_10_1(&mut reader, 1024, &mut refs, FDN_KEY).unwrap();
+        if registered == WORKSPACE_NAME_CLASS_ID {
+            assert_eq!(reader.remaining(), 0);
+            assert_eq!(
+                parsed.workspace,
+                WorkspaceNameSlot10_1::BackReference {
+                    class_id: registered,
+                    key: WS_KEY,
+                }
+            );
+        } else {
+            assert_eq!(reader.position(), slot_offset);
+            assert_eq!(
+                parsed.stop,
+                Some(FeatureDatasetNameStop10_1::WorkspaceUnsupported {
+                    class_id: registered,
+                    key: WS_KEY,
+                })
+            );
+        }
+        assert_eq!(refs.len(), 1);
+        assert!(refs.contains(WS_KEY));
+    }
+}

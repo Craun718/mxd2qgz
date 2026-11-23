@@ -559,7 +559,12 @@ pub(crate) fn read_feature_class_name_payload(
     let mut stop = None;
     let nested = if selector == 0 {
         // IWorkspaceName 槽(样本分支)。
-        let entry = read_object_entry_10_1(&mut trial, &mut staged_table)?;
+        let mut entry = read_object_entry_10_1(&mut trial, &mut staged_table)?;
+        if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
+            && let Some(registered) = staged_table.registered_class(*key)
+        {
+            *class_id = registered;
+        }
         match entry {
             ObjectEntry10_1::NewObject { class_id, key } if class_id == WORKSPACE_NAME_CLASS_ID => {
                 let ws =
@@ -577,6 +582,17 @@ pub(crate) fn read_feature_class_name_payload(
                 FeatureClassNameNested10_1::WorkspaceName(WorkspaceNameEntry10_1::NewObject(
                     Box::new(ws),
                 ))
+            }
+            ObjectEntry10_1::BackReference { class_id, key }
+                if staged_table.registered_class(key).is_some()
+                    && class_id != WORKSPACE_NAME_CLASS_ID =>
+            {
+                stop = Some(FeatureClassNameStop10_1::WorkspaceNameUnsupported { class_id, key });
+                trial = reader.reposition_to(slot_offset);
+                FeatureClassNameNested10_1::WorkspaceName(WorkspaceNameEntry10_1::Unsupported {
+                    class_id,
+                    key,
+                })
             }
             ObjectEntry10_1::NewObject { class_id, key } => {
                 // 非 WorkspaceName 类的新对象:体未知且无外部长度,停止并回退

@@ -90,3 +90,11 @@ ITopologyName。SystemCore 同版在 `0x7ffd0063` 按键查询登记实例的接
 构造测试确认：头部类标识与登记类不一致时，以登记类判定；误引
 WorkspaceName 时保留该槽及其后字节，已有对象键不变。
 仍缺第二选择子非零的真实工程和 ArcMap 10.1 打开验证。
+
+### 要素名称的工作空间回引
+
+GdbCore.dll 10.1.0.3035 的 FeatureClassName Load `0x709b5080` 零选择子
+和 FeatureDatasetName Load `0x709b7c90` 请求 IWorkspaceName。
+遵循同版 SystemCore `0x7ffd0063` 的按键接口查询，两个槽按登记类验证
+并解析回引。在构造用例中，有效回引恢复登记类，误引保留槽边界及已有键。
+真实错引工程与 ArcMap 运行行为尚未验证。

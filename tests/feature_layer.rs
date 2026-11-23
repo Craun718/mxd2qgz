@@ -1116,3 +1116,29 @@ fn topology_selector_checks_the_registered_reference_class() {
         assert!(refs.contains(34));
     }
 }
+
+#[test]
+fn feature_class_workspace_reference_checks_registration() {
+    use mxd2qgz::storage::object_refs::read_object_entry_10_1;
+
+    let mut body = feature_class_name_body();
+    let slot = body.len() - (20 + workspace_name_body().len() + 2);
+    body.truncate(slot);
+    body.extend(entry_bytes(&WORKSPACE_NAME_CLASS_ID, 99));
+    body.extend(0_u16.to_le_bytes());
+    let mut refs = RefTable10_1::new();
+    let definition = entry_bytes(&TOPOLOGY_NAME_CLASS_ID, 99);
+    read_object_entry_10_1(&mut Reader::new(&definition), &mut refs).unwrap();
+    let mut reader = Reader::new(&body);
+    let parsed = read_feature_class_name_body_10_1(&mut reader, 1024, &mut refs, 58).unwrap();
+    assert_eq!(
+        parsed.stop,
+        Some(FeatureClassNameStop10_1::WorkspaceNameUnsupported {
+            class_id: TOPOLOGY_NAME_CLASS_ID,
+            key: 99,
+        })
+    );
+    assert_eq!(parsed.version1_selector, None);
+    assert_eq!(reader.position(), slot);
+    assert_eq!(refs.len(), 1);
+}

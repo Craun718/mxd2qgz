@@ -3055,7 +3055,7 @@ mod tests {
             let prefix =
                 read_feature_layer_prefix_10_1(&mut reader, 1024, &mut refs.clone()).unwrap();
             let source = feature_layer_source(&prefix, 0, &mut Vec::new()).unwrap();
-            assert_eq!(source.path, None);
+            assert_eq!(source.path.as_deref(), Some("..\\data.gdb"));
         }
     }
 
