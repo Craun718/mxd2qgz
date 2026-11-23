@@ -617,3 +617,63 @@ fn reads_short_devmode_only_with_matching_version_and_complete_emf() {
     page.push(0);
     assert!(parse(&page, Some(&version)).print_settings.is_none());
 }
+
+#[test]
+#[ignore = "需要本地提取的 ArcGIS 10.1 Java SDK 工程"]
+fn reads_yellowstone_print_settings_from_sdk_documents() {
+    use mxd2qgz::maps::mxd_maps::parse_mxd_streams_10_1_with_version;
+    use mxd2qgz::maps::print_settings::{EMF_PRINTER_CLASS_ID, PrinterBody10_1};
+    use mxd2qgz::version::mxd_version::identify_version;
+
+    for (file_name, paper_version, layout_end) in [
+        ("Yellowstone.mxd", 2, 0x960),
+        ("YellowstoneGDB.mxd", 3, 0x1296),
+    ] {
+        let path = format!(
+            "temp/terra-round8-old/sdk-java/{file_name}.4896861F_D89C_46BA_ABEC_17591162B2B1"
+        );
+        let mut document = cfb::open(path).unwrap();
+        let mut read = |name: &str| {
+            let mut bytes = Vec::new();
+            document
+                .open_stream(name)
+                .unwrap()
+                .read_to_end(&mut bytes)
+                .unwrap();
+            bytes
+        };
+        let version = identify_version(&read("/Version")).unwrap();
+        let maps = read("/Maps");
+        let page = read("/PageLayout");
+        let parsed =
+            parse_mxd_streams_10_1_with_version(&maps, Some(&page), Some(&version)).unwrap();
+        assert!(
+            parsed
+                .map
+                .unknown_fields
+                .iter()
+                .all(|field| field.stream != "/PageLayout")
+        );
+        let layout = parsed.page_layout.unwrap();
+        assert_eq!(page.len(), layout_end);
+        assert_eq!(layout.consumed_end_offset(), layout_end);
+        let settings = layout.print_settings.unwrap();
+        assert_eq!(settings.paper.version, paper_version);
+        assert_eq!(settings.end_offset, layout_end);
+        if paper_version == 2 {
+            assert_eq!(settings.paper.declared_dev_mode_size, 1172);
+            assert_eq!(settings.paper.dev_mode, page[0x4be..0x94a]);
+            assert_eq!(
+                settings.printer,
+                ObjectEntry10_1::NewObject {
+                    class_id: EMF_PRINTER_CLASS_ID,
+                    key: 164,
+                }
+            );
+            assert_eq!(
+                settings.printer_body,
+                Some(PrinterBody10_1::Emf { version: 1 })
+            );
+        }
+    }
+}

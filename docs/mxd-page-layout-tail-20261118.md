@@ -143,3 +143,12 @@ dmDriverExtra 952。按 220 字节固定体计算会落到 `0x952`。按
 212 字节布局。只有完整读出流尾的 EmfPrinter v1 才提交游标和对象键。
 构造测试覆盖短体、缺少版本上下文、截断和流尾附加字节。通过 `parse`
 命令验证 Yellowstone 的布局到达流尾。ArcMap 10.1 和 QGIS 尚未人工核验。
+
+Java SDK 的两份实档已加入按需运行的测试。Yellowstone
+（SHA-256 `05ff0f36d97048eef5f241659664a57e24b3ce822212205ad0bbdbf9a6307e73`）
+校验 Paper v2 的原始 DEVMODE 区间及 EmfPrinter 键 164。
+YellowstoneGDB
+（SHA-256 `f758b58fbad9275bd4a9491f2d3ae424d70cb85a7df674247bfe3739fc49ee89`）
+校验 Paper v3 及打印设置结束于 `0x1296`。两份工程均从
+`/Version`、`/Maps`、`/PageLayout` 入口验证，布局无未解析区间。
+这两份工程仍缺显式设置 ObjectStream 版本文本为 9.0 的运行期证据。

@@ -64,6 +64,7 @@
 - [x] 接入 ArcMap 10.1 按 8.3 保存时的 Paper v2 DEVMODE 原样写盘分支。[旧保存索引取证](docs/mxd-page-layout-tail-20261118.md#旧保存索引的纸张及-arcpressprinter)
 - [x] 接入 ArcMap 10.1 按 8.3 或 9.0 保存时省略驱动段的 ArcPressPrinter v2。[旧保存索引取证](docs/mxd-page-layout-tail-20261118.md#旧保存索引的纸张及-arcpressprinter)
 - [x] 读取 Yellowstone 中 Paper v2 的 212 字节固定 DEVMODE 段及流尾打印机对象。[实档与原生边界](docs/mxd-page-layout-tail-20261118.md#yellowstone-的短-devmode-体)
+- [x] 用两份 Java SDK 的 Yellowstone 工程回归验证分流 Paper v2、v3 的打印设置及流尾。[SDK 实档](docs/mxd-page-layout-tail-20261118.md#yellowstone-的短-devmode-体)
 
 - [x] 接入 MeasuredGrid 和 IndexGrid 的 MapFrame 网格对象体，见[网格原生读写](docs/mxd-page-layout-grid-20261118.md#measuredgridindexgrid-与-calibratedmapgridborder)。
 - [x] 接入 MapGrid 的 FormattedGridLabel、MixedFontGridLabel、CornerGridLabel，覆盖 10.1 类型库公开的其余 IGridLabel 类。[标签原生证据](docs/mxd-page-layout-grid-20261118.md#formattedgridlabelmixedfontgridlabel-与-cornergridlabel)
