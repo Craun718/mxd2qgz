@@ -427,7 +427,7 @@
   - [x] 接入已确认字段归属：Map 数据框名称与第二名称经 Map.dll Load 与样本字节闭合为 AfCore String 布局，接入 `native_string::read_string_10_1`（Map 前缀读取器）；见 [研究记录](docs/arcmap-10.1-map-object.md)。
   - [x] 将 Map 书签后的三个成员对位到 VerboseEvents、ReferenceScale 和 UseSymbolLevels，并在诊断中显示属性名。[原生接口证据](docs/mxd-round4-map-spatial-20261117.md#书签后与照明后字段的接口定名)
   - [x] 将 Map 照明后的 12 字节对位到 ConserveMemory、临时 short、OutputBandSize、DelayBackgroundDraw 和 Expanded，并保留存盘值。[原生接口证据](docs/mxd-round4-map-spatial-20261117.md#书签后与照明后字段的接口定名)
-  - [ ] 补齐 Map 独立表的其余嵌套对象。LinearRef 的两张 v9 表已读完。[独立表续查](docs/mxd-terra-round9-table.md)
+  - [x] 补齐 Map 独立表的其余嵌套对象：共享 IName 槽的 22 个已确认类全部进入专属读取器，关系名、颜色、尾对象、时间族和 v14 扩展均有独立回归；LinearRef 的两张 v9 表已读完。[独立表续查](docs/mxd-terra-round9-table.md)
   - [x] 接入 StandaloneTable 两个 IName 槽中已有的查询表和 FileGDB 要素类名称分派。[独立表槽位取证](docs/mxd-terra-round9-table.md#关系名称序列颜色和后续对象)
   - [x] 接入 StandaloneTable 关系名称循环和压缩序列前的 IColor 对象槽。[独立表槽位取证](docs/mxd-terra-round9-table.md#关系名称序列颜色和后续对象)
   - [x] 接入 StandaloneTable 后续版本的 DisplayExpressionProperties、UID 和标注集合槽。[独立表槽位取证](docs/mxd-terra-round9-table.md#关系名称序列颜色和后续对象)

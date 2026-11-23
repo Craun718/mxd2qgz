@@ -1976,6 +1976,57 @@ mod tests {
         v
     }
 
+    #[test]
+    fn shared_tabular_slot_dispatches_every_confirmed_name_class() {
+        let classes = [
+            FEATURE_CLASS_NAME_CLASS_ID,
+            FGDB_FEATURE_CLASS_NAME_CLASS_ID,
+            COVERAGE_FEATURE_CLASS_NAME_CLASS_ID,
+            TABLE_NAME_CLASS_ID,
+            OBJECT_CLASS_NAME_CLASS_ID,
+            FGDB_TABLE_NAME_CLASS_ID,
+            RASTER_BAND_NAME_CLASS_ID,
+            RASTER_CATALOG_NAME_CLASS_ID,
+            RELATIONSHIP_CLASS_NAME_CLASS_ID,
+            SCHEMATIC_DIAGRAM_CLASS_NAME_CLASS_ID,
+            SCHEMATIC_ELEMENT_CLASS_NAME_CLASS_ID,
+            NETCDF_TABLE_NAME_CLASS_ID,
+            REFERENCED_TABLE_NAME_CLASS_ID,
+            NETCDF_FEATURE_CLASS_NAME_CLASS_ID,
+            XY_EVENT_SOURCE_NAME_CLASS_ID,
+            ROUTE_EVENT_SOURCE_NAME_CLASS_ID,
+            AMS_DATASET_NAME_CLASS_ID,
+            QUERY_TABLE_NAME_CLASS_ID,
+            TABLE_QUERY_NAME_CLASS_ID,
+            FEATURE_QUERY_NAME_CLASS_ID,
+            REL_QUERY_TABLE_NAME_CLASS_ID,
+            DB_TABLE_NAME_CLASS_ID,
+        ];
+
+        for class_id in classes {
+            let bytes = entry(&class_id, 1);
+            let mut stop = None;
+            let result = read_tabular_name_slot_10_1(
+                &mut Reader::new(&bytes),
+                4096,
+                &mut RefTable10_1::new(),
+                &mut stop,
+            );
+            if let Ok(slot) = result {
+                assert!(
+                    !matches!(slot, DatasetNameMoreSlot10_1::Unsupported { .. }),
+                    "共享表名槽把已确认类 {} 判为未支持",
+                    crate::storage::class_id_hex(&class_id),
+                );
+            }
+            assert!(
+                !matches!(stop, Some(DatasetNameMoreStop10_1::SlotUnsupported { .. })),
+                "共享表名槽在类 {} 的对象头处停止",
+                crate::storage::class_id_hex(&class_id),
+            );
+        }
+    }
+
     fn fcn_body(nested: &[u8]) -> Vec<u8> {
         let mut v = 1u16.to_le_bytes().to_vec();
         for _ in 0..4 {
