@@ -486,3 +486,12 @@ OGCClient.dll 10.1.0.3035 的 WCSConnectionName RTTI 对应
 `0x7b420ee0` 的读取规则。构造 v3 连接验证原 CLSID、
 属性集新键与回引、后继字段和逐字节截断回滚。真实书签
 宿主和 Open 结果仍待 ArcMap 10.1 验证。
+
+## RasterTypeName
+
+MosaicDB.dll 10.1.0.3035 的 QueryInterface `0x7a45b890` 将
+RasterTypeName 的 IName 映到完整对象 +0x18。FeatureBookmark
+复用[已确认的 Load `0x7a45c590` 读取规则](mxd-10.1-raster-layer-tail.md#rastertypename)。
+构造书签验证两个字符串、有符号 InstanceID、内嵌 MosaicDatasetName、
+后继书签文本和逐字节截断回滚。真实书签宿主、原生 Open 结果和
+QGIS 人工检查待验证。

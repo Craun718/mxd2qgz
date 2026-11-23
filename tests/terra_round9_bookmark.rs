@@ -2596,3 +2596,52 @@ fn feature_bookmark_preserves_ogc_connection_types() {
         }
     }
 }
+
+#[test]
+fn feature_bookmark_reads_raster_type_name_with_mosaic_dataset() {
+    use mxd2qgz::layers::raster_dataset_name::{
+        MOSAIC_DATASET_NAME_CLASS_ID, RASTER_TYPE_NAME_CLASS_ID, RasterDatasetNameEntryBody10_1,
+    };
+
+    let mut bytes = bookmark_header_10_1(&RASTER_TYPE_NAME_CLASS_ID, 17);
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(bookmark_string_10_1("名称字符串"));
+    bytes.extend(bookmark_string_10_1("栅格类型"));
+    bytes.extend((-7_i32).to_le_bytes());
+    bytes.extend(MOSAIC_DATASET_NAME_CLASS_ID);
+    bytes.extend(18_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(bookmark_string_10_1("镶嵌"));
+    bytes.extend(bookmark_string_10_1("数据集"));
+    bytes.extend([0; 16]);
+    bytes.extend(bookmark_string_10_1("书签"));
+    let end = bytes.len();
+    bytes.push(0xa5);
+
+    let mut refs = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    let BookmarkNameEntry10_1::RasterDatasetName(body) = result.name_object else {
+        panic!("应读取栅格名称");
+    };
+    let RasterDatasetNameEntryBody10_1::RasterType(name) = *body else {
+        panic!("应读取栅格类型名称");
+    };
+    assert_eq!(name.name_string, "名称字符串");
+    assert_eq!(name.name, "栅格类型");
+    assert_eq!(name.instance_id, -7);
+    assert_eq!(
+        name.mosaic_dataset.body.unwrap().strings,
+        ["镶嵌", "数据集"]
+    );
+    assert_eq!(result.name, "书签");
+    assert_eq!(reader.position(), end);
+    assert!(refs.contains(17) && refs.contains(18));
+    for cut in 0..end {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+}
