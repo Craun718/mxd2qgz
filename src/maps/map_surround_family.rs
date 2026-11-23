@@ -197,7 +197,7 @@ const MAX_SCALEBAR_TAIL_VERSION: i16 = 2;
 pub enum SlotEntry10_1<T> {
     /// 16 字节全零类标识：空引用，无键、无对象体。
     Null,
-    /// 键已见：回引条目，无对象体。类标识原样保留、不校验。
+    /// 键已见：回引条目，无对象体。字体槽优先保留该键的登记类。
     BackReference { class_id: [u8; 16], key: u32 },
     /// 新对象且类标识为分派目标类：已整体消费其对象体。
     Body(Box<T>),
@@ -269,6 +269,29 @@ fn read_typed_slot_10_1<T>(
     read_checked_family_slot(reader, table, slot, target_class, |r, t, k| {
         read_body(r, t, k).map(Some)
     })
+}
+
+fn read_scalebar_font_slot(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    slot: &'static str,
+) -> io::Result<(SlotEntry10_1<StdFontBody10_1>, Option<FamilyStop10_1>)> {
+    let (mut entry, stop) = read_typed_slot_10_1(
+        reader,
+        max_bytes,
+        table,
+        slot,
+        &STDFONT_CLASS_ID,
+        |reader, _, _| read_std_font_body_10_1(reader, max_bytes),
+    )?;
+    if let SlotEntry10_1::BackReference { class_id, key } = &mut entry
+        && let Some(registered) = table.registered_class(*key)
+    {
+        // ObjectStream 查询的是键命中的实例，记录其已知登记类。
+        *class_id = registered;
+    }
+    Ok((entry, stop))
 }
 
 fn read_family_text_slot(
@@ -458,14 +481,8 @@ pub fn read_scalebar_body_10_1(
 
     let _ = key;
     // 4. IFont 槽（−0x6c）。
-    let (font_a, mut stop) = read_typed_slot_10_1(
-        &mut trial,
-        max_bytes,
-        &mut staged,
-        "font_a(IFont)",
-        &STDFONT_CLASS_ID,
-        |reader, _table, _key| read_std_font_body_10_1(reader, max_bytes),
-    )?;
+    let (font_a, mut stop) =
+        read_scalebar_font_slot(&mut trial, max_bytes, &mut staged, "font_a(IFont)")?;
 
     // 5. uint32 + int32（−0x5c/−0x58）。
     let mut mid_pair = [0_u32; 2];
@@ -478,14 +495,8 @@ pub fn read_scalebar_body_10_1(
     // 6. IFont 槽（−0x54）。
     let mut font_b = SlotEntry10_1::Null;
     if stop.is_none() {
-        let (slot, reason) = read_typed_slot_10_1(
-            &mut trial,
-            max_bytes,
-            &mut staged,
-            "font_b(IFont)",
-            &STDFONT_CLASS_ID,
-            |reader, _table, _key| read_std_font_body_10_1(reader, max_bytes),
-        )?;
+        let (slot, reason) =
+            read_scalebar_font_slot(&mut trial, max_bytes, &mut staged, "font_b(IFont)")?;
         font_b = slot;
         stop = reason;
     }
@@ -503,14 +514,8 @@ pub fn read_scalebar_body_10_1(
         for slot in &mut tail_ints {
             *slot = u32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
         }
-        let (slot, reason) = read_typed_slot_10_1(
-            &mut trial,
-            max_bytes,
-            &mut staged,
-            "font_c(IFont)",
-            &STDFONT_CLASS_ID,
-            |reader, _table, _key| read_std_font_body_10_1(reader, max_bytes),
-        )?;
+        let (slot, reason) =
+            read_scalebar_font_slot(&mut trial, max_bytes, &mut staged, "font_c(IFont)")?;
         font_c = slot;
         if reason.is_none() {
             last_uint = Some(u32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap()));
@@ -2174,6 +2179,36 @@ mod tests {
             data[20..22].copy_from_slice(&version.to_le_bytes());
             assert!(read_body(&data, read_scalebar_body_10_1).is_err());
         }
+    }
+
+    #[test]
+    fn scalebar_font_references_use_registered_class() {
+        let mut data = scalebar_full_bytes();
+        let slot_c = data.len() - 4 - std_font_bytes().len() - 20;
+        let slot_b = 20
+            + 2
+            + common_prefix_bytes().len()
+            + 12
+            + 8
+            + 6
+            + 80
+            + 20
+            + std_font_bytes().len()
+            + 8;
+        let mut reference = [0xa5; 20];
+        reference[16..].copy_from_slice(&11_u32.to_le_bytes());
+        data.splice(slot_c..data.len() - 4, reference);
+        data.splice(slot_b..slot_b + 16, reference);
+
+        let body = read_body(&data, read_scalebar_body_10_1).unwrap();
+        let registered = SlotEntry10_1::BackReference {
+            class_id: STDFONT_CLASS_ID,
+            key: 11,
+        };
+        assert_eq!(body.font_b, registered);
+        assert_eq!(body.font_c, registered);
+        assert_eq!(body.last_uint, Some(0x44444444));
+        assert_eq!(body.remaining_bytes, 0);
     }
 
     #[test]
