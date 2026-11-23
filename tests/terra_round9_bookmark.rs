@@ -6093,3 +6093,63 @@ fn feature_bookmark_reads_all_semivariogram_versions() {
         );
     }
 }
+
+#[test]
+fn feature_bookmark_reads_raster_calculator_expression_and_input_refs() {
+    use mxd2qgz::layers::image_server_rules::RuleSlot10_1;
+    use mxd2qgz::maps::map_surround::{
+        GP_LONG_CLASS_ID, GP_RASTER_CALCULATOR_EXPRESSION_CLASS_ID, GpCodedValue10_1,
+        GpCodedValueBody10_1,
+    };
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    let expression = "\"高程\" + 2";
+    for (version, raw_count) in [(0_u16, -1_i32), (1, 3)] {
+        let mut payload = bookmark_string_10_1(expression);
+        payload.extend(raw_count.to_le_bytes());
+        let mut inputs = Vec::new();
+        if raw_count > 0 {
+            let input = bookmark_entry_10_1(&GP_LONG_CLASS_ID, 20);
+            payload.extend(&input);
+            payload.extend([1, 0, 1, 0, 0, 0]);
+            payload.extend(2_i32.to_le_bytes());
+            payload.extend(&input);
+            payload.extend([0; 16]);
+            inputs.extend([
+                RuleSlot10_1 {
+                    entry: ObjectEntry10_1::NewObject {
+                        class_id: GP_LONG_CLASS_ID,
+                        key: 20,
+                    },
+                    body: Some(Box::new(GpCodedValueBody10_1 {
+                        version: 1,
+                        base_version: 1,
+                        base_short: 0,
+                        value: GpCodedValue10_1::Long(2),
+                    })),
+                },
+                RuleSlot10_1 {
+                    entry: ObjectEntry10_1::BackReference {
+                        class_id: GP_LONG_CLASS_ID,
+                        key: 20,
+                    },
+                    body: None,
+                },
+                RuleSlot10_1 {
+                    entry: ObjectEntry10_1::Null,
+                    body: None,
+                },
+            ]);
+        }
+        assert_legacy_topo_coded_value(
+            GP_RASTER_CALCULATOR_EXPRESSION_CLASS_ID,
+            version,
+            &payload,
+            GpCodedValue10_1::RasterCalculatorExpression {
+                expression: expression.to_owned(),
+                raw_count,
+                inputs,
+            },
+        );
+    }
+}

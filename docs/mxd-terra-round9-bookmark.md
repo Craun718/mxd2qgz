@@ -1603,3 +1603,18 @@ Range、PartialSill、Nugget 三个 double，Save 固定写 v3。
 PartialSill、Nugget。读取器保留原始枚举和 double 位模式，旧 Lag
 保留窄字符字节。合成测试覆盖 0 至 3 版、回引和逐字节截断回滚。
 旧值的实际代码页及 ArcMap 工程内对象待实档验证。
+
+### GPRasterCalculatorExpression
+
+ArcMap 10.1.0.3035 的 `GPSACore.dll` RTTI `0x74946094` 对应持久化
+虚表 `0x7492d1fc`，CLSID `{F745D0A1-22A2-4AEE-893E-01EAB8603BB8}`
+在 `0x7492d364`。用 objdump 核对 Load `0x748d4670`、Save
+`0x748d47e0`。Load 接受版本 0 或 1，读 GPValue 基类、AfCore
+`String::Read` 表达式、带符号的 LONG 参数数量。数量大于零时，每行
+经 `0x748d4727` 读取一个请求 IID
+`{92EE08B6-C757-4178-803C-67CD665AC801}` 的 IGPValue。
+Save 固定写 1，按同一顺序写表达式、数量和对象槽。
+
+分派复用编码值域的 IGPValue 列表、登记表和嵌套限制。合成书签覆盖
+表达式、负数量、对象及回引、空槽和截断后的事务回滚。
+实际 ArcMap 工具参数工程待验证。

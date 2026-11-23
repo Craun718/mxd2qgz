@@ -425,6 +425,10 @@ pub const GP_POINT_CLASS_ID: [u8; 16] = [
     0x82, 0x30, 0xe9, 0xa1, 0xbe, 0xba, 0x44, 0x4d, 0x8c, 0xe3, 0x46, 0x37, 0x74, 0x8e, 0xdd, 0xdd,
 ];
 
+pub const GP_RASTER_CALCULATOR_EXPRESSION_CLASS_ID: [u8; 16] = [
+    0xa1, 0xd0, 0x45, 0xf7, 0xa2, 0x22, 0xee, 0x4a, 0x89, 0x3e, 0x01, 0xea, 0xb8, 0x60, 0x3b, 0xb8,
+];
+
 pub const GP_SA_FUZZY_FUNCTION_CLASS_ID: [u8; 16] = [
     0x96, 0xfc, 0x1d, 0xf3, 0xe0, 0x01, 0x01, 0x4f, 0x96, 0x2b, 0x06, 0x4d, 0x48, 0xd5, 0xc2, 0x46,
 ];
@@ -530,6 +534,11 @@ pub enum GpCodedValue10_1 {
     Point {
         x_bits: u64,
         y_bits: u64,
+    },
+    RasterCalculatorExpression {
+        expression: String,
+        raw_count: i32,
+        inputs: Vec<RuleSlot10_1<GpCodedValueBody10_1>>,
     },
     SaFuzzyFunction {
         arguments: [RuleSlot10_1<GpCodedValueBody10_1>; 3],
@@ -1817,6 +1826,7 @@ fn read_gp_coded_value_slot(
                     | GP_POINT_CLASS_ID
                     | GP_CELL_SIZE_XY_CLASS_ID
                     | GP_SA_CELL_SIZE_CLASS_ID
+                    | GP_RASTER_CALCULATOR_EXPRESSION_CLASS_ID
                     | GP_SA_FUZZY_FUNCTION_CLASS_ID
                     | GP_SA_NUMBER_REMAP_CLASS_ID
                     | GP_SA_HORIZONTAL_FACTOR_CLASS_ID
@@ -1859,6 +1869,7 @@ fn read_gp_coded_value_slot(
                 | GP_POINT_CLASS_ID
                 | GP_CELL_SIZE_XY_CLASS_ID
                 | GP_SA_CELL_SIZE_CLASS_ID
+                | GP_RASTER_CALCULATOR_EXPRESSION_CLASS_ID
                 | GP_SA_FUZZY_FUNCTION_CLASS_ID
                 | GP_SA_NUMBER_REMAP_CLASS_ID
                 | GP_SA_HORIZONTAL_FACTOR_CLASS_ID
@@ -2014,6 +2025,22 @@ fn read_gp_coded_value_slot(
                         version,
                         class_id == GP_SA_NUMBER_REMAP_CLASS_ID,
                     )?))
+                }
+                GP_RASTER_CALCULATOR_EXPRESSION_CLASS_ID => {
+                    if depth >= MAX_BOOKMARK_NAME_NESTING {
+                        return Err(io::Error::new(
+                            ErrorKind::InvalidData,
+                            "GPRasterCalculatorExpression 嵌套层数超限",
+                        ));
+                    }
+                    let expression = read_string_10_1(reader, max_bytes)?;
+                    let (raw_count, inputs) =
+                        read_gp_coded_value_list(reader, max_bytes, table, depth + 1)?;
+                    GpCodedValue10_1::RasterCalculatorExpression {
+                        expression,
+                        raw_count,
+                        inputs,
+                    }
                 }
                 GP_SA_FUZZY_FUNCTION_CLASS_ID => {
                     if depth >= MAX_BOOKMARK_NAME_NESTING {
