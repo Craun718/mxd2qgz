@@ -3103,3 +3103,49 @@ fn feature_bookmark_reads_direct_schematic_dataset_name() {
     assert_eq!(reader.position(), 0);
     assert!(refs.is_empty());
 }
+
+#[test]
+fn feature_bookmark_reads_direct_route_measure_locator_name() {
+    use mxd2qgz::objects::route_event_name::ROUTE_MEASURE_LOCATOR_NAME_CLASS_ID;
+
+    let mut bytes = bookmark_header_10_1(&ROUTE_MEASURE_LOCATOR_NAME_CLASS_ID, 17);
+    bytes.extend(1_i16.to_le_bytes());
+    bytes.extend(2_i16.to_le_bytes());
+    for field in ["路线", "标识", "工作区", "定位器"] {
+        bytes.extend(bookmark_string_10_1(field));
+    }
+    bytes.extend([0; 16]);
+    bytes.extend(bookmark_string_10_1("度量"));
+    bytes.extend(7_u16.to_le_bytes());
+    bytes.extend((-3_i32).to_le_bytes());
+    bytes.extend(9_i32.to_le_bytes());
+    bytes.extend(bookmark_string_10_1("书签"));
+    let end = bytes.len();
+    bytes.push(0xa5);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    let BookmarkNameEntry10_1::RouteMeasureLocatorName(body) = result.name_object else {
+        panic!("应读取路线度量定位器名称");
+    };
+    assert_eq!((body.version, body.base_version), (1, 2));
+    assert_eq!(body.strings, ["路线", "标识", "工作区", "定位器"]);
+    assert!(matches!(body.route_name, DatasetNameMoreSlot10_1::Null));
+    let suffix = body.suffix.unwrap();
+    assert_eq!(suffix.string_40, "度量");
+    assert_eq!(suffix.legacy_short, Some(7));
+    assert_eq!(suffix.long_44, -3);
+    assert_eq!(suffix.legacy_long_v2, Some(9));
+    assert_eq!(result.name, "书签");
+    assert_eq!(reader.position(), end);
+    assert!(refs.contains(17));
+
+    for cut in 0..end {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+}

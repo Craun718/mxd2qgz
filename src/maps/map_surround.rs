@@ -200,8 +200,9 @@ use crate::objects::dataset_name_more::{
 };
 use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
 use crate::objects::route_event_name::{
-    ROUTE_EVENT_SOURCE_NAME_CLASS_ID, RouteEventSourceNameBody10_1,
-    read_route_event_source_name_body_10_1,
+    ROUTE_EVENT_SOURCE_NAME_CLASS_ID, ROUTE_MEASURE_LOCATOR_NAME_CLASS_ID,
+    RouteEventSourceNameBody10_1, RouteMeasureLocatorName10_1,
+    read_route_event_source_name_body_10_1, read_route_measure_locator_name_body_10_1,
 };
 use crate::objects::workspace_name::{
     WORKSPACE_NAME_CLASS_ID, WorkspaceNamePrefix10_1, read_workspace_name_body_10_1,
@@ -427,6 +428,7 @@ pub enum BookmarkNameEntry10_1 {
     ReferencedTableName(Box<ReferencedTableNameBody10_1>),
     XyEventSourceName(Box<XyEventSourceNameBody10_1>),
     RouteEventSourceName(Box<RouteEventSourceNameBody10_1>),
+    RouteMeasureLocatorName(Box<RouteMeasureLocatorName10_1>),
     TableQueryName(Box<TableQueryNameBody10_1>),
     RelQueryTableName(Box<RelQueryTableNameBody10_1>),
     /// 关系类名称；可完整读取持久化体，不表示原生 IName::Open 后能取得
@@ -1081,6 +1083,23 @@ fn read_bookmark_name_slot_10_1(
                 ));
             }
             BookmarkNameEntry10_1::XyEventSourceName(Box::new(body))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: ROUTE_MEASURE_LOCATOR_NAME_CLASS_ID,
+            ..
+        } => {
+            let mut stop = None;
+            let body =
+                read_route_measure_locator_name_body_10_1(reader, max_bytes, table, &mut stop)?;
+            if let Some(stop) = stop {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!(
+                        "FeatureBookmark 名称对象槽 offset 0x{name_offset:x}: RouteMeasureLocatorName 未读完（{stop:?}）"
+                    ),
+                ));
+            }
+            BookmarkNameEntry10_1::RouteMeasureLocatorName(Box::new(body))
         }
         ObjectEntry10_1::NewObject {
             class_id: ROUTE_EVENT_SOURCE_NAME_CLASS_ID,

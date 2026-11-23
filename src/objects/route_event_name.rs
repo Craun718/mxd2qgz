@@ -92,7 +92,12 @@ pub(crate) fn read_route_event_source_name_body_10_1(
         ObjectEntry10_1::NewObject {
             class_id: ROUTE_MEASURE_LOCATOR_NAME_CLASS_ID,
             ..
-        } => Some(Box::new(read_locator(&mut r, max, &mut staged, &mut stop)?)),
+        } => Some(Box::new(read_route_measure_locator_name_body_10_1(
+            &mut r,
+            max,
+            &mut staged,
+            &mut stop,
+        )?)),
         ObjectEntry10_1::NewObject { class_id, key } => {
             return Err(unsupported_object("IRouteLocatorName", &class_id, key));
         }
@@ -134,7 +139,7 @@ pub(crate) fn read_route_event_source_name_body_10_1(
     })
 }
 
-fn read_locator(
+pub(crate) fn read_route_measure_locator_name_body_10_1(
     r: &mut Reader<'_>,
     max: usize,
     refs: &mut RefTable10_1,

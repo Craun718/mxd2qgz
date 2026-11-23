@@ -617,3 +617,13 @@ ArcMap 10.1 的 esriSchematic 类型库将
 读取有符号版本、三条 AfCore String 和 IWorkspaceName 槽。
 构造测试覆盖后继书签名称、未知工作空间类和逐字节截断回滚。
 真实书签宿主、原生 Open 和 QGIS 人工验收待验证。
+
+## RouteMeasureLocatorName
+
+ArcMap 10.1 的 esriLocation 类型库将
+`8CC373A6-2121-11D4-9FC2-00C04F6BDF06` 列为 IName 实现。
+书签复用[路线事件名称取证](mxd-terra-round9-old.md)所确认的
+Load `0x7cc7cad0` 和基类 Load `0x7cc52540` 布局。基类的路线名称
+沿用既有分派，遇未闭合子体时回滚整个书签。构造测试覆盖 v2
+基类特有尾段、后继书签字段和逐字节截断。真实书签宿主、
+原生 Open 和 QGIS 人工验收待验证。
