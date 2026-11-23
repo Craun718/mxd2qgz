@@ -753,6 +753,7 @@
       - [x] 接入 GPCodedValueDomain 中的 GPArealUnit。[取证](docs/mxd-terra-round9-bookmark.md#gparealunit)
       - [x] 接入 GPCodedValueDomain 中的 GPEncryptedString。[取证](docs/mxd-terra-round9-bookmark.md#gpencryptedstring)
       - [x] 接入 GPCodedValueDomain 中的 GPRandomNumberGenerator。[取证](docs/mxd-terra-round9-bookmark.md#gprandomnumbergenerator)
+      - [x] 接入 GPValueTable 的列类型名称与按行存储的单元格。[取证](docs/mxd-terra-round9-bookmark.md#gpvaluetable)
       - [x] 接入 GPMultiValue 的空类型槽和递归 IGPValue 列表。[取证](docs/mxd-terra-round9-bookmark.md#gpmultivalue)
       - [ ] 补齐 GPMultiValue 类型槽中的非空 IName 类体。
       - [x] 接入 GPMultiValue 类型槽中已支持的 GP 数据类型名称及回引。[取证](docs/mxd-terra-round9-bookmark.md#gpmultivalue)

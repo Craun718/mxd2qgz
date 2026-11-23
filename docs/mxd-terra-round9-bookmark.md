@@ -1257,3 +1257,23 @@ Save 在 `0x746ef5ac` 调用内嵌数据类型接口的 +0x18 取名称，
 解析复用已有 GP 数据类型名称分派并保留对象回引。构造书签
 覆盖非空 GPDataTypeName、嵌套名称回引和逐字节截断回滚。
 其余名称类和 Open 的运行结果待验证。
+
+#### GPValueTable
+
+GpObjects.dll 10.1.0.3035 的 RTTI `0x74801cd4` 对应持久化虚表
+`0x747b9334`，构造函数从 `0x747b9580` 复制类标识
+`98A7A0CD-3282-44CD-90B7-4F39CDB85B84`。QI 在 `0x747554c9`
+匹配 IGPValue。虚表 Load/Save 跳板 `0x7478b69c / 0x7478b6a2`
+转到 GeoprocessingLib.dll 10.1.0.3035 的 GPValueTableBase
+`0x71de7e50 / 0x71de8090`。该 DLL 的 SHA-256 为
+`8626273d18ff3f166f26e6aba61a4dfcdc9ad633206b9004ba05437f3352b3d6`。
+
+Load 检查无符号 short 版本上限 1，调用 GPValue::Load 后在
+`0x71de7ebf` 读取有符号列数，在 `0x71de7eee` 为每列读取 IName。
+随后于 `0x71de7f7f` 读取有符号行数，按行、列顺序于
+`0x71de7fc0` 读取每个 IGPValue 对象。非正计数跳过相应循环。
+解析共用引用表，并检查行列乘积和最小对象头所需字节。
+
+构造书签覆盖两行两列、列名和单元格引用、空槽、超限计数、
+后续字段及逐字节截断回滚。尚待验证真实书签、其他列类型名称及
+ArcMap/QGIS 人工验收。

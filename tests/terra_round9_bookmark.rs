@@ -4930,7 +4930,7 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
     use mxd2qgz::maps::map_surround::{
         GP_AREAL_UNIT_CLASS_ID, GP_BOOLEAN_CLASS_ID, GP_DATE_CLASS_ID, GP_DOUBLE_CLASS_ID,
         GP_ENCRYPTED_STRING_CLASS_ID, GP_LINEAR_UNIT_CLASS_ID, GP_MULTI_VALUE_CLASS_ID,
-        GP_RANDOM_NUMBER_GENERATOR_CLASS_ID, GP_VARIANT_CLASS_ID,
+        GP_RANDOM_NUMBER_GENERATOR_CLASS_ID, GP_VALUE_TABLE_CLASS_ID, GP_VARIANT_CLASS_ID,
     };
     use mxd2qgz::maps::map_surround::{
         GP_CODED_VALUE_DOMAIN_CLASS_ID, GP_DATA_TYPE_NAME_CLASS_ID, GP_FIELD_INFO_DOMAIN_CLASS_ID,
@@ -4955,7 +4955,7 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
         bytes.extend(1_i16.to_le_bytes());
         bytes.extend(1_i32.to_le_bytes());
         bytes.extend(bookmark_string_10_1("标签"));
-        bytes.extend(16_i32.to_le_bytes());
+        bytes.extend(17_i32.to_le_bytes());
         for (class, key) in [(GP_STRING_CLASS_ID, 20_u32), (GP_LONG_CLASS_ID, 21)] {
             bytes.extend(class);
             bytes.extend(key.to_le_bytes());
@@ -5057,6 +5057,21 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
             bytes.extend([0; 16]);
         }
         bytes.extend((-1_i32).to_le_bytes());
+        bytes.extend(bookmark_entry_10_1(&GP_VALUE_TABLE_CLASS_ID, 33));
+        bytes.extend([1, 0, 1, 0, 7, 0]);
+        bytes.extend(2_i32.to_le_bytes());
+        if nested {
+            bytes.extend(bookmark_entry_10_1(&GP_DATA_TYPE_NAME_CLASS_ID, 32));
+        } else {
+            bytes.extend([0; 16]);
+        }
+        bytes.extend([0; 16]);
+        let row_count_offset = bytes.len();
+        bytes.extend(2_i32.to_le_bytes());
+        bytes.extend(bookmark_entry_10_1(&GP_LONG_CLASS_ID, 21));
+        bytes.extend([0; 16]);
+        bytes.extend(bookmark_entry_10_1(&GP_MULTI_VALUE_CLASS_ID, 31));
+        bytes.extend(bookmark_entry_10_1(&GP_STRING_CLASS_ID, 20));
         bytes.extend(bookmark_string_10_1("拓扑"));
         bytes.extend(9_i32.to_le_bytes());
         bytes.extend(bookmark_string_10_1("书签"));
@@ -5084,7 +5099,37 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
             _ => panic!("应读取编码值域"),
         };
         assert_eq!(coded.labels, (1, vec!["标签".into()]));
-        assert_eq!(coded.raw_value_count, 16);
+        assert_eq!(coded.raw_value_count, 17);
+        let GpCodedValue10_1::ValueTable {
+            raw_column_count,
+            column_types,
+            raw_row_count,
+            cells,
+        } = &coded.values[16].body.as_ref().unwrap().value
+        else {
+            panic!("应读取 GP 值表");
+        };
+        assert_eq!((*raw_column_count, *raw_row_count), (2, 2));
+        assert_eq!(column_types[1], BookmarkNameEntry10_1::Null);
+        if nested {
+            assert!(matches!(
+                column_types[0],
+                BookmarkNameEntry10_1::BackReference { key: 32, .. }
+            ));
+        }
+        assert!(matches!(
+            cells[0].entry,
+            ObjectEntry10_1::BackReference { key: 21, .. }
+        ));
+        assert_eq!(cells[1].entry, ObjectEntry10_1::Null);
+        assert!(matches!(
+            cells[2].entry,
+            ObjectEntry10_1::BackReference { key: 31, .. }
+        ));
+        assert!(matches!(
+            cells[3].entry,
+            ObjectEntry10_1::BackReference { key: 20, .. }
+        ));
         let GpCodedValue10_1::MultiValue {
             type_name,
             raw_count,
@@ -5224,6 +5269,19 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
             assert_eq!(reader.position(), 0);
             assert!(refs.is_empty());
         }
+        let mut oversized = bytes.clone();
+        oversized[row_count_offset..row_count_offset + 4].copy_from_slice(&i32::MAX.to_le_bytes());
+        let mut reader = Reader::new(&oversized);
+        let mut refs = RefTable10_1::new();
+        assert_eq!(
+            read_feature_bookmark_10_1(&mut reader, 1024, &mut refs)
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::InvalidData
+        );
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+
         bytes[encrypted_version_offset] = 3;
         let mut reader = Reader::new(&bytes);
         let mut refs = RefTable10_1::new();

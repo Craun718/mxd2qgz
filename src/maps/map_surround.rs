@@ -405,6 +405,10 @@ pub const GP_MULTI_VALUE_CLASS_ID: [u8; 16] = [
     0x94, 0xbc, 0x34, 0x6a, 0xb2, 0x06, 0x1b, 0x48, 0xb1, 0x04, 0x66, 0x63, 0xc4, 0xa3, 0x44, 0xef,
 ];
 
+pub const GP_VALUE_TABLE_CLASS_ID: [u8; 16] = [
+    0xcd, 0xa0, 0xa7, 0x98, 0x82, 0x32, 0xcd, 0x44, 0x90, 0xb7, 0x4f, 0x39, 0xcd, 0xb8, 0x5b, 0x84,
+];
+
 pub const GP_VARIANT_CLASS_ID: [u8; 16] = [
     0x5e, 0xff, 0x82, 0x5b, 0x15, 0x31, 0xe4, 0x40, 0xba, 0xc8, 0xe6, 0x21, 0x05, 0xca, 0x28, 0x11,
 ];
@@ -434,6 +438,12 @@ pub enum GpCodedValue10_1 {
         type_name: Box<BookmarkNameEntry10_1>,
         raw_count: i32,
         values: Vec<RuleSlot10_1<GpCodedValueBody10_1>>,
+    },
+    ValueTable {
+        raw_column_count: i32,
+        column_types: Vec<BookmarkNameEntry10_1>,
+        raw_row_count: i32,
+        cells: Vec<RuleSlot10_1<GpCodedValueBody10_1>>,
     },
     RandomNumberGenerator {
         seed: i32,
@@ -1556,6 +1566,7 @@ fn read_gp_coded_value_slot(
                     | GP_AREAL_UNIT_CLASS_ID
                     | GP_VARIANT_CLASS_ID
                     | GP_MULTI_VALUE_CLASS_ID
+                    | GP_VALUE_TABLE_CLASS_ID
                     | GP_RANDOM_NUMBER_GENERATOR_CLASS_ID
             ) =>
         {
@@ -1573,6 +1584,7 @@ fn read_gp_coded_value_slot(
                 | GP_AREAL_UNIT_CLASS_ID
                 | GP_VARIANT_CLASS_ID
                 | GP_MULTI_VALUE_CLASS_ID
+                | GP_VALUE_TABLE_CLASS_ID
                 | GP_RANDOM_NUMBER_GENERATOR_CLASS_ID),
             ..
         } => {
@@ -1640,6 +1652,7 @@ fn read_gp_coded_value_slot(
                         values,
                     }
                 }
+                GP_VALUE_TABLE_CLASS_ID => read_gp_value_table(reader, max_bytes, table, depth)?,
                 _ => GpCodedValue10_1::Long(reader.read_u32_le()? as i32),
             };
             Some(Box::new(GpCodedValueBody10_1 {
@@ -1657,6 +1670,60 @@ fn read_gp_coded_value_slot(
         }
     };
     Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_gp_value_table(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<GpCodedValue10_1> {
+    if depth >= MAX_BOOKMARK_NAME_NESTING {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "GPValueTable 嵌套层数超限",
+        ));
+    }
+    let raw_column_count = reader.read_u32_le()? as i32;
+    let columns = raw_column_count.max(0) as usize;
+    if columns > reader.remaining().min(max_bytes) / 16 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "GPValueTable 列数超限",
+        ));
+    }
+    let mut column_types = Vec::new();
+    for _ in 0..columns {
+        let name = read_bookmark_name_slot_10_1(reader, max_bytes, table, depth + 1)?;
+        if !is_gp_data_type_name(&name) {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "GPValueTable 的列类型名称类未支持",
+            ));
+        }
+        column_types.push(name);
+    }
+    let raw_row_count = reader.read_u32_le()? as i32;
+    let rows = raw_row_count.max(0) as usize;
+    let cell_count = columns
+        .checked_mul(rows)
+        .filter(|&count| count <= reader.remaining().min(max_bytes) / 16)
+        .ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "GPValueTable 单元格数量超限"))?;
+    let mut cells = Vec::new();
+    for _ in 0..cell_count {
+        cells.push(read_gp_coded_value_slot(
+            reader,
+            max_bytes,
+            table,
+            depth + 1,
+        )?);
+    }
+    Ok(GpCodedValue10_1::ValueTable {
+        raw_column_count,
+        column_types,
+        raw_row_count,
+        cells,
+    })
 }
 
 fn read_gp_topo_domain_slot_10_1(
