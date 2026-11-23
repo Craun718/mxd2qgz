@@ -335,6 +335,14 @@ pub struct AoiBookmark10_1 {
 
 const MAX_BOOKMARK_NAME_NESTING: usize = 16;
 
+pub const GP_SA_NAME_DOMAIN_CLASS_ID: [u8; 16] = [
+    0x4e, 0x8f, 0xa7, 0xc6, 0xf5, 0xa1, 0x1a, 0x42, 0xad, 0x8c, 0xc4, 0xc9, 0xec, 0x85, 0x4a, 0x40,
+];
+
+pub const GP_SA_TEXT_TABLE_NAME_DOMAIN_CLASS_ID: [u8; 16] = [
+    0x5a, 0x92, 0x1b, 0xa5, 0x1e, 0x78, 0x3b, 0x4a, 0x99, 0x20, 0xb7, 0x6f, 0xc2, 0xc4, 0x32, 0xda,
+];
+
 pub const GP_SA_GEO_DATA_DOMAIN_CLASS_ID: [u8; 16] = [
     0x5f, 0x90, 0x6f, 0x61, 0x6d, 0x75, 0xc1, 0x46, 0xa5, 0xe9, 0xa7, 0x70, 0x76, 0xc8, 0xc7, 0x40,
 ];
@@ -426,6 +434,15 @@ pub const GP_FILE_DOMAIN_CLASS_ID: [u8; 16] = [
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpTopoDomain10_1 {
+    SaName {
+        version: i16,
+        long: i32,
+        short: u16,
+    },
+    SaTextTableName {
+        version: i16,
+        string: String,
+    },
     SaGeoData(GpSaGeoDataDomain10_1),
     Numeric(GpNumericDomain10_1),
     Field(GpFieldDomain10_1),
@@ -1286,6 +1303,8 @@ fn read_gp_topo_domain_slot_10_1(
                     | GP_ROUTE_DOMAIN_CLASS_ID
                     | GP_LAYERS_AND_TABLES_DOMAIN_CLASS_ID
                     | GP_SA_GEO_DATA_DOMAIN_CLASS_ID
+                    | GP_SA_TEXT_TABLE_NAME_DOMAIN_CLASS_ID
+                    | GP_SA_NAME_DOMAIN_CLASS_ID
                     | GP_TABLES_DOMAIN_CLASS_ID
                     | GP_QUERY_TABLE_FIELDS_DOMAIN_CLASS_ID
             ) =>
@@ -1302,6 +1321,21 @@ fn read_gp_topo_domain_slot_10_1(
             middle_shorts: [reader.read_u16_le()?, reader.read_u16_le()?],
             second_double_bits: reader.read_f64_le()?.to_bits(),
         }))),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_SA_NAME_DOMAIN_CLASS_ID,
+            ..
+        } => Some(Box::new(GpTopoDomain10_1::SaName {
+            version: read_gp_name_version(reader, 1, "GPSANameDomain")?,
+            long: reader.read_u32_le()? as i32,
+            short: reader.read_u16_le()?,
+        })),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_SA_TEXT_TABLE_NAME_DOMAIN_CLASS_ID,
+            ..
+        } => Some(Box::new(GpTopoDomain10_1::SaTextTableName {
+            version: read_gp_name_version(reader, 1, "GPSATextTableNameDomain")?,
+            string: read_string_10_1(reader, max_bytes)?,
+        })),
         ObjectEntry10_1::NewObject {
             class_id: GP_SA_GEO_DATA_DOMAIN_CLASS_ID,
             ..

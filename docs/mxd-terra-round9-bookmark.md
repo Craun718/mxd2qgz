@@ -1022,3 +1022,18 @@ RTTI `0x748ba028` 对应持久化虚表 `0x748a9e78` 和 CLSID
 名称槽复用书签名称分派及现有嵌套上限。构造用例覆盖名称新对象与
 回引、负计数、尾部字段及逐字节截断回滚。字段语义、真实书签及
 ArcMap/QGIS 人工验收待验证。
+
+### GPSANameDomain 与 GPSATextTableNameDomain
+
+取证来自前述 GPSACore.dll 10.1.0.3035 的 PE RTTI 与 objdump。
+
+| 类 | CLSID | 持久化虚表 | Load | Save |
+| --- | --- | --- | --- | --- |
+| GPSANameDomain | `C6A78F4E-A1F5-421A-AD8C-C4C9EC854A40` | `0x7492fa74` | `0x748e22f0` | `0x748e2380` |
+| GPSATextTableNameDomain | `A51B925A-781E-4A3B-9920-B76FC2C432DA` | `0x749311a4` | `0x748f52b0` | `0x748f5310` |
+
+两类检查有符号 short 上限 1。GPSANameDomain 随后在
+`0x748e233d / 0x748e2353` 读取 LONG、short。
+GPSATextTableNameDomain 在 `0x748f52f3` 读取 AfCore 成员 String。
+构造测试覆盖两类独立身份、尾部字段、后继书签边界和截断回滚。
+字段业务含义、真实 ArcMap 书签及 QGIS 人工验收待验证。
