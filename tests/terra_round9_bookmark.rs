@@ -4278,15 +4278,35 @@ fn feature_bookmark_reads_legacy_topo_field_domain() {
 
 #[test]
 fn feature_bookmark_reads_legacy_topo_measure_fields_domain() {
-    use mxd2qgz::maps::map_surround::{
-        GP_MEASURE_FIELDS_DOMAIN_CLASS_ID, GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID, GpTopoDomain10_1,
-    };
+    use mxd2qgz::maps::map_surround::{GP_MEASURE_FIELDS_DOMAIN_CLASS_ID, GpTopoDomain10_1};
+
+    assert_legacy_topo_version_only_domain(
+        GP_MEASURE_FIELDS_DOMAIN_CLASS_ID,
+        GpTopoDomain10_1::MeasureFields { version: -1 },
+    );
+}
+
+#[test]
+fn feature_bookmark_reads_legacy_topo_route_id_fields_domain() {
+    use mxd2qgz::maps::map_surround::{GP_ROUTE_ID_FIELDS_DOMAIN_CLASS_ID, GpTopoDomain10_1};
+
+    assert_legacy_topo_version_only_domain(
+        GP_ROUTE_ID_FIELDS_DOMAIN_CLASS_ID,
+        GpTopoDomain10_1::RouteIdFields { version: -1 },
+    );
+}
+
+fn assert_legacy_topo_version_only_domain(
+    class_id: [u8; 16],
+    expected: mxd2qgz::maps::map_surround::GpTopoDomain10_1,
+) {
+    use mxd2qgz::maps::map_surround::GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID;
 
     let mut bytes = bookmark_header_10_1(&GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID, 17);
     bytes.extend(1_i16.to_le_bytes());
     bytes.extend(1_i32.to_le_bytes());
     bytes.extend([0; 16]);
-    bytes.extend(GP_MEASURE_FIELDS_DOMAIN_CLASS_ID);
+    bytes.extend(class_id);
     bytes.extend(18_u32.to_le_bytes());
     let version_offset = bytes.len();
     bytes.extend((-1_i16).to_le_bytes());
@@ -4305,7 +4325,7 @@ fn feature_bookmark_reads_legacy_topo_measure_fields_domain() {
     let entry = &body.legacy_entries[0];
     assert_eq!(
         entry.legacy_domain.as_ref().unwrap().body.as_deref(),
-        Some(&GpTopoDomain10_1::MeasureFields { version: -1 }),
+        Some(&expected),
     );
     assert_eq!(entry.string, "拓扑");
     assert_eq!(result.name, "书签");

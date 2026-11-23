@@ -944,3 +944,15 @@ QI `0x747792a0` 于 `0x7477930b` 比较 IGPDomain IID，匹配时
 的版本，并清除运行时脏标记。Save `0x74779a50` 只写版本。
 构造测试覆盖负版本、超限版本、后继字段及逐字节截断回滚。
 真实 ArcMap 书签和 QGIS 人工验收待验证。
+
+### GPRouteIDFieldsDomain
+
+同版 GpObjects.dll 的 RTTI `0x74804a2c` 对应独立 CLSID
+`4A4F70B0-913C-4A82-A33F-E190FFA409EA` 和持久化虚表
+`0x747bc278`。主 QI `0x74778990` 在 `0x747789fb`
+比较 IGPDomain IID，匹配时返回 +0x10。该虚表与
+GPMeasureFieldsDomain 共用 Load `0x74779a00`，
+Save `0x74778fb0` 同样只写一个 short。
+
+构造测试分别核对两种类的身份、负版本、超限版本、后继字段及
+逐字节截断回滚。真实 ArcMap 书签和 QGIS 人工验收待验证。

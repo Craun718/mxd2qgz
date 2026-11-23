@@ -335,6 +335,10 @@ pub struct AoiBookmark10_1 {
 
 const MAX_BOOKMARK_NAME_NESTING: usize = 16;
 
+pub const GP_ROUTE_ID_FIELDS_DOMAIN_CLASS_ID: [u8; 16] = [
+    0xb0, 0x70, 0x4f, 0x4a, 0x3c, 0x91, 0x82, 0x4a, 0xa3, 0x3f, 0xe1, 0x90, 0xff, 0xa4, 0x09, 0xea,
+];
+
 pub const GP_MEASURE_FIELDS_DOMAIN_CLASS_ID: [u8; 16] = [
     0x25, 0x24, 0x6e, 0xc0, 0xd9, 0x30, 0x9d, 0x4c, 0x8c, 0xd3, 0x7f, 0xe2, 0x43, 0xb3, 0xaf, 0xcb,
 ];
@@ -382,6 +386,9 @@ pub const GP_FILE_DOMAIN_CLASS_ID: [u8; 16] = [
 pub enum GpTopoDomain10_1 {
     Numeric(GpNumericDomain10_1),
     Field(GpFieldDomain10_1),
+    RouteIdFields {
+        version: i16,
+    },
     MeasureFields {
         version: i16,
     },
@@ -1207,6 +1214,7 @@ fn read_gp_topo_domain_slot_10_1(
                     | GP_ARC_INFO_ITEM_DOMAIN_CLASS_ID
                     | GP_FIELD_DOMAIN_CLASS_ID
                     | GP_MEASURE_FIELDS_DOMAIN_CLASS_ID
+                    | GP_ROUTE_ID_FIELDS_DOMAIN_CLASS_ID
             ) =>
         {
             None
@@ -1221,6 +1229,12 @@ fn read_gp_topo_domain_slot_10_1(
             middle_shorts: [reader.read_u16_le()?, reader.read_u16_le()?],
             second_double_bits: reader.read_f64_le()?.to_bits(),
         }))),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_ROUTE_ID_FIELDS_DOMAIN_CLASS_ID,
+            ..
+        } => Some(Box::new(GpTopoDomain10_1::RouteIdFields {
+            version: read_gp_name_version(reader, 1, "GPRouteIDFieldsDomain")?,
+        })),
         ObjectEntry10_1::NewObject {
             class_id: GP_MEASURE_FIELDS_DOMAIN_CLASS_ID,
             ..
