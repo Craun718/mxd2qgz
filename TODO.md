@@ -554,7 +554,7 @@
   - [x] 核对 GEOCONTransformation、NADCON5Transformation 等候选在 Geometry.dll 10.1 导出工厂表中的注册情况，见 [工厂表取证](docs/mxd-terra-host-geo.md#geocon-与-nadcon5-的注册和工厂表)。
   - [x] 接入 Map 照明后 IGeometry 槽的已知非空几何类及回引，见 [几何槽原生取证](docs/mxd-round4-map-spatial-20261117.md#照明后的非空-igeometry-槽)。
   - [x] 闭合其他 MXD 版本的字符串规则：10.1/10.8 AfCore 的 `String::Read/Write` 无文档版本分支，10.1 六档保存版本及两版介质的已知 `/Version` 头均共用该基础布局；字段归属仍按具体对象类版本门处理。[跨版本字符串](docs/mxd-cross-version-strings.md)
-  - [ ] 闭合其他 MXD 版本的对象属性规则。
+  - [x] 闭合其他 MXD 版本的对象属性规则：已证对象体没有通用属性布局，必须按类 `Load/Save` 和各自版本门分派；10.1 六档保存版本及介质中已知旧档按对象体版本读取，未知类/版本继续保留而不跳过。[版本边界](docs/mxd-cross-version-object-properties.md)
   - [x] 闭合 10.1 对象键分配与回引编码：键=ObjectStream `+0x2c` 4 字节单调计数器（新对象写后 +1、跨流共享键序）、回引=同构 20 字节头无体无专用标记、唯一判据=键是否已在本会话出现过、循环引用无需专门编码（登记先于持久化）、缺失引用与新对象不可区分（有意保留的原生语义）；实现 `object_refs` 条目分类器与登记表并接入 robustness 集中清单（13 入口），样本键 29 起点/`0x2d2c` 键 32 回引辅助对照吻合；见 [研究记录](docs/arcmap-10.1-object-body.md#101-对象键分配与回引写侧闭合2026-11-14-第五轮)。
   - [x] 用 QEMU 执行 10.1 ObjectStream 两张私有表的插入函数，分别触发重复键替换，并从原生读取入口复核已有磁盘键的回引行为。另执行 Set 的重复添加作对照。[原生执行结果](docs/arcmap-10.1-object-body.md#重复键替换的原生指令验证)。
   - [x] 实现显式 10.1 FeatureLayer 对象体已确认前缀读取器（`feature_layer`：版本≤34、双名称、VARIANT_BOOL 可见性（非规范位模式原样保留）、数据源 FeatureClassName 前缀 = short+要素类名；FCN 中段与 `+0x144` 之后保留未知），经 `layer_list` 类分派接入对象属性解析与中间模型；样本首 FeatureLayer（键 32）前缀逐字段吻合（辅助观察），13 项单元测试。第六轮扩展：FCN 体（GdbCore.dll `0x709b5080`）与嵌套 WorkspaceName 体（`0x70a27950`）闭合，渲染器槽（IFeatureRenderer 新对象即停止，空/回引读 `+0x144` 原样 GUID 后停止）；第四轮「+0x144 GUID @0x3d6」系误读（实为 WS 体的 ShapefileWorkspaceFactory CLSID `{A06ADB96-…}`），真 `+0x144` GUID 在渲染器槽之后；样本 `0x30a..0x3ed` 逐字段吻合，见研究记录第六轮。
