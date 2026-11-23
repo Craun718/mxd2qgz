@@ -266,7 +266,7 @@ pub(super) fn envelope_slot(
     Ok((entry, body))
 }
 
-pub(super) fn geometry_slot(
+pub(crate) fn geometry_slot(
     r: &mut Reader<'_>,
     limit: usize,
     refs: &mut RefTable10_1,

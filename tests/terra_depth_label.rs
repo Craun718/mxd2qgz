@@ -1075,3 +1075,61 @@ fn graphics_3d_reads_a_standalone_frame_and_its_back_reference() {
         assert!(refs.is_empty());
     }
 }
+
+#[test]
+fn scene_graphics_reads_a_multipatch_element_with_a_new_geometry() {
+    use mxd2qgz::layers::graphics_3d::{GRAPHICS_LAYER_3D_CLASS_ID, read_graphics_3d_layer_10_1};
+    use mxd2qgz::objects::element_body::{ElementBody10_1, MULTIPATCH_ELEMENT_CLASS_ID};
+    use mxd2qgz::objects::geometry::{GeometryBody10_1, MULTIPATCH_CLASS_ID};
+
+    let mut data = scene_version_one(&[0; 16]);
+    data.truncate(data.len() - 4);
+    data.extend(1_i32.to_le_bytes());
+    data.extend(MULTIPATCH_ELEMENT_CLASS_ID);
+    data.extend(74_u32.to_le_bytes());
+    data.extend((-1_i16).to_le_bytes());
+    data.extend(0_u16.to_le_bytes());
+    empty_string(&mut data);
+    empty_string(&mut data);
+    data.extend([0; 4 + 16 + 16]); // 旧标量、空属性和空填充符号。
+    data.extend(MULTIPATCH_CLASS_ID);
+    data.extend(75_u32.to_le_bytes());
+    data.extend(2_u16.to_le_bytes());
+    data.extend(4_u32.to_le_bytes());
+    data.extend([0; 4 + 16]); // 空几何记录和空间参考。
+    data.extend((-17_i32).to_le_bytes());
+    data.extend(7_u16.to_le_bytes());
+    let end = data.len();
+    data.push(0xa5);
+
+    let mut reader = Reader::new(&data);
+    let mut refs = RefTable10_1::new();
+    let result =
+        read_graphics_3d_layer_10_1(&GRAPHICS_LAYER_3D_CLASS_ID, &mut reader, 4096, &mut refs)
+            .unwrap();
+    let Some(ElementBody10_1::MultiPatchElement(body)) = result.elements[0].element.body.as_deref()
+    else {
+        panic!("应读取 MultiPatchElement");
+    };
+    assert_eq!(
+        (body.version, body.tail_long, body.tail_short),
+        (u16::MAX, -17, 7)
+    );
+    assert!(matches!(
+        body.geometry.body.as_deref(),
+        Some(GeometryBody10_1::MultiPatch(_))
+    ));
+    assert!(refs.contains(74) && refs.contains(75));
+    assert_eq!(reader.position(), end);
+
+    for cut in 0..end {
+        let mut reader = Reader::new(&data[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(
+            read_graphics_3d_layer_10_1(&GRAPHICS_LAYER_3D_CLASS_ID, &mut reader, 4096, &mut refs)
+                .is_err()
+        );
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+}

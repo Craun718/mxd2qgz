@@ -619,6 +619,7 @@
       - [ ] 补齐两类 3D 容器的关联 ILayer 槽中其余未支持的类体；已接入类的共用子槽缺口见各自条目。
       - [x] 接入普通 ILayer 槽中的 InternetTiledLayer 与 WMTSLayer，覆盖独立图层、组图层和三维关联图层。[接口及对象体证据](docs/mxd-10.1-raster-layer-tail.md#瓦片图层的独立-ilayer-宿主)
       - [ ] 补齐两类 3D 图形容器尚未支持的非空元素、空间对象和扩展实现。
+      - [x] 接入三维图形容器通用元素槽中的 MultiPatchElement。[取证](docs/arcmap-10.1-dep-tail.md#三维图形容器中的-multipatchelement)
       - [x] 接入三维图形容器和组元素中的 FrameElement，复用布局的 BaseFrameElement 读取器。[取证](docs/arcmap-10.1-dep-tail.md#三维和组元素中的-frameelement)
       - [x] 接入三维图形容器 IElement 槽中共用读取体的 CircleElement 与 EllipseElement。[取证](docs/arcmap-10.1-dep-tail.md#三维图形容器中的圆和椭圆元素)
       - [x] 接入三维图形容器 IElement 槽中的 RectangleElement。[类型库和对象体证据](docs/arcmap-10.1-dep-tail.md#三维图形容器中的矩形元素)

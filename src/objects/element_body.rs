@@ -262,6 +262,10 @@ pub const POLYGON_ELEMENT_CLASS_ID: [u8; 16] = [
     0xc7, 0x67, 0x97, 0x3a, 0x53, 0xf2, 0xd0, 0x11, 0x83, 0xa4, 0x08, 0x00, 0x09, 0xb9, 0x96, 0xcc,
 ];
 
+pub const MULTIPATCH_ELEMENT_CLASS_ID: [u8; 16] = [
+    0xc9, 0xe5, 0x1a, 0xe9, 0x16, 0x2c, 0xd4, 0x11, 0x80, 0xe2, 0x00, 0xc0, 0x4f, 0xa0, 0xad, 0xf8,
+];
+
 /// TextSymbol 类标识（CLSID）的 16 字节内存序。
 ///
 /// GUID 字符串形式为 `{B65A3E74-2993-11D1-9A43-0080C7EC5C96}`（esri.clsid
@@ -1018,6 +1022,16 @@ pub struct LineOrPolygonElementBody10_1 {
 
 pub use LineOrPolygonElementBody10_1 as LineElementBody10_1;
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct MultiPatchElement10_1 {
+    pub version: u16,
+    pub properties: ElementPropertiesPrefix10_1,
+    pub fill: SymbolSlotFull10_1,
+    pub geometry: crate::maps::map_frame::FrameGeometrySlot10_1,
+    pub tail_long: i32,
+    pub tail_short: u16,
+}
+
 /// 元素类对象体分派结果。
 #[derive(Debug, Clone, PartialEq)]
 pub enum ElementBody10_1 {
@@ -1027,6 +1041,7 @@ pub enum ElementBody10_1 {
     LineElement(Box<LineElementBody10_1>),
     PolygonElement(Box<LineOrPolygonElementBody10_1>),
     FrameElement(Box<crate::maps::map_frame::BaseFrameElement10_1>),
+    MultiPatchElement(Box<MultiPatchElement10_1>),
     PictureElement(Box<crate::maps::picture_element::PictureElement10_1>),
 }
 
@@ -1037,7 +1052,7 @@ impl ElementBody10_1 {
             Self::ParagraphTextElement(body) => body.stop.as_ref(),
             Self::MarkerElement(body) => body.stop.as_ref(),
             Self::LineElement(body) | Self::PolygonElement(body) => body.stop.as_ref(),
-            Self::PictureElement(_) | Self::FrameElement(_) => None,
+            Self::PictureElement(_) | Self::FrameElement(_) | Self::MultiPatchElement(_) => None,
         }
     }
 }
@@ -1075,6 +1090,10 @@ pub fn read_element_body_of_class_10_1(
         Ok(ElementBody10_1::PolygonElement(Box::new(
             read_line_or_polygon_element(reader, max_bytes, table, ShapeSymbol::Fill)?,
         )))
+    } else if *class_id == MULTIPATCH_ELEMENT_CLASS_ID {
+        Ok(ElementBody10_1::MultiPatchElement(Box::new(
+            read_multi_patch_element(reader, max_bytes, table)?,
+        )))
     } else if *class_id == crate::maps::page_layout_prefix::FRAME_ELEMENT_CLASS_ID {
         let mut candidate = reader.clone();
         let mut refs = table.clone();
@@ -1092,6 +1111,52 @@ pub fn read_element_body_of_class_10_1(
             format!("尚不支持元素类 {}", class_id_hex(class_id)),
         ))
     }
+}
+
+fn read_multi_patch_element(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<MultiPatchElement10_1> {
+    let mut trial = reader.clone();
+    let mut refs = table.clone();
+    let version = trial.read_u16_le()?;
+    if version as i16 > 1 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "不支持的 MultiPatchElement 版本",
+        ));
+    }
+    let properties = match read_element_properties_prefix_10_1(&mut trial, max_bytes, &mut refs)? {
+        PrefixOutcome10_1::Complete(properties) => properties,
+        PrefixOutcome10_1::Stopped(reason) => {
+            return Err(io::Error::new(ErrorKind::Unsupported, reason.describe()));
+        }
+    };
+    let mut stop = None;
+    let fill = read_shape_symbol_slot(
+        &mut trial,
+        max_bytes,
+        &mut refs,
+        ShapeSymbol::Fill,
+        &mut stop,
+    )?;
+    if let Some(reason) = stop {
+        return Err(io::Error::new(ErrorKind::Unsupported, reason.describe()));
+    }
+    let geometry = crate::maps::map_frame::geometry_slot(&mut trial, max_bytes, &mut refs)?;
+    let tail_long = trial.read_u32_le()? as i32;
+    let tail_short = trial.read_u16_le()?;
+    *reader = trial;
+    *table = refs;
+    Ok(MultiPatchElement10_1 {
+        version,
+        properties,
+        fill,
+        geometry,
+        tail_long,
+        tail_short,
+    })
 }
 
 /// 读取一个 IFontDisp 类槽位（TextSymbol 第 15 字段）：本轮起经类分派——

@@ -802,3 +802,18 @@ LayerLib 的 BaseFrameElement，见[原生边界](mxd-page-layout-surround-20261
 可读取独立 FrameElement，布局顶层也使用同一分派并登记实际 CLSID。
 构造 Scene 用例验证 v2 阴影槽、登记类、回引、后继字节与
 逐字节截断回滚。ArcMap/QGIS 实档目视待验证。
+
+### 三维图形容器中的 MultiPatchElement
+
+同版 GraphicElements.dll 的 PE RTTI `0x750812b4` 对应持久化虚表
+`0x75071a48`。GetClassID `0x75052ee0` 写出
+`E91AE5C9-2C16-11D4-80E2-00C04FA0ADF8`，与 10.1 Carto 互操作
+程序集的 IElement 类标识一致。objdump 复核 Load `0x75052f50`，
+按有符号 short 拒绝大于 1 的版本，随后读 ElementProperties、
+IFillSymbol 和 IGeometry（`0x75052f93 / 0x75052fc0 / 0x75052ff0`）。
+最后于 `0x75052fff / 0x75053021` 读 int32 和 short。
+Save `0x75053050` 以相同顺序写出，并在 `0x7506e7c8` 取版本 1。
+
+通用元素槽复用现有属性、填充符号和几何对象读取器。构造 Scene
+验证非空的 MultiPatch 几何对象、共享键登记、负版本、原始尾段、
+后继字节和逐字节截断回滚。尾段业务含义及 ArcMap/QGIS 实档目视待验证。
