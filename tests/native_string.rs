@@ -172,3 +172,34 @@ fn bstr_stream_uses_code_units_and_zero_count_has_no_body() {
     assert!(read_bstr_string_10_1(&mut reader, 7).is_err());
     assert_eq!(reader.position(), 4);
 }
+
+#[test]
+fn version_10_1_and_10_8_writer_subsets_match() {
+    for text in ["", "8.1", "9.3", "10.1", "地图😀"] {
+        let bytes = encoded(text);
+        let mut reader_10_1 = Reader::new(&bytes);
+        let mut reader_10_8 = Reader::new(&bytes);
+        assert_eq!(
+            read_string_10_1(&mut reader_10_1, bytes.len() - 4).unwrap(),
+            read_string_10_8(&mut reader_10_8, bytes.len() - 4).unwrap()
+        );
+        assert_eq!(reader_10_1.position(), bytes.len());
+        assert_eq!(reader_10_8.position(), bytes.len());
+    }
+
+    for bytes in [
+        vec![0, 0, 0, 0],
+        vec![3, 0, 0, 0, 1, 0],
+        vec![4, 0, 0, 0, 0, 0xd8, 0, 0],
+        u32::MAX.to_le_bytes().to_vec(),
+    ] {
+        let mut reader_10_1 = Reader::new(&bytes);
+        let mut reader_10_8 = Reader::new(&bytes);
+        assert_eq!(
+            read_string_10_1(&mut reader_10_1, 1024).unwrap_err().kind(),
+            read_string_10_8(&mut reader_10_8, 1024).unwrap_err().kind()
+        );
+        assert_eq!(reader_10_1.position(), 0);
+        assert_eq!(reader_10_8.position(), 0);
+    }
+}
