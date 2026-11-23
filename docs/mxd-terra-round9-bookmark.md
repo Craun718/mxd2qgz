@@ -1416,3 +1416,30 @@ Load `0x74774d50` 检查无符号 short 版本上限 1，调用 GPValue
 
 构造书签覆盖字符串顺序、回引、后继字段、超限版本和逐字节截断
 回滚。四字段的业务名、真实书签以及 ArcMap/QGIS 人工验收待验证。
+
+#### 其余 IGPValue 候选与 GPLine、GPPolygon 的对象边界
+
+从本地 ArcMap 10.1 Desktop 互操作程序集的 .NET 元数据枚举 COM 类，
+筛选直接列出 IGPValue 接口的类型并以 CLSID 去重。得到 138 个候选，
+其中 25 个已在编码值槽实现，113 个待进一步核对。后者包括 47 个类名
+以 DE 开头的候选。接口清单只用于定位实现。判断能否进入编码值域还需
+核对同版原生类的 QueryInterface、持久化入口以及宿主写侧。
+
+同版 GpObjects.dll 的两个优先候选如下。虚表和读写顺序由 PE RTTI
+与 objdump 核对。
+
+| 类 | CLSID | RTTI / 持久化虚表 | Load / Save |
+| --- | --- | --- | --- |
+| GPLine | `435F80E4-6DB2-476B-B977-B06BFF52F978` | `0x74801434 / 0x747b5d4c` | `0x7470ae60 / 0x74707f90` |
+| GPPolygon | `EC1B8F0B-DF38-4444-BE03-0116E09537DF` | `0x7480156c / 0x747b635c` | `0x7470ae60 / 0x7470af60` |
+
+共享 Load 以无符号 short 上限 1 检查版本，在 `0x7470aea7`
+先读 GPValue 基类，`0x7470aeba` 再读有符号 LONG 计数，
+`0x7470aefb` 循环读取 IID
+`A3CD267B-86A1-4ED6-A8DD-5AE09B84F00E` 的点对象。
+两个 Save 都先写版本，再写计数和点对象，最后调用 GPValue::Save
+（`0x7470800f / 0x7470afdf`）。同版 DECoreLib 的 GPValue::Save
+在 `0x6e9557ff / 0x6e955823` 写入两个 short。两种字段顺序使用
+相同的类和版本，且普通 ObjectStream 无对象长度。
+当前保留这两类的停止边界，等待真实档案或运行取证确认
+编码值域实际使用的字段顺序。尚未在 ArcMap/QGIS 人工验证。
