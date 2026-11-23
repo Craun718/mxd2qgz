@@ -339,6 +339,14 @@ pub const GP_GDB_ANNO_DOMAIN_CLASS_ID: [u8; 16] = [
     0x32, 0x98, 0xdb, 0x07, 0x18, 0xc8, 0xd3, 0x41, 0x86, 0xd7, 0x13, 0x8f, 0x84, 0xb0, 0xa3, 0x3f,
 ];
 
+pub const GP_COVERAGE_FEATURE_CLASS_DOMAIN_CLASS_ID: [u8; 16] = [
+    0x60, 0xb2, 0xe7, 0x3f, 0x52, 0xce, 0xd5, 0x11, 0x93, 0x3a, 0x00, 0x80, 0xc7, 0x1a, 0x32, 0x26,
+];
+
+pub const GP_COVERAGE_DOMAIN_CLASS_ID: [u8; 16] = [
+    0x90, 0x11, 0x78, 0x56, 0x9b, 0xd4, 0xd5, 0x11, 0x93, 0x41, 0x00, 0x80, 0xc7, 0x1a, 0x32, 0x26,
+];
+
 pub const GP_COV_ANNO_DOMAIN_CLASS_ID: [u8; 16] = [
     0xcb, 0xdb, 0xc0, 0xb5, 0x53, 0x99, 0x01, 0x4e, 0xa7, 0x53, 0x88, 0xc7, 0xec, 0x07, 0xaf, 0x4f,
 ];
@@ -469,7 +477,19 @@ pub const GP_FILE_DOMAIN_CLASS_ID: [u8; 16] = [
 ];
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct GpCoverageFeatureClassDomain10_1 {
+    pub version: i16,
+    pub long_list: (i32, Vec<i32>),
+    pub v2_tail: Option<(u16, i32)>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum GpTopoDomain10_1 {
+    Coverage {
+        version: i16,
+        feature_class: RuleSlot10_1<GpCoverageFeatureClassDomain10_1>,
+    },
+    CoverageFeatureClass(GpCoverageFeatureClassDomain10_1),
     GdbAnnotation {
         version: i16,
     },
@@ -1335,6 +1355,22 @@ fn read_gp_domain_strings(
     Ok((raw_count, strings))
 }
 
+fn read_gp_coverage_feature_class_domain(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+) -> io::Result<GpCoverageFeatureClassDomain10_1> {
+    let version = read_gp_name_version(reader, 2, "GPCoverageFeatureClassDomain")?;
+    let long_list = read_gp_domain_longs(reader, max_bytes, "GPCoverageFeatureClassDomain")?;
+    let v2_tail = (version == 2)
+        .then(|| -> io::Result<_> { Ok((reader.read_u16_le()?, reader.read_u32_le()? as i32)) })
+        .transpose()?;
+    Ok(GpCoverageFeatureClassDomain10_1 {
+        version,
+        long_list,
+        v2_tail,
+    })
+}
+
 fn read_gp_topo_domain_slot_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -1371,6 +1407,8 @@ fn read_gp_topo_domain_slot_10_1(
                     | GP_REPRESENTATION_LAYER_DOMAIN_CLASS_ID
                     | GP_CAD_ANNO_DOMAIN_CLASS_ID
                     | GP_COV_ANNO_DOMAIN_CLASS_ID
+                    | GP_COVERAGE_DOMAIN_CLASS_ID
+                    | GP_COVERAGE_FEATURE_CLASS_DOMAIN_CLASS_ID
                     | GP_GDB_ANNO_DOMAIN_CLASS_ID
                     | GP_TABLES_DOMAIN_CLASS_ID
                     | GP_QUERY_TABLE_FIELDS_DOMAIN_CLASS_ID
@@ -1394,6 +1432,44 @@ fn read_gp_topo_domain_slot_10_1(
         } => Some(Box::new(GpTopoDomain10_1::GdbAnnotation {
             version: read_gp_name_version(reader, 0, "GPGdbAnnoDomain")?,
         })),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_COVERAGE_DOMAIN_CLASS_ID,
+            ..
+        } => {
+            let version = read_gp_name_version(reader, 1, "GPCoverageDomain")?;
+            let entry = read_object_entry_10_1(reader, table)?;
+            let body = match entry {
+                ObjectEntry10_1::Null => None,
+                ObjectEntry10_1::NewObject {
+                    class_id: GP_COVERAGE_FEATURE_CLASS_DOMAIN_CLASS_ID,
+                    ..
+                } => Some(Box::new(read_gp_coverage_feature_class_domain(
+                    reader, max_bytes,
+                )?)),
+                ObjectEntry10_1::BackReference { class_id, key }
+                    if table.registered_class(key).unwrap_or(class_id)
+                        == GP_COVERAGE_FEATURE_CLASS_DOMAIN_CLASS_ID =>
+                {
+                    None
+                }
+                _ => {
+                    return Err(io::Error::new(
+                        ErrorKind::Unsupported,
+                        "GPCoverageDomain 的 IGPCoverageFeatureClassDomain 类未支持",
+                    ));
+                }
+            };
+            Some(Box::new(GpTopoDomain10_1::Coverage {
+                version,
+                feature_class: RuleSlot10_1 { entry, body },
+            }))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: GP_COVERAGE_FEATURE_CLASS_DOMAIN_CLASS_ID,
+            ..
+        } => Some(Box::new(GpTopoDomain10_1::CoverageFeatureClass(
+            read_gp_coverage_feature_class_domain(reader, max_bytes)?,
+        ))),
         ObjectEntry10_1::NewObject {
             class_id: GP_COV_ANNO_DOMAIN_CLASS_ID,
             ..

@@ -1096,3 +1096,19 @@ GpObjects.dll 10.1.0.3035 的 PE RTTI 给出三类各自的持久化虚表。
 Load 只消费一个有符号 short，`0x74691162` 的版本上限为 0。
 Save 只写这个 short。构造测试覆盖类身份、负版本、拒绝 v1、
 后续书签字段及逐字节截断回滚。真实书签及 ArcMap/QGIS 人工验收待验证。
+
+### GP Coverage 域
+
+同版 GpObjects.dll 的 PE RTTI 定位如下。
+
+| 类 | CLSID | 持久化虚表 | Load | Save |
+| --- | --- | --- | --- | --- |
+| GPCoverageDomain | `56781190-D49B-11D5-9341-0080C71A3226` | `0x747ac09c` | `0x746a5fd0` | `0x746a6090` |
+| GPCoverageFeatureClassDomain | `3FE7B260-CE52-11D5-933A-0080C71A3226` | `0x747ac238` | `0x746a6db0` | `0x746a6ea0` |
+
+前者检查有符号 short 上限 1，在 `0x746a6018` 调用 LoadObject，
+请求 `197512A0-CD81-11D5-9339-0080C71A3226`
+（类型库中的 IGPCoverageFeatureClassDomain）。后者检查版本上限 2，
+读取带有符号计数的 LONG 列表，v2 在 `0x746a6e58 / 0x746a6e6e`
+追加 short、LONG。构造测试覆盖直接与嵌套子域、两个版本、
+后继字段边界和截断回滚。字段语义及 ArcMap/QGIS 人工验收待查。

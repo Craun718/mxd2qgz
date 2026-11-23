@@ -4772,3 +4772,79 @@ fn feature_bookmark_reads_legacy_topo_annotation_domains() {
         assert_legacy_topo_version_only_domain_with_max(class_id, expected, 0);
     }
 }
+
+#[test]
+fn feature_bookmark_reads_legacy_topo_coverage_domains() {
+    use mxd2qgz::maps::map_surround::{
+        GP_COVERAGE_DOMAIN_CLASS_ID, GP_COVERAGE_FEATURE_CLASS_DOMAIN_CLASS_ID,
+        GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID, GpCoverageFeatureClassDomain10_1, GpTopoDomain10_1,
+    };
+
+    for nested in [false, true] {
+        let mut bytes = bookmark_header_10_1(&GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID, 17);
+        bytes.extend(1_i16.to_le_bytes());
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend([0; 16]);
+        if nested {
+            bytes.extend(GP_COVERAGE_DOMAIN_CLASS_ID);
+            bytes.extend(18_u32.to_le_bytes());
+            bytes.extend(1_i16.to_le_bytes());
+        }
+        bytes.extend(GP_COVERAGE_FEATURE_CLASS_DOMAIN_CLASS_ID);
+        bytes.extend((if nested { 19_u32 } else { 18 }).to_le_bytes());
+        let version = if nested { 2_i16 } else { 1 };
+        bytes.extend(version.to_le_bytes());
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend((-7_i32).to_le_bytes());
+        if nested {
+            bytes.extend(3_u16.to_le_bytes());
+            bytes.extend(9_i32.to_le_bytes());
+        }
+        bytes.extend(bookmark_string_10_1("拓扑"));
+        bytes.extend(9_i32.to_le_bytes());
+        bytes.extend(bookmark_string_10_1("书签"));
+        let end = bytes.len();
+        bytes.push(0xa5);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+        let BookmarkNameEntry10_1::GpSaTopoFeaturesTypeName(body) = result.name_object else {
+            panic!("应读取拓扑要素类型名称");
+        };
+        let domain = body.legacy_entries[0]
+            .legacy_domain
+            .as_ref()
+            .unwrap()
+            .body
+            .as_deref();
+        let feature_class = match domain {
+            Some(GpTopoDomain10_1::Coverage {
+                version: 1,
+                feature_class,
+            }) if nested => feature_class.body.as_deref().unwrap(),
+            Some(GpTopoDomain10_1::CoverageFeatureClass(body)) if !nested => body,
+            _ => panic!("应读取对应的 Coverage 域"),
+        };
+        assert_eq!(
+            *feature_class,
+            GpCoverageFeatureClassDomain10_1 {
+                version,
+                long_list: (1, vec![-7]),
+                v2_tail: nested.then_some((3, 9)),
+            }
+        );
+        assert_eq!(result.name, "书签");
+        assert_eq!(reader.position(), end);
+        assert!(refs.contains(17) && refs.contains(18));
+        assert_eq!(refs.contains(19), nested);
+
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+}
