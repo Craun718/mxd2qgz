@@ -677,3 +677,80 @@ fn reads_yellowstone_print_settings_from_sdk_documents() {
         }
     }
 }
+
+#[test]
+#[ignore = "需要本地提取的 ArcGIS 10.1 SDK 工程"]
+fn reads_cross_stream_map_references_with_unmapped_version_headers() {
+    use mxd2qgz::maps::map_object::MAP_CLASS_ID;
+    use mxd2qgz::maps::mxd_maps::parse_mxd_streams_10_1_with_version;
+    use mxd2qgz::version::mxd_version::identify_version;
+
+    for (path, text, short, layout_version, frame_version, frame_key, map_key) in [
+        (
+            "sdk-dotnet/GISForXMLSample.mxd.89833ED7_0681_4032_BE76_9AB6C721CEB2",
+            "9.4",
+            18,
+            14,
+            4,
+            236,
+            29,
+        ),
+        (
+            "sdk-java/World.mxd.4896861F_D89C_46BA_ABEC_17591162B2B1",
+            "9.3",
+            15,
+            9,
+            2,
+            332,
+            31,
+        ),
+    ] {
+        let mut document = cfb::open(format!("temp/terra-round8-old/{path}")).unwrap();
+        let mut read = |name: &str| {
+            let mut bytes = Vec::new();
+            document
+                .open_stream(name)
+                .unwrap()
+                .read_to_end(&mut bytes)
+                .unwrap();
+            bytes
+        };
+        let version = identify_version(&read("/Version")).unwrap();
+        assert_eq!(
+            (version.text.as_str(), version.compatibility_short),
+            (text, short)
+        );
+        assert_eq!(version.candidate_save_index, None);
+        let maps = read("/Maps");
+        let page = read("/PageLayout");
+        let parsed =
+            parse_mxd_streams_10_1_with_version(&maps, Some(&page), Some(&version)).unwrap();
+        assert_eq!(parsed.confirmed_tail.unwrap().0 + 4, maps.len());
+        let mut root = Reader::new(&maps);
+        let mut refs = RefTable10_1::new();
+        assert_eq!(root.read_u32_le().unwrap(), 1);
+        assert_eq!(
+            mxd2qgz::storage::object_refs::read_object_entry_10_1(&mut root, &mut refs).unwrap(),
+            ObjectEntry10_1::NewObject {
+                class_id: MAP_CLASS_ID,
+                key: map_key
+            }
+        );
+        let layout = parsed.page_layout.unwrap();
+        assert_eq!(layout.prefix.version, layout_version);
+        assert_eq!(layout.consumed_end_offset(), page.len());
+        let [frame] = layout.map_frames.as_slice() else {
+            panic!("预期一个 MapFrame");
+        };
+        assert_eq!(frame.prefix.version, frame_version);
+        assert_eq!(frame.prefix.frame_key, frame_key);
+        assert_eq!(frame.prefix.map_offset, 0x3c);
+        assert_eq!(
+            frame.prefix.map,
+            ObjectEntry10_1::BackReference {
+                class_id: MAP_CLASS_ID,
+                key: map_key,
+            }
+        );
+    }
+}

@@ -66,3 +66,20 @@ MapFrame v2 的 IMap 槽，并用同一引用表命中 `/Maps` 根 Map 键 31。
 [布局分流读取](mxd-page-layout-tail-20261118.md#旧版-paper-的分流读取)。
 以上实档结果覆盖两种 9.0 头部组合，其他版本与宿主仍需核查。
 ArcMap 10.1 和 QGIS 人工验证尚未进行。
+
+### 非标准 /Version 组合的 SDK MapFrame 回引
+
+ArcGIS 10.1 SDK 的两个工程包含未映射到 10.1 保存索引的头部组合。
+按 10.1 的分流读取入口解析时，两条对象流均读至末尾。顶层
+MapFrame 在 `/PageLayout:0x3c` 回引 `/Maps` 根 Map。
+
+| 工程 | /Version 文本及 short | Map / PageLayout / MapFrame 版本 | MapFrame 键 → Map 键 |
+| --- | --- | --- | --- |
+| GISForXMLSample（.NET SDK） | 9.4 / 18 | 41 / 14 / 4 | 236 → 29 |
+| World（Java SDK） | 9.3 / 15 | 31 / 9 / 2 | 332 → 31 |
+
+两份 MXD 的 SHA-256 分别为
+`63afbe61413b80a26944b7b063c151d3b49399867c0741f0bd31c0f57611d4f5`
+及 `04b6086b15e694bea1e33a978b57265313cc4c44d3603488491b2062a7e90109`。
+两种头部均由实档测试确认，实际写出应用版本及其余版本边界仍待取证。
+ArcMap 10.1 和 QGIS 人工验证尚未进行。
