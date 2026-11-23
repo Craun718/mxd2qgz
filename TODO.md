@@ -93,7 +93,7 @@
 - [x] 接入 CoverageAnnotationLayer v0–v5 的旧前缀、内联 FeatureLayer、注记集合及版本尾段。[注记图层取证](docs/mxd-terra-round9-old.md#coverageannotationlayer-与-cadannotationlayer)
 - [x] 接入 CadAnnotationLayer v1–v4 的聚合 CoverageAnnotationLayer、绘图槽和版本尾段。[注记图层取证](docs/mxd-terra-round9-old.md#coverageannotationlayer-与-cadannotationlayer)
 - [x] 接入 Map v0–v10 旧表槽的 AMSDatasetName 和内嵌工作空间属性集键。[跟踪表取证](docs/mxd-terra-round9-old.md#跟踪工作空间的表名称)
-- [ ] 核对 Map v0–v10 旧表槽中尚未支持的 IName 实现。[旧表取证](docs/mxd-terra-round9-old.md#map-v0v13-的对象结束位置)
+- [x] 核对 Map v0–v10 旧表槽中的 IName 实现：FileName、ShortcutName、UnknownDatasetName、RepresentationClassName 与 SdeRasterTableName 均不能向该槽提供 ITable，统一保留条目边界；其余内置表/要素类名称复用共享分派。[接口审计](docs/mxd-terra-round9-old.md#旧表名称注册项清点)
   - [x] 核对 FileName 与 ShortcutName 的 Open 返回，并验证旧表槽的保留行为。[原生取证](docs/mxd-terra-round9-old.md#filename-与-shortcutname-的旧表槽判定)
   - [x] 解码 MosaicDB 的 ReferencedTableName 包装体，接入旧 Map 表名与独立表的 IName 槽，保留兼容版本 -1 和内层引用。[读写取证](docs/mxd-terra-round9-old.md#referencedtablename)
   - [x] 接入 ObjectClassName 的 TableName 委派体，覆盖旧 Map 与独立表名称槽。[跨模块取证](docs/mxd-terra-round9-table.md#objectclassname-与栅格表名称)

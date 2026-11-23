@@ -498,6 +498,16 @@ RelQueryTableName、NetCDFFeatureClassName、TableQueryName 和 FeatureQueryName
 原生槽请求 IName，随后以 ITable 查询 Open 的结果，因此还需按接口检查其它命名形式
 以及第三方类；本次未做目标软件运行验证。
 
+结合后续的 Open 指令复核，旧表槽的非表结果已按接口结果分组：
+FileName、ShortcutName、UnknownDatasetName 均不能给出有效 ITable；
+RepresentationClassName 打开的是表示类，SdeRasterTableName 的持久化入口
+直接返回 E_FAIL。其余已确认能打开表或要素类的内置名称均由共享表名分派
+处理。`map_legacy_version_dispatch` 现在把五个不可用类标识逐一放入旧 Map
+新对象与回引槽，验证游标停在条目头且不适用的登记键不冒充当前槽类型。
+WMS/WMTS 等 OGC 连接名属于栅格服务名称，不属于旧表槽的 FullName 来源。
+第三方工作空间扩展仍可能提供其它 IName 实现，需按其二进制另取证；
+ArcMap 10.1 与 QGIS 人工验收尚未进行。
+
 ### UnknownDatasetName 在旧表槽中的 Open
 
 复核 Desktop 10.1.0.3035 的 GdbCore.dll（SHA-256

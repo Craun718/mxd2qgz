@@ -539,7 +539,7 @@ fn map_v0_to_v13_read_version_gated_tail_fields() {
                 assert_eq!(reader.position(), at);
                 assert!(!refs.contains(90) && !refs.contains(101));
             }
-            // FileName 和 ShortcutName 虽然实现 IName，Open 只返回空指针。
+            // 以下类虽实现 IName，但静态 Open 路径不能向旧表槽提供 ITable。
             for class in [
                 [0x7d; 16],
                 [
@@ -550,6 +550,18 @@ fn map_v0_to_v13_read_version_gated_tail_fields() {
                     0xe4, 0x09, 0xeb, 0x3b, 0x41, 0x39, 0x07, 0x4a, 0x9d, 0x1a, 0xec, 0x2b, 0x43,
                     0xba, 0x7d, 0x50,
                 ],
+                [
+                    0xb1, 0x3d, 0x78, 0x06, 0xee, 0xe5, 0xd1, 0x11, 0xb0, 0xa2, 0x00, 0x00, 0xf8,
+                    0x78, 0x08, 0x2e,
+                ], // UnknownDatasetName：Open 返回失败。
+                [
+                    0x22, 0xaa, 0x74, 0x4e, 0xb6, 0xa1, 0xd4, 0x47, 0x99, 0x14, 0x20, 0xf8, 0xc6,
+                    0xc2, 0xb6, 0x99,
+                ], // RepresentationClassName：Open 结果是表示类而非 ITable。
+                [
+                    0xc0, 0xc1, 0x2a, 0x94, 0xc4, 0xfe, 0xd3, 0x11, 0x8d, 0x6f, 0x00, 0xc0, 0x4f,
+                    0x5b, 0x87, 0xb2,
+                ], // SdeRasterTableName：Load/Save 均为 E_FAIL。
             ] {
                 let mut unknown = bytes.clone();
                 unknown[at..at + 16].copy_from_slice(&class);
