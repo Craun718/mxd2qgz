@@ -442,6 +442,10 @@ pub const GDS_DATA_CLASS_ID: [u8; 16] = [
     0x9c, 0xe6, 0x77, 0x8b, 0x95, 0x2a, 0xe3, 0x42, 0x88, 0xe3, 0x22, 0xa6, 0x12, 0xb6, 0x97, 0x52,
 ];
 
+pub const GP_FIELD_INFO_CLASS_ID: [u8; 16] = [
+    0xd7, 0x5c, 0xce, 0x2e, 0x67, 0x85, 0xc7, 0x44, 0xa6, 0xa3, 0xc8, 0x6f, 0xaf, 0x2b, 0x55, 0x50,
+];
+
 pub const GP_ARC_INFO_ITEM_CLASS_ID: [u8; 16] = [
     0xb2, 0xbb, 0xdd, 0x6d, 0xdc, 0x41, 0x12, 0x4f, 0x91, 0x3e, 0x80, 0x31, 0x96, 0xeb, 0x33, 0xfa,
 ];
@@ -608,6 +612,10 @@ pub enum GpCodedValue10_1 {
         data: RuleSlot10_1<GdsData10_1>,
         strings: [String; 3],
     },
+    FieldInfo {
+        raw_count: i32,
+        rows: Vec<GpFieldInfoRow10_1>,
+    },
     ArcInfoItem {
         strings: [String; 2],
         raw_longs: [i32; 5],
@@ -705,6 +713,23 @@ pub enum GpCodedValue10_1 {
         seed: i32,
         raw_generator: i32,
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpFieldInfoRow10_1 {
+    pub leading_long: i32,
+    pub strings: [String; 2],
+    pub trailing_long: i32,
+    pub raw_short: u16,
+    pub extra: Option<GpFieldInfoRowV2Fields10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpFieldInfoRowV2Fields10_1 {
+    pub first_text: String,
+    pub first_long: i32,
+    pub second_text: String,
+    pub remaining_longs: [i32; 2],
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2031,6 +2056,7 @@ fn read_gp_coded_value_entry(
                     | GP_SA_CELL_SIZE_CLASS_ID
                     | GP_WORKSPACE_EXTENSION_CLASS_ID
                     | GP_DATA_FILE_CLASS_ID
+                    | GP_FIELD_INFO_CLASS_ID
                     | GP_ARC_INFO_ITEM_CLASS_ID
                     | GP_ANALYSIS_CELL_SIZE_CLASS_ID
                     | GP_RASTER_GDB_ENV_COMPRESSION_CLASS_ID
@@ -2088,6 +2114,7 @@ fn read_gp_coded_value_entry(
                 | GP_SA_CELL_SIZE_CLASS_ID
                 | GP_WORKSPACE_EXTENSION_CLASS_ID
                 | GP_DATA_FILE_CLASS_ID
+                | GP_FIELD_INFO_CLASS_ID
                 | GP_ARC_INFO_ITEM_CLASS_ID
                 | GP_ANALYSIS_CELL_SIZE_CLASS_ID
                 | GP_RASTER_GDB_ENV_COMPRESSION_CLASS_ID
@@ -2152,7 +2179,8 @@ fn read_gp_coded_value_entry(
                 | GP_SA_NEIGHBORHOOD_CLASS_ID
                 | GP_SA_WEIGHTED_OVERLAY_TABLE_CLASS_ID
                 | GP_RASTER_GDB_ENV_COMPRESSION_CLASS_ID
-                | GP_RASTER_GDB_ENV_TILE_SIZE_CLASS_ID => 2,
+                | GP_RASTER_GDB_ENV_TILE_SIZE_CLASS_ID
+                | GP_FIELD_INFO_CLASS_ID => 2,
                 _ => 1,
             };
             if version > max_version || base_version > 1 {
@@ -2275,6 +2303,7 @@ fn read_gp_coded_value_entry(
                         read_string_10_1(reader, max_bytes)?,
                     ],
                 },
+                GP_FIELD_INFO_CLASS_ID => read_gp_field_info(reader, max_bytes, version)?,
                 GP_ARC_INFO_ITEM_CLASS_ID => GpCodedValue10_1::ArcInfoItem {
                     strings: [
                         read_string_10_1(reader, max_bytes)?,
@@ -2448,6 +2477,41 @@ fn read_gp_coded_value_entry(
         }
     };
     Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_gp_field_info(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    version: u16,
+) -> io::Result<GpCodedValue10_1> {
+    let min_row_bytes = if version >= 2 { 38 } else { 18 };
+    let (raw_count, count) = read_gp_coded_value_count(reader, max_bytes, min_row_bytes)?;
+    let mut rows = Vec::new();
+    for _ in 0..count {
+        rows.push(GpFieldInfoRow10_1 {
+            leading_long: reader.read_u32_le()? as i32,
+            strings: [
+                read_bstr_string_10_1(reader, max_bytes)?,
+                read_bstr_string_10_1(reader, max_bytes)?,
+            ],
+            trailing_long: reader.read_u32_le()? as i32,
+            raw_short: reader.read_u16_le()?,
+            extra: (version >= 2)
+                .then(|| -> io::Result<_> {
+                    Ok(GpFieldInfoRowV2Fields10_1 {
+                        first_text: read_bstr_string_10_1(reader, max_bytes)?,
+                        first_long: reader.read_u32_le()? as i32,
+                        second_text: read_bstr_string_10_1(reader, max_bytes)?,
+                        remaining_longs: [
+                            reader.read_u32_le()? as i32,
+                            reader.read_u32_le()? as i32,
+                        ],
+                    })
+                })
+                .transpose()?,
+        });
+    }
+    Ok(GpCodedValue10_1::FieldInfo { raw_count, rows })
 }
 
 fn read_gp_data_file_transport(

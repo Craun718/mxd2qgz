@@ -1816,3 +1816,18 @@ Load 接受 v0/v1，读 GPValue 基类，随后于 `0x6f63a780` 调用
 AfCore String::Read，再于 `0x6f63a793` 读 16 字节 GUID。
 Save 以相同顺序写出这两个字段。读取器保留名称及 GUID 原字节。
 合成书签覆盖两种版本、后继字段和截断回滚。真实 ArcMap 参数工程待验证。
+
+### GPFieldInfo
+
+ArcMap 10.1.0.3035 的 `GpObjects.dll` RTTI `0x748001b8` 对应持久化
+虚表 `0x747af44c`，类标识为 `{2ECE5CD7-8567-44C7-A6A3-C86FAF2B5550}`。
+依据安装介质类注册清单、objdump 和 PE 导入表核对 Load `0x746d4f30`、
+Save `0x746d51f0`。Load 接受 v0 至 v2，读 GPValue 基类和有符号 LONG
+计数。正数时每行依次读 LONG、两个自由函数 ReadString 的 BSTR、LONG、
+short。v2 每行随后追加 BSTR、LONG、BSTR、两个 LONG，读取点为
+`0x746d50aa/0x746d50c4/0x746d50e0/0x746d50fa/0x746d5114`。
+Save 根据文档版本选择是否写行扩展。
+
+解析保留各行及原始标量，依据最小行宽检查计数。合成书签覆盖三种
+版本、空及非空文本、多行、非正计数、后继数据和截断回滚。
+实际 ArcMap GP 参数工程与各标量业务语义待验证。

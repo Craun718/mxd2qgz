@@ -755,6 +755,7 @@
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPCodedValueDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldinfodomain-与-gpcodedvaluedomain)
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPFieldInfoDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldinfodomain-与-gpcodedvaluedomain)
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
+      - [x] 接入 GPFieldInfo 的基础行和 v2 扩展字段。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldinfo)
       - [x] 接入 GPWorkspaceExtension 的名称与扩展 GUID。[取证](docs/mxd-terra-round9-bookmark.md#gpworkspaceextension)
       - [x] 接入 GPDataFile 的 GDSData 传输对象和版本化属性槽。[取证](docs/mxd-terra-round9-bookmark.md#gpdatafile-和-gdsdata)
       - [x] 接入 GPArcInfoItem 的名称和定宽字段。[取证](docs/mxd-terra-round9-bookmark.md#gparcinfoitem)

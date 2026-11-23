@@ -6873,3 +6873,65 @@ fn feature_bookmark_reads_workspace_extension_value_guid() {
         );
     }
 }
+
+#[test]
+fn feature_bookmark_reads_gp_field_info_with_versioned_rows() {
+    use mxd2qgz::maps::map_surround::{
+        GP_FIELD_INFO_CLASS_ID, GpCodedValue10_1, GpFieldInfoRow10_1, GpFieldInfoRowV2Fields10_1,
+    };
+
+    let append_bstr = |buffer: &mut Vec<u8>, text: &str| {
+        let count = text.encode_utf16().count();
+        buffer.extend((count as u32).to_le_bytes());
+        if count > 0 {
+            buffer.extend(text.encode_utf16().flat_map(u16::to_le_bytes));
+            buffer.extend([0, 0]);
+        }
+    };
+    for version in 0_u16..=2 {
+        let mut payload = 2_i32.to_le_bytes().to_vec();
+        let mut rows = Vec::new();
+        for (leading_long, name) in [(2_i32, "字段"), (-3, "ID")] {
+            payload.extend(leading_long.to_le_bytes());
+            append_bstr(&mut payload, name);
+            append_bstr(&mut payload, "");
+            payload.extend((-5_i32).to_le_bytes());
+            payload.extend(0x8001_u16.to_le_bytes());
+            let extra = (version == 2).then(|| {
+                append_bstr(&mut payload, "别名");
+                payload.extend(6_i32.to_le_bytes());
+                append_bstr(&mut payload, "说明");
+                payload.extend((-7_i32).to_le_bytes());
+                payload.extend(8_i32.to_le_bytes());
+                GpFieldInfoRowV2Fields10_1 {
+                    first_text: "别名".to_owned(),
+                    first_long: 6,
+                    second_text: "说明".to_owned(),
+                    remaining_longs: [-7, 8],
+                }
+            });
+            rows.push(GpFieldInfoRow10_1 {
+                leading_long,
+                strings: [name.to_owned(), String::new()],
+                trailing_long: -5,
+                raw_short: 0x8001,
+                extra,
+            });
+        }
+        assert_legacy_topo_coded_value(
+            GP_FIELD_INFO_CLASS_ID,
+            version,
+            &payload,
+            GpCodedValue10_1::FieldInfo { raw_count: 2, rows },
+        );
+    }
+    assert_legacy_topo_coded_value(
+        GP_FIELD_INFO_CLASS_ID,
+        2,
+        &(-1_i32).to_le_bytes(),
+        GpCodedValue10_1::FieldInfo {
+            raw_count: -1,
+            rows: Vec::new(),
+        },
+    );
+}
