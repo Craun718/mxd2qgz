@@ -4933,9 +4933,9 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
         GP_RANDOM_NUMBER_GENERATOR_CLASS_ID, GP_VARIANT_CLASS_ID,
     };
     use mxd2qgz::maps::map_surround::{
-        GP_CODED_VALUE_DOMAIN_CLASS_ID, GP_FIELD_INFO_DOMAIN_CLASS_ID, GP_LONG_CLASS_ID,
-        GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID, GP_STRING_CLASS_ID, GpCodedValue10_1,
-        GpTopoDomain10_1,
+        GP_CODED_VALUE_DOMAIN_CLASS_ID, GP_DATA_TYPE_NAME_CLASS_ID, GP_FIELD_INFO_DOMAIN_CLASS_ID,
+        GP_LONG_CLASS_ID, GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID, GP_STRING_CLASS_ID,
+        GpCodedValue10_1, GpTopoDomain10_1,
     };
     use mxd2qgz::objects::property_set::{PropertyValue10_1, PropertyValueObjectStream10_1};
     use mxd2qgz::storage::object_refs::ObjectEntry10_1;
@@ -5039,12 +5039,23 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
         bytes.extend(29_u32.to_le_bytes());
         bytes.extend(bookmark_entry_10_1(&GP_MULTI_VALUE_CLASS_ID, 30));
         bytes.extend([1, 0, 1, 0, 7, 0]);
-        bytes.extend([0; 16]);
+        if nested {
+            bytes.extend(bookmark_entry_10_1(&GP_DATA_TYPE_NAME_CLASS_ID, 32));
+            bytes.extend(2_i16.to_le_bytes());
+            bytes.extend(2_i16.to_le_bytes());
+            bytes.extend([0; 16]);
+        } else {
+            bytes.extend([0; 16]);
+        }
         bytes.extend(2_i32.to_le_bytes());
         bytes.extend(bookmark_entry_10_1(&GP_LONG_CLASS_ID, 21));
         bytes.extend(bookmark_entry_10_1(&GP_MULTI_VALUE_CLASS_ID, 31));
         bytes.extend([1, 0, 1, 0, 7, 0]);
-        bytes.extend([0; 16]);
+        if nested {
+            bytes.extend(bookmark_entry_10_1(&GP_DATA_TYPE_NAME_CLASS_ID, 32));
+        } else {
+            bytes.extend([0; 16]);
+        }
         bytes.extend((-1_i32).to_le_bytes());
         bytes.extend(bookmark_string_10_1("拓扑"));
         bytes.extend(9_i32.to_le_bytes());
@@ -5074,11 +5085,21 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
         };
         assert_eq!(coded.labels, (1, vec!["标签".into()]));
         assert_eq!(coded.raw_value_count, 16);
-        let GpCodedValue10_1::MultiValue { raw_count, values } =
-            &coded.values[15].body.as_ref().unwrap().value
+        let GpCodedValue10_1::MultiValue {
+            type_name,
+            raw_count,
+            values,
+        } = &coded.values[15].body.as_ref().unwrap().value
         else {
             panic!("应读取 GP 多值对象");
         };
+        if nested {
+            assert!(
+                matches!(type_name.as_ref(), BookmarkNameEntry10_1::GpDataTypeName(body) if body.version == 2)
+            );
+        } else {
+            assert_eq!(type_name.as_ref(), &BookmarkNameEntry10_1::Null);
+        }
         assert_eq!(*raw_count, 2);
         assert_eq!(
             values[0].entry,
@@ -5090,6 +5111,14 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
         assert_eq!(
             values[1].body.as_ref().unwrap().value,
             GpCodedValue10_1::MultiValue {
+                type_name: Box::new(if nested {
+                    BookmarkNameEntry10_1::BackReference {
+                        class_id: GP_DATA_TYPE_NAME_CLASS_ID,
+                        key: 32,
+                    }
+                } else {
+                    BookmarkNameEntry10_1::Null
+                }),
                 raw_count: -1,
                 values: Vec::new()
             }

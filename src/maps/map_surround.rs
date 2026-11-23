@@ -431,6 +431,7 @@ pub enum GpCodedValue10_1 {
     },
     Variant(Box<PropertyValueObjectStream10_1>),
     MultiValue {
+        type_name: Box<BookmarkNameEntry10_1>,
         raw_count: i32,
         values: Vec<RuleSlot10_1<GpCodedValueBody10_1>>,
     },
@@ -1623,15 +1624,21 @@ fn read_gp_coded_value_slot(
                             "GPMultiValue 嵌套层数超限",
                         ));
                     }
-                    if read_object_entry_10_1(reader, table)? != ObjectEntry10_1::Null {
+                    let type_name =
+                        read_bookmark_name_slot_10_1(reader, max_bytes, table, depth + 1)?;
+                    if !is_gp_data_type_name(&type_name) {
                         return Err(io::Error::new(
                             ErrorKind::Unsupported,
-                            "GPMultiValue 非空类型槽未支持",
+                            "GPMultiValue 的类型名称类未支持",
                         ));
                     }
                     let (raw_count, values) =
                         read_gp_coded_value_list(reader, max_bytes, table, depth + 1)?;
-                    GpCodedValue10_1::MultiValue { raw_count, values }
+                    GpCodedValue10_1::MultiValue {
+                        type_name: Box::new(type_name),
+                        raw_count,
+                        values,
+                    }
                 }
                 _ => GpCodedValue10_1::Long(reader.read_u32_le()? as i32),
             };
@@ -2177,6 +2184,22 @@ fn read_gp_topo_domain_slot_10_1(
     Ok(RuleSlot10_1 { entry, body })
 }
 
+fn is_gp_data_type_name(name: &BookmarkNameEntry10_1) -> bool {
+    matches!(
+        name,
+        BookmarkNameEntry10_1::Null
+            | BookmarkNameEntry10_1::GpDataTypeName(_)
+            | BookmarkNameEntry10_1::GpMultiValueTypeName { .. }
+            | BookmarkNameEntry10_1::GpSaTopoFeaturesTypeName(_)
+            | BookmarkNameEntry10_1::BackReference {
+                class_id: GP_DATA_TYPE_NAME_CLASS_ID
+                    | GP_MULTI_VALUE_TYPE_NAME_CLASS_ID
+                    | GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID,
+                ..
+            }
+    )
+}
+
 fn read_gp_sa_topo_features_type_name_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -2205,19 +2228,7 @@ fn read_gp_sa_topo_features_type_name_body_10_1(
     let mut legacy_entries = Vec::new();
     for _ in 0..count {
         let data_type = read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth + 1)?;
-        if !matches!(
-            data_type,
-            BookmarkNameEntry10_1::Null
-                | BookmarkNameEntry10_1::GpDataTypeName(_)
-                | BookmarkNameEntry10_1::GpMultiValueTypeName { .. }
-                | BookmarkNameEntry10_1::GpSaTopoFeaturesTypeName(_)
-                | BookmarkNameEntry10_1::BackReference {
-                    class_id: GP_DATA_TYPE_NAME_CLASS_ID
-                        | GP_MULTI_VALUE_TYPE_NAME_CLASS_ID
-                        | GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID,
-                    ..
-                }
-        ) {
+        if !is_gp_data_type_name(&data_type) {
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
                 "GPSATopoFeaturesTypeName 的 IGPDataTypeName 类未支持",
