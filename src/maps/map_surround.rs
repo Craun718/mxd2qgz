@@ -493,8 +493,7 @@ impl LegendStop10_1 {
 /// Legend 对象体已确认前缀（Load `0x793da250`，至版本门尾段止）。
 #[derive(Debug, Clone, PartialEq)]
 pub struct LegendPrefix10_1 {
-    /// int16 Legend 版本的无符号位模式（原生有符号 `>5` 拒绝、负值通过；
-    /// 本读取器仅接受 0..=5，负值一并拒绝较原生更严。10.1 写侧恒写 5）。
+    /// 原始版本位模式，读取时按有符号值判断。
     pub version: u16,
     /// MapSurround 族共同前缀（第 2 字段起）。
     pub common: MapSurroundCommonPrefix10_1,
@@ -1126,15 +1125,9 @@ pub fn read_legend_prefix_10_1(
     let mut trial = reader.clone();
     let mut trial_table = table.clone();
 
-    // 1. int16 Legend 版本：汇编 `CMP word,5; JLE` 有符号（>5 拒绝
-    //    0x80004005，负值原生通过）；仅接受 0..=5，负值一并拒绝较原生更严。
-    let version = trial.read_u16_le()?;
+    let version = trial.read_u16_le()? as i16;
     if version > 5 {
-        return Err(invalid(format!(
-            "版本位模式 {version}（0x{version:04x}）超出原生接受范围 0..=5（Load \
-             0x793da250 有符号比较，>5 拒绝 0x80004005；写侧版本表 DAT_79480dc4 = \
-             [3,4,4,4,4,5]，10.1 恒写 5；负值位模式原生通过，此处一并拒绝，较原生更严）"
-        )));
+        return Err(invalid(format!("不支持的版本 {version}")));
     }
 
     // 2. MapSurround 族共同前缀（含 IMap 槽新对象的Unsupported 转发）。
@@ -1345,7 +1338,7 @@ pub fn read_legend_prefix_10_1(
 
     let stop = stop.unwrap_or(LegendStop10_1::Completed);
     let result = LegendPrefix10_1 {
-        version,
+        version: version as u16,
         common,
         legend_format,
         title,

@@ -430,6 +430,30 @@ fn legend_version_one_reads_legacy_doubles_without_gates() {
 }
 
 #[test]
+fn legend_negative_versions_skip_versioned_fields() {
+    for version in [i16::MIN, -1, 0] {
+        let mut bytes = version.to_le_bytes().to_vec();
+        bytes.extend(common_prefix_bytes(0, "旧图例", None));
+        push_null_marker(&mut bytes);
+        bytes.extend(string_bytes("t"));
+        bytes.extend([0; 8 + 4]); // 四个 short 和零条目计数。
+        bytes.push(0x42);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let legend = read_legend_prefix_10_1(&mut reader, 1024, &mut refs).unwrap();
+        assert_eq!(legend.version, version as u16);
+        assert_eq!(legend.stop, LegendStop10_1::Completed);
+        assert!(legend.legacy_doubles.is_none());
+        assert!(legend.tail_short_1.is_none());
+        assert!(legend.tail_short_2.is_none());
+        assert!(legend.tail_group.is_none());
+        assert_eq!(reader.read_bytes(1).unwrap(), &[0x42]);
+        assert!(refs.is_empty());
+    }
+}
+
+#[test]
 fn legend_stops_at_new_format_object_and_commits_key() {
     // C 轮接线后 LegendFormat 类已整体消费（见下一测试）；本测试改用无闭
     // 合读取器的实现类，验证既有停止语义不变。
@@ -550,8 +574,8 @@ fn legend_stops_at_new_item_object() {
 
 #[test]
 fn legend_rejects_version_overflow_negative_count_and_limit() {
-    // 版本 6：原生 >5 拒绝（有符号），负值位模式一并拒绝。
-    for version in [6_u16, 0x8000] {
+    // 版本 6：原生按有符号值拒绝大于 5 的版本。
+    for version in [6_u16, i16::MAX as u16] {
         let bytes = version.to_le_bytes().to_vec();
         let error = read_legend_prefix_10_1(
             &mut Reader::new(&bytes),

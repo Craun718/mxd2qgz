@@ -687,6 +687,7 @@
       - [x] 定位 ObjectClassName 的 GdbCore 实现：10.1 注册工厂和构造函数分别绑定 FdbTableName 工厂与实例 RTTI；持久化行为未在此项验证。见 [第三轮数据集记录](docs/mxd-round3-dataset-format-20261117.md#objectclassname-实现定位)。
     - 符号与 Legend 族（逐个反编译闭合）：
       - [x] 闭合 LegendFormat 体 `{7A3F91E5}`（Map.dll，真实 IPS 虚表在位移 0xb4 的 COL 后；9 段字段序：版本 [1,1,1,1,1,2] 恒写 2+short+ITextSymbol 槽+int32+double×11+ILinePatch 槽+IAreaPatch 槽+short+[≥2]double×2，Load/Save 对称），见 [研究记录](docs/arcmap-10.1-legend-family.md)。
+      - [x] 按 Map.dll 的有符号版本门读取 Legend 及其后缀。[指令取证](docs/arcmap-10.1-mapsurround-bookmark.md#legend-的负版本边界)
       - [x] 闭合 ILegendItem 实现类体：HorizontalBarLegendItem `{2B65D211}`（条目版本→BaseLegendItem→int32→double×2）、NestedLegendItem `{2B65D212}`（→int32→double→IFillSymbol 槽→ILineSymbol 槽→short×3→int32）、VerticalLegendItem `{A9401A48}`（流内布局与 HorizontalLegendItem 逐字节同序）；四实现类经 LayerLib BaseLegendItem::Load 的四条 IAT 引用定位穷尽，见 [研究记录](docs/arcmap-10.1-legend-family.md)。
       - [x] 证明 Scalebar/ScaleText/MarkerNorthArrow/MapTitle 的共同前缀为其 Load 首段。
       - [x] 闭合 Scalebar 体 `{7A3F91DB}`：真实 Load `0x794460b0`（IPS 虚表位移 0x1b4）；自身 short 恒写 1→共同前缀→标量长段→三个 OLE IFont 槽（流内 StdFont，既有 ole_font 可消费）→uint32/String/4×int32→IFont→uint32。
