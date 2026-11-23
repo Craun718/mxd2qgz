@@ -871,8 +871,16 @@ fn extra_safe_empty_wrapper_and_null_header_are_placeholders() {
         let empty_offset = page.len();
         page.extend(0_u64.to_le_bytes());
         let next_offset = page.len();
-        page.extend(16_u64.to_le_bytes());
+        // 原生占位器复制完整声明范围，空对象头后也可带未解释字节。
+        let suffix = if version % 2 == 0 {
+            &[0xca, 0xfe][..]
+        } else {
+            &[]
+        };
+        page.extend((16 + suffix.len() as u64).to_le_bytes());
         page.extend([0; 16]);
+        page.extend(suffix);
+        let tail_offset = page.len();
         page.extend(layout_tail(version, 2));
         page.extend(0_u16.to_le_bytes());
 
@@ -882,13 +890,13 @@ fn extra_safe_empty_wrapper_and_null_header_are_placeholders() {
             layout.placeholder_elements,
             [
                 (0, empty_offset, vec![0; 8]),
-                (1, next_offset, page[next_offset..next_offset + 24].to_vec())
+                (1, next_offset, page[next_offset..tail_offset].to_vec())
             ]
         );
         assert!(layout.indirect_elements.is_empty());
         assert_eq!(layout.consumed_end_offset(), page.len());
 
-        for end in next_offset..next_offset + 24 {
+        for end in next_offset..tail_offset {
             let report = parse_mxd_streams_10_1(&[0; 8], Some(&page[..end])).unwrap();
             let layout = report.page_layout.unwrap();
             assert_eq!(layout.placeholder_elements.len(), 1);

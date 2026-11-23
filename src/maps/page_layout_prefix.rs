@@ -566,13 +566,15 @@ fn read_page_frame(
     let header = read_header_10_1(&mut probe)?;
     match header {
         ObjectHeader::Null => {
-            *reader = probe;
-            // 新版布局的 IsValidElement 对空指针返回 false。
-            Ok(if extra_safe {
-                PageFrame::Placeholder
+            if extra_safe {
+                // 占位对象复制整个包装，并定位到声明范围末尾。
+                probe.read_bytes(probe.remaining())?;
+                *reader = probe;
+                Ok(PageFrame::Placeholder)
             } else {
-                PageFrame::Indirect(ObjectEntry10_1::Null)
-            })
+                *reader = probe;
+                Ok(PageFrame::Indirect(ObjectEntry10_1::Null))
+            }
         }
         ObjectHeader::Object { class_id, key } if refs.contains_map(key) || is_root_map(key) => {
             // IElement 查询输出为空，普通槽仍插入空元素，新版则恢复为占位。
