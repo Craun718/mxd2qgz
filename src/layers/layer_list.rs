@@ -336,6 +336,18 @@ impl LayerListEntry {
                         Some(RasterDatasetNameEntryBody10_1::WcsCoverage(_)) => {
                             parts.push("WCSCoverageName 对象体已解析".into());
                         }
+                        Some(RasterDatasetNameEntryBody10_1::OgcConnection(name)) => {
+                            parts.push(format!(
+                                "{} 对象体已解析",
+                                if name.class_id
+                                    == crate::layers::wcs_name::WMS_CONNECTION_NAME_CLASS_ID
+                                {
+                                    "WMSConnectionName"
+                                } else {
+                                    "WMTSConnectionName"
+                                }
+                            ));
+                        }
                         Some(RasterDatasetNameEntryBody10_1::Dataset83 { .. }) => {
                             parts.push("RasterDatasetName83 对象体已解析".into());
                         }

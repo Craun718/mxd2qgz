@@ -1053,6 +1053,21 @@ IRasterBand 和 IDataset 检索，补查 GridCore、RasterCoreLib、RasterLayer
 
 OGCClient.dll 10.1.0.3035（SHA-256 `4a7a3a39eafa295677ccf8b1de5ffbab50544bc4c43b6aba343992a21ab28fca`）的 WCSCoverageName（CLSID `C6A467CF-262D-47F0-BF56-DD3A29C56B5F`）主 QI `0x7b424610` 把 IName 映射到 `+0x14`，IPersistStream 由 `+0x18` 的虚表提供。Load/Save `0x7b424bd0 / 0x7b424d00` 读取版本 short（≤1）、AfCore 自由函数 ReadString 的覆盖标识和 IWCSConnectionName 槽。CoverageContentsHandler 在 `0x7b4298ff` 创建该类。连接名 CLSID `B96CFE9E-44C7-4616-8A2A-F1FBA8642AF6`，Load/Save `0x7b420ee0 / 0x7b421090`，读取版本 short（≤3）、IPropertySet，v2 起追加第二个 IPropertySet 槽。接入共享栅格名称分派，构造 tag 30 覆盖连接名 v1/v3、属性集键回引、后续记录边界与逐前缀截断回滚。
 
+同版 RTTI 另把 WMSConnectionName
+（CLSID `98B0E997-F21D-4195-8E06-F9CD2AD97165`）和
+WMTSConnectionName（CLSID `93B061BB-DB92-4E90-9927-48C031B33FE8`）
+的 IName 与 IPersistStream 接口分别映射到完整对象 `+0x18`、`+0x1c`。
+两者的持久化入口与 WCSConnectionName 相同，均跳到
+`0x7b420ee0 / 0x7b421090`；`0x7b420f1c..0x7b420f23`
+对 short 版本作有符号 `≤3` 判断，`0x7b420f64..0x7b420fe0`
+先读 IPropertySet，版本 ≥2 时再读第二个 IPropertySet。
+CLSID 与 IName 关系由同批 10.1 Desktop 类型库
+`esriGISClient` 条目互证。读取器保留端类型 CLSID、版本及两个槽，
+因此同一分派同时覆盖 RasterLayer 名称列表、RasterRGBRenderer tag 18
+的 LoadRaster 和 RasterLayer tag 30。构造用例分别验证 v1/v2/v3、
+属性集回引、后继记录和截断回滚；两套介质未命中 WMS 或 WMTS
+连接名 CLSID，实际宿主数据源及 ArcMap/QGIS 人工检查仍待验证。
+
 RasterLayer.dll 的 WCSLayer 有独立 Load/Save `0x7c75b9b0 / 0x7c75bbb0`。其连接入口 `0x7c75bd00` 从服务参数构造 `<WCS_GDAL` 描述，创建 GdalRasterDataset（CLSID `51298BDE-B405-446C-8A12-3EABC2716B0B`，常量 `0x7c769050`）并将其交给底层图层。GdalRasterDB.dll 10.1.0.3035（SHA-256 `d43b9307eb8c87210d825195722c53104def726967366f4a7f9109adfa4432c4`）的 GdlRasterDataset 主 QI `0x7085f4b0` 在 `0x7085f537` 匹配 IDataset，返回 `+0x64`。虚表 `0x7089f13c` 的 `+0x10` 即 get_FullName `0x70861d20`。当名称缓存为空时，它在 `0x70861d43` 以已接入的 RasterDatasetName CLSID `75BCE6E2-8AF5-478E-8892-FA45CA50AF4D` 调用创建助手 `0x7085d5c0`。该链给出标准 WCSLayer 路径上的 GDAL 数据集名称来源。WCSCoverageName 出现在普通 RasterLayer tag 30 的实际写入证据仍缺。
 
 扫描本地 64 个工程的 128 个 /Maps 和 /PageLayout 流，未命中 WCSCoverageName、WCSConnectionName、WCSLayer 或 ServerLayerExtension 的 CLSID 候选。

@@ -1773,6 +1773,68 @@ mod tests {
     }
 
     #[test]
+    fn raster_io_tag30_reads_wms_and_wmts_connection_names() {
+        use crate::layers::wcs_name::{
+            WMS_CONNECTION_NAME_CLASS_ID, WMTS_CONNECTION_NAME_CLASS_ID,
+        };
+        use crate::objects::property_set::PROPERTY_SET_CLASS_ID;
+
+        for class_id in [WMS_CONNECTION_NAME_CLASS_ID, WMTS_CONNECTION_NAME_CLASS_ID] {
+            for version in [1_u16, 2, 3] {
+                let mut bytes = vec![0; 22];
+                for value in [0xff00ff_i32, 0, 30, -1] {
+                    bytes.extend(value.to_le_bytes());
+                }
+                bytes.extend(class_id);
+                bytes.extend(version.to_le_bytes());
+                bytes.extend(PROPERTY_SET_CLASS_ID);
+                bytes.extend(81_u32.to_le_bytes());
+                bytes.extend(1_u16.to_le_bytes());
+                bytes.extend(0_u32.to_le_bytes());
+                if version >= 2 {
+                    bytes.extend(PROPERTY_SET_CLASS_ID);
+                    bytes.extend(81_u32.to_le_bytes());
+                }
+                bytes.extend(31_i32.to_le_bytes());
+                bytes.extend([2, 0, 0, 0, 0, 0]);
+                for tag in 35_i32..=37 {
+                    bytes.extend(tag.to_le_bytes());
+                    bytes.extend(2_i32.to_le_bytes());
+                    bytes.extend((tag as u16).to_le_bytes());
+                }
+                bytes.extend([0xff; 8]);
+
+                let mut reader = Reader::new(&bytes);
+                let mut refs = RefTable10_1::new();
+                let records = read_raster_layer_tail_10_1(&mut reader, 1, 4096, &mut refs)
+                    .unwrap()
+                    .raster_io
+                    .unwrap();
+                let Some(RasterDatasetNameEntryBody10_1::OgcConnection(name)) =
+                    records.tag30_name.as_deref()
+                else {
+                    panic!("应读取无键 OGC 连接名称");
+                };
+                assert_eq!(name.class_id, class_id);
+                assert_eq!(name.version, version as i16);
+                assert_eq!(name.properties.body.as_ref().unwrap().count, 0);
+                assert_eq!(
+                    name.extra_properties
+                        .as_ref()
+                        .map(|slot| slot.entry.clone()),
+                    (version >= 2).then_some(ObjectEntry10_1::BackReference {
+                        class_id: PROPERTY_SET_CLASS_ID,
+                        key: 81,
+                    }),
+                );
+                assert_eq!(records.shorts_35_to_37, [35, 36, 37]);
+                assert!(refs.contains(81));
+                assert_eq!(reader.remaining(), 0);
+            }
+        }
+    }
+
+    #[test]
     fn template_extension_shares_nested_keys_in_both_layer_encodings() {
         use crate::layers::annotate_props::EtmEntry10_1;
         use crate::layers::edit_template::EDIT_TEMPLATE_CLASS_ID;

@@ -572,6 +572,77 @@ fn tagged_rgb_filter_reads_raster_names_and_references_with_the_original_stream(
 }
 
 #[test]
+fn tagged_rgb_filter_reads_wms_and_wmts_connection_names() {
+    use mxd2qgz::layers::raster_renderer::{LoadedRasterName10_1, PansharpeningSlot10_1};
+    use mxd2qgz::layers::wcs_name::{WMS_CONNECTION_NAME_CLASS_ID, WMTS_CONNECTION_NAME_CLASS_ID};
+    use mxd2qgz::objects::property_set::PROPERTY_SET_CLASS_ID;
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    for (class_id, version) in [
+        (WMS_CONNECTION_NAME_CLASS_ID, 1_u16),
+        (WMTS_CONNECTION_NAME_CLASS_ID, 3_u16),
+    ] {
+        let mut bytes = tagged_rgb_filter_prefix();
+        bytes.extend(class_id);
+        bytes.extend(72_u32.to_le_bytes());
+        bytes.extend(version.to_le_bytes());
+        bytes.extend(PROPERTY_SET_CLASS_ID);
+        bytes.extend(73_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(0_u32.to_le_bytes());
+        if version >= 2 {
+            bytes.extend(PROPERTY_SET_CLASS_ID);
+            bytes.extend(73_u32.to_le_bytes());
+        }
+        bytes.extend(0_i32.to_le_bytes()); // 不含额外波段名。
+        bytes.extend([0; 16]); // 空 IGeodataXform。
+        bytes.extend([0; 16]); // 空 IEnvelope。
+        bytes.extend([0; 16]); // 第二个 LoadRaster 为空。
+        finish_tagged_rgb_filter(&mut bytes);
+        let end = bytes.len();
+        bytes.push(0x6f);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let body = read_raster_renderer_slot_prefix_10_1(&mut reader, 4096, &mut refs)
+            .unwrap()
+            .body
+            .unwrap();
+        let RasterRendererPrefix10_1::Rgb {
+            tail: Some(tail), ..
+        } = body
+        else {
+            panic!("应完整读取 RGB tag 18：{body:?}");
+        };
+        let Some(PansharpeningSlot10_1::Filter(filter)) = tail.pansharpening else {
+            panic!("应读取全色锐化过滤器");
+        };
+        let raster = filter.rasters[0].as_ref().unwrap();
+        let Some(LoadedRasterName10_1::OgcConnection(name)) = raster.name_body.as_ref() else {
+            panic!("应读取 OGC 连接名称");
+        };
+        assert_eq!(name.class_id, class_id);
+        assert_eq!(name.version, version as i16);
+        assert_eq!(name.properties.body.as_ref().unwrap().count, 0);
+        assert_eq!(
+            name.extra_properties
+                .as_ref()
+                .map(|slot| slot.entry.clone()),
+            (version >= 2).then_some(ObjectEntry10_1::BackReference {
+                class_id: PROPERTY_SET_CLASS_ID,
+                key: 73,
+            }),
+        );
+        assert_eq!(raster.declared_band_count, 0);
+        assert!(raster.band_names.is_empty());
+        assert_eq!(tail.tag19, Some(63));
+        assert_eq!(refs.len(), 3);
+        assert!(refs.contains(71) && refs.contains(72) && refs.contains(73));
+        assert_eq!(reader.position(), end);
+    }
+}
+
+#[test]
 fn tagged_rgb_filter_reuses_cache_and_netcdf_name_children_across_slots() {
     use mxd2qgz::layers::raster_dataset_name::{
         CACHE_RASTER_DATASET_NAME_CLASS_ID, NETCDF_RASTER_DATASET_NAME_CLASS_ID,

@@ -1449,6 +1449,89 @@ mod tests {
     }
 
     #[test]
+    fn wms_and_wmts_names_share_layer_keys_and_reach_renderer() {
+        use super::super::raster_renderer::{
+            RasterRendererPrefix10_1, SIMPLE_RASTER_RENDERER_CLASS_ID,
+        };
+        use crate::layers::wcs_name::{
+            WMS_CONNECTION_NAME_CLASS_ID, WMTS_CONNECTION_NAME_CLASS_ID,
+        };
+        use crate::objects::property_set::PROPERTY_SET_CLASS_ID;
+
+        let mut bytes = body_prefix(17, 2);
+        bytes.extend(WMS_CONNECTION_NAME_CLASS_ID);
+        bytes.extend(60_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(PROPERTY_SET_CLASS_ID);
+        bytes.extend(61_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(0_u32.to_le_bytes());
+        bytes.extend(encoded_string("WMS"));
+
+        bytes.extend(WMTS_CONNECTION_NAME_CLASS_ID);
+        bytes.extend(62_u32.to_le_bytes());
+        bytes.extend(2_u16.to_le_bytes());
+        bytes.extend(PROPERTY_SET_CLASS_ID);
+        bytes.extend(61_u32.to_le_bytes()); // WMS 属性集回引。
+        bytes.extend(PROPERTY_SET_CLASS_ID);
+        bytes.extend(63_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(0_u32.to_le_bytes());
+        bytes.extend(encoded_string("WMTS"));
+
+        bytes.extend(SIMPLE_RASTER_RENDERER_CLASS_ID);
+        bytes.extend(64_u32.to_le_bytes());
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend([0; 16]);
+
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        let result = read_bounded_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+        assert_eq!(result.names_stop, None);
+        let Some(RasterDatasetNameEntryBody10_1::OgcConnection(wms)) = &result.names[0].body else {
+            panic!("首项应为 WMSConnectionName");
+        };
+        assert_eq!(wms.class_id, WMS_CONNECTION_NAME_CLASS_ID);
+        assert_eq!(wms.version, 1);
+        assert_eq!(wms.properties.body.as_ref().unwrap().count, 0);
+        assert!(wms.extra_properties.is_none());
+        let Some(RasterDatasetNameEntryBody10_1::OgcConnection(wmts)) = &result.names[1].body
+        else {
+            panic!("次项应为 WMTSConnectionName");
+        };
+        assert_eq!(wmts.class_id, WMTS_CONNECTION_NAME_CLASS_ID);
+        assert_eq!(wmts.version, 2);
+        assert_eq!(
+            wmts.properties.entry,
+            ObjectEntry10_1::BackReference {
+                class_id: PROPERTY_SET_CLASS_ID,
+                key: 61,
+            }
+        );
+        assert_eq!(
+            wmts.extra_properties
+                .as_ref()
+                .map(|slot| slot.entry.clone()),
+            Some(ObjectEntry10_1::NewObject {
+                class_id: PROPERTY_SET_CLASS_ID,
+                key: 63,
+            })
+        );
+        assert_eq!(result.names[0].suffix.as_deref(), Some("WMS"));
+        assert_eq!(result.names[1].suffix.as_deref(), Some("WMTS"));
+        assert!(matches!(
+            result.renderer.unwrap().body,
+            Some(RasterRendererPrefix10_1::Simple { .. })
+        ));
+        assert_eq!(refs.len(), 5);
+        for key in [60, 61, 62, 63, 64] {
+            assert!(refs.contains(key));
+        }
+        assert_eq!(reader.remaining(), 0);
+    }
+
+    #[test]
     fn bounded_sai_renderer_reaches_raster_layer_tail() {
         use super::super::raster_renderer::{RasterRendererPrefix10_1, SAI_RENDERER_CLASS_ID};
 

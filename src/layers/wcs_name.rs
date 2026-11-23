@@ -1,4 +1,4 @@
-//! OGCClient.dll 10.1 的 WCS 覆盖名称和连接名称。
+//! OGCClient.dll 10.1 的 WCS 覆盖名称及 OGC 连接名称。
 
 use super::image_server_rules::{RuleSlot10_1, slot, unsupported, unsupported_class};
 use crate::objects::property_set::{
@@ -16,6 +16,14 @@ pub const WCS_CONNECTION_NAME_CLASS_ID: [u8; 16] = [
     0x9e, 0xfe, 0x6c, 0xb9, 0xc7, 0x44, 0x16, 0x46, 0x8a, 0x2a, 0xf1, 0xfb, 0xa8, 0x64, 0x2a, 0xf6,
 ];
 
+pub const WMS_CONNECTION_NAME_CLASS_ID: [u8; 16] = [
+    0x97, 0xe9, 0xb0, 0x98, 0x1d, 0xf2, 0x95, 0x41, 0x8e, 0x06, 0xf9, 0xcd, 0x2a, 0xd9, 0x71, 0x65,
+];
+
+pub const WMTS_CONNECTION_NAME_CLASS_ID: [u8; 16] = [
+    0xbb, 0x61, 0xb0, 0x93, 0x92, 0xdb, 0x90, 0x4e, 0x99, 0x27, 0x48, 0xc0, 0x31, 0xb3, 0x3f, 0xe8,
+];
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct WcsCoverageName10_1 {
     pub version: i16,
@@ -25,6 +33,14 @@ pub struct WcsCoverageName10_1 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct WcsConnectionName10_1 {
+    pub version: i16,
+    pub properties: RuleSlot10_1<PropertySetObjectStream10_1>,
+    pub extra_properties: Option<RuleSlot10_1<PropertySetObjectStream10_1>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct OgcConnectionName10_1 {
+    pub class_id: [u8; 16],
     pub version: i16,
     pub properties: RuleSlot10_1<PropertySetObjectStream10_1>,
     pub extra_properties: Option<RuleSlot10_1<PropertySetObjectStream10_1>>,
@@ -59,17 +75,58 @@ fn read_wcs_connection_name(
     max: usize,
     refs: &mut RefTable10_1,
 ) -> io::Result<WcsConnectionName10_1> {
+    let (version, properties, extra_properties) =
+        read_connection_name_body(r, max, refs, "WCSConnectionName")?;
+    Ok(WcsConnectionName10_1 {
+        version,
+        properties,
+        extra_properties,
+    })
+}
+
+/// WCS、WMS 与 WMTS 连接名共用 OGCClient.dll `0x7b420ee0`。宿主根据对象头
+/// 类标识选择端类型，连接体本身只保存版本及一个或两个 IPropertySet 槽。
+pub(super) fn read_ogc_connection_name(
+    r: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+    class_id: [u8; 16],
+) -> io::Result<OgcConnectionName10_1> {
+    let label = match class_id {
+        WMS_CONNECTION_NAME_CLASS_ID => "WMSConnectionName",
+        WMTS_CONNECTION_NAME_CLASS_ID => "WMTSConnectionName",
+        _ => {
+            return Err(unsupported_class("OGC 连接名称", &class_id));
+        }
+    };
+    let (version, properties, extra_properties) = read_connection_name_body(r, max, refs, label)?;
+    Ok(OgcConnectionName10_1 {
+        class_id,
+        version,
+        properties,
+        extra_properties,
+    })
+}
+
+fn read_connection_name_body(
+    r: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+    label: &str,
+) -> io::Result<(
+    i16,
+    RuleSlot10_1<PropertySetObjectStream10_1>,
+    Option<RuleSlot10_1<PropertySetObjectStream10_1>>,
+)> {
     let version = r.read_u16_le()? as i16;
     if version > 3 {
-        return Err(unsupported(format!(
-            "WCSConnectionName 未支持版本 {version}"
-        )));
+        return Err(unsupported(format!("{label} 未支持版本 {version}")));
     }
     let mut read_properties = || {
         slot(r, refs, |r, refs, class_id, _| {
             if class_id != PROPERTY_SET_CLASS_ID {
                 return Err(unsupported_class(
-                    "WCSConnectionName IPropertySet",
+                    &format!("{label} IPropertySet"),
                     &class_id,
                 ));
             }
@@ -78,9 +135,5 @@ fn read_wcs_connection_name(
     };
     let properties = read_properties()?;
     let extra_properties = (version >= 2).then(read_properties).transpose()?;
-    Ok(WcsConnectionName10_1 {
-        version,
-        properties,
-        extra_properties,
-    })
+    Ok((version, properties, extra_properties))
 }

@@ -26,7 +26,11 @@ use super::image_server_rules::{
 };
 use super::raster_layer_tail::{RasterLayerEnvelopeSlot10_1, read_envelope_slot};
 use super::raster_renderer::{raster_io_record, read_raster_io_end};
-use super::wcs_name::{WCS_COVERAGE_NAME_CLASS_ID, WcsCoverageName10_1, read_wcs_coverage_name};
+use super::wcs_name::{
+    OgcConnectionName10_1, WCS_COVERAGE_NAME_CLASS_ID, WMS_CONNECTION_NAME_CLASS_ID,
+    WMTS_CONNECTION_NAME_CLASS_ID, WcsCoverageName10_1, read_ogc_connection_name,
+    read_wcs_coverage_name,
+};
 use crate::objects::geodata_xform::{GeodataXformSlot10_1, read_geodata_xform_slot_with_depth};
 use crate::objects::geometry::{GeometryBody10_1, read_geometry_body_10_1};
 use crate::objects::property_set::{
@@ -280,6 +284,7 @@ pub enum RasterDatasetNameEntryBody10_1 {
     Dataset(Box<RasterDatasetNameBody10_1>),
     Cache(Box<CacheRasterDatasetName10_1>),
     WcsCoverage(Box<WcsCoverageName10_1>),
+    OgcConnection(Box<OgcConnectionName10_1>),
     Dataset83 {
         name: Box<RasterDatasetNameBody10_1>,
         records: Option<RasterDatasetName83Records10_1>,
@@ -525,6 +530,8 @@ pub(super) fn read_name_slot(
                 RASTER_DATASET_NAME_CLASS_ID
                 | CACHE_RASTER_DATASET_NAME_CLASS_ID
                 | WCS_COVERAGE_NAME_CLASS_ID
+                | WMS_CONNECTION_NAME_CLASS_ID
+                | WMTS_CONNECTION_NAME_CLASS_ID
                 | RASTER_DATASET_NAME83_CLASS_ID
                 | FGDB_RASTER_DATASET_NAME_CLASS_ID
                 | RASTER_BAND_NAME_CLASS_ID
@@ -742,6 +749,11 @@ pub(super) fn read_name_body(
         WCS_COVERAGE_NAME_CLASS_ID => Ok(RasterDatasetNameEntryBody10_1::WcsCoverage(Box::new(
             read_wcs_coverage_name(reader, max_bytes, table)?,
         ))),
+        WMS_CONNECTION_NAME_CLASS_ID | WMTS_CONNECTION_NAME_CLASS_ID => {
+            Ok(RasterDatasetNameEntryBody10_1::OgcConnection(Box::new(
+                read_ogc_connection_name(reader, max_bytes, table, class_id)?,
+            )))
+        }
         RASTER_TYPE_NAME_CLASS_ID => {
             let version = reader.read_u16_le()?;
             if version != 1 {

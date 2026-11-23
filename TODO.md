@@ -304,7 +304,7 @@
   - [x] 接入 RasterRGBRenderer tag 18 非空 LoadRaster 槽，读取普通及 FileGDB 栅格名称、波段名、变换和包络，并复用宿主键表。
   - [x] 保留 LoadRaster 的有符号波段计数，并确认非正值跳过名称循环后继续读取变换及包络。[原生读取顺序](docs/mxd-10.1-raster-renderer.md#rgb-tag-18全色锐化)
   - [x] 在 RasterRGBRenderer tag 18 的两处 LoadRaster 间验证缓存栅格和 NetCDF 名称的嵌套对象键回引。[共享键测试](docs/mxd-10.1-raster-renderer.md#rgb-tag-18全色锐化)
-  - [ ] 补齐 RasterRGBRenderer tag 18 非空 LoadRaster 槽中未支持的 IName 类。[已核对的 FullName 来源](docs/mxd-10.1-raster-layer-tail.md#三个名称宿主的接口与-fullname-来源)
+  - [x] 接入 RasterRGBRenderer tag 18 非空 LoadRaster 槽中的 WMSConnectionName 与 WMTSConnectionName，并复用共享栅格名称分派。[OGC 连接名取证](docs/mxd-10.1-raster-layer-tail.md#wcs-名称与-gdal-数据集全名)
   - [x] 按登记对象的类分派 LoadRaster 名称回引。[原生接口取证](docs/mxd-10.1-raster-layer-tail.md#三个名称宿主的接口与-fullname-来源)
   - [x] 按登记类校验栅格名称的 IWorkspaceName 回引。
   - [x] 按登记类校验 LoadRaster 与 RasterLayer 共用包络槽的回引。
@@ -913,7 +913,7 @@
 - [x] 接入有界 RasterLayer 的 IName 循环，读取多个已支持名称、空槽、回引及 v5–v8 的旧字段，见 [名称循环取证](docs/mxd-10.1-raster-layer-tail.md#名称列表与渲染器边界)。
 - [x] 保留 RasterLayer v5–v8 名称列表请求的内联波段索引及父数据源。[原生 Item 调用](docs/mxd-10.1-raster-layer-tail.md#v5v8-的内联波段索引)
 - [x] 保留 RasterLayer 单个 RasterBandName 及回引的波段来源。[单名称分派](docs/mxd-10.1-raster-layer-tail.md#仅含一条波段名称的图层)
-- [ ] 补齐 RasterLayer 名称列表中的其他 IName 对象类。
+- [x] 接入 RasterLayer 名称列表中的 WMSConnectionName 与 WMTSConnectionName，并验证共享键及后继渲染器边界。[OGC 连接名取证](docs/mxd-10.1-raster-layer-tail.md#wcs-名称与-gdal-数据集全名)
   - [x] 保留 WCS 覆盖名称及回引的标识。[原生访问器](docs/mxd-10.1-raster-layer-tail.md#wcs-覆盖标识回引)
   - [x] 恢复缓存栅格名称与回引的数据集名和工作空间路径。[原生名称访问器](docs/mxd-10.1-raster-layer-tail.md#缓存栅格名称来源回引)
   - [x] 恢复瓦片与 AIS 服务名称回引的 NameString。[原生名称字段](docs/mxd-10.1-raster-layer-tail.md#瓦片与-ais-服务名称回引)
@@ -984,7 +984,7 @@
 - [x] 解析 InternetTileReader 七种已确认提供器的新对象体，含 WMTSLayer 内联层和共享 CacheInfo。
 - [x] 解析瓦片读取器中首次定义的 AGSServerObjectName，含 AGSServerConnectionName 和 PropertySet 槽。
 - [x] 解析服务瓦片读取器非零选择子后的内联 MapServerREST，含 v2–v5 尾段和长度限定的 JSON。
-- [ ] 核对并接入 RasterLayer 尾段 RasterIO tag 30 可能使用的其余名称类。[已核对的 FullName 来源](docs/mxd-10.1-raster-layer-tail.md#三个名称宿主的接口与-fullname-来源)
+- [x] 核对并接入 RasterLayer 尾段 RasterIO tag 30 的 WMSConnectionName 与 WMTSConnectionName，覆盖 v1–v3 及属性集回引。[OGC 连接名取证](docs/mxd-10.1-raster-layer-tail.md#wcs-名称与-gdal-数据集全名)
 - [x] 接入 RasterLayer v16 起 IPixelFilter 槽中的 PansharpeningFilter，见 [接口与对象体](docs/mxd-10.1-raster-layer-tail.md#v16-像素过滤器)。
 - [x] 按 10.1 esriDataSourcesRaster 类型库核对其余 IPixelFilter 候选的持久化入口，见 [候选类虚表取证](docs/mxd-10.1-raster-layer-tail.md#v16-像素过滤器)。
 - [x] 接入 RasterLayer v16 起 IPixelFilter 槽中的 LutFilter 和 HistogramSpecification，见 [对象体取证](docs/mxd-10.1-raster-layer-tail.md#v16-像素过滤器)。
