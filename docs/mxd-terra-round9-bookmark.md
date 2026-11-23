@@ -210,6 +210,33 @@ RasterBandName 沿用版本标记、三串、选择子及工作空间/父名称�
 合成书签覆盖两类 Schematic、栅格波段名称、共享键和逐前缀截断回滚。
 仍未执行这些名称的 IName::Open、IFeatureClass 查询或目标软件验收。
 
+### 公开 IName 实现全集审计
+
+在同一套 10.1 Desktop 的 79 份 OLB 中枚举全部 MSFT 类型库，按
+`IName {4BA33331-D55F-11D1-8882-0000F877762D}` 的接口继承筛选，
+共得到 65 个公开 coclass。书签现有实现已经覆盖其中所有有证据可
+产生要素类或表的名称：FeatureClassName、FgdbFeatureClassName、
+CoverageFeatureClassName、RasterCatalogName、RasterBandName、
+TableName、FgdbTableName、ObjectClassName、QueryTableName、
+TableQueryName、FeatureQueryName、RelQueryTableName、
+DBTableName、NetCDFTableName、NetCDFFeatureClassName、
+XYEventSourceName、RouteEventSourceName、AMSDatasetName、
+SchematicDiagramClassName、SchematicElementClassName、
+CadDrawingName、GeometricNetworkName、RelationshipClassName 与
+MemoryRelationshipClassName。
+
+其余 41 个公开类由既有对象流研究归入以下非 IFeatureClass 来源：
+WorkspaceName / CoverageName / FeatureDatasetName / TopologyName、
+RasterDatasetName 系与 NetCDFRasterDatasetName、TinName /
+TerrainName / LasDatasetName / CadastralFabricName /
+NetworkDatasetName、AGS/IMS/WMS/WMTS/WCS 连接名、GP 名称、
+LocatorName 系、SchematicWorkspaceName / FolderName /
+DatasetName / DiagramName、RepresentationClassName、
+UnknownDatasetName、FileName、ShortcutName 等。它们不代表书签
+能打开要素；名称体若未接入时仍按未知新对象停在对象头，不跨对象推断。
+该分类闭合的是公开实现清点，不替代原生 IName::Open、返回对象 QI
+及真实非空书签的运行验证。
+
 ## NetCDF 表名称
 
 NetCDFDB.dll 10.1.0.3035（SHA-256
