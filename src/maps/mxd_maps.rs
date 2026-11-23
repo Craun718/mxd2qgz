@@ -368,6 +368,17 @@ fn parse_mxd_streams_10_1_with_limits(
                             bytes: bytes.clone(),
                         });
                     }
+                    for (index, offset, bytes) in &layout.element_reference_suffixes {
+                        diagnostics.push(format!(
+                            "/PageLayout:0x{offset:x} 元素 {index} 的 ExtraSafe 回引后有 {} 字节",
+                            bytes.len()
+                        ));
+                        map_unknown.push(UnknownField {
+                            stream: "/PageLayout".into(),
+                            offset: *offset as u64,
+                            bytes: bytes.clone(),
+                        });
+                    }
                     for frame in layout.map_frames.iter().chain(
                         layout
                             .surround_frames

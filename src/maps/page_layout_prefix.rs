@@ -269,6 +269,8 @@ pub struct PageLayoutElements10_1 {
     pub unresolved_element_references: Vec<(u32, usize, ObjectEntry10_1)>,
     /// 已确认走占位恢复的元素，保留序号、包装起点及完整包装字节。
     pub placeholder_elements: Vec<(u32, usize, Vec<u8>)>,
+    /// ExtraSafe 回引头之后的原始字节，保存序号与流偏移。
+    pub element_reference_suffixes: Vec<(u32, usize, Vec<u8>)>,
     pub rectangles: Vec<super::rectangle_element::RectangleElement10_1>,
     pub frame_elements: Vec<(u32, super::map_frame::BaseFrameElement10_1)>,
     pub paragraphs: Vec<(u32, ParagraphTextElement10_1)>,
@@ -413,6 +415,7 @@ fn read_page_layout_body(
         indirect_elements: Vec::new(),
         unresolved_element_references: Vec::new(),
         placeholder_elements: Vec::new(),
+        element_reference_suffixes: Vec::new(),
         rectangles: Vec::new(),
         frame_elements: Vec::new(),
         paragraphs: Vec::new(),
@@ -436,7 +439,14 @@ fn read_page_layout_body(
             is_root_map,
             result.prefix.extra_safe,
         ) {
-            Ok(element) => {
+            Ok((element, suffix)) => {
+                if !suffix.is_empty() {
+                    result.element_reference_suffixes.push((
+                        index,
+                        reader.position() - suffix.len(),
+                        suffix,
+                    ));
+                }
                 match element {
                     PageFrame::Map(frame) => result.map_frames.push(*frame),
                     PageFrame::Surround(frame) => result.surround_frames.push(*frame),
@@ -506,7 +516,7 @@ fn read_element_or_map_frame(
     refs: &mut RefTable10_1,
     is_root_map: &impl Fn(u32) -> bool,
     extra_safe: bool,
-) -> io::Result<PageFrame> {
+) -> io::Result<(PageFrame, Vec<u8>)> {
     let (mut prefix, mut region) = if extra_safe {
         read_extra_safe_element_region(reader, max_bytes)?
     } else {
@@ -519,7 +529,7 @@ fn read_element_or_map_frame(
     if extra_safe && region.remaining() == 0 {
         // ExtraSafeReadObject 对零长度返回 S_FALSE，布局用占位对象接续。
         *reader = prefix;
-        return Ok(PageFrame::Placeholder);
+        return Ok((PageFrame::Placeholder, Vec::new()));
     }
     let start = prefix.position();
     let mut staged = refs.clone();
@@ -540,16 +550,32 @@ fn read_element_or_map_frame(
             ),
         )
     })?;
+    let mut suffix = Vec::new();
     if extra_safe && region.remaining() != 0 {
-        return Err(io::Error::new(
-            ErrorKind::InvalidData,
-            "页面元素未完整消费声明范围",
-        ));
+        if let PageFrame::Indirect(ObjectEntry10_1::BackReference { key, .. }) = &element
+            && matches!(
+                refs.registered_class(*key),
+                Some(
+                    MAP_FRAME_CLASS_ID
+                        | super::surround_frame::MAP_SURROUND_FRAME_CLASS_ID
+                        | super::rectangle_element::RECTANGLE_ELEMENT_CLASS_ID
+                        | super::group_element::GROUP_ELEMENT_CLASS_ID
+                )
+            )
+        {
+            // 已确认的元素回引没有新对象体，ExtraSafe 按声明边界接续。
+            suffix = region.read_bytes(region.remaining())?.to_vec();
+        } else {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "页面元素未完整消费声明范围",
+            ));
+        }
     }
     prefix.read_bytes(region.position())?;
     *reader = prefix;
     *refs = staged;
-    Ok(element)
+    Ok((element, suffix))
 }
 
 fn read_page_frame(

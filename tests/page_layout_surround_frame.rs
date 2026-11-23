@@ -82,22 +82,41 @@ fn surround_frame_uses_version_gates_and_indirect_entries_occupy_whole_slots() {
 }
 
 #[test]
-fn layout_does_not_consume_a_back_reference_with_trailing_object_bytes() {
-    let mut page = layout_root(2);
+fn layout_preserves_extra_safe_reference_suffix_and_reads_next_element() {
+    let mut page = layout_root(3);
     push_element(&mut page, &surround_frame(2));
     let offset = page.len();
-    let mut bad_slot = MAP_SURROUND_FRAME_CLASS_ID.to_vec();
-    bad_slot.extend(7_u32.to_le_bytes());
-    bad_slot.push(0x99);
-    push_element(&mut page, &bad_slot);
+    let mut slot = MAP_SURROUND_FRAME_CLASS_ID.to_vec();
+    slot.extend(7_u32.to_le_bytes());
+    slot.push(0x99);
+    push_element(&mut page, &slot);
+    let next_offset = page.len();
+    push_element(&mut page, &[0; 16]);
     let report = parse_mxd_streams_10_1(&[0; 8], Some(&page)).unwrap();
     let layout = report.page_layout.unwrap();
+    assert_eq!(layout.consumed_elements, 3);
+    assert_eq!(layout.end_offset, page.len());
+    assert_eq!(
+        layout.element_reference_suffixes,
+        [(1, next_offset - 1, vec![0x99])]
+    );
+    assert_eq!(
+        layout.placeholder_elements,
+        [(2, next_offset, page[next_offset..].to_vec())]
+    );
+    let suffix = report
+        .map
+        .unknown_fields
+        .iter()
+        .find(|field| field.offset == (next_offset - 1) as u64)
+        .unwrap();
+    assert_eq!(suffix.bytes, [0x99]);
+
+    let truncated = parse_mxd_streams_10_1(&[0; 8], Some(&page[..next_offset - 1])).unwrap();
+    let layout = truncated.page_layout.unwrap();
     assert_eq!(layout.consumed_elements, 1);
     assert_eq!(layout.end_offset, offset);
-    assert_eq!(
-        report.map.unknown_fields.last().unwrap().bytes,
-        page[offset..]
-    );
+    assert!(layout.element_reference_suffixes.is_empty());
 }
 
 #[test]
