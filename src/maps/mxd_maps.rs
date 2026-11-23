@@ -355,7 +355,7 @@ fn parse_mxd_streams_10_1_with_limits(
                     ));
                     for (index, offset, bytes) in &layout.placeholder_elements {
                         diagnostics.push(format!(
-                            "/PageLayout:0x{offset:x} 元素 {index} 的 IElement 回引触发占位恢复"
+                            "/PageLayout:0x{offset:x} 元素 {index} 使用 ExtraSafe 占位恢复"
                         ));
                         map_unknown.push(UnknownField {
                             stream: "/PageLayout".into(),

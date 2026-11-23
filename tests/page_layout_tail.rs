@@ -843,3 +843,39 @@ fn extra_safe_layout_preserves_wrong_map_reference_and_reads_the_next_element() 
         assert_eq!(layout.consumed_end_offset(), wrong_offset);
     }
 }
+
+#[test]
+fn extra_safe_empty_wrapper_is_a_placeholder_with_no_object_body() {
+    use mxd2qgz::maps::page_layout_prefix::PAGE_LAYOUT_CLASS_ID;
+
+    for version in 7_u16..=15 {
+        let mut page = PAGE_LAYOUT_CLASS_ID.to_vec();
+        page.extend(1_u32.to_le_bytes());
+        page.extend(version.to_le_bytes());
+        page.extend(0_u32.to_le_bytes());
+        page.extend(2_u32.to_le_bytes());
+        let empty_offset = page.len();
+        page.extend(0_u64.to_le_bytes());
+        let next_offset = page.len();
+        page.extend(16_u64.to_le_bytes());
+        page.extend([0; 16]);
+        page.extend(layout_tail(version, 2));
+        page.extend(0_u16.to_le_bytes());
+
+        let report = parse_mxd_streams_10_1(&[0; 8], Some(&page)).unwrap();
+        let layout = report.page_layout.unwrap();
+        assert_eq!(layout.placeholder_elements, [(0, empty_offset, vec![0; 8])]);
+        assert_eq!(
+            layout.indirect_elements,
+            [(1, next_offset, ObjectEntry10_1::Null)]
+        );
+        assert_eq!(layout.consumed_end_offset(), page.len());
+
+        for end in empty_offset..next_offset {
+            let report = parse_mxd_streams_10_1(&[0; 8], Some(&page[..end])).unwrap();
+            let layout = report.page_layout.unwrap();
+            assert!(layout.placeholder_elements.is_empty());
+            assert_eq!(layout.consumed_end_offset(), empty_offset);
+        }
+    }
+}

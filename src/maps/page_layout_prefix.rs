@@ -165,7 +165,7 @@ fn read_extra_safe_element_region<'a>(
 ) -> io::Result<(Reader<'a>, Reader<'a>)> {
     let mut prefix = reader.clone();
     let size = u64::from_le_bytes(prefix.read_bytes(8)?.try_into().unwrap());
-    if size < 16 || size > max_bytes as u64 {
+    if (1..16).contains(&size) || size > max_bytes as u64 {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
             "不支持的页面元素范围",
@@ -219,9 +219,8 @@ pub fn read_page_layout_prefix_10_1(
 
 /// 读取一个页面元素的 ExtraSafe 包装和已支持的元素体。
 ///
-/// 仅支持 B 为零且 A 等于对象头加对象体长度的已观察形态；该长度解释
-/// 尚属样本推定。遇到不支持的类、内层停止或范围不匹配时整体回滚，绝不
-/// 跳过对象体或虚构引用登记。调用者负责按原文档的跨流顺序提供引用表。
+/// 此入口需要包装内存在一个新对象。遇到不支持的类、内层停止或范围
+/// 不匹配时整体回滚。调用者负责按原文档的跨流顺序提供引用表。
 pub fn read_page_layout_element_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -508,6 +507,11 @@ fn read_element_or_map_frame(
             reader.clone().read_region(reader.remaining())?,
         )
     };
+    if extra_safe && region.remaining() == 0 {
+        // ExtraSafeReadObject 对零长度返回 S_FALSE，布局用占位对象接续。
+        *reader = prefix;
+        return Ok(PageFrame::Placeholder);
+    }
     let start = prefix.position();
     let mut staged = refs.clone();
     let element = read_page_frame(
