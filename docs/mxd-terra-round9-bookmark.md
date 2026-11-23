@@ -391,3 +391,17 @@ IName IID，命中后在 `0x7a3f4b0c` 返回对象 +0x10。
 书签复用 [Load `0x7a3f5b30` 对应的共享名称体](mxd-10.1-raster-layer-tail.md#mosaicdatasetname)。
 构造测试覆盖负版本、v4 标量与字符串数组子键、后继书签名和逐字节截断。
 真实宿主及原生 Open 结果仍待 ArcMap 10.1 验证。
+
+## FgdbRasterDatasetName
+
+FgdbRasterDB.dll 10.1.0.3035 的构造指令 `0x6f933a5a`
+安装主虚表 `0x6f9474d0`。其 QI `0x6f933c50` 在委派名称
+已经建立时，于 `0x6f933c84` 比较 IName IID，命中后
+在 `0x6f933c94` 返回完整对象 +0x10。书签复用 Load
+`0x6f934910` 对应的委派名称和 RasterIO 读取器。
+见[模块摘要、记录边界和样本来源](mxd-luna-deep-fgdb-raster-20261118.md)。
+
+回归测试将参考工程 /Maps 中 `0x500a..0x51d9` 的真实名称对象
+装入构造书签，验证委派名称键、工作空间键、RasterIO 结束对、
+后继书签名以及每个截断前缀的回滚。真实书签宿主及原生
+Open 结果仍待 ArcMap 10.1 验证。
