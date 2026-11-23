@@ -1112,3 +1112,19 @@ Save 只写这个 short。构造测试覆盖类身份、负版本、拒绝 v1、
 读取带有符号计数的 LONG 列表，v2 在 `0x746a6e58 / 0x746a6e6e`
 追加 short、LONG。构造测试覆盖直接与嵌套子域、两个版本、
 后继字段边界和截断回滚。字段语义及 ArcMap/QGIS 人工验收待查。
+
+### DataElementDomain 与 GPCompositeDomain
+
+同版 GpObjects.dll 的 PE RTTI 分别关联持久化虚表
+`0x747a7824` 和 `0x747ab1f8`。类标识为
+`B6F39D28-C6F6-45B4-A60C-2601A11BE4BD` 和
+`F9AE1125-48EF-412D-AB8C-AD917F3D5F8E`。
+两类 Load（`0x7467a150`、`0x746a1490`）都检查有符号
+short 上限 1，后读有符号 LONG 计数，非正数跳过列表。
+DataElementDomain 在 `0x7467a1d6` 读取 AfCore 成员 String。
+GPCompositeDomain 在 `0x746a151f` 以 IGPDomain IID 调用 LoadObject。
+对应 Save 入口为 `0x7467a220`、`0x746a1560`。
+
+组合域复用域分派和书签嵌套预算。构造测试覆盖数据元素子域、
+回引、后续书签字段及逐字节截断回滚。字段含义、真实书签和
+ArcMap/QGIS 人工验收待验证。

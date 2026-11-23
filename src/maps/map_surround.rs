@@ -355,6 +355,14 @@ pub const GP_CAD_ANNO_DOMAIN_CLASS_ID: [u8; 16] = [
     0xd6, 0x0c, 0x8f, 0xc7, 0xc2, 0xa4, 0xae, 0x4e, 0xa1, 0xa9, 0xbc, 0x80, 0x5d, 0x13, 0x5c, 0x62,
 ];
 
+pub const GP_COMPOSITE_DOMAIN_CLASS_ID: [u8; 16] = [
+    0x25, 0x11, 0xae, 0xf9, 0xef, 0x48, 0x2d, 0x41, 0xab, 0x8c, 0xad, 0x91, 0x7f, 0x3d, 0x5f, 0x8e,
+];
+
+pub const GP_DATA_ELEMENT_DOMAIN_CLASS_ID: [u8; 16] = [
+    0x28, 0x9d, 0xf3, 0xb6, 0xf6, 0xc6, 0xb4, 0x45, 0xa6, 0x0c, 0x26, 0x01, 0xa1, 0x1b, 0xe4, 0xbd,
+];
+
 pub const GP_REPRESENTATION_LAYER_DOMAIN_CLASS_ID: [u8; 16] = [
     0x85, 0xcb, 0x1a, 0x82, 0x63, 0x50, 0xa3, 0x48, 0xb2, 0xd5, 0x3a, 0x95, 0xf1, 0xc8, 0xc7, 0x3d,
 ];
@@ -485,6 +493,16 @@ pub struct GpCoverageFeatureClassDomain10_1 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpTopoDomain10_1 {
+    Composite {
+        version: i16,
+        raw_count: i32,
+        domains: Vec<RuleSlot10_1<GpTopoDomain10_1>>,
+    },
+    DataElement {
+        version: i16,
+        raw_count: i32,
+        strings: Vec<String>,
+    },
     Coverage {
         version: i16,
         feature_class: RuleSlot10_1<GpCoverageFeatureClassDomain10_1>,
@@ -1405,6 +1423,8 @@ fn read_gp_topo_domain_slot_10_1(
                     | GP_SA_NEIGHBORHOOD_DOMAIN_CLASS_ID
                     | GP_RA_FIELD_DOMAIN_CLASS_ID
                     | GP_REPRESENTATION_LAYER_DOMAIN_CLASS_ID
+                    | GP_COMPOSITE_DOMAIN_CLASS_ID
+                    | GP_DATA_ELEMENT_DOMAIN_CLASS_ID
                     | GP_CAD_ANNO_DOMAIN_CLASS_ID
                     | GP_COV_ANNO_DOMAIN_CLASS_ID
                     | GP_COVERAGE_DOMAIN_CLASS_ID
@@ -1482,6 +1502,53 @@ fn read_gp_topo_domain_slot_10_1(
         } => Some(Box::new(GpTopoDomain10_1::CadAnnotation {
             version: read_gp_name_version(reader, 0, "GPCadAnnoDomain")?,
         })),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_COMPOSITE_DOMAIN_CLASS_ID,
+            ..
+        } => {
+            let version = read_gp_name_version(reader, 1, "GPCompositeDomain")?;
+            let raw_count = reader.read_u32_le()? as i32;
+            let count = raw_count.max(0) as usize;
+            if count > reader.remaining().min(max_bytes) / 16 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "GPCompositeDomain 子域数量超限",
+                ));
+            }
+            if count > 0 && name_depth == MAX_BOOKMARK_NAME_NESTING {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "GPCompositeDomain 嵌套层数超限",
+                ));
+            }
+            let mut domains = Vec::new();
+            for _ in 0..count {
+                domains.push(read_gp_topo_domain_slot_10_1(
+                    reader,
+                    max_bytes,
+                    table,
+                    name_depth + 1,
+                )?);
+            }
+            Some(Box::new(GpTopoDomain10_1::Composite {
+                version,
+                raw_count,
+                domains,
+            }))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: GP_DATA_ELEMENT_DOMAIN_CLASS_ID,
+            ..
+        } => {
+            let version = read_gp_name_version(reader, 1, "DataElementDomain")?;
+            let (raw_count, strings) =
+                read_gp_domain_strings(reader, max_bytes, "DataElementDomain")?;
+            Some(Box::new(GpTopoDomain10_1::DataElement {
+                version,
+                raw_count,
+                strings,
+            }))
+        }
         ObjectEntry10_1::NewObject {
             class_id: GP_REPRESENTATION_LAYER_DOMAIN_CLASS_ID,
             ..

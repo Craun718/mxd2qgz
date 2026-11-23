@@ -4848,3 +4848,79 @@ fn feature_bookmark_reads_legacy_topo_coverage_domains() {
         }
     }
 }
+
+#[test]
+fn feature_bookmark_reads_legacy_topo_composite_domain() {
+    use mxd2qgz::maps::map_surround::{
+        GP_COMPOSITE_DOMAIN_CLASS_ID, GP_DATA_ELEMENT_DOMAIN_CLASS_ID,
+        GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID, GpTopoDomain10_1,
+    };
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    let mut bytes = bookmark_header_10_1(&GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID, 17);
+    bytes.extend(1_i16.to_le_bytes());
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend([0; 16]);
+    bytes.extend(GP_COMPOSITE_DOMAIN_CLASS_ID);
+    bytes.extend(18_u32.to_le_bytes());
+    bytes.extend(1_i16.to_le_bytes());
+    bytes.extend(2_i32.to_le_bytes());
+    bytes.extend(GP_DATA_ELEMENT_DOMAIN_CLASS_ID);
+    bytes.extend(19_u32.to_le_bytes());
+    bytes.extend(1_i16.to_le_bytes());
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(bookmark_string_10_1("数据元素"));
+    bytes.extend(GP_DATA_ELEMENT_DOMAIN_CLASS_ID);
+    bytes.extend(19_u32.to_le_bytes());
+    bytes.extend(bookmark_string_10_1("拓扑"));
+    bytes.extend(9_i32.to_le_bytes());
+    bytes.extend(bookmark_string_10_1("书签"));
+    let end = bytes.len();
+    bytes.push(0xa5);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    let BookmarkNameEntry10_1::GpSaTopoFeaturesTypeName(body) = result.name_object else {
+        panic!("应读取拓扑要素类型名称");
+    };
+    let Some(GpTopoDomain10_1::Composite {
+        version: 1,
+        raw_count: 2,
+        domains,
+    }) = body.legacy_entries[0]
+        .legacy_domain
+        .as_ref()
+        .unwrap()
+        .body
+        .as_deref()
+    else {
+        panic!("应读取组合域");
+    };
+    let [first, second] = domains.as_slice() else {
+        panic!("应读取两个子域");
+    };
+    assert_eq!(
+        first.body.as_deref(),
+        Some(&GpTopoDomain10_1::DataElement {
+            version: 1,
+            raw_count: 1,
+            strings: vec!["数据元素".into()],
+        })
+    );
+    assert!(matches!(
+        second.entry,
+        ObjectEntry10_1::BackReference { key: 19, .. }
+    ));
+    assert_eq!(result.name, "书签");
+    assert_eq!(reader.position(), end);
+    assert!([17, 18, 19].into_iter().all(|key| refs.contains(key)));
+
+    for cut in 0..end {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+}
