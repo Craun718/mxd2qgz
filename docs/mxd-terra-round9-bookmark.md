@@ -426,3 +426,12 @@ ImageServerLayer.dll 10.1.0.3035 的 ISRasterDatasetName RTTI
 构造用例验证 v4 名称中的后置字符串、IdentityXform 新键、
 后继书签名及逐字节截断回滚。真实书签宿主和原生 Open
 结果仍待 ArcMap 10.1 验证。
+
+## ImageServerName
+
+同版 ImageServer.dll 的主 QI `0x77f4f4e0` 在
+`0x77f4f529` 比较 IName IID，命中后于
+`0x77f4f544` 返回完整对象 +0x14。书签复用
+[Load `0x77f4f7f0` 的共享读取器](mxd-10.1-image-server-layer-tail.md#imageservername-对象体)。
+构造测试覆盖普通属性集新键、书签名和逐字节截断回滚。
+真实书签宿主和原生 Open 结果仍待 ArcMap 10.1 验证。

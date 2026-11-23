@@ -2315,3 +2315,43 @@ fn feature_bookmark_reads_image_service_raster_name_and_transform() {
         assert!(refs.is_empty());
     }
 }
+
+#[test]
+fn feature_bookmark_reads_direct_image_server_name() {
+    use mxd2qgz::layers::image_server_layer_tail::IMAGE_SERVER_NAME_CLASS_ID;
+    use mxd2qgz::layers::raster_dataset_name::RasterDatasetNameEntryBody10_1;
+    use mxd2qgz::objects::property_set::PROPERTY_SET_CLASS_ID;
+
+    let mut bytes = bookmark_header_10_1(&IMAGE_SERVER_NAME_CLASS_ID, 17);
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(bookmark_string_10_1("影像名称"));
+    bytes.extend(PROPERTY_SET_CLASS_ID);
+    bytes.extend(18_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(bookmark_string_10_1("书签"));
+    let end = bytes.len();
+    bytes.push(0xa5);
+
+    let mut refs = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    let BookmarkNameEntry10_1::RasterDatasetName(body) = result.name_object else {
+        panic!("应读取栅格名称");
+    };
+    let RasterDatasetNameEntryBody10_1::ImageServerReference(name) = *body else {
+        panic!("应读取 ImageServerName");
+    };
+    assert_eq!(name.text, "影像名称");
+    assert!(name.new_properties.is_some());
+    assert_eq!(result.name, "书签");
+    assert_eq!(reader.position(), end);
+    assert!(refs.contains(17) && refs.contains(18));
+    for cut in 0..end {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+}

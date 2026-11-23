@@ -117,6 +117,7 @@ use crate::layers::feature_layer::{
     read_fgdb_feature_class_name_body_10_1,
 };
 use crate::layers::fgdb_raster_dataset_name::FGDB_RASTER_DATASET_NAME_CLASS_ID;
+use crate::layers::image_server_layer_tail::IMAGE_SERVER_NAME_CLASS_ID;
 use crate::layers::legend_item::{
     HORIZONTAL_LEGEND_ITEM_CLASS_ID, HorizontalLegendItemBody10_1, HorizontalLegendItemStop10_1,
     read_horizontal_legend_item_body_10_1,
@@ -1122,7 +1123,8 @@ pub fn read_feature_bookmark_10_1(
                 | MOSAIC_DATASET_NAME_CLASS_ID
                 | FGDB_RASTER_DATASET_NAME_CLASS_ID
                 | FUNCTION_RASTER_DATASET_NAME_CLASS_ID
-                | IS_RASTER_DATASET_NAME_CLASS_ID),
+                | IS_RASTER_DATASET_NAME_CLASS_ID
+                | IMAGE_SERVER_NAME_CLASS_ID),
             key,
         } => {
             let body = read_supported_raster_name_body_10_1(
