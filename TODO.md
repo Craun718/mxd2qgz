@@ -711,12 +711,12 @@
       - [x] 接入 FeatureBookmark 及多值类型子槽的 GPFunctionName。[取证](docs/mxd-terra-round9-bookmark.md#gpfunctionname)
       - [x] 接入 GPMultiValueTypeName 子槽中 72 个 Desktop 类型库公开的四个 IGPName 类。
       - [x] 接入 GPSATopoFeaturesTypeName 的 v4 与 v2–v3 旧记录。[取证](docs/mxd-terra-round9-bookmark.md#gpsatopofeaturestypename)
-      - [ ] 补齐 GPSATopoFeaturesTypeName 旧记录中的 IGPDomain 槽。
-      - [x] 接入 72 个 Desktop 类型库公开的 33 个 IGPDomain 类分派。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldinfodomain-与-gpcodedvaluedomain)
+      - [x] 补齐 GPSATopoFeaturesTypeName 旧记录中 ArcMap 10.1 公开的 33 个 IGPDomain 类。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldinfodomain-与-gpcodedvaluedomain)
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPNumericDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpnumericdomain)
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPFileDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpfiledomain)
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPRangeDomain 标量端点。[取证](docs/mxd-terra-round9-bookmark.md#gprangedomain)
       - [x] 接入 GPRangeDomain 端点中已有持久化读取器的紧凑 Variant 对象和回引。[取证](docs/mxd-terra-round9-bookmark.md#gprangedomain)
+      - [ ] 核对 GPRangeDomain 端点中其余可持久化的 Variant 对象类。
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPWorkspaceDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpworkspacedomain)
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPDatasetDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpdatasetdomain)
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPFeatureClassDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpfeatureclassdomain)

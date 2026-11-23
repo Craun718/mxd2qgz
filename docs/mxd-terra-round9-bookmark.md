@@ -1154,6 +1154,9 @@ AfCore String 和 LONG。合成测试覆盖直接及内嵌编码值域、
 字段语义及 ArcMap/QGIS 人工验收待验证。
 
 对照 72 个同版 Desktop 类型库，33 个公开 IGPDomain 类均已有分派。
+另从 10.1 Desktop 互操作程序集提取直接列出 IGPDomain 的 COM 类
+GUID，逐项与 Rust 新对象分派对比。两边各有 33 个 CLSID，集合完全一致，
+且新对象与回引均支持这些类。此范围闭合了旧记录的公开域类型分派。
 编码值域中的其余 IGPValue 实现及范围域中其余未确认的 Variant 对象类
 仍是各自的子槽缺口。
 
