@@ -979,6 +979,35 @@ mod tests {
     }
 
     #[test]
+    fn projective_null_third_slot_has_two_valid_raster_prefix_boundaries() {
+        use crate::objects::geodata_xform::{GeodataXformBody10_1, PROJECTIVE_XFORM_CLASS_ID};
+
+        let offset = raster_with_empty_slots(12, false).len();
+        let mut bytes = raster_with_empty_slots(13, true);
+        let mut pair = PROJECTIVE_XFORM_CLASS_ID.to_vec();
+        pair.extend(71_u32.to_le_bytes());
+        pair.extend(1_i32.to_le_bytes());
+        pair.extend([0; 16 * 3 + 8 + 16]); // 空空间参考、几何、变换、零点数和标志、空包络。
+        bytes.splice(offset..offset + 32, pair);
+        let long_end = bytes.len();
+        let short_end = long_end - 16;
+
+        for (end, expected) in [(short_end, None), (long_end, Some(ObjectEntry10_1::Null))] {
+            let mut reader = Reader::new(&bytes[..end]);
+            let mut refs = RefTable10_1::new();
+            let layer =
+                read_complete_bounded_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+            let slot = layer.tail.unwrap().geodata_xform_v13.unwrap();
+            let GeodataXformBody10_1::Projective(body) = *slot.body.unwrap() else {
+                panic!("应读取 ProjectiveXform");
+            };
+            assert_eq!(body.transformation, expected);
+            assert_eq!(reader.position(), end);
+            assert!(refs.contains(71));
+        }
+    }
+
+    #[test]
     fn ordinary_group_can_use_its_extra_safe_raster_child_boundary() {
         use crate::layers::group_layer::{GROUP_LAYER_CLASS_ID, GroupChildEntry10_1};
         use crate::layers::layer_list::{

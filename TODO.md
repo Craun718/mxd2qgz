@@ -402,6 +402,7 @@
   - [x] 接入 ProjectiveXform v1 的尾部控制点数组，保留早期读取器支持的非空几何集合体，见[取证](docs/mxd-10.1-geodata-xform.md#projectivexform-的读写差异)。
   - [x] 更正 ProjectiveXform 的 Save 槽身份并接入 Save、Load 两种布局里可识别的投影变换回引。[取证](docs/mxd-10.1-geodata-xform.md#projectivexform-的读写差异)
   - [ ] 闭合 ProjectiveXform 含空第三槽的旧档边界。[读写差异](docs/mxd-10.1-geodata-xform.md#projectivexform-的读写差异)
+  - [x] 验证无界 ProjectiveXform 空第三槽可与较短的合法图层前缀重合。[取证](docs/mxd-10.1-geodata-xform.md#无界宿主的前缀歧义)
   - [x] 验证 ProjectiveXform 显式投影变换回引的登记类及回滚。
   - [x] 校验 ProjectiveXform 几何集合回引的登记类。[回引取证](docs/mxd-10.1-geodata-xform.md#projectivexform-的读写差异)
   - [x] 接入地理变换 IGeometryCollection 槽的 GeometryBag。[接口取证](docs/mxd-10.1-geodata-xform.md#地理变换的-geometrybag-槽)
