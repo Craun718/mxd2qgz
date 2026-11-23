@@ -3480,3 +3480,74 @@ fn feature_bookmark_reads_locator_name_with_workspace() {
     assert_eq!(reader.position(), 0);
     assert!(refs.is_empty());
 }
+
+#[test]
+fn feature_bookmark_reads_gp_data_type_name_versioned_uid_slots() {
+    use mxd2qgz::layers::feature_layer_tail::UID_CLASS_ID;
+    use mxd2qgz::maps::map_surround::GP_DATA_TYPE_NAME_CLASS_ID;
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    for (version, base_version) in [(1_i16, 1_i16), (2, 2), (2, 3), (1, 3)] {
+        let mut bytes = bookmark_header_10_1(&GP_DATA_TYPE_NAME_CLASS_ID, 17);
+        bytes.extend(version.to_le_bytes());
+        bytes.extend(base_version.to_le_bytes());
+        for value in [b'a', b'b', b'c', b'd'] {
+            bytes.extend([1, 0, 0, 0, value, 0, 0, 0]);
+        }
+        if base_version < 2 {
+            bytes.extend([1, 0, 0, 0, b'e', 0, 0, 0]);
+        }
+        let mut uid_is_new = true;
+        for present in [base_version == 3, version < 2] {
+            if present {
+                bytes.extend(UID_CLASS_ID);
+                bytes.extend(18_u32.to_le_bytes());
+                if uid_is_new {
+                    bytes.extend(1_u16.to_le_bytes());
+                    bytes.extend([0; 17]);
+                    bytes.extend(9_i32.to_le_bytes());
+                    uid_is_new = false;
+                }
+            }
+        }
+        bytes.extend(bookmark_string_10_1("书签"));
+        let end = bytes.len();
+        bytes.push(0xa5);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+        let BookmarkNameEntry10_1::GpDataTypeName(body) = result.name_object else {
+            panic!("应读取 GPDataTypeName");
+        };
+        assert_eq!((body.version, body.base_version), (version, base_version));
+        assert_eq!(body.strings, ["a", "b", "c", "d"]);
+        assert_eq!(
+            body.legacy_string.as_deref(),
+            (base_version < 2).then_some("e")
+        );
+        assert_eq!(body.base_uid.is_some(), base_version == 3);
+        assert_eq!(body.legacy_uid.is_some(), version < 2);
+        if let Some(uid) = body.base_uid.as_ref().or(body.legacy_uid.as_ref()) {
+            assert_eq!(uid.body.as_ref().unwrap().value_18, 9);
+        }
+        if version < 2 && base_version == 3 {
+            assert!(matches!(
+                body.legacy_uid.unwrap().entry,
+                ObjectEntry10_1::BackReference { key: 18, .. }
+            ));
+        }
+        assert_eq!(result.name, "书签");
+        assert_eq!(reader.position(), end);
+        assert!(refs.contains(17));
+        assert_eq!(refs.contains(18), !uid_is_new);
+
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+}

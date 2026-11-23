@@ -121,8 +121,10 @@ use crate::layers::feature_layer::{
     read_coverage_feature_class_name_body_10_1, read_feature_class_name_body_10_1,
     read_fgdb_feature_class_name_body_10_1,
 };
+use crate::layers::feature_layer_tail::{UID_CLASS_ID, UidBody10_1, read_uid_body_10_1};
 use crate::layers::fgdb_raster_dataset_name::FGDB_RASTER_DATASET_NAME_CLASS_ID;
 use crate::layers::image_server_layer_tail::IMAGE_SERVER_NAME_CLASS_ID;
+use crate::layers::image_server_rules::RuleSlot10_1;
 use crate::layers::legend_item::{
     HORIZONTAL_LEGEND_ITEM_CLASS_ID, HorizontalLegendItemBody10_1, HorizontalLegendItemStop10_1,
     read_horizontal_legend_item_body_10_1,
@@ -213,6 +215,7 @@ use crate::objects::workspace_name::{
     WORKSPACE_NAME_CLASS_ID, WorkspaceNamePrefix10_1, read_workspace_name_body_10_1,
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use crate::stream::native_string::read_bstr_string_10_1;
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
@@ -331,6 +334,20 @@ pub struct AoiBookmark10_1 {
 
 const MAX_BOOKMARK_NAME_NESTING: usize = 16;
 
+pub const GP_DATA_TYPE_NAME_CLASS_ID: [u8; 16] = [
+    0x2a, 0xb0, 0x0c, 0x96, 0xaf, 0x8c, 0x2b, 0x44, 0xac, 0xf7, 0x6b, 0x62, 0x56, 0xfc, 0x19, 0xf9,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpDataTypeName10_1 {
+    pub version: i16,
+    pub base_version: i16,
+    pub strings: [String; 4],
+    pub legacy_string: Option<String>,
+    pub base_uid: Option<RuleSlot10_1<UidBody10_1>>,
+    pub legacy_uid: Option<RuleSlot10_1<UidBody10_1>>,
+}
+
 pub const LOCATOR_NAME_CLASS_ID: [u8; 16] = [
     0x64, 0xfe, 0x4f, 0xc2, 0xbe, 0x88, 0xd3, 0x11, 0x9f, 0x66, 0x00, 0xc0, 0x4f, 0x6b, 0xdf, 0x06,
 ];
@@ -428,6 +445,7 @@ pub enum BookmarkNameEntry10_1 {
     TinName(Box<TinName10_1>),
     LasDatasetName(Box<LasDatasetName10_1>),
     RepresentationClassName(Box<RepresentationClassName10_1>),
+    GpDataTypeName(Box<GpDataTypeName10_1>),
     LocatorName {
         version: i16,
         strings: [String; 4],
@@ -864,6 +882,70 @@ pub fn read_feature_bookmark_10_1(
     Ok(result)
 }
 
+fn read_gp_name_uid_slot(
+    reader: &mut Reader<'_>,
+    table: &mut RefTable10_1,
+) -> io::Result<RuleSlot10_1<UidBody10_1>> {
+    let entry = read_object_entry_10_1(reader, table)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::NewObject {
+            class_id: UID_CLASS_ID,
+            key,
+        } => Some(Box::new(read_uid_body_10_1(reader, key)?)),
+        ObjectEntry10_1::BackReference { class_id, key }
+            if table.registered_class(key).unwrap_or(class_id) == UID_CLASS_ID =>
+        {
+            None
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "GPName 的 IUID 类未支持",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_gp_data_type_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<GpDataTypeName10_1> {
+    let version = reader.read_u16_le()? as i16;
+    let base_version = reader.read_u16_le()? as i16;
+    if version > 2 || base_version > 3 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("GPDataTypeName 版本 {version} 或 GPName 版本 {base_version} 超出 10.1 上限"),
+        ));
+    }
+    let strings = [
+        read_bstr_string_10_1(reader, max_bytes)?,
+        read_bstr_string_10_1(reader, max_bytes)?,
+        read_bstr_string_10_1(reader, max_bytes)?,
+        read_bstr_string_10_1(reader, max_bytes)?,
+    ];
+    let base_uid = (base_version >= 3)
+        .then(|| read_gp_name_uid_slot(reader, table))
+        .transpose()?;
+    let legacy_string = (base_version < 2)
+        .then(|| read_bstr_string_10_1(reader, max_bytes))
+        .transpose()?;
+    let legacy_uid = (version < 2)
+        .then(|| read_gp_name_uid_slot(reader, table))
+        .transpose()?;
+    Ok(GpDataTypeName10_1 {
+        version,
+        base_version,
+        strings,
+        legacy_string,
+        base_uid,
+        legacy_uid,
+    })
+}
+
 // 调用者负责将名称槽及其宿主的读取作为同一事务提交。
 fn read_bookmark_name_slot_10_1(
     reader: &mut Reader<'_>,
@@ -1227,6 +1309,12 @@ fn read_bookmark_name_slot_10_1(
             class_id: TERRAIN_NAME_CLASS_ID,
             ..
         } => BookmarkNameEntry10_1::TerrainName(Box::new(read_terrain_name_body_10_1(
+            reader, max_bytes, table,
+        )?)),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_DATA_TYPE_NAME_CLASS_ID,
+            ..
+        } => BookmarkNameEntry10_1::GpDataTypeName(Box::new(read_gp_data_type_name_body_10_1(
             reader, max_bytes, table,
         )?)),
         ObjectEntry10_1::NewObject {

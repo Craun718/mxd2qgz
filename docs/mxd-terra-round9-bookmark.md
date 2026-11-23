@@ -750,3 +750,26 @@ QI `0x7135dbd0` 比较 `0x714f6454` 的 IName IID，在 `0x7135dbf1`
 LocatorWorkspaceName 子对象、后续书签文本、超上限版本和逐字节
 截断回滚。四条字符串的业务含义、真实书签宿主、原生 Open
 及 ArcMap/QGIS 人工验收待验证。
+
+## GPDataTypeName
+
+objdump 与 PE RTTI 复核使用 10.1.0.3035 的 FeatureDataElements.dll
+（SHA-256 `7cd1153712d8af23f6c2263b6444c1a77e16b818fb5fb946d0c3d9106be5f429`）
+及 DECoreLib.dll（SHA-256
+`a57d35741decebe0765e8942268a934990763f52813b55eadf126de7d3042c2f`）。
+RTTI `0x6f680704` 对应持久化虚表 `0x6f66102c`，CLSID
+`960CB02A-8CAF-442B-ACF7-6B6256FC19F9` 由 GetClassID `0x6f6226c0`
+从 `0x6f6595a4` 复制。QI `0x6f6228b0`
+匹配 `0x6f65b8ec` 的 IName IID，返回对象 +0x10。
+
+外层 Load `0x6f622b90` 读取有符号上限为 2 的 short，再委派
+DECoreLib 的 GPName::Load `0x6e954a00`。外层版本小于 2
+时，在基类之后于 `0x6f622c03` 额外读取 IUID 槽。
+GPName::Load 检查有符号上限 3，读取四个 AfCore 自由函数
+ReadString 的 BSTR。基类版本 3 于 `0x6e954ad8` 读取 IUID 槽，
+版本小于 2 于 `0x6e954b34` 读取第五个 BSTR。两个 UID 槽
+均请求 `1714D59B-FB22-11D1-94A2-080009EEBECB`。
+Save `0x6f622c60` 和 GPName::Save `0x6e954c00` 对应新版布局。
+
+构造测试覆盖版本组合、UID 新键和回引、后继书签字段和截断回滚。
+字段业务含义、真实书签宿主、原生 Open 和 QGIS 人工验收待验证。
