@@ -128,8 +128,8 @@ use crate::layers::legend_item_family::{
 };
 use crate::layers::raster_dataset_name::RASTER_CATALOG_NAME_CLASS_ID;
 use crate::layers::raster_dataset_name::{
-    RASTER_BAND_NAME_CLASS_ID, RASTER_DATASET_NAME_CLASS_ID, RasterDatasetNameEntryBody10_1,
-    read_supported_raster_name_body_10_1,
+    RASTER_BAND_NAME_CLASS_ID, RASTER_DATASET_NAME_CLASS_ID, RASTER_DATASET_NAME83_CLASS_ID,
+    RasterDatasetNameEntryBody10_1, read_supported_raster_name_body_10_1,
 };
 use crate::maps::map_surround_family::{
     FamilyStop10_1, LEGEND_FORMAT_CLASS_ID as FAMILY_LEGEND_FORMAT_CLASS_ID, LegendFormatBody10_1,
@@ -1108,7 +1108,10 @@ pub fn read_feature_bookmark_10_1(
             &mut trial_table,
         )?)),
         ObjectEntry10_1::NewObject {
-            class_id: class_id @ (RASTER_BAND_NAME_CLASS_ID | RASTER_DATASET_NAME_CLASS_ID),
+            class_id:
+                class_id @ (RASTER_BAND_NAME_CLASS_ID
+                | RASTER_DATASET_NAME_CLASS_ID
+                | RASTER_DATASET_NAME83_CLASS_ID),
             key,
         } => {
             let body = read_supported_raster_name_body_10_1(

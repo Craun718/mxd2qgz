@@ -343,3 +343,12 @@ GdbCore FeatureDatasetName，后者已确认支持 IName。
 构造测试覆盖控制值 4、四串、空工作空间、两个后继 LONG、
 书签名及每个截断前缀的回滚。真实书签宿主和原生 Open
 结果仍待 ArcMap 10.1 验证。
+
+## RasterDatasetName83
+
+同一 RasterDB.dll 10.1.0.3035 的 RasterDatasetName83 主虚表
+`0x7c133858` 指向 QI `0x7c0bc8f0`。普通接口查询在
+`0x7c0bc974` 委派给 `0x7c0b9af0`，IName 返回完整对象 +0x10。
+书签复用 [Load 及可选 RasterIO 记录读取器](mxd-10.1-raster-layer-tail.md#rasterdatasetname83)。
+构造测试覆盖有无记录、记录后的书签文本与对象边界、逐字节截断回滚。
+真实书签宿主和原生 Open 返回对象仍待 ArcMap 10.1 验证。

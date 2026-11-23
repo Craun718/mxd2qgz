@@ -1916,3 +1916,54 @@ fn feature_bookmark_reads_raster_dataset_name_before_bookmark_text() {
         assert!(refs.is_empty());
     }
 }
+
+#[test]
+fn feature_bookmark_raster_dataset_name83_preserves_optional_record_boundary() {
+    use mxd2qgz::layers::raster_dataset_name::{
+        RASTER_DATASET_NAME83_CLASS_ID, RasterDatasetNameEntryBody10_1,
+    };
+
+    for has_records in [false, true] {
+        let mut bytes = bookmark_header_10_1(&RASTER_DATASET_NAME83_CLASS_ID, 17);
+        bytes.extend(2_i32.to_le_bytes());
+        for text in ["image", "", "Raster Dataset", ""] {
+            bytes.extend(bookmark_string_10_1(text));
+        }
+        bytes.extend([0; 16]);
+        if has_records {
+            for value in [0x00ff_00fa_i32, 0, 1, 4, 27, 2] {
+                bytes.extend(value.to_le_bytes());
+            }
+            bytes.extend(bookmark_string_10_1("栅格记录"));
+            bytes.extend([0xff; 8]);
+        }
+        bytes.extend(bookmark_string_10_1("书签"));
+        let end = bytes.len();
+        bytes.push(0xa5);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+        let BookmarkNameEntry10_1::RasterDatasetName(body) = result.name_object else {
+            panic!("应读取旧版栅格名称");
+        };
+        let RasterDatasetNameEntryBody10_1::Dataset83 { records, .. } = *body else {
+            panic!("应读取 RasterDatasetName83");
+        };
+        assert_eq!(
+            records.map(|r| (r.first_long, r.text)),
+            has_records.then(|| (27, "栅格记录".into()))
+        );
+        assert_eq!(result.name, "书签");
+        assert_eq!(reader.position(), end);
+        assert!(refs.contains(17));
+
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+}
