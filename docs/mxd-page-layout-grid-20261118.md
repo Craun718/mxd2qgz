@@ -110,3 +110,13 @@ RouteEventSourceName 和 AMSDatasetName 的名称体读取器。各名称的版�
 10.1/10.8 介质工程及仓库参考工程，135 份工程的 `/Maps` 与 `/PageLayout`
 均完整消费，其中无 CustomOverlayGrid CLSID 字节命中。扩展名称的原生
 工程保存、打开和显示仍待人工验证。
+
+### 叠加格网的关系查询名称
+
+在 MapElements.dll 10.1.0.3035 的 CustomOverlayGrid Load
+`0x7954ea70` 所请求的 IName 槽，对现有共享分派补充构造验证。
+构造 RelQueryTableName v3 及嵌套 RelationshipClassName，按同版
+GdbCore.dll 的 Load `0x70a5a530 / 0x70a3b330` 编码。
+测试经 MapFrame 入口确认两个对象键及后继格网字符串的位置。
+此测试验证持久化分派，SDK 和介质中仍待取得该格网的真实宿主，
+实际 Open 返回的接口及原生显示尚未验证。

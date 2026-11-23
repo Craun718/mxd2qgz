@@ -476,7 +476,8 @@ fn map_frame_reads_mgrs_and_custom_overlay_grid_bodies() {
     use mxd2qgz::maps::map_grid::{CUSTOM_OVERLAY_GRID_CLASS_ID, MGRS_GRID_CLASS_ID};
     use mxd2qgz::maps::standalone_table::TABLE_NAME_CLASS_ID;
     use mxd2qgz::objects::dataset_name_more::{
-        DatasetNameMoreBody10_1, XY_EVENT_2_FIELDS_PROPERTIES_CLASS_ID,
+        DatasetNameMoreBody10_1, DatasetNameMoreSlot10_1, REL_QUERY_TABLE_NAME_CLASS_ID,
+        RELATIONSHIP_CLASS_NAME_CLASS_ID, XY_EVENT_2_FIELDS_PROPERTIES_CLASS_ID,
         XY_EVENT_SOURCE_NAME_CLASS_ID,
     };
     use mxd2qgz::objects::display_symbol::{SIMPLE_LINE_SYMBOL_CLASS_ID, SymbolSlotFull10_1};
@@ -629,6 +630,43 @@ fn map_frame_reads_mgrs_and_custom_overlay_grid_bodies() {
     assert_eq!(overlay.string_44, "格网编号");
     assert_eq!(reader.remaining(), 0);
     assert!([72, 73, 74].into_iter().all(|key| refs.contains(key)));
+
+    let mut joined_source = REL_QUERY_TABLE_NAME_CLASS_ID.to_vec();
+    joined_source.extend(72_u32.to_le_bytes());
+    joined_source.extend(3_u16.to_le_bytes());
+    string(&mut joined_source, "连接结果");
+    string(&mut joined_source, "");
+    joined_source.extend(RELATIONSHIP_CLASS_NAME_CLASS_ID);
+    joined_source.extend(73_u32.to_le_bytes());
+    joined_source.extend(1_u16.to_le_bytes());
+    for value in ["关系类", "", ""] {
+        string(&mut joined_source, value);
+    }
+    joined_source.extend([0; 12 + 2 + 16]); // 标量、零选择子和空工作空间。
+    joined_source.extend(1_u16.to_le_bytes());
+    joined_source.extend([0; 32]); // 空查询过滤器和空选择集。
+    string(&mut joined_source, "格网字段");
+    joined_source.extend([0; 6]);
+
+    let mut joined_body = body.clone();
+    joined_body.splice(start + source_offset..start + source_end, joined_source);
+    let bytes = wrap(&joined_body);
+    let mut reader = Reader::new(&bytes);
+    let mut refs = original.clone();
+    let frame = read_page_layout_map_frame_10_1(&mut reader, 4096, &mut refs).unwrap();
+    let overlay = frame.grids[3].custom_overlay_grid.as_ref().unwrap();
+    let Some(DatasetNameMoreBody10_1::RelQueryTable(name)) = overlay.other_source_name.as_deref()
+    else {
+        panic!("预期关系查询名称");
+    };
+    assert!(matches!(
+        &name.source_slot,
+        DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::RelationshipClass(body)) if body.key == 73
+    ));
+    assert_eq!(name.string_c, "格网字段");
+    assert_eq!(overlay.string_44, "格网编号");
+    assert!(refs.contains(72) && refs.contains(73));
+    assert_eq!(reader.remaining(), 0);
 
     let mut unknown_event_table = event_body;
     unknown_event_table[start + source_offset + event_table_offset] ^= 0xff;

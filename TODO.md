@@ -71,6 +71,7 @@
 - [x] 接入 MeasuredGrid 和 IndexGrid 的 MapFrame 网格对象体，见[网格原生读写](docs/mxd-page-layout-grid-20261118.md#measuredgridindexgrid-与-calibratedmapgridborder)。
 - [x] 接入 MapGrid 的 FormattedGridLabel、MixedFontGridLabel、CornerGridLabel，覆盖 10.1 类型库公开的其余 IGridLabel 类。[标签原生证据](docs/mxd-page-layout-grid-20261118.md#formattedgridlabelmixedfontgridlabel-与-cornergridlabel)
 - [x] 接入 CustomOverlayGrid、MgrsGrid 的 MapFrame 网格对象体，覆盖 10.1 类型库公开的其余 IMapGrid 类。[网格原生证据](docs/mxd-page-layout-grid-20261118.md#customoverlaygrid-与-mgrsgrid)
+- [x] 验证 CustomOverlayGrid 的 RelQueryTableName 及嵌套关系类名称的对象边界。[取证](docs/mxd-page-layout-grid-20261118.md#叠加格网的关系查询名称)
 - [x] 在 CustomOverlayGrid 的 IName 槽接入 Coverage、要素查询、NetCDF、XY 与 Route 事件源及 AMS 的已知名称体。[要素来源证据](docs/mxd-page-layout-grid-20261118.md#自定义叠加格网的要素来源)
 - [x] 接入 CalibratedMapGridBorder 的 IMapGridBorder 对象体，见[网格边框取证](docs/mxd-page-layout-grid-20261118.md#measuredgridindexgrid-与-calibratedmapgridborder)。
 - [x] 核对 10.1 安装介质类型库公开的 IBorder 和 IBackground 类，见[边框与背景类型库复核](docs/mxd-terra-round8-border.md#101-安装介质类型库补查)。
