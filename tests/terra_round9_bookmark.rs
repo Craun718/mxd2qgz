@@ -1555,3 +1555,27 @@ fn bookmark_reads_geometric_network_name_before_its_label() {
     assert_eq!(reader.position(), 0);
     assert!(refs.is_empty());
 }
+
+#[test]
+fn bookmark_uses_signed_version_comparison() {
+    for version in [i16::MIN, -1, 0, 1, 2] {
+        let mut bytes = version.to_le_bytes().to_vec();
+        bytes.extend(42_i32.to_le_bytes());
+        bytes.extend([0; 16]);
+        bytes.extend([4, 0, 0, 0, b'X', 0, 0, 0, 0x42]);
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs);
+        if version <= 1 {
+            let bookmark = result.unwrap();
+            assert_eq!(bookmark.version, version as u16);
+            assert_eq!(bookmark.raw_int32, 42);
+            assert_eq!(bookmark.name, "X");
+            assert_eq!(reader.read_bytes(1).unwrap(), &[0x42]);
+        } else {
+            assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::InvalidData);
+            assert_eq!(reader.position(), 0);
+        }
+        assert!(refs.is_empty());
+    }
+}

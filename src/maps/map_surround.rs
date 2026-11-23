@@ -677,12 +677,10 @@ pub fn read_feature_bookmark_10_1(
     let mut trial = reader.clone();
     let mut trial_table = table.clone();
 
-    // 1. 原生有符号比较只拒绝大于 1；本安全子集也拒绝负值位模式。
+    // 原生按有符号 short 比较，保留流内版本位模式。
     let version = trial.read_u16_le()?;
-    if version > 1 {
-        return Err(invalid(format!(
-            "版本位模式 {version}（0x{version:04x}）超出读取器支持的 0..=1（原生有符号比较只拒绝大于 1；Save 恒写 1）"
-        )));
+    if version as i16 > 1 {
+        return Err(invalid(format!("不支持的版本 {version}")));
     }
 
     // 2. IFeatureBookmark.FeatureId（this+4）。
