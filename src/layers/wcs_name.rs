@@ -93,6 +93,7 @@ pub(super) fn read_ogc_connection_name(
     class_id: [u8; 16],
 ) -> io::Result<OgcConnectionName10_1> {
     let label = match class_id {
+        WCS_CONNECTION_NAME_CLASS_ID => "WCSConnectionName",
         WMS_CONNECTION_NAME_CLASS_ID => "WMSConnectionName",
         WMTS_CONNECTION_NAME_CLASS_ID => "WMTSConnectionName",
         _ => {

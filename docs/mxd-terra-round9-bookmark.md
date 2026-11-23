@@ -475,3 +475,14 @@ OGCClient.dll 10.1.0.3035 的 WCSCoverageName 主 QI
 [现有 OGC 连接名称分派](mxd-10.1-raster-layer-tail.md)，保留原类标识。
 构造两类 v3 连接，验证属性集新键和回引、后续书签名及逐字节截断回滚。
 真实宿主、原生 Open 结果和 ArcMap 人工验证仍待补充。
+
+## WCSConnectionName
+
+OGCClient.dll 10.1.0.3035 的 WCSConnectionName RTTI 对应
+主虚表 `0x7b44fb50`。QI `0x7b420a40` 的通用分支在
+`0x7b420c1e` 委派给 `0x7b414c90`，后者在 `0x7b414d03`
+比较 `0x7b453460` 的 IName IID，命中后于 `0x7b414d38`
+返回完整对象 +0x18。直接书签槽沿用共用连接名 Load
+`0x7b420ee0` 的读取规则。构造 v3 连接验证原 CLSID、
+属性集新键与回引、后继字段和逐字节截断回滚。真实书签
+宿主和 Open 结果仍待 ArcMap 10.1 验证。

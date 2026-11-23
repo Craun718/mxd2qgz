@@ -2544,13 +2544,19 @@ fn feature_bookmark_reads_wcs_coverage_and_connection_keys() {
 }
 
 #[test]
-fn feature_bookmark_preserves_wms_and_wmts_connection_types() {
+fn feature_bookmark_preserves_ogc_connection_types() {
     use mxd2qgz::layers::raster_dataset_name::RasterDatasetNameEntryBody10_1;
-    use mxd2qgz::layers::wcs_name::{WMS_CONNECTION_NAME_CLASS_ID, WMTS_CONNECTION_NAME_CLASS_ID};
+    use mxd2qgz::layers::wcs_name::{
+        WCS_CONNECTION_NAME_CLASS_ID, WMS_CONNECTION_NAME_CLASS_ID, WMTS_CONNECTION_NAME_CLASS_ID,
+    };
     use mxd2qgz::objects::property_set::PROPERTY_SET_CLASS_ID;
     use mxd2qgz::storage::object_refs::ObjectEntry10_1;
 
-    for class in [WMS_CONNECTION_NAME_CLASS_ID, WMTS_CONNECTION_NAME_CLASS_ID] {
+    for class in [
+        WCS_CONNECTION_NAME_CLASS_ID,
+        WMS_CONNECTION_NAME_CLASS_ID,
+        WMTS_CONNECTION_NAME_CLASS_ID,
+    ] {
         let mut bytes = bookmark_header_10_1(&class, 17);
         bytes.extend(3_u16.to_le_bytes());
         bytes.extend(PROPERTY_SET_CLASS_ID);
