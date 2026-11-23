@@ -607,3 +607,13 @@ GetClassID `0x7cb284d0` 返回 `4E74AA22-A1B6-47D4-9914-20F8C6C2B699`。
 Save `0x7cb29310` 同序写出。构造测试覆盖负版本、三条字符串、
 空工作空间槽、后继书签字段和逐字节截断回滚。
 真实书签宿主及 ArcMap/QGIS 人工验收待验证。
+
+## SchematicDatasetName
+
+ArcMap 10.1 的 esriSchematic 类型库将
+`333DAE77-1AEB-447D-8E83-FE043E84A671` 列为 IName 实现。SchematicDB.dll 的 QI `0x7d6947b0` 比较
+`0x7d7092f0` 的 IName IID，匹配时于 `0x7d6947d1` 返回对象 +0x10。
+书签复用[由 SchematicDB.dll 10.1.0.3035 Load `0x7d695340` 确认的布局](mxd-terra-round9-table.md)，
+读取有符号版本、三条 AfCore String 和 IWorkspaceName 槽。
+构造测试覆盖后继书签名称、未知工作空间类和逐字节截断回滚。
+真实书签宿主、原生 Open 和 QGIS 人工验收待验证。

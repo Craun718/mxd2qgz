@@ -683,6 +683,29 @@ pub struct SchematicDatasetNameBody10_1 {
     pub workspace: WorkspaceNameSlot10_1,
 }
 
+pub(crate) fn read_schematic_dataset_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<(
+    SchematicDatasetNameBody10_1,
+    Option<DatasetNameMoreStop10_1>,
+)> {
+    let (version, strings) = read_schematic_name_prefix(reader, max_bytes)?;
+    let mut stop = None;
+    let workspace = read_workspace_slot_10_1(reader, max_bytes, table, &mut stop)?;
+    Ok((
+        SchematicDatasetNameBody10_1 {
+            key,
+            version,
+            strings,
+            workspace,
+        },
+        stop,
+    ))
+}
+
 fn read_schematic_name_prefix(r: &mut Reader<'_>, max: usize) -> io::Result<(i16, [String; 3])> {
     let version = r.read_u16_le()? as i16;
     if version > 1 {
@@ -1059,16 +1082,10 @@ fn read_dataset_name_object_body_10_1(
             ))
         }
         SCHEMATIC_DATASET_NAME_CLASS_ID => {
-            let (version, strings) = read_schematic_name_prefix(reader, max_bytes)?;
-            let mut stop = None;
-            let workspace = read_workspace_slot_10_1(reader, max_bytes, table, &mut stop)?;
+            let (body, stop) =
+                read_schematic_dataset_name_body_10_1(reader, max_bytes, table, key)?;
             Ok((
-                DatasetNameMoreBody10_1::SchematicDataset(Box::new(SchematicDatasetNameBody10_1 {
-                    key,
-                    version,
-                    strings,
-                    workspace,
-                })),
+                DatasetNameMoreBody10_1::SchematicDataset(Box::new(body)),
                 stop,
             ))
         }

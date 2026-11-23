@@ -3059,3 +3059,47 @@ fn feature_bookmark_reads_representation_class_name() {
         assert!(refs.is_empty());
     }
 }
+
+#[test]
+fn feature_bookmark_reads_direct_schematic_dataset_name() {
+    let mut bytes = bookmark_header_10_1(&SCHEMATIC_DATASET_NAME_CLASS_ID, 17);
+    bytes.extend(1_i16.to_le_bytes());
+    for value in ["示意图", "数据集", "名称"] {
+        bytes.extend(bookmark_string_10_1(value));
+    }
+    let workspace_offset = bytes.len();
+    bytes.extend([0; 16]);
+    bytes.extend(bookmark_string_10_1("书签"));
+    let end = bytes.len();
+    bytes.push(0xa5);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    assert!(matches!(
+        result.name_object,
+        BookmarkNameEntry10_1::SchematicDatasetName(body)
+            if body.key == 17 && body.version == 1
+                && body.strings == ["示意图", "数据集", "名称"]
+                && body.workspace == WorkspaceNameSlot10_1::Null
+    ));
+    assert_eq!(result.name, "书签");
+    assert_eq!(reader.position(), end);
+    assert!(refs.contains(17));
+
+    for cut in 0..end {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+
+    bytes[workspace_offset..workspace_offset + 16].fill(0xaa);
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let err = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap_err();
+    assert_eq!(err.kind(), std::io::ErrorKind::Unsupported);
+    assert_eq!(reader.position(), 0);
+    assert!(refs.is_empty());
+}

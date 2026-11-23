@@ -194,6 +194,10 @@ use crate::objects::dataset_name_more::{
     read_xy_event_source_name_body_10_1,
 };
 use crate::objects::dataset_name_more::{DatasetNameMoreSlot10_1, read_dataset_name_slot_10_1};
+use crate::objects::dataset_name_more::{
+    SCHEMATIC_DATASET_NAME_CLASS_ID, SchematicDatasetNameBody10_1,
+    read_schematic_dataset_name_body_10_1,
+};
 use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
 use crate::objects::route_event_name::{
     ROUTE_EVENT_SOURCE_NAME_CLASS_ID, RouteEventSourceNameBody10_1,
@@ -387,6 +391,7 @@ pub enum BookmarkNameEntry10_1 {
     RasterDatasetName(Box<RasterDatasetNameEntryBody10_1>),
     /// Schematic 图表类或元素类名称；内层数据源名称共享对象表。
     SchematicClassName(Box<SchematicClassNameBody10_1>),
+    SchematicDatasetName(Box<SchematicDatasetNameBody10_1>),
     /// ObjectClassName 工厂实际创建的 FdbTableName；持久化体与 TableName
     /// 相同，但保留流内身份。
     ObjectClassName(Box<crate::maps::standalone_table::TableNameBody10_1>),
@@ -1373,6 +1378,22 @@ fn read_bookmark_name_slot_10_1(
                 ));
             }
             BookmarkNameEntry10_1::SchematicClassName(Box::new(body))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: SCHEMATIC_DATASET_NAME_CLASS_ID,
+            key,
+        } => {
+            let (body, stop) =
+                read_schematic_dataset_name_body_10_1(reader, max_bytes, table, key)?;
+            if let Some(stop) = stop {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!(
+                        "FeatureBookmark 名称对象槽 offset 0x{name_offset:x}: SchematicDatasetName 未读完（{stop:?}）"
+                    ),
+                ));
+            }
+            BookmarkNameEntry10_1::SchematicDatasetName(Box::new(body))
         }
         ObjectEntry10_1::NewObject { class_id, key } => {
             return Err(io::Error::new(
