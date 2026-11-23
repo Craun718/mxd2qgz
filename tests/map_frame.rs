@@ -157,6 +157,9 @@ fn graticule_version_gates_and_truncation_preserve_map_frame_transaction() {
         DMS_GRID_LABEL_CLASS_ID, GRATICULE_CLASS_ID, SIMPLE_MAP_GRID_BORDER_CLASS_ID,
     };
 
+    use mxd2qgz::objects::number_format::LATLON_FORMAT_CLASS_ID;
+    use mxd2qgz::storage::object_refs::read_object_entry_10_1;
+
     let offset = 2 + 20 + 4 + 8 + 16;
     for version in [i16::MIN, -1, 0, 1, 2, 3, 4, 5] {
         let mut body = frame_body(2);
@@ -173,7 +176,11 @@ fn graticule_version_gates_and_truncation_preserve_map_frame_transaction() {
         grid.extend(45_u32.to_le_bytes());
         let label_version = if version < 0 { version } else { 4 };
         grid.extend(label_version.to_le_bytes());
-        grid.extend([0; 4 + 3 * 16 + 4 + 16 + 8]);
+        grid.extend([0; 4 + 3 * 16 + 4]);
+        let format_offset = offset + 4 + grid.len();
+        grid.extend([0x42; 16]);
+        grid.extend(47_u32.to_le_bytes());
+        grid.extend([0; 8]);
         if label_version == 4 {
             grid.extend([0; 10 + 2 + 2]);
         }
@@ -200,7 +207,23 @@ fn graticule_version_gates_and_truncation_preserve_map_frame_transaction() {
         let bytes = wrap(&body);
         let mut refs = RefTable10_1::new();
         refs.register(42);
+        let mut header = LATLON_FORMAT_CLASS_ID.to_vec();
+        header.extend(47_u32.to_le_bytes());
+        read_object_entry_10_1(&mut Reader::new(&header), &mut refs).unwrap();
         let original = refs.clone();
+        let mut wrong = body.clone();
+        wrong[format_offset + 16..format_offset + 20].copy_from_slice(&43_u32.to_le_bytes());
+        let wrong = wrap(&wrong);
+        let mut reader = Reader::new(&wrong);
+        let mut staged = original.clone();
+        assert_eq!(
+            read_page_layout_map_frame_10_1(&mut reader, 4096, &mut staged)
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::Unsupported
+        );
+        assert_eq!(reader.position(), 0);
+        assert_eq!(staged, original);
         let frame =
             read_page_layout_map_frame_10_1(&mut Reader::new(&bytes), 4096, &mut refs).unwrap();
         let grid = frame.grids[0].graticule.as_ref().unwrap();
@@ -210,6 +233,13 @@ fn graticule_version_gates_and_truncation_preserve_map_frame_transaction() {
         assert_eq!(grid.version, version as u16);
         let label = grid.base.dms_label.as_ref().unwrap();
         assert_eq!(label.version, label_version as u16);
+        assert_eq!(
+            label.format,
+            ObjectEntry10_1::BackReference {
+                class_id: LATLON_FORMAT_CLASS_ID,
+                key: 47,
+            }
+        );
         assert_eq!(label.shorts_2c.is_some(), label_version >= 2);
         assert_eq!(grid.v3.is_some(), version >= 3);
         assert_eq!(grid.double_24.is_some(), version >= 4);

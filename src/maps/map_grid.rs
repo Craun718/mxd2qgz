@@ -641,7 +641,9 @@ fn read_dms_label(
         symbol(r, limit, refs, Kind::Symbol)?,
     ];
     let shorts_18 = shorts(r)?;
-    let format = read_object_entry_10_1(r, refs)?;
+    let format = read_grid_member_entry(r, refs, "ILatLonFormat", |class| {
+        class == LATLON_FORMAT_CLASS_ID
+    })?;
     let format_body = match format {
         ObjectEntry10_1::NewObject {
             class_id: LATLON_FORMAT_CLASS_ID,
