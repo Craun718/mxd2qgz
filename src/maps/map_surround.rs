@@ -355,6 +355,44 @@ pub const GP_CAD_ANNO_DOMAIN_CLASS_ID: [u8; 16] = [
     0xd6, 0x0c, 0x8f, 0xc7, 0xc2, 0xa4, 0xae, 0x4e, 0xa1, 0xa9, 0xbc, 0x80, 0x5d, 0x13, 0x5c, 0x62,
 ];
 
+pub const GP_CODED_VALUE_DOMAIN_CLASS_ID: [u8; 16] = [
+    0x71, 0x08, 0x1e, 0xa1, 0x07, 0x66, 0xd4, 0x4b, 0x87, 0xd0, 0x35, 0xe0, 0x18, 0x9a, 0xee, 0x59,
+];
+
+pub const GP_FIELD_INFO_DOMAIN_CLASS_ID: [u8; 16] = [
+    0x4f, 0x28, 0x22, 0x2b, 0x4c, 0xa2, 0xbf, 0x4f, 0x81, 0x3b, 0x09, 0xb0, 0x62, 0x7c, 0xdc, 0x19,
+];
+
+pub const GP_STRING_CLASS_ID: [u8; 16] = [
+    0x33, 0x85, 0x34, 0x6a, 0x67, 0xb6, 0x05, 0x4a, 0xab, 0xb0, 0x00, 0x24, 0x11, 0x0d, 0x17, 0xf0,
+];
+
+pub const GP_LONG_CLASS_ID: [u8; 16] = [
+    0x47, 0x7f, 0xed, 0x30, 0xd9, 0x12, 0x9b, 0x4c, 0xbe, 0x8b, 0x7a, 0x0a, 0xe3, 0x86, 0xe5, 0x74,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum GpCodedValue10_1 {
+    String(String),
+    Long(i32),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpCodedValueBody10_1 {
+    pub version: u16,
+    pub base_version: u16,
+    pub base_short: u16,
+    pub value: GpCodedValue10_1,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpCodedValueDomain10_1 {
+    pub version: i16,
+    pub labels: (i32, Vec<String>),
+    pub raw_value_count: i32,
+    pub values: Vec<RuleSlot10_1<GpCodedValueBody10_1>>,
+}
+
 pub const GP_COMPOSITE_DOMAIN_CLASS_ID: [u8; 16] = [
     0x25, 0x11, 0xae, 0xf9, 0xef, 0x48, 0x2d, 0x41, 0xab, 0x8c, 0xad, 0x91, 0x7f, 0x3d, 0x5f, 0x8e,
 ];
@@ -493,6 +531,11 @@ pub struct GpCoverageFeatureClassDomain10_1 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpTopoDomain10_1 {
+    CodedValue(GpCodedValueDomain10_1),
+    FieldInfo {
+        version: i16,
+        coded_values: RuleSlot10_1<GpCodedValueDomain10_1>,
+    },
     Composite {
         version: i16,
         raw_count: i32,
@@ -1389,6 +1432,76 @@ fn read_gp_coverage_feature_class_domain(
     })
 }
 
+fn read_gp_coded_value_domain(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<GpCodedValueDomain10_1> {
+    let version = read_gp_name_version(reader, 1, "GPCodedValueDomain")?;
+    let labels = read_gp_domain_strings(reader, max_bytes, "GPCodedValueDomain")?;
+    let raw_value_count = reader.read_u32_le()? as i32;
+    let count = raw_value_count.max(0) as usize;
+    if count > reader.remaining().min(max_bytes) / 16 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "GPCodedValueDomain 值数量超限",
+        ));
+    }
+    let mut values = Vec::new();
+    for _ in 0..count {
+        let entry = read_object_entry_10_1(reader, table)?;
+        let body = match entry {
+            ObjectEntry10_1::Null => None,
+            ObjectEntry10_1::BackReference { class_id, key }
+                if matches!(
+                    table.registered_class(key).unwrap_or(class_id),
+                    GP_STRING_CLASS_ID | GP_LONG_CLASS_ID
+                ) =>
+            {
+                None
+            }
+            ObjectEntry10_1::NewObject {
+                class_id: class_id @ (GP_STRING_CLASS_ID | GP_LONG_CLASS_ID),
+                ..
+            } => {
+                let version = reader.read_u16_le()?;
+                let base_version = reader.read_u16_le()?;
+                if version > 1 || base_version > 1 {
+                    return Err(io::Error::new(
+                        ErrorKind::InvalidData,
+                        "GPString / GPLong 或 GPValue 版本超出 10.1 上限",
+                    ));
+                }
+                let base_short = reader.read_u16_le()?;
+                let value = if class_id == GP_STRING_CLASS_ID {
+                    GpCodedValue10_1::String(read_string_10_1(reader, max_bytes)?)
+                } else {
+                    GpCodedValue10_1::Long(reader.read_u32_le()? as i32)
+                };
+                Some(Box::new(GpCodedValueBody10_1 {
+                    version,
+                    base_version,
+                    base_short,
+                    value,
+                }))
+            }
+            _ => {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    "GPCodedValueDomain 的 IGPValue 类未支持",
+                ));
+            }
+        };
+        values.push(RuleSlot10_1 { entry, body });
+    }
+    Ok(GpCodedValueDomain10_1 {
+        version,
+        labels,
+        raw_value_count,
+        values,
+    })
+}
+
 fn read_gp_topo_domain_slot_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -1424,6 +1537,8 @@ fn read_gp_topo_domain_slot_10_1(
                     | GP_RA_FIELD_DOMAIN_CLASS_ID
                     | GP_REPRESENTATION_LAYER_DOMAIN_CLASS_ID
                     | GP_COMPOSITE_DOMAIN_CLASS_ID
+                    | GP_CODED_VALUE_DOMAIN_CLASS_ID
+                    | GP_FIELD_INFO_DOMAIN_CLASS_ID
                     | GP_DATA_ELEMENT_DOMAIN_CLASS_ID
                     | GP_CAD_ANNO_DOMAIN_CLASS_ID
                     | GP_COV_ANNO_DOMAIN_CLASS_ID
@@ -1502,6 +1617,44 @@ fn read_gp_topo_domain_slot_10_1(
         } => Some(Box::new(GpTopoDomain10_1::CadAnnotation {
             version: read_gp_name_version(reader, 0, "GPCadAnnoDomain")?,
         })),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_CODED_VALUE_DOMAIN_CLASS_ID,
+            ..
+        } => Some(Box::new(GpTopoDomain10_1::CodedValue(
+            read_gp_coded_value_domain(reader, max_bytes, table)?,
+        ))),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_FIELD_INFO_DOMAIN_CLASS_ID,
+            ..
+        } => {
+            let version = read_gp_name_version(reader, 1, "GPFieldInfoDomain")?;
+            let entry = read_object_entry_10_1(reader, table)?;
+            let body = match entry {
+                ObjectEntry10_1::Null => None,
+                ObjectEntry10_1::BackReference { class_id, key }
+                    if table.registered_class(key).unwrap_or(class_id)
+                        == GP_CODED_VALUE_DOMAIN_CLASS_ID =>
+                {
+                    None
+                }
+                ObjectEntry10_1::NewObject {
+                    class_id: GP_CODED_VALUE_DOMAIN_CLASS_ID,
+                    ..
+                } => Some(Box::new(read_gp_coded_value_domain(
+                    reader, max_bytes, table,
+                )?)),
+                _ => {
+                    return Err(io::Error::new(
+                        ErrorKind::Unsupported,
+                        "GPFieldInfoDomain 的 IGPCodedValueDomain 类未支持",
+                    ));
+                }
+            };
+            Some(Box::new(GpTopoDomain10_1::FieldInfo {
+                version,
+                coded_values: RuleSlot10_1 { entry, body },
+            }))
+        }
         ObjectEntry10_1::NewObject {
             class_id: GP_COMPOSITE_DOMAIN_CLASS_ID,
             ..

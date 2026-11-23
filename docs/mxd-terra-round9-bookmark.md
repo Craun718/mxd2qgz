@@ -1128,3 +1128,24 @@ GPCompositeDomain 在 `0x746a151f` 以 IGPDomain IID 调用 LoadObject。
 组合域复用域分派和书签嵌套预算。构造测试覆盖数据元素子域、
 回引、后续书签字段及逐字节截断回滚。字段含义、真实书签和
 ArcMap/QGIS 人工验收待验证。
+
+### GPFieldInfoDomain 与 GPCodedValueDomain
+
+GpObjects.dll 10.1.0.3035 的持久化虚表、Load 和 Save 分别为
+GPFieldInfoDomain 的 `0x747af810 / 0x746d6e00 / 0x746d6ec0`，
+以及 GPCodedValueDomain 的 `0x747aac88 / 0x7469b660 / 0x7469b900`。
+两类检查有符号 short 上限 1。前者在 `0x746d6e48` 请求
+IGPCodedValueDomain（`41DC44A0-D2EB-11D5-933F-0080C71A3226`）。
+后者先读取有符号计数与 AfCore String 标签列表，再读有符号值计数，
+在 `0x7469b751` 逐项请求 IGPValue。两个计数独立。
+
+GPString Load `0x74703c90` 和 GPLong Load `0x74708ef0`
+各读无符号版本（上限 1），再调用 DECoreLib 同版 GPValue::Load
+`0x6e955770` 消费两个 short（基类无符号版本上限 1），最后分别读取
+AfCore String 和 LONG。合成测试覆盖直接及内嵌编码值域、
+两个值类、回引、后继字段和逐字节截断回滚。其余 IGPValue 类、
+字段语义及 ArcMap/QGIS 人工验收待验证。
+
+对照 72 个同版 Desktop 类型库，33 个公开 IGPDomain 类均已有分派。
+编码值域中的其余 IGPValue 实现及范围域的非空 Variant 对象端点
+仍是各自的子槽缺口。
