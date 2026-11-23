@@ -1180,13 +1180,9 @@ pub fn read_scalebar_subclass_body_10_1(
     }
 
     // 2. 基类段。
-    let base_version = trial.read_u16_le()?;
-    if (base_version as i16) > MAX_SCALEBAR_BASE_VERSION || (base_version as i16) < 0 {
-        return Err(invalid(format!(
-            "基类段版本位模式 {base_version}（0x{base_version:04x}）超出接受范围 0..=6 \
-             （Load 0x79451120 有符号 >6 拒绝 0x80004005；Save 版本表 DAT_79480d28 = \
-             [3,3,3,3,4,6]，10.1 恒写 6）"
-        )));
+    let base_version = trial.read_u16_le()? as i16;
+    if base_version > MAX_SCALEBAR_BASE_VERSION {
+        return Err(invalid(format!("不支持的比例尺基类版本 {base_version}")));
     }
     let common = read_map_surround_common_prefix_10_1(&mut trial, max_bytes, &mut staged)?;
     let base_double_a = trial.read_f64_le()?;
@@ -1323,7 +1319,7 @@ pub fn read_scalebar_subclass_body_10_1(
         key,
         kind,
         version,
-        base_version,
+        base_version: base_version as u16,
         common,
         base_double_a,
         base_shorts,
@@ -1487,7 +1483,7 @@ pub struct ScaleMarkProperties10_1 {
 
 // 基类 v4 起优先使用非零覆盖值。原生只在恰等于零时回退。
 fn scale_bar_division(version: u16, base: f64, override_value: Option<f64>) -> Option<f64> {
-    if version < 4 {
+    if (version as i16) < 4 {
         return Some(base);
     }
     let value = override_value?;
@@ -2600,7 +2596,7 @@ mod tests {
     }
 
     /// 比例尺子类完身体（SingleDivision：中段 1 个填充槽）。
-    fn subclass_full_bytes(base_version: u16) -> Vec<u8> {
+    fn subclass_full_bytes(base_version: i16) -> Vec<u8> {
         let mut data = vec![0xaau8; 16];
         data.extend_from_slice(&9u32.to_le_bytes());
         data.extend(1u16.to_le_bytes()); // 自身版本
@@ -2616,13 +2612,24 @@ mod tests {
         data.extend(5.0f64.to_le_bytes()); // −0x15c
         data.extend_from_slice(&[0u8; 16]); // TextSymbol 槽 −0x154（空标记）
         data.extend(6i32.to_le_bytes()); // −0x150
+        if base_version < 2 {
+            data.extend(42i32.to_le_bytes());
+        }
         data.extend(7i32.to_le_bytes()); // −0x148
         data.extend(8.0f64.to_le_bytes()); // −0x144
         data.extend_from_slice(&[0u8; 16]); // TextSymbol 槽 −0x13c（空标记）
-        data.extend_from_slice(&[0u8; 16]); // NumberFormat 槽 −0x14c（空标记）
-        data.extend(9i32.to_le_bytes()); // −0x138（≥3）
-        data.extend(10.0f64.to_le_bytes()); // −0xec（≥4）
-        data.extend(11u16.to_le_bytes()); // −0xbc（≥5）
+        if base_version >= 2 {
+            data.extend_from_slice(&[0u8; 16]); // NumberFormat 槽。
+        }
+        if base_version >= 3 {
+            data.extend(9i32.to_le_bytes());
+        }
+        if base_version >= 4 {
+            data.extend(10.0f64.to_le_bytes());
+        }
+        if base_version >= 5 {
+            data.extend(11u16.to_le_bytes());
+        }
         if base_version >= 6 {
             data.extend(12u16.to_le_bytes()); // −0xba（≥6）
         }
@@ -2652,6 +2659,32 @@ mod tests {
         out.extend_from_slice(&[0u8; 16]); // 第二个填充槽
         out.extend_from_slice(&data[insert_at..]);
         out
+    }
+
+    #[test]
+    fn filled_scale_bar_reads_negative_base_versions_with_legacy_fields() {
+        for version in [i16::MIN, -1, 0] {
+            let body = read_body(
+                &subclass_full_bytes(version),
+                |reader, limit, table, key| {
+                    read_scalebar_subclass_body_10_1(
+                        reader,
+                        limit,
+                        table,
+                        key,
+                        ScalebarSubclassKind10_1::SingleDivision,
+                    )
+                },
+            )
+            .unwrap();
+            assert_eq!(body.stop, None);
+            assert_eq!(body.base_version, version as u16);
+            assert_eq!(body.legacy_discard, Some(42));
+            assert_eq!(body.division(), Some(1.0));
+            assert_eq!(body.tail_short_a, None);
+            assert_eq!(body.bar_height(), Some(13.0));
+            assert_eq!(body.tail_version, Some(2));
+        }
     }
 
     #[test]
