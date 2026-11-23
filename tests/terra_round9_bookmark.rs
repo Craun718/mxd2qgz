@@ -3149,3 +3149,23 @@ fn feature_bookmark_reads_direct_route_measure_locator_name() {
         assert!(refs.is_empty());
     }
 }
+
+#[test]
+fn feature_bookmark_rejects_nonpersistent_unknown_dataset_name() {
+    const UNKNOWN_DATASET_NAME: [u8; 16] = [
+        0xb1, 0x3d, 0x78, 0x06, 0xee, 0xe5, 0xd1, 0x11, 0xb0, 0xa2, 0x00, 0x00, 0xf8, 0x78, 0x08,
+        0x2e,
+    ];
+    let mut bytes = bookmark_header_10_1(&UNKNOWN_DATASET_NAME, 17);
+    bytes.extend(bookmark_string_10_1("伪后继书签"));
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    assert!(!refs.register(16));
+
+    let error = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::Unsupported);
+    assert!(error.to_string().contains("键 17"));
+    assert_eq!(reader.position(), 0);
+    assert!(refs.contains(16));
+    assert!(!refs.contains(17));
+}

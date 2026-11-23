@@ -627,3 +627,19 @@ Load `0x7cc7cad0` 和基类 Load `0x7cc52540` 布局。基类的路线名称
 沿用既有分派，遇未闭合子体时回滚整个书签。构造测试覆盖 v2
 基类特有尾段、后继书签字段和逐字节截断。真实书签宿主、
 原生 Open 和 QGIS 人工验收待验证。
+
+## UnknownDatasetName
+
+按 [GdbCore.dll 10.1.0.3035 镜像身份及既有 Open 取证](mxd-terra-round9-old.md#unknowndatasetname-在旧表槽中的-open)
+复核 PE RTTI 和 objdump。类描述符 `0x70b34bd0` 属于
+FdbUnknownDatasetName，注册 CLSID `06783DB1-E5EE-11D1-B0A2-0000F878082E`
+位于 `0x70ac322c`。QI `0x709ba910` 的局部分支比较 IName 和
+IDatasetName。回退 `0x70a60800` 比较的三个 IID 常量位于
+`0x70a8841c`、`0x70a8846c`、`0x70ac8cd0`，均与
+ObjectStream 普通对象请求的 IPersistStream IID `00000109-0000-0000-C000-000000000046`
+不同。未匹配分支在 `0x70a608ec` 清空输出并返回 E_NOINTERFACE。
+因此该内置实现的新对象没有可供普通书签对象流调用的 Load。
+
+构造用例使用注册 CLSID 并紧接可解码的书签字符串，确认读取仍返回
+Unsupported，回滚书签游标和新键，保留先前登记的键。
+结论限于该镜像的内置实现。ArcMap/QGIS 人工验收未进行。
