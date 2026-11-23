@@ -824,7 +824,7 @@ Load `0x748f99c0` 的有符号版本上限为 4，v4 仅消费版本。
 `0x748f9a6d` 另请求 IGPDomain，随后读 AfCore 成员 String
 与 LONG。v3 在 `0x748f9ad3` 追加 IUID。Save `0x748f9b70`
 写 v4。当前 v2–v3 分派支持已确认的数据类型和 UID，
-更早版本已支持空域以及下述 GPNumericDomain、GPFileDomain，遇其余未确认类时回滚。
+更早版本已支持空域以及下述 GPNumericDomain、GPFileDomain、GPRangeDomain 的已确认布局，遇其余未确认类时回滚。
 
 构造书签验证多值名称中的 v2–v4 子对象、旧记录、后继字段边界
 和逐字节截断回滚。旧域子体、真实书签宿主、原生 Open 及
@@ -859,3 +859,15 @@ Save `0x746e0560` 对应同一字段顺序。
 
 构造旧版拓扑记录验证有符号计数、多个字符串、后继字段边界及
 截断和超量计数回滚。真实 ArcMap 书签及 QGIS 人工验收待验证。
+
+### GPRangeDomain
+
+同版 GpObjects.dll 的 RTTI `0x74800ecc` 对应持久化虚表
+`0x747b3e20`，类型库 CLSID 为 `5B2241C0-A61C-11D5-931D-0080C71A3226`。
+Load `0x746f7020` 检查有符号 short 上限 1，随后读取一个
+LONG，再于 `0x746f70fb` 和 `0x746f711e` 调用 AfCore 全局
+Variant Read（IAT `0x747a32bc`）。Save `0x746f71e0` 同序写出。
+端点复用[紧凑 VariantStream 布局](arcmap-10.1-variant-stream.md)；
+非空对象端点仍需取证。构造旧版拓扑记录验证 LONG、两个
+紧凑数值端点、后继字段边界及逐字节截断时的回滚。
+真实 ArcMap 书签及 QGIS 人工验收待验证。

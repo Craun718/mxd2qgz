@@ -218,6 +218,7 @@ use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_ent
 use crate::stream::native_string::read_bstr_string_10_1;
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
+use crate::stream::variant_stream::{VariantValue10_1, read_value_10_1};
 use std::io::{self, ErrorKind};
 
 /// AOIBookmark（空间书签）类标识（CLSID）的 16 字节内存序。
@@ -334,6 +335,10 @@ pub struct AoiBookmark10_1 {
 
 const MAX_BOOKMARK_NAME_NESTING: usize = 16;
 
+pub const GP_RANGE_DOMAIN_CLASS_ID: [u8; 16] = [
+    0xc0, 0x41, 0x22, 0x5b, 0x1c, 0xa6, 0xd5, 0x11, 0x93, 0x1d, 0x00, 0x80, 0xc7, 0x1a, 0x32, 0x26,
+];
+
 pub const GP_FILE_DOMAIN_CLASS_ID: [u8; 16] = [
     0x3a, 0x8e, 0xdc, 0x3e, 0x87, 0xff, 0xe1, 0x47, 0xaf, 0x34, 0x09, 0xbb, 0x4c, 0xb2, 0x2d, 0xa9,
 ];
@@ -341,6 +346,11 @@ pub const GP_FILE_DOMAIN_CLASS_ID: [u8; 16] = [
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpTopoDomain10_1 {
     Numeric(GpNumericDomain10_1),
+    Range {
+        version: i16,
+        flags: u32,
+        bounds: [VariantValue10_1; 2],
+    },
     File {
         version: i16,
         raw_count: i32,
@@ -1085,7 +1095,7 @@ fn read_gp_topo_domain_slot_10_1(
         ObjectEntry10_1::BackReference { class_id, key }
             if matches!(
                 table.registered_class(key).unwrap_or(class_id),
-                GP_NUMERIC_DOMAIN_CLASS_ID | GP_FILE_DOMAIN_CLASS_ID
+                GP_NUMERIC_DOMAIN_CLASS_ID | GP_FILE_DOMAIN_CLASS_ID | GP_RANGE_DOMAIN_CLASS_ID
             ) =>
         {
             None
@@ -1100,6 +1110,23 @@ fn read_gp_topo_domain_slot_10_1(
             middle_shorts: [reader.read_u16_le()?, reader.read_u16_le()?],
             second_double_bits: reader.read_f64_le()?.to_bits(),
         }))),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_RANGE_DOMAIN_CLASS_ID,
+            ..
+        } => {
+            let version = read_gp_name_version(reader, 1, "GPRangeDomain")?;
+            let flags = reader.read_u32_le()?;
+            let max_units = u32::try_from(max_bytes / 2).unwrap_or(u32::MAX);
+            let bounds = [
+                read_value_10_1(reader, max_units)?,
+                read_value_10_1(reader, max_units)?,
+            ];
+            Some(Box::new(GpTopoDomain10_1::Range {
+                version,
+                flags,
+                bounds,
+            }))
+        }
         ObjectEntry10_1::NewObject {
             class_id: GP_FILE_DOMAIN_CLASS_ID,
             ..
