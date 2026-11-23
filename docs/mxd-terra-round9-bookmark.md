@@ -1277,3 +1277,21 @@ Load 检查无符号 short 版本上限 1，调用 GPValue::Load 后在
 构造书签覆盖两行两列、列名和单元格引用、空槽、超限计数、
 后续字段及逐字节截断回滚。尚待验证真实书签、其他列类型名称及
 ArcMap/QGIS 人工验收。
+
+#### GPValueTableTypeName
+
+GpObjects.dll 10.1.0.3035 的 RTTI `0x74801d60` 对应持久化虚表
+`0x747b96c4`。GetClassID `0x74755730` 从 `0x747b9778` 复制
+`65521A5F-7DA6-4893-AE58-F70FD3CD1DEE`。QI 分别在
+`0x747559f7 / 0x74755a29 / 0x74755a5b` 匹配 IName、IGPName
+和 IGPDataTypeName。Load `0x74756190` 检查有符号版本上限 3，
+随后读取有符号列数，非正计数跳过列循环。每列按以下顺序读取。
+
+1. `0x7475621e` 读取 IGPDataTypeName。
+2. 版本小于 2 时，`0x74756245` 读取 IGPDomain，IID 地址与
+   GPCompositeDomain 的域槽相同。
+3. `0x7475626e / 0x74756285` 读取成员 String 和有符号 LONG。
+4. 版本大于 2 时，`0x747562b5` 读取 IUID。
+
+构造书签覆盖 v1–v3、旧域、UID、后续字段及逐字节截断回滚。
+LONG 的业务含义、真实书签和 ArcMap/QGIS 人工验收待验证。

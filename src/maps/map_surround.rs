@@ -784,6 +784,19 @@ pub const GP_MULTI_VALUE_TYPE_NAME_CLASS_ID: [u8; 16] = [
     0x70, 0x33, 0xde, 0x35, 0x8e, 0x67, 0xfb, 0x40, 0x9b, 0x7e, 0xff, 0xaf, 0x08, 0x22, 0x4b, 0x99,
 ];
 
+pub const GP_VALUE_TABLE_TYPE_NAME_CLASS_ID: [u8; 16] = [
+    0x5f, 0x1a, 0x52, 0x65, 0xa6, 0x7d, 0x93, 0x48, 0xae, 0x58, 0xf7, 0x0f, 0xd3, 0xcd, 0x1d, 0xee,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpValueTableColumnType10_1 {
+    pub data_type: BookmarkNameEntry10_1,
+    pub legacy_domain: Option<RuleSlot10_1<GpTopoDomain10_1>>,
+    pub name: String,
+    pub raw_long: i32,
+    pub uid: Option<RuleSlot10_1<UidBody10_1>>,
+}
+
 pub const GP_DATA_TYPE_NAME_CLASS_ID: [u8; 16] = [
     0x2a, 0xb0, 0x0c, 0x96, 0xaf, 0x8c, 0x2b, 0x44, 0xac, 0xf7, 0x6b, 0x62, 0x56, 0xfc, 0x19, 0xf9,
 ];
@@ -898,6 +911,11 @@ pub enum BookmarkNameEntry10_1 {
     GpDataTypeName(Box<GpDataTypeName10_1>),
     GpFunctionName(Box<GpFunctionName10_1>),
     GpSaTopoFeaturesTypeName(Box<GpSaTopoFeaturesTypeName10_1>),
+    GpValueTableTypeName {
+        version: i16,
+        raw_column_count: i32,
+        columns: Vec<GpValueTableColumnType10_1>,
+    },
     GpMultiValueTypeName {
         version: i16,
         element_type: Box<BookmarkNameEntry10_1>,
@@ -2257,10 +2275,12 @@ fn is_gp_data_type_name(name: &BookmarkNameEntry10_1) -> bool {
         BookmarkNameEntry10_1::Null
             | BookmarkNameEntry10_1::GpDataTypeName(_)
             | BookmarkNameEntry10_1::GpMultiValueTypeName { .. }
+            | BookmarkNameEntry10_1::GpValueTableTypeName { .. }
             | BookmarkNameEntry10_1::GpSaTopoFeaturesTypeName(_)
             | BookmarkNameEntry10_1::BackReference {
                 class_id: GP_DATA_TYPE_NAME_CLASS_ID
                     | GP_MULTI_VALUE_TYPE_NAME_CLASS_ID
+                    | GP_VALUE_TABLE_TYPE_NAME_CLASS_ID
                     | GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID,
                 ..
             }
@@ -2690,6 +2710,55 @@ fn read_bookmark_name_slot_10_1(
             reader, max_bytes, table,
         )?)),
         ObjectEntry10_1::NewObject {
+            class_id: GP_VALUE_TABLE_TYPE_NAME_CLASS_ID,
+            ..
+        } => {
+            let version = read_gp_name_version(reader, 3, "GPValueTableTypeName")?;
+            let raw_column_count = reader.read_u32_le()? as i32;
+            let count = raw_column_count.max(0) as usize;
+            if count > reader.remaining().min(max_bytes) / 26
+                || (count > 0 && name_depth >= MAX_BOOKMARK_NAME_NESTING)
+            {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "GPValueTableTypeName 列数或嵌套层数超限",
+                ));
+            }
+            let mut columns = Vec::new();
+            for _ in 0..count {
+                let data_type =
+                    read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth + 1)?;
+                if !is_gp_data_type_name(&data_type) {
+                    return Err(io::Error::new(
+                        ErrorKind::Unsupported,
+                        "GPValueTableTypeName 的列类型名称类未支持",
+                    ));
+                }
+                let legacy_domain = (version < 2)
+                    .then(|| {
+                        read_gp_topo_domain_slot_10_1(reader, max_bytes, table, name_depth + 1)
+                    })
+                    .transpose()?;
+                let name = read_string_10_1(reader, max_bytes)?;
+                let raw_long = reader.read_u32_le()? as i32;
+                let uid = (version > 2)
+                    .then(|| read_gp_name_uid_slot(reader, table))
+                    .transpose()?;
+                columns.push(GpValueTableColumnType10_1 {
+                    data_type,
+                    legacy_domain,
+                    name,
+                    raw_long,
+                    uid,
+                });
+            }
+            BookmarkNameEntry10_1::GpValueTableTypeName {
+                version,
+                raw_column_count,
+                columns,
+            }
+        }
+        ObjectEntry10_1::NewObject {
             class_id: GP_MULTI_VALUE_TYPE_NAME_CLASS_ID,
             ..
         } => {
@@ -2715,9 +2784,11 @@ fn read_bookmark_name_slot_10_1(
                     | BookmarkNameEntry10_1::GpFunctionName(_)
                     | BookmarkNameEntry10_1::GpSaTopoFeaturesTypeName(_)
                     | BookmarkNameEntry10_1::GpMultiValueTypeName { .. }
+                    | BookmarkNameEntry10_1::GpValueTableTypeName { .. }
                     | BookmarkNameEntry10_1::BackReference {
                         class_id: GP_DATA_TYPE_NAME_CLASS_ID
                             | GP_MULTI_VALUE_TYPE_NAME_CLASS_ID
+                            | GP_VALUE_TABLE_TYPE_NAME_CLASS_ID
                             | GP_FUNCTION_NAME_CLASS_ID
                             | GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID,
                         ..

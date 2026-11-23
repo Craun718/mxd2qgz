@@ -5374,3 +5374,84 @@ fn feature_bookmark_reads_object_endpoints_in_legacy_topo_range_domain() {
     assert_eq!(reader.position(), 0);
     assert!(refs.is_empty());
 }
+
+#[test]
+fn feature_bookmark_reads_gp_value_table_type_name_columns() {
+    use mxd2qgz::layers::feature_layer_tail::UID_CLASS_ID;
+    use mxd2qgz::maps::map_surround::{
+        GP_DATA_TYPE_NAME_CLASS_ID, GP_VALUE_TABLE_TYPE_NAME_CLASS_ID,
+        GP_WORKSPACE_DOMAIN_CLASS_ID, GpTopoDomain10_1,
+    };
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    for version in [1_i16, 2, 3] {
+        let mut bytes = bookmark_header_10_1(&GP_VALUE_TABLE_TYPE_NAME_CLASS_ID, 17);
+        bytes.extend(version.to_le_bytes());
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend(bookmark_entry_10_1(&GP_DATA_TYPE_NAME_CLASS_ID, 18));
+        bytes.extend([2, 0, 2, 0]);
+        bytes.extend([0; 16]);
+        if version < 2 {
+            bytes.extend(bookmark_entry_10_1(&GP_WORKSPACE_DOMAIN_CLASS_ID, 19));
+            bytes.extend(1_i16.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+        }
+        bytes.extend(bookmark_string_10_1("列"));
+        bytes.extend((-5_i32).to_le_bytes());
+        if version > 2 {
+            bytes.extend(bookmark_entry_10_1(&UID_CLASS_ID, 20));
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend([0; 17]);
+            bytes.extend(9_i32.to_le_bytes());
+        }
+        bytes.extend(bookmark_string_10_1("表"));
+        let end = bytes.len();
+        bytes.push(0xa5);
+        let mut reader = Reader::new(&bytes);
+        let mut table = RefTable10_1::new();
+        let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut table).unwrap();
+        let BookmarkNameEntry10_1::GpValueTableTypeName {
+            version: actual_version,
+            raw_column_count,
+            columns,
+        } = result.name_object
+        else {
+            panic!("应读取 GP 值表类型名称");
+        };
+        assert_eq!((actual_version, raw_column_count), (version, 1));
+        let column = &columns[0];
+        assert!(matches!(
+            column.data_type,
+            BookmarkNameEntry10_1::GpDataTypeName(_)
+        ));
+        assert_eq!((&*column.name, column.raw_long), ("列", -5));
+        assert_eq!(column.legacy_domain.is_some(), version < 2);
+        if let Some(domain) = &column.legacy_domain {
+            assert!(matches!(
+                domain.body.as_deref(),
+                Some(GpTopoDomain10_1::Workspace { .. })
+            ));
+        }
+        assert_eq!(column.uid.is_some(), version > 2);
+        if let Some(uid) = &column.uid {
+            assert_eq!(
+                uid.entry,
+                ObjectEntry10_1::NewObject {
+                    class_id: UID_CLASS_ID,
+                    key: 20
+                }
+            );
+            assert!(uid.body.is_some());
+        }
+        assert_eq!(result.name, "表");
+        assert_eq!(reader.position(), end);
+
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut table = RefTable10_1::new();
+            assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut table).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(table.is_empty());
+        }
+    }
+}
