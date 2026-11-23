@@ -3019,3 +3019,43 @@ fn feature_bookmark_reads_shortcut_chain_and_rolls_back_invalid_targets() {
     assert_eq!(reader.position(), 0);
     assert!(refs.is_empty());
 }
+
+#[test]
+fn feature_bookmark_reads_representation_class_name() {
+    use mxd2qgz::layers::raster_dataset_name::RasterDatasetWorkspaceSlot10_1;
+    use mxd2qgz::maps::map_surround::REPRESENTATION_CLASS_NAME_CLASS_ID;
+
+    let mut bytes = bookmark_header_10_1(&REPRESENTATION_CLASS_NAME_CLASS_ID, 17);
+    bytes.extend((-1_i16).to_le_bytes());
+    for value in ["表示类", "要素", "名称"] {
+        bytes.extend(bookmark_string_10_1(value));
+    }
+    bytes.extend([0; 16]);
+    bytes.extend(bookmark_string_10_1("书签"));
+    let end = bytes.len();
+    bytes.push(0xa5);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    let BookmarkNameEntry10_1::RepresentationClassName(name) = result.name_object else {
+        panic!("应读取表示类名称");
+    };
+    assert_eq!(name.version, -1);
+    assert_eq!(name.strings, ["表示类", "要素", "名称"]);
+    assert!(matches!(
+        name.workspace,
+        RasterDatasetWorkspaceSlot10_1::Null
+    ));
+    assert_eq!(result.name, "书签");
+    assert_eq!(reader.position(), end);
+    assert!(refs.contains(17));
+
+    for cut in 0..end {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+}

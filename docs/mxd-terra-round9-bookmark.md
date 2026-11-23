@@ -595,3 +595,15 @@ GetClassID `0x7ffdbe50` 从 `0x8007282c` 复制
 FileName 子对象、登记类回引、书签文本边界和事务回滚。
 静态证据显示 ShortcutName 的 Open 返回 S_FALSE 且输出为空。
 真实书签出现情况及 ArcMap/QGIS 人工验收待验证。
+
+## RepresentationClassName
+
+objdump 补查 [RepresentationDB.dll 10.1.0.3035](mxd-terra-round9-old.md#representationclassname-在旧表槽中的-open)。
+GetClassID `0x7cb284d0` 返回 `4E74AA22-A1B6-47D4-9914-20F8C6C2B699`。
+持久化虚表 `0x7cb425e4` 的 Load `0x7cb29260` 在 `0x7cb2928b`
+校验 short 的有符号上限 1，在 `0x7cb292ab / 0x7cb292b5 /
+0x7cb292bf` 读取三个 AfCore String。LoadObject 调用
+`0x7cb292ec` 使用 `0x7cb4262c` 的 IWorkspaceName IID。
+Save `0x7cb29310` 同序写出。构造测试覆盖负版本、三条字符串、
+空工作空间槽、后继书签字段和逐字节截断回滚。
+真实书签宿主及 ArcMap/QGIS 人工验收待验证。
