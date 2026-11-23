@@ -1161,7 +1161,39 @@ pub fn read_field_info_body_10_1(
     let (number_format, stop) = match read_object_entry_10_1(&mut trial, &mut staged_table)? {
         ObjectEntry10_1::Null => (NumberFormatSlot10_1::Null, None),
         ObjectEntry10_1::BackReference { class_id, key } => {
-            (NumberFormatSlot10_1::BackReference { class_id, key }, None)
+            match staged_table.registered_class(key) {
+                Some(registered)
+                    if !matches!(
+                        registered,
+                        NUMERIC_FORMAT_CLASS_ID
+                            | PERCENTAGE_FORMAT_CLASS_ID
+                            | FRACTION_FORMAT_CLASS_ID
+                            | RATE_FORMAT_CLASS_ID
+                            | CURRENCY_FORMAT_CLASS_ID
+                            | LATLON_FORMAT_CLASS_ID
+                            | ANGLE_FORMAT_CLASS_ID
+                            | SCIENTIFIC_FORMAT_CLASS_ID
+                            | CUSTOM_NUMBER_FORMAT_CLASS_ID
+                    ) =>
+                {
+                    trial = reposition_to(reader, slot_offset);
+                    staged_table = saved_table;
+                    (
+                        NumberFormatSlot10_1::Null,
+                        Some(FieldInfoStop10_1::NumberFormatUnsupported {
+                            class_id: registered,
+                            key,
+                        }),
+                    )
+                }
+                registered => (
+                    NumberFormatSlot10_1::BackReference {
+                        class_id: registered.unwrap_or(class_id),
+                        key,
+                    },
+                    None,
+                ),
+            }
         }
         ObjectEntry10_1::NewObject { class_id, key } => {
             match read_number_format_body_for_class_10_1(

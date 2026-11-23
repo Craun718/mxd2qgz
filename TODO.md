@@ -839,6 +839,7 @@
       - [x] 从 18 份 `/Version` 文本识别为 9.3 的原始工程读完非空空间书签循环（133 个 AOIBookmark v1）；用 10.1 Map.dll 原始 GetClassID 字节修正 AOI/FeatureBookmark CLSID 字节序，见 [复核记录](docs/mxd-luna-20261118-maps.md)。未运行 ArcMap 10.1。
       - [x] 以介质模板 SouthernUSA 的实际要素图层验证 11 个 FieldInfo v3，见 [图层续研](docs/mxd-layer-label-cgl-20261117.md)。
       - [ ] FieldInfo v0/v1 实档分支；v2 已在 SDK 工程中由宿主完整读取 5 项，见 [介质宿主复核](docs/mxd-terra-round8-old.md)。
+      - [x] 按登记实例校验旧版 FieldInfo 的 INumberFormat 回引。[取证](docs/mxd-terra-round8-old.md#旧-fieldinfo-的数字格式回引)
       - [x] 从旧版 Africa 模板的 Map 根逐条读取三个新 LegendClassFormat 对象体，均完整消费，见 [实样验证](docs/mxd-round2-review-20261117.md)。
       - [x] 从旧版 Africa 模板的 Map 根读取三个完整的 HorizontalLegendItem v1，见 [实样验证](docs/mxd-round2-review-20261117.md)。
       - [x] 随旧版 Africa 模板的 HorizontalLegendItem 验证共享的 BaseLegendItem v1 字段组，见 [实样验证](docs/mxd-round2-review-20261117.md)。

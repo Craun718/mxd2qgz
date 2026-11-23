@@ -72,3 +72,11 @@ IEnvelope 标记由驱动按已确认的 ObjectStream 编码写读。驱动也�
 两份对象体由原生函数在受控驱动中生成，目前没有旧版 <11 实档宿主。
 10.1 可写的两种普通子层体版本均已覆盖。v0–v3、v5–v8 与 v10 的独立版本
 字段仍以已有原生读取规则为依据。ArcMap 与 QGIS 人工验收尚未进行。
+
+### 旧 FieldInfo 的数字格式回引
+
+Layer.dll 10.1.0.3035 的 FieldInfo Load `0x7865b520` 在 v0/v1
+同样请求 INumberFormat。SystemCore.dll 同版的 `0x7ffd0063` 按键
+查询已登记实例的接口。读取器恢复登记类，错引非数字格式时保留
+INumberFormat 槽起点。合成 v0/v1 均验证了登记类优先、后继字节及错引
+时的引用表状态。这两个版本的真实旧档和 ArcMap 原生打开仍待验证。

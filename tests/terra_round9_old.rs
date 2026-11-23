@@ -209,3 +209,55 @@ fn old_map_v19_reads_calibrate_across_maps_and_page_layout() {
     );
     assert!(report.map.unknown_fields.is_empty());
 }
+
+#[test]
+fn old_field_info_number_format_uses_the_registered_class() {
+    use mxd2qgz::layers::feature_layer_tail::{
+        FieldInfoStop10_1, NUMERIC_FORMAT_CLASS_ID, NumberFormatSlot10_1,
+    };
+    use mxd2qgz::storage::object_refs::read_object_entry_10_1;
+
+    for version in [0_u16, 1] {
+        let mut bytes = version.to_le_bytes().to_vec();
+        bytes.extend([0; 2]);
+        bytes.extend([2, 0, 0, 0, 0, 0]);
+        let slot_start = bytes.len();
+        bytes.extend(NUMERIC_FORMAT_CLASS_ID);
+        bytes.extend(17_u32.to_le_bytes());
+        bytes.push(0x42);
+        for class_id in [NUMERIC_FORMAT_CLASS_ID, ENVELOPE_CLASS_ID] {
+            let mut header = class_id.to_vec();
+            header.extend(17_u32.to_le_bytes());
+            let mut table = RefTable10_1::new();
+            read_object_entry_10_1(&mut Reader::new(&header), &mut table).unwrap();
+            let saved = table.clone();
+            let mut payload = bytes.clone();
+            if class_id == NUMERIC_FORMAT_CLASS_ID {
+                payload[slot_start..slot_start + 16].copy_from_slice(&ENVELOPE_CLASS_ID);
+            }
+            let mut reader = Reader::new(&payload);
+            let field = read_field_info_body_10_1(&mut reader, 1024, &mut table, 18).unwrap();
+            if class_id == NUMERIC_FORMAT_CLASS_ID {
+                assert!(field.stop.is_none());
+                assert!(matches!(
+                    field.number_format,
+                    NumberFormatSlot10_1::BackReference {
+                        class_id: NUMERIC_FORMAT_CLASS_ID,
+                        key: 17,
+                    }
+                ));
+                assert_eq!(reader.read_bytes(1).unwrap(), &[0x42]);
+            } else {
+                assert!(matches!(
+                    field.stop,
+                    Some(FieldInfoStop10_1::NumberFormatUnsupported {
+                        class_id: ENVELOPE_CLASS_ID,
+                        key: 17,
+                    })
+                ));
+                assert_eq!(reader.position(), slot_start);
+            }
+            assert_eq!(table, saved);
+        }
+    }
+}
