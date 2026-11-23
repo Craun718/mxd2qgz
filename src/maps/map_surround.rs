@@ -335,6 +335,18 @@ pub struct AoiBookmark10_1 {
 
 const MAX_BOOKMARK_NAME_NESTING: usize = 16;
 
+pub const GP_GDB_ANNO_DOMAIN_CLASS_ID: [u8; 16] = [
+    0x32, 0x98, 0xdb, 0x07, 0x18, 0xc8, 0xd3, 0x41, 0x86, 0xd7, 0x13, 0x8f, 0x84, 0xb0, 0xa3, 0x3f,
+];
+
+pub const GP_COV_ANNO_DOMAIN_CLASS_ID: [u8; 16] = [
+    0xcb, 0xdb, 0xc0, 0xb5, 0x53, 0x99, 0x01, 0x4e, 0xa7, 0x53, 0x88, 0xc7, 0xec, 0x07, 0xaf, 0x4f,
+];
+
+pub const GP_CAD_ANNO_DOMAIN_CLASS_ID: [u8; 16] = [
+    0xd6, 0x0c, 0x8f, 0xc7, 0xc2, 0xa4, 0xae, 0x4e, 0xa1, 0xa9, 0xbc, 0x80, 0x5d, 0x13, 0x5c, 0x62,
+];
+
 pub const GP_REPRESENTATION_LAYER_DOMAIN_CLASS_ID: [u8; 16] = [
     0x85, 0xcb, 0x1a, 0x82, 0x63, 0x50, 0xa3, 0x48, 0xb2, 0xd5, 0x3a, 0x95, 0xf1, 0xc8, 0xc7, 0x3d,
 ];
@@ -458,6 +470,15 @@ pub const GP_FILE_DOMAIN_CLASS_ID: [u8; 16] = [
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpTopoDomain10_1 {
+    GdbAnnotation {
+        version: i16,
+    },
+    CoverageAnnotation {
+        version: i16,
+    },
+    CadAnnotation {
+        version: i16,
+    },
     RepresentationLayer {
         version: i16,
         v2_list: Option<(i32, Vec<i32>)>,
@@ -1348,6 +1369,9 @@ fn read_gp_topo_domain_slot_10_1(
                     | GP_SA_NEIGHBORHOOD_DOMAIN_CLASS_ID
                     | GP_RA_FIELD_DOMAIN_CLASS_ID
                     | GP_REPRESENTATION_LAYER_DOMAIN_CLASS_ID
+                    | GP_CAD_ANNO_DOMAIN_CLASS_ID
+                    | GP_COV_ANNO_DOMAIN_CLASS_ID
+                    | GP_GDB_ANNO_DOMAIN_CLASS_ID
                     | GP_TABLES_DOMAIN_CLASS_ID
                     | GP_QUERY_TABLE_FIELDS_DOMAIN_CLASS_ID
             ) =>
@@ -1364,6 +1388,24 @@ fn read_gp_topo_domain_slot_10_1(
             middle_shorts: [reader.read_u16_le()?, reader.read_u16_le()?],
             second_double_bits: reader.read_f64_le()?.to_bits(),
         }))),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_GDB_ANNO_DOMAIN_CLASS_ID,
+            ..
+        } => Some(Box::new(GpTopoDomain10_1::GdbAnnotation {
+            version: read_gp_name_version(reader, 0, "GPGdbAnnoDomain")?,
+        })),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_COV_ANNO_DOMAIN_CLASS_ID,
+            ..
+        } => Some(Box::new(GpTopoDomain10_1::CoverageAnnotation {
+            version: read_gp_name_version(reader, 0, "GPCovAnnoDomain")?,
+        })),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_CAD_ANNO_DOMAIN_CLASS_ID,
+            ..
+        } => Some(Box::new(GpTopoDomain10_1::CadAnnotation {
+            version: read_gp_name_version(reader, 0, "GPCadAnnoDomain")?,
+        })),
         ObjectEntry10_1::NewObject {
             class_id: GP_REPRESENTATION_LAYER_DOMAIN_CLASS_ID,
             ..

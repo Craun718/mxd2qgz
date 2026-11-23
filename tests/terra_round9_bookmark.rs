@@ -4300,6 +4300,14 @@ fn assert_legacy_topo_version_only_domain(
     class_id: [u8; 16],
     expected: mxd2qgz::maps::map_surround::GpTopoDomain10_1,
 ) {
+    assert_legacy_topo_version_only_domain_with_max(class_id, expected, 1);
+}
+
+fn assert_legacy_topo_version_only_domain_with_max(
+    class_id: [u8; 16],
+    expected: mxd2qgz::maps::map_surround::GpTopoDomain10_1,
+    max_version: i16,
+) {
     use mxd2qgz::maps::map_surround::GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID;
 
     let mut bytes = bookmark_header_10_1(&GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID, 17);
@@ -4339,7 +4347,7 @@ fn assert_legacy_topo_version_only_domain(
         assert_eq!(reader.position(), 0);
         assert!(refs.is_empty());
     }
-    bytes[version_offset..version_offset + 2].copy_from_slice(&2_i16.to_le_bytes());
+    bytes[version_offset..version_offset + 2].copy_from_slice(&(max_version + 1).to_le_bytes());
     let mut reader = Reader::new(&bytes);
     let mut refs = RefTable10_1::new();
     let error = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap_err();
@@ -4737,5 +4745,30 @@ fn feature_bookmark_reads_legacy_topo_representation_layer_domain() {
             assert_eq!(reader.position(), 0);
             assert!(refs.is_empty());
         }
+    }
+}
+
+#[test]
+fn feature_bookmark_reads_legacy_topo_annotation_domains() {
+    use mxd2qgz::maps::map_surround::{
+        GP_CAD_ANNO_DOMAIN_CLASS_ID, GP_COV_ANNO_DOMAIN_CLASS_ID, GP_GDB_ANNO_DOMAIN_CLASS_ID,
+        GpTopoDomain10_1,
+    };
+
+    for (class_id, expected) in [
+        (
+            GP_GDB_ANNO_DOMAIN_CLASS_ID,
+            GpTopoDomain10_1::GdbAnnotation { version: -1 },
+        ),
+        (
+            GP_COV_ANNO_DOMAIN_CLASS_ID,
+            GpTopoDomain10_1::CoverageAnnotation { version: -1 },
+        ),
+        (
+            GP_CAD_ANNO_DOMAIN_CLASS_ID,
+            GpTopoDomain10_1::CadAnnotation { version: -1 },
+        ),
+    ] {
+        assert_legacy_topo_version_only_domain_with_max(class_id, expected, 0);
     }
 }

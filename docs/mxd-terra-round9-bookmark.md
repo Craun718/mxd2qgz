@@ -1081,3 +1081,18 @@ v2 在 `0x731f58b7` 读取有符号计数，正计数在 `0x731f58df`
 逐项读取 LONG。Save `0x731f5920` 对应 v2 布局。
 构造测试覆盖两个版本、正负计数、后续字段和截断回滚。
 列表业务含义、真实书签及 ArcMap/QGIS 人工验收待验证。
+
+### GP 注记域
+
+GpObjects.dll 10.1.0.3035 的 PE RTTI 给出三类各自的持久化虚表。
+
+| 类 | CLSID | RTTI | 持久化虚表 |
+| --- | --- | --- | --- |
+| GPGdbAnnoDomain | `07DB9832-C818-41D3-86D7-138F84B0A33F` | `0x747fee34` | `0x747a9038` |
+| GPCovAnnoDomain | `B5C0DBCB-9953-4E01-A753-88C7EC07AF4F` | `0x747fedf8` | `0x747a9100` |
+| GPCadAnnoDomain | `C78F0CD6-A4C2-4EAE-A1A9-BC805D135C62` | `0x747fedd8` | `0x747a91c8` |
+
+三类共用 Load `0x74691130` 和 Save `0x74691180`。
+Load 只消费一个有符号 short，`0x74691162` 的版本上限为 0。
+Save 只写这个 short。构造测试覆盖类身份、负版本、拒绝 v1、
+后续书签字段及逐字节截断回滚。真实书签及 ArcMap/QGIS 人工验收待验证。
