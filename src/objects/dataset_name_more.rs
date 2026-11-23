@@ -706,6 +706,44 @@ pub(crate) fn read_schematic_dataset_name_body_10_1(
     ))
 }
 
+pub const SCHEMATIC_FOLDER_NAME_CLASS_ID: [u8; 16] = [
+    0x02, 0x05, 0xab, 0x9d, 0x39, 0x61, 0x10, 0x43, 0x9f, 0xa0, 0x1a, 0x0e, 0xdc, 0xb9, 0x1c, 0x7b,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SchematicFolderNameBody10_1 {
+    pub version: i16,
+    pub strings: [String; 4],
+    pub dataset: DatasetNameMoreSlot10_1,
+}
+
+pub(crate) fn read_schematic_folder_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    stop: &mut Option<DatasetNameMoreStop10_1>,
+) -> io::Result<SchematicFolderNameBody10_1> {
+    let (version, [a, b, c]) = read_schematic_name_prefix(reader, max_bytes)?;
+    let strings = [a, b, c, read_string_10_1(reader, max_bytes)?];
+    let dataset = read_schematic_dataset_slot_10_1(reader, max_bytes, table, stop)?;
+    Ok(SchematicFolderNameBody10_1 {
+        version,
+        strings,
+        dataset,
+    })
+}
+
+fn read_schematic_dataset_slot_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    stop: &mut Option<DatasetNameMoreStop10_1>,
+) -> io::Result<DatasetNameMoreSlot10_1> {
+    read_name_slot_with_depth_10_1(reader, max_bytes, table, stop, 0, |class_id| {
+        class_id == SCHEMATIC_DATASET_NAME_CLASS_ID
+    })
+}
+
 fn read_schematic_name_prefix(r: &mut Reader<'_>, max: usize) -> io::Result<(i16, [String; 3])> {
     let version = r.read_u16_le()? as i16;
     if version > 1 {
@@ -732,14 +770,7 @@ pub(crate) fn read_schematic_class_name_body_10_1(
     let mut staged = table.clone();
     let (version, strings) = read_schematic_name_prefix(&mut trial, max_bytes)?;
     let mut stop = None;
-    let dataset = read_name_slot_with_depth_10_1(
-        &mut trial,
-        max_bytes,
-        &mut staged,
-        &mut stop,
-        0,
-        |class_id| class_id == SCHEMATIC_DATASET_NAME_CLASS_ID,
-    )?;
+    let dataset = read_schematic_dataset_slot_10_1(&mut trial, max_bytes, &mut staged, &mut stop)?;
     *reader = trial;
     *table = staged;
     Ok((

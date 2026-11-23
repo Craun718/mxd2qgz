@@ -3169,3 +3169,49 @@ fn feature_bookmark_rejects_nonpersistent_unknown_dataset_name() {
     assert!(refs.contains(16));
     assert!(!refs.contains(17));
 }
+
+#[test]
+fn feature_bookmark_reads_schematic_folder_name() {
+    use mxd2qgz::objects::dataset_name_more::SCHEMATIC_FOLDER_NAME_CLASS_ID;
+
+    let mut bytes = bookmark_header_10_1(&SCHEMATIC_FOLDER_NAME_CLASS_ID, 17);
+    bytes.extend(1_i16.to_le_bytes());
+    for value in ["文件夹", "目录", "名称", "路径"] {
+        bytes.extend(bookmark_string_10_1(value));
+    }
+    bytes.extend(SCHEMATIC_DATASET_NAME_CLASS_ID);
+    bytes.extend(18_u32.to_le_bytes());
+    bytes.extend(1_i16.to_le_bytes());
+    for value in ["示意图", "数据集", "名称"] {
+        bytes.extend(bookmark_string_10_1(value));
+    }
+    bytes.extend([0; 16]);
+    bytes.extend(bookmark_string_10_1("书签"));
+    let end = bytes.len();
+    bytes.push(0xa5);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    let BookmarkNameEntry10_1::SchematicFolderName(body) = result.name_object else {
+        panic!("应读取示意图文件夹名称");
+    };
+    assert_eq!(body.version, 1);
+    assert_eq!(body.strings, ["文件夹", "目录", "名称", "路径"]);
+    assert!(matches!(
+        body.dataset,
+        DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::SchematicDataset(dataset))
+            if dataset.key == 18 && dataset.strings == ["示意图", "数据集", "名称"]
+    ));
+    assert_eq!(result.name, "书签");
+    assert_eq!(reader.position(), end);
+    assert!(refs.contains(17) && refs.contains(18));
+
+    for cut in 0..end {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+}

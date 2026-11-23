@@ -643,3 +643,19 @@ ObjectStream 普通对象请求的 IPersistStream IID `00000109-0000-0000-C000-0
 构造用例使用注册 CLSID 并紧接可解码的书签字符串，确认读取仍返回
 Unsupported，回滚书签游标和新键，保留先前登记的键。
 结论限于该镜像的内置实现。ArcMap/QGIS 人工验收未进行。
+
+## SchematicFolderName
+
+在已核对 SHA-256 的 SchematicDB.dll 10.1.0.3035 中，PE RTTI
+`0x7d72a128` 关联持久化虚表 `0x7d70d574`。GetClassID
+`0x7d6e7fd0` 返回 `9DAB0502-6139-4310-9FA0-1A0EDCB91C7B`，
+与 esriSchematic 类型库一致。QI `0x7d6e7250` 比较
+`0x7d7092f0` 的 IName IID，匹配时返回对象 +0x10。Load `0x7d6e80c0`
+检查有符号 short 上限 1，于 `0x7d6e810b / 0x7d6e8115 /
+0x7d6e811f / 0x7d6e8129` 读取四条 AfCore String，
+在 `0x7d6e8140` 请求 `0x7d709370` 的 ISchematicDatasetName。
+Save `0x7d6e8030` 的字段顺序与之对应。
+
+书签复用已有的示意图数据集名称槽读取器。构造测试覆盖内嵌数据集、
+两级对象键、后继书签字段边界和逐字节截断回滚。
+字段业务语义、真实书签宿主、原生 Open 和 QGIS 人工验收待验证。
