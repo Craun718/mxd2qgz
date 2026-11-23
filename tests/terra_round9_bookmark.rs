@@ -5903,3 +5903,71 @@ fn feature_bookmark_reads_numeric_and_string_remap_rows() {
         }
     }
 }
+
+#[test]
+fn feature_bookmark_reads_all_spatial_analyst_neighborhood_branches() {
+    use mxd2qgz::maps::map_surround::{
+        GP_SA_NEIGHBORHOOD_CLASS_ID, GpCodedValue10_1, GpSaNeighborhood10_1,
+        GpSaNeighborhoodParameters10_1 as Parameters,
+    };
+    use mxd2qgz::objects::property_set::{PropertyValue10_1, PropertyValueObjectStream10_1};
+
+    for (version, shape_kind, storage_kind) in [
+        (1_u16, 1_i32, 0_i32),
+        (2, 2, 1),
+        (2, 3, 0),
+        (2, 4, 0),
+        (2, 5, 1),
+        (2, 5, 0),
+        (2, 6, 1),
+        (2, 6, 0),
+        (2, -7, 1),
+    ] {
+        let mut payload = Vec::new();
+        let legacy_name = (version == 1).then(|| Box::new(BookmarkNameEntry10_1::Null));
+        if legacy_name.is_some() {
+            payload.extend([0; 16]);
+        }
+        payload.extend(storage_kind.to_le_bytes());
+        payload.extend(shape_kind.to_le_bytes());
+        payload.extend((-3_i32).to_le_bytes());
+        let parameters = match shape_kind {
+            1..=4 => {
+                let count = [2, 1, 2, 3][shape_kind as usize - 1];
+                let bits = [(-0.0_f64).to_bits(), 12.0_f64.to_bits(), 17.0_f64.to_bits()];
+                payload.extend(bits[..count].iter().flat_map(|value| value.to_le_bytes()));
+                Parameters::Dimensions(bits[..count].to_vec())
+            }
+            5 | 6 if storage_kind == 1 => {
+                let raw_longs = [-4_i32, 5];
+                payload.extend(raw_longs.into_iter().flat_map(i32::to_le_bytes));
+                payload.extend(3_u16.to_le_bytes());
+                payload.extend([0; 14]);
+                payload.extend(11_i32.to_le_bytes());
+                Parameters::Embedded {
+                    raw_longs,
+                    values: Box::new(PropertyValueObjectStream10_1::Inline(
+                        PropertyValue10_1::Raw4(11_i32.to_le_bytes()),
+                    )),
+                }
+            }
+            5 | 6 => {
+                payload.extend(bookmark_string_10_1("邻域.txt"));
+                Parameters::Path("邻域.txt".into())
+            }
+            _ => Parameters::None,
+        };
+        assert_legacy_topo_coded_value(
+            GP_SA_NEIGHBORHOOD_CLASS_ID,
+            version,
+            &payload,
+            GpCodedValue10_1::SaNeighborhood(Box::new(GpSaNeighborhood10_1 {
+                legacy_name,
+                storage_kind,
+                shape_kind,
+                raw_long: -3,
+                parameters,
+            })),
+        );
+    }
+}

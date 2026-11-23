@@ -429,6 +429,10 @@ pub const GP_SA_FUZZY_FUNCTION_CLASS_ID: [u8; 16] = [
     0x96, 0xfc, 0x1d, 0xf3, 0xe0, 0x01, 0x01, 0x4f, 0x96, 0x2b, 0x06, 0x4d, 0x48, 0xd5, 0xc2, 0x46,
 ];
 
+pub const GP_SA_NEIGHBORHOOD_CLASS_ID: [u8; 16] = [
+    0xf7, 0x35, 0xa4, 0x6f, 0x46, 0x90, 0x2b, 0x48, 0x86, 0xcc, 0x08, 0x9e, 0x16, 0x82, 0xea, 0x3f,
+];
+
 pub const GP_SA_NUMBER_REMAP_CLASS_ID: [u8; 16] = [
     0xff, 0xc3, 0x56, 0x31, 0xce, 0x80, 0x8f, 0x49, 0xb1, 0x6f, 0xf3, 0xa8, 0x1a, 0x45, 0x90, 0x8f,
 ];
@@ -511,6 +515,7 @@ pub enum GpCodedValue10_1 {
         arguments: [RuleSlot10_1<GpCodedValueBody10_1>; 3],
         raw_flags: [u8; 2],
     },
+    SaNeighborhood(Box<GpSaNeighborhood10_1>),
     SaRemap(Box<GpSaRemap10_1>),
     SaRadius {
         legacy_name: Option<Box<BookmarkNameEntry10_1>>,
@@ -575,6 +580,26 @@ pub enum GpCodedValue10_1 {
     RandomNumberGenerator {
         seed: i32,
         raw_generator: i32,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpSaNeighborhood10_1 {
+    pub legacy_name: Option<Box<BookmarkNameEntry10_1>>,
+    pub storage_kind: i32,
+    pub shape_kind: i32,
+    pub raw_long: i32,
+    pub parameters: GpSaNeighborhoodParameters10_1,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum GpSaNeighborhoodParameters10_1 {
+    None,
+    Dimensions(Vec<u64>),
+    Path(String),
+    Embedded {
+        raw_longs: [i32; 2],
+        values: Box<PropertyValueObjectStream10_1>,
     },
 }
 
@@ -1742,6 +1767,7 @@ fn read_gp_coded_value_slot(
                     | GP_SA_CELL_SIZE_CLASS_ID
                     | GP_SA_FUZZY_FUNCTION_CLASS_ID
                     | GP_SA_NUMBER_REMAP_CLASS_ID
+                    | GP_SA_NEIGHBORHOOD_CLASS_ID
                     | GP_SA_STRING_REMAP_CLASS_ID
                     | GP_SA_RADIUS_CLASS_ID
                     | GP_EVALUATION_SCALE_CLASS_ID
@@ -1780,6 +1806,7 @@ fn read_gp_coded_value_slot(
                 | GP_SA_CELL_SIZE_CLASS_ID
                 | GP_SA_FUZZY_FUNCTION_CLASS_ID
                 | GP_SA_NUMBER_REMAP_CLASS_ID
+                | GP_SA_NEIGHBORHOOD_CLASS_ID
                 | GP_SA_STRING_REMAP_CLASS_ID
                 | GP_SA_RADIUS_CLASS_ID
                 | GP_EVALUATION_SCALE_CLASS_ID
@@ -1816,7 +1843,8 @@ fn read_gp_coded_value_slot(
                 GP_ENCRYPTED_STRING_CLASS_ID
                 | GP_SA_RADIUS_CLASS_ID
                 | GP_EVALUATION_SCALE_CLASS_ID
-                | GP_SA_MAP_ALGEBRA_EXP_CLASS_ID => 2,
+                | GP_SA_MAP_ALGEBRA_EXP_CLASS_ID
+                | GP_SA_NEIGHBORHOOD_CLASS_ID => 2,
                 _ => 1,
             };
             if version > max_version || base_version > 1 {
@@ -1905,6 +1933,9 @@ fn read_gp_coded_value_slot(
                         },
                     }
                 }
+                GP_SA_NEIGHBORHOOD_CLASS_ID => GpCodedValue10_1::SaNeighborhood(Box::new(
+                    read_gp_sa_neighborhood(reader, max_bytes, table, depth, version)?,
+                )),
                 GP_SA_NUMBER_REMAP_CLASS_ID | GP_SA_STRING_REMAP_CLASS_ID => {
                     GpCodedValue10_1::SaRemap(Box::new(read_gp_sa_remap(
                         reader,
@@ -2020,6 +2051,49 @@ fn read_gp_sa_legacy_name(
     }
     read_bookmark_name_slot_10_1(reader, max_bytes, table, depth + 1)
         .map(|name| Some(Box::new(name)))
+}
+
+fn read_gp_sa_neighborhood(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+    version: u16,
+) -> io::Result<GpSaNeighborhood10_1> {
+    use GpSaNeighborhoodParameters10_1 as Parameters;
+
+    let legacy_name = read_gp_sa_legacy_name(reader, max_bytes, table, depth, version)?;
+    let storage_kind = reader.read_u32_le()? as i32;
+    let shape_kind = reader.read_u32_le()? as i32;
+    let raw_long = reader.read_u32_le()? as i32;
+    let parameters = match shape_kind {
+        1..=4 => {
+            let count = match shape_kind {
+                2 => 1,
+                4 => 3,
+                _ => 2,
+            };
+            let dimensions = (0..count)
+                .map(|_| reader.read_f64_le().map(f64::to_bits))
+                .collect::<io::Result<_>>()?;
+            Parameters::Dimensions(dimensions)
+        }
+        5 | 6 if storage_kind == 1 => Parameters::Embedded {
+            raw_longs: [reader.read_u32_le()? as i32, reader.read_u32_le()? as i32],
+            values: Box::new(read_padded_variant_object_stream_nested_10_1(
+                reader, max_bytes, table, depth,
+            )?),
+        },
+        5 | 6 => Parameters::Path(read_string_10_1(reader, max_bytes)?),
+        _ => Parameters::None,
+    };
+    Ok(GpSaNeighborhood10_1 {
+        legacy_name,
+        storage_kind,
+        shape_kind,
+        raw_long,
+        parameters,
+    })
 }
 
 fn read_gp_sa_remap(

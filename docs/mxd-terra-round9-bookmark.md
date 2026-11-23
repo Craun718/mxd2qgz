@@ -1526,3 +1526,27 @@ DWORD 计数写出文本字节。原生读取后在临时缓冲区追加终止�
 构造书签覆盖 v1–v4、两类重分类行、非 UTF-8 文本字节、空文本、
 值回引、后继字段、超限版本和逐字节截断回滚。文本代码页、
 LONG 业务含义、真实书签和 ArcMap/QGIS 人工验收待验证。
+
+#### GPSANeighborhood
+
+同版 GPSACore.dll 的 RTTI `0x74946718` 对应持久化虚表
+`0x7492fd10`，CLSID `6FA435F7-9046-482B-86CC-089E1682EA3F`
+由 PE 字节和 10.1 Desktop 互操作程序集交叉核对。Load `0x748e58e0`
+接受无符号 short 上限 2，读取 GPValue 基类、仅 v1 的 IName，
+再于 `0x748e59a6 / 0x748e59c0 / 0x748e59da` 读三个 LONG。
+按第二个 LONG 减 1 索引 `0x748e5ce8` 跳表，越界直接进入收尾。
+
+| 形状选择码 | 对象体后继数据 |
+| --- | --- |
+| 1、2、3、4 | 分别是 2、1、2、3 个 double |
+| 5、6 且第一个 LONG 为 1 | 两个 LONG、AfCore Variant::Read(false)，调用 `0x748e5bfe` |
+| 5、6 的其余情况 | 一个 AfCore 成员 String，调用 `0x748e5c77` |
+| 其余值 | 无后继字段 |
+
+Save `0x748e5d00` 的尺寸分派、内嵌 Variant 和成员 String
+路径按 objdump 与上述读侧对位。解析保留原始选择码和 double 位模式，
+沿用 Variant 与名称槽的共享对象键，不打开字符串所指向的文件。
+
+构造书签覆盖 v1/v2、各选择码、内嵌 Variant、路径、未知选择码、
+对象回引、后继字段及逐字节截断回滚。内嵌数组的真实取值与
+ArcMap/QGIS 实档验收待查。
