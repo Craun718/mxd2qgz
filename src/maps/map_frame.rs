@@ -163,7 +163,7 @@ pub(super) fn base_frame(
     limit: usize,
     refs: &mut RefTable10_1,
 ) -> io::Result<BaseFrameElement10_1> {
-    let version = r.read_u16_le()?;
+    let version = r.read_u16_le()? as i16;
     if version > 2 {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
@@ -189,7 +189,7 @@ pub(super) fn base_frame(
         .then(|| decor(r, limit, refs, DecorKind10_1::Shadow))
         .transpose()?;
     Ok(BaseFrameElement10_1 {
-        version,
+        version: version as u16,
         geometry_version,
         geometry,
         geometry_long,
@@ -216,7 +216,7 @@ pub(super) fn read_rect_shape_10_1(
     limit: usize,
     refs: &mut RefTable10_1,
 ) -> io::Result<RectShapeGeometry10_1> {
-    let geometry_version = r.read_u16_le()?;
+    let geometry_version = r.read_u16_le()? as i16;
     if geometry_version > 3 {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
@@ -231,7 +231,7 @@ pub(super) fn read_rect_shape_10_1(
         .then(|| r.read_u16_le())
         .transpose()?;
     Ok(RectShapeGeometry10_1 {
-        geometry_version,
+        geometry_version: geometry_version as u16,
         geometry,
         geometry_long,
         geometry_short,

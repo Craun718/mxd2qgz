@@ -885,3 +885,25 @@ fn map_frame_resolves_root_map_by_registered_class() {
         }
     }
 }
+
+#[test]
+fn base_frame_and_rect_shape_use_signed_version_gates() {
+    let mut body = frame_body(4);
+    let base = 30;
+    body[base..base + 2].copy_from_slice(&i16::MIN.to_le_bytes());
+    body[base + 2..base + 4].copy_from_slice(&(-1_i16).to_le_bytes());
+    body.truncate(body.len() - 16); // 旧 BaseFrameElement 无 IShadow。
+    body.drain(base + 20..base + 26); // 旧 RectShapeElement 无 LONG 和 short。
+    let bytes = wrap(&body);
+    let mut refs = RefTable10_1::new();
+    refs.register(42);
+    let mut reader = Reader::new(&bytes);
+    let frame = read_page_layout_map_frame_10_1(&mut reader, 4096, &mut refs).unwrap();
+    assert_eq!(frame.base.version, 0x8000);
+    assert_eq!(frame.base.geometry_version, 0xffff);
+    assert_eq!(frame.base.geometry_long, None);
+    assert_eq!(frame.base.geometry_short, None);
+    assert_eq!(frame.base.draft_mode_bits, 0xffff);
+    assert!(frame.base.shadow.is_none());
+    assert_eq!(reader.remaining(), 0);
+}
