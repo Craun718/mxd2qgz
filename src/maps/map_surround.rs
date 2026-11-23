@@ -47,7 +47,7 @@
 //!
 //! CLSID `{BBB1AE73-41E3-11D2-AE1E-080009EC732A}`（esri.clsid 声明 Map.dll；
 //! GetClassID `0x793a2600` 写出该 CLSID，虚表 `0x79481550`，adjustor 0x14）。
-//! Load `0x793a2cd0`：① int16 版本（原生有符号比较仅拒绝 >1；本读取器仅接受 0..=1）→ ② `LoadObject`（请求 IID `{1B077914-…}` IEnvelope，
+//! Load `0x793a2cd0`：① int16 版本（有符号比较仅拒绝 >1）→ ② `LoadObject`（请求 IID `{1B077914-…}` IEnvelope，
 //! 位置包络）→ ③ String（书签名称）。Save `0x793a2d60` 恒写版本 1
 //! （`DAT_79480eac`）+ `SaveObject` + `String::Write`，读写对称。
 //!
@@ -273,7 +273,7 @@ pub enum BookmarkEnvelopeEntry10_1 {
 /// AOIBookmark 对象体（Load `0x793a2cd0` 全部字段，体完全闭合）。
 #[derive(Debug, Clone, PartialEq)]
 pub struct AoiBookmark10_1 {
-    /// int16 版本位模式（本读取器接受 0..=1；原生有符号比较也接受负值；Save 恒写 1）。
+    /// int16 版本位模式（按有符号上限 1 读取，Save 恒写 1）。
     pub version: u16,
     /// IAOIBookmark.Location 位置包络（第 2 字段）。
     pub envelope: BookmarkEnvelopeEntry10_1,
@@ -333,7 +333,7 @@ pub enum BookmarkNameEntry10_1 {
 /// FeatureBookmark 对象体（Load `0x793b5c50` 全部字段，体完全闭合）。
 #[derive(Debug, Clone, PartialEq)]
 pub struct FeatureBookmark10_1 {
-    /// int16 版本位模式（本读取器接受 0..=1；原生有符号比较也接受负值）。
+    /// int16 版本位模式（按有符号上限 1 读取）。
     pub version: u16,
     /// 第 2 字段原值（`this+4`，IFeatureBookmark.FeatureId）；不检查要素是否存在。
     pub raw_int32: i32,
@@ -622,12 +622,9 @@ pub fn read_aoi_bookmark_10_1(
     let mut trial = reader.clone();
     let mut trial_table = table.clone();
 
-    // 1. int16 版本：原生有符号比较只拒绝 >1；本读取器同时拒绝负值位模式。
     let version = trial.read_u16_le()?;
-    if version > 1 {
-        return Err(invalid(format!(
-            "版本位模式 {version}（0x{version:04x}）超出读取器支持范围 0..=1"
-        )));
+    if version as i16 > 1 {
+        return Err(invalid(format!("不支持的版本 {version}")));
     }
 
     // 2. LoadObject(IEnvelope {1B077914-…})：位置包络。

@@ -160,8 +160,9 @@ Rust 保留原始位模式，`fixed_aspect_ratio()` 在版本 0/1 返回 `None`�
 虚表 `0x79481550`（COL `0x7948ffbc`，adjustor 0x14），GetClassID
 `0x793a2600` 写出 `{BBB1AE73-…}`。
 
-- Load `0x793a2cd0`：① int16 版本（`lVar4 < 0 || 1 < (short)v` 拒绝
-  `0x80004005`，即有符号 0..=1，**负值原生即拒绝**）→ ② `LoadObject`
+- Load `0x793a2cd0`：① int16 版本（Map.dll 10.1.0.3035 的 `0x793a2cf7 / 0x793a2cf9` 检查读取 HRESULT，
+  `0x793a2d05 / 0x793a2d0a` 以有符号 `cmpw / jg` 拒绝版本大于 1。
+  构造测试覆盖负值及旧布局消费，真实负版本工程与原生打开未验证）→ ② `LoadObject`
   （请求 IID `DAT_79481580` = `{1B077914-38C5-11D0-92D2-00805F7C28B0}`
   IEnvelope，位置包络）→ ③ `String::Read`（名称 → this+0x08）。到体尾。
 - Save `0x793a2d60`：恒写版本 short 1（`DAT_79480eac` = `01 00`）→
@@ -172,7 +173,7 @@ Rust 保留原始位模式，`fixed_aspect_ratio()` 在版本 0/1 返回 `None`�
 虚表 `0x79482be8`（COL `0x79490a88`，adjustor 0x14），GetClassID
 `0x793b5520` 写出 `{EC65B35B-…}`。
 
-- Load `0x793b5c50`：① int16 版本（有符号 0..=1）→ ② int32（→ this+0x04，
+- Load `0x793b5c50`：① int16 版本（有符号上限 1）→ ② int32（→ this+0x04，
   语义未定）→ ③ `LoadObject`（请求 IID `DAT_79482c08` =
   `{4BA33331-D55F-11D1-8882-0000F877762D}` IName，名称对象；装载后对其
   虚表 `+0x14` 直调并经 `FUN_793acdc0` 接线到 this+0x08）→ ④

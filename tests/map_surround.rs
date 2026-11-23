@@ -121,21 +121,24 @@ fn aoi_bookmark_reads_back_reference_envelope() {
 }
 
 #[test]
-fn aoi_bookmark_accepts_version_zero_null_envelope_and_empty_name() {
-    let mut bytes = 0_u16.to_le_bytes().to_vec();
-    push_null_marker(&mut bytes);
-    bytes.extend(string_bytes(""));
-    let mut reader = Reader::new(&bytes);
-    let bookmark =
-        read_aoi_bookmark_10_1(&mut reader, usize::MAX, &mut RefTable10_1::new()).unwrap();
-    assert_eq!(bookmark.version, 0);
-    assert_eq!(bookmark.envelope, BookmarkEnvelopeEntry10_1::Null);
-    assert_eq!(bookmark.name, "");
+fn aoi_bookmark_accepts_signed_old_versions_null_envelope_and_empty_name() {
+    for version in [i16::MIN, -1, 0] {
+        let mut bytes = version.to_le_bytes().to_vec();
+        push_null_marker(&mut bytes);
+        bytes.extend(string_bytes(""));
+        let mut reader = Reader::new(&bytes);
+        let bookmark =
+            read_aoi_bookmark_10_1(&mut reader, usize::MAX, &mut RefTable10_1::new()).unwrap();
+        assert_eq!(bookmark.version, version as u16);
+        assert_eq!(reader.remaining(), 0);
+        assert_eq!(bookmark.envelope, BookmarkEnvelopeEntry10_1::Null);
+        assert_eq!(bookmark.name, "");
+    }
 }
 
 #[test]
 fn aoi_bookmark_rejects_out_of_range_versions() {
-    for version in [2_u16, 0x8000, 0xFFFF] {
+    for version in [2_u16, i16::MAX as u16] {
         let bytes = version.to_le_bytes().to_vec();
         let mut reader = Reader::new(&bytes);
         let position = reader.position();
