@@ -142,8 +142,9 @@ use crate::objects::ams_dataset_name::{
     AMS_DATASET_NAME_CLASS_ID, AmsDatasetName10_1, read_ams_dataset_name_10_1,
 };
 use crate::objects::dataset_name::{
-    FEATURE_DATASET_NAME_CLASS_ID, FeatureDatasetNameBody10_1, TOPOLOGY_NAME_CLASS_ID,
-    TopologyNameBody10_1, read_feature_dataset_name_body_10_1, read_topology_name_body_10_1,
+    COVERAGE_NAME_CLASS_ID, FEATURE_DATASET_NAME_CLASS_ID, FeatureDatasetNameBody10_1,
+    TOPOLOGY_NAME_CLASS_ID, TopologyNameBody10_1, read_coverage_name_body_10_1,
+    read_feature_dataset_name_body_10_1, read_topology_name_body_10_1,
 };
 use crate::objects::dataset_name_more::{
     CAD_DRAWING_NAME_CLASS_ID, CadDrawingNameBody10_1, DB_TABLE_NAME_CLASS_ID, DbTableNameBody10_1,
@@ -322,6 +323,7 @@ pub enum BookmarkNameEntry10_1 {
     GeometricNetworkName(Box<GeometricNetworkNameBody10_1>),
     TopologyName(Box<TopologyNameBody10_1>),
     FeatureDatasetName(Box<FeatureDatasetNameBody10_1>),
+    CoverageName(Box<FeatureDatasetNameBody10_1>),
     CadDrawingName(Box<CadDrawingNameBody10_1>),
     ReferencedTableName(Box<ReferencedTableNameBody10_1>),
     XyEventSourceName(Box<XyEventSourceNameBody10_1>),
@@ -860,11 +862,14 @@ pub fn read_feature_bookmark_10_1(
             BookmarkNameEntry10_1::TopologyName(Box::new(body))
         }
         ObjectEntry10_1::NewObject {
-            class_id: FEATURE_DATASET_NAME_CLASS_ID,
+            class_id: class_id @ (FEATURE_DATASET_NAME_CLASS_ID | COVERAGE_NAME_CLASS_ID),
             key,
         } => {
-            let body =
-                read_feature_dataset_name_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?;
+            let body = if class_id == COVERAGE_NAME_CLASS_ID {
+                read_coverage_name_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?
+            } else {
+                read_feature_dataset_name_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?
+            };
             if let Some(stop) = &body.stop {
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,
@@ -873,7 +878,11 @@ pub fn read_feature_bookmark_10_1(
                     ),
                 ));
             }
-            BookmarkNameEntry10_1::FeatureDatasetName(Box::new(body))
+            if class_id == COVERAGE_NAME_CLASS_ID {
+                BookmarkNameEntry10_1::CoverageName(Box::new(body))
+            } else {
+                BookmarkNameEntry10_1::FeatureDatasetName(Box::new(body))
+            }
         }
         ObjectEntry10_1::NewObject {
             class_id: GEOMETRIC_NETWORK_NAME_CLASS_ID,

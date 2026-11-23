@@ -434,7 +434,7 @@ pub(crate) fn read_coverage_name_body_10_1(
 ) -> io::Result<FeatureDatasetNameBody10_1> {
     let mut trial = reader.clone();
     let version = trial.read_u16_le()?;
-    if version > 1 {
+    if (version as i16) > 1 {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
             "CoverageName 版本不支持",

@@ -308,3 +308,17 @@ Load `0x709b7c90` 在 `0x709b7cc2–0x709b7cc7` 使用有符号
 WorkspaceName 槽及子槽停止语义。构造测试覆盖负版本、空工作
 空间、后继书签字符串以及逐字节截断回滚。实际书签宿主、
 Open 返回对象和 ArcMap 人工验证仍待补充。
+
+## CoverageName
+
+CoverageFDB.dll 10.1.0.3035 的 CoverageName 主虚表
+`0x6e181324` 指向 QI `0x6e0c2f30`。IName IID 不命中
+外层专用分支，`0x6e0c2ff7–0x6e0c3007` 转交完整对象
++0x1c 的聚合接口。该成员连接由 `0x6e0c2e2b` 创建的
+GdbCore FeatureDatasetName，后者已确认支持 IName。
+外层 Load `0x6e0c3360` 在 `0x6e0c338e/0x6e0c3393`
+使用有符号上限 1。详见[模块摘要及委派 Load](mxd-terra-round9-old.md#coveragefeatureclassname-与-coveragename)。
+
+书签复用 CoverageName 读取器。构造测试覆盖负外层版本、原始 LONG、
+委派的名称体、后继书签名和逐字节截断回滚。只登记外层实际对象键。
+真实书签宿主和原生 Open 结果仍待 ArcMap 10.1 验证。
