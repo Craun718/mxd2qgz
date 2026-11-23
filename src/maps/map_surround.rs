@@ -401,6 +401,10 @@ pub const GP_RANDOM_NUMBER_GENERATOR_CLASS_ID: [u8; 16] = [
     0x4b, 0x67, 0xc6, 0xa5, 0xa6, 0xbc, 0xc8, 0x46, 0x82, 0x05, 0xb5, 0xb9, 0x58, 0xee, 0xae, 0xb9,
 ];
 
+pub const GP_MULTI_VALUE_CLASS_ID: [u8; 16] = [
+    0x94, 0xbc, 0x34, 0x6a, 0xb2, 0x06, 0x1b, 0x48, 0xb1, 0x04, 0x66, 0x63, 0xc4, 0xa3, 0x44, 0xef,
+];
+
 pub const GP_VARIANT_CLASS_ID: [u8; 16] = [
     0x5e, 0xff, 0x82, 0x5b, 0x15, 0x31, 0xe4, 0x40, 0xba, 0xc8, 0xe6, 0x21, 0x05, 0xca, 0x28, 0x11,
 ];
@@ -417,10 +421,23 @@ pub enum GpCodedValue10_1 {
     DoubleBits(u64),
     Boolean(u16),
     Date(Box<PropertyValueObjectStream10_1>),
-    LinearUnit { value_bits: u64, unit: i32 },
-    ArealUnit { value_bits: u64, unit: i32 },
+    LinearUnit {
+        value_bits: u64,
+        unit: i32,
+    },
+    ArealUnit {
+        value_bits: u64,
+        unit: i32,
+    },
     Variant(Box<PropertyValueObjectStream10_1>),
-    RandomNumberGenerator { seed: i32, raw_generator: i32 },
+    MultiValue {
+        raw_count: i32,
+        values: Vec<RuleSlot10_1<GpCodedValueBody10_1>>,
+    },
+    RandomNumberGenerator {
+        seed: i32,
+        raw_generator: i32,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1486,39 +1503,49 @@ fn read_gp_coded_value_domain(
 ) -> io::Result<GpCodedValueDomain10_1> {
     let version = read_gp_name_version(reader, 1, "GPCodedValueDomain")?;
     let labels = read_gp_domain_strings(reader, max_bytes, "GPCodedValueDomain")?;
+    let (raw_value_count, values) = read_gp_coded_value_list(reader, max_bytes, table, depth)?;
+    Ok(GpCodedValueDomain10_1 {
+        version,
+        labels,
+        raw_value_count,
+        values,
+    })
+}
+
+fn read_gp_coded_value_list(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<(i32, Vec<RuleSlot10_1<GpCodedValueBody10_1>>)> {
     let raw_value_count = reader.read_u32_le()? as i32;
     let count = raw_value_count.max(0) as usize;
     if count > reader.remaining().min(max_bytes) / 16 {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
-            "GPCodedValueDomain 值数量超限",
+            "IGPValue 列表数量超限",
         ));
     }
     let mut values = Vec::new();
     for _ in 0..count {
-        let entry = read_object_entry_10_1(reader, table)?;
-        let body = match entry {
-            ObjectEntry10_1::Null => None,
-            ObjectEntry10_1::BackReference { class_id, key }
-                if matches!(
-                    table.registered_class(key).unwrap_or(class_id),
-                    GP_STRING_CLASS_ID
-                        | GP_ENCRYPTED_STRING_CLASS_ID
-                        | GP_LONG_CLASS_ID
-                        | GP_DOUBLE_CLASS_ID
-                        | GP_BOOLEAN_CLASS_ID
-                        | GP_DATE_CLASS_ID
-                        | GP_LINEAR_UNIT_CLASS_ID
-                        | GP_AREAL_UNIT_CLASS_ID
-                        | GP_VARIANT_CLASS_ID
-                        | GP_RANDOM_NUMBER_GENERATOR_CLASS_ID
-                ) =>
-            {
-                None
-            }
-            ObjectEntry10_1::NewObject {
-                class_id:
-                    class_id @ (GP_STRING_CLASS_ID
+        values.push(read_gp_coded_value_slot(reader, max_bytes, table, depth)?);
+    }
+    Ok((raw_value_count, values))
+}
+
+fn read_gp_coded_value_slot(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<RuleSlot10_1<GpCodedValueBody10_1>> {
+    let entry = read_object_entry_10_1(reader, table)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if matches!(
+                table.registered_class(key).unwrap_or(class_id),
+                GP_STRING_CLASS_ID
                     | GP_ENCRYPTED_STRING_CLASS_ID
                     | GP_LONG_CLASS_ID
                     | GP_DOUBLE_CLASS_ID
@@ -1527,82 +1554,102 @@ fn read_gp_coded_value_domain(
                     | GP_LINEAR_UNIT_CLASS_ID
                     | GP_AREAL_UNIT_CLASS_ID
                     | GP_VARIANT_CLASS_ID
-                    | GP_RANDOM_NUMBER_GENERATOR_CLASS_ID),
-                ..
-            } => {
-                let version = reader.read_u16_le()?;
-                let base_version = reader.read_u16_le()?;
-                let max_version = if class_id == GP_ENCRYPTED_STRING_CLASS_ID {
-                    2
-                } else {
-                    1
-                };
-                if version > max_version || base_version > 1 {
-                    return Err(io::Error::new(
-                        ErrorKind::InvalidData,
-                        "GP 编码值对象或 GPValue 版本超出 10.1 上限",
-                    ));
-                }
-                let base_short = reader.read_u16_le()?;
-                let value = match class_id {
-                    GP_STRING_CLASS_ID => {
-                        GpCodedValue10_1::String(read_string_10_1(reader, max_bytes)?)
-                    }
-                    GP_ENCRYPTED_STRING_CLASS_ID => {
-                        GpCodedValue10_1::EncryptedString(read_string_10_1(reader, max_bytes)?)
-                    }
-                    GP_DOUBLE_CLASS_ID => {
-                        GpCodedValue10_1::DoubleBits(reader.read_f64_le()?.to_bits())
-                    }
-                    GP_BOOLEAN_CLASS_ID => GpCodedValue10_1::Boolean(reader.read_u16_le()?),
-                    GP_DATE_CLASS_ID => GpCodedValue10_1::Date(Box::new(
-                        read_padded_variant_object_stream_nested_10_1(
-                            reader, max_bytes, table, depth,
-                        )?,
-                    )),
-                    GP_LINEAR_UNIT_CLASS_ID => GpCodedValue10_1::LinearUnit {
-                        value_bits: reader.read_f64_le()?.to_bits(),
-                        unit: reader.read_u32_le()? as i32,
-                    },
-                    GP_AREAL_UNIT_CLASS_ID => GpCodedValue10_1::ArealUnit {
-                        value_bits: reader.read_f64_le()?.to_bits(),
-                        unit: reader.read_u32_le()? as i32,
-                    },
-                    GP_VARIANT_CLASS_ID => GpCodedValue10_1::Variant(Box::new(
-                        read_padded_variant_object_stream_nested_10_1(
-                            reader, max_bytes, table, depth,
-                        )?,
-                    )),
-                    GP_RANDOM_NUMBER_GENERATOR_CLASS_ID => {
-                        GpCodedValue10_1::RandomNumberGenerator {
-                            seed: reader.read_u32_le()? as i32,
-                            raw_generator: reader.read_u32_le()? as i32,
-                        }
-                    }
-                    _ => GpCodedValue10_1::Long(reader.read_u32_le()? as i32),
-                };
-                Some(Box::new(GpCodedValueBody10_1 {
-                    version,
-                    base_version,
-                    base_short,
-                    value,
-                }))
-            }
-            _ => {
+                    | GP_MULTI_VALUE_CLASS_ID
+                    | GP_RANDOM_NUMBER_GENERATOR_CLASS_ID
+            ) =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id:
+                class_id @ (GP_STRING_CLASS_ID
+                | GP_ENCRYPTED_STRING_CLASS_ID
+                | GP_LONG_CLASS_ID
+                | GP_DOUBLE_CLASS_ID
+                | GP_BOOLEAN_CLASS_ID
+                | GP_DATE_CLASS_ID
+                | GP_LINEAR_UNIT_CLASS_ID
+                | GP_AREAL_UNIT_CLASS_ID
+                | GP_VARIANT_CLASS_ID
+                | GP_MULTI_VALUE_CLASS_ID
+                | GP_RANDOM_NUMBER_GENERATOR_CLASS_ID),
+            ..
+        } => {
+            let version = reader.read_u16_le()?;
+            let base_version = reader.read_u16_le()?;
+            let max_version = if class_id == GP_ENCRYPTED_STRING_CLASS_ID {
+                2
+            } else {
+                1
+            };
+            if version > max_version || base_version > 1 {
                 return Err(io::Error::new(
-                    ErrorKind::Unsupported,
-                    "GPCodedValueDomain 的 IGPValue 类未支持",
+                    ErrorKind::InvalidData,
+                    "GP 编码值对象或 GPValue 版本超出 10.1 上限",
                 ));
             }
-        };
-        values.push(RuleSlot10_1 { entry, body });
-    }
-    Ok(GpCodedValueDomain10_1 {
-        version,
-        labels,
-        raw_value_count,
-        values,
-    })
+            let base_short = reader.read_u16_le()?;
+            let value = match class_id {
+                GP_STRING_CLASS_ID => {
+                    GpCodedValue10_1::String(read_string_10_1(reader, max_bytes)?)
+                }
+                GP_ENCRYPTED_STRING_CLASS_ID => {
+                    GpCodedValue10_1::EncryptedString(read_string_10_1(reader, max_bytes)?)
+                }
+                GP_DOUBLE_CLASS_ID => GpCodedValue10_1::DoubleBits(reader.read_f64_le()?.to_bits()),
+                GP_BOOLEAN_CLASS_ID => GpCodedValue10_1::Boolean(reader.read_u16_le()?),
+                GP_DATE_CLASS_ID => GpCodedValue10_1::Date(Box::new(
+                    read_padded_variant_object_stream_nested_10_1(reader, max_bytes, table, depth)?,
+                )),
+                GP_LINEAR_UNIT_CLASS_ID => GpCodedValue10_1::LinearUnit {
+                    value_bits: reader.read_f64_le()?.to_bits(),
+                    unit: reader.read_u32_le()? as i32,
+                },
+                GP_AREAL_UNIT_CLASS_ID => GpCodedValue10_1::ArealUnit {
+                    value_bits: reader.read_f64_le()?.to_bits(),
+                    unit: reader.read_u32_le()? as i32,
+                },
+                GP_VARIANT_CLASS_ID => GpCodedValue10_1::Variant(Box::new(
+                    read_padded_variant_object_stream_nested_10_1(reader, max_bytes, table, depth)?,
+                )),
+                GP_RANDOM_NUMBER_GENERATOR_CLASS_ID => GpCodedValue10_1::RandomNumberGenerator {
+                    seed: reader.read_u32_le()? as i32,
+                    raw_generator: reader.read_u32_le()? as i32,
+                },
+                GP_MULTI_VALUE_CLASS_ID => {
+                    if depth >= MAX_BOOKMARK_NAME_NESTING {
+                        return Err(io::Error::new(
+                            ErrorKind::InvalidData,
+                            "GPMultiValue 嵌套层数超限",
+                        ));
+                    }
+                    if read_object_entry_10_1(reader, table)? != ObjectEntry10_1::Null {
+                        return Err(io::Error::new(
+                            ErrorKind::Unsupported,
+                            "GPMultiValue 非空类型槽未支持",
+                        ));
+                    }
+                    let (raw_count, values) =
+                        read_gp_coded_value_list(reader, max_bytes, table, depth + 1)?;
+                    GpCodedValue10_1::MultiValue { raw_count, values }
+                }
+                _ => GpCodedValue10_1::Long(reader.read_u32_le()? as i32),
+            };
+            Some(Box::new(GpCodedValueBody10_1 {
+                version,
+                base_version,
+                base_short,
+                value,
+            }))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "GPCodedValueDomain 的 IGPValue 类未支持",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
 }
 
 fn read_gp_topo_domain_slot_10_1(
