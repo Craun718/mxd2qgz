@@ -405,3 +405,13 @@ FgdbRasterDB.dll 10.1.0.3035 的构造指令 `0x6f933a5a`
 装入构造书签，验证委派名称键、工作空间键、RasterIO 结束对、
 后继书签名以及每个截断前缀的回滚。真实书签宿主及原生
 Open 结果仍待 ArcMap 10.1 验证。
+
+## FunctionRasterDatasetName
+
+FunctionRasterDB.dll 10.1.0.3035 的主虚表 `0x6fd45750` 指向
+QI `0x6fc9d8a0`，在 `0x6fc9d8b9` 比较 `0x6fd4422c`
+的 IName IID，命中后在 `0x6fc9d8d4` 返回对象 +0x10。
+书签复用 [Load `0x6fc9dcf0` 对应的名称体](mxd-10.1-raster-layer-tail.md#函数栅格名称)。
+构造测试覆盖 IdentityFunction 新键及 v7 后置字符串，验证
+后继书签文本和逐字节截断回滚。真实宿主和原生 Open
+结果仍待 ArcMap 10.1 验证。

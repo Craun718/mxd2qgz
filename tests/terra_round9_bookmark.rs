@@ -2213,3 +2213,55 @@ fn feature_bookmark_reads_sample_filegdb_raster_name_to_rasterio_end() {
         assert!(refs.is_empty());
     }
 }
+
+#[test]
+fn feature_bookmark_reads_function_raster_name_through_v7_tail() {
+    use mxd2qgz::layers::image_server_rules::IDENTITY_FUNCTION_CLASS_ID;
+    use mxd2qgz::layers::raster_dataset_name::{
+        FUNCTION_RASTER_DATASET_NAME_CLASS_ID, RasterDatasetNameEntryBody10_1,
+    };
+
+    let mut bytes = bookmark_header_10_1(&FUNCTION_RASTER_DATASET_NAME_CLASS_ID, 17);
+    bytes.extend(7_u16.to_le_bytes());
+    for text in ["函数栅格", "", ""] {
+        bytes.extend(bookmark_string_10_1(text));
+    }
+    bytes.extend([0; 16]);
+    bytes.extend(bookmark_string_10_1("image.afr"));
+    bytes.extend(IDENTITY_FUNCTION_CLASS_ID);
+    bytes.extend(18_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(9_i32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend([0; 32]); // 空输入和属性集。
+    for text in ["v6", "v7", "书签"] {
+        bytes.extend(bookmark_string_10_1(text));
+    }
+    let end = bytes.len();
+    bytes.push(0xa5);
+
+    let mut refs = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    let BookmarkNameEntry10_1::RasterDatasetName(body) = result.name_object else {
+        panic!("应读取栅格名称");
+    };
+    let RasterDatasetNameEntryBody10_1::Function(name) = *body else {
+        panic!("应读取函数栅格名称");
+    };
+    assert_eq!(name.version, 7);
+    assert_eq!(name.path, "image.afr");
+    assert_eq!(name.string_48.as_deref(), Some("v7"));
+    assert_eq!(result.name, "书签");
+    assert_eq!(reader.position(), end);
+    assert!(refs.contains(17) && refs.contains(18));
+
+    for cut in 0..end {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+}
