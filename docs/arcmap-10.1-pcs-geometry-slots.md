@@ -615,3 +615,22 @@ M `0x7faec3aa/0x7faec3ce`。若 Geometry.dll 的旧版恢复路径
 XY/Z/M 约为 0.0005、0.0025、0.01。这三个容差是静态公式推导，
 运行探针测得的是它们的除数。Geometry.dll 加载整档时的网格组开关、
 单位换算和 ArcMap 人工验收仍待验证。
+
+### 旧版未知坐标系的网格容差函数运行验证
+
+在 Wine 11.22 的同一临时前缀加载原生 Geometry.dll 10.1.0.3035
+与 sg.dll 10.1.0.679，摘要均与上文一致。GeometryXLib 的
+`pe++.dll` 依赖对应 Setup1.cab 的 `pe.dll.F84366F9_…`，
+该文件导出表名称为 `pe++.dll`，SHA-256 为
+`92f4e1354b2f9826cb204fec74800a40252c7f90cbf8443a323e4d433ad12dc7`。
+它与 sg 的 `pe.dll` 是两个二进制。
+
+32 位 PE 探针创建并设置同一个 SgCoordRef，回读比例因子
+4000、800、200，随后以 Geometry.dll 加载基址加 RVA
+`0x1dc0f0/0x1dc120/0x1dc150` 调用三个旧版恢复辅助函数。
+XY 通过栈传句柄，Z/M 通过 EDX 传句柄，三者均从 XMM0 取 double。
+探针对三个返回值分别与 `2.0/4000`、`2.0/800`、`2.0/200`
+逐项比较，实际退出码为 0。因此旧版 UnknownCoordinateSystem
+有有效网格句柄时的这三次除法已在原生代码中验证。
+本探针未调用完整 Load 或打开 MXD，宿主网格分派、PCS/GCS
+单位换算及 ArcMap 人工验证仍待完成。
