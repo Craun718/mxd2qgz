@@ -2949,3 +2949,73 @@ fn feature_bookmark_reads_file_name_bstr() {
     assert_eq!(reader.position(), 0);
     assert!(refs.is_empty());
 }
+
+#[test]
+fn feature_bookmark_reads_shortcut_chain_and_rolls_back_invalid_targets() {
+    use mxd2qgz::maps::map_surround::{FILE_NAME_CLASS_ID, SHORTCUT_NAME_CLASS_ID};
+
+    let mut bytes = bookmark_header_10_1(&SHORTCUT_NAME_CLASS_ID, 17);
+    bytes.extend(1_i16.to_le_bytes());
+    bytes.extend([1, 0, 0, 0, b'S', 0, 0, 0]);
+    let target_offset = bytes.len();
+    bytes.extend(FILE_NAME_CLASS_ID);
+    bytes.extend(18_u32.to_le_bytes());
+    bytes.extend(1_i16.to_le_bytes());
+    bytes.extend([1, 0, 0, 0, b'F', 0, 0, 0]);
+    bytes.extend(bookmark_string_10_1("书签"));
+    let end = bytes.len();
+    bytes.push(0xa5);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    assert!(matches!(
+        result.name_object,
+        BookmarkNameEntry10_1::ShortcutName { version: 1, name_string, target }
+            if name_string == "S" && *target == (BookmarkNameEntry10_1::FileName {
+                version: 1, name_string: "F".into()
+            })
+    ));
+    assert_eq!(result.name, "书签");
+    assert_eq!(reader.position(), end);
+    assert!(refs.contains(17) && refs.contains(18));
+
+    for cut in 0..end {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+
+    let mut back_ref = bytes[..target_offset].to_vec();
+    back_ref.extend(FILE_NAME_CLASS_ID);
+    back_ref.extend(17_u32.to_le_bytes());
+    back_ref.extend(bookmark_string_10_1("书签"));
+    let mut reader = Reader::new(&back_ref);
+    let mut refs = RefTable10_1::new();
+    let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    assert!(matches!(
+        result.name_object,
+        BookmarkNameEntry10_1::ShortcutName { target, .. }
+            if matches!(*target, BookmarkNameEntry10_1::BackReference {
+                class_id: SHORTCUT_NAME_CLASS_ID, key: 17
+            })
+    ));
+
+    let mut nested = bytes[..target_offset].to_vec();
+    for key in 18_u32..=33 {
+        nested.extend(SHORTCUT_NAME_CLASS_ID);
+        nested.extend(key.to_le_bytes());
+        nested.extend(1_i16.to_le_bytes());
+        nested.extend([1, 0, 0, 0, b'S', 0, 0, 0]);
+    }
+    nested.extend([0; 16]);
+    nested.extend(bookmark_string_10_1("书签"));
+    let mut reader = Reader::new(&nested);
+    let mut refs = RefTable10_1::new();
+    let err = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap_err();
+    assert!(err.to_string().contains("ShortcutName 嵌套层数超限"));
+    assert_eq!(reader.position(), 0);
+    assert!(refs.is_empty());
+}

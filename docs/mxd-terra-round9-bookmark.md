@@ -577,5 +577,21 @@ objdump 显示 Load 在 `0x7ffc376a` 比较有符号 short 上限 1，
 调用对应的 WriteString。构造测试覆盖负版本、超上限版本、
 UTF-16 BSTR、后继书签字段及逐字节截断回滚。静态证据显示
 FileName 的 Open 写空输出并返回 S_FALSE，真实书签出现情况
-与 ArcMap/QGIS 人工检查待验证。ShortcutName 有独立 Load
-`0x7ffdc250`，其字符串后还有 IName 子槽，留待单独接入。
+与 ArcMap/QGIS 人工检查待验证。
+
+## ShortcutName
+
+同版 SystemCore.dll 的 RTTI `0x800a6b78` 和持久化虚表
+`0x800727fc` 将 ShortcutName 的 Load、Save 定位到
+`0x7ffdc250`、`0x7ffdc310`。Load 对 short 使用有符号上限 1，
+在 `0x7ffdc2a4` 读取 BSTR，在 `0x7ffdc2e4` 以
+`0x8006f8fc` 的 IName IID 调用 LoadObject。Save 在
+`0x7ffdc359` 写字符串，并于 `0x7ffdc387` 写出子对象。
+GetClassID `0x7ffdbe50` 从 `0x8007282c` 复制
+`3BEB09E4-3941-4A07-9D1A-EC2B43BA7D50`。
+
+子槽沿用书签 IName 分派和同一引用表。为限制解析栈，Rust
+对连续的新建 ShortcutName 设置 16 层上限。构造测试覆盖
+FileName 子对象、登记类回引、书签文本边界和事务回滚。
+静态证据显示 ShortcutName 的 Open 返回 S_FALSE 且输出为空。
+真实书签出现情况及 ArcMap/QGIS 人工验收待验证。

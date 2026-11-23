@@ -319,6 +319,12 @@ pub struct AoiBookmark10_1 {
     pub remaining_bytes: usize,
 }
 
+const MAX_SHORTCUT_NAME_NESTING: usize = 16;
+
+pub const SHORTCUT_NAME_CLASS_ID: [u8; 16] = [
+    0xe4, 0x09, 0xeb, 0x3b, 0x41, 0x39, 0x07, 0x4a, 0x9d, 0x1a, 0xec, 0x2b, 0x43, 0xba, 0x7d, 0x50,
+];
+
 pub const FILE_NAME_CLASS_ID: [u8; 16] = [
     0xdf, 0x75, 0xda, 0x53, 0x1a, 0xd0, 0xd2, 0x11, 0x9f, 0x27, 0x00, 0xc0, 0x4f, 0x6b, 0xc6, 0x9e,
 ];
@@ -383,6 +389,11 @@ pub enum BookmarkNameEntry10_1 {
     NetworkDatasetName(Box<NetworkDatasetName10_1>),
     TinName(Box<TinName10_1>),
     LasDatasetName(Box<LasDatasetName10_1>),
+    ShortcutName {
+        version: i16,
+        name_string: String,
+        target: Box<BookmarkNameEntry10_1>,
+    },
     FileName {
         version: i16,
         name_string: String,
@@ -786,11 +797,35 @@ pub fn read_feature_bookmark_10_1(
     let raw_int32 = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
 
     // 3. LoadObject(IName {4BA33331-…})。
-    let name_offset = trial.position();
-    let name_object = match read_object_entry_10_1(&mut trial, &mut trial_table)? {
+    let name_object = read_bookmark_name_slot_10_1(&mut trial, max_bytes, &mut trial_table, 0)?;
+
+    // 4. 书签名称（String::Read → this+0xc）。
+    let name = read_string_10_1(&mut trial, max_bytes)?;
+
+    let result = FeatureBookmark10_1 {
+        version,
+        raw_int32,
+        name_object,
+        name,
+        remaining_bytes: trial.remaining(),
+    };
+    *reader = trial;
+    *table = trial_table;
+    Ok(result)
+}
+
+// 调用者负责将名称槽及其宿主的读取作为同一事务提交。
+fn read_bookmark_name_slot_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    shortcut_depth: usize,
+) -> io::Result<BookmarkNameEntry10_1> {
+    let name_offset = reader.position();
+    Ok(match read_object_entry_10_1(reader, table)? {
         ObjectEntry10_1::Null => BookmarkNameEntry10_1::Null,
         ObjectEntry10_1::BackReference { class_id, key } => BookmarkNameEntry10_1::BackReference {
-            class_id: trial_table.registered_class(key).unwrap_or(class_id),
+            class_id: table.registered_class(key).unwrap_or(class_id),
             key,
         },
         ObjectEntry10_1::NewObject {
@@ -802,21 +837,13 @@ pub fn read_feature_bookmark_10_1(
             key,
         } => {
             let body = match class_id {
-                FGDB_FEATURE_CLASS_NAME_CLASS_ID => read_fgdb_feature_class_name_body_10_1(
-                    &mut trial,
-                    max_bytes,
-                    &mut trial_table,
-                    key,
-                )?,
-                COVERAGE_FEATURE_CLASS_NAME_CLASS_ID => read_coverage_feature_class_name_body_10_1(
-                    &mut trial,
-                    max_bytes,
-                    &mut trial_table,
-                    key,
-                )?,
-                _ => {
-                    read_feature_class_name_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?
+                FGDB_FEATURE_CLASS_NAME_CLASS_ID => {
+                    read_fgdb_feature_class_name_body_10_1(reader, max_bytes, table, key)?
                 }
+                COVERAGE_FEATURE_CLASS_NAME_CLASS_ID => {
+                    read_coverage_feature_class_name_body_10_1(reader, max_bytes, table, key)?
+                }
+                _ => read_feature_class_name_body_10_1(reader, max_bytes, table, key)?,
             };
             if let Some(stop) = &body.stop {
                 return Err(io::Error::new(
@@ -838,9 +865,9 @@ pub fn read_feature_bookmark_10_1(
             ..
         } => {
             let (body, stopped) = if class_id == FGDB_TABLE_NAME_CLASS_ID {
-                read_fgdb_table_name_body_10_1(&mut trial, &mut trial_table, max_bytes)?
+                read_fgdb_table_name_body_10_1(reader, table, max_bytes)?
             } else {
-                read_table_name_body_10_1(&mut trial, &mut trial_table, max_bytes)?
+                read_table_name_body_10_1(reader, table, max_bytes)?
             };
             if stopped {
                 return Err(io::Error::new(
@@ -867,8 +894,7 @@ pub fn read_feature_bookmark_10_1(
             class_id: QUERY_TABLE_NAME_CLASS_ID,
             key,
         } => {
-            let body =
-                read_query_table_name_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?;
+            let body = read_query_table_name_body_10_1(reader, max_bytes, table, key)?;
             if let Some(stop) = &body.stop {
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,
@@ -884,13 +910,8 @@ pub fn read_feature_bookmark_10_1(
             key,
         } => {
             let mut stop = None;
-            let body = read_referenced_table_name_body_10_1(
-                &mut trial,
-                max_bytes,
-                &mut trial_table,
-                key,
-                &mut stop,
-            )?;
+            let body =
+                read_referenced_table_name_body_10_1(reader, max_bytes, table, key, &mut stop)?;
             if let Some(stop) = stop {
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,
@@ -905,8 +926,7 @@ pub fn read_feature_bookmark_10_1(
             class_id: CAD_DRAWING_NAME_CLASS_ID,
             key,
         } => {
-            let body =
-                read_cad_drawing_name_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?;
+            let body = read_cad_drawing_name_body_10_1(reader, max_bytes, table, key)?;
             if let Some(stop) = &body.stop {
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,
@@ -921,7 +941,7 @@ pub fn read_feature_bookmark_10_1(
             class_id: TOPOLOGY_NAME_CLASS_ID,
             key,
         } => {
-            let body = read_topology_name_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?;
+            let body = read_topology_name_body_10_1(reader, max_bytes, table, key)?;
             if let Some(stop) = &body.stop {
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,
@@ -936,7 +956,7 @@ pub fn read_feature_bookmark_10_1(
             class_id: WORKSPACE_NAME_CLASS_ID,
             key,
         } => {
-            let body = read_workspace_name_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?;
+            let body = read_workspace_name_body_10_1(reader, max_bytes, table, key)?;
             if let Some(stop) = &body.stop {
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,
@@ -952,9 +972,9 @@ pub fn read_feature_bookmark_10_1(
             key,
         } => {
             let body = if class_id == COVERAGE_NAME_CLASS_ID {
-                read_coverage_name_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?
+                read_coverage_name_body_10_1(reader, max_bytes, table, key)?
             } else {
-                read_feature_dataset_name_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?
+                read_feature_dataset_name_body_10_1(reader, max_bytes, table, key)?
             };
             if let Some(stop) = &body.stop {
                 return Err(io::Error::new(
@@ -974,12 +994,7 @@ pub fn read_feature_bookmark_10_1(
             class_id: GEOMETRIC_NETWORK_NAME_CLASS_ID,
             key,
         } => {
-            let body = read_geometric_network_name_body_10_1(
-                &mut trial,
-                max_bytes,
-                &mut trial_table,
-                key,
-            )?;
+            let body = read_geometric_network_name_body_10_1(reader, max_bytes, table, key)?;
             if let Some(stop) = &body.stop {
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,
@@ -994,7 +1009,7 @@ pub fn read_feature_bookmark_10_1(
             class_id: DB_TABLE_NAME_CLASS_ID,
             key,
         } => {
-            let body = read_db_table_name_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?;
+            let body = read_db_table_name_body_10_1(reader, max_bytes, table, key)?;
             if let Some(stop) = &body.stop {
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,
@@ -1009,7 +1024,7 @@ pub fn read_feature_bookmark_10_1(
             class_id: NETCDF_TABLE_NAME_CLASS_ID,
             ..
         } => {
-            let body = read_netcdf_table_name_body_10_1(&mut trial, max_bytes, &mut trial_table)?;
+            let body = read_netcdf_table_name_body_10_1(reader, max_bytes, table)?;
             if let Some(stop) = &body.stop {
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,
@@ -1024,12 +1039,7 @@ pub fn read_feature_bookmark_10_1(
             class_id: NETCDF_FEATURE_CLASS_NAME_CLASS_ID,
             key,
         } => {
-            let body = read_netcdf_feature_class_name_body_10_1(
-                &mut trial,
-                max_bytes,
-                &mut trial_table,
-                key,
-            )?;
+            let body = read_netcdf_feature_class_name_body_10_1(reader, max_bytes, table, key)?;
             if let Some(stop) = &body.stop {
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,
@@ -1044,8 +1054,7 @@ pub fn read_feature_bookmark_10_1(
             class_id: XY_EVENT_SOURCE_NAME_CLASS_ID,
             key,
         } => {
-            let body =
-                read_xy_event_source_name_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?;
+            let body = read_xy_event_source_name_body_10_1(reader, max_bytes, table, key)?;
             if let Some(stop) = &body.stop {
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,
@@ -1060,12 +1069,7 @@ pub fn read_feature_bookmark_10_1(
             class_id: ROUTE_EVENT_SOURCE_NAME_CLASS_ID,
             key,
         } => {
-            let body = read_route_event_source_name_body_10_1(
-                &mut trial,
-                max_bytes,
-                &mut trial_table,
-                key,
-            )?;
+            let body = read_route_event_source_name_body_10_1(reader, max_bytes, table, key)?;
             if let Some(stop) = &body.stop {
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,
@@ -1080,8 +1084,7 @@ pub fn read_feature_bookmark_10_1(
             class_id: FEATURE_QUERY_NAME_CLASS_ID,
             key,
         } => {
-            let body =
-                read_feature_query_name_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?;
+            let body = read_feature_query_name_body_10_1(reader, max_bytes, table, key)?;
             if let Some(stop) = &body.table.stop {
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,
@@ -1096,8 +1099,7 @@ pub fn read_feature_bookmark_10_1(
             class_id: TABLE_QUERY_NAME_CLASS_ID,
             key,
         } => {
-            let body =
-                read_table_query_name_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?;
+            let body = read_table_query_name_body_10_1(reader, max_bytes, table, key)?;
             if let Some(stop) = &body.stop {
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,
@@ -1112,8 +1114,7 @@ pub fn read_feature_bookmark_10_1(
             class_id: REL_QUERY_TABLE_NAME_CLASS_ID,
             key,
         } => {
-            let body =
-                read_rel_query_table_name_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?;
+            let body = read_rel_query_table_name_body_10_1(reader, max_bytes, table, key)?;
             if let Some(stop) = &body.stop {
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,
@@ -1128,12 +1129,7 @@ pub fn read_feature_bookmark_10_1(
             class_id: RELATIONSHIP_CLASS_NAME_CLASS_ID,
             key,
         } => {
-            let body = read_relationship_class_name_body_10_1(
-                &mut trial,
-                max_bytes,
-                &mut trial_table,
-                key,
-            )?;
+            let body = read_relationship_class_name_body_10_1(reader, max_bytes, table, key)?;
             if let Some(stop) = &body.stop {
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,
@@ -1148,12 +1144,8 @@ pub fn read_feature_bookmark_10_1(
             class_id: MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID,
             key,
         } => {
-            let body = read_memory_relationship_class_name_body_10_1(
-                &mut trial,
-                max_bytes,
-                &mut trial_table,
-                key,
-            )?;
+            let body =
+                read_memory_relationship_class_name_body_10_1(reader, max_bytes, table, key)?;
             if let Some(stop) = &body.stop {
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,
@@ -1168,15 +1160,40 @@ pub fn read_feature_bookmark_10_1(
             class_id: TERRAIN_NAME_CLASS_ID,
             ..
         } => BookmarkNameEntry10_1::TerrainName(Box::new(read_terrain_name_body_10_1(
-            &mut trial,
-            max_bytes,
-            &mut trial_table,
+            reader, max_bytes, table,
         )?)),
+        ObjectEntry10_1::NewObject {
+            class_id: SHORTCUT_NAME_CLASS_ID,
+            ..
+        } => {
+            if shortcut_depth == MAX_SHORTCUT_NAME_NESTING {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "ShortcutName 嵌套层数超限",
+                ));
+            }
+            let version = reader.read_u16_le()? as i16;
+            if version > 1 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    format!("ShortcutName 版本 {version} 超出 10.1 上限"),
+                ));
+            }
+            let name_string =
+                crate::stream::native_string::read_bstr_string_10_1(reader, max_bytes)?;
+            let target =
+                read_bookmark_name_slot_10_1(reader, max_bytes, table, shortcut_depth + 1)?;
+            BookmarkNameEntry10_1::ShortcutName {
+                version,
+                name_string,
+                target: Box::new(target),
+            }
+        }
         ObjectEntry10_1::NewObject {
             class_id: FILE_NAME_CLASS_ID,
             ..
         } => {
-            let version = trial.read_u16_le()? as i16;
+            let version = reader.read_u16_le()? as i16;
             if version > 1 {
                 return Err(io::Error::new(
                     ErrorKind::InvalidData,
@@ -1186,7 +1203,7 @@ pub fn read_feature_bookmark_10_1(
             BookmarkNameEntry10_1::FileName {
                 version,
                 name_string: crate::stream::native_string::read_bstr_string_10_1(
-                    &mut trial, max_bytes,
+                    reader, max_bytes,
                 )?,
             }
         }
@@ -1194,19 +1211,19 @@ pub fn read_feature_bookmark_10_1(
             class_id: AGS_SERVER_OBJECT_NAME,
             ..
         } => BookmarkNameEntry10_1::AgsServerObjectName(Box::new(
-            read_ags_server_object_name_body(&mut trial, max_bytes, &mut trial_table)?,
+            read_ags_server_object_name_body(reader, max_bytes, table)?,
         )),
         ObjectEntry10_1::NewObject {
             class_id: AGS_SERVER_CONNECTION_NAME,
             ..
         } => BookmarkNameEntry10_1::AgsServerConnectionName(Box::new(
-            read_ags_server_connection_name_body(&mut trial, max_bytes, &mut trial_table)?,
+            read_ags_server_connection_name_body(reader, max_bytes, table)?,
         )),
         ObjectEntry10_1::NewObject {
             class_id: CADASTRAL_FABRIC_NAME_CLASS_ID,
             ..
         } => {
-            let version = trial.read_u16_le()? as i16;
+            let version = reader.read_u16_le()? as i16;
             if version > 1 {
                 return Err(io::Error::new(
                     ErrorKind::InvalidData,
@@ -1214,24 +1231,19 @@ pub fn read_feature_bookmark_10_1(
                 ));
             }
             let strings = [
-                read_string_10_1(&mut trial, max_bytes)?,
-                read_string_10_1(&mut trial, max_bytes)?,
+                read_string_10_1(reader, max_bytes)?,
+                read_string_10_1(reader, max_bytes)?,
             ];
             let mut stop = None;
-            let dataset =
-                read_dataset_name_slot_10_1(&mut trial, max_bytes, &mut trial_table, &mut stop)?;
+            let dataset = read_dataset_name_slot_10_1(reader, max_bytes, table, &mut stop)?;
             if let Some(stop) = stop {
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,
                     format!("CadastralFabricName 数据集名称槽未读完（{stop:?}）"),
                 ));
             }
-            let workspace = read_surface_workspace_name_10_1(
-                &mut trial,
-                max_bytes,
-                &mut trial_table,
-                "CadastralFabricName",
-            )?;
+            let workspace =
+                read_surface_workspace_name_10_1(reader, max_bytes, table, "CadastralFabricName")?;
             BookmarkNameEntry10_1::CadastralFabricName(Box::new(CadastralFabricName10_1 {
                 version,
                 strings,
@@ -1243,7 +1255,7 @@ pub fn read_feature_bookmark_10_1(
             class_id: LAS_DATASET_NAME_CLASS_ID,
             ..
         } => {
-            let version = trial.read_u16_le()? as i16;
+            let version = reader.read_u16_le()? as i16;
             if version > 1 {
                 return Err(io::Error::new(
                     ErrorKind::InvalidData,
@@ -1251,16 +1263,12 @@ pub fn read_feature_bookmark_10_1(
                 ));
             }
             let strings = [
-                read_string_10_1(&mut trial, max_bytes)?,
-                read_string_10_1(&mut trial, max_bytes)?,
-                read_string_10_1(&mut trial, max_bytes)?,
+                read_string_10_1(reader, max_bytes)?,
+                read_string_10_1(reader, max_bytes)?,
+                read_string_10_1(reader, max_bytes)?,
             ];
-            let workspace = read_surface_workspace_name_10_1(
-                &mut trial,
-                max_bytes,
-                &mut trial_table,
-                "LasDatasetName",
-            )?;
+            let workspace =
+                read_surface_workspace_name_10_1(reader, max_bytes, table, "LasDatasetName")?;
             BookmarkNameEntry10_1::LasDatasetName(Box::new(LasDatasetName10_1 {
                 version,
                 strings,
@@ -1271,25 +1279,19 @@ pub fn read_feature_bookmark_10_1(
             class_id: TIN_NAME_CLASS_ID,
             ..
         } => BookmarkNameEntry10_1::TinName(Box::new(read_tin_name_body_10_1(
-            &mut trial,
-            max_bytes,
-            &mut trial_table,
+            reader, max_bytes, table,
         )?)),
         ObjectEntry10_1::NewObject {
             class_id: NETWORK_DATASET_NAME_CLASS_ID,
             ..
         } => BookmarkNameEntry10_1::NetworkDatasetName(Box::new(read_network_dataset_name(
-            &mut trial,
-            max_bytes,
-            &mut trial_table,
+            reader, max_bytes, table,
         )?)),
         ObjectEntry10_1::NewObject {
             class_id: AMS_DATASET_NAME_CLASS_ID,
             key: _,
         } => BookmarkNameEntry10_1::AmsDatasetName(Box::new(read_ams_dataset_name_10_1(
-            &mut trial,
-            max_bytes,
-            &mut trial_table,
+            reader, max_bytes, table,
         )?)),
         ObjectEntry10_1::NewObject {
             class_id:
@@ -1315,13 +1317,8 @@ pub fn read_feature_bookmark_10_1(
                 | WMTS_CONNECTION_NAME_CLASS_ID),
             key,
         } => {
-            let body = read_supported_raster_name_body_10_1(
-                &mut trial,
-                max_bytes,
-                &mut trial_table,
-                class_id,
-                key,
-            )?;
+            let body =
+                read_supported_raster_name_body_10_1(reader, max_bytes, table, class_id, key)?;
             if class_id == RASTER_BAND_NAME_CLASS_ID {
                 BookmarkNameEntry10_1::RasterBandName(Box::new(body))
             } else {
@@ -1335,7 +1332,7 @@ pub fn read_feature_bookmark_10_1(
             key,
         } => {
             let (body, stopped) =
-                read_schematic_class_name_body_10_1(&mut trial, max_bytes, &mut trial_table, key)?;
+                read_schematic_class_name_body_10_1(reader, max_bytes, table, key)?;
             if let Some(stop) = stopped {
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,
@@ -1360,21 +1357,7 @@ pub fn read_feature_bookmark_10_1(
                 ),
             ));
         }
-    };
-
-    // 4. 书签名称（String::Read → this+0xc）。
-    let name = read_string_10_1(&mut trial, max_bytes)?;
-
-    let result = FeatureBookmark10_1 {
-        version,
-        raw_int32,
-        name_object,
-        name,
-        remaining_bytes: trial.remaining(),
-    };
-    *reader = trial;
-    *table = trial_table;
-    Ok(result)
+    })
 }
 
 /// 从对象头之后的位置读取 Legend 对象体的已确认前缀，失败时不推进游标、
