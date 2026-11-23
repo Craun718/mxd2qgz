@@ -735,3 +735,18 @@ AGSServerConnection、AGSServerObjectName。前后两个名称类已有
 构造 v2 书签验证可持久化的 AGSServerConnectionName 能读到
 后继书签文本，将同一子槽改为 AGSServerConnection 则回滚。
 原生转换路径、其他注册实现和真实书签中的子类仍待运行取证。
+
+## LocatorName
+
+同版 Geocoding.dll 的 PE RTTI `0x71550d68` 对应持久化虚表
+`0x714f8978` 与注册类 `C24FFE64-88BE-11D3-9F66-00C04F6BDF06`。
+GetClassID `0x7135d870` 从 `0x714f8a88` 复制该 CLSID。
+QI `0x7135dbd0` 比较 `0x714f6454` 的 IName IID，在 `0x7135dbf1`
+返回对象 +0x10。Load `0x7135e1e0` 检查有符号版本上限 1，
+读取四条 AfCore String 后在 `0x7135e260` 以同一 IName IID
+调用 LoadObject。Save `0x7135e280` 写出对应字段。
+
+书签子槽复用已有名称分派及其 16 层深度上限。构造测试覆盖新建
+LocatorWorkspaceName 子对象、后续书签文本、超上限版本和逐字节
+截断回滚。四条字符串的业务含义、真实书签宿主、原生 Open
+及 ArcMap/QGIS 人工验收待验证。
