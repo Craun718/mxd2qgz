@@ -826,12 +826,12 @@ pub fn read_marker_north_arrow_body_10_1(
     }
 
     // 3. 自身版本分支。
+    let mut legacy_marker_long = None;
     let mut legacy_marker = SymbolSlotFull10_1::Null;
     let mut marker_element: SlotEntry10_1<MarkerElementBody10_1> = SlotEntry10_1::Null;
     if stop.is_none() {
         if version < 2 {
-            // 10.1 写侧不可达：int32 读入即丢，再归约符号槽内停止。
-            let _ = trial.read_bytes(4)?;
+            legacy_marker_long = Some(trial.read_u32_le()? as i32);
             legacy_marker =
                 read_symbol_slot_full_10_1(&mut trial, max_bytes, table, MAX_SYMBOL_NESTING_DEPTH)?;
             stop = slot_full_stop_10_1(&legacy_marker, DisplaySlotKind10_1::Symbol)
@@ -868,6 +868,7 @@ pub fn read_marker_north_arrow_body_10_1(
         base_double_c,
         base_point,
         base_int32,
+        legacy_marker_long,
         legacy_marker,
         marker_element,
         stop,
@@ -897,6 +898,8 @@ pub struct MarkerNorthArrowBody10_1 {
     /// 基类版本 ≥4 的 int32（`−0x34`，位模式；<4 不读流）。
     pub base_int32: Option<i32>,
     /// 自身版本 <2 的 IMarkerSymbol 槽（10.1 写侧不可达；停止向外传播）。
+    /// 旧标记符号前的 LONG 原值。10.1 Load 读入后弃用。
+    pub legacy_marker_long: Option<i32>,
     pub legacy_marker: SymbolSlotFull10_1,
     /// 自身版本 ≥2 的 IMarkerElement 槽（`−0x1c`；标记元素候选）。
     pub marker_element: SlotEntry10_1<MarkerElementBody10_1>,
@@ -2442,6 +2445,7 @@ mod tests {
         data[20] = 3;
         let arrow = read_body(&data, read_marker_north_arrow_body_10_1).unwrap();
         assert_eq!(arrow.version, 3);
+        assert_eq!(arrow.legacy_marker_long, None);
         assert_eq!(arrow.remaining_bytes, 0);
 
         let mut data = vec![0xaa; 16];
@@ -2455,6 +2459,7 @@ mod tests {
         let arrow = read_body(&data, read_marker_north_arrow_body_10_1).unwrap();
         assert_eq!(arrow.version, u16::MAX);
         assert_eq!(arrow.base_version, 0x8000);
+        assert_eq!(arrow.legacy_marker_long, Some(42));
         assert!(arrow.base_double_c.is_none());
         assert!(arrow.base_int32.is_none());
         assert_eq!(arrow.stop, None);
