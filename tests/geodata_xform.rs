@@ -1423,3 +1423,51 @@ fn projective_preserves_negative_count_when_arrays_are_absent() {
         }
     }
 }
+
+#[test]
+fn unbounded_projective_empty_third_slot_is_rejected_as_ambiguous() {
+    use mxd2qgz::objects::geodata_xform::PROJECTIVE_XFORM_CLASS_ID;
+
+    let mut bytes = Vec::new();
+    header(&mut bytes, PROJECTIVE_XFORM_CLASS_ID, 80);
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend([0; 16]); // 空空间参考。
+    bytes.extend([0; 16]); // 空几何集合。
+    bytes.extend([0; 16]); // Load 布局的空投影变换第三槽。
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(1_i32.to_le_bytes());
+    for coordinate in [1.25_f64, 2.0, 3.0, -4.0] {
+        bytes.extend(coordinate.to_le_bytes());
+    }
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let error = read_geodata_xform_slot_10_1(&mut reader, 4096, &mut refs).unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::Unsupported);
+    assert_eq!(reader.position(), 0);
+    assert!(refs.is_empty());
+}
+
+#[test]
+fn unbounded_projective_two_slot_zero_tail_remains_readable() {
+    use mxd2qgz::objects::geodata_xform::PROJECTIVE_XFORM_CLASS_ID;
+
+    let mut bytes = Vec::new();
+    header(&mut bytes, PROJECTIVE_XFORM_CLASS_ID, 80);
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend([0; 32]); // 空空间参考与空第二个对象槽。
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.push(0x5a);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let slot = read_geodata_xform_slot_10_1(&mut reader, 4096, &mut refs).unwrap();
+    let GeodataXformBody10_1::Projective(body) = *slot.body.unwrap() else {
+        panic!("缺少 ProjectiveXform");
+    };
+    assert_eq!(body.point_count, 0);
+    assert_eq!(body.points_flag, 0);
+    assert_eq!(reader.read_bytes(1).unwrap(), [0x5a]);
+    assert!(refs.contains(80));
+}

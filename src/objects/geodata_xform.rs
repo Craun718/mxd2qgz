@@ -489,6 +489,14 @@ fn read_projective_xform(
                 }
                 Some(ObjectEntry10_1::Null)
             } else {
+                // 无界宿主没有后继边界：Load 的三槽布局若第三槽为空，其 16 字节
+                // 零 GUID 会与 Save 两槽布局的零点数和零标志重合。此时不能猜布局。
+                if r.clone().read_bytes(16).is_ok_and(|bytes| bytes == [0; 16]) {
+                    return Err(io::Error::new(
+                        ErrorKind::Unsupported,
+                        "ProjectiveXform 无界宿主的空第三槽与零点数及零标志重合",
+                    ));
+                }
                 projective_transformation_follows(r)
                     .then(|| read_projective_transformation_reference(r, table))
                     .transpose()?
