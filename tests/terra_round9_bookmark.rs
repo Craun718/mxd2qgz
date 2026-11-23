@@ -6746,3 +6746,29 @@ fn feature_bookmark_reads_analysis_cell_size_and_member_string() {
         );
     }
 }
+
+#[test]
+fn feature_bookmark_reads_arc_info_item_fields_in_stream_order() {
+    use mxd2qgz::maps::map_surround::{GP_ARC_INFO_ITEM_CLASS_ID, GpCodedValue10_1};
+
+    let strings = ["编号", "CODE"];
+    let raw_longs = [11_i32, -2, 3, -4, 5];
+    let raw_shorts = [0x8001_u16, 2, 0xffff];
+    let mut payload = bookmark_string_10_1(strings[0]);
+    payload.extend(bookmark_string_10_1(strings[1]));
+    payload.extend(raw_longs.iter().flat_map(|raw| raw.to_le_bytes()));
+    payload.extend(raw_shorts.iter().flat_map(|raw| raw.to_le_bytes()));
+
+    for version in [0, 1] {
+        assert_legacy_topo_coded_value(
+            GP_ARC_INFO_ITEM_CLASS_ID,
+            version,
+            &payload,
+            GpCodedValue10_1::ArcInfoItem {
+                strings: strings.map(str::to_owned),
+                raw_longs,
+                raw_shorts,
+            },
+        );
+    }
+}

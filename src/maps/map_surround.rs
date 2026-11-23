@@ -429,6 +429,10 @@ pub const GP_POINT_CLASS_ID: [u8; 16] = [
     0x82, 0x30, 0xe9, 0xa1, 0xbe, 0xba, 0x44, 0x4d, 0x8c, 0xe3, 0x46, 0x37, 0x74, 0x8e, 0xdd, 0xdd,
 ];
 
+pub const GP_ARC_INFO_ITEM_CLASS_ID: [u8; 16] = [
+    0xb2, 0xbb, 0xdd, 0x6d, 0xdc, 0x41, 0x12, 0x4f, 0x91, 0x3e, 0x80, 0x31, 0x96, 0xeb, 0x33, 0xfa,
+];
+
 pub const GP_ANALYSIS_CELL_SIZE_CLASS_ID: [u8; 16] = [
     0xf8, 0xdf, 0x42, 0xd0, 0xa2, 0xea, 0x06, 0x47, 0xb3, 0xde, 0x6e, 0x62, 0xcf, 0xed, 0xa7, 0x6a,
 ];
@@ -582,6 +586,11 @@ pub enum GpCodedValue10_1 {
     Point {
         x_bits: u64,
         y_bits: u64,
+    },
+    ArcInfoItem {
+        strings: [String; 2],
+        raw_longs: [i32; 5],
+        raw_shorts: [u16; 3],
     },
     AnalysisCellSize {
         size_bits: u64,
@@ -1988,6 +1997,7 @@ fn read_gp_coded_value_entry(
                     | GP_POINT_CLASS_ID
                     | GP_CELL_SIZE_XY_CLASS_ID
                     | GP_SA_CELL_SIZE_CLASS_ID
+                    | GP_ARC_INFO_ITEM_CLASS_ID
                     | GP_ANALYSIS_CELL_SIZE_CLASS_ID
                     | GP_RASTER_GDB_ENV_COMPRESSION_CLASS_ID
                     | GP_RASTER_GDB_ENV_PYRAMID_CLASS_ID
@@ -2042,6 +2052,7 @@ fn read_gp_coded_value_entry(
                 | GP_POINT_CLASS_ID
                 | GP_CELL_SIZE_XY_CLASS_ID
                 | GP_SA_CELL_SIZE_CLASS_ID
+                | GP_ARC_INFO_ITEM_CLASS_ID
                 | GP_ANALYSIS_CELL_SIZE_CLASS_ID
                 | GP_RASTER_GDB_ENV_COMPRESSION_CLASS_ID
                 | GP_RASTER_GDB_ENV_PYRAMID_CLASS_ID
@@ -2216,6 +2227,24 @@ fn read_gp_coded_value_entry(
                 | GP_SA_STRING_REMAP_CLASS_ID => GpCodedValue10_1::SaRemap(Box::new(
                     read_gp_sa_remap(reader, max_bytes, table, depth, version, class_id)?,
                 )),
+                GP_ARC_INFO_ITEM_CLASS_ID => GpCodedValue10_1::ArcInfoItem {
+                    strings: [
+                        read_string_10_1(reader, max_bytes)?,
+                        read_string_10_1(reader, max_bytes)?,
+                    ],
+                    raw_longs: [
+                        reader.read_u32_le()? as i32,
+                        reader.read_u32_le()? as i32,
+                        reader.read_u32_le()? as i32,
+                        reader.read_u32_le()? as i32,
+                        reader.read_u32_le()? as i32,
+                    ],
+                    raw_shorts: [
+                        reader.read_u16_le()?,
+                        reader.read_u16_le()?,
+                        reader.read_u16_le()?,
+                    ],
+                },
                 GP_ANALYSIS_CELL_SIZE_CLASS_ID => GpCodedValue10_1::AnalysisCellSize {
                     size_bits: reader.read_f64_le()?.to_bits(),
                     raw_text: read_string_10_1(reader, max_bytes)?,

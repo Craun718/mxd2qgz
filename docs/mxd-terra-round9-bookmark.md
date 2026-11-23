@@ -1767,3 +1767,15 @@ v0/v1 的 `0x74876ae4` 将固定长度 4 传给 AfCore
 String::Read。Save `0x748622b0` 写固定版本 1，然后写基类、double 和
 成员 String。合成书签覆盖两种版本、数值位模式、空和非空文本、回引和截断。
 文本后续用途及真实 ArcMap 参数工程仍待验证。
+
+### GPArcInfoItem
+
+证据来自 ArcMap 10.1.0.3035 的 `FileDataElements.dll`（SHA-256
+`5c4703596f243daf7025cc1d0e435cf6522dbcb4a02b77529d0694aef4ef5f3c`）。
+RTTI `0x6f9efeb4` 对应持久化虚表 `0x6f9dd350`，CLSID
+`{6DDDBBB2-41DC-4F12-913E-803196EB33FA}` 位于 `0x6f9d86a4`。
+用 objdump 对位 Load `0x6f9c90c0` 和 Save `0x6f9c9200`。
+Load 接受 v0/v1，GPValue 基类后依次读两个 AfCore 成员 String、
+五个 LONG、三个 short。Save 对称写入。读取器按流序保留标量。
+合成书签覆盖两种版本、非空名称、后继字段、回引、超限版本和逐字节
+截断回滚。成员语义及原生书签待实档验证。
