@@ -791,3 +791,20 @@ Save `0x746f0d90` 写出版本和同一个子槽。
 GPDataTypeName 和 GPMultiValueTypeName。构造测试覆盖内嵌 GP
 数据类型、后继书签字段、错类及逐字节截断回滚。
 其余 IGPName 实现、真实书签宿主、原生 Open 和 QGIS 人工验收待查。
+
+## GPFunctionName
+
+同版 GpObjects.dll 的 RTTI `0x7480046c` 对应持久化虚表
+`0x747b01f4`，GetClassID `0x746e0ee0` 对应
+`9A332F42-377F-4213-954B-B68CC8B9CE46`。esriGeoprocessing 类型库
+声明该类实现 IName 与 IGPName。
+
+Load `0x746e0f20` 读取有符号上限为 4 的 short，通过导入槽
+`0x747a3650` 调用 DECoreLib 的 GPName::Load。外层版本小于 2 时在
+`0x746e0f99` 读取 IUID。v3 起在 `0x746e101d / 0x746e1051`
+读取两个 32 位值，中间在 `0x746e1039` 调用 ReadString 读取 BSTR。v4 在 `0x746e1080` 再读一个 32 位值。
+Save `0x746e10e0` 对应新版布局。截断时回滚整个书签及引用表。
+
+构造测试覆盖外层 v1–v4、共享 GPName 基类和 GPMultiValueTypeName
+中的嵌套 v4 对象。数值业务含义、真实书签宿主、原生 Open
+和 ArcMap/QGIS 人工验收待验证。

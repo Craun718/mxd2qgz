@@ -334,6 +334,27 @@ pub struct AoiBookmark10_1 {
 
 const MAX_BOOKMARK_NAME_NESTING: usize = 16;
 
+pub const GP_FUNCTION_NAME_CLASS_ID: [u8; 16] = [
+    0x42, 0x2f, 0x33, 0x9a, 0x7f, 0x37, 0x13, 0x42, 0x95, 0x4b, 0xb6, 0x8c, 0xc8, 0xb9, 0xce, 0x46,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpNameBase10_1 {
+    pub version: i16,
+    pub strings: [String; 4],
+    pub legacy_string: Option<String>,
+    pub uid: Option<RuleSlot10_1<UidBody10_1>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpFunctionName10_1 {
+    pub version: i16,
+    pub base: GpNameBase10_1,
+    pub legacy_uid: Option<RuleSlot10_1<UidBody10_1>>,
+    pub v3_fields: Option<(i32, String, i32)>,
+    pub v4_value: Option<i32>,
+}
+
 pub const GP_MULTI_VALUE_TYPE_NAME_CLASS_ID: [u8; 16] = [
     0x70, 0x33, 0xde, 0x35, 0x8e, 0x67, 0xfb, 0x40, 0x9b, 0x7e, 0xff, 0xaf, 0x08, 0x22, 0x4b, 0x99,
 ];
@@ -450,6 +471,7 @@ pub enum BookmarkNameEntry10_1 {
     LasDatasetName(Box<LasDatasetName10_1>),
     RepresentationClassName(Box<RepresentationClassName10_1>),
     GpDataTypeName(Box<GpDataTypeName10_1>),
+    GpFunctionName(Box<GpFunctionName10_1>),
     GpMultiValueTypeName {
         version: i16,
         element_type: Box<BookmarkNameEntry10_1>,
@@ -916,19 +938,12 @@ fn read_gp_name_uid_slot(
     Ok(RuleSlot10_1 { entry, body })
 }
 
-fn read_gp_data_type_name_body_10_1(
+fn read_gp_name_base_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
-) -> io::Result<GpDataTypeName10_1> {
-    let version = reader.read_u16_le()? as i16;
-    let base_version = reader.read_u16_le()? as i16;
-    if version > 2 || base_version > 3 {
-        return Err(io::Error::new(
-            ErrorKind::InvalidData,
-            format!("GPDataTypeName 版本 {version} 或 GPName 版本 {base_version} 超出 10.1 上限"),
-        ));
-    }
+) -> io::Result<GpNameBase10_1> {
+    let base_version = read_gp_name_version(reader, 3, "GPName")?;
     let strings = [
         read_bstr_string_10_1(reader, max_bytes)?,
         read_bstr_string_10_1(reader, max_bytes)?,
@@ -941,16 +956,73 @@ fn read_gp_data_type_name_body_10_1(
     let legacy_string = (base_version < 2)
         .then(|| read_bstr_string_10_1(reader, max_bytes))
         .transpose()?;
+    Ok(GpNameBase10_1 {
+        version: base_version,
+        strings,
+        legacy_string,
+        uid: base_uid,
+    })
+}
+
+fn read_gp_name_version(reader: &mut Reader<'_>, max: i16, class: &str) -> io::Result<i16> {
+    let version = reader.read_u16_le()? as i16;
+    if version > max {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("{class} 版本 {version} 超出 10.1 上限"),
+        ));
+    }
+    Ok(version)
+}
+
+fn read_gp_data_type_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<GpDataTypeName10_1> {
+    let version = read_gp_name_version(reader, 2, "GPDataTypeName")?;
+    let base = read_gp_name_base_10_1(reader, max_bytes, table)?;
     let legacy_uid = (version < 2)
         .then(|| read_gp_name_uid_slot(reader, table))
         .transpose()?;
     Ok(GpDataTypeName10_1 {
         version,
-        base_version,
-        strings,
-        legacy_string,
-        base_uid,
+        base_version: base.version,
+        strings: base.strings,
+        legacy_string: base.legacy_string,
+        base_uid: base.uid,
         legacy_uid,
+    })
+}
+
+fn read_gp_function_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<GpFunctionName10_1> {
+    let version = read_gp_name_version(reader, 4, "GPFunctionName")?;
+    let base = read_gp_name_base_10_1(reader, max_bytes, table)?;
+    let legacy_uid = (version < 2)
+        .then(|| read_gp_name_uid_slot(reader, table))
+        .transpose()?;
+    let v3_fields = (version >= 3)
+        .then(|| -> io::Result<_> {
+            Ok((
+                reader.read_u32_le()? as i32,
+                read_bstr_string_10_1(reader, max_bytes)?,
+                reader.read_u32_le()? as i32,
+            ))
+        })
+        .transpose()?;
+    let v4_value = (version >= 4)
+        .then(|| reader.read_u32_le().map(|value| value as i32))
+        .transpose()?;
+    Ok(GpFunctionName10_1 {
+        version,
+        base,
+        legacy_uid,
+        v3_fields,
+        v4_value,
     })
 }
 
@@ -1342,9 +1414,12 @@ fn read_bookmark_name_slot_10_1(
                 element_type,
                 BookmarkNameEntry10_1::Null
                     | BookmarkNameEntry10_1::GpDataTypeName(_)
+                    | BookmarkNameEntry10_1::GpFunctionName(_)
                     | BookmarkNameEntry10_1::GpMultiValueTypeName { .. }
                     | BookmarkNameEntry10_1::BackReference {
-                        class_id: GP_DATA_TYPE_NAME_CLASS_ID | GP_MULTI_VALUE_TYPE_NAME_CLASS_ID,
+                        class_id: GP_DATA_TYPE_NAME_CLASS_ID
+                            | GP_MULTI_VALUE_TYPE_NAME_CLASS_ID
+                            | GP_FUNCTION_NAME_CLASS_ID,
                         ..
                     }
             ) {
@@ -1358,6 +1433,12 @@ fn read_bookmark_name_slot_10_1(
                 element_type: Box::new(element_type),
             }
         }
+        ObjectEntry10_1::NewObject {
+            class_id: GP_FUNCTION_NAME_CLASS_ID,
+            ..
+        } => BookmarkNameEntry10_1::GpFunctionName(Box::new(read_gp_function_name_body_10_1(
+            reader, max_bytes, table,
+        )?)),
         ObjectEntry10_1::NewObject {
             class_id: GP_DATA_TYPE_NAME_CLASS_ID,
             ..

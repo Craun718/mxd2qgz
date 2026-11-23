@@ -708,6 +708,7 @@
       - [x] 接入 FeatureBookmark 的 LocatorName。[取证](docs/mxd-terra-round9-bookmark.md#locatorname)
       - [x] 接入 FeatureBookmark 的 GPDataTypeName。[取证](docs/mxd-terra-round9-bookmark.md#gpdatatypename)
       - [x] 接入 FeatureBookmark 的 GPMultiValueTypeName 及已支持的 IGPName 子体。[取证](docs/mxd-terra-round9-bookmark.md#gpmultivaluetypename)
+      - [x] 接入 FeatureBookmark 及多值类型子槽的 GPFunctionName。[取证](docs/mxd-terra-round9-bookmark.md#gpfunctionname)
       - [ ] 补齐 GPMultiValueTypeName 子槽中其余内置 IGPName 实现的分派。
       - [ ] 补齐 LocatorWorkspaceName 的 IUnknown 子槽中尚未核对的持久化类。
       - [x] 核对 LocatorWorkspaceName 的 IUnknown 子槽接口与内置 AGS 连接停止边界。[取证](docs/mxd-terra-round9-bookmark.md#iunknown-子槽的接口复核)

@@ -3604,3 +3604,73 @@ fn feature_bookmark_reads_gp_multi_value_type_name() {
     assert_eq!(reader.position(), 0);
     assert!(refs.is_empty());
 }
+
+#[test]
+fn feature_bookmark_reads_gp_function_name_versions_and_nested_slot() {
+    use mxd2qgz::maps::map_surround::{
+        GP_FUNCTION_NAME_CLASS_ID, GP_MULTI_VALUE_TYPE_NAME_CLASS_ID,
+    };
+
+    for version in [1_i16, 2, 3, 4] {
+        let mut bytes = if version == 4 {
+            let mut nested = bookmark_header_10_1(&GP_MULTI_VALUE_TYPE_NAME_CLASS_ID, 17);
+            nested.extend(1_i16.to_le_bytes());
+            nested.extend(GP_FUNCTION_NAME_CLASS_ID);
+            nested.extend(18_u32.to_le_bytes());
+            nested
+        } else {
+            bookmark_header_10_1(&GP_FUNCTION_NAME_CLASS_ID, 17)
+        };
+        bytes.extend(version.to_le_bytes());
+        bytes.extend(2_i16.to_le_bytes());
+        bytes.extend([1, 0, 0, 0, b'g', 0, 0, 0].repeat(4));
+        if version < 2 {
+            bytes.extend([0; 16]);
+        }
+        if version >= 3 {
+            bytes.extend(123_u32.to_le_bytes());
+            bytes.extend([1, 0, 0, 0, b't', 0, 0, 0]);
+            bytes.extend((-7_i32).to_le_bytes());
+        }
+        if version >= 4 {
+            bytes.extend(42_u32.to_le_bytes());
+        }
+        bytes.extend(bookmark_string_10_1("书签"));
+        let end = bytes.len();
+        bytes.push(0xa5);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+        let name = match result.name_object {
+            BookmarkNameEntry10_1::GpMultiValueTypeName { element_type, .. } => {
+                assert_eq!(version, 4);
+                assert!(refs.contains(18));
+                *element_type
+            }
+            direct => direct,
+        };
+        let BookmarkNameEntry10_1::GpFunctionName(body) = name else {
+            panic!("应读取 GPFunctionName");
+        };
+        assert_eq!(body.version, version);
+        assert_eq!(body.base.strings, ["g", "g", "g", "g"]);
+        assert_eq!(body.legacy_uid.is_some(), version < 2);
+        assert_eq!(
+            body.v3_fields,
+            (version >= 3).then_some((123, "t".into(), -7))
+        );
+        assert_eq!(body.v4_value, (version >= 4).then_some(42));
+        assert_eq!(result.name, "书签");
+        assert_eq!(reader.position(), end);
+        assert!(refs.contains(17));
+
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+}
