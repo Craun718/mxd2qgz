@@ -122,14 +122,24 @@ fn read_map_frame_prefix_inner(
     let map = match read_header_10_1(region)? {
         ObjectHeader::Null => ObjectEntry10_1::Null,
         ObjectHeader::Object { class_id, key }
-            if class_id == MAP_CLASS_ID && table.contains(key) =>
+            if table.contains(key)
+                && table.registered_class(key).unwrap_or_else(|| {
+                    if table.contains_map(key) {
+                        MAP_CLASS_ID
+                    } else {
+                        class_id
+                    }
+                }) == MAP_CLASS_ID =>
         {
-            ObjectEntry10_1::BackReference { class_id, key }
+            ObjectEntry10_1::BackReference {
+                class_id: MAP_CLASS_ID,
+                key,
+            }
         }
         ObjectHeader::Object {
             class_id: MAP_CLASS_ID,
             key,
-        } if allow_new_map => ObjectEntry10_1::NewObject {
+        } if allow_new_map && !table.contains(key) => ObjectEntry10_1::NewObject {
             class_id: MAP_CLASS_ID,
             key,
         },

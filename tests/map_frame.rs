@@ -853,3 +853,35 @@ fn old_map_frame_reads_a_complete_inline_feature_layer() {
     assert_eq!(reader.position(), 0);
     assert_eq!(refs, saved);
 }
+
+#[test]
+fn map_frame_resolves_root_map_by_registered_class() {
+    use mxd2qgz::storage::object_refs::read_object_entry_10_1;
+
+    let mut body = frame_body(4);
+    for (registered, header) in [(MAP_CLASS_ID, [0x42; 16]), ([0x42; 16], MAP_CLASS_ID)] {
+        body[2..18].copy_from_slice(&header);
+        let bytes = wrap(&body);
+        let mut definition = registered.to_vec();
+        definition.extend(42_u32.to_le_bytes());
+        let mut refs = RefTable10_1::new();
+        read_object_entry_10_1(&mut Reader::new(&definition), &mut refs).unwrap();
+        let saved = refs.clone();
+        let mut reader = Reader::new(&bytes);
+        let result = read_page_layout_map_frame_10_1(&mut reader, 4096, &mut refs);
+        if registered == MAP_CLASS_ID {
+            assert_eq!(
+                result.unwrap().prefix.map,
+                ObjectEntry10_1::BackReference {
+                    class_id: MAP_CLASS_ID,
+                    key: 42,
+                }
+            );
+            assert_eq!(reader.remaining(), 0);
+        } else {
+            assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::Unsupported);
+            assert_eq!(reader.position(), 0);
+            assert_eq!(refs, saved);
+        }
+    }
+}
