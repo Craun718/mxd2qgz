@@ -457,6 +457,10 @@ pub const GP_SA_NEIGHBORHOOD_CLASS_ID: [u8; 16] = [
     0xf7, 0x35, 0xa4, 0x6f, 0x46, 0x90, 0x2b, 0x48, 0x86, 0xcc, 0x08, 0x9e, 0x16, 0x82, 0xea, 0x3f,
 ];
 
+pub const GP_SA_REMAP_CLASS_ID: [u8; 16] = [
+    0xa9, 0xd0, 0x02, 0xf4, 0x32, 0xf0, 0x6a, 0x47, 0xbc, 0xbb, 0xd4, 0x8c, 0xf0, 0x41, 0xc2, 0x4e,
+];
+
 pub const GP_SA_NUMBER_REMAP_CLASS_ID: [u8; 16] = [
     0xff, 0xc3, 0x56, 0x31, 0xce, 0x80, 0x8f, 0x49, 0xb1, 0x6f, 0xf3, 0xa8, 0x1a, 0x45, 0x90, 0x8f,
 ];
@@ -713,6 +717,7 @@ pub struct GpSaRemap10_1 {
     pub raw_long: i32,
     pub raw_count: i32,
     pub version_three_fields: Option<(u16, i32)>,
+    pub version_four_fields: Option<(u16, [i32; 2])>,
     pub rows: Vec<GpSaRemapRow10_1>,
 }
 
@@ -1882,6 +1887,7 @@ fn read_gp_coded_value_slot(
                     | GP_SA_WEIGHTED_SUM_CLASS_ID
                     | GP_SA_EXTRACT_VALUES_CLASS_ID
                     | GP_SA_FUZZY_FUNCTION_CLASS_ID
+                    | GP_SA_REMAP_CLASS_ID
                     | GP_SA_NUMBER_REMAP_CLASS_ID
                     | GP_SA_HORIZONTAL_FACTOR_CLASS_ID
                     | GP_SA_VERTICAL_FACTOR_CLASS_ID
@@ -1928,6 +1934,7 @@ fn read_gp_coded_value_slot(
                 | GP_SA_WEIGHTED_SUM_CLASS_ID
                 | GP_SA_EXTRACT_VALUES_CLASS_ID
                 | GP_SA_FUZZY_FUNCTION_CLASS_ID
+                | GP_SA_REMAP_CLASS_ID
                 | GP_SA_NUMBER_REMAP_CLASS_ID
                 | GP_SA_HORIZONTAL_FACTOR_CLASS_ID
                 | GP_SA_VERTICAL_FACTOR_CLASS_ID
@@ -1966,6 +1973,7 @@ fn read_gp_coded_value_slot(
             let base_version = reader.read_u16_le()?;
             let max_version = match class_id {
                 GP_SPATIAL_REFERENCE_CLASS_ID | GP_SA_SEMI_VARIOGRAM_CLASS_ID => 3,
+                GP_SA_REMAP_CLASS_ID => 5,
                 GP_SA_NUMBER_REMAP_CLASS_ID | GP_SA_STRING_REMAP_CLASS_ID => 4,
                 GP_ENCRYPTED_STRING_CLASS_ID
                 | GP_SA_RADIUS_CLASS_ID
@@ -2077,16 +2085,11 @@ fn read_gp_coded_value_slot(
                 GP_SA_NEIGHBORHOOD_CLASS_ID => GpCodedValue10_1::SaNeighborhood(Box::new(
                     read_gp_sa_neighborhood(reader, max_bytes, table, depth, version)?,
                 )),
-                GP_SA_NUMBER_REMAP_CLASS_ID | GP_SA_STRING_REMAP_CLASS_ID => {
-                    GpCodedValue10_1::SaRemap(Box::new(read_gp_sa_remap(
-                        reader,
-                        max_bytes,
-                        table,
-                        depth,
-                        version,
-                        class_id == GP_SA_NUMBER_REMAP_CLASS_ID,
-                    )?))
-                }
+                GP_SA_REMAP_CLASS_ID
+                | GP_SA_NUMBER_REMAP_CLASS_ID
+                | GP_SA_STRING_REMAP_CLASS_ID => GpCodedValue10_1::SaRemap(Box::new(
+                    read_gp_sa_remap(reader, max_bytes, table, depth, version, class_id)?,
+                )),
                 GP_RASTER_CALCULATOR_EXPRESSION_CLASS_ID => {
                     if depth >= MAX_BOOKMARK_NAME_NESTING {
                         return Err(io::Error::new(
@@ -2454,7 +2457,7 @@ fn read_gp_sa_remap(
     table: &mut RefTable10_1,
     depth: usize,
     version: u16,
-    numeric: bool,
+    class_id: [u8; 16],
 ) -> io::Result<GpSaRemap10_1> {
     let legacy_name = read_gp_sa_legacy_name(reader, max_bytes, table, depth, version)?;
     let raw_long = reader.read_u32_le()? as i32;
@@ -2464,6 +2467,8 @@ fn read_gp_sa_remap(
     } else {
         None
     };
+    let numeric = class_id == GP_SA_NUMBER_REMAP_CLASS_ID
+        || (class_id == GP_SA_REMAP_CLASS_ID && raw_long == 1);
     let count = raw_count.max(0) as usize;
     let min_row_bytes = if numeric { 24 } else { 12 };
     if count > reader.remaining().min(max_bytes) / min_row_bytes {
@@ -2493,11 +2498,20 @@ fn read_gp_sa_remap(
         };
         rows.push(row);
     }
+    let version_four_fields = if class_id == GP_SA_REMAP_CLASS_ID && version >= 4 {
+        Some((
+            reader.read_u16_le()?,
+            [reader.read_u32_le()? as i32, reader.read_u32_le()? as i32],
+        ))
+    } else {
+        None
+    };
     Ok(GpSaRemap10_1 {
         legacy_name,
         raw_long,
         raw_count,
         version_three_fields,
+        version_four_fields,
         rows,
     })
 }

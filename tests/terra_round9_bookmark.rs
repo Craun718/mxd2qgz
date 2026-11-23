@@ -5897,6 +5897,7 @@ fn feature_bookmark_reads_numeric_and_string_remap_rows() {
                     raw_long: -2,
                     raw_count: 1,
                     version_three_fields,
+                    version_four_fields: None,
                     rows: vec![row],
                 })),
             );
@@ -6333,4 +6334,69 @@ fn feature_bookmark_reads_weighted_sum_in_triples() {
             rows: Vec::new(),
         },
     );
+}
+
+#[test]
+fn feature_bookmark_reads_generic_remap_modes_and_versioned_tail() {
+    use mxd2qgz::maps::map_surround::{
+        GP_SA_REMAP_CLASS_ID, GpCodedValue10_1, GpSaRemap10_1, GpSaRemapRow10_1,
+    };
+
+    for version in 0_u16..=5 {
+        for kind in [1_i32, 2] {
+            let mut payload = Vec::new();
+            let legacy_name = (version == 1).then(|| {
+                payload.extend([0; 16]);
+                Box::new(BookmarkNameEntry10_1::Null)
+            });
+            payload.extend(kind.to_le_bytes());
+            payload.extend(1_i32.to_le_bytes());
+            let version_three_fields = (version >= 3).then(|| {
+                payload.extend(0xffff_u16.to_le_bytes());
+                payload.extend((-9_i32).to_le_bytes());
+                (0xffff, -9)
+            });
+            let row = if kind == 1 {
+                let range_bits = [(-0.0_f64).to_bits(), 2.5_f64.to_bits()];
+                payload.extend(range_bits.iter().flat_map(|bits| bits.to_le_bytes()));
+                payload.extend(3_i32.to_le_bytes());
+                payload.extend(1_u32.to_le_bytes());
+                payload.push(0xe9);
+                GpSaRemapRow10_1::Number {
+                    range_bits,
+                    raw_long: 3,
+                    text_bytes: vec![0xe9],
+                }
+            } else {
+                payload.extend(1_u32.to_le_bytes());
+                payload.push(0xe9);
+                payload.extend((-3_i32).to_le_bytes());
+                payload.extend(0_u32.to_le_bytes());
+                GpSaRemapRow10_1::String {
+                    source_bytes: vec![0xe9],
+                    raw_long: -3,
+                    text_bytes: Vec::new(),
+                }
+            };
+            let version_four_fields = (version >= 4).then(|| {
+                payload.extend(7_u16.to_le_bytes());
+                payload.extend((-8_i32).to_le_bytes());
+                payload.extend(9_i32.to_le_bytes());
+                (7, [-8, 9])
+            });
+            assert_legacy_topo_coded_value(
+                GP_SA_REMAP_CLASS_ID,
+                version,
+                &payload,
+                GpCodedValue10_1::SaRemap(Box::new(GpSaRemap10_1 {
+                    legacy_name,
+                    raw_long: kind,
+                    raw_count: 1,
+                    version_three_fields,
+                    version_four_fields,
+                    rows: vec![row],
+                })),
+            );
+        }
+    }
 }

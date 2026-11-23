@@ -755,6 +755,7 @@
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPCodedValueDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldinfodomain-与-gpcodedvaluedomain)
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPFieldInfoDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldinfodomain-与-gpcodedvaluedomain)
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
+      - [x] 接入通用 GPSARemap 的模式选择与版本化尾段。[取证](docs/mxd-terra-round9-bookmark.md#gpsaremap)
       - [x] 接入 GPCodedValueDomain 中的 GPSAWeightedSum，保留三列 IGPValue 的行边界。[取证](docs/mxd-terra-round9-bookmark.md#gpsaweightedsum)
       - [x] 接入 GPCodedValueDomain 中的 GPSATimeConfiguration 及内层日照时间配置。[取证](docs/mxd-terra-round9-bookmark.md#gpsatimeconfiguration)
       - [x] 接入 GPCodedValueDomain 中的 GPSAExtractValues，保留两列 IGPValue 的行边界。[取证](docs/mxd-terra-round9-bookmark.md#gpsaextractvalues)
