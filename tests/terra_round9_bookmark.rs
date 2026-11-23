@@ -2355,3 +2355,78 @@ fn feature_bookmark_reads_direct_image_server_name() {
         assert!(refs.is_empty());
     }
 }
+
+#[test]
+fn feature_bookmark_reads_access_and_sde_raster_records() {
+    use mxd2qgz::layers::raster_dataset_name::{
+        ACCESS_RASTER_DATASET_NAME_CLASS_ID, RasterDatasetNameEntryBody10_1,
+        SDE_RASTER_DATASET_NAME_CLASS_ID,
+    };
+
+    for class in [
+        ACCESS_RASTER_DATASET_NAME_CLASS_ID,
+        SDE_RASTER_DATASET_NAME_CLASS_ID,
+    ] {
+        for records_present in [false, true] {
+            let mut bytes = bookmark_header_10_1(&class, 17);
+            bytes.extend(2_i32.to_le_bytes());
+            for text in ["栅格", "", "", ""] {
+                bytes.extend(bookmark_string_10_1(text));
+            }
+            bytes.extend([0; 16]);
+            let has_tag7 = records_present && class == ACCESS_RASTER_DATASET_NAME_CLASS_ID;
+            if records_present {
+                for value in [0x00ff_00fa_i32, 0, 1, 4, 33] {
+                    bytes.extend(value.to_le_bytes());
+                }
+                for tag in [2_i32, 3] {
+                    bytes.extend(tag.to_le_bytes());
+                    bytes.extend(bookmark_string_10_1(""));
+                }
+                for value in [4_i32, 4, 12, 5] {
+                    bytes.extend(value.to_le_bytes());
+                }
+                bytes.extend(bookmark_string_10_1(""));
+                bytes.extend(6_i32.to_le_bytes());
+                bytes.extend((-1_i32).to_le_bytes());
+                bytes.extend([0; 16]);
+                if has_tag7 {
+                    for value in [7_i32, 4, 71] {
+                        bytes.extend(value.to_le_bytes());
+                    }
+                }
+                bytes.extend([0xff; 8]);
+            }
+            bytes.extend(bookmark_string_10_1("书签"));
+            let end = bytes.len();
+            bytes.push(0xa5);
+
+            let mut refs = RefTable10_1::new();
+            let mut reader = Reader::new(&bytes);
+            let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+            let BookmarkNameEntry10_1::RasterDatasetName(body) = result.name_object else {
+                panic!("应读取栅格名称");
+            };
+            let RasterDatasetNameEntryBody10_1::Database(name) = *body else {
+                panic!("应读取数据库栅格名称");
+            };
+            assert_eq!(name.class_id, class);
+            assert_eq!(name.records.is_some(), records_present);
+            assert_eq!(
+                name.records.and_then(|records| records.tag7_long),
+                has_tag7.then_some(71)
+            );
+            assert_eq!(result.name, "书签");
+            assert_eq!(reader.position(), end);
+            assert!(refs.contains(17));
+
+            for cut in 0..end {
+                let mut reader = Reader::new(&bytes[..cut]);
+                let mut refs = RefTable10_1::new();
+                assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+                assert_eq!(reader.position(), 0);
+                assert!(refs.is_empty());
+            }
+        }
+    }
+}

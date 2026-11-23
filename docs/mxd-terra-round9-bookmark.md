@@ -435,3 +435,15 @@ ImageServerLayer.dll 10.1.0.3035 的 ISRasterDatasetName RTTI
 [Load `0x77f4f7f0` 的共享读取器](mxd-10.1-image-server-layer-tail.md#imageservername-对象体)。
 构造测试覆盖普通属性集新键、书签名和逐字节截断回滚。
 真实书签宿主和原生 Open 结果仍待 ArcMap 10.1 验证。
+
+## AccessRasterDatasetName 与 SdeRasterDatasetName
+
+同版 RasterJET.dll 的主虚表 `0x7c6fce38` 指向 QI
+`0x7c6f5ac0`，在 `0x7c6f5b09` 比较 IName IID。
+SdeRasterDB.dll 的主虚表 `0x7f62fce8` 指向 QI
+`0x7f61d890`，委派成员建立后在 `0x7f61d8c4` 比较
+`0x7f62e918` 的同一 IID。两类均返回完整对象 +0x10。
+书签复用[各自的委派名称和可选 RasterIO 读取器](mxd-10.1-raster-layer-tail.md#access-与-sde-栅格名称)。
+构造测试覆盖各类有无记录、Access 有 tag 7、SDE 直接结束、
+后继书签名以及逐字节截断回滚。真实书签宿主及原生 Open
+结果仍待 ArcMap 10.1 验证。
