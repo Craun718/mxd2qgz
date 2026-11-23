@@ -1632,3 +1632,24 @@ ArcMap 10.1.0.3035 的 `GPSACore.dll` RTTI `0x74946378` 对应持久化
 读取器保持行边界和原始行数。每行至少需要两个空对象头的总长度，
 实际对象和回引共用宿主登记表。合成书签覆盖非正行数、两列配对、
 跨行回引和截断回滚。真实 ArcMap 工具参数记录待验证。
+
+### GPSATimeConfiguration
+
+ArcMap 10.1.0.3035 的 `GPSACore.dll` RTTI `0x74946bb0` 对应持久化
+虚表 `0x749313a4`，CLSID `{24733FD0-2CDE-4446-B65E-8F239D77DE7E}`
+位于 `0x749314bc`。Load `0x748f6ca0` 读取版本 0 或 1、GPValue
+基类体和请求 IID `{85811371-0D46-4593-BB58-649B2E58E2EC}` 的对象槽。
+同模块的构造类标识和安装介质类注册清单将其对位到 TimeConfiguration
+`{0AA31980-3D44-439A-A8BF-C7D4C9D8F30B}`。
+
+内层来自 `RasterSolarOp.dll` 10.1.0.3035（SHA-256
+`ec8a6b3569fbc555d3a48ee5d25957574ee926fd2c863a9a193fefe80cd0ea31`），
+RTTI `0x7ca3261c` 对应持久化虚表 `0x7ca2bc10`。用 objdump 核对
+Load `0x7ca23c00` 和 Save `0x7ca23d40`。Load 接受版本 0 或 1，
+读取 LONG 选择子。值 2 后接一个 LONG 和两个 double，值 3 后接
+三个 LONG，值 4 后接一个 LONG。其余选择子在该版本无后继字段。
+写侧采用相同分支和顺序。GetClassID 在 `0x7ca23bb3` 取类标识常量
+`0x7ca2a8c0`，与外层构造匹配。
+
+解析保留选择子、各整数和 double 的原始位模式。合成书签验证三类
+参数、默认分支及截断回滚。选择子的具体日照参数语义和真实工程仍待验证。

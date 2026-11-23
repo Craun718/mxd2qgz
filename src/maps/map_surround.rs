@@ -465,6 +465,14 @@ pub const GP_SA_SEMI_VARIOGRAM_CLASS_ID: [u8; 16] = [
     0x77, 0x23, 0x73, 0x7a, 0xb8, 0xb6, 0xab, 0x41, 0xad, 0x2d, 0xc2, 0x05, 0x1e, 0x82, 0xa4, 0x94,
 ];
 
+pub const GP_SA_TIME_CONFIGURATION_CLASS_ID: [u8; 16] = [
+    0xd0, 0x3f, 0x73, 0x24, 0xde, 0x2c, 0x46, 0x44, 0xb6, 0x5e, 0x8f, 0x23, 0x9d, 0x77, 0xde, 0x7e,
+];
+
+pub const TIME_CONFIGURATION_CLASS_ID: [u8; 16] = [
+    0x80, 0x19, 0xa3, 0x0a, 0x44, 0x3d, 0x9a, 0x43, 0xa8, 0xbf, 0xc7, 0xd4, 0xc9, 0xd8, 0xf3, 0x0b,
+];
+
 pub const GP_SA_STRING_REMAP_CLASS_ID: [u8; 16] = [
     0x89, 0x20, 0x53, 0xd0, 0x4d, 0x34, 0x23, 0x4d, 0xa6, 0x7c, 0x5d, 0xfc, 0xd1, 0x4d, 0x66, 0x94,
 ];
@@ -556,6 +564,7 @@ pub enum GpCodedValue10_1 {
     SaNeighborhood(Box<GpSaNeighborhood10_1>),
     SaRemap(Box<GpSaRemap10_1>),
     SaSemiVariogram(Box<GpSaSemiVariogram10_1>),
+    SaTimeConfiguration(RuleSlot10_1<TimeConfiguration10_1>),
     SaRadius {
         legacy_name: Option<Box<BookmarkNameEntry10_1>>,
         raw_longs: [i32; 2],
@@ -650,6 +659,24 @@ pub struct GpSaSemiVariogram10_1 {
 pub enum GpSaSemiVariogramLag10_1 {
     LegacyText(Vec<u8>),
     Number(u64),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TimeConfiguration10_1 {
+    pub version: u16,
+    pub kind: i32,
+    pub parameters: TimeConfigurationParameters10_1,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TimeConfigurationParameters10_1 {
+    None,
+    LongAndDoubles {
+        raw_long: i32,
+        double_bits: [u64; 2],
+    },
+    Longs([i32; 3]),
+    Long(i32),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1850,6 +1877,7 @@ fn read_gp_coded_value_slot(
                     | GP_SA_HORIZONTAL_FACTOR_CLASS_ID
                     | GP_SA_VERTICAL_FACTOR_CLASS_ID
                     | GP_SA_NEIGHBORHOOD_CLASS_ID
+                    | GP_SA_TIME_CONFIGURATION_CLASS_ID
                     | GP_SA_SEMI_VARIOGRAM_CLASS_ID
                     | GP_SA_STRING_REMAP_CLASS_ID
                     | GP_SA_RADIUS_CLASS_ID
@@ -1894,6 +1922,7 @@ fn read_gp_coded_value_slot(
                 | GP_SA_HORIZONTAL_FACTOR_CLASS_ID
                 | GP_SA_VERTICAL_FACTOR_CLASS_ID
                 | GP_SA_NEIGHBORHOOD_CLASS_ID
+                | GP_SA_TIME_CONFIGURATION_CLASS_ID
                 | GP_SA_SEMI_VARIOGRAM_CLASS_ID
                 | GP_SA_STRING_REMAP_CLASS_ID
                 | GP_SA_RADIUS_CLASS_ID
@@ -2029,6 +2058,9 @@ fn read_gp_coded_value_slot(
                         class_id == GP_SA_VERTICAL_FACTOR_CLASS_ID,
                     )?)
                 }
+                GP_SA_TIME_CONFIGURATION_CLASS_ID => GpCodedValue10_1::SaTimeConfiguration(
+                    read_gp_sa_time_configuration(reader, table)?,
+                ),
                 GP_SA_SEMI_VARIOGRAM_CLASS_ID => GpCodedValue10_1::SaSemiVariogram(Box::new(
                     read_gp_sa_semi_variogram(reader, max_bytes, table, depth, version)?,
                 )),
@@ -2183,6 +2215,64 @@ fn read_gp_sa_legacy_name(
     }
     read_bookmark_name_slot_10_1(reader, max_bytes, table, depth + 1)
         .map(|name| Some(Box::new(name)))
+}
+
+fn read_gp_sa_time_configuration(
+    reader: &mut Reader<'_>,
+    table: &mut RefTable10_1,
+) -> io::Result<RuleSlot10_1<TimeConfiguration10_1>> {
+    use TimeConfigurationParameters10_1 as Parameters;
+
+    let entry = read_object_entry_10_1(reader, table)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if table.registered_class(key).unwrap_or(class_id) == TIME_CONFIGURATION_CLASS_ID =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: TIME_CONFIGURATION_CLASS_ID,
+            ..
+        } => {
+            let version = reader.read_u16_le()?;
+            if version > 1 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "日照时间配置版本超出 10.1 上限",
+                ));
+            }
+            let kind = reader.read_u32_le()? as i32;
+            let parameters = match kind {
+                2 => Parameters::LongAndDoubles {
+                    raw_long: reader.read_u32_le()? as i32,
+                    double_bits: [
+                        reader.read_f64_le()?.to_bits(),
+                        reader.read_f64_le()?.to_bits(),
+                    ],
+                },
+                3 => Parameters::Longs([
+                    reader.read_u32_le()? as i32,
+                    reader.read_u32_le()? as i32,
+                    reader.read_u32_le()? as i32,
+                ]),
+                4 => Parameters::Long(reader.read_u32_le()? as i32),
+                _ => Parameters::None,
+            };
+            Some(Box::new(TimeConfiguration10_1 {
+                version,
+                kind,
+                parameters,
+            }))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "日照时间配置槽的对象类不受支持",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
 }
 
 fn read_path_distance_factor_slot(

@@ -6212,3 +6212,62 @@ fn feature_bookmark_reads_extract_values_in_pairs() {
         },
     );
 }
+
+#[test]
+fn feature_bookmark_reads_solar_time_configuration_records() {
+    use mxd2qgz::layers::image_server_rules::RuleSlot10_1;
+    use mxd2qgz::maps::map_surround::{
+        GP_SA_TIME_CONFIGURATION_CLASS_ID, GpCodedValue10_1, TIME_CONFIGURATION_CLASS_ID,
+        TimeConfiguration10_1, TimeConfigurationParameters10_1 as Parameters,
+    };
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    for version in 0_u16..=1 {
+        for (kind, parameters) in [
+            (-1_i32, Parameters::None),
+            (
+                2,
+                Parameters::LongAndDoubles {
+                    raw_long: 87,
+                    double_bits: [10.0_f64.to_bits(), 14.5_f64.to_bits()],
+                },
+            ),
+            (3, Parameters::Longs([2026, 15, 50])),
+            (4, Parameters::Long(2026)),
+        ] {
+            let mut payload = bookmark_entry_10_1(&TIME_CONFIGURATION_CLASS_ID, 20);
+            payload.extend(version.to_le_bytes());
+            payload.extend(kind.to_le_bytes());
+            match &parameters {
+                Parameters::None => {}
+                Parameters::LongAndDoubles {
+                    raw_long,
+                    double_bits,
+                } => {
+                    payload.extend(raw_long.to_le_bytes());
+                    payload.extend(double_bits.iter().flat_map(|bits| bits.to_le_bytes()));
+                }
+                Parameters::Longs(longs) => {
+                    payload.extend(longs.iter().flat_map(|long| long.to_le_bytes()));
+                }
+                Parameters::Long(long) => payload.extend(long.to_le_bytes()),
+            }
+            assert_legacy_topo_coded_value(
+                GP_SA_TIME_CONFIGURATION_CLASS_ID,
+                version,
+                &payload,
+                GpCodedValue10_1::SaTimeConfiguration(RuleSlot10_1 {
+                    entry: ObjectEntry10_1::NewObject {
+                        class_id: TIME_CONFIGURATION_CLASS_ID,
+                        key: 20,
+                    },
+                    body: Some(Box::new(TimeConfiguration10_1 {
+                        version,
+                        kind,
+                        parameters,
+                    })),
+                }),
+            );
+        }
+    }
+}
