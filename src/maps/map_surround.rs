@@ -335,6 +335,18 @@ pub struct AoiBookmark10_1 {
 
 const MAX_BOOKMARK_NAME_NESTING: usize = 16;
 
+pub const GP_RA_FIELD_DOMAIN_CLASS_ID: [u8; 16] = [
+    0x58, 0xa8, 0x6c, 0x4b, 0x16, 0x57, 0xc3, 0x4a, 0xa2, 0xee, 0x70, 0xee, 0x2d, 0x29, 0xc1, 0xbd,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpRaFieldDomain10_1 {
+    pub version: i16,
+    pub long_list: (i32, Vec<i32>),
+    pub shorts: [u16; 2],
+    pub string_lists: [(i32, Vec<String>); 2],
+}
+
 pub const GP_SA_NEIGHBORHOOD_DOMAIN_CLASS_ID: [u8; 16] = [
     0xfc, 0x70, 0x4c, 0x25, 0xf5, 0xf9, 0xaf, 0x4b, 0xa0, 0x39, 0x0c, 0x5c, 0xd3, 0x73, 0x38, 0x05,
 ];
@@ -442,6 +454,7 @@ pub const GP_FILE_DOMAIN_CLASS_ID: [u8; 16] = [
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpTopoDomain10_1 {
+    RaField(GpRaFieldDomain10_1),
     SaNeighborhood {
         version: i16,
         raw_count: i32,
@@ -1325,6 +1338,7 @@ fn read_gp_topo_domain_slot_10_1(
                     | GP_SA_NAME_DOMAIN_CLASS_ID
                     | GP_SA_REMAP_DOMAIN_CLASS_ID
                     | GP_SA_NEIGHBORHOOD_DOMAIN_CLASS_ID
+                    | GP_RA_FIELD_DOMAIN_CLASS_ID
                     | GP_TABLES_DOMAIN_CLASS_ID
                     | GP_QUERY_TABLE_FIELDS_DOMAIN_CLASS_ID
             ) =>
@@ -1340,6 +1354,18 @@ fn read_gp_topo_domain_slot_10_1(
             first_double_bits: reader.read_f64_le()?.to_bits(),
             middle_shorts: [reader.read_u16_le()?, reader.read_u16_le()?],
             second_double_bits: reader.read_f64_le()?.to_bits(),
+        }))),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_RA_FIELD_DOMAIN_CLASS_ID,
+            ..
+        } => Some(Box::new(GpTopoDomain10_1::RaField(GpRaFieldDomain10_1 {
+            version: read_gp_name_version(reader, 1, "GPRAFieldDomain")?,
+            long_list: read_gp_domain_longs(reader, max_bytes, "GPRAFieldDomain")?,
+            shorts: [reader.read_u16_le()?, reader.read_u16_le()?],
+            string_lists: [
+                read_gp_domain_strings(reader, max_bytes, "GPRAFieldDomain")?,
+                read_gp_domain_strings(reader, max_bytes, "GPRAFieldDomain")?,
+            ],
         }))),
         ObjectEntry10_1::NewObject {
             class_id: GP_SA_NEIGHBORHOOD_DOMAIN_CLASS_ID,

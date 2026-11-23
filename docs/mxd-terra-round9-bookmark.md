@@ -1058,3 +1058,14 @@ Load `0x748e72b0` 接受有符号版本 <=1，在 `0x748e7308`
 Save `0x748e7380` 同序写出。构造测试验证正负计数、类身份、
 后继书签字段及逐字节截断回滚。列表业务含义及 ArcMap/QGIS
 人工验收待验证。
+
+### GPRAFieldDomain
+
+同版 GpRasterFunctions.dll 的 RTTI `0x748b98d0` 对应持久化虚表
+`0x748a609c`，CLSID 为 `4B6CA858-5716-4AC3-A2EE-70EE2D29C1BD`。
+Load `0x7486a200` 检查有符号 short 上限 1，先读带有符号计数的
+LONG 列表，再在 `0x7486a2ab / 0x7486a2c1` 读取两个 short。
+随后依次读取两组有符号计数和 AfCore 成员 String 列表，
+字符串调用点为 `0x7486a30d / 0x7486a370`。Save 入口为
+`0x7486a3e0`。构造测试覆盖负计数、后继字段和逐字节截断回滚。
+字段含义及 ArcMap/QGIS 人工验收待验证。
