@@ -4363,3 +4363,13 @@ fn feature_bookmark_reads_legacy_topo_query_table_domains() {
         GpTopoDomain10_1::QueryTableFields { version: -1 },
     );
 }
+
+#[test]
+fn feature_bookmark_reads_legacy_topo_virtual_table_domain() {
+    use mxd2qgz::maps::map_surround::{GP_VIRTUAL_TABLE_DOMAIN_CLASS_ID, GpTopoDomain10_1};
+
+    assert_legacy_topo_version_only_domain(
+        GP_VIRTUAL_TABLE_DOMAIN_CLASS_ID,
+        GpTopoDomain10_1::VirtualTable { version: -1 },
+    );
+}

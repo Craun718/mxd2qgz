@@ -335,6 +335,10 @@ pub struct AoiBookmark10_1 {
 
 const MAX_BOOKMARK_NAME_NESTING: usize = 16;
 
+pub const GP_VIRTUAL_TABLE_DOMAIN_CLASS_ID: [u8; 16] = [
+    0x40, 0x53, 0x35, 0xbe, 0xa9, 0xb5, 0x32, 0x44, 0xb2, 0xf4, 0x49, 0x7a, 0x50, 0xe0, 0x51, 0x15,
+];
+
 pub const GP_QUERY_TABLE_IDS_DOMAIN_CLASS_ID: [u8; 16] = [
     0x60, 0xb0, 0xf6, 0x74, 0xb6, 0x5e, 0x51, 0x48, 0x8f, 0xfd, 0x8b, 0x18, 0x8a, 0x84, 0x5f, 0x37,
 ];
@@ -393,6 +397,9 @@ pub const GP_FILE_DOMAIN_CLASS_ID: [u8; 16] = [
 pub enum GpTopoDomain10_1 {
     Numeric(GpNumericDomain10_1),
     Field(GpFieldDomain10_1),
+    VirtualTable {
+        version: i16,
+    },
     QueryTableIds {
         version: i16,
     },
@@ -1229,6 +1236,7 @@ fn read_gp_topo_domain_slot_10_1(
                     | GP_MEASURE_FIELDS_DOMAIN_CLASS_ID
                     | GP_ROUTE_ID_FIELDS_DOMAIN_CLASS_ID
                     | GP_QUERY_TABLE_IDS_DOMAIN_CLASS_ID
+                    | GP_VIRTUAL_TABLE_DOMAIN_CLASS_ID
                     | GP_QUERY_TABLE_FIELDS_DOMAIN_CLASS_ID
             ) =>
         {
@@ -1244,6 +1252,12 @@ fn read_gp_topo_domain_slot_10_1(
             middle_shorts: [reader.read_u16_le()?, reader.read_u16_le()?],
             second_double_bits: reader.read_f64_le()?.to_bits(),
         }))),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_VIRTUAL_TABLE_DOMAIN_CLASS_ID,
+            ..
+        } => Some(Box::new(GpTopoDomain10_1::VirtualTable {
+            version: read_gp_name_version(reader, 1, "GPVirtualTableDomain")?,
+        })),
         ObjectEntry10_1::NewObject {
             class_id: GP_QUERY_TABLE_IDS_DOMAIN_CLASS_ID,
             ..
