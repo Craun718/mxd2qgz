@@ -352,7 +352,9 @@ fn sdk_print_multi_page_reads_a_nested_map_frame_and_cross_stream_reference() {
         .unwrap();
     assert_eq!(layout.end_offset, 0x1e);
     assert!(layout.groups.is_empty());
-    assert!(layout.stop.unwrap().contains("尚未确认的根 Map 键"));
+    let stop = layout.stop.unwrap();
+    assert!(stop.contains("未支持的 MapFrame IMap 槽"), "{stop}");
+    assert!(stop.contains("键 30"), "{stop}");
 }
 
 #[test]
