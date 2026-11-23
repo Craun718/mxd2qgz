@@ -429,6 +429,10 @@ pub const GP_RASTER_CALCULATOR_EXPRESSION_CLASS_ID: [u8; 16] = [
     0xa1, 0xd0, 0x45, 0xf7, 0xa2, 0x22, 0xee, 0x4a, 0x89, 0x3e, 0x01, 0xea, 0xb8, 0x60, 0x3b, 0xb8,
 ];
 
+pub const GP_SA_EXTRACT_VALUES_CLASS_ID: [u8; 16] = [
+    0x87, 0xd3, 0x79, 0xc0, 0x73, 0x74, 0xd7, 0x41, 0xba, 0x10, 0xac, 0x9a, 0x92, 0xf8, 0x1a, 0x0c,
+];
+
 pub const GP_SA_FUZZY_FUNCTION_CLASS_ID: [u8; 16] = [
     0x96, 0xfc, 0x1d, 0xf3, 0xe0, 0x01, 0x01, 0x4f, 0x96, 0x2b, 0x06, 0x4d, 0x48, 0xd5, 0xc2, 0x46,
 ];
@@ -539,6 +543,10 @@ pub enum GpCodedValue10_1 {
         expression: String,
         raw_count: i32,
         inputs: Vec<RuleSlot10_1<GpCodedValueBody10_1>>,
+    },
+    SaExtractValues {
+        raw_count: i32,
+        rows: Vec<[RuleSlot10_1<GpCodedValueBody10_1>; 2]>,
     },
     SaFuzzyFunction {
         arguments: [RuleSlot10_1<GpCodedValueBody10_1>; 3],
@@ -1795,19 +1803,28 @@ fn read_gp_coded_value_list(
     table: &mut RefTable10_1,
     depth: usize,
 ) -> io::Result<(i32, Vec<RuleSlot10_1<GpCodedValueBody10_1>>)> {
-    let raw_value_count = reader.read_u32_le()? as i32;
-    let count = raw_value_count.max(0) as usize;
-    if count > reader.remaining().min(max_bytes) / 16 {
-        return Err(io::Error::new(
-            ErrorKind::InvalidData,
-            "IGPValue 列表数量超限",
-        ));
-    }
+    let (raw_value_count, count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
     let mut values = Vec::new();
     for _ in 0..count {
         values.push(read_gp_coded_value_slot(reader, max_bytes, table, depth)?);
     }
     Ok((raw_value_count, values))
+}
+
+fn read_gp_coded_value_count(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    min_row_bytes: usize,
+) -> io::Result<(i32, usize)> {
+    let raw_count = reader.read_u32_le()? as i32;
+    let count = raw_count.max(0) as usize;
+    if count > reader.remaining().min(max_bytes) / min_row_bytes {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "IGPValue 列表数量超限",
+        ));
+    }
+    Ok((raw_count, count))
 }
 
 fn read_gp_coded_value_slot(
@@ -1827,6 +1844,7 @@ fn read_gp_coded_value_slot(
                     | GP_CELL_SIZE_XY_CLASS_ID
                     | GP_SA_CELL_SIZE_CLASS_ID
                     | GP_RASTER_CALCULATOR_EXPRESSION_CLASS_ID
+                    | GP_SA_EXTRACT_VALUES_CLASS_ID
                     | GP_SA_FUZZY_FUNCTION_CLASS_ID
                     | GP_SA_NUMBER_REMAP_CLASS_ID
                     | GP_SA_HORIZONTAL_FACTOR_CLASS_ID
@@ -1870,6 +1888,7 @@ fn read_gp_coded_value_slot(
                 | GP_CELL_SIZE_XY_CLASS_ID
                 | GP_SA_CELL_SIZE_CLASS_ID
                 | GP_RASTER_CALCULATOR_EXPRESSION_CLASS_ID
+                | GP_SA_EXTRACT_VALUES_CLASS_ID
                 | GP_SA_FUZZY_FUNCTION_CLASS_ID
                 | GP_SA_NUMBER_REMAP_CLASS_ID
                 | GP_SA_HORIZONTAL_FACTOR_CLASS_ID
@@ -2041,6 +2060,23 @@ fn read_gp_coded_value_slot(
                         raw_count,
                         inputs,
                     }
+                }
+                GP_SA_EXTRACT_VALUES_CLASS_ID => {
+                    if depth >= MAX_BOOKMARK_NAME_NESTING {
+                        return Err(io::Error::new(
+                            ErrorKind::InvalidData,
+                            "GPSAExtractValues 嵌套层数超限",
+                        ));
+                    }
+                    let (raw_count, count) = read_gp_coded_value_count(reader, max_bytes, 32)?;
+                    let mut rows = Vec::new();
+                    for _ in 0..count {
+                        rows.push([
+                            read_gp_coded_value_slot(reader, max_bytes, table, depth + 1)?,
+                            read_gp_coded_value_slot(reader, max_bytes, table, depth + 1)?,
+                        ]);
+                    }
+                    GpCodedValue10_1::SaExtractValues { raw_count, rows }
                 }
                 GP_SA_FUZZY_FUNCTION_CLASS_ID => {
                     if depth >= MAX_BOOKMARK_NAME_NESTING {

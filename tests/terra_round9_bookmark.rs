@@ -6153,3 +6153,62 @@ fn feature_bookmark_reads_raster_calculator_expression_and_input_refs() {
         );
     }
 }
+
+#[test]
+fn feature_bookmark_reads_extract_values_in_pairs() {
+    use mxd2qgz::layers::image_server_rules::RuleSlot10_1;
+    use mxd2qgz::maps::map_surround::{
+        GP_SA_EXTRACT_VALUES_CLASS_ID, GP_STRING_CLASS_ID, GpCodedValue10_1, GpCodedValueBody10_1,
+    };
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    let mut payload = 2_i32.to_le_bytes().to_vec();
+    let string_object = bookmark_entry_10_1(&GP_STRING_CLASS_ID, 20);
+    payload.extend(&string_object);
+    payload.extend([1, 0, 1, 0, 0, 0]);
+    payload.extend(bookmark_string_10_1("栅格"));
+    payload.extend([0; 16]);
+    payload.extend([0; 16]);
+    payload.extend(&string_object);
+    let new_object = RuleSlot10_1 {
+        entry: ObjectEntry10_1::NewObject {
+            class_id: GP_STRING_CLASS_ID,
+            key: 20,
+        },
+        body: Some(Box::new(GpCodedValueBody10_1 {
+            version: 1,
+            base_version: 1,
+            base_short: 0,
+            value: GpCodedValue10_1::String("栅格".to_owned()),
+        })),
+    };
+    let reference = RuleSlot10_1 {
+        entry: ObjectEntry10_1::BackReference {
+            class_id: GP_STRING_CLASS_ID,
+            key: 20,
+        },
+        body: None,
+    };
+    let null = RuleSlot10_1 {
+        entry: ObjectEntry10_1::Null,
+        body: None,
+    };
+    assert_legacy_topo_coded_value(
+        GP_SA_EXTRACT_VALUES_CLASS_ID,
+        1,
+        &payload,
+        GpCodedValue10_1::SaExtractValues {
+            raw_count: 2,
+            rows: vec![[new_object, null.clone()], [null, reference]],
+        },
+    );
+    assert_legacy_topo_coded_value(
+        GP_SA_EXTRACT_VALUES_CLASS_ID,
+        0,
+        &(-1_i32).to_le_bytes(),
+        GpCodedValue10_1::SaExtractValues {
+            raw_count: -1,
+            rows: Vec::new(),
+        },
+    );
+}
