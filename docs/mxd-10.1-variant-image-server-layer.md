@@ -86,6 +86,22 @@ Stream 写槽 `0x7fff9fa0` 将调用者提供的 IStream 传给 AfCore
 转给该包装的 `+0x10` 子接口。因此它也不建立独立键表，最终由配置的底流
 决定是否有键，而非由 VariantStreamIO 的名字决定。
 
+进一步枚举同一套 Desktop 介质中的 72 份 MSFT 类型库，共 10392 个类型。
+类型名与 GUID 的对应为：`IVariantStream`
+`67A4D650-69E0-11D2-8500-0000F875B9C6`、`IPersistVariant`
+`67A4D651-69E0-11D2-8500-0000F875B9C6`、`IVariantStreamIO`
+`76BE2722-B1F7-4FE4-B358-BFD2198CDA62`。全部 coclass 中只有
+SystemCore `VariantStreamIO` `12DADD0E-4D96-4599-B4BA-F9246A8AD312`
+实现 `IVariantStream` 和 `IVariantStreamIO`；唯一的业务宿主是
+ImageServerLayer `477D13E7-8D68-45B6-A7FD-2EF442BCCE95`，它实现
+`IPersistVariant`，接收调用方传入的 `IVariantStream`。
+
+因此不存在第二个会自行建立对象键表的 VariantStream 包装实现。标准包装的
+新对象键、回引和会话生命周期全部由底流是否提供 IObjectStream 决定；
+VariantStreamIO 只是把公开接口转发到该底流的包装。实际 ImageServer MXD
+宿主仍可在后续实档中验证具体键序，但这不再构成包装规则或引用表归属的
+开放分支。
+
 ## 验证边界
 
 合成测试覆盖有界 ImageServerLayer、扩展新对象和同键回引、非空 Envelope、

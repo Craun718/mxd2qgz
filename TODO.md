@@ -416,7 +416,7 @@
   - [x] 按登记类校验 Formosat2Xform 的 IPolynomialXform 槽回引。
   - [x] 按登记类校验栅格渲染及传感器变换共用的 IDoubleArray 槽回引。
   - [x] 接入 CSMXform v1/v2 的版本、标志和两段窄字符状态原值，见 [Mensuration 取证](docs/mxd-10.1-geodata-xform.md#csmxform)。
-  - [ ] 闭合 VariantStream 对象分支的引用表（10.1 标准包装与 VariantStreamIO 已静态对位；仍缺真实宿主键序及其他包装路径的佐证，见 [取证](docs/mxd-10.1-variant-image-server-layer.md#两种对象头与引用表)）。
+  - [x] 闭合 VariantStream 对象分支的引用表：72 份类型库确认只有 SystemCore VariantStreamIO 实现 IVariantStream/IO，ImageServerLayer 是唯一业务 IPersistVariant 宿主；键表归属完全由底流 IObjectStream 决定，无其他包装路径。[类型库清点](docs/mxd-10.1-variant-image-server-layer.md#两种对象头与引用表)
   - [x] 实现显式 10.1 ObjectStream 上下文的 Variant 对象头读取：区分空标记、新对象和会话键回引，见 [AfCore/SystemCore 续查](docs/mxd-luna-followup-stream-20261118.md)。
   - [x] 实现显式 10.8 Variant 前缀读取器，覆盖固定宽度位模式、字符串边界、失败游标和显式对象分支错误；未接入 MXD 解析。
   - [x] 闭合 SimpleSaveObject 委派链：10.1 原生指令确认导出的 IObjectStream 分流、普通流版本适配递归、两类持久化接口优先级和读写错误传播；另核对 10.8 分派骨架。见 [读写委派记录](docs/mxd-simple-object-dispatch-20261118.md)。
