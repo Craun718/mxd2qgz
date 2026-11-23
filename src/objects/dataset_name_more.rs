@@ -711,6 +711,31 @@ pub struct ReferencedTableNameBody10_1 {
     pub source: DatasetNameMoreSlot10_1,
 }
 
+/// MosaicDB.dll 0x7a59b300：有符号版本上限及一个普通 IName 槽。
+pub(crate) fn read_referenced_table_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+    key: u32,
+    stop: &mut Option<DatasetNameMoreStop10_1>,
+) -> io::Result<ReferencedTableNameBody10_1> {
+    let mut trial = reader.clone();
+    let version = trial.read_u16_le()? as i16;
+    if version > 1 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("ReferencedTableName 未支持架构版本 {version}"),
+        ));
+    }
+    let source = read_tabular_name_slot_10_1(&mut trial, max, table, stop)?;
+    *reader = trial;
+    Ok(ReferencedTableNameBody10_1 {
+        key,
+        version,
+        source,
+    })
+}
+
 pub const XY_EVENT_SOURCE_NAME_CLASS_ID: [u8; 16] = [
     0x20, 0xa9, 0x9a, 0x30, 0xec, 0xea, 0xd3, 0x11, 0x9f, 0x8a, 0x00, 0xc0, 0x4f, 0x6b, 0xdf, 0x06,
 ];
@@ -1062,23 +1087,9 @@ fn read_dataset_name_object_body_10_1(
             Ok((DatasetNameMoreBody10_1::NetCdfTable(Box::new(body)), stop))
         }
         REFERENCED_TABLE_NAME_CLASS_ID => {
-            let mut trial = reader.clone();
-            let version = trial.read_u16_le()? as i16;
-            // 原生 Load 比较有符号上限，已知 Save 写 -1 或 1。
-            if !(-1..=1).contains(&version) {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("ReferencedTableName 未支持架构版本 {version}"),
-                ));
-            }
             let mut stop = None;
-            let source = read_tabular_name_slot_10_1(&mut trial, max_bytes, table, &mut stop)?;
-            *reader = trial;
-            let body = ReferencedTableNameBody10_1 {
-                key,
-                version,
-                source,
-            };
+            let body =
+                read_referenced_table_name_body_10_1(reader, max_bytes, table, key, &mut stop)?;
             let stop = stop.map(|inner| DatasetNameMoreStop10_1::Nested {
                 class_id,
                 key,

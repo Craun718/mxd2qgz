@@ -1480,3 +1480,45 @@ fn bookmark_reads_cad_drawing_name() {
         assert!(refs.is_empty());
     }
 }
+
+#[test]
+fn bookmark_reads_a_referenced_table_and_its_child_key() {
+    use mxd2qgz::objects::dataset_name_more::REFERENCED_TABLE_NAME_CLASS_ID;
+
+    let mut bytes = 1_u16.to_le_bytes().to_vec();
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(REFERENCED_TABLE_NAME_CLASS_ID);
+    bytes.extend(17_u32.to_le_bytes());
+    let version_offset = bytes.len();
+    bytes.extend(i16::MIN.to_le_bytes());
+    bytes.extend(TABLE_NAME_CLASS_ID);
+    bytes.extend(18_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    for _ in 0..3 {
+        bytes.extend([2, 0, 0, 0, 0, 0]);
+    }
+    bytes.extend([0; 16]);
+    bytes.extend([4, 0, 0, 0, b'X', 0, 0, 0]);
+
+    let mut refs = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let bookmark = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    assert!(
+        matches!(bookmark.name_object, BookmarkNameEntry10_1::ReferencedTableName(body)
+        if body.version == i16::MIN && matches!(body.source,
+            DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::Table(_))))
+    );
+    assert_eq!(bookmark.name, "X");
+    assert_eq!(reader.remaining(), 0);
+    assert!(refs.contains(17) && refs.contains(18));
+
+    let mut newer = bytes.clone();
+    newer[version_offset..version_offset + 2].copy_from_slice(&2_u16.to_le_bytes());
+    for invalid in [&bytes[..bytes.len() - 9], newer.as_slice()] {
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(invalid);
+        assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+}

@@ -223,3 +223,13 @@ CadDrawingName 主虚表 `0x6cad93d4` 指向 QI `0x6cab6b60`。
 书签复用 Load `0x6cab7030` 对应的名称读取器。构造测试验证
 三串、名称键、后继书签名及逐前缀截断的回滚。
 原生 Open 的结果和实际书签工程仍待 ArcMap 10.1 验证。
+
+## ReferencedTableName
+
+MosaicDB.dll 10.1.0.3035 的 QI `0x7a59a9eb..0x7a59aa05`
+返回 IName，书签复用 Load `0x7a59b300` 对应的包装体读取器。
+同版 objdump 在 `0x7a59b32b / 0x7a59b330` 确认其版本上限
+为有符号 short 1，共享读取器据此接受所有非正版本。
+详见[模块摘要及子槽取证](mxd-terra-round9-old.md#referencedtablename)。
+构造书签验证负版本、子表键、后继字符串及失败回滚。
+实际书签宿主和原生 Open 结果仍待验证。

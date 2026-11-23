@@ -142,15 +142,16 @@ use crate::objects::dataset_name_more::{
     FEATURE_QUERY_NAME_CLASS_ID, FeatureQueryNameBody10_1, MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID,
     MemoryRelationshipClassNameBody10_1, NETCDF_FEATURE_CLASS_NAME_CLASS_ID,
     NETCDF_TABLE_NAME_CLASS_ID, NetCdfFeatureClassNameBody10_1, NetCdfTableNameBody10_1,
-    QUERY_TABLE_NAME_CLASS_ID, QueryTableNameBody10_1, REL_QUERY_TABLE_NAME_CLASS_ID,
-    RELATIONSHIP_CLASS_NAME_CLASS_ID, RelQueryTableNameBody10_1, RelationshipClassNameBody10_1,
-    TABLE_QUERY_NAME_CLASS_ID, TableQueryNameBody10_1, XY_EVENT_SOURCE_NAME_CLASS_ID,
-    XyEventSourceNameBody10_1, read_cad_drawing_name_body_10_1, read_db_table_name_body_10_1,
+    QUERY_TABLE_NAME_CLASS_ID, QueryTableNameBody10_1, REFERENCED_TABLE_NAME_CLASS_ID,
+    REL_QUERY_TABLE_NAME_CLASS_ID, RELATIONSHIP_CLASS_NAME_CLASS_ID, ReferencedTableNameBody10_1,
+    RelQueryTableNameBody10_1, RelationshipClassNameBody10_1, TABLE_QUERY_NAME_CLASS_ID,
+    TableQueryNameBody10_1, XY_EVENT_SOURCE_NAME_CLASS_ID, XyEventSourceNameBody10_1,
+    read_cad_drawing_name_body_10_1, read_db_table_name_body_10_1,
     read_feature_query_name_body_10_1, read_memory_relationship_class_name_body_10_1,
     read_netcdf_feature_class_name_body_10_1, read_netcdf_table_name_body_10_1,
-    read_query_table_name_body_10_1, read_rel_query_table_name_body_10_1,
-    read_relationship_class_name_body_10_1, read_table_query_name_body_10_1,
-    read_xy_event_source_name_body_10_1,
+    read_query_table_name_body_10_1, read_referenced_table_name_body_10_1,
+    read_rel_query_table_name_body_10_1, read_relationship_class_name_body_10_1,
+    read_table_query_name_body_10_1, read_xy_event_source_name_body_10_1,
 };
 use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
 use crate::objects::route_event_name::{
@@ -301,6 +302,7 @@ pub enum BookmarkNameEntry10_1 {
     NetCdfTableName(Box<NetCdfTableNameBody10_1>),
     DbTableName(Box<DbTableNameBody10_1>),
     CadDrawingName(Box<CadDrawingNameBody10_1>),
+    ReferencedTableName(Box<ReferencedTableNameBody10_1>),
     XyEventSourceName(Box<XyEventSourceNameBody10_1>),
     RouteEventSourceName(Box<RouteEventSourceNameBody10_1>),
     TableQueryName(Box<TableQueryNameBody10_1>),
@@ -770,6 +772,28 @@ pub fn read_feature_bookmark_10_1(
                 ));
             }
             BookmarkNameEntry10_1::QueryTableName(Box::new(body))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: REFERENCED_TABLE_NAME_CLASS_ID,
+            key,
+        } => {
+            let mut stop = None;
+            let body = read_referenced_table_name_body_10_1(
+                &mut trial,
+                max_bytes,
+                &mut trial_table,
+                key,
+                &mut stop,
+            )?;
+            if let Some(stop) = stop {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!(
+                        "FeatureBookmark 名称对象槽 offset 0x{name_offset:x}: ReferencedTableName 未读完（{stop:?}）"
+                    ),
+                ));
+            }
+            BookmarkNameEntry10_1::ReferencedTableName(Box::new(body))
         }
         ObjectEntry10_1::NewObject {
             class_id: CAD_DRAWING_NAME_CLASS_ID,
