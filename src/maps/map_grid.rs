@@ -415,7 +415,7 @@ fn read_graticule(
     limit: usize,
     refs: &mut RefTable10_1,
 ) -> io::Result<Graticule10_1> {
-    let version = read_version(r, 5, "Graticule")?;
+    let version = read_signed_version(r, 5, "Graticule")?;
     let base = read_base_grid(r, limit, refs)?;
     let short_1d0 = r.read_u16_le()?;
     let doubles_1cc = doubles(r)?;
@@ -441,7 +441,7 @@ fn read_graticule(
         None
     };
     Ok(Graticule10_1 {
-        version,
+        version: version as u16,
         base,
         short_1d0,
         doubles_1cc,
@@ -633,7 +633,7 @@ fn read_dms_label(
     limit: usize,
     refs: &mut RefTable10_1,
 ) -> io::Result<DmsGridLabel10_1> {
-    let version = read_version(r, 4, "DMSGridLabel")?;
+    let version = read_signed_version(r, 4, "DMSGridLabel")?;
     let long_08 = r.read_u32_le()?;
     let text_symbols = [
         symbol(r, limit, refs, Kind::Symbol)?,
@@ -651,7 +651,7 @@ fn read_dms_label(
         _ => None,
     };
     Ok(DmsGridLabel10_1 {
-        version,
+        version: version as u16,
         long_08,
         text_symbols,
         shorts_18,
@@ -712,17 +712,6 @@ fn symbol(
         return Err(io::Error::new(
             ErrorKind::InvalidData,
             "网格符号类与槽的接口不相符",
-        ));
-    }
-    Ok(value)
-}
-
-fn read_version(r: &mut Reader<'_>, max: u16, name: &str) -> io::Result<u16> {
-    let value = r.read_u16_le()?;
-    if value > max {
-        return Err(io::Error::new(
-            ErrorKind::InvalidData,
-            format!("不支持的 {name} 版本 {value}"),
         ));
     }
     Ok(value)
