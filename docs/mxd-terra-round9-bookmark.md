@@ -458,3 +458,11 @@ MapServerLayer.dll 10.1.0.3035 的 InternetTiledLayerName QI
 构造测试验证瓦片名称的 short、LONG 和空 ITileReader 及 AIS
 名称的 LONG 和三串，检查后继书签文本、边界和逐字节截断回滚。
 真实书签宿主及 Open 结果仍待 ArcMap 10.1 验证。
+
+## WCSCoverageName
+
+OGCClient.dll 10.1.0.3035 的 WCSCoverageName 主 QI
+`0x7b424610` 将 IName 映到完整对象 +0x14。书签复用
+[Load `0x7b424bd0` 的覆盖名称及连接槽读取器](mxd-10.1-raster-layer-tail.md)。
+构造书签验证 BSTR 覆盖标识、v3 连接名称、属性集回引、书签文本和
+逐字节截断回滚。真实书签宿主及原生 Open 结果仍待 ArcMap 10.1 验证。

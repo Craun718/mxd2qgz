@@ -2492,3 +2492,53 @@ fn feature_bookmark_reads_tiled_layer_and_ais_image_service_names() {
         }
     }
 }
+
+#[test]
+fn feature_bookmark_reads_wcs_coverage_and_connection_keys() {
+    use mxd2qgz::layers::raster_dataset_name::RasterDatasetNameEntryBody10_1;
+    use mxd2qgz::layers::wcs_name::{WCS_CONNECTION_NAME_CLASS_ID, WCS_COVERAGE_NAME_CLASS_ID};
+    use mxd2qgz::objects::property_set::PROPERTY_SET_CLASS_ID;
+
+    let mut bytes = bookmark_header_10_1(&WCS_COVERAGE_NAME_CLASS_ID, 17);
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend([1, 0, 0, 0, b'c', 0, 0, 0]);
+    bytes.extend(WCS_CONNECTION_NAME_CLASS_ID);
+    bytes.extend(18_u32.to_le_bytes());
+    bytes.extend(3_u16.to_le_bytes());
+    bytes.extend(PROPERTY_SET_CLASS_ID);
+    bytes.extend(19_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(PROPERTY_SET_CLASS_ID);
+    bytes.extend(19_u32.to_le_bytes());
+    bytes.extend(bookmark_string_10_1("书签"));
+    let end = bytes.len();
+    bytes.push(0xa5);
+
+    let mut refs = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    let BookmarkNameEntry10_1::RasterDatasetName(body) = result.name_object else {
+        panic!("应读取栅格名称");
+    };
+    let RasterDatasetNameEntryBody10_1::WcsCoverage(name) = *body else {
+        panic!("应读取 WCS 覆盖名称");
+    };
+    assert_eq!(name.identifier, "c");
+    let connection = name.connection.body.unwrap();
+    assert_eq!(connection.version, 3);
+    assert!(matches!(
+        connection.extra_properties.unwrap().entry,
+        mxd2qgz::storage::object_refs::ObjectEntry10_1::BackReference { key: 19, .. }
+    ));
+    assert_eq!(result.name, "书签");
+    assert_eq!(reader.position(), end);
+    assert!([17, 18, 19].into_iter().all(|key| refs.contains(key)));
+    for cut in 0..end {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+}
