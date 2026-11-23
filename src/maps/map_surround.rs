@@ -429,6 +429,14 @@ pub const GP_SA_FUZZY_FUNCTION_CLASS_ID: [u8; 16] = [
     0x96, 0xfc, 0x1d, 0xf3, 0xe0, 0x01, 0x01, 0x4f, 0x96, 0x2b, 0x06, 0x4d, 0x48, 0xd5, 0xc2, 0x46,
 ];
 
+pub const GP_SA_NUMBER_REMAP_CLASS_ID: [u8; 16] = [
+    0xff, 0xc3, 0x56, 0x31, 0xce, 0x80, 0x8f, 0x49, 0xb1, 0x6f, 0xf3, 0xa8, 0x1a, 0x45, 0x90, 0x8f,
+];
+
+pub const GP_SA_STRING_REMAP_CLASS_ID: [u8; 16] = [
+    0x89, 0x20, 0x53, 0xd0, 0x4d, 0x34, 0x23, 0x4d, 0xa6, 0x7c, 0x5d, 0xfc, 0xd1, 0x4d, 0x66, 0x94,
+];
+
 pub const GP_SA_RADIUS_CLASS_ID: [u8; 16] = [
     0x7f, 0xc0, 0x3f, 0x2b, 0x3b, 0x10, 0xc4, 0x41, 0xaa, 0x42, 0x34, 0xa2, 0x43, 0xfd, 0x7b, 0x87,
 ];
@@ -503,6 +511,7 @@ pub enum GpCodedValue10_1 {
         arguments: [RuleSlot10_1<GpCodedValueBody10_1>; 3],
         raw_flags: [u8; 2],
     },
+    SaRemap(Box<GpSaRemap10_1>),
     SaRadius {
         legacy_name: Option<Box<BookmarkNameEntry10_1>>,
         raw_longs: [i32; 2],
@@ -566,6 +575,29 @@ pub enum GpCodedValue10_1 {
     RandomNumberGenerator {
         seed: i32,
         raw_generator: i32,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpSaRemap10_1 {
+    pub legacy_name: Option<Box<BookmarkNameEntry10_1>>,
+    pub raw_long: i32,
+    pub raw_count: i32,
+    pub version_three_fields: Option<(u16, i32)>,
+    pub rows: Vec<GpSaRemapRow10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum GpSaRemapRow10_1 {
+    Number {
+        range_bits: [u64; 2],
+        raw_long: i32,
+        text_bytes: Vec<u8>,
+    },
+    String {
+        source_bytes: Vec<u8>,
+        raw_long: i32,
+        text_bytes: Vec<u8>,
     },
 }
 
@@ -1709,6 +1741,8 @@ fn read_gp_coded_value_slot(
                     | GP_CELL_SIZE_XY_CLASS_ID
                     | GP_SA_CELL_SIZE_CLASS_ID
                     | GP_SA_FUZZY_FUNCTION_CLASS_ID
+                    | GP_SA_NUMBER_REMAP_CLASS_ID
+                    | GP_SA_STRING_REMAP_CLASS_ID
                     | GP_SA_RADIUS_CLASS_ID
                     | GP_EVALUATION_SCALE_CLASS_ID
                     | GP_SA_MAP_ALGEBRA_EXP_CLASS_ID
@@ -1745,6 +1779,8 @@ fn read_gp_coded_value_slot(
                 | GP_CELL_SIZE_XY_CLASS_ID
                 | GP_SA_CELL_SIZE_CLASS_ID
                 | GP_SA_FUZZY_FUNCTION_CLASS_ID
+                | GP_SA_NUMBER_REMAP_CLASS_ID
+                | GP_SA_STRING_REMAP_CLASS_ID
                 | GP_SA_RADIUS_CLASS_ID
                 | GP_EVALUATION_SCALE_CLASS_ID
                 | GP_SA_MAP_ALGEBRA_EXP_CLASS_ID
@@ -1776,6 +1812,7 @@ fn read_gp_coded_value_slot(
             let base_version = reader.read_u16_le()?;
             let max_version = match class_id {
                 GP_SPATIAL_REFERENCE_CLASS_ID => 3,
+                GP_SA_NUMBER_REMAP_CLASS_ID | GP_SA_STRING_REMAP_CLASS_ID => 4,
                 GP_ENCRYPTED_STRING_CLASS_ID
                 | GP_SA_RADIUS_CLASS_ID
                 | GP_EVALUATION_SCALE_CLASS_ID
@@ -1846,22 +1883,8 @@ fn read_gp_coded_value_slot(
                 GP_SA_RADIUS_CLASS_ID
                 | GP_EVALUATION_SCALE_CLASS_ID
                 | GP_SA_MAP_ALGEBRA_EXP_CLASS_ID => {
-                    let legacy_name = if version == 1 {
-                        if depth >= MAX_BOOKMARK_NAME_NESTING {
-                            return Err(io::Error::new(
-                                ErrorKind::InvalidData,
-                                "空间分析值的旧 IName 槽嵌套层数超限",
-                            ));
-                        }
-                        Some(Box::new(read_bookmark_name_slot_10_1(
-                            reader,
-                            max_bytes,
-                            table,
-                            depth + 1,
-                        )?))
-                    } else {
-                        None
-                    };
+                    let legacy_name =
+                        read_gp_sa_legacy_name(reader, max_bytes, table, depth, version)?;
                     match class_id {
                         GP_SA_RADIUS_CLASS_ID => GpCodedValue10_1::SaRadius {
                             legacy_name,
@@ -1881,6 +1904,16 @@ fn read_gp_coded_value_slot(
                             expression: read_bstr_string_10_1(reader, max_bytes)?,
                         },
                     }
+                }
+                GP_SA_NUMBER_REMAP_CLASS_ID | GP_SA_STRING_REMAP_CLASS_ID => {
+                    GpCodedValue10_1::SaRemap(Box::new(read_gp_sa_remap(
+                        reader,
+                        max_bytes,
+                        table,
+                        depth,
+                        version,
+                        class_id == GP_SA_NUMBER_REMAP_CLASS_ID,
+                    )?))
                 }
                 GP_SA_FUZZY_FUNCTION_CLASS_ID => {
                     if depth >= MAX_BOOKMARK_NAME_NESTING {
@@ -1967,6 +2000,91 @@ fn read_gp_coded_value_slot(
         }
     };
     Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_gp_sa_legacy_name(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+    version: u16,
+) -> io::Result<Option<Box<BookmarkNameEntry10_1>>> {
+    if version != 1 {
+        return Ok(None);
+    }
+    if depth >= MAX_BOOKMARK_NAME_NESTING {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "空间分析值的旧 IName 槽嵌套层数超限",
+        ));
+    }
+    read_bookmark_name_slot_10_1(reader, max_bytes, table, depth + 1)
+        .map(|name| Some(Box::new(name)))
+}
+
+fn read_gp_sa_remap(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+    version: u16,
+    numeric: bool,
+) -> io::Result<GpSaRemap10_1> {
+    let legacy_name = read_gp_sa_legacy_name(reader, max_bytes, table, depth, version)?;
+    let raw_long = reader.read_u32_le()? as i32;
+    let raw_count = reader.read_u32_le()? as i32;
+    let version_three_fields = if version >= 3 {
+        Some((reader.read_u16_le()?, reader.read_u32_le()? as i32))
+    } else {
+        None
+    };
+    let count = raw_count.max(0) as usize;
+    let min_row_bytes = if numeric { 24 } else { 12 };
+    if count > reader.remaining().min(max_bytes) / min_row_bytes {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "空间分析重分类行数超限",
+        ));
+    }
+
+    fn read_text_bytes(reader: &mut Reader<'_>, max_bytes: usize) -> io::Result<Vec<u8>> {
+        let length = reader.read_u32_le()? as usize;
+        if length > max_bytes {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "空间分析重分类文本长度超限",
+            ));
+        }
+        Ok(reader.read_bytes(length)?.to_vec())
+    }
+
+    let mut rows = Vec::new();
+    for _ in 0..count {
+        let row = if numeric {
+            GpSaRemapRow10_1::Number {
+                range_bits: [
+                    reader.read_f64_le()?.to_bits(),
+                    reader.read_f64_le()?.to_bits(),
+                ],
+                raw_long: reader.read_u32_le()? as i32,
+                text_bytes: read_text_bytes(reader, max_bytes)?,
+            }
+        } else {
+            GpSaRemapRow10_1::String {
+                source_bytes: read_text_bytes(reader, max_bytes)?,
+                raw_long: reader.read_u32_le()? as i32,
+                text_bytes: read_text_bytes(reader, max_bytes)?,
+            }
+        };
+        rows.push(row);
+    }
+    Ok(GpSaRemap10_1 {
+        legacy_name,
+        raw_long,
+        raw_count,
+        version_three_fields,
+        rows,
+    })
 }
 
 fn read_gp_value_table(
