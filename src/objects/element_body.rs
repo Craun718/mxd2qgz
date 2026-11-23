@@ -262,6 +262,10 @@ pub const POLYGON_ELEMENT_CLASS_ID: [u8; 16] = [
     0xc7, 0x67, 0x97, 0x3a, 0x53, 0xf2, 0xd0, 0x11, 0x83, 0xa4, 0x08, 0x00, 0x09, 0xb9, 0x96, 0xcc,
 ];
 
+pub const TEXT_3D_ELEMENT_CLASS_ID: [u8; 16] = [
+    0x0b, 0x5d, 0x86, 0xb9, 0x37, 0xeb, 0xd4, 0x11, 0xa1, 0x16, 0x00, 0x50, 0x8b, 0xd6, 0x0c, 0xb9,
+];
+
 pub const MULTIPATCH_ELEMENT_CLASS_ID: [u8; 16] = [
     0xc9, 0xe5, 0x1a, 0xe9, 0x16, 0x2c, 0xd4, 0x11, 0x80, 0xe2, 0x00, 0xc0, 0x4f, 0xa0, 0xad, 0xf8,
 ];
@@ -1032,6 +1036,22 @@ pub struct MultiPatchElement10_1 {
     pub tail_short: u16,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Text3dElement10_1 {
+    pub version: u16,
+    pub properties: ElementPropertiesPrefix10_1,
+    pub fill: SymbolSlotFull10_1,
+    pub geometry: crate::maps::map_frame::FrameGeometrySlot10_1,
+    pub raw_int: i32,
+    pub leading_short: u16,
+    pub strings: [String; 2],
+    pub anchor_shorts: [u16; 2],
+    pub anchor: PointSlot10_1,
+    pub leading_double_bits: [u64; 2],
+    pub tail_ints: [i32; 4],
+    pub trailing_double_bits: [u64; 2],
+}
+
 /// 元素类对象体分派结果。
 #[derive(Debug, Clone, PartialEq)]
 pub enum ElementBody10_1 {
@@ -1042,6 +1062,7 @@ pub enum ElementBody10_1 {
     PolygonElement(Box<LineOrPolygonElementBody10_1>),
     FrameElement(Box<crate::maps::map_frame::BaseFrameElement10_1>),
     MultiPatchElement(Box<MultiPatchElement10_1>),
+    Text3dElement(Box<Text3dElement10_1>),
     PictureElement(Box<crate::maps::picture_element::PictureElement10_1>),
 }
 
@@ -1052,7 +1073,10 @@ impl ElementBody10_1 {
             Self::ParagraphTextElement(body) => body.stop.as_ref(),
             Self::MarkerElement(body) => body.stop.as_ref(),
             Self::LineElement(body) | Self::PolygonElement(body) => body.stop.as_ref(),
-            Self::PictureElement(_) | Self::FrameElement(_) | Self::MultiPatchElement(_) => None,
+            Self::PictureElement(_)
+            | Self::FrameElement(_)
+            | Self::MultiPatchElement(_)
+            | Self::Text3dElement(_) => None,
         }
     }
 }
@@ -1094,6 +1118,10 @@ pub fn read_element_body_of_class_10_1(
         Ok(ElementBody10_1::MultiPatchElement(Box::new(
             read_multi_patch_element(reader, max_bytes, table)?,
         )))
+    } else if *class_id == TEXT_3D_ELEMENT_CLASS_ID {
+        Ok(ElementBody10_1::Text3dElement(Box::new(
+            read_text_3d_element(reader, max_bytes, table)?,
+        )))
     } else if *class_id == crate::maps::page_layout_prefix::FRAME_ELEMENT_CLASS_ID {
         let mut candidate = reader.clone();
         let mut refs = table.clone();
@@ -1120,31 +1148,12 @@ fn read_multi_patch_element(
 ) -> io::Result<MultiPatchElement10_1> {
     let mut trial = reader.clone();
     let mut refs = table.clone();
-    let version = trial.read_u16_le()?;
-    if version as i16 > 1 {
-        return Err(io::Error::new(
-            ErrorKind::InvalidData,
-            "不支持的 MultiPatchElement 版本",
-        ));
-    }
-    let properties = match read_element_properties_prefix_10_1(&mut trial, max_bytes, &mut refs)? {
-        PrefixOutcome10_1::Complete(properties) => properties,
-        PrefixOutcome10_1::Stopped(reason) => {
-            return Err(io::Error::new(ErrorKind::Unsupported, reason.describe()));
-        }
-    };
-    let mut stop = None;
-    let fill = read_shape_symbol_slot(
-        &mut trial,
-        max_bytes,
-        &mut refs,
-        ShapeSymbol::Fill,
-        &mut stop,
-    )?;
-    if let Some(reason) = stop {
-        return Err(io::Error::new(ErrorKind::Unsupported, reason.describe()));
-    }
-    let geometry = crate::maps::map_frame::geometry_slot(&mut trial, max_bytes, &mut refs)?;
+    let FilledGeometryPrefix {
+        version,
+        properties,
+        fill,
+        geometry,
+    } = read_filled_geometry_prefix(&mut trial, max_bytes, &mut refs, "MultiPatchElement")?;
     let tail_long = trial.read_u32_le()? as i32;
     let tail_short = trial.read_u16_le()?;
     *reader = trial;
@@ -1156,6 +1165,122 @@ fn read_multi_patch_element(
         geometry,
         tail_long,
         tail_short,
+    })
+}
+
+struct FilledGeometryPrefix {
+    version: u16,
+    properties: ElementPropertiesPrefix10_1,
+    fill: SymbolSlotFull10_1,
+    geometry: crate::maps::map_frame::FrameGeometrySlot10_1,
+}
+
+fn read_filled_geometry_prefix(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    class_name: &str,
+) -> io::Result<FilledGeometryPrefix> {
+    let version = reader.read_u16_le()?;
+    if version as i16 > 1 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("不支持的 {class_name} 版本"),
+        ));
+    }
+    let properties = match read_element_properties_prefix_10_1(reader, max_bytes, refs)? {
+        PrefixOutcome10_1::Complete(properties) => properties,
+        PrefixOutcome10_1::Stopped(reason) => {
+            return Err(io::Error::new(ErrorKind::Unsupported, reason.describe()));
+        }
+    };
+    let mut stop = None;
+    let fill = read_shape_symbol_slot(reader, max_bytes, refs, ShapeSymbol::Fill, &mut stop)?;
+    if let Some(reason) = stop {
+        return Err(io::Error::new(ErrorKind::Unsupported, reason.describe()));
+    }
+    let geometry = crate::maps::map_frame::geometry_slot(reader, max_bytes, refs)?;
+    Ok(FilledGeometryPrefix {
+        version,
+        properties,
+        fill,
+        geometry,
+    })
+}
+
+fn read_text_3d_element(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<Text3dElement10_1> {
+    let mut trial = reader.clone();
+    let mut refs = table.clone();
+    let FilledGeometryPrefix {
+        version,
+        properties,
+        fill,
+        geometry,
+    } = read_filled_geometry_prefix(&mut trial, max_bytes, &mut refs, "Text3DElement")?;
+    let raw_int = trial.read_u32_le()? as i32;
+    let leading_short = trial.read_u16_le()?;
+    let strings = [
+        read_string_10_1(&mut trial, max_bytes)?,
+        read_string_10_1(&mut trial, max_bytes)?,
+    ];
+    let anchor_shorts = [trial.read_u16_le()?, trial.read_u16_le()?];
+    let mut stop = None;
+    let mut anchor = read_point_slot(
+        &mut trial,
+        max_bytes,
+        &mut refs,
+        reader,
+        reader.position(),
+        "Text3DElement IPoint 槽",
+        &mut stop,
+    )?;
+    if let Some(reason) = stop {
+        return Err(io::Error::new(ErrorKind::Unsupported, reason.describe()));
+    }
+    if let PointSlot10_1::BackReference { class_id, key } = &mut anchor
+        && let Some(registered) = refs.registered_class(*key)
+    {
+        if registered != POINT_CLASS_ID {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "Text3DElement IPoint 回引类未支持",
+            ));
+        }
+        *class_id = registered;
+    }
+    let leading_double_bits = [
+        trial.read_f64_le()?.to_bits(),
+        trial.read_f64_le()?.to_bits(),
+    ];
+    let tail_ints = [
+        trial.read_u32_le()? as i32,
+        trial.read_u32_le()? as i32,
+        trial.read_u32_le()? as i32,
+        trial.read_u32_le()? as i32,
+    ];
+    let trailing_double_bits = [
+        trial.read_f64_le()?.to_bits(),
+        trial.read_f64_le()?.to_bits(),
+    ];
+    *reader = trial;
+    *table = refs;
+    Ok(Text3dElement10_1 {
+        version,
+        properties,
+        fill,
+        geometry,
+        raw_int,
+        leading_short,
+        strings,
+        anchor_shorts,
+        anchor,
+        leading_double_bits,
+        tail_ints,
+        trailing_double_bits,
     })
 }
 

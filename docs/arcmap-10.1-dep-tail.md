@@ -817,3 +817,27 @@ Save `0x75053050` 以相同顺序写出，并在 `0x7506e7c8` 取版本 1。
 通用元素槽复用现有属性、填充符号和几何对象读取器。构造 Scene
 验证非空的 MultiPatch 几何对象、共享键登记、负版本、原始尾段、
 后继字节和逐字节截断回滚。尾段业务含义及 ArcMap/QGIS 实档目视待验证。
+
+### 三维图形容器中的 Text3DElement
+
+同版 GraphicElements.dll 的 PE RTTI `0x75081610` 及持久化虚表
+`0x75072f70` 对应 GetClassID `0x750606a0`、Load
+`0x75061e80`、Save `0x750620b0`。从 `0x75071128` 返回的
+CLSID `B9865D0B-EB37-11D4-A116-00508BD60CB9` 与 10.1 Carto
+互操作程序集中的 IElement 类一致。Load 的有符号 short 版本上限
+为 1，随后读 ElementProperties、IFillSymbol、IGeometry，前缀与
+MultiPatchElement 相同。objdump 核对后续指令如下。
+
+| 调用地址 | 字段 |
+| --- | --- |
+| `0x75061f30 / 0x75061f50` | int32、short |
+| `0x75061f61 / 0x75061f73` | 两个 AfCore 成员 String |
+| `0x75061f8d / 0x75061fa6 / 0x75061fc7` | 两个 short、IPoint |
+| `0x75061fea / 0x75062003` | 两个 double |
+| `0x75062022 / 0x75062037 / 0x7506204c / 0x75062061` | 四个 int32 |
+| `0x7506207c / 0x75062091` | 两个 double |
+
+Save 的版本表 `0x7506e7b0` 为 `[-1,1]`，写出时顺序一致。
+构造 Scene 验证字符串、标量位模式、几何与 IPoint 共用对象键、
+错误登记类和逐字节截断回滚。标量业务意义及 ArcMap/QGIS
+实档目视待验证。

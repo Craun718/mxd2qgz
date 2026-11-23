@@ -160,6 +160,7 @@ pub enum ElementEntry10_1 {
     PolygonElement(Box<crate::objects::element_body::LineOrPolygonElementBody10_1>),
     FrameElement(Box<crate::maps::map_frame::BaseFrameElement10_1>),
     MultiPatchElement(Box<crate::objects::element_body::MultiPatchElement10_1>),
+    Text3dElement(Box<crate::objects::element_body::Text3dElement10_1>),
     PictureElement(Box<crate::maps::picture_element::PictureElement10_1>),
 }
 
@@ -172,7 +173,10 @@ impl ElementEntry10_1 {
             Self::ParagraphTextElement(body) => body.stop.as_ref(),
             Self::MarkerElement(body) => body.stop.as_ref(),
             Self::LineElement(body) | Self::PolygonElement(body) => body.stop.as_ref(),
-            Self::PictureElement(_) | Self::FrameElement(_) | Self::MultiPatchElement(_) => None,
+            Self::PictureElement(_)
+            | Self::FrameElement(_)
+            | Self::MultiPatchElement(_)
+            | Self::Text3dElement(_) => None,
         }
     }
 }
@@ -517,6 +521,7 @@ fn read_stoppable_entry<'a>(
                 ElementBody10_1::MultiPatchElement(body) => {
                     ElementEntry10_1::MultiPatchElement(body)
                 }
+                ElementBody10_1::Text3dElement(body) => ElementEntry10_1::Text3dElement(body),
                 ElementBody10_1::PictureElement(body) => ElementEntry10_1::PictureElement(body),
             };
             Ok(Some(entry))

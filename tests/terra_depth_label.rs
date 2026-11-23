@@ -1133,3 +1133,98 @@ fn scene_graphics_reads_a_multipatch_element_with_a_new_geometry() {
         assert!(refs.is_empty());
     }
 }
+
+#[test]
+fn scene_graphics_reads_text_3d_strings_anchor_and_tail() {
+    use mxd2qgz::layers::graphics_3d::{GRAPHICS_LAYER_3D_CLASS_ID, read_graphics_3d_layer_10_1};
+    use mxd2qgz::objects::element_body::{
+        ElementBody10_1, PointSlot10_1, TEXT_3D_ELEMENT_CLASS_ID,
+    };
+    use mxd2qgz::objects::geometry::{GeometryBody10_1, POINT_CLASS_ID};
+
+    let mut data = scene_version_one(&[0; 16]);
+    data.truncate(data.len() - 4);
+    data.extend(1_i32.to_le_bytes());
+    data.extend(TEXT_3D_ELEMENT_CLASS_ID);
+    data.extend(74_u32.to_le_bytes());
+    data.extend(1_i16.to_le_bytes());
+    data.extend(0_u16.to_le_bytes());
+    empty_string(&mut data);
+    empty_string(&mut data);
+    data.extend([0; 4 + 16 + 16]); // 旧标量、空属性和空填充符号。
+    data.extend(POINT_CLASS_ID);
+    data.extend(75_u32.to_le_bytes());
+    data.extend(2_u16.to_le_bytes());
+    data.extend(20_u32.to_le_bytes());
+    data.extend(1_u32.to_le_bytes());
+    data.extend(2.5_f64.to_le_bytes());
+    data.extend(3.5_f64.to_le_bytes());
+    data.extend([0; 16]); // 空空间参考。
+    data.extend((-8_i32).to_le_bytes());
+    data.extend(3_u16.to_le_bytes());
+    for value in ["高程", "文本"] {
+        data.extend(6_u32.to_le_bytes());
+        data.extend(value.encode_utf16().chain([0]).flat_map(u16::to_le_bytes));
+    }
+    data.extend([4_u16, 5].into_iter().flat_map(u16::to_le_bytes));
+    data.extend(POINT_CLASS_ID);
+    let anchor_key_offset = data.len();
+    data.extend(75_u32.to_le_bytes());
+    let leading = [(-0.0_f64).to_bits(), 10.0_f64.to_bits()];
+    let trailing = [20.0_f64.to_bits(), 21.0_f64.to_bits()];
+    data.extend(leading.into_iter().flat_map(u64::to_le_bytes));
+    data.extend([-6_i32, 7, 8, 9].into_iter().flat_map(i32::to_le_bytes));
+    data.extend(trailing.into_iter().flat_map(u64::to_le_bytes));
+    let end = data.len();
+    data.push(0xa5);
+
+    let mut reader = Reader::new(&data);
+    let mut refs = RefTable10_1::new();
+    let result =
+        read_graphics_3d_layer_10_1(&GRAPHICS_LAYER_3D_CLASS_ID, &mut reader, 4096, &mut refs)
+            .unwrap();
+    let Some(ElementBody10_1::Text3dElement(body)) = result.elements[0].element.body.as_deref()
+    else {
+        panic!("应读取 Text3DElement");
+    };
+    assert!(matches!(
+        body.geometry.body.as_deref(),
+        Some(GeometryBody10_1::Point(_))
+    ));
+    assert_eq!((body.raw_int, body.leading_short), (-8, 3));
+    assert_eq!(body.strings, ["高程", "文本"]);
+    assert_eq!(body.anchor_shorts, [4, 5]);
+    assert_eq!(
+        body.anchor,
+        PointSlot10_1::BackReference {
+            class_id: POINT_CLASS_ID,
+            key: 75
+        }
+    );
+    assert_eq!(body.leading_double_bits, leading);
+    assert_eq!(body.tail_ints, [-6, 7, 8, 9]);
+    assert_eq!(body.trailing_double_bits, trailing);
+    assert_eq!(reader.position(), end);
+
+    for cut in 0..end {
+        let mut reader = Reader::new(&data[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(
+            read_graphics_3d_layer_10_1(&GRAPHICS_LAYER_3D_CLASS_ID, &mut reader, 4096, &mut refs)
+                .is_err()
+        );
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+    data[anchor_key_offset..anchor_key_offset + 4].copy_from_slice(&74_u32.to_le_bytes());
+    let mut reader = Reader::new(&data);
+    let mut refs = RefTable10_1::new();
+    assert_eq!(
+        read_graphics_3d_layer_10_1(&GRAPHICS_LAYER_3D_CLASS_ID, &mut reader, 4096, &mut refs)
+            .unwrap_err()
+            .kind(),
+        std::io::ErrorKind::Unsupported
+    );
+    assert_eq!(reader.position(), 0);
+    assert!(refs.is_empty());
+}
