@@ -3735,7 +3735,7 @@ fn feature_bookmark_reads_gp_sa_topo_features_type_name() {
 #[test]
 fn feature_bookmark_reads_legacy_topo_numeric_domain() {
     use mxd2qgz::maps::map_surround::{
-        GP_NUMERIC_DOMAIN_CLASS_ID, GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID,
+        GP_NUMERIC_DOMAIN_CLASS_ID, GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID, GpTopoDomain10_1,
     };
     use mxd2qgz::storage::object_refs::ObjectEntry10_1;
 
@@ -3774,7 +3774,16 @@ fn feature_bookmark_reads_legacy_topo_numeric_domain() {
     let [first, second, third] = body.legacy_entries.as_slice() else {
         panic!("应读取三条旧版记录");
     };
-    let domain = first.legacy_domain.as_ref().unwrap().body.as_ref().unwrap();
+    let GpTopoDomain10_1::Numeric(domain) = first
+        .legacy_domain
+        .as_ref()
+        .unwrap()
+        .body
+        .as_deref()
+        .unwrap()
+    else {
+        panic!("应读取数值域");
+    };
     assert_eq!(domain.version, 1);
     assert_eq!(domain.first_short, 2);
     assert_eq!(domain.first_double_bits, (-0.0_f64).to_bits());
@@ -3798,6 +3807,71 @@ fn feature_bookmark_reads_legacy_topo_numeric_domain() {
         let mut reader = Reader::new(&bytes[..cut]);
         let mut refs = RefTable10_1::new();
         assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+}
+
+#[test]
+fn feature_bookmark_reads_legacy_topo_file_domain() {
+    use mxd2qgz::maps::map_surround::{
+        GP_FILE_DOMAIN_CLASS_ID, GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID, GpTopoDomain10_1,
+    };
+
+    for raw_count in [-1_i32, 2] {
+        let mut bytes = bookmark_header_10_1(&GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID, 17);
+        bytes.extend(1_i16.to_le_bytes());
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend([0; 16]);
+        bytes.extend(GP_FILE_DOMAIN_CLASS_ID);
+        bytes.extend(18_u32.to_le_bytes());
+        bytes.extend(1_i16.to_le_bytes());
+        let count_offset = bytes.len();
+        bytes.extend(raw_count.to_le_bytes());
+        let strings = if raw_count > 0 {
+            vec!["文件", ""]
+        } else {
+            vec![]
+        };
+        for value in &strings {
+            bytes.extend(bookmark_string_10_1(value));
+        }
+        bytes.extend(bookmark_string_10_1("拓扑"));
+        bytes.extend(9_i32.to_le_bytes());
+        bytes.extend(bookmark_string_10_1("书签"));
+        let end = bytes.len();
+        bytes.push(0xa5);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+        let BookmarkNameEntry10_1::GpSaTopoFeaturesTypeName(body) = result.name_object else {
+            panic!("应读取拓扑要素类型名称");
+        };
+        let entry = &body.legacy_entries[0];
+        assert!(matches!(
+            entry.legacy_domain.as_ref().unwrap().body.as_deref(),
+            Some(GpTopoDomain10_1::File { version: 1, raw_count: actual, strings: values })
+                if *actual == raw_count && *values == strings
+        ));
+        assert_eq!(entry.string, "拓扑");
+        assert_eq!(result.name, "书签");
+        assert_eq!(reader.position(), end);
+        assert!(refs.contains(17) && refs.contains(18));
+
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+
+        bytes[count_offset..count_offset + 4].copy_from_slice(&i32::MAX.to_le_bytes());
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let error = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
         assert_eq!(reader.position(), 0);
         assert!(refs.is_empty());
     }

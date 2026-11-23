@@ -824,7 +824,7 @@ Load `0x748f99c0` 的有符号版本上限为 4，v4 仅消费版本。
 `0x748f9a6d` 另请求 IGPDomain，随后读 AfCore 成员 String
 与 LONG。v3 在 `0x748f9ad3` 追加 IUID。Save `0x748f9b70`
 写 v4。当前 v2–v3 分派支持已确认的数据类型和 UID，
-更早版本已支持空域以及下述 GPNumericDomain，遇其余未确认类时回滚。
+更早版本已支持空域以及下述 GPNumericDomain、GPFileDomain，遇其余未确认类时回滚。
 
 构造书签验证多值名称中的 v2–v4 子对象、旧记录、后继字段边界
 和逐字节截断回滚。旧域子体、真实书签宿主、原生 Open 及
@@ -846,3 +846,16 @@ QI `0x746f2390` 在 `0x746f23c9` 比较 IGPDomain IID，匹配时
 书签旧记录读取空、新建 GPNumericDomain 或登记类匹配的回引，
 保留 double 的磁盘位。构造测试覆盖三种槽值、后继字段边界及
 逐字节截断回滚。其余域类以及 ArcMap/QGIS 人工验收待查。
+
+### GPFileDomain
+
+同版 GpObjects.dll 的 PE RTTI `0x7480041c` 对应持久化虚表
+`0x747b0068`，类型库 CLSID 为 `3EDC8E3A-FF87-47E1-AF34-09BB4CB22DA9`。
+QI `0x746df850` 于 `0x746df889` 比较 IGPDomain IID，
+匹配时返回 +0x10。Load `0x746e0490` 检查有符号 short 上限 1，
+于 `0x746e04dc` 读取有符号 int32 字符串计数，非正数跳过循环。
+循环在 `0x746e0516` 调用 AfCore 成员 String::Read。
+Save `0x746e0560` 对应同一字段顺序。
+
+构造旧版拓扑记录验证有符号计数、多个字符串、后继字段边界及
+截断和超量计数回滚。真实 ArcMap 书签及 QGIS 人工验收待验证。

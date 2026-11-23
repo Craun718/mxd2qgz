@@ -334,6 +334,20 @@ pub struct AoiBookmark10_1 {
 
 const MAX_BOOKMARK_NAME_NESTING: usize = 16;
 
+pub const GP_FILE_DOMAIN_CLASS_ID: [u8; 16] = [
+    0x3a, 0x8e, 0xdc, 0x3e, 0x87, 0xff, 0xe1, 0x47, 0xaf, 0x34, 0x09, 0xbb, 0x4c, 0xb2, 0x2d, 0xa9,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum GpTopoDomain10_1 {
+    Numeric(GpNumericDomain10_1),
+    File {
+        version: i16,
+        raw_count: i32,
+        strings: Vec<String>,
+    },
+}
+
 pub const GP_NUMERIC_DOMAIN_CLASS_ID: [u8; 16] = [
     0x80, 0xe1, 0xdd, 0xad, 0x22, 0x39, 0xf7, 0x48, 0x87, 0xc8, 0x34, 0x2f, 0xfa, 0xe4, 0x11, 0x61,
 ];
@@ -361,7 +375,7 @@ pub struct GpSaTopoFeaturesTypeName10_1 {
 #[derive(Debug, Clone, PartialEq)]
 pub struct GpSaTopoFeaturesTypeEntry10_1 {
     pub data_type: BookmarkNameEntry10_1,
-    pub legacy_domain: Option<RuleSlot10_1<GpNumericDomain10_1>>,
+    pub legacy_domain: Option<RuleSlot10_1<GpTopoDomain10_1>>,
     pub string: String,
     pub value: i32,
     pub uid: Option<RuleSlot10_1<UidBody10_1>>,
@@ -1062,26 +1076,52 @@ fn read_gp_function_name_body_10_1(
 
 fn read_gp_topo_domain_slot_10_1(
     reader: &mut Reader<'_>,
+    max_bytes: usize,
     table: &mut RefTable10_1,
-) -> io::Result<RuleSlot10_1<GpNumericDomain10_1>> {
+) -> io::Result<RuleSlot10_1<GpTopoDomain10_1>> {
     let entry = read_object_entry_10_1(reader, table)?;
     let body = match entry {
         ObjectEntry10_1::Null => None,
         ObjectEntry10_1::BackReference { class_id, key }
-            if table.registered_class(key).unwrap_or(class_id) == GP_NUMERIC_DOMAIN_CLASS_ID =>
+            if matches!(
+                table.registered_class(key).unwrap_or(class_id),
+                GP_NUMERIC_DOMAIN_CLASS_ID | GP_FILE_DOMAIN_CLASS_ID
+            ) =>
         {
             None
         }
         ObjectEntry10_1::NewObject {
             class_id: GP_NUMERIC_DOMAIN_CLASS_ID,
             ..
-        } => Some(Box::new(GpNumericDomain10_1 {
+        } => Some(Box::new(GpTopoDomain10_1::Numeric(GpNumericDomain10_1 {
             version: read_gp_name_version(reader, 1, "GPNumericDomain")?,
             first_short: reader.read_u16_le()?,
             first_double_bits: reader.read_f64_le()?.to_bits(),
             middle_shorts: [reader.read_u16_le()?, reader.read_u16_le()?],
             second_double_bits: reader.read_f64_le()?.to_bits(),
-        })),
+        }))),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_FILE_DOMAIN_CLASS_ID,
+            ..
+        } => {
+            let version = read_gp_name_version(reader, 1, "GPFileDomain")?;
+            let raw_count = reader.read_u32_le()? as i32;
+            let count = raw_count.max(0) as usize;
+            if count > reader.remaining().min(max_bytes) / 6 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "GPFileDomain 字符串数量超限",
+                ));
+            }
+            let strings = (0..count)
+                .map(|_| read_string_10_1(reader, max_bytes))
+                .collect::<io::Result<Vec<_>>>()?;
+            Some(Box::new(GpTopoDomain10_1::File {
+                version,
+                raw_count,
+                strings,
+            }))
+        }
         _ => {
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
@@ -1139,7 +1179,7 @@ fn read_gp_sa_topo_features_type_name_body_10_1(
             ));
         }
         let legacy_domain = (version < 2)
-            .then(|| read_gp_topo_domain_slot_10_1(reader, table))
+            .then(|| read_gp_topo_domain_slot_10_1(reader, max_bytes, table))
             .transpose()?;
         let string = read_string_10_1(reader, max_bytes)?;
         let value = reader.read_u32_le()? as i32;
