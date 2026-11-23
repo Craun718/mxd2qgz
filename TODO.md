@@ -885,6 +885,7 @@
       - [x] 原生验证 UnknownCoordinateSystem v2/v3 的部分 Z/M 网格容差。[取证](docs/arcmap-10.1-pcs-geometry-slots.md#部分启用的-zm-网格)
       - [x] 原生验证 PCS 的 XY 默认容差单位换算和网格下限。[取证](docs/arcmap-10.1-pcs-geometry-slots.md#pcs-的-xy-默认容差单位换算运行验证)
       - [x] 原生验证 GCS 的 XY 默认容差角单位换算和网格下限。[取证](docs/arcmap-10.1-pcs-geometry-slots.md#gcs-的-xy-默认容差角单位换算运行验证)
+      - [x] 原生验证 PCS 与 GCS 的 Z 默认容差单位换算和网格下限。[取证](docs/arcmap-10.1-pcs-geometry-slots.md#pcs-与-gcs-的-z-默认容差单位换算运行验证)
       - [x] 将 ISRPersistStream 槽 8 定名为 GetPrecisionSizeMax，输出 `0x38`。
       - [x] 核对 10.1 UnknownCoordinateSystem 四条持久化字符串与 ISpatialReferenceInfo 属性的对应关系。[原生取证](docs/arcmap-10.1-pcs-geometry-slots.md#unknowncoordinatesystem-的四条持久化字符串)
       - [x] 确认 GCS 加载守卫也控制 IGeographicCoordinateSystemEdit 的接口查询。[类型库与原生分派](docs/mxd-terra-integrate-sr.md#gcs-守卫与槽位)
