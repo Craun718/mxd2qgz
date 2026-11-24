@@ -2235,3 +2235,15 @@ FeatureDataElements.dll 10.1.0.3035 的构造函数在 `0x6f61c284`
 随后在 `0x6f61c827`、`0x6f61c831` 读取两个 AfCore String。
 构造测试覆盖基类、双字符串、对象边界和逐字节截断。
 实际 MXD 宿主仍待验证。
+
+#### DEWorkspace
+
+FeatureDataElements.dll 10.1.0.3035 的 DEWorkspace 持久化表
+`0x6f65f778` 对应类型库 CLSID `{2127AF36-CAE1-427E-B1A8-BF0F1AD19F6E}`。
+Load `0x6f621300` 接受无符号版本 0 至 5，先调用 DataElement::Load。
+v3 起在 `0x6f621378` 读工厂 BSTR，再在成功的工厂解析路径读取两个
+AfCore String。其后所有版本读取 IPropertySet 和有符号 IDomain 计数，
+正计数在 `0x6f62146c` 请求 IID `{DF18FE0A-84BA-11D2-AB61-000000000000}`。
+v1 另读一个四字节值，v4 起读三个 long，v5 再读 String。
+解析器保留工厂标识字符串，沿用现有属性集与域读取器。
+构造测试覆盖全部版本、非正域计数和截断。实际 MXD 宿主仍待验证。

@@ -205,6 +205,7 @@ use crate::objects::dataset_name_more::{
     SCHEMATIC_DIAGRAM_NAME_CLASS_ID, SchematicDiagramNameBody10_1,
     read_schematic_diagram_name_body_10_1,
 };
+use crate::objects::domain::{DomainSlot10_1, read_domain_slot_nested_10_1};
 use crate::objects::envelope::{
     ENVELOPE_CLASS_ID, Envelope10_1, SpatialReferenceEntry10_1, read_envelope_10_1,
     read_spatial_reference_entry_10_1,
@@ -511,6 +512,10 @@ pub const DE_GEOMETRIC_NETWORK_CLASS_ID: [u8; 16] = [
 
 pub const DE_TOPOLOGY_CLASS_ID: [u8; 16] = [
     0x7d, 0x63, 0xc4, 0xac, 0xe0, 0xd5, 0xd5, 0x47, 0xab, 0xcd, 0x9f, 0x25, 0xab, 0x32, 0x6e, 0x6f,
+];
+
+pub const DE_WORKSPACE_CLASS_ID: [u8; 16] = [
+    0x36, 0xaf, 0x27, 0x21, 0xe1, 0xca, 0x7e, 0x42, 0xb1, 0xa8, 0xbf, 0x0f, 0x1a, 0xd1, 0x9f, 0x6e,
 ];
 
 pub const DE_SERVER_CONNECTION_CLASS_ID: [u8; 16] = [
@@ -918,6 +923,7 @@ pub struct DataElement10_1 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
+    Workspace(Box<DeWorkspace10_1>),
     ServerConnection {
         version: u16,
         element: DataElement10_1,
@@ -970,6 +976,19 @@ pub enum DeChild10_1 {
         spatial_reference: SpatialReferenceEntry10_1,
         strings: [String; 2],
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeWorkspace10_1 {
+    pub version: u16,
+    pub element: DataElement10_1,
+    pub factory: Option<(String, [String; 2])>,
+    pub properties: RuleSlot10_1<PropertySetObjectStream10_1>,
+    pub raw_domain_count: i32,
+    pub domains: Vec<DomainSlot10_1>,
+    pub v1: Option<i32>,
+    pub v4: Option<[i32; 3]>,
+    pub v5: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3250,6 +3269,7 @@ fn read_gp_data_element_child(
                     | DE_FEATURE_DATASET_CLASS_ID
                     | DE_CATALOG_DATASET_CLASS_ID
                     | DE_SERVER_CONNECTION_CLASS_ID
+                    | DE_WORKSPACE_CLASS_ID
                     | DE_TOPOLOGY_CLASS_ID
                     | DE_GEOMETRIC_NETWORK_CLASS_ID
                     | DE_RELATIONSHIP_CLASS_CLASS_ID
@@ -3264,6 +3284,7 @@ fn read_gp_data_element_child(
                 | DE_FEATURE_DATASET_CLASS_ID
                 | DE_CATALOG_DATASET_CLASS_ID
                 | DE_SERVER_CONNECTION_CLASS_ID
+                | DE_WORKSPACE_CLASS_ID
                 | DE_TOPOLOGY_CLASS_ID
                 | DE_GEOMETRIC_NETWORK_CLASS_ID
                 | DE_RELATIONSHIP_CLASS_CLASS_ID),
@@ -3277,6 +3298,13 @@ fn read_gp_data_element_child(
             }
             let body = if class_id == DE_TABLE_CLASS_ID {
                 DeChild10_1::Table(read_gp_de_table(reader, max_bytes, refs, depth + 1)?)
+            } else if class_id == DE_WORKSPACE_CLASS_ID {
+                DeChild10_1::Workspace(Box::new(read_de_workspace(
+                    reader,
+                    max_bytes,
+                    refs,
+                    depth + 1,
+                )?))
             } else if class_id == DE_SERVER_CONNECTION_CLASS_ID {
                 let version = reader.read_u16_le()?;
                 if version > 1 {
@@ -3426,6 +3454,67 @@ fn read_gp_data_element_child(
         }
     };
     Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_de_workspace(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<DeWorkspace10_1> {
+    let version = reader.read_u16_le()?;
+    if version > 5 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "DEWorkspace 版本超限",
+        ));
+    }
+    let element = read_gp_data_element(reader, max_bytes, refs, depth)?;
+    let factory = if version >= 3 {
+        Some((
+            read_bstr_string_10_1(reader, max_bytes)?,
+            [
+                read_string_10_1(reader, max_bytes)?,
+                read_string_10_1(reader, max_bytes)?,
+            ],
+        ))
+    } else {
+        None
+    };
+    let properties = read_gp_property_set_slot(reader, max_bytes, refs)?;
+    let (raw_domain_count, count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
+    let mut domains = Vec::new();
+    for _ in 0..count {
+        domains.push(read_domain_slot_nested_10_1(
+            reader, max_bytes, refs, depth,
+        )?);
+    }
+    let v1 = (version == 1)
+        .then(|| reader.read_u32_le().map(|value| value as i32))
+        .transpose()?;
+    let v4 = if version >= 4 {
+        Some([
+            reader.read_u32_le()? as i32,
+            reader.read_u32_le()? as i32,
+            reader.read_u32_le()? as i32,
+        ])
+    } else {
+        None
+    };
+    let v5 = (version == 5)
+        .then(|| read_string_10_1(reader, max_bytes))
+        .transpose()?;
+    Ok(DeWorkspace10_1 {
+        version,
+        element,
+        factory,
+        properties,
+        raw_domain_count,
+        domains,
+        v1,
+        v4,
+        v5,
+    })
 }
 
 fn read_de_relationship_class(
@@ -6599,5 +6688,61 @@ mod tests {
         assert_eq!(element.gp_value_short, 7);
         assert_eq!(strings, &["A", "B"]);
         assert_eq!(reader.position(), end);
+    }
+
+    #[test]
+    fn de_workspace_reads_version_fields_in_wire_order() {
+        for version in 0_u16..=5 {
+            let mut bytes = DE_WORKSPACE_CLASS_ID.to_vec();
+            bytes.extend(36_u32.to_le_bytes());
+            bytes.extend(version.to_le_bytes());
+            bytes.extend([0; 6]);
+            let empty = [2, 0, 0, 0, 0, 0];
+            for _ in 0..3 {
+                bytes.extend(empty);
+            }
+            bytes.extend([0; 10]);
+            if version >= 3 {
+                bytes.extend([1, 0, 0, 0, b'F', 0, 0, 0]);
+                bytes.extend(empty);
+                bytes.extend(empty);
+            }
+            bytes.extend([0; 16]);
+            bytes.extend((-1_i32).to_le_bytes());
+            if version == 1 {
+                bytes.extend(11_i32.to_le_bytes());
+            }
+            if version >= 4 {
+                for value in [12_i32, 13, 14] {
+                    bytes.extend(value.to_le_bytes());
+                }
+            }
+            if version == 5 {
+                bytes.extend([4, 0, 0, 0, b'T', 0, 0, 0]);
+            }
+            for cut in 0..bytes.len() {
+                let mut reader = Reader::new(&bytes[..cut]);
+                let mut refs = RefTable10_1::new();
+                assert!(read_gp_data_element_child(&mut reader, 1024, &mut refs, 0).is_err());
+            }
+            let end = bytes.len();
+            bytes.push(0xa5);
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let object = read_gp_data_element_child(&mut reader, 1024, &mut refs, 0).unwrap();
+            let Some(DeChild10_1::Workspace(workspace)) = object.body.as_deref() else {
+                panic!("应读取 DEWorkspace");
+            };
+            assert_eq!(workspace.version, version);
+            assert_eq!(
+                workspace.factory.as_ref().map(|factory| factory.0.as_str()),
+                (version >= 3).then_some("F")
+            );
+            assert_eq!(workspace.raw_domain_count, -1);
+            assert_eq!(workspace.v1, (version == 1).then_some(11));
+            assert_eq!(workspace.v4, (version >= 4).then_some([12, 13, 14]));
+            assert_eq!(workspace.v5.as_deref(), (version == 5).then_some("T"));
+            assert_eq!(reader.position(), end);
+        }
     }
 }
