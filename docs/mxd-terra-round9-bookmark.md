@@ -2719,3 +2719,20 @@ Terrain.dll 10.1.0.3035 的 `0x800f5150` 在 DEGeoDataset 之后
 `0x800f5099` 使用与旧版一致的源和层级元素读取器。
 构造测试覆盖 v9–13、版本门、两组非空列表和逐字节截断。
 真实 MXD 宿主仍待验证。
+
+#### DECadastralFabric
+
+CadastralFabric.dll 10.1.0.3035 的 SHA-256 为
+`ccaff2b3cd3379b7a7630ea6f2a41c06c75ef6f68969e8ec8f51f2f05133bfd6`。
+PE RTTI 对应持久化虚表 `0x6c2a0174`，GetClassID
+`0x6c251650` 从 `0x6c29d3a4` 复制
+`B0F868C0-BFBC-4669-B263-CD348D65D7AE`。
+Load `0x6c251690` 读取 short，以有符号比较检查上限 3，
+经 `0x6c28f30c` 调用 DEGeoDataset::Load，接着读取
+long、AfCore String、long，并在 `0x6c25174b` 调用内部
+虚表目标。随后 `0x6c251767` 读有符号计数，正数在
+`0x6c2517be` 逐项以 IID `3327D58A-2994-4FD9-A2FB-1F3A993F27AE`
+调用 LoadObject。计数循环后在 `0x6c2517fd` 另读 short，并据此
+控制后续布局。值至少为 3 时包含多个 IPropertySet 槽，
+IID 位于 `0x6c296060`。内部虚表读取、列表元素类和版本尾部
+仍待核对。
