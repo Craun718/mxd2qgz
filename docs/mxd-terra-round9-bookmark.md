@@ -2382,3 +2382,19 @@ esriGeoprocessing 类型库将 `22994B51-C6BA-41FF-ABE6-549615441E3F`
 LoadObject，非正数跳过循环。空项仍占流内位置。
 构造测试覆盖成员循环、空项、回引、逐字节截断和结束位置。
 真实 MXD 宿主仍待验证。
+
+#### 目录数据元素
+
+FileDataElements.dll 10.1.0.3035 的 PE RTTI 持久化表及
+esriDataSourcesFile 类型库的 CLSID 如下。
+
+| 类 | 持久化表 | CLSID |
+| --- | --- | --- |
+| DECatalogRoot | `0x6f9d8f34` | `01D6EBDD-DE9A-4217-8BFE-327265855FA2` |
+| DERemoteDatabaseFolder | `0x6f9db84c` | `DB3E6FDF-D5F8-4C94-B743-47AB4DE79A05` |
+| DESpatialReferencesFolder | `0x6f9dbf8c` | `3189F8FC-A9C8-4B8E-8C47-43C758A7A8BD` |
+
+三个持久化表共享 Load `0x6f9c3b90`。它检查无符号版本上限 1，
+经导入槽 `0x6f9d7454` 调用 DataElement::Load 后结束。
+构造测试覆盖三个 CLSID、基类结束位置和逐字节截断。
+真实 MXD 宿主仍待验证。

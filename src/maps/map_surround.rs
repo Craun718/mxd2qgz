@@ -515,6 +515,18 @@ pub const DE_TOPOLOGY_CLASS_ID: [u8; 16] = [
     0x7d, 0x63, 0xc4, 0xac, 0xe0, 0xd5, 0xd5, 0x47, 0xab, 0xcd, 0x9f, 0x25, 0xab, 0x32, 0x6e, 0x6f,
 ];
 
+pub const DE_CATALOG_ROOT_CLASS_ID: [u8; 16] = [
+    0xdd, 0xeb, 0xd6, 0x01, 0x9a, 0xde, 0x17, 0x42, 0x8b, 0xfe, 0x32, 0x72, 0x65, 0x85, 0x5f, 0xa2,
+];
+
+pub const DE_REMOTE_DATABASE_FOLDER_CLASS_ID: [u8; 16] = [
+    0xdf, 0x6f, 0x3e, 0xdb, 0xf8, 0xd5, 0x94, 0x4c, 0xb7, 0x43, 0x47, 0xab, 0x4d, 0xe7, 0x9a, 0x05,
+];
+
+pub const DE_SPATIAL_REFERENCES_FOLDER_CLASS_ID: [u8; 16] = [
+    0xfc, 0xf8, 0x89, 0x31, 0xc8, 0xa9, 0x8e, 0x4b, 0x8c, 0x47, 0x43, 0xc7, 0x58, 0xa7, 0xa8, 0xbd,
+];
+
 pub const DE_LAYER_CLASS_ID: [u8; 16] = [
     0x08, 0x17, 0xd7, 0xbd, 0x63, 0x34, 0x87, 0x47, 0xa4, 0x91, 0xb9, 0x36, 0x3b, 0x93, 0x7d, 0xbe,
 ];
@@ -3539,6 +3551,9 @@ fn read_gp_data_element_child(
                     | DE_FOLDER_CLASS_ID
                     | DE_MAP_DOCUMENT_CLASS_ID
                     | DE_DISK_CONNECTION_CLASS_ID
+                    | DE_CATALOG_ROOT_CLASS_ID
+                    | DE_REMOTE_DATABASE_FOLDER_CLASS_ID
+                    | DE_SPATIAL_REFERENCES_FOLDER_CLASS_ID
                     | DE_PRJ_FILE_CLASS_ID
                     | DE_TEXT_FILE_CLASS_ID
                     | DE_LAYER_CLASS_ID
@@ -3568,6 +3583,9 @@ fn read_gp_data_element_child(
                 | DE_FOLDER_CLASS_ID
                 | DE_MAP_DOCUMENT_CLASS_ID
                 | DE_DISK_CONNECTION_CLASS_ID
+                | DE_CATALOG_ROOT_CLASS_ID
+                | DE_REMOTE_DATABASE_FOLDER_CLASS_ID
+                | DE_SPATIAL_REFERENCES_FOLDER_CLASS_ID
                 | DE_PRJ_FILE_CLASS_ID
                 | DE_TEXT_FILE_CLASS_ID
                 | DE_LAYER_CLASS_ID
@@ -3590,6 +3608,9 @@ fn read_gp_data_element_child(
                     | DE_FOLDER_CLASS_ID
                     | DE_MAP_DOCUMENT_CLASS_ID
                     | DE_DISK_CONNECTION_CLASS_ID
+                    | DE_CATALOG_ROOT_CLASS_ID
+                    | DE_REMOTE_DATABASE_FOLDER_CLASS_ID
+                    | DE_SPATIAL_REFERENCES_FOLDER_CLASS_ID
                     | DE_PRJ_FILE_CLASS_ID
             ) {
                 let version = reader.read_u16_le()?;
@@ -7473,6 +7494,9 @@ mod tests {
             DE_FOLDER_CLASS_ID,
             DE_MAP_DOCUMENT_CLASS_ID,
             DE_DISK_CONNECTION_CLASS_ID,
+            DE_CATALOG_ROOT_CLASS_ID,
+            DE_REMOTE_DATABASE_FOLDER_CLASS_ID,
+            DE_SPATIAL_REFERENCES_FOLDER_CLASS_ID,
             DE_PRJ_FILE_CLASS_ID,
         ] {
             let mut bytes = class_id.to_vec();
