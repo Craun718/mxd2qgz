@@ -2398,3 +2398,20 @@ esriDataSourcesFile 类型库的 CLSID 如下。
 经导入槽 `0x6f9d7454` 调用 DataElement::Load 后结束。
 构造测试覆盖三个 CLSID、基类结束位置和逐字节截断。
 真实 MXD 宿主仍待验证。
+
+#### DEDbaseTable 与 DEVPFTable
+
+FileDataElements.dll 10.1.0.3035 的 PE RTTI 持久化表与
+esriDataSourcesFile 类型库对应关系如下。
+
+| 类 | 持久化表 | CLSID |
+| --- | --- | --- |
+| DEDbaseTable | `0x6f9d9ae4` | `69E84176-FB98-4036-A8FF-E69C8E82F013` |
+| DEVPFTable | `0x6f9dceac` | `48AAB232-6F1F-4261-9DAC-CBA55D183649` |
+
+两类共享 Load `0x6f9badf0`，读取无符号版本（上限 1），
+经导入槽 `0x6f9d7438` 调用 DETableBase::Load 后结束。
+构造路径分别于 `0x6f9ba955`、`0x6f9c7be5` 调用基类构造函数，
+保留扩展标志默认值，复用简短表体读取布局。
+构造测试检查两类对象的表字段、结束位置和逐字节截断。
+真实 MXD 宿主仍待验证。

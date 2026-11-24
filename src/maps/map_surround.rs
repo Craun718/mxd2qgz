@@ -539,6 +539,14 @@ const GP_COMPOSITE_LAYER_CLASS_ID: [u8; 16] = [
     0x51, 0x4b, 0x99, 0x22, 0xba, 0xc6, 0xff, 0x41, 0xab, 0xe6, 0x54, 0x96, 0x15, 0x44, 0x1e, 0x3f,
 ];
 
+pub const DE_DBASE_TABLE_CLASS_ID: [u8; 16] = [
+    0x76, 0x41, 0xe8, 0x69, 0x98, 0xfb, 0x36, 0x40, 0xa8, 0xff, 0xe6, 0x9c, 0x8e, 0x82, 0xf0, 0x13,
+];
+
+pub const DE_VPF_TABLE_CLASS_ID: [u8; 16] = [
+    0x32, 0xb2, 0xaa, 0x48, 0x1f, 0x6f, 0x61, 0x42, 0x9d, 0xac, 0xcb, 0xa5, 0x5d, 0x18, 0x36, 0x49,
+];
+
 pub const DE_TEXT_FILE_CLASS_ID: [u8; 16] = [
     0x66, 0x07, 0x8d, 0xe9, 0x3e, 0xc1, 0xca, 0x45, 0xba, 0x78, 0x1d, 0xef, 0x8b, 0x60, 0xca, 0xb2,
 ];
@@ -1018,6 +1026,10 @@ pub struct GpLayer10_1 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
+    FileTable {
+        version: u16,
+        table: DeCompactTable10_1,
+    },
     Layer {
         version: u16,
         element: DataElement10_1,
@@ -3556,6 +3568,8 @@ fn read_gp_data_element_child(
                     | DE_SPATIAL_REFERENCES_FOLDER_CLASS_ID
                     | DE_PRJ_FILE_CLASS_ID
                     | DE_TEXT_FILE_CLASS_ID
+                    | DE_DBASE_TABLE_CLASS_ID
+                    | DE_VPF_TABLE_CLASS_ID
                     | DE_LAYER_CLASS_ID
                     | DE_TOPOLOGY_CLASS_ID
                     | DE_GEOMETRIC_NETWORK_CLASS_ID
@@ -3588,6 +3602,8 @@ fn read_gp_data_element_child(
                 | DE_SPATIAL_REFERENCES_FOLDER_CLASS_ID
                 | DE_PRJ_FILE_CLASS_ID
                 | DE_TEXT_FILE_CLASS_ID
+                | DE_DBASE_TABLE_CLASS_ID
+                | DE_VPF_TABLE_CLASS_ID
                 | DE_LAYER_CLASS_ID
                 | DE_TOPOLOGY_CLASS_ID
                 | DE_GEOMETRIC_NETWORK_CLASS_ID
@@ -3636,6 +3652,11 @@ fn read_gp_data_element_child(
                     version: read_de_layer_version(reader, 1, "DELayer")?,
                     element: read_gp_data_element(reader, max_bytes, refs, depth + 1)?,
                     layer: read_gp_layer_slot(reader, max_bytes, refs, depth + 1)?,
+                }
+            } else if matches!(class_id, DE_DBASE_TABLE_CLASS_ID | DE_VPF_TABLE_CLASS_ID) {
+                DeChild10_1::FileTable {
+                    version: read_de_layer_version(reader, 1, "文件表数据元素")?,
+                    table: read_de_compact_table(reader, max_bytes, refs, depth + 1)?,
                 }
             } else if class_id == DE_TEXT_FILE_CLASS_ID {
                 let version = reader.read_u16_le()?;
@@ -7629,6 +7650,44 @@ mod tests {
             )
             .unwrap_err();
             assert_eq!(err.kind(), ErrorKind::InvalidData);
+        }
+    }
+
+    #[test]
+    fn file_table_elements_end_after_compact_table() {
+        for class_id in [DE_DBASE_TABLE_CLASS_ID, DE_VPF_TABLE_CLASS_ID] {
+            let mut bytes = class_id.to_vec();
+            bytes.extend(55_u32.to_le_bytes());
+            bytes.extend([1, 0]);
+            bytes.extend([0; 10]);
+            for _ in 0..3 {
+                bytes.extend([2, 0, 0, 0, 0, 0]);
+            }
+            bytes.extend([0; 22]);
+            bytes.extend(9_u16.to_le_bytes());
+            bytes.extend([2, 0, 0, 0, 0, 0]);
+            bytes.extend([0; 32]);
+            for cut in 0..bytes.len() {
+                assert!(
+                    read_gp_data_element_child(
+                        &mut Reader::new(&bytes[..cut]),
+                        1024,
+                        &mut RefTable10_1::new(),
+                        0,
+                    )
+                    .is_err()
+                );
+            }
+            let end = bytes.len();
+            bytes.push(0xa5);
+            let mut reader = Reader::new(&bytes);
+            let object =
+                read_gp_data_element_child(&mut reader, 1024, &mut RefTable10_1::new(), 0).unwrap();
+            let Some(DeChild10_1::FileTable { version, table }) = object.body.as_deref() else {
+                panic!("应读取文件表数据元素");
+            };
+            assert_eq!((*version, table.table_short), (1, 9));
+            assert_eq!(reader.position(), end);
         }
     }
 
