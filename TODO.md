@@ -855,6 +855,7 @@
       - [x] 接入 DETable 的 Indexes 与 Index 对象体。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [ ] 核对 GPAddressLocatorStyle 非空配置中其余接口槽的类体。[取证](docs/mxd-terra-round9-bookmark.md#gpaddresslocatorstyle)
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
+      - [x] 对位二代值域委派实参与 GdbCore 的接口实现候选。[取证](docs/mxd-terra-round9-bookmark.md#二代值域的委派接口接收者)
       - [x] 核对历史标记私有接口在 GdbCore 和 SdeFDB 的创建路径。[取证](docs/mxd-terra-round9-bookmark.md#历史标记私有-iid-的其他调用方)
       - [x] 定位 GPNALayer 的组合层基类及后继原生读取点。[取证](docs/mxd-terra-round9-bookmark.md#gpnalayer)
       - [x] 核对 GPNALayer 保存版本表与 IGPLinearUnit、IGPTableView 读取槽。[取证](docs/mxd-terra-round9-bookmark.md#gpnalayer)

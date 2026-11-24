@@ -1011,6 +1011,26 @@ GPRangeDomain2 在 `0x6f62549c` 遇到空 IPersist 指针
 专用流的具体布局、宿主对 S_FALSE 的处理和真实工程
 仍待运行取证，未进行 ArcMap 人工验证。
 
+#### 二代值域的委派接口接收者
+
+同摘要 GdbCore.dll 10.1.0.3035 中，常量 `0x70ab80e0`
+与 GPRangeDomain2 请求的 `3F16827A-04F1-11D4-A059-00C04F6BDD84`
+相同。PE RTTI 将主表 `0x70ac564c`、`0x70ab7e20`
+分别绑定 RangeDomain、CodedValueDomain。两张主表的 QI
+`0x70934550 / 0x708d3770` 均比较该 IID，命中时在
+`0x709345a7 / 0x708d37c7` 返回完整对象 +0x14。
+这是已核对的接口实现候选。它们是否满足 GPRangeDomain2 的
+前置 GetClassID 检查、如何进入 MXD 读写宿主，仍需另证。
+
+FeatureDataElements.dll 的 `0x6f6253fd` 在上述接口的
++0x14 槽传入内部对象查询得到的 IDomain。
+GPCodedValueDomain2 则在 `0x6f626586` 从持久化接口
+相对 +0x30 计算实参地址，在 `0x6f6265b1` 交给专用流接口
++0x0c。对已提取的 Desktop DLL 文件扫描完整 IID 字节，
+后者的 `2FDA4582-1973-430C-916E-C732A6AD45EB` 仅命中
+FeatureDataElements 的查询常量。该扫描覆盖已提取文件中的
+字面 IID，仍需核对间接生成或其他宿主。未进行 ArcMap/QGIS 人工验收。
+
 ### GPWorkspaceDomain
 
 同版 GpObjects.dll 的 RTTI `0x74801e84` 对应持久化虚表
