@@ -1699,3 +1699,19 @@ RasterIO 按标签读取 short。RasterCoreLib.dll 同版的查找函数
 tag 35。无界解析保留已读取的 tag 31 字符串，同时按无名称分支
 判定对象终点。构造测试覆盖 tag 30 省略和显式置空两种情况，
 均带非空 tag 31 并核对后继边界。真实无界宿主待验证。
+
+
+tag 30 提供 IName 时，RasterLayer.dll 10.1.0.3035 在
+`0x7c73c45b` 读取 tag 31，失败经 `0x7c73c495` 到
+`0x7c73c211` 返回 E_FAIL。非空字符串在 `0x7c73c540`
+经 IAT `0x7c767360` 调用 LayerLib.dll 同版的
+`ConvertToFullPath(String const&, IName*)`（SHA-256
+`55514f054c9e4827d773cf1a9b9a83e7c41c483f73758965244625165f330e02`）。
+入口 `0x786add80` 经 `0x786abac0` 查询 IDatasetName
+（IID 数据 `0x78720088`）。MosaicDB.dll 同版的 RasterTypeName
+QI `0x7a45b890` 经 `0x7a59e4e0 → 0x7a59dc00` 在
+`0x7a59dcf2` 返回 E_NOINTERFACE，路径助手随即从
+`0x786addf1` 返回 false，未调整名称。Load 随后仍调用
+IName::Open，因此原先为空的 Name 和镶嵌槽仍产生空打开结果。
+构造测试覆盖该组合及后继条目边界。缺少 tag 31 的拒绝路径
+已有共享读取器测试。真实宿主和 ArcMap/QGIS 人工验收待验证。

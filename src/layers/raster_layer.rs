@@ -1046,6 +1046,7 @@ mod tests {
             (None, Some("路径")),
             (Some(false), Some("路径")),
             (Some(true), Some("")),
+            (Some(true), Some("路径")),
         ] {
             let mut records = Vec::new();
             records.extend(0xff00ff_i32.to_le_bytes());

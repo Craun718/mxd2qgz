@@ -952,7 +952,15 @@ pub(super) fn read_raster_layer_tail(
                 match (&io.tag30_name, io.tag31_string.as_deref()) {
                     // 无名称时原生跳过 tag 31，查找 tag 35。
                     (None, _) => false,
-                    (Some(name), Some("")) => !name.open_without_result(),
+                    (Some(name), Some(path)) => {
+                        // RasterTypeName 不提供 IDatasetName，路径展开直接返回。
+                        !name.open_without_result()
+                            || (!path.is_empty()
+                                && !matches!(
+                                    name.as_ref(),
+                                    RasterDatasetNameEntryBody10_1::RasterType(_)
+                                ))
+                    }
                     _ => true,
                 }
             }))
