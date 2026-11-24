@@ -2180,8 +2180,21 @@ RTTI 表为 `0x6cedac04`，Load/Save 为
 持久化表 `0x6cedb9c8`，Load/Save 为
 `0x6ce28ba0 / 0x6ce28c40`。Load 检查版本上限 1，
 `0x6ce28c1e` 读取 IID `5F177B9E-0D5E-4502-AE3D-A393895DC1F5`
-的对象槽。该子槽及矢量渲染器的接入、实际宿主和 ArcMap
-人工验证仍待补充。
+的对象槽。同版 Carto 互操作程序集将该接口定名为
+ILabelClassDescriptions。CartoXProvider 的集合主 QI
+`0x6ce93ea0` 把 IPersistStream 映射到 +0x10，
+对应表 `0x6ceea4a8` 的 Load `0x6ce8d700`
+读取有符号 short（上限 1）和有符号 int32 计数。
+正计数时 `0x6ce8d79c` 调用集合主表 +0x2c，
+进入 `0x6ce93c70`，其 `0x6ce93ccb` 调用 LoadObject。
+因此集合成员使用对象头及共享键。
+
+LabelClassDescription 自身的 IPersistStream 表
+`0x6cedb83c` 对应 Load `0x6ce27d80` 和 Save
+`0x6ce27f10`。Load 检查版本上限 3，并读取两个对象槽
+（`0x6ce27e4f`、`0x6ce27e83`），v3 起另有
+4 字节量及字符串。仍需逐项核对成员对象类、字符串和版本分支，
+并验证矢量绘制描述的真实 MXD 宿主。未进行 ArcMap 人工验证。
 
 #### GPRasterBuilder
 
