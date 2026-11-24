@@ -6386,3 +6386,63 @@ pub fn read_legend_prefix_10_1(
     *table = trial_table;
     Ok(result)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn relationship_class_v5_v6_read_table_base_and_version_tail() {
+        for version in [5_u16, 6] {
+            let mut bytes = version.to_le_bytes().to_vec();
+            // DETableBase v0、DEDataset v0、DataElement v0、GPValue v0。
+            bytes.extend([0; 10]);
+            let empty_string = [2, 0, 0, 0, 0, 0];
+            for _ in 0..3 {
+                bytes.extend(empty_string);
+            }
+            bytes.extend([0; 22]); // DataElement 和 DEDataset 的定宽字段。
+            bytes.extend(17_u16.to_le_bytes()); // DETableBase 前导 short。
+            for _ in 0..6 {
+                bytes.extend(empty_string);
+            }
+            bytes.extend([0; 60]); // 定宽字段、空对象槽和列表计数，直到 IIndexes。
+            bytes.extend(INDEXES_CLASS_ID);
+            bytes.extend(42_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+
+            bytes.extend([0; 40]); // 两个 IStringArray 和两个 long。
+            bytes.extend(empty_string);
+            bytes.extend(empty_string);
+            bytes.extend([0; 8]); // 两个 long。
+            bytes.extend([0, 0, 1, 0, 0, 0]); // 旧版 IFields 标志非零。
+            bytes.extend([0; 12]); // 两个键计数和一个规则计数。
+            if version == 6 {
+                bytes.extend(23_u16.to_le_bytes());
+            }
+
+            for end in 0..bytes.len() {
+                let mut reader = Reader::new(&bytes[..end]);
+                let mut refs = RefTable10_1::new();
+                assert!(read_de_relationship_class(&mut reader, 1024, &mut refs, 0).is_err());
+            }
+            let end = bytes.len();
+            bytes.push(0xa5);
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let body = read_de_relationship_class(&mut reader, 1024, &mut refs, 0).unwrap();
+            let DeRelationshipBase10_1::Table(table) = body.base else {
+                panic!("v5–6 应读取 DETableBase");
+            };
+            assert_eq!(table.raw_short, 17);
+            assert_eq!(table.indexes.body.unwrap().raw_count, 0);
+            assert_eq!(refs.registered_class(42), Some(INDEXES_CLASS_ID));
+            assert_eq!(body.metadata.unwrap().shorts, [0, 1, 0]);
+            assert_eq!(body.raw_rule_count, Some(0));
+            assert_eq!(body.fields, None);
+            assert_eq!(body.v6, (version == 6).then_some(23));
+            assert_eq!(reader.position(), end);
+        }
+    }
+}

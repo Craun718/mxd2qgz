@@ -2194,6 +2194,8 @@ v6 在 `0x6f61a14c` 最后追加一个 short。实际 MXD 宿主仍待验证。
 在 `0x6f617c3c` 设置完整对象 `+0xc0` 的扩展字段开关，
 v5–6 走 DETableBase 的完整路径。主体已接入，构造书签验证
 v0–4、旧版字段槽回引和截断回滚。
+专项构造测试另覆盖 v5–6 的 DETableBase 切换、Indexes 对象、
+跳过旧版 IFields 槽、v6 尾字段及每处截断。
 
 #### GPRelationshipClassKey
 
