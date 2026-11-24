@@ -198,6 +198,9 @@ mod tests {
     use super::*;
     use crate::layers::graphics_3d::{GRAPHICS_LAYER_3D_CLASS_ID, read_graphics_3d_layer_10_1};
     use crate::layers::layer_list::LayerBodyPrefix10_1;
+    use crate::layers::raster_renderer::{
+        RasterRendererSharedLayout10_1, SIMPLE_RASTER_RENDERER_CLASS_ID,
+    };
     use crate::objects::spatial_reference_slots::UNKNOWN_COORDINATE_SYSTEM_CLASS_ID;
 
     fn long_record(bytes: &mut Vec<u8>, tag: i32, value: i32) {
@@ -228,7 +231,18 @@ mod tests {
             long_record(&mut bytes, 30, 2);
             bytes.extend(32_i32.to_le_bytes()); // 第一条渲染器记录可省略。
             bytes.extend((-1_i32).to_le_bytes());
-            bytes.extend([0; 16]);
+            let renderer_end = if version >= 3 {
+                bytes.extend(SIMPLE_RASTER_RENDERER_CLASS_ID);
+                bytes.extend(1_i32.to_le_bytes());
+                bytes.extend(1_i32.to_le_bytes()); // 共用渲染器体的旧版本。
+                for value in [7_i32, 8, 9, 10] {
+                    bytes.extend(value.to_le_bytes());
+                }
+                Some(bytes.len())
+            } else {
+                bytes.extend([0; 16]);
+                None
+            };
             long_record(&mut bytes, 33, i32::from(version >= 3));
             if version >= 3 {
                 long_record(&mut bytes, 41, 123);
@@ -280,29 +294,51 @@ mod tests {
                     )
                 )
             ));
-            assert_eq!(body.records[5], (32, RasterCatalogRecord10_1::NullObject));
             if version >= 3 {
+                let (
+                    32,
+                    RasterCatalogRecord10_1::Renderer {
+                        class_id,
+                        body: renderer,
+                    },
+                ) = &body.records[5]
+                else {
+                    panic!("缺少无键渲染器");
+                };
+                assert_eq!(*class_id, SIMPLE_RASTER_RENDERER_CLASS_ID);
+                assert!(matches!(
+                    renderer.as_ref(),
+                    RasterRendererPrefix10_1::Simple { version: 1, shared, .. }
+                        if shared.layout == RasterRendererSharedLayout10_1::Legacy([7, 8, 9, 10])
+                ));
                 assert_eq!(
                     body.records.last(),
                     Some(&(42, RasterCatalogRecord10_1::String(String::new())))
                 );
+            } else {
+                assert_eq!(body.records[5], (32, RasterCatalogRecord10_1::NullObject));
             }
             assert_eq!(refs.len(), 1);
             assert_eq!(reader.position(), end);
 
-            let mut reader = Reader::new(&bytes[..aggregate_at + 1]);
-            let mut refs = RefTable10_1::new();
-            assert!(
-                read_graphics_3d_layer_10_1(
-                    &GRAPHICS_LAYER_3D_CLASS_ID,
-                    &mut reader,
-                    4096,
-                    &mut refs
-                )
-                .is_err()
-            );
-            assert_eq!(reader.position(), 0);
-            assert!(refs.is_empty());
+            for cut in [Some(aggregate_at + 1), renderer_end.map(|end| end - 1)]
+                .into_iter()
+                .flatten()
+            {
+                let mut reader = Reader::new(&bytes[..cut]);
+                let mut refs = RefTable10_1::new();
+                assert!(
+                    read_graphics_3d_layer_10_1(
+                        &GRAPHICS_LAYER_3D_CLASS_ID,
+                        &mut reader,
+                        4096,
+                        &mut refs
+                    )
+                    .is_err()
+                );
+                assert_eq!(reader.position(), 0);
+                assert!(refs.is_empty());
+            }
         }
     }
 }
