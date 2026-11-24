@@ -2555,3 +2555,16 @@ Info 默认构造在 `0x6f61829e` 清零完整对象 +0xc0 的扩展标志，
 与 DERelationshipClass 的 v0–1 路径一致。
 构造测试覆盖两类 v5–6 对象、各自的表布局、新 Indexes 对象、
 v6 尾字段、截断及结束位置。真实 MXD 宿主仍待核对。
+
+#### DEBrowseOptions 的 IDataElement 接口核对
+
+FeatureDataElements.dll 10.1.0.3035 的 SHA-256 为
+`7cd1153712d8af23f6c2263b6444c1a77e16b818fb5fb946d0c3d9106be5f429`。
+DEBrowseOptions 主虚表 `0x6f658190` 的 QI `0x6f5f13d0`
+比对六个 IID，未命中时调用 `0x6f648030`。后者再比对
+`0x6f657e6c`、`0x6f657e9c`、`0x6f6653c8` 的 IID，
+未命中时于 `0x6f648122` 返回 E_NOINTERFACE。
+九个 IID 均不同于 IDataElement
+`E2C87DF0-33D9-4A47-9B67-FA54B2FD7966`。
+该类的 IPersist/IPersistStream 接口不足以使其进入 IDataElement 列表。
+其他候选类仍需逐一核对。
