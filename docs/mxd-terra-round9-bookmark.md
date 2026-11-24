@@ -1261,7 +1261,10 @@ Save 在 `0x746ef5ac` 调用内嵌数据类型接口的 +0x18 取名称，
 覆盖非空 GPDataTypeName、嵌套名称回引和逐字节截断回滚。
 构造书签还覆盖类型槽内的 GPMultiValueTypeName v1。外层名称
 读取内嵌 GPDataTypeName，并由后续 GPMultiValue 和 GPValueTable
-通过同一对象键回引。其余名称类和 Open 的运行结果待验证。
+通过同一对象键回引。同一用例还验证 GPValueTableTypeName v3
+空列定义和 GPSATopoFeaturesTypeName v4 短体，覆盖两个对象之后的
+成员计数及同键回引。这些组合基于上文分别核对的 10.1 Load 布局。
+其余名称类和 Open 的运行结果待验证。
 
 #### GPValueTable
 

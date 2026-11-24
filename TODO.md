@@ -796,6 +796,7 @@
       - [x] 接入 GPMultiValue 的空类型槽和递归 IGPValue 列表。[取证](docs/mxd-terra-round9-bookmark.md#gpmultivalue)
       - [ ] 补齐 GPMultiValue 类型槽中的非空 IName 类体。
       - [x] 验证 GPMultiValue 类型槽中 GPMultiValueTypeName 的嵌套体和回引。
+      - [x] 验证 GPMultiValue 类型槽中 GPValueTableTypeName 与 GPSATopoFeaturesTypeName 的对象体边界和回引。
       - [x] 接入 GPMultiValue 类型槽中已支持的 GP 数据类型名称及回引。[取证](docs/mxd-terra-round9-bookmark.md#gpmultivalue)
       - [x] 接入 GPCodedValueDomain 中的 GPVariant。[取证](docs/mxd-terra-round9-bookmark.md#gplinearunit-与-gpvariant)
       - [x] 接入 GPCodedValueDomain 中的 GPBoolean。[取证](docs/mxd-terra-round9-bookmark.md#gpdoublegpbooleangpdate)

@@ -4936,12 +4936,18 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
     use mxd2qgz::maps::map_surround::{
         GP_CODED_VALUE_DOMAIN_CLASS_ID, GP_DATA_TYPE_NAME_CLASS_ID, GP_FIELD_INFO_DOMAIN_CLASS_ID,
         GP_LONG_CLASS_ID, GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID, GP_STRING_CLASS_ID,
-        GpCodedValue10_1, GpTopoDomain10_1,
+        GP_VALUE_TABLE_TYPE_NAME_CLASS_ID, GpCodedValue10_1, GpTopoDomain10_1,
     };
     use mxd2qgz::objects::property_set::{PropertyValue10_1, PropertyValueObjectStream10_1};
     use mxd2qgz::storage::object_refs::ObjectEntry10_1;
 
-    for nested in [false, true] {
+    for type_class in [
+        None,
+        Some(GP_MULTI_VALUE_TYPE_NAME_CLASS_ID),
+        Some(GP_VALUE_TABLE_TYPE_NAME_CLASS_ID),
+        Some(GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID),
+    ] {
+        let nested = type_class.is_some();
         let mut bytes = bookmark_header_10_1(&GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID, 17);
         bytes.extend(1_i16.to_le_bytes());
         bytes.extend(1_i32.to_le_bytes());
@@ -5040,13 +5046,20 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
         bytes.extend(29_u32.to_le_bytes());
         bytes.extend(bookmark_entry_10_1(&GP_MULTI_VALUE_CLASS_ID, 30));
         bytes.extend([1, 0, 1, 0, 7, 0]);
-        if nested {
-            bytes.extend(bookmark_entry_10_1(&GP_MULTI_VALUE_TYPE_NAME_CLASS_ID, 32));
-            bytes.extend(1_i16.to_le_bytes());
-            bytes.extend(bookmark_entry_10_1(&GP_DATA_TYPE_NAME_CLASS_ID, 34));
-            bytes.extend(2_i16.to_le_bytes());
-            bytes.extend(2_i16.to_le_bytes());
-            bytes.extend([0; 16]);
+        if let Some(class_id) = type_class {
+            bytes.extend(bookmark_entry_10_1(&class_id, 32));
+            if class_id == GP_MULTI_VALUE_TYPE_NAME_CLASS_ID {
+                bytes.extend(1_i16.to_le_bytes());
+                bytes.extend(bookmark_entry_10_1(&GP_DATA_TYPE_NAME_CLASS_ID, 34));
+                bytes.extend(2_i16.to_le_bytes());
+                bytes.extend(2_i16.to_le_bytes());
+                bytes.extend([0; 16]);
+            } else if class_id == GP_VALUE_TABLE_TYPE_NAME_CLASS_ID {
+                bytes.extend(3_i16.to_le_bytes());
+                bytes.extend(0_i32.to_le_bytes());
+            } else {
+                bytes.extend(4_i16.to_le_bytes());
+            }
         } else {
             bytes.extend([0; 16]);
         }
@@ -5054,8 +5067,8 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
         bytes.extend(bookmark_entry_10_1(&GP_LONG_CLASS_ID, 21));
         bytes.extend(bookmark_entry_10_1(&GP_MULTI_VALUE_CLASS_ID, 31));
         bytes.extend([1, 0, 1, 0, 7, 0]);
-        if nested {
-            bytes.extend(bookmark_entry_10_1(&GP_MULTI_VALUE_TYPE_NAME_CLASS_ID, 32));
+        if let Some(class_id) = type_class {
+            bytes.extend(bookmark_entry_10_1(&class_id, 32));
         } else {
             bytes.extend([0; 16]);
         }
@@ -5063,8 +5076,8 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
         bytes.extend(bookmark_entry_10_1(&GP_VALUE_TABLE_CLASS_ID, 33));
         bytes.extend([1, 0, 1, 0, 7, 0]);
         bytes.extend(2_i32.to_le_bytes());
-        if nested {
-            bytes.extend(bookmark_entry_10_1(&GP_MULTI_VALUE_TYPE_NAME_CLASS_ID, 32));
+        if let Some(class_id) = type_class {
+            bytes.extend(bookmark_entry_10_1(&class_id, 32));
         } else {
             bytes.extend([0; 16]);
         }
@@ -5141,15 +5154,24 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
         else {
             panic!("应读取 GP 多值对象");
         };
-        if nested {
-            assert!(
-                matches!(type_name.as_ref(), BookmarkNameEntry10_1::GpMultiValueTypeName {
-                    version: 1, element_type,
-                } if matches!(element_type.as_ref(), BookmarkNameEntry10_1::GpDataTypeName(body)
-                    if body.version == 2))
-            );
-        } else {
-            assert_eq!(type_name.as_ref(), &BookmarkNameEntry10_1::Null);
+        match type_class {
+            Some(GP_MULTI_VALUE_TYPE_NAME_CLASS_ID) => assert!(matches!(
+                type_name.as_ref(),
+                BookmarkNameEntry10_1::GpMultiValueTypeName { version: 1, element_type }
+                    if matches!(element_type.as_ref(), BookmarkNameEntry10_1::GpDataTypeName(body)
+                        if body.version == 2)
+            )),
+            Some(GP_VALUE_TABLE_TYPE_NAME_CLASS_ID) => assert!(matches!(
+                type_name.as_ref(),
+                BookmarkNameEntry10_1::GpValueTableTypeName { version: 3, columns, .. }
+                    if columns.is_empty()
+            )),
+            Some(GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID) => assert!(matches!(
+                type_name.as_ref(),
+                BookmarkNameEntry10_1::GpSaTopoFeaturesTypeName(body) if body.version == 4
+            )),
+            None => assert_eq!(type_name.as_ref(), &BookmarkNameEntry10_1::Null),
+            _ => unreachable!(),
         }
         assert_eq!(*raw_count, 2);
         assert_eq!(
@@ -5162,11 +5184,8 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
         assert_eq!(
             values[1].body.as_ref().unwrap().value,
             GpCodedValue10_1::MultiValue {
-                type_name: Box::new(if nested {
-                    BookmarkNameEntry10_1::BackReference {
-                        class_id: GP_MULTI_VALUE_TYPE_NAME_CLASS_ID,
-                        key: 32,
-                    }
+                type_name: Box::new(if let Some(class_id) = type_class {
+                    BookmarkNameEntry10_1::BackReference { class_id, key: 32 }
                 } else {
                     BookmarkNameEntry10_1::Null
                 }),
