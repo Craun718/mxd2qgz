@@ -657,6 +657,9 @@ const GP_FEATURE_LAYER_CLASS_ID: [u8; 16] = [
 const GP_RASTER_CATALOG_LAYER_CLASS_ID: [u8; 16] = [
     0xf1, 0x0f, 0x8f, 0x60, 0xec, 0xdf, 0x81, 0x48, 0xa6, 0x51, 0x2b, 0xc5, 0xce, 0x5a, 0xcd, 0x73,
 ];
+const GP_NA_LAYER_CLASS_ID: [u8; 16] = [
+    0x90, 0xde, 0x42, 0xf1, 0x41, 0xb9, 0x92, 0x44, 0x85, 0x11, 0x44, 0x12, 0xb5, 0x1c, 0x2f, 0x43,
+];
 const GP_GROUP_LAYER_CLASS_ID: [u8; 16] = [
     0x68, 0x72, 0x95, 0x10, 0x3e, 0x80, 0xb4, 0x4c, 0xbd, 0x9c, 0xc2, 0xb6, 0x60, 0xb9, 0x8b, 0xdf,
 ];
@@ -1002,6 +1005,7 @@ pub enum GpCodedValue10_1 {
     TableView(Box<GpTableView10_1>),
     MosaicLayer(Box<GpLayer10_1>),
     GroupLayer(Box<GpLayer10_1>),
+    NaLayer(Box<GpLayer10_1>),
     CadastralFabricLayer(Box<GpLayer10_1>),
     TinLayer(Box<GpLayer10_1>),
     TerrainLayer(Box<GpLayer10_1>),
@@ -1352,7 +1356,21 @@ pub struct GpRasterLayerFields10_1 {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct GpNaLayerFields10_1 {
+    pub network: RuleSlot10_1<DeChild10_1>,
+    pub definitions: Vec<RuleSlot10_1<crate::layers::na_class::NaClassDefinition10_1>>,
+    pub linear_unit: RuleSlot10_1<GpCodedValueBody10_1>,
+    pub agents: Vec<RuleSlot10_1<crate::layers::na_layer::NaLocatorFeatureAgent10_1>>,
+    pub raw_short: u16,
+    pub properties: [RuleSlot10_1<PropertySetObjectStream10_1>; 2],
+    pub parameters: Option<RuleSlot10_1<crate::layers::na_layer::NaParameterArray10_1>>,
+    pub tables: Option<Vec<RuleSlot10_1<GpCodedValueBody10_1>>>,
+    pub tail_short: Option<u16>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct GpLayer10_1 {
+    pub na: Option<Box<GpNaLayerFields10_1>>,
     pub raster: Option<GpRasterLayerFields10_1>,
     pub derived_version: Option<u16>,
     pub feature_layer: Option<GpFeatureLayerFields10_1>,
@@ -3367,6 +3385,7 @@ fn read_gp_coded_value_entry(
                     | GP_MOSAIC_LAYER_CLASS_ID
                     | GP_CADASTRAL_FABRIC_LAYER_CLASS_ID
                     | GP_GROUP_LAYER_CLASS_ID
+                    | GP_NA_LAYER_CLASS_ID
                     | GP_RASTER_DATA_LAYER_CLASS_ID
                     | GP_RASTER_DATA_CLASS_ID
                     | GP_POINT_CLASS_ID
@@ -3493,7 +3512,8 @@ fn read_gp_coded_value_entry(
             class_id:
                 class_id @ (GP_MOSAIC_LAYER_CLASS_ID
                 | GP_CADASTRAL_FABRIC_LAYER_CLASS_ID
-                | GP_GROUP_LAYER_CLASS_ID),
+                | GP_GROUP_LAYER_CLASS_ID
+                | GP_NA_LAYER_CLASS_ID),
             ..
         } => {
             let layer = read_gp_layer_body(reader, max_bytes, table, depth, class_id)?;
@@ -3510,7 +3530,8 @@ fn read_gp_coded_value_entry(
                     GP_CADASTRAL_FABRIC_LAYER_CLASS_ID => {
                         GpCodedValue10_1::CadastralFabricLayer(Box::new(layer))
                     }
-                    _ => GpCodedValue10_1::GroupLayer(Box::new(layer)),
+                    GP_GROUP_LAYER_CLASS_ID => GpCodedValue10_1::GroupLayer(Box::new(layer)),
+                    _ => GpCodedValue10_1::NaLayer(Box::new(layer)),
                 },
             }))
         }
@@ -4524,13 +4545,13 @@ fn read_feature_layer_drawing_description(
         None
     };
     let labeling = if version >= 4 {
-        Some(read_label_drawing_slot(
+        Some(read_typed_rule_slot(
             reader,
             refs,
             &[LABELING_CLASS_ID],
             |reader, refs| {
                 let version = read_drawing_version(reader, 1)?;
-                let classes = read_label_drawing_slot(
+                let classes = read_typed_rule_slot(
                     reader,
                     refs,
                     &[LABEL_CLASSES_CLASS_ID],
@@ -4555,7 +4576,7 @@ fn read_feature_layer_drawing_description(
     })
 }
 
-fn read_label_drawing_slot<T>(
+fn read_typed_rule_slot<T>(
     reader: &mut Reader<'_>,
     refs: &mut RefTable10_1,
     classes: &[[u8; 16]],
@@ -4575,7 +4596,7 @@ fn read_label_drawing_slot<T>(
         _ => {
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
-                "不支持的标注描述对象类",
+                "对象槽包含不支持的类",
             ));
         }
     };
@@ -4607,7 +4628,7 @@ fn read_label_class_descriptions(
     }
     let mut classes = Vec::new();
     for _ in 0..count {
-        classes.push(read_label_drawing_slot(
+        classes.push(read_typed_rule_slot(
             reader,
             refs,
             &[LABEL_CLASS_CLASS_ID],
@@ -4632,7 +4653,7 @@ fn read_label_class_description(
     };
     use crate::objects::element_body::TEXT_SYMBOL_CLASS_ID;
     let version = read_drawing_version(reader, 3)?;
-    let placement = read_label_drawing_slot(
+    let placement = read_typed_rule_slot(
         reader,
         refs,
         &[
@@ -5073,6 +5094,7 @@ fn read_gp_layer_slot(
                     | GP_MOSAIC_LAYER_CLASS_ID
                     | GP_CADASTRAL_FABRIC_LAYER_CLASS_ID
                     | GP_GROUP_LAYER_CLASS_ID
+                    | GP_NA_LAYER_CLASS_ID
                     | GP_TERRAIN_LAYER_CLASS_ID
                     | GP_TOPOLOGY_LAYER_CLASS_ID
                     | GP_NETWORK_DATASET_LAYER_CLASS_ID
@@ -5092,6 +5114,7 @@ fn read_gp_layer_slot(
                 | GP_MOSAIC_LAYER_CLASS_ID
                 | GP_CADASTRAL_FABRIC_LAYER_CLASS_ID
                 | GP_GROUP_LAYER_CLASS_ID
+                | GP_NA_LAYER_CLASS_ID
                 | GP_TERRAIN_LAYER_CLASS_ID
                 | GP_TOPOLOGY_LAYER_CLASS_ID
                 | GP_NETWORK_DATASET_LAYER_CLASS_ID
@@ -5156,10 +5179,21 @@ fn read_gp_layer_body(
             | GP_MOSAIC_LAYER_CLASS_ID
             | GP_CADASTRAL_FABRIC_LAYER_CLASS_ID
             | GP_GROUP_LAYER_CLASS_ID
+            | GP_NA_LAYER_CLASS_ID
     )
     .then(|| {
         Ok::<_, io::Error>((
-            read_de_layer_version(reader, 1, "GPCompositeLayer/GPMosaicLayer")?,
+            if class_id == GP_NA_LAYER_CLASS_ID {
+                {
+                    let version = reader.read_u16_le()?;
+                    if version as i16 > 3 {
+                        return Err(io::Error::new(ErrorKind::InvalidData, "GPNALayer 版本超限"));
+                    }
+                    version
+                }
+            } else {
+                read_de_layer_version(reader, 1, "GPCompositeLayer/GPMosaicLayer")?
+            },
             read_de_layer_version(reader, 1, "GPCompositeLayerBase")?,
         ))
     })
@@ -5218,7 +5252,16 @@ fn read_gp_layer_body(
     } else {
         None
     };
+    let na = if class_id == GP_NA_LAYER_CLASS_ID {
+        let version = composite.as_ref().expect("GPNALayer 有组合层前缀").version as i16;
+        Some(Box::new(read_gp_na_layer_fields(
+            reader, max_bytes, refs, depth, version,
+        )?))
+    } else {
+        None
+    };
     Ok(GpLayer10_1 {
+        na,
         raster,
         derived_version,
         feature_layer,
@@ -5230,6 +5273,101 @@ fn read_gp_layer_body(
         area_of_interest,
         element,
         legacy_layer,
+    })
+}
+
+fn read_gp_na_layer_fields(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+    version: i16,
+) -> io::Result<GpNaLayerFields10_1> {
+    use crate::layers::{
+        na_class::read_na_class_definition_slot,
+        na_layer::{
+            NA_ATTRIBUTE_PARAMETER_VALUE_ARRAY_CLASS_ID, NA_LOCATOR_FEATURE_AGENT_CLASS_ID,
+            read_na_locator_feature_agent_body, read_na_parameter_array,
+        },
+    };
+
+    let network = read_gp_data_element_child(reader, max_bytes, refs, depth)?;
+    if let ObjectEntry10_1::NewObject { class_id, .. }
+    | ObjectEntry10_1::BackReference { class_id, .. } = network.entry
+    {
+        let class_id = match network.entry {
+            ObjectEntry10_1::BackReference { key, .. } => {
+                refs.registered_class(key).unwrap_or(class_id)
+            }
+            _ => class_id,
+        };
+        if class_id != DE_NETWORK_DATASET_CLASS_ID {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "GPNALayer 的 IDENetworkDataset 类尚未支持",
+            ));
+        }
+    }
+    let (_, count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
+    let mut definitions = Vec::new();
+    for _ in 0..count {
+        let (entry, body) = read_na_class_definition_slot(reader, max_bytes, refs)?;
+        definitions.push(RuleSlot10_1 { entry, body });
+    }
+    let linear_unit =
+        read_gp_coded_value_slot_of_class(reader, max_bytes, refs, depth, GP_LINEAR_UNIT_CLASS_ID)?;
+    let (_, count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
+    let mut agents = Vec::new();
+    for _ in 0..count {
+        agents.push(read_typed_rule_slot(
+            reader,
+            refs,
+            &[NA_LOCATOR_FEATURE_AGENT_CLASS_ID],
+            |reader, _| read_na_locator_feature_agent_body(reader, max_bytes),
+        )?);
+    }
+    let raw_short = reader.read_u16_le()?;
+    let properties = [
+        read_gp_property_set_slot(reader, max_bytes, refs)?,
+        read_gp_property_set_slot(reader, max_bytes, refs)?,
+    ];
+    let parameters = (version >= 1)
+        .then(|| {
+            read_typed_rule_slot(
+                reader,
+                refs,
+                &[NA_ATTRIBUTE_PARAMETER_VALUE_ARRAY_CLASS_ID],
+                |reader, refs| read_na_parameter_array(reader, max_bytes, refs),
+            )
+        })
+        .transpose()?;
+    let tables = if version >= 2 {
+        let (_, count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
+        let mut tables = Vec::new();
+        for _ in 0..count {
+            tables.push(read_gp_coded_value_slot_of_class(
+                reader,
+                max_bytes,
+                refs,
+                depth,
+                GP_TABLE_VIEW_CLASS_ID,
+            )?);
+        }
+        Some(tables)
+    } else {
+        None
+    };
+    let tail_short = (version >= 3).then(|| reader.read_u16_le()).transpose()?;
+    Ok(GpNaLayerFields10_1 {
+        network,
+        definitions,
+        linear_unit,
+        agents,
+        raw_short,
+        properties,
+        parameters,
+        tables,
+        tail_short,
     })
 }
 
@@ -12076,6 +12214,67 @@ mod tests {
                 );
                 assert_eq!(reader.position(), end);
             }
+        }
+    }
+
+    #[test]
+    fn gp_na_layer_reads_versioned_tail() {
+        use crate::layers::na_class::NA_CLASS_DEFINITION_CLASS_ID;
+
+        for version in [-1_i16, 0, 1, 2, 3] {
+            let mut bytes = GP_NA_LAYER_CLASS_ID.to_vec();
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend(version.to_le_bytes());
+            bytes.extend([1, 0, 2, 0, 1, 0, 9, 0]);
+            bytes.extend([2, 0, 0, 0, 0, 0]);
+            bytes.extend([0; 32]);
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend([0; 16]);
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend(NA_CLASS_DEFINITION_CLASS_ID);
+            bytes.extend(2_u32.to_le_bytes());
+            bytes.extend([0; 54]);
+            bytes.extend([0; 16]);
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(17_u16.to_le_bytes());
+            bytes.extend([0; 32]);
+            if version >= 1 {
+                bytes.extend([0; 16]);
+            }
+            if version >= 2 {
+                bytes.extend(1_i32.to_le_bytes());
+                bytes.extend([0; 16]);
+            }
+            if version >= 3 {
+                bytes.extend(18_u16.to_le_bytes());
+            }
+            let parse = |reader: &mut Reader<'_>| {
+                read_gp_coded_value_slot(reader, 1024, &mut RefTable10_1::new(), 0)
+            };
+            for cut in 0..bytes.len() {
+                assert!(
+                    parse(&mut Reader::new(&bytes[..cut])).is_err(),
+                    "截断于 {cut}"
+                );
+            }
+            let end = bytes.len();
+            bytes.push(0xa5);
+            let mut reader = Reader::new(&bytes);
+            let coded = parse(&mut reader).unwrap().body.unwrap();
+            let GpCodedValue10_1::NaLayer(layer) = coded.value else {
+                panic!("应读取 GPNALayer");
+            };
+            assert_eq!(coded.version as i16, version);
+            let na = layer.na.unwrap();
+            assert!(na.definitions[0].body.is_some());
+            assert_eq!(na.raw_short, 17);
+            assert_eq!(na.parameters.is_some(), version >= 1);
+            assert_eq!(
+                na.tables.map(|tables| tables.len()),
+                (version >= 2).then_some(1)
+            );
+            assert_eq!(na.tail_short, (version == 3).then_some(18));
+            assert_eq!(reader.position(), end);
         }
     }
 

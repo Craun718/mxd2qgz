@@ -518,7 +518,7 @@ const NA_LOCATOR_CLASS_ID: [u8; 16] = [
     0xe1, 0xad, 0x19, 0x43, 0xe5, 0xd6, 0x18, 0x48, 0x83, 0x80, 0x8e, 0xe3, 0x89, 0xd1, 0x48, 0xea,
 ];
 
-const NA_LOCATOR_FEATURE_AGENT_CLASS_ID: [u8; 16] = [
+pub(crate) const NA_LOCATOR_FEATURE_AGENT_CLASS_ID: [u8; 16] = [
     0xab, 0xc9, 0xb4, 0x22, 0xfa, 0x32, 0x86, 0x46, 0x8f, 0x5e, 0x8a, 0x2a, 0x37, 0x0b, 0x33, 0x50,
 ];
 
@@ -905,30 +905,9 @@ fn read_na_locator_agent(
         ObjectEntry10_1::NewObject {
             class_id: NA_LOCATOR_FEATURE_AGENT_CLASS_ID,
             ..
-        } => {
-            let version = region.read_u16_le()?;
-            if version as i16 > 2 {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "定位器要素代理版本超过 2",
-                ));
-            }
-            let scalars = (
-                region.read_u32_le()? as i32,
-                region.read_u16_le()?,
-                region.read_u32_le()? as i32,
-            );
-            let source = read_bstr_string_10_1(&mut region, max)?;
-            let extra = (version == 2)
-                .then(|| read_bstr_string_10_1(&mut region, max))
-                .transpose()?;
-            Some(NaLocatorAgent10_1::Feature(NaLocatorFeatureAgent10_1 {
-                version,
-                scalars,
-                source,
-                extra,
-            }))
-        }
+        } => Some(NaLocatorAgent10_1::Feature(
+            read_na_locator_feature_agent_body(&mut region, max)?,
+        )),
         ObjectEntry10_1::NewObject {
             class_id: NA_LOCATOR_LOCATION_FIELDS_AGENT_CLASS_ID,
             ..
@@ -970,6 +949,34 @@ fn read_na_locator_agent(
         ));
     }
     Ok((entry, body))
+}
+
+pub(crate) fn read_na_locator_feature_agent_body(
+    reader: &mut Reader<'_>,
+    max: usize,
+) -> io::Result<NaLocatorFeatureAgent10_1> {
+    let version = reader.read_u16_le()?;
+    if version as i16 > 2 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "定位器要素代理版本超过 2",
+        ));
+    }
+    let scalars = (
+        reader.read_u32_le()? as i32,
+        reader.read_u16_le()?,
+        reader.read_u32_le()? as i32,
+    );
+    let source = read_bstr_string_10_1(reader, max)?;
+    let extra = (version == 2)
+        .then(|| read_bstr_string_10_1(reader, max))
+        .transpose()?;
+    Ok(NaLocatorFeatureAgent10_1 {
+        version,
+        scalars,
+        source,
+        extra,
+    })
 }
 
 fn read_na_extra_safe_region<'a>(
@@ -1505,7 +1512,7 @@ pub struct NaParameterValue10_1 {
 }
 
 /// 数组 Load 0x7b09f110 经 0x7b09ec60 逐项读取普通对象。
-fn read_na_parameter_array(
+pub(crate) fn read_na_parameter_array(
     reader: &mut Reader<'_>,
     max: usize,
     refs: &mut RefTable10_1,
@@ -1572,7 +1579,7 @@ fn read_na_parameter_array(
     })
 }
 
-const NA_ATTRIBUTE_PARAMETER_VALUE_ARRAY_CLASS_ID: [u8; 16] = [
+pub(crate) const NA_ATTRIBUTE_PARAMETER_VALUE_ARRAY_CLASS_ID: [u8; 16] = [
     0x6b, 0x9e, 0x93, 0x61, 0x11, 0x80, 0xc5, 0x40, 0xb6, 0x72, 0x73, 0xea, 0x1e, 0x02, 0x6f, 0xec,
 ];
 
