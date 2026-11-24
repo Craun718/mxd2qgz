@@ -503,6 +503,10 @@ pub const GP_RELATIONSHIP_CLASS_KEY_CLASS_ID: [u8; 16] = [
     0x1f, 0x4e, 0xca, 0x5d, 0xa4, 0x81, 0xc3, 0x41, 0xb1, 0x60, 0x81, 0x8d, 0x22, 0xfc, 0x50, 0xb0,
 ];
 
+pub const DE_RELATIONSHIP_CLASS_INFO_CLASS_ID: [u8; 16] = [
+    0xb6, 0xf0, 0x28, 0x31, 0x7e, 0x51, 0xa3, 0x4a, 0xa2, 0x22, 0x20, 0x44, 0x1f, 0x2c, 0xb3, 0x02,
+];
+
 pub const DE_RELATIONSHIP_CLASS_CLASS_ID: [u8; 16] = [
     0x87, 0x54, 0x1f, 0xd4, 0x16, 0x6b, 0xfd, 0x42, 0xab, 0x61, 0x63, 0xa5, 0x5b, 0x51, 0x9b, 0x71,
 ];
@@ -1301,6 +1305,7 @@ pub struct RelationshipRule10_1 {
 pub enum DeRelationshipBase10_1 {
     Dataset(DeDataset10_1),
     Table(Box<DeTable10_1>),
+    CompactTable(Box<DeCompactTable10_1>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3724,6 +3729,7 @@ fn read_gp_data_element_child(
                     | DE_TOPOLOGY_CLASS_ID
                     | DE_GEOMETRIC_NETWORK_CLASS_ID
                     | DE_RELATIONSHIP_CLASS_CLASS_ID
+                    | DE_RELATIONSHIP_CLASS_INFO_CLASS_ID
             ) =>
         {
             None
@@ -3768,7 +3774,8 @@ fn read_gp_data_element_child(
                 | DE_LAYER_CLASS_ID
                 | DE_TOPOLOGY_CLASS_ID
                 | DE_GEOMETRIC_NETWORK_CLASS_ID
-                | DE_RELATIONSHIP_CLASS_CLASS_ID),
+                | DE_RELATIONSHIP_CLASS_CLASS_ID
+                | DE_RELATIONSHIP_CLASS_INFO_CLASS_ID),
             ..
         } => {
             if depth >= MAX_BOOKMARK_NAME_NESTING {
@@ -3894,9 +3901,13 @@ fn read_gp_data_element_child(
                         read_string_10_1(reader, max_bytes)?,
                     ],
                 }
-            } else if class_id == DE_RELATIONSHIP_CLASS_CLASS_ID {
+            } else if matches!(
+                class_id,
+                DE_RELATIONSHIP_CLASS_CLASS_ID | DE_RELATIONSHIP_CLASS_INFO_CLASS_ID
+            ) {
                 DeChild10_1::RelationshipClass(Box::new(read_de_relationship_class(
                     reader,
+                    class_id,
                     max_bytes,
                     refs,
                     depth + 1,
@@ -4408,6 +4419,7 @@ fn read_de_workspace(
 
 fn read_de_relationship_class(
     reader: &mut Reader<'_>,
+    class_id: [u8; 16],
     max_bytes: usize,
     refs: &mut RefTable10_1,
     depth: usize,
@@ -4419,10 +4431,14 @@ fn read_de_relationship_class(
             "DERelationshipClass 版本超限",
         ));
     }
-    let base = if version >= 5 {
-        DeRelationshipBase10_1::Table(Box::new(read_gp_de_table(reader, max_bytes, refs, depth)?))
-    } else {
+    let base = if version < 5 {
         DeRelationshipBase10_1::Dataset(read_gp_de_dataset(reader, max_bytes, refs, depth)?)
+    } else if class_id == DE_RELATIONSHIP_CLASS_INFO_CLASS_ID {
+        DeRelationshipBase10_1::CompactTable(Box::new(read_de_compact_table(
+            reader, max_bytes, refs, depth,
+        )?))
+    } else {
+        DeRelationshipBase10_1::Table(Box::new(read_gp_de_table(reader, max_bytes, refs, depth)?))
     };
     let metadata = if version >= 2 {
         let names = [
@@ -7449,56 +7465,81 @@ mod tests {
 
     #[test]
     fn relationship_class_v5_v6_read_table_base_and_version_tail() {
-        for version in [5_u16, 6] {
-            let mut bytes = version.to_le_bytes().to_vec();
-            // DETableBase v0、DEDataset v0、DataElement v0、GPValue v0。
-            bytes.extend([0; 10]);
-            let empty_string = [2, 0, 0, 0, 0, 0];
-            for _ in 0..3 {
+        for class_id in [
+            DE_RELATIONSHIP_CLASS_CLASS_ID,
+            DE_RELATIONSHIP_CLASS_INFO_CLASS_ID,
+        ] {
+            for version in [5_u16, 6] {
+                let mut bytes = class_id.to_vec();
+                bytes.extend(41_u32.to_le_bytes());
+                bytes.extend(version.to_le_bytes());
+                // DETableBase v0、DEDataset v0、DataElement v0、GPValue v0。
+                bytes.extend([0; 10]);
+                let empty_string = [2, 0, 0, 0, 0, 0];
+                for _ in 0..3 {
+                    bytes.extend(empty_string);
+                }
+                bytes.extend([0; 22]); // DataElement 和 DEDataset 的定宽字段。
+                bytes.extend(17_u16.to_le_bytes()); // DETableBase 前导 short。
                 bytes.extend(empty_string);
-            }
-            bytes.extend([0; 22]); // DataElement 和 DEDataset 的定宽字段。
-            bytes.extend(17_u16.to_le_bytes()); // DETableBase 前导 short。
-            for _ in 0..6 {
+                if class_id == DE_RELATIONSHIP_CLASS_CLASS_ID {
+                    for _ in 0..5 {
+                        bytes.extend(empty_string);
+                    }
+                    bytes.extend([0; 44]);
+                }
+                bytes.extend([0; 16]); // 定宽字段、空对象槽和列表计数，直到 IIndexes。
+                bytes.extend(INDEXES_CLASS_ID);
+                bytes.extend(42_u32.to_le_bytes());
+                bytes.extend(1_u16.to_le_bytes());
+                bytes.extend(0_i32.to_le_bytes());
+
+                bytes.extend([0; 40]); // 两个 IStringArray 和两个 long。
                 bytes.extend(empty_string);
-            }
-            bytes.extend([0; 60]); // 定宽字段、空对象槽和列表计数，直到 IIndexes。
-            bytes.extend(INDEXES_CLASS_ID);
-            bytes.extend(42_u32.to_le_bytes());
-            bytes.extend(1_u16.to_le_bytes());
-            bytes.extend(0_i32.to_le_bytes());
+                bytes.extend(empty_string);
+                bytes.extend([0; 8]); // 两个 long。
+                bytes.extend([0, 0, 1, 0, 0, 0]); // 旧版 IFields 标志非零。
+                bytes.extend([0; 12]); // 两个键计数和一个规则计数。
+                if version == 6 {
+                    bytes.extend(23_u16.to_le_bytes());
+                }
 
-            bytes.extend([0; 40]); // 两个 IStringArray 和两个 long。
-            bytes.extend(empty_string);
-            bytes.extend(empty_string);
-            bytes.extend([0; 8]); // 两个 long。
-            bytes.extend([0, 0, 1, 0, 0, 0]); // 旧版 IFields 标志非零。
-            bytes.extend([0; 12]); // 两个键计数和一个规则计数。
-            if version == 6 {
-                bytes.extend(23_u16.to_le_bytes());
-            }
-
-            for end in 0..bytes.len() {
-                let mut reader = Reader::new(&bytes[..end]);
+                for end in 0..bytes.len() {
+                    let mut reader = Reader::new(&bytes[..end]);
+                    let mut refs = RefTable10_1::new();
+                    assert!(read_gp_data_element_child(&mut reader, 1024, &mut refs, 0).is_err());
+                }
+                let end = bytes.len();
+                bytes.push(0xa5);
+                let mut reader = Reader::new(&bytes);
                 let mut refs = RefTable10_1::new();
-                assert!(read_de_relationship_class(&mut reader, 1024, &mut refs, 0).is_err());
+                let body = read_gp_data_element_child(&mut reader, 1024, &mut refs, 0).unwrap();
+                let Some(DeChild10_1::RelationshipClass(body)) = body.body.as_deref() else {
+                    panic!("应读取关系类数据元素");
+                };
+                let indexes = match &body.base {
+                    DeRelationshipBase10_1::Table(table)
+                        if class_id == DE_RELATIONSHIP_CLASS_CLASS_ID =>
+                    {
+                        assert_eq!(table.raw_short, 17);
+                        &table.indexes
+                    }
+                    DeRelationshipBase10_1::CompactTable(table)
+                        if class_id == DE_RELATIONSHIP_CLASS_INFO_CLASS_ID =>
+                    {
+                        assert_eq!(table.table_short, 17);
+                        &table.indexes
+                    }
+                    _ => panic!("v5–6 应读取对应的 DETableBase 布局"),
+                };
+                assert_eq!(indexes.body.as_ref().unwrap().raw_count, 0);
+                assert_eq!(refs.registered_class(42), Some(INDEXES_CLASS_ID));
+                assert_eq!(body.metadata.as_ref().unwrap().shorts, [0, 1, 0]);
+                assert_eq!(body.raw_rule_count, Some(0));
+                assert_eq!(body.fields, None);
+                assert_eq!(body.v6, (version == 6).then_some(23));
+                assert_eq!(reader.position(), end);
             }
-            let end = bytes.len();
-            bytes.push(0xa5);
-            let mut reader = Reader::new(&bytes);
-            let mut refs = RefTable10_1::new();
-            let body = read_de_relationship_class(&mut reader, 1024, &mut refs, 0).unwrap();
-            let DeRelationshipBase10_1::Table(table) = body.base else {
-                panic!("v5–6 应读取 DETableBase");
-            };
-            assert_eq!(table.raw_short, 17);
-            assert_eq!(table.indexes.body.unwrap().raw_count, 0);
-            assert_eq!(refs.registered_class(42), Some(INDEXES_CLASS_ID));
-            assert_eq!(body.metadata.unwrap().shorts, [0, 1, 0]);
-            assert_eq!(body.raw_rule_count, Some(0));
-            assert_eq!(body.fields, None);
-            assert_eq!(body.v6, (version == 6).then_some(23));
-            assert_eq!(reader.position(), end);
         }
     }
 

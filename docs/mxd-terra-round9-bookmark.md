@@ -2541,3 +2541,17 @@ Load `0x6f615610` 读取无符号版本（上限 1），再经
 在 `0x6f615075` 将扩展标志设为零，因此使用简短表体和
 无扩展尾串的要素类布局。构造测试覆盖派生版本、简短体、
 逐字节截断和结束位置。真实 MXD 宿主仍待核对。
+
+#### DERelationshipClassInfo
+
+FeatureDataElements.dll 10.1.0.3035 的 PE RTTI 持久化表
+`0x6f65dd48` 对应 DERelationshipClassInfo。构造函数从
+`0x6f65e018` 复制 CLSID `3128F0B6-517E-4AA3-A222-20441F2CB302`，
+QI 在 `0x6f61855b` 比对 IDataElement IID。
+该类与 DERelationshipClass 共用 Load `0x6f619e90`。
+Info 默认构造在 `0x6f61829e` 清零完整对象 +0xc0 的扩展标志，
+因此 v5–6 经 `0x6f619ef8` 读取简短 DETableBase。
+`0x6f618337` 将 +0x156 的旧版 IFields 标志初始化为零，
+与 DERelationshipClass 的 v0–1 路径一致。
+构造测试覆盖两类 v5–6 对象、各自的表布局、新 Indexes 对象、
+v6 尾字段、截断及结束位置。真实 MXD 宿主仍待核对。
