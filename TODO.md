@@ -647,6 +647,7 @@
       - [x] 核对 10.1 介质 DLL 中 TextureFillSymbol 材质槽 IID 的显式命中与创建方。[调用取证](docs/arcmap-10.1-dep-tail.md#101-介质中的材质接口调用方)
       - [ ] 核对 TextureFillSymbol 材质槽中其余接口实现。
       - [x] 定位三种 3D 标记符号的 ISymbol 接口、CLSID 和原生 Load 入口。[派发取证](docs/arcmap-10.1-dep-tail.md#3d-标记符号的持久化入口)
+      - [x] 接入 SimpleMarker3DSymbol 对象体及其版本门。[原生取证](docs/arcmap-10.1-dep-tail.md#simplemarker3dsymbol-的对象体)
       - [ ] FeatureLayer 后继段 ㉖ 槽中未支持的 ISymbol 实现类体（已接入类和跨模块候选见[符号续研](docs/arcmap-10.1-dep-tail.md#featurelayer-符号槽的栅格和-wms-实现)）。
       - [x] 接入 SymbolMimic 的空 IRepresentationRule 槽及两项标量。[原生持久化入口](docs/arcmap-10.1-dep-tail.md#symbolmimic-的持久化入口)
       - [x] 接入 SymbolMimic 中各集合为空的 RepresentationRule 对象体及同类键回引。[原生边界](docs/arcmap-10.1-dep-tail.md#symbolmimic-中的-representationrule)

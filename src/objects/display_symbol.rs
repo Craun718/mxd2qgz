@@ -229,6 +229,8 @@
 //! 结论为静态观察，未经目标软件运行验证，样本无字节佐证。
 
 mod chart;
+mod marker_3d;
+pub use marker_3d::{SIMPLE_MARKER_3D_SYMBOL_CLASS_ID, SimpleMarker3dSymbolBody10_1};
 mod raster;
 mod texture;
 pub use texture::{
@@ -1332,6 +1334,7 @@ pub(crate) const MARKER_SYMBOL_CLASSES: &[[u8; 16]] = &[
     PICTURE_MARKER_SYMBOL_CLASS_ID,
     ARROW_MARKER_SYMBOL_CLASS_ID,
     URL_PICTURE_MARKER_SYMBOL_CLASS_ID,
+    SIMPLE_MARKER_3D_SYMBOL_CLASS_ID,
 ];
 
 pub const SIMPLE_LINE_3D_SYMBOL_CLASS_ID: [u8; 16] = [
@@ -2441,6 +2444,7 @@ pub enum SymbolSlotFull10_1 {
     DotDensityFillSymbol(Box<DotDensityFillSymbolBody10_1>),
     /// RasterLayer.dll 的颜色、渐变和 RGB 符号。
     SimpleLine3dSymbol(Box<SimpleLine3dSymbolBody10_1>),
+    SimpleMarker3dSymbol(Box<SimpleMarker3dSymbolBody10_1>),
     TextureLineSymbol(Box<TextureLineSymbolBody10_1>),
     TextureFillSymbol(Box<TextureFillSymbolBody10_1>),
     ColorSymbol(Box<ColorSymbolBody10_1>),
@@ -2630,7 +2634,8 @@ pub fn slot_full_stop_10_1(
         }
         SymbolSlotFull10_1::ChartSymbol(_)
         | SymbolSlotFull10_1::SymbolMimic { .. }
-        | SymbolSlotFull10_1::TextureFillSymbol(_) => None,
+        | SymbolSlotFull10_1::TextureFillSymbol(_)
+        | SymbolSlotFull10_1::SimpleMarker3dSymbol(_) => None,
         SymbolSlotFull10_1::TextSymbol { body, key } => {
             body.stop.clone().map(|_| SymbolStop10_1::NestedIncomplete {
                 class_id: TEXT_SYMBOL_CLASS_ID,
@@ -2908,6 +2913,17 @@ pub fn read_symbol_slot_full_10_1(
                     trailing_byte,
                     stop,
                 }))
+            } else if class_id == SIMPLE_MARKER_3D_SYMBOL_CLASS_ID {
+                let Some(body) = marker_3d::read_simple_marker_3d_symbol(
+                    &mut trial,
+                    &mut staged,
+                    max_bytes,
+                    key,
+                )?
+                else {
+                    return Ok(SymbolSlotFull10_1::Unsupported { class_id, key });
+                };
+                SymbolSlotFull10_1::SimpleMarker3dSymbol(Box::new(body))
             } else if class_id == SIMPLE_LINE_3D_SYMBOL_CLASS_ID {
                 let version = read_signed_symbol_version(
                     &mut trial,

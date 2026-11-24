@@ -3518,3 +3518,65 @@ fn texture_line_reads_fill_with_geometry_material_pixels() {
         }
     }
 }
+
+#[test]
+fn simple_marker_3d_symbol_follows_each_native_version_gate() {
+    use mxd2qgz::objects::display_symbol::{
+        SIMPLE_MARKER_3D_SYMBOL_CLASS_ID, SymbolSlotFull10_1, read_symbol_slot_full_10_1,
+    };
+
+    for version in [-1_i16, 0, 1, 2, 3, 4, 5, 6] {
+        let mut bytes = Vec::new();
+        push_entry(&mut bytes, &SIMPLE_MARKER_3D_SYMBOL_CLASS_ID, 61);
+        bytes.extend(version.to_le_bytes());
+        push_entry(&mut bytes, &RGB_COLOR_CLASS_ID, 62);
+        bytes.extend(rgb_color_body());
+        bytes.extend(1.5_f64.to_le_bytes());
+        bytes.extend(17_i32.to_le_bytes());
+        if version < 4 {
+            push_null(&mut bytes);
+        }
+        bytes.extend([0; 8 + 8 + 24]);
+        if version > 1 {
+            bytes.extend(2.5_f64.to_le_bytes());
+        }
+        bytes.extend(13_u16.to_le_bytes());
+        if version > 2 {
+            bytes.extend([0; 24]);
+        }
+        if version > 4 {
+            bytes.extend([0; 32]);
+            bytes.extend(15_u16.to_le_bytes());
+        }
+        if version > 5 {
+            bytes.extend(16_u16.to_le_bytes());
+        }
+        let end = bytes.len();
+        bytes.push(0xab);
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let SymbolSlotFull10_1::SimpleMarker3dSymbol(body) =
+            read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 8).unwrap()
+        else {
+            panic!("预期 SimpleMarker3DSymbol");
+        };
+        assert_eq!(body.version, version as u16);
+        assert_eq!(body.first_double, 1.5);
+        assert_eq!(body.first_integer, 17);
+        assert_eq!(body.geometry_entry.is_some(), version < 4);
+        assert_eq!(body.double_v2, (version > 1).then_some(2.5));
+        assert_eq!(body.short, 13);
+        assert_eq!(body.vector_v3, (version > 2).then_some([0.0; 3]));
+        assert_eq!(body.fields_v5, (version > 4).then_some(([0.0; 4], 15)));
+        assert_eq!(body.short_v6, (version > 5).then_some(16));
+        assert_eq!(reader.position(), end);
+        assert!(refs.contains(61) && refs.contains(62));
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 8).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+}
