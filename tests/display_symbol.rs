@@ -3448,3 +3448,73 @@ fn texture_line_symbol_reads_versioned_tail_and_stops_at_unknown_fill() {
         assert!(!refs.contains(71));
     }
 }
+
+#[test]
+fn texture_line_reads_fill_with_geometry_material_pixels() {
+    use mxd2qgz::objects::display_symbol::{
+        GEOMETRY_MATERIAL_CLASS_ID, SymbolSlotFull10_1, TEXTURE_FILL_SYMBOL_CLASS_ID,
+        TEXTURE_LINE_SYMBOL_CLASS_ID, read_symbol_slot_full_10_1,
+    };
+
+    for version in [1_u16, 2] {
+        let mut bytes = Vec::new();
+        push_entry(&mut bytes, &TEXTURE_LINE_SYMBOL_CLASS_ID, 70);
+        bytes.extend(2_u16.to_le_bytes());
+        bytes.extend(4.0_f64.to_le_bytes());
+        push_entry(&mut bytes, &TEXTURE_FILL_SYMBOL_CLASS_ID, 71);
+        bytes.extend(version.to_le_bytes());
+        push_entry(&mut bytes, &GEOMETRY_MATERIAL_CLASS_ID, 72);
+        bytes.extend(version.to_le_bytes());
+        for value in [2_i32, 1, 2] {
+            bytes.extend(value.to_le_bytes());
+        }
+        bytes.extend([0; 32]);
+        push_entry(&mut bytes, &RGB_COLOR_CLASS_ID, 73);
+        bytes.extend(rgb_color_body());
+        push_null(&mut bytes);
+        if version == 2 {
+            bytes.extend(4_i32.to_le_bytes());
+        }
+        bytes.extend([1, 2, 3, 4]);
+        push_entry(&mut bytes, &RGB_COLOR_CLASS_ID, 73);
+        push_null(&mut bytes);
+        push_null(&mut bytes);
+        bytes.extend([0; 16]);
+        if version == 1 {
+            bytes.extend(7.5_f64.to_le_bytes());
+        }
+        bytes.extend([0; 8]);
+        bytes.push(1);
+        let end = bytes.len();
+        bytes.push(0xcc);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let SymbolSlotFull10_1::TextureLineSymbol(line) =
+            read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 8).unwrap()
+        else {
+            panic!("预期 TextureLineSymbol");
+        };
+        let SymbolSlotFull10_1::TextureFillSymbol(fill) = line.fill else {
+            panic!("预期 TextureFillSymbol");
+        };
+        let material = fill.material.unwrap();
+        assert_eq!(material.dimensions, [2, 1, 2]);
+        assert_eq!(material.pixels, [1, 2, 3, 4]);
+        assert_eq!(fill.legacy_double, (version == 1).then_some(7.5));
+        assert!(matches!(
+            fill.colors[0],
+            ColorSlot10_1::BackReference { key: 73, .. }
+        ));
+        assert_eq!(line.trailing_byte, Some(1));
+        assert_eq!(reader.position(), end);
+
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 8).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+}

@@ -968,7 +968,16 @@ TextureFillSymbol 的主 QI `0x6804f5c0` 接受该 IID。
 `{8D738780-C069-42E0-9DFA-2B7B61707BA9}`。
 Load `0x680506f0` 首先读有符号版本，再请求 IID
 `{E9F95F61-2BEC-11D6-A4CD-444553547777}` 的对象，之后还有
-两个 IColor、ISymbol 和版本相关标量。该首槽实现仍需取证。
-现阶段 TextureLineSymbol 消费空填充或已登记的 TextureFillSymbol
-回引，在其他填充头处保留停止位置。合成输入覆盖负版本、v1/v2、
-后继边界及截断回滚。非空新填充的实档及 ArcMap/QGIS 目视仍未验证。
+两个 IColor、ISymbol 和版本相关标量。该首槽由 GeometryMaterial 主 QI `0x68027530` 在 `0x68027537`
+匹配。IPersistStream 虚表 `0x680603ac` 的 GetClassID
+`0x68027d30` 返回 `{0E6F4B27-2BD0-11D6-A4CC-444553547777}`。
+Load `0x68027d80` 在 `0x68027dc4..0x68027dc9` 将版本减一
+再比较无符号上限，接受 1 和 2。随后消费三个 int32、四个 double
+与两个 RGB 颜色接口槽（`0x6806043c`）。三个尺寸均为正时，v1
+在 `0x68027ef0` 相乘得到像元字节数，v2 在 `0x68027edc`
+读取声明长度。Rust 检查乘法与长度上限后保留原始字节。
+
+纹理线可读含新建 GeometryMaterial 的 TextureFillSymbol。合成输入
+覆盖两种像元长度、跨槽颜色回引、后继字节及逐字节截断回滚。
+未知材质或嵌套对象仍保留停止位置。其他材质实现、实档和 ArcMap/QGIS
+人工验收仍待核对。
