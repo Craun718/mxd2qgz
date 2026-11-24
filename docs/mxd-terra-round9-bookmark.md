@@ -2134,6 +2134,28 @@ Save `0x748e5d00` 的尺寸分派、内嵌 Variant 和成员 String
 对象回引、后继字段及逐字节截断回滚。内嵌数组的真实取值与
 ArcMap/QGIS 实档验收待查。
 
+#### GPRasterDataLayer
+
+GpObjects.dll 10.1.0.3035 的 RTTI 对应 GPRasterDataLayer
+（`FF917E83-04F9-4328-A336-2CFD3C12D889`）的 +0x1c
+持久化表 `0x747b47d0`，Load/Save 分别为
+`0x746fb770`、`0x746fb830`。Load 检查无符号版本上限 1，
+在 `0x746fb7b2` 读 GPValue 基类，随后在
+`0x746fb7d9`、`0x746fb7ea`、`0x746fb805`
+依次读取 IName、AfCore String 和带键对象。
+最后的 IID `C9E309F7-7B98-4836-BE20-D20F4868BAC4`
+由同版 Carto 互操作程序集核实为 ILayerDrawingDescription。
+Save 在 `0x746fb8a6` 按文档版本选择实际描述对象
+（版本索引 >2）或空对象（≤2），均写出槽头。
+
+同一互操作程序集公开 RasterLayerDrawingDescription
+（`426F6A04-908C-4749-9AD8-AFF17221C581`）与
+FeatureLayerDrawingDescription（`AA66C2BA-55BF-4EAA-80AF-648B80228103`）。
+在 CartoXProvider.dll 10.1.0.3035（SHA-256
+`1c4a6d3681e7527ca21e1b9afeb3b5a83922ad12f6c8a0e5c19dec33dd6f3cf5`）
+找到前者 RTTI。描述对象体、其他接口实现的宿主分布
+和真实 MXD 仍待核对，未进行 ArcMap 人工验证。
+
 #### GPRasterBuilder
 
 GpObjects.dll 10.1.0.3035 的 RTTI 对应 GPRasterBuilder
