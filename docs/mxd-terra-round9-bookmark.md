@@ -2528,3 +2528,16 @@ Load 分别直接转入这两个基类的 Load，没有额外派生版本。
 两类的 QI 分别在 `0x6f61dfdd` 和 `0x6f5f3a85` 比对
 `0x6f658574` 中的 IDataElement IID。构造测试覆盖紧凑体、
 逐字节截断和结束位置。真实 MXD 宿主仍待验证。
+
+#### DERasterCatalogInfo
+
+FeatureDataElements.dll 10.1.0.3035 的 PE RTTI 持久化表
+`0x6f65d0d8` 对应 DERasterCatalogInfo。构造函数从
+`0x6f65d398` 复制 CLSID `6B445CE3-EB63-4296-9A11-E6E1D1C05200`，
+QI 在 `0x6f615369` 比对 `0x6f658574` 的 IDataElement IID。
+Load `0x6f615610` 读取无符号版本（上限 1），再经
+`0x6f65735c` 调用 DEFeatureClassBase::Load。
+构造路径在 `0x6f614f77` 调用 DEFeatureClassBase 构造函数，
+在 `0x6f615075` 将扩展标志设为零，因此使用简短表体和
+无扩展尾串的要素类布局。构造测试覆盖派生版本、简短体、
+逐字节截断和结束位置。真实 MXD 宿主仍待核对。

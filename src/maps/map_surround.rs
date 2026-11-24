@@ -567,6 +567,10 @@ pub const DE_CAD_DRAWING_DATASET_CLASS_ID: [u8; 16] = [
     0x2d, 0x33, 0x86, 0xf7, 0xb2, 0x20, 0x07, 0x46, 0xbf, 0x34, 0x0a, 0x53, 0xe4, 0xd0, 0xb4, 0x13,
 ];
 
+pub const DE_RASTER_CATALOG_INFO_CLASS_ID: [u8; 16] = [
+    0xe3, 0x5c, 0x44, 0x6b, 0x63, 0xeb, 0x96, 0x42, 0x9a, 0x11, 0xe6, 0xe1, 0xd1, 0xc0, 0x52, 0x00,
+];
+
 pub const DE_FEATURE_CLASS_INFO_CLASS_ID: [u8; 16] = [
     0x17, 0xfc, 0x35, 0xa7, 0x0d, 0xd5, 0x63, 0x4d, 0xaa, 0x98, 0x45, 0xe7, 0xc5, 0x98, 0xce, 0xc3,
 ];
@@ -3686,6 +3690,7 @@ fn read_gp_data_element_child(
                     | DE_RASTER_CATALOG_CLASS_ID
                     | DE_SHAPE_FILE_CLASS_ID
                     | DE_FEATURE_CLASS_INFO_CLASS_ID
+                    | DE_RASTER_CATALOG_INFO_CLASS_ID
                     | DE_COVERAGE_FEATURE_CLASS_ID
                     | DE_RASTER_DATASET_CLASS_ID
                     | DE_CAD_DRAWING_DATASET_CLASS_ID
@@ -3730,6 +3735,7 @@ fn read_gp_data_element_child(
                 | DE_RASTER_CATALOG_CLASS_ID
                 | DE_SHAPE_FILE_CLASS_ID
                 | DE_FEATURE_CLASS_INFO_CLASS_ID
+                | DE_RASTER_CATALOG_INFO_CLASS_ID
                 | DE_COVERAGE_FEATURE_CLASS_ID
                 | DE_RASTER_DATASET_CLASS_ID
                 | DE_CAD_DRAWING_DATASET_CLASS_ID
@@ -4080,7 +4086,7 @@ fn read_gp_data_element_child(
                 }
             } else {
                 let derived_version = match class_id {
-                    DE_RASTER_CATALOG_CLASS_ID => {
+                    DE_RASTER_CATALOG_CLASS_ID | DE_RASTER_CATALOG_INFO_CLASS_ID => {
                         Some(read_de_layer_version(reader, 1, "DERasterCatalog")?)
                     }
                     DE_SHAPE_FILE_CLASS_ID => {
@@ -4104,6 +4110,7 @@ fn read_gp_data_element_child(
                     DE_SHAPE_FILE_CLASS_ID
                         | DE_COVERAGE_FEATURE_CLASS_ID
                         | DE_FEATURE_CLASS_INFO_CLASS_ID
+                        | DE_RASTER_CATALOG_INFO_CLASS_ID
                 );
                 let table = if extended {
                     DeFeatureClassTable10_1::Extended(read_gp_de_table(
@@ -8195,6 +8202,7 @@ mod tests {
             DE_SHAPE_FILE_CLASS_ID,
             DE_COVERAGE_FEATURE_CLASS_ID,
             DE_FEATURE_CLASS_INFO_CLASS_ID,
+            DE_RASTER_CATALOG_INFO_CLASS_ID,
         ] {
             let mut bytes = class_id.to_vec();
             bytes.extend(55_u32.to_le_bytes());
