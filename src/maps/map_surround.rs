@@ -522,6 +522,10 @@ pub const DE_SERVER_CONNECTION_CLASS_ID: [u8; 16] = [
     0x40, 0x49, 0x7d, 0x88, 0x43, 0x93, 0xa3, 0x42, 0x8c, 0x8f, 0x5c, 0x41, 0xd4, 0xdc, 0xfa, 0xfd,
 ];
 
+pub const DE_RASTER_DATASET_CLASS_ID: [u8; 16] = [
+    0x68, 0xbb, 0x95, 0x82, 0x00, 0xf2, 0xa6, 0x4c, 0x80, 0x3f, 0x97, 0x99, 0x52, 0xd7, 0x32, 0xbd,
+];
+
 pub const DE_RASTER_CATALOG_CLASS_ID: [u8; 16] = [
     0x92, 0x71, 0x20, 0x80, 0xe8, 0x7c, 0x06, 0x4d, 0x95, 0x42, 0x76, 0x3e, 0x78, 0x51, 0x8f, 0xfb,
 ];
@@ -954,6 +958,17 @@ pub enum DeChild10_1 {
         extent: BookmarkEnvelopeEntry10_1,
         spatial_reference: SpatialReferenceEntry10_1,
         network: DeGeometricNetwork10_1,
+    },
+    RasterDataset {
+        version: u16,
+        geo_dataset_version: u16,
+        dataset: DeDataset10_1,
+        extent: BookmarkEnvelopeEntry10_1,
+        spatial_reference: SpatialReferenceEntry10_1,
+        strings: [String; 3],
+        raw_long: i32,
+        raw_short: u16,
+        storage: Option<ObjectEntry10_1>,
     },
     CatalogDataset {
         version: u16,
@@ -3272,6 +3287,7 @@ fn read_gp_data_element_child(
                 DE_TABLE_CLASS_ID
                     | DE_FEATURE_CLASS_CLASS_ID
                     | DE_RASTER_CATALOG_CLASS_ID
+                    | DE_RASTER_DATASET_CLASS_ID
                     | DE_FEATURE_DATASET_CLASS_ID
                     | DE_CATALOG_DATASET_CLASS_ID
                     | DE_SERVER_CONNECTION_CLASS_ID
@@ -3288,6 +3304,7 @@ fn read_gp_data_element_child(
                 class_id @ (DE_TABLE_CLASS_ID
                 | DE_FEATURE_CLASS_CLASS_ID
                 | DE_RASTER_CATALOG_CLASS_ID
+                | DE_RASTER_DATASET_CLASS_ID
                 | DE_FEATURE_DATASET_CLASS_ID
                 | DE_CATALOG_DATASET_CLASS_ID
                 | DE_SERVER_CONNECTION_CLASS_ID
@@ -3341,11 +3358,12 @@ fn read_gp_data_element_child(
                     | DE_TOPOLOGY_CLASS_ID
                     | DE_GEOMETRIC_NETWORK_CLASS_ID
                     | DE_CATALOG_DATASET_CLASS_ID
+                    | DE_RASTER_DATASET_CLASS_ID
             ) {
                 let version = reader.read_u16_le()?;
                 let geo_dataset_version = reader.read_u16_le()?;
                 let max_version = match class_id {
-                    DE_TOPOLOGY_CLASS_ID => 2,
+                    DE_TOPOLOGY_CLASS_ID | DE_RASTER_DATASET_CLASS_ID => 2,
                     DE_GEOMETRIC_NETWORK_CLASS_ID => 6,
                     _ => 1,
                 };
@@ -3401,6 +3419,37 @@ fn read_gp_data_element_child(
                         extent,
                         spatial_reference,
                         network: read_de_geometric_network(reader, max_bytes, refs, version)?,
+                    }
+                } else if class_id == DE_RASTER_DATASET_CLASS_ID {
+                    let strings = [
+                        read_string_10_1(reader, max_bytes)?,
+                        read_string_10_1(reader, max_bytes)?,
+                        read_string_10_1(reader, max_bytes)?,
+                    ];
+                    let raw_long = reader.read_u32_le()? as i32;
+                    let raw_short = reader.read_u16_le()?;
+                    let storage = (version == 2)
+                        .then(|| read_object_entry_10_1(reader, refs))
+                        .transpose()?;
+                    if storage
+                        .as_ref()
+                        .is_some_and(|entry| *entry != ObjectEntry10_1::Null)
+                    {
+                        return Err(io::Error::new(
+                            ErrorKind::Unsupported,
+                            "DERasterDataset 的非空 IRasterStorageDef 槽尚未支持",
+                        ));
+                    }
+                    DeChild10_1::RasterDataset {
+                        version,
+                        geo_dataset_version,
+                        dataset,
+                        extent,
+                        spatial_reference,
+                        strings,
+                        raw_long,
+                        raw_short,
+                        storage,
                     }
                 } else if class_id == DE_CATALOG_DATASET_CLASS_ID {
                     DeChild10_1::CatalogDataset {
@@ -6759,6 +6808,52 @@ mod tests {
             assert_eq!(workspace.v1, (version == 1).then_some(11));
             assert_eq!(workspace.v4, (version >= 4).then_some([12, 13, 14]));
             assert_eq!(workspace.v5.as_deref(), (version == 5).then_some("T"));
+            assert_eq!(reader.position(), end);
+        }
+    }
+
+    #[test]
+    fn de_raster_dataset_reads_storage_slot_only_in_v2() {
+        for version in 0_u16..=2 {
+            let mut bytes = DE_RASTER_DATASET_CLASS_ID.to_vec();
+            bytes.extend(40_u32.to_le_bytes());
+            bytes.extend(version.to_le_bytes());
+            bytes.extend([0; 10]);
+            for _ in 0..3 {
+                bytes.extend([2, 0, 0, 0, 0, 0]);
+            }
+            bytes.extend([0; 54]);
+            for value in [b'A', b'B', b'C'] {
+                bytes.extend([4, 0, 0, 0, value, 0, 0, 0]);
+            }
+            bytes.extend((-4_i32).to_le_bytes());
+            bytes.extend(7_u16.to_le_bytes());
+            if version == 2 {
+                bytes.extend([0; 16]);
+            }
+            for cut in 0..bytes.len() {
+                let mut reader = Reader::new(&bytes[..cut]);
+                let mut refs = RefTable10_1::new();
+                assert!(read_gp_data_element_child(&mut reader, 1024, &mut refs, 0).is_err());
+            }
+            let end = bytes.len();
+            bytes.push(0xa5);
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let object = read_gp_data_element_child(&mut reader, 1024, &mut refs, 0).unwrap();
+            let Some(DeChild10_1::RasterDataset {
+                strings,
+                raw_long,
+                raw_short,
+                storage,
+                ..
+            }) = object.body.as_deref()
+            else {
+                panic!("应读取 DERasterDataset");
+            };
+            assert_eq!(strings, &["A", "B", "C"]);
+            assert_eq!((*raw_long, *raw_short), (-4, 7));
+            assert_eq!(*storage, (version == 2).then_some(ObjectEntry10_1::Null));
             assert_eq!(reader.position(), end);
         }
     }

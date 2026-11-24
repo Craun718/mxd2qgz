@@ -2257,3 +2257,13 @@ FeatureDataElements.dll 10.1.0.3035 的构造函数在 `0x6f61492a`
 经导入槽 `0x6f65735c` 调 DEFeatureClassBase::Load 后返回。
 解析沿用 DEFeatureClassBase 读取逻辑并保留独立的目录版本字段。
 构造书签覆盖两类对象、同键回引和截断。实际 MXD 宿主仍待验证。
+
+#### DERasterDataset
+
+FeatureDataElements.dll 10.1.0.3035 的持久化表 `0x6f65d634`
+对应类型库 CLSID `{8295BB68-F200-4CA6-803F-979952D732BD}`。
+Load `0x6f616870` 接受无符号版本 0–2，调用 DEGeoDataset::Load，
+再读取三个 AfCore String、long 和 short。v2 在 `0x6f61694e`
+经 LoadObject 请求 `{30B9828A-85A6-4228-A7A4-7AFB8A9842CC}`，
+类型库对应 IRasterStorageDef。构造测试覆盖所有版本、空存储槽和
+截断。非空 IRasterStorageDef 的持久化类体及实际 MXD 宿主仍待核对。
