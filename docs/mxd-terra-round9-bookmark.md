@@ -2191,10 +2191,27 @@ ILabelClassDescriptions。CartoXProvider 的集合主 QI
 
 LabelClassDescription 自身的 IPersistStream 表
 `0x6cedb83c` 对应 Load `0x6ce27d80` 和 Save
-`0x6ce27f10`。Load 检查版本上限 3，并读取两个对象槽
-（`0x6ce27e4f`、`0x6ce27e83`），v3 起另有
-4 字节量及字符串。仍需逐项核对成员对象类、字符串和版本分支，
-并验证矢量绘制描述的真实 MXD 宿主。未进行 ArcMap 人工验证。
+`0x6ce27f10`。Load 检查有符号版本上限 3，然后依次读：
+
+| 读取点 | 字段 |
+| --- | --- |
+| `0x6ce27e4f` | ILabelPlacementDescription 对象槽 |
+| `0x6ce27e64` | AfCore String |
+| `0x6ce27e83` | ITextSymbol 对象槽 |
+| `0x6ce27e9f`、`0x6ce27eb1` | 两个 double |
+| `0x6ce27eca` | v2 起的 short |
+| `0x6ce27ee7`、`0x6ce27ef8` | v3 的 LONG 与 AfCore String |
+
+同版 Carto 互操作程序集将首槽的 IID
+`F5B9D652-BA0D-4E30-961F-C9B3D07478EC` 定名为
+ILabelPlacementDescription，并公开三个直接实现的类。
+PointLabelPlacementDescription 为
+`6A458B37-055D-48DA-B3A5-856D9DC9525F`，
+LineLabelPlacementDescription 为
+`17729200-D19F-437F-8607-4A7995BC0928`，
+PolygonLabelPlacementDescription 为
+`425D9BB2-BD95-4DB9-B9F2-2C7B4D44EC58`。
+三类的原生对象体和真实宿主仍待核对，未进行 ArcMap 人工验证。
 
 #### GPRasterBuilder
 
