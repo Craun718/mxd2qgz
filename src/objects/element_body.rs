@@ -1253,12 +1253,6 @@ fn read_text_3d_element(
     if let PointSlot10_1::BackReference { class_id, key } = &mut anchor
         && let Some(registered) = refs.registered_class(*key)
     {
-        if registered != POINT_CLASS_ID {
-            return Err(io::Error::new(
-                ErrorKind::Unsupported,
-                "Text3DElement IPoint 回引类未支持",
-            ));
-        }
         *class_id = registered;
     }
     let leading_double_bits = [
@@ -1523,7 +1517,9 @@ fn read_point_slot<'a>(
     let saved_table = trial_table.clone();
     match read_object_entry_10_1(trial, trial_table)? {
         ObjectEntry10_1::Null => Ok(PointSlot10_1::Null),
-        ObjectEntry10_1::BackReference { class_id, key } => {
+        ObjectEntry10_1::BackReference { class_id, key }
+            if trial_table.registered_class(key).unwrap_or(class_id) == POINT_CLASS_ID =>
+        {
             Ok(PointSlot10_1::BackReference { class_id, key })
         }
         ObjectEntry10_1::NewObject { class_id, key: _ } if class_id == POINT_CLASS_ID => {
@@ -1532,7 +1528,8 @@ fn read_point_slot<'a>(
             let body = read_point_body_10_1(trial, max_bytes, trial_table)?;
             Ok(PointSlot10_1::Point(Box::new(body)))
         }
-        ObjectEntry10_1::NewObject { class_id, key } => {
+        ObjectEntry10_1::NewObject { class_id, key }
+        | ObjectEntry10_1::BackReference { class_id, key } => {
             *trial_table = saved_table;
             *trial = rewind(origin, start, slot_offset);
             *stop = Some(ElementBodyStop10_1::NestedObjectNotClosed {
@@ -2186,6 +2183,42 @@ mod tests {
     use crate::objects::display_symbol::{
         SIMPLE_FILL_SYMBOL_CLASS_ID, SIMPLE_LINE_SYMBOL_CLASS_ID, SIMPLE_MARKER_SYMBOL_CLASS_ID,
     };
+
+    #[test]
+    fn point_slot_rejects_reference_to_registered_polyline() {
+        let header = |class_id: [u8; 16]| {
+            let mut bytes = class_id.to_vec();
+            bytes.extend(41_u32.to_le_bytes());
+            bytes
+        };
+        let mut refs = RefTable10_1::new();
+        read_object_entry_10_1(&mut Reader::new(&header(POLYLINE_CLASS_ID)), &mut refs).unwrap();
+        let bytes = header(POINT_CLASS_ID);
+        let origin = Reader::new(&bytes);
+        let mut reader = origin.clone();
+        let mut stop = None;
+        let point = read_point_slot(
+            &mut reader,
+            4096,
+            &mut refs,
+            &origin,
+            0,
+            "IPoint",
+            &mut stop,
+        )
+        .unwrap();
+        assert!(matches!(point, PointSlot10_1::Null));
+        assert!(matches!(
+            stop,
+            Some(ElementBodyStop10_1::NestedObjectNotClosed {
+                offset: 0,
+                key: 41,
+                ..
+            })
+        ));
+        assert_eq!(reader.position(), 0);
+        assert_eq!(refs.registered_class(41), Some(POLYLINE_CLASS_ID));
+    }
 
     #[test]
     fn shape_symbol_slots_validate_registered_class() {

@@ -505,3 +505,12 @@ v0/v1 两组各有 Point XY、三点 Multipoint、单路径 Polyline 及单环 P
 `temp/mxd-geometry-v0/`。八条带类型和长度的构造记录输出 SHA-256 为
 `6e1151fbe2b283a72b6e8040a1e9eaae272762fe552999b77e8762a0dc8c693c`。
 未找到对应的真实旧 MXD，ArcMap/QGIS 人工验收尚未进行。
+
+### 图形元素 IPoint 回引
+
+MarkerElement 的几何槽和 Text3DElement 的锚点槽请求 IPoint。分流
+ObjectStream 的共同回引路径在 SystemCore.dll 10.1.0.3035
+的 `0x7ffd0063` 按登记实例查询接口。Rust 在共享 IPoint 槽检查
+登记类，登记信息缺失时回退到流内类标识。构造测试验证流内头写
+Point 而实际键登记为 Polyline 时停在几何槽起点，保留原有登记。
+ArcMap/QGIS 人工验收仍待执行。
