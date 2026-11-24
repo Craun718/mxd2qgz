@@ -910,9 +910,13 @@ pub(super) fn read_raster_layer_tail(
         .then(|| -> io::Result<_> { Ok([trial.read_f64_le()?, trial.read_f64_le()?]) })
         .transpose()?;
     if boundary == RasterLayerBoundary::InlineWithoutDataset
-        && (!extra_safe_extensions.is_empty()
+        && (extra_safe_extensions
+            .iter()
+            .any(|slot| slot.entry != ObjectEntry10_1::Null)
             || related_name.is_some()
-            || !related_objects.is_empty()
+            || related_objects
+                .iter()
+                .any(|slot| slot.entry != ObjectEntry10_1::Null)
             || envelope_f0
                 .as_ref()
                 .is_some_and(|slot| slot.entry != ObjectEntry10_1::Null)

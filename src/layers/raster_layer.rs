@@ -861,6 +861,35 @@ mod tests {
         assert_eq!(reader.position(), end + 2 * null.len());
         assert_eq!(refs.registered_class(60), Some(RASTER_TYPE_NAME_CLASS_ID));
 
+        let extension_count_at = name_end + 16 + 22 + 4;
+        let relationship_count_at = extension_count_at + 4 + 8 + 32 + 4;
+        let mut with_empty_slots = bytes.clone();
+        with_empty_slots[relationship_count_at..relationship_count_at + 4]
+            .copy_from_slice(&1_i32.to_le_bytes());
+        with_empty_slots.splice(
+            relationship_count_at + 4..relationship_count_at + 4,
+            [0; 16],
+        );
+        with_empty_slots[extension_count_at..extension_count_at + 4]
+            .copy_from_slice(&2_i32.to_le_bytes());
+        let mut extensions = vec![0; 8];
+        extensions.extend(16_u32.to_le_bytes());
+        extensions.extend([0; 20]);
+        with_empty_slots.splice(extension_count_at + 4..extension_count_at + 4, extensions);
+        let mut reader = Reader::new(&with_empty_slots);
+        let mut refs = RefTable10_1::new();
+        let layer = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+        let tail = layer.tail.unwrap();
+        assert_eq!(tail.extra_safe_extensions.len(), 2);
+        assert!(
+            tail.extra_safe_extensions
+                .iter()
+                .all(|slot| slot.entry == ObjectEntry10_1::Null)
+        );
+        assert_eq!(tail.related_objects.len(), 1);
+        assert_eq!(tail.related_objects[0].entry, ObjectEntry10_1::Null);
+        assert_eq!(reader.position(), end + 8 + 24 + 16);
+
         let mut second_name = Vec::new();
         dataset_name(&mut second_name, 61);
         second_name.extend(encoded_string(""));
