@@ -3046,5 +3046,23 @@ TrafficData 的 +0x20 表 `0x7119bf50` 给出 GetClassID
 `E7A1CD66-C6EF-440B-91CA-D6B8DB9C01F9` 与类型库一致。
 入口接受版本 1–3，后段在 `0x710a7d41` 按标志加载
 ITrafficFeedLocation。该接口的两个类型库实现是
-TrafficFeedDirectory 和 TrafficFeedGPService。TrafficData 的
-中间字段和子类体仍待核对。
+TrafficFeedDirectory 和 TrafficFeedGPService。
+
+TrafficData 的共同体由 String（`0x710a7990`）、long
+（`0x710a79cb`）、8 字节 double（`0x710a79ea`）、四个
+String（`0x710a7a26` 至 `0x710a7ac5`）、long
+（`0x710a7af9`）和固定七个 String（循环
+`0x710a7b50` 至 `0x710a7ba9`）组成。版本 2–3 追加
+两个 String、一个 long、两个 String，读取点从
+`0x710a7bc3` 至 `0x710a7cb3`。版本 3 再读
+`0x710a7ce1` 的 long 标志并按需加载供给位置。
+
+TrafficFeedDirectory（`2C4B45D8-7288-4BD9-9F7E-4167DECE6D34`）
+的 +0x18 表 `0x7119c2e8` 指向 Load `0x710aaba0`，
+只接受 short 版本 1，随后读取一个 String。
+TrafficFeedGPService（`C8A68870-3769-4271-B480-E95E806B72DF`）
+的 +0x18 表 `0x7119c3d4` 指向 Load `0x710ab770`，
+也只接受版本 1，再直接加载 IPropertySet
+（`0x710ab7ba`）和两个 String。Rust 读取器接入两类，
+构造测试包括所有 TrafficData 版本、两个非空类、
+无供给位置以及逐字节截断。真实 MXD 宿主仍未验证。

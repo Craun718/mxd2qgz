@@ -403,6 +403,151 @@ pub fn read_network_directions_slot_10_1(
     })
 }
 
+pub const TRAFFIC_DATA_CLASS_ID: [u8; 16] = [
+    0x66, 0xcd, 0xa1, 0xe7, 0xef, 0xc6, 0x0b, 0x44, 0x91, 0xca, 0xd6, 0xb8, 0xdb, 0x9c, 0x01, 0xf9,
+];
+pub const TRAFFIC_FEED_DIRECTORY_CLASS_ID: [u8; 16] = [
+    0xd8, 0x45, 0x4b, 0x2c, 0x88, 0x72, 0xd9, 0x4b, 0x9f, 0x7e, 0x41, 0x67, 0xde, 0xce, 0x6d, 0x34,
+];
+pub const TRAFFIC_FEED_GP_SERVICE_CLASS_ID: [u8; 16] = [
+    0x70, 0x88, 0xa6, 0xc8, 0x69, 0x37, 0x71, 0x42, 0xb4, 0x80, 0xe9, 0x5e, 0x80, 0x6b, 0x72, 0xdf,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TrafficFeedLocation10_1 {
+    Directory(String),
+    GpService {
+        properties: DirectionSlot10_1<PropertySetObjectStream10_1>,
+        names: [String; 2],
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TrafficData10_1 {
+    pub version: u16,
+    pub first_name: String,
+    pub first_value: u32,
+    pub double_bits: u64,
+    pub names: [String; 4],
+    pub second_value: u32,
+    pub daily_names: [String; 7],
+    pub extension: Option<TrafficDataExtension10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TrafficDataExtension10_1 {
+    pub initial_names: [String; 2],
+    pub value: u32,
+    pub final_names: [String; 2],
+    pub feed: Option<(u32, Option<DirectionSlot10_1<TrafficFeedLocation10_1>>)>,
+}
+
+fn read_feed_location(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<DirectionSlot10_1<TrafficFeedLocation10_1>> {
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let (class, is_new) = match entry {
+        ObjectEntry10_1::Null => return Ok(DirectionSlot10_1 { entry, body: None }),
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            (refs.registered_class(key).unwrap_or(class_id), false)
+        }
+        ObjectEntry10_1::NewObject { class_id, .. } => (class_id, true),
+    };
+    if ![
+        TRAFFIC_FEED_DIRECTORY_CLASS_ID,
+        TRAFFIC_FEED_GP_SERVICE_CLASS_ID,
+    ]
+    .contains(&class)
+    {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            "ITrafficFeedLocation 槽包含未知对象类",
+        ));
+    }
+    let body = is_new
+        .then(|| {
+            if reader.read_u16_le()? != 1 {
+                return Err(version_error("TrafficFeedLocation"));
+            }
+            if class == TRAFFIC_FEED_DIRECTORY_CLASS_ID {
+                Ok(TrafficFeedLocation10_1::Directory(read_string_10_1(
+                    reader, max_bytes,
+                )?))
+            } else {
+                let properties = read_slot(reader, refs, PROPERTY_SET_CLASS_ID, |r, refs| {
+                    read_property_set_object_stream_10_1(r, max_bytes, refs)
+                })?;
+                let names = [
+                    read_string_10_1(reader, max_bytes)?,
+                    read_string_10_1(reader, max_bytes)?,
+                ];
+                Ok(TrafficFeedLocation10_1::GpService { properties, names })
+            }
+        })
+        .transpose()?;
+    Ok(DirectionSlot10_1 { entry, body })
+}
+
+/// 读取 ITrafficData 槽。宿主负责在失败时回退游标及引用表。
+pub fn read_traffic_data_slot_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<DirectionSlot10_1<TrafficData10_1>> {
+    read_slot(reader, refs, TRAFFIC_DATA_CLASS_ID, |reader, refs| {
+        let version = reader.read_u16_le()?;
+        if !(1..=3).contains(&version) {
+            return Err(version_error("TrafficData"));
+        }
+        let first_name = read_string_10_1(reader, max_bytes)?;
+        let first_value = reader.read_u32_le()?;
+        let double_bits = reader.read_f64_le()?.to_bits();
+        let mut names: [String; 4] = Default::default();
+        let mut daily_names: [String; 7] = Default::default();
+        for name in &mut names {
+            *name = read_string_10_1(reader, max_bytes)?;
+        }
+        let second_value = reader.read_u32_le()?;
+        for name in &mut daily_names {
+            *name = read_string_10_1(reader, max_bytes)?;
+        }
+        let extension = (version >= 2)
+            .then(|| -> io::Result<_> {
+                let initial_names = [
+                    read_string_10_1(reader, max_bytes)?,
+                    read_string_10_1(reader, max_bytes)?,
+                ];
+                let value = reader.read_u32_le()?;
+                let final_names = [
+                    read_string_10_1(reader, max_bytes)?,
+                    read_string_10_1(reader, max_bytes)?,
+                ];
+                let feed = (version == 3)
+                    .then(|| read_flagged(reader, |r| read_feed_location(r, max_bytes, refs)))
+                    .transpose()?;
+                Ok(TrafficDataExtension10_1 {
+                    initial_names,
+                    value,
+                    final_names,
+                    feed,
+                })
+            })
+            .transpose()?;
+        Ok(TrafficData10_1 {
+            version,
+            first_name,
+            first_value,
+            double_bits,
+            names,
+            second_value,
+            daily_names,
+            extension,
+        })
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -422,6 +567,71 @@ mod tests {
             &mut RefTable10_1::new(),
         )?;
         Ok((body, reader.position()))
+    }
+
+    #[test]
+    fn traffic_data_checks_each_version_and_feed_class() {
+        for (version, feed_class) in [
+            (1_u16, None),
+            (2, None),
+            (3, None),
+            (3, Some(TRAFFIC_FEED_DIRECTORY_CLASS_ID)),
+            (3, Some(TRAFFIC_FEED_GP_SERVICE_CLASS_ID)),
+        ] {
+            let mut bytes = Vec::new();
+            object(&mut bytes, TRAFFIC_DATA_CLASS_ID, 1);
+            bytes.extend(version.to_le_bytes());
+            bytes.extend(EMPTY);
+            bytes.extend(23_u32.to_le_bytes());
+            bytes.extend(2.5_f64.to_le_bytes());
+            bytes.extend(EMPTY.repeat(4));
+            bytes.extend(13_u32.to_le_bytes());
+            bytes.extend(EMPTY.repeat(7));
+            if version >= 2 {
+                bytes.extend(EMPTY.repeat(2));
+                bytes.extend(5_u32.to_le_bytes());
+                bytes.extend(EMPTY.repeat(2));
+            }
+            if version == 3 {
+                bytes.extend(u32::from(feed_class.is_some()).to_le_bytes());
+                if let Some(class) = feed_class {
+                    object(&mut bytes, class, 2);
+                    bytes.extend(1_u16.to_le_bytes());
+                    if class == TRAFFIC_FEED_GP_SERVICE_CLASS_ID {
+                        bytes.extend([0; 16]);
+                        bytes.extend(EMPTY);
+                    }
+                    bytes.extend(EMPTY);
+                }
+            }
+            let end = bytes.len();
+            bytes.push(0xaa);
+            let mut reader = Reader::new(&bytes);
+            let body =
+                read_traffic_data_slot_10_1(&mut reader, bytes.len(), &mut RefTable10_1::new())
+                    .unwrap()
+                    .body
+                    .unwrap();
+            assert_eq!(reader.position(), end);
+            assert_eq!(body.double_bits, 2.5_f64.to_bits());
+            assert_eq!(body.extension.is_some(), version >= 2);
+            let feed = body
+                .extension
+                .and_then(|tail| tail.feed)
+                .and_then(|(_, slot)| slot);
+            assert_eq!(feed.is_some(), feed_class.is_some());
+            for end in 0..end {
+                assert!(
+                    read_traffic_data_slot_10_1(
+                        &mut Reader::new(&bytes[..end]),
+                        bytes.len(),
+                        &mut RefTable10_1::new(),
+                    )
+                    .is_err(),
+                    "截断位置 {end}"
+                );
+            }
+        }
     }
 
     #[test]
