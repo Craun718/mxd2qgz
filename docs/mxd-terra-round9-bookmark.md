@@ -3468,6 +3468,23 @@ Rust 在编码值和 IGPLayer 槽复用 GPLayerBase，按原生 Load
 拒绝 0 和超限版本。构造测试覆盖两个槽、截断和对象终点。
 真实 MXD 宿主及 ArcMap/QGIS 人工验收仍待验证。
 
+#### GPRasterLayer
+
+ArcMap 10.1 Desktop 互操作元数据将
+`89312279-B7E6-4787-BE93-9B25CD94D768` 定名为 GPRasterLayer，
+并列出 IGPValue、IGPLayer 和 IPersistStream。同摘要 GpObjects.dll
+10.1.0.3035 的 PE RTTI `0x7480112c` 对应持久化表
+`0x747b4a7c`，Load/Save 分别为 `0x746fd810 / 0x746fd8b0`。
+
+Load 检查无符号版本上限 1，随后在 `0x746fd852` 读 GPLayerBase，
+在 `0x746fd860` 读 AfCore String，在 `0x746fd87b` 读
+IID `FCB01CB3-9F0B-11D0-BEC7-00805F7C4268` 的 IField 槽。
+Save 在 `0x746fd8f1 / 0x746fd8ff / 0x746fd90f` 各按同序写出。
+
+Rust 在 IGPValue 和 IGPLayer 槽复用基类与 Field 读取器。
+构造测试覆盖 v0/v1、IField 回引、截断和对象终点。
+字符串业务含义、真实 MXD 宿主及 ArcMap/QGIS 人工验收仍待确认。
+
 #### 目录数据元素
 
 FileDataElements.dll 10.1.0.3035 的 PE RTTI 持久化表及

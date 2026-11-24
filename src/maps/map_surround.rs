@@ -621,6 +621,9 @@ const GP_LAYER_CLASS_ID: [u8; 16] = [
     0x1e, 0x59, 0x47, 0x6a, 0x16, 0xaa, 0x3e, 0x44, 0xb5, 0x0d, 0xd8, 0x92, 0x66, 0x59, 0xa4, 0xe1,
 ];
 
+const GP_RASTER_LAYER_CLASS_ID: [u8; 16] = [
+    0x79, 0x22, 0x31, 0x89, 0xe6, 0xb7, 0x87, 0x47, 0xbe, 0x93, 0x9b, 0x25, 0xcd, 0x94, 0xd7, 0x68,
+];
 const GP_LAS_DATASET_LAYER_CLASS_ID: [u8; 16] = [
     0xee, 0x45, 0x39, 0xf8, 0x37, 0xcb, 0xc7, 0x4a, 0x98, 0xec, 0xf2, 0x54, 0x46, 0xa9, 0x0a, 0x5d,
 ];
@@ -986,6 +989,7 @@ pub enum GpCodedValue10_1 {
     TopologyLayer(Box<GpLayer10_1>),
     NetworkDatasetLayer(Box<GpLayer10_1>),
     LasDatasetLayer(Box<GpLayer10_1>),
+    RasterLayer(Box<GpLayer10_1>),
     RasterCatalogLayer(Box<GpLayer10_1>),
     FeatureLayer(Box<GpLayer10_1>),
     RasterBuilder(RuleSlot10_1<RasterFunctionArgumentsBody10_1>),
@@ -1278,7 +1282,14 @@ pub struct GpFeatureLayerFields10_1 {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct GpRasterLayerFields10_1 {
+    pub text: String,
+    pub field: RuleSlot10_1<GpCodedValueBody10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct GpLayer10_1 {
+    pub raster: Option<GpRasterLayerFields10_1>,
     pub derived_version: Option<u16>,
     pub feature_layer: Option<GpFeatureLayerFields10_1>,
     pub composite: Option<GpCompositeLayerMembers10_1>,
@@ -3282,6 +3293,7 @@ fn read_gp_coded_value_entry(
                     | GP_TOPOLOGY_LAYER_CLASS_ID
                     | GP_NETWORK_DATASET_LAYER_CLASS_ID
                     | GP_LAS_DATASET_LAYER_CLASS_ID
+                    | GP_RASTER_LAYER_CLASS_ID
                     | GP_TIN_LAYER_CLASS_ID
                     | GP_FEATURE_LAYER_CLASS_ID
                     | GP_RASTER_CATALOG_LAYER_CLASS_ID
@@ -3366,7 +3378,8 @@ fn read_gp_coded_value_entry(
                 | GP_TERRAIN_LAYER_CLASS_ID
                 | GP_TOPOLOGY_LAYER_CLASS_ID
                 | GP_NETWORK_DATASET_LAYER_CLASS_ID
-                | GP_LAS_DATASET_LAYER_CLASS_ID),
+                | GP_LAS_DATASET_LAYER_CLASS_ID
+                | GP_RASTER_LAYER_CLASS_ID),
             ..
         } => {
             let layer = read_gp_layer_body(reader, max_bytes, table, depth, class_id)?;
@@ -3381,7 +3394,10 @@ fn read_gp_coded_value_entry(
                     GP_NETWORK_DATASET_LAYER_CLASS_ID => {
                         GpCodedValue10_1::NetworkDatasetLayer(Box::new(layer))
                     }
-                    _ => GpCodedValue10_1::LasDatasetLayer(Box::new(layer)),
+                    GP_LAS_DATASET_LAYER_CLASS_ID => {
+                        GpCodedValue10_1::LasDatasetLayer(Box::new(layer))
+                    }
+                    _ => GpCodedValue10_1::RasterLayer(Box::new(layer)),
                 },
             }))
         }
@@ -4972,6 +4988,7 @@ fn read_gp_layer_slot(
                     | GP_TOPOLOGY_LAYER_CLASS_ID
                     | GP_NETWORK_DATASET_LAYER_CLASS_ID
                     | GP_LAS_DATASET_LAYER_CLASS_ID
+                    | GP_RASTER_LAYER_CLASS_ID
                     | GP_TIN_LAYER_CLASS_ID
                     | GP_FEATURE_LAYER_CLASS_ID
                     | GP_RASTER_CATALOG_LAYER_CLASS_ID
@@ -4989,6 +5006,7 @@ fn read_gp_layer_slot(
                 | GP_TOPOLOGY_LAYER_CLASS_ID
                 | GP_NETWORK_DATASET_LAYER_CLASS_ID
                 | GP_LAS_DATASET_LAYER_CLASS_ID
+                | GP_RASTER_LAYER_CLASS_ID
                 | GP_TIN_LAYER_CLASS_ID
                 | GP_FEATURE_LAYER_CLASS_ID
                 | GP_RASTER_CATALOG_LAYER_CLASS_ID),
@@ -5023,6 +5041,7 @@ fn read_gp_layer_body(
             | GP_TOPOLOGY_LAYER_CLASS_ID
             | GP_NETWORK_DATASET_LAYER_CLASS_ID
             | GP_LAS_DATASET_LAYER_CLASS_ID
+            | GP_RASTER_LAYER_CLASS_ID
     )
     .then(|| {
         let version = read_de_layer_version(reader, 1, "GP 图层派生类")?;
@@ -5092,7 +5111,22 @@ fn read_gp_layer_body(
     let feature_layer = feature_layer_version
         .map(|version| read_gp_feature_layer_fields(reader, max_bytes, refs, depth, version))
         .transpose()?;
+    let raster = if class_id == GP_RASTER_LAYER_CLASS_ID {
+        Some(GpRasterLayerFields10_1 {
+            text: read_string_10_1(reader, max_bytes)?,
+            field: read_gp_coded_value_slot_of_class(
+                reader,
+                max_bytes,
+                refs,
+                depth,
+                FIELD_CLASS_ID,
+            )?,
+        })
+    } else {
+        None
+    };
     Ok(GpLayer10_1 {
+        raster,
         derived_version,
         feature_layer,
         composite,
@@ -11414,6 +11448,51 @@ mod tests {
                 spatial_reference.as_deref(),
                 (class_id == DE_PRJ_FILE_CLASS_ID).then_some(&SpatialReferenceEntry10_1::Null),
             );
+            assert_eq!(reader.position(), end);
+        }
+    }
+
+    #[test]
+    fn gp_raster_layer_reads_text_and_field_reference() {
+        for version in 0_u16..=1 {
+            let mut bytes = GP_RASTER_LAYER_CLASS_ID.to_vec();
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend(version.to_le_bytes());
+            bytes.extend([2, 0, 1, 0, 9, 0]);
+            let empty_text = [2, 0, 0, 0, 0, 0];
+            bytes.extend(empty_text);
+            bytes.extend([0; 32]);
+            bytes.extend(empty_text);
+            bytes.extend(FIELD_CLASS_ID);
+            bytes.extend(2_u32.to_le_bytes());
+
+            let mut refs = RefTable10_1::new();
+            let mut field_header = FIELD_CLASS_ID.to_vec();
+            field_header.extend(2_u32.to_le_bytes());
+            read_object_entry_10_1(&mut Reader::new(&field_header), &mut refs).unwrap();
+            for cut in 0..bytes.len() {
+                assert!(
+                    read_gp_layer_slot(&mut Reader::new(&bytes[..cut]), 1024, &mut refs.clone(), 0)
+                        .is_err()
+                );
+            }
+            let end = bytes.len();
+            bytes.push(0xa5);
+            let mut reader = Reader::new(&bytes);
+            let coded = read_gp_coded_value_slot(&mut reader, 1024, &mut refs, 0)
+                .unwrap()
+                .body
+                .unwrap();
+            let GpCodedValue10_1::RasterLayer(layer) = coded.value else {
+                panic!("应读取 GPRasterLayer");
+            };
+            assert_eq!((coded.version, layer.version), (version, 2));
+            let raster = layer.raster.unwrap();
+            assert!(raster.text.is_empty());
+            assert!(matches!(
+                raster.field.entry,
+                ObjectEntry10_1::BackReference { key: 2, .. }
+            ));
             assert_eq!(reader.position(), end);
         }
     }
