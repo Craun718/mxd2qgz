@@ -860,6 +860,8 @@
       - [x] 接入 GPRasterBuilder 的持久化对象体及 RasterType 槽。[取证](docs/mxd-terra-round9-bookmark.md#gprasterbuilder)
       - [x] 定位 GPRasterDataLayer 的名称槽及图层绘制描述槽。[取证](docs/mxd-terra-round9-bookmark.md#gprasterdatalayer)
       - [x] 接入 GPRasterDataLayer 与 RasterLayerDrawingDescription 对象体。[取证](docs/mxd-terra-round9-bookmark.md#gprasterdatalayer)
+      - [x] 核对 FeatureLayerDrawingDescription 的渲染器、标注槽与版本边界。[取证](docs/mxd-terra-round9-bookmark.md#featurelayerdrawingdescription)
+      - [ ] 接入 FeatureLayerDrawingDescription 对象体。
       - [x] 核对 GPFieldMapping 的两个带键集合和版本 2 尾槽。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldmapping)
       - [x] 定位 GPFieldMapping 子槽接口及 GPFieldMap 的原生 Load。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldmapping)
       - [x] 核对 GPFieldMap 的 IField 与 IDETable 槽和逐行标量边界。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldmapping)

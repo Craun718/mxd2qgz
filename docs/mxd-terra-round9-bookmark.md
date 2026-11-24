@@ -2163,6 +2163,26 @@ Save `0x6ce5a2b0` 同序写出。Rust 复用栅格渲染器读体，
 描述对象、空渲染器槽、后继位置和截断。
 其他描述实现、真实 MXD 和 ArcMap 人工验证仍待补充。
 
+#### FeatureLayerDrawingDescription
+
+同版 CartoXProvider.dll 的 FeatureLayerDrawingDescription
+由主 QI `0x6ce222e0` 将 IPersistStream 映射到 +0x20，
+RTTI 表为 `0x6cedac04`，Load/Save 为
+`0x6ce224f0 / 0x6ce22690`。Load 检查有符号 short 上限 5，
+在 `0x6ce225ad` 始终读取 IFeatureRenderer。v2 起读
+一个 short，v3 起再读三个 short，v4 起在 `0x6ce2264a`
+读 ILabelingDescription，v5 起在 `0x6ce22667` 读
+4 字节值。两个对象 IID 分别在 `0x6cedac88` 和
+`0x6cedaca8`，后者由同版 Carto 互操作程序集核实。
+
+同模块 LabelingDescription 的公开 CLSID 为
+`9D5143D0-9737-40EB-9C9B-AC134831C6E0`，
+持久化表 `0x6cedb9c8`，Load/Save 为
+`0x6ce28ba0 / 0x6ce28c40`。Load 检查版本上限 1，
+`0x6ce28c1e` 读取 IID `5F177B9E-0D5E-4502-AE3D-A393895DC1F5`
+的对象槽。该子槽及矢量渲染器的接入、实际宿主和 ArcMap
+人工验证仍待补充。
+
 #### GPRasterBuilder
 
 GpObjects.dll 10.1.0.3035 的 RTTI 对应 GPRasterBuilder
