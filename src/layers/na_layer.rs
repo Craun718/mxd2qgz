@@ -1491,7 +1491,7 @@ fn read_na_property_set_slot(
     Ok((entry, body))
 }
 
-const NA_ATTRIBUTE_PARAMETER_VALUE_CLASS_ID: [u8; 16] = [
+pub(crate) const NA_ATTRIBUTE_PARAMETER_VALUE_CLASS_ID: [u8; 16] = [
     0xa8, 0x3f, 0xed, 0xf8, 0x8b, 0x0b, 0x56, 0x4a, 0xa5, 0xb1, 0x22, 0x97, 0x3b, 0x32, 0x90, 0xc9,
 ];
 
@@ -1536,10 +1536,12 @@ pub(crate) fn read_na_parameter_array(
     for _ in 0..count {
         let entry = read_object_entry_10_1(reader, refs)?;
         let body = match entry {
-            ObjectEntry10_1::BackReference {
-                class_id: NA_ATTRIBUTE_PARAMETER_VALUE_CLASS_ID,
-                ..
-            } => None,
+            ObjectEntry10_1::BackReference { class_id, key }
+                if refs.registered_class(key).unwrap_or(class_id)
+                    == NA_ATTRIBUTE_PARAMETER_VALUE_CLASS_ID =>
+            {
+                None
+            }
             ObjectEntry10_1::NewObject {
                 class_id: NA_ATTRIBUTE_PARAMETER_VALUE_CLASS_ID,
                 ..

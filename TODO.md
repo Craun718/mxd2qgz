@@ -861,6 +861,7 @@
       - [x] 复核 NAClassDefinition 字段顺序并复用其带键读取入口。[取证](docs/mxd-terra-round9-bookmark.md#gpnalayer)
       - [x] 核对 GPNALayer 表视图列表和末尾 short 的读写版本门。[取证](docs/mxd-terra-round9-bookmark.md#gpnalayer-尾段的版本门)
       - [x] 接入 GPNALayer 的持久化对象体。[取证](docs/mxd-terra-round9-bookmark.md#gpnalayer)
+      - [x] 验证 GPNALayer 非空定位代理、参数数组及共享键回引。[取证](docs/mxd-terra-round9-bookmark.md#gpnalayer-尾段的版本门)
       - [x] 接入编码值中的 GPTableView 对象体与已支持的子槽。[取证](docs/mxd-terra-round9-bookmark.md#gptableview)
       - [x] 对位 GPRecordSet 的版本字段及内嵌 RecordSet 的行循环。[取证](docs/mxd-terra-round9-bookmark.md#gprecordset-与内嵌-recordset)
       - [x] 对位 RecordSet 的内联 Record 持久化入口与 Variant 循环。[取证](docs/mxd-terra-round9-bookmark.md#gprecordset-与内嵌-recordset)

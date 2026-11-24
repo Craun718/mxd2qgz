@@ -12220,6 +12220,10 @@ mod tests {
     #[test]
     fn gp_na_layer_reads_versioned_tail() {
         use crate::layers::na_class::NA_CLASS_DEFINITION_CLASS_ID;
+        use crate::layers::na_layer::{
+            NA_ATTRIBUTE_PARAMETER_VALUE_ARRAY_CLASS_ID, NA_ATTRIBUTE_PARAMETER_VALUE_CLASS_ID,
+            NA_LOCATOR_FEATURE_AGENT_CLASS_ID,
+        };
 
         for version in [-1_i16, 0, 1, 2, 3] {
             let mut bytes = GP_NA_LAYER_CLASS_ID.to_vec();
@@ -12235,11 +12239,30 @@ mod tests {
             bytes.extend(2_u32.to_le_bytes());
             bytes.extend([0; 54]);
             bytes.extend([0; 16]);
-            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(2_i32.to_le_bytes());
+            bytes.extend(NA_LOCATOR_FEATURE_AGENT_CLASS_ID);
+            bytes.extend(3_u32.to_le_bytes());
+            bytes.extend(2_u16.to_le_bytes());
+            bytes.extend(4_i32.to_le_bytes());
+            bytes.extend(0_u16.to_le_bytes());
+            bytes.extend((-1_i32).to_le_bytes());
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend([b'X', 0, 0, 0]);
+            bytes.extend(0_u32.to_le_bytes());
+            bytes.extend(NA_LOCATOR_FEATURE_AGENT_CLASS_ID);
+            bytes.extend(3_u32.to_le_bytes());
             bytes.extend(17_u16.to_le_bytes());
             bytes.extend([0; 32]);
             if version >= 1 {
-                bytes.extend([0; 16]);
+                bytes.extend(NA_ATTRIBUTE_PARAMETER_VALUE_ARRAY_CLASS_ID);
+                bytes.extend(4_u32.to_le_bytes());
+                bytes.extend(1_u16.to_le_bytes());
+                bytes.extend(2_i32.to_le_bytes());
+                bytes.extend(NA_ATTRIBUTE_PARAMETER_VALUE_CLASS_ID);
+                bytes.extend(5_u32.to_le_bytes());
+                bytes.extend([0; 2 + 8 + 4 + 16]);
+                bytes.extend([0x42; 16]);
+                bytes.extend(5_u32.to_le_bytes());
             }
             if version >= 2 {
                 bytes.extend(1_i32.to_le_bytes());
@@ -12267,8 +12290,21 @@ mod tests {
             assert_eq!(coded.version as i16, version);
             let na = layer.na.unwrap();
             assert!(na.definitions[0].body.is_some());
+            assert_eq!(na.agents[0].body.as_ref().unwrap().source, "X");
+            assert!(matches!(
+                na.agents[1].entry,
+                ObjectEntry10_1::BackReference { key: 3, .. }
+            ));
             assert_eq!(na.raw_short, 17);
             assert_eq!(na.parameters.is_some(), version >= 1);
+            if let Some(parameters) = na.parameters {
+                let body = parameters.body.unwrap();
+                assert!(body.items[0].1.is_some());
+                assert!(matches!(
+                    body.items[1].0,
+                    ObjectEntry10_1::BackReference { key: 5, .. }
+                ));
+            }
             assert_eq!(
                 na.tables.map(|tables| tables.len()),
                 (version >= 2).then_some(1)
