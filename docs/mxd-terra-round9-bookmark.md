@@ -1964,7 +1964,7 @@ Load `0x71379020` 接受无符号版本 0 至 4，调用 GPValue::Load，
 版本 1 再读一个字节，版本 2 至 4 再读 IPropertySet，版本 3 至 4
 再读一个 short。最后一个 short 非零时读取 Variant::Read(false)
 和 IID `{D7FCBB04-8E59-4FFB-9EE5-EC670AA892E0}` 的接口槽。
-解析器已支持三个前导槽为空且行数非正的配置，保留版本 1 的字节、
+解析器已支持三个前导槽为空或为已知 Fields 的配置，保留版本 1 的字节、
 已知 PropertySet 槽及版本 3、4 的尾段标志和 Variant。Variant 后的
 接口槽支持空标记。
 
@@ -1980,3 +1980,10 @@ IID `{1714D59B-FB22-11D1-94A2-080009EEBECB}` 对象
 对象体见 [原生读写记录](mxd-boundary-luna.md)。解析沿用同一对象表，
 构造书签覆盖列表中的 UID 新对象和同键回引。其余未核对的非空接口
 对象仍返回明确错误，实际宿主及人工验收仍待确认。
+
+从 10.1 esriGeoDatabase.olb 的 MSFT 类型库资源按本地类型定义解析，
+`{6B2072E3-23F7-11D1-89D8-006097AFF44E}` 对应 IFields，
+`{D7FCBB04-8E59-4FFB-9EE5-EC670AA892E0}` 对应 IDETable。
+配置的三个 IFields 槽与参考数据行的 IFields 槽接入了同一个
+[GdbCore Fields 读取器](mxd-10.1-fields.md)。构造书签覆盖从行槽回引到
+配置槽内的新 Fields；其他 IFields 实现及非空 IDETable 槽仍待核对。

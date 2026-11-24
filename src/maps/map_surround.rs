@@ -209,6 +209,7 @@ use crate::objects::envelope::{
     ENVELOPE_CLASS_ID, Envelope10_1, SpatialReferenceEntry10_1, read_envelope_10_1,
     read_spatial_reference_entry_10_1,
 };
+use crate::objects::fields::{FIELDS_CLASS_ID, FieldsBody10_1, read_fields_body_nested_10_1};
 use crate::objects::property_set::{
     PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1, PropertyValueObjectStream10_1,
     read_padded_variant_object_stream_nested_10_1, read_property_set_object_stream_10_1,
@@ -769,6 +770,7 @@ pub struct GpFieldInfoRow10_1 {
 #[derive(Debug, Clone, PartialEq)]
 pub struct GpAddressLocatorStyleConfig10_1 {
     pub raw_flag: u16,
+    pub fields: [RuleSlot10_1<FieldsBody10_1>; 3],
     pub raw_row_count: i32,
     pub rows: Vec<GpAddressLocatorStyleRow10_1>,
     pub legacy_byte: Option<u8>,
@@ -784,6 +786,7 @@ pub struct GpAddressLocatorStyleRow10_1 {
     pub raw_object_count: i32,
     pub uids: Vec<RuleSlot10_1<UidBody10_1>>,
     pub raw_value_count: i32,
+    pub fields: RuleSlot10_1<FieldsBody10_1>,
     pub values: GpAddressLocatorStyleRowValues10_1,
 }
 
@@ -2732,9 +2735,11 @@ fn read_gp_address_locator_style_config(
     version: u16,
     raw_flag: u16,
 ) -> io::Result<GpAddressLocatorStyleConfig10_1> {
-    for _ in 0..3 {
-        read_gp_address_locator_style_null_slot(reader, table)?;
-    }
+    let fields = [
+        read_gp_address_locator_style_fields(reader, max_bytes, table, depth)?,
+        read_gp_address_locator_style_fields(reader, max_bytes, table, depth)?,
+        read_gp_address_locator_style_fields(reader, max_bytes, table, depth)?,
+    ];
     let (raw_row_count, count) = read_gp_coded_value_count(reader, max_bytes, 40)?;
     let mut rows = Vec::new();
     for _ in 0..count {
@@ -2760,6 +2765,7 @@ fn read_gp_address_locator_style_config(
         .transpose()?;
     Ok(GpAddressLocatorStyleConfig10_1 {
         raw_flag,
+        fields,
         raw_row_count,
         rows,
         legacy_byte,
@@ -2796,7 +2802,7 @@ fn read_gp_address_locator_style_row(
             "GPAddressLocatorStyle 的参考数据行值数为负",
         ));
     }
-    read_gp_address_locator_style_null_slot(reader, table)?;
+    let fields = read_gp_address_locator_style_fields(reader, max_bytes, table, depth)?;
     let values = if version >= 2 {
         let mut values = Vec::new();
         for _ in 0..count {
@@ -2830,8 +2836,39 @@ fn read_gp_address_locator_style_row(
         raw_object_count,
         uids,
         raw_value_count,
+        fields,
         values,
     })
+}
+
+fn read_gp_address_locator_style_fields(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<RuleSlot10_1<FieldsBody10_1>> {
+    let entry = read_object_entry_10_1(reader, table)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if table.registered_class(key).unwrap_or(class_id) == FIELDS_CLASS_ID =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: FIELDS_CLASS_ID,
+            ..
+        } => Some(Box::new(read_fields_body_nested_10_1(
+            reader, max_bytes, table, depth,
+        )?)),
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "GPAddressLocatorStyle 的 IFields 槽包含不支持的类",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
 }
 
 fn read_gp_address_locator_style_null_slot(

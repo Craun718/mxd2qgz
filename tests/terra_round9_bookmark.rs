@@ -7294,6 +7294,10 @@ fn feature_bookmark_reads_gp_address_locator_style_configuration_without_rows() 
                 strings: ["地址定位器".into(), "样式".into()],
                 configuration: Some(Box::new(GpAddressLocatorStyleConfig10_1 {
                     raw_flag: 0xffff,
+                    fields: std::array::from_fn(|_| RuleSlot10_1 {
+                        entry: ObjectEntry10_1::Null,
+                        body: None,
+                    }),
                     raw_row_count: -1,
                     rows: Vec::new(),
                     legacy_byte: (version == 1).then_some(1),
@@ -7319,6 +7323,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
         GP_ADDRESS_LOCATOR_STYLE_CLASS_ID, GpAddressLocatorStyleConfig10_1,
         GpAddressLocatorStyleRow10_1, GpAddressLocatorStyleRowValues10_1, GpCodedValue10_1,
     };
+    use mxd2qgz::objects::fields::{FIELDS_CLASS_ID, FieldsBody10_1};
     use mxd2qgz::objects::property_set::{PropertyValue10_1, PropertyValueObjectStream10_1};
     use mxd2qgz::storage::object_refs::ObjectEntry10_1;
 
@@ -7326,7 +7331,10 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
         let mut payload = bookmark_string_10_1("");
         payload.extend(bookmark_string_10_1(""));
         payload.extend(1_u16.to_le_bytes());
-        payload.extend([0; 48]);
+        payload.extend(bookmark_entry_10_1(&FIELDS_CLASS_ID, 21));
+        payload.extend(2_u16.to_le_bytes());
+        payload.extend(0_i32.to_le_bytes());
+        payload.extend([0; 32]);
         payload.extend(1_i32.to_le_bytes());
         payload.extend(bookmark_string_10_1("参考数据"));
         if version == 4 {
@@ -7367,7 +7375,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
             ]);
         }
         payload.extend(1_i32.to_le_bytes());
-        payload.extend([0; 16]);
+        payload.extend(bookmark_entry_10_1(&FIELDS_CLASS_ID, 21));
         let values = if version < 2 {
             payload.extend(1_i32.to_le_bytes());
             payload.extend(bookmark_string_10_1("字段"));
@@ -7398,6 +7406,27 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                 strings: [String::new(), String::new()],
                 configuration: Some(Box::new(GpAddressLocatorStyleConfig10_1 {
                     raw_flag: 1,
+                    fields: [
+                        RuleSlot10_1 {
+                            entry: ObjectEntry10_1::NewObject {
+                                class_id: FIELDS_CLASS_ID,
+                                key: 21,
+                            },
+                            body: Some(Box::new(FieldsBody10_1 {
+                                version: 2,
+                                fields: Vec::new(),
+                                longs_v2: Some(Vec::new()),
+                            })),
+                        },
+                        RuleSlot10_1 {
+                            entry: ObjectEntry10_1::Null,
+                            body: None,
+                        },
+                        RuleSlot10_1 {
+                            entry: ObjectEntry10_1::Null,
+                            body: None,
+                        },
+                    ],
                     raw_row_count: 1,
                     rows: vec![GpAddressLocatorStyleRow10_1 {
                         name: "参考数据".into(),
@@ -7405,6 +7434,13 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                         raw_object_count,
                         uids,
                         raw_value_count: 1,
+                        fields: RuleSlot10_1 {
+                            entry: ObjectEntry10_1::BackReference {
+                                class_id: FIELDS_CLASS_ID,
+                                key: 21,
+                            },
+                            body: None,
+                        },
                         values,
                     }],
                     legacy_byte: (version == 1).then_some(0),
