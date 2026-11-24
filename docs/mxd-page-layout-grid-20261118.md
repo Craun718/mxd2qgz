@@ -205,6 +205,11 @@ SchematicDiagramName 与 SchematicFolderName 复用 SchematicDB.dll
 构造测试分别覆盖内联图表类名称及数据集名称、两级键登记、后继字符串
 和截断回滚。真实格网宿主及 ArcMap 显示仍待验证。
 
+SchematicWorkspaceName 沿用 [SchematicDB.dll 10.1.0.3035 Load `0x7d6f5c00`](mxd-terra-round9-bookmark.md#schematicworkspacename)
+与 SchematicDatasetName 共用的三串和工作空间槽布局，按原 CLSID 登记。
+构造测试覆盖内联 WorkspaceName、后继格网字符串和截断回滚。
+真实格网宿主和 ArcMap 显示仍待验证。
+
 ### 叠加格网的关系查询名称
 
 在 MapElements.dll 10.1.0.3035 的 CustomOverlayGrid Load

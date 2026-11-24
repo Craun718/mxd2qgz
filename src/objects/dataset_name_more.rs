@@ -82,8 +82,8 @@ use crate::layers::wcs_name::{
 };
 use crate::maps::map_surround::{
     LAS_DATASET_NAME_CLASS_ID, LasDatasetName10_1, REPRESENTATION_CLASS_NAME_CLASS_ID,
-    RepresentationClassName10_1, read_las_dataset_name_body_10_1,
-    read_representation_class_name_body_10_1,
+    RepresentationClassName10_1, SCHEMATIC_WORKSPACE_NAME_CLASS_ID,
+    read_las_dataset_name_body_10_1, read_representation_class_name_body_10_1,
 };
 use crate::maps::standalone_table::{
     FGDB_TABLE_NAME_CLASS_ID, OBJECT_CLASS_NAME_CLASS_ID, TABLE_NAME_CLASS_ID, TableNameBody10_1,
@@ -1232,7 +1232,7 @@ fn read_dataset_name_object_body_10_1(
                 stop,
             ))
         }
-        SCHEMATIC_DATASET_NAME_CLASS_ID => {
+        SCHEMATIC_DATASET_NAME_CLASS_ID | SCHEMATIC_WORKSPACE_NAME_CLASS_ID => {
             let (body, stop) =
                 read_schematic_dataset_name_body_10_1(reader, max_bytes, table, key)?;
             Ok((
@@ -1565,6 +1565,7 @@ pub(crate) fn read_overlay_name_slot_10_1(
                     | SCHEMATIC_DATASET_NAME_CLASS_ID
                     | SCHEMATIC_DIAGRAM_NAME_CLASS_ID
                     | SCHEMATIC_FOLDER_NAME_CLASS_ID
+                    | SCHEMATIC_WORKSPACE_NAME_CLASS_ID
             )
     })
 }
@@ -2296,6 +2297,41 @@ mod tests {
             assert_eq!(reader.position(), end);
             assert_eq!(read_string_10_1(&mut reader, 256).unwrap(), "格网编号");
         }
+    }
+
+    #[test]
+    fn overlay_schematic_workspace_name_reads_nested_workspace() {
+        let mut bytes = entry(&SCHEMATIC_WORKSPACE_NAME_CLASS_ID, 90).to_vec();
+        bytes.extend(1_i16.to_le_bytes());
+        for _ in 0..3 {
+            bytes.extend(str_bytes(""));
+        }
+        bytes.extend(entry(&WORKSPACE_NAME_CLASS_ID, 91));
+        bytes.extend(workspace_body());
+        let end = bytes.len();
+        bytes.extend(str_bytes("格网编号"));
+        let mut refs = RefTable10_1::new();
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            assert!(read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+        let mut reader = Reader::new(&bytes);
+        let mut stop = None;
+        let slot = read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut stop).unwrap();
+        assert!(
+            matches!(slot, DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::SchematicDataset(body))
+            if matches!(&body.workspace, WorkspaceNameSlot10_1::WorkspaceName(workspace) if workspace.key == 91))
+        );
+        assert!(stop.is_none());
+        assert_eq!(
+            refs.registered_class(90),
+            Some(SCHEMATIC_WORKSPACE_NAME_CLASS_ID)
+        );
+        assert_eq!(refs.registered_class(91), Some(WORKSPACE_NAME_CLASS_ID));
+        assert_eq!(reader.position(), end);
+        assert_eq!(read_string_10_1(&mut reader, 256).unwrap(), "格网编号");
     }
 
     #[test]
