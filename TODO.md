@@ -853,6 +853,7 @@
       - [x] 接入 DETable 的 Indexes 与 Index 对象体。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [ ] 核对 GPAddressLocatorStyle 非空配置中其余接口槽的类体。[取证](docs/mxd-terra-round9-bookmark.md#gpaddresslocatorstyle)
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
+      - [x] 接入 GPCodedValueDomain 中的 GPReplicaDataset v0 至 v3 对象体。[取证](docs/mxd-terra-round9-bookmark.md#gpreplicadataset)
       - [x] 用原生 ObjectStream 验证 GPLine 与 GPPolygon 的带键对象体写出顺序。[取证](docs/mxd-terra-round9-bookmark.md#其余-igpvalue-候选与-gplinegppolygon-的对象边界)
       - [x] 按原生带键写出顺序接入 GPLine 与 GPPolygon 对象体。[取证](docs/mxd-terra-round9-bookmark.md#其余-igpvalue-候选与-gplinegppolygon-的对象边界)
       - [x] 用原生持久化探针验证 GPLine 与 GPPolygon 空集合的写出顺序。

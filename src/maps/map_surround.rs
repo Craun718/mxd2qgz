@@ -450,6 +450,9 @@ pub const GP_LONG_CLASS_ID: [u8; 16] = [
 ];
 
 /// GPPoint 的 CLSID，按对象流中的字节序排列。
+pub const GP_REPLICA_DATASET_CLASS_ID: [u8; 16] = [
+    0x3c, 0x7e, 0x47, 0x72, 0xce, 0x85, 0xde, 0x49, 0xaa, 0x3e, 0x5d, 0x55, 0x90, 0x9c, 0x22, 0xea,
+];
 pub const GP_LINE_CLASS_ID: [u8; 16] = [
     0xe4, 0x80, 0x5f, 0x43, 0xb2, 0x6d, 0x6b, 0x47, 0xb9, 0x77, 0xb0, 0x6b, 0xff, 0x52, 0xf9, 0x78,
 ];
@@ -896,6 +899,14 @@ pub const GP_EXTENT_CLASS_ID: [u8; 16] = [
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpCodedValue10_1 {
+    ReplicaDataset {
+        strings: [String; 2],
+        raw_longs: [u32; 2],
+        raw_shorts: [u16; 2],
+        type_11: Option<(u32, Option<[String; 2]>)>,
+        indices: crate::layers::raster_dataset_name::RasterLongArraySlot10_1,
+        v3: Option<(String, u32, [String; 2], u32)>,
+    },
     LineOrPolygon {
         raw_count: i32,
         points: Vec<RuleSlot10_1<GpCodedValueBody10_1>>,
@@ -3028,6 +3039,7 @@ fn read_gp_coded_value_entry(
                 table.registered_class(key).unwrap_or(class_id),
                 GP_STRING_CLASS_ID
                     | GP_POINT_CLASS_ID
+                    | GP_REPLICA_DATASET_CLASS_ID
                     | GP_LINE_CLASS_ID
                     | GP_POLYGON_CLASS_ID
                     | GP_CELL_SIZE_XY_CLASS_ID
@@ -3094,6 +3106,65 @@ fn read_gp_coded_value_entry(
             ) =>
         {
             None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: GP_REPLICA_DATASET_CLASS_ID,
+            ..
+        } => {
+            let version = reader.read_u16_le()?;
+            if version > 3 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "GPReplicaDataset 版本超限",
+                ));
+            }
+            let first = read_bstr_string_10_1(reader, max_bytes)?;
+            let raw_longs = [reader.read_u32_le()?, reader.read_u32_le()?];
+            let raw_shorts = [reader.read_u16_le()?, reader.read_u16_le()?];
+            let second = read_bstr_string_10_1(reader, max_bytes)?;
+            let type_11 = if raw_longs[0] == 11 {
+                let raw = reader.read_u32_le()?;
+                let strings = if version > 1 {
+                    Some([
+                        read_bstr_string_10_1(reader, max_bytes)?,
+                        read_bstr_string_10_1(reader, max_bytes)?,
+                    ])
+                } else {
+                    None
+                };
+                Some((raw, strings))
+            } else {
+                None
+            };
+            let indices =
+                crate::layers::raster_dataset_name::read_long_array_slot(reader, max_bytes, table)?;
+            let v3 = if version == 3 {
+                Some((
+                    read_bstr_string_10_1(reader, max_bytes)?,
+                    reader.read_u32_le()?,
+                    [
+                        read_bstr_string_10_1(reader, max_bytes)?,
+                        read_bstr_string_10_1(reader, max_bytes)?,
+                    ],
+                    reader.read_u32_le()?,
+                ))
+            } else {
+                None
+            };
+            Some(Box::new(GpCodedValueBody10_1 {
+                version,
+                // 该类直接保存自己的字段，没有 GPValue 基类头。
+                base_version: 0,
+                base_short: 0,
+                value: GpCodedValue10_1::ReplicaDataset {
+                    strings: [first, second],
+                    raw_longs,
+                    raw_shorts,
+                    type_11,
+                    indices,
+                    v3,
+                },
+            }))
         }
         ObjectEntry10_1::NewObject {
             class_id: GP_LINE_CLASS_ID | GP_POLYGON_CLASS_ID,
@@ -8496,6 +8567,64 @@ pub fn read_legend_prefix_10_1(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn replica_dataset_value_reads_versioned_suffixes() {
+        for version in 0_u16..=3 {
+            for kind in [0_u32, 11] {
+                let mut bytes = GP_REPLICA_DATASET_CLASS_ID.to_vec();
+                bytes.extend(18_u32.to_le_bytes());
+                bytes.extend(version.to_le_bytes());
+                bytes.extend(0_u32.to_le_bytes());
+                bytes.extend(kind.to_le_bytes());
+                bytes.extend([0; 12]);
+                if kind == 11 {
+                    bytes.extend(42_u32.to_le_bytes());
+                    if version > 1 {
+                        bytes.extend([0; 8]);
+                    }
+                }
+                bytes.extend([0; 16]);
+                if version == 3 {
+                    bytes.extend([0; 20]);
+                }
+                for cut in 0..bytes.len() {
+                    assert!(
+                        read_gp_coded_value_slot(
+                            &mut Reader::new(&bytes[..cut]),
+                            1024,
+                            &mut RefTable10_1::new(),
+                            0,
+                        )
+                        .is_err()
+                    );
+                }
+                let end = bytes.len();
+                bytes.push(0x5a);
+                let mut reader = Reader::new(&bytes);
+                let result =
+                    read_gp_coded_value_slot(&mut reader, 1024, &mut RefTable10_1::new(), 0)
+                        .unwrap();
+                let GpCodedValue10_1::ReplicaDataset {
+                    raw_longs,
+                    type_11,
+                    v3,
+                    ..
+                } = result.body.unwrap().value
+                else {
+                    panic!("应读取 GPReplicaDataset");
+                };
+                assert_eq!(raw_longs, [kind, 0]);
+                assert_eq!(type_11.is_some(), kind == 11);
+                if let Some((raw, strings)) = type_11 {
+                    assert_eq!(raw, 42);
+                    assert_eq!(strings.is_some(), version > 1);
+                }
+                assert_eq!(v3.is_some(), version == 3);
+                assert_eq!(reader.position(), end);
+            }
+        }
+    }
 
     #[test]
     fn gp_line_and_polygon_follow_native_keyed_save_order() {

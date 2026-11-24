@@ -2134,6 +2134,27 @@ Save `0x748e5d00` 的尺寸分派、内嵌 Variant 和成员 String
 对象回引、后继字段及逐字节截断回滚。内嵌数组的真实取值与
 ArcMap/QGIS 实档验收待查。
 
+#### GPReplicaDataset
+
+FeatureDataElements.dll 10.1.0.3035（SHA-256
+`7cd1153712d8af23f6c2263b6444c1a77e16b818fb5fb946d0c3d9106be5f429`）
+的主 QI `0x6f632760` 比对 IGPValue 和 IPersistStream。
+RTTI 对应 +0x1c 持久化表 `0x6f662ca0`，GetClassID
+`0x6f6333e0` 写出 `72477E3C-85CE-49DE-AA3E-5D55909C22EA`。
+Load `0x6f633440` 检查无符号 short 上限 3，然后读
+BSTR、两个 LONG、两个 short、第二个 BSTR。第一 LONG
+为 11 时读一个额外 LONG，版本大于 1 时再读两个 BSTR
+（`0x6f633523..0x6f63357a`）。随后 `0x6f6335a1`
+按 ILongArray IID 读取共享对象槽。版本 3 继续读
+BSTR、LONG、两个 BSTR 和 LONG（`0x6f6335ae..0x6f633616`）。
+Save 从 `0x6f633630` 写出对应字段，版本表
+`0x6f658048` 的有效值为 2、3。
+
+解析保留原始标量，并复用 ILongArray 读取器。公共值模型
+的两个基类字段填零，流中无 GPValue 基类头。构造测试覆盖
+v0 至 v3、类型 11、后继位置和逐字节截断。真实 MXD
+和 ArcMap 人工验证仍待补充。
+
 #### Field 作为 IGPValue
 
 GdbCore.dll 10.1.0.3035 的 Field 主 QI `0x709df370`
