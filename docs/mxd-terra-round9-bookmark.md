@@ -1986,7 +1986,7 @@ IID `{1714D59B-FB22-11D1-94A2-080009EEBECB}` 对象
 `{D7FCBB04-8E59-4FFB-9EE5-EC670AA892E0}` 对应 IDETable。
 配置的三个 IFields 槽与参考数据行的 IFields 槽接入了同一个
 [GdbCore Fields 读取器](mxd-10.1-fields.md)。构造书签覆盖从行槽回引到
-配置槽内的新 Fields；其他 IFields 实现及非空 IDETable 槽仍待核对。
+配置槽内的新 Fields；其他 IFields 实现仍待核对，IDETable 槽的读取范围见下节。
 
 ### DETable
 
@@ -2010,6 +2010,7 @@ DETable 构造函数在 `0x6f61daa2` 将对象 `+0xc0`（相当于持久化
 此前未从流读取它。Save `0x6e94e890` 在 `0x6e94e929` 也测试
 该内存字节。对标准 DETable 构造路径，读取器应按非零路径取字段，
 无需在流中读额外标志。请求的子槽接口由各 LoadObject 的 IID 和
-10.1 esriGeoDatabase、esriSystem 类型库核对。DETable 的标准对象体
-尚未接入。DataElement 的旧兼容辅助调用和递归子元素，以及 IIndexes、
+10.1 esriGeoDatabase、esriSystem 类型库核对。已在两个 IDETable 槽接入标准 DETable 对象体及 StrArray、PropertySet、
+Fields。构造测试覆盖版本 0 至 4、嵌套 Fields 回引及截断回滚。
+DataElement 的旧兼容辅助调用和递归子元素，以及 IIndexes、
 IGPSubtype、IGPControllerMembership 的合法实现边界仍需核对。

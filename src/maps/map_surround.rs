@@ -220,6 +220,7 @@ use crate::objects::route_event_name::{
     RouteEventSourceNameBody10_1, RouteMeasureLocatorName10_1,
     read_route_event_source_name_body_10_1, read_route_measure_locator_name_body_10_1,
 };
+use crate::objects::string_array::{StringArraySlot10_1, read_string_array_slot_10_1};
 use crate::objects::workspace_name::{
     WORKSPACE_NAME_CLASS_ID, WorkspaceNamePrefix10_1, read_workspace_name_body_10_1,
 };
@@ -454,6 +455,10 @@ pub const GP_NA_HIERARCHY_SETTINGS_CLASS_ID: [u8; 16] = [
 ];
 pub const NA_CLASS_FIELD_MAP_CLASS_ID: [u8; 16] = [
     0xf8, 0x9f, 0x1c, 0xe6, 0xbf, 0x06, 0xe5, 0x42, 0xad, 0x66, 0x84, 0x93, 0x64, 0xb4, 0x85, 0x49,
+];
+
+pub const DE_TABLE_CLASS_ID: [u8; 16] = [
+    0xdb, 0x05, 0x84, 0x9c, 0x87, 0xbb, 0xd6, 0x4b, 0x93, 0x2d, 0x7f, 0xfb, 0x35, 0xb0, 0x4b, 0xa0,
 ];
 
 pub const GP_ADDRESS_LOCATOR_STYLE_CLASS_ID: [u8; 16] = [
@@ -777,6 +782,7 @@ pub struct GpAddressLocatorStyleConfig10_1 {
     pub properties: Option<RuleSlot10_1<PropertySetObjectStream10_1>>,
     pub variant_flag: Option<u16>,
     pub variant: Option<PropertyValueObjectStream10_1>,
+    pub table: Option<RuleSlot10_1<DeTable10_1>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -788,12 +794,39 @@ pub struct GpAddressLocatorStyleRow10_1 {
     pub raw_value_count: i32,
     pub fields: RuleSlot10_1<FieldsBody10_1>,
     pub values: GpAddressLocatorStyleRowValues10_1,
+    pub table: RuleSlot10_1<DeTable10_1>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpAddressLocatorStyleRowValues10_1 {
     Strings(Vec<Vec<String>>),
     Variants(Vec<PropertyValueObjectStream10_1>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeTable10_1 {
+    pub version: u16,
+    pub dataset_version: u16,
+    pub element_version: u16,
+    pub gp_value_version: u16,
+    pub gp_value_short: u16,
+    pub element_strings: [String; 3],
+    pub element_shorts: [u16; 3],
+    pub raw_child_count: i32,
+    pub dataset_longs: [i32; 2],
+    pub dataset_shorts: [u16; 2],
+    pub dataset_string: Option<String>,
+    pub raw_short: u16,
+    pub strings: [String; 6],
+    pub raw_long: i32,
+    pub string_array: StringArraySlot10_1,
+    pub properties: RuleSlot10_1<PropertySetObjectStream10_1>,
+    pub raw_subtype_count: i32,
+    pub raw_membership_count: i32,
+    pub v2: Option<(u16, [String; 2])>,
+    pub v3: Option<(u16, [String; 4])>,
+    pub v4: Option<u16>,
+    pub fields: RuleSlot10_1<FieldsBody10_1>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2736,9 +2769,9 @@ fn read_gp_address_locator_style_config(
     raw_flag: u16,
 ) -> io::Result<GpAddressLocatorStyleConfig10_1> {
     let fields = [
-        read_gp_address_locator_style_fields(reader, max_bytes, table, depth)?,
-        read_gp_address_locator_style_fields(reader, max_bytes, table, depth)?,
-        read_gp_address_locator_style_fields(reader, max_bytes, table, depth)?,
+        read_gp_fields_slot(reader, max_bytes, table, depth)?,
+        read_gp_fields_slot(reader, max_bytes, table, depth)?,
+        read_gp_fields_slot(reader, max_bytes, table, depth)?,
     ];
     let (raw_row_count, count) = read_gp_coded_value_count(reader, max_bytes, 40)?;
     let mut rows = Vec::new();
@@ -2754,15 +2787,16 @@ fn read_gp_address_locator_style_config(
         .then(|| read_gp_property_set_slot(reader, max_bytes, table))
         .transpose()?;
     let variant_flag = (version >= 3).then(|| reader.read_u16_le()).transpose()?;
-    let variant = variant_flag
+    let variant_and_table = variant_flag
         .filter(|flag| *flag != 0)
         .map(|_| {
             let value =
                 read_padded_variant_object_stream_nested_10_1(reader, max_bytes, table, depth)?;
-            read_gp_address_locator_style_null_slot(reader, table)?;
-            Ok::<_, io::Error>(value)
+            let entry = read_gp_de_table_slot(reader, max_bytes, table, depth)?;
+            Ok::<_, io::Error>((value, entry))
         })
         .transpose()?;
+    let (variant, de_table) = variant_and_table.unzip();
     Ok(GpAddressLocatorStyleConfig10_1 {
         raw_flag,
         fields,
@@ -2772,6 +2806,7 @@ fn read_gp_address_locator_style_config(
         properties,
         variant_flag,
         variant,
+        table: de_table,
     })
 }
 
@@ -2802,7 +2837,7 @@ fn read_gp_address_locator_style_row(
             "GPAddressLocatorStyle 的参考数据行值数为负",
         ));
     }
-    let fields = read_gp_address_locator_style_fields(reader, max_bytes, table, depth)?;
+    let fields = read_gp_fields_slot(reader, max_bytes, table, depth)?;
     let values = if version >= 2 {
         let mut values = Vec::new();
         for _ in 0..count {
@@ -2829,7 +2864,7 @@ fn read_gp_address_locator_style_row(
         }
         GpAddressLocatorStyleRowValues10_1::Strings(values)
     };
-    read_gp_address_locator_style_null_slot(reader, table)?;
+    let de_table = read_gp_de_table_slot(reader, max_bytes, table, depth)?;
     Ok(GpAddressLocatorStyleRow10_1 {
         name,
         raw_short,
@@ -2838,10 +2873,11 @@ fn read_gp_address_locator_style_row(
         raw_value_count,
         fields,
         values,
+        table: de_table,
     })
 }
 
-fn read_gp_address_locator_style_fields(
+fn read_gp_fields_slot(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
@@ -2864,24 +2900,165 @@ fn read_gp_address_locator_style_fields(
         _ => {
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
-                "GPAddressLocatorStyle 的 IFields 槽包含不支持的类",
+                "GP 对象的 IFields 槽包含不支持的类",
             ));
         }
     };
     Ok(RuleSlot10_1 { entry, body })
 }
 
-fn read_gp_address_locator_style_null_slot(
+fn read_gp_de_table_slot(
     reader: &mut Reader<'_>,
-    table: &mut RefTable10_1,
-) -> io::Result<()> {
-    if read_object_entry_10_1(reader, table)? != ObjectEntry10_1::Null {
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<RuleSlot10_1<DeTable10_1>> {
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if refs.registered_class(key).unwrap_or(class_id) == DE_TABLE_CLASS_ID =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: DE_TABLE_CLASS_ID,
+            ..
+        } => Some(Box::new(read_gp_de_table(reader, max_bytes, refs, depth)?)),
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "IDETable 槽包含不支持的类",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_gp_de_table(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<DeTable10_1> {
+    let version = reader.read_u16_le()?;
+    let dataset_version = reader.read_u16_le()?;
+    let element_version = reader.read_u16_le()?;
+    let gp_value_version = reader.read_u16_le()?;
+    if version > 4 || dataset_version > 2 || element_version > 2 || gp_value_version > 1 {
         return Err(io::Error::new(
-            ErrorKind::Unsupported,
-            "GPAddressLocatorStyle 的接口槽包含不支持的对象",
+            ErrorKind::InvalidData,
+            "DETable 或其基类版本超限",
         ));
     }
-    Ok(())
+    let gp_value_short = reader.read_u16_le()?;
+    let element_strings = [
+        read_string_10_1(reader, max_bytes)?,
+        read_string_10_1(reader, max_bytes)?,
+        read_string_10_1(reader, max_bytes)?,
+    ];
+    let element_shorts = [
+        reader.read_u16_le()?,
+        reader.read_u16_le()?,
+        reader.read_u16_le()?,
+    ];
+    if element_version == 2 && element_shorts[2] == u16::MAX {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            "DataElement 旧兼容分支尚未支持",
+        ));
+    }
+    let raw_child_count = read_de_table_empty_list(reader, "IDataElement")?;
+
+    let dataset_long = reader.read_u32_le()? as i32;
+    let dataset_shorts = [reader.read_u16_le()?, reader.read_u16_le()?];
+    let dataset_longs = [dataset_long, reader.read_u32_le()? as i32];
+    let dataset_string = (dataset_version >= 2)
+        .then(|| read_string_10_1(reader, max_bytes))
+        .transpose()?;
+    let raw_short = reader.read_u16_le()?;
+
+    // 标准 DETable 构造函数启用扩展字段，流中没有标志字节。
+    let strings = [
+        read_string_10_1(reader, max_bytes)?,
+        read_string_10_1(reader, max_bytes)?,
+        read_string_10_1(reader, max_bytes)?,
+        read_string_10_1(reader, max_bytes)?,
+        read_string_10_1(reader, max_bytes)?,
+        read_string_10_1(reader, max_bytes)?,
+    ];
+    let raw_long = reader.read_u32_le()? as i32;
+    let string_array = read_string_array_slot_10_1(reader, max_bytes, refs)?;
+    let properties = read_gp_property_set_slot(reader, max_bytes, refs)?;
+    let raw_subtype_count = read_de_table_empty_list(reader, "IGPSubtype")?;
+    let raw_membership_count = read_de_table_empty_list(reader, "IGPControllerMembership")?;
+    let v2 = if version >= 2 {
+        Some((
+            reader.read_u16_le()?,
+            [
+                read_string_10_1(reader, max_bytes)?,
+                read_string_10_1(reader, max_bytes)?,
+            ],
+        ))
+    } else {
+        None
+    };
+    let v3 = if version >= 3 {
+        Some((
+            reader.read_u16_le()?,
+            [
+                read_string_10_1(reader, max_bytes)?,
+                read_string_10_1(reader, max_bytes)?,
+                read_string_10_1(reader, max_bytes)?,
+                read_string_10_1(reader, max_bytes)?,
+            ],
+        ))
+    } else {
+        None
+    };
+    let v4 = (version >= 4).then(|| reader.read_u16_le()).transpose()?;
+    let fields = read_gp_fields_slot(reader, max_bytes, refs, depth)?;
+    if read_object_entry_10_1(reader, refs)? != ObjectEntry10_1::Null {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            "DETable 的非空 IIndexes 槽尚未支持",
+        ));
+    }
+    Ok(DeTable10_1 {
+        version,
+        dataset_version,
+        element_version,
+        gp_value_version,
+        gp_value_short,
+        element_strings,
+        element_shorts,
+        raw_child_count,
+        dataset_longs,
+        dataset_shorts,
+        dataset_string,
+        raw_short,
+        strings,
+        raw_long,
+        string_array,
+        properties,
+        raw_subtype_count,
+        raw_membership_count,
+        v2,
+        v3,
+        v4,
+        fields,
+    })
+}
+
+fn read_de_table_empty_list(reader: &mut Reader<'_>, interface: &str) -> io::Result<i32> {
+    let count = reader.read_u32_le()? as i32;
+    if count > 0 {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            format!("DETable 的非空 {interface} 列表尚未支持"),
+        ));
+    }
+    Ok(count)
 }
 
 fn read_gp_property_set_slot(

@@ -7309,6 +7309,10 @@ fn feature_bookmark_reads_gp_address_locator_style_configuration_without_rows() 
                     variant: (version == 4).then_some(PropertyValueObjectStream10_1::Inline(
                         PropertyValue10_1::Raw4(42_i32.to_le_bytes()),
                     )),
+                    table: (version == 4).then_some(RuleSlot10_1 {
+                        entry: ObjectEntry10_1::Null,
+                        body: None,
+                    }),
                 })),
             },
         );
@@ -7320,14 +7324,16 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
     use mxd2qgz::layers::feature_layer_tail::{UID_CLASS_ID, UidBody10_1};
     use mxd2qgz::layers::image_server_rules::RuleSlot10_1;
     use mxd2qgz::maps::map_surround::{
-        GP_ADDRESS_LOCATOR_STYLE_CLASS_ID, GpAddressLocatorStyleConfig10_1,
-        GpAddressLocatorStyleRow10_1, GpAddressLocatorStyleRowValues10_1, GpCodedValue10_1,
+        DE_TABLE_CLASS_ID, DeTable10_1, GP_ADDRESS_LOCATOR_STYLE_CLASS_ID,
+        GpAddressLocatorStyleConfig10_1, GpAddressLocatorStyleRow10_1,
+        GpAddressLocatorStyleRowValues10_1, GpCodedValue10_1,
     };
     use mxd2qgz::objects::fields::{FIELDS_CLASS_ID, FieldsBody10_1};
     use mxd2qgz::objects::property_set::{PropertyValue10_1, PropertyValueObjectStream10_1};
+    use mxd2qgz::objects::string_array::StringArraySlot10_1;
     use mxd2qgz::storage::object_refs::ObjectEntry10_1;
 
-    for version in 0..=4 {
+    for version in 0_u16..=4 {
         let mut payload = bookmark_string_10_1("");
         payload.extend(bookmark_string_10_1(""));
         payload.extend(1_u16.to_le_bytes());
@@ -7388,6 +7394,43 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                 PropertyValueObjectStream10_1::Inline(PropertyValue10_1::Raw4(5_i32.to_le_bytes())),
             ])
         };
+        payload.extend(bookmark_entry_10_1(&DE_TABLE_CLASS_ID, 22));
+        payload.extend(version.to_le_bytes());
+        payload.extend(2_u16.to_le_bytes());
+        payload.extend(1_u16.to_le_bytes());
+        payload.extend(1_u16.to_le_bytes());
+        payload.extend(7_u16.to_le_bytes());
+        for name in ["目录", "名称", "标题"] {
+            payload.extend(bookmark_string_10_1(name));
+        }
+        payload.extend([0; 10]);
+        payload.extend(11_i32.to_le_bytes());
+        payload.extend(12_u16.to_le_bytes());
+        payload.extend(13_u16.to_le_bytes());
+        payload.extend(14_i32.to_le_bytes());
+        payload.extend(bookmark_string_10_1("数据集"));
+        payload.extend(15_u16.to_le_bytes());
+        for name in ["A", "B", "C", "D", "E", "F"] {
+            payload.extend(bookmark_string_10_1(name));
+        }
+        payload.extend(16_i32.to_le_bytes());
+        payload.extend([0; 40]);
+        if version >= 2 {
+            payload.extend(17_u16.to_le_bytes());
+            for _ in 0..2 {
+                payload.extend(bookmark_string_10_1("v2"));
+            }
+        }
+        if version >= 3 {
+            payload.extend(18_u16.to_le_bytes());
+            for _ in 0..4 {
+                payload.extend(bookmark_string_10_1("v3"));
+            }
+        }
+        if version >= 4 {
+            payload.extend(19_u16.to_le_bytes());
+        }
+        payload.extend(bookmark_entry_10_1(&FIELDS_CLASS_ID, 21));
         payload.extend([0; 16]);
         if version == 1 {
             payload.push(0);
@@ -7442,6 +7485,50 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                             body: None,
                         },
                         values,
+                        table: RuleSlot10_1 {
+                            entry: ObjectEntry10_1::NewObject {
+                                class_id: DE_TABLE_CLASS_ID,
+                                key: 22,
+                            },
+                            body: Some(Box::new(DeTable10_1 {
+                                version,
+                                dataset_version: 2,
+                                element_version: 1,
+                                gp_value_version: 1,
+                                gp_value_short: 7,
+                                element_strings: ["目录", "名称", "标题"].map(String::from),
+                                element_shorts: [0; 3],
+                                raw_child_count: 0,
+                                dataset_longs: [11, 14],
+                                dataset_shorts: [12, 13],
+                                dataset_string: Some("数据集".into()),
+                                raw_short: 15,
+                                strings: ["A", "B", "C", "D", "E", "F"].map(String::from),
+                                raw_long: 16,
+                                string_array: StringArraySlot10_1 {
+                                    entry: ObjectEntry10_1::Null,
+                                    body: None,
+                                },
+                                properties: RuleSlot10_1 {
+                                    entry: ObjectEntry10_1::Null,
+                                    body: None,
+                                },
+                                raw_subtype_count: 0,
+                                raw_membership_count: 0,
+                                v2: (version >= 2)
+                                    .then(|| (17, std::array::from_fn(|_| "v2".into()))),
+                                v3: (version >= 3)
+                                    .then(|| (18, std::array::from_fn(|_| "v3".into()))),
+                                v4: (version >= 4).then_some(19),
+                                fields: RuleSlot10_1 {
+                                    entry: ObjectEntry10_1::BackReference {
+                                        class_id: FIELDS_CLASS_ID,
+                                        key: 21,
+                                    },
+                                    body: None,
+                                },
+                            })),
+                        },
                     }],
                     legacy_byte: (version == 1).then_some(0),
                     properties: (version >= 2).then_some(RuleSlot10_1 {
@@ -7450,6 +7537,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                     }),
                     variant_flag: (version >= 3).then_some(0),
                     variant: None,
+                    table: None,
                 })),
             },
         );
