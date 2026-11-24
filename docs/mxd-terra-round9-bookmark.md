@@ -2801,3 +2801,19 @@ Load `0x74f63330` 保存当前位置，读取无符号版本（上限 2），
 解析器在尝试基类时保留游标和引用表快照。构造测试覆盖
 两个入口、三种派生版本、BSTR 和结束位置。
 真实 MXD 宿主及原生回退触发样本仍待核对。
+
+#### DERepresentationClass
+
+RepresentationDB.dll 10.1.0.3035 的 SHA-256 为
+`e9595cf4febf06df301eb0c1e3eeedf28f694e2d0b16526f61779d0932fe32af`。
+PE RTTI 给出主虚表 `0x7cb40afc`，QI `0x7cb141f0` 在
+`0x7cb1425b` 比对 `0x7cb412fc` 的 IDataElement IID。
+QI 对 IPersistStream IID `00000109-0000-0000-C000-000000000046`
+使用 `0x7cb4059c`，流读取入口为 +0x20 虚表
+`0x7cb40bcc` 的 `0x7cb14930`。
+该入口读取 short，并与 `0x7cb4e2b0` 的版本上限 5 比较，
+随后经 `0x7cb3beba` 调用 DEDataset::Load。
+尾段两处 LoadObject 分别于 `0x7cb14a1c` 和
+`0x7cb14a3d` 请求 IID `84E3B47A-B26D-41F3-8D1B-F4D9E300D454`
+和 `7200F877-D9F9-4B54-940E-1E3A68363E2D`。
+CLSID 的间接取值、尾字段的完整版本条件和子对象类仍待核对。
