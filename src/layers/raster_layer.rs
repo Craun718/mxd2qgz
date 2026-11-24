@@ -268,11 +268,11 @@ pub(super) fn read_inline_raster_body_10_1(
     let boundary = if body.version == 12
         && renderer.entry == ObjectEntry10_1::Null
         && let [name] = body.names.as_slice()
-        && matches!(
-            name.body.as_ref(),
-            Some(RasterDatasetNameEntryBody10_1::RasterType(name))
-                if name.name.is_empty() && name.mosaic_dataset.entry == ObjectEntry10_1::Null
-        ) {
+        && name
+            .body
+            .as_ref()
+            .is_some_and(RasterDatasetNameEntryBody10_1::open_without_result)
+    {
         // 空标识和空镶嵌槽使 RasterTypeName::Open 返回空指针。
         RasterLayerBoundary::InlineWithoutDataset
     } else {
@@ -825,14 +825,25 @@ mod tests {
         assert_eq!(refs.registered_class(60), Some(RASTER_TYPE_NAME_CLASS_ID));
 
         let io_offset = end - 16 - encoded_string("尾段").len();
-        for explicit_null in [false, true] {
+        for tag30 in [None, Some(false), Some(true)] {
             let mut records = Vec::new();
             records.extend(0xff00ff_i32.to_le_bytes());
             records.extend(0_i32.to_le_bytes());
-            if explicit_null {
+            if let Some(has_name) = tag30 {
                 records.extend(30_i32.to_le_bytes());
                 records.extend((-1_i32).to_le_bytes());
-                records.extend([0; 16]);
+                if has_name {
+                    records.extend(RASTER_TYPE_NAME_CLASS_ID);
+                    records.extend(1_u16.to_le_bytes());
+                    records.extend(encoded_string(""));
+                    records.extend(encoded_string(""));
+                    records.extend((-1_i32).to_le_bytes());
+                    records.extend([0; 16]);
+                    records.extend(31_i32.to_le_bytes());
+                    records.extend(encoded_string(""));
+                } else {
+                    records.extend([0; 16]);
+                }
             }
             for tag in 35_i32..=37 {
                 records.extend(tag.to_le_bytes());
@@ -850,8 +861,8 @@ mod tests {
             assert!(tail.geodata_xform_v13.is_none());
             assert!(tail.envelope_v13.is_none());
             let io = tail.raster_io.unwrap();
-            assert_eq!(io.tag30_is_explicit_null, explicit_null);
-            assert!(io.tag30_name.is_none());
+            assert_eq!(io.tag30_is_explicit_null, tag30 == Some(false));
+            assert_eq!(io.tag30_name.is_some(), tag30 == Some(true));
             assert_eq!(io.shorts_35_to_37, [7; 3]);
             assert_eq!(reader.position(), end + records_len);
         }

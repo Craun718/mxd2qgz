@@ -308,6 +308,11 @@ pub enum RasterDatasetNameEntryBody10_1 {
 }
 
 impl RasterDatasetNameEntryBody10_1 {
+    pub(super) fn open_without_result(&self) -> bool {
+        matches!(self, Self::RasterType(name)
+            if name.name.is_empty() && name.mosaic_dataset.entry == ObjectEntry10_1::Null)
+    }
+
     pub(crate) fn dataset_name_body(&self) -> Option<&RasterDatasetNameBody10_1> {
         match self {
             Self::Dataset(name) | Self::Dataset83 { name, .. } => Some(name),
