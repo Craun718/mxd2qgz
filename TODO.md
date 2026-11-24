@@ -851,6 +851,7 @@
       - [ ] 核对网络求值器配置属性集中的非空 Variant 对象类。[取证](docs/mxd-terra-round9-bookmark.md#网络求值器记录的持久化边界)
       - [ ] 补齐 IDataElement 列表中其他持久化实现。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 IDataElement 列表中的 DESchematicDataset 和 DESchematicFolder。[取证](docs/mxd-terra-round9-bookmark.md#deschematicdataset-与-deschematicfolder)
+      - [x] 接入 IDataElement 列表中的 DESchematicDiagram。[取证](docs/mxd-terra-round9-bookmark.md#deschematicdiagram)
       - [x] 接入 DETable 的 GPSubtype 对象及字段行。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的拓扑与几何网络控制器成员。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的 Indexes 与 Index 对象体。[取证](docs/mxd-terra-round9-bookmark.md#detable)

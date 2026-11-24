@@ -4029,6 +4029,22 @@ DEDataset::Save。Rust 在 IDataElement 列表中复用基类读取器，
 保留对象头类别。构造测试覆盖两类、截断和对象终点。
 真实 MXD 宿主及 ArcMap/QGIS 人工验收仍待验证。
 
+#### DESchematicDiagram
+
+同摘要 SchematicDB.dll 10.1.0.3035 的 RTTI `0x7d727418`
+对应 +0x1c 持久化表 `0x7d705ffc`。同版互操作元数据
+登记 CLSID `0158AF3F-7610-4226-9F88-B34B62A2E97B`
+并列出 IDataElement。Load `0x7d682c50` 在
+`0x7d682c6e` 读 short，减一后比较，只有 1 进入基类。
+`0x7d682c8a` 调 DEGeoDataset::Load，
+`0x7d682c9b` 调 AfCore String::Read。Save
+`0x7d682bf0` 分别在 `0x7d682c0f / 0x7d682c26 /
+0x7d682c37` 写出版本、基类和字符串。
+
+Rust 复用 DEDataset、范围和空间参考槽读取，保留末尾原始字符串。
+构造测试覆盖非空末串、对象终点和逐字节截断。
+真实 MXD 宿主、字符串语义与 ArcMap/QGIS 人工验收仍待核对。
+
 #### 跨模块 IDataElement 候选与 DETerrain 加载入口
 
 在 10.1 桌面介质提取的 DLL 中，按 IDataElement IID 字节和

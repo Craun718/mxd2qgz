@@ -601,6 +601,9 @@ pub const DE_TOPOLOGY_CLASS_ID: [u8; 16] = [
     0x7d, 0x63, 0xc4, 0xac, 0xe0, 0xd5, 0xd5, 0x47, 0xab, 0xcd, 0x9f, 0x25, 0xab, 0x32, 0x6e, 0x6f,
 ];
 
+const DE_SCHEMATIC_DIAGRAM_CLASS_ID: [u8; 16] = [
+    0x3f, 0xaf, 0x58, 0x01, 0x10, 0x76, 0x26, 0x42, 0x9f, 0x88, 0xb3, 0x4b, 0x62, 0xa2, 0xe9, 0x7b,
+];
 const DE_SCHEMATIC_DATASET_CLASS_ID: [u8; 16] = [
     0x3f, 0x8c, 0xd3, 0x06, 0xe0, 0x47, 0x98, 0x4a, 0x9c, 0xb0, 0xa4, 0x40, 0x43, 0xb4, 0xe5, 0xff,
 ];
@@ -1579,6 +1582,13 @@ pub struct DeNetworkTraffic10_1 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
+    SchematicDiagram {
+        geo_dataset_version: u16,
+        dataset: DeDataset10_1,
+        extent: BookmarkEnvelopeEntry10_1,
+        spatial_reference: SpatialReferenceEntry10_1,
+        text: String,
+    },
     SchematicDataset {
         dataset: DeDataset10_1,
     },
@@ -6282,6 +6292,7 @@ fn read_gp_data_element_child(
                     | DE_TABLE_INFO_CLASS_ID
                     | DE_VPF_TABLE_CLASS_ID
                     | DE_LAYER_CLASS_ID
+                    | DE_SCHEMATIC_DIAGRAM_CLASS_ID
                     | DE_TOPOLOGY_CLASS_ID
                     | DE_GEOMETRIC_NETWORK_CLASS_ID
                     | DE_RELATIONSHIP_CLASS_CLASS_ID
@@ -6336,6 +6347,7 @@ fn read_gp_data_element_child(
                 | DE_TABLE_INFO_CLASS_ID
                 | DE_VPF_TABLE_CLASS_ID
                 | DE_LAYER_CLASS_ID
+                | DE_SCHEMATIC_DIAGRAM_CLASS_ID
                 | DE_TOPOLOGY_CLASS_ID
                 | DE_GEOMETRIC_NETWORK_CLASS_ID
                 | DE_RELATIONSHIP_CLASS_CLASS_ID
@@ -6537,6 +6549,7 @@ fn read_gp_data_element_child(
             } else if matches!(
                 class_id,
                 DE_FEATURE_DATASET_CLASS_ID
+                    | DE_SCHEMATIC_DIAGRAM_CLASS_ID
                     | DE_TOPOLOGY_CLASS_ID
                     | DE_GEOMETRIC_NETWORK_CLASS_ID
                     | DE_CATALOG_DATASET_CLASS_ID
@@ -6561,6 +6574,8 @@ fn read_gp_data_element_child(
                 };
                 let version_out_of_range = if class_id == DE_CATALOG_DATASET_CLASS_ID {
                     (version as i16) > 1
+                } else if class_id == DE_SCHEMATIC_DIAGRAM_CLASS_ID {
+                    version != 1
                 } else {
                     version > max_version
                 };
@@ -6574,7 +6589,15 @@ fn read_gp_data_element_child(
                 let extent =
                     read_surround_envelope_slot(reader, max_bytes, refs, "DEGeoDataset 范围")?;
                 let spatial_reference = read_spatial_reference_entry_10_1(reader, max_bytes, refs)?;
-                if class_id == DE_TOPOLOGY_CLASS_ID {
+                if class_id == DE_SCHEMATIC_DIAGRAM_CLASS_ID {
+                    DeChild10_1::SchematicDiagram {
+                        geo_dataset_version,
+                        dataset,
+                        extent,
+                        spatial_reference,
+                        text: read_string_10_1(reader, max_bytes)?,
+                    }
+                } else if class_id == DE_TOPOLOGY_CLASS_ID {
                     let value_bits = [
                         reader.read_f64_le()?.to_bits(),
                         reader.read_f64_le()?.to_bits(),
@@ -10918,6 +10941,35 @@ mod tests {
             slot.body.as_deref(),
             Some(DeChild10_1::Tool { version: 1, .. })
         ));
+        assert_eq!(reader.position(), end);
+    }
+
+    #[test]
+    fn de_schematic_diagram_reads_text_after_geo_dataset() {
+        let mut bytes = DE_SCHEMATIC_DIAGRAM_CLASS_ID.to_vec();
+        bytes.extend(62_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend([0; 8]);
+        bytes.extend([2, 0, 0, 0, 0, 0].repeat(3));
+        bytes.extend([0; 22]);
+        bytes.extend([0; 32]);
+        bytes.extend([4, 0, 0, 0, b'X', 0, 0, 0]);
+        let read = |reader: &mut Reader<'_>| {
+            read_gp_data_element_child(reader, 1024, &mut RefTable10_1::new(), 0)
+        };
+        for cut in 0..bytes.len() {
+            assert!(read(&mut Reader::new(&bytes[..cut])).is_err());
+        }
+        let end = bytes.len();
+        bytes.push(0xa5);
+        let mut reader = Reader::new(&bytes);
+        let slot = read(&mut reader).unwrap();
+        assert!(
+            matches!(slot.body.as_deref(), Some(DeChild10_1::SchematicDiagram {
+            geo_dataset_version: 1, text, ..
+        }) if text == "X")
+        );
         assert_eq!(reader.position(), end);
     }
 
