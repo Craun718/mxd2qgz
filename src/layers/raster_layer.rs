@@ -787,6 +787,9 @@ mod tests {
     #[test]
     fn inline_raster_v12_ends_without_transform_after_known_open_failure() {
         use super::super::raster_dataset_name::RASTER_TYPE_NAME_CLASS_ID;
+        use crate::layers::layer_list::{
+            LayerBodyPrefix10_1, LayerEntryObject, RASTER_LAYER_CLASS_ID, read_layer_list_10_1,
+        };
 
         let suffix_offset = {
             let mut prefix = body_prefix(12, 1);
@@ -819,6 +822,35 @@ mod tests {
         assert!(tail.geodata_xform_v13.is_none());
         assert!(tail.envelope_v13.is_none());
         assert_eq!(reader.position(), end);
+        assert_eq!(refs.registered_class(60), Some(RASTER_TYPE_NAME_CLASS_ID));
+
+        let mut list = 2_i32.to_le_bytes().to_vec();
+        for is_new in [true, false] {
+            list.extend(1_u16.to_le_bytes()); // 普通对象，无 ExtraSafe 外界。
+            list.extend(RASTER_LAYER_CLASS_ID);
+            list.extend(55_u32.to_le_bytes());
+            if is_new {
+                list.extend(&bytes[..end]);
+            }
+        }
+        list.extend(1_i32.to_le_bytes()); // 活动图层索引。
+        let list_end = list.len();
+        list.extend([0xa5; 4]);
+        let mut reader = Reader::new(&list);
+        let mut refs = RefTable10_1::new();
+        let report = read_layer_list_10_1(&mut reader, 4096, &mut refs).unwrap();
+        assert!(report.stop.is_none());
+        assert!(
+            matches!(report.entries[0].parsed.as_ref(), Some(LayerBodyPrefix10_1::RasterLayer(layer))
+            if layer.version == 12 && layer.tail.as_ref().is_some_and(|tail| tail.geodata_xform_v13.is_none()))
+        );
+        assert!(matches!(
+            report.entries[1].object,
+            LayerEntryObject::Entry(ObjectEntry10_1::BackReference { key: 55, .. })
+        ));
+        assert_eq!(report.active_index, Some(1));
+        assert_eq!(reader.position(), list_end);
+        assert_eq!(refs.registered_class(55), Some(RASTER_LAYER_CLASS_ID));
         assert_eq!(refs.registered_class(60), Some(RASTER_TYPE_NAME_CLASS_ID));
     }
 
