@@ -3,9 +3,7 @@
 use crate::layers::feature_layer_tail::{UID_CLASS_ID, UidBody10_1, read_uid_body_10_1};
 use crate::objects::envelope::{SpatialReferenceEntry10_1, read_spatial_reference_entry_10_1};
 use crate::objects::fields::{FIELDS_CLASS_ID, FieldsBody10_1, read_fields_body_10_1};
-use crate::objects::string_array::{
-    STR_ARRAY_CLASS_ID, StringArraySlot10_1, read_string_array_body_10_1,
-};
+use crate::objects::string_array::{StringArraySlot10_1, read_string_array_slot_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::{read_bstr_string_10_1, read_string_10_1};
 use crate::stream::reader::Reader;
@@ -99,21 +97,11 @@ pub(super) fn read_na_class_body(
             format!("NAClass 版本 {version} 超过 1"),
         ));
     }
-    let entry = read_object_entry_10_1(reader, refs)?;
-    let definition = match entry {
-        ObjectEntry10_1::Null | ObjectEntry10_1::BackReference { .. } => None,
-        ObjectEntry10_1::NewObject {
-            class_id: NA_CLASS_DEFINITION_CLASS_ID,
-            ..
-        } => Some(Box::new(read_na_class_definition(reader, max_bytes, refs)?)),
-        ObjectEntry10_1::NewObject { class_id, .. } => {
-            return Err(unsupported("NAClassDefinition", &class_id));
-        }
-    };
+    let definition = read_na_class_definition_slot(reader, max_bytes, refs)?;
     Ok(NaClassBody10_1 {
         class_base,
         version,
-        definition: (entry, definition),
+        definition,
     })
 }
 
@@ -262,6 +250,40 @@ fn field_type_index(fields: &FieldsBody10_1, field_type: i32) -> Option<usize> {
     })
 }
 
+pub(crate) fn read_na_class_definition_slot(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<(ObjectEntry10_1, Option<Box<NaClassDefinition10_1>>)> {
+    let mut trial = reader.clone();
+    let mut staged_refs = refs.clone();
+    let entry = read_object_entry_10_1(&mut trial, &mut staged_refs)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            let registered = staged_refs.registered_class(key).unwrap_or(class_id);
+            if registered != NA_CLASS_DEFINITION_CLASS_ID {
+                return Err(unsupported("INAClassDefinition 回引", &registered));
+            }
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: NA_CLASS_DEFINITION_CLASS_ID,
+            ..
+        } => Some(Box::new(read_na_class_definition(
+            &mut trial,
+            max_bytes,
+            &mut staged_refs,
+        )?)),
+        ObjectEntry10_1::NewObject { class_id, .. } => {
+            return Err(unsupported("INAClassDefinition", &class_id));
+        }
+    };
+    *reader = trial;
+    *refs = staged_refs;
+    Ok((entry, body))
+}
+
 fn read_na_class_definition(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -316,22 +338,8 @@ fn read_na_class_definition(
     for _ in 0..count {
         let name = read_bstr_string_10_1(reader, max_bytes)?;
         let raw = reader.read_u32_le()? as i32;
-        let entry = read_object_entry_10_1(reader, refs)?;
-        let body = match entry {
-            ObjectEntry10_1::Null | ObjectEntry10_1::BackReference { .. } => None,
-            ObjectEntry10_1::NewObject {
-                class_id: STR_ARRAY_CLASS_ID,
-                ..
-            } => Some(read_string_array_body_10_1(reader, max_bytes)?),
-            ObjectEntry10_1::NewObject { class_id, .. } => {
-                return Err(unsupported("IStringArray", &class_id));
-            }
-        };
-        field_types.push(NaClassFieldType10_1 {
-            name,
-            raw,
-            strings: StringArraySlot10_1 { entry, body },
-        });
+        let strings = read_string_array_slot_10_1(reader, max_bytes, refs)?;
+        field_types.push(NaClassFieldType10_1 { name, raw, strings });
     }
 
     Ok(NaClassDefinition10_1 {
@@ -355,4 +363,41 @@ fn unsupported(slot: &str, class_id: &[u8; 16]) -> io::Error {
             crate::storage::class_id_hex(class_id)
         ),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn definition_slot_keeps_its_boundary_and_validates_reference_class() {
+        let mut bytes = NA_CLASS_DEFINITION_CLASS_ID.to_vec();
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend(0_u16.to_le_bytes());
+        bytes.extend(0_u32.to_le_bytes());
+        bytes.extend([0; 32]);
+        bytes.extend([0; 16]);
+        let end = bytes.len();
+        let mut reference = [0x42; 16].to_vec();
+        reference.extend(1_u32.to_le_bytes());
+        bytes.extend(&reference);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let (_, body) = read_na_class_definition_slot(&mut reader, 1024, &mut refs).unwrap();
+        assert!(body.unwrap().field_types.is_empty());
+        assert_eq!(reader.position(), end);
+        let (entry, body) = read_na_class_definition_slot(&mut reader, 1024, &mut refs).unwrap();
+        assert!(matches!(
+            entry,
+            ObjectEntry10_1::BackReference { key: 1, .. }
+        ));
+        assert!(body.is_none());
+
+        let mut refs = RefTable10_1::new();
+        read_object_entry_10_1(&mut Reader::new(&reference), &mut refs).unwrap();
+        let mut reader = Reader::new(&reference);
+        assert!(read_na_class_definition_slot(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+    }
 }

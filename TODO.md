@@ -858,6 +858,7 @@
       - [x] 定位 GPNALayer 的组合层基类及后继原生读取点。[取证](docs/mxd-terra-round9-bookmark.md#gpnalayer)
       - [x] 核对 GPNALayer 保存版本表与 IGPLinearUnit、IGPTableView 读取槽。[取证](docs/mxd-terra-round9-bookmark.md#gpnalayer)
       - [x] 核对 GPNALayer 的网络数据集、类定义、定位代理及参数数组接口。[取证](docs/mxd-terra-round9-bookmark.md#gpnalayer)
+      - [x] 复核 NAClassDefinition 字段顺序并复用其带键读取入口。[取证](docs/mxd-terra-round9-bookmark.md#gpnalayer)
       - [ ] 接入 GPNALayer 的持久化对象体。
       - [x] 接入编码值中的 GPTableView 对象体与已支持的子槽。[取证](docs/mxd-terra-round9-bookmark.md#gptableview)
       - [x] 对位 GPRecordSet 的版本字段及内嵌 RecordSet 的行循环。[取证](docs/mxd-terra-round9-bookmark.md#gprecordset-与内嵌-recordset)

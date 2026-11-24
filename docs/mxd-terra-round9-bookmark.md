@@ -3650,7 +3650,17 @@ INAClassDefinition 候选在 NetworkAnalyst.dll 10.1.0.3035
 （SHA-256 `8c4ebaee71aad63c25616aa806674018479829d97bc01c7ed3b8845813698532`）
 的 RTTI `0x7afcc324` 下，+0x1c 持久化表为
 `0x7af9d9d4`，Load/Save 为 `0x7af022f0 / 0x7af02650`。
-该 Load 自身包含多个对象槽及计数循环，仍须核对各字段及子类。
+该 Load 已由 NAClass 宿主读取器支持。复核 `0x7af0238b`
+的有符号版本上限 0 后，依次为 BSTR（`0x7af023d5`）、
+IUID（`0x7af02443`）、IFields（`0x7af024a4`）、两个
+LONG、两个 short 和一个 LONG 计数（`0x7af02549`）。
+正计数的每项依次读 BSTR、LONG、IStringArray
+（`0x7af02581 / 0x7af025a0 / 0x7af025c4`）。
+三个 IID 由同版互操作程序集及现有 IFields、IStringArray
+取证对位。Rust 将已有带键定义读取提取成可复用入口，
+按登记类校验定义及字符串数组的回引。构造测试验证定义终点、
+有效回引及错类回引的游标回滚。GPNALayer 调用接入和真实宿主
+验证仍待完成。
 
 对 v1 起的私有 IID `5E6515AE-C622-4D67-BD74-9C4BB2BCD1EC`，
 在 NetworkAnalystSolvers.dll 10.1.0.3035（SHA-256
