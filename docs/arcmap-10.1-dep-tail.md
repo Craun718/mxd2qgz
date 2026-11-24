@@ -317,6 +317,12 @@ Scene.dll 的 `0x7d2a4c0d` 和 GlobeLayers.dll 的 `0x72f60819`
 
 Scene.dll 的 `0x7d2a4af4` 和 GlobeLayers.dll 的 `0x72f60131` 都将同一个 `ILayer {34C20002-4D3C-11D0-92D8-00805F7C28B0}` 传给普通 `LoadObject`。两处 Save 分别以 `this+0x20` 和 `this+0x34` 的对象调用 SaveObject。普通对象槽没有可跳过的外层长度；关联槽仅在已有读取器证实读完 FeatureLayer、CompositeGraphicsLayer、FDOGraphicsLayer、GraphicsLayer3D 或 GlobeGraphicsLayer 的对象体后提交。其余图层的普通对象体或子槽仍待接入。两类 3D 图层也在 Map 图层列表按标志 1 或 ExtraSafe 分派，ExtraSafe 路径在条目范围内试读并检查完整消费。
 
+两处关联槽的回引走 SystemCore.dll 10.1.0.3035 的
+`0x7ffd0063` 按键查询 ILayer。解析器以登记类识别回引，复用
+逐层遮罩取证已确认的 ILayer 类集合，其中包括缺少遮罩接口的类。
+构造测试覆盖两个宿主、头部类与登记类不一致、非图层登记类的回滚
+以及后继字节位置。第三方类和真实三维宿主仍待验证。
+
 LELP 的 IGraphicsContainer 槽接入类型库及持久化链确认的六类内置对象。图形图层复用完整对象判定；Map 复用原有前缀/后缀的 `Complete` 终点；PageLayout 复用对象体读序，保留外层在 `0x7b708d00` 处理的打印设置。普通布局对象里的 IMap 回引要求对象头和共享表都确认 Map 身份。该身份只在读取已识别的 Map 新对象头后登记，随整个槽的试读回退。对象体未完整消费时，游标回到容器头之前，该对象及其子对象的键一并撤销。新对象每进入一次跨图层/图形容器的无界分派占用一级限额，最多 8 级；已见键的回引不占用限额。深度上限为读取器防栈耗尽设置。
 
 测试从仓库参考工程提取已验证边界的 Map、PageLayout 和 FDOGraphicsLayer 体，再构造非空 LELP 或 3D 关联宿主，以验证实际对象体可完整消费、根 Map 回引仍能解析、宿主后继字段仍可读取。补充合成的 CompositeGraphicsLayer、普通/有界 3D 图层、未知嵌套类和深度边界。真实非空 LELP 宿主及 ArcMap/QGIS 人工验收仍未验证。

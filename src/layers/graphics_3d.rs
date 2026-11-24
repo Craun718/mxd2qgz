@@ -9,6 +9,7 @@ use crate::layers::layer_list::{LayerBodyPrefix10_1, read_complete_layer_body_10
 use crate::maps::group_element::{
     GROUP_ELEMENT_CLASS_ID, GroupElement10_1, read_group_element_10_1,
 };
+use crate::maps::layer_masking::{LayerMaskingSupport10_1, known_layer_masking_support_10_1};
 use crate::maps::map_frame::MapFrame10_1;
 use crate::maps::page_layout_prefix::{MAP_FRAME_CLASS_ID, read_map_frame};
 use crate::maps::rectangle_element::{
@@ -228,9 +229,18 @@ pub fn read_graphics_3d_layer_10_1(
     let shorts = (0..short_count)
         .map(|_| r.read_u16_le().map(|n| n as i16))
         .collect::<io::Result<_>>()?;
-    let associated = read_object(&mut r, &mut refs, |cls, _, r, refs| {
+    let mut associated = read_object(&mut r, &mut refs, |cls, _, r, refs| {
         read_complete_layer_body_10_1(r, *cls, max, refs)
     })?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut associated.entry
+        && let Some(registered) = refs.registered_class(*key)
+    {
+        // 遮罩能力表的已核对类均为 ILayer，实现遮罩接口并非此槽的条件。
+        if known_layer_masking_support_10_1(&registered) == LayerMaskingSupport10_1::Unresolved {
+            return Err(unsupported(&registered, "三维图形容器的 ILayer 回引"));
+        }
+        *class_id = registered;
+    }
     let envelope = read_envelope(&mut r, max, &mut refs)?;
     let (element_count, iterations) = read_count(&mut r, 16)?;
     let mut elements = Vec::new();
@@ -348,6 +358,48 @@ mod tests {
     use super::*;
     use crate::maps::group_element::GroupChild10_1;
     use crate::maps::map_object::MAP_CLASS_ID;
+
+    #[test]
+    fn graphics_3d_associated_references_check_registered_class() {
+        for (class, short_bytes, tail_bytes) in [
+            (GRAPHICS_LAYER_3D_CLASS_ID, 8, 0),
+            (GLOBE_GRAPHICS_LAYER_CLASS_ID, 4, 8),
+        ] {
+            for registered in [GRAPHICS_LAYER_3D_CLASS_ID, MAP_CLASS_ID] {
+                let mut prior = registered.to_vec();
+                prior.extend(1_u32.to_le_bytes());
+                let mut refs = RefTable10_1::new();
+                read_object_entry_10_1(&mut Reader::new(&prior), &mut refs).unwrap();
+                let before = refs.clone();
+                let mut bytes = 1_u16.to_le_bytes().to_vec();
+                bytes.extend([2, 0, 0, 0, 0, 0]);
+                bytes.resize(bytes.len() + short_bytes, 0);
+                bytes.extend(MAP_CLASS_ID);
+                bytes.extend(1_u32.to_le_bytes());
+                bytes.resize(bytes.len() + 16 + 4 + tail_bytes, 0);
+                let end = bytes.len();
+                bytes.extend([0xa5; 16]);
+                let mut reader = Reader::new(&bytes);
+                let result = read_graphics_3d_layer_10_1(&class, &mut reader, 4096, &mut refs);
+                if registered == GRAPHICS_LAYER_3D_CLASS_ID {
+                    let layer = result.unwrap();
+                    assert_eq!(
+                        layer.associated_layer,
+                        ObjectEntry10_1::BackReference {
+                            class_id: GRAPHICS_LAYER_3D_CLASS_ID,
+                            key: 1
+                        }
+                    );
+                    assert!(layer.associated_layer_body.is_none());
+                    assert_eq!(reader.position(), end);
+                } else {
+                    assert_eq!(result.unwrap_err().kind(), ErrorKind::Unsupported);
+                    assert_eq!(reader.position(), 0);
+                }
+                assert_eq!(refs, before);
+            }
+        }
+    }
 
     #[test]
     fn graphics_3d_preserves_unknown_extensions_and_reads_successors() {
