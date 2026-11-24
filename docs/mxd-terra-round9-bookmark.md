@@ -2106,6 +2106,18 @@ Load `0x6f61f6f0` 接受无符号版本 0 至 2，调用 DEGeoDataset::Load
 后读两个 double、一个 long 和 IStringArray。v2 从 `0x6f61f7d2`
 再读有符号规则计数，按正值在 `0x6f61f803` 加载
 IID `{A53B59A5-2EFC-41C4-9769-C0FAA13E62E9}` 对象。
-已接入主体及非正规则计数，正计数明确返回未支持。
 构造书签验证作为 IDataElement 子对象的字段边界及截断回滚。
-非空规则类体和实际 MXD 宿主仍待核对。
+实际 MXD 宿主仍待核对。
+
+#### TopologyRule
+
+esriGeoDatabase 10.1 类型库确认 DETopology 请求 ITopologyRule。
+GdbTopo.dll 10.1.0.3035（SHA-256
+`cbaa77c4de34be8d8ff4f95cfc833709d2ac0db54c68075aa917a717c8de1c42`）
+的 TopologyRule 持久化表 `0x7129cff8` 中 GetClassID `0x71284160`
+返回 `{8AD43889-F2A4-43B2-83DC-6D1D38DDBCC8}`。Load
+`0x712841c0` 接受无符号版本 0、1，调用 GdbCoreLib Rule::Load
+`0x70d36110` 后读取两个 String、四个 long、五个 short 和一个 long。
+Rule::Load 接受版本 0、1，读一个 String 和两个 long。
+构造书签覆盖非空规则列表、新对象、同键回引及截断回滚。
+其他可能的接口实现和实际 MXD 宿主仍待核对。

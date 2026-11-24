@@ -7331,7 +7331,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
         GP_TOPOLOGY_MEMBERSHIP_CLASS_ID, GpAddressLocatorStyleConfig10_1,
         GpAddressLocatorStyleRow10_1, GpAddressLocatorStyleRowValues10_1, GpCodedValue10_1,
         GpControllerMembership10_1, GpSubtype10_1, GpSubtypeField10_1, INDEX_CLASS_ID,
-        INDEXES_CLASS_ID,
+        INDEXES_CLASS_ID, TOPOLOGY_RULE_CLASS_ID, TopologyRule10_1,
     };
     use mxd2qgz::objects::envelope::SpatialReferenceEntry10_1;
     use mxd2qgz::objects::fields::{FIELDS_CLASS_ID, FieldsBody10_1};
@@ -7453,7 +7453,24 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
         payload.extend(0.5_f64.to_le_bytes());
         payload.extend(42_i32.to_le_bytes());
         payload.extend([0; 16]);
-        payload.extend((-1_i32).to_le_bytes());
+        payload.extend(2_i32.to_le_bytes());
+        payload.extend(bookmark_entry_10_1(&TOPOLOGY_RULE_CLASS_ID, 31));
+        payload.extend([1, 0, 0, 0]);
+        payload.extend(bookmark_string_10_1("规则"));
+        for number in [1_i32, 2] {
+            payload.extend(number.to_le_bytes());
+        }
+        for name in ["源", "目标"] {
+            payload.extend(bookmark_string_10_1(name));
+        }
+        for number in [3_i32, 4, 5, 6] {
+            payload.extend(number.to_le_bytes());
+        }
+        for number in [7_u16, 8, 9, 10, 11] {
+            payload.extend(number.to_le_bytes());
+        }
+        payload.extend(12_i32.to_le_bytes());
+        payload.extend(bookmark_entry_10_1(&TOPOLOGY_RULE_CLASS_ID, 31));
         payload.extend(11_i32.to_le_bytes());
         payload.extend(12_u16.to_le_bytes());
         payload.extend(13_u16.to_le_bytes());
@@ -7707,7 +7724,32 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                                     entry: ObjectEntry10_1::Null,
                                                     body: None,
                                                 },
-                                                raw_rule_count: Some(-1),
+                                                raw_rule_count: Some(2),
+                                                rules: vec![
+                                                    RuleSlot10_1 {
+                                                        entry: ObjectEntry10_1::NewObject {
+                                                            class_id: TOPOLOGY_RULE_CLASS_ID,
+                                                            key: 31,
+                                                        },
+                                                        body: Some(Box::new(TopologyRule10_1 {
+                                                            version: 1,
+                                                            base_version: 0,
+                                                            base_name: "规则".into(),
+                                                            base_longs: [1, 2],
+                                                            strings: ["源".into(), "目标".into()],
+                                                            longs: [3, 4, 5, 6],
+                                                            shorts: [7, 8, 9, 10, 11],
+                                                            trailing_long: 12,
+                                                        })),
+                                                    },
+                                                    RuleSlot10_1 {
+                                                        entry: ObjectEntry10_1::BackReference {
+                                                            class_id: TOPOLOGY_RULE_CLASS_ID,
+                                                            key: 31,
+                                                        },
+                                                        body: None,
+                                                    },
+                                                ],
                                             })),
                                         },
                                     ],

@@ -475,6 +475,10 @@ pub const GP_SUBTYPE_CLASS_ID: [u8; 16] = [
     0x02, 0x53, 0x1b, 0x74, 0x17, 0x29, 0xab, 0x4a, 0x95, 0x2a, 0xdf, 0x5f, 0x0e, 0x01, 0x9e, 0xb6,
 ];
 
+pub const TOPOLOGY_RULE_CLASS_ID: [u8; 16] = [
+    0x89, 0x38, 0xd4, 0x8a, 0xa4, 0xf2, 0xb2, 0x43, 0x83, 0xdc, 0x6d, 0x1d, 0x38, 0xdd, 0xbc, 0xc8,
+];
+
 pub const DE_TOPOLOGY_CLASS_ID: [u8; 16] = [
     0x7d, 0x63, 0xc4, 0xac, 0xe0, 0xd5, 0xd5, 0x47, 0xab, 0xcd, 0x9f, 0x25, 0xab, 0x32, 0x6e, 0x6f,
 ];
@@ -882,6 +886,7 @@ pub enum DeChild10_1 {
         raw_long: i32,
         names: StringArraySlot10_1,
         raw_rule_count: Option<i32>,
+        rules: Vec<RuleSlot10_1<TopologyRule10_1>>,
     },
     FeatureDataset {
         version: u16,
@@ -900,6 +905,18 @@ pub enum DeChild10_1 {
         spatial_reference: SpatialReferenceEntry10_1,
         strings: [String; 2],
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TopologyRule10_1 {
+    pub version: u16,
+    pub base_version: u16,
+    pub base_name: String,
+    pub base_longs: [i32; 2],
+    pub strings: [String; 2],
+    pub longs: [i32; 4],
+    pub shorts: [u16; 5],
+    pub trailing_long: i32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3127,15 +3144,16 @@ fn read_gp_data_element_child(
                     ];
                     let raw_long = reader.read_u32_le()? as i32;
                     let names = read_string_array_slot_10_1(reader, max_bytes, refs)?;
-                    let raw_rule_count = (version == 2)
-                        .then(|| reader.read_u32_le().map(|count| count as i32))
-                        .transpose()?;
-                    if raw_rule_count.is_some_and(|count| count > 0) {
-                        return Err(io::Error::new(
-                            ErrorKind::Unsupported,
-                            "DETopology 的非空规则列表尚未支持",
-                        ));
-                    }
+                    let mut rules = Vec::new();
+                    let raw_rule_count = if version == 2 {
+                        let (raw_count, count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
+                        for _ in 0..count {
+                            rules.push(read_topology_rule_slot(reader, max_bytes, refs)?);
+                        }
+                        Some(raw_count)
+                    } else {
+                        None
+                    };
                     DeChild10_1::Topology {
                         version,
                         geo_dataset_version,
@@ -3146,6 +3164,7 @@ fn read_gp_data_element_child(
                         raw_long,
                         names,
                         raw_rule_count,
+                        rules,
                     }
                 } else {
                     DeChild10_1::FeatureDataset {
@@ -3193,6 +3212,66 @@ fn read_gp_data_element_child(
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
                 "IDataElement 槽包含不支持的类",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_topology_rule_slot(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<RuleSlot10_1<TopologyRule10_1>> {
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if refs.registered_class(key).unwrap_or(class_id) == TOPOLOGY_RULE_CLASS_ID =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: TOPOLOGY_RULE_CLASS_ID,
+            ..
+        } => {
+            let version = reader.read_u16_le()?;
+            let base_version = reader.read_u16_le()?;
+            if version > 1 || base_version > 1 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "TopologyRule 或 Rule 版本超限",
+                ));
+            }
+            let base_name = read_string_10_1(reader, max_bytes)?;
+            let base_longs = [reader.read_u32_le()? as i32, reader.read_u32_le()? as i32];
+            let strings = [
+                read_string_10_1(reader, max_bytes)?,
+                read_string_10_1(reader, max_bytes)?,
+            ];
+            let mut longs = [0; 4];
+            for value in &mut longs {
+                *value = reader.read_u32_le()? as i32;
+            }
+            let mut shorts = [0; 5];
+            for value in &mut shorts {
+                *value = reader.read_u16_le()?;
+            }
+            Some(Box::new(TopologyRule10_1 {
+                version,
+                base_version,
+                base_name,
+                base_longs,
+                strings,
+                longs,
+                shorts,
+                trailing_long: reader.read_u32_le()? as i32,
+            }))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "ITopologyRule 槽包含不支持的类",
             ));
         }
     };
