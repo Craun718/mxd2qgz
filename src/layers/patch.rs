@@ -44,7 +44,7 @@
 //! （样本 0 实例）；全部结论为静态反编译观察，未经目标软件运行验证，
 //! 不得声称已验证。
 
-use crate::objects::geometry::{GeometryBody10_1, read_geometry_body_10_1};
+use crate::objects::geometry::{GeometryBody10_1, read_keyed_geometry_body_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
@@ -169,7 +169,13 @@ pub fn read_patch_body_10_1(
                 geometry = PatchGeometrySlot10_1::BackReference { class_id, key };
             }
             ObjectEntry10_1::NewObject { class_id, key } => {
-                match read_geometry_body_10_1(&class_id, &mut trial, max_bytes, &mut staged_table) {
+                match read_keyed_geometry_body_10_1(
+                    &class_id,
+                    key,
+                    &mut trial,
+                    max_bytes,
+                    &mut staged_table,
+                ) {
                     Ok(body) => geometry = PatchGeometrySlot10_1::Geometry(body),
                     Err(err) if err.kind() == ErrorKind::Unsupported => {
                         // 非闭合几何类：停止并回退（该键不保留）。

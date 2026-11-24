@@ -12,7 +12,7 @@ use crate::objects::element_body::{
 };
 use crate::objects::element_decor::{DecorKind10_1, DecorSlot10_1, read_decor_slot_10_1};
 use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
-use crate::objects::geometry::{GeometryBody10_1, read_geometry_body_10_1};
+use crate::objects::geometry::{GeometryBody10_1, read_keyed_geometry_body_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
@@ -278,9 +278,9 @@ pub(crate) fn geometry_slot(
         *class_id = registered;
     }
     let body = match entry {
-        ObjectEntry10_1::NewObject { class_id, .. } => Some(Box::new(read_geometry_body_10_1(
-            &class_id, r, limit, refs,
-        )?)),
+        ObjectEntry10_1::NewObject { class_id, key } => Some(Box::new(
+            read_keyed_geometry_body_10_1(&class_id, key, r, limit, refs)?,
+        )),
         _ => None,
     };
     Ok(FrameGeometrySlot10_1 { entry, body })

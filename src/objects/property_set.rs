@@ -127,7 +127,7 @@ use crate::objects::envelope::{
 };
 use crate::objects::geometry::{
     GEOMETRY_BAG_CLASS_ID, GeometryBody10_1, MULTIPATCH_CLASS_ID, MULTIPOINT_CLASS_ID,
-    POINT_CLASS_ID, POLYGON_CLASS_ID, POLYLINE_CLASS_ID, read_geometry_body_10_1,
+    POINT_CLASS_ID, POLYGON_CLASS_ID, POLYLINE_CLASS_ID, read_keyed_geometry_body_10_1,
 };
 use crate::objects::string_array::{STR_ARRAY_CLASS_ID, read_string_array_body_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
@@ -921,7 +921,8 @@ pub(crate) fn read_variant_object_body_10_1(
             let mut geometry = reader
                 .clone()
                 .read_region(max_bytes.min(reader.remaining()))?;
-            let body = read_geometry_body_10_1(&class_id, &mut geometry, max_bytes, table)?;
+            let body =
+                read_keyed_geometry_body_10_1(&class_id, key, &mut geometry, max_bytes, table)?;
             let bytes = Arc::from(reader.read_bytes(geometry.position())?);
             PropertyValueObjectStream10_1::Geometry(Box::new(VariantGeometry10_1 {
                 class_id,

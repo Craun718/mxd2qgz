@@ -22,7 +22,7 @@ use crate::objects::envelope::{
     ENVELOPE_CLASS_ID, Envelope10_1, SpatialReferenceEntry10_1, read_envelope_10_1,
     read_spatial_reference_entry_10_1,
 };
-use crate::objects::geometry::{GeometryBody10_1, read_geometry_body_10_1};
+use crate::objects::geometry::{GeometryBody10_1, read_keyed_geometry_body_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -104,12 +104,12 @@ fn unsupported(cls: &[u8; 16], what: &str) -> io::Error {
 fn read_object<T>(
     r: &mut Reader<'_>,
     refs: &mut RefTable10_1,
-    read_body: impl FnOnce(&[u8; 16], &mut Reader<'_>, &mut RefTable10_1) -> io::Result<T>,
+    read_body: impl FnOnce(&[u8; 16], u32, &mut Reader<'_>, &mut RefTable10_1) -> io::Result<T>,
 ) -> io::Result<Graphics3dObject10_1<T>> {
     let entry = read_object_entry_10_1(r, refs)?;
     let body = match entry {
-        ObjectEntry10_1::NewObject { class_id, .. } => {
-            Some(Box::new(read_body(&class_id, r, refs)?))
+        ObjectEntry10_1::NewObject { class_id, key } => {
+            Some(Box::new(read_body(&class_id, key, r, refs)?))
         }
         _ => None,
     };
@@ -121,7 +121,7 @@ fn read_envelope(
     max: usize,
     refs: &mut RefTable10_1,
 ) -> io::Result<Graphics3dObject10_1<Envelope10_1>> {
-    read_object(r, refs, |cls, r, refs| {
+    read_object(r, refs, |cls, _, r, refs| {
         if *cls != ENVELOPE_CLASS_ID {
             return Err(unsupported(cls, "三维图形容器的 IEnvelope 槽"));
         }
@@ -160,8 +160,8 @@ fn read_globe_element_properties(
         .to_vec();
     let mut geometries = Vec::new();
     for _ in 6..=version {
-        geometries.push(read_object(r, refs, |cls, r, refs| {
-            read_geometry_body_10_1(cls, r, max, refs)
+        geometries.push(read_object(r, refs, |cls, key, r, refs| {
+            read_keyed_geometry_body_10_1(cls, key, r, max, refs)
         })?);
     }
     Ok(GlobeElementProperties10_1 { raw, geometries })
@@ -193,7 +193,7 @@ pub fn read_graphics_3d_layer_10_1(
     let shorts = (0..short_count)
         .map(|_| r.read_u16_le().map(|n| n as i16))
         .collect::<io::Result<_>>()?;
-    let associated = read_object(&mut r, &mut refs, |cls, r, refs| {
+    let associated = read_object(&mut r, &mut refs, |cls, _, r, refs| {
         read_complete_layer_body_10_1(r, *cls, max, refs)
     })?;
     let envelope = read_envelope(&mut r, max, &mut refs)?;

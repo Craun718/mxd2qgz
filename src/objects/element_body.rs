@@ -168,7 +168,7 @@
 //! [`crate::objects::display_symbol::read_symbol_slot_full_10_1`] 全闭合集
 //! 分派、IColor 槽经 [`crate::objects::display_color`] 分派、TextElement 与
 //! LineElement 的 IGeometry 槽经 [`crate::objects::geometry::
-//! read_geometry_body_10_1`] 四类类型化分派（Polyline/Polygon/Point/
+//! read_keyed_geometry_body_10_1`] 四类类型化分派（Polyline/Polygon/Point/
 //! Multipoint 体整体解析，样本 16 实例原全部停在 TextElement 该槽；证据：
 //! docs/arcmap-10.1-geometry.md「接线建议」与「第二轮落位」）、MarkerElement
 //! 的 IPoint 槽经 [`read_point_slot`] Point 分派；点/线符号槽分别限制
@@ -204,7 +204,7 @@ use crate::objects::display_symbol::{
 use crate::objects::geometry::{
     GEOMETRY_BAG_CLASS_ID, GeometryBody10_1, MULTIPATCH_CLASS_ID, MULTIPOINT_CLASS_ID,
     POINT_CLASS_ID, POLYGON_CLASS_ID, POLYLINE_CLASS_ID, PointBody10_1, PolylineBody10_1,
-    read_geometry_body_10_1, read_point_body_10_1,
+    read_keyed_geometry_body_10_1, read_point_body_10_1,
 };
 use crate::objects::ole_font::{STDFONT_CLASS_ID, StdFontBody10_1, read_std_font_body_10_1};
 use crate::objects::property_set::{PropertyValue10_1, read_variant_10_1};
@@ -777,7 +777,7 @@ pub struct TextElementBody10_1 {
     /// ITextSymbol 符号槽（第 5 字段）：TextSymbol 新对象的体（类分派）。
     pub symbol: Option<TextSymbolBody10_1>,
     /// IGeometry 文本几何槽（第 6 字段）：接线轮起经
-    /// [`crate::objects::geometry::read_geometry_body_10_1`] 四类类型化分派
+    /// [`crate::objects::geometry::read_keyed_geometry_body_10_1`] 四类类型化分派
     /// ——Polyline/Polygon/Point/Multipoint 新对象整体解析其体（记录定长、
     /// 空间参考段可闭合，无停止点；本轮自 Polyline 专用扩展，样本 16 实例
     /// 全为 Polyline，其余三类合成测试覆盖）；其余几何类维持既有停止语义
@@ -1450,7 +1450,7 @@ fn read_shape_symbol_slot<'a>(
 }
 
 /// 读取一个 IGeometry 类槽位：接线轮起对闭合四类经
-/// [`crate::objects::geometry::read_geometry_body_10_1`] 类型化分派整体解
+/// [`crate::objects::geometry::read_keyed_geometry_body_10_1`] 类型化分派整体解
 /// 析（Polyline/Polygon/Point/Multipoint，形态仿
 /// [`read_color_slot`]/[`read_symbol_slot`]；整合轮自 Polyline 专用扩展，
 /// 证据：docs/arcmap-10.1-geometry.md「第二轮落位」接线建议 1）；清单之外
@@ -1473,7 +1473,7 @@ fn read_geometry_slot<'a>(
         ObjectEntry10_1::BackReference { class_id, key } => {
             Ok(Some(GeometrySlot10_1::BackReference { class_id, key }))
         }
-        ObjectEntry10_1::NewObject { class_id, key: _ }
+        ObjectEntry10_1::NewObject { class_id, key }
             if class_id == POLYLINE_CLASS_ID
                 || class_id == POLYGON_CLASS_ID
                 || class_id == POINT_CLASS_ID
@@ -1485,7 +1485,8 @@ fn read_geometry_slot<'a>(
             // 键已由条目分类登记（登记先于持久化）；已支持的几何体无中途停止点，
             // 完整成功才提交（失败不推进游标、登记表由调用方 trial 语义保
             // 护；错误上抛即整体失败）。
-            let body = read_geometry_body_10_1(&class_id, trial, max_bytes, trial_table)?;
+            let body =
+                read_keyed_geometry_body_10_1(&class_id, key, trial, max_bytes, trial_table)?;
             Ok(Some(match body {
                 GeometryBody10_1::Polyline(body) => GeometrySlot10_1::Polyline(Box::new(body)),
                 GeometryBody10_1::Polygon(body) => GeometrySlot10_1::Polygon(Box::new(body)),

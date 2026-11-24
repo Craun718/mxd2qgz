@@ -44,6 +44,7 @@ pub struct RefTable10_1 {
     dataset_sources: HashMap<([u8; 16], u32), DatasetSource10_1>,
     string_arrays: HashMap<u32, (u16, usize, Arc<[String]>)>,
     long_arrays: HashMap<u32, (u16, Arc<[i32]>)>,
+    multi_patch_marker_strings: HashMap<u32, Arc<str>>,
     legend_group_counts: HashMap<u32, usize>,
     // 共享键表的试读副本也继承跨类图形对象的当前递归深度。
     graphics_nesting: u8,
@@ -273,6 +274,15 @@ impl RefTable10_1 {
         self.long_arrays
             .get(&key)
             .map(|(version, values)| (*version, values.as_ref()))
+    }
+
+    pub(crate) fn remember_multi_patch_marker_string(&mut self, key: u32, value: String) {
+        self.multi_patch_marker_strings
+            .insert(key, Arc::from(value));
+    }
+
+    pub(crate) fn multi_patch_marker_string(&self, key: u32) -> Option<&str> {
+        self.multi_patch_marker_strings.get(&key).map(AsRef::as_ref)
     }
 
     /// 键是否已在本会话登记过；命中即回引。

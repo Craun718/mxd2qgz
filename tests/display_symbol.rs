@@ -3764,6 +3764,21 @@ fn marker_3d_symbol_reads_versioned_tail_after_empty_geometry() {
                 assert_eq!(body.string_v9.as_deref(), expected);
                 assert!(refs.contains(52));
                 assert_eq!(reader.read_bytes(1).unwrap(), &[0xa4]);
+
+                let mut reference = bytes.clone();
+                reference[16..20].copy_from_slice(&53_u32.to_le_bytes());
+                let mut header = Vec::new();
+                push_entry(&mut header, &RGB_COLOR_CLASS_ID, 52);
+                reference.splice(geometry_start..geometry_start + 16, header);
+                let mut reader = Reader::new(&reference);
+                let SymbolSlotFull10_1::Marker3dSymbol(referenced) =
+                    read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 8).unwrap()
+                else {
+                    panic!("预期读完 MultiPatch 回引");
+                };
+                assert!(referenced.geometry.is_none());
+                assert_eq!(referenced.string_v9.as_deref(), expected);
+                assert_eq!(reader.read_bytes(1).unwrap(), &[0xa4]);
             }
 
             bytes.truncate(geometry_start);

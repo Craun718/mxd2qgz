@@ -441,8 +441,9 @@ pub fn read_simple_line_callout_body_10_1(
                 trial = forward;
             }
             ObjectEntry10_1::NewObject { class_id, key } => {
-                match crate::objects::geometry::read_geometry_body_10_1(
+                match crate::objects::geometry::read_keyed_geometry_body_10_1(
                     &class_id,
+                    key,
                     &mut forward,
                     max_bytes,
                     &mut trial_table,

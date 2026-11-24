@@ -10,7 +10,8 @@ use crate::objects::display_symbol::{
     slot_full_stop_10_1,
 };
 use crate::objects::geometry::{
-    GeometryBody10_1, POINT_CLASS_ID, PointBody10_1, read_geometry_body_10_1, read_point_body_10_1,
+    GeometryBody10_1, POINT_CLASS_ID, PointBody10_1, read_keyed_geometry_body_10_1,
+    read_point_body_10_1,
 };
 use crate::objects::property_set::{
     PropertyValueObjectStream10_1, read_padded_variant_object_stream_10_1,
@@ -92,8 +93,8 @@ pub(super) fn read_payload(
         .transpose()?;
     let geometry = (version >= 4)
         .then(|| {
-            slot(r, refs, |r, refs, id, _| {
-                read_geometry_body_10_1(&id, r, max, refs)
+            slot(r, refs, |r, refs, id, key| {
+                read_keyed_geometry_body_10_1(&id, key, r, max, refs)
             })
         })
         .transpose()?;

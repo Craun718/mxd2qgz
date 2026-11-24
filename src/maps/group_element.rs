@@ -13,7 +13,7 @@ use crate::objects::element_body::{
     ElementBody10_1, ElementPropertiesPrefix10_1, PrefixOutcome10_1,
     read_element_body_of_class_10_1, read_element_properties_prefix_10_1,
 };
-use crate::objects::geometry::{GeometryBody10_1, read_geometry_body_10_1};
+use crate::objects::geometry::{GeometryBody10_1, read_keyed_geometry_body_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
 use crate::stream::reader::Reader;
@@ -168,8 +168,8 @@ fn read_group(
         let offset = r.position();
         let entry = read_object_entry_10_1(r, refs)?;
         let body = match entry {
-            ObjectEntry10_1::NewObject { class_id, .. } => Some(
-                read_geometry_body_10_1(&class_id, r, limit, refs).map_err(|error| {
+            ObjectEntry10_1::NewObject { class_id, key } => Some(
+                read_keyed_geometry_body_10_1(&class_id, key, r, limit, refs).map_err(|error| {
                     io::Error::new(
                         error.kind(),
                         format!("GroupElement IGeometry @0x{offset:x}：{error}"),

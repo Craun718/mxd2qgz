@@ -10,7 +10,7 @@ use crate::objects::envelope::{
 };
 use crate::objects::geometry::{
     GEOMETRY_BAG_CLASS_ID, GeometryBody10_1, MULTIPATCH_CLASS_ID, MULTIPOINT_CLASS_ID,
-    POINT_CLASS_ID, POLYGON_CLASS_ID, POLYLINE_CLASS_ID, read_geometry_body_10_1,
+    POINT_CLASS_ID, POLYGON_CLASS_ID, POLYLINE_CLASS_ID, read_keyed_geometry_body_10_1,
 };
 use crate::objects::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
 use crate::objects::spatial_reference_slots::{
@@ -341,7 +341,7 @@ fn read_spatial_fields(
                     | MULTIPATCH_CLASS_ID
             )
         },
-        |reader, table, class, _, _| {
+        |reader, table, class, key, _| {
             Ok(Some(match class {
                 ENVELOPE_CLASS_ID => {
                     SpatialFilterGeometry10_1::Envelope(read_envelope_10_1(reader, max, table)?)
@@ -352,7 +352,7 @@ fn read_spatial_fields(
                 | POLYGON_CLASS_ID
                 | GEOMETRY_BAG_CLASS_ID
                 | MULTIPATCH_CLASS_ID => SpatialFilterGeometry10_1::Geometry(
-                    read_geometry_body_10_1(&class, reader, max, table)?,
+                    read_keyed_geometry_body_10_1(&class, key, reader, max, table)?,
                 ),
                 _ => return Ok(None),
             }))

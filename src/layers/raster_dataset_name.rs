@@ -32,7 +32,7 @@ use super::wcs_name::{
     read_ogc_connection_name, read_wcs_coverage_name,
 };
 use crate::objects::geodata_xform::{GeodataXformSlot10_1, read_geodata_xform_slot_with_depth};
-use crate::objects::geometry::{GeometryBody10_1, read_geometry_body_10_1};
+use crate::objects::geometry::{GeometryBody10_1, read_keyed_geometry_body_10_1};
 use crate::objects::property_set::{
     PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1, read_property_set_object_stream_10_1,
 };
@@ -977,8 +977,8 @@ fn read_function_raster_dataset_name(
     let geometry = (3..=4)
         .contains(&version)
         .then(|| {
-            slot(reader, table, |r, refs, class_id, _| {
-                read_geometry_body_10_1(&class_id, r, max, refs)
+            slot(reader, table, |r, refs, class_id, key| {
+                read_keyed_geometry_body_10_1(&class_id, key, r, max, refs)
             })
         })
         .transpose()?;

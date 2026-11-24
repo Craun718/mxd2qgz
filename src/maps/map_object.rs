@@ -111,7 +111,7 @@ use crate::objects::element_decor::{DecorKind10_1, DecorSlot10_1};
 use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
 use crate::objects::geometry::{
     GEOMETRY_BAG_CLASS_ID, GeometryBody10_1, MULTIPATCH_CLASS_ID, MULTIPOINT_CLASS_ID,
-    POINT_CLASS_ID, POLYGON_CLASS_ID, POLYLINE_CLASS_ID, read_geometry_body_10_1,
+    POINT_CLASS_ID, POLYGON_CLASS_ID, POLYLINE_CLASS_ID, read_keyed_geometry_body_10_1,
 };
 use crate::objects::spatial_reference::{
     PROJECTED_COORDINATE_SYSTEM_CLASS_ID, ProjectedCoordinateSystem10_1,
@@ -2405,13 +2405,10 @@ fn read_post_illumination_geometry_10_1(
                 | POLYGON_CLASS_ID
                 | GEOMETRY_BAG_CLASS_ID
                 | MULTIPATCH_CLASS_ID),
-            ..
-        } => Some(MapGeometryBody10_1::Geometry(read_geometry_body_10_1(
-            &class_id,
-            &mut trial,
-            max_bytes,
-            &mut staged,
-        )?)),
+            key,
+        } => Some(MapGeometryBody10_1::Geometry(
+            read_keyed_geometry_body_10_1(&class_id, key, &mut trial, max_bytes, &mut staged)?,
+        )),
         _ => return Ok(None),
     };
     *reader = trial;

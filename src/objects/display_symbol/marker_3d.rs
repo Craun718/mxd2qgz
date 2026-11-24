@@ -2,7 +2,7 @@
 
 use super::{read_i32_le, read_signed_symbol_version};
 use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
-use crate::objects::geometry::{GeometryBody10_1, read_geometry_body_10_1};
+use crate::objects::geometry::{GeometryBody10_1, read_keyed_geometry_body_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::reader::Reader;
 use std::io;
@@ -48,8 +48,8 @@ pub(super) fn read_simple_marker_3d_symbol(
         .then(|| read_object_entry_10_1(reader, table))
         .transpose()?;
     let geometry = match geometry_entry {
-        Some(ObjectEntry10_1::NewObject { class_id, .. }) => {
-            match read_geometry_body_10_1(&class_id, reader, max_bytes, table) {
+        Some(ObjectEntry10_1::NewObject { class_id, key }) => {
+            match read_keyed_geometry_body_10_1(&class_id, key, reader, max_bytes, table) {
                 Ok(body) => Some(body),
                 Err(error) if error.kind() == io::ErrorKind::Unsupported => return Ok(None),
                 Err(error) => return Err(error),
@@ -259,8 +259,8 @@ pub(super) fn read_marker_3d_symbol(
     let first_double = reader.read_f64_le()?;
     let geometry_entry = read_object_entry_10_1(reader, table)?;
     let geometry = match geometry_entry {
-        ObjectEntry10_1::NewObject { class_id, .. } => {
-            match read_geometry_body_10_1(&class_id, reader, max_bytes, table) {
+        ObjectEntry10_1::NewObject { class_id, key } => {
+            match read_keyed_geometry_body_10_1(&class_id, key, reader, max_bytes, table) {
                 Ok(body) => Some(body),
                 Err(error) if error.kind() == io::ErrorKind::Unsupported => return Ok(None),
                 Err(error) => return Err(error),
@@ -268,9 +268,14 @@ pub(super) fn read_marker_3d_symbol(
         }
         _ => None,
     };
-    let string_v9 = (signed == 9)
-        .then(|| marker_v9_string(geometry.as_ref()))
-        .flatten();
+    let string_v9 = match geometry_entry {
+        ObjectEntry10_1::NewObject { key, .. } | ObjectEntry10_1::BackReference { key, .. }
+            if signed == 9 =>
+        {
+            table.multi_patch_marker_string(key).map(str::to_owned)
+        }
+        _ => None,
+    };
     let first_integer = read_i32_le(reader)?;
     let vector = [
         reader.read_f64_le()?,
@@ -348,27 +353,4 @@ pub(super) fn read_marker_3d_symbol(
             .then(|| crate::stream::native_string::read_string_10_1(reader, max_bytes))
             .transpose()?,
     }))
-}
-
-// v9 把点 ID 1–8 的四个字节依次扩展为 UTF-16 码元。
-fn marker_v9_string(geometry: Option<&GeometryBody10_1>) -> Option<String> {
-    use crate::objects::multi_patch::MultiPatchRecord10_1;
-
-    let Some(GeometryBody10_1::MultiPatch(body)) = geometry else {
-        return None;
-    };
-    let Some(MultiPatchRecord10_1::Mesh(mesh)) = &body.record else {
-        return None;
-    };
-    if mesh.xy.len() != 10 || mesh.point_ids.first() != Some(&0x00b8_342d) {
-        return None;
-    }
-    let bytes = mesh
-        .point_ids
-        .get(1..9)?
-        .iter()
-        .flat_map(|id| id.to_be_bytes())
-        .take_while(|byte| *byte != 0)
-        .map(char::from);
-    Some(bytes.collect())
 }

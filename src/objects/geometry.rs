@@ -540,6 +540,36 @@ pub fn read_geometry_body_10_1(
     read_geometry_body(class_id, reader, max_bytes, table, 0)
 }
 
+pub(crate) fn read_keyed_geometry_body_10_1(
+    class_id: &[u8; 16],
+    key: u32,
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<GeometryBody10_1> {
+    let body = read_geometry_body_10_1(class_id, reader, max_bytes, table)?;
+    remember_geometry_marker_string(&body, key, table);
+    Ok(body)
+}
+
+fn remember_geometry_marker_string(body: &GeometryBody10_1, key: u32, table: &mut RefTable10_1) {
+    if let GeometryBody10_1::MultiPatch(body) = body
+        && let Some(MultiPatchRecord10_1::Mesh(mesh)) = &body.record
+        && mesh.xy.len() == 10
+        && mesh.point_ids.first() == Some(&0x00b8_342d)
+        && let Some(ids) = mesh.point_ids.get(1..9)
+    {
+        // v9 把点 ID 1–8 的大端字节依次扩展为 UTF-16 码元。
+        let value = ids
+            .iter()
+            .flat_map(|id| id.to_be_bytes())
+            .take_while(|byte| *byte != 0)
+            .map(char::from)
+            .collect();
+        table.remember_multi_patch_marker_string(key, value);
+    }
+}
+
 fn read_geometry_body(
     class_id: &[u8; 16],
     reader: &mut Reader<'_>,
@@ -608,13 +638,12 @@ fn read_geometry_bag(
     let mut read_slot = || {
         let entry = read_object_entry_10_1(&mut trial, &mut staged)?;
         let body = match entry {
-            ObjectEntry10_1::NewObject { class_id, .. } => Some(Box::new(read_geometry_body(
-                &class_id,
-                &mut trial,
-                max_bytes,
-                &mut staged,
-                depth + 1,
-            )?)),
+            ObjectEntry10_1::NewObject { class_id, key } => {
+                let body =
+                    read_geometry_body(&class_id, &mut trial, max_bytes, &mut staged, depth + 1)?;
+                remember_geometry_marker_string(&body, key, &mut staged);
+                Some(Box::new(body))
+            }
             _ => None,
         };
         Ok::<_, io::Error>(GeometryBagSlot10_1 { entry, body })

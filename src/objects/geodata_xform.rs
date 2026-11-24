@@ -11,8 +11,8 @@ use crate::objects::geo_transformation::{
 };
 use crate::objects::geometry::{
     GEOMETRY_BAG_CLASS_ID, GeometryBody10_1, MULTIPATCH_CLASS_ID, MULTIPOINT_CLASS_ID,
-    POINT_CLASS_ID, POLYGON_CLASS_ID, POLYLINE_CLASS_ID, PointBody10_1, read_geometry_body_10_1,
-    read_point_body_10_1,
+    POINT_CLASS_ID, POLYGON_CLASS_ID, POLYLINE_CLASS_ID, PointBody10_1,
+    read_keyed_geometry_body_10_1, read_point_body_10_1,
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -334,9 +334,9 @@ fn read_geometry_collection(
     }
     let body = match entry {
         ObjectEntry10_1::Null | ObjectEntry10_1::BackReference { .. } => None,
-        ObjectEntry10_1::NewObject { class_id, .. } if accepts(class_id) => {
-            Some(Box::new(read_geometry_body_10_1(&class_id, r, max, table)?))
-        }
+        ObjectEntry10_1::NewObject { class_id, key } if accepts(class_id) => Some(Box::new(
+            read_keyed_geometry_body_10_1(&class_id, key, r, max, table)?,
+        )),
         ObjectEntry10_1::NewObject { class_id, .. } => {
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
