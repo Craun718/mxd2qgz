@@ -513,6 +513,10 @@ pub const DE_TOPOLOGY_CLASS_ID: [u8; 16] = [
     0x7d, 0x63, 0xc4, 0xac, 0xe0, 0xd5, 0xd5, 0x47, 0xab, 0xcd, 0x9f, 0x25, 0xab, 0x32, 0x6e, 0x6f,
 ];
 
+pub const DE_CATALOG_DATASET_CLASS_ID: [u8; 16] = [
+    0xcd, 0x9f, 0x54, 0x74, 0xea, 0x9f, 0x0f, 0x48, 0xa9, 0x74, 0xae, 0x00, 0x36, 0x84, 0x56, 0x4d,
+];
+
 pub const DE_FEATURE_DATASET_CLASS_ID: [u8; 16] = [
     0xfe, 0x19, 0xc6, 0x6a, 0x1f, 0x19, 0x2d, 0x43, 0xb1, 0xa3, 0x28, 0xce, 0x85, 0xa5, 0x91, 0xaf,
 ];
@@ -926,6 +930,14 @@ pub enum DeChild10_1 {
         extent: BookmarkEnvelopeEntry10_1,
         spatial_reference: SpatialReferenceEntry10_1,
         network: DeGeometricNetwork10_1,
+    },
+    CatalogDataset {
+        version: u16,
+        geo_dataset_version: u16,
+        dataset: DeDataset10_1,
+        extent: BookmarkEnvelopeEntry10_1,
+        spatial_reference: SpatialReferenceEntry10_1,
+        raw_longs: [i32; 2],
     },
     FeatureDataset {
         version: u16,
@@ -3222,6 +3234,7 @@ fn read_gp_data_element_child(
                 DE_TABLE_CLASS_ID
                     | DE_FEATURE_CLASS_CLASS_ID
                     | DE_FEATURE_DATASET_CLASS_ID
+                    | DE_CATALOG_DATASET_CLASS_ID
                     | DE_TOPOLOGY_CLASS_ID
                     | DE_GEOMETRIC_NETWORK_CLASS_ID
                     | DE_RELATIONSHIP_CLASS_CLASS_ID
@@ -3234,6 +3247,7 @@ fn read_gp_data_element_child(
                 class_id @ (DE_TABLE_CLASS_ID
                 | DE_FEATURE_CLASS_CLASS_ID
                 | DE_FEATURE_DATASET_CLASS_ID
+                | DE_CATALOG_DATASET_CLASS_ID
                 | DE_TOPOLOGY_CLASS_ID
                 | DE_GEOMETRIC_NETWORK_CLASS_ID
                 | DE_RELATIONSHIP_CLASS_CLASS_ID),
@@ -3256,7 +3270,10 @@ fn read_gp_data_element_child(
                 )?))
             } else if matches!(
                 class_id,
-                DE_FEATURE_DATASET_CLASS_ID | DE_TOPOLOGY_CLASS_ID | DE_GEOMETRIC_NETWORK_CLASS_ID
+                DE_FEATURE_DATASET_CLASS_ID
+                    | DE_TOPOLOGY_CLASS_ID
+                    | DE_GEOMETRIC_NETWORK_CLASS_ID
+                    | DE_CATALOG_DATASET_CLASS_ID
             ) {
                 let version = reader.read_u16_le()?;
                 let geo_dataset_version = reader.read_u16_le()?;
@@ -3265,7 +3282,12 @@ fn read_gp_data_element_child(
                     DE_GEOMETRIC_NETWORK_CLASS_ID => 6,
                     _ => 1,
                 };
-                if version > max_version || geo_dataset_version > 1 {
+                let version_out_of_range = if class_id == DE_CATALOG_DATASET_CLASS_ID {
+                    (version as i16) > 1
+                } else {
+                    version > max_version
+                };
+                if version_out_of_range || geo_dataset_version > 1 {
                     return Err(io::Error::new(
                         ErrorKind::InvalidData,
                         "地理数据集或其基类版本超限",
@@ -3312,6 +3334,15 @@ fn read_gp_data_element_child(
                         extent,
                         spatial_reference,
                         network: read_de_geometric_network(reader, max_bytes, refs, version)?,
+                    }
+                } else if class_id == DE_CATALOG_DATASET_CLASS_ID {
+                    DeChild10_1::CatalogDataset {
+                        version,
+                        geo_dataset_version,
+                        dataset,
+                        extent,
+                        spatial_reference,
+                        raw_longs: [reader.read_u32_le()? as i32, reader.read_u32_le()? as i32],
                     }
                 } else {
                     DeChild10_1::FeatureDataset {
@@ -6443,6 +6474,47 @@ mod tests {
             assert_eq!(body.fields, None);
             assert_eq!(body.v6, (version == 6).then_some(23));
             assert_eq!(reader.position(), end);
+        }
+    }
+
+    #[test]
+    fn catalog_dataset_reads_signed_version_and_trailing_longs() {
+        for version in [1_u16, u16::MAX] {
+            let mut bytes = DE_CATALOG_DATASET_CLASS_ID.to_vec();
+            bytes.extend(34_u32.to_le_bytes());
+            bytes.extend(version.to_le_bytes());
+            bytes.extend([0; 10]); // DEGeoDataset、DEDataset、DataElement、GPValue。
+            for _ in 0..3 {
+                bytes.extend([2, 0, 0, 0, 0, 0]);
+            }
+            bytes.extend([0; 54]); // 基类定宽字段、空范围和空间参考。
+            bytes.extend((-2_i32).to_le_bytes());
+            bytes.extend(11_i32.to_le_bytes());
+            for cut in 0..bytes.len() {
+                let mut reader = Reader::new(&bytes[..cut]);
+                let mut refs = RefTable10_1::new();
+                assert!(read_gp_data_element_child(&mut reader, 1024, &mut refs, 0).is_err());
+            }
+            let end = bytes.len();
+            bytes.extend(DE_CATALOG_DATASET_CLASS_ID);
+            bytes.extend(34_u32.to_le_bytes());
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let object = read_gp_data_element_child(&mut reader, 1024, &mut refs, 0).unwrap();
+            assert!(matches!(
+                object.body.as_deref(),
+                Some(DeChild10_1::CatalogDataset { version: value, raw_longs: [-2, 11], .. })
+                    if *value == version
+            ));
+            assert_eq!(reader.position(), end);
+            let back_reference =
+                read_gp_data_element_child(&mut reader, 1024, &mut refs, 0).unwrap();
+            assert!(matches!(
+                back_reference.entry,
+                ObjectEntry10_1::BackReference { key: 34, .. }
+            ));
+            assert!(back_reference.body.is_none());
+            assert_eq!(reader.position(), bytes.len());
         }
     }
 }

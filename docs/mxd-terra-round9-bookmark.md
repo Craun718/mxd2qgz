@@ -2215,3 +2215,13 @@ GdbCore.dll 10.1.0.3035 的 RelationshipRule 持久化表
 接受无符号版本 0、1，直接读取一个 AfCore String 和十个 long，
 Save 入口为 `0x70a45400`。构造书签覆盖非空列表、回引及截断回滚，
 并验证随后 IFields 槽的读取边界。其他实现及实际 MXD 宿主仍待核对。
+
+#### DECatalogDataset
+
+FeatureDataElements.dll 10.1.0.3035 的持久化表 `0x6f658404`
+对应 RTTI DECatalogDataset。GetClassID `0x6f5f1a90` 返回
+`{74549FCD-9FEA-480F-A974-AE003684564D}`。Load `0x6f5f2020`
+在 `0x6f5f2052` 按有符号短整数比较版本，`0x6f67e878` 的
+上限为 1。随后调用 DEGeoDataset::Load，最后读两个 long。
+构造测试覆盖版本 1、负版本、尾部标量、回引和截断。
+实际 MXD 宿主仍待验证。
