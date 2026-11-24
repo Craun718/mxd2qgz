@@ -2186,6 +2186,27 @@ GPReplicaDataset 读取器。集合和元素回引按登记类核对。
 构造测试覆盖集合中的新对象和回引、描述尾字段与逐字节
 截断。真实 MXD 宿主、其他接口实现及 ArcMap 人工验证仍待补充。
 
+#### GPReplica
+
+同版 FeatureDataElements.dll 的 GPReplica
+（`E5524DFC-66E0-49B0-88E7-094040C98F74`）持久化表
+`0x6f6628c4` 的 GetClassID、Load、Save 分别为
+`0x6f6317f0`、`0x6f631850`、`0x6f631ad0`。
+
+Load 检查无符号 short 上限 2。随后读 LONG、四个
+AfCore BSTR、一个紧凑 Variant、LONG，再于 `0x6f63197f`
+读普通带键对象槽。常量 `0x6f662a08` 的 IID
+`E4C1358F-56CF-4C9B-99CD-1BF58D45F1BB` 经本地
+ESRI.ArcGIS.Geodatabase 互操作元数据核实为
+IGPReplicaDescription。槽后 `0x6f631999..0x6f631a07`
+读取六个 LONG，`0x6f631a23` 读取 short。版本 2 再
+读三个紧凑 Variant 和三个 short。Variant 调用经 IAT
+`0x6f6571d4` 进入 AfCore 自由函数 Read。
+Save 在 `0x6f631bce` 写对应的描述对象槽，并在
+`0x6f631c7f` 依文档版本决定扩展段。没有 GPValue
+基类头，解析可复用紧凑 Variant 与复制描述读取器。
+真实 MXD 及 ArcMap 人工验证仍待补充。
+
 #### Field 作为 IGPValue
 
 GdbCore.dll 10.1.0.3035 的 Field 主 QI `0x709df370`
