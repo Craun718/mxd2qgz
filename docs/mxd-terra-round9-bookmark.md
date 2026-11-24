@@ -2907,3 +2907,17 @@ INetworkDirections。`0x7118bfa8` 的
 `AE92A9B6-9C80-41B1-B84D-765F18B43625`
 请求 INetworkAttribute。两个接口名称均经 esriGeoDatabase.olb
 核对，计数非正时跳过对应循环。具体子类和后续流布局仍待核对。
+
+网络属性集合后在 `0x70fbc322` 读第三个有符号计数。
+非正数在 `0x70fbc35d` 跳到 `0x70fbc5a4`。
+正数时每项先由 `0x70fbc373`、`0x70fbc38c`、
+`0x70fbc3a5`、`0x70fbc3be` 读四个 long，随后于
+`0x70fbc3df` 加载 IUID（`0x711901ec` 内的
+`1714D59B-FB22-11D1-94A2-080009EEBECB`），在
+`0x70fbc404` 加载 IPropertySet。两槽后会调用所加载对象
+的接口，具体类及兼容行为仍待核对。
+
+循环结束在 `0x70fbc5a8` 读 AfCore String，再于
+`0x70fbc5c0` 读一个 long。值非零时在
+`0x70fbc5f3` 请求额外 INetworkAttribute 槽，零值跳至
+`0x70fbc8c7`。该跳转之后的版本条件和边界仍待核对。
