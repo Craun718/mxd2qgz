@@ -1307,3 +1307,30 @@ Load 请求 IUnknown（IID 数据 `0x7c76775c`）。
 把同一流传入其 Load/Save 槽。该尾段由委派体确定终点，
 尚需核对聚合 FeatureLayer 的实际读取分支和 RasterIO 动态记录类，
 然后才能接入普通 ILayer。真实宿主及 ArcMap/QGIS 人工验收待验证。
+
+#### 栅格目录的 RasterIO 槽分派
+
+复核同摘要 RasterLayer.dll 的 `0x7c71a230` 和 `0x7c71a890`，
+结合导入表区分 RasterIO 的 long、short、double 和宽字符串重载。
+tag 1、3–5、7–9 为 long，tag 6 为 double，tag 10 为 short，
+tag 11 为宽字符串。tag 2 经 `0x7c71a2ee` 调 ReadObj，随后
+`0x7c71a301 → 0x7c720340` 按 `0x7c769270` 查询
+ISpatialReference；Save 直接传持久化视图 `+0x84` 成员。
+
+tag 30 是渲染器集合计数。读取循环由 `0x7c71a453` 对
+`31 + i` 调 ReadObj，`0x7c71a468 → 0x7c7203b0` 查询
+`0x7c769450` 的 IRasterRenderer（与普通 RasterLayer 同 IID）。
+保存端从持久化视图 `+0x94` 的集合取第 i 项，查询同样的接口后
+才输出该项。因此声明计数与实际写出的对象标签数可能不同，不能以
+固定数量的连续对象体确定结束点。对象记录没有外层 ObjectStream 键，
+未知新类的体也没有可据以跳过的正长度，需要按类分派。已确认的
+空间参考与栅格渲染器持久化读取器可复用。
+
+设集合计数为 N，Load 从 v2 起查询 `31 + N` 的 long 选择值，
+值为 1 时查询 `32 + N .. 35 + N` 的 long；v3 起该分支另查
+`36 + N .. 39 + N` 的 long 和 `40 + N` 的宽字符串。
+这些字段的读取与后续接口设置见 `0x7c71a4ac..0x7c71a6c9`。
+布局对齐仍需验证缺失标签的遍历、嵌套渲染器完成状态及选择值为 1
+时的间接调用。对本机去重后的 106 份 MXD/MXT 筛查，成功提取的
+104 个 `/Maps` 和 104 个 `/PageLayout` 均未命中目录图层 CLSID。
+筛查限于这两条流内的类标识候选，解析器接线及人工验收仍开放。

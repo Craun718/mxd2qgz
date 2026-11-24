@@ -677,6 +677,7 @@
       - [x] 核对 DummyLayer 和 DummyGraduatedMarkerLayer 新对象的持久化接口。[取证](docs/arcmap-10.1-dep-tail.md#dummylayer-系列的关联槽边界)
       - [x] 定位 GdbRasterCatalogLayer 的独立持久化入口和尾段读门。[取证](docs/arcmap-10.1-dep-tail.md#gdbrastercataloglayer-的持久化入口)
       - [x] 核对 GdbRasterCatalogLayer 读写两端的版本化尾段及 FeatureLayer 聚合入口。[取证](docs/arcmap-10.1-dep-tail.md#gdbrastercataloglayer-的持久化入口)
+      - [x] 核对 GdbRasterCatalogLayer RasterIO 的空间参考、渲染器记录及动态标签。[取证](docs/arcmap-10.1-dep-tail.md#栅格目录的-rasterio-槽分派)
       - [ ] 补齐两类 3D 容器的关联 ILayer 槽中其余未支持的类体；已接入类的共用子槽缺口见各自条目。
       - [x] 接入普通 ILayer 槽中的 InternetTiledLayer 与 WMTSLayer，覆盖独立图层、组图层和三维关联图层。[接口及对象体证据](docs/mxd-10.1-raster-layer-tail.md#瓦片图层的独立-ilayer-宿主)
       - [x] 校验两类 3D 图形容器的 IEnvelope 回引登记类。[取证](docs/arcmap-10.1-dep-tail.md#三维图形容器的对象体)
