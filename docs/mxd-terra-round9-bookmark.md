@@ -3545,8 +3545,26 @@ LONG 行数。正计数循环在 `0x70a08ef6` 创建行对象，
 将当前流直接传给该接口的 Load。这里由代码构造行对象并读取
 其内联体，未从外层流为每行读取类标识与对象键。
 
-行对象的具体字段、RecordSet 末段及真实 MXD 宿主仍待核对。
-本轮为静态取证，未在 ArcMap 或 QGIS 中人工验收。
+同摘要 GdbCore 的行工厂 `0x70a15920` 在 `0x70a1594b`
+以 CLSID `6C2DE02A-1B28-4680-B65F-5F2F58BF1FFA`
+调用 AfCreateInstance。该 CLSID 与 Record 的 GetClassID
+`0x70a03280` 写出的值一致。Record 的 RTTI `0x70b35f94`
+关联 +0x14 持久化表 `0x70ad889c`，Load/Save 为
+`0x70a11ce0 / 0x70a11ec0`。行循环的 `0x70a16a70`
+查询 IPersistStream，再调用这个表的 Load 槽。
+
+Record::Load 在 `0x70a11d19` 检查有符号版本上限 1，
+`0x70a11d3c` 读取有符号 LONG 值数，正计数逐项在
+`0x70a11d8d` 调用 AfCore Variant::Read，布尔参数为 false。
+`0x70a11da2` 检查读出的 VARTYPE 是否为 0x2011
+（VT_ARRAY | VT_UI1），命中时走对象创建和字节数组转换分支。
+转换后的对象类型及对应 Save 分支仍需对位。
+
+RecordSet 的行循环结束后，`0x70a08faf` 只从已加载的
+IFields 获取字段数，`0x70a08fba` 把字段和行容器交给
+`0x70a0f640`。该调用点没有流参数，随后释放本地接口并返回。
+正计数循环及零行路径汇合后没有额外的流读取点。
+真实 MXD 宿主仍待核对，未在 ArcMap 或 QGIS 中人工验收。
 
 #### 目录数据元素
 

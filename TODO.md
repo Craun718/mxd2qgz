@@ -857,6 +857,7 @@
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
       - [x] 接入编码值中的 GPTableView 对象体与已支持的子槽。[取证](docs/mxd-terra-round9-bookmark.md#gptableview)
       - [x] 对位 GPRecordSet 的版本字段及内嵌 RecordSet 的行循环。[取证](docs/mxd-terra-round9-bookmark.md#gprecordset-与内嵌-recordset)
+      - [x] 对位 RecordSet 的内联 Record 持久化入口与 Variant 循环。[取证](docs/mxd-terra-round9-bookmark.md#gprecordset-与内嵌-recordset)
       - [ ] 接入 GPRecordSet 及内嵌 RecordSet 的对象体。
       - [x] 接入编码值及 IGPLayer 槽中的 GPMosaicLayer。[取证](docs/mxd-terra-round9-bookmark.md#gpmosaiclayer)
       - [x] 接入编码值及 IGPLayer 槽中的 GPCadastralFabricLayer。[取证](docs/mxd-terra-round9-bookmark.md#gpcadastralfabriclayer)
