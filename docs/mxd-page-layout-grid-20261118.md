@@ -166,6 +166,11 @@ MapServerLayer.dll 10.1.0.3035 的 Load `0x79e36ed0` 与 `0x79e22a40`
 对应的读取器。构造测试覆盖对象体、后继格网字符串和截断回滚。
 真实格网宿主与 ArcMap 显示仍待验证。
 
+FunctionRasterDatasetName 复用函数栅格名称的既有持久化分派。
+FunctionRasterDB.dll 10.1.0.3035 的 FullName 路径在 `0x6fc8c2e0`
+创建该类。构造格网槽验证 v7 的两条尾串、对象键、后继格网字符串及
+截断回滚。真实格网宿主和 ArcMap 显示仍待验证。
+
 ### 叠加格网的关系查询名称
 
 在 MapElements.dll 10.1.0.3035 的 CustomOverlayGrid Load
