@@ -855,8 +855,8 @@
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
       - [x] 接入 GPCodedValueDomain 中的 GPReplicaDataset v0 至 v3 对象体。[取证](docs/mxd-terra-round9-bookmark.md#gpreplicadataset)
       - [x] 定位 GPReplicaDescription 的几何与复制数据集集合对象槽。[取证](docs/mxd-terra-round9-bookmark.md#gpreplicadescription-与-gpreplicadatasets)
-      - [ ] 接入 GPReplicaDatasets 集合对象体。
-      - [ ] 接入 GPReplicaDescription 编码值对象体。
+      - [x] 接入 GPReplicaDatasets 集合对象体。[取证](docs/mxd-terra-round9-bookmark.md#gpreplicadescription-与-gpreplicadatasets)
+      - [x] 接入 GPReplicaDescription 编码值对象体。[取证](docs/mxd-terra-round9-bookmark.md#gpreplicadescription-与-gpreplicadatasets)
       - [x] 用原生 ObjectStream 验证 GPLine 与 GPPolygon 的带键对象体写出顺序。[取证](docs/mxd-terra-round9-bookmark.md#其余-igpvalue-候选与-gplinegppolygon-的对象边界)
       - [x] 按原生带键写出顺序接入 GPLine 与 GPPolygon 对象体。[取证](docs/mxd-terra-round9-bookmark.md#其余-igpvalue-候选与-gplinegppolygon-的对象边界)
       - [x] 用原生持久化探针验证 GPLine 与 GPPolygon 空集合的写出顺序。

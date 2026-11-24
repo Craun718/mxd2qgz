@@ -2174,8 +2174,17 @@ GPReplicaDatasets 的主 QI `0x6f63bea0` 对 IPersistStream
 Load `0x6f63c480` 读取 short 和 int32 计数，正计数时
 在 `0x6f63c51c` 委派到 `0x6f63ba80`，
 后者在 `0x6f63badb` 调用 AfCore LoadObject。
-尚待核对集合版本比较的符号、元素接口、Save 侧对应实现
-及真实 MXD 宿主。未进行 ArcMap 人工验证。
+集合的 `0x6f63c4bc` 使用有符号 jle，版本上限 1。
+逐项读取先请求 IUnknown，再在 `0x6f63bafb` 对返回对象
+查询 `0x6f665184` 的 IGPReplicaDataset IID。该 IID 也在
+GPReplicaDataset 的主 QI `0x6f632760` 中匹配。
+Save `0x6f63c550` 写版本 1 与计数，循环经集合主表
++0x28 的 `0x6f63b310` 在 `0x6f63b377` 调用 SaveObject。
+
+Rust 在复制描述的 IGPValue 分派中复用带键几何及
+GPReplicaDataset 读取器。集合和元素回引按登记类核对。
+构造测试覆盖集合中的新对象和回引、描述尾字段与逐字节
+截断。真实 MXD 宿主、其他接口实现及 ArcMap 人工验证仍待补充。
 
 #### Field 作为 IGPValue
 

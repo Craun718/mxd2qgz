@@ -450,6 +450,12 @@ pub const GP_LONG_CLASS_ID: [u8; 16] = [
 ];
 
 /// GPPoint 的 CLSID，按对象流中的字节序排列。
+const GP_REPLICA_DATASETS_CLASS_ID: [u8; 16] = [
+    0x62, 0xec, 0x68, 0xfc, 0xa0, 0xcd, 0x97, 0x44, 0x99, 0x77, 0xb4, 0x58, 0x20, 0x26, 0x8a, 0x43,
+];
+pub const GP_REPLICA_DESCRIPTION_CLASS_ID: [u8; 16] = [
+    0x9a, 0x83, 0x63, 0xf1, 0xb8, 0x58, 0xb9, 0x45, 0x93, 0xad, 0x88, 0x80, 0x3e, 0x0f, 0xa5, 0x0f,
+];
 pub const GP_REPLICA_DATASET_CLASS_ID: [u8; 16] = [
     0x3c, 0x7e, 0x47, 0x72, 0xce, 0x85, 0xde, 0x49, 0xaa, 0x3e, 0x5d, 0x55, 0x90, 0x9c, 0x22, 0xea,
 ];
@@ -899,6 +905,12 @@ pub const GP_EXTENT_CLASS_ID: [u8; 16] = [
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpCodedValue10_1 {
+    ReplicaDescription {
+        raw_longs: [u32; 2],
+        raw_shorts: [u16; 2],
+        geometry: RuleSlot10_1<crate::objects::geometry::GeometryBody10_1>,
+        datasets: RuleSlot10_1<GpReplicaDatasets10_1>,
+    },
     ReplicaDataset {
         strings: [String; 2],
         raw_longs: [u32; 2],
@@ -1879,6 +1891,13 @@ pub enum GpSaRemapRow10_1 {
         raw_long: i32,
         text_bytes: Vec<u8>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpReplicaDatasets10_1 {
+    pub version: i16,
+    pub raw_count: i32,
+    pub datasets: Vec<RuleSlot10_1<GpCodedValueBody10_1>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3039,6 +3058,7 @@ fn read_gp_coded_value_entry(
                 table.registered_class(key).unwrap_or(class_id),
                 GP_STRING_CLASS_ID
                     | GP_POINT_CLASS_ID
+                    | GP_REPLICA_DESCRIPTION_CLASS_ID
                     | GP_REPLICA_DATASET_CLASS_ID
                     | GP_LINE_CLASS_ID
                     | GP_POLYGON_CLASS_ID
@@ -3106,6 +3126,35 @@ fn read_gp_coded_value_entry(
             ) =>
         {
             None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: GP_REPLICA_DESCRIPTION_CLASS_ID,
+            ..
+        } => {
+            let version = reader.read_u16_le()?;
+            if version > 1 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "GPReplicaDescription 版本超限",
+                ));
+            }
+            let first = reader.read_u32_le()?;
+            let flag = reader.read_u16_le()?;
+            let second = reader.read_u32_le()?;
+            let geometry = read_gp_replica_geometry_slot(reader, max_bytes, table)?;
+            let datasets = read_gp_replica_datasets_slot(reader, max_bytes, table, depth)?;
+            let tail = reader.read_u16_le()?;
+            Some(Box::new(GpCodedValueBody10_1 {
+                version,
+                base_version: 0,
+                base_short: 0,
+                value: GpCodedValue10_1::ReplicaDescription {
+                    raw_longs: [first, second],
+                    raw_shorts: [flag, tail],
+                    geometry,
+                    datasets,
+                },
+            }))
         }
         ObjectEntry10_1::NewObject {
             class_id: GP_REPLICA_DATASET_CLASS_ID,
@@ -3708,6 +3757,99 @@ fn read_gp_coded_value_entry(
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
                 "GPCodedValueDomain 的 IGPValue 类未支持",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_gp_replica_datasets_slot(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<RuleSlot10_1<GpReplicaDatasets10_1>> {
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if refs.registered_class(key).unwrap_or(class_id) == GP_REPLICA_DATASETS_CLASS_ID =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: GP_REPLICA_DATASETS_CLASS_ID,
+            ..
+        } => {
+            let version = read_gp_name_version(reader, 1, "GPReplicaDatasets")?;
+            let (raw_count, count) = read_gp_coded_value_count(reader, max_bytes, 20)?;
+            let mut datasets = Vec::new();
+            for _ in 0..count {
+                let slot = read_gp_coded_value_slot_of_class(
+                    reader,
+                    max_bytes,
+                    refs,
+                    depth,
+                    GP_REPLICA_DATASET_CLASS_ID,
+                )?;
+                if matches!(slot.entry, ObjectEntry10_1::Null) {
+                    return Err(io::Error::new(
+                        ErrorKind::InvalidData,
+                        "GPReplicaDatasets 包含空元素",
+                    ));
+                }
+                datasets.push(slot);
+            }
+            Some(Box::new(GpReplicaDatasets10_1 {
+                version,
+                raw_count,
+                datasets,
+            }))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "不支持的 IGPReplicaDatasets 类",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_gp_replica_geometry_slot(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<RuleSlot10_1<crate::objects::geometry::GeometryBody10_1>> {
+    use crate::objects::geometry::{
+        GEOMETRY_BAG_CLASS_ID, MULTIPATCH_CLASS_ID, MULTIPOINT_CLASS_ID, POINT_CLASS_ID,
+        POLYGON_CLASS_ID, POLYLINE_CLASS_ID, read_keyed_geometry_body_10_1,
+    };
+
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if matches!(
+                refs.registered_class(key).unwrap_or(class_id),
+                ENVELOPE_CLASS_ID
+                    | GEOMETRY_BAG_CLASS_ID
+                    | MULTIPATCH_CLASS_ID
+                    | MULTIPOINT_CLASS_ID
+                    | POINT_CLASS_ID
+                    | POLYGON_CLASS_ID
+                    | POLYLINE_CLASS_ID
+            ) =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject { class_id, key } => Some(Box::new(
+            read_keyed_geometry_body_10_1(&class_id, key, reader, max_bytes, refs)?,
+        )),
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "不支持的复制描述几何回引",
             ));
         }
     };
@@ -8567,6 +8709,64 @@ pub fn read_legend_prefix_10_1(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn replica_description_reads_dataset_collection_and_child_reference() {
+        let mut bytes = GP_REPLICA_DESCRIPTION_CLASS_ID.to_vec();
+        bytes.extend(10_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend([0; 10 + 16]);
+        bytes.extend(GP_REPLICA_DATASETS_CLASS_ID);
+        bytes.extend(11_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(2_i32.to_le_bytes());
+        bytes.extend(GP_REPLICA_DATASET_CLASS_ID);
+        bytes.extend(12_u32.to_le_bytes());
+        bytes.extend([0; 2 + 4 + 8 + 4 + 4 + 16]);
+        bytes.extend(GP_REPLICA_DATASET_CLASS_ID);
+        bytes.extend(12_u32.to_le_bytes());
+        bytes.extend(42_u16.to_le_bytes());
+
+        for cut in 0..bytes.len() {
+            assert!(
+                read_gp_coded_value_slot(
+                    &mut Reader::new(&bytes[..cut]),
+                    1024,
+                    &mut RefTable10_1::new(),
+                    0,
+                )
+                .is_err()
+            );
+        }
+        let end = bytes.len();
+        bytes.push(0x5a);
+        let mut reader = Reader::new(&bytes);
+        let result =
+            read_gp_coded_value_slot(&mut reader, 1024, &mut RefTable10_1::new(), 0).unwrap();
+        let GpCodedValue10_1::ReplicaDescription {
+            geometry,
+            datasets,
+            raw_shorts,
+            ..
+        } = result.body.unwrap().value
+        else {
+            panic!("应读取复制描述");
+        };
+        assert_eq!(raw_shorts, [0, 42]);
+        assert_eq!(geometry.entry, ObjectEntry10_1::Null);
+        let datasets = datasets.body.unwrap();
+        assert_eq!((datasets.version, datasets.raw_count), (1, 2));
+        assert!(datasets.datasets[0].body.is_some());
+        assert_eq!(
+            datasets.datasets[1].entry,
+            ObjectEntry10_1::BackReference {
+                class_id: GP_REPLICA_DATASET_CLASS_ID,
+                key: 12
+            }
+        );
+        assert!(datasets.datasets[1].body.is_none());
+        assert_eq!(reader.position(), end);
+    }
 
     #[test]
     fn replica_dataset_value_reads_versioned_suffixes() {
