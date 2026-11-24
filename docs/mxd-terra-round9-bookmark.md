@@ -1011,6 +1011,22 @@ GPRangeDomain2 在 `0x6f62549c` 遇到空 IPersist 指针
 专用流的具体布局、宿主对 S_FALSE 的处理和真实工程
 仍待运行取证，未进行 ArcMap 人工验证。
 
+#### 普通 ObjectStream 对 S_FALSE 的处理
+
+同摘要 SystemCore.dll 10.1.0.3035 的 ObjectStream 写入口
+`0x7ffcf7e0`，在常规新对象路径 `0x7ffcfd34` 写出
+16 字节 CLSID，登记键后在 `0x7ffcfe05` 写四字节键。
+普通 IPersistStream 分支在 `0x7ffcff16` 调对象虚表 +0x18
+的 Save，并跳回 `0x7ffcfd90`。该处对返回值做有符号检查，
+非负值进入 `0x7ffcfebc` 的清理路径，最终在 `0x7ffcfee7`
+返回 S_OK。该路径不撤销已写出的头或键。
+
+因此，如果二代值域进入这一普通新对象分支，并因缺少匹配
+IPersist 而返回 S_FALSE，写调用可成功结束并留下已登记的
+对象头，之后没有该类写出的体字节。此结论只覆盖所述条件，
+现有解析仍保留停止位置。真实 MXD 中是否由上层阻止写出、
+是否存在其他可读取包装，以及 ArcMap/QGIS 人工验收仍待核对。
+
 #### 二代值域的委派接口接收者
 
 同摘要 GdbCore.dll 10.1.0.3035 中，常量 `0x70ab80e0`

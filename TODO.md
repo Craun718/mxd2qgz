@@ -857,6 +857,7 @@
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
       - [x] 对位二代值域委派实参与 GdbCore 的接口实现候选。[取证](docs/mxd-terra-round9-bookmark.md#二代值域的委派接口接收者)
       - [x] 核对 GdbCore 两个值域实现与 GPRangeDomain2 的类标识门槛。[取证](docs/mxd-terra-round9-bookmark.md#二代值域的委派接口接收者)
+      - [x] 核对普通 ObjectStream 在二代值域返回 S_FALSE 时保留的对象头和键。[取证](docs/mxd-terra-round9-bookmark.md#普通-objectstream-对-s_false-的处理)
       - [x] 核对历史标记私有接口在 GdbCore 和 SdeFDB 的创建路径。[取证](docs/mxd-terra-round9-bookmark.md#历史标记私有-iid-的其他调用方)
       - [x] 定位 GPNALayer 的组合层基类及后继原生读取点。[取证](docs/mxd-terra-round9-bookmark.md#gpnalayer)
       - [x] 核对 GPNALayer 保存版本表与 IGPLinearUnit、IGPTableView 读取槽。[取证](docs/mxd-terra-round9-bookmark.md#gpnalayer)
