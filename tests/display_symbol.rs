@@ -3392,3 +3392,59 @@ fn simple_line_3d_symbol_reads_color_and_scalar_fields() {
         assert!(refs.is_empty());
     }
 }
+
+#[test]
+fn texture_line_symbol_reads_versioned_tail_and_stops_at_unknown_fill() {
+    use mxd2qgz::objects::display_symbol::{
+        SymbolSlotFull10_1, TEXTURE_LINE_SYMBOL_CLASS_ID, read_symbol_slot_full_10_1,
+    };
+
+    for version in [0xffff_u16, 1, 2] {
+        let mut bytes = Vec::new();
+        push_entry(&mut bytes, &TEXTURE_LINE_SYMBOL_CLASS_ID, 70);
+        bytes.extend(version.to_le_bytes());
+        bytes.extend(2.5_f64.to_le_bytes());
+        let fill_offset = bytes.len();
+        push_null(&mut bytes);
+        if version == 2 {
+            bytes.push(1);
+        }
+        let end = bytes.len();
+        bytes.push(0xd5);
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let SymbolSlotFull10_1::TextureLineSymbol(body) =
+            read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 8).unwrap()
+        else {
+            panic!("预期 TextureLineSymbol");
+        };
+        assert_eq!(
+            (body.version, body.first_double, body.stop),
+            (version, 2.5, None)
+        );
+        assert_eq!(body.fill, SymbolSlotFull10_1::Null);
+        assert_eq!(body.trailing_byte, (version == 2).then_some(1));
+        assert_eq!(reader.position(), end);
+
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 8).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+
+        bytes.truncate(fill_offset);
+        push_entry(&mut bytes, &RGB_COLOR_CLASS_ID, 71);
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let SymbolSlotFull10_1::TextureLineSymbol(body) =
+            read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 8).unwrap()
+        else {
+            panic!("预期保留 TextureLineSymbol 前缀");
+        };
+        assert!(body.stop.is_some());
+        assert_eq!(reader.position(), fill_offset);
+        assert!(!refs.contains(71));
+    }
+}

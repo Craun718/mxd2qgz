@@ -265,6 +265,7 @@ use crate::objects::property_set::{
     PropertyValueObjectStream10_1, read_padded_variant_object_stream_nested_10_1,
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
@@ -1332,6 +1333,25 @@ pub const SIMPLE_LINE_3D_SYMBOL_CLASS_ID: [u8; 16] = [
     0x75, 0x72, 0x0b, 0x47, 0x52, 0x35, 0xd6, 0x11, 0xa1, 0x2d, 0x00, 0x50, 0x8b, 0xd6, 0x0c, 0xb9,
 ];
 
+pub const TEXTURE_LINE_SYMBOL_CLASS_ID: [u8; 16] = [
+    0x9c, 0x0c, 0x71, 0xb5, 0xbc, 0xa9, 0x16, 0x4a, 0xb5, 0x78, 0x54, 0xbe, 0x17, 0x6e, 0xd5, 0x7b,
+];
+
+// TextureLineSymbol 的专用填充槽允许 TextureFillSymbol。
+const TEXTURE_FILL_SYMBOL_CLASS_ID: [u8; 16] = [
+    0x80, 0x87, 0x73, 0x8d, 0x69, 0xc0, 0xe0, 0x42, 0x9d, 0xfa, 0x2b, 0x7b, 0x61, 0x70, 0x7b, 0xa9,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TextureLineSymbolBody10_1 {
+    pub key: u32,
+    pub version: u16,
+    pub first_double: f64,
+    pub fill: SymbolSlotFull10_1,
+    pub trailing_byte: Option<u8>,
+    pub stop: Option<SymbolStop10_1>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct SimpleLine3dSymbolBody10_1 {
     pub key: u32,
@@ -1358,6 +1378,7 @@ pub(crate) const LINE_SYMBOL_CLASSES: &[[u8; 16]] = &[
     MULTI_LAYER_LINE_SYMBOL_CLASS_ID,
     PICTURE_LINE_SYMBOL_CLASS_ID,
     SIMPLE_LINE_3D_SYMBOL_CLASS_ID,
+    TEXTURE_LINE_SYMBOL_CLASS_ID,
 ];
 
 pub(crate) const FILL_SYMBOL_CLASSES: &[[u8; 16]] = &[
@@ -2419,6 +2440,7 @@ pub enum SymbolSlotFull10_1 {
     DotDensityFillSymbol(Box<DotDensityFillSymbolBody10_1>),
     /// RasterLayer.dll 的颜色、渐变和 RGB 符号。
     SimpleLine3dSymbol(Box<SimpleLine3dSymbolBody10_1>),
+    TextureLineSymbol(Box<TextureLineSymbolBody10_1>),
     ColorSymbol(Box<ColorSymbolBody10_1>),
     ColorRampSymbol(Box<ColorRampSymbolBody10_1>),
     RasterRgbSymbol(Box<ColorSymbolBody10_1>),
@@ -2571,6 +2593,12 @@ pub fn slot_full_stop_10_1(
         SymbolSlotFull10_1::DotDensityFillSymbol(body) => {
             body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
                 class_id: DOT_DENSITY_FILL_SYMBOL_CLASS_ID,
+                key: body.key,
+            })
+        }
+        SymbolSlotFull10_1::TextureLineSymbol(body) => {
+            body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
+                class_id: TEXTURE_LINE_SYMBOL_CLASS_ID,
                 key: body.key,
             })
         }
@@ -2822,6 +2850,41 @@ pub fn read_symbol_slot_full_10_1(
                         depth,
                     )?,
                 ))
+            } else if class_id == TEXTURE_LINE_SYMBOL_CLASS_ID {
+                let version = read_signed_symbol_version(
+                    &mut trial,
+                    2,
+                    "TextureLineSymbol",
+                    origin.position(),
+                )?;
+                let first_double = trial.read_f64_le()?;
+                let fill = match read_header_10_1(&mut trial.clone())? {
+                    ObjectHeader::Null => {
+                        read_object_entry_10_1(&mut trial, &mut staged)?;
+                        SymbolSlotFull10_1::Null
+                    }
+                    ObjectHeader::Object { class_id, key } => {
+                        let class_id = staged.registered_class(key).unwrap_or(class_id);
+                        if class_id == TEXTURE_FILL_SYMBOL_CLASS_ID && staged.contains(key) {
+                            read_object_entry_10_1(&mut trial, &mut staged)?;
+                            SymbolSlotFull10_1::BackReference { class_id, key }
+                        } else {
+                            SymbolSlotFull10_1::Unsupported { class_id, key }
+                        }
+                    }
+                };
+                let stop = slot_full_stop_10_1(&fill, DisplaySlotKind10_1::FillSymbol);
+                let trailing_byte = (stop.is_none() && version as i16 > 1)
+                    .then(|| trial.read_bytes(1).map(|bytes| bytes[0]))
+                    .transpose()?;
+                SymbolSlotFull10_1::TextureLineSymbol(Box::new(TextureLineSymbolBody10_1 {
+                    key,
+                    version,
+                    first_double,
+                    fill,
+                    trailing_byte,
+                    stop,
+                }))
             } else if class_id == SIMPLE_LINE_3D_SYMBOL_CLASS_ID {
                 let version = read_signed_symbol_version(
                     &mut trial,

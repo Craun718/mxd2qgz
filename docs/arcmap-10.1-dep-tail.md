@@ -950,3 +950,25 @@ int32、LONG 读取，位置依次为 `0x68045a8f`、`0x68045ac2`、
 `0x68045ae1`、`0x68045b6a`、`0x68045b85`。标量暂按原序保留。
 合成输入验证非空颜色、结束偏移和逐字节截断回滚。其他 3D 符号
 实现、实档和 ArcMap/QGIS 人工验收仍待核对。
+
+### TextureLineSymbol 与嵌套填充
+
+同摘要 _3DSymbols.dll 的主 QI `0x68053c00` 比较 ILineSymbol
+（`0x68053c4f`）与 ISymbol（`0x68053c95`），并通过
+`0x68053dca` 进入 IPersistStream 公共回退。持久化虚表
+`0x68062a74` 的 GetClassID 经 `0x680575e0 → 0x68053610`
+返回 `{B5710C9C-A9BC-4A16-B578-54BE176ED57B}`。Load 经
+`0x680575b0 → 0x680563d0` 读取有符号版本（上限 2）、
+一个 double 和 IID `{3F6D8301-5A5A-4B84-969F-433AF07EE1A3}`
+的对象槽。版本大于 1 时在 `0x68056469` 多读一字节。
+
+TextureFillSymbol 的主 QI `0x6804f5c0` 接受该 IID。
+其持久化表 `0x680627d4` 的 GetClassID 经
+`0x68053090 → 0x6804eed0` 返回
+`{8D738780-C069-42E0-9DFA-2B7B61707BA9}`。
+Load `0x680506f0` 首先读有符号版本，再请求 IID
+`{E9F95F61-2BEC-11D6-A4CD-444553547777}` 的对象，之后还有
+两个 IColor、ISymbol 和版本相关标量。该首槽实现仍需取证。
+现阶段 TextureLineSymbol 消费空填充或已登记的 TextureFillSymbol
+回引，在其他填充头处保留停止位置。合成输入覆盖负版本、v1/v2、
+后继边界及截断回滚。非空新填充的实档及 ArcMap/QGIS 目视仍未验证。
