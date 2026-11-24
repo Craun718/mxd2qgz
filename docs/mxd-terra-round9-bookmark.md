@@ -2155,6 +2155,28 @@ Save 从 `0x6f633630` 写出对应字段，版本表
 v0 至 v3、类型 11、后继位置和逐字节截断。真实 MXD
 和 ArcMap 人工验证仍待补充。
 
+#### GPReplicaDescription 与 GPReplicaDatasets
+
+同版 FeatureDataElements.dll 的 GPReplicaDescription
+（`F163839A-58B8-45B9-93AD-88803E0FA50F`）持久化表为
+`0x6f663104`，Load/Save 为 `0x6f634660 / 0x6f634770`。
+Load 检查无符号 short 上限 1，随后依次读 LONG、
+short、LONG、IGeometry 槽、IGPReplicaDatasets 槽和 short。
+两个对象槽分别在 `0x6f6346fe`、`0x6f634732`。
+后者的 IID `871E789A-BB4D-4CF6-822E-6B6BEFA4E76E`
+由同版 ESRI.ArcGIS.Geodatabase 互操作程序集核实名为
+IGPReplicaDatasets。
+
+GPReplicaDatasets 的主 QI `0x6f63bea0` 对 IPersistStream
+返回 +0x10，其表 `0x6f663db0` 的 GetClassID
+`0x6f63bd50` 从 `0x6f6650e4` 复制
+`FC68EC62-CDA0-4497-9977-B45820268A43`。
+Load `0x6f63c480` 读取 short 和 int32 计数，正计数时
+在 `0x6f63c51c` 委派到 `0x6f63ba80`，
+后者在 `0x6f63badb` 调用 AfCore LoadObject。
+尚待核对集合版本比较的符号、元素接口、Save 侧对应实现
+及真实 MXD 宿主。未进行 ArcMap 人工验证。
+
 #### Field 作为 IGPValue
 
 GdbCore.dll 10.1.0.3035 的 Field 主 QI `0x709df370`
