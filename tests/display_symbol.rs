@@ -2587,6 +2587,7 @@ fn raster_color_symbols_preserve_the_color_and_all_integer_fields() {
             (body.key, body.version, body.integers, body.stop),
             (41, version, Some([13, -5, 17]), None)
         );
+        assert_eq!(body.rop2(), Some(13));
         assert!(matches!(body.color, ColorSlot10_1::Color { .. }));
         assert!(table.contains(42));
         assert_eq!(reader.position(), end);
@@ -2645,6 +2646,7 @@ fn raster_color_ramp_symbol_consumes_only_fields_for_its_version() {
         };
         assert_eq!((body.key, body.version, body.stop), (41, version, None));
         assert_eq!(body.integers, Some([13, -5, 17]));
+        assert_eq!(body.rop2(), Some(13));
         assert_eq!(body.ramp, Some(ColorRampSlot10_1::Null));
         let tail = body.tail.unwrap();
         assert_eq!(tail.first_short, 30);

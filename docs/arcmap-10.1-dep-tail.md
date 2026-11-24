@@ -1116,3 +1116,21 @@ Rust 在带键的 MultiPatch 成功解码后，将命中标记的字符串与对
 四类均从普通 ObjectStream 新对象候选中排除。Texture.dll 的这两类
 与本章已接入的 _3DSymbols.dll 纹理线和填充使用不同的虚表和接口。
 本次为静态取证，尚未进行 ArcMap/QGIS 人工验收。
+
+### 栅格符号的 ROP2
+
+RasterLayer.dll 10.1.0.3035 的 ColorSymbol 持久化表位于
+对象 +0xbc，Load 在 `0x7c713502` 将颜色槽后的首个 int32
+读到该接口 −0x64，即对象 +0x58。ColorRampSymbol 的持久化表
+位于 +0xd4，`0x7c71210f` 读入相对 −0x7c 的同一成员。
+两类的 ISymbol 表（`0x7c767d94`、`0x7c7679fc`）位于对象
++0x18，+0x1c 槽经 `0x7c711110` 委派 DisplayLib.dll
+10.1.0.3035 的 Symbol::get_ROP2（`0x6ed95300`）。
+`0x6ed95316` 读取 ISymbol 相对 +0x40，也对应对象 +0x58。
+RasterRGBSymbol 委派同一个 ColorSymbol Load。Rust 保留三个原始
+整数并提供首项的 ROP2 访问器，后两项的历史用途仍待核对。
+
+对提取的介质 DLL 扩展主 QI 地址检索，允许 IID 地址出现在
+候选函数体内的任意字节位置。相对仅识别向 ECX/EDX 载入 IID 的检索，
+新增的命中为已接入的 RasterRGBSymbol。该遍历仍受 RTTI 主表、
+扫描窗口和间接派发限制。ArcMap/QGIS 人工验收未进行。

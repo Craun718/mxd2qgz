@@ -28,6 +28,13 @@ pub struct ColorSymbolBody10_1 {
     pub stop: Option<SymbolStop10_1>,
 }
 
+impl ColorSymbolBody10_1 {
+    /// ISymbol::ROP2 的原始 esriRasterOpCode。
+    pub fn rop2(&self) -> Option<i32> {
+        self.integers.map(|fields| fields[0])
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ColorRampSymbolBody10_1 {
     pub key: u32,
@@ -38,6 +45,13 @@ pub struct ColorRampSymbolBody10_1 {
     pub ramp: Option<ColorRampSlot10_1>,
     pub tail: Option<ColorRampSymbolTail10_1>,
     pub stop: Option<SymbolStop10_1>,
+}
+
+impl ColorRampSymbolBody10_1 {
+    /// ISymbol::ROP2 的原始 esriRasterOpCode。
+    pub fn rop2(&self) -> Option<i32> {
+        self.integers.map(|fields| fields[0])
+    }
 }
 
 /// 梯度槽之后按版本保存的字段。按流序保留尚无语义定名的值。
