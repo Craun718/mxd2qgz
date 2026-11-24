@@ -1272,3 +1272,26 @@ Rust 访问器从解析结果取得整数，旧版缺省为 3。测试覆盖保�
 ObjectStream 首次加载对象体所用的两个持久化接口。因此无界关联槽
 继续接受已登记的 ILayer 回引，首次出现的这两类仍返回不支持。
 这项取证仅覆盖上述模块和接口路径，尚未在 ArcMap 中运行验证。
+
+### GdbRasterCatalogLayer 的持久化入口
+
+复核同版 RasterLayer.dll 10.1.0.3035（SHA-256
+`9262bc1a05d4ca4cf65613682d3ade93b70c0112cf1caf3e21ea1b168f359de6`）。
+主 QI 在 `0x7c716e8a` 比较 IPersistStream，命中后由
+`0x7c71728a` 返回完整对象 `+0x50`。构造器 `0x7c7166d5`
+在此安装虚表 `0x7c768d30`。其 GetClassID `0x7c71a200`
+复制 `0x7c7691e0` 的 CLSID，Load/Save 为
+`0x7c71a230` / `0x7c71a890`。现有 Ghidra 导出显示这是栅格目录
+专用对象体，入口在四字节版本后探测 `0xff00ff` 的 RasterIO 记录块。
+
+Load 在 tag 30 读取动态对象数，并从 tag 31 起按序调用 ReadObj。
+这些 RasterIO 对象的外层为类标识、无普通 ObjectStream 键。
+已定位 RasterIO End `0x7c71a7ac`。对尾段用 objdump 复核时，
+发现伪代码将后续两个版本判断合并为顺序条件，但实际指令在
+`0x7c71a7c2` 对 v3 及以上走 short 读取，随后在
+`0x7c71a7e8` 返回该次读取的 HRESULT。能到
+`0x7c71a801` 的版本已经小于 3，因此该处立即跳过 v4 long 分支；
+其后进入 `0x7c71d350` 的 ExtraSafe 扩展循环，并调用另一个
+对象的持久化方法。这个差异需要在接入前与 Save 端和真实宿主交叉核对，
+尤其是 v4 的写出边界、旧版本末尾的虚调用及有对象记录的类体。
+关联槽读取尚未接入，也未进行 ArcMap/QGIS 人工验收。
