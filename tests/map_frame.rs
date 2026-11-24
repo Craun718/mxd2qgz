@@ -760,6 +760,28 @@ fn map_frame_reads_mgrs_and_custom_overlay_grid_bodies() {
     assert_eq!(reader.remaining(), 0);
     assert!([72, 73, 74].into_iter().all(|key| refs.contains(key)));
 
+    let mut table_source = TABLE_NAME_CLASS_ID.to_vec();
+    table_source.extend(72_u32.to_le_bytes());
+    table_source.extend(1_u16.to_le_bytes());
+    for value in ["格网数据表", "", ""] {
+        string(&mut table_source, value);
+    }
+    table_source.extend([0; 16]);
+    let mut table_body = body.clone();
+    table_body.splice(start + source_offset..start + source_end, table_source);
+    let bytes = wrap(&table_body);
+    let mut reader = Reader::new(&bytes);
+    let mut refs = original.clone();
+    let frame = read_page_layout_map_frame_10_1(&mut reader, 4096, &mut refs).unwrap();
+    let overlay = frame.grids[3].custom_overlay_grid.as_ref().unwrap();
+    assert!(matches!(
+        overlay.other_source_name.as_deref(),
+        Some(DatasetNameMoreBody10_1::Table(name)) if name.strings[0] == "格网数据表"
+    ));
+    assert!(refs.contains(72));
+    assert_eq!(overlay.string_44, "格网编号");
+    assert_eq!(reader.remaining(), 0);
+
     let mut joined_source = REL_QUERY_TABLE_NAME_CLASS_ID.to_vec();
     joined_source.extend(72_u32.to_le_bytes());
     joined_source.extend(3_u16.to_le_bytes());

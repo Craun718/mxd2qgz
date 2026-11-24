@@ -1405,30 +1405,6 @@ pub(crate) fn read_tabular_name_slot_10_1(
     })
 }
 
-/// 读取可打开为 IFeatureClass 的已知 IName，供自定义叠加格网使用。
-pub(crate) fn read_feature_source_name_slot_10_1(
-    reader: &mut Reader<'_>,
-    max_bytes: usize,
-    table: &mut RefTable10_1,
-    stop_out: &mut Option<DatasetNameMoreStop10_1>,
-) -> io::Result<DatasetNameMoreSlot10_1> {
-    read_name_slot_with_depth_10_1(reader, max_bytes, table, stop_out, 0, |class_id| {
-        matches!(
-            class_id,
-            FEATURE_CLASS_NAME_CLASS_ID
-                | FGDB_FEATURE_CLASS_NAME_CLASS_ID
-                | COVERAGE_FEATURE_CLASS_NAME_CLASS_ID
-                | RASTER_CATALOG_NAME_CLASS_ID
-                | FEATURE_QUERY_NAME_CLASS_ID
-                | REL_QUERY_TABLE_NAME_CLASS_ID
-                | NETCDF_FEATURE_CLASS_NAME_CLASS_ID
-                | XY_EVENT_SOURCE_NAME_CLASS_ID
-                | ROUTE_EVENT_SOURCE_NAME_CLASS_ID
-                | AMS_DATASET_NAME_CLASS_ID
-        )
-    })
-}
-
 /// 两个端点槽请求 IName，共用已有表名称和要素类名称读取器。
 fn read_relationship_endpoint_slot_10_1(
     reader: &mut Reader<'_>,

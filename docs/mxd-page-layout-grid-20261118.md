@@ -111,6 +111,12 @@ RouteEventSourceName 和 AMSDatasetName 的名称体读取器。各名称的版�
 均完整消费，其中无 CustomOverlayGrid CLSID 字节命中。扩展名称的原生
 工程保存、打开和显示仍待人工验证。
 
+Load 在 `0x7954eb61` 调用查询辅助函数后，直接在
+`0x7954eb6a` 读取字符串，未以 IFeatureClass 查询结果限制后续流读取。
+因此持久化读取复用表和要素类的 IName 分派。构造 MapFrame 验证
+普通 TableName 的对象体、登记键和后续格网字符串。是否能显示叠加格网
+仍取决于 ArcMap 中实际打开的对象，尚未进行人工验收。
+
 ### 叠加格网的关系查询名称
 
 在 MapElements.dll 10.1.0.3035 的 CustomOverlayGrid Load

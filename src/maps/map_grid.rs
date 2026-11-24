@@ -6,7 +6,7 @@ use crate::layers::feature_layer_tail::{
 };
 use crate::maps::map_frame::unsupported;
 use crate::objects::dataset_name_more::{
-    DatasetNameMoreBody10_1, DatasetNameMoreSlot10_1, read_feature_source_name_slot_10_1,
+    DatasetNameMoreBody10_1, DatasetNameMoreSlot10_1, read_tabular_name_slot_10_1,
 };
 use crate::objects::display_symbol::{
     DisplaySlotKind10_1 as Kind, SymbolSlotFull10_1 as Symbol, read_symbol_slot_full_10_1,
@@ -293,7 +293,7 @@ fn read_custom_overlay_grid(
     let base = read_base_grid(r, limit, refs)?;
     let header = read_header_10_1(&mut r.clone())?;
     let mut stop = None;
-    let name = read_feature_source_name_slot_10_1(r, limit, refs, &mut stop)?;
+    let name = read_tabular_name_slot_10_1(r, limit, refs, &mut stop)?;
     if let Some(stop) = stop {
         return Err(io::Error::new(
             ErrorKind::Unsupported,
