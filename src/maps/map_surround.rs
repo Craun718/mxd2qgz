@@ -831,6 +831,7 @@ pub struct DeTable10_1 {
     pub element_strings: [String; 3],
     pub element_shorts: [u16; 3],
     pub raw_child_count: i32,
+    pub children: Vec<RuleSlot10_1<DeTable10_1>>,
     pub dataset_longs: [i32; 2],
     pub dataset_shorts: [u16; 2],
     pub dataset_string: Option<String>,
@@ -2993,11 +2994,21 @@ fn read_gp_de_table_slot(
         ObjectEntry10_1::NewObject {
             class_id: DE_TABLE_CLASS_ID,
             ..
-        } => Some(Box::new(read_gp_de_table(reader, max_bytes, refs, depth)?)),
+        } => {
+            if depth >= MAX_BOOKMARK_NAME_NESTING {
+                return Err(io::Error::new(ErrorKind::InvalidData, "DETable 嵌套过深"));
+            }
+            Some(Box::new(read_gp_de_table(
+                reader,
+                max_bytes,
+                refs,
+                depth + 1,
+            )?))
+        }
         _ => {
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
-                "IDETable 槽包含不支持的类",
+                "DETable 对象槽包含不支持的类",
             ));
         }
     };
@@ -3037,7 +3048,11 @@ fn read_gp_de_table(
             "DataElement 旧兼容分支尚未支持",
         ));
     }
-    let raw_child_count = read_de_table_empty_list(reader, "IDataElement")?;
+    let (raw_child_count, child_count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
+    let mut children = Vec::new();
+    for _ in 0..child_count {
+        children.push(read_gp_de_table_slot(reader, max_bytes, refs, depth)?);
+    }
 
     let dataset_long = reader.read_u32_le()? as i32;
     let dataset_shorts = [reader.read_u16_le()?, reader.read_u16_le()?];
@@ -3106,6 +3121,7 @@ fn read_gp_de_table(
         element_strings,
         element_shorts,
         raw_child_count,
+        children,
         dataset_longs,
         dataset_shorts,
         dataset_string,
@@ -3324,17 +3340,6 @@ fn read_de_table_index(
         }
     };
     Ok(RuleSlot10_1 { entry, body })
-}
-
-fn read_de_table_empty_list(reader: &mut Reader<'_>, interface: &str) -> io::Result<i32> {
-    let count = reader.read_u32_le()? as i32;
-    if count > 0 {
-        return Err(io::Error::new(
-            ErrorKind::Unsupported,
-            format!("DETable 的非空 {interface} 列表尚未支持"),
-        ));
-    }
-    Ok(count)
 }
 
 fn read_gp_property_set_slot(

@@ -7406,7 +7406,19 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
         for name in ["目录", "名称", "标题"] {
             payload.extend(bookmark_string_10_1(name));
         }
+        payload.extend([0; 6]);
+        payload.extend(2_i32.to_le_bytes());
+        payload.extend(bookmark_entry_10_1(&DE_TABLE_CLASS_ID, 28));
         payload.extend([0; 10]);
+        for _ in 0..3 {
+            payload.extend(bookmark_string_10_1(""));
+        }
+        payload.extend([0; 24]);
+        for _ in 0..6 {
+            payload.extend(bookmark_string_10_1(""));
+        }
+        payload.extend([0; 76]);
+        payload.extend(bookmark_entry_10_1(&DE_TABLE_CLASS_ID, 28));
         payload.extend(11_i32.to_le_bytes());
         payload.extend(12_u16.to_le_bytes());
         payload.extend(13_u16.to_le_bytes());
@@ -7535,7 +7547,62 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                 gp_value_short: 7,
                                 element_strings: ["目录", "名称", "标题"].map(String::from),
                                 element_shorts: [0; 3],
-                                raw_child_count: 0,
+                                raw_child_count: 2,
+                                children: vec![
+                                    RuleSlot10_1 {
+                                        entry: ObjectEntry10_1::NewObject {
+                                            class_id: DE_TABLE_CLASS_ID,
+                                            key: 28,
+                                        },
+                                        body: Some(Box::new(DeTable10_1 {
+                                            version: 0,
+                                            dataset_version: 0,
+                                            element_version: 0,
+                                            gp_value_version: 0,
+                                            gp_value_short: 0,
+                                            element_strings: Default::default(),
+                                            element_shorts: [0; 3],
+                                            raw_child_count: 0,
+                                            children: Vec::new(),
+                                            dataset_longs: [0; 2],
+                                            dataset_shorts: [0; 2],
+                                            dataset_string: None,
+                                            raw_short: 0,
+                                            strings: Default::default(),
+                                            raw_long: 0,
+                                            string_array: StringArraySlot10_1 {
+                                                entry: ObjectEntry10_1::Null,
+                                                body: None,
+                                            },
+                                            properties: RuleSlot10_1 {
+                                                entry: ObjectEntry10_1::Null,
+                                                body: None,
+                                            },
+                                            raw_subtype_count: 0,
+                                            subtypes: Vec::new(),
+                                            raw_membership_count: 0,
+                                            memberships: Vec::new(),
+                                            v2: None,
+                                            v3: None,
+                                            v4: None,
+                                            fields: RuleSlot10_1 {
+                                                entry: ObjectEntry10_1::Null,
+                                                body: None,
+                                            },
+                                            indexes: RuleSlot10_1 {
+                                                entry: ObjectEntry10_1::Null,
+                                                body: None,
+                                            },
+                                        })),
+                                    },
+                                    RuleSlot10_1 {
+                                        entry: ObjectEntry10_1::BackReference {
+                                            class_id: DE_TABLE_CLASS_ID,
+                                            key: 28,
+                                        },
+                                        body: None,
+                                    },
+                                ],
                                 dataset_longs: [11, 14],
                                 dataset_shorts: [12, 13],
                                 dataset_string: Some("数据集".into()),

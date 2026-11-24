@@ -2056,3 +2056,11 @@ FeatureDataElements.dll 10.1.0.3035 的持久化表
 拓扑成员读取 String、double、两个 long、short，几何网络成员读取
 三个 String 和 long。读取器保留原始标量及浮点位模式。构造书签覆盖
 同一 DETable 的两类非空成员和截断回滚。其他实现类及实际宿主仍待核对。
+
+#### DataElement 子对象
+
+DataElement 的正子对象计数经 `0x6e942c94` 调 LoadObject，
+请求 IDataElement，并沿用传入的流。读取器已接入该列表中的 DETable，
+按同一引用表读取新对象和回引。新对象受书签嵌套上限约束，
+回引只消耗对象头。构造书签覆盖内嵌 DETable、同键回引及截断回滚。
+其余 IDataElement 实现及真实宿主仍待核对。
