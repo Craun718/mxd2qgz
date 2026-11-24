@@ -210,6 +210,11 @@ SchematicWorkspaceName 沿用 [SchematicDB.dll 10.1.0.3035 Load `0x7d6f5c00`](mx
 构造测试覆盖内联 WorkspaceName、后继格网字符串和截断回滚。
 真实格网宿主和 ArcMap 显示仍待验证。
 
+LocatorWorkspaceName 与书签共同使用 Geocoding.dll 10.1.0.3035
+Load `0x71367ac0` 对应的读取器，保留 v1 IName 与其余版本 IUnknown
+的子槽区别。构造格网槽覆盖 v1/v2 空子槽、对象边界及截断回滚。
+真实格网宿主与 ArcMap 显示仍待验证。
+
 ### 叠加格网的关系查询名称
 
 在 MapElements.dll 10.1.0.3035 的 CustomOverlayGrid Load

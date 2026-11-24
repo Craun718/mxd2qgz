@@ -9240,6 +9240,64 @@ fn read_gp_sa_topo_features_type_name_body_10_1(
 }
 
 // 调用者负责将名称槽及其宿主的读取作为同一事务提交。
+pub(crate) fn read_locator_workspace_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    name_depth: usize,
+) -> io::Result<BookmarkNameEntry10_1> {
+    if name_depth == MAX_BOOKMARK_NAME_NESTING {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "LocatorWorkspaceName 嵌套层数超限",
+        ));
+    }
+    let version = reader.read_u16_le()? as i16;
+    if version > 2 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("LocatorWorkspaceName 版本 {version} 超出 10.1 上限"),
+        ));
+    }
+    let strings = [
+        read_string_10_1(reader, max_bytes)?,
+        read_string_10_1(reader, max_bytes)?,
+    ];
+    // v1 请求 IName，其余版本允许持久化 IUnknown。
+    use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
+    let source = match read_header_10_1(&mut reader.clone())? {
+        ObjectHeader::Object { class_id, key } if version != 1 && table.contains(key) => {
+            read_object_entry_10_1(reader, table)?;
+            BookmarkNameEntry10_1::BackReference {
+                class_id: table.registered_class(key).unwrap_or(class_id),
+                key,
+            }
+        }
+        ObjectHeader::Object {
+            class_id: PROPERTY_SET_CLASS_ID,
+            ..
+        } if version != 1 => {
+            read_object_entry_10_1(reader, table)?;
+            BookmarkNameEntry10_1::LocatorWorkspaceProperties(Box::new(
+                read_property_set_object_stream_10_1(reader, max_bytes, table)?,
+            ))
+        }
+        ObjectHeader::Object {
+            class_id: UID_CLASS_ID,
+            key,
+        } if version != 1 => {
+            read_object_entry_10_1(reader, table)?;
+            BookmarkNameEntry10_1::LocatorWorkspaceUid(read_uid_body_10_1(reader, key)?)
+        }
+        _ => read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth + 1)?,
+    };
+    Ok(BookmarkNameEntry10_1::LocatorWorkspaceName {
+        version,
+        strings,
+        source: Box::new(source),
+    })
+}
+
 fn read_bookmark_name_slot_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -9760,58 +9818,7 @@ fn read_bookmark_name_slot_10_1(
         ObjectEntry10_1::NewObject {
             class_id: LOCATOR_WORKSPACE_NAME_CLASS_ID,
             ..
-        } => {
-            if name_depth == MAX_BOOKMARK_NAME_NESTING {
-                return Err(io::Error::new(
-                    ErrorKind::InvalidData,
-                    "LocatorWorkspaceName 嵌套层数超限",
-                ));
-            }
-            let version = reader.read_u16_le()? as i16;
-            if version > 2 {
-                return Err(io::Error::new(
-                    ErrorKind::InvalidData,
-                    format!("LocatorWorkspaceName 版本 {version} 超出 10.1 上限"),
-                ));
-            }
-            let strings = [
-                read_string_10_1(reader, max_bytes)?,
-                read_string_10_1(reader, max_bytes)?,
-            ];
-            // v1 请求 IName，其余版本允许持久化 IUnknown。
-            use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
-            let source = match read_header_10_1(&mut reader.clone())? {
-                ObjectHeader::Object { class_id, key } if version != 1 && table.contains(key) => {
-                    read_object_entry_10_1(reader, table)?;
-                    BookmarkNameEntry10_1::BackReference {
-                        class_id: table.registered_class(key).unwrap_or(class_id),
-                        key,
-                    }
-                }
-                ObjectHeader::Object {
-                    class_id: PROPERTY_SET_CLASS_ID,
-                    ..
-                } if version != 1 => {
-                    read_object_entry_10_1(reader, table)?;
-                    BookmarkNameEntry10_1::LocatorWorkspaceProperties(Box::new(
-                        read_property_set_object_stream_10_1(reader, max_bytes, table)?,
-                    ))
-                }
-                ObjectHeader::Object {
-                    class_id: UID_CLASS_ID,
-                    key,
-                } if version != 1 => {
-                    read_object_entry_10_1(reader, table)?;
-                    BookmarkNameEntry10_1::LocatorWorkspaceUid(read_uid_body_10_1(reader, key)?)
-                }
-                _ => read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth + 1)?,
-            };
-            BookmarkNameEntry10_1::LocatorWorkspaceName {
-                version,
-                strings,
-                source: Box::new(source),
-            }
-        }
+        } => read_locator_workspace_name_body_10_1(reader, max_bytes, table, name_depth)?,
         ObjectEntry10_1::NewObject {
             class_id: SHORTCUT_NAME_CLASS_ID,
             ..
