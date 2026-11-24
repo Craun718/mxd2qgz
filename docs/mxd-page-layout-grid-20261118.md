@@ -134,6 +134,12 @@ IName 槽读取，复用[栅格名称持久化取证](mxd-luna-followup-rasterda
 中的专用读取器。构造测试核对普通与 8.3 名称的对象边界、登记键和
 截断回滚。FileGDB 内容沿用栅格图层已有测试，格网实档仍待核对。
 
+格网的 IName 槽也接入 RasterBandCollectionName 和
+MosaicDatasetName。前者的 RasterDB IName 视图为 `0x7c130ee8`，
+后者复用 MosaicDB Load `0x7a3f5b30` 对应的读取器。
+构造输入核对波段集合名称内联镶嵌数据集名称 v4、两个对象键、
+后继边界及截断回滚。真实格网宿主和 ArcMap 显示仍待验证。
+
 ### 叠加格网的关系查询名称
 
 在 MapElements.dll 10.1.0.3035 的 CustomOverlayGrid Load

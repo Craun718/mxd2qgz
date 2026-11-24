@@ -57,9 +57,10 @@ use crate::layers::feature_layer::{
 };
 use crate::layers::fgdb_raster_dataset_name::FGDB_RASTER_DATASET_NAME_CLASS_ID;
 use crate::layers::raster_dataset_name::{
-    RASTER_BAND_NAME_CLASS_ID, RASTER_CATALOG_NAME_CLASS_ID, RASTER_DATASET_NAME_CLASS_ID,
-    RASTER_DATASET_NAME83_CLASS_ID, RasterDatasetNameEntryBody10_1, RasterLongArraySlot10_1,
-    read_long_array_slot, read_supported_raster_name_body_10_1,
+    MOSAIC_DATASET_NAME_CLASS_ID, RASTER_BAND_COLLECTION_NAME_CLASS_ID, RASTER_BAND_NAME_CLASS_ID,
+    RASTER_CATALOG_NAME_CLASS_ID, RASTER_DATASET_NAME_CLASS_ID, RASTER_DATASET_NAME83_CLASS_ID,
+    RasterDatasetNameEntryBody10_1, RasterLongArraySlot10_1, read_long_array_slot,
+    read_supported_raster_name_body_10_1,
 };
 use crate::maps::standalone_table::{
     FGDB_TABLE_NAME_CLASS_ID, OBJECT_CLASS_NAME_CLASS_ID, TABLE_NAME_CLASS_ID, TableNameBody10_1,
@@ -1255,7 +1256,9 @@ fn read_dataset_name_object_body_10_1(
         }
         RASTER_DATASET_NAME_CLASS_ID
         | RASTER_DATASET_NAME83_CLASS_ID
-        | FGDB_RASTER_DATASET_NAME_CLASS_ID => {
+        | FGDB_RASTER_DATASET_NAME_CLASS_ID
+        | MOSAIC_DATASET_NAME_CLASS_ID
+        | RASTER_BAND_COLLECTION_NAME_CLASS_ID => {
             let body =
                 read_supported_raster_name_body_10_1(reader, max_bytes, table, class_id, key)?;
             Ok((DatasetNameMoreBody10_1::RasterDataset(Box::new(body)), None))
@@ -1442,6 +1445,8 @@ pub(crate) fn read_overlay_name_slot_10_1(
                 RASTER_DATASET_NAME_CLASS_ID
                     | RASTER_DATASET_NAME83_CLASS_ID
                     | FGDB_RASTER_DATASET_NAME_CLASS_ID
+                    | MOSAIC_DATASET_NAME_CLASS_ID
+                    | RASTER_BAND_COLLECTION_NAME_CLASS_ID
                     | WORKSPACE_NAME_CLASS_ID
                     | FEATURE_DATASET_NAME_CLASS_ID
                     | COVERAGE_NAME_CLASS_ID
@@ -2057,6 +2062,45 @@ mod tests {
 
     /// 完整 WorkspaceName 体（第六轮布局）：版本 1 + 三空串 + IPropertySet
     /// 空标记 + 标志 1 + 工厂 CLSID + 尾随 int32。
+    #[test]
+    fn overlay_raster_collection_reads_mosaic_child() {
+        let mut bytes = entry(&RASTER_BAND_COLLECTION_NAME_CLASS_ID, 90).to_vec();
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(str_bytes("collection"));
+        bytes.extend(entry(&MOSAIC_DATASET_NAME_CLASS_ID, 91));
+        bytes.extend(4_i16.to_le_bytes());
+        bytes.extend(str_bytes("mosaic"));
+        bytes.extend(str_bytes(""));
+        bytes.extend([0; 16 + 2 + 4 + 16]);
+        bytes.extend([0; 16]);
+        let end = bytes.len();
+        bytes.push(0xa5);
+        let mut refs = RefTable10_1::new();
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            assert!(read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+        let mut reader = Reader::new(&bytes);
+        let slot = read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).unwrap();
+        let DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::RasterDataset(body)) = slot
+        else {
+            panic!("应读取波段集合名称");
+        };
+        let RasterDatasetNameEntryBody10_1::BandCollection(collection) = body.as_ref() else {
+            panic!("栅格名称类型错误");
+        };
+        assert!(
+            matches!(collection.name.body.as_ref(), Some(RasterDatasetNameEntryBody10_1::Mosaic(name)) if name.version == 4)
+        );
+        assert_eq!(
+            refs.registered_class(91),
+            Some(MOSAIC_DATASET_NAME_CLASS_ID)
+        );
+        assert_eq!(reader.position(), end);
+    }
+
     #[test]
     fn overlay_raster_name_reads_dataset_and_legacy_delegate() {
         for class_id in [RASTER_DATASET_NAME_CLASS_ID, RASTER_DATASET_NAME83_CLASS_ID] {
