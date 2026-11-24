@@ -65,7 +65,7 @@ pub struct ColorRampSymbolTail10_1 {
     pub integer: i32,
     /// 版本 ≥3，依次为透明度、亮度和对比度。
     pub shorts_v3: Option<[u16; 3]>,
-    /// 版本 ≥4。
+    /// 版本 ≥4，持久化的图例类别数。
     pub integer_v4: Option<i32>,
     /// 版本 ≥5，依次为 ShowTics 和 Horizontal。
     pub shorts_v5: Option<[u16; 2]>,
@@ -88,6 +88,11 @@ impl ColorRampSymbolTail10_1 {
         self.shorts_v5.map(|fields| fields[1] != 0)
     }
 
+    /// 图例类别数。旧版省略该字段时使用构造默认值。
+    pub fn legend_class_count(&self) -> i32 {
+        self.integer_v4.unwrap_or(3)
+    }
+
     /// ShowTics 开启时，原生额外绘制边界刻度线的图例类索引。
     pub fn boundary_tick_class_index(&self) -> Option<i32> {
         if !self.show_tics().unwrap_or(true) {
@@ -95,7 +100,7 @@ impl ColorRampSymbolTail10_1 {
         }
         let horizontal = self.horizontal().unwrap_or(false);
         let index = if horizontal == self.invert() {
-            self.integer_v4.unwrap_or(3).wrapping_sub(2)
+            self.legend_class_count().wrapping_sub(2)
         } else {
             0
         };
