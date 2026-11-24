@@ -841,7 +841,7 @@
       - [x] 接入 IDataElement 列表中的 DEToolbox。[取证](docs/mxd-terra-round9-bookmark.md#detoolbox)
       - [x] 接入 IDataElement 列表中的 DERepresentationClass。[取证](docs/mxd-terra-round9-bookmark.md#derepresentationclass)
       - [x] 接入 IDataElement 列表中的 DENetworkDataset。[取证](docs/mxd-terra-round9-bookmark.md#denetworkdataset)
-      - [ ] 补齐 DENetworkDataset 源槽中的 SDCNetworkSource。
+      - [x] 补齐 DENetworkDataset 源槽中的 SDCNetworkSource。
       - [ ] 补齐 DENetworkDataset 属性槽中的 SDCNetworkAttribute。
       - [ ] 补齐网络属性集中的未知求值器对象类。
       - [ ] 补齐 IDataElement 列表中其他持久化实现。[取证](docs/mxd-terra-round9-bookmark.md#detable)

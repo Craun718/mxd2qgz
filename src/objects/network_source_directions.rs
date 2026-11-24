@@ -223,6 +223,16 @@ pub const TURN_FEATURE_SOURCE_CLASS_ID: [u8; 16] = [
     0x7b, 0x04, 0xbb, 0x44, 0x80, 0xc0, 0x97, 0x45, 0xb3, 0x6b, 0xe5, 0x69, 0x05, 0x98, 0x3c, 0x4c,
 ];
 
+pub const SDC_NETWORK_SOURCE_CLASS_ID: [u8; 16] = [
+    0x09, 0x0c, 0xe0, 0x5b, 0x3f, 0xa0, 0x69, 0x4a, 0xb6, 0x78, 0x98, 0x51, 0x08, 0xa5, 0x00, 0xd3,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SdcNetworkSourceFields10_1 {
+    pub short_value: u16,
+    pub directions: DirectionSlot10_1<NetworkSourceDirections10_1>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct NetworkSource10_1 {
     pub version: i16,
@@ -231,6 +241,7 @@ pub struct NetworkSource10_1 {
     pub value: u32,
     pub properties: DirectionSlot10_1<PropertySetObjectStream10_1>,
     pub extension: Option<NetworkSourceExtension10_1>,
+    pub sdc_fields: Option<SdcNetworkSourceFields10_1>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -274,7 +285,7 @@ pub fn read_network_source_slot_10_1(
     let name_count = match class_id {
         EDGE_FEATURE_SOURCE_CLASS_ID => 2,
         JUNCTION_FEATURE_SOURCE_CLASS_ID | SYSTEM_JUNCTION_SOURCE_CLASS_ID => 1,
-        NETWORK_SOURCE_CLASS_ID | TURN_FEATURE_SOURCE_CLASS_ID => 0,
+        NETWORK_SOURCE_CLASS_ID | TURN_FEATURE_SOURCE_CLASS_ID | SDC_NETWORK_SOURCE_CLASS_ID => 0,
         _ => {
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
@@ -291,10 +302,33 @@ pub fn read_network_source_slot_10_1(
             read_property_set_object_stream_10_1(r, max_bytes, refs)
         })
     };
+    let is_sdc = class_id == SDC_NETWORK_SOURCE_CLASS_ID;
     let version = read_source_version(reader)?;
+    if is_sdc && version != 1 {
+        return Err(version_error("SDCNetworkSource"));
+    }
     let initial_values = [reader.read_u32_le()?, reader.read_u32_le()?];
+    let short_value = is_sdc.then(|| reader.read_u16_le()).transpose()?;
+    let sdc_value = is_sdc.then(|| reader.read_u32_le()).transpose()?;
     let name = read_string_10_1(reader, max_bytes)?;
-    let value = reader.read_u32_le()?;
+    let value = match sdc_value {
+        Some(value) => value,
+        None => reader.read_u32_le()?,
+    };
+    let sdc_fields = short_value
+        .map(|short_value| {
+            let directions = read_slot(
+                reader,
+                refs,
+                NETWORK_SOURCE_DIRECTIONS_CLASS_ID,
+                |r, refs| read_network_source_directions_body_10_1(r, max_bytes, refs),
+            )?;
+            Ok::<_, io::Error>(SdcNetworkSourceFields10_1 {
+                short_value,
+                directions,
+            })
+        })
+        .transpose()?;
     let properties = read_properties(reader, refs)?;
     let extension = (name_count != 0)
         .then(|| -> io::Result<_> {
@@ -331,6 +365,7 @@ pub fn read_network_source_slot_10_1(
         value,
         properties,
         extension,
+        sdc_fields,
     };
     Ok(DirectionSlot10_1 {
         entry,
@@ -688,6 +723,54 @@ mod tests {
             &mut RefTable10_1::new(),
         )?;
         Ok((body, reader.position()))
+    }
+
+    #[test]
+    fn sdc_network_source_reads_unconditional_direction_slot() {
+        let mut bytes = Vec::new();
+        object(&mut bytes, SDC_NETWORK_SOURCE_CLASS_ID, 1);
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend([0; 8]);
+        bytes.extend(17_u16.to_le_bytes());
+        bytes.extend(28_u32.to_le_bytes());
+        bytes.extend(EMPTY);
+        object(&mut bytes, NETWORK_SOURCE_DIRECTIONS_CLASS_ID, 2);
+        bytes.extend(0_u16.to_le_bytes());
+        bytes.extend(EMPTY);
+        bytes.extend([0; 24]);
+        let end = bytes.len();
+        bytes.push(0xaa);
+        let mut reader = Reader::new(&bytes);
+        let body =
+            read_network_source_slot_10_1(&mut reader, bytes.len(), &mut RefTable10_1::new())
+                .unwrap()
+                .body
+                .unwrap();
+        assert_eq!(reader.position(), end);
+        assert_eq!(body.value, 28);
+        let sdc = body.sdc_fields.unwrap();
+        assert_eq!(sdc.short_value, 17);
+        assert!(sdc.directions.body.is_some());
+        for cut in 0..end {
+            assert!(
+                read_network_source_slot_10_1(
+                    &mut Reader::new(&bytes[..cut]),
+                    bytes.len(),
+                    &mut RefTable10_1::new(),
+                )
+                .is_err(),
+                "截断位置 {cut}"
+            );
+        }
+        bytes[20] = 0;
+        assert!(
+            read_network_source_slot_10_1(
+                &mut Reader::new(&bytes),
+                bytes.len(),
+                &mut RefTable10_1::new(),
+            )
+            .is_err()
+        );
     }
 
     #[test]

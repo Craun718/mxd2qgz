@@ -3096,3 +3096,18 @@ DENetworkDataset 已接入 IDataElement 对象列表的新增对象和回引分�
 列表边界和逐字节截断。求值器集合按原生流读取四个 long、IUID 和
 IPropertySet，并保留原始字段。SDC 网络类和非空属性集中的未知求值器
 仍需另行取证。真实 MXD 宿主与 ArcMap 人工检查尚未验证。
+
+SDCNetworkSource 由安装介质中的 SDCPlugIn.dll 10.1.0.3035
+实现，SHA-256 为
+`b19c897cb0abc45f60664266dea6be09f54207aa0e0d6c7480b89aad42fb1a12`。
+`esriDataSourcesFile.olb` 的 CLSID
+`5BE00C09-A03F-4A69-B678-985108A500D3` 位于 DLL 的
+`0x7dd93564`。RTTI 的 +0x18 表 `0x7dd97134` 给出
+Load `0x7dc2cbb0`，只接受 short 版本 1。
+随后依次读取两个 long（`0x7dc2cc09`、`0x7dc2cc1f`）、
+short（`0x7dc2cc3b`）、long（`0x7dc2cc51`）和
+AfCore String（`0x7dc2cc64`）。末尾两个 LoadObject 无标志，
+依次请求 INetworkSourceDirections（`0x7dc2cc7f`）和
+IPropertySet（`0x7dc2cc9d`）。已在 INetworkSource 分派
+接入该类。构造测试覆盖非空方向、非法版本及逐字节截断，
+真实 SDC MXD 宿主尚未验证。
