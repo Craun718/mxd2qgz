@@ -1996,6 +1996,18 @@ Save `0x748e5d00` 的尺寸分派、内嵌 Variant 和成员 String
 对象回引、后继字段及逐字节截断回滚。内嵌数组的真实取值与
 ArcMap/QGIS 实档验收待查。
 
+#### Field 作为 IGPValue
+
+GdbCore.dll 10.1.0.3035 的 Field 主 QI `0x709df370`
+在 `0x709df4b7` 比对 `0x70ac9fb0` 的 IGPValue IID，
+命中时在 `0x709df4d5` 返回对象 +0x10。RTTI 对位
+IPersistStream 表 `0x70ad5d28`，其 GetClassID
+`0x709dfd80` 与 Load `0x709e1730` 和
+[字段集合内的 Field](mxd-10.1-fields.md) 一致。编码值槽因此
+复用已有字段读取器与对象引用表。构造测试覆盖 v0/v1/v2、
+字段标志、后继位置、回引及逐字节截断。尚无真实 MXD
+将 Field 用作编码值的例子，未进行 ArcMap 人工验证。
+
 #### XMLIndexTag
 
 GdbCore.dll 10.1.0.3035 的 SHA-256 为

@@ -853,6 +853,7 @@
       - [x] 接入 DETable 的 Indexes 与 Index 对象体。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [ ] 核对 GPAddressLocatorStyle 非空配置中其余接口槽的类体。[取证](docs/mxd-terra-round9-bookmark.md#gpaddresslocatorstyle)
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
+      - [x] 接入 GPCodedValueDomain 中的 Field 值对象。[取证](docs/mxd-terra-round9-bookmark.md#field-作为-igpvalue)
       - [x] 接入 GPCodedValueDomain 中的 XMLIndexTag v0/v1 对象体。[取证](docs/mxd-terra-round9-bookmark.md#xmlindextag)
       - [x] 接入 GPCodedValueDomain 中的 XMLIndexTags 集合。[取证](docs/mxd-terra-round9-bookmark.md#xmlindextags)
       - [x] 接入 GPCodedValueDomain 中的 XMLIndex 对象体。[取证](docs/mxd-terra-round9-bookmark.md#xmlindex)

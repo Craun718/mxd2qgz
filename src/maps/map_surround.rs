@@ -210,7 +210,10 @@ use crate::objects::envelope::{
     ENVELOPE_CLASS_ID, Envelope10_1, SpatialReferenceEntry10_1, read_envelope_10_1,
     read_spatial_reference_entry_10_1,
 };
-use crate::objects::fields::{FIELDS_CLASS_ID, FieldsBody10_1, read_fields_body_nested_10_1};
+use crate::objects::fields::{
+    FIELD_CLASS_ID, FIELDS_CLASS_ID, FieldBody10_1, FieldsBody10_1, read_field_body_10_1,
+    read_fields_body_nested_10_1,
+};
 use crate::objects::geometry::{POINT_CLASS_ID, PointBody10_1, read_point_body_10_1};
 use crate::objects::network_source_directions::{
     DirectionSlot10_1, NetworkAttributeEntryBody10_1, NetworkDirections10_1, NetworkSource10_1,
@@ -887,6 +890,7 @@ pub const GP_EXTENT_CLASS_ID: [u8; 16] = [
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpCodedValue10_1 {
+    Field(Box<FieldBody10_1>),
     FmeDataset(Option<Vec<u8>>),
     XmlIndex {
         first: String,
@@ -3061,6 +3065,7 @@ fn read_gp_coded_value_entry(
                     | GP_ENCRYPTED_STRING_CLASS_ID
                     | GP_LONG_CLASS_ID
                     | GP_DOUBLE_CLASS_ID
+                    | FIELD_CLASS_ID
                     | XML_INDEX_CLASS_ID
                     | XML_INDEX_TAGS_CLASS_ID
                     | XML_INDEX_TAG_CLASS_ID
@@ -3077,6 +3082,18 @@ fn read_gp_coded_value_entry(
             ) =>
         {
             None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: FIELD_CLASS_ID,
+            ..
+        } => {
+            let field = read_field_body_10_1(reader, max_bytes, table, depth)?;
+            Some(Box::new(GpCodedValueBody10_1 {
+                version: field.version,
+                base_version: field.gp_value_version,
+                base_short: field.gp_value_short,
+                value: GpCodedValue10_1::Field(Box::new(field)),
+            }))
         }
         ObjectEntry10_1::NewObject {
             class_id: FME_DATASET_CLASS_ID,
@@ -8432,6 +8449,57 @@ pub fn read_legend_prefix_10_1(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn field_coded_value_reuses_field_body_and_reference() {
+        for version in [0_u16, 1, 2] {
+            let mut header = FIELD_CLASS_ID.to_vec();
+            header.extend(55_u32.to_le_bytes());
+            let mut bytes = header.clone();
+            bytes.extend(version.to_le_bytes());
+            bytes.extend([1, 0, 7, 0]);
+            for has_flag in [true, true, false, true] {
+                bytes.extend([2, 0, 0, 0, 0, 0]);
+                if has_flag {
+                    bytes.push(1);
+                }
+            }
+            bytes.extend([0; 2 + 16 + 5 + 16 + 16]);
+            for cut in 0..bytes.len() {
+                assert!(
+                    read_gp_coded_value_slot(
+                        &mut Reader::new(&bytes[..cut]),
+                        1024,
+                        &mut RefTable10_1::new(),
+                        0,
+                    )
+                    .is_err()
+                );
+            }
+            let end = bytes.len();
+            bytes.extend(header);
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let slot = read_gp_coded_value_slot(&mut reader, 1024, &mut refs, 0).unwrap();
+            let body = slot.body.unwrap();
+            assert_eq!(
+                (body.version, body.base_version, body.base_short),
+                (version, 1, 7)
+            );
+            let GpCodedValue10_1::Field(field) = body.value else {
+                panic!("应读取 Field 值对象");
+            };
+            assert_eq!(field.string_flags, [1; 3]);
+            assert_eq!(reader.position(), end);
+            let reference = read_gp_coded_value_slot(&mut reader, 1024, &mut refs, 0).unwrap();
+            assert!(matches!(
+                reference.entry,
+                ObjectEntry10_1::BackReference { key: 55, .. }
+            ));
+            assert!(reference.body.is_none());
+            assert_eq!(reader.remaining(), 0);
+        }
+    }
 
     #[test]
     fn fme_dataset_reads_unversioned_bstr_and_reference() {
