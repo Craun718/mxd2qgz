@@ -920,6 +920,30 @@ mod tests {
         }
 
         let io_offset = end - 16 - encoded_string("尾段").len();
+        for version in [1_u16, 3] {
+            use crate::objects::envelope::ENVELOPE_CLASS_ID;
+
+            let mut envelope = Vec::from(ENVELOPE_CLASS_ID);
+            envelope.extend(61_u32.to_le_bytes());
+            envelope.extend(version.to_le_bytes());
+            for coordinate in [1.0_f64, 2.0, 3.0, 4.0] {
+                envelope.extend(coordinate.to_le_bytes());
+            }
+            if version == 3 {
+                envelope.extend([0; 20]);
+            }
+            let mut with_envelope = bytes.clone();
+            with_envelope.splice(io_offset - 16..io_offset, envelope.iter().copied());
+            let mut reader = Reader::new(&with_envelope);
+            let mut refs = RefTable10_1::new();
+            let layer = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+            let tail = layer.tail.unwrap();
+            assert!(tail.envelope_f0.unwrap().body.is_some());
+            assert!(tail.geodata_xform_v13.is_none());
+            assert_eq!(reader.position(), end + envelope.len() - 16);
+            assert_eq!(refs.registered_class(61), Some(ENVELOPE_CLASS_ID));
+        }
+
         for tag30 in [None, Some(false), Some(true)] {
             let mut records = Vec::new();
             records.extend(0xff00ff_i32.to_le_bytes());

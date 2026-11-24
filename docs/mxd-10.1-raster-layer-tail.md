@@ -1663,3 +1663,11 @@ RasterIO 未命中时，Load 从 `0x7c73c668` 到
 跳过查询和安装。构造测试同时覆盖零长度 ExtraSafe、带空对象头的
 ExtraSafe 和普通空关联槽，验证记录保留及图层边界。真实宿主和
 ArcMap/QGIS 人工验收仍待验证。
+
+RasterLayer.dll 10.1.0.3035 的 Load 在 `0x7c73c3c1` 起准备
+旧 IEnvelope 输出位置，`0x7c73c3cd` 调用 LoadObject，将输出存入
+持久化视图 `+0xf0`。后续从 `0x7c73c3d6` 开始处理 RasterIO，
+该路径未调用所载包络的接口，也未通过此槽写入数据集成员 `+0xb0`。
+无界读取接受已完整读取且不含空间参考的新 Envelope。包络回引和
+内嵌非空空间参考暂未纳入这一分支。构造测试验证 v1 和显式空空间
+参考的 v3 均保留后继条目边界，尚未在 ArcMap/QGIS 人工验收。

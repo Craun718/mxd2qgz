@@ -58,7 +58,9 @@ use crate::objects::dataset_name_more::{
     read_relationship_class_name_body_10_1, read_tabular_name_slot_10_1,
 };
 use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
-use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
+use crate::objects::envelope::{
+    ENVELOPE_CLASS_ID, Envelope10_1, SpatialReferenceEntry10_1, read_envelope_10_1,
+};
 use crate::objects::geodata_xform::{
     GeodataXformSlot10_1, PROJECTIVE_XFORM_CLASS_ID, read_bounded_projective_candidate,
     read_geodata_xform_slot_10_1,
@@ -917,9 +919,16 @@ pub(super) fn read_raster_layer_tail(
             || related_objects
                 .iter()
                 .any(|slot| slot.entry != ObjectEntry10_1::Null)
-            || envelope_f0
-                .as_ref()
-                .is_some_and(|slot| slot.entry != ObjectEntry10_1::Null)
+            || envelope_f0.as_ref().is_some_and(|slot| {
+                // 旧包络只写入持久化视图 +0xf0，限制为无空间参考回调的新对象。
+                slot.entry != ObjectEntry10_1::Null
+                    && !slot.body.as_ref().is_some_and(|body| {
+                        matches!(
+                            body.spatial_reference,
+                            None | Some(SpatialReferenceEntry10_1::Null)
+                        )
+                    })
+            })
             || raster_io.as_ref().is_some_and(|io| {
                 match (&io.tag30_name, io.tag31_string.as_deref()) {
                     (None, None) => false,
