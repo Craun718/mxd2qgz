@@ -645,6 +645,9 @@ const GP_FEATURE_LAYER_CLASS_ID: [u8; 16] = [
 const GP_RASTER_CATALOG_LAYER_CLASS_ID: [u8; 16] = [
     0xf1, 0x0f, 0x8f, 0x60, 0xec, 0xdf, 0x81, 0x48, 0xa6, 0x51, 0x2b, 0xc5, 0xce, 0x5a, 0xcd, 0x73,
 ];
+const GP_GROUP_LAYER_CLASS_ID: [u8; 16] = [
+    0x68, 0x72, 0x95, 0x10, 0x3e, 0x80, 0xb4, 0x4c, 0xbd, 0x9c, 0xc2, 0xb6, 0x60, 0xb9, 0x8b, 0xdf,
+];
 const GP_CADASTRAL_FABRIC_LAYER_CLASS_ID: [u8; 16] = [
     0xfb, 0x8d, 0x5d, 0x6f, 0x4b, 0xa0, 0x41, 0x47, 0x88, 0x23, 0x90, 0xef, 0x1c, 0x56, 0xfd, 0xf1,
 ];
@@ -983,6 +986,7 @@ pub const GP_EXTENT_CLASS_ID: [u8; 16] = [
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpCodedValue10_1 {
     MosaicLayer(Box<GpLayer10_1>),
+    GroupLayer(Box<GpLayer10_1>),
     CadastralFabricLayer(Box<GpLayer10_1>),
     TinLayer(Box<GpLayer10_1>),
     TerrainLayer(Box<GpLayer10_1>),
@@ -3299,6 +3303,7 @@ fn read_gp_coded_value_entry(
                     | GP_RASTER_CATALOG_LAYER_CLASS_ID
                     | GP_MOSAIC_LAYER_CLASS_ID
                     | GP_CADASTRAL_FABRIC_LAYER_CLASS_ID
+                    | GP_GROUP_LAYER_CLASS_ID
                     | GP_RASTER_DATA_LAYER_CLASS_ID
                     | GP_RASTER_DATA_CLASS_ID
                     | GP_POINT_CLASS_ID
@@ -3422,7 +3427,10 @@ fn read_gp_coded_value_entry(
             }))
         }
         ObjectEntry10_1::NewObject {
-            class_id: class_id @ (GP_MOSAIC_LAYER_CLASS_ID | GP_CADASTRAL_FABRIC_LAYER_CLASS_ID),
+            class_id:
+                class_id @ (GP_MOSAIC_LAYER_CLASS_ID
+                | GP_CADASTRAL_FABRIC_LAYER_CLASS_ID
+                | GP_GROUP_LAYER_CLASS_ID),
             ..
         } => {
             let layer = read_gp_layer_body(reader, max_bytes, table, depth, class_id)?;
@@ -3434,10 +3442,12 @@ fn read_gp_coded_value_entry(
                     .version,
                 base_version: layer.gp_value_version,
                 base_short: layer.gp_value_short,
-                value: if class_id == GP_MOSAIC_LAYER_CLASS_ID {
-                    GpCodedValue10_1::MosaicLayer(Box::new(layer))
-                } else {
-                    GpCodedValue10_1::CadastralFabricLayer(Box::new(layer))
+                value: match class_id {
+                    GP_MOSAIC_LAYER_CLASS_ID => GpCodedValue10_1::MosaicLayer(Box::new(layer)),
+                    GP_CADASTRAL_FABRIC_LAYER_CLASS_ID => {
+                        GpCodedValue10_1::CadastralFabricLayer(Box::new(layer))
+                    }
+                    _ => GpCodedValue10_1::GroupLayer(Box::new(layer)),
                 },
             }))
         }
@@ -4984,6 +4994,7 @@ fn read_gp_layer_slot(
                     | GP_COMPOSITE_LAYER_CLASS_ID
                     | GP_MOSAIC_LAYER_CLASS_ID
                     | GP_CADASTRAL_FABRIC_LAYER_CLASS_ID
+                    | GP_GROUP_LAYER_CLASS_ID
                     | GP_TERRAIN_LAYER_CLASS_ID
                     | GP_TOPOLOGY_LAYER_CLASS_ID
                     | GP_NETWORK_DATASET_LAYER_CLASS_ID
@@ -5002,6 +5013,7 @@ fn read_gp_layer_slot(
                 | GP_COMPOSITE_LAYER_CLASS_ID
                 | GP_MOSAIC_LAYER_CLASS_ID
                 | GP_CADASTRAL_FABRIC_LAYER_CLASS_ID
+                | GP_GROUP_LAYER_CLASS_ID
                 | GP_TERRAIN_LAYER_CLASS_ID
                 | GP_TOPOLOGY_LAYER_CLASS_ID
                 | GP_NETWORK_DATASET_LAYER_CLASS_ID
@@ -5062,7 +5074,10 @@ fn read_gp_layer_body(
     .transpose()?;
     let composite_versions = matches!(
         class_id,
-        GP_COMPOSITE_LAYER_CLASS_ID | GP_MOSAIC_LAYER_CLASS_ID | GP_CADASTRAL_FABRIC_LAYER_CLASS_ID
+        GP_COMPOSITE_LAYER_CLASS_ID
+            | GP_MOSAIC_LAYER_CLASS_ID
+            | GP_CADASTRAL_FABRIC_LAYER_CLASS_ID
+            | GP_GROUP_LAYER_CLASS_ID
     )
     .then(|| {
         Ok::<_, io::Error>((
@@ -11641,7 +11656,11 @@ mod tests {
 
     #[test]
     fn gp_composite_derivatives_read_as_coded_values_and_layer_references() {
-        for class_id in [GP_MOSAIC_LAYER_CLASS_ID, GP_CADASTRAL_FABRIC_LAYER_CLASS_ID] {
+        for class_id in [
+            GP_MOSAIC_LAYER_CLASS_ID,
+            GP_CADASTRAL_FABRIC_LAYER_CLASS_ID,
+            GP_GROUP_LAYER_CLASS_ID,
+        ] {
             let mut bytes = class_id.to_vec();
             bytes.extend(1_u32.to_le_bytes());
             let version_offset = bytes.len();
@@ -11694,7 +11713,8 @@ mod tests {
                 | (
                     GP_CADASTRAL_FABRIC_LAYER_CLASS_ID,
                     GpCodedValue10_1::CadastralFabricLayer(layer),
-                ) => layer,
+                )
+                | (GP_GROUP_LAYER_CLASS_ID, GpCodedValue10_1::GroupLayer(layer)) => layer,
                 _ => panic!("应读取对应的 GP 组合图层"),
             };
             let members = layer.composite.unwrap();

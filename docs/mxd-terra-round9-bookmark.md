@@ -3359,6 +3359,20 @@ Rust 在编码值和 IGPLayer 槽复用组合层读取器并保留类身份。
 构造测试覆盖成员回引、超限版本、截断和对象终点。
 真实 MXD 宿主与 ArcMap/QGIS 人工验收仍待验证。
 
+#### GPGroupLayer
+
+ArcMap 10.1 Desktop 互操作元数据将
+`10957268-803E-4CB4-BD9C-C2B660B98BDF` 定名为 GPGroupLayer，
+并列出 IGPValue、IGPLayer、IPersistStream。用同摘要
+GpObjects.dll 10.1.0.3035 的 PE RTTI `0x748006ac` 定位
+持久化表 `0x747b0e58`。Load 共用 `0x746ecce0`。
+Save `0x746e6bb0` 在 `0x746e6bcf` 写 short，再经
+`0x746e6bf0` 调用 GPCompositeLayerBase::Save，之后无附加流字段。
+
+Rust 在编码值和 IGPLayer 槽复用组合层读取器，保留 GPGroupLayer
+类身份。构造测试覆盖成员回引、超限版本、截断和对象终点。
+真实 MXD 宿主及 ArcMap/QGIS 人工验收仍待验证。
+
 #### GPRasterCatalogLayer
 
 10.1 Desktop 互操作元数据将 CLSID
