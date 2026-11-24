@@ -389,6 +389,8 @@ pub enum DatasetNameMoreBody10_1 {
     RasterDataset(Box<RasterDatasetNameEntryBody10_1>),
     SchematicClass(Box<SchematicClassNameBody10_1>),
     SchematicDataset(Box<SchematicDatasetNameBody10_1>),
+    SchematicDiagram(Box<SchematicDiagramNameBody10_1>),
+    SchematicFolder(Box<SchematicFolderNameBody10_1>),
     /// NetCDFTableName 在 IName 槽中的对象体。
     NetCdfTable(Box<NetCdfTableNameBody10_1>),
     /// MosaicDB 的 ReferencedTableName 包装体。
@@ -1214,6 +1216,22 @@ fn read_dataset_name_object_body_10_1(
                 stop,
             ))
         }
+        SCHEMATIC_DIAGRAM_NAME_CLASS_ID => {
+            let mut stop = None;
+            let body = read_schematic_diagram_name_body_10_1(reader, max_bytes, table, &mut stop)?;
+            Ok((
+                DatasetNameMoreBody10_1::SchematicDiagram(Box::new(body)),
+                stop,
+            ))
+        }
+        SCHEMATIC_FOLDER_NAME_CLASS_ID => {
+            let mut stop = None;
+            let body = read_schematic_folder_name_body_10_1(reader, max_bytes, table, &mut stop)?;
+            Ok((
+                DatasetNameMoreBody10_1::SchematicFolder(Box::new(body)),
+                stop,
+            ))
+        }
         SCHEMATIC_DATASET_NAME_CLASS_ID => {
             let (body, stop) =
                 read_schematic_dataset_name_body_10_1(reader, max_bytes, table, key)?;
@@ -1545,6 +1563,8 @@ pub(crate) fn read_overlay_name_slot_10_1(
                     | MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID
                     | CAD_DRAWING_NAME_CLASS_ID
                     | SCHEMATIC_DATASET_NAME_CLASS_ID
+                    | SCHEMATIC_DIAGRAM_NAME_CLASS_ID
+                    | SCHEMATIC_FOLDER_NAME_CLASS_ID
             )
     })
 }
@@ -2273,6 +2293,70 @@ mod tests {
                 _ => panic!("瓦片名称类型错误"),
             }
             assert_eq!(refs.registered_class(90), Some(class));
+            assert_eq!(reader.position(), end);
+            assert_eq!(read_string_10_1(&mut reader, 256).unwrap(), "格网编号");
+        }
+    }
+
+    #[test]
+    fn overlay_schematic_names_read_nested_name_and_following_field() {
+        for (class_id, child_class, strings) in [
+            (
+                SCHEMATIC_DIAGRAM_NAME_CLASS_ID,
+                SCHEMATIC_DIAGRAM_CLASS_NAME_CLASS_ID,
+                3,
+            ),
+            (
+                SCHEMATIC_FOLDER_NAME_CLASS_ID,
+                SCHEMATIC_DATASET_NAME_CLASS_ID,
+                4,
+            ),
+        ] {
+            let mut bytes = entry(&class_id, 90).to_vec();
+            bytes.extend(1_i16.to_le_bytes());
+            for _ in 0..strings {
+                bytes.extend(str_bytes(""));
+            }
+            bytes.extend(entry(&child_class, 91));
+            bytes.extend(1_i16.to_le_bytes());
+            for _ in 0..3 {
+                bytes.extend(str_bytes(""));
+            }
+            bytes.extend([0; 16]);
+            let end = bytes.len();
+            bytes.extend(str_bytes("格网编号"));
+            let mut refs = RefTable10_1::new();
+            for cut in 0..end {
+                let mut reader = Reader::new(&bytes[..cut]);
+                assert!(
+                    read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).is_err()
+                );
+                assert_eq!(reader.position(), 0);
+                assert!(refs.is_empty());
+            }
+            let mut reader = Reader::new(&bytes);
+            let mut stop = None;
+            let slot = read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut stop).unwrap();
+            match slot {
+                DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::SchematicDiagram(body)) => {
+                    assert_eq!(class_id, SCHEMATIC_DIAGRAM_NAME_CLASS_ID);
+                    assert!(matches!(
+                        body.diagram_class,
+                        DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::SchematicClass(_))
+                    ));
+                }
+                DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::SchematicFolder(body)) => {
+                    assert_eq!(class_id, SCHEMATIC_FOLDER_NAME_CLASS_ID);
+                    assert!(matches!(
+                        body.dataset,
+                        DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::SchematicDataset(_))
+                    ));
+                }
+                _ => panic!("应读取示意图名称"),
+            }
+            assert!(stop.is_none());
+            assert_eq!(refs.registered_class(90), Some(class_id));
+            assert_eq!(refs.registered_class(91), Some(child_class));
             assert_eq!(reader.position(), end);
             assert_eq!(read_string_10_1(&mut reader, 256).unwrap(), "格网编号");
         }
