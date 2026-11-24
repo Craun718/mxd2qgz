@@ -22,7 +22,10 @@ use crate::objects::envelope::{
     ENVELOPE_CLASS_ID, Envelope10_1, SpatialReferenceEntry10_1, read_envelope_10_1,
     read_spatial_reference_entry_10_1,
 };
-use crate::objects::geometry::{GeometryBody10_1, read_keyed_geometry_body_10_1};
+use crate::objects::geometry::{
+    GEOMETRY_BAG_CLASS_ID, GeometryBody10_1, MULTIPATCH_CLASS_ID, MULTIPOINT_CLASS_ID,
+    POINT_CLASS_ID, POLYGON_CLASS_ID, POLYLINE_CLASS_ID, read_keyed_geometry_body_10_1,
+};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -169,9 +172,30 @@ fn read_globe_element_properties(
         .to_vec();
     let mut geometries = Vec::new();
     for _ in 6..=version {
-        geometries.push(read_object(r, refs, |cls, key, r, refs| {
+        let mut geometry = read_object(r, refs, |cls, key, r, refs| {
             read_keyed_geometry_body_10_1(cls, key, r, max, refs)
-        })?);
+        })?;
+        if let ObjectEntry10_1::BackReference { class_id, key } = &mut geometry.entry
+            && let Some(registered) = refs.registered_class(*key)
+        {
+            if !matches!(
+                registered,
+                ENVELOPE_CLASS_ID
+                    | GEOMETRY_BAG_CLASS_ID
+                    | MULTIPATCH_CLASS_ID
+                    | MULTIPOINT_CLASS_ID
+                    | POINT_CLASS_ID
+                    | POLYGON_CLASS_ID
+                    | POLYLINE_CLASS_ID
+            ) {
+                return Err(unsupported(
+                    &registered,
+                    "Globe 元素附加属性的 IGeometry 回引",
+                ));
+            }
+            *class_id = registered;
+        }
+        geometries.push(geometry);
     }
     Ok(GlobeElementProperties10_1 { raw, geometries })
 }
@@ -322,6 +346,51 @@ mod tests {
     use super::*;
     use crate::maps::group_element::GroupChild10_1;
     use crate::maps::map_object::MAP_CLASS_ID;
+
+    #[test]
+    fn globe_element_geometry_references_check_registered_class() {
+        let mut bytes = 6_u16.to_le_bytes().to_vec();
+        bytes.extend([2, 0, 0, 0, 0, 0]);
+        bytes.extend([0; 4 + 16 + 16]);
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend([0; 16 + 258]);
+        bytes.extend(MAP_CLASS_ID);
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend([0; 8 + 32]);
+        let end = bytes.len();
+        bytes.extend([0xa5; 16]);
+        for registered in [POINT_CLASS_ID, MAP_CLASS_ID] {
+            let mut prior = registered.to_vec();
+            prior.extend(1_u32.to_le_bytes());
+            let mut refs = RefTable10_1::new();
+            read_object_entry_10_1(&mut Reader::new(&prior), &mut refs).unwrap();
+            let before = refs.clone();
+            let mut reader = Reader::new(&bytes);
+            let result = read_graphics_3d_layer_10_1(
+                &GLOBE_GRAPHICS_LAYER_CLASS_ID,
+                &mut reader,
+                4096,
+                &mut refs,
+            );
+            if registered == POINT_CLASS_ID {
+                let layer = result.unwrap();
+                let props = layer.elements[0].globe_properties.as_ref().unwrap();
+                assert_eq!(
+                    props.geometries[0].entry,
+                    ObjectEntry10_1::BackReference {
+                        class_id: POINT_CLASS_ID,
+                        key: 1
+                    }
+                );
+                assert!(props.geometries[0].body.is_none());
+                assert_eq!(reader.position(), end);
+            } else {
+                assert_eq!(result.unwrap_err().kind(), ErrorKind::Unsupported);
+                assert_eq!(reader.position(), 0);
+            }
+            assert_eq!(refs, before);
+        }
+    }
 
     #[test]
     fn graphics_3d_envelope_references_check_registered_class() {

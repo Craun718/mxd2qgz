@@ -296,6 +296,14 @@ Globe `0x72f60153` 请求 IEnvelope，因此在共享表已记录类时
 后继边界及登记类错误时的事务回滚。真实三维宿主及 ArcMap/QGIS
 人工验收仍待验证。
 
+GlobeLayers.dll 10.1.0.3035 的 `0x72f60729` 和 `0x72f6075a`
+对 v6、v7 增补的两槽均调用 LoadObject，请求同一个 IGeometry IID。
+负 HRESULT 分别从 `0x72f60738` 和 `0x72f60769` 退出。按
+SystemCore.dll 的登记键接口查询路径，读取器以已登记类校验该回引，
+支持与几何新体相同的七个已确认类。构造测试覆盖 Point 的登记类
+覆盖回引头、非几何登记类的事务回滚，以及容器后继字节位置。
+真实三维宿主仍待人工验收。
+
 ### LELP 容器和关联图层接线
 
 Scene.dll 的 `0x7d2a4af4` 和 GlobeLayers.dll 的 `0x72f60131` 都将同一个 `ILayer {34C20002-4D3C-11D0-92D8-00805F7C28B0}` 传给普通 `LoadObject`。两处 Save 分别以 `this+0x20` 和 `this+0x34` 的对象调用 SaveObject。普通对象槽没有可跳过的外层长度；关联槽仅在已有读取器证实读完 FeatureLayer、CompositeGraphicsLayer、FDOGraphicsLayer、GraphicsLayer3D 或 GlobeGraphicsLayer 的对象体后提交。其余图层的普通对象体或子槽仍待接入。两类 3D 图层也在 Map 图层列表按标志 1 或 ExtraSafe 分派，ExtraSafe 路径在条目范围内试读并检查完整消费。
