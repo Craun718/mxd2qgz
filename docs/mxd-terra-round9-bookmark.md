@@ -2984,3 +2984,32 @@ Load `0x7109f510` 使用无符号比较拒绝大于 2 的版本。
 的版本 3 分支受入口版本上限限制，在 10.1.0.3035 中不可达。
 这些调用点给出方向对象的字段顺序。三个可达子对象槽的具体
 持久化类、非空体边界和实际 MXD 宿主仍待确认。
+
+10.1 的 `esriGeoDatabase.olb` 类型和 coclass 引用表将三个
+可达槽连接到以下实现。用同一 GdbNetwork.dll 的 x86 RTTI
+与虚表复核了读取入口。
+
+| 接口 | 类型库中的实现 | CLSID |
+| --- | --- | --- |
+| IShields | Shields | `F2D646B4-F0D6-40B5-A798-823C1BFA4E99` |
+| IStreetNameFields | StreetNameFields | `FE4B2823-407B-418E-AB25-40D85767EA24` |
+| IDirectionsFieldMapping | DirectionsFieldMapping | `1AAADF55-7530-4CA5-9D41-90FF94C91C5A` |
+
+Shields 的 +0x18 表 `0x7119b360` 给出 Load `0x710a25b0`。
+它读取 short，按有符号上限 1 比较，随后读取三个 AfCore
+String 和一个 long 标志。读取点 `0x710a266c`、
+`0x710a26d5` 各读一个有符号 long 计数，正数时分别
+从 `0x710a2694`、`0x710a2704` 循环读取 String。
+
+StreetNameFields 的 +0x18 表 `0x7119b844` 给出 Load
+`0x710a4cb0`。入口对 short 减 1 后按无符号上限 2
+比较，接受版本 1–3。各版本依次读取五个 String 和一个
+long。版本 2 起在 `0x710a4d47` 追加一个 String，
+版本 3 在 `0x710a4d61`、`0x710a4d6b` 再追加两个。
+
+DirectionsFieldMapping 的 +0x10 表 `0x71191380` 指向
+外层流读取入口 `0x711642d0`，其实现含不同的分派路径。
+类内的 `0x70fcb4a0` 调整接收者后进入 `0x70fcb170`，
+该路径接受 short 版本 1，并依次读取两个 String。
+仍需区分外层加载路径，核对何时调用此短体读取器，以及各
+类在真实 MXD 中的对象边界。
