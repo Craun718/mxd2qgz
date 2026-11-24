@@ -7220,3 +7220,17 @@ fn feature_bookmark_reads_3da_settings_coded_values() {
         );
     }
 }
+
+#[test]
+fn feature_bookmark_reads_gp_field_info_ex_coded_value() {
+    use mxd2qgz::maps::map_surround::{GP_FIELD_INFO_EX_CLASS_ID, GpCodedValue10_1};
+
+    for version in [0, 1] {
+        assert_legacy_topo_coded_value(
+            GP_FIELD_INFO_EX_CLASS_ID,
+            version,
+            &bookmark_string_10_1("字段说明"),
+            GpCodedValue10_1::FieldInfoEx("字段说明".into()),
+        );
+    }
+}

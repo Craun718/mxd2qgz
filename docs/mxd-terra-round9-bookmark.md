@@ -1930,3 +1930,17 @@ Load `0x74d41fb0` 和 `0x74d44240` 都接受无符号版本 0、1，
 Save `0x74d42080` 和 `0x74d44360` 按相同字段顺序写出。
 构造书签覆盖两个读取版本、拒绝超限版本、同键回引和截断回滚。
 字段语义、实际编码值域宿主及 ArcMap/QGIS 人工验收仍待确认。
+
+### GPFieldInfoEx
+
+FeatureDataElements.dll PE32 10.1.0.3035 的 SHA-256 为
+`7cd1153712d8af23f6c2263b6444c1a77e16b818fb5fb946d0c3d9106be5f429`。
+安装介质文件以 objdump 复核。QI 在 `0x6f627897` 比较 IGPValue IID
+（常量 `0x6f658604`）。RTTI 对应的持久化表 `0x6f661888` 的
+GetClassID `0x6f628440` 返回 `{4BC6F3FB-4666-425D-BBB5-F09BE77A4E5E}`。
+
+Load `0x6f6284a0` 接受无符号版本 0 和 1，在 `0x6f6284e2`
+调用 GPValue::Load，再在 `0x6f6284f0` 调用 AfCore 的 String::Read。
+Save `0x6f628510` 写版本 1，按相同顺序保存基类和字符串。
+构造书签覆盖两个可读版本、超限版本、同键回引和截断回滚。
+实际编码值域宿主及 ArcMap/QGIS 人工验收仍待确认。

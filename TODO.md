@@ -780,6 +780,7 @@
       - [x] 接入 GPCodedValueDomain 的 GPNAHierarchySettings。[取证](docs/mxd-terra-round9-bookmark.md#gpnahierarchysettings)
       - [x] 接入 GPCodedValueDomain 的 GP3DADecimate。[取证](docs/mxd-terra-round9-bookmark.md#gp3dadecimate-与-gp3dainterpolate)
       - [x] 接入 GPCodedValueDomain 的 GP3DAInterpolate。[取证](docs/mxd-terra-round9-bookmark.md#gp3dadecimate-与-gp3dainterpolate)
+      - [x] 接入 GPCodedValueDomain 的 GPFieldInfoEx。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldinfoex)
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
       - [x] 接入 GPFieldInfo 的基础行和 v2 扩展字段。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldinfo)
       - [x] 接入 GPWorkspaceExtension 的名称与扩展 GUID。[取证](docs/mxd-terra-round9-bookmark.md#gpworkspaceextension)

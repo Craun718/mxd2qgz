@@ -455,6 +455,10 @@ pub const NA_CLASS_FIELD_MAP_CLASS_ID: [u8; 16] = [
     0xf8, 0x9f, 0x1c, 0xe6, 0xbf, 0x06, 0xe5, 0x42, 0xad, 0x66, 0x84, 0x93, 0x64, 0xb4, 0x85, 0x49,
 ];
 
+pub const GP_FIELD_INFO_EX_CLASS_ID: [u8; 16] = [
+    0xfb, 0xf3, 0xc6, 0x4b, 0x66, 0x46, 0x5d, 0x42, 0xbb, 0xb5, 0xf0, 0x9b, 0xe7, 0x7a, 0x4e, 0x5e,
+];
+
 pub const GP_FIELD_INFO_CLASS_ID: [u8; 16] = [
     0xd7, 0x5c, 0xce, 0x2e, 0x67, 0x85, 0xc7, 0x44, 0xa6, 0xa3, 0xc8, 0x6f, 0xaf, 0x2b, 0x55, 0x50,
 ];
@@ -641,6 +645,7 @@ pub enum GpCodedValue10_1 {
         raw_count: i32,
         rows: Vec<NaClassFieldMapRow10_1>,
     },
+    FieldInfoEx(String),
     FieldInfo {
         raw_count: i32,
         rows: Vec<GpFieldInfoRow10_1>,
@@ -2093,6 +2098,7 @@ fn read_gp_coded_value_entry(
                     | GP_SA_CELL_SIZE_CLASS_ID
                     | GP_WORKSPACE_EXTENSION_CLASS_ID
                     | GP_DATA_FILE_CLASS_ID
+                    | GP_FIELD_INFO_EX_CLASS_ID
                     | GP_FIELD_INFO_CLASS_ID
                     | GP_3DA_DECIMATE_CLASS_ID
                     | GP_3DA_INTERPOLATE_CLASS_ID
@@ -2155,6 +2161,7 @@ fn read_gp_coded_value_entry(
                 | GP_SA_CELL_SIZE_CLASS_ID
                 | GP_WORKSPACE_EXTENSION_CLASS_ID
                 | GP_DATA_FILE_CLASS_ID
+                | GP_FIELD_INFO_EX_CLASS_ID
                 | GP_FIELD_INFO_CLASS_ID
                 | GP_3DA_DECIMATE_CLASS_ID
                 | GP_3DA_INTERPOLATE_CLASS_ID
@@ -2395,6 +2402,9 @@ fn read_gp_coded_value_entry(
                         });
                     }
                     GpCodedValue10_1::NaClassFieldMap { raw_count, rows }
+                }
+                GP_FIELD_INFO_EX_CLASS_ID => {
+                    GpCodedValue10_1::FieldInfoEx(read_string_10_1(reader, max_bytes)?)
                 }
                 GP_FIELD_INFO_CLASS_ID => read_gp_field_info(reader, max_bytes, version)?,
                 GP_ARC_INFO_ITEM_CLASS_ID => GpCodedValue10_1::ArcInfoItem {
