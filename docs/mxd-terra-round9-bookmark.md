@@ -1259,7 +1259,9 @@ Save 在 `0x746ef5ac` 调用内嵌数据类型接口的 +0x18 取名称，
 +0x18 导入 DECoreLib::GPDataType::get_FullName，后者返回 IName。
 解析复用已有 GP 数据类型名称分派并保留对象回引。构造书签
 覆盖非空 GPDataTypeName、嵌套名称回引和逐字节截断回滚。
-其余名称类和 Open 的运行结果待验证。
+构造书签还覆盖类型槽内的 GPMultiValueTypeName v1。外层名称
+读取内嵌 GPDataTypeName，并由后续 GPMultiValue 和 GPValueTable
+通过同一对象键回引。其余名称类和 Open 的运行结果待验证。
 
 #### GPValueTable
 

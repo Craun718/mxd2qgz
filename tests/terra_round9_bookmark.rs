@@ -4930,7 +4930,8 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
     use mxd2qgz::maps::map_surround::{
         GP_AREAL_UNIT_CLASS_ID, GP_BOOLEAN_CLASS_ID, GP_DATE_CLASS_ID, GP_DOUBLE_CLASS_ID,
         GP_ENCRYPTED_STRING_CLASS_ID, GP_LINEAR_UNIT_CLASS_ID, GP_MULTI_VALUE_CLASS_ID,
-        GP_RANDOM_NUMBER_GENERATOR_CLASS_ID, GP_VALUE_TABLE_CLASS_ID, GP_VARIANT_CLASS_ID,
+        GP_MULTI_VALUE_TYPE_NAME_CLASS_ID, GP_RANDOM_NUMBER_GENERATOR_CLASS_ID,
+        GP_VALUE_TABLE_CLASS_ID, GP_VARIANT_CLASS_ID,
     };
     use mxd2qgz::maps::map_surround::{
         GP_CODED_VALUE_DOMAIN_CLASS_ID, GP_DATA_TYPE_NAME_CLASS_ID, GP_FIELD_INFO_DOMAIN_CLASS_ID,
@@ -5040,7 +5041,9 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
         bytes.extend(bookmark_entry_10_1(&GP_MULTI_VALUE_CLASS_ID, 30));
         bytes.extend([1, 0, 1, 0, 7, 0]);
         if nested {
-            bytes.extend(bookmark_entry_10_1(&GP_DATA_TYPE_NAME_CLASS_ID, 32));
+            bytes.extend(bookmark_entry_10_1(&GP_MULTI_VALUE_TYPE_NAME_CLASS_ID, 32));
+            bytes.extend(1_i16.to_le_bytes());
+            bytes.extend(bookmark_entry_10_1(&GP_DATA_TYPE_NAME_CLASS_ID, 34));
             bytes.extend(2_i16.to_le_bytes());
             bytes.extend(2_i16.to_le_bytes());
             bytes.extend([0; 16]);
@@ -5052,7 +5055,7 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
         bytes.extend(bookmark_entry_10_1(&GP_MULTI_VALUE_CLASS_ID, 31));
         bytes.extend([1, 0, 1, 0, 7, 0]);
         if nested {
-            bytes.extend(bookmark_entry_10_1(&GP_DATA_TYPE_NAME_CLASS_ID, 32));
+            bytes.extend(bookmark_entry_10_1(&GP_MULTI_VALUE_TYPE_NAME_CLASS_ID, 32));
         } else {
             bytes.extend([0; 16]);
         }
@@ -5061,7 +5064,7 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
         bytes.extend([1, 0, 1, 0, 7, 0]);
         bytes.extend(2_i32.to_le_bytes());
         if nested {
-            bytes.extend(bookmark_entry_10_1(&GP_DATA_TYPE_NAME_CLASS_ID, 32));
+            bytes.extend(bookmark_entry_10_1(&GP_MULTI_VALUE_TYPE_NAME_CLASS_ID, 32));
         } else {
             bytes.extend([0; 16]);
         }
@@ -5140,7 +5143,10 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
         };
         if nested {
             assert!(
-                matches!(type_name.as_ref(), BookmarkNameEntry10_1::GpDataTypeName(body) if body.version == 2)
+                matches!(type_name.as_ref(), BookmarkNameEntry10_1::GpMultiValueTypeName {
+                    version: 1, element_type,
+                } if matches!(element_type.as_ref(), BookmarkNameEntry10_1::GpDataTypeName(body)
+                    if body.version == 2))
             );
         } else {
             assert_eq!(type_name.as_ref(), &BookmarkNameEntry10_1::Null);
@@ -5158,7 +5164,7 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
             GpCodedValue10_1::MultiValue {
                 type_name: Box::new(if nested {
                     BookmarkNameEntry10_1::BackReference {
-                        class_id: GP_DATA_TYPE_NAME_CLASS_ID,
+                        class_id: GP_MULTI_VALUE_TYPE_NAME_CLASS_ID,
                         key: 32,
                     }
                 } else {
