@@ -4943,6 +4943,7 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
 
     for type_class in [
         None,
+        Some(GP_DATA_TYPE_NAME_CLASS_ID),
         Some(GP_MULTI_VALUE_TYPE_NAME_CLASS_ID),
         Some(GP_VALUE_TABLE_TYPE_NAME_CLASS_ID),
         Some(GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID),
@@ -5054,6 +5055,10 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
                 bytes.extend(2_i16.to_le_bytes());
                 bytes.extend(2_i16.to_le_bytes());
                 bytes.extend([0; 16]);
+            } else if class_id == GP_DATA_TYPE_NAME_CLASS_ID {
+                bytes.extend(2_i16.to_le_bytes());
+                bytes.extend(2_i16.to_le_bytes());
+                bytes.extend([0; 16]);
             } else if class_id == GP_VALUE_TABLE_TYPE_NAME_CLASS_ID {
                 bytes.extend(3_i16.to_le_bytes());
                 bytes.extend(0_i32.to_le_bytes());
@@ -5155,6 +5160,10 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
             panic!("应读取 GP 多值对象");
         };
         match type_class {
+            Some(GP_DATA_TYPE_NAME_CLASS_ID) => assert!(matches!(
+                type_name.as_ref(),
+                BookmarkNameEntry10_1::GpDataTypeName(body) if body.version == 2
+            )),
             Some(GP_MULTI_VALUE_TYPE_NAME_CLASS_ID) => assert!(matches!(
                 type_name.as_ref(),
                 BookmarkNameEntry10_1::GpMultiValueTypeName { version: 1, element_type }
