@@ -621,6 +621,9 @@ const GP_LAYER_CLASS_ID: [u8; 16] = [
     0x1e, 0x59, 0x47, 0x6a, 0x16, 0xaa, 0x3e, 0x44, 0xb5, 0x0d, 0xd8, 0x92, 0x66, 0x59, 0xa4, 0xe1,
 ];
 
+const GP_RASTER_CATALOG_LAYER_CLASS_ID: [u8; 16] = [
+    0xf1, 0x0f, 0x8f, 0x60, 0xec, 0xdf, 0x81, 0x48, 0xa6, 0x51, 0x2b, 0xc5, 0xce, 0x5a, 0xcd, 0x73,
+];
 const GP_MOSAIC_LAYER_CLASS_ID: [u8; 16] = [
     0xea, 0xb6, 0x2d, 0xbf, 0x17, 0x45, 0xcb, 0x44, 0xa7, 0xc4, 0xad, 0xf9, 0xf6, 0x3d, 0x4e, 0x35,
 ];
@@ -956,6 +959,7 @@ pub const GP_EXTENT_CLASS_ID: [u8; 16] = [
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpCodedValue10_1 {
     MosaicLayer(Box<GpLayer10_1>),
+    RasterCatalogLayer(Box<GpLayer10_1>),
     RasterBuilder(RuleSlot10_1<RasterFunctionArgumentsBody10_1>),
     RasterFormulated(Box<GpRasterFormulated10_1>),
     RasterDataLayer {
@@ -1237,7 +1241,17 @@ pub struct GpCompositeLayerMembers10_1 {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct GpRasterCatalogLayerFields10_1 {
+    pub version: u16,
+    pub text: String,
+    pub fid_set: RuleSlot10_1<crate::layers::feature_id_set::FeatureIdSetBody10_1>,
+    pub table: Option<RuleSlot10_1<DeChild10_1>>,
+    pub field_info: Option<RuleSlot10_1<GpCodedValueBody10_1>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct GpLayer10_1 {
+    pub raster_catalog: Option<GpRasterCatalogLayerFields10_1>,
     pub composite: Option<GpCompositeLayerMembers10_1>,
     pub version: u16,
     pub gp_value_version: u16,
@@ -3235,6 +3249,7 @@ fn read_gp_coded_value_entry(
                     | GP_FIELD_MAPPING_CLASS_ID
                     | GP_RASTER_FORMULATED_CLASS_ID
                     | GP_RASTER_BUILDER_CLASS_ID
+                    | GP_RASTER_CATALOG_LAYER_CLASS_ID
                     | GP_MOSAIC_LAYER_CLASS_ID
                     | GP_RASTER_DATA_LAYER_CLASS_ID
                     | GP_RASTER_DATA_CLASS_ID
@@ -3308,6 +3323,28 @@ fn read_gp_coded_value_entry(
             ) =>
         {
             None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: GP_RASTER_CATALOG_LAYER_CLASS_ID,
+            ..
+        } => {
+            let layer = read_gp_layer_body(
+                reader,
+                max_bytes,
+                table,
+                depth,
+                GP_RASTER_CATALOG_LAYER_CLASS_ID,
+            )?;
+            Some(Box::new(GpCodedValueBody10_1 {
+                version: layer
+                    .raster_catalog
+                    .as_ref()
+                    .expect("GPRasterCatalogLayer 有要素图层前缀")
+                    .version,
+                base_version: layer.gp_value_version,
+                base_short: layer.gp_value_short,
+                value: GpCodedValue10_1::RasterCatalogLayer(Box::new(layer)),
+            }))
         }
         ObjectEntry10_1::NewObject {
             class_id: GP_MOSAIC_LAYER_CLASS_ID,
@@ -4865,14 +4902,20 @@ fn read_gp_layer_slot(
         ObjectEntry10_1::BackReference { class_id, key }
             if matches!(
                 refs.registered_class(key).unwrap_or(class_id),
-                GP_LAYER_CLASS_ID | GP_COMPOSITE_LAYER_CLASS_ID | GP_MOSAIC_LAYER_CLASS_ID
+                GP_LAYER_CLASS_ID
+                    | GP_COMPOSITE_LAYER_CLASS_ID
+                    | GP_MOSAIC_LAYER_CLASS_ID
+                    | GP_RASTER_CATALOG_LAYER_CLASS_ID
             ) =>
         {
             None
         }
         ObjectEntry10_1::NewObject {
             class_id:
-                class_id @ (GP_LAYER_CLASS_ID | GP_COMPOSITE_LAYER_CLASS_ID | GP_MOSAIC_LAYER_CLASS_ID),
+                class_id @ (GP_LAYER_CLASS_ID
+                | GP_COMPOSITE_LAYER_CLASS_ID
+                | GP_MOSAIC_LAYER_CLASS_ID
+                | GP_RASTER_CATALOG_LAYER_CLASS_ID),
             ..
         } => Some(Box::new(read_gp_layer_body(
             reader, max_bytes, refs, depth, class_id,
@@ -4897,14 +4940,20 @@ fn read_gp_layer_body(
     if depth >= MAX_BOOKMARK_NAME_NESTING {
         return Err(io::Error::new(ErrorKind::InvalidData, "IGPLayer 嵌套过深"));
     }
-    let composite_versions = (class_id != GP_LAYER_CLASS_ID)
-        .then(|| {
-            Ok::<_, io::Error>((
-                read_de_layer_version(reader, 1, "GPCompositeLayer/GPMosaicLayer")?,
-                read_de_layer_version(reader, 1, "GPCompositeLayerBase")?,
-            ))
-        })
+    let raster_catalog_version = (class_id == GP_RASTER_CATALOG_LAYER_CLASS_ID)
+        .then(|| read_de_layer_version(reader, 2, "GPFeatureLayerBase"))
         .transpose()?;
+    let composite_versions = matches!(
+        class_id,
+        GP_COMPOSITE_LAYER_CLASS_ID | GP_MOSAIC_LAYER_CLASS_ID
+    )
+    .then(|| {
+        Ok::<_, io::Error>((
+            read_de_layer_version(reader, 1, "GPCompositeLayer/GPMosaicLayer")?,
+            read_de_layer_version(reader, 1, "GPCompositeLayerBase")?,
+        ))
+    })
+    .transpose()?;
     let version = read_de_layer_version(reader, 2, "GPLayerBase")?;
     let gp_value_version = read_de_layer_version(reader, 1, "GPValue")?;
     let gp_value_short = reader.read_u16_le()?;
@@ -4942,7 +4991,11 @@ fn read_gp_layer_body(
     } else {
         None
     };
+    let raster_catalog = raster_catalog_version
+        .map(|version| read_gp_raster_catalog_layer_fields(reader, max_bytes, refs, depth, version))
+        .transpose()?;
     Ok(GpLayer10_1 {
+        raster_catalog,
         composite,
         version,
         gp_value_version,
@@ -4951,6 +5004,58 @@ fn read_gp_layer_body(
         area_of_interest,
         element,
         legacy_layer,
+    })
+}
+
+fn read_gp_raster_catalog_layer_fields(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+    version: u16,
+) -> io::Result<GpRasterCatalogLayerFields10_1> {
+    use crate::layers::feature_id_set::{FID_SET_CLASS_ID, read_fid_set_body_10_1};
+
+    let text = read_string_10_1(reader, max_bytes)?;
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if refs.registered_class(key).unwrap_or(class_id) == FID_SET_CLASS_ID =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: FID_SET_CLASS_ID,
+            key,
+        } => Some(Box::new(read_fid_set_body_10_1(reader, refs, key)?)),
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "GPFeatureLayerBase 的 IFIDSet 类尚未支持",
+            ));
+        }
+    };
+    let (table, field_info) = if version >= 2 {
+        (
+            Some(read_gp_data_element_child(reader, max_bytes, refs, depth)?),
+            Some(read_gp_coded_value_slot_of_class(
+                reader,
+                max_bytes,
+                refs,
+                depth,
+                GP_FIELD_INFO_CLASS_ID,
+            )?),
+        )
+    } else {
+        (None, None)
+    };
+    Ok(GpRasterCatalogLayerFields10_1 {
+        version,
+        text,
+        fid_set: RuleSlot10_1 { entry, body },
+        table,
+        field_info,
     })
 }
 
@@ -11209,6 +11314,55 @@ mod tests {
             assert_eq!(
                 spatial_reference.as_deref(),
                 (class_id == DE_PRJ_FILE_CLASS_ID).then_some(&SpatialReferenceEntry10_1::Null),
+            );
+            assert_eq!(reader.position(), end);
+        }
+    }
+
+    #[test]
+    fn gp_raster_catalog_layer_reads_versioned_feature_tail() {
+        for version in 0_u16..=2 {
+            let mut bytes = GP_RASTER_CATALOG_LAYER_CLASS_ID.to_vec();
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend(version.to_le_bytes());
+            bytes.extend([2, 0, 1, 0, 9, 0]);
+            bytes.extend([2, 0, 0, 0, 0, 0]);
+            bytes.extend([0; 32]);
+            bytes.extend([2, 0, 0, 0, 0, 0]);
+            bytes.extend([0; 16]);
+            if version == 2 {
+                bytes.extend([0; 16]);
+                bytes.extend(GP_FIELD_INFO_CLASS_ID);
+                bytes.extend(2_u32.to_le_bytes());
+                bytes.extend([1, 0, 1, 0, 7, 0]);
+                bytes.extend(0_i32.to_le_bytes());
+            }
+            let read = |reader: &mut Reader<'_>| {
+                read_gp_coded_value_slot(reader, 1024, &mut RefTable10_1::new(), 0)
+            };
+            for cut in 0..bytes.len() {
+                assert!(read(&mut Reader::new(&bytes[..cut])).is_err());
+            }
+            let end = bytes.len();
+            bytes.push(0x5a);
+            let mut reader = Reader::new(&bytes);
+            let coded = read(&mut reader).unwrap().body.unwrap();
+            assert_eq!(
+                (coded.version, coded.base_version, coded.base_short),
+                (version, 1, 9)
+            );
+            let GpCodedValue10_1::RasterCatalogLayer(layer) = coded.value else {
+                panic!("应读取 GPRasterCatalogLayer");
+            };
+            let fields = layer.raster_catalog.unwrap();
+            assert_eq!(fields.fid_set.entry, ObjectEntry10_1::Null);
+            assert_eq!(fields.table.is_some(), version == 2);
+            assert_eq!(
+                fields
+                    .field_info
+                    .and_then(|slot| slot.body)
+                    .map(|body| body.base_short),
+                (version == 2).then_some(7)
             );
             assert_eq!(reader.position(), end);
         }

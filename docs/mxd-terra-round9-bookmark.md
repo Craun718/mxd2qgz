@@ -3344,6 +3344,29 @@ Rust 在编码值和 IGPLayer 槽复用同一组合层对象体读取器。
 构造测试验证计数、共享键回引、精确终点、非法版本和逐字节截断。
 真实 MXD 宿主和 ArcMap/QGIS 人工验收仍待验证。
 
+#### GPRasterCatalogLayer
+
+10.1 Desktop 互操作元数据将 CLSID
+`608F0FF1-DFEC-4881-A651-2BC5CE5ACD73` 绑定到 GPRasterCatalogLayer，
+列出 IGPLayer、IGPValue 和 IPersistStream。用同摘要的
+GpObjects.dll 10.1.0.3035 的 PE RTTI 和 objdump 核对，
++0x1c 持久化表 `0x747b42cc` 的 Load/Save 经
+`0x7478b186 / 0x7478b18c` 进入 GPFeatureLayerBase。
+GeoprocessingLib.dll 10.1.0.3035 的 SHA-256 为
+`8626273d18ff3f166f26e6aba61a4dfcdc9ad633206b9004ba05437f3352b3d6`，
+相应导出为 `0x71d2cfa0 / 0x71d2d080`。
+
+Load 读无符号 short（上限 2），在 `0x71d2cfe2` 读 GPLayerBase，
+接着读 AfCore String 和 IFIDSet（`0x71d2cfef / 0x71d2d016`）。
+v2 增读 IDataElement 和 IGPFieldInfo（`0x71d2d03b / 0x71d2d059`）。
+最后一个 IID `B4893C59-ECE5-4B2D-AB4A-540ABC813789`
+由 esriGeoprocessing 类型库 TypeInfo 63 定名。Save 按相同顺序
+写出基类、字符串和三个对象槽。
+
+Rust 共用 GPLayerBase、FIDSet、IDataElement 和 GPFieldInfo
+读取器。构造测试覆盖 v0–v2、非空 GPFieldInfo、逐字节截断和对象终点。
+真实 MXD 宿主、其他非空接口实现及 ArcMap/QGIS 人工验收仍待验证。
+
 #### 目录数据元素
 
 FileDataElements.dll 10.1.0.3035 的 PE RTTI 持久化表及
