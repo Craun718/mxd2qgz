@@ -493,6 +493,10 @@ pub const NET_WEIGHT_ASSOCIATION_CLASS_ID: [u8; 16] = [
     0x91, 0xc4, 0xbd, 0x19, 0x01, 0x62, 0xd1, 0x11, 0xb2, 0x55, 0x00, 0x00, 0xf8, 0x78, 0x22, 0x9e,
 ];
 
+pub const GP_RELATIONSHIP_CLASS_KEY_CLASS_ID: [u8; 16] = [
+    0x1f, 0x4e, 0xca, 0x5d, 0xa4, 0x81, 0xc3, 0x41, 0xb1, 0x60, 0x81, 0x8d, 0x22, 0xfc, 0x50, 0xb0,
+];
+
 pub const DE_RELATIONSHIP_CLASS_CLASS_ID: [u8; 16] = [
     0x87, 0x54, 0x1f, 0xd4, 0x16, 0x6b, 0xfd, 0x42, 0xab, 0x61, 0x63, 0xa5, 0x5b, 0x51, 0x9b, 0x71,
 ];
@@ -961,6 +965,14 @@ pub struct DeRelationshipMetadata10_1 {
     pub strings: [String; 2],
     pub shorts: [u16; 3],
     pub raw_key_counts: [i32; 2],
+    pub keys: [Vec<RuleSlot10_1<GpRelationshipClassKey10_1>>; 2],
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpRelationshipClassKey10_1 {
+    pub version: u16,
+    pub raw_long: i32,
+    pub strings: [String; 2],
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3381,13 +3393,12 @@ fn read_de_relationship_class(
             reader.read_u16_le()?,
         ];
         let mut raw_key_counts = [0; 2];
-        for count in &mut raw_key_counts {
-            *count = reader.read_u32_le()? as i32;
-            if *count > 0 {
-                return Err(io::Error::new(
-                    ErrorKind::Unsupported,
-                    "DERelationshipClass 的非空键列表尚未支持",
-                ));
+        let mut keys = [Vec::new(), Vec::new()];
+        for (raw_count, entries) in raw_key_counts.iter_mut().zip(&mut keys) {
+            let (raw, count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
+            *raw_count = raw;
+            for _ in 0..count {
+                entries.push(read_gp_relationship_key_slot(reader, max_bytes, refs)?);
             }
         }
         Some(DeRelationshipMetadata10_1 {
@@ -3396,6 +3407,7 @@ fn read_de_relationship_class(
             strings,
             shorts,
             raw_key_counts,
+            keys,
         })
     } else {
         None
@@ -3422,6 +3434,50 @@ fn read_de_relationship_class(
         fields,
         v6,
     })
+}
+
+fn read_gp_relationship_key_slot(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<RuleSlot10_1<GpRelationshipClassKey10_1>> {
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if refs.registered_class(key).unwrap_or(class_id)
+                == GP_RELATIONSHIP_CLASS_KEY_CLASS_ID =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: GP_RELATIONSHIP_CLASS_KEY_CLASS_ID,
+            ..
+        } => {
+            let version = reader.read_u16_le()?;
+            if version > 1 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "GPRelationshipClassKey 版本超限",
+                ));
+            }
+            Some(Box::new(GpRelationshipClassKey10_1 {
+                version,
+                raw_long: reader.read_u32_le()? as i32,
+                strings: [
+                    read_string_10_1(reader, max_bytes)?,
+                    read_string_10_1(reader, max_bytes)?,
+                ],
+            }))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "关系键槽包含不支持的类",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
 }
 
 fn read_de_geometric_network(

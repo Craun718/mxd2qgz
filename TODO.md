@@ -801,7 +801,7 @@
       - [x] 接入 DEGeometricNetwork 的 NetWeightAssociation 对象列表。[取证](docs/mxd-terra-round9-bookmark.md#netweight-与-netweightassociation)
       - [x] 对位 DERelationshipClass 的基类切换与版本字段门。[取证](docs/mxd-terra-round9-bookmark.md#derelationshipclass)
       - [x] 接入 IDataElement 列表中的 DERelationshipClass 主体。[取证](docs/mxd-terra-round9-bookmark.md#derelationshipclass)
-      - [ ] 接入 DERelationshipClass 的关系键对象列表。
+      - [x] 接入 DERelationshipClass 的 GPRelationshipClassKey 列表。[取证](docs/mxd-terra-round9-bookmark.md#gprelationshipclasskey)
       - [ ] 接入 DERelationshipClass 的关系规则对象列表。
       - [ ] 补齐 IDataElement 列表中其他持久化实现。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的 GPSubtype 对象及字段行。[取证](docs/mxd-terra-round9-bookmark.md#detable)
