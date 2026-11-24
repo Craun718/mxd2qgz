@@ -824,6 +824,38 @@ mod tests {
         assert_eq!(reader.position(), end);
         assert_eq!(refs.registered_class(60), Some(RASTER_TYPE_NAME_CLASS_ID));
 
+        let io_offset = end - 16 - encoded_string("尾段").len();
+        for explicit_null in [false, true] {
+            let mut records = Vec::new();
+            records.extend(0xff00ff_i32.to_le_bytes());
+            records.extend(0_i32.to_le_bytes());
+            if explicit_null {
+                records.extend(30_i32.to_le_bytes());
+                records.extend((-1_i32).to_le_bytes());
+                records.extend([0; 16]);
+            }
+            for tag in 35_i32..=37 {
+                records.extend(tag.to_le_bytes());
+                records.extend(2_i32.to_le_bytes());
+                records.extend(7_u16.to_le_bytes());
+            }
+            records.extend([0xff; 8]);
+            let records_len = records.len();
+            let mut with_io = bytes.clone();
+            with_io.splice(io_offset..io_offset, records);
+            let mut reader = Reader::new(&with_io);
+            let mut refs = RefTable10_1::new();
+            let layer = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+            let tail = layer.tail.unwrap();
+            assert!(tail.geodata_xform_v13.is_none());
+            assert!(tail.envelope_v13.is_none());
+            let io = tail.raster_io.unwrap();
+            assert_eq!(io.tag30_is_explicit_null, explicit_null);
+            assert!(io.tag30_name.is_none());
+            assert_eq!(io.shorts_35_to_37, [7; 3]);
+            assert_eq!(reader.position(), end + records_len);
+        }
+
         let mut list = 2_i32.to_le_bytes().to_vec();
         for is_new in [true, false] {
             list.extend(1_u16.to_le_bytes()); // 普通对象，无 ExtraSafe 外界。

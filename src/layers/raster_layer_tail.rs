@@ -916,7 +916,9 @@ pub(super) fn read_raster_layer_tail(
             || envelope_f0
                 .as_ref()
                 .is_some_and(|slot| slot.entry != ObjectEntry10_1::Null)
-            || raster_io.is_some())
+            || raster_io
+                .as_ref()
+                .is_some_and(|io| io.tag30_name.is_some() || io.tag31_string.is_some()))
     {
         return Err(unsupported("v12 含尚未核对的子对象或 RasterIO 回调"));
     }
