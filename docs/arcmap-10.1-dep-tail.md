@@ -1006,6 +1006,15 @@ Load `0x68027d80` 在 `0x68027dc4..0x68027dc9` 将版本减一
 经外部 CLSID 或其他间接方式提供的实现仍需样本或运行取证。
 此次为静态核对，未进行 ArcMap/QGIS 人工验收。
 
+补充核对 Desktop 提取目录的 72 份 MSFT 类型库。逐个解析接口、
+继承关系与 coclass 引用表，从 IGeometryMaterial IID 出发查找直接
+及经派生接口声明的 coclass。唯一命中是 esri3DAnalyst 的
+GeometryMaterial，CLSID `0E6F4B27-2BD0-11D6-A4CC-444553547777`。
+对同目录 1203 个 MZ 容器开展 IID 搜索，类型库以外的命中仍是
+上列三个 DLL。其他类型库的相同字节属于引用，类型关系核对未发现
+额外 coclass。现有读取器覆盖介质中有明示证据的实现。经外部 CLSID
+加载的实现或真实 MXD 中的未知材质仍需宿主证据。
+
 ### 3D 标记符号的持久化入口
 
 同摘要 _3DSymbols.dll 中，三个已定位的类工厂产品均从各自 QI
