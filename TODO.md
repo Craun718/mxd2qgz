@@ -611,6 +611,7 @@
       - [x] 两类 3D 容器的关联 ILayer 槽接入可完整解析的 FeatureLayer、CompositeGraphicsLayer、FDOGraphicsLayer、BasemapLayer、ImageServerLayer 和两类 3D 容器。
       - [x] 接入 GroupLayer 完整体尾段及普通关联图层入口（由子对象完整性决定是否提交；SDK brazil.mxd 首个 v11 体完整对位）。
       - [x] 接入普通关联 ILayer 与 Map 普通图层条目的 RasterLayer v0–11、v13–17，保留后继对象边界。
+      - [x] 核对 RasterLayer v12 的 RasterIO 二次打开对已有栅格成员的前置检查。[取证](docs/mxd-10.1-raster-layer-tail.md#二次打开要求图层已有栅格成员)
       - [ ] 支持无外层长度的普通 RasterLayer v12 对象体；原生依赖数据集打开结果，有界体已覆盖两种形态。
       - [x] 对位普通 RasterLayer v12 的 RasterIO 二次打开接口派发及空输出返回。[取证](docs/mxd-10.1-raster-layer-tail.md#v12-rasterio-二次打开的派发)
       - [x] 核对普通 RasterLayer v12 单名称打开失败后仍进入渲染器读取的原生分支。[取证](docs/mxd-10.1-raster-layer-tail.md#v12-单名称打开失败后的读取)
