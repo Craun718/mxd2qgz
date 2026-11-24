@@ -790,7 +790,7 @@
       - [x] 接入 GPAddressLocatorStyle 的 DETable 主体及已知的可选子槽。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [ ] 接入 DataElement 的旧兼容分支。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [ ] 接入 DataElement 的 IDataElement 子对象列表。[取证](docs/mxd-terra-round9-bookmark.md#detable)
-      - [ ] 接入 DETable 的 IGPSubtype 列表。[取证](docs/mxd-terra-round9-bookmark.md#detable)
+      - [x] 接入 DETable 的 GPSubtype 对象及字段行。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [ ] 接入 DETable 的 IGPControllerMembership 列表。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的 Indexes 与 Index 对象体。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [ ] 核对 GPAddressLocatorStyle 非空配置中其余接口槽的类体。[取证](docs/mxd-terra-round9-bookmark.md#gpaddresslocatorstyle)

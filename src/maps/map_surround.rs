@@ -213,7 +213,7 @@ use crate::objects::fields::{FIELDS_CLASS_ID, FieldsBody10_1, read_fields_body_n
 use crate::objects::property_set::{
     PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1, PropertyValueObjectStream10_1,
     read_padded_variant_object_stream_nested_10_1, read_property_set_object_stream_10_1,
-    read_variant_object_body_10_1,
+    read_variant_object_body_10_1, read_variant_object_stream_value_10_1,
 };
 use crate::objects::route_event_name::{
     ROUTE_EVENT_SOURCE_NAME_CLASS_ID, ROUTE_MEASURE_LOCATOR_NAME_CLASS_ID,
@@ -462,6 +462,10 @@ pub const INDEXES_CLASS_ID: [u8; 16] = [
 ];
 pub const INDEX_CLASS_ID: [u8; 16] = [
     0x01, 0x27, 0x6e, 0x82, 0xa6, 0x4d, 0xd1, 0x11, 0x88, 0x24, 0x00, 0x00, 0xf8, 0x77, 0x76, 0x2d,
+];
+
+pub const GP_SUBTYPE_CLASS_ID: [u8; 16] = [
+    0x02, 0x53, 0x1b, 0x74, 0x17, 0x29, 0xab, 0x4a, 0x95, 0x2a, 0xdf, 0x5f, 0x0e, 0x01, 0x9e, 0xb6,
 ];
 
 pub const DE_TABLE_CLASS_ID: [u8; 16] = [
@@ -829,12 +833,28 @@ pub struct DeTable10_1 {
     pub string_array: StringArraySlot10_1,
     pub properties: RuleSlot10_1<PropertySetObjectStream10_1>,
     pub raw_subtype_count: i32,
+    pub subtypes: Vec<RuleSlot10_1<GpSubtype10_1>>,
     pub raw_membership_count: i32,
     pub v2: Option<(u16, [String; 2])>,
     pub v3: Option<(u16, [String; 4])>,
     pub v4: Option<u16>,
     pub fields: RuleSlot10_1<FieldsBody10_1>,
     pub indexes: RuleSlot10_1<DeTableIndexes10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpSubtype10_1 {
+    pub version: u16,
+    pub name: String,
+    pub raw_code: i32,
+    pub raw_count: i32,
+    pub fields: Vec<GpSubtypeField10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpSubtypeField10_1 {
+    pub strings: [String; 2],
+    pub default: PropertyValueObjectStream10_1,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3015,7 +3035,11 @@ fn read_gp_de_table(
     let raw_long = reader.read_u32_le()? as i32;
     let string_array = read_string_array_slot_10_1(reader, max_bytes, refs)?;
     let properties = read_gp_property_set_slot(reader, max_bytes, refs)?;
-    let raw_subtype_count = read_de_table_empty_list(reader, "IGPSubtype")?;
+    let (raw_subtype_count, subtype_count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
+    let mut subtypes = Vec::new();
+    for _ in 0..subtype_count {
+        subtypes.push(read_de_table_subtype(reader, max_bytes, refs, depth)?);
+    }
     let raw_membership_count = read_de_table_empty_list(reader, "IGPControllerMembership")?;
     let v2 = if version >= 2 {
         Some((
@@ -3062,6 +3086,7 @@ fn read_gp_de_table(
         string_array,
         properties,
         raw_subtype_count,
+        subtypes,
         raw_membership_count,
         v2,
         v3,
@@ -3069,6 +3094,59 @@ fn read_gp_de_table(
         fields,
         indexes,
     })
+}
+
+fn read_de_table_subtype(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<RuleSlot10_1<GpSubtype10_1>> {
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if refs.registered_class(key).unwrap_or(class_id) == GP_SUBTYPE_CLASS_ID =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: GP_SUBTYPE_CLASS_ID,
+            ..
+        } => {
+            let version = reader.read_u16_le()?;
+            if version > 1 {
+                return Err(io::Error::new(ErrorKind::InvalidData, "GPSubtype 版本超限"));
+            }
+            let name = read_string_10_1(reader, max_bytes)?;
+            let raw_code = reader.read_u32_le()? as i32;
+            let (raw_count, count) = read_gp_coded_value_count(reader, max_bytes, 10)?;
+            let mut fields = Vec::new();
+            for _ in 0..count {
+                fields.push(GpSubtypeField10_1 {
+                    strings: [
+                        read_string_10_1(reader, max_bytes)?,
+                        read_string_10_1(reader, max_bytes)?,
+                    ],
+                    default: read_variant_object_stream_value_10_1(reader, max_bytes, refs, depth)?,
+                });
+            }
+            Some(Box::new(GpSubtype10_1 {
+                version,
+                name,
+                raw_code,
+                raw_count,
+                fields,
+            }))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "IGPSubtype 槽包含不支持的类",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
 }
 
 fn read_de_table_indexes(

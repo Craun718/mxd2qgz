@@ -2032,3 +2032,15 @@ Indexes 的 Load `0x709f2b20` 读无符号版本（上限 1）和有符号计数
 `0x709f2c30` 和 `0x709f05a0`。构造书签覆盖 DETable 到 Indexes、
 Index 的连续读取和 Index 回引先前 Fields 的边界，并覆盖截断回滚。
 其他接口实现和实际 MXD 宿主仍待核对。
+
+#### GPSubtype
+
+FeatureDataElements.dll 10.1.0.3035 的 GPSubtype 持久化表
+`0x6f663534` 的 GetClassID `0x6f637350` 返回
+`{741B5302-2917-4AAB-952A-DF5F0E019EB6}`，与类型库一致。
+Load `0x6f637390` 接受无符号版本 0、1，读取 String、long，
+随后委派 `0x6f6376e0` 读取有符号行数及逐行两个 String、
+Variant::Read(true)（`0x6f6377a1`）。紧随 Variant 的辅助调用
+`0x6f638500` 创建内存对象，无流参数。Save `0x6f637420`
+对应写入 String、long 和字段行。构造书签覆盖非空子类型和字段行的
+紧凑 Variant，实际 MXD 宿主及人工验收仍待确认。

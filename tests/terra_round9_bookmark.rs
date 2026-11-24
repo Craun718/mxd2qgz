@@ -7325,9 +7325,9 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
     use mxd2qgz::layers::image_server_rules::RuleSlot10_1;
     use mxd2qgz::maps::map_surround::{
         DE_TABLE_CLASS_ID, DeTable10_1, DeTableIndex10_1, DeTableIndexes10_1,
-        GP_ADDRESS_LOCATOR_STYLE_CLASS_ID, GpAddressLocatorStyleConfig10_1,
+        GP_ADDRESS_LOCATOR_STYLE_CLASS_ID, GP_SUBTYPE_CLASS_ID, GpAddressLocatorStyleConfig10_1,
         GpAddressLocatorStyleRow10_1, GpAddressLocatorStyleRowValues10_1, GpCodedValue10_1,
-        INDEX_CLASS_ID, INDEXES_CLASS_ID,
+        GpSubtype10_1, GpSubtypeField10_1, INDEX_CLASS_ID, INDEXES_CLASS_ID,
     };
     use mxd2qgz::objects::fields::{FIELDS_CLASS_ID, FieldsBody10_1};
     use mxd2qgz::objects::property_set::{PropertyValue10_1, PropertyValueObjectStream10_1};
@@ -7415,7 +7415,18 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
             payload.extend(bookmark_string_10_1(name));
         }
         payload.extend(16_i32.to_le_bytes());
-        payload.extend([0; 40]);
+        payload.extend([0; 32]);
+        payload.extend(1_i32.to_le_bytes());
+        payload.extend(bookmark_entry_10_1(&GP_SUBTYPE_CLASS_ID, 25));
+        payload.extend(1_u16.to_le_bytes());
+        payload.extend(bookmark_string_10_1("子类型"));
+        payload.extend(8_i32.to_le_bytes());
+        payload.extend(1_i32.to_le_bytes());
+        payload.extend(bookmark_string_10_1("字段"));
+        payload.extend(bookmark_string_10_1("域"));
+        payload.extend(3_u16.to_le_bytes());
+        payload.extend(6_i32.to_le_bytes());
+        payload.extend(0_i32.to_le_bytes());
         if version >= 2 {
             payload.extend(17_u16.to_le_bytes());
             for _ in 0..2 {
@@ -7521,7 +7532,25 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                     entry: ObjectEntry10_1::Null,
                                     body: None,
                                 },
-                                raw_subtype_count: 0,
+                                raw_subtype_count: 1,
+                                subtypes: vec![RuleSlot10_1 {
+                                    entry: ObjectEntry10_1::NewObject {
+                                        class_id: GP_SUBTYPE_CLASS_ID,
+                                        key: 25,
+                                    },
+                                    body: Some(Box::new(GpSubtype10_1 {
+                                        version: 1,
+                                        name: "子类型".into(),
+                                        raw_code: 8,
+                                        raw_count: 1,
+                                        fields: vec![GpSubtypeField10_1 {
+                                            strings: ["字段".into(), "域".into()],
+                                            default: PropertyValueObjectStream10_1::Inline(
+                                                PropertyValue10_1::Raw4(6_i32.to_le_bytes()),
+                                            ),
+                                        }],
+                                    })),
+                                }],
                                 raw_membership_count: 0,
                                 v2: (version >= 2)
                                     .then(|| (17, std::array::from_fn(|_| "v2".into()))),
