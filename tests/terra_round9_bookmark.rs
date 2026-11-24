@@ -3424,6 +3424,42 @@ fn feature_bookmark_reads_locator_workspace_v2_ags_connection_name() {
 }
 
 #[test]
+fn locator_workspace_reads_uid_in_iunknown_slot() {
+    use mxd2qgz::layers::feature_layer_tail::UID_CLASS_ID;
+    use mxd2qgz::maps::map_surround::LOCATOR_WORKSPACE_NAME_CLASS_ID;
+
+    let mut bytes = bookmark_header_10_1(&LOCATOR_WORKSPACE_NAME_CLASS_ID, 17);
+    bytes.extend(2_i16.to_le_bytes());
+    bytes.extend(bookmark_string_10_1("定位器"));
+    bytes.extend(bookmark_string_10_1("工作空间"));
+    bytes.extend(bookmark_entry_10_1(&UID_CLASS_ID, 18));
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.push(0);
+    bytes.extend([0; 16]);
+    bytes.extend(29_i32.to_le_bytes());
+    let uid_end = bytes.len();
+    bytes.extend(bookmark_string_10_1("书签"));
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let bookmark = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    assert!(matches!(
+        bookmark.name_object,
+        BookmarkNameEntry10_1::LocatorWorkspaceName { source, .. }
+            if matches!(source.as_ref(), BookmarkNameEntry10_1::LocatorWorkspaceUid(uid)
+                if uid.key == 18 && uid.value_18 == 29)
+    ));
+    assert_eq!(bookmark.name, "书签");
+    assert_eq!(reader.position(), bytes.len());
+
+    let mut reader = Reader::new(&bytes[..uid_end - 1]);
+    let mut refs = RefTable10_1::new();
+    assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+    assert_eq!(reader.position(), 0);
+    assert!(refs.is_empty());
+}
+
+#[test]
 fn locator_workspace_reads_property_set_in_iunknown_slot() {
     use mxd2qgz::maps::map_surround::LOCATOR_WORKSPACE_NAME_CLASS_ID;
     use mxd2qgz::objects::property_set::PROPERTY_SET_CLASS_ID;

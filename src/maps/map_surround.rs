@@ -1371,6 +1371,7 @@ pub enum BookmarkNameEntry10_1 {
         source: Box<BookmarkNameEntry10_1>,
     },
     LocatorWorkspaceProperties(Box<PropertySetObjectStream10_1>),
+    LocatorWorkspaceUid(UidBody10_1),
     LocatorWorkspaceName {
         version: i16,
         strings: [String; 2],
@@ -4229,32 +4230,38 @@ fn read_bookmark_name_slot_10_1(
                 read_string_10_1(reader, max_bytes)?,
             ];
             // v1 请求 IName，其余版本允许持久化 IUnknown。
-            let source = if version != 1
-                && matches!(
-                    crate::storage::object_stream::read_header_10_1(&mut reader.clone())?,
-                    crate::storage::object_stream::ObjectHeader::Object {
-                        class_id: PROPERTY_SET_CLASS_ID, key
-                    } if !table.contains(key)
-                ) {
-                read_object_entry_10_1(reader, table)?;
-                BookmarkNameEntry10_1::LocatorWorkspaceProperties(Box::new(
-                    read_property_set_object_stream_10_1(reader, max_bytes, table)?,
-                ))
-            } else {
-                read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth + 1)?
+            use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
+            let source = match read_header_10_1(&mut reader.clone())? {
+                ObjectHeader::Object {
+                    class_id: PROPERTY_SET_CLASS_ID,
+                    key,
+                } if version != 1 && !table.contains(key) => {
+                    read_object_entry_10_1(reader, table)?;
+                    BookmarkNameEntry10_1::LocatorWorkspaceProperties(Box::new(
+                        read_property_set_object_stream_10_1(reader, max_bytes, table)?,
+                    ))
+                }
+                ObjectHeader::Object {
+                    class_id: UID_CLASS_ID,
+                    key,
+                } if version != 1 && !table.contains(key) => {
+                    read_object_entry_10_1(reader, table)?;
+                    BookmarkNameEntry10_1::LocatorWorkspaceUid(read_uid_body_10_1(reader, key)?)
+                }
+                _ => read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth + 1)?,
             };
             if version == 1
                 && matches!(
                     source,
                     BookmarkNameEntry10_1::BackReference {
-                        class_id: PROPERTY_SET_CLASS_ID,
+                        class_id: PROPERTY_SET_CLASS_ID | UID_CLASS_ID,
                         ..
                     }
                 )
             {
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,
-                    "LocatorWorkspaceName IName 槽回引了属性集",
+                    "LocatorWorkspaceName IName 槽回引了不支持的类",
                 ));
             }
             BookmarkNameEntry10_1::LocatorWorkspaceName {
