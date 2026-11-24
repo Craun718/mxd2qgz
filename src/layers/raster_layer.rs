@@ -251,12 +251,6 @@ pub(super) fn read_inline_raster_body_10_1(
     let mut trial = reader.clone();
     let mut staged = table.clone();
     let mut body = read_raster_layer_prefix_10_1(&mut trial, max_bytes)?;
-    if body.version == 12 {
-        return Err(io::Error::new(
-            ErrorKind::Unsupported,
-            "RasterLayer v12 的可选变换和包络槽需要对象体边界",
-        ));
-    }
     let count = read_name_list_prefix(&mut trial, max_bytes, &mut body)?;
     read_raster_layer_names(&mut trial, max_bytes, &mut staged, &mut body, count)?;
 
@@ -271,14 +265,21 @@ pub(super) fn read_inline_raster_body_10_1(
             "RasterLayer 渲染器体未完整读取",
         ));
     }
+    let boundary = if body.version == 12
+        && renderer.entry == ObjectEntry10_1::Null
+        && let [name] = body.names.as_slice()
+        && matches!(
+            name.body.as_ref(),
+            Some(RasterDatasetNameEntryBody10_1::RasterType(name))
+                if name.name.is_empty() && name.mosaic_dataset.entry == ObjectEntry10_1::Null
+        ) {
+        // 空标识和空镶嵌槽使 RasterTypeName::Open 返回空指针。
+        RasterLayerBoundary::InlineWithoutDataset
+    } else {
+        RasterLayerBoundary::Inline
+    };
     body.renderer = Some(Box::new(renderer));
-    let tail = read_raster_layer_tail(
-        &mut trial,
-        body.version,
-        max_bytes,
-        &mut staged,
-        RasterLayerBoundary::Inline,
-    )?;
+    let tail = read_raster_layer_tail(&mut trial, body.version, max_bytes, &mut staged, boundary)?;
     require_loaded_extensions(&tail)?;
     body.tail = Some(Box::new(tail));
     *reader = trial;
@@ -781,6 +782,44 @@ mod tests {
                 assert!(refs.is_empty());
             }
         }
+    }
+
+    #[test]
+    fn inline_raster_v12_ends_without_transform_after_known_open_failure() {
+        use super::super::raster_dataset_name::RASTER_TYPE_NAME_CLASS_ID;
+
+        let suffix_offset = {
+            let mut prefix = body_prefix(12, 1);
+            dataset_name(&mut prefix, 60);
+            prefix.len()
+        };
+        let standard = raster_with_empty_slots(12, false);
+        let mut bytes = body_prefix(12, 1);
+        bytes.extend(RASTER_TYPE_NAME_CLASS_ID);
+        bytes.extend(60_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(encoded_string(""));
+        bytes.extend(encoded_string(""));
+        bytes.extend((-1_i32).to_le_bytes());
+        bytes.extend([0; 16]);
+        bytes.extend(&standard[suffix_offset..]);
+        let end = bytes.len();
+        bytes.extend([0xa5; 16]);
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let layer = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+        let tail = layer.tail.unwrap();
+        assert!(tail.geodata_xform_v13.is_none());
+        assert!(tail.envelope_v13.is_none());
+        assert_eq!(reader.position(), end);
+        assert_eq!(refs.registered_class(60), Some(RASTER_TYPE_NAME_CLASS_ID));
     }
 
     #[test]

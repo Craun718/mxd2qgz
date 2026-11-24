@@ -808,11 +808,12 @@ fn read_color_indices(reader: &mut Reader<'_>, max_bytes: usize) -> io::Result<V
     Ok(indices)
 }
 
-/// RasterLayer v12 的可选尾段需要外层提供对象终点。
+/// RasterLayer v12 依赖外层边界或已证的空数据集路径。
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum RasterLayerBoundary {
     Bounded,
     Inline,
+    InlineWithoutDataset,
 }
 
 /// 从已闭合的 IRasterRenderer 之后读取 RasterLayer 的有界尾段。
@@ -908,9 +909,21 @@ pub(super) fn read_raster_layer_tail(
     let doubles_12c_134 = (version >= 11)
         .then(|| -> io::Result<_> { Ok([trial.read_f64_le()?, trial.read_f64_le()?]) })
         .transpose()?;
+    if boundary == RasterLayerBoundary::InlineWithoutDataset
+        && (!extra_safe_extensions.is_empty()
+            || related_name.is_some()
+            || !related_objects.is_empty()
+            || envelope_f0
+                .as_ref()
+                .is_some_and(|slot| slot.entry != ObjectEntry10_1::Null)
+            || raster_io.is_some())
+    {
+        return Err(unsupported("v12 含尚未核对的子对象或 RasterIO 回调"));
+    }
     // v12 由原生数据集打开结果选择是否读取这对槽，且其后没有其他字段。
     // 父条目到界则省略，有剩余时两槽必须完整读取并恰好到界。
-    let has_transform_pair = version >= 13 || (version == 12 && trial.remaining() != 0);
+    let has_transform_pair = version >= 13
+        || (version == 12 && boundary == RasterLayerBoundary::Bounded && trial.remaining() != 0);
     let end = |reader: &mut Reader<'_>, refs: &mut RefTable10_1, has_empty_third_slot| {
         read_raster_layer_end(
             reader,
