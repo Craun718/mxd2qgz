@@ -8177,3 +8177,29 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
         );
     }
 }
+
+#[test]
+fn feature_bookmark_reads_xml_index_tag_coded_values() {
+    use mxd2qgz::maps::map_surround::{GpCodedValue10_1, XML_INDEX_TAG_CLASS_ID};
+
+    let mut payload = 3_u32.to_le_bytes().to_vec();
+    for unit in "tag".encode_utf16().chain([0]) {
+        payload.extend(unit.to_le_bytes());
+    }
+    payload.extend(0x8765_4321_u32.to_le_bytes());
+    payload.extend(7_u32.to_le_bytes());
+    payload.extend(0_u32.to_le_bytes());
+
+    for version in [0, 1] {
+        assert_legacy_topo_coded_value(
+            XML_INDEX_TAG_CLASS_ID,
+            version,
+            &payload,
+            GpCodedValue10_1::XmlIndexTag {
+                first: "tag".into(),
+                raw_longs: [0x8765_4321, 7],
+                second: String::new(),
+            },
+        );
+    }
+}

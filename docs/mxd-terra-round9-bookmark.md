@@ -1996,6 +1996,24 @@ Save `0x748e5d00` 的尺寸分派、内嵌 Variant 和成员 String
 对象回引、后继字段及逐字节截断回滚。内嵌数组的真实取值与
 ArcMap/QGIS 实档验收待查。
 
+#### XMLIndexTag
+
+GdbCore.dll 10.1.0.3035 的 SHA-256 为
+`ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4`。
+类型库 CLSID `C83EC191-D234-4353-9522-722329D2BCBF` 在
+本地 PE 中位于 `0x70ac303c`。主 QI `0x70963db0` 对
+IGPValue 返回对象 +0x10，对 IPersistStream 返回 +0x1c。
+RTTI 对位持久化表 `0x70acab5c`，Load 为 `0x709645c0`，
+Save 为 `0x70964680`。
+
+Load 检查无符号 short 版本不大于 1，随后依次读 GPValue
+基类、AfCore BSTR、两个 4 字节量和另一条 AfCore BSTR。
+对应调用位于 `0x70964606`、`0x7096461b`、
+`0x70964638`、`0x7096464a`、`0x7096465e`。
+Rust 通过 IGPValue 槽接入这两个版本，原样保留标量。
+构造的拓扑书签覆盖值域回引、后继字段、版本拒绝和逐字节
+截断回滚。真实 MXD 宿主与 ArcMap 人工验证仍待补充。
+
 #### GPHistoricalMarker 的流接口要求
 
 FeatureDataElements.dll 10.1.0.3035 的 SHA-256 为
