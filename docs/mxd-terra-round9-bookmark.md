@@ -2292,3 +2292,21 @@ Load `0x6f613350` 接受版本 0–3，先加载 DETableBase。
 v0–1 保留 `0x6f61348d` 读取的 24 字节，v2–3 读取紧凑 Variant。
 末尾为两个 long、IEnvelope 和 ISpatialReference。构造测试覆盖各版本
 分支及截断。实际 MXD 宿主仍待验证。
+
+#### DEServerObjectBase
+
+FeatureDataElements.dll 10.1.0.3035 的 RTTI 持久化表和
+esriGeoDatabase.olb 类型库对应如下。
+
+| 类 | 持久化表 | CLSID |
+| --- | --- | --- |
+| DEGeoDataServer | `0x6f65a86c` | `{D6E941E4-9EF4-438D-AE31-2FB082A2814D}` |
+| DEMapServer | `0x6f65c14c` | `{69D74387-7684-458E-84A3-BD9E013669C0}` |
+| DEGlobeServer | `0x6f65b1b4` | `{9ADF8E53-B3FC-4348-B0C1-27BF1A5F5F39}` |
+| DEGPServer | `0x6f65b4a0` | `{A8177ADA-390D-420C-A433-EE67DD2E8638}` |
+
+四表的 Load 槽均经 `0x6f64a492` 转发 DECoreLib
+DEServerObjectBase::Load `0x6e94c430`。该函数接受无符号版本
+0、1，调用 DataElement::Load，再读两个 AfCore String。
+布局与 DEServerConnection 相同，解析复用该路径，类标识由对象头保留。
+构造测试验证五类对象体和截断，实际 MXD 宿主仍待核对。

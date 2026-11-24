@@ -519,6 +519,19 @@ pub const DE_WORKSPACE_CLASS_ID: [u8; 16] = [
     0x36, 0xaf, 0x27, 0x21, 0xe1, 0xca, 0x7e, 0x42, 0xb1, 0xa8, 0xbf, 0x0f, 0x1a, 0xd1, 0x9f, 0x6e,
 ];
 
+pub const DE_GEO_DATA_SERVER_CLASS_ID: [u8; 16] = [
+    0xe4, 0x41, 0xe9, 0xd6, 0xf4, 0x9e, 0x8d, 0x43, 0xae, 0x31, 0x2f, 0xb0, 0x82, 0xa2, 0x81, 0x4d,
+];
+pub const DE_MAP_SERVER_CLASS_ID: [u8; 16] = [
+    0x87, 0x43, 0xd7, 0x69, 0x84, 0x76, 0x8e, 0x45, 0x84, 0xa3, 0xbd, 0x9e, 0x01, 0x36, 0x69, 0xc0,
+];
+pub const DE_GLOBE_SERVER_CLASS_ID: [u8; 16] = [
+    0x53, 0x8e, 0xdf, 0x9a, 0xfc, 0xb3, 0x48, 0x43, 0xb0, 0xc1, 0x27, 0xbf, 0x1a, 0x5f, 0x5f, 0x39,
+];
+pub const DE_GP_SERVER_CLASS_ID: [u8; 16] = [
+    0xda, 0x7a, 0x17, 0xa8, 0x0d, 0x39, 0x0c, 0x42, 0xa4, 0x33, 0xee, 0x67, 0xdd, 0x2e, 0x86, 0x38,
+];
+
 pub const DE_SERVER_CONNECTION_CLASS_ID: [u8; 16] = [
     0x40, 0x49, 0x7d, 0x88, 0x43, 0x93, 0xa3, 0x42, 0x8c, 0x8f, 0x5c, 0x41, 0xd4, 0xdc, 0xfa, 0xfd,
 ];
@@ -942,7 +955,7 @@ pub struct DataElement10_1 {
 pub enum DeChild10_1 {
     RasterBand(Box<DeRasterBand10_1>),
     Workspace(Box<DeWorkspace10_1>),
-    ServerConnection {
+    Server {
         version: u16,
         element: DataElement10_1,
         strings: [String; 2],
@@ -3338,6 +3351,10 @@ fn read_gp_data_element_child(
                     | DE_FEATURE_DATASET_CLASS_ID
                     | DE_CATALOG_DATASET_CLASS_ID
                     | DE_SERVER_CONNECTION_CLASS_ID
+                    | DE_GEO_DATA_SERVER_CLASS_ID
+                    | DE_MAP_SERVER_CLASS_ID
+                    | DE_GLOBE_SERVER_CLASS_ID
+                    | DE_GP_SERVER_CLASS_ID
                     | DE_WORKSPACE_CLASS_ID
                     | DE_TOPOLOGY_CLASS_ID
                     | DE_GEOMETRIC_NETWORK_CLASS_ID
@@ -3356,6 +3373,10 @@ fn read_gp_data_element_child(
                 | DE_FEATURE_DATASET_CLASS_ID
                 | DE_CATALOG_DATASET_CLASS_ID
                 | DE_SERVER_CONNECTION_CLASS_ID
+                | DE_GEO_DATA_SERVER_CLASS_ID
+                | DE_MAP_SERVER_CLASS_ID
+                | DE_GLOBE_SERVER_CLASS_ID
+                | DE_GP_SERVER_CLASS_ID
                 | DE_WORKSPACE_CLASS_ID
                 | DE_TOPOLOGY_CLASS_ID
                 | DE_GEOMETRIC_NETWORK_CLASS_ID
@@ -3384,15 +3405,22 @@ fn read_gp_data_element_child(
                     refs,
                     depth + 1,
                 )?))
-            } else if class_id == DE_SERVER_CONNECTION_CLASS_ID {
+            } else if matches!(
+                class_id,
+                DE_SERVER_CONNECTION_CLASS_ID
+                    | DE_GEO_DATA_SERVER_CLASS_ID
+                    | DE_MAP_SERVER_CLASS_ID
+                    | DE_GLOBE_SERVER_CLASS_ID
+                    | DE_GP_SERVER_CLASS_ID
+            ) {
                 let version = reader.read_u16_le()?;
                 if version > 1 {
                     return Err(io::Error::new(
                         ErrorKind::InvalidData,
-                        "DEServerConnection 版本超限",
+                        "服务数据元素版本超限",
                     ));
                 }
-                DeChild10_1::ServerConnection {
+                DeChild10_1::Server {
                     version,
                     element: read_gp_data_element(reader, max_bytes, refs, depth + 1)?,
                     strings: [
@@ -6918,39 +6946,47 @@ mod tests {
     }
 
     #[test]
-    fn server_connection_reads_data_element_and_two_strings() {
-        let mut bytes = DE_SERVER_CONNECTION_CLASS_ID.to_vec();
-        bytes.extend(35_u32.to_le_bytes());
-        bytes.extend([1, 0, 0, 0, 1, 0, 7, 0]);
-        for _ in 0..3 {
-            bytes.extend([2, 0, 0, 0, 0, 0]);
-        }
-        bytes.extend([0; 10]);
-        for value in [b'A', b'B'] {
-            bytes.extend([4, 0, 0, 0, value, 0, 0, 0]);
-        }
-        for cut in 0..bytes.len() {
-            let mut reader = Reader::new(&bytes[..cut]);
+    fn server_elements_read_data_element_and_two_strings() {
+        for class_id in [
+            DE_SERVER_CONNECTION_CLASS_ID,
+            DE_GEO_DATA_SERVER_CLASS_ID,
+            DE_MAP_SERVER_CLASS_ID,
+            DE_GLOBE_SERVER_CLASS_ID,
+            DE_GP_SERVER_CLASS_ID,
+        ] {
+            let mut bytes = class_id.to_vec();
+            bytes.extend(35_u32.to_le_bytes());
+            bytes.extend([1, 0, 0, 0, 1, 0, 7, 0]);
+            for _ in 0..3 {
+                bytes.extend([2, 0, 0, 0, 0, 0]);
+            }
+            bytes.extend([0; 10]);
+            for value in [b'A', b'B'] {
+                bytes.extend([4, 0, 0, 0, value, 0, 0, 0]);
+            }
+            for cut in 0..bytes.len() {
+                let mut reader = Reader::new(&bytes[..cut]);
+                let mut refs = RefTable10_1::new();
+                assert!(read_gp_data_element_child(&mut reader, 1024, &mut refs, 0).is_err());
+            }
+            let end = bytes.len();
+            bytes.push(0xa5);
+            let mut reader = Reader::new(&bytes);
             let mut refs = RefTable10_1::new();
-            assert!(read_gp_data_element_child(&mut reader, 1024, &mut refs, 0).is_err());
+            let object = read_gp_data_element_child(&mut reader, 1024, &mut refs, 0).unwrap();
+            let Some(DeChild10_1::Server {
+                version,
+                element,
+                strings,
+            }) = object.body.as_deref()
+            else {
+                panic!("应读取服务数据元素");
+            };
+            assert_eq!(*version, 1);
+            assert_eq!(element.gp_value_short, 7);
+            assert_eq!(strings, &["A", "B"]);
+            assert_eq!(reader.position(), end);
         }
-        let end = bytes.len();
-        bytes.push(0xa5);
-        let mut reader = Reader::new(&bytes);
-        let mut refs = RefTable10_1::new();
-        let object = read_gp_data_element_child(&mut reader, 1024, &mut refs, 0).unwrap();
-        let Some(DeChild10_1::ServerConnection {
-            version,
-            element,
-            strings,
-        }) = object.body.as_deref()
-        else {
-            panic!("应读取 DEServerConnection");
-        };
-        assert_eq!(*version, 1);
-        assert_eq!(element.gp_value_short, 7);
-        assert_eq!(strings, &["A", "B"]);
-        assert_eq!(reader.position(), end);
     }
 
     #[test]
