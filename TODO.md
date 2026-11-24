@@ -855,6 +855,7 @@
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
       - [x] 核对 GPRangeDomain2 在读取对象体前对输入流的类标识检查。[取证](docs/mxd-terra-round9-bookmark.md#gprangedomain2-的持久化流要求)
       - [x] 核对 GPCodedValueDomain2 在读取对象体前对输入流的类标识检查。[取证](docs/mxd-terra-round9-bookmark.md#gpcodedvaluedomain2-的持久化流要求)
+      - [x] 核对二代值域在普通 ObjectStream 保存时返回 S_FALSE 且不写对象体。[取证](docs/mxd-terra-round9-bookmark.md#二代值域在普通流上的保存结果)
       - [x] 接入 GPCodedValueDomain 中的 Field 值对象。[取证](docs/mxd-terra-round9-bookmark.md#field-作为-igpvalue)
       - [x] 接入 GPCodedValueDomain 中的 XMLIndexTag v0/v1 对象体。[取证](docs/mxd-terra-round9-bookmark.md#xmlindextag)
       - [x] 接入 GPCodedValueDomain 中的 XMLIndexTags 集合。[取证](docs/mxd-terra-round9-bookmark.md#xmlindextags)

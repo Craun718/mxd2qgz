@@ -992,6 +992,25 @@ GPRangeDomain2 的类标识比较所用常量位于
 专用流的产生路径及其真实 MXD 宿主仍待验证，
 未进行 ArcMap 人工验证。
 
+#### 二代值域在普通流上的保存结果
+
+复核同版 FeatureDataElements.dll 的 Save 完整分支，
+GPRangeDomain2 在 `0x6f62549c` 遇到空 IPersist 指针
+会跳到 `0x6f6254c4` 返回 S_FALSE；类标识不匹配也在
+释放临时接口后到达同一出口。GPCodedValueDomain2 在
+`0x6f626643` 与 `0x6f626661` 执行等价检查，
+失败时在 `0x6f62666b` 返回 S_FALSE。两条失败路径均
+没有写对象体。匹配时后者在 `0x6f626692` 查询专用接口，
+随后在 `0x6f6266ab` 委派写出。读侧 `0x6f627410`
+所用专用 IID 位于 `0x6f66174c`，值为
+`2FDA4582-1973-430C-916E-C732A6AD45EB`。
+
+普通键控 ObjectStream 会在委派 Save 前写对象头和新键，
+因此不能仅凭这两个返回分支把文件中见到的对应对象认定为
+可跳过的空体。Rust 继续在这两类处保留未解析边界。
+专用流的具体布局、宿主对 S_FALSE 的处理和真实工程
+仍待运行取证，未进行 ArcMap 人工验证。
+
 ### GPWorkspaceDomain
 
 同版 GpObjects.dll 的 RTTI `0x74801e84` 对应持久化虚表
