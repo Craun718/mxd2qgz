@@ -4012,6 +4012,23 @@ FileDataElements.dll 的共用路径依次比对
 IDataElement IID。未命中时分别在 `0x6f9d03b2` 和
 `0x6f648122` 返回 E_NOINTERFACE。跨模块实现仍需核对。
 
+#### DESchematicDataset 与 DESchematicFolder
+
+SchematicDB.dll 10.1.0.3035（SHA-256
+`f8d9cc41cbb29b278f95a691b5b96b90184c8d1e636dd29c3ebc8eff5c2b7fca`）
+的 PE RTTI 将两类关联到 +0x1c 持久化表
+`0x7d705b2c / 0x7d7063a4`。同版互操作元数据列出 IDataElement，
+CLSID 分别为 `06D38C3F-47E0-4A98-9CB0-A44043B4E5FF` 和
+`162B8EFD-1FC8-4D0C-98C7-1967897F1937`。
+
+共享 Load `0x7d683db0` 在 `0x7d683dce` 读 short，
+`0x7d683dde..0x7d683de2` 只接受 1。随后经
+`0x7d683de9` 调 DEDataset::Load，之后无流字段。
+两类 Save 在 `0x7d681c35 / 0x7d683d95` 调
+DEDataset::Save。Rust 在 IDataElement 列表中复用基类读取器，
+保留对象头类别。构造测试覆盖两类、截断和对象终点。
+真实 MXD 宿主及 ArcMap/QGIS 人工验收仍待验证。
+
 #### 跨模块 IDataElement 候选与 DETerrain 加载入口
 
 在 10.1 桌面介质提取的 DLL 中，按 IDataElement IID 字节和

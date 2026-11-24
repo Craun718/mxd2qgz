@@ -601,6 +601,12 @@ pub const DE_TOPOLOGY_CLASS_ID: [u8; 16] = [
     0x7d, 0x63, 0xc4, 0xac, 0xe0, 0xd5, 0xd5, 0x47, 0xab, 0xcd, 0x9f, 0x25, 0xab, 0x32, 0x6e, 0x6f,
 ];
 
+const DE_SCHEMATIC_DATASET_CLASS_ID: [u8; 16] = [
+    0x3f, 0x8c, 0xd3, 0x06, 0xe0, 0x47, 0x98, 0x4a, 0x9c, 0xb0, 0xa4, 0x40, 0x43, 0xb4, 0xe5, 0xff,
+];
+const DE_SCHEMATIC_FOLDER_CLASS_ID: [u8; 16] = [
+    0xfd, 0x8e, 0x2b, 0x16, 0xc8, 0x1f, 0x0c, 0x4d, 0x98, 0xc7, 0x19, 0x67, 0x89, 0x7f, 0x19, 0x37,
+];
 pub const DE_CATALOG_ROOT_CLASS_ID: [u8; 16] = [
     0xdd, 0xeb, 0xd6, 0x01, 0x9a, 0xde, 0x17, 0x42, 0x8b, 0xfe, 0x32, 0x72, 0x65, 0x85, 0x5f, 0xa2,
 ];
@@ -1573,6 +1579,9 @@ pub struct DeNetworkTraffic10_1 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
+    SchematicDataset {
+        dataset: DeDataset10_1,
+    },
     RepresentationClass(Box<DeRepresentationClass10_1>),
     Toolbox {
         dataset: DeDataset10_1,
@@ -6261,6 +6270,8 @@ fn read_gp_data_element_child(
                     | DE_FOLDER_CLASS_ID
                     | DE_MAP_DOCUMENT_CLASS_ID
                     | DE_DISK_CONNECTION_CLASS_ID
+                    | DE_SCHEMATIC_DATASET_CLASS_ID
+                    | DE_SCHEMATIC_FOLDER_CLASS_ID
                     | DE_CATALOG_ROOT_CLASS_ID
                     | DE_REMOTE_DATABASE_FOLDER_CLASS_ID
                     | DE_SPATIAL_REFERENCES_FOLDER_CLASS_ID
@@ -6313,6 +6324,8 @@ fn read_gp_data_element_child(
                 | DE_FOLDER_CLASS_ID
                 | DE_MAP_DOCUMENT_CLASS_ID
                 | DE_DISK_CONNECTION_CLASS_ID
+                | DE_SCHEMATIC_DATASET_CLASS_ID
+                | DE_SCHEMATIC_FOLDER_CLASS_ID
                 | DE_CATALOG_ROOT_CLASS_ID
                 | DE_REMOTE_DATABASE_FOLDER_CLASS_ID
                 | DE_SPATIAL_REFERENCES_FOLDER_CLASS_ID
@@ -6337,6 +6350,20 @@ fn read_gp_data_element_child(
             }
             let body = if class_id == DE_TABLE_CLASS_ID {
                 DeChild10_1::Table(read_gp_de_table(reader, max_bytes, refs, depth + 1)?)
+            } else if matches!(
+                class_id,
+                DE_SCHEMATIC_DATASET_CLASS_ID | DE_SCHEMATIC_FOLDER_CLASS_ID
+            ) {
+                let version = reader.read_u16_le()?;
+                if version != 1 {
+                    return Err(io::Error::new(
+                        ErrorKind::InvalidData,
+                        "Schematic 数据元素只接受版本 1",
+                    ));
+                }
+                DeChild10_1::SchematicDataset {
+                    dataset: read_gp_de_dataset(reader, max_bytes, refs, depth + 1)?,
+                }
             } else if matches!(
                 class_id,
                 DE_FILE_CLASS_ID
@@ -10892,6 +10919,39 @@ mod tests {
             Some(DeChild10_1::Tool { version: 1, .. })
         ));
         assert_eq!(reader.position(), end);
+    }
+
+    #[test]
+    fn de_schematic_dataset_and_folder_end_after_dataset() {
+        for class_id in [DE_SCHEMATIC_DATASET_CLASS_ID, DE_SCHEMATIC_FOLDER_CLASS_ID] {
+            let mut bytes = class_id.to_vec();
+            bytes.extend(62_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend([0; 8]);
+            bytes.extend([2, 0, 0, 0, 0, 0].repeat(3));
+            bytes.extend([0; 22]);
+            for cut in 0..bytes.len() {
+                assert!(
+                    read_gp_data_element_child(
+                        &mut Reader::new(&bytes[..cut]),
+                        1024,
+                        &mut RefTable10_1::new(),
+                        0,
+                    )
+                    .is_err()
+                );
+            }
+            let end = bytes.len();
+            bytes.push(0xa5);
+            let mut reader = Reader::new(&bytes);
+            let slot =
+                read_gp_data_element_child(&mut reader, 1024, &mut RefTable10_1::new(), 0).unwrap();
+            assert!(matches!(
+                slot.body.as_deref(),
+                Some(DeChild10_1::SchematicDataset { .. })
+            ));
+            assert_eq!(reader.position(), end);
+        }
     }
 
     #[test]
