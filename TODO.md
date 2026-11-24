@@ -856,6 +856,7 @@
       - [ ] 核对 GPAddressLocatorStyle 非空配置中其余接口槽的类体。[取证](docs/mxd-terra-round9-bookmark.md#gpaddresslocatorstyle)
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
       - [x] 接入编码值及 IGPLayer 槽中的 GPMosaicLayer。[取证](docs/mxd-terra-round9-bookmark.md#gpmosaiclayer)
+      - [x] 接入编码值及 IGPLayer 槽中的 GPCadastralFabricLayer。[取证](docs/mxd-terra-round9-bookmark.md#gpcadastralfabriclayer)
       - [x] 接入编码值及 IGPLayer 槽中的 GPRasterCatalogLayer。[取证](docs/mxd-terra-round9-bookmark.md#gprastercataloglayer)
       - [x] 接入编码值及 IGPLayer 槽中的 GPFeatureLayer。[取证](docs/mxd-terra-round9-bookmark.md#gpfeaturelayer)
       - [x] 接入编码值及 IGPLayer 槽中的 GPTinLayer。[取证](docs/mxd-terra-round9-bookmark.md#gptinlayer)

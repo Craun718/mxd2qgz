@@ -3344,6 +3344,21 @@ Rust 在编码值和 IGPLayer 槽复用同一组合层对象体读取器。
 构造测试验证计数、共享键回引、精确终点、非法版本和逐字节截断。
 真实 MXD 宿主和 ArcMap/QGIS 人工验收仍待验证。
 
+#### GPCadastralFabricLayer
+
+10.1 Desktop 互操作元数据将 CLSID
+`6F5D8DFB-A04B-4741-8823-90EF1C56FDF1` 定名为
+GPCadastralFabricLayer，并列出 IGPValue、IGPLayer、IPersistStream。
+同摘要 GpObjects.dll 10.1.0.3035 的 RTTI `0x747ff0c8`
+关联持久化表 `0x747aa118`，共用 Load `0x746ecce0`。
+独立 Save `0x74697890` 在 `0x746978af` 写 short，
+再在 `0x746978d0` 经 `0x7478afee` 调用
+GPCompositeLayerBase::Save，随后结束流写入。
+
+Rust 在编码值和 IGPLayer 槽复用组合层读取器并保留类身份。
+构造测试覆盖成员回引、超限版本、截断和对象终点。
+真实 MXD 宿主与 ArcMap/QGIS 人工验收仍待验证。
+
 #### GPRasterCatalogLayer
 
 10.1 Desktop 互操作元数据将 CLSID
