@@ -9421,7 +9421,7 @@ fn read_bookmark_name_slot_10_1(
                     ),
                 ));
             }
-            if class_id == TABLE_NAME_CLASS_ID
+            if matches!(class_id, TABLE_NAME_CLASS_ID | OBJECT_CLASS_NAME_CLASS_ID)
                 && matches!(body.workspace, WorkspaceNameEntry10_1::Null)
             {
                 table.mark_table_name_with_null_workspace(key);

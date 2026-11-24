@@ -890,12 +890,12 @@ mod tests {
         assert_eq!(tail.related_objects[0].entry, ObjectEntry10_1::Null);
         assert_eq!(reader.position(), end + 8 + 24 + 16);
 
-        {
-            use crate::maps::standalone_table::TABLE_NAME_CLASS_ID;
+        use crate::maps::standalone_table::{OBJECT_CLASS_NAME_CLASS_ID, TABLE_NAME_CLASS_ID};
 
+        for table_class in [TABLE_NAME_CLASS_ID, OBJECT_CLASS_NAME_CLASS_ID] {
             let name_flag_at = relationship_count_at - 4;
             let mut related_name = 1_i32.to_le_bytes().to_vec();
-            related_name.extend(TABLE_NAME_CLASS_ID);
+            related_name.extend(table_class);
             related_name.extend(63_u32.to_le_bytes());
             related_name.extend(1_u16.to_le_bytes());
             for _ in 0..3 {
@@ -912,7 +912,7 @@ mod tests {
             assert!(tail.related_name.unwrap().body.is_some());
             assert!(tail.geodata_xform_v13.is_none());
             assert_eq!(reader.position(), end + name_len - 4);
-            assert_eq!(refs.registered_class(63), Some(TABLE_NAME_CLASS_ID));
+            assert_eq!(refs.registered_class(63), Some(table_class));
 
             let reference_flag_at = name_flag_at - (body_end - header_offset - 20);
             let mut with_related_reference = reference.clone();
@@ -928,7 +928,7 @@ mod tests {
             assert_eq!(
                 name.entry,
                 ObjectEntry10_1::BackReference {
-                    class_id: TABLE_NAME_CLASS_ID,
+                    class_id: table_class,
                     key: 63
                 }
             );
@@ -942,7 +942,7 @@ mod tests {
             let mut refs = RefTable10_1::new();
             let mut reader = Reader::new(&bytes);
             read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
-            let mut header = TABLE_NAME_CLASS_ID.to_vec();
+            let mut header = table_class.to_vec();
             header.extend(63_u32.to_le_bytes());
             crate::storage::object_refs::read_object_entry_10_1(
                 &mut Reader::new(&header),

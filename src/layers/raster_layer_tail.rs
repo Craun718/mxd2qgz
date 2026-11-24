@@ -50,7 +50,9 @@ pub use crate::layers::tracking_filter_layer_extension::TrackingFilterLayerExten
 use crate::layers::tracking_filter_layer_extension::{
     TRACKING_FILTER_LAYER_EXTENSION_CLASS_ID, read_bounded_tracking_filter_layer_extension,
 };
-use crate::maps::standalone_table::{TABLE_NAME_CLASS_ID, TableNameBody10_1};
+use crate::maps::standalone_table::{
+    OBJECT_CLASS_NAME_CLASS_ID, TABLE_NAME_CLASS_ID, TableNameBody10_1,
+};
 use crate::objects::dataset_name_more::{
     DatasetNameMoreBody10_1, DatasetNameMoreSlot10_1, MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID,
     MemoryRelationshipClassNameBody10_1, RELATIONSHIP_CLASS_NAME_CLASS_ID,
@@ -928,8 +930,10 @@ pub(super) fn read_raster_layer_tail(
                 match slot.entry {
                     ObjectEntry10_1::NewObject { key, .. }
                     | ObjectEntry10_1::BackReference { key, .. } => {
-                        staged.registered_class(key) != Some(TABLE_NAME_CLASS_ID)
-                            || !staged.table_name_has_null_workspace(key)
+                        !matches!(
+                            staged.registered_class(key),
+                            Some(TABLE_NAME_CLASS_ID | OBJECT_CLASS_NAME_CLASS_ID)
+                        ) || !staged.table_name_has_null_workspace(key)
                     }
                     ObjectEntry10_1::Null => true,
                 }

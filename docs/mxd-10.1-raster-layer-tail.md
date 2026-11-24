@@ -1776,3 +1776,11 @@ GdbCoreLib `0x70d4e9ed` 定位，见 [TableName 的持久化链](mxd-terra-round
 安装路径。构造测试以两次图层读取共用登记表，验证回引头类标识与
 登记类不同、后继条目边界和仅有类登记时的回滚。真实跨宿主回引
 及 ArcMap/QGIS 人工验收待验证。
+
+
+ObjectClassName 的别名工厂在同版 GdbCore.dll 的 `0x70a808e5`
+安装同一个工厂表 `0x70ac2208`，经构造器 `0x709b9330` 得到
+相同的 FdbTableName 实例和 IName::Open 槽。因而无界 v12
+对该别名的新体和回引使用同一空工作空间条件，保留其流内登记类。
+构造测试对两个 CLSID 分别核对新体、回引、后继边界和回滚。
+真实 MXD 宿主及 ArcMap/QGIS 人工验收待验证。

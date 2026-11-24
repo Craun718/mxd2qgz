@@ -1351,7 +1351,7 @@ fn read_dataset_name_object_body_10_1(
             } else {
                 read_table_name_body_10_1(reader, table, max_bytes)?
             };
-            if class_id == TABLE_NAME_CLASS_ID
+            if matches!(class_id, TABLE_NAME_CLASS_ID | OBJECT_CLASS_NAME_CLASS_ID)
                 && matches!(body.workspace, WorkspaceNameEntry10_1::Null)
             {
                 table.mark_table_name_with_null_workspace(key);
