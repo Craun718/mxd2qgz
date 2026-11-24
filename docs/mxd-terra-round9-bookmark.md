@@ -2336,3 +2336,14 @@ Load `0x6f9c17c0` 接受无符号版本 0、1，读 DataElement 后
 在 `0x6f9c181d` 加载 IID `{4434D680-F4DA-11D1-BCA6-0000F875BCCE}`
 的 ISpatialReference。解析复用空间参考读取器，构造测试覆盖空槽和
 后续字节边界。非空实档和 ArcMap/QGIS 人工验收仍待验证。
+
+#### DETextFile
+
+FileDataElements.dll 10.1.0.3035 的持久化表 `0x6f9dc14c`
+对应 CLSID `{E98D0766-C13E-45CA-BA78-1DEF8B60CAB2}`。
+Load `0x6f9c4890` 接受无符号版本 0–2，v1 调 DataElement::Load，
+v0 和 v2 调 DETableBase::Load，各版本均在基类后结束。
+构造函数在 `0x6f9c42c5` 调 DETableBase 构造函数，
+保留基类默认的零扩展标志，和 DERasterBand 共用简短表布局。
+构造测试覆盖三个版本、基类选择、结束位置和逐字节截断。
+实际 MXD 宿主仍待核对。

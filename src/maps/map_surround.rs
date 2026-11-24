@@ -515,6 +515,10 @@ pub const DE_TOPOLOGY_CLASS_ID: [u8; 16] = [
     0x7d, 0x63, 0xc4, 0xac, 0xe0, 0xd5, 0xd5, 0x47, 0xab, 0xcd, 0x9f, 0x25, 0xab, 0x32, 0x6e, 0x6f,
 ];
 
+pub const DE_TEXT_FILE_CLASS_ID: [u8; 16] = [
+    0x66, 0x07, 0x8d, 0xe9, 0x3e, 0xc1, 0xca, 0x45, 0xba, 0x78, 0x1d, 0xef, 0x8b, 0x60, 0xca, 0xb2,
+];
+
 pub const DE_PRJ_FILE_CLASS_ID: [u8; 16] = [
     0xb0, 0x4b, 0x70, 0x7e, 0xbe, 0xcf, 0xd5, 0x11, 0x93, 0x3d, 0x00, 0x80, 0xc7, 0x1a, 0x32, 0x26,
 ];
@@ -970,6 +974,10 @@ pub struct DataElement10_1 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
+    TextFile {
+        version: u16,
+        base: DeTextFileBase10_1,
+    },
     FileSystem {
         version: u16,
         element: DataElement10_1,
@@ -1046,12 +1054,7 @@ pub enum DeChild10_1 {
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeRasterBand10_1 {
     pub version: u16,
-    pub table_version: u16,
-    pub dataset: DeDataset10_1,
-    pub table_short: u16,
-    pub table_string: String,
-    pub fields: RuleSlot10_1<FieldsBody10_1>,
-    pub indexes: RuleSlot10_1<DeTableIndexes10_1>,
+    pub table: DeCompactTable10_1,
     pub raw_short: u16,
     pub double_bits: [u64; 2],
     pub longs: [i32; 2],
@@ -1060,6 +1063,22 @@ pub struct DeRasterBand10_1 {
     pub trailing_longs: [i32; 2],
     pub extent: BookmarkEnvelopeEntry10_1,
     pub spatial_reference: SpatialReferenceEntry10_1,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DeTextFileBase10_1 {
+    Element(DataElement10_1),
+    Table(DeCompactTable10_1),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeCompactTable10_1 {
+    pub table_version: u16,
+    pub dataset: DeDataset10_1,
+    pub table_short: u16,
+    pub table_string: String,
+    pub fields: RuleSlot10_1<FieldsBody10_1>,
+    pub indexes: RuleSlot10_1<DeTableIndexes10_1>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3383,6 +3402,7 @@ fn read_gp_data_element_child(
                     | DE_MAP_DOCUMENT_CLASS_ID
                     | DE_DISK_CONNECTION_CLASS_ID
                     | DE_PRJ_FILE_CLASS_ID
+                    | DE_TEXT_FILE_CLASS_ID
                     | DE_TOPOLOGY_CLASS_ID
                     | DE_GEOMETRIC_NETWORK_CLASS_ID
                     | DE_RELATIONSHIP_CLASS_CLASS_ID
@@ -3410,6 +3430,7 @@ fn read_gp_data_element_child(
                 | DE_MAP_DOCUMENT_CLASS_ID
                 | DE_DISK_CONNECTION_CLASS_ID
                 | DE_PRJ_FILE_CLASS_ID
+                | DE_TEXT_FILE_CLASS_ID
                 | DE_TOPOLOGY_CLASS_ID
                 | DE_GEOMETRIC_NETWORK_CLASS_ID
                 | DE_RELATIONSHIP_CLASS_CLASS_ID),
@@ -3449,6 +3470,29 @@ fn read_gp_data_element_child(
                     element,
                     spatial_reference,
                 }
+            } else if class_id == DE_TEXT_FILE_CLASS_ID {
+                let version = reader.read_u16_le()?;
+                let base = match version {
+                    1 => DeTextFileBase10_1::Element(read_gp_data_element(
+                        reader,
+                        max_bytes,
+                        refs,
+                        depth + 1,
+                    )?),
+                    0 | 2 => DeTextFileBase10_1::Table(read_de_compact_table(
+                        reader,
+                        max_bytes,
+                        refs,
+                        depth + 1,
+                    )?),
+                    _ => {
+                        return Err(io::Error::new(
+                            ErrorKind::InvalidData,
+                            "DETextFile 版本超限",
+                        ));
+                    }
+                };
+                DeChild10_1::TextFile { version, base }
             } else if class_id == DE_RASTER_BAND_CLASS_ID {
                 DeChild10_1::RasterBand(Box::new(read_de_raster_band(
                     reader,
@@ -3654,6 +3698,35 @@ fn read_gp_data_element_child(
     Ok(RuleSlot10_1 { entry, body })
 }
 
+fn read_de_compact_table(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<DeCompactTable10_1> {
+    // 构造函数保留 DETableBase 的默认零扩展标志。
+    let table_version = reader.read_u16_le()?;
+    if table_version > 4 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "DETableBase 版本超限",
+        ));
+    }
+    let dataset = read_gp_de_dataset(reader, max_bytes, refs, depth)?;
+    let table_short = reader.read_u16_le()?;
+    let table_string = read_string_10_1(reader, max_bytes)?;
+    let fields = read_gp_fields_slot(reader, max_bytes, refs, depth)?;
+    let indexes = read_de_table_indexes(reader, max_bytes, refs, depth)?;
+    Ok(DeCompactTable10_1 {
+        table_version,
+        dataset,
+        table_short,
+        table_string,
+        fields,
+        indexes,
+    })
+}
+
 fn read_de_raster_band(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -3667,19 +3740,7 @@ fn read_de_raster_band(
             "DERasterBand 版本超限",
         ));
     }
-    // 构造函数保留 DETableBase 的默认零扩展标志。
-    let table_version = reader.read_u16_le()?;
-    if table_version > 4 {
-        return Err(io::Error::new(
-            ErrorKind::InvalidData,
-            "DERasterBand 的 DETableBase 版本超限",
-        ));
-    }
-    let dataset = read_gp_de_dataset(reader, max_bytes, refs, depth)?;
-    let table_short = reader.read_u16_le()?;
-    let table_string = read_string_10_1(reader, max_bytes)?;
-    let fields = read_gp_fields_slot(reader, max_bytes, refs, depth)?;
-    let indexes = read_de_table_indexes(reader, max_bytes, refs, depth)?;
+    let table = read_de_compact_table(reader, max_bytes, refs, depth)?;
     let raw_short = reader.read_u16_le()?;
     let double_bits = [
         reader.read_f64_le()?.to_bits(),
@@ -3701,12 +3762,7 @@ fn read_de_raster_band(
     let spatial_reference = read_spatial_reference_entry_10_1(reader, max_bytes, refs)?;
     Ok(DeRasterBand10_1 {
         version,
-        table_version,
-        dataset,
-        table_short,
-        table_string,
-        fields,
-        indexes,
+        table,
         raw_short,
         double_bits,
         longs,
@@ -7256,7 +7312,7 @@ mod tests {
             let Some(DeChild10_1::RasterBand(body)) = object.body.as_deref() else {
                 panic!("应读取 DERasterBand");
             };
-            assert_eq!(body.table_short, 7);
+            assert_eq!(body.table.table_short, 7);
             assert_eq!(body.raw_short, 4);
             assert_eq!(body.v3, (version == 3).then_some(9));
             assert_eq!(body.trailing_longs, [11, 12]);
@@ -7307,6 +7363,55 @@ mod tests {
                 spatial_reference.as_deref(),
                 (class_id == DE_PRJ_FILE_CLASS_ID).then_some(&SpatialReferenceEntry10_1::Null),
             );
+            assert_eq!(reader.position(), end);
+        }
+    }
+
+    #[test]
+    fn de_text_file_selects_base_by_version() {
+        for version in 0_u16..=2 {
+            let mut bytes = DE_TEXT_FILE_CLASS_ID.to_vec();
+            bytes.extend(55_u32.to_le_bytes());
+            bytes.extend(version.to_le_bytes());
+            if version != 1 {
+                bytes.extend([0; 4]);
+            }
+            bytes.extend([0; 6]);
+            for _ in 0..3 {
+                bytes.extend([2, 0, 0, 0, 0, 0]);
+            }
+            bytes.extend([0; 10]);
+            if version != 1 {
+                bytes.extend([0; 12]);
+                bytes.extend(9_u16.to_le_bytes());
+                bytes.extend([2, 0, 0, 0, 0, 0]);
+                bytes.extend([0; 32]);
+            }
+            for cut in 0..bytes.len() {
+                let mut reader = Reader::new(&bytes[..cut]);
+                let mut refs = RefTable10_1::new();
+                assert!(read_gp_data_element_child(&mut reader, 1024, &mut refs, 0).is_err());
+            }
+            let end = bytes.len();
+            bytes.push(0xa5);
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let value = read_gp_data_element_child(&mut reader, 1024, &mut refs, 0).unwrap();
+            let Some(DeChild10_1::TextFile {
+                version: parsed_version,
+                base,
+            }) = value.body.as_deref()
+            else {
+                panic!("应读取 DETextFile");
+            };
+            assert_eq!(*parsed_version, version);
+            match base {
+                DeTextFileBase10_1::Element(_) => assert_eq!(version, 1),
+                DeTextFileBase10_1::Table(table) => {
+                    assert_ne!(version, 1);
+                    assert_eq!(table.table_short, 9);
+                }
+            }
             assert_eq!(reader.position(), end);
         }
     }
