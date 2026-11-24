@@ -1465,6 +1465,29 @@ GpObjects.dll 内部 GPDataTypeFactory 的 GetClassID
 GpObjects 的静态名称表。其他模块工厂、运行期工厂替换
 与真实 MXD 宿主仍待核对。本轮未在 ArcMap 中验证。
 
+另核对两个扩展工厂的名称创建路径，DLL 身份与前文
+GPSACore、GdbNetwork 的 10.1.0.3035 摘要一致。
+
+- GPSADataTypeFactory 的 CLSID 为
+  `26F24DDD-E11A-4E0F-B2DF-F55B5298E2C5`。工厂虚表
+  `0x7492e9ac` 的 +0x14 指向 `0x748d8ed0`，按名称
+  在 `0x74945eb0..0x74945fdc` 查 15 条、每条 20 字节
+  的记录。选中记录后，`0x748d8a32` 调
+  `0x748d9400`，其 `0x748d942b` 固定以
+  `0x7492ea4c` 的 GPDataTypeName CLSID 创建对象。
+  各记录的数据类型类标识不影响这个名称类的选择。
+- DENetworkDatasetDataTypeFactory 的 CLSID 为
+  `4932017A-81ED-49C9-81A9-736EFE4CD8EE`。工厂虚表
+  `0x7119067c` 的 +0x14 指向 `0x70fc8910`，
+  读取一条 24 字节记录后，经 `0x70fc8480` 和
+  `0x70fc8f00` 进入 `0x70fc8f2b`。该创建点同样
+  固定使用 GPDataTypeName CLSID（`0x7119070c`），
+  配置后在 `0x70fc85b1` 返回 IGPName。
+
+现有 GPMultiValue 读取器已支持这两个工厂的已知产物。
+继承或重写 get_FullName 的其他类型仍需逐类核对。
+本轮未在 ArcMap 中人工验证。
+
 #### GPValueTable
 
 GpObjects.dll 10.1.0.3035 的 RTTI `0x74801cd4` 对应持久化虚表
