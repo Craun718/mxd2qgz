@@ -972,6 +972,26 @@ FeatureDataElements.dll 10.1.0.3035（SHA-256
 不能直接用于这个类。匹配流的实现、实际字节边界和真实
 ArcMap 宿主仍待核对。
 
+#### GPCodedValueDomain2 的持久化流要求
+
+同一 FeatureDataElements.dll 的 GPCodedValueDomain2 持久化表
+为 `0x6f66143c`，Load 为 `0x6f6264d0`。
+`0x6f62651d` 调用对象 +0x1c 表的 `0x6f623b20`，
+后者复制 `0x6f6616bc` 的类标识
+`83B0AAE8-01AC-4C74-949C-DCB8C2BBD629`。
+Load 经 `0x6f5f2860` 查询输入流的 IPersist，比较其
+GetClassID 输出，查询失败或比较失败时在 `0x6f626562`
+返回 E_FAIL。匹配时 `0x6f627410` 再查询专用接口，
+并在 `0x6f6265b1` 调其 +0x0c。与之对应，
+GPRangeDomain2 的类标识比较所用常量位于
+`0x6f6616ac`，值为 `2BFAEDBF-D251-452F-B39D-5C7A9D318478`。
+
+先前核对的 SystemCore.dll 10.1.0.3035 非聚合 ObjectStream
+（主 QI `0x7ffcf3f0`，回退 `0x800533e0`）没有 IPersist
+分支，两个类在该宿主中都无法通过读取前的接口检查。
+专用流的产生路径及其真实 MXD 宿主仍待验证，
+未进行 ArcMap 人工验证。
+
 ### GPWorkspaceDomain
 
 同版 GpObjects.dll 的 RTTI `0x74801e84` 对应持久化虚表
