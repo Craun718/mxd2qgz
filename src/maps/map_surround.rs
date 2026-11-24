@@ -539,6 +539,10 @@ const GP_COMPOSITE_LAYER_CLASS_ID: [u8; 16] = [
     0x51, 0x4b, 0x99, 0x22, 0xba, 0xc6, 0xff, 0x41, 0xab, 0xe6, 0x54, 0x96, 0x15, 0x44, 0x1e, 0x3f,
 ];
 
+pub const DE_TIN_CLASS_ID: [u8; 16] = [
+    0xf1, 0x32, 0xdc, 0x5e, 0xb2, 0xc1, 0x08, 0x48, 0x88, 0xe0, 0x2e, 0xd6, 0x8e, 0x77, 0x26, 0x9d,
+];
+
 pub const DE_CAD_DRAWING_DATASET_CLASS_ID: [u8; 16] = [
     0x2d, 0x33, 0x86, 0xf7, 0xb2, 0x20, 0x07, 0x46, 0xbf, 0x34, 0x0a, 0x53, 0xe4, 0xd0, 0xb4, 0x13,
 ];
@@ -1030,6 +1034,16 @@ pub struct GpLayer10_1 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
+    Tin {
+        version: u16,
+        geo_dataset_version: u16,
+        dataset: DeDataset10_1,
+        extent: BookmarkEnvelopeEntry10_1,
+        spatial_reference: SpatialReferenceEntry10_1,
+        value_bits: u64,
+        raw_shorts: [u16; 4],
+        fields: RuleSlot10_1<FieldsBody10_1>,
+    },
     CadDrawingDataset {
         version: u16,
         geo_dataset_version: u16,
@@ -3563,6 +3577,7 @@ fn read_gp_data_element_child(
                     | DE_RASTER_CATALOG_CLASS_ID
                     | DE_RASTER_DATASET_CLASS_ID
                     | DE_CAD_DRAWING_DATASET_CLASS_ID
+                    | DE_TIN_CLASS_ID
                     | DE_RASTER_BAND_CLASS_ID
                     | DE_FEATURE_DATASET_CLASS_ID
                     | DE_CATALOG_DATASET_CLASS_ID
@@ -3598,6 +3613,7 @@ fn read_gp_data_element_child(
                 | DE_RASTER_CATALOG_CLASS_ID
                 | DE_RASTER_DATASET_CLASS_ID
                 | DE_CAD_DRAWING_DATASET_CLASS_ID
+                | DE_TIN_CLASS_ID
                 | DE_RASTER_BAND_CLASS_ID
                 | DE_FEATURE_DATASET_CLASS_ID
                 | DE_CATALOG_DATASET_CLASS_ID
@@ -3747,6 +3763,7 @@ fn read_gp_data_element_child(
                     | DE_CATALOG_DATASET_CLASS_ID
                     | DE_RASTER_DATASET_CLASS_ID
                     | DE_CAD_DRAWING_DATASET_CLASS_ID
+                    | DE_TIN_CLASS_ID
             ) {
                 let version = reader.read_u16_le()?;
                 let geo_dataset_version = reader.read_u16_le()?;
@@ -3829,6 +3846,22 @@ fn read_gp_data_element_child(
                         raw_long,
                         raw_short,
                         storage,
+                    }
+                } else if class_id == DE_TIN_CLASS_ID {
+                    DeChild10_1::Tin {
+                        version,
+                        geo_dataset_version,
+                        dataset,
+                        extent,
+                        spatial_reference,
+                        value_bits: reader.read_f64_le()?.to_bits(),
+                        raw_shorts: [
+                            reader.read_u16_le()?,
+                            reader.read_u16_le()?,
+                            reader.read_u16_le()?,
+                            reader.read_u16_le()?,
+                        ],
+                        fields: read_gp_fields_slot(reader, max_bytes, refs, depth + 1)?,
                     }
                 } else if class_id == DE_CAD_DRAWING_DATASET_CLASS_ID {
                     DeChild10_1::CadDrawingDataset {
@@ -7233,6 +7266,58 @@ mod tests {
             assert_eq!(body.v6, (version == 6).then_some(23));
             assert_eq!(reader.position(), end);
         }
+    }
+
+    #[test]
+    fn tin_data_element_reads_tail_and_fields_slot() {
+        let mut bytes = DE_TIN_CLASS_ID.to_vec();
+        bytes.extend(35_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend([0; 10]);
+        for _ in 0..3 {
+            bytes.extend([2, 0, 0, 0, 0, 0]);
+        }
+        bytes.extend([0; 54]);
+        bytes.extend((-0.0_f64).to_le_bytes());
+        for value in [1_u16, 0xffff, 3, 4] {
+            bytes.extend(value.to_le_bytes());
+        }
+        let mut refs = RefTable10_1::new();
+        let mut fields = FIELDS_CLASS_ID.to_vec();
+        fields.extend(36_u32.to_le_bytes());
+        read_object_entry_10_1(&mut Reader::new(&fields), &mut refs).unwrap();
+        bytes.extend(fields);
+        for cut in 0..bytes.len() {
+            assert!(
+                read_gp_data_element_child(
+                    &mut Reader::new(&bytes[..cut]),
+                    1024,
+                    &mut refs.clone(),
+                    0,
+                )
+                .is_err()
+            );
+        }
+        let end = bytes.len();
+        bytes.push(0xa5);
+        let mut reader = Reader::new(&bytes);
+        let object = read_gp_data_element_child(&mut reader, 1024, &mut refs, 0).unwrap();
+        let Some(DeChild10_1::Tin {
+            value_bits,
+            raw_shorts,
+            fields,
+            ..
+        }) = object.body.as_deref()
+        else {
+            panic!("应读取 DETin");
+        };
+        assert_eq!(*value_bits, (-0.0_f64).to_bits());
+        assert_eq!(*raw_shorts, [1, 0xffff, 3, 4]);
+        assert!(matches!(
+            fields.entry,
+            ObjectEntry10_1::BackReference { key: 36, .. }
+        ));
+        assert_eq!(reader.position(), end);
     }
 
     #[test]

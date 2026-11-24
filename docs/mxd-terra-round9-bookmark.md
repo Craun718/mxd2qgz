@@ -2426,3 +2426,14 @@ Load `0x6f9b6540` 接受无符号版本 0、1，经导入槽
 `0x6f9b659e` 起读取四个 short，依次写入 +0x90、+0x92、
 +0x94、+0x96。构造测试覆盖四个字段、截断与结束位置。
 字段语义和真实 MXD 宿主仍待核对。
+
+#### DETin
+
+FileDataElements.dll 10.1.0.3035 的持久化表 `0x6f9dc720`
+对应 esriDataSourcesFile 类型库中的 `5EDC32F1-C1B2-4808-88E0-2ED68E77269D`。
+Load `0x6f9c5900` 检查无符号版本上限 1，调用
+DEGeoDataset::Load，再依次读取 double、四个 short 和 IFields 槽。
+`0x6f9c59df` 的 LoadObject 使用 `0x6f9dc880` 的 IID
+`6B2072E3-23F7-11D1-89D8-006097AFF44E`，由 esriGeoDatabase
+类型库确认为 IFields。构造测试验证原始位模式、字段回引、结束位置
+与逐字节截断。标量字段语义及真实 MXD 宿主仍待核对。
