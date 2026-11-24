@@ -658,6 +658,7 @@
       - [x] 接入无界 v12 中不含空间参考的旧包络新对象。[取证](docs/mxd-10.1-raster-layer-tail.md#无界-v12-的已知打开失败组合)
       - [x] 接入无界 v12 中旧包络对已登记 Envelope 的回引。[取证](docs/mxd-10.1-raster-layer-tail.md#无界-v12-的已知打开失败组合)
       - [x] 接入无界 v12 旧包络中已知空间参考类的持久化体及回引。[取证](docs/mxd-10.1-raster-layer-tail.md#无界-v12-的已知打开失败组合)
+      - [x] 接入无界 v12 RasterIO 中无名称时单独出现的 tag 31。[取证](docs/mxd-10.1-raster-layer-tail.md#无界-v12-的已知打开失败组合)
       - [x] 验证两份 Java SDK 实档的有界 RasterLayer v12 变换及包络槽。[取证](docs/mxd-10.1-raster-layer-tail.md#java-sdk-的两份-rasterlayer-v12-实档)
       - [x] 对位普通 RasterLayer v12 的 RasterIO 二次打开接口派发及空输出返回。[取证](docs/mxd-10.1-raster-layer-tail.md#v12-rasterio-二次打开的派发)
       - [x] 核对普通 RasterLayer v12 单名称打开失败后仍进入渲染器读取的原生分支。[取证](docs/mxd-10.1-raster-layer-tail.md#v12-单名称打开失败后的读取)

@@ -1040,7 +1040,13 @@ mod tests {
         );
         assert_eq!(reader.position(), 0);
 
-        for tag30 in [None, Some(false), Some(true)] {
+        for (tag30, tag31) in [
+            (None, None),
+            (Some(false), None),
+            (None, Some("路径")),
+            (Some(false), Some("路径")),
+            (Some(true), Some("")),
+        ] {
             let mut records = Vec::new();
             records.extend(0xff00ff_i32.to_le_bytes());
             records.extend(0_i32.to_le_bytes());
@@ -1054,11 +1060,13 @@ mod tests {
                     records.extend(encoded_string(""));
                     records.extend((-1_i32).to_le_bytes());
                     records.extend([0; 16]);
-                    records.extend(31_i32.to_le_bytes());
-                    records.extend(encoded_string(""));
                 } else {
                     records.extend([0; 16]);
                 }
+            }
+            if let Some(path) = tag31 {
+                records.extend(31_i32.to_le_bytes());
+                records.extend(encoded_string(path));
             }
             for tag in 35_i32..=37 {
                 records.extend(tag.to_le_bytes());
@@ -1078,6 +1086,7 @@ mod tests {
             let io = tail.raster_io.unwrap();
             assert_eq!(io.tag30_is_explicit_null, tag30 == Some(false));
             assert_eq!(io.tag30_name.is_some(), tag30 == Some(true));
+            assert_eq!(io.tag31_string.as_deref(), tag31);
             assert_eq!(io.shorts_35_to_37, [7; 3]);
             assert_eq!(reader.position(), end + records_len);
         }

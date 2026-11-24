@@ -950,7 +950,8 @@ pub(super) fn read_raster_layer_tail(
             })
             || raster_io.as_ref().is_some_and(|io| {
                 match (&io.tag30_name, io.tag31_string.as_deref()) {
-                    (None, None) => false,
+                    // 无名称时原生跳过 tag 31，查找 tag 35。
+                    (None, _) => false,
                     (Some(name), Some("")) => !name.open_without_result(),
                     _ => true,
                 }

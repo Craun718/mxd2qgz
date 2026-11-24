@@ -1688,3 +1688,14 @@ Load 分别从 `0x719d3230`、`0x719bec60`、`0x719ecd80`
 ISpatialReference。构造测试覆盖内嵌 UnknownCoordinateSystem 新体、
 后续包络对该空间参考的回引，以及截断回滚。其他空间参考实现和
 真实 ArcMap/QGIS 宿主仍待验证。
+
+
+RasterLayer.dll 10.1.0.3035 在 `0x7c73c418..0x7c73c41d`
+检测 tag 30 的名称接口是否为空。为空时直接跳到 `0x7c73c5ac`，
+绕过 tag 31 的读取和名称调整。随后 `0x7c73c5c8` 调用
+RasterIO 按标签读取 short。RasterCoreLib.dll 同版的查找函数
+`0x7bf13ce0` 在遇到比目标小的标签时，从 `0x7bf13d5e`
+调用 `0x7bf13eb0` 按记录长度跳过，因此可跨过 tag 31 后读到
+tag 35。无界解析保留已读取的 tag 31 字符串，同时按无名称分支
+判定对象终点。构造测试覆盖 tag 30 省略和显式置空两种情况，
+均带非空 tag 31 并核对后继边界。真实无界宿主待验证。
