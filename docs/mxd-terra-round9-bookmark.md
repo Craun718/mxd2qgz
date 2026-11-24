@@ -2367,5 +2367,18 @@ IDataElement。版本 0、1 还读取并释放 ILayer。三个接口 IID
 类型库核对。旧版 ILayer 复用已有的完整图层体读取器。
 
 构造测试覆盖 GPLayerBase 三个版本、逐字节截断、超限版本和
-结束位置。GPCompositeLayer 与其他 IGPLayer 实现需另行取证，
-真实 MXD 宿主和旧版非空 ILayer 仍待验证。
+结束位置。真实 MXD 宿主和旧版非空 ILayer 仍待验证。
+
+
+#### GPCompositeLayer
+
+esriGeoprocessing 类型库将 `22994B51-C6BA-41FF-ABE6-549615441E3F`
+标为 GPCompositeLayer。GpObjects.dll 10.1.0.3035 的持久化表
+`0x747ab418` 指向 Load `0x746ecce0`，读取无符号版本（上限 1）
+后经跳板 `0x7478afe8` 调入 GeoprocessingLib.dll 10.1.0.3035
+的 GPCompositeLayerBase::Load `0x71d0c040`。基类另读无符号
+版本（上限 1），调用 GPLayerBase::Load，随后读取有符号
+32 位数量。正数逐项以 `0x71e39b80` 的 IGPLayer IID 调用
+LoadObject，非正数跳过循环。空项仍占流内位置。
+构造测试覆盖成员循环、空项、回引、逐字节截断和结束位置。
+真实 MXD 宿主仍待验证。

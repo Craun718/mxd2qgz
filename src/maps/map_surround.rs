@@ -523,6 +523,10 @@ const GP_LAYER_CLASS_ID: [u8; 16] = [
     0x1e, 0x59, 0x47, 0x6a, 0x16, 0xaa, 0x3e, 0x44, 0xb5, 0x0d, 0xd8, 0x92, 0x66, 0x59, 0xa4, 0xe1,
 ];
 
+const GP_COMPOSITE_LAYER_CLASS_ID: [u8; 16] = [
+    0x51, 0x4b, 0x99, 0x22, 0xba, 0xc6, 0xff, 0x41, 0xab, 0xe6, 0x54, 0x96, 0x15, 0x44, 0x1e, 0x3f,
+];
+
 pub const DE_TEXT_FILE_CLASS_ID: [u8; 16] = [
     0x66, 0x07, 0x8d, 0xe9, 0x3e, 0xc1, 0xca, 0x45, 0xba, 0x78, 0x1d, 0xef, 0x8b, 0x60, 0xca, 0xb2,
 ];
@@ -981,7 +985,16 @@ pub struct DataElement10_1 {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct GpCompositeLayerMembers10_1 {
+    pub version: u16,
+    pub base_version: u16,
+    pub raw_count: i32,
+    pub layers: Vec<RuleSlot10_1<GpLayer10_1>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct GpLayer10_1 {
+    pub composite: Option<GpCompositeLayerMembers10_1>,
     pub version: u16,
     pub gp_value_version: u16,
     pub gp_value_short: u16,
@@ -3417,14 +3430,28 @@ fn read_gp_layer_slot(
     let body = match entry {
         ObjectEntry10_1::Null => None,
         ObjectEntry10_1::BackReference { class_id, key }
-            if refs.registered_class(key).unwrap_or(class_id) == GP_LAYER_CLASS_ID =>
+            if matches!(
+                refs.registered_class(key).unwrap_or(class_id),
+                GP_LAYER_CLASS_ID | GP_COMPOSITE_LAYER_CLASS_ID
+            ) =>
         {
             None
         }
         ObjectEntry10_1::NewObject {
-            class_id: GP_LAYER_CLASS_ID,
+            class_id: class_id @ (GP_LAYER_CLASS_ID | GP_COMPOSITE_LAYER_CLASS_ID),
             ..
         } => {
+            if depth >= MAX_BOOKMARK_NAME_NESTING {
+                return Err(io::Error::new(ErrorKind::InvalidData, "IGPLayer 嵌套过深"));
+            }
+            let composite_versions = (class_id == GP_COMPOSITE_LAYER_CLASS_ID)
+                .then(|| {
+                    Ok::<_, io::Error>((
+                        read_de_layer_version(reader, 1, "GPCompositeLayer")?,
+                        read_de_layer_version(reader, 1, "GPCompositeLayerBase")?,
+                    ))
+                })
+                .transpose()?;
             let version = read_de_layer_version(reader, 2, "GPLayerBase")?;
             let gp_value_version = read_de_layer_version(reader, 1, "GPValue")?;
             let gp_value_short = reader.read_u16_le()?;
@@ -3447,7 +3474,23 @@ fn read_gp_layer_slot(
             } else {
                 None
             };
+            let composite = if let Some((version, base_version)) = composite_versions {
+                let (raw_count, count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
+                let mut layers = Vec::new();
+                for _ in 0..count {
+                    layers.push(read_gp_layer_slot(reader, max_bytes, refs, depth + 1)?);
+                }
+                Some(GpCompositeLayerMembers10_1 {
+                    version,
+                    base_version,
+                    raw_count,
+                    layers,
+                })
+            } else {
+                None
+            };
             Some(Box::new(GpLayer10_1 {
+                composite,
                 version,
                 gp_value_version,
                 gp_value_short,
@@ -7468,6 +7511,46 @@ mod tests {
             );
             assert_eq!(reader.position(), end);
         }
+    }
+
+    #[test]
+    fn gp_composite_layer_reads_members_and_back_reference() {
+        let mut bytes = GP_COMPOSITE_LAYER_CLASS_ID.to_vec();
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend([1, 0, 0, 0, 2, 0, 1, 0, 9, 0]);
+        bytes.extend([2, 0, 0, 0, 0, 0]);
+        bytes.extend([0; 32]);
+        bytes.extend(2_i32.to_le_bytes());
+        bytes.extend([0; 16]);
+        bytes.extend(GP_COMPOSITE_LAYER_CLASS_ID);
+        bytes.extend(1_u32.to_le_bytes());
+        for cut in 0..bytes.len() {
+            assert!(
+                read_gp_layer_slot(
+                    &mut Reader::new(&bytes[..cut]),
+                    1024,
+                    &mut RefTable10_1::new(),
+                    0,
+                )
+                .is_err()
+            );
+        }
+        let end = bytes.len();
+        bytes.push(0xa5);
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let outer = read_gp_layer_slot(&mut reader, 1024, &mut refs, 0).unwrap();
+        let members = outer.body.unwrap().composite.unwrap();
+        assert_eq!(
+            (members.version, members.base_version, members.raw_count),
+            (1, 0, 2)
+        );
+        assert_eq!(members.layers[0].entry, ObjectEntry10_1::Null);
+        assert!(matches!(
+            members.layers[1].entry,
+            ObjectEntry10_1::BackReference { key: 1, .. }
+        ));
+        assert_eq!(reader.position(), end);
     }
 
     #[test]

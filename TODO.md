@@ -815,7 +815,7 @@
       - [x] 接入 IDataElement 列表中的 DEPrjFile。[取证](docs/mxd-terra-round9-bookmark.md#deprjfile)
       - [x] 接入 IDataElement 列表中的 DETextFile。[取证](docs/mxd-terra-round9-bookmark.md#detextfile)
       - [x] 接入 IDataElement 列表中的 DELayer 及其 GPLayer 槽。[取证](docs/mxd-terra-round9-bookmark.md#delayer-与-gplayer)
-      - [ ] 接入 DELayer 槽中的 GPCompositeLayer。[取证](docs/mxd-terra-round9-bookmark.md#delayer-与-gplayer)
+      - [x] 接入 DELayer 槽中的 GPCompositeLayer。[取证](docs/mxd-terra-round9-bookmark.md#gpcompositelayer)
       - [ ] 补齐 IDataElement 列表中其他持久化实现。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的 GPSubtype 对象及字段行。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的拓扑与几何网络控制器成员。[取证](docs/mxd-terra-round9-bookmark.md#detable)
