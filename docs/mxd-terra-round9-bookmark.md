@@ -1389,6 +1389,26 @@ DataInterop.dll 同版 SHA-256 为
 这些静态常量包含接口请求与声明，尚不能直接计为内部工厂。
 真实宿主仍未验证。
 
+FME 的外层工厂是转发对象。DataInterop.dll 的 ATL 包装
+`0x6e8d6700` 使用 COM 映射 `0x6e8e4064`；工厂 IID
+条目 `0x6e8e4070` 通过 `0x6e8db360` 转发给成员 +0x8。
+`0x6e8d127a` 用 CoCreateInstance 初始化该成员，目标 CLSID
+为 `D9D29505-58DE-4EBC-A78F-D7F1FB29179D`。
+
+从同一 10.1 安装介质的可选 DataInterop 载荷提取 479 个 DLL，
+上述 CLSID 和工厂 IID 的完整字节都命中 DIToolbox.dll。
+该文件版本资源为 2012.0.0.12229，SHA-256 为
+`b80bdc7bc9f14ad839754d6671999db89685c5ede87dd22c71d112c71ff0287a`。
+CFMEDatasetTypeFactory 的 COM 映射 `0x100f4624`
+把 IGPDataTypeFactory 映射到 +0x8，ATL 包装表
+`0x100f45c8` 的 +0x14 指向 `0x10027e40`。
+该方法选择对象后在 `0x10027f93` 通过虚表 +0x0c
+给调用方填充名称输出参数。另在 DIToolbox 的
+`0x10025c7f` 找到创建 GPDataTypeName 的路径，其 CLSID
+常量位于 `0x100f5fa8`。尚待对位 `0x10027f93` 各分支的
+实际接收者，确认它们是否共用这个创建路径。
+真实 MXD 和 ArcMap 验证仍待补充。
+
 #### GPValueTable
 
 GpObjects.dll 10.1.0.3035 的 RTTI `0x74801cd4` 对应持久化虚表
