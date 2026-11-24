@@ -1149,3 +1149,25 @@ RasterRGBSymbol 委派同一个 ColorSymbol Load。Rust 保留三个原始
 short 参数类型返回有符号值，原模型保留位模式。
 合成用例覆盖 v3 起的字段和更早版本的缺省状态。实档显示效果及
 ArcMap/QGIS 人工验收待补。
+
+### 栅格渐变符号的图例属性
+
+同摘要 RasterLayer.dll 的 ColorRampSymbol QI 在
+`0x7c711447..0x7c711469` 匹配的两个接口返回对象 +0x98，
+使用虚表 `0x7c767abc`。对照 esriCarto 10.1 类型库，
+IColorRampSymbol::Invert、LegendClassIndex 和
+IColorRampSymbol2::Horizontal、ShowTics 的 getter 分别在
++0x28、+0x34、+0x44、+0x4c。对应入口
+`0x7c711780`、`0x7c711970`、`0x7c7117d0`、`0x7c711820`
+读取完整对象 +0xb8、+0xb4、+0xba、+0xbc。
+
+持久化表位于 +0xd4，Load 的 `0x7c71218b`、
+`0x7c7121c8`、`0x7c712287`、`0x7c71225c` 读入这些成员。
+所以 v5 两项按流序为 ShowTics、Horizontal。Rust 保留原始值，
+访问器按非零判断布尔属性，并保留旧版本 v5 字段缺省的状态。
+
+颜色槽后的第二个 int32 读入完整对象 +0x60（ColorRampSymbol
+`0x7c71212a`、ColorSymbol `0x7c713516`）。写侧从同一成员保存，
+其业务语义仍待核对。第三个 int32 读入栈临时值，写侧分别在
+`0x7c7123be`、`0x7c7135df` 填零，读取模型保留流内值。
+实际图例效果尚未在 ArcMap/QGIS 中人工验收。

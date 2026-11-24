@@ -2633,7 +2633,7 @@ fn raster_color_ramp_symbol_consumes_only_fields_for_its_version() {
             bytes.extend((-36_i32).to_le_bytes());
         }
         if signed_version >= 5 {
-            bytes.extend(37_u16.to_le_bytes());
+            bytes.extend(0_u16.to_le_bytes());
             bytes.extend(0xffff_u16.to_le_bytes());
         }
         let end = bytes.len();
@@ -2661,10 +2661,11 @@ fn raster_color_ramp_symbol_consumes_only_fields_for_its_version() {
             (signed_version >= 3).then_some((33, -34, 35))
         );
         assert_eq!(tail.integer_v4, (signed_version >= 4).then_some(-36));
-        assert_eq!(
-            tail.shorts_v5,
-            (signed_version >= 5).then_some([37, 0xffff])
-        );
+        assert_eq!(tail.shorts_v5, (signed_version >= 5).then_some([0, 0xffff]));
+        assert!(tail.invert());
+        assert_eq!(tail.legend_class_index(), 32);
+        assert_eq!(tail.show_tics(), (signed_version >= 5).then_some(false));
+        assert_eq!(tail.horizontal(), (signed_version >= 5).then_some(true));
         assert_eq!(reader.read_bytes(1).unwrap(), &[0xb1]);
 
         for length in 0..end {

@@ -57,19 +57,37 @@ impl ColorRampSymbolBody10_1 {
 /// 梯度槽之后按版本保存的字段。按流序保留尚无语义定名的值。
 #[derive(Debug, Clone, PartialEq)]
 pub struct ColorRampSymbolTail10_1 {
+    /// IColorRampSymbol::Invert 的原始 VARIANT_BOOL。
     pub first_short: u16,
     /// 有符号版本 <2。
     pub legacy_short: Option<u16>,
+    /// IColorRampSymbol::LegendClassIndex。
     pub integer: i32,
     /// 版本 ≥3，依次为透明度、亮度和对比度。
     pub shorts_v3: Option<[u16; 3]>,
     /// 版本 ≥4。
     pub integer_v4: Option<i32>,
-    /// 版本 ≥5。
+    /// 版本 ≥5，依次为 ShowTics 和 Horizontal。
     pub shorts_v5: Option<[u16; 2]>,
 }
 
 impl ColorRampSymbolTail10_1 {
+    pub fn invert(&self) -> bool {
+        self.first_short != 0
+    }
+
+    pub fn legend_class_index(&self) -> i32 {
+        self.integer
+    }
+
+    pub fn show_tics(&self) -> Option<bool> {
+        self.shorts_v5.map(|fields| fields[0] != 0)
+    }
+
+    pub fn horizontal(&self) -> Option<bool> {
+        self.shorts_v5.map(|fields| fields[1] != 0)
+    }
+
     /// 返回原生绘制传给 ApplyEffects 的透明度、亮度和对比度。
     pub fn color_effects(&self) -> Option<(i16, i16, i16)> {
         self.shorts_v3.map(|[transparency, brightness, contrast]| {
