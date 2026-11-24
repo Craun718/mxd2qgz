@@ -447,6 +447,14 @@ QI `0x80d63c10` 在 `0x80d63c3f` 和 `0x80d63c2b` 分别比较 ISymbol
 PictureMarkerSymbol。两字符串按原始顺序保留，解析不访问 URL。语料未发现此 CLSID，
 合成测试覆盖空槽、内嵌体、错误类及逐字节截断。
 
+同摘要 WMSLayer.dll 的 `0x80d65145..0x80d6514a` 用有符号
+`jg` 检查上限，负版本继续读取相同的两个 String 和对象槽。
+`0x80d65171..0x80d6517c` 明确请求 IPictureMarkerSymbol。
+SystemCore 10.1.0.3035 在 `0x7ffd0063` 按键取登记实例并查询接口。
+读取器保留原始版本位模式，以登记类检查嵌套回引。合成用例覆盖
+负版本、截断、有效回引和指向 SimpleMarkerSymbol 的错误回引。
+真实工程及 ArcMap/QGIS 人工验收仍待补充。
+
 上述 SDK 实档验证为本地 Rust 解析，尚无 FeatureLayer ㉖ 的对应实档，也未在 ArcMap
 或 QGIS 中人工验收。其他 DLL 中的持久化 ISymbol 实现仍待追查。
 

@@ -636,6 +636,7 @@
       - [x] 复核地图框改动后的介质及 SDK 布局解析边界。[语料复跑](docs/mxd-map-frame-body-20261118.md#地图框语料复跑)
       - [x] 接入三维图形容器 IElement 槽中的独立 MapSurroundFrame。[原生取证](docs/arcmap-10.1-dep-tail.md#三维图形容器中的独立装饰框)
       - [x] 按原生有符号版本读取 ColorSymbol、RasterRGBSymbol 与 ColorRampSymbol，并核对渐变符号旧尾段。[指令取证](docs/arcmap-10.1-dep-tail.md#featurelayer-符号槽的栅格和-wms-实现)
+      - [x] 按原生有符号版本读取 URLPictureMarkerSymbol，并校验其 IPictureMarkerSymbol 回引。[指令取证](docs/arcmap-10.1-dep-tail.md#featurelayer-符号槽的栅格和-wms-实现)
       - [ ] FeatureLayer 后继段 ㉖ 槽中未支持的 ISymbol 实现类体（已接入类和跨模块候选见[符号续研](docs/arcmap-10.1-dep-tail.md#featurelayer-符号槽的栅格和-wms-实现)）。
       - [x] 接入 SymbolMimic 的空 IRepresentationRule 槽及两项标量。[原生持久化入口](docs/arcmap-10.1-dep-tail.md#symbolmimic-的持久化入口)
       - [x] 接入 SymbolMimic 中各集合为空的 RepresentationRule 对象体及同类键回引。[原生边界](docs/arcmap-10.1-dep-tail.md#symbolmimic-中的-representationrule)

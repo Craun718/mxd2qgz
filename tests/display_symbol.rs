@@ -2727,8 +2727,9 @@ fn url_picture_marker_preserves_strings_and_reads_the_embedded_marker() {
     prefix.extend(1_u16.to_le_bytes());
     push_string(&mut prefix, "https://example.invalid/图标.png");
     push_string(&mut prefix, "image/png");
-    for embedded in [false, true] {
+    for (version, embedded) in [(1_u16, false), (1, true), (0xffff, false), (0x8000, true)] {
         let mut bytes = prefix.clone();
+        bytes[20..22].copy_from_slice(&version.to_le_bytes());
         if embedded {
             push_entry(&mut bytes, &PICTURE_MARKER_SYMBOL_CLASS_ID, 62);
             bytes.extend(9_u16.to_le_bytes());
@@ -2749,7 +2750,7 @@ fn url_picture_marker_preserves_strings_and_reads_the_embedded_marker() {
         else {
             panic!("预期 URL 图像标记符号");
         };
-        assert_eq!((body.key, body.version, body.stop), (61, 1, None));
+        assert_eq!((body.key, body.version, body.stop), (61, version, None));
         assert_eq!(
             body.strings,
             ["https://example.invalid/图标.png", "image/png"]
@@ -2786,6 +2787,66 @@ fn url_picture_marker_preserves_strings_and_reads_the_embedded_marker() {
     assert!(body.stop.is_some());
     assert_eq!(reader.position(), slot_start);
     assert!(!refs.contains(70));
+}
+
+#[test]
+fn url_picture_marker_reference_uses_the_registered_class() {
+    use mxd2qgz::objects::display_symbol::{
+        PICTURE_MARKER_SYMBOL_CLASS_ID, SymbolSlotFull10_1, URL_PICTURE_MARKER_SYMBOL_CLASS_ID,
+        read_symbol_slot_full_10_1,
+    };
+    use mxd2qgz::storage::object_refs::read_object_entry_10_1;
+
+    for (registered, header) in [
+        (
+            SIMPLE_MARKER_SYMBOL_CLASS_ID,
+            PICTURE_MARKER_SYMBOL_CLASS_ID,
+        ),
+        (
+            PICTURE_MARKER_SYMBOL_CLASS_ID,
+            SIMPLE_MARKER_SYMBOL_CLASS_ID,
+        ),
+    ] {
+        let mut refs = RefTable10_1::new();
+        let mut definition = Vec::new();
+        push_entry(&mut definition, &registered, 62);
+        read_object_entry_10_1(&mut Reader::new(&definition), &mut refs).unwrap();
+
+        let mut bytes = Vec::new();
+        push_entry(&mut bytes, &URL_PICTURE_MARKER_SYMBOL_CLASS_ID, 61);
+        bytes.extend(1_u16.to_le_bytes());
+        push_string(&mut bytes, "");
+        push_string(&mut bytes, "");
+        let slot_start = bytes.len();
+        push_entry(&mut bytes, &header, 62);
+        let mut reader = Reader::new(&bytes);
+        let SymbolSlotFull10_1::UrlPictureMarkerSymbol(body) =
+            read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 8).unwrap()
+        else {
+            panic!("预期 URL 图像标记符号");
+        };
+        if registered == PICTURE_MARKER_SYMBOL_CLASS_ID {
+            assert_eq!(
+                body.picture_marker,
+                SymbolSlotFull10_1::BackReference {
+                    class_id: registered,
+                    key: 62,
+                }
+            );
+            assert!(body.stop.is_none());
+            assert_eq!(reader.remaining(), 0);
+        } else {
+            assert_eq!(
+                body.picture_marker,
+                SymbolSlotFull10_1::Unsupported {
+                    class_id: registered,
+                    key: 62,
+                }
+            );
+            assert!(body.stop.is_some());
+            assert_eq!(reader.position(), slot_start);
+        }
+    }
 }
 
 #[test]

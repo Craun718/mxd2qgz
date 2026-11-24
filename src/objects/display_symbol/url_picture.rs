@@ -2,9 +2,9 @@
 
 use super::{
     DisplaySlotKind10_1, PICTURE_MARKER_SYMBOL_CLASS_ID, SymbolSlotFull10_1, SymbolStop10_1,
-    read_symbol_slot_full_10_1, read_version_short, slot_full_stop_10_1,
+    read_signed_symbol_version, read_symbol_slot_full_10_1, slot_full_stop_10_1,
 };
-use crate::storage::object_refs::RefTable10_1;
+use crate::storage::object_refs::{RefTable10_1, read_object_entry_10_1};
 use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
@@ -31,19 +31,32 @@ pub(super) fn read_url_picture_marker_symbol_body_10_1(
     key: u32,
     depth: usize,
 ) -> io::Result<UrlPictureMarkerSymbolBody10_1> {
-    let version = read_version_short(reader, 1, "URLPictureMarkerSymbol", reader.position())?;
+    let version =
+        read_signed_symbol_version(reader, 1, "URLPictureMarkerSymbol", reader.position())?;
     let strings = [
         read_string_10_1(reader, max_bytes)?,
         read_string_10_1(reader, max_bytes)?,
     ];
     let header = read_header_10_1(&mut reader.clone())?;
     let picture_marker = match header {
-        ObjectHeader::Object { class_id, key }
-            if class_id != PICTURE_MARKER_SYMBOL_CLASS_ID && !table.contains(key) =>
-        {
-            SymbolSlotFull10_1::Unsupported { class_id, key }
+        ObjectHeader::Object { class_id, key } => {
+            let actual_class = table.registered_class(key).unwrap_or(class_id);
+            if actual_class != PICTURE_MARKER_SYMBOL_CLASS_ID {
+                SymbolSlotFull10_1::Unsupported {
+                    class_id: actual_class,
+                    key,
+                }
+            } else if table.contains(key) {
+                read_object_entry_10_1(reader, table)?;
+                SymbolSlotFull10_1::BackReference {
+                    class_id: actual_class,
+                    key,
+                }
+            } else {
+                read_symbol_slot_full_10_1(reader, max_bytes, table, depth)?
+            }
         }
-        _ => read_symbol_slot_full_10_1(reader, max_bytes, table, depth)?,
+        ObjectHeader::Null => read_symbol_slot_full_10_1(reader, max_bytes, table, depth)?,
     };
     let stop = slot_full_stop_10_1(&picture_marker, DisplaySlotKind10_1::MarkerSymbol);
     Ok(UrlPictureMarkerSymbolBody10_1 {
