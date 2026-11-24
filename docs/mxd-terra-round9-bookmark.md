@@ -2511,3 +2511,20 @@ FileDataElements.dll 10.1.0.3035 的持久化表 `0x6f9d7d10`
 正数逐项从 `0x6f9b2c8c` 以 `0x6f9d8048` 的 IGPArcInfoItem IID
 调用 LoadObject。构造测试覆盖简短表体、非空列表、逐字节截断
 和结束位置。真实 MXD 宿主仍待验证。
+
+#### DETableInfo 与 DEFeatureClassInfo
+
+FeatureDataElements.dll 10.1.0.3035 的 PE RTTI 与默认构造路径
+给出两类的持久化表、CLSID 来源和 Load 跳板。
+
+| 类 | 持久化表 | CLSID 常量地址 | CLSID | Load 跳板 |
+| --- | --- | --- | --- | --- |
+| DETableInfo | `0x6f65ee30` | `0x6f65f048` | `3D44C434-B67C-4FD0-A7C9-A20685AB6795` | `0x6f64a4ce` |
+| DEFeatureClassInfo | `0x6f658b58` | `0x6f658ed0` | `A735FC17-D50D-4D63-AA98-45E7C598CEC3` | `0x6f64a28e` |
+
+构造路径分别在 `0x6f61dce7` 和 `0x6f5f36f7` 调用
+DETableBase、DEFeatureClassBase 的默认构造函数，沿用零扩展标志。
+Load 分别直接转入这两个基类的 Load，没有额外派生版本。
+两类的 QI 分别在 `0x6f61dfdd` 和 `0x6f5f3a85` 比对
+`0x6f658574` 中的 IDataElement IID。构造测试覆盖紧凑体、
+逐字节截断和结束位置。真实 MXD 宿主仍待验证。

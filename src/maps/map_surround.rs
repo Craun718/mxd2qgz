@@ -567,6 +567,14 @@ pub const DE_CAD_DRAWING_DATASET_CLASS_ID: [u8; 16] = [
     0x2d, 0x33, 0x86, 0xf7, 0xb2, 0x20, 0x07, 0x46, 0xbf, 0x34, 0x0a, 0x53, 0xe4, 0xd0, 0xb4, 0x13,
 ];
 
+pub const DE_FEATURE_CLASS_INFO_CLASS_ID: [u8; 16] = [
+    0x17, 0xfc, 0x35, 0xa7, 0x0d, 0xd5, 0x63, 0x4d, 0xaa, 0x98, 0x45, 0xe7, 0xc5, 0x98, 0xce, 0xc3,
+];
+
+pub const DE_TABLE_INFO_CLASS_ID: [u8; 16] = [
+    0x34, 0xc4, 0x44, 0x3d, 0x7c, 0xb6, 0xd0, 0x4f, 0xa7, 0xc9, 0xa2, 0x06, 0x85, 0xab, 0x67, 0x95,
+];
+
 pub const DE_ARC_INFO_TABLE_CLASS_ID: [u8; 16] = [
     0xec, 0x86, 0xc7, 0x1c, 0xfe, 0x5e, 0x3c, 0x49, 0x8a, 0x25, 0xb5, 0x46, 0x84, 0x46, 0x65, 0xd7,
 ];
@@ -1078,6 +1086,7 @@ pub struct DeCoverageFeatureClassTail10_1 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
+    TableInfo(DeCompactTable10_1),
     LasDataset {
         version: u16,
         geo_dataset_version: u16,
@@ -3676,6 +3685,7 @@ fn read_gp_data_element_child(
                     | DE_FEATURE_CLASS_CLASS_ID
                     | DE_RASTER_CATALOG_CLASS_ID
                     | DE_SHAPE_FILE_CLASS_ID
+                    | DE_FEATURE_CLASS_INFO_CLASS_ID
                     | DE_COVERAGE_FEATURE_CLASS_ID
                     | DE_RASTER_DATASET_CLASS_ID
                     | DE_CAD_DRAWING_DATASET_CLASS_ID
@@ -3703,6 +3713,7 @@ fn read_gp_data_element_child(
                     | DE_TEXT_FILE_CLASS_ID
                     | DE_DBASE_TABLE_CLASS_ID
                     | DE_ARC_INFO_TABLE_CLASS_ID
+                    | DE_TABLE_INFO_CLASS_ID
                     | DE_VPF_TABLE_CLASS_ID
                     | DE_LAYER_CLASS_ID
                     | DE_TOPOLOGY_CLASS_ID
@@ -3718,6 +3729,7 @@ fn read_gp_data_element_child(
                 | DE_FEATURE_CLASS_CLASS_ID
                 | DE_RASTER_CATALOG_CLASS_ID
                 | DE_SHAPE_FILE_CLASS_ID
+                | DE_FEATURE_CLASS_INFO_CLASS_ID
                 | DE_COVERAGE_FEATURE_CLASS_ID
                 | DE_RASTER_DATASET_CLASS_ID
                 | DE_CAD_DRAWING_DATASET_CLASS_ID
@@ -3745,6 +3757,7 @@ fn read_gp_data_element_child(
                 | DE_TEXT_FILE_CLASS_ID
                 | DE_DBASE_TABLE_CLASS_ID
                 | DE_ARC_INFO_TABLE_CLASS_ID
+                | DE_TABLE_INFO_CLASS_ID
                 | DE_VPF_TABLE_CLASS_ID
                 | DE_LAYER_CLASS_ID
                 | DE_TOPOLOGY_CLASS_ID
@@ -3795,6 +3808,8 @@ fn read_gp_data_element_child(
                     element: read_gp_data_element(reader, max_bytes, refs, depth + 1)?,
                     layer: read_gp_layer_slot(reader, max_bytes, refs, depth + 1)?,
                 }
+            } else if class_id == DE_TABLE_INFO_CLASS_ID {
+                DeChild10_1::TableInfo(read_de_compact_table(reader, max_bytes, refs, depth + 1)?)
             } else if matches!(
                 class_id,
                 DE_DBASE_TABLE_CLASS_ID | DE_VPF_TABLE_CLASS_ID | DE_ARC_INFO_TABLE_CLASS_ID
@@ -4086,7 +4101,9 @@ fn read_gp_data_element_child(
                 // 文件要素类沿用基类默认的零扩展标志。
                 let extended = !matches!(
                     class_id,
-                    DE_SHAPE_FILE_CLASS_ID | DE_COVERAGE_FEATURE_CLASS_ID
+                    DE_SHAPE_FILE_CLASS_ID
+                        | DE_COVERAGE_FEATURE_CLASS_ID
+                        | DE_FEATURE_CLASS_INFO_CLASS_ID
                 );
                 let table = if extended {
                     DeFeatureClassTable10_1::Extended(read_gp_de_table(
@@ -8174,10 +8191,18 @@ mod tests {
 
     #[test]
     fn file_feature_classes_use_compact_layout() {
-        for class_id in [DE_SHAPE_FILE_CLASS_ID, DE_COVERAGE_FEATURE_CLASS_ID] {
+        for class_id in [
+            DE_SHAPE_FILE_CLASS_ID,
+            DE_COVERAGE_FEATURE_CLASS_ID,
+            DE_FEATURE_CLASS_INFO_CLASS_ID,
+        ] {
             let mut bytes = class_id.to_vec();
             bytes.extend(55_u32.to_le_bytes());
-            bytes.extend([1, 0, 0, 0]); // DEShapeFile 和 DEFeatureClassBase。
+            let derived_version = (class_id != DE_FEATURE_CLASS_INFO_CLASS_ID).then_some(1_u16);
+            if let Some(version) = derived_version {
+                bytes.extend(version.to_le_bytes());
+            }
+            bytes.extend(0_u16.to_le_bytes());
             bytes.extend([0; 10]);
             for _ in 0..3 {
                 bytes.extend([2, 0, 0, 0, 0, 0]);
@@ -8224,7 +8249,7 @@ mod tests {
             assert!(matches!(
                 slot.body.as_deref(),
                 Some(DeChild10_1::FeatureClass {
-                    derived_version: Some(1),
+                    derived_version: parsed_derived_version,
                     version: 0,
                     table: DeFeatureClassTable10_1::Compact(DeCompactTable10_1 {
                         table_short: 9,
@@ -8233,7 +8258,7 @@ mod tests {
                     raw_longs: [-4, 7],
                     strings: None,
                     ..
-                })
+                }) if *parsed_derived_version == derived_version
             ));
             let Some(DeChild10_1::FeatureClass { coverage, .. }) = slot.body.as_deref() else {
                 panic!("应读取文件要素类");
@@ -8260,10 +8285,13 @@ mod tests {
             DE_DBASE_TABLE_CLASS_ID,
             DE_VPF_TABLE_CLASS_ID,
             DE_ARC_INFO_TABLE_CLASS_ID,
+            DE_TABLE_INFO_CLASS_ID,
         ] {
             let mut bytes = class_id.to_vec();
             bytes.extend(55_u32.to_le_bytes());
-            bytes.extend([1, 0]);
+            if class_id != DE_TABLE_INFO_CLASS_ID {
+                bytes.extend([1, 0]);
+            }
             bytes.extend([0; 10]);
             for _ in 0..3 {
                 bytes.extend([2, 0, 0, 0, 0, 0]);
@@ -8296,7 +8324,7 @@ mod tests {
             let mut reader = Reader::new(&bytes);
             let object =
                 read_gp_data_element_child(&mut reader, 1024, &mut RefTable10_1::new(), 0).unwrap();
-            let (version, table) = match object.body.as_deref() {
+            let table = match object.body.as_deref() {
                 Some(DeChild10_1::ArcInfoTable {
                     version,
                     table,
@@ -8305,16 +8333,19 @@ mod tests {
                 }) if class_id == DE_ARC_INFO_TABLE_CLASS_ID => {
                     assert_eq!(*raw_item_count, 1);
                     assert!(items[0].body.is_some());
-                    (version, table)
+                    assert_eq!(*version, 1);
+                    table
                 }
                 Some(DeChild10_1::FileTable { version, table })
                     if class_id != DE_ARC_INFO_TABLE_CLASS_ID =>
                 {
-                    (version, table)
+                    assert_eq!(*version, 1);
+                    table
                 }
+                Some(DeChild10_1::TableInfo(table)) if class_id == DE_TABLE_INFO_CLASS_ID => table,
                 _ => panic!("应读取文件表数据元素"),
             };
-            assert_eq!((*version, table.table_short), (1, 9));
+            assert_eq!(table.table_short, 9);
             assert_eq!(reader.position(), end);
         }
     }
