@@ -394,6 +394,9 @@ pub const GP_DOUBLE_CLASS_ID: [u8; 16] = [
     0x74, 0x45, 0x4c, 0x37, 0x6e, 0x5d, 0x77, 0x4d, 0x9a, 0x67, 0x54, 0x89, 0xc6, 0xbb, 0xe9, 0x32,
 ];
 
+pub const FME_DATASET_CLASS_ID: [u8; 16] = [
+    0xb8, 0xd8, 0x3a, 0xd6, 0x46, 0xab, 0x03, 0x49, 0xb1, 0x58, 0x26, 0xc3, 0x24, 0x0d, 0xe0, 0xd9,
+];
 pub const GP_BOOLEAN_CLASS_ID: [u8; 16] = [
     0x59, 0xd5, 0xe9, 0x66, 0x0e, 0x5e, 0xb4, 0x45, 0xad, 0xa8, 0xd7, 0xc2, 0x07, 0xba, 0x6b, 0x49,
 ];
@@ -875,6 +878,7 @@ pub const GP_EXTENT_CLASS_ID: [u8; 16] = [
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpCodedValue10_1 {
+    FmeDataset(Option<Vec<u8>>),
     Point {
         x_bits: u64,
         y_bits: u64,
@@ -3033,6 +3037,7 @@ fn read_gp_coded_value_entry(
                     | GP_LONG_CLASS_ID
                     | GP_DOUBLE_CLASS_ID
                     | GP_BOOLEAN_CLASS_ID
+                    | FME_DATASET_CLASS_ID
                     | GP_DATE_CLASS_ID
                     | GP_LINEAR_UNIT_CLASS_ID
                     | GP_AREAL_UNIT_CLASS_ID
@@ -3045,6 +3050,18 @@ fn read_gp_coded_value_entry(
         {
             None
         }
+        ObjectEntry10_1::NewObject {
+            class_id: FME_DATASET_CLASS_ID,
+            ..
+        } => Some(Box::new(GpCodedValueBody10_1 {
+            // DIToolbox 对象体无版本头，三个公共字段没有流上值。
+            version: 0,
+            base_version: 0,
+            base_short: 0,
+            value: GpCodedValue10_1::FmeDataset(crate::stream::native_string::read_atl_bstr_10_1(
+                reader, max_bytes,
+            )?),
+        })),
         ObjectEntry10_1::NewObject {
             class_id:
                 class_id @ (GP_STRING_CLASS_ID
@@ -8319,6 +8336,62 @@ pub fn read_legend_prefix_10_1(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fme_dataset_reads_unversioned_bstr_and_reference() {
+        for (payload, expected) in [
+            (vec![], None),
+            (vec![0, 0], Some(vec![])),
+            (vec![b'A', 0, 0, 0], Some(vec![b'A', 0])),
+        ] {
+            let mut header = FME_DATASET_CLASS_ID.to_vec();
+            header.extend(55_u32.to_le_bytes());
+            let mut bytes = header.clone();
+            bytes.extend((payload.len() as u32).to_le_bytes());
+            bytes.extend(payload);
+            for cut in 0..bytes.len() {
+                assert!(
+                    read_gp_coded_value_slot(
+                        &mut Reader::new(&bytes[..cut]),
+                        1024,
+                        &mut RefTable10_1::new(),
+                        0,
+                    )
+                    .is_err()
+                );
+            }
+            let end = bytes.len();
+            bytes.extend(header);
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let first = read_gp_coded_value_slot(&mut reader, 1024, &mut refs, 0).unwrap();
+            assert_eq!(
+                first.body.unwrap().value,
+                GpCodedValue10_1::FmeDataset(expected)
+            );
+            assert_eq!(reader.position(), end);
+            let second = read_gp_coded_value_slot(&mut reader, 1024, &mut refs, 0).unwrap();
+            assert!(matches!(
+                second.entry,
+                ObjectEntry10_1::BackReference { key: 55, .. }
+            ));
+            assert!(second.body.is_none());
+            assert_eq!(reader.remaining(), 0);
+        }
+        for length in [1_u32, 0x100001] {
+            let mut bytes = FME_DATASET_CLASS_ID.to_vec();
+            bytes.extend(55_u32.to_le_bytes());
+            bytes.extend(length.to_le_bytes());
+            let err = read_gp_coded_value_slot(
+                &mut Reader::new(&bytes),
+                usize::MAX,
+                &mut RefTable10_1::new(),
+                0,
+            )
+            .unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::InvalidData);
+        }
+    }
 
     #[test]
     fn de_representation_class_reads_rule_and_attribute_slots() {

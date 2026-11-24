@@ -1532,6 +1532,12 @@ OleAut32 ordinal 149 取得 BSTR 的字节长度，非空指针时加 2
 两个版本和基类标记在此体中均不存在。真实宿主、两层 CLSID
 写入 ObjectStream 的实际选择及 ArcMap 人工验证仍开放。
 
+Rust 按原生 GetClassID 返回的内部 CLSID 接入 IGPValue 槽，
+复用 ATL 字节 BSTR 读取，区分空指针和空字符串并保留原始载荷。
+公共体模型的版本字段填零，读游标不消费版本字节。公开包装 CLSID
+的磁盘分派仍待真实流验证。构造测试覆盖空值、非空值、回引、
+逐字节截断及长度越界。
+
 GpObjects.dll 内部 GPDataTypeFactory 的 GetClassID
 `0x746ac930` 从 `0x747a74dc` 复制
 `E41CFD44-5741-4F2B-8ACE-1A49E146D329`。QI
