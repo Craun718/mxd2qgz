@@ -828,6 +828,9 @@ pub const DE_RASTER_BAND_CLASS_ID: [u8; 16] = [
     0x33, 0x3b, 0xc6, 0x37, 0xd6, 0xc7, 0x11, 0x43, 0x91, 0xd5, 0x9e, 0x98, 0xa2, 0xa0, 0xe3, 0x9a,
 ];
 
+const DE_MOSAIC_DATASET_CLASS_ID: [u8; 16] = [
+    0x2d, 0x86, 0xb0, 0xf5, 0x81, 0x3e, 0xf7, 0x45, 0x9c, 0x79, 0x52, 0x23, 0x67, 0x43, 0xc9, 0x5d,
+];
 pub const DE_RASTER_DATASET_CLASS_ID: [u8; 16] = [
     0x68, 0xbb, 0x95, 0x82, 0x00, 0xf2, 0xa6, 0x4c, 0x80, 0x3f, 0x97, 0x99, 0x52, 0xd7, 0x32, 0xbd,
 ];
@@ -1590,7 +1593,23 @@ pub struct DeNetworkTraffic10_1 {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct DeMosaicDataset10_1 {
+    pub version: i16,
+    pub geo_dataset_version: u16,
+    pub dataset: DeDataset10_1,
+    pub extent: BookmarkEnvelopeEntry10_1,
+    pub spatial_reference: SpatialReferenceEntry10_1,
+    pub value: PropertyValueObjectStream10_1,
+    pub raw_short: u16,
+    pub raw_long: Option<i32>,
+    pub catalog: Option<RuleSlot10_1<DeChild10_1>>,
+    pub names: StringArraySlot10_1,
+    pub table: Option<RuleSlot10_1<DeTable10_1>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
+    MosaicDataset(Box<DeMosaicDataset10_1>),
     SchematicDiagram {
         geo_dataset_version: u16,
         dataset: DeDataset10_1,
@@ -6265,6 +6284,7 @@ fn read_gp_data_element_child(
                     | DE_RASTER_CATALOG_INFO_CLASS_ID
                     | DE_COVERAGE_FEATURE_CLASS_ID
                     | DE_RASTER_DATASET_CLASS_ID
+                    | DE_MOSAIC_DATASET_CLASS_ID
                     | DE_CAD_DRAWING_DATASET_CLASS_ID
                     | DE_TIN_CLASS_ID
                     | DE_NETWORK_DATASET_CLASS_ID
@@ -6323,6 +6343,7 @@ fn read_gp_data_element_child(
                 | DE_RASTER_CATALOG_INFO_CLASS_ID
                 | DE_COVERAGE_FEATURE_CLASS_ID
                 | DE_RASTER_DATASET_CLASS_ID
+                | DE_MOSAIC_DATASET_CLASS_ID
                 | DE_CAD_DRAWING_DATASET_CLASS_ID
                 | DE_TIN_CLASS_ID
                 | DE_NETWORK_DATASET_CLASS_ID
@@ -6560,6 +6581,13 @@ fn read_gp_data_element_child(
                 DeChild10_1::RelationshipClass(Box::new(read_de_relationship_class(
                     reader,
                     class_id,
+                    max_bytes,
+                    refs,
+                    depth + 1,
+                )?))
+            } else if class_id == DE_MOSAIC_DATASET_CLASS_ID {
+                DeChild10_1::MosaicDataset(Box::new(read_de_mosaic_dataset(
+                    reader,
                     max_bytes,
                     refs,
                     depth + 1,
@@ -7599,6 +7627,67 @@ fn read_gp_de_table(
         v4,
         fields,
         indexes,
+    })
+}
+
+fn read_de_mosaic_dataset(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<DeMosaicDataset10_1> {
+    let version = reader.read_u16_le()? as i16;
+    if version > 4 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "DEMosaicDataset 版本超限",
+        ));
+    }
+    let geo_dataset_version = read_de_layer_version(reader, 1, "DEGeoDataset")?;
+    let dataset = read_gp_de_dataset(reader, max_bytes, refs, depth)?;
+    let extent = read_surround_envelope_slot(reader, max_bytes, refs, "DEMosaicDataset 范围")?;
+    let spatial_reference = read_spatial_reference_entry_10_1(reader, max_bytes, refs)?;
+    let value = read_padded_variant_object_stream_nested_10_1(reader, max_bytes, refs, depth)?;
+    let raw_short = reader.read_u16_le()?;
+    let raw_long = (version >= 3)
+        .then(|| reader.read_u32_le().map(|value| value as i32))
+        .transpose()?;
+    let catalog = if version >= 2 {
+        let mut header = reader.clone();
+        let entry = read_object_entry_10_1(&mut header, &mut refs.clone())?;
+        let supported = match entry {
+            ObjectEntry10_1::Null => true,
+            ObjectEntry10_1::NewObject { class_id, .. } => class_id == DE_RASTER_CATALOG_CLASS_ID,
+            ObjectEntry10_1::BackReference { class_id, key } => {
+                refs.registered_class(key).unwrap_or(class_id) == DE_RASTER_CATALOG_CLASS_ID
+            }
+        };
+        if !supported {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "DEMosaicDataset 的 IDERasterCatalog 类尚未支持",
+            ));
+        }
+        Some(read_gp_data_element_child(reader, max_bytes, refs, depth)?)
+    } else {
+        None
+    };
+    let names = read_string_array_slot_10_1(reader, max_bytes, refs)?;
+    let table = (version >= 4)
+        .then(|| read_gp_de_table_slot(reader, max_bytes, refs, depth))
+        .transpose()?;
+    Ok(DeMosaicDataset10_1 {
+        version,
+        geo_dataset_version,
+        dataset,
+        extent,
+        spatial_reference,
+        value,
+        raw_short,
+        raw_long,
+        catalog,
+        names,
+        table,
     })
 }
 
@@ -10960,6 +11049,51 @@ mod tests {
             Some(DeChild10_1::Tool { version: 1, .. })
         ));
         assert_eq!(reader.position(), end);
+    }
+
+    #[test]
+    fn de_mosaic_dataset_reads_versioned_slots() {
+        for version in [-1_i16, 0, 1, 2, 3, 4] {
+            let mut bytes = DE_MOSAIC_DATASET_CLASS_ID.to_vec();
+            bytes.extend(62_u32.to_le_bytes());
+            bytes.extend(version.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend([0; 8]);
+            bytes.extend([2, 0, 0, 0, 0, 0].repeat(3));
+            bytes.extend([0; 22]);
+            bytes.extend([0; 32]);
+            bytes.extend([0; 16]);
+            bytes.extend(7_u16.to_le_bytes());
+            if version >= 3 {
+                bytes.extend((-9_i32).to_le_bytes());
+            }
+            if version >= 2 {
+                bytes.extend([0; 16]);
+            }
+            bytes.extend([0; 16]);
+            if version >= 4 {
+                bytes.extend([0; 16]);
+            }
+            let read = |reader: &mut Reader<'_>| {
+                read_gp_data_element_child(reader, 1024, &mut RefTable10_1::new(), 0)
+            };
+            for cut in 0..bytes.len() {
+                assert!(read(&mut Reader::new(&bytes[..cut])).is_err());
+            }
+            let end = bytes.len();
+            bytes.push(0xa5);
+            let mut reader = Reader::new(&bytes);
+            let parsed = read(&mut reader).unwrap().body.unwrap();
+            let DeChild10_1::MosaicDataset(body) = *parsed else {
+                panic!("应读取 DEMosaicDataset");
+            };
+            assert_eq!(body.version, version);
+            assert_eq!(body.raw_short, 7);
+            assert_eq!(body.raw_long, (version >= 3).then_some(-9));
+            assert_eq!(body.catalog.is_some(), version >= 2);
+            assert_eq!(body.table.is_some(), version >= 4);
+            assert_eq!(reader.position(), end);
+        }
     }
 
     #[test]

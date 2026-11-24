@@ -4062,6 +4062,27 @@ Rust 复用 DEDataset、范围和空间参考槽读取，保留末尾原始字�
 构造测试覆盖非空末串、对象终点和逐字节截断。
 真实 MXD 宿主、字符串语义与 ArcMap/QGIS 人工验收仍待核对。
 
+#### DEMosaicDataset
+
+同摘要 RasterDB.dll 10.1.0.3035 的 PE RTTI `0x7c16e65c`
+关联持久化表 `0x7c126118`，Load/Save 为
+`0x7bfc87f0 / 0x7bfc8950`。同版互操作元数据将
+`F5B0862D-3E81-45F7-9C79-52236743C95D` 定名为
+DEMosaicDataset，并列出 IDataElement。
+
+Load 在 `0x7bfc881f` 检查有符号版本上限 4，然后读
+DEGeoDataset、Variant::Read(false) 和 short。v3 起读
+LONG（`0x7bfc889f`），v2 起读 IDERasterCatalog
+（`0x7bfc88cb`），之后各版本均读 IStringArray
+（`0x7bfc88ec`），v4 起再读 IDETable（`0x7bfc8914`）。
+IDERasterCatalog 的 IID 由 Geodatabase 互操作元数据核实。
+Save 同序写出当前布局，末表由版本 4 门控制。
+
+Rust 复用地理数据集、Variant 和已确认的对象槽读取器，
+保留流中的原始 short，即使原生加载器会在 v2 及以下规范化
+该成员。构造测试覆盖负版本、v0–v4、终点和截断。
+非空子槽的真实组合及 ArcMap/QGIS 人工验收仍待核对。
+
 #### 跨模块 IDataElement 候选与 DETerrain 加载入口
 
 在 10.1 桌面介质提取的 DLL 中，按 IDataElement IID 字节和
