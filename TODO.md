@@ -884,6 +884,7 @@
       - [x] 对位三种栅格符号中持久化的 ROP2，并提供读取访问器。[取证](docs/arcmap-10.1-dep-tail.md#栅格符号的-rop2)
       - [x] 对位 ColorRampSymbol v3 的透明度、亮度和对比度字段。[绘制取证](docs/arcmap-10.1-dep-tail.md#栅格渐变符号的颜色效果)
       - [x] 对位 ColorRampSymbol 的 Invert、LegendClassIndex、ShowTics 和 Horizontal。[接口取证](docs/arcmap-10.1-dep-tail.md#栅格渐变符号的图例属性)
+      - [x] 对位 ColorRampSymbol v4 整数在水平和垂直图例边界刻度中的索引计算。[绘制取证](docs/arcmap-10.1-dep-tail.md#栅格渐变的边界刻度索引)
       - [ ] 定性 DisplayCore 符号类其余标量字段。
       - [x] 对位 ArrowMarkerSymbol 的八个持久化标量，并核对 Size 的派生规则。[箭头取证](docs/arcmap-10.1-display-symbols-round2.md#箭头标记的标量属性)
       - [x] 对位 PictureLineSymbol 的 Rotate、Offset 和 Width。[图片线取证](docs/arcmap-10.1-display-symbols-round2.md#图片线的标量属性)

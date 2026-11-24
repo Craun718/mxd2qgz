@@ -1171,3 +1171,18 @@ IColorRampSymbol2::Horizontal、ShowTics 的 getter 分别在
 其业务语义仍待核对。第三个 int32 读入栈临时值，写侧分别在
 `0x7c7123be`、`0x7c7135df` 填零，读取模型保留流内值。
 实际图例效果尚未在 ArcMap/QGIS 中人工验收。
+
+### 栅格渐变的边界刻度索引
+
+同摘要 RasterLayer.dll 的 ColorRampSymbol 构造入口在
+`0x7c71126b..0x7c711279` 初始化 Horizontal 为 0、ShowTics 为
+−1、完整对象 +0xcc 的整数为 3。Load 自 v4 在 `0x7c71223a`
+读入该整数。Draw `0x7c712028..0x7c71204a` 按 Horizontal
+选择水平或垂直路径。水平路径 `0x7c711c64..0x7c711c8b`
+在 Invert 非零时采用该整数减 2，否则采用 0；垂直路径
+`0x7c711eb3..0x7c711eda` 使用相反条件。ShowTics 非零且
+LegendClassIndex 等于所选索引时，调用 GDI 绘制边界线。
+
+解析模型保留原始 v4 字段，并可按构造默认值计算该索引。
+合成测试覆盖早期默认值、方向切换、反转和禁用刻度线。
+字段的写入来源及实际图例视觉效果仍待 ArcMap/QGIS 验证。

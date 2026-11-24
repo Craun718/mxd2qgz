@@ -88,6 +88,20 @@ impl ColorRampSymbolTail10_1 {
         self.shorts_v5.map(|fields| fields[1] != 0)
     }
 
+    /// ShowTics 开启时，原生额外绘制边界刻度线的图例类索引。
+    pub fn boundary_tick_class_index(&self) -> Option<i32> {
+        if !self.show_tics().unwrap_or(true) {
+            return None;
+        }
+        let horizontal = self.horizontal().unwrap_or(false);
+        let index = if horizontal == self.invert() {
+            self.integer_v4.unwrap_or(3).wrapping_sub(2)
+        } else {
+            0
+        };
+        Some(index)
+    }
+
     /// 返回原生绘制传给 ApplyEffects 的透明度、亮度和对比度。
     pub fn color_effects(&self) -> Option<(i16, i16, i16)> {
         self.shorts_v3.map(|[transparency, brightness, contrast]| {

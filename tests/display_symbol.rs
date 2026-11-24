@@ -3801,3 +3801,28 @@ fn marker_3d_symbol_reads_versioned_tail_after_empty_geometry() {
         }
     }
 }
+
+#[test]
+fn color_ramp_boundary_tick_index_depends_on_direction_and_invert() {
+    use mxd2qgz::objects::display_symbol::ColorRampSymbolTail10_1;
+
+    let mut tail = ColorRampSymbolTail10_1 {
+        first_short: 0,
+        legacy_short: None,
+        integer: 0,
+        shorts_v3: None,
+        integer_v4: None,
+        shorts_v5: None,
+    };
+    assert_eq!(tail.boundary_tick_class_index(), Some(1));
+    tail.integer_v4 = Some(9);
+    assert_eq!(tail.boundary_tick_class_index(), Some(7));
+    tail.first_short = 0xffff;
+    assert_eq!(tail.boundary_tick_class_index(), Some(0));
+    tail.shorts_v5 = Some([0xffff, 0xffff]);
+    assert_eq!(tail.boundary_tick_class_index(), Some(7));
+    tail.first_short = 0;
+    assert_eq!(tail.boundary_tick_class_index(), Some(0));
+    tail.shorts_v5 = Some([0, 0xffff]);
+    assert_eq!(tail.boundary_tick_class_index(), None);
+}
