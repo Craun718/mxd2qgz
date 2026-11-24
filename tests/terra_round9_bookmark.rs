@@ -5048,6 +5048,7 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
         bytes.extend(29_u32.to_le_bytes());
         bytes.extend(bookmark_entry_10_1(&GP_MULTI_VALUE_CLASS_ID, 30));
         bytes.extend([1, 0, 1, 0, 7, 0]);
+        let type_offset = bytes.len();
         if let Some(class_id) = type_class {
             bytes.extend(bookmark_entry_10_1(&class_id, 32));
             if class_id == GP_MULTI_VALUE_TYPE_NAME_CLASS_ID {
@@ -5073,6 +5074,7 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
         } else {
             bytes.extend([0; 16]);
         }
+        let type_end = bytes.len();
         bytes.extend(2_i32.to_le_bytes());
         bytes.extend(bookmark_entry_10_1(&GP_LONG_CLASS_ID, 21));
         bytes.extend(bookmark_entry_10_1(&GP_MULTI_VALUE_CLASS_ID, 31));
@@ -5312,6 +5314,18 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
             assert_eq!(reader.position(), 0);
             assert!(refs.is_empty());
         }
+        let mut wrong_type = bytes.clone();
+        wrong_type.splice(
+            type_offset..type_end,
+            bookmark_entry_10_1(&GP_DATA_TYPE_NAME_CLASS_ID, 30),
+        );
+        let mut reader = Reader::new(&wrong_type);
+        let mut refs = RefTable10_1::new();
+        let error = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::Unsupported);
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+
         let mut oversized = bytes.clone();
         oversized[row_count_offset..row_count_offset + 4].copy_from_slice(&i32::MAX.to_le_bytes());
         let mut reader = Reader::new(&oversized);

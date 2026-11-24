@@ -2443,6 +2443,18 @@ fn read_gp_coded_value_entry(
                     }
                     let type_name =
                         read_bookmark_name_slot_10_1(reader, max_bytes, table, depth + 1)?;
+                    if matches!(
+                        type_name,
+                        BookmarkNameEntry10_1::BackReference {
+                            class_id: GP_MULTI_VALUE_CLASS_ID,
+                            ..
+                        }
+                    ) {
+                        return Err(io::Error::new(
+                            ErrorKind::Unsupported,
+                            "GPMultiValue 类型槽回引了不实现 IName 的多值对象",
+                        ));
+                    }
                     // Load 要求 IName。Open 返回对象的接口查询不影响后续流读取。
                     let (raw_count, values) =
                         read_gp_coded_value_list(reader, max_bytes, table, depth + 1)?;

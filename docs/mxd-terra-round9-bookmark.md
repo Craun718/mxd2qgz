@@ -1273,6 +1273,11 @@ Open 成功后，`0x746ef472` 调用 `0x746a09a0 → 0x746a09d0`，
 读取已确认的名称体，构造 GPFunctionName v2 验证后继成员和回引。
 该用例只覆盖字节读取，ArcMap 中的 Open 结果和其他候选名称仍待验证。
 
+GpObjects.dll 10.1.0.3035 的多值对象 QI（`0x746ede30`）及其
+基类分派（`0x74786fe0`）均无 IName 分支。类型槽按登记类拒绝回引
+GPMultiValue。构造输入以 GPDataTypeName 类标识回引宿主多值键，
+验证书签游标和引用表整体回滚。尚无原生运行或实档验证。
+
 #### GPValueTable
 
 GpObjects.dll 10.1.0.3035 的 RTTI `0x74801cd4` 对应持久化虚表
