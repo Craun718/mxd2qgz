@@ -7326,7 +7326,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
     use mxd2qgz::maps::map_surround::{
         BookmarkEnvelopeEntry10_1, ConnectivityRule10_1, DE_FEATURE_CLASS_CLASS_ID,
         DE_FEATURE_DATASET_CLASS_ID, DE_GEOMETRIC_NETWORK_CLASS_ID, DE_RELATIONSHIP_CLASS_CLASS_ID,
-        DE_TABLE_CLASS_ID, DE_TOPOLOGY_CLASS_ID, DeChild10_1, DeDataset10_1,
+        DE_TABLE_CLASS_ID, DE_TOPOLOGY_CLASS_ID, DataElement10_1, DeChild10_1, DeDataset10_1,
         DeGeometricNetwork10_1, DeRelationshipBase10_1, DeRelationshipClass10_1,
         DeRelationshipMetadata10_1, DeTable10_1, DeTableIndex10_1, DeTableIndexes10_1,
         EDGE_CONNECTIVITY_RULE_CLASS_ID, GP_ADDRESS_LOCATOR_STYLE_CLASS_ID,
@@ -7691,6 +7691,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                 version,
                                 dataset: DeDataset10_1 {
                                     dataset_version: 2,
+                                    element: DataElement10_1 {
                                     element_version: 2,
                                     gp_value_version: 1,
                                     gp_value_short: 7,
@@ -7716,6 +7717,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                                     version: 0,
                                                     dataset: DeDataset10_1 {
                                                         dataset_version: 0,
+                                                        element: DataElement10_1 {
                                                         element_version: 0,
                                                         gp_value_version: 0,
                                                         gp_value_short: 0,
@@ -7724,6 +7726,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                                         element_legacy_xml: None,
                                                         raw_child_count: 0,
                                                         children: Vec::new(),
+                                                        },
                                                         dataset_longs: [0; 2],
                                                         dataset_shorts: [0; 2],
                                                         dataset_string: None,
@@ -7774,6 +7777,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                                 geo_dataset_version: 1,
                                                 dataset: DeDataset10_1 {
                                                     dataset_version: 0,
+                                                    element: DataElement10_1 {
                                                     element_version: 0,
                                                     gp_value_version: 0,
                                                     gp_value_short: 0,
@@ -7782,6 +7786,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                                     element_legacy_xml: None,
                                                     raw_child_count: 0,
                                                     children: Vec::new(),
+                                                    },
                                                     dataset_longs: [0; 2],
                                                     dataset_shorts: [0; 2],
                                                     dataset_string: None,
@@ -7800,6 +7805,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                                 geo_dataset_version: 1,
                                                 dataset: DeDataset10_1 {
                                                     dataset_version: 0,
+                                                    element: DataElement10_1 {
                                                     element_version: 0,
                                                     gp_value_version: 0,
                                                     gp_value_short: 0,
@@ -7808,6 +7814,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                                     element_legacy_xml: None,
                                                     raw_child_count: 0,
                                                     children: Vec::new(),
+                                                    },
                                                     dataset_longs: [0; 2],
                                                     dataset_shorts: [0; 2],
                                                     dataset_string: None,
@@ -7900,6 +7907,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                                 geo_dataset_version: 1,
                                                 dataset: DeDataset10_1 {
                                                     dataset_version: 0,
+                                                    element: DataElement10_1 {
                                                     element_version: 0,
                                                     gp_value_version: 0,
                                                     gp_value_short: 0,
@@ -7908,6 +7916,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                                     element_legacy_xml: None,
                                                     raw_child_count: 0,
                                                     children: Vec::new(),
+                                                    },
                                                     dataset_longs: [0; 2],
                                                     dataset_shorts: [0; 2],
                                                     dataset_string: None,
@@ -7959,6 +7968,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                                     base: DeRelationshipBase10_1::Dataset(
                                                         DeDataset10_1 {
                                                             dataset_version: 0,
+                                                            element: DataElement10_1 {
                                                             element_version: 0,
                                                             gp_value_version: 0,
                                                             gp_value_short: 0,
@@ -7967,6 +7977,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                                             element_legacy_xml: None,
                                                             raw_child_count: 0,
                                                             children: Vec::new(),
+                                                            },
                                                             dataset_longs: [0; 2],
                                                             dataset_shorts: [0; 2],
                                                             dataset_string: None,
@@ -8029,6 +8040,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                             ))),
                                         },
                                     ],
+                                    },
                                     dataset_longs: [11, 14],
                                     dataset_shorts: [12, 13],
                                     dataset_string: Some("数据集".into()),

@@ -2225,3 +2225,13 @@ FeatureDataElements.dll 10.1.0.3035 的持久化表 `0x6f658404`
 上限为 1。随后调用 DEGeoDataset::Load，最后读两个 long。
 构造测试覆盖版本 1、负版本、尾部标量、回引和截断。
 实际 MXD 宿主仍待验证。
+
+#### DEServerConnection
+
+FeatureDataElements.dll 10.1.0.3035 的构造函数在 `0x6f61c284`
+写入 RTTI 对应的持久化表 `0x6f65e830`。类型库 CLSID 为
+`{887D4940-9343-42A3-8C8F-5C41D4DCFAFD}`。Load `0x6f61c7d0`
+接受无符号版本 0、1，经导入槽 `0x6f657584` 调 DataElement::Load，
+随后在 `0x6f61c827`、`0x6f61c831` 读取两个 AfCore String。
+构造测试覆盖基类、双字符串、对象边界和逐字节截断。
+实际 MXD 宿主仍待验证。

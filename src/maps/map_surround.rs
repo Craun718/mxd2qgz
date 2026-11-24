@@ -513,6 +513,10 @@ pub const DE_TOPOLOGY_CLASS_ID: [u8; 16] = [
     0x7d, 0x63, 0xc4, 0xac, 0xe0, 0xd5, 0xd5, 0x47, 0xab, 0xcd, 0x9f, 0x25, 0xab, 0x32, 0x6e, 0x6f,
 ];
 
+pub const DE_SERVER_CONNECTION_CLASS_ID: [u8; 16] = [
+    0x40, 0x49, 0x7d, 0x88, 0x43, 0x93, 0xa3, 0x42, 0x8c, 0x8f, 0x5c, 0x41, 0xd4, 0xdc, 0xfa, 0xfd,
+];
+
 pub const DE_CATALOG_DATASET_CLASS_ID: [u8; 16] = [
     0xcd, 0x9f, 0x54, 0x74, 0xea, 0x9f, 0x0f, 0x48, 0xa9, 0x74, 0xae, 0x00, 0x36, 0x84, 0x56, 0x4d,
 ];
@@ -894,6 +898,14 @@ pub struct DeTable10_1 {
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeDataset10_1 {
     pub dataset_version: u16,
+    pub element: DataElement10_1,
+    pub dataset_longs: [i32; 2],
+    pub dataset_shorts: [u16; 2],
+    pub dataset_string: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DataElement10_1 {
     pub element_version: u16,
     pub gp_value_version: u16,
     pub gp_value_short: u16,
@@ -902,13 +914,15 @@ pub struct DeDataset10_1 {
     pub element_legacy_xml: Option<String>,
     pub raw_child_count: i32,
     pub children: Vec<RuleSlot10_1<DeChild10_1>>,
-    pub dataset_longs: [i32; 2],
-    pub dataset_shorts: [u16; 2],
-    pub dataset_string: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
+    ServerConnection {
+        version: u16,
+        element: DataElement10_1,
+        strings: [String; 2],
+    },
     RelationshipClass(Box<DeRelationshipClass10_1>),
     Table(DeTable10_1),
     Topology {
@@ -3235,6 +3249,7 @@ fn read_gp_data_element_child(
                     | DE_FEATURE_CLASS_CLASS_ID
                     | DE_FEATURE_DATASET_CLASS_ID
                     | DE_CATALOG_DATASET_CLASS_ID
+                    | DE_SERVER_CONNECTION_CLASS_ID
                     | DE_TOPOLOGY_CLASS_ID
                     | DE_GEOMETRIC_NETWORK_CLASS_ID
                     | DE_RELATIONSHIP_CLASS_CLASS_ID
@@ -3248,6 +3263,7 @@ fn read_gp_data_element_child(
                 | DE_FEATURE_CLASS_CLASS_ID
                 | DE_FEATURE_DATASET_CLASS_ID
                 | DE_CATALOG_DATASET_CLASS_ID
+                | DE_SERVER_CONNECTION_CLASS_ID
                 | DE_TOPOLOGY_CLASS_ID
                 | DE_GEOMETRIC_NETWORK_CLASS_ID
                 | DE_RELATIONSHIP_CLASS_CLASS_ID),
@@ -3261,6 +3277,22 @@ fn read_gp_data_element_child(
             }
             let body = if class_id == DE_TABLE_CLASS_ID {
                 DeChild10_1::Table(read_gp_de_table(reader, max_bytes, refs, depth + 1)?)
+            } else if class_id == DE_SERVER_CONNECTION_CLASS_ID {
+                let version = reader.read_u16_le()?;
+                if version > 1 {
+                    return Err(io::Error::new(
+                        ErrorKind::InvalidData,
+                        "DEServerConnection 版本超限",
+                    ));
+                }
+                DeChild10_1::ServerConnection {
+                    version,
+                    element: read_gp_data_element(reader, max_bytes, refs, depth + 1)?,
+                    strings: [
+                        read_string_10_1(reader, max_bytes)?,
+                        read_string_10_1(reader, max_bytes)?,
+                    ],
+                }
             } else if class_id == DE_RELATIONSHIP_CLASS_CLASS_ID {
                 DeChild10_1::RelationshipClass(Box::new(read_de_relationship_class(
                     reader,
@@ -3920,12 +3952,37 @@ fn read_gp_de_dataset(
     depth: usize,
 ) -> io::Result<DeDataset10_1> {
     let dataset_version = reader.read_u16_le()?;
+    if dataset_version > 2 {
+        return Err(io::Error::new(ErrorKind::InvalidData, "DEDataset 版本超限"));
+    }
+    let element = read_gp_data_element(reader, max_bytes, refs, depth)?;
+    let dataset_long = reader.read_u32_le()? as i32;
+    let dataset_shorts = [reader.read_u16_le()?, reader.read_u16_le()?];
+    let dataset_longs = [dataset_long, reader.read_u32_le()? as i32];
+    let dataset_string = (dataset_version >= 2)
+        .then(|| read_string_10_1(reader, max_bytes))
+        .transpose()?;
+    Ok(DeDataset10_1 {
+        dataset_version,
+        element,
+        dataset_longs,
+        dataset_shorts,
+        dataset_string,
+    })
+}
+
+fn read_gp_data_element(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<DataElement10_1> {
     let element_version = reader.read_u16_le()?;
     let gp_value_version = reader.read_u16_le()?;
-    if dataset_version > 2 || element_version > 2 || gp_value_version > 1 {
+    if element_version > 2 || gp_value_version > 1 {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
-            "DEDataset 或其基类版本超限",
+            "DataElement 或 GPValue 版本超限",
         ));
     }
     let gp_value_short = reader.read_u16_le()?;
@@ -3948,14 +4005,7 @@ fn read_gp_de_dataset(
         children.push(read_gp_data_element_child(reader, max_bytes, refs, depth)?);
     }
 
-    let dataset_long = reader.read_u32_le()? as i32;
-    let dataset_shorts = [reader.read_u16_le()?, reader.read_u16_le()?];
-    let dataset_longs = [dataset_long, reader.read_u32_le()? as i32];
-    let dataset_string = (dataset_version >= 2)
-        .then(|| read_string_10_1(reader, max_bytes))
-        .transpose()?;
-    Ok(DeDataset10_1 {
-        dataset_version,
+    Ok(DataElement10_1 {
         element_version,
         gp_value_version,
         gp_value_short,
@@ -3964,9 +4014,6 @@ fn read_gp_de_dataset(
         element_legacy_xml,
         raw_child_count,
         children,
-        dataset_longs,
-        dataset_shorts,
-        dataset_string,
     })
 }
 
@@ -6516,5 +6563,41 @@ mod tests {
             assert!(back_reference.body.is_none());
             assert_eq!(reader.position(), bytes.len());
         }
+    }
+
+    #[test]
+    fn server_connection_reads_data_element_and_two_strings() {
+        let mut bytes = DE_SERVER_CONNECTION_CLASS_ID.to_vec();
+        bytes.extend(35_u32.to_le_bytes());
+        bytes.extend([1, 0, 0, 0, 1, 0, 7, 0]);
+        for _ in 0..3 {
+            bytes.extend([2, 0, 0, 0, 0, 0]);
+        }
+        bytes.extend([0; 10]);
+        for value in [b'A', b'B'] {
+            bytes.extend([4, 0, 0, 0, value, 0, 0, 0]);
+        }
+        for cut in 0..bytes.len() {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_gp_data_element_child(&mut reader, 1024, &mut refs, 0).is_err());
+        }
+        let end = bytes.len();
+        bytes.push(0xa5);
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let object = read_gp_data_element_child(&mut reader, 1024, &mut refs, 0).unwrap();
+        let Some(DeChild10_1::ServerConnection {
+            version,
+            element,
+            strings,
+        }) = object.body.as_deref()
+        else {
+            panic!("应读取 DEServerConnection");
+        };
+        assert_eq!(*version, 1);
+        assert_eq!(element.gp_value_short, 7);
+        assert_eq!(strings, &["A", "B"]);
+        assert_eq!(reader.position(), end);
     }
 }
