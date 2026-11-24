@@ -3022,3 +3022,8 @@ SaveObject，将两个对象分别序列化到内存流，再在
 `0x711643fd`、`0x7116440e` 比较流长度。
 因此该路径不参与 MXD 中这个短体的读取。
 三种子对象仍待实际 MXD 宿主验证。
+
+Rust 对象体读取器已覆盖 NetworkSourceDirections 及上表三类。
+构造测试检查方向对象版本 0–2、三个非空子对象槽、回引、
+计数限额、未知类和逐字节截断。读取器暂未接入
+DENetworkDataset 的 INetworkSource 集合，真实 MXD 仍待验证。

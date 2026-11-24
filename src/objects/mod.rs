@@ -22,6 +22,7 @@ pub mod geometry;
 pub mod hyperlink;
 pub mod multi_patch;
 pub mod multi_patch_material;
+pub mod network_source_directions;
 pub mod number_format;
 pub mod ole_font;
 pub mod picture_fill_symbol;
