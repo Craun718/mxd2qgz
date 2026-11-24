@@ -1091,3 +1091,28 @@ Rust 在带键的 MultiPatch 成功解码后，将命中标记的字符串与对
 一同登记。v9 根据对象键读取字符串，新对象和回引共用同一条路径。
 构造测试覆盖空点集、带标记的十点 MultiPatch 和类标识故意不一致的
 回引，确认后继字节在原处。真实迁移对象及 ArcMap/QGIS 人工验收待补。
+
+### Texture.dll 与 Garcia.dll 的非持久化 ISymbol 候选
+
+核对 Desktop 介质的 PE32 文件，版本均为 10.1.0.3035。以 RTTI
+完整对象表定位主 QI，再逐项比较 QI 和回退所用的 IID 字节。
+
+- Texture.dll（SHA-256
+  `871812d15d133b0c3922169f9a6358c0abe6732a630fa798507ccdb97d17147a`）
+  的 TextureSymbol、TextureSymbol2D 主表分别为 `0x802a53d4`、
+  `0x802a5300`。共用 QI `0x802a1e10` 在
+  `0x802a1e5b` 对 ISymbol 返回对象 +0x14。该子接口 QI 经
+  `0x802a21a0 → 0x802a1420` 委派回主 QI。主入口和回退
+  `0x802a23c0` 无 IPersistStream 或 IPersistVariant 匹配，
+  未识别接口在 `0x802a24b2` 返回 E_NOINTERFACE。
+- Garcia.dll（SHA-256
+  `4515f337021841351bed37f3f5c8a6109492a05cbe1a0cb944cd20ff4358c2f1`）
+  的 AgentSymbol、ZSnapAgentSymbol 主表分别为 `0x100435e4`、
+  `0x10043698`。两者共用 QI `0x100011b0`，在
+  `0x100011b7` 匹配 ISymbol。主入口及回退 `0x100397b0`
+  所比较的 IID 中没有上述持久化接口，未匹配时在
+  `0x100398a2` 返回 E_NOINTERFACE。
+
+四类均从普通 ObjectStream 新对象候选中排除。Texture.dll 的这两类
+与本章已接入的 _3DSymbols.dll 纹理线和填充使用不同的虚表和接口。
+本次为静态取证，尚未进行 ArcMap/QGIS 人工验收。
