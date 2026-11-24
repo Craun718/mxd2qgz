@@ -515,6 +515,14 @@ pub const DE_TOPOLOGY_CLASS_ID: [u8; 16] = [
     0x7d, 0x63, 0xc4, 0xac, 0xe0, 0xd5, 0xd5, 0x47, 0xab, 0xcd, 0x9f, 0x25, 0xab, 0x32, 0x6e, 0x6f,
 ];
 
+pub const DE_LAYER_CLASS_ID: [u8; 16] = [
+    0x08, 0x17, 0xd7, 0xbd, 0x63, 0x34, 0x87, 0x47, 0xa4, 0x91, 0xb9, 0x36, 0x3b, 0x93, 0x7d, 0xbe,
+];
+
+const GP_LAYER_CLASS_ID: [u8; 16] = [
+    0x1e, 0x59, 0x47, 0x6a, 0x16, 0xaa, 0x3e, 0x44, 0xb5, 0x0d, 0xd8, 0x92, 0x66, 0x59, 0xa4, 0xe1,
+];
+
 pub const DE_TEXT_FILE_CLASS_ID: [u8; 16] = [
     0x66, 0x07, 0x8d, 0xe9, 0x3e, 0xc1, 0xca, 0x45, 0xba, 0x78, 0x1d, 0xef, 0x8b, 0x60, 0xca, 0xb2,
 ];
@@ -973,7 +981,23 @@ pub struct DataElement10_1 {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct GpLayer10_1 {
+    pub version: u16,
+    pub gp_value_version: u16,
+    pub gp_value_short: u16,
+    pub name: String,
+    pub area_of_interest: BookmarkEnvelopeEntry10_1,
+    pub element: RuleSlot10_1<DeChild10_1>,
+    pub legacy_layer: Option<RuleSlot10_1<crate::layers::layer_list::LayerBodyPrefix10_1>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
+    Layer {
+        version: u16,
+        element: DataElement10_1,
+        layer: RuleSlot10_1<GpLayer10_1>,
+    },
     TextFile {
         version: u16,
         base: DeTextFileBase10_1,
@@ -3372,6 +3396,77 @@ fn read_gp_de_table_slot(
     Ok(RuleSlot10_1 { entry, body })
 }
 
+fn read_de_layer_version(reader: &mut Reader<'_>, max: u16, class: &str) -> io::Result<u16> {
+    let version = reader.read_u16_le()?;
+    if version > max {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("{class} 版本超限"),
+        ));
+    }
+    Ok(version)
+}
+
+fn read_gp_layer_slot(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<RuleSlot10_1<GpLayer10_1>> {
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if refs.registered_class(key).unwrap_or(class_id) == GP_LAYER_CLASS_ID =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: GP_LAYER_CLASS_ID,
+            ..
+        } => {
+            let version = read_de_layer_version(reader, 2, "GPLayerBase")?;
+            let gp_value_version = read_de_layer_version(reader, 1, "GPValue")?;
+            let gp_value_short = reader.read_u16_le()?;
+            let name = read_string_10_1(reader, max_bytes)?;
+            let area_of_interest =
+                read_surround_envelope_slot(reader, max_bytes, refs, "GPLayer IEnvelope 槽")?;
+            let element = read_gp_data_element_child(reader, max_bytes, refs, depth)?;
+            let legacy_layer = if version < 2 {
+                // GP 层旧版在读取后释放这个 ILayer 槽，流中仍须完整消费。
+                let entry = read_object_entry_10_1(reader, refs)?;
+                let body = match entry {
+                    ObjectEntry10_1::NewObject { class_id, .. } => Some(Box::new(
+                        crate::layers::layer_list::read_complete_layer_body_10_1(
+                            reader, class_id, max_bytes, refs,
+                        )?,
+                    )),
+                    _ => None,
+                };
+                Some(RuleSlot10_1 { entry, body })
+            } else {
+                None
+            };
+            Some(Box::new(GpLayer10_1 {
+                version,
+                gp_value_version,
+                gp_value_short,
+                name,
+                area_of_interest,
+                element,
+                legacy_layer,
+            }))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                format!("DELayer 的 IGPLayer 槽尚未支持：{entry:?}"),
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
+}
+
 fn read_gp_data_element_child(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -3403,6 +3498,7 @@ fn read_gp_data_element_child(
                     | DE_DISK_CONNECTION_CLASS_ID
                     | DE_PRJ_FILE_CLASS_ID
                     | DE_TEXT_FILE_CLASS_ID
+                    | DE_LAYER_CLASS_ID
                     | DE_TOPOLOGY_CLASS_ID
                     | DE_GEOMETRIC_NETWORK_CLASS_ID
                     | DE_RELATIONSHIP_CLASS_CLASS_ID
@@ -3431,6 +3527,7 @@ fn read_gp_data_element_child(
                 | DE_DISK_CONNECTION_CLASS_ID
                 | DE_PRJ_FILE_CLASS_ID
                 | DE_TEXT_FILE_CLASS_ID
+                | DE_LAYER_CLASS_ID
                 | DE_TOPOLOGY_CLASS_ID
                 | DE_GEOMETRIC_NETWORK_CLASS_ID
                 | DE_RELATIONSHIP_CLASS_CLASS_ID),
@@ -3469,6 +3566,12 @@ fn read_gp_data_element_child(
                     version,
                     element,
                     spatial_reference,
+                }
+            } else if class_id == DE_LAYER_CLASS_ID {
+                DeChild10_1::Layer {
+                    version: read_de_layer_version(reader, 1, "DELayer")?,
+                    element: read_gp_data_element(reader, max_bytes, refs, depth + 1)?,
+                    layer: read_gp_layer_slot(reader, max_bytes, refs, depth + 1)?,
                 }
             } else if class_id == DE_TEXT_FILE_CLASS_ID {
                 let version = reader.read_u16_le()?;
@@ -7364,6 +7467,61 @@ mod tests {
                 (class_id == DE_PRJ_FILE_CLASS_ID).then_some(&SpatialReferenceEntry10_1::Null),
             );
             assert_eq!(reader.position(), end);
+        }
+    }
+
+    #[test]
+    fn de_layer_reads_gp_layer_and_legacy_slot() {
+        for version in 0_u16..=2 {
+            let mut bytes = DE_LAYER_CLASS_ID.to_vec();
+            bytes.extend(56_u32.to_le_bytes());
+            bytes.extend([1, 0, 0, 0, 1, 0, 7, 0]);
+            for _ in 0..3 {
+                bytes.extend([2, 0, 0, 0, 0, 0]);
+            }
+            bytes.extend([0; 10]);
+            bytes.extend(GP_LAYER_CLASS_ID);
+            bytes.extend(57_u32.to_le_bytes());
+            let version_offset = bytes.len();
+            bytes.extend(version.to_le_bytes());
+            bytes.extend([1, 0, 9, 0, 4, 0, 0, 0, b'L', 0, 0, 0]);
+            bytes.extend([0; 32]);
+            if version < 2 {
+                bytes.extend([0; 16]);
+            }
+            for cut in 0..bytes.len() {
+                let mut reader = Reader::new(&bytes[..cut]);
+                let mut refs = RefTable10_1::new();
+                assert!(read_gp_data_element_child(&mut reader, 1024, &mut refs, 0).is_err());
+            }
+            let end = bytes.len();
+            bytes.push(0xa5);
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let object = read_gp_data_element_child(&mut reader, 1024, &mut refs, 0).unwrap();
+            let Some(DeChild10_1::Layer { layer, .. }) = object.body.as_deref() else {
+                panic!("应读取 DELayer");
+            };
+            let layer = layer.body.as_deref().unwrap();
+            assert_eq!(layer.version, version);
+            assert_eq!(layer.gp_value_short, 9);
+            assert_eq!(layer.name, "L");
+            assert_eq!(layer.element.entry, ObjectEntry10_1::Null);
+            assert_eq!(
+                layer.legacy_layer.as_ref().map(|slot| slot.entry),
+                (version < 2).then_some(ObjectEntry10_1::Null),
+            );
+            assert_eq!(reader.position(), end);
+
+            bytes[version_offset] = 3;
+            let err = read_gp_data_element_child(
+                &mut Reader::new(&bytes),
+                1024,
+                &mut RefTable10_1::new(),
+                0,
+            )
+            .unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::InvalidData);
         }
     }
 

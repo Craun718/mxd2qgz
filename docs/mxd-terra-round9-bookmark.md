@@ -2347,3 +2347,25 @@ v0 和 v2 调 DETableBase::Load，各版本均在基类后结束。
 保留基类默认的零扩展标志，和 DERasterBand 共用简短表布局。
 构造测试覆盖三个版本、基类选择、结束位置和逐字节截断。
 实际 MXD 宿主仍待核对。
+
+#### DELayer 与 GPLayer
+
+FileDataElements.dll 10.1.0.3035 的 DELayer（CLSID
+`BDD71708-3463-4787-A491-B9363B937DBE`）持久化表为
+`0x6f9dafac`。Load `0x6f9bf970` 检查无符号版本上限 1，
+调用 DataElement::Load 后，以 `0x6f9db0a4` 的
+`EA30B18D-2D75-4593-BF44-B3620F41D8DB` 请求 IGPLayer，
+接口名称由 esriDataSourcesFile 类型库核对。
+
+esriGeoprocessing 类型库将 `6A47591E-AA16-443E-B50D-D8926659A4E1`
+标为 GPLayer。GpObjects.dll 10.1.0.3035 的持久化表
+`0x747b164c` 的 Load 跳板 `0x7478b37e` 转入 GeoprocessingLib.dll
+10.1.0.3035 的 GPLayerBase::Load `0x71d72200`。该函数读取
+无符号版本（上限 2）、GPValue、AfCore String、IEnvelope 和
+IDataElement。版本 0、1 还读取并释放 ILayer。三个接口 IID
+分别来自 `0x71e349b4`、`0x71e34a04`、`0x71e34c64`，均经 10.1
+类型库核对。旧版 ILayer 复用已有的完整图层体读取器。
+
+构造测试覆盖 GPLayerBase 三个版本、逐字节截断、超限版本和
+结束位置。GPCompositeLayer 与其他 IGPLayer 实现需另行取证，
+真实 MXD 宿主和旧版非空 ILayer 仍待验证。
