@@ -1148,6 +1148,7 @@
       - [x] 按 IMarkerSymbol 校验 MarkerNorthArrow 的旧标记槽类及回引。[取证](docs/arcmap-10.1-legend-family.md#markernortharrow-版本分支复核)
       - [x] 按已登记对象类校验图形元素的点、线、面符号槽回引。[取证](docs/arcmap-10.1-legend-family.md#图形元素的符号回引)
       - [x] 按登记类校验图形元素 IPoint 几何槽的回引。[取证](docs/arcmap-10.1-geometry.md#图形元素-ipoint-回引)
+      - [x] 按登记类校验图形元素 IGeometry 槽的回引。[取证](docs/arcmap-10.1-geometry.md#图形元素-igeometry-回引)
       - [x] 保留 MarkerNorthArrow 旧符号槽前原生弃读的 LONG 值。[指令取证](docs/arcmap-10.1-legend-family.md#markernortharrow-版本分支复核)
       - [x] 用 LandscapeClassic 实档验证 MarkerNorthArrow v2 与布局框的跨流回引。[实档](docs/arcmap-10.1-legend-family.md#markernortharrow-版本分支复核)
       - [x] 按登记类校验 MapSurroundFrame 的 IMapFrame 回引。[取证](docs/mxd-page-layout-surround-20261118.md)

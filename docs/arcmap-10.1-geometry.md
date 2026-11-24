@@ -514,3 +514,11 @@ ObjectStream 的共同回引路径在 SystemCore.dll 10.1.0.3035
 登记类，登记信息缺失时回退到流内类标识。构造测试验证流内头写
 Point 而实际键登记为 Polyline 时停在几何槽起点，保留原有登记。
 ArcMap/QGIS 人工验收仍待执行。
+
+### 图形元素 IGeometry 回引
+
+TextElement、LineElement 和 PolygonElement 的共享 IGeometry 槽
+按同一 ObjectStream 回引规则检查登记类。当前按已支持的七个几何类
+分派，成功时保留线上的类标识，失败时停在几何槽起点。构造测试覆盖
+同样的 Point 回引头分别指向已登记的 Polyline 和 LineElement。
+真实文件和 ArcMap/QGIS 人工验收按宿主另行验证。

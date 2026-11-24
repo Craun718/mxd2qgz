@@ -1450,52 +1450,52 @@ fn read_geometry_slot<'a>(
     trial: &mut Reader<'a>,
     max_bytes: usize,
     trial_table: &mut RefTable10_1,
-    origin: &Reader<'a>,
-    start: usize,
     slot: &'static str,
     stop: &mut Option<ElementBodyStop10_1>,
 ) -> io::Result<Option<GeometrySlot10_1>> {
+    use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
+
     let slot_offset = trial.position();
-    let saved_table = trial_table.clone();
-    match read_object_entry_10_1(trial, trial_table)? {
-        ObjectEntry10_1::Null => Ok(Some(GeometrySlot10_1::Null)),
-        ObjectEntry10_1::BackReference { class_id, key } => {
-            Ok(Some(GeometrySlot10_1::BackReference { class_id, key }))
-        }
-        ObjectEntry10_1::NewObject { class_id, key }
-            if class_id == POLYLINE_CLASS_ID
-                || class_id == POLYGON_CLASS_ID
-                || class_id == POINT_CLASS_ID
-                || class_id == MULTIPOINT_CLASS_ID
-                || class_id == crate::objects::envelope::ENVELOPE_CLASS_ID
-                || class_id == GEOMETRY_BAG_CLASS_ID
-                || class_id == MULTIPATCH_CLASS_ID =>
-        {
-            // 键已由条目分类登记（登记先于持久化）；已支持的几何体无中途停止点，
-            // 完整成功才提交（失败不推进游标、登记表由调用方 trial 语义保
-            // 护；错误上抛即整体失败）。
-            let body =
-                read_keyed_geometry_body_10_1(&class_id, key, trial, max_bytes, trial_table)?;
-            Ok(Some(match body {
-                GeometryBody10_1::Polyline(body) => GeometrySlot10_1::Polyline(Box::new(body)),
-                GeometryBody10_1::Polygon(body) => GeometrySlot10_1::Polygon(Box::new(body)),
-                GeometryBody10_1::Point(body) => GeometrySlot10_1::Point(Box::new(body)),
-                GeometryBody10_1::Multipoint(body) => GeometrySlot10_1::Multipoint(Box::new(body)),
-                body => GeometrySlot10_1::Other(Box::new(body)),
-            }))
-        }
-        ObjectEntry10_1::NewObject { class_id, key } => {
-            *trial_table = saved_table;
-            *trial = rewind(origin, start, slot_offset);
-            *stop = Some(ElementBodyStop10_1::NestedObjectNotClosed {
-                slot,
-                offset: slot_offset,
-                class_id,
-                key,
-            });
-            Ok(None)
-        }
+    let mut probe = trial.clone();
+    let ObjectHeader::Object { class_id, key } = read_header_10_1(&mut probe)? else {
+        *trial = probe;
+        return Ok(Some(GeometrySlot10_1::Null));
+    };
+    let resolved_class = trial_table.registered_class(key).unwrap_or(class_id);
+    if !matches!(
+        resolved_class,
+        POLYLINE_CLASS_ID
+            | POLYGON_CLASS_ID
+            | POINT_CLASS_ID
+            | MULTIPOINT_CLASS_ID
+            | crate::objects::envelope::ENVELOPE_CLASS_ID
+            | GEOMETRY_BAG_CLASS_ID
+            | MULTIPATCH_CLASS_ID
+    ) {
+        *stop = Some(ElementBodyStop10_1::NestedObjectNotClosed {
+            slot,
+            offset: slot_offset,
+            class_id,
+            key,
+        });
+        return Ok(None);
     }
+    if trial_table.contains(key) {
+        *trial = probe;
+        return Ok(Some(GeometrySlot10_1::BackReference { class_id, key }));
+    }
+    read_object_entry_10_1(trial, trial_table)?;
+    // 键已由条目分类登记（登记先于持久化）；已支持的几何体无中途停止点，
+    // 完整成功才提交（失败不推进游标、登记表由调用方 trial 语义保
+    // 护；错误上抛即整体失败）。
+    let body = read_keyed_geometry_body_10_1(&class_id, key, trial, max_bytes, trial_table)?;
+    Ok(Some(match body {
+        GeometryBody10_1::Polyline(body) => GeometrySlot10_1::Polyline(Box::new(body)),
+        GeometryBody10_1::Polygon(body) => GeometrySlot10_1::Polygon(Box::new(body)),
+        GeometryBody10_1::Point(body) => GeometrySlot10_1::Point(Box::new(body)),
+        GeometryBody10_1::Multipoint(body) => GeometrySlot10_1::Multipoint(Box::new(body)),
+        body => GeometrySlot10_1::Other(Box::new(body)),
+    }))
 }
 
 /// 读取一个 IPoint 类槽位（MarkerElement 第 4 字段）：接线轮起经
@@ -1892,8 +1892,6 @@ pub fn read_text_element_body_10_1(
             &mut trial,
             max_bytes,
             &mut trial_table,
-            &origin,
-            start,
             "IGeometry 文本几何槽",
             &mut stop,
         )? {
@@ -2104,7 +2102,6 @@ fn read_line_or_polygon_element(
         _ => "LineElement",
     };
     let start = reader.position();
-    let origin = reader.clone();
     let invalid = |reason: String| {
         io::Error::new(
             ErrorKind::InvalidData,
@@ -2144,8 +2141,6 @@ fn read_line_or_polygon_element(
             &mut trial,
             max_bytes,
             &mut trial_table,
-            &origin,
-            start,
             "IGeometry 几何槽",
             &mut stop,
         )? {
@@ -2183,6 +2178,45 @@ mod tests {
     use crate::objects::display_symbol::{
         SIMPLE_FILL_SYMBOL_CLASS_ID, SIMPLE_LINE_SYMBOL_CLASS_ID, SIMPLE_MARKER_SYMBOL_CLASS_ID,
     };
+
+    #[test]
+    fn geometry_slot_checks_the_class_registered_for_the_key() {
+        for registered_class in [POLYLINE_CLASS_ID, LINE_ELEMENT_CLASS_ID] {
+            let mut registered = registered_class.to_vec();
+            registered.extend(41_u32.to_le_bytes());
+            let mut refs = RefTable10_1::new();
+            read_object_entry_10_1(&mut Reader::new(&registered), &mut refs).unwrap();
+            let mut wire = POINT_CLASS_ID.to_vec();
+            wire.extend(41_u32.to_le_bytes());
+            let mut reader = Reader::new(&wire);
+            let mut stop = None;
+            let geometry =
+                read_geometry_slot(&mut reader, 4096, &mut refs, "IGeometry", &mut stop).unwrap();
+            if registered_class == POLYLINE_CLASS_ID {
+                assert!(matches!(
+                    geometry,
+                    Some(GeometrySlot10_1::BackReference {
+                        class_id: POINT_CLASS_ID,
+                        key: 41,
+                    })
+                ));
+                assert!(stop.is_none());
+                assert_eq!(reader.remaining(), 0);
+            } else {
+                assert!(geometry.is_none());
+                assert!(matches!(
+                    stop,
+                    Some(ElementBodyStop10_1::NestedObjectNotClosed {
+                        offset: 0,
+                        key: 41,
+                        ..
+                    })
+                ));
+                assert_eq!(reader.position(), 0);
+            }
+            assert_eq!(refs.registered_class(41), Some(registered_class));
+        }
+    }
 
     #[test]
     fn point_slot_rejects_reference_to_registered_polyline() {
