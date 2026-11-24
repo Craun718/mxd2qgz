@@ -1332,6 +1332,7 @@
       - [x] SDK Java 旧档的 13 个 FeatureLayer 顺序完整消费 TimeData 四段（宿主版本 34，四段版本均为 1），见 [旧档复核](docs/mxd-luna-deep-timedata-20261118.md)。嵌套 TimeReference 和 TimeExtent 均为空槽。
       - [ ] 取得 PropertySet 版本 0 分支的真实旧档字节；静态和合成测试已覆盖该读取布局。
       - [ ] 取得 Envelope v0 的真实旧档字节佐证（读取器已按 10.1 Load 的 v0/v2 同布局实现并验证合成边界）。
+      - [x] 筛查本机 MXD/MXT 的根流中三个 v0 旧对象的候选字节。[筛查范围](docs/mxd-round2-needs-20261117.md#v0-旧对象介质筛查)
       - [x] 运行 10.1 FeatureDatasetName v0 Load 并核对 Rust 字段和对象结束位置。[原生取证](docs/arcmap-10.1-dataset-name.md#两个名称对象的版本-0-原生读取)
       - [x] 运行 10.1 TopologyName v0 Load 并核对 Rust 字段、嵌套名称和对象结束位置。[原生取证](docs/arcmap-10.1-dataset-name.md#两个名称对象的版本-0-原生读取)
     - 实现约束（非缺口）：各读取器对负值版本位模式的拒绝均较原生更严（写侧不产负值版本；如需对齐原生行为，须先补运行取证）；Geometry <−1e38 坐标的原生钳位未实现（原样保留）、嵌套空间参考仅支持投影坐标系（GCS/Unknown 无证据）；ETM 尺寸声明与实际消费不一致为显式错误（原生不校验，注明较严）。
