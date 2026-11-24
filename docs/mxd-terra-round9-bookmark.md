@@ -1507,6 +1507,27 @@ FileDataElements.dll 10.1.0.3035（SHA-256
 已有的 GPMultiValue 名称分派范围。其他 IName 产物及真实
 MXD 宿主仍待核对，未在 ArcMap 中人工验证。
 
+FeatureDataElements.dll 与 NetworkAnalyst.dll 的版本资源
+均为 10.1.0.3035，SHA-256 分别为
+`7cd1153712d8af23f6c2263b6444c1a77e16b818fb5fb946d0c3d9106be5f429`、
+`8c4ebaee71aad63c25616aa806674018479829d97bc01c7ed3b8845813698532`。
+PE RTTI 和名称查找循环给出以下分派。表范围采用排他上界，
+步长均为 20 字节。
+
+| 工厂 | 接口表 | 名称槽入口 | 名称表范围 | 记录数 |
+| --- | --- | --- | --- | --- |
+| DEFeatureDataTypeFactory | `0x6f6594b4` | `0x6f5f4cd0` | `0x6f67f6c8..0x6f67f790` | 10 |
+| DEServerDataTypeFactory | `0x6f65e9d8` | `0x6f61d310` | `0x6f67f790..0x6f67f7f4` | 5 |
+| NADataTypeFactory | `0x7af9e9d8` | `0x7af17760` | `0x7afcada0..0x7afcadb4` | 1 |
+
+前两个入口都进入 `0x6f61cea0 → 0x6f5f51a0`，
+`0x6f5f51c6` 使用常量 `0x6f6595a4` 创建
+GPDataTypeName。NA 的名称槽进入
+`0x7af171b0 → 0x7af17f70`，`0x7af17f96` 传入
+同一 CLSID（`0x7af9ea58`）。现有读取器覆盖此三工厂的
+16 条名称记录。该结论限于静态表和创建路径，真实 MXD 与
+ArcMap 人工验证仍待补充。
+
 #### GPValueTable
 
 GpObjects.dll 10.1.0.3035 的 RTTI `0x74801cd4` 对应持久化虚表
