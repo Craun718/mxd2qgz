@@ -862,6 +862,7 @@
       - [x] 接入编码值及 IGPLayer 槽中的 GPTerrainLayer。[取证](docs/mxd-terra-round9-bookmark.md#gpterrainlayer)
       - [x] 接入编码值及 IGPLayer 槽中的 GPTopologyLayer。[取证](docs/mxd-terra-round9-bookmark.md#gptopologylayer-与-gpnetworkdatasetlayer)
       - [x] 接入编码值及 IGPLayer 槽中的 GPNetworkDatasetLayer。[取证](docs/mxd-terra-round9-bookmark.md#gptopologylayer-与-gpnetworkdatasetlayer)
+      - [x] 接入编码值及 IGPLayer 槽中的 GPLasDatasetLayer。[取证](docs/mxd-terra-round9-bookmark.md#gplasdatasetlayer)
       - [x] 接入 GPCodedValueDomain 中的 GPRasterData 名称槽及尾部字符串。[取证](docs/mxd-terra-round9-bookmark.md#gprasterdata)
       - [x] 核对 GPRasterFormulated 的栅格基类调用及版本化 Variant 尾段。[取证](docs/mxd-terra-round9-bookmark.md#gprasterformulated)
       - [x] 接入 GPRasterFormulated 的持久化对象体。[取证](docs/mxd-terra-round9-bookmark.md#gprasterformulated)

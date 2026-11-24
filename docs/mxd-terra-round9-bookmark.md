@@ -3433,6 +3433,26 @@ Rust 在编码值和 IGPLayer 槽支持两个类，并按 CLSID 保留类别。
 构造测试覆盖双槽、v0/v1、超限版本、截断和对象终点。
 真实 MXD 宿主及 ArcMap/QGIS 人工验收仍待验证。
 
+#### GPLasDatasetLayer
+
+ArcMap 10.1 Desktop 互操作元数据将
+`F83945EE-CB37-4AC7-98EC-F25446A90A5D` 定名为 GPLasDatasetLayer，
+并列出 IGPValue、IGPLayer 和 IPersistStream。用同摘要的
+GpObjects.dll 10.1.0.3035 PE RTTI 和 objdump 核对，
+持久化表 `0x747b1394` 的 Load/Save 为
+`0x746e8900 / 0x746e8960`。
+
+Load 在 `0x746e891e` 读 short，`0x746e892e..0x746e8932`
+只允许 1，再在 `0x746e8939` 调 GPLayerBase::Load。
+Save 在 `0x746e8984` 使用 `0x747a5730` 的版本表
+`[-1, -1, -1, -1, -1, 1]`。结果为 -1 时该 Save 本体直接
+返回成功，具体宿主是否省略对象头需另查。可写版本在
+`0x746e89a9` 写 short 后调用 GPLayerBase::Save。
+
+Rust 在编码值和 IGPLayer 槽复用 GPLayerBase，按原生 Load
+拒绝 0 和超限版本。构造测试覆盖两个槽、截断和对象终点。
+真实 MXD 宿主及 ArcMap/QGIS 人工验收仍待验证。
+
 #### 目录数据元素
 
 FileDataElements.dll 10.1.0.3035 的 PE RTTI 持久化表及

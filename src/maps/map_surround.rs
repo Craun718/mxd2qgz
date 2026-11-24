@@ -621,6 +621,9 @@ const GP_LAYER_CLASS_ID: [u8; 16] = [
     0x1e, 0x59, 0x47, 0x6a, 0x16, 0xaa, 0x3e, 0x44, 0xb5, 0x0d, 0xd8, 0x92, 0x66, 0x59, 0xa4, 0xe1,
 ];
 
+const GP_LAS_DATASET_LAYER_CLASS_ID: [u8; 16] = [
+    0xee, 0x45, 0x39, 0xf8, 0x37, 0xcb, 0xc7, 0x4a, 0x98, 0xec, 0xf2, 0x54, 0x46, 0xa9, 0x0a, 0x5d,
+];
 const GP_TOPOLOGY_LAYER_CLASS_ID: [u8; 16] = [
     0x48, 0x71, 0x7d, 0xc1, 0xe8, 0x66, 0x8d, 0x49, 0x85, 0x5b, 0x6c, 0x5d, 0x35, 0x2e, 0xf6, 0x9a,
 ];
@@ -978,6 +981,7 @@ pub enum GpCodedValue10_1 {
     TerrainLayer(Box<GpLayer10_1>),
     TopologyLayer(Box<GpLayer10_1>),
     NetworkDatasetLayer(Box<GpLayer10_1>),
+    LasDatasetLayer(Box<GpLayer10_1>),
     RasterCatalogLayer(Box<GpLayer10_1>),
     FeatureLayer(Box<GpLayer10_1>),
     RasterBuilder(RuleSlot10_1<RasterFunctionArgumentsBody10_1>),
@@ -3273,6 +3277,7 @@ fn read_gp_coded_value_entry(
                     | GP_TERRAIN_LAYER_CLASS_ID
                     | GP_TOPOLOGY_LAYER_CLASS_ID
                     | GP_NETWORK_DATASET_LAYER_CLASS_ID
+                    | GP_LAS_DATASET_LAYER_CLASS_ID
                     | GP_TIN_LAYER_CLASS_ID
                     | GP_FEATURE_LAYER_CLASS_ID
                     | GP_RASTER_CATALOG_LAYER_CLASS_ID
@@ -3355,7 +3360,8 @@ fn read_gp_coded_value_entry(
                 class_id @ (GP_TIN_LAYER_CLASS_ID
                 | GP_TERRAIN_LAYER_CLASS_ID
                 | GP_TOPOLOGY_LAYER_CLASS_ID
-                | GP_NETWORK_DATASET_LAYER_CLASS_ID),
+                | GP_NETWORK_DATASET_LAYER_CLASS_ID
+                | GP_LAS_DATASET_LAYER_CLASS_ID),
             ..
         } => {
             let layer = read_gp_layer_body(reader, max_bytes, table, depth, class_id)?;
@@ -3367,7 +3373,10 @@ fn read_gp_coded_value_entry(
                     GP_TIN_LAYER_CLASS_ID => GpCodedValue10_1::TinLayer(Box::new(layer)),
                     GP_TERRAIN_LAYER_CLASS_ID => GpCodedValue10_1::TerrainLayer(Box::new(layer)),
                     GP_TOPOLOGY_LAYER_CLASS_ID => GpCodedValue10_1::TopologyLayer(Box::new(layer)),
-                    _ => GpCodedValue10_1::NetworkDatasetLayer(Box::new(layer)),
+                    GP_NETWORK_DATASET_LAYER_CLASS_ID => {
+                        GpCodedValue10_1::NetworkDatasetLayer(Box::new(layer))
+                    }
+                    _ => GpCodedValue10_1::LasDatasetLayer(Box::new(layer)),
                 },
             }))
         }
@@ -4953,6 +4962,7 @@ fn read_gp_layer_slot(
                     | GP_TERRAIN_LAYER_CLASS_ID
                     | GP_TOPOLOGY_LAYER_CLASS_ID
                     | GP_NETWORK_DATASET_LAYER_CLASS_ID
+                    | GP_LAS_DATASET_LAYER_CLASS_ID
                     | GP_TIN_LAYER_CLASS_ID
                     | GP_FEATURE_LAYER_CLASS_ID
                     | GP_RASTER_CATALOG_LAYER_CLASS_ID
@@ -4968,6 +4978,7 @@ fn read_gp_layer_slot(
                 | GP_TERRAIN_LAYER_CLASS_ID
                 | GP_TOPOLOGY_LAYER_CLASS_ID
                 | GP_NETWORK_DATASET_LAYER_CLASS_ID
+                | GP_LAS_DATASET_LAYER_CLASS_ID
                 | GP_TIN_LAYER_CLASS_ID
                 | GP_FEATURE_LAYER_CLASS_ID
                 | GP_RASTER_CATALOG_LAYER_CLASS_ID),
@@ -5001,8 +5012,18 @@ fn read_gp_layer_body(
             | GP_TERRAIN_LAYER_CLASS_ID
             | GP_TOPOLOGY_LAYER_CLASS_ID
             | GP_NETWORK_DATASET_LAYER_CLASS_ID
+            | GP_LAS_DATASET_LAYER_CLASS_ID
     )
-    .then(|| read_de_layer_version(reader, 1, "GP 图层派生类"))
+    .then(|| {
+        let version = read_de_layer_version(reader, 1, "GP 图层派生类")?;
+        if class_id == GP_LAS_DATASET_LAYER_CLASS_ID && version != 1 {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "GPLasDatasetLayer 只接受版本 1",
+            ));
+        }
+        Ok(version)
+    })
     .transpose()?;
     let feature_layer_version = matches!(
         class_id,
@@ -11394,6 +11415,7 @@ mod tests {
             GP_TERRAIN_LAYER_CLASS_ID,
             GP_TOPOLOGY_LAYER_CLASS_ID,
             GP_NETWORK_DATASET_LAYER_CLASS_ID,
+            GP_LAS_DATASET_LAYER_CLASS_ID,
         ] {
             for version in 0_u16..=1 {
                 let mut bytes = class_id.to_vec();
@@ -11413,6 +11435,20 @@ mod tests {
                         .is_err()
                     );
                 }
+                if class_id == GP_LAS_DATASET_LAYER_CLASS_ID && version == 0 {
+                    assert_eq!(
+                        read_gp_layer_slot(
+                            &mut Reader::new(&bytes),
+                            1024,
+                            &mut RefTable10_1::new(),
+                            0
+                        )
+                        .unwrap_err()
+                        .kind(),
+                        ErrorKind::InvalidData
+                    );
+                    continue;
+                }
                 let end = bytes.len();
                 bytes.push(0xa5);
                 let mut reader = Reader::new(&bytes);
@@ -11428,7 +11464,10 @@ mod tests {
                     | (
                         GP_NETWORK_DATASET_LAYER_CLASS_ID,
                         GpCodedValue10_1::NetworkDatasetLayer(layer),
-                    ) => layer,
+                    )
+                    | (GP_LAS_DATASET_LAYER_CLASS_ID, GpCodedValue10_1::LasDatasetLayer(layer)) => {
+                        layer
+                    }
                     _ => panic!("应读取对应的 GP 图层"),
                 };
                 assert_eq!(
