@@ -3580,3 +3580,61 @@ fn simple_marker_3d_symbol_follows_each_native_version_gate() {
         }
     }
 }
+
+#[test]
+fn character_marker_3d_symbol_reads_legacy_and_versioned_fields() {
+    use mxd2qgz::objects::display_symbol::{
+        CHARACTER_MARKER_3D_SYMBOL_CLASS_ID, StdFontSlot10_1, SymbolSlotFull10_1,
+        read_symbol_slot_full_10_1,
+    };
+
+    for version in [-1_i16, 0, 1, 2, 3, 4] {
+        let mut bytes = Vec::new();
+        push_entry(&mut bytes, &CHARACTER_MARKER_3D_SYMBOL_CLASS_ID, 51);
+        bytes.extend(version.to_le_bytes());
+        push_null(&mut bytes);
+        bytes.extend([0; 8 + 9 * 8]);
+        if version < 3 {
+            bytes.extend([0; 16]);
+        }
+        push_null(&mut bytes);
+        bytes.extend([0; 8]);
+        bytes.extend(23_u16.to_le_bytes());
+        push_null(&mut bytes);
+        if version > 1 {
+            bytes.push(1);
+        }
+        if version > 2 {
+            bytes.extend([0; 24]);
+            bytes.extend(24_u16.to_le_bytes());
+        }
+        if version > 3 {
+            bytes.extend(25_u16.to_le_bytes());
+        }
+        let end = bytes.len();
+        bytes.push(0x55);
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let SymbolSlotFull10_1::CharacterMarker3dSymbol(body) =
+            read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 8).unwrap()
+        else {
+            panic!("预期 CharacterMarker3DSymbol");
+        };
+        assert_eq!(body.version, version as u16);
+        assert_eq!(body.legacy_doubles, (version < 3).then_some([0.0; 2]));
+        assert_eq!(body.font, StdFontSlot10_1::Null);
+        assert_eq!(body.short, 23);
+        assert_eq!(body.character_marker, SymbolSlotFull10_1::Null);
+        assert_eq!(body.byte_v2, (version > 1).then_some(1));
+        assert_eq!(body.fields_v3, (version > 2).then_some(([0.0; 3], 24)));
+        assert_eq!(body.short_v4, (version > 3).then_some(25));
+        assert_eq!(reader.position(), end);
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 8).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+}

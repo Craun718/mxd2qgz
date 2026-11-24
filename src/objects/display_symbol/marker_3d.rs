@@ -1,4 +1,4 @@
-//! _3DSymbols.dll 的 SimpleMarker3DSymbol 持久化对象。
+//! _3DSymbols.dll 的 3D 标记持久化对象。
 
 use super::{read_i32_le, read_signed_symbol_version};
 use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
@@ -97,5 +97,117 @@ pub(super) fn read_simple_marker_3d_symbol(
             })
             .transpose()?,
         short_v6: (signed > 5).then(|| reader.read_u16_le()).transpose()?,
+    }))
+}
+
+pub const CHARACTER_MARKER_3D_SYMBOL_CLASS_ID: [u8; 16] = [
+    0xf7, 0xc8, 0x8e, 0x6e, 0x0a, 0xe9, 0xd5, 0x11, 0xa1, 0x29, 0x00, 0x50, 0x8b, 0xd6, 0x0c, 0xb9,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CharacterMarker3dSymbolBody10_1 {
+    pub key: u32,
+    pub version: u16,
+    pub color: ColorSlot10_1,
+    pub leading_integers: [i32; 2],
+    pub doubles: [f64; 9],
+    pub legacy_doubles: Option<[f64; 2]>,
+    pub font: super::StdFontSlot10_1,
+    pub integers: [i32; 2],
+    pub short: u16,
+    pub character_marker: super::SymbolSlotFull10_1,
+    pub byte_v2: Option<u8>,
+    pub fields_v3: Option<([f64; 3], u16)>,
+    pub short_v4: Option<u16>,
+}
+
+pub(super) fn read_character_marker_3d_symbol(
+    reader: &mut Reader<'_>,
+    table: &mut RefTable10_1,
+    max_bytes: usize,
+    key: u32,
+    depth: usize,
+) -> io::Result<Option<CharacterMarker3dSymbolBody10_1>> {
+    use super::{
+        CHARACTER_MARKER_SYMBOL_CLASS_ID, DisplaySlotKind10_1, SymbolSlotFull10_1,
+        read_std_font_slot_10_1, read_symbol_slot_full_10_1, slot_full_stop_10_1,
+    };
+    use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
+
+    let version =
+        read_signed_symbol_version(reader, 4, "CharacterMarker3DSymbol", reader.position())?;
+    let signed = version as i16;
+    let color = read_color_slot_10_1(reader, max_bytes, table)?;
+    if matches!(color, ColorSlot10_1::Unsupported { .. }) {
+        return Ok(None);
+    }
+    let leading_integers = [read_i32_le(reader)?, read_i32_le(reader)?];
+    let mut doubles = [0.0; 9];
+    for field in &mut doubles {
+        *field = reader.read_f64_le()?;
+    }
+    let legacy_doubles = (signed < 3)
+        .then(|| Ok::<_, io::Error>([reader.read_f64_le()?, reader.read_f64_le()?]))
+        .transpose()?;
+    if let ObjectHeader::Object { class_id, key } = read_header_10_1(&mut reader.clone())?
+        && table.registered_class(key).unwrap_or(class_id) != super::STDFONT_CLASS_ID
+    {
+        return Ok(None);
+    }
+    let (Some(font), None) =
+        read_std_font_slot_10_1(reader, max_bytes, table, DisplaySlotKind10_1::Font)?
+    else {
+        return Ok(None);
+    };
+    let integers = [read_i32_le(reader)?, read_i32_le(reader)?];
+    let short = reader.read_u16_le()?;
+    let character_marker = match read_header_10_1(&mut reader.clone())? {
+        ObjectHeader::Object { class_id, key } => {
+            let class_id = table.registered_class(key).unwrap_or(class_id);
+            if class_id != CHARACTER_MARKER_SYMBOL_CLASS_ID {
+                return Ok(None);
+            }
+            if table.contains(key) {
+                read_object_entry_10_1(reader, table)?;
+                SymbolSlotFull10_1::BackReference { class_id, key }
+            } else {
+                read_symbol_slot_full_10_1(reader, max_bytes, table, depth)?
+            }
+        }
+        ObjectHeader::Null => {
+            read_object_entry_10_1(reader, table)?;
+            SymbolSlotFull10_1::Null
+        }
+    };
+    if slot_full_stop_10_1(&character_marker, DisplaySlotKind10_1::MarkerSymbol).is_some() {
+        return Ok(None);
+    }
+    Ok(Some(CharacterMarker3dSymbolBody10_1 {
+        key,
+        version,
+        color,
+        leading_integers,
+        doubles,
+        legacy_doubles,
+        font,
+        integers,
+        short,
+        character_marker,
+        byte_v2: (signed > 1)
+            .then(|| reader.read_bytes(1).map(|bytes| bytes[0]))
+            .transpose()?,
+        fields_v3: (signed > 2)
+            .then(|| {
+                Ok::<_, io::Error>((
+                    [
+                        reader.read_f64_le()?,
+                        reader.read_f64_le()?,
+                        reader.read_f64_le()?,
+                    ],
+                    reader.read_u16_le()?,
+                ))
+            })
+            .transpose()?,
+        short_v4: (signed > 3).then(|| reader.read_u16_le()).transpose()?,
     }))
 }

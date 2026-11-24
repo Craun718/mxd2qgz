@@ -1041,3 +1041,19 @@ short。大于 2 时在 `0x6804da55` 读 24 字节向量，大于 4 时
 Rust 接入共享 ISymbol 分派并复用已有颜色和几何读取器，未知嵌套体
 使当前新符号回滚。合成输入覆盖负版本及 0–6 的版本门、颜色、
 对象终点与逐字节截断。旧版非空几何实档及 ArcMap/QGIS 人工验收待补。
+
+#### CharacterMarker3DSymbol 的对象体
+
+同版 Load `0x68022e70` 以有符号上限 4 检查版本。读 IColor、
+int32×2、三组 double×3（中间组是 `0x68022faa` 的
+24 字节块）。版本低于 3 时还读两个 double。随后
+`0x68023084` 请求 IFontDisp，读 int32×2、short，
+在 `0x68023117` 请求 IID `{7914E5E7-C892-11D0-8BB6-080009EE4E41}`，
+DisplayCore 同版 CharacterMarkerSymbol 的 QI 在 `0x6eb9a447`
+接受该 IID。版本大于 1 时附加一字节，大于 2 时附加 double×3
+和 short，大于 3 时附加一个 short。
+
+Rust 复用颜色、StdFont 和 CharacterMarkerSymbol 的对象体，携带
+相同的对象键表，未知子槽回滚当前新符号。合成输入覆盖负版本和
+v0–v4 的边界与逐字节截断，非空字体及字符标记实档与 ArcMap/QGIS
+人工验收待补。
