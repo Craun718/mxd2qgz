@@ -475,6 +475,10 @@ pub const GP_SUBTYPE_CLASS_ID: [u8; 16] = [
     0x02, 0x53, 0x1b, 0x74, 0x17, 0x29, 0xab, 0x4a, 0x95, 0x2a, 0xdf, 0x5f, 0x0e, 0x01, 0x9e, 0xb6,
 ];
 
+pub const DE_FEATURE_DATASET_CLASS_ID: [u8; 16] = [
+    0xfe, 0x19, 0xc6, 0x6a, 0x1f, 0x19, 0x2d, 0x43, 0xb1, 0xa3, 0x28, 0xce, 0x85, 0xa5, 0x91, 0xaf,
+];
+
 pub const DE_FEATURE_CLASS_CLASS_ID: [u8; 16] = [
     0x40, 0x7f, 0xbb, 0x00, 0x51, 0x3e, 0x64, 0x48, 0xa6, 0x6c, 0x7f, 0x0c, 0x8e, 0xe9, 0xa8, 0x42,
 ];
@@ -828,18 +832,7 @@ pub enum GpAddressLocatorStyleRowValues10_1 {
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeTable10_1 {
     pub version: u16,
-    pub dataset_version: u16,
-    pub element_version: u16,
-    pub gp_value_version: u16,
-    pub gp_value_short: u16,
-    pub element_strings: [String; 3],
-    pub element_shorts: [u16; 3],
-    pub element_legacy_xml: Option<String>,
-    pub raw_child_count: i32,
-    pub children: Vec<RuleSlot10_1<DeChild10_1>>,
-    pub dataset_longs: [i32; 2],
-    pub dataset_shorts: [u16; 2],
-    pub dataset_string: Option<String>,
+    pub dataset: DeDataset10_1,
     pub raw_short: u16,
     pub strings: [String; 6],
     pub raw_long: i32,
@@ -857,8 +850,31 @@ pub struct DeTable10_1 {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct DeDataset10_1 {
+    pub dataset_version: u16,
+    pub element_version: u16,
+    pub gp_value_version: u16,
+    pub gp_value_short: u16,
+    pub element_strings: [String; 3],
+    pub element_shorts: [u16; 3],
+    pub element_legacy_xml: Option<String>,
+    pub raw_child_count: i32,
+    pub children: Vec<RuleSlot10_1<DeChild10_1>>,
+    pub dataset_longs: [i32; 2],
+    pub dataset_shorts: [u16; 2],
+    pub dataset_string: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
     Table(DeTable10_1),
+    FeatureDataset {
+        version: u16,
+        geo_dataset_version: u16,
+        dataset: DeDataset10_1,
+        extent: BookmarkEnvelopeEntry10_1,
+        spatial_reference: SpatialReferenceEntry10_1,
+    },
     FeatureClass {
         version: u16,
         table: DeTable10_1,
@@ -3047,13 +3063,14 @@ fn read_gp_data_element_child(
         ObjectEntry10_1::BackReference { class_id, key }
             if matches!(
                 refs.registered_class(key).unwrap_or(class_id),
-                DE_TABLE_CLASS_ID | DE_FEATURE_CLASS_CLASS_ID
+                DE_TABLE_CLASS_ID | DE_FEATURE_CLASS_CLASS_ID | DE_FEATURE_DATASET_CLASS_ID
             ) =>
         {
             None
         }
         ObjectEntry10_1::NewObject {
-            class_id: class_id @ (DE_TABLE_CLASS_ID | DE_FEATURE_CLASS_CLASS_ID),
+            class_id:
+                class_id @ (DE_TABLE_CLASS_ID | DE_FEATURE_CLASS_CLASS_ID | DE_FEATURE_DATASET_CLASS_ID),
             ..
         } => {
             if depth >= MAX_BOOKMARK_NAME_NESTING {
@@ -3064,6 +3081,27 @@ fn read_gp_data_element_child(
             }
             let body = if class_id == DE_TABLE_CLASS_ID {
                 DeChild10_1::Table(read_gp_de_table(reader, max_bytes, refs, depth + 1)?)
+            } else if class_id == DE_FEATURE_DATASET_CLASS_ID {
+                let version = reader.read_u16_le()?;
+                let geo_dataset_version = reader.read_u16_le()?;
+                if version > 1 || geo_dataset_version > 1 {
+                    return Err(io::Error::new(
+                        ErrorKind::InvalidData,
+                        "DEFeatureDataset 或 DEGeoDataset 版本超限",
+                    ));
+                }
+                DeChild10_1::FeatureDataset {
+                    version,
+                    geo_dataset_version,
+                    dataset: read_gp_de_dataset(reader, max_bytes, refs, depth + 1)?,
+                    extent: read_surround_envelope_slot(
+                        reader,
+                        max_bytes,
+                        refs,
+                        "DEFeatureDataset 范围",
+                    )?,
+                    spatial_reference: read_spatial_reference_entry_10_1(reader, max_bytes, refs)?,
+                }
             } else {
                 let version = reader.read_u16_le()?;
                 if version > 1 {
@@ -3114,41 +3152,10 @@ fn read_gp_de_table(
     depth: usize,
 ) -> io::Result<DeTable10_1> {
     let version = reader.read_u16_le()?;
-    let dataset_version = reader.read_u16_le()?;
-    let element_version = reader.read_u16_le()?;
-    let gp_value_version = reader.read_u16_le()?;
-    if version > 4 || dataset_version > 2 || element_version > 2 || gp_value_version > 1 {
-        return Err(io::Error::new(
-            ErrorKind::InvalidData,
-            "DETable 或其基类版本超限",
-        ));
+    if version > 4 {
+        return Err(io::Error::new(ErrorKind::InvalidData, "DETable 版本超限"));
     }
-    let gp_value_short = reader.read_u16_le()?;
-    let element_strings = [
-        read_string_10_1(reader, max_bytes)?,
-        read_string_10_1(reader, max_bytes)?,
-        read_string_10_1(reader, max_bytes)?,
-    ];
-    let element_shorts = [
-        reader.read_u16_le()?,
-        reader.read_u16_le()?,
-        reader.read_u16_le()?,
-    ];
-    let element_legacy_xml = (element_version == 2 && element_shorts[2] == u16::MAX)
-        .then(|| read_bstr_string_10_1(reader, max_bytes))
-        .transpose()?;
-    let (raw_child_count, child_count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
-    let mut children = Vec::new();
-    for _ in 0..child_count {
-        children.push(read_gp_data_element_child(reader, max_bytes, refs, depth)?);
-    }
-
-    let dataset_long = reader.read_u32_le()? as i32;
-    let dataset_shorts = [reader.read_u16_le()?, reader.read_u16_le()?];
-    let dataset_longs = [dataset_long, reader.read_u32_le()? as i32];
-    let dataset_string = (dataset_version >= 2)
-        .then(|| read_string_10_1(reader, max_bytes))
-        .transpose()?;
+    let dataset = read_gp_de_dataset(reader, max_bytes, refs, depth)?;
     let raw_short = reader.read_u16_le()?;
 
     // 标准 DETable 构造函数启用扩展字段，流中没有标志字节。
@@ -3203,18 +3210,7 @@ fn read_gp_de_table(
     let indexes = read_de_table_indexes(reader, max_bytes, refs, depth)?;
     Ok(DeTable10_1 {
         version,
-        dataset_version,
-        element_version,
-        gp_value_version,
-        gp_value_short,
-        element_strings,
-        element_shorts,
-        element_legacy_xml,
-        raw_child_count,
-        children,
-        dataset_longs,
-        dataset_shorts,
-        dataset_string,
+        dataset,
         raw_short,
         strings,
         raw_long,
@@ -3229,6 +3225,63 @@ fn read_gp_de_table(
         v4,
         fields,
         indexes,
+    })
+}
+
+fn read_gp_de_dataset(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<DeDataset10_1> {
+    let dataset_version = reader.read_u16_le()?;
+    let element_version = reader.read_u16_le()?;
+    let gp_value_version = reader.read_u16_le()?;
+    if dataset_version > 2 || element_version > 2 || gp_value_version > 1 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "DEDataset 或其基类版本超限",
+        ));
+    }
+    let gp_value_short = reader.read_u16_le()?;
+    let element_strings = [
+        read_string_10_1(reader, max_bytes)?,
+        read_string_10_1(reader, max_bytes)?,
+        read_string_10_1(reader, max_bytes)?,
+    ];
+    let element_shorts = [
+        reader.read_u16_le()?,
+        reader.read_u16_le()?,
+        reader.read_u16_le()?,
+    ];
+    let element_legacy_xml = (element_version == 2 && element_shorts[2] == u16::MAX)
+        .then(|| read_bstr_string_10_1(reader, max_bytes))
+        .transpose()?;
+    let (raw_child_count, child_count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
+    let mut children = Vec::new();
+    for _ in 0..child_count {
+        children.push(read_gp_data_element_child(reader, max_bytes, refs, depth)?);
+    }
+
+    let dataset_long = reader.read_u32_le()? as i32;
+    let dataset_shorts = [reader.read_u16_le()?, reader.read_u16_le()?];
+    let dataset_longs = [dataset_long, reader.read_u32_le()? as i32];
+    let dataset_string = (dataset_version >= 2)
+        .then(|| read_string_10_1(reader, max_bytes))
+        .transpose()?;
+    Ok(DeDataset10_1 {
+        dataset_version,
+        element_version,
+        gp_value_version,
+        gp_value_short,
+        element_strings,
+        element_shorts,
+        element_legacy_xml,
+        raw_child_count,
+        children,
+        dataset_longs,
+        dataset_shorts,
+        dataset_string,
     })
 }
 

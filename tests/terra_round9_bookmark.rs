@@ -7324,8 +7324,9 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
     use mxd2qgz::layers::feature_layer_tail::{UID_CLASS_ID, UidBody10_1};
     use mxd2qgz::layers::image_server_rules::RuleSlot10_1;
     use mxd2qgz::maps::map_surround::{
-        BookmarkEnvelopeEntry10_1, DE_FEATURE_CLASS_CLASS_ID, DE_TABLE_CLASS_ID, DeChild10_1,
-        DeTable10_1, DeTableIndex10_1, DeTableIndexes10_1, GP_ADDRESS_LOCATOR_STYLE_CLASS_ID,
+        BookmarkEnvelopeEntry10_1, DE_FEATURE_CLASS_CLASS_ID, DE_FEATURE_DATASET_CLASS_ID,
+        DE_TABLE_CLASS_ID, DeChild10_1, DeDataset10_1, DeTable10_1, DeTableIndex10_1,
+        DeTableIndexes10_1, GP_ADDRESS_LOCATOR_STYLE_CLASS_ID,
         GP_GEOMETRIC_NETWORK_MEMBERSHIP_CLASS_ID, GP_SUBTYPE_CLASS_ID,
         GP_TOPOLOGY_MEMBERSHIP_CLASS_ID, GpAddressLocatorStyleConfig10_1,
         GpAddressLocatorStyleRow10_1, GpAddressLocatorStyleRowValues10_1, GpCodedValue10_1,
@@ -7414,7 +7415,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
         for unit in "<x/>".encode_utf16().chain([0]) {
             payload.extend(unit.to_le_bytes());
         }
-        payload.extend(2_i32.to_le_bytes());
+        payload.extend(3_i32.to_le_bytes());
         payload.extend(bookmark_entry_10_1(&DE_FEATURE_CLASS_CLASS_ID, 28));
         payload.extend(1_u16.to_le_bytes());
         payload.extend([0; 10]);
@@ -7434,6 +7435,13 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
         payload.extend(bookmark_string_10_1("面积"));
         payload.extend(bookmark_string_10_1("长度"));
         payload.extend(bookmark_entry_10_1(&DE_FEATURE_CLASS_CLASS_ID, 28));
+        payload.extend(bookmark_entry_10_1(&DE_FEATURE_DATASET_CLASS_ID, 29));
+        payload.extend([1, 0, 1, 0]);
+        payload.extend([0; 8]);
+        for _ in 0..3 {
+            payload.extend(bookmark_string_10_1(""));
+        }
+        payload.extend([0; 54]);
         payload.extend(11_i32.to_le_bytes());
         payload.extend(12_u16.to_le_bytes());
         payload.extend(13_u16.to_le_bytes());
@@ -7556,82 +7564,112 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                             },
                             body: Some(Box::new(DeTable10_1 {
                                 version,
-                                dataset_version: 2,
-                                element_version: 2,
-                                gp_value_version: 1,
-                                gp_value_short: 7,
-                                element_strings: ["目录", "名称", "标题"].map(String::from),
-                                element_shorts: [0, 0, u16::MAX],
-                                element_legacy_xml: Some("<x/>".into()),
-                                raw_child_count: 2,
-                                children: vec![
-                                    RuleSlot10_1 {
-                                        entry: ObjectEntry10_1::NewObject {
-                                            class_id: DE_FEATURE_CLASS_CLASS_ID,
-                                            key: 28,
-                                        },
-                                        body: Some(Box::new(DeChild10_1::FeatureClass {
-                                            version: 1,
-                                            raw_longs: [3, 4],
-                                            name: "形状".into(),
-                                            raw_shorts: [1, 2, 3],
-                                            extent: BookmarkEnvelopeEntry10_1::Null,
-                                            spatial_reference: SpatialReferenceEntry10_1::Null,
-                                            strings: ["面积".into(), "长度".into()],
-                                            table: DeTable10_1 {
-                                                version: 0,
-                                                dataset_version: 0,
-                                                element_version: 0,
-                                                gp_value_version: 0,
-                                                gp_value_short: 0,
-                                                element_strings: Default::default(),
-                                                element_shorts: [0; 3],
-                                                element_legacy_xml: None,
-                                                raw_child_count: 0,
-                                                children: Vec::new(),
-                                                dataset_longs: [0; 2],
-                                                dataset_shorts: [0; 2],
-                                                dataset_string: None,
-                                                raw_short: 0,
-                                                strings: Default::default(),
-                                                raw_long: 0,
-                                                string_array: StringArraySlot10_1 {
-                                                    entry: ObjectEntry10_1::Null,
-                                                    body: None,
-                                                },
-                                                properties: RuleSlot10_1 {
-                                                    entry: ObjectEntry10_1::Null,
-                                                    body: None,
-                                                },
-                                                raw_subtype_count: 0,
-                                                subtypes: Vec::new(),
-                                                raw_membership_count: 0,
-                                                memberships: Vec::new(),
-                                                v2: None,
-                                                v3: None,
-                                                v4: None,
-                                                fields: RuleSlot10_1 {
-                                                    entry: ObjectEntry10_1::Null,
-                                                    body: None,
-                                                },
-                                                indexes: RuleSlot10_1 {
-                                                    entry: ObjectEntry10_1::Null,
-                                                    body: None,
-                                                },
+                                dataset: DeDataset10_1 {
+                                    dataset_version: 2,
+                                    element_version: 2,
+                                    gp_value_version: 1,
+                                    gp_value_short: 7,
+                                    element_strings: ["目录", "名称", "标题"].map(String::from),
+                                    element_shorts: [0, 0, u16::MAX],
+                                    element_legacy_xml: Some("<x/>".into()),
+                                    raw_child_count: 3,
+                                    children: vec![
+                                        RuleSlot10_1 {
+                                            entry: ObjectEntry10_1::NewObject {
+                                                class_id: DE_FEATURE_CLASS_CLASS_ID,
+                                                key: 28,
                                             },
-                                        })),
-                                    },
-                                    RuleSlot10_1 {
-                                        entry: ObjectEntry10_1::BackReference {
-                                            class_id: DE_FEATURE_CLASS_CLASS_ID,
-                                            key: 28,
+                                            body: Some(Box::new(DeChild10_1::FeatureClass {
+                                                version: 1,
+                                                raw_longs: [3, 4],
+                                                name: "形状".into(),
+                                                raw_shorts: [1, 2, 3],
+                                                extent: BookmarkEnvelopeEntry10_1::Null,
+                                                spatial_reference: SpatialReferenceEntry10_1::Null,
+                                                strings: ["面积".into(), "长度".into()],
+                                                table: DeTable10_1 {
+                                                    version: 0,
+                                                    dataset: DeDataset10_1 {
+                                                        dataset_version: 0,
+                                                        element_version: 0,
+                                                        gp_value_version: 0,
+                                                        gp_value_short: 0,
+                                                        element_strings: Default::default(),
+                                                        element_shorts: [0; 3],
+                                                        element_legacy_xml: None,
+                                                        raw_child_count: 0,
+                                                        children: Vec::new(),
+                                                        dataset_longs: [0; 2],
+                                                        dataset_shorts: [0; 2],
+                                                        dataset_string: None,
+                                                    },
+                                                    raw_short: 0,
+                                                    strings: Default::default(),
+                                                    raw_long: 0,
+                                                    string_array: StringArraySlot10_1 {
+                                                        entry: ObjectEntry10_1::Null,
+                                                        body: None,
+                                                    },
+                                                    properties: RuleSlot10_1 {
+                                                        entry: ObjectEntry10_1::Null,
+                                                        body: None,
+                                                    },
+                                                    raw_subtype_count: 0,
+                                                    subtypes: Vec::new(),
+                                                    raw_membership_count: 0,
+                                                    memberships: Vec::new(),
+                                                    v2: None,
+                                                    v3: None,
+                                                    v4: None,
+                                                    fields: RuleSlot10_1 {
+                                                        entry: ObjectEntry10_1::Null,
+                                                        body: None,
+                                                    },
+                                                    indexes: RuleSlot10_1 {
+                                                        entry: ObjectEntry10_1::Null,
+                                                        body: None,
+                                                    },
+                                                },
+                                            })),
                                         },
-                                        body: None,
-                                    },
-                                ],
-                                dataset_longs: [11, 14],
-                                dataset_shorts: [12, 13],
-                                dataset_string: Some("数据集".into()),
+                                        RuleSlot10_1 {
+                                            entry: ObjectEntry10_1::BackReference {
+                                                class_id: DE_FEATURE_CLASS_CLASS_ID,
+                                                key: 28,
+                                            },
+                                            body: None,
+                                        },
+                                        RuleSlot10_1 {
+                                            entry: ObjectEntry10_1::NewObject {
+                                                class_id: DE_FEATURE_DATASET_CLASS_ID,
+                                                key: 29,
+                                            },
+                                            body: Some(Box::new(DeChild10_1::FeatureDataset {
+                                                version: 1,
+                                                geo_dataset_version: 1,
+                                                dataset: DeDataset10_1 {
+                                                    dataset_version: 0,
+                                                    element_version: 0,
+                                                    gp_value_version: 0,
+                                                    gp_value_short: 0,
+                                                    element_strings: Default::default(),
+                                                    element_shorts: [0; 3],
+                                                    element_legacy_xml: None,
+                                                    raw_child_count: 0,
+                                                    children: Vec::new(),
+                                                    dataset_longs: [0; 2],
+                                                    dataset_shorts: [0; 2],
+                                                    dataset_string: None,
+                                                },
+                                                extent: BookmarkEnvelopeEntry10_1::Null,
+                                                spatial_reference: SpatialReferenceEntry10_1::Null,
+                                            })),
+                                        },
+                                    ],
+                                    dataset_longs: [11, 14],
+                                    dataset_shorts: [12, 13],
+                                    dataset_string: Some("数据集".into()),
+                                },
                                 raw_short: 15,
                                 strings: ["A", "B", "C", "D", "E", "F"].map(String::from),
                                 raw_long: 16,

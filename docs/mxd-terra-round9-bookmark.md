@@ -2086,3 +2086,14 @@ FeatureDataElements.dll 10.1.0.3035 的持久化表 `0x6f658858`
 三个 short、IEnvelope 与 ISpatialReference 槽。标准构造函数
 在 `0x6f5f31a2` 启用扩展标志，因此尾部还读两个 String。
 构造书签覆盖子对象的新对象、同键回引和截断回滚，实际 MXD 宿主仍待验证。
+
+#### DEFeatureDataset
+
+FeatureDataElements.dll 10.1.0.3035 的 DEFeatureDataset 持久化表
+`0x6f659284` 将 Load 经 `0x6f64a462` 转发到 DECoreLib
+`0x6e94b280`。类型库标明类 GUID
+`{6AC619FE-191F-432D-B1A3-28CE85A591AF}`。该入口读取无符号版本
+（上限 1），然后调用 DEGeoDataset::Load `0x6e94b860`。后者读取
+自身版本（上限 1），调用 DEDataset::Load，再加载 IEnvelope
+和 ISpatialReference。结构化书签覆盖两个版本字段、空范围与空间
+参考槽、后续字段定位及截断回滚。实际 MXD 宿主仍待验证。
