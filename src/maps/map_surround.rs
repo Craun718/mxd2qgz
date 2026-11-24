@@ -539,6 +539,10 @@ const GP_COMPOSITE_LAYER_CLASS_ID: [u8; 16] = [
     0x51, 0x4b, 0x99, 0x22, 0xba, 0xc6, 0xff, 0x41, 0xab, 0xe6, 0x54, 0x96, 0x15, 0x44, 0x1e, 0x3f,
 ];
 
+pub const DE_LAS_DATASET_CLASS_ID: [u8; 16] = [
+    0x09, 0x67, 0x00, 0xea, 0x03, 0xcd, 0x9d, 0x43, 0x80, 0xa1, 0x92, 0x54, 0xe2, 0x54, 0x12, 0xe3,
+];
+
 pub const DE_COVERAGE_CLASS_ID: [u8; 16] = [
     0x47, 0x0c, 0xb7, 0x96, 0x7f, 0x2c, 0x5f, 0x40, 0xb9, 0xfd, 0xde, 0xaa, 0x3c, 0xdc, 0x08, 0x4c,
 ];
@@ -1037,7 +1041,21 @@ pub struct GpLayer10_1 {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct DeLasDatasetTail10_1 {
+    pub raw_longs: [i32; 3],
+    pub raw_shorts: [u16; 3],
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
+    LasDataset {
+        version: u16,
+        geo_dataset_version: u16,
+        dataset: DeDataset10_1,
+        extent: BookmarkEnvelopeEntry10_1,
+        spatial_reference: SpatialReferenceEntry10_1,
+        tail: Option<DeLasDatasetTail10_1>,
+    },
     Coverage {
         version: u16,
         geo_dataset_version: u16,
@@ -3591,6 +3609,7 @@ fn read_gp_data_element_child(
                     | DE_CAD_DRAWING_DATASET_CLASS_ID
                     | DE_TIN_CLASS_ID
                     | DE_COVERAGE_CLASS_ID
+                    | DE_LAS_DATASET_CLASS_ID
                     | DE_RASTER_BAND_CLASS_ID
                     | DE_FEATURE_DATASET_CLASS_ID
                     | DE_CATALOG_DATASET_CLASS_ID
@@ -3628,6 +3647,7 @@ fn read_gp_data_element_child(
                 | DE_CAD_DRAWING_DATASET_CLASS_ID
                 | DE_TIN_CLASS_ID
                 | DE_COVERAGE_CLASS_ID
+                | DE_LAS_DATASET_CLASS_ID
                 | DE_RASTER_BAND_CLASS_ID
                 | DE_FEATURE_DATASET_CLASS_ID
                 | DE_CATALOG_DATASET_CLASS_ID
@@ -3779,11 +3799,14 @@ fn read_gp_data_element_child(
                     | DE_CAD_DRAWING_DATASET_CLASS_ID
                     | DE_TIN_CLASS_ID
                     | DE_COVERAGE_CLASS_ID
+                    | DE_LAS_DATASET_CLASS_ID
             ) {
                 let version = reader.read_u16_le()?;
                 let geo_dataset_version = reader.read_u16_le()?;
                 let max_version = match class_id {
-                    DE_TOPOLOGY_CLASS_ID | DE_RASTER_DATASET_CLASS_ID => 2,
+                    DE_TOPOLOGY_CLASS_ID | DE_RASTER_DATASET_CLASS_ID | DE_LAS_DATASET_CLASS_ID => {
+                        2
+                    }
                     DE_GEOMETRIC_NETWORK_CLASS_ID => 6,
                     _ => 1,
                 };
@@ -3861,6 +3884,31 @@ fn read_gp_data_element_child(
                         raw_long,
                         raw_short,
                         storage,
+                    }
+                } else if class_id == DE_LAS_DATASET_CLASS_ID {
+                    let tail = if version == 2 {
+                        Some(DeLasDatasetTail10_1 {
+                            raw_longs: [
+                                reader.read_u32_le()? as i32,
+                                reader.read_u32_le()? as i32,
+                                reader.read_u32_le()? as i32,
+                            ],
+                            raw_shorts: [
+                                reader.read_u16_le()?,
+                                reader.read_u16_le()?,
+                                reader.read_u16_le()?,
+                            ],
+                        })
+                    } else {
+                        None
+                    };
+                    DeChild10_1::LasDataset {
+                        version,
+                        geo_dataset_version,
+                        dataset,
+                        extent,
+                        spatial_reference,
+                        tail,
                     }
                 } else if class_id == DE_COVERAGE_CLASS_ID {
                     DeChild10_1::Coverage {
@@ -7289,6 +7337,74 @@ mod tests {
             assert_eq!(body.fields, None);
             assert_eq!(body.v6, (version == 6).then_some(23));
             assert_eq!(reader.position(), end);
+        }
+    }
+
+    #[test]
+    fn las_dataset_reads_tail_only_in_version_two() {
+        for version in 0_u16..=2 {
+            let mut bytes = DE_LAS_DATASET_CLASS_ID.to_vec();
+            bytes.extend(39_u32.to_le_bytes());
+            bytes.extend(version.to_le_bytes());
+            bytes.extend([0; 10]);
+            for _ in 0..3 {
+                bytes.extend([2, 0, 0, 0, 0, 0]);
+            }
+            bytes.extend([0; 54]);
+            if version == 2 {
+                for value in [-1_i32, 2, 3] {
+                    bytes.extend(value.to_le_bytes());
+                }
+                for value in [4_u16, u16::MAX, 6] {
+                    bytes.extend(value.to_le_bytes());
+                }
+            }
+            for cut in 0..bytes.len() {
+                assert!(
+                    read_gp_data_element_child(
+                        &mut Reader::new(&bytes[..cut]),
+                        1024,
+                        &mut RefTable10_1::new(),
+                        0,
+                    )
+                    .is_err()
+                );
+            }
+            let end = bytes.len();
+            bytes.push(0xa5);
+            let mut reader = Reader::new(&bytes);
+            let slot =
+                read_gp_data_element_child(&mut reader, 1024, &mut RefTable10_1::new(), 0).unwrap();
+            let Some(DeChild10_1::LasDataset {
+                version: parsed_version,
+                tail,
+                ..
+            }) = slot.body.as_deref()
+            else {
+                panic!("应读取 DELasDataset");
+            };
+            assert_eq!(*parsed_version, version);
+            assert_eq!(
+                *tail,
+                (version == 2).then_some(DeLasDatasetTail10_1 {
+                    raw_longs: [-1, 2, 3],
+                    raw_shorts: [4, u16::MAX, 6],
+                })
+            );
+            assert_eq!(reader.position(), end);
+
+            bytes[20] = 3;
+            assert_eq!(
+                read_gp_data_element_child(
+                    &mut Reader::new(&bytes),
+                    1024,
+                    &mut RefTable10_1::new(),
+                    0,
+                )
+                .unwrap_err()
+                .kind(),
+                ErrorKind::InvalidData,
+            );
         }
     }
 

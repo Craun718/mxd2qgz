@@ -2448,3 +2448,14 @@ Load `0x6f9b8020` 检查无符号版本上限 1，经导入槽
 调用 LoadObject。esriSystem 类型库确认该 IID 为 IPropertySet，
 读完该槽即完成对象体。构造测试覆盖新 PropertySet 对象、登记键、
 逐字节截断和结束位置。真实 MXD 宿主仍待验证。
+
+#### DELasDataset
+
+FileDataElements.dll 10.1.0.3035 的持久化表 `0x6f9dabf8`
+对应 esriDataSourcesFile 类型库中的 `EA006709-CD03-439D-80A1-9254E25412E3`。
+Load `0x6f9be580` 检查无符号版本上限 2，且经
+`0x6f9d71e4` 调用 DEGeoDataset::Load。版本 0、1
+从 `0x6f9be5d9` 跳至结束处。版本 2 依次读取三个 long
+和三个 short，存于 +0x90、+0x94、+0x98、+0x9c、+0x9e、+0xa0。
+构造测试覆盖三个版本、超限版本、尾字段、逐字节截断与结束位置。
+标量字段含义和真实 MXD 宿主仍待核对。
