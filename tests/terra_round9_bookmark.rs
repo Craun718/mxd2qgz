@@ -5703,7 +5703,7 @@ fn assert_legacy_topo_coded_value(
         assert_eq!(reader.position(), 0);
         assert!(refs.is_empty());
     }
-    bytes[version_offset..version_offset + 2].copy_from_slice(&u16::MAX.to_le_bytes());
+    bytes[version_offset..version_offset + 2].copy_from_slice(&0x7fff_u16.to_le_bytes());
     let mut reader = Reader::new(&bytes);
     let mut refs = RefTable10_1::new();
     assert_eq!(
@@ -7115,6 +7115,46 @@ fn feature_bookmark_reads_gp_field_info_with_versioned_rows() {
         2,
         &(-1_i32).to_le_bytes(),
         GpCodedValue10_1::FieldInfo {
+            raw_count: -1,
+            rows: Vec::new(),
+        },
+    );
+}
+
+#[test]
+fn feature_bookmark_reads_na_class_field_map_coded_value() {
+    use mxd2qgz::maps::map_surround::{
+        GpCodedValue10_1, NA_CLASS_FIELD_MAP_CLASS_ID, NaClassFieldMapRow10_1,
+    };
+    use mxd2qgz::objects::property_set::{PropertyValue10_1, PropertyValueObjectStream10_1};
+
+    let mut payload = 1_i32.to_le_bytes().to_vec();
+    for name in [b'A', b'B'] {
+        payload.extend(1_u32.to_le_bytes());
+        payload.extend([name, 0, 0, 0]);
+    }
+    payload.extend(3_u16.to_le_bytes());
+    payload.extend([0; 14]);
+    payload.extend(42_i32.to_le_bytes());
+    assert_legacy_topo_coded_value(
+        NA_CLASS_FIELD_MAP_CLASS_ID,
+        1,
+        &payload,
+        GpCodedValue10_1::NaClassFieldMap {
+            raw_count: 1,
+            rows: vec![NaClassFieldMapRow10_1 {
+                strings: ["A".into(), "B".into()],
+                value: PropertyValueObjectStream10_1::Inline(PropertyValue10_1::Raw4(
+                    42_i32.to_le_bytes(),
+                )),
+            }],
+        },
+    );
+    assert_legacy_topo_coded_value(
+        NA_CLASS_FIELD_MAP_CLASS_ID,
+        0xffff,
+        &(-1_i32).to_le_bytes(),
+        GpCodedValue10_1::NaClassFieldMap {
             raw_count: -1,
             rows: Vec::new(),
         },

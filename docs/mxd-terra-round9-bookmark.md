@@ -1874,3 +1874,20 @@ LocatorWorkspaceName 的 IUnknown 入口按登记键保留回引。
 构造测试以 TableName 类标识指向这三个已登记类，确认 FeatureBookmark
 退回起点并保留引用表。其余实现仍需核对接口，尚无该组合的实档或
 ArcMap 10.1 人工验证。
+
+### NAClassFieldMap
+
+NetworkAnalyst.dll PE32 10.1.0.3035 的 SHA-256 为
+`8c4ebaee71aad63c25616aa806674018479829d97bc01c7ed3b8845813698532`。
+RTTI 主表 `0x7af9de24` 的 QI `0x7af05f30` 比较 IGPValue
+（IID 常量 `0x7af9dffc`）及 IPersistStream。持久化表
+`0x7af9dea8` 的 GetClassID `0x7af07510` 返回
+`{E61C9FF8-06BF-42E5-AD66-849364B48549}`。Load
+`0x7af07570` 读有符号版本（上限 1），在 `0x7af07604`
+调用 DECoreLib GPValue::Load，再读有符号行数。非正值跳过循环。
+每行 `0x7af07671`、`0x7af07690` 调用 AfCore ReadString
+读取 BSTR，`0x7af076a9` 调 Variant::Read(false)，全程沿用
+宿主对象流。Save `0x7af077e0` 写同样的字段序。
+
+构造书签覆盖非空行、Variant、同键回引、负版本、负计数和截断回滚。
+尚无该类在实际编码值域中的实档或 ArcMap/QGIS 人工验收。
