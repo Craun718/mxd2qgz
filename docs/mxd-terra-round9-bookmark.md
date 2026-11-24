@@ -3066,3 +3066,24 @@ TrafficFeedGPService（`C8A68870-3769-4271-B480-E95E806B72DF`）
 （`0x710ab7ba`）和两个 String。Rust 读取器接入两类，
 构造测试包括所有 TrafficData 版本、两个非空类、
 无供给位置以及逐字节截断。真实 MXD 宿主仍未验证。
+
+NetworkAttribute（`A86F7CE3-37E0-4BEF-B66C-72B41796CF03`）
+的持久化表为 `0x71192f74`，EvaluatedNetworkAttribute
+（`CF8D7B2F-628B-4F9D-B149-D5DB3CD32A35`）为
+`0x7119254c`。两表共用 Load `0x70fd8500`，
+接受 short 版本 1–3。共同体依次是 long、AfCore String、
+三个 long、IPropertySet（`0x70fd861f`）。版本 2 起在
+`0x70fd8662` 追加 long。版本 3 在 `0x70fd8693`
+追加有符号计数，正数循环在 `0x70fd86d1` 请求
+INetworkAttributeParameter（`51E6E103-27B3-472F-9502-001C631064B3`）。
+类型库中另一个 INetworkAttribute 实现 SDCNetworkAttribute
+位于 DataSourcesFile，尚未核对。
+
+NetworkAttributeParameter（`BA43AB15-045D-4EB1-8526-EA65C4548D4A`）
+的 +0x74 表 `0x711931cc` 经 `0x70fe8d50` 跳到
+Load `0x70fe74b0`。入口接受 short 版本 1–2。
+共同体为 String、long、两个 Variant::Read(false)
+（`0x70fe7550`、`0x70fe7562`），版本 2 再读一个 long。
+Rust 复用 ObjectStream 的 Variant 读取器。构造测试覆盖
+两种属性类、三种版本、非空参数和逐字节截断。仍待验证
+真实 MXD 宿主与属性集中的求值器实现。

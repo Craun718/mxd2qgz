@@ -1,7 +1,8 @@
-//! GdbNetwork.dll 10.1 的网络源方向对象，见 docs/mxd-terra-round9-bookmark.md。
+//! GdbNetwork.dll 10.1 的网络数据集子对象，见 docs/mxd-terra-round9-bookmark.md。
 
 use crate::objects::property_set::{
-    PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1, read_property_set_object_stream_10_1,
+    PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1, PropertyValueObjectStream10_1,
+    read_padded_variant_object_stream_10_1, read_property_set_object_stream_10_1,
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -548,6 +549,126 @@ pub fn read_traffic_data_slot_10_1(
     })
 }
 
+pub const NETWORK_ATTRIBUTE_CLASS_ID: [u8; 16] = [
+    0xe3, 0x7c, 0x6f, 0xa8, 0xe0, 0x37, 0xef, 0x4b, 0xb6, 0x6c, 0x72, 0xb4, 0x17, 0x96, 0xcf, 0x03,
+];
+pub const EVALUATED_NETWORK_ATTRIBUTE_CLASS_ID: [u8; 16] = [
+    0x2f, 0x7b, 0x8d, 0xcf, 0x8b, 0x62, 0x9d, 0x4f, 0xb1, 0x49, 0xd5, 0xdb, 0x3c, 0xd3, 0x2a, 0x35,
+];
+pub const NETWORK_ATTRIBUTE_PARAMETER_CLASS_ID: [u8; 16] = [
+    0x15, 0xab, 0x43, 0xba, 0x5d, 0x04, 0xb1, 0x4e, 0x85, 0x26, 0xea, 0x65, 0xc4, 0x54, 0x8d, 0x4a,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NetworkAttributeParameter10_1 {
+    pub version: u16,
+    pub name: String,
+    pub value: u32,
+    pub variants: [PropertyValueObjectStream10_1; 2],
+    pub extra_value: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NetworkAttribute10_1 {
+    pub version: u16,
+    pub initial_value: u32,
+    pub name: String,
+    pub values: [u32; 3],
+    pub properties: DirectionSlot10_1<PropertySetObjectStream10_1>,
+    pub extra_value: Option<u32>,
+    pub parameters: Option<(i32, Vec<DirectionSlot10_1<NetworkAttributeParameter10_1>>)>,
+}
+
+fn read_attribute_parameter(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<NetworkAttributeParameter10_1> {
+    let version = reader.read_u16_le()?;
+    if !(1..=2).contains(&version) {
+        return Err(version_error("NetworkAttributeParameter"));
+    }
+    let name = read_string_10_1(reader, max_bytes)?;
+    let value = reader.read_u32_le()?;
+    let variants = [
+        read_padded_variant_object_stream_10_1(reader, max_bytes, refs)?,
+        read_padded_variant_object_stream_10_1(reader, max_bytes, refs)?,
+    ];
+    let extra_value = (version == 2).then(|| reader.read_u32_le()).transpose()?;
+    Ok(NetworkAttributeParameter10_1 {
+        version,
+        name,
+        value,
+        variants,
+        extra_value,
+    })
+}
+
+/// 读取 INetworkAttribute 槽。两个 GdbNetwork 类共用持久化体。
+pub fn read_network_attribute_slot_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<DirectionSlot10_1<NetworkAttribute10_1>> {
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let (class, is_new) = match entry {
+        ObjectEntry10_1::Null => return Ok(DirectionSlot10_1 { entry, body: None }),
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            (refs.registered_class(key).unwrap_or(class_id), false)
+        }
+        ObjectEntry10_1::NewObject { class_id, .. } => (class_id, true),
+    };
+    if ![
+        NETWORK_ATTRIBUTE_CLASS_ID,
+        EVALUATED_NETWORK_ATTRIBUTE_CLASS_ID,
+    ]
+    .contains(&class)
+    {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            "INetworkAttribute 槽包含未知对象类",
+        ));
+    }
+    let body = is_new
+        .then(|| -> io::Result<_> {
+            let version = reader.read_u16_le()?;
+            if !(1..=3).contains(&version) {
+                return Err(version_error("NetworkAttribute"));
+            }
+            let initial_value = reader.read_u32_le()?;
+            let name = read_string_10_1(reader, max_bytes)?;
+            let values = [
+                reader.read_u32_le()?,
+                reader.read_u32_le()?,
+                reader.read_u32_le()?,
+            ];
+            let properties = read_slot(reader, refs, PROPERTY_SET_CLASS_ID, |r, refs| {
+                read_property_set_object_stream_10_1(r, max_bytes, refs)
+            })?;
+            let extra_value = (version >= 2).then(|| reader.read_u32_le()).transpose()?;
+            let parameters = (version == 3)
+                .then(|| {
+                    read_list(reader, 16, max_bytes, |r| {
+                        read_slot(r, refs, NETWORK_ATTRIBUTE_PARAMETER_CLASS_ID, |r, refs| {
+                            read_attribute_parameter(r, max_bytes, refs)
+                        })
+                    })
+                })
+                .transpose()?;
+            Ok(NetworkAttribute10_1 {
+                version,
+                initial_value,
+                name,
+                values,
+                properties,
+                extra_value,
+                parameters,
+            })
+        })
+        .transpose()?;
+    Ok(DirectionSlot10_1 { entry, body })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -567,6 +688,63 @@ mod tests {
             &mut RefTable10_1::new(),
         )?;
         Ok((body, reader.position()))
+    }
+
+    #[test]
+    fn network_attributes_read_common_body_and_parameters() {
+        for class in [
+            NETWORK_ATTRIBUTE_CLASS_ID,
+            EVALUATED_NETWORK_ATTRIBUTE_CLASS_ID,
+        ] {
+            for version in 1_u16..=3 {
+                let mut bytes = Vec::new();
+                object(&mut bytes, class, 1);
+                bytes.extend(version.to_le_bytes());
+                bytes.extend(44_u32.to_le_bytes());
+                bytes.extend(EMPTY);
+                bytes.extend([0; 28]);
+                if version >= 2 {
+                    bytes.extend(9_u32.to_le_bytes());
+                }
+                if version == 3 {
+                    bytes.extend(1_u32.to_le_bytes());
+                    object(&mut bytes, NETWORK_ATTRIBUTE_PARAMETER_CLASS_ID, 2);
+                    bytes.extend(2_u16.to_le_bytes());
+                    bytes.extend(EMPTY);
+                    bytes.extend(6_u32.to_le_bytes());
+                    bytes.extend([0; 32]);
+                    bytes.extend(12_u32.to_le_bytes());
+                }
+                let end = bytes.len();
+                bytes.push(0xee);
+                let mut reader = Reader::new(&bytes);
+                let body = read_network_attribute_slot_10_1(
+                    &mut reader,
+                    bytes.len(),
+                    &mut RefTable10_1::new(),
+                )
+                .unwrap()
+                .body
+                .unwrap();
+                assert_eq!(reader.position(), end);
+                assert_eq!(body.extra_value, (version >= 2).then_some(9));
+                if version == 3 {
+                    let (_, parameters) = body.parameters.unwrap();
+                    assert_eq!(parameters[0].body.as_ref().unwrap().extra_value, Some(12));
+                }
+                for end in 0..end {
+                    assert!(
+                        read_network_attribute_slot_10_1(
+                            &mut Reader::new(&bytes[..end]),
+                            bytes.len(),
+                            &mut RefTable10_1::new(),
+                        )
+                        .is_err(),
+                        "截断位置 {end}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]
