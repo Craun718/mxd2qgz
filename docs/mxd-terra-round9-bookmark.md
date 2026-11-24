@@ -1950,6 +1950,17 @@ Load `0x74774d50` 检查无符号 short 版本上限 1，调用 GPValue
 当前保留这两类的停止边界，等待真实档案或运行取证确认
 编码值域实际使用的字段顺序。尚未在 ArcMap/QGIS 人工验证。
 
+复核 GpObjects.dll（SHA-256
+`c9da22687b40e070d7178538846f707c04d26474d2fa835acb01ceaa46d2f896`）
+的跳转及导入表，GPLine 与 GPPolygon 在正计数时分别进入
+`0x7470809a`、`0x7470b06a` 的 SaveObject 循环。
+末次迭代通过 `0x747080ad`、`0x7470b07d` 回跳到
+GPValue::Save；非正计数直接走同一基类写出点。因此字段顺序
+差异同时存在于空集合和非空集合。GPPoint 主 QI `0x74709810`
+在 `0x74709817` 使用同一 IID 常量 `0x747b5db8`，
+命中返回对象 +0x48。已支持的 GPPoint 对象体可用于这个子槽，
+仍需可复现的宿主写出记录来决定外层边界。
+
 #### GPSACellSize
 
 GPSACore.dll 10.1.0.3035 的 SHA-256 为
