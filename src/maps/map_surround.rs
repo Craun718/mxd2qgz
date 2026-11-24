@@ -462,6 +462,12 @@ pub const GP_REPLICA_DESCRIPTION_CLASS_ID: [u8; 16] = [
 pub const GP_REPLICA_DATASET_CLASS_ID: [u8; 16] = [
     0x3c, 0x7e, 0x47, 0x72, 0xce, 0x85, 0xde, 0x49, 0xaa, 0x3e, 0x5d, 0x55, 0x90, 0x9c, 0x22, 0xea,
 ];
+const GP_FIELD_MAPPING_CLASS_ID: [u8; 16] = [
+    0xb9, 0x2d, 0x27, 0xd9, 0x3c, 0xf0, 0x84, 0x44, 0x8f, 0xd2, 0x8a, 0x50, 0x47, 0xb2, 0xcb, 0xb6,
+];
+const GP_FIELD_MAP_CLASS_ID: [u8; 16] = [
+    0xa7, 0x43, 0xcf, 0xde, 0x8a, 0x57, 0xca, 0x48, 0xbc, 0xa2, 0x4b, 0x11, 0x14, 0x8e, 0x20, 0x09,
+];
 pub const GP_LINE_CLASS_ID: [u8; 16] = [
     0xe4, 0x80, 0x5f, 0x43, 0xb2, 0x6d, 0x6b, 0x47, 0xb9, 0x77, 0xb0, 0x6b, 0xff, 0x52, 0xf9, 0x78,
 ];
@@ -908,6 +914,13 @@ pub const GP_EXTENT_CLASS_ID: [u8; 16] = [
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpCodedValue10_1 {
+    FieldMapping {
+        raw_map_count: i32,
+        maps: Vec<RuleSlot10_1<GpFieldMap10_1>>,
+        raw_table_count: i32,
+        tables: Vec<RuleSlot10_1<DeTable10_1>>,
+        tail: Option<RuleSlot10_1<DeTable10_1>>,
+    },
     Replica(Box<GpReplica10_1>),
     ReplicaDescription {
         raw_longs: [u32; 2],
@@ -1895,6 +1908,23 @@ pub enum GpSaRemapRow10_1 {
         raw_long: i32,
         text_bytes: Vec<u8>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpFieldMap10_1 {
+    pub version: u16,
+    pub raw_long: u32,
+    pub delimiter: String,
+    pub field: RuleSlot10_1<GpCodedValueBody10_1>,
+    pub raw_count: i32,
+    pub rows: Vec<GpFieldMapRow10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpFieldMapRow10_1 {
+    pub field: RuleSlot10_1<GpCodedValueBody10_1>,
+    pub table: RuleSlot10_1<DeTable10_1>,
+    pub raw_longs: [u32; 2],
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3079,6 +3109,7 @@ fn read_gp_coded_value_entry(
             if matches!(
                 table.registered_class(key).unwrap_or(class_id),
                 GP_STRING_CLASS_ID
+                    | GP_FIELD_MAPPING_CLASS_ID
                     | GP_POINT_CLASS_ID
                     | GP_REPLICA_CLASS_ID
                     | GP_REPLICA_DESCRIPTION_CLASS_ID
@@ -3360,6 +3391,7 @@ fn read_gp_coded_value_entry(
         ObjectEntry10_1::NewObject {
             class_id:
                 class_id @ (GP_STRING_CLASS_ID
+                | GP_FIELD_MAPPING_CLASS_ID
                 | GP_POINT_CLASS_ID
                 | GP_CELL_SIZE_XY_CLASS_ID
                 | GP_SA_CELL_SIZE_CLASS_ID
@@ -3425,6 +3457,7 @@ fn read_gp_coded_value_entry(
             let version = reader.read_u16_le()?;
             let base_version = reader.read_u16_le()?;
             let max_version = match class_id {
+                GP_FIELD_MAPPING_CLASS_ID => 2,
                 GP_SPATIAL_REFERENCE_CLASS_ID
                 | GP_SA_SEMI_VARIOGRAM_CLASS_ID
                 | GP_RASTER_GDB_ENV_STATISTICS_CLASS_ID => 3,
@@ -3508,6 +3541,29 @@ fn read_gp_coded_value_entry(
                     ])
                 }
                 GP_DOUBLE_CLASS_ID => GpCodedValue10_1::DoubleBits(reader.read_f64_le()?.to_bits()),
+                GP_FIELD_MAPPING_CLASS_ID => {
+                    let (raw_map_count, count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
+                    let mut maps = Vec::new();
+                    for _ in 0..count {
+                        maps.push(read_gp_field_map_slot(reader, max_bytes, table, depth)?);
+                    }
+                    let (raw_table_count, count) =
+                        read_gp_coded_value_count(reader, max_bytes, 16)?;
+                    let mut tables = Vec::new();
+                    for _ in 0..count {
+                        tables.push(read_gp_de_table_slot(reader, max_bytes, table, depth)?);
+                    }
+                    let tail = (version >= 2)
+                        .then(|| read_gp_de_table_slot(reader, max_bytes, table, depth))
+                        .transpose()?;
+                    GpCodedValue10_1::FieldMapping {
+                        raw_map_count,
+                        maps,
+                        raw_table_count,
+                        tables,
+                        tail,
+                    }
+                }
                 GP_POINT_CLASS_ID => GpCodedValue10_1::Point {
                     x_bits: reader.read_f64_le()?.to_bits(),
                     y_bits: reader.read_f64_le()?.to_bits(),
@@ -3933,6 +3989,69 @@ fn read_gp_replica_geometry_slot(
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
                 "不支持的复制描述几何回引",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_gp_field_map_slot(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<RuleSlot10_1<GpFieldMap10_1>> {
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if refs.registered_class(key).unwrap_or(class_id) == GP_FIELD_MAP_CLASS_ID =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: GP_FIELD_MAP_CLASS_ID,
+            ..
+        } => {
+            let version = reader.read_u16_le()?;
+            if version > 2 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "GPFieldMap 版本超限",
+                ));
+            }
+            let raw_long = reader.read_u32_le()?;
+            let delimiter = read_string_10_1(reader, max_bytes)?;
+            let field =
+                read_gp_coded_value_slot_of_class(reader, max_bytes, refs, depth, FIELD_CLASS_ID)?;
+            let (raw_count, count) = read_gp_coded_value_count(reader, max_bytes, 40)?;
+            let mut rows = Vec::new();
+            for _ in 0..count {
+                rows.push(GpFieldMapRow10_1 {
+                    field: read_gp_coded_value_slot_of_class(
+                        reader,
+                        max_bytes,
+                        refs,
+                        depth,
+                        FIELD_CLASS_ID,
+                    )?,
+                    table: read_gp_de_table_slot(reader, max_bytes, refs, depth)?,
+                    raw_longs: [reader.read_u32_le()?, reader.read_u32_le()?],
+                });
+            }
+            Some(Box::new(GpFieldMap10_1 {
+                version,
+                raw_long,
+                delimiter,
+                field,
+                raw_count,
+                rows,
+            }))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "不支持的 IGPFieldMap 类",
             ));
         }
     };
@@ -8792,6 +8911,64 @@ pub fn read_legend_prefix_10_1(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gp_field_mapping_reads_rows_and_rejects_wrong_registered_class() {
+        let mut bytes = GP_FIELD_MAPPING_CLASS_ID.to_vec();
+        bytes.extend(10_u32.to_le_bytes());
+        bytes.extend([2, 0, 1, 0, 0, 0]);
+        bytes.extend(2_i32.to_le_bytes());
+        let mut map_header = GP_FIELD_MAP_CLASS_ID.to_vec();
+        map_header.extend(11_u32.to_le_bytes());
+        bytes.extend(&map_header);
+        bytes.extend([2, 0, 7, 0, 0, 0]);
+        bytes.extend([2, 0, 0, 0, 0, 0]);
+        bytes.extend([0; 16]);
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend([0; 32]);
+        bytes.extend(3_u32.to_le_bytes());
+        bytes.extend(5_u32.to_le_bytes());
+        bytes.extend(&map_header);
+        bytes.extend(0_i32.to_le_bytes());
+        let tail_start = bytes.len();
+        bytes.extend([0; 16]);
+
+        for cut in 0..bytes.len() {
+            assert!(
+                read_gp_coded_value_slot(
+                    &mut Reader::new(&bytes[..cut]),
+                    1024,
+                    &mut RefTable10_1::new(),
+                    0,
+                )
+                .is_err()
+            );
+        }
+        let end = bytes.len();
+        bytes.push(0x5a);
+        let mut reader = Reader::new(&bytes);
+        let slot =
+            read_gp_coded_value_slot(&mut reader, 1024, &mut RefTable10_1::new(), 0).unwrap();
+        let GpCodedValue10_1::FieldMapping { maps, tail, .. } = slot.body.unwrap().value else {
+            panic!("应读取 GPFieldMapping");
+        };
+        let map = maps[0].body.as_deref().unwrap();
+        assert_eq!((map.version, map.raw_long, map.raw_count), (2, 7, 1));
+        assert_eq!(map.rows[0].raw_longs, [3, 5]);
+        assert!(matches!(
+            maps[1].entry,
+            ObjectEntry10_1::BackReference { key: 11, .. }
+        ));
+        assert!(maps[1].body.is_none());
+        assert_eq!(tail.unwrap().entry, ObjectEntry10_1::Null);
+        assert_eq!(reader.position(), end);
+
+        bytes.splice(tail_start..end, map_header);
+        let error =
+            read_gp_coded_value_slot(&mut Reader::new(&bytes), 1024, &mut RefTable10_1::new(), 0)
+                .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::Unsupported);
+    }
 
     #[test]
     fn replica_value_reads_description_and_version_two_tail() {
