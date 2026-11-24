@@ -934,6 +934,22 @@ Variant 直接转交给 Save。
 其他来源的对象值仍需实际流或写方证据。
 未在 ArcMap 中验证。
 
+#### 复制路径与介质筛查
+
+GPRangeDomain 的 +0x18 接口表 `0x747b3e00` 中，
+`0x746f7560` 先在 `0x746f75cf`、`0x746f75e4` 从源
+IRangeDomain 取两个端点，再在 `0x746f760d`、`0x746f762f`
+送入目标持有的 IRangeDomain +0x10、+0x18。该复制入口
+继续经过目标对象的数值转换。按 AfCore 10.1 的跳表
+`0x68a7bab0` 复核，Rust 的 GPRangeDomain 紧凑 Variant
+分派与原生支持的类型集合一致。
+
+读取已提取的 10.1 介质 132 条和 10.8 介质 136 条
+`/Maps`、`/PageLayout` 流，按 Windows 字节序搜索
+GPRangeDomain 和底层 RangeDomain 的完整 CLSID，两组均
+无命中。该筛查只覆盖这些流中的明文标识，无法据此排除
+其他宿主的对象型端点。真实宿主和 ArcMap 人工验证仍开放。
+
 ### GPWorkspaceDomain
 
 同版 GpObjects.dll 的 RTTI `0x74801e84` 对应持久化虚表
