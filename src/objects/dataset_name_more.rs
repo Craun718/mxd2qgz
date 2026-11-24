@@ -58,10 +58,10 @@ use crate::layers::feature_layer::{
 use crate::layers::fgdb_raster_dataset_name::FGDB_RASTER_DATASET_NAME_CLASS_ID;
 use crate::layers::raster_dataset_name::{
     ACCESS_RASTER_DATASET_NAME_CLASS_ID, MOSAIC_DATASET_NAME_CLASS_ID,
-    RASTER_BAND_COLLECTION_NAME_CLASS_ID, RASTER_BAND_NAME_CLASS_ID, RASTER_CATALOG_NAME_CLASS_ID,
-    RASTER_DATASET_NAME_CLASS_ID, RASTER_DATASET_NAME83_CLASS_ID, RasterDatasetNameEntryBody10_1,
-    RasterLongArraySlot10_1, SDE_RASTER_DATASET_NAME_CLASS_ID, read_long_array_slot,
-    read_supported_raster_name_body_10_1,
+    NETCDF_RASTER_DATASET_NAME_CLASS_ID, RASTER_BAND_COLLECTION_NAME_CLASS_ID,
+    RASTER_BAND_NAME_CLASS_ID, RASTER_CATALOG_NAME_CLASS_ID, RASTER_DATASET_NAME_CLASS_ID,
+    RASTER_DATASET_NAME83_CLASS_ID, RasterDatasetNameEntryBody10_1, RasterLongArraySlot10_1,
+    SDE_RASTER_DATASET_NAME_CLASS_ID, read_long_array_slot, read_supported_raster_name_body_10_1,
 };
 use crate::layers::wcs_name::{
     WCS_COVERAGE_NAME_CLASS_ID, WMS_CONNECTION_NAME_CLASS_ID, WMTS_CONNECTION_NAME_CLASS_ID,
@@ -1261,6 +1261,7 @@ fn read_dataset_name_object_body_10_1(
         RASTER_DATASET_NAME_CLASS_ID
         | RASTER_DATASET_NAME83_CLASS_ID
         | FGDB_RASTER_DATASET_NAME_CLASS_ID
+        | NETCDF_RASTER_DATASET_NAME_CLASS_ID
         | ACCESS_RASTER_DATASET_NAME_CLASS_ID
         | SDE_RASTER_DATASET_NAME_CLASS_ID
         | MOSAIC_DATASET_NAME_CLASS_ID
@@ -1454,6 +1455,7 @@ pub(crate) fn read_overlay_name_slot_10_1(
                 RASTER_DATASET_NAME_CLASS_ID
                     | RASTER_DATASET_NAME83_CLASS_ID
                     | FGDB_RASTER_DATASET_NAME_CLASS_ID
+                    | NETCDF_RASTER_DATASET_NAME_CLASS_ID
                     | ACCESS_RASTER_DATASET_NAME_CLASS_ID
                     | SDE_RASTER_DATASET_NAME_CLASS_ID
                     | MOSAIC_DATASET_NAME_CLASS_ID
@@ -2076,6 +2078,51 @@ mod tests {
 
     /// 完整 WorkspaceName 体（第六轮布局）：版本 1 + 三空串 + IPropertySet
     /// 空标记 + 标志 1 + 工厂 CLSID + 尾随 int32。
+    #[test]
+    fn overlay_netcdf_raster_name_consumes_both_version_layouts() {
+        for version in [1_i32, 2] {
+            let mut bytes = entry(&NETCDF_RASTER_DATASET_NAME_CLASS_ID, 90).to_vec();
+            bytes.extend(version.to_le_bytes());
+            for value in ["grid.nc", "", "", "", "temperature", "", "", ""] {
+                bytes.extend(str_bytes(value));
+            }
+            if version == 1 {
+                bytes.extend(str_bytes("legacy"));
+                bytes.extend([0; 16]);
+            }
+            bytes.extend([0; 48]);
+            let end = bytes.len();
+            bytes.extend(entry(&TABLE_NAME_CLASS_ID, 90));
+            let mut refs = RefTable10_1::new();
+            for cut in 0..end {
+                let mut reader = Reader::new(&bytes[..cut]);
+                assert!(
+                    read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).is_err()
+                );
+                assert_eq!(reader.position(), 0);
+                assert!(refs.is_empty());
+            }
+            let mut reader = Reader::new(&bytes);
+            let slot = read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).unwrap();
+            let DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::RasterDataset(body)) = slot
+            else {
+                panic!("应读取 NetCDF 栅格名称");
+            };
+            assert!(matches!(body.as_ref(),
+                RasterDatasetNameEntryBody10_1::NetCdf(name) if name.version == version
+                    && name.strings[4] == "temperature" && name.legacy.is_some() == (version == 1)));
+            assert_eq!(reader.position(), end);
+            assert!(matches!(
+                read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).unwrap(),
+                DatasetNameMoreSlot10_1::BackReference {
+                    class_id: NETCDF_RASTER_DATASET_NAME_CLASS_ID,
+                    key: 90
+                }
+            ));
+            assert_eq!(reader.remaining(), 0);
+        }
+    }
+
     #[test]
     fn overlay_ogc_names_keep_object_boundaries() {
         for class_id in [
