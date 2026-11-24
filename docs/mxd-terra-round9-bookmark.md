@@ -2012,5 +2012,23 @@ DETable 构造函数在 `0x6f61daa2` 将对象 `+0xc0`（相当于持久化
 无需在流中读额外标志。请求的子槽接口由各 LoadObject 的 IID 和
 10.1 esriGeoDatabase、esriSystem 类型库核对。已在两个 IDETable 槽接入标准 DETable 对象体及 StrArray、PropertySet、
 Fields。构造测试覆盖版本 0 至 4、嵌套 Fields 回引及截断回滚。
-DataElement 的旧兼容辅助调用和递归子元素，以及 IIndexes、
+DataElement 的旧兼容辅助调用和递归子元素，以及
 IGPSubtype、IGPControllerMembership 的合法实现边界仍需核对。
+
+#### Indexes 与 Index
+
+GdbCore.dll 10.1.0.3035（SHA-256
+`ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4`）
+的 RTTI 将持久化表 `0x70ad70d8`、`0x70ad6c80` 分别对应到
+IndexSet 和 Index。GetClassID `0x709f2600`、`0x709efc90`
+返回 `{03859813-4DA5-11D1-8824-0000F877762D}` 和
+`{826E2701-4DA6-11D1-8824-0000F877762D}`，与类型库的
+Indexes、Index coclass 对应。
+
+Indexes 的 Load `0x709f2b20` 读无符号版本（上限 1）和有符号计数，
+按正计数加载 IIndex（IID 常量 `0x70ab9e0c`）。Index 的 Load
+`0x709f04d0` 同样接受版本 0、1，接着调用 GPValue::Load，
+读取 String、三个单字节字段和 IFields 槽。Save 入口分别为
+`0x709f2c30` 和 `0x709f05a0`。构造书签覆盖 DETable 到 Indexes、
+Index 的连续读取和 Index 回引先前 Fields 的边界，并覆盖截断回滚。
+其他接口实现和实际 MXD 宿主仍待核对。

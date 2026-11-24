@@ -7324,9 +7324,10 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
     use mxd2qgz::layers::feature_layer_tail::{UID_CLASS_ID, UidBody10_1};
     use mxd2qgz::layers::image_server_rules::RuleSlot10_1;
     use mxd2qgz::maps::map_surround::{
-        DE_TABLE_CLASS_ID, DeTable10_1, GP_ADDRESS_LOCATOR_STYLE_CLASS_ID,
-        GpAddressLocatorStyleConfig10_1, GpAddressLocatorStyleRow10_1,
-        GpAddressLocatorStyleRowValues10_1, GpCodedValue10_1,
+        DE_TABLE_CLASS_ID, DeTable10_1, DeTableIndex10_1, DeTableIndexes10_1,
+        GP_ADDRESS_LOCATOR_STYLE_CLASS_ID, GpAddressLocatorStyleConfig10_1,
+        GpAddressLocatorStyleRow10_1, GpAddressLocatorStyleRowValues10_1, GpCodedValue10_1,
+        INDEX_CLASS_ID, INDEXES_CLASS_ID,
     };
     use mxd2qgz::objects::fields::{FIELDS_CLASS_ID, FieldsBody10_1};
     use mxd2qgz::objects::property_set::{PropertyValue10_1, PropertyValueObjectStream10_1};
@@ -7431,7 +7432,14 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
             payload.extend(19_u16.to_le_bytes());
         }
         payload.extend(bookmark_entry_10_1(&FIELDS_CLASS_ID, 21));
-        payload.extend([0; 16]);
+        payload.extend(bookmark_entry_10_1(&INDEXES_CLASS_ID, 23));
+        payload.extend(1_u16.to_le_bytes());
+        payload.extend(1_i32.to_le_bytes());
+        payload.extend(bookmark_entry_10_1(&INDEX_CLASS_ID, 24));
+        payload.extend([1, 0, 1, 0, 7, 0]);
+        payload.extend(bookmark_string_10_1("索引"));
+        payload.extend([1, 0, 1]);
+        payload.extend(bookmark_entry_10_1(&FIELDS_CLASS_ID, 21));
         if version == 1 {
             payload.push(0);
         }
@@ -7526,6 +7534,36 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                         key: 21,
                                     },
                                     body: None,
+                                },
+                                indexes: RuleSlot10_1 {
+                                    entry: ObjectEntry10_1::NewObject {
+                                        class_id: INDEXES_CLASS_ID,
+                                        key: 23,
+                                    },
+                                    body: Some(Box::new(DeTableIndexes10_1 {
+                                        version: 1,
+                                        raw_count: 1,
+                                        entries: vec![RuleSlot10_1 {
+                                            entry: ObjectEntry10_1::NewObject {
+                                                class_id: INDEX_CLASS_ID,
+                                                key: 24,
+                                            },
+                                            body: Some(Box::new(DeTableIndex10_1 {
+                                                version: 1,
+                                                gp_value_version: 1,
+                                                gp_value_short: 7,
+                                                name: "索引".into(),
+                                                flags: [1, 0, 1],
+                                                fields: RuleSlot10_1 {
+                                                    entry: ObjectEntry10_1::BackReference {
+                                                        class_id: FIELDS_CLASS_ID,
+                                                        key: 21,
+                                                    },
+                                                    body: None,
+                                                },
+                                            })),
+                                        }],
+                                    })),
                                 },
                             })),
                         },

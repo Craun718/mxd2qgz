@@ -457,6 +457,13 @@ pub const NA_CLASS_FIELD_MAP_CLASS_ID: [u8; 16] = [
     0xf8, 0x9f, 0x1c, 0xe6, 0xbf, 0x06, 0xe5, 0x42, 0xad, 0x66, 0x84, 0x93, 0x64, 0xb4, 0x85, 0x49,
 ];
 
+pub const INDEXES_CLASS_ID: [u8; 16] = [
+    0x13, 0x98, 0x85, 0x03, 0xa5, 0x4d, 0xd1, 0x11, 0x88, 0x24, 0x00, 0x00, 0xf8, 0x77, 0x76, 0x2d,
+];
+pub const INDEX_CLASS_ID: [u8; 16] = [
+    0x01, 0x27, 0x6e, 0x82, 0xa6, 0x4d, 0xd1, 0x11, 0x88, 0x24, 0x00, 0x00, 0xf8, 0x77, 0x76, 0x2d,
+];
+
 pub const DE_TABLE_CLASS_ID: [u8; 16] = [
     0xdb, 0x05, 0x84, 0x9c, 0x87, 0xbb, 0xd6, 0x4b, 0x93, 0x2d, 0x7f, 0xfb, 0x35, 0xb0, 0x4b, 0xa0,
 ];
@@ -826,6 +833,24 @@ pub struct DeTable10_1 {
     pub v2: Option<(u16, [String; 2])>,
     pub v3: Option<(u16, [String; 4])>,
     pub v4: Option<u16>,
+    pub fields: RuleSlot10_1<FieldsBody10_1>,
+    pub indexes: RuleSlot10_1<DeTableIndexes10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeTableIndexes10_1 {
+    pub version: u16,
+    pub raw_count: i32,
+    pub entries: Vec<RuleSlot10_1<DeTableIndex10_1>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeTableIndex10_1 {
+    pub version: u16,
+    pub gp_value_version: u16,
+    pub gp_value_short: u16,
+    pub name: String,
+    pub flags: [u8; 3],
     pub fields: RuleSlot10_1<FieldsBody10_1>,
 }
 
@@ -3018,12 +3043,7 @@ fn read_gp_de_table(
     };
     let v4 = (version >= 4).then(|| reader.read_u16_le()).transpose()?;
     let fields = read_gp_fields_slot(reader, max_bytes, refs, depth)?;
-    if read_object_entry_10_1(reader, refs)? != ObjectEntry10_1::Null {
-        return Err(io::Error::new(
-            ErrorKind::Unsupported,
-            "DETable 的非空 IIndexes 槽尚未支持",
-        ));
-    }
+    let indexes = read_de_table_indexes(reader, max_bytes, refs, depth)?;
     Ok(DeTable10_1 {
         version,
         dataset_version,
@@ -3047,7 +3067,96 @@ fn read_gp_de_table(
         v3,
         v4,
         fields,
+        indexes,
     })
+}
+
+fn read_de_table_indexes(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<RuleSlot10_1<DeTableIndexes10_1>> {
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if refs.registered_class(key).unwrap_or(class_id) == INDEXES_CLASS_ID =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: INDEXES_CLASS_ID,
+            ..
+        } => {
+            let version = reader.read_u16_le()?;
+            if version > 1 {
+                return Err(io::Error::new(ErrorKind::InvalidData, "Indexes 版本超限"));
+            }
+            let (raw_count, count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
+            let mut entries = Vec::new();
+            for _ in 0..count {
+                entries.push(read_de_table_index(reader, max_bytes, refs, depth)?);
+            }
+            Some(Box::new(DeTableIndexes10_1 {
+                version,
+                raw_count,
+                entries,
+            }))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "IIndexes 槽包含不支持的类",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_de_table_index(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<RuleSlot10_1<DeTableIndex10_1>> {
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if refs.registered_class(key).unwrap_or(class_id) == INDEX_CLASS_ID =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: INDEX_CLASS_ID,
+            ..
+        } => {
+            let version = reader.read_u16_le()?;
+            let gp_value_version = reader.read_u16_le()?;
+            if version > 1 || gp_value_version > 1 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "Index 或其 GPValue 版本超限",
+                ));
+            }
+            Some(Box::new(DeTableIndex10_1 {
+                version,
+                gp_value_version,
+                gp_value_short: reader.read_u16_le()?,
+                name: read_string_10_1(reader, max_bytes)?,
+                flags: reader.read_bytes(3)?.try_into().unwrap(),
+                fields: read_gp_fields_slot(reader, max_bytes, refs, depth)?,
+            }))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "IIndex 槽包含不支持的类",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
 }
 
 fn read_de_table_empty_list(reader: &mut Reader<'_>, interface: &str) -> io::Result<i32> {
