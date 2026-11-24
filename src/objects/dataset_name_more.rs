@@ -83,8 +83,8 @@ use crate::objects::route_event_name::{
 };
 use crate::objects::string_array::{StringArraySlot10_1, read_string_array_slot_10_1};
 use crate::objects::workspace_name::{
-    WORKSPACE_NAME_CLASS_ID, WorkspaceNameEntry10_1, WorkspaceNameStop10_1,
-    read_workspace_name_body_10_1,
+    WORKSPACE_NAME_CLASS_ID, WorkspaceNameEntry10_1, WorkspaceNamePrefix10_1,
+    WorkspaceNameStop10_1, read_workspace_name_body_10_1,
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -348,6 +348,7 @@ pub fn read_feature_query_name_body_10_1(
 /// IDatasetName 槽（请求 IID `{89E75917-…}`）新对象的分派读取结果。
 #[derive(Debug, Clone, PartialEq)]
 pub enum DatasetNameMoreBody10_1 {
+    Workspace(Box<WorkspaceNamePrefix10_1>),
     /// FeatureClassName 自身在 IDatasetName 槽中递归嵌套的对象体。
     FeatureClassName(Box<crate::layers::feature_layer::FeatureClassNamePrefix10_1>),
     /// TableName 在 IName 槽中的对象体。
@@ -1127,6 +1128,16 @@ fn read_dataset_name_object_body_10_1(
         };
     }
     match class_id {
+        WORKSPACE_NAME_CLASS_ID => {
+            let body = read_workspace_name_body_10_1(reader, max_bytes, table, key)?;
+            let stop = body.stop.map(
+                |WorkspaceNameStop10_1::PropertySetNewObject { class_id, key }| {
+                    DatasetNameMoreStop10_1::WorkspacePropertySet { class_id, key }
+                },
+            );
+            Ok((DatasetNameMoreBody10_1::Workspace(Box::new(body)), stop))
+        }
+
         AMS_DATASET_NAME_CLASS_ID => {
             let body = read_ams_dataset_name_10_1(reader, max_bytes, table)?;
             Ok((
@@ -1418,7 +1429,8 @@ pub(crate) fn read_overlay_name_slot_10_1(
         is_tabular_name(class_id)
             || matches!(
                 class_id,
-                FEATURE_DATASET_NAME_CLASS_ID
+                WORKSPACE_NAME_CLASS_ID
+                    | FEATURE_DATASET_NAME_CLASS_ID
                     | COVERAGE_NAME_CLASS_ID
                     | GEOMETRIC_NETWORK_NAME_CLASS_ID
                     | MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID
@@ -2032,6 +2044,37 @@ mod tests {
 
     /// 完整 WorkspaceName 体（第六轮布局）：版本 1 + 三空串 + IPropertySet
     /// 空标记 + 标志 1 + 工厂 CLSID + 尾随 int32。
+    #[test]
+    fn overlay_workspace_name_reads_inline_body_and_reference() {
+        let mut bytes = entry(&WORKSPACE_NAME_CLASS_ID, 91).to_vec();
+        bytes.extend(workspace_body());
+        let end = bytes.len();
+        bytes.extend(entry(&TABLE_NAME_CLASS_ID, 91));
+        let mut refs = RefTable10_1::new();
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            assert!(read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(!refs.contains(91));
+        }
+        let mut reader = Reader::new(&bytes);
+        let mut stop = None;
+        assert!(matches!(
+            read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut stop).unwrap(),
+            DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::Workspace(body)) if body.key == 91
+        ));
+        assert_eq!(reader.position(), end);
+        assert!(matches!(
+            read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut stop).unwrap(),
+            DatasetNameMoreSlot10_1::BackReference {
+                class_id: WORKSPACE_NAME_CLASS_ID,
+                key: 91
+            }
+        ));
+        assert!(stop.is_none());
+        assert_eq!(reader.remaining(), 0);
+    }
+
     fn workspace_body() -> Vec<u8> {
         let mut v = 1u16.to_le_bytes().to_vec();
         v.extend(str_bytes(""));

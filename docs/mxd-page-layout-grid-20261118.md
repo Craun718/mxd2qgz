@@ -123,6 +123,12 @@ GeometricNetworkName、MemoryRelationshipClassName、CadDrawingName
 CadDrawingName 的对象键、后继格网字符串和流尾。这里验证的是
 IName 对象边界，实际数据集能否供格网显示仍待原生运行核对。
 
+10.1 Geodatabase 互操作程序集列出 WorkspaceName 的 IName 和
+IPersistStream 接口。格网槽复用 GdbCore WorkspaceName Load
+`0x70a27950` 对应的解析器，共享工作空间路径登记。构造测试覆盖
+内联体、逐字节截断回滚和按登记类解析的回引。WorkspaceName 的
+格网实档和 ArcMap 显示仍待验证。
+
 ### 叠加格网的关系查询名称
 
 在 MapElements.dll 10.1.0.3035 的 CustomOverlayGrid Load
