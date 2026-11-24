@@ -2892,3 +2892,18 @@ Load `0x70fbc000` 接受无符号版本 0–3，经
 的 IID 加载对象。随后两处调用 `0x70fbc194`、
 `0x70fbc1b9` 均使用 `0x7118bfa8` 的 IID。
 后续集合、版本尾段与非空槽布局待核对。
+
+导入槽 `0x71189128` 是 AfCore String::Read。
+esriGeoDatabase.olb 将 `0x711902ac` 的
+`ACDA7B59-B41F-48B8-A1CE-582FE481053F` 定名为
+INetworkDirections。`0x7118bfa8` 的
+`F0BA6ABC-8E9F-11D0-B4AB-0000F8037368` 为 IPropertySet，
+对应接下来两个对象槽。
+
+`0x70fbc1da` 读有符号源计数，循环在 `0x70fbc222`
+以 `0x7119029c` 的 `10F8D75C-1D54-4F2A-8CE8-FB7D50A0DF1D`
+请求 INetworkSource。`0x70fbc269` 读有符号属性计数，
+循环在 `0x70fbc2d2` 以 `0x7119028c` 的
+`AE92A9B6-9C80-41B1-B84D-765F18B43625`
+请求 INetworkAttribute。两个接口名称均经 esriGeoDatabase.olb
+核对，计数非正时跳过对应循环。具体子类和后续流布局仍待核对。
