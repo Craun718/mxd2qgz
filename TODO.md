@@ -651,6 +651,7 @@
       - [x] 接入无界 RasterLayer v12 的空 RasterTypeName 打开失败组合。[取证](docs/mxd-10.1-raster-layer-tail.md#无界-v12-的已知打开失败组合)
       - [x] 接入该无界 v12 组合中省略或显式置空 tag 30 的 RasterIO 块。[取证](docs/mxd-10.1-raster-layer-tail.md#无界-v12-的已知打开失败组合)
       - [x] 接入无界 v12 两次打开均返回空的 RasterTypeName 组合。[取证](docs/mxd-10.1-raster-layer-tail.md#无界-v12-的已知打开失败组合)
+      - [x] 按非空名称数选择无界 v12 的单名称打开失败路径。[取证](docs/mxd-10.1-raster-layer-tail.md#无界-v12-的已知打开失败组合)
       - [x] 验证两份 Java SDK 实档的有界 RasterLayer v12 变换及包络槽。[取证](docs/mxd-10.1-raster-layer-tail.md#java-sdk-的两份-rasterlayer-v12-实档)
       - [x] 对位普通 RasterLayer v12 的 RasterIO 二次打开接口派发及空输出返回。[取证](docs/mxd-10.1-raster-layer-tail.md#v12-rasterio-二次打开的派发)
       - [x] 核对普通 RasterLayer v12 单名称打开失败后仍进入渲染器读取的原生分支。[取证](docs/mxd-10.1-raster-layer-tail.md#v12-单名称打开失败后的读取)

@@ -265,9 +265,14 @@ pub(super) fn read_inline_raster_body_10_1(
             "RasterLayer 渲染器体未完整读取",
         ));
     }
+    let mut names = body
+        .names
+        .iter()
+        .filter(|name| name.entry != ObjectEntry10_1::Null);
     let boundary = if body.version == 12
         && renderer.entry == ObjectEntry10_1::Null
-        && let [name] = body.names.as_slice()
+        && let Some(name) = names.next()
+        && names.next().is_none()
         && name
             .body
             .as_ref()
@@ -822,6 +827,25 @@ mod tests {
         assert!(tail.geodata_xform_v13.is_none());
         assert!(tail.envelope_v13.is_none());
         assert_eq!(reader.position(), end);
+        assert_eq!(refs.registered_class(60), Some(RASTER_TYPE_NAME_CLASS_ID));
+
+        let mut with_nulls = body_prefix(12, 3);
+        let name_offset = with_nulls.len();
+        let mut null = vec![0; 16];
+        null.extend(encoded_string(""));
+        let name_end = name_offset + 20 + 2 + encoded_string("").len() * 3 + 4 + 16;
+        with_nulls.extend(&null);
+        with_nulls.extend_from_slice(&bytes[name_offset..name_end]);
+        with_nulls.extend(&null);
+        with_nulls.extend_from_slice(&bytes[name_end..]);
+        let mut reader = Reader::new(&with_nulls);
+        let mut refs = RefTable10_1::new();
+        let layer = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+        assert_eq!(layer.names.len(), 3);
+        assert_eq!(layer.names[0].entry, ObjectEntry10_1::Null);
+        assert_eq!(layer.names[2].entry, ObjectEntry10_1::Null);
+        assert!(layer.tail.unwrap().geodata_xform_v13.is_none());
+        assert_eq!(reader.position(), end + 2 * null.len());
         assert_eq!(refs.registered_class(60), Some(RASTER_TYPE_NAME_CLASS_ID));
 
         let io_offset = end - 16 - encoded_string("尾段").len();
