@@ -806,6 +806,7 @@
       - [x] 接入 IDataElement 列表中的 DECatalogDataset。[取证](docs/mxd-terra-round9-bookmark.md#decatalogdataset)
       - [x] 接入 IDataElement 列表中的 DEServerConnection。[取证](docs/mxd-terra-round9-bookmark.md#deserverconnection)
       - [x] 接入 IDataElement 列表中的 DEWorkspace。[取证](docs/mxd-terra-round9-bookmark.md#deworkspace)
+      - [x] 接入 IDataElement 列表中的 DERasterCatalog。[取证](docs/mxd-terra-round9-bookmark.md#derastercatalog)
       - [ ] 补齐 IDataElement 列表中其他持久化实现。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的 GPSubtype 对象及字段行。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的拓扑与几何网络控制器成员。[取证](docs/mxd-terra-round9-bookmark.md#detable)

@@ -2247,3 +2247,13 @@ AfCore String。其后所有版本读取 IPropertySet 和有符号 IDomain 计�
 v1 另读一个四字节值，v4 起读三个 long，v5 再读 String。
 解析器保留工厂标识字符串，沿用现有属性集与域读取器。
 构造测试覆盖全部版本、非正域计数和截断。实际 MXD 宿主仍待验证。
+
+#### DERasterCatalog
+
+FeatureDataElements.dll 10.1.0.3035 的构造函数在 `0x6f61492a`
+写入持久化表 `0x6f65ccc0`，在 `0x6f6149a2` 复制 CLSID
+`{80207192-7CE8-4D06-9542-763E78518FFB}`，并在 `0x6f6149e0`
+启用扩展字段。Load `0x6f615610` 读取无符号版本 0、1，
+经导入槽 `0x6f65735c` 调 DEFeatureClassBase::Load 后返回。
+解析沿用 DEFeatureClassBase 读取逻辑并保留独立的目录版本字段。
+构造书签覆盖两类对象、同键回引和截断。实际 MXD 宿主仍待验证。

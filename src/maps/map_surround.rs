@@ -522,6 +522,10 @@ pub const DE_SERVER_CONNECTION_CLASS_ID: [u8; 16] = [
     0x40, 0x49, 0x7d, 0x88, 0x43, 0x93, 0xa3, 0x42, 0x8c, 0x8f, 0x5c, 0x41, 0xd4, 0xdc, 0xfa, 0xfd,
 ];
 
+pub const DE_RASTER_CATALOG_CLASS_ID: [u8; 16] = [
+    0x92, 0x71, 0x20, 0x80, 0xe8, 0x7c, 0x06, 0x4d, 0x95, 0x42, 0x76, 0x3e, 0x78, 0x51, 0x8f, 0xfb,
+];
+
 pub const DE_CATALOG_DATASET_CLASS_ID: [u8; 16] = [
     0xcd, 0x9f, 0x54, 0x74, 0xea, 0x9f, 0x0f, 0x48, 0xa9, 0x74, 0xae, 0x00, 0x36, 0x84, 0x56, 0x4d,
 ];
@@ -967,6 +971,7 @@ pub enum DeChild10_1 {
         spatial_reference: SpatialReferenceEntry10_1,
     },
     FeatureClass {
+        catalog_version: Option<u16>,
         version: u16,
         table: DeTable10_1,
         raw_longs: [i32; 2],
@@ -3266,6 +3271,7 @@ fn read_gp_data_element_child(
                 refs.registered_class(key).unwrap_or(class_id),
                 DE_TABLE_CLASS_ID
                     | DE_FEATURE_CLASS_CLASS_ID
+                    | DE_RASTER_CATALOG_CLASS_ID
                     | DE_FEATURE_DATASET_CLASS_ID
                     | DE_CATALOG_DATASET_CLASS_ID
                     | DE_SERVER_CONNECTION_CLASS_ID
@@ -3281,6 +3287,7 @@ fn read_gp_data_element_child(
             class_id:
                 class_id @ (DE_TABLE_CLASS_ID
                 | DE_FEATURE_CLASS_CLASS_ID
+                | DE_RASTER_CATALOG_CLASS_ID
                 | DE_FEATURE_DATASET_CLASS_ID
                 | DE_CATALOG_DATASET_CLASS_ID
                 | DE_SERVER_CONNECTION_CLASS_ID
@@ -3414,14 +3421,24 @@ fn read_gp_data_element_child(
                     }
                 }
             } else {
+                let catalog_version = (class_id == DE_RASTER_CATALOG_CLASS_ID)
+                    .then(|| reader.read_u16_le())
+                    .transpose()?;
+                if catalog_version.is_some_and(|version| version > 1) {
+                    return Err(io::Error::new(
+                        ErrorKind::InvalidData,
+                        "DERasterCatalog 版本超限",
+                    ));
+                }
                 let version = reader.read_u16_le()?;
                 if version > 1 {
                     return Err(io::Error::new(
                         ErrorKind::InvalidData,
-                        "DEFeatureClass 版本超限",
+                        "DEFeatureClassBase 版本超限",
                     ));
                 }
                 DeChild10_1::FeatureClass {
+                    catalog_version,
                     version,
                     table: read_gp_de_table(reader, max_bytes, refs, depth + 1)?,
                     raw_longs: [reader.read_u32_le()? as i32, reader.read_u32_le()? as i32],

@@ -7325,11 +7325,11 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
     use mxd2qgz::layers::image_server_rules::RuleSlot10_1;
     use mxd2qgz::maps::map_surround::{
         BookmarkEnvelopeEntry10_1, ConnectivityRule10_1, DE_FEATURE_CLASS_CLASS_ID,
-        DE_FEATURE_DATASET_CLASS_ID, DE_GEOMETRIC_NETWORK_CLASS_ID, DE_RELATIONSHIP_CLASS_CLASS_ID,
-        DE_TABLE_CLASS_ID, DE_TOPOLOGY_CLASS_ID, DataElement10_1, DeChild10_1, DeDataset10_1,
-        DeGeometricNetwork10_1, DeRelationshipBase10_1, DeRelationshipClass10_1,
-        DeRelationshipMetadata10_1, DeTable10_1, DeTableIndex10_1, DeTableIndexes10_1,
-        EDGE_CONNECTIVITY_RULE_CLASS_ID, GP_ADDRESS_LOCATOR_STYLE_CLASS_ID,
+        DE_FEATURE_DATASET_CLASS_ID, DE_GEOMETRIC_NETWORK_CLASS_ID, DE_RASTER_CATALOG_CLASS_ID,
+        DE_RELATIONSHIP_CLASS_CLASS_ID, DE_TABLE_CLASS_ID, DE_TOPOLOGY_CLASS_ID, DataElement10_1,
+        DeChild10_1, DeDataset10_1, DeGeometricNetwork10_1, DeRelationshipBase10_1,
+        DeRelationshipClass10_1, DeRelationshipMetadata10_1, DeTable10_1, DeTableIndex10_1,
+        DeTableIndexes10_1, EDGE_CONNECTIVITY_RULE_CLASS_ID, GP_ADDRESS_LOCATOR_STYLE_CLASS_ID,
         GP_GEOMETRIC_NETWORK_MEMBERSHIP_CLASS_ID, GP_RELATIONSHIP_CLASS_KEY_CLASS_ID,
         GP_SUBTYPE_CLASS_ID, GP_TOPOLOGY_MEMBERSHIP_CLASS_ID, GpAddressLocatorStyleConfig10_1,
         GpAddressLocatorStyleRow10_1, GpAddressLocatorStyleRowValues10_1, GpCodedValue10_1,
@@ -7421,7 +7421,16 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
             payload.extend(unit.to_le_bytes());
         }
         payload.extend(6_i32.to_le_bytes());
-        payload.extend(bookmark_entry_10_1(&DE_FEATURE_CLASS_CLASS_ID, 28));
+        let catalog_version = (version >= 3).then_some(1_u16);
+        let feature_class_id = if catalog_version.is_some() {
+            DE_RASTER_CATALOG_CLASS_ID
+        } else {
+            DE_FEATURE_CLASS_CLASS_ID
+        };
+        payload.extend(bookmark_entry_10_1(&feature_class_id, 28));
+        if let Some(catalog_version) = catalog_version {
+            payload.extend(catalog_version.to_le_bytes());
+        }
         payload.extend(1_u16.to_le_bytes());
         payload.extend([0; 10]);
         for _ in 0..3 {
@@ -7439,7 +7448,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
         payload.extend([0; 32]);
         payload.extend(bookmark_string_10_1("面积"));
         payload.extend(bookmark_string_10_1("长度"));
-        payload.extend(bookmark_entry_10_1(&DE_FEATURE_CLASS_CLASS_ID, 28));
+        payload.extend(bookmark_entry_10_1(&feature_class_id, 28));
         payload.extend(bookmark_entry_10_1(&DE_FEATURE_DATASET_CLASS_ID, 29));
         payload.extend([1, 0, 1, 0]);
         payload.extend([0; 8]);
@@ -7702,10 +7711,11 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                     children: vec![
                                         RuleSlot10_1 {
                                             entry: ObjectEntry10_1::NewObject {
-                                                class_id: DE_FEATURE_CLASS_CLASS_ID,
+                                                class_id: feature_class_id,
                                                 key: 28,
                                             },
                                             body: Some(Box::new(DeChild10_1::FeatureClass {
+                                                catalog_version,
                                                 version: 1,
                                                 raw_longs: [3, 4],
                                                 name: "形状".into(),
@@ -7762,7 +7772,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                         },
                                         RuleSlot10_1 {
                                             entry: ObjectEntry10_1::BackReference {
-                                                class_id: DE_FEATURE_CLASS_CLASS_ID,
+                                                class_id: feature_class_id,
                                                 key: 28,
                                             },
                                             body: None,
