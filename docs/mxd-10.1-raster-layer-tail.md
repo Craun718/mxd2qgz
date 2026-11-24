@@ -1784,3 +1784,21 @@ ObjectClassName 的别名工厂在同版 GdbCore.dll 的 `0x70a808e5`
 对该别名的新体和回引使用同一空工作空间条件，保留其流内登记类。
 构造测试对两个 CLSID 分别核对新体、回引、后继边界和回滚。
 真实 MXD 宿主及 ArcMap/QGIS 人工验收待验证。
+
+
+#### FileGDB 表名的 IName 接口
+
+对 [同摘要的 FileGDB.dll 10.1.0.3035](mxd-terra-round9-old.md#fgdbtablename)
+核对 FgdbTableName 构造和主虚表。构造器在 `0x6fa32e99` 安装
+`0x6fafeca4`，首槽指向 `0x6fa33080`。该 QI 的显式比较中没有
+RasterLayer 在 `0x7c73c1a9` 使用的 IName
+`{4BA33331-D55F-11D1-8882-0000F877762D}`。它只在匹配 IUnknown
+或 `{9F9650F1-5F49-4041-BA0F-D10BAFF1D7BC}` 后走
+`0x6fa33180..0x6fa3318d` 的内层查询。IName 走 `0x6fa3319d`
+到后备 `0x6fab6290`，该函数也没有匹配该 IID，最终在
+`0x6fab6382..0x6fab6388` 清空输出并返回 E_NOINTERFACE。
+
+这解释了为什么 FgdbTableName 虽有已确认的包装持久化布局，其内嵌
+TableName 的空工作空间条件也不能用于无界 v12 的关联名称。现有无界
+判断保留这一拒绝结果。有界读取仍保留可完整解码的包装体。此结论限于
+当前二进制的静态接口路径，尚未运行 ArcMap 或 QGIS 验收。
