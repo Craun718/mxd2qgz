@@ -2121,3 +2121,25 @@ GdbTopo.dll 10.1.0.3035（SHA-256
 Rule::Load 接受版本 0、1，读一个 String 和两个 long。
 构造书签覆盖非空规则列表、新对象、同键回引及截断回滚。
 其他可能的接口实现和实际 MXD 宿主仍待核对。
+
+#### DEGeometricNetwork
+
+FeatureDataElements.dll 10.1.0.3035 的持久化表 `0x6f65acb8`
+由构造函数在 `0x6f5f8415` 写入，RTTI 对应 DEGeometricNetwork，
+类型库类 GUID 为 `{FE68BA8C-935D-4F6F-80D5-7957F8DBEFDF}`。
+Load `0x6f5f9c10` 接受无符号版本 0 至 6，先调用
+DEGeoDataset::Load。下表为累积版本门。
+
+| 版本 | 新增字段，按流顺序 |
+| --- | --- |
+| 2 | long、String、IStringArray 槽（LoadObject `0x6f5f9cb9`）。 |
+| 3 | 三组有符号计数和对象列表。按顺序请求 IConnectivityRule（`0x6f5f9d13`）、INetWeight（`0x6f5f9d7c`）、INetWeightAssociation（`0x6f5f9de0`）。每组非正计数跳过循环。 |
+| 4 | short、两个 double。 |
+| 5 | 两个 long。 |
+| 6 | short。 |
+
+三个列表的 IID 分别为 `{F366A3FA-5362-11D2-AB1B-000000000000}`、
+`{027E7415-981B-11D1-B264-0000F878229E}`、
+`{19BDC490-6201-11D1-B255-0000F878229E}`，已与安装介质
+esriGeoDatabase.olb 的本地接口定义对位。尚需核对各列表的具体持久化
+对象体，并接入解析。实际 MXD 宿主尚未验证。
