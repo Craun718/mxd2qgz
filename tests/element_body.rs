@@ -967,7 +967,10 @@ fn marker_element_point_slot_parses_point_body_inline() {
     // Point 取类型字 1（XY），槽后版本门尾段可达 = 槽位整体消费。
     let mut bytes = 2_u16.to_le_bytes().to_vec(); // 版本 2（>1：尾 int32；>2：32 字节块）
     bytes.extend(ep_prefix(6));
-    bytes.extend(entry(&MARKER_ELEMENT_CLASS_ID, 20)); // IMarkerSymbol 槽回引
+    bytes.extend(entry(
+        &mxd2qgz::objects::display_symbol::SIMPLE_MARKER_SYMBOL_CLASS_ID,
+        20,
+    )); // IMarkerSymbol 槽回引
     bytes.extend(entry(&POINT_CLASS_ID, 21)); // IPoint Point 新对象
     bytes.extend(1_u16.to_le_bytes()); // Point 版本 1
     bytes.extend(20_u32.to_le_bytes()); // 记录声明长度 20
@@ -1026,7 +1029,10 @@ fn line_element_geometry_slot_parses_polyline_body_inline() {
     // 分派（样本 0 实例；Polyline 最小形态）。
     let mut bytes = 1_u16.to_le_bytes().to_vec(); // 版本 1（无版本门尾段）
     bytes.extend(ep_prefix(6));
-    bytes.extend(entry(&LINE_ELEMENT_CLASS_ID, 30)); // ILineSymbol 槽回引
+    bytes.extend(entry(
+        &mxd2qgz::objects::display_symbol::SIMPLE_LINE_SYMBOL_CLASS_ID,
+        30,
+    )); // ILineSymbol 槽回引
     bytes.extend(entry(&POLYLINE_CLASS_ID, 31)); // IGeometry Polyline 新对象
     bytes.extend(1_u16.to_le_bytes()); // Polyline 版本 1
     bytes.extend(4_u32.to_le_bytes()); // 记录声明长度 4

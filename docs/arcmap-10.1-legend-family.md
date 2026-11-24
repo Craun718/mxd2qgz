@@ -524,3 +524,14 @@ ArcMap 10.1 人工验证未进行。
 SimpleLineSymbol 新对象和头标识为 SimpleMarkerSymbol、登记类为
 SimpleLineSymbol 的回引都会在该槽起点停止。旧 LONG 的历史写侧
 用途及真实旧档仍待确认。
+
+
+### 图形元素的符号回引
+
+MarkerElement、LineElement、PolygonElement 等图形元素按各自
+请求的 IMarkerSymbol、ILineSymbol 或 IFillSymbol 校验回引。
+沿用分流 ObjectStream 的原生规则，SystemCore.dll 10.1.0.3035
+在 `0x7ffd0063` 按键找到登记实例后查询请求接口。因此优先用登记类
+检查符号族，成功时保留回引头原始类标识，失败时在符号槽起点停止。
+构造测试覆盖三种符号槽的登记类与头类不一致的双向情况。
+ArcMap/QGIS 人工验收未进行。

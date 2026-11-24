@@ -1413,30 +1413,21 @@ fn read_shape_symbol_slot<'a>(
     stop: &mut Option<ElementBodyStop10_1>,
 ) -> io::Result<SymbolSlotFull10_1> {
     use crate::objects::display_symbol as symbols;
-    let slot = match kind {
-        ShapeSymbol::Marker => "IMarkerSymbol 符号槽",
-        ShapeSymbol::Line => "ILineSymbol 符号槽",
-        ShapeSymbol::Fill => "IFillSymbol 符号槽",
+    use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
+
+    let (slot, classes) = match kind {
+        ShapeSymbol::Marker => ("IMarkerSymbol 符号槽", symbols::MARKER_SYMBOL_CLASSES),
+        ShapeSymbol::Line => ("ILineSymbol 符号槽", symbols::LINE_SYMBOL_CLASSES),
+        ShapeSymbol::Fill => ("IFillSymbol 符号槽", symbols::FILL_SYMBOL_CLASSES),
     };
     let offset = trial.position();
     let mut probe = trial.clone();
-    let mut probe_table = table.clone();
-    let (class_id, key) = match read_object_entry_10_1(&mut probe, &mut probe_table)? {
-        ObjectEntry10_1::Null => {
-            *trial = probe;
-            return Ok(SymbolSlotFull10_1::Null);
-        }
-        ObjectEntry10_1::BackReference { class_id, key } => {
-            *trial = probe;
-            return Ok(SymbolSlotFull10_1::BackReference { class_id, key });
-        }
-        ObjectEntry10_1::NewObject { class_id, key } => (class_id, key),
+    let ObjectHeader::Object { class_id, key } = read_header_10_1(&mut probe)? else {
+        *trial = probe;
+        return Ok(SymbolSlotFull10_1::Null);
     };
-    let allowed = match kind {
-        ShapeSymbol::Marker => symbols::MARKER_SYMBOL_CLASSES.contains(&class_id),
-        ShapeSymbol::Line => symbols::LINE_SYMBOL_CLASSES.contains(&class_id),
-        ShapeSymbol::Fill => symbols::FILL_SYMBOL_CLASSES.contains(&class_id),
-    };
+    let resolved_class = table.registered_class(key).unwrap_or(class_id);
+    let allowed = classes.contains(&resolved_class);
     if !allowed {
         *stop = Some(ElementBodyStop10_1::NestedObjectNotClosed {
             slot,
@@ -1445,6 +1436,10 @@ fn read_shape_symbol_slot<'a>(
             key,
         });
         return Ok(SymbolSlotFull10_1::Null);
+    }
+    if table.contains(key) {
+        *trial = probe;
+        return Ok(SymbolSlotFull10_1::BackReference { class_id, key });
     }
     read_symbol_slot(trial, max_bytes, table, slot, stop)
 }
@@ -2183,4 +2178,71 @@ fn read_line_or_polygon_element(
     *reader = trial;
     *table = trial_table;
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::objects::display_symbol::{
+        SIMPLE_FILL_SYMBOL_CLASS_ID, SIMPLE_LINE_SYMBOL_CLASS_ID, SIMPLE_MARKER_SYMBOL_CLASS_ID,
+    };
+
+    #[test]
+    fn shape_symbol_slots_validate_registered_class() {
+        for (kind, expected, other) in [
+            (
+                ShapeSymbol::Marker,
+                SIMPLE_MARKER_SYMBOL_CLASS_ID,
+                SIMPLE_LINE_SYMBOL_CLASS_ID,
+            ),
+            (
+                ShapeSymbol::Line,
+                SIMPLE_LINE_SYMBOL_CLASS_ID,
+                SIMPLE_FILL_SYMBOL_CLASS_ID,
+            ),
+            (
+                ShapeSymbol::Fill,
+                SIMPLE_FILL_SYMBOL_CLASS_ID,
+                SIMPLE_MARKER_SYMBOL_CLASS_ID,
+            ),
+        ] {
+            for (registered, wire, accepted) in [(expected, other, true), (other, expected, false)]
+            {
+                let header = |class_id: [u8; 16]| {
+                    let mut bytes = class_id.to_vec();
+                    bytes.extend(41_u32.to_le_bytes());
+                    bytes
+                };
+                let mut refs = RefTable10_1::new();
+                read_object_entry_10_1(&mut Reader::new(&header(registered)), &mut refs).unwrap();
+                let bytes = header(wire);
+                let mut reader = Reader::new(&bytes);
+                let mut stop = None;
+                let symbol =
+                    read_shape_symbol_slot(&mut reader, 4096, &mut refs, kind, &mut stop).unwrap();
+                if accepted {
+                    assert_eq!(
+                        symbol,
+                        SymbolSlotFull10_1::BackReference {
+                            class_id: wire,
+                            key: 41
+                        }
+                    );
+                    assert_eq!(reader.remaining(), 0);
+                    assert!(stop.is_none());
+                } else {
+                    assert_eq!(symbol, SymbolSlotFull10_1::Null);
+                    assert!(matches!(
+                        stop,
+                        Some(ElementBodyStop10_1::NestedObjectNotClosed {
+                            offset: 0,
+                            key: 41,
+                            ..
+                        })
+                    ));
+                    assert_eq!(reader.position(), 0);
+                }
+            }
+        }
+    }
 }
