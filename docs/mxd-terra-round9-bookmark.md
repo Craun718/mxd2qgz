@@ -3367,6 +3367,19 @@ Rust 共用 GPLayerBase、FIDSet、IDataElement 和 GPFieldInfo
 读取器。构造测试覆盖 v0–v2、非空 GPFieldInfo、逐字节截断和对象终点。
 真实 MXD 宿主、其他非空接口实现及 ArcMap/QGIS 人工验收仍待验证。
 
+#### GPFeatureLayer
+
+同版 Desktop 互操作元数据将
+`0E3D6DF3-8D43-4A0E-8290-8AB86297AB17` 定名为 GPFeatureLayer，
+并列出 IGPValue、IGPLayer、IPersistStream。对同摘要 GpObjects.dll
+的 PE RTTI 和虚表复核，`0x747ffc00` 的 GPFeatureLayer 类型描述
+对应 +0x1c 持久化表 `0x747ae114`。该表与
+GPRasterCatalogLayer 一样，Load/Save 指向
+`0x7478b186 / 0x7478b18c`，直接转入 GPFeatureLayerBase，
+无派生层的附加字节。Rust 共用该基类的读取器，构造测试检查
+两类各自的分派、v0–v2、非空 GPFieldInfo、终点与截断。
+真实 MXD 宿主和 ArcMap/QGIS 人工验收仍待验证。
+
 #### 目录数据元素
 
 FileDataElements.dll 10.1.0.3035 的 PE RTTI 持久化表及
