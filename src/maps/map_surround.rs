@@ -1249,7 +1249,7 @@ pub struct GpAddressLocatorStyleConfig10_1 {
     pub properties: Option<RuleSlot10_1<PropertySetObjectStream10_1>>,
     pub variant_flag: Option<u16>,
     pub variant: Option<PropertyValueObjectStream10_1>,
-    pub table: Option<RuleSlot10_1<DeTable10_1>>,
+    pub table: Option<RuleSlot10_1<DeChild10_1>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1261,7 +1261,7 @@ pub struct GpAddressLocatorStyleRow10_1 {
     pub raw_value_count: i32,
     pub fields: RuleSlot10_1<FieldsBody10_1>,
     pub values: GpAddressLocatorStyleRowValues10_1,
-    pub table: RuleSlot10_1<DeTable10_1>,
+    pub table: RuleSlot10_1<DeChild10_1>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -4987,7 +4987,7 @@ fn read_gp_address_locator_style_config(
         .map(|_| {
             let value =
                 read_padded_variant_object_stream_nested_10_1(reader, max_bytes, table, depth)?;
-            let entry = read_gp_de_table_slot(reader, max_bytes, table, depth)?;
+            let entry = read_de_table_interface_slot(reader, max_bytes, table, depth)?;
             Ok::<_, io::Error>((value, entry))
         })
         .transpose()?;
@@ -5059,7 +5059,7 @@ fn read_gp_address_locator_style_row(
         }
         GpAddressLocatorStyleRowValues10_1::Strings(values)
     };
-    let de_table = read_gp_de_table_slot(reader, max_bytes, table, depth)?;
+    let de_table = read_de_table_interface_slot(reader, max_bytes, table, depth)?;
     Ok(GpAddressLocatorStyleRow10_1 {
         name,
         raw_short,

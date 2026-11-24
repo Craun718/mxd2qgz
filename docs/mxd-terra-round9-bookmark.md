@@ -3019,8 +3019,7 @@ Load `0x71379020` 接受无符号版本 0 至 4，调用 GPValue::Load，
 再读一个 short。最后一个 short 非零时读取 Variant::Read(false)
 和 IID `{D7FCBB04-8E59-4FFB-9EE5-EC670AA892E0}` 的接口槽。
 解析器已支持三个前导槽为空或为已知 Fields 的配置，保留版本 1 的字节、
-已知 PropertySet 槽及版本 3、4 的尾段标志和 Variant。Variant 后的
-接口槽支持空标记。
+已知 PropertySet 槽及版本 3、4 的尾段标志和 Variant。
 
 参考数据行 Load `0x7137b2e0` 读 String，版本 4 再读 short，
 接着读第一个 long。版本 2 至 4 按第一个 long 的正值循环加载
@@ -3040,7 +3039,11 @@ IID `{1714D59B-FB22-11D1-94A2-080009EEBECB}` 对象
 `{D7FCBB04-8E59-4FFB-9EE5-EC670AA892E0}` 对应 IDETable。
 配置的三个 IFields 槽与参考数据行的 IFields 槽接入了同一个
 [GdbCore Fields 读取器](mxd-10.1-fields.md)。构造书签覆盖从行槽回引到
-配置槽内的新 Fields；其他 IFields 实现仍待核对，IDETable 槽的读取范围见下节。
+配置槽内的新 Fields。Geocoding.dll 中配置尾槽和行末槽的调用点
+`0x7137926b`、`0x7137b684` 都取 `0x714fba3c` 的 IDETable IID。
+两槽复用 DEMosaicDataset 的 IDETable 类分派。构造书签在行末覆盖
+标准 DETable，在 v4 配置尾槽覆盖 DETextFile。其他 IFields 或
+IDETable 实现和真实 MXD 宿主仍待核对。
 
 ### DETable
 

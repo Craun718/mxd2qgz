@@ -7259,6 +7259,7 @@ fn feature_bookmark_reads_gp_address_locator_style_without_configuration() {
 fn feature_bookmark_reads_gp_address_locator_style_configuration_without_rows() {
     use mxd2qgz::layers::image_server_rules::RuleSlot10_1;
     use mxd2qgz::maps::map_surround::{
+        DE_TEXT_FILE_CLASS_ID, DataElement10_1, DeChild10_1, DeTextFileBase10_1,
         GP_ADDRESS_LOCATOR_STYLE_CLASS_ID, GpAddressLocatorStyleConfig10_1, GpCodedValue10_1,
     };
     use mxd2qgz::objects::property_set::{PropertyValue10_1, PropertyValueObjectStream10_1};
@@ -7284,7 +7285,13 @@ fn feature_bookmark_reads_gp_address_locator_style_configuration_without_rows() 
             payload.extend(3_u16.to_le_bytes());
             payload.extend([0; 14]);
             payload.extend(42_i32.to_le_bytes());
-            payload.extend([0; 16]);
+            payload.extend(bookmark_entry_10_1(&DE_TEXT_FILE_CLASS_ID, 22));
+            payload.extend(1_u16.to_le_bytes());
+            payload.extend([0; 6]);
+            for _ in 0..3 {
+                payload.extend(bookmark_string_10_1(""));
+            }
+            payload.extend([0; 10]);
         }
         assert_legacy_topo_coded_value(
             GP_ADDRESS_LOCATOR_STYLE_CLASS_ID,
@@ -7309,9 +7316,24 @@ fn feature_bookmark_reads_gp_address_locator_style_configuration_without_rows() 
                     variant: (version == 4).then_some(PropertyValueObjectStream10_1::Inline(
                         PropertyValue10_1::Raw4(42_i32.to_le_bytes()),
                     )),
-                    table: (version == 4).then_some(RuleSlot10_1 {
-                        entry: ObjectEntry10_1::Null,
-                        body: None,
+                    table: (version == 4).then(|| RuleSlot10_1 {
+                        entry: ObjectEntry10_1::NewObject {
+                            class_id: DE_TEXT_FILE_CLASS_ID,
+                            key: 22,
+                        },
+                        body: Some(Box::new(DeChild10_1::TextFile {
+                            version: 1,
+                            base: DeTextFileBase10_1::Element(DataElement10_1 {
+                                element_version: 0,
+                                gp_value_version: 0,
+                                gp_value_short: 0,
+                                element_strings: Default::default(),
+                                element_shorts: [0; 3],
+                                element_legacy_xml: None,
+                                raw_child_count: 0,
+                                children: Vec::new(),
+                            }),
+                        })),
                     }),
                 })),
             },
@@ -7697,7 +7719,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                 class_id: DE_TABLE_CLASS_ID,
                                 key: 22,
                             },
-                            body: Some(Box::new(DeTable10_1 {
+                            body: Some(Box::new(DeChild10_1::Table(DeTable10_1 {
                                 version,
                                 dataset: DeDataset10_1 {
                                     dataset_version: 2,
@@ -8161,7 +8183,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                         }],
                                     })),
                                 },
-                            })),
+                            }))),
                         },
                     }],
                     legacy_byte: (version == 1).then_some(0),

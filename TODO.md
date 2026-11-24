@@ -860,6 +860,7 @@
       - [x] 接入 DETable 的拓扑与几何网络控制器成员。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的 Indexes 与 Index 对象体。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [ ] 核对 GPAddressLocatorStyle 非空配置中其余接口槽的类体。[取证](docs/mxd-terra-round9-bookmark.md#gpaddresslocatorstyle)
+      - [x] 接入 GPAddressLocatorStyle 参考数据行及尾槽中已核实的 IDETable 实现。[取证](docs/mxd-terra-round9-bookmark.md#gpaddresslocatorstyle)
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
       - [x] 对位二代值域委派实参与 GdbCore 的接口实现候选。[取证](docs/mxd-terra-round9-bookmark.md#二代值域的委派接口接收者)
       - [x] 核对 GdbCore 两个值域实现与 GPRangeDomain2 的类标识门槛。[取证](docs/mxd-terra-round9-bookmark.md#二代值域的委派接口接收者)
