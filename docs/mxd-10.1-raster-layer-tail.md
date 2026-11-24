@@ -1528,3 +1528,15 @@ ArcMap 10.1 与 QGIS 人工验收未进行。
 RasterLayer v17 的 IStatsHistogram 列表按 SystemCore 10.1.0.3035
 查键路径（`0x7ffd0063`）以登记对象的类分派回引。合成图层验证
 有效回引及误引像元过滤器时图层尾段回滚。实档及人工验收待验证。
+
+### Java SDK 的两份 RasterLayer v12 实档
+
+10.1 Java SDK 的 conservationGDB 和 conservationMDB 均为 /Version
+9.2 / short 14。文件 SHA-256 依次为
+`2f0c5a0d9cb522765a0813e44cc80c995cf3c7826543f6fac91d2e75168659ab` 与
+`8b164ca283f62403df936d806bf423506c772b519a44ad27e51bbb3b4e94868f`。
+两份工程的第十条图层分别起于 /Maps `0xbee3` 与 `0xd381`，
+均带 ExtraSafe A=11408/B=0。Rust 从 Map 入口顺序读取，两个 v12
+尾段均含 IGeodataXform 与 IEnvelope 槽，并恰好耗尽有界体。
+按需测试位于 `tests/terra_round8_old.rs`。无外层区间的普通 v12
+及数据集打开状态仍缺证据。ArcMap/QGIS 人工验收未执行。

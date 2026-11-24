@@ -645,6 +645,7 @@
       - [x] 接入普通关联 ILayer 与 Map 普通图层条目的 RasterLayer v0–11、v13–17，保留后继对象边界。
       - [x] 核对 RasterLayer v12 的 RasterIO 二次打开对已有栅格成员的前置检查。[取证](docs/mxd-10.1-raster-layer-tail.md#二次打开要求图层已有栅格成员)
       - [ ] 支持无外层长度的普通 RasterLayer v12 对象体；原生依赖数据集打开结果，有界体已覆盖两种形态。
+      - [x] 验证两份 Java SDK 实档的有界 RasterLayer v12 变换及包络槽。[取证](docs/mxd-10.1-raster-layer-tail.md#java-sdk-的两份-rasterlayer-v12-实档)
       - [x] 对位普通 RasterLayer v12 的 RasterIO 二次打开接口派发及空输出返回。[取证](docs/mxd-10.1-raster-layer-tail.md#v12-rasterio-二次打开的派发)
       - [x] 核对普通 RasterLayer v12 单名称打开失败后仍进入渲染器读取的原生分支。[取证](docs/mxd-10.1-raster-layer-tail.md#v12-单名称打开失败后的读取)
       - [x] 排查普通 RasterLayer v12 空名称列表的原生失败边界。[取证](docs/mxd-10.1-raster-layer-tail.md#v12-空名称列表的原生边界)

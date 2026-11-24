@@ -632,3 +632,24 @@ fn inventory_all_compound_streams_including_later_maps() {
         );
     }
 }
+
+#[test]
+#[ignore = "需要 10.1 Java SDK 安装介质提取文件"]
+fn sdk_conservation_raster_v12_has_a_bounded_tail() {
+    for (file, offset) in [("conservationGDB", 0xbee3), ("conservationMDB", 0xd381)] {
+        let map = read_sdk_map(&format!(
+            "temp/terra-round8-old/sdk-java/{file}.mxd.4896861F_D89C_46BA_ABEC_17591162B2B1"
+        ));
+        let entry = &map.layer_list.entries[9];
+        assert_eq!(entry.offset, offset);
+        assert_eq!(entry.prefix, Some((11408, 0)));
+        let Some(LayerBodyPrefix10_1::RasterLayer(layer)) = &entry.parsed else {
+            panic!("应读取 RasterLayer");
+        };
+        assert_eq!(layer.version, 12);
+        let tail = layer.tail.as_ref().expect("应读取 v12 尾段");
+        assert!(tail.geodata_xform_v13.is_some());
+        assert!(tail.envelope_v13.is_some());
+        assert_eq!(entry.body.as_ref().map(|body| body.len), Some(0));
+    }
+}
