@@ -621,6 +621,9 @@ const GP_LAYER_CLASS_ID: [u8; 16] = [
     0x1e, 0x59, 0x47, 0x6a, 0x16, 0xaa, 0x3e, 0x44, 0xb5, 0x0d, 0xd8, 0x92, 0x66, 0x59, 0xa4, 0xe1,
 ];
 
+const GP_TABLE_VIEW_CLASS_ID: [u8; 16] = [
+    0xed, 0x16, 0x08, 0xcf, 0xa0, 0xa6, 0xc1, 0x4a, 0xb8, 0xf1, 0x19, 0x2b, 0x32, 0x91, 0xa8, 0x53,
+];
 const GP_RASTER_LAYER_CLASS_ID: [u8; 16] = [
     0x79, 0x22, 0x31, 0x89, 0xe6, 0xb7, 0x87, 0x47, 0xbe, 0x93, 0x9b, 0x25, 0xcd, 0x94, 0xd7, 0x68,
 ];
@@ -985,6 +988,7 @@ pub const GP_EXTENT_CLASS_ID: [u8; 16] = [
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpCodedValue10_1 {
+    TableView(Box<GpTableView10_1>),
     MosaicLayer(Box<GpLayer10_1>),
     GroupLayer(Box<GpLayer10_1>),
     CadastralFabricLayer(Box<GpLayer10_1>),
@@ -1283,6 +1287,21 @@ pub struct GpFeatureLayerFields10_1 {
     pub fid_set: RuleSlot10_1<crate::layers::feature_id_set::FeatureIdSetBody10_1>,
     pub table: Option<RuleSlot10_1<DeChild10_1>>,
     pub field_info: Option<RuleSlot10_1<GpCodedValueBody10_1>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpTableView10_1 {
+    pub first_text: String,
+    pub table: RuleSlot10_1<DeTable10_1>,
+    pub second_text: String,
+    pub fid_set: RuleSlot10_1<crate::layers::feature_id_set::FeatureIdSetBody10_1>,
+    pub tail: Option<GpTableViewTail10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpTableViewTail10_1 {
+    pub table: RuleSlot10_1<DeTable10_1>,
+    pub field_info: RuleSlot10_1<GpCodedValueBody10_1>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3290,6 +3309,7 @@ fn read_gp_coded_value_entry(
             if matches!(
                 table.registered_class(key).unwrap_or(class_id),
                 GP_STRING_CLASS_ID
+                    | GP_TABLE_VIEW_CLASS_ID
                     | GP_FIELD_MAPPING_CLASS_ID
                     | GP_RASTER_FORMULATED_CLASS_ID
                     | GP_RASTER_BUILDER_CLASS_ID
@@ -3709,6 +3729,7 @@ fn read_gp_coded_value_entry(
         ObjectEntry10_1::NewObject {
             class_id:
                 class_id @ (GP_STRING_CLASS_ID
+                | GP_TABLE_VIEW_CLASS_ID
                 | GP_FIELD_MAPPING_CLASS_ID
                 | GP_RASTER_BUILDER_CLASS_ID
                 | GP_RASTER_DATA_LAYER_CLASS_ID
@@ -3778,7 +3799,7 @@ fn read_gp_coded_value_entry(
             let version = reader.read_u16_le()?;
             let base_version = reader.read_u16_le()?;
             let max_version = match class_id {
-                GP_FIELD_MAPPING_CLASS_ID => 2,
+                GP_FIELD_MAPPING_CLASS_ID | GP_TABLE_VIEW_CLASS_ID => 2,
                 GP_SPATIAL_REFERENCE_CLASS_ID
                 | GP_SA_SEMI_VARIOGRAM_CLASS_ID
                 | GP_RASTER_GDB_ENV_STATISTICS_CLASS_ID => 3,
@@ -3813,6 +3834,9 @@ fn read_gp_coded_value_entry(
             }
             let base_short = reader.read_u16_le()?;
             let value = match class_id {
+                GP_TABLE_VIEW_CLASS_ID => GpCodedValue10_1::TableView(Box::new(
+                    read_gp_table_view(reader, max_bytes, table, depth, version)?,
+                )),
                 GP_STRING_CLASS_ID => {
                     GpCodedValue10_1::String(read_string_10_1(reader, max_bytes)?)
                 }
@@ -5162,28 +5186,8 @@ fn read_gp_feature_layer_fields(
     depth: usize,
     version: u16,
 ) -> io::Result<GpFeatureLayerFields10_1> {
-    use crate::layers::feature_id_set::{FID_SET_CLASS_ID, read_fid_set_body_10_1};
-
     let text = read_string_10_1(reader, max_bytes)?;
-    let entry = read_object_entry_10_1(reader, refs)?;
-    let body = match entry {
-        ObjectEntry10_1::Null => None,
-        ObjectEntry10_1::BackReference { class_id, key }
-            if refs.registered_class(key).unwrap_or(class_id) == FID_SET_CLASS_ID =>
-        {
-            None
-        }
-        ObjectEntry10_1::NewObject {
-            class_id: FID_SET_CLASS_ID,
-            key,
-        } => Some(Box::new(read_fid_set_body_10_1(reader, refs, key)?)),
-        _ => {
-            return Err(io::Error::new(
-                ErrorKind::Unsupported,
-                "GPFeatureLayerBase 的 IFIDSet 类尚未支持",
-            ));
-        }
-    };
+    let fid_set = read_gp_fid_set_slot(reader, refs)?;
     let (table, field_info) = if version >= 2 {
         (
             Some(read_gp_data_element_child(reader, max_bytes, refs, depth)?),
@@ -5201,9 +5205,71 @@ fn read_gp_feature_layer_fields(
     Ok(GpFeatureLayerFields10_1 {
         version,
         text,
-        fid_set: RuleSlot10_1 { entry, body },
+        fid_set,
         table,
         field_info,
+    })
+}
+
+fn read_gp_fid_set_slot(
+    reader: &mut Reader<'_>,
+    refs: &mut RefTable10_1,
+) -> io::Result<RuleSlot10_1<crate::layers::feature_id_set::FeatureIdSetBody10_1>> {
+    use crate::layers::feature_id_set::{FID_SET_CLASS_ID, read_fid_set_body_10_1};
+
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if refs.registered_class(key).unwrap_or(class_id) == FID_SET_CLASS_ID =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: FID_SET_CLASS_ID,
+            key,
+        } => Some(Box::new(read_fid_set_body_10_1(reader, refs, key)?)),
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "GP 对象的 IFIDSet 类尚未支持",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_gp_table_view(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+    version: u16,
+) -> io::Result<GpTableView10_1> {
+    let first_text = read_string_10_1(reader, max_bytes)?;
+    let table = read_gp_de_table_slot(reader, max_bytes, refs, depth)?;
+    let second_text = read_string_10_1(reader, max_bytes)?;
+    let fid_set = read_gp_fid_set_slot(reader, refs)?;
+    let tail = if version >= 2 {
+        Some(GpTableViewTail10_1 {
+            table: read_gp_de_table_slot(reader, max_bytes, refs, depth)?,
+            field_info: read_gp_coded_value_slot_of_class(
+                reader,
+                max_bytes,
+                refs,
+                depth,
+                GP_FIELD_INFO_CLASS_ID,
+            )?,
+        })
+    } else {
+        None
+    };
+    Ok(GpTableView10_1 {
+        first_text,
+        table,
+        second_text,
+        fid_set,
+        tail,
     })
 }
 
@@ -11462,6 +11528,51 @@ mod tests {
             assert_eq!(
                 spatial_reference.as_deref(),
                 (class_id == DE_PRJ_FILE_CLASS_ID).then_some(&SpatialReferenceEntry10_1::Null),
+            );
+            assert_eq!(reader.position(), end);
+        }
+    }
+
+    #[test]
+    fn gp_table_view_reads_versioned_slots() {
+        for version in 0_u16..=2 {
+            let mut bytes = GP_TABLE_VIEW_CLASS_ID.to_vec();
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend(version.to_le_bytes());
+            bytes.extend([1, 0, 9, 0]);
+            let empty_text = [2, 0, 0, 0, 0, 0];
+            for _ in 0..2 {
+                bytes.extend(empty_text);
+                bytes.extend([0; 16]);
+            }
+            if version == 2 {
+                bytes.extend([0; 16]);
+                bytes.extend(GP_FIELD_INFO_CLASS_ID);
+                bytes.extend(2_u32.to_le_bytes());
+                bytes.extend([1, 0, 1, 0, 7, 0]);
+                bytes.extend(0_i32.to_le_bytes());
+            }
+            let read = |reader: &mut Reader<'_>| {
+                read_gp_coded_value_slot(reader, 1024, &mut RefTable10_1::new(), 0)
+            };
+            for cut in 0..bytes.len() {
+                assert!(read(&mut Reader::new(&bytes[..cut])).is_err());
+            }
+            let end = bytes.len();
+            bytes.push(0xa5);
+            let mut reader = Reader::new(&bytes);
+            let coded = read(&mut reader).unwrap().body.unwrap();
+            let GpCodedValue10_1::TableView(view) = coded.value else {
+                panic!("应读取 GPTableView");
+            };
+            assert_eq!((coded.version, coded.base_short), (version, 9));
+            assert_eq!(view.table.entry, ObjectEntry10_1::Null);
+            assert_eq!(view.fid_set.entry, ObjectEntry10_1::Null);
+            assert_eq!(
+                view.tail
+                    .and_then(|tail| tail.field_info.body)
+                    .map(|body| body.base_short),
+                (version == 2).then_some(7)
             );
             assert_eq!(reader.position(), end);
         }

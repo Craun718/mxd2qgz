@@ -3499,6 +3499,26 @@ Rust 在 IGPValue 和 IGPLayer 槽复用基类与 Field 读取器。
 构造测试覆盖 v0/v1、IField 回引、截断和对象终点。
 字符串业务含义、真实 MXD 宿主及 ArcMap/QGIS 人工验收仍待确认。
 
+#### GPTableView
+
+ArcMap 10.1 Desktop 互操作元数据将
+`CF0816ED-A6A0-4AC1-B8F1-192B3291A853` 定名为 GPTableView，
+列出 IGPValue 和 IPersistStream。GpObjects.dll 10.1.0.3035
+的 RTTI `0x748017d0` 关联表 `0x747b6cbc`，Load/Save
+经跳板 `0x7478b54c / 0x7478b552` 进入同版
+GeoprocessingLib.dll 的 GPTableViewBase 导出
+`0x71de3540 / 0x71de3650`。两模块摘要见上文。
+
+Load 在 `0x71de3575` 检查无符号 short 上限 2，随后读
+GPValue、AfCore String、IDETable、AfCore String、IFIDSet。
+读点依次为 `0x71de3582 / 0x71de3590 / 0x71de35b7 /
+0x71de35c8 / 0x71de35e3`。v2 增读 IDETable 和 IGPFieldInfo
+（`0x71de3608 / 0x71de3626`）。Save 写 v2，字段顺序相同。
+
+Rust 编码值读取器复用 DETable、FIDSet 和 GPFieldInfo 读取逻辑。
+构造测试覆盖 v0–v2、非空 GPFieldInfo、对象终点和逐字节截断。
+其他 IDETable 实现、真实 MXD 宿主和 ArcMap/QGIS 人工验收仍待核对。
+
 #### 目录数据元素
 
 FileDataElements.dll 10.1.0.3035 的 PE RTTI 持久化表及

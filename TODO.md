@@ -855,6 +855,7 @@
       - [x] 接入 DETable 的 Indexes 与 Index 对象体。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [ ] 核对 GPAddressLocatorStyle 非空配置中其余接口槽的类体。[取证](docs/mxd-terra-round9-bookmark.md#gpaddresslocatorstyle)
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
+      - [x] 接入编码值中的 GPTableView 对象体与已支持的子槽。[取证](docs/mxd-terra-round9-bookmark.md#gptableview)
       - [x] 接入编码值及 IGPLayer 槽中的 GPMosaicLayer。[取证](docs/mxd-terra-round9-bookmark.md#gpmosaiclayer)
       - [x] 接入编码值及 IGPLayer 槽中的 GPCadastralFabricLayer。[取证](docs/mxd-terra-round9-bookmark.md#gpcadastralfabriclayer)
       - [x] 接入编码值及 IGPLayer 槽中的 GPGroupLayer。[取证](docs/mxd-terra-round9-bookmark.md#gpgrouplayer)
