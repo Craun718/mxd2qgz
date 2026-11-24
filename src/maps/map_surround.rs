@@ -450,6 +450,12 @@ pub const GP_LONG_CLASS_ID: [u8; 16] = [
 ];
 
 /// GPPoint 的 CLSID，按对象流中的字节序排列。
+pub const GP_LINE_CLASS_ID: [u8; 16] = [
+    0xe4, 0x80, 0x5f, 0x43, 0xb2, 0x6d, 0x6b, 0x47, 0xb9, 0x77, 0xb0, 0x6b, 0xff, 0x52, 0xf9, 0x78,
+];
+pub const GP_POLYGON_CLASS_ID: [u8; 16] = [
+    0x0b, 0x8f, 0x1b, 0xec, 0x38, 0xdf, 0x44, 0x44, 0xbe, 0x03, 0x01, 0x16, 0xe0, 0x95, 0x37, 0xdf,
+];
 pub const GP_POINT_CLASS_ID: [u8; 16] = [
     0x82, 0x30, 0xe9, 0xa1, 0xbe, 0xba, 0x44, 0x4d, 0x8c, 0xe3, 0x46, 0x37, 0x74, 0x8e, 0xdd, 0xdd,
 ];
@@ -890,6 +896,10 @@ pub const GP_EXTENT_CLASS_ID: [u8; 16] = [
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpCodedValue10_1 {
+    LineOrPolygon {
+        raw_count: i32,
+        points: Vec<RuleSlot10_1<GpCodedValueBody10_1>>,
+    },
     Field(Box<FieldBody10_1>),
     FmeDataset(Option<Vec<u8>>),
     XmlIndex {
@@ -3018,6 +3028,8 @@ fn read_gp_coded_value_entry(
                 table.registered_class(key).unwrap_or(class_id),
                 GP_STRING_CLASS_ID
                     | GP_POINT_CLASS_ID
+                    | GP_LINE_CLASS_ID
+                    | GP_POLYGON_CLASS_ID
                     | GP_CELL_SIZE_XY_CLASS_ID
                     | GP_SA_CELL_SIZE_CLASS_ID
                     | GP_WORKSPACE_EXTENSION_CLASS_ID
@@ -3082,6 +3094,41 @@ fn read_gp_coded_value_entry(
             ) =>
         {
             None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: GP_LINE_CLASS_ID | GP_POLYGON_CLASS_ID,
+            ..
+        } => {
+            // 原生 ObjectStream 写出基类字段的位置与原生 Load 不同。
+            let version = reader.read_u16_le()?;
+            if version > 1 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "GPLine/GPPolygon 版本超限",
+                ));
+            }
+            let (raw_count, count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
+            let mut points = Vec::new();
+            for _ in 0..count {
+                points.push(read_gp_coded_value_slot_of_class(
+                    reader,
+                    max_bytes,
+                    table,
+                    depth,
+                    GP_POINT_CLASS_ID,
+                )?);
+            }
+            let base_version = reader.read_u16_le()?;
+            if base_version > 1 {
+                return Err(io::Error::new(ErrorKind::InvalidData, "GPValue 版本超限"));
+            }
+            let base_short = reader.read_u16_le()?;
+            Some(Box::new(GpCodedValueBody10_1 {
+                version,
+                base_version,
+                base_short,
+                value: GpCodedValue10_1::LineOrPolygon { raw_count, points },
+            }))
         }
         ObjectEntry10_1::NewObject {
             class_id: FIELD_CLASS_ID,
@@ -3501,14 +3548,14 @@ fn read_gp_coded_value_entry(
                     fields: read_gp_fields_slot(reader, max_bytes, table, depth)?,
                     raw_long: reader.read_u32_le()?,
                     tags: Box::new([
-                        read_gp_xml_index_tag_slot(
+                        read_gp_coded_value_slot_of_class(
                             reader,
                             max_bytes,
                             table,
                             depth,
                             XML_INDEX_TAGS_CLASS_ID,
                         )?,
-                        read_gp_xml_index_tag_slot(
+                        read_gp_coded_value_slot_of_class(
                             reader,
                             max_bytes,
                             table,
@@ -3522,7 +3569,7 @@ fn read_gp_coded_value_entry(
                     let (raw_count, count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
                     let mut tags = Vec::new();
                     for _ in 0..count {
-                        tags.push(read_gp_xml_index_tag_slot(
+                        tags.push(read_gp_coded_value_slot_of_class(
                             reader,
                             max_bytes,
                             table,
@@ -3596,7 +3643,7 @@ fn read_gp_coded_value_entry(
     Ok(RuleSlot10_1 { entry, body })
 }
 
-fn read_gp_xml_index_tag_slot(
+fn read_gp_coded_value_slot_of_class(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
@@ -3614,7 +3661,7 @@ fn read_gp_xml_index_tag_slot(
     if class != expected_class {
         return Err(io::Error::new(
             ErrorKind::Unsupported,
-            "XML 索引标签槽包含不支持的类",
+            "IGPValue 子槽包含不支持的类",
         ));
     }
     read_gp_coded_value_entry(reader, max_bytes, table, depth, entry)
@@ -8449,6 +8496,70 @@ pub fn read_legend_prefix_10_1(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gp_line_and_polygon_follow_native_keyed_save_order() {
+        for class_id in [GP_LINE_CLASS_ID, GP_POLYGON_CLASS_ID] {
+            let mut header = class_id.to_vec();
+            header.extend(0_u32.to_le_bytes());
+            let mut bytes = header.clone();
+            bytes.extend([1, 0]);
+            bytes.extend(2_i32.to_le_bytes());
+            let mut point = GP_POINT_CLASS_ID.to_vec();
+            point.extend(1_u32.to_le_bytes());
+            bytes.extend(&point);
+            bytes.extend([1, 0, 1, 0, 0xff, 0xff]);
+            bytes.extend([0; 16]);
+            bytes.extend(&point);
+            bytes.extend([1, 0, 0xff, 0xff]);
+            for cut in 0..bytes.len() {
+                assert!(
+                    read_gp_coded_value_slot(
+                        &mut Reader::new(&bytes[..cut]),
+                        1024,
+                        &mut RefTable10_1::new(),
+                        0,
+                    )
+                    .is_err()
+                );
+            }
+            let end = bytes.len();
+            bytes.extend(header);
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let body = read_gp_coded_value_slot(&mut reader, 1024, &mut refs, 0)
+                .unwrap()
+                .body
+                .unwrap();
+            assert_eq!(
+                (body.version, body.base_version, body.base_short),
+                (1, 1, 0xffff)
+            );
+            let GpCodedValue10_1::LineOrPolygon { raw_count, points } = body.value else {
+                panic!("应读取 GP 线面点集合");
+            };
+            assert_eq!(raw_count, 2);
+            assert!(matches!(
+                points[0].body.as_deref().map(|body| &body.value),
+                Some(GpCodedValue10_1::Point {
+                    x_bits: 0,
+                    y_bits: 0
+                })
+            ));
+            assert!(matches!(
+                points[1].entry,
+                ObjectEntry10_1::BackReference { key: 1, .. }
+            ));
+            assert_eq!(reader.position(), end);
+            let reference = read_gp_coded_value_slot(&mut reader, 1024, &mut refs, 0).unwrap();
+            assert!(matches!(
+                reference.entry,
+                ObjectEntry10_1::BackReference { key: 0, .. }
+            ));
+            assert!(reference.body.is_none());
+            assert_eq!(reader.remaining(), 0);
+        }
+    }
 
     #[test]
     fn field_coded_value_reuses_field_body_and_reference() {
