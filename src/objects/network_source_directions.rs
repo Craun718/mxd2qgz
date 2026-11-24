@@ -1,11 +1,12 @@
 //! GdbNetwork.dll 10.1 的网络数据集子对象，见 docs/mxd-terra-round9-bookmark.md。
 
 use crate::objects::property_set::{
-    PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1, PropertyValueObjectStream10_1,
-    read_padded_variant_object_stream_10_1, read_property_set_object_stream_10_1,
+    PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1, PropertyValue10_1,
+    PropertyValueObjectStream10_1, read_padded_variant_object_stream_10_1,
+    read_property_set_object_stream_10_1, read_variant_object_stream_value_10_1,
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
-use crate::stream::native_string::read_string_10_1;
+use crate::stream::native_string::{read_bstr_string_10_1, read_string_10_1};
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
@@ -598,6 +599,12 @@ pub const SDC_NETWORK_ATTRIBUTE_CLASS_ID: [u8; 16] = [
     0xba, 0x1f, 0xab, 0xa2, 0x5f, 0xaa, 0x5e, 0x48, 0x97, 0xfe, 0x79, 0xd0, 0xf5, 0xff, 0x99, 0x84,
 ];
 
+pub const SDC_NETWORK_ATTRIBUTE_PARAMETER_ARRAY_CLASS_ID: [u8; 16] = [
+    0x29, 0xef, 0xd7, 0x4f, 0x42, 0x48, 0xe2, 0x41, 0x8b, 0x24, 0x04, 0x46, 0x7a, 0x89, 0x22, 0x1a,
+];
+pub const SDC_NETWORK_ATTRIBUTE_PARAMETER_CLASS_ID: [u8; 16] = [
+    0xb7, 0x3b, 0xa3, 0x86, 0x66, 0xbc, 0xcd, 0x4d, 0x84, 0xde, 0xcc, 0x47, 0x31, 0x30, 0x70, 0x02,
+];
 #[derive(Debug, Clone, PartialEq)]
 pub enum NetworkAttributeEntryBody10_1 {
     Standard(NetworkAttribute10_1),
@@ -611,9 +618,82 @@ pub struct SdcNetworkAttribute10_1 {
     pub name: String,
     pub values: [u32; 3],
     pub parameter_flag: Option<i32>,
-    pub parameter_array: Option<ObjectEntry10_1>,
+    pub parameter_array: Option<DirectionSlot10_1<SdcNetworkAttributeParameterArray10_1>>,
     pub v3_value: Option<u32>,
     pub v4_value: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SdcNetworkAttributeParameterArray10_1 {
+    pub version: i16,
+    pub raw_count: i32,
+    pub parameters: Vec<DirectionSlot10_1<NetworkAttributeParameter10_1>>,
+}
+
+fn read_sdc_parameter_variant(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<PropertyValueObjectStream10_1> {
+    let value_type = reader.clone().read_u16_le()?;
+    match value_type {
+        8 => {
+            reader.read_u16_le()?;
+            Ok(PropertyValueObjectStream10_1::Inline(
+                PropertyValue10_1::String(read_bstr_string_10_1(reader, max_bytes)?),
+            ))
+        }
+        0..=5 | 7 | 9 | 11 | 13 | 17 => {
+            read_variant_object_stream_value_10_1(reader, max_bytes, refs, 0)
+        }
+        _ => Err(io::Error::new(
+            ErrorKind::Unsupported,
+            "SDC 参数的 AfCore Variant 类型不受支持",
+        )),
+    }
+}
+
+fn read_sdc_parameter_array(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<SdcNetworkAttributeParameterArray10_1> {
+    let version = reader.read_u16_le()? as i16;
+    if version > 1 {
+        return Err(version_error("SDCNetworkAttributeParameterArray"));
+    }
+    let (raw_count, parameters) = read_list(reader, 16, max_bytes, |r| {
+        read_slot(
+            r,
+            refs,
+            SDC_NETWORK_ATTRIBUTE_PARAMETER_CLASS_ID,
+            |r, refs| {
+                let version = r.read_u16_le()?;
+                if !(1..=2).contains(&version) {
+                    return Err(version_error("SDCNetworkAttributeParameter"));
+                }
+                let name = read_string_10_1(r, max_bytes)?;
+                let value = r.read_u32_le()?;
+                let variants = [
+                    read_sdc_parameter_variant(r, max_bytes, refs)?,
+                    read_sdc_parameter_variant(r, max_bytes, refs)?,
+                ];
+                let extra_value = (version == 2).then(|| r.read_u32_le()).transpose()?;
+                Ok(NetworkAttributeParameter10_1 {
+                    version,
+                    name,
+                    value,
+                    variants,
+                    extra_value,
+                })
+            },
+        )
+    })?;
+    Ok(SdcNetworkAttributeParameterArray10_1 {
+        version,
+        raw_count,
+        parameters,
+    })
 }
 
 fn read_sdc_network_attribute(
@@ -635,18 +715,17 @@ fn read_sdc_network_attribute(
     let parameter_flag = (version >= 2)
         .then(|| reader.read_u32_le().map(|value| value as i32))
         .transpose()?;
-    let parameter_array = if parameter_flag.is_some_and(|flag| flag > 0) {
-        let entry = read_object_entry_10_1(reader, refs)?;
-        if entry != ObjectEntry10_1::Null {
-            return Err(io::Error::new(
-                ErrorKind::Unsupported,
-                "SDCNetworkAttribute 参数数组类尚未核对",
-            ));
-        }
-        Some(entry)
-    } else {
-        None
-    };
+    let parameter_array = parameter_flag
+        .is_some_and(|flag| flag > 0)
+        .then(|| {
+            read_slot(
+                reader,
+                refs,
+                SDC_NETWORK_ATTRIBUTE_PARAMETER_ARRAY_CLASS_ID,
+                |r, refs| read_sdc_parameter_array(r, max_bytes, refs),
+            )
+        })
+        .transpose()?;
     let v3_value = (version >= 3).then(|| reader.read_u32_le()).transpose()?;
     let v4_value = (version == 4).then(|| reader.read_u32_le()).transpose()?;
     Ok(SdcNetworkAttribute10_1 {
@@ -800,6 +879,72 @@ mod tests {
     }
 
     #[test]
+    fn sdc_network_attribute_reads_nonempty_parameter_array() {
+        let mut bytes = Vec::new();
+        object(&mut bytes, SDC_NETWORK_ATTRIBUTE_CLASS_ID, 1);
+        bytes.extend(4_u16.to_le_bytes());
+        bytes.extend(0_u32.to_le_bytes());
+        bytes.extend(EMPTY);
+        bytes.extend([0; 12]);
+        bytes.extend(1_i32.to_le_bytes());
+        object(
+            &mut bytes,
+            SDC_NETWORK_ATTRIBUTE_PARAMETER_ARRAY_CLASS_ID,
+            2,
+        );
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(2_i32.to_le_bytes());
+        object(&mut bytes, SDC_NETWORK_ATTRIBUTE_PARAMETER_CLASS_ID, 3);
+        bytes.extend(2_u16.to_le_bytes());
+        bytes.extend(EMPTY);
+        bytes.extend(7_u32.to_le_bytes());
+        // 无 14 字节保留区。BSTR 的前缀是码元数。
+        bytes.extend(8_u16.to_le_bytes());
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend([b'A', 0, 0, 0]);
+        bytes.extend(3_u16.to_le_bytes());
+        bytes.extend(42_u32.to_le_bytes());
+        bytes.extend(8_u32.to_le_bytes());
+        object(&mut bytes, SDC_NETWORK_ATTRIBUTE_PARAMETER_CLASS_ID, 3);
+        bytes.extend(9_u32.to_le_bytes());
+        bytes.extend(10_u32.to_le_bytes());
+        let end = bytes.len();
+        bytes.push(0xaa);
+
+        let mut reader = Reader::new(&bytes);
+        let slot =
+            read_network_attribute_slot_10_1(&mut reader, bytes.len(), &mut RefTable10_1::new())
+                .unwrap();
+        let NetworkAttributeEntryBody10_1::Sdc(body) = slot.body.unwrap() else {
+            panic!("应读取 SDC 网络属性");
+        };
+        assert_eq!(reader.position(), end);
+        assert_eq!(body.v4_value, Some(10));
+        let array = body.parameter_array.unwrap().body.unwrap();
+        let parameter = array.parameters[0].body.as_ref().unwrap();
+        assert_eq!(
+            parameter.variants[0],
+            PropertyValueObjectStream10_1::Inline(PropertyValue10_1::String("A".into()))
+        );
+        assert_eq!(parameter.extra_value, Some(8));
+        assert!(matches!(
+            array.parameters[1].entry,
+            ObjectEntry10_1::BackReference { key: 3, .. }
+        ));
+        for cut in 0..end {
+            assert!(
+                read_network_attribute_slot_10_1(
+                    &mut Reader::new(&bytes[..cut]),
+                    bytes.len(),
+                    &mut RefTable10_1::new(),
+                )
+                .is_err(),
+                "截断位置 {cut}"
+            );
+        }
+    }
+
+    #[test]
     fn sdc_network_attribute_reads_versioned_tails_and_rejects_unknown_array() {
         for (version, flag) in [(1_u16, 0_i32), (2, -1), (3, 0), (4, 1)] {
             let mut bytes = Vec::new();
@@ -838,7 +983,7 @@ mod tests {
             assert_eq!(reader.position(), end);
             assert_eq!(body.parameter_flag, (version >= 2).then_some(flag));
             assert_eq!(
-                body.parameter_array,
+                body.parameter_array.map(|slot| slot.entry),
                 (flag > 0).then_some(ObjectEntry10_1::Null)
             );
             assert_eq!(body.v4_value, (version == 4).then_some(6));

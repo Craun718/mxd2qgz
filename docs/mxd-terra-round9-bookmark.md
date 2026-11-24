@@ -3142,9 +3142,9 @@ SDCNetworkAttributeParameterArray，但其 RTTI 与 IArray
 
 Rust 的 INetworkAttribute 分派已接入 SDCNetworkAttribute
 版本 1–4。非正参数标志跳过槽。正标志按原生顺序读对象头，
-目前可消费空引用，遇非空类返回 Unsupported，以免把未知体
+可消费空引用及下述 SDC 参数数组，遇未知类返回 Unsupported，以免把未知体
 误当成版本尾段。构造测试覆盖四个版本、带符号标志、空引用、
-未知类与逐字节截断。TODO 保留至非空数组分支闭合。
+未知类与逐字节截断。非空数组的取证和构造验证见下。
 
 SDC 内部参数数组的 +0x18 表虽有 `0x7dbeb560`，
 该入口通过内部虚表 +0x38、+0x3c 初始化迭代游标，未调用
@@ -3155,6 +3155,19 @@ SDC 内部参数数组的 +0x18 表虽有 `0x7dbeb560`，
 Load `0x7dbeb6f0` 读取有符号 short，拒绝大于 1 的值，
 再在 `0x7dbeb746` 读有符号 long 计数。循环只在正数时
 执行，每项经完整对象主虚表 +0x2c 调用读取方法
-（`0x7dbeb78c`）。该槽的实际目标及该数组与外层 IArray
-的关系仍待核对。原生写侧传入属性对象 +0x2c 中保存的 IArray，
-目前无实档类标识。
+（`0x7dbeb78c`）。完整对象主表 `0x7dd92e5c` 的 +0x2c 指向
+`0x7dbeb2b0`。它在 `0x7dbeb30b` 调用 LoadObject
+请求 IUnknown，再由 `0x7dbeb32b` 查询 IUnknown 存入数组。
+数组 QI `0x7dc06540` 经 `0x7dbebad0` 的
+`0x7dbebad7` 比对 IArray，并在 `0x7dbebaf7` 返回
++0x18，确认它满足外层对象槽。
+
+SDCNetworkAttributeParameter 的两个 Variant 使用 AfCore
+导出 `0x68a7b9a0`。该入口直接读两字节 VARTYPE，
+由 `0x68a7bab0` 分派，无 14 字节保留区。VT_BSTR
+走 `0x68a7ba63` 的 BSTR 读取器，以 UTF-16 码元数为前缀。
+VT_DISPATCH 和 VT_UNKNOWN 通过 `0x68a7ba7a` 调用
+LoadObject，请求 IUnknown。Rust 已接入这个数组及已知参数类，
+构造测试包括非空数组、BSTR、标量 Variant、对象回引、版本尾部
+和逐字节截断。IArray 和 IUnknown 槽使用严格类分派，未知非空
+对象会返回错误。仍未验证真实 SDC MXD 宿主。
