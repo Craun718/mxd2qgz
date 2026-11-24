@@ -177,6 +177,10 @@ RasterTypeName 与 WCSConnectionName 复用已经由 10.1
 有符号 InstanceID、键登记、后继字符串，以及 WCSConnectionName
 v1 的边界。两类均覆盖逐字节截断回滚。真实格网宿主仍待验证。
 
+ImageServerName 复用 [ImageServer.dll 10.1.0.3035 对象体](mxd-10.1-image-server-layer-tail.md#imageservername-对象体)
+的 Load `0x77f4f7f0` 读取器。构造输入验证字符串、空属性集、
+按登记类解析的回引和截断回滚。真实格网宿主与原生显示仍待核对。
+
 ### 叠加格网的关系查询名称
 
 在 MapElements.dll 10.1.0.3035 的 CustomOverlayGrid Load

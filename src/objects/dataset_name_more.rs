@@ -56,6 +56,7 @@ use crate::layers::feature_layer::{
     read_fgdb_feature_class_name_body_10_1,
 };
 use crate::layers::fgdb_raster_dataset_name::FGDB_RASTER_DATASET_NAME_CLASS_ID;
+use crate::layers::image_server_layer_tail::IMAGE_SERVER_NAME_CLASS_ID;
 use crate::layers::raster_dataset_name::{
     ACCESS_RASTER_DATASET_NAME_CLASS_ID, AIS_IMAGE_SERVICE_NAME_CLASS_ID,
     CACHE_RASTER_DATASET_NAME_CLASS_ID, FUNCTION_RASTER_DATASET_NAME_CLASS_ID,
@@ -1271,6 +1272,7 @@ fn read_dataset_name_object_body_10_1(
         | FUNCTION_RASTER_DATASET_NAME_CLASS_ID
         | RASTER_TYPE_NAME_CLASS_ID
         | WCS_CONNECTION_NAME_CLASS_ID
+        | IMAGE_SERVER_NAME_CLASS_ID
         | IS_RASTER_DATASET_NAME_CLASS_ID
         | AIS_IMAGE_SERVICE_NAME_CLASS_ID
         | ACCESS_RASTER_DATASET_NAME_CLASS_ID
@@ -1472,6 +1474,7 @@ pub(crate) fn read_overlay_name_slot_10_1(
                     | FUNCTION_RASTER_DATASET_NAME_CLASS_ID
                     | RASTER_TYPE_NAME_CLASS_ID
                     | WCS_CONNECTION_NAME_CLASS_ID
+                    | IMAGE_SERVER_NAME_CLASS_ID
                     | IS_RASTER_DATASET_NAME_CLASS_ID
                     | AIS_IMAGE_SERVICE_NAME_CLASS_ID
                     | ACCESS_RASTER_DATASET_NAME_CLASS_ID
@@ -2219,6 +2222,42 @@ mod tests {
             assert_eq!(reader.position(), end);
             assert_eq!(read_string_10_1(&mut reader, 256).unwrap(), "格网编号");
         }
+    }
+
+    #[test]
+    fn overlay_image_server_reference_reads_inline_and_back_reference() {
+        let mut bytes = entry(&IMAGE_SERVER_NAME_CLASS_ID, 90).to_vec();
+        bytes.extend(1_i16.to_le_bytes());
+        bytes.extend(str_bytes("server"));
+        bytes.extend([0; 16]);
+        let end = bytes.len();
+        bytes.extend(entry(&TABLE_NAME_CLASS_ID, 90));
+        let mut refs = RefTable10_1::new();
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            assert!(read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+        let mut reader = Reader::new(&bytes);
+        let slot = read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).unwrap();
+        let DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::RasterDataset(body)) = slot
+        else {
+            panic!("应读取 ImageServerName");
+        };
+        assert!(
+            matches!(body.as_ref(), RasterDatasetNameEntryBody10_1::ImageServerReference(name)
+            if name.text == "server" && name.properties == ObjectEntry10_1::Null)
+        );
+        assert_eq!(reader.position(), end);
+        assert!(matches!(
+            read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).unwrap(),
+            DatasetNameMoreSlot10_1::BackReference {
+                class_id: IMAGE_SERVER_NAME_CLASS_ID,
+                key: 90
+            }
+        ));
+        assert_eq!(reader.remaining(), 0);
     }
 
     #[test]
