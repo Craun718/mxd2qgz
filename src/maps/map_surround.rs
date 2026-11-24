@@ -651,6 +651,7 @@ pub enum GpCodedValue10_1 {
     },
     AddressLocatorStyle {
         strings: [String; 2],
+        configuration: Option<Box<GpAddressLocatorStyleConfig10_1>>,
     },
     FieldInfoEx(String),
     FieldInfo {
@@ -763,6 +764,16 @@ pub struct GpFieldInfoRow10_1 {
     pub trailing_long: i32,
     pub raw_short: u16,
     pub extra: Option<GpFieldInfoRowV2Fields10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpAddressLocatorStyleConfig10_1 {
+    pub raw_flag: u16,
+    pub raw_row_count: i32,
+    pub legacy_byte: Option<u8>,
+    pub properties: Option<RuleSlot10_1<PropertySetObjectStream10_1>>,
+    pub variant_flag: Option<u16>,
+    pub variant: Option<PropertyValueObjectStream10_1>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2418,13 +2429,19 @@ fn read_gp_coded_value_entry(
                         read_string_10_1(reader, max_bytes)?,
                         read_string_10_1(reader, max_bytes)?,
                     ];
-                    if reader.read_u16_le()? != 0 {
-                        return Err(io::Error::new(
-                            ErrorKind::Unsupported,
-                            "GPAddressLocatorStyle 的非空配置尚未支持",
-                        ));
+                    let raw_flag = reader.read_u16_le()?;
+                    let configuration = (raw_flag != 0)
+                        .then(|| {
+                            read_gp_address_locator_style_config(
+                                reader, max_bytes, table, depth, version, raw_flag,
+                            )
+                            .map(Box::new)
+                        })
+                        .transpose()?;
+                    GpCodedValue10_1::AddressLocatorStyle {
+                        strings,
+                        configuration,
                     }
-                    GpCodedValue10_1::AddressLocatorStyle { strings }
                 }
                 GP_FIELD_INFO_EX_CLASS_ID => {
                     GpCodedValue10_1::FieldInfoEx(read_string_10_1(reader, max_bytes)?)
@@ -2665,7 +2682,7 @@ fn read_gp_data_file_transport(
             let raw_long = reader.read_u32_le()? as i32;
             let raw_short = reader.read_u16_le()?;
             let properties = (version >= 2)
-                .then(|| read_gds_data_properties(reader, max_bytes, table))
+                .then(|| read_gp_property_set_slot(reader, max_bytes, table))
                 .transpose()?;
             let extra_string = (version >= 3)
                 .then(|| read_string_10_1(reader, max_bytes))
@@ -2690,7 +2707,64 @@ fn read_gp_data_file_transport(
     Ok(RuleSlot10_1 { entry, body })
 }
 
-fn read_gds_data_properties(
+fn read_gp_address_locator_style_config(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+    version: u16,
+    raw_flag: u16,
+) -> io::Result<GpAddressLocatorStyleConfig10_1> {
+    for _ in 0..3 {
+        read_gp_address_locator_style_null_slot(reader, table)?;
+    }
+    let raw_row_count = reader.read_u32_le()? as i32;
+    if raw_row_count > 0 {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            "GPAddressLocatorStyle 的参考数据行尚未支持",
+        ));
+    }
+    let legacy_byte = (version == 1)
+        .then(|| reader.read_bytes(1).map(|bytes| bytes[0]))
+        .transpose()?;
+    let properties = (version >= 2)
+        .then(|| read_gp_property_set_slot(reader, max_bytes, table))
+        .transpose()?;
+    let variant_flag = (version >= 3).then(|| reader.read_u16_le()).transpose()?;
+    let variant = variant_flag
+        .filter(|flag| *flag != 0)
+        .map(|_| {
+            let value =
+                read_padded_variant_object_stream_nested_10_1(reader, max_bytes, table, depth)?;
+            read_gp_address_locator_style_null_slot(reader, table)?;
+            Ok::<_, io::Error>(value)
+        })
+        .transpose()?;
+    Ok(GpAddressLocatorStyleConfig10_1 {
+        raw_flag,
+        raw_row_count,
+        legacy_byte,
+        properties,
+        variant_flag,
+        variant,
+    })
+}
+
+fn read_gp_address_locator_style_null_slot(
+    reader: &mut Reader<'_>,
+    table: &mut RefTable10_1,
+) -> io::Result<()> {
+    if read_object_entry_10_1(reader, table)? != ObjectEntry10_1::Null {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            "GPAddressLocatorStyle 的接口槽包含不支持的对象",
+        ));
+    }
+    Ok(())
+}
+
+fn read_gp_property_set_slot(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
@@ -2712,7 +2786,7 @@ fn read_gds_data_properties(
         _ => {
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
-                "GDSData 的 IPropertySet 槽包含不支持的类",
+                "GP 对象的 IPropertySet 槽包含不支持的类",
             ));
         }
     };

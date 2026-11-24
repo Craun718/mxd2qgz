@@ -7249,6 +7249,62 @@ fn feature_bookmark_reads_gp_address_locator_style_without_configuration() {
             &payload,
             GpCodedValue10_1::AddressLocatorStyle {
                 strings: ["地址定位器".into(), "样式".into()],
+                configuration: None,
+            },
+        );
+    }
+}
+
+#[test]
+fn feature_bookmark_reads_gp_address_locator_style_configuration_without_rows() {
+    use mxd2qgz::layers::image_server_rules::RuleSlot10_1;
+    use mxd2qgz::maps::map_surround::{
+        GP_ADDRESS_LOCATOR_STYLE_CLASS_ID, GpAddressLocatorStyleConfig10_1, GpCodedValue10_1,
+    };
+    use mxd2qgz::objects::property_set::{PropertyValue10_1, PropertyValueObjectStream10_1};
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    for version in 0..=4 {
+        let mut payload = bookmark_string_10_1("地址定位器");
+        payload.extend(bookmark_string_10_1("样式"));
+        payload.extend(0xffff_u16.to_le_bytes());
+        payload.extend([0; 48]);
+        payload.extend((-1_i32).to_le_bytes());
+        if version == 1 {
+            payload.push(1);
+        }
+        if version >= 2 {
+            payload.extend([0; 16]);
+        }
+        let variant_flag = (version >= 3).then_some(u16::from(version == 4));
+        if let Some(flag) = variant_flag {
+            payload.extend(flag.to_le_bytes());
+        }
+        if version == 4 {
+            payload.extend(3_u16.to_le_bytes());
+            payload.extend([0; 14]);
+            payload.extend(42_i32.to_le_bytes());
+            payload.extend([0; 16]);
+        }
+        assert_legacy_topo_coded_value(
+            GP_ADDRESS_LOCATOR_STYLE_CLASS_ID,
+            version,
+            &payload,
+            GpCodedValue10_1::AddressLocatorStyle {
+                strings: ["地址定位器".into(), "样式".into()],
+                configuration: Some(Box::new(GpAddressLocatorStyleConfig10_1 {
+                    raw_flag: 0xffff,
+                    raw_row_count: -1,
+                    legacy_byte: (version == 1).then_some(1),
+                    properties: (version >= 2).then_some(RuleSlot10_1 {
+                        entry: ObjectEntry10_1::Null,
+                        body: None,
+                    }),
+                    variant_flag,
+                    variant: (version == 4).then_some(PropertyValueObjectStream10_1::Inline(
+                        PropertyValue10_1::Raw4(42_i32.to_le_bytes()),
+                    )),
+                })),
             },
         );
     }
