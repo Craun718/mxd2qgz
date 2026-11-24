@@ -2204,8 +2204,10 @@ IGPReplicaDescription。槽后 `0x6f631999..0x6f631a07`
 `0x6f6571d4` 进入 AfCore 自由函数 Read。
 Save 在 `0x6f631bce` 写对应的描述对象槽，并在
 `0x6f631c7f` 依文档版本决定扩展段。没有 GPValue
-基类头，解析可复用紧凑 Variant 与复制描述读取器。
-真实 MXD 及 ArcMap 人工验证仍待补充。
+基类头。Rust 在 IGPValue 槽复用紧凑 Variant 与复制描述读取器，
+保留标量和描述对象键。构造测试覆盖 v0 至 v2、描述对象体、
+外层回引、尾段边界与逐字节截断。真实 MXD 及 ArcMap 人工验证
+仍待补充。
 
 #### Field 作为 IGPValue
 

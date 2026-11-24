@@ -453,6 +453,9 @@ pub const GP_LONG_CLASS_ID: [u8; 16] = [
 const GP_REPLICA_DATASETS_CLASS_ID: [u8; 16] = [
     0x62, 0xec, 0x68, 0xfc, 0xa0, 0xcd, 0x97, 0x44, 0x99, 0x77, 0xb4, 0x58, 0x20, 0x26, 0x8a, 0x43,
 ];
+pub const GP_REPLICA_CLASS_ID: [u8; 16] = [
+    0xfc, 0x4d, 0x52, 0xe5, 0xe0, 0x66, 0xb0, 0x49, 0x88, 0xe7, 0x09, 0x40, 0x40, 0xc9, 0x8f, 0x74,
+];
 pub const GP_REPLICA_DESCRIPTION_CLASS_ID: [u8; 16] = [
     0x9a, 0x83, 0x63, 0xf1, 0xb8, 0x58, 0xb9, 0x45, 0x93, 0xad, 0x88, 0x80, 0x3e, 0x0f, 0xa5, 0x0f,
 ];
@@ -905,6 +908,7 @@ pub const GP_EXTENT_CLASS_ID: [u8; 16] = [
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpCodedValue10_1 {
+    Replica(Box<GpReplica10_1>),
     ReplicaDescription {
         raw_longs: [u32; 2],
         raw_shorts: [u16; 2],
@@ -1891,6 +1895,24 @@ pub enum GpSaRemapRow10_1 {
         raw_long: i32,
         text_bytes: Vec<u8>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpReplica10_1 {
+    pub initial_long: u32,
+    pub strings: [String; 4],
+    pub variant: PropertyValueObjectStream10_1,
+    pub long_before_description: u32,
+    pub description: RuleSlot10_1<GpCodedValueBody10_1>,
+    pub trailing_longs: [u32; 6],
+    pub trailing_short: u16,
+    pub v2: Option<GpReplicaV2Tail10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpReplicaV2Tail10_1 {
+    pub variants: [PropertyValueObjectStream10_1; 3],
+    pub raw_shorts: [u16; 3],
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3058,6 +3080,7 @@ fn read_gp_coded_value_entry(
                 table.registered_class(key).unwrap_or(class_id),
                 GP_STRING_CLASS_ID
                     | GP_POINT_CLASS_ID
+                    | GP_REPLICA_CLASS_ID
                     | GP_REPLICA_DESCRIPTION_CLASS_ID
                     | GP_REPLICA_DATASET_CLASS_ID
                     | GP_LINE_CLASS_ID
@@ -3126,6 +3149,66 @@ fn read_gp_coded_value_entry(
             ) =>
         {
             None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: GP_REPLICA_CLASS_ID,
+            ..
+        } => {
+            let version = reader.read_u16_le()?;
+            if version > 2 {
+                return Err(io::Error::new(ErrorKind::InvalidData, "GPReplica 版本超限"));
+            }
+            let initial_long = reader.read_u32_le()?;
+            let strings = [
+                read_bstr_string_10_1(reader, max_bytes)?,
+                read_bstr_string_10_1(reader, max_bytes)?,
+                read_bstr_string_10_1(reader, max_bytes)?,
+                read_bstr_string_10_1(reader, max_bytes)?,
+            ];
+            let variant = read_variant_object_stream_value_10_1(reader, max_bytes, table, depth)?;
+            let long_before_description = reader.read_u32_le()?;
+            let description = read_gp_coded_value_slot_of_class(
+                reader,
+                max_bytes,
+                table,
+                depth,
+                GP_REPLICA_DESCRIPTION_CLASS_ID,
+            )?;
+            let mut trailing_longs = [0; 6];
+            for entry in &mut trailing_longs {
+                *entry = reader.read_u32_le()?;
+            }
+            let trailing_short = reader.read_u16_le()?;
+            let v2 = if version == 2 {
+                let mut read_variant =
+                    || read_variant_object_stream_value_10_1(reader, max_bytes, table, depth);
+                Some(GpReplicaV2Tail10_1 {
+                    variants: [read_variant()?, read_variant()?, read_variant()?],
+                    raw_shorts: [
+                        reader.read_u16_le()?,
+                        reader.read_u16_le()?,
+                        reader.read_u16_le()?,
+                    ],
+                })
+            } else {
+                None
+            };
+            Some(Box::new(GpCodedValueBody10_1 {
+                version,
+                // GPReplica 直接保存自己的字段，没有 GPValue 基类头。
+                base_version: 0,
+                base_short: 0,
+                value: GpCodedValue10_1::Replica(Box::new(GpReplica10_1 {
+                    initial_long,
+                    strings,
+                    variant,
+                    long_before_description,
+                    description,
+                    trailing_longs,
+                    trailing_short,
+                    v2,
+                })),
+            }))
         }
         ObjectEntry10_1::NewObject {
             class_id: GP_REPLICA_DESCRIPTION_CLASS_ID,
@@ -8709,6 +8792,67 @@ pub fn read_legend_prefix_10_1(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn replica_value_reads_description_and_version_two_tail() {
+        for version in 0_u16..=2 {
+            let mut header = GP_REPLICA_CLASS_ID.to_vec();
+            header.extend(10_u32.to_le_bytes());
+            let mut bytes = header.clone();
+            bytes.extend(version.to_le_bytes());
+            bytes.extend(9_u32.to_le_bytes());
+            bytes.extend([0; 16 + 2 + 4]);
+            bytes.extend(GP_REPLICA_DESCRIPTION_CLASS_ID);
+            bytes.extend(11_u32.to_le_bytes());
+            bytes.extend([0; 2 + 10 + 16 + 16 + 2]);
+            for value in 1_u32..=6 {
+                bytes.extend(value.to_le_bytes());
+            }
+            bytes.extend(42_u16.to_le_bytes());
+            if version == 2 {
+                bytes.extend([0; 6]);
+                bytes.extend([1, 0, 2, 0, 3, 0]);
+            }
+            for cut in 0..bytes.len() {
+                assert!(
+                    read_gp_coded_value_slot(
+                        &mut Reader::new(&bytes[..cut]),
+                        1024,
+                        &mut RefTable10_1::new(),
+                        0,
+                    )
+                    .is_err()
+                );
+            }
+            let end = bytes.len();
+            bytes.extend(header);
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let slot = read_gp_coded_value_slot(&mut reader, 1024, &mut refs, 0).unwrap();
+            let GpCodedValue10_1::Replica(replica) = slot.body.unwrap().value else {
+                panic!("应读取 GPReplica");
+            };
+            assert_eq!(replica.initial_long, 9);
+            assert!(matches!(
+                replica.description.body.as_deref().map(|body| &body.value),
+                Some(GpCodedValue10_1::ReplicaDescription { .. })
+            ));
+            assert_eq!(replica.trailing_longs, [1, 2, 3, 4, 5, 6]);
+            assert_eq!(replica.trailing_short, 42);
+            assert_eq!(
+                replica.v2.map(|tail| tail.raw_shorts),
+                (version == 2).then_some([1, 2, 3])
+            );
+            assert_eq!(reader.position(), end);
+            let reference = read_gp_coded_value_slot(&mut reader, 1024, &mut refs, 0).unwrap();
+            assert!(matches!(
+                reference.entry,
+                ObjectEntry10_1::BackReference { key: 10, .. }
+            ));
+            assert!(reference.body.is_none());
+            assert_eq!(reader.remaining(), 0);
+        }
+    }
 
     #[test]
     fn replica_description_reads_dataset_collection_and_child_reference() {
