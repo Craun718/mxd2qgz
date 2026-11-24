@@ -4243,6 +4243,20 @@ fn read_bookmark_name_slot_10_1(
             } else {
                 read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth + 1)?
             };
+            if version == 1
+                && matches!(
+                    source,
+                    BookmarkNameEntry10_1::BackReference {
+                        class_id: PROPERTY_SET_CLASS_ID,
+                        ..
+                    }
+                )
+            {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    "LocatorWorkspaceName IName 槽回引了属性集",
+                ));
+            }
             BookmarkNameEntry10_1::LocatorWorkspaceName {
                 version,
                 strings,

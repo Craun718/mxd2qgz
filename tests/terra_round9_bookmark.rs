@@ -3433,6 +3433,7 @@ fn locator_workspace_reads_property_set_in_iunknown_slot() {
     bytes.extend(2_i16.to_le_bytes());
     bytes.extend(bookmark_string_10_1("定位器"));
     bytes.extend(bookmark_string_10_1("工作空间"));
+    let source_offset = bytes.len();
     bytes.extend(bookmark_entry_10_1(&PROPERTY_SET_CLASS_ID, 18));
     bytes.extend(1_u16.to_le_bytes());
     bytes.extend(0_i32.to_le_bytes());
@@ -3449,6 +3450,37 @@ fn locator_workspace_reads_property_set_in_iunknown_slot() {
     assert_eq!(bookmark.name, "书签");
     assert_eq!(reader.position(), bytes.len());
     assert!(refs.contains(18));
+
+    let mut reference = bytes.clone();
+    reference[source_offset..source_offset + 16].copy_from_slice(&TABLE_NAME_CLASS_ID);
+    reference.drain(source_offset + 20..source_offset + 26);
+    let mut prior = RefTable10_1::new();
+    let definition = bookmark_entry_10_1(&PROPERTY_SET_CLASS_ID, 18);
+    mxd2qgz::storage::object_refs::read_object_entry_10_1(
+        &mut Reader::new(&definition),
+        &mut prior,
+    )
+    .unwrap();
+    for version in [1_i16, 2] {
+        reference[version_offset..version_offset + 2].copy_from_slice(&version.to_le_bytes());
+        let mut reader = Reader::new(&reference);
+        let mut refs = prior.clone();
+        let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs);
+        if version == 2 {
+            assert!(matches!(
+                result.unwrap().name_object,
+                BookmarkNameEntry10_1::LocatorWorkspaceName { source, .. }
+                    if matches!(*source, BookmarkNameEntry10_1::BackReference {
+                        class_id: PROPERTY_SET_CLASS_ID, key: 18,
+                    })
+            ));
+            assert_eq!(reader.position(), reference.len());
+        } else {
+            assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::Unsupported);
+            assert_eq!(reader.position(), 0);
+            assert_eq!(refs, prior);
+        }
+    }
 
     bytes[version_offset..version_offset + 2].copy_from_slice(&1_i16.to_le_bytes());
     let mut reader = Reader::new(&bytes);

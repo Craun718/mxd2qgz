@@ -742,6 +742,11 @@ Rust 在该入口复用 SystemCore PropertySet 持久化读取器。
 构造输入验证 v2 的对象结束位置及引用键，v1 的 IName 新对象
 路径遇同一类时回滚。尚无该组合的实档或人工验证。
 
+SystemCore 10.1.0.3035 在 `0x7ffd0063` 按键定位原实例，再查询
+宿主请求的接口。构造回引以 TableName 类标识指向已登记的
+PropertySet。v2 保留登记类并读完书签，v1 退回书签起点并保留
+此前登记的键。该组合尚无实档或人工验证。
+
 ## LocatorName
 
 同版 Geocoding.dll 的 PE RTTI `0x71550d68` 对应持久化虚表
