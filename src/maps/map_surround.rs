@@ -124,7 +124,9 @@ use crate::layers::feature_layer::{
 use crate::layers::feature_layer_tail::{UID_CLASS_ID, UidBody10_1, read_uid_body_10_1};
 use crate::layers::fgdb_raster_dataset_name::FGDB_RASTER_DATASET_NAME_CLASS_ID;
 use crate::layers::image_server_layer_tail::IMAGE_SERVER_NAME_CLASS_ID;
-use crate::layers::image_server_rules::RuleSlot10_1;
+use crate::layers::image_server_rules::{
+    RasterFunctionArgumentsBody10_1, RuleSlot10_1, read_raster_type_slot_10_1,
+};
 use crate::layers::legend_item::{
     HORIZONTAL_LEGEND_ITEM_CLASS_ID, HorizontalLegendItemBody10_1, HorizontalLegendItemStop10_1,
     read_horizontal_legend_item_body_10_1,
@@ -467,6 +469,9 @@ const GP_FIELD_MAPPING_CLASS_ID: [u8; 16] = [
 ];
 const GP_FIELD_MAP_CLASS_ID: [u8; 16] = [
     0xa7, 0x43, 0xcf, 0xde, 0x8a, 0x57, 0xca, 0x48, 0xbc, 0xa2, 0x4b, 0x11, 0x14, 0x8e, 0x20, 0x09,
+];
+const GP_RASTER_BUILDER_CLASS_ID: [u8; 16] = [
+    0x0c, 0x62, 0xcc, 0x2f, 0x8c, 0x1c, 0x96, 0x4a, 0xa0, 0xf9, 0x46, 0x5b, 0x4a, 0xa3, 0xea, 0x7a,
 ];
 const GP_RASTER_FORMULATED_CLASS_ID: [u8; 16] = [
     0x93, 0x8e, 0xa5, 0xff, 0x9a, 0x05, 0x5f, 0x43, 0xaf, 0x2b, 0x5a, 0x34, 0x8a, 0x88, 0x2c, 0x29,
@@ -920,6 +925,7 @@ pub const GP_EXTENT_CLASS_ID: [u8; 16] = [
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpCodedValue10_1 {
+    RasterBuilder(RuleSlot10_1<RasterFunctionArgumentsBody10_1>),
     RasterFormulated(Box<GpRasterFormulated10_1>),
     RasterData {
         name: Box<BookmarkNameEntry10_1>,
@@ -3139,6 +3145,7 @@ fn read_gp_coded_value_entry(
                 GP_STRING_CLASS_ID
                     | GP_FIELD_MAPPING_CLASS_ID
                     | GP_RASTER_FORMULATED_CLASS_ID
+                    | GP_RASTER_BUILDER_CLASS_ID
                     | GP_RASTER_DATA_CLASS_ID
                     | GP_POINT_CLASS_ID
                     | GP_REPLICA_CLASS_ID
@@ -3470,6 +3477,7 @@ fn read_gp_coded_value_entry(
             class_id:
                 class_id @ (GP_STRING_CLASS_ID
                 | GP_FIELD_MAPPING_CLASS_ID
+                | GP_RASTER_BUILDER_CLASS_ID
                 | GP_RASTER_DATA_CLASS_ID
                 | GP_POINT_CLASS_ID
                 | GP_CELL_SIZE_XY_CLASS_ID
@@ -3643,6 +3651,9 @@ fn read_gp_coded_value_entry(
                         tail,
                     }
                 }
+                GP_RASTER_BUILDER_CLASS_ID => GpCodedValue10_1::RasterBuilder(
+                    read_raster_type_slot_10_1(reader, max_bytes, table, depth)?,
+                ),
                 GP_RASTER_DATA_CLASS_ID => {
                     if depth >= MAX_BOOKMARK_NAME_NESTING {
                         return Err(io::Error::new(
@@ -9007,6 +9018,46 @@ pub fn read_legend_prefix_10_1(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn raster_builder_reuses_mosaic_raster_type_body() {
+        let mut bytes = GP_RASTER_BUILDER_CLASS_ID.to_vec();
+        bytes.extend(10_u32.to_le_bytes());
+        bytes.extend([1, 0, 1, 0, 7, 0]);
+        bytes.extend([
+            0x57, 0x29, 0xee, 0xc7, 0x30, 0xe2, 0xe0, 0x4b, 0xae, 0x55, 0xa4, 0x59, 0xb9, 0x64,
+            0x7e, 0x21,
+        ]);
+        bytes.extend(11_u32.to_le_bytes());
+        bytes.extend([0; 18 + 16]);
+        bytes.extend(2_u16.to_le_bytes());
+        for cut in 0..bytes.len() {
+            assert!(
+                read_gp_coded_value_slot(
+                    &mut Reader::new(&bytes[..cut]),
+                    1024,
+                    &mut RefTable10_1::new(),
+                    0,
+                )
+                .is_err()
+            );
+        }
+        let end = bytes.len();
+        bytes.push(0x5a);
+        let mut reader = Reader::new(&bytes);
+        let slot =
+            read_gp_coded_value_slot(&mut reader, 1024, &mut RefTable10_1::new(), 0).unwrap();
+        let GpCodedValue10_1::RasterBuilder(raster_type) = slot.body.unwrap().value else {
+            panic!("应读取 GPRasterBuilder");
+        };
+        assert_eq!(raster_type.body.unwrap().mosaic_version, Some(2));
+        assert_eq!(reader.position(), end);
+        bytes[20] = 2;
+        assert!(
+            read_gp_coded_value_slot(&mut Reader::new(&bytes), 1024, &mut RefTable10_1::new(), 0,)
+                .is_err()
+        );
+    }
 
     #[test]
     fn raster_formulated_reads_legacy_and_compact_variant_tails() {

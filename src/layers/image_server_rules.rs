@@ -468,6 +468,35 @@ pub(crate) fn supports_function_arguments(class_id: [u8; 16]) -> bool {
         || mosaic_arguments::layout(class_id).is_some()
 }
 
+pub(crate) fn read_raster_type_slot_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<RuleSlot10_1<RasterFunctionArgumentsBody10_1>> {
+    const RASTER_TYPE_CLASS_ID: [u8; 16] =
+        class_ids::class_id(0xc7ee2957, 0xe230, 0x4be0, 0xae55a459b9647e21);
+    let value = slot(reader, refs, |reader, refs, class_id, _| {
+        if class_id != RASTER_TYPE_CLASS_ID {
+            return Err(unsupported_class("IRasterType", &class_id));
+        }
+        mosaic_arguments::read(
+            reader,
+            max_bytes,
+            refs,
+            mosaic_arguments::Layout::RasterType,
+            depth,
+        )
+    })?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = value.entry {
+        let registered = refs.registered_class(key).unwrap_or(class_id);
+        if registered != RASTER_TYPE_CLASS_ID {
+            return Err(unsupported_class("IRasterType 回引", &registered));
+        }
+    }
+    Ok(value)
+}
+
 fn read_basic_arguments(
     r: &mut Reader<'_>,
     max: usize,

@@ -2150,8 +2150,13 @@ GpObjects.dll 10.1.0.3035 的 RTTI 对应 GPRasterBuilder
 Save 依次在 `0x746f893f`、`0x746f8961`、
 `0x746f8971` 写版本、基类和对象槽。
 本类不使用 GPRasterFormulated 的栅格基类布局。
-仍待核对 IRasterType 的实际持久化类和真实 MXD 宿主，
-未进行 ArcMap 人工验证。
+RasterType 的公开 CLSID 为 `C7EE2957-E230-4BE0-AE55-A459B9647E21`。
+同版 MosaicDB.dll（SHA-256
+`424814c3eceb88871df221bb42cb420b61c79c110a1e46a0e05af744db0a39ed`）
+的 RasterType Load `0x7a431610` 已在栅格函数参数读取器中实现。
+Rust 复用该读体，回引按登记类校验。构造测试覆盖非空类型对象、
+逐字节截断和外层 v2 拒绝。真实 MXD 宿主及其他 IRasterType 实现
+仍待核对，未进行 ArcMap 人工验证。
 
 #### GPRasterFormulated
 
