@@ -3007,9 +3007,18 @@ StreetNameFields 的 +0x18 表 `0x7119b844` 给出 Load
 long。版本 2 起在 `0x710a4d47` 追加一个 String，
 版本 3 在 `0x710a4d61`、`0x710a4d6b` 再追加两个。
 
-DirectionsFieldMapping 的 +0x10 表 `0x71191380` 指向
-外层流读取入口 `0x711642d0`，其实现含不同的分派路径。
-类内的 `0x70fcb4a0` 调整接收者后进入 `0x70fcb170`，
-该路径接受 short 版本 1，并依次读取两个 String。
-仍需区分外层加载路径，核对何时调用此短体读取器，以及各
-类在真实 MXD 中的对象边界。
+DirectionsFieldMapping 的构造路径在 `0x70fcaecc`、
+`0x70fcafd0` 将持久化表 `0x711911ec` 装入对象的 +0x14。
+表的 Load 槽 +0x14 即 `0x71191200`，目标为 `0x70fcb4a0`。
+该入口调整接收者后直接进入 `0x70fcb170`，接受 short
+版本 1，并依次读取两个 AfCore String。GetClassID
+`0x70fcb540` 从 `0x7119143c` 复制的 CLSID 与类型库一致。
+QI `0x70fcb787` 比对 IDirectionsFieldMapping IID，
+匹配时返回 +0x18 接口。
+
++0x10 表 `0x71191380` 的 `0x711642d0` 是比较路径。
+它接收另一个对象，在 `0x71164332`、`0x71164370` 调用
+SaveObject，将两个对象分别序列化到内存流，再在
+`0x711643fd`、`0x7116440e` 比较流长度。
+因此该路径不参与 MXD 中这个短体的读取。
+三种子对象仍待实际 MXD 宿主验证。
