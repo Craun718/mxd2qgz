@@ -34,6 +34,7 @@ pub mod na_stop_renderer;
 pub mod network_layer;
 pub mod patch;
 pub mod process_layer;
+pub mod raster_catalog_layer;
 pub mod raster_classify_renderer;
 pub mod raster_dataset_name;
 pub mod raster_layer;

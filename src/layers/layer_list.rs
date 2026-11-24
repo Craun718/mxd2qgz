@@ -162,6 +162,7 @@ pub enum LayerBodyPrefix10_1 {
     RasterLayer(crate::layers::raster_layer::RasterLayerPrefix10_1),
     WcsLayer(Box<WcsLayer10_1>),
     TiledLayer(Box<TiledLayer10_1>),
+    RasterCatalogLayer(Box<super::raster_catalog_layer::RasterCatalogLayer10_1>),
     CadLayer(Box<CadLayer10_1>),
     CadFeatureLayer(Box<CadFeatureLayer10_1>),
     CadAnnotationLayer(Box<CadAnnotationLayer10_1>),
@@ -190,6 +191,7 @@ impl LayerBodyPrefix10_1 {
             Self::NetworkLayer(body) => &body.name,
             Self::NaLayer(body) => &body.name,
             Self::TiledLayer(body) => body.name(),
+            Self::RasterCatalogLayer(body) => &body.feature.name,
             Self::CadLayer(body) => &body.name,
             Self::CadFeatureLayer(body) => body.feature.as_ref().map_or("", |base| &base.name),
             Self::CadAnnotationLayer(body) => {
@@ -608,6 +610,7 @@ pub fn read_layer_list_10_1(
                         | LayerBodyPrefix10_1::CadAnnotationLayer(_)
                         | LayerBodyPrefix10_1::CoverageAnnotationLayer(_)
                         | LayerBodyPrefix10_1::TiledLayer(_)
+                        | LayerBodyPrefix10_1::RasterCatalogLayer(_)
                 )
             );
             let completed = completed
@@ -870,6 +873,7 @@ fn read_entry(
                     | CAD_FEATURE_LAYER_CLASS_ID
                     | CAD_ANNOTATION_LAYER_CLASS_ID
                     | COVERAGE_ANNOTATION_LAYER_CLASS_ID
+                    | super::raster_catalog_layer::GDB_RASTER_CATALOG_LAYER_CLASS_ID
             ) || is_tiled_layer(*class_id)
                 || matches!(
                     *class_id,
@@ -1131,6 +1135,14 @@ pub(crate) fn parse_body_prefix(
     trial_table: &mut RefTable10_1,
     depth: u32,
 ) -> io::Result<Option<LayerBodyPrefix10_1>> {
+    if class_id == super::raster_catalog_layer::GDB_RASTER_CATALOG_LAYER_CLASS_ID {
+        return super::raster_catalog_layer::read_raster_catalog_layer_10_1(
+            trial,
+            max_bytes,
+            trial_table,
+        )
+        .map(|body| Some(LayerBodyPrefix10_1::RasterCatalogLayer(Box::new(body))));
+    }
     if class_id == super::na_layer::NA_LAYER_CLASS_ID {
         let (body, _) = super::na_layer::read_na_layer_body(trial, max_bytes, trial_table)?;
         return Ok(Some(LayerBodyPrefix10_1::NaLayer(body)));
@@ -1270,7 +1282,8 @@ pub(crate) fn read_complete_layer_body_10_1(
         | LayerBodyPrefix10_1::CoverageAnnotationLayer(_)
         | LayerBodyPrefix10_1::TerrainLayer(_)
         | LayerBodyPrefix10_1::TinLayer(_)
-        | LayerBodyPrefix10_1::TiledLayer(_) => true,
+        | LayerBodyPrefix10_1::TiledLayer(_)
+        | LayerBodyPrefix10_1::RasterCatalogLayer(_) => true,
         LayerBodyPrefix10_1::BasemapLayer(body) => {
             body.stop == crate::layers::basemap_layer::BasemapStop10_1::Complete
         }

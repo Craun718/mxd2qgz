@@ -4,6 +4,7 @@
 
 use crate::layers::layer_list::{LayerBodyPrefix10_1, read_complete_layer_body_10_1};
 use crate::layers::na_layer::NA_LAYER_CLASS_ID;
+use crate::layers::raster_catalog_layer::GDB_RASTER_CATALOG_LAYER_CLASS_ID;
 use crate::layers::terrain_layer::TERRAIN_LAYER_CLASS_ID;
 use crate::layers::tin_layer::TIN_LAYER_CLASS_ID;
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
@@ -84,10 +85,6 @@ const DUMMY_GRADUATED_MARKER_LAYER_CLASS_ID: [u8; 16] = [
 
 const GRAPHICS_SUB_LAYER_CLASS_ID: [u8; 16] = [
     0x7d, 0xd3, 0xa9, 0xd3, 0x3c, 0xec, 0xc7, 0x40, 0x87, 0xb6, 0x70, 0x57, 0xae, 0xb6, 0x05, 0xf2,
-];
-
-const GDB_RASTER_CATALOG_LAYER_CLASS_ID: [u8; 16] = [
-    0x6d, 0x79, 0x7d, 0x29, 0x4e, 0x38, 0xf8, 0x48, 0xa1, 0x89, 0xe0, 0x34, 0x72, 0x81, 0xac, 0x7d,
 ];
 
 const RASTER_BASEMAP_LAYER_CLASS_ID: [u8; 16] = [

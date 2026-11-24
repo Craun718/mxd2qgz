@@ -716,6 +716,7 @@ impl<'body> LayerMaskingTraversal<'_, '_, 'body> {
                         | LayerBodyPrefix10_1::CoverageAnnotationLayer(_)
                         | LayerBodyPrefix10_1::RasterLayer(_)
                         | LayerBodyPrefix10_1::TiledLayer(_)
+                        | LayerBodyPrefix10_1::RasterCatalogLayer(_)
                         | LayerBodyPrefix10_1::Graphics3d(_)
                         | LayerBodyPrefix10_1::NaLayer(_)
                         | LayerBodyPrefix10_1::TerrainLayer(_)

@@ -620,7 +620,7 @@ fn read_legacy_extensions(
         .collect()
 }
 
-fn read_extra_safe_extensions(
+pub(super) fn read_extra_safe_extensions(
     reader: &mut Reader<'_>,
     table: &mut RefTable10_1,
     count: usize,
