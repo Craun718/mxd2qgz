@@ -567,6 +567,10 @@ pub const DE_CAD_DRAWING_DATASET_CLASS_ID: [u8; 16] = [
     0x2d, 0x33, 0x86, 0xf7, 0xb2, 0x20, 0x07, 0x46, 0xbf, 0x34, 0x0a, 0x53, 0xe4, 0xd0, 0xb4, 0x13,
 ];
 
+pub const DE_ARC_INFO_TABLE_CLASS_ID: [u8; 16] = [
+    0xec, 0x86, 0xc7, 0x1c, 0xfe, 0x5e, 0x3c, 0x49, 0x8a, 0x25, 0xb5, 0x46, 0x84, 0x46, 0x65, 0xd7,
+];
+
 pub const DE_DBASE_TABLE_CLASS_ID: [u8; 16] = [
     0x76, 0x41, 0xe8, 0x69, 0x98, 0xfb, 0x36, 0x40, 0xa8, 0xff, 0xe6, 0x9c, 0x8e, 0x82, 0xf0, 0x13,
 ];
@@ -1107,6 +1111,12 @@ pub enum DeChild10_1 {
         extent: BookmarkEnvelopeEntry10_1,
         spatial_reference: SpatialReferenceEntry10_1,
         raw_shorts: [u16; 4],
+    },
+    ArcInfoTable {
+        version: u16,
+        table: DeCompactTable10_1,
+        raw_item_count: i32,
+        items: Vec<RuleSlot10_1<GpCodedValueBody10_1>>,
     },
     FileTable {
         version: u16,
@@ -3692,6 +3702,7 @@ fn read_gp_data_element_child(
                     | DE_PRJ_FILE_CLASS_ID
                     | DE_TEXT_FILE_CLASS_ID
                     | DE_DBASE_TABLE_CLASS_ID
+                    | DE_ARC_INFO_TABLE_CLASS_ID
                     | DE_VPF_TABLE_CLASS_ID
                     | DE_LAYER_CLASS_ID
                     | DE_TOPOLOGY_CLASS_ID
@@ -3733,6 +3744,7 @@ fn read_gp_data_element_child(
                 | DE_PRJ_FILE_CLASS_ID
                 | DE_TEXT_FILE_CLASS_ID
                 | DE_DBASE_TABLE_CLASS_ID
+                | DE_ARC_INFO_TABLE_CLASS_ID
                 | DE_VPF_TABLE_CLASS_ID
                 | DE_LAYER_CLASS_ID
                 | DE_TOPOLOGY_CLASS_ID
@@ -3783,10 +3795,23 @@ fn read_gp_data_element_child(
                     element: read_gp_data_element(reader, max_bytes, refs, depth + 1)?,
                     layer: read_gp_layer_slot(reader, max_bytes, refs, depth + 1)?,
                 }
-            } else if matches!(class_id, DE_DBASE_TABLE_CLASS_ID | DE_VPF_TABLE_CLASS_ID) {
-                DeChild10_1::FileTable {
-                    version: read_de_layer_version(reader, 1, "文件表数据元素")?,
-                    table: read_de_compact_table(reader, max_bytes, refs, depth + 1)?,
+            } else if matches!(
+                class_id,
+                DE_DBASE_TABLE_CLASS_ID | DE_VPF_TABLE_CLASS_ID | DE_ARC_INFO_TABLE_CLASS_ID
+            ) {
+                let version = read_de_layer_version(reader, 1, "文件表数据元素")?;
+                let table = read_de_compact_table(reader, max_bytes, refs, depth + 1)?;
+                if class_id == DE_ARC_INFO_TABLE_CLASS_ID {
+                    let (raw_item_count, items) =
+                        read_gp_arc_info_items(reader, max_bytes, refs, depth + 1)?;
+                    DeChild10_1::ArcInfoTable {
+                        version,
+                        table,
+                        raw_item_count,
+                        items,
+                    }
+                } else {
+                    DeChild10_1::FileTable { version, table }
                 }
             } else if class_id == DE_TEXT_FILE_CLASS_ID {
                 let version = reader.read_u16_le()?;
@@ -8230,8 +8255,12 @@ mod tests {
     }
 
     #[test]
-    fn file_table_elements_end_after_compact_table() {
-        for class_id in [DE_DBASE_TABLE_CLASS_ID, DE_VPF_TABLE_CLASS_ID] {
+    fn file_table_elements_use_compact_table() {
+        for class_id in [
+            DE_DBASE_TABLE_CLASS_ID,
+            DE_VPF_TABLE_CLASS_ID,
+            DE_ARC_INFO_TABLE_CLASS_ID,
+        ] {
             let mut bytes = class_id.to_vec();
             bytes.extend(55_u32.to_le_bytes());
             bytes.extend([1, 0]);
@@ -8243,6 +8272,14 @@ mod tests {
             bytes.extend(9_u16.to_le_bytes());
             bytes.extend([2, 0, 0, 0, 0, 0]);
             bytes.extend([0; 32]);
+            if class_id == DE_ARC_INFO_TABLE_CLASS_ID {
+                bytes.extend(1_i32.to_le_bytes());
+                bytes.extend(GP_ARC_INFO_ITEM_CLASS_ID);
+                bytes.extend(56_u32.to_le_bytes());
+                bytes.extend([0; 6]);
+                bytes.extend([2, 0, 0, 0, 0, 0].repeat(2));
+                bytes.extend([0; 26]);
+            }
             for cut in 0..bytes.len() {
                 assert!(
                     read_gp_data_element_child(
@@ -8259,8 +8296,23 @@ mod tests {
             let mut reader = Reader::new(&bytes);
             let object =
                 read_gp_data_element_child(&mut reader, 1024, &mut RefTable10_1::new(), 0).unwrap();
-            let Some(DeChild10_1::FileTable { version, table }) = object.body.as_deref() else {
-                panic!("应读取文件表数据元素");
+            let (version, table) = match object.body.as_deref() {
+                Some(DeChild10_1::ArcInfoTable {
+                    version,
+                    table,
+                    raw_item_count,
+                    items,
+                }) if class_id == DE_ARC_INFO_TABLE_CLASS_ID => {
+                    assert_eq!(*raw_item_count, 1);
+                    assert!(items[0].body.is_some());
+                    (version, table)
+                }
+                Some(DeChild10_1::FileTable { version, table })
+                    if class_id != DE_ARC_INFO_TABLE_CLASS_ID =>
+                {
+                    (version, table)
+                }
+                _ => panic!("应读取文件表数据元素"),
             };
             assert_eq!((*version, table.table_short), (1, 9));
             assert_eq!(reader.position(), end);

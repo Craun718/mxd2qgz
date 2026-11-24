@@ -2499,3 +2499,15 @@ LoadObject，使用 `0x6f9d8048` 的 IID
 `C95B22E0-A3C3-11D5-931C-0080C71A3226`，由类型库确认为
 IGPArcInfoItem。构造测试覆盖 GPArcInfoItem 新对象、同键回引、
 逐字节截断和结束位置。标量含义及真实 MXD 宿主仍待验证。
+
+#### DEArcInfoTable
+
+FileDataElements.dll 10.1.0.3035 的持久化表 `0x6f9d7d10`
+对应 esriDataSourcesFile 类型库的 CLSID
+`1CC786EC-5EFE-493C-8A25-B546844665D7`。Load `0x6f9b2bf0`
+检查无符号版本上限 1，经 `0x6f9d7438` 调用 DETableBase::Load。
+构造路径 `0x6f9b24d5` 调用 DETableBase 构造函数并沿用零扩展标志。
+基类后从 `0x6f9b2c4c` 读取有符号 32 位数量，非正数跳过循环，
+正数逐项从 `0x6f9b2c8c` 以 `0x6f9d8048` 的 IGPArcInfoItem IID
+调用 LoadObject。构造测试覆盖简短表体、非空列表、逐字节截断
+和结束位置。真实 MXD 宿主仍待验证。
