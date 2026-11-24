@@ -1987,3 +1987,29 @@ IID `{1714D59B-FB22-11D1-94A2-080009EEBECB}` 对象
 配置的三个 IFields 槽与参考数据行的 IFields 槽接入了同一个
 [GdbCore Fields 读取器](mxd-10.1-fields.md)。构造书签覆盖从行槽回引到
 配置槽内的新 Fields；其他 IFields 实现及非空 IDETable 槽仍待核对。
+
+### DETable
+
+10.1 esriGeoDatabase 类型库将 DETable 对应到
+`{9C8405DB-BB87-4BD6-932D-7FFB35B04BA0}`。FeatureDataElements.dll
+10.1.0.3035 的 DETable 构造函数将持久化虚表 `0x6f65eb84` 装到
+对象 `+0x1c`，从 `0x6f65b9ac` 复制该 CLSID 到对象 `+0x24`。
+该表的 Load 和 Save 分别经 `0x6f64a4ce`、`0x6f64a4d4` 转发到
+DECoreLib.dll 10.1.0.3035。后者的 SHA-256 为
+`a57d35741decebe0765e8942268a934990763f52813b55eadf126de7d3042c2f`。
+以下偏移相对于持久化接口指针，以 objdump 复核。
+
+| Load | 读取顺序 |
+| --- | --- |
+| DataElement `0x6e942b50` | 无符号版本（上限 2）、GPValue、三个 String、三个 short。v2 且第三个 short 为 `0xffff` 时先调 `0x6e943ac0`。随后读有符号计数，逐项按 IDataElement IID 调 LoadObject。 |
+| DEDataset `0x6e9453b0` | 无符号版本（上限 2）、DataElement、long、两个 short、long，v2 再读一个 String。 |
+| DETableBase `0x6e94e540` | 无符号版本（上限 4）、DEDataset、short、一个 String。内部字节 `+0xa4` 非零时再读五个 String、long、IStringArray、IPropertySet、有符号计数及 IGPSubtype 槽、有符号计数及 IGPControllerMembership 槽。该分支在 v2+ 再读 short 和两个 String，v3+ 再读 short 和四个 String，v4 再读 short。所有路径末尾读取 IFields 和 IIndexes。 |
+
+DETable 构造函数在 `0x6f61daa2` 将对象 `+0xc0`（相当于持久化
+接口 `+0xa4`）置 1。Load 在 `0x6e94e5cf` 直接测试内存中的该字节，
+此前未从流读取它。Save `0x6e94e890` 在 `0x6e94e929` 也测试
+该内存字节。对标准 DETable 构造路径，读取器应按非零路径取字段，
+无需在流中读额外标志。请求的子槽接口由各 LoadObject 的 IID 和
+10.1 esriGeoDatabase、esriSystem 类型库核对。DETable 的标准对象体
+尚未接入。DataElement 的旧兼容辅助调用和递归子元素，以及 IIndexes、
+IGPSubtype、IGPControllerMembership 的合法实现边界仍需核对。
