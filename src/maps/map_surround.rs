@@ -6966,7 +6966,13 @@ mod tests {
         bytes.push(1);
         bytes.extend(1.25_f64.to_le_bytes());
         bytes.extend(2.5_f64.to_le_bytes());
-        bytes.extend([0; 16]);
+        bytes.extend(POINT_CLASS_ID);
+        bytes.extend(52_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(20_u32.to_le_bytes());
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend(3.0_f64.to_le_bytes());
+        bytes.extend(4.0_f64.to_le_bytes());
         bytes.extend(8_u16.to_le_bytes());
         bytes.extend([4, 0, 0, 0, b'T', 0, 0, 0]);
         for cut in 0..bytes.len() {
@@ -6975,7 +6981,8 @@ mod tests {
             assert!(read_raster_storage_def_slot(&mut reader, 1024, &mut refs).is_err());
         }
         let end = bytes.len();
-        bytes.push(0xa5);
+        bytes.extend(RASTER_STORAGE_DEF_CLASS_ID);
+        bytes.extend(51_u32.to_le_bytes());
         let mut reader = Reader::new(&bytes);
         let mut refs = RefTable10_1::new();
         let body = read_raster_storage_def_slot(&mut reader, 1024, &mut refs)
@@ -6984,9 +6991,28 @@ mod tests {
             .unwrap();
         assert_eq!(body.longs, [1, 2, 3, 4, 5, 6]);
         assert_eq!(body.xy_bits, Some([1.25_f64.to_bits(), 2.5_f64.to_bits()]));
-        assert_eq!(body.point.unwrap().entry, ObjectEntry10_1::Null);
+        let point = body.point.unwrap();
+        assert_eq!(
+            point.entry,
+            ObjectEntry10_1::NewObject {
+                class_id: POINT_CLASS_ID,
+                key: 52
+            }
+        );
+        assert_eq!(point.body.unwrap().version, 1);
+        assert_eq!(refs.registered_class(52), Some(POINT_CLASS_ID));
         assert_eq!(body.short, Some(8));
         assert_eq!(body.text.as_deref(), Some("T"));
         assert_eq!(reader.position(), end);
+        let back_reference = read_raster_storage_def_slot(&mut reader, 1024, &mut refs).unwrap();
+        assert_eq!(
+            back_reference.entry,
+            ObjectEntry10_1::BackReference {
+                class_id: RASTER_STORAGE_DEF_CLASS_ID,
+                key: 51,
+            }
+        );
+        assert!(back_reference.body.is_none());
+        assert_eq!(reader.position(), bytes.len());
     }
 }
