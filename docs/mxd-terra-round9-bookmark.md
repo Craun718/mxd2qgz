@@ -1402,12 +1402,28 @@ FME 的外层工厂是转发对象。DataInterop.dll 的 ATL 包装
 CFMEDatasetTypeFactory 的 COM 映射 `0x100f4624`
 把 IGPDataTypeFactory 映射到 +0x8，ATL 包装表
 `0x100f45c8` 的 +0x14 指向 `0x10027e40`。
-该方法选择对象后在 `0x10027f93` 通过虚表 +0x0c
-给调用方填充名称输出参数。另在 DIToolbox 的
+该方法选择对象后在 `0x10027f93` 调用虚表 +0x0c，
+下文进一步核对该调用的参数和用途。另在 DIToolbox 的
 `0x10025c7f` 找到创建 GPDataTypeName 的路径，其 CLSID
 常量位于 `0x100f5fa8`。尚待对位 `0x10027f93` 各分支的
 实际接收者，确认它们是否共用这个创建路径。
 真实 MXD 和 ArcMap 验证仍待补充。
+
+复核 `0x10027f93` 时，接收者来自 `0x10028680`
+查询的 IGPDataType（IID 常量 `0x100f4000`）。传入的是
+栈上输入参数的暂存地址 `[ebp+0xc]`；该函数的这条路径
+未访问调用方在 `[ebp+0x10]` 提供的输出地址。源和目标类型
+的 IGPDataType +0x0c 指向 `0x10024a40`，该入口形成
+BSTR。故前文发现的 +0x0c 调用只证实类型字符串读取，
+尚无将此字符串或名称对象返回给外层工厂调用方的证据。
+
+独立的 IGPDataType::get_FullName 槽 +0x18 则已有明确证据。
+通过 RTTI 的完整对象定位符确认 CFMESourceDatasetType 的表
+`0x100f4188`、CFMEDestDatasetType 的表 `0x100f3f84`
+均在 +0x18 指向 `0x10025c60`。该入口创建 GPDataTypeName，
+随后查询其 IGPName（`0x1003054e`）。所以这两类自身的
+FullName 路径产物已由现有读取器覆盖。外层 FME 工厂直接调用、
+通用 FMEDatasetType 的返回路径与真实宿主仍待验证。
 
 #### GPValueTable
 
