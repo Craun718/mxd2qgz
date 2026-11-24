@@ -770,10 +770,26 @@ pub struct GpFieldInfoRow10_1 {
 pub struct GpAddressLocatorStyleConfig10_1 {
     pub raw_flag: u16,
     pub raw_row_count: i32,
+    pub rows: Vec<GpAddressLocatorStyleRow10_1>,
     pub legacy_byte: Option<u8>,
     pub properties: Option<RuleSlot10_1<PropertySetObjectStream10_1>>,
     pub variant_flag: Option<u16>,
     pub variant: Option<PropertyValueObjectStream10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpAddressLocatorStyleRow10_1 {
+    pub name: String,
+    pub raw_short: Option<u16>,
+    pub raw_object_count: i32,
+    pub raw_value_count: i32,
+    pub values: GpAddressLocatorStyleRowValues10_1,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum GpAddressLocatorStyleRowValues10_1 {
+    Strings(Vec<Vec<String>>),
+    Variants(Vec<PropertyValueObjectStream10_1>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2718,12 +2734,12 @@ fn read_gp_address_locator_style_config(
     for _ in 0..3 {
         read_gp_address_locator_style_null_slot(reader, table)?;
     }
-    let raw_row_count = reader.read_u32_le()? as i32;
-    if raw_row_count > 0 {
-        return Err(io::Error::new(
-            ErrorKind::Unsupported,
-            "GPAddressLocatorStyle 的参考数据行尚未支持",
-        ));
+    let (raw_row_count, count) = read_gp_coded_value_count(reader, max_bytes, 40)?;
+    let mut rows = Vec::new();
+    for _ in 0..count {
+        rows.push(read_gp_address_locator_style_row(
+            reader, max_bytes, table, depth, version,
+        )?);
     }
     let legacy_byte = (version == 1)
         .then(|| reader.read_bytes(1).map(|bytes| bytes[0]))
@@ -2744,10 +2760,72 @@ fn read_gp_address_locator_style_config(
     Ok(GpAddressLocatorStyleConfig10_1 {
         raw_flag,
         raw_row_count,
+        rows,
         legacy_byte,
         properties,
         variant_flag,
         variant,
+    })
+}
+
+fn read_gp_address_locator_style_row(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+    version: u16,
+) -> io::Result<GpAddressLocatorStyleRow10_1> {
+    let name = read_string_10_1(reader, max_bytes)?;
+    let raw_short = (version >= 4).then(|| reader.read_u16_le()).transpose()?;
+    let raw_object_count = reader.read_u32_le()? as i32;
+    if version >= 2 && raw_object_count > 0 {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            "GPAddressLocatorStyle 的参考数据行包含尚未支持的对象列表",
+        ));
+    }
+    let (raw_value_count, count) =
+        read_gp_coded_value_count(reader, max_bytes, if version >= 2 { 16 } else { 4 })?;
+    if raw_value_count < 0 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "GPAddressLocatorStyle 的参考数据行值数为负",
+        ));
+    }
+    read_gp_address_locator_style_null_slot(reader, table)?;
+    let values = if version >= 2 {
+        let mut values = Vec::new();
+        for _ in 0..count {
+            values.push(read_padded_variant_object_stream_nested_10_1(
+                reader, max_bytes, table, depth,
+            )?);
+        }
+        GpAddressLocatorStyleRowValues10_1::Variants(values)
+    } else {
+        let mut values = Vec::new();
+        for _ in 0..count {
+            let (raw_count, count) = read_gp_coded_value_count(reader, max_bytes, 4)?;
+            if raw_count < 0 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "GPAddressLocatorStyle 的参考数据行字符串数为负",
+                ));
+            }
+            let mut strings = Vec::new();
+            for _ in 0..count {
+                strings.push(read_string_10_1(reader, max_bytes)?);
+            }
+            values.push(strings);
+        }
+        GpAddressLocatorStyleRowValues10_1::Strings(values)
+    };
+    read_gp_address_locator_style_null_slot(reader, table)?;
+    Ok(GpAddressLocatorStyleRow10_1 {
+        name,
+        raw_short,
+        raw_object_count,
+        raw_value_count,
+        values,
     })
 }
 

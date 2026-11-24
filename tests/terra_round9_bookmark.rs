@@ -7295,6 +7295,7 @@ fn feature_bookmark_reads_gp_address_locator_style_configuration_without_rows() 
                 configuration: Some(Box::new(GpAddressLocatorStyleConfig10_1 {
                     raw_flag: 0xffff,
                     raw_row_count: -1,
+                    rows: Vec::new(),
                     legacy_byte: (version == 1).then_some(1),
                     properties: (version >= 2).then_some(RuleSlot10_1 {
                         entry: ObjectEntry10_1::Null,
@@ -7304,6 +7305,80 @@ fn feature_bookmark_reads_gp_address_locator_style_configuration_without_rows() 
                     variant: (version == 4).then_some(PropertyValueObjectStream10_1::Inline(
                         PropertyValue10_1::Raw4(42_i32.to_le_bytes()),
                     )),
+                })),
+            },
+        );
+    }
+}
+
+#[test]
+fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
+    use mxd2qgz::layers::image_server_rules::RuleSlot10_1;
+    use mxd2qgz::maps::map_surround::{
+        GP_ADDRESS_LOCATOR_STYLE_CLASS_ID, GpAddressLocatorStyleConfig10_1,
+        GpAddressLocatorStyleRow10_1, GpAddressLocatorStyleRowValues10_1, GpCodedValue10_1,
+    };
+    use mxd2qgz::objects::property_set::{PropertyValue10_1, PropertyValueObjectStream10_1};
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    for version in 0..=4 {
+        let mut payload = bookmark_string_10_1("");
+        payload.extend(bookmark_string_10_1(""));
+        payload.extend(1_u16.to_le_bytes());
+        payload.extend([0; 48]);
+        payload.extend(1_i32.to_le_bytes());
+        payload.extend(bookmark_string_10_1("参考数据"));
+        if version == 4 {
+            payload.extend(0xffff_u16.to_le_bytes());
+        }
+        payload.extend(0_i32.to_le_bytes());
+        payload.extend(1_i32.to_le_bytes());
+        payload.extend([0; 16]);
+        let values = if version < 2 {
+            payload.extend(1_i32.to_le_bytes());
+            payload.extend(bookmark_string_10_1("字段"));
+            GpAddressLocatorStyleRowValues10_1::Strings(vec![vec!["字段".into()]])
+        } else {
+            payload.extend(3_u16.to_le_bytes());
+            payload.extend([0; 14]);
+            payload.extend(5_i32.to_le_bytes());
+            GpAddressLocatorStyleRowValues10_1::Variants(vec![
+                PropertyValueObjectStream10_1::Inline(PropertyValue10_1::Raw4(5_i32.to_le_bytes())),
+            ])
+        };
+        payload.extend([0; 16]);
+        if version == 1 {
+            payload.push(0);
+        }
+        if version >= 2 {
+            payload.extend([0; 16]);
+        }
+        if version >= 3 {
+            payload.extend(0_u16.to_le_bytes());
+        }
+        assert_legacy_topo_coded_value(
+            GP_ADDRESS_LOCATOR_STYLE_CLASS_ID,
+            version,
+            &payload,
+            GpCodedValue10_1::AddressLocatorStyle {
+                strings: [String::new(), String::new()],
+                configuration: Some(Box::new(GpAddressLocatorStyleConfig10_1 {
+                    raw_flag: 1,
+                    raw_row_count: 1,
+                    rows: vec![GpAddressLocatorStyleRow10_1 {
+                        name: "参考数据".into(),
+                        raw_short: (version == 4).then_some(0xffff),
+                        raw_object_count: 0,
+                        raw_value_count: 1,
+                        values,
+                    }],
+                    legacy_byte: (version == 1).then_some(0),
+                    properties: (version >= 2).then_some(RuleSlot10_1 {
+                        entry: ObjectEntry10_1::Null,
+                        body: None,
+                    }),
+                    variant_flag: (version >= 3).then_some(0),
+                    variant: None,
                 })),
             },
         );
