@@ -736,6 +736,12 @@ AGSServerConnection、AGSServerObjectName。前后两个名称类已有
 后继书签文本，将同一子槽改为 AGSServerConnection 则回滚。
 原生转换路径、其他注册实现和真实书签中的子类仍待运行取证。
 
+Geocoding.dll 10.1.0.3035 的 `0x71367bcf` 先读取 IUnknown，
+接口转换完成后由 `0x71367d93` 返回成功，转换不再读流。
+Rust 在该入口复用 SystemCore PropertySet 持久化读取器。
+构造输入验证 v2 的对象结束位置及引用键，v1 的 IName 新对象
+路径遇同一类时回滚。尚无该组合的实档或人工验证。
+
 ## LocatorName
 
 同版 Geocoding.dll 的 PE RTTI `0x71550d68` 对应持久化虚表

@@ -1370,6 +1370,7 @@ pub enum BookmarkNameEntry10_1 {
         strings: [String; 4],
         source: Box<BookmarkNameEntry10_1>,
     },
+    LocatorWorkspaceProperties(Box<PropertySetObjectStream10_1>),
     LocatorWorkspaceName {
         version: i16,
         strings: [String; 2],
@@ -4227,8 +4228,21 @@ fn read_bookmark_name_slot_10_1(
                 read_string_10_1(reader, max_bytes)?,
                 read_string_10_1(reader, max_bytes)?,
             ];
-            // v1 请求 IName，其余版本请求 IUnknown，磁盘上均为普通对象槽。
-            let source = read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth + 1)?;
+            // v1 请求 IName，其余版本允许持久化 IUnknown。
+            let source = if version != 1
+                && matches!(
+                    crate::storage::object_stream::read_header_10_1(&mut reader.clone())?,
+                    crate::storage::object_stream::ObjectHeader::Object {
+                        class_id: PROPERTY_SET_CLASS_ID, key
+                    } if !table.contains(key)
+                ) {
+                read_object_entry_10_1(reader, table)?;
+                BookmarkNameEntry10_1::LocatorWorkspaceProperties(Box::new(
+                    read_property_set_object_stream_10_1(reader, max_bytes, table)?,
+                ))
+            } else {
+                read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth + 1)?
+            };
             BookmarkNameEntry10_1::LocatorWorkspaceName {
                 version,
                 strings,
