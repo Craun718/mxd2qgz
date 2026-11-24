@@ -2875,3 +2875,20 @@ IDataElement 分派已接入 DERepresentationClass，已知规则类
 复用共享读取器。未知子对象体使整个读取返回错误。
 构造测试覆盖版本 0–5、集合中的规则子对象、属性名称列表、
 逐字节截断与结束位置。真实 MXD 宿主仍待核对。
+
+#### DENetworkDataset
+
+GdbNetwork.dll 10.1.0.3035 的 SHA-256 为
+`36b1fcd7ea5951aea6c53e03855993a2fcbb2b78c3e8b068642a890c44a0995c`。
+PE RTTI 给出持久化表 `0x7118f740`。GetClassID
+`0x70fba2e0` 从 `0x711902ec` 复制
+`FF8808B7-E50C-45FE-84EA-1C061D7431F6`。
+主 QI 在 `0x70fbabc1` 比对 `0x7119022c` 的 IDataElement IID。
+Load `0x70fbc000` 接受无符号版本 0–3，经
+`0x7116785e` 和导入槽 `0x71189540` 调用 DEGeoDataset::Load。
+基类返回后先调用 `0x71189128`，接着从
+`0x70fbc0a7` 至 `0x70fbc147` 顺序读取六个 long。
+最后一个 long 非零时，`0x70fbc16f` 用 `0x711902ac`
+的 IID 加载对象。随后两处调用 `0x70fbc194`、
+`0x70fbc1b9` 均使用 `0x7118bfa8` 的 IID。
+后续集合、版本尾段与非空槽布局待核对。
