@@ -475,6 +475,10 @@ pub const GP_SUBTYPE_CLASS_ID: [u8; 16] = [
     0x02, 0x53, 0x1b, 0x74, 0x17, 0x29, 0xab, 0x4a, 0x95, 0x2a, 0xdf, 0x5f, 0x0e, 0x01, 0x9e, 0xb6,
 ];
 
+pub const DE_TOPOLOGY_CLASS_ID: [u8; 16] = [
+    0x7d, 0x63, 0xc4, 0xac, 0xe0, 0xd5, 0xd5, 0x47, 0xab, 0xcd, 0x9f, 0x25, 0xab, 0x32, 0x6e, 0x6f,
+];
+
 pub const DE_FEATURE_DATASET_CLASS_ID: [u8; 16] = [
     0xfe, 0x19, 0xc6, 0x6a, 0x1f, 0x19, 0x2d, 0x43, 0xb1, 0xa3, 0x28, 0xce, 0x85, 0xa5, 0x91, 0xaf,
 ];
@@ -868,6 +872,17 @@ pub struct DeDataset10_1 {
 #[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
     Table(DeTable10_1),
+    Topology {
+        version: u16,
+        geo_dataset_version: u16,
+        dataset: DeDataset10_1,
+        extent: BookmarkEnvelopeEntry10_1,
+        spatial_reference: SpatialReferenceEntry10_1,
+        value_bits: [u64; 2],
+        raw_long: i32,
+        names: StringArraySlot10_1,
+        raw_rule_count: Option<i32>,
+    },
     FeatureDataset {
         version: u16,
         geo_dataset_version: u16,
@@ -3063,14 +3078,20 @@ fn read_gp_data_element_child(
         ObjectEntry10_1::BackReference { class_id, key }
             if matches!(
                 refs.registered_class(key).unwrap_or(class_id),
-                DE_TABLE_CLASS_ID | DE_FEATURE_CLASS_CLASS_ID | DE_FEATURE_DATASET_CLASS_ID
+                DE_TABLE_CLASS_ID
+                    | DE_FEATURE_CLASS_CLASS_ID
+                    | DE_FEATURE_DATASET_CLASS_ID
+                    | DE_TOPOLOGY_CLASS_ID
             ) =>
         {
             None
         }
         ObjectEntry10_1::NewObject {
             class_id:
-                class_id @ (DE_TABLE_CLASS_ID | DE_FEATURE_CLASS_CLASS_ID | DE_FEATURE_DATASET_CLASS_ID),
+                class_id @ (DE_TABLE_CLASS_ID
+                | DE_FEATURE_CLASS_CLASS_ID
+                | DE_FEATURE_DATASET_CLASS_ID
+                | DE_TOPOLOGY_CLASS_ID),
             ..
         } => {
             if depth >= MAX_BOOKMARK_NAME_NESTING {
@@ -3081,26 +3102,59 @@ fn read_gp_data_element_child(
             }
             let body = if class_id == DE_TABLE_CLASS_ID {
                 DeChild10_1::Table(read_gp_de_table(reader, max_bytes, refs, depth + 1)?)
-            } else if class_id == DE_FEATURE_DATASET_CLASS_ID {
+            } else if matches!(class_id, DE_FEATURE_DATASET_CLASS_ID | DE_TOPOLOGY_CLASS_ID) {
                 let version = reader.read_u16_le()?;
                 let geo_dataset_version = reader.read_u16_le()?;
-                if version > 1 || geo_dataset_version > 1 {
+                let max_version = if class_id == DE_TOPOLOGY_CLASS_ID {
+                    2
+                } else {
+                    1
+                };
+                if version > max_version || geo_dataset_version > 1 {
                     return Err(io::Error::new(
                         ErrorKind::InvalidData,
-                        "DEFeatureDataset 或 DEGeoDataset 版本超限",
+                        "地理数据集或其基类版本超限",
                     ));
                 }
-                DeChild10_1::FeatureDataset {
-                    version,
-                    geo_dataset_version,
-                    dataset: read_gp_de_dataset(reader, max_bytes, refs, depth + 1)?,
-                    extent: read_surround_envelope_slot(
-                        reader,
-                        max_bytes,
-                        refs,
-                        "DEFeatureDataset 范围",
-                    )?,
-                    spatial_reference: read_spatial_reference_entry_10_1(reader, max_bytes, refs)?,
+                let dataset = read_gp_de_dataset(reader, max_bytes, refs, depth + 1)?;
+                let extent =
+                    read_surround_envelope_slot(reader, max_bytes, refs, "DEGeoDataset 范围")?;
+                let spatial_reference = read_spatial_reference_entry_10_1(reader, max_bytes, refs)?;
+                if class_id == DE_TOPOLOGY_CLASS_ID {
+                    let value_bits = [
+                        reader.read_f64_le()?.to_bits(),
+                        reader.read_f64_le()?.to_bits(),
+                    ];
+                    let raw_long = reader.read_u32_le()? as i32;
+                    let names = read_string_array_slot_10_1(reader, max_bytes, refs)?;
+                    let raw_rule_count = (version == 2)
+                        .then(|| reader.read_u32_le().map(|count| count as i32))
+                        .transpose()?;
+                    if raw_rule_count.is_some_and(|count| count > 0) {
+                        return Err(io::Error::new(
+                            ErrorKind::Unsupported,
+                            "DETopology 的非空规则列表尚未支持",
+                        ));
+                    }
+                    DeChild10_1::Topology {
+                        version,
+                        geo_dataset_version,
+                        dataset,
+                        extent,
+                        spatial_reference,
+                        value_bits,
+                        raw_long,
+                        names,
+                        raw_rule_count,
+                    }
+                } else {
+                    DeChild10_1::FeatureDataset {
+                        version,
+                        geo_dataset_version,
+                        dataset,
+                        extent,
+                        spatial_reference,
+                    }
                 }
             } else {
                 let version = reader.read_u16_le()?;

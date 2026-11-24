@@ -792,6 +792,8 @@
       - [x] 接入 IDataElement 列表中的递归 DETable 对象。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 IDataElement 列表中的 DEFeatureClass。[取证](docs/mxd-terra-round9-bookmark.md#defeatureclass)
       - [x] 接入 IDataElement 列表中的 DEFeatureDataset。[取证](docs/mxd-terra-round9-bookmark.md#defeaturedataset)
+      - [x] 接入 IDataElement 列表中的 DETopology 主体。[取证](docs/mxd-terra-round9-bookmark.md#detopology)
+      - [ ] 接入 DETopology 的非空规则列表。[取证](docs/mxd-terra-round9-bookmark.md#detopology)
       - [ ] 补齐 IDataElement 列表中其他持久化实现。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的 GPSubtype 对象及字段行。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的拓扑与几何网络控制器成员。[取证](docs/mxd-terra-round9-bookmark.md#detable)

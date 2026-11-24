@@ -2097,3 +2097,15 @@ FeatureDataElements.dll 10.1.0.3035 的 DEFeatureDataset 持久化表
 自身版本（上限 1），调用 DEDataset::Load，再加载 IEnvelope
 和 ISpatialReference。结构化书签覆盖两个版本字段、空范围与空间
 参考槽、后续字段定位及截断回滚。实际 MXD 宿主仍待验证。
+
+#### DETopology
+
+FeatureDataElements.dll 10.1.0.3035 的 DETopology 持久化表
+`0x6f65f1dc` 对应类型库类 `{ACC4637D-D5E0-47D5-ABCD-9F25AB326E6F}`。
+Load `0x6f61f6f0` 接受无符号版本 0 至 2，调用 DEGeoDataset::Load
+后读两个 double、一个 long 和 IStringArray。v2 从 `0x6f61f7d2`
+再读有符号规则计数，按正值在 `0x6f61f803` 加载
+IID `{A53B59A5-2EFC-41C4-9769-C0FAA13E62E9}` 对象。
+已接入主体及非正规则计数，正计数明确返回未支持。
+构造书签验证作为 IDataElement 子对象的字段边界及截断回滚。
+非空规则类体和实际 MXD 宿主仍待核对。
