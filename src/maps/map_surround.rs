@@ -476,6 +476,12 @@ const GP_RASTER_BUILDER_CLASS_ID: [u8; 16] = [
 const GP_RASTER_FORMULATED_CLASS_ID: [u8; 16] = [
     0x93, 0x8e, 0xa5, 0xff, 0x9a, 0x05, 0x5f, 0x43, 0xaf, 0x2b, 0x5a, 0x34, 0x8a, 0x88, 0x2c, 0x29,
 ];
+const GP_RASTER_DATA_LAYER_CLASS_ID: [u8; 16] = [
+    0x83, 0x7e, 0x91, 0xff, 0xf9, 0x04, 0x28, 0x43, 0xa3, 0x36, 0x2c, 0xfd, 0x3c, 0x12, 0xd8, 0x89,
+];
+const RASTER_LAYER_DRAWING_DESCRIPTION_CLASS_ID: [u8; 16] = [
+    0x04, 0x6a, 0x6f, 0x42, 0x8c, 0x90, 0x49, 0x47, 0x9a, 0xd8, 0xaf, 0xf1, 0x72, 0x21, 0xc5, 0x81,
+];
 const GP_RASTER_DATA_CLASS_ID: [u8; 16] = [
     0xbd, 0x0f, 0xd4, 0xa4, 0xd8, 0xcf, 0x8d, 0x4d, 0x94, 0xd1, 0x37, 0x26, 0xc6, 0xff, 0x79, 0x2f,
 ];
@@ -927,6 +933,11 @@ pub const GP_EXTENT_CLASS_ID: [u8; 16] = [
 pub enum GpCodedValue10_1 {
     RasterBuilder(RuleSlot10_1<RasterFunctionArgumentsBody10_1>),
     RasterFormulated(Box<GpRasterFormulated10_1>),
+    RasterDataLayer {
+        name: Box<BookmarkNameEntry10_1>,
+        text: String,
+        drawing: RuleSlot10_1<RasterLayerDrawingDescription10_1>,
+    },
     RasterData {
         name: Box<BookmarkNameEntry10_1>,
         text: String,
@@ -1925,6 +1936,13 @@ pub enum GpSaRemapRow10_1 {
         raw_long: i32,
         text_bytes: Vec<u8>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RasterLayerDrawingDescription10_1 {
+    pub version: i16,
+    pub renderer: crate::layers::raster_renderer::RasterRendererSlot10_1,
+    pub raw_shorts: Option<[u16; 3]>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3146,6 +3164,7 @@ fn read_gp_coded_value_entry(
                     | GP_FIELD_MAPPING_CLASS_ID
                     | GP_RASTER_FORMULATED_CLASS_ID
                     | GP_RASTER_BUILDER_CLASS_ID
+                    | GP_RASTER_DATA_LAYER_CLASS_ID
                     | GP_RASTER_DATA_CLASS_ID
                     | GP_POINT_CLASS_ID
                     | GP_REPLICA_CLASS_ID
@@ -3478,6 +3497,7 @@ fn read_gp_coded_value_entry(
                 class_id @ (GP_STRING_CLASS_ID
                 | GP_FIELD_MAPPING_CLASS_ID
                 | GP_RASTER_BUILDER_CLASS_ID
+                | GP_RASTER_DATA_LAYER_CLASS_ID
                 | GP_RASTER_DATA_CLASS_ID
                 | GP_POINT_CLASS_ID
                 | GP_CELL_SIZE_XY_CLASS_ID
@@ -3654,6 +3674,26 @@ fn read_gp_coded_value_entry(
                 GP_RASTER_BUILDER_CLASS_ID => GpCodedValue10_1::RasterBuilder(
                     read_raster_type_slot_10_1(reader, max_bytes, table, depth)?,
                 ),
+                GP_RASTER_DATA_LAYER_CLASS_ID => {
+                    if depth >= MAX_BOOKMARK_NAME_NESTING {
+                        return Err(io::Error::new(
+                            ErrorKind::InvalidData,
+                            "GPRasterDataLayer 名称嵌套过深",
+                        ));
+                    }
+                    GpCodedValue10_1::RasterDataLayer {
+                        name: Box::new(read_bookmark_name_slot_10_1(
+                            reader,
+                            max_bytes,
+                            table,
+                            depth + 1,
+                        )?),
+                        text: read_string_10_1(reader, max_bytes)?,
+                        drawing: read_raster_layer_drawing_description_slot(
+                            reader, max_bytes, table,
+                        )?,
+                    }
+                }
                 GP_RASTER_DATA_CLASS_ID => {
                     if depth >= MAX_BOOKMARK_NAME_NESTING {
                         return Err(io::Error::new(
@@ -4096,6 +4136,69 @@ fn read_gp_replica_geometry_slot(
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
                 "不支持的复制描述几何回引",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_raster_layer_drawing_description_slot(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<RuleSlot10_1<RasterLayerDrawingDescription10_1>> {
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if refs.registered_class(key).unwrap_or(class_id)
+                == RASTER_LAYER_DRAWING_DESCRIPTION_CLASS_ID =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: RASTER_LAYER_DRAWING_DESCRIPTION_CLASS_ID,
+            ..
+        } => {
+            let version = reader.read_u16_le()? as i16;
+            if version > 2 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "RasterLayerDrawingDescription 版本超限",
+                ));
+            }
+            let renderer = crate::layers::raster_renderer::read_raster_renderer_slot_prefix_10_1(
+                reader, max_bytes, refs,
+            )?;
+            if renderer
+                .body
+                .as_ref()
+                .is_some_and(|body| !body.is_complete())
+            {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    "绘制描述中的栅格渲染器尚未读完",
+                ));
+            }
+            let raw_shorts = if version == 2 {
+                Some([
+                    reader.read_u16_le()?,
+                    reader.read_u16_le()?,
+                    reader.read_u16_le()?,
+                ])
+            } else {
+                None
+            };
+            Some(Box::new(RasterLayerDrawingDescription10_1 {
+                version,
+                renderer,
+                raw_shorts,
+            }))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "不支持的 ILayerDrawingDescription 类",
             ));
         }
     };
@@ -9018,6 +9121,48 @@ pub fn read_legend_prefix_10_1(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gp_raster_data_layer_reads_versioned_drawing_tail() {
+        for version in [-1_i16, 0, 1, 2] {
+            let mut bytes = GP_RASTER_DATA_LAYER_CLASS_ID.to_vec();
+            bytes.extend(10_u32.to_le_bytes());
+            bytes.extend([1, 0, 1, 0, 7, 0]);
+            bytes.extend([0; 16]);
+            bytes.extend([2, 0, 0, 0, 0, 0]);
+            bytes.extend(RASTER_LAYER_DRAWING_DESCRIPTION_CLASS_ID);
+            bytes.extend(11_u32.to_le_bytes());
+            bytes.extend(version.to_le_bytes());
+            bytes.extend([0; 16]);
+            if version == 2 {
+                bytes.extend([1, 0, 2, 0, 3, 0]);
+            }
+            for cut in 0..bytes.len() {
+                assert!(
+                    read_gp_coded_value_slot(
+                        &mut Reader::new(&bytes[..cut]),
+                        1024,
+                        &mut RefTable10_1::new(),
+                        0,
+                    )
+                    .is_err()
+                );
+            }
+            let end = bytes.len();
+            bytes.push(0x5a);
+            let mut reader = Reader::new(&bytes);
+            let slot =
+                read_gp_coded_value_slot(&mut reader, 1024, &mut RefTable10_1::new(), 0).unwrap();
+            let GpCodedValue10_1::RasterDataLayer { drawing, .. } = slot.body.unwrap().value else {
+                panic!("应读取 GPRasterDataLayer");
+            };
+            let drawing = drawing.body.unwrap();
+            assert_eq!(drawing.version, version);
+            assert_eq!(drawing.renderer.entry, ObjectEntry10_1::Null);
+            assert_eq!(drawing.raw_shorts, (version == 2).then_some([1, 2, 3]));
+            assert_eq!(reader.position(), end);
+        }
+    }
 
     #[test]
     fn raster_builder_reuses_mosaic_raster_type_body() {

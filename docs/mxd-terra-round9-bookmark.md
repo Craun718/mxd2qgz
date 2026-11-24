@@ -2153,8 +2153,15 @@ Save 在 `0x746fb8a6` 按文档版本选择实际描述对象
 FeatureLayerDrawingDescription（`AA66C2BA-55BF-4EAA-80AF-648B80228103`）。
 在 CartoXProvider.dll 10.1.0.3035（SHA-256
 `1c4a6d3681e7527ca21e1b9afeb3b5a83922ad12f6c8a0e5c19dec33dd6f3cf5`）
-找到前者 RTTI。描述对象体、其他接口实现的宿主分布
-和真实 MXD 仍待核对，未进行 ArcMap 人工验证。
+找到前者 RTTI。IPersistStream 表 `0x6cee4b9c` 的
+Load `0x6ce5a1e0` 检查有符号版本上限 2，在 `0x6ce5a24c`
+以 IID `6F5322D1-3790-11D2-8D26-0000F8780535`
+请求 IRasterRenderer，v2 再读取三个 short
+（`0x6ce5a26f`、`0x6ce5a281`、`0x6ce5a293`）。
+Save `0x6ce5a2b0` 同序写出。Rust 复用栅格渲染器读体，
+要求其完整消费后才读取三个 short。构造测试覆盖 v0–v2
+描述对象、空渲染器槽、后继位置和截断。
+其他描述实现、真实 MXD 和 ArcMap 人工验证仍待补充。
 
 #### GPRasterBuilder
 
