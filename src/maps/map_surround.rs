@@ -1124,7 +1124,15 @@ pub struct DeTerrainLegacy10_1 {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct DeTerrainV5To8_10_1 {
+pub struct DeTerrainV9Tail10_1 {
+    pub v11: Option<u16>,
+    pub v13: Option<u32>,
+    pub longs: [u32; 2],
+    pub envelopes: [[u64; 6]; 2],
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeTerrainGeoDataset10_1 {
     pub version: u32,
     pub geo_dataset_version: u16,
     pub dataset: DeDataset10_1,
@@ -1137,6 +1145,7 @@ pub struct DeTerrainV5To8_10_1 {
     pub value_bits: u64,
     pub longs: [u32; 2],
     pub name: String,
+    pub v9_tail: Option<DeTerrainV9Tail10_1>,
     pub source_count: i32,
     pub sources: Vec<DeTerrainSource10_1>,
     pub level_count: i32,
@@ -1146,7 +1155,7 @@ pub struct DeTerrainV5To8_10_1 {
 #[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
     TerrainLegacy(Box<DeTerrainLegacy10_1>),
-    TerrainV5To8(Box<DeTerrainV5To8_10_1>),
+    TerrainGeoDataset(Box<DeTerrainGeoDataset10_1>),
     TableInfo(DeCompactTable10_1),
     LasDataset {
         version: u16,
@@ -3832,13 +3841,13 @@ fn read_de_terrain_levels(
     Ok((level_count, levels))
 }
 
-fn read_de_terrain_v5_to_8(
+fn read_de_terrain_geo_dataset(
     reader: &mut Reader<'_>,
     version: u32,
     max_bytes: usize,
     refs: &mut RefTable10_1,
     depth: usize,
-) -> io::Result<DeTerrainV5To8_10_1> {
+) -> io::Result<DeTerrainGeoDataset10_1> {
     let geo_dataset_version = read_de_layer_version(reader, 1, "DEGeoDataset")?;
     let dataset = read_gp_de_dataset(reader, max_bytes, refs, depth)?;
     let extent = read_surround_envelope_slot(reader, max_bytes, refs, "DETerrain 范围")?;
@@ -3848,13 +3857,32 @@ fn read_de_terrain_v5_to_8(
     let v7_bits = (version >= 7)
         .then(|| reader.read_f64_le().map(f64::to_bits))
         .transpose()?;
-    let v8 = (version == 8).then(|| reader.read_u32_le()).transpose()?;
+    let v8 = (version >= 8).then(|| reader.read_u32_le()).transpose()?;
     let value_bits = reader.read_f64_le()?.to_bits();
     let longs = [reader.read_u32_le()?, reader.read_u32_le()?];
     let name = read_string_10_1(reader, max_bytes)?;
+    let v9_tail = if version >= 9 {
+        let v11 = (version >= 11).then(|| reader.read_u16_le()).transpose()?;
+        let v13 = (version == 13).then(|| reader.read_u32_le()).transpose()?;
+        let longs = [reader.read_u32_le()?, reader.read_u32_le()?];
+        let mut envelopes = [[0; 6]; 2];
+        for envelope in &mut envelopes {
+            for value in envelope {
+                *value = reader.read_f64_le()?.to_bits();
+            }
+        }
+        Some(DeTerrainV9Tail10_1 {
+            v11,
+            v13,
+            longs,
+            envelopes,
+        })
+    } else {
+        None
+    };
     let (source_count, sources) = read_de_terrain_sources(reader, max_bytes)?;
     let (level_count, levels) = read_de_terrain_levels(reader, max_bytes, level_type)?;
-    Ok(DeTerrainV5To8_10_1 {
+    Ok(DeTerrainGeoDataset10_1 {
         version,
         geo_dataset_version,
         dataset,
@@ -3867,6 +3895,7 @@ fn read_de_terrain_v5_to_8(
         value_bits,
         longs,
         name,
+        v9_tail,
         source_count,
         sources,
         level_count,
@@ -4116,13 +4145,9 @@ fn read_gp_data_element_child(
                     1..=4 => DeChild10_1::TerrainLegacy(Box::new(read_de_terrain_legacy(
                         reader, version, max_bytes, refs,
                     )?)),
-                    5..=8 => DeChild10_1::TerrainV5To8(Box::new(read_de_terrain_v5_to_8(
-                        reader,
-                        version,
-                        max_bytes,
-                        refs,
-                        depth + 1,
-                    )?)),
+                    5..=13 => DeChild10_1::TerrainGeoDataset(Box::new(
+                        read_de_terrain_geo_dataset(reader, version, max_bytes, refs, depth + 1)?,
+                    )),
                     _ => {
                         return Err(io::Error::new(
                             ErrorKind::Unsupported,
@@ -7730,9 +7755,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn terrain_v5_to_8_reads_versioned_fields_and_lists() {
+    fn terrain_v5_to_13_reads_versioned_fields_and_lists() {
         let empty = [2, 0, 0, 0, 0, 0];
-        for version in 5_u32..=8 {
+        for version in 5_u32..=13 {
             let mut bytes = DE_TERRAIN_CLASS_ID.to_vec();
             bytes.extend(43_u32.to_le_bytes());
             bytes.extend(version.to_le_bytes());
@@ -7746,11 +7771,24 @@ mod tests {
             if version >= 7 {
                 bytes.extend(7_f64.to_le_bytes());
             }
-            if version == 8 {
+            if version >= 8 {
                 bytes.extend(8_u32.to_le_bytes());
             }
             bytes.extend([0; 16]);
             bytes.extend(empty);
+            if version >= 9 {
+                if version >= 11 {
+                    bytes.extend(11_u16.to_le_bytes());
+                }
+                if version == 13 {
+                    bytes.extend(13_u32.to_le_bytes());
+                }
+                bytes.extend(21_u32.to_le_bytes());
+                bytes.extend(22_u32.to_le_bytes());
+                for value in 1..=12 {
+                    bytes.extend(f64::from(value).to_le_bytes());
+                }
+            }
             bytes.extend(1_u32.to_le_bytes());
             bytes.extend([0; 46]);
             bytes.extend(empty.repeat(3));
@@ -7774,12 +7812,20 @@ mod tests {
             let mut reader = Reader::new(&bytes);
             let slot =
                 read_gp_data_element_child(&mut reader, 1024, &mut RefTable10_1::new(), 0).unwrap();
-            let Some(DeChild10_1::TerrainV5To8(body)) = slot.body.as_deref() else {
-                panic!("应读取 DETerrain v5–8");
+            let Some(DeChild10_1::TerrainGeoDataset(body)) = slot.body.as_deref() else {
+                panic!("应读取 DETerrain v5–13");
             };
             assert_eq!(body.v6, (version >= 6).then_some(6));
             assert_eq!(body.v7_bits, (version >= 7).then_some(7_f64.to_bits()));
-            assert_eq!(body.v8, (version == 8).then_some(8));
+            assert_eq!(body.v8, (version >= 8).then_some(8));
+            assert_eq!(body.v9_tail.is_some(), version >= 9);
+            if let Some(tail) = &body.v9_tail {
+                assert_eq!(tail.v11, (version >= 11).then_some(11));
+                assert_eq!(tail.v13, (version == 13).then_some(13));
+                assert_eq!(tail.longs, [21, 22]);
+                assert_eq!(tail.envelopes[0][0], 1_f64.to_bits());
+                assert_eq!(tail.envelopes[1][5], 12_f64.to_bits());
+            }
             assert_eq!((body.sources.len(), body.levels.len()), (1, 1));
             assert_eq!(reader.position(), end);
         }
