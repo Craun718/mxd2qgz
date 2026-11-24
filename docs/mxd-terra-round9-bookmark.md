@@ -3009,20 +3009,19 @@ StreetNameFields 的 +0x18 表 `0x7119b844` 给出 Load
 long。版本 2 起在 `0x710a4d47` 追加一个 String，
 版本 3 在 `0x710a4d61`、`0x710a4d6b` 再追加两个。
 
-DirectionsFieldMapping 的构造路径在 `0x70fcaecc`、
-`0x70fcafd0` 将持久化表 `0x711911ec` 装入对象的 +0x14。
-表的 Load 槽 +0x14 即 `0x71191200`，目标为 `0x70fcb4a0`。
-该入口调整接收者后直接进入 `0x70fcb170`，接受 short
-版本 1，并依次读取两个 AfCore String。GetClassID
-`0x70fcb540` 从 `0x7119143c` 复制的 CLSID 与类型库一致。
-QI `0x70fcb787` 比对 IDirectionsFieldMapping IID，
-匹配时返回 +0x18 接口。
+DirectionsFieldMapping 的主 GetClassID `0x70fcb540` 从
+`0x7119143c` 复制的 CLSID 与类型库一致。QI `0x70fcb787`
+比对 IDirectionsFieldMapping IID，匹配时返回 +0x18。
+构造路径 `0x70fcb62c` 按虚基表将持久化表 `0x71191404`
+装入 +0x3c。Load 槽 +0x14 经 `0x70fcbdb0` 跳至
+`0x70fcb960`，仅接受 short 版本 1，随后读取四个 AfCore
+String。+0x10 表 `0x71191380` 的 `0x711642d0` 为比较路径，
+调用 SaveObject 将两个对象分别序列化到内存流并比较长度。
 
-+0x10 表 `0x71191380` 的 `0x711642d0` 是比较路径。
-它接收另一个对象，在 `0x71164332`、`0x71164370` 调用
-SaveObject，将两个对象分别序列化到内存流，再在
-`0x711643fd`、`0x7116440e` 比较流长度。
-因此该路径不参与 MXD 中这个短体的读取。
+DirectionsAttributeMapping 使用不同的虚基表。此前归给
+DirectionsFieldMapping 的两串路径来自它的构造过程，
+`0x70fcaecc` 安装 +0x34 表 `0x711911ec`，Load 槽经
+`0x70fcb4a0` 转到 `0x70fcb170`，只接受版本 1 并读两个 String。
 三种子对象仍待实际 MXD 宿主验证。
 
 Rust 对象体读取器已覆盖 NetworkSourceDirections 及上表三类。
@@ -3031,3 +3030,21 @@ Rust 对象体读取器已覆盖 NetworkSourceDirections 及上表三类。
 方向对象槽。INetworkSource 读取器识别 GdbNetwork.dll 的
 五个类型库类，构造测试覆盖各派生边界及逐字节截断。
 DENetworkDataset 集合接线及真实 MXD 仍待验证。
+
+DENetworkDataset 的 INetworkDirections 槽对应 NetworkDirections
+（CLSID `F921BD59-A8AD-4425-B5A0-75BCE88D22FE`）。
++0x1c 表 `0x711983cc` 的 GetClassID `0x7107bd20`
+复制 `0x71198470`，Load `0x7107bd60` 接受 short 版本
+1–3。共同体为三个 AfCore String 和一个 long。版本 2 起追加
+两个 String。版本 3 在 `0x7107be47` 读取有符号计数，正数时
+在 `0x7107be82` 加载 IDirectionsAttributeMapping。类型库的
+唯一已知实现为 DirectionsAttributeMapping，CLSID
+`D8366160-0E1F-4109-A765-FAC6D37C2EF2`。
+
+TrafficData 的 +0x20 表 `0x7119bf50` 给出 GetClassID
+`0x710a7900`、Load `0x710a7940`。CLSID
+`E7A1CD66-C6EF-440B-91CA-D6B8DB9C01F9` 与类型库一致。
+入口接受版本 1–3，后段在 `0x710a7d41` 按标志加载
+ITrafficFeedLocation。该接口的两个类型库实现是
+TrafficFeedDirectory 和 TrafficFeedGPService。TrafficData 的
+中间字段和子类体仍待核对。

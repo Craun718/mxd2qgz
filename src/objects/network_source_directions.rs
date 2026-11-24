@@ -34,7 +34,7 @@ pub struct NetworkSourceDirections10_1 {
     pub shields_flag: u32,
     pub shields: Option<DirectionSlot10_1<Shields10_1>>,
     pub street_names: (i32, Vec<DirectionSlot10_1<StreetNameFields10_1>>),
-    pub field_mappings: Option<(i32, Vec<DirectionSlot10_1<[String; 2]>>)>,
+    pub field_mappings: Option<(i32, Vec<DirectionSlot10_1<[String; 4]>>)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -189,6 +189,8 @@ pub fn read_network_source_directions_body_10_1(
                     Ok([
                         read_string_10_1(r, max_bytes)?,
                         read_string_10_1(r, max_bytes)?,
+                        read_string_10_1(r, max_bytes)?,
+                        read_string_10_1(r, max_bytes)?,
                     ])
                 })
             })
@@ -335,6 +337,72 @@ pub fn read_network_source_slot_10_1(
     })
 }
 
+pub const NETWORK_DIRECTIONS_CLASS_ID: [u8; 16] = [
+    0x59, 0xbd, 0x21, 0xf9, 0xad, 0xa8, 0x25, 0x44, 0xb5, 0xa0, 0x75, 0xbc, 0xe8, 0x8d, 0x22, 0xfe,
+];
+pub const DIRECTIONS_ATTRIBUTE_MAPPING_CLASS_ID: [u8; 16] = [
+    0x60, 0x61, 0x36, 0xd8, 0x1f, 0x0e, 0x09, 0x41, 0xa7, 0x65, 0xfa, 0xc6, 0xd3, 0x7c, 0x2e, 0xf2,
+];
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NetworkDirections10_1 {
+    pub version: u16,
+    pub names: [String; 3],
+    pub value: u32,
+    pub extra_names: Option<[String; 2]>,
+    pub mappings: Option<(i32, Vec<DirectionSlot10_1<[String; 2]>>)>,
+}
+
+/// 读取 INetworkDirections 槽。宿主负责在失败时回退游标及引用表。
+pub fn read_network_directions_slot_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<DirectionSlot10_1<NetworkDirections10_1>> {
+    read_slot(reader, refs, NETWORK_DIRECTIONS_CLASS_ID, |reader, refs| {
+        let version = reader.read_u16_le()?;
+        if !(1..=3).contains(&version) {
+            return Err(version_error("NetworkDirections"));
+        }
+        let names = [
+            read_string_10_1(reader, max_bytes)?,
+            read_string_10_1(reader, max_bytes)?,
+            read_string_10_1(reader, max_bytes)?,
+        ];
+        let value = reader.read_u32_le()?;
+        let extra_names = (version >= 2)
+            .then(|| {
+                Ok::<_, io::Error>([
+                    read_string_10_1(reader, max_bytes)?,
+                    read_string_10_1(reader, max_bytes)?,
+                ])
+            })
+            .transpose()?;
+        let mappings = (version == 3)
+            .then(|| {
+                read_list(reader, 16, max_bytes, |r| {
+                    read_slot(r, refs, DIRECTIONS_ATTRIBUTE_MAPPING_CLASS_ID, |r, _| {
+                        if r.read_u16_le()? != 1 {
+                            return Err(version_error("DirectionsAttributeMapping"));
+                        }
+                        Ok([
+                            read_string_10_1(r, max_bytes)?,
+                            read_string_10_1(r, max_bytes)?,
+                        ])
+                    })
+                })
+            })
+            .transpose()?;
+        Ok(NetworkDirections10_1 {
+            version,
+            names,
+            value,
+            extra_names,
+            mappings,
+        })
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -354,6 +422,54 @@ mod tests {
             &mut RefTable10_1::new(),
         )?;
         Ok((body, reader.position()))
+    }
+
+    #[test]
+    fn network_directions_reads_each_version_to_its_end() {
+        for version in 1_u16..=3 {
+            let mut bytes = Vec::new();
+            object(&mut bytes, NETWORK_DIRECTIONS_CLASS_ID, 1);
+            bytes.extend(version.to_le_bytes());
+            bytes.extend(EMPTY.repeat(3));
+            bytes.extend(12_u32.to_le_bytes());
+            if version >= 2 {
+                bytes.extend(EMPTY.repeat(2));
+            }
+            if version == 3 {
+                bytes.extend(1_u32.to_le_bytes());
+                object(&mut bytes, DIRECTIONS_ATTRIBUTE_MAPPING_CLASS_ID, 2);
+                bytes.extend(1_u16.to_le_bytes());
+                bytes.extend(EMPTY.repeat(2));
+            }
+            let end = bytes.len();
+            bytes.push(0xaa);
+            let mut reader = Reader::new(&bytes);
+            let body = read_network_directions_slot_10_1(
+                &mut reader,
+                bytes.len(),
+                &mut RefTable10_1::new(),
+            )
+            .unwrap()
+            .body
+            .unwrap();
+            assert_eq!(reader.position(), end);
+            assert_eq!(body.extra_names.is_some(), version >= 2);
+            assert_eq!(
+                body.mappings.as_ref().map(|(_, rows)| rows.len()),
+                (version == 3).then_some(1)
+            );
+            for end in 0..end {
+                assert!(
+                    read_network_directions_slot_10_1(
+                        &mut Reader::new(&bytes[..end]),
+                        bytes.len(),
+                        &mut RefTable10_1::new(),
+                    )
+                    .is_err(),
+                    "截断位置 {end}"
+                );
+            }
+        }
     }
 
     #[test]
@@ -439,7 +555,7 @@ mod tests {
         bytes.extend(1_u32.to_le_bytes());
         object(&mut bytes, DIRECTIONS_FIELD_MAPPING_CLASS_ID, 3);
         bytes.extend(1_u16.to_le_bytes());
-        bytes.extend(EMPTY.repeat(2));
+        bytes.extend(EMPTY.repeat(4));
 
         let end = bytes.len();
         bytes.push(0xaa);
