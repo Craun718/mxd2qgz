@@ -256,10 +256,6 @@ pub(super) fn read_marker_3d_symbol(
     }
     let first_double = reader.read_f64_le()?;
     let geometry_entry = read_object_entry_10_1(reader, table)?;
-    // v9 的非空几何可能触发原生对后继流的探测。
-    if signed == 9 && geometry_entry != ObjectEntry10_1::Null {
-        return Ok(None);
-    }
     let geometry = match geometry_entry {
         ObjectEntry10_1::NewObject { class_id, .. } => {
             match read_geometry_body_10_1(&class_id, reader, max_bytes, table) {
@@ -270,6 +266,21 @@ pub(super) fn read_marker_3d_symbol(
         }
         _ => None,
     };
+    if signed == 9 && geometry_entry != ObjectEntry10_1::Null {
+        use crate::objects::multi_patch::MultiPatchRecord10_1;
+        // 兼容探测要求 IPointCollection 的点数恰为 10。
+        let skips_probe = match &geometry {
+            Some(GeometryBody10_1::MultiPatch(body)) => match &body.record {
+                Some(MultiPatchRecord10_1::Empty) => true,
+                Some(MultiPatchRecord10_1::Mesh(mesh)) => mesh.xy.len() != 10,
+                None => false,
+            },
+            _ => false,
+        };
+        if !skips_probe {
+            return Ok(None);
+        }
+    }
     let first_integer = read_i32_le(reader)?;
     let vector = [
         reader.read_f64_le()?,

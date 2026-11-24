@@ -3713,6 +3713,32 @@ fn marker_3d_symbol_reads_versioned_tail_after_empty_geometry() {
             assert!(refs.is_empty());
         }
         if version == 9 {
+            use mxd2qgz::objects::geometry::{GeometryBody10_1, MULTIPATCH_CLASS_ID};
+            let mut geometry = Vec::new();
+            push_entry(&mut geometry, &MULTIPATCH_CLASS_ID, 52);
+            geometry.extend(2_u16.to_le_bytes());
+            geometry.extend(4_u32.to_le_bytes());
+            geometry.extend(0_u32.to_le_bytes());
+            push_null(&mut geometry);
+            let mut with_geometry = bytes.clone();
+            with_geometry.splice(
+                geometry_start..geometry_start + 16,
+                geometry.iter().copied(),
+            );
+            let mut reader = Reader::new(&with_geometry);
+            let mut refs = RefTable10_1::new();
+            let SymbolSlotFull10_1::Marker3dSymbol(body) =
+                read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 8).unwrap()
+            else {
+                panic!("预期读完空 MultiPatch 对象");
+            };
+            assert!(matches!(
+                body.geometry,
+                Some(GeometryBody10_1::MultiPatch(_))
+            ));
+            assert!(refs.contains(52));
+            assert_eq!(reader.read_bytes(1).unwrap(), &[0xa4]);
+
             bytes.truncate(geometry_start);
             push_entry(&mut bytes, &[0x45; 16], 52);
             let mut reader = Reader::new(&bytes);

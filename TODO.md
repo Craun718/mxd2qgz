@@ -650,6 +650,7 @@
       - [x] 接入 SimpleMarker3DSymbol 对象体及其版本门。[原生取证](docs/arcmap-10.1-dep-tail.md#simplemarker3dsymbol-的对象体)
       - [x] 接入 CharacterMarker3DSymbol 对象体及其版本门。[原生取证](docs/arcmap-10.1-dep-tail.md#charactermarker3dsymbol-的对象体)
       - [x] 接入 Marker3DSymbol 的常规对象体和各版本尾段。[原生取证](docs/arcmap-10.1-dep-tail.md#marker3dsymbol-的对象体)
+      - [x] 对位 Marker3DSymbol v9 的点数和点 ID 探测条件，并接入可确定边界的 MultiPatch。[原生取证](docs/arcmap-10.1-dep-tail.md#marker3dsymbol-v9-兼容探测的进入条件)
       - [ ] 核对 Marker3DSymbol v9 非空几何触发的后继流兼容探测。
       - [ ] FeatureLayer 后继段 ㉖ 槽中未支持的 ISymbol 实现类体（已接入类和跨模块候选见[符号续研](docs/arcmap-10.1-dep-tail.md#featurelayer-符号槽的栅格和-wms-实现)）。
       - [x] 接入 SymbolMimic 的空 IRepresentationRule 槽及两项标量。[原生持久化入口](docs/arcmap-10.1-dep-tail.md#symbolmimic-的持久化入口)
