@@ -182,7 +182,7 @@ Save `0x79444ca0`。两级版本（自身 + BaseNorthArrow 基类段）：
 | 5 | double → −0x1c | 基类版本 ≥2 | <2 内存清零不读流 |
 | 6 | LoadObject(**IPoint** `{1B077915-38C5-11D0-92D2-00805F7C28B0}`，类型库 esriGeometry） | 基类版本 ≥3 | <3 内存释放不读流；位置点候选 |
 | 7 | int32 → −0x34 | 基类版本 ≥4 | <4 内存清零 |
-| 8 | int32（读入即丢）+ LoadObject(**IMarkerSymbol** `{E6BDAA7C-…}`) | 自身版本 <2 | 10.1 不可达（自身恒写 2）；符号经虚表 setter 装入 −0x1c |
+| 8 | int32（读入即丢）+ LoadObject(**IMarkerSymbol** `{E6BDAA7C-…}`) | 自身版本 <2 | 10.1 写侧不生成（自身恒写 2）；符号经虚表 setter 装入 −0x1c |
 | 9 | LoadObject(**IMarkerElement** `{530FD711-EF0C-11D0-83A0-080009B996CC}`，类型库 esriCarto）→ 槽 −0x1c | 自身版本 ≥2 | Save `SaveObject(−0x1c)` 恒写；标记元素候选 |
 
 ### 指北针的属性
@@ -517,3 +517,10 @@ MarkerNorthArrow 的旧标记分支在 `0x79444be5` 将 LONG 读入
 随后从双流入口读至布局流末尾，同键 MapSurroundFrame 插槽解析为
 回引，因而该处 +20 两字节属于后续字段。早期写侧用途仍待取证，
 ArcMap 10.1 人工验证未进行。
+
+
+旧槽读取器按 `0x79444c0e` 请求的 IMarkerSymbol 约束分派。
+对新对象先检查类，对回引优先检查键登记的类。构造测试验证
+SimpleLineSymbol 新对象和头标识为 SimpleMarkerSymbol、登记类为
+SimpleLineSymbol 的回引都会在该槽起点停止。旧 LONG 的历史写侧
+用途及真实旧档仍待确认。

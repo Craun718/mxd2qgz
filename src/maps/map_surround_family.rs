@@ -71,8 +71,8 @@ use crate::maps::map_surround::{
     MapSurroundCommonPrefix10_1, read_map_surround_common_prefix_10_1,
 };
 use crate::objects::display_symbol::{
-    DisplaySlotKind10_1, MAX_SYMBOL_NESTING_DEPTH, SymbolSlotFull10_1, SymbolStop10_1,
-    read_symbol_slot_full_10_1, slot_full_stop_10_1,
+    DisplaySlotKind10_1, MARKER_SYMBOL_CLASSES, MAX_SYMBOL_NESTING_DEPTH, SymbolSlotFull10_1,
+    SymbolStop10_1, read_symbol_slot_full_10_1, slot_full_stop_10_1,
 };
 use crate::objects::element_body::{
     MARKER_ELEMENT_CLASS_ID, MarkerElementBody10_1, TEXT_ELEMENT_CLASS_ID, TEXT_SYMBOL_CLASS_ID,
@@ -774,13 +774,12 @@ pub struct ScaleTextBody10_1 {
 /// 从对象头之后的位置读取 MarkerNorthArrow（标记指北针）对象体。
 ///
 /// 字段序（Load `0x79444b80` / Save `0x79444ca0`）：① int16 自身版本
-/// （原生无拒绝门；Save 恒写 2（`DAT_79480d44`），本读取器仅接受 0..=2
-/// 较原生更严）→ ② BaseNorthArrow 基类段（Load `0x793a3b90`）：int16
+/// （有符号分支，无单独拒绝门；Save 恒写 2（`DAT_79480d44`））→ ② BaseNorthArrow 基类段（Load `0x793a3b90`）：int16
 /// 基类版本（有符号 >4 拒绝；Save 版本表 `DAT_79480ea0`=[3,3,3,3,3,4] →
 /// 10.1 恒写 4）→ 共同前缀 → double（`−0x2c`）→ double（`−0x24`）→
 /// [基类版本 ≥2] double（`−0x1c`；<2 内存清零不读流）→ [≥3] IPoint 槽
 /// （`−0x14`，请求 IID `{1B077915-…}`；<3 内存释放不读流）→ [≥4] int32
-/// （`−0x34`；<4 内存清零）→ ③ 自身版本 <2（10.1 不可达）：int32 读入
+/// （`−0x34`；<4 内存清零）→ ③ 自身版本 <2（10.1 写侧不生成）：int32 读入
 /// 即丢 + IMarkerSymbol 槽（请求 IID `{E6BDAA7C-…}`，经虚表 setter 装入
 /// `−0x1c`）→ ④ 自身版本 ≥2：IMarkerElement 槽（`−0x1c`，请求 IID
 /// `{530FD711-…}`）。
@@ -837,9 +836,23 @@ pub fn read_marker_north_arrow_body_10_1(
     if stop.is_none() {
         if version < 2 {
             legacy_marker_long = Some(trial.read_u32_le()? as i32);
-            legacy_marker =
-                read_symbol_slot_full_10_1(&mut trial, max_bytes, table, MAX_SYMBOL_NESTING_DEPTH)?;
-            stop = slot_full_stop_10_1(&legacy_marker, DisplaySlotKind10_1::Symbol)
+            use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
+
+            legacy_marker = match read_header_10_1(&mut trial.clone())? {
+                ObjectHeader::Object { class_id, key }
+                    if !MARKER_SYMBOL_CLASSES
+                        .contains(&table.registered_class(key).unwrap_or(class_id)) =>
+                {
+                    SymbolSlotFull10_1::Unsupported { class_id, key }
+                }
+                _ => read_symbol_slot_full_10_1(
+                    &mut trial,
+                    max_bytes,
+                    table,
+                    MAX_SYMBOL_NESTING_DEPTH,
+                )?,
+            };
+            stop = slot_full_stop_10_1(&legacy_marker, DisplaySlotKind10_1::MarkerSymbol)
                 .map(FamilyStop10_1::LegacyMarkerSymbol);
         } else {
             let (slot, reason) = read_typed_slot_10_1(
@@ -2459,7 +2472,7 @@ mod tests {
                 }
             } else {
                 SymbolStop10_1::Slot {
-                    kind: DisplaySlotKind10_1::Symbol,
+                    kind: DisplaySlotKind10_1::MarkerSymbol,
                     class_id: [0x77; 16],
                     key: 51,
                 }
@@ -2471,6 +2484,47 @@ mod tests {
             assert_eq!(reader.position(), stop_offset);
             assert_eq!(table.contains(50), nested);
             assert!(!table.contains(51));
+        }
+    }
+
+    #[test]
+    fn marker_north_arrow_rejects_non_marker_symbol_classes() {
+        use crate::objects::display_symbol::{
+            SIMPLE_LINE_SYMBOL_CLASS_ID, SIMPLE_MARKER_SYMBOL_CLASS_ID,
+        };
+        use crate::storage::object_refs::read_object_entry_10_1;
+
+        for is_back_reference in [false, true] {
+            let mut data = mna_v2_bytes();
+            data[20..22].copy_from_slice(&1_u16.to_le_bytes());
+            data.truncate(data.len() - 16);
+            data.extend(0_i32.to_le_bytes());
+            let stop_offset = data.len();
+            let mut refs = RefTable10_1::new();
+            refs.register(30);
+            let class_id = if is_back_reference {
+                let mut header = SIMPLE_LINE_SYMBOL_CLASS_ID.to_vec();
+                header.extend(50_u32.to_le_bytes());
+                read_object_entry_10_1(&mut Reader::new(&header), &mut refs).unwrap();
+                SIMPLE_MARKER_SYMBOL_CLASS_ID
+            } else {
+                SIMPLE_LINE_SYMBOL_CLASS_ID
+            };
+            data.extend(class_id);
+            data.extend(50_u32.to_le_bytes());
+            let mut reader = Reader::new(&data);
+            reader.read_bytes(20).unwrap();
+            let body = read_marker_north_arrow_body_10_1(&mut reader, 4096, &mut refs, 9).unwrap();
+            assert_eq!(
+                body.stop,
+                Some(FamilyStop10_1::LegacyMarkerSymbol(SymbolStop10_1::Slot {
+                    kind: DisplaySlotKind10_1::MarkerSymbol,
+                    class_id,
+                    key: 50,
+                }))
+            );
+            assert_eq!(reader.position(), stop_offset);
+            assert_eq!(refs.contains(50), is_back_reference);
         }
     }
 
