@@ -4081,6 +4081,11 @@ Save 同序写出当前布局，末表由版本 4 门控制。
 Rust 复用地理数据集、Variant 和已确认的对象槽读取器，
 保留流中的原始 short，即使原生加载器会在 v2 及以下规范化
 该成员。构造测试覆盖负版本、v0–v4、终点和截断。
+同版 Geodatabase 和 DataSourcesFile 互操作程序集将 DETable、
+DEFeatureClass、DERelationshipClass、DERasterCatalog、DERasterBand、
+DEShapeFile、DEDbaseTable、DETextFile、DECoverageFeatureClass、
+DEArcInfoTable 和 DEVPFTable 声明为 IDETable 实现。v4 末表槽按这些
+CLSID 分派到现有 IDataElement 读取器，构造测试覆盖非空 DERasterBand。
 非空子槽的真实组合及 ArcMap/QGIS 人工验收仍待核对。
 
 #### 跨模块 IDataElement 候选与 DETerrain 加载入口

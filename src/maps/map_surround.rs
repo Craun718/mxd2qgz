@@ -1604,7 +1604,7 @@ pub struct DeMosaicDataset10_1 {
     pub raw_long: Option<i32>,
     pub catalog: Option<RuleSlot10_1<DeChild10_1>>,
     pub names: StringArraySlot10_1,
-    pub table: Option<RuleSlot10_1<DeTable10_1>>,
+    pub table: Option<RuleSlot10_1<DeChild10_1>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -7653,28 +7653,41 @@ fn read_de_mosaic_dataset(
         .then(|| reader.read_u32_le().map(|value| value as i32))
         .transpose()?;
     let catalog = if version >= 2 {
-        let mut header = reader.clone();
-        let entry = read_object_entry_10_1(&mut header, &mut refs.clone())?;
-        let supported = match entry {
-            ObjectEntry10_1::Null => true,
-            ObjectEntry10_1::NewObject { class_id, .. } => class_id == DE_RASTER_CATALOG_CLASS_ID,
-            ObjectEntry10_1::BackReference { class_id, key } => {
-                refs.registered_class(key).unwrap_or(class_id) == DE_RASTER_CATALOG_CLASS_ID
-            }
-        };
-        if !supported {
-            return Err(io::Error::new(
-                ErrorKind::Unsupported,
-                "DEMosaicDataset 的 IDERasterCatalog 类尚未支持",
-            ));
-        }
-        Some(read_gp_data_element_child(reader, max_bytes, refs, depth)?)
+        Some(read_mosaic_data_element_slot(
+            reader,
+            max_bytes,
+            refs,
+            depth,
+            "IDERasterCatalog",
+            &[DE_RASTER_CATALOG_CLASS_ID],
+        )?)
     } else {
         None
     };
     let names = read_string_array_slot_10_1(reader, max_bytes, refs)?;
     let table = (version >= 4)
-        .then(|| read_gp_de_table_slot(reader, max_bytes, refs, depth))
+        .then(|| {
+            read_mosaic_data_element_slot(
+                reader,
+                max_bytes,
+                refs,
+                depth,
+                "IDETable",
+                &[
+                    DE_TABLE_CLASS_ID,
+                    DE_FEATURE_CLASS_CLASS_ID,
+                    DE_RELATIONSHIP_CLASS_CLASS_ID,
+                    DE_RASTER_CATALOG_CLASS_ID,
+                    DE_RASTER_BAND_CLASS_ID,
+                    DE_SHAPE_FILE_CLASS_ID,
+                    DE_DBASE_TABLE_CLASS_ID,
+                    DE_TEXT_FILE_CLASS_ID,
+                    DE_COVERAGE_FEATURE_CLASS_ID,
+                    DE_ARC_INFO_TABLE_CLASS_ID,
+                    DE_VPF_TABLE_CLASS_ID,
+                ],
+            )
+        })
         .transpose()?;
     Ok(DeMosaicDataset10_1 {
         version,
@@ -7689,6 +7702,31 @@ fn read_de_mosaic_dataset(
         names,
         table,
     })
+}
+
+fn read_mosaic_data_element_slot(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+    interface: &str,
+    classes: &[[u8; 16]],
+) -> io::Result<RuleSlot10_1<DeChild10_1>> {
+    let entry = read_object_entry_10_1(&mut reader.clone(), &mut refs.clone())?;
+    let class = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::NewObject { class_id, .. } => Some(class_id),
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            Some(refs.registered_class(key).unwrap_or(class_id))
+        }
+    };
+    if class.is_some_and(|class_id| !classes.contains(&class_id)) {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            format!("DEMosaicDataset 的 {interface} 类尚未支持"),
+        ));
+    }
+    read_gp_data_element_child(reader, max_bytes, refs, depth)
 }
 
 fn read_gp_de_dataset(
@@ -11072,7 +11110,19 @@ mod tests {
             }
             bytes.extend([0; 16]);
             if version >= 4 {
-                bytes.extend([0; 16]);
+                bytes.extend(DE_RASTER_BAND_CLASS_ID);
+                bytes.extend(63_u32.to_le_bytes());
+                bytes.extend(2_u16.to_le_bytes());
+                bytes.extend([0; 10]);
+                bytes.extend([2, 0, 0, 0, 0, 0].repeat(3));
+                bytes.extend([0; 22]);
+                bytes.extend(7_u16.to_le_bytes());
+                bytes.extend([2, 0, 0, 0, 0, 0]);
+                bytes.extend([0; 32]);
+                bytes.extend([0; 26]);
+                bytes.extend(3_u16.to_le_bytes());
+                bytes.extend(42_i32.to_le_bytes());
+                bytes.extend([0; 40]);
             }
             let read = |reader: &mut Reader<'_>| {
                 read_gp_data_element_child(reader, 1024, &mut RefTable10_1::new(), 0)
@@ -11092,6 +11142,16 @@ mod tests {
             assert_eq!(body.raw_long, (version >= 3).then_some(-9));
             assert_eq!(body.catalog.is_some(), version >= 2);
             assert_eq!(body.table.is_some(), version >= 4);
+            if let Some(table) = body.table {
+                assert_eq!(
+                    table.entry,
+                    ObjectEntry10_1::NewObject {
+                        class_id: DE_RASTER_BAND_CLASS_ID,
+                        key: 63,
+                    }
+                );
+                assert!(table.body.is_some());
+            }
             assert_eq!(reader.position(), end);
         }
     }
