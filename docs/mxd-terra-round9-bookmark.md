@@ -2191,7 +2191,9 @@ ILabelClassDescriptions。CartoXProvider 的集合主 QI
 `0x6ce93e60` 从 `0x6ceeebf4` 复制类标识
 `F0552A97-F4C8-4765-AB22-2FA4BFAD4B3E`。
 
-LabelClassDescription 自身的 IPersistStream 表
+LabelClassDescription 的 GetClassID `0x6ce27930` 从
+`0x6cedb8d8` 复制 CLSID `602631A1-C111-4AA1-8063-7699C003792C`。
+该类的 IPersistStream 表
 `0x6cedb83c` 对应 Load `0x6ce27d80` 和 Save
 `0x6ce27f10`。Load 检查有符号版本上限 3，然后依次读：
 
@@ -2230,6 +2232,14 @@ Load 先读有符号 short，比较点 `0x6ce2dda9`、
 `0x6ce571c2` 写该 LONG。两个 Load 收尾清零的内存字节
 没有独立流字段。LONG 的业务位定义及真实宿主仍待核对，
 未进行 ArcMap 人工验证。
+
+Rust 在 GPRasterDataLayer 的 ILayerDrawingDescription 槽分派
+矢量绘制描述，在同一引用表中读取标注描述、标注类集合、
+标注类及放置描述，保留尚未定性的标量。构造测试检查绘制
+描述 v0–v5、三种放置类、集合成员回引、截断和后继位置。
+测试使用 SimpleRenderer 和空文本符号槽。非空类复用项目现有
+读取器，无法完整消费的类返回错误。真实 MXD 宿主和
+ArcMap 人工验证仍待补充。
 
 #### GPRasterBuilder
 

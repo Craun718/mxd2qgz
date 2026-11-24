@@ -375,6 +375,66 @@ pub enum RendererSlot10_1 {
     },
 }
 
+pub(crate) fn read_drawing_feature_renderer(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<crate::layers::feature_layer::RendererSlot10_1> {
+    use crate::layers::{
+        class_breaks_renderer::{CLASS_BREAKS_RENDERER_CLASS_ID, read_class_breaks_renderer_10_1},
+        feature_layer::RendererSlot10_1,
+        feature_layer_tail::{SIMPLE_RENDERER_CLASS_ID, read_simple_renderer_body_10_1},
+        na_stop_renderer::{NA_STOP_RENDERER_CLASS_ID, read_na_stop_renderer},
+        unique_value_renderer::{UNIQUE_VALUE_RENDERER_CLASS_ID, read_unique_value_renderer_10_1},
+    };
+    match read_object_entry_10_1(reader, refs)? {
+        ObjectEntry10_1::Null => return Ok(RendererSlot10_1::Null),
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            return Ok(RendererSlot10_1::BackReference { class_id, key });
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: SIMPLE_RENDERER_CLASS_ID,
+            key,
+        } => {
+            let body = read_simple_renderer_body_10_1(reader, max_bytes, refs, key)?;
+            if body.stop.is_none() {
+                return Ok(RendererSlot10_1::SimpleRenderer(Box::new(body)));
+            }
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: CLASS_BREAKS_RENDERER_CLASS_ID,
+            key,
+        } => {
+            let body = read_class_breaks_renderer_10_1(reader, max_bytes, refs, key)?;
+            if body.stop.is_none() {
+                return Ok(RendererSlot10_1::ClassBreaksRenderer(Box::new(body)));
+            }
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: UNIQUE_VALUE_RENDERER_CLASS_ID,
+            key,
+        } => {
+            let body = read_unique_value_renderer_10_1(reader, max_bytes, refs, key)?;
+            if body.stop.is_none() {
+                return Ok(RendererSlot10_1::UniqueValueRenderer(Box::new(body)));
+            }
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: NA_STOP_RENDERER_CLASS_ID,
+            ..
+        } => {
+            return Ok(RendererSlot10_1::NaStopRenderer(Box::new(
+                read_na_stop_renderer(reader, max_bytes, refs)?,
+            )));
+        }
+        _ => {}
+    }
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "绘制描述中的矢量渲染器尚未读完",
+    ))
+}
+
 /// FeatureLayer 体读取的停止原因（本读取器为「已确认前缀」语义：始终在最
 /// 深可闭合点停止并返回成功）。接线轮起后继段停止透传携带标注环/体类型，
 /// 不再 `Copy`/`Eq`（仅 `Clone`/`PartialEq`）。

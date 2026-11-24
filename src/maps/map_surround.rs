@@ -479,6 +479,27 @@ const GP_RASTER_FORMULATED_CLASS_ID: [u8; 16] = [
 const GP_RASTER_DATA_LAYER_CLASS_ID: [u8; 16] = [
     0x83, 0x7e, 0x91, 0xff, 0xf9, 0x04, 0x28, 0x43, 0xa3, 0x36, 0x2c, 0xfd, 0x3c, 0x12, 0xd8, 0x89,
 ];
+const FEATURE_LAYER_DRAWING_CLASS_ID: [u8; 16] = [
+    0xba, 0xc2, 0x66, 0xaa, 0xbf, 0x55, 0xaa, 0x4e, 0x80, 0xaf, 0x64, 0x8b, 0x80, 0x22, 0x81, 0x03,
+];
+const LABELING_CLASS_ID: [u8; 16] = [
+    0xd0, 0x43, 0x51, 0x9d, 0x37, 0x97, 0xeb, 0x40, 0x9c, 0x9b, 0xac, 0x13, 0x48, 0x31, 0xc6, 0xe0,
+];
+const LABEL_CLASSES_CLASS_ID: [u8; 16] = [
+    0x97, 0x2a, 0x55, 0xf0, 0xc8, 0xf4, 0x65, 0x47, 0xab, 0x22, 0x2f, 0xa4, 0xbf, 0xad, 0x4b, 0x3e,
+];
+const LABEL_CLASS_CLASS_ID: [u8; 16] = [
+    0xa1, 0x31, 0x26, 0x60, 0x11, 0xc1, 0xa1, 0x4a, 0x80, 0x63, 0x76, 0x99, 0xc0, 0x03, 0x79, 0x2c,
+];
+const POINT_PLACEMENT_CLASS_ID: [u8; 16] = [
+    0x37, 0x8b, 0x45, 0x6a, 0x5d, 0x05, 0xda, 0x48, 0xb3, 0xa5, 0x85, 0x6d, 0x9d, 0xc9, 0x52, 0x5f,
+];
+const LINE_PLACEMENT_CLASS_ID: [u8; 16] = [
+    0x00, 0x92, 0x72, 0x17, 0x9f, 0xd1, 0x7f, 0x43, 0x86, 0x07, 0x4a, 0x79, 0x95, 0xbc, 0x09, 0x28,
+];
+const POLYGON_PLACEMENT_CLASS_ID: [u8; 16] = [
+    0xb2, 0x9b, 0x5d, 0x42, 0x95, 0xbd, 0xb9, 0x4d, 0xb9, 0xf2, 0x2c, 0x7b, 0x4d, 0x44, 0xec, 0x58,
+];
 const RASTER_LAYER_DRAWING_DESCRIPTION_CLASS_ID: [u8; 16] = [
     0x04, 0x6a, 0x6f, 0x42, 0x8c, 0x90, 0x49, 0x47, 0x9a, 0xd8, 0xaf, 0xf1, 0x72, 0x21, 0xc5, 0x81,
 ];
@@ -936,7 +957,7 @@ pub enum GpCodedValue10_1 {
     RasterDataLayer {
         name: Box<BookmarkNameEntry10_1>,
         text: String,
-        drawing: RuleSlot10_1<RasterLayerDrawingDescription10_1>,
+        drawing: RuleSlot10_1<LayerDrawingDescription10_1>,
     },
     RasterData {
         name: Box<BookmarkNameEntry10_1>,
@@ -1936,6 +1957,52 @@ pub enum GpSaRemapRow10_1 {
         raw_long: i32,
         text_bytes: Vec<u8>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum LayerDrawingDescription10_1 {
+    Raster(RasterLayerDrawingDescription10_1),
+    Feature(FeatureLayerDrawingDescription10_1),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FeatureLayerDrawingDescription10_1 {
+    pub version: i16,
+    pub renderer: crate::layers::feature_layer::RendererSlot10_1,
+    pub raw_short: Option<u16>,
+    pub raw_shorts: Option<[u16; 3]>,
+    pub labeling: Option<RuleSlot10_1<LabelingDescription10_1>>,
+    pub raw_long: Option<i32>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LabelingDescription10_1 {
+    pub version: i16,
+    pub classes: RuleSlot10_1<LabelClassDescriptions10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LabelClassDescriptions10_1 {
+    pub version: i16,
+    pub raw_count: i32,
+    pub classes: Vec<RuleSlot10_1<LabelClassDescription10_1>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LabelClassDescription10_1 {
+    pub version: i16,
+    pub placement: RuleSlot10_1<LabelPlacementDescription10_1>,
+    pub text: String,
+    pub symbol: crate::objects::display_symbol::SymbolSlotFull10_1,
+    pub raw_doubles: [f64; 2],
+    pub raw_short: Option<u16>,
+    pub tail: Option<(i32, String)>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LabelPlacementDescription10_1 {
+    pub version: i16,
+    pub raw_long: i32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3689,9 +3756,7 @@ fn read_gp_coded_value_entry(
                             depth + 1,
                         )?),
                         text: read_string_10_1(reader, max_bytes)?,
-                        drawing: read_raster_layer_drawing_description_slot(
-                            reader, max_bytes, table,
-                        )?,
+                        drawing: read_layer_drawing_description_slot(reader, max_bytes, table)?,
                     }
                 }
                 GP_RASTER_DATA_CLASS_ID => {
@@ -4142,17 +4207,19 @@ fn read_gp_replica_geometry_slot(
     Ok(RuleSlot10_1 { entry, body })
 }
 
-fn read_raster_layer_drawing_description_slot(
+fn read_layer_drawing_description_slot(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     refs: &mut RefTable10_1,
-) -> io::Result<RuleSlot10_1<RasterLayerDrawingDescription10_1>> {
+) -> io::Result<RuleSlot10_1<LayerDrawingDescription10_1>> {
     let entry = read_object_entry_10_1(reader, refs)?;
     let body = match entry {
         ObjectEntry10_1::Null => None,
         ObjectEntry10_1::BackReference { class_id, key }
-            if refs.registered_class(key).unwrap_or(class_id)
-                == RASTER_LAYER_DRAWING_DESCRIPTION_CLASS_ID =>
+            if matches!(
+                refs.registered_class(key).unwrap_or(class_id),
+                RASTER_LAYER_DRAWING_DESCRIPTION_CLASS_ID | FEATURE_LAYER_DRAWING_CLASS_ID
+            ) =>
         {
             None
         }
@@ -4189,12 +4256,20 @@ fn read_raster_layer_drawing_description_slot(
             } else {
                 None
             };
-            Some(Box::new(RasterLayerDrawingDescription10_1 {
-                version,
-                renderer,
-                raw_shorts,
-            }))
+            Some(Box::new(LayerDrawingDescription10_1::Raster(
+                RasterLayerDrawingDescription10_1 {
+                    version,
+                    renderer,
+                    raw_shorts,
+                },
+            )))
         }
+        ObjectEntry10_1::NewObject {
+            class_id: FEATURE_LAYER_DRAWING_CLASS_ID,
+            ..
+        } => Some(Box::new(LayerDrawingDescription10_1::Feature(
+            read_feature_layer_drawing_description(reader, max_bytes, refs)?,
+        ))),
         _ => {
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
@@ -4203,6 +4278,184 @@ fn read_raster_layer_drawing_description_slot(
         }
     };
     Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_feature_layer_drawing_description(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<FeatureLayerDrawingDescription10_1> {
+    let version = read_drawing_version(reader, 5)?;
+    let renderer =
+        crate::layers::feature_layer::read_drawing_feature_renderer(reader, max_bytes, refs)?;
+    let raw_short = (version >= 2).then(|| reader.read_u16_le()).transpose()?;
+    let raw_shorts = if version >= 3 {
+        Some([
+            reader.read_u16_le()?,
+            reader.read_u16_le()?,
+            reader.read_u16_le()?,
+        ])
+    } else {
+        None
+    };
+    let labeling = if version >= 4 {
+        Some(read_label_drawing_slot(
+            reader,
+            refs,
+            &[LABELING_CLASS_ID],
+            |reader, refs| {
+                let version = read_drawing_version(reader, 1)?;
+                let classes = read_label_drawing_slot(
+                    reader,
+                    refs,
+                    &[LABEL_CLASSES_CLASS_ID],
+                    |reader, refs| read_label_class_descriptions(reader, max_bytes, refs),
+                )?;
+                Ok(LabelingDescription10_1 { version, classes })
+            },
+        )?)
+    } else {
+        None
+    };
+    let raw_long = (version >= 5)
+        .then(|| reader.read_u32_le().map(|value| value as i32))
+        .transpose()?;
+    Ok(FeatureLayerDrawingDescription10_1 {
+        version,
+        renderer,
+        raw_short,
+        raw_shorts,
+        labeling,
+        raw_long,
+    })
+}
+
+fn read_label_drawing_slot<T>(
+    reader: &mut Reader<'_>,
+    refs: &mut RefTable10_1,
+    classes: &[[u8; 16]],
+    read_body: impl FnOnce(&mut Reader<'_>, &mut RefTable10_1) -> io::Result<T>,
+) -> io::Result<RuleSlot10_1<T>> {
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if classes.contains(&refs.registered_class(key).unwrap_or(class_id)) =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject { class_id, .. } if classes.contains(&class_id) => {
+            Some(Box::new(read_body(reader, refs)?))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "不支持的标注描述对象类",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_drawing_version(reader: &mut Reader<'_>, max_version: i16) -> io::Result<i16> {
+    let version = reader.read_u16_le()? as i16;
+    if version > max_version {
+        return Err(io::Error::new(ErrorKind::InvalidData, "绘制描述版本超限"));
+    }
+    Ok(version)
+}
+
+fn read_label_class_descriptions(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<LabelClassDescriptions10_1> {
+    let version = read_drawing_version(reader, 1)?;
+    let raw_count = reader.read_u32_le()? as i32;
+    // 每个成员至少包含 16 字节对象头。
+    let count = raw_count.max(0) as usize;
+    if count > reader.remaining() / 16 {
+        return Err(io::Error::new(
+            ErrorKind::UnexpectedEof,
+            "标注类描述集合截断",
+        ));
+    }
+    let mut classes = Vec::new();
+    for _ in 0..count {
+        classes.push(read_label_drawing_slot(
+            reader,
+            refs,
+            &[LABEL_CLASS_CLASS_ID],
+            |reader, refs| read_label_class_description(reader, max_bytes, refs),
+        )?);
+    }
+    Ok(LabelClassDescriptions10_1 {
+        version,
+        raw_count,
+        classes,
+    })
+}
+
+fn read_label_class_description(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<LabelClassDescription10_1> {
+    use crate::objects::display_symbol::{
+        DisplaySlotKind10_1, MAX_SYMBOL_NESTING_DEPTH, SymbolSlotFull10_1,
+        read_symbol_slot_full_10_1, slot_full_stop_10_1,
+    };
+    use crate::objects::element_body::TEXT_SYMBOL_CLASS_ID;
+    let version = read_drawing_version(reader, 3)?;
+    let placement = read_label_drawing_slot(
+        reader,
+        refs,
+        &[
+            POINT_PLACEMENT_CLASS_ID,
+            LINE_PLACEMENT_CLASS_ID,
+            POLYGON_PLACEMENT_CLASS_ID,
+        ],
+        |reader, _| {
+            Ok(LabelPlacementDescription10_1 {
+                version: read_drawing_version(reader, 1)?,
+                raw_long: reader.read_u32_le()? as i32,
+            })
+        },
+    )?;
+    let text = read_string_10_1(reader, max_bytes)?;
+    let symbol = read_symbol_slot_full_10_1(reader, max_bytes, refs, MAX_SYMBOL_NESTING_DEPTH)?;
+    let is_text_symbol = match &symbol {
+        SymbolSlotFull10_1::Null | SymbolSlotFull10_1::TextSymbol { .. } => true,
+        SymbolSlotFull10_1::BackReference { class_id, key } => {
+            refs.registered_class(*key).unwrap_or(*class_id) == TEXT_SYMBOL_CLASS_ID
+        }
+        _ => false,
+    };
+    if !is_text_symbol || slot_full_stop_10_1(&symbol, DisplaySlotKind10_1::Symbol).is_some() {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            "标注描述中的文本符号尚未读完",
+        ));
+    }
+    let raw_doubles = [reader.read_f64_le()?, reader.read_f64_le()?];
+    let raw_short = (version >= 2).then(|| reader.read_u16_le()).transpose()?;
+    let tail = if version >= 3 {
+        Some((
+            reader.read_u32_le()? as i32,
+            read_string_10_1(reader, max_bytes)?,
+        ))
+    } else {
+        None
+    };
+    Ok(LabelClassDescription10_1 {
+        version,
+        placement,
+        text,
+        symbol,
+        raw_doubles,
+        raw_short,
+        tail,
+    })
 }
 
 fn read_gp_field_map_slot(
@@ -9123,6 +9376,120 @@ mod tests {
     use super::*;
 
     #[test]
+    fn gp_raster_data_layer_reads_feature_drawing_with_label_classes() {
+        for (version, placement_class) in [
+            (0_i16, POINT_PLACEMENT_CLASS_ID),
+            (1, POINT_PLACEMENT_CLASS_ID),
+            (2, POINT_PLACEMENT_CLASS_ID),
+            (3, POINT_PLACEMENT_CLASS_ID),
+            (4, POINT_PLACEMENT_CLASS_ID),
+            (4, LINE_PLACEMENT_CLASS_ID),
+            (5, POLYGON_PLACEMENT_CLASS_ID),
+        ] {
+            let mut bytes = GP_RASTER_DATA_LAYER_CLASS_ID.to_vec();
+            bytes.extend(10_u32.to_le_bytes());
+            bytes.extend([1, 0, 1, 0, 7, 0]);
+            bytes.extend([0; 16]);
+            let empty_string = [2, 0, 0, 0, 0, 0];
+            bytes.extend(empty_string);
+            bytes.extend(FEATURE_LAYER_DRAWING_CLASS_ID);
+            bytes.extend(11_u32.to_le_bytes());
+            let version_offset = bytes.len();
+            bytes.extend(version.to_le_bytes());
+            bytes.extend(crate::layers::feature_layer_tail::SIMPLE_RENDERER_CLASS_ID);
+            bytes.extend(16_u32.to_le_bytes());
+            bytes.extend(1_i16.to_le_bytes());
+            bytes.extend([0; 48]);
+            bytes.extend(0_u16.to_le_bytes());
+            bytes.extend(empty_string);
+            bytes.extend(0_i32.to_le_bytes());
+            bytes.extend(empty_string);
+            if version >= 2 {
+                bytes.extend(7_u16.to_le_bytes());
+            }
+            if version >= 3 {
+                bytes.extend([1, 0, 2, 0, 3, 0]);
+            }
+            if version >= 4 {
+                for (class, key) in [(LABELING_CLASS_ID, 12_u32), (LABEL_CLASSES_CLASS_ID, 13)] {
+                    bytes.extend(class);
+                    bytes.extend(key.to_le_bytes());
+                    bytes.extend(1_i16.to_le_bytes());
+                }
+                bytes.extend(2_i32.to_le_bytes());
+                bytes.extend(LABEL_CLASS_CLASS_ID);
+                bytes.extend(14_u32.to_le_bytes());
+                bytes.extend(3_i16.to_le_bytes());
+                bytes.extend(placement_class);
+                bytes.extend(15_u32.to_le_bytes());
+                bytes.extend(1_i16.to_le_bytes());
+                bytes.extend((-7_i32).to_le_bytes());
+                bytes.extend(empty_string);
+                bytes.extend([0; 16]);
+                bytes.extend(2.5_f64.to_le_bytes());
+                bytes.extend(5.0_f64.to_le_bytes());
+                bytes.extend(9_u16.to_le_bytes());
+                bytes.extend(30_i32.to_le_bytes());
+                bytes.extend(empty_string);
+                bytes.extend(LABEL_CLASS_CLASS_ID);
+                bytes.extend(14_u32.to_le_bytes());
+            }
+            if version >= 5 {
+                bytes.extend(123_i32.to_le_bytes());
+            }
+            let parse = |reader: &mut Reader<'_>| {
+                read_gp_coded_value_slot(reader, 1024, &mut RefTable10_1::new(), 0)
+            };
+            for cut in 0..bytes.len() {
+                assert!(
+                    parse(&mut Reader::new(&bytes[..cut])).is_err(),
+                    "截断于 {cut}"
+                );
+            }
+            let mut invalid = bytes.clone();
+            invalid[version_offset..version_offset + 2].copy_from_slice(&6_i16.to_le_bytes());
+            assert_eq!(
+                parse(&mut Reader::new(&invalid)).unwrap_err().kind(),
+                ErrorKind::InvalidData
+            );
+            let end = bytes.len();
+            bytes.push(0x5a);
+            let mut reader = Reader::new(&bytes);
+            let GpCodedValue10_1::RasterDataLayer { drawing, .. } =
+                parse(&mut reader).unwrap().body.unwrap().value
+            else {
+                panic!("应读取 GPRasterDataLayer");
+            };
+            let LayerDrawingDescription10_1::Feature(drawing) = *drawing.body.unwrap() else {
+                panic!("应读取矢量绘制描述");
+            };
+            assert_eq!(reader.position(), end);
+            assert!(matches!(
+                drawing.renderer,
+                crate::layers::feature_layer::RendererSlot10_1::SimpleRenderer(_)
+            ));
+            assert_eq!(drawing.version, version);
+            assert_eq!(drawing.raw_short, (version >= 2).then_some(7));
+            assert_eq!(drawing.raw_shorts, (version >= 3).then_some([1, 2, 3]));
+            assert_eq!(drawing.raw_long, (version >= 5).then_some(123));
+            if let Some(labeling) = drawing.labeling {
+                let classes = labeling.body.unwrap().classes.body.unwrap().classes;
+                let class = classes[0].body.as_ref().unwrap();
+                assert_eq!(class.placement.body.as_ref().unwrap().raw_long, -7);
+                assert_eq!(class.raw_doubles, [2.5, 5.0]);
+                assert_eq!(class.raw_short, Some(9));
+                assert_eq!(class.tail, Some((30, String::new())));
+                assert!(matches!(
+                    classes[1].entry,
+                    ObjectEntry10_1::BackReference { key: 14, .. }
+                ));
+            } else {
+                assert!(version < 4);
+            }
+        }
+    }
+
+    #[test]
     fn gp_raster_data_layer_reads_versioned_drawing_tail() {
         for version in [-1_i16, 0, 1, 2] {
             let mut bytes = GP_RASTER_DATA_LAYER_CLASS_ID.to_vec();
@@ -9156,7 +9523,9 @@ mod tests {
             let GpCodedValue10_1::RasterDataLayer { drawing, .. } = slot.body.unwrap().value else {
                 panic!("应读取 GPRasterDataLayer");
             };
-            let drawing = drawing.body.unwrap();
+            let LayerDrawingDescription10_1::Raster(drawing) = *drawing.body.unwrap() else {
+                panic!("应读取栅格绘制描述");
+            };
             assert_eq!(drawing.version, version);
             assert_eq!(drawing.renderer.entry, ObjectEntry10_1::Null);
             assert_eq!(drawing.raw_shorts, (version == 2).then_some([1, 2, 3]));
