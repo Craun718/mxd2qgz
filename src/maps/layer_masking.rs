@@ -4,6 +4,7 @@
 
 use crate::layers::layer_list::{LayerBodyPrefix10_1, read_complete_layer_body_10_1};
 use crate::layers::na_layer::NA_LAYER_CLASS_ID;
+use crate::layers::raster_basemap_layer::RASTER_BASEMAP_LAYER_CLASS_ID;
 use crate::layers::raster_catalog_layer::GDB_RASTER_CATALOG_LAYER_CLASS_ID;
 use crate::layers::terrain_layer::TERRAIN_LAYER_CLASS_ID;
 use crate::layers::tin_layer::TIN_LAYER_CLASS_ID;
@@ -85,10 +86,6 @@ const DUMMY_GRADUATED_MARKER_LAYER_CLASS_ID: [u8; 16] = [
 
 const GRAPHICS_SUB_LAYER_CLASS_ID: [u8; 16] = [
     0x7d, 0xd3, 0xa9, 0xd3, 0x3c, 0xec, 0xc7, 0x40, 0x87, 0xb6, 0x70, 0x57, 0xae, 0xb6, 0x05, 0xf2,
-];
-
-const RASTER_BASEMAP_LAYER_CLASS_ID: [u8; 16] = [
-    0x61, 0x02, 0x52, 0x57, 0x08, 0x26, 0x0b, 0x43, 0x90, 0x4e, 0x7b, 0x0d, 0x48, 0xc5, 0x78, 0xd5,
 ];
 
 // 这些类尚无图层体读取器，但已确认不消费遮罩记录。

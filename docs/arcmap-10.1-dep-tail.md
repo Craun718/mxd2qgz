@@ -1376,3 +1376,14 @@ Save 在 `0x6b68b218` 使用单项版本表 `[5]`。写端的 GUID、
 ExtraSafe 对象调用与 v5 读序相符。接入前还需确认两个非空间参考
 接口的实现类、首个 ExtraSafe 槽对栅格子类的分派，以及尾槽边界。
 当前仅完成静态取证，尚无真实宿主或 ArcMap/QGIS 人工验收。
+
+同一 10.1 Desktop 介质的 esriCarto 类型库将三个槽的 IID 分别
+定名为 IArrayOfIShader、IRasterLayer、IMosaicLayer。
+IArrayOfIShader 的公开实现是 ArrayOfIShader，复用普通底图已核实
+的版本和计数。IRasterLayer 的已知实现 RasterLayer、WCSLayer 和
+ImageServerLayer 可在首个 ExtraSafe 槽的声明范围内试读，仅在
+完整消费时提交。IMosaicLayer 的 MosaicLayer 新体按声明长度保留，
+内部不做分派。两个 ExtraSafe 槽均检查边界，普通着色器数组仅接入
+已确认的空数组体。构造 Scene 宿主覆盖 v0–5、RasterLayer 回引、
+非空有界镶嵌原始体、后继边界和截断回滚。非空着色器、镶嵌体内部
+对象、真实工程和 ArcMap/QGIS 人工验收仍待验证。
