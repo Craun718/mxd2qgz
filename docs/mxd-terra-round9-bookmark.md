@@ -2168,3 +2168,25 @@ GdbNetwork.dll 10.1.0.3035 的持久化表 `0x7119dcd0`、
 解析器将正计数限制为 64。交汇点规则读十个 long 和一个 short。
 构造书签覆盖两类规则及后续权重列表、版本尾段和截断回滚。
 实际 MXD 宿主仍待验证。
+
+#### DERelationshipClass
+
+FeatureDataElements.dll 10.1.0.3035 的 RTTI 对应持久化表
+`0x6f65da14`，构造函数在 `0x6f617bdd` 写入该表。类型库的
+DERelationshipClass CLSID 为 `{D41F5487-6B16-42FD-AB61-63A55B519B71}`。
+Load `0x6f619e90` 接受无符号版本 0 至 6。v0–4 在 `0x6f619ee6`
+调用 DEDataset::Load，v5–6 则在 `0x6f619ef8` 调用 DETableBase::Load。
+
+v2 起，依次读取两个 IStringArray 槽、两个 long、两个 String、
+两个 long、三个 short，以及两组关系键列表。第二个 short 存到
+持久化接口 `+0x13a`，参与下方的旧版字段门。两组列表都调用
+`0x6f61ba10`，该函数读有符号计数，逐项请求
+`{7C2C531E-4882-40F5-BACE-323EF546D33C}`（IGPRelationshipClassKey）。
+v3 起，再读一个有符号计数和 IRelationshipRule 槽列表，IID 为
+`{EB3B2F82-7E5C-11D2-AAB5-00C04FA37B82}`。
+
+随后，v0–3 在接口 `+0x13a` 的 short 非零时加载 IFields，
+v4 无条件加载 IFields，v5–6 的 Fields 由 DETableBase 读取。
+v6 在 `0x6f61a14c` 最后追加一个 short。v0–1 的 Fields 条件
+取决于构造默认值，需为目标类核对后再实现。关系键与规则的具体
+持久化类体、解析接入和实际 MXD 宿主仍待验证。
