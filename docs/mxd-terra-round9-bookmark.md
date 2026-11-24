@@ -3412,6 +3412,27 @@ Rust 在编码值和 IGPLayer 槽复用 GPTinLayer 的对象体读取逻辑，
 按 CLSID 保留类别。构造测试覆盖两个入口、v0/v1、超限版本、
 逐字节截断及对象终点。真实 MXD 宿主及 ArcMap/QGIS 人工验收仍待验证。
 
+#### GPTopologyLayer 与 GPNetworkDatasetLayer
+
+ArcMap 10.1 Desktop 互操作元数据确认下列 CLSID 均公开
+IGPLayer、IGPValue 和 IPersistStream。用同摘要的
+GpObjects.dll 10.1.0.3035 的 PE RTTI、持久化表和 objdump
+核对两个类的读写路径。
+
+| 类 | CLSID | 持久化表 | Save |
+| --- | --- | --- | --- |
+| GPTopologyLayer | `C17D7148-66E8-498D-855B-6C5D352EF69A` | `0x747b7568` | `0x74714970` |
+| GPNetworkDatasetLayer | `C9C873DC-BA4E-47DB-AE78-75ADB28FA99E` | `0x747b277c` | `0x746f1dc0` |
+
+两类与 GPTinLayer 共用 Load `0x747138c0`，先读上限 1 的
+无符号 short，再调用 GPLayerBase::Load。两个 Save 分别在
+`0x7471498f / 0x746f1ddf` 写 short，随后在
+`0x747149b0 / 0x746f1e00` 调 GPLayerBase::Save，无其他流字段。
+
+Rust 在编码值和 IGPLayer 槽支持两个类，并按 CLSID 保留类别。
+构造测试覆盖双槽、v0/v1、超限版本、截断和对象终点。
+真实 MXD 宿主及 ArcMap/QGIS 人工验收仍待验证。
+
 #### 目录数据元素
 
 FileDataElements.dll 10.1.0.3035 的 PE RTTI 持久化表及
