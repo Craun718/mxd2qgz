@@ -117,6 +117,12 @@ Load 在 `0x7954eb61` 调用查询辅助函数后，直接在
 普通 TableName 的对象体、登记键和后续格网字符串。是否能显示叠加格网
 仍取决于 ArcMap 中实际打开的对象，尚未进行人工验收。
 
+同一 IName 槽也复用 FeatureDatasetName、CoverageName、
+GeometricNetworkName、MemoryRelationshipClassName、CadDrawingName
+和 SchematicDatasetName 的持久化体。构造 MapFrame 验证
+CadDrawingName 的对象键、后继格网字符串和流尾。这里验证的是
+IName 对象边界，实际数据集能否供格网显示仍待原生运行核对。
+
 ### 叠加格网的关系查询名称
 
 在 MapElements.dll 10.1.0.3035 的 CustomOverlayGrid Load

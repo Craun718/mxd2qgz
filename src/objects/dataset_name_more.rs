@@ -1376,32 +1376,55 @@ pub(crate) fn read_tabular_name_slot_10_1(
     table: &mut RefTable10_1,
     stop_out: &mut Option<DatasetNameMoreStop10_1>,
 ) -> io::Result<DatasetNameMoreSlot10_1> {
+    read_name_slot_with_depth_10_1(reader, max_bytes, table, stop_out, 0, is_tabular_name)
+}
+
+fn is_tabular_name(class_id: [u8; 16]) -> bool {
+    matches!(
+        class_id,
+        FEATURE_CLASS_NAME_CLASS_ID
+            | FGDB_FEATURE_CLASS_NAME_CLASS_ID
+            | COVERAGE_FEATURE_CLASS_NAME_CLASS_ID
+            | TABLE_NAME_CLASS_ID
+            | OBJECT_CLASS_NAME_CLASS_ID
+            | FGDB_TABLE_NAME_CLASS_ID
+            | RASTER_BAND_NAME_CLASS_ID
+            | RASTER_CATALOG_NAME_CLASS_ID
+            | RELATIONSHIP_CLASS_NAME_CLASS_ID
+            | SCHEMATIC_DIAGRAM_CLASS_NAME_CLASS_ID
+            | SCHEMATIC_ELEMENT_CLASS_NAME_CLASS_ID
+            | NETCDF_TABLE_NAME_CLASS_ID
+            | REFERENCED_TABLE_NAME_CLASS_ID
+            | NETCDF_FEATURE_CLASS_NAME_CLASS_ID
+            | XY_EVENT_SOURCE_NAME_CLASS_ID
+            | ROUTE_EVENT_SOURCE_NAME_CLASS_ID
+            | AMS_DATASET_NAME_CLASS_ID
+            | QUERY_TABLE_NAME_CLASS_ID
+            | TABLE_QUERY_NAME_CLASS_ID
+            | FEATURE_QUERY_NAME_CLASS_ID
+            | REL_QUERY_TABLE_NAME_CLASS_ID
+            | DB_TABLE_NAME_CLASS_ID
+    )
+}
+
+/// 读取叠加格网中已核对持久化体的 IName。
+pub(crate) fn read_overlay_name_slot_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    stop_out: &mut Option<DatasetNameMoreStop10_1>,
+) -> io::Result<DatasetNameMoreSlot10_1> {
     read_name_slot_with_depth_10_1(reader, max_bytes, table, stop_out, 0, |class_id| {
-        matches!(
-            class_id,
-            FEATURE_CLASS_NAME_CLASS_ID
-                | FGDB_FEATURE_CLASS_NAME_CLASS_ID
-                | COVERAGE_FEATURE_CLASS_NAME_CLASS_ID
-                | TABLE_NAME_CLASS_ID
-                | OBJECT_CLASS_NAME_CLASS_ID
-                | FGDB_TABLE_NAME_CLASS_ID
-                | RASTER_BAND_NAME_CLASS_ID
-                | RASTER_CATALOG_NAME_CLASS_ID
-                | RELATIONSHIP_CLASS_NAME_CLASS_ID
-                | SCHEMATIC_DIAGRAM_CLASS_NAME_CLASS_ID
-                | SCHEMATIC_ELEMENT_CLASS_NAME_CLASS_ID
-                | NETCDF_TABLE_NAME_CLASS_ID
-                | REFERENCED_TABLE_NAME_CLASS_ID
-                | NETCDF_FEATURE_CLASS_NAME_CLASS_ID
-                | XY_EVENT_SOURCE_NAME_CLASS_ID
-                | ROUTE_EVENT_SOURCE_NAME_CLASS_ID
-                | AMS_DATASET_NAME_CLASS_ID
-                | QUERY_TABLE_NAME_CLASS_ID
-                | TABLE_QUERY_NAME_CLASS_ID
-                | FEATURE_QUERY_NAME_CLASS_ID
-                | REL_QUERY_TABLE_NAME_CLASS_ID
-                | DB_TABLE_NAME_CLASS_ID
-        )
+        is_tabular_name(class_id)
+            || matches!(
+                class_id,
+                FEATURE_DATASET_NAME_CLASS_ID
+                    | COVERAGE_NAME_CLASS_ID
+                    | GEOMETRIC_NETWORK_NAME_CLASS_ID
+                    | MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID
+                    | CAD_DRAWING_NAME_CLASS_ID
+                    | SCHEMATIC_DATASET_NAME_CLASS_ID
+            )
     })
 }
 
