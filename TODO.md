@@ -836,6 +836,7 @@
       - [x] 接入 IDataElement 列表中的 DETerrain v1–4。[取证](docs/mxd-terra-round9-bookmark.md#跨模块-idataelement-候选与-deterrain-加载入口)
       - [x] 接入 IDataElement 列表中的 DETerrain v5–8。[取证](docs/mxd-terra-round9-bookmark.md#deterrain-v58)
       - [x] 接入 IDataElement 列表中的 DETerrain v9–13。[取证](docs/mxd-terra-round9-bookmark.md#deterrain-v913)
+      - [x] 接入 IDataElement 列表中的 DECadastralFabric。[取证](docs/mxd-terra-round9-bookmark.md#decadastralfabric)
       - [ ] 补齐 IDataElement 列表中其他持久化实现。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的 GPSubtype 对象及字段行。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的拓扑与几何网络控制器成员。[取证](docs/mxd-terra-round9-bookmark.md#detable)

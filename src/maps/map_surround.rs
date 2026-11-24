@@ -563,6 +563,14 @@ pub const DE_COVERAGE_CLASS_ID: [u8; 16] = [
     0x47, 0x0c, 0xb7, 0x96, 0x7f, 0x2c, 0x5f, 0x40, 0xb9, 0xfd, 0xde, 0xaa, 0x3c, 0xdc, 0x08, 0x4c,
 ];
 
+const CADASTRAL_FIELD_EDITS_CLASS_ID: [u8; 16] = [
+    0xfb, 0x5d, 0xe3, 0xde, 0xa2, 0x81, 0x8e, 0x46, 0xab, 0xa8, 0x24, 0x14, 0xe7, 0x57, 0xa0, 0xd9,
+];
+
+const DE_CADASTRAL_FABRIC_CLASS_ID: [u8; 16] = [
+    0xc0, 0x68, 0xf8, 0xb0, 0xbc, 0xbf, 0x69, 0x46, 0xb2, 0x63, 0xcd, 0x34, 0x8d, 0x65, 0xd7, 0xae,
+];
+
 pub const DE_TERRAIN_CLASS_ID: [u8; 16] = [
     0xb6, 0x43, 0x65, 0x54, 0x7a, 0x32, 0x3c, 0x4d, 0xac, 0x15, 0x81, 0x22, 0xc8, 0xb6, 0x68, 0x0a,
 ];
@@ -1153,7 +1161,39 @@ pub struct DeTerrainGeoDataset10_1 {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct CadastralFieldEdits10_1 {
+    pub version: i16,
+    pub fields: RuleSlot10_1<FieldsBody10_1>,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeCadastralTail10_1 {
+    pub longs: [u32; 4],
+    pub values: [u64; 2],
+    pub name: String,
+    pub shorts: [u16; 5],
+    pub properties: Option<[RuleSlot10_1<PropertySetObjectStream10_1>; 5]>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeCadastralFabric10_1 {
+    pub version: i16,
+    pub geo_dataset_version: u16,
+    pub dataset: DeDataset10_1,
+    pub extent: BookmarkEnvelopeEntry10_1,
+    pub spatial_reference: SpatialReferenceEntry10_1,
+    pub longs: [u32; 2],
+    pub name: String,
+    pub edit_count: i32,
+    pub edits: Vec<RuleSlot10_1<CadastralFieldEdits10_1>>,
+    pub tail_version: i16,
+    pub tail: Option<DeCadastralTail10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
+    CadastralFabric(Box<DeCadastralFabric10_1>),
     TerrainLegacy(Box<DeTerrainLegacy10_1>),
     TerrainGeoDataset(Box<DeTerrainGeoDataset10_1>),
     TableInfo(DeCompactTable10_1),
@@ -3951,6 +3991,98 @@ fn read_de_terrain_legacy(
     })
 }
 
+fn read_de_cadastral_fabric(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<DeCadastralFabric10_1> {
+    let version = read_gp_name_version(reader, 3, "DECadastralFabric")?;
+    let geo_dataset_version = read_de_layer_version(reader, 1, "DEGeoDataset")?;
+    let dataset = read_gp_de_dataset(reader, max_bytes, refs, depth)?;
+    let extent = read_surround_envelope_slot(reader, max_bytes, refs, "DECadastralFabric 范围")?;
+    let spatial_reference = read_spatial_reference_entry_10_1(reader, max_bytes, refs)?;
+    let first = reader.read_u32_le()?;
+    let name = read_string_10_1(reader, max_bytes)?;
+    let second = reader.read_u32_le()?;
+    let (edit_count, count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
+    let mut edits = Vec::new();
+    for _ in 0..count {
+        let entry = read_object_entry_10_1(reader, refs)?;
+        let body = match entry {
+            ObjectEntry10_1::Null => None,
+            ObjectEntry10_1::BackReference { class_id, key }
+                if refs.registered_class(key).unwrap_or(class_id)
+                    == CADASTRAL_FIELD_EDITS_CLASS_ID =>
+            {
+                None
+            }
+            ObjectEntry10_1::NewObject {
+                class_id: CADASTRAL_FIELD_EDITS_CLASS_ID,
+                ..
+            } => Some(Box::new(CadastralFieldEdits10_1 {
+                version: read_gp_name_version(reader, 1, "CadastralTableFieldEdits")?,
+                fields: read_gp_fields_slot(reader, max_bytes, refs, depth)?,
+                name: read_string_10_1(reader, max_bytes)?,
+            })),
+            _ => {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    "地籍字段编辑槽包含不支持的类",
+                ));
+            }
+        };
+        edits.push(RuleSlot10_1 { entry, body });
+    }
+    let tail_version = reader.read_u16_le()? as i16;
+    let tail = if tail_version >= 2 {
+        let first = reader.read_u32_le()?;
+        let second = reader.read_u32_le()?;
+        let first_value = reader.read_f64_le()?.to_bits();
+        let third = reader.read_u32_le()?;
+        let name = read_string_10_1(reader, max_bytes)?;
+        let second_value = reader.read_f64_le()?.to_bits();
+        let fourth = reader.read_u32_le()?;
+        let mut shorts = [0; 5];
+        for value in &mut shorts {
+            *value = reader.read_u16_le()?;
+        }
+        let properties = if tail_version >= 3 {
+            Some([
+                read_gp_property_set_slot(reader, max_bytes, refs)?,
+                read_gp_property_set_slot(reader, max_bytes, refs)?,
+                read_gp_property_set_slot(reader, max_bytes, refs)?,
+                read_gp_property_set_slot(reader, max_bytes, refs)?,
+                read_gp_property_set_slot(reader, max_bytes, refs)?,
+            ])
+        } else {
+            None
+        };
+        Some(DeCadastralTail10_1 {
+            longs: [first, second, third, fourth],
+            values: [first_value, second_value],
+            name,
+            shorts,
+            properties,
+        })
+    } else {
+        None
+    };
+    Ok(DeCadastralFabric10_1 {
+        version,
+        geo_dataset_version,
+        dataset,
+        extent,
+        spatial_reference,
+        longs: [first, second],
+        name,
+        edit_count,
+        edits,
+        tail_version,
+        tail,
+    })
+}
+
 fn read_gp_data_element_child(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -3974,6 +4106,7 @@ fn read_gp_data_element_child(
                     | DE_CAD_DRAWING_DATASET_CLASS_ID
                     | DE_TIN_CLASS_ID
                     | DE_TERRAIN_CLASS_ID
+                    | DE_CADASTRAL_FABRIC_CLASS_ID
                     | DE_COVERAGE_CLASS_ID
                     | DE_LAS_DATASET_CLASS_ID
                     | DE_VPF_COVERAGE_CLASS_ID
@@ -4021,6 +4154,7 @@ fn read_gp_data_element_child(
                 | DE_CAD_DRAWING_DATASET_CLASS_ID
                 | DE_TIN_CLASS_ID
                 | DE_TERRAIN_CLASS_ID
+                | DE_CADASTRAL_FABRIC_CLASS_ID
                 | DE_COVERAGE_CLASS_ID
                 | DE_LAS_DATASET_CLASS_ID
                 | DE_VPF_COVERAGE_CLASS_ID
@@ -4139,6 +4273,13 @@ fn read_gp_data_element_child(
                     }
                 };
                 DeChild10_1::TextFile { version, base }
+            } else if class_id == DE_CADASTRAL_FABRIC_CLASS_ID {
+                DeChild10_1::CadastralFabric(Box::new(read_de_cadastral_fabric(
+                    reader,
+                    max_bytes,
+                    refs,
+                    depth + 1,
+                )?))
             } else if class_id == DE_TERRAIN_CLASS_ID {
                 let version = reader.read_u32_le()?;
                 match version {
@@ -7753,6 +7894,73 @@ pub fn read_legend_prefix_10_1(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cadastral_fabric_reads_field_edits_and_versioned_tail() {
+        let empty = [2, 0, 0, 0, 0, 0];
+        for tail_version in 0_u16..=3 {
+            let mut bytes = DE_CADASTRAL_FABRIC_CLASS_ID.to_vec();
+            bytes.extend(60_u32.to_le_bytes());
+            bytes.extend(3_u16.to_le_bytes());
+            bytes.extend([0; 10]);
+            bytes.extend(empty.repeat(3));
+            bytes.extend([0; 54]);
+            bytes.extend(11_u32.to_le_bytes());
+            bytes.extend(empty);
+            bytes.extend(12_u32.to_le_bytes());
+            bytes.extend(2_u32.to_le_bytes());
+            bytes.extend(CADASTRAL_FIELD_EDITS_CLASS_ID);
+            bytes.extend(61_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend([0; 16]);
+            bytes.extend(empty);
+            bytes.extend(CADASTRAL_FIELD_EDITS_CLASS_ID);
+            bytes.extend(61_u32.to_le_bytes());
+            bytes.extend(tail_version.to_le_bytes());
+            if tail_version >= 2 {
+                bytes.extend([0; 20]);
+                bytes.extend(empty);
+                bytes.extend([0; 22]);
+            }
+            if tail_version == 3 {
+                bytes.extend([0; 80]);
+            }
+            for cut in 0..bytes.len() {
+                assert!(
+                    read_gp_data_element_child(
+                        &mut Reader::new(&bytes[..cut]),
+                        1024,
+                        &mut RefTable10_1::new(),
+                        0,
+                    )
+                    .is_err()
+                );
+            }
+            let end = bytes.len();
+            bytes.push(0xa5);
+            let mut reader = Reader::new(&bytes);
+            let slot =
+                read_gp_data_element_child(&mut reader, 1024, &mut RefTable10_1::new(), 0).unwrap();
+            let Some(DeChild10_1::CadastralFabric(body)) = slot.body.as_deref() else {
+                panic!("应读取 DECadastralFabric");
+            };
+            assert_eq!(body.longs, [11, 12]);
+            assert_eq!(body.edits[0].body.as_ref().unwrap().version, 1);
+            assert!(matches!(
+                body.edits[1].entry,
+                ObjectEntry10_1::BackReference { key: 61, .. }
+            ));
+            assert_eq!(body.tail.is_some(), tail_version >= 2);
+            assert_eq!(
+                body.tail
+                    .as_ref()
+                    .and_then(|tail| tail.properties.as_ref())
+                    .is_some(),
+                tail_version == 3
+            );
+            assert_eq!(reader.position(), end);
+        }
+    }
 
     #[test]
     fn terrain_v5_to_13_reads_versioned_fields_and_lists() {
