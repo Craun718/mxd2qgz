@@ -3221,3 +3221,24 @@ Constant 的配置导出包含从对象成员取值的路径，仍需复核
 该 Variant 的全部初始化来源。Function 的混合属性名/常量
 分支及其余配置键仍待追踪。上表只证明列出的入口和键，
 非空对象值的覆盖仍待取证，暂无实际 MXD 宿主验证。
+
+Constant 的配置导入 `0x71004350` 在 `0x710043d8`
+要求 Version 值为 1，在 `0x7100442d` 直接从属性集读取
+ConstantValue 到 Setup 接口指针 +0x14 的 Variant。
+配置导出 `0x710042ba`、`0x710042c9` 复制该 Variant，
+在 `0x71004302` 传给 IPropertySet 的设置槽。这条往返
+路径未检查 ConstantValue 的 VARTYPE。另一个 Setup 方法
+`0x71003ed0` 读取网络属性类型，并在 `0x71003f34` 至
+`0x71003f6e` 按类型转为 VT_I4、VT_R4、VT_R8 或
+VT_BOOL。该类型归一化的调用顺序尚不能推广到所有保存路径。
+
+Function 的配置导入 `0x7108e7e0` 同样要求 Version 1。
+`0x7108e8b4` 读取 Arg1AttributeNameOrConstantValue，
+`0x7108e900` 读取 Operator，随后 `0x7108e94e`
+检查 Operator 的 VARTYPE 为 VT_BSTR，再在 `0x7108e98b`
+读取第二个操作数。两个操作数沿属性集接口直接传入和传出，
+导出写点分别为 `0x7108e6a0`、`0x7108e793`。
+Operator 导出在 `0x7108e6c7` 显式设置 VT_BSTR。
+因此通用属性集解析须保留操作数的原始 Variant 类型。
+以上往返路径允许保留 Variant 本身，但没有给出某个对象
+CLSID 实际进入配置的证据。仍需样本或运行取证。
