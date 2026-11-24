@@ -370,6 +370,23 @@ pub(super) fn read_layer_extensions_10_1(
     max: usize,
     refs: &mut RefTable10_1,
 ) -> io::Result<Vec<LayerExtensionEntry10_1>> {
+    read_layer_extensions(r, max, refs, false)
+}
+
+pub(super) fn read_layer_extensions_preserving_unknown_10_1(
+    r: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<Vec<LayerExtensionEntry10_1>> {
+    read_layer_extensions(r, max, refs, true)
+}
+
+fn read_layer_extensions(
+    r: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+    preserve_unknown: bool,
+) -> io::Result<Vec<LayerExtensionEntry10_1>> {
     let count = (r.read_u32_le()? as i32).max(0) as usize;
     if count > r.remaining() / LEGACY_EXTENSION_HEADER_SIZE {
         return Err(io::Error::new(
@@ -391,7 +408,7 @@ pub(super) fn read_layer_extensions_10_1(
             max,
             refs,
             &mut budget,
-            false,
+            preserve_unknown,
         )?);
     }
     Ok(extensions)

@@ -677,6 +677,7 @@
       - [x] 接入普通 ILayer 槽中的 InternetTiledLayer 与 WMTSLayer，覆盖独立图层、组图层和三维关联图层。[接口及对象体证据](docs/mxd-10.1-raster-layer-tail.md#瓦片图层的独立-ilayer-宿主)
       - [x] 校验两类 3D 图形容器的 IEnvelope 回引登记类。[取证](docs/arcmap-10.1-dep-tail.md#三维图形容器的对象体)
       - [x] 校验 GlobeGraphicsLayer 元素附加槽的 IGeometry 回引登记类。[取证](docs/arcmap-10.1-dep-tail.md#三维图形容器的对象体)
+      - [x] 按声明长度保留两类 3D 图形容器的未知扩展体。[取证](docs/arcmap-10.1-dep-tail.md#三维图形容器的对象体)
       - [ ] 补齐两类 3D 图形容器尚未支持的非空元素、空间对象和扩展实现。
       - [x] 在通用图片元素槽识别 IMG 和 SID 的流内类标识，复用原生写出体。[取证](docs/mxd-page-layout-surround-20261118.md#img-和-sid-图片元素的流内类标识)
       - [x] 接入三维图形容器通用元素槽中的 PMFTitleTextElement 委派体。[取证](docs/arcmap-10.1-dep-tail.md#三维图形容器中的-pmftitletextelement)

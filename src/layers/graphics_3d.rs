@@ -2,7 +2,9 @@
 //! 字段序与版本门见 docs/arcmap-10.1-dep-tail.md「三维图形容器的对象体」。
 
 pub use crate::layers::layer_extensions::LayerExtensionEntry10_1 as Graphics3dExtension10_1;
-use crate::layers::layer_extensions::{LayerExtensionEntry10_1, read_layer_extensions_10_1};
+use crate::layers::layer_extensions::{
+    LayerExtensionEntry10_1, read_layer_extensions_preserving_unknown_10_1,
+};
 use crate::layers::layer_list::{LayerBodyPrefix10_1, read_complete_layer_body_10_1};
 use crate::maps::group_element::{
     GROUP_ELEMENT_CLASS_ID, GroupElement10_1, read_group_element_10_1,
@@ -201,7 +203,7 @@ fn read_globe_element_properties(
 }
 
 /// 在对象头后读取三维图形容器，只有完整读出时才提交游标和登记表。
-/// 关联图层的新对象须完整解析。未知元素、几何或非空未知扩展按错误回滚。
+/// 关联图层的新对象须完整解析。未知元素或几何按错误回滚；未知扩展按声明长度保留。
 pub fn read_graphics_3d_layer_10_1(
     class_id: &[u8; 16],
     reader: &mut Reader<'_>,
@@ -295,7 +297,7 @@ pub fn read_graphics_3d_layer_10_1(
         elements.push(item);
     }
     let tail = if globe {
-        let extensions = read_layer_extensions_10_1(&mut r, max, &mut refs)?;
+        let extensions = read_layer_extensions_preserving_unknown_10_1(&mut r, max, &mut refs)?;
         let shorts = [r.read_u16_le()? as i16, r.read_u16_le()? as i16];
         let envelopes = (version >= 4)
             .then(|| {
@@ -319,7 +321,7 @@ pub fn read_graphics_3d_layer_10_1(
                 .then(|| read_spatial_reference_entry_10_1(&mut r, max, &mut refs))
                 .transpose()?,
             extensions: (version >= 4)
-                .then(|| read_layer_extensions_10_1(&mut r, max, &mut refs))
+                .then(|| read_layer_extensions_preserving_unknown_10_1(&mut r, max, &mut refs))
                 .transpose()?,
             version_5_short: (version >= 5)
                 .then(|| r.read_u16_le().map(|n| n as i16))
@@ -346,6 +348,62 @@ mod tests {
     use super::*;
     use crate::maps::group_element::GroupChild10_1;
     use crate::maps::map_object::MAP_CLASS_ID;
+
+    #[test]
+    fn graphics_3d_preserves_unknown_extensions_and_reads_successors() {
+        for (class, version, short_bytes) in [
+            (GRAPHICS_LAYER_3D_CLASS_ID, 5_u16, 8),
+            (GLOBE_GRAPHICS_LAYER_CLASS_ID, 4_u16, 4),
+        ] {
+            let globe = class == GLOBE_GRAPHICS_LAYER_CLASS_ID;
+            let mut bytes = version.to_le_bytes().to_vec();
+            bytes.extend([2, 0, 0, 0, 0, 0]);
+            bytes.resize(bytes.len() + short_bytes + 16 + 16 + 4, 0);
+            if !globe {
+                bytes.extend([0; 2 + 16]);
+            }
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend(3_u64.to_le_bytes());
+            bytes.extend([0xe1; 16]);
+            bytes.extend([1, 2, 3]);
+            let extension_end = bytes.len();
+            bytes.extend(42_u16.to_le_bytes());
+            if globe {
+                bytes.extend([0; 2 + 32]);
+            }
+            let end = bytes.len();
+            bytes.extend([0xa5; 16]);
+
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let layer = read_graphics_3d_layer_10_1(&class, &mut reader, 4096, &mut refs).unwrap();
+            let extensions = match layer.tail {
+                Graphics3dTail10_1::Globe {
+                    extensions,
+                    shorts: [42, 0],
+                    ..
+                }
+                | Graphics3dTail10_1::Scene {
+                    extensions: Some(extensions),
+                    version_5_short: Some(42),
+                    ..
+                } => extensions,
+                tail => panic!("尾段不匹配：{tail:?}"),
+            };
+            assert_eq!(extensions[0].class_id, [0xe1; 16]);
+            assert_eq!(
+                extensions[0].unknown_body.as_deref(),
+                Some([1, 2, 3].as_slice())
+            );
+            assert_eq!(reader.position(), end);
+            assert!(refs.is_empty());
+
+            let mut reader = Reader::new(&bytes[..extension_end - 1]);
+            assert!(read_graphics_3d_layer_10_1(&class, &mut reader, 4096, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
 
     #[test]
     fn globe_element_geometry_references_check_registered_class() {

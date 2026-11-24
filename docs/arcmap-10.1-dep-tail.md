@@ -304,6 +304,15 @@ SystemCore.dll 的登记键接口查询路径，读取器以已登记类校验�
 覆盖回引头、非几何登记类的事务回滚，以及容器后继字节位置。
 真实三维宿主仍待人工验收。
 
+Scene.dll 的 `0x7d2a4c0d` 和 GlobeLayers.dll 的 `0x72f60819`
+经各自 IAT 调用 LayerLib.dll 10.1.0.3035 的
+`ExtensionHelper::LoadExtensions`（`0x786c22e0`）。
+[同一 helper 的扩展边界](mxd-terra-round9-table.md#独立表的未知扩展)
+表明无法创建实例时，原生按声明体长跨过该项。两类容器复用扩展
+列表的长度和预算校验，并保留未知类的原始体；已识别类仍需完整
+读取。构造用例验证非空未知扩展、后继字段及截断回滚。原始体未
+产生引用键，第三方扩展可实例化时的内部对象及人工验收仍待验证。
+
 ### LELP 容器和关联图层接线
 
 Scene.dll 的 `0x7d2a4af4` 和 GlobeLayers.dll 的 `0x72f60131` 都将同一个 `ILayer {34C20002-4D3C-11D0-92D8-00805F7C28B0}` 传给普通 `LoadObject`。两处 Save 分别以 `this+0x20` 和 `this+0x34` 的对象调用 SaveObject。普通对象槽没有可跳过的外层长度；关联槽仅在已有读取器证实读完 FeatureLayer、CompositeGraphicsLayer、FDOGraphicsLayer、GraphicsLayer3D 或 GlobeGraphicsLayer 的对象体后提交。其余图层的普通对象体或子槽仍待接入。两类 3D 图层也在 Map 图层列表按标志 1 或 ExtraSafe 分派，ExtraSafe 路径在条目范围内试读并检查完整消费。
