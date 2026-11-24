@@ -2266,4 +2266,16 @@ Load `0x6f616870` 接受无符号版本 0–2，调用 DEGeoDataset::Load，
 再读取三个 AfCore String、long 和 short。v2 在 `0x6f61694e`
 经 LoadObject 请求 `{30B9828A-85A6-4228-A7A4-7AFB8A9842CC}`，
 类型库对应 IRasterStorageDef。构造测试覆盖所有版本、空存储槽和
-截断。非空 IRasterStorageDef 的持久化类体及实际 MXD 宿主仍待核对。
+截断。实际 MXD 宿主仍待核对。
+
+#### RasterStorageDef
+
+RasterCatalog.dll 10.1.0.3035 的安装介质 SHA-256 为
+`0b6ac9b5e0c3e8efb715d68c5a55de89275def9ec7f666ffae91f0ff7972c585`。
+持久化表 `0x7be40ae4` 的 GetClassID `0x7be37950`
+返回 `{82ABC602-67F9-4042-BEE1-645B0139FD70}`。
+Load `0x7be397e0` 接受版本 0–4，先读六个 long。v2 起读
+一字节标志，非零时读两个 double，之后读取 IPoint 槽
+（IID `{1B077915-38C5-11D0-92D2-00805F7C28B0}`），
+v3 起读 short，v4 再读 String。解析保留坐标位模式和点对象槽。
+构造测试覆盖 v4、空点槽、对象结束位置及逐字节截断。

@@ -211,6 +211,7 @@ use crate::objects::envelope::{
     read_spatial_reference_entry_10_1,
 };
 use crate::objects::fields::{FIELDS_CLASS_ID, FieldsBody10_1, read_fields_body_nested_10_1};
+use crate::objects::geometry::{POINT_CLASS_ID, PointBody10_1, read_point_body_10_1};
 use crate::objects::property_set::{
     PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1, PropertyValueObjectStream10_1,
     read_padded_variant_object_stream_nested_10_1, read_property_set_object_stream_10_1,
@@ -520,6 +521,10 @@ pub const DE_WORKSPACE_CLASS_ID: [u8; 16] = [
 
 pub const DE_SERVER_CONNECTION_CLASS_ID: [u8; 16] = [
     0x40, 0x49, 0x7d, 0x88, 0x43, 0x93, 0xa3, 0x42, 0x8c, 0x8f, 0x5c, 0x41, 0xd4, 0xdc, 0xfa, 0xfd,
+];
+
+pub const RASTER_STORAGE_DEF_CLASS_ID: [u8; 16] = [
+    0x02, 0xc6, 0xab, 0x82, 0xf9, 0x67, 0x42, 0x40, 0xbe, 0xe1, 0x64, 0x5b, 0x01, 0x39, 0xfd, 0x70,
 ];
 
 pub const DE_RASTER_DATASET_CLASS_ID: [u8; 16] = [
@@ -968,7 +973,7 @@ pub enum DeChild10_1 {
         strings: [String; 3],
         raw_long: i32,
         raw_short: u16,
-        storage: Option<ObjectEntry10_1>,
+        storage: Option<RuleSlot10_1<RasterStorageDef10_1>>,
     },
     CatalogDataset {
         version: u16,
@@ -996,6 +1001,17 @@ pub enum DeChild10_1 {
         spatial_reference: SpatialReferenceEntry10_1,
         strings: [String; 2],
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RasterStorageDef10_1 {
+    pub version: u16,
+    pub longs: [i32; 6],
+    pub point_flag: Option<u8>,
+    pub xy_bits: Option<[u64; 2]>,
+    pub point: Option<RuleSlot10_1<PointBody10_1>>,
+    pub short: Option<u16>,
+    pub text: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3429,17 +3445,8 @@ fn read_gp_data_element_child(
                     let raw_long = reader.read_u32_le()? as i32;
                     let raw_short = reader.read_u16_le()?;
                     let storage = (version == 2)
-                        .then(|| read_object_entry_10_1(reader, refs))
+                        .then(|| read_raster_storage_def_slot(reader, max_bytes, refs))
                         .transpose()?;
-                    if storage
-                        .as_ref()
-                        .is_some_and(|entry| *entry != ObjectEntry10_1::Null)
-                    {
-                        return Err(io::Error::new(
-                            ErrorKind::Unsupported,
-                            "DERasterDataset 的非空 IRasterStorageDef 槽尚未支持",
-                        ));
-                    }
                     DeChild10_1::RasterDataset {
                         version,
                         geo_dataset_version,
@@ -3516,6 +3523,93 @@ fn read_gp_data_element_child(
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
                 "IDataElement 槽包含不支持的类",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_raster_storage_def_slot(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<RuleSlot10_1<RasterStorageDef10_1>> {
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if refs.registered_class(key).unwrap_or(class_id) == RASTER_STORAGE_DEF_CLASS_ID =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: RASTER_STORAGE_DEF_CLASS_ID,
+            ..
+        } => {
+            let version = reader.read_u16_le()?;
+            if version > 4 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "RasterStorageDef 版本超限",
+                ));
+            }
+            let mut longs = [0; 6];
+            for value in &mut longs {
+                *value = reader.read_u32_le()? as i32;
+            }
+            let point_flag = (version >= 2)
+                .then(|| reader.read_bytes(1).map(|bytes| bytes[0]))
+                .transpose()?;
+            let xy_bits = if point_flag.is_some_and(|flag| flag != 0) {
+                Some([
+                    reader.read_f64_le()?.to_bits(),
+                    reader.read_f64_le()?.to_bits(),
+                ])
+            } else {
+                None
+            };
+            let point = if version >= 2 {
+                let entry = read_object_entry_10_1(reader, refs)?;
+                let body = match entry {
+                    ObjectEntry10_1::Null => None,
+                    ObjectEntry10_1::BackReference { class_id, key }
+                        if refs.registered_class(key).unwrap_or(class_id) == POINT_CLASS_ID =>
+                    {
+                        None
+                    }
+                    ObjectEntry10_1::NewObject {
+                        class_id: POINT_CLASS_ID,
+                        ..
+                    } => Some(Box::new(read_point_body_10_1(reader, max_bytes, refs)?)),
+                    _ => {
+                        return Err(io::Error::new(
+                            ErrorKind::Unsupported,
+                            "RasterStorageDef 的 IPoint 槽包含不支持的类",
+                        ));
+                    }
+                };
+                Some(RuleSlot10_1 { entry, body })
+            } else {
+                None
+            };
+            let short = (version >= 3).then(|| reader.read_u16_le()).transpose()?;
+            let text = (version >= 4)
+                .then(|| read_string_10_1(reader, max_bytes))
+                .transpose()?;
+            Some(Box::new(RasterStorageDef10_1 {
+                version,
+                longs,
+                point_flag,
+                xy_bits,
+                point,
+                short,
+                text,
+            }))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "IRasterStorageDef 槽包含不支持的类",
             ));
         }
     };
@@ -6853,8 +6947,46 @@ mod tests {
             };
             assert_eq!(strings, &["A", "B", "C"]);
             assert_eq!((*raw_long, *raw_short), (-4, 7));
-            assert_eq!(*storage, (version == 2).then_some(ObjectEntry10_1::Null));
+            assert_eq!(
+                storage.as_ref().map(|slot| slot.entry),
+                (version == 2).then_some(ObjectEntry10_1::Null)
+            );
             assert_eq!(reader.position(), end);
         }
+    }
+
+    #[test]
+    fn raster_storage_def_reads_v4_and_nested_point_boundary() {
+        let mut bytes = RASTER_STORAGE_DEF_CLASS_ID.to_vec();
+        bytes.extend(51_u32.to_le_bytes());
+        bytes.extend(4_u16.to_le_bytes());
+        for value in 1_i32..=6 {
+            bytes.extend(value.to_le_bytes());
+        }
+        bytes.push(1);
+        bytes.extend(1.25_f64.to_le_bytes());
+        bytes.extend(2.5_f64.to_le_bytes());
+        bytes.extend([0; 16]);
+        bytes.extend(8_u16.to_le_bytes());
+        bytes.extend([4, 0, 0, 0, b'T', 0, 0, 0]);
+        for cut in 0..bytes.len() {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_raster_storage_def_slot(&mut reader, 1024, &mut refs).is_err());
+        }
+        let end = bytes.len();
+        bytes.push(0xa5);
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let body = read_raster_storage_def_slot(&mut reader, 1024, &mut refs)
+            .unwrap()
+            .body
+            .unwrap();
+        assert_eq!(body.longs, [1, 2, 3, 4, 5, 6]);
+        assert_eq!(body.xy_bits, Some([1.25_f64.to_bits(), 2.5_f64.to_bits()]));
+        assert_eq!(body.point.unwrap().entry, ObjectEntry10_1::Null);
+        assert_eq!(body.short, Some(8));
+        assert_eq!(body.text.as_deref(), Some("T"));
+        assert_eq!(reader.position(), end);
     }
 }
