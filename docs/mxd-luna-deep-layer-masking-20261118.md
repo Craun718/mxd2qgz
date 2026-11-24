@@ -142,6 +142,20 @@ CLSID 的出现位置也都落在上表对象头（体起点减 20），暂未�
 查询，仍需含 DefenseSolutions 原生组件或注册信息的介质。
 本轮保留原有解析停点。
 
+对八段已定界体逐条核对，共同前缀为 `02 00`、四字节值、
+u32 字符数，随后是 UTF-16LE 文本。四字节值在 Java 工程中统一为
+`0x000823f0`，在 .NET 工程中统一为 `0x00082454`。在两份工程中，
+`5EC4067F-9D88-4139-A822-DE1C16BFD8E3` 的文本同为
+`force_element[s] Graphics`（Java 有复数后缀），
+`4F646AA4-85C3-46E7-8C16-6E598B63ABFA` 的三个文本均为
+`tactical_graphic_{areas,lines,points} Graphics`（.NET 的 Areas
+首字母大写）。该关联为两个 CLSID 各自提供了 ForceElementLayer
+与 TacticalGraphicLayer 的候选身份。10.1 本地帮助的
+`html/forceelementlayer.htm` 和 `html/tacticalgraphiclayer.htm`
+均列出 IPersistStream，均未列出 ILayerMasking。帮助接口清单
+无法确定原生聚合 QI 的返回值，体首字段的原生加载次序和后续对象
+键仍待核对。解析停点继续保留。
+
 ## TemporalFeatureLayer 的聚合查询
 
 10.1.0.3035 Desktop 的 `TrackingLayer.dll`（PE32，SHA-256 `06b59b5930c643be5244b20a8cc5f7576a16b9d6e5421ee327839e8230a169ab`）与同版本 `esri.clsid.xml` 均将 `3334CE40-1A1D-11D5-B7CF-00010265ADC5` 绑定到 TemporalFeatureLayer。DLL 中 `0x8086eb90` 的 IPersistStream::GetClassID 也返回该 CLSID。用 MSVC RTTI 定位 `CComObject<CoTemporalFeatureLayer>` 主虚表 `0x808a117c`，然后用 `objdump -d -Mintel` 复核：
