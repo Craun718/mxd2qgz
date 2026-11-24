@@ -7234,3 +7234,22 @@ fn feature_bookmark_reads_gp_field_info_ex_coded_value() {
         );
     }
 }
+
+#[test]
+fn feature_bookmark_reads_gp_address_locator_style_without_configuration() {
+    use mxd2qgz::maps::map_surround::{GP_ADDRESS_LOCATOR_STYLE_CLASS_ID, GpCodedValue10_1};
+
+    let mut payload = bookmark_string_10_1("地址定位器");
+    payload.extend(bookmark_string_10_1("样式"));
+    payload.extend(0_u16.to_le_bytes());
+    for version in 0..=4 {
+        assert_legacy_topo_coded_value(
+            GP_ADDRESS_LOCATOR_STYLE_CLASS_ID,
+            version,
+            &payload,
+            GpCodedValue10_1::AddressLocatorStyle {
+                strings: ["地址定位器".into(), "样式".into()],
+            },
+        );
+    }
+}

@@ -455,6 +455,10 @@ pub const NA_CLASS_FIELD_MAP_CLASS_ID: [u8; 16] = [
     0xf8, 0x9f, 0x1c, 0xe6, 0xbf, 0x06, 0xe5, 0x42, 0xad, 0x66, 0x84, 0x93, 0x64, 0xb4, 0x85, 0x49,
 ];
 
+pub const GP_ADDRESS_LOCATOR_STYLE_CLASS_ID: [u8; 16] = [
+    0x85, 0x06, 0xb1, 0xc0, 0xf8, 0x71, 0xd2, 0x4c, 0xb3, 0x3a, 0x8c, 0x91, 0x90, 0xb8, 0xe8, 0x07,
+];
+
 pub const GP_FIELD_INFO_EX_CLASS_ID: [u8; 16] = [
     0xfb, 0xf3, 0xc6, 0x4b, 0x66, 0x46, 0x5d, 0x42, 0xbb, 0xb5, 0xf0, 0x9b, 0xe7, 0x7a, 0x4e, 0x5e,
 ];
@@ -644,6 +648,9 @@ pub enum GpCodedValue10_1 {
     NaClassFieldMap {
         raw_count: i32,
         rows: Vec<NaClassFieldMapRow10_1>,
+    },
+    AddressLocatorStyle {
+        strings: [String; 2],
     },
     FieldInfoEx(String),
     FieldInfo {
@@ -2098,6 +2105,7 @@ fn read_gp_coded_value_entry(
                     | GP_SA_CELL_SIZE_CLASS_ID
                     | GP_WORKSPACE_EXTENSION_CLASS_ID
                     | GP_DATA_FILE_CLASS_ID
+                    | GP_ADDRESS_LOCATOR_STYLE_CLASS_ID
                     | GP_FIELD_INFO_EX_CLASS_ID
                     | GP_FIELD_INFO_CLASS_ID
                     | GP_3DA_DECIMATE_CLASS_ID
@@ -2161,6 +2169,7 @@ fn read_gp_coded_value_entry(
                 | GP_SA_CELL_SIZE_CLASS_ID
                 | GP_WORKSPACE_EXTENSION_CLASS_ID
                 | GP_DATA_FILE_CLASS_ID
+                | GP_ADDRESS_LOCATOR_STYLE_CLASS_ID
                 | GP_FIELD_INFO_EX_CLASS_ID
                 | GP_FIELD_INFO_CLASS_ID
                 | GP_3DA_DECIMATE_CLASS_ID
@@ -2223,7 +2232,8 @@ fn read_gp_coded_value_entry(
                 GP_SA_REMAP_CLASS_ID => 5,
                 GP_SA_NUMBER_REMAP_CLASS_ID
                 | GP_SA_STRING_REMAP_CLASS_ID
-                | GP_RASTER_GDB_ENV_PYRAMID_CLASS_ID => 4,
+                | GP_RASTER_GDB_ENV_PYRAMID_CLASS_ID
+                | GP_ADDRESS_LOCATOR_STYLE_CLASS_ID => 4,
                 GP_ENCRYPTED_STRING_CLASS_ID
                 | GP_SA_RADIUS_CLASS_ID
                 | GP_EVALUATION_SCALE_CLASS_ID
@@ -2402,6 +2412,19 @@ fn read_gp_coded_value_entry(
                         });
                     }
                     GpCodedValue10_1::NaClassFieldMap { raw_count, rows }
+                }
+                GP_ADDRESS_LOCATOR_STYLE_CLASS_ID => {
+                    let strings = [
+                        read_string_10_1(reader, max_bytes)?,
+                        read_string_10_1(reader, max_bytes)?,
+                    ];
+                    if reader.read_u16_le()? != 0 {
+                        return Err(io::Error::new(
+                            ErrorKind::Unsupported,
+                            "GPAddressLocatorStyle 的非空配置尚未支持",
+                        ));
+                    }
+                    GpCodedValue10_1::AddressLocatorStyle { strings }
                 }
                 GP_FIELD_INFO_EX_CLASS_ID => {
                     GpCodedValue10_1::FieldInfoEx(read_string_10_1(reader, max_bytes)?)

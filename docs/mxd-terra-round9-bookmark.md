@@ -1944,3 +1944,25 @@ Load `0x6f6284a0` 接受无符号版本 0 和 1，在 `0x6f6284e2`
 Save `0x6f628510` 写版本 1，按相同顺序保存基类和字符串。
 构造书签覆盖两个可读版本、超限版本、同键回引和截断回滚。
 实际编码值域宿主及 ArcMap/QGIS 人工验收仍待确认。
+
+### GPAddressLocatorStyle
+
+Geocoding.dll PE32 10.1.0.3035 的 SHA-256 为
+`e5dc7d6cf515b7c7e9fd9e0342780818d261c2762ebbd348c5c2fc318c71819c`。
+安装介质文件以 objdump 复核。RTTI 对应持久化表 `0x714fbf94`
+位于对象 `+0x1c`。构造函数 `0x71377b1b` 向对象 `+0x24`
+写入 `{C0B10685-71F8-4CD2-B33A-8C9190B8E807}`。GetClassID
+经 `0x714cd5a2` 调 GPValue::GetClassID，复制接口指针 `+8` 的 GUID。
+
+Load `0x71379020` 接受无符号版本 0 至 4，调用 GPValue::Load，
+随后调用两次 String::Read 并读一个 short。该 short 为零时，
+`0x713790c8` 直接跳到成功返回，没有版本尾段。构造书签覆盖
+五个版本的空配置、超限版本、回引和截断回滚。
+
+非零时，Load 依次读取三个 IID `{6B2072E3-23F7-11D1-89D8-006097AFF44E}`
+的接口槽、一个有符号行数及按版本读取的行（`0x7137b2e0`）。
+版本 1 再读一个字节，版本 2 至 4 再读 IPropertySet，版本 3 至 4
+再读一个 short。最后一个 short 非零时读取 Variant::Read(false)
+和 IID `{D7FCBB04-8E59-4FFB-9EE5-EC670AA892E0}` 的接口槽。
+非空对象的类体和行分支仍需核对，解析器在非零的首个 short
+处返回明确的未支持错误。实际编码值域宿主及人工验收仍待确认。
