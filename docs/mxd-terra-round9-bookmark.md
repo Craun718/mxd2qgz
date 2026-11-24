@@ -2747,3 +2747,15 @@ Load 在 `0x6c25174b` 和 `0x6c251844` 调用该接口
 +0x20，两处都只传入接口指针，未传入 IStream。
 第二次调用仅在尾部版本至少为 2，且刚读出的 long 至少
 为 2 时执行。接口方法语义及列表元素类仍待核对。
+
+列表 IID `3327D58A-2994-4FD9-A2FB-1F3A993F27AE` 在
+`0x6c23ee57` 被 CadastralTableFieldEdits 的 QI 比对。
+PE RTTI 将 QI 与主虚表 `0x6c29f260` 关联，并给出
++0x18 的持久化虚表 `0x6c29f2c8`。GetClassID
+`0x6c23ec50` 从 `0x6c29e7ac` 复制
+`DEE35DFB-81A2-468E-ABA8-2414E757A0D9`。
+Load `0x6c23f340` 读取 short，与 `0x6c2d0148`
+的版本上限比较，之后在 `0x6c23f3bb` 请求 IFields
+（IID `6B2072E3-23F7-11D1-89D8-006097AFF44E`），
+在 `0x6c23f3d5` 读取 AfCore String。
+版本上限的初始化和子对象接入仍待核对。
