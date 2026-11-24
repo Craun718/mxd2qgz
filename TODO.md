@@ -860,6 +860,7 @@
       - [x] 核对普通 ObjectStream 在二代值域返回 S_FALSE 时保留的对象头和键。[取证](docs/mxd-terra-round9-bookmark.md#普通-objectstream-对-s_false-的处理)
       - [x] 核对 GPCodedValueDomain 写出循环对已有成员的派发。[取证](docs/mxd-terra-round9-bookmark.md#gpcodedvaluedomain-成员保存的边界)
       - [x] 对位 GPCodedValueDomain::AddCode 的原生成员追加路径。[取证](docs/mxd-terra-round9-bookmark.md#gpcodedvaluedomain-成员保存的边界)
+      - [x] 筛查本地 MXD/MXT 中的二代值域和历史标记类标识。[取证](docs/mxd-terra-round9-bookmark.md#二代值域及历史标记的实档筛查)
       - [x] 核对历史标记私有接口在 GdbCore 和 SdeFDB 的创建路径。[取证](docs/mxd-terra-round9-bookmark.md#历史标记私有-iid-的其他调用方)
       - [x] 定位 GPNALayer 的组合层基类及后继原生读取点。[取证](docs/mxd-terra-round9-bookmark.md#gpnalayer)
       - [x] 核对 GPNALayer 保存版本表与 IGPLinearUnit、IGPTableView 读取槽。[取证](docs/mxd-terra-round9-bookmark.md#gpnalayer)

@@ -2621,6 +2621,22 @@ GdbCore 的调用方 `0x7098f1db` 创建标记后，分别在
 普通 ObjectStream 的排除结论保持适用。专用流宿主和
 ArcMap/QGIS 人工验收仍待验证。
 
+#### 二代值域及历史标记的实档筛查
+
+从仓库样本及本地研究目录筛选 OLE 签名匹配的 MXD/MXT，
+按整档 SHA-256 去重后得到 142 份。用 `mxd2qgz inspect`
+枚举流，随后用 `extract` 提取所有长度至少 16 字节的流，
+共成功提取 3077 条，无提取失败。按 Windows 磁盘字节序搜索
+GPRangeDomain2、GPCodedValueDomain2 和 GPHistoricalMarker
+的完整 CLSID，三者均为零命中。已提取的 10.1 介质
+132 条和 10.8 介质 136 条 Maps/PageLayout 流也无命中，
+这两组与上述档案可能重叠。
+
+该结果只排除所检流中的明文 CLSID 作为当前实档证据，
+压缩、间接表示和其他工程仍需另查。未观察到普通 ObjectStream
+留下无体头的实档，也未进行 ArcMap/QGIS 人工验收。
+保留解析器的既有停止边界。
+
 ### GPSAHorizontalFactor 与 GPSAVerticalFactor
 
 两类来自 ArcMap 10.1.0.3035 的 `GPSACore.dll`。沿 RTTI 确认持久化接口
