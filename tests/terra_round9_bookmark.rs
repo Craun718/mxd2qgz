@@ -7327,16 +7327,17 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
         BookmarkEnvelopeEntry10_1, ConnectivityRule10_1, DE_FEATURE_CLASS_CLASS_ID,
         DE_FEATURE_DATASET_CLASS_ID, DE_GEOMETRIC_NETWORK_CLASS_ID, DE_RASTER_CATALOG_CLASS_ID,
         DE_RELATIONSHIP_CLASS_CLASS_ID, DE_TABLE_CLASS_ID, DE_TOPOLOGY_CLASS_ID, DataElement10_1,
-        DeChild10_1, DeDataset10_1, DeGeometricNetwork10_1, DeRelationshipBase10_1,
-        DeRelationshipClass10_1, DeRelationshipMetadata10_1, DeTable10_1, DeTableIndex10_1,
-        DeTableIndexes10_1, EDGE_CONNECTIVITY_RULE_CLASS_ID, GP_ADDRESS_LOCATOR_STYLE_CLASS_ID,
-        GP_GEOMETRIC_NETWORK_MEMBERSHIP_CLASS_ID, GP_RELATIONSHIP_CLASS_KEY_CLASS_ID,
-        GP_SUBTYPE_CLASS_ID, GP_TOPOLOGY_MEMBERSHIP_CLASS_ID, GpAddressLocatorStyleConfig10_1,
-        GpAddressLocatorStyleRow10_1, GpAddressLocatorStyleRowValues10_1, GpCodedValue10_1,
-        GpControllerMembership10_1, GpRelationshipClassKey10_1, GpSubtype10_1, GpSubtypeField10_1,
-        INDEX_CLASS_ID, INDEXES_CLASS_ID, JUNCTION_CONNECTIVITY_RULE_CLASS_ID,
-        NET_WEIGHT_ASSOCIATION_CLASS_ID, NET_WEIGHT_CLASS_ID, NetWeight10_1,
-        RELATIONSHIP_RULE_CLASS_ID, RelationshipRule10_1, TOPOLOGY_RULE_CLASS_ID, TopologyRule10_1,
+        DeChild10_1, DeDataset10_1, DeFeatureClassTable10_1, DeGeometricNetwork10_1,
+        DeRelationshipBase10_1, DeRelationshipClass10_1, DeRelationshipMetadata10_1, DeTable10_1,
+        DeTableIndex10_1, DeTableIndexes10_1, EDGE_CONNECTIVITY_RULE_CLASS_ID,
+        GP_ADDRESS_LOCATOR_STYLE_CLASS_ID, GP_GEOMETRIC_NETWORK_MEMBERSHIP_CLASS_ID,
+        GP_RELATIONSHIP_CLASS_KEY_CLASS_ID, GP_SUBTYPE_CLASS_ID, GP_TOPOLOGY_MEMBERSHIP_CLASS_ID,
+        GpAddressLocatorStyleConfig10_1, GpAddressLocatorStyleRow10_1,
+        GpAddressLocatorStyleRowValues10_1, GpCodedValue10_1, GpControllerMembership10_1,
+        GpRelationshipClassKey10_1, GpSubtype10_1, GpSubtypeField10_1, INDEX_CLASS_ID,
+        INDEXES_CLASS_ID, JUNCTION_CONNECTIVITY_RULE_CLASS_ID, NET_WEIGHT_ASSOCIATION_CLASS_ID,
+        NET_WEIGHT_CLASS_ID, NetWeight10_1, RELATIONSHIP_RULE_CLASS_ID, RelationshipRule10_1,
+        TOPOLOGY_RULE_CLASS_ID, TopologyRule10_1,
     };
     use mxd2qgz::objects::envelope::SpatialReferenceEntry10_1;
     use mxd2qgz::objects::fields::{FIELDS_CLASS_ID, FieldsBody10_1};
@@ -7715,15 +7716,15 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                                 key: 28,
                                             },
                                             body: Some(Box::new(DeChild10_1::FeatureClass {
-                                                catalog_version,
+                                                derived_version: catalog_version,
                                                 version: 1,
                                                 raw_longs: [3, 4],
                                                 name: "形状".into(),
                                                 raw_shorts: [1, 2, 3],
                                                 extent: BookmarkEnvelopeEntry10_1::Null,
                                                 spatial_reference: SpatialReferenceEntry10_1::Null,
-                                                strings: ["面积".into(), "长度".into()],
-                                                table: DeTable10_1 {
+                                                strings: Some(["面积".into(), "长度".into()]),
+                                                table: DeFeatureClassTable10_1::Extended(DeTable10_1 {
                                                     version: 0,
                                                     dataset: DeDataset10_1 {
                                                         dataset_version: 0,
@@ -7767,7 +7768,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                                         entry: ObjectEntry10_1::Null,
                                                         body: None,
                                                     },
-                                                },
+                                                }),
                                             })),
                                         },
                                         RuleSlot10_1 {

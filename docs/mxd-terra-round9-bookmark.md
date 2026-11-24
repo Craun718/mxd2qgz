@@ -2470,3 +2470,17 @@ DEFeatureDatasetBase::Load `0x6e94b280` 后结束。基类另读
 一个无符号版本（上限 1），在 `0x6e94b2c1` 调用
 DEGeoDataset::Load `0x6e94b860`。构造测试覆盖三层版本、
 超限基类版本、逐字节截断和结束位置。真实 MXD 宿主仍待验证。
+
+#### DEShapeFile
+
+FileDataElements.dll 10.1.0.3035 的持久化表 `0x6f9dbb1c`
+对应 esriDataSourcesFile 类型库中的 `03E6FB47-AA38-476C-934B-1DF5765C76EB`。
+Load `0x6f9c3160` 检查无符号版本上限 1，经导入槽
+`0x6f9d725c` 调用 DECoreLib.dll 10.1.0.3035 的
+DEFeatureClassBase::Load `0x6e949720` 后结束。
+构造路径 `0x6f9c2c15` 调用 DEFeatureClassBase 构造函数
+`0x6e948b80`，沿用 DETableBase 构造函数 `0x6e94cac0`
+在 `0x6e94cbc8` 初始化的零扩展标志。该标志使
+`0x6e94e5d6` 跳过表扩展，同时使 `0x6e949857` 跳过
+要素类尾部的两个 String。构造测试覆盖简短表体、要素类字段、
+逐字节截断和结束位置。真实 MXD 宿主仍待验证。

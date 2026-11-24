@@ -539,6 +539,10 @@ const GP_COMPOSITE_LAYER_CLASS_ID: [u8; 16] = [
     0x51, 0x4b, 0x99, 0x22, 0xba, 0xc6, 0xff, 0x41, 0xab, 0xe6, 0x54, 0x96, 0x15, 0x44, 0x1e, 0x3f,
 ];
 
+pub const DE_SHAPE_FILE_CLASS_ID: [u8; 16] = [
+    0x47, 0xfb, 0xe6, 0x03, 0x38, 0xaa, 0x6c, 0x47, 0x93, 0x4b, 0x1d, 0xf5, 0x76, 0x5c, 0x76, 0xeb,
+];
+
 pub const DE_VPF_COVERAGE_CLASS_ID: [u8; 16] = [
     0x0d, 0xf8, 0x4f, 0xca, 0xa9, 0x85, 0x5c, 0x44, 0xad, 0xb2, 0xa5, 0xc7, 0x81, 0x1b, 0x3c, 0x36,
 ];
@@ -1051,6 +1055,12 @@ pub struct DeLasDatasetTail10_1 {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum DeFeatureClassTable10_1 {
+    Compact(DeCompactTable10_1),
+    Extended(DeTable10_1),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
     LasDataset {
         version: u16,
@@ -1161,15 +1171,15 @@ pub enum DeChild10_1 {
         spatial_reference: SpatialReferenceEntry10_1,
     },
     FeatureClass {
-        catalog_version: Option<u16>,
+        derived_version: Option<u16>,
         version: u16,
-        table: DeTable10_1,
+        table: DeFeatureClassTable10_1,
         raw_longs: [i32; 2],
         name: String,
         raw_shorts: [u16; 3],
         extent: BookmarkEnvelopeEntry10_1,
         spatial_reference: SpatialReferenceEntry10_1,
-        strings: [String; 2],
+        strings: Option<[String; 2]>,
     },
 }
 
@@ -3610,6 +3620,7 @@ fn read_gp_data_element_child(
                 DE_TABLE_CLASS_ID
                     | DE_FEATURE_CLASS_CLASS_ID
                     | DE_RASTER_CATALOG_CLASS_ID
+                    | DE_SHAPE_FILE_CLASS_ID
                     | DE_RASTER_DATASET_CLASS_ID
                     | DE_CAD_DRAWING_DATASET_CLASS_ID
                     | DE_TIN_CLASS_ID
@@ -3649,6 +3660,7 @@ fn read_gp_data_element_child(
                 class_id @ (DE_TABLE_CLASS_ID
                 | DE_FEATURE_CLASS_CLASS_ID
                 | DE_RASTER_CATALOG_CLASS_ID
+                | DE_SHAPE_FILE_CLASS_ID
                 | DE_RASTER_DATASET_CLASS_ID
                 | DE_CAD_DRAWING_DATASET_CLASS_ID
                 | DE_TIN_CLASS_ID
@@ -3980,15 +3992,15 @@ fn read_gp_data_element_child(
                     }
                 }
             } else {
-                let catalog_version = (class_id == DE_RASTER_CATALOG_CLASS_ID)
-                    .then(|| reader.read_u16_le())
-                    .transpose()?;
-                if catalog_version.is_some_and(|version| version > 1) {
-                    return Err(io::Error::new(
-                        ErrorKind::InvalidData,
-                        "DERasterCatalog 版本超限",
-                    ));
-                }
+                let derived_version = match class_id {
+                    DE_RASTER_CATALOG_CLASS_ID => {
+                        Some(read_de_layer_version(reader, 1, "DERasterCatalog")?)
+                    }
+                    DE_SHAPE_FILE_CLASS_ID => {
+                        Some(read_de_layer_version(reader, 1, "DEShapeFile")?)
+                    }
+                    _ => None,
+                };
                 let version = reader.read_u16_le()?;
                 if version > 1 {
                     return Err(io::Error::new(
@@ -3996,10 +4008,27 @@ fn read_gp_data_element_child(
                         "DEFeatureClassBase 版本超限",
                     ));
                 }
+                // DEShapeFile 保留基类默认的零扩展标志。
+                let extended = class_id != DE_SHAPE_FILE_CLASS_ID;
+                let table = if extended {
+                    DeFeatureClassTable10_1::Extended(read_gp_de_table(
+                        reader,
+                        max_bytes,
+                        refs,
+                        depth + 1,
+                    )?)
+                } else {
+                    DeFeatureClassTable10_1::Compact(read_de_compact_table(
+                        reader,
+                        max_bytes,
+                        refs,
+                        depth + 1,
+                    )?)
+                };
                 DeChild10_1::FeatureClass {
-                    catalog_version,
+                    derived_version,
                     version,
-                    table: read_gp_de_table(reader, max_bytes, refs, depth + 1)?,
+                    table,
                     raw_longs: [reader.read_u32_le()? as i32, reader.read_u32_le()? as i32],
                     name: read_string_10_1(reader, max_bytes)?,
                     raw_shorts: [
@@ -4014,10 +4043,14 @@ fn read_gp_data_element_child(
                         "DEFeatureClass 范围",
                     )?,
                     spatial_reference: read_spatial_reference_entry_10_1(reader, max_bytes, refs)?,
-                    strings: [
-                        read_string_10_1(reader, max_bytes)?,
-                        read_string_10_1(reader, max_bytes)?,
-                    ],
+                    strings: extended
+                        .then(|| {
+                            Ok::<_, io::Error>([
+                                read_string_10_1(reader, max_bytes)?,
+                                read_string_10_1(reader, max_bytes)?,
+                            ])
+                        })
+                        .transpose()?,
                 }
             };
             Some(Box::new(body))
@@ -8044,6 +8077,53 @@ mod tests {
             .unwrap_err();
             assert_eq!(err.kind(), ErrorKind::InvalidData);
         }
+    }
+
+    #[test]
+    fn shape_file_uses_compact_feature_class_layout() {
+        let mut bytes = DE_SHAPE_FILE_CLASS_ID.to_vec();
+        bytes.extend(55_u32.to_le_bytes());
+        bytes.extend([1, 0, 0, 0]); // DEShapeFile 和 DEFeatureClassBase。
+        bytes.extend([0; 10]);
+        for _ in 0..3 {
+            bytes.extend([2, 0, 0, 0, 0, 0]);
+        }
+        bytes.extend([0; 22]);
+        bytes.extend(9_u16.to_le_bytes());
+        bytes.extend([2, 0, 0, 0, 0, 0]);
+        bytes.extend([0; 32]);
+        bytes.extend((-4_i32).to_le_bytes());
+        bytes.extend(7_i32.to_le_bytes());
+        bytes.extend([2, 0, 0, 0, 0, 0]);
+        bytes.extend([0; 38]);
+        for cut in 0..bytes.len() {
+            assert!(
+                read_gp_data_element_child(
+                    &mut Reader::new(&bytes[..cut]),
+                    1024,
+                    &mut RefTable10_1::new(),
+                    0,
+                )
+                .is_err()
+            );
+        }
+        let end = bytes.len();
+        bytes.push(0xa5);
+        let mut reader = Reader::new(&bytes);
+        let slot =
+            read_gp_data_element_child(&mut reader, 1024, &mut RefTable10_1::new(), 0).unwrap();
+        assert!(matches!(
+            slot.body.as_deref(),
+            Some(DeChild10_1::FeatureClass {
+                derived_version: Some(1),
+                version: 0,
+                table: DeFeatureClassTable10_1::Compact(DeCompactTable10_1 { table_short: 9, .. }),
+                raw_longs: [-4, 7],
+                strings: None,
+                ..
+            })
+        ));
+        assert_eq!(reader.position(), end);
     }
 
     #[test]
