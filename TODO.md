@@ -823,6 +823,7 @@
       - [x] 接入 IDataElement 列表中的 DEVPFTable。[取证](docs/mxd-terra-round9-bookmark.md#dedbasetable-与-devpftable)
       - [x] 接入 IDataElement 列表中的 DECadDrawingDataset。[取证](docs/mxd-terra-round9-bookmark.md#decaddrawingdataset)
       - [x] 接入 IDataElement 列表中的 DETin。[取证](docs/mxd-terra-round9-bookmark.md#detin)
+      - [x] 接入 IDataElement 列表中的 DECoverage。[取证](docs/mxd-terra-round9-bookmark.md#decoverage)
       - [ ] 补齐 IDataElement 列表中其他持久化实现。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的 GPSubtype 对象及字段行。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的拓扑与几何网络控制器成员。[取证](docs/mxd-terra-round9-bookmark.md#detable)

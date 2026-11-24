@@ -2437,3 +2437,14 @@ DEGeoDataset::Load，再依次读取 double、四个 short 和 IFields 槽。
 `6B2072E3-23F7-11D1-89D8-006097AFF44E`，由 esriGeoDatabase
 类型库确认为 IFields。构造测试验证原始位模式、字段回引、结束位置
 与逐字节截断。标量字段语义及真实 MXD 宿主仍待核对。
+
+#### DECoverage
+
+FileDataElements.dll 10.1.0.3035 的持久化表 `0x6f9d920c`
+对应 esriDataSourcesFile 类型库中的 `96B70C47-2C7F-405F-B9FD-DEAA3CDC084C`。
+Load `0x6f9b8020` 检查无符号版本上限 1，经导入槽
+`0x6f9d71e4` 调用 DEGeoDataset::Load，随后在 `0x6f9b8080`
+以 `0x6f9d8674` 的 IID `F0BA6ABC-8E9F-11D0-B4AB-0000F8037368`
+调用 LoadObject。esriSystem 类型库确认该 IID 为 IPropertySet，
+读完该槽即完成对象体。构造测试覆盖新 PropertySet 对象、登记键、
+逐字节截断和结束位置。真实 MXD 宿主仍待验证。

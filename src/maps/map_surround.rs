@@ -539,6 +539,10 @@ const GP_COMPOSITE_LAYER_CLASS_ID: [u8; 16] = [
     0x51, 0x4b, 0x99, 0x22, 0xba, 0xc6, 0xff, 0x41, 0xab, 0xe6, 0x54, 0x96, 0x15, 0x44, 0x1e, 0x3f,
 ];
 
+pub const DE_COVERAGE_CLASS_ID: [u8; 16] = [
+    0x47, 0x0c, 0xb7, 0x96, 0x7f, 0x2c, 0x5f, 0x40, 0xb9, 0xfd, 0xde, 0xaa, 0x3c, 0xdc, 0x08, 0x4c,
+];
+
 pub const DE_TIN_CLASS_ID: [u8; 16] = [
     0xf1, 0x32, 0xdc, 0x5e, 0xb2, 0xc1, 0x08, 0x48, 0x88, 0xe0, 0x2e, 0xd6, 0x8e, 0x77, 0x26, 0x9d,
 ];
@@ -1034,6 +1038,14 @@ pub struct GpLayer10_1 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
+    Coverage {
+        version: u16,
+        geo_dataset_version: u16,
+        dataset: DeDataset10_1,
+        extent: BookmarkEnvelopeEntry10_1,
+        spatial_reference: SpatialReferenceEntry10_1,
+        properties: RuleSlot10_1<PropertySetObjectStream10_1>,
+    },
     Tin {
         version: u16,
         geo_dataset_version: u16,
@@ -3578,6 +3590,7 @@ fn read_gp_data_element_child(
                     | DE_RASTER_DATASET_CLASS_ID
                     | DE_CAD_DRAWING_DATASET_CLASS_ID
                     | DE_TIN_CLASS_ID
+                    | DE_COVERAGE_CLASS_ID
                     | DE_RASTER_BAND_CLASS_ID
                     | DE_FEATURE_DATASET_CLASS_ID
                     | DE_CATALOG_DATASET_CLASS_ID
@@ -3614,6 +3627,7 @@ fn read_gp_data_element_child(
                 | DE_RASTER_DATASET_CLASS_ID
                 | DE_CAD_DRAWING_DATASET_CLASS_ID
                 | DE_TIN_CLASS_ID
+                | DE_COVERAGE_CLASS_ID
                 | DE_RASTER_BAND_CLASS_ID
                 | DE_FEATURE_DATASET_CLASS_ID
                 | DE_CATALOG_DATASET_CLASS_ID
@@ -3764,6 +3778,7 @@ fn read_gp_data_element_child(
                     | DE_RASTER_DATASET_CLASS_ID
                     | DE_CAD_DRAWING_DATASET_CLASS_ID
                     | DE_TIN_CLASS_ID
+                    | DE_COVERAGE_CLASS_ID
             ) {
                 let version = reader.read_u16_le()?;
                 let geo_dataset_version = reader.read_u16_le()?;
@@ -3846,6 +3861,15 @@ fn read_gp_data_element_child(
                         raw_long,
                         raw_short,
                         storage,
+                    }
+                } else if class_id == DE_COVERAGE_CLASS_ID {
+                    DeChild10_1::Coverage {
+                        version,
+                        geo_dataset_version,
+                        dataset,
+                        extent,
+                        spatial_reference,
+                        properties: read_gp_property_set_slot(reader, max_bytes, refs)?,
                     }
                 } else if class_id == DE_TIN_CLASS_ID {
                     DeChild10_1::Tin {
@@ -7266,6 +7290,48 @@ mod tests {
             assert_eq!(body.v6, (version == 6).then_some(23));
             assert_eq!(reader.position(), end);
         }
+    }
+
+    #[test]
+    fn coverage_data_element_reads_property_set() {
+        let mut bytes = DE_COVERAGE_CLASS_ID.to_vec();
+        bytes.extend(37_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend([0; 10]);
+        for _ in 0..3 {
+            bytes.extend([2, 0, 0, 0, 0, 0]);
+        }
+        bytes.extend([0; 54]);
+        bytes.extend(PROPERTY_SET_CLASS_ID);
+        bytes.extend(38_u32.to_le_bytes());
+        bytes.extend([1, 0, 0, 0, 0, 0]);
+        for cut in 0..bytes.len() {
+            assert!(
+                read_gp_data_element_child(
+                    &mut Reader::new(&bytes[..cut]),
+                    1024,
+                    &mut RefTable10_1::new(),
+                    0,
+                )
+                .is_err()
+            );
+        }
+        let end = bytes.len();
+        bytes.push(0xa5);
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let object = read_gp_data_element_child(&mut reader, 1024, &mut refs, 0).unwrap();
+        let Some(DeChild10_1::Coverage {
+            version: 1,
+            properties,
+            ..
+        }) = object.body.as_deref()
+        else {
+            panic!("应读取 DECoverage");
+        };
+        assert!(properties.body.is_some());
+        assert_eq!(refs.registered_class(38), Some(PROPERTY_SET_CLASS_ID));
+        assert_eq!(reader.position(), end);
     }
 
     #[test]
