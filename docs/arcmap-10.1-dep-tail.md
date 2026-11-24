@@ -1057,3 +1057,21 @@ Rust 复用颜色、StdFont 和 CharacterMarkerSymbol 的对象体，携带
 相同的对象键表，未知子槽回滚当前新符号。合成输入覆盖负版本和
 v0–v4 的边界与逐字节截断，非空字体及字符标记实档与 ArcMap/QGIS
 人工验收待补。
+
+#### Marker3DSymbol 的对象体
+
+同版 Load `0x68033970` 按有符号上限 10 判断版本。依次读取
+IColor、double、IGeometry、int32、24 字节向量、short、
+int32×2、double×3；版本大于 1 时加一个 double，随后共有
+一个 short。自 v3 在 `0x68033c08` 请求 IPicture（IID
+`0x6805f84c`），自 v4 读取 double×4 与 short。仅 v5/v6
+在 `0x68033ce5..0x68033d1e` 读取两个 double 和一个 short。
+v6、v8 分别新增一个 short，v9 新增三个 short。v10 在
+`0x68033fd5` 调用 AfCore String::Read。
+
+v9 还有依赖几何实例的兼容路径。几何为空时 `0x68033e02`
+跳到对象结束；非空时按运行时接口和几何格式决定是否进入探测，
+`0x68033eb3` 检查标记 `0x00b8342d`。读取器对 v9 的非空
+几何保留整个符号停止点，避免误吞后继对象。构造测试覆盖负版本及
+v0–v10 的空几何布局、截断和 v9 非空几何回滚。实档及 ArcMap/QGIS
+人工验收待补。

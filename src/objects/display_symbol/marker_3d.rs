@@ -211,3 +211,139 @@ pub(super) fn read_character_marker_3d_symbol(
         short_v4: (signed > 3).then(|| reader.read_u16_le()).transpose()?,
     }))
 }
+
+pub const MARKER_3D_SYMBOL_CLASS_ID: [u8; 16] = [
+    0x74, 0x72, 0x3f, 0x77, 0xfb, 0xae, 0xd5, 0x11, 0x81, 0x12, 0x00, 0xc0, 0x4f, 0xa0, 0xad, 0xf8,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Marker3dSymbolBody10_1 {
+    pub key: u32,
+    pub version: u16,
+    pub color: ColorSlot10_1,
+    pub first_double: f64,
+    pub geometry_entry: ObjectEntry10_1,
+    pub geometry: Option<GeometryBody10_1>,
+    pub first_integer: i32,
+    pub vector: [f64; 3],
+    pub first_short: u16,
+    pub integers: [i32; 2],
+    pub doubles: [f64; 3],
+    pub double_v2: Option<f64>,
+    pub second_short: u16,
+    pub picture: Option<super::StdPictureSlot10_1>,
+    pub fields_v4: Option<([f64; 4], u16)>,
+    pub legacy_fields: Option<([f64; 2], u16)>,
+    pub short_v6: Option<u16>,
+    pub short_v8: Option<u16>,
+    pub shorts_v9: Option<[u16; 3]>,
+    pub string_v10: Option<String>,
+}
+
+pub(super) fn read_marker_3d_symbol(
+    reader: &mut Reader<'_>,
+    table: &mut RefTable10_1,
+    max_bytes: usize,
+    key: u32,
+) -> io::Result<Option<Marker3dSymbolBody10_1>> {
+    use super::{DisplaySlotKind10_1, read_std_picture_slot_10_1};
+
+    let version = read_signed_symbol_version(reader, 10, "Marker3DSymbol", reader.position())?;
+    let signed = version as i16;
+    let color = read_color_slot_10_1(reader, max_bytes, table)?;
+    if matches!(color, ColorSlot10_1::Unsupported { .. }) {
+        return Ok(None);
+    }
+    let first_double = reader.read_f64_le()?;
+    let geometry_entry = read_object_entry_10_1(reader, table)?;
+    // v9 的非空几何可能触发原生对后继流的探测。
+    if signed == 9 && geometry_entry != ObjectEntry10_1::Null {
+        return Ok(None);
+    }
+    let geometry = match geometry_entry {
+        ObjectEntry10_1::NewObject { class_id, .. } => {
+            match read_geometry_body_10_1(&class_id, reader, max_bytes, table) {
+                Ok(body) => Some(body),
+                Err(error) if error.kind() == io::ErrorKind::Unsupported => return Ok(None),
+                Err(error) => return Err(error),
+            }
+        }
+        _ => None,
+    };
+    let first_integer = read_i32_le(reader)?;
+    let vector = [
+        reader.read_f64_le()?,
+        reader.read_f64_le()?,
+        reader.read_f64_le()?,
+    ];
+    let first_short = reader.read_u16_le()?;
+    let integers = [read_i32_le(reader)?, read_i32_le(reader)?];
+    let doubles = [
+        reader.read_f64_le()?,
+        reader.read_f64_le()?,
+        reader.read_f64_le()?,
+    ];
+    let double_v2 = (signed > 1).then(|| reader.read_f64_le()).transpose()?;
+    let second_short = reader.read_u16_le()?;
+    let picture = if signed >= 3 {
+        let (picture, stop) =
+            read_std_picture_slot_10_1(reader, max_bytes, table, DisplaySlotKind10_1::Picture)?;
+        if stop.is_some() {
+            return Ok(None);
+        }
+        picture
+    } else {
+        None
+    };
+    Ok(Some(Marker3dSymbolBody10_1 {
+        key,
+        version,
+        color,
+        first_double,
+        geometry_entry,
+        geometry,
+        first_integer,
+        vector,
+        first_short,
+        integers,
+        doubles,
+        double_v2,
+        second_short,
+        picture,
+        fields_v4: (signed >= 4)
+            .then(|| {
+                Ok::<_, io::Error>((
+                    [
+                        reader.read_f64_le()?,
+                        reader.read_f64_le()?,
+                        reader.read_f64_le()?,
+                        reader.read_f64_le()?,
+                    ],
+                    reader.read_u16_le()?,
+                ))
+            })
+            .transpose()?,
+        legacy_fields: matches!(signed, 5 | 6)
+            .then(|| {
+                Ok::<_, io::Error>((
+                    [reader.read_f64_le()?, reader.read_f64_le()?],
+                    reader.read_u16_le()?,
+                ))
+            })
+            .transpose()?,
+        short_v6: (signed >= 6).then(|| reader.read_u16_le()).transpose()?,
+        short_v8: (signed >= 8).then(|| reader.read_u16_le()).transpose()?,
+        shorts_v9: (signed >= 9)
+            .then(|| {
+                Ok::<_, io::Error>([
+                    reader.read_u16_le()?,
+                    reader.read_u16_le()?,
+                    reader.read_u16_le()?,
+                ])
+            })
+            .transpose()?,
+        string_v10: (signed == 10)
+            .then(|| crate::stream::native_string::read_string_10_1(reader, max_bytes))
+            .transpose()?,
+    }))
+}

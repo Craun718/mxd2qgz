@@ -3638,3 +3638,91 @@ fn character_marker_3d_symbol_reads_legacy_and_versioned_fields() {
         }
     }
 }
+
+#[test]
+fn marker_3d_symbol_reads_versioned_tail_after_empty_geometry() {
+    use mxd2qgz::objects::display_symbol::{
+        MARKER_3D_SYMBOL_CLASS_ID, SymbolSlotFull10_1, read_symbol_slot_full_10_1,
+    };
+
+    for version in -1_i16..=10 {
+        let mut bytes = Vec::new();
+        push_entry(&mut bytes, &MARKER_3D_SYMBOL_CLASS_ID, 51);
+        bytes.extend(version.to_le_bytes());
+        push_null(&mut bytes);
+        bytes.extend(2.5_f64.to_le_bytes());
+        let geometry_start = bytes.len();
+        push_null(&mut bytes);
+        bytes.extend([0; 4 + 24 + 2 + 8 + 24]);
+        if version > 1 {
+            bytes.extend([0; 8]);
+        }
+        bytes.extend(13_u16.to_le_bytes());
+        if version >= 3 {
+            push_null(&mut bytes);
+        }
+        if version >= 4 {
+            bytes.extend([0; 32]);
+            bytes.extend(14_u16.to_le_bytes());
+        }
+        if matches!(version, 5 | 6) {
+            bytes.extend([0; 16]);
+            bytes.extend(15_u16.to_le_bytes());
+        }
+        for (minimum, values) in [(6, &[16_u16][..]), (8, &[18][..]), (9, &[19, 20, 21][..])] {
+            if version >= minimum {
+                for value in values {
+                    bytes.extend(value.to_le_bytes());
+                }
+            }
+        }
+        if version == 10 {
+            push_string(&mut bytes, "模型来源");
+        }
+        let end = bytes.len();
+        bytes.push(0xa4);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let SymbolSlotFull10_1::Marker3dSymbol(body) =
+            read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 8).unwrap()
+        else {
+            panic!("预期 Marker3DSymbol");
+        };
+        assert_eq!(body.version, version as u16);
+        assert_eq!(body.first_double, 2.5);
+        assert_eq!(body.second_short, 13);
+        assert_eq!(body.fields_v4, (version >= 4).then_some(([0.0; 4], 14)));
+        assert_eq!(
+            body.legacy_fields,
+            matches!(version, 5 | 6).then_some(([0.0; 2], 15))
+        );
+        assert_eq!(body.short_v6, (version >= 6).then_some(16));
+        assert_eq!(body.short_v8, (version >= 8).then_some(18));
+        assert_eq!(body.shorts_v9, (version >= 9).then_some([19, 20, 21]));
+        assert_eq!(
+            body.string_v10.as_deref(),
+            (version == 10).then_some("模型来源")
+        );
+        assert_eq!(reader.position(), end);
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 8).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+        if version == 9 {
+            bytes.truncate(geometry_start);
+            push_entry(&mut bytes, &[0x45; 16], 52);
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            assert!(matches!(
+                read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 8).unwrap(),
+                SymbolSlotFull10_1::Unsupported { key: 51, .. }
+            ));
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+}
