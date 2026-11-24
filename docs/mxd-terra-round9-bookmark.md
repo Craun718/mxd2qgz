@@ -1019,8 +1019,16 @@ GPRangeDomain2 在 `0x6f62549c` 遇到空 IPersist 指针
 分别绑定 RangeDomain、CodedValueDomain。两张主表的 QI
 `0x70934550 / 0x708d3770` 均比较该 IID，命中时在
 `0x709345a7 / 0x708d37c7` 返回完整对象 +0x14。
-这是已核对的接口实现候选。它们是否满足 GPRangeDomain2 的
-前置 GetClassID 检查、如何进入 MXD 读写宿主，仍需另证。
+这是已核对的接口实现。两类的 QI 分别经
+`0x70934651..0x709346ea`、`0x708d3881..0x708d391a`
+将 IPersistStream 和 IPersist 返回到 +0x24。该接口 +0x0c
+分别指向 `0x70934d80 / 0x708d4820`，从
+`0x70ac323c / 0x70ab80a0` 复制 CLSID
+`F84C6C1A-47FF-11D2-9933-0000F80372B4` 和
+`F84C6C1B-47FF-11D2-9933-0000F80372B4`。
+两者均与 GPRangeDomain2 在 `0x6f62539b` 比较的
+`2BFAEDBF-D251-452F-B39D-5C7A9D318478` 不同，因此以这两个
+具体对象充当流会在前置检查失败。实际提供匹配类标识的宿主仍待查。
 
 FeatureDataElements.dll 的 `0x6f6253fd` 在上述接口的
 +0x14 槽传入内部对象查询得到的 IDomain。
