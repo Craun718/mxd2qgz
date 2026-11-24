@@ -1558,6 +1558,20 @@ GPDataTypeName CLSID 调用创建辅助函数 `0x744c6760`。
 现有 GPMultiValue 读取器覆盖该名称类。尚未在真实 MXD
 中验证此工厂产物。
 
+##### GP 三维分析数据类型名称工厂
+
+GpTinFunctionFactories.dll 10.1.0.3035 的 SHA-256 为
+`cdc16c48dce011e51d69e134ccd68c780b7d5a26113f72b0be4309efc3576bf4`。
+本地 PE 的 RTTI 将 GP3DADataTypeFactory 的 +0x10 接口表定位为
+`0x74d282f8`，主 QI `0x74d21300` 引用 `0x74d283b8` 的
+IGPDataTypeFactory IID。表内名称槽 +0x14 指向 `0x74d21510`，
+调用 `0x74d21050` 从 `0x74d2d448..0x74d2d45c` 查找名称。
+该表只有一条 20 字节记录，`0x74d21569` 按相同步长计算地址。
+`0x74d21570` 调用 `0x74d21100`，后者在 `0x74d2112c`
+传入 `0x74d28398` 的 GPDataTypeName CLSID，由 `0x74d21b90`
+创建名称对象。现有 GPMultiValue 读取器覆盖该类。
+尚未在真实 MXD 中验证此工厂产物。
+
 #### GPValueTable
 
 GpObjects.dll 10.1.0.3035 的 RTTI `0x74801cd4` 对应持久化虚表
