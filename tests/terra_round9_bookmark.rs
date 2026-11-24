@@ -7325,9 +7325,11 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
     use mxd2qgz::layers::image_server_rules::RuleSlot10_1;
     use mxd2qgz::maps::map_surround::{
         DE_TABLE_CLASS_ID, DeTable10_1, DeTableIndex10_1, DeTableIndexes10_1,
-        GP_ADDRESS_LOCATOR_STYLE_CLASS_ID, GP_SUBTYPE_CLASS_ID, GpAddressLocatorStyleConfig10_1,
+        GP_ADDRESS_LOCATOR_STYLE_CLASS_ID, GP_GEOMETRIC_NETWORK_MEMBERSHIP_CLASS_ID,
+        GP_SUBTYPE_CLASS_ID, GP_TOPOLOGY_MEMBERSHIP_CLASS_ID, GpAddressLocatorStyleConfig10_1,
         GpAddressLocatorStyleRow10_1, GpAddressLocatorStyleRowValues10_1, GpCodedValue10_1,
-        GpSubtype10_1, GpSubtypeField10_1, INDEX_CLASS_ID, INDEXES_CLASS_ID,
+        GpControllerMembership10_1, GpSubtype10_1, GpSubtypeField10_1, INDEX_CLASS_ID,
+        INDEXES_CLASS_ID,
     };
     use mxd2qgz::objects::fields::{FIELDS_CLASS_ID, FieldsBody10_1};
     use mxd2qgz::objects::property_set::{PropertyValue10_1, PropertyValueObjectStream10_1};
@@ -7426,7 +7428,23 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
         payload.extend(bookmark_string_10_1("域"));
         payload.extend(3_u16.to_le_bytes());
         payload.extend(6_i32.to_le_bytes());
-        payload.extend(0_i32.to_le_bytes());
+        payload.extend(2_i32.to_le_bytes());
+        payload.extend(bookmark_entry_10_1(&GP_TOPOLOGY_MEMBERSHIP_CLASS_ID, 26));
+        payload.extend(1_u16.to_le_bytes());
+        payload.extend(bookmark_string_10_1("拓扑"));
+        payload.extend((-0.0_f64).to_bits().to_le_bytes());
+        payload.extend(3_i32.to_le_bytes());
+        payload.extend((-4_i32).to_le_bytes());
+        payload.extend(7_u16.to_le_bytes());
+        payload.extend(bookmark_entry_10_1(
+            &GP_GEOMETRIC_NETWORK_MEMBERSHIP_CLASS_ID,
+            27,
+        ));
+        payload.extend(0_u16.to_le_bytes());
+        for name in ["A", "B", "C"] {
+            payload.extend(bookmark_string_10_1(name));
+        }
+        payload.extend(16_i32.to_le_bytes());
         if version >= 2 {
             payload.extend(17_u16.to_le_bytes());
             for _ in 0..2 {
@@ -7551,7 +7569,37 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                         }],
                                     })),
                                 }],
-                                raw_membership_count: 0,
+                                raw_membership_count: 2,
+                                memberships: vec![
+                                    RuleSlot10_1 {
+                                        entry: ObjectEntry10_1::NewObject {
+                                            class_id: GP_TOPOLOGY_MEMBERSHIP_CLASS_ID,
+                                            key: 26,
+                                        },
+                                        body: Some(Box::new(
+                                            GpControllerMembership10_1::Topology {
+                                                version: 1,
+                                                name: "拓扑".into(),
+                                                value_bits: (-0.0_f64).to_bits(),
+                                                raw_longs: [3, -4],
+                                                raw_short: 7,
+                                            },
+                                        )),
+                                    },
+                                    RuleSlot10_1 {
+                                        entry: ObjectEntry10_1::NewObject {
+                                            class_id: GP_GEOMETRIC_NETWORK_MEMBERSHIP_CLASS_ID,
+                                            key: 27,
+                                        },
+                                        body: Some(Box::new(
+                                            GpControllerMembership10_1::GeometricNetwork {
+                                                version: 0,
+                                                strings: ["A", "B", "C"].map(String::from),
+                                                raw_long: 16,
+                                            },
+                                        )),
+                                    },
+                                ],
                                 v2: (version >= 2)
                                     .then(|| (17, std::array::from_fn(|_| "v2".into()))),
                                 v3: (version >= 3)

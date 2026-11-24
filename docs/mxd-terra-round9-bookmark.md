@@ -2044,3 +2044,15 @@ Variant::Read(true)（`0x6f6377a1`）。紧随 Variant 的辅助调用
 `0x6f638500` 创建内存对象，无流参数。Save `0x6f637420`
 对应写入 String、long 和字段行。构造书签覆盖非空子类型和字段行的
 紧凑 Variant，实际 MXD 宿主及人工验收仍待确认。
+
+#### 控制器成员
+
+FeatureDataElements.dll 10.1.0.3035 的持久化表
+`0x6f663778` 和 `0x6f661aa4` 分别对应 GPTopologyMembership
+和 GPGeometricNetworkMembership。GetClassID `0x6f638ac0` 和
+`0x6f628bd0` 返回 `{5DA78FF6-546B-4AF0-84B8-50B68484D9D5}`
+和 `{7EE891D6-6ACD-4687-9BF4-FCE49FC47157}`。Load
+`0x6f638b20` 和 `0x6f629040` 均接受无符号版本 0、1。
+拓扑成员读取 String、double、两个 long、short，几何网络成员读取
+三个 String 和 long。读取器保留原始标量及浮点位模式。构造书签覆盖
+同一 DETable 的两类非空成员和截断回滚。其他实现类及实际宿主仍待核对。

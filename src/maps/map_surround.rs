@@ -464,6 +464,13 @@ pub const INDEX_CLASS_ID: [u8; 16] = [
     0x01, 0x27, 0x6e, 0x82, 0xa6, 0x4d, 0xd1, 0x11, 0x88, 0x24, 0x00, 0x00, 0xf8, 0x77, 0x76, 0x2d,
 ];
 
+pub const GP_TOPOLOGY_MEMBERSHIP_CLASS_ID: [u8; 16] = [
+    0xf6, 0x8f, 0xa7, 0x5d, 0x6b, 0x54, 0xf0, 0x4a, 0x84, 0xb8, 0x50, 0xb6, 0x84, 0x84, 0xd9, 0xd5,
+];
+pub const GP_GEOMETRIC_NETWORK_MEMBERSHIP_CLASS_ID: [u8; 16] = [
+    0xd6, 0x91, 0xe8, 0x7e, 0xcd, 0x6a, 0x87, 0x46, 0x9b, 0xf4, 0xfc, 0xe4, 0x9f, 0xc4, 0x71, 0x57,
+];
+
 pub const GP_SUBTYPE_CLASS_ID: [u8; 16] = [
     0x02, 0x53, 0x1b, 0x74, 0x17, 0x29, 0xab, 0x4a, 0x95, 0x2a, 0xdf, 0x5f, 0x0e, 0x01, 0x9e, 0xb6,
 ];
@@ -835,11 +842,28 @@ pub struct DeTable10_1 {
     pub raw_subtype_count: i32,
     pub subtypes: Vec<RuleSlot10_1<GpSubtype10_1>>,
     pub raw_membership_count: i32,
+    pub memberships: Vec<RuleSlot10_1<GpControllerMembership10_1>>,
     pub v2: Option<(u16, [String; 2])>,
     pub v3: Option<(u16, [String; 4])>,
     pub v4: Option<u16>,
     pub fields: RuleSlot10_1<FieldsBody10_1>,
     pub indexes: RuleSlot10_1<DeTableIndexes10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum GpControllerMembership10_1 {
+    Topology {
+        version: u16,
+        name: String,
+        value_bits: u64,
+        raw_longs: [i32; 2],
+        raw_short: u16,
+    },
+    GeometricNetwork {
+        version: u16,
+        strings: [String; 3],
+        raw_long: i32,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3040,7 +3064,12 @@ fn read_gp_de_table(
     for _ in 0..subtype_count {
         subtypes.push(read_de_table_subtype(reader, max_bytes, refs, depth)?);
     }
-    let raw_membership_count = read_de_table_empty_list(reader, "IGPControllerMembership")?;
+    let (raw_membership_count, membership_count) =
+        read_gp_coded_value_count(reader, max_bytes, 16)?;
+    let mut memberships = Vec::new();
+    for _ in 0..membership_count {
+        memberships.push(read_de_table_membership(reader, max_bytes, refs)?);
+    }
     let v2 = if version >= 2 {
         Some((
             reader.read_u16_le()?,
@@ -3088,12 +3117,72 @@ fn read_gp_de_table(
         raw_subtype_count,
         subtypes,
         raw_membership_count,
+        memberships,
         v2,
         v3,
         v4,
         fields,
         indexes,
     })
+}
+
+fn read_de_table_membership(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<RuleSlot10_1<GpControllerMembership10_1>> {
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if matches!(
+                refs.registered_class(key).unwrap_or(class_id),
+                GP_TOPOLOGY_MEMBERSHIP_CLASS_ID | GP_GEOMETRIC_NETWORK_MEMBERSHIP_CLASS_ID
+            ) =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id:
+                class_id @ (GP_TOPOLOGY_MEMBERSHIP_CLASS_ID | GP_GEOMETRIC_NETWORK_MEMBERSHIP_CLASS_ID),
+            ..
+        } => {
+            let version = reader.read_u16_le()?;
+            if version > 1 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "GP 控制器成员对象版本超限",
+                ));
+            }
+            let value = if class_id == GP_TOPOLOGY_MEMBERSHIP_CLASS_ID {
+                GpControllerMembership10_1::Topology {
+                    version,
+                    name: read_string_10_1(reader, max_bytes)?,
+                    value_bits: reader.read_f64_le()?.to_bits(),
+                    raw_longs: [reader.read_u32_le()? as i32, reader.read_u32_le()? as i32],
+                    raw_short: reader.read_u16_le()?,
+                }
+            } else {
+                GpControllerMembership10_1::GeometricNetwork {
+                    version,
+                    strings: [
+                        read_string_10_1(reader, max_bytes)?,
+                        read_string_10_1(reader, max_bytes)?,
+                        read_string_10_1(reader, max_bytes)?,
+                    ],
+                    raw_long: reader.read_u32_le()? as i32,
+                }
+            };
+            Some(Box::new(value))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "IGPControllerMembership 槽包含不支持的类",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
 }
 
 fn read_de_table_subtype(

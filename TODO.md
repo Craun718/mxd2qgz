@@ -791,7 +791,7 @@
       - [ ] 接入 DataElement 的旧兼容分支。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [ ] 接入 DataElement 的 IDataElement 子对象列表。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的 GPSubtype 对象及字段行。[取证](docs/mxd-terra-round9-bookmark.md#detable)
-      - [ ] 接入 DETable 的 IGPControllerMembership 列表。[取证](docs/mxd-terra-round9-bookmark.md#detable)
+      - [x] 接入 DETable 的拓扑与几何网络控制器成员。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的 Indexes 与 Index 对象体。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [ ] 核对 GPAddressLocatorStyle 非空配置中其余接口槽的类体。[取证](docs/mxd-terra-round9-bookmark.md#gpaddresslocatorstyle)
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
