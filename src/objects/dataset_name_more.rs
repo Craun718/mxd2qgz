@@ -50,6 +50,11 @@
 //! 已经由 FeatureClassName 的 IDatasetName 选择子接入 MXD 解析链；未闭合
 //! 的嵌套新对象体仍是停止点。人工目视验收未做，不得声称已验证。
 
+use crate::layers::cache_tile_reader::{
+    AGS_SERVER_CONNECTION_NAME, AGS_SERVER_OBJECT_NAME, AgsServerConnectionName10_1,
+    AgsServerObjectName10_1, read_ags_server_connection_name_body,
+    read_ags_server_object_name_body,
+};
 use crate::layers::feature_layer::{
     COVERAGE_FEATURE_CLASS_NAME_CLASS_ID, FEATURE_CLASS_NAME_CLASS_ID,
     FGDB_FEATURE_CLASS_NAME_CLASS_ID, read_coverage_feature_class_name_body_10_1,
@@ -377,6 +382,8 @@ pub fn read_feature_query_name_body_10_1(
 /// IDatasetName 槽（请求 IID `{89E75917-…}`）新对象的分派读取结果。
 #[derive(Debug, Clone, PartialEq)]
 pub enum DatasetNameMoreBody10_1 {
+    AgsServerObject(Box<AgsServerObjectName10_1>),
+    AgsServerConnection(Box<AgsServerConnectionName10_1>),
     File(Box<BookmarkNameEntry10_1>),
     Shortcut(Box<BookmarkNameEntry10_1>),
     LocatorWorkspace(Box<BookmarkNameEntry10_1>),
@@ -1198,6 +1205,18 @@ fn read_dataset_name_object_body_10_1(
             )?)),
             None,
         )),
+        AGS_SERVER_OBJECT_NAME => Ok((
+            DatasetNameMoreBody10_1::AgsServerObject(Box::new(read_ags_server_object_name_body(
+                reader, max_bytes, table,
+            )?)),
+            None,
+        )),
+        AGS_SERVER_CONNECTION_NAME => Ok((
+            DatasetNameMoreBody10_1::AgsServerConnection(Box::new(
+                read_ags_server_connection_name_body(reader, max_bytes, table)?,
+            )),
+            None,
+        )),
         FILE_NAME_CLASS_ID => Ok((
             DatasetNameMoreBody10_1::File(Box::new(read_file_name_body_10_1(reader, max_bytes)?)),
             None,
@@ -1577,6 +1596,8 @@ pub(crate) fn read_overlay_name_slot_10_1(
                     | LOCATOR_WORKSPACE_NAME_CLASS_ID
                     | SHORTCUT_NAME_CLASS_ID
                     | FILE_NAME_CLASS_ID
+                    | AGS_SERVER_OBJECT_NAME
+                    | AGS_SERVER_CONNECTION_NAME
                     | FEATURE_DATASET_NAME_CLASS_ID
                     | COVERAGE_NAME_CLASS_ID
                     | TIN_NAME_CLASS_ID
@@ -2322,6 +2343,44 @@ mod tests {
             assert_eq!(reader.position(), end);
             assert_eq!(read_string_10_1(&mut reader, 256).unwrap(), "格网编号");
         }
+    }
+
+    #[test]
+    fn overlay_ags_names_read_inline_connection_and_shared_reference() {
+        let mut bytes = entry(&AGS_SERVER_OBJECT_NAME, 90).to_vec();
+        bytes.extend(3_i16.to_le_bytes());
+        bytes.extend([0; 12]); // 三个空 BSTR。
+        bytes.extend(entry(&AGS_SERVER_CONNECTION_NAME, 91));
+        bytes.extend(2_i16.to_le_bytes());
+        bytes.extend([0; 16]);
+        bytes.extend(str_bytes("server"));
+        bytes.extend([0; 12]); // v2–v3 的三个空 BSTR。
+        let end = bytes.len();
+        bytes.extend(entry(&TABLE_NAME_CLASS_ID, 91));
+        let mut refs = RefTable10_1::new();
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            assert!(read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+        let mut reader = Reader::new(&bytes);
+        let slot = read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).unwrap();
+        assert!(
+            matches!(slot, DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::AgsServerObject(body))
+            if body.version == 3 && body.connection.body.as_ref().is_some_and(|connection|
+                connection.extra_string.as_deref() == Some("server")))
+        );
+        assert_eq!(refs.registered_class(90), Some(AGS_SERVER_OBJECT_NAME));
+        assert_eq!(reader.position(), end);
+        assert!(matches!(
+            read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).unwrap(),
+            DatasetNameMoreSlot10_1::BackReference {
+                class_id: AGS_SERVER_CONNECTION_NAME,
+                key: 91
+            }
+        ));
+        assert_eq!(reader.remaining(), 0);
     }
 
     #[test]

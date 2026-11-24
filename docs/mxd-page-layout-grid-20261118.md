@@ -224,6 +224,11 @@ FileName 与书签共用 [SystemCore.dll 10.1 的 FileName 读取器](mxd-terra-
 构造测试验证非空 UTF-16 BSTR、类键登记、后继格网字符串及截断回滚。
 样例的文件名称只用于验证持久化边界，真实格网宿主与原生显示仍待核对。
 
+AGSServerObjectName 与 AGSServerConnectionName 复用
+AGSClient.dll 10.1.0.3035 Load `0x697e9b30 / 0x697e6070` 对应的
+读取器。构造格网槽覆盖对象名 v3 内联连接名 v2、两级键和连接名回引、
+尾段边界及截断回滚。真实宿主及 ArcMap 显示仍待验证。
+
 ### 叠加格网的关系查询名称
 
 在 MapElements.dll 10.1.0.3035 的 CustomOverlayGrid Load
