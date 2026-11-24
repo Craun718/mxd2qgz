@@ -127,6 +127,21 @@ GroupLayer 已分类的 ExtraSafe 子层头取得两种 CLSID 及其体边界。
 类名、独立组件归属及 ILayerMasking 的接口结果待确认。解析器保留这八段
 有界对象体，并停在逐图层遮罩阶段 38。ArcMap 10.1 与 QGIS 人工验收未执行。
 
+补查 10.1 .NET SDK Setup1.cab 中两份字节相同的
+`Set_MOLE_Layer_Size.snippet`（SHA-256
+`463ecb89755c5be7355fa72eb1be3d4ff47d7ffe6bfc601f2e08a43492a4dab2`）。
+示例将 DefenseSolutions.ICachedGraphicLayer 查询到
+IForceElementLayer 或 ITacticalGraphicLayer，据此锁定后续应找的
+类型库和接口族。SDK 的 `esriDefenseSolutions.cab` 内是帮助归档
+`esriDefenseSolutions.mshc`（SHA-256
+`975db08b15a7e5d4cbae0e8852820d0615766fa65fb66b2ec73210b6aabaac5b`），
+其中有两类的类页和接口页。检查该归档的 1230 个成员，未找到
+两个样本 CLSID 的文本、UTF-16LE 或内存序字节。两份 /Maps 中各
+CLSID 的出现位置也都落在上表对象头（体起点减 20），暂未发现
+这两类的其他直接引用。要逐一绑定 CLSID 并核对 ILayerMasking
+查询，仍需含 DefenseSolutions 原生组件或注册信息的介质。
+本轮保留原有解析停点。
+
 ## TemporalFeatureLayer 的聚合查询
 
 10.1.0.3035 Desktop 的 `TrackingLayer.dll`（PE32，SHA-256 `06b59b5930c643be5244b20a8cc5f7576a16b9d6e5421ee327839e8230a169ab`）与同版本 `esri.clsid.xml` 均将 `3334CE40-1A1D-11D5-B7CF-00010265ADC5` 绑定到 TemporalFeatureLayer。DLL 中 `0x8086eb90` 的 IPersistStream::GetClassID 也返回该 CLSID。用 MSVC RTTI 定位 `CComObject<CoTemporalFeatureLayer>` 主虚表 `0x808a117c`，然后用 `objdump -d -Mintel` 复核：
