@@ -195,6 +195,11 @@ LasDatasetName 与书签共用 LasDataset.dll 10.1.0.3035
 Load `0x785ae120` 对应的读取器。构造格网槽验证对象体、键、
 后继格网字符串和截断回滚。真实格网宿主及 ArcMap 显示仍待验证。
 
+RepresentationClassName 与书签共用 RepresentationDB.dll
+10.1.0.3035 Load `0x7cb29260` 对应的读取器。构造输入验证有符号
+版本门、键登记、后继格网字符串和截断回滚。真实格网及 ArcMap
+显示仍待验证。
+
 ### 叠加格网的关系查询名称
 
 在 MapElements.dll 10.1.0.3035 的 CustomOverlayGrid Load

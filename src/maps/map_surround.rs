@@ -2688,6 +2688,32 @@ pub struct RepresentationClassName10_1 {
     pub workspace: RasterDatasetWorkspaceSlot10_1,
 }
 
+pub(crate) fn read_representation_class_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<RepresentationClassName10_1> {
+    let class_name = "RepresentationClassName";
+    let version = reader.read_u16_le()? as i16;
+    if version > 1 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("{class_name} 版本 {version} 超出 10.1 上限"),
+        ));
+    }
+    let strings = [
+        read_string_10_1(reader, max_bytes)?,
+        read_string_10_1(reader, max_bytes)?,
+        read_string_10_1(reader, max_bytes)?,
+    ];
+    let workspace = read_surface_workspace_name_10_1(reader, max_bytes, table, class_name)?;
+    Ok(RepresentationClassName10_1 {
+        version,
+        strings,
+        workspace,
+    })
+}
+
 pub const LAS_DATASET_NAME_CLASS_ID: [u8; 16] = [
     0x94, 0xa9, 0x29, 0x20, 0xc0, 0x9b, 0x94, 0x40, 0xa1, 0xc7, 0xe5, 0x38, 0x18, 0x69, 0xe4, 0xe3,
 ];
@@ -9883,27 +9909,9 @@ fn read_bookmark_name_slot_10_1(
         ObjectEntry10_1::NewObject {
             class_id: REPRESENTATION_CLASS_NAME_CLASS_ID,
             ..
-        } => {
-            let class_name = "RepresentationClassName";
-            let version = reader.read_u16_le()? as i16;
-            if version > 1 {
-                return Err(io::Error::new(
-                    ErrorKind::InvalidData,
-                    format!("{class_name} 版本 {version} 超出 10.1 上限"),
-                ));
-            }
-            let strings = [
-                read_string_10_1(reader, max_bytes)?,
-                read_string_10_1(reader, max_bytes)?,
-                read_string_10_1(reader, max_bytes)?,
-            ];
-            let workspace = read_surface_workspace_name_10_1(reader, max_bytes, table, class_name)?;
-            BookmarkNameEntry10_1::RepresentationClassName(Box::new(RepresentationClassName10_1 {
-                version,
-                strings,
-                workspace,
-            }))
-        }
+        } => BookmarkNameEntry10_1::RepresentationClassName(Box::new(
+            read_representation_class_name_body_10_1(reader, max_bytes, table)?,
+        )),
         ObjectEntry10_1::NewObject {
             class_id: TIN_NAME_CLASS_ID,
             ..
