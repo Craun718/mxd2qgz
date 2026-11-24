@@ -493,6 +493,10 @@ pub const NET_WEIGHT_ASSOCIATION_CLASS_ID: [u8; 16] = [
     0x91, 0xc4, 0xbd, 0x19, 0x01, 0x62, 0xd1, 0x11, 0xb2, 0x55, 0x00, 0x00, 0xf8, 0x78, 0x22, 0x9e,
 ];
 
+pub const DE_RELATIONSHIP_CLASS_CLASS_ID: [u8; 16] = [
+    0x87, 0x54, 0x1f, 0xd4, 0x16, 0x6b, 0xfd, 0x42, 0xab, 0x61, 0x63, 0xa5, 0x5b, 0x51, 0x9b, 0x71,
+];
+
 pub const DE_GEOMETRIC_NETWORK_CLASS_ID: [u8; 16] = [
     0x8c, 0xba, 0x68, 0xfe, 0x5d, 0x93, 0x6f, 0x4f, 0x80, 0xd5, 0x79, 0x57, 0xf8, 0xdb, 0xef, 0xdf,
 ];
@@ -893,6 +897,7 @@ pub struct DeDataset10_1 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
+    RelationshipClass(Box<DeRelationshipClass10_1>),
     Table(DeTable10_1),
     Topology {
         version: u16,
@@ -931,6 +936,31 @@ pub enum DeChild10_1 {
         spatial_reference: SpatialReferenceEntry10_1,
         strings: [String; 2],
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeRelationshipClass10_1 {
+    pub version: u16,
+    pub base: DeRelationshipBase10_1,
+    pub metadata: Option<DeRelationshipMetadata10_1>,
+    pub raw_rule_count: Option<i32>,
+    pub fields: Option<RuleSlot10_1<FieldsBody10_1>>,
+    pub v6: Option<u16>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DeRelationshipBase10_1 {
+    Dataset(DeDataset10_1),
+    Table(Box<DeTable10_1>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeRelationshipMetadata10_1 {
+    pub names: [StringArraySlot10_1; 2],
+    pub longs: [i32; 4],
+    pub strings: [String; 2],
+    pub shorts: [u16; 3],
+    pub raw_key_counts: [i32; 2],
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3170,6 +3200,7 @@ fn read_gp_data_element_child(
                     | DE_FEATURE_DATASET_CLASS_ID
                     | DE_TOPOLOGY_CLASS_ID
                     | DE_GEOMETRIC_NETWORK_CLASS_ID
+                    | DE_RELATIONSHIP_CLASS_CLASS_ID
             ) =>
         {
             None
@@ -3180,7 +3211,8 @@ fn read_gp_data_element_child(
                 | DE_FEATURE_CLASS_CLASS_ID
                 | DE_FEATURE_DATASET_CLASS_ID
                 | DE_TOPOLOGY_CLASS_ID
-                | DE_GEOMETRIC_NETWORK_CLASS_ID),
+                | DE_GEOMETRIC_NETWORK_CLASS_ID
+                | DE_RELATIONSHIP_CLASS_CLASS_ID),
             ..
         } => {
             if depth >= MAX_BOOKMARK_NAME_NESTING {
@@ -3191,6 +3223,13 @@ fn read_gp_data_element_child(
             }
             let body = if class_id == DE_TABLE_CLASS_ID {
                 DeChild10_1::Table(read_gp_de_table(reader, max_bytes, refs, depth + 1)?)
+            } else if class_id == DE_RELATIONSHIP_CLASS_CLASS_ID {
+                DeChild10_1::RelationshipClass(Box::new(read_de_relationship_class(
+                    reader,
+                    max_bytes,
+                    refs,
+                    depth + 1,
+                )?))
             } else if matches!(
                 class_id,
                 DE_FEATURE_DATASET_CLASS_ID | DE_TOPOLOGY_CLASS_ID | DE_GEOMETRIC_NETWORK_CLASS_ID
@@ -3300,6 +3339,89 @@ fn read_gp_data_element_child(
         }
     };
     Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_de_relationship_class(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<DeRelationshipClass10_1> {
+    let version = reader.read_u16_le()?;
+    if version > 6 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "DERelationshipClass 版本超限",
+        ));
+    }
+    let base = if version >= 5 {
+        DeRelationshipBase10_1::Table(Box::new(read_gp_de_table(reader, max_bytes, refs, depth)?))
+    } else {
+        DeRelationshipBase10_1::Dataset(read_gp_de_dataset(reader, max_bytes, refs, depth)?)
+    };
+    let metadata = if version >= 2 {
+        let names = [
+            read_string_array_slot_10_1(reader, max_bytes, refs)?,
+            read_string_array_slot_10_1(reader, max_bytes, refs)?,
+        ];
+        let leading = [reader.read_u32_le()? as i32, reader.read_u32_le()? as i32];
+        let strings = [
+            read_string_10_1(reader, max_bytes)?,
+            read_string_10_1(reader, max_bytes)?,
+        ];
+        let longs = [
+            leading[0],
+            leading[1],
+            reader.read_u32_le()? as i32,
+            reader.read_u32_le()? as i32,
+        ];
+        let shorts = [
+            reader.read_u16_le()?,
+            reader.read_u16_le()?,
+            reader.read_u16_le()?,
+        ];
+        let mut raw_key_counts = [0; 2];
+        for count in &mut raw_key_counts {
+            *count = reader.read_u32_le()? as i32;
+            if *count > 0 {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    "DERelationshipClass 的非空键列表尚未支持",
+                ));
+            }
+        }
+        Some(DeRelationshipMetadata10_1 {
+            names,
+            longs,
+            strings,
+            shorts,
+            raw_key_counts,
+        })
+    } else {
+        None
+    };
+    let raw_rule_count = (version >= 3)
+        .then(|| reader.read_u32_le().map(|count| count as i32))
+        .transpose()?;
+    if raw_rule_count.is_some_and(|count| count > 0) {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            "DERelationshipClass 的非空规则列表尚未支持",
+        ));
+    }
+    let fields = (version == 4
+        || (version <= 3 && metadata.as_ref().is_some_and(|body| body.shorts[1] != 0)))
+    .then(|| read_gp_fields_slot(reader, max_bytes, refs, depth))
+    .transpose()?;
+    let v6 = (version == 6).then(|| reader.read_u16_le()).transpose()?;
+    Ok(DeRelationshipClass10_1 {
+        version,
+        base,
+        metadata,
+        raw_rule_count,
+        fields,
+        v6,
+    })
 }
 
 fn read_de_geometric_network(
