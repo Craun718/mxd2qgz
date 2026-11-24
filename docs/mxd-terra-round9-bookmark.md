@@ -2014,6 +2014,24 @@ Rust 通过 IGPValue 槽接入这两个版本，原样保留标量。
 构造的拓扑书签覆盖值域回引、后继字段、版本拒绝和逐字节
 截断回滚。真实 MXD 宿主与 ArcMap 人工验证仍待补充。
 
+#### XMLIndexTags
+
+同版 GdbCore.dll 的 XMLIndexTags CLSID 为
+`78D0F170-0F98-41CF-8768-D7C8887C1935`。主 QI
+`0x70964bf0` 将 IPersistStream 映射到对象 +0x1c，
+RTTI 对应虚表 `0x70acacb0`。Load `0x709657c0`
+检查无符号 short 版本不大于 1，于 `0x7096580c` 读
+GPValue 基类，在 `0x70965823` 读有符号 LONG 计数。
+正计数逐项在 `0x70965858` 调用 AfCore LoadObject，
+以 `0x70ac8f70` 的 IXMLIndexTag IID 请求对象。Save
+`0x709658c0` 对应写出计数和对象槽（`0x7096592c`、
+`0x7096594f`）。
+
+Rust 保留原始计数、对象槽顺序和回引，回引按登记类
+检查是否为已确认的 XMLIndexTag 实现。构造拓扑书签测试
+验证两个作用域的回引、后继字段、非法版本和逐字节截断回滚。
+其他 IXMLIndexTag 实现及真实 ArcMap 工程仍待验证。
+
 #### GPHistoricalMarker 的流接口要求
 
 FeatureDataElements.dll 10.1.0.3035 的 SHA-256 为

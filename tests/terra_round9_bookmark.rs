@@ -8203,3 +8203,52 @@ fn feature_bookmark_reads_xml_index_tag_coded_values() {
         );
     }
 }
+
+#[test]
+fn feature_bookmark_reads_xml_index_tags_collection() {
+    use mxd2qgz::layers::image_server_rules::RuleSlot10_1;
+    use mxd2qgz::maps::map_surround::{
+        GpCodedValue10_1, GpCodedValueBody10_1, XML_INDEX_TAG_CLASS_ID, XML_INDEX_TAGS_CLASS_ID,
+    };
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    let tag = bookmark_entry_10_1(&XML_INDEX_TAG_CLASS_ID, 20);
+    let mut payload = 2_i32.to_le_bytes().to_vec();
+    payload.extend(&tag);
+    payload.extend([1, 0, 1, 0, 0, 0]);
+    payload.extend([0; 16]);
+    payload.extend(&tag);
+    assert_legacy_topo_coded_value(
+        XML_INDEX_TAGS_CLASS_ID,
+        1,
+        &payload,
+        GpCodedValue10_1::XmlIndexTags {
+            raw_count: 2,
+            tags: vec![
+                RuleSlot10_1 {
+                    entry: ObjectEntry10_1::NewObject {
+                        class_id: XML_INDEX_TAG_CLASS_ID,
+                        key: 20,
+                    },
+                    body: Some(Box::new(GpCodedValueBody10_1 {
+                        version: 1,
+                        base_version: 1,
+                        base_short: 0,
+                        value: GpCodedValue10_1::XmlIndexTag {
+                            first: String::new(),
+                            raw_longs: [0, 0],
+                            second: String::new(),
+                        },
+                    })),
+                },
+                RuleSlot10_1 {
+                    entry: ObjectEntry10_1::BackReference {
+                        class_id: XML_INDEX_TAG_CLASS_ID,
+                        key: 20,
+                    },
+                    body: None,
+                },
+            ],
+        },
+    );
+}
