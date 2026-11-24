@@ -1543,6 +1543,21 @@ PE RTTI 标识 DERasterDataTypeFactory 的接口表 `0x7c1266f0`。
 现有名称读取器覆盖。结论来自本地 PE 静态反汇编，真实 MXD
 与 ArcMap 人工验证仍待补充。
 
+##### GP 网络分析数据类型名称工厂
+
+GpNaFunctionFactories.dll 10.1.0.3035 的 SHA-256 为
+`79c35fbf6e39ae990f2a6b9ee8c6bf434c64befa05f9609aaf830d0b9cb142f7`。
+本地 PE 的 RTTI 将 GPNADataTypeFactory 的 +0x10 接口表定位为
+`0x744cd800`，主 QI `0x744c14c0` 引用 `0x744cd8f8` 的
+IGPDataTypeFactory IID。表内名称槽 +0x14 进入 `0x744c16a0`，
+调用 `0x744c1050` 查找名称。选中 32 字节记录后在
+`0x744c1701` 调用 `0x744c1120`，后者以 `0x744cd270` 的
+GPDataTypeName CLSID 调用创建辅助函数 `0x744c6760`。
+名称枚举循环在 `0x744c17b0` 至 `0x744c17b9` 遍历
+`0x744d1478..0x744d14b8` 内的两条记录，复用同一辅助函数。
+现有 GPMultiValue 读取器覆盖该名称类。尚未在真实 MXD
+中验证此工厂产物。
+
 #### GPValueTable
 
 GpObjects.dll 10.1.0.3035 的 RTTI `0x74801cd4` 对应持久化虚表
