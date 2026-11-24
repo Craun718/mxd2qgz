@@ -1124,8 +1124,29 @@ pub struct DeTerrainLegacy10_1 {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct DeTerrainV5To8_10_1 {
+    pub version: u32,
+    pub geo_dataset_version: u16,
+    pub dataset: DeDataset10_1,
+    pub extent: BookmarkEnvelopeEntry10_1,
+    pub spatial_reference: SpatialReferenceEntry10_1,
+    pub level_type: u32,
+    pub v6: Option<u32>,
+    pub v7_bits: Option<u64>,
+    pub v8: Option<u32>,
+    pub value_bits: u64,
+    pub longs: [u32; 2],
+    pub name: String,
+    pub source_count: i32,
+    pub sources: Vec<DeTerrainSource10_1>,
+    pub level_count: i32,
+    pub levels: Vec<([u32; 3], u64)>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
     TerrainLegacy(Box<DeTerrainLegacy10_1>),
+    TerrainV5To8(Box<DeTerrainV5To8_10_1>),
     TableInfo(DeCompactTable10_1),
     LasDataset {
         version: u16,
@@ -3710,21 +3731,10 @@ fn read_gp_arc_info_items(
     Ok((raw_count, items))
 }
 
-fn read_de_terrain_legacy(
+fn read_de_terrain_sources(
     reader: &mut Reader<'_>,
     max_bytes: usize,
-    refs: &mut RefTable10_1,
-) -> io::Result<DeTerrainLegacy10_1> {
-    let version = reader.read_u32_le()?;
-    if !(1..=4).contains(&version) {
-        return Err(io::Error::new(
-            ErrorKind::Unsupported,
-            format!("DETerrain 版本 {version} 尚未支持"),
-        ));
-    }
-    let leading_long = reader.read_u32_le()?;
-    let leading_value = reader.read_f64_le()?.to_bits();
-    let longs = [reader.read_u32_le()?, reader.read_u32_le()?];
+) -> io::Result<(i32, Vec<DeTerrainSource10_1>)> {
     let (source_count, count) = read_gp_coded_value_count(reader, max_bytes, 62)?;
     let mut sources = Vec::new();
     for _ in 0..count {
@@ -3785,9 +3795,19 @@ fn read_de_terrain_legacy(
             names,
         });
     }
+    Ok((source_count, sources))
+}
+
+type DeTerrainLevel10_1 = ([u32; 3], u64);
+
+fn read_de_terrain_levels(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    level_type: u32,
+) -> io::Result<(i32, Vec<DeTerrainLevel10_1>)> {
     let (level_count, count) = read_gp_coded_value_count(reader, max_bytes, 24)?;
     let mut levels = Vec::new();
-    if count != 0 && leading_long > 1 {
+    if count != 0 && level_type > 1 {
         return Err(io::Error::new(
             ErrorKind::Unsupported,
             "DETerrain 层级类型尚未支持",
@@ -3809,6 +3829,62 @@ fn read_de_terrain_legacy(
             reader.read_f64_le()?.to_bits(),
         ));
     }
+    Ok((level_count, levels))
+}
+
+fn read_de_terrain_v5_to_8(
+    reader: &mut Reader<'_>,
+    version: u32,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<DeTerrainV5To8_10_1> {
+    let geo_dataset_version = read_de_layer_version(reader, 1, "DEGeoDataset")?;
+    let dataset = read_gp_de_dataset(reader, max_bytes, refs, depth)?;
+    let extent = read_surround_envelope_slot(reader, max_bytes, refs, "DETerrain 范围")?;
+    let spatial_reference = read_spatial_reference_entry_10_1(reader, max_bytes, refs)?;
+    let level_type = reader.read_u32_le()?;
+    let v6 = (version >= 6).then(|| reader.read_u32_le()).transpose()?;
+    let v7_bits = (version >= 7)
+        .then(|| reader.read_f64_le().map(f64::to_bits))
+        .transpose()?;
+    let v8 = (version == 8).then(|| reader.read_u32_le()).transpose()?;
+    let value_bits = reader.read_f64_le()?.to_bits();
+    let longs = [reader.read_u32_le()?, reader.read_u32_le()?];
+    let name = read_string_10_1(reader, max_bytes)?;
+    let (source_count, sources) = read_de_terrain_sources(reader, max_bytes)?;
+    let (level_count, levels) = read_de_terrain_levels(reader, max_bytes, level_type)?;
+    Ok(DeTerrainV5To8_10_1 {
+        version,
+        geo_dataset_version,
+        dataset,
+        extent,
+        spatial_reference,
+        level_type,
+        v6,
+        v7_bits,
+        v8,
+        value_bits,
+        longs,
+        name,
+        source_count,
+        sources,
+        level_count,
+        levels,
+    })
+}
+
+fn read_de_terrain_legacy(
+    reader: &mut Reader<'_>,
+    version: u32,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<DeTerrainLegacy10_1> {
+    let leading_long = reader.read_u32_le()?;
+    let leading_value = reader.read_f64_le()?.to_bits();
+    let longs = [reader.read_u32_le()?, reader.read_u32_le()?];
+    let (source_count, sources) = read_de_terrain_sources(reader, max_bytes)?;
+    let (level_count, levels) = read_de_terrain_levels(reader, max_bytes, leading_long)?;
     let v2 = if version >= 2 {
         let name = read_string_10_1(reader, max_bytes)?;
         let value = reader.read_u32_le()?;
@@ -4035,9 +4111,25 @@ fn read_gp_data_element_child(
                 };
                 DeChild10_1::TextFile { version, base }
             } else if class_id == DE_TERRAIN_CLASS_ID {
-                DeChild10_1::TerrainLegacy(Box::new(read_de_terrain_legacy(
-                    reader, max_bytes, refs,
-                )?))
+                let version = reader.read_u32_le()?;
+                match version {
+                    1..=4 => DeChild10_1::TerrainLegacy(Box::new(read_de_terrain_legacy(
+                        reader, version, max_bytes, refs,
+                    )?)),
+                    5..=8 => DeChild10_1::TerrainV5To8(Box::new(read_de_terrain_v5_to_8(
+                        reader,
+                        version,
+                        max_bytes,
+                        refs,
+                        depth + 1,
+                    )?)),
+                    _ => {
+                        return Err(io::Error::new(
+                            ErrorKind::Unsupported,
+                            format!("DETerrain 版本 {version} 尚未支持"),
+                        ));
+                    }
+                }
             } else if class_id == DE_RASTER_BAND_CLASS_ID {
                 DeChild10_1::RasterBand(Box::new(read_de_raster_band(
                     reader,
@@ -7636,6 +7728,62 @@ pub fn read_legend_prefix_10_1(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn terrain_v5_to_8_reads_versioned_fields_and_lists() {
+        let empty = [2, 0, 0, 0, 0, 0];
+        for version in 5_u32..=8 {
+            let mut bytes = DE_TERRAIN_CLASS_ID.to_vec();
+            bytes.extend(43_u32.to_le_bytes());
+            bytes.extend(version.to_le_bytes());
+            bytes.extend([0; 10]);
+            bytes.extend(empty.repeat(3));
+            bytes.extend([0; 54]);
+            bytes.extend(1_u32.to_le_bytes());
+            if version >= 6 {
+                bytes.extend(6_u32.to_le_bytes());
+            }
+            if version >= 7 {
+                bytes.extend(7_f64.to_le_bytes());
+            }
+            if version == 8 {
+                bytes.extend(8_u32.to_le_bytes());
+            }
+            bytes.extend([0; 16]);
+            bytes.extend(empty);
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend([0; 46]);
+            bytes.extend(empty.repeat(3));
+            bytes.extend(0_u32.to_le_bytes());
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend([0; 20]);
+            for cut in 0..bytes.len() {
+                assert!(
+                    read_gp_data_element_child(
+                        &mut Reader::new(&bytes[..cut]),
+                        1024,
+                        &mut RefTable10_1::new(),
+                        0,
+                    )
+                    .is_err()
+                );
+            }
+            let end = bytes.len();
+            bytes.push(0xa5);
+            let mut reader = Reader::new(&bytes);
+            let slot =
+                read_gp_data_element_child(&mut reader, 1024, &mut RefTable10_1::new(), 0).unwrap();
+            let Some(DeChild10_1::TerrainV5To8(body)) = slot.body.as_deref() else {
+                panic!("应读取 DETerrain v5–8");
+            };
+            assert_eq!(body.v6, (version >= 6).then_some(6));
+            assert_eq!(body.v7_bits, (version >= 7).then_some(7_f64.to_bits()));
+            assert_eq!(body.v8, (version == 8).then_some(8));
+            assert_eq!((body.sources.len(), body.levels.len()), (1, 1));
+            assert_eq!(reader.position(), end);
+        }
+    }
 
     #[test]
     fn legacy_terrain_reads_sources_levels_and_version_tail() {
