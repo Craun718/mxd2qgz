@@ -220,6 +220,10 @@ ShortcutName 与书签共用 SystemCore.dll 10.1.0.3035 Load
 构造测试覆盖两级 ShortcutName、键登记、后继格网字符串与截断回滚。
 真实格网宿主和 ArcMap 显示仍待验证。
 
+FileName 与书签共用 [SystemCore.dll 10.1 的 FileName 读取器](mxd-terra-round9-bookmark.md#filename)。
+构造测试验证非空 UTF-16 BSTR、类键登记、后继格网字符串及截断回滚。
+样例的文件名称只用于验证持久化边界，真实格网宿主与原生显示仍待核对。
+
 ### 叠加格网的关系查询名称
 
 在 MapElements.dll 10.1.0.3035 的 CustomOverlayGrid Load

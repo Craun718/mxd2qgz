@@ -81,9 +81,10 @@ use crate::layers::wcs_name::{
     WMTS_CONNECTION_NAME_CLASS_ID,
 };
 use crate::maps::map_surround::{
-    BookmarkNameEntry10_1, LAS_DATASET_NAME_CLASS_ID, LOCATOR_WORKSPACE_NAME_CLASS_ID,
-    LasDatasetName10_1, REPRESENTATION_CLASS_NAME_CLASS_ID, RepresentationClassName10_1,
-    SCHEMATIC_WORKSPACE_NAME_CLASS_ID, SHORTCUT_NAME_CLASS_ID, read_las_dataset_name_body_10_1,
+    BookmarkNameEntry10_1, FILE_NAME_CLASS_ID, LAS_DATASET_NAME_CLASS_ID,
+    LOCATOR_WORKSPACE_NAME_CLASS_ID, LasDatasetName10_1, REPRESENTATION_CLASS_NAME_CLASS_ID,
+    RepresentationClassName10_1, SCHEMATIC_WORKSPACE_NAME_CLASS_ID, SHORTCUT_NAME_CLASS_ID,
+    read_file_name_body_10_1, read_las_dataset_name_body_10_1,
     read_locator_workspace_name_body_10_1, read_representation_class_name_body_10_1,
     read_shortcut_name_body_10_1,
 };
@@ -376,6 +377,7 @@ pub fn read_feature_query_name_body_10_1(
 /// IDatasetName 槽（请求 IID `{89E75917-…}`）新对象的分派读取结果。
 #[derive(Debug, Clone, PartialEq)]
 pub enum DatasetNameMoreBody10_1 {
+    File(Box<BookmarkNameEntry10_1>),
     Shortcut(Box<BookmarkNameEntry10_1>),
     LocatorWorkspace(Box<BookmarkNameEntry10_1>),
     RepresentationClass(Box<RepresentationClassName10_1>),
@@ -1196,6 +1198,10 @@ fn read_dataset_name_object_body_10_1(
             )?)),
             None,
         )),
+        FILE_NAME_CLASS_ID => Ok((
+            DatasetNameMoreBody10_1::File(Box::new(read_file_name_body_10_1(reader, max_bytes)?)),
+            None,
+        )),
         SHORTCUT_NAME_CLASS_ID => Ok((
             DatasetNameMoreBody10_1::Shortcut(Box::new(read_shortcut_name_body_10_1(
                 reader, max_bytes, table, 0,
@@ -1570,6 +1576,7 @@ pub(crate) fn read_overlay_name_slot_10_1(
                     | WORKSPACE_NAME_CLASS_ID
                     | LOCATOR_WORKSPACE_NAME_CLASS_ID
                     | SHORTCUT_NAME_CLASS_ID
+                    | FILE_NAME_CLASS_ID
                     | FEATURE_DATASET_NAME_CLASS_ID
                     | COVERAGE_NAME_CLASS_ID
                     | TIN_NAME_CLASS_ID
@@ -2315,6 +2322,37 @@ mod tests {
             assert_eq!(reader.position(), end);
             assert_eq!(read_string_10_1(&mut reader, 256).unwrap(), "格网编号");
         }
+    }
+
+    #[test]
+    fn overlay_file_name_preserves_bstr_and_following_string() {
+        let mut bytes = entry(&FILE_NAME_CLASS_ID, 90).to_vec();
+        bytes.extend(1_i16.to_le_bytes());
+        let filename = "格网.shp";
+        let units: Vec<_> = filename.encode_utf16().collect();
+        bytes.extend((units.len() as u32).to_le_bytes());
+        bytes.extend(units.into_iter().chain([0]).flat_map(u16::to_le_bytes));
+        let end = bytes.len();
+        bytes.extend(str_bytes("格网编号"));
+        let mut refs = RefTable10_1::new();
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            assert!(read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+        let mut reader = Reader::new(&bytes);
+        let slot = read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).unwrap();
+        let DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::File(body)) = slot else {
+            panic!("应读取 FileName");
+        };
+        assert!(
+            matches!(body.as_ref(), BookmarkNameEntry10_1::FileName { version: 1, name_string }
+            if name_string == filename)
+        );
+        assert_eq!(refs.registered_class(90), Some(FILE_NAME_CLASS_ID));
+        assert_eq!(reader.position(), end);
+        assert_eq!(read_string_10_1(&mut reader, 256).unwrap(), "格网编号");
     }
 
     #[test]

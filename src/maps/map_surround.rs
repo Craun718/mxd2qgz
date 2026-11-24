@@ -9298,6 +9298,23 @@ pub(crate) fn read_locator_workspace_name_body_10_1(
     })
 }
 
+pub(crate) fn read_file_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+) -> io::Result<BookmarkNameEntry10_1> {
+    let version = reader.read_u16_le()? as i16;
+    if version > 1 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("FileName 版本 {version} 超出 10.1 上限"),
+        ));
+    }
+    Ok(BookmarkNameEntry10_1::FileName {
+        version,
+        name_string: crate::stream::native_string::read_bstr_string_10_1(reader, max_bytes)?,
+    })
+}
+
 pub(crate) fn read_shortcut_name_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -9854,21 +9871,7 @@ fn read_bookmark_name_slot_10_1(
         ObjectEntry10_1::NewObject {
             class_id: FILE_NAME_CLASS_ID,
             ..
-        } => {
-            let version = reader.read_u16_le()? as i16;
-            if version > 1 {
-                return Err(io::Error::new(
-                    ErrorKind::InvalidData,
-                    format!("FileName 版本 {version} 超出 10.1 上限"),
-                ));
-            }
-            BookmarkNameEntry10_1::FileName {
-                version,
-                name_string: crate::stream::native_string::read_bstr_string_10_1(
-                    reader, max_bytes,
-                )?,
-            }
-        }
+        } => read_file_name_body_10_1(reader, max_bytes)?,
         ObjectEntry10_1::NewObject {
             class_id: AGS_SERVER_OBJECT_NAME,
             ..
