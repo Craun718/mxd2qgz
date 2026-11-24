@@ -43,6 +43,7 @@ pub struct RefTable10_1 {
     feature_dataset_paths: HashMap<u32, Arc<str>>,
     dataset_sources: HashMap<([u8; 16], u32), DatasetSource10_1>,
     raster_names_without_open_result: HashSet<u32>,
+    table_names_with_null_workspace: HashSet<u32>,
     string_arrays: HashMap<u32, (u16, usize, Arc<[String]>)>,
     long_arrays: HashMap<u32, (u16, Arc<[i32]>)>,
     multi_patch_marker_strings: HashMap<u32, Arc<str>>,
@@ -201,6 +202,14 @@ impl RefTable10_1 {
 
     pub(crate) fn raster_name_opens_without_result(&self, key: u32) -> bool {
         self.raster_names_without_open_result.contains(&key)
+    }
+
+    pub(crate) fn mark_table_name_with_null_workspace(&mut self, key: u32) {
+        self.table_names_with_null_workspace.insert(key);
+    }
+
+    pub(crate) fn table_name_has_null_workspace(&self, key: u32) -> bool {
+        self.table_names_with_null_workspace.contains(&key)
     }
 
     pub(crate) fn mark_dataset_source(

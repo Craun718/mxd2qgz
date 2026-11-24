@@ -914,6 +914,52 @@ mod tests {
             assert_eq!(reader.position(), end + name_len - 4);
             assert_eq!(refs.registered_class(63), Some(TABLE_NAME_CLASS_ID));
 
+            let reference_flag_at = name_flag_at - (body_end - header_offset - 20);
+            let mut with_related_reference = reference.clone();
+            let mut related_reference = 1_i32.to_le_bytes().to_vec();
+            related_reference.extend(RASTER_TYPE_NAME_CLASS_ID);
+            related_reference.extend(63_u32.to_le_bytes());
+            with_related_reference
+                .splice(reference_flag_at..reference_flag_at + 4, related_reference);
+            let mut reader = Reader::new(&with_related_reference);
+            let layer = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+            let tail = layer.tail.unwrap();
+            let name = tail.related_name.unwrap();
+            assert_eq!(
+                name.entry,
+                ObjectEntry10_1::BackReference {
+                    class_id: TABLE_NAME_CLASS_ID,
+                    key: 63
+                }
+            );
+            assert!(name.body.is_none());
+            assert!(tail.geodata_xform_v13.is_none());
+            assert_eq!(
+                reader.position(),
+                end - (body_end - header_offset - 20) + 20
+            );
+
+            let mut refs = RefTable10_1::new();
+            let mut reader = Reader::new(&bytes);
+            read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+            let mut header = TABLE_NAME_CLASS_ID.to_vec();
+            header.extend(63_u32.to_le_bytes());
+            crate::storage::object_refs::read_object_entry_10_1(
+                &mut Reader::new(&header),
+                &mut refs,
+            )
+            .unwrap();
+            let before = refs.clone();
+            let mut reader = Reader::new(&with_related_reference);
+            assert_eq!(
+                read_inline_raster_body_10_1(&mut reader, 4096, &mut refs)
+                    .unwrap_err()
+                    .kind(),
+                ErrorKind::Unsupported
+            );
+            assert_eq!(reader.position(), 0);
+            assert_eq!(refs, before);
+
             let mut reader = Reader::new(&with_related_name[..name_flag_at + name_len - 1]);
             let mut refs = RefTable10_1::new();
             assert!(read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).is_err());

@@ -233,6 +233,7 @@ use crate::objects::route_event_name::{
     read_route_event_source_name_body_10_1, read_route_measure_locator_name_body_10_1,
 };
 use crate::objects::string_array::{StringArraySlot10_1, read_string_array_slot_10_1};
+use crate::objects::workspace_name::WorkspaceNameEntry10_1;
 use crate::objects::workspace_name::{
     WORKSPACE_NAME_CLASS_ID, WorkspaceNamePrefix10_1, read_workspace_name_body_10_1,
 };
@@ -9400,7 +9401,7 @@ fn read_bookmark_name_slot_10_1(
         ObjectEntry10_1::NewObject {
             class_id:
                 class_id @ (TABLE_NAME_CLASS_ID | FGDB_TABLE_NAME_CLASS_ID | OBJECT_CLASS_NAME_CLASS_ID),
-            ..
+            key,
         } => {
             let (body, stopped) = if class_id == FGDB_TABLE_NAME_CLASS_ID {
                 read_fgdb_table_name_body_10_1(reader, table, max_bytes)?
@@ -9419,6 +9420,11 @@ fn read_bookmark_name_slot_10_1(
                         }
                     ),
                 ));
+            }
+            if class_id == TABLE_NAME_CLASS_ID
+                && matches!(body.workspace, WorkspaceNameEntry10_1::Null)
+            {
+                table.mark_table_name_with_null_workspace(key);
             }
             match class_id {
                 OBJECT_CLASS_NAME_CLASS_ID => {

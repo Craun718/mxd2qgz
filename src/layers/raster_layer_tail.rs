@@ -70,7 +70,6 @@ use crate::objects::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
 use crate::objects::spatial_reference_slots::{
     GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID, UNKNOWN_COORDINATE_SYSTEM_CLASS_ID,
 };
-use crate::objects::workspace_name::WorkspaceNameEntry10_1;
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -926,13 +925,14 @@ pub(super) fn read_raster_layer_tail(
             .any(|slot| slot.entry != ObjectEntry10_1::Null)
             || related_name.as_ref().is_some_and(|slot| {
                 // TableName::Open 在工作空间为空时直接返回，安装路径保持数据集成员为空。
-                !matches!(
-                    (&slot.entry, &slot.body),
-                    (
-                        ObjectEntry10_1::NewObject { class_id: TABLE_NAME_CLASS_ID, .. },
-                        Some(RasterLayerRelationshipBody10_1::TableName(name))
-                    ) if matches!(name.workspace, WorkspaceNameEntry10_1::Null)
-                )
+                match slot.entry {
+                    ObjectEntry10_1::NewObject { key, .. }
+                    | ObjectEntry10_1::BackReference { key, .. } => {
+                        staged.registered_class(key) != Some(TABLE_NAME_CLASS_ID)
+                            || !staged.table_name_has_null_workspace(key)
+                    }
+                    ObjectEntry10_1::Null => true,
+                }
             })
             || related_objects
                 .iter()
