@@ -2134,6 +2134,25 @@ Save `0x748e5d00` 的尺寸分派、内嵌 Variant 和成员 String
 对象回引、后继字段及逐字节截断回滚。内嵌数组的真实取值与
 ArcMap/QGIS 实档验收待查。
 
+#### GPRasterBuilder
+
+GpObjects.dll 10.1.0.3035 的 RTTI 对应 GPRasterBuilder
+（`2FCC620C-1C8C-4A96-A0F9-465B4AA3EA7A`）的 +0x1c
+持久化表 `0x747b401c`，Load/Save 分别为
+`0x746f8880`、`0x746f8920`。Load 在 `0x746f88b5`
+检查无符号 short 上限 1，之后于 `0x746f88c2`
+读 GPValue 基类，在 `0x746f88de` 读带键对象槽。
+其中 `0x747b4084` 的 IID
+`E5EEA64C-91C9-4DCA-B16A-516AF8A0CA0B`
+经同版 ESRI.ArcGIS.DataSourcesRaster 互操作元数据
+定名为 IRasterType。后续 `0x746f88ec` 检查版本 2
+再读一个 short，该分支受前述版本上限阻挡。
+Save 依次在 `0x746f893f`、`0x746f8961`、
+`0x746f8971` 写版本、基类和对象槽。
+本类不使用 GPRasterFormulated 的栅格基类布局。
+仍待核对 IRasterType 的实际持久化类和真实 MXD 宿主，
+未进行 ArcMap 人工验证。
+
 #### GPRasterFormulated
 
 GpRasterFunctions.dll 10.1.0.3035（SHA-256
