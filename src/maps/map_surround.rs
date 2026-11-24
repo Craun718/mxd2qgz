@@ -2443,12 +2443,7 @@ fn read_gp_coded_value_entry(
                     }
                     let type_name =
                         read_bookmark_name_slot_10_1(reader, max_bytes, table, depth + 1)?;
-                    if !is_gp_data_type_name(&type_name) {
-                        return Err(io::Error::new(
-                            ErrorKind::Unsupported,
-                            "GPMultiValue 的类型名称类未支持",
-                        ));
-                    }
+                    // Load 要求 IName。Open 返回对象的接口查询不影响后续流读取。
                     let (raw_count, values) =
                         read_gp_coded_value_list(reader, max_bytes, table, depth + 1)?;
                     GpCodedValue10_1::MultiValue {

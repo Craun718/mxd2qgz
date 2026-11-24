@@ -4935,14 +4935,15 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
     };
     use mxd2qgz::maps::map_surround::{
         GP_CODED_VALUE_DOMAIN_CLASS_ID, GP_DATA_TYPE_NAME_CLASS_ID, GP_FIELD_INFO_DOMAIN_CLASS_ID,
-        GP_LONG_CLASS_ID, GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID, GP_STRING_CLASS_ID,
-        GP_VALUE_TABLE_TYPE_NAME_CLASS_ID, GpCodedValue10_1, GpTopoDomain10_1,
+        GP_FUNCTION_NAME_CLASS_ID, GP_LONG_CLASS_ID, GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID,
+        GP_STRING_CLASS_ID, GP_VALUE_TABLE_TYPE_NAME_CLASS_ID, GpCodedValue10_1, GpTopoDomain10_1,
     };
     use mxd2qgz::objects::property_set::{PropertyValue10_1, PropertyValueObjectStream10_1};
     use mxd2qgz::storage::object_refs::ObjectEntry10_1;
 
     for type_class in [
         None,
+        Some(GP_FUNCTION_NAME_CLASS_ID),
         Some(GP_DATA_TYPE_NAME_CLASS_ID),
         Some(GP_MULTI_VALUE_TYPE_NAME_CLASS_ID),
         Some(GP_VALUE_TABLE_TYPE_NAME_CLASS_ID),
@@ -5055,6 +5056,10 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
                 bytes.extend(2_i16.to_le_bytes());
                 bytes.extend(2_i16.to_le_bytes());
                 bytes.extend([0; 16]);
+            } else if class_id == GP_FUNCTION_NAME_CLASS_ID {
+                bytes.extend(2_i16.to_le_bytes());
+                bytes.extend(2_i16.to_le_bytes());
+                bytes.extend([0; 16]);
             } else if class_id == GP_DATA_TYPE_NAME_CLASS_ID {
                 bytes.extend(2_i16.to_le_bytes());
                 bytes.extend(2_i16.to_le_bytes());
@@ -5081,7 +5086,7 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
         bytes.extend(bookmark_entry_10_1(&GP_VALUE_TABLE_CLASS_ID, 33));
         bytes.extend([1, 0, 1, 0, 7, 0]);
         bytes.extend(2_i32.to_le_bytes());
-        if let Some(class_id) = type_class {
+        if let Some(class_id) = type_class.filter(|id| *id != GP_FUNCTION_NAME_CLASS_ID) {
             bytes.extend(bookmark_entry_10_1(&class_id, 32));
         } else {
             bytes.extend([0; 16]);
@@ -5132,7 +5137,7 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
         };
         assert_eq!((*raw_column_count, *raw_row_count), (2, 2));
         assert_eq!(column_types[1], BookmarkNameEntry10_1::Null);
-        if nested {
+        if nested && type_class != Some(GP_FUNCTION_NAME_CLASS_ID) {
             assert!(matches!(
                 column_types[0],
                 BookmarkNameEntry10_1::BackReference { key: 32, .. }
@@ -5160,6 +5165,10 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
             panic!("应读取 GP 多值对象");
         };
         match type_class {
+            Some(GP_FUNCTION_NAME_CLASS_ID) => assert!(matches!(
+                type_name.as_ref(),
+                BookmarkNameEntry10_1::GpFunctionName(body) if body.version == 2
+            )),
             Some(GP_DATA_TYPE_NAME_CLASS_ID) => assert!(matches!(
                 type_name.as_ref(),
                 BookmarkNameEntry10_1::GpDataTypeName(body) if body.version == 2
