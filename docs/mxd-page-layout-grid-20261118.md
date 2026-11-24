@@ -145,6 +145,12 @@ WCSCoverageName、WMSConnectionName 和 WMTSConnectionName
 已核实的 IName 对象体。构造输入覆盖三种类的版本 1、空子槽、结束
 偏移和截断回滚。真实格网工程及 ArcMap 显示仍待核对。
 
+AccessRasterDatasetName 和 SdeRasterDatasetName 的 IName 对象体
+沿用[数据库栅格名称取证](mxd-10.1-raster-layer-tail.md#access-与-sde-栅格名称)
+的委派体与可选 RasterIO 记录读取器。格网槽构造测试覆盖两类无
+RasterIO 记录的对象边界、键登记及截断回滚。带记录的读法沿用
+栅格层测试，真实格网宿主和 ArcMap 显示仍待验证。
+
 ### 叠加格网的关系查询名称
 
 在 MapElements.dll 10.1.0.3035 的 CustomOverlayGrid Load

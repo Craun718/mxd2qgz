@@ -57,9 +57,10 @@ use crate::layers::feature_layer::{
 };
 use crate::layers::fgdb_raster_dataset_name::FGDB_RASTER_DATASET_NAME_CLASS_ID;
 use crate::layers::raster_dataset_name::{
-    MOSAIC_DATASET_NAME_CLASS_ID, RASTER_BAND_COLLECTION_NAME_CLASS_ID, RASTER_BAND_NAME_CLASS_ID,
-    RASTER_CATALOG_NAME_CLASS_ID, RASTER_DATASET_NAME_CLASS_ID, RASTER_DATASET_NAME83_CLASS_ID,
-    RasterDatasetNameEntryBody10_1, RasterLongArraySlot10_1, read_long_array_slot,
+    ACCESS_RASTER_DATASET_NAME_CLASS_ID, MOSAIC_DATASET_NAME_CLASS_ID,
+    RASTER_BAND_COLLECTION_NAME_CLASS_ID, RASTER_BAND_NAME_CLASS_ID, RASTER_CATALOG_NAME_CLASS_ID,
+    RASTER_DATASET_NAME_CLASS_ID, RASTER_DATASET_NAME83_CLASS_ID, RasterDatasetNameEntryBody10_1,
+    RasterLongArraySlot10_1, SDE_RASTER_DATASET_NAME_CLASS_ID, read_long_array_slot,
     read_supported_raster_name_body_10_1,
 };
 use crate::layers::wcs_name::{
@@ -1260,6 +1261,8 @@ fn read_dataset_name_object_body_10_1(
         RASTER_DATASET_NAME_CLASS_ID
         | RASTER_DATASET_NAME83_CLASS_ID
         | FGDB_RASTER_DATASET_NAME_CLASS_ID
+        | ACCESS_RASTER_DATASET_NAME_CLASS_ID
+        | SDE_RASTER_DATASET_NAME_CLASS_ID
         | MOSAIC_DATASET_NAME_CLASS_ID
         | RASTER_BAND_COLLECTION_NAME_CLASS_ID
         | WCS_COVERAGE_NAME_CLASS_ID
@@ -1451,6 +1454,8 @@ pub(crate) fn read_overlay_name_slot_10_1(
                 RASTER_DATASET_NAME_CLASS_ID
                     | RASTER_DATASET_NAME83_CLASS_ID
                     | FGDB_RASTER_DATASET_NAME_CLASS_ID
+                    | ACCESS_RASTER_DATASET_NAME_CLASS_ID
+                    | SDE_RASTER_DATASET_NAME_CLASS_ID
                     | MOSAIC_DATASET_NAME_CLASS_ID
                     | RASTER_BAND_COLLECTION_NAME_CLASS_ID
                     | WCS_COVERAGE_NAME_CLASS_ID
@@ -2147,7 +2152,12 @@ mod tests {
 
     #[test]
     fn overlay_raster_name_reads_dataset_and_legacy_delegate() {
-        for class_id in [RASTER_DATASET_NAME_CLASS_ID, RASTER_DATASET_NAME83_CLASS_ID] {
+        for class_id in [
+            RASTER_DATASET_NAME_CLASS_ID,
+            RASTER_DATASET_NAME83_CLASS_ID,
+            ACCESS_RASTER_DATASET_NAME_CLASS_ID,
+            SDE_RASTER_DATASET_NAME_CLASS_ID,
+        ] {
             let mut bytes = entry(&class_id, 91).to_vec();
             bytes.extend(2_i32.to_le_bytes());
             for value in ["raster", "", "", ""] {
@@ -2177,6 +2187,14 @@ mod tests {
                 }
                 RasterDatasetNameEntryBody10_1::Dataset83 { records: None, .. } => {
                     assert_eq!(class_id, RASTER_DATASET_NAME83_CLASS_ID)
+                }
+                RasterDatasetNameEntryBody10_1::Database(name) => {
+                    assert!(matches!(
+                        class_id,
+                        ACCESS_RASTER_DATASET_NAME_CLASS_ID | SDE_RASTER_DATASET_NAME_CLASS_ID
+                    ));
+                    assert_eq!(name.class_id, class_id);
+                    assert!(name.records.is_none());
                 }
                 _ => panic!("栅格名称类型错误"),
             }
