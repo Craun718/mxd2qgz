@@ -854,6 +854,7 @@
       - [ ] 核对 GPAddressLocatorStyle 非空配置中其余接口槽的类体。[取证](docs/mxd-terra-round9-bookmark.md#gpaddresslocatorstyle)
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
       - [x] 核对 GPHistoricalMarker 在缺少私有流接口时的 Load 和 Save 返回行为。[取证](docs/mxd-terra-round9-bookmark.md#gphistoricalmarker-的流接口要求)
+      - [x] 核对非聚合 ObjectStream 不提供 GPHistoricalMarker 所需的私有流接口。[取证](docs/mxd-terra-round9-bookmark.md#gphistoricalmarker-的流接口要求)
       - [x] 定位 IGPValue 子类 FMEDataset 转发的原生 IPersistStream 入口。[取证](docs/mxd-terra-round9-bookmark.md#fmedataset-值对象的持久化入口)
       - [x] 核对 FMEDataset 的长度前缀 BSTR 对象体边界。[取证](docs/mxd-terra-round9-bookmark.md#fmedataset-值对象体边界)
       - [x] 将内部持久化 CLSID 的无版本头 FMEDataset 对象体接入 IGPValue 槽。[取证](docs/mxd-terra-round9-bookmark.md#fmedataset-值对象体边界)

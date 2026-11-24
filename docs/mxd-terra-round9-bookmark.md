@@ -2016,6 +2016,21 @@ BSTR 与 Variant。Save 从 `0x6f629db3` 开始写入通过
 无法用于推导此类的对象体。尚待定位私有接口的持久化实现，
 确认 MXD 宿主是否提供该接口，并在 ArcMap 中验证。
 
+SystemCore.dll 10.1.0.3035（SHA-256
+`f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`）
+的已有 Ghidra 导出显示，ObjectStream 读写入口分别在
+`0x7ffcff70` 与 `0x7ffcf7e0` 将自身流接口传给
+IPersistStream::Load 和 Save。对象流接口表 `0x800710dc`
+的 QI thunk `0x7ffcdb00` 委派给控制 IUnknown。对非聚合
+实例，构造器 `0x7ffcf030` 将其设为对象本身，主表
+`0x800710b0` 的 QI 为 `0x7ffcf3f0`。复核本地 PE，
+该方法的七项 IID 比对及回退 `0x800533e0` 的三项比对均
+不含历史标记请求的 IID，未命中返回 E_NOINTERFACE，
+也不向底流继续查询。因此该普通 ObjectStream 路径会触发
+上述无对象体写出与读入失败行为。现有解析器保留未支持对象的
+停止边界，未把此标识视为可读取的空体。聚合宿主、提供私有
+接口的其他流及真实 ArcMap 工程仍未验证。
+
 ### GPSAHorizontalFactor 与 GPSAVerticalFactor
 
 两类来自 ArcMap 10.1.0.3035 的 `GPSACore.dll`。沿 RTTI 确认持久化接口
