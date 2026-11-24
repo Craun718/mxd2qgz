@@ -3327,6 +3327,23 @@ LoadObject，非正数跳过循环。空项仍占流内位置。
 构造测试覆盖成员循环、空项、回引、逐字节截断和结束位置。
 真实 MXD 宿主仍待验证。
 
+#### GPMosaicLayer
+
+10.1 Desktop 互操作元数据将 GPMosaicLayer 登记为
+`BF2DB6EA-4517-44CB-A7C4-ADF9F63D4E35`，实现 IGPValue 和
+IGPLayer。GpObjects.dll 10.1.0.3035（SHA-256
+`c9da22687b40e070d7178538846f707c04d26474d2fa835acb01ceaa46d2f896`）
+中可见该 CLSID 于 `0x747ace38`。用 PE RTTI 和 objdump 核对
+完整对象 +0x1c 的表 `0x747b1f34`，Load/Save 与
+GPCompositeLayer 共用 `0x746ecce0 / 0x746ecd40`。两者分别
+在 `0x746eccfe / 0x746ecd5f` 读写 short，再经导入跳板
+`0x7478afe8 / 0x7478afee` 调用 GPCompositeLayerBase 的
+Load/Save，后续没有流字段。
+
+Rust 在编码值和 IGPLayer 槽复用同一组合层对象体读取器。
+构造测试验证计数、共享键回引、精确终点、非法版本和逐字节截断。
+真实 MXD 宿主和 ArcMap/QGIS 人工验收仍待验证。
+
 #### 目录数据元素
 
 FileDataElements.dll 10.1.0.3035 的 PE RTTI 持久化表及

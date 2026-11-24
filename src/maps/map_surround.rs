@@ -621,6 +621,9 @@ const GP_LAYER_CLASS_ID: [u8; 16] = [
     0x1e, 0x59, 0x47, 0x6a, 0x16, 0xaa, 0x3e, 0x44, 0xb5, 0x0d, 0xd8, 0x92, 0x66, 0x59, 0xa4, 0xe1,
 ];
 
+const GP_MOSAIC_LAYER_CLASS_ID: [u8; 16] = [
+    0xea, 0xb6, 0x2d, 0xbf, 0x17, 0x45, 0xcb, 0x44, 0xa7, 0xc4, 0xad, 0xf9, 0xf6, 0x3d, 0x4e, 0x35,
+];
 const GP_COMPOSITE_LAYER_CLASS_ID: [u8; 16] = [
     0x51, 0x4b, 0x99, 0x22, 0xba, 0xc6, 0xff, 0x41, 0xab, 0xe6, 0x54, 0x96, 0x15, 0x44, 0x1e, 0x3f,
 ];
@@ -952,6 +955,7 @@ pub const GP_EXTENT_CLASS_ID: [u8; 16] = [
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpCodedValue10_1 {
+    MosaicLayer(Box<GpLayer10_1>),
     RasterBuilder(RuleSlot10_1<RasterFunctionArgumentsBody10_1>),
     RasterFormulated(Box<GpRasterFormulated10_1>),
     RasterDataLayer {
@@ -3231,6 +3235,7 @@ fn read_gp_coded_value_entry(
                     | GP_FIELD_MAPPING_CLASS_ID
                     | GP_RASTER_FORMULATED_CLASS_ID
                     | GP_RASTER_BUILDER_CLASS_ID
+                    | GP_MOSAIC_LAYER_CLASS_ID
                     | GP_RASTER_DATA_LAYER_CLASS_ID
                     | GP_RASTER_DATA_CLASS_ID
                     | GP_POINT_CLASS_ID
@@ -3303,6 +3308,23 @@ fn read_gp_coded_value_entry(
             ) =>
         {
             None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: GP_MOSAIC_LAYER_CLASS_ID,
+            ..
+        } => {
+            let layer =
+                read_gp_layer_body(reader, max_bytes, table, depth, GP_MOSAIC_LAYER_CLASS_ID)?;
+            Some(Box::new(GpCodedValueBody10_1 {
+                version: layer
+                    .composite
+                    .as_ref()
+                    .expect("GPMosaicLayer 有组合层前缀")
+                    .version,
+                base_version: layer.gp_value_version,
+                base_short: layer.gp_value_short,
+                value: GpCodedValue10_1::MosaicLayer(Box::new(layer)),
+            }))
         }
         ObjectEntry10_1::NewObject {
             class_id: GP_RASTER_FORMULATED_CLASS_ID,
@@ -4843,74 +4865,18 @@ fn read_gp_layer_slot(
         ObjectEntry10_1::BackReference { class_id, key }
             if matches!(
                 refs.registered_class(key).unwrap_or(class_id),
-                GP_LAYER_CLASS_ID | GP_COMPOSITE_LAYER_CLASS_ID
+                GP_LAYER_CLASS_ID | GP_COMPOSITE_LAYER_CLASS_ID | GP_MOSAIC_LAYER_CLASS_ID
             ) =>
         {
             None
         }
         ObjectEntry10_1::NewObject {
-            class_id: class_id @ (GP_LAYER_CLASS_ID | GP_COMPOSITE_LAYER_CLASS_ID),
+            class_id:
+                class_id @ (GP_LAYER_CLASS_ID | GP_COMPOSITE_LAYER_CLASS_ID | GP_MOSAIC_LAYER_CLASS_ID),
             ..
-        } => {
-            if depth >= MAX_BOOKMARK_NAME_NESTING {
-                return Err(io::Error::new(ErrorKind::InvalidData, "IGPLayer 嵌套过深"));
-            }
-            let composite_versions = (class_id == GP_COMPOSITE_LAYER_CLASS_ID)
-                .then(|| {
-                    Ok::<_, io::Error>((
-                        read_de_layer_version(reader, 1, "GPCompositeLayer")?,
-                        read_de_layer_version(reader, 1, "GPCompositeLayerBase")?,
-                    ))
-                })
-                .transpose()?;
-            let version = read_de_layer_version(reader, 2, "GPLayerBase")?;
-            let gp_value_version = read_de_layer_version(reader, 1, "GPValue")?;
-            let gp_value_short = reader.read_u16_le()?;
-            let name = read_string_10_1(reader, max_bytes)?;
-            let area_of_interest =
-                read_surround_envelope_slot(reader, max_bytes, refs, "GPLayer IEnvelope 槽")?;
-            let element = read_gp_data_element_child(reader, max_bytes, refs, depth)?;
-            let legacy_layer = if version < 2 {
-                // GP 层旧版在读取后释放这个 ILayer 槽，流中仍须完整消费。
-                let entry = read_object_entry_10_1(reader, refs)?;
-                let body = match entry {
-                    ObjectEntry10_1::NewObject { class_id, .. } => Some(Box::new(
-                        crate::layers::layer_list::read_complete_layer_body_10_1(
-                            reader, class_id, max_bytes, refs,
-                        )?,
-                    )),
-                    _ => None,
-                };
-                Some(RuleSlot10_1 { entry, body })
-            } else {
-                None
-            };
-            let composite = if let Some((version, base_version)) = composite_versions {
-                let (raw_count, count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
-                let mut layers = Vec::new();
-                for _ in 0..count {
-                    layers.push(read_gp_layer_slot(reader, max_bytes, refs, depth + 1)?);
-                }
-                Some(GpCompositeLayerMembers10_1 {
-                    version,
-                    base_version,
-                    raw_count,
-                    layers,
-                })
-            } else {
-                None
-            };
-            Some(Box::new(GpLayer10_1 {
-                composite,
-                version,
-                gp_value_version,
-                gp_value_short,
-                name,
-                area_of_interest,
-                element,
-                legacy_layer,
-            }))
-        }
+        } => Some(Box::new(read_gp_layer_body(
+            reader, max_bytes, refs, depth, class_id,
+        )?)),
         _ => {
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
@@ -4919,6 +4885,73 @@ fn read_gp_layer_slot(
         }
     };
     Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_gp_layer_body(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+    class_id: [u8; 16],
+) -> io::Result<GpLayer10_1> {
+    if depth >= MAX_BOOKMARK_NAME_NESTING {
+        return Err(io::Error::new(ErrorKind::InvalidData, "IGPLayer 嵌套过深"));
+    }
+    let composite_versions = (class_id != GP_LAYER_CLASS_ID)
+        .then(|| {
+            Ok::<_, io::Error>((
+                read_de_layer_version(reader, 1, "GPCompositeLayer/GPMosaicLayer")?,
+                read_de_layer_version(reader, 1, "GPCompositeLayerBase")?,
+            ))
+        })
+        .transpose()?;
+    let version = read_de_layer_version(reader, 2, "GPLayerBase")?;
+    let gp_value_version = read_de_layer_version(reader, 1, "GPValue")?;
+    let gp_value_short = reader.read_u16_le()?;
+    let name = read_string_10_1(reader, max_bytes)?;
+    let area_of_interest =
+        read_surround_envelope_slot(reader, max_bytes, refs, "GPLayer IEnvelope 槽")?;
+    let element = read_gp_data_element_child(reader, max_bytes, refs, depth)?;
+    let legacy_layer = if version < 2 {
+        // GP 层旧版在读取后释放这个 ILayer 槽，流中仍须完整消费。
+        let entry = read_object_entry_10_1(reader, refs)?;
+        let body = match entry {
+            ObjectEntry10_1::NewObject { class_id, .. } => Some(Box::new(
+                crate::layers::layer_list::read_complete_layer_body_10_1(
+                    reader, class_id, max_bytes, refs,
+                )?,
+            )),
+            _ => None,
+        };
+        Some(RuleSlot10_1 { entry, body })
+    } else {
+        None
+    };
+    let composite = if let Some((version, base_version)) = composite_versions {
+        let (raw_count, count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
+        let mut layers = Vec::new();
+        for _ in 0..count {
+            layers.push(read_gp_layer_slot(reader, max_bytes, refs, depth + 1)?);
+        }
+        Some(GpCompositeLayerMembers10_1 {
+            version,
+            base_version,
+            raw_count,
+            layers,
+        })
+    } else {
+        None
+    };
+    Ok(GpLayer10_1 {
+        composite,
+        version,
+        gp_value_version,
+        gp_value_short,
+        name,
+        area_of_interest,
+        element,
+        legacy_layer,
+    })
 }
 
 fn read_gp_arc_info_items(
@@ -11179,6 +11212,73 @@ mod tests {
             );
             assert_eq!(reader.position(), end);
         }
+    }
+
+    #[test]
+    fn gp_mosaic_layer_reads_as_coded_value_and_layer_reference() {
+        let mut bytes = GP_MOSAIC_LAYER_CLASS_ID.to_vec();
+        bytes.extend(1_u32.to_le_bytes());
+        let version_offset = bytes.len();
+        bytes.extend([1, 0, 0, 0, 2, 0, 1, 0, 9, 0]);
+        bytes.extend([2, 0, 0, 0, 0, 0]);
+        bytes.extend([0; 32]);
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend(GP_MOSAIC_LAYER_CLASS_ID);
+        bytes.extend(1_u32.to_le_bytes());
+        for cut in 0..bytes.len() {
+            assert!(
+                read_gp_coded_value_slot(
+                    &mut Reader::new(&bytes[..cut]),
+                    1024,
+                    &mut RefTable10_1::new(),
+                    0,
+                )
+                .is_err()
+            );
+        }
+        let mut invalid = bytes.clone();
+        invalid[version_offset] = 2;
+        assert_eq!(
+            read_gp_coded_value_slot(
+                &mut Reader::new(&invalid),
+                1024,
+                &mut RefTable10_1::new(),
+                0,
+            )
+            .unwrap_err()
+            .kind(),
+            ErrorKind::InvalidData
+        );
+
+        let end = bytes.len();
+        bytes.extend(GP_MOSAIC_LAYER_CLASS_ID);
+        bytes.extend(1_u32.to_le_bytes());
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let coded = read_gp_coded_value_slot(&mut reader, 1024, &mut refs, 0)
+            .unwrap()
+            .body
+            .unwrap();
+        assert_eq!(
+            (coded.version, coded.base_version, coded.base_short),
+            (1, 1, 9)
+        );
+        let GpCodedValue10_1::MosaicLayer(layer) = coded.value else {
+            panic!("应读取 GPMosaicLayer");
+        };
+        let members = layer.composite.unwrap();
+        assert_eq!((members.base_version, members.raw_count), (0, 1));
+        assert!(matches!(
+            members.layers[0].entry,
+            ObjectEntry10_1::BackReference { key: 1, .. }
+        ));
+        assert_eq!(reader.position(), end);
+        let slot = read_gp_layer_slot(&mut reader, 1024, &mut refs, 0).unwrap();
+        assert!(matches!(
+            slot.entry,
+            ObjectEntry10_1::BackReference { key: 1, .. }
+        ));
+        assert_eq!(reader.position(), bytes.len());
     }
 
     #[test]
