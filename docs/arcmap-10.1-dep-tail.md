@@ -930,3 +930,23 @@ PMF 包装类，并复用 TextElement 的体读取器。
 
 构造 Scene 验证文本、外层对象键、同类回引、后继字节及逐字节
 截断回滚。ArcMap/QGIS 实档目视待验证。
+
+### SimpleLine3DSymbol
+
+从 10.1 安装介质提取的 _3DSymbols.dll 为 PE32，版本资源
+10.1.0.3035，SHA-256 为
+`8d966587dbcc58c11d51f03eea25c44a91e8d23b46313a4b71f2a39cc775601a`。
+SimpleLine3DSymbol 的 RTTI 主表 `0x68061ef4` 指向 QI
+`0x68045300`，分别在 `0x6804534f` 和 `0x68045395` 比较
+ILineSymbol 与 ISymbol。回退 `0x68057870` 接受 IPersistStream，
+其持久化虚表 `0x680620b4` 由构造器 `0x68044e44` 安装。
+GetClassID 经 `0x68049f30` 进入 `0x68045cf0`，返回
+`{470B7275-3552-11D6-A12D-00508BD60CB9}`。
+
+Load 经 `0x68049f00` 进入 `0x680459f0`，先读有符号版本
+（上限 1），再请求 IColor（IID 常量 `0x6805fdcc`）。
+依据 AfCore IAT 名称和调用实参，随后按 double、int32、double、
+int32、LONG 读取，位置依次为 `0x68045a8f`、`0x68045ac2`、
+`0x68045ae1`、`0x68045b6a`、`0x68045b85`。标量暂按原序保留。
+合成输入验证非空颜色、结束偏移和逐字节截断回滚。其他 3D 符号
+实现、实档和 ArcMap/QGIS 人工验收仍待核对。

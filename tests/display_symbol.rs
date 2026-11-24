@@ -3343,3 +3343,52 @@ fn geometric_effect_slots_read_bounded_rules_and_symbol_layers() {
     assert_eq!(reader.position(), 0);
     assert_eq!(refs.len(), 0);
 }
+
+#[test]
+fn simple_line_3d_symbol_reads_color_and_scalar_fields() {
+    use mxd2qgz::objects::display_symbol::{
+        SIMPLE_LINE_3D_SYMBOL_CLASS_ID, SimpleLine3dSymbolFields10_1, SymbolSlotFull10_1,
+        read_symbol_slot_full_10_1,
+    };
+
+    let mut bytes = Vec::new();
+    push_entry(&mut bytes, &SIMPLE_LINE_3D_SYMBOL_CLASS_ID, 71);
+    bytes.extend(1_u16.to_le_bytes());
+    push_entry(&mut bytes, &RGB_COLOR_CLASS_ID, 72);
+    bytes.extend(rgb_color_body());
+    bytes.extend(1.25_f64.to_le_bytes());
+    bytes.extend((-2_i32).to_le_bytes());
+    bytes.extend(3.5_f64.to_le_bytes());
+    bytes.extend(4_i32.to_le_bytes());
+    bytes.extend(5_i32.to_le_bytes());
+    let end = bytes.len();
+    bytes.push(0xd5);
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let SymbolSlotFull10_1::SimpleLine3dSymbol(body) =
+        read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 8).unwrap()
+    else {
+        panic!("预期 SimpleLine3DSymbol");
+    };
+    assert_eq!((body.key, body.version, body.stop), (71, 1, None));
+    assert!(matches!(body.color, ColorSlot10_1::Color { .. }));
+    assert_eq!(
+        body.fields.unwrap(),
+        SimpleLine3dSymbolFields10_1 {
+            first_double: 1.25,
+            first_integer: -2,
+            second_double: 3.5,
+            second_integer: 4,
+            third_integer: 5,
+        }
+    );
+    assert_eq!(reader.position(), end);
+    assert!(refs.contains(71) && refs.contains(72));
+    for cut in 0..end {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 8).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+}

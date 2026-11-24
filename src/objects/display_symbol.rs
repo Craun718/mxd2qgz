@@ -1328,6 +1328,28 @@ pub(crate) const MARKER_SYMBOL_CLASSES: &[[u8; 16]] = &[
     URL_PICTURE_MARKER_SYMBOL_CLASS_ID,
 ];
 
+pub const SIMPLE_LINE_3D_SYMBOL_CLASS_ID: [u8; 16] = [
+    0x75, 0x72, 0x0b, 0x47, 0x52, 0x35, 0xd6, 0x11, 0xa1, 0x2d, 0x00, 0x50, 0x8b, 0xd6, 0x0c, 0xb9,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SimpleLine3dSymbolBody10_1 {
+    pub key: u32,
+    pub version: u16,
+    pub color: ColorSlot10_1,
+    pub fields: Option<SimpleLine3dSymbolFields10_1>,
+    pub stop: Option<SymbolStop10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SimpleLine3dSymbolFields10_1 {
+    pub first_double: f64,
+    pub first_integer: i32,
+    pub second_double: f64,
+    pub second_integer: i32,
+    pub third_integer: i32,
+}
+
 pub(crate) const LINE_SYMBOL_CLASSES: &[[u8; 16]] = &[
     SIMPLE_LINE_SYMBOL_CLASS_ID,
     MARKER_LINE_SYMBOL_CLASS_ID,
@@ -1335,6 +1357,7 @@ pub(crate) const LINE_SYMBOL_CLASSES: &[[u8; 16]] = &[
     HASH_LINE_SYMBOL_CLASS_ID,
     MULTI_LAYER_LINE_SYMBOL_CLASS_ID,
     PICTURE_LINE_SYMBOL_CLASS_ID,
+    SIMPLE_LINE_3D_SYMBOL_CLASS_ID,
 ];
 
 pub(crate) const FILL_SYMBOL_CLASSES: &[[u8; 16]] = &[
@@ -2395,6 +2418,7 @@ pub enum SymbolSlotFull10_1 {
     /// 新 DotDensityFillSymbol 对象。
     DotDensityFillSymbol(Box<DotDensityFillSymbolBody10_1>),
     /// RasterLayer.dll 的颜色、渐变和 RGB 符号。
+    SimpleLine3dSymbol(Box<SimpleLine3dSymbolBody10_1>),
     ColorSymbol(Box<ColorSymbolBody10_1>),
     ColorRampSymbol(Box<ColorRampSymbolBody10_1>),
     RasterRgbSymbol(Box<ColorSymbolBody10_1>),
@@ -2547,6 +2571,12 @@ pub fn slot_full_stop_10_1(
         SymbolSlotFull10_1::DotDensityFillSymbol(body) => {
             body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
                 class_id: DOT_DENSITY_FILL_SYMBOL_CLASS_ID,
+                key: body.key,
+            })
+        }
+        SymbolSlotFull10_1::SimpleLine3dSymbol(body) => {
+            body.stop.map(|_| SymbolStop10_1::NestedIncomplete {
+                class_id: SIMPLE_LINE_3D_SYMBOL_CLASS_ID,
                 key: body.key,
             })
         }
@@ -2792,6 +2822,33 @@ pub fn read_symbol_slot_full_10_1(
                         depth,
                     )?,
                 ))
+            } else if class_id == SIMPLE_LINE_3D_SYMBOL_CLASS_ID {
+                let version = read_signed_symbol_version(
+                    &mut trial,
+                    1,
+                    "SimpleLine3DSymbol",
+                    origin.position(),
+                )?;
+                let color = read_color_slot_10_1(&mut trial, max_bytes, &mut staged)?;
+                let stop = color_slot_stop(&color);
+                let fields = if stop.is_none() {
+                    Some(SimpleLine3dSymbolFields10_1 {
+                        first_double: trial.read_f64_le()?,
+                        first_integer: read_i32_le(&mut trial)?,
+                        second_double: trial.read_f64_le()?,
+                        second_integer: read_i32_le(&mut trial)?,
+                        third_integer: read_i32_le(&mut trial)?,
+                    })
+                } else {
+                    None
+                };
+                SymbolSlotFull10_1::SimpleLine3dSymbol(Box::new(SimpleLine3dSymbolBody10_1 {
+                    key,
+                    version,
+                    color,
+                    fields,
+                    stop,
+                }))
             } else if class_id == COLOR_SYMBOL_CLASS_ID {
                 SymbolSlotFull10_1::ColorSymbol(Box::new(read_color_symbol_body_10_1(
                     &mut trial,
