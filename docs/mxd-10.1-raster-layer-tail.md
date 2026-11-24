@@ -1540,3 +1540,8 @@ RasterLayer v17 的 IStatsHistogram 列表按 SystemCore 10.1.0.3035
 尾段均含 IGeodataXform 与 IEnvelope 槽，并恰好耗尽有界体。
 按需测试位于 `tests/terra_round8_old.rs`。无外层区间的普通 v12
 及数据集打开状态仍缺证据。ArcMap/QGIS 人工验收未执行。
+
+逐槽复核表明，两份实档均保存新的 CompositeXform（键 648、709）
+与 Envelope（键 653、714）。RasterIO 记录存在，但均省略 tag 30。
+这为有界 v12 提供了不依赖后置名称的非空尾槽实例。原生成功打开
+哪一数据源、普通无界对象的终点以及 ArcMap/QGIS 人工验收仍待验证。

@@ -636,7 +636,12 @@ fn inventory_all_compound_streams_including_later_maps() {
 #[test]
 #[ignore = "需要 10.1 Java SDK 安装介质提取文件"]
 fn sdk_conservation_raster_v12_has_a_bounded_tail() {
-    for (file, offset) in [("conservationGDB", 0xbee3), ("conservationMDB", 0xd381)] {
+    use mxd2qgz::objects::geodata_xform::COMPOSITE_XFORM_CLASS_ID;
+
+    for (file, offset, xform_key, envelope_key) in [
+        ("conservationGDB", 0xbee3, 648, 653),
+        ("conservationMDB", 0xd381, 709, 714),
+    ] {
         let map = read_sdk_map(&format!(
             "temp/terra-round8-old/sdk-java/{file}.mxd.4896861F_D89C_46BA_ABEC_17591162B2B1"
         ));
@@ -648,8 +653,27 @@ fn sdk_conservation_raster_v12_has_a_bounded_tail() {
         };
         assert_eq!(layer.version, 12);
         let tail = layer.tail.as_ref().expect("应读取 v12 尾段");
-        assert!(tail.geodata_xform_v13.is_some());
-        assert!(tail.envelope_v13.is_some());
+        let transform = tail.geodata_xform_v13.as_ref().unwrap();
+        assert_eq!(
+            transform.entry,
+            ObjectEntry10_1::NewObject {
+                class_id: COMPOSITE_XFORM_CLASS_ID,
+                key: xform_key
+            }
+        );
+        assert!(transform.body.is_some());
+        let envelope = tail.envelope_v13.as_ref().unwrap();
+        assert_eq!(
+            envelope.entry,
+            ObjectEntry10_1::NewObject {
+                class_id: ENVELOPE_CLASS_ID,
+                key: envelope_key
+            }
+        );
+        assert!(envelope.body.is_some());
+        let raster_io = tail.raster_io.as_ref().unwrap();
+        assert!(raster_io.tag30_name.is_none());
+        assert!(!raster_io.tag30_is_explicit_null);
         assert_eq!(entry.body.as_ref().map(|body| body.len), Some(0));
     }
 }
