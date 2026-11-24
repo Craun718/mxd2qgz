@@ -201,6 +201,7 @@
     - [x] 核对 10.1 原生读取器对本地化版本文本的处理，并对照同版 10.8 简中与英文资源。见 [版本文本与读取分支](docs/arcmap-10.1-native-baseline.md#101-版本文本与读取分支)。
     - [ ] 取得 ArcMap 10.1 非英语语言包，核对其版本文本资源，尤其是索引 3 的 `0x11a`。
     - [x] 排除 `Document Info`、`Metadata`、`Templates` 的静态读写链被误归入 `/Version` 索引；见 [各流归属](docs/mxd-luna-deep-version-info-20261118.md)。
+    - [x] 核对另存路径恢复原 AfDoc 保存索引的调用点。[取证](docs/mxd-terra-round9-save.md#另存临时索引与加载状态的区分)
     - [ ] 确认旧文档打开后版本索引是否改写；已验证分类值用于 [Metadata 加载](docs/mxd-terra-round9-save.md)，尚未覆盖间接调用及其他加载路径。
 - [x] 原生片段运行验证 `/Version` 的六档保存版本映射及索引越界回退，见 [版本头部运行记录](docs/arcmap-10.1-native-baseline.md#101-version-保存片段运行验证)。
 - [x] 原生运行验证 `/Version` 读取分类输出（ArcMap 和 PageLayout 的 3/5 分支）。
