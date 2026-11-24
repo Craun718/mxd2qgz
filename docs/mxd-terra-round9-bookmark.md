@@ -2586,3 +2586,25 @@ FileDataElements.dll 的共用路径依次比对
 这三项与 FeatureDataElements.dll 的共用路径相同，均不同于
 IDataElement IID。未命中时分别在 `0x6f9d03b2` 和
 `0x6f648122` 返回 E_NOINTERFACE。跨模块实现仍需核对。
+
+#### 跨模块 IDataElement 候选与 DETerrain 加载入口
+
+在 10.1 桌面介质提取的 DLL 中，按 IDataElement IID 字节和
+PE RTTI 交叉检索，得到 Terrain 的 DETerrain、CadastralFabric
+的 DECadastralFabric、GpToolbox 的 DETool 和 DEToolbox、
+SchematicDB 的 DESchematicDataset、DESchematicDiagram 和
+DESchematicFolder、RasterDB 的 DEImageServer、DEMosaicDataset、
+DEWCSCoverage 和 DEWMSMap、Geocoding 的 DEAddressLocator、
+GdbNetwork 的 DENetworkDataset、RepresentationDB 的
+DERepresentationClass 等候选。仅凭同模块出现的 IID 和 RTTI
+不能确认类的接口或流结构。
+
+Terrain.dll 的文件版本尾号为 3035，SHA-256 为
+`f1fe54301fe60fab17efbc40ad0a6fcb5308fc1da274800f988dcbe82cd41fc5`。
+DETerrain 的 PE RTTI 对应 +0x1c 持久化表 `0x801bbc14`。
+GetClassID `0x800f4850` 从 `0x801bc2e0` 复制
+`546543B6-327A-4D3C-AC15-8122C8B6680A`。
+Load `0x800f4e60` 先读取四字节，再向当前位置回退四字节。
+`0x800f4eaa` 对前探值做有符号比较，值小于等于 8 时直接
+返回对象 +0x88 虚表 +0xec 的调用结果，其余值调用 +0xf0
+并继续读取。两个虚表目标、具体对象边界及宿主仍待核对。
