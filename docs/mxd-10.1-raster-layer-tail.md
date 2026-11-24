@@ -1582,3 +1582,19 @@ Open 在 `0x7a45ba83` 跳到 `0x7a45c1da`，空镶嵌名称分支
 即使已知名称不会打开，判断普通 v12 尾段前仍需核对渲染器和扩展
 子对象的间接调用及 RasterIO 路径。尚无该组合的原生运行证据，
 ArcMap/QGIS 人工验收未执行。
+
+### 无界 v12 的空渲染器、空扩展与 RasterIO 门
+
+同版 RasterLayer.dll 的主 Load 在 `0x7c73bee4` 将渲染器
+LoadObject 的输出槽定在持久化视图 +0xb4，与 v12 末段读取条件
+使用的 +0xb0 分开。空对象头没有渲染器体可执行。
+v12 在 `0x7c73bfa9` 调 ExtraSafe 扩展集合加载 `0x7c73ded0`，
+后者在 `0x7c73df64..0x7c73df6a` 对非正计数跳过对象循环。
+
+`0x7c73c3eb` 以 magic `0xff00ff` 调 RasterIO::InitCheck。
+返回零时，`0x7c73c3f2` 直接跳到 `0x7c73c668`，
+跳过整个 tag 30 读取与打开路径。即使有 RasterIO 记录，
+`0x7c73c408` 的 tag 30 读取之后若暂存名称为空，
+`0x7c73c41d` 也会跳过该名称的 Open。
+需继续核对空相关对象槽与后续例程能否改变数据集成员，
+并验证在这些条件下的完整宿主边界。ArcMap/QGIS 人工验收未执行。
