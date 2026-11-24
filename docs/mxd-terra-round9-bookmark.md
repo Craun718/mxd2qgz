@@ -3171,3 +3171,29 @@ LoadObject，请求 IUnknown。Rust 已接入这个数组及已知参数类，
 构造测试包括非空数组、BSTR、标量 Variant、对象回引、版本尾部
 和逐字节截断。IArray 和 IUnknown 槽使用严格类分派，未知非空
 对象会返回错误。仍未验证真实 SDC MXD 宿主。
+
+#### 网络求值器记录的持久化边界
+
+DENetworkDataset::Load `0x70fbc000` 中，
+`0x70fbc3df`、`0x70fbc404` 是求值器记录的两个
+LoadObject 调用，分别请求 IUID 和 IPropertySet。随后通过
+IUID 虚表在 `0x70fbc478` 取得用于创建的 GUID。
+`0x70fbc495` 调用辅助函数 `0x70fc6ca0`；该函数
+在 `0x70fc6cc9` 调 AfCreateInstance，请求 IUnknown，
+在 `0x70fc6cdc` 调 OleRun，再在 `0x70fc6cf6`
+查询 `BD8ECCEF-092D-43DD-80DC-04684BA60D60`。
+esriGeoDatabase.olb 将该 IID 定名为 INetworkEvaluatorSetup。
+整个创建辅助函数无 IStream 参数。返回后 `0x70fbc4b1`
+把刚读取的 IPropertySet 交给该接口 +0x10。
+求值器由 GUID 实例化，记录的流边界止于属性集对象。
+
+Save `0x70fbcb10` 对称地在 `0x70fbd172` 至
+`0x70fbd1bd` 写四个 long，随后在 `0x70fbd1da`、
+`0x70fbd1f1` 分别写 IUID 和 IPropertySet。类型库枚举的
+INetworkEvaluatorSetup 实现包括 NetworkConstantEvaluator、
+NetworkFieldEvaluator、NetworkScriptEvaluator、
+NetworkGlobalTurnDelayEvaluator、NetworkFunctionEvaluator 和
+NetworkEdgeTrafficEvaluator。这些类标识在该记录中由
+IUID 表示。已有读取器保留 IUID 与属性集，属性集中的
+Variant 继续走通用分派。仍需样本核对六种求值器的配置值
+和其中实际出现的非空 Variant 对象类。
