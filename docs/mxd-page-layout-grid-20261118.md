@@ -156,6 +156,11 @@ Load `0x7ae29e30` 的对象体读取器。构造测试覆盖 v1 的附加字符�
 和包络槽、v2、第五条字符串的变量名、后继回引及逐字节截断。
 真实格网宿主与原生显示仍待验证。
 
+格网 IName 槽接入 ISRasterDatasetName 和 AISImageServiceName，
+复用 ImageServerLayer.dll Load `0x78012bb0` 和 ImageServer.dll
+Load `0x77f01530` 的读取器。构造测试覆盖 IS 栅格名称内联 AIS
+服务名称、共享键回引和截断回滚。真实格网宿主和 ArcMap 显示仍待验证。
+
 ### 叠加格网的关系查询名称
 
 在 MapElements.dll 10.1.0.3035 的 CustomOverlayGrid Load

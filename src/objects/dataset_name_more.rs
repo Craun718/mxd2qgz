@@ -57,7 +57,8 @@ use crate::layers::feature_layer::{
 };
 use crate::layers::fgdb_raster_dataset_name::FGDB_RASTER_DATASET_NAME_CLASS_ID;
 use crate::layers::raster_dataset_name::{
-    ACCESS_RASTER_DATASET_NAME_CLASS_ID, MOSAIC_DATASET_NAME_CLASS_ID,
+    ACCESS_RASTER_DATASET_NAME_CLASS_ID, AIS_IMAGE_SERVICE_NAME_CLASS_ID,
+    IS_RASTER_DATASET_NAME_CLASS_ID, MOSAIC_DATASET_NAME_CLASS_ID,
     NETCDF_RASTER_DATASET_NAME_CLASS_ID, RASTER_BAND_COLLECTION_NAME_CLASS_ID,
     RASTER_BAND_NAME_CLASS_ID, RASTER_CATALOG_NAME_CLASS_ID, RASTER_DATASET_NAME_CLASS_ID,
     RASTER_DATASET_NAME83_CLASS_ID, RasterDatasetNameEntryBody10_1, RasterLongArraySlot10_1,
@@ -1262,6 +1263,8 @@ fn read_dataset_name_object_body_10_1(
         | RASTER_DATASET_NAME83_CLASS_ID
         | FGDB_RASTER_DATASET_NAME_CLASS_ID
         | NETCDF_RASTER_DATASET_NAME_CLASS_ID
+        | IS_RASTER_DATASET_NAME_CLASS_ID
+        | AIS_IMAGE_SERVICE_NAME_CLASS_ID
         | ACCESS_RASTER_DATASET_NAME_CLASS_ID
         | SDE_RASTER_DATASET_NAME_CLASS_ID
         | MOSAIC_DATASET_NAME_CLASS_ID
@@ -1456,6 +1459,8 @@ pub(crate) fn read_overlay_name_slot_10_1(
                     | RASTER_DATASET_NAME83_CLASS_ID
                     | FGDB_RASTER_DATASET_NAME_CLASS_ID
                     | NETCDF_RASTER_DATASET_NAME_CLASS_ID
+                    | IS_RASTER_DATASET_NAME_CLASS_ID
+                    | AIS_IMAGE_SERVICE_NAME_CLASS_ID
                     | ACCESS_RASTER_DATASET_NAME_CLASS_ID
                     | SDE_RASTER_DATASET_NAME_CLASS_ID
                     | MOSAIC_DATASET_NAME_CLASS_ID
@@ -2078,6 +2083,51 @@ mod tests {
 
     /// 完整 WorkspaceName 体（第六轮布局）：版本 1 + 三空串 + IPropertySet
     /// 空标记 + 标志 1 + 工厂 CLSID + 尾随 int32。
+    #[test]
+    fn overlay_image_service_names_share_the_reference_table() {
+        let mut bytes = entry(&IS_RASTER_DATASET_NAME_CLASS_ID, 90).to_vec();
+        bytes.extend(1_i16.to_le_bytes());
+        for _ in 0..6 {
+            bytes.extend(str_bytes(""));
+        }
+        bytes.extend([0; 4 + 16]);
+        bytes.extend(entry(&AIS_IMAGE_SERVICE_NAME_CLASS_ID, 91));
+        bytes.extend(1_i32.to_le_bytes());
+        for value in ["service", "", ""] {
+            bytes.extend(str_bytes(value));
+        }
+        let end = bytes.len();
+        bytes.extend(entry(&TABLE_NAME_CLASS_ID, 91));
+
+        let mut refs = RefTable10_1::new();
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            assert!(read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+        let mut reader = Reader::new(&bytes);
+        let slot = read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).unwrap();
+        let DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::RasterDataset(body)) = slot
+        else {
+            panic!("应读取影像服务栅格名称");
+        };
+        assert!(
+            matches!(body.as_ref(), RasterDatasetNameEntryBody10_1::ImageService(name)
+            if matches!(name.name.body.as_ref(), Some(RasterDatasetNameEntryBody10_1::AisImageService(inner))
+                if inner.strings[0] == "service"))
+        );
+        assert_eq!(reader.position(), end);
+        assert!(matches!(
+            read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).unwrap(),
+            DatasetNameMoreSlot10_1::BackReference {
+                class_id: AIS_IMAGE_SERVICE_NAME_CLASS_ID,
+                key: 91
+            }
+        ));
+        assert_eq!(reader.remaining(), 0);
+    }
+
     #[test]
     fn overlay_netcdf_raster_name_consumes_both_version_layouts() {
         for version in [1_i32, 2] {
