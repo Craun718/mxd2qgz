@@ -265,14 +265,13 @@ pub(super) fn read_inline_raster_body_10_1(
             "RasterLayer 渲染器体未完整读取",
         ));
     }
-    let mut names = body
+    let first_name = body
         .names
         .iter()
-        .filter(|name| name.entry != ObjectEntry10_1::Null);
+        .find(|name| name.entry != ObjectEntry10_1::Null);
     let boundary = if body.version == 12
         && renderer.entry == ObjectEntry10_1::Null
-        && let Some(name) = names.next()
-        && names.next().is_none()
+        && let Some(name) = first_name
         && name
             .body
             .as_ref()
@@ -847,6 +846,35 @@ mod tests {
         assert!(layer.tail.unwrap().geodata_xform_v13.is_none());
         assert_eq!(reader.position(), end + 2 * null.len());
         assert_eq!(refs.registered_class(60), Some(RASTER_TYPE_NAME_CLASS_ID));
+
+        let mut second_name = Vec::new();
+        dataset_name(&mut second_name, 61);
+        second_name.extend(encoded_string(""));
+        for first_fails in [false, true] {
+            let mut multiple = body_prefix(12, 2);
+            if !first_fails {
+                multiple.extend(&second_name);
+            }
+            multiple.extend_from_slice(&bytes[name_offset..name_end]);
+            if first_fails {
+                multiple.extend(&second_name);
+            }
+            multiple.extend_from_slice(&bytes[name_end..]);
+            let mut reader = Reader::new(&multiple);
+            let mut refs = RefTable10_1::new();
+            let result = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs);
+            if first_fails {
+                let layer = result.unwrap();
+                assert_eq!(layer.names.len(), 2);
+                assert!(layer.tail.unwrap().geodata_xform_v13.is_none());
+                assert_eq!(reader.position(), end + second_name.len());
+                assert!(refs.contains(60) && refs.contains(61));
+            } else {
+                assert_eq!(result.unwrap_err().kind(), ErrorKind::Unsupported);
+                assert_eq!(reader.position(), 0);
+                assert!(refs.is_empty());
+            }
+        }
 
         let io_offset = end - 16 - encoded_string("尾段").len();
         for tag30 in [None, Some(false), Some(true)] {
