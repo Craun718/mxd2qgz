@@ -621,6 +621,12 @@ const GP_LAYER_CLASS_ID: [u8; 16] = [
     0x1e, 0x59, 0x47, 0x6a, 0x16, 0xaa, 0x3e, 0x44, 0xb5, 0x0d, 0xd8, 0x92, 0x66, 0x59, 0xa4, 0xe1,
 ];
 
+const GP_RECORD_SET_CLASS_ID: [u8; 16] = [
+    0xc2, 0x67, 0xdb, 0x38, 0xc1, 0xeb, 0x1a, 0x46, 0x87, 0x29, 0x01, 0x1b, 0xb7, 0xdb, 0xaf, 0x0c,
+];
+const RECORD_SET_CLASS_ID: [u8; 16] = [
+    0xc7, 0xe8, 0x17, 0xb5, 0xc0, 0x6e, 0xe0, 0x46, 0x80, 0xbb, 0xd6, 0x1e, 0xd6, 0x91, 0xc5, 0xce,
+];
 const GP_TABLE_VIEW_CLASS_ID: [u8; 16] = [
     0xed, 0x16, 0x08, 0xcf, 0xa0, 0xa6, 0xc1, 0x4a, 0xb8, 0xf1, 0x19, 0x2b, 0x32, 0x91, 0xa8, 0x53,
 ];
@@ -988,6 +994,7 @@ pub const GP_EXTENT_CLASS_ID: [u8; 16] = [
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpCodedValue10_1 {
+    RecordSet(Box<GpRecordSet10_1>),
     TableView(Box<GpTableView10_1>),
     MosaicLayer(Box<GpLayer10_1>),
     GroupLayer(Box<GpLayer10_1>),
@@ -1287,6 +1294,28 @@ pub struct GpFeatureLayerFields10_1 {
     pub fid_set: RuleSlot10_1<crate::layers::feature_id_set::FeatureIdSetBody10_1>,
     pub table: Option<RuleSlot10_1<DeChild10_1>>,
     pub field_info: Option<RuleSlot10_1<GpCodedValueBody10_1>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpRecordSet10_1 {
+    pub records: RuleSlot10_1<RecordSet10_1>,
+    pub v2: Option<(String, u16)>,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecordSet10_1 {
+    pub version: i16,
+    pub fields: RuleSlot10_1<FieldsBody10_1>,
+    pub raw_count: i32,
+    pub rows: Vec<Record10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Record10_1 {
+    pub version: i16,
+    pub raw_count: i32,
+    pub values: Vec<PropertyValueObjectStream10_1>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3310,6 +3339,7 @@ fn read_gp_coded_value_entry(
                 table.registered_class(key).unwrap_or(class_id),
                 GP_STRING_CLASS_ID
                     | GP_TABLE_VIEW_CLASS_ID
+                    | GP_RECORD_SET_CLASS_ID
                     | GP_FIELD_MAPPING_CLASS_ID
                     | GP_RASTER_FORMULATED_CLASS_ID
                     | GP_RASTER_BUILDER_CLASS_ID
@@ -3730,6 +3760,7 @@ fn read_gp_coded_value_entry(
             class_id:
                 class_id @ (GP_STRING_CLASS_ID
                 | GP_TABLE_VIEW_CLASS_ID
+                | GP_RECORD_SET_CLASS_ID
                 | GP_FIELD_MAPPING_CLASS_ID
                 | GP_RASTER_BUILDER_CLASS_ID
                 | GP_RASTER_DATA_LAYER_CLASS_ID
@@ -3799,7 +3830,7 @@ fn read_gp_coded_value_entry(
             let version = reader.read_u16_le()?;
             let base_version = reader.read_u16_le()?;
             let max_version = match class_id {
-                GP_FIELD_MAPPING_CLASS_ID | GP_TABLE_VIEW_CLASS_ID => 2,
+                GP_FIELD_MAPPING_CLASS_ID | GP_TABLE_VIEW_CLASS_ID | GP_RECORD_SET_CLASS_ID => 2,
                 GP_SPATIAL_REFERENCE_CLASS_ID
                 | GP_SA_SEMI_VARIOGRAM_CLASS_ID
                 | GP_RASTER_GDB_ENV_STATISTICS_CLASS_ID => 3,
@@ -3834,6 +3865,9 @@ fn read_gp_coded_value_entry(
             }
             let base_short = reader.read_u16_le()?;
             let value = match class_id {
+                GP_RECORD_SET_CLASS_ID => GpCodedValue10_1::RecordSet(Box::new(
+                    read_gp_record_set(reader, max_bytes, table, depth, version)?,
+                )),
                 GP_TABLE_VIEW_CLASS_ID => GpCodedValue10_1::TableView(Box::new(
                     read_gp_table_view(reader, max_bytes, table, depth, version)?,
                 )),
@@ -5237,6 +5271,90 @@ fn read_gp_fid_set_slot(
         }
     };
     Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_gp_record_set(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+    version: u16,
+) -> io::Result<GpRecordSet10_1> {
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if refs.registered_class(key).unwrap_or(class_id) == RECORD_SET_CLASS_ID =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: RECORD_SET_CLASS_ID,
+            ..
+        } => Some(Box::new(read_record_set(reader, max_bytes, refs, depth)?)),
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "GPRecordSet 中的 RecordSet 类尚未支持",
+            ));
+        }
+    };
+    let v2 = if version >= 2 {
+        Some((read_string_10_1(reader, max_bytes)?, reader.read_u16_le()?))
+    } else {
+        None
+    };
+    let text = read_string_10_1(reader, max_bytes)?;
+    Ok(GpRecordSet10_1 {
+        records: RuleSlot10_1 { entry, body },
+        v2,
+        text,
+    })
+}
+
+fn read_record_set(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<RecordSet10_1> {
+    if depth >= MAX_BOOKMARK_NAME_NESTING {
+        return Err(io::Error::new(ErrorKind::InvalidData, "RecordSet 嵌套过深"));
+    }
+    let version = reader.read_u16_le()? as i16;
+    if version > 1 {
+        return Err(io::Error::new(ErrorKind::InvalidData, "RecordSet 版本超限"));
+    }
+    let fields = read_gp_fields_slot(reader, max_bytes, refs, depth + 1)?;
+    let (raw_count, count) = read_gp_coded_value_count(reader, max_bytes, 6)?;
+    let mut rows = Vec::new();
+    for _ in 0..count {
+        let version = reader.read_u16_le()? as i16;
+        if version > 1 {
+            return Err(io::Error::new(ErrorKind::InvalidData, "Record 版本超限"));
+        }
+        let (raw_count, count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
+        let mut values = Vec::new();
+        for _ in 0..count {
+            values.push(read_padded_variant_object_stream_nested_10_1(
+                reader,
+                max_bytes,
+                refs,
+                depth + 1,
+            )?);
+        }
+        rows.push(Record10_1 {
+            version,
+            raw_count,
+            values,
+        });
+    }
+    Ok(RecordSet10_1 {
+        version,
+        fields,
+        raw_count,
+        rows,
+    })
 }
 
 fn read_gp_table_view(
@@ -11529,6 +11647,68 @@ mod tests {
                 spatial_reference.as_deref(),
                 (class_id == DE_PRJ_FILE_CLASS_ID).then_some(&SpatialReferenceEntry10_1::Null),
             );
+            assert_eq!(reader.position(), end);
+        }
+    }
+
+    #[test]
+    fn gp_record_set_reads_inline_rows_and_byte_arrays() {
+        use crate::objects::property_set::PropertyValue10_1;
+        use crate::stream::variant_array::ClassVariantArray10_1;
+
+        for version in 0_u16..=2 {
+            let mut bytes = GP_RECORD_SET_CLASS_ID.to_vec();
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend(version.to_le_bytes());
+            bytes.extend([1, 0, 9, 0]);
+            bytes.extend(RECORD_SET_CLASS_ID);
+            bytes.extend(2_u32.to_le_bytes());
+            bytes.extend(1_i16.to_le_bytes());
+            bytes.extend(FIELDS_CLASS_ID);
+            bytes.extend(3_u32.to_le_bytes());
+            bytes.extend([1, 0, 0, 0, 0, 0]);
+            bytes.extend(2_i32.to_le_bytes());
+            bytes.extend(1_i16.to_le_bytes());
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend(0x2011_u16.to_le_bytes());
+            bytes.extend([0; 14]);
+            bytes.extend(3_i32.to_le_bytes());
+            bytes.extend([0x12, 0x34, 0x56]);
+            bytes.extend(0_i16.to_le_bytes());
+            bytes.extend(0_i32.to_le_bytes());
+            let empty_text = [2, 0, 0, 0, 0, 0];
+            if version == 2 {
+                bytes.extend(empty_text);
+                bytes.extend(7_u16.to_le_bytes());
+            }
+            bytes.extend(empty_text);
+            let read = |reader: &mut Reader<'_>| {
+                read_gp_coded_value_slot(reader, 1024, &mut RefTable10_1::new(), 0)
+            };
+            for cut in 0..bytes.len() {
+                assert!(read(&mut Reader::new(&bytes[..cut])).is_err());
+            }
+            let end = bytes.len();
+            bytes.push(0xa5);
+            let mut reader = Reader::new(&bytes);
+            let body = read(&mut reader).unwrap().body.unwrap();
+            let GpCodedValue10_1::RecordSet(value) = body.value else {
+                panic!("应读取 GPRecordSet");
+            };
+            let records = value.records.body.unwrap();
+            assert_eq!(records.raw_count, 2);
+            assert_eq!(
+                records.rows[0].values,
+                [PropertyValueObjectStream10_1::Inline(
+                    PropertyValue10_1::Array(ClassVariantArray10_1::Fixed {
+                        vartype: 17,
+                        element_bytes: 1,
+                        raw: vec![0x12, 0x34, 0x56],
+                    })
+                )]
+            );
+            assert!(records.rows[1].values.is_empty());
+            assert_eq!(value.v2, (version == 2).then_some((String::new(), 7)));
             assert_eq!(reader.position(), end);
         }
     }

@@ -3558,13 +3558,23 @@ Record::Load 在 `0x70a11d19` 检查有符号版本上限 1，
 `0x70a11d8d` 调用 AfCore Variant::Read，布尔参数为 false。
 `0x70a11da2` 检查读出的 VARTYPE 是否为 0x2011
 （VT_ARRAY | VT_UI1），命中时走对象创建和字节数组转换分支。
-转换后的对象类型及对应 Save 分支仍需对位。
+该分支由 `0x70a15ff0` 在 `0x70a1601b` 创建
+CLSID `BC929960-E736-11D0-9A93-080009EC734B`，并于
+`0x70a16048` 查询 IID `68F0AB65-E2B7-40D8-AA3B-3B7764607DD3`。
+10.1 esriSystem 类型库分别定名为 MemoryBlobStream 和
+IMemoryBlobStreamVariant。接口 +0x10 是 ImportFromVariant，
+与 `0x70a11de2` 的调用对位。对应 Save 的对象转换路径仍待完整核对。
 
 RecordSet 的行循环结束后，`0x70a08faf` 只从已加载的
 IFields 获取字段数，`0x70a08fba` 把字段和行容器交给
 `0x70a0f640`。该调用点没有流参数，随后释放本地接口并返回。
 正计数循环及零行路径汇合后没有额外的流读取点。
 真实 MXD 宿主仍待核对，未在 ArcMap 或 QGIS 中人工验收。
+
+Rust 接入 GPRecordSet v0–v2 及带键 RecordSet 对象槽，复用
+IFields 和 Variant::Read(false) 的读取器。内联 Record 的字节数组
+按流中原值保留。构造测试覆盖非空 IFields、两行、VT_UI1 数组、
+版本尾段、对象终点和逐字节截断。真实 MXD 及人工验收仍待补充。
 
 #### 目录数据元素
 
