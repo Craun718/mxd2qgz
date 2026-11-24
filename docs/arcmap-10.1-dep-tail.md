@@ -1349,3 +1349,30 @@ SimpleRasterRenderer 的 CLSID 直接接旧共用渲染器体。测试确认
 已省略的 tag 31 不影响分派、四个渲染器标量完整保留、外层不会
 登记渲染器键，且仍能读取后继选择值、聚合图层和宿主尾段。
 在渲染器体内截断会回滚整个关联槽，真实工程验收仍待进行。
+
+### RasterBasemapLayer 读写入口与版本门
+
+复核 BasemapLayer.dll 10.1.0.3035（SHA-256
+`c8f4692970c5311e5d591f317c5e6c0379e9e6b9ad62a2383c71ecb6c8f64aad`）。
+主 QI `0x6b688f40` 在 `0x6b689021` 匹配 IPersistStream，
+由 `0x6b68924f` 返回完整对象 `+0x220`。构造路径在
+`0x6b68842e` 安装子表 `0x6b6aec78`。GetClassID
+`0x6b68b370` 从 `0x6b6ae368` 写出
+`{57520261-2608-430B-904E-7B0D48C578D5}`，Load/Save 槽分别指向
+`0x6b68af00` 和 `0x6b68b1f0`，与普通 BasemapLayer 不共用对象体。
+
+Load 读有符号 short 版本，`0x6b68af5a` 检查上限 5。
+后续依次读 short、16 字节 GUID、ISpatialReference 普通槽
+（`0x6b68afea`）、请求 `{00A527CF-28DA-4043-9CF7-E9911172F05F}`
+的普通槽（`0x6b68b01e`）。版本恰为 2 时，
+`0x6b68b038` 跳过 `0x6b68b045/0x6b68b068` 两次 short
+读取。之后 `0x6b68b0b4` 调 ExtraSafeReadObject，请求
+`{D02371C7-35F7-11D2-B1F2-00C04F8EDEFF}`，结束时 v4 起
+读取字符串，v5 再在 `0x6b68b1c8` 调 ExtraSafeReadObject，
+请求 `{EF80DA8F-686B-4D8E-87ED-C2213273632F}`。
+
+Save 在 `0x6b68b218` 使用单项版本表 `[5]`。写端的 GUID、
+两个普通对象、两个 short、ExtraSafe 对象、字符串和最终
+ExtraSafe 对象调用与 v5 读序相符。接入前还需确认两个非空间参考
+接口的实现类、首个 ExtraSafe 槽对栅格子类的分派，以及尾槽边界。
+当前仅完成静态取证，尚无真实宿主或 ArcMap/QGIS 人工验收。
