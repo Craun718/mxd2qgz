@@ -2279,3 +2279,16 @@ Load `0x7be397e0` 接受版本 0–4，先读六个 long。v2 起读
 （IID `{1B077915-38C5-11D0-92D2-00805F7C28B0}`），
 v3 起读 short，v4 再读 String。解析保留坐标位模式和点对象槽。
 构造测试覆盖 v4、非空 Point、后续字段边界、存储定义回引和逐字节截断。
+
+#### DERasterBand
+
+FeatureDataElements.dll 10.1.0.3035 的持久化表 `0x6f65c898`
+对应 CLSID `{37C63B33-C7D6-4311-91D5-9E98A2A0E39A}`。
+Load `0x6f613350` 接受版本 0–3，先加载 DETableBase。
+构造函数在 `0x6f6121f4` 调基类构造函数，后者在
+`0x6e94cbc8` 清零扩展标志，DERasterBand 构造路径保留该值。
+因此基类在前导 short 和 String 后直接读 IFields、IIndexes。
+其后读取 short、两个 double、两个 long，v3 再读一个 long。
+v0–1 保留 `0x6f61348d` 读取的 24 字节，v2–3 读取紧凑 Variant。
+末尾为两个 long、IEnvelope 和 ISpatialReference。构造测试覆盖各版本
+分支及截断。实际 MXD 宿主仍待验证。

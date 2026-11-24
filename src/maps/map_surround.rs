@@ -527,6 +527,10 @@ pub const RASTER_STORAGE_DEF_CLASS_ID: [u8; 16] = [
     0x02, 0xc6, 0xab, 0x82, 0xf9, 0x67, 0x42, 0x40, 0xbe, 0xe1, 0x64, 0x5b, 0x01, 0x39, 0xfd, 0x70,
 ];
 
+pub const DE_RASTER_BAND_CLASS_ID: [u8; 16] = [
+    0x33, 0x3b, 0xc6, 0x37, 0xd6, 0xc7, 0x11, 0x43, 0x91, 0xd5, 0x9e, 0x98, 0xa2, 0xa0, 0xe3, 0x9a,
+];
+
 pub const DE_RASTER_DATASET_CLASS_ID: [u8; 16] = [
     0x68, 0xbb, 0x95, 0x82, 0x00, 0xf2, 0xa6, 0x4c, 0x80, 0x3f, 0x97, 0x99, 0x52, 0xd7, 0x32, 0xbd,
 ];
@@ -936,6 +940,7 @@ pub struct DataElement10_1 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
+    RasterBand(Box<DeRasterBand10_1>),
     Workspace(Box<DeWorkspace10_1>),
     ServerConnection {
         version: u16,
@@ -1001,6 +1006,31 @@ pub enum DeChild10_1 {
         spatial_reference: SpatialReferenceEntry10_1,
         strings: [String; 2],
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeRasterBand10_1 {
+    pub version: u16,
+    pub table_version: u16,
+    pub dataset: DeDataset10_1,
+    pub table_short: u16,
+    pub table_string: String,
+    pub fields: RuleSlot10_1<FieldsBody10_1>,
+    pub indexes: RuleSlot10_1<DeTableIndexes10_1>,
+    pub raw_short: u16,
+    pub double_bits: [u64; 2],
+    pub longs: [i32; 2],
+    pub v3: Option<i32>,
+    pub no_data: RasterBandNoData10_1,
+    pub trailing_longs: [i32; 2],
+    pub extent: BookmarkEnvelopeEntry10_1,
+    pub spatial_reference: SpatialReferenceEntry10_1,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum RasterBandNoData10_1 {
+    Legacy([u8; 24]),
+    Variant(PropertyValueObjectStream10_1),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3304,6 +3334,7 @@ fn read_gp_data_element_child(
                     | DE_FEATURE_CLASS_CLASS_ID
                     | DE_RASTER_CATALOG_CLASS_ID
                     | DE_RASTER_DATASET_CLASS_ID
+                    | DE_RASTER_BAND_CLASS_ID
                     | DE_FEATURE_DATASET_CLASS_ID
                     | DE_CATALOG_DATASET_CLASS_ID
                     | DE_SERVER_CONNECTION_CLASS_ID
@@ -3321,6 +3352,7 @@ fn read_gp_data_element_child(
                 | DE_FEATURE_CLASS_CLASS_ID
                 | DE_RASTER_CATALOG_CLASS_ID
                 | DE_RASTER_DATASET_CLASS_ID
+                | DE_RASTER_BAND_CLASS_ID
                 | DE_FEATURE_DATASET_CLASS_ID
                 | DE_CATALOG_DATASET_CLASS_ID
                 | DE_SERVER_CONNECTION_CLASS_ID
@@ -3338,6 +3370,13 @@ fn read_gp_data_element_child(
             }
             let body = if class_id == DE_TABLE_CLASS_ID {
                 DeChild10_1::Table(read_gp_de_table(reader, max_bytes, refs, depth + 1)?)
+            } else if class_id == DE_RASTER_BAND_CLASS_ID {
+                DeChild10_1::RasterBand(Box::new(read_de_raster_band(
+                    reader,
+                    max_bytes,
+                    refs,
+                    depth + 1,
+                )?))
             } else if class_id == DE_WORKSPACE_CLASS_ID {
                 DeChild10_1::Workspace(Box::new(read_de_workspace(
                     reader,
@@ -3527,6 +3566,70 @@ fn read_gp_data_element_child(
         }
     };
     Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_de_raster_band(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<DeRasterBand10_1> {
+    let version = reader.read_u16_le()?;
+    if version > 3 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "DERasterBand 版本超限",
+        ));
+    }
+    // 构造函数保留 DETableBase 的默认零扩展标志。
+    let table_version = reader.read_u16_le()?;
+    if table_version > 4 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "DERasterBand 的 DETableBase 版本超限",
+        ));
+    }
+    let dataset = read_gp_de_dataset(reader, max_bytes, refs, depth)?;
+    let table_short = reader.read_u16_le()?;
+    let table_string = read_string_10_1(reader, max_bytes)?;
+    let fields = read_gp_fields_slot(reader, max_bytes, refs, depth)?;
+    let indexes = read_de_table_indexes(reader, max_bytes, refs, depth)?;
+    let raw_short = reader.read_u16_le()?;
+    let double_bits = [
+        reader.read_f64_le()?.to_bits(),
+        reader.read_f64_le()?.to_bits(),
+    ];
+    let longs = [reader.read_u32_le()? as i32, reader.read_u32_le()? as i32];
+    let v3 = (version == 3)
+        .then(|| reader.read_u32_le().map(|value| value as i32))
+        .transpose()?;
+    let no_data = if version >= 2 {
+        RasterBandNoData10_1::Variant(read_variant_object_stream_value_10_1(
+            reader, max_bytes, refs, depth,
+        )?)
+    } else {
+        RasterBandNoData10_1::Legacy(reader.read_bytes(24)?.try_into().unwrap())
+    };
+    let trailing_longs = [reader.read_u32_le()? as i32, reader.read_u32_le()? as i32];
+    let extent = read_surround_envelope_slot(reader, max_bytes, refs, "DERasterBand 范围")?;
+    let spatial_reference = read_spatial_reference_entry_10_1(reader, max_bytes, refs)?;
+    Ok(DeRasterBand10_1 {
+        version,
+        table_version,
+        dataset,
+        table_short,
+        table_string,
+        fields,
+        indexes,
+        raw_short,
+        double_bits,
+        longs,
+        v3,
+        no_data,
+        trailing_longs,
+        extent,
+        spatial_reference,
+    })
 }
 
 fn read_raster_storage_def_slot(
@@ -7014,5 +7117,56 @@ mod tests {
         );
         assert!(back_reference.body.is_none());
         assert_eq!(reader.position(), bytes.len());
+    }
+
+    #[test]
+    fn de_raster_band_reads_compact_table_and_versioned_variant() {
+        for version in 0_u16..=3 {
+            let mut bytes = DE_RASTER_BAND_CLASS_ID.to_vec();
+            bytes.extend(53_u32.to_le_bytes());
+            bytes.extend(version.to_le_bytes());
+            bytes.extend([0; 10]);
+            for _ in 0..3 {
+                bytes.extend([2, 0, 0, 0, 0, 0]);
+            }
+            bytes.extend([0; 22]);
+            bytes.extend(7_u16.to_le_bytes());
+            bytes.extend([2, 0, 0, 0, 0, 0]);
+            bytes.extend([0; 32]);
+            bytes.extend(4_u16.to_le_bytes());
+            bytes.extend(1.5_f64.to_le_bytes());
+            bytes.extend(2.5_f64.to_le_bytes());
+            bytes.extend([0; 8]);
+            if version == 3 {
+                bytes.extend(9_i32.to_le_bytes());
+            }
+            if version >= 2 {
+                bytes.extend(3_u16.to_le_bytes());
+                bytes.extend(42_i32.to_le_bytes());
+            } else {
+                bytes.extend([0; 24]);
+            }
+            bytes.extend(11_i32.to_le_bytes());
+            bytes.extend(12_i32.to_le_bytes());
+            bytes.extend([0; 32]);
+            for cut in 0..bytes.len() {
+                let mut reader = Reader::new(&bytes[..cut]);
+                let mut refs = RefTable10_1::new();
+                assert!(read_gp_data_element_child(&mut reader, 1024, &mut refs, 0).is_err());
+            }
+            let end = bytes.len();
+            bytes.push(0xa5);
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let object = read_gp_data_element_child(&mut reader, 1024, &mut refs, 0).unwrap();
+            let Some(DeChild10_1::RasterBand(body)) = object.body.as_deref() else {
+                panic!("应读取 DERasterBand");
+            };
+            assert_eq!(body.table_short, 7);
+            assert_eq!(body.raw_short, 4);
+            assert_eq!(body.v3, (version == 3).then_some(9));
+            assert_eq!(body.trailing_longs, [11, 12]);
+            assert_eq!(reader.position(), end);
+        }
     }
 }
