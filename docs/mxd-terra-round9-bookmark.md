@@ -3619,6 +3619,24 @@ objdump 显示 Load 在 `0x745984e9` 检查有符号 short 上限 3，
 各接口的实际持久化实现、写侧及真实宿主仍待核对。
 以上为静态取证，未在 ArcMap 或 QGIS 中人工验收。
 
+同一 DLL 的 Save `0x74597cd0` 在 `0x74597cf5` 以
+`0x745dd2dc` 的表 `[-1, 0, 1, 2, 3]` 调 AfStreamGetSaveVersion。
+返回 -1 时跳过写入。其余路径先在 `0x74597d16` 写 short，
+再在 `0x74597d30` 调 GPCompositeLayerBase::Save，
+并于 `0x74597d47` 写第一个对象槽。两个有符号计数的写点
+分别为 `0x74597d77` 和 `0x74598010`，第二个计数的成员项
+在 `0x7459807a` 调 SaveObject。读侧的第二个成员循环通过
+`0x74598653` 跳到 `0x745987b3`，循环结束后回到
+`0x7459865c`，因此反汇编中较靠后的循环地址仍属于两个
+IPropertySet 之前的字段。
+
+esriGeoprocessing 类型库将 `0EE02101-1597-473C-B77D-1EDFD547ACE5`
+定名为 IGPLinearUnit，将 `54B87A95-1BD1-42B6-ADDF-6DAB68BA8F56`
+定名为 IGPTableView。后者是 v3 计数循环在 `0x74598748`
+请求的接口。Rust 已有 GPLinearUnit 和 GPTableView 的编码值体，
+可作为这两个槽的候选实现。其余槽的具体类及失败路径仍待核对。
+此次为静态对位，未进行 ArcMap/QGIS 人工验收。
+
 #### 目录数据元素
 
 FileDataElements.dll 10.1.0.3035 的 PE RTTI 持久化表及
