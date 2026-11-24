@@ -7400,13 +7400,18 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
         payload.extend(bookmark_entry_10_1(&DE_TABLE_CLASS_ID, 22));
         payload.extend(version.to_le_bytes());
         payload.extend(2_u16.to_le_bytes());
-        payload.extend(1_u16.to_le_bytes());
+        payload.extend(2_u16.to_le_bytes());
         payload.extend(1_u16.to_le_bytes());
         payload.extend(7_u16.to_le_bytes());
         for name in ["目录", "名称", "标题"] {
             payload.extend(bookmark_string_10_1(name));
         }
-        payload.extend([0; 6]);
+        payload.extend([0; 4]);
+        payload.extend(u16::MAX.to_le_bytes());
+        payload.extend(4_u32.to_le_bytes());
+        for unit in "<x/>".encode_utf16().chain([0]) {
+            payload.extend(unit.to_le_bytes());
+        }
         payload.extend(2_i32.to_le_bytes());
         payload.extend(bookmark_entry_10_1(&DE_TABLE_CLASS_ID, 28));
         payload.extend([0; 10]);
@@ -7542,11 +7547,12 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                             body: Some(Box::new(DeTable10_1 {
                                 version,
                                 dataset_version: 2,
-                                element_version: 1,
+                                element_version: 2,
                                 gp_value_version: 1,
                                 gp_value_short: 7,
                                 element_strings: ["目录", "名称", "标题"].map(String::from),
-                                element_shorts: [0; 3],
+                                element_shorts: [0, 0, u16::MAX],
+                                element_legacy_xml: Some("<x/>".into()),
                                 raw_child_count: 2,
                                 children: vec![
                                     RuleSlot10_1 {
@@ -7562,6 +7568,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                             gp_value_short: 0,
                                             element_strings: Default::default(),
                                             element_shorts: [0; 3],
+                                            element_legacy_xml: None,
                                             raw_child_count: 0,
                                             children: Vec::new(),
                                             dataset_longs: [0; 2],

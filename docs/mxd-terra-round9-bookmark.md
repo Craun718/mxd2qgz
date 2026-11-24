@@ -2012,7 +2012,7 @@ DETable 构造函数在 `0x6f61daa2` 将对象 `+0xc0`（相当于持久化
 无需在流中读额外标志。请求的子槽接口由各 LoadObject 的 IID 和
 10.1 esriGeoDatabase、esriSystem 类型库核对。已在两个 IDETable 槽接入标准 DETable 对象体及 StrArray、PropertySet、
 Fields。构造测试覆盖版本 0 至 4、嵌套 Fields 回引及截断回滚。
-DataElement 的旧兼容辅助调用和递归子元素，以及
+DataElement 的其他递归子元素，以及
 IGPSubtype、IGPControllerMembership 的合法实现边界仍需核对。
 
 #### Indexes 与 Index
@@ -2064,3 +2064,14 @@ DataElement 的正子对象计数经 `0x6e942c94` 调 LoadObject，
 按同一引用表读取新对象和回引。新对象受书签嵌套上限约束，
 回引只消耗对象头。构造书签覆盖内嵌 DETable、同键回引及截断回滚。
 其余 IDataElement 实现及真实宿主仍待核对。
+
+#### DataElement 旧兼容 XML
+
+DataElement v2 的第三个 short 为 `0xffff` 时，Load `0x6e942c54`
+转入 `0x6e943ac0`。辅助函数先创建内存对象，随后在 `0x6e943b3e`
+调用 AfCore ReadString(BSTR*, IStream*)，并在 `0x6e943b92`
+把结果传给内存对象的方法。接口 IID
+`{01700025-EF62-47E3-BD1E-7A47D0696541}` 对应类型库的 IXmlPropertySet2。Save 侧 `0x6e942d9f` 调
+`0x6e943c30`，后者在 `0x6e943cc2` 调 WriteString(BSTR, IStream*)。
+因此此分支在子对象计数前额外消耗一个 BSTR。构造书签覆盖非空
+UTF-16 XML、随后递归对象和截断回滚。实际宿主仍待确认。

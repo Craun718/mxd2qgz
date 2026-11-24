@@ -830,6 +830,7 @@ pub struct DeTable10_1 {
     pub gp_value_short: u16,
     pub element_strings: [String; 3],
     pub element_shorts: [u16; 3],
+    pub element_legacy_xml: Option<String>,
     pub raw_child_count: i32,
     pub children: Vec<RuleSlot10_1<DeTable10_1>>,
     pub dataset_longs: [i32; 2],
@@ -3042,12 +3043,9 @@ fn read_gp_de_table(
         reader.read_u16_le()?,
         reader.read_u16_le()?,
     ];
-    if element_version == 2 && element_shorts[2] == u16::MAX {
-        return Err(io::Error::new(
-            ErrorKind::Unsupported,
-            "DataElement 旧兼容分支尚未支持",
-        ));
-    }
+    let element_legacy_xml = (element_version == 2 && element_shorts[2] == u16::MAX)
+        .then(|| read_bstr_string_10_1(reader, max_bytes))
+        .transpose()?;
     let (raw_child_count, child_count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
     let mut children = Vec::new();
     for _ in 0..child_count {
@@ -3120,6 +3118,7 @@ fn read_gp_de_table(
         gp_value_short,
         element_strings,
         element_shorts,
+        element_legacy_xml,
         raw_child_count,
         children,
         dataset_longs,

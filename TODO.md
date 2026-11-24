@@ -788,7 +788,7 @@
       - [x] 接入 GPAddressLocatorStyle 的 Fields 配置槽及参考数据行槽。[取证](docs/mxd-terra-round9-bookmark.md#gpaddresslocatorstyle)
       - [x] 定位 GPAddressLocatorStyle 的 DETable 原生继承链和主字段序。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 GPAddressLocatorStyle 的 DETable 主体及已知的可选子槽。[取证](docs/mxd-terra-round9-bookmark.md#detable)
-      - [ ] 接入 DataElement 的旧兼容分支。[取证](docs/mxd-terra-round9-bookmark.md#detable)
+      - [x] 接入 DataElement 的旧兼容 BSTR 分支。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 IDataElement 列表中的递归 DETable 对象。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [ ] 补齐 IDataElement 列表中其他持久化实现。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的 GPSubtype 对象及字段行。[取证](docs/mxd-terra-round9-bookmark.md#detable)
