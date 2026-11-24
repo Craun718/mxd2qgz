@@ -1538,6 +1538,24 @@ Rust 按原生 GetClassID 返回的内部 CLSID 接入 IGPValue 槽，
 的磁盘分派仍待真实流验证。构造测试覆盖空值、非空值、回引、
 逐字节截断及长度越界。
 
+##### FMEDataset 的对象流类标识
+
+GpObjects.dll 10.1.0.3035 的 GPCodedValueDomain::Save
+`0x7469b900` 在 `0x7469b9c3` 经 IAT `0x747a31c8`
+逐项调用 AfCore SaveObject。对键控流，该调用进入 SystemCore
+写出器 `0x7ffcf7e0`，从持久化接口获取类标识并写入 16 字节
+对象头。见[对象流写出器](arcmap-10.1-object-body.md#objectstream-写出器虚表-0x40--0x7ffcf7e0逐分支闭合证据确定的)。
+
+DataInterop.dll 的 FMEDataset 包装在 COM 映射 `0x6e8e40c8`
+把 IPersistStream 请求委派给 `0x6e8db360`；该函数在
+`0x6e8db391` 调用 +0x8 内部对象的 QueryInterface。DIToolbox
+的 `0x100f4be0` 映射在 `0x100f4c04` 返回内部对象 +0xc
+的 IPersistStream，且两张类映射均无 IPersistVariant。
+内部 GetClassID `0x10021430` 返回 D63AD8B8-AB46-4903-B158-26C3240DE0D9，
+因此这条正常保存路径写入现有解析器支持的内部标识。
+公开包装标识仍需实际流证据方可作为另一条读取分派。
+目前证据来自本地 PE 和已有对象流反编译，未在 ArcMap 中人工验证。
+
 GpObjects.dll 内部 GPDataTypeFactory 的 GetClassID
 `0x746ac930` 从 `0x747a74dc` 复制
 `E41CFD44-5741-4F2B-8ACE-1A49E146D329`。QI

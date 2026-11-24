@@ -856,6 +856,7 @@
       - [x] 定位 IGPValue 子类 FMEDataset 转发的原生 IPersistStream 入口。[取证](docs/mxd-terra-round9-bookmark.md#fmedataset-值对象的持久化入口)
       - [x] 核对 FMEDataset 的长度前缀 BSTR 对象体边界。[取证](docs/mxd-terra-round9-bookmark.md#fmedataset-值对象体边界)
       - [x] 将内部持久化 CLSID 的无版本头 FMEDataset 对象体接入 IGPValue 槽。[取证](docs/mxd-terra-round9-bookmark.md#fmedataset-值对象体边界)
+      - [x] 核对 GPCodedValueDomain 保存 FMEDataset 时写入内部持久化 CLSID。[取证](docs/mxd-terra-round9-bookmark.md#fmedataset-的对象流类标识)
       - [x] 接入 GPFieldInfo 的基础行和 v2 扩展字段。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldinfo)
       - [x] 接入 GPWorkspaceExtension 的名称与扩展 GUID。[取证](docs/mxd-terra-round9-bookmark.md#gpworkspaceextension)
       - [x] 接入 GPDataFile 的 GDSData 传输对象和版本化属性槽。[取证](docs/mxd-terra-round9-bookmark.md#gpdatafile-和-gdsdata)
