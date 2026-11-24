@@ -1286,12 +1286,24 @@ ObjectStream 首次加载对象体所用的两个持久化接口。因此无界�
 
 Load 在 tag 30 读取动态对象数，并从 tag 31 起按序调用 ReadObj。
 这些 RasterIO 对象的外层为类标识、无普通 ObjectStream 键。
-已定位 RasterIO End `0x7c71a7ac`。对尾段用 objdump 复核时，
-发现伪代码将后续两个版本判断合并为顺序条件，但实际指令在
-`0x7c71a7c2` 对 v3 及以上走 short 读取，随后在
-`0x7c71a7e8` 返回该次读取的 HRESULT。能到
-`0x7c71a801` 的版本已经小于 3，因此该处立即跳过 v4 long 分支；
-其后进入 `0x7c71d350` 的 ExtraSafe 扩展循环，并调用另一个
-对象的持久化方法。这个差异需要在接入前与 Save 端和真实宿主交叉核对，
-尤其是 v4 的写出边界、旧版本末尾的虚调用及有对象记录的类体。
-关联槽读取尚未接入，也未进行 ArcMap/QGIS 人工验收。
+RasterIO End 位于 `0x7c71a7ac`。复核 short 读取后的
+`0x7c71a7db..0x7c71a7dd`，非负 HRESULT 跳到 `0x7c71a801`，
+只有失败才从 `0x7c71a7e8` 返回。v3 起读取 short，v4 接着读取
+long，所有成功分支都进入 `0x7c71d350` 的 ExtraSafe 扩展循环。
+此前把失败返回块当作 v3 及以上的无条件终点，现已更正。
+
+Save 取 `0x7c7678ec` 的六项版本表 `[-1, 1, 1, 3, 3, 4]`，
+并写为有符号四字节值。保存端在 `0x7c71adf2` 结束 RasterIO，
+`0x7c71adfb` 和 `0x7c71ae32` 使用相同的 short/long 版本门，
+`0x7c71ae59` 调用 `0x7c71d290`。扩展段两端均先处理四字节计数，
+随后分别用 ExtraSafeReadObject 和 ExtraSafeWriteObject，
+Load 请求 IUnknown（IID 数据 `0x7c76775c`）。
+
+两个入口在扩展段后都查询完整对象 `+0x88` 的聚合对象。构造
+`0x7c715db0` 用 `0x7c769180` 的 FeatureLayer CLSID
+`{E663A651-8AAD-11D0-BEC7-00805F7C4268}` 创建它。Load 的
+`0x7c71a843` 与 Save 的 `0x7c71ae77` 经 `0x7c721080`
+获得持久化接口后，分别从 `0x7c71a853` / `0x7c71ae8b`
+把同一流传入其 Load/Save 槽。该尾段由委派体确定终点，
+尚需核对聚合 FeatureLayer 的实际读取分支和 RasterIO 动态记录类，
+然后才能接入普通 ILayer。真实宿主及 ArcMap/QGIS 人工验收待验证。
