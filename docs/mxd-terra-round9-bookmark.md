@@ -3380,6 +3380,23 @@ GPRasterCatalogLayer 一样，Load/Save 指向
 两类各自的分派、v0–v2、非空 GPFieldInfo、终点与截断。
 真实 MXD 宿主和 ArcMap/QGIS 人工验收仍待验证。
 
+#### GPTinLayer
+
+10.1 Desktop 互操作元数据将
+`1FF73FB6-1D74-4722-A785-DFA1F8327AB5` 定名为 GPTinLayer，
+并列出 IGPValue、IGPLayer、IPersistStream。同摘要 GpObjects.dll
+10.1.0.3035 的 PE RTTI `0x748018e8` 关联持久化表
+`0x747b72ac`，Load/Save 为 `0x747138c0 / 0x74713920`。
+objdump 确认 Load 在 `0x747138de` 读 short，
+`0x747138fa` 按无符号比较拒绝大于 1 的版本，
+随后在 `0x74713901` 调用 GPLayerBase::Load。Save 在
+`0x7471393f` 写 short，再在 `0x74713960` 调用
+GPLayerBase::Save。派生层没有后继流字段。
+
+Rust 在编码值和 IGPLayer 槽复用 GPLayerBase 读取器。
+构造测试覆盖派生层 v0/v1、超限版本、截断和对象终点。
+真实 MXD 宿主及 ArcMap/QGIS 人工验收仍待验证。
+
 #### 目录数据元素
 
 FileDataElements.dll 10.1.0.3035 的 PE RTTI 持久化表及
