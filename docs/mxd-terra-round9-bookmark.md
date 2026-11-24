@@ -916,6 +916,24 @@ VariantChangeType，目标 VARTYPE 为 5（VT_R8）。
 对象类；未知类仍需以具体流或可复现写方取得证据。
 尚未进行 ArcMap 人工验证。
 
+#### 端点的原生保存
+
+GPRangeDomain::Save `0x746f71e0` 初始化两个临时 Variant，
+从内部 IRangeDomain 的 +0x0c 与 +0x14 取值
+（`0x746f72a6`、`0x746f72e4`），再分别调用 AfCore 全局 Write
+（`0x746f72b4`、`0x746f72f2`）。它从内部范围对象取得
+端点值，因此上一节的 Load 即使曾看到对象，也没有将原始输入
+Variant 直接转交给 Save。
+
+对 GdbCore 10.1.0.3035 的内部 RangeDomain，两个槽进入
+`0x70934870`、`0x70934960`。字段类别为 0–3 时，从各自成员
+调用 OleAut32 ordinal 11（VariantCopy），包括通过 setter
+存入的 VT_R8。类别为 5 时通过 ordinal 12 转成 VT_DATE，
+失败返回 S_FALSE。这个静态链覆盖默认持有的 RangeDomain 和
+正常 setter 路径。读取器继续保留合法输入中的原始 Variant，
+其他来源的对象值仍需实际流或写方证据。
+未在 ArcMap 中验证。
+
 ### GPWorkspaceDomain
 
 同版 GpObjects.dll 的 RTTI `0x74801e84` 对应持久化虚表
