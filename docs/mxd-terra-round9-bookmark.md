@@ -1349,6 +1349,26 @@ GpObjects.dll 10.1.0.3035 的多值对象 QI（`0x746ede30`）及其
 GPMultiValue。构造输入以 GPDataTypeName 类标识回引宿主多值键，
 验证书签游标和引用表整体回滚。尚无原生运行或实档验证。
 
+##### 类型名称的工厂来源
+
+DECoreLib.dll 10.1.0.3035（SHA-256
+`a57d35741decebe0765e8942268a934990763f52813b55eadf126de7d3042c2f`）
+的 GPDataType::get_FullName 导出为 `0x6e953080`。
+`0x6e9530a3` 取实例 +0x2c 的工厂 CLSID，辅助函数
+`0x6e953d50` 在 `0x6e953d79` 请求 IUnknown 实例，
+在 `0x6e953da6` 查询
+`1AFF0D88-E9B8-4571-8DF1-217DCAF48A50`（IGPDataTypeFactory）。
+`0x6e9530e9` 将数据类型名传给工厂虚表 +0x14，随后
+`0x6e95310b` 对返回对象查询 IName。磁盘上的非空类型名称
+因此取决于工厂产物，不能直接把 IGPDataType 的类标识当作 IName。
+
+本机 72 个 10.1 Desktop 类型库公开的 IGPDataTypeFactory
+coclass 包括 esriDataInterop 的 FMEDatasetTypeFactory
+（`038ADFFD-264F-46B9-A051-FC31E29FB1FB`）和 esriLocation 的
+GPGeocodingDataTypeFactory（`ACEEF5EE-F5F0-4824-9E7E-DD6FF465EDAB`）。
+仍需在各模块定位工厂 +0x14 返回的实际类，并核对未列在类型库中的
+内部工厂及其他 get_FullName 实现。暂无真实 MXD 或 ArcMap 验证。
+
 #### GPValueTable
 
 GpObjects.dll 10.1.0.3035 的 RTTI `0x74801cd4` 对应持久化虚表
