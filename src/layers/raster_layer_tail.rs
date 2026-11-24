@@ -310,7 +310,11 @@ fn read_related_name(
     max_bytes: usize,
     table: &mut RefTable10_1,
 ) -> io::Result<RasterLayerRelationshipSlot10_1> {
-    if let ObjectHeader::Object { class_id, key } = read_header_10_1(&mut reader.clone())?
+    let header = read_header_10_1(&mut reader.clone())?;
+    if header == ObjectHeader::Null {
+        return Err(invalid("RasterLayer 关联名称标志非零，但 IName 为空"));
+    }
+    if let ObjectHeader::Object { class_id, key } = header
         && !table.contains(key)
         && !matches!(
             class_id,
@@ -2507,6 +2511,21 @@ mod tests {
             assert_eq!(reader.position(), 0);
             assert!(refs.is_empty());
         }
+    }
+
+    #[test]
+    fn raster_related_name_rejects_null_with_nonzero_presence_flag() {
+        let mut bytes = vec![0; 26 + 4 + 8 + 32];
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend([0; 16]);
+        bytes.extend(0_i32.to_le_bytes());
+
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        let error = read_raster_layer_tail_10_1(&mut reader, 6, 4096, &mut refs).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::InvalidData);
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
     }
 
     #[test]
