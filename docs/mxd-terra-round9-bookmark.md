@@ -2835,3 +2835,20 @@ CLSID 的间接取值、尾字段的完整版本条件和子对象类仍待核�
 QI 比对，主虚表为 `0x7cb434b4)。第二槽 IID 在
 `0x7cb112b9` 被 ClassAttributes 的 QI 比对，主虚表为
 `0x7cb4071c`。两个子类的流对象体仍待解析。
+
+RepresentationRules 的 +0x1c 持久化表为 `0x7cb4355c`，
+GetClassID `0x7cb38ad0` 对应
+`FA485356-8FF1-4515-ADBD-1655BEB500C1`。
+Load `0x7cb38b30` 从 `0x7cb4e248` 取版本上限 2，
+随后读取两个 long。规则循环在 `0x7cb38be3` 读 long，
+在 `0x7cb38bfb` 读 String，版本条件下于
+`0x7cb38c1d` 另读 long，随后在 `0x7cb38c46`
+请求 IID `2B7BE3AB-BB72-49D0-A6EE-63ACD1F9068C`。
+循环的版本条件和规则子类还需核对。
+
+ClassAttributes 的 QI 在 `0x7cb11323` 比对 IPersistStream，
+相关虚表为 `0x7cb407cc`。GetClassID `0x7cb11010`
+对应 `02386401-0223-43A6-9AB2-BE7F92D6F81A`。
+Load `0x7cb11ba0` 检查版本后，在 `0x7cb11c28`
+经导入槽调用 GraphicAttributeList::Load，再在
+`0x7cb11c40` 读 long 并进入后续循环。基类和循环仍待核对。
