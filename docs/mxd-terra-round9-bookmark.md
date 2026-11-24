@@ -950,6 +950,28 @@ GPRangeDomain 和底层 RangeDomain 的完整 CLSID，两组均
 无命中。该筛查只覆盖这些流中的明文标识，无法据此排除
 其他宿主的对象型端点。真实宿主和 ArcMap 人工验证仍开放。
 
+#### GPRangeDomain2 的持久化流要求
+
+FeatureDataElements.dll 10.1.0.3035（SHA-256
+`7cd1153712d8af23f6c2263b6444c1a77e16b818fb5fb946d0c3d9106be5f429`）
+中，GPRangeDomain2 的 RTTI 对应对象 +0x18 的持久化表
+`0x6f6612e0`。Load `0x6f625320` 在 `0x6f625369`
+先从对象的 +0x1c 接口取得类标识，再经 `0x6f5f2860`
+对输入流查询 IPersist（IID 常量 `0x6f658614`）。
+它在 `0x6f625391` 读取流的 GetClassID，在
+`0x6f62539b` 比较两份标识。查询失败或标识不匹配时，
+`0x6f6253ac` 返回 E_FAIL，尚未读取对象体。
+
+匹配后，`0x6f6272c0` 对流查询 IID
+`3F16827A-04F1-11D4-A059-00C04F6BDD84`，
+`0x6f627330` 从内部对象查询 IID
+`DF18FE0A-84BA-11D2-AB61-000000000000`。
+`0x6f6253fd` 将前者传给后者的 +0x14。Save
+`0x6f625440` 的前段执行同样的类标识比较。
+因此旧 GPRangeDomain 的 short、LONG 和端点布局
+不能直接用于这个类。匹配流的实现、实际字节边界和真实
+ArcMap 宿主仍待核对。
+
 ### GPWorkspaceDomain
 
 同版 GpObjects.dll 的 RTTI `0x74801e84` 对应持久化虚表
