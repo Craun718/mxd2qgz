@@ -855,6 +855,7 @@
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
       - [x] 接入 GPCodedValueDomain 中的 XMLIndexTag v0/v1 对象体。[取证](docs/mxd-terra-round9-bookmark.md#xmlindextag)
       - [x] 接入 GPCodedValueDomain 中的 XMLIndexTags 集合。[取证](docs/mxd-terra-round9-bookmark.md#xmlindextags)
+      - [x] 接入 GPCodedValueDomain 中的 XMLIndex 对象体。[取证](docs/mxd-terra-round9-bookmark.md#xmlindex)
       - [x] 核对 GPHistoricalMarker 在缺少私有流接口时的 Load 和 Save 返回行为。[取证](docs/mxd-terra-round9-bookmark.md#gphistoricalmarker-的流接口要求)
       - [x] 核对非聚合 ObjectStream 不提供 GPHistoricalMarker 所需的私有流接口。[取证](docs/mxd-terra-round9-bookmark.md#gphistoricalmarker-的流接口要求)
       - [x] 定位 IGPValue 子类 FMEDataset 转发的原生 IPersistStream 入口。[取证](docs/mxd-terra-round9-bookmark.md#fmedataset-值对象的持久化入口)

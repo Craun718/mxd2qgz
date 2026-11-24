@@ -8252,3 +8252,59 @@ fn feature_bookmark_reads_xml_index_tags_collection() {
         },
     );
 }
+
+#[test]
+fn feature_bookmark_reads_xml_index_with_reused_tags() {
+    use mxd2qgz::layers::image_server_rules::RuleSlot10_1;
+    use mxd2qgz::maps::map_surround::{
+        GpCodedValue10_1, GpCodedValueBody10_1, XML_INDEX_CLASS_ID, XML_INDEX_TAGS_CLASS_ID,
+    };
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    let tags = bookmark_entry_10_1(&XML_INDEX_TAGS_CLASS_ID, 20);
+    let mut payload = vec![0; 20];
+    payload.extend(42_u32.to_le_bytes());
+    payload.extend(&tags);
+    payload.extend([1, 0, 1, 0, 0, 0]);
+    payload.extend(0_i32.to_le_bytes());
+    payload.extend(&tags);
+    payload.extend(0_u32.to_le_bytes());
+    assert_legacy_topo_coded_value(
+        XML_INDEX_CLASS_ID,
+        1,
+        &payload,
+        GpCodedValue10_1::XmlIndex {
+            first: String::new(),
+            fields: RuleSlot10_1 {
+                entry: ObjectEntry10_1::Null,
+                body: None,
+            },
+            raw_long: 42,
+            tags: Box::new([
+                RuleSlot10_1 {
+                    entry: ObjectEntry10_1::NewObject {
+                        class_id: XML_INDEX_TAGS_CLASS_ID,
+                        key: 20,
+                    },
+                    body: Some(Box::new(GpCodedValueBody10_1 {
+                        version: 1,
+                        base_version: 1,
+                        base_short: 0,
+                        value: GpCodedValue10_1::XmlIndexTags {
+                            raw_count: 0,
+                            tags: vec![],
+                        },
+                    })),
+                },
+                RuleSlot10_1 {
+                    entry: ObjectEntry10_1::BackReference {
+                        class_id: XML_INDEX_TAGS_CLASS_ID,
+                        key: 20,
+                    },
+                    body: None,
+                },
+            ]),
+            second: String::new(),
+        },
+    );
+}

@@ -394,6 +394,9 @@ pub const GP_DOUBLE_CLASS_ID: [u8; 16] = [
     0x74, 0x45, 0x4c, 0x37, 0x6e, 0x5d, 0x77, 0x4d, 0x9a, 0x67, 0x54, 0x89, 0xc6, 0xbb, 0xe9, 0x32,
 ];
 
+pub const XML_INDEX_CLASS_ID: [u8; 16] = [
+    0x9b, 0x55, 0xec, 0x18, 0xbe, 0x07, 0x98, 0x4f, 0x89, 0x60, 0x20, 0x66, 0x36, 0xba, 0x25, 0x9a,
+];
 pub const XML_INDEX_TAGS_CLASS_ID: [u8; 16] = [
     0x70, 0xf1, 0xd0, 0x78, 0x98, 0x0f, 0xcf, 0x41, 0x87, 0x68, 0xd7, 0xc8, 0x88, 0x7c, 0x19, 0x35,
 ];
@@ -885,6 +888,13 @@ pub const GP_EXTENT_CLASS_ID: [u8; 16] = [
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpCodedValue10_1 {
     FmeDataset(Option<Vec<u8>>),
+    XmlIndex {
+        first: String,
+        fields: RuleSlot10_1<FieldsBody10_1>,
+        raw_long: u32,
+        tags: Box<[RuleSlot10_1<GpCodedValueBody10_1>; 2]>,
+        second: String,
+    },
     XmlIndexTags {
         raw_count: i32,
         tags: Vec<RuleSlot10_1<GpCodedValueBody10_1>>,
@@ -3051,6 +3061,7 @@ fn read_gp_coded_value_entry(
                     | GP_ENCRYPTED_STRING_CLASS_ID
                     | GP_LONG_CLASS_ID
                     | GP_DOUBLE_CLASS_ID
+                    | XML_INDEX_CLASS_ID
                     | XML_INDEX_TAGS_CLASS_ID
                     | XML_INDEX_TAG_CLASS_ID
                     | GP_BOOLEAN_CLASS_ID
@@ -3130,6 +3141,7 @@ fn read_gp_coded_value_entry(
                 | GP_ENCRYPTED_STRING_CLASS_ID
                 | GP_LONG_CLASS_ID
                 | GP_DOUBLE_CLASS_ID
+                | XML_INDEX_CLASS_ID
                 | XML_INDEX_TAGS_CLASS_ID
                 | XML_INDEX_TAG_CLASS_ID
                 | GP_BOOLEAN_CLASS_ID
@@ -3467,29 +3479,38 @@ fn read_gp_coded_value_entry(
                     x_bits: reader.read_f64_le()?.to_bits(),
                     y_bits: reader.read_f64_le()?.to_bits(),
                 },
+                XML_INDEX_CLASS_ID => GpCodedValue10_1::XmlIndex {
+                    first: read_bstr_string_10_1(reader, max_bytes)?,
+                    fields: read_gp_fields_slot(reader, max_bytes, table, depth)?,
+                    raw_long: reader.read_u32_le()?,
+                    tags: Box::new([
+                        read_gp_xml_index_tag_slot(
+                            reader,
+                            max_bytes,
+                            table,
+                            depth,
+                            XML_INDEX_TAGS_CLASS_ID,
+                        )?,
+                        read_gp_xml_index_tag_slot(
+                            reader,
+                            max_bytes,
+                            table,
+                            depth,
+                            XML_INDEX_TAGS_CLASS_ID,
+                        )?,
+                    ]),
+                    second: read_bstr_string_10_1(reader, max_bytes)?,
+                },
                 XML_INDEX_TAGS_CLASS_ID => {
                     let (raw_count, count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
                     let mut tags = Vec::new();
                     for _ in 0..count {
-                        let entry = read_object_entry_10_1(reader, table)?;
-                        match entry {
-                            ObjectEntry10_1::Null
-                            | ObjectEntry10_1::NewObject {
-                                class_id: XML_INDEX_TAG_CLASS_ID,
-                                ..
-                            } => {}
-                            ObjectEntry10_1::BackReference { class_id, key }
-                                if table.registered_class(key).unwrap_or(class_id)
-                                    == XML_INDEX_TAG_CLASS_ID => {}
-                            _ => {
-                                return Err(io::Error::new(
-                                    ErrorKind::Unsupported,
-                                    "XMLIndexTags 的 IXMLIndexTag 槽包含不支持的类",
-                                ));
-                            }
-                        }
-                        tags.push(read_gp_coded_value_entry(
-                            reader, max_bytes, table, depth, entry,
+                        tags.push(read_gp_xml_index_tag_slot(
+                            reader,
+                            max_bytes,
+                            table,
+                            depth,
+                            XML_INDEX_TAG_CLASS_ID,
                         )?);
                     }
                     GpCodedValue10_1::XmlIndexTags { raw_count, tags }
@@ -3556,6 +3577,30 @@ fn read_gp_coded_value_entry(
         }
     };
     Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_gp_xml_index_tag_slot(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+    expected_class: [u8; 16],
+) -> io::Result<RuleSlot10_1<GpCodedValueBody10_1>> {
+    let entry = read_object_entry_10_1(reader, table)?;
+    let class = match entry {
+        ObjectEntry10_1::Null => expected_class,
+        ObjectEntry10_1::NewObject { class_id, .. } => class_id,
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            table.registered_class(key).unwrap_or(class_id)
+        }
+    };
+    if class != expected_class {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            "XML 索引标签槽包含不支持的类",
+        ));
+    }
+    read_gp_coded_value_entry(reader, max_bytes, table, depth, entry)
 }
 
 fn read_gp_field_info(

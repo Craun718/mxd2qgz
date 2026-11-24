@@ -2032,6 +2032,19 @@ Rust 保留原始计数、对象槽顺序和回引，回引按登记类
 验证两个作用域的回引、后继字段、非法版本和逐字节截断回滚。
 其他 IXMLIndexTag 实现及真实 ArcMap 工程仍待验证。
 
+#### XMLIndex
+
+同版 GdbCore.dll 的 XMLIndex（`18EC559B-07BE-4F98-8960-206636BA259A`）
+持久化接口表为 `0x70aca980`。Load `0x70963510` 检查
+无符号 short 版本不大于 1，然后读 GPValue 基类、AfCore BSTR、
+IFields 槽、原始 4 字节量、两个 IXMLIndexTags 槽和尾部 BSTR。
+三个对象槽的调用点为 `0x70963592`、`0x709635c6`、
+`0x709635e4`，IID 常量分别位于 `0x70ac8e70` 与
+`0x70ac8f80`。Save `0x70963620` 对应写出各字段。
+Rust 复用字段集合和标签集合的读体，按登记类检查标签回引。
+构造书签覆盖集合复用、后继字段、非法版本和截断回滚。
+真实 MXD 和 ArcMap 人工验证仍待补充。
+
 #### GPHistoricalMarker 的流接口要求
 
 FeatureDataElements.dll 10.1.0.3035 的 SHA-256 为
