@@ -1447,6 +1447,24 @@ DIToolbox 的三个工厂名称常量也已通过
 随后查询 IGPDataType 并读取类型字符串。通用类型实际转发目标的
 实现及运行期名称输出仍待取证，未在 ArcMap 中验证。
 
+GpObjects.dll 内部 GPDataTypeFactory 的 GetClassID
+`0x746ac930` 从 `0x747a74dc` 复制
+`E41CFD44-5741-4F2B-8ACE-1A49E146D329`。QI
+`0x746acd40` 比对 `0x747acb18` 的工厂 IID，
+对应 +0x10 表 `0x747ac9c0`。表 +0x14 的
+`0x746acf20` 用 `0x746ac970` 按名称查表，
+`0x746acf7f` 以 28 字节步长选择 `0x747fe430`
+起的记录，再于 `0x746acf86` 调用 `0x746aca20`。
+该方法使用记录 +0x0c 的 CLSID 指针，
+`0x746ba169` 调 AfCreateInstance，配置后
+`0x746acb59` 请求 IGPName 返回。
+
+按查询从 `0x747fe434` 到排他上界 `0x747fea1c` 的
+步长核对 54 条 PE 记录。所有记录的 +0x0c 均指向
+`0x747acad8`，即已支持的 GPDataTypeName。该结论覆盖
+GpObjects 的静态名称表。其他模块工厂、运行期工厂替换
+与真实 MXD 宿主仍待核对。本轮未在 ArcMap 中验证。
+
 #### GPValueTable
 
 GpObjects.dll 10.1.0.3035 的 RTTI `0x74801cd4` 对应持久化虚表
