@@ -803,6 +803,9 @@ pub const DE_MAP_SERVER_CLASS_ID: [u8; 16] = [
 pub const DE_GLOBE_SERVER_CLASS_ID: [u8; 16] = [
     0x53, 0x8e, 0xdf, 0x9a, 0xfc, 0xb3, 0x48, 0x43, 0xb0, 0xc1, 0x27, 0xbf, 0x1a, 0x5f, 0x5f, 0x39,
 ];
+const DE_ADDRESS_LOCATOR_CLASS_ID: [u8; 16] = [
+    0x64, 0x51, 0x17, 0x69, 0xeb, 0x88, 0x6d, 0x44, 0x82, 0x91, 0xaa, 0xf0, 0xac, 0xa3, 0xe9, 0xd8,
+];
 const DE_IMAGE_SERVER_CLASS_ID: [u8; 16] = [
     0x5f, 0x81, 0xa8, 0x2d, 0x55, 0x1c, 0x91, 0x47, 0xba, 0x69, 0x78, 0x56, 0xaf, 0x60, 0xf9, 0x95,
 ];
@@ -1608,7 +1611,31 @@ pub struct DeMosaicDataset10_1 {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct DeAddressLocator10_1 {
+    pub version: u16,
+    pub element: DataElement10_1,
+    pub raw_short: u16,
+    pub fields: [RuleSlot10_1<FieldsBody10_1>; 2],
+    pub raw_count: i32,
+    pub configuration: DeAddressLocatorConfiguration10_1,
+    pub table: RuleSlot10_1<DeChild10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DeAddressLocatorConfiguration10_1 {
+    Legacy(Vec<DeAddressLocatorLegacyEntry10_1>),
+    Properties(RuleSlot10_1<PropertySetObjectStream10_1>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeAddressLocatorLegacyEntry10_1 {
+    pub name: String,
+    pub values: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
+    AddressLocator(Box<DeAddressLocator10_1>),
     MosaicDataset(Box<DeMosaicDataset10_1>),
     SchematicDiagram {
         geo_dataset_version: u16,
@@ -6284,6 +6311,7 @@ fn read_gp_data_element_child(
                     | DE_RASTER_CATALOG_INFO_CLASS_ID
                     | DE_COVERAGE_FEATURE_CLASS_ID
                     | DE_RASTER_DATASET_CLASS_ID
+                    | DE_ADDRESS_LOCATOR_CLASS_ID
                     | DE_MOSAIC_DATASET_CLASS_ID
                     | DE_CAD_DRAWING_DATASET_CLASS_ID
                     | DE_TIN_CLASS_ID
@@ -6343,6 +6371,7 @@ fn read_gp_data_element_child(
                 | DE_RASTER_CATALOG_INFO_CLASS_ID
                 | DE_COVERAGE_FEATURE_CLASS_ID
                 | DE_RASTER_DATASET_CLASS_ID
+                | DE_ADDRESS_LOCATOR_CLASS_ID
                 | DE_MOSAIC_DATASET_CLASS_ID
                 | DE_CAD_DRAWING_DATASET_CLASS_ID
                 | DE_TIN_CLASS_ID
@@ -6398,6 +6427,13 @@ fn read_gp_data_element_child(
             }
             let body = if class_id == DE_TABLE_CLASS_ID {
                 DeChild10_1::Table(read_gp_de_table(reader, max_bytes, refs, depth + 1)?)
+            } else if class_id == DE_ADDRESS_LOCATOR_CLASS_ID {
+                DeChild10_1::AddressLocator(Box::new(read_de_address_locator(
+                    reader,
+                    max_bytes,
+                    refs,
+                    depth + 1,
+                )?))
             } else if matches!(
                 class_id,
                 DE_SCHEMATIC_DATASET_CLASS_ID | DE_SCHEMATIC_FOLDER_CLASS_ID
@@ -7653,7 +7689,7 @@ fn read_de_mosaic_dataset(
         .then(|| reader.read_u32_le().map(|value| value as i32))
         .transpose()?;
     let catalog = if version >= 2 {
-        Some(read_mosaic_data_element_slot(
+        Some(read_typed_data_element_slot(
             reader,
             max_bytes,
             refs,
@@ -7666,28 +7702,7 @@ fn read_de_mosaic_dataset(
     };
     let names = read_string_array_slot_10_1(reader, max_bytes, refs)?;
     let table = (version >= 4)
-        .then(|| {
-            read_mosaic_data_element_slot(
-                reader,
-                max_bytes,
-                refs,
-                depth,
-                "IDETable",
-                &[
-                    DE_TABLE_CLASS_ID,
-                    DE_FEATURE_CLASS_CLASS_ID,
-                    DE_RELATIONSHIP_CLASS_CLASS_ID,
-                    DE_RASTER_CATALOG_CLASS_ID,
-                    DE_RASTER_BAND_CLASS_ID,
-                    DE_SHAPE_FILE_CLASS_ID,
-                    DE_DBASE_TABLE_CLASS_ID,
-                    DE_TEXT_FILE_CLASS_ID,
-                    DE_COVERAGE_FEATURE_CLASS_ID,
-                    DE_ARC_INFO_TABLE_CLASS_ID,
-                    DE_VPF_TABLE_CLASS_ID,
-                ],
-            )
-        })
+        .then(|| read_de_table_interface_slot(reader, max_bytes, refs, depth))
         .transpose()?;
     Ok(DeMosaicDataset10_1 {
         version,
@@ -7704,7 +7719,90 @@ fn read_de_mosaic_dataset(
     })
 }
 
-fn read_mosaic_data_element_slot(
+fn read_de_address_locator(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<DeAddressLocator10_1> {
+    let version = read_de_layer_version(reader, 2, "DEAddressLocator")?;
+    let element = read_gp_data_element(reader, max_bytes, refs, depth)?;
+    let raw_short = reader.read_u16_le()?;
+    let fields = [
+        read_gp_fields_slot(reader, max_bytes, refs, depth)?,
+        read_gp_fields_slot(reader, max_bytes, refs, depth)?,
+    ];
+    let (raw_count, configuration) = if version >= 2 {
+        let raw_count = reader.read_u32_le()? as i32;
+        let properties = read_gp_property_set_slot(reader, max_bytes, refs)?;
+        (
+            raw_count,
+            DeAddressLocatorConfiguration10_1::Properties(properties),
+        )
+    } else {
+        let (raw_count, count) = read_gp_coded_value_count(reader, max_bytes, 8)?;
+        let mut entries = Vec::new();
+        for _ in 0..count {
+            let name = read_string_10_1(reader, max_bytes)?;
+            let (raw_value_count, value_count) = read_gp_coded_value_count(reader, max_bytes, 4)?;
+            if raw_value_count < 0 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "DEAddressLocator 旧配置的值数量为负",
+                ));
+            }
+            let mut values = Vec::new();
+            for _ in 0..value_count {
+                values.push(read_string_10_1(reader, max_bytes)?);
+            }
+            entries.push(DeAddressLocatorLegacyEntry10_1 { name, values });
+        }
+        (
+            raw_count,
+            DeAddressLocatorConfiguration10_1::Legacy(entries),
+        )
+    };
+    let table = read_de_table_interface_slot(reader, max_bytes, refs, depth)?;
+    Ok(DeAddressLocator10_1 {
+        version,
+        element,
+        raw_short,
+        fields,
+        raw_count,
+        configuration,
+        table,
+    })
+}
+
+fn read_de_table_interface_slot(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<RuleSlot10_1<DeChild10_1>> {
+    read_typed_data_element_slot(
+        reader,
+        max_bytes,
+        refs,
+        depth,
+        "IDETable",
+        &[
+            DE_TABLE_CLASS_ID,
+            DE_FEATURE_CLASS_CLASS_ID,
+            DE_RELATIONSHIP_CLASS_CLASS_ID,
+            DE_RASTER_CATALOG_CLASS_ID,
+            DE_RASTER_BAND_CLASS_ID,
+            DE_SHAPE_FILE_CLASS_ID,
+            DE_DBASE_TABLE_CLASS_ID,
+            DE_TEXT_FILE_CLASS_ID,
+            DE_COVERAGE_FEATURE_CLASS_ID,
+            DE_ARC_INFO_TABLE_CLASS_ID,
+            DE_VPF_TABLE_CLASS_ID,
+        ],
+    )
+}
+
+fn read_typed_data_element_slot(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     refs: &mut RefTable10_1,
@@ -7723,7 +7821,7 @@ fn read_mosaic_data_element_slot(
     if class.is_some_and(|class_id| !classes.contains(&class_id)) {
         return Err(io::Error::new(
             ErrorKind::Unsupported,
-            format!("DEMosaicDataset 的 {interface} 类尚未支持"),
+            format!("{interface} 对象槽包含不支持的类"),
         ));
     }
     read_gp_data_element_child(reader, max_bytes, refs, depth)
@@ -11087,6 +11185,80 @@ mod tests {
             Some(DeChild10_1::Tool { version: 1, .. })
         ));
         assert_eq!(reader.position(), end);
+    }
+
+    #[test]
+    fn de_address_locator_reads_both_configuration_layouts() {
+        for version in 0_u16..=2 {
+            let mut bytes = DE_ADDRESS_LOCATOR_CLASS_ID.to_vec();
+            bytes.extend(60_u32.to_le_bytes());
+            bytes.extend(version.to_le_bytes());
+            bytes.extend([0; 6]);
+            bytes.extend([2, 0, 0, 0, 0, 0].repeat(3));
+            bytes.extend([0; 10]);
+            bytes.extend(7_u16.to_le_bytes());
+            bytes.extend([0; 32]);
+            bytes.extend(1_i32.to_le_bytes());
+            if version < 2 {
+                bytes.extend([4, 0, 0, 0, b'K', 0, 0, 0]);
+                bytes.extend(2_i32.to_le_bytes());
+                bytes.extend([4, 0, 0, 0, b'A', 0, 0, 0]);
+                bytes.extend([4, 0, 0, 0, b'B', 0, 0, 0]);
+            } else {
+                bytes.extend(PROPERTY_SET_CLASS_ID);
+                bytes.extend(61_u32.to_le_bytes());
+                bytes.extend([1, 0, 0, 0, 0, 0]);
+            }
+            let table_offset = bytes.len();
+            bytes.extend([0; 16]);
+            let read = |reader: &mut Reader<'_>, refs: &mut RefTable10_1| {
+                read_gp_data_element_child(reader, 1024, refs, 0)
+            };
+            for cut in 0..bytes.len() {
+                assert!(read(&mut Reader::new(&bytes[..cut]), &mut RefTable10_1::new()).is_err());
+            }
+            let mut wrong_table = bytes[..table_offset].to_vec();
+            wrong_table.extend(DE_ADDRESS_LOCATOR_CLASS_ID);
+            wrong_table.extend(60_u32.to_le_bytes());
+            assert_eq!(
+                read(&mut Reader::new(&wrong_table), &mut RefTable10_1::new())
+                    .unwrap_err()
+                    .kind(),
+                ErrorKind::Unsupported
+            );
+            let end = bytes.len();
+            bytes.extend(DE_ADDRESS_LOCATOR_CLASS_ID);
+            bytes.extend(60_u32.to_le_bytes());
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let object = read(&mut reader, &mut refs).unwrap().body.unwrap();
+            let DeChild10_1::AddressLocator(body) = *object else {
+                panic!("应读取 DEAddressLocator");
+            };
+            assert_eq!(body.version, version);
+            assert_eq!(body.raw_short, 7);
+            assert_eq!(body.raw_count, 1);
+            match body.configuration {
+                DeAddressLocatorConfiguration10_1::Legacy(entries) => {
+                    assert!(version < 2);
+                    assert_eq!(entries.len(), 1);
+                    assert_eq!(entries[0].name, "K");
+                    assert_eq!(entries[0].values, ["A", "B"]);
+                }
+                DeAddressLocatorConfiguration10_1::Properties(properties) => {
+                    assert_eq!(version, 2);
+                    assert!(properties.body.is_some());
+                }
+            }
+            assert_eq!(reader.position(), end);
+            let reference = read(&mut reader, &mut refs).unwrap();
+            assert!(matches!(
+                reference.entry,
+                ObjectEntry10_1::BackReference { key: 60, .. }
+            ));
+            assert!(reference.body.is_none());
+            assert_eq!(reader.position(), bytes.len());
+        }
     }
 
     #[test]

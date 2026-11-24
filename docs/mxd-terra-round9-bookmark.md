@@ -4088,6 +4088,34 @@ DEArcInfoTable 和 DEVPFTable 声明为 IDETable 实现。v4 末表槽按这些
 CLSID 分派到现有 IDataElement 读取器，构造测试覆盖非空 DERasterBand。
 非空子槽的真实组合及 ArcMap/QGIS 人工验收仍待核对。
 
+#### DEAddressLocator
+
+Geocoding.dll PE32 10.1.0.3035，SHA-256
+`e5dc7d6cf515b7c7e9fd9e0342780818d261c2762ebbd348c5c2fc318c71819c`。
+既有导出未覆盖该模块的持久化实现，本轮用 objdump 核对 PE RTTI、
+虚表、构造和读写指令。RTTI `0x71551080` 对应持久化表
+`0x714fb8f4`，构造函数在 `0x71375224` 向对象 +0x1c 写入此表，
+在 `0x71375283..0x71375298` 从 `0x714f7b28` 复制 CLSID
+`69175164-88EB-446D-8291-AAF0ACA3E9D8`。
+表的 GetClassID 槽经 `0x714cd5a2` 委派到 GPValue，
+QI 在 `0x71375479` 核对 IDataElement IID，命中后在
+`0x71375497` 返回对象 +0x48。
+
+Load `0x71375ae0` 在 `0x71375b26` 检查无符号版本上限 2，
+随后读取 DataElement 基类（`0x71375b33`）、short
+（`0x71375b4a`）、两个 IFields 槽（`0x71375b6c`、
+`0x71375b8e`）和一个有符号 LONG（`0x71375ba9`）。
+v0/v1 把这个 LONG 当成旧配置的外层数目。每组读 AfCore String、
+有符号 LONG、该数量的 AfCore String（`0x71375c51..0x71375ccc`）。
+v2 保留前面的 LONG，但用 IPropertySet 槽
+（`0x71375bdc`）代替内联配置。两条分支最终都读 IDETable
+槽（`0x71375d42`）。Save `0x713759b0` 对应 v2 顺序。
+
+Rust 接入 IDataElement 分派，复用 IFields、IPropertySet 和 IDETable
+槽读取器。构造测试覆盖 v0/v1 的非空字符串列表、v2 的非空属性集、
+截断、末表槽的错误类回引和外层回引。真实 MXD 中的非空组合、
+未识别的接口实现和 ArcMap/QGIS 人工验收仍待核对。
+
 #### 跨模块 IDataElement 候选与 DETerrain 加载入口
 
 在 10.1 桌面介质提取的 DLL 中，按 IDataElement IID 字节和
