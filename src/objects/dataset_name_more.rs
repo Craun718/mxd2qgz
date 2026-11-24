@@ -62,12 +62,13 @@ use crate::layers::raster_dataset_name::{
     INTERNET_TILED_LAYER_NAME_CLASS_ID, IS_RASTER_DATASET_NAME_CLASS_ID,
     MOSAIC_DATASET_NAME_CLASS_ID, NETCDF_RASTER_DATASET_NAME_CLASS_ID,
     RASTER_BAND_COLLECTION_NAME_CLASS_ID, RASTER_BAND_NAME_CLASS_ID, RASTER_CATALOG_NAME_CLASS_ID,
-    RASTER_DATASET_NAME_CLASS_ID, RASTER_DATASET_NAME83_CLASS_ID, RasterDatasetNameEntryBody10_1,
-    RasterLongArraySlot10_1, SDE_RASTER_DATASET_NAME_CLASS_ID, read_long_array_slot,
-    read_supported_raster_name_body_10_1,
+    RASTER_DATASET_NAME_CLASS_ID, RASTER_DATASET_NAME83_CLASS_ID, RASTER_TYPE_NAME_CLASS_ID,
+    RasterDatasetNameEntryBody10_1, RasterLongArraySlot10_1, SDE_RASTER_DATASET_NAME_CLASS_ID,
+    read_long_array_slot, read_supported_raster_name_body_10_1,
 };
 use crate::layers::wcs_name::{
-    WCS_COVERAGE_NAME_CLASS_ID, WMS_CONNECTION_NAME_CLASS_ID, WMTS_CONNECTION_NAME_CLASS_ID,
+    WCS_CONNECTION_NAME_CLASS_ID, WCS_COVERAGE_NAME_CLASS_ID, WMS_CONNECTION_NAME_CLASS_ID,
+    WMTS_CONNECTION_NAME_CLASS_ID,
 };
 use crate::maps::standalone_table::{
     FGDB_TABLE_NAME_CLASS_ID, OBJECT_CLASS_NAME_CLASS_ID, TABLE_NAME_CLASS_ID, TableNameBody10_1,
@@ -1268,6 +1269,8 @@ fn read_dataset_name_object_body_10_1(
         | CACHE_RASTER_DATASET_NAME_CLASS_ID
         | INTERNET_TILED_LAYER_NAME_CLASS_ID
         | FUNCTION_RASTER_DATASET_NAME_CLASS_ID
+        | RASTER_TYPE_NAME_CLASS_ID
+        | WCS_CONNECTION_NAME_CLASS_ID
         | IS_RASTER_DATASET_NAME_CLASS_ID
         | AIS_IMAGE_SERVICE_NAME_CLASS_ID
         | ACCESS_RASTER_DATASET_NAME_CLASS_ID
@@ -1467,6 +1470,8 @@ pub(crate) fn read_overlay_name_slot_10_1(
                     | CACHE_RASTER_DATASET_NAME_CLASS_ID
                     | INTERNET_TILED_LAYER_NAME_CLASS_ID
                     | FUNCTION_RASTER_DATASET_NAME_CLASS_ID
+                    | RASTER_TYPE_NAME_CLASS_ID
+                    | WCS_CONNECTION_NAME_CLASS_ID
                     | IS_RASTER_DATASET_NAME_CLASS_ID
                     | AIS_IMAGE_SERVICE_NAME_CLASS_ID
                     | ACCESS_RASTER_DATASET_NAME_CLASS_ID
@@ -2092,6 +2097,38 @@ mod tests {
     /// 完整 WorkspaceName 体（第六轮布局）：版本 1 + 三空串 + IPropertySet
     /// 空标记 + 标志 1 + 工厂 CLSID + 尾随 int32。
     #[test]
+    fn overlay_raster_type_name_preserves_instance_id_and_boundary() {
+        let mut bytes = entry(&RASTER_TYPE_NAME_CLASS_ID, 90).to_vec();
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(str_bytes("type"));
+        bytes.extend(str_bytes("name"));
+        bytes.extend((-7_i32).to_le_bytes());
+        bytes.extend([0; 16]);
+        let end = bytes.len();
+        bytes.extend(str_bytes("格网编号"));
+        let mut refs = RefTable10_1::new();
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            assert!(read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+        let mut reader = Reader::new(&bytes);
+        let slot = read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).unwrap();
+        let DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::RasterDataset(body)) = slot
+        else {
+            panic!("应读取栅格类型名称");
+        };
+        assert!(
+            matches!(body.as_ref(), RasterDatasetNameEntryBody10_1::RasterType(name)
+            if name.instance_id == -7)
+        );
+        assert_eq!(refs.registered_class(90), Some(RASTER_TYPE_NAME_CLASS_ID));
+        assert_eq!(reader.position(), end);
+        assert_eq!(read_string_10_1(&mut reader, 256).unwrap(), "格网编号");
+    }
+
+    #[test]
     fn overlay_function_raster_name_preserves_version_seven_tail() {
         let mut bytes = entry(&FUNCTION_RASTER_DATASET_NAME_CLASS_ID, 90).to_vec();
         bytes.extend(7_i16.to_le_bytes());
@@ -2278,6 +2315,7 @@ mod tests {
     fn overlay_ogc_names_keep_object_boundaries() {
         for class_id in [
             WCS_COVERAGE_NAME_CLASS_ID,
+            WCS_CONNECTION_NAME_CLASS_ID,
             WMS_CONNECTION_NAME_CLASS_ID,
             WMTS_CONNECTION_NAME_CLASS_ID,
         ] {
