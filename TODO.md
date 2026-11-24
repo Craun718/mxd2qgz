@@ -839,7 +839,7 @@
       - [x] 接入 IDataElement 列表中的 DECadastralFabric。[取证](docs/mxd-terra-round9-bookmark.md#decadastralfabric)
       - [x] 接入 IDataElement 列表中的 DETool。[取证](docs/mxd-terra-round9-bookmark.md#detool)
       - [x] 接入 IDataElement 列表中的 DEToolbox。[取证](docs/mxd-terra-round9-bookmark.md#detoolbox)
-      - [ ] 接入 IDataElement 列表中的 DERepresentationClass。[取证](docs/mxd-terra-round9-bookmark.md#derepresentationclass)
+      - [x] 接入 IDataElement 列表中的 DERepresentationClass。[取证](docs/mxd-terra-round9-bookmark.md#derepresentationclass)
       - [ ] 补齐 IDataElement 列表中其他持久化实现。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的 GPSubtype 对象及字段行。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的拓扑与几何网络控制器成员。[取证](docs/mxd-terra-round9-bookmark.md#detable)

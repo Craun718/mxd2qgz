@@ -567,6 +567,18 @@ const CADASTRAL_FIELD_EDITS_CLASS_ID: [u8; 16] = [
     0xfb, 0x5d, 0xe3, 0xde, 0xa2, 0x81, 0x8e, 0x46, 0xab, 0xa8, 0x24, 0x14, 0xe7, 0x57, 0xa0, 0xd9,
 ];
 
+const CLASS_ATTRIBUTES_CLASS_ID: [u8; 16] = [
+    0x01, 0x64, 0x38, 0x02, 0x23, 0x02, 0xa6, 0x43, 0x9a, 0xb2, 0xbe, 0x7f, 0x92, 0xd6, 0xf8, 0x1a,
+];
+
+const REPRESENTATION_RULES_CLASS_ID: [u8; 16] = [
+    0x56, 0x53, 0x48, 0xfa, 0xf1, 0x8f, 0x15, 0x45, 0xad, 0xbd, 0x16, 0x55, 0xbe, 0xb5, 0x00, 0xc1,
+];
+
+const DE_REPRESENTATION_CLASS_ID: [u8; 16] = [
+    0xa6, 0x29, 0xa8, 0xab, 0x55, 0x9c, 0xee, 0x41, 0x8c, 0x15, 0x2d, 0xaa, 0x38, 0x21, 0xd5, 0x65,
+];
+
 const DE_TOOLBOX_CLASS_ID: [u8; 16] = [
     0x23, 0x6b, 0xc6, 0xfe, 0x2a, 0xe6, 0x6f, 0x46, 0xb1, 0x1b, 0xa8, 0xa8, 0xf2, 0xc2, 0x50, 0x4c,
 ];
@@ -1207,7 +1219,44 @@ pub struct DeToolboxExtension10_1 {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct DeRepresentationClass10_1 {
+    pub version: i16,
+    pub dataset: DeDataset10_1,
+    pub legacy_longs: Option<[u32; 2]>,
+    pub first_name: Option<String>,
+    pub names: [String; 2],
+    pub rules: RuleSlot10_1<RepresentationRules10_1>,
+    pub attributes: RuleSlot10_1<ClassAttributes10_1>,
+    pub trailing_short: Option<u16>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RepresentationRules10_1 {
+    pub version: i16,
+    pub value: u32,
+    pub raw_count: i32,
+    pub items: Vec<RepresentationRuleItem10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RepresentationRuleItem10_1 {
+    pub id: u32,
+    pub name: String,
+    pub v1: Option<u32>,
+    pub rule: RuleSlot10_1<crate::objects::display_symbol::RepresentationRuleBody10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClassAttributes10_1 {
+    pub version: i16,
+    pub attributes: crate::objects::display_symbol::GraphicAttributeList10_1,
+    pub raw_count: i32,
+    pub names: Vec<(u32, String)>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
+    RepresentationClass(Box<DeRepresentationClass10_1>),
     Toolbox {
         dataset: DeDataset10_1,
         extension: Option<DeToolboxExtension10_1>,
@@ -4145,6 +4194,127 @@ fn read_de_toolbox(
     })
 }
 
+fn read_representation_slot<T>(
+    reader: &mut Reader<'_>,
+    refs: &mut RefTable10_1,
+    expected: [u8; 16],
+    read_body: impl FnOnce(&mut Reader<'_>, &mut RefTable10_1) -> io::Result<T>,
+) -> io::Result<RuleSlot10_1<T>> {
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if refs.registered_class(key).unwrap_or(class_id) == expected =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject { class_id, .. } if class_id == expected => {
+            Some(Box::new(read_body(reader, refs)?))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "制图表达槽包含不支持的类",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_de_representation_class(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<DeRepresentationClass10_1> {
+    use crate::objects::display_symbol::{
+        REPRESENTATION_RULE_CLASS_ID, read_graphic_attribute_list_10_1,
+        read_representation_rule_body_10_1,
+    };
+    let version = read_gp_name_version(reader, 5, "DERepresentationClass")?;
+    let dataset = read_gp_de_dataset(reader, max_bytes, refs, depth)?;
+    let first = (version <= 2).then(|| reader.read_u32_le()).transpose()?;
+    let first_name = (version != 4)
+        .then(|| read_string_10_1(reader, max_bytes))
+        .transpose()?;
+    let names = [
+        read_string_10_1(reader, max_bytes)?,
+        read_string_10_1(reader, max_bytes)?,
+    ];
+    let legacy_longs = first
+        .map(|value| reader.read_u32_le().map(|last| [value, last]))
+        .transpose()?;
+    let rules = read_representation_slot(
+        reader,
+        refs,
+        REPRESENTATION_RULES_CLASS_ID,
+        |reader, refs| {
+            let version = read_gp_name_version(reader, 2, "RepresentationRules")?;
+            let value = reader.read_u32_le()?;
+            let (raw_count, count) = read_gp_coded_value_count(reader, max_bytes, 24)?;
+            let mut items = Vec::new();
+            for _ in 0..count {
+                let id = reader.read_u32_le()?;
+                let name = read_string_10_1(reader, max_bytes)?;
+                let v1 = (version == 1).then(|| reader.read_u32_le()).transpose()?;
+                let rule = read_representation_slot(
+                    reader,
+                    refs,
+                    REPRESENTATION_RULE_CLASS_ID,
+                    |reader, refs| {
+                        read_representation_rule_body_10_1(
+                            reader,
+                            max_bytes,
+                            refs,
+                            MAX_BOOKMARK_NAME_NESTING.saturating_sub(depth),
+                        )?
+                        .ok_or_else(|| {
+                            io::Error::new(ErrorKind::Unsupported, "制图表达规则含未知对象体")
+                        })
+                    },
+                )?;
+                items.push(RepresentationRuleItem10_1 { id, name, v1, rule });
+            }
+            Ok(RepresentationRules10_1 {
+                version,
+                value,
+                raw_count,
+                items,
+            })
+        },
+    )?;
+    let attributes =
+        read_representation_slot(reader, refs, CLASS_ATTRIBUTES_CLASS_ID, |reader, refs| {
+            let version = read_gp_name_version(reader, 1, "ClassAttributes")?;
+            let attributes = read_graphic_attribute_list_10_1(reader, max_bytes, refs, 0)?
+                .ok_or_else(|| {
+                    io::Error::new(ErrorKind::Unsupported, "制图表达属性含未知对象体")
+                })?;
+            let (raw_count, count) = read_gp_coded_value_count(reader, max_bytes, 8)?;
+            let mut names = Vec::new();
+            for _ in 0..count {
+                names.push((reader.read_u32_le()?, read_string_10_1(reader, max_bytes)?));
+            }
+            Ok(ClassAttributes10_1 {
+                version,
+                attributes,
+                raw_count,
+                names,
+            })
+        })?;
+    let trailing_short = (version > 1).then(|| reader.read_u16_le()).transpose()?;
+    Ok(DeRepresentationClass10_1 {
+        version,
+        dataset,
+        legacy_longs,
+        first_name,
+        names,
+        rules,
+        attributes,
+        trailing_short,
+    })
+}
+
 fn read_gp_data_element_child(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -4171,6 +4341,7 @@ fn read_gp_data_element_child(
                     | DE_CADASTRAL_FABRIC_CLASS_ID
                     | DE_TOOL_CLASS_ID
                     | DE_TOOLBOX_CLASS_ID
+                    | DE_REPRESENTATION_CLASS_ID
                     | DE_COVERAGE_CLASS_ID
                     | DE_LAS_DATASET_CLASS_ID
                     | DE_VPF_COVERAGE_CLASS_ID
@@ -4221,6 +4392,7 @@ fn read_gp_data_element_child(
                 | DE_CADASTRAL_FABRIC_CLASS_ID
                 | DE_TOOL_CLASS_ID
                 | DE_TOOLBOX_CLASS_ID
+                | DE_REPRESENTATION_CLASS_ID
                 | DE_COVERAGE_CLASS_ID
                 | DE_LAS_DATASET_CLASS_ID
                 | DE_VPF_COVERAGE_CLASS_ID
@@ -4339,6 +4511,13 @@ fn read_gp_data_element_child(
                     }
                 };
                 DeChild10_1::TextFile { version, base }
+            } else if class_id == DE_REPRESENTATION_CLASS_ID {
+                DeChild10_1::RepresentationClass(Box::new(read_de_representation_class(
+                    reader,
+                    max_bytes,
+                    refs,
+                    depth + 1,
+                )?))
             } else if class_id == DE_TOOLBOX_CLASS_ID {
                 read_de_toolbox(reader, max_bytes, refs, depth + 1)?
             } else if class_id == DE_TOOL_CLASS_ID {
@@ -7967,6 +8146,76 @@ pub fn read_legend_prefix_10_1(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn de_representation_class_reads_rule_and_attribute_slots() {
+        let empty = [2, 0, 0, 0, 0, 0];
+        for version in 0_u16..=5 {
+            let mut bytes = DE_REPRESENTATION_CLASS_ID.to_vec();
+            bytes.extend(64_u32.to_le_bytes());
+            bytes.extend(version.to_le_bytes());
+            bytes.extend([0; 8]);
+            bytes.extend(empty.repeat(3));
+            bytes.extend([0; 22]);
+            if version <= 2 {
+                bytes.extend(7_u32.to_le_bytes());
+            }
+            bytes.extend(empty.repeat(if version == 4 { 2 } else { 3 }));
+            if version <= 2 {
+                bytes.extend(8_u32.to_le_bytes());
+            }
+            bytes.extend(REPRESENTATION_RULES_CLASS_ID);
+            bytes.extend(65_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(0_u32.to_le_bytes());
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend(9_u32.to_le_bytes());
+            bytes.extend(empty);
+            bytes.extend(10_u32.to_le_bytes());
+            bytes.extend(crate::objects::display_symbol::REPRESENTATION_RULE_CLASS_ID);
+            bytes.extend(66_u32.to_le_bytes());
+            bytes.extend([0; 28]);
+            bytes.extend(CLASS_ATTRIBUTES_CLASS_ID);
+            bytes.extend(67_u32.to_le_bytes());
+            bytes.extend([0; 8]);
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend(11_u32.to_le_bytes());
+            bytes.extend(empty);
+            if version > 1 {
+                bytes.extend(12_u16.to_le_bytes());
+            }
+            for cut in 0..bytes.len() {
+                assert!(
+                    read_gp_data_element_child(
+                        &mut Reader::new(&bytes[..cut]),
+                        1024,
+                        &mut RefTable10_1::new(),
+                        0,
+                    )
+                    .is_err()
+                );
+            }
+            let end = bytes.len();
+            bytes.push(0xa5);
+            let mut reader = Reader::new(&bytes);
+            let slot =
+                read_gp_data_element_child(&mut reader, 1024, &mut RefTable10_1::new(), 0).unwrap();
+            let Some(DeChild10_1::RepresentationClass(body)) = slot.body.as_deref() else {
+                panic!("应读取 DERepresentationClass");
+            };
+            assert_eq!(body.first_name.is_some(), version != 4);
+            assert_eq!(body.legacy_longs, (version <= 2).then_some([7, 8]));
+            let item = &body.rules.body.as_ref().unwrap().items[0];
+            assert_eq!((item.id, item.v1), (9, Some(10)));
+            assert!(item.rule.body.is_some());
+            assert_eq!(
+                body.attributes.body.as_ref().unwrap().names,
+                [(11, String::new())]
+            );
+            assert_eq!(body.trailing_short, (version > 1).then_some(12));
+            assert_eq!(reader.position(), end);
+        }
+    }
 
     #[test]
     fn de_toolbox_reads_bstr_tail_and_retries_legacy_dataset() {

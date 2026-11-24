@@ -2863,3 +2863,15 @@ IRepresentationRule。其已知实现
 已有共享读取器 `read_representation_rule_body_10_1`，
 现用于 SymbolMimic 等流入口。集合可以复用该读取器，
 仍需按无外层长度的规则处理其返回的未知对象边界。
+
+ClassAttributes 的版本常量 `0x7cb4e2b8` 为 1，
+`0x7cb11c14` 使用有符号上限比较。基类 GraphicAttributeList
+由 DisplayLib.dll 导入，复用现有属性列表读取器。其后是
+有符号计数，非正数跳过循环。每项在 `0x7cb11c6a`
+读 long，在 `0x7cb11c86` 读 AfCore String，后续调用
+将该配对存入内存，`0x7cb11cdd` 完成读取。
+
+IDataElement 分派已接入 DERepresentationClass，已知规则类
+复用共享读取器。未知子对象体使整个读取返回错误。
+构造测试覆盖版本 0–5、集合中的规则子对象、属性名称列表、
+逐字节截断与结束位置。真实 MXD 宿主仍待核对。

@@ -1242,7 +1242,7 @@ fn read_representation_layer_body_10_1(
     }))
 }
 
-fn read_representation_rule_body_10_1(
+pub(crate) fn read_representation_rule_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     refs: &mut RefTable10_1,
