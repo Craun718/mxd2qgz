@@ -539,6 +539,10 @@ const GP_COMPOSITE_LAYER_CLASS_ID: [u8; 16] = [
     0x51, 0x4b, 0x99, 0x22, 0xba, 0xc6, 0xff, 0x41, 0xab, 0xe6, 0x54, 0x96, 0x15, 0x44, 0x1e, 0x3f,
 ];
 
+pub const DE_COVERAGE_FEATURE_CLASS_ID: [u8; 16] = [
+    0x65, 0x38, 0xec, 0xb7, 0x5b, 0x80, 0xa4, 0x41, 0x80, 0x4c, 0x8b, 0x4a, 0x30, 0xaa, 0x41, 0x28,
+];
+
 pub const DE_SHAPE_FILE_CLASS_ID: [u8; 16] = [
     0x47, 0xfb, 0xe6, 0x03, 0x38, 0xaa, 0x6c, 0x47, 0x93, 0x4b, 0x1d, 0xf5, 0x76, 0x5c, 0x76, 0xeb,
 ];
@@ -1061,6 +1065,14 @@ pub enum DeFeatureClassTable10_1 {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct DeCoverageFeatureClassTail10_1 {
+    pub longs: [i32; 2],
+    pub short: u16,
+    pub raw_item_count: i32,
+    pub items: Vec<RuleSlot10_1<GpCodedValueBody10_1>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
     LasDataset {
         version: u16,
@@ -1180,6 +1192,7 @@ pub enum DeChild10_1 {
         extent: BookmarkEnvelopeEntry10_1,
         spatial_reference: SpatialReferenceEntry10_1,
         strings: Option<[String; 2]>,
+        coverage: Option<DeCoverageFeatureClassTail10_1>,
     },
 }
 
@@ -3605,6 +3618,38 @@ fn read_gp_layer_slot(
     Ok(RuleSlot10_1 { entry, body })
 }
 
+fn read_gp_arc_info_items(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<(i32, Vec<RuleSlot10_1<GpCodedValueBody10_1>>)> {
+    let (raw_count, count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
+    let mut items = Vec::new();
+    for _ in 0..count {
+        let entry = read_object_entry_10_1(reader, refs)?;
+        match entry {
+            ObjectEntry10_1::Null => {}
+            ObjectEntry10_1::NewObject {
+                class_id: GP_ARC_INFO_ITEM_CLASS_ID,
+                ..
+            } => {}
+            ObjectEntry10_1::BackReference { class_id, key }
+                if refs.registered_class(key).unwrap_or(class_id) == GP_ARC_INFO_ITEM_CLASS_ID => {}
+            _ => {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    "IGPArcInfoItem 槽包含不支持的类",
+                ));
+            }
+        }
+        items.push(read_gp_coded_value_entry(
+            reader, max_bytes, refs, depth, entry,
+        )?);
+    }
+    Ok((raw_count, items))
+}
+
 fn read_gp_data_element_child(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -3621,6 +3666,7 @@ fn read_gp_data_element_child(
                     | DE_FEATURE_CLASS_CLASS_ID
                     | DE_RASTER_CATALOG_CLASS_ID
                     | DE_SHAPE_FILE_CLASS_ID
+                    | DE_COVERAGE_FEATURE_CLASS_ID
                     | DE_RASTER_DATASET_CLASS_ID
                     | DE_CAD_DRAWING_DATASET_CLASS_ID
                     | DE_TIN_CLASS_ID
@@ -3661,6 +3707,7 @@ fn read_gp_data_element_child(
                 | DE_FEATURE_CLASS_CLASS_ID
                 | DE_RASTER_CATALOG_CLASS_ID
                 | DE_SHAPE_FILE_CLASS_ID
+                | DE_COVERAGE_FEATURE_CLASS_ID
                 | DE_RASTER_DATASET_CLASS_ID
                 | DE_CAD_DRAWING_DATASET_CLASS_ID
                 | DE_TIN_CLASS_ID
@@ -3999,6 +4046,9 @@ fn read_gp_data_element_child(
                     DE_SHAPE_FILE_CLASS_ID => {
                         Some(read_de_layer_version(reader, 1, "DEShapeFile")?)
                     }
+                    DE_COVERAGE_FEATURE_CLASS_ID => {
+                        Some(read_de_layer_version(reader, 1, "DECoverageFeatureClass")?)
+                    }
                     _ => None,
                 };
                 let version = reader.read_u16_le()?;
@@ -4008,8 +4058,11 @@ fn read_gp_data_element_child(
                         "DEFeatureClassBase 版本超限",
                     ));
                 }
-                // DEShapeFile 保留基类默认的零扩展标志。
-                let extended = class_id != DE_SHAPE_FILE_CLASS_ID;
+                // 文件要素类沿用基类默认的零扩展标志。
+                let extended = !matches!(
+                    class_id,
+                    DE_SHAPE_FILE_CLASS_ID | DE_COVERAGE_FEATURE_CLASS_ID
+                );
                 let table = if extended {
                     DeFeatureClassTable10_1::Extended(read_gp_de_table(
                         reader,
@@ -4049,6 +4102,21 @@ fn read_gp_data_element_child(
                                 read_string_10_1(reader, max_bytes)?,
                                 read_string_10_1(reader, max_bytes)?,
                             ])
+                        })
+                        .transpose()?,
+                    coverage: (class_id == DE_COVERAGE_FEATURE_CLASS_ID)
+                        .then(|| {
+                            let first = reader.read_u32_le()? as i32;
+                            let short = reader.read_u16_le()?;
+                            let second = reader.read_u32_le()? as i32;
+                            let (raw_item_count, items) =
+                                read_gp_arc_info_items(reader, max_bytes, refs, depth + 1)?;
+                            Ok::<_, io::Error>(DeCoverageFeatureClassTail10_1 {
+                                longs: [first, second],
+                                short,
+                                raw_item_count,
+                                items,
+                            })
                         })
                         .transpose()?,
                 }
@@ -8080,50 +8148,85 @@ mod tests {
     }
 
     #[test]
-    fn shape_file_uses_compact_feature_class_layout() {
-        let mut bytes = DE_SHAPE_FILE_CLASS_ID.to_vec();
-        bytes.extend(55_u32.to_le_bytes());
-        bytes.extend([1, 0, 0, 0]); // DEShapeFile 和 DEFeatureClassBase。
-        bytes.extend([0; 10]);
-        for _ in 0..3 {
+    fn file_feature_classes_use_compact_layout() {
+        for class_id in [DE_SHAPE_FILE_CLASS_ID, DE_COVERAGE_FEATURE_CLASS_ID] {
+            let mut bytes = class_id.to_vec();
+            bytes.extend(55_u32.to_le_bytes());
+            bytes.extend([1, 0, 0, 0]); // DEShapeFile 和 DEFeatureClassBase。
+            bytes.extend([0; 10]);
+            for _ in 0..3 {
+                bytes.extend([2, 0, 0, 0, 0, 0]);
+            }
+            bytes.extend([0; 22]);
+            bytes.extend(9_u16.to_le_bytes());
             bytes.extend([2, 0, 0, 0, 0, 0]);
+            bytes.extend([0; 32]);
+            bytes.extend((-4_i32).to_le_bytes());
+            bytes.extend(7_i32.to_le_bytes());
+            bytes.extend([2, 0, 0, 0, 0, 0]);
+            bytes.extend([0; 38]);
+            if class_id == DE_COVERAGE_FEATURE_CLASS_ID {
+                bytes.extend((-2_i32).to_le_bytes());
+                bytes.extend(7_u16.to_le_bytes());
+                bytes.extend(9_i32.to_le_bytes());
+                bytes.extend(2_i32.to_le_bytes());
+                for is_new in [true, false] {
+                    bytes.extend(GP_ARC_INFO_ITEM_CLASS_ID);
+                    bytes.extend(56_u32.to_le_bytes());
+                    if is_new {
+                        bytes.extend([0; 6]);
+                        bytes.extend([2, 0, 0, 0, 0, 0].repeat(2));
+                        bytes.extend([0; 26]);
+                    }
+                }
+            }
+            for cut in 0..bytes.len() {
+                assert!(
+                    read_gp_data_element_child(
+                        &mut Reader::new(&bytes[..cut]),
+                        1024,
+                        &mut RefTable10_1::new(),
+                        0,
+                    )
+                    .is_err()
+                );
+            }
+            let end = bytes.len();
+            bytes.push(0xa5);
+            let mut reader = Reader::new(&bytes);
+            let slot =
+                read_gp_data_element_child(&mut reader, 1024, &mut RefTable10_1::new(), 0).unwrap();
+            assert!(matches!(
+                slot.body.as_deref(),
+                Some(DeChild10_1::FeatureClass {
+                    derived_version: Some(1),
+                    version: 0,
+                    table: DeFeatureClassTable10_1::Compact(DeCompactTable10_1 {
+                        table_short: 9,
+                        ..
+                    }),
+                    raw_longs: [-4, 7],
+                    strings: None,
+                    ..
+                })
+            ));
+            let Some(DeChild10_1::FeatureClass { coverage, .. }) = slot.body.as_deref() else {
+                panic!("应读取文件要素类");
+            };
+            assert_eq!(coverage.is_some(), class_id == DE_COVERAGE_FEATURE_CLASS_ID);
+            if let Some(tail) = coverage {
+                assert_eq!(
+                    (tail.longs, tail.short, tail.raw_item_count),
+                    ([-2, 9], 7, 2)
+                );
+                assert!(tail.items[0].body.is_some());
+                assert!(matches!(
+                    tail.items[1].entry,
+                    ObjectEntry10_1::BackReference { key: 56, .. }
+                ));
+            }
+            assert_eq!(reader.position(), end);
         }
-        bytes.extend([0; 22]);
-        bytes.extend(9_u16.to_le_bytes());
-        bytes.extend([2, 0, 0, 0, 0, 0]);
-        bytes.extend([0; 32]);
-        bytes.extend((-4_i32).to_le_bytes());
-        bytes.extend(7_i32.to_le_bytes());
-        bytes.extend([2, 0, 0, 0, 0, 0]);
-        bytes.extend([0; 38]);
-        for cut in 0..bytes.len() {
-            assert!(
-                read_gp_data_element_child(
-                    &mut Reader::new(&bytes[..cut]),
-                    1024,
-                    &mut RefTable10_1::new(),
-                    0,
-                )
-                .is_err()
-            );
-        }
-        let end = bytes.len();
-        bytes.push(0xa5);
-        let mut reader = Reader::new(&bytes);
-        let slot =
-            read_gp_data_element_child(&mut reader, 1024, &mut RefTable10_1::new(), 0).unwrap();
-        assert!(matches!(
-            slot.body.as_deref(),
-            Some(DeChild10_1::FeatureClass {
-                derived_version: Some(1),
-                version: 0,
-                table: DeFeatureClassTable10_1::Compact(DeCompactTable10_1 { table_short: 9, .. }),
-                raw_longs: [-4, 7],
-                strings: None,
-                ..
-            })
-        ));
-        assert_eq!(reader.position(), end);
     }
 
     #[test]

@@ -827,6 +827,7 @@
       - [x] 接入 IDataElement 列表中的 DELasDataset。[取证](docs/mxd-terra-round9-bookmark.md#delasdataset)
       - [x] 接入 IDataElement 列表中的 DEVPFCoverage。[取证](docs/mxd-terra-round9-bookmark.md#devpfcoverage)
       - [x] 接入 IDataElement 列表中的 DEShapeFile。[取证](docs/mxd-terra-round9-bookmark.md#deshapefile)
+      - [x] 接入 IDataElement 列表中的 DECoverageFeatureClass。[取证](docs/mxd-terra-round9-bookmark.md#decoveragefeatureclass)
       - [ ] 补齐 IDataElement 列表中其他持久化实现。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的 GPSubtype 对象及字段行。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的拓扑与几何网络控制器成员。[取证](docs/mxd-terra-round9-bookmark.md#detable)

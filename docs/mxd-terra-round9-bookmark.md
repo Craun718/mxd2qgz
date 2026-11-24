@@ -2484,3 +2484,18 @@ DEFeatureClassBase::Load `0x6e949720` 后结束。
 `0x6e94e5d6` 跳过表扩展，同时使 `0x6e949857` 跳过
 要素类尾部的两个 String。构造测试覆盖简短表体、要素类字段、
 逐字节截断和结束位置。真实 MXD 宿主仍待验证。
+
+#### DECoverageFeatureClass
+
+FileDataElements.dll 10.1.0.3035 的持久化表 `0x6f9d9610`
+对应 esriDataSourcesFile 类型库中的 `B7EC3865-805B-41A4-804C-8B4A30AA4128`。
+Load `0x6f9b9640` 检查无符号版本上限 1，然后在
+`0x6f9b9689` 调用 DEFeatureClassBase::Load。构造路径
+`0x6f9b8c15` 调用基类构造函数并保留零扩展标志，采用与
+DEShapeFile 相同的简短基类布局。
+派生尾段从 `0x6f9b96a7` 起读取 long、short、long 和有符号
+32 位数量。非正数跳过循环，正数逐项从 `0x6f9b972c` 调用
+LoadObject，使用 `0x6f9d8048` 的 IID
+`C95B22E0-A3C3-11D5-931C-0080C71A3226`，由类型库确认为
+IGPArcInfoItem。构造测试覆盖 GPArcInfoItem 新对象、同键回引、
+逐字节截断和结束位置。标量含义及真实 MXD 宿主仍待验证。

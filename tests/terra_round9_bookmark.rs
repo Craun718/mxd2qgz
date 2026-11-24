@@ -7717,6 +7717,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                             },
                                             body: Some(Box::new(DeChild10_1::FeatureClass {
                                                 derived_version: catalog_version,
+                                                coverage: None,
                                                 version: 1,
                                                 raw_longs: [3, 4],
                                                 name: "形状".into(),
