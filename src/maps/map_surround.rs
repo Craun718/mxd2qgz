@@ -479,6 +479,13 @@ pub const TOPOLOGY_RULE_CLASS_ID: [u8; 16] = [
     0x89, 0x38, 0xd4, 0x8a, 0xa4, 0xf2, 0xb2, 0x43, 0x83, 0xdc, 0x6d, 0x1d, 0x38, 0xdd, 0xbc, 0xc8,
 ];
 
+pub const EDGE_CONNECTIVITY_RULE_CLASS_ID: [u8; 16] = [
+    0xe0, 0xd9, 0x90, 0xf2, 0xe5, 0x58, 0xd2, 0x11, 0xab, 0x26, 0, 0, 0, 0, 0, 0,
+];
+pub const JUNCTION_CONNECTIVITY_RULE_CLASS_ID: [u8; 16] = [
+    0xe1, 0xd9, 0x90, 0xf2, 0xe5, 0x58, 0xd2, 0x11, 0xab, 0x26, 0, 0, 0, 0, 0, 0,
+];
+
 pub const NET_WEIGHT_CLASS_ID: [u8; 16] = [
     0x31, 0xe0, 0xbb, 0x3e, 0x7d, 0x55, 0xd1, 0x11, 0xb2, 0x54, 0x00, 0x00, 0xf8, 0x78, 0x22, 0x9e,
 ];
@@ -930,11 +937,29 @@ pub enum DeChild10_1 {
 pub struct DeGeometricNetwork10_1 {
     pub metadata: Option<(i32, String, StringArraySlot10_1)>,
     pub raw_counts: Option<[i32; 3]>,
+    pub rules: Vec<RuleSlot10_1<ConnectivityRule10_1>>,
     pub weights: Vec<RuleSlot10_1<NetWeight10_1>>,
     pub associations: Vec<RuleSlot10_1<NetWeight10_1>>,
     pub v4: Option<(u16, [u64; 2])>,
     pub v5: Option<[i32; 2]>,
     pub v6: Option<u16>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ConnectivityRule10_1 {
+    Edge {
+        version: u16,
+        name: String,
+        longs: [i32; 8],
+        raw_count: i32,
+        pairs: Vec<[i32; 2]>,
+    },
+    Junction {
+        version: u16,
+        name: String,
+        longs: [i32; 10],
+        short: u16,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3292,15 +3317,13 @@ fn read_de_geometric_network(
     } else {
         None
     };
+    let mut rules = Vec::new();
     let mut weights = Vec::new();
     let mut associations = Vec::new();
     let raw_counts = if version >= 3 {
-        let rules = reader.read_u32_le()? as i32;
-        if rules > 0 {
-            return Err(io::Error::new(
-                ErrorKind::Unsupported,
-                "DEGeometricNetwork 的非空 IConnectivityRule 列表尚未支持",
-            ));
+        let (raw_rules, count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
+        for _ in 0..count {
+            rules.push(read_connectivity_rule_slot(reader, max_bytes, refs)?);
         }
         let (raw_weights, count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
         for _ in 0..count {
@@ -3320,7 +3343,7 @@ fn read_de_geometric_network(
                 NET_WEIGHT_ASSOCIATION_CLASS_ID,
             )?);
         }
-        Some([rules, raw_weights, raw_associations])
+        Some([raw_rules, raw_weights, raw_associations])
     } else {
         None
     };
@@ -3344,12 +3367,89 @@ fn read_de_geometric_network(
     Ok(DeGeometricNetwork10_1 {
         metadata,
         raw_counts,
+        rules,
         weights,
         associations,
         v4,
         v5,
         v6,
     })
+}
+
+fn read_connectivity_rule_slot(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<RuleSlot10_1<ConnectivityRule10_1>> {
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if matches!(
+                refs.registered_class(key).unwrap_or(class_id),
+                EDGE_CONNECTIVITY_RULE_CLASS_ID | JUNCTION_CONNECTIVITY_RULE_CLASS_ID
+            ) =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id:
+                class_id @ (EDGE_CONNECTIVITY_RULE_CLASS_ID | JUNCTION_CONNECTIVITY_RULE_CLASS_ID),
+            ..
+        } => {
+            let version = reader.read_u16_le()?;
+            if version > 1 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "网络连接规则版本超限",
+                ));
+            }
+            let name = read_string_10_1(reader, max_bytes)?;
+            let body = if class_id == EDGE_CONNECTIVITY_RULE_CLASS_ID {
+                let mut longs = [0; 8];
+                for value in &mut longs {
+                    *value = reader.read_u32_le()? as i32;
+                }
+                let (raw_count, count) = read_gp_coded_value_count(reader, max_bytes, 8)?;
+                if count > 64 {
+                    return Err(io::Error::new(
+                        ErrorKind::InvalidData,
+                        "边连接规则条目超过原生数组容量",
+                    ));
+                }
+                let mut pairs = Vec::new();
+                for _ in 0..count {
+                    pairs.push([reader.read_u32_le()? as i32, reader.read_u32_le()? as i32]);
+                }
+                ConnectivityRule10_1::Edge {
+                    version,
+                    name,
+                    longs,
+                    raw_count,
+                    pairs,
+                }
+            } else {
+                let mut longs = [0; 10];
+                for value in &mut longs {
+                    *value = reader.read_u32_le()? as i32;
+                }
+                ConnectivityRule10_1::Junction {
+                    version,
+                    name,
+                    longs,
+                    short: reader.read_u16_le()?,
+                }
+            };
+            Some(Box::new(body))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "IConnectivityRule 槽包含不支持的类",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
 }
 
 fn read_net_weight_slot(

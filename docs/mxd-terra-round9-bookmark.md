@@ -2155,3 +2155,16 @@ Load `0x70f9d230` 和 `0x70f9dee0` 均接受无符号版本 0、1，
 读取 long 后以 AfCore ReadString 取 BSTR。NetWeight 的 BSTR 后
 是两个 long，NetWeightAssociation 则再读一个 BSTR。构造书签
 覆盖两个非空列表及其后的版本字段和截断回滚。连接规则列表及实档待查。
+
+#### 网络连接规则
+
+GdbNetwork.dll 10.1.0.3035 的持久化表 `0x7119dcd0`、
+`0x711a1760` 对应 EdgeConnectivityRule、JunctionConnectivityRule。
+类型库 CLSID 分别为 `{F290D9E0-58E5-11D2-AB26-000000000000}`、
+`{F290D9E1-58E5-11D2-AB26-000000000000}`。Load
+`0x710d6330`、`0x71144aa0` 均接受版本 0、1，先读 String。
+边规则随后读八个 long 和有符号计数，逐项在 `0x710d647f`、
+`0x710d6491` 读两个 long。两段原生数组相隔 256 字节，
+解析器将正计数限制为 64。交汇点规则读十个 long 和一个 short。
+构造书签覆盖两类规则及后续权重列表、版本尾段和截断回滚。
+实际 MXD 宿主仍待验证。

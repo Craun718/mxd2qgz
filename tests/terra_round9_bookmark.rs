@@ -7324,15 +7324,16 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
     use mxd2qgz::layers::feature_layer_tail::{UID_CLASS_ID, UidBody10_1};
     use mxd2qgz::layers::image_server_rules::RuleSlot10_1;
     use mxd2qgz::maps::map_surround::{
-        BookmarkEnvelopeEntry10_1, DE_FEATURE_CLASS_CLASS_ID, DE_FEATURE_DATASET_CLASS_ID,
-        DE_GEOMETRIC_NETWORK_CLASS_ID, DE_TABLE_CLASS_ID, DE_TOPOLOGY_CLASS_ID, DeChild10_1,
-        DeDataset10_1, DeGeometricNetwork10_1, DeTable10_1, DeTableIndex10_1, DeTableIndexes10_1,
+        BookmarkEnvelopeEntry10_1, ConnectivityRule10_1, DE_FEATURE_CLASS_CLASS_ID,
+        DE_FEATURE_DATASET_CLASS_ID, DE_GEOMETRIC_NETWORK_CLASS_ID, DE_TABLE_CLASS_ID,
+        DE_TOPOLOGY_CLASS_ID, DeChild10_1, DeDataset10_1, DeGeometricNetwork10_1, DeTable10_1,
+        DeTableIndex10_1, DeTableIndexes10_1, EDGE_CONNECTIVITY_RULE_CLASS_ID,
         GP_ADDRESS_LOCATOR_STYLE_CLASS_ID, GP_GEOMETRIC_NETWORK_MEMBERSHIP_CLASS_ID,
         GP_SUBTYPE_CLASS_ID, GP_TOPOLOGY_MEMBERSHIP_CLASS_ID, GpAddressLocatorStyleConfig10_1,
         GpAddressLocatorStyleRow10_1, GpAddressLocatorStyleRowValues10_1, GpCodedValue10_1,
         GpControllerMembership10_1, GpSubtype10_1, GpSubtypeField10_1, INDEX_CLASS_ID,
-        INDEXES_CLASS_ID, NET_WEIGHT_ASSOCIATION_CLASS_ID, NET_WEIGHT_CLASS_ID, NetWeight10_1,
-        TOPOLOGY_RULE_CLASS_ID, TopologyRule10_1,
+        INDEXES_CLASS_ID, JUNCTION_CONNECTIVITY_RULE_CLASS_ID, NET_WEIGHT_ASSOCIATION_CLASS_ID,
+        NET_WEIGHT_CLASS_ID, NetWeight10_1, TOPOLOGY_RULE_CLASS_ID, TopologyRule10_1,
     };
     use mxd2qgz::objects::envelope::SpatialReferenceEntry10_1;
     use mxd2qgz::objects::fields::{FIELDS_CLASS_ID, FieldsBody10_1};
@@ -7456,7 +7457,22 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
         payload.extend(bookmark_string_10_1("网络"));
         payload.extend([0; 16]);
         if network_version >= 3 {
-            payload.extend((-1_i32).to_le_bytes());
+            payload.extend(2_i32.to_le_bytes());
+            payload.extend(bookmark_entry_10_1(&EDGE_CONNECTIVITY_RULE_CLASS_ID, 35));
+            payload.extend(1_u16.to_le_bytes());
+            payload.extend(bookmark_string_10_1("边"));
+            payload.extend([0; 32]);
+            payload.extend(1_i32.to_le_bytes());
+            payload.extend(2_i32.to_le_bytes());
+            payload.extend(3_i32.to_le_bytes());
+            payload.extend(bookmark_entry_10_1(
+                &JUNCTION_CONNECTIVITY_RULE_CLASS_ID,
+                36,
+            ));
+            payload.extend(0_u16.to_le_bytes());
+            payload.extend(bookmark_string_10_1("交汇点"));
+            payload.extend([0; 40]);
+            payload.extend(4_u16.to_le_bytes());
             payload.extend(1_i32.to_le_bytes());
             payload.extend(bookmark_entry_10_1(&NET_WEIGHT_CLASS_ID, 33));
             payload.extend(1_u16.to_le_bytes());
@@ -7770,7 +7786,25 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                                         },
                                                     )),
                                                     raw_counts: (network_version >= 3)
-                                                        .then_some([-1, 1, 1]),
+                                                        .then_some([2, 1, 1]),
+                                                    rules: if network_version >= 3 {
+                                                        vec![
+                                                            RuleSlot10_1 {
+                                                                entry: ObjectEntry10_1::NewObject { class_id: EDGE_CONNECTIVITY_RULE_CLASS_ID, key: 35 },
+                                                                body: Some(Box::new(ConnectivityRule10_1::Edge {
+                                                                    version: 1, name: "边".into(), longs: [0; 8], raw_count: 1, pairs: vec![[2, 3]],
+                                                                })),
+                                                            },
+                                                            RuleSlot10_1 {
+                                                                entry: ObjectEntry10_1::NewObject { class_id: JUNCTION_CONNECTIVITY_RULE_CLASS_ID, key: 36 },
+                                                                body: Some(Box::new(ConnectivityRule10_1::Junction {
+                                                                    version: 0, name: "交汇点".into(), longs: [0; 10], short: 4,
+                                                                })),
+                                                            },
+                                                        ]
+                                                    } else {
+                                                        Vec::new()
+                                                    },
                                                     weights: (network_version >= 3)
                                                         .then(|| RuleSlot10_1 {
                                                             entry: ObjectEntry10_1::NewObject {

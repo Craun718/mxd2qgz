@@ -796,7 +796,7 @@
       - [x] 接入 DETopology 的 TopologyRule 对象列表。[取证](docs/mxd-terra-round9-bookmark.md#detopology)
       - [x] 定位 DEGeometricNetwork 各版本字段和三个列表的接口。[取证](docs/mxd-terra-round9-bookmark.md#degeometricnetwork)
       - [x] 接入 IDataElement 列表中的 DEGeometricNetwork 主体。[取证](docs/mxd-terra-round9-bookmark.md#degeometricnetwork)
-      - [ ] 接入 DEGeometricNetwork 的 IConnectivityRule 对象列表。
+      - [x] 接入 DEGeometricNetwork 的边和交汇点连接规则。[取证](docs/mxd-terra-round9-bookmark.md#网络连接规则)
       - [x] 接入 DEGeometricNetwork 的 NetWeight 对象列表。[取证](docs/mxd-terra-round9-bookmark.md#netweight-与-netweightassociation)
       - [x] 接入 DEGeometricNetwork 的 NetWeightAssociation 对象列表。[取证](docs/mxd-terra-round9-bookmark.md#netweight-与-netweightassociation)
       - [ ] 补齐 IDataElement 列表中其他持久化实现。[取证](docs/mxd-terra-round9-bookmark.md#detable)
