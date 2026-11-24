@@ -186,6 +186,11 @@ NetworkDatasetName 复用 NALayer 与书签的 IName 读取器，
 构造测试覆盖对象键、尾随格网字符串和截断回滚。真实格网宿主及
 ArcMap 显示仍待核对。
 
+TinName 与 TerrainName 复用 [10.1 地表名称读取器](mxd-terra-round9-bookmark.md#tinname-与-terrainname)，
+分别对应 TinDB.dll Load `0x803540e0` 和 Terrain.dll Load
+`0x80170130`。构造格网槽覆盖两类对象的空尾槽、登记键、后继
+字符串和截断回滚。真实格网宿主及 ArcMap 显示仍待验证。
+
 ### 叠加格网的关系查询名称
 
 在 MapElements.dll 10.1.0.3035 的 CustomOverlayGrid Load

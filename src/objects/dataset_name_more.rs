@@ -70,6 +70,12 @@ use crate::layers::raster_dataset_name::{
     RasterDatasetNameEntryBody10_1, RasterLongArraySlot10_1, SDE_RASTER_DATASET_NAME_CLASS_ID,
     read_long_array_slot, read_supported_raster_name_body_10_1,
 };
+use crate::layers::scene_layer_properties::{
+    TIN_NAME_CLASS_ID, TinName10_1, read_tin_name_body_10_1,
+};
+use crate::layers::terrain_layer::{
+    TERRAIN_NAME_CLASS_ID, TerrainName10_1, read_terrain_name_body_10_1,
+};
 use crate::layers::wcs_name::{
     WCS_CONNECTION_NAME_CLASS_ID, WCS_COVERAGE_NAME_CLASS_ID, WMS_CONNECTION_NAME_CLASS_ID,
     WMTS_CONNECTION_NAME_CLASS_ID,
@@ -363,6 +369,8 @@ pub fn read_feature_query_name_body_10_1(
 /// IDatasetName 槽（请求 IID `{89E75917-…}`）新对象的分派读取结果。
 #[derive(Debug, Clone, PartialEq)]
 pub enum DatasetNameMoreBody10_1 {
+    Tin(Box<TinName10_1>),
+    Terrain(Box<TerrainName10_1>),
     NetworkDataset(Box<NetworkDatasetName10_1>),
     Workspace(Box<WorkspaceNamePrefix10_1>),
     /// FeatureClassName 自身在 IDatasetName 槽中递归嵌套的对象体。
@@ -1145,6 +1153,18 @@ fn read_dataset_name_object_body_10_1(
         };
     }
     match class_id {
+        TIN_NAME_CLASS_ID => Ok((
+            DatasetNameMoreBody10_1::Tin(Box::new(read_tin_name_body_10_1(
+                reader, max_bytes, table,
+            )?)),
+            None,
+        )),
+        TERRAIN_NAME_CLASS_ID => Ok((
+            DatasetNameMoreBody10_1::Terrain(Box::new(read_terrain_name_body_10_1(
+                reader, max_bytes, table,
+            )?)),
+            None,
+        )),
         NETWORK_DATASET_NAME_CLASS_ID => Ok((
             DatasetNameMoreBody10_1::NetworkDataset(Box::new(read_network_dataset_name(
                 reader, max_bytes, table,
@@ -1497,6 +1517,8 @@ pub(crate) fn read_overlay_name_slot_10_1(
                     | WORKSPACE_NAME_CLASS_ID
                     | FEATURE_DATASET_NAME_CLASS_ID
                     | COVERAGE_NAME_CLASS_ID
+                    | TIN_NAME_CLASS_ID
+                    | TERRAIN_NAME_CLASS_ID
                     | NETWORK_DATASET_NAME_CLASS_ID
                     | GEOMETRIC_NETWORK_NAME_CLASS_ID
                     | MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID
@@ -2230,6 +2252,45 @@ mod tests {
                 _ => panic!("瓦片名称类型错误"),
             }
             assert_eq!(refs.registered_class(90), Some(class));
+            assert_eq!(reader.position(), end);
+            assert_eq!(read_string_10_1(&mut reader, 256).unwrap(), "格网编号");
+        }
+    }
+
+    #[test]
+    fn overlay_surface_names_preserve_following_string() {
+        for class_id in [TIN_NAME_CLASS_ID, TERRAIN_NAME_CLASS_ID] {
+            let mut bytes = entry(&class_id, 90).to_vec();
+            bytes.extend(1_i16.to_le_bytes());
+            for value in ["surface", "", ""] {
+                bytes.extend(str_bytes(value));
+            }
+            bytes.extend([0; 16]);
+            let end = bytes.len();
+            bytes.extend(str_bytes("格网编号"));
+            let mut refs = RefTable10_1::new();
+            for cut in 0..end {
+                let mut reader = Reader::new(&bytes[..cut]);
+                assert!(
+                    read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).is_err()
+                );
+                assert_eq!(reader.position(), 0);
+                assert!(refs.is_empty());
+            }
+            let mut reader = Reader::new(&bytes);
+            let slot = read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).unwrap();
+            match slot {
+                DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::Tin(name)) => {
+                    assert_eq!(class_id, TIN_NAME_CLASS_ID);
+                    assert_eq!(name.strings[0], "surface");
+                }
+                DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::Terrain(name)) => {
+                    assert_eq!(class_id, TERRAIN_NAME_CLASS_ID);
+                    assert_eq!(name.strings[0], "surface");
+                }
+                _ => panic!("地表名称类型错误"),
+            }
+            assert_eq!(refs.registered_class(90), Some(class_id));
             assert_eq!(reader.position(), end);
             assert_eq!(read_string_10_1(&mut reader, 256).unwrap(), "格网编号");
         }
