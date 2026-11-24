@@ -898,6 +898,7 @@
       - [x] 验证 GPMultiValue 类型槽中 GPMultiValueTypeName 的嵌套体和回引。
       - [x] 验证 GPMultiValue 类型槽中 GPValueTableTypeName 与 GPSATopoFeaturesTypeName 的对象体边界和回引。
       - [x] 接入 GPMultiValue 类型槽中已支持的 GP 数据类型名称及回引。[取证](docs/mxd-terra-round9-bookmark.md#gpmultivalue)
+      - [x] 核对 DERasterDataTypeFactory 的六条名称记录均使用已支持的 GPDataTypeName。[取证](docs/mxd-terra-round9-bookmark.md#栅格数据类型名称工厂)
       - [x] 接入 GPCodedValueDomain 中的 GPVariant。[取证](docs/mxd-terra-round9-bookmark.md#gplinearunit-与-gpvariant)
       - [x] 接入 GPCodedValueDomain 中的 GPBoolean。[取证](docs/mxd-terra-round9-bookmark.md#gpdoublegpbooleangpdate)
       - [x] 接入 GPCodedValueDomain 中的 GPDate。[取证](docs/mxd-terra-round9-bookmark.md#gpdoublegpbooleangpdate)

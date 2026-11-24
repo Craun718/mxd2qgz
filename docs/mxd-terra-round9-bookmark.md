@@ -1528,6 +1528,21 @@ GPDataTypeName。NA 的名称槽进入
 16 条名称记录。该结论限于静态表和创建路径，真实 MXD 与
 ArcMap 人工验证仍待补充。
 
+##### 栅格数据类型名称工厂
+
+RasterDB.dll 10.1.0.3035 的 SHA-256 为
+`97207d5cc5307bfe126e030792b5e92c085668953a736a6875d35e72d7e86400`。
+PE RTTI 标识 DERasterDataTypeFactory 的接口表 `0x7c1266f0`。
+名称槽（表内偏移 `0x14`）进入 `0x7bfca5c0`，调用
+`0x7bfca080` 查找 `0x7c16e130..0x7c16e1a8` 内的六条记录，
+步长 20 字节，上界排他。入口于 `0x7bfca606` 选中记录，
+在 `0x7bfca60d` 调用 `0x7bfca130`，随后委派至 `0x7bfcac40`。
+该构造路径在 `0x7bfcac6b` 通过 `0x7c1211cc` 创建对象，
+使用 `0x7c126790` 的 GPDataTypeName CLSID
+`960cb02a-8caf-442b-acf7-6b6256fc19f9`。六条栅格类型记录均由
+现有名称读取器覆盖。结论来自本地 PE 静态反汇编，真实 MXD
+与 ArcMap 人工验证仍待补充。
+
 #### GPValueTable
 
 GpObjects.dll 10.1.0.3035 的 RTTI `0x74801cd4` 对应持久化虚表
