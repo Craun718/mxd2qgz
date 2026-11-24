@@ -3642,9 +3642,12 @@ GPValue、AfCore String、IDETable、AfCore String、IFIDSet。
 0x71de35c8 / 0x71de35e3`。v2 增读 IDETable 和 IGPFieldInfo
 （`0x71de3608 / 0x71de3626`）。Save 写 v2，字段顺序相同。
 
-Rust 编码值读取器复用 DETable、FIDSet 和 GPFieldInfo 读取逻辑。
-构造测试覆盖 v0–v2、非空 GPFieldInfo、对象终点和逐字节截断。
-其他 IDETable 实现、真实 MXD 宿主和 ArcMap/QGIS 人工验收仍待核对。
+两处表槽均传入 `0x71e44a0c` 的 IDETable IID
+（`D7FCBB04-8E59-4FFB-9EE5-EC670AA892E0`）。
+Rust 复用 DEMosaicDataset 的 IDETable 类分派、FIDSet 和 GPFieldInfo
+读取器。构造测试覆盖 v0–v2 的非空 DETextFile、v2 尾槽回引到首槽、
+非空 GPFieldInfo、对象终点和逐字节截断。其余 IDETable 实现、
+真实 MXD 宿主和 ArcMap/QGIS 人工验收仍待核对。
 
 #### GPRecordSet 与内嵌 RecordSet
 

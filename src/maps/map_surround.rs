@@ -1361,7 +1361,7 @@ pub struct Record10_1 {
 #[derive(Debug, Clone, PartialEq)]
 pub struct GpTableView10_1 {
     pub first_text: String,
-    pub table: RuleSlot10_1<DeTable10_1>,
+    pub table: RuleSlot10_1<DeChild10_1>,
     pub second_text: String,
     pub fid_set: RuleSlot10_1<crate::layers::feature_id_set::FeatureIdSetBody10_1>,
     pub tail: Option<GpTableViewTail10_1>,
@@ -1369,7 +1369,7 @@ pub struct GpTableView10_1 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct GpTableViewTail10_1 {
-    pub table: RuleSlot10_1<DeTable10_1>,
+    pub table: RuleSlot10_1<DeChild10_1>,
     pub field_info: RuleSlot10_1<GpCodedValueBody10_1>,
 }
 
@@ -5652,12 +5652,12 @@ fn read_gp_table_view(
     version: u16,
 ) -> io::Result<GpTableView10_1> {
     let first_text = read_string_10_1(reader, max_bytes)?;
-    let table = read_gp_de_table_slot(reader, max_bytes, refs, depth)?;
+    let table = read_de_table_interface_slot(reader, max_bytes, refs, depth)?;
     let second_text = read_string_10_1(reader, max_bytes)?;
     let fid_set = read_gp_fid_set_slot(reader, refs)?;
     let tail = if version >= 2 {
         Some(GpTableViewTail10_1 {
-            table: read_gp_de_table_slot(reader, max_bytes, refs, depth)?,
+            table: read_de_table_interface_slot(reader, max_bytes, refs, depth)?,
             field_info: read_gp_coded_value_slot_of_class(
                 reader,
                 max_bytes,
@@ -12492,12 +12492,18 @@ mod tests {
             bytes.extend(version.to_le_bytes());
             bytes.extend([1, 0, 9, 0]);
             let empty_text = [2, 0, 0, 0, 0, 0];
-            for _ in 0..2 {
-                bytes.extend(empty_text);
-                bytes.extend([0; 16]);
-            }
+            bytes.extend(empty_text);
+            bytes.extend(DE_TEXT_FILE_CLASS_ID);
+            bytes.extend(3_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend([0; 6]);
+            bytes.extend(empty_text.repeat(3));
+            bytes.extend([0; 10]);
+            bytes.extend(empty_text);
+            bytes.extend([0; 16]);
             if version == 2 {
-                bytes.extend([0; 16]);
+                bytes.extend(DE_TEXT_FILE_CLASS_ID);
+                bytes.extend(3_u32.to_le_bytes());
                 bytes.extend(GP_FIELD_INFO_CLASS_ID);
                 bytes.extend(2_u32.to_le_bytes());
                 bytes.extend([1, 0, 1, 0, 7, 0]);
@@ -12517,7 +12523,20 @@ mod tests {
                 panic!("应读取 GPTableView");
             };
             assert_eq!((coded.version, coded.base_short), (version, 9));
-            assert_eq!(view.table.entry, ObjectEntry10_1::Null);
+            assert!(matches!(
+                view.table.body.as_deref(),
+                Some(DeChild10_1::TextFile { version: 1, .. })
+            ));
+            if let Some(tail) = &view.tail {
+                assert!(matches!(
+                    tail.table.entry,
+                    ObjectEntry10_1::BackReference {
+                        class_id: DE_TEXT_FILE_CLASS_ID,
+                        key: 3
+                    }
+                ));
+                assert!(tail.table.body.is_none());
+            }
             assert_eq!(view.fid_set.entry, ObjectEntry10_1::Null);
             assert_eq!(
                 view.tail
