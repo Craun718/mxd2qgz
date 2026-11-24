@@ -3197,3 +3197,27 @@ NetworkEdgeTrafficEvaluator。这些类标识在该记录中由
 IUID 表示。已有读取器保留 IUID 与属性集，属性集中的
 Variant 继续走通用分派。仍需样本核对六种求值器的配置值
 和其中实际出现的非空 Variant 对象类。
+
+配置写侧可从六个类的主 QI 对照 IID 常量 `0x711945d8`，
+定位实际 INetworkEvaluatorSetup 表。Load 在上文调用表
++0x10 导入配置。表 +0x14 的导出入口构造 IPropertySet，
+以下列出已在原生指令及 PE UTF-16 常量复核的部分字段。
+
+| 求值器 | 接口表 | 配置导出 | 已核对的部分键 |
+| --- | --- | --- | --- |
+| Constant | `0x71194524` | `0x71004210` | Version、ConstantValue |
+| Field | `0x71198de4` | `0x71081950` | VBScript、Version、Expression |
+| Script | `0x7119a7bc` | `0x710971a0` | VBScript、Version、Expression |
+| GlobalTurnDelay | `0x71199f28` | `0x710915e0` | Version、MaxStraightTurnDeflectionAngle、MaxReverseTurnDeflectionAngle |
+| Function | `0x711998e0` | `0x7108e5b0` | Version、Arg1AttributeNameOrConstantValue、Operator |
+| EdgeTraffic | `0x71198a34` | `0x7107fea0` | Version、WeekdayFallbackAttributeName、WeekendFallbackAttributeName |
+
+前五类 QI 返回对象 +0x14；EdgeTraffic 的 QI
+`0x7107ea30` 返回 +0x20。Version 调用点可见 Variant
+short 赋值，例如 Constant 的 `0x71004255`。Field 与 Script
+构造 Expression 属性时均调用导入槽 `0x71189cc0` 分配 BSTR。
+EdgeTraffic 的两个 FallbackAttributeName 也走该槽。
+Constant 的配置导出包含从对象成员取值的路径，仍需复核
+该 Variant 的全部初始化来源。Function 的混合属性名/常量
+分支及其余配置键仍待追踪。上表只证明列出的入口和键，
+非空对象值的覆盖仍待取证，暂无实际 MXD 宿主验证。
