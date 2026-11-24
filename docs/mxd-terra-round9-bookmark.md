@@ -1996,6 +1996,26 @@ Save `0x748e5d00` 的尺寸分派、内嵌 Variant 和成员 String
 对象回引、后继字段及逐字节截断回滚。内嵌数组的真实取值与
 ArcMap/QGIS 实档验收待查。
 
+#### GPHistoricalMarker 的流接口要求
+
+FeatureDataElements.dll 10.1.0.3035 的 SHA-256 为
+`7cd1153712d8af23f6c2263b6444c1a77e16b818fb5fb946d0c3d9106be5f429`。
+主 QI `0x6f629a40` 分别核对 IGPValue 和 IPersistStream IID。
+RTTI 将持久化接口定位到对象 +0x18、虚表 `0x6f661ba4`。
+GetClassID `0x6f629c40` 传入 `0x6f661c44` 的
+`177BAF01-FF42-4E08-B1E9-866C4E61CD1E`。
+
+Load `0x6f629cb0` 与 Save `0x6f629d50` 都经
+`0x6f62a080` 对流查询私有 IID
+`AC0CAC11-2109-4F21-B98F-237B26DA9802`。缺少该接口时，
+Load 在 `0x6f629cde` 返回 E_INVALIDARG；Save 走
+`0x6f629e21` 返回 S_OK 且没有写入对象体。
+查询成功时，Load 经该接口的 +0x0c 和 +0x14 分别读取
+BSTR 与 Variant。Save 从 `0x6f629db3` 开始写入通过
+该接口表达的数据，后续有条件分支。普通 IStream 的读取行为
+无法用于推导此类的对象体。尚待定位私有接口的持久化实现，
+确认 MXD 宿主是否提供该接口，并在 ArcMap 中验证。
+
 ### GPSAHorizontalFactor 与 GPSAVerticalFactor
 
 两类来自 ArcMap 10.1.0.3035 的 `GPSACore.dll`。沿 RTTI 确认持久化接口
