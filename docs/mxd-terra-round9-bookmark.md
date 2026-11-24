@@ -2817,3 +2817,21 @@ QI 对 IPersistStream IID `00000109-0000-0000-C000-000000000046`
 `0x7cb14a3d` 请求 IID `84E3B47A-B26D-41F3-8D1B-F4D9E300D454`
 和 `7200F877-D9F9-4B54-940E-1E3A68363E2D`。
 CLSID 的间接取值、尾字段的完整版本条件和子对象类仍待核对。
+
+构造路径 `0x7cb1402d` 从 `0x7cb4138c` 复制类标识
+`ABA829A6-9C55-41EE-8C15-2DAA3821D565`。Load 对版本上限
+采用有符号比较。以下顺序以 DEDataset::Load 返回后为起点。
+
+| 调用点 | 条件 | 字段 |
+| --- | --- | --- |
+| `0x7cb14999` | 版本 ≤ 2 | 弃读 long |
+| `0x7cb149bf` | 版本 ≠ 4 | AfCore String |
+| `0x7cb149d0`、`0x7cb149e1` | 共用 | 两个 AfCore String |
+| `0x7cb149fb` | 版本 ≤ 2 | 弃读 long |
+| `0x7cb14a1c`、`0x7cb14a3d` | 共用 | 两个 LoadObject 槽 |
+| `0x7cb14a6f` | 版本 > 1 | short |
+
+第一槽 IID 在 `0x7cb37b47` 被 RepresentationRules 的
+QI 比对，主虚表为 `0x7cb434b4)。第二槽 IID 在
+`0x7cb112b9` 被 ClassAttributes 的 QI 比对，主虚表为
+`0x7cb4071c`。两个子类的流对象体仍待解析。
