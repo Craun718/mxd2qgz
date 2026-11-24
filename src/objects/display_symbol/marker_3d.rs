@@ -237,6 +237,8 @@ pub struct Marker3dSymbolBody10_1 {
     pub short_v6: Option<u16>,
     pub short_v8: Option<u16>,
     pub shorts_v9: Option<[u16; 3]>,
+    /// v9 从 MultiPatch 点 ID 恢复的内嵌字符串。
+    pub string_v9: Option<String>,
     pub string_v10: Option<String>,
 }
 
@@ -266,21 +268,9 @@ pub(super) fn read_marker_3d_symbol(
         }
         _ => None,
     };
-    if signed == 9 && geometry_entry != ObjectEntry10_1::Null {
-        use crate::objects::multi_patch::MultiPatchRecord10_1;
-        // 兼容探测要求 IPointCollection 的点数恰为 10。
-        let skips_probe = match &geometry {
-            Some(GeometryBody10_1::MultiPatch(body)) => match &body.record {
-                Some(MultiPatchRecord10_1::Empty) => true,
-                Some(MultiPatchRecord10_1::Mesh(mesh)) => mesh.xy.len() != 10,
-                None => false,
-            },
-            _ => false,
-        };
-        if !skips_probe {
-            return Ok(None);
-        }
-    }
+    let string_v9 = (signed == 9)
+        .then(|| marker_v9_string(geometry.as_ref()))
+        .flatten();
     let first_integer = read_i32_le(reader)?;
     let vector = [
         reader.read_f64_le()?,
@@ -353,8 +343,32 @@ pub(super) fn read_marker_3d_symbol(
                 ])
             })
             .transpose()?,
+        string_v9,
         string_v10: (signed == 10)
             .then(|| crate::stream::native_string::read_string_10_1(reader, max_bytes))
             .transpose()?,
     }))
+}
+
+// v9 把点 ID 1–8 的四个字节依次扩展为 UTF-16 码元。
+fn marker_v9_string(geometry: Option<&GeometryBody10_1>) -> Option<String> {
+    use crate::objects::multi_patch::MultiPatchRecord10_1;
+
+    let Some(GeometryBody10_1::MultiPatch(body)) = geometry else {
+        return None;
+    };
+    let Some(MultiPatchRecord10_1::Mesh(mesh)) = &body.record else {
+        return None;
+    };
+    if mesh.xy.len() != 10 || mesh.point_ids.first() != Some(&0x00b8_342d) {
+        return None;
+    }
+    let bytes = mesh
+        .point_ids
+        .get(1..9)?
+        .iter()
+        .flat_map(|id| id.to_be_bytes())
+        .take_while(|byte| *byte != 0)
+        .map(char::from);
+    Some(bytes.collect())
 }

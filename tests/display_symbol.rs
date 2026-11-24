@@ -3714,30 +3714,57 @@ fn marker_3d_symbol_reads_versioned_tail_after_empty_geometry() {
         }
         if version == 9 {
             use mxd2qgz::objects::geometry::{GeometryBody10_1, MULTIPATCH_CLASS_ID};
-            let mut geometry = Vec::new();
-            push_entry(&mut geometry, &MULTIPATCH_CLASS_ID, 52);
-            geometry.extend(2_u16.to_le_bytes());
-            geometry.extend(4_u32.to_le_bytes());
-            geometry.extend(0_u32.to_le_bytes());
-            push_null(&mut geometry);
-            let mut with_geometry = bytes.clone();
-            with_geometry.splice(
-                geometry_start..geometry_start + 16,
-                geometry.iter().copied(),
-            );
-            let mut reader = Reader::new(&with_geometry);
-            let mut refs = RefTable10_1::new();
-            let SymbolSlotFull10_1::Marker3dSymbol(body) =
-                read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 8).unwrap()
-            else {
-                panic!("预期读完空 MultiPatch 对象");
-            };
-            assert!(matches!(
-                body.geometry,
-                Some(GeometryBody10_1::MultiPatch(_))
-            ));
-            assert!(refs.contains(52));
-            assert_eq!(reader.read_bytes(1).unwrap(), &[0xa4]);
+            let mut mesh = 0xdd00_0036_u32.to_le_bytes().to_vec();
+            mesh.extend([0; 32]); // XY 范围。
+            for value in [1_u32, 10, 0, 0] {
+                mesh.extend(value.to_le_bytes());
+            }
+            mesh.extend([0; 10 * 16 + 12 * 8]); // XY、Z 范围及 Z。
+            mesh.extend(0_u32.to_le_bytes()); // M 计数。
+            mesh.extend(10_u32.to_le_bytes());
+            for id in [
+                0x00b8_342d_u32,
+                0x7465_7374,
+                0x2e64_6165,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ] {
+                mesh.extend(id.to_le_bytes());
+            }
+            mesh.extend([0; 12]); // 法线、纹理和材质计数。
+
+            for (record, expected) in [(&[0; 4][..], None), (mesh.as_slice(), Some("test.dae"))] {
+                let mut geometry = Vec::new();
+                push_entry(&mut geometry, &MULTIPATCH_CLASS_ID, 52);
+                geometry.extend(2_u16.to_le_bytes());
+                geometry.extend((record.len() as u32).to_le_bytes());
+                geometry.extend(record);
+                push_null(&mut geometry);
+                let mut with_geometry = bytes.clone();
+                with_geometry.splice(
+                    geometry_start..geometry_start + 16,
+                    geometry.iter().copied(),
+                );
+                let mut reader = Reader::new(&with_geometry);
+                let mut refs = RefTable10_1::new();
+                let SymbolSlotFull10_1::Marker3dSymbol(body) =
+                    read_symbol_slot_full_10_1(&mut reader, 1024, &mut refs, 8).unwrap()
+                else {
+                    panic!("预期读完 MultiPatch 对象");
+                };
+                assert!(matches!(
+                    body.geometry,
+                    Some(GeometryBody10_1::MultiPatch(_))
+                ));
+                assert_eq!(body.string_v9.as_deref(), expected);
+                assert!(refs.contains(52));
+                assert_eq!(reader.read_bytes(1).unwrap(), &[0xa4]);
+            }
 
             bytes.truncate(geometry_start);
             push_entry(&mut bytes, &[0x45; 16], 52);
