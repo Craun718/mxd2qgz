@@ -1474,6 +1474,25 @@ COM 字节序及大小写 ASCII／UTF-16LE 文本均未命中。
 需要在启用 Data Interoperability 的环境中核对
 32 位 COM 注册和创建结果，再定位通用类型的名称输出。
 
+四个自注册 PE 的版本资源均为 2012.0.0.12229。
+反汇编 `DllGetClassObject` 导出显示，它们先遍历
+ATL 模块对象 +0x2c 的类表，对输入 CLSID 逐个比较四个 DWORD，
+再在结果为空且 HRESULT 为零时进入第二张表。入口如下：
+
+| 模块 | 导出 | 首张表查找 | 第二张表查找 |
+| --- | --- | --- | --- |
+| DIToolboxUI | `0x10004330` | `0x10004240` | `0x10003260` |
+| DIDatasource | `0x10004e60` | `0x10004d70` | `0x10003900` |
+| DIDatasourceUI | `0x1000edc0` | `0x1000ecd0` | `0x1000e8b0` |
+| DIToolbox | `0x10007820` | `0x100074d0` | `0x10004cd0` |
+
+DIToolbox 的第二张表由 `0x1012a0d0` 描述，
+`0x10004d34` 取表项的 CLSID 指针供 `0x10004d3b`
+比较，遍历未命中时在 `0x10004d4f` 返回
+`CLASS_E_CLASSNOTAVAILABLE`。结合上面的字面量检查，尚无
+证据把通用 FME 类指向任一自注册模块。未确认运行时类表或
+已注册的进程内服务器，也未在 ArcMap 中人工验证。
+
 GpObjects.dll 内部 GPDataTypeFactory 的 GetClassID
 `0x746ac930` 从 `0x747a74dc` 复制
 `E41CFD44-5741-4F2B-8ACE-1A49E146D329`。QI
