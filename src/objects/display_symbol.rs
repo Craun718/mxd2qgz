@@ -1350,6 +1350,21 @@ pub(crate) const FILL_SYMBOL_CLASSES: &[[u8; 16]] = &[
     DOT_DENSITY_FILL_SYMBOL_CLASS_ID,
 ];
 
+/// 读取器已确认实现 ISymbol 的类。
+pub(crate) fn is_supported_symbol_class(class_id: [u8; 16]) -> bool {
+    MARKER_SYMBOL_CLASSES.contains(&class_id)
+        || LINE_SYMBOL_CLASSES.contains(&class_id)
+        || FILL_SYMBOL_CLASSES.contains(&class_id)
+        || matches!(
+            class_id,
+            TEXT_SYMBOL_CLASS_ID
+                | SYMBOL_MIMIC_CLASS_ID
+                | BAR_CHART_SYMBOL_CLASS_ID
+                | PIE_CHART_SYMBOL_CLASS_ID
+                | STACKED_CHART_SYMBOL_CLASS_ID
+        )
+}
+
 /// 槽位在体字段序中的类别（停止原因与诊断用）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DisplaySlotKind10_1 {

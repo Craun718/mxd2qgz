@@ -2660,6 +2660,60 @@ mod tail_continuation {
         assert!(result.time_dimension_definition.is_some());
         assert!(result.time_data_display.is_some());
         assert_eq!(result.short_2ca, Some(0));
+
+        // 对同一完整后继段替换 ㉖ 为回引，两种头部 CLSID 均故意与登记类不同。
+        let mut symbol_header = Vec::new();
+        push_entry_header(&mut symbol_header, &SIMPLE_MARKER_SYMBOL_CLASS_ID, 90);
+        let slot_start = b
+            .windows(symbol_header.len())
+            .position(|window| window == symbol_header)
+            .unwrap();
+        for (registered, header) in [
+            (SIMPLE_MARKER_SYMBOL_CLASS_ID, RGB_COLOR_CLASS_ID),
+            (RGB_COLOR_CLASS_ID, SIMPLE_MARKER_SYMBOL_CLASS_ID),
+        ] {
+            let mut data = b.clone();
+            data.drain(
+                slot_start + symbol_header.len()
+                    ..slot_start + symbol_header.len() + sms_body_v2().len(),
+            );
+            data[slot_start..slot_start + 16].copy_from_slice(&header);
+            let mut definition = Vec::new();
+            push_entry_header(&mut definition, &registered, 90);
+            let mut refs = RefTable10_1::new();
+            mxd2qgz::storage::object_refs::read_object_entry_10_1(
+                &mut Reader::new(&definition),
+                &mut refs,
+            )
+            .unwrap();
+            let mut reader = Reader::new(&data);
+            let result =
+                read_feature_layer_successor_10_1(&mut reader, 34, 4096, &mut refs).unwrap();
+            assert!(refs.contains(90));
+            if registered == SIMPLE_MARKER_SYMBOL_CLASS_ID {
+                assert_eq!(result.stop, SuccessorStop10_1::TailCompleted);
+                assert_eq!(
+                    result.symbol,
+                    Some(
+                        mxd2qgz::layers::feature_layer_tail::SymbolSlotFull10_1::BackReference {
+                            class_id: registered,
+                            key: 90,
+                        }
+                    )
+                );
+                assert_eq!(reader.remaining(), 0);
+            } else {
+                assert_eq!(
+                    result.stop,
+                    SuccessorStop10_1::SymbolSlotUnsupported {
+                        class_id: registered,
+                        key: 90,
+                    }
+                );
+                assert_eq!(reader.position(), slot_start);
+                assert!(!refs.contains(91));
+            }
+        }
     }
 
     #[test]

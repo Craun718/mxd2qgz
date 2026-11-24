@@ -330,6 +330,18 @@ Map v44 在 `0x2507` 结束，之后恰好剩四字节根尾值，PageLayout 同
 构造测试覆盖 v1/v2、负计数、非零定长块、截断和数组资源限额。
 未定名的时区标量仍保留存盘值，ArcMap 与 QGIS 人工验收未执行。
 
+## FeatureLayer 后继段的符号回引
+
+FeatureLayer.dll 10.1.0.3035 在后继段 ㉖ 请求 ISymbol。
+SystemCore.dll 同版的 ObjectStream 在 `0x7ffd0063` 按键定位登记
+实例并查询请求接口。读取器用登记类校验此处的回引并保留该类。
+登记类超出已核对的范围时停在槽起点。仅有键的表项沿用回引头的类标识，
+因为该表项没有记录原实例类。
+
+构造测试使回引头与已登记的 SimpleMarkerSymbol 或 RgbColor
+不一致。前者读完此段，后者在 ㉖ 停止并保留既有键。更多 ISymbol
+实现、对应实档及 ArcMap/QGIS 人工验收仍待核对。
+
 ## FeatureLayer 后继段的统计图符号
 
 证据来自 ArcGIS Desktop 安装介质的 `DisplayCore.dll` PE32，文件版本

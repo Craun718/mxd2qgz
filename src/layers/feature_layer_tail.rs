@@ -190,7 +190,7 @@ use crate::layers::tracking_filter_layer_extension::{
 use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
 use crate::objects::display_symbol::{
     MAX_SYMBOL_NESTING_DEPTH, SimpleMarkerSymbolStop10_1, SymbolStop10_1,
-    read_symbol_slot_full_10_1, slot_full_stop_10_1,
+    is_supported_symbol_class, read_symbol_slot_full_10_1, slot_full_stop_10_1,
 };
 use crate::objects::hyperlink::{HYPERLINK_CLASS_ID, HyperlinkBody10_1, read_hyperlink_body_10_1};
 use crate::objects::property_set::{PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1};
@@ -2428,6 +2428,7 @@ pub fn read_feature_layer_successor_10_1(
         //    体含嵌套 RgbColor ×2 整体解析）。未知类为停止点（分派内部已
         //    回退）；闭合符号体内嵌套停止经 SymbolNested 透传。
         if stop.is_none() && (fl_version as i16) > 0xd {
+            let slot_start = trial.clone();
             match read_symbol_slot_full_10_1(
                 &mut trial,
                 max_bytes,
@@ -2437,6 +2438,26 @@ pub fn read_feature_layer_successor_10_1(
                 SymbolSlotFull10_1::Unsupported { class_id, key } => {
                     stop = Some(SuccessorStop10_1::SymbolSlotUnsupported { class_id, key });
                     symbol = Some(SymbolSlotFull10_1::Null);
+                }
+                SymbolSlotFull10_1::BackReference { class_id, key } => {
+                    // 原生按键查询原实例，磁盘回引头的类标识不决定实例类型。
+                    if let Some(registered) = staged_table.registered_class(key) {
+                        if is_supported_symbol_class(registered) {
+                            symbol = Some(SymbolSlotFull10_1::BackReference {
+                                class_id: registered,
+                                key,
+                            });
+                        } else {
+                            trial = slot_start;
+                            stop = Some(SuccessorStop10_1::SymbolSlotUnsupported {
+                                class_id: registered,
+                                key,
+                            });
+                            symbol = Some(SymbolSlotFull10_1::Null);
+                        }
+                    } else {
+                        symbol = Some(SymbolSlotFull10_1::BackReference { class_id, key });
+                    }
                 }
                 SymbolSlotFull10_1::SimpleMarkerSymbol(sms) => {
                     if sms.stop.is_some() {
