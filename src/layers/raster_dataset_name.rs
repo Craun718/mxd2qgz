@@ -564,6 +564,9 @@ pub(super) fn read_name_slot(
     if let ObjectEntry10_1::NewObject { class_id, key } = entry
         && let Some(body) = &body
     {
+        if body.open_without_result() {
+            table.mark_raster_name_without_open_result(key);
+        }
         if let Some(name) = body.dataset_name_body().filter(|name| name.stop.is_none()) {
             table.mark_dataset_source(
                 class_id,

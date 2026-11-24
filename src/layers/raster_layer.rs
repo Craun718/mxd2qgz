@@ -272,11 +272,12 @@ pub(super) fn read_inline_raster_body_10_1(
     let boundary = if body.version == 12
         && renderer.entry == ObjectEntry10_1::Null
         && let Some(name) = first_name
-        && name
-            .body
-            .as_ref()
-            .is_some_and(RasterDatasetNameEntryBody10_1::open_without_result)
-    {
+        && match name.entry {
+            ObjectEntry10_1::NewObject { key, .. } | ObjectEntry10_1::BackReference { key, .. } => {
+                staged.raster_name_opens_without_result(key)
+            }
+            ObjectEntry10_1::Null => false,
+        } {
         // 空标识和空镶嵌槽使 RasterTypeName::Open 返回空指针。
         RasterLayerBoundary::InlineWithoutDataset
     } else {
@@ -827,6 +828,19 @@ mod tests {
         assert!(tail.envelope_v13.is_none());
         assert_eq!(reader.position(), end);
         assert_eq!(refs.registered_class(60), Some(RASTER_TYPE_NAME_CLASS_ID));
+
+        let header_offset = body_prefix(12, 1).len();
+        let body_end = header_offset + 20 + 2 + encoded_string("").len() * 2 + 4 + 16;
+        let mut reference = bytes.clone();
+        reference.drain(header_offset + 20..body_end);
+        let mut reader = Reader::new(&reference);
+        let layer = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+        assert!(matches!(
+            layer.names[0].entry,
+            ObjectEntry10_1::BackReference { key: 60, .. }
+        ));
+        assert!(layer.tail.unwrap().geodata_xform_v13.is_none());
+        assert_eq!(reader.position(), end - (body_end - header_offset - 20));
 
         let mut with_nulls = body_prefix(12, 3);
         let name_offset = with_nulls.len();
