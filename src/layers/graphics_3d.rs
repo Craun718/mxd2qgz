@@ -121,12 +121,21 @@ fn read_envelope(
     max: usize,
     refs: &mut RefTable10_1,
 ) -> io::Result<Graphics3dObject10_1<Envelope10_1>> {
-    read_object(r, refs, |cls, _, r, refs| {
+    let mut envelope = read_object(r, refs, |cls, _, r, refs| {
         if *cls != ENVELOPE_CLASS_ID {
             return Err(unsupported(cls, "三维图形容器的 IEnvelope 槽"));
         }
         read_envelope_10_1(r, max, refs)
-    })
+    })?;
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut envelope.entry
+        && let Some(registered) = refs.registered_class(*key)
+    {
+        if registered != ENVELOPE_CLASS_ID {
+            return Err(unsupported(&registered, "三维图形容器的 IEnvelope 回引"));
+        }
+        *class_id = registered;
+    }
+    Ok(envelope)
 }
 
 fn read_count(r: &mut Reader<'_>, min_entry_bytes: usize) -> io::Result<(i32, usize)> {
@@ -313,6 +322,48 @@ mod tests {
     use super::*;
     use crate::maps::group_element::GroupChild10_1;
     use crate::maps::map_object::MAP_CLASS_ID;
+
+    #[test]
+    fn graphics_3d_envelope_references_check_registered_class() {
+        for (class, short_bytes, tail_bytes) in [
+            (GRAPHICS_LAYER_3D_CLASS_ID, 8, 0),
+            (GLOBE_GRAPHICS_LAYER_CLASS_ID, 4, 8),
+        ] {
+            for registered in [ENVELOPE_CLASS_ID, MAP_CLASS_ID] {
+                let mut previous = registered.to_vec();
+                previous.extend(1_u32.to_le_bytes());
+                let mut refs = RefTable10_1::new();
+                read_object_entry_10_1(&mut Reader::new(&previous), &mut refs).unwrap();
+                let before = refs.clone();
+                let mut bytes = 1_u16.to_le_bytes().to_vec();
+                bytes.extend([2, 0, 0, 0, 0, 0]);
+                bytes.resize(bytes.len() + short_bytes + 16, 0);
+                bytes.extend(MAP_CLASS_ID);
+                bytes.extend(1_u32.to_le_bytes());
+                bytes.resize(bytes.len() + 4 + tail_bytes, 0);
+                let end = bytes.len();
+                bytes.extend([0xa5; 16]);
+                let mut reader = Reader::new(&bytes);
+                let result = read_graphics_3d_layer_10_1(&class, &mut reader, 4096, &mut refs);
+                if registered == ENVELOPE_CLASS_ID {
+                    let layer = result.unwrap();
+                    assert_eq!(
+                        layer.envelope.entry,
+                        ObjectEntry10_1::BackReference {
+                            class_id: ENVELOPE_CLASS_ID,
+                            key: 1
+                        }
+                    );
+                    assert!(layer.envelope.body.is_none());
+                    assert_eq!(reader.position(), end);
+                } else {
+                    assert_eq!(result.unwrap_err().kind(), ErrorKind::Unsupported);
+                    assert_eq!(reader.position(), 0);
+                }
+                assert_eq!(refs, before);
+            }
+        }
+    }
 
     #[test]
     fn scene_group_resolves_only_confirmed_map_keys() {

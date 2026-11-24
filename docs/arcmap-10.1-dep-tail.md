@@ -289,6 +289,13 @@ Globe 元素附加属性的定宽段按顺序如下：
 
 构造测试覆盖所有接受版本、LELP 后继标量、Globe 两个几何版本门、MarkerElement 与 Point 新对象和回引、非空模板扩展与零长度扩展、未知关联图层及逐前缀截断。对本地 66 个 MXD 路径的 `/Maps`、`/PageLayout` 和可提取的三个 `/3D Analyst` 流扫描两个 CLSID，未命中字节候选。没有真实非空宿主，也未进行 ArcMap/QGIS 人工验收。
 
+三维容器的 IEnvelope 回引沿用 SystemCore.dll 10.1.0.3035
+`0x7ffd0063` 的查键和接口查询路径。Scene `0x7d2a4b16` 与
+Globe `0x72f60153` 请求 IEnvelope，因此在共享表已记录类时
+采用登记类校验和呈现回引。构造测试覆盖两个容器的非空回引、
+后继边界及登记类错误时的事务回滚。真实三维宿主及 ArcMap/QGIS
+人工验收仍待验证。
+
 ### LELP 容器和关联图层接线
 
 Scene.dll 的 `0x7d2a4af4` 和 GlobeLayers.dll 的 `0x72f60131` 都将同一个 `ILayer {34C20002-4D3C-11D0-92D8-00805F7C28B0}` 传给普通 `LoadObject`。两处 Save 分别以 `this+0x20` 和 `this+0x34` 的对象调用 SaveObject。普通对象槽没有可跳过的外层长度；关联槽仅在已有读取器证实读完 FeatureLayer、CompositeGraphicsLayer、FDOGraphicsLayer、GraphicsLayer3D 或 GlobeGraphicsLayer 的对象体后提交。其余图层的普通对象体或子槽仍待接入。两类 3D 图层也在 Map 图层列表按标志 1 或 ExtraSafe 分派，ExtraSafe 路径在条目范围内试读并检查完整消费。
