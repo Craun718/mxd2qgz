@@ -856,6 +856,7 @@
       - [x] 接入 IDataElement 列表中的 DEMosaicDataset。[取证](docs/mxd-terra-round9-bookmark.md#demosaicdataset)
       - [x] 接入 IDataElement 列表中的 DEAddressLocator。[取证](docs/mxd-terra-round9-bookmark.md#deaddresslocator)
       - [x] 支持 DEMosaicDataset v4 末表槽中已核实的 IDETable 实现。[取证](docs/mxd-terra-round9-bookmark.md#demosaicdataset)
+      - [x] 接入 DERasterCatalogInfo 的 IDERasterCatalog 与 IDETable 对象槽。[取证](docs/mxd-terra-round9-bookmark.md#derastercataloginfo)
       - [x] 接入 DETable 的 GPSubtype 对象及字段行。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的拓扑与几何网络控制器成员。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的 Indexes 与 Index 对象体。[取证](docs/mxd-terra-round9-bookmark.md#detable)

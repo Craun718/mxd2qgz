@@ -3992,6 +3992,13 @@ Load `0x6f615610` 读取无符号版本（上限 1），再经
 无扩展尾串的要素类布局。构造测试覆盖派生版本、简短体、
 逐字节截断和结束位置。真实 MXD 宿主仍待核对。
 
+同 DLL 的 QI 入口 `0x6f6151d0` 在 `0x6f6151d7` 比对
+`0x6f65d378` 的 IDERasterCatalog IID，命中后返回对象 +0x158。
+`0x6f615283` 比对 `0x6f658de0` 的 IDETable IID，命中后跳到
+`0x6f61554c` 并返回对象 +0x98。解析器据此在 DEMosaicDataset
+目录槽和共享 IDETable 分派接受此类。构造测试覆盖目录槽新对象、
+v4 表槽对该目录的回引及逐字节截断。
+
 #### DERelationshipClassInfo
 
 FeatureDataElements.dll 10.1.0.3035 的 PE RTTI 持久化表

@@ -7659,7 +7659,7 @@ fn read_de_mosaic_dataset(
             refs,
             depth,
             "IDERasterCatalog",
-            &[DE_RASTER_CATALOG_CLASS_ID],
+            &[DE_RASTER_CATALOG_CLASS_ID, DE_RASTER_CATALOG_INFO_CLASS_ID],
         )?)
     } else {
         None
@@ -7755,6 +7755,7 @@ fn read_de_table_interface_slot(
             DE_FEATURE_CLASS_CLASS_ID,
             DE_RELATIONSHIP_CLASS_CLASS_ID,
             DE_RASTER_CATALOG_CLASS_ID,
+            DE_RASTER_CATALOG_INFO_CLASS_ID,
             DE_RASTER_BAND_CLASS_ID,
             DE_SHAPE_FILE_CLASS_ID,
             DE_DBASE_TABLE_CLASS_ID,
@@ -11266,23 +11267,24 @@ mod tests {
                 bytes.extend((-9_i32).to_le_bytes());
             }
             if version >= 2 {
-                bytes.extend([0; 16]);
-            }
-            bytes.extend([0; 16]);
-            if version >= 4 {
-                bytes.extend(DE_RASTER_BAND_CLASS_ID);
+                bytes.extend(DE_RASTER_CATALOG_INFO_CLASS_ID);
                 bytes.extend(63_u32.to_le_bytes());
-                bytes.extend(2_u16.to_le_bytes());
+                bytes.extend(1_u16.to_le_bytes());
+                bytes.extend(0_u16.to_le_bytes());
                 bytes.extend([0; 10]);
                 bytes.extend([2, 0, 0, 0, 0, 0].repeat(3));
                 bytes.extend([0; 22]);
-                bytes.extend(7_u16.to_le_bytes());
+                bytes.extend(9_u16.to_le_bytes());
                 bytes.extend([2, 0, 0, 0, 0, 0]);
                 bytes.extend([0; 32]);
-                bytes.extend([0; 26]);
-                bytes.extend(3_u16.to_le_bytes());
-                bytes.extend(42_i32.to_le_bytes());
-                bytes.extend([0; 40]);
+                bytes.extend([0; 8]);
+                bytes.extend([2, 0, 0, 0, 0, 0]);
+                bytes.extend([0; 38]);
+            }
+            bytes.extend([0; 16]);
+            if version >= 4 {
+                bytes.extend(DE_RASTER_CATALOG_INFO_CLASS_ID);
+                bytes.extend(63_u32.to_le_bytes());
             }
             let read = |reader: &mut Reader<'_>| {
                 read_gp_data_element_child(reader, 1024, &mut RefTable10_1::new(), 0)
@@ -11301,16 +11303,26 @@ mod tests {
             assert_eq!(body.raw_short, 7);
             assert_eq!(body.raw_long, (version >= 3).then_some(-9));
             assert_eq!(body.catalog.is_some(), version >= 2);
+            if let Some(catalog) = body.catalog {
+                assert_eq!(
+                    catalog.entry,
+                    ObjectEntry10_1::NewObject {
+                        class_id: DE_RASTER_CATALOG_INFO_CLASS_ID,
+                        key: 63,
+                    }
+                );
+                assert!(catalog.body.is_some());
+            }
             assert_eq!(body.table.is_some(), version >= 4);
             if let Some(table) = body.table {
                 assert_eq!(
                     table.entry,
-                    ObjectEntry10_1::NewObject {
-                        class_id: DE_RASTER_BAND_CLASS_ID,
+                    ObjectEntry10_1::BackReference {
+                        class_id: DE_RASTER_CATALOG_INFO_CLASS_ID,
                         key: 63,
                     }
                 );
-                assert!(table.body.is_some());
+                assert!(table.body.is_none());
             }
             assert_eq!(reader.position(), end);
         }
