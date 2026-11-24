@@ -57,6 +57,9 @@ use crate::layers::feature_layer::{
 };
 use crate::layers::fgdb_raster_dataset_name::FGDB_RASTER_DATASET_NAME_CLASS_ID;
 use crate::layers::image_server_layer_tail::IMAGE_SERVER_NAME_CLASS_ID;
+use crate::layers::na_layer::{
+    NETWORK_DATASET_NAME_CLASS_ID, NetworkDatasetName10_1, read_network_dataset_name,
+};
 use crate::layers::raster_dataset_name::{
     ACCESS_RASTER_DATASET_NAME_CLASS_ID, AIS_IMAGE_SERVICE_NAME_CLASS_ID,
     CACHE_RASTER_DATASET_NAME_CLASS_ID, FUNCTION_RASTER_DATASET_NAME_CLASS_ID,
@@ -360,6 +363,7 @@ pub fn read_feature_query_name_body_10_1(
 /// IDatasetName 槽（请求 IID `{89E75917-…}`）新对象的分派读取结果。
 #[derive(Debug, Clone, PartialEq)]
 pub enum DatasetNameMoreBody10_1 {
+    NetworkDataset(Box<NetworkDatasetName10_1>),
     Workspace(Box<WorkspaceNamePrefix10_1>),
     /// FeatureClassName 自身在 IDatasetName 槽中递归嵌套的对象体。
     FeatureClassName(Box<crate::layers::feature_layer::FeatureClassNamePrefix10_1>),
@@ -1141,6 +1145,12 @@ fn read_dataset_name_object_body_10_1(
         };
     }
     match class_id {
+        NETWORK_DATASET_NAME_CLASS_ID => Ok((
+            DatasetNameMoreBody10_1::NetworkDataset(Box::new(read_network_dataset_name(
+                reader, max_bytes, table,
+            )?)),
+            None,
+        )),
         WORKSPACE_NAME_CLASS_ID => {
             let body = read_workspace_name_body_10_1(reader, max_bytes, table, key)?;
             let stop = body.stop.map(
@@ -1487,6 +1497,7 @@ pub(crate) fn read_overlay_name_slot_10_1(
                     | WORKSPACE_NAME_CLASS_ID
                     | FEATURE_DATASET_NAME_CLASS_ID
                     | COVERAGE_NAME_CLASS_ID
+                    | NETWORK_DATASET_NAME_CLASS_ID
                     | GEOMETRIC_NETWORK_NAME_CLASS_ID
                     | MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID
                     | CAD_DRAWING_NAME_CLASS_ID
@@ -2222,6 +2233,36 @@ mod tests {
             assert_eq!(reader.position(), end);
             assert_eq!(read_string_10_1(&mut reader, 256).unwrap(), "格网编号");
         }
+    }
+
+    #[test]
+    fn overlay_network_dataset_name_preserves_following_string() {
+        let mut bytes = entry(&NETWORK_DATASET_NAME_CLASS_ID, 90).to_vec();
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(str_bytes("network"));
+        bytes.extend(str_bytes(""));
+        bytes.extend([0; 32]);
+        let end = bytes.len();
+        bytes.extend(str_bytes("格网编号"));
+        let mut refs = RefTable10_1::new();
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            assert!(read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+        let mut reader = Reader::new(&bytes);
+        let slot = read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).unwrap();
+        assert!(
+            matches!(slot, DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::NetworkDataset(name))
+            if name.name == "network")
+        );
+        assert_eq!(
+            refs.registered_class(90),
+            Some(NETWORK_DATASET_NAME_CLASS_ID)
+        );
+        assert_eq!(reader.position(), end);
+        assert_eq!(read_string_10_1(&mut reader, 256).unwrap(), "格网编号");
     }
 
     #[test]

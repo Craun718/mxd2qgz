@@ -181,6 +181,11 @@ ImageServerName 复用 [ImageServer.dll 10.1.0.3035 对象体](mxd-10.1-image-se
 的 Load `0x77f4f7f0` 读取器。构造输入验证字符串、空属性集、
 按登记类解析的回引和截断回滚。真实格网宿主与原生显示仍待核对。
 
+NetworkDatasetName 复用 NALayer 与书签的 IName 读取器，
+对应 GdbNetwork.dll 10.1.0.3035 的 Load `0x71044ff0`。
+构造测试覆盖对象键、尾随格网字符串和截断回滚。真实格网宿主及
+ArcMap 显示仍待核对。
+
 ### 叠加格网的关系查询名称
 
 在 MapElements.dll 10.1.0.3035 的 CustomOverlayGrid Load
