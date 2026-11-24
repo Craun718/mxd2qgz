@@ -479,6 +479,10 @@ pub const TOPOLOGY_RULE_CLASS_ID: [u8; 16] = [
     0x89, 0x38, 0xd4, 0x8a, 0xa4, 0xf2, 0xb2, 0x43, 0x83, 0xdc, 0x6d, 0x1d, 0x38, 0xdd, 0xbc, 0xc8,
 ];
 
+pub const DE_GEOMETRIC_NETWORK_CLASS_ID: [u8; 16] = [
+    0x8c, 0xba, 0x68, 0xfe, 0x5d, 0x93, 0x6f, 0x4f, 0x80, 0xd5, 0x79, 0x57, 0xf8, 0xdb, 0xef, 0xdf,
+];
+
 pub const DE_TOPOLOGY_CLASS_ID: [u8; 16] = [
     0x7d, 0x63, 0xc4, 0xac, 0xe0, 0xd5, 0xd5, 0x47, 0xab, 0xcd, 0x9f, 0x25, 0xab, 0x32, 0x6e, 0x6f,
 ];
@@ -888,6 +892,14 @@ pub enum DeChild10_1 {
         raw_rule_count: Option<i32>,
         rules: Vec<RuleSlot10_1<TopologyRule10_1>>,
     },
+    GeometricNetwork {
+        version: u16,
+        geo_dataset_version: u16,
+        dataset: DeDataset10_1,
+        extent: BookmarkEnvelopeEntry10_1,
+        spatial_reference: SpatialReferenceEntry10_1,
+        network: DeGeometricNetwork10_1,
+    },
     FeatureDataset {
         version: u16,
         geo_dataset_version: u16,
@@ -905,6 +917,15 @@ pub enum DeChild10_1 {
         spatial_reference: SpatialReferenceEntry10_1,
         strings: [String; 2],
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeGeometricNetwork10_1 {
+    pub metadata: Option<(i32, String, StringArraySlot10_1)>,
+    pub raw_counts: Option<[i32; 3]>,
+    pub v4: Option<(u16, [u64; 2])>,
+    pub v5: Option<[i32; 2]>,
+    pub v6: Option<u16>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3099,6 +3120,7 @@ fn read_gp_data_element_child(
                     | DE_FEATURE_CLASS_CLASS_ID
                     | DE_FEATURE_DATASET_CLASS_ID
                     | DE_TOPOLOGY_CLASS_ID
+                    | DE_GEOMETRIC_NETWORK_CLASS_ID
             ) =>
         {
             None
@@ -3108,7 +3130,8 @@ fn read_gp_data_element_child(
                 class_id @ (DE_TABLE_CLASS_ID
                 | DE_FEATURE_CLASS_CLASS_ID
                 | DE_FEATURE_DATASET_CLASS_ID
-                | DE_TOPOLOGY_CLASS_ID),
+                | DE_TOPOLOGY_CLASS_ID
+                | DE_GEOMETRIC_NETWORK_CLASS_ID),
             ..
         } => {
             if depth >= MAX_BOOKMARK_NAME_NESTING {
@@ -3119,13 +3142,16 @@ fn read_gp_data_element_child(
             }
             let body = if class_id == DE_TABLE_CLASS_ID {
                 DeChild10_1::Table(read_gp_de_table(reader, max_bytes, refs, depth + 1)?)
-            } else if matches!(class_id, DE_FEATURE_DATASET_CLASS_ID | DE_TOPOLOGY_CLASS_ID) {
+            } else if matches!(
+                class_id,
+                DE_FEATURE_DATASET_CLASS_ID | DE_TOPOLOGY_CLASS_ID | DE_GEOMETRIC_NETWORK_CLASS_ID
+            ) {
                 let version = reader.read_u16_le()?;
                 let geo_dataset_version = reader.read_u16_le()?;
-                let max_version = if class_id == DE_TOPOLOGY_CLASS_ID {
-                    2
-                } else {
-                    1
+                let max_version = match class_id {
+                    DE_TOPOLOGY_CLASS_ID => 2,
+                    DE_GEOMETRIC_NETWORK_CLASS_ID => 6,
+                    _ => 1,
                 };
                 if version > max_version || geo_dataset_version > 1 {
                     return Err(io::Error::new(
@@ -3165,6 +3191,15 @@ fn read_gp_data_element_child(
                         names,
                         raw_rule_count,
                         rules,
+                    }
+                } else if class_id == DE_GEOMETRIC_NETWORK_CLASS_ID {
+                    DeChild10_1::GeometricNetwork {
+                        version,
+                        geo_dataset_version,
+                        dataset,
+                        extent,
+                        spatial_reference,
+                        network: read_de_geometric_network(reader, max_bytes, refs, version)?,
                     }
                 } else {
                     DeChild10_1::FeatureDataset {
@@ -3216,6 +3251,66 @@ fn read_gp_data_element_child(
         }
     };
     Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_de_geometric_network(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    version: u16,
+) -> io::Result<DeGeometricNetwork10_1> {
+    let metadata = if version >= 2 {
+        Some((
+            reader.read_u32_le()? as i32,
+            read_string_10_1(reader, max_bytes)?,
+            read_string_array_slot_10_1(reader, max_bytes, refs)?,
+        ))
+    } else {
+        None
+    };
+    let raw_counts = if version >= 3 {
+        let mut counts = [0; 3];
+        for (count, interface) in
+            counts
+                .iter_mut()
+                .zip(["IConnectivityRule", "INetWeight", "INetWeightAssociation"])
+        {
+            *count = reader.read_u32_le()? as i32;
+            if *count > 0 {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!("DEGeometricNetwork 的非空 {interface} 列表尚未支持"),
+                ));
+            }
+        }
+        Some(counts)
+    } else {
+        None
+    };
+    let v4 = if version >= 4 {
+        Some((
+            reader.read_u16_le()?,
+            [
+                reader.read_f64_le()?.to_bits(),
+                reader.read_f64_le()?.to_bits(),
+            ],
+        ))
+    } else {
+        None
+    };
+    let v5 = if version >= 5 {
+        Some([reader.read_u32_le()? as i32, reader.read_u32_le()? as i32])
+    } else {
+        None
+    };
+    let v6 = (version >= 6).then(|| reader.read_u16_le()).transpose()?;
+    Ok(DeGeometricNetwork10_1 {
+        metadata,
+        raw_counts,
+        v4,
+        v5,
+        v6,
+    })
 }
 
 fn read_topology_rule_slot(

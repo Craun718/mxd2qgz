@@ -7325,10 +7325,10 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
     use mxd2qgz::layers::image_server_rules::RuleSlot10_1;
     use mxd2qgz::maps::map_surround::{
         BookmarkEnvelopeEntry10_1, DE_FEATURE_CLASS_CLASS_ID, DE_FEATURE_DATASET_CLASS_ID,
-        DE_TABLE_CLASS_ID, DE_TOPOLOGY_CLASS_ID, DeChild10_1, DeDataset10_1, DeTable10_1,
-        DeTableIndex10_1, DeTableIndexes10_1, GP_ADDRESS_LOCATOR_STYLE_CLASS_ID,
-        GP_GEOMETRIC_NETWORK_MEMBERSHIP_CLASS_ID, GP_SUBTYPE_CLASS_ID,
-        GP_TOPOLOGY_MEMBERSHIP_CLASS_ID, GpAddressLocatorStyleConfig10_1,
+        DE_GEOMETRIC_NETWORK_CLASS_ID, DE_TABLE_CLASS_ID, DE_TOPOLOGY_CLASS_ID, DeChild10_1,
+        DeDataset10_1, DeGeometricNetwork10_1, DeTable10_1, DeTableIndex10_1, DeTableIndexes10_1,
+        GP_ADDRESS_LOCATOR_STYLE_CLASS_ID, GP_GEOMETRIC_NETWORK_MEMBERSHIP_CLASS_ID,
+        GP_SUBTYPE_CLASS_ID, GP_TOPOLOGY_MEMBERSHIP_CLASS_ID, GpAddressLocatorStyleConfig10_1,
         GpAddressLocatorStyleRow10_1, GpAddressLocatorStyleRowValues10_1, GpCodedValue10_1,
         GpControllerMembership10_1, GpSubtype10_1, GpSubtypeField10_1, INDEX_CLASS_ID,
         INDEXES_CLASS_ID, TOPOLOGY_RULE_CLASS_ID, TopologyRule10_1,
@@ -7415,7 +7415,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
         for unit in "<x/>".encode_utf16().chain([0]) {
             payload.extend(unit.to_le_bytes());
         }
-        payload.extend(4_i32.to_le_bytes());
+        payload.extend(5_i32.to_le_bytes());
         payload.extend(bookmark_entry_10_1(&DE_FEATURE_CLASS_CLASS_ID, 28));
         payload.extend(1_u16.to_le_bytes());
         payload.extend([0; 10]);
@@ -7442,6 +7442,35 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
             payload.extend(bookmark_string_10_1(""));
         }
         payload.extend([0; 54]);
+        payload.extend(bookmark_entry_10_1(&DE_GEOMETRIC_NETWORK_CLASS_ID, 32));
+        let network_version = version + 2;
+        payload.extend(network_version.to_le_bytes());
+        payload.extend([1, 0]);
+        payload.extend([0; 8]);
+        for _ in 0..3 {
+            payload.extend(bookmark_string_10_1(""));
+        }
+        payload.extend([0; 54]);
+        payload.extend(15_i32.to_le_bytes());
+        payload.extend(bookmark_string_10_1("网络"));
+        payload.extend([0; 16]);
+        if network_version >= 3 {
+            for count in [-1_i32, 0, -2] {
+                payload.extend(count.to_le_bytes());
+            }
+        }
+        if network_version >= 4 {
+            payload.extend(5_u16.to_le_bytes());
+            payload.extend(1.5_f64.to_le_bytes());
+            payload.extend(2.5_f64.to_le_bytes());
+        }
+        if network_version >= 5 {
+            payload.extend(6_i32.to_le_bytes());
+            payload.extend(7_i32.to_le_bytes());
+        }
+        if network_version >= 6 {
+            payload.extend(8_u16.to_le_bytes());
+        }
         payload.extend(bookmark_entry_10_1(&DE_TOPOLOGY_CLASS_ID, 30));
         payload.extend([2, 0, 1, 0]);
         payload.extend([0; 8]);
@@ -7601,7 +7630,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                     element_strings: ["目录", "名称", "标题"].map(String::from),
                                     element_shorts: [0, 0, u16::MAX],
                                     element_legacy_xml: Some("<x/>".into()),
-                                    raw_child_count: 4,
+                                    raw_child_count: 5,
                                     children: vec![
                                         RuleSlot10_1 {
                                             entry: ObjectEntry10_1::NewObject {
@@ -7692,6 +7721,50 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                                 },
                                                 extent: BookmarkEnvelopeEntry10_1::Null,
                                                 spatial_reference: SpatialReferenceEntry10_1::Null,
+                                            })),
+                                        },
+                                        RuleSlot10_1 {
+                                            entry: ObjectEntry10_1::NewObject {
+                                                class_id: DE_GEOMETRIC_NETWORK_CLASS_ID,
+                                                key: 32,
+                                            },
+                                            body: Some(Box::new(DeChild10_1::GeometricNetwork {
+                                                version: network_version,
+                                                geo_dataset_version: 1,
+                                                dataset: DeDataset10_1 {
+                                                    dataset_version: 0,
+                                                    element_version: 0,
+                                                    gp_value_version: 0,
+                                                    gp_value_short: 0,
+                                                    element_strings: Default::default(),
+                                                    element_shorts: [0; 3],
+                                                    element_legacy_xml: None,
+                                                    raw_child_count: 0,
+                                                    children: Vec::new(),
+                                                    dataset_longs: [0; 2],
+                                                    dataset_shorts: [0; 2],
+                                                    dataset_string: None,
+                                                },
+                                                extent: BookmarkEnvelopeEntry10_1::Null,
+                                                spatial_reference: SpatialReferenceEntry10_1::Null,
+                                                network: DeGeometricNetwork10_1 {
+                                                    metadata: Some((
+                                                        15,
+                                                        "网络".into(),
+                                                        StringArraySlot10_1 {
+                                                            entry: ObjectEntry10_1::Null,
+                                                            body: None,
+                                                        },
+                                                    )),
+                                                    raw_counts: (network_version >= 3)
+                                                        .then_some([-1, 0, -2]),
+                                                    v4: (network_version >= 4).then_some((
+                                                        5,
+                                                        [1.5_f64.to_bits(), 2.5_f64.to_bits()],
+                                                    )),
+                                                    v5: (network_version >= 5).then_some([6, 7]),
+                                                    v6: (network_version >= 6).then_some(8),
+                                                },
                                             })),
                                         },
                                         RuleSlot10_1 {
