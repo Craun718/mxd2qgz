@@ -612,6 +612,7 @@
       - [x] 接入 GroupLayer 完整体尾段及普通关联图层入口（由子对象完整性决定是否提交；SDK brazil.mxd 首个 v11 体完整对位）。
       - [x] 接入普通关联 ILayer 与 Map 普通图层条目的 RasterLayer v0–11、v13–17，保留后继对象边界。
       - [ ] 支持无外层长度的普通 RasterLayer v12 对象体；原生依赖数据集打开结果，有界体已覆盖两种形态。
+      - [x] 核对普通 RasterLayer v12 单名称打开失败后仍进入渲染器读取的原生分支。[取证](docs/mxd-10.1-raster-layer-tail.md#v12-单名称打开失败后的读取)
       - [x] 排查普通 RasterLayer v12 空名称列表的原生失败边界。[取证](docs/mxd-10.1-raster-layer-tail.md#v12-空名称列表的原生边界)
       - [x] 核对普通 RasterLayer v12 的直接宿主边界传播，并验证无界 WCS 回滚。[宿主取证](docs/mxd-10.1-raster-layer-tail.md#v12-直接宿主的边界传播)
       - [x] 追踪 RasterLayer v12 数据集指针的赋值，并执行 10.1 原始指令测定两种尾段消费长度。[原生读取实验](docs/mxd-10.1-raster-layer-tail.md#v12-尾段的原生读取实验)
