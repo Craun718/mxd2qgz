@@ -215,6 +215,11 @@ Load `0x71367ac0` 对应的读取器，保留 v1 IName 与其余版本 IUnknown
 的子槽区别。构造格网槽覆盖 v1/v2 空子槽、对象边界及截断回滚。
 真实格网宿主与 ArcMap 显示仍待验证。
 
+ShortcutName 与书签共用 SystemCore.dll 10.1.0.3035 Load
+`0x7ffdc250` 的 BSTR 和 IName 子槽读取规则，沿用同一层数限制。
+构造测试覆盖两级 ShortcutName、键登记、后继格网字符串与截断回滚。
+真实格网宿主和 ArcMap 显示仍待验证。
+
 ### 叠加格网的关系查询名称
 
 在 MapElements.dll 10.1.0.3035 的 CustomOverlayGrid Load

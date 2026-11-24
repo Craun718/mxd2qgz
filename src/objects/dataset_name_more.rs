@@ -83,8 +83,9 @@ use crate::layers::wcs_name::{
 use crate::maps::map_surround::{
     BookmarkNameEntry10_1, LAS_DATASET_NAME_CLASS_ID, LOCATOR_WORKSPACE_NAME_CLASS_ID,
     LasDatasetName10_1, REPRESENTATION_CLASS_NAME_CLASS_ID, RepresentationClassName10_1,
-    SCHEMATIC_WORKSPACE_NAME_CLASS_ID, read_las_dataset_name_body_10_1,
+    SCHEMATIC_WORKSPACE_NAME_CLASS_ID, SHORTCUT_NAME_CLASS_ID, read_las_dataset_name_body_10_1,
     read_locator_workspace_name_body_10_1, read_representation_class_name_body_10_1,
+    read_shortcut_name_body_10_1,
 };
 use crate::maps::standalone_table::{
     FGDB_TABLE_NAME_CLASS_ID, OBJECT_CLASS_NAME_CLASS_ID, TABLE_NAME_CLASS_ID, TableNameBody10_1,
@@ -375,6 +376,7 @@ pub fn read_feature_query_name_body_10_1(
 /// IDatasetName 槽（请求 IID `{89E75917-…}`）新对象的分派读取结果。
 #[derive(Debug, Clone, PartialEq)]
 pub enum DatasetNameMoreBody10_1 {
+    Shortcut(Box<BookmarkNameEntry10_1>),
     LocatorWorkspace(Box<BookmarkNameEntry10_1>),
     RepresentationClass(Box<RepresentationClassName10_1>),
     LasDataset(Box<LasDatasetName10_1>),
@@ -1194,6 +1196,12 @@ fn read_dataset_name_object_body_10_1(
             )?)),
             None,
         )),
+        SHORTCUT_NAME_CLASS_ID => Ok((
+            DatasetNameMoreBody10_1::Shortcut(Box::new(read_shortcut_name_body_10_1(
+                reader, max_bytes, table, 0,
+            )?)),
+            None,
+        )),
         LOCATOR_WORKSPACE_NAME_CLASS_ID => Ok((
             DatasetNameMoreBody10_1::LocatorWorkspace(Box::new(
                 read_locator_workspace_name_body_10_1(reader, max_bytes, table, 0)?,
@@ -1561,6 +1569,7 @@ pub(crate) fn read_overlay_name_slot_10_1(
                     | WMTS_CONNECTION_NAME_CLASS_ID
                     | WORKSPACE_NAME_CLASS_ID
                     | LOCATOR_WORKSPACE_NAME_CLASS_ID
+                    | SHORTCUT_NAME_CLASS_ID
                     | FEATURE_DATASET_NAME_CLASS_ID
                     | COVERAGE_NAME_CLASS_ID
                     | TIN_NAME_CLASS_ID
@@ -2306,6 +2315,39 @@ mod tests {
             assert_eq!(reader.position(), end);
             assert_eq!(read_string_10_1(&mut reader, 256).unwrap(), "格网编号");
         }
+    }
+
+    #[test]
+    fn overlay_shortcut_reads_nested_target_and_following_string() {
+        let mut bytes = Vec::new();
+        for key in [90, 91] {
+            bytes.extend(entry(&SHORTCUT_NAME_CLASS_ID, key));
+            bytes.extend(1_i16.to_le_bytes());
+            bytes.extend(0_u32.to_le_bytes()); // 空 BSTR。
+        }
+        bytes.extend([0; 16]);
+        let end = bytes.len();
+        bytes.extend(str_bytes("格网编号"));
+        let mut refs = RefTable10_1::new();
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            assert!(read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+        let mut reader = Reader::new(&bytes);
+        let slot = read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).unwrap();
+        let DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::Shortcut(body)) = slot else {
+            panic!("应读取 ShortcutName");
+        };
+        assert!(
+            matches!(body.as_ref(), BookmarkNameEntry10_1::ShortcutName { target, .. }
+            if matches!(target.as_ref(), BookmarkNameEntry10_1::ShortcutName { .. }))
+        );
+        assert_eq!(refs.registered_class(90), Some(SHORTCUT_NAME_CLASS_ID));
+        assert_eq!(refs.registered_class(91), Some(SHORTCUT_NAME_CLASS_ID));
+        assert_eq!(reader.position(), end);
+        assert_eq!(read_string_10_1(&mut reader, 256).unwrap(), "格网编号");
     }
 
     #[test]

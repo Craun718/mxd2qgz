@@ -9298,6 +9298,34 @@ pub(crate) fn read_locator_workspace_name_body_10_1(
     })
 }
 
+pub(crate) fn read_shortcut_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    name_depth: usize,
+) -> io::Result<BookmarkNameEntry10_1> {
+    if name_depth == MAX_BOOKMARK_NAME_NESTING {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "ShortcutName 嵌套层数超限",
+        ));
+    }
+    let version = reader.read_u16_le()? as i16;
+    if version > 1 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("ShortcutName 版本 {version} 超出 10.1 上限"),
+        ));
+    }
+    let name_string = crate::stream::native_string::read_bstr_string_10_1(reader, max_bytes)?;
+    let target = read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth + 1)?;
+    Ok(BookmarkNameEntry10_1::ShortcutName {
+        version,
+        name_string,
+        target: Box::new(target),
+    })
+}
+
 fn read_bookmark_name_slot_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -9822,29 +9850,7 @@ fn read_bookmark_name_slot_10_1(
         ObjectEntry10_1::NewObject {
             class_id: SHORTCUT_NAME_CLASS_ID,
             ..
-        } => {
-            if name_depth == MAX_BOOKMARK_NAME_NESTING {
-                return Err(io::Error::new(
-                    ErrorKind::InvalidData,
-                    "ShortcutName 嵌套层数超限",
-                ));
-            }
-            let version = reader.read_u16_le()? as i16;
-            if version > 1 {
-                return Err(io::Error::new(
-                    ErrorKind::InvalidData,
-                    format!("ShortcutName 版本 {version} 超出 10.1 上限"),
-                ));
-            }
-            let name_string =
-                crate::stream::native_string::read_bstr_string_10_1(reader, max_bytes)?;
-            let target = read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth + 1)?;
-            BookmarkNameEntry10_1::ShortcutName {
-                version,
-                name_string,
-                target: Box::new(target),
-            }
-        }
+        } => read_shortcut_name_body_10_1(reader, max_bytes, table, name_depth)?,
         ObjectEntry10_1::NewObject {
             class_id: FILE_NAME_CLASS_ID,
             ..
