@@ -1488,6 +1488,25 @@ GPSACore、GdbNetwork 的 10.1.0.3035 摘要一致。
 继承或重写 get_FullName 的其他类型仍需逐类核对。
 本轮未在 ArcMap 中人工验证。
 
+FileDataElements.dll 10.1.0.3035（SHA-256
+`5c4703596f243daf7025cc1d0e435cf6522dbcb4a02b77529d0694aef4ef5f3c`）
+的四个工厂在 +0x10 接口视图的 +0x14 槽分别选择下表记录。
+记录数按各自名称查找的 20 字节步长及排他上界核对。
+
+| 工厂 | 接口表 | 名称槽入口 | 名称表范围 | 记录数 |
+| --- | --- | --- | --- | --- |
+| DEArcInfoDataTypeFactory | `0x6f9d7974` | `0x6f9b1470` | `0x6f9ee2e8..0x6f9ee338` | 4 |
+| DECadDataTypeFactory | `0x6f9d8938` | `0x6f9b5680` | `0x6f9ee270..0x6f9ee284` | 1 |
+| DEGxDataTypeFactory | `0x6f9da924` | `0x6f9bd610` | `0x6f9ee100..0x6f9ee218` | 14 |
+| DEVPFDataTypeFactory | `0x6f9dcce0` | `0x6f9c7460` | `0x6f9ee0c8..0x6f9ee0f0` | 2 |
+
+四个入口选中记录后都调用 `0x6f9bd190`，它在
+`0x6f9bd1c2` 委派到 `0x6f9b1b50`。后者固定
+使用 `0x6f9d7a14` 的 GPDataTypeName CLSID，
+配置数据类型名后返回名称接口。因此 21 条名称记录均落在
+已有的 GPMultiValue 名称分派范围。其他 IName 产物及真实
+MXD 宿主仍待核对，未在 ArcMap 中人工验证。
+
 #### GPValueTable
 
 GpObjects.dll 10.1.0.3035 的 RTTI `0x74801cd4` 对应持久化虚表
