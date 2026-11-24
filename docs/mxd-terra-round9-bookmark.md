@@ -3242,3 +3242,13 @@ Operator 导出在 `0x7108e6c7` 显式设置 VT_BSTR。
 因此通用属性集解析须保留操作数的原始 Variant 类型。
 以上往返路径允许保留 Variant 本身，但没有给出某个对象
 CLSID 实际进入配置的证据。仍需样本或运行取证。
+
+本地宿主筛查按 Windows 磁盘字节序查找 DENetworkDataset、
+SDCNetworkAttribute、SDCNetworkAttributeParameterArray、
+NetworkConstantEvaluator 和 NetworkFunctionEvaluator 的完整
+16 字节类标识。ArcMap 10.1 介质已提取的 132 条流、
+10.8 介质的 136 条流，以及本地 71 个 MXD/MXT 中用
+`mxd2qgz extract` 成功读取的 138 条流均无命中。
+范围为 `/Maps` 和 `/PageLayout`，三组输入可能重叠。
+该结果只用于排除这些流作为明文类标识的取证来源，
+不覆盖其他流、间接表示或包裹数据，也没有进行 ArcMap 人工检查。
