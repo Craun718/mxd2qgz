@@ -1,5 +1,8 @@
 //! GdbNetwork.dll 10.1 的网络源方向对象，见 docs/mxd-terra-round9-bookmark.md。
 
+use crate::objects::property_set::{
+    PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1, read_property_set_object_stream_10_1,
+};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
@@ -79,7 +82,7 @@ fn read_slot<T>(
     reader: &mut Reader<'_>,
     refs: &mut RefTable10_1,
     expected: [u8; 16],
-    read: impl FnOnce(&mut Reader<'_>) -> io::Result<T>,
+    read: impl FnOnce(&mut Reader<'_>, &mut RefTable10_1) -> io::Result<T>,
 ) -> io::Result<DirectionSlot10_1<T>> {
     let entry = read_object_entry_10_1(reader, refs)?;
     let body = match entry {
@@ -89,7 +92,9 @@ fn read_slot<T>(
         {
             None
         }
-        ObjectEntry10_1::NewObject { class_id, .. } if class_id == expected => Some(read(reader)?),
+        ObjectEntry10_1::NewObject { class_id, .. } if class_id == expected => {
+            Some(read(reader, refs)?)
+        }
         _ => {
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
@@ -164,20 +169,20 @@ pub fn read_network_source_directions_body_10_1(
     let shields_flag = reader.read_u32_le()?;
     let shields = (shields_flag != 0)
         .then(|| {
-            read_slot(reader, refs, SHIELDS_CLASS_ID, |r| {
+            read_slot(reader, refs, SHIELDS_CLASS_ID, |r, _| {
                 read_shields(r, max_bytes)
             })
         })
         .transpose()?;
     let street_names = read_list(reader, 16, max_bytes, |r| {
-        read_slot(r, refs, STREET_NAME_FIELDS_CLASS_ID, |r| {
+        read_slot(r, refs, STREET_NAME_FIELDS_CLASS_ID, |r, _| {
             read_street_names(r, max_bytes)
         })
     })?;
     let field_mappings = (version == 2)
         .then(|| {
             read_list(reader, 16, max_bytes, |r| {
-                read_slot(r, refs, DIRECTIONS_FIELD_MAPPING_CLASS_ID, |r| {
+                read_slot(r, refs, DIRECTIONS_FIELD_MAPPING_CLASS_ID, |r, _| {
                     if r.read_u16_le()? != 1 {
                         return Err(version_error("DirectionsFieldMapping"));
                     }
@@ -196,6 +201,137 @@ pub fn read_network_source_directions_body_10_1(
         shields,
         street_names,
         field_mappings,
+    })
+}
+
+pub const NETWORK_SOURCE_CLASS_ID: [u8; 16] = [
+    0x6d, 0xd0, 0xe3, 0x32, 0x92, 0xf7, 0xeb, 0x45, 0x10, 0x89, 0xa6, 0xea, 0x57, 0x23, 0x2b, 0xc0,
+];
+pub const EDGE_FEATURE_SOURCE_CLASS_ID: [u8; 16] = [
+    0x50, 0x0d, 0x14, 0xf2, 0x26, 0x6b, 0x4d, 0x41, 0xa3, 0x9f, 0xf3, 0x5a, 0xc5, 0x4d, 0x10, 0xde,
+];
+pub const JUNCTION_FEATURE_SOURCE_CLASS_ID: [u8; 16] = [
+    0xbd, 0x71, 0xc8, 0x74, 0x8e, 0x64, 0xc0, 0x40, 0xa4, 0x6a, 0xe3, 0x85, 0x21, 0x21, 0x6a, 0x7b,
+];
+pub const SYSTEM_JUNCTION_SOURCE_CLASS_ID: [u8; 16] = [
+    0x1f, 0x18, 0x9f, 0x61, 0x40, 0x4a, 0x95, 0x4a, 0xbc, 0xeb, 0x5c, 0xa7, 0xc8, 0xc6, 0x3b, 0x60,
+];
+pub const TURN_FEATURE_SOURCE_CLASS_ID: [u8; 16] = [
+    0x7b, 0x04, 0xbb, 0x44, 0x80, 0xc0, 0x97, 0x45, 0xb3, 0x6b, 0xe5, 0x69, 0x05, 0x98, 0x3c, 0x4c,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NetworkSource10_1 {
+    pub version: i16,
+    pub initial_values: [u32; 2],
+    pub name: String,
+    pub value: u32,
+    pub properties: DirectionSlot10_1<PropertySetObjectStream10_1>,
+    pub extension: Option<NetworkSourceExtension10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NetworkSourceExtension10_1 {
+    pub version: i16,
+    pub directions: Option<(u32, Option<DirectionSlot10_1<NetworkSourceDirections10_1>>)>,
+    pub names: Vec<(u32, Option<String>)>,
+    pub properties: Option<DirectionSlot10_1<PropertySetObjectStream10_1>>,
+}
+
+fn read_source_version(reader: &mut Reader<'_>) -> io::Result<i16> {
+    let version = reader.read_u16_le()? as i16;
+    if version > 1 {
+        return Err(version_error("NetworkSource"));
+    }
+    Ok(version)
+}
+
+fn read_flagged<T>(
+    reader: &mut Reader<'_>,
+    read: impl FnOnce(&mut Reader<'_>) -> io::Result<T>,
+) -> io::Result<(u32, Option<T>)> {
+    let flag = reader.read_u32_le()?;
+    Ok((flag, (flag != 0).then(|| read(reader)).transpose()?))
+}
+
+/// 读取 INetworkSource 槽。宿主负责在失败时回退游标及引用表。
+pub fn read_network_source_slot_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<DirectionSlot10_1<NetworkSource10_1>> {
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let class_id = match entry {
+        ObjectEntry10_1::Null => return Ok(DirectionSlot10_1 { entry, body: None }),
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            refs.registered_class(key).unwrap_or(class_id)
+        }
+        ObjectEntry10_1::NewObject { class_id, .. } => class_id,
+    };
+    let name_count = match class_id {
+        EDGE_FEATURE_SOURCE_CLASS_ID => 2,
+        JUNCTION_FEATURE_SOURCE_CLASS_ID | SYSTEM_JUNCTION_SOURCE_CLASS_ID => 1,
+        NETWORK_SOURCE_CLASS_ID | TURN_FEATURE_SOURCE_CLASS_ID => 0,
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "INetworkSource 槽包含未知对象类",
+            ));
+        }
+    };
+    if matches!(entry, ObjectEntry10_1::BackReference { .. }) {
+        return Ok(DirectionSlot10_1 { entry, body: None });
+    }
+
+    let read_properties = |r: &mut Reader<'_>, refs: &mut RefTable10_1| {
+        read_slot(r, refs, PROPERTY_SET_CLASS_ID, |r, refs| {
+            read_property_set_object_stream_10_1(r, max_bytes, refs)
+        })
+    };
+    let version = read_source_version(reader)?;
+    let initial_values = [reader.read_u32_le()?, reader.read_u32_le()?];
+    let name = read_string_10_1(reader, max_bytes)?;
+    let value = reader.read_u32_le()?;
+    let properties = read_properties(reader, refs)?;
+    let extension = (name_count != 0)
+        .then(|| -> io::Result<_> {
+            let version = read_source_version(reader)?;
+            let feature_source = class_id != SYSTEM_JUNCTION_SOURCE_CLASS_ID;
+            let directions = feature_source
+                .then(|| {
+                    read_flagged(reader, |r| {
+                        read_slot(r, refs, NETWORK_SOURCE_DIRECTIONS_CLASS_ID, |r, refs| {
+                            read_network_source_directions_body_10_1(r, max_bytes, refs)
+                        })
+                    })
+                })
+                .transpose()?;
+            let mut names = Vec::new();
+            for _ in 0..name_count {
+                names.push(read_flagged(reader, |r| read_string_10_1(r, max_bytes))?);
+            }
+            let properties = feature_source
+                .then(|| read_properties(reader, refs))
+                .transpose()?;
+            Ok(NetworkSourceExtension10_1 {
+                version,
+                directions,
+                names,
+                properties,
+            })
+        })
+        .transpose()?;
+    let body = NetworkSource10_1 {
+        version,
+        initial_values,
+        name,
+        value,
+        properties,
+        extension,
+    };
+    Ok(DirectionSlot10_1 {
+        entry,
+        body: Some(body),
     })
 }
 
@@ -218,6 +354,67 @@ mod tests {
             &mut RefTable10_1::new(),
         )?;
         Ok((body, reader.position()))
+    }
+
+    #[test]
+    fn network_source_reads_all_derived_boundaries() {
+        for (class, names, directions) in [
+            (NETWORK_SOURCE_CLASS_ID, 0, false),
+            (TURN_FEATURE_SOURCE_CLASS_ID, 0, false),
+            (SYSTEM_JUNCTION_SOURCE_CLASS_ID, 1, false),
+            (JUNCTION_FEATURE_SOURCE_CLASS_ID, 1, true),
+            (EDGE_FEATURE_SOURCE_CLASS_ID, 2, true),
+        ] {
+            let mut bytes = Vec::new();
+            object(&mut bytes, class, 1);
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend([0; 8]);
+            bytes.extend(EMPTY);
+            bytes.extend([0; 20]);
+            if names > 0 {
+                bytes.extend(1_u16.to_le_bytes());
+                if directions {
+                    bytes.extend(1_u32.to_le_bytes());
+                    object(&mut bytes, NETWORK_SOURCE_DIRECTIONS_CLASS_ID, 2);
+                    bytes.extend(0_u16.to_le_bytes());
+                    bytes.extend(EMPTY);
+                    bytes.extend([0; 8]);
+                }
+                for _ in 0..names {
+                    bytes.extend(4_u32.to_le_bytes());
+                    bytes.extend(EMPTY);
+                }
+                if directions {
+                    bytes.extend([0; 16]);
+                }
+            }
+            let end = bytes.len();
+            bytes.push(0xaa);
+            let mut reader = Reader::new(&bytes);
+            let slot =
+                read_network_source_slot_10_1(&mut reader, bytes.len(), &mut RefTable10_1::new())
+                    .unwrap();
+            assert_eq!(reader.position(), end);
+            let extension = slot.body.unwrap().extension;
+            assert_eq!(extension.as_ref().map_or(0, |ext| ext.names.len()), names);
+            assert_eq!(
+                extension
+                    .as_ref()
+                    .is_some_and(|ext| ext.directions.is_some()),
+                directions
+            );
+            for end in 0..end {
+                assert!(
+                    read_network_source_slot_10_1(
+                        &mut Reader::new(&bytes[..end]),
+                        bytes.len(),
+                        &mut RefTable10_1::new(),
+                    )
+                    .is_err(),
+                    "截断位置 {end}"
+                );
+            }
+        }
     }
 
     #[test]

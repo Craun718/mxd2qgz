@@ -2949,8 +2949,9 @@ PE RTTI 的 +0x10 虚表给出以下不同的流读取入口。
 | TurnFeatureSource | `0x7119c81c` | `0x710af840` |
 
 EdgeFeatureSource 在 `0x70fd29a0` 调用 NetworkSource::Load
-后检查派生版本上限 1。派生体包含条件对象槽、定宽列表和
-IPropertySet 槽。其他源类的派生边界仍待核对。
+后检查派生版本上限 1。派生体包含条件方向对象槽、两个各由 long 标志控制的
+AfCore String 槽和 IPropertySet 槽。两个标志分别在
+`0x70fd2a29`、`0x70fd2a58` 读取。
 
 NetworkSource::Load `0x7109bc30` 读取 short，按
 `0x711e04d0` 的有符号上限 1 比较。随后依次读取两个 long、
@@ -2959,11 +2960,12 @@ AfCore String、一个 long 和 IPropertySet。
 SystemJunctionSource 经 `0x710a5a1d` 读取派生版本，
 上限 1，再在 `0x710a5a45` 读 long，非零时追加 String。
 JunctionFeatureSource 同样检查派生版本上限 1，随后读取
-条件对象槽标志、可选对象、一组字符串的有符号计数和循环，
-最后加载 IPropertySet。其条件对象槽与 EdgeFeatureSource
+条件对象槽标志、可选对象及一个由 long 标志控制的
+AfCore String，最后加载 IPropertySet。标志读取点
+`0x70fe00b8` 只有一次条件 String 调用 `0x70fe00ce`。其条件对象槽与 EdgeFeatureSource
 使用同一地址 `0x71192018` 的 IID
 `DFE6C801-152D-4D0F-B3AA-54331384D777`。
-该槽的具体类体及源类接口的完整分派仍待核对。
+该槽的具体类体见下文。
 
 NetworkSourceDirections 的主虚表为 `0x7119ae14`。QI 在
 `0x7109cf07` 比对上述 IID，命中时返回对象 +0x10。
@@ -3025,5 +3027,7 @@ SaveObject，将两个对象分别序列化到内存流，再在
 
 Rust 对象体读取器已覆盖 NetworkSourceDirections 及上表三类。
 构造测试检查方向对象版本 0–2、三个非空子对象槽、回引、
-计数限额、未知类和逐字节截断。读取器暂未接入
-DENetworkDataset 的 INetworkSource 集合，真实 MXD 仍待验证。
+计数限额、未知类和逐字节截断。读取器已接入 EdgeFeatureSource 和 JunctionFeatureSource 的
+方向对象槽。INetworkSource 读取器识别 GdbNetwork.dll 的
+五个类型库类，构造测试覆盖各派生边界及逐字节截断。
+DENetworkDataset 集合接线及真实 MXD 仍待验证。
