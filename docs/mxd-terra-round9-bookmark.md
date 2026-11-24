@@ -2415,3 +2415,14 @@ esriDataSourcesFile 类型库对应关系如下。
 保留扩展标志默认值，复用简短表体读取布局。
 构造测试检查两类对象的表字段、结束位置和逐字节截断。
 真实 MXD 宿主仍待验证。
+
+#### DECadDrawingDataset
+
+FileDataElements.dll 10.1.0.3035 的持久化表 `0x6f9d8b8c`
+对应 esriDataSourcesFile 类型库的 CLSID
+`F786332D-20B2-4607-BF34-0A53E4D0B413`。
+Load `0x6f9b6540` 接受无符号版本 0、1，经导入槽
+`0x6f9d71e4` 调 DEGeoDataset::Load，随后从
+`0x6f9b659e` 起读取四个 short，依次写入 +0x90、+0x92、
++0x94、+0x96。构造测试覆盖四个字段、截断与结束位置。
+字段语义和真实 MXD 宿主仍待核对。

@@ -539,6 +539,10 @@ const GP_COMPOSITE_LAYER_CLASS_ID: [u8; 16] = [
     0x51, 0x4b, 0x99, 0x22, 0xba, 0xc6, 0xff, 0x41, 0xab, 0xe6, 0x54, 0x96, 0x15, 0x44, 0x1e, 0x3f,
 ];
 
+pub const DE_CAD_DRAWING_DATASET_CLASS_ID: [u8; 16] = [
+    0x2d, 0x33, 0x86, 0xf7, 0xb2, 0x20, 0x07, 0x46, 0xbf, 0x34, 0x0a, 0x53, 0xe4, 0xd0, 0xb4, 0x13,
+];
+
 pub const DE_DBASE_TABLE_CLASS_ID: [u8; 16] = [
     0x76, 0x41, 0xe8, 0x69, 0x98, 0xfb, 0x36, 0x40, 0xa8, 0xff, 0xe6, 0x9c, 0x8e, 0x82, 0xf0, 0x13,
 ];
@@ -1026,6 +1030,14 @@ pub struct GpLayer10_1 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
+    CadDrawingDataset {
+        version: u16,
+        geo_dataset_version: u16,
+        dataset: DeDataset10_1,
+        extent: BookmarkEnvelopeEntry10_1,
+        spatial_reference: SpatialReferenceEntry10_1,
+        raw_shorts: [u16; 4],
+    },
     FileTable {
         version: u16,
         table: DeCompactTable10_1,
@@ -3550,6 +3562,7 @@ fn read_gp_data_element_child(
                     | DE_FEATURE_CLASS_CLASS_ID
                     | DE_RASTER_CATALOG_CLASS_ID
                     | DE_RASTER_DATASET_CLASS_ID
+                    | DE_CAD_DRAWING_DATASET_CLASS_ID
                     | DE_RASTER_BAND_CLASS_ID
                     | DE_FEATURE_DATASET_CLASS_ID
                     | DE_CATALOG_DATASET_CLASS_ID
@@ -3584,6 +3597,7 @@ fn read_gp_data_element_child(
                 | DE_FEATURE_CLASS_CLASS_ID
                 | DE_RASTER_CATALOG_CLASS_ID
                 | DE_RASTER_DATASET_CLASS_ID
+                | DE_CAD_DRAWING_DATASET_CLASS_ID
                 | DE_RASTER_BAND_CLASS_ID
                 | DE_FEATURE_DATASET_CLASS_ID
                 | DE_CATALOG_DATASET_CLASS_ID
@@ -3732,6 +3746,7 @@ fn read_gp_data_element_child(
                     | DE_GEOMETRIC_NETWORK_CLASS_ID
                     | DE_CATALOG_DATASET_CLASS_ID
                     | DE_RASTER_DATASET_CLASS_ID
+                    | DE_CAD_DRAWING_DATASET_CLASS_ID
             ) {
                 let version = reader.read_u16_le()?;
                 let geo_dataset_version = reader.read_u16_le()?;
@@ -3814,6 +3829,20 @@ fn read_gp_data_element_child(
                         raw_long,
                         raw_short,
                         storage,
+                    }
+                } else if class_id == DE_CAD_DRAWING_DATASET_CLASS_ID {
+                    DeChild10_1::CadDrawingDataset {
+                        version,
+                        geo_dataset_version,
+                        dataset,
+                        extent,
+                        spatial_reference,
+                        raw_shorts: [
+                            reader.read_u16_le()?,
+                            reader.read_u16_le()?,
+                            reader.read_u16_le()?,
+                            reader.read_u16_le()?,
+                        ],
                     }
                 } else if class_id == DE_CATALOG_DATASET_CLASS_ID {
                     DeChild10_1::CatalogDataset {
@@ -7204,6 +7233,46 @@ mod tests {
             assert_eq!(body.v6, (version == 6).then_some(23));
             assert_eq!(reader.position(), end);
         }
+    }
+
+    #[test]
+    fn cad_drawing_dataset_reads_four_trailing_shorts() {
+        let mut bytes = DE_CAD_DRAWING_DATASET_CLASS_ID.to_vec();
+        bytes.extend(34_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend([0; 10]);
+        for _ in 0..3 {
+            bytes.extend([2, 0, 0, 0, 0, 0]);
+        }
+        bytes.extend([0; 54]);
+        for value in [1_u16, 0xffff, 3, 4] {
+            bytes.extend(value.to_le_bytes());
+        }
+        for cut in 0..bytes.len() {
+            assert!(
+                read_gp_data_element_child(
+                    &mut Reader::new(&bytes[..cut]),
+                    1024,
+                    &mut RefTable10_1::new(),
+                    0,
+                )
+                .is_err()
+            );
+        }
+        let end = bytes.len();
+        bytes.push(0xa5);
+        let mut reader = Reader::new(&bytes);
+        let object =
+            read_gp_data_element_child(&mut reader, 1024, &mut RefTable10_1::new(), 0).unwrap();
+        assert!(matches!(
+            object.body.as_deref(),
+            Some(DeChild10_1::CadDrawingDataset {
+                version: 1,
+                raw_shorts: [1, 0xffff, 3, 4],
+                ..
+            })
+        ));
+        assert_eq!(reader.position(), end);
     }
 
     #[test]
