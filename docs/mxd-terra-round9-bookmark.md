@@ -2933,3 +2933,21 @@ INetworkDirections。`0x7118bfa8` 的
 `0x70fbca44` 后的第二个 String 读取要求版本大于 3，
 与入口的无符号上限 3 不相交。版本 0–2 跳过这组字段。
 子对象类、非空复杂列表及真实 MXD 宿主仍待核对。
+
+网络源类的 RTTI 显示 +0x1c 表共享多处方法。以
+EdgeFeatureSource 的 QI `0x70fd1a00` 核对，
+`0x70fd1a07` 比对 INetworkSource，而 IPersistStream
+匹配路径 `0x70fd1b3d`、`0x70fd1b29` 返回完整对象 +0x10。
+PE RTTI 的 +0x10 虚表给出以下不同的流读取入口。
+
+| 类 | 虚表 | Load |
+| --- | --- | --- |
+| NetworkSource | `0x7119ab78` | `0x7109bc30` |
+| EdgeFeatureSource | `0x71191eb4` | `0x70fd2980` |
+| JunctionFeatureSource | `0x71192aec` | `0x70fe0010` |
+| SystemJunctionSource | `0x7119b924` | `0x710a59f0` |
+| TurnFeatureSource | `0x7119c81c` | `0x710af840` |
+
+EdgeFeatureSource 在 `0x70fd29a0` 调用 NetworkSource::Load
+后检查派生版本上限 1。派生体包含条件对象槽、定宽列表和
+IPropertySet 槽。其他源类的派生边界仍待核对。
