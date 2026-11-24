@@ -858,6 +858,7 @@
       - [x] 支持 DEMosaicDataset v4 末表槽中已核实的 IDETable 实现。[取证](docs/mxd-terra-round9-bookmark.md#demosaicdataset)
       - [x] 接入 DERasterCatalogInfo 的 IDERasterCatalog 与 IDETable 对象槽。[取证](docs/mxd-terra-round9-bookmark.md#derastercataloginfo)
       - [x] 在 IDETable 槽接入 DETableInfo、DEFeatureClassInfo 与 DERelationshipClassInfo。[取证](docs/mxd-terra-round9-bookmark.md#紧凑-info-类的-idetable-接口)
+      - [x] 在类型化 IDataElement 槽按登记类预检对象头，无需复制回引表。
       - [x] 接入 DETable 的 GPSubtype 对象及字段行。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的拓扑与几何网络控制器成员。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的 Indexes 与 Index 对象体。[取证](docs/mxd-terra-round9-bookmark.md#detable)

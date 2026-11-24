@@ -7778,11 +7778,12 @@ fn read_typed_data_element_slot(
     interface: &str,
     classes: &[[u8; 16]],
 ) -> io::Result<RuleSlot10_1<DeChild10_1>> {
-    let entry = read_object_entry_10_1(&mut reader.clone(), &mut refs.clone())?;
-    let class = match entry {
-        ObjectEntry10_1::Null => None,
-        ObjectEntry10_1::NewObject { class_id, .. } => Some(class_id),
-        ObjectEntry10_1::BackReference { class_id, key } => {
+    use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
+
+    // 预检只读对象头和登记类。通过接口检查后才消费并登记新键。
+    let class = match read_header_10_1(&mut reader.clone())? {
+        ObjectHeader::Null => None,
+        ObjectHeader::Object { class_id, key } => {
             Some(refs.registered_class(key).unwrap_or(class_id))
         }
     };
@@ -13098,6 +13099,29 @@ mod tests {
             }
             assert_eq!(reader.position(), end);
         }
+    }
+
+    #[test]
+    fn de_table_interface_rejects_wrong_registered_class_without_consuming_header() {
+        let mut refs = RefTable10_1::new();
+        let mut address_header = DE_ADDRESS_LOCATOR_CLASS_ID.to_vec();
+        address_header.extend(55_u32.to_le_bytes());
+        read_object_entry_10_1(&mut Reader::new(&address_header), &mut refs).unwrap();
+
+        let mut table_header = DE_TABLE_CLASS_ID.to_vec();
+        table_header.extend(55_u32.to_le_bytes());
+        let mut reader = Reader::new(&table_header);
+        let error = read_de_table_interface_slot(&mut reader, 1024, &mut refs, 0).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::Unsupported);
+        assert_eq!(reader.position(), 0);
+        assert_eq!(refs.registered_class(55), Some(DE_ADDRESS_LOCATOR_CLASS_ID));
+
+        address_header[16..].copy_from_slice(&56_u32.to_le_bytes());
+        let mut reader = Reader::new(&address_header);
+        let error = read_de_table_interface_slot(&mut reader, 1024, &mut refs, 0).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::Unsupported);
+        assert_eq!(reader.position(), 0);
+        assert!(!refs.contains(56));
     }
 
     #[test]
