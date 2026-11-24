@@ -894,6 +894,28 @@ Variant 对象体分派。构造测试以 PropertySet 验证新键、第二端�
 回引、未知类停止和逐字节截断回滚。真实工程中非空端点的类分布
 及其在 ArcMap 中的语义待验证。
 
+#### 端点的原生赋值
+
+GpObjects.dll 10.1.0.3035 的 `0x746f7820` 在
+`0x746f784b` 创建 `F84C6C1A-47FF-11D2-9933-0000F80372B4`，
+并在 `0x746f7878` 查询 `FCB6BF32-475D-11D2-9932-0000F80372B4`。
+esriGeoDatabase.olb 将两者定名为 RangeDomain 和 IRangeDomain。
+GPRangeDomain 把两个已读出的 Variant 分别交给该接口
++0x10、+0x18（`0x746f7186`、`0x746f71ab`）。
+这两次调用发生在流中的两个 Variant 已经读取之后。
+
+同版 GdbCore.dll（SHA-256
+`ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4`）
+在 `0x709345bb` 比对 IRangeDomain IID，命中时返回对象 +0x60。
+其 `0x70ac5764` 表中上面两槽指向 `0x709348e0`、
+`0x709349d0`。两入口调用 OleAut32 ordinal 12
+VariantChangeType，目标 VARTYPE 为 5（VT_R8）。
+转换成功才将临时 Variant 复制到端点成员，失败直接返回 S_FALSE。
+因此流上允许读到对象值，赋值阶段却要求能转换为数字。
+此证据解释了为何不能从 GPRangeDomain 的端点语义枚举流中
+对象类；未知类仍需以具体流或可复现写方取得证据。
+尚未进行 ArcMap 人工验证。
+
 ### GPWorkspaceDomain
 
 同版 GpObjects.dll 的 RTTI `0x74801e84` 对应持久化虚表
