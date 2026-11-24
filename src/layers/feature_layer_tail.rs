@@ -195,6 +195,7 @@ use crate::objects::display_symbol::{
 use crate::objects::hyperlink::{HYPERLINK_CLASS_ID, HyperlinkBody10_1, read_hyperlink_body_10_1};
 use crate::objects::property_set::{PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
+use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
 use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
@@ -2428,36 +2429,44 @@ pub fn read_feature_layer_successor_10_1(
         //    体含嵌套 RgbColor ×2 整体解析）。未知类为停止点（分派内部已
         //    回退）；闭合符号体内嵌套停止经 SymbolNested 透传。
         if stop.is_none() && (fl_version as i16) > 0xd {
-            let slot_start = trial.clone();
-            match read_symbol_slot_full_10_1(
-                &mut trial,
-                max_bytes,
-                &mut staged_table,
-                MAX_SYMBOL_NESTING_DEPTH,
-            )? {
+            let header = read_header_10_1(&mut trial.clone())?;
+            let slot = match header {
+                ObjectHeader::Object { class_id, key } => {
+                    // 原生按键查询登记实例；新对象则以流中的 CLSID 创建实例。
+                    let actual_class = staged_table
+                        .registered_class(key)
+                        .or_else(|| (!staged_table.contains(key)).then_some(class_id));
+                    if let Some(actual_class) = actual_class
+                        && !is_supported_symbol_class(actual_class)
+                    {
+                        SymbolSlotFull10_1::Unsupported {
+                            class_id: actual_class,
+                            key,
+                        }
+                    } else if staged_table.contains(key) {
+                        read_object_entry_10_1(&mut trial, &mut staged_table)?;
+                        SymbolSlotFull10_1::BackReference {
+                            class_id: actual_class.unwrap_or(class_id),
+                            key,
+                        }
+                    } else {
+                        read_symbol_slot_full_10_1(
+                            &mut trial,
+                            max_bytes,
+                            &mut staged_table,
+                            MAX_SYMBOL_NESTING_DEPTH,
+                        )?
+                    }
+                }
+                ObjectHeader::Null => {
+                    read_object_entry_10_1(&mut trial, &mut staged_table)?;
+                    SymbolSlotFull10_1::Null
+                }
+            };
+            match slot {
                 SymbolSlotFull10_1::Unsupported { class_id, key } => {
                     stop = Some(SuccessorStop10_1::SymbolSlotUnsupported { class_id, key });
                     symbol = Some(SymbolSlotFull10_1::Null);
-                }
-                SymbolSlotFull10_1::BackReference { class_id, key } => {
-                    // 原生按键查询原实例，磁盘回引头的类标识不决定实例类型。
-                    if let Some(registered) = staged_table.registered_class(key) {
-                        if is_supported_symbol_class(registered) {
-                            symbol = Some(SymbolSlotFull10_1::BackReference {
-                                class_id: registered,
-                                key,
-                            });
-                        } else {
-                            trial = slot_start;
-                            stop = Some(SuccessorStop10_1::SymbolSlotUnsupported {
-                                class_id: registered,
-                                key,
-                            });
-                            symbol = Some(SymbolSlotFull10_1::Null);
-                        }
-                    } else {
-                        symbol = Some(SymbolSlotFull10_1::BackReference { class_id, key });
-                    }
                 }
                 SymbolSlotFull10_1::SimpleMarkerSymbol(sms) => {
                     if sms.stop.is_some() {

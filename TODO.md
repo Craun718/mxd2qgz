@@ -640,6 +640,7 @@
       - [x] 以登记类校验 FeatureLayer 后继段 ㉖ 的 ISymbol 回引，并验证错误类的停止位置。[取证](docs/arcmap-10.1-dep-tail.md#featurelayer-后继段的符号回引)
       - [x] 按原生有符号上限读取 BalloonCallout、LineCallout、SimpleLineCallout 和 MarkerTextBackground。[指令取证](docs/arcmap-10.1-dep-tail.md#callout-和文字背景的版本边界)
       - [x] 核对三类 Callout 和 MarkerTextBackground 的主 QI 与回退，排除其作为 FeatureLayer 后继段 ㉖ 的 ISymbol 实例。[接口取证](docs/arcmap-10.1-dep-tail.md#callout-和文字背景的-isymbol-接口核对)
+      - [x] 在 FeatureLayer 后继段 ㉖ 校验新对象类，排除 Template 与 LineDecoration，并复核 DisplayCore 直接 ISymbol 应答入口。[接口取证](docs/arcmap-10.1-dep-tail.md#新对象的接口限制)
       - [ ] FeatureLayer 后继段 ㉖ 槽中未支持的 ISymbol 实现类体（已接入类和跨模块候选见[符号续研](docs/arcmap-10.1-dep-tail.md#featurelayer-符号槽的栅格和-wms-实现)）。
       - [x] 接入 SymbolMimic 的空 IRepresentationRule 槽及两项标量。[原生持久化入口](docs/arcmap-10.1-dep-tail.md#symbolmimic-的持久化入口)
       - [x] 接入 SymbolMimic 中各集合为空的 RepresentationRule 对象体及同类键回引。[原生边界](docs/arcmap-10.1-dep-tail.md#symbolmimic-中的-representationrule)

@@ -2668,6 +2668,23 @@ mod tail_continuation {
             .windows(symbol_header.len())
             .position(|window| window == symbol_header)
             .unwrap();
+        for class_id in [
+            mxd2qgz::objects::display_symbol::TEMPLATE_CLASS_ID,
+            mxd2qgz::objects::display_symbol::LINE_DECORATION_CLASS_ID,
+        ] {
+            let mut data = b[..slot_start + symbol_header.len()].to_vec();
+            data[slot_start..slot_start + 16].copy_from_slice(&class_id);
+            let mut reader = Reader::new(&data);
+            let mut refs = RefTable10_1::new();
+            let result =
+                read_feature_layer_successor_10_1(&mut reader, 34, 4096, &mut refs).unwrap();
+            assert_eq!(
+                result.stop,
+                SuccessorStop10_1::SymbolSlotUnsupported { class_id, key: 90 }
+            );
+            assert_eq!(reader.position(), slot_start);
+            assert!(!refs.contains(90));
+        }
         for (registered, header) in [
             (SIMPLE_MARKER_SYMBOL_CLASS_ID, RGB_COLOR_CLASS_ID),
             (RGB_COLOR_CLASS_ID, SIMPLE_MARKER_SYMBOL_CLASS_ID),

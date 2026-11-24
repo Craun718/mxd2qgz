@@ -371,6 +371,22 @@ SystemCore.dll 同版的 ObjectStream 在 `0x7ffd0063` 按键定位登记
 不一致。前者读完此段，后者在 ㉖ 停止并保留既有键。更多 ISymbol
 实现、对应实档及 ArcMap/QGIS 人工验收仍待核对。
 
+### 新对象的接口限制
+
+同摘要 DisplayCore.dll 中，Template 和 LineDecoration 的构造指令
+`0x6eb86b7a`、`0x6eb5c130` 分别安装主表 `0x6ec110b4`、
+`0x6ec0e468`。首项 QI `0x6eb86e30`、`0x6eb5c230`
+分别匹配 ITemplate（`0x6ec0e0e8`）、ILineDecoration
+（`0x6ec0e0f8`），然后进入公共回退 `0x6ebf6200 → 0x6ebf6b50`。
+该路径对 ISymbol 返回 E_NOINTERFACE。FeatureLayer ㉖ 在消费新对象头
+之前也检查类是否属于已核对的 ISymbol 集合。合成测试验证两类都停在
+对象头起点且不登记新键。
+
+将同版反汇编中向 ECX 装入两个 ISymbol IID 地址的指令与 Ghidra 函数
+入口、完整对象虚表和 RTTI 交叉核对，得到 22 个应答入口，均能对应
+已接入的 DisplayCore 符号类。该检索覆盖直接装载这两个地址的指令，
+其他寻址形式及其他模块仍待追查。ArcMap/QGIS 人工验收未进行。
+
 ## FeatureLayer 后继段的统计图符号
 
 证据来自 ArcGIS Desktop 安装介质的 `DisplayCore.dll` PE32，文件版本
