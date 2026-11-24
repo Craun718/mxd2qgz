@@ -80,6 +80,9 @@ use crate::layers::wcs_name::{
     WCS_CONNECTION_NAME_CLASS_ID, WCS_COVERAGE_NAME_CLASS_ID, WMS_CONNECTION_NAME_CLASS_ID,
     WMTS_CONNECTION_NAME_CLASS_ID,
 };
+use crate::maps::map_surround::{
+    LAS_DATASET_NAME_CLASS_ID, LasDatasetName10_1, read_las_dataset_name_body_10_1,
+};
 use crate::maps::standalone_table::{
     FGDB_TABLE_NAME_CLASS_ID, OBJECT_CLASS_NAME_CLASS_ID, TABLE_NAME_CLASS_ID, TableNameBody10_1,
     read_fgdb_table_name_body_10_1, read_table_name_body_10_1,
@@ -369,6 +372,7 @@ pub fn read_feature_query_name_body_10_1(
 /// IDatasetName 槽（请求 IID `{89E75917-…}`）新对象的分派读取结果。
 #[derive(Debug, Clone, PartialEq)]
 pub enum DatasetNameMoreBody10_1 {
+    LasDataset(Box<LasDatasetName10_1>),
     Tin(Box<TinName10_1>),
     Terrain(Box<TerrainName10_1>),
     NetworkDataset(Box<NetworkDatasetName10_1>),
@@ -1159,6 +1163,12 @@ fn read_dataset_name_object_body_10_1(
             )?)),
             None,
         )),
+        LAS_DATASET_NAME_CLASS_ID => Ok((
+            DatasetNameMoreBody10_1::LasDataset(Box::new(read_las_dataset_name_body_10_1(
+                reader, max_bytes, table,
+            )?)),
+            None,
+        )),
         TERRAIN_NAME_CLASS_ID => Ok((
             DatasetNameMoreBody10_1::Terrain(Box::new(read_terrain_name_body_10_1(
                 reader, max_bytes, table,
@@ -1519,6 +1529,7 @@ pub(crate) fn read_overlay_name_slot_10_1(
                     | COVERAGE_NAME_CLASS_ID
                     | TIN_NAME_CLASS_ID
                     | TERRAIN_NAME_CLASS_ID
+                    | LAS_DATASET_NAME_CLASS_ID
                     | NETWORK_DATASET_NAME_CLASS_ID
                     | GEOMETRIC_NETWORK_NAME_CLASS_ID
                     | MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID
@@ -2259,7 +2270,11 @@ mod tests {
 
     #[test]
     fn overlay_surface_names_preserve_following_string() {
-        for class_id in [TIN_NAME_CLASS_ID, TERRAIN_NAME_CLASS_ID] {
+        for class_id in [
+            TIN_NAME_CLASS_ID,
+            TERRAIN_NAME_CLASS_ID,
+            LAS_DATASET_NAME_CLASS_ID,
+        ] {
             let mut bytes = entry(&class_id, 90).to_vec();
             bytes.extend(1_i16.to_le_bytes());
             for value in ["surface", "", ""] {
@@ -2286,6 +2301,10 @@ mod tests {
                 }
                 DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::Terrain(name)) => {
                     assert_eq!(class_id, TERRAIN_NAME_CLASS_ID);
+                    assert_eq!(name.strings[0], "surface");
+                }
+                DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::LasDataset(name)) => {
+                    assert_eq!(class_id, LAS_DATASET_NAME_CLASS_ID);
                     assert_eq!(name.strings[0], "surface");
                 }
                 _ => panic!("地表名称类型错误"),

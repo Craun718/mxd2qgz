@@ -2699,6 +2699,29 @@ pub struct LasDatasetName10_1 {
     pub workspace: crate::layers::raster_dataset_name::RasterDatasetWorkspaceSlot10_1,
 }
 
+pub(crate) fn read_las_dataset_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<LasDatasetName10_1> {
+    let version = reader.read_u16_le()? as i16;
+    if version > 1 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("LasDatasetName 版本 {version} 超出 10.1 上限"),
+        ));
+    }
+    Ok(LasDatasetName10_1 {
+        version,
+        strings: [
+            read_string_10_1(reader, max_bytes)?,
+            read_string_10_1(reader, max_bytes)?,
+            read_string_10_1(reader, max_bytes)?,
+        ],
+        workspace: read_surface_workspace_name_10_1(reader, max_bytes, table, "LasDatasetName")?,
+    })
+}
+
 /// FeatureBookmark 名称对象槽（请求 IID `{4BA33331-…}` IName）的分类结果。
 ///
 /// 支持已取证且完整消费的名称体。
@@ -9852,14 +9875,16 @@ fn read_bookmark_name_slot_10_1(
             }))
         }
         ObjectEntry10_1::NewObject {
-            class_id: class_id @ (LAS_DATASET_NAME_CLASS_ID | REPRESENTATION_CLASS_NAME_CLASS_ID),
+            class_id: LAS_DATASET_NAME_CLASS_ID,
+            ..
+        } => BookmarkNameEntry10_1::LasDatasetName(Box::new(read_las_dataset_name_body_10_1(
+            reader, max_bytes, table,
+        )?)),
+        ObjectEntry10_1::NewObject {
+            class_id: REPRESENTATION_CLASS_NAME_CLASS_ID,
             ..
         } => {
-            let class_name = if class_id == LAS_DATASET_NAME_CLASS_ID {
-                "LasDatasetName"
-            } else {
-                "RepresentationClassName"
-            };
+            let class_name = "RepresentationClassName";
             let version = reader.read_u16_le()? as i16;
             if version > 1 {
                 return Err(io::Error::new(
@@ -9873,21 +9898,11 @@ fn read_bookmark_name_slot_10_1(
                 read_string_10_1(reader, max_bytes)?,
             ];
             let workspace = read_surface_workspace_name_10_1(reader, max_bytes, table, class_name)?;
-            if class_id == LAS_DATASET_NAME_CLASS_ID {
-                BookmarkNameEntry10_1::LasDatasetName(Box::new(LasDatasetName10_1 {
-                    version,
-                    strings,
-                    workspace,
-                }))
-            } else {
-                BookmarkNameEntry10_1::RepresentationClassName(Box::new(
-                    RepresentationClassName10_1 {
-                        version,
-                        strings,
-                        workspace,
-                    },
-                ))
-            }
+            BookmarkNameEntry10_1::RepresentationClassName(Box::new(RepresentationClassName10_1 {
+                version,
+                strings,
+                workspace,
+            }))
         }
         ObjectEntry10_1::NewObject {
             class_id: TIN_NAME_CLASS_ID,

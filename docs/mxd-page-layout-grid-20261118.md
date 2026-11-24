@@ -191,6 +191,10 @@ TinName 与 TerrainName 复用 [10.1 地表名称读取器](mxd-terra-round9-boo
 `0x80170130`。构造格网槽覆盖两类对象的空尾槽、登记键、后继
 字符串和截断回滚。真实格网宿主及 ArcMap 显示仍待验证。
 
+LasDatasetName 与书签共用 LasDataset.dll 10.1.0.3035
+Load `0x785ae120` 对应的读取器。构造格网槽验证对象体、键、
+后继格网字符串和截断回滚。真实格网宿主及 ArcMap 显示仍待验证。
+
 ### 叠加格网的关系查询名称
 
 在 MapElements.dll 10.1.0.3035 的 CustomOverlayGrid Load

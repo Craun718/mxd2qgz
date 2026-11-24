@@ -88,6 +88,7 @@
 - [x] 在 CustomOverlayGrid 的 IName 槽接入 ImageServerName 及回引。[取证](docs/mxd-page-layout-grid-20261118.md#自定义叠加格网的要素来源)
 - [x] 在 CustomOverlayGrid 的 IName 槽接入 NetworkDatasetName。[取证](docs/mxd-page-layout-grid-20261118.md#自定义叠加格网的要素来源)
 - [x] 在 CustomOverlayGrid 的 IName 槽接入 TinName 与 TerrainName。[取证](docs/mxd-page-layout-grid-20261118.md#自定义叠加格网的要素来源)
+- [x] 在 CustomOverlayGrid 的 IName 槽接入 LasDatasetName。[取证](docs/mxd-page-layout-grid-20261118.md#自定义叠加格网的要素来源)
 - [x] 接入 CalibratedMapGridBorder 的 IMapGridBorder 对象体，见[网格边框取证](docs/mxd-page-layout-grid-20261118.md#measuredgridindexgrid-与-calibratedmapgridborder)。
 - [x] 核对 10.1 安装介质类型库公开的 IBorder 和 IBackground 类，见[边框与背景类型库复核](docs/mxd-terra-round8-border.md#101-安装介质类型库补查)。
 
