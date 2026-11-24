@@ -890,6 +890,37 @@ mod tests {
         assert_eq!(tail.related_objects[0].entry, ObjectEntry10_1::Null);
         assert_eq!(reader.position(), end + 8 + 24 + 16);
 
+        {
+            use crate::maps::standalone_table::TABLE_NAME_CLASS_ID;
+
+            let name_flag_at = relationship_count_at - 4;
+            let mut related_name = 1_i32.to_le_bytes().to_vec();
+            related_name.extend(TABLE_NAME_CLASS_ID);
+            related_name.extend(63_u32.to_le_bytes());
+            related_name.extend(1_u16.to_le_bytes());
+            for _ in 0..3 {
+                related_name.extend(encoded_string(""));
+            }
+            related_name.extend([0; 16]);
+            let name_len = related_name.len();
+            let mut with_related_name = bytes.clone();
+            with_related_name.splice(name_flag_at..relationship_count_at, related_name);
+            let mut reader = Reader::new(&with_related_name);
+            let mut refs = RefTable10_1::new();
+            let layer = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+            let tail = layer.tail.unwrap();
+            assert!(tail.related_name.unwrap().body.is_some());
+            assert!(tail.geodata_xform_v13.is_none());
+            assert_eq!(reader.position(), end + name_len - 4);
+            assert_eq!(refs.registered_class(63), Some(TABLE_NAME_CLASS_ID));
+
+            let mut reader = Reader::new(&with_related_name[..name_flag_at + name_len - 1]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+
         let mut second_name = Vec::new();
         dataset_name(&mut second_name, 61);
         second_name.extend(encoded_string(""));

@@ -50,7 +50,7 @@ pub use crate::layers::tracking_filter_layer_extension::TrackingFilterLayerExten
 use crate::layers::tracking_filter_layer_extension::{
     TRACKING_FILTER_LAYER_EXTENSION_CLASS_ID, read_bounded_tracking_filter_layer_extension,
 };
-use crate::maps::standalone_table::TableNameBody10_1;
+use crate::maps::standalone_table::{TABLE_NAME_CLASS_ID, TableNameBody10_1};
 use crate::objects::dataset_name_more::{
     DatasetNameMoreBody10_1, DatasetNameMoreSlot10_1, MEMORY_RELATIONSHIP_CLASS_NAME_CLASS_ID,
     MemoryRelationshipClassNameBody10_1, RELATIONSHIP_CLASS_NAME_CLASS_ID,
@@ -70,6 +70,7 @@ use crate::objects::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
 use crate::objects::spatial_reference_slots::{
     GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID, UNKNOWN_COORDINATE_SYSTEM_CLASS_ID,
 };
+use crate::objects::workspace_name::WorkspaceNameEntry10_1;
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -923,7 +924,16 @@ pub(super) fn read_raster_layer_tail(
         && (extra_safe_extensions
             .iter()
             .any(|slot| slot.entry != ObjectEntry10_1::Null)
-            || related_name.is_some()
+            || related_name.as_ref().is_some_and(|slot| {
+                // TableName::Open 在工作空间为空时直接返回，安装路径保持数据集成员为空。
+                !matches!(
+                    (&slot.entry, &slot.body),
+                    (
+                        ObjectEntry10_1::NewObject { class_id: TABLE_NAME_CLASS_ID, .. },
+                        Some(RasterLayerRelationshipBody10_1::TableName(name))
+                    ) if matches!(name.workspace, WorkspaceNameEntry10_1::Null)
+                )
+            })
             || related_objects
                 .iter()
                 .any(|slot| slot.entry != ObjectEntry10_1::Null)
