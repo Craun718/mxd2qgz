@@ -567,6 +567,10 @@ const CADASTRAL_FIELD_EDITS_CLASS_ID: [u8; 16] = [
     0xfb, 0x5d, 0xe3, 0xde, 0xa2, 0x81, 0x8e, 0x46, 0xab, 0xa8, 0x24, 0x14, 0xe7, 0x57, 0xa0, 0xd9,
 ];
 
+const DE_TOOL_CLASS_ID: [u8; 16] = [
+    0x9a, 0x02, 0xd1, 0x8c, 0x56, 0x0b, 0x6b, 0x43, 0xb4, 0xa6, 0x8f, 0x93, 0x60, 0xcd, 0x63, 0xd9,
+];
+
 const DE_CADASTRAL_FABRIC_CLASS_ID: [u8; 16] = [
     0xc0, 0x68, 0xf8, 0xb0, 0xbc, 0xbf, 0x69, 0x46, 0xb2, 0x63, 0xcd, 0x34, 0x8d, 0x65, 0xd7, 0xae,
 ];
@@ -1193,6 +1197,10 @@ pub struct DeCadastralFabric10_1 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
+    Tool {
+        version: u16,
+        dataset: DeDataset10_1,
+    },
     CadastralFabric(Box<DeCadastralFabric10_1>),
     TerrainLegacy(Box<DeTerrainLegacy10_1>),
     TerrainGeoDataset(Box<DeTerrainGeoDataset10_1>),
@@ -4107,6 +4115,7 @@ fn read_gp_data_element_child(
                     | DE_TIN_CLASS_ID
                     | DE_TERRAIN_CLASS_ID
                     | DE_CADASTRAL_FABRIC_CLASS_ID
+                    | DE_TOOL_CLASS_ID
                     | DE_COVERAGE_CLASS_ID
                     | DE_LAS_DATASET_CLASS_ID
                     | DE_VPF_COVERAGE_CLASS_ID
@@ -4155,6 +4164,7 @@ fn read_gp_data_element_child(
                 | DE_TIN_CLASS_ID
                 | DE_TERRAIN_CLASS_ID
                 | DE_CADASTRAL_FABRIC_CLASS_ID
+                | DE_TOOL_CLASS_ID
                 | DE_COVERAGE_CLASS_ID
                 | DE_LAS_DATASET_CLASS_ID
                 | DE_VPF_COVERAGE_CLASS_ID
@@ -4273,6 +4283,11 @@ fn read_gp_data_element_child(
                     }
                 };
                 DeChild10_1::TextFile { version, base }
+            } else if class_id == DE_TOOL_CLASS_ID {
+                DeChild10_1::Tool {
+                    version: read_de_layer_version(reader, 1, "DETool")?,
+                    dataset: read_gp_de_dataset(reader, max_bytes, refs, depth + 1)?,
+                }
             } else if class_id == DE_CADASTRAL_FABRIC_CLASS_ID {
                 DeChild10_1::CadastralFabric(Box::new(read_de_cadastral_fabric(
                     reader,
@@ -7894,6 +7909,37 @@ pub fn read_legend_prefix_10_1(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn de_tool_ends_after_dataset() {
+        let mut bytes = DE_TOOL_CLASS_ID.to_vec();
+        bytes.extend(62_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend([0; 8]);
+        bytes.extend([2, 0, 0, 0, 0, 0].repeat(3));
+        bytes.extend([0; 22]);
+        for cut in 0..bytes.len() {
+            assert!(
+                read_gp_data_element_child(
+                    &mut Reader::new(&bytes[..cut]),
+                    1024,
+                    &mut RefTable10_1::new(),
+                    0,
+                )
+                .is_err()
+            );
+        }
+        let end = bytes.len();
+        bytes.push(0xa5);
+        let mut reader = Reader::new(&bytes);
+        let slot =
+            read_gp_data_element_child(&mut reader, 1024, &mut RefTable10_1::new(), 0).unwrap();
+        assert!(matches!(
+            slot.body.as_deref(),
+            Some(DeChild10_1::Tool { version: 1, .. })
+        ));
+        assert_eq!(reader.position(), end);
+    }
 
     #[test]
     fn cadastral_fabric_reads_field_edits_and_versioned_tail() {
