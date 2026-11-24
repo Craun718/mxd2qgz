@@ -854,6 +854,7 @@
       - [ ] 核对 GPAddressLocatorStyle 非空配置中其余接口槽的类体。[取证](docs/mxd-terra-round9-bookmark.md#gpaddresslocatorstyle)
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
       - [ ] 确认 GPLine 与 GPPolygon 的宿主写出顺序，以闭合无长度对象体的边界。[取证](docs/mxd-terra-round9-bookmark.md#其余-igpvalue-候选与-gplinegppolygon-的对象边界)
+      - [x] 用原生持久化探针验证 GPLine 与 GPPolygon 空集合的写出顺序。
       - [x] 核对 GPRangeDomain2 在读取对象体前对输入流的类标识检查。[取证](docs/mxd-terra-round9-bookmark.md#gprangedomain2-的持久化流要求)
       - [x] 核对 GPCodedValueDomain2 在读取对象体前对输入流的类标识检查。[取证](docs/mxd-terra-round9-bookmark.md#gpcodedvaluedomain2-的持久化流要求)
       - [x] 核对二代值域在普通 ObjectStream 保存时返回 S_FALSE 且不写对象体。[取证](docs/mxd-terra-round9-bookmark.md#二代值域在普通流上的保存结果)

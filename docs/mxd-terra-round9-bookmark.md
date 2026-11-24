@@ -1968,6 +1968,24 @@ GPValue::Save；非正计数直接走同一基类写出点。因此字段顺序
 标识，无法验证写出顺序、其他流或间接表示。后续需要受控
 保存或不同来源的实档。
 
+以 32 位 Wine 探针直接调用同版 GpObjects.dll 的
+`DllGetClassObject` 和 IPersistStream。临时前缀缺少能成功
+激活的 ESRI Array 注册，故由同版 SystemCore.dll 的类工厂
+创建原生 IArray，将指针放入两个对象的空持久化接口 +0x30
+数组成员。探针使用 HGLOBAL IStream，未运行 ArcMap。
+两类空对象的 Save 均返回 S_OK，并写出同一 10 字节：
+
+```text
+01 00 | 00 00 00 00 | 01 00 FF FF
+```
+
+实际保存顺序为版本 1、零点计数、GPValue 基类版本 1 和
+标记 0xFFFF。将原样字节交回两类 Load，均返回 S_OK。
+据原生读序，这串字节也可被解释为基类版本 0、标记 0
+以及负计数 0xFFFF0001。因此仅凭成功返回、体长或已知版本
+无法消除空对象的解释歧义。非空点集合、真实 MXD 宿主及
+ArcMap 人工验证仍未完成。
+
 #### GPSACellSize
 
 GPSACore.dll 10.1.0.3035 的 SHA-256 为
