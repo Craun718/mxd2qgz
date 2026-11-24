@@ -855,6 +855,7 @@
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
       - [x] 核对 GPFieldMapping 的两个带键集合和版本 2 尾槽。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldmapping)
       - [x] 定位 GPFieldMapping 子槽接口及 GPFieldMap 的原生 Load。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldmapping)
+      - [x] 核对 GPFieldMap 的 IField 与 IDETable 槽和逐行标量边界。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldmapping)
       - [ ] 接入 GPFieldMapping 的持久化对象体。
       - [x] 接入 GPCodedValueDomain 中的 GPReplicaDataset v0 至 v3 对象体。[取证](docs/mxd-terra-round9-bookmark.md#gpreplicadataset)
       - [x] 定位 GPReplicaDescription 的几何与复制数据集集合对象槽。[取证](docs/mxd-terra-round9-bookmark.md#gpreplicadescription-与-gpreplicadatasets)

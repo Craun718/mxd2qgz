@@ -2165,10 +2165,21 @@ GPFieldMap 主 QI `0x746dd810` 将 IPersistStream 映射到
 +0x18，RTTI 表为 `0x747afddc`。GetClassID
 `0x746debb0` 复制 `0x747aff14` 的
 `DECF43A7-578A-48CA-BCA2-4B11148E2009`。
-其 Load `0x746debf0` 检查无符号版本上限 2，
-随后读 LONG、字符串和带键对象，并在正计数循环读取
-更多对象与标量。已定位子类读入口，字段和条件分支仍需逐项
-闭合后才能安全接入无长度对象流。
+其 Load `0x746debf0` 检查无符号版本上限 2。
+`0x746dec54` 读取 LONG，`0x746dec70` 以 AfCore
+String::Read 读取字符串，`0x746dec8e` 读目标字段对象槽。
+包装 `0x746df1e0` 委派至 `0x746d2690`，后者在
+`0x746d26d1` 对返回对象查询 IField（`0x747aede0`）。
+`0x746decc3` 随后读有符号 LONG 行数。
+
+每行依次为字段对象、表对象和两个 LONG。第一对象通过
+`0x746ded09` 读取，包装 `0x746df1b0` 复用 IField 查询。
+第二对象在 `0x746ded38` 读取，经 `0x746df150` 复用
+IDETable 查询。两个 LONG 分别由 `0x746ded5e` 和
+`0x746ded7a` 读取。Save 在 `0x746deeb1`、
+`0x746def29`、`0x746def46` 写相应的对象槽。
+已有 Field 与 DETable 读体可作为已确认实现的分派依据。
+尚未核对其他 IField 和 IDETable 实现的宿主分布。
 
 #### GPReplicaDataset
 
