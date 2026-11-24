@@ -2134,6 +2134,26 @@ Save `0x748e5d00` 的尺寸分派、内嵌 Variant 和成员 String
 对象回引、后继字段及逐字节截断回滚。内嵌数组的真实取值与
 ArcMap/QGIS 实档验收待查。
 
+#### GPRasterFormulated
+
+GpRasterFunctions.dll 10.1.0.3035（SHA-256
+`2922bd518dedfb15444de5a57fffb22f21c38432cea9b323e4ba931f12eed964`）
+的 RTTI 对应 GPRasterFormulated（`FFA58E93-059A-435F-AF2B-5A348A882C29`）
+的持久化表 `0x748a7534`。Load `0x74872010` 检查无符号
+版本上限 2，于 `0x7487205c` 调用栅格基类读取器
+`0x74891090`。该读取器检查自身版本上限 1，
+再委派 GPValue::Load（`0x748910d2`），接着读取
+4 字节量、AfCore String，以及采用 IID 常量
+`0x748a91d4`、`0x748a9b7c` 的两个带键对象槽。
+
+外层在 `0x7487206e` 读取 LONG。v0/v1 在
+`0x748720b6` 向 Variant 缓冲区读取原始 24 字节。
+v2 在 `0x7487208d` 改用 Variant::Read(stream, true)。
+Save `0x748720e0` 写出栅格基类、LONG 和 Variant::Write
+(stream, true)。基类中的两个槽仍待核对具体持久化类，
+旧分支的原始 Variant 字节也需结合宿主解释。
+尚未进行 ArcMap 人工验证。
+
 #### GPRasterData
 
 GpObjects.dll 10.1.0.3035 的 RTTI 将 GPRasterData

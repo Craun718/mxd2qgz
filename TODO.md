@@ -854,6 +854,8 @@
       - [ ] 核对 GPAddressLocatorStyle 非空配置中其余接口槽的类体。[取证](docs/mxd-terra-round9-bookmark.md#gpaddresslocatorstyle)
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
       - [x] 接入 GPCodedValueDomain 中的 GPRasterData 名称槽及尾部字符串。[取证](docs/mxd-terra-round9-bookmark.md#gprasterdata)
+      - [x] 核对 GPRasterFormulated 的栅格基类调用及版本化 Variant 尾段。[取证](docs/mxd-terra-round9-bookmark.md#gprasterformulated)
+      - [ ] 接入 GPRasterFormulated 的持久化对象体。
       - [x] 核对 GPFieldMapping 的两个带键集合和版本 2 尾槽。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldmapping)
       - [x] 定位 GPFieldMapping 子槽接口及 GPFieldMap 的原生 Load。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldmapping)
       - [x] 核对 GPFieldMap 的 IField 与 IDETable 槽和逐行标量边界。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldmapping)
