@@ -2527,6 +2527,28 @@ IPersistStream::Load 和 Save。对象流接口表 `0x800710dc`
 停止边界，未把此标识视为可读取的空体。聚合宿主、提供私有
 接口的其他流及真实 ArcMap 工程仍未验证。
 
+#### 历史标记私有 IID 的其他调用方
+
+对 Desktop 10.1 介质已提取 DLL 扫描 IID
+`AC0CAC11-2109-4F21-B98F-237B26DA9802` 的完整磁盘字节，
+命中 FeatureDataElements、GdbCore 和 SdeFDB。复核两处创建路径：
+GdbCore.dll 10.1.0.3035（摘要见 RecordSet 小节）在
+`0x70998d0b` 创建 `0x70ac9480` 指向的类；
+SdeFDB.dll 10.1.0.3035（SHA-256
+`6b56d69e3e32736f08716c11f402bb90e9f67c74ed4e7cc017de1f9f3e6aeed0`）
+在 `0x7e83662b` 创建 `0x7e8939c8` 指向的类。
+两者的 CLSID 均为 GPHistoricalMarker，分别在
+`0x70998d38`、`0x7e836658` 向创建结果请求该私有 IID。
+FeatureDataElements 的类 QI 在 `0x6f629a79` 比较同一 IID，
+确认该接口确实由标记对象本身提供。
+
+GdbCore 的调用方 `0x7098f1db` 创建标记后，分别在
+`0x7098f1ef`、`0x7098f21b` 传入值调用私有接口
++0x10 和 +0x18。这些调用证实 IID 可用于持有标记值的对象，
+尚未发现把该对象作为持久化流交给 Load 或 Save 的调用点。
+普通 ObjectStream 的排除结论保持适用。专用流宿主和
+ArcMap/QGIS 人工验收仍待验证。
+
 ### GPSAHorizontalFactor 与 GPSAVerticalFactor
 
 两类来自 ArcMap 10.1.0.3035 的 `GPSACore.dll`。沿 RTTI 确认持久化接口
