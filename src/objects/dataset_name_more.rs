@@ -58,6 +58,7 @@ use crate::layers::feature_layer::{
 use crate::layers::fgdb_raster_dataset_name::FGDB_RASTER_DATASET_NAME_CLASS_ID;
 use crate::layers::raster_dataset_name::{
     ACCESS_RASTER_DATASET_NAME_CLASS_ID, AIS_IMAGE_SERVICE_NAME_CLASS_ID,
+    CACHE_RASTER_DATASET_NAME_CLASS_ID, INTERNET_TILED_LAYER_NAME_CLASS_ID,
     IS_RASTER_DATASET_NAME_CLASS_ID, MOSAIC_DATASET_NAME_CLASS_ID,
     NETCDF_RASTER_DATASET_NAME_CLASS_ID, RASTER_BAND_COLLECTION_NAME_CLASS_ID,
     RASTER_BAND_NAME_CLASS_ID, RASTER_CATALOG_NAME_CLASS_ID, RASTER_DATASET_NAME_CLASS_ID,
@@ -1263,6 +1264,8 @@ fn read_dataset_name_object_body_10_1(
         | RASTER_DATASET_NAME83_CLASS_ID
         | FGDB_RASTER_DATASET_NAME_CLASS_ID
         | NETCDF_RASTER_DATASET_NAME_CLASS_ID
+        | CACHE_RASTER_DATASET_NAME_CLASS_ID
+        | INTERNET_TILED_LAYER_NAME_CLASS_ID
         | IS_RASTER_DATASET_NAME_CLASS_ID
         | AIS_IMAGE_SERVICE_NAME_CLASS_ID
         | ACCESS_RASTER_DATASET_NAME_CLASS_ID
@@ -1459,6 +1462,8 @@ pub(crate) fn read_overlay_name_slot_10_1(
                     | RASTER_DATASET_NAME83_CLASS_ID
                     | FGDB_RASTER_DATASET_NAME_CLASS_ID
                     | NETCDF_RASTER_DATASET_NAME_CLASS_ID
+                    | CACHE_RASTER_DATASET_NAME_CLASS_ID
+                    | INTERNET_TILED_LAYER_NAME_CLASS_ID
                     | IS_RASTER_DATASET_NAME_CLASS_ID
                     | AIS_IMAGE_SERVICE_NAME_CLASS_ID
                     | ACCESS_RASTER_DATASET_NAME_CLASS_ID
@@ -2083,6 +2088,57 @@ mod tests {
 
     /// 完整 WorkspaceName 体（第六轮布局）：版本 1 + 三空串 + IPropertySet
     /// 空标记 + 标志 1 + 工厂 CLSID + 尾随 int32。
+    #[test]
+    fn overlay_tile_names_preserve_the_following_field() {
+        for class in [
+            CACHE_RASTER_DATASET_NAME_CLASS_ID,
+            INTERNET_TILED_LAYER_NAME_CLASS_ID,
+        ] {
+            let mut bytes = entry(&class, 90).to_vec();
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(str_bytes("tiles"));
+            if class == CACHE_RASTER_DATASET_NAME_CLASS_ID {
+                bytes.extend(str_bytes(""));
+                bytes.extend([0; 48]);
+            } else {
+                bytes.extend(7_i32.to_le_bytes());
+                bytes.extend([0; 16]);
+            }
+            let end = bytes.len();
+            bytes.extend(str_bytes("格网编号"));
+            for cut in 0..end {
+                let mut reader = Reader::new(&bytes[..cut]);
+                let mut refs = RefTable10_1::new();
+                assert!(
+                    read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).is_err()
+                );
+                assert_eq!(reader.position(), 0);
+                assert!(refs.is_empty());
+            }
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let slot = read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).unwrap();
+            let DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::RasterDataset(body)) = slot
+            else {
+                panic!("应读取瓦片名称");
+            };
+            match body.as_ref() {
+                RasterDatasetNameEntryBody10_1::Cache(name) => {
+                    assert_eq!(class, CACHE_RASTER_DATASET_NAME_CLASS_ID);
+                    assert_eq!(name.strings[0], "tiles");
+                }
+                RasterDatasetNameEntryBody10_1::InternetTiledLayer(name) => {
+                    assert_eq!(class, INTERNET_TILED_LAYER_NAME_CLASS_ID);
+                    assert_eq!(name.integer, 7);
+                }
+                _ => panic!("瓦片名称类型错误"),
+            }
+            assert_eq!(refs.registered_class(90), Some(class));
+            assert_eq!(reader.position(), end);
+            assert_eq!(read_string_10_1(&mut reader, 256).unwrap(), "格网编号");
+        }
+    }
+
     #[test]
     fn overlay_image_service_names_share_the_reference_table() {
         let mut bytes = entry(&IS_RASTER_DATASET_NAME_CLASS_ID, 90).to_vec();
