@@ -1459,6 +1459,21 @@ DIToolbox 的三个工厂名称常量也已通过
 没有可接入的非空类体。通用 FMEDatasetType 自身的
 get_FullName 和其他构建的结果仍需运行取证。
 
+进一步核对同介质 Data Interoperability 的 Setup.msi。
+`Setup.ini` 声明产品版本 10.1.3035，Setup.msi 的 SHA-256 为
+`69fd4ac1172328deed035d1feeb44c296a264772cfe4eb99713f69db85d07b56`。
+用 7-Zip 导出 OLE 表流，从 `SelfReg` 的四个文件键经
+`_StringPool` 和 `_StringData` 解得 DIToolboxUI.dll、
+DIDatasource.dll、DIDatasourceUI.dll 与 DIToolbox.dll。
+这四个自注册模块均在前述 479 个 DLL 的筛查范围内。
+再次检查提取的 MSI 表流（含 Registry、SelfReg、
+CustomAction 和字符串表）及 479 个 DLL，内部 CLSID
+`016007F5-E9B4-4D5B-85EA-484BD4A7A2C7` 的原序字节、
+COM 字节序及大小写 ASCII／UTF-16LE 文本均未命中。
+该结果限于直接字面量，静态表无法确定实际 COM 服务器。
+需要在启用 Data Interoperability 的环境中核对
+32 位 COM 注册和创建结果，再定位通用类型的名称输出。
+
 GpObjects.dll 内部 GPDataTypeFactory 的 GetClassID
 `0x746ac930` 从 `0x747a74dc` 复制
 `E41CFD44-5741-4F2B-8ACE-1A49E146D329`。QI
