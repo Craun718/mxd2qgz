@@ -674,6 +674,7 @@
       - [x] 接入 FeatureBookmark 的 AMSDatasetName，读取 ATL BSTR 与 OLE 内嵌 WorkspaceName，保留工作空间内部的 ObjectStream 共享键。[跟踪工作空间取证](docs/mxd-terra-round9-bookmark.md#trackingworkspace-的-amsdatasetname)
       - [x] 接入 FeatureBookmark 的 ObjectClassName 与 QueryTableName，分别复用 FdbTableName 和查询名称读取器；未知查询描述停止时整书签回滚，见[书签续查](docs/mxd-terra-round9-bookmark.md#objectclassname-与-querytablename-的后续接线)。
       - [x] 接入 FeatureBookmark 的 RelationshipClassName 与 MemoryRelationshipClassName，覆盖选择子、端点槽、四条尾串及未知嵌套停止时整书签回滚，见[书签续查](docs/mxd-terra-round9-bookmark.md#关系类名称的后续接线)。
+      - [x] 统一书签及嵌套 IName 槽对 PropertySet、UID 和 GPMultiValue 回引的接口检查，保留 LocatorWorkspaceName 的 IUnknown 回引行为。[取证](docs/mxd-terra-round9-bookmark.md#locatorworkspacename-回引的接口检查)
       - [ ] 补齐 FeatureBookmark 中尚未核对的 IName 实现。原生先调用 IName::Open，再对返回对象查询 IFeatureClass。[书签续查](docs/mxd-terra-round9-bookmark.md)
       - [x] 接入 FeatureBookmark 的 TopologyName 实现和原生版本门。[取证](docs/mxd-terra-round9-bookmark.md#topologyname)
       - [x] 接入 FeatureBookmark 的 FeatureDatasetName 实现和原生版本门。[取证](docs/mxd-terra-round9-bookmark.md#featuredatasetname)

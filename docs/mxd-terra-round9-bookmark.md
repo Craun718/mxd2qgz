@@ -1863,3 +1863,14 @@ Save 根据文档版本选择是否写行扩展。
 解析保留各行及原始标量，依据最小行宽检查计数。合成书签覆盖三种
 版本、空及非空文本、多行、非正计数、后继数据和截断回滚。
 实际 ArcMap GP 参数工程与各标量业务语义待验证。
+
+## LocatorWorkspaceName 回引的接口检查
+
+SystemCore 10.1.0.3035 的 `0x7ffd0063` 在登记实例上查询宿主请求
+的接口。通用名称读取器据此使用登记类检查 IName 回引，对已确认
+缺少该接口的 PropertySet、UID 和 GPMultiValue 返回错误。
+LocatorWorkspaceName 的 IUnknown 入口按登记键保留回引。
+
+构造测试以 TableName 类标识指向这三个已登记类，确认 FeatureBookmark
+退回起点并保留引用表。其余实现仍需核对接口，尚无该组合的实档或
+ArcMap 10.1 人工验证。

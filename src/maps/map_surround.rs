@@ -2445,18 +2445,6 @@ fn read_gp_coded_value_entry(
                     }
                     let type_name =
                         read_bookmark_name_slot_10_1(reader, max_bytes, table, depth + 1)?;
-                    if matches!(
-                        type_name,
-                        BookmarkNameEntry10_1::BackReference {
-                            class_id: GP_MULTI_VALUE_CLASS_ID,
-                            ..
-                        }
-                    ) {
-                        return Err(io::Error::new(
-                            ErrorKind::Unsupported,
-                            "GPMultiValue 类型槽回引了不实现 IName 的多值对象",
-                        ));
-                    }
                     // Load 要求 IName。Open 返回对象的接口查询不影响后续流读取。
                     let (raw_count, values) =
                         read_gp_coded_value_list(reader, max_bytes, table, depth + 1)?;
@@ -3710,10 +3698,20 @@ fn read_bookmark_name_slot_10_1(
     let name_offset = reader.position();
     Ok(match read_object_entry_10_1(reader, table)? {
         ObjectEntry10_1::Null => BookmarkNameEntry10_1::Null,
-        ObjectEntry10_1::BackReference { class_id, key } => BookmarkNameEntry10_1::BackReference {
-            class_id: table.registered_class(key).unwrap_or(class_id),
-            key,
-        },
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            // ObjectStream 在原实例上查询接口，回引头里的 CLSID 不参与查询。
+            let class_id = table.registered_class(key).unwrap_or(class_id);
+            if matches!(
+                class_id,
+                PROPERTY_SET_CLASS_ID | UID_CLASS_ID | GP_MULTI_VALUE_CLASS_ID
+            ) {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!("IName 槽 offset 0x{name_offset:x}: 键 {key} 的对象不实现 IName"),
+                ));
+            }
+            BookmarkNameEntry10_1::BackReference { class_id, key }
+        }
         ObjectEntry10_1::NewObject {
             class_id:
                 class_id @ (FEATURE_CLASS_NAME_CLASS_ID
@@ -4232,10 +4230,17 @@ fn read_bookmark_name_slot_10_1(
             // v1 请求 IName，其余版本允许持久化 IUnknown。
             use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
             let source = match read_header_10_1(&mut reader.clone())? {
+                ObjectHeader::Object { class_id, key } if version != 1 && table.contains(key) => {
+                    read_object_entry_10_1(reader, table)?;
+                    BookmarkNameEntry10_1::BackReference {
+                        class_id: table.registered_class(key).unwrap_or(class_id),
+                        key,
+                    }
+                }
                 ObjectHeader::Object {
                     class_id: PROPERTY_SET_CLASS_ID,
-                    key,
-                } if version != 1 && !table.contains(key) => {
+                    ..
+                } if version != 1 => {
                     read_object_entry_10_1(reader, table)?;
                     BookmarkNameEntry10_1::LocatorWorkspaceProperties(Box::new(
                         read_property_set_object_stream_10_1(reader, max_bytes, table)?,
@@ -4244,26 +4249,12 @@ fn read_bookmark_name_slot_10_1(
                 ObjectHeader::Object {
                     class_id: UID_CLASS_ID,
                     key,
-                } if version != 1 && !table.contains(key) => {
+                } if version != 1 => {
                     read_object_entry_10_1(reader, table)?;
                     BookmarkNameEntry10_1::LocatorWorkspaceUid(read_uid_body_10_1(reader, key)?)
                 }
                 _ => read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth + 1)?,
             };
-            if version == 1
-                && matches!(
-                    source,
-                    BookmarkNameEntry10_1::BackReference {
-                        class_id: PROPERTY_SET_CLASS_ID | UID_CLASS_ID,
-                        ..
-                    }
-                )
-            {
-                return Err(io::Error::new(
-                    ErrorKind::Unsupported,
-                    "LocatorWorkspaceName IName 槽回引了不支持的类",
-                ));
-            }
             BookmarkNameEntry10_1::LocatorWorkspaceName {
                 version,
                 strings,

@@ -1519,6 +1519,31 @@ fn bookmark_name_reference_retains_the_registered_class() {
 }
 
 #[test]
+fn bookmark_rejects_references_to_objects_without_iname() {
+    use mxd2qgz::layers::feature_layer_tail::UID_CLASS_ID;
+    use mxd2qgz::maps::map_surround::GP_MULTI_VALUE_CLASS_ID;
+    use mxd2qgz::objects::property_set::PROPERTY_SET_CLASS_ID;
+    use mxd2qgz::storage::object_refs::read_object_entry_10_1;
+
+    for class_id in [PROPERTY_SET_CLASS_ID, UID_CLASS_ID, GP_MULTI_VALUE_CLASS_ID] {
+        let definition = bookmark_entry_10_1(&class_id, 17);
+        let mut refs = RefTable10_1::new();
+        read_object_entry_10_1(&mut Reader::new(&definition), &mut refs).unwrap();
+        let saved = refs.clone();
+
+        let mut body = 1_u16.to_le_bytes().to_vec();
+        body.extend(42_i32.to_le_bytes());
+        body.extend(bookmark_entry_10_1(&TABLE_NAME_CLASS_ID, 17));
+        body.extend([4, 0, 0, 0, b'X', 0, 0, 0]);
+        let mut reader = Reader::new(&body);
+        let error = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::Unsupported);
+        assert_eq!(reader.position(), 0);
+        assert_eq!(refs, saved);
+    }
+}
+
+#[test]
 fn bookmark_reads_a_netcdf_table_name() {
     use mxd2qgz::objects::dataset_name_more::NETCDF_TABLE_NAME_CLASS_ID;
 
