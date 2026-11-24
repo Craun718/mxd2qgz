@@ -3637,6 +3637,30 @@ esriGeoprocessing 类型库将 `0EE02101-1597-473C-B77D-1EDFD547ACE5`
 可作为这两个槽的候选实现。其余槽的具体类及失败路径仍待核对。
 此次为静态对位，未进行 ArcMap/QGIS 人工验收。
 
+10.1 Desktop 的 Geodatabase 和 NetworkAnalyst 互操作程序集
+GuidAttribute 将剩余三个槽与公开接口对位：
+
+| LoadObject 调用 | 接口 | 已确认的实现候选 |
+| --- | --- | --- |
+| `0x7459852a` | IDENetworkDataset | DENetworkDataset |
+| `0x745985a8` | INAClassDefinition | NAClassDefinition，`61E2058E-F104-47AA-8C62-33D5BF43EBE8` |
+| `0x745987c6` | INALocatorFeatureAgent | NALocatorFeatureAgent，`22B4C9AB-32FA-4686-8F5E-8A2A370B3350` |
+
+INAClassDefinition 候选在 NetworkAnalyst.dll 10.1.0.3035
+（SHA-256 `8c4ebaee71aad63c25616aa806674018479829d97bc01c7ed3b8845813698532`）
+的 RTTI `0x7afcc324` 下，+0x1c 持久化表为
+`0x7af9d9d4`，Load/Save 为 `0x7af022f0 / 0x7af02650`。
+该 Load 自身包含多个对象槽及计数循环，仍须核对各字段及子类。
+
+对 v1 起的私有 IID `5E6515AE-C622-4D67-BD74-9C4BB2BCD1EC`，
+在 NetworkAnalystSolvers.dll 10.1.0.3035（SHA-256
+`a88f590573b8115a05921d624258214f9ea73baa7eaa720d182b7b5c2798234c`）
+找到同值常量 `0x7b1fee94`。NAAttributeParameterValueArray
+完整对象虚表 `0x7b1fe6ac` 的 QI `0x7b09f4d0`
+在 `0x7b09f4d7` 比对该常量，命中时于 `0x7b09f4f5`
+返回对象 +0x18。这为复用现有参数值数组读取器提供了具体类证据。
+本次未观察实际宿主选中的动态类，亦未进行 ArcMap/QGIS 人工验收。
+
 #### 目录数据元素
 
 FileDataElements.dll 10.1.0.3035 的 PE RTTI 持久化表及
