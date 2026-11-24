@@ -2134,6 +2134,22 @@ Save `0x748e5d00` 的尺寸分派、内嵌 Variant 和成员 String
 对象回引、后继字段及逐字节截断回滚。内嵌数组的真实取值与
 ArcMap/QGIS 实档验收待查。
 
+#### GPRasterData
+
+GpObjects.dll 10.1.0.3035 的 RTTI 将 GPRasterData
+（`A4D40FBD-CFD8-4D8D-94D1-3726C6FF792F`）的 +0x1c
+持久化表定位为 `0x747b45a8`，Load 和 Save 分别为
+`0x746fa5b0`、`0x746fa650`。Load 检查无符号版本
+上限 1，在 `0x746fa5f2` 读 GPValue 基类，
+`0x746fa60e` 以 `0x747ac61c` 的 IName IID 读取
+带键对象槽，再在 `0x746fa620` 调用 AfCore String::Read。
+Save 在 `0x746fa691`、`0x746fa6a1`、`0x746fa6b2`
+按相同顺序写出。
+
+Rust 复用 IName 与普通 AfCore 字符串读取器。构造测试覆盖
+v0/v1、栅格数据集名称回引、尾部字符串和逐字节截断。
+真实 MXD 中的名称类分布和 ArcMap 人工验证仍待补充。
+
 #### GPFieldMapping
 
 GpObjects.dll 10.1.0.3035（SHA-256

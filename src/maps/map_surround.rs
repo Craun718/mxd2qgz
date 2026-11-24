@@ -468,6 +468,9 @@ const GP_FIELD_MAPPING_CLASS_ID: [u8; 16] = [
 const GP_FIELD_MAP_CLASS_ID: [u8; 16] = [
     0xa7, 0x43, 0xcf, 0xde, 0x8a, 0x57, 0xca, 0x48, 0xbc, 0xa2, 0x4b, 0x11, 0x14, 0x8e, 0x20, 0x09,
 ];
+const GP_RASTER_DATA_CLASS_ID: [u8; 16] = [
+    0xbd, 0x0f, 0xd4, 0xa4, 0xd8, 0xcf, 0x8d, 0x4d, 0x94, 0xd1, 0x37, 0x26, 0xc6, 0xff, 0x79, 0x2f,
+];
 pub const GP_LINE_CLASS_ID: [u8; 16] = [
     0xe4, 0x80, 0x5f, 0x43, 0xb2, 0x6d, 0x6b, 0x47, 0xb9, 0x77, 0xb0, 0x6b, 0xff, 0x52, 0xf9, 0x78,
 ];
@@ -914,6 +917,10 @@ pub const GP_EXTENT_CLASS_ID: [u8; 16] = [
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpCodedValue10_1 {
+    RasterData {
+        name: Box<BookmarkNameEntry10_1>,
+        text: String,
+    },
     FieldMapping {
         raw_map_count: i32,
         maps: Vec<RuleSlot10_1<GpFieldMap10_1>>,
@@ -3110,6 +3117,7 @@ fn read_gp_coded_value_entry(
                 table.registered_class(key).unwrap_or(class_id),
                 GP_STRING_CLASS_ID
                     | GP_FIELD_MAPPING_CLASS_ID
+                    | GP_RASTER_DATA_CLASS_ID
                     | GP_POINT_CLASS_ID
                     | GP_REPLICA_CLASS_ID
                     | GP_REPLICA_DESCRIPTION_CLASS_ID
@@ -3392,6 +3400,7 @@ fn read_gp_coded_value_entry(
             class_id:
                 class_id @ (GP_STRING_CLASS_ID
                 | GP_FIELD_MAPPING_CLASS_ID
+                | GP_RASTER_DATA_CLASS_ID
                 | GP_POINT_CLASS_ID
                 | GP_CELL_SIZE_XY_CLASS_ID
                 | GP_SA_CELL_SIZE_CLASS_ID
@@ -3562,6 +3571,23 @@ fn read_gp_coded_value_entry(
                         raw_table_count,
                         tables,
                         tail,
+                    }
+                }
+                GP_RASTER_DATA_CLASS_ID => {
+                    if depth >= MAX_BOOKMARK_NAME_NESTING {
+                        return Err(io::Error::new(
+                            ErrorKind::InvalidData,
+                            "GPRasterData 名称嵌套过深",
+                        ));
+                    }
+                    GpCodedValue10_1::RasterData {
+                        name: Box::new(read_bookmark_name_slot_10_1(
+                            reader,
+                            max_bytes,
+                            table,
+                            depth + 1,
+                        )?),
+                        text: read_string_10_1(reader, max_bytes)?,
                     }
                 }
                 GP_POINT_CLASS_ID => GpCodedValue10_1::Point {
@@ -8911,6 +8937,47 @@ pub fn read_legend_prefix_10_1(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gp_raster_data_reads_name_reference_and_trailing_text() {
+        let mut name_header = RASTER_DATASET_NAME_CLASS_ID.to_vec();
+        name_header.extend(11_u32.to_le_bytes());
+        let mut refs = RefTable10_1::new();
+        read_object_entry_10_1(&mut Reader::new(&name_header), &mut refs).unwrap();
+        for version in [0, 1] {
+            let mut bytes = GP_RASTER_DATA_CLASS_ID.to_vec();
+            bytes.extend(10_u32.to_le_bytes());
+            bytes.extend([version, 0, 1, 0, 7, 0]);
+            bytes.extend(&name_header);
+            bytes.extend([4, 0, 0, 0, b'x', 0, 0, 0]);
+            for cut in 0..bytes.len() {
+                assert!(
+                    read_gp_coded_value_slot(
+                        &mut Reader::new(&bytes[..cut]),
+                        1024,
+                        &mut refs.clone(),
+                        0,
+                    )
+                    .is_err()
+                );
+            }
+            let end = bytes.len();
+            bytes.push(0x5a);
+            let mut reader = Reader::new(&bytes);
+            let slot = read_gp_coded_value_slot(&mut reader, 1024, &mut refs.clone(), 0).unwrap();
+            assert_eq!(
+                slot.body.unwrap().value,
+                GpCodedValue10_1::RasterData {
+                    name: Box::new(BookmarkNameEntry10_1::BackReference {
+                        class_id: RASTER_DATASET_NAME_CLASS_ID,
+                        key: 11,
+                    }),
+                    text: "x".into(),
+                },
+            );
+            assert_eq!(reader.position(), end);
+        }
+    }
 
     #[test]
     fn gp_field_mapping_reads_rows_and_rejects_wrong_registered_class() {
