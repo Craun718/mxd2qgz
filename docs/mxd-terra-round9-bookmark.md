@@ -2134,6 +2134,27 @@ Save `0x748e5d00` 的尺寸分派、内嵌 Variant 和成员 String
 对象回引、后继字段及逐字节截断回滚。内嵌数组的真实取值与
 ArcMap/QGIS 实档验收待查。
 
+#### GPFieldMapping
+
+GpObjects.dll 10.1.0.3035（SHA-256
+`c9da22687b40e070d7178538846f707c04d26474d2fa835acb01ceaa46d2f896`）
+的 RTTI 对位 GPFieldMapping 的 +0x1c 持久化表
+`0x747afca8`。Load 和 Save 分别为 `0x746dd0d0`、
+`0x746dd360`。Load 检查无符号 short 上限 2，并于
+`0x746dd12e` 读取 GPValue 基类。
+
+第一有符号 LONG 计数为正时，`0x746dd1b2` 逐项向
+LoadObject 请求 IUnknown，并经 `0x746df500` 查询
+`64DC7625-BB93-4CAD-BBCA-C4BF5E9F6807`。无论第一
+计数是否为正，随后都在 `0x746dd16c` 读第二计数。
+第二循环在 `0x746dd25d` 读取对象，经 `0x74678120`
+查询 `D7FCBB04-8E59-4FFB-9EE5-EC670AA892E0`。
+版本 2 还在 `0x746dd2ed` 读取一个 IUnknown 槽。
+Save 的两个计数在 `0x746dd3d9`、`0x746dd42e` 写出，
+两循环和版本 2 尾槽分别调用 `0x746dd3ff`、
+`0x746dd4aa`、`0x746dd4eb` 的 SaveObject。
+三个槽的实际实现类及其对象体仍待取证，未进行 ArcMap 人工验证。
+
 #### GPReplicaDataset
 
 FeatureDataElements.dll 10.1.0.3035（SHA-256
