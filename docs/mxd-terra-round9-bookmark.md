@@ -1425,6 +1425,28 @@ BSTR。故前文发现的 +0x0c 调用只证实类型字符串读取，
 FullName 路径产物已由现有读取器覆盖。外层 FME 工厂直接调用、
 通用 FMEDatasetType 的返回路径与真实宿主仍待验证。
 
+通用 FMEDatasetType 的 Desktop CLSID
+`510336D4-C78C-412F-B4B3-4B928A9F6E37` 位于
+DataInterop.dll 的 `0x6e8e33c8`。RTTI 将它的 ATL 对象主表
+对位到 `0x6e8e40fc`。QI `0x6e8d6aa0` 使用
+`0x6e8e4110` 的 COM 映射。IGPDataType IID 条目
+`0x6e8e411c` 与工厂包装使用同一转发函数 `0x6e8db360`，
+也转发给对象 +0x8。但创建目标不同，`0x6e8d11ea`
+请求 CLSID `016007F5-E9B4-4D5B-85EA-484BD4A7A2C7`。
+这个内部 CLSID 在已提取的 Desktop 文件中只命中包装 DLL，
+在上述可选载荷的 479 个 DLL 中无明文命中。源、目标类型
+各自转发给 DIToolbox 中的
+`8375A743-832F-497C-83A0-0CB56FED6AFF` 和
+`34C3CF55-8C16-42FA-B8B6-7B856A0B4454`，与通用类型
+的目标不同。不能把源和目标类型的 FullName 布局套到通用类型。
+
+DIToolbox 的三个工厂名称常量也已通过
+`0x100a54db`、`0x100a550b`、`0x100a553b` 对位，
+依次为 FMEDatasetType、FMESourceDatasetType、FMEDestDatasetType。
+工厂 +0x14 对前两者取同一成员 +0x08，对目标类型取成员 +0x0c，
+随后查询 IGPDataType 并读取类型字符串。通用类型实际转发目标的
+实现及运行期名称输出仍待取证，未在 ArcMap 中验证。
+
 #### GPValueTable
 
 GpObjects.dll 10.1.0.3035 的 RTTI `0x74801cd4` 对应持久化虚表
