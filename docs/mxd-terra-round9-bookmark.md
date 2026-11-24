@@ -2187,7 +2187,9 @@ ILabelClassDescriptions。CartoXProvider 的集合主 QI
 读取有符号 short（上限 1）和有符号 int32 计数。
 正计数时 `0x6ce8d79c` 调用集合主表 +0x2c，
 进入 `0x6ce93c70`，其 `0x6ce93ccb` 调用 LoadObject。
-因此集合成员使用对象头及共享键。
+因此集合成员使用对象头及共享键。集合表的 GetClassID
+`0x6ce93e60` 从 `0x6ceeebf4` 复制类标识
+`F0552A97-F4C8-4765-AB22-2FA4BFAD4B3E`。
 
 LabelClassDescription 自身的 IPersistStream 表
 `0x6cedb83c` 对应 Load `0x6ce27d80` 和 Save
@@ -2211,7 +2213,23 @@ LineLabelPlacementDescription 为
 `17729200-D19F-437F-8607-4A7995BC0928`，
 PolygonLabelPlacementDescription 为
 `425D9BB2-BD95-4DB9-B9F2-2C7B4D44EC58`。
-三类的原生对象体和真实宿主仍待核对，未进行 ArcMap 人工验证。
+三类在同版 CartoXProvider 的持久化入口如下：
+
+| 实现 | 持久化表 | Load | Save |
+| --- | --- | --- | --- |
+| Point | `0x6cee419c` | `0x6ce2dd70` | `0x6ce2dde0` |
+| Line | `0x6cedc6a4` | `0x6ce2dd70` | `0x6ce2dde0` |
+| Polygon | `0x6cee42a8` | `0x6ce57100` | `0x6ce57170` |
+
+Load 先读有符号 short，比较点 `0x6ce2dda9`、
+`0x6ce57139` 使用有符号分支，拒绝大于 1 的版本。
+通过检查后均以 `AfStreamRead(long*)` 读取一个 4 字节 LONG
+到接口指针 +0x0c，调用点为 `0x6ce2ddc2` 和
+`0x6ce57152`。Save 分别在 `0x6ce2de19`、
+`0x6ce571a9` 写 short，在 `0x6ce2de32`、
+`0x6ce571c2` 写该 LONG。两个 Load 收尾清零的内存字节
+没有独立流字段。LONG 的业务位定义及真实宿主仍待核对，
+未进行 ArcMap 人工验证。
 
 #### GPRasterBuilder
 

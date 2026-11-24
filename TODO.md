@@ -863,6 +863,7 @@
       - [x] 核对 FeatureLayerDrawingDescription 的渲染器、标注槽与版本边界。[取证](docs/mxd-terra-round9-bookmark.md#featurelayerdrawingdescription)
       - [x] 定位 LabelingDescription 的标注类集合与成员持久化入口。[取证](docs/mxd-terra-round9-bookmark.md#featurelayerdrawingdescription)
       - [x] 核对 LabelClassDescription 的逐版本布局及三个标注放置候选类。[取证](docs/mxd-terra-round9-bookmark.md#featurelayerdrawingdescription)
+      - [x] 核对点、线、面标注放置描述的持久化对象体。[取证](docs/mxd-terra-round9-bookmark.md#featurelayerdrawingdescription)
       - [ ] 接入 FeatureLayerDrawingDescription 对象体。
       - [x] 核对 GPFieldMapping 的两个带键集合和版本 2 尾槽。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldmapping)
       - [x] 定位 GPFieldMapping 子槽接口及 GPFieldMap 的原生 Load。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldmapping)
