@@ -981,3 +981,27 @@ Load `0x68027d80` 在 `0x68027dc4..0x68027dc9` 将版本减一
 覆盖两种像元长度、跨槽颜色回引、后继字节及逐字节截断回滚。
 未知材质或嵌套对象仍保留停止位置。其他材质实现、实档和 ArcMap/QGIS
 人工验收仍待核对。
+
+#### 10.1 介质中的材质接口调用方
+
+逐文件检索所提取 Desktop DLL 中材质 IID
+`{E9F95F61-2BEC-11D6-A4CD-444553547777}` 的完整字节，
+命中 _3DSymbols、VRML3DFile 和 _3DSymbolsUI。核对命中
+地址的调用指令及 PE 导入表，三者版本均为 10.1.0.3035。
+
+- _3DSymbols.dll 在 `0x68027537` 直接比较 IID，归属
+  GeometryMaterial 的 QI。相同常量处的其他直接引用是接口请求。
+- VRML3DFile.dll（SHA-256
+  `e30601f639da31a4203a85b70e668611a7da9f34974b8427a3e14a05d8ef79a9`）
+  在 `0x80c88b0b` 通过 AfCreateInstance 创建 GeometryMaterial
+  CLSID，调用 OleRun 后在 `0x80c88b38` 对该实例请求材质接口。
+- _3DSymbolsUI.dll（SHA-256
+  `fd587aca4ce9981a2fd7da197ef70886b4b2a8f0d98f13310e06fcd0c14ad0fb`）
+  在 `0x1001d9e9` 以调用方传入的 CLSID 创建对象，
+  `0x1001da22` 请求材质接口。另一分支 `0x1001da4c`
+  把同一 IID 直接交给 AfCreateInstance。界面还会在
+  `0x1001de23` 查询外部传入的实例。
+
+因此，上述介质的显式 IID 命中中，GeometryMaterial 是已确认实现。
+经外部 CLSID 或其他间接方式提供的实现仍需样本或运行取证。
+此次为静态核对，未进行 ArcMap/QGIS 人工验收。

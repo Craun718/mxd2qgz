@@ -644,6 +644,7 @@
       - [x] 接入 FeatureLayer 后继段支持的 SimpleLine3DSymbol，读取颜色与原始标量。[原生取证](docs/arcmap-10.1-dep-tail.md#simpleline3dsymbol)
       - [x] 接入 TextureLineSymbol 的版本、标量和空填充边界。[原生取证](docs/arcmap-10.1-dep-tail.md#texturelinesymbol-与嵌套填充)
       - [x] 读取 TextureFillSymbol 的 GeometryMaterial 对象、像元和后继字段。[原生取证](docs/arcmap-10.1-dep-tail.md#texturelinesymbol-与嵌套填充)
+      - [x] 核对 10.1 介质 DLL 中 TextureFillSymbol 材质槽 IID 的显式命中与创建方。[调用取证](docs/arcmap-10.1-dep-tail.md#101-介质中的材质接口调用方)
       - [ ] 核对 TextureFillSymbol 材质槽中其余接口实现。
       - [ ] FeatureLayer 后继段 ㉖ 槽中未支持的 ISymbol 实现类体（已接入类和跨模块候选见[符号续研](docs/arcmap-10.1-dep-tail.md#featurelayer-符号槽的栅格和-wms-实现)）。
       - [x] 接入 SymbolMimic 的空 IRepresentationRule 槽及两项标量。[原生持久化入口](docs/arcmap-10.1-dep-tail.md#symbolmimic-的持久化入口)
