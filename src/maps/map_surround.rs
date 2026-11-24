@@ -567,6 +567,10 @@ const CADASTRAL_FIELD_EDITS_CLASS_ID: [u8; 16] = [
     0xfb, 0x5d, 0xe3, 0xde, 0xa2, 0x81, 0x8e, 0x46, 0xab, 0xa8, 0x24, 0x14, 0xe7, 0x57, 0xa0, 0xd9,
 ];
 
+const DE_TOOLBOX_CLASS_ID: [u8; 16] = [
+    0x23, 0x6b, 0xc6, 0xfe, 0x2a, 0xe6, 0x6f, 0x46, 0xb1, 0x1b, 0xa8, 0xa8, 0xf2, 0xc2, 0x50, 0x4c,
+];
+
 const DE_TOOL_CLASS_ID: [u8; 16] = [
     0x9a, 0x02, 0xd1, 0x8c, 0x56, 0x0b, 0x6b, 0x43, 0xb4, 0xa6, 0x8f, 0x93, 0x60, 0xcd, 0x63, 0xd9,
 ];
@@ -1196,7 +1200,18 @@ pub struct DeCadastralFabric10_1 {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct DeToolboxExtension10_1 {
+    pub version: u16,
+    pub name: String,
+    pub v2: Option<([String; 2], u32)>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
+    Toolbox {
+        dataset: DeDataset10_1,
+        extension: Option<DeToolboxExtension10_1>,
+    },
     Tool {
         version: u16,
         dataset: DeDataset10_1,
@@ -4091,6 +4106,45 @@ fn read_de_cadastral_fabric(
     })
 }
 
+fn read_de_toolbox(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<DeChild10_1> {
+    let mut trial = reader.clone();
+    let version = read_de_layer_version(&mut trial, 2, "DEToolbox")?;
+    let mut trial_refs = refs.clone();
+    let dataset = match read_gp_de_dataset(&mut trial, max_bytes, &mut trial_refs, depth) {
+        Ok(dataset) => dataset,
+        Err(_) => {
+            // 基类读取失败时，原生回到对象体起点并直接重读基类。
+            return Ok(DeChild10_1::Toolbox {
+                dataset: read_gp_de_dataset(reader, max_bytes, refs, depth)?,
+                extension: None,
+            });
+        }
+    };
+    let name = read_bstr_string_10_1(&mut trial, max_bytes)?;
+    let v2 = if version == 2 {
+        Some((
+            [
+                read_bstr_string_10_1(&mut trial, max_bytes)?,
+                read_bstr_string_10_1(&mut trial, max_bytes)?,
+            ],
+            trial.read_u32_le()?,
+        ))
+    } else {
+        None
+    };
+    *reader = trial;
+    *refs = trial_refs;
+    Ok(DeChild10_1::Toolbox {
+        dataset,
+        extension: Some(DeToolboxExtension10_1 { version, name, v2 }),
+    })
+}
+
 fn read_gp_data_element_child(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -4116,6 +4170,7 @@ fn read_gp_data_element_child(
                     | DE_TERRAIN_CLASS_ID
                     | DE_CADASTRAL_FABRIC_CLASS_ID
                     | DE_TOOL_CLASS_ID
+                    | DE_TOOLBOX_CLASS_ID
                     | DE_COVERAGE_CLASS_ID
                     | DE_LAS_DATASET_CLASS_ID
                     | DE_VPF_COVERAGE_CLASS_ID
@@ -4165,6 +4220,7 @@ fn read_gp_data_element_child(
                 | DE_TERRAIN_CLASS_ID
                 | DE_CADASTRAL_FABRIC_CLASS_ID
                 | DE_TOOL_CLASS_ID
+                | DE_TOOLBOX_CLASS_ID
                 | DE_COVERAGE_CLASS_ID
                 | DE_LAS_DATASET_CLASS_ID
                 | DE_VPF_COVERAGE_CLASS_ID
@@ -4283,6 +4339,8 @@ fn read_gp_data_element_child(
                     }
                 };
                 DeChild10_1::TextFile { version, base }
+            } else if class_id == DE_TOOLBOX_CLASS_ID {
+                read_de_toolbox(reader, max_bytes, refs, depth + 1)?
             } else if class_id == DE_TOOL_CLASS_ID {
                 DeChild10_1::Tool {
                     version: read_de_layer_version(reader, 1, "DETool")?,
@@ -7909,6 +7967,44 @@ pub fn read_legend_prefix_10_1(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn de_toolbox_reads_bstr_tail_and_retries_legacy_dataset() {
+        for version in [None, Some(0_u16), Some(1), Some(2)] {
+            let mut bytes = DE_TOOLBOX_CLASS_ID.to_vec();
+            bytes.extend(63_u32.to_le_bytes());
+            if let Some(version) = version {
+                bytes.extend(version.to_le_bytes());
+            }
+            bytes.extend([0; 8]);
+            bytes.extend([2, 0, 0, 0, 0, 0].repeat(3));
+            bytes.extend([0; 22]);
+            if version.is_some() {
+                bytes.extend([1, 0, 0, 0, b'T', 0, 0, 0]);
+            }
+            if version == Some(2) {
+                bytes.extend([0; 8]);
+                bytes.extend(9_u32.to_le_bytes());
+            }
+            let end = bytes.len();
+            bytes.push(0xa5);
+            let mut reader = Reader::new(&bytes);
+            let slot =
+                read_gp_data_element_child(&mut reader, 1024, &mut RefTable10_1::new(), 0).unwrap();
+            let Some(DeChild10_1::Toolbox { extension, .. }) = slot.body.as_deref() else {
+                panic!("应读取 DEToolbox");
+            };
+            assert_eq!(extension.as_ref().map(|tail| tail.version), version);
+            if let Some(tail) = extension {
+                assert_eq!(tail.name, "T");
+                assert_eq!(
+                    tail.v2.as_ref().map(|(_, flag)| *flag),
+                    (version == Some(2)).then_some(9)
+                );
+            }
+            assert_eq!(reader.position(), end);
+        }
+    }
 
     #[test]
     fn de_tool_ends_after_dataset() {

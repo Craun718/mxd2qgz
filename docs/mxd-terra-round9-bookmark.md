@@ -2786,3 +2786,18 @@ Load `0x74f61ba0` 读取无符号版本（上限 1），在
 同模块 DEToolbox 持久化表 `0x74ff3f9c` 的 Load 为
 `0x74f63330`。它先保存流位置并读取 short，分支涉及
 回退和成员读取，完整布局仍待核对。
+
+#### DEToolbox
+
+GpToolbox.dll 10.1.0.3035 的持久化表为 `0x74ff3f9c`。
+构造路径 `0x74f62924` 从 `0x74ff41e4` 复制 CLSID
+`FEC66B23-E62A-466F-B11B-A8A8F2C2504C`，QI 在
+`0x74f62b2d` 比对 IDataElement IID。
+Load `0x74f63330` 保存当前位置，读取无符号版本（上限 2），
+在 `0x74f6339a` 调用 DEDataset::Load。基类读取失败时
+在 `0x74f633b7` 回到初始位置，直接重读 DEDataset 后返回。
+基类成功时读取一个自由函数 ReadString 形式的 BSTR，
+版本 2 再读两个 BSTR 和一个 long。
+解析器在尝试基类时保留游标和引用表快照。构造测试覆盖
+两个入口、三种派生版本、BSTR 和结束位置。
+真实 MXD 宿主及原生回退触发样本仍待核对。
