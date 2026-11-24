@@ -853,6 +853,7 @@
       - [x] 接入 DETable 的 Indexes 与 Index 对象体。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [ ] 核对 GPAddressLocatorStyle 非空配置中其余接口槽的类体。[取证](docs/mxd-terra-round9-bookmark.md#gpaddresslocatorstyle)
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
+      - [x] 定位 IGPValue 子类 FMEDataset 转发的原生 IPersistStream 入口。[取证](docs/mxd-terra-round9-bookmark.md#fmedataset-值对象的持久化入口)
       - [x] 接入 GPFieldInfo 的基础行和 v2 扩展字段。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldinfo)
       - [x] 接入 GPWorkspaceExtension 的名称与扩展 GUID。[取证](docs/mxd-terra-round9-bookmark.md#gpworkspaceextension)
       - [x] 接入 GPDataFile 的 GDSData 传输对象和版本化属性槽。[取证](docs/mxd-terra-round9-bookmark.md#gpdatafile-和-gdsdata)

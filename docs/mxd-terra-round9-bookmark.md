@@ -1493,6 +1493,25 @@ DIToolbox 的第二张表由 `0x1012a0d0` 描述，
 证据把通用 FME 类指向任一自注册模块。未确认运行时类表或
 已注册的进程内服务器，也未在 ArcMap 中人工验证。
 
+##### FMEDataset 值对象的持久化入口
+
+Desktop 10.1.0.3035 的 DataInterop.dll 中，公开的 IGPValue
+类 FMEDataset（`B0AF2727-118C-4F9F-ABD1-C44CF8E548BB`）
+使用 ATL 主表 `0x6e8e4098`。QI `0x6e8d6920` 使用
+COM 映射 `0x6e8e40b0`，将 IGPValue 和 IPersistStream
+转发到对象的 +0x8 成员。初始化函数 `0x6e8d10c0`
+在 `0x6e8d10ea` 请求内部类
+`D63AD8B8-AB46-4903-B158-26C3240DE0D9`。
+
+同介质 DIToolbox.dll 2012.0.0.12229 的
+`0x100f3904` 存放该内部 CLSID，CFMEDataset 的
+IPersistStream 表 `0x100f4b50` 的 GetClassID
+`0x10021430` 从这里复制类标识。同表的 Load 和 Save
+分别位于 `0x10022d20` 与 `0x10022ea0`。
+两份 PE 的摘要与上文相同。此链定位了 IGPValue 值类的原生
+读取入口，其 CLSID 与前述通用数据类型的转发目标不同。
+对象体布局、实际对象流登记类以及真实宿主仍待核对。
+
 GpObjects.dll 内部 GPDataTypeFactory 的 GetClassID
 `0x746ac930` 从 `0x747a74dc` 复制
 `E41CFD44-5741-4F2B-8ACE-1A49E146D329`。QI
