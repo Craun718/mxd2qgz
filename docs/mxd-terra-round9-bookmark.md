@@ -1512,6 +1512,26 @@ IPersistStream 表 `0x100f4b50` 的 GetClassID
 读取入口，其 CLSID 与前述通用数据类型的转发目标不同。
 对象体布局、实际对象流登记类以及真实宿主仍待核对。
 
+##### FMEDataset 值对象体边界
+
+DIToolbox.dll 同一构建的 Load `0x10022d20` 在 `0x10022d35`
+调用字符串读取器 `0x10021550`，它在 `0x1002158e`
+先以 IStream::Read 读取一个 4 字节长度。长度 0 表示空指针，
+1 或大于 `0x100000` 被拒绝。正长度用 OleAut32 ordinal 150
+分配长度减 2 的 BSTR，再于 `0x100215ce` 按原始长度读入
+字符串缓冲区。Load 随后在 `0x10022df3` 调用 IGPValue
+表 `0x100f4b98` 的 +0x10 赋值方法，输入为已读字符串，
+未传入流。
+
+Save `0x10022ea0` 从 IGPValue +0x18 取字符串，
+于 `0x10022f77` 调用 `0x10021650`。该辅助函数用
+OleAut32 ordinal 149 取得 BSTR 的字节长度，非空指针时加 2
+计入末尾的宽字符零，空指针时写 0。`0x10021697` 写入
+4 字节长度，`0x100216b2` 写入正长度的数据。值对象体因此
+只有长度与字符串字节。现有通用 IGPValue 读取入口默认消费的
+两个版本和基类标记在此体中均不存在。真实宿主、两层 CLSID
+写入 ObjectStream 的实际选择及 ArcMap 人工验证仍开放。
+
 GpObjects.dll 内部 GPDataTypeFactory 的 GetClassID
 `0x746ac930` 从 `0x747a74dc` 复制
 `E41CFD44-5741-4F2B-8ACE-1A49E146D329`。QI
