@@ -674,6 +674,7 @@
       - [x] 追踪 RasterLayer v12 数据集指针的赋值，并执行 10.1 原始指令测定两种尾段消费长度。[原生读取实验](docs/mxd-10.1-raster-layer-tail.md#v12-尾段的原生读取实验)
       - [x] 将旧 Map 双列表的 ExtraSafe 条目边界传给 RasterLayer v12 和嵌套它的 WCSLayer。[原生分派及回引验证](docs/mxd-10.1-raster-layer-tail.md#旧-map-的-extrasafe-图层)
       - [x] 校验两类三维图形容器关联 ILayer 的回引登记类。[取证](docs/arcmap-10.1-dep-tail.md#lelp-容器和关联图层接线)
+      - [x] 核对 DummyLayer 和 DummyGraduatedMarkerLayer 新对象的持久化接口。[取证](docs/arcmap-10.1-dep-tail.md#dummylayer-系列的关联槽边界)
       - [ ] 补齐两类 3D 容器的关联 ILayer 槽中其余未支持的类体；已接入类的共用子槽缺口见各自条目。
       - [x] 接入普通 ILayer 槽中的 InternetTiledLayer 与 WMTSLayer，覆盖独立图层、组图层和三维关联图层。[接口及对象体证据](docs/mxd-10.1-raster-layer-tail.md#瓦片图层的独立-ilayer-宿主)
       - [x] 校验两类 3D 图形容器的 IEnvelope 回引登记类。[取证](docs/arcmap-10.1-dep-tail.md#三维图形容器的对象体)

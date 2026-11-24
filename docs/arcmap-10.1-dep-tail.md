@@ -1255,3 +1255,20 @@ LegendClassIndex 等于所选索引时，调用 GDI 绘制边界线。
 
 Rust 访问器从解析结果取得整数，旧版缺省为 3。测试覆盖保存值
 及缺省值，ArcMap/QGIS 人工验收待补。
+
+### DummyLayer 系列的关联槽边界
+
+复核 [Layer.dll 10.1.0.3035](mxd-luna-deep-layer-masking-20261118.md#其余内置-ilayer-实现)
+同摘要提取物。注册例程 `0x7866b7d0` 分别用 `0x7866f260`
+和 `0x7866f270` 的 CLSID 建立 DummyLayer 和 DummyGraduatedMarkerLayer
+工厂。两类对象的共用 QI `0x7865cf90` 在 `0x7865cfa9`
+比较 ILayer IID，另有 `0x7865cfd5` 的接口分支。未命中时
+委派 `0x786672b0`，比较 IUnknown 及另外两个接口 IID 后在
+`0x786673a2` 返回 E_NOINTERFACE。检查两段比较所引用的 PE
+数据，均无标准 IPersistStream 或 IPersistVariant IID。
+
+普通关联 ILayer 槽的已登记实例回引与首次加载的要求不同。
+在该 10.1 实现中，两类均可提供 ILayer，但其查询路径不给出
+ObjectStream 首次加载对象体所用的两个持久化接口。因此无界关联槽
+继续接受已登记的 ILayer 回引，首次出现的这两类仍返回不支持。
+这项取证仅覆盖上述模块和接口路径，尚未在 ArcMap 中运行验证。
