@@ -3397,6 +3397,21 @@ Rust 在编码值和 IGPLayer 槽复用 GPLayerBase 读取器。
 构造测试覆盖派生层 v0/v1、超限版本、截断和对象终点。
 真实 MXD 宿主及 ArcMap/QGIS 人工验收仍待验证。
 
+#### GPTerrainLayer
+
+ArcMap 10.1 Desktop 互操作元数据将
+`ADEFCF2A-9695-4422-82FC-906F44FC49F6` 定名为 GPTerrainLayer，
+并列出 IGPValue、IGPLayer、IPersistStream。用同摘要的
+GpObjects.dll 10.1.0.3035 PE RTTI `0x74801830` 和 objdump
+核对持久化表 `0x747b6f3c`。Load 与 GPTinLayer 共用
+`0x747138c0`。独立 Save `0x747123a0` 在 `0x747123bf`
+写派生层 short，再在 `0x747123e0` 调 GPLayerBase::Save，
+随后结束流写入。
+
+Rust 在编码值和 IGPLayer 槽复用 GPTinLayer 的对象体读取逻辑，
+按 CLSID 保留类别。构造测试覆盖两个入口、v0/v1、超限版本、
+逐字节截断及对象终点。真实 MXD 宿主及 ArcMap/QGIS 人工验收仍待验证。
+
 #### 目录数据元素
 
 FileDataElements.dll 10.1.0.3035 的 PE RTTI 持久化表及

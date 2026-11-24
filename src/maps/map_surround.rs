@@ -621,6 +621,9 @@ const GP_LAYER_CLASS_ID: [u8; 16] = [
     0x1e, 0x59, 0x47, 0x6a, 0x16, 0xaa, 0x3e, 0x44, 0xb5, 0x0d, 0xd8, 0x92, 0x66, 0x59, 0xa4, 0xe1,
 ];
 
+const GP_TERRAIN_LAYER_CLASS_ID: [u8; 16] = [
+    0x2a, 0xcf, 0xef, 0xad, 0x95, 0x96, 0x22, 0x44, 0x82, 0xfc, 0x90, 0x6f, 0x44, 0xfc, 0x49, 0xf6,
+];
 const GP_TIN_LAYER_CLASS_ID: [u8; 16] = [
     0xb6, 0x3f, 0xf7, 0x1f, 0x74, 0x1d, 0x22, 0x47, 0xa7, 0x85, 0xdf, 0xa1, 0xf8, 0x32, 0x7a, 0xb5,
 ];
@@ -966,6 +969,7 @@ pub const GP_EXTENT_CLASS_ID: [u8; 16] = [
 pub enum GpCodedValue10_1 {
     MosaicLayer(Box<GpLayer10_1>),
     TinLayer(Box<GpLayer10_1>),
+    TerrainLayer(Box<GpLayer10_1>),
     RasterCatalogLayer(Box<GpLayer10_1>),
     FeatureLayer(Box<GpLayer10_1>),
     RasterBuilder(RuleSlot10_1<RasterFunctionArgumentsBody10_1>),
@@ -3258,6 +3262,7 @@ fn read_gp_coded_value_entry(
                     | GP_FIELD_MAPPING_CLASS_ID
                     | GP_RASTER_FORMULATED_CLASS_ID
                     | GP_RASTER_BUILDER_CLASS_ID
+                    | GP_TERRAIN_LAYER_CLASS_ID
                     | GP_TIN_LAYER_CLASS_ID
                     | GP_FEATURE_LAYER_CLASS_ID
                     | GP_RASTER_CATALOG_LAYER_CLASS_ID
@@ -3336,15 +3341,19 @@ fn read_gp_coded_value_entry(
             None
         }
         ObjectEntry10_1::NewObject {
-            class_id: GP_TIN_LAYER_CLASS_ID,
+            class_id: class_id @ (GP_TIN_LAYER_CLASS_ID | GP_TERRAIN_LAYER_CLASS_ID),
             ..
         } => {
-            let layer = read_gp_layer_body(reader, max_bytes, table, depth, GP_TIN_LAYER_CLASS_ID)?;
+            let layer = read_gp_layer_body(reader, max_bytes, table, depth, class_id)?;
             Some(Box::new(GpCodedValueBody10_1 {
-                version: layer.derived_version.expect("GPTinLayer 有派生层版本"),
+                version: layer.derived_version.expect("GP 图层有派生层版本"),
                 base_version: layer.gp_value_version,
                 base_short: layer.gp_value_short,
-                value: GpCodedValue10_1::TinLayer(Box::new(layer)),
+                value: if class_id == GP_TIN_LAYER_CLASS_ID {
+                    GpCodedValue10_1::TinLayer(Box::new(layer))
+                } else {
+                    GpCodedValue10_1::TerrainLayer(Box::new(layer))
+                },
             }))
         }
         ObjectEntry10_1::NewObject {
@@ -4926,6 +4935,7 @@ fn read_gp_layer_slot(
                 GP_LAYER_CLASS_ID
                     | GP_COMPOSITE_LAYER_CLASS_ID
                     | GP_MOSAIC_LAYER_CLASS_ID
+                    | GP_TERRAIN_LAYER_CLASS_ID
                     | GP_TIN_LAYER_CLASS_ID
                     | GP_FEATURE_LAYER_CLASS_ID
                     | GP_RASTER_CATALOG_LAYER_CLASS_ID
@@ -4938,6 +4948,7 @@ fn read_gp_layer_slot(
                 class_id @ (GP_LAYER_CLASS_ID
                 | GP_COMPOSITE_LAYER_CLASS_ID
                 | GP_MOSAIC_LAYER_CLASS_ID
+                | GP_TERRAIN_LAYER_CLASS_ID
                 | GP_TIN_LAYER_CLASS_ID
                 | GP_FEATURE_LAYER_CLASS_ID
                 | GP_RASTER_CATALOG_LAYER_CLASS_ID),
@@ -4965,8 +4976,8 @@ fn read_gp_layer_body(
     if depth >= MAX_BOOKMARK_NAME_NESTING {
         return Err(io::Error::new(ErrorKind::InvalidData, "IGPLayer 嵌套过深"));
     }
-    let derived_version = (class_id == GP_TIN_LAYER_CLASS_ID)
-        .then(|| read_de_layer_version(reader, 1, "GPTinLayer"))
+    let derived_version = matches!(class_id, GP_TIN_LAYER_CLASS_ID | GP_TERRAIN_LAYER_CLASS_ID)
+        .then(|| read_de_layer_version(reader, 1, "GPTinLayer/GPTerrainLayer"))
         .transpose()?;
     let feature_layer_version = matches!(
         class_id,
@@ -11352,54 +11363,60 @@ mod tests {
     }
 
     #[test]
-    fn gp_tin_layer_reads_derived_version_and_base_in_both_slots() {
-        for version in 0_u16..=1 {
-            let mut bytes = GP_TIN_LAYER_CLASS_ID.to_vec();
-            bytes.extend(1_u32.to_le_bytes());
-            bytes.extend(version.to_le_bytes());
-            bytes.extend([2, 0, 1, 0, 9, 0]);
-            bytes.extend([2, 0, 0, 0, 0, 0]);
-            bytes.extend([0; 32]);
-            for cut in 0..bytes.len() {
-                assert!(
-                    read_gp_layer_slot(
-                        &mut Reader::new(&bytes[..cut]),
-                        1024,
-                        &mut RefTable10_1::new(),
-                        0
-                    )
-                    .is_err()
+    fn gp_tin_and_terrain_layers_read_derived_version_and_base() {
+        for class_id in [GP_TIN_LAYER_CLASS_ID, GP_TERRAIN_LAYER_CLASS_ID] {
+            for version in 0_u16..=1 {
+                let mut bytes = class_id.to_vec();
+                bytes.extend(1_u32.to_le_bytes());
+                bytes.extend(version.to_le_bytes());
+                bytes.extend([2, 0, 1, 0, 9, 0]);
+                bytes.extend([2, 0, 0, 0, 0, 0]);
+                bytes.extend([0; 32]);
+                for cut in 0..bytes.len() {
+                    assert!(
+                        read_gp_layer_slot(
+                            &mut Reader::new(&bytes[..cut]),
+                            1024,
+                            &mut RefTable10_1::new(),
+                            0
+                        )
+                        .is_err()
+                    );
+                }
+                let end = bytes.len();
+                bytes.push(0xa5);
+                let mut reader = Reader::new(&bytes);
+                let coded =
+                    read_gp_coded_value_slot(&mut reader, 1024, &mut RefTable10_1::new(), 0)
+                        .unwrap()
+                        .body
+                        .unwrap();
+                let layer = match (class_id, coded.value) {
+                    (GP_TIN_LAYER_CLASS_ID, GpCodedValue10_1::TinLayer(layer))
+                    | (GP_TERRAIN_LAYER_CLASS_ID, GpCodedValue10_1::TerrainLayer(layer)) => layer,
+                    _ => panic!("应读取对应的 GP 图层"),
+                };
+                assert_eq!(
+                    (coded.version, coded.base_version, coded.base_short),
+                    (version, 1, 9)
+                );
+                assert_eq!(layer.derived_version, Some(version));
+                assert_eq!(layer.version, 2);
+                assert_eq!(reader.position(), end);
+
+                let mut reader = Reader::new(&bytes);
+                let slot =
+                    read_gp_layer_slot(&mut reader, 1024, &mut RefTable10_1::new(), 0).unwrap();
+                assert_eq!(slot.body.unwrap(), layer);
+                assert_eq!(reader.position(), end);
+                bytes[20] = 2;
+                assert_eq!(
+                    read_gp_layer_slot(&mut Reader::new(&bytes), 1024, &mut RefTable10_1::new(), 0)
+                        .unwrap_err()
+                        .kind(),
+                    ErrorKind::InvalidData
                 );
             }
-            let end = bytes.len();
-            bytes.push(0xa5);
-            let mut reader = Reader::new(&bytes);
-            let coded = read_gp_coded_value_slot(&mut reader, 1024, &mut RefTable10_1::new(), 0)
-                .unwrap()
-                .body
-                .unwrap();
-            let GpCodedValue10_1::TinLayer(layer) = coded.value else {
-                panic!("应读取 GPTinLayer");
-            };
-            assert_eq!(
-                (coded.version, coded.base_version, coded.base_short),
-                (version, 1, 9)
-            );
-            assert_eq!(layer.derived_version, Some(version));
-            assert_eq!(layer.version, 2);
-            assert_eq!(reader.position(), end);
-
-            let mut reader = Reader::new(&bytes);
-            let slot = read_gp_layer_slot(&mut reader, 1024, &mut RefTable10_1::new(), 0).unwrap();
-            assert_eq!(slot.body.unwrap(), layer);
-            assert_eq!(reader.position(), end);
-            bytes[20] = 2;
-            assert_eq!(
-                read_gp_layer_slot(&mut Reader::new(&bytes), 1024, &mut RefTable10_1::new(), 0)
-                    .unwrap_err()
-                    .kind(),
-                ErrorKind::InvalidData
-            );
         }
     }
 
