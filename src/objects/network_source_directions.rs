@@ -594,6 +594,73 @@ pub const NETWORK_ATTRIBUTE_PARAMETER_CLASS_ID: [u8; 16] = [
     0x15, 0xab, 0x43, 0xba, 0x5d, 0x04, 0xb1, 0x4e, 0x85, 0x26, 0xea, 0x65, 0xc4, 0x54, 0x8d, 0x4a,
 ];
 
+pub const SDC_NETWORK_ATTRIBUTE_CLASS_ID: [u8; 16] = [
+    0xba, 0x1f, 0xab, 0xa2, 0x5f, 0xaa, 0x5e, 0x48, 0x97, 0xfe, 0x79, 0xd0, 0xf5, 0xff, 0x99, 0x84,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum NetworkAttributeEntryBody10_1 {
+    Standard(NetworkAttribute10_1),
+    Sdc(SdcNetworkAttribute10_1),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SdcNetworkAttribute10_1 {
+    pub version: u16,
+    pub initial_value: u32,
+    pub name: String,
+    pub values: [u32; 3],
+    pub parameter_flag: Option<i32>,
+    pub parameter_array: Option<ObjectEntry10_1>,
+    pub v3_value: Option<u32>,
+    pub v4_value: Option<u32>,
+}
+
+fn read_sdc_network_attribute(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<SdcNetworkAttribute10_1> {
+    let version = reader.read_u16_le()?;
+    if !(1..=4).contains(&version) {
+        return Err(version_error("SDCNetworkAttribute"));
+    }
+    let initial_value = reader.read_u32_le()?;
+    let name = read_string_10_1(reader, max_bytes)?;
+    let values = [
+        reader.read_u32_le()?,
+        reader.read_u32_le()?,
+        reader.read_u32_le()?,
+    ];
+    let parameter_flag = (version >= 2)
+        .then(|| reader.read_u32_le().map(|value| value as i32))
+        .transpose()?;
+    let parameter_array = if parameter_flag.is_some_and(|flag| flag > 0) {
+        let entry = read_object_entry_10_1(reader, refs)?;
+        if entry != ObjectEntry10_1::Null {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "SDCNetworkAttribute 参数数组类尚未核对",
+            ));
+        }
+        Some(entry)
+    } else {
+        None
+    };
+    let v3_value = (version >= 3).then(|| reader.read_u32_le()).transpose()?;
+    let v4_value = (version == 4).then(|| reader.read_u32_le()).transpose()?;
+    Ok(SdcNetworkAttribute10_1 {
+        version,
+        initial_value,
+        name,
+        values,
+        parameter_flag,
+        parameter_array,
+        v3_value,
+        v4_value,
+    })
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct NetworkAttributeParameter10_1 {
     pub version: u16,
@@ -639,12 +706,12 @@ fn read_attribute_parameter(
     })
 }
 
-/// 读取 INetworkAttribute 槽。两个 GdbNetwork 类共用持久化体。
+/// 读取 INetworkAttribute 槽。宿主负责在失败时回退游标及引用表。
 pub fn read_network_attribute_slot_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     refs: &mut RefTable10_1,
-) -> io::Result<DirectionSlot10_1<NetworkAttribute10_1>> {
+) -> io::Result<DirectionSlot10_1<NetworkAttributeEntryBody10_1>> {
     let entry = read_object_entry_10_1(reader, refs)?;
     let (class, is_new) = match entry {
         ObjectEntry10_1::Null => return Ok(DirectionSlot10_1 { entry, body: None }),
@@ -656,6 +723,7 @@ pub fn read_network_attribute_slot_10_1(
     if ![
         NETWORK_ATTRIBUTE_CLASS_ID,
         EVALUATED_NETWORK_ATTRIBUTE_CLASS_ID,
+        SDC_NETWORK_ATTRIBUTE_CLASS_ID,
     ]
     .contains(&class)
     {
@@ -666,6 +734,10 @@ pub fn read_network_attribute_slot_10_1(
     }
     let body = is_new
         .then(|| -> io::Result<_> {
+            if class == SDC_NETWORK_ATTRIBUTE_CLASS_ID {
+                return read_sdc_network_attribute(reader, max_bytes, refs)
+                    .map(NetworkAttributeEntryBody10_1::Sdc);
+            }
             let version = reader.read_u16_le()?;
             if !(1..=3).contains(&version) {
                 return Err(version_error("NetworkAttribute"));
@@ -690,15 +762,17 @@ pub fn read_network_attribute_slot_10_1(
                     })
                 })
                 .transpose()?;
-            Ok(NetworkAttribute10_1 {
-                version,
-                initial_value,
-                name,
-                values,
-                properties,
-                extra_value,
-                parameters,
-            })
+            Ok(NetworkAttributeEntryBody10_1::Standard(
+                NetworkAttribute10_1 {
+                    version,
+                    initial_value,
+                    name,
+                    values,
+                    properties,
+                    extra_value,
+                    parameters,
+                },
+            ))
         })
         .transpose()?;
     Ok(DirectionSlot10_1 { entry, body })
@@ -723,6 +797,72 @@ mod tests {
             &mut RefTable10_1::new(),
         )?;
         Ok((body, reader.position()))
+    }
+
+    #[test]
+    fn sdc_network_attribute_reads_versioned_tails_and_rejects_unknown_array() {
+        for (version, flag) in [(1_u16, 0_i32), (2, -1), (3, 0), (4, 1)] {
+            let mut bytes = Vec::new();
+            object(&mut bytes, SDC_NETWORK_ATTRIBUTE_CLASS_ID, 1);
+            bytes.extend(version.to_le_bytes());
+            bytes.extend([0; 4]);
+            bytes.extend(EMPTY);
+            bytes.extend([0; 12]);
+            if version >= 2 {
+                bytes.extend(flag.to_le_bytes());
+            }
+            let array_start = bytes.len();
+            if flag > 0 {
+                bytes.extend([0; 16]);
+            }
+            if version >= 3 {
+                bytes.extend(5_u32.to_le_bytes());
+            }
+            if version == 4 {
+                bytes.extend(6_u32.to_le_bytes());
+            }
+            let end = bytes.len();
+            bytes.push(0xaa);
+            let mut reader = Reader::new(&bytes);
+            let body = read_network_attribute_slot_10_1(
+                &mut reader,
+                bytes.len(),
+                &mut RefTable10_1::new(),
+            )
+            .unwrap()
+            .body
+            .unwrap();
+            let NetworkAttributeEntryBody10_1::Sdc(body) = body else {
+                panic!("应读取 SDC 网络属性");
+            };
+            assert_eq!(reader.position(), end);
+            assert_eq!(body.parameter_flag, (version >= 2).then_some(flag));
+            assert_eq!(
+                body.parameter_array,
+                (flag > 0).then_some(ObjectEntry10_1::Null)
+            );
+            assert_eq!(body.v4_value, (version == 4).then_some(6));
+            for cut in 0..end {
+                assert!(
+                    read_network_attribute_slot_10_1(
+                        &mut Reader::new(&bytes[..cut]),
+                        bytes.len(),
+                        &mut RefTable10_1::new(),
+                    )
+                    .is_err()
+                );
+            }
+            if flag > 0 {
+                bytes[array_start] = 1;
+                let error = read_network_attribute_slot_10_1(
+                    &mut Reader::new(&bytes),
+                    bytes.len(),
+                    &mut RefTable10_1::new(),
+                )
+                .unwrap_err();
+                assert_eq!(error.kind(), ErrorKind::Unsupported);
+            }
+        }
     }
 
     #[test]
@@ -810,6 +950,9 @@ mod tests {
                 .body
                 .unwrap();
                 assert_eq!(reader.position(), end);
+                let NetworkAttributeEntryBody10_1::Standard(body) = body else {
+                    panic!("应读取标准网络属性");
+                };
                 assert_eq!(body.extra_value, (version >= 2).then_some(9));
                 if version == 3 {
                     let (_, parameters) = body.parameters.unwrap();

@@ -3139,3 +3139,22 @@ SDCNetworkAttributeParameterArray，但其 RTTI 与 IArray
 读 String、long 和两个 AfCore 自由函数 Read(tagVARIANT*, IStream*)，
 版本 2 再读 long。该类与 IArray 中实际持久化元素的关系、
 数组的具体类标识和真实 SDC MXD 样本仍待确认。
+
+Rust 的 INetworkAttribute 分派已接入 SDCNetworkAttribute
+版本 1–4。非正参数标志跳过槽。正标志按原生顺序读对象头，
+目前可消费空引用，遇非空类返回 Unsupported，以免把未知体
+误当成版本尾段。构造测试覆盖四个版本、带符号标志、空引用、
+未知类与逐字节截断。TODO 保留至非空数组分支闭合。
+
+SDC 内部参数数组的 +0x18 表虽有 `0x7dbeb560`，
+该入口通过内部虚表 +0x38、+0x3c 初始化迭代游标，未调用
+流读取接口。其 QI 的 `0x7dbebb73` 至 `0x7dbebb99`
+命中 IPersistStream 或 IPersist 时返回对象 +0x10。
++0x10 表 `0x7dd92eb0` 的 GetClassID `0x7dbeb690`
+从 `0x7dd932dc` 复制 `4FD7EF29-4842-41E2-8B24-04467A89221A`。
+Load `0x7dbeb6f0` 读取有符号 short，拒绝大于 1 的值，
+再在 `0x7dbeb746` 读有符号 long 计数。循环只在正数时
+执行，每项经完整对象主虚表 +0x2c 调用读取方法
+（`0x7dbeb78c`）。该槽的实际目标及该数组与外层 IArray
+的关系仍待核对。原生写侧传入属性对象 +0x2c 中保存的 IArray，
+目前无实档类标识。

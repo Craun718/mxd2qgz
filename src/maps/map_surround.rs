@@ -213,7 +213,7 @@ use crate::objects::envelope::{
 use crate::objects::fields::{FIELDS_CLASS_ID, FieldsBody10_1, read_fields_body_nested_10_1};
 use crate::objects::geometry::{POINT_CLASS_ID, PointBody10_1, read_point_body_10_1};
 use crate::objects::network_source_directions::{
-    DirectionSlot10_1, NetworkAttribute10_1, NetworkDirections10_1, NetworkSource10_1,
+    DirectionSlot10_1, NetworkAttributeEntryBody10_1, NetworkDirections10_1, NetworkSource10_1,
     TrafficData10_1, read_network_attribute_slot_10_1, read_network_directions_slot_10_1,
     read_network_source_slot_10_1, read_traffic_data_slot_10_1,
 };
@@ -1274,11 +1274,11 @@ pub struct DeNetworkDataset10_1 {
     pub directions: Option<DirectionSlot10_1<NetworkDirections10_1>>,
     pub properties: [RuleSlot10_1<PropertySetObjectStream10_1>; 2],
     pub sources: (i32, Vec<DirectionSlot10_1<NetworkSource10_1>>),
-    pub attributes: (i32, Vec<DirectionSlot10_1<NetworkAttribute10_1>>),
+    pub attributes: (i32, Vec<DirectionSlot10_1<NetworkAttributeEntryBody10_1>>),
     pub evaluator_rows: (i32, Vec<DeNetworkEvaluatorRow10_1>),
     pub extra_name: String,
     pub attribute_flag: u32,
-    pub extra_attribute: Option<DirectionSlot10_1<NetworkAttribute10_1>>,
+    pub extra_attribute: Option<DirectionSlot10_1<NetworkAttributeEntryBody10_1>>,
     pub values: (i32, Vec<u32>),
     pub extra_value: Option<u32>,
     pub traffic: Option<DeNetworkTraffic10_1>,
