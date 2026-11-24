@@ -7183,3 +7183,40 @@ fn feature_bookmark_reads_gp_na_hierarchy_settings_coded_value() {
         );
     }
 }
+
+#[test]
+fn feature_bookmark_reads_3da_settings_coded_values() {
+    use mxd2qgz::maps::map_surround::{
+        GP_3DA_DECIMATE_CLASS_ID, GP_3DA_INTERPOLATE_CLASS_ID, GpCodedValue10_1,
+    };
+
+    let value_bits = (-0.0_f64).to_bits();
+    let mut decimate = (-3_i32).to_le_bytes().to_vec();
+    decimate.extend(value_bits.to_le_bytes());
+    decimate.extend(25_i32.to_le_bytes());
+
+    let raw_longs = [-1_i32, 2, 3, 4, 5, 6];
+    let mut interpolate: Vec<_> = raw_longs.into_iter().flat_map(i32::to_le_bytes).collect();
+    interpolate.extend(value_bits.to_le_bytes());
+    for version in [0, 1] {
+        assert_legacy_topo_coded_value(
+            GP_3DA_DECIMATE_CLASS_ID,
+            version,
+            &decimate,
+            GpCodedValue10_1::Decimate3da {
+                raw_leading_long: -3,
+                value_bits,
+                raw_trailing_long: 25,
+            },
+        );
+        assert_legacy_topo_coded_value(
+            GP_3DA_INTERPOLATE_CLASS_ID,
+            version,
+            &interpolate,
+            GpCodedValue10_1::Interpolate3da {
+                raw_longs,
+                value_bits,
+            },
+        );
+    }
+}

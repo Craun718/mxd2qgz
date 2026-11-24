@@ -1908,3 +1908,25 @@ Save `0x74556290` 写版本 0，再调用 GPValue::Save 并写回两个
 值。解析按 Load 的接受条件处理，保留原始标量。构造书签覆盖
 版本 1 和 65535、拒绝版本 0、同键回引和截断回滚。
 实际编码值域宿主、标量语义及 ArcMap/QGIS 人工验收仍待确认。
+
+### GP3DADecimate 与 GP3DAInterpolate
+
+GpTinFunctions.dll PE32 10.1.0.3035 的 SHA-256 为
+`c474482ba93c5d3a5baa110a7341df950bff2804fbd880f7895ce931737283cd`。
+安装介质文件以 objdump 复核。RTTI 将持久化表 `0x74ef9344`
+和 `0x74ef97c4` 分别对应到 GP3DADecimate 与 GP3DAInterpolate。
+两表的 GetClassID 通过 `0x74edbf98` 调 DECoreLib GPValue::GetClassID
+（`0x6e955720`），从接口指针 `+8` 返回构造函数写入的 GUID。
+两类持久化接口位于完整对象 `+0x1c`，构造函数在
+`0x74d41498` 和 `0x74d42f36` 分别向完整对象 `+0x24` 写入
+`{1C8379B1-158A-49C2-979C-E948E07BA303}` 与
+`{41850EFE-51DE-43A4-8147-B88CCA19CF3C}`。QI 共用的 IGPValue
+IID 常量位于 `0x74ef93e4`。
+
+Load `0x74d41fb0` 和 `0x74d44240` 都接受无符号版本 0、1，
+然后调用 GPValue::Load。前者再依次读 long、double、long，
+后者再读六个 long 和一个 double。导入槽 `0x74ef8050` 和
+`0x74ef8054` 分别为 AfStreamRead 的 long 与 double 重载。
+Save `0x74d42080` 和 `0x74d44360` 按相同字段顺序写出。
+构造书签覆盖两个读取版本、拒绝超限版本、同键回引和截断回滚。
+字段语义、实际编码值域宿主及 ArcMap/QGIS 人工验收仍待确认。

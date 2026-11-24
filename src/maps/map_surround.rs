@@ -442,6 +442,12 @@ pub const GDS_DATA_CLASS_ID: [u8; 16] = [
     0x9c, 0xe6, 0x77, 0x8b, 0x95, 0x2a, 0xe3, 0x42, 0x88, 0xe3, 0x22, 0xa6, 0x12, 0xb6, 0x97, 0x52,
 ];
 
+pub const GP_3DA_DECIMATE_CLASS_ID: [u8; 16] = [
+    0xb1, 0x79, 0x83, 0x1c, 0x8a, 0x15, 0xc2, 0x49, 0x97, 0x9c, 0xe9, 0x48, 0xe0, 0x7b, 0xa3, 0x03,
+];
+pub const GP_3DA_INTERPOLATE_CLASS_ID: [u8; 16] = [
+    0xfe, 0x0e, 0x85, 0x41, 0xde, 0x51, 0xa4, 0x43, 0x81, 0x47, 0xb8, 0x8c, 0xca, 0x19, 0xcf, 0x3c,
+];
 pub const GP_NA_HIERARCHY_SETTINGS_CLASS_ID: [u8; 16] = [
     0x22, 0x7d, 0xf2, 0x07, 0x6c, 0xa5, 0x9b, 0x41, 0x99, 0x31, 0xdd, 0x38, 0xc6, 0x08, 0x97, 0xf1,
 ];
@@ -618,6 +624,15 @@ pub enum GpCodedValue10_1 {
     DataFile {
         data: RuleSlot10_1<GdsData10_1>,
         strings: [String; 3],
+    },
+    Decimate3da {
+        raw_leading_long: i32,
+        value_bits: u64,
+        raw_trailing_long: i32,
+    },
+    Interpolate3da {
+        raw_longs: [i32; 6],
+        value_bits: u64,
     },
     NaHierarchySettings {
         raw_longs: [i32; 2],
@@ -2079,6 +2094,8 @@ fn read_gp_coded_value_entry(
                     | GP_WORKSPACE_EXTENSION_CLASS_ID
                     | GP_DATA_FILE_CLASS_ID
                     | GP_FIELD_INFO_CLASS_ID
+                    | GP_3DA_DECIMATE_CLASS_ID
+                    | GP_3DA_INTERPOLATE_CLASS_ID
                     | GP_NA_HIERARCHY_SETTINGS_CLASS_ID
                     | NA_CLASS_FIELD_MAP_CLASS_ID
                     | GP_ARC_INFO_ITEM_CLASS_ID
@@ -2139,6 +2156,8 @@ fn read_gp_coded_value_entry(
                 | GP_WORKSPACE_EXTENSION_CLASS_ID
                 | GP_DATA_FILE_CLASS_ID
                 | GP_FIELD_INFO_CLASS_ID
+                | GP_3DA_DECIMATE_CLASS_ID
+                | GP_3DA_INTERPOLATE_CLASS_ID
                 | GP_NA_HIERARCHY_SETTINGS_CLASS_ID
                 | NA_CLASS_FIELD_MAP_CLASS_ID
                 | GP_ARC_INFO_ITEM_CLASS_ID
@@ -2336,6 +2355,21 @@ fn read_gp_coded_value_entry(
                         read_string_10_1(reader, max_bytes)?,
                     ],
                 },
+                GP_3DA_DECIMATE_CLASS_ID => GpCodedValue10_1::Decimate3da {
+                    raw_leading_long: reader.read_u32_le()? as i32,
+                    value_bits: reader.read_f64_le()?.to_bits(),
+                    raw_trailing_long: reader.read_u32_le()? as i32,
+                },
+                GP_3DA_INTERPOLATE_CLASS_ID => {
+                    let mut raw_longs = [0; 6];
+                    for value in &mut raw_longs {
+                        *value = reader.read_u32_le()? as i32;
+                    }
+                    GpCodedValue10_1::Interpolate3da {
+                        raw_longs,
+                        value_bits: reader.read_f64_le()?.to_bits(),
+                    }
+                }
                 GP_NA_HIERARCHY_SETTINGS_CLASS_ID => GpCodedValue10_1::NaHierarchySettings {
                     raw_longs: [reader.read_u32_le()? as i32, reader.read_u32_le()? as i32],
                 },
