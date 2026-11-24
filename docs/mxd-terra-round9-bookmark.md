@@ -3595,6 +3595,30 @@ Rust 编码值读取器复用 GPRecordSet、图层绘制描述和编辑模板管
 构造测试覆盖 v0–v3、非空矢量绘制描述、非空编辑模板管理器、
 截断及对象终点。真实 MXD 宿主及 ArcMap/QGIS 人工验收仍待验证。
 
+#### GPNALayer
+
+ArcMap 10.1 Desktop 互操作元数据将
+`F142DE90-B941-4492-8511-4412B51C2F43` 定名为 GPNALayer。
+GPNAFunctions.dll PE32 10.1.0.3035（SHA-256
+`3c6f3dc1d5bfd9d848035bbd5b9c599859330759f29b26b2654838e91ce9178c`）
+的 RTTI `0x74602084` 对应 +0x1c 持久化表
+`0x745e4f18`，Load/Save 为 `0x745984b0 / 0x74597cd0`。
+objdump 显示 Load 在 `0x745984e9` 检查有符号 short 上限 3，
+随后经明确命名的导入槽 `0x745dc3e8` 调 GPCompositeLayerBase::Load。
+
+基类之后，`0x7459852a` 先读 IID
+`71E4AA21-1957-4224-B505-984C189AA520` 的对象槽。
+`0x74598544 / 0x74598602` 分别读取两个有符号 LONG 计数，
+相应循环在 `0x745985a8 / 0x745987c6` 调 LoadObject。
+两循环之间在 `0x745985e8` 读 IID
+`0EE02101-1597-473C-B77D-1EDFD547ACE5` 的对象。
+循环之后在 `0x74598665` 读 short，并在
+`0x74598687 / 0x745986a9` 读两个 IPropertySet。
+后续可见版本大于 0 的对象槽、版本大于 2 的计数循环和
+`0x7459883d` 的 short 读取点。分支失败及早返回路径、
+各接口的实际持久化实现、写侧及真实宿主仍待核对。
+以上为静态取证，未在 ArcMap 或 QGIS 中人工验收。
+
 #### 目录数据元素
 
 FileDataElements.dll 10.1.0.3035 的 PE RTTI 持久化表及

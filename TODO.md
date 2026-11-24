@@ -855,6 +855,8 @@
       - [x] 接入 DETable 的 Indexes 与 Index 对象体。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [ ] 核对 GPAddressLocatorStyle 非空配置中其余接口槽的类体。[取证](docs/mxd-terra-round9-bookmark.md#gpaddresslocatorstyle)
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
+      - [x] 定位 GPNALayer 的组合层基类及后继原生读取点。[取证](docs/mxd-terra-round9-bookmark.md#gpnalayer)
+      - [ ] 接入 GPNALayer 的持久化对象体。
       - [x] 接入编码值中的 GPTableView 对象体与已支持的子槽。[取证](docs/mxd-terra-round9-bookmark.md#gptableview)
       - [x] 对位 GPRecordSet 的版本字段及内嵌 RecordSet 的行循环。[取证](docs/mxd-terra-round9-bookmark.md#gprecordset-与内嵌-recordset)
       - [x] 对位 RecordSet 的内联 Record 持久化入口与 Variant 循环。[取证](docs/mxd-terra-round9-bookmark.md#gprecordset-与内嵌-recordset)
