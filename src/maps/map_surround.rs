@@ -212,6 +212,11 @@ use crate::objects::envelope::{
 };
 use crate::objects::fields::{FIELDS_CLASS_ID, FieldsBody10_1, read_fields_body_nested_10_1};
 use crate::objects::geometry::{POINT_CLASS_ID, PointBody10_1, read_point_body_10_1};
+use crate::objects::network_source_directions::{
+    DirectionSlot10_1, NetworkAttribute10_1, NetworkDirections10_1, NetworkSource10_1,
+    TrafficData10_1, read_network_attribute_slot_10_1, read_network_directions_slot_10_1,
+    read_network_source_slot_10_1, read_traffic_data_slot_10_1,
+};
 use crate::objects::property_set::{
     PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1, PropertyValueObjectStream10_1,
     read_padded_variant_object_stream_nested_10_1, read_property_set_object_stream_10_1,
@@ -591,6 +596,9 @@ const DE_CADASTRAL_FABRIC_CLASS_ID: [u8; 16] = [
     0xc0, 0x68, 0xf8, 0xb0, 0xbc, 0xbf, 0x69, 0x46, 0xb2, 0x63, 0xcd, 0x34, 0x8d, 0x65, 0xd7, 0xae,
 ];
 
+pub const DE_NETWORK_DATASET_CLASS_ID: [u8; 16] = [
+    0xb7, 0x08, 0x88, 0xff, 0x0c, 0xe5, 0xfe, 0x45, 0x84, 0xea, 0x1c, 0x06, 0x1d, 0x74, 0x31, 0xf6,
+];
 pub const DE_TERRAIN_CLASS_ID: [u8; 16] = [
     0xb6, 0x43, 0x65, 0x54, 0x7a, 0x32, 0x3c, 0x4d, 0xac, 0x15, 0x81, 0x22, 0xc8, 0xb6, 0x68, 0x0a,
 ];
@@ -1255,6 +1263,43 @@ pub struct ClassAttributes10_1 {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct DeNetworkDataset10_1 {
+    pub version: u16,
+    pub geo_dataset_version: u16,
+    pub dataset: DeDataset10_1,
+    pub extent: BookmarkEnvelopeEntry10_1,
+    pub spatial_reference: SpatialReferenceEntry10_1,
+    pub name: String,
+    pub initial_values: [u32; 6],
+    pub directions: Option<DirectionSlot10_1<NetworkDirections10_1>>,
+    pub properties: [RuleSlot10_1<PropertySetObjectStream10_1>; 2],
+    pub sources: (i32, Vec<DirectionSlot10_1<NetworkSource10_1>>),
+    pub attributes: (i32, Vec<DirectionSlot10_1<NetworkAttribute10_1>>),
+    pub evaluator_rows: (i32, Vec<DeNetworkEvaluatorRow10_1>),
+    pub extra_name: String,
+    pub attribute_flag: u32,
+    pub extra_attribute: Option<DirectionSlot10_1<NetworkAttribute10_1>>,
+    pub values: (i32, Vec<u32>),
+    pub extra_value: Option<u32>,
+    pub traffic: Option<DeNetworkTraffic10_1>,
+    pub final_name: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeNetworkEvaluatorRow10_1 {
+    pub values: [u32; 4],
+    pub uid: RuleSlot10_1<UidBody10_1>,
+    pub properties: RuleSlot10_1<PropertySetObjectStream10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeNetworkTraffic10_1 {
+    pub values: [u32; 3],
+    pub data: Option<DirectionSlot10_1<TrafficData10_1>>,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
     RepresentationClass(Box<DeRepresentationClass10_1>),
     Toolbox {
@@ -1266,6 +1311,7 @@ pub enum DeChild10_1 {
         dataset: DeDataset10_1,
     },
     CadastralFabric(Box<DeCadastralFabric10_1>),
+    NetworkDataset(Box<DeNetworkDataset10_1>),
     TerrainLegacy(Box<DeTerrainLegacy10_1>),
     TerrainGeoDataset(Box<DeTerrainGeoDataset10_1>),
     TableInfo(DeCompactTable10_1),
@@ -3953,6 +3999,124 @@ fn read_de_terrain_levels(
     Ok((level_count, levels))
 }
 
+fn read_network_dataset_list<T>(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    min_size: usize,
+    mut read: impl FnMut(&mut Reader<'_>) -> io::Result<T>,
+) -> io::Result<(i32, Vec<T>)> {
+    let raw_count = reader.read_u32_le()? as i32;
+    let count = raw_count.max(0) as usize;
+    if count > reader.remaining().min(max_bytes) / min_size {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "DENetworkDataset 列表数量超限",
+        ));
+    }
+    let mut rows = Vec::new();
+    for _ in 0..count {
+        rows.push(read(reader)?);
+    }
+    Ok((raw_count, rows))
+}
+
+fn read_de_network_dataset(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<DeNetworkDataset10_1> {
+    let version = reader.read_u16_le()?;
+    if !(1..=4).contains(&version) {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "DENetworkDataset 版本超限",
+        ));
+    }
+    let geo_dataset_version = read_de_layer_version(reader, 1, "DEGeoDataset")?;
+    let dataset = read_gp_de_dataset(reader, max_bytes, refs, depth)?;
+    let extent = read_surround_envelope_slot(reader, max_bytes, refs, "DENetworkDataset 范围")?;
+    let spatial_reference = read_spatial_reference_entry_10_1(reader, max_bytes, refs)?;
+    let name = read_string_10_1(reader, max_bytes)?;
+    let mut initial_values = [0; 6];
+    for value in &mut initial_values {
+        *value = reader.read_u32_le()?;
+    }
+    let directions = (initial_values[5] != 0)
+        .then(|| read_network_directions_slot_10_1(reader, max_bytes, refs))
+        .transpose()?;
+    let properties = [
+        read_gp_property_set_slot(reader, max_bytes, refs)?,
+        read_gp_property_set_slot(reader, max_bytes, refs)?,
+    ];
+    let sources = read_network_dataset_list(reader, max_bytes, 16, |r| {
+        read_network_source_slot_10_1(r, max_bytes, refs)
+    })?;
+    let attributes = read_network_dataset_list(reader, max_bytes, 16, |r| {
+        read_network_attribute_slot_10_1(r, max_bytes, refs)
+    })?;
+    let evaluator_rows = read_network_dataset_list(reader, max_bytes, 48, |r| {
+        let values = [
+            r.read_u32_le()?,
+            r.read_u32_le()?,
+            r.read_u32_le()?,
+            r.read_u32_le()?,
+        ];
+        let uid = read_gp_uid_slot(r, refs)?;
+        let properties = read_gp_property_set_slot(r, max_bytes, refs)?;
+        Ok(DeNetworkEvaluatorRow10_1 {
+            values,
+            uid,
+            properties,
+        })
+    })?;
+    let extra_name = read_string_10_1(reader, max_bytes)?;
+    let attribute_flag = reader.read_u32_le()?;
+    let extra_attribute = (attribute_flag != 0)
+        .then(|| read_network_attribute_slot_10_1(reader, max_bytes, refs))
+        .transpose()?;
+    let values = read_network_dataset_list(reader, max_bytes, 4, |r| r.read_u32_le())?;
+    let extra_value = (version >= 2).then(|| reader.read_u32_le()).transpose()?;
+    let traffic = (version >= 3)
+        .then(|| -> io::Result<_> {
+            let values = [
+                reader.read_u32_le()?,
+                reader.read_u32_le()?,
+                reader.read_u32_le()?,
+            ];
+            let data = (values[2] != 0)
+                .then(|| read_traffic_data_slot_10_1(reader, max_bytes, refs))
+                .transpose()?;
+            let name = read_string_10_1(reader, max_bytes)?;
+            Ok(DeNetworkTraffic10_1 { values, data, name })
+        })
+        .transpose()?;
+    let final_name = (version == 4)
+        .then(|| read_string_10_1(reader, max_bytes))
+        .transpose()?;
+    Ok(DeNetworkDataset10_1 {
+        version,
+        geo_dataset_version,
+        dataset,
+        extent,
+        spatial_reference,
+        name,
+        initial_values,
+        directions,
+        properties,
+        sources,
+        attributes,
+        evaluator_rows,
+        extra_name,
+        attribute_flag,
+        extra_attribute,
+        values,
+        extra_value,
+        traffic,
+        final_name,
+    })
+}
+
 fn read_de_terrain_geo_dataset(
     reader: &mut Reader<'_>,
     version: u32,
@@ -4337,6 +4501,7 @@ fn read_gp_data_element_child(
                     | DE_RASTER_DATASET_CLASS_ID
                     | DE_CAD_DRAWING_DATASET_CLASS_ID
                     | DE_TIN_CLASS_ID
+                    | DE_NETWORK_DATASET_CLASS_ID
                     | DE_TERRAIN_CLASS_ID
                     | DE_CADASTRAL_FABRIC_CLASS_ID
                     | DE_TOOL_CLASS_ID
@@ -4388,6 +4553,7 @@ fn read_gp_data_element_child(
                 | DE_RASTER_DATASET_CLASS_ID
                 | DE_CAD_DRAWING_DATASET_CLASS_ID
                 | DE_TIN_CLASS_ID
+                | DE_NETWORK_DATASET_CLASS_ID
                 | DE_TERRAIN_CLASS_ID
                 | DE_CADASTRAL_FABRIC_CLASS_ID
                 | DE_TOOL_CLASS_ID
@@ -4527,6 +4693,13 @@ fn read_gp_data_element_child(
                 }
             } else if class_id == DE_CADASTRAL_FABRIC_CLASS_ID {
                 DeChild10_1::CadastralFabric(Box::new(read_de_cadastral_fabric(
+                    reader,
+                    max_bytes,
+                    refs,
+                    depth + 1,
+                )?))
+            } else if class_id == DE_NETWORK_DATASET_CLASS_ID {
+                DeChild10_1::NetworkDataset(Box::new(read_de_network_dataset(
                     reader,
                     max_bytes,
                     refs,
@@ -8350,6 +8523,91 @@ mod tests {
                 tail_version == 3
             );
             assert_eq!(reader.position(), end);
+        }
+    }
+
+    #[test]
+    fn network_dataset_dispatches_versions_and_nonempty_slots() {
+        use crate::objects::network_source_directions::{
+            NETWORK_ATTRIBUTE_CLASS_ID, NETWORK_DIRECTIONS_CLASS_ID, TURN_FEATURE_SOURCE_CLASS_ID,
+        };
+        let empty = [2, 0, 0, 0, 0, 0];
+        for version in 1_u16..=4 {
+            let mut bytes = DE_NETWORK_DATASET_CLASS_ID.to_vec();
+            bytes.extend(43_u32.to_le_bytes());
+            bytes.extend(version.to_le_bytes());
+            bytes.extend([0; 10]);
+            bytes.extend(empty.repeat(3));
+            bytes.extend([0; 54]);
+            bytes.extend(empty);
+            bytes.extend([0; 20]);
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend(NETWORK_DIRECTIONS_CLASS_ID);
+            bytes.extend(44_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(empty.repeat(3));
+            bytes.extend([0; 36]);
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend(TURN_FEATURE_SOURCE_CLASS_ID);
+            bytes.extend(45_u32.to_le_bytes());
+            bytes.extend([0; 10]);
+            bytes.extend(empty);
+            bytes.extend([0; 20]);
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend(NETWORK_ATTRIBUTE_CLASS_ID);
+            bytes.extend(46_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend([0; 4]);
+            bytes.extend(empty);
+            bytes.extend([0; 28]);
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend([0; 48]);
+            bytes.extend(empty);
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend(NETWORK_ATTRIBUTE_CLASS_ID);
+            bytes.extend(46_u32.to_le_bytes());
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend(77_u32.to_le_bytes());
+            if version >= 2 {
+                bytes.extend(78_u32.to_le_bytes());
+            }
+            if version >= 3 {
+                bytes.extend([0; 12]);
+                bytes.extend(empty);
+            }
+            if version >= 4 {
+                bytes.extend(empty);
+            }
+            let end = bytes.len();
+            bytes.push(0xa5);
+            let mut reader = Reader::new(&bytes);
+            let slot =
+                read_gp_data_element_child(&mut reader, 1024, &mut RefTable10_1::new(), 0).unwrap();
+            let DeChild10_1::NetworkDataset(body) = *slot.body.unwrap() else {
+                panic!("应读取 DENetworkDataset");
+            };
+            assert_eq!(reader.position(), end);
+            assert_eq!(body.sources.1.len(), 1);
+            assert_eq!(body.attributes.1.len(), 1);
+            assert_eq!(body.evaluator_rows.1.len(), 1);
+            assert_eq!(body.values.1, [77]);
+            assert_eq!(body.final_name.is_some(), version == 4);
+            assert!(matches!(
+                body.extra_attribute.unwrap().entry,
+                ObjectEntry10_1::BackReference { key: 46, .. }
+            ));
+            for cut in 0..end {
+                assert!(
+                    read_gp_data_element_child(
+                        &mut Reader::new(&bytes[..cut]),
+                        1024,
+                        &mut RefTable10_1::new(),
+                        0,
+                    )
+                    .is_err(),
+                    "截断位置 {cut}"
+                );
+            }
         }
     }
 

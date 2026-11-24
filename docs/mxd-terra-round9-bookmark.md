@@ -2884,7 +2884,8 @@ PE RTTI 给出持久化表 `0x7118f740`。GetClassID
 `0x70fba2e0` 从 `0x711902ec` 复制
 `FF8808B7-E50C-45FE-84EA-1C061D7431F6`。
 主 QI 在 `0x70fbabc1` 比对 `0x7119022c` 的 IDataElement IID。
-Load `0x70fbc000` 接受无符号版本 0–3，经
+Load `0x70fbc000` 对 short 先减 1 再按无符号上限 3
+比较，因此接受版本 1–4，经
 `0x7116785e` 和导入槽 `0x71189540` 调用 DEGeoDataset::Load。
 基类返回后先调用 `0x71189128`，接着从
 `0x70fbc0a7` 至 `0x70fbc147` 顺序读取六个 long。
@@ -2924,14 +2925,15 @@ INetworkDirections。`0x7118bfa8` 的
 
 在 `0x70fbc8d3` 读取有符号计数，存入持久化接口 +0xf0。
 正数时从 `0x70fbc91d` 逐项读取 long，非正数跳过循环。
-版本 2–3 在 `0x70fbc95e` 加读一个 long。版本 0–1
+版本 2–4 在 `0x70fbc95e` 加读一个 long。版本 1
 调用 `0x70fbe7d0`，该调用只接收完整对象指针。
-版本 3 从 `0x70fbc9a8` 起读取三个 long，第三个非零时
+版本 3–4 从 `0x70fbc9a8` 起读取三个 long，第三个非零时
 在 `0x70fbca14` 加载 IID
 `EB382BCD-C05E-45E7-A625-3C0B55525775` 的对象。
 随后 `0x70fbca36` 读取 AfCore String。
 `0x70fbca44` 后的第二个 String 读取要求版本大于 3，
-与入口的无符号上限 3 不相交。版本 0–2 跳过这组字段。
+因此版本 4 还在 `0x70fbca53` 读取第二个 String。
+版本 1–2 跳过这组字段。
 子对象类、非空复杂列表及真实 MXD 宿主仍待核对。
 
 网络源类的 RTTI 显示 +0x1c 表共享多处方法。以
@@ -3087,3 +3089,10 @@ Load `0x70fe74b0`。入口接受 short 版本 1–2。
 Rust 复用 ObjectStream 的 Variant 读取器。构造测试覆盖
 两种属性类、三种版本、非空参数和逐字节截断。仍待验证
 真实 MXD 宿主与属性集中的求值器实现。
+
+
+DENetworkDataset 已接入 IDataElement 对象列表的新增对象和回引分派。
+构造测试覆盖版本 1–4、非空方向/源/属性/求值器记录、额外属性回引、
+列表边界和逐字节截断。求值器集合按原生流读取四个 long、IUID 和
+IPropertySet，并保留原始字段。SDC 网络类和非空属性集中的未知求值器
+仍需另行取证。真实 MXD 宿主与 ArcMap 人工检查尚未验证。
