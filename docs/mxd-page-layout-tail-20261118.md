@@ -153,6 +153,24 @@ YellowstoneGDB
 `/Version`、`/Maps`、`/PageLayout` 入口验证，布局无未解析区间。
 这两份工程仍缺显式设置 ObjectStream 版本文本为 9.0 的运行期证据。
 
+### 10.1 介质非空打印设置复核
+
+用 `mxd2qgz parse` 复跑 10.1 Desktop 与两套 SDK 介质中本地已
+提取的 110 个 MXD 路径。按路径计数，保留同内容的不同提取件。
+所有命令均成功返回，108 个布局完整消费。两份 `mole_data` 在
+/Maps 的逐图层遮罩阶段停止，布局保留原始字节。
+
+对打印标记为 1 的 17 条布局，再通过
+`parse_mxd_streams_10_1_with_version` 检查纸张和打印机字段。
+17 条均读出 EmfPrinter，且打印设置结束偏移等于 /PageLayout
+长度。Yellowstone 是唯一 Paper v2（/Version 9.0 / short 10），
+其余 16 条 Paper v3 的 DEVMODE 实际字节数等于声明长度，
+范围为 364–7640。Paper v3 的头部组合包括 9.0 / 13、
+9.2 / 14、9.3 / 16、9.4 / 18 和 10.0 / 18。
+这些头部组合反映档案内容，显式设置 ObjectStream 版本文本为
+9.0 的运行期证据、PostScript/ArcPress/打印机回引实档仍待补充。
+ArcMap/QGIS 人工验收未执行。
+
 ### 分流 IPrinter 回引
 
 PageLayout.dll 10.1.0.3035 的 `0x7b7095af` 通过共享

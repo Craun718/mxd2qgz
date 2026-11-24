@@ -230,6 +230,7 @@
     - [x] 实现显式 10.1 `/Maps` 根前缀读取器（数量、首对象头、尾部原始值），覆盖全前缀截断、失败游标与限额；不解析对象体，已接入 `parse`。
     - [x] 从 PageLayout.dll 实际文档读取链确认分流格式的 `/Maps:0x00` 数量及 `0x04` 首对象入口；记录 Mx Document 优先分支和跨流复用 ObjectStream。对象体与版本适用性仍未闭环（引用表生命周期由 SetStream 条目闭合）。
     - [ ] 闭合跨流复用 ObjectStream 的对象体（已证 LinearRef 的 MapFrame 完整体回引 /Maps 键 31 并接入 parse；Utilities 的装饰框及嵌套 MapFrame 也已走通；MilitaryPortrait 已读通 Graticule 与 LocatorRectangle；66 份安装介质工程及参考工程已读完布局对象体；CustomOverlayGrid 中尚未核对的 IName 扩展及已接入来源的实档、显式带版本文本 9.0 的旧 DEVMODE 宿主、其他打印设置宿主的实档验证和未覆盖扩展仍开放；calibrate 的 Map v19 和 v6 布局已整档读完，见[布局尾段复核](docs/mxd-page-layout-tail-20261118.md)）。
+    - [x] 验证 10.1 Desktop 与 SDK 介质已读到的非空 EmfPrinter 布局均耗尽流。[实档复核](docs/mxd-page-layout-tail-20261118.md#101-介质非空打印设置复核)
     - [x] 接入普通和 ExtraSafe 布局循环及组子元素的 CircleElement、EllipseElement。[取证](docs/mxd-page-layout-surround-20261118.md#布局中的圆和椭圆元素)
     - [ ] 确定跨流复用 ObjectStream 的版本适用性（10.1 介质中已见 `/Version` 候选 9.2、9.3、10.0 使用实际 MapFrame 跨流回引，10.1 候选中已确认 Africa、USA 等工程的实际跨流回引；另由 calibrate 证实 8.1 候选的 Map v19 和布局 v6 实际跨流回引；仍待核对其余版本边界及其他宿主，见[介质分组](docs/mxd-us-media-renderer-paragraph-20261118.md)）。
     - [x] 验证 9.0 / short 10 和 9.0 / short 13 工程中的 MapFrame 跨流回引。[SDK 实档](docs/mxd-us-media-renderer-paragraph-20261118.md#90-候选的-sdk-mapframe-回引)
