@@ -468,6 +468,9 @@ const GP_FIELD_MAPPING_CLASS_ID: [u8; 16] = [
 const GP_FIELD_MAP_CLASS_ID: [u8; 16] = [
     0xa7, 0x43, 0xcf, 0xde, 0x8a, 0x57, 0xca, 0x48, 0xbc, 0xa2, 0x4b, 0x11, 0x14, 0x8e, 0x20, 0x09,
 ];
+const GP_RASTER_FORMULATED_CLASS_ID: [u8; 16] = [
+    0x93, 0x8e, 0xa5, 0xff, 0x9a, 0x05, 0x5f, 0x43, 0xaf, 0x2b, 0x5a, 0x34, 0x8a, 0x88, 0x2c, 0x29,
+];
 const GP_RASTER_DATA_CLASS_ID: [u8; 16] = [
     0xbd, 0x0f, 0xd4, 0xa4, 0xd8, 0xcf, 0x8d, 0x4d, 0x94, 0xd1, 0x37, 0x26, 0xc6, 0xff, 0x79, 0x2f,
 ];
@@ -917,6 +920,7 @@ pub const GP_EXTENT_CLASS_ID: [u8; 16] = [
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpCodedValue10_1 {
+    RasterFormulated(Box<GpRasterFormulated10_1>),
     RasterData {
         name: Box<BookmarkNameEntry10_1>,
         text: String,
@@ -1915,6 +1919,23 @@ pub enum GpSaRemapRow10_1 {
         raw_long: i32,
         text_bytes: Vec<u8>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpRasterFormulated10_1 {
+    pub raster_version: u16,
+    pub raster_long: u32,
+    pub raster_text: String,
+    pub envelope: BookmarkEnvelopeEntry10_1,
+    pub spatial_reference: SpatialReferenceEntry10_1,
+    pub raw_long: u32,
+    pub value: GpRasterFormulatedValue10_1,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum GpRasterFormulatedValue10_1 {
+    Legacy([u8; 24]),
+    Variant(PropertyValueObjectStream10_1),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3117,6 +3138,7 @@ fn read_gp_coded_value_entry(
                 table.registered_class(key).unwrap_or(class_id),
                 GP_STRING_CLASS_ID
                     | GP_FIELD_MAPPING_CLASS_ID
+                    | GP_RASTER_FORMULATED_CLASS_ID
                     | GP_RASTER_DATA_CLASS_ID
                     | GP_POINT_CLASS_ID
                     | GP_REPLICA_CLASS_ID
@@ -3188,6 +3210,54 @@ fn read_gp_coded_value_entry(
             ) =>
         {
             None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: GP_RASTER_FORMULATED_CLASS_ID,
+            ..
+        } => {
+            let version = reader.read_u16_le()?;
+            let raster_version = reader.read_u16_le()?;
+            let base_version = reader.read_u16_le()?;
+            if version > 2 || raster_version > 1 || base_version > 1 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "GPRasterFormulated 版本超限",
+                ));
+            }
+            let base_short = reader.read_u16_le()?;
+            let raster_long = reader.read_u32_le()?;
+            let raster_text = read_string_10_1(reader, max_bytes)?;
+            let envelope = read_surround_envelope_slot(
+                reader,
+                max_bytes,
+                table,
+                "GPRasterFormulated IEnvelope 槽",
+            )?;
+            let spatial_reference = read_spatial_reference_entry_10_1(reader, max_bytes, table)?;
+            let raw_long = reader.read_u32_le()?;
+            let value = if version < 2 {
+                let mut raw = [0; 24];
+                raw.copy_from_slice(reader.read_bytes(24)?);
+                GpRasterFormulatedValue10_1::Legacy(raw)
+            } else {
+                GpRasterFormulatedValue10_1::Variant(read_variant_object_stream_value_10_1(
+                    reader, max_bytes, table, depth,
+                )?)
+            };
+            Some(Box::new(GpCodedValueBody10_1 {
+                version,
+                base_version,
+                base_short,
+                value: GpCodedValue10_1::RasterFormulated(Box::new(GpRasterFormulated10_1 {
+                    raster_version,
+                    raster_long,
+                    raster_text,
+                    envelope,
+                    spatial_reference,
+                    raw_long,
+                    value,
+                })),
+            }))
         }
         ObjectEntry10_1::NewObject {
             class_id: GP_REPLICA_CLASS_ID,
@@ -8937,6 +9007,58 @@ pub fn read_legend_prefix_10_1(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn raster_formulated_reads_legacy_and_compact_variant_tails() {
+        for version in 0_u16..=2 {
+            let mut bytes = GP_RASTER_FORMULATED_CLASS_ID.to_vec();
+            bytes.extend(10_u32.to_le_bytes());
+            bytes.extend(version.to_le_bytes());
+            bytes.extend([1, 0, 1, 0, 7, 0]);
+            bytes.extend(8_u32.to_le_bytes());
+            bytes.extend([2, 0, 0, 0, 0, 0]);
+            bytes.extend([0; 32]);
+            bytes.extend(9_u32.to_le_bytes());
+            if version < 2 {
+                bytes.extend([0xff; 24]);
+            } else {
+                bytes.extend([0; 2]);
+            }
+            for cut in 0..bytes.len() {
+                assert!(
+                    read_gp_coded_value_slot(
+                        &mut Reader::new(&bytes[..cut]),
+                        1024,
+                        &mut RefTable10_1::new(),
+                        0,
+                    )
+                    .is_err()
+                );
+            }
+            let end = bytes.len();
+            bytes.push(0x5a);
+            let mut reader = Reader::new(&bytes);
+            let slot =
+                read_gp_coded_value_slot(&mut reader, 1024, &mut RefTable10_1::new(), 0).unwrap();
+            let GpCodedValue10_1::RasterFormulated(raster) = slot.body.unwrap().value else {
+                panic!("应读取 GPRasterFormulated");
+            };
+            assert_eq!(
+                (raster.raster_version, raster.raster_long, raster.raw_long),
+                (1, 8, 9)
+            );
+            assert_eq!(raster.envelope, BookmarkEnvelopeEntry10_1::Null);
+            assert_eq!(raster.spatial_reference, SpatialReferenceEntry10_1::Null);
+            match raster.value {
+                GpRasterFormulatedValue10_1::Legacy(value) => {
+                    assert!(version < 2);
+                    assert_eq!(value, [0xff; 24]);
+                }
+                GpRasterFormulatedValue10_1::Variant(_) => assert_eq!(version, 2),
+            }
+            assert_eq!(reader.position(), end);
+        }
+    }
 
     #[test]
     fn gp_raster_data_reads_name_reference_and_trailing_text() {

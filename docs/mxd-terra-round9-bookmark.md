@@ -2150,9 +2150,11 @@ GpRasterFunctions.dll 10.1.0.3035（SHA-256
 `0x748720b6` 向 Variant 缓冲区读取原始 24 字节。
 v2 在 `0x7487208d` 改用 Variant::Read(stream, true)。
 Save `0x748720e0` 写出栅格基类、LONG 和 Variant::Write
-(stream, true)。基类中的两个槽仍待核对具体持久化类，
-旧分支的原始 Variant 字节也需结合宿主解释。
-尚未进行 ArcMap 人工验证。
+(stream, true)。两槽的 IID 分别对应 IEnvelope 和 ISpatialReference。
+Rust 复用这两个槽及紧凑 Variant 的已有读取器。旧分支保留
+完整 24 字节，不推断其中的数据结构。构造测试覆盖三种版本、
+两个空对象槽、尾段与逐字节截断。真实 MXD 的非空子槽和
+ArcMap 人工验证仍待补充。
 
 #### GPRasterData
 
