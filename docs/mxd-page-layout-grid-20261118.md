@@ -140,6 +140,11 @@ MosaicDatasetName。前者的 RasterDB IName 视图为 `0x7c130ee8`，
 构造输入核对波段集合名称内联镶嵌数据集名称 v4、两个对象键、
 后继边界及截断回滚。真实格网宿主和 ArcMap 显示仍待验证。
 
+WCSCoverageName、WMSConnectionName 和 WMTSConnectionName
+复用[OGCClient 持久化取证](mxd-10.1-raster-layer-tail.md)中
+已核实的 IName 对象体。构造输入覆盖三种类的版本 1、空子槽、结束
+偏移和截断回滚。真实格网工程及 ArcMap 显示仍待核对。
+
 ### 叠加格网的关系查询名称
 
 在 MapElements.dll 10.1.0.3035 的 CustomOverlayGrid Load

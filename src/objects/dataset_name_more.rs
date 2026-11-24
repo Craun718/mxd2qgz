@@ -62,6 +62,9 @@ use crate::layers::raster_dataset_name::{
     RasterDatasetNameEntryBody10_1, RasterLongArraySlot10_1, read_long_array_slot,
     read_supported_raster_name_body_10_1,
 };
+use crate::layers::wcs_name::{
+    WCS_COVERAGE_NAME_CLASS_ID, WMS_CONNECTION_NAME_CLASS_ID, WMTS_CONNECTION_NAME_CLASS_ID,
+};
 use crate::maps::standalone_table::{
     FGDB_TABLE_NAME_CLASS_ID, OBJECT_CLASS_NAME_CLASS_ID, TABLE_NAME_CLASS_ID, TableNameBody10_1,
     read_fgdb_table_name_body_10_1, read_table_name_body_10_1,
@@ -1258,7 +1261,10 @@ fn read_dataset_name_object_body_10_1(
         | RASTER_DATASET_NAME83_CLASS_ID
         | FGDB_RASTER_DATASET_NAME_CLASS_ID
         | MOSAIC_DATASET_NAME_CLASS_ID
-        | RASTER_BAND_COLLECTION_NAME_CLASS_ID => {
+        | RASTER_BAND_COLLECTION_NAME_CLASS_ID
+        | WCS_COVERAGE_NAME_CLASS_ID
+        | WMS_CONNECTION_NAME_CLASS_ID
+        | WMTS_CONNECTION_NAME_CLASS_ID => {
             let body =
                 read_supported_raster_name_body_10_1(reader, max_bytes, table, class_id, key)?;
             Ok((DatasetNameMoreBody10_1::RasterDataset(Box::new(body)), None))
@@ -1447,6 +1453,9 @@ pub(crate) fn read_overlay_name_slot_10_1(
                     | FGDB_RASTER_DATASET_NAME_CLASS_ID
                     | MOSAIC_DATASET_NAME_CLASS_ID
                     | RASTER_BAND_COLLECTION_NAME_CLASS_ID
+                    | WCS_COVERAGE_NAME_CLASS_ID
+                    | WMS_CONNECTION_NAME_CLASS_ID
+                    | WMTS_CONNECTION_NAME_CLASS_ID
                     | WORKSPACE_NAME_CLASS_ID
                     | FEATURE_DATASET_NAME_CLASS_ID
                     | COVERAGE_NAME_CLASS_ID
@@ -2062,6 +2071,41 @@ mod tests {
 
     /// 完整 WorkspaceName 体（第六轮布局）：版本 1 + 三空串 + IPropertySet
     /// 空标记 + 标志 1 + 工厂 CLSID + 尾随 int32。
+    #[test]
+    fn overlay_ogc_names_keep_object_boundaries() {
+        for class_id in [
+            WCS_COVERAGE_NAME_CLASS_ID,
+            WMS_CONNECTION_NAME_CLASS_ID,
+            WMTS_CONNECTION_NAME_CLASS_ID,
+        ] {
+            let mut bytes = entry(&class_id, 90).to_vec();
+            bytes.extend(1_i16.to_le_bytes());
+            if class_id == WCS_COVERAGE_NAME_CLASS_ID {
+                bytes.extend(0_u32.to_le_bytes()); // 空 BSTR 覆盖标识。
+            }
+            bytes.extend([0; 16]);
+            let end = bytes.len();
+            bytes.push(0xa5);
+            let mut refs = RefTable10_1::new();
+            for cut in 0..end {
+                let mut reader = Reader::new(&bytes[..cut]);
+                assert!(
+                    read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).is_err()
+                );
+                assert_eq!(reader.position(), 0);
+                assert!(refs.is_empty());
+            }
+            let mut reader = Reader::new(&bytes);
+            let slot = read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).unwrap();
+            assert!(matches!(
+                slot,
+                DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::RasterDataset(_))
+            ));
+            assert_eq!(refs.registered_class(90), Some(class_id));
+            assert_eq!(reader.position(), end);
+        }
+    }
+
     #[test]
     fn overlay_raster_collection_reads_mosaic_child() {
         let mut bytes = entry(&RASTER_BAND_COLLECTION_NAME_CLASS_ID, 90).to_vec();
