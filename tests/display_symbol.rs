@@ -2625,7 +2625,7 @@ fn raster_color_ramp_symbol_consumes_only_fields_for_its_version() {
         }
         bytes.extend(32_i32.to_le_bytes());
         if signed_version >= 3 {
-            for value in [33_u16, 34, 35] {
+            for value in [33_u16, 0xffde, 35] {
                 bytes.extend(value.to_le_bytes());
             }
         }
@@ -2654,7 +2654,11 @@ fn raster_color_ramp_symbol_consumes_only_fields_for_its_version() {
         assert_eq!(tail.integer, 32);
         assert_eq!(
             tail.shorts_v3,
-            (signed_version >= 3).then_some([33, 34, 35])
+            (signed_version >= 3).then_some([33, 0xffde, 35])
+        );
+        assert_eq!(
+            tail.color_effects(),
+            (signed_version >= 3).then_some((33, -34, 35))
         );
         assert_eq!(tail.integer_v4, (signed_version >= 4).then_some(-36));
         assert_eq!(

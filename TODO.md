@@ -882,6 +882,7 @@
       - [x] 提取 AfCore `AfStreamGetSaveVersion`（`0x68a847f0`）版本表并闭合内部映射：null/N==0→−1；N−1<docVer→table[N−1]（截断末项）；否则 table[docVer]；负 docVer 原生越界读（Rust 封装拒绝）；`AfStreamGetDocumentVersion 0x68a84760` 缺省 5；六表提取落 `src/version/save_version_table.rs`（Map [22,29,30,31,45,51]/FL [17,22,23,25,34,34]/ETM [-1,-1,-1,-1,1,2]/ET [-1,-1,-1,-1,2]/FDO [5,11]/FDO 子层 [-1,2]，样本值逐一吻合）。
     - 语义定性（类型库成员级命名或运行取证；读取器对未定性字段原样保留）：
       - [x] 对位三种栅格符号中持久化的 ROP2，并提供读取访问器。[取证](docs/arcmap-10.1-dep-tail.md#栅格符号的-rop2)
+      - [x] 对位 ColorRampSymbol v3 的透明度、亮度和对比度字段。[绘制取证](docs/arcmap-10.1-dep-tail.md#栅格渐变符号的颜色效果)
       - [ ] 定性 DisplayCore 符号类其余标量字段。
       - [x] 对位 ArrowMarkerSymbol 的八个持久化标量，并核对 Size 的派生规则。[箭头取证](docs/arcmap-10.1-display-symbols-round2.md#箭头标记的标量属性)
       - [x] 对位 PictureLineSymbol 的 Rotate、Offset 和 Width。[图片线取证](docs/arcmap-10.1-display-symbols-round2.md#图片线的标量属性)

@@ -61,12 +61,21 @@ pub struct ColorRampSymbolTail10_1 {
     /// 有符号版本 <2。
     pub legacy_short: Option<u16>,
     pub integer: i32,
-    /// 版本 ≥3。
+    /// 版本 ≥3，依次为透明度、亮度和对比度。
     pub shorts_v3: Option<[u16; 3]>,
     /// 版本 ≥4。
     pub integer_v4: Option<i32>,
     /// 版本 ≥5。
     pub shorts_v5: Option<[u16; 2]>,
+}
+
+impl ColorRampSymbolTail10_1 {
+    /// 返回原生绘制传给 ApplyEffects 的透明度、亮度和对比度。
+    pub fn color_effects(&self) -> Option<(i16, i16, i16)> {
+        self.shorts_v3.map(|[transparency, brightness, contrast]| {
+            (transparency as i16, brightness as i16, contrast as i16)
+        })
+    }
 }
 
 /// 调用者在外层试读游标和登记表上读取，确保失败时整体回退。

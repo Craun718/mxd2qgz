@@ -1134,3 +1134,18 @@ RasterRGBSymbol 委派同一个 ColorSymbol Load。Rust 保留三个原始
 候选函数体内的任意字节位置。相对仅识别向 ECX/EDX 载入 IID 的检索，
 新增的命中为已接入的 RasterRGBSymbol。该遍历仍受 RTTI 主表、
 扫描窗口和间接派发限制。ArcMap/QGIS 人工验收未进行。
+
+### 栅格渐变符号的颜色效果
+
+同摘要 RasterLayer.dll 10.1.0.3035 的 ColorRampSymbol Load
+在 `0x7c7121ee`、`0x7c712205`、`0x7c71221c` 将 v3
+增加的三个 short 分别写到持久化接口 −0x10、−0xe、−0xc，
+对应完整对象 +0xc4、+0xc6、+0xc8。绘制路径
+`0x7c711be2..0x7c711bfe` 零扩展这些值，按 x86 调用约定逆序压栈，
+调用 DisplayLib 的 IColor 版 ApplyEffects（IAT `0x7c76720c`）。
+同版 DisplayLib 在 `0x6ed775ad` 用首项调用 ApplyTransparency，
+在 `0x6ed775bb` 用后两项调用 ApplyBrightnessContrast。因此
+三个字段按流序为透明度、亮度和对比度。访问器按 ApplyEffects 的
+short 参数类型返回有符号值，原模型保留位模式。
+合成用例覆盖 v3 起的字段和更早版本的缺省状态。实档显示效果及
+ArcMap/QGIS 人工验收待补。
