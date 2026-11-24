@@ -63,8 +63,8 @@
 //!
 //! 事务性与限额约定同仓内其他读取器：调用者已读对象头并登记新键，从对象头
 //! 之后的位置传入 Reader；全部字段在 trial 游标与 trial 登记表上读取，成功
-//! （含停止点）才提交；版本 short 一律按原生有符号比较设上限并拒绝负值位模
-//! 式（较原生更严）；截断与非法长度明确报错；`max_bytes` 约束嵌套体字符串
+//! （含停止点）才提交；版本 short 按原生有符号比较设上限，保留原始位模式；
+//! 截断与非法长度明确报错；`max_bytes` 约束嵌套体字符串
 //! （读取器自身限额，非原生限制）。仓库参考样本 `samples/测试底图.mxd` 中
 //! 四类 0 实例，全部结论无样本字节佐证，单元测试仅合成输入，不代表原生已
 //! 验证。建议接入点见研究记录（接线归整合轮）。
@@ -106,7 +106,7 @@ pub const MARKER_TEXT_BACKGROUND_CLASS_ID: [u8; 16] = [
 const MAX_CALLOUT_VERSION: i16 = 1;
 const MAX_MARKER_BACKGROUND_VERSION: i16 = 1;
 
-/// 读取流内 int16 版本并按原生有符号上限校验（负值位模式拒绝，较原生更严）。
+/// 读取流内 int16 版本并按原生有符号上限校验。
 fn read_version_short(
     trial: &mut Reader<'_>,
     max: i16,
@@ -115,12 +115,12 @@ fn read_version_short(
 ) -> io::Result<u16> {
     let raw = trial.read_u16_le()?;
     let signed = raw as i16;
-    if signed < 0 || signed > max {
+    if signed > max {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
             format!(
                 "{label} 对象体 offset 0x{entry_offset:x}: 版本位模式 {raw}（0x{raw:04x}）\
-                 超出原生接受范围 0..={max}"
+                 超过原生有符号上限 {max}"
             ),
         ));
     }
@@ -736,7 +736,7 @@ mod tests {
 
     #[test]
     fn balloon_callout_with_point_anchor_full_body() {
-        let mut bytes = 1_u16.to_le_bytes().to_vec();
+        let mut bytes = 0xffff_u16.to_le_bytes().to_vec();
         bytes.extend(2_i32.to_le_bytes());
         for v in [1.0f64, 2.0, 3.0, 4.0] {
             bytes.extend(v.to_le_bytes());
@@ -751,7 +751,7 @@ mod tests {
         let mut table = RefTable10_1::new();
         let body = read_balloon_callout_body_10_1(&mut reader, 1024, &mut table, 20, 8)
             .expect("BalloonCallout 体应整体消费");
-        assert_eq!(body.version, 1);
+        assert_eq!(body.version, 0xffff);
         assert_eq!(body.style, 2);
         assert_eq!(body.symbol, SymbolSlotFull10_1::Null);
         assert!(matches!(body.anchor, Some(PointSlotEntry10_1::Point(_))));
@@ -782,7 +782,7 @@ mod tests {
 
     #[test]
     fn line_callout_three_symbol_slots_then_scalars() {
-        let mut bytes = 1_u16.to_le_bytes().to_vec();
+        let mut bytes = 0xffff_u16.to_le_bytes().to_vec();
         for _ in 0..3 {
             bytes.extend([0u8; 16]); // 三个符号槽全空标记
         }
@@ -796,6 +796,7 @@ mod tests {
         let mut table = RefTable10_1::new();
         let body = read_line_callout_body_10_1(&mut reader, 1024, &mut table, 30, 8)
             .expect("LineCallout 体应整体消费");
+        assert_eq!(body.version, 0xffff);
         assert!(body.symbols.iter().all(|s| *s == SymbolSlotFull10_1::Null));
         assert!(body.anchor.is_some());
         assert_eq!(body.style, 1);
@@ -808,7 +809,7 @@ mod tests {
     fn simple_line_callout_geometry_slot_dispatch() {
         // 锚几何槽：Polyline 类不在 callout 几何闭集合时按 Unsupported 停止。
         // 这里用 Point（闭合）验证通过路径。
-        let mut bytes = 1_u16.to_le_bytes().to_vec();
+        let mut bytes = 0xffff_u16.to_le_bytes().to_vec();
         bytes.extend(1.0_f64.to_le_bytes());
         bytes.extend(2_u16.to_le_bytes());
         bytes.extend(entry(&POINT_CLASS_ID, 41));
@@ -819,6 +820,7 @@ mod tests {
         let mut table = RefTable10_1::new();
         let body = read_simple_line_callout_body_10_1(&mut reader, 1024, &mut table, 40, 8)
             .expect("SimpleLineCallout 体应整体消费");
+        assert_eq!(body.version, 0xffff);
         assert!(matches!(
             body.anchor_geometry,
             Some(GeometrySlotEntry10_1::Body(_))
@@ -830,7 +832,7 @@ mod tests {
 
     #[test]
     fn marker_text_background_body() {
-        let mut bytes = 1_u16.to_le_bytes().to_vec();
+        let mut bytes = 0xffff_u16.to_le_bytes().to_vec();
         bytes.extend(3_u16.to_le_bytes());
         bytes.extend(entry(&POINT_CLASS_ID, 51)); // 符号槽用 Point 类不会命中符号闭合集 → 停止
         bytes.extend(point_body_bytes());
@@ -839,6 +841,7 @@ mod tests {
         let mut table = RefTable10_1::new();
         let body = read_marker_text_background_body_10_1(&mut reader, 1024, &mut table, 50, 8)
             .expect("MarkerTextBackground 体读取应成功（含停止）");
+        assert_eq!(body.version, 0xffff);
         assert_eq!(body.short_1, 3);
         // Point 类标识不在符号闭合集：符号槽停止回退。
         assert!(body.stop.is_some());

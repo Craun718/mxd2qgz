@@ -330,6 +330,19 @@ Map v44 在 `0x2507` 结束，之后恰好剩四字节根尾值，PageLayout 同
 构造测试覆盖 v1/v2、负计数、非零定长块、截断和数组资源限额。
 未定名的时区标量仍保留存盘值，ArcMap 与 QGIS 人工验收未执行。
 
+## Callout 和文字背景的版本边界
+
+同摘要 DisplayCore.dll 10.1.0.3035 中，BalloonCallout、LineCallout、
+SimpleLineCallout 和 MarkerTextBackground 的 Load 分别在
+`0x6eb4198a`、`0x6eb5900a`、`0x6eb825b1` 和 `0x6eb643b3`
+用有符号 `jg` 或 `jle` 检查版本上限 1。负版本与版本 1 复用
+相同字段序。Rust 保留负版本位模式，合成输入验证三类 Callout 的
+完整体及 MarkerTextBackground 的嵌套停止点。
+
+该取证针对这些类的 IPersistStream::Load。它们作为 FeatureLayer
+后继段 ISymbol 实例的适用性仍需独立核对接口，负版本实档与 ArcMap/QGIS
+人工验收待补。
+
 ## FeatureLayer 后继段的符号回引
 
 FeatureLayer.dll 10.1.0.3035 在后继段 ㉖ 请求 ISymbol。
