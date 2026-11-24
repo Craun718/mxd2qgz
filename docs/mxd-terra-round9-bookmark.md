@@ -2155,6 +2155,21 @@ Save 的两个计数在 `0x746dd3d9`、`0x746dd42e` 写出，
 `0x746dd4aa`、`0x746dd4eb` 的 SaveObject。
 三个槽的实际实现类及其对象体仍待取证，未进行 ArcMap 人工验证。
 
+本地 10.1 .NET 互操作程序集将前两个集合的接口
+分别定名为 IGPFieldMap 和 IDETable。`0x746dd32d`
+调用 `0x746bab60`，后者在 `0x746bab7d` 复用
+第二集合的查询辅助函数 `0x74678120`，因此版本 2
+尾槽也以 IDETable 为目标。
+
+GPFieldMap 主 QI `0x746dd810` 将 IPersistStream 映射到
++0x18，RTTI 表为 `0x747afddc`。GetClassID
+`0x746debb0` 复制 `0x747aff14` 的
+`DECF43A7-578A-48CA-BCA2-4B11148E2009`。
+其 Load `0x746debf0` 检查无符号版本上限 2，
+随后读 LONG、字符串和带键对象，并在正计数循环读取
+更多对象与标量。已定位子类读入口，字段和条件分支仍需逐项
+闭合后才能安全接入无长度对象流。
+
 #### GPReplicaDataset
 
 FeatureDataElements.dll 10.1.0.3035（SHA-256
