@@ -55,9 +55,11 @@ use crate::layers::feature_layer::{
     FGDB_FEATURE_CLASS_NAME_CLASS_ID, read_coverage_feature_class_name_body_10_1,
     read_fgdb_feature_class_name_body_10_1,
 };
+use crate::layers::fgdb_raster_dataset_name::FGDB_RASTER_DATASET_NAME_CLASS_ID;
 use crate::layers::raster_dataset_name::{
-    RASTER_BAND_NAME_CLASS_ID, RASTER_CATALOG_NAME_CLASS_ID, RasterDatasetNameEntryBody10_1,
-    RasterLongArraySlot10_1, read_long_array_slot, read_supported_raster_name_body_10_1,
+    RASTER_BAND_NAME_CLASS_ID, RASTER_CATALOG_NAME_CLASS_ID, RASTER_DATASET_NAME_CLASS_ID,
+    RASTER_DATASET_NAME83_CLASS_ID, RasterDatasetNameEntryBody10_1, RasterLongArraySlot10_1,
+    read_long_array_slot, read_supported_raster_name_body_10_1,
 };
 use crate::maps::standalone_table::{
     FGDB_TABLE_NAME_CLASS_ID, OBJECT_CLASS_NAME_CLASS_ID, TABLE_NAME_CLASS_ID, TableNameBody10_1,
@@ -355,6 +357,7 @@ pub enum DatasetNameMoreBody10_1 {
     Table(Box<TableNameBody10_1>),
     /// 可经 IName 打开的栅格属性表及栅格目录。
     RasterTable(Box<RasterDatasetNameEntryBody10_1>),
+    RasterDataset(Box<RasterDatasetNameEntryBody10_1>),
     SchematicClass(Box<SchematicClassNameBody10_1>),
     SchematicDataset(Box<SchematicDatasetNameBody10_1>),
     /// NetCDFTableName 在 IName 槽中的对象体。
@@ -1250,6 +1253,13 @@ fn read_dataset_name_object_body_10_1(
             });
             Ok((DatasetNameMoreBody10_1::Table(Box::new(body)), stop))
         }
+        RASTER_DATASET_NAME_CLASS_ID
+        | RASTER_DATASET_NAME83_CLASS_ID
+        | FGDB_RASTER_DATASET_NAME_CLASS_ID => {
+            let body =
+                read_supported_raster_name_body_10_1(reader, max_bytes, table, class_id, key)?;
+            Ok((DatasetNameMoreBody10_1::RasterDataset(Box::new(body)), None))
+        }
         RASTER_BAND_NAME_CLASS_ID | RASTER_CATALOG_NAME_CLASS_ID => {
             let body =
                 read_supported_raster_name_body_10_1(reader, max_bytes, table, class_id, key)?;
@@ -1429,7 +1439,10 @@ pub(crate) fn read_overlay_name_slot_10_1(
         is_tabular_name(class_id)
             || matches!(
                 class_id,
-                WORKSPACE_NAME_CLASS_ID
+                RASTER_DATASET_NAME_CLASS_ID
+                    | RASTER_DATASET_NAME83_CLASS_ID
+                    | FGDB_RASTER_DATASET_NAME_CLASS_ID
+                    | WORKSPACE_NAME_CLASS_ID
                     | FEATURE_DATASET_NAME_CLASS_ID
                     | COVERAGE_NAME_CLASS_ID
                     | GEOMETRIC_NETWORK_NAME_CLASS_ID
@@ -2044,6 +2057,46 @@ mod tests {
 
     /// 完整 WorkspaceName 体（第六轮布局）：版本 1 + 三空串 + IPropertySet
     /// 空标记 + 标志 1 + 工厂 CLSID + 尾随 int32。
+    #[test]
+    fn overlay_raster_name_reads_dataset_and_legacy_delegate() {
+        for class_id in [RASTER_DATASET_NAME_CLASS_ID, RASTER_DATASET_NAME83_CLASS_ID] {
+            let mut bytes = entry(&class_id, 91).to_vec();
+            bytes.extend(2_i32.to_le_bytes());
+            for value in ["raster", "", "", ""] {
+                bytes.extend(str_bytes(value));
+            }
+            bytes.extend([0; 16]);
+            let end = bytes.len();
+            bytes.extend([0xa5; 4]);
+            let mut refs = RefTable10_1::new();
+            for cut in 0..end {
+                let mut reader = Reader::new(&bytes[..cut]);
+                assert!(
+                    read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).is_err()
+                );
+                assert_eq!(reader.position(), 0);
+                assert!(!refs.contains(91));
+            }
+            let mut reader = Reader::new(&bytes);
+            let slot = read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).unwrap();
+            let DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::RasterDataset(body)) = slot
+            else {
+                panic!("应读取栅格数据集名称");
+            };
+            match body.as_ref() {
+                RasterDatasetNameEntryBody10_1::Dataset(_) => {
+                    assert_eq!(class_id, RASTER_DATASET_NAME_CLASS_ID)
+                }
+                RasterDatasetNameEntryBody10_1::Dataset83 { records: None, .. } => {
+                    assert_eq!(class_id, RASTER_DATASET_NAME83_CLASS_ID)
+                }
+                _ => panic!("栅格名称类型错误"),
+            }
+            assert_eq!(refs.registered_class(91), Some(class_id));
+            assert_eq!(reader.position(), end);
+        }
+    }
+
     #[test]
     fn overlay_workspace_name_reads_inline_body_and_reference() {
         let mut bytes = entry(&WORKSPACE_NAME_CLASS_ID, 91).to_vec();

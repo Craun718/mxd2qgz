@@ -129,6 +129,11 @@ IPersistStream 接口。格网槽复用 GdbCore WorkspaceName Load
 内联体、逐字节截断回滚和按登记类解析的回引。WorkspaceName 的
 格网实档和 ArcMap 显示仍待验证。
 
+普通、8.3 包装和 FileGDB 栅格数据集名称也可通过格网的普通
+IName 槽读取，复用[栅格名称持久化取证](mxd-luna-followup-rasterdatasetname-20261118.md)
+中的专用读取器。构造测试核对普通与 8.3 名称的对象边界、登记键和
+截断回滚。FileGDB 内容沿用栅格图层已有测试，格网实档仍待核对。
+
 ### 叠加格网的关系查询名称
 
 在 MapElements.dll 10.1.0.3035 的 CustomOverlayGrid Load
