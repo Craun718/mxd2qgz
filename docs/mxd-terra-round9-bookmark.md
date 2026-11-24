@@ -3519,6 +3519,35 @@ Rust 编码值读取器复用 DETable、FIDSet 和 GPFieldInfo 读取逻辑。
 构造测试覆盖 v0–v2、非空 GPFieldInfo、对象终点和逐字节截断。
 其他 IDETable 实现、真实 MXD 宿主和 ArcMap/QGIS 人工验收仍待核对。
 
+#### GPRecordSet 与内嵌 RecordSet
+
+ArcMap 10.1 Desktop 互操作元数据将
+`38DB67C2-EBC1-461A-8729-011BB7DBAF0C` 定名为 GPRecordSet。
+同摘要 GpObjects.dll 10.1.0.3035 的 RTTI `0x748011ec`
+对应持久化表 `0x747b4ed8`，Load/Save 为
+`0x747010b0 / 0x747011b0`。objdump 复核 Load 检查无符号
+short 上限 2，接着读取 GPValue（`0x74701100`）及 IID
+`4510A65B-ACD1-4046-B8B0-10F9D0DA673F` 的对象槽
+（`0x7470111e`）。v2 增读 AfCore String 和 short
+（`0x74701150 / 0x74701162`），各版本最后都读 AfCore String
+（`0x74701191`）。Save 写版本 2，并按相同顺序写出这些字段。
+
+GdbCore.dll 10.1.0.3035（SHA-256
+`ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4`）
+含该 IID 常量 `0x70ac9c80`，以及 RecordSet 的 RTTI
+`0x70b36010`。+0x20 持久化表 `0x70ad87c4` 的
+GetClassID `0x70a03210` 写
+`B517E8C7-6EC0-46E0-80BB-D61ED691C5CE`。Load
+`0x70a08dd0` 读版本 short（有符号上限 1），随后在
+`0x70a08e22` 读取 IFields，在 `0x70a08e56` 读取有符号
+LONG 行数。正计数循环在 `0x70a08ef6` 创建行对象，
+经 `0x70a08f1f` 查询持久化接口，在 `0x70a08f2e`
+将当前流直接传给该接口的 Load。这里由代码构造行对象并读取
+其内联体，未从外层流为每行读取类标识与对象键。
+
+行对象的具体字段、RecordSet 末段及真实 MXD 宿主仍待核对。
+本轮为静态取证，未在 ArcMap 或 QGIS 中人工验收。
+
 #### 目录数据元素
 
 FileDataElements.dll 10.1.0.3035 的 PE RTTI 持久化表及
