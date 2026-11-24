@@ -2459,3 +2459,14 @@ Load `0x6f9be580` 检查无符号版本上限 2，且经
 和三个 short，存于 +0x90、+0x94、+0x98、+0x9c、+0x9e、+0xa0。
 构造测试覆盖三个版本、超限版本、尾字段、逐字节截断与结束位置。
 标量字段含义和真实 MXD 宿主仍待核对。
+
+#### DEVPFCoverage
+
+FileDataElements.dll 10.1.0.3035 的持久化表 `0x6f9dcae8`
+对应 esriDataSourcesFile 类型库中的 `CA4FF80D-85A9-445C-ADB2-A5C7811B3C36`。
+Load `0x6f9c6e50` 检查无符号版本上限 1，经导入槽
+`0x6f9d7300` 调用 DECoreLib.dll 10.1.0.3035 的
+DEFeatureDatasetBase::Load `0x6e94b280` 后结束。基类另读
+一个无符号版本（上限 1），在 `0x6e94b2c1` 调用
+DEGeoDataset::Load `0x6e94b860`。构造测试覆盖三层版本、
+超限基类版本、逐字节截断和结束位置。真实 MXD 宿主仍待验证。

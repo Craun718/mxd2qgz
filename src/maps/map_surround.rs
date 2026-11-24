@@ -539,6 +539,10 @@ const GP_COMPOSITE_LAYER_CLASS_ID: [u8; 16] = [
     0x51, 0x4b, 0x99, 0x22, 0xba, 0xc6, 0xff, 0x41, 0xab, 0xe6, 0x54, 0x96, 0x15, 0x44, 0x1e, 0x3f,
 ];
 
+pub const DE_VPF_COVERAGE_CLASS_ID: [u8; 16] = [
+    0x0d, 0xf8, 0x4f, 0xca, 0xa9, 0x85, 0x5c, 0x44, 0xad, 0xb2, 0xa5, 0xc7, 0x81, 0x1b, 0x3c, 0x36,
+];
+
 pub const DE_LAS_DATASET_CLASS_ID: [u8; 16] = [
     0x09, 0x67, 0x00, 0xea, 0x03, 0xcd, 0x9d, 0x43, 0x80, 0xa1, 0x92, 0x54, 0xe2, 0x54, 0x12, 0xe3,
 ];
@@ -1150,6 +1154,7 @@ pub enum DeChild10_1 {
     },
     FeatureDataset {
         version: u16,
+        vpf_base_version: Option<u16>,
         geo_dataset_version: u16,
         dataset: DeDataset10_1,
         extent: BookmarkEnvelopeEntry10_1,
@@ -3610,6 +3615,7 @@ fn read_gp_data_element_child(
                     | DE_TIN_CLASS_ID
                     | DE_COVERAGE_CLASS_ID
                     | DE_LAS_DATASET_CLASS_ID
+                    | DE_VPF_COVERAGE_CLASS_ID
                     | DE_RASTER_BAND_CLASS_ID
                     | DE_FEATURE_DATASET_CLASS_ID
                     | DE_CATALOG_DATASET_CLASS_ID
@@ -3648,6 +3654,7 @@ fn read_gp_data_element_child(
                 | DE_TIN_CLASS_ID
                 | DE_COVERAGE_CLASS_ID
                 | DE_LAS_DATASET_CLASS_ID
+                | DE_VPF_COVERAGE_CLASS_ID
                 | DE_RASTER_BAND_CLASS_ID
                 | DE_FEATURE_DATASET_CLASS_ID
                 | DE_CATALOG_DATASET_CLASS_ID
@@ -3800,8 +3807,12 @@ fn read_gp_data_element_child(
                     | DE_TIN_CLASS_ID
                     | DE_COVERAGE_CLASS_ID
                     | DE_LAS_DATASET_CLASS_ID
+                    | DE_VPF_COVERAGE_CLASS_ID
             ) {
                 let version = reader.read_u16_le()?;
+                let vpf_base_version = (class_id == DE_VPF_COVERAGE_CLASS_ID)
+                    .then(|| read_de_layer_version(reader, 1, "DEFeatureDatasetBase"))
+                    .transpose()?;
                 let geo_dataset_version = reader.read_u16_le()?;
                 let max_version = match class_id {
                     DE_TOPOLOGY_CLASS_ID | DE_RASTER_DATASET_CLASS_ID | DE_LAS_DATASET_CLASS_ID => {
@@ -3961,6 +3972,7 @@ fn read_gp_data_element_child(
                 } else {
                     DeChild10_1::FeatureDataset {
                         version,
+                        vpf_base_version,
                         geo_dataset_version,
                         dataset,
                         extent,
@@ -7338,6 +7350,51 @@ mod tests {
             assert_eq!(body.v6, (version == 6).then_some(23));
             assert_eq!(reader.position(), end);
         }
+    }
+
+    #[test]
+    fn vpf_coverage_reads_its_own_and_base_versions() {
+        let mut bytes = DE_VPF_COVERAGE_CLASS_ID.to_vec();
+        bytes.extend(40_u32.to_le_bytes());
+        bytes.extend([1, 0, 0, 0, 1, 0]);
+        bytes.extend([0; 8]);
+        for _ in 0..3 {
+            bytes.extend([2, 0, 0, 0, 0, 0]);
+        }
+        bytes.extend([0; 54]);
+        for cut in 0..bytes.len() {
+            assert!(
+                read_gp_data_element_child(
+                    &mut Reader::new(&bytes[..cut]),
+                    1024,
+                    &mut RefTable10_1::new(),
+                    0,
+                )
+                .is_err()
+            );
+        }
+        let end = bytes.len();
+        bytes.push(0xa5);
+        let mut reader = Reader::new(&bytes);
+        let slot =
+            read_gp_data_element_child(&mut reader, 1024, &mut RefTable10_1::new(), 0).unwrap();
+        assert!(matches!(
+            slot.body.as_deref(),
+            Some(DeChild10_1::FeatureDataset {
+                version: 1,
+                vpf_base_version: Some(0),
+                geo_dataset_version: 1,
+                ..
+            })
+        ));
+        assert_eq!(reader.position(), end);
+        bytes[22] = 2;
+        assert_eq!(read_gp_data_element_child(
+            &mut Reader::new(&bytes),
+            1024,
+            &mut RefTable10_1::new(),
+            0,
+        ).unwrap_err().kind(), ErrorKind::InvalidData);
     }
 
     #[test]

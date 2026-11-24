@@ -7783,6 +7783,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                                 key: 29,
                                             },
                                             body: Some(Box::new(DeChild10_1::FeatureDataset {
+            vpf_base_version: None,
                                                 version: 1,
                                                 geo_dataset_version: 1,
                                                 dataset: DeDataset10_1 {
