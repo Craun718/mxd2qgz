@@ -1369,6 +1369,26 @@ GPGeocodingDataTypeFactory（`ACEEF5EE-F5F0-4824-9E7E-DD6FF465EDAB`）。
 仍需在各模块定位工厂 +0x14 返回的实际类，并核对未列在类型库中的
 内部工厂及其他 get_FullName 实现。暂无真实 MXD 或 ArcMap 验证。
 
+地理编码工厂的产物已核对。Geocoding.dll 10.1.0.3035
+的 SHA-256 为
+`e5dc7d6cf515b7c7e9fd9e0342780818d261c2762ebbd348c5c2fc318c71819c`。
+主 QI `0x7137ccb0` 比对 `0x714fc670` 的
+IGPDataTypeFactory IID，返回对象 +0x10。表 `0x714fc5e0`
+的 +0x14 为 `0x7137ce60`。它先按数据类型名选取表项，
+再依次调用 `0x7137c9d0` 与 `0x7137d420`，后者在
+`0x7137d44b` 以 `0x714fc660` 的
+`960CB02A-8CAF-442B-ACF7-6B6256FC19F9` 创建 GPDataTypeName。
+配置名称后，`0x7137cb01` 查询 IGPName 返回。现有多值类型
+槽已支持该产物。
+
+DataInterop.dll 同版 SHA-256 为
+`4757e1b0dae6c9f6132e866246a3960f6b6b39dc0a3814c5ef64af52810592a4`。
+磁盘中命中 FME 工厂 CLSID 与工厂 IID，但缺少该 IID 地址的
+直接指令引用，仍需核对虚表和实际返回类。对同目录 DLL 的
+工厂 IID 筛查还命中 GpObjects、GPSACore、GdbNetwork 等模块。
+这些静态常量包含接口请求与声明，尚不能直接计为内部工厂。
+真实宿主仍未验证。
+
 #### GPValueTable
 
 GpObjects.dll 10.1.0.3035 的 RTTI `0x74801cd4` 对应持久化虚表
