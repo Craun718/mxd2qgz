@@ -475,6 +475,10 @@ pub const GP_SUBTYPE_CLASS_ID: [u8; 16] = [
     0x02, 0x53, 0x1b, 0x74, 0x17, 0x29, 0xab, 0x4a, 0x95, 0x2a, 0xdf, 0x5f, 0x0e, 0x01, 0x9e, 0xb6,
 ];
 
+pub const DE_FEATURE_CLASS_CLASS_ID: [u8; 16] = [
+    0x40, 0x7f, 0xbb, 0x00, 0x51, 0x3e, 0x64, 0x48, 0xa6, 0x6c, 0x7f, 0x0c, 0x8e, 0xe9, 0xa8, 0x42,
+];
+
 pub const DE_TABLE_CLASS_ID: [u8; 16] = [
     0xdb, 0x05, 0x84, 0x9c, 0x87, 0xbb, 0xd6, 0x4b, 0x93, 0x2d, 0x7f, 0xfb, 0x35, 0xb0, 0x4b, 0xa0,
 ];
@@ -832,7 +836,7 @@ pub struct DeTable10_1 {
     pub element_shorts: [u16; 3],
     pub element_legacy_xml: Option<String>,
     pub raw_child_count: i32,
-    pub children: Vec<RuleSlot10_1<DeTable10_1>>,
+    pub children: Vec<RuleSlot10_1<DeChild10_1>>,
     pub dataset_longs: [i32; 2],
     pub dataset_shorts: [u16; 2],
     pub dataset_string: Option<String>,
@@ -850,6 +854,21 @@ pub struct DeTable10_1 {
     pub v4: Option<u16>,
     pub fields: RuleSlot10_1<FieldsBody10_1>,
     pub indexes: RuleSlot10_1<DeTableIndexes10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DeChild10_1 {
+    Table(DeTable10_1),
+    FeatureClass {
+        version: u16,
+        table: DeTable10_1,
+        raw_longs: [i32; 2],
+        name: String,
+        raw_shorts: [u16; 3],
+        extent: BookmarkEnvelopeEntry10_1,
+        spatial_reference: SpatialReferenceEntry10_1,
+        strings: [String; 2],
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3016,6 +3035,78 @@ fn read_gp_de_table_slot(
     Ok(RuleSlot10_1 { entry, body })
 }
 
+fn read_gp_data_element_child(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<RuleSlot10_1<DeChild10_1>> {
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if matches!(
+                refs.registered_class(key).unwrap_or(class_id),
+                DE_TABLE_CLASS_ID | DE_FEATURE_CLASS_CLASS_ID
+            ) =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: class_id @ (DE_TABLE_CLASS_ID | DE_FEATURE_CLASS_CLASS_ID),
+            ..
+        } => {
+            if depth >= MAX_BOOKMARK_NAME_NESTING {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "DataElement 嵌套过深",
+                ));
+            }
+            let body = if class_id == DE_TABLE_CLASS_ID {
+                DeChild10_1::Table(read_gp_de_table(reader, max_bytes, refs, depth + 1)?)
+            } else {
+                let version = reader.read_u16_le()?;
+                if version > 1 {
+                    return Err(io::Error::new(
+                        ErrorKind::InvalidData,
+                        "DEFeatureClass 版本超限",
+                    ));
+                }
+                DeChild10_1::FeatureClass {
+                    version,
+                    table: read_gp_de_table(reader, max_bytes, refs, depth + 1)?,
+                    raw_longs: [reader.read_u32_le()? as i32, reader.read_u32_le()? as i32],
+                    name: read_string_10_1(reader, max_bytes)?,
+                    raw_shorts: [
+                        reader.read_u16_le()?,
+                        reader.read_u16_le()?,
+                        reader.read_u16_le()?,
+                    ],
+                    extent: read_surround_envelope_slot(
+                        reader,
+                        max_bytes,
+                        refs,
+                        "DEFeatureClass 范围",
+                    )?,
+                    spatial_reference: read_spatial_reference_entry_10_1(reader, max_bytes, refs)?,
+                    strings: [
+                        read_string_10_1(reader, max_bytes)?,
+                        read_string_10_1(reader, max_bytes)?,
+                    ],
+                }
+            };
+            Some(Box::new(body))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "IDataElement 槽包含不支持的类",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
+}
+
 fn read_gp_de_table(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -3049,7 +3140,7 @@ fn read_gp_de_table(
     let (raw_child_count, child_count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
     let mut children = Vec::new();
     for _ in 0..child_count {
-        children.push(read_gp_de_table_slot(reader, max_bytes, refs, depth)?);
+        children.push(read_gp_data_element_child(reader, max_bytes, refs, depth)?);
     }
 
     let dataset_long = reader.read_u32_le()? as i32;

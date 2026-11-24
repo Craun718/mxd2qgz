@@ -2075,3 +2075,14 @@ DataElement v2 的第三个 short 为 `0xffff` 时，Load `0x6e942c54`
 `0x6e943c30`，后者在 `0x6e943cc2` 调 WriteString(BSTR, IStream*)。
 因此此分支在子对象计数前额外消耗一个 BSTR。构造书签覆盖非空
 UTF-16 XML、随后递归对象和截断回滚。实际宿主仍待确认。
+
+#### DEFeatureClass
+
+FeatureDataElements.dll 10.1.0.3035 的持久化表 `0x6f658858`
+对应 DEFeatureClass，构造函数从 `0x6f658eb0` 复制类 GUID
+`{00BB7F40-3E51-4864-A66C-7F0C8EE9A842}`。Load 入口
+`0x6f64a28e` 转发到 DECoreLib 的 `0x6e949720`。它接受版本
+0、1，调用 DETableBase::Load，随后读两个 long、一个 String、
+三个 short、IEnvelope 与 ISpatialReference 槽。标准构造函数
+在 `0x6f5f31a2` 启用扩展标志，因此尾部还读两个 String。
+构造书签覆盖子对象的新对象、同键回引和截断回滚，实际 MXD 宿主仍待验证。
