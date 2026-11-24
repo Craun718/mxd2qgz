@@ -4013,6 +4013,18 @@ Info 默认构造在 `0x6f61829e` 清零完整对象 +0xc0 的扩展标志，
 构造测试覆盖两类 v5–6 对象、各自的表布局、新 Indexes 对象、
 v6 尾字段、截断及结束位置。真实 MXD 宿主仍待核对。
 
+#### 紧凑 Info 类的 IDETable 接口
+
+在同一份 FeatureDataElements.dll 10.1.0.3035 中，
+DEFeatureClassInfo、DETableInfo、DERelationshipClassInfo
+的 QI 分别在 `0x6f5f399f`、`0x6f61def7`、`0x6f6184eb`
+比对 `0x6f658de0` 的 IDETable IID。命中分别跳到
+`0x6f5f3c68`、`0x6f61e1c0`、`0x6f618780`，
+均返回对象 +0x98 并调用 AddRef。
+共享 IDETable 槽据此接收这三个 CLSID，沿用各自的紧凑体读取器。
+构造测试验证已登记的三类回引及其结束位置。真实 MXD 宿主和
+ArcMap/QGIS 人工验收仍待核对。
+
 #### DEBrowseOptions 的 IDataElement 接口核对
 
 FeatureDataElements.dll 10.1.0.3035 的 SHA-256 为

@@ -7752,8 +7752,11 @@ fn read_de_table_interface_slot(
         "IDETable",
         &[
             DE_TABLE_CLASS_ID,
+            DE_TABLE_INFO_CLASS_ID,
             DE_FEATURE_CLASS_CLASS_ID,
+            DE_FEATURE_CLASS_INFO_CLASS_ID,
             DE_RELATIONSHIP_CLASS_CLASS_ID,
+            DE_RELATIONSHIP_CLASS_INFO_CLASS_ID,
             DE_RASTER_CATALOG_CLASS_ID,
             DE_RASTER_CATALOG_INFO_CLASS_ID,
             DE_RASTER_BAND_CLASS_ID,
@@ -13094,6 +13097,28 @@ mod tests {
                 ));
             }
             assert_eq!(reader.position(), end);
+        }
+    }
+
+    #[test]
+    fn de_table_interface_accepts_compact_info_classes() {
+        for class_id in [
+            DE_TABLE_INFO_CLASS_ID,
+            DE_FEATURE_CLASS_INFO_CLASS_ID,
+            DE_RELATIONSHIP_CLASS_INFO_CLASS_ID,
+        ] {
+            let mut header = class_id.to_vec();
+            header.extend(55_u32.to_le_bytes());
+            let mut refs = RefTable10_1::new();
+            read_object_entry_10_1(&mut Reader::new(&header), &mut refs).unwrap();
+            let mut reader = Reader::new(&header);
+            let slot = read_de_table_interface_slot(&mut reader, 1024, &mut refs, 0).unwrap();
+            assert_eq!(
+                slot.entry,
+                ObjectEntry10_1::BackReference { class_id, key: 55 }
+            );
+            assert!(slot.body.is_none());
+            assert_eq!(reader.remaining(), 0);
         }
     }
 
