@@ -2560,10 +2560,13 @@ fn raster_color_symbols_preserve_the_color_and_all_integer_fields() {
         read_symbol_slot_full_10_1,
     };
 
-    for class in [COLOR_SYMBOL_CLASS_ID, RASTER_RGB_SYMBOL_CLASS_ID] {
+    for (class, version) in [COLOR_SYMBOL_CLASS_ID, RASTER_RGB_SYMBOL_CLASS_ID]
+        .into_iter()
+        .flat_map(|class| [1_u16, 0x8000, 0xffff].map(|version| (class, version)))
+    {
         let mut bytes = Vec::new();
         push_entry(&mut bytes, &class, 41);
-        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(version.to_le_bytes());
         push_entry(&mut bytes, &RGB_COLOR_CLASS_ID, 42);
         bytes.extend(rgb_color_body());
         for value in [13_i32, -5, 17] {
@@ -2582,7 +2585,7 @@ fn raster_color_symbols_preserve_the_color_and_all_integer_fields() {
         };
         assert_eq!(
             (body.key, body.version, body.integers, body.stop),
-            (41, 1, Some([13, -5, 17]), None)
+            (41, version, Some([13, -5, 17]), None)
         );
         assert!(matches!(body.color, ColorSlot10_1::Color { .. }));
         assert!(table.contains(42));
@@ -2605,7 +2608,8 @@ fn raster_color_ramp_symbol_consumes_only_fields_for_its_version() {
         COLOR_RAMP_SYMBOL_CLASS_ID, SymbolSlotFull10_1, read_symbol_slot_full_10_1,
     };
 
-    for version in 0_u16..=5 {
+    for signed_version in [-32768_i16, -1, 0, 1, 2, 3, 4, 5] {
+        let version = signed_version as u16;
         let mut bytes = Vec::new();
         push_entry(&mut bytes, &COLOR_RAMP_SYMBOL_CLASS_ID, 41);
         bytes.extend(version.to_le_bytes());
@@ -2615,19 +2619,19 @@ fn raster_color_ramp_symbol_consumes_only_fields_for_its_version() {
         }
         push_null(&mut bytes); // 渐变
         bytes.extend(30_u16.to_le_bytes());
-        if version < 2 {
+        if signed_version < 2 {
             bytes.extend(31_u16.to_le_bytes());
         }
         bytes.extend(32_i32.to_le_bytes());
-        if version >= 3 {
+        if signed_version >= 3 {
             for value in [33_u16, 34, 35] {
                 bytes.extend(value.to_le_bytes());
             }
         }
-        if version >= 4 {
+        if signed_version >= 4 {
             bytes.extend((-36_i32).to_le_bytes());
         }
-        if version >= 5 {
+        if signed_version >= 5 {
             bytes.extend(37_u16.to_le_bytes());
             bytes.extend(0xffff_u16.to_le_bytes());
         }
@@ -2644,11 +2648,17 @@ fn raster_color_ramp_symbol_consumes_only_fields_for_its_version() {
         assert_eq!(body.ramp, Some(ColorRampSlot10_1::Null));
         let tail = body.tail.unwrap();
         assert_eq!(tail.first_short, 30);
-        assert_eq!(tail.legacy_short, (version < 2).then_some(31));
+        assert_eq!(tail.legacy_short, (signed_version < 2).then_some(31));
         assert_eq!(tail.integer, 32);
-        assert_eq!(tail.shorts_v3, (version >= 3).then_some([33, 34, 35]));
-        assert_eq!(tail.integer_v4, (version >= 4).then_some(-36));
-        assert_eq!(tail.shorts_v5, (version >= 5).then_some([37, 0xffff]));
+        assert_eq!(
+            tail.shorts_v3,
+            (signed_version >= 3).then_some([33, 34, 35])
+        );
+        assert_eq!(tail.integer_v4, (signed_version >= 4).then_some(-36));
+        assert_eq!(
+            tail.shorts_v5,
+            (signed_version >= 5).then_some([37, 0xffff])
+        );
         assert_eq!(reader.read_bytes(1).unwrap(), &[0xb1]);
 
         for length in 0..end {

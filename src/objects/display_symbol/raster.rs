@@ -1,6 +1,6 @@
 //! 符号槽中由 RasterLayer.dll 注册的类。原生读写见 `docs/arcmap-10.1-dep-tail.md`。
 
-use super::{SymbolStop10_1, color_slot_stop, read_i32_le, read_version_short};
+use super::{SymbolStop10_1, color_slot_stop, read_i32_le, read_signed_symbol_version};
 use crate::objects::color_ramp::{ColorRampSlot10_1, read_color_ramp_slot_10_1};
 use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
 use crate::storage::object_refs::RefTable10_1;
@@ -44,7 +44,7 @@ pub struct ColorRampSymbolBody10_1 {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ColorRampSymbolTail10_1 {
     pub first_short: u16,
-    /// 版本 0、1。
+    /// 有符号版本 <2。
     pub legacy_short: Option<u16>,
     pub integer: i32,
     /// 版本 ≥3。
@@ -62,7 +62,7 @@ pub(super) fn read_color_symbol_body_10_1(
     table: &mut RefTable10_1,
     key: u32,
 ) -> io::Result<ColorSymbolBody10_1> {
-    let version = read_version_short(reader, 1, "ColorSymbol", reader.position())?;
+    let version = read_signed_symbol_version(reader, 1, "ColorSymbol", reader.position())?;
     let color = read_color_slot_10_1(reader, max_bytes, table)?;
     let stop = color_slot_stop(&color);
     let integers = if stop.is_none() {
@@ -91,7 +91,8 @@ pub(super) fn read_color_ramp_symbol_body_10_1(
     depth: usize,
 ) -> io::Result<ColorRampSymbolBody10_1> {
     let offset = reader.position();
-    let version = read_version_short(reader, 5, "ColorRampSymbol", offset)?;
+    let version = read_signed_symbol_version(reader, 5, "ColorRampSymbol", offset)?;
+    let signed_version = version as i16;
     let color = read_color_slot_10_1(reader, max_bytes, table)?;
     let mut body = ColorRampSymbolBody10_1 {
         key,
@@ -114,9 +115,11 @@ pub(super) fn read_color_ramp_symbol_body_10_1(
     if body.stop.is_none() {
         body.tail = Some(ColorRampSymbolTail10_1 {
             first_short: reader.read_u16_le()?,
-            legacy_short: (version < 2).then(|| reader.read_u16_le()).transpose()?,
+            legacy_short: (signed_version < 2)
+                .then(|| reader.read_u16_le())
+                .transpose()?,
             integer: read_i32_le(reader)?,
-            shorts_v3: (version >= 3)
+            shorts_v3: (signed_version >= 3)
                 .then(|| {
                     Ok::<_, io::Error>([
                         reader.read_u16_le()?,
@@ -125,8 +128,10 @@ pub(super) fn read_color_ramp_symbol_body_10_1(
                     ])
                 })
                 .transpose()?,
-            integer_v4: (version >= 4).then(|| read_i32_le(reader)).transpose()?,
-            shorts_v5: (version >= 5)
+            integer_v4: (signed_version >= 4)
+                .then(|| read_i32_le(reader))
+                .transpose()?,
+            shorts_v5: (signed_version >= 5)
                 .then(|| Ok::<_, io::Error>([reader.read_u16_le()?, reader.read_u16_le()?]))
                 .transpose()?,
         });

@@ -413,6 +413,14 @@ Save 的文档版本表 `0x7c7678fc` 为 `[2,2,2,3,5]`。v0、v1 和 v4 的尾�
 按原生 Load 保留。字段含义未定的标量按原始顺序存储。未知 IColor 或 IColorRamp
 对象使读取停在对应嵌套对象边界。截断回滚整个外层符号及其新登记的键。
 
+同摘要 RasterLayer.dll 的 objdump 指令显示，ColorSymbol 在
+`0x7c7134ac..0x7c7134b1`、ColorRampSymbol 在
+`0x7c7120bc..0x7c7120c1` 用有符号 `jg` 检查版本上限。
+ColorRampSymbol 在 `0x7c7121a0..0x7c712254` 也按有符号版本
+分派尾段，负版本保留旧 short，并跳过 v3–v5 附加字段。Rust 在模型中
+保留原始版本位模式，按有符号值选择布局。合成用例覆盖负版本、同键回引、
+截断及后继边界。负版本实档及 ArcMap/QGIS 目视尚未验证。
+
 SDK .NET 的 `BloomfieldTownship.mxd`（SHA-256
 `eb2513113c4cf2528561a89371b8d8d5fb8cd44038f18ff8af32193c7db328b1`）
 在 /Maps 的 RasterStretchRenderer `0x4b73..0x6d0f` 的 RasterIO 标签 9
