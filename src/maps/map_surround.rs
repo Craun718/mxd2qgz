@@ -563,6 +563,10 @@ pub const DE_COVERAGE_CLASS_ID: [u8; 16] = [
     0x47, 0x0c, 0xb7, 0x96, 0x7f, 0x2c, 0x5f, 0x40, 0xb9, 0xfd, 0xde, 0xaa, 0x3c, 0xdc, 0x08, 0x4c,
 ];
 
+pub const DE_TERRAIN_CLASS_ID: [u8; 16] = [
+    0xb6, 0x43, 0x65, 0x54, 0x7a, 0x32, 0x3c, 0x4d, 0xac, 0x15, 0x81, 0x22, 0xc8, 0xb6, 0x68, 0x0a,
+];
+
 pub const DE_TIN_CLASS_ID: [u8; 16] = [
     0xf1, 0x32, 0xdc, 0x5e, 0xb2, 0xc1, 0x08, 0x48, 0x88, 0xe0, 0x2e, 0xd6, 0x8e, 0x77, 0x26, 0x9d,
 ];
@@ -1093,7 +1097,35 @@ pub struct DeCoverageFeatureClassTail10_1 {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct DeTerrainSource10_1 {
+    pub version: u32,
+    pub longs: [u32; 5],
+    pub shorts: [u16; 3],
+    pub values: [u64; 2],
+    pub strings: [String; 3],
+    pub v2: Option<u32>,
+    pub name_count: i32,
+    pub names: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeTerrainLegacy10_1 {
+    pub version: u32,
+    pub leading_long: u32,
+    pub leading_value: u64,
+    pub longs: [u32; 2],
+    pub source_count: i32,
+    pub sources: Vec<DeTerrainSource10_1>,
+    pub level_count: i32,
+    pub levels: Vec<([u32; 3], u64)>,
+    pub v2: Option<(String, u32, [u16; 5])>,
+    pub v3: Option<String>,
+    pub v4: Option<(BookmarkEnvelopeEntry10_1, SpatialReferenceEntry10_1)>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum DeChild10_1 {
+    TerrainLegacy(Box<DeTerrainLegacy10_1>),
     TableInfo(DeCompactTable10_1),
     LasDataset {
         version: u16,
@@ -3678,6 +3710,142 @@ fn read_gp_arc_info_items(
     Ok((raw_count, items))
 }
 
+fn read_de_terrain_legacy(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<DeTerrainLegacy10_1> {
+    let version = reader.read_u32_le()?;
+    if !(1..=4).contains(&version) {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            format!("DETerrain 版本 {version} 尚未支持"),
+        ));
+    }
+    let leading_long = reader.read_u32_le()?;
+    let leading_value = reader.read_f64_le()?.to_bits();
+    let longs = [reader.read_u32_le()?, reader.read_u32_le()?];
+    let (source_count, count) = read_gp_coded_value_count(reader, max_bytes, 62)?;
+    let mut sources = Vec::new();
+    for _ in 0..count {
+        let version = reader.read_u32_le()?;
+        if version > 3 {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "DETerrain 源版本超限",
+            ));
+        }
+        let mut longs = [0; 5];
+        for value in &mut longs {
+            *value = reader.read_u32_le()?;
+        }
+        let shorts = [
+            reader.read_u16_le()?,
+            reader.read_u16_le()?,
+            reader.read_u16_le()?,
+        ];
+        let values = [
+            reader.read_f64_le()?.to_bits(),
+            reader.read_f64_le()?.to_bits(),
+        ];
+        let strings = [
+            read_string_10_1(reader, max_bytes)?,
+            read_string_10_1(reader, max_bytes)?,
+            read_string_10_1(reader, max_bytes)?,
+        ];
+        let v2 = (version == 2).then(|| reader.read_u32_le()).transpose()?;
+        let name_count = reader.read_u32_le()? as i32;
+        if name_count < 0 {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "DETerrain 源名称计数为负",
+            ));
+        }
+        let mut names = Vec::new();
+        // 标志 1 的名称由父对象上下文提供。
+        if longs[3] != 1 {
+            if name_count as usize > reader.remaining().min(max_bytes) / 4 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "DETerrain 源名称计数超限",
+                ));
+            }
+            for _ in 0..name_count {
+                names.push(read_string_10_1(reader, max_bytes)?);
+            }
+        }
+        sources.push(DeTerrainSource10_1 {
+            version,
+            longs,
+            shorts,
+            values,
+            strings,
+            v2,
+            name_count,
+            names,
+        });
+    }
+    let (level_count, count) = read_gp_coded_value_count(reader, max_bytes, 24)?;
+    let mut levels = Vec::new();
+    if count != 0 && leading_long > 1 {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            "DETerrain 层级类型尚未支持",
+        ));
+    }
+    for _ in 0..count {
+        if reader.read_u32_le()? != 1 {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "DETerrain 层级版本超限",
+            ));
+        }
+        levels.push((
+            [
+                reader.read_u32_le()?,
+                reader.read_u32_le()?,
+                reader.read_u32_le()?,
+            ],
+            reader.read_f64_le()?.to_bits(),
+        ));
+    }
+    let v2 = if version >= 2 {
+        let name = read_string_10_1(reader, max_bytes)?;
+        let value = reader.read_u32_le()?;
+        let mut shorts = [0; 5];
+        for short in &mut shorts {
+            *short = reader.read_u16_le()?;
+        }
+        Some((name, value, shorts))
+    } else {
+        None
+    };
+    let v3 = (version >= 3)
+        .then(|| read_string_10_1(reader, max_bytes))
+        .transpose()?;
+    let v4 = if version == 4 {
+        Some((
+            read_surround_envelope_slot(reader, max_bytes, refs, "DETerrain 范围")?,
+            read_spatial_reference_entry_10_1(reader, max_bytes, refs)?,
+        ))
+    } else {
+        None
+    };
+    Ok(DeTerrainLegacy10_1 {
+        version,
+        leading_long,
+        leading_value,
+        longs,
+        source_count,
+        sources,
+        level_count,
+        levels,
+        v2,
+        v3,
+        v4,
+    })
+}
+
 fn read_gp_data_element_child(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -3700,6 +3868,7 @@ fn read_gp_data_element_child(
                     | DE_RASTER_DATASET_CLASS_ID
                     | DE_CAD_DRAWING_DATASET_CLASS_ID
                     | DE_TIN_CLASS_ID
+                    | DE_TERRAIN_CLASS_ID
                     | DE_COVERAGE_CLASS_ID
                     | DE_LAS_DATASET_CLASS_ID
                     | DE_VPF_COVERAGE_CLASS_ID
@@ -3746,6 +3915,7 @@ fn read_gp_data_element_child(
                 | DE_RASTER_DATASET_CLASS_ID
                 | DE_CAD_DRAWING_DATASET_CLASS_ID
                 | DE_TIN_CLASS_ID
+                | DE_TERRAIN_CLASS_ID
                 | DE_COVERAGE_CLASS_ID
                 | DE_LAS_DATASET_CLASS_ID
                 | DE_VPF_COVERAGE_CLASS_ID
@@ -3864,6 +4034,10 @@ fn read_gp_data_element_child(
                     }
                 };
                 DeChild10_1::TextFile { version, base }
+            } else if class_id == DE_TERRAIN_CLASS_ID {
+                DeChild10_1::TerrainLegacy(Box::new(read_de_terrain_legacy(
+                    reader, max_bytes, refs,
+                )?))
             } else if class_id == DE_RASTER_BAND_CLASS_ID {
                 DeChild10_1::RasterBand(Box::new(read_de_raster_band(
                     reader,
@@ -7462,6 +7636,68 @@ pub fn read_legend_prefix_10_1(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_terrain_reads_sources_levels_and_version_tail() {
+        let empty = [2, 0, 0, 0, 0, 0];
+        for version in 1_u32..=4 {
+            let mut bytes = DE_TERRAIN_CLASS_ID.to_vec();
+            bytes.extend(42_u32.to_le_bytes());
+            bytes.extend(version.to_le_bytes());
+            bytes.extend([0; 20]);
+            bytes.extend(2_u32.to_le_bytes());
+            for flag in [0_u32, 1] {
+                bytes.extend(2_u32.to_le_bytes());
+                bytes.extend([0; 12]);
+                bytes.extend(flag.to_le_bytes());
+                bytes.extend([0; 26]);
+                bytes.extend(empty.repeat(3));
+                bytes.extend(17_u32.to_le_bytes());
+                bytes.extend(1_u32.to_le_bytes());
+                if flag == 0 {
+                    bytes.extend(empty);
+                }
+            }
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend([0; 20]);
+            if version >= 2 {
+                bytes.extend(empty);
+                bytes.extend([0; 14]);
+            }
+            if version >= 3 {
+                bytes.extend(empty);
+            }
+            if version == 4 {
+                bytes.extend([0; 32]);
+            }
+            for cut in 0..bytes.len() {
+                assert!(
+                    read_gp_data_element_child(
+                        &mut Reader::new(&bytes[..cut]),
+                        1024,
+                        &mut RefTable10_1::new(),
+                        0,
+                    )
+                    .is_err()
+                );
+            }
+            let end = bytes.len();
+            bytes.push(0xa5);
+            let mut reader = Reader::new(&bytes);
+            let slot =
+                read_gp_data_element_child(&mut reader, 1024, &mut RefTable10_1::new(), 0).unwrap();
+            let Some(DeChild10_1::TerrainLegacy(body)) = slot.body.as_deref() else {
+                panic!("应读取旧版 DETerrain");
+            };
+            assert_eq!(body.version, version);
+            assert_eq!(body.sources[0].names, [""]);
+            assert!(body.sources[1].names.is_empty());
+            assert_eq!(body.sources[1].name_count, 1);
+            assert_eq!(body.levels.len(), 1);
+            assert_eq!(reader.position(), end);
+        }
+    }
 
     #[test]
     fn relationship_class_v5_v6_read_table_base_and_version_tail() {
