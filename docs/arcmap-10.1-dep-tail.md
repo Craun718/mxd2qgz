@@ -339,9 +339,25 @@ SimpleLineCallout 和 MarkerTextBackground 的 Load 分别在
 相同字段序。Rust 保留负版本位模式，合成输入验证三类 Callout 的
 完整体及 MarkerTextBackground 的嵌套停止点。
 
-该取证针对这些类的 IPersistStream::Load。它们作为 FeatureLayer
-后继段 ISymbol 实例的适用性仍需独立核对接口，负版本实档与 ArcMap/QGIS
+该取证针对这些类的 IPersistStream::Load。负版本实档与 ArcMap/QGIS
 人工验收待补。
+
+## Callout 和文字背景的 ISymbol 接口核对
+
+复核同摘要 DisplayCore.dll 10.1.0.3035 的完整对象虚表、Ghidra
+导出和 objdump 指令。BalloonCallout 的构造指令 `0x6eb40b1f`
+安装主虚表 `0x6ec0cc8c`，SimpleLineCallout 的 `0x6eb80dec`
+安装 `0x6ec10adc`。两表首项分别为 `0x6eb40e80` 和
+`0x6eb80fd0`。LineCallout 和 MarkerTextBackground 的主 QI
+分别为 `0x6eb577f0` 和 `0x6eb63b70`。
+
+逐一比较四个入口及公共回退 `0x6ebf6200 → 0x6ebf6b50` 的
+IID 常量原始 16 字节。没有一项匹配 ISymbol
+`{F3435802-5779-11D0-98BF-00805F7CED21}`（`0x6ec0ca2c`
+及 `0x6ec0cb6c`），未匹配时在 `0x6ebf6c42` 返回
+E_NOINTERFACE。FeatureLayer 后继段 ㉖ 的候选据此排除这四类。
+对象体内请求 ISymbol 的嵌套槽仍按各自持久化字段解析。其他候选
+仍待核对，本次未进行 ArcMap/QGIS 人工验收。
 
 ## FeatureLayer 后继段的符号回引
 
