@@ -811,6 +811,7 @@
       - [x] 接入 DERasterDataset v2 的 RasterStorageDef 槽。[取证](docs/mxd-terra-round9-bookmark.md#derasterdataset)
       - [x] 接入 IDataElement 列表中的 DERasterBand。[取证](docs/mxd-terra-round9-bookmark.md#derasterband)
       - [x] 接入 IDataElement 列表中的四类服务对象。[取证](docs/mxd-terra-round9-bookmark.md#deserverobjectbase)
+      - [x] 接入 IDataElement 列表中的 DEFile、DEFolder、DEMapDocument、DEDiskConnection。[取证](docs/mxd-terra-round9-bookmark.md#文件数据元素)
       - [ ] 补齐 IDataElement 列表中其他持久化实现。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的 GPSubtype 对象及字段行。[取证](docs/mxd-terra-round9-bookmark.md#detable)
       - [x] 接入 DETable 的拓扑与几何网络控制器成员。[取证](docs/mxd-terra-round9-bookmark.md#detable)

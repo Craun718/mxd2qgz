@@ -2310,3 +2310,20 @@ DEServerObjectBase::Load `0x6e94c430`。该函数接受无符号版本
 0、1，调用 DataElement::Load，再读两个 AfCore String。
 布局与 DEServerConnection 相同，解析复用该路径，类标识由对象头保留。
 构造测试验证五类对象体和截断，实际 MXD 宿主仍待核对。
+
+#### 文件数据元素
+
+FileDataElements.dll 10.1.0.3035 的 SHA-256 为
+`5c4703596f243daf7025cc1d0e435cf6522dbcb4a02b77529d0694aef4ef5f3c`。
+RTTI 与 esriDataSourcesFile 类型库对位如下。
+
+| 类 | 持久化表 | CLSID |
+| --- | --- | --- |
+| DEFile | `0x6f9da29c` | `{175CF2C5-12BF-413A-8FDF-3DA30CC09BEE}` |
+| DEFolder | `0x6f9da5fc` | `{273CCEBC-1AA2-4429-BBD5-4CB7C6E20465}` |
+| DEMapDocument | `0x6f9db2b8` | `{C0BED5D9-13E2-469B-A7D8-22704B0C8630}` |
+| DEDiskConnection | `0x6f9d9f80` | `{8E5E855A-7D60-4CE1-AFD0-45929C9F492C}` |
+
+四类共用 Load `0x6f9c3b90`，接受无符号版本 0、1，
+随后经 `0x6f9d7454` 调 DataElement::Load，基类之后无新增流字段。
+构造测试覆盖四类对象、结束位置及逐字节截断。实际 MXD 宿主仍待验证。
