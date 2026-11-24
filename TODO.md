@@ -940,6 +940,7 @@
       - [x] 按原生有符号版本读取填充比例尺的共用基类及旧 LONG。[指令取证](docs/mxd-terra-nextpass-scale.md#填充比例尺基类的负版本边界)
       - [x] 按原生有符号版本读取两类线式比例尺及其旧标志。[指令取证](docs/mxd-terra-nextpass-scale.md#线式比例尺的有符号版本门)
       - [x] 按原生有符号版本读取填充比例尺的派生段及旧标志。[指令取证](docs/mxd-terra-nextpass-scale.md#填充比例尺派生段的有符号版本门)
+      - [x] 核对 MapElementsUI 对比例尺私有接口的成对调用及对应成员偏移。[虚调用取证](docs/mxd-terra-nextpass-scale.md#mapelementsui-对私有接口的调用)
       - [x] 定位共用基类 v5 short 的跨模块接口访问及独立 Scalebar 的零返回分支。[虚调用取证](docs/mxd-terra-nextpass-scale.md#共用基类-v5-标量的接口访问)
       - [x] 定性四类填充比例尺派生中段的 double 为 IScaleBar.BarHeight，并从解析结果提供该值。[高度取证](docs/mxd-terra-nextpass-scale.md#填充比例尺高度)
       - [ ] 定性独立 Scalebar 类的其余标量字段。[比例尺续查](docs/mxd-terra-nextpass-scale.md)
