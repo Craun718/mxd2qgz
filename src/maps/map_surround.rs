@@ -515,6 +515,10 @@ pub const DE_TOPOLOGY_CLASS_ID: [u8; 16] = [
     0x7d, 0x63, 0xc4, 0xac, 0xe0, 0xd5, 0xd5, 0x47, 0xab, 0xcd, 0x9f, 0x25, 0xab, 0x32, 0x6e, 0x6f,
 ];
 
+pub const DE_PRJ_FILE_CLASS_ID: [u8; 16] = [
+    0xb0, 0x4b, 0x70, 0x7e, 0xbe, 0xcf, 0xd5, 0x11, 0x93, 0x3d, 0x00, 0x80, 0xc7, 0x1a, 0x32, 0x26,
+];
+
 pub const DE_FILE_CLASS_ID: [u8; 16] = [
     0xc5, 0xf2, 0x5c, 0x17, 0xbf, 0x12, 0x3a, 0x41, 0x8f, 0xdf, 0x3d, 0xa3, 0x0c, 0xc0, 0x9b, 0xee,
 ];
@@ -969,6 +973,7 @@ pub enum DeChild10_1 {
     FileSystem {
         version: u16,
         element: DataElement10_1,
+        spatial_reference: Option<Box<SpatialReferenceEntry10_1>>,
     },
     RasterBand(Box<DeRasterBand10_1>),
     Workspace(Box<DeWorkspace10_1>),
@@ -3377,6 +3382,7 @@ fn read_gp_data_element_child(
                     | DE_FOLDER_CLASS_ID
                     | DE_MAP_DOCUMENT_CLASS_ID
                     | DE_DISK_CONNECTION_CLASS_ID
+                    | DE_PRJ_FILE_CLASS_ID
                     | DE_TOPOLOGY_CLASS_ID
                     | DE_GEOMETRIC_NETWORK_CLASS_ID
                     | DE_RELATIONSHIP_CLASS_CLASS_ID
@@ -3403,6 +3409,7 @@ fn read_gp_data_element_child(
                 | DE_FOLDER_CLASS_ID
                 | DE_MAP_DOCUMENT_CLASS_ID
                 | DE_DISK_CONNECTION_CLASS_ID
+                | DE_PRJ_FILE_CLASS_ID
                 | DE_TOPOLOGY_CLASS_ID
                 | DE_GEOMETRIC_NETWORK_CLASS_ID
                 | DE_RELATIONSHIP_CLASS_CLASS_ID),
@@ -3422,6 +3429,7 @@ fn read_gp_data_element_child(
                     | DE_FOLDER_CLASS_ID
                     | DE_MAP_DOCUMENT_CLASS_ID
                     | DE_DISK_CONNECTION_CLASS_ID
+                    | DE_PRJ_FILE_CLASS_ID
             ) {
                 let version = reader.read_u16_le()?;
                 if version > 1 {
@@ -3430,9 +3438,16 @@ fn read_gp_data_element_child(
                         "文件数据元素版本超限",
                     ));
                 }
+                let element = read_gp_data_element(reader, max_bytes, refs, depth + 1)?;
+                let spatial_reference = (class_id == DE_PRJ_FILE_CLASS_ID)
+                    .then(|| {
+                        read_spatial_reference_entry_10_1(reader, max_bytes, refs).map(Box::new)
+                    })
+                    .transpose()?;
                 DeChild10_1::FileSystem {
                     version,
-                    element: read_gp_data_element(reader, max_bytes, refs, depth + 1)?,
+                    element,
+                    spatial_reference,
                 }
             } else if class_id == DE_RASTER_BAND_CLASS_ID {
                 DeChild10_1::RasterBand(Box::new(read_de_raster_band(
@@ -7256,6 +7271,7 @@ mod tests {
             DE_FOLDER_CLASS_ID,
             DE_MAP_DOCUMENT_CLASS_ID,
             DE_DISK_CONNECTION_CLASS_ID,
+            DE_PRJ_FILE_CLASS_ID,
         ] {
             let mut bytes = class_id.to_vec();
             bytes.extend(54_u32.to_le_bytes());
@@ -7264,6 +7280,9 @@ mod tests {
                 bytes.extend([2, 0, 0, 0, 0, 0]);
             }
             bytes.extend([0; 10]);
+            if class_id == DE_PRJ_FILE_CLASS_ID {
+                bytes.extend([0; 16]);
+            }
             for cut in 0..bytes.len() {
                 let mut reader = Reader::new(&bytes[..cut]);
                 let mut refs = RefTable10_1::new();
@@ -7274,11 +7293,20 @@ mod tests {
             let mut reader = Reader::new(&bytes);
             let mut refs = RefTable10_1::new();
             let object = read_gp_data_element_child(&mut reader, 1024, &mut refs, 0).unwrap();
-            let Some(DeChild10_1::FileSystem { version, element }) = object.body.as_deref() else {
+            let Some(DeChild10_1::FileSystem {
+                version,
+                element,
+                spatial_reference,
+            }) = object.body.as_deref()
+            else {
                 panic!("应读取文件数据元素");
             };
             assert_eq!(*version, 1);
             assert_eq!(element.gp_value_short, 7);
+            assert_eq!(
+                spatial_reference.as_deref(),
+                (class_id == DE_PRJ_FILE_CLASS_ID).then_some(&SpatialReferenceEntry10_1::Null),
+            );
             assert_eq!(reader.position(), end);
         }
     }

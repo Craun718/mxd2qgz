@@ -2327,3 +2327,12 @@ RTTI 与 esriDataSourcesFile 类型库对位如下。
 四类共用 Load `0x6f9c3b90`，接受无符号版本 0、1，
 随后经 `0x6f9d7454` 调 DataElement::Load，基类之后无新增流字段。
 构造测试覆盖四类对象、结束位置及逐字节截断。实际 MXD 宿主仍待验证。
+
+#### DEPrjFile
+
+FileDataElements.dll 10.1.0.3035 的 DEPrjFile 持久化表
+`0x6f9db56c` 对应类型库 CLSID `{7E704BB0-CFBE-11D5-933D-0080C71A3226}`。
+Load `0x6f9c17c0` 接受无符号版本 0、1，读 DataElement 后
+在 `0x6f9c181d` 加载 IID `{4434D680-F4DA-11D1-BCA6-0000F875BCCE}`
+的 ISpatialReference。解析复用空间参考读取器，构造测试覆盖空槽和
+后续字节边界。非空实档和 ArcMap/QGIS 人工验收仍待验证。
