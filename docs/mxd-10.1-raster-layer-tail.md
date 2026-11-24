@@ -1545,3 +1545,23 @@ RasterLayer v17 的 IStatsHistogram 列表按 SystemCore 10.1.0.3035
 与 Envelope（键 653、714）。RasterIO 记录存在，但均省略 tag 30。
 这为有界 v12 提供了不依赖后置名称的非空尾槽实例。原生成功打开
 哪一数据源、普通无界对象的终点以及 ArcMap/QGIS 人工验收仍待验证。
+
+### RasterTypeName 的空标识打开路径
+
+复核 MosaicDB.dll 10.1.0.3035（SHA-256
+`424814c3eceb88871df221bb42cb420b61c79c110a1e46a0e05af744db0a39ed`）。
+RTTI `0x7a670fd0` 的 +0x18 视图虚表为 `0x7a60c434`，
+其 IName::Open 槽 +0x14 指向 `0x7a45ba30`。
+该入口在 `0x7a45ba53` 清空输出，并通过 +0x20 视图的 +0x10
+槽调用 `0x7a45c3e0` 取 Name。当 MosaicDatasetName 成员为空时，
+getter 在 `0x7a45c4fd` 读 +0x20 视图相对 +0x10 的字符串，
+即 Load 保存的第二条串。为空时在 `0x7a45c51d` 返回
+`0x8000000a`，调用者的暂存字符串保持初始空值。
+Open 在 `0x7a45ba83` 跳到 `0x7a45c1da`，空镶嵌名称分支
+直接到 `0x7a45c35f` 清理并在 `0x7a45c375` 返回 E_FAIL，
+未填充打开结果。
+
+这为静态判断一类名称打开失败提供了条件。还需结合 RasterLayer
+的名称列表、已有成员状态和 RasterIO 分支检查无界 v12 终点。
+两份 conservation 实档使用普通 RasterDatasetName，不能验证
+本分支，也未进行 ArcMap/QGIS 人工验收。
