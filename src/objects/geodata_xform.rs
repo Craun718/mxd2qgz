@@ -458,6 +458,7 @@ fn read_projective_xform(
     table: &mut RefTable10_1,
     version: i32,
     has_empty_third_slot: bool,
+    bounded_host: bool,
 ) -> io::Result<ProjectiveXform10_1> {
     let reference = read_spatial_reference_entry_10_1(r, max, table)?;
     let (geometry, transformation) =
@@ -491,7 +492,7 @@ fn read_projective_xform(
             } else {
                 // 无界宿主没有后继边界：Load 的三槽布局若第三槽为空，其 16 字节
                 // 零 GUID 会与 Save 两槽布局的零点数和零标志重合。此时不能猜布局。
-                if r.clone().read_bytes(16).is_ok_and(|bytes| bytes == [0; 16]) {
+                if !bounded_host && r.clone().read_bytes(16).is_ok_and(|bytes| bytes == [0; 16]) {
                     return Err(io::Error::new(
                         ErrorKind::Unsupported,
                         "ProjectiveXform 无界宿主的空第三槽与零点数及零标志重合",
@@ -861,11 +862,12 @@ pub fn read_geodata_xform_slot_10_1(
     Ok(slot)
 }
 
-/// 旧式投影变换多一个空槽，仅供能验证后继字段与结束位置的宿主试读。
-pub(crate) fn read_projective_with_empty_third_slot(
+/// 有界宿主必须验证候选布局的后继字段和结束位置。
+pub(crate) fn read_bounded_projective_candidate(
     reader: &mut Reader<'_>,
     max: usize,
     table: &mut RefTable10_1,
+    has_empty_third_slot: bool,
 ) -> io::Result<GeodataXformSlot10_1> {
     let entry = read_object_entry_10_1(reader, table)?;
     if !matches!(
@@ -887,7 +889,7 @@ pub(crate) fn read_projective_with_empty_third_slot(
             format!("ProjectiveXform 未支持的版本 {version}"),
         ));
     }
-    let body = read_projective_xform(reader, max, table, version, true)?;
+    let body = read_projective_xform(reader, max, table, version, has_empty_third_slot, true)?;
     Ok(GeodataXformSlot10_1 {
         entry,
         body: Some(Box::new(GeodataXformBody10_1::Projective(Box::new(body)))),
@@ -980,7 +982,7 @@ fn read_body(
             read_geometric_xform(r, max, table, version, depth - 1)?,
         )),
         PROJECTIVE_XFORM_CLASS_ID => GeodataXformBody10_1::Projective(Box::new(
-            read_projective_xform(r, max, table, version, false)?,
+            read_projective_xform(r, max, table, version, false, false)?,
         )),
         LSR_XFORM_CLASS_ID => {
             GeodataXformBody10_1::Lsr(Box::new(read_lsr_xform(r, max, table, version)?))

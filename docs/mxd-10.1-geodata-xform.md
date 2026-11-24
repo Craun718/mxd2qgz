@@ -167,6 +167,10 @@ IPersistStream 虚表 `0x71a23588` 的 Load 和 Save 直接返回
 后继标记保持在偏移 60。驱动未加载 ArcMap，也未执行 COM 工厂或
 原生对象流键表。临时驱动位于忽略目录 `temp/mxd-rule-objects/projective-native/`。
 
+有界 RasterLayer 的两种候选都以宿主末尾校验，无界的零 GUID
+歧义检查只用于没有该校验的读取入口。既有回归分别验证同一投影
+前缀在两个声明长度下的读取结果。
+
 Rust 在有明确 ExtraSafe 边界的 RasterLayer 中先验证现有布局。若其
 变换和包络后的字段无法恰好读到边界，才暂存游标及引用表试读多出的空槽。
 第二种形态也必须完整读取包络及版本后缀，并恰好读到边界。

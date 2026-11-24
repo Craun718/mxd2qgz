@@ -60,8 +60,8 @@ use crate::objects::dataset_name_more::{
 use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
 use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
 use crate::objects::geodata_xform::{
-    GeodataXformSlot10_1, PROJECTIVE_XFORM_CLASS_ID, read_geodata_xform_slot_10_1,
-    read_projective_with_empty_third_slot,
+    GeodataXformSlot10_1, PROJECTIVE_XFORM_CLASS_ID, read_bounded_projective_candidate,
+    read_geodata_xform_slot_10_1,
 };
 use crate::objects::property_set::{PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
@@ -992,8 +992,15 @@ fn read_raster_layer_end(
 ) -> io::Result<RasterLayerEnd> {
     let transform = has_transform_pair
         .then(|| {
-            if has_empty_third_slot {
-                read_projective_with_empty_third_slot(reader, max_bytes, table)
+            if boundary == RasterLayerBoundary::Bounded
+                && matches!(
+                    read_header_10_1(&mut reader.clone())?,
+                    ObjectHeader::Object {
+                        class_id: PROJECTIVE_XFORM_CLASS_ID, key
+                    } if !table.contains(key)
+                )
+            {
+                read_bounded_projective_candidate(reader, max_bytes, table, has_empty_third_slot)
             } else {
                 read_geodata_xform_slot_10_1(reader, max_bytes, table)
             }
