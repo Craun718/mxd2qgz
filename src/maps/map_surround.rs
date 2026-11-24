@@ -493,6 +493,10 @@ pub const NET_WEIGHT_ASSOCIATION_CLASS_ID: [u8; 16] = [
     0x91, 0xc4, 0xbd, 0x19, 0x01, 0x62, 0xd1, 0x11, 0xb2, 0x55, 0x00, 0x00, 0xf8, 0x78, 0x22, 0x9e,
 ];
 
+pub const RELATIONSHIP_RULE_CLASS_ID: [u8; 16] = [
+    0x1e, 0x6c, 0x4c, 0xf8, 0xff, 0x47, 0xd2, 0x11, 0x99, 0x33, 0, 0, 0xf8, 0x03, 0x72, 0xb4,
+];
+
 pub const GP_RELATIONSHIP_CLASS_KEY_CLASS_ID: [u8; 16] = [
     0x1f, 0x4e, 0xca, 0x5d, 0xa4, 0x81, 0xc3, 0x41, 0xb1, 0x60, 0x81, 0x8d, 0x22, 0xfc, 0x50, 0xb0,
 ];
@@ -948,8 +952,16 @@ pub struct DeRelationshipClass10_1 {
     pub base: DeRelationshipBase10_1,
     pub metadata: Option<DeRelationshipMetadata10_1>,
     pub raw_rule_count: Option<i32>,
+    pub rules: Vec<RuleSlot10_1<RelationshipRule10_1>>,
     pub fields: Option<RuleSlot10_1<FieldsBody10_1>>,
     pub v6: Option<u16>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RelationshipRule10_1 {
+    pub version: u16,
+    pub name: String,
+    pub raw_longs: [i32; 10],
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3412,15 +3424,16 @@ fn read_de_relationship_class(
     } else {
         None
     };
-    let raw_rule_count = (version >= 3)
-        .then(|| reader.read_u32_le().map(|count| count as i32))
-        .transpose()?;
-    if raw_rule_count.is_some_and(|count| count > 0) {
-        return Err(io::Error::new(
-            ErrorKind::Unsupported,
-            "DERelationshipClass 的非空规则列表尚未支持",
-        ));
-    }
+    let mut rules = Vec::new();
+    let raw_rule_count = if version >= 3 {
+        let (raw_count, count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
+        for _ in 0..count {
+            rules.push(read_relationship_rule_slot(reader, max_bytes, refs)?);
+        }
+        Some(raw_count)
+    } else {
+        None
+    };
     let fields = (version == 4
         || (version <= 3 && metadata.as_ref().is_some_and(|body| body.shorts[1] != 0)))
     .then(|| read_gp_fields_slot(reader, max_bytes, refs, depth))
@@ -3431,9 +3444,55 @@ fn read_de_relationship_class(
         base,
         metadata,
         raw_rule_count,
+        rules,
         fields,
         v6,
     })
+}
+
+fn read_relationship_rule_slot(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<RuleSlot10_1<RelationshipRule10_1>> {
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if refs.registered_class(key).unwrap_or(class_id) == RELATIONSHIP_RULE_CLASS_ID =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: RELATIONSHIP_RULE_CLASS_ID,
+            ..
+        } => {
+            let version = reader.read_u16_le()?;
+            if version > 1 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "RelationshipRule 版本超限",
+                ));
+            }
+            let name = read_string_10_1(reader, max_bytes)?;
+            let mut raw_longs = [0; 10];
+            for value in &mut raw_longs {
+                *value = reader.read_u32_le()? as i32;
+            }
+            Some(Box::new(RelationshipRule10_1 {
+                version,
+                name,
+                raw_longs,
+            }))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "IRelationshipRule 槽包含不支持的类",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
 }
 
 fn read_gp_relationship_key_slot(

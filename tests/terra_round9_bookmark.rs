@@ -7336,7 +7336,7 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
         GpControllerMembership10_1, GpRelationshipClassKey10_1, GpSubtype10_1, GpSubtypeField10_1,
         INDEX_CLASS_ID, INDEXES_CLASS_ID, JUNCTION_CONNECTIVITY_RULE_CLASS_ID,
         NET_WEIGHT_ASSOCIATION_CLASS_ID, NET_WEIGHT_CLASS_ID, NetWeight10_1,
-        TOPOLOGY_RULE_CLASS_ID, TopologyRule10_1,
+        RELATIONSHIP_RULE_CLASS_ID, RelationshipRule10_1, TOPOLOGY_RULE_CLASS_ID, TopologyRule10_1,
     };
     use mxd2qgz::objects::envelope::SpatialReferenceEntry10_1;
     use mxd2qgz::objects::fields::{FIELDS_CLASS_ID, FieldsBody10_1};
@@ -7555,7 +7555,14 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
             payload.extend(bookmark_entry_10_1(&GP_RELATIONSHIP_CLASS_KEY_CLASS_ID, 38));
         }
         if version >= 3 {
-            payload.extend(0_i32.to_le_bytes());
+            payload.extend(2_i32.to_le_bytes());
+            payload.extend(bookmark_entry_10_1(&RELATIONSHIP_RULE_CLASS_ID, 39));
+            payload.extend(1_u16.to_le_bytes());
+            payload.extend(bookmark_string_10_1("关系规则"));
+            for value in 1_i32..=10 {
+                payload.extend(value.to_le_bytes());
+            }
+            payload.extend(bookmark_entry_10_1(&RELATIONSHIP_RULE_CLASS_ID, 39));
         }
         if version >= 2 {
             payload.extend(bookmark_entry_10_1(&FIELDS_CLASS_ID, 21));
@@ -7992,7 +7999,22 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                                             ],
                                                         }
                                                     }),
-                                                    raw_rule_count: (version >= 3).then_some(0),
+                                                    raw_rule_count: (version >= 3).then_some(2),
+                                                    rules: if version >= 3 {
+                                                        vec![
+                                                            RuleSlot10_1 {
+                                                                entry: ObjectEntry10_1::NewObject { class_id: RELATIONSHIP_RULE_CLASS_ID, key: 39 },
+                                                                body: Some(Box::new(RelationshipRule10_1 {
+                                                                    version: 1, name: "关系规则".into(),
+                                                                    raw_longs: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                                                                })),
+                                                            },
+                                                            RuleSlot10_1 {
+                                                                entry: ObjectEntry10_1::BackReference { class_id: RELATIONSHIP_RULE_CLASS_ID, key: 39 },
+                                                                body: None,
+                                                            },
+                                                        ]
+                                                    } else { Vec::new() },
                                                     fields: (version >= 2).then_some(
                                                         RuleSlot10_1 {
                                                             entry: ObjectEntry10_1::BackReference {

@@ -2193,7 +2193,7 @@ v6 在 `0x6f61a14c` 最后追加一个 short。实际 MXD 宿主仍待验证。
 `+0x13a`）初始化为零，因此 v0–1 不消耗尾部 IFields 槽。
 在 `0x6f617c3c` 设置完整对象 `+0xc0` 的扩展字段开关，
 v5–6 走 DETableBase 的完整路径。主体已接入，构造书签验证
-v0–4、旧版字段槽回引和截断回滚。非空规则列表仍待接入。
+v0–4、旧版字段槽回引和截断回滚。
 
 #### GPRelationshipClassKey
 
@@ -2204,3 +2204,12 @@ Load `0x6f62fb40` 接受无符号版本 0、1，再读一个 long 和两个
 AfCore String。Save 入口为 `0x6f62fbc0`。构造书签覆盖两组非空
 关系键列表及跨列表同键回引、后续字段边界和截断回滚。
 其他接口实现及实际 MXD 宿主仍待核对。
+
+#### RelationshipRule
+
+GdbCore.dll 10.1.0.3035 的 RelationshipRule 持久化表
+`0x70adc420` 中 GetClassID `0x70a45270` 返回
+`{F84C6C1E-47FF-11D2-9933-0000F80372B4}`。Load `0x70a452d0`
+接受无符号版本 0、1，直接读取一个 AfCore String 和十个 long，
+Save 入口为 `0x70a45400`。构造书签覆盖非空列表、回引及截断回滚，
+并验证随后 IFields 槽的读取边界。其他实现及实际 MXD 宿主仍待核对。
