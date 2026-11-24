@@ -3111,3 +3111,31 @@ AfCore String（`0x7dc2cc64`）。末尾两个 LoadObject 无标志，
 IPropertySet（`0x7dc2cc9d`）。已在 INetworkSource 分派
 接入该类。构造测试覆盖非空方向、非法版本及逐字节截断，
 真实 SDC MXD 宿主尚未验证。
+
+SDCNetworkAttribute（`A2AB1FBA-AA5F-485E-97FE-79D0F5FF9984`）
+也由上述 SDCPlugIn.dll 实现。RTTI 的 +0x18 表
+`0x7dd94eb0` 给出 Load `0x7dc07f50`；入口将 short
+减 1 后按无符号上限 3 比较，接受版本 1–4。
+共同体依次读 long（`0x7dc07fa4`）、AfCore String
+（`0x7dc07fb5`）、三个 long（`0x7dc07fcc`、
+`0x7dc07fe8`、`0x7dc08004`）。版本 2 起在
+`0x7dc0803d` 读有符号 long，只有值严格大于零才在
+`0x7dc08061` 通过 LoadObject 读取一个 IArray 槽。
+版本 3 起在 `0x7dc0808b` 再读 long，版本 4 在
+`0x7dc080af` 追加最后一个 long。
+
+IArray IID `AAFB54D9-AAF8-11D2-87F3-0000F8751720`
+位于 `0x7dd95080`，由 esriSystem.olb 核对。
+写侧在 `0x7dc07eb7` 写入存在标志，并在
+`0x7dc07ec9` 将对象交给 SaveObject。SDC 内部还存在
+SDCNetworkAttributeParameterArray，但其 RTTI 与 IArray
+查询调用本身无法证明实际写入的类标识。SystemCore 的
+通用 Array 也尚无 IPersistStream 证据。
+
+同模块 SDCNetworkAttributeParameter 的 CLSID
+`86A33BB7-BC66-4DCD-84DE-CC4731307002` 由 GetClassID
+`0x7dc048e0` 从 `0x7dd92b34` 复制。+0x18 表
+`0x7dd94f84` 的 Load `0x7dc058c0` 接受版本 1–2，
+读 String、long 和两个 AfCore 自由函数 Read(tagVARIANT*, IStream*)，
+版本 2 再读 long。该类与 IArray 中实际持久化元素的关系、
+数组的具体类标识和真实 SDC MXD 样本仍待确认。
