@@ -1054,8 +1054,8 @@ pub enum GpCodedValue10_1 {
         raw_map_count: i32,
         maps: Vec<RuleSlot10_1<GpFieldMap10_1>>,
         raw_table_count: i32,
-        tables: Vec<RuleSlot10_1<DeTable10_1>>,
-        tail: Option<RuleSlot10_1<DeTable10_1>>,
+        tables: Vec<RuleSlot10_1<DeChild10_1>>,
+        tail: Option<RuleSlot10_1<DeChild10_1>>,
     },
     Replica(Box<GpReplica10_1>),
     ReplicaDescription {
@@ -2256,7 +2256,7 @@ pub struct GpFieldMap10_1 {
 #[derive(Debug, Clone, PartialEq)]
 pub struct GpFieldMapRow10_1 {
     pub field: RuleSlot10_1<GpCodedValueBody10_1>,
-    pub table: RuleSlot10_1<DeTable10_1>,
+    pub table: RuleSlot10_1<DeChild10_1>,
     pub raw_longs: [u32; 2],
 }
 
@@ -4045,10 +4045,12 @@ fn read_gp_coded_value_entry(
                         read_gp_coded_value_count(reader, max_bytes, 16)?;
                     let mut tables = Vec::new();
                     for _ in 0..count {
-                        tables.push(read_gp_de_table_slot(reader, max_bytes, table, depth)?);
+                        tables.push(read_de_table_interface_slot(
+                            reader, max_bytes, table, depth,
+                        )?);
                     }
                     let tail = (version >= 2)
-                        .then(|| read_gp_de_table_slot(reader, max_bytes, table, depth))
+                        .then(|| read_de_table_interface_slot(reader, max_bytes, table, depth))
                         .transpose()?;
                     GpCodedValue10_1::FieldMapping {
                         raw_map_count,
@@ -4818,7 +4820,7 @@ fn read_gp_field_map_slot(
                         depth,
                         FIELD_CLASS_ID,
                     )?,
-                    table: read_gp_de_table_slot(reader, max_bytes, refs, depth)?,
+                    table: read_de_table_interface_slot(reader, max_bytes, refs, depth)?,
                     raw_longs: [reader.read_u32_le()?, reader.read_u32_le()?],
                 });
             }
@@ -5096,44 +5098,6 @@ fn read_gp_fields_slot(
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
                 "GP 对象的 IFields 槽包含不支持的类",
-            ));
-        }
-    };
-    Ok(RuleSlot10_1 { entry, body })
-}
-
-fn read_gp_de_table_slot(
-    reader: &mut Reader<'_>,
-    max_bytes: usize,
-    refs: &mut RefTable10_1,
-    depth: usize,
-) -> io::Result<RuleSlot10_1<DeTable10_1>> {
-    let entry = read_object_entry_10_1(reader, refs)?;
-    let body = match entry {
-        ObjectEntry10_1::Null => None,
-        ObjectEntry10_1::BackReference { class_id, key }
-            if refs.registered_class(key).unwrap_or(class_id) == DE_TABLE_CLASS_ID =>
-        {
-            None
-        }
-        ObjectEntry10_1::NewObject {
-            class_id: DE_TABLE_CLASS_ID,
-            ..
-        } => {
-            if depth >= MAX_BOOKMARK_NAME_NESTING {
-                return Err(io::Error::new(ErrorKind::InvalidData, "DETable 嵌套过深"));
-            }
-            Some(Box::new(read_gp_de_table(
-                reader,
-                max_bytes,
-                refs,
-                depth + 1,
-            )?))
-        }
-        _ => {
-            return Err(io::Error::new(
-                ErrorKind::Unsupported,
-                "DETable 对象槽包含不支持的类",
             ));
         }
     };
@@ -10655,13 +10619,21 @@ mod tests {
         bytes.extend([2, 0, 0, 0, 0, 0]);
         bytes.extend([0; 16]);
         bytes.extend(1_i32.to_le_bytes());
-        bytes.extend([0; 32]);
+        bytes.extend([0; 16]);
+        let mut text_file_header = DE_TEXT_FILE_CLASS_ID.to_vec();
+        text_file_header.extend(12_u32.to_le_bytes());
+        bytes.extend(&text_file_header);
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend([0; 6]);
+        bytes.extend([2, 0, 0, 0, 0, 0].repeat(3));
+        bytes.extend([0; 10]);
         bytes.extend(3_u32.to_le_bytes());
         bytes.extend(5_u32.to_le_bytes());
         bytes.extend(&map_header);
-        bytes.extend(0_i32.to_le_bytes());
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend(&text_file_header);
         let tail_start = bytes.len();
-        bytes.extend([0; 16]);
+        bytes.extend(&text_file_header);
 
         for cut in 0..bytes.len() {
             assert!(
@@ -10679,7 +10651,10 @@ mod tests {
         let mut reader = Reader::new(&bytes);
         let slot =
             read_gp_coded_value_slot(&mut reader, 1024, &mut RefTable10_1::new(), 0).unwrap();
-        let GpCodedValue10_1::FieldMapping { maps, tail, .. } = slot.body.unwrap().value else {
+        let GpCodedValue10_1::FieldMapping {
+            maps, tables, tail, ..
+        } = slot.body.unwrap().value
+        else {
             panic!("应读取 GPFieldMapping");
         };
         let map = maps[0].body.as_deref().unwrap();
@@ -10690,7 +10665,20 @@ mod tests {
             ObjectEntry10_1::BackReference { key: 11, .. }
         ));
         assert!(maps[1].body.is_none());
-        assert_eq!(tail.unwrap().entry, ObjectEntry10_1::Null);
+        assert!(matches!(
+            map.rows[0].table.body.as_deref(),
+            Some(DeChild10_1::TextFile { version: 1, .. })
+        ));
+        for reference in [&tables[0], tail.as_ref().unwrap()] {
+            assert_eq!(
+                reference.entry,
+                ObjectEntry10_1::BackReference {
+                    class_id: DE_TEXT_FILE_CLASS_ID,
+                    key: 12,
+                }
+            );
+            assert!(reference.body.is_none());
+        }
         assert_eq!(reader.position(), end);
 
         bytes.splice(tail_start..end, map_header);

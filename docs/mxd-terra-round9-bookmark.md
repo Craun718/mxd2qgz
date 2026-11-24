@@ -2423,9 +2423,11 @@ IDETable 查询。两个 LONG 分别由 `0x746ded5e` 和
 尚未核对其他 IField 和 IDETable 实现的宿主分布。
 
 Rust 基于上述边界读取 GPFieldMapping v0–v2 和 GPFieldMap
-v0–v2，复用 Field 与 DETable 对象体。构造测试覆盖非空映射
-列表、字段映射行、映射回引、v2 尾槽、逐字节截断，以及
-尾槽回引到不符合接口的已登记对象时的拒绝。真实 MXD 宿主
+v0–v2，复用 Field 读取器和共享 IDETable 类分派。
+`0x74678159` 传入 `0x747a7118` 的 IDETable IID。
+构造测试覆盖映射行内的 DETextFile、表集合和 v2 尾槽对同一
+对象的回引、映射回引、逐字节截断，以及尾槽对不符合接口的
+已登记对象回引的拒绝。真实 MXD 宿主
 及 ArcMap 人工验证仍待补充。
 
 #### GPReplicaDataset

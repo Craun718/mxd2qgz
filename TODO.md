@@ -909,6 +909,7 @@
       - [x] 定位 GPFieldMapping 子槽接口及 GPFieldMap 的原生 Load。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldmapping)
       - [x] 核对 GPFieldMap 的 IField 与 IDETable 槽和逐行标量边界。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldmapping)
       - [x] 接入 GPFieldMapping 及其 GPFieldMap 子对象体。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldmapping)
+      - [x] 接入 GPFieldMapping 与 GPFieldMap 表槽中已核实的 IDETable 实现。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldmapping)
       - [x] 接入 GPCodedValueDomain 中的 GPReplicaDataset v0 至 v3 对象体。[取证](docs/mxd-terra-round9-bookmark.md#gpreplicadataset)
       - [x] 定位 GPReplicaDescription 的几何与复制数据集集合对象槽。[取证](docs/mxd-terra-round9-bookmark.md#gpreplicadescription-与-gpreplicadatasets)
       - [x] 接入 GPReplicaDatasets 集合对象体。[取证](docs/mxd-terra-round9-bookmark.md#gpreplicadescription-与-gpreplicadatasets)
