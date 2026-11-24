@@ -621,6 +621,9 @@ const GP_LAYER_CLASS_ID: [u8; 16] = [
     0x1e, 0x59, 0x47, 0x6a, 0x16, 0xaa, 0x3e, 0x44, 0xb5, 0x0d, 0xd8, 0x92, 0x66, 0x59, 0xa4, 0xe1,
 ];
 
+const GP_FEATURE_RECORD_SET_LAYER_CLASS_ID: [u8; 16] = [
+    0x5f, 0x11, 0xe6, 0x1c, 0x72, 0xa4, 0xa1, 0x49, 0xa2, 0x28, 0x88, 0xf6, 0x01, 0xb3, 0x13, 0x4e,
+];
 const GP_RECORD_SET_CLASS_ID: [u8; 16] = [
     0xc2, 0x67, 0xdb, 0x38, 0xc1, 0xeb, 0x1a, 0x46, 0x87, 0x29, 0x01, 0x1b, 0xb7, 0xdb, 0xaf, 0x0c,
 ];
@@ -995,6 +998,7 @@ pub const GP_EXTENT_CLASS_ID: [u8; 16] = [
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpCodedValue10_1 {
     RecordSet(Box<GpRecordSet10_1>),
+    FeatureRecordSetLayer(Box<GpFeatureRecordSetLayer10_1>),
     TableView(Box<GpTableView10_1>),
     MosaicLayer(Box<GpLayer10_1>),
     GroupLayer(Box<GpLayer10_1>),
@@ -1294,6 +1298,14 @@ pub struct GpFeatureLayerFields10_1 {
     pub fid_set: RuleSlot10_1<crate::layers::feature_id_set::FeatureIdSetBody10_1>,
     pub table: Option<RuleSlot10_1<DeChild10_1>>,
     pub field_info: Option<RuleSlot10_1<GpCodedValueBody10_1>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpFeatureRecordSetLayer10_1 {
+    pub record_set: GpRecordSet10_1,
+    pub layer_text: String,
+    pub drawing: RuleSlot10_1<LayerDrawingDescription10_1>,
+    pub templates: Option<RuleSlot10_1<crate::layers::annotate_props::EditTemplateManagerBody10_1>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3340,6 +3352,7 @@ fn read_gp_coded_value_entry(
                 GP_STRING_CLASS_ID
                     | GP_TABLE_VIEW_CLASS_ID
                     | GP_RECORD_SET_CLASS_ID
+                    | GP_FEATURE_RECORD_SET_LAYER_CLASS_ID
                     | GP_FIELD_MAPPING_CLASS_ID
                     | GP_RASTER_FORMULATED_CLASS_ID
                     | GP_RASTER_BUILDER_CLASS_ID
@@ -3761,6 +3774,7 @@ fn read_gp_coded_value_entry(
                 class_id @ (GP_STRING_CLASS_ID
                 | GP_TABLE_VIEW_CLASS_ID
                 | GP_RECORD_SET_CLASS_ID
+                | GP_FEATURE_RECORD_SET_LAYER_CLASS_ID
                 | GP_FIELD_MAPPING_CLASS_ID
                 | GP_RASTER_BUILDER_CLASS_ID
                 | GP_RASTER_DATA_LAYER_CLASS_ID
@@ -3830,6 +3844,7 @@ fn read_gp_coded_value_entry(
             let version = reader.read_u16_le()?;
             let base_version = reader.read_u16_le()?;
             let max_version = match class_id {
+                GP_FEATURE_RECORD_SET_LAYER_CLASS_ID => 3,
                 GP_FIELD_MAPPING_CLASS_ID | GP_TABLE_VIEW_CLASS_ID | GP_RECORD_SET_CLASS_ID => 2,
                 GP_SPATIAL_REFERENCE_CLASS_ID
                 | GP_SA_SEMI_VARIOGRAM_CLASS_ID
@@ -3865,6 +3880,11 @@ fn read_gp_coded_value_entry(
             }
             let base_short = reader.read_u16_le()?;
             let value = match class_id {
+                GP_FEATURE_RECORD_SET_LAYER_CLASS_ID => {
+                    GpCodedValue10_1::FeatureRecordSetLayer(Box::new(
+                        read_gp_feature_record_set_layer(reader, max_bytes, table, depth, version)?,
+                    ))
+                }
                 GP_RECORD_SET_CLASS_ID => GpCodedValue10_1::RecordSet(Box::new(
                     read_gp_record_set(reader, max_bytes, table, depth, version)?,
                 )),
@@ -5271,6 +5291,61 @@ fn read_gp_fid_set_slot(
         }
     };
     Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_gp_feature_record_set_layer(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+    version: u16,
+) -> io::Result<GpFeatureRecordSetLayer10_1> {
+    use crate::layers::annotate_props::{
+        EDIT_TEMPLATE_MANAGER_CLASS_ID, read_edit_template_manager_body_10_1,
+    };
+    let record_set = read_gp_record_set(reader, max_bytes, refs, depth, version)?;
+    let layer_text = read_string_10_1(reader, max_bytes)?;
+    let drawing = read_layer_drawing_description_slot(reader, max_bytes, refs)?;
+    let templates = if version >= 3 {
+        let entry = read_object_entry_10_1(reader, refs)?;
+        let body = match entry {
+            ObjectEntry10_1::Null => None,
+            ObjectEntry10_1::BackReference { class_id, key }
+                if refs.registered_class(key).unwrap_or(class_id)
+                    == EDIT_TEMPLATE_MANAGER_CLASS_ID =>
+            {
+                None
+            }
+            ObjectEntry10_1::NewObject {
+                class_id: EDIT_TEMPLATE_MANAGER_CLASS_ID,
+                key,
+            } => {
+                let parsed = read_edit_template_manager_body_10_1(reader, max_bytes, refs, key)?;
+                if parsed.stop.is_some() {
+                    return Err(io::Error::new(
+                        ErrorKind::Unsupported,
+                        "GPFeatureRecordSetLayer 的编辑模板尚未读完",
+                    ));
+                }
+                Some(Box::new(parsed))
+            }
+            _ => {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    "GPFeatureRecordSetLayer 的编辑模板管理器类尚未支持",
+                ));
+            }
+        };
+        Some(RuleSlot10_1 { entry, body })
+    } else {
+        None
+    };
+    Ok(GpFeatureRecordSetLayer10_1 {
+        record_set,
+        layer_text,
+        drawing,
+        templates,
+    })
 }
 
 fn read_gp_record_set(
@@ -11646,6 +11721,65 @@ mod tests {
             assert_eq!(
                 spatial_reference.as_deref(),
                 (class_id == DE_PRJ_FILE_CLASS_ID).then_some(&SpatialReferenceEntry10_1::Null),
+            );
+            assert_eq!(reader.position(), end);
+        }
+    }
+
+    #[test]
+    fn gp_feature_record_set_layer_reads_drawing_and_templates() {
+        use crate::layers::annotate_props::EDIT_TEMPLATE_MANAGER_CLASS_ID;
+
+        for version in 0_u16..=3 {
+            let mut bytes = GP_FEATURE_RECORD_SET_LAYER_CLASS_ID.to_vec();
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend(version.to_le_bytes());
+            bytes.extend([1, 0, 9, 0]);
+            bytes.extend([0; 16]);
+            let empty_text = [2, 0, 0, 0, 0, 0];
+            if version >= 2 {
+                bytes.extend(empty_text);
+                bytes.extend(7_u16.to_le_bytes());
+            }
+            bytes.extend(empty_text);
+            bytes.extend(empty_text);
+            bytes.extend(FEATURE_LAYER_DRAWING_CLASS_ID);
+            bytes.extend(2_u32.to_le_bytes());
+            bytes.extend(1_i16.to_le_bytes());
+            bytes.extend([0; 16]);
+            if version == 3 {
+                bytes.extend(EDIT_TEMPLATE_MANAGER_CLASS_ID);
+                bytes.extend(3_u32.to_le_bytes());
+                bytes.extend(1_i16.to_le_bytes());
+                bytes.extend(0_i32.to_le_bytes());
+            }
+            let read = |reader: &mut Reader<'_>| {
+                read_gp_coded_value_slot(reader, 1024, &mut RefTable10_1::new(), 0)
+            };
+            for cut in 0..bytes.len() {
+                assert!(read(&mut Reader::new(&bytes[..cut])).is_err());
+            }
+            let end = bytes.len();
+            bytes.push(0xa5);
+            let mut reader = Reader::new(&bytes);
+            let coded = read(&mut reader).unwrap().body.unwrap();
+            let GpCodedValue10_1::FeatureRecordSetLayer(layer) = coded.value else {
+                panic!("应读取 GPFeatureRecordSetLayer");
+            };
+            assert!(matches!(
+                layer.drawing.body.as_deref(),
+                Some(LayerDrawingDescription10_1::Feature(_))
+            ));
+            assert_eq!(
+                layer.record_set.v2,
+                (version >= 2).then_some((String::new(), 7))
+            );
+            assert_eq!(
+                layer
+                    .templates
+                    .and_then(|slot| slot.body)
+                    .map(|body| body.version),
+                (version == 3).then_some(1)
             );
             assert_eq!(reader.position(), end);
         }

@@ -859,6 +859,7 @@
       - [x] 对位 GPRecordSet 的版本字段及内嵌 RecordSet 的行循环。[取证](docs/mxd-terra-round9-bookmark.md#gprecordset-与内嵌-recordset)
       - [x] 对位 RecordSet 的内联 Record 持久化入口与 Variant 循环。[取证](docs/mxd-terra-round9-bookmark.md#gprecordset-与内嵌-recordset)
       - [x] 接入 GPRecordSet 及内嵌 RecordSet 的对象体。[取证](docs/mxd-terra-round9-bookmark.md#gprecordset-与内嵌-recordset)
+      - [x] 接入 GPFeatureRecordSetLayer 的记录集、绘制描述与编辑模板槽。[取证](docs/mxd-terra-round9-bookmark.md#gpfeaturerecordsetlayer)
       - [x] 接入编码值及 IGPLayer 槽中的 GPMosaicLayer。[取证](docs/mxd-terra-round9-bookmark.md#gpmosaiclayer)
       - [x] 接入编码值及 IGPLayer 槽中的 GPCadastralFabricLayer。[取证](docs/mxd-terra-round9-bookmark.md#gpcadastralfabriclayer)
       - [x] 接入编码值及 IGPLayer 槽中的 GPGroupLayer。[取证](docs/mxd-terra-round9-bookmark.md#gpgrouplayer)

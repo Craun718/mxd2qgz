@@ -3576,6 +3576,25 @@ IFields 和 Variant::Read(false) 的读取器。内联 Record 的字节数组
 按流中原值保留。构造测试覆盖非空 IFields、两行、VT_UI1 数组、
 版本尾段、对象终点和逐字节截断。真实 MXD 及人工验收仍待补充。
 
+#### GPFeatureRecordSetLayer
+
+ArcMap 10.1 Desktop 互操作元数据将
+`1CE6115F-A472-49A1-A228-88F601B3134E` 定名为
+GPFeatureRecordSetLayer。同摘要 GpObjects.dll 的 RTTI
+`0x747ffee0` 对应 +0x1c 持久化表 `0x747ae570`，
+Load/Save 为 `0x746ca9b0 / 0x746cab20`。
+
+Load 检查无符号版本上限 3，再按 GPRecordSet 的字段顺序读取
+GPValue、IRecordSet、v2 起的 String 与 short、以及各版本的
+末串（`0x746caa00..0x746caa8f`）。之后在 `0x746caa9c`
+读一个 String，在 `0x746caab6` 读 ILayerDrawingDescription。
+v3 在 `0x746caade` 再读 IEditTemplateManager。Save 按同序写出；
+`0x747a5788` 的六项保存版本是 `[2, 2, 2, 2, 2, 3]`。
+
+Rust 编码值读取器复用 GPRecordSet、图层绘制描述和编辑模板管理器。
+构造测试覆盖 v0–v3、非空矢量绘制描述、非空编辑模板管理器、
+截断及对象终点。真实 MXD 宿主及 ArcMap/QGIS 人工验收仍待验证。
+
 #### 目录数据元素
 
 FileDataElements.dll 10.1.0.3035 的 PE RTTI 持久化表及
