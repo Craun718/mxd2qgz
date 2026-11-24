@@ -901,6 +901,7 @@
       - [x] 核对 DERasterDataTypeFactory 的六条名称记录均使用已支持的 GPDataTypeName。[取证](docs/mxd-terra-round9-bookmark.md#栅格数据类型名称工厂)
       - [x] 核对 GPNADataTypeFactory 的两条名称记录均使用已支持的 GPDataTypeName。[取证](docs/mxd-terra-round9-bookmark.md#gp-网络分析数据类型名称工厂)
       - [x] 核对 GP3DADataTypeFactory 的名称记录使用已支持的 GPDataTypeName。[取证](docs/mxd-terra-round9-bookmark.md#gp-三维分析数据类型名称工厂)
+      - [x] 核对示意图、GP 栅格与宗地工厂的名称记录均使用已支持的 GPDataTypeName。[取证](docs/mxd-terra-round9-bookmark.md#示意图gp-栅格与宗地类型名称工厂)
       - [x] 接入 GPCodedValueDomain 中的 GPVariant。[取证](docs/mxd-terra-round9-bookmark.md#gplinearunit-与-gpvariant)
       - [x] 接入 GPCodedValueDomain 中的 GPBoolean。[取证](docs/mxd-terra-round9-bookmark.md#gpdoublegpbooleangpdate)
       - [x] 接入 GPCodedValueDomain 中的 GPDate。[取证](docs/mxd-terra-round9-bookmark.md#gpdoublegpbooleangpdate)

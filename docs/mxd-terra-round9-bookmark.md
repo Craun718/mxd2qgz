@@ -1572,6 +1572,31 @@ IGPDataTypeFactory IID。表内名称槽 +0x14 指向 `0x74d21510`，
 创建名称对象。现有 GPMultiValue 读取器覆盖该类。
 尚未在真实 MXD 中验证此工厂产物。
 
+##### 示意图、GP 栅格与宗地类型名称工厂
+
+本地 Desktop PE 的版本资源均为 10.1.0.3035。SHA-256：
+
+- SchematicGPFactories.dll：`8feff5406f2ced889eaad71722f379f8e40e24079cbb2c6d03334f3d0f0ec8c8`
+- GpCoreFunctionFactories.dll：`332353cf413d13fe1a9c37f6b1ae91f422dd0590ab8f34a6690ca430ca3e75d6`
+- CadastralFabric.dll：`ccaff2b3cd3379b7a7630ea6f2a41c06c75ef6f68969e8ec8f51f2f05133bfd6`
+
+PE RTTI 将三个工厂的 IGPDataTypeFactory 表定位到对象 +0x10。
+各表的 +0x14 名称槽按名称查找固定记录，步长 20 字节，表上界排他。
+
+| 工厂 | 接口表 | 名称槽入口 | 名称表范围 | 记录数 |
+| --- | --- | --- | --- | --- |
+| SchematicGPDataTypeFactory | `0x7d7784b4` | `0x7d7727e0` | `0x7d77b3b0..0x7d77b400` | 4 |
+| GPRasterDataTypeFactory | `0x733ed858` | `0x733d5f90` | `0x7340c6f0..0x7340c768` | 6 |
+| DECadastralFabricDataTypeFactory | `0x6c2a07c4` | `0x6c256640` | `0x6c2d0744..0x6c2d0758` | 1 |
+
+示意图和 GP 栅格槽分别进入 `0x7d772290` 与 `0x733d5c20`，
+把 `0x7d77856c` 与 `0x733ed874` 的 GPDataTypeName CLSID
+传给 `0x7d773a60` 与 `0x733d21b0`。宗地槽经
+`0x6c2561b0` 调用 `0x6c256ae0`，后者在 `0x6c256b06`
+传入 `0x6c2a0844` 的同一 CLSID 并在 `0x6c256b0b` 调用创建入口。
+现有 GPMultiValue 读取器覆盖这 11 条记录的名称类。
+该结论来自静态反汇编，尚无真实 MXD 或 ArcMap 人工验证。
+
 #### GPValueTable
 
 GpObjects.dll 10.1.0.3035 的 RTTI `0x74801cd4` 对应持久化虚表
