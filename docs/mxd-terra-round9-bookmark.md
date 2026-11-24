@@ -1891,3 +1891,20 @@ RTTI 主表 `0x7af9de24` 的 QI `0x7af05f30` 比较 IGPValue
 
 构造书签覆盖非空行、Variant、同键回引、负版本、负计数和截断回滚。
 尚无该类在实际编码值域中的实档或 ArcMap/QGIS 人工验收。
+
+### GPNAHierarchySettings
+
+GPNAFunctions.dll PE32 10.1.0.3035 的 SHA-256 为
+`3c6f3dc1d5bfd9d848035bbd5b9c599859330759f29b26b2654838e91ce9178c`。
+安装介质文件以 objdump 复核。RTTI 对应的 QI `0x74555ff0`
+在 `0x74556029` 比较 IGPValue IID。持久化表 `0x745e1d38`
+的 GetClassID `0x74556230` 返回
+`{07F27D22-A56C-419B-9931-DD38C60897F1}`。
+
+Load `0x74556320` 读取无符号版本，拒绝 0，随后调用
+GPValue::Load（导入槽 `0x745dc29c`），再读取两个有符号
+32 位值，分别写入持久化接口指针的 `+0x34` 和 `+0x38`。
+Save `0x74556290` 写版本 0，再调用 GPValue::Save 并写回两个
+值。解析按 Load 的接受条件处理，保留原始标量。构造书签覆盖
+版本 1 和 65535、拒绝版本 0、同键回引和截断回滚。
+实际编码值域宿主、标量语义及 ArcMap/QGIS 人工验收仍待确认。

@@ -442,6 +442,9 @@ pub const GDS_DATA_CLASS_ID: [u8; 16] = [
     0x9c, 0xe6, 0x77, 0x8b, 0x95, 0x2a, 0xe3, 0x42, 0x88, 0xe3, 0x22, 0xa6, 0x12, 0xb6, 0x97, 0x52,
 ];
 
+pub const GP_NA_HIERARCHY_SETTINGS_CLASS_ID: [u8; 16] = [
+    0x22, 0x7d, 0xf2, 0x07, 0x6c, 0xa5, 0x9b, 0x41, 0x99, 0x31, 0xdd, 0x38, 0xc6, 0x08, 0x97, 0xf1,
+];
 pub const NA_CLASS_FIELD_MAP_CLASS_ID: [u8; 16] = [
     0xf8, 0x9f, 0x1c, 0xe6, 0xbf, 0x06, 0xe5, 0x42, 0xad, 0x66, 0x84, 0x93, 0x64, 0xb4, 0x85, 0x49,
 ];
@@ -615,6 +618,9 @@ pub enum GpCodedValue10_1 {
     DataFile {
         data: RuleSlot10_1<GdsData10_1>,
         strings: [String; 3],
+    },
+    NaHierarchySettings {
+        raw_longs: [i32; 2],
     },
     NaClassFieldMap {
         raw_count: i32,
@@ -2073,6 +2079,7 @@ fn read_gp_coded_value_entry(
                     | GP_WORKSPACE_EXTENSION_CLASS_ID
                     | GP_DATA_FILE_CLASS_ID
                     | GP_FIELD_INFO_CLASS_ID
+                    | GP_NA_HIERARCHY_SETTINGS_CLASS_ID
                     | NA_CLASS_FIELD_MAP_CLASS_ID
                     | GP_ARC_INFO_ITEM_CLASS_ID
                     | GP_ANALYSIS_CELL_SIZE_CLASS_ID
@@ -2132,6 +2139,7 @@ fn read_gp_coded_value_entry(
                 | GP_WORKSPACE_EXTENSION_CLASS_ID
                 | GP_DATA_FILE_CLASS_ID
                 | GP_FIELD_INFO_CLASS_ID
+                | GP_NA_HIERARCHY_SETTINGS_CLASS_ID
                 | NA_CLASS_FIELD_MAP_CLASS_ID
                 | GP_ARC_INFO_ITEM_CLASS_ID
                 | GP_ANALYSIS_CELL_SIZE_CLASS_ID
@@ -2203,6 +2211,8 @@ fn read_gp_coded_value_entry(
             };
             let version_unsupported = if class_id == NA_CLASS_FIELD_MAP_CLASS_ID {
                 (version as i16) > 1
+            } else if class_id == GP_NA_HIERARCHY_SETTINGS_CLASS_ID {
+                version == 0
             } else {
                 version > max_version
             };
@@ -2325,6 +2335,9 @@ fn read_gp_coded_value_entry(
                         read_string_10_1(reader, max_bytes)?,
                         read_string_10_1(reader, max_bytes)?,
                     ],
+                },
+                GP_NA_HIERARCHY_SETTINGS_CLASS_ID => GpCodedValue10_1::NaHierarchySettings {
+                    raw_longs: [reader.read_u32_le()? as i32, reader.read_u32_le()? as i32],
                 },
                 NA_CLASS_FIELD_MAP_CLASS_ID => {
                     let raw_count = reader.read_u32_le()? as i32;

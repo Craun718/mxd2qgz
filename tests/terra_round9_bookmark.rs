@@ -5703,7 +5703,13 @@ fn assert_legacy_topo_coded_value(
         assert_eq!(reader.position(), 0);
         assert!(refs.is_empty());
     }
-    bytes[version_offset..version_offset + 2].copy_from_slice(&0x7fff_u16.to_le_bytes());
+    use mxd2qgz::maps::map_surround::GP_NA_HIERARCHY_SETTINGS_CLASS_ID;
+    let invalid_version: u16 = if class_id == GP_NA_HIERARCHY_SETTINGS_CLASS_ID {
+        0
+    } else {
+        0x7fff
+    };
+    bytes[version_offset..version_offset + 2].copy_from_slice(&invalid_version.to_le_bytes());
     let mut reader = Reader::new(&bytes);
     let mut refs = RefTable10_1::new();
     assert_eq!(
@@ -7159,4 +7165,21 @@ fn feature_bookmark_reads_na_class_field_map_coded_value() {
             rows: Vec::new(),
         },
     );
+}
+
+#[test]
+fn feature_bookmark_reads_gp_na_hierarchy_settings_coded_value() {
+    use mxd2qgz::maps::map_surround::{GP_NA_HIERARCHY_SETTINGS_CLASS_ID, GpCodedValue10_1};
+
+    let raw_longs = [-3_i32, 25];
+    let mut payload = raw_longs[0].to_le_bytes().to_vec();
+    payload.extend(raw_longs[1].to_le_bytes());
+    for version in [1, u16::MAX] {
+        assert_legacy_topo_coded_value(
+            GP_NA_HIERARCHY_SETTINGS_CLASS_ID,
+            version,
+            &payload,
+            GpCodedValue10_1::NaHierarchySettings { raw_longs },
+        );
+    }
 }
