@@ -66,6 +66,10 @@ use crate::objects::geodata_xform::{
     read_geodata_xform_slot_10_1,
 };
 use crate::objects::property_set::{PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1};
+use crate::objects::spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID;
+use crate::objects::spatial_reference_slots::{
+    GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID, UNKNOWN_COORDINATE_SYSTEM_CLASS_ID,
+};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -926,11 +930,21 @@ pub(super) fn read_raster_layer_tail(
                     ObjectEntry10_1::BackReference { key, .. } => {
                         staged.registered_class(key) != Some(ENVELOPE_CLASS_ID)
                     }
-                    ObjectEntry10_1::NewObject { .. } => !slot.body.as_ref().is_some_and(|body| {
-                        matches!(
-                            body.spatial_reference,
-                            None | Some(SpatialReferenceEntry10_1::Null)
-                        )
+                    ObjectEntry10_1::NewObject { .. } => slot.body.as_ref().is_some_and(|body| {
+                        // 新空间参考由 Geometry 的已知持久化读取器解析。回引须能确认接口类。
+                        match body.spatial_reference {
+                            Some(SpatialReferenceEntry10_1::BackReference { key, .. }) => {
+                                !matches!(
+                                    staged.registered_class(key),
+                                    Some(
+                                        PROJECTED_COORDINATE_SYSTEM_CLASS_ID
+                                            | GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID
+                                            | UNKNOWN_COORDINATE_SYSTEM_CLASS_ID
+                                    )
+                                )
+                            }
+                            _ => false,
+                        }
                     }),
                 }
             })

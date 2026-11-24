@@ -928,8 +928,9 @@ mod tests {
             reference_io_offset - 16..reference_io_offset,
             envelope_reference,
         );
-        for version in [1_u16, 3] {
+        for (version, with_spatial_reference) in [(1_u16, false), (3, false), (3, true)] {
             use crate::objects::envelope::ENVELOPE_CLASS_ID;
+            use crate::objects::spatial_reference_slots::UNKNOWN_COORDINATE_SYSTEM_CLASS_ID;
 
             let mut envelope = Vec::from(ENVELOPE_CLASS_ID);
             envelope.extend(61_u32.to_le_bytes());
@@ -938,7 +939,18 @@ mod tests {
                 envelope.extend(coordinate.to_le_bytes());
             }
             if version == 3 {
-                envelope.extend([0; 20]);
+                envelope.extend([0; 4]);
+                if with_spatial_reference {
+                    envelope.extend(UNKNOWN_COORDINATE_SYSTEM_CLASS_ID);
+                    envelope.extend(62_u32.to_le_bytes());
+                    envelope.extend(1_u16.to_le_bytes());
+                    for _ in 0..4 {
+                        envelope.extend(encoded_string(""));
+                    }
+                    envelope.extend([0; 56]);
+                } else {
+                    envelope.extend([0; 16]);
+                }
             }
             let mut with_envelope = bytes.clone();
             with_envelope.splice(io_offset - 16..io_offset, envelope.iter().copied());
@@ -946,7 +958,52 @@ mod tests {
             let mut refs = RefTable10_1::new();
             let layer = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
             let tail = layer.tail.unwrap();
-            assert!(tail.envelope_f0.unwrap().body.is_some());
+            let envelope_body = tail.envelope_f0.unwrap().body.unwrap();
+            if with_spatial_reference {
+                use crate::objects::envelope::SpatialReferenceEntry10_1;
+
+                assert!(matches!(
+                    envelope_body.spatial_reference,
+                    Some(SpatialReferenceEntry10_1::UnknownCoordinateSystem { key: 62, .. })
+                ));
+                assert_eq!(
+                    refs.registered_class(62),
+                    Some(UNKNOWN_COORDINATE_SYSTEM_CLASS_ID)
+                );
+                let mut with_sr_reference = reference.clone();
+                let sr_body_at = envelope.len() - (2 + 4 * encoded_string("").len() + 56);
+                let mut referenced_envelope = envelope[..sr_body_at].to_vec();
+                referenced_envelope[16..20].copy_from_slice(&63_u32.to_le_bytes());
+                with_sr_reference.splice(
+                    reference_io_offset - 16..reference_io_offset,
+                    referenced_envelope,
+                );
+                let mut sr_reader = Reader::new(&with_sr_reference);
+                let layer = read_inline_raster_body_10_1(&mut sr_reader, 4096, &mut refs).unwrap();
+                assert!(matches!(
+                    layer
+                        .tail
+                        .unwrap()
+                        .envelope_f0
+                        .unwrap()
+                        .body
+                        .unwrap()
+                        .spatial_reference,
+                    Some(SpatialReferenceEntry10_1::BackReference { key: 62, .. })
+                ));
+                assert_eq!(
+                    sr_reader.position(),
+                    reference_io_offset + (end - io_offset) + sr_body_at - 16
+                );
+                let cut = io_offset - 16 + envelope.len() - 1;
+                let mut truncated = Reader::new(&with_envelope[..cut]);
+                let mut empty_refs = RefTable10_1::new();
+                assert!(
+                    read_inline_raster_body_10_1(&mut truncated, 4096, &mut empty_refs).is_err()
+                );
+                assert_eq!(truncated.position(), 0);
+                assert!(empty_refs.is_empty());
+            }
             assert!(tail.geodata_xform_v13.is_none());
             assert_eq!(reader.position(), end + envelope.len() - 16);
             assert_eq!(refs.registered_class(61), Some(ENVELOPE_CLASS_ID));

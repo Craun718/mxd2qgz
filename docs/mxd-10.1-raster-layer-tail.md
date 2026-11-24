@@ -1668,13 +1668,23 @@ RasterLayer.dll 10.1.0.3035 的 Load 在 `0x7c73c3c1` 起准备
 旧 IEnvelope 输出位置，`0x7c73c3cd` 调用 LoadObject，将输出存入
 持久化视图 `+0xf0`。后续从 `0x7c73c3d6` 开始处理 RasterIO，
 该路径未调用所载包络的接口，也未通过此槽写入数据集成员 `+0xb0`。
-无界读取接受已完整读取且不含空间参考的新 Envelope。带内嵌非空空间
-参考的新包络暂未纳入这一分支。构造测试验证 v1 和显式空空间
-参考的 v3 均保留后继条目边界，尚未在 ArcMap/QGIS 人工验收。
-
+构造测试验证新 Envelope 的 v1 和显式空空间参考的 v3 均保留后继条目
+边界，尚未在 ArcMap/QGIS 人工验收。
 
 旧 IEnvelope 槽的回引沿用 SystemCore.dll 10.1.0.3035 在
 `0x7ffd0063` 按键找原实例再查询接口的路径。回引不会再次加载
 包络对象体或其中的空间参考。无界读取要求登记类为 Envelope。
 构造测试覆盖回引头与登记类不同的情况，并核对后继条目位置；
 仅登记键而缺少类信息时回滚。真实无界宿主仍待验证。
+
+Geometry.dll 10.1.0.3035 的 Envelope::Load 在 `0x71869d69`
+检查版本 3，在 `0x71869d74` 压入 ISpatialReference IID，
+在 `0x71869d79` 定位包络持久化视图 `+0x64` 的输出槽。
+`0x71869d82` 的 LoadObject 调用之后，`0x71869d8b` 直接
+返回成功。已支持的 PCS、GCS 与 UnknownCoordinateSystem 的
+Load 分别从 `0x719d3230`、`0x719bec60`、`0x719ecd80`
+读取空间参考自身的状态（[空间参考持久化](arcmap-10.1-pcs-geometry-slots.md)）。
+无界 v12 复用 Envelope 的空间参考读取器，回引要求登记类能提供
+ISpatialReference。构造测试覆盖内嵌 UnknownCoordinateSystem 新体、
+后续包络对该空间参考的回引，以及截断回滚。其他空间参考实现和
+真实 ArcMap/QGIS 宿主仍待验证。
