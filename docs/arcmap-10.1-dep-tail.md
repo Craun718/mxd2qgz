@@ -1387,3 +1387,21 @@ ImageServerLayer 可在首个 ExtraSafe 槽的声明范围内试读，仅在
 已确认的空数组体。构造 Scene 宿主覆盖 v0–5、RasterLayer 回引、
 非空有界镶嵌原始体、后继边界和截断回滚。非空着色器、镶嵌体内部
 对象、真实工程和 ArcMap/QGIS 人工验收仍待验证。
+
+#### 普通和栅格底图的非空着色器数组
+
+BasemapLayer.dll 同摘要的 ArrayOfIShader::Load 在
+`0x6b66f86c` 调用完整对象虚表 `0x6b6adedc` 的 `+0x2c` 槽，
+到 `0x6b66f320`。助手在 `0x6b66f37b` 以普通 LoadObject
+请求 IUnknown，随后在 `0x6b66f39b` 查询 IShader
+（`{CB0F9195-3E7C-4A2B-8C95-A8F2FAC10C4C}`），没有外层体长。
+同介质 esriCarto 类型库列出 RasterShader 和 RasterDRAShader 两个
+实现。虚表 `0x6b6af540` 和 `0x6b6af364` 的 GetClassID
+分别确认 RasterShader 与 RasterDRAShader。前者的 Load
+`0x6b690180` 读 short 版本、两个 long 和 double；后者的
+Load `0x6b68f3f0` 读 short 版本、一个 long 和三个 float。
+两者的版本上限均为 1。float 类型经 `0x6b6aa1c4` 的导入签名确认。
+
+普通和栅格底图复用元素体读取器，按登记类识别回引。普通底图遇到
+未知元素仍停在数组头之前。构造 Scene 宿主验证两类非空元素、回引、
+后继槽和截断回滚。真实非空数组及 ArcMap/QGIS 人工验收仍待验证。

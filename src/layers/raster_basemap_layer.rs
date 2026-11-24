@@ -1,5 +1,5 @@
 //! ArcMap 10.1 RasterBasemapLayer 的对象体。
-use super::basemap_layer::ARRAY_OF_I_SHADER_CLASS_ID;
+use super::basemap_layer::{ARRAY_OF_I_SHADER_CLASS_ID, ShaderEntry10_1, read_shader_entries};
 use super::layer_list::{
     LayerBodyPrefix10_1, RASTER_LAYER_CLASS_ID, read_complete_layer_body_10_1,
 };
@@ -25,6 +25,7 @@ pub struct RasterBasemapLayer10_1 {
     pub spatial_reference: SpatialReferenceEntry10_1,
     pub shaders: ObjectEntry10_1,
     pub shader_array_version: Option<u16>,
+    pub shader_entries: Vec<ShaderEntry10_1>,
     pub shorts: Option<[i16; 2]>,
     pub raster: ObjectEntry10_1,
     pub raster_body: Option<Box<LayerBodyPrefix10_1>>,
@@ -48,18 +49,20 @@ pub(crate) fn read_raster_basemap_layer_10_1(
     let guid = r.read_bytes(16)?.try_into().unwrap();
     let spatial_reference = read_spatial_reference_entry_10_1(&mut r, max, &mut refs)?;
     let shaders = read_slot(&mut r, &mut refs, &[ARRAY_OF_I_SHADER_CLASS_ID])?;
-    let shader_array_version = if matches!(shaders, ObjectEntry10_1::NewObject { .. }) {
-        let version = r.read_u16_le()?;
-        if version > 1 {
-            return Err(invalid("RasterBasemapLayer 着色器数组版本超限"));
-        }
-        if r.read_u32_le()? as i32 > 0 {
-            return Err(unsupported("RasterBasemapLayer 非空着色器数组未支持"));
-        }
-        Some(version)
-    } else {
-        None
-    };
+    let (shader_array_version, shader_entries) =
+        if matches!(shaders, ObjectEntry10_1::NewObject { .. }) {
+            let version = r.read_u16_le()?;
+            if version > 1 {
+                return Err(invalid("RasterBasemapLayer 着色器数组版本超限"));
+            }
+            let count = (r.read_u32_le()? as i32).max(0) as u32;
+            (
+                Some(version),
+                read_shader_entries(&mut r, &mut refs, count, max)?,
+            )
+        } else {
+            (None, Vec::new())
+        };
     let shorts = (version != 2)
         .then(|| Ok::<_, io::Error>([r.read_u16_le()? as i16, r.read_u16_le()? as i16]))
         .transpose()?;
@@ -135,6 +138,7 @@ pub(crate) fn read_raster_basemap_layer_10_1(
         spatial_reference,
         shaders,
         shader_array_version,
+        shader_entries,
         shorts,
         raster,
         raster_body,
@@ -188,6 +192,9 @@ fn unsupported(message: &str) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::layers::basemap_layer::{
+        RASTER_DRA_SHADER_CLASS_ID, RASTER_SHADER_CLASS_ID, ShaderBody10_1,
+    };
     use crate::layers::graphics_3d::{GRAPHICS_LAYER_3D_CLASS_ID, read_graphics_3d_layer_10_1};
 
     #[test]
@@ -205,7 +212,23 @@ mod tests {
             bytes.extend(ARRAY_OF_I_SHADER_CLASS_ID);
             bytes.extend(41_u32.to_le_bytes());
             bytes.extend(1_u16.to_le_bytes());
-            bytes.extend(0_u32.to_le_bytes());
+            bytes.extend(3_u32.to_le_bytes());
+            bytes.extend(RASTER_DRA_SHADER_CLASS_ID);
+            bytes.extend(43_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(7_i32.to_le_bytes());
+            for v in [1.0_f32, 2.0, 3.0] {
+                bytes.extend(v.to_le_bytes());
+            }
+            bytes.extend(RASTER_SHADER_CLASS_ID);
+            bytes.extend(44_u32.to_le_bytes());
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(8_i32.to_le_bytes());
+            bytes.extend(9_i32.to_le_bytes());
+            bytes.extend(10.0_f64.to_le_bytes());
+            bytes.extend(RASTER_SHADER_CLASS_ID); // 回引头与登记类不同。
+            bytes.extend(43_u32.to_le_bytes());
+            let shaders_end = bytes.len();
             if version != 2 {
                 bytes.extend([7, 0, 8, 0]);
             }
@@ -247,6 +270,29 @@ mod tests {
             };
             assert_eq!(layer.version, version);
             assert_eq!(layer.shader_array_version, Some(1));
+            assert_eq!(
+                layer.shader_entries[0].body,
+                Some(ShaderBody10_1::RasterDra {
+                    version: 1,
+                    integer: 7,
+                    values: [1.0, 2.0, 3.0]
+                })
+            );
+            assert_eq!(
+                layer.shader_entries[1].body,
+                Some(ShaderBody10_1::Raster {
+                    version: 1,
+                    integers: [8, 9],
+                    value: 10.0
+                })
+            );
+            assert_eq!(
+                layer.shader_entries[2].entry,
+                ObjectEntry10_1::BackReference {
+                    class_id: RASTER_DRA_SHADER_CLASS_ID,
+                    key: 43
+                }
+            );
             assert_eq!(layer.shorts, (version != 2).then_some([7, 8]));
             assert_eq!(layer.name.as_deref(), (version >= 4).then_some("R"));
             assert_eq!(
@@ -259,19 +305,21 @@ mod tests {
             ));
             assert_eq!(reader.position(), end);
 
-            let mut refs = before.clone();
-            let mut reader = Reader::new(&bytes[..layer_end - 1]);
-            assert!(
-                read_graphics_3d_layer_10_1(
-                    &GRAPHICS_LAYER_3D_CLASS_ID,
-                    &mut reader,
-                    4096,
-                    &mut refs
-                )
-                .is_err()
-            );
-            assert_eq!(refs, before);
-            assert_eq!(reader.position(), 0);
+            for cut in [shaders_end - 1, layer_end - 1] {
+                let mut refs = before.clone();
+                let mut reader = Reader::new(&bytes[..cut]);
+                assert!(
+                    read_graphics_3d_layer_10_1(
+                        &GRAPHICS_LAYER_3D_CLASS_ID,
+                        &mut reader,
+                        4096,
+                        &mut refs
+                    )
+                    .is_err()
+                );
+                assert_eq!(refs, before);
+                assert_eq!(reader.position(), 0);
+            }
         }
     }
 }

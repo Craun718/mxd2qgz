@@ -15,6 +15,98 @@ pub const ARRAY_OF_I_SHADER_CLASS_ID: [u8; 16] = [
     0xaf, 0xdb, 0xbb, 0xe0, 0x59, 0x00, 0x9c, 0x44, 0xb6, 0xf1, 0xed, 0xf1, 0x35, 0x3a, 0x2c, 0x54,
 ];
 
+pub(super) const RASTER_SHADER_CLASS_ID: [u8; 16] = [
+    0xac, 0x5d, 0x89, 0x9a, 0x65, 0xe5, 0x8e, 0x48, 0xa5, 0xf4, 0x8b, 0x39, 0x53, 0x27, 0xe2, 0xbe,
+];
+pub(super) const RASTER_DRA_SHADER_CLASS_ID: [u8; 16] = [
+    0x00, 0x72, 0x60, 0x61, 0x6f, 0x1e, 0x9e, 0x48, 0x88, 0xae, 0xbc, 0xce, 0xe8, 0x9d, 0x25, 0xc4,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ShaderBody10_1 {
+    RasterDra {
+        version: u16,
+        integer: i32,
+        values: [f32; 3],
+    },
+    Raster {
+        version: u16,
+        integers: [i32; 2],
+        value: f64,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ShaderEntry10_1 {
+    pub entry: ObjectEntry10_1,
+    pub body: Option<ShaderBody10_1>,
+}
+
+pub(super) fn read_shader_entries(
+    r: &mut Reader<'_>,
+    refs: &mut RefTable10_1,
+    n: u32,
+    max: usize,
+) -> io::Result<Vec<ShaderEntry10_1>> {
+    if n as usize > max / 20 || n as usize > r.remaining() / 20 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "着色器数组计数超出可读范围",
+        ));
+    }
+    (0..n)
+        .map(|_| {
+            let mut entry = read_object_entry_10_1(r, refs)?;
+            let body = match &mut entry {
+                ObjectEntry10_1::NewObject { class_id, .. }
+                    if matches!(
+                        *class_id,
+                        RASTER_SHADER_CLASS_ID | RASTER_DRA_SHADER_CLASS_ID
+                    ) =>
+                {
+                    let version = r.read_u16_le()?;
+                    if version > 1 {
+                        return Err(io::Error::new(ErrorKind::InvalidData, "着色器对象版本超限"));
+                    }
+                    Some(if *class_id == RASTER_DRA_SHADER_CLASS_ID {
+                        ShaderBody10_1::RasterDra {
+                            version,
+                            integer: r.read_u32_le()? as i32,
+                            values: [
+                                f32::from_bits(r.read_u32_le()?),
+                                f32::from_bits(r.read_u32_le()?),
+                                f32::from_bits(r.read_u32_le()?),
+                            ],
+                        }
+                    } else {
+                        ShaderBody10_1::Raster {
+                            version,
+                            integers: [r.read_u32_le()? as i32, r.read_u32_le()? as i32],
+                            value: r.read_f64_le()?,
+                        }
+                    })
+                }
+                ObjectEntry10_1::BackReference { class_id, key }
+                    if matches!(
+                        refs.registered_class(*key),
+                        Some(RASTER_SHADER_CLASS_ID | RASTER_DRA_SHADER_CLASS_ID)
+                    ) =>
+                {
+                    *class_id = refs.registered_class(*key).unwrap();
+                    None
+                }
+                _ => {
+                    return Err(io::Error::new(
+                        ErrorKind::Unsupported,
+                        "IShader 元素需提供受支持的非空对象",
+                    ));
+                }
+            };
+            Ok(ShaderEntry10_1 { entry, body })
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum BasemapStop10_1 {
     /// 未消费的普通对象头及其未闭合体。
@@ -46,6 +138,7 @@ pub struct BasemapPrefix10_1 {
     pub version: u16,
     pub name: String,
     pub results_count: Option<u32>,
+    pub shader_entries: Vec<ShaderEntry10_1>,
     /// 已完整读取并登记的结果列表 FeatureLayer 键。
     pub feature_keys: Vec<u32>,
     pub sublayers: Vec<ObjectEntry10_1>,
@@ -141,6 +234,7 @@ pub fn read_basemap_prefix_10_1(
         r.read_bytes(16)?;
     }
     let mut result_count = None;
+    let mut shader_entries = Vec::new();
     let mut feature_keys = Vec::new();
     let mut sublayers = Vec::new();
     let mut sublayer_bodies = Vec::new();
@@ -166,8 +260,12 @@ pub fn read_basemap_prefix_10_1(
                         ));
                     }
                     let n = count(&mut probe, max_bytes / 16)?;
-                    if n != 0 {
-                        break 'parse BasemapStop10_1::ShaderElements { offset, count: n };
+                    match read_shader_entries(&mut probe, &mut refs, n, max_bytes) {
+                        Ok(entries) => shader_entries = entries,
+                        Err(error) if error.kind() == ErrorKind::Unsupported => {
+                            break 'parse BasemapStop10_1::ShaderElements { offset, count: n };
+                        }
+                        Err(error) => return Err(error),
                     }
                     r = probe;
                     t = refs;
@@ -302,6 +400,7 @@ pub fn read_basemap_prefix_10_1(
         version: v,
         name,
         results_count: result_count,
+        shader_entries,
         feature_keys,
         sublayers,
         sublayer_bodies,

@@ -682,6 +682,7 @@
       - [x] 验证栅格目录图层非空无键渲染器记录与后继聚合体的边界。[取证](docs/arcmap-10.1-dep-tail.md#栅格目录的-rasterio-槽分派)
       - [x] 定位 RasterBasemapLayer 的独立持久化入口及版本化字段序。[取证](docs/arcmap-10.1-dep-tail.md#rasterbasemaplayer-读写入口与版本门)
       - [x] 接入 RasterBasemapLayer 普通 ILayer 对象体，保留有界镶嵌槽。[取证](docs/arcmap-10.1-dep-tail.md#rasterbasemaplayer-读写入口与版本门)
+      - [x] 接入普通和栅格底图的非空 RasterShader、RasterDRAShader 数组。[取证](docs/arcmap-10.1-dep-tail.md#普通和栅格底图的非空着色器数组)
       - [ ] 补齐两类 3D 容器的关联 ILayer 槽中其余未支持的类体；已接入类的共用子槽缺口见各自条目。
       - [x] 接入普通 ILayer 槽中的 InternetTiledLayer 与 WMTSLayer，覆盖独立图层、组图层和三维关联图层。[接口及对象体证据](docs/mxd-10.1-raster-layer-tail.md#瓦片图层的独立-ilayer-宿主)
       - [x] 校验两类 3D 图形容器的 IEnvelope 回引登记类。[取证](docs/arcmap-10.1-dep-tail.md#三维图形容器的对象体)
