@@ -920,14 +920,19 @@ pub(super) fn read_raster_layer_tail(
                 .iter()
                 .any(|slot| slot.entry != ObjectEntry10_1::Null)
             || envelope_f0.as_ref().is_some_and(|slot| {
-                // 旧包络只写入持久化视图 +0xf0，限制为无空间参考回调的新对象。
-                slot.entry != ObjectEntry10_1::Null
-                    && !slot.body.as_ref().is_some_and(|body| {
+                // 旧包络只写入持久化视图 +0xf0。回引按登记对象查询接口，不重读对象体。
+                match slot.entry {
+                    ObjectEntry10_1::Null => false,
+                    ObjectEntry10_1::BackReference { key, .. } => {
+                        staged.registered_class(key) != Some(ENVELOPE_CLASS_ID)
+                    }
+                    ObjectEntry10_1::NewObject { .. } => !slot.body.as_ref().is_some_and(|body| {
                         matches!(
                             body.spatial_reference,
                             None | Some(SpatialReferenceEntry10_1::Null)
                         )
-                    })
+                    }),
+                }
             })
             || raster_io.as_ref().is_some_and(|io| {
                 match (&io.tag30_name, io.tag31_string.as_deref()) {

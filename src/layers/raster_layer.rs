@@ -920,6 +920,14 @@ mod tests {
         }
 
         let io_offset = end - 16 - encoded_string("尾段").len();
+        let mut envelope_reference = Vec::from(RASTER_TYPE_NAME_CLASS_ID);
+        envelope_reference.extend(61_u32.to_le_bytes());
+        let mut with_reference = reference.clone();
+        let reference_io_offset = io_offset - (body_end - header_offset - 20);
+        with_reference.splice(
+            reference_io_offset - 16..reference_io_offset,
+            envelope_reference,
+        );
         for version in [1_u16, 3] {
             use crate::objects::envelope::ENVELOPE_CLASS_ID;
 
@@ -942,7 +950,38 @@ mod tests {
             assert!(tail.geodata_xform_v13.is_none());
             assert_eq!(reader.position(), end + envelope.len() - 16);
             assert_eq!(refs.registered_class(61), Some(ENVELOPE_CLASS_ID));
+
+            let mut reader = Reader::new(&with_reference);
+            let layer = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+            let tail = layer.tail.unwrap();
+            let slot = tail.envelope_f0.unwrap();
+            assert_eq!(
+                slot.entry,
+                ObjectEntry10_1::BackReference {
+                    class_id: ENVELOPE_CLASS_ID,
+                    key: 61,
+                }
+            );
+            assert!(slot.body.is_none());
+            assert!(tail.geodata_xform_v13.is_none());
+            assert_eq!(
+                reader.position(),
+                reference_io_offset + (end - io_offset) + 4
+            );
         }
+
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+        assert!(!refs.register(61));
+        let mut reader = Reader::new(&with_reference);
+        assert_eq!(
+            read_inline_raster_body_10_1(&mut reader, 4096, &mut refs)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::Unsupported
+        );
+        assert_eq!(reader.position(), 0);
 
         for tag30 in [None, Some(false), Some(true)] {
             let mut records = Vec::new();
