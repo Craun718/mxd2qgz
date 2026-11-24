@@ -3365,6 +3365,23 @@ DEServerObjectBase::Load `0x6e94c430`。该函数接受无符号版本
 布局与 DEServerConnection 相同，解析复用该路径，类标识由对象头保留。
 构造测试验证五类对象体和截断，实际 MXD 宿主仍待核对。
 
+RasterDB.dll 10.1.0.3035（SHA-256
+`97207d5cc5307bfe126e030792b5e92c085668953a736a6875d35e72d7e86400`）
+的以下三个类也实现 IDataElement，CLSID 由同版 DataSourcesRaster
+互操作元数据核对，虚表由 PE RTTI 对位。
+
+| 类 | 持久化表 | CLSID |
+| --- | --- | --- |
+| DEImageServer | `0x7c125994` | `2DA8815F-1C55-4791-BA69-7856AF60F995` |
+| DEWCSCoverage | `0x7c126c04` | `54E1883E-3F44-4FC7-B588-A299B68CA9D4` |
+| DEWMSMap | `0x7c126f14` | `0957B24F-209D-4372-B29B-61A708249CA7` |
+
+三表 Load/Save 共用 `0x7c10d472 / 0x7c10d478`，
+分别直接跳到 DEServerObjectBase::Load/Save 导入槽。
+Rust 复用已有的服务数据元素读取器。构造测试覆盖三类的
+两个非空字符串、对象终点和逐字节截断。真实 MXD 宿主和
+ArcMap/QGIS 人工验收仍待核对。
+
 #### 文件数据元素
 
 FileDataElements.dll 10.1.0.3035 的 SHA-256 为

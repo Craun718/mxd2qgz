@@ -803,6 +803,15 @@ pub const DE_MAP_SERVER_CLASS_ID: [u8; 16] = [
 pub const DE_GLOBE_SERVER_CLASS_ID: [u8; 16] = [
     0x53, 0x8e, 0xdf, 0x9a, 0xfc, 0xb3, 0x48, 0x43, 0xb0, 0xc1, 0x27, 0xbf, 0x1a, 0x5f, 0x5f, 0x39,
 ];
+const DE_IMAGE_SERVER_CLASS_ID: [u8; 16] = [
+    0x5f, 0x81, 0xa8, 0x2d, 0x55, 0x1c, 0x91, 0x47, 0xba, 0x69, 0x78, 0x56, 0xaf, 0x60, 0xf9, 0x95,
+];
+const DE_WCS_COVERAGE_CLASS_ID: [u8; 16] = [
+    0x3e, 0x88, 0xe1, 0x54, 0x44, 0x3f, 0xc7, 0x4f, 0xb5, 0x88, 0xa2, 0x99, 0xb6, 0x8c, 0xa9, 0xd4,
+];
+const DE_WMS_MAP_CLASS_ID: [u8; 16] = [
+    0x4f, 0xb2, 0x57, 0x09, 0x9d, 0x20, 0x72, 0x43, 0xb2, 0x9b, 0x61, 0xa7, 0x08, 0x24, 0x9c, 0xa7,
+];
 pub const DE_GP_SERVER_CLASS_ID: [u8; 16] = [
     0xda, 0x7a, 0x17, 0xa8, 0x0d, 0x39, 0x0c, 0x42, 0xa4, 0x33, 0xee, 0x67, 0xdd, 0x2e, 0x86, 0x38,
 ];
@@ -6275,6 +6284,9 @@ fn read_gp_data_element_child(
                     | DE_MAP_SERVER_CLASS_ID
                     | DE_GLOBE_SERVER_CLASS_ID
                     | DE_GP_SERVER_CLASS_ID
+                    | DE_IMAGE_SERVER_CLASS_ID
+                    | DE_WCS_COVERAGE_CLASS_ID
+                    | DE_WMS_MAP_CLASS_ID
                     | DE_WORKSPACE_CLASS_ID
                     | DE_FILE_CLASS_ID
                     | DE_FOLDER_CLASS_ID
@@ -6330,6 +6342,9 @@ fn read_gp_data_element_child(
                 | DE_MAP_SERVER_CLASS_ID
                 | DE_GLOBE_SERVER_CLASS_ID
                 | DE_GP_SERVER_CLASS_ID
+                | DE_IMAGE_SERVER_CLASS_ID
+                | DE_WCS_COVERAGE_CLASS_ID
+                | DE_WMS_MAP_CLASS_ID
                 | DE_WORKSPACE_CLASS_ID
                 | DE_FILE_CLASS_ID
                 | DE_FOLDER_CLASS_ID
@@ -6519,6 +6534,9 @@ fn read_gp_data_element_child(
                     | DE_MAP_SERVER_CLASS_ID
                     | DE_GLOBE_SERVER_CLASS_ID
                     | DE_GP_SERVER_CLASS_ID
+                    | DE_IMAGE_SERVER_CLASS_ID
+                    | DE_WCS_COVERAGE_CLASS_ID
+                    | DE_WMS_MAP_CLASS_ID
             ) {
                 let version = reader.read_u16_le()?;
                 if version > 1 {
@@ -11673,6 +11691,9 @@ mod tests {
             DE_MAP_SERVER_CLASS_ID,
             DE_GLOBE_SERVER_CLASS_ID,
             DE_GP_SERVER_CLASS_ID,
+            DE_IMAGE_SERVER_CLASS_ID,
+            DE_WCS_COVERAGE_CLASS_ID,
+            DE_WMS_MAP_CLASS_ID,
         ] {
             let mut bytes = class_id.to_vec();
             bytes.extend(35_u32.to_le_bytes());
