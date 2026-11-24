@@ -2852,3 +2852,14 @@ ClassAttributes 的 QI 在 `0x7cb11323` 比对 IPersistStream，
 Load `0x7cb11ba0` 检查版本后，在 `0x7cb11c28`
 经导入槽调用 GraphicAttributeList::Load，再在
 `0x7cb11c40` 读 long 并进入后续循环。基类和循环仍待核对。
+
+`0x7cb38b96` 读入集合标量，`0x7cb38ba9` 读入
+有符号项数，`0x7cb38bb2` 对非正项数跳过循环。
+每项的附加 long 仅在集合版本等于 1 时读取
+（`0x7cb38c0b`、`0x7cb38c11`）。
+同版 esriDisplay.olb 将 `0x7cb41dec` 的 IID 定名为
+IRepresentationRule。其已知实现
+`1079E40A-83C1-467B-B828-E5C06EF5F6B7`
+已有共享读取器 `read_representation_rule_body_10_1`，
+现用于 SymbolMimic 等流入口。集合可以复用该读取器，
+仍需按无外层长度的规则处理其返回的未知对象边界。
