@@ -2568,3 +2568,21 @@ DEBrowseOptions 主虚表 `0x6f658190` 的 QI `0x6f5f13d0`
 `E2C87DF0-33D9-4A47-9B67-FA54B2FD7966`。
 该类的 IPersist/IPersistStream 接口不足以使其进入 IDataElement 列表。
 其他候选类仍需逐一核对。
+
+#### 其余数据元素候选类的接口核对
+
+ArcMap 10.1.0.3035 中以下 QI 路径均拒绝 IDataElement IID
+`E2C87DF0-33D9-4A47-9B67-FA54B2FD7966`。
+
+| 模块与类 | QI 入口 | 类专用 IID 常量地址 | 未命中路径 |
+| --- | --- | --- | --- |
+| FeatureDataElements.dll DEGdbUtilities | `0x6f5f54e0` | `0x6f65a6a4`、`0x6f65a6b4` | `0x6f648030` |
+| FeatureDataElements.dll DEMapper | `0x6f5fd240` | `0x6f65ba9c`、`0x6f65baac` | `0x6f648030` |
+| FeatureDataElements.dll DEQualifier | `0x6f60ddf0` | `0x6f65c36c` | `0x6f648030` |
+| FileDataElements.dll DEArcInfoUtilities | `0x6f9b3be0` | `0x6f9d8694` | `0x6f9d02c0` |
+
+FileDataElements.dll 的共用路径依次比对
+`0x6f9d775c`、`0x6f9d777c`、`0x6f9ddab8` 的 IID。
+这三项与 FeatureDataElements.dll 的共用路径相同，均不同于
+IDataElement IID。未命中时分别在 `0x6f9d03b2` 和
+`0x6f648122` 返回 E_NOINTERFACE。跨模块实现仍需核对。
