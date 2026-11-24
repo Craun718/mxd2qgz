@@ -7331,7 +7331,8 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
         GP_SUBTYPE_CLASS_ID, GP_TOPOLOGY_MEMBERSHIP_CLASS_ID, GpAddressLocatorStyleConfig10_1,
         GpAddressLocatorStyleRow10_1, GpAddressLocatorStyleRowValues10_1, GpCodedValue10_1,
         GpControllerMembership10_1, GpSubtype10_1, GpSubtypeField10_1, INDEX_CLASS_ID,
-        INDEXES_CLASS_ID, TOPOLOGY_RULE_CLASS_ID, TopologyRule10_1,
+        INDEXES_CLASS_ID, NET_WEIGHT_ASSOCIATION_CLASS_ID, NET_WEIGHT_CLASS_ID, NetWeight10_1,
+        TOPOLOGY_RULE_CLASS_ID, TopologyRule10_1,
     };
     use mxd2qgz::objects::envelope::SpatialReferenceEntry10_1;
     use mxd2qgz::objects::fields::{FIELDS_CLASS_ID, FieldsBody10_1};
@@ -7455,8 +7456,20 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
         payload.extend(bookmark_string_10_1("网络"));
         payload.extend([0; 16]);
         if network_version >= 3 {
-            for count in [-1_i32, 0, -2] {
-                payload.extend(count.to_le_bytes());
+            payload.extend((-1_i32).to_le_bytes());
+            payload.extend(1_i32.to_le_bytes());
+            payload.extend(bookmark_entry_10_1(&NET_WEIGHT_CLASS_ID, 33));
+            payload.extend(1_u16.to_le_bytes());
+            payload.extend(7_i32.to_le_bytes());
+            payload.extend([1, 0, 0, 0, b'W', 0, 0, 0]);
+            payload.extend(8_i32.to_le_bytes());
+            payload.extend(9_i32.to_le_bytes());
+            payload.extend(1_i32.to_le_bytes());
+            payload.extend(bookmark_entry_10_1(&NET_WEIGHT_ASSOCIATION_CLASS_ID, 34));
+            payload.extend(0_u16.to_le_bytes());
+            payload.extend(7_i32.to_le_bytes());
+            for name in [b'A', b'B'] {
+                payload.extend([1, 0, 0, 0, name, 0, 0, 0]);
             }
         }
         if network_version >= 4 {
@@ -7757,7 +7770,45 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                                                         },
                                                     )),
                                                     raw_counts: (network_version >= 3)
-                                                        .then_some([-1, 0, -2]),
+                                                        .then_some([-1, 1, 1]),
+                                                    weights: (network_version >= 3)
+                                                        .then(|| RuleSlot10_1 {
+                                                            entry: ObjectEntry10_1::NewObject {
+                                                                class_id: NET_WEIGHT_CLASS_ID,
+                                                                key: 33,
+                                                            },
+                                                            body: Some(Box::new(
+                                                                NetWeight10_1::Weight {
+                                                                    version: 1,
+                                                                    raw_long: 7,
+                                                                    name: "W".into(),
+                                                                    trailing_longs: [8, 9],
+                                                                },
+                                                            )),
+                                                        })
+                                                        .into_iter()
+                                                        .collect(),
+                                                    associations: (network_version >= 3)
+                                                        .then(|| RuleSlot10_1 {
+                                                            entry: ObjectEntry10_1::NewObject {
+                                                                class_id:
+                                                                    NET_WEIGHT_ASSOCIATION_CLASS_ID,
+                                                                key: 34,
+                                                            },
+                                                            body: Some(Box::new(
+                                                                NetWeight10_1::Association {
+                                                                    version: 0,
+                                                                    raw_long: 7,
+                                                                    strings: [
+                                                                        "A".into(),
+                                                                        "B".into(),
+                                                                    ],
+                                                                },
+                                                            )),
+                                                        })
+                                                        .into_iter()
+                                                        .collect(),
+
                                                     v4: (network_version >= 4).then_some((
                                                         5,
                                                         [1.5_f64.to_bits(), 2.5_f64.to_bits()],

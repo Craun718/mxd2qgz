@@ -2143,3 +2143,15 @@ DEGeoDataset::Load。下表为累积版本门。
 `{19BDC490-6201-11D1-B255-0000F878229E}`，已与安装介质
 esriGeoDatabase.olb 的本地接口定义对位。主体已接入，构造书签覆盖版本 2 至 6 的字段门及截断回滚。尚需核对各列表的具体持久化
 对象体，并接入解析。实际 MXD 宿主尚未验证。
+
+#### NetWeight 与 NetWeightAssociation
+
+GdbNetwork.dll 10.1.0.3035 安装介质 SHA-256 为
+`36b1fcd7ea5951aea6c53e03855993a2fcbb2b78c3e8b068642a890c44a0995c`。
+RTTI 持久化表 `0x7118ca94`、`0x7118cc74` 的 GetClassID
+分别返回 `{3EBBE031-557D-11D1-B254-0000F878229E}` 和
+`{19BDC491-6201-11D1-B255-0000F878229E}`。
+Load `0x70f9d230` 和 `0x70f9dee0` 均接受无符号版本 0、1，
+读取 long 后以 AfCore ReadString 取 BSTR。NetWeight 的 BSTR 后
+是两个 long，NetWeightAssociation 则再读一个 BSTR。构造书签
+覆盖两个非空列表及其后的版本字段和截断回滚。连接规则列表及实档待查。

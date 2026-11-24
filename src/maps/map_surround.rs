@@ -479,6 +479,13 @@ pub const TOPOLOGY_RULE_CLASS_ID: [u8; 16] = [
     0x89, 0x38, 0xd4, 0x8a, 0xa4, 0xf2, 0xb2, 0x43, 0x83, 0xdc, 0x6d, 0x1d, 0x38, 0xdd, 0xbc, 0xc8,
 ];
 
+pub const NET_WEIGHT_CLASS_ID: [u8; 16] = [
+    0x31, 0xe0, 0xbb, 0x3e, 0x7d, 0x55, 0xd1, 0x11, 0xb2, 0x54, 0x00, 0x00, 0xf8, 0x78, 0x22, 0x9e,
+];
+pub const NET_WEIGHT_ASSOCIATION_CLASS_ID: [u8; 16] = [
+    0x91, 0xc4, 0xbd, 0x19, 0x01, 0x62, 0xd1, 0x11, 0xb2, 0x55, 0x00, 0x00, 0xf8, 0x78, 0x22, 0x9e,
+];
+
 pub const DE_GEOMETRIC_NETWORK_CLASS_ID: [u8; 16] = [
     0x8c, 0xba, 0x68, 0xfe, 0x5d, 0x93, 0x6f, 0x4f, 0x80, 0xd5, 0x79, 0x57, 0xf8, 0xdb, 0xef, 0xdf,
 ];
@@ -923,9 +930,26 @@ pub enum DeChild10_1 {
 pub struct DeGeometricNetwork10_1 {
     pub metadata: Option<(i32, String, StringArraySlot10_1)>,
     pub raw_counts: Option<[i32; 3]>,
+    pub weights: Vec<RuleSlot10_1<NetWeight10_1>>,
+    pub associations: Vec<RuleSlot10_1<NetWeight10_1>>,
     pub v4: Option<(u16, [u64; 2])>,
     pub v5: Option<[i32; 2]>,
     pub v6: Option<u16>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum NetWeight10_1 {
+    Weight {
+        version: u16,
+        raw_long: i32,
+        name: String,
+        trailing_longs: [i32; 2],
+    },
+    Association {
+        version: u16,
+        raw_long: i32,
+        strings: [String; 2],
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3268,22 +3292,35 @@ fn read_de_geometric_network(
     } else {
         None
     };
+    let mut weights = Vec::new();
+    let mut associations = Vec::new();
     let raw_counts = if version >= 3 {
-        let mut counts = [0; 3];
-        for (count, interface) in
-            counts
-                .iter_mut()
-                .zip(["IConnectivityRule", "INetWeight", "INetWeightAssociation"])
-        {
-            *count = reader.read_u32_le()? as i32;
-            if *count > 0 {
-                return Err(io::Error::new(
-                    ErrorKind::Unsupported,
-                    format!("DEGeometricNetwork 的非空 {interface} 列表尚未支持"),
-                ));
-            }
+        let rules = reader.read_u32_le()? as i32;
+        if rules > 0 {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "DEGeometricNetwork 的非空 IConnectivityRule 列表尚未支持",
+            ));
         }
-        Some(counts)
+        let (raw_weights, count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
+        for _ in 0..count {
+            weights.push(read_net_weight_slot(
+                reader,
+                max_bytes,
+                refs,
+                NET_WEIGHT_CLASS_ID,
+            )?);
+        }
+        let (raw_associations, count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
+        for _ in 0..count {
+            associations.push(read_net_weight_slot(
+                reader,
+                max_bytes,
+                refs,
+                NET_WEIGHT_ASSOCIATION_CLASS_ID,
+            )?);
+        }
+        Some([rules, raw_weights, raw_associations])
     } else {
         None
     };
@@ -3307,10 +3344,62 @@ fn read_de_geometric_network(
     Ok(DeGeometricNetwork10_1 {
         metadata,
         raw_counts,
+        weights,
+        associations,
         v4,
         v5,
         v6,
     })
+}
+
+fn read_net_weight_slot(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    expected_class: [u8; 16],
+) -> io::Result<RuleSlot10_1<NetWeight10_1>> {
+    let entry = read_object_entry_10_1(reader, refs)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if refs.registered_class(key).unwrap_or(class_id) == expected_class =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject { class_id, .. } if class_id == expected_class => {
+            let version = reader.read_u16_le()?;
+            if version > 1 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "网络权重对象版本超限",
+                ));
+            }
+            let raw_long = reader.read_u32_le()? as i32;
+            let first = read_bstr_string_10_1(reader, max_bytes)?;
+            let value = if expected_class == NET_WEIGHT_CLASS_ID {
+                NetWeight10_1::Weight {
+                    version,
+                    raw_long,
+                    name: first,
+                    trailing_longs: [reader.read_u32_le()? as i32, reader.read_u32_le()? as i32],
+                }
+            } else {
+                NetWeight10_1::Association {
+                    version,
+                    raw_long,
+                    strings: [first, read_bstr_string_10_1(reader, max_bytes)?],
+                }
+            };
+            Some(Box::new(value))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "网络权重槽包含不支持的类",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
 }
 
 fn read_topology_rule_slot(
