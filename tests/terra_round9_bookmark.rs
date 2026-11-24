@@ -7313,6 +7313,7 @@ fn feature_bookmark_reads_gp_address_locator_style_configuration_without_rows() 
 
 #[test]
 fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
+    use mxd2qgz::layers::feature_layer_tail::{UID_CLASS_ID, UidBody10_1};
     use mxd2qgz::layers::image_server_rules::RuleSlot10_1;
     use mxd2qgz::maps::map_surround::{
         GP_ADDRESS_LOCATOR_STYLE_CLASS_ID, GpAddressLocatorStyleConfig10_1,
@@ -7331,7 +7332,40 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
         if version == 4 {
             payload.extend(0xffff_u16.to_le_bytes());
         }
-        payload.extend(0_i32.to_le_bytes());
+        let raw_object_count = if version >= 2 { 2_i32 } else { 0 };
+        payload.extend(raw_object_count.to_le_bytes());
+        let mut uids = Vec::new();
+        if version >= 2 {
+            let guid = [0x47; 16];
+            payload.extend(bookmark_entry_10_1(&UID_CLASS_ID, 20));
+            payload.extend(1_u16.to_le_bytes());
+            payload.push(1);
+            payload.extend(guid);
+            payload.extend(7_i32.to_le_bytes());
+            payload.extend(bookmark_entry_10_1(&UID_CLASS_ID, 20));
+            uids.extend([
+                RuleSlot10_1 {
+                    entry: ObjectEntry10_1::NewObject {
+                        class_id: UID_CLASS_ID,
+                        key: 20,
+                    },
+                    body: Some(Box::new(UidBody10_1 {
+                        key: 20,
+                        version: 1,
+                        flag: 1,
+                        guid,
+                        value_18: 7,
+                    })),
+                },
+                RuleSlot10_1 {
+                    entry: ObjectEntry10_1::BackReference {
+                        class_id: UID_CLASS_ID,
+                        key: 20,
+                    },
+                    body: None,
+                },
+            ]);
+        }
         payload.extend(1_i32.to_le_bytes());
         payload.extend([0; 16]);
         let values = if version < 2 {
@@ -7368,7 +7402,8 @@ fn feature_bookmark_reads_gp_address_locator_style_reference_rows() {
                     rows: vec![GpAddressLocatorStyleRow10_1 {
                         name: "参考数据".into(),
                         raw_short: (version == 4).then_some(0xffff),
-                        raw_object_count: 0,
+                        raw_object_count,
+                        uids,
                         raw_value_count: 1,
                         values,
                     }],

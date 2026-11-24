@@ -784,6 +784,7 @@
       - [x] 接入 GPCodedValueDomain 的 GPAddressLocatorStyle 空配置分支。[取证](docs/mxd-terra-round9-bookmark.md#gpaddresslocatorstyle)
       - [x] 接入 GPAddressLocatorStyle 配置的无行分支及版本尾段。[取证](docs/mxd-terra-round9-bookmark.md#gpaddresslocatorstyle)
       - [x] 接入 GPAddressLocatorStyle 参考数据行的字符串及 Variant 值。[取证](docs/mxd-terra-round9-bookmark.md#gpaddresslocatorstyle)
+      - [x] 接入 GPAddressLocatorStyle 参考数据行的 UID 列表。[取证](docs/mxd-terra-round9-bookmark.md#gpaddresslocatorstyle)
       - [ ] 核对 GPAddressLocatorStyle 非空配置中其余接口槽的类体。[取证](docs/mxd-terra-round9-bookmark.md#gpaddresslocatorstyle)
       - [ ] 补齐 GPCodedValueDomain 中尚未核对的 IGPValue 子类。
       - [x] 接入 GPFieldInfo 的基础行和 v2 扩展字段。[取证](docs/mxd-terra-round9-bookmark.md#gpfieldinfo)

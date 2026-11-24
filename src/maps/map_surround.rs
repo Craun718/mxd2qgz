@@ -782,6 +782,7 @@ pub struct GpAddressLocatorStyleRow10_1 {
     pub name: String,
     pub raw_short: Option<u16>,
     pub raw_object_count: i32,
+    pub uids: Vec<RuleSlot10_1<UidBody10_1>>,
     pub raw_value_count: i32,
     pub values: GpAddressLocatorStyleRowValues10_1,
 }
@@ -1889,7 +1890,7 @@ pub fn read_feature_bookmark_10_1(
     Ok(result)
 }
 
-fn read_gp_name_uid_slot(
+fn read_gp_uid_slot(
     reader: &mut Reader<'_>,
     table: &mut RefTable10_1,
 ) -> io::Result<RuleSlot10_1<UidBody10_1>> {
@@ -1908,7 +1909,7 @@ fn read_gp_name_uid_slot(
         _ => {
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
-                "GPName 的 IUID 类未支持",
+                "GP 对象的 IUID 槽包含不支持的类",
             ));
         }
     };
@@ -1928,7 +1929,7 @@ fn read_gp_name_base_10_1(
         read_bstr_string_10_1(reader, max_bytes)?,
     ];
     let base_uid = (base_version >= 3)
-        .then(|| read_gp_name_uid_slot(reader, table))
+        .then(|| read_gp_uid_slot(reader, table))
         .transpose()?;
     let legacy_string = (base_version < 2)
         .then(|| read_bstr_string_10_1(reader, max_bytes))
@@ -1960,7 +1961,7 @@ fn read_gp_data_type_name_body_10_1(
     let version = read_gp_name_version(reader, 2, "GPDataTypeName")?;
     let base = read_gp_name_base_10_1(reader, max_bytes, table)?;
     let legacy_uid = (version < 2)
-        .then(|| read_gp_name_uid_slot(reader, table))
+        .then(|| read_gp_uid_slot(reader, table))
         .transpose()?;
     Ok(GpDataTypeName10_1 {
         version,
@@ -1980,7 +1981,7 @@ fn read_gp_function_name_body_10_1(
     let version = read_gp_name_version(reader, 4, "GPFunctionName")?;
     let base = read_gp_name_base_10_1(reader, max_bytes, table)?;
     let legacy_uid = (version < 2)
-        .then(|| read_gp_name_uid_slot(reader, table))
+        .then(|| read_gp_uid_slot(reader, table))
         .transpose()?;
     let v3_fields = (version >= 3)
         .then(|| -> io::Result<_> {
@@ -2777,13 +2778,16 @@ fn read_gp_address_locator_style_row(
 ) -> io::Result<GpAddressLocatorStyleRow10_1> {
     let name = read_string_10_1(reader, max_bytes)?;
     let raw_short = (version >= 4).then(|| reader.read_u16_le()).transpose()?;
-    let raw_object_count = reader.read_u32_le()? as i32;
-    if version >= 2 && raw_object_count > 0 {
-        return Err(io::Error::new(
-            ErrorKind::Unsupported,
-            "GPAddressLocatorStyle 的参考数据行包含尚未支持的对象列表",
-        ));
-    }
+    let mut uids = Vec::new();
+    let raw_object_count = if version >= 2 {
+        let (raw_count, count) = read_gp_coded_value_count(reader, max_bytes, 16)?;
+        for _ in 0..count {
+            uids.push(read_gp_uid_slot(reader, table)?);
+        }
+        raw_count
+    } else {
+        reader.read_u32_le()? as i32
+    };
     let (raw_value_count, count) =
         read_gp_coded_value_count(reader, max_bytes, if version >= 2 { 16 } else { 4 })?;
     if raw_value_count < 0 {
@@ -2824,6 +2828,7 @@ fn read_gp_address_locator_style_row(
         name,
         raw_short,
         raw_object_count,
+        uids,
         raw_value_count,
         values,
     })
@@ -3947,7 +3952,7 @@ fn read_gp_sa_topo_features_type_name_body_10_1(
         let string = read_string_10_1(reader, max_bytes)?;
         let value = reader.read_u32_le()? as i32;
         let uid = (version == 3)
-            .then(|| read_gp_name_uid_slot(reader, table))
+            .then(|| read_gp_uid_slot(reader, table))
             .transpose()?;
         legacy_entries.push(GpSaTopoFeaturesTypeEntry10_1 {
             data_type,
@@ -4372,7 +4377,7 @@ fn read_bookmark_name_slot_10_1(
                 let name = read_string_10_1(reader, max_bytes)?;
                 let raw_long = reader.read_u32_le()? as i32;
                 let uid = (version > 2)
-                    .then(|| read_gp_name_uid_slot(reader, table))
+                    .then(|| read_gp_uid_slot(reader, table))
                     .transpose()?;
                 columns.push(GpValueTableColumnType10_1 {
                     data_type,
