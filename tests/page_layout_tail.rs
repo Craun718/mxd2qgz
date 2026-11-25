@@ -1226,6 +1226,7 @@ fn page_layout_v11_reads_bounded_page_index_and_rolls_back_short_regions() {
     object.extend([2, 0, 0, 0, 0, 0].repeat(2));
     object.extend([0; 4 + 16 + 16 + 16 + 2]);
     object.extend([0; 16]); // 空要素图层。
+    let string_count_offset = object.len();
     object.extend(1_i32.to_le_bytes());
     object.extend([2, 0, 0, 0, 0, 0]);
     object.extend(17_u32.to_le_bytes());
@@ -1284,4 +1285,17 @@ fn page_layout_v11_reads_bounded_page_index_and_rolls_back_short_regions() {
         assert_eq!(reader.position(), 0);
         assert_eq!(refs.len(), 0);
     }
+    let count_offset = offset + 8 + string_count_offset;
+    bytes[count_offset..count_offset + 4].copy_from_slice(&(-1_i32).to_le_bytes());
+    bytes.drain(count_offset + 4..count_offset + 10);
+    let size = (bytes.len() - offset - 8) as u64;
+    bytes[offset..offset + 8].copy_from_slice(&size.to_le_bytes());
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let tail = read_page_layout_tail_10_1(&mut reader, &mut refs, 11, 0, 8192, |_| false).unwrap();
+    let index = tail.page_index.unwrap();
+    assert_eq!(index.string_count, -1);
+    assert!(index.strings.is_empty());
+    assert_eq!(index.first_long, 17);
+    assert_eq!(reader.position(), bytes.len());
 }

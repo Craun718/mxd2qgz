@@ -141,6 +141,7 @@ pub struct PageIndex10_1 {
     pub frame: ObjectEntry10_1,
     pub frame_body: Option<Box<super::map_frame::MapFrame10_1>>,
     pub layer: LayoutSlot10_1<Box<crate::layers::layer_list::LayerBodyPrefix10_1>>,
+    pub string_count: i32,
     pub strings: Vec<String>,
     pub first_long: u32,
     pub raw_fields: [u8; 32],
@@ -552,7 +553,11 @@ fn read_page_index(
         "PageIndex IFeatureLayer",
         |r, refs| read_complete_layer_body_10_1(r, FEATURE_LAYER_CLASS_ID, max, refs).map(Box::new),
     )?;
-    let n = count(r, 4, max)?;
+    let string_count = r.read_u32_le()? as i32;
+    let n = string_count.max(0) as usize;
+    if n > max.min(r.remaining()) / 4 {
+        return Err(invalid("PageIndex 字符串数量超过剩余字节或限额"));
+    }
     let strings = (0..n)
         .map(|_| read_string_10_1(r, max))
         .collect::<io::Result<_>>()?;
@@ -601,6 +606,7 @@ fn read_page_index(
         frame,
         frame_body,
         layer,
+        string_count,
         strings,
         first_long,
         raw_fields,

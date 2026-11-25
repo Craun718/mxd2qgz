@@ -263,6 +263,7 @@
     - [x] 读取 PageLayout v11 有界 PageIndex 的版本化字段与已知对象槽。[原生取证](docs/mxd-page-layout-tail-20261118.md#pageindex-的有界对象体)
     - [x] 接入 PageIndex 首次定义的 MapFrame。[原生取证](docs/mxd-page-layout-tail-20261118.md#pageindex-首次定义的-mapframe)
     - [x] 接入 PageIndex 列表中新定义的 FeatureLayer。[消费方取证](docs/mxd-page-layout-tail-20261118.md#pageindex-图层列表的-featurelayer)
+    - [x] 按原生有符号计数读取 PageIndex 字符串列表。[计数取证](docs/mxd-page-layout-tail-20261118.md#pageindex-字符串计数的符号)
     - [x] 接入 CustomOverlayGrid 的 TopologyName 对象体。[类型库与原生取证](docs/mxd-page-layout-grid-20261118.md#叠加格网的-topologyname)
     - [x] 接入 CustomOverlayGrid 的 RouteMeasureLocatorName 对象体。[类型库与原生取证](docs/mxd-page-layout-grid-20261118.md#叠加格网的-routemeasurelocatorname)
     - [x] 接入 CustomOverlayGrid 的 CadastralFabricName 对象体。[类型库与原生取证](docs/mxd-page-layout-grid-20261118.md#叠加格网的-cadastralfabricname)
