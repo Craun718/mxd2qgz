@@ -405,3 +405,17 @@ Load thunk `0x7b6c6b90` 跳转 `0x7b6bdbe0`。现有反编译
 打开数据源、定长字段和额外对象槽。完整条件和子类体待继续对位。
 当前读取器仍停在非空 v11 槽。真实 PageIndex 宿主及 ArcMap/QGIS
 人工验收尚未验证。
+
+#### PageIndex 的有界对象体
+
+PageLayout.dll 10.1.0.3035 的 `0x7b6bdbe0` 及保存入口
+`0x7b6be580` 对应版本、IMapFrame、IFeatureLayer、字符串列表、
+LONG、32 字节定长字段、IUnknown 列表、LONG、IBorder、IShadow、
+IBackground。v2 末尾再读一个 LONG。接口名由 10.1 类型库核对。
+原生将读出的要素图层传给设置器后继续读字段，Rust 保留流内原值。
+
+解析器在 ExtraSafe 声明范围内读取 PageIndex，沿用布局引用表。
+IMapFrame 支持空和已确认回引，IFeatureLayer 支持普通 FeatureLayer，
+IUnknown 列表支持空和回引，装饰槽沿用已核实类。构造输入核对
+v2 尾字段及逐字节截断回滚。新建 MapFrame、其他类及真实数据驱动
+页面工程仍待验证。ArcMap/QGIS 人工验收未执行。

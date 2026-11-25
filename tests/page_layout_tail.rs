@@ -1206,3 +1206,53 @@ fn page_layout_tail_reads_new_map_and_checks_registered_map_references() {
     ));
     assert_eq!(reader.position(), reference.len());
 }
+
+#[test]
+fn page_layout_v11_reads_bounded_page_index_and_rolls_back_short_regions() {
+    let class = [
+        0x02, 0xb3, 0x84, 0x93, 0xe4, 0x16, 0x27, 0x4f, 0xa6, 0xa8, 0x8c, 0x0c, 0x99, 0xf1, 0x25,
+        0x79,
+    ];
+    let mut object = class.to_vec();
+    object.extend(73_u32.to_le_bytes());
+    object.extend(2_u16.to_le_bytes());
+    object.extend([0; 32]); // 空地图框和要素图层。
+    object.extend(1_i32.to_le_bytes());
+    object.extend([2, 0, 0, 0, 0, 0]);
+    object.extend(17_u32.to_le_bytes());
+    object.extend([0x93; 32]);
+    object.extend(1_i32.to_le_bytes());
+    object.extend([0; 16]);
+    object.extend(18_u32.to_le_bytes());
+    object.extend([0; 48]);
+    object.extend(19_u32.to_le_bytes());
+
+    let mut bytes = layout_tail(11, 0);
+    let offset = bytes.len() - 8;
+    bytes.truncate(offset);
+    bytes.extend((object.len() as u64).to_le_bytes());
+    bytes.extend(object);
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let tail = read_page_layout_tail_10_1(&mut reader, &mut refs, 11, 0, 8192, |_| false).unwrap();
+    let index = tail.page_index.unwrap();
+    assert_eq!(index.strings, [""]);
+    assert_eq!(index.raw_fields, [0x93; 32]);
+    assert_eq!(index.objects, [ObjectEntry10_1::Null]);
+    assert_eq!(
+        (index.first_long, index.second_long, index.version_2_long),
+        (17, 18, Some(19))
+    );
+    assert!(refs.contains(73));
+    assert_eq!(reader.position(), bytes.len());
+
+    for end in offset..bytes.len() {
+        let mut reader = Reader::new(&bytes[..end]);
+        let mut refs = RefTable10_1::new();
+        assert!(
+            read_page_layout_tail_10_1(&mut reader, &mut refs, 11, 0, 8192, |_| false).is_err()
+        );
+        assert_eq!(reader.position(), 0);
+        assert_eq!(refs.len(), 0);
+    }
+}

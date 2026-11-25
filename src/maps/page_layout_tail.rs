@@ -131,6 +131,24 @@ pub struct LayoutElementAnchor10_1 {
     pub raw_double: f64,
 }
 
+const PAGE_INDEX: [u8; 16] = [
+    0x02, 0xb3, 0x84, 0x93, 0xe4, 0x16, 0x27, 0x4f, 0xa6, 0xa8, 0x8c, 0x0c, 0x99, 0xf1, 0x25, 0x79,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PageIndex10_1 {
+    pub version: u16,
+    pub frame: ObjectEntry10_1,
+    pub layer: LayoutSlot10_1<Box<crate::layers::layer_list::LayerBodyPrefix10_1>>,
+    pub strings: Vec<String>,
+    pub first_long: u32,
+    pub raw_fields: [u8; 32],
+    pub objects: Vec<ObjectEntry10_1>,
+    pub second_long: u32,
+    pub decor: [DecorSlot10_1; 3],
+    pub version_2_long: Option<u32>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct PageLayoutTail10_1 {
     pub page: LayoutSlot10_1<Page10_1>,
@@ -155,6 +173,7 @@ pub struct PageLayoutTail10_1 {
     pub optimization_extensions: Vec<MapOptimizationExtension10_1>,
     pub opaque_extensions: Vec<OpaqueLayoutExtension10_1>,
     pub version_11_slot: Option<ObjectEntry10_1>,
+    pub page_index: Option<Box<PageIndex10_1>>,
     pub legacy_version_12_or_13_doubles: Option<[f64; 2]>,
     pub version_13_long: Option<u32>,
     pub element_values: Vec<u32>,
@@ -485,15 +504,96 @@ fn read_extensions(
     Ok((optimization, opaque))
 }
 
-fn read_version_11_slot(r: &mut Reader<'_>) -> io::Result<ObjectEntry10_1> {
-    let (a, b) = (r.read_u32_le()?, r.read_u32_le()?);
-    match (a, b) {
-        (0, 0) => Ok(ObjectEntry10_1::Null),
-        (16, 0) if r.read_bytes(16)? == [0; 16] => Ok(ObjectEntry10_1::Null),
-        _ => Err(unsupported(
-            "PageLayout v11 起的非空 ExtraSafe 对象槽尚未支持",
-        )),
+fn read_page_index(
+    r: &mut Reader<'_>,
+    refs: &mut RefTable10_1,
+    max: usize,
+) -> io::Result<PageIndex10_1> {
+    let version = read_version(r, 2, "PageIndex")?;
+    let frame = read_slot(
+        r,
+        refs,
+        super::page_layout_prefix::MAP_FRAME_CLASS_ID,
+        "PageIndex IMapFrame",
+        |_, _| Err::<(), _>(unsupported("PageIndex 的新 MapFrame 尚未支持")),
+    )?
+    .entry;
+    let layer = read_slot(
+        r,
+        refs,
+        FEATURE_LAYER_CLASS_ID,
+        "PageIndex IFeatureLayer",
+        |r, refs| read_complete_layer_body_10_1(r, FEATURE_LAYER_CLASS_ID, max, refs).map(Box::new),
+    )?;
+    let n = count(r, 4, max)?;
+    let strings = (0..n)
+        .map(|_| read_string_10_1(r, max))
+        .collect::<io::Result<_>>()?;
+    let first_long = r.read_u32_le()?;
+    let raw_fields = r.read_bytes(32)?.try_into().unwrap();
+    let n = (r.read_u32_le()? as i32).max(0) as usize;
+    if n > max.min(r.remaining()) / 16 {
+        return Err(invalid("PageIndex 对象数量超过剩余字节或限额"));
     }
+    let objects = (0..n)
+        .map(|_| {
+            let entry = read_object_entry_10_1(r, refs)?;
+            if matches!(entry, ObjectEntry10_1::NewObject { .. }) {
+                return Err(unsupported("PageIndex 的 IUnknown 列表包含尚未核实的新类"));
+            }
+            Ok(entry)
+        })
+        .collect::<io::Result<_>>()?;
+    let second_long = r.read_u32_le()?;
+    let decor = [
+        DecorKind10_1::Border,
+        DecorKind10_1::Shadow,
+        DecorKind10_1::Background,
+    ]
+    .map(|kind| {
+        read_map_decor_slot_10_1(r, refs, max, kind)?
+            .ok_or_else(|| unsupported("PageIndex 装饰对象尚未支持"))
+    });
+    let [border, shadow, background] = decor;
+    let decor = [border?, shadow?, background?];
+    let version_2_long = (version >= 2).then(|| r.read_u32_le()).transpose()?;
+    Ok(PageIndex10_1 {
+        version,
+        frame,
+        layer,
+        strings,
+        first_long,
+        raw_fields,
+        objects,
+        second_long,
+        decor,
+        version_2_long,
+    })
+}
+
+fn read_version_11_slot(
+    r: &mut Reader<'_>,
+    refs: &mut RefTable10_1,
+    max: usize,
+) -> io::Result<LayoutSlot10_1<PageIndex10_1>> {
+    let size = u64::from_le_bytes(r.read_bytes(8)?.try_into().unwrap());
+    if size == 0 {
+        return Ok(LayoutSlot10_1 {
+            entry: ObjectEntry10_1::Null,
+            body: None,
+        });
+    }
+    if size > max as u64 {
+        return Err(invalid("PageIndex 声明体长超过限额"));
+    }
+    let mut bounded = r.read_region(size as usize)?;
+    let slot = read_slot(&mut bounded, refs, PAGE_INDEX, "PageIndex", |r, refs| {
+        read_page_index(r, refs, max)
+    })?;
+    if bounded.remaining() != 0 {
+        return Err(invalid("PageIndex 未完整读取声明范围"));
+    }
+    Ok(slot)
 }
 
 /// 从已确认的元素列表末端读取布局体；失败时整个尾段及其引用登记回退。
@@ -584,7 +684,7 @@ pub fn read_page_layout_tail_10_1(
         (Vec::new(), Vec::new())
     };
     let version_11_slot = (version >= 11)
-        .then(|| read_version_11_slot(&mut r))
+        .then(|| read_version_11_slot(&mut r, &mut t, max))
         .transpose()?;
     let legacy_version_12_or_13_doubles = matches!(version, 12 | 13)
         .then(|| doubles(&mut r))
@@ -640,7 +740,8 @@ pub fn read_page_layout_tail_10_1(
         version_9_shorts,
         optimization_extensions,
         opaque_extensions,
-        version_11_slot,
+        version_11_slot: version_11_slot.as_ref().map(|slot| slot.entry),
+        page_index: version_11_slot.and_then(|slot| slot.body).map(Box::new),
         legacy_version_12_or_13_doubles,
         version_13_long,
         element_values,
