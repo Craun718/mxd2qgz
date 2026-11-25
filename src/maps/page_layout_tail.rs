@@ -144,7 +144,7 @@ pub struct PageIndex10_1 {
     pub strings: Vec<String>,
     pub first_long: u32,
     pub raw_fields: [u8; 32],
-    pub objects: Vec<ObjectEntry10_1>,
+    pub objects: Vec<LayoutSlot10_1<Box<crate::layers::layer_list::LayerBodyPrefix10_1>>>,
     pub second_long: u32,
     pub decor: [DecorSlot10_1; 3],
     pub version_2_long: Option<u32>,
@@ -565,10 +565,22 @@ fn read_page_index(
     let objects = (0..n)
         .map(|_| {
             let entry = read_object_entry_10_1(r, refs)?;
-            if matches!(entry, ObjectEntry10_1::NewObject { .. }) {
-                return Err(unsupported("PageIndex 的 IUnknown 列表包含尚未核实的新类"));
-            }
-            Ok(entry)
+            let body = match entry {
+                ObjectEntry10_1::NewObject {
+                    class_id: FEATURE_LAYER_CLASS_ID,
+                    ..
+                } => Some(Box::new(read_complete_layer_body_10_1(
+                    r,
+                    FEATURE_LAYER_CLASS_ID,
+                    max,
+                    refs,
+                )?)),
+                ObjectEntry10_1::NewObject { .. } => {
+                    return Err(unsupported("PageIndex 的 IUnknown 列表包含尚未核实的新类"));
+                }
+                _ => None,
+            };
+            Ok(LayoutSlot10_1 { entry, body })
         })
         .collect::<io::Result<_>>()?;
     let second_long = r.read_u32_le()?;

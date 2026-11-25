@@ -1230,8 +1230,19 @@ fn page_layout_v11_reads_bounded_page_index_and_rolls_back_short_regions() {
     object.extend([2, 0, 0, 0, 0, 0]);
     object.extend(17_u32.to_le_bytes());
     object.extend([0x93; 32]);
-    object.extend(1_i32.to_le_bytes());
-    object.extend([0; 16]);
+    let feature = mxd2qgz::layers::feature_layer::FEATURE_LAYER_CLASS_ID;
+    object.extend(2_i32.to_le_bytes());
+    object.extend(feature);
+    object.extend(76_u32.to_le_bytes());
+    object.extend(1_u16.to_le_bytes());
+    object.extend([2, 0, 0, 0, 0, 0].repeat(2));
+    object.extend([0; 6 + 16 + 16 + 16]);
+    object.extend([2, 0, 0, 0, 0, 0]);
+    object.extend([0; 16 + 2 + 4 + 16]);
+    object.extend([2, 0, 0, 0, 0, 0].repeat(2));
+    object.extend([0; 8 + 16 + 2 + 16 + 4 + 2]);
+    object.extend(feature);
+    object.extend(76_u32.to_le_bytes());
     object.extend(18_u32.to_le_bytes());
     object.extend([0; 48]);
     object.extend(19_u32.to_le_bytes());
@@ -1251,7 +1262,12 @@ fn page_layout_v11_reads_bounded_page_index_and_rolls_back_short_regions() {
     assert!(refs.contains(74) && refs.contains(75));
     assert_eq!(index.strings, [""]);
     assert_eq!(index.raw_fields, [0x93; 32]);
-    assert_eq!(index.objects, [ObjectEntry10_1::Null]);
+    assert!(index.objects[0].body.is_some());
+    assert!(matches!(
+        index.objects[1].entry,
+        ObjectEntry10_1::BackReference { key: 76, .. }
+    ));
+    assert!(refs.contains(76));
     assert_eq!(
         (index.first_long, index.second_long, index.version_2_long),
         (17, 18, Some(19))

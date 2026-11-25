@@ -427,3 +427,18 @@ PageIndex::Load `0x7b6bdbe0` 的首个普通对象槽请求 IMapFrame
 调用布局 MapFrame 读取器，沿用布局引用表和图形嵌套深度限制。
 构造测试覆盖内联 MapFrame 及其内联 Map，核对两个键、PageIndex
 后续字段和截断回滚。真实数据驱动页面工程仍待 ArcMap/QGIS 验收。
+
+#### PageIndex 图层列表的 FeatureLayer
+
+PageLayout.dll 10.1.0.3035 的 PageIndex Save `0x7b6be580`
+枚举持久化视图相对 −0x70 的集合，经 SaveObject 写各项。
+Load `0x7b6bdbe0` 按 IUnknown 读取各项。运行消费者
+`0x7b6b3f30` 枚举完整对象 +0x84 的同一集合，经
+`0x7b6c3d10` 调 `0x7b6c5110`。后者在 `0x7b6c5163`
+请求 `0x7b71ef88` 的 IFeatureLayer IID
+`{40A9E885-5533-11D0-98BE-00805F7CED21}`。上述路径由同版
+反编译导出与 PE 指令共同核对。
+
+Rust 在列表中接入新 FeatureLayer 并保留体和对象键。
+构造输入验证紧随其后的回引、后续字段及截断回滚。其他类和真实
+数据驱动页面宿主仍待验证，ArcMap/QGIS 人工验收未执行。
