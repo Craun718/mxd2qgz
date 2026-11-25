@@ -458,3 +458,20 @@ Map.dll 10.1.0.3035 的 HollowScaleBar 构造入口 `0x793c5ef0`
 业务方法当作表首地址，导致各槽偏移少算三个 IUnknown 槽。
 以上已按构造指令订正。v5 short 的加载和保存位置未受影响，
 字段的业务语义仍待取证。
+
+### 比例尺克隆和赋值的持久化路径
+
+Map.dll 10.1.0.3035 的 HollowScaleBar 构造
+`0x793c5f4a` 将 `0x7948371c` 安装到完整对象 +0x10，
+对应 QI `0x7944bd47–0x7944bd65` 返回的 IClone。
+虚表的 Clone/Assign 槽 +0x0c/+0x10 分别为
+`0x79441600/0x79441670`。对照同版反编译导出
+`Map/7946b9f0.c`、`Map/7946baf0.c`，Clone 调用前者，
+经 CreateMemoryStream、SaveObject、Seek 和请求 IClone 的
+LoadObject 构造副本。Assign 在同类分支调用后者，将源对象
+写入内存流，核对类标识并跳过键后调用目标的持久化 Load。
+
+两条路径因此都经过比例尺的版本化持久化代码。基类保存版本为
+v6 时会随对象体写读 v5 short；旧文档索引分支省略此字段。
+本轮核对了调用链，内存流初始化后的实际文档版本及 Clone/Assign
+的运行结果仍待验证。该证据也未定性 v5 short 的业务用途。

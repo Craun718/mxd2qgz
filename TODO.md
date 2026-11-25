@@ -1213,6 +1213,7 @@
       - [x] 定性 Scalebar 共用基类中 `IScaleBar.Division` 的两处持久化值和取值优先级，并从解析结果提供该值。[分段值取证](docs/mxd-terra-nextpass-scale.md#iscalebardivision-的两处持久化值)
       - [x] 定性 Scalebar 共用基类 v6 的 short 为 IScaleBar2.UseFractionCharacters，并从解析结果提供该值。[分数字符取证](docs/mxd-terra-nextpass-scale.md#分数字符开关)
       - [ ] 定性 Scalebar 共用基类 v5 增加的 short。[比例尺续查](docs/mxd-terra-nextpass-scale.md#分数字符开关)
+      - [x] 对位 HollowScaleBar 的 Clone/Assign 到内存流持久化路径。[原生取证](docs/mxd-terra-nextpass-scale.md#比例尺克隆和赋值的持久化路径)
       - [x] 按构造指令校准比例尺私有接口虚表及 v5 short 的访问槽。[虚表取证](docs/mxd-terra-nextpass-scale.md#用构造指令校准私有虚表首址)
       - [x] 从比例尺 v5 short 候选中排除 Data View 滚动条状态，并定位两个私有接口查询入口。[偏移复核](docs/mxd-terra-nextpass-scale.md#v5-成员偏移的其他候选排除)
       - [x] 核对 MapSurroundFrame 对同 IID 私有槽返回值的集合比较调用。[静态取证](docs/mxd-terra-nextpass-scale.md#mapsurroundframe-的私有槽用于比较对象集合)
