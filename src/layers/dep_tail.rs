@@ -765,55 +765,17 @@ pub fn read_time_data_family_10_1(
     };
 
     // ② TimeTableDefinition（版本 ≤1）。
-    let mut time_table = None;
-    if stop.is_none() {
-        let offset = trial.position();
-        let version = read_version_short(&mut trial, 1, "TimeTableDefinition", offset)?;
-        let mut strings: [String; 4] = Default::default();
-        for s in &mut strings {
-            *s = read_stream_string_10_1(&mut trial, max_bytes)?;
-        }
-        let mut slot = TimeExtentSlot10_1::Null;
-        let slot_offset = trial.position();
-        let pre_slot_table = staged.clone();
-        match read_object_entry_10_1(&mut trial, &mut staged)? {
-            ObjectEntry10_1::Null => {}
-            ObjectEntry10_1::BackReference { class_id, key } => {
-                let registered = staged.registered_class(key);
-                if registered.is_some_and(|id| id != TIME_EXTENT_CLASS_ID) {
-                    trial = reposition_to(reader, slot_offset);
-                    staged = pre_slot_table;
-                    stop = Some(TimeFamilyStop10_1::TimeTableSlot { class_id, key });
-                } else {
-                    slot = TimeExtentSlot10_1::BackReference {
-                        class_id: registered.unwrap_or(class_id),
-                        key,
-                    };
-                }
-            }
-            ObjectEntry10_1::NewObject { class_id, key } => {
-                if class_id == TIME_EXTENT_CLASS_ID {
-                    let body = read_time_extent_body_10_1(&mut trial, max_bytes, &mut staged, key)?;
-                    if body.stop.is_none() {
-                        slot = TimeExtentSlot10_1::Body(Box::new(body));
-                    }
-                }
-                if matches!(slot, TimeExtentSlot10_1::Null) {
-                    // 对象头已登记，体未闭合时回退到整个 ITimeExtent 槽。
-                    trial = reposition_to(reader, slot_offset);
-                    staged = pre_slot_table;
-                    stop = Some(TimeFamilyStop10_1::TimeTableSlot { class_id, key });
-                }
+    let time_table = if stop.is_none() {
+        match read_time_table_segment_10_1(&mut trial, max_bytes, &mut staged)? {
+            Ok(segment) => Some(segment),
+            Err(reason) => {
+                stop = Some(reason);
+                None
             }
         }
-        if stop.is_none() {
-            time_table = Some(TimeTableSegment10_1 {
-                version,
-                strings,
-                slot,
-            });
-        }
-    }
+    } else {
+        None
+    };
 
     // ③ TimeDimensionDefinition（版本 ≤1）。
     let time_dimension = stop
@@ -842,6 +804,51 @@ pub fn read_time_data_family_10_1(
 
 /// 读取独立的 TimeData 段；不消费宿主中紧随其后的其他时间段。
 /// 未知类或截断均不修改调用者游标和引用表。
+pub(super) fn read_time_table_segment_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<Result<TimeTableSegment10_1, TimeFamilyStop10_1>> {
+    let offset = reader.position();
+    let version = read_version_short(reader, 1, "TimeTableDefinition", offset)?;
+    let mut strings: [String; 4] = Default::default();
+    for string in &mut strings {
+        *string = read_stream_string_10_1(reader, max_bytes)?;
+    }
+    let mut trial = reader.clone();
+    let mut staged = table.clone();
+    let slot = match read_object_entry_10_1(&mut trial, &mut staged)? {
+        ObjectEntry10_1::Null => TimeExtentSlot10_1::Null,
+        ObjectEntry10_1::BackReference { class_id, key } => {
+            let registered = staged.registered_class(key);
+            if registered.is_some_and(|id| id != TIME_EXTENT_CLASS_ID) {
+                return Ok(Err(TimeFamilyStop10_1::TimeTableSlot { class_id, key }));
+            }
+            TimeExtentSlot10_1::BackReference {
+                class_id: registered.unwrap_or(class_id),
+                key,
+            }
+        }
+        ObjectEntry10_1::NewObject { class_id, key } if class_id == TIME_EXTENT_CLASS_ID => {
+            let body = read_time_extent_body_10_1(&mut trial, max_bytes, &mut staged, key)?;
+            if body.stop.is_some() {
+                return Ok(Err(TimeFamilyStop10_1::TimeTableSlot { class_id, key }));
+            }
+            TimeExtentSlot10_1::Body(Box::new(body))
+        }
+        ObjectEntry10_1::NewObject { class_id, key } => {
+            return Ok(Err(TimeFamilyStop10_1::TimeTableSlot { class_id, key }));
+        }
+    };
+    *reader = trial;
+    *table = staged;
+    Ok(Ok(TimeTableSegment10_1 {
+        version,
+        strings,
+        slot,
+    }))
+}
+
 pub(crate) fn read_time_data_segment_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,

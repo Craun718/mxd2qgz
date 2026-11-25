@@ -1,5 +1,9 @@
 //! ArcMap 10.1 RasterBasemapLayer 的对象体。
 use super::basemap_layer::{ARRAY_OF_I_SHADER_CLASS_ID, ShaderEntry10_1, read_shader_entries};
+use super::dep_tail::{
+    TimeDataSegment10_1, TimeDisplaySegment10_1, TimeTableSegment10_1, read_time_data_segment_10_1,
+    read_time_display_segment_10_1, read_time_table_segment_10_1,
+};
 use super::group_layer::{GROUP_LAYER_CLASS_ID, GroupLayerPrefix10_1};
 use super::layer_list::{
     LayerBodyPrefix10_1, RASTER_LAYER_CLASS_ID, read_complete_layer_body_10_1,
@@ -23,6 +27,13 @@ const MOSAIC_LAYER_CLASS_ID: [u8; 16] = [
 ];
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct MosaicLayerTime10_1 {
+    pub data: TimeDataSegment10_1,
+    pub display: TimeDisplaySegment10_1,
+    pub table: TimeTableSegment10_1,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct MosaicLayerPrefix10_1 {
     pub version: u16,
     pub dataset_name: ObjectEntry10_1,
@@ -34,6 +45,7 @@ pub struct MosaicLayerPrefix10_1 {
     pub group: Option<Box<GroupLayerPrefix10_1>>,
     /// GroupLayer 完整读取后的位置，v2 的时间段从此开始。
     pub group_end: Option<usize>,
+    pub time: Option<Box<MosaicLayerTime10_1>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -218,6 +230,18 @@ fn read_mosaic_prefix(
         }
         _ => (None, None),
     };
+    let time = if version == 2 && group_end.is_some() {
+        let mut time_refs = refs.clone();
+        read_mosaic_time(&mut group_reader, max, &mut time_refs)
+            .ok()
+            .filter(|_| group_reader.remaining() == 0)
+            .map(|time| {
+                *refs = time_refs;
+                Box::new(time)
+            })
+    } else {
+        None
+    };
     Ok(MosaicLayerPrefix10_1 {
         version,
         dataset_name,
@@ -227,6 +251,23 @@ fn read_mosaic_prefix(
         delegated_offset,
         group,
         group_end,
+        time,
+    })
+}
+
+fn read_mosaic_time(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<MosaicLayerTime10_1> {
+    let data = read_time_data_segment_10_1(reader, max, refs)?;
+    let display = read_time_display_segment_10_1(reader)?;
+    let table = read_time_table_segment_10_1(reader, max, refs)?
+        .map_err(|_| unsupported("MosaicLayer 的 TimeTableDefinition 对象槽未闭合"))?;
+    Ok(MosaicLayerTime10_1 {
+        data,
+        display,
+        table,
     })
 }
 
@@ -334,7 +375,20 @@ mod tests {
             mosaic_body.extend([4, 0, 0, 0, b'G', 0, 0, 0]);
             mosaic_body.extend([0; 6 + 16 + 4]);
             let group_end = mosaic_body.len();
-            mosaic_body.extend([1, 2, 3]);
+            mosaic_body.extend(2_u16.to_le_bytes()); // TimeData。
+            mosaic_body.extend(5_i16.to_le_bytes());
+            mosaic_body.extend([0; 16]); // ITimeReference。
+            mosaic_body.extend(6_i16.to_le_bytes());
+            mosaic_body.extend(1_u16.to_le_bytes()); // TimeDataDisplay。
+            mosaic_body.extend(7_i16.to_le_bytes());
+            mosaic_body.extend(1.5_f64.to_le_bytes());
+            mosaic_body.extend(8_i32.to_le_bytes());
+            mosaic_body.extend(2.5_f64.to_le_bytes());
+            mosaic_body.extend(9_i32.to_le_bytes());
+            mosaic_body.extend(1_u16.to_le_bytes()); // TimeTableDefinition。
+            mosaic_body.extend([4, 0, 0, 0, b'T', 0, 0, 0]);
+            mosaic_body.extend([2, 0, 0, 0, 0, 0].repeat(3));
+            mosaic_body.extend([0; 16]); // ITimeExtent。
             if version >= 5 {
                 bytes.extend((20 + mosaic_body.len() as u32).to_le_bytes());
                 bytes.extend(0_u32.to_le_bytes());
@@ -403,6 +457,10 @@ mod tests {
                 assert_eq!(prefix.delegated_offset, delegated);
                 assert_eq!(prefix.group.as_ref().unwrap().name, "G");
                 assert_eq!(prefix.group_end, Some(group_end));
+                let time = prefix.time.as_ref().unwrap();
+                assert_eq!(time.data.tail_short, Some(6));
+                assert_eq!(time.display.double_b, 2.5);
+                assert_eq!(time.table.strings[0], "T");
                 assert!(prefix.dataset_name_body.is_some());
                 assert_eq!(
                     refs.registered_class(45),

@@ -1507,3 +1507,15 @@ CLSID 数据 `0x78032c48` 是 GroupLayer
 没有独立对象头或新增 GroupLayer 键。v1 要求委派体到达对象边界；
 v2 保存 GroupLayer 终点供后续时间段读取。构造 Scene 宿主核对
 委派名称、终点和外层边界。真实宿主及 ArcMap/QGIS 人工验收仍待验证。
+
+#### MosaicLayer v2 的时间段
+
+同摘要 ImageServerLayer.dll 的 `0x780198ad` 以 v2 为门，
+`0x780198b8`、`0x780198cd`、`0x780198e2` 依次通过
+LayerLib.dll 导入表调用 TimeData、TimeDataDisplay、
+TimeTableDefinition 的 Load。三个调用都从聚合 GroupLayer 返回
+后的同一流读取。Rust 复用相应的既有段读取器，按 MosaicLayer
+的顺序调用，并要求最后到达 ExtraSafe 对象体边界才提交时间段及
+其键。时间段不完整时仍保留已确认的前缀与 GroupLayer，剩余原始
+字节可复查。构造测试覆盖三个段中的不同标量及后继容器边界。
+真实非空宿主及 ArcMap/QGIS 人工验收仍待验证。
