@@ -354,3 +354,12 @@ Map，10.1 介质 Africa.mxd 的 [Basemap 准备结果](mxd-basemap-continuation
 才提交布局读事务。固定 IMap 槽的回引按登记实例类别校验。
 构造输入覆盖两个槽的新 Map、跨结果回引和错误类回滚。
 真实布局优化扩展中的 Map 及 ArcMap/QGIS 人工验收仍待验证。
+
+#### 优化扩展的有符号版本门
+
+同摘要 CartoConverter.dll 的 `0x6ccc0e0a–0x6ccc0e0f` 用
+有符号 short 判断版本是否超过 6。`0x6ccc0e42–0x6ccc0e47`
+用有符号比较决定是否进入 v2 字符串和后续字段。Rust 保留
+原始 16 位版本值，负版本仍读取准备结果，随后结束扩展体。
+构造测试用 `0xffff` 版本和负计数核对后续布局槽边界。
+真实负版本扩展及 ArcMap/QGIS 人工验收仍待验证。

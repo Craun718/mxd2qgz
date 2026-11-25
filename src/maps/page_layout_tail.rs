@@ -388,7 +388,10 @@ fn read_extension(
     max: usize,
     refs: &mut RefTable10_1,
 ) -> io::Result<MapOptimizationExtension10_1> {
-    let version = read_version(r, 6, "MapOptimizationLayoutExtension")?;
+    let version = r.read_u16_le()? as i16;
+    if version > 6 {
+        return Err(invalid("MapOptimizationLayoutExtension 版本超限"));
+    }
     // CartoConverter 0x6ccc0e2a 委派 MappingCoreLib::LoadResults。
     let prepare_results = read_prepare_results(r, max, refs)?;
     let string_2 = (version >= 2)
@@ -422,7 +425,7 @@ fn read_extension(
         (None, None)
     };
     Ok(MapOptimizationExtension10_1 {
-        version,
+        version: version as u16,
         prepare_results,
         string_2,
         values_3,

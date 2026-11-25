@@ -921,11 +921,15 @@ fn bounded_layout_extensions_preserve_unknown_and_leave_following_slot_aligned()
     let baseline = layout_tail(11, 0);
     let extensions_offset = baseline.len() - 12;
     let mut bytes = baseline[..extensions_offset].to_vec();
-    bytes.extend(3_u32.to_le_bytes());
+    bytes.extend(4_u32.to_le_bytes());
     for (class_id, body) in [
         (unknown_class, &[0xaa, 0xbb, 0xcc][..]),
         (optimization_class, &[][..]),
         (optimization_class, &[1, 0, 0, 0, 0, 0][..]),
+        (
+            optimization_class,
+            &[0xff, 0xff, 0xff, 0xff, 0xff, 0xff][..],
+        ),
     ] {
         bytes.extend((body.len() as u64).to_le_bytes());
         bytes.extend(class_id);
@@ -944,8 +948,12 @@ fn bounded_layout_extensions_preserve_unknown_and_leave_following_slot_aligned()
     assert_eq!(tail.opaque_extensions[0].body, [0xaa, 0xbb, 0xcc]);
     assert_eq!(tail.opaque_extensions[1].index, 1);
     assert!(tail.opaque_extensions[1].body.is_empty());
-    assert_eq!(tail.optimization_extensions.len(), 1);
+    assert_eq!(tail.optimization_extensions.len(), 2);
     assert_eq!(tail.optimization_extensions[0].version, 1);
+    let old = &tail.optimization_extensions[1];
+    assert_eq!(old.version, u16::MAX);
+    assert!(old.prepare_results.is_empty());
+    assert!(old.string_2.is_none());
     assert!(tail.version_11_slot.is_some());
     assert_eq!(reader.position(), end);
 
