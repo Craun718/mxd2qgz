@@ -236,7 +236,9 @@ pub fn read_graphics_3d_layer_10_1(
         && let Some(registered) = refs.registered_class(*key)
     {
         // 遮罩能力表的已核对类均为 ILayer，实现遮罩接口并非此槽的条件。
-        if known_layer_masking_support_10_1(&registered) == LayerMaskingSupport10_1::Unresolved {
+        if registered != super::raster_basemap_layer::MOSAIC_LAYER_CLASS_ID
+            && known_layer_masking_support_10_1(&registered) == LayerMaskingSupport10_1::Unresolved
+        {
             return Err(unsupported(&registered, "三维图形容器的 ILayer 回引"));
         }
         *class_id = registered;

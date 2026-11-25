@@ -164,6 +164,7 @@ pub enum LayerBodyPrefix10_1 {
     TiledLayer(Box<TiledLayer10_1>),
     RasterCatalogLayer(Box<super::raster_catalog_layer::RasterCatalogLayer10_1>),
     RasterBasemapLayer(Box<super::raster_basemap_layer::RasterBasemapLayer10_1>),
+    MosaicLayer(Box<super::raster_basemap_layer::MosaicLayerPrefix10_1>),
     CadLayer(Box<CadLayer10_1>),
     CadFeatureLayer(Box<CadFeatureLayer10_1>),
     CadAnnotationLayer(Box<CadAnnotationLayer10_1>),
@@ -194,6 +195,7 @@ impl LayerBodyPrefix10_1 {
             Self::TiledLayer(body) => body.name(),
             Self::RasterCatalogLayer(body) => &body.feature.name,
             Self::RasterBasemapLayer(body) => body.name.as_deref().unwrap_or(""),
+            Self::MosaicLayer(body) => body.group.as_ref().map_or("", |group| group.name.as_str()),
             Self::CadLayer(body) => &body.name,
             Self::CadFeatureLayer(body) => body.feature.as_ref().map_or("", |base| &base.name),
             Self::CadAnnotationLayer(body) => {
@@ -614,6 +616,7 @@ pub fn read_layer_list_10_1(
                         | LayerBodyPrefix10_1::TiledLayer(_)
                         | LayerBodyPrefix10_1::RasterCatalogLayer(_)
                         | LayerBodyPrefix10_1::RasterBasemapLayer(_)
+                        | LayerBodyPrefix10_1::MosaicLayer(_)
                 )
             );
             let completed = completed
@@ -878,6 +881,7 @@ fn read_entry(
                     | COVERAGE_ANNOTATION_LAYER_CLASS_ID
                     | super::raster_catalog_layer::GDB_RASTER_CATALOG_LAYER_CLASS_ID
                     | super::raster_basemap_layer::RASTER_BASEMAP_LAYER_CLASS_ID
+                    | super::raster_basemap_layer::MOSAIC_LAYER_CLASS_ID
             ) || is_tiled_layer(*class_id)
                 || matches!(
                     *class_id,
@@ -1139,6 +1143,10 @@ pub(crate) fn parse_body_prefix(
     trial_table: &mut RefTable10_1,
     depth: u32,
 ) -> io::Result<Option<LayerBodyPrefix10_1>> {
+    if class_id == super::raster_basemap_layer::MOSAIC_LAYER_CLASS_ID {
+        return super::raster_basemap_layer::read_mosaic_layer_10_1(trial, max_bytes, trial_table)
+            .map(|body| Some(LayerBodyPrefix10_1::MosaicLayer(Box::new(body))));
+    }
     if class_id == super::raster_basemap_layer::RASTER_BASEMAP_LAYER_CLASS_ID {
         return super::raster_basemap_layer::read_raster_basemap_layer_10_1(
             trial,
@@ -1296,7 +1304,8 @@ pub(crate) fn read_complete_layer_body_10_1(
         | LayerBodyPrefix10_1::TinLayer(_)
         | LayerBodyPrefix10_1::TiledLayer(_)
         | LayerBodyPrefix10_1::RasterCatalogLayer(_)
-        | LayerBodyPrefix10_1::RasterBasemapLayer(_) => true,
+        | LayerBodyPrefix10_1::RasterBasemapLayer(_)
+        | LayerBodyPrefix10_1::MosaicLayer(_) => true,
         LayerBodyPrefix10_1::BasemapLayer(body) => {
             body.stop == crate::layers::basemap_layer::BasemapStop10_1::Complete
         }

@@ -1519,3 +1519,13 @@ TimeTableDefinition 的 Load。三个调用都从聚合 GroupLayer 返回
 其键。时间段不完整时仍保留已确认的前缀与 GroupLayer，剩余原始
 字节可复查。构造测试覆盖三个段中的不同标量及后继容器边界。
 真实非空宿主及 ArcMap/QGIS 人工验收仍待验证。
+
+#### MosaicLayer 的普通 ILayer 宿主
+
+同一 10.1 介质的 esriCarto 类型库将 MosaicLayer 列为 ILayer
+实现。普通对象分派复用上述读序。v1 在聚合 GroupLayer 结束时提交，
+v2 到三个时间段全部读完时提交；失败回滚对象游标和引用表。
+Map 有界条目另核对声明终点，RasterBasemapLayer 的有界槽仍可在
+未知分支保留原始字节与已证前缀。构造 Scene 宿主覆盖 v1、v2 的
+后继字段和体内截断。真实宿主、逐层遮罩接口和 ArcMap/QGIS 人工
+验收仍待验证。

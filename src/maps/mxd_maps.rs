@@ -897,6 +897,7 @@ fn frame_from_body(
                 | LayerBodyPrefix10_1::TiledLayer(_)
                 | LayerBodyPrefix10_1::RasterCatalogLayer(_)
                 | LayerBodyPrefix10_1::RasterBasemapLayer(_)
+                | LayerBodyPrefix10_1::MosaicLayer(_)
                 | LayerBodyPrefix10_1::CadLayer(_),
             ) => None,
             Some(
@@ -2051,6 +2052,14 @@ fn body_prefix_node(
                 extent: None,
                 unknown_fields: Vec::new(),
             }))
+        }
+        LayerBodyPrefix10_1::MosaicLayer(layer) => {
+            diagnostics.push(format!(
+                "条目 {}：已读取镶嵌图层 v{}",
+                entry_index + 1,
+                layer.version
+            ));
+            None
         }
         LayerBodyPrefix10_1::RasterBasemapLayer(layer) => {
             diagnostics.push(format!(

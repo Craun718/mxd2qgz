@@ -22,7 +22,7 @@ use std::io::{self, ErrorKind};
 pub(crate) const RASTER_BASEMAP_LAYER_CLASS_ID: [u8; 16] = [
     0x61, 0x02, 0x52, 0x57, 0x08, 0x26, 0x0b, 0x43, 0x90, 0x4e, 0x7b, 0x0d, 0x48, 0xc5, 0x78, 0xd5,
 ];
-const MOSAIC_LAYER_CLASS_ID: [u8; 16] = [
+pub(crate) const MOSAIC_LAYER_CLASS_ID: [u8; 16] = [
     0xb8, 0xfc, 0x52, 0x34, 0x0c, 0xd1, 0xe4, 0x44, 0xb9, 0x71, 0x8c, 0x53, 0xdb, 0x39, 0xd5, 0x17,
 ];
 
@@ -159,7 +159,8 @@ pub(crate) fn read_raster_basemap_layer_10_1(
         };
         let prefix = body.as_deref().and_then(|body| {
             let mut candidate = refs.clone();
-            let prefix = read_mosaic_prefix(body, max, &mut candidate).ok()?;
+            let prefix =
+                read_mosaic_prefix(&mut Reader::new(body), max, &mut candidate, true).ok()?;
             refs = candidate;
             Some(prefix)
         });
@@ -187,18 +188,35 @@ pub(crate) fn read_raster_basemap_layer_10_1(
     })
 }
 
-fn read_mosaic_prefix(
-    bytes: &[u8],
+pub(super) fn read_mosaic_layer_10_1(
+    reader: &mut Reader<'_>,
     max: usize,
     refs: &mut RefTable10_1,
 ) -> io::Result<MosaicLayerPrefix10_1> {
-    let mut r = Reader::new(bytes);
+    let mut trial = reader.clone();
+    let mut candidate = refs.clone();
+    let body = read_mosaic_prefix(&mut trial, max, &mut candidate, false)?;
+    if body.group.is_none() || (body.version == 2 && body.time.is_none()) {
+        return Err(unsupported("普通 MosaicLayer 对象体未读完"));
+    }
+    *reader = trial;
+    *refs = candidate;
+    Ok(body)
+}
+
+fn read_mosaic_prefix(
+    r: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+    bounded: bool,
+) -> io::Result<MosaicLayerPrefix10_1> {
+    let start = r.position();
     let version = r.read_u16_le()?;
     if !(1..=2).contains(&version) {
         return Err(unsupported("MosaicLayer 版本超出 1–2"));
     }
     // 已确认的名称类使用普通 ObjectStream 键，未核实的名称保持原始体。
-    let (dataset_name, body) = read_supported_raster_name_entry_10_1(&mut r, max, refs)?;
+    let (dataset_name, body) = read_supported_raster_name_entry_10_1(r, max, refs)?;
     let dataset_name_body = match (dataset_name, body) {
         (ObjectEntry10_1::Null, None)
         | (
@@ -211,9 +229,9 @@ fn read_mosaic_prefix(
         (_, Some(RasterDatasetNameEntryBody10_1::Mosaic(body))) => Some(body),
         _ => return Err(unsupported("MosaicLayer 名称类未支持")),
     };
-    let stored_string = read_string_10_1(&mut r, max)?;
+    let stored_string = read_string_10_1(r, max)?;
     let short = r.read_u16_le()? as i16;
-    let delegated_offset = r.position();
+    let delegated_offset = r.position() - start;
     let mut group_reader = r.clone();
     let mut group_refs = refs.clone();
     let (group, group_end) = match read_complete_layer_body_10_1(
@@ -223,10 +241,11 @@ fn read_mosaic_prefix(
         &mut group_refs,
     ) {
         Ok(LayerBodyPrefix10_1::GroupLayer(group))
-            if version == 2 || group_reader.remaining() == 0 =>
+            if !bounded || version == 2 || group_reader.remaining() == 0 =>
         {
             *refs = group_refs;
-            (Some(group), Some(group_reader.position()))
+            *r = group_reader.clone();
+            (Some(group), Some(group_reader.position() - start))
         }
         _ => (None, None),
     };
@@ -234,9 +253,10 @@ fn read_mosaic_prefix(
         let mut time_refs = refs.clone();
         read_mosaic_time(&mut group_reader, max, &mut time_refs)
             .ok()
-            .filter(|_| group_reader.remaining() == 0)
+            .filter(|_| !bounded || group_reader.remaining() == 0)
             .map(|time| {
                 *refs = time_refs;
+                *r = group_reader;
                 Box::new(time)
             })
     } else {
@@ -472,6 +492,57 @@ mod tests {
                 ObjectEntry10_1::BackReference { key: 11, .. }
             ));
             assert_eq!(reader.position(), end);
+
+            if version >= 5 {
+                for mosaic_version in [1_u16, 2] {
+                    let mut ordinary = bytes[..16].to_vec();
+                    ordinary.extend(MOSAIC_LAYER_CLASS_ID);
+                    ordinary.extend(42_u32.to_le_bytes());
+                    ordinary.extend(mosaic_version.to_le_bytes());
+                    let body_end = if mosaic_version == 1 {
+                        group_end
+                    } else {
+                        mosaic_body.len()
+                    };
+                    ordinary.extend_from_slice(&mosaic_body[2..body_end]);
+                    let layer_end = ordinary.len();
+                    ordinary.extend([0; 16 + 4]);
+                    let end = ordinary.len();
+                    ordinary.extend([0xa5; 16]);
+                    let mut reader = Reader::new(&ordinary);
+                    let mut refs = RefTable10_1::new();
+                    let scene = read_graphics_3d_layer_10_1(
+                        &GRAPHICS_LAYER_3D_CLASS_ID,
+                        &mut reader,
+                        4096,
+                        &mut refs,
+                    )
+                    .unwrap();
+                    let Some(LayerBodyPrefix10_1::MosaicLayer(layer)) =
+                        scene.associated_layer_body.as_deref()
+                    else {
+                        panic!("缺少普通 MosaicLayer");
+                    };
+                    assert_eq!(layer.group_end, Some(group_end));
+                    assert_eq!(layer.time.is_some(), mosaic_version == 2);
+                    assert_eq!(reader.position(), end);
+                    assert_eq!(refs.len(), 2);
+
+                    let mut reader = Reader::new(&ordinary[..layer_end - 1]);
+                    let mut refs = RefTable10_1::new();
+                    assert!(
+                        read_graphics_3d_layer_10_1(
+                            &GRAPHICS_LAYER_3D_CLASS_ID,
+                            &mut reader,
+                            4096,
+                            &mut refs
+                        )
+                        .is_err()
+                    );
+                    assert_eq!(reader.position(), 0);
+                    assert!(refs.is_empty());
+                }
+            }
 
             if version >= 5 {
                 // 名称体已登记后，坏字符串长度仍须撤销试读加入的名称键。
