@@ -85,6 +85,14 @@ pub struct MapOptimizationExtension10_1 {
     pub string_6: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpaqueLayoutExtension10_1 {
+    /// 在原扩展序列中的零基索引。
+    pub index: usize,
+    pub class_id: [u8; 16],
+    pub body: Vec<u8>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayoutElementAnchor10_1 {
     pub envelope: LayoutSlot10_1<Envelope10_1>,
@@ -112,6 +120,7 @@ pub struct PageLayoutTail10_1 {
     pub version_8_short: Option<u16>,
     pub version_9_shorts: Option<[u16; 2]>,
     pub optimization_extensions: Vec<MapOptimizationExtension10_1>,
+    pub opaque_extensions: Vec<OpaqueLayoutExtension10_1>,
     pub version_11_slot: Option<ObjectEntry10_1>,
     pub legacy_version_12_or_13_doubles: Option<[f64; 2]>,
     pub version_13_long: Option<u32>,
@@ -277,29 +286,42 @@ fn read_extension(r: &mut Reader<'_>, max: usize) -> io::Result<MapOptimizationE
 fn read_extensions(
     r: &mut Reader<'_>,
     max: usize,
-) -> io::Result<Vec<MapOptimizationExtension10_1>> {
-    let n = count(r, 24, max)?;
-    let mut extensions = Vec::with_capacity(n);
-    for _ in 0..n {
-        let start = r.position();
+) -> io::Result<(
+    Vec<MapOptimizationExtension10_1>,
+    Vec<OpaqueLayoutExtension10_1>,
+)> {
+    const HEADER_SIZE: usize = 24;
+    let n = (r.read_u32_le()? as i32).max(0) as usize;
+    if n > max.min(r.remaining()) / HEADER_SIZE {
+        return Err(invalid("布局扩展计数超过剩余字节或资源限额"));
+    }
+    let mut budget = max - n * HEADER_SIZE;
+    let mut optimization = Vec::new();
+    let mut opaque = Vec::new();
+    for index in 0..n {
         let size = u64::from_le_bytes(r.read_bytes(8)?.try_into().unwrap());
         let size = usize::try_from(size)
             .ok()
-            .filter(|n| *n <= max)
-            .ok_or_else(|| invalid("PageLayout 扩展体长度超过限额"))?;
+            .filter(|n| *n <= budget)
+            .ok_or_else(|| invalid("PageLayout 扩展体累计长度超过限额"))?;
+        budget -= size;
         let class_id: [u8; 16] = r.read_bytes(16)?.try_into().unwrap();
-        if class_id != OPTIMIZATION_EXTENSION {
-            return Err(unsupported(&format!(
-                "未知 PageLayout 扩展 @0x{start:x}：{class_id:02x?}"
-            )));
-        }
         let mut body = r.read_region(size)?;
-        extensions.push(read_extension(&mut body, max)?);
+        if class_id != OPTIMIZATION_EXTENSION || size == 0 {
+            // LayerLib 在类不可实例化时按长度跳过，零长度也不调用 Load。
+            opaque.push(OpaqueLayoutExtension10_1 {
+                index,
+                class_id,
+                body: body.read_bytes(size)?.to_vec(),
+            });
+            continue;
+        }
+        optimization.push(read_extension(&mut body, max)?);
         if body.remaining() != 0 {
             return Err(invalid("PageLayout 扩展体未完整消费声明范围"));
         }
     }
-    Ok(extensions)
+    Ok((optimization, opaque))
 }
 
 fn read_version_11_slot(r: &mut Reader<'_>) -> io::Result<ObjectEntry10_1> {
@@ -388,10 +410,10 @@ pub fn read_page_layout_tail_10_1(
     } else {
         None
     };
-    let optimization_extensions = if version >= 10 {
+    let (optimization_extensions, opaque_extensions) = if version >= 10 {
         read_extensions(&mut r, max)?
     } else {
-        Vec::new()
+        (Vec::new(), Vec::new())
     };
     let version_11_slot = (version >= 11)
         .then(|| read_version_11_slot(&mut r))
@@ -448,6 +470,7 @@ pub fn read_page_layout_tail_10_1(
         version_8_short,
         version_9_shorts,
         optimization_extensions,
+        opaque_extensions,
         version_11_slot,
         legacy_version_12_or_13_doubles,
         version_13_long,

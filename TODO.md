@@ -252,6 +252,7 @@
     - [x] 10.1 汇编级复核：对象体由各类自己的 Load/Save 读写、无外部长度字段（未知类不可跳过）；登记先于持久化、键重复替换分支存在、SetStream 不清表；`/Maps` 写侧（数量=数据框数、循环后 4 字节尾部值）与读侧闭合，与 10.8 结构一致，见 [研究记录](docs/arcmap-10.1-object-body.md)。
     - [x] 实现显式 10.1 `/Maps` 根前缀读取器（数量、首对象头、尾部原始值），覆盖全前缀截断、失败游标与限额；不解析对象体，已接入 `parse`。
     - [x] 从 PageLayout.dll 实际文档读取链确认分流格式的 `/Maps:0x00` 数量及 `0x04` 首对象入口；记录 Mx Document 优先分支和跨流复用 ObjectStream。对象体与版本适用性仍未闭环（引用表生命周期由 SetStream 条目闭合）。
+    - [x] 按 ExtensionHelper 的有界体长保留未知及零长度布局扩展并续读。[原生取证](docs/mxd-page-layout-tail-20261118.md#布局扩展的有界续读)
     - [ ] 补齐跨流布局中尚未支持的扩展对象体。[布局尾段](docs/mxd-page-layout-tail-20261118.md)
     - [ ] 补齐 CustomOverlayGrid 尚未核实的 IName 实现。[格网名称取证](docs/mxd-page-layout-grid-20261118.md#自定义叠加格网的要素来源)
     - [ ] 验证 CustomOverlayGrid 已接入名称的真实布局宿主。
