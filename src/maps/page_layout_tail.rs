@@ -151,6 +151,24 @@ pub struct PageIndex10_1 {
     pub version_2_long: Option<u32>,
 }
 
+impl PageIndex10_1 {
+    /// 按原生版本分支换算完整对象 +0x68、+0x78，缺省值按新建实例计算。
+    pub fn loaded_index_modes(&self) -> [u32; 2] {
+        let stored = u32::from_le_bytes(self.raw_fields[12..16].try_into().unwrap());
+        match self.version_2_long {
+            Some(value) => [stored, value],
+            None => match stored {
+                0 => [0, 2],
+                1 => [0, 0],
+                2 => [0, 1],
+                3 => [1, 2],
+                4 => [2, 2],
+                other => [other, 2],
+            },
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct PageLayoutTail10_1 {
     pub page: LayoutSlot10_1<Page10_1>,

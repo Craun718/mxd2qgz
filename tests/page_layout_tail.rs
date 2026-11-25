@@ -1230,6 +1230,7 @@ fn page_layout_v11_reads_bounded_page_index_and_rolls_back_short_regions() {
     object.extend(1_i32.to_le_bytes());
     object.extend([2, 0, 0, 0, 0, 0]);
     object.extend(17_u32.to_le_bytes());
+    let raw_offset = object.len();
     object.extend([0x93; 32]);
     let feature = mxd2qgz::layers::feature_layer::FEATURE_LAYER_CLASS_ID;
     object.extend(2_i32.to_le_bytes());
@@ -1257,6 +1258,7 @@ fn page_layout_v11_reads_bounded_page_index_and_rolls_back_short_regions() {
     let mut refs = RefTable10_1::new();
     let tail = read_page_layout_tail_10_1(&mut reader, &mut refs, 11, 0, 8192, |_| false).unwrap();
     let index = tail.page_index.unwrap();
+    assert_eq!(index.loaded_index_modes(), [0x9393_9393, 19]);
     let frame = index.frame_body.unwrap();
     assert_eq!(frame.prefix.frame_key, 74);
     assert_eq!(frame.embedded_map.unwrap().0.version, 18);
@@ -1298,4 +1300,26 @@ fn page_layout_v11_reads_bounded_page_index_and_rolls_back_short_regions() {
     assert!(index.strings.is_empty());
     assert_eq!(index.first_long, 17);
     assert_eq!(reader.position(), bytes.len());
+    let raw_position = offset + 8 + raw_offset - 6;
+    bytes.truncate(bytes.len() - 4);
+    let size = (bytes.len() - offset - 8) as u64;
+    bytes[offset..offset + 8].copy_from_slice(&size.to_le_bytes());
+    for version in [0_u16, 1] {
+        bytes[offset + 28..offset + 30].copy_from_slice(&version.to_le_bytes());
+        for (stored, modes) in [[0, 2], [0, 0], [0, 1], [1, 2], [2, 2], [5, 2]]
+            .into_iter()
+            .enumerate()
+        {
+            bytes[raw_position + 12..raw_position + 16]
+                .copy_from_slice(&(stored as u32).to_le_bytes());
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let tail =
+                read_page_layout_tail_10_1(&mut reader, &mut refs, 11, 0, 8192, |_| false).unwrap();
+            let index = tail.page_index.unwrap();
+            assert_eq!(index.version, version);
+            assert_eq!(index.loaded_index_modes(), modes);
+            assert_eq!(reader.position(), bytes.len());
+        }
+    }
 }
