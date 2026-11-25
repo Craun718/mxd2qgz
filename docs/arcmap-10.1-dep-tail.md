@@ -1405,3 +1405,34 @@ Load `0x6b68f3f0` 读 short 版本、一个 long 和三个 float。
 普通和栅格底图复用元素体读取器，按登记类识别回引。普通底图遇到
 未知元素仍停在数组头之前。构造 Scene 宿主验证两类非空元素、回引、
 后继槽和截断回滚。真实非空数组及 ArcMap/QGIS 人工验收仍待验证。
+
+### MosaicLayer 的独立持久化前缀
+
+从 ImageServerLayer.dll 10.1.0.3035（SHA-256
+`0256f97057275fedb550c947b0f8333184427755a394ef09099d22349fe5bb14`）
+补充 pyghidra 导出并以 objdump 核对。构造路径 `0x78017cfb`
+安装完整对象 `+0x7c` 的持久化表 `0x78032a4c`。
+GetClassID `0x78019750` 返回 MosaicLayer CLSID
+`{3452FCB8-D10C-44E4-B971-8C53DB39D517}`，Load/Save 为
+`0x78019780` / `0x78019950`。
+
+Load 读取 short 版本，`0x78019823..0x78019828` 仅接受 1、2。
+接着 `0x7801e060` 以普通 LoadObject 请求 IName
+（IID 数据 `0x78030630`），再读 AfCore String 和 short。
+`0x78019886..0x7801989a` 从完整对象 `+0xa8` 取得委派对象的
+IPersistStream，调用其 Load 并传入同一流。v2 随后依次调用
+TimeData、TimeDataDisplay 和 TimeTableDefinition 的读取方法。
+Save 的版本表 `0x7802ca70` 为 `[-1,-1,-1,-1,2]`；写出
+相同前缀、委派体与三个时间段。
+
+构造路径 `0x78017e0c` 调 `0x7801eb20`，创建
+`{FFCAEE7F-B07F-45A0-8586-C9CE98F9B215}`。CartoXProvider.dll
+10.1.0.3035（SHA-256
+`1c4a6d3681e7527ca21e1b9afeb3b5a83922ad12f6c8a0e5c19dec33dd6f3cf5`）
+的注册指令 `0x6ced16ab..0x6ced16b5` 将该 CLSID 与
+`0x6cee3620` 的名称 MosaicLicenseHelper 绑定。同一模块
+`0x6ce4da99` 接受构造器所请求的接口
+`{DF72A438-E456-4F70-B776-B85238584AD4}`。仍需继续确认
+该接口到 IPersistStream 的实际分派与消费长度。RasterBasemapLayer
+目前仍按长度保留 MosaicLayer 原始体。真实宿主与 ArcMap/QGIS
+人工验收尚未进行。
