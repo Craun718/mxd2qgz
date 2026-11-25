@@ -921,6 +921,30 @@ fn map_frame_reads_mgrs_and_custom_overlay_grid_bodies() {
     assert!(refs.contains(72));
     assert_eq!(reader.remaining(), 0);
 
+    use mxd2qgz::maps::map_surround::{BookmarkNameEntry10_1, LOCATOR_NAME_CLASS_ID};
+    let mut address_locator = LOCATOR_NAME_CLASS_ID.to_vec();
+    address_locator.extend(72_u32.to_le_bytes());
+    address_locator.extend(1_i16.to_le_bytes());
+    for value in ["地址定位器", "", "", ""] {
+        string(&mut address_locator, value);
+    }
+    address_locator.extend([0; 16]);
+    let mut address_body = body.clone();
+    address_body.splice(start + source_offset..start + source_end, address_locator);
+    let bytes = wrap(&address_body);
+    let mut reader = Reader::new(&bytes);
+    let mut refs = original.clone();
+    let frame = read_page_layout_map_frame_10_1(&mut reader, 4096, &mut refs).unwrap();
+    let overlay = frame.grids[3].custom_overlay_grid.as_ref().unwrap();
+    assert!(matches!(
+        overlay.other_source_name.as_deref(),
+        Some(DatasetNameMoreBody10_1::Locator(name))
+            if matches!(name.as_ref(), BookmarkNameEntry10_1::LocatorName { strings, .. } if strings[0] == "地址定位器")
+    ));
+    assert_eq!(overlay.string_44, "格网编号");
+    assert!(refs.contains(72));
+    assert_eq!(reader.remaining(), 0);
+
     let mut unknown_event_table = event_body;
     unknown_event_table[start + source_offset + event_table_offset] ^= 0xff;
     let mut unknown_source = body.clone();

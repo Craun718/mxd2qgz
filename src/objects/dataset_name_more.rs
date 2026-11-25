@@ -86,10 +86,10 @@ use crate::layers::wcs_name::{
     WMTS_CONNECTION_NAME_CLASS_ID,
 };
 use crate::maps::map_surround::{
-    BookmarkNameEntry10_1, FILE_NAME_CLASS_ID, LAS_DATASET_NAME_CLASS_ID,
+    BookmarkNameEntry10_1, FILE_NAME_CLASS_ID, LAS_DATASET_NAME_CLASS_ID, LOCATOR_NAME_CLASS_ID,
     LOCATOR_WORKSPACE_NAME_CLASS_ID, LasDatasetName10_1, REPRESENTATION_CLASS_NAME_CLASS_ID,
     RepresentationClassName10_1, SCHEMATIC_WORKSPACE_NAME_CLASS_ID, SHORTCUT_NAME_CLASS_ID,
-    read_file_name_body_10_1, read_las_dataset_name_body_10_1,
+    read_file_name_body_10_1, read_las_dataset_name_body_10_1, read_locator_name_body_10_1,
     read_locator_workspace_name_body_10_1, read_representation_class_name_body_10_1,
     read_shortcut_name_body_10_1,
 };
@@ -388,6 +388,7 @@ pub enum DatasetNameMoreBody10_1 {
     AgsServerConnection(Box<AgsServerConnectionName10_1>),
     File(Box<BookmarkNameEntry10_1>),
     Shortcut(Box<BookmarkNameEntry10_1>),
+    Locator(Box<BookmarkNameEntry10_1>),
     LocatorWorkspace(Box<BookmarkNameEntry10_1>),
     RepresentationClass(Box<RepresentationClassName10_1>),
     LasDataset(Box<LasDatasetName10_1>),
@@ -1293,6 +1294,12 @@ fn read_dataset_name_object_body_10_1(
             )?)),
             None,
         )),
+        LOCATOR_NAME_CLASS_ID => Ok((
+            DatasetNameMoreBody10_1::Locator(Box::new(read_locator_name_body_10_1(
+                reader, max_bytes, table, 0,
+            )?)),
+            None,
+        )),
         LOCATOR_WORKSPACE_NAME_CLASS_ID => Ok((
             DatasetNameMoreBody10_1::LocatorWorkspace(Box::new(
                 read_locator_workspace_name_body_10_1(reader, max_bytes, table, 0)?,
@@ -1673,6 +1680,7 @@ pub(crate) fn read_overlay_name_slot_10_1(
                     | WMS_CONNECTION_NAME_CLASS_ID
                     | WMTS_CONNECTION_NAME_CLASS_ID
                     | WORKSPACE_NAME_CLASS_ID
+                    | LOCATOR_NAME_CLASS_ID
                     | LOCATOR_WORKSPACE_NAME_CLASS_ID
                     | SHORTCUT_NAME_CLASS_ID
                     | FILE_NAME_CLASS_ID

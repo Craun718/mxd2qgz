@@ -351,3 +351,12 @@ IPersistStream。格网和书签共享
 [CadastralFabric.dll 10.1.0.3035 Load `0x6c1fae40` 的读取器](mxd-terra-round9-bookmark.md#cadastralfabricname)。
 构造 MapFrame 核对名称、类键和后继格网字符串。真实格网宿主及
 ArcMap 打开和显示仍待验证。
+
+### 叠加格网的 LocatorName
+
+Geocoding.dll 10.1.0.3035 的 LocatorName QI `0x7135dbd0`
+支持 IName，持久化 Load `0x7135e1e0` 读取有符号版本、四个
+字符串及内嵌 IName。叠加格网和书签共用
+[同一对象体读取器和深度限制](mxd-terra-round9-bookmark.md#locatorname)。
+构造 MapFrame 核对地址定位器名称、对象键和后继格网字符串。
+真实格网中的打开结果与 ArcMap 显示仍待验证。
