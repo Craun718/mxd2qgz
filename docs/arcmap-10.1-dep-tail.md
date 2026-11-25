@@ -1436,3 +1436,23 @@ Save 的版本表 `0x7802ca70` 为 `[-1,-1,-1,-1,2]`；写出
 该接口到 IPersistStream 的实际分派与消费长度。RasterBasemapLayer
 目前仍按长度保留 MosaicLayer 原始体。真实宿主与 ArcMap/QGIS
 人工验收尚未进行。
+
+#### 许可助手的本地接口边界
+
+CartoXProvider 同摘要 DLL 的 MosaicLicenseHelper 构造在
+`0x6ce4d955..0x6ce4d960` 保存控制 IUnknown；无聚合者时用完整对象
+自身。`0x6ce4d993` 安装主表 `0x6cee369c`，首槽
+`0x6ce4da80` 在 `0x6ce4dab0` 为自定义 IID 返回 `+0x30` 视图。
+该视图的 QI `0x6ce4d890` 经完整对象 `+0x08` 转发给控制
+IUnknown。ImageServerLayer 的创建调用 `0x7801eb4b` 传空聚合者，
+在 `0x7801eb78` 取得自定义视图。
+
+后续 MosaicLayer 的 `0x7801f331` 对该视图查询 IPersistStream
+（`0x7802d028`）。该 IID 沿上述转发到本地助手的主 QI。
+主 QI 匹配自定义 IID 以外走 `0x6cea5640`，只比较 IUnknown、
+ISupportErrorInfo 及 `{9F9650F1-5F49-4041-BA0F-D10BAFF1D7BC}`，
+未命中在 `0x6cea5732` 返回 E_NOINTERFACE。另一方面 MosaicLayer
+在 `0x78019891..0x7801989a` 直接读取查询结果的 Load 槽。
+据此不能把本地注册类的自定义虚表当成委派持久化表，也不能将时间段
+假定紧跟 short。下一缺口是确认实际激活到的实现或取得可核验的
+MosaicLayer 字节。此处继续有界保留原始体，尚未运行 ArcMap 验证。
