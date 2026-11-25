@@ -485,3 +485,13 @@ PageLayout.dll 10.1.0.3035 的 +0x18 私有接口表
 该结果只覆盖本地样本中该类标识直接出现在该流的情形。仍需取得
 带非空 PageIndex 的真实数据驱动页面工程，再核对对象边界、字段和
 ArcMap 显示。本轮未运行 ArcMap/QGIS。
+
+#### PageIndex 回引的包装边界
+
+PageLayout.dll 10.1.0.3035 在 `0x7b6e6030` 通过
+ExtraSafeReadObject 读取 PageIndex。沿用同版 SystemCore
+`0x7ffd0063–0x7ffd007d` 的对象键查询，以及 AfCore
+`0x68a7bef3–0x68a7bf0f` 的声明范围定位。对已登记的 PageIndex
+回引，解析器保留回引头之后的包装字节，从声明终点续读。
+构造测试覆盖头部 CLSID 与登记类不同且包装含额外字节的回引。
+真实携带额外字节的 PageIndex 回引仍待取证。

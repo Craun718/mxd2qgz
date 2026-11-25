@@ -1278,6 +1278,22 @@ fn page_layout_v11_reads_bounded_page_index_and_rolls_back_short_regions() {
     assert!(refs.contains(73));
     assert_eq!(reader.position(), bytes.len());
 
+    let mut reference = layout_tail(11, 0);
+    reference.truncate(reference.len() - 8);
+    reference.drain(20..20 + (2 + 4 + 4 + 2 + 4 + 16 + 32 + 4 + 3 * 16));
+    reference.extend(23_u64.to_le_bytes());
+    reference.extend([0x95; 16]);
+    reference.extend(73_u32.to_le_bytes());
+    reference.extend([0xaa, 0xbb, 0xcc]);
+    let mut reader = Reader::new(&reference);
+    let tail = read_page_layout_tail_10_1(&mut reader, &mut refs, 11, 0, 8192, |_| false).unwrap();
+    assert!(matches!(
+        tail.version_11_slot,
+        Some(ObjectEntry10_1::BackReference { key: 73, .. })
+    ));
+    assert_eq!(tail.page_index_reference_suffix, [0xaa, 0xbb, 0xcc]);
+    assert_eq!(reader.position(), reference.len());
+
     for end in offset..bytes.len() {
         let mut reader = Reader::new(&bytes[..end]);
         let mut refs = RefTable10_1::new();

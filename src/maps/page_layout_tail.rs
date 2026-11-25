@@ -194,6 +194,8 @@ pub struct PageLayoutTail10_1 {
     pub opaque_extensions: Vec<OpaqueLayoutExtension10_1>,
     pub version_11_slot: Option<ObjectEntry10_1>,
     pub page_index: Option<Box<PageIndex10_1>>,
+    /// 已登记 PageIndex 回引头之后的包装字节。
+    pub page_index_reference_suffix: Vec<u8>,
     pub legacy_version_12_or_13_doubles: Option<[f64; 2]>,
     pub version_13_long: Option<u32>,
     pub element_values: Vec<u32>,
@@ -640,13 +642,16 @@ fn read_version_11_slot(
     refs: &mut RefTable10_1,
     max: usize,
     is_root_map: &impl Fn(u32) -> bool,
-) -> io::Result<LayoutSlot10_1<PageIndex10_1>> {
+) -> io::Result<(LayoutSlot10_1<PageIndex10_1>, Vec<u8>)> {
     let size = u64::from_le_bytes(r.read_bytes(8)?.try_into().unwrap());
     if size == 0 {
-        return Ok(LayoutSlot10_1 {
-            entry: ObjectEntry10_1::Null,
-            body: None,
-        });
+        return Ok((
+            LayoutSlot10_1 {
+                entry: ObjectEntry10_1::Null,
+                body: None,
+            },
+            Vec::new(),
+        ));
     }
     if size > max as u64 {
         return Err(invalid("PageIndex 声明体长超过限额"));
@@ -656,10 +661,15 @@ fn read_version_11_slot(
     let slot = read_slot(&mut bounded, refs, PAGE_INDEX, "PageIndex", |r, refs| {
         read_page_index(r, refs, max, region_offset, is_root_map)
     })?;
+    let suffix = if matches!(slot.entry, ObjectEntry10_1::BackReference { .. }) {
+        bounded.read_bytes(bounded.remaining())?.to_vec()
+    } else {
+        Vec::new()
+    };
     if bounded.remaining() != 0 {
         return Err(invalid("PageIndex 未完整读取声明范围"));
     }
-    Ok(slot)
+    Ok((slot, suffix))
 }
 
 /// 从已确认的元素列表末端读取布局体；失败时整个尾段及其引用登记回退。
@@ -749,9 +759,12 @@ pub fn read_page_layout_tail_10_1(
     } else {
         (Vec::new(), Vec::new())
     };
-    let version_11_slot = (version >= 11)
-        .then(|| read_version_11_slot(&mut r, &mut t, max, &is_root_map))
-        .transpose()?;
+    let (version_11_slot, page_index_reference_suffix) = if version >= 11 {
+        let (slot, suffix) = read_version_11_slot(&mut r, &mut t, max, &is_root_map)?;
+        (Some(slot), suffix)
+    } else {
+        (None, Vec::new())
+    };
     let legacy_version_12_or_13_doubles = matches!(version, 12 | 13)
         .then(|| doubles(&mut r))
         .transpose()?;
@@ -808,6 +821,7 @@ pub fn read_page_layout_tail_10_1(
         opaque_extensions,
         version_11_slot: version_11_slot.as_ref().map(|slot| slot.entry),
         page_index: version_11_slot.and_then(|slot| slot.body).map(Box::new),
+        page_index_reference_suffix,
         legacy_version_12_or_13_doubles,
         version_13_long,
         element_values,
