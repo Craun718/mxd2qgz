@@ -1476,3 +1476,20 @@ RasterBasemapLayer 或 MosaicLicenseHelper 的 CLSID 字节。在 106 份
 构造回归用完整名称体后接超限字符串长度，核对有界槽继续保留完整
 原始字节和外层 MosaicLayer 键，撤销前缀试读登记的名称键，并保留
 下一字段位置。ArcMap/QGIS 人工验收尚未进行。
+
+#### 许可助手的类工厂
+
+同版 `esri.clsid.ecfg` 解包后的类表将
+`{FFCAEE7F-B07F-45A0-8586-C9CE98F9B215}` 登记为
+MosaicLicenseHelper。CartoXProvider.dll 的注册代码
+`0x6ced16d3` 使用工厂构造器 `0x6ce9e770`，安装
+`0x6ceee95c`。CreateInstance 槽 `+0x0c` 到 `0x6ce9e910`。
+沿该入口的非聚合分支核对构造调用，`0x6ce9ec91` 向
+`0x6ce4d910` 传空控制对象，`0x6ce9ecb5..0x6ce9ecc0`
+从新对象 `+0x30` 的虚表查询调用者要求的 IID。
+聚合分支则在 `0x6ce9ec11` 传入调用者提供的外层对象。
+
+这把前节的本地 QI 结果绑定到已登记工厂的非聚合构造路径，
+也说明其边界取决于原生运行实际选择的工厂。介质中的类表只提供
+CLSID 与程序标识，尚未确认运行时是否选择另一实现。仍需真实
+MosaicLayer 宿主或运行取证才能确定委派字节和时间段起点。
