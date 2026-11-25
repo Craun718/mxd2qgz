@@ -189,15 +189,17 @@ use crate::objects::dataset_name_more::{
     SCHEMATIC_DIAGRAM_CLASS_NAME_CLASS_ID, SCHEMATIC_ELEMENT_CLASS_NAME_CLASS_ID,
     SchematicClassNameBody10_1, TABLE_QUERY_NAME_CLASS_ID, TableQueryNameBody10_1,
     XY_EVENT_SOURCE_NAME_CLASS_ID, XyEventSourceNameBody10_1, read_cad_drawing_name_body_10_1,
-    read_db_table_name_body_10_1, read_feature_query_name_body_10_1,
-    read_geometric_network_name_body_10_1, read_memory_relationship_class_name_body_10_1,
-    read_netcdf_feature_class_name_body_10_1, read_netcdf_table_name_body_10_1,
-    read_query_table_name_body_10_1, read_referenced_table_name_body_10_1,
-    read_rel_query_table_name_body_10_1, read_relationship_class_name_body_10_1,
-    read_schematic_class_name_body_10_1, read_table_query_name_body_10_1,
-    read_xy_event_source_name_body_10_1,
+    read_cadastral_fabric_name_body_10_1, read_db_table_name_body_10_1,
+    read_feature_query_name_body_10_1, read_geometric_network_name_body_10_1,
+    read_memory_relationship_class_name_body_10_1, read_netcdf_feature_class_name_body_10_1,
+    read_netcdf_table_name_body_10_1, read_query_table_name_body_10_1,
+    read_referenced_table_name_body_10_1, read_rel_query_table_name_body_10_1,
+    read_relationship_class_name_body_10_1, read_schematic_class_name_body_10_1,
+    read_table_query_name_body_10_1, read_xy_event_source_name_body_10_1,
 };
-use crate::objects::dataset_name_more::{DatasetNameMoreSlot10_1, read_dataset_name_slot_10_1};
+pub use crate::objects::dataset_name_more::{
+    CADASTRAL_FABRIC_NAME_CLASS_ID, CadastralFabricName10_1,
+};
 use crate::objects::dataset_name_more::{
     SCHEMATIC_DATASET_NAME_CLASS_ID, SCHEMATIC_FOLDER_NAME_CLASS_ID, SchematicDatasetNameBody10_1,
     SchematicFolderNameBody10_1, read_schematic_dataset_name_body_10_1,
@@ -2665,18 +2667,6 @@ pub const SCHEMATIC_WORKSPACE_NAME_CLASS_ID: [u8; 16] = [
 pub const FILE_NAME_CLASS_ID: [u8; 16] = [
     0xdf, 0x75, 0xda, 0x53, 0x1a, 0xd0, 0xd2, 0x11, 0x9f, 0x27, 0x00, 0xc0, 0x4f, 0x6b, 0xc6, 0x9e,
 ];
-
-pub const CADASTRAL_FABRIC_NAME_CLASS_ID: [u8; 16] = [
-    0x20, 0x72, 0x94, 0x5c, 0xb5, 0xff, 0x71, 0x4e, 0xa0, 0x59, 0xaf, 0x20, 0x1a, 0xe0, 0x81, 0xa6,
-];
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct CadastralFabricName10_1 {
-    pub version: i16,
-    pub strings: [String; 2],
-    pub dataset: DatasetNameMoreSlot10_1,
-    pub workspace: RasterDatasetWorkspaceSlot10_1,
-}
 
 pub const REPRESENTATION_CLASS_NAME_CLASS_ID: [u8; 16] = [
     0x22, 0xaa, 0x74, 0x4e, 0xb6, 0xa1, 0xd4, 0x47, 0x99, 0x14, 0x20, 0xf8, 0xc6, 0xc2, 0xb6, 0x99,
@@ -9893,35 +9883,9 @@ fn read_bookmark_name_slot_10_1(
         ObjectEntry10_1::NewObject {
             class_id: CADASTRAL_FABRIC_NAME_CLASS_ID,
             ..
-        } => {
-            let version = reader.read_u16_le()? as i16;
-            if version > 1 {
-                return Err(io::Error::new(
-                    ErrorKind::InvalidData,
-                    format!("CadastralFabricName 版本 {version} 超出 10.1 上限"),
-                ));
-            }
-            let strings = [
-                read_string_10_1(reader, max_bytes)?,
-                read_string_10_1(reader, max_bytes)?,
-            ];
-            let mut stop = None;
-            let dataset = read_dataset_name_slot_10_1(reader, max_bytes, table, &mut stop)?;
-            if let Some(stop) = stop {
-                return Err(io::Error::new(
-                    ErrorKind::Unsupported,
-                    format!("CadastralFabricName 数据集名称槽未读完（{stop:?}）"),
-                ));
-            }
-            let workspace =
-                read_surface_workspace_name_10_1(reader, max_bytes, table, "CadastralFabricName")?;
-            BookmarkNameEntry10_1::CadastralFabricName(Box::new(CadastralFabricName10_1 {
-                version,
-                strings,
-                dataset,
-                workspace,
-            }))
-        }
+        } => BookmarkNameEntry10_1::CadastralFabricName(Box::new(
+            read_cadastral_fabric_name_body_10_1(reader, max_bytes, table)?,
+        )),
         ObjectEntry10_1::NewObject {
             class_id: LAS_DATASET_NAME_CLASS_ID,
             ..

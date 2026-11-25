@@ -261,6 +261,7 @@
     - [ ] 补齐跨流布局中尚未支持的扩展对象体。[布局尾段](docs/mxd-page-layout-tail-20261118.md)
     - [x] 接入 CustomOverlayGrid 的 TopologyName 对象体。[类型库与原生取证](docs/mxd-page-layout-grid-20261118.md#叠加格网的-topologyname)
     - [x] 接入 CustomOverlayGrid 的 RouteMeasureLocatorName 对象体。[类型库与原生取证](docs/mxd-page-layout-grid-20261118.md#叠加格网的-routemeasurelocatorname)
+    - [x] 接入 CustomOverlayGrid 的 CadastralFabricName 对象体。[类型库与原生取证](docs/mxd-page-layout-grid-20261118.md#叠加格网的-cadastralfabricname)
     - [ ] 补齐 CustomOverlayGrid 尚未核实的 IName 实现。[格网名称取证](docs/mxd-page-layout-grid-20261118.md#自定义叠加格网的要素来源)
     - [ ] 验证 CustomOverlayGrid 已接入名称的真实布局宿主。
     - [ ] 取得显式使用 ObjectStream 版本文本 9.0 的旧 DEVMODE 宿主。

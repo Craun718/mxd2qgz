@@ -340,3 +340,14 @@ IPersistStream。CustomOverlayGrid 的 IName 槽复用
 沿用内部路线名称槽的停止点。构造 MapFrame 验证基类 v2 的额外
 LONG、对象登记及后续格网字符串。真实格网宿主和 ArcMap
 打开与显示仍待验证。
+
+### 叠加格网的 CadastralFabricName
+
+10.1 介质 esriGeoDatabaseExtensions.olb（SHA-256
+`f39251e607311ba71853993d21d48b674d36931360236b4b5caa60da52c65c4b`）
+在 CadastralFabricName 类
+`{5C947220-FFB5-4E71-A059-AF201AE081A6}` 上列出 IName 与
+IPersistStream。格网和书签共享
+[CadastralFabric.dll 10.1.0.3035 Load `0x6c1fae40` 的读取器](mxd-terra-round9-bookmark.md#cadastralfabricname)。
+构造 MapFrame 核对名称、类键和后继格网字符串。真实格网宿主及
+ArcMap 打开和显示仍待验证。

@@ -72,11 +72,11 @@ use crate::layers::raster_dataset_name::{
     MOSAIC_DATASET_NAME_CLASS_ID, NETCDF_RASTER_DATASET_NAME_CLASS_ID,
     RASTER_BAND_COLLECTION_NAME_CLASS_ID, RASTER_BAND_NAME_CLASS_ID, RASTER_CATALOG_NAME_CLASS_ID,
     RASTER_DATASET_NAME_CLASS_ID, RASTER_DATASET_NAME83_CLASS_ID, RASTER_TYPE_NAME_CLASS_ID,
-    RasterDatasetNameEntryBody10_1, RasterLongArraySlot10_1, SDE_RASTER_DATASET_NAME_CLASS_ID,
-    read_long_array_slot, read_supported_raster_name_body_10_1,
+    RasterDatasetNameEntryBody10_1, RasterDatasetWorkspaceSlot10_1, RasterLongArraySlot10_1,
+    SDE_RASTER_DATASET_NAME_CLASS_ID, read_long_array_slot, read_supported_raster_name_body_10_1,
 };
 use crate::layers::scene_layer_properties::{
-    TIN_NAME_CLASS_ID, TinName10_1, read_tin_name_body_10_1,
+    TIN_NAME_CLASS_ID, TinName10_1, read_surface_workspace_name_10_1, read_tin_name_body_10_1,
 };
 use crate::layers::terrain_layer::{
     TERRAIN_NAME_CLASS_ID, TerrainName10_1, read_terrain_name_body_10_1,
@@ -420,6 +420,7 @@ pub enum DatasetNameMoreBody10_1 {
     FeatureDataset(Box<FeatureDatasetNameBody10_1>),
     Topology(Box<TopologyNameBody10_1>),
     CadDrawing(Box<CadDrawingNameBody10_1>),
+    CadastralFabric(Box<CadastralFabricName10_1>),
     /// GeometricNetworkName（本模块）。
     GeometricNetwork(Box<GeometricNetworkNameBody10_1>),
     /// RelationshipClassName（本模块）。
@@ -676,6 +677,51 @@ pub struct CadDrawingNameBody10_1 {
 }
 
 /// CadFDB.dll 0x6cab7030 在三条字符串后读取 IWorkspaceName。
+pub const CADASTRAL_FABRIC_NAME_CLASS_ID: [u8; 16] = [
+    0x20, 0x72, 0x94, 0x5c, 0xb5, 0xff, 0x71, 0x4e, 0xa0, 0x59, 0xaf, 0x20, 0x1a, 0xe0, 0x81, 0xa6,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CadastralFabricName10_1 {
+    pub version: i16,
+    pub strings: [String; 2],
+    pub dataset: DatasetNameMoreSlot10_1,
+    pub workspace: RasterDatasetWorkspaceSlot10_1,
+}
+
+pub(crate) fn read_cadastral_fabric_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<CadastralFabricName10_1> {
+    let version = reader.read_u16_le()? as i16;
+    if version > 1 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("CadastralFabricName 版本 {version} 超出 10.1 上限"),
+        ));
+    }
+    let strings = [
+        read_string_10_1(reader, max)?,
+        read_string_10_1(reader, max)?,
+    ];
+    let mut stop = None;
+    let dataset = read_dataset_name_slot_10_1(reader, max, refs, &mut stop)?;
+    if let Some(stop) = stop {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            format!("CadastralFabricName 数据集名称槽未读完（{stop:?}）"),
+        ));
+    }
+    let workspace = read_surface_workspace_name_10_1(reader, max, refs, "CadastralFabricName")?;
+    Ok(CadastralFabricName10_1 {
+        version,
+        strings,
+        dataset,
+        workspace,
+    })
+}
+
 pub(crate) fn read_cad_drawing_name_body_10_1(
     reader: &mut Reader<'_>,
     max: usize,
@@ -1221,6 +1267,12 @@ fn read_dataset_name_object_body_10_1(
             )),
             None,
         )),
+        CADASTRAL_FABRIC_NAME_CLASS_ID => Ok((
+            DatasetNameMoreBody10_1::CadastralFabric(Box::new(
+                read_cadastral_fabric_name_body_10_1(reader, max_bytes, table)?,
+            )),
+            None,
+        )),
         TOPOLOGY_NAME_CLASS_ID => {
             let body = read_topology_name_body_10_1(reader, max_bytes, table, key)?;
             if let Some(stop) = &body.stop {
@@ -1628,6 +1680,7 @@ pub(crate) fn read_overlay_name_slot_10_1(
                     | AGS_SERVER_CONNECTION_NAME
                     | FEATURE_DATASET_NAME_CLASS_ID
                     | TOPOLOGY_NAME_CLASS_ID
+                    | CADASTRAL_FABRIC_NAME_CLASS_ID
                     | ROUTE_MEASURE_LOCATOR_NAME_CLASS_ID
                     | COVERAGE_NAME_CLASS_ID
                     | TIN_NAME_CLASS_ID
