@@ -386,6 +386,37 @@ mod tests {
             ));
             assert_eq!(reader.position(), end);
 
+            if version >= 5 {
+                // 名称体已登记后，坏字符串长度仍须撤销试读加入的名称键。
+                let mut bytes = bytes.clone();
+                let body_at = layer_end - mosaic_body.len();
+                let string_length_at = body_at + delegated - 2 - 8;
+                bytes[string_length_at..string_length_at + 4]
+                    .copy_from_slice(&u32::MAX.to_le_bytes());
+                let mut reader = Reader::new(&bytes);
+                let mut refs = before.clone();
+                let scene = read_graphics_3d_layer_10_1(
+                    &GRAPHICS_LAYER_3D_CLASS_ID,
+                    &mut reader,
+                    4096,
+                    &mut refs,
+                )
+                .unwrap();
+                let Some(LayerBodyPrefix10_1::RasterBasemapLayer(layer)) =
+                    scene.associated_layer_body.as_deref()
+                else {
+                    panic!("缺少栅格底图关联体");
+                };
+                assert!(layer.mosaic_prefix.is_none());
+                assert_eq!(
+                    layer.mosaic_body.as_deref(),
+                    Some(&bytes[body_at..layer_end])
+                );
+                assert_eq!(refs.registered_class(42), Some(MOSAIC_LAYER_CLASS_ID));
+                assert!(!refs.contains(45));
+                assert_eq!(reader.position(), end);
+            }
+
             for cut in [shaders_end - 1, layer_end - 1] {
                 let mut refs = before.clone();
                 let mut reader = Reader::new(&bytes[..cut]);

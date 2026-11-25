@@ -1464,3 +1464,15 @@ short。前缀完整时提交其登记键，并记录委派段相对对象体的
 整段原始字节仍保留。前缀不能完整读取时保留原有有界结果，撤销
 本次前缀试读的引用键。构造 Scene 宿主覆盖新名称体、委派起点、
 原始字节及后继容器字段。许可助手体、时间段及真实宿主仍待验证。
+
+本机介质与历史提取目录按 SHA-256 去重后的 119 个 LYR 均为复合
+文档。用项目的 inspect/extract 读取其中全部 127 条流，包括
+119 条 `/Layer` 及各 4 条大小预览流，未命中 MosaicLayer、
+RasterBasemapLayer 或 MosaicLicenseHelper 的 CLSID 字节。在 106 份
+去重 MXD/MXT 中成功提取的各 104 条 `/Maps` 和 `/PageLayout`
+也未命中 MosaicLayer 或 MosaicLicenseHelper。该筛查不能发现无独立
+对象头的委派体，真实 MosaicLayer 的委派边界仍待取证。
+
+构造回归用完整名称体后接超限字符串长度，核对有界槽继续保留完整
+原始字节和外层 MosaicLayer 键，撤销前缀试读登记的名称键，并保留
+下一字段位置。ArcMap/QGIS 人工验收尚未进行。
