@@ -1,6 +1,9 @@
 //! PageLayout.dll 10.1.0.3035 的元素列表后字段（Load 0x7b6e4e30）。
 use super::map_decor::read_map_decor_slot_10_1;
 use super::map_object::MAP_CLASS_ID;
+use crate::layers::cache_tile_reader::{
+    AGS_SERVER_CONNECTION_NAME, AgsServerConnectionName10_1, read_ags_server_connection_name_body,
+};
 use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
 use crate::objects::element_decor::{DecorKind10_1, DecorSlot10_1};
 use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
@@ -79,6 +82,7 @@ pub struct MapOptimizationExtension10_1 {
     pub version: u16,
     pub string_2: Option<String>,
     pub values_3: Option<[u32; 2]>,
+    pub server_connection: Option<LayoutSlot10_1<AgsServerConnectionName10_1>>,
     pub flag_4: Option<u8>,
     pub flag_5: Option<u8>,
     pub values_6: Option<[u32; 2]>,
@@ -238,7 +242,11 @@ fn read_class_ids(r: &mut Reader<'_>, max: usize) -> io::Result<Vec<[u8; 16]>> {
         .collect())
 }
 
-fn read_extension(r: &mut Reader<'_>, max: usize) -> io::Result<MapOptimizationExtension10_1> {
+fn read_extension(
+    r: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<MapOptimizationExtension10_1> {
     let version = read_version(r, 6, "MapOptimizationLayoutExtension")?;
     // CartoConverter 0x6ccc0e2a 委派 MappingCoreLib::LoadResults。
     // 当前只支持已在布局中验证的空结果容器。
@@ -248,15 +256,18 @@ fn read_extension(r: &mut Reader<'_>, max: usize) -> io::Result<MapOptimizationE
     let string_2 = (version >= 2)
         .then(|| read_string_10_1(r, max))
         .transpose()?;
-    let values_3 = if version >= 3 {
+    let (values_3, server_connection) = if version >= 3 {
         let values = [r.read_u32_le()?, r.read_u32_le()?];
-        // 此槽在介质样本为空；非空的请求接口尚未完成类型对位。
-        if r.read_bytes(16)? != [0; 16] {
-            return Err(unsupported("布局优化扩展的非空对象槽尚未支持"));
-        }
-        Some(values)
+        let connection = read_slot(
+            r,
+            refs,
+            AGS_SERVER_CONNECTION_NAME,
+            "IAGSServerConnectionName",
+            |r, refs| read_ags_server_connection_name_body(r, max, refs),
+        )?;
+        (Some(values), Some(connection))
     } else {
-        None
+        (None, None)
     };
     let flag_4 = (version >= 4)
         .then(|| r.read_bytes(1).map(|bytes| bytes[0]))
@@ -276,6 +287,7 @@ fn read_extension(r: &mut Reader<'_>, max: usize) -> io::Result<MapOptimizationE
         version,
         string_2,
         values_3,
+        server_connection,
         flag_4,
         flag_5,
         values_6,
@@ -286,6 +298,7 @@ fn read_extension(r: &mut Reader<'_>, max: usize) -> io::Result<MapOptimizationE
 fn read_extensions(
     r: &mut Reader<'_>,
     max: usize,
+    refs: &mut RefTable10_1,
 ) -> io::Result<(
     Vec<MapOptimizationExtension10_1>,
     Vec<OpaqueLayoutExtension10_1>,
@@ -316,7 +329,7 @@ fn read_extensions(
             });
             continue;
         }
-        optimization.push(read_extension(&mut body, max)?);
+        optimization.push(read_extension(&mut body, max, refs)?);
         if body.remaining() != 0 {
             return Err(invalid("PageLayout 扩展体未完整消费声明范围"));
         }
@@ -411,7 +424,7 @@ pub fn read_page_layout_tail_10_1(
         None
     };
     let (optimization_extensions, opaque_extensions) = if version >= 10 {
-        read_extensions(&mut r, max)?
+        read_extensions(&mut r, max, &mut t)?
     } else {
         (Vec::new(), Vec::new())
     };

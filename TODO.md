@@ -253,6 +253,7 @@
     - [x] 实现显式 10.1 `/Maps` 根前缀读取器（数量、首对象头、尾部原始值），覆盖全前缀截断、失败游标与限额；不解析对象体，已接入 `parse`。
     - [x] 从 PageLayout.dll 实际文档读取链确认分流格式的 `/Maps:0x00` 数量及 `0x04` 首对象入口；记录 Mx Document 优先分支和跨流复用 ObjectStream。对象体与版本适用性仍未闭环（引用表生命周期由 SetStream 条目闭合）。
     - [x] 按 ExtensionHelper 的有界体长保留未知及零长度布局扩展并续读。[原生取证](docs/mxd-page-layout-tail-20261118.md#布局扩展的有界续读)
+    - [x] 读取布局优化扩展的 ArcGIS Server 连接名及跨扩展回引。[原生取证](docs/mxd-page-layout-tail-20261118.md#优化扩展的-arcgis-server-连接名)
     - [ ] 补齐跨流布局中尚未支持的扩展对象体。[布局尾段](docs/mxd-page-layout-tail-20261118.md)
     - [ ] 补齐 CustomOverlayGrid 尚未核实的 IName 实现。[格网名称取证](docs/mxd-page-layout-grid-20261118.md#自定义叠加格网的要素来源)
     - [ ] 验证 CustomOverlayGrid 已接入名称的真实布局宿主。

@@ -305,3 +305,18 @@ IStream::Seek，起点为当前位置。`0x786c23f4–0x786c23fe`
 布局后续字段。构造测试覆盖未知类、零长度已知类、随后的优化扩展、
 v11 槽和超限事务回滚。已识别优化扩展的非空准备结果和非空对象槽、
 其他扩展类的字段及 ArcMap/QGIS 人工验收仍待验证。
+
+### 优化扩展的 ArcGIS Server 连接名
+
+CartoConverter.dll x86 10.1.0.3035（SHA-256
+`5982306cbe6564505a3c37b240e0ea75d5255c13b10865880938c2e051c1f264`）
+的 Load `0x6ccc0de0` 在 v3 起读取两个 LONG 后，将流和
+`0x6cd7547c` 的 IID 传给 AfCore LoadObject（`0x6ccc0f91–0x6ccc0fa2`）。
+10.1 介质 esriGISClient.olb（SHA-256
+`8695beba425c46d252e43bd8469d52e2a88847acdb4cdeadc48ed838302cb067`）
+将 `{298CCE6A-4D86-40EE-8F4A-BEBC419B9A4D}` 定名为
+IAGSServerConnectionName，公开实现为 AGSServerConnectionName。
+布局复用 [AGSClient 的连接名类体读取器](mxd-10.1-raster-layer-tail.md)，
+沿用布局 ObjectStream 的引用表。构造测试覆盖新对象、第二条扩展的
+回引、后续布局槽及整体截断回滚。非空准备结果、其他注册实现和
+真实连接名布局宿主仍待取证。ArcMap/QGIS 人工验收未进行。

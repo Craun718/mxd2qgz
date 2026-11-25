@@ -956,3 +956,57 @@ fn bounded_layout_extensions_preserve_unknown_and_leave_following_slot_aligned()
     assert_eq!(reader.position(), 0);
     assert_eq!(refs.len(), 0);
 }
+
+#[test]
+fn layout_optimization_extension_reads_connection_and_shared_reference() {
+    use mxd2qgz::layers::cache_tile_reader::AGS_SERVER_CONNECTION_NAME;
+
+    let optimization_class = [
+        0x9f, 0xd8, 0x29, 0x6c, 0xba, 0xb7, 0xb0, 0x4f, 0xa8, 0x8d, 0xfe, 0xa7, 0x7a, 0x03, 0xba,
+        0x0e,
+    ];
+    let baseline = layout_tail(11, 0);
+    let extensions_offset = baseline.len() - 12;
+    let mut bytes = baseline[..extensions_offset].to_vec();
+    bytes.extend(2_u32.to_le_bytes());
+    for is_new in [true, false] {
+        let mut body = 3_u16.to_le_bytes().to_vec();
+        body.extend([0; 4]); // 空准备结果。
+        body.extend([2, 0, 0, 0, 0, 0]); // 空字符串。
+        body.extend([0; 8]);
+        body.extend(AGS_SERVER_CONNECTION_NAME);
+        body.extend(73_u32.to_le_bytes());
+        if is_new {
+            body.extend(1_u16.to_le_bytes());
+            body.extend([0; 16]); // 空 PropertySet。
+        }
+        bytes.extend((body.len() as u64).to_le_bytes());
+        bytes.extend(optimization_class);
+        bytes.extend(body);
+    }
+    bytes.extend(&baseline[extensions_offset + 4..]);
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let tail = read_page_layout_tail_10_1(&mut reader, &mut refs, 11, 0, 8192, |_| false).unwrap();
+    let connection = tail.optimization_extensions[0]
+        .server_connection
+        .as_ref()
+        .unwrap();
+    assert_eq!(connection.body.as_ref().unwrap().version, 1);
+    let reference = tail.optimization_extensions[1]
+        .server_connection
+        .as_ref()
+        .unwrap();
+    assert!(matches!(
+        reference.entry,
+        ObjectEntry10_1::BackReference { key: 73, .. }
+    ));
+    assert!(refs.contains(73));
+    assert_eq!(reader.position(), bytes.len());
+
+    let mut reader = Reader::new(&bytes[..bytes.len() - 1]);
+    let mut refs = RefTable10_1::new();
+    assert!(read_page_layout_tail_10_1(&mut reader, &mut refs, 11, 0, 8192, |_| false).is_err());
+    assert_eq!(reader.position(), 0);
+    assert_eq!(refs.len(), 0);
+}
