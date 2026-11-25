@@ -524,3 +524,18 @@ BasicFunctionArguments 的对象体。ConverterOption 的属性集槽现可
 准备结果。GenericLocatorStyle 的持久化分支、其他私有实现和真实
 布局宿主仍待验证。XmlPropertySet 的独立持久化限制见
 [原生接口查询](mxd-10.1-raster-layer-tail.md#xmlpropertyset-扩展候选)。
+
+#### GenericLocatorStyle 的持久化接口边界
+
+Geocoding.dll x86 10.1.0.3035（SHA-256
+`e5dc7d6cf515b7c7e9fd9e0342780818d261c2762ebbd348c5c2fc318c71819c`）
+中，RTTI `0x7154f570` 将主虚表 `0x714f6ffc` 对位到
+GenericLocatorStyle。QI `0x713493d0` 在 `0x713494c9` 比较
+IPropertySet IID，命中时返回完整对象 +0x54。局部比较表及回退
+`0x714b83d0` 都没有匹配 IPersistStream 或 IPersistVariant。
+回退的未命中路径在 `0x714b84bb–0x714b84c1` 清空输出并返回
+E_NOINTERFACE。类的 CLSID 可由 `0x714f7348` 与工厂登记交叉核对。
+
+因此 10.1 的普通 ObjectStream 不能通过这两个持久化接口读取
+该内置类的新对象体，ConverterOption 保持现有分派。外部注册替代
+实现和真实布局宿主仍待取证。
