@@ -982,7 +982,11 @@ fn layout_optimization_extension_reads_connection_and_shared_reference() {
         body.extend([0; 4]); // 空准备结果。
         body.extend([2, 0, 0, 0, 0, 0]); // 空字符串。
         body.extend([0; 8]);
-        body.extend(AGS_SERVER_CONNECTION_NAME);
+        body.extend(if is_new {
+            AGS_SERVER_CONNECTION_NAME
+        } else {
+            [0x93; 16]
+        });
         body.extend(73_u32.to_le_bytes());
         if is_new {
             body.extend(1_u16.to_le_bytes());
@@ -1013,6 +1017,16 @@ fn layout_optimization_extension_reads_connection_and_shared_reference() {
     assert_eq!(reader.position(), bytes.len());
 
     let mut reader = Reader::new(&bytes[..bytes.len() - 1]);
+    let mut refs = RefTable10_1::new();
+    assert!(read_page_layout_tail_10_1(&mut reader, &mut refs, 11, 0, 8192, |_| false).is_err());
+    assert_eq!(reader.position(), 0);
+    assert_eq!(refs.len(), 0);
+
+    // 伪装为正确 CLSID 的回引仍不能把 Page 当作连接名。
+    let reference_start = bytes.len() - 8 - 20;
+    bytes[reference_start..reference_start + 16].copy_from_slice(&AGS_SERVER_CONNECTION_NAME);
+    bytes[reference_start + 16..reference_start + 20].copy_from_slice(&9_u32.to_le_bytes());
+    let mut reader = Reader::new(&bytes);
     let mut refs = RefTable10_1::new();
     assert!(read_page_layout_tail_10_1(&mut reader, &mut refs, 11, 0, 8192, |_| false).is_err());
     assert_eq!(reader.position(), 0);

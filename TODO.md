@@ -257,6 +257,7 @@
     - [x] 读取布局准备结果的记录和 ConverterOption 类体。[原生取证](docs/mxd-page-layout-tail-20261118.md#布局准备结果与-converteroption)
     - [x] 接入布局准备结果固定 IMap 和 IUnknown 列表中的 Map 类体。[原生取证](docs/mxd-page-layout-tail-20261118.md#准备结果中的-map)
     - [x] 按原生有符号版本门读取布局优化扩展。[原生取证](docs/mxd-page-layout-tail-20261118.md#优化扩展的有符号版本门)
+    - [x] 按登记实例校验布局类型槽的回引并保留原始对象头。[原生取证](docs/mxd-page-layout-tail-20261118.md#布局类型槽的回引类判定)
     - [ ] 补齐跨流布局中尚未支持的扩展对象体。[布局尾段](docs/mxd-page-layout-tail-20261118.md)
     - [ ] 补齐 CustomOverlayGrid 尚未核实的 IName 实现。[格网名称取证](docs/mxd-page-layout-grid-20261118.md#自定义叠加格网的要素来源)
     - [ ] 验证 CustomOverlayGrid 已接入名称的真实布局宿主。

@@ -204,7 +204,12 @@ fn read_slot<T>(
     let entry = read_object_entry_10_1(r, refs)?;
     let body = match entry {
         ObjectEntry10_1::Null => None,
-        ObjectEntry10_1::BackReference { class_id, .. } if class_id == expected => None,
+        // SystemCore 对键命中的实例查询接口，回引头中的 CLSID 不参与查询。
+        ObjectEntry10_1::BackReference { key, .. }
+            if refs.registered_class(key) == Some(expected) =>
+        {
+            None
+        }
         ObjectEntry10_1::NewObject { class_id, .. } if class_id == expected => Some(load(r, refs)?),
         _ => {
             return Err(unsupported(&format!(
