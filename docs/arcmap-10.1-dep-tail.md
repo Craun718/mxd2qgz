@@ -1425,16 +1425,15 @@ TimeData、TimeDataDisplay 和 TimeTableDefinition 的读取方法。
 Save 的版本表 `0x7802ca70` 为 `[-1,-1,-1,-1,2]`；写出
 相同前缀、委派体与三个时间段。
 
-构造路径 `0x78017e0c` 调 `0x7801eb20`，创建
+构造路径 `0x78017e0c` 调 `0x7801eb20`，为独立的 `+0xe8` 成员创建
 `{FFCAEE7F-B07F-45A0-8586-C9CE98F9B215}`。CartoXProvider.dll
 10.1.0.3035（SHA-256
 `1c4a6d3681e7527ca21e1b9afeb3b5a83922ad12f6c8a0e5c19dec33dd6f3cf5`）
 的注册指令 `0x6ced16ab..0x6ced16b5` 将该 CLSID 与
 `0x6cee3620` 的名称 MosaicLicenseHelper 绑定。同一模块
 `0x6ce4da99` 接受构造器所请求的接口
-`{DF72A438-E456-4F70-B776-B85238584AD4}`。仍需继续确认
-该接口到 IPersistStream 的实际分派与消费长度。RasterBasemapLayer
-目前仍按长度保留 MosaicLayer 原始体。真实宿主与 ArcMap/QGIS
+`{DF72A438-E456-4F70-B776-B85238584AD4}`。该成员与上文的委派对象分开，见下节复核。RasterBasemapLayer
+仍保留 MosaicLayer 原始体。真实宿主与 ArcMap/QGIS
 人工验收尚未进行。
 
 #### 许可助手的本地接口边界
@@ -1447,15 +1446,12 @@ CartoXProvider 同摘要 DLL 的 MosaicLicenseHelper 构造在
 IUnknown。ImageServerLayer 的创建调用 `0x7801eb4b` 传空聚合者，
 在 `0x7801eb78` 取得自定义视图。
 
-后续 MosaicLayer 的 `0x7801f331` 对该视图查询 IPersistStream
-（`0x7802d028`）。该 IID 沿上述转发到本地助手的主 QI。
+若对许可助手视图查询 IPersistStream，该 IID 沿上述转发到
+本地助手的主 QI。
 主 QI 匹配自定义 IID 以外走 `0x6cea5640`，只比较 IUnknown、
 ISupportErrorInfo 及 `{9F9650F1-5F49-4041-BA0F-D10BAFF1D7BC}`，
-未命中在 `0x6cea5732` 返回 E_NOINTERFACE。另一方面 MosaicLayer
-在 `0x78019891..0x7801989a` 直接读取查询结果的 Load 槽。
-据此不能把本地注册类的自定义虚表当成委派持久化表，也不能将时间段
-假定紧跟 short。下一缺口是确认实际激活到的实现或取得可核验的
-MosaicLayer 字节。此处继续有界保留原始体，尚未运行 ArcMap 验证。
+未命中在 `0x6cea5732` 返回 E_NOINTERFACE。MosaicLayer 的持久化委派
+读取的是另一个成员，见下节。
 
 
 RasterBasemapLayer 的有界 MosaicLayer 槽现在尝试读取版本 1/2、
@@ -1463,7 +1459,7 @@ RasterBasemapLayer 的有界 MosaicLayer 槽现在尝试读取版本 1/2、
 short。前缀完整时提交其登记键，并记录委派段相对对象体的起始偏移。
 整段原始字节仍保留。前缀不能完整读取时保留原有有界结果，撤销
 本次前缀试读的引用键。构造 Scene 宿主覆盖新名称体、委派起点、
-原始字节及后继容器字段。许可助手体、时间段及真实宿主仍待验证。
+原始字节及后继容器字段。当时尚未对位委派体，后续复核见下。
 
 本机介质与历史提取目录按 SHA-256 去重后的 119 个 LYR 均为复合
 文档。用项目的 inspect/extract 读取其中全部 127 条流，包括
@@ -1490,6 +1486,24 @@ MosaicLicenseHelper。CartoXProvider.dll 的注册代码
 聚合分支则在 `0x6ce9ec11` 传入调用者提供的外层对象。
 
 这把前节的本地 QI 结果绑定到已登记工厂的非聚合构造路径，
-也说明其边界取决于原生运行实际选择的工厂。介质中的类表只提供
-CLSID 与程序标识，尚未确认运行时是否选择另一实现。仍需真实
-MosaicLayer 宿主或运行取证才能确定委派字节和时间段起点。
+介质中的类表只提供 CLSID 与程序标识。此工厂对应 `+0xe8` 成员，
+不决定持久化委派的边界。
+
+
+#### MosaicLayer 的聚合 GroupLayer
+
+复核同摘要 ImageServerLayer.dll 10.1.0.3035 的构造指令，修正
+此前把许可助手当作持久化委派对象的判断。`0x78017e00` 将
+`+0xe8` 地址交给许可助手构造调用，而 `0x78017e11` 切换到
+`+0xa8`。后者在 `0x78017e3e` 接收 AfCreateInstance 的输出：
+CLSID 数据 `0x78032c48` 是 GroupLayer
+`{EDAD6647-1810-11D1-86AE-0000F8751720}`，请求 IUnknown，
+聚合者为完整对象 `+0x6c`。Load 在 `0x78019886` 使用
+持久化视图 `+0x2c`，换算为完整对象 `+0xa8`，正是聚合 GroupLayer。
+由 `0x7801f331` 查询 IPersistStream 后，`0x7801989a` 直接
+把同一流交给 GroupLayer::Load。Save 对称调用其 Save。
+
+读取器在 MosaicLayer 前缀后复用已确认的 GroupLayer 完整体分派，
+没有独立对象头或新增 GroupLayer 键。v1 要求委派体到达对象边界；
+v2 保存 GroupLayer 终点供后续时间段读取。构造 Scene 宿主核对
+委派名称、终点和外层边界。真实宿主及 ArcMap/QGIS 人工验收仍待验证。

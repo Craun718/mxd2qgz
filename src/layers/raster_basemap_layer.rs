@@ -1,5 +1,6 @@
 //! ArcMap 10.1 RasterBasemapLayer 的对象体。
 use super::basemap_layer::{ARRAY_OF_I_SHADER_CLASS_ID, ShaderEntry10_1, read_shader_entries};
+use super::group_layer::{GROUP_LAYER_CLASS_ID, GroupLayerPrefix10_1};
 use super::layer_list::{
     LayerBodyPrefix10_1, RASTER_LAYER_CLASS_ID, read_complete_layer_body_10_1,
 };
@@ -28,8 +29,11 @@ pub struct MosaicLayerPrefix10_1 {
     pub dataset_name_body: Option<Box<MosaicDatasetName10_1>>,
     pub stored_string: String,
     pub short: i16,
-    /// 许可助手和可能的时间段从这里开始，保存原始字节。
+    /// 委派 GroupLayer 从这里开始。
     pub delegated_offset: usize,
+    pub group: Option<Box<GroupLayerPrefix10_1>>,
+    /// GroupLayer 完整读取后的位置，v2 的时间段从此开始。
+    pub group_end: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -197,13 +201,32 @@ fn read_mosaic_prefix(
     };
     let stored_string = read_string_10_1(&mut r, max)?;
     let short = r.read_u16_le()? as i16;
+    let delegated_offset = r.position();
+    let mut group_reader = r.clone();
+    let mut group_refs = refs.clone();
+    let (group, group_end) = match read_complete_layer_body_10_1(
+        &mut group_reader,
+        GROUP_LAYER_CLASS_ID,
+        max,
+        &mut group_refs,
+    ) {
+        Ok(LayerBodyPrefix10_1::GroupLayer(group))
+            if version == 2 || group_reader.remaining() == 0 =>
+        {
+            *refs = group_refs;
+            (Some(group), Some(group_reader.position()))
+        }
+        _ => (None, None),
+    };
     Ok(MosaicLayerPrefix10_1 {
         version,
         dataset_name,
         dataset_name_body,
         stored_string,
         short,
-        delegated_offset: r.position(),
+        delegated_offset,
+        group,
+        group_end,
     })
 }
 
@@ -307,6 +330,10 @@ mod tests {
             mosaic_body.extend([4, 0, 0, 0, b'M', 0, 0, 0]);
             mosaic_body.extend(23_u16.to_le_bytes());
             let delegated = mosaic_body.len();
+            mosaic_body.extend(1_u16.to_le_bytes()); // 直接委派 GroupLayer，无独立对象头。
+            mosaic_body.extend([4, 0, 0, 0, b'G', 0, 0, 0]);
+            mosaic_body.extend([0; 6 + 16 + 4]);
+            let group_end = mosaic_body.len();
             mosaic_body.extend([1, 2, 3]);
             if version >= 5 {
                 bytes.extend((20 + mosaic_body.len() as u32).to_le_bytes());
@@ -374,6 +401,8 @@ mod tests {
                 assert_eq!(prefix.stored_string, "M");
                 assert_eq!(prefix.short, 23);
                 assert_eq!(prefix.delegated_offset, delegated);
+                assert_eq!(prefix.group.as_ref().unwrap().name, "G");
+                assert_eq!(prefix.group_end, Some(group_end));
                 assert!(prefix.dataset_name_body.is_some());
                 assert_eq!(
                     refs.registered_class(45),
