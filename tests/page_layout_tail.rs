@@ -1054,7 +1054,13 @@ fn layout_optimization_extension_reads_prepare_result_versions_and_options() {
         if version == 1 {
             body.extend(1_i16.to_le_bytes());
             body.extend(23_u32.to_le_bytes());
-            body.extend([0; 16]); // 空属性集。
+            body.extend([
+                0x4f, 0xfa, 0xe9, 0xe7, 0xc6, 0xfc, 0x3d, 0x48, 0x94, 0x50, 0xff, 0x38, 0xb6, 0xa2,
+                0xc3, 0x15,
+            ]);
+            body.extend(74_u32.to_le_bytes());
+            body.extend(1_u16.to_le_bytes());
+            body.extend([0; 16]); // 模板参数内的空属性集。
             body.extend([0; 32]); // 空 IUnknown 和 IMap。
         } else {
             body.extend(1_i32.to_le_bytes());
@@ -1086,7 +1092,11 @@ fn layout_optimization_extension_reads_prepare_result_versions_and_options() {
         results[1].converter.entry,
         ObjectEntry10_1::BackReference { key: 73, .. }
     ));
-    assert!(refs.contains(73));
+    assert!(matches!(
+        results[0].converter.body.as_ref().unwrap().properties.body,
+        Some(mxd2qgz::maps::page_layout_tail::ConverterProperties10_1::RasterTemplate(_))
+    ));
+    assert!(refs.contains(73) && refs.contains(74));
     assert_eq!(reader.position(), bytes.len());
 
     let mut reader = Reader::new(&bytes[..bytes.len() - 1]);

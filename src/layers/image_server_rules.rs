@@ -1,6 +1,7 @@
 //! ImageServer.dll 10.1 的二进制 MosaicRule / RenderingRule 对象体。
 
 mod class_ids;
+pub(crate) use class_ids::RASTER_FUNCTION_TEMPLATE_ARGUMENTS;
 mod merge;
 mod mosaic;
 mod mosaic_arguments;
@@ -519,7 +520,7 @@ fn read_arguments_properties(
     })
 }
 
-pub(super) fn read_arguments(
+pub(crate) fn read_arguments(
     r: &mut Reader<'_>,
     max: usize,
     refs: &mut RefTable10_1,

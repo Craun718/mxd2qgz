@@ -512,3 +512,15 @@ esriGISClient 中确认 `IAGSServerConnectionName2` 和
 为 `AGSServerConnectionName`，已由 Rust 读取器接入。
 这次清点覆盖上述类型库声明。私有类或外部注册实现仍需另行取证，
 真实布局内的连接名及原生运行结果仍待验证。
+
+#### ConverterOption 的栅格模板属性集
+
+10.1 Desktop 的 72 个 MSFT 类型库中，栅格
+RasterFunctionTemplateArguments 类声明 IPropertySet；同版
+FunctionRasterDB.dll 的
+[持久化表与 Load thunk](mxd-10.1-image-server-rules.md) 确认其使用
+BasicFunctionArguments 的对象体。ConverterOption 的属性集槽现可
+读取这个类，并按登记类识别回引。构造布局覆盖新对象键及后继
+准备结果。GenericLocatorStyle 的持久化分支、其他私有实现和真实
+布局宿主仍待验证。XmlPropertySet 的独立持久化限制见
+[原生接口查询](mxd-10.1-raster-layer-tail.md#xmlpropertyset-扩展候选)。

@@ -99,7 +99,7 @@ pub(super) const FUNCTIONS: [[u8; 16]; 45] = [
     class_id(0xeed089c5, 0x98f5, 0x496d, 0x903cce3f2a1956dc), // RenderedRasterFunction
 ];
 
-pub(super) const RASTER_FUNCTION_TEMPLATE_ARGUMENTS: [u8; 16] =
+pub(crate) const RASTER_FUNCTION_TEMPLATE_ARGUMENTS: [u8; 16] =
     class_id(0xe7e9fa4f, 0xfcc6, 0x483d, 0x9450ff38b6a2c315);
 pub(super) const RASTER_INFO_FUNCTION_ARGUMENTS: [u8; 16] =
     class_id(0x877bd868, 0xee05, 0x4493, 0xb586bb71681f0665);

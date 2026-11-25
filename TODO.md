@@ -256,6 +256,7 @@
     - [x] 读取布局优化扩展的 ArcGIS Server 连接名及跨扩展回引。[原生取证](docs/mxd-page-layout-tail-20261118.md#优化扩展的-arcgis-server-连接名)
     - [x] 核对布局优化扩展连接名接口的 10.1 Desktop 公开实现。[类型库清点](docs/mxd-page-layout-tail-20261118.md#连接名接口的公开实现范围)
     - [x] 读取布局准备结果的记录和 ConverterOption 类体。[原生取证](docs/mxd-page-layout-tail-20261118.md#布局准备结果与-converteroption)
+    - [x] 接入 ConverterOption 属性集槽的 RasterFunctionTemplateArguments。[类型库与持久化取证](docs/mxd-page-layout-tail-20261118.md#converteroption-的栅格模板属性集)
     - [x] 接入布局准备结果固定 IMap 和 IUnknown 列表中的 Map 类体。[原生取证](docs/mxd-page-layout-tail-20261118.md#准备结果中的-map)
     - [x] 按原生有符号版本门读取布局优化扩展。[原生取证](docs/mxd-page-layout-tail-20261118.md#优化扩展的有符号版本门)
     - [x] 按登记实例校验布局类型槽的回引并保留原始对象头。[原生取证](docs/mxd-page-layout-tail-20261118.md#布局类型槽的回引类判定)

@@ -92,7 +92,13 @@ const CONVERTER_OPTION: [u8; 16] = [
 pub struct ConverterOption10_1 {
     pub version: i16,
     pub raw_long: u32,
-    pub properties: LayoutSlot10_1<PropertySetObjectStream10_1>,
+    pub properties: LayoutSlot10_1<ConverterProperties10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ConverterProperties10_1 {
+    PropertySet(Box<PropertySetObjectStream10_1>),
+    RasterTemplate(Box<crate::layers::image_server_rules::RasterFunctionArgumentsBody10_1>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -333,6 +339,41 @@ fn read_layout_map_body(
     })
 }
 
+fn read_converter_properties(
+    r: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<LayoutSlot10_1<ConverterProperties10_1>> {
+    use crate::layers::image_server_rules::{RASTER_FUNCTION_TEMPLATE_ARGUMENTS, read_arguments};
+
+    let entry = read_object_entry_10_1(r, refs)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { key, .. }
+            if matches!(
+                refs.registered_class(key),
+                Some(PROPERTY_SET_CLASS_ID | RASTER_FUNCTION_TEMPLATE_ARGUMENTS)
+            ) =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: PROPERTY_SET_CLASS_ID,
+            ..
+        } => Some(ConverterProperties10_1::PropertySet(Box::new(
+            read_property_set_object_stream_10_1(r, max, refs)?,
+        ))),
+        ObjectEntry10_1::NewObject {
+            class_id: RASTER_FUNCTION_TEMPLATE_ARGUMENTS,
+            ..
+        } => Some(ConverterProperties10_1::RasterTemplate(Box::new(
+            read_arguments(r, max, refs, RASTER_FUNCTION_TEMPLATE_ARGUMENTS, 0)?,
+        ))),
+        _ => return Err(unsupported("ConverterOption IPropertySet 的实现类尚未支持")),
+    };
+    Ok(LayoutSlot10_1 { entry, body })
+}
+
 fn read_prepare_results(
     r: &mut Reader<'_>,
     max: usize,
@@ -356,13 +397,7 @@ fn read_prepare_results(
                     return Err(invalid("ConverterOption 版本超限"));
                 }
                 let raw_long = r.read_u32_le()?;
-                let properties = read_slot(
-                    r,
-                    refs,
-                    PROPERTY_SET_CLASS_ID,
-                    "ConverterOption IPropertySet",
-                    |r, refs| read_property_set_object_stream_10_1(r, max, refs),
-                )?;
+                let properties = read_converter_properties(r, max, refs)?;
                 Ok(ConverterOption10_1 {
                     version,
                     raw_long,
