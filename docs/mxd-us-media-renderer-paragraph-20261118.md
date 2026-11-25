@@ -83,3 +83,22 @@ MapFrame 在 `/PageLayout:0x3c` 回引 `/Maps` 根 Map。
 及 `04b6086b15e694bea1e33a978b57265313cc4c44d3603488491b2062a7e90109`。
 两种头部均由实档测试确认，实际写出应用版本及其余版本边界仍待取证。
 ArcMap 10.1 和 QGIS 人工验证尚未进行。
+
+### 无 MapFrame 的 PageLayout 尾段回引
+
+以 `parse_mxd_streams_10_1` 重读本地 10.1 .NET SDK 的
+Montgomery 与 PrintMultiPage，按顺序从 `/Maps` 的第一个对象头
+读出根键，再核对布局尾段的 IMap 槽与两个流的完成位置。
+两个布局均没有解析出的 MapFrame，尾段的 IMap 槽仍回引根键 29。
+两流均完整消费，打印设置标记为零。
+
+| 工程 | /Version 文本及 short | Map / PageLayout 对象版本 | PageLayout 流末尾 |
+| --- | --- | --- | --- |
+| Montgomery | 10.0 / 18 | 44 / 14 | `0x65a` |
+| PrintMultiPage | 9.4 / 18 | 41 / 14 | `0x3fc10` |
+
+两份 MXD 的 SHA-256 依次为
+`c233c0bced7c454aa22be6a616c33cdf59256a5a129402557ebf7c2ff998d3bd`
+与 `931634d87ef82835fb7360cb2dfd20368947f8cbe196d604fc139fd82cfd022d`。
+这两份工程把跨流证据扩展到布局自身的 IMap 槽。其余版本边界、
+实际写出程序版本及 ArcMap/QGIS 人工核对仍待补充。
