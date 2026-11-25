@@ -1294,6 +1294,17 @@ fn page_layout_v11_reads_bounded_page_index_and_rolls_back_short_regions() {
     assert_eq!(tail.page_index_reference_suffix, [0xaa, 0xbb, 0xcc]);
     assert_eq!(reader.position(), reference.len());
 
+    // 把同一包装改成指向已登记的 MapFrame，不能把它当作 PageIndex。
+    let key_offset = reference.len() - 7;
+    reference[key_offset..key_offset + 4].copy_from_slice(&74_u32.to_le_bytes());
+    let original_refs = refs.len();
+    let mut reader = Reader::new(&reference);
+    let error =
+        read_page_layout_tail_10_1(&mut reader, &mut refs, 11, 0, 8192, |_| false).unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::Unsupported);
+    assert_eq!(reader.position(), 0);
+    assert_eq!(refs.len(), original_refs);
+
     for end in offset..bytes.len() {
         let mut reader = Reader::new(&bytes[..end]);
         let mut refs = RefTable10_1::new();

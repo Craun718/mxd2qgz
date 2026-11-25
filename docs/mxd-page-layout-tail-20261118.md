@@ -495,3 +495,9 @@ ExtraSafeReadObject 读取 PageIndex。沿用同版 SystemCore
 回引，解析器保留回引头之后的包装字节，从声明终点续读。
 构造测试覆盖头部 CLSID 与登记类不同且包装含额外字节的回引。
 真实携带额外字节的 PageIndex 回引仍待取证。
+
+错引其他已登记类时，AfCore `0x68a7beec–0x68a7bf15`
+在处理声明终点后仍返回普通 LoadObject 的 HRESULT。
+PageLayout 的调用分支检查负 HRESULT。构造回归将 PageIndex
+包装改为指向已登记的 MapFrame，核对 Rust 拒绝该回引并回滚
+布局尾段游标和引用表。
