@@ -261,6 +261,7 @@
     - [ ] 补齐跨流布局中尚未支持的扩展对象体。[布局尾段](docs/mxd-page-layout-tail-20261118.md)
     - [x] 对位 PageLayout v11 非空槽的 PageIndex 接口和持久化入口。[原生取证](docs/mxd-page-layout-tail-20261118.md#pagelayout-v11-的-pageindex-接口)
     - [x] 读取 PageLayout v11 有界 PageIndex 的版本化字段与已知对象槽。[原生取证](docs/mxd-page-layout-tail-20261118.md#pageindex-的有界对象体)
+    - [x] 接入 PageIndex 首次定义的 MapFrame。[原生取证](docs/mxd-page-layout-tail-20261118.md#pageindex-首次定义的-mapframe)
     - [x] 接入 CustomOverlayGrid 的 TopologyName 对象体。[类型库与原生取证](docs/mxd-page-layout-grid-20261118.md#叠加格网的-topologyname)
     - [x] 接入 CustomOverlayGrid 的 RouteMeasureLocatorName 对象体。[类型库与原生取证](docs/mxd-page-layout-grid-20261118.md#叠加格网的-routemeasurelocatorname)
     - [x] 接入 CustomOverlayGrid 的 CadastralFabricName 对象体。[类型库与原生取证](docs/mxd-page-layout-grid-20261118.md#叠加格网的-cadastralfabricname)

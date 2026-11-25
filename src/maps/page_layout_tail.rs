@@ -139,6 +139,7 @@ const PAGE_INDEX: [u8; 16] = [
 pub struct PageIndex10_1 {
     pub version: u16,
     pub frame: ObjectEntry10_1,
+    pub frame_body: Option<Box<super::map_frame::MapFrame10_1>>,
     pub layer: LayoutSlot10_1<Box<crate::layers::layer_list::LayerBodyPrefix10_1>>,
     pub strings: Vec<String>,
     pub first_long: u32,
@@ -508,16 +509,42 @@ fn read_page_index(
     r: &mut Reader<'_>,
     refs: &mut RefTable10_1,
     max: usize,
+    region_offset: usize,
+    is_root_map: &impl Fn(u32) -> bool,
 ) -> io::Result<PageIndex10_1> {
     let version = read_version(r, 2, "PageIndex")?;
-    let frame = read_slot(
-        r,
-        refs,
-        super::page_layout_prefix::MAP_FRAME_CLASS_ID,
-        "PageIndex IMapFrame",
-        |_, _| Err::<(), _>(unsupported("PageIndex 的新 MapFrame 尚未支持")),
-    )?
-    .entry;
+    use super::page_layout_prefix::{MAP_FRAME_CLASS_ID, read_map_frame};
+    use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
+
+    let mut probe = r.clone();
+    let (frame, frame_body) = match read_header_10_1(&mut probe)? {
+        ObjectHeader::Null => (ObjectEntry10_1::Null, None),
+        ObjectHeader::Object { class_id, key } if refs.contains(key) => {
+            if refs.registered_class(key) != Some(MAP_FRAME_CLASS_ID) {
+                return Err(unsupported("PageIndex 的回引未指向已确认的 MapFrame"));
+            }
+            (ObjectEntry10_1::BackReference { class_id, key }, None)
+        }
+        ObjectHeader::Object {
+            class_id: MAP_FRAME_CLASS_ID,
+            key,
+        } => {
+            let body = refs.with_nested_graphics(|refs| {
+                read_map_frame(r, region_offset, max, refs, is_root_map)
+            })?;
+            (
+                ObjectEntry10_1::NewObject {
+                    class_id: MAP_FRAME_CLASS_ID,
+                    key,
+                },
+                Some(Box::new(body)),
+            )
+        }
+        _ => return Err(unsupported("PageIndex IMapFrame 槽的实现类尚未支持")),
+    };
+    if frame_body.is_none() {
+        *r = probe;
+    }
     let layer = read_slot(
         r,
         refs,
@@ -560,6 +587,7 @@ fn read_page_index(
     Ok(PageIndex10_1 {
         version,
         frame,
+        frame_body,
         layer,
         strings,
         first_long,
@@ -575,6 +603,7 @@ fn read_version_11_slot(
     r: &mut Reader<'_>,
     refs: &mut RefTable10_1,
     max: usize,
+    is_root_map: &impl Fn(u32) -> bool,
 ) -> io::Result<LayoutSlot10_1<PageIndex10_1>> {
     let size = u64::from_le_bytes(r.read_bytes(8)?.try_into().unwrap());
     if size == 0 {
@@ -586,9 +615,10 @@ fn read_version_11_slot(
     if size > max as u64 {
         return Err(invalid("PageIndex 声明体长超过限额"));
     }
+    let region_offset = r.position();
     let mut bounded = r.read_region(size as usize)?;
     let slot = read_slot(&mut bounded, refs, PAGE_INDEX, "PageIndex", |r, refs| {
-        read_page_index(r, refs, max)
+        read_page_index(r, refs, max, region_offset, is_root_map)
     })?;
     if bounded.remaining() != 0 {
         return Err(invalid("PageIndex 未完整读取声明范围"));
@@ -684,7 +714,7 @@ pub fn read_page_layout_tail_10_1(
         (Vec::new(), Vec::new())
     };
     let version_11_slot = (version >= 11)
-        .then(|| read_version_11_slot(&mut r, &mut t, max))
+        .then(|| read_version_11_slot(&mut r, &mut t, max, &is_root_map))
         .transpose()?;
     let legacy_version_12_or_13_doubles = matches!(version, 12 | 13)
         .then(|| doubles(&mut r))

@@ -1216,7 +1216,16 @@ fn page_layout_v11_reads_bounded_page_index_and_rolls_back_short_regions() {
     let mut object = class.to_vec();
     object.extend(73_u32.to_le_bytes());
     object.extend(2_u16.to_le_bytes());
-    object.extend([0; 32]); // 空地图框和要素图层。
+    object.extend(mxd2qgz::maps::page_layout_prefix::MAP_FRAME_CLASS_ID);
+    object.extend(74_u32.to_le_bytes());
+    object.extend(4_u16.to_le_bytes());
+    object.extend(mxd2qgz::maps::map_object::MAP_CLASS_ID);
+    object.extend(75_u32.to_le_bytes());
+    object.extend(complete_layout_map_v18());
+    object.extend([0; 8 + 2 + 2 + 16 + 2]);
+    object.extend([2, 0, 0, 0, 0, 0].repeat(2));
+    object.extend([0; 4 + 16 + 16 + 16 + 2]);
+    object.extend([0; 16]); // 空要素图层。
     object.extend(1_i32.to_le_bytes());
     object.extend([2, 0, 0, 0, 0, 0]);
     object.extend(17_u32.to_le_bytes());
@@ -1236,6 +1245,10 @@ fn page_layout_v11_reads_bounded_page_index_and_rolls_back_short_regions() {
     let mut refs = RefTable10_1::new();
     let tail = read_page_layout_tail_10_1(&mut reader, &mut refs, 11, 0, 8192, |_| false).unwrap();
     let index = tail.page_index.unwrap();
+    let frame = index.frame_body.unwrap();
+    assert_eq!(frame.prefix.frame_key, 74);
+    assert_eq!(frame.embedded_map.unwrap().0.version, 18);
+    assert!(refs.contains(74) && refs.contains(75));
     assert_eq!(index.strings, [""]);
     assert_eq!(index.raw_fields, [0x93; 32]);
     assert_eq!(index.objects, [ObjectEntry10_1::Null]);

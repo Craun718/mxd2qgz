@@ -419,3 +419,11 @@ IMapFrame 支持空和已确认回引，IFeatureLayer 支持普通 FeatureLayer�
 IUnknown 列表支持空和回引，装饰槽沿用已核实类。构造输入核对
 v2 尾字段及逐字节截断回滚。新建 MapFrame、其他类及真实数据驱动
 页面工程仍待验证。ArcMap/QGIS 人工验收未执行。
+
+#### PageIndex 首次定义的 MapFrame
+
+PageIndex::Load `0x7b6bdbe0` 的首个普通对象槽请求 IMapFrame
+（IID 位于 `0x7b71cfd4`）。当键首次出现时，读取器从原对象头
+调用布局 MapFrame 读取器，沿用布局引用表和图形嵌套深度限制。
+构造测试覆盖内联 MapFrame 及其内联 Map，核对两个键、PageIndex
+后续字段和截断回滚。真实数据驱动页面工程仍待 ArcMap/QGIS 验收。
