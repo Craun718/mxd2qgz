@@ -475,3 +475,23 @@ LoadObject 构造副本。Assign 在同类分支调用后者，将源对象
 v6 时会随对象体写读 v5 short；旧文档索引分支省略此字段。
 本轮核对了调用链，内存流初始化后的实际文档版本及 Clone/Assign
 的运行结果仍待验证。该证据也未定性 v5 short 的业务用途。
+
+#### 克隆内存流的默认保存版本
+
+Map.dll `0x7946ba13–0x7946ba21` 和 `0x7946bb2c–0x7946bb38`
+均以空内存句柄和标志 1 调用 AfCore::CreateMemoryStream。
+同版 AfCore.dll（SHA-256
+`031858c414c0105b3b978c754f3d0f31ba1d98f15d44ff15b1589c9adcc47c17`）
+在 `0x68a7bb2a` 调 CreateStreamOnHGlobal，`0x68a7bb52`
+创建 SystemCore 的 ObjectStream，`0x68a7bb68` 以
+IObjectStream +0x38 绑定底层流。
+
+SystemCore.dll 10.1.0.3035（SHA-256
+`f63cf9494acc155df7fa6ffcfc388f867b76ed005eac074f67161b3f7de3ad1a`）
+在构造指令 `0x7ffcf16c` 将完整对象 +0x54 初始化为 5。
+SetStream `0x7ffcf7a0` 只更新底层流引用。
+IDocumentVersion getter `0x7ffd0630` 从接口相对 +0x40
+返回该值。Clone 和 Assign 的这两条内存流路径在 SaveObject
+之前没有设置其他版本。按静态调用链，比例尺基类 Save 使用
+文档索引 5，写出 v6，携带 v5 short 和 v6 short。
+ArcMap 实际运行及 v5 short 的业务用途仍待验证。
