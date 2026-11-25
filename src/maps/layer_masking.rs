@@ -131,11 +131,15 @@ pub fn known_layer_masking_support_10_1(class_id: &[u8; 16]) -> LayerMaskingSupp
     use crate::layers::process_layer::PROCESS_LAYER_CLASS_ID;
 
     use crate::layers::layer_list::RASTER_LAYER_CLASS_ID;
+    use crate::layers::raster_basemap_layer::MOSAIC_LAYER_CLASS_ID;
     use crate::layers::wcs_layer::WCS_LAYER_CLASS_ID;
 
     if matches!(
         *class_id,
-        GROUP_LAYER_CLASS_ID | BASEMAP_LAYER_CLASS_ID | PROCESS_LAYER_CLASS_ID
+        GROUP_LAYER_CLASS_ID
+            | BASEMAP_LAYER_CLASS_ID
+            | PROCESS_LAYER_CLASS_ID
+            | MOSAIC_LAYER_CLASS_ID
     ) {
         LayerMaskingSupport10_1::Supported
     } else if *class_id == FEATURE_LAYER_CLASS_ID

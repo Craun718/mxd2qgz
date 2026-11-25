@@ -797,3 +797,18 @@ Load `0x8044096e–0x80440c2c` 与点高程渲染器共用
 
 合成测试覆盖 v1–v3 的完整边界、负数属性条目和逐字节截断。
 尚未用相关实档在 ArcMap 10.1 或 QGIS 中人工验证。
+
+## MosaicLayer 的聚合组遮罩
+
+ImageServerLayer.dll x86 10.1.0.3035（SHA-256
+`0256f97057275fedb550c947b0f8333184427755a394ef09099d22349fe5bb14`）
+的 MosaicLayer 主虚表 `0x78032838` 使用 QI `0x78018170`。
+对照该函数的直接比较表及 `0x7801857c..0x780185dd` 的六个委派排除项，
+两处均未命中 ILayerMasking、ICompositeLayer 或 IBasemapLayer。
+`0x780185df..0x780185ec` 把原 IID 交给完整对象 `+0xa8` 的
+[聚合 GroupLayer](arcmap-10.1-dep-tail.md#mosaiclayer-的聚合-grouplayer)。
+其中 ILayerMasking、ICompositeLayer 分别由 FeatureLayer.dll
+`0x6f710211..0x6f710240`、`0x6f70fe97..0x6f70fec0` 返回。
+Map 因此按 MosaicLayer 键消费当前记录，再枚举聚合组的子层。
+聚合组体没有单独的 ObjectStream 键。构造测试检查外层与子层的记录顺序及流位置。
+真实 MosaicLayer 地图宿主和 ArcMap/QGIS 人工验收尚未验证。

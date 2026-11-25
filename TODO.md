@@ -570,6 +570,7 @@
   - [x] 接入 GroupLayer ExtraSafe 有界子层中已确认无 ILayerMasking 的类及其回引。[子层遍历取证](docs/mxd-luna-deep-layer-masking-20261118.md#grouplayer-子层遍历)
   - [x] 确认 DimensionLayer、TopologyLayer 和 NetworkLayer 不消费逐图层遮罩，读取到三份 SDK 工程的 Maps 流尾。[原生分派与实档边界](docs/mxd-luna-deep-layer-masking-20261118.md#dimensionlayertopologylayer-和-networklayer)
   - [x] 接入 ProcessLayer 的新 GroupLayer 委派槽及逐图层遮罩递归，读完 SDK 的 USA_Data_ClipTools 地图对象。[原生加载与实档边界](docs/mxd-luna-deep-layer-masking-20261118.md#processlayer-的组图层委派及遮罩)
+  - [x] 按 MosaicLayer 外层键读取遮罩并枚举聚合组子层。[原生接口取证](docs/mxd-luna-deep-layer-masking-20261118.md#mosaiclayer-的聚合组遮罩)
   - [x] 接入 Map v38/v39 的 TimeExtent 和 TimeReference 对象槽，读完两份 SDK 工程的 Maps 流。[时间对象取证](docs/mxd-map-tail-cross-stream-20261118.md#map-v38-至-v39-的时间对象槽)
   - [x] 接入 Map 照明后 GeometryBag 对象及其缓存几何、成员回引与坐标系。[集合取证](docs/mxd-round4-map-spatial-20261117.md#geometrybag-和-multipatch-的持久化入口)
   - [x] 接入 Map 照明后 MultiPatch v1/v2 对象边界及坐标系槽，保留面片记录原始字节。[面片持久化取证](docs/mxd-round4-map-spatial-20261117.md#geometrybag-和-multipatch-的持久化入口)

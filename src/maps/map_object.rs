@@ -628,33 +628,31 @@ impl<'body> LayerMaskingTraversal<'_, '_, 'body> {
                 (class_id, key, body)
             }
         };
-        match body {
-            Some(LayerBodyPrefix10_1::GroupLayer(group)) => {
-                if group.stop != GroupLayerStop10_1::Complete
-                    || usize::try_from(group.child_count) != Ok(group.children.len())
-                {
-                    return Err(format!(
-                        "组图层键 {key} 的子层未完整读取，类 {}",
-                        class_id_hex(&class_id)
-                    ));
-                }
-                self.read_record(key)?;
-                for child in &group.children {
-                    self.visit_group_child(child, depth + 1)?;
-                }
+        let group = match body {
+            Some(LayerBodyPrefix10_1::GroupLayer(group)) => Some(group.as_ref()),
+            Some(LayerBodyPrefix10_1::ProcessLayer(process)) => Some(&process.group),
+            Some(LayerBodyPrefix10_1::MosaicLayer(mosaic)) => mosaic.group.as_deref(),
+            _ => None,
+        };
+        if let Some(group) = group {
+            if group.stop != GroupLayerStop10_1::Complete
+                || usize::try_from(group.child_count) != Ok(group.children.len())
+            {
+                return Err(format!(
+                    "组图层键 {key} 的子层未完整读取，类 {}",
+                    class_id_hex(&class_id)
+                ));
             }
-            Some(LayerBodyPrefix10_1::ProcessLayer(process)) => {
-                if usize::try_from(process.group.child_count) != Ok(process.group.children.len()) {
-                    return Err(format!(
-                        "流程图层键 {key} 的子层未完整读取，类 {}",
-                        class_id_hex(&class_id)
-                    ));
-                }
-                self.read_record(key)?;
-                // ICompositeLayer 枚举委派组的子层，组本身没有独立遮罩记录。
-                for child in &process.group.children {
-                    self.visit_group_child(child, depth + 1)?;
-                }
+            self.read_record(key)?;
+            // 聚合组通过外层键读取遮罩，再按 ICompositeLayer 顺序访问子层。
+            for child in &group.children {
+                self.visit_group_child(child, depth + 1)?;
+            }
+            return Ok(());
+        }
+        match body {
+            Some(LayerBodyPrefix10_1::MosaicLayer(_)) => {
+                return Err(format!("镶嵌图层键 {key} 缺少完整聚合组"));
             }
             Some(LayerBodyPrefix10_1::BasemapLayer(basemap))
                 if basemap.stop == BasemapStop10_1::Complete =>
@@ -2638,5 +2636,82 @@ fn scalebar_subclass_kind(class_id: &[u8; 16]) -> Option<ScalebarSubclassKind10_
         Some(ScalebarSubclassKind10_1::DoubleAlternating)
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod masking_tests {
+    use super::*;
+    use crate::layers::group_layer::{
+        GROUP_LAYER_CLASS_ID, GroupChildEntry10_1, GroupLayerPrefix10_1, GroupLayerStop10_1,
+    };
+    use crate::layers::raster_basemap_layer::{MOSAIC_LAYER_CLASS_ID, MosaicLayerPrefix10_1};
+
+    #[test]
+    fn mosaic_masking_uses_outer_key_then_child_keys() {
+        let mut group = GroupLayerPrefix10_1 {
+            version: 1,
+            name: String::new(),
+            shorts_after_name: [0; 3],
+            doubles: [0.0; 2],
+            child_count: 0,
+            children: Vec::new(),
+            visibility: None,
+            nested_after_visibility: None,
+            envelope: None,
+            double_after_nested: None,
+            tail: None,
+            stop: GroupLayerStop10_1::Complete,
+            remaining_bytes: 0,
+        };
+        let child = LayerBodyPrefix10_1::GroupLayer(Box::new(group.clone()));
+        group.child_count = 1;
+        group.children.push(GroupChildEntry10_1::ParsedNewObject {
+            class_id: GROUP_LAYER_CLASS_ID,
+            key: 42,
+            parsed: Box::new(child),
+        });
+        let mosaic = LayerBodyPrefix10_1::MosaicLayer(Box::new(MosaicLayerPrefix10_1 {
+            version: 1,
+            dataset_name: ObjectEntry10_1::Null,
+            dataset_name_body: None,
+            stored_string: String::new(),
+            short: 0,
+            delegated_offset: 0,
+            group: Some(Box::new(group)),
+            group_end: None,
+            time: None,
+        }));
+        let data = [1, 0, 0, 0, 0, 0, 11, 0, 1, 0, 0, 0, 0, 0, 12, 0, 99];
+        let mut reader = Reader::new(&data);
+        let mut refs = RefTable10_1::new();
+        let mut traversal = LayerMaskingTraversal {
+            reader: &mut reader,
+            refs: &mut refs,
+            max_bytes: 4096,
+            skip_top_level_basemap: true,
+            known: Default::default(),
+            records: Vec::new(),
+        };
+        traversal
+            .visit(
+                ObjectEntry10_1::NewObject {
+                    class_id: MOSAIC_LAYER_CLASS_ID,
+                    key: 41,
+                },
+                Some(&mosaic),
+                0,
+            )
+            .unwrap();
+        assert_eq!(traversal.records.len(), 2);
+        assert_eq!(
+            (traversal.records[0].0, traversal.records[0].1.tail),
+            (41, 11)
+        );
+        assert_eq!(
+            (traversal.records[1].0, traversal.records[1].1.tail),
+            (42, 12)
+        );
+        assert_eq!(reader.position(), 16);
     }
 }
