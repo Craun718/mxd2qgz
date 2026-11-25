@@ -372,3 +372,17 @@ SystemCore.dll 10.1.0.3035 的 `0x7ffd0063–0x7ffd007d`
 构造连接名扩展验证两种情况：回引头的 CLSID 与登记类不同但键
 指向连接名时可以续读，回引头写成连接名但键指向 Page 时回滚。
 真实布局中这种不一致的回引及 ArcMap/QGIS 人工验收仍待验证。
+
+### PageLayout 尾段的新 Map 与回引
+
+PageLayout.dll 10.1.0.3035 的 `0x7b6e5539` 将
+`0x7b71feb4` 的 IMap IID `{E6BDAA75-4D35-11D0-98BE-00805F7CED21}`
+交给普通 LoadObject。反编译导出 `PageLayout/7b6e4e30.c` 显示，
+加载成功后先把 Map 传给布局，再继续读取 short 字段。
+SystemCore 按对象键区分新体和回引。
+
+读取器在新体处复用布局准备结果的 Map 解析入口，沿用同一引用表
+及嵌套深度限制。回引用已确认的 Map 键校验，保留头中的原始类标识。
+构造测试覆盖新 Map 和跨读取回引。SDK 中已核实
+[尾段回引根 Map 的宿主](mxd-us-media-renderer-paragraph-20261118.md#无-mapframe-的-pagelayout-尾段回引)。
+尾段首次定义 Map 的真实宿主和 ArcMap/QGIS 人工验收仍待验证。

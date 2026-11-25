@@ -139,6 +139,7 @@ pub struct PageLayoutTail10_1 {
     pub guides: [LayoutSlot10_1<SnapGuides10_1>; 2],
     pub snap_environment: GraphicSnapEnvironment10_1,
     pub map: ObjectEntry10_1,
+    pub map_body: Option<Box<(MapPrefix10_1, MapSuffix10_1)>>,
     pub raw_shorts: [u16; 4],
     /// 视图范围的四个序列化坐标。
     pub view_extent: [f64; 4],
@@ -275,7 +276,7 @@ fn read_class_ids(r: &mut Reader<'_>, max: usize) -> io::Result<Vec<[u8; 16]>> {
         .collect())
 }
 
-fn read_prepare_map(
+fn read_layout_map_body(
     r: &mut Reader<'_>,
     max: usize,
     refs: &mut RefTable10_1,
@@ -342,7 +343,7 @@ fn read_prepare_results(
                     if let ObjectEntry10_1::NewObject { class_id, key } = entry {
                         match class_id {
                             MAP_CLASS_ID => {
-                                read_prepare_map(r, max, refs, key)?;
+                                read_layout_map_body(r, max, refs, key)?;
                             }
                             FEATURE_LAYER_CLASS_ID => {
                                 read_complete_layer_body_10_1(r, class_id, max, refs)?;
@@ -371,7 +372,7 @@ fn read_prepare_results(
                         ObjectEntry10_1::NewObject {
                             class_id: MAP_CLASS_ID,
                             key,
-                        } => Some(Box::new(read_prepare_map(r, max, refs, key)?)),
+                        } => Some(Box::new(read_layout_map_body(r, max, refs, key)?)),
                         _ => return Err(unsupported(&format!("布局准备结果 IMap 槽：{entry:?}"))),
                     };
                     Ok(LayoutSlot10_1 { entry, body })
@@ -539,13 +540,20 @@ pub fn read_page_layout_tail_10_1(
         extra_class_ids: read_class_ids(&mut r, max)?,
     };
     let map = read_object_entry_10_1(&mut r, &mut t)?;
-    match map {
-        ObjectEntry10_1::Null => {}
-        ObjectEntry10_1::BackReference {
+    let map_body = match map {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { key, .. }
+            if is_root_map(key)
+                || t.contains_map(key)
+                || t.registered_class(key) == Some(MAP_CLASS_ID) =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
             class_id: MAP_CLASS_ID,
             key,
-        } if is_root_map(key) => {}
-        _ => return Err(unsupported("PageLayout 所引用的 Map 不是已确认的根对象")),
+        } => Some(Box::new(read_layout_map_body(&mut r, max, &mut t, key)?)),
+        _ => return Err(unsupported("PageLayout 的 IMap 槽没有已确认的实现类")),
     };
     let raw_shorts = [
         r.read_u16_le()?,
@@ -619,6 +627,7 @@ pub fn read_page_layout_tail_10_1(
         guides,
         snap_environment,
         map,
+        map_body,
         raw_shorts,
         view_extent,
         layout_origin_size,

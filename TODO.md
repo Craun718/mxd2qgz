@@ -273,6 +273,7 @@
     - [x] 验证 10.1 Desktop 与 SDK 介质已读到的非空 EmfPrinter 布局均耗尽流。[实档复核](docs/mxd-page-layout-tail-20261118.md#101-介质非空打印设置复核)
     - [x] 接入普通和 ExtraSafe 布局循环及组子元素的 CircleElement、EllipseElement。[取证](docs/mxd-page-layout-surround-20261118.md#布局中的圆和椭圆元素)
     - [x] 核对无 MapFrame 时 PageLayout 尾段的 IMap 跨流回引。[SDK 实档](docs/mxd-us-media-renderer-paragraph-20261118.md#无-mapframe-的-pagelayout-尾段回引)
+    - [x] 接入 PageLayout 尾段首次定义的 Map，并按登记键校验 IMap 回引。[原生取证](docs/mxd-page-layout-tail-20261118.md#pagelayout-尾段的新-map-与回引)
     - [ ] 确定跨流复用 ObjectStream 的版本适用性（10.1 介质中已见 `/Version` 候选 9.2、9.3、10.0 使用实际 MapFrame 跨流回引，10.1 候选中已确认 Africa、USA 等工程的实际跨流回引；另由 calibrate 证实 8.1 候选的 Map v19 和布局 v6 实际跨流回引；仍待核对其余版本边界及其他宿主，见[介质分组](docs/mxd-us-media-renderer-paragraph-20261118.md)）。
     - [x] 验证 9.0 / short 10 和 9.0 / short 13 工程中的 MapFrame 跨流回引。[SDK 实档](docs/mxd-us-media-renderer-paragraph-20261118.md#90-候选的-sdk-mapframe-回引)
     - [x] 逐份核对 135 份工程中 MapFrame 对首个 Map 的跨流回引，补证 Map v29 与布局 v9 的组合。[版本清点](docs/mxd-us-media-renderer-paragraph-20261118.md#mapframe-跨流回引的版本清点)

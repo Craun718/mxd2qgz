@@ -1104,15 +1104,7 @@ fn layout_prepare_results_read_new_maps_and_validate_legacy_map_key() {
         0x9f, 0xd8, 0x29, 0x6c, 0xba, 0xb7, 0xb0, 0x4f, 0xa8, 0x8d, 0xfe, 0xa7, 0x7a, 0x03, 0xba,
         0x0e,
     ];
-    let mut map = 18_u16.to_le_bytes().to_vec();
-    map.extend([2, 0, 0, 0, 0, 0].repeat(2));
-    map.extend([0; 16 + 8]); // 空空间参考及两组图层。
-    map.extend((-1_i32).to_le_bytes());
-    map.extend([0; 16 + 4 + 32 + 8 + 16 + 4]);
-    map.extend(0xffff_u16.to_le_bytes());
-    map.extend([0; 2 + 8 + 2 + 4 + 16 + 12 + 32]);
-    map.extend([0; 2 + 16 + 2 + 16 + 2 + 2 + 8]);
-    map.extend([0; 4 + 4 + 2 + 8 + 4 + 8 + 2 + 16]);
+    let map = complete_layout_map_v18();
 
     let mut body = 1_u16.to_le_bytes().to_vec();
     body.extend(3_i32.to_le_bytes());
@@ -1169,4 +1161,48 @@ fn layout_prepare_results_read_new_maps_and_validate_legacy_map_key() {
     assert!(read_page_layout_tail_10_1(&mut reader, &mut refs, 11, 0, 8192, |_| false).is_err());
     assert_eq!(reader.position(), 0);
     assert_eq!(refs.len(), 0);
+}
+
+fn complete_layout_map_v18() -> Vec<u8> {
+    let mut map = 18_u16.to_le_bytes().to_vec();
+    map.extend([2, 0, 0, 0, 0, 0].repeat(2));
+    map.extend([0; 16 + 8]); // 空空间参考及两组图层。
+    map.extend((-1_i32).to_le_bytes());
+    map.extend([0; 16 + 4 + 32 + 8 + 16 + 4]);
+    map.extend(0xffff_u16.to_le_bytes());
+    map.extend([0; 2 + 8 + 2 + 4 + 16 + 12 + 32]);
+    map.extend([0; 2 + 16 + 2 + 16 + 2 + 2 + 8]);
+    map.extend([0; 4 + 4 + 2 + 8 + 4 + 8 + 2 + 16]);
+    map
+}
+
+#[test]
+fn page_layout_tail_reads_new_map_and_checks_registered_map_references() {
+    use mxd2qgz::maps::map_object::MAP_CLASS_ID;
+
+    let baseline = layout_tail(0, 0);
+    let offset = baseline.len() - (16 + 8 + 64);
+    let mut new_map = MAP_CLASS_ID.to_vec();
+    new_map.extend(73_u32.to_le_bytes());
+    new_map.extend(complete_layout_map_v18());
+    let mut bytes = baseline.clone();
+    bytes.splice(offset..offset + 16, new_map);
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let result = read_page_layout_tail_10_1(&mut reader, &mut refs, 0, 0, 8192, |_| false).unwrap();
+    assert_eq!(result.map_body.unwrap().0.version, 18);
+    assert_eq!(reader.position(), bytes.len());
+
+    let mut reference = baseline;
+    reference[offset..offset + 16].copy_from_slice(&[0x93; 16]);
+    reference.splice(offset + 16..offset + 16, 73_u32.to_le_bytes());
+    // 第二次读取时将纸张改为前一条已读对象的回引。
+    reference.drain(20..20 + (2 + 4 + 4 + 2 + 4 + 16 + 32 + 4 + 3 * 16));
+    let mut reader = Reader::new(&reference);
+    let result = read_page_layout_tail_10_1(&mut reader, &mut refs, 0, 0, 8192, |_| false).unwrap();
+    assert!(matches!(
+        result.map,
+        ObjectEntry10_1::BackReference { key: 73, .. }
+    ));
+    assert_eq!(reader.position(), reference.len());
 }
