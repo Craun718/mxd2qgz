@@ -869,6 +869,36 @@ fn map_frame_reads_mgrs_and_custom_overlay_grid_bodies() {
     assert_eq!(reader.position(), 0);
     assert!(!refs.contains(72));
 
+    use mxd2qgz::objects::route_event_name::ROUTE_MEASURE_LOCATOR_NAME_CLASS_ID;
+    let mut locator = ROUTE_MEASURE_LOCATOR_NAME_CLASS_ID.to_vec();
+    locator.extend(72_u32.to_le_bytes());
+    locator.extend(1_u16.to_le_bytes());
+    locator.extend(2_u16.to_le_bytes());
+    for value in ["路线", "", "", ""] {
+        string(&mut locator, value);
+    }
+    locator.extend([0; 16]); // 空路线名称。
+    string(&mut locator, "路线编号");
+    locator.extend(1_u16.to_le_bytes());
+    locator.extend(12_i32.to_le_bytes());
+    locator.extend(13_i32.to_le_bytes());
+    let mut locator_body = body.clone();
+    locator_body.splice(start + source_offset..start + source_end, locator);
+    let bytes = wrap(&locator_body);
+    let mut reader = Reader::new(&bytes);
+    let mut refs = original.clone();
+    let frame = read_page_layout_map_frame_10_1(&mut reader, 4096, &mut refs).unwrap();
+    let overlay = frame.grids[3].custom_overlay_grid.as_ref().unwrap();
+    let Some(DatasetNameMoreBody10_1::RouteMeasureLocator(name)) =
+        overlay.other_source_name.as_deref()
+    else {
+        panic!("预期路线定位器名称");
+    };
+    assert_eq!(name.suffix.as_ref().unwrap().legacy_long_v2, Some(13));
+    assert_eq!(overlay.string_44, "格网编号");
+    assert!(refs.contains(72));
+    assert_eq!(reader.remaining(), 0);
+
     let mut unknown_event_table = event_body;
     unknown_event_table[start + source_offset + event_table_offset] ^= 0xff;
     let mut unknown_source = body.clone();

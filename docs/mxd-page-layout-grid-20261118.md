@@ -328,3 +328,15 @@ CustomOverlayGrid 类标识的内存序字节。结果验证介质回归及实�
 `0x7095e5c0` 的读取器](arcmap-10.1-dataset-name.md)。
 MapFrame 构造输入核对名称、引用键、后继格网字符串和截断回滚。
 真实格网宿主和 ArcMap 中的打开结果仍待验证。
+
+### 叠加格网的 RouteMeasureLocatorName
+
+10.1 介质 esriLocation.olb（SHA-256
+`805fc1468786cad8fcd97535ddd7573f75096dad5f069f54684a30560604437c`）
+在 RouteMeasureLocatorName 类
+`{8CC373A6-2121-11D4-9FC2-00C04F6BDF06}` 上登记 IName 与
+IPersistStream。CustomOverlayGrid 的 IName 槽复用
+[Load `0x7cc7cad0` 和基类 Load `0x7cc52540` 的读取器](mxd-terra-round9-bookmark.md#routemeasurelocatorname)，
+沿用内部路线名称槽的停止点。构造 MapFrame 验证基类 v2 的额外
+LONG、对象登记及后续格网字符串。真实格网宿主和 ArcMap
+打开与显示仍待验证。

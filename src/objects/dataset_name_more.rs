@@ -113,8 +113,9 @@ use crate::objects::query_filter::{
     QueryFilterBody10_1, QueryFilterObject10_1, read_query_filter_slot_10_1,
 };
 use crate::objects::route_event_name::{
-    ROUTE_EVENT_SOURCE_NAME_CLASS_ID, RouteEventSourceNameBody10_1,
-    read_route_event_source_name_body_10_1,
+    ROUTE_EVENT_SOURCE_NAME_CLASS_ID, ROUTE_MEASURE_LOCATOR_NAME_CLASS_ID,
+    RouteEventSourceNameBody10_1, RouteMeasureLocatorName10_1,
+    read_route_event_source_name_body_10_1, read_route_measure_locator_name_body_10_1,
 };
 use crate::objects::string_array::{StringArraySlot10_1, read_string_array_slot_10_1};
 use crate::objects::workspace_name::{
@@ -413,6 +414,7 @@ pub enum DatasetNameMoreBody10_1 {
     NetCdfFeatureClass(Box<NetCdfFeatureClassNameBody10_1>),
     XyEventSource(Box<XyEventSourceNameBody10_1>),
     RouteEventSource(Box<RouteEventSourceNameBody10_1>),
+    RouteMeasureLocator(Box<RouteMeasureLocatorName10_1>),
     AmsDatasetName(Box<AmsDatasetName10_1>),
     /// FeatureDatasetName（第六轮读取器）。
     FeatureDataset(Box<FeatureDatasetNameBody10_1>),
@@ -1306,6 +1308,15 @@ fn read_dataset_name_object_body_10_1(
                 stop,
             ))
         }
+        ROUTE_MEASURE_LOCATOR_NAME_CLASS_ID => {
+            let mut stop = None;
+            let body =
+                read_route_measure_locator_name_body_10_1(reader, max_bytes, table, &mut stop)?;
+            Ok((
+                DatasetNameMoreBody10_1::RouteMeasureLocator(Box::new(body)),
+                stop,
+            ))
+        }
         XY_EVENT_SOURCE_NAME_CLASS_ID => {
             let mut body = read_xy_event_source_name_body_10_1(reader, max_bytes, table, key)?;
             let stop = nested_stop!(body);
@@ -1617,6 +1628,7 @@ pub(crate) fn read_overlay_name_slot_10_1(
                     | AGS_SERVER_CONNECTION_NAME
                     | FEATURE_DATASET_NAME_CLASS_ID
                     | TOPOLOGY_NAME_CLASS_ID
+                    | ROUTE_MEASURE_LOCATOR_NAME_CLASS_ID
                     | COVERAGE_NAME_CLASS_ID
                     | TIN_NAME_CLASS_ID
                     | TERRAIN_NAME_CLASS_ID
