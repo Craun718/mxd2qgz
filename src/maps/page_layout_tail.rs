@@ -84,7 +84,7 @@ pub struct GraphicSnapEnvironment10_1 {
     pub extra_class_ids: Vec<[u8; 16]>,
 }
 
-const CONVERTER_OPTION: [u8; 16] = [
+pub(crate) const CONVERTER_OPTION: [u8; 16] = [
     0x24, 0x42, 0x31, 0x97, 0xa2, 0x2d, 0x39, 0x49, 0xac, 0xc5, 0xdd, 0x7c, 0x0a, 0x7b, 0xfc, 0x8b,
 ];
 
@@ -374,6 +374,26 @@ fn read_converter_properties(
     Ok(LayoutSlot10_1 { entry, body })
 }
 
+pub(crate) fn read_converter_option(
+    r: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<LayoutSlot10_1<ConverterOption10_1>> {
+    read_slot(r, refs, CONVERTER_OPTION, "ConverterOption", |r, refs| {
+        let version = r.read_u16_le()? as i16;
+        if version > 1 {
+            return Err(invalid("ConverterOption 版本超限"));
+        }
+        let raw_long = r.read_u32_le()?;
+        let properties = read_converter_properties(r, max, refs)?;
+        Ok(ConverterOption10_1 {
+            version,
+            raw_long,
+            properties,
+        })
+    })
+}
+
 fn read_prepare_results(
     r: &mut Reader<'_>,
     max: usize,
@@ -391,19 +411,7 @@ fn read_prepare_results(
                 return Err(invalid("布局准备结果版本超限"));
             }
             let raw_longs = [r.read_u32_le()?, r.read_u32_le()?];
-            let converter = read_slot(r, refs, CONVERTER_OPTION, "ConverterOption", |r, refs| {
-                let version = r.read_u16_le()? as i16;
-                if version > 1 {
-                    return Err(invalid("ConverterOption 版本超限"));
-                }
-                let raw_long = r.read_u32_le()?;
-                let properties = read_converter_properties(r, max, refs)?;
-                Ok(ConverterOption10_1 {
-                    version,
-                    raw_long,
-                    properties,
-                })
-            })?;
+            let converter = read_converter_option(r, max, refs)?;
             let count = if version == 1 {
                 1
             } else {

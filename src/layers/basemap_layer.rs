@@ -305,7 +305,14 @@ pub fn read_basemap_prefix_10_1(
                     ));
                 }
                 r.read_bytes(8)?;
-                if let Some(s) = slot(&mut r, &mut t, max_bytes, &mut feature_keys, false)? {
+                use crate::maps::page_layout_tail::{CONVERTER_OPTION, read_converter_option};
+                if matches!(
+                    read_header_10_1(&mut r.clone())?,
+                    ObjectHeader::Object { class_id, key }
+                        if t.registered_class(key).unwrap_or(class_id) == CONVERTER_OPTION
+                ) {
+                    read_converter_option(&mut r, max_bytes, &mut t)?;
+                } else if let Some(s) = slot(&mut r, &mut t, max_bytes, &mut feature_keys, false)? {
                     break 'parse s;
                 }
                 let items = if rv == 1 {

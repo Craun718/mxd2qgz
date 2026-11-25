@@ -281,3 +281,33 @@ fn basemap_prepare_results_use_native_signed_versions_and_counts() {
         assert_eq!(reader.position(), bytes.len());
     }
 }
+
+#[test]
+fn basemap_prepare_results_read_converter_option_and_reuse_its_key() {
+    let converter = [
+        0x24, 0x42, 0x31, 0x97, 0xa2, 0x2d, 0x39, 0x49, 0xac, 0xc5, 0xdd, 0x7c, 0x0a, 0x7b, 0xfc,
+        0x8b,
+    ];
+    let mut bytes = 6_u16.to_le_bytes().to_vec();
+    bytes.extend(2_u32.to_le_bytes());
+    bytes.extend([0; 2 + 6 + 18 + 16 + 16 + 16 + 2]);
+    bytes.extend(2_i32.to_le_bytes());
+    for is_new in [true, false] {
+        bytes.extend(2_i16.to_le_bytes());
+        bytes.extend([0; 8]);
+        bytes.extend(if is_new { converter } else { [0x93; 16] });
+        bytes.extend(73_u32.to_le_bytes());
+        if is_new {
+            bytes.extend(1_i16.to_le_bytes());
+            bytes.extend([0; 4 + 16]);
+        }
+        bytes.extend(0_i32.to_le_bytes());
+    }
+    bytes.extend(0_i32.to_le_bytes());
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let body = read_basemap_prefix_10_1(&mut reader, 1024, &mut refs).unwrap();
+    assert_eq!(body.stop, BasemapStop10_1::Complete);
+    assert!(refs.contains(73));
+    assert_eq!(reader.position(), bytes.len());
+}

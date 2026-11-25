@@ -31,3 +31,12 @@ Basemap 和布局优化扩展均调用 MappingCoreLib.dll 10.1.0.3035
 空循环、保留外层计数原值，并按剩余字节和资源限额约束正计数。
 构造测试覆盖负计数和负版本后继续读正式子层计数。此组合的
 真实宿主和 ArcMap/QGIS 人工核对仍待验证。
+
+### 准备结果中的转换选项
+
+MappingCoreLib.dll 10.1.0.3035 的共用 Load `0x79b6fa20`
+在两个 LONG 后请求 `0x79bfc284` 的转换选项 IID。
+Basemap 复用
+[布局优化扩展的 ConverterOption 读取器](mxd-page-layout-tail-20261118.md#布局准备结果与-converteroption)。
+构造测试覆盖新体、按键识别头部类不同的回引及正式子层计数边界。
+未知转换选项新类仍保留停止点，真实非空选项宿主待验证。
