@@ -260,6 +260,7 @@
     - [x] 按登记实例校验布局类型槽的回引并保留原始对象头。[原生取证](docs/mxd-page-layout-tail-20261118.md#布局类型槽的回引类判定)
     - [ ] 补齐跨流布局中尚未支持的扩展对象体。[布局尾段](docs/mxd-page-layout-tail-20261118.md)
     - [x] 对位 PageLayout v11 非空槽的 PageIndex 接口和持久化入口。[原生取证](docs/mxd-page-layout-tail-20261118.md#pagelayout-v11-的-pageindex-接口)
+    - [ ] 验证 PageLayout v11 起非空 PageIndex 的真实数据驱动页面宿主。[本地检索](docs/mxd-page-layout-tail-20261118.md#pageindex-实档检索)
     - [x] 读取 PageLayout v11 有界 PageIndex 的版本化字段与已知对象槽。[原生取证](docs/mxd-page-layout-tail-20261118.md#pageindex-的有界对象体)
     - [x] 接入 PageIndex 首次定义的 MapFrame。[原生取证](docs/mxd-page-layout-tail-20261118.md#pageindex-首次定义的-mapframe)
     - [x] 接入 PageIndex 列表中新定义的 FeatureLayer。[消费方取证](docs/mxd-page-layout-tail-20261118.md#pageindex-图层列表的-featurelayer)
