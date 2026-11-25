@@ -4,9 +4,14 @@ use super::map_object::MAP_CLASS_ID;
 use crate::layers::cache_tile_reader::{
     AGS_SERVER_CONNECTION_NAME, AgsServerConnectionName10_1, read_ags_server_connection_name_body,
 };
+use crate::layers::feature_layer::FEATURE_LAYER_CLASS_ID;
+use crate::layers::layer_list::read_complete_layer_body_10_1;
 use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
 use crate::objects::element_decor::{DecorKind10_1, DecorSlot10_1};
 use crate::objects::envelope::{ENVELOPE_CLASS_ID, Envelope10_1, read_envelope_10_1};
+use crate::objects::property_set::{
+    PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1, read_property_set_object_stream_10_1,
+};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::{native_string::read_string_10_1, reader::Reader};
 use std::io::{self, ErrorKind};
@@ -77,9 +82,30 @@ pub struct GraphicSnapEnvironment10_1 {
     pub extra_class_ids: Vec<[u8; 16]>,
 }
 
+const CONVERTER_OPTION: [u8; 16] = [
+    0x24, 0x42, 0x31, 0x97, 0xa2, 0x2d, 0x39, 0x49, 0xac, 0xc5, 0xdd, 0x7c, 0x0a, 0x7b, 0xfc, 0x8b,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConverterOption10_1 {
+    pub version: i16,
+    pub raw_long: u32,
+    pub properties: LayoutSlot10_1<PropertySetObjectStream10_1>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LayoutPrepareResult10_1 {
+    pub version: i16,
+    pub raw_longs: [u32; 2],
+    pub converter: LayoutSlot10_1<ConverterOption10_1>,
+    pub objects: Vec<ObjectEntry10_1>,
+    pub legacy_map: Option<ObjectEntry10_1>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct MapOptimizationExtension10_1 {
     pub version: u16,
+    pub prepare_results: Vec<LayoutPrepareResult10_1>,
     pub string_2: Option<String>,
     pub values_3: Option<[u32; 2]>,
     pub server_connection: Option<LayoutSlot10_1<AgsServerConnectionName10_1>>,
@@ -242,6 +268,84 @@ fn read_class_ids(r: &mut Reader<'_>, max: usize) -> io::Result<Vec<[u8; 16]>> {
         .collect())
 }
 
+fn read_prepare_results(
+    r: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<Vec<LayoutPrepareResult10_1>> {
+    // 最短记录包含版本、两个 LONG、空转换选项和零对象数。
+    let n = (r.read_u32_le()? as i32).max(0) as usize;
+    if n > max.min(r.remaining()) / 30 {
+        return Err(invalid("布局准备结果计数超过剩余字节或资源限额"));
+    }
+    (0..n)
+        .map(|_| {
+            let version = r.read_u16_le()? as i16;
+            if version > 2 {
+                return Err(invalid("布局准备结果版本超限"));
+            }
+            let raw_longs = [r.read_u32_le()?, r.read_u32_le()?];
+            let converter = read_slot(r, refs, CONVERTER_OPTION, "ConverterOption", |r, refs| {
+                let version = r.read_u16_le()? as i16;
+                if version > 1 {
+                    return Err(invalid("ConverterOption 版本超限"));
+                }
+                let raw_long = r.read_u32_le()?;
+                let properties = read_slot(
+                    r,
+                    refs,
+                    PROPERTY_SET_CLASS_ID,
+                    "ConverterOption IPropertySet",
+                    |r, refs| read_property_set_object_stream_10_1(r, max, refs),
+                )?;
+                Ok(ConverterOption10_1 {
+                    version,
+                    raw_long,
+                    properties,
+                })
+            })?;
+            let count = if version == 1 {
+                1
+            } else {
+                let n = (r.read_u32_le()? as i32).max(0) as usize;
+                if n > max.min(r.remaining()) / 16 {
+                    return Err(invalid("布局准备结果对象计数超过剩余字节或资源限额"));
+                }
+                n
+            };
+            let objects = (0..count)
+                .map(|_| {
+                    let entry = read_object_entry_10_1(r, refs)?;
+                    if let ObjectEntry10_1::NewObject { class_id, .. } = entry {
+                        if class_id != FEATURE_LAYER_CLASS_ID {
+                            return Err(unsupported(&format!(
+                                "布局准备结果对象类尚未支持：{entry:?}"
+                            )));
+                        }
+                        read_complete_layer_body_10_1(r, class_id, max, refs)?;
+                    }
+                    Ok(entry)
+                })
+                .collect::<io::Result<_>>()?;
+            let legacy_map = (version == 1)
+                .then(|| {
+                    read_slot(r, refs, MAP_CLASS_ID, "准备结果 IMap", |_, _| {
+                        Err::<(), _>(unsupported("布局准备结果的新 Map 尚未支持"))
+                    })
+                    .map(|slot| slot.entry)
+                })
+                .transpose()?;
+            Ok(LayoutPrepareResult10_1 {
+                version,
+                raw_longs,
+                converter,
+                objects,
+                legacy_map,
+            })
+        })
+        .collect()
+}
+
 fn read_extension(
     r: &mut Reader<'_>,
     max: usize,
@@ -249,10 +353,7 @@ fn read_extension(
 ) -> io::Result<MapOptimizationExtension10_1> {
     let version = read_version(r, 6, "MapOptimizationLayoutExtension")?;
     // CartoConverter 0x6ccc0e2a 委派 MappingCoreLib::LoadResults。
-    // 当前只支持已在布局中验证的空结果容器。
-    if r.read_u32_le()? != 0 {
-        return Err(unsupported("布局扩展的非空准备结果尚未支持"));
-    }
+    let prepare_results = read_prepare_results(r, max, refs)?;
     let string_2 = (version >= 2)
         .then(|| read_string_10_1(r, max))
         .transpose()?;
@@ -285,6 +386,7 @@ fn read_extension(
     };
     Ok(MapOptimizationExtension10_1 {
         version,
+        prepare_results,
         string_2,
         values_3,
         server_connection,

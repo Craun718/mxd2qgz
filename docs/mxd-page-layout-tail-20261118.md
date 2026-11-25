@@ -320,3 +320,25 @@ IAGSServerConnectionName，公开实现为 AGSServerConnectionName。
 沿用布局 ObjectStream 的引用表。构造测试覆盖新对象、第二条扩展的
 回引、后续布局槽及整体截断回滚。非空准备结果、其他注册实现和
 真实连接名布局宿主仍待取证。ArcMap/QGIS 人工验收未进行。
+
+### 布局准备结果与 ConverterOption
+
+MappingCoreLib.dll 10.1.0.3035 的反编译导出
+`79b719a0.c`、`79b6fa20.c` 确认有符号结果计数、short 版本门、
+两个 LONG 和转换选项槽。v1 随后读取 IUnknown 和 IMap，其他版本按
+有符号个数读取 IUnknown。三处 IID 常量在 `0x79bfc284`、
+`0x79bf51fc`、`0x79bfc274`。IUnknown 槽中的 FeatureLayer
+曾在 [10.1 介质的 Basemap 宿主](mxd-round3-basemap-20261117.md) 实档中确认。
+
+同版 CartoConverter.dll 在 QI `0x6ccc0029–0x6ccc0055` 将
+`{0A22B09C-7BA4-4AA0-998A-48535DD07252}` 映射到类的 `+0x10`。
+虚表 `0x6cd7760c` 的 RTTI `0x6cd9f02c` 定名 ConverterOption。
+其持久化视图虚表 `0x6cd77634` 的 GetClassID `0x6ccbfe90` 返回
+`{97314224-2DA2-4939-ACC5-DD7C0A7BFC8B}`，Load `0x6ccc01b0`
+读取有符号版本（上限 1）、LONG 和 IPropertySet
+（`0x6ccc021d–0x6ccc0229`，IID 在 `0x6cd74d8c`）。
+
+布局读取器复用引用表及属性集读取器。构造测试核对 v1 固定槽、
+v2 对象计数、转换选项新体和回引、后续布局槽及截断回滚。
+v1 的新 Map、其他 IUnknown 实现及真实非空布局宿主仍待取证。
+ArcMap/QGIS 人工验收未进行。

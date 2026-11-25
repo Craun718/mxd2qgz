@@ -1010,3 +1010,63 @@ fn layout_optimization_extension_reads_connection_and_shared_reference() {
     assert_eq!(reader.position(), 0);
     assert_eq!(refs.len(), 0);
 }
+
+#[test]
+fn layout_optimization_extension_reads_prepare_result_versions_and_options() {
+    let optimization_class = [
+        0x9f, 0xd8, 0x29, 0x6c, 0xba, 0xb7, 0xb0, 0x4f, 0xa8, 0x8d, 0xfe, 0xa7, 0x7a, 0x03, 0xba,
+        0x0e,
+    ];
+    let converter_class = [
+        0x24, 0x42, 0x31, 0x97, 0xa2, 0x2d, 0x39, 0x49, 0xac, 0xc5, 0xdd, 0x7c, 0x0a, 0x7b, 0xfc,
+        0x8b,
+    ];
+    let mut body = 1_u16.to_le_bytes().to_vec();
+    body.extend(2_i32.to_le_bytes());
+    for version in [1_i16, 2] {
+        body.extend(version.to_le_bytes());
+        body.extend(17_u32.to_le_bytes());
+        body.extend(19_u32.to_le_bytes());
+        body.extend(converter_class);
+        body.extend(73_u32.to_le_bytes());
+        if version == 1 {
+            body.extend(1_i16.to_le_bytes());
+            body.extend(23_u32.to_le_bytes());
+            body.extend([0; 16]); // 空属性集。
+            body.extend([0; 32]); // 空 IUnknown 和 IMap。
+        } else {
+            body.extend(1_i32.to_le_bytes());
+            body.extend([0; 16]);
+        }
+    }
+    let baseline = layout_tail(11, 0);
+    let extensions_offset = baseline.len() - 12;
+    let mut bytes = baseline[..extensions_offset].to_vec();
+    bytes.extend(1_u32.to_le_bytes());
+    bytes.extend((body.len() as u64).to_le_bytes());
+    bytes.extend(optimization_class);
+    bytes.extend(body);
+    bytes.extend(&baseline[extensions_offset + 4..]);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let tail = read_page_layout_tail_10_1(&mut reader, &mut refs, 11, 0, 8192, |_| false).unwrap();
+    let results = &tail.optimization_extensions[0].prepare_results;
+    assert_eq!(results.len(), 2);
+    assert_eq!(results[0].raw_longs, [17, 19]);
+    assert_eq!(results[0].converter.body.as_ref().unwrap().raw_long, 23);
+    assert_eq!(results[0].legacy_map, Some(ObjectEntry10_1::Null));
+    assert_eq!(results[1].objects, [ObjectEntry10_1::Null]);
+    assert!(matches!(
+        results[1].converter.entry,
+        ObjectEntry10_1::BackReference { key: 73, .. }
+    ));
+    assert!(refs.contains(73));
+    assert_eq!(reader.position(), bytes.len());
+
+    let mut reader = Reader::new(&bytes[..bytes.len() - 1]);
+    let mut refs = RefTable10_1::new();
+    assert!(read_page_layout_tail_10_1(&mut reader, &mut refs, 11, 0, 8192, |_| false).is_err());
+    assert_eq!(reader.position(), 0);
+    assert_eq!(refs.len(), 0);
+}
