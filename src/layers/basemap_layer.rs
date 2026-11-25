@@ -1,8 +1,6 @@
 //! ArcMap 10.1 BasemapLayer 的可证前缀；遇到未闭合对象体即停止。
 //! 原生调用与范围见 docs/mxd-round3-basemap-20261117.md。
-use crate::maps::map_object::{
-    MAP_CLASS_ID, MapSuffixStop, read_map_prefix_object_stream_10_1, read_map_suffix_10_1,
-};
+use crate::maps::map_object::{MAP_CLASS_ID, MapSuffixStop, read_map_suffix_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
 use crate::stream::{native_string::read_string_10_1, reader::Reader};
@@ -193,12 +191,9 @@ fn slot(
                 let mut refs = table.clone();
                 read_object_entry_10_1(&mut reader.clone(), &mut refs)?;
                 refs.mark_map(key);
-                let mut prefix = probe.clone();
-                // 目前只进入非递归的内嵌 Map：图层列表非空可能重新进入 Basemap。
-                if matches!(read_map_prefix_object_stream_10_1(&mut prefix, max_bytes, &refs), Ok(body) if body.version >= 23)
-                    && matches!(prefix.read_u32_le(), Ok(0))
-                    && matches!(read_map_suffix_10_1(&mut probe, max_bytes, &mut refs), Ok(body) if body.stop == MapSuffixStop::Complete)
-                {
+                let parsed = refs
+                    .with_nested_graphics(|refs| read_map_suffix_10_1(&mut probe, max_bytes, refs));
+                if matches!(parsed, Ok(body) if body.stop == MapSuffixStop::Complete) {
                     *reader = probe;
                     *table = refs;
                     return Ok(None);

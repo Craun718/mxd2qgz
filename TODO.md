@@ -259,6 +259,7 @@
     - [x] 对齐 Basemap 与布局扩展共用准备结果的有符号版本和计数门。[原生取证](docs/mxd-round3-basemap-20261117.md#准备结果的有符号判断)
     - [x] 接入 Basemap 准备结果的 ConverterOption 新体与回引。[原生取证](docs/mxd-round3-basemap-20261117.md#准备结果中的转换选项)
     - [x] 校验 Basemap 准备结果 v1 的固定 IMap 槽。[原生取证](docs/mxd-round3-basemap-20261117.md#v1-准备结果的固定-imap-槽)
+    - [x] 接入 Basemap 准备结果中带图层的内嵌 Map。[原生取证](docs/mxd-basemap-continuation-20261118.md#准备结果中带图层的内嵌-map)
     - [x] 接入 ConverterOption 属性集槽的 RasterFunctionTemplateArguments。[类型库与持久化取证](docs/mxd-page-layout-tail-20261118.md#converteroption-的栅格模板属性集)
     - [x] 核对 GenericLocatorStyle 的普通对象流持久化接口。[原生取证](docs/mxd-page-layout-tail-20261118.md#genericlocatorstyle-的持久化接口边界)
     - [x] 接入布局准备结果固定 IMap 和 IUnknown 列表中的 Map 类体。[原生取证](docs/mxd-page-layout-tail-20261118.md#准备结果中的-map)

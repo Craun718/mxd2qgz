@@ -343,3 +343,42 @@ fn basemap_v1_result_rejects_non_map_in_the_fixed_map_slot() {
     assert_eq!(reader.position(), 0);
     assert_eq!(refs.len(), 1);
 }
+
+#[test]
+fn basemap_reads_prepared_map_with_a_layer() {
+    use mxd2qgz::layers::group_layer::GROUP_LAYER_CLASS_ID;
+    use mxd2qgz::maps::map_object::MAP_CLASS_ID;
+
+    let mut bytes = 6_u16.to_le_bytes().to_vec();
+    bytes.extend(2_u32.to_le_bytes());
+    bytes.extend([0; 2 + 6 + 18 + 16 + 16 + 16 + 2]);
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(2_u16.to_le_bytes());
+    bytes.extend([0; 8 + 16]);
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(MAP_CLASS_ID);
+    bytes.extend(73_u32.to_le_bytes());
+    bytes.extend(18_u16.to_le_bytes());
+    bytes.extend([2, 0, 0, 0, 0, 0].repeat(2));
+    bytes.extend([0; 16 + 4]);
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(GROUP_LAYER_CLASS_ID);
+    bytes.extend(74_u32.to_le_bytes());
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend([2, 0, 0, 0, 0, 0]);
+    bytes.extend([0; 6 + 16 + 4]);
+    bytes.extend((-1_i32).to_le_bytes());
+    bytes.extend([0; 16 + 4 + 32 + 8 + 16 + 4]);
+    bytes.extend(0xffff_u16.to_le_bytes());
+    bytes.extend([0; 2 + 8 + 2 + 4 + 16 + 12 + 32]);
+    bytes.extend([0; 2 + 16 + 2 + 16 + 2 + 2 + 8]);
+    bytes.extend([0; 4 + 4 + 2 + 8 + 4 + 8 + 2 + 16]);
+    bytes.extend(0_i32.to_le_bytes()); // Basemap 正式子层列表。
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let body = read_basemap_prefix_10_1(&mut reader, 4096, &mut refs).unwrap();
+    assert_eq!(body.stop, BasemapStop10_1::Complete);
+    assert!(refs.contains(73) && refs.contains(74));
+    assert_eq!(reader.position(), bytes.len());
+}

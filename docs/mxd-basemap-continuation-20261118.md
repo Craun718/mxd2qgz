@@ -12,3 +12,13 @@ Africa.mxd 从根 Map 键 38 连续解析：首个 PrepareResult 的 FeatureLaye
 10.1 安装介质的 66 份已提取工程中，`/Version` 文本候选为 10.1 的 18 份有 10 份读完 `/Maps` 根并进入布局，其中 9 份读完整个元素列表。加此前 48 份，总计 58 份进入布局，57 份读完整个元素列表。CentralAmericaCaribbean 在 `/PageLayout:0x59a` 遇到 ParagraphTextElement（注册表 CLSID `{C84598B1-C4BE-4203-9132-ADA2BE57F30C}`）。CentralUSA、ConterminousUSA、NortheasternUSA、NorthwesternUSA、SouthernUSA、SouthwesternUSA、USA、USACounties 这 8 份仍停在 Basemap 内未闭合的 FeatureLayer，后续图例缺失相应回引。
 
 验证：Africa 顺序引用及尾部、空结果/空子图层、全截断回退和版本越界测试。全量测试通过（887 项），包括本地介质的显式忽略用例；ArcMap 10.1 与 QGIS 人工打开及目视验收未执行。
+
+### 准备结果中带图层的内嵌 Map
+
+MappingCoreLib.dll 10.1.0.3035 的 PrepareResult Load
+`0x79b6fa20` 通过普通 ObjectStream 读取 Map，新对象沿用其
+自身 Load 的图层列表规则。Rust 复用正常 Map 读取器及已有的
+图形嵌套深度限制，只有整张 Map 完成时才提交游标和对象表。
+构造 Basemap 验证内嵌 Map v18 的旧列表含 GroupLayer 时，
+两个新键均登记且可接续正式子层列表。带图层的真实宿主及
+ArcMap/QGIS 人工验收仍待验证。
