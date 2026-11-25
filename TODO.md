@@ -259,6 +259,7 @@
     - [x] 按原生有符号版本门读取布局优化扩展。[原生取证](docs/mxd-page-layout-tail-20261118.md#优化扩展的有符号版本门)
     - [x] 按登记实例校验布局类型槽的回引并保留原始对象头。[原生取证](docs/mxd-page-layout-tail-20261118.md#布局类型槽的回引类判定)
     - [ ] 补齐跨流布局中尚未支持的扩展对象体。[布局尾段](docs/mxd-page-layout-tail-20261118.md)
+    - [x] 对位 PageLayout v11 非空槽的 PageIndex 接口和持久化入口。[原生取证](docs/mxd-page-layout-tail-20261118.md#pagelayout-v11-的-pageindex-接口)
     - [x] 接入 CustomOverlayGrid 的 TopologyName 对象体。[类型库与原生取证](docs/mxd-page-layout-grid-20261118.md#叠加格网的-topologyname)
     - [x] 接入 CustomOverlayGrid 的 RouteMeasureLocatorName 对象体。[类型库与原生取证](docs/mxd-page-layout-grid-20261118.md#叠加格网的-routemeasurelocatorname)
     - [x] 接入 CustomOverlayGrid 的 CadastralFabricName 对象体。[类型库与原生取证](docs/mxd-page-layout-grid-20261118.md#叠加格网的-cadastralfabricname)

@@ -386,3 +386,22 @@ SystemCore 按对象键区分新体和回引。
 构造测试覆盖新 Map 和跨读取回引。SDK 中已核实
 [尾段回引根 Map 的宿主](mxd-us-media-renderer-paragraph-20261118.md#无-mapframe-的-pagelayout-尾段回引)。
 尾段首次定义 Map 的真实宿主和 ArcMap/QGIS 人工验收仍待验证。
+
+### PageLayout v11 的 PageIndex 接口
+
+PageLayout.dll 10.1.0.3035 在 `0x7b6e6027–0x7b6e6030`
+将 `0x7b71ed78` 的私有 IID
+`{61BA4639-9414-4964-9FF3-0241A5F8DC36}` 交给 ExtraSafeReadObject。
+同模块 QI `0x7b6b33a0` 在 `0x7b6b33ad–0x7b6b33e5`
+比较该 IID 并返回对象 +0x18。QI 所在虚表 `0x7b71ea78` 的
+RTTI 描述符 `0x7b732b58` 定名 PageIndex，构造指令 `0x7b6b2ddd`
+安装该表，并在 `0x7b6b2dfa` 安装 +0x18 接口表 `0x7b71ead4`。
+
+构造指令 `0x7b6b2e2b` 同时安装持久化表 `0x7b71ec40`。
+GetClassID thunk `0x7b6c6ba0` 委派 `0x7b6bdbb0`，返回
+`{9384B302-16E4-4F27-A6A8-8C0C99F12579}`，与类工厂登记一致。
+Load thunk `0x7b6c6b90` 跳转 `0x7b6bdbe0`。现有反编译
+导出显示它读取版本、两个普通对象槽和字符串列表，随后还涉及
+打开数据源、定长字段和额外对象槽。完整条件和子类体待继续对位。
+当前读取器仍停在非空 v11 槽。真实 PageIndex 宿主及 ArcMap/QGIS
+人工验收尚未验证。
