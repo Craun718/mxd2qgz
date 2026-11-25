@@ -3,6 +3,10 @@ use super::basemap_layer::{ARRAY_OF_I_SHADER_CLASS_ID, ShaderEntry10_1, read_sha
 use super::layer_list::{
     LayerBodyPrefix10_1, RASTER_LAYER_CLASS_ID, read_complete_layer_body_10_1,
 };
+use super::raster_dataset_name::{
+    MOSAIC_DATASET_NAME_CLASS_ID, MosaicDatasetName10_1, RasterDatasetNameEntryBody10_1,
+    read_supported_raster_name_entry_10_1,
+};
 use super::raster_layer::read_bounded_raster_body_10_1;
 use super::wcs_layer::{WCS_LAYER_CLASS_ID, read_wcs_layer_body_10_1};
 use crate::objects::envelope::{SpatialReferenceEntry10_1, read_spatial_reference_entry_10_1};
@@ -16,6 +20,17 @@ pub(crate) const RASTER_BASEMAP_LAYER_CLASS_ID: [u8; 16] = [
 const MOSAIC_LAYER_CLASS_ID: [u8; 16] = [
     0xb8, 0xfc, 0x52, 0x34, 0x0c, 0xd1, 0xe4, 0x44, 0xb9, 0x71, 0x8c, 0x53, 0xdb, 0x39, 0xd5, 0x17,
 ];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MosaicLayerPrefix10_1 {
+    pub version: u16,
+    pub dataset_name: ObjectEntry10_1,
+    pub dataset_name_body: Option<Box<MosaicDatasetName10_1>>,
+    pub stored_string: String,
+    pub short: i16,
+    /// 许可助手和可能的时间段从这里开始，保存原始字节。
+    pub delegated_offset: usize,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RasterBasemapLayer10_1 {
@@ -32,6 +47,7 @@ pub struct RasterBasemapLayer10_1 {
     pub name: Option<String>,
     pub mosaic: Option<ObjectEntry10_1>,
     pub mosaic_body: Option<Vec<u8>>,
+    pub mosaic_prefix: Option<MosaicLayerPrefix10_1>,
 }
 
 pub(crate) fn read_raster_basemap_layer_10_1(
@@ -110,7 +126,7 @@ pub(crate) fn read_raster_basemap_layer_10_1(
     let name = (version >= 4)
         .then(|| read_string_10_1(&mut r, max))
         .transpose()?;
-    let (mosaic, mosaic_body) = if version >= 5 {
+    let (mosaic, mosaic_body, mosaic_prefix) = if version >= 5 {
         let mut region = read_region(&mut r, max)?;
         let entry = if region.remaining() == 0 {
             ObjectEntry10_1::Null
@@ -125,9 +141,15 @@ pub(crate) fn read_raster_basemap_layer_10_1(
             }
             None
         };
-        (Some(entry), body)
+        let prefix = body.as_deref().and_then(|body| {
+            let mut candidate = refs.clone();
+            let prefix = read_mosaic_prefix(body, max, &mut candidate).ok()?;
+            refs = candidate;
+            Some(prefix)
+        });
+        (Some(entry), body, prefix)
     } else {
-        (None, None)
+        (None, None, None)
     };
     *reader = r;
     *table = refs;
@@ -145,6 +167,43 @@ pub(crate) fn read_raster_basemap_layer_10_1(
         name,
         mosaic,
         mosaic_body,
+        mosaic_prefix,
+    })
+}
+
+fn read_mosaic_prefix(
+    bytes: &[u8],
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<MosaicLayerPrefix10_1> {
+    let mut r = Reader::new(bytes);
+    let version = r.read_u16_le()?;
+    if !(1..=2).contains(&version) {
+        return Err(unsupported("MosaicLayer 版本超出 1–2"));
+    }
+    // 已确认的名称类使用普通 ObjectStream 键，未核实的名称保持原始体。
+    let (dataset_name, body) = read_supported_raster_name_entry_10_1(&mut r, max, refs)?;
+    let dataset_name_body = match (dataset_name, body) {
+        (ObjectEntry10_1::Null, None)
+        | (
+            ObjectEntry10_1::BackReference {
+                class_id: MOSAIC_DATASET_NAME_CLASS_ID,
+                ..
+            },
+            None,
+        ) => None,
+        (_, Some(RasterDatasetNameEntryBody10_1::Mosaic(body))) => Some(body),
+        _ => return Err(unsupported("MosaicLayer 名称类未支持")),
+    };
+    let stored_string = read_string_10_1(&mut r, max)?;
+    let short = r.read_u16_le()? as i16;
+    Ok(MosaicLayerPrefix10_1 {
+        version,
+        dataset_name,
+        dataset_name_body,
+        stored_string,
+        short,
+        delegated_offset: r.position(),
     })
 }
 
@@ -239,12 +298,22 @@ mod tests {
             if version >= 4 {
                 bytes.extend([4, 0, 0, 0, b'R', 0, 0, 0]);
             }
+            let mut mosaic_body = 2_u16.to_le_bytes().to_vec();
+            mosaic_body.extend(MOSAIC_DATASET_NAME_CLASS_ID);
+            mosaic_body.extend(45_u32.to_le_bytes());
+            mosaic_body.extend(1_u16.to_le_bytes());
+            mosaic_body.extend([2, 0, 0, 0, 0, 0].repeat(2));
+            mosaic_body.extend([0; 16]);
+            mosaic_body.extend([4, 0, 0, 0, b'M', 0, 0, 0]);
+            mosaic_body.extend(23_u16.to_le_bytes());
+            let delegated = mosaic_body.len();
+            mosaic_body.extend([1, 2, 3]);
             if version >= 5 {
-                bytes.extend(23_u32.to_le_bytes());
+                bytes.extend((20 + mosaic_body.len() as u32).to_le_bytes());
                 bytes.extend(0_u32.to_le_bytes());
                 bytes.extend(MOSAIC_LAYER_CLASS_ID);
                 bytes.extend(42_u32.to_le_bytes());
-                bytes.extend([1, 2, 3]);
+                bytes.extend_from_slice(&mosaic_body);
             }
             let layer_end = bytes.len();
             bytes.extend([0; 16 + 4]); // 容器的空包络和元素计数。
@@ -297,8 +366,20 @@ mod tests {
             assert_eq!(layer.name.as_deref(), (version >= 4).then_some("R"));
             assert_eq!(
                 layer.mosaic_body.as_deref(),
-                (version >= 5).then_some([1, 2, 3].as_slice())
+                (version >= 5).then_some(mosaic_body.as_slice())
             );
+            if version >= 5 {
+                let prefix = layer.mosaic_prefix.as_ref().unwrap();
+                assert_eq!(prefix.version, 2);
+                assert_eq!(prefix.stored_string, "M");
+                assert_eq!(prefix.short, 23);
+                assert_eq!(prefix.delegated_offset, delegated);
+                assert!(prefix.dataset_name_body.is_some());
+                assert_eq!(
+                    refs.registered_class(45),
+                    Some(MOSAIC_DATASET_NAME_CLASS_ID)
+                );
+            }
             assert!(matches!(
                 layer.raster,
                 ObjectEntry10_1::BackReference { key: 11, .. }
