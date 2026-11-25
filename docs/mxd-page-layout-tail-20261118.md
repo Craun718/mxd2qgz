@@ -342,3 +342,15 @@ MappingCoreLib.dll 10.1.0.3035 的反编译导出
 v2 对象计数、转换选项新体和回引、后续布局槽及截断回滚。
 v1 的新 Map、其他 IUnknown 实现及真实非空布局宿主仍待取证。
 ArcMap/QGIS 人工验收未进行。
+
+#### 准备结果中的 Map
+
+MappingCoreLib::PersistedPrepareResult::Load `0x79b6fa20` 在 v1
+的第二个固定对象槽请求 `0x79bfc274` 的
+`{E6BDAA75-4D35-11D0-98BE-00805F7CED21}`。10.1 的
+esriCarto 类型库将其定名为 IMap。v2 的 IUnknown 列表可装入
+Map，10.1 介质 Africa.mxd 的 [Basemap 准备结果](mxd-basemap-continuation-20261118.md) 提供该类的宿主证据。
+两个槽均复用普通 Map 读取器及图形嵌套深度限制。完成 Map 尾段后
+才提交布局读事务。固定 IMap 槽的回引按登记实例类别校验。
+构造输入覆盖两个槽的新 Map、跨结果回引和错误类回滚。
+真实布局优化扩展中的 Map 及 ArcMap/QGIS 人工验收仍待验证。

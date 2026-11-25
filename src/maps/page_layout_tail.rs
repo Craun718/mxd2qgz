@@ -1,6 +1,8 @@
 //! PageLayout.dll 10.1.0.3035 的元素列表后字段（Load 0x7b6e4e30）。
 use super::map_decor::read_map_decor_slot_10_1;
-use super::map_object::MAP_CLASS_ID;
+use super::map_object::{
+    MAP_CLASS_ID, MapPrefix10_1, MapSuffix10_1, MapSuffixStop, read_map_with_suffix_10_1,
+};
 use crate::layers::cache_tile_reader::{
     AGS_SERVER_CONNECTION_NAME, AgsServerConnectionName10_1, read_ags_server_connection_name_body,
 };
@@ -99,7 +101,7 @@ pub struct LayoutPrepareResult10_1 {
     pub raw_longs: [u32; 2],
     pub converter: LayoutSlot10_1<ConverterOption10_1>,
     pub objects: Vec<ObjectEntry10_1>,
-    pub legacy_map: Option<ObjectEntry10_1>,
+    pub legacy_map: Option<LayoutSlot10_1<Box<(MapPrefix10_1, MapSuffix10_1)>>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -268,6 +270,22 @@ fn read_class_ids(r: &mut Reader<'_>, max: usize) -> io::Result<Vec<[u8; 16]>> {
         .collect())
 }
 
+fn read_prepare_map(
+    r: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+    key: u32,
+) -> io::Result<(MapPrefix10_1, MapSuffix10_1)> {
+    refs.with_nested_graphics(|refs| {
+        refs.mark_map(key);
+        let body = read_map_with_suffix_10_1(r, max, refs)?;
+        if body.1.stop != MapSuffixStop::Complete {
+            return Err(unsupported(&body.1.stop.describe()));
+        }
+        Ok(body)
+    })
+}
+
 fn read_prepare_results(
     r: &mut Reader<'_>,
     max: usize,
@@ -316,23 +334,42 @@ fn read_prepare_results(
             let objects = (0..count)
                 .map(|_| {
                     let entry = read_object_entry_10_1(r, refs)?;
-                    if let ObjectEntry10_1::NewObject { class_id, .. } = entry {
-                        if class_id != FEATURE_LAYER_CLASS_ID {
-                            return Err(unsupported(&format!(
-                                "布局准备结果对象类尚未支持：{entry:?}"
-                            )));
+                    if let ObjectEntry10_1::NewObject { class_id, key } = entry {
+                        match class_id {
+                            MAP_CLASS_ID => {
+                                read_prepare_map(r, max, refs, key)?;
+                            }
+                            FEATURE_LAYER_CLASS_ID => {
+                                read_complete_layer_body_10_1(r, class_id, max, refs)?;
+                            }
+                            _ => {
+                                return Err(unsupported(&format!(
+                                    "布局准备结果对象类尚未支持：{entry:?}"
+                                )));
+                            }
                         }
-                        read_complete_layer_body_10_1(r, class_id, max, refs)?;
                     }
                     Ok(entry)
                 })
                 .collect::<io::Result<_>>()?;
             let legacy_map = (version == 1)
                 .then(|| {
-                    read_slot(r, refs, MAP_CLASS_ID, "准备结果 IMap", |_, _| {
-                        Err::<(), _>(unsupported("布局准备结果的新 Map 尚未支持"))
-                    })
-                    .map(|slot| slot.entry)
+                    let entry = read_object_entry_10_1(r, refs)?;
+                    let body = match entry {
+                        ObjectEntry10_1::Null => None,
+                        ObjectEntry10_1::BackReference { key, .. }
+                            if refs.contains_map(key)
+                                || refs.registered_class(key) == Some(MAP_CLASS_ID) =>
+                        {
+                            None
+                        }
+                        ObjectEntry10_1::NewObject {
+                            class_id: MAP_CLASS_ID,
+                            key,
+                        } => Some(Box::new(read_prepare_map(r, max, refs, key)?)),
+                        _ => return Err(unsupported(&format!("布局准备结果 IMap 槽：{entry:?}"))),
+                    };
+                    Ok(LayoutSlot10_1 { entry, body })
                 })
                 .transpose()?;
             Ok(LayoutPrepareResult10_1 {

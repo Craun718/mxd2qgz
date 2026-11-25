@@ -1055,7 +1055,10 @@ fn layout_optimization_extension_reads_prepare_result_versions_and_options() {
     assert_eq!(results.len(), 2);
     assert_eq!(results[0].raw_longs, [17, 19]);
     assert_eq!(results[0].converter.body.as_ref().unwrap().raw_long, 23);
-    assert_eq!(results[0].legacy_map, Some(ObjectEntry10_1::Null));
+    assert_eq!(
+        results[0].legacy_map.as_ref().unwrap().entry,
+        ObjectEntry10_1::Null
+    );
     assert_eq!(results[1].objects, [ObjectEntry10_1::Null]);
     assert!(matches!(
         results[1].converter.entry,
@@ -1065,6 +1068,81 @@ fn layout_optimization_extension_reads_prepare_result_versions_and_options() {
     assert_eq!(reader.position(), bytes.len());
 
     let mut reader = Reader::new(&bytes[..bytes.len() - 1]);
+    let mut refs = RefTable10_1::new();
+    assert!(read_page_layout_tail_10_1(&mut reader, &mut refs, 11, 0, 8192, |_| false).is_err());
+    assert_eq!(reader.position(), 0);
+    assert_eq!(refs.len(), 0);
+}
+
+#[test]
+fn layout_prepare_results_read_new_maps_and_validate_legacy_map_key() {
+    use mxd2qgz::maps::map_object::MAP_CLASS_ID;
+
+    let optimization_class = [
+        0x9f, 0xd8, 0x29, 0x6c, 0xba, 0xb7, 0xb0, 0x4f, 0xa8, 0x8d, 0xfe, 0xa7, 0x7a, 0x03, 0xba,
+        0x0e,
+    ];
+    let mut map = 18_u16.to_le_bytes().to_vec();
+    map.extend([2, 0, 0, 0, 0, 0].repeat(2));
+    map.extend([0; 16 + 8]); // 空空间参考及两组图层。
+    map.extend((-1_i32).to_le_bytes());
+    map.extend([0; 16 + 4 + 32 + 8 + 16 + 4]);
+    map.extend(0xffff_u16.to_le_bytes());
+    map.extend([0; 2 + 8 + 2 + 4 + 16 + 12 + 32]);
+    map.extend([0; 2 + 16 + 2 + 16 + 2 + 2 + 8]);
+    map.extend([0; 4 + 4 + 2 + 8 + 4 + 8 + 2 + 16]);
+
+    let mut body = 1_u16.to_le_bytes().to_vec();
+    body.extend(3_i32.to_le_bytes());
+    for (version, key, is_new) in [(1_u16, 73_u32, true), (2, 74, true), (1, 74, false)] {
+        body.extend(version.to_le_bytes());
+        body.extend([0; 8 + 16]);
+        if version == 1 {
+            body.extend([0; 16]); // 空 IUnknown，随后是固定 IMap。
+        } else {
+            body.extend(1_i32.to_le_bytes());
+        }
+        // 回引槽按实际登记的 Map 实例查询接口。
+        body.extend(if is_new { MAP_CLASS_ID } else { [0x93; 16] });
+        body.extend(key.to_le_bytes());
+        if is_new {
+            body.extend(&map);
+        }
+    }
+    let baseline = layout_tail(11, 0);
+    let extensions_offset = baseline.len() - 12;
+    let mut bytes = baseline[..extensions_offset].to_vec();
+    bytes.extend(1_u32.to_le_bytes());
+    bytes.extend((body.len() as u64).to_le_bytes());
+    bytes.extend(optimization_class);
+    bytes.extend(&body);
+    bytes.extend(&baseline[extensions_offset + 4..]);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let tail = read_page_layout_tail_10_1(&mut reader, &mut refs, 11, 0, 8192, |_| false).unwrap();
+    let results = &tail.optimization_extensions[0].prepare_results;
+    let legacy_map = results[0]
+        .legacy_map
+        .as_ref()
+        .unwrap()
+        .body
+        .as_ref()
+        .unwrap();
+    assert_eq!(legacy_map.0.version, 18);
+    assert!(matches!(
+        results[1].objects[0],
+        ObjectEntry10_1::NewObject { key: 74, .. }
+    ));
+    assert!(matches!(
+        results[2].legacy_map.as_ref().unwrap().entry,
+        ObjectEntry10_1::BackReference { key: 74, .. }
+    ));
+    assert_eq!(reader.position(), bytes.len());
+
+    let back_reference_key = bytes.len() - 8 - 4;
+    bytes[back_reference_key..back_reference_key + 4].copy_from_slice(&9_u32.to_le_bytes());
+    let mut reader = Reader::new(&bytes);
     let mut refs = RefTable10_1::new();
     assert!(read_page_layout_tail_10_1(&mut reader, &mut refs, 11, 0, 8192, |_| false).is_err());
     assert_eq!(reader.position(), 0);
