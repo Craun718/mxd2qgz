@@ -316,3 +316,15 @@ MapElements.dll 10.1.0.3035 的三类数值标签加载路径请求
 用 `extract` 分别读取每份工程的 /Maps 与 /PageLayout，220 条流均无
 CustomOverlayGrid 类标识的内存序字节。结果验证介质回归及实档取证范围，
 叠加格网对象体仍由构造测试验证，ArcMap/QGIS 人工验收未执行。
+
+### 叠加格网的 TopologyName
+
+10.1 介质 esriGeoDatabase.olb（SHA-256
+`09b741f2627633d36b67985e175632055fe6c5b8cd1000484acc3007f5917f9d`）
+在 TopologyName 类 `{9FCA50EC-C413-440C-B453-49A591440096}`
+上列出 IName 和 IPersistStream。CustomOverlayGrid::Load 在
+`0x7954ead4` 请求 IName，并在打开失败时继续后续字符串。
+此槽复用 [GdbCore.dll 10.1.0.3035 TopologyName::Load
+`0x7095e5c0` 的读取器](arcmap-10.1-dataset-name.md)。
+MapFrame 构造输入核对名称、引用键、后继格网字符串和截断回滚。
+真实格网宿主和 ArcMap 中的打开结果仍待验证。

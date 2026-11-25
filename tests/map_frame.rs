@@ -841,6 +841,34 @@ fn map_frame_reads_mgrs_and_custom_overlay_grid_bodies() {
     assert!(refs.contains(72) && refs.contains(73));
     assert_eq!(reader.remaining(), 0);
 
+    use mxd2qgz::objects::dataset_name::TOPOLOGY_NAME_CLASS_ID;
+    let mut topology = TOPOLOGY_NAME_CLASS_ID.to_vec();
+    topology.extend(72_u32.to_le_bytes());
+    topology.extend(1_u16.to_le_bytes());
+    string(&mut topology, "拓扑名称");
+    string(&mut topology, "");
+    topology.extend([0; 16]); // 空 IDatasetName。
+    let mut topology_body = body.clone();
+    topology_body.splice(start + source_offset..start + source_end, topology);
+    let bytes = wrap(&topology_body);
+    let mut reader = Reader::new(&bytes);
+    let mut refs = original.clone();
+    let frame = read_page_layout_map_frame_10_1(&mut reader, 4096, &mut refs).unwrap();
+    let overlay = frame.grids[3].custom_overlay_grid.as_ref().unwrap();
+    assert!(matches!(
+        overlay.other_source_name.as_deref(),
+        Some(DatasetNameMoreBody10_1::Topology(name)) if name.string_a == "拓扑名称"
+    ));
+    assert_eq!(overlay.string_44, "格网编号");
+    assert!(refs.contains(72));
+    assert_eq!(reader.remaining(), 0);
+
+    let mut reader = Reader::new(&bytes[..bytes.len() - 1]);
+    let mut refs = original.clone();
+    assert!(read_page_layout_map_frame_10_1(&mut reader, 4096, &mut refs).is_err());
+    assert_eq!(reader.position(), 0);
+    assert!(!refs.contains(72));
+
     let mut unknown_event_table = event_body;
     unknown_event_table[start + source_offset + event_table_offset] ^= 0xff;
     let mut unknown_source = body.clone();

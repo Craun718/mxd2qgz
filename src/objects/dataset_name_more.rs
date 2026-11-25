@@ -102,8 +102,9 @@ use crate::objects::ams_dataset_name::{
 };
 use crate::objects::dataset_name::{
     COVERAGE_NAME_CLASS_ID, FEATURE_DATASET_NAME_CLASS_ID, FeatureDatasetNameBody10_1,
-    FeatureDatasetNameStop10_1, WorkspaceNameSlot10_1, read_coverage_name_body_10_1,
-    read_feature_dataset_name_body_10_1,
+    FeatureDatasetNameStop10_1, TOPOLOGY_NAME_CLASS_ID, TopologyNameBody10_1,
+    WorkspaceNameSlot10_1, read_coverage_name_body_10_1, read_feature_dataset_name_body_10_1,
+    read_topology_name_body_10_1,
 };
 use crate::objects::envelope::{
     SpatialReferenceEntry10_1, read_spatial_reference_body_10_1, read_spatial_reference_entry_10_1,
@@ -415,6 +416,7 @@ pub enum DatasetNameMoreBody10_1 {
     AmsDatasetName(Box<AmsDatasetName10_1>),
     /// FeatureDatasetName（第六轮读取器）。
     FeatureDataset(Box<FeatureDatasetNameBody10_1>),
+    Topology(Box<TopologyNameBody10_1>),
     CadDrawing(Box<CadDrawingNameBody10_1>),
     /// GeometricNetworkName（本模块）。
     GeometricNetwork(Box<GeometricNetworkNameBody10_1>),
@@ -1217,6 +1219,16 @@ fn read_dataset_name_object_body_10_1(
             )),
             None,
         )),
+        TOPOLOGY_NAME_CLASS_ID => {
+            let body = read_topology_name_body_10_1(reader, max_bytes, table, key)?;
+            if let Some(stop) = &body.stop {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!("TopologyName 的名称子槽未读完：{stop:?}"),
+                ));
+            }
+            Ok((DatasetNameMoreBody10_1::Topology(Box::new(body)), None))
+        }
         FILE_NAME_CLASS_ID => Ok((
             DatasetNameMoreBody10_1::File(Box::new(read_file_name_body_10_1(reader, max_bytes)?)),
             None,
@@ -1604,6 +1616,7 @@ pub(crate) fn read_overlay_name_slot_10_1(
                     | AGS_SERVER_OBJECT_NAME
                     | AGS_SERVER_CONNECTION_NAME
                     | FEATURE_DATASET_NAME_CLASS_ID
+                    | TOPOLOGY_NAME_CLASS_ID
                     | COVERAGE_NAME_CLASS_ID
                     | TIN_NAME_CLASS_ID
                     | TERRAIN_NAME_CLASS_ID
