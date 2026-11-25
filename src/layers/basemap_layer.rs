@@ -287,11 +287,18 @@ pub fn read_basemap_prefix_10_1(
             r.read_bytes(2)?;
         }
         if v > 5 {
-            let n = count(&mut r, max_bytes / 10)?;
-            result_count = Some(n);
+            let raw_count = r.read_u32_le()?;
+            result_count = Some(raw_count);
+            let n = (raw_count as i32).max(0) as usize;
+            if n > max_bytes.min(r.remaining()) / 30 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "Basemap 准备结果计数超过范围",
+                ));
+            }
             for _ in 0..n {
                 let rv = r.read_u16_le()?;
-                if rv > 2 {
+                if rv as i16 > 2 {
                     return Err(io::Error::new(
                         ErrorKind::InvalidData,
                         "PrepareResult 版本不支持",
@@ -304,7 +311,14 @@ pub fn read_basemap_prefix_10_1(
                 let items = if rv == 1 {
                     2
                 } else {
-                    count(&mut r, max_bytes / 16)?
+                    let n = (r.read_u32_le()? as i32).max(0) as u32;
+                    if n as usize > max_bytes.min(r.remaining()) / 16 {
+                        return Err(io::Error::new(
+                            ErrorKind::InvalidData,
+                            "Basemap 准备结果对象计数超过范围",
+                        ));
+                    }
+                    n
                 };
                 for _ in 0..items {
                     if let Some(s) = slot(&mut r, &mut t, max_bytes, &mut feature_keys, true)? {

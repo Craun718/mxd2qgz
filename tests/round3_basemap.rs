@@ -260,3 +260,24 @@ fn formal_basemap_sublayer_consumes_bounded_group() {
     assert!(refs.is_empty());
     assert_eq!(reader.position(), slot_offset);
 }
+
+#[test]
+fn basemap_prepare_results_use_native_signed_versions_and_counts() {
+    for (count, result) in [(-1_i32, false), (1, true)] {
+        let mut bytes = 6_u16.to_le_bytes().to_vec();
+        bytes.extend(2_u32.to_le_bytes());
+        bytes.extend([0; 2 + 6 + 18 + 16 + 16 + 16 + 2]);
+        bytes.extend(count.to_le_bytes());
+        if result {
+            bytes.extend((-1_i16).to_le_bytes());
+            bytes.extend([0; 8 + 16]);
+            bytes.extend((-1_i32).to_le_bytes());
+        }
+        bytes.extend(0_i32.to_le_bytes()); // 正式子层数量。
+        let mut reader = Reader::new(&bytes);
+        let body = read_basemap_prefix_10_1(&mut reader, 1024, &mut RefTable10_1::new()).unwrap();
+        assert_eq!(body.stop, BasemapStop10_1::Complete);
+        assert_eq!(body.results_count, Some(count as u32));
+        assert_eq!(reader.position(), bytes.len());
+    }
+}
