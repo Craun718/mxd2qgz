@@ -191,7 +191,8 @@ fn slot(
             }
             if allow_feature && class_id == MAP_CLASS_ID {
                 let mut refs = table.clone();
-                refs.register(key);
+                read_object_entry_10_1(&mut reader.clone(), &mut refs)?;
+                refs.mark_map(key);
                 let mut prefix = probe.clone();
                 // 目前只进入非递归的内嵌 Map：图层列表非空可能重新进入 Basemap。
                 if matches!(read_map_prefix_object_stream_10_1(&mut prefix, max_bytes, &refs), Ok(body) if body.version >= 23)
@@ -327,7 +328,19 @@ pub fn read_basemap_prefix_10_1(
                     }
                     n
                 };
-                for _ in 0..items {
+                for item in 0..items {
+                    if rv == 1
+                        && item == 1
+                        && let ObjectHeader::Object { class_id, key } =
+                            read_header_10_1(&mut r.clone())?
+                        && !(t.contains_map(key)
+                            || t.registered_class(key).unwrap_or(class_id) == MAP_CLASS_ID)
+                    {
+                        return Err(io::Error::new(
+                            ErrorKind::Unsupported,
+                            "Basemap 准备结果 v1 的 IMap 槽未指向 Map",
+                        ));
+                    }
                     if let Some(s) = slot(&mut r, &mut t, max_bytes, &mut feature_keys, true)? {
                         break 'parse s;
                     }

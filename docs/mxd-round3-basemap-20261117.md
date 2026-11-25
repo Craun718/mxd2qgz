@@ -40,3 +40,11 @@ Basemap 复用
 [布局优化扩展的 ConverterOption 读取器](mxd-page-layout-tail-20261118.md#布局准备结果与-converteroption)。
 构造测试覆盖新体、按键识别头部类不同的回引及正式子层计数边界。
 未知转换选项新类仍保留停止点，真实非空选项宿主待验证。
+
+### v1 准备结果的固定 IMap 槽
+
+MappingCoreLib.dll 10.1.0.3035 的 `0x79b6fa20` 在 v1 分支
+先请求 IUnknown，再请求 `0x79bfc274` 的 IMap。Basemap 对
+第二个槽按已登记对象类校验，并在完整读出新 Map 后保留其类身份。
+构造测试覆盖空槽，以及回引头标为 Map 而登记对象实际为
+PropertySet 的回滚。真实 v1 宿主及 ArcMap 显示仍待验证。

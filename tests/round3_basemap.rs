@@ -311,3 +311,35 @@ fn basemap_prepare_results_read_converter_option_and_reuse_its_key() {
     assert!(refs.contains(73));
     assert_eq!(reader.position(), bytes.len());
 }
+
+#[test]
+fn basemap_v1_result_rejects_non_map_in_the_fixed_map_slot() {
+    use mxd2qgz::maps::map_object::MAP_CLASS_ID;
+
+    let mut bytes = 6_u16.to_le_bytes().to_vec();
+    bytes.extend(2_u32.to_le_bytes());
+    bytes.extend([0; 2 + 6 + 18 + 16 + 16 + 16 + 2]);
+    bytes.extend(1_i32.to_le_bytes());
+    bytes.extend(1_i16.to_le_bytes());
+    bytes.extend([0; 8 + 16 + 16]); // 空转换选项和 IUnknown。
+    let map_offset = bytes.len();
+    bytes.extend([0; 16]); // 空 IMap。
+    bytes.extend(0_i32.to_le_bytes());
+    let mut refs = RefTable10_1::new();
+    let mut reader = Reader::new(&bytes);
+    let body = read_basemap_prefix_10_1(&mut reader, 1024, &mut refs).unwrap();
+    assert_eq!(body.stop, BasemapStop10_1::Complete);
+
+    let property_set = mxd2qgz::objects::property_set::PROPERTY_SET_CLASS_ID;
+    let mut entry = property_set.to_vec();
+    entry.extend(73_u32.to_le_bytes());
+    mxd2qgz::storage::object_refs::read_object_entry_10_1(&mut Reader::new(&entry), &mut refs)
+        .unwrap();
+    entry[..16].copy_from_slice(&MAP_CLASS_ID);
+    bytes.splice(map_offset..map_offset + 16, entry);
+    let mut reader = Reader::new(&bytes);
+    let error = read_basemap_prefix_10_1(&mut reader, 1024, &mut refs).unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::Unsupported);
+    assert_eq!(reader.position(), 0);
+    assert_eq!(refs.len(), 1);
+}
