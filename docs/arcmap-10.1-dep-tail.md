@@ -1533,3 +1533,21 @@ Map 有界条目另核对声明终点，RasterBasemapLayer 的有界槽仍可在
 未知分支保留原始字节与已证前缀。构造 Scene 宿主覆盖 v1、v2 的
 后继字段和体内截断。真实宿主、逐层遮罩接口和 ArcMap/QGIS 人工
 验收仍待验证。
+
+### DimensionLayer 的持久化前缀
+
+对 [Dimension.dll 10.1.0.3035](mxd-luna-deep-layer-masking-20261118.md#dimensionlayertopologylayer-和-networklayer)
+同摘要 PE32 提取物执行 `objdump`。主 QI `0x6e9e97d0`
+于 `0x6e9e9817` 比较 IPersistStream IID（常量 `0x6e9f427c`），
+命中后在 `0x6e9e9b17` 返回完整对象 `+0x10`。构造指令
+`0x6e9e9506` 将持久化虚表 `0x6e9f4c68` 装在该偏移，
+Load、Save 分别为 `0x6e9eac80`、`0x6e9ead80`。
+
+Load 先读有符号 short，拒绝高于 4 的版本。在 `0x6e9eacd7`
+直接对构造时创建的聚合 FeatureLayer 持久化接口调用 Load，
+传入同一 IStream，因此聚合体前无独立对象头或引用键。外层仅 v2
+在 `0x6e9eaced` 调用 AfCore String::Read，再于
+`0x6e9ead17` 读两个字节。外层 v4 在 `0x6e9ead53`
+读取末尾四字节。需继续核对 Save、聚合体完成边界及末字段语义，
+然后接入普通 ILayer 分派。真实非空 3D 宿主和 ArcMap/QGIS
+人工验收未执行。
