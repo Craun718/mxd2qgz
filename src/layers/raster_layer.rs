@@ -28,7 +28,9 @@ use super::raster_renderer::{
     RasterRendererShared10_1, RasterRendererSharedLayout10_1, is_supported_color_ramp_class,
     read_raster_renderer_slot_prefix_10_1, supports_raster_renderer_body_10_1,
 };
-use super::raster_unique_value::{RasterUniqueValueLayout10_1, UNIQUE_VALUES_CLASS_ID};
+use super::raster_unique_value::{
+    RasterUniqueValueLayout10_1, UNIQUE_VALUES_CLASS_ID, UniqueValuesSlot10_1,
+};
 use crate::maps::map_surround::LegendItemSlot10_1;
 use crate::objects::{
     callout_background::{
@@ -348,6 +350,20 @@ fn is_inline_unique_value_scalar(value: &PropertyValueObjectStream10_1) -> bool 
     )
 }
 
+fn unique_values_preserve_empty_dataset(slot: &UniqueValuesSlot10_1, table: &RefTable10_1) -> bool {
+    match slot.entry {
+        ObjectEntry10_1::Null => true,
+        ObjectEntry10_1::BackReference { key, .. } => {
+            table.registered_class(key) == Some(UNIQUE_VALUES_CLASS_ID)
+        }
+        ObjectEntry10_1::NewObject { .. } => slot.body.as_ref().is_some_and(|body| {
+            body.values
+                .iter()
+                .all(|(value, _)| is_inline_unique_value_scalar(value))
+        }),
+    }
+}
+
 pub use super::raster_layer_tail::RasterLayerTail10_1;
 
 /// RasterLayer 10.1 Load 的已确认前缀。
@@ -656,19 +672,7 @@ pub(super) fn read_inline_raster_body_10_1(
                     }
                     RasterUniqueValueLayout10_1::Modern { unique_values, ramp } => {
                         matches!(unique.version, 3 | 4)
-                            && match unique_values.entry {
-                                ObjectEntry10_1::Null => true,
-                                ObjectEntry10_1::BackReference { class_id, .. } => {
-                                    class_id == UNIQUE_VALUES_CLASS_ID
-                                }
-                                ObjectEntry10_1::NewObject { .. } => {
-                                    unique_values.body.as_ref().is_some_and(|body| {
-                                        body.values.iter().all(|(value, _)| {
-                                            is_inline_unique_value_scalar(value)
-                                        })
-                                    })
-                                }
-                            }
+                            && unique_values_preserve_empty_dataset(unique_values, &staged)
                             && ramp.as_ref().is_none_or(|ramp| {
                                 color_ramp_preserves_empty_dataset(ramp, &staged)
                             })
@@ -701,7 +705,9 @@ pub(super) fn read_inline_raster_body_10_1(
                             slot.entry == ObjectEntry10_1::Null
                         })
                 })
-                && classify.unique_values.as_ref().is_none_or(|slot| slot.entry == ObjectEntry10_1::Null)
+                && classify.unique_values.as_ref().is_none_or(|slot| {
+                    unique_values_preserve_empty_dataset(slot, &staged)
+                })
                 && renderer_shared_preserves_empty_dataset(&classify.shared, &staged)
     );
     let has_known_renderer_reference = matches!(
@@ -1856,8 +1862,18 @@ mod tests {
             if version >= 3 {
                 bytes.extend([0; 50]); // VT_EMPTY ×2、选择子 0、空图例类别。
             }
-            if version >= 4 {
-                bytes.extend([0; 16]); // 空统计槽。
+            if version == 4 {
+                bytes.extend(UNIQUE_VALUES_CLASS_ID);
+                bytes.extend(104_u32.to_le_bytes());
+                bytes.extend(1_i32.to_le_bytes());
+                bytes.extend(1_i32.to_le_bytes());
+                bytes.extend(3_u16.to_le_bytes()); // VT_I4。
+                bytes.extend([0; 14]);
+                bytes.extend(3_i32.to_le_bytes());
+                bytes.extend(7_i32.to_le_bytes());
+            } else if version == 5 {
+                bytes.extend(RGB_COLOR_CLASS_ID);
+                bytes.extend(106_u32.to_le_bytes());
             }
             if version >= 5 {
                 bytes.extend(0_u16.to_le_bytes());
@@ -1918,6 +1934,13 @@ mod tests {
             format.extend(100_u32.to_le_bytes());
             crate::storage::object_refs::read_object_entry_10_1(
                 &mut Reader::new(&format),
+                &mut refs,
+            )
+            .unwrap();
+            let mut values = UNIQUE_VALUES_CLASS_ID.to_vec();
+            values.extend(106_u32.to_le_bytes());
+            crate::storage::object_refs::read_object_entry_10_1(
+                &mut Reader::new(&values),
                 &mut refs,
             )
             .unwrap();
