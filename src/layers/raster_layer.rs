@@ -30,7 +30,10 @@ use super::raster_renderer::{
 use super::raster_unique_value::{RasterUniqueValueLayout10_1, UNIQUE_VALUES_CLASS_ID};
 use crate::maps::map_surround::LegendItemSlot10_1;
 use crate::objects::{
-    callout_background::{CalloutSlot10_1, MARKER_TEXT_BACKGROUND_CLASS_ID},
+    callout_background::{
+        BALLOON_CALLOUT_CLASS_ID, CalloutSlot10_1, GeometrySlotEntry10_1, LINE_CALLOUT_CLASS_ID,
+        MARKER_TEXT_BACKGROUND_CLASS_ID, PointSlotEntry10_1, SIMPLE_LINE_CALLOUT_CLASS_ID,
+    },
     color_ramp::ColorRampSlot10_1,
     display_color::{
         CMYK_COLOR_CLASS_ID, ColorSlot10_1, GRAY_COLOR_CLASS_ID, HLS_COLOR_CLASS_ID,
@@ -178,8 +181,43 @@ fn legend_format_preserves_empty_dataset(
                         && match &text.background {
                             None | Some(CalloutSlot10_1::Null) => true,
                             Some(CalloutSlot10_1::BackReference { key, .. }) => {
-                                table.registered_class(*key)
-                                    == Some(MARKER_TEXT_BACKGROUND_CLASS_ID)
+                                matches!(
+                                    table.registered_class(*key),
+                                    Some(
+                                        MARKER_TEXT_BACKGROUND_CLASS_ID
+                                            | BALLOON_CALLOUT_CLASS_ID
+                                            | LINE_CALLOUT_CLASS_ID
+                                            | SIMPLE_LINE_CALLOUT_CLASS_ID
+                                    )
+                                )
+                            }
+                            Some(CalloutSlot10_1::Balloon(callout)) => {
+                                matches!(callout.anchor, Some(PointSlotEntry10_1::Null))
+                                    && simple_symbol_preserves_empty_dataset(&callout.symbol, table)
+                            }
+                            Some(CalloutSlot10_1::Line(callout)) => {
+                                matches!(callout.anchor, Some(PointSlotEntry10_1::Null))
+                                    && callout.symbols.iter().all(|symbol| {
+                                        simple_symbol_preserves_empty_dataset(symbol, table)
+                                    })
+                            }
+                            Some(CalloutSlot10_1::SimpleLine(callout)) => {
+                                matches!(callout.anchor, Some(PointSlotEntry10_1::Null))
+                                    && matches!(
+                                        callout.anchor_geometry,
+                                        Some(GeometrySlotEntry10_1::Null)
+                                    )
+                                    && match &callout.line_symbol {
+                                        Some(SymbolSlotFull10_1::Null) => true,
+                                        Some(symbol @ SymbolSlotFull10_1::SimpleLineSymbol(_)) => {
+                                            simple_symbol_preserves_empty_dataset(symbol, table)
+                                        }
+                                        Some(SymbolSlotFull10_1::BackReference { key, .. }) => {
+                                            table.registered_class(*key)
+                                                == Some(SIMPLE_LINE_SYMBOL_CLASS_ID)
+                                        }
+                                        _ => false,
+                                    }
                             }
                             Some(CalloutSlot10_1::MarkerBackground(background)) => {
                                 match &background.symbol {
@@ -197,7 +235,6 @@ fn legend_format_preserves_empty_dataset(
                                     _ => false,
                                 }
                             }
-                            _ => false,
                         }
                         && [&text.color1, &text.color2].into_iter().all(|color| {
                             matches!(color, ColorSlot10_1::Null)
@@ -1468,12 +1505,14 @@ mod tests {
         groups.extend(4_u16.to_le_bytes());
         groups.extend([0; 16 + 12 + 2 + 24 + 8 + 16 + 16 + 8 + 24 + 1 + 8 + 4 + 8 + 1]);
         groups.extend(SIMPLE_TEXT_PATH_CLASS_ID);
+        let background_at = groups.len();
         groups.extend(MARKER_TEXT_BACKGROUND_CLASS_ID);
         groups.extend(97_u32.to_le_bytes());
         groups.extend(1_u16.to_le_bytes());
         groups.extend(0_u16.to_le_bytes());
         groups.extend(RGB_COLOR_CLASS_ID); // 标记符号使用既有键。
         groups.extend(77_u32.to_le_bytes());
+        let background_end = groups.len();
         groups.extend([0; 16]); // 空填充符号。
         groups.extend(encoded_string("标签"));
         groups.extend([0; 8 + 4 + 8 + 16 + 16]); // 大小、遮罩参数、符号及字体。
@@ -1532,6 +1571,22 @@ mod tests {
         groups.extend(75_u32.to_le_bytes());
         let mut colormap_with_groups = colormap.clone();
         colormap_with_groups.splice(24..28, groups.iter().copied());
+        let colormaps_with_callouts = [
+            (BALLOON_CALLOUT_CLASS_ID, 4 + 4 * 8 + 2 * 16 + 8),
+            (LINE_CALLOUT_CLASS_ID, 4 * 16 + 8 + 4 + 5 * 8),
+            (SIMPLE_LINE_CALLOUT_CLASS_ID, 8 + 2 + 3 * 16),
+        ]
+        .map(|(class_id, body_len)| {
+            let mut background = class_id.to_vec();
+            background.extend(97_u32.to_le_bytes());
+            background.extend(1_u16.to_le_bytes());
+            background.resize(background.len() + body_len, 0);
+            let mut groups = groups.clone();
+            groups.splice(background_at..background_end, background);
+            let mut renderer = colormap.clone();
+            renderer.splice(24..28, groups);
+            renderer
+        });
         let mut discrete = super::super::raster_renderer::DISCRETE_COLOR_RENDERER_CLASS_ID.to_vec();
         discrete.extend(65_u32.to_le_bytes());
         discrete.extend(1_i32.to_le_bytes());
@@ -1635,6 +1690,9 @@ mod tests {
             &tagged_rgb_with_filter,
             &colormap,
             &colormap_with_groups,
+            &colormaps_with_callouts[0],
+            &colormaps_with_callouts[1],
+            &colormaps_with_callouts[2],
             &discrete,
             &unique_v1,
             &unique_v2,

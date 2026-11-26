@@ -2390,3 +2390,12 @@ DisplayCore.dll 10.1.0.3035 的 MarkerTextBackground Load
 构造回归在 v4 图例标签中嵌入新背景，标记使用已有图例类别的
 简单点符号键，并核对后继补丁及图层边界。其他文字背景类与
 实际工程人工验收待核对。
+
+同版 DisplayCore.dll 的 BalloonCallout Load `0x6eb41950`、
+LineCallout Load `0x6eb58fd0` 和 SimpleLineCallout Load
+`0x6eb82580` 分别装载符号、锚点及各自标量。前两者在末尾
+标量读完后直接返回，SimpleLineCallout 在 `0x6eb82654`
+清理旧接口成员后返回。普通 v12 复用这些对象体读取器，允许
+空锚点、新建的已核对简单符号及匹配接口的符号回引，也允许
+已登记的三类背景回引。构造回归分别以三种空锚点背景替换图例
+文字背景并核对后继边界。非空锚点和实际工程人工验收待验证。
