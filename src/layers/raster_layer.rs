@@ -14,7 +14,10 @@
 use super::raster_dataset_name::{
     RasterDatasetNameEntryBody10_1, read_supported_raster_name_entry_10_1,
 };
-use super::raster_renderer::{RasterRendererPrefix10_1, read_raster_renderer_slot_prefix_10_1};
+use super::raster_renderer::{
+    RasterRendererPrefix10_1, RasterRendererSharedLayout10_1, read_raster_renderer_slot_prefix_10_1,
+};
+use crate::objects::{color_ramp::ColorRampSlot10_1, display_color::RGB_COLOR_CLASS_ID};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
 use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -275,7 +278,9 @@ pub(super) fn read_inline_raster_body_10_1(
             RasterRendererPrefix10_1::Simple { shared, .. }
             | RasterRendererPrefix10_1::Sai { shared, .. }
         ) if shared.version == 1
-
+            || matches!(&shared.layout, RasterRendererSharedLayout10_1::RasterIo { color, .. }
+                if color.starts_with(&RGB_COLOR_CLASS_ID))
+                && matches!(shared.color_ramp, None | Some(ColorRampSlot10_1::Null))
     );
     let boundary = if body.version == 12
         && (renderer.entry == ObjectEntry10_1::Null || has_scalar_renderer)
@@ -919,13 +924,22 @@ mod tests {
         }
         simple_raster_io.extend(6_i32.to_le_bytes());
         simple_raster_io.extend((-1_i32).to_le_bytes());
+        let color_at = simple_raster_io.len();
         simple_raster_io.extend([0; 16]); // 空颜色。
         simple_raster_io.extend(7_i32.to_le_bytes());
         simple_raster_io.extend(24_i32.to_le_bytes());
         simple_raster_io.extend([0; 24]);
         simple_raster_io.extend([0xff; 8]);
         simple_raster_io.extend([0; 2 + 4 + 4 + 1 + 2]); // v4–v8 的标量后缀。
-        for renderer in [&simple, &sai] {
+        let mut rgb = RGB_COLOR_CLASS_ID.to_vec();
+        rgb.extend([1, 0, 1, 0, 1]); // 两个版本与整数颜色分支。
+        rgb.extend([0; 6]); // 颜色 LONG、标志和透明度。
+        let mut colored_v8 = simple_raster_io.clone();
+        colored_v8.splice(color_at..color_at + 16, rgb);
+        let mut colored_v9 = colored_v8.clone();
+        colored_v9[24..28].copy_from_slice(&9_i32.to_le_bytes());
+        colored_v9.extend([0; 16]); // 空色带。
+        for renderer in [&simple, &sai, &colored_v8, &colored_v9] {
             let mut with_renderer = bytes.clone();
             with_renderer.splice(renderer_at..renderer_at + 16, renderer.iter().copied());
             let mut reader = Reader::new(&with_renderer);
