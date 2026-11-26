@@ -1,7 +1,8 @@
 //! RasterRenderer.dll 10.1 的 RasterStretchRenderer。
 
 use super::feature_layer_tail::{
-    LEGEND_GROUP_CLASS_ID, LegendGroupSlot10_1, read_inline_legend_group_body_10_1,
+    LEGEND_GROUP_CLASS_ID, LegendGroupPrefix10_1, LegendGroupSlot10_1,
+    read_inline_legend_group_body_10_1,
 };
 use super::raster_renderer::{
     RasterHistogramSlot10_1, RasterRendererShared10_1, next_is_tag, optional_long_record,
@@ -59,6 +60,7 @@ pub struct RasterStretchIo10_1 {
     pub color: Option<Vec<u8>>,
     /// tag 9 必须有非空图例组；仍为无键对象体。
     pub legend_group: Vec<u8>,
+    pub legend_group_body: Box<LegendGroupPrefix10_1>,
     pub tag10: Option<i32>,
     pub tag11: Option<i32>,
     pub tag12: Option<u16>,
@@ -146,12 +148,6 @@ fn read_no_key_object(
                 ))
             })?;
         }
-        (9, LEGEND_GROUP_CLASS_ID) => {
-            let group = read_inline_legend_group_body_10_1(r, max, table, 0)?;
-            if let Some(stop) = group.stop {
-                return Err(invalid(format!("栅格拉伸渲染器图例组未闭合：{stop:?}")));
-            }
-        }
         _ => {
             return Err(invalid(format!(
                 "栅格拉伸渲染器 tag {tag} 的类 {} 未支持",
@@ -163,6 +159,24 @@ fn read_no_key_object(
     Ok(Some(
         start.read_bytes(r.position() - start.position())?.to_vec(),
     ))
+}
+
+fn read_stretch_legend_group(
+    r: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<(Vec<u8>, Box<LegendGroupPrefix10_1>)> {
+    let mut start = r.clone();
+    if raster_io_object_class(r, 9)? != LEGEND_GROUP_CLASS_ID {
+        return Err(invalid("栅格拉伸渲染器缺少已支持的非空 tag 9 图例组"));
+    }
+    let group = read_inline_legend_group_body_10_1(r, max, table, 0)?;
+    if let Some(stop) = group.stop {
+        return Err(invalid(format!("栅格拉伸渲染器图例组未闭合：{stop:?}")));
+    }
+    start.read_bytes(8)?;
+    let bytes = start.read_bytes(r.position() - start.position())?.to_vec();
+    Ok((bytes, Box::new(group)))
 }
 
 fn double_record(r: &mut Reader<'_>, tag: i32) -> io::Result<Option<f64>> {
@@ -261,9 +275,7 @@ pub(super) fn read_raster_stretch_renderer(
         let ramp = read_no_key_object(r, max, table, 7)?;
         let color = read_no_key_object(r, max, table, 8)?;
         // 原生在 0x7c97f2d9 对缺省或空 tag 9 直接走失败出口。
-        let legend_group = read_no_key_object(r, max, table, 9)?
-            .filter(|bytes| bytes[..16] != [0; 16])
-            .ok_or_else(|| invalid("栅格拉伸渲染器缺少非空 tag 9 图例组"))?;
+        let (legend_group, legend_group_body) = read_stretch_legend_group(r, max, table)?;
         let tag10 = optional_long_record(r, 10)?;
         let tag11 = optional_long_record(r, 11)?;
         let tag12 = optional_record(r, 12, 2)?
@@ -293,6 +305,7 @@ pub(super) fn read_raster_stretch_renderer(
                 ramp,
                 color,
                 legend_group,
+                legend_group_body,
                 tag10,
                 tag11,
                 tag12,

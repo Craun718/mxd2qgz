@@ -13,7 +13,8 @@
 
 use super::feature_layer_tail::{
     LEGEND_CLASS_CLASS_ID, LEGEND_GROUP_CLASS_ID, LegendClassEntry10_1, LegendClassFormatSlot10_1,
-    LegendClassPrefix10_1, LegendGroupSlot10_1, NumberFormatSlot10_1, supports_number_format_class,
+    LegendClassPrefix10_1, LegendGroupPrefix10_1, LegendGroupSlot10_1, NumberFormatSlot10_1,
+    supports_number_format_class,
 };
 use super::legend_format::{
     LEGEND_CLASS_FORMAT_CLASS_ID, LegendClassFormatSlot10_1 as FormatMember,
@@ -328,21 +329,30 @@ fn legend_class_preserves_empty_dataset(
         && legend_format_preserves_empty_dataset(&class.format, table)
 }
 
+fn legend_group_body_preserves_empty_dataset(
+    group: &LegendGroupPrefix10_1,
+    table: &RefTable10_1,
+) -> bool {
+    group.classes.iter().all(|entry| match entry {
+        LegendClassEntry10_1::Null => true,
+        LegendClassEntry10_1::BackReference { key, .. } => {
+            table.registered_class(*key) == Some(LEGEND_CLASS_CLASS_ID)
+        }
+        LegendClassEntry10_1::NewObject(class) => {
+            legend_class_preserves_empty_dataset(class, table)
+        }
+    })
+}
+
 fn legend_groups_preserve_empty_dataset(
     groups: &[LegendGroupSlot10_1],
     table: &RefTable10_1,
 ) -> bool {
     groups.iter().all(|slot| match slot {
         LegendGroupSlot10_1::Null => true,
-        LegendGroupSlot10_1::LegendGroup(group) => group.classes.iter().all(|entry| match entry {
-            LegendClassEntry10_1::Null => true,
-            LegendClassEntry10_1::BackReference { key, .. } => {
-                table.registered_class(*key) == Some(LEGEND_CLASS_CLASS_ID)
-            }
-            LegendClassEntry10_1::NewObject(class) => {
-                legend_class_preserves_empty_dataset(class, table)
-            }
-        }),
+        LegendGroupSlot10_1::LegendGroup(group) => {
+            legend_group_body_preserves_empty_dataset(group, table)
+        }
         LegendGroupSlot10_1::BackReference { key, .. } => {
             table.registered_class(*key) == Some(LEGEND_GROUP_CLASS_ID)
         }
@@ -744,6 +754,17 @@ pub(super) fn read_inline_raster_body_10_1(
                         && legend_groups_preserve_empty_dataset(std::slice::from_ref(legend_group), &staged)
             ) && renderer_shared_preserves_empty_dataset(&stretch.shared, &staged)
     );
+    let has_modern_stretch_renderer = matches!(
+        renderer.body.as_ref(),
+        Some(RasterRendererPrefix10_1::Stretch(stretch))
+            if matches!(stretch.version, 3..=9)
+                && matches!(&stretch.layout, RasterStretchLayout10_1::RasterIo(io)
+                    if io.ramp.as_deref().is_none_or(|ramp| ramp == [0; 16])
+                        && io.color.as_deref().is_some_and(is_known_renderer_io_color)
+                        && io.histogram.is_none()
+                        && legend_group_body_preserves_empty_dataset(&io.legend_group_body, &staged))
+                && renderer_shared_preserves_empty_dataset(&stretch.shared, &staged)
+    );
     let has_known_renderer_reference = matches!(
         renderer.entry,
         ObjectEntry10_1::BackReference { key, .. }
@@ -759,6 +780,7 @@ pub(super) fn read_inline_raster_body_10_1(
             || has_unique_value_renderer
             || has_classify_renderer
             || has_legacy_stretch_renderer
+            || has_modern_stretch_renderer
             || has_known_renderer_reference)
         && let Some(name) = first_name
         && match name.entry {
@@ -1970,6 +1992,29 @@ mod tests {
             renderer.extend(&colored_v9[24..]);
             renderer
         });
+        let mut modern_stretch = stretch[0][..20].to_vec();
+        modern_stretch.extend(3_i32.to_le_bytes());
+        modern_stretch.extend(encoded_string("拉伸"));
+        let mut record = |tag: i32, payload: &[u8]| {
+            modern_stretch.extend(tag.to_le_bytes());
+            modern_stretch.extend((payload.len() as i32).to_le_bytes());
+            modern_stretch.extend(payload);
+        };
+        record(0x00ff_00ff, &[]);
+        record(1, &[0; 4]);
+        record(2, &[0; 0x930]);
+        for (tag, len) in [(3, 4), (4, 8), (5, 4), (6, 8)] {
+            record(tag, &[0; 8][..len]);
+        }
+        modern_stretch.extend(8_i32.to_le_bytes());
+        modern_stretch.extend((-1_i32).to_le_bytes());
+        modern_stretch.extend(&colored_v8[color_at..color_at + 27]);
+        modern_stretch.extend(9_i32.to_le_bytes());
+        modern_stretch.extend((-1_i32).to_le_bytes());
+        modern_stretch.extend(LEGEND_GROUP_CLASS_ID);
+        modern_stretch.extend(&groups[40..groups.len() - 20]);
+        modern_stretch.extend([0xff; 8]);
+        modern_stretch.extend(&colored_v9[24..]);
         for renderer in [
             &simple,
             &sai,
@@ -2012,6 +2057,7 @@ mod tests {
             &classify[4],
             &stretch[0],
             &stretch[1],
+            &modern_stretch,
         ] {
             let mut with_renderer = bytes.clone();
             with_renderer.splice(renderer_at..renderer_at + 16, renderer.iter().copied());
