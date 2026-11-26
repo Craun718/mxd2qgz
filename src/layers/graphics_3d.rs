@@ -429,18 +429,22 @@ mod tests {
                     use crate::layers::feature_layer_tail::SIMPLE_RENDERER_CLASS_ID;
                     use crate::objects::display_symbol::SIMPLE_FILL_SYMBOL_CLASS_ID;
 
-                    bytes.extend(SIMPLE_RENDERER_CLASS_ID);
-                    bytes.extend(42_u32.to_le_bytes());
-                    bytes.extend(1_u16.to_le_bytes());
-                    bytes.extend(SIMPLE_FILL_SYMBOL_CLASS_ID);
-                    bytes.extend(43_u32.to_le_bytes());
-                    bytes.extend(1_u16.to_le_bytes());
-                    bytes.extend([0; 16 + 16 + 12]);
-                    bytes.extend([0; 16 + 16 + 2]);
-                    bytes.extend(empty_string);
-                    bytes.extend([0; 4]);
-                    bytes.extend(empty_string);
-                    bytes.extend([0; 6 * 16]);
+                    for key in [42_u32, 44] {
+                        if key == 44 {
+                            bytes.extend([0; 5 * 16]);
+                        }
+                        bytes.extend(SIMPLE_RENDERER_CLASS_ID);
+                        bytes.extend(key.to_le_bytes());
+                        bytes.extend(1_u16.to_le_bytes());
+                        bytes.extend(SIMPLE_FILL_SYMBOL_CLASS_ID);
+                        bytes.extend((key + 1).to_le_bytes());
+                        bytes.extend(1_u16.to_le_bytes());
+                        bytes.extend([0; 16 + 16 + 12]);
+                        bytes.extend([0; 16 + 16 + 2]);
+                        bytes.extend(empty_string);
+                        bytes.extend([0; 4]);
+                        bytes.extend(empty_string);
+                    }
                 }
                 if version >= 3 {
                     bytes.extend([0; 16]);
@@ -477,13 +481,15 @@ mod tests {
                 };
                 if version >= 2 {
                     use crate::layers::feature_layer::RendererSlot10_1;
-                    assert!(
-                        matches!(&body.renderers[0], RendererSlot10_1::SimpleRenderer(renderer) if renderer.key == 42 && renderer.stop.is_none())
-                    );
-                    assert_eq!(
-                        refs.registered_class(43),
-                        Some(crate::objects::display_symbol::SIMPLE_FILL_SYMBOL_CLASS_ID)
-                    );
+                    for (index, key) in [(0, 42), (6, 44)] {
+                        assert!(
+                            matches!(&body.renderers[index], RendererSlot10_1::SimpleRenderer(renderer) if renderer.key == key && renderer.stop.is_none())
+                        );
+                        assert_eq!(
+                            refs.registered_class(key + 1),
+                            Some(crate::objects::display_symbol::SIMPLE_FILL_SYMBOL_CLASS_ID)
+                        );
+                    }
                 }
                 assert_eq!(body.version, version);
                 assert_eq!(body.renderers.len(), if version >= 2 { 7 } else { 0 });
