@@ -687,6 +687,7 @@
       - [x] 接入普通关联 ILayer 与 Map 普通图层条目的 RasterLayer v0–11、v13–17，保留后继对象边界。
       - [x] 核对 RasterLayer v12 的 RasterIO 二次打开对已有栅格成员的前置检查。[取证](docs/mxd-10.1-raster-layer-tail.md#二次打开要求图层已有栅格成员)
       - [ ] 支持无外层长度的普通 RasterLayer v12 对象体；原生依赖数据集打开结果，有界体已覆盖两种形态。
+      - [x] 接入 InternetTiledLayerName 已证空打开结果的普通 RasterLayer v12 尾段。[原生取证](docs/mxd-10.1-raster-layer-tail.md#internettiledlayername-的空打开结果)
       - [x] 核对 RasterTypeName 的空标识和空镶嵌槽打开路径。[取证](docs/mxd-10.1-raster-layer-tail.md#rastertypename-的空标识打开路径)
       - [x] 核对 RasterLayer 新对象的初始数据集成员及空成员跳转。[取证](docs/mxd-10.1-raster-layer-tail.md#无界-v12-的初始数据集成员)
       - [x] 核对无界 v12 的空渲染器、空扩展与 RasterIO 打开门。[取证](docs/mxd-10.1-raster-layer-tail.md#无界-v12-的空渲染器空扩展与-rasterio-门)

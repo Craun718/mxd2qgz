@@ -1802,3 +1802,21 @@ RasterLayer 在 `0x7c73c1a9` 使用的 IName
 TableName 的空工作空间条件也不能用于无界 v12 的关联名称。现有无界
 判断保留这一拒绝结果。有界读取仍保留可完整解码的包装体。此结论限于
 当前二进制的静态接口路径，尚未运行 ArcMap 或 QGIS 验收。
+
+#### InternetTiledLayerName 的空打开结果
+
+复核同摘要 MapServerLayer.dll 10.1.0.3035。
+InternetTiledLayerName 的 IName 表 `0x79ebec1c` 的 +0x14 槽
+进入 `0x79e36e10`。相对 IName 的 +0x14 是瓦片读取器，
++0x18 是持久化体中的 LONG，与 Load 的
+`0x79e36f37`、`0x79e36f22` 分别对应。
+Open 在 `0x79e36e29` 和 `0x79e36e2f` 检查读取器为空或
+LONG 等于 -1。任一条件满足均跳至 `0x79e36e80` 返回 S_FALSE，
+输出保持原值。RasterLayer 的单名称和多名称首项调用均预先清空
+输出，分别见 `0x7c73b744` 和 `0x7c73b9eb`。带空路径的
+RasterIO tag 30 调用也经 `0x7c712da0` 清空输出。
+
+普通 v12 在此前已证的尾段条件下，依据这两个分支省略两个可选
+末槽。构造回归覆盖非空读取器加 -1、空读取器、名称回引、后续
+字节边界，以及非空读取器加其他 LONG 时的事务回滚。未取得
+真实普通 v12 宿主，ArcMap 10.1 和 QGIS 人工验收尚未进行。

@@ -278,7 +278,7 @@ pub(super) fn read_inline_raster_body_10_1(
             }
             ObjectEntry10_1::Null => false,
         } {
-        // 空标识和空镶嵌槽使 RasterTypeName::Open 返回空指针。
+        // 首个有效名称的已知 Open 分支未提供数据集。
         RasterLayerBoundary::InlineWithoutDataset
     } else {
         RasterLayerBoundary::Inline
@@ -787,6 +787,65 @@ mod tests {
                 assert!(refs.is_empty());
             }
         }
+    }
+
+    #[test]
+    fn inline_raster_v12_accepts_internet_tile_name_without_open_result() {
+        use super::super::raster_dataset_name::INTERNET_TILED_LAYER_NAME_CLASS_ID;
+
+        let mut standard_prefix = body_prefix(12, 1);
+        dataset_name(&mut standard_prefix, 60);
+        let standard = raster_with_empty_slots(12, false);
+
+        let mut bytes = body_prefix(12, 1);
+        bytes.extend(INTERNET_TILED_LAYER_NAME_CLASS_ID);
+        bytes.extend(60_u32.to_le_bytes());
+        bytes.extend(1_i16.to_le_bytes());
+        bytes.extend(encoded_string("Tiles"));
+        let index_offset = bytes.len();
+        bytes.extend((-1_i32).to_le_bytes());
+        let tile_offset = bytes.len();
+        bytes.extend([
+            0x16, 0xec, 0xb2, 0x48, 0xdb, 0xb0, 0x85, 0x4d, 0x9a, 0x86, 0x1d, 0xdb, 0x04, 0x04,
+            0x85, 0x79,
+        ]); // MapTileReader。
+        bytes.extend(61_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(encoded_string(""));
+        bytes.extend(encoded_string(""));
+        bytes.extend([0; 4]);
+        bytes.extend(encoded_string("tiles"));
+        bytes.extend([0; 16 + 2]); // 空栅格名称和选择子。
+        let name_end = bytes.len();
+        bytes.extend(&standard[standard_prefix.len()..]);
+        let end = bytes.len();
+        bytes.extend([0xa5; 16]);
+
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        let raster = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+        assert!(raster.tail.unwrap().geodata_xform_v13.is_none());
+        assert_eq!(reader.position(), end);
+        assert!(refs.raster_name_opens_without_result(60));
+
+        let name_body = body_prefix(12, 1).len() + 20;
+        let mut back_reference = bytes.clone();
+        back_reference.drain(name_body..name_end);
+        let mut reader = Reader::new(&back_reference);
+        read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+        assert_eq!(reader.position(), end - (name_end - name_body));
+
+        bytes[index_offset..index_offset + 4].copy_from_slice(&0_i32.to_le_bytes());
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        assert!(read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+
+        bytes.splice(tile_offset..name_end, [0; 16]);
+        let mut reader = Reader::new(&bytes);
+        read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+        assert_eq!(reader.position(), end - (name_end - tile_offset) + 16);
     }
 
     #[test]

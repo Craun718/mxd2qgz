@@ -309,8 +309,16 @@ pub enum RasterDatasetNameEntryBody10_1 {
 
 impl RasterDatasetNameEntryBody10_1 {
     pub(super) fn open_without_result(&self) -> bool {
-        matches!(self, Self::RasterType(name)
-            if name.name.is_empty() && name.mosaic_dataset.entry == ObjectEntry10_1::Null)
+        match self {
+            Self::RasterType(name) => {
+                name.name.is_empty() && name.mosaic_dataset.entry == ObjectEntry10_1::Null
+            }
+            // IName::Open 在瓦片读取器为空或整数字段为 -1 时返回 S_FALSE。
+            Self::InternetTiledLayer(name) => {
+                name.tile_reader.entry == ObjectEntry10_1::Null || name.integer == -1
+            }
+            _ => false,
+        }
     }
 
     pub(crate) fn dataset_name_body(&self) -> Option<&RasterDatasetNameBody10_1> {
