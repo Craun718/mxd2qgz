@@ -2361,3 +2361,12 @@ Load `0x7192db20`。它读取有界形状记录，按版本读取空间参考槽
 UnknownCoordinateSystem 读取器。构造回归在折线补丁中加入
 新建 UnknownCoordinateSystem，同时保留多边形的地理坐标系回引，
 核对三个渲染器宿主的结束位置。附坐标系的实际补丁宿主尚待人工验收。
+
+LegendClassFormat 在 `0x78664b8c`、`0x78664bae` 直接载入
+标签和描述的 ITextSymbol。DisplayCore.dll 10.1.0.3035 的
+TextSymbol Load `0x6ebd0a60` 读取颜色、背景、填充、遮罩和
+字体等成员。普通 v12 接受已解析的 TextSymbol，要求路径和解析器
+标识为空、背景为空，颜色和嵌套符号复用已核对的类判定，
+字体接受空槽、StdFont 及其已登记回引。构造回归覆盖非空标签
+文本及描述符号回引，并核对其后补丁和图层边界。外部路径、
+解析器、非空背景和真实工程人工验收仍待核对。

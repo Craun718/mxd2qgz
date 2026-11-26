@@ -30,6 +30,7 @@ use super::raster_renderer::{
 use super::raster_unique_value::{RasterUniqueValueLayout10_1, UNIQUE_VALUES_CLASS_ID};
 use crate::maps::map_surround::LegendItemSlot10_1;
 use crate::objects::{
+    callout_background::CalloutSlot10_1,
     color_ramp::ColorRampSlot10_1,
     display_color::{
         CMYK_COLOR_CLASS_ID, ColorSlot10_1, GRAY_COLOR_CLASS_ID, HLS_COLOR_CLASS_ID,
@@ -39,8 +40,10 @@ use crate::objects::{
         SIMPLE_FILL_SYMBOL_CLASS_ID, SIMPLE_LINE_SYMBOL_CLASS_ID, SIMPLE_MARKER_SYMBOL_CLASS_ID,
         SymbolSlotFull10_1,
     },
+    element_body::{FontSlot10_1, TEXT_SYMBOL_CLASS_ID},
     envelope::SpatialReferenceEntry10_1,
     geometry::{GeometryBody10_1, POLYGON_CLASS_ID, POLYLINE_CLASS_ID},
+    ole_font::STDFONT_CLASS_ID,
     property_set::{PropertyValue10_1, PropertyValueObjectStream10_1},
     spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID,
     spatial_reference_slots::{
@@ -146,8 +149,34 @@ fn legend_format_preserves_empty_dataset(
                 }
                 _ => false,
             };
-            matches!(format.label_symbol, FormatMember::Null)
-                && matches!(format.description_symbol, FormatMember::Null)
+            let text_is_known = |slot: &FormatMember| match slot {
+                FormatMember::Null => true,
+                FormatMember::BackReference { key, .. } => {
+                    table.registered_class(*key) == Some(TEXT_SYMBOL_CLASS_ID)
+                }
+                FormatMember::TextSymbol(text) => {
+                    text.raw_path_clsid == [0; 16]
+                        && text
+                            .tail_path_clsid
+                            .is_none_or(|class_id| class_id == [0; 16])
+                        && matches!(text.background, None | Some(CalloutSlot10_1::Null))
+                        && [&text.color1, &text.color2].into_iter().all(|color| {
+                            matches!(color, ColorSlot10_1::Null)
+                                || is_known_renderer_color(color, table)
+                        })
+                        && simple_symbol_preserves_empty_dataset(&text.fill_symbol, table)
+                        && simple_symbol_preserves_empty_dataset(&text.symbol2, table)
+                        && match text.font {
+                            FontSlot10_1::Null | FontSlot10_1::StdFont(_) => true,
+                            FontSlot10_1::BackReference { key, .. } => {
+                                table.registered_class(key) == Some(STDFONT_CLASS_ID)
+                            }
+                        }
+                }
+                _ => false,
+            };
+            text_is_known(&format.label_symbol)
+                && text_is_known(&format.description_symbol)
                 && patch_is_known(&format.line_patch, LINE_PATCH_CLASS_ID)
                 && patch_is_known(&format.area_patch, AREA_PATCH_CLASS_ID)
         }
@@ -1395,7 +1424,15 @@ mod tests {
         groups.extend(LEGEND_CLASS_FORMAT_CLASS_ID);
         groups.extend(80_u32.to_le_bytes());
         groups.extend(2_u16.to_le_bytes());
-        groups.extend([0; 32]); // 空标签和描述符号。
+        groups.extend(TEXT_SYMBOL_CLASS_ID);
+        groups.extend(96_u32.to_le_bytes());
+        groups.extend(0_u16.to_le_bytes());
+        groups.extend([0; 16 + 12 + 2 + 24 + 8 + 16 + 16 + 8 + 24 + 1 + 8 + 4 + 8 + 1]);
+        groups.extend([0; 16 * 3]); // 路径类、背景和填充符号。
+        groups.extend(encoded_string("标签"));
+        groups.extend([0; 8 + 4 + 8 + 16 + 16]); // 大小、遮罩参数、符号及字体。
+        groups.extend(RGB_COLOR_CLASS_ID);
+        groups.extend(96_u32.to_le_bytes()); // 描述符号回引。
         for (class_id, key) in [(LINE_PATCH_CLASS_ID, 81_u32), (AREA_PATCH_CLASS_ID, 82)] {
             groups.extend(class_id);
             groups.extend(key.to_le_bytes());
