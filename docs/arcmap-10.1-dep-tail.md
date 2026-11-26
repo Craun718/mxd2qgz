@@ -1691,3 +1691,17 @@ IFeatureRenderer，普通对象流沿用按键取实例再查询接口的规则�
 构造输入验证回引头为 Map、登记实例为 SimpleRenderer 时可继续，
 以及回引头为 SimpleRenderer、登记实例为 TopologyLayer 时
 整个容器回滚。未核对的第三方渲染器及真实宿主仍待取证。
+
+#### TopologyLayer 的 SDK 实档
+
+对仓库样本和本地提取件的 MXD、MXT、SXD、3DD 文件按 SHA-256
+去重，得到 142 份 CFB。用 CLI 提取 140 条 /Maps、140 条
+/PageLayout 和 16 条 /3D Analyst 流，扫描 TopologyLayer 的
+CLSID 内存序。唯一候选位于 .NET SDK 的 Montgomery.mxd，
+/Maps `0x19fe`。该位置经实际分派确认是条目 2 的新对象，键 95、
+对象版本 5。名称槽在 `0x1a52` 使用 TopologyName，键 96。
+
+SDK 回归确认名称对象体可完整读取，保留七个渲染器槽和空 IUnknown，
+且未解析剩余为零，下一图层条目始于 `0x2380`。扫描未发现
+/3D Analyst 中的同类字节候选。实档验证覆盖 SDK MXD 的 Map
+宿主，ArcMap/QGIS 人工验收及真实 3D 宿主仍待完成。

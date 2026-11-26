@@ -677,3 +677,27 @@ fn sdk_conservation_raster_v12_has_a_bounded_tail() {
         assert_eq!(entry.body.as_ref().map(|body| body.len), Some(0));
     }
 }
+
+#[test]
+#[ignore = "需要 10.1 SDK 安装介质提取文件"]
+fn sdk_montgomery_reads_complete_topology_layer() {
+    use mxd2qgz::objects::dataset_name_more::DatasetNameMoreSlot10_1;
+
+    let map = read_sdk_map(
+        "temp/terra-round8-old/sdk-dotnet/Montgomery.mxd.89833ED7_0681_4032_BE76_9AB6C721CEB2",
+    );
+    let entry = &map.layer_list.entries[1];
+    let Some(LayerBodyPrefix10_1::TopologyLayer(layer)) = &entry.parsed else {
+        panic!("应读取 Montgomery 的 TopologyLayer");
+    };
+    assert_eq!(entry.offset, 0x19f4);
+    assert_eq!(entry.body.as_ref().unwrap().len, 0);
+    assert_eq!(map.layer_list.entries[2].offset, 0x2380);
+    assert_eq!(layer.version, 5);
+    assert!(matches!(
+        layer.dataset_name,
+        DatasetNameMoreSlot10_1::Body(_)
+    ));
+    assert_eq!(layer.renderers.len(), 7);
+    assert_eq!(layer.legacy_object, Some(ObjectEntry10_1::Null));
+}
