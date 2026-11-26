@@ -358,18 +358,17 @@ pub(super) fn read_inline_raster_body_10_1(
         Some(RasterRendererPrefix10_1::UniqueValue(unique))
             if matches!(unique.symbol, SymbolSlotFull10_1::Null)
                 && unique.legend_groups.is_empty()
+                && unique.classes.iter().all(|class| {
+                    class.values.iter().all(is_inline_unique_value_scalar)
+                })
                 && match &unique.layout {
                     RasterUniqueValueLayout10_1::Legacy { legend_item, colors, samples, .. } => {
                         matches!(legend_item, LegendItemSlot10_1::Null)
                             && colors.entry == ObjectEntry10_1::Null
                             && samples.is_empty()
-                            && unique.classes.is_empty()
                     }
                     RasterUniqueValueLayout10_1::Modern { unique_values, ramp } => {
                         matches!(unique.version, 3 | 4)
-                            && unique.classes.iter().all(|class| {
-                                class.values.iter().all(is_inline_unique_value_scalar)
-                            })
                             && match unique_values.entry {
                                 ObjectEntry10_1::Null => true,
                                 ObjectEntry10_1::BackReference { class_id, .. } => {
@@ -1293,6 +1292,7 @@ mod tests {
         unique_v1.extend(encoded_string(""));
         unique_v1.extend([0; 8]); // 图例组前的标量和图例组数。
         unique_v1.extend([0; 16]); // 空图例项。
+        let legacy_classes_at = unique_v1.len();
         unique_v1.extend([0; 6]); // 类别数、第二个 short。
         unique_v1.extend([0; 20]); // 空旧统计对象及样本数。
         unique_v1.extend(&colored_v9[24..]);
@@ -1315,6 +1315,10 @@ mod tests {
         class.extend(3_u16.to_le_bytes()); // VT_I4。
         class.extend([0; 14]);
         class.extend(17_i32.to_le_bytes());
+        let mut unique_v1_with_classes = unique_v1.clone();
+        unique_v1_with_classes.splice(legacy_classes_at..legacy_classes_at + 4, class.clone());
+        let mut unique_v2_with_classes = unique_v2.clone();
+        unique_v2_with_classes.splice(legacy_classes_at..legacy_classes_at + 4, class.clone());
         unique_with_classes.splice(unique_classes_at..unique_classes_at + 4, class);
         let mut unique_with_ramp = unique.clone();
         unique_with_ramp[20..24].copy_from_slice(&4_i32.to_le_bytes());
@@ -1343,6 +1347,8 @@ mod tests {
             &discrete,
             &unique_v1,
             &unique_v2,
+            &unique_v1_with_classes,
+            &unique_v2_with_classes,
             &unique,
             &unique_with_ramp,
             &unique_with_values,
