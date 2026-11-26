@@ -760,7 +760,7 @@ pub(super) fn read_inline_raster_body_10_1(
             if matches!(stretch.version, 3..=9)
                 && matches!(&stretch.layout, RasterStretchLayout10_1::RasterIo(io)
                     if io.ramp.as_deref().is_none_or(|ramp| ramp == [0; 16])
-                        && io.color.as_deref().is_some_and(is_known_renderer_io_color)
+                        && io.color.as_deref().is_none_or(is_known_renderer_io_color)
                         && legend_group_body_preserves_empty_dataset(&io.legend_group_body, &staged))
                 && renderer_shared_preserves_empty_dataset(&stretch.shared, &staged)
     );
@@ -2005,9 +2005,11 @@ mod tests {
         for (tag, len) in [(3, 4), (4, 8), (5, 4), (6, 8)] {
             record(tag, &[0; 8][..len]);
         }
+        let modern_stretch_color_at = modern_stretch.len();
         modern_stretch.extend(8_i32.to_le_bytes());
         modern_stretch.extend((-1_i32).to_le_bytes());
         modern_stretch.extend(&colored_v8[color_at..color_at + 27]);
+        let modern_stretch_color_end = modern_stretch.len();
         modern_stretch.extend(9_i32.to_le_bytes());
         modern_stretch.extend((-1_i32).to_le_bytes());
         modern_stretch.extend(LEGEND_GROUP_CLASS_ID);
@@ -2025,6 +2027,8 @@ mod tests {
         null_histogram.extend([0; 16]);
         modern_stretch_with_null_histogram
             .splice(modern_stretch_end_at..modern_stretch_end_at, null_histogram);
+        let mut modern_stretch_default_color = modern_stretch.clone();
+        modern_stretch_default_color.drain(modern_stretch_color_at..modern_stretch_color_end);
         for renderer in [
             &simple,
             &sai,
@@ -2070,6 +2074,7 @@ mod tests {
             &modern_stretch,
             &modern_stretch_with_histogram,
             &modern_stretch_with_null_histogram,
+            &modern_stretch_default_color,
         ] {
             let mut with_renderer = bytes.clone();
             with_renderer.splice(renderer_at..renderer_at + 16, renderer.iter().copied());
