@@ -1582,3 +1582,21 @@ Load 在 `0x6f72aefb` 读两字节版本，`0x6f72af08` 的
 本次仅确定独立持久化入口和版本门。对象槽类型、旧版分支和完整体
 结束边界仍需对位后才能接入普通 ILayer 槽。未执行原生运行或
 ArcMap/QGIS 人工验收。
+
+#### TopologyLayer 的对象槽与尾段
+
+同版 FeatureLayer.dll 的 Load `0x6f72aee0` 在版本后调用
+AfCore String::Read（`0x6f72af1a`），再读三个 short 和两个
+八字节字段，随后于 `0x6f72afad` 请求 IName（IID 常量
+`0x6f7aaf28`）。v1 在 `0x6f72b043` 跳至收尾路径。
+继续时，`0x6f72b068` 请求 IFeatureRenderer（IID 常量
+`0x6f7a98cc`），循环索引与 6 比较。v2 在循环后结束。
+
+继续读取的路径于 `0x6f72b0bd` 请求 IUnknown（IID 常量
+`0x6f74eb7c`）。v3 跳过 `0x6f72b124` 的 short 并结束，
+v4 读该 short 后在 `0x6f72b165` 结束。v5 常规路径另读
+两个 short 和有符号 LONG 数量，正数循环每项读一个四字节值
+和一个 short（`0x6f72b1c9`、`0x6f72b1e9`）。
+计数为零或负数时跳过循环。仍需与 Save 交叉核对渲染器数量、
+早于 v1 的控制流及 IUnknown 槽的实际类。未进行 ArcMap/QGIS
+人工验收。
