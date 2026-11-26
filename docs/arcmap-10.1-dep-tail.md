@@ -1822,3 +1822,19 @@ SDK 回归沿用同一引用表读取四个根条目，在两个直接 Map 对�
 SDK 回归现也遍历 Map 持久化集合中的内嵌 Map。该对象在根列表
 由键 533 回引，其中 `0xcd41` 的第三个 SchematicLayer v6
 与另外两个条目通过同样的关联层计数和完整消费检查。
+
+### TemporalFeatureLayer 的持久化入口
+
+复核[同摘要的 TrackingLayer.dll 10.1.0.3035](mxd-luna-deep-layer-masking-20261118.md#temporalfeaturelayer-的聚合查询)。
+PE 数据中两套虚表 `0x808a12a0`、`0x808a1f58` 共用
+GetClassID `0x8086eb90`、Load `0x8086ebd0` 和 Save
+`0x8086f840`，分别位于槽 `+0x0c/+0x14/+0x18`。
+
+Load 在 `0x8086ec27` 调内部 Variant 读取帮助函数
+`0x8087ca70`。该函数在 `0x8087cae0` 从原流读取两字节
+VARTYPE。外层在 `0x8086ec36` 比较的是此 Variant 的类型 5
+（VT_R8），在 `0x8086ec48` 将其 double 值与常量
+`0x808b07c8` 的 1.51 比较。达到该阈值的路径另读一个 LONG，
+并连续四次调用 `0x8087c940`。因此解析应先核对 Variant 线格式
+和 double 版本分支。其余阈值、内联 FeatureLayer 的流位置和
+末段尚待对位。未执行 ArcMap/QGIS 人工验收。
