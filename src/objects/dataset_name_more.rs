@@ -86,10 +86,11 @@ use crate::layers::wcs_name::{
     WMTS_CONNECTION_NAME_CLASS_ID,
 };
 use crate::maps::map_surround::{
-    BookmarkNameEntry10_1, FILE_NAME_CLASS_ID, LAS_DATASET_NAME_CLASS_ID, LOCATOR_NAME_CLASS_ID,
-    LOCATOR_WORKSPACE_NAME_CLASS_ID, LasDatasetName10_1, REPRESENTATION_CLASS_NAME_CLASS_ID,
-    RepresentationClassName10_1, SCHEMATIC_WORKSPACE_NAME_CLASS_ID, SHORTCUT_NAME_CLASS_ID,
-    read_file_name_body_10_1, read_las_dataset_name_body_10_1, read_locator_name_body_10_1,
+    BookmarkNameEntry10_1, FILE_NAME_CLASS_ID, GP_FUNCTION_NAME_CLASS_ID, GpFunctionName10_1,
+    LAS_DATASET_NAME_CLASS_ID, LOCATOR_NAME_CLASS_ID, LOCATOR_WORKSPACE_NAME_CLASS_ID,
+    LasDatasetName10_1, REPRESENTATION_CLASS_NAME_CLASS_ID, RepresentationClassName10_1,
+    SCHEMATIC_WORKSPACE_NAME_CLASS_ID, SHORTCUT_NAME_CLASS_ID, read_file_name_body_10_1,
+    read_gp_function_name_body_10_1, read_las_dataset_name_body_10_1, read_locator_name_body_10_1,
     read_locator_workspace_name_body_10_1, read_representation_class_name_body_10_1,
     read_shortcut_name_body_10_1,
 };
@@ -389,6 +390,7 @@ pub enum DatasetNameMoreBody10_1 {
     File(Box<BookmarkNameEntry10_1>),
     Shortcut(Box<BookmarkNameEntry10_1>),
     Locator(Box<BookmarkNameEntry10_1>),
+    GpFunctionName(Box<GpFunctionName10_1>),
     LocatorWorkspace(Box<BookmarkNameEntry10_1>),
     RepresentationClass(Box<RepresentationClassName10_1>),
     LasDataset(Box<LasDatasetName10_1>),
@@ -1294,6 +1296,12 @@ fn read_dataset_name_object_body_10_1(
             )?)),
             None,
         )),
+        GP_FUNCTION_NAME_CLASS_ID => Ok((
+            DatasetNameMoreBody10_1::GpFunctionName(Box::new(read_gp_function_name_body_10_1(
+                reader, max_bytes, table,
+            )?)),
+            None,
+        )),
         LOCATOR_NAME_CLASS_ID => Ok((
             DatasetNameMoreBody10_1::Locator(Box::new(read_locator_name_body_10_1(
                 reader, max_bytes, table, 0,
@@ -1680,6 +1688,7 @@ pub(crate) fn read_overlay_name_slot_10_1(
                     | WMS_CONNECTION_NAME_CLASS_ID
                     | WMTS_CONNECTION_NAME_CLASS_ID
                     | WORKSPACE_NAME_CLASS_ID
+                    | GP_FUNCTION_NAME_CLASS_ID
                     | LOCATOR_NAME_CLASS_ID
                     | LOCATOR_WORKSPACE_NAME_CLASS_ID
                     | SHORTCUT_NAME_CLASS_ID
@@ -2534,6 +2543,44 @@ mod tests {
         );
         assert_eq!(refs.registered_class(90), Some(SHORTCUT_NAME_CLASS_ID));
         assert_eq!(refs.registered_class(91), Some(SHORTCUT_NAME_CLASS_ID));
+        assert_eq!(reader.position(), end);
+        assert_eq!(read_string_10_1(&mut reader, 256).unwrap(), "格网编号");
+    }
+
+    #[test]
+    fn overlay_gp_function_name_reads_v4_and_preserves_following_field() {
+        let mut bytes = entry(&GP_FUNCTION_NAME_CLASS_ID, 90).to_vec();
+        bytes.extend(4_i16.to_le_bytes());
+        bytes.extend(2_i16.to_le_bytes());
+        for _ in 0..4 {
+            bytes.extend(0_u32.to_le_bytes());
+        }
+        bytes.extend(12_i32.to_le_bytes());
+        bytes.extend(0_u32.to_le_bytes());
+        bytes.extend((-3_i32).to_le_bytes());
+        bytes.extend(42_i32.to_le_bytes());
+        let end = bytes.len();
+        bytes.extend(str_bytes("格网编号"));
+
+        let mut refs = RefTable10_1::new();
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            assert!(read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+
+        let mut reader = Reader::new(&bytes);
+        let mut stop = None;
+        let slot = read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut stop).unwrap();
+        let DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::GpFunctionName(body)) = slot
+        else {
+            panic!("应读取 GPFunctionName");
+        };
+        assert_eq!(body.v3_fields, Some((12, String::new(), -3)));
+        assert_eq!(body.v4_value, Some(42));
+        assert!(stop.is_none());
+        assert_eq!(refs.registered_class(90), Some(GP_FUNCTION_NAME_CLASS_ID));
         assert_eq!(reader.position(), end);
         assert_eq!(read_string_10_1(&mut reader, 256).unwrap(), "格网编号");
     }

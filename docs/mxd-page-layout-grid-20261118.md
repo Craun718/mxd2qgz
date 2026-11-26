@@ -360,3 +360,12 @@ Geocoding.dll 10.1.0.3035 的 LocatorName QI `0x7135dbd0`
 [同一对象体读取器和深度限制](mxd-terra-round9-bookmark.md#locatorname)。
 构造 MapFrame 核对地址定位器名称、对象键和后继格网字符串。
 真实格网中的打开结果与 ArcMap 显示仍待验证。
+
+### 叠加格网的 GPFunctionName
+
+10.1 的 esriGeoprocessing 类型库在 GPFunctionName 上声明 IName。
+CustomOverlayGrid::Load 在 `0x7954ead4` 请求该接口。格网复用
+[GpObjects.dll 10.1.0.3035 Load `0x746e0f20` 的对象体读取器](mxd-terra-round9-bookmark.md#gpfunctionname)，
+沿用 GPName 基类的版本和 IUID 检查。构造测试检查 v4 字段、对象键、
+后续格网字符串及所有截断前缀的回滚。真实格网宿主及 ArcMap 中
+IName::Open 的结果仍待验证。

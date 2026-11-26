@@ -3327,7 +3327,7 @@ fn read_gp_data_type_name_body_10_1(
     })
 }
 
-fn read_gp_function_name_body_10_1(
+pub(crate) fn read_gp_function_name_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
