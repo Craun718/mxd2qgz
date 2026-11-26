@@ -31,7 +31,10 @@ use crate::objects::{
         CMYK_COLOR_CLASS_ID, ColorSlot10_1, GRAY_COLOR_CLASS_ID, HLS_COLOR_CLASS_ID,
         HSV_COLOR_CLASS_ID, RGB_COLOR_CLASS_ID,
     },
-    display_symbol::SymbolSlotFull10_1,
+    display_symbol::{
+        SIMPLE_FILL_SYMBOL_CLASS_ID, SIMPLE_LINE_SYMBOL_CLASS_ID, SIMPLE_MARKER_SYMBOL_CLASS_ID,
+        SymbolSlotFull10_1,
+    },
     property_set::{PropertyValue10_1, PropertyValueObjectStream10_1},
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
@@ -49,6 +52,36 @@ const RASTER_RENDERER_COLOR_CLASSES: [[u8; 16]; 5] = [
     CMYK_COLOR_CLASS_ID,
 ];
 
+fn simple_symbol_preserves_empty_dataset(
+    symbol: &SymbolSlotFull10_1,
+    table: &RefTable10_1,
+) -> bool {
+    let color_is_known = |color: &ColorSlot10_1| {
+        matches!(color, ColorSlot10_1::Null) || is_known_renderer_color(color, table)
+    };
+    match symbol {
+        SymbolSlotFull10_1::Null => true,
+        SymbolSlotFull10_1::BackReference { key, .. } => matches!(
+            table.registered_class(*key),
+            Some(
+                SIMPLE_MARKER_SYMBOL_CLASS_ID
+                    | SIMPLE_LINE_SYMBOL_CLASS_ID
+                    | SIMPLE_FILL_SYMBOL_CLASS_ID
+            )
+        ),
+        SymbolSlotFull10_1::SimpleMarkerSymbol(marker) => {
+            color_is_known(&marker.color)
+                && marker.outline_color.as_ref().is_some_and(color_is_known)
+        }
+        SymbolSlotFull10_1::SimpleLineSymbol(line) => color_is_known(&line.color),
+        SymbolSlotFull10_1::SimpleFillSymbol(fill) => {
+            fill.color.as_ref().is_some_and(color_is_known)
+                && simple_symbol_preserves_empty_dataset(&fill.outline, table)
+        }
+        _ => false,
+    }
+}
+
 fn legend_groups_preserve_empty_dataset(
     groups: &[LegendGroupSlot10_1],
     table: &RefTable10_1,
@@ -61,7 +94,7 @@ fn legend_groups_preserve_empty_dataset(
                 table.registered_class(*key) == Some(LEGEND_CLASS_CLASS_ID)
             }
             LegendClassEntry10_1::NewObject(class) => {
-                matches!(class.symbol, SymbolSlotFull10_1::Null)
+                simple_symbol_preserves_empty_dataset(&class.symbol, table)
                     && matches!(class.format, LegendClassFormatSlot10_1::Null)
             }
         }),
@@ -375,7 +408,7 @@ pub(super) fn read_inline_raster_body_10_1(
     let has_unique_value_renderer = matches!(
         renderer.body.as_ref(),
         Some(RasterRendererPrefix10_1::UniqueValue(unique))
-            if matches!(unique.symbol, SymbolSlotFull10_1::Null)
+            if simple_symbol_preserves_empty_dataset(&unique.symbol, &staged)
                 && legend_groups_preserve_empty_dataset(&unique.legend_groups, &staged)
                 && unique.classes.iter().all(|class| {
                     class.values.iter().all(is_inline_unique_value_scalar)
@@ -1278,7 +1311,12 @@ mod tests {
         groups.extend(LEGEND_CLASS_CLASS_ID);
         groups.extend(76_u32.to_le_bytes());
         groups.extend(1_u16.to_le_bytes());
-        groups.extend([0; 16]); // 空符号。
+        groups.extend(SIMPLE_MARKER_SYMBOL_CLASS_ID);
+        groups.extend(77_u32.to_le_bytes());
+        groups.extend(1_u16.to_le_bytes());
+        groups.extend([0; 16]); // 空主色。
+        groups.extend([0; 53]); // 标量、角度、偏移和轮廓宽度。
+        groups.extend([0; 16]); // 空轮廓色。
         groups.extend(encoded_string("类别"));
         groups.extend(encoded_string(""));
         groups.extend([0; 16]); // 空格式。
@@ -1305,6 +1343,7 @@ mod tests {
             unique.extend(encoded_string(""));
         }
         unique.extend(0_u16.to_le_bytes());
+        let unique_symbol_at = unique.len();
         unique.extend([0; 16]);
         unique.extend(encoded_string(""));
         unique.extend(0_i32.to_le_bytes()); // 图例组数。
@@ -1361,6 +1400,16 @@ mod tests {
         unique_with_ramp.extend(&random_ramp[colored_v9.len() - 16..]);
         unique.extend(&colored_v9[24..]);
         unique_with_ramp.extend(&colored_v9[24..]);
+        let mut fill = SIMPLE_FILL_SYMBOL_CLASS_ID.to_vec();
+        fill.extend(78_u32.to_le_bytes());
+        fill.extend(1_u16.to_le_bytes());
+        fill.extend(SIMPLE_LINE_SYMBOL_CLASS_ID);
+        fill.extend(79_u32.to_le_bytes());
+        fill.extend(1_u16.to_le_bytes());
+        fill.extend([0; 36]); // 线符号空颜色和标量。
+        fill.extend([0; 28]); // 面符号空颜色和标量。
+        let mut unique_with_fill = unique.clone();
+        unique_with_fill.splice(unique_symbol_at..unique_symbol_at + 16, fill);
         for renderer in [
             &simple,
             &sai,
@@ -1387,6 +1436,7 @@ mod tests {
             &unique_v2_with_classes,
             &unique,
             &unique_with_ramp,
+            &unique_with_fill,
             &unique_with_values,
             &unique_with_classes,
         ] {
