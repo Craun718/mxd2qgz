@@ -379,3 +379,11 @@ FeatureDataElements.dll 10.1.0.3035 的 GPDataTypeName QI
 构造输入检查外层 v1 与基类 v3 同时存在的两个 IUID 槽、名称键、
 后继格网字符串及逐前缀截断回滚。真实格网宿主及 ArcMap
 中的 IName::Open 结果仍待验证。
+
+### 叠加格网的 GPMultiValueTypeName
+
+GpObjects.dll 10.1.0.3035 的 QI `0x746f0810` 支持 IName，
+可用于 CustomOverlayGrid::Load `0x7954ead4` 的名称槽。
+格网与书签共用 [Load `0x746f0d00` 对应的读取器](mxd-terra-round9-bookmark.md#gpmultivaluetypename)，
+包括子槽的 IGPName 检查和嵌套深度上限。构造输入核对母子对象键、
+后继格网字符串以及截断回滚。真实格网宿主和 ArcMap 中的打开结果待验证。

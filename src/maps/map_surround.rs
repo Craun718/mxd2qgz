@@ -9367,6 +9367,54 @@ pub(crate) fn read_locator_name_body_10_1(
     })
 }
 
+pub(crate) fn read_gp_multi_value_type_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    name_depth: usize,
+) -> io::Result<BookmarkNameEntry10_1> {
+    if name_depth == MAX_BOOKMARK_NAME_NESTING {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "GPMultiValueTypeName 嵌套层数超限",
+        ));
+    }
+    let version = reader.read_u16_le()? as i16;
+    if version > 1 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("GPMultiValueTypeName 版本 {version} 超出 10.1 上限"),
+        ));
+    }
+    let element_type = read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth + 1)?;
+    if !matches!(
+        element_type,
+        BookmarkNameEntry10_1::Null
+            | BookmarkNameEntry10_1::GpDataTypeName(_)
+            | BookmarkNameEntry10_1::GpFunctionName(_)
+            | BookmarkNameEntry10_1::GpSaTopoFeaturesTypeName(_)
+            | BookmarkNameEntry10_1::GpMultiValueTypeName { .. }
+            | BookmarkNameEntry10_1::GpValueTableTypeName { .. }
+            | BookmarkNameEntry10_1::BackReference {
+                class_id: GP_DATA_TYPE_NAME_CLASS_ID
+                    | GP_MULTI_VALUE_TYPE_NAME_CLASS_ID
+                    | GP_VALUE_TABLE_TYPE_NAME_CLASS_ID
+                    | GP_FUNCTION_NAME_CLASS_ID
+                    | GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID,
+                ..
+            }
+    ) {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            "GPMultiValueTypeName 的 IGPName 类未支持",
+        ));
+    }
+    Ok(BookmarkNameEntry10_1::GpMultiValueTypeName {
+        version,
+        element_type: Box::new(element_type),
+    })
+}
+
 fn read_bookmark_name_slot_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -9798,49 +9846,7 @@ fn read_bookmark_name_slot_10_1(
         ObjectEntry10_1::NewObject {
             class_id: GP_MULTI_VALUE_TYPE_NAME_CLASS_ID,
             ..
-        } => {
-            if name_depth == MAX_BOOKMARK_NAME_NESTING {
-                return Err(io::Error::new(
-                    ErrorKind::InvalidData,
-                    "GPMultiValueTypeName 嵌套层数超限",
-                ));
-            }
-            let version = reader.read_u16_le()? as i16;
-            if version > 1 {
-                return Err(io::Error::new(
-                    ErrorKind::InvalidData,
-                    format!("GPMultiValueTypeName 版本 {version} 超出 10.1 上限"),
-                ));
-            }
-            let element_type =
-                read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth + 1)?;
-            if !matches!(
-                element_type,
-                BookmarkNameEntry10_1::Null
-                    | BookmarkNameEntry10_1::GpDataTypeName(_)
-                    | BookmarkNameEntry10_1::GpFunctionName(_)
-                    | BookmarkNameEntry10_1::GpSaTopoFeaturesTypeName(_)
-                    | BookmarkNameEntry10_1::GpMultiValueTypeName { .. }
-                    | BookmarkNameEntry10_1::GpValueTableTypeName { .. }
-                    | BookmarkNameEntry10_1::BackReference {
-                        class_id: GP_DATA_TYPE_NAME_CLASS_ID
-                            | GP_MULTI_VALUE_TYPE_NAME_CLASS_ID
-                            | GP_VALUE_TABLE_TYPE_NAME_CLASS_ID
-                            | GP_FUNCTION_NAME_CLASS_ID
-                            | GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID,
-                        ..
-                    }
-            ) {
-                return Err(io::Error::new(
-                    ErrorKind::Unsupported,
-                    "GPMultiValueTypeName 的 IGPName 类未支持",
-                ));
-            }
-            BookmarkNameEntry10_1::GpMultiValueTypeName {
-                version,
-                element_type: Box::new(element_type),
-            }
-        }
+        } => read_gp_multi_value_type_name_body_10_1(reader, max_bytes, table, name_depth)?,
         ObjectEntry10_1::NewObject {
             class_id: GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID,
             ..
