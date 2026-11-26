@@ -770,6 +770,7 @@ fn sdk_schematics_reads_layer_with_associated_children() {
     let mut refs = RefTable10_1::new();
     assert_eq!(r.read_u32_le().unwrap(), 4);
     let mut found = Vec::new();
+    let mut root_references = Vec::new();
     for _ in 0..4 {
         match read_object_entry_10_1(&mut r, &mut refs).unwrap() {
             ObjectEntry10_1::NewObject {
@@ -778,24 +779,39 @@ fn sdk_schematics_reads_layer_with_associated_children() {
             } => {}
             ObjectEntry10_1::BackReference {
                 class_id: MAP_CLASS_ID,
-                ..
-            } => continue,
+                key,
+            } => {
+                root_references.push(key);
+                continue;
+            }
             entry => panic!("意外的数据框条目 {entry:?}"),
         }
         let map = read_map_suffix_10_1(&mut r, 16_000_000, &mut refs).unwrap();
-        for entry in map.layer_list.entries {
-            let Some(LayerBodyPrefix10_1::SchematicLayer(layer)) = entry.parsed else {
-                continue;
-            };
-            assert_eq!(entry.body.as_ref().unwrap().len, 0);
-            assert_eq!(layer.version, 6);
-            let associated = layer.associated.as_ref().unwrap();
-            assert!(associated.count > 0);
-            assert_eq!(associated.layers.len(), associated.count as usize);
-            assert!(associated.layers.iter().any(|item| item.body.is_some()));
-            found.push(entry.offset);
+        for body in std::iter::successors(Some(&map), |body| {
+            body.post_border_tail
+                .persist_collections
+                .as_ref()?
+                .map_interface
+                .as_ref()?
+                .body
+                .as_deref()
+                .map(|(_, suffix)| suffix)
+        }) {
+            for entry in &body.layer_list.entries {
+                let Some(LayerBodyPrefix10_1::SchematicLayer(layer)) = &entry.parsed else {
+                    continue;
+                };
+                assert_eq!(entry.body.as_ref().unwrap().len, 0);
+                assert_eq!(layer.version, 6);
+                let associated = layer.associated.as_ref().unwrap();
+                assert!(associated.count > 0);
+                assert_eq!(associated.layers.len(), associated.count as usize);
+                assert!(associated.layers.iter().any(|item| item.body.is_some()));
+                found.push(entry.offset);
+            }
         }
     }
-    assert_eq!(found, [0x121c2, 0x20312]);
+    assert_eq!(found, [0xcd41, 0x121c2, 0x20312]);
+    assert_eq!(root_references, [533]);
     assert_eq!(r.remaining(), 4);
 }
