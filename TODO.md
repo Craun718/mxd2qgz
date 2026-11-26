@@ -268,6 +268,7 @@
     - [x] 核对布局扩展数组的原生读写入口及按名称可定位的内置注册项。[原生取证](docs/mxd-page-layout-tail-20261118.md#布局扩展的内置注册项检索)
     - [x] 对位 IPageLayoutExtensions 添加对象与布局持久化共用的数组。[原生取证](docs/mxd-page-layout-tail-20261118.md#ipagelayoutextensions-的数组写入路径)
     - [x] 核对布局扩展写出前的 IPersistStream 筛选。[原生取证](docs/mxd-page-layout-tail-20261118.md#布局扩展的写出接口筛选)
+    - [x] 对位布局扩展写出的两个版本适配接口及替代对象分派。[原生取证](docs/mxd-page-layout-tail-20261118.md#布局扩展的写出接口筛选)
     - [ ] 补齐跨流布局中尚未支持的扩展对象体。[布局尾段](docs/mxd-page-layout-tail-20261118.md)
     - [x] 对位 PageLayout v11 非空槽的 PageIndex 接口和持久化入口。[原生取证](docs/mxd-page-layout-tail-20261118.md#pagelayout-v11-的-pageindex-接口)
     - [ ] 验证 PageLayout v11 起非空 PageIndex 的真实数据驱动页面宿主。[本地检索](docs/mxd-page-layout-tail-20261118.md#pageindex-实档检索)
