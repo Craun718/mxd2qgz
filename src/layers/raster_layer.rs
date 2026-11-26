@@ -2276,6 +2276,50 @@ mod tests {
     }
 
     #[test]
+    fn inline_raster_v12_accepts_image_service_without_inner_name() {
+        use super::super::image_server_layer_tail::IMAGE_SERVER_NAME_CLASS_ID;
+        use super::super::raster_dataset_name::IS_RASTER_DATASET_NAME_CLASS_ID;
+
+        let mut standard_prefix = body_prefix(12, 1);
+        dataset_name(&mut standard_prefix, 60);
+        let standard = raster_with_empty_slots(12, false);
+        let mut bytes = body_prefix(12, 1);
+        bytes.extend(IS_RASTER_DATASET_NAME_CLASS_ID);
+        bytes.extend(60_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        for _ in 0..6 {
+            bytes.extend(encoded_string(""));
+        }
+        bytes.extend(0_i32.to_le_bytes());
+        bytes.extend([0; 16]); // 空工作空间。
+        let inner_offset = bytes.len();
+        bytes.extend([0; 16]);
+        bytes.extend(&standard[standard_prefix.len()..]);
+        let end = bytes.len();
+        bytes.extend([0xa5; 16]);
+
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        let raster = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+        assert!(raster.tail.unwrap().geodata_xform_v13.is_none());
+        assert_eq!(reader.position(), end);
+        assert!(refs.raster_name_opens_without_result(60));
+
+        let mut inner = IMAGE_SERVER_NAME_CLASS_ID.to_vec();
+        inner.extend(61_u32.to_le_bytes());
+        inner.extend(1_u16.to_le_bytes());
+        inner.extend(encoded_string(""));
+        inner.extend([0; 16]);
+        bytes.splice(inner_offset..inner_offset + 16, inner);
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        let error = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::Unsupported);
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+
+    #[test]
     fn image_service_name_reads_name_and_transform_with_shared_keys() {
         use super::super::image_server_layer_tail::IMAGE_SERVER_NAME_CLASS_ID;
         use super::super::raster_dataset_name::IS_RASTER_DATASET_NAME_CLASS_ID;

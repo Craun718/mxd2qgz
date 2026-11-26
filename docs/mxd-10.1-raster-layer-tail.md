@@ -1897,3 +1897,17 @@ ImageServerName 的 QI `0x77f4f4e0` 及后备 `0x77f87b40`
 E_NOINTERFACE。因此带非空 tag 31 的 RasterIO 路径展开也直接
 返回，随后 Open 仍按空文本和空属性集处理。构造回归核对非空路径、
 tag 35–37 和图层终点。真实工程及人工验收仍待验证。
+
+#### ISRasterDatasetName 的空内嵌名称
+
+复核同摘要 ImageServerLayer.dll 10.1.0.3035。IName 表
+`0x78031ce0` 的 +0x14 槽进入 `0x78012610`。
+Open 在 `0x7801261a` 检查 IName 相对 +0x44，即完整对象
++0x54 的内嵌名称。Load 在 `0x78012c8f` 将 IName 槽定位到
+持久化接口相对 +0x3c，同为完整对象 +0x54。该槽为空时，
+Open 在 `0x78012622` 返回 E_PENDING，保留 RasterLayer 调用前
+清零的输出。内嵌名称非空时还有后续创建数据集的路径。
+
+普通 v12 读取器据此接入空内嵌名称。构造回归验证后续字节边界，
+以及内嵌 ImageServerName 非空时的事务回滚。真实工程及
+ArcMap 10.1、QGIS 人工验收尚未进行。
