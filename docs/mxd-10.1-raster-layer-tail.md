@@ -2407,3 +2407,10 @@ LineCallout Load `0x6eb58fd0` 和 SimpleLineCallout Load
 SimpleLineCallout 的 IGeometry 槽也接受 Point。构造回归给前两类
 各加入新锚点，第三类以新 Point 作为锚几何并在锚点槽回引它，
 随后核对图层边界。其他锚几何类与实档人工验收待核对。
+
+SimpleLineCallout 在 `0x6eb82606` 将 IGeometry 装入自身锚几何
+成员，后续分别装入引线和 IPoint。该槽可使用 Geometry.dll 的
+Polyline/Polygon 共用 Load `0x7192db20`。普通 v12 对折线和
+多边形的新对象复用图例补丁的空间参考判定，并按登记类接受
+这两类回引。构造回归分别加入带新未知坐标系的折线、带坐标系
+回引的多边形，核对后继图层边界。其他锚几何类型和实档验收待验证。

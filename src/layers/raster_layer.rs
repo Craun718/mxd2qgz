@@ -150,6 +150,19 @@ fn callout_point_preserves_empty_dataset(
     }
 }
 
+fn anchor_geometry_preserves_empty_dataset(
+    geometry: &GeometryBody10_1,
+    table: &RefTable10_1,
+) -> bool {
+    let reference = match geometry {
+        GeometryBody10_1::Point(point) => &point.spatial_reference,
+        GeometryBody10_1::Polyline(line) => &line.spatial_reference,
+        GeometryBody10_1::Polygon(area) => &area.spatial_reference,
+        _ => return false,
+    };
+    spatial_reference_preserves_empty_dataset(reference.as_ref(), table)
+}
+
 fn legend_format_preserves_empty_dataset(
     format: &LegendClassFormatSlot10_1,
     table: &RefTable10_1,
@@ -173,17 +186,11 @@ fn legend_format_preserves_empty_dataset(
                                 table.registered_class(*key),
                                 Some(POLYLINE_CLASS_ID | POLYGON_CLASS_ID)
                             ),
-                            PatchGeometrySlot10_1::Geometry(GeometryBody10_1::Polyline(line)) => {
-                                spatial_reference_preserves_empty_dataset(
-                                    line.spatial_reference.as_ref(),
-                                    table,
-                                )
-                            }
-                            PatchGeometrySlot10_1::Geometry(GeometryBody10_1::Polygon(area)) => {
-                                spatial_reference_preserves_empty_dataset(
-                                    area.spatial_reference.as_ref(),
-                                    table,
-                                )
+                            PatchGeometrySlot10_1::Geometry(body) => {
+                                matches!(
+                                    body,
+                                    GeometryBody10_1::Polyline(_) | GeometryBody10_1::Polygon(_)
+                                ) && anchor_geometry_preserves_empty_dataset(body, table)
                             }
                             _ => false,
                         }
@@ -239,13 +246,17 @@ fn legend_format_preserves_empty_dataset(
                                 ) && match &callout.anchor_geometry {
                                     Some(GeometrySlotEntry10_1::Null) => true,
                                     Some(GeometrySlotEntry10_1::BackReference { key, .. }) => {
-                                        table.registered_class(*key) == Some(POINT_CLASS_ID)
+                                        matches!(
+                                            table.registered_class(*key),
+                                            Some(
+                                                POINT_CLASS_ID
+                                                    | POLYLINE_CLASS_ID
+                                                    | POLYGON_CLASS_ID
+                                            )
+                                        )
                                     }
                                     Some(GeometrySlotEntry10_1::Body(body)) => {
-                                        matches!(body.as_ref(), GeometryBody10_1::Point(point)
-                                        if spatial_reference_preserves_empty_dataset(
-                                            point.spatial_reference.as_ref(), table
-                                        ))
+                                        anchor_geometry_preserves_empty_dataset(body, table)
                                     }
                                     None => false,
                                 } && match &callout.line_symbol {
@@ -1562,6 +1573,7 @@ mod tests {
         groups.extend(0_u16.to_le_bytes());
         groups.extend(RGB_COLOR_CLASS_ID);
         groups.extend(96_u32.to_le_bytes()); // 描述符号回引。
+        let mut patch_geometries = Vec::new();
         for (class_id, key) in [(LINE_PATCH_CLASS_ID, 81_u32), (AREA_PATCH_CLASS_ID, 82)] {
             groups.extend(class_id);
             groups.extend(key.to_le_bytes());
@@ -1575,6 +1587,7 @@ mod tests {
                     &[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 0.0]][..],
                 )
             };
+            let geometry_at = groups.len();
             groups.extend(geometry_class);
             groups.extend((key + 10).to_le_bytes());
             groups.extend(2_u16.to_le_bytes());
@@ -1602,6 +1615,14 @@ mod tests {
                 }
                 groups.extend([0; 7 * 8]); // v1 精度参数。
             }
+            let mut anchor = groups[geometry_at..].to_vec();
+            anchor[16..20].copy_from_slice(&(key + 20).to_le_bytes());
+            if geometry_class == POLYLINE_CLASS_ID {
+                let reference_at = 20 + 6 + 48 + points.len() * 16;
+                anchor[reference_at + 16..reference_at + 20]
+                    .copy_from_slice(&105_u32.to_le_bytes());
+            }
+            patch_geometries.push(anchor);
             groups.extend(encoded_string("补丁"));
             groups.extend(0_u16.to_le_bytes());
         }
@@ -1648,6 +1669,22 @@ mod tests {
             renderer.splice(24..28, groups);
             renderer
         });
+        let colormaps_with_shape_anchors: Vec<_> = patch_geometries
+            .into_iter()
+            .map(|geometry| {
+                let mut background = SIMPLE_LINE_CALLOUT_CLASS_ID.to_vec();
+                background.extend(97_u32.to_le_bytes());
+                background.extend(1_u16.to_le_bytes());
+                background.extend([0; 10]); // 标量。
+                background.extend(geometry);
+                background.extend([0; 32]); // 空引线和点锚。
+                let mut groups = groups.clone();
+                groups.splice(background_at..background_end, background);
+                let mut renderer = colormap.clone();
+                renderer.splice(24..28, groups);
+                renderer
+            })
+            .collect();
         let mut discrete = super::super::raster_renderer::DISCRETE_COLOR_RENDERER_CLASS_ID.to_vec();
         discrete.extend(65_u32.to_le_bytes());
         discrete.extend(1_i32.to_le_bytes());
@@ -1754,6 +1791,8 @@ mod tests {
             &colormaps_with_callouts[0],
             &colormaps_with_callouts[1],
             &colormaps_with_callouts[2],
+            &colormaps_with_shape_anchors[0],
+            &colormaps_with_shape_anchors[1],
             &discrete,
             &unique_v1,
             &unique_v2,
