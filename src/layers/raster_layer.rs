@@ -856,8 +856,7 @@ fn stretch_ramp_preserves_empty_dataset(ramp: &ColorRampSlot10_1, table: &RefTab
         ColorRampSlot10_1::MultiPart(multipart) => {
             let weights = (0..multipart.ramps.len())
                 .filter_map(|index| multipart.loaded_weight_bits(index).map(f64::from_bits));
-            !multipart.ramps.is_empty()
-                && weights.clone().count() == multipart.ramps.len()
+            weights.clone().count() == multipart.ramps.len()
                 && weights
                     .clone()
                     .all(|weight| weight.is_finite() && weight > 0.0)
@@ -2121,6 +2120,14 @@ mod tests {
             modern_stretch_color_at..modern_stretch_color_at,
             raster_io_ramp,
         );
+        let mut modern_stretch_with_empty_multipart = modern_stretch.clone();
+        let mut empty_ramp = 7_i32.to_le_bytes().to_vec();
+        empty_ramp.extend((-1_i32).to_le_bytes());
+        empty_ramp.extend(&ramp_body[..16]);
+        empty_ramp.extend(2_u16.to_le_bytes());
+        empty_ramp.extend([0; 8]); // 空 BSTR 和零子项。
+        modern_stretch_with_empty_multipart
+            .splice(modern_stretch_color_at..modern_stretch_color_at, empty_ramp);
         let mut modern_stretch_default_color = modern_stretch.clone();
         modern_stretch_default_color.drain(modern_stretch_color_at..modern_stretch_color_end);
         for renderer in [
@@ -2171,6 +2178,7 @@ mod tests {
             &modern_stretch_with_algorithmic_ramp,
             &modern_stretch_with_preset_ramp,
             &modern_stretch_with_multipart_ramp,
+            &modern_stretch_with_empty_multipart,
             &modern_stretch_with_rejected_preset,
             &legacy_stretch_with_rejected_preset,
             &modern_stretch_with_histogram,
