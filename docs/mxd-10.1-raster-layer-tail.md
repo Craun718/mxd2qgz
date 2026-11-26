@@ -1982,3 +1982,16 @@ v1 的四个 LONG 也只写入渲染器自身。IRasterRenderer 表
 因此在已证空数据集条件下，同样可以确定普通 v12 的图层边界。
 构造回归验证 SAIRenderer 的新对象键及图层结束位置，真实工程
 和 ArcMap/QGIS 人工验收待验证。
+
+#### 简单与 SAI 渲染器的空颜色 RasterIO 体
+
+同版 RasterRenderer.dll 的共用 Load `0x7c98c3b0` 在
+`0x7c98c530` 取得 tag 6 的 IColor，空对象不加载颜色体。
+`0x7c98c541` 将 tag 7 的三个 double 读入渲染器自身后结束
+RasterIO 记录。共用体 v4–v8 在 `0x7c98c555..0x7c98c624`
+追加自身标量。v9 另从 `0x7c98c631` 进入 IColorRamp 对象路径。
+
+普通 RasterLayer v12 采用已证空数据集条件时，简单与 SAI
+渲染器的共用体 v2–v8 也可经空颜色路径确定图层结束位置。
+构造回归覆盖 v8 RasterIO 记录、全部标量后缀、渲染器键及
+后继图层边界。非空颜色、v9 色带分支、真实工程及人工验收待验证。

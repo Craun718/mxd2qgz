@@ -14,7 +14,9 @@
 use super::raster_dataset_name::{
     RasterDatasetNameEntryBody10_1, read_supported_raster_name_entry_10_1,
 };
-use super::raster_renderer::{RasterRendererPrefix10_1, read_raster_renderer_slot_prefix_10_1};
+use super::raster_renderer::{
+    RasterRendererPrefix10_1, RasterRendererSharedLayout10_1, read_raster_renderer_slot_prefix_10_1,
+};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
 use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -275,6 +277,10 @@ pub(super) fn read_inline_raster_body_10_1(
             RasterRendererPrefix10_1::Simple { shared, .. }
             | RasterRendererPrefix10_1::Sai { shared, .. }
         ) if shared.version == 1
+            || (2..=8).contains(&shared.version)
+                && matches!(&shared.layout, RasterRendererSharedLayout10_1::RasterIo {
+                    color, ..
+                } if color.as_slice() == [0; 16])
     );
     let boundary = if body.version == 12
         && (renderer.entry == ObjectEntry10_1::Null || has_scalar_renderer)
@@ -907,7 +913,24 @@ mod tests {
         sai.extend([0; 2 + 16]); // short 和两个 double。
         sai.extend(1_i32.to_le_bytes());
         sai.extend([0; 16]);
-        for renderer in [&simple, &sai] {
+        let mut simple_raster_io = simple[..24].to_vec();
+        simple_raster_io.extend(8_i32.to_le_bytes());
+        simple_raster_io.extend(0x00ff_00ff_i32.to_le_bytes());
+        simple_raster_io.extend(0_i32.to_le_bytes());
+        for tag in 1_i32..=5 {
+            simple_raster_io.extend(tag.to_le_bytes());
+            simple_raster_io.extend(4_i32.to_le_bytes());
+            simple_raster_io.extend(0_i32.to_le_bytes());
+        }
+        simple_raster_io.extend(6_i32.to_le_bytes());
+        simple_raster_io.extend((-1_i32).to_le_bytes());
+        simple_raster_io.extend([0; 16]); // 空颜色。
+        simple_raster_io.extend(7_i32.to_le_bytes());
+        simple_raster_io.extend(24_i32.to_le_bytes());
+        simple_raster_io.extend([0; 24]);
+        simple_raster_io.extend([0xff; 8]);
+        simple_raster_io.extend([0; 2 + 4 + 4 + 1 + 2]); // v4–v8 的标量后缀。
+        for renderer in [&simple, &sai, &simple_raster_io] {
             let mut with_renderer = bytes.clone();
             with_renderer.splice(renderer_at..renderer_at + 16, renderer.iter().copied());
             let mut reader = Reader::new(&with_renderer);

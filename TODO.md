@@ -701,6 +701,7 @@
       - [x] 接入带 SimpleRasterRenderer 共用体 v1 的普通 RasterLayer v12 空数据集尾段。[原生取证](docs/mxd-10.1-raster-layer-tail.md#simplerasterrenderer-共用体-v1-的普通栅格边界)
       - [x] 接入普通 RasterLayer v12 的简单渲染器与空打开关联名称组合。[原生取证](docs/mxd-10.1-raster-layer-tail.md#simplerasterrenderer-共用体-v1-的普通栅格边界)
       - [x] 接入带 SAIRenderer 共用体 v1 的普通 RasterLayer v12 空数据集尾段。[原生取证](docs/mxd-10.1-raster-layer-tail.md#sairenderer-共用体-v1-的普通栅格边界)
+      - [x] 接入带空颜色共用体 v2–v8 的简单与 SAI 渲染器普通 RasterLayer v12 尾段。[原生取证](docs/mxd-10.1-raster-layer-tail.md#简单与-sai-渲染器的空颜色-rasterio-体)
       - [x] 核对 RasterTypeName 的空标识和空镶嵌槽打开路径。[取证](docs/mxd-10.1-raster-layer-tail.md#rastertypename-的空标识打开路径)
       - [x] 核对 RasterLayer 新对象的初始数据集成员及空成员跳转。[取证](docs/mxd-10.1-raster-layer-tail.md#无界-v12-的初始数据集成员)
       - [x] 核对无界 v12 的空渲染器、空扩展与 RasterIO 打开门。[取证](docs/mxd-10.1-raster-layer-tail.md#无界-v12-的空渲染器空扩展与-rasterio-门)
