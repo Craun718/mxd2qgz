@@ -30,8 +30,10 @@ pub use crate::layers::layer_extensions::{
     FeatureServiceLayerEditExtension10_1, ServerLayerExtension10_1,
 };
 use crate::layers::raster_dataset_name::{
-    RasterDatasetNameEntryBody10_1, RasterDatasetWorkspaceSlot10_1,
-    read_supported_raster_name_body_10_1, read_supported_raster_name_entry_10_1,
+    INTERNET_TILED_LAYER_NAME_CLASS_ID, IS_RASTER_DATASET_NAME_CLASS_ID,
+    NETCDF_RASTER_DATASET_NAME_CLASS_ID, RASTER_TYPE_NAME_CLASS_ID, RasterDatasetNameEntryBody10_1,
+    RasterDatasetWorkspaceSlot10_1, read_supported_raster_name_body_10_1,
+    read_supported_raster_name_entry_10_1,
 };
 use crate::layers::raster_renderer::{
     PANSHARPENING_FILTER_CLASS_ID, PansharpeningFilter10_1, RasterHistogram10_1,
@@ -310,6 +312,18 @@ fn read_slots<T>(
     (0..count).map(|_| read_entry(reader, table)).collect()
 }
 
+fn is_supported_related_raster_name(class_id: [u8; 16]) -> bool {
+    matches!(
+        class_id,
+        IMAGE_SERVER_NAME_CLASS_ID
+            | INTERNET_TILED_LAYER_NAME_CLASS_ID
+            | IS_RASTER_DATASET_NAME_CLASS_ID
+            | NETCDF_RASTER_DATASET_NAME_CLASS_ID
+            | RASTER_TYPE_NAME_CLASS_ID
+            | crate::layers::wcs_name::WCS_COVERAGE_NAME_CLASS_ID
+    )
+}
+
 fn read_related_name(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -320,7 +334,7 @@ fn read_related_name(
         return Err(invalid("RasterLayer 关联名称标志非零，但 IName 为空"));
     }
     if let ObjectHeader::Object { class_id, key } = header
-        && table.registered_class(key).unwrap_or(class_id) == IMAGE_SERVER_NAME_CLASS_ID
+        && is_supported_related_raster_name(table.registered_class(key).unwrap_or(class_id))
     {
         let (entry, body) = read_supported_raster_name_entry_10_1(reader, max_bytes, table)?;
         return Ok(RasterLayerRelationshipSlot10_1 {
@@ -946,7 +960,7 @@ pub(super) fn read_raster_layer_tail(
                             Some(TABLE_NAME_CLASS_ID | OBJECT_CLASS_NAME_CLASS_ID) => {
                                 staged.table_name_has_null_workspace(key)
                             }
-                            Some(IMAGE_SERVER_NAME_CLASS_ID) => {
+                            Some(class_id) if is_supported_related_raster_name(class_id) => {
                                 staged.raster_name_opens_without_result(key)
                             }
                             _ => false,

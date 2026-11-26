@@ -1932,3 +1932,12 @@ RasterLayer.dll 10.1.0.3035 的关联 IName 路径在
 普通 v12 关联槽复用共享栅格名称读取器和对象键表。
 构造输入验证空服务名称后的对象边界及文本非空时的事务回滚。
 真实关联槽宿主和 ArcMap/QGIS 人工验收待验证。
+
+关联槽的原生 `0x7c73c1a9` 请求通用 IName，`0x7c73c24f`
+通过该接口的 +0x14 槽调用 Open。前文已对位的 RasterTypeName、
+InternetTiledLayerName、WCSCoverageName、NetCDFRasterDatasetName
+和 ISRasterDatasetName 因此也可共用空结果安装链。Rust 复用相同
+名称读取器和空打开判定，并以登记实例的类处理回引。
+构造回归将主列表的 RasterTypeName 回引到关联槽，使用不同的头部
+CLSID 验证按实际登记类分派，并核对后继字节边界。其余类的真实
+关联槽宿主及 ArcMap/QGIS 人工验收待验证。

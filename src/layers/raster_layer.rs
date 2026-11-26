@@ -952,6 +952,27 @@ mod tests {
         use crate::maps::standalone_table::{OBJECT_CLASS_NAME_CLASS_ID, TABLE_NAME_CLASS_ID};
 
         use super::super::image_server_layer_tail::IMAGE_SERVER_NAME_CLASS_ID;
+        // 同一 RasterTypeName 键可作为关联槽的 IName 回引。
+        let mut related_reference = 1_i32.to_le_bytes().to_vec();
+        related_reference.extend(IMAGE_SERVER_NAME_CLASS_ID);
+        related_reference.extend(60_u32.to_le_bytes());
+        let mut with_related_reference = bytes.clone();
+        with_related_reference.splice(
+            relationship_count_at - 4..relationship_count_at,
+            related_reference,
+        );
+        let mut reader = Reader::new(&with_related_reference);
+        let mut refs = RefTable10_1::new();
+        let layer = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+        assert_eq!(
+            layer.tail.unwrap().related_name.unwrap().entry,
+            ObjectEntry10_1::BackReference {
+                class_id: RASTER_TYPE_NAME_CLASS_ID,
+                key: 60,
+            }
+        );
+        assert_eq!(reader.position(), end + 20);
+
         for text in ["", "service"] {
             let mut related = 1_i32.to_le_bytes().to_vec();
             related.extend(IMAGE_SERVER_NAME_CLASS_ID);
