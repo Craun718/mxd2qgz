@@ -2043,3 +2043,10 @@ Load 随后在 `0x6eb3af02` 返回 S_OK。
 已证 RgbColor 新体与登记回引。构造回归验证包含一条新 RgbColor
 的色带和后续图层边界。正请求尺寸、色带自身的回引及真实工程的
 ArcMap/QGIS 人工验收待验证。
+
+共用渲染器 v9 在 `0x7c98c63b` 传入 IColorRamp IID，
+SystemCore 10.1 的 `0x7ffd0063` 回引路径按键选取实例后查询
+所请求的接口。栅格渲染器的色带槽现在核对登记类，支持已确认的
+四种 IColorRamp 实现，并保留回引头的原始类标识。普通 v12
+回归以相同的回引头分别指向已登记的 RandomColorRamp 和 RgbColor，
+核对正常图层终点及错误实例的事务回滚。ArcMap/QGIS 人工验收待验证。

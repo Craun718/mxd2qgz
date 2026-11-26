@@ -998,6 +998,40 @@ mod tests {
             assert!(refs.contains(65));
         }
 
+        // 回引头的类标识不参与原生接口查询。
+        let mut ramp_reference = random_ramp[..colored_v9.len() - 16].to_vec();
+        ramp_reference.extend(RGB_COLOR_CLASS_ID);
+        ramp_reference.extend(66_u32.to_le_bytes());
+        let mut registered = RefTable10_1::new();
+        let mut registered_ramp = RANDOM_COLOR_RAMP_CLASS_ID.to_vec();
+        registered_ramp.extend(66_u32.to_le_bytes());
+        crate::storage::object_refs::read_object_entry_10_1(
+            &mut Reader::new(&registered_ramp),
+            &mut registered,
+        )
+        .unwrap();
+        let mut with_ramp_reference = bytes.clone();
+        with_ramp_reference.splice(
+            renderer_at..renderer_at + 16,
+            ramp_reference.iter().copied(),
+        );
+        let mut reader = Reader::new(&with_ramp_reference);
+        read_inline_raster_body_10_1(&mut reader, 4096, &mut registered).unwrap();
+        assert_eq!(reader.position(), end + ramp_reference.len() - 16);
+
+        let mut wrong_class = RefTable10_1::new();
+        let ramp_header = &ramp_reference[ramp_reference.len() - 20..];
+        crate::storage::object_refs::read_object_entry_10_1(
+            &mut Reader::new(ramp_header),
+            &mut wrong_class,
+        )
+        .unwrap();
+        let mut reader = Reader::new(&with_ramp_reference);
+        assert!(read_inline_raster_body_10_1(&mut reader, 4096, &mut wrong_class).is_err());
+        assert_eq!(reader.position(), 0);
+        assert_eq!(wrong_class.registered_class(66), Some(RGB_COLOR_CLASS_ID));
+        assert!(!wrong_class.contains(65));
+
         let mut with_empty_color = bytes.clone();
         with_empty_color.splice(renderer_at..renderer_at + 16, simple_raster_io);
         let mut reader = Reader::new(&with_empty_color);

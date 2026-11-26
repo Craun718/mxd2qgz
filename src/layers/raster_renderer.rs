@@ -16,7 +16,10 @@ use crate::layers::raster_stretch_renderer::{
 use crate::layers::raster_unique_value::{
     RASTER_UNIQUE_VALUE_RENDERER_CLASS_ID, RasterUniqueValueRenderer10_1, read_raster_unique_value,
 };
-use crate::objects::color_ramp::{ColorRampSlot10_1, read_color_ramp_slot_10_1};
+use crate::objects::color_ramp::{
+    ALGORITHMIC_COLOR_RAMP_CLASS_ID, ColorRampSlot10_1, MULTI_PART_COLOR_RAMP_CLASS_ID,
+    PRESET_COLOR_RAMP_CLASS_ID, RANDOM_COLOR_RAMP_CLASS_ID, read_color_ramp_slot_10_1,
+};
 use crate::objects::display_color::{
     ColorSlot10_1, read_color_body_for_class_10_1, read_color_slot_10_1,
 };
@@ -552,12 +555,33 @@ pub(super) fn read_renderer_color_ramp(
     table: &mut RefTable10_1,
 ) -> io::Result<ColorRampSlot10_1> {
     let offset = reader.position();
-    let (ramp, stop) =
-        read_color_ramp_slot_10_1(reader, max_bytes, table, MAX_SYMBOL_NESTING_DEPTH, offset)?;
+    let mut trial = reader.clone();
+    let (ramp, stop) = read_color_ramp_slot_10_1(
+        &mut trial,
+        max_bytes,
+        table,
+        MAX_SYMBOL_NESTING_DEPTH,
+        offset,
+    )?;
     if let Some(stop) = stop {
         return Err(invalid(format!("栅格渲染器颜色梯度未闭合：{stop:?}")));
     }
-    ramp.ok_or_else(|| invalid("栅格渲染器颜色梯度槽缺失"))
+    let ramp = ramp.ok_or_else(|| invalid("栅格渲染器颜色梯度槽缺失"))?;
+    if let ColorRampSlot10_1::BackReference { key, .. } = &ramp
+        && !matches!(
+            table.registered_class(*key),
+            Some(
+                RANDOM_COLOR_RAMP_CLASS_ID
+                    | MULTI_PART_COLOR_RAMP_CLASS_ID
+                    | PRESET_COLOR_RAMP_CLASS_ID
+                    | ALGORITHMIC_COLOR_RAMP_CLASS_ID
+            )
+        )
+    {
+        return Err(invalid("栅格渲染器颜色梯度回引键未登记为 IColorRamp"));
+    }
+    *reader = trial;
+    Ok(ramp)
 }
 
 fn read_colormap_tail(
