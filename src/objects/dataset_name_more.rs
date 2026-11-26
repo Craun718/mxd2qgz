@@ -2585,6 +2585,40 @@ mod tests {
     }
 
     #[test]
+    fn overlay_stops_at_builtin_names_without_loadable_bodies() {
+        // GdbCore 的 UnknownDatasetName 无 IPersistStream，RasterSDE8x 的
+        // SdeRasterTableName::Load 直接返回 E_FAIL。
+        let classes = [
+            [
+                0xb1, 0x3d, 0x78, 0x06, 0xee, 0xe5, 0xd1, 0x11, 0xb0, 0xa2, 0, 0, 0xf8, 0x78, 0x08,
+                0x2e,
+            ],
+            [
+                0xc0, 0xc1, 0x2a, 0x94, 0xc4, 0xfe, 0xd3, 0x11, 0x8d, 0x6f, 0, 0xc0, 0x4f, 0x5b,
+                0x87, 0xb2,
+            ],
+        ];
+        for class_id in classes {
+            let mut bytes = entry(&class_id, 90);
+            bytes.extend(str_bytes("格网编号"));
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let mut stop = None;
+            let slot = read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut stop).unwrap();
+            assert_eq!(
+                slot,
+                DatasetNameMoreSlot10_1::Unsupported { class_id, key: 90 }
+            );
+            assert_eq!(
+                stop,
+                Some(DatasetNameMoreStop10_1::SlotUnsupported { class_id, key: 90 })
+            );
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+
+    #[test]
     fn overlay_gp_value_table_type_name_preserves_versioned_columns_and_grid_field() {
         for version in [1_i16, 2, 3] {
             let mut bytes = entry(&GP_VALUE_TABLE_TYPE_NAME_CLASS_ID, 90).to_vec();

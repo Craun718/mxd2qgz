@@ -284,6 +284,7 @@
     - [x] 接入 CustomOverlayGrid 的 GPMultiValueTypeName 对象体。[原生取证](docs/mxd-page-layout-grid-20261118.md#叠加格网的-gpmultivaluetypename)
     - [x] 接入 CustomOverlayGrid 的 GPSATopoFeaturesTypeName 对象体。[原生取证](docs/mxd-page-layout-grid-20261118.md#叠加格网的-gpsatopofeaturestypename)
     - [x] 接入 CustomOverlayGrid 的 GPValueTableTypeName 对象体。[原生取证](docs/mxd-page-layout-grid-20261118.md#叠加格网的-gpvaluetabletypename)
+    - [x] 核对 CustomOverlayGrid 遇到 UnknownDatasetName 或 SdeRasterTableName 新对象时的停止边界。[原生取证](docs/mxd-page-layout-grid-20261118.md#叠加格网中无法加载的内置名称)
     - [ ] 补齐 CustomOverlayGrid 尚未核实的 IName 实现。[格网名称取证](docs/mxd-page-layout-grid-20261118.md#自定义叠加格网的要素来源)
     - [ ] 验证 CustomOverlayGrid 已接入名称的真实布局宿主。
     - [ ] 取得显式使用 ObjectStream 版本文本 9.0 的旧 DEVMODE 宿主。

@@ -402,3 +402,12 @@ GpObjects.dll 10.1.0.3035 的 QI 在 `0x747559f7` 匹配 IName。
 构造输入覆盖 v1–v3 列、版本控制的域和 UID 槽、嵌套类型键、
 后继格网字符串和逐前缀截断回滚。真实格网宿主及 ArcMap 中的
 IName::Open 结果待验证。
+
+### 叠加格网中无法加载的内置名称
+
+在 10.1.0.3035 中，[GdbCore 的 UnknownDatasetName](mxd-terra-round9-bookmark.md#unknowndatasetname)
+支持 IName，但其 QI `0x709ba910` 及回退 `0x70a60800` 不提供
+普通对象流要求的 IPersistStream。[RasterSDE8x 的 SdeRasterTableName](mxd-terra-round9-old.md#sderastertablename-的持久化入口)
+在 Load `0x7c9e2e70` 直接返回 E_FAIL。两者均无可供格网读取的新对象体。
+构造测试确认读取器保留原始类和键作为停止点，且不消费紧接的格网字符串
+或提交新键。结论限于所核对的内置实现，真实格网宿主仍待验证。
