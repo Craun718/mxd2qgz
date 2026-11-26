@@ -20,12 +20,14 @@ use super::raster_renderer::{
     RasterRendererShared10_1, RasterRendererSharedLayout10_1, is_supported_color_ramp_class,
     read_raster_renderer_slot_prefix_10_1, supports_raster_renderer_body_10_1,
 };
+use super::raster_unique_value::RasterUniqueValueLayout10_1;
 use crate::objects::{
     color_ramp::ColorRampSlot10_1,
     display_color::{
         CMYK_COLOR_CLASS_ID, ColorSlot10_1, GRAY_COLOR_CLASS_ID, HLS_COLOR_CLASS_ID,
         HSV_COLOR_CLASS_ID, RGB_COLOR_CLASS_ID,
     },
+    display_symbol::SymbolSlotFull10_1,
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
 use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
@@ -340,6 +342,23 @@ pub(super) fn read_inline_raster_body_10_1(
             if color_ramp_preserves_empty_dataset(&discrete.ramp, &staged)
                 && renderer_shared_preserves_empty_dataset(&discrete.shared, &staged)
     );
+    let has_unique_value_renderer = matches!(
+        renderer.body.as_ref(),
+        Some(RasterRendererPrefix10_1::UniqueValue(unique))
+            if matches!(unique.version, 3 | 4)
+                && matches!(unique.symbol, SymbolSlotFull10_1::Null)
+                && unique.legend_groups.is_empty()
+                && unique.classes.is_empty()
+                && matches!(
+                    &unique.layout,
+                    RasterUniqueValueLayout10_1::Modern { unique_values, ramp }
+                        if unique_values.entry == ObjectEntry10_1::Null
+                            && ramp.as_ref().is_none_or(|ramp| {
+                                color_ramp_preserves_empty_dataset(ramp, &staged)
+                            })
+                )
+                && renderer_shared_preserves_empty_dataset(&unique.shared, &staged)
+    );
     let has_known_renderer_reference = matches!(
         renderer.entry,
         ObjectEntry10_1::BackReference { key, .. }
@@ -352,6 +371,7 @@ pub(super) fn read_inline_raster_body_10_1(
             || has_rgb_renderer
             || has_colormap_renderer
             || has_discrete_renderer
+            || has_unique_value_renderer
             || has_known_renderer_reference)
         && let Some(name) = first_name
         && match name.entry {
@@ -1218,6 +1238,23 @@ mod tests {
         discrete.extend(encoded_string("颜色"));
         discrete.extend(&random_ramp[colored_v9.len() - 16..]);
         discrete.extend(&colored_v9[24..]);
+        let mut unique =
+            super::super::raster_unique_value::RASTER_UNIQUE_VALUE_RENDERER_CLASS_ID.to_vec();
+        unique.extend(65_u32.to_le_bytes());
+        unique.extend(3_i32.to_le_bytes());
+        for _ in 0..3 {
+            unique.extend(encoded_string(""));
+        }
+        unique.extend(0_u16.to_le_bytes());
+        unique.extend([0; 16]);
+        unique.extend(encoded_string(""));
+        unique.extend([0; 10]); // 图例组数、类别数、第二个 short。
+        unique.extend([0; 16]); // 空 IUniqueValues。
+        let mut unique_with_ramp = unique.clone();
+        unique_with_ramp[20..24].copy_from_slice(&4_i32.to_le_bytes());
+        unique_with_ramp.extend(&random_ramp[colored_v9.len() - 16..]);
+        unique.extend(&colored_v9[24..]);
+        unique_with_ramp.extend(&colored_v9[24..]);
         for renderer in [
             &simple,
             &sai,
@@ -1238,6 +1275,8 @@ mod tests {
             &colormap,
             &colormap_with_groups,
             &discrete,
+            &unique,
+            &unique_with_ramp,
         ] {
             let mut with_renderer = bytes.clone();
             with_renderer.splice(renderer_at..renderer_at + 16, renderer.iter().copied());
