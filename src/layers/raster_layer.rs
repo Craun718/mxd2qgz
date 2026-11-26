@@ -42,6 +42,10 @@ use crate::objects::{
     envelope::SpatialReferenceEntry10_1,
     geometry::{GeometryBody10_1, POLYGON_CLASS_ID, POLYLINE_CLASS_ID},
     property_set::{PropertyValue10_1, PropertyValueObjectStream10_1},
+    spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID,
+    spatial_reference_slots::{
+        GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID, UNKNOWN_COORDINATE_SYSTEM_CLASS_ID,
+    },
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
 use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
@@ -98,6 +102,21 @@ fn legend_format_preserves_empty_dataset(
             table.registered_class(*key) == Some(LEGEND_CLASS_FORMAT_CLASS_ID)
         }
         LegendClassFormatSlot10_1::Format(format) => {
+            let reference_is_known = |reference: &Option<SpatialReferenceEntry10_1>| match reference
+            {
+                None | Some(SpatialReferenceEntry10_1::Null) => true,
+                Some(SpatialReferenceEntry10_1::BackReference { key, .. }) => {
+                    matches!(
+                        table.registered_class(*key),
+                        Some(
+                            PROJECTED_COORDINATE_SYSTEM_CLASS_ID
+                                | GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID
+                                | UNKNOWN_COORDINATE_SYSTEM_CLASS_ID
+                        )
+                    )
+                }
+                _ => false,
+            };
             let patch_is_known = |slot: &FormatMember, class_id| match slot {
                 FormatMember::Null => true,
                 FormatMember::BackReference { key, .. } => {
@@ -112,16 +131,10 @@ fn legend_format_preserves_empty_dataset(
                                 Some(POLYLINE_CLASS_ID | POLYGON_CLASS_ID)
                             ),
                             PatchGeometrySlot10_1::Geometry(GeometryBody10_1::Polyline(line)) => {
-                                matches!(
-                                    line.spatial_reference,
-                                    None | Some(SpatialReferenceEntry10_1::Null)
-                                )
+                                reference_is_known(&line.spatial_reference)
                             }
                             PatchGeometrySlot10_1::Geometry(GeometryBody10_1::Polygon(area)) => {
-                                matches!(
-                                    area.spatial_reference,
-                                    None | Some(SpatialReferenceEntry10_1::Null)
-                                )
+                                reference_is_known(&area.spatial_reference)
                             }
                             _ => false,
                         }
@@ -1406,7 +1419,12 @@ mod tests {
                 groups.extend(x.to_le_bytes());
                 groups.extend(y.to_le_bytes());
             }
-            groups.extend([0; 16]); // 空空间参考。
+            if geometry_class == POLYGON_CLASS_ID {
+                groups.extend(RGB_COLOR_CLASS_ID); // 回引头按既有键识别。
+                groups.extend(94_u32.to_le_bytes());
+            } else {
+                groups.extend([0; 16]); // 空空间参考。
+            }
             groups.extend(encoded_string("补丁"));
             groups.extend(0_u16.to_le_bytes());
         }
@@ -1535,6 +1553,10 @@ mod tests {
             with_renderer.splice(renderer_at..renderer_at + 16, renderer.iter().copied());
             let mut reader = Reader::new(&with_renderer);
             let mut refs = RefTable10_1::new();
+            let mut gcs = GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID.to_vec();
+            gcs.extend(94_u32.to_le_bytes());
+            crate::storage::object_refs::read_object_entry_10_1(&mut Reader::new(&gcs), &mut refs)
+                .unwrap();
             let parsed = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
             assert!(parsed.renderer.unwrap().body.is_some());
             assert!(parsed.tail.unwrap().geodata_xform_v13.is_none());
