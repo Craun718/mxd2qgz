@@ -2195,3 +2195,21 @@ ATL BSTR 和对象。对象分支 `0x8087c7d0` 在 `0x8087c818`
 FeatureLayer。构造测试覆盖三个版本的尾部边界和截断。
 真实时态图层样本、少见旧版本、非空尾部 Variant 以及
 ArcMap/QGIS 人工验收仍待核实。
+
+#### 时态图层尾部的文本符号和颜色
+
+TrackingLayer.dll 10.1.0.3035 在 `0x8086f4c2` 和
+`0x8086f515` 分别查询 ITextSymbol 和 IActionCollection。
+后者的常规创建点 `0x808728e2` 使用类型库中 ActionCollection
+的 CLSID `4C48C64E-9199-11D5-B7FE-00010265ADC5`。
+9.3 以后最后三个 Variant 共用 `0x8087ab50` 转换，
+其首个目标接口是 IColor。前两个来源成员在
+`0x8086a0b6` 和 `0x8086a142` 附近创建 RgbColor
+（CLSID 常量 `0x8089eb24`），第三个成员可为空。
+
+读取器复用 TextSymbol 和现有颜色体读取器。无键 Variant
+保留内部对象槽对原引用表的访问。写侧 `0x8086ffeb` 对
+空的第三成员使用 VT_EMPTY，通用写侧 `0x8087ced1`
+把此类 Variant 转成并写出字节 BSTR。构造测试核对无键
+RGB 颜色、空 Variant 的边界及颜色截断。ActionCollection
+对象体与其他实现类仍待研究，未进行 ArcMap/QGIS 人工验收。

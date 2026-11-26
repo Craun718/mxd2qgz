@@ -13,6 +13,8 @@ use super::temporal_legend::{
     TEMPORAL_LEGEND_GROUP_CLASS_ID, TemporalLegendGroup10_1, read_temporal_legend_group_10_1,
 };
 use super::temporal_record_set::{TemporalRecordSet10_1, read_temporal_record_set_10_1};
+use crate::objects::display_color::read_color_body_for_class_10_1;
+use crate::objects::element_body::{TEXT_SYMBOL_CLASS_ID, read_text_symbol_body_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_atl_bstr_10_1;
 use crate::stream::reader::Reader;
@@ -146,6 +148,38 @@ mod tests {
     use super::*;
 
     #[test]
+    fn tail_variants_consume_unkeyed_color_and_empty_bstr() {
+        use crate::objects::display_color::RGB_COLOR_CLASS_ID;
+
+        let mut bytes = 13_u16.to_le_bytes().to_vec();
+        bytes.extend(RGB_COLOR_CLASS_ID);
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend([1, 1, 2, 3, 0, 0, 255]);
+        bytes.extend(0_u16.to_le_bytes());
+        bytes.extend(0_u32.to_le_bytes());
+        bytes.extend(0xabcd_u16.to_le_bytes());
+
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        read_tail_variant(&mut reader, 4096, &mut refs, TailVariantSlot::DisplayObject).unwrap();
+        read_tail_variant(
+            &mut reader,
+            4096,
+            &mut refs,
+            TailVariantSlot::ActionCollection,
+        )
+        .unwrap();
+        assert_eq!(reader.read_u16_le().unwrap(), 0xabcd);
+        assert!(refs.is_empty());
+        let mut reader = Reader::new(&bytes[..28]);
+        assert!(
+            read_tail_variant(&mut reader, 4096, &mut refs, TailVariantSlot::DisplayObject)
+                .is_err()
+        );
+    }
+
+    #[test]
     fn trailing_variants_preserve_boundary_for_every_writer_version() {
         for version in [1.51, 9.3, 10.0] {
             let mut bytes = vec![0; 16];
@@ -167,11 +201,13 @@ mod tests {
             let end = bytes.len();
             bytes.extend(0xabcd_u16.to_le_bytes());
             let mut reader = Reader::new(&bytes);
-            read_trailing_fields(&mut reader, 4096, version).unwrap();
+            read_trailing_fields(&mut reader, 4096, &mut RefTable10_1::new(), version).unwrap();
             assert_eq!(reader.position(), end);
             assert_eq!(reader.read_u16_le().unwrap(), 0xabcd);
             let mut reader = Reader::new(&bytes[..end - 1]);
-            assert!(read_trailing_fields(&mut reader, 4096, version).is_err());
+            assert!(
+                read_trailing_fields(&mut reader, 4096, &mut RefTable10_1::new(), version).is_err()
+            );
         }
     }
 
@@ -243,14 +279,26 @@ fn read_late_slot(
     }
 }
 
-fn read_tail_variant(reader: &mut Reader<'_>, max: usize) -> io::Result<()> {
+#[derive(Clone, Copy)]
+enum TailVariantSlot {
+    TextSymbol,
+    ActionCollection,
+    DisplayObject,
+}
+
+fn read_tail_variant(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+    slot: TailVariantSlot,
+) -> io::Result<()> {
     let vartype = reader.read_u16_le()?;
     let size = match vartype {
         2 | 11 | 18 => 2,
         3 | 4 | 10 | 19 | 22 | 23 => 4,
         5..=7 | 20 | 21 => 8,
         16 | 17 => 1,
-        8 => {
+        0 | 1 | 8 => {
             read_atl_bstr_10_1(reader, max)?;
             return Ok(());
         }
@@ -258,6 +306,23 @@ fn read_tail_variant(reader: &mut Reader<'_>, max: usize) -> io::Result<()> {
             let class = reader.read_bytes(16)?.try_into().unwrap();
             if class == [0; 16] {
                 return Ok(());
+            }
+            match slot {
+                TailVariantSlot::TextSymbol if class == TEXT_SYMBOL_CLASS_ID => {
+                    if read_text_symbol_body_10_1(reader, max, refs)?
+                        .stop
+                        .is_none()
+                    {
+                        return Ok(());
+                    }
+                }
+                TailVariantSlot::DisplayObject => {
+                    // Variant 只写 CLSID，诊断占位键不加入引用表。
+                    if read_color_body_for_class_10_1(class, reader, max, refs, 0)?.is_some() {
+                        return Ok(());
+                    }
+                }
+                _ => {}
             }
             return Err(unsupported_class("时态图层尾部 Variant", &class));
         }
@@ -272,17 +337,22 @@ fn read_tail_variant(reader: &mut Reader<'_>, max: usize) -> io::Result<()> {
     Ok(())
 }
 
-fn read_trailing_fields(reader: &mut Reader<'_>, max: usize, version: f64) -> io::Result<()> {
+fn read_trailing_fields(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+    version: f64,
+) -> io::Result<()> {
     reader.read_bytes(12)?;
     read_atl_bstr_10_1(reader, max)?;
-    read_tail_variant(reader, max)?;
-    read_tail_variant(reader, max)?;
+    read_tail_variant(reader, max, refs, TailVariantSlot::TextSymbol)?;
+    read_tail_variant(reader, max, refs, TailVariantSlot::ActionCollection)?;
     if version >= 9.3 {
         reader.read_bytes(16)?;
-        read_tail_variant(reader, max)?;
+        read_tail_variant(reader, max, refs, TailVariantSlot::DisplayObject)?;
         reader.read_bytes(8)?;
-        read_tail_variant(reader, max)?;
-        read_tail_variant(reader, max)?;
+        read_tail_variant(reader, max, refs, TailVariantSlot::DisplayObject)?;
+        read_tail_variant(reader, max, refs, TailVariantSlot::DisplayObject)?;
         reader.read_bytes(26)?;
     }
     Ok(())
@@ -318,7 +388,7 @@ pub(super) fn read_temporal_feature_layer_10_1(
     } else {
         None
     };
-    read_trailing_fields(&mut trial, max, prefix.version)?;
+    read_trailing_fields(&mut trial, max, &mut staged, prefix.version)?;
     *reader = trial;
     *refs = staged;
     Ok(TemporalFeatureLayer10_1 {
