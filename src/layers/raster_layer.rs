@@ -46,6 +46,15 @@ const RASTER_RENDERER_COLOR_CLASSES: [[u8; 16]; 5] = [
     CMYK_COLOR_CLASS_ID,
 ];
 
+fn is_inline_unique_value_scalar(value: &PropertyValueObjectStream10_1) -> bool {
+    matches!(
+        value,
+        PropertyValueObjectStream10_1::Inline(
+            PropertyValue10_1::Raw4(_) | PropertyValue10_1::Raw8(_) | PropertyValue10_1::String(_)
+        )
+    )
+}
+
 pub use super::raster_layer_tail::RasterLayerTail10_1;
 
 /// RasterLayer 10.1 Load 的已确认前缀。
@@ -349,15 +358,18 @@ pub(super) fn read_inline_raster_body_10_1(
         Some(RasterRendererPrefix10_1::UniqueValue(unique))
             if matches!(unique.symbol, SymbolSlotFull10_1::Null)
                 && unique.legend_groups.is_empty()
-                && unique.classes.is_empty()
                 && match &unique.layout {
                     RasterUniqueValueLayout10_1::Legacy { legend_item, colors, samples, .. } => {
                         matches!(legend_item, LegendItemSlot10_1::Null)
                             && colors.entry == ObjectEntry10_1::Null
                             && samples.is_empty()
+                            && unique.classes.is_empty()
                     }
                     RasterUniqueValueLayout10_1::Modern { unique_values, ramp } => {
                         matches!(unique.version, 3 | 4)
+                            && unique.classes.iter().all(|class| {
+                                class.values.iter().all(is_inline_unique_value_scalar)
+                            })
                             && match unique_values.entry {
                                 ObjectEntry10_1::Null => true,
                                 ObjectEntry10_1::BackReference { class_id, .. } => {
@@ -366,14 +378,7 @@ pub(super) fn read_inline_raster_body_10_1(
                                 ObjectEntry10_1::NewObject { .. } => {
                                     unique_values.body.as_ref().is_some_and(|body| {
                                         body.values.iter().all(|(value, _)| {
-                                            matches!(
-                                                value,
-                                                PropertyValueObjectStream10_1::Inline(
-                                                    PropertyValue10_1::Raw4(_)
-                                                        | PropertyValue10_1::Raw8(_)
-                                                        | PropertyValue10_1::String(_)
-                                                )
-                                            )
+                                            is_inline_unique_value_scalar(value)
                                         })
                                     })
                                 }
@@ -1274,7 +1279,9 @@ mod tests {
         unique.extend(0_u16.to_le_bytes());
         unique.extend([0; 16]);
         unique.extend(encoded_string(""));
-        unique.extend([0; 10]); // 图例组数、类别数、第二个 short。
+        unique.extend(0_i32.to_le_bytes()); // 图例组数。
+        let unique_classes_at = unique.len();
+        unique.extend([0; 6]); // 类别数、第二个 short。
         unique.extend([0; 16]); // 空 IUniqueValues。
         let mut unique_v1 = unique[..20].to_vec();
         unique_v1.extend(1_i32.to_le_bytes());
@@ -1301,6 +1308,14 @@ mod tests {
         unique_with_values.extend(17_i32.to_le_bytes());
         unique_with_values.extend(4_i32.to_le_bytes());
         unique_with_values.extend(&colored_v9[24..]);
+        let mut unique_with_classes = unique_with_values.clone();
+        let mut class = 1_i32.to_le_bytes().to_vec();
+        class.extend(9_u32.to_le_bytes());
+        class.extend(1_i32.to_le_bytes());
+        class.extend(3_u16.to_le_bytes()); // VT_I4。
+        class.extend([0; 14]);
+        class.extend(17_i32.to_le_bytes());
+        unique_with_classes.splice(unique_classes_at..unique_classes_at + 4, class);
         let mut unique_with_ramp = unique.clone();
         unique_with_ramp[20..24].copy_from_slice(&4_i32.to_le_bytes());
         unique_with_ramp.extend(&random_ramp[colored_v9.len() - 16..]);
@@ -1331,6 +1346,7 @@ mod tests {
             &unique,
             &unique_with_ramp,
             &unique_with_values,
+            &unique_with_classes,
         ] {
             let mut with_renderer = bytes.clone();
             with_renderer.splice(renderer_at..renderer_at + 16, renderer.iter().copied());
