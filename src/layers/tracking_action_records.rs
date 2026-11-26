@@ -22,6 +22,10 @@ pub(super) const DATA_PARTITION_ACTION_CLASS_ID: [u8; 16] = [
     0xa8, 0x5e, 0xab, 0x65, 0x59, 0xdc, 0x7f, 0x4c, 0x87, 0xa1, 0xad, 0x9f, 0xcd, 0x70, 0xea, 0x40,
 ];
 
+pub(super) const DATA_SUMMARY_ACTION_CLASS_ID: [u8; 16] = [
+    0x32, 0x3b, 0xaf, 0xa5, 0x06, 0x35, 0x15, 0x41, 0x9c, 0x6e, 0xe3, 0x25, 0xe5, 0xc3, 0xde, 0xcd,
+];
+
 const MESSAGE_TEMPLATE_CLASS_ID: [u8; 16] = [
     0x92, 0xef, 0xb7, 0xa7, 0xae, 0x36, 0x18, 0x43, 0xa1, 0x22, 0x43, 0x1b, 0x88, 0x92, 0xe0, 0xf3,
 ];
@@ -197,6 +201,27 @@ pub(super) fn read_data_partition_action(
             return Err(unsupported_class("数据分区 ISpatialReference", &class_id));
         }
         read_strings(reader, max, 2)?;
+    }
+    Ok(())
+}
+
+pub(super) fn read_data_summary_action(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<()> {
+    read_action_base(reader, max, refs)?;
+    let version = reader.read_f64_le()?;
+    reader.read_bytes(16)?;
+    let count = read_count(reader, max, 12)?;
+    for _ in 0..count {
+        read_atl_bstr_10_1(reader, max)?;
+        reader.read_bytes(8)?;
+    }
+    read_strings(reader, max, 7)?;
+    reader.read_bytes(3)?;
+    if version >= 1.0 {
+        read_atl_bstr_10_1(reader, max)?;
     }
     Ok(())
 }
