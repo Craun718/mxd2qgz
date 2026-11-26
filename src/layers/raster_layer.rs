@@ -300,6 +300,12 @@ pub(super) fn read_inline_raster_body_10_1(
                     color_ramp_preserves_empty_dataset(ramp, &staged)
                 })
     );
+    let has_legacy_rgb_renderer = matches!(
+        renderer.body.as_ref(),
+        Some(RasterRendererPrefix10_1::LegacyRgb(rgb))
+            if rgb.shared.version == 1
+                && rgb.colors.iter().all(|color| is_known_renderer_color(color, &staged))
+    );
     let has_known_renderer_reference = matches!(
         renderer.entry,
         ObjectEntry10_1::BackReference { key, .. }
@@ -308,6 +314,7 @@ pub(super) fn read_inline_raster_body_10_1(
     let boundary = if body.version == 12
         && (renderer.entry == ObjectEntry10_1::Null
             || has_scalar_renderer
+            || has_legacy_rgb_renderer
             || has_known_renderer_reference)
         && let Some(name) = first_name
         && match name.entry {
@@ -330,22 +337,29 @@ pub(super) fn read_inline_raster_body_10_1(
     Ok(body)
 }
 
-fn color_ramp_preserves_empty_dataset(ramp: &ColorRampSlot10_1, table: &RefTable10_1) -> bool {
-    let is_known_color = |color: &ColorSlot10_1| match color {
+fn is_known_renderer_color(color: &ColorSlot10_1, table: &RefTable10_1) -> bool {
+    match color {
         ColorSlot10_1::Color { class_id, .. } => RASTER_RENDERER_COLOR_CLASSES.contains(class_id),
         ColorSlot10_1::BackReference { key, .. } => table
             .registered_class(*key)
             .is_some_and(|class_id| RASTER_RENDERER_COLOR_CLASSES.contains(&class_id)),
         _ => false,
-    };
+    }
+}
+
+fn color_ramp_preserves_empty_dataset(ramp: &ColorRampSlot10_1, table: &RefTable10_1) -> bool {
     match ramp {
         ColorRampSlot10_1::Null | ColorRampSlot10_1::Random(_) => true,
         ColorRampSlot10_1::Preset(ramp) => {
-            ramp.raw_int32 <= 0 && ramp.colors.iter().all(is_known_color)
+            ramp.raw_int32 <= 0
+                && ramp
+                    .colors
+                    .iter()
+                    .all(|color| is_known_renderer_color(color, table))
         }
         ColorRampSlot10_1::Algorithmic(ramp) => ramp.colors.iter().all(|color| match color {
             Some(ColorSlot10_1::Null) => true,
-            Some(color) => is_known_color(color),
+            Some(color) => is_known_renderer_color(color, table),
             None => false,
         }),
         ColorRampSlot10_1::BackReference { key, .. } => table
@@ -1044,6 +1058,18 @@ mod tests {
         multipart_ramp.extend(&algorithmic_ramp[colored_v9.len() - 16..]);
         multipart_ramp.extend(0.25_f64.to_le_bytes());
         multipart_ramp.extend(0.75_f64.to_le_bytes());
+        let mut legacy_rgb = super::super::raster_renderer::RASTER_RGB_RENDERER_CLASS_ID.to_vec();
+        legacy_rgb.extend(65_u32.to_le_bytes());
+        legacy_rgb.extend(3_i32.to_le_bytes());
+        legacy_rgb.extend([0; 12 + 0x930 + 1 + 4 + 8 + 8 + 64]);
+        legacy_rgb.extend(RGB_COLOR_CLASS_ID);
+        legacy_rgb.extend(73_u32.to_le_bytes());
+        legacy_rgb.extend([1, 0, 1, 0, 1]);
+        legacy_rgb.extend([0; 6]);
+        legacy_rgb.extend(RGB_COLOR_CLASS_ID);
+        legacy_rgb.extend(73_u32.to_le_bytes());
+        legacy_rgb.extend(1_i32.to_le_bytes());
+        legacy_rgb.extend([0; 16 + 8]); // 共用标量与旧 RGB 版本后缀。
         for renderer in [
             &simple,
             &sai,
@@ -1054,6 +1080,7 @@ mod tests {
             &algorithmic_ramp,
             &empty_algorithmic_ramp,
             &multipart_ramp,
+            &legacy_rgb,
         ] {
             let mut with_renderer = bytes.clone();
             with_renderer.splice(renderer_at..renderer_at + 16, renderer.iter().copied());
