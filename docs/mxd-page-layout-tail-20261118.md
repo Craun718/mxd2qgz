@@ -539,3 +539,21 @@ E_NOINTERFACE。类的 CLSID 可由 `0x714f7348` 与工厂登记交叉核对。
 因此 10.1 的普通 ObjectStream 不能通过这两个持久化接口读取
 该内置类的新对象体，ConverterOption 保持现有分派。外部注册替代
 实现和真实布局宿主仍待取证。
+
+### 布局扩展的内置注册项检索
+
+复用本页已核对身份的 PageLayout.dll 10.1.0.3035。Ghidra 导出的
+Load `0x7b6e4e30` 与 `objdump` 指令一致：`0x7b6e5f4c`
+取得布局对象的 `+0x1a4` 数组，`0x7b6e5f53` 清理旧值，
+随后检查版本是否至少为 10，`0x7b6e5f76` 将同一数组交给
+LayerLib::ExtensionHelper::LoadExtensions。Save `0x7b6e6a00`
+的 Ghidra 导出也将该数组交给 SaveExtensions。这两个调用点
+均不提供逐类白名单。
+
+在 10.1 的 `esri.clsid.ecfg` 解包 XML（SHA-256
+`71179ed661d9baa9366d603eb561141711ab0520b10c3c3a506a3f9003803e01`）
+中，检索名称同时包含 Layout 和 Extension 的注册项，仅返回
+CartoConverter 的 MapOptimizationLayoutExtension
+`{6C29D89F-B7BA-4FB0-A88D-FEA77A03BA0E}`，其读取器已接入。
+这个名称筛选无法排除采用其他命名的注册类或外部扩展，仍需从数组
+写入路径或实际布局记录确定其他类标识。ArcMap/QGIS 人工验收未执行。

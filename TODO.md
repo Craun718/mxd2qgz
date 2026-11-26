@@ -265,6 +265,7 @@
     - [x] 接入布局准备结果固定 IMap 和 IUnknown 列表中的 Map 类体。[原生取证](docs/mxd-page-layout-tail-20261118.md#准备结果中的-map)
     - [x] 按原生有符号版本门读取布局优化扩展。[原生取证](docs/mxd-page-layout-tail-20261118.md#优化扩展的有符号版本门)
     - [x] 按登记实例校验布局类型槽的回引并保留原始对象头。[原生取证](docs/mxd-page-layout-tail-20261118.md#布局类型槽的回引类判定)
+    - [x] 核对布局扩展数组的原生读写入口及按名称可定位的内置注册项。[原生取证](docs/mxd-page-layout-tail-20261118.md#布局扩展的内置注册项检索)
     - [ ] 补齐跨流布局中尚未支持的扩展对象体。[布局尾段](docs/mxd-page-layout-tail-20261118.md)
     - [x] 对位 PageLayout v11 非空槽的 PageIndex 接口和持久化入口。[原生取证](docs/mxd-page-layout-tail-20261118.md#pagelayout-v11-的-pageindex-接口)
     - [ ] 验证 PageLayout v11 起非空 PageIndex 的真实数据驱动页面宿主。[本地检索](docs/mxd-page-layout-tail-20261118.md#pageindex-实档检索)
