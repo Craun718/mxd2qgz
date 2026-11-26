@@ -425,6 +425,7 @@ mod tests {
                 bytes.extend(version.to_le_bytes());
                 bytes.extend(empty_string);
                 bytes.extend([0; 6 + 16 + 16]);
+                let mut renderer_ref_class_at = None;
                 if version != 1 {
                     use crate::layers::feature_layer_tail::SIMPLE_RENDERER_CLASS_ID;
                     use crate::objects::display_symbol::{
@@ -439,7 +440,10 @@ mod tests {
                         (44, SIMPLE_FILL_SYMBOL_CLASS_ID, 44),
                     ] {
                         if key == 44 {
-                            bytes.extend([0; 3 * 16]);
+                            renderer_ref_class_at = Some(bytes.len());
+                            bytes.extend(MAP_CLASS_ID);
+                            bytes.extend(42_u32.to_le_bytes());
+                            bytes.extend([0; 2 * 16]);
                         }
                         bytes.extend(SIMPLE_RENDERER_CLASS_ID);
                         bytes.extend(key.to_le_bytes());
@@ -504,6 +508,28 @@ mod tests {
                         );
                         assert_eq!(refs.registered_class(key + 1), Some(symbol));
                     }
+                }
+                if let Some(offset) = renderer_ref_class_at {
+                    use crate::layers::feature_layer::RendererSlot10_1;
+                    use crate::layers::feature_layer_tail::SIMPLE_RENDERER_CLASS_ID;
+
+                    assert_eq!(
+                        body.renderers[3],
+                        RendererSlot10_1::BackReference {
+                            class_id: SIMPLE_RENDERER_CLASS_ID,
+                            key: 42,
+                        }
+                    );
+                    let mut bytes = bytes.clone();
+                    bytes[offset..offset + 16].copy_from_slice(&SIMPLE_RENDERER_CLASS_ID);
+                    bytes[offset + 16..offset + 20].copy_from_slice(&41_u32.to_le_bytes());
+                    let mut reader = Reader::new(&bytes);
+                    let mut refs = RefTable10_1::new();
+                    let error = read_graphics_3d_layer_10_1(&class, &mut reader, 4096, &mut refs)
+                        .unwrap_err();
+                    assert_eq!(error.kind(), ErrorKind::Unsupported);
+                    assert_eq!(reader.position(), 0);
+                    assert!(refs.is_empty());
                 }
                 assert_eq!(body.version, version);
                 assert_eq!(body.renderers.len(), if version != 1 { 7 } else { 0 });

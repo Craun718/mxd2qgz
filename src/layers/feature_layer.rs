@@ -389,8 +389,16 @@ pub(crate) fn read_drawing_feature_renderer(
     };
     match read_object_entry_10_1(reader, refs)? {
         ObjectEntry10_1::Null => return Ok(RendererSlot10_1::Null),
-        ObjectEntry10_1::BackReference { class_id, key } => {
-            return Ok(RendererSlot10_1::BackReference { class_id, key });
+        ObjectEntry10_1::BackReference { key, .. } => {
+            if let Some(
+                class_id @ (SIMPLE_RENDERER_CLASS_ID
+                | CLASS_BREAKS_RENDERER_CLASS_ID
+                | UNIQUE_VALUE_RENDERER_CLASS_ID
+                | NA_STOP_RENDERER_CLASS_ID),
+            ) = refs.registered_class(key)
+            {
+                return Ok(RendererSlot10_1::BackReference { class_id, key });
+            }
         }
         ObjectEntry10_1::NewObject {
             class_id: SIMPLE_RENDERER_CLASS_ID,

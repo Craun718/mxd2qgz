@@ -1684,3 +1684,10 @@ Scene 与 Globe 构造回归将上述线、点符号分别放入第二、第三�
 因此 v0 与负版本走完整路径，包括七个渲染器、IUnknown、
 三个尾 short 及计数数组。读取器已对齐，Scene 和 Globe 构造回归
 覆盖 v0、-1 和后继字段边界。尚未在实档中验证非正版本。
+
+TopologyLayer 的七个渲染器槽经 `0x6f72b068` 请求
+IFeatureRenderer，普通对象流沿用按键取实例再查询接口的规则。
+共用读取器现在从引用表确认已核对的渲染器类。Scene 与 Globe
+构造输入验证回引头为 Map、登记实例为 SimpleRenderer 时可继续，
+以及回引头为 SimpleRenderer、登记实例为 TopologyLayer 时
+整个容器回滚。未核对的第三方渲染器及真实宿主仍待取证。
