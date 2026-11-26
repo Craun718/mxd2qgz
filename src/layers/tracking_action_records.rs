@@ -1,4 +1,4 @@
-//! TrackingActions.dll 10.1 中邮件告警的两段内联记录。
+//! TrackingActions.dll 10.1 的动作基类、邮件告警和数据修改记录。
 
 use super::image_server_rules::unsupported_class;
 use super::layer_list::read_complete_layer_body_10_1;
@@ -11,6 +11,10 @@ use std::io::{self, ErrorKind};
 
 pub(super) const EMAIL_ALERT_ACTION_CLASS_ID: [u8; 16] = [
     0xfa, 0xa8, 0x19, 0x27, 0x90, 0xad, 0x69, 0x4e, 0x8d, 0xb2, 0x20, 0x22, 0x4d, 0x4a, 0x1a, 0x6a,
+];
+
+pub(super) const DATA_MODIFICATION_ACTION_CLASS_ID: [u8; 16] = [
+    0x9f, 0x7d, 0xe2, 0xd7, 0x10, 0x78, 0x10, 0x44, 0xa9, 0xca, 0x87, 0x8f, 0x42, 0xc7, 0xa1, 0xb2,
 ];
 
 const MESSAGE_TEMPLATE_CLASS_ID: [u8; 16] = [
@@ -146,4 +150,16 @@ pub(super) fn read_email_alert_action(
     read_strings(reader, max, 2)?;
     let count = read_count(reader, max, 4)?;
     read_strings(reader, max, count)
+}
+
+pub(super) fn read_data_modification_action(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<()> {
+    read_action_base(reader, max, refs)?;
+    // 写侧使用 1.0，读侧消费八字节后直接读字符串。
+    reader.read_bytes(8)?;
+    read_atl_bstr_10_1(reader, max)?;
+    Ok(())
 }

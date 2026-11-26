@@ -2400,3 +2400,24 @@ Variant 读取只受前一步读取结果控制。写侧 `0x804c0833`
 含非空邮件告警、非空消息模板和收件地址，校验后继偏移及
 截断。较早对象版本仍需文档索引或真实记录佐证，尚未在
 ArcMap 或 QGIS 中人工验收。
+
+#### 数据修改动作的内联记录
+
+TrackingActions.dll 10.1.0.3035 的
+`CComObject<CoDataModificationAction>` 持久化虚表
+`0x80593a1c` 位于完整对象 `+0x22c`。
+GetClassID `0x804ec260` 从 `0x8058f97c` 返回
+`D7E27D9F-7810-4410-A9CA-878F42C7A1B2`。
+Load 和 Save 复用邮件告警的两段委派包装器。构造侧
+`0x804ebfc0`–`0x804ebfd8` 将 ActionBase 创建到
+同一个完整对象偏移 `+0x254`。第二段经主虚表
+`0x80593964` 进入本类 Load `0x804ebee0` 和 Save
+`0x804ebf50`。
+
+第二段依次为八字节值与一个字节 BSTR。Load 调用点
+`0x804ebf07/0x804ebf2c`，Save 对应
+`0x804ebf67/0x804ebf79`；写侧八字节常量
+`0x805bd0e8` 为 double 1.0。读取器复用已有的
+9.3 与 10.0 ActionBase 路径，构造测试核对非空 BSTR、
+下一动作 CLSID、集合后继字段和截断。真实工程的
+ArcMap/QGIS 人工验收尚待验证。

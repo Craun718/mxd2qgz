@@ -4,7 +4,6 @@ use super::dep_tail::{
     TIME_EXTENT_CLASS_ID, TIME_REFERENCE_CLASS_ID, read_time_extent_body_10_1,
     read_time_reference_body_10_1,
 };
-use super::email_alert_action::{EMAIL_ALERT_ACTION_CLASS_ID, read_email_alert_action};
 use super::feature_layer::{
     FeatureLayerPrefix10_1, FeatureLayerStop10_1, read_feature_layer_prefix_10_1,
 };
@@ -14,6 +13,10 @@ use super::temporal_legend::{
     TEMPORAL_LEGEND_GROUP_CLASS_ID, TemporalLegendGroup10_1, read_temporal_legend_group_10_1,
 };
 use super::temporal_record_set::{TemporalRecordSet10_1, read_temporal_record_set_10_1};
+use super::tracking_action_records::{
+    DATA_MODIFICATION_ACTION_CLASS_ID, EMAIL_ALERT_ACTION_CLASS_ID, read_data_modification_action,
+    read_email_alert_action,
+};
 use crate::objects::display_color::read_color_body_for_class_10_1;
 use crate::objects::element_body::{TEXT_SYMBOL_CLASS_ID, read_text_symbol_body_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
@@ -147,6 +150,40 @@ fn read_header(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn collection_reads_data_modification_action_and_next_entry() {
+        let mut bytes = 1.0_f64.to_le_bytes().to_vec();
+        bytes.extend([0; 42]);
+        bytes.extend(2_u32.to_le_bytes());
+        bytes.extend(13_u16.to_le_bytes());
+        bytes.extend(DATA_MODIFICATION_ACTION_CLASS_ID);
+        bytes.extend(9.3_f64.to_le_bytes());
+        bytes.extend([0; 66]); // 前缀、空 ILayer 以及兼容记录的固定字段。
+        bytes.extend(0_u16.to_le_bytes());
+        bytes.extend(13_u16.to_le_bytes());
+        bytes.extend([0; 16]);
+        bytes.extend([0; 65]); // 五个 BSTR、空计数、定宽尾段、空 ILayer 与 IName。
+        bytes.extend(1.0_f64.to_le_bytes());
+        bytes.extend(5_u32.to_le_bytes());
+        bytes.extend([b'a', 0, b'b', 0, 0]);
+        bytes.extend(13_u16.to_le_bytes());
+        bytes.extend([0; 16]);
+        let end = bytes.len();
+        bytes.extend(0xabcd_u16.to_le_bytes());
+
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        read_action_collection(&mut reader, 4096, &mut refs, MAX_ACTION_COLLECTION_DEPTH).unwrap();
+        assert_eq!(reader.position(), end);
+        assert_eq!(reader.read_u16_le().unwrap(), 0xabcd);
+
+        let mut reader = Reader::new(&bytes[..end - 19]);
+        assert!(
+            read_action_collection(&mut reader, 4096, &mut refs, MAX_ACTION_COLLECTION_DEPTH)
+                .is_err()
+        );
+    }
 
     #[test]
     fn collection_reads_email_action_with_message_template() {
@@ -461,6 +498,10 @@ fn read_action_collection(
                 class if class == [0; 16] => {}
                 ACTION_COLLECTION_CLASS_ID => read_action_collection(reader, max, refs, depth - 1)?,
                 EMAIL_ALERT_ACTION_CLASS_ID => read_email_alert_action(reader, max, refs)?,
+                DATA_MODIFICATION_ACTION_CLASS_ID => {
+                    read_data_modification_action(reader, max, refs)?
+                }
+
                 _ => return Err(unsupported_class("动作集合 IAction", &class)),
             }
         }
