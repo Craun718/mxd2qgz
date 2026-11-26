@@ -2399,3 +2399,11 @@ LineCallout Load `0x6eb58fd0` 和 SimpleLineCallout Load
 空锚点、新建的已核对简单符号及匹配接口的符号回引，也允许
 已登记的三类背景回引。构造回归分别以三种空锚点背景替换图例
 文字背景并核对后继边界。非空锚点和实际工程人工验收待验证。
+
+三类 Callout 各自的 Point 锚槽使用 Geometry.dll 10.1.0.3035
+的 Point Load `0x7191c1a0`。该函数在 `0x7191c279` 导入
+有界坐标记录，并在 v2 起经 `0x7191c297` 装载 ISpatialReference。
+普通 v12 复用图例补丁的空间参考判定，允许新 Point 及其回引。
+SimpleLineCallout 的 IGeometry 槽也接受 Point。构造回归给前两类
+各加入新锚点，第三类以新 Point 作为锚几何并在锚点槽回引它，
+随后核对图层边界。其他锚几何类与实档人工验收待核对。

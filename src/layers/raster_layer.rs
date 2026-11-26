@@ -45,7 +45,7 @@ use crate::objects::{
     },
     element_body::{FontSlot10_1, TEXT_SYMBOL_CLASS_ID},
     envelope::SpatialReferenceEntry10_1,
-    geometry::{GeometryBody10_1, POLYGON_CLASS_ID, POLYLINE_CLASS_ID},
+    geometry::{GeometryBody10_1, POINT_CLASS_ID, POLYGON_CLASS_ID, POLYLINE_CLASS_ID},
     ole_font::STDFONT_CLASS_ID,
     property_set::{PropertyValue10_1, PropertyValueObjectStream10_1},
     spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID,
@@ -109,6 +109,47 @@ fn simple_symbol_preserves_empty_dataset(
     }
 }
 
+fn spatial_reference_preserves_empty_dataset(
+    reference: Option<&SpatialReferenceEntry10_1>,
+    table: &RefTable10_1,
+) -> bool {
+    match reference {
+        None
+        | Some(
+            SpatialReferenceEntry10_1::Null
+            | SpatialReferenceEntry10_1::Projected { .. }
+            | SpatialReferenceEntry10_1::Geographic { .. }
+            | SpatialReferenceEntry10_1::UnknownCoordinateSystem { .. },
+        ) => true,
+        Some(SpatialReferenceEntry10_1::BackReference { key, .. }) => {
+            matches!(
+                table.registered_class(*key),
+                Some(
+                    PROJECTED_COORDINATE_SYSTEM_CLASS_ID
+                        | GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID
+                        | UNKNOWN_COORDINATE_SYSTEM_CLASS_ID
+                )
+            )
+        }
+    }
+}
+
+fn callout_point_preserves_empty_dataset(
+    anchor: Option<&PointSlotEntry10_1>,
+    table: &RefTable10_1,
+) -> bool {
+    match anchor {
+        Some(PointSlotEntry10_1::Null) => true,
+        Some(PointSlotEntry10_1::BackReference { key, .. }) => {
+            table.registered_class(*key) == Some(POINT_CLASS_ID)
+        }
+        Some(PointSlotEntry10_1::Point(point)) => {
+            spatial_reference_preserves_empty_dataset(point.spatial_reference.as_ref(), table)
+        }
+        None => false,
+    }
+}
+
 fn legend_format_preserves_empty_dataset(
     format: &LegendClassFormatSlot10_1,
     table: &RefTable10_1,
@@ -119,26 +160,6 @@ fn legend_format_preserves_empty_dataset(
             table.registered_class(*key) == Some(LEGEND_CLASS_FORMAT_CLASS_ID)
         }
         LegendClassFormatSlot10_1::Format(format) => {
-            let reference_is_known = |reference: &Option<SpatialReferenceEntry10_1>| match reference
-            {
-                None
-                | Some(
-                    SpatialReferenceEntry10_1::Null
-                    | SpatialReferenceEntry10_1::Projected { .. }
-                    | SpatialReferenceEntry10_1::Geographic { .. }
-                    | SpatialReferenceEntry10_1::UnknownCoordinateSystem { .. },
-                ) => true,
-                Some(SpatialReferenceEntry10_1::BackReference { key, .. }) => {
-                    matches!(
-                        table.registered_class(*key),
-                        Some(
-                            PROJECTED_COORDINATE_SYSTEM_CLASS_ID
-                                | GEOGRAPHIC_COORDINATE_SYSTEM_CLASS_ID
-                                | UNKNOWN_COORDINATE_SYSTEM_CLASS_ID
-                        )
-                    )
-                }
-            };
             let patch_is_known = |slot: &FormatMember, class_id| match slot {
                 FormatMember::Null => true,
                 FormatMember::BackReference { key, .. } => {
@@ -153,10 +174,16 @@ fn legend_format_preserves_empty_dataset(
                                 Some(POLYLINE_CLASS_ID | POLYGON_CLASS_ID)
                             ),
                             PatchGeometrySlot10_1::Geometry(GeometryBody10_1::Polyline(line)) => {
-                                reference_is_known(&line.spatial_reference)
+                                spatial_reference_preserves_empty_dataset(
+                                    line.spatial_reference.as_ref(),
+                                    table,
+                                )
                             }
                             PatchGeometrySlot10_1::Geometry(GeometryBody10_1::Polygon(area)) => {
-                                reference_is_known(&area.spatial_reference)
+                                spatial_reference_preserves_empty_dataset(
+                                    area.spatial_reference.as_ref(),
+                                    table,
+                                )
                             }
                             _ => false,
                         }
@@ -192,32 +219,46 @@ fn legend_format_preserves_empty_dataset(
                                 )
                             }
                             Some(CalloutSlot10_1::Balloon(callout)) => {
-                                matches!(callout.anchor, Some(PointSlotEntry10_1::Null))
-                                    && simple_symbol_preserves_empty_dataset(&callout.symbol, table)
+                                callout_point_preserves_empty_dataset(
+                                    callout.anchor.as_ref(),
+                                    table,
+                                ) && simple_symbol_preserves_empty_dataset(&callout.symbol, table)
                             }
                             Some(CalloutSlot10_1::Line(callout)) => {
-                                matches!(callout.anchor, Some(PointSlotEntry10_1::Null))
-                                    && callout.symbols.iter().all(|symbol| {
-                                        simple_symbol_preserves_empty_dataset(symbol, table)
-                                    })
+                                callout_point_preserves_empty_dataset(
+                                    callout.anchor.as_ref(),
+                                    table,
+                                ) && callout.symbols.iter().all(|symbol| {
+                                    simple_symbol_preserves_empty_dataset(symbol, table)
+                                })
                             }
                             Some(CalloutSlot10_1::SimpleLine(callout)) => {
-                                matches!(callout.anchor, Some(PointSlotEntry10_1::Null))
-                                    && matches!(
-                                        callout.anchor_geometry,
-                                        Some(GeometrySlotEntry10_1::Null)
-                                    )
-                                    && match &callout.line_symbol {
-                                        Some(SymbolSlotFull10_1::Null) => true,
-                                        Some(symbol @ SymbolSlotFull10_1::SimpleLineSymbol(_)) => {
-                                            simple_symbol_preserves_empty_dataset(symbol, table)
-                                        }
-                                        Some(SymbolSlotFull10_1::BackReference { key, .. }) => {
-                                            table.registered_class(*key)
-                                                == Some(SIMPLE_LINE_SYMBOL_CLASS_ID)
-                                        }
-                                        _ => false,
+                                callout_point_preserves_empty_dataset(
+                                    callout.anchor.as_ref(),
+                                    table,
+                                ) && match &callout.anchor_geometry {
+                                    Some(GeometrySlotEntry10_1::Null) => true,
+                                    Some(GeometrySlotEntry10_1::BackReference { key, .. }) => {
+                                        table.registered_class(*key) == Some(POINT_CLASS_ID)
                                     }
+                                    Some(GeometrySlotEntry10_1::Body(body)) => {
+                                        matches!(body.as_ref(), GeometryBody10_1::Point(point)
+                                        if spatial_reference_preserves_empty_dataset(
+                                            point.spatial_reference.as_ref(), table
+                                        ))
+                                    }
+                                    None => false,
+                                } && match &callout.line_symbol {
+                                    Some(SymbolSlotFull10_1::Null) => true,
+                                    Some(symbol @ SymbolSlotFull10_1::SimpleLineSymbol(_)) => {
+                                        simple_symbol_preserves_empty_dataset(symbol, table)
+                                    }
+                                    Some(SymbolSlotFull10_1::BackReference { key, .. }) => {
+                                        table.registered_class(*key)
+                                            == Some(SIMPLE_LINE_SYMBOL_CLASS_ID)
+                                    }
+                                    _ => false,
+                                }
                             }
                             Some(CalloutSlot10_1::MarkerBackground(background)) => {
                                 match &background.symbol {
@@ -1572,15 +1613,35 @@ mod tests {
         let mut colormap_with_groups = colormap.clone();
         colormap_with_groups.splice(24..28, groups.iter().copied());
         let colormaps_with_callouts = [
-            (BALLOON_CALLOUT_CLASS_ID, 4 + 4 * 8 + 2 * 16 + 8),
-            (LINE_CALLOUT_CLASS_ID, 4 * 16 + 8 + 4 + 5 * 8),
-            (SIMPLE_LINE_CALLOUT_CLASS_ID, 8 + 2 + 3 * 16),
+            (
+                BALLOON_CALLOUT_CLASS_ID,
+                4 + 4 * 8 + 2 * 16 + 8,
+                4 + 4 * 8 + 16,
+            ),
+            (LINE_CALLOUT_CLASS_ID, 4 * 16 + 8 + 4 + 5 * 8, 3 * 16),
+            (SIMPLE_LINE_CALLOUT_CLASS_ID, 8 + 2 + 3 * 16, 8 + 2),
         ]
-        .map(|(class_id, body_len)| {
+        .map(|(class_id, body_len, point_offset)| {
             let mut background = class_id.to_vec();
             background.extend(97_u32.to_le_bytes());
             background.extend(1_u16.to_le_bytes());
+            let point_at = background.len() + point_offset;
             background.resize(background.len() + body_len, 0);
+            if class_id == SIMPLE_LINE_CALLOUT_CLASS_ID {
+                let point_slot = point_at + 32;
+                let mut point_ref = RGB_COLOR_CLASS_ID.to_vec();
+                point_ref.extend(98_u32.to_le_bytes());
+                background.splice(point_slot..point_slot + 16, point_ref);
+            }
+            let mut point = POINT_CLASS_ID.to_vec();
+            point.extend(98_u32.to_le_bytes());
+            point.extend(2_u16.to_le_bytes());
+            point.extend(20_u32.to_le_bytes());
+            point.extend(1_u32.to_le_bytes());
+            point.extend(1.0_f64.to_le_bytes());
+            point.extend(2.0_f64.to_le_bytes());
+            point.extend([0; 16]); // 空空间参考。
+            background.splice(point_at..point_at + 16, point);
             let mut groups = groups.clone();
             groups.splice(background_at..background_end, background);
             let mut renderer = colormap.clone();
