@@ -283,9 +283,7 @@ pub(super) fn read_inline_raster_body_10_1(
             ObjectEntry10_1::Null => false,
         } {
         // 首个有效名称的已知 Open 分支未提供数据集。
-        RasterLayerBoundary::InlineWithoutDataset {
-            has_simple_renderer,
-        }
+        RasterLayerBoundary::InlineWithoutDataset
     } else {
         RasterLayerBoundary::Inline
     };
@@ -994,6 +992,13 @@ mod tests {
             }
         );
         assert_eq!(reader.position(), end + 20);
+        with_related_reference.splice(renderer_at..renderer_at + 16, simple.iter().copied());
+        let mut reader = Reader::new(&with_related_reference);
+        let mut refs = RefTable10_1::new();
+        let layer = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+        assert!(layer.renderer.unwrap().body.is_some());
+        assert!(layer.tail.unwrap().related_name.is_some());
+        assert_eq!(reader.position(), end + 20 + simple.len() - 16);
 
         for text in ["", "service"] {
             let mut related = 1_i32.to_le_bytes().to_vec();
