@@ -2164,3 +2164,16 @@ RGB RasterIO 新布局与真实工程人工验收仍待验证。
 分支因此使用已有的边界判定。构造回归验证 RGB v3、共用体 v9、
 多段色带和 RGB 后缀连续出现时的图层终点。ArcMap/QGIS 人工
 验收仍待验证。
+
+#### RGB RasterIO 布局的普通栅格边界
+
+复核 RasterRenderer.dll `0x7c99ad10` 的 RGB RasterIO 读取分支。
+`0x7c99af0b` 对 tag 12 的颜色执行共用转换。直方图和全色锐化
+槽省略或为空时，没有嵌套数据集打开。全色锐化后续回调由
+`0x7c99b05f` 的成员检查跳过。v4–v6 无 IDoubleArray 槽，
+随后经 `0x7c99b2a5` 结束 RasterIO，并从 `0x7c99b2ad`
+读取已取证的共用渲染器体。
+
+普通 v12 在此前已证空数据集条件下接入该分支。构造 RGB v4
+验证带 RgbColor 的记录、共用体和后继图层边界。非空直方图、
+全色锐化、IDoubleArray 槽及 ArcMap/QGIS 人工验收待验证。

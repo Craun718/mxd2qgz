@@ -15,9 +15,9 @@ use super::raster_dataset_name::{
     RasterDatasetNameEntryBody10_1, read_supported_raster_name_entry_10_1,
 };
 use super::raster_renderer::{
-    RasterRendererPrefix10_1, RasterRendererShared10_1, RasterRendererSharedLayout10_1,
-    is_supported_color_ramp_class, read_raster_renderer_slot_prefix_10_1,
-    supports_raster_renderer_body_10_1,
+    PansharpeningSlot10_1, RasterHistogramSlot10_1, RasterRendererPrefix10_1,
+    RasterRendererShared10_1, RasterRendererSharedLayout10_1, is_supported_color_ramp_class,
+    read_raster_renderer_slot_prefix_10_1, supports_raster_renderer_body_10_1,
 };
 use crate::objects::{
     color_ramp::ColorRampSlot10_1,
@@ -302,6 +302,17 @@ pub(super) fn read_inline_raster_body_10_1(
             if renderer_shared_preserves_empty_dataset(&rgb.shared, &staged)
                 && rgb.colors.iter().all(|color| is_known_renderer_color(color, &staged))
     );
+    let has_rgb_renderer = matches!(
+        renderer.body.as_ref(),
+        Some(RasterRendererPrefix10_1::Rgb { tail: Some(rgb), .. })
+            if is_known_renderer_io_color(&rgb.color)
+                && rgb.histograms.iter().all(|slot| {
+                    matches!(slot, None | Some(RasterHistogramSlot10_1::Null))
+                })
+                && matches!(rgb.pansharpening, None | Some(PansharpeningSlot10_1::Null))
+                && rgb.double_arrays.is_empty()
+                && renderer_shared_preserves_empty_dataset(&rgb.shared, &staged)
+    );
     let has_known_renderer_reference = matches!(
         renderer.entry,
         ObjectEntry10_1::BackReference { key, .. }
@@ -311,6 +322,7 @@ pub(super) fn read_inline_raster_body_10_1(
         && (renderer.entry == ObjectEntry10_1::Null
             || has_scalar_renderer
             || has_legacy_rgb_renderer
+            || has_rgb_renderer
             || has_known_renderer_reference)
         && let Some(name) = first_name
         && match name.entry {
@@ -340,16 +352,21 @@ fn renderer_shared_preserves_empty_dataset(
     match &shared.layout {
         RasterRendererSharedLayout10_1::Legacy(_) => true,
         RasterRendererSharedLayout10_1::RasterIo { color, .. } => {
-            color.get(..16).is_some_and(|class_id| {
-                RASTER_RENDERER_COLOR_CLASSES
-                    .iter()
-                    .any(|known| class_id == known)
-            }) && shared
-                .color_ramp
-                .as_ref()
-                .is_none_or(|ramp| color_ramp_preserves_empty_dataset(ramp, table))
+            is_known_renderer_io_color(color)
+                && shared
+                    .color_ramp
+                    .as_ref()
+                    .is_none_or(|ramp| color_ramp_preserves_empty_dataset(ramp, table))
         }
     }
+}
+
+fn is_known_renderer_io_color(color: &[u8]) -> bool {
+    color.get(..16).is_some_and(|class_id| {
+        RASTER_RENDERER_COLOR_CLASSES
+            .iter()
+            .any(|known| class_id == known)
+    })
 }
 
 fn is_known_renderer_color(color: &ColorSlot10_1, table: &RefTable10_1) -> bool {
@@ -1089,6 +1106,20 @@ mod tests {
         let mut legacy_rgb_with_ramp = legacy_rgb[..shared_at].to_vec();
         legacy_rgb_with_ramp.extend(&multipart_ramp[24..]);
         legacy_rgb_with_ramp.extend([0; 8]); // RGB v2/v3 后缀。
+        let mut tagged_rgb = legacy_rgb[..20].to_vec();
+        tagged_rgb.extend(4_i32.to_le_bytes());
+        tagged_rgb.extend(0x00ff_00ff_i32.to_le_bytes());
+        tagged_rgb.extend(0_i32.to_le_bytes());
+        for (tag, width) in (1_i32..=11).zip([4_i32, 4, 4, 0x930, 1, 4, 8, 4, 4, 32, 2]) {
+            tagged_rgb.extend(tag.to_le_bytes());
+            tagged_rgb.extend(width.to_le_bytes());
+            tagged_rgb.resize(tagged_rgb.len() + width as usize, 0);
+        }
+        tagged_rgb.extend(12_i32.to_le_bytes());
+        tagged_rgb.extend((-1_i32).to_le_bytes());
+        tagged_rgb.extend(&colored_v8[color_at..color_at + 27]);
+        tagged_rgb.extend([0xff; 8]); // RGB RasterIO 结束。
+        tagged_rgb.extend(&simple[24..]); // 共用体 v1。
         for renderer in [
             &simple,
             &sai,
@@ -1101,6 +1132,7 @@ mod tests {
             &multipart_ramp,
             &legacy_rgb,
             &legacy_rgb_with_ramp,
+            &tagged_rgb,
         ] {
             let mut with_renderer = bytes.clone();
             with_renderer.splice(renderer_at..renderer_at + 16, renderer.iter().copied());
