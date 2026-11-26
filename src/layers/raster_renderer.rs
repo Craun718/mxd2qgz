@@ -305,9 +305,10 @@ pub fn read_raster_renderer_slot_prefix_10_1(
     let mut trial = reader.clone();
     let mut staged = table.clone();
     let mut entry = read_object_entry_10_1(&mut trial, &mut staged)?;
-    if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry
-        && let Some(registered) = staged.registered_class(*key)
-    {
+    if let ObjectEntry10_1::BackReference { class_id, key } = &mut entry {
+        let registered = staged
+            .registered_class(*key)
+            .ok_or_else(|| invalid(format!("IRasterRenderer 回引键 {key} 缺少登记类")))?;
         if !supports_raster_renderer_body_10_1(registered) {
             return Err(invalid(format!(
                 "IRasterRenderer 回引键 {key} 的登记类不受支持"

@@ -12,24 +12,37 @@ use mxd2qgz::stream::reader::Reader;
 fn renderer_reference_uses_registered_class() {
     use mxd2qgz::storage::object_refs::{ObjectEntry10_1, read_object_entry_10_1};
 
-    for registered in [RASTER_RGB_RENDERER_CLASS_ID, RGB_COLOR_CLASS_ID] {
-        let mut previous = registered.to_vec();
-        previous.extend(71_u32.to_le_bytes());
+    for registered in [
+        Some(RASTER_RGB_RENDERER_CLASS_ID),
+        Some(RGB_COLOR_CLASS_ID),
+        None,
+    ] {
         let mut refs = RefTable10_1::new();
-        read_object_entry_10_1(&mut Reader::new(&previous), &mut refs).unwrap();
+        if let Some(class_id) = registered {
+            let mut previous = class_id.to_vec();
+            previous.extend(71_u32.to_le_bytes());
+            read_object_entry_10_1(&mut Reader::new(&previous), &mut refs).unwrap();
+        } else {
+            refs.register(71);
+        }
         let before = refs.clone();
-        let mut bytes = RGB_COLOR_CLASS_ID.to_vec();
+        let header_class = if registered.is_some() {
+            RGB_COLOR_CLASS_ID
+        } else {
+            RASTER_RGB_RENDERER_CLASS_ID
+        };
+        let mut bytes = header_class.to_vec();
         bytes.extend(71_u32.to_le_bytes());
         bytes.push(0xaa);
         let mut reader = Reader::new(&bytes);
         let result = read_raster_renderer_slot_prefix_10_1(&mut reader, 4096, &mut refs);
-        if registered == RASTER_RGB_RENDERER_CLASS_ID {
+        if registered == Some(RASTER_RGB_RENDERER_CLASS_ID) {
             let slot = result.unwrap();
             assert!(slot.body.is_none());
             assert_eq!(
                 slot.entry,
                 ObjectEntry10_1::BackReference {
-                    class_id: registered,
+                    class_id: RASTER_RGB_RENDERER_CLASS_ID,
                     key: 71
                 }
             );
