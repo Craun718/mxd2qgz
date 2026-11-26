@@ -1412,6 +1412,7 @@
       - [x] 按原生有符号版本门读取独立 Scalebar，并保留原始版本位模式。[原生读写](docs/arcmap-10.1-legend-family.md#二scalebar7a3f91db-体完全闭合证据确定的)
       - [x] 定性 MarkerNorthArrow 基类的大小、角度、校准角度、参考点和类型。[属性对位](docs/arcmap-10.1-legend-family.md#指北针的属性)
       - [ ] 确认 MarkerNorthArrow 旧版标记槽前弃读 int32 的历史写侧用途。
+      - [x] 交叉核对 10.8 MarkerNorthArrow 的旧 LONG 读取和保存边界。[取证](docs/arcmap-10.1-legend-family.md#108-的旧-long-兼容路径)
       - [x] 对位旧标记符号 setter 的构造期 MarkerElement 接收者。[原生取证](docs/arcmap-10.1-legend-family.md#旧标记符号的接收者)
       - [x] 按 IMarkerSymbol 校验 MarkerNorthArrow 的旧标记槽类及回引。[取证](docs/arcmap-10.1-legend-family.md#markernortharrow-版本分支复核)
       - [x] 按已登记对象类校验图形元素的点、线、面符号槽回引。[取证](docs/arcmap-10.1-legend-family.md#图形元素的符号回引)
