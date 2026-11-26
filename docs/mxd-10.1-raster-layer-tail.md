@@ -2061,3 +2061,13 @@ IColor 虚表分别为 `0x6ec0babc`、`0x6ec0bc4c`、
 HsvToRgb 传入颜色自身分量并返回转换值。因此这三个类也可用于
 已证空数据集条件下的共用渲染器体。构造输入逐类校验 v8 图层终点。
 其他 IColor 类和真实工程人工验收仍待验证。
+
+#### CMYK 的普通栅格边界
+
+同摘要 DisplayCore.dll 的 CmykColor 在 `0x6eb343f9`
+比较 IColor IID，返回完整对象 +0x1c。虚表 `0x6ec0b784`
+的 +0x30 和 +0x38 槽共用此前核对的标志读取器。
++0x10 经 `0x6eb34fe0` 至 `0x6eb34540`，调用 DisplayLib 的 CmykToRgb，
+随后将打包值写入调用方输出。普通 v12 复用这条颜色转换路径。
+构造 v8 回归覆盖 CmykColor 旧版体与后继图层边界。
+真实工程及 ArcMap/QGIS 人工验收仍待验证。
