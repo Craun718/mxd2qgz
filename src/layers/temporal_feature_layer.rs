@@ -148,6 +148,35 @@ mod tests {
     use super::*;
 
     #[test]
+    fn nested_action_collections_preserve_the_following_field_and_limit_depth() {
+        fn collection_chain(depth: usize) -> Vec<u8> {
+            let mut bytes = Vec::new();
+            for level in 1..=depth {
+                bytes.extend(1.0_f64.to_le_bytes());
+                bytes.extend([0; 42]);
+                bytes.extend(u32::from(level < depth).to_le_bytes());
+                if level < depth {
+                    bytes.extend(13_u16.to_le_bytes());
+                    bytes.extend(ACTION_COLLECTION_CLASS_ID);
+                }
+            }
+            bytes
+        }
+
+        let mut bytes = collection_chain(MAX_ACTION_COLLECTION_DEPTH);
+        bytes.extend(0xabcd_u16.to_le_bytes());
+        let mut reader = Reader::new(&bytes);
+        read_action_collection(&mut reader, 4096, MAX_ACTION_COLLECTION_DEPTH).unwrap();
+        assert_eq!(reader.read_u16_le().unwrap(), 0xabcd);
+
+        let bytes = collection_chain(MAX_ACTION_COLLECTION_DEPTH + 1);
+        let error =
+            read_action_collection(&mut Reader::new(&bytes), 4096, MAX_ACTION_COLLECTION_DEPTH)
+                .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::InvalidData);
+    }
+
+    #[test]
     fn action_collection_reads_versioned_prefix_and_unkeyed_entries() {
         let mut bytes = 13_u16.to_le_bytes().to_vec();
         bytes.extend(ACTION_COLLECTION_CLASS_ID);
@@ -328,7 +357,15 @@ const ACTION_COLLECTION_CLASS_ID: [u8; 16] = [
     0x4e, 0xc6, 0x48, 0x4c, 0x99, 0x91, 0xd5, 0x11, 0xb7, 0xfe, 0, 1, 2, 0x65, 0xad, 0xc5,
 ];
 
-fn read_action_collection(reader: &mut Reader<'_>, max: usize) -> io::Result<()> {
+const MAX_ACTION_COLLECTION_DEPTH: usize = 16;
+
+fn read_action_collection(reader: &mut Reader<'_>, max: usize, depth: usize) -> io::Result<()> {
+    if depth == 0 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "动作集合嵌套深度超过限额",
+        ));
+    }
     let version = reader.read_f64_le()?;
     for _ in 0..4 {
         read_atl_bstr_10_1(reader, max)?;
@@ -351,8 +388,10 @@ fn read_action_collection(reader: &mut Reader<'_>, max: usize) -> io::Result<()>
                 ));
             }
             let class = reader.read_bytes(16)?.try_into().unwrap();
-            if class != [0; 16] {
-                return Err(unsupported_class("动作集合 IAction", &class));
+            match class {
+                class if class == [0; 16] => {}
+                ACTION_COLLECTION_CLASS_ID => read_action_collection(reader, max, depth - 1)?,
+                _ => return Err(unsupported_class("动作集合 IAction", &class)),
             }
         }
     }
@@ -397,7 +436,7 @@ fn read_tail_variant(
                     }
                 }
                 TailVariantSlot::ActionCollection if class == ACTION_COLLECTION_CLASS_ID => {
-                    return read_action_collection(reader, max);
+                    return read_action_collection(reader, max, MAX_ACTION_COLLECTION_DEPTH);
                 }
                 TailVariantSlot::DisplayObject => {
                     // Variant 只写 CLSID，诊断占位键不加入引用表。

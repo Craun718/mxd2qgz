@@ -2238,3 +2238,13 @@ BSTR、double、int 和两个字节。Save 共用对称助手
 未知动作体返回明确停止错误。构造测试覆盖非空集合对象的
 后继字段边界、未知动作和截断。实际动作类体及真实工程在
 ArcMap/QGIS 中的人工验收仍待完成。
+
+#### ActionCollection 的嵌套集合
+
+TrackingActions.dll 10.1.0.3035 的 CoActionCollection 接口表在
+`0x80590de0` 将 IAction（IID `CC018A6E-24FB-11D4-B34C-00104BA2ABCC`，
+常量 `0x8058d9a4`）映射到完整对象 `+0x10`。
+集合循环 `0x804da9e4` 查询的正是该接口。因此无键动作项可为
+另一个 ActionCollection，其对象体仍按相同的版本和计数递归读取。
+读取器限制最多 16 层，构造测试验证限额内的后继边界及超过限额
+的错误。其他 IAction 类体与软件人工验收仍待验证。
