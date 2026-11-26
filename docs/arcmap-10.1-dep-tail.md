@@ -1561,3 +1561,9 @@ Load 先读有符号 short，拒绝高于 4 的版本。在 `0x6e9eacd7`
 索引至少为 3 时，在 `0x6e9eae04` 写出成员 LONG，与读侧 v4
 末字段对应。该写出表没有对象版本 2，v2 附加字段仍需按读侧兼容。
 字段业务语义和真实 3D 宿主验收待核对。
+
+普通 ILayer 分派已接入 DimensionLayer。内联 FeatureLayer 必须读到
+`TailCompleted` 才能继续读取外层字段，失败时整个对象回滚。
+Scene 与 Globe 的构造输入覆盖 v1–v4、旧字段、末尾 LONG、
+外层引用键、后继容器边界和逐字节截断。真实宿主及 ArcMap/QGIS
+人工验收未执行。

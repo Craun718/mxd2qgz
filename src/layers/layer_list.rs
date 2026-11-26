@@ -162,6 +162,7 @@ pub enum LayerBodyPrefix10_1 {
     RasterLayer(crate::layers::raster_layer::RasterLayerPrefix10_1),
     WcsLayer(Box<WcsLayer10_1>),
     TiledLayer(Box<TiledLayer10_1>),
+    DimensionLayer(Box<DimensionLayer10_1>),
     RasterCatalogLayer(Box<super::raster_catalog_layer::RasterCatalogLayer10_1>),
     RasterBasemapLayer(Box<super::raster_basemap_layer::RasterBasemapLayer10_1>),
     MosaicLayer(Box<super::raster_basemap_layer::MosaicLayerPrefix10_1>),
@@ -193,6 +194,7 @@ impl LayerBodyPrefix10_1 {
             Self::NetworkLayer(body) => &body.name,
             Self::NaLayer(body) => &body.name,
             Self::TiledLayer(body) => body.name(),
+            Self::DimensionLayer(body) => &body.feature.name,
             Self::RasterCatalogLayer(body) => &body.feature.name,
             Self::RasterBasemapLayer(body) => body.name.as_deref().unwrap_or(""),
             Self::MosaicLayer(body) => body.group.as_ref().map_or("", |group| group.name.as_str()),
@@ -614,6 +616,7 @@ pub fn read_layer_list_10_1(
                         | LayerBodyPrefix10_1::CadAnnotationLayer(_)
                         | LayerBodyPrefix10_1::CoverageAnnotationLayer(_)
                         | LayerBodyPrefix10_1::TiledLayer(_)
+                        | LayerBodyPrefix10_1::DimensionLayer(_)
                         | LayerBodyPrefix10_1::RasterCatalogLayer(_)
                         | LayerBodyPrefix10_1::RasterBasemapLayer(_)
                         | LayerBodyPrefix10_1::MosaicLayer(_)
@@ -1126,6 +1129,61 @@ fn read_group_layer_list_body(
     parse_body_prefix(reader, GROUP_LAYER_CLASS_ID, max_bytes, table, 0)
 }
 
+/// 尺寸标注图层及其内联要素图层。
+#[derive(Debug, Clone, PartialEq)]
+pub struct DimensionLayer10_1 {
+    pub version: i16,
+    pub feature: super::feature_layer::FeatureLayerPrefix10_1,
+    pub legacy: Option<(String, i16)>,
+    pub tail_long: Option<i32>,
+}
+
+fn read_dimension_layer(
+    reader: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<DimensionLayer10_1> {
+    use super::feature_layer::{FeatureLayerStop10_1, read_feature_layer_prefix_10_1};
+    use super::feature_layer_tail::SuccessorStop10_1;
+    use crate::stream::native_string::read_string_10_1;
+
+    let mut trial = reader.clone();
+    let mut refs = table.clone();
+    let version = trial.read_u16_le()? as i16;
+    if version > 4 {
+        return Err(invalid(reader.position(), "DimensionLayer 版本超过 4"));
+    }
+    let feature = read_feature_layer_prefix_10_1(&mut trial, max, &mut refs)?;
+    if !matches!(
+        feature.stop,
+        FeatureLayerStop10_1::Successor(SuccessorStop10_1::TailCompleted)
+    ) {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            "DimensionLayer 聚合 FeatureLayer 体未读完",
+        ));
+    }
+    let legacy = (version == 2)
+        .then(|| {
+            Ok::<_, io::Error>((
+                read_string_10_1(&mut trial, max)?,
+                trial.read_u16_le()? as i16,
+            ))
+        })
+        .transpose()?;
+    let tail_long = (version >= 4)
+        .then(|| trial.read_u32_le().map(|v| v as i32))
+        .transpose()?;
+    *reader = trial;
+    *table = refs;
+    Ok(DimensionLayer10_1 {
+        version,
+        feature,
+        legacy,
+        tail_long,
+    })
+}
+
 /// 按类标识分派新对象体的已确认前缀解析（组图层子图层递归共用，见
 /// [`crate::layers::group_layer`]）。
 ///
@@ -1143,6 +1201,10 @@ pub(crate) fn parse_body_prefix(
     trial_table: &mut RefTable10_1,
     depth: u32,
 ) -> io::Result<Option<LayerBodyPrefix10_1>> {
+    if class_id == crate::maps::layer_masking::DIMENSION_LAYER_CLASS_ID {
+        return read_dimension_layer(trial, max_bytes, trial_table)
+            .map(|body| Some(LayerBodyPrefix10_1::DimensionLayer(Box::new(body))));
+    }
     if class_id == super::raster_basemap_layer::MOSAIC_LAYER_CLASS_ID {
         return super::raster_basemap_layer::read_mosaic_layer_10_1(trial, max_bytes, trial_table)
             .map(|body| Some(LayerBodyPrefix10_1::MosaicLayer(Box::new(body))));
@@ -1303,6 +1365,7 @@ pub(crate) fn read_complete_layer_body_10_1(
         | LayerBodyPrefix10_1::TerrainLayer(_)
         | LayerBodyPrefix10_1::TinLayer(_)
         | LayerBodyPrefix10_1::TiledLayer(_)
+        | LayerBodyPrefix10_1::DimensionLayer(_)
         | LayerBodyPrefix10_1::RasterCatalogLayer(_)
         | LayerBodyPrefix10_1::RasterBasemapLayer(_)
         | LayerBodyPrefix10_1::MosaicLayer(_) => true,

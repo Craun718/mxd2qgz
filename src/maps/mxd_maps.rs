@@ -895,6 +895,7 @@ fn frame_from_body(
                 | LayerBodyPrefix10_1::TinLayer(_)
                 | LayerBodyPrefix10_1::NetworkLayer(_)
                 | LayerBodyPrefix10_1::TiledLayer(_)
+                | LayerBodyPrefix10_1::DimensionLayer(_)
                 | LayerBodyPrefix10_1::RasterCatalogLayer(_)
                 | LayerBodyPrefix10_1::RasterBasemapLayer(_)
                 | LayerBodyPrefix10_1::MosaicLayer(_)
@@ -2066,6 +2067,14 @@ fn body_prefix_node(
                 "条目 {}：已读取栅格底图图层 {:?}",
                 entry_index + 1,
                 layer.name
+            ));
+            None
+        }
+        LayerBodyPrefix10_1::DimensionLayer(layer) => {
+            diagnostics.push(format!(
+                "条目 {}：已读取尺寸标注图层 {:?}",
+                entry_index + 1,
+                layer.feature.name
             ));
             None
         }

@@ -408,6 +408,67 @@ mod tests {
     }
 
     #[test]
+    fn graphics_3d_reads_dimension_layer_and_preserves_container_boundary() {
+        use crate::maps::layer_masking::DIMENSION_LAYER_CLASS_ID;
+
+        for (class, short_bytes, tail_bytes) in [
+            (GRAPHICS_LAYER_3D_CLASS_ID, 8, 0),
+            (GLOBE_GRAPHICS_LAYER_CLASS_ID, 4, 8),
+        ] {
+            for version in 1_i16..=4 {
+                let empty_string = [2, 0, 0, 0, 0, 0];
+                let mut bytes = 1_u16.to_le_bytes().to_vec();
+                bytes.extend(empty_string);
+                bytes.extend(vec![0; short_bytes]);
+                bytes.extend(DIMENSION_LAYER_CLASS_ID);
+                bytes.extend(41_u32.to_le_bytes());
+                bytes.extend(version.to_le_bytes());
+                bytes.extend(1_u16.to_le_bytes());
+                bytes.extend(empty_string.repeat(2));
+                bytes.extend([0; 6 + 16 + 16 + 16]);
+                bytes.extend(empty_string);
+                bytes.extend([0; 16 + 2 + 4 + 16]);
+                bytes.extend(empty_string.repeat(2));
+                bytes.extend([0; 8 + 16 + 2 + 16 + 4 + 2]);
+                if version == 2 {
+                    bytes.extend(empty_string);
+                    bytes.extend((-7_i16).to_le_bytes());
+                }
+                if version == 4 {
+                    bytes.extend((-11_i32).to_le_bytes());
+                }
+                bytes.resize(bytes.len() + 16 + 4 + tail_bytes, 0);
+                let end = bytes.len();
+                bytes.extend([0xa5; 8]);
+
+                let mut refs = RefTable10_1::new();
+                for cut in 0..end {
+                    let mut reader = Reader::new(&bytes[..cut]);
+                    assert!(
+                        read_graphics_3d_layer_10_1(&class, &mut reader, 4096, &mut refs).is_err()
+                    );
+                    assert_eq!(reader.position(), 0);
+                    assert!(refs.is_empty());
+                }
+                let mut reader = Reader::new(&bytes);
+                let layer =
+                    read_graphics_3d_layer_10_1(&class, &mut reader, 4096, &mut refs).unwrap();
+                let Some(LayerBodyPrefix10_1::DimensionLayer(body)) =
+                    layer.associated_layer_body.as_deref()
+                else {
+                    panic!("应读取 DimensionLayer");
+                };
+                assert_eq!(body.version, version);
+                assert_eq!(body.legacy, (version == 2).then(|| (String::new(), -7)));
+                assert_eq!(body.tail_long, (version == 4).then_some(-11));
+                assert_eq!(refs.registered_class(41), Some(DIMENSION_LAYER_CLASS_ID));
+                assert_eq!(refs.len(), 1);
+                assert_eq!(reader.position(), end);
+            }
+        }
+    }
+
+    #[test]
     fn graphics_3d_rejects_new_dummy_layers_without_persisted_bodies() {
         for (class, short_bytes, tail_bytes) in [
             (GRAPHICS_LAYER_3D_CLASS_ID, 8, 0),
