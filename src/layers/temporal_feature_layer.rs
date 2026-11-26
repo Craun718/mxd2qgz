@@ -550,7 +550,7 @@ mod tests {
 
         let mut refs = RefTable10_1::new();
         let mut reader = Reader::new(&bytes);
-        read_tail_variant(&mut reader, 4096, &mut refs, TailVariantSlot::DisplayObject).unwrap();
+        read_tail_variant(&mut reader, 4096, &mut refs, TailVariantSlot::Color).unwrap();
         read_tail_variant(
             &mut reader,
             4096,
@@ -561,10 +561,39 @@ mod tests {
         assert_eq!(reader.read_u16_le().unwrap(), 0xabcd);
         assert!(refs.is_empty());
         let mut reader = Reader::new(&bytes[..28]);
-        assert!(
-            read_tail_variant(&mut reader, 4096, &mut refs, TailVariantSlot::DisplayObject)
-                .is_err()
-        );
+        assert!(read_tail_variant(&mut reader, 4096, &mut refs, TailVariantSlot::Color).is_err());
+    }
+
+    #[test]
+    fn trailing_fields_read_all_three_color_slots() {
+        use crate::objects::display_color::RGB_COLOR_CLASS_ID;
+
+        let mut color = 13_u16.to_le_bytes().to_vec();
+        color.extend(RGB_COLOR_CLASS_ID);
+        color.extend(1_u16.to_le_bytes());
+        color.extend(1_u16.to_le_bytes());
+        color.extend([1, 1, 2, 3, 0, 0, 255]);
+
+        let mut bytes = vec![0; 16];
+        for _ in 0..2 {
+            bytes.extend(0_u16.to_le_bytes());
+            bytes.extend(0_u32.to_le_bytes());
+        }
+        bytes.extend([0; 16]);
+        bytes.extend(&color);
+        bytes.extend([0; 8]);
+        bytes.extend(&color);
+        bytes.extend(&color);
+        bytes.extend([0; 26]);
+        let end = bytes.len();
+        bytes.extend(0xabcd_u16.to_le_bytes());
+
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        read_trailing_fields(&mut reader, 4096, &mut refs, 10.0).unwrap();
+        assert_eq!(reader.position(), end);
+        assert_eq!(reader.read_u16_le().unwrap(), 0xabcd);
+        assert!(refs.is_empty());
     }
 
     #[test]
@@ -734,7 +763,7 @@ fn read_action_collection(
 enum TailVariantSlot {
     TextSymbol,
     ActionCollection,
-    DisplayObject,
+    Color,
 }
 
 fn read_tail_variant(
@@ -770,7 +799,7 @@ fn read_tail_variant(
                 TailVariantSlot::ActionCollection if class == ACTION_COLLECTION_CLASS_ID => {
                     return read_action_collection(reader, max, refs, MAX_ACTION_COLLECTION_DEPTH);
                 }
-                TailVariantSlot::DisplayObject => {
+                TailVariantSlot::Color => {
                     // Variant 只写 CLSID，诊断占位键不加入引用表。
                     if read_color_body_for_class_10_1(class, reader, max, refs, 0)?.is_some() {
                         return Ok(());
@@ -803,10 +832,10 @@ fn read_trailing_fields(
     read_tail_variant(reader, max, refs, TailVariantSlot::ActionCollection)?;
     if version >= 9.3 {
         reader.read_bytes(16)?;
-        read_tail_variant(reader, max, refs, TailVariantSlot::DisplayObject)?;
+        read_tail_variant(reader, max, refs, TailVariantSlot::Color)?;
         reader.read_bytes(8)?;
-        read_tail_variant(reader, max, refs, TailVariantSlot::DisplayObject)?;
-        read_tail_variant(reader, max, refs, TailVariantSlot::DisplayObject)?;
+        read_tail_variant(reader, max, refs, TailVariantSlot::Color)?;
+        read_tail_variant(reader, max, refs, TailVariantSlot::Color)?;
         reader.read_bytes(26)?;
     }
     Ok(())

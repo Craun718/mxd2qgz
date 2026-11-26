@@ -783,6 +783,7 @@
       - [x] 接入三个已确认写出版本的时态图层后继段与普通 ILayer 分派。[取证](docs/arcmap-10.1-dep-tail.md#时态图层接入普通图层读取)
       - [ ] 核对并接入 TemporalFeatureLayer 尾段非空 Variant 的实现类。
       - [x] 接入时态图层尾部的非空 TextSymbol 和颜色 Variant。[取证](docs/arcmap-10.1-dep-tail.md#时态图层尾部的文本符号和颜色)
+      - [x] 核对末尾三个 IColor 成员及其非空顺序。[取证](docs/arcmap-10.1-dep-tail.md#时态图层末尾三个颜色槽)
       - [x] 接入时态图层尾部 ActionCollection 的集合字段和空条目。[取证](docs/arcmap-10.1-dep-tail.md#actioncollection-的集合体)
       - [x] 接入 ActionCollection 的非空嵌套集合并限制嵌套深度。[取证](docs/arcmap-10.1-dep-tail.md#actioncollection-的嵌套集合)
       - [x] 定位 EmailAlertAction 持久化入口、内联委派顺序和 ActionBase 共享字段入口。[取证](docs/arcmap-10.1-dep-tail.md#邮件告警动作的持久化入口)
