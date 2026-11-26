@@ -30,7 +30,7 @@ use super::raster_renderer::{
 use super::raster_unique_value::{RasterUniqueValueLayout10_1, UNIQUE_VALUES_CLASS_ID};
 use crate::maps::map_surround::LegendItemSlot10_1;
 use crate::objects::{
-    callout_background::CalloutSlot10_1,
+    callout_background::{CalloutSlot10_1, MARKER_TEXT_BACKGROUND_CLASS_ID},
     color_ramp::ColorRampSlot10_1,
     display_color::{
         CMYK_COLOR_CLASS_ID, ColorSlot10_1, GRAY_COLOR_CLASS_ID, HLS_COLOR_CLASS_ID,
@@ -175,7 +175,30 @@ fn legend_format_preserves_empty_dataset(
                         && text.tail_path_clsid.is_none_or(|class_id| {
                             class_id == [0; 16] || class_id == SIMPLE_TEXT_PARSER_CLASS_ID
                         })
-                        && matches!(text.background, None | Some(CalloutSlot10_1::Null))
+                        && match &text.background {
+                            None | Some(CalloutSlot10_1::Null) => true,
+                            Some(CalloutSlot10_1::BackReference { key, .. }) => {
+                                table.registered_class(*key)
+                                    == Some(MARKER_TEXT_BACKGROUND_CLASS_ID)
+                            }
+                            Some(CalloutSlot10_1::MarkerBackground(background)) => {
+                                match &background.symbol {
+                                    SymbolSlotFull10_1::BackReference { key, .. } => {
+                                        table.registered_class(*key)
+                                            == Some(SIMPLE_MARKER_SYMBOL_CLASS_ID)
+                                    }
+                                    SymbolSlotFull10_1::Null
+                                    | SymbolSlotFull10_1::SimpleMarkerSymbol(_) => {
+                                        simple_symbol_preserves_empty_dataset(
+                                            &background.symbol,
+                                            table,
+                                        )
+                                    }
+                                    _ => false,
+                                }
+                            }
+                            _ => false,
+                        }
                         && [&text.color1, &text.color2].into_iter().all(|color| {
                             matches!(color, ColorSlot10_1::Null)
                                 || is_known_renderer_color(color, table)
@@ -1445,7 +1468,13 @@ mod tests {
         groups.extend(4_u16.to_le_bytes());
         groups.extend([0; 16 + 12 + 2 + 24 + 8 + 16 + 16 + 8 + 24 + 1 + 8 + 4 + 8 + 1]);
         groups.extend(SIMPLE_TEXT_PATH_CLASS_ID);
-        groups.extend([0; 32]); // 空背景和填充符号。
+        groups.extend(MARKER_TEXT_BACKGROUND_CLASS_ID);
+        groups.extend(97_u32.to_le_bytes());
+        groups.extend(1_u16.to_le_bytes());
+        groups.extend(0_u16.to_le_bytes());
+        groups.extend(RGB_COLOR_CLASS_ID); // 标记符号使用既有键。
+        groups.extend(77_u32.to_le_bytes());
+        groups.extend([0; 16]); // 空填充符号。
         groups.extend(encoded_string("标签"));
         groups.extend([0; 8 + 4 + 8 + 16 + 16]); // 大小、遮罩参数、符号及字体。
         groups.extend(0_u16.to_le_bytes());
