@@ -2050,3 +2050,14 @@ SystemCore 10.1 的 `0x7ffd0063` 回引路径按键选取实例后查询
 四种 IColorRamp 实现，并保留回引头的原始类标识。普通 v12
 回归以相同的回引头分别指向已登记的 RandomColorRamp 和 RgbColor，
 核对正常图层终点及错误实例的事务回滚。ArcMap/QGIS 人工验收待验证。
+
+#### 灰度、HLS 与 HSV 的普通栅格边界
+
+同摘要 DisplayCore.dll 的 GrayColor、HlsColor、HsvColor
+IColor 虚表分别为 `0x6ec0babc`、`0x6ec0bc4c`、
+`0x6ec0bdec`。三者共用 +0x30 和 +0x38 的透明度及空色标志
+读取器。+0x10 分别经 `0x6eb35d60`、`0x6eb364a0`、
+`0x6eb36c40`，向 DisplayLib 的 GrayToRgb、HlsToRgb、
+HsvToRgb 传入颜色自身分量并返回转换值。因此这三个类也可用于
+已证空数据集条件下的共用渲染器体。构造输入逐类校验 v8 图层终点。
+其他 IColor 类和真实工程人工验收仍待验证。

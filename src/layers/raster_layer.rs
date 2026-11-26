@@ -19,7 +19,10 @@ use super::raster_renderer::{
 };
 use crate::objects::{
     color_ramp::{ColorRampSlot10_1, RANDOM_COLOR_RAMP_CLASS_ID},
-    display_color::{ColorSlot10_1, RGB_COLOR_CLASS_ID},
+    display_color::{
+        ColorSlot10_1, GRAY_COLOR_CLASS_ID, HLS_COLOR_CLASS_ID, HSV_COLOR_CLASS_ID,
+        RGB_COLOR_CLASS_ID,
+    },
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
 use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
@@ -282,7 +285,9 @@ pub(super) fn read_inline_raster_body_10_1(
             | RasterRendererPrefix10_1::Sai { shared, .. }
         ) if shared.version == 1
             || matches!(&shared.layout, RasterRendererSharedLayout10_1::RasterIo { color, .. }
-                if color.starts_with(&RGB_COLOR_CLASS_ID))
+                if matches!(color.get(..16), Some(class_id) if [
+                    RGB_COLOR_CLASS_ID, GRAY_COLOR_CLASS_ID, HLS_COLOR_CLASS_ID, HSV_COLOR_CLASS_ID,
+                ].iter().any(|known| class_id == known)))
                 && match &shared.color_ramp {
                     None | Some(ColorRampSlot10_1::Null | ColorRampSlot10_1::Random(_)) => true,
                     Some(ColorRampSlot10_1::Preset(ramp)) => {
@@ -1031,6 +1036,17 @@ mod tests {
         assert_eq!(reader.position(), 0);
         assert_eq!(wrong_class.registered_class(66), Some(RGB_COLOR_CLASS_ID));
         assert!(!wrong_class.contains(65));
+
+        for class_id in [GRAY_COLOR_CLASS_ID, HLS_COLOR_CLASS_ID, HSV_COLOR_CLASS_ID] {
+            let mut renderer = colored_v8.clone();
+            renderer[color_at..color_at + 16].copy_from_slice(&class_id);
+            let mut with_color = bytes.clone();
+            with_color.splice(renderer_at..renderer_at + 16, renderer.iter().copied());
+            let mut reader = Reader::new(&with_color);
+            let mut refs = RefTable10_1::new();
+            read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+            assert_eq!(reader.position(), end + renderer.len() - 16);
+        }
 
         let mut with_empty_color = bytes.clone();
         with_empty_color.splice(renderer_at..renderer_at + 16, simple_raster_io);
