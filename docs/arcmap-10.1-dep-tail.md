@@ -2513,3 +2513,20 @@ Load/Save 经 thunk 转到 `0x80513ef0/0x80513f70`，
 
 构造测试串联这两种动作，核对标记字符串、集合边界和截断。
 真实 MXD 与 ArcMap/QGIS 人工验收尚待验证。
+
+#### 高亮抑制动作的有键符号
+
+TrackingActions.dll 10.1.0.3035 的 HighlightSuppressionAction
+持久化虚表 `0x80594368` 的 GetClassID `0x804d55e0`
+返回 `322415E4-35D3-4813-9D7D-DFAF7D453DF6`。
+Load/Save 包装器 `0x804d5620/0x804d57f0` 先处理
+完整对象 `+0x25c` 的 ActionBase（构造点 `0x804d5498`），
+再调用本类 `0x804d56a0/0x804d5870`。
+
+本类在 `0x804d5717/0x804d5728` 读取八字节值及四字节
+整数，随后于 `0x804d576b` 经 IObjectStream 读取
+ISymbol（IID 常量 `0x8058ee00`）。写侧相应调用为
+`0x804d58a1/0x804d58b2/0x804d58e7`，首值写 double 9.3。
+动作本身在集合中的头无键，符号槽沿用原流的有键登记。
+构造测试覆盖非空 SimpleLineSymbol、符号键、后继和截断。
+真实 MXD 及 ArcMap/QGIS 人工验收仍待验证。

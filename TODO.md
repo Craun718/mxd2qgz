@@ -798,6 +798,7 @@
       - [x] 接入动作集合中的独立 ActionBase 对象。[取证](docs/arcmap-10.1-dep-tail.md#动作集合中的独立-actionbase)
       - [x] 接入 FilterAction 的四字节尾段。[取证](docs/arcmap-10.1-dep-tail.md#过滤和标记动作的内联记录)
       - [x] 接入 TagAction 的字节 BSTR 尾段。[取证](docs/arcmap-10.1-dep-tail.md#过滤和标记动作的内联记录)
+      - [x] 接入 HighlightSuppressionAction 的有键 ISymbol 槽。[取证](docs/arcmap-10.1-dep-tail.md#高亮抑制动作的有键符号)
       - [ ] 核实时态图层 10.0 内联记录在真实 MXD 中的存在条件与对象边界。
       - [ ] 补齐两类 3D 容器的关联 ILayer 槽中其余未支持的类体；已接入类的共用子槽缺口见各自条目。
       - [x] 接入普通 ILayer 槽中的 InternetTiledLayer 与 WMTSLayer，覆盖独立图层、组图层和三维关联图层。[接口及对象体证据](docs/mxd-10.1-raster-layer-tail.md#瓦片图层的独立-ilayer-宿主)

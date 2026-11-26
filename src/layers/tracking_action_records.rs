@@ -3,6 +3,10 @@
 use super::image_server_rules::unsupported_class;
 use super::layer_list::read_complete_layer_body_10_1;
 use crate::objects::dataset_name_more::read_dataset_name_slot_10_1;
+use crate::objects::display_symbol::{
+    DisplaySlotKind10_1, MAX_SYMBOL_NESTING_DEPTH, SymbolSlotFull10_1, is_supported_symbol_class,
+    read_symbol_slot_full_10_1, slot_full_stop_10_1,
+};
 use crate::objects::envelope::read_spatial_reference_body_10_1;
 use crate::objects::property_set::{PROPERTY_SET_CLASS_ID, read_property_set_object_stream_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
@@ -36,6 +40,10 @@ pub(super) const FILTER_ACTION_CLASS_ID: [u8; 16] = [
 
 pub(super) const TAG_ACTION_CLASS_ID: [u8; 16] = [
     0x08, 0xc6, 0x93, 0x48, 0x40, 0xae, 0xd7, 0x47, 0x87, 0x5f, 0x24, 0x2f, 0x8e, 0xfa, 0x13, 0x1c,
+];
+
+pub(super) const HIGHLIGHT_SUPPRESSION_ACTION_CLASS_ID: [u8; 16] = [
+    0xe4, 0x15, 0x24, 0x32, 0xd3, 0x35, 0x13, 0x48, 0x9d, 0x7d, 0xdf, 0xaf, 0x7d, 0x45, 0x3d, 0xf6,
 ];
 
 const MESSAGE_TEMPLATE_CLASS_ID: [u8; 16] = [
@@ -257,5 +265,32 @@ pub(super) fn read_tag_action(
 ) -> io::Result<()> {
     read_action_base(reader, max, refs)?;
     read_atl_bstr_10_1(reader, max)?;
+    Ok(())
+}
+
+pub(super) fn read_highlight_suppression_action(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<()> {
+    read_action_base(reader, max, refs)?;
+    reader.read_bytes(12)?;
+    let symbol = read_symbol_slot_full_10_1(reader, max, refs, MAX_SYMBOL_NESTING_DEPTH)?;
+    if let SymbolSlotFull10_1::BackReference { key, .. } = symbol
+        && !refs
+            .registered_class(key)
+            .is_some_and(is_supported_symbol_class)
+    {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            "高亮抑制动作的符号回引未确认",
+        ));
+    }
+    if let Some(stop) = slot_full_stop_10_1(&symbol, DisplaySlotKind10_1::Symbol) {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            format!("高亮抑制动作的符号未读完：{stop:?}"),
+        ));
+    }
     Ok(())
 }

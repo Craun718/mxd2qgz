@@ -16,9 +16,10 @@ use super::temporal_record_set::{TemporalRecordSet10_1, read_temporal_record_set
 use super::tracking_action_records::{
     ACTION_BASE_CLASS_ID, DATA_MODIFICATION_ACTION_CLASS_ID, DATA_PARTITION_ACTION_CLASS_ID,
     DATA_SUMMARY_ACTION_CLASS_ID, EMAIL_ALERT_ACTION_CLASS_ID, FILTER_ACTION_CLASS_ID,
-    TAG_ACTION_CLASS_ID, read_action_base, read_data_modification_action,
-    read_data_partition_action, read_data_summary_action, read_email_alert_action,
-    read_filter_action, read_tag_action,
+    HIGHLIGHT_SUPPRESSION_ACTION_CLASS_ID, TAG_ACTION_CLASS_ID, read_action_base,
+    read_data_modification_action, read_data_partition_action, read_data_summary_action,
+    read_email_alert_action, read_filter_action, read_highlight_suppression_action,
+    read_tag_action,
 };
 use crate::objects::display_color::read_color_body_for_class_10_1;
 use crate::objects::element_body::{TEXT_SYMBOL_CLASS_ID, read_text_symbol_body_10_1};
@@ -153,6 +154,42 @@ fn read_header(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn collection_reads_highlight_suppression_keyed_symbol() {
+        use crate::objects::display_symbol::SIMPLE_LINE_SYMBOL_CLASS_ID;
+
+        let mut bytes = 1.0_f64.to_le_bytes().to_vec();
+        bytes.extend([0; 42]);
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend(13_u16.to_le_bytes());
+        bytes.extend(HIGHLIGHT_SUPPRESSION_ACTION_CLASS_ID);
+        bytes.extend(9.3_f64.to_le_bytes());
+        bytes.extend([0; 68]);
+        bytes.extend(13_u16.to_le_bytes());
+        bytes.extend([0; 81]);
+        bytes.extend(9.3_f64.to_le_bytes());
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend(SIMPLE_LINE_SYMBOL_CLASS_ID);
+        bytes.extend(42_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend([0; 36]); // 空颜色与符号定宽字段。
+        let end = bytes.len();
+        bytes.extend(0xabcd_u16.to_le_bytes());
+
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        read_action_collection(&mut reader, 4096, &mut refs, MAX_ACTION_COLLECTION_DEPTH).unwrap();
+        assert_eq!(reader.read_u16_le().unwrap(), 0xabcd);
+        assert_eq!(refs.registered_class(42), Some(SIMPLE_LINE_SYMBOL_CLASS_ID));
+
+        let mut reader = Reader::new(&bytes[..end - 1]);
+        let mut refs = RefTable10_1::new();
+        assert!(
+            read_action_collection(&mut reader, 4096, &mut refs, MAX_ACTION_COLLECTION_DEPTH)
+                .is_err()
+        );
+    }
 
     #[test]
     fn collection_reads_filter_and_tag_action_tails() {
@@ -683,6 +720,9 @@ fn read_action_collection(
                 DATA_SUMMARY_ACTION_CLASS_ID => read_data_summary_action(reader, max, refs)?,
                 FILTER_ACTION_CLASS_ID => read_filter_action(reader, max, refs)?,
                 TAG_ACTION_CLASS_ID => read_tag_action(reader, max, refs)?,
+                HIGHLIGHT_SUPPRESSION_ACTION_CLASS_ID => {
+                    read_highlight_suppression_action(reader, max, refs)?
+                }
                 _ => return Err(unsupported_class("动作集合 IAction", &class)),
             }
         }
