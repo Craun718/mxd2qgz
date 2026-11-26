@@ -4,6 +4,7 @@ use super::dep_tail::{
     TIME_EXTENT_CLASS_ID, TIME_REFERENCE_CLASS_ID, read_time_extent_body_10_1,
     read_time_reference_body_10_1,
 };
+use super::email_alert_action::{EMAIL_ALERT_ACTION_CLASS_ID, read_email_alert_action};
 use super::feature_layer::{
     FeatureLayerPrefix10_1, FeatureLayerStop10_1, read_feature_layer_prefix_10_1,
 };
@@ -148,6 +149,59 @@ mod tests {
     use super::*;
 
     #[test]
+    fn collection_reads_email_action_with_message_template() {
+        fn bstr(bytes: &mut Vec<u8>, value: &[u8]) {
+            bytes.extend((value.len() as u32 + 2).to_le_bytes());
+            bytes.extend(value);
+            bytes.extend([0; 2]);
+        }
+
+        let mut bytes = 1.0_f64.to_le_bytes().to_vec();
+        bytes.extend([0; 42]);
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend(13_u16.to_le_bytes());
+        bytes.extend(EMAIL_ALERT_ACTION_CLASS_ID);
+        bytes.extend(10.0_f64.to_le_bytes());
+        bytes.extend([0; 50]); // 四个字符串、定宽字段、空 ILayer、整数。
+        bytes.extend(0x000b_f894_u32.to_le_bytes());
+        bytes.extend([0; 24]); // 兼容标记后两值、两个字符串、两值。
+        bytes.extend(0_u16.to_le_bytes()); // 条件状态关闭仍有 Variant。
+        bytes.extend(13_u16.to_le_bytes());
+        bytes.extend([0; 16]);
+        bytes.extend([0; 20]);
+        bytes.extend(1_u32.to_le_bytes());
+        bstr(&mut bytes, b"field");
+        bytes.extend([0; 41]); // 定宽尾段、空 ILayer 和 IName。
+        bytes.extend(1.0_f64.to_le_bytes());
+        bytes.extend(13_u16.to_le_bytes());
+        bytes.extend([
+            0x92, 0xef, 0xb7, 0xa7, 0xae, 0x36, 0x18, 0x43, 0xa1, 0x22, 0x43, 0x1b, 0x88, 0x92,
+            0xe0, 0xf3,
+        ]);
+        bytes.extend([0; 32]); // 模板定宽前段及五个空字符串。
+        bytes.extend(1_u32.to_le_bytes());
+        bstr(&mut bytes, b"field");
+        bytes.extend(2_u32.to_le_bytes());
+        bytes.extend([0; 8]);
+        bytes.extend(1_u32.to_le_bytes());
+        bstr(&mut bytes, b"test@example.invalid");
+
+        let end = bytes.len();
+        bytes.extend(0xabcd_u16.to_le_bytes());
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        read_action_collection(&mut reader, 4096, &mut refs, MAX_ACTION_COLLECTION_DEPTH).unwrap();
+        assert_eq!(reader.read_u16_le().unwrap(), 0xabcd);
+        assert!(refs.is_empty());
+
+        let mut reader = Reader::new(&bytes[..end - 1]);
+        assert!(
+            read_action_collection(&mut reader, 4096, &mut refs, MAX_ACTION_COLLECTION_DEPTH)
+                .is_err()
+        );
+    }
+
+    #[test]
     fn nested_action_collections_preserve_the_following_field_and_limit_depth() {
         fn collection_chain(depth: usize) -> Vec<u8> {
             let mut bytes = Vec::new();
@@ -166,13 +220,23 @@ mod tests {
         let mut bytes = collection_chain(MAX_ACTION_COLLECTION_DEPTH);
         bytes.extend(0xabcd_u16.to_le_bytes());
         let mut reader = Reader::new(&bytes);
-        read_action_collection(&mut reader, 4096, MAX_ACTION_COLLECTION_DEPTH).unwrap();
+        read_action_collection(
+            &mut reader,
+            4096,
+            &mut RefTable10_1::new(),
+            MAX_ACTION_COLLECTION_DEPTH,
+        )
+        .unwrap();
         assert_eq!(reader.read_u16_le().unwrap(), 0xabcd);
 
         let bytes = collection_chain(MAX_ACTION_COLLECTION_DEPTH + 1);
-        let error =
-            read_action_collection(&mut Reader::new(&bytes), 4096, MAX_ACTION_COLLECTION_DEPTH)
-                .unwrap_err();
+        let error = read_action_collection(
+            &mut Reader::new(&bytes),
+            4096,
+            &mut RefTable10_1::new(),
+            MAX_ACTION_COLLECTION_DEPTH,
+        )
+        .unwrap_err();
         assert_eq!(error.kind(), ErrorKind::InvalidData);
     }
 
@@ -359,7 +423,12 @@ const ACTION_COLLECTION_CLASS_ID: [u8; 16] = [
 
 const MAX_ACTION_COLLECTION_DEPTH: usize = 16;
 
-fn read_action_collection(reader: &mut Reader<'_>, max: usize, depth: usize) -> io::Result<()> {
+fn read_action_collection(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<()> {
     if depth == 0 {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
@@ -390,7 +459,8 @@ fn read_action_collection(reader: &mut Reader<'_>, max: usize, depth: usize) -> 
             let class = reader.read_bytes(16)?.try_into().unwrap();
             match class {
                 class if class == [0; 16] => {}
-                ACTION_COLLECTION_CLASS_ID => read_action_collection(reader, max, depth - 1)?,
+                ACTION_COLLECTION_CLASS_ID => read_action_collection(reader, max, refs, depth - 1)?,
+                EMAIL_ALERT_ACTION_CLASS_ID => read_email_alert_action(reader, max, refs)?,
                 _ => return Err(unsupported_class("动作集合 IAction", &class)),
             }
         }
@@ -436,7 +506,7 @@ fn read_tail_variant(
                     }
                 }
                 TailVariantSlot::ActionCollection if class == ACTION_COLLECTION_CLASS_ID => {
-                    return read_action_collection(reader, max, MAX_ACTION_COLLECTION_DEPTH);
+                    return read_action_collection(reader, max, refs, MAX_ACTION_COLLECTION_DEPTH);
                 }
                 TailVariantSlot::DisplayObject => {
                     // Variant 只写 CLSID，诊断占位键不加入引用表。

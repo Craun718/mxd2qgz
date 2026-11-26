@@ -9,6 +9,7 @@ pub mod composite_graphics;
 pub mod coverage_annotation_layer;
 pub mod dep_tail;
 pub mod edit_template;
+mod email_alert_action;
 pub mod fdo_graphics_layer;
 pub mod fdo_legacy;
 pub mod feature_id_set;

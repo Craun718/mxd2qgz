@@ -790,6 +790,7 @@
       - [x] 核对邮件地址循环与 MessageTemplate 的完整字段顺序。[取证](docs/arcmap-10.1-dep-tail.md#邮件地址与消息模板的记录边界)
       - [x] 对位 ActionBase 的 ILayer 条件、兼容标记与属性集版本门。[取证](docs/arcmap-10.1-dep-tail.md#actionbase-的图层条件与兼容前缀)
       - [x] 对位 ActionBase 末段字符串、计数项和有键对象槽的读写边界。[取证](docs/arcmap-10.1-dep-tail.md#actionbase-的末段字符串和计数记录)
+      - [x] 将 EmailAlertAction 的 9.3 与 10.0 基类写出路径接入动作集合。[取证](docs/arcmap-10.1-dep-tail.md#邮件告警动作接入集合)
       - [ ] 核实时态图层 10.0 内联记录在真实 MXD 中的存在条件与对象边界。
       - [ ] 补齐两类 3D 容器的关联 ILayer 槽中其余未支持的类体；已接入类的共用子槽缺口见各自条目。
       - [x] 接入普通 ILayer 槽中的 InternetTiledLayer 与 WMTSLayer，覆盖独立图层、组图层和三维关联图层。[接口及对象体证据](docs/mxd-10.1-raster-layer-tail.md#瓦片图层的独立-ilayer-宿主)

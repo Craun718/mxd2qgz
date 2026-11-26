@@ -2346,7 +2346,7 @@ Save `0x80512c00` 在文档版本索引大于 4 时才写
 再写固定尾段（`0x80512cee`–`0x80512d54`）。
 
 返回 ActionBase 后，版本至少 9.3 时先读 short 标记，
-非零时读无键 IPropertySet Variant（`0x804c0362/0x804c0396`）。
+随后读无键 IPropertySet Variant（`0x804c0362/0x804c0396`）。
 随后存在随版本变化的字符串与计数段。成功的 IObjectStream
 路径在 `0x804c0542` 还有一个 ILayer 槽，部分分支在
 `0x804c0582` 再读 IName。这里的 ILayer 与前缀中的
@@ -2383,3 +2383,20 @@ ILayer 槽。文档索引非零时再读写 IName 槽
 版本 1.0，2 对应 9.2，3 对应 9.3，4 及以上对应 10.0。
 因此文档索引与对象自身版本需要分别处理。真实工程中的
 非空 IName 实现与 ArcMap/QGIS 人工验收仍待验证。
+
+
+#### 邮件告警动作接入集合
+
+TrackingActions.dll 10.1.0.3035 在 `0x804c036b`–`0x804c037b`
+把 short 转为条件状态标志，`0x804c0396` 的 IPropertySet
+Variant 读取只受前一步读取结果控制。写侧 `0x804c0833`
+和 `0x804c08ce` 也在成功路径依次写标志和 Variant。
+因此标志为零时依然消费 Variant。
+
+读取器接入 ActionBase 9.3 与 10.0 的 MXD IObjectStream
+写出路径，两者均走非零文档版本索引布局。图层和数据集名称
+复用现有已闭合分派。IPropertySet 与 MessageTemplate 的
+无键对象头直接读取，体内对象引用继续使用原表。构造集合
+含非空邮件告警、非空消息模板和收件地址，校验后继偏移及
+截断。较早对象版本仍需文档索引或真实记录佐证，尚未在
+ArcMap 或 QGIS 中人工验收。
