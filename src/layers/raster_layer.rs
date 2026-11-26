@@ -15,8 +15,9 @@ use super::raster_dataset_name::{
     RasterDatasetNameEntryBody10_1, read_supported_raster_name_entry_10_1,
 };
 use super::raster_renderer::{
-    RasterRendererPrefix10_1, RasterRendererSharedLayout10_1, is_supported_color_ramp_class,
-    read_raster_renderer_slot_prefix_10_1, supports_raster_renderer_body_10_1,
+    RasterRendererPrefix10_1, RasterRendererShared10_1, RasterRendererSharedLayout10_1,
+    is_supported_color_ramp_class, read_raster_renderer_slot_prefix_10_1,
+    supports_raster_renderer_body_10_1,
 };
 use crate::objects::{
     color_ramp::ColorRampSlot10_1,
@@ -293,17 +294,12 @@ pub(super) fn read_inline_raster_body_10_1(
         Some(
             RasterRendererPrefix10_1::Simple { shared, .. }
             | RasterRendererPrefix10_1::Sai { shared, .. }
-        ) if shared.version == 1
-            || matches!(&shared.layout, RasterRendererSharedLayout10_1::RasterIo { color, .. }
-                if matches!(color.get(..16), Some(class_id) if RASTER_RENDERER_COLOR_CLASSES.iter().any(|known| class_id == known)))
-                && shared.color_ramp.as_ref().is_none_or(|ramp| {
-                    color_ramp_preserves_empty_dataset(ramp, &staged)
-                })
+        ) if renderer_shared_preserves_empty_dataset(shared, &staged)
     );
     let has_legacy_rgb_renderer = matches!(
         renderer.body.as_ref(),
         Some(RasterRendererPrefix10_1::LegacyRgb(rgb))
-            if rgb.shared.version == 1
+            if renderer_shared_preserves_empty_dataset(&rgb.shared, &staged)
                 && rgb.colors.iter().all(|color| is_known_renderer_color(color, &staged))
     );
     let has_known_renderer_reference = matches!(
@@ -335,6 +331,25 @@ pub(super) fn read_inline_raster_body_10_1(
     *reader = trial;
     *table = staged;
     Ok(body)
+}
+
+fn renderer_shared_preserves_empty_dataset(
+    shared: &RasterRendererShared10_1,
+    table: &RefTable10_1,
+) -> bool {
+    match &shared.layout {
+        RasterRendererSharedLayout10_1::Legacy(_) => true,
+        RasterRendererSharedLayout10_1::RasterIo { color, .. } => {
+            color.get(..16).is_some_and(|class_id| {
+                RASTER_RENDERER_COLOR_CLASSES
+                    .iter()
+                    .any(|known| class_id == known)
+            }) && shared
+                .color_ramp
+                .as_ref()
+                .is_none_or(|ramp| color_ramp_preserves_empty_dataset(ramp, table))
+        }
+    }
 }
 
 fn is_known_renderer_color(color: &ColorSlot10_1, table: &RefTable10_1) -> bool {
@@ -1068,8 +1083,12 @@ mod tests {
         legacy_rgb.extend([0; 6]);
         legacy_rgb.extend(RGB_COLOR_CLASS_ID);
         legacy_rgb.extend(73_u32.to_le_bytes());
+        let shared_at = legacy_rgb.len();
         legacy_rgb.extend(1_i32.to_le_bytes());
         legacy_rgb.extend([0; 16 + 8]); // 共用标量与旧 RGB 版本后缀。
+        let mut legacy_rgb_with_ramp = legacy_rgb[..shared_at].to_vec();
+        legacy_rgb_with_ramp.extend(&multipart_ramp[24..]);
+        legacy_rgb_with_ramp.extend([0; 8]); // RGB v2/v3 后缀。
         for renderer in [
             &simple,
             &sai,
@@ -1081,6 +1100,7 @@ mod tests {
             &empty_algorithmic_ramp,
             &multipart_ramp,
             &legacy_rgb,
+            &legacy_rgb_with_ramp,
         ] {
             let mut with_renderer = bytes.clone();
             with_renderer.splice(renderer_at..renderer_at + 16, renderer.iter().copied());
