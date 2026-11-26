@@ -20,7 +20,7 @@ use super::raster_renderer::{
     RasterRendererShared10_1, RasterRendererSharedLayout10_1, is_supported_color_ramp_class,
     read_raster_renderer_slot_prefix_10_1, supports_raster_renderer_body_10_1,
 };
-use super::raster_unique_value::RasterUniqueValueLayout10_1;
+use super::raster_unique_value::{RasterUniqueValueLayout10_1, UNIQUE_VALUES_CLASS_ID};
 use crate::maps::map_surround::LegendItemSlot10_1;
 use crate::objects::{
     color_ramp::ColorRampSlot10_1,
@@ -29,6 +29,7 @@ use crate::objects::{
         HSV_COLOR_CLASS_ID, RGB_COLOR_CLASS_ID,
     },
     display_symbol::SymbolSlotFull10_1,
+    property_set::{PropertyValue10_1, PropertyValueObjectStream10_1},
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
 use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
@@ -357,7 +358,26 @@ pub(super) fn read_inline_raster_body_10_1(
                     }
                     RasterUniqueValueLayout10_1::Modern { unique_values, ramp } => {
                         matches!(unique.version, 3 | 4)
-                            && unique_values.entry == ObjectEntry10_1::Null
+                            && match unique_values.entry {
+                                ObjectEntry10_1::Null => true,
+                                ObjectEntry10_1::BackReference { class_id, .. } => {
+                                    class_id == UNIQUE_VALUES_CLASS_ID
+                                }
+                                ObjectEntry10_1::NewObject { .. } => {
+                                    unique_values.body.as_ref().is_some_and(|body| {
+                                        body.values.iter().all(|(value, _)| {
+                                            matches!(
+                                                value,
+                                                PropertyValueObjectStream10_1::Inline(
+                                                    PropertyValue10_1::Raw4(_)
+                                                        | PropertyValue10_1::Raw8(_)
+                                                        | PropertyValue10_1::String(_)
+                                                )
+                                            )
+                                        })
+                                    })
+                                }
+                            }
                             && ramp.as_ref().is_none_or(|ramp| {
                                 color_ramp_preserves_empty_dataset(ramp, &staged)
                             })
@@ -1271,6 +1291,16 @@ mod tests {
         unique_v1.extend(&colored_v9[24..]);
         let mut unique_v2 = unique_v1.clone();
         unique_v2[20..24].copy_from_slice(&2_i32.to_le_bytes());
+        let mut unique_with_values = unique[..unique.len() - 16].to_vec();
+        unique_with_values.extend(UNIQUE_VALUES_CLASS_ID);
+        unique_with_values.extend(67_u32.to_le_bytes());
+        unique_with_values.extend(1_i32.to_le_bytes());
+        unique_with_values.extend(1_i32.to_le_bytes());
+        unique_with_values.extend(3_u16.to_le_bytes()); // VT_I4。
+        unique_with_values.extend([0; 14]);
+        unique_with_values.extend(17_i32.to_le_bytes());
+        unique_with_values.extend(4_i32.to_le_bytes());
+        unique_with_values.extend(&colored_v9[24..]);
         let mut unique_with_ramp = unique.clone();
         unique_with_ramp[20..24].copy_from_slice(&4_i32.to_le_bytes());
         unique_with_ramp.extend(&random_ramp[colored_v9.len() - 16..]);
@@ -1300,6 +1330,7 @@ mod tests {
             &unique_v2,
             &unique,
             &unique_with_ramp,
+            &unique_with_values,
         ] {
             let mut with_renderer = bytes.clone();
             with_renderer.splice(renderer_at..renderer_at + 16, renderer.iter().copied());
