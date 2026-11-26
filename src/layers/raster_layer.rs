@@ -13,7 +13,7 @@
 
 use super::feature_layer_tail::{
     LEGEND_CLASS_CLASS_ID, LEGEND_GROUP_CLASS_ID, LegendClassEntry10_1, LegendClassFormatSlot10_1,
-    LegendGroupSlot10_1, NumberFormatSlot10_1,
+    LegendGroupSlot10_1, NumberFormatSlot10_1, supports_number_format_class,
 };
 use super::legend_format::{
     LEGEND_CLASS_FORMAT_CLASS_ID, LegendClassFormatSlot10_1 as FormatMember,
@@ -684,7 +684,13 @@ pub(super) fn read_inline_raster_body_10_1(
                 && legend_groups_preserve_empty_dataset(&classify.legend_groups, &staged)
                 && matches!(classify.legend_item, LegendItemSlot10_1::Null)
                 && classify.numeric_fields.as_ref().is_none_or(|fields| {
-                    matches!(fields.format, NumberFormatSlot10_1::Null)
+                    match &fields.format {
+                        NumberFormatSlot10_1::BackReference { key, .. } => {
+                            staged.registered_class(*key).is_some_and(supports_number_format_class)
+                        }
+                        // 数值格式对象体只包含标量、字符串或内联数值格式核心。
+                        _ => true,
+                    }
                 })
                 && classify.value_bounds.as_ref().is_none_or(|bounds| {
                     bounds.values.iter().all(|value| {
@@ -1831,7 +1837,21 @@ mod tests {
             bytes.extend(1.0_f64.to_le_bytes());
             bytes.extend(2.0_f64.to_le_bytes());
             if version >= 2 {
-                bytes.extend([0; 28]); // 数值字段及空格式。
+                use crate::objects::number_format::CURRENCY_FORMAT_CLASS_ID;
+                bytes.extend(0_u16.to_le_bytes());
+                match version {
+                    2 => {
+                        bytes.extend(CURRENCY_FORMAT_CLASS_ID);
+                        bytes.extend(99_u32.to_le_bytes());
+                        bytes.extend(1_u16.to_le_bytes());
+                    }
+                    3 => {
+                        bytes.extend(RGB_COLOR_CLASS_ID); // 按预登记类识别。
+                        bytes.extend(100_u32.to_le_bytes());
+                    }
+                    _ => bytes.extend([0; 16]),
+                }
+                bytes.extend([0; 10]); // 第二个 short 和 double。
             }
             if version >= 3 {
                 bytes.extend([0; 50]); // VT_EMPTY ×2、选择子 0、空图例类别。
@@ -1894,6 +1914,13 @@ mod tests {
             gcs.extend(94_u32.to_le_bytes());
             crate::storage::object_refs::read_object_entry_10_1(&mut Reader::new(&gcs), &mut refs)
                 .unwrap();
+            let mut format = crate::objects::number_format::CURRENCY_FORMAT_CLASS_ID.to_vec();
+            format.extend(100_u32.to_le_bytes());
+            crate::storage::object_refs::read_object_entry_10_1(
+                &mut Reader::new(&format),
+                &mut refs,
+            )
+            .unwrap();
             let parsed = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
             assert!(parsed.renderer.unwrap().body.is_some());
             assert!(parsed.tail.unwrap().geodata_xform_v13.is_none());
