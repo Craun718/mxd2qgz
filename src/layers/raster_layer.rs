@@ -13,12 +13,13 @@
 
 use super::feature_layer_tail::{
     LEGEND_CLASS_CLASS_ID, LEGEND_GROUP_CLASS_ID, LegendClassEntry10_1, LegendClassFormatSlot10_1,
-    LegendGroupSlot10_1,
+    LegendGroupSlot10_1, NumberFormatSlot10_1,
 };
 use super::legend_format::{
     LEGEND_CLASS_FORMAT_CLASS_ID, LegendClassFormatSlot10_1 as FormatMember,
 };
 use super::patch::{AREA_PATCH_CLASS_ID, LINE_PATCH_CLASS_ID, PatchGeometrySlot10_1};
+use super::raster_classify_renderer::ClassificationMethod10_1;
 use super::raster_dataset_name::{
     RasterDatasetNameEntryBody10_1, read_supported_raster_name_entry_10_1,
 };
@@ -675,6 +676,28 @@ pub(super) fn read_inline_raster_body_10_1(
                 }
                 && renderer_shared_preserves_empty_dataset(&unique.shared, &staged)
     );
+    let has_classify_renderer = matches!(
+        renderer.body.as_ref(),
+        Some(RasterRendererPrefix10_1::Classify(classify))
+            if matches!(classify.version, 2..=5)
+                && matches!(classify.classification_method, ClassificationMethod10_1::Guid { flag: 0, .. })
+                && legend_groups_preserve_empty_dataset(&classify.legend_groups, &staged)
+                && matches!(classify.legend_item, LegendItemSlot10_1::Null)
+                && classify.numeric_fields.as_ref().is_some_and(|fields| {
+                    matches!(fields.format, NumberFormatSlot10_1::Null)
+                })
+                && classify.value_bounds.as_ref().is_none_or(|bounds| {
+                    bounds.values.iter().all(|value| {
+                        matches!(value, PropertyValueObjectStream10_1::Inline(PropertyValue10_1::Empty))
+                            || is_inline_unique_value_scalar(value)
+                    })
+                        && bounds.legend_class.as_ref().is_some_and(|slot| {
+                            slot.entry == ObjectEntry10_1::Null
+                        })
+                })
+                && classify.unique_values.as_ref().is_none_or(|slot| slot.entry == ObjectEntry10_1::Null)
+                && renderer_shared_preserves_empty_dataset(&classify.shared, &staged)
+    );
     let has_known_renderer_reference = matches!(
         renderer.entry,
         ObjectEntry10_1::BackReference { key, .. }
@@ -688,6 +711,7 @@ pub(super) fn read_inline_raster_body_10_1(
             || has_colormap_renderer
             || has_discrete_renderer
             || has_unique_value_renderer
+            || has_classify_renderer
             || has_known_renderer_reference)
         && let Some(name) = first_name
         && match name.entry {
@@ -1782,6 +1806,32 @@ mod tests {
         fill.extend([0; 28]); // 面符号空颜色和标量。
         let mut unique_with_fill = unique.clone();
         unique_with_fill.splice(unique_symbol_at..unique_symbol_at + 16, fill);
+        let classify = [2_i32, 3, 4, 5].map(|version| {
+            let mut bytes =
+                super::super::raster_classify_renderer::RASTER_CLASSIFY_RENDERER_CLASS_ID.to_vec();
+            bytes.extend(65_u32.to_le_bytes());
+            bytes.extend(version.to_le_bytes());
+            bytes.extend(encoded_string(""));
+            bytes.extend(encoded_string(""));
+            bytes.push(0); // 无分类方法 GUID。
+            bytes.extend(encoded_string(""));
+            bytes.extend([0; 20]); // 无图例组及图例项。
+            bytes.extend(2_i32.to_le_bytes());
+            bytes.extend(1.0_f64.to_le_bytes());
+            bytes.extend(2.0_f64.to_le_bytes());
+            bytes.extend([0; 28]); // 数值字段及空格式。
+            if version >= 3 {
+                bytes.extend([0; 50]); // VT_EMPTY ×2、选择子 0、空图例类别。
+            }
+            if version >= 4 {
+                bytes.extend([0; 16]); // 空统计槽。
+            }
+            if version >= 5 {
+                bytes.extend(0_u16.to_le_bytes());
+            }
+            bytes.extend(&colored_v9[24..]);
+            bytes
+        });
         for renderer in [
             &simple,
             &sai,
@@ -1817,6 +1867,10 @@ mod tests {
             &unique_with_fill,
             &unique_with_values,
             &unique_with_classes,
+            &classify[0],
+            &classify[1],
+            &classify[2],
+            &classify[3],
         ] {
             let mut with_renderer = bytes.clone();
             with_renderer.splice(renderer_at..renderer_at + 16, renderer.iter().copied());
