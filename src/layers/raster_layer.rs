@@ -18,7 +18,7 @@ use super::raster_renderer::{
     RasterRendererPrefix10_1, RasterRendererSharedLayout10_1, read_raster_renderer_slot_prefix_10_1,
 };
 use crate::objects::{
-    color_ramp::{ColorRampSlot10_1, RANDOM_COLOR_RAMP_CLASS_ID},
+    color_ramp::ColorRampSlot10_1,
     display_color::{
         CMYK_COLOR_CLASS_ID, ColorSlot10_1, GRAY_COLOR_CLASS_ID, HLS_COLOR_CLASS_ID,
         HSV_COLOR_CLASS_ID, RGB_COLOR_CLASS_ID,
@@ -310,9 +310,8 @@ pub(super) fn read_inline_raster_body_10_1(
                             _ => false,
                         })
                     }
-                    Some(ColorRampSlot10_1::BackReference { key, .. }) => {
-                        staged.registered_class(*key) == Some(RANDOM_COLOR_RAMP_CLASS_ID)
-                    }
+                    // 共用读取器已按登记类校验 IColorRamp，回引不加载色带体。
+                    Some(ColorRampSlot10_1::BackReference { .. }) => true,
                     _ => false,
                 }
     );
@@ -973,6 +972,7 @@ mod tests {
         let mut colored_v9 = colored_v8.clone();
         colored_v9[24..28].copy_from_slice(&9_i32.to_le_bytes());
         colored_v9.extend([0; 16]); // 空色带。
+        use crate::objects::color_ramp::RANDOM_COLOR_RAMP_CLASS_ID;
         let mut random_ramp = colored_v9[..colored_v9.len() - 16].to_vec();
         random_ramp.extend(RANDOM_COLOR_RAMP_CLASS_ID);
         random_ramp.extend(66_u32.to_le_bytes());
@@ -1022,22 +1022,29 @@ mod tests {
         let mut ramp_reference = random_ramp[..colored_v9.len() - 16].to_vec();
         ramp_reference.extend(RGB_COLOR_CLASS_ID);
         ramp_reference.extend(66_u32.to_le_bytes());
-        let mut registered = RefTable10_1::new();
-        let mut registered_ramp = RANDOM_COLOR_RAMP_CLASS_ID.to_vec();
-        registered_ramp.extend(66_u32.to_le_bytes());
-        crate::storage::object_refs::read_object_entry_10_1(
-            &mut Reader::new(&registered_ramp),
-            &mut registered,
-        )
-        .unwrap();
         let mut with_ramp_reference = bytes.clone();
         with_ramp_reference.splice(
             renderer_at..renderer_at + 16,
             ramp_reference.iter().copied(),
         );
-        let mut reader = Reader::new(&with_ramp_reference);
-        read_inline_raster_body_10_1(&mut reader, 4096, &mut registered).unwrap();
-        assert_eq!(reader.position(), end + ramp_reference.len() - 16);
+        for class_id in [
+            RANDOM_COLOR_RAMP_CLASS_ID,
+            crate::objects::color_ramp::PRESET_COLOR_RAMP_CLASS_ID,
+            crate::objects::color_ramp::ALGORITHMIC_COLOR_RAMP_CLASS_ID,
+            crate::objects::color_ramp::MULTI_PART_COLOR_RAMP_CLASS_ID,
+        ] {
+            let mut registered = RefTable10_1::new();
+            let mut registered_ramp = class_id.to_vec();
+            registered_ramp.extend(66_u32.to_le_bytes());
+            crate::storage::object_refs::read_object_entry_10_1(
+                &mut Reader::new(&registered_ramp),
+                &mut registered,
+            )
+            .unwrap();
+            let mut reader = Reader::new(&with_ramp_reference);
+            read_inline_raster_body_10_1(&mut reader, 4096, &mut registered).unwrap();
+            assert_eq!(reader.position(), end + ramp_reference.len() - 16);
+        }
 
         let mut wrong_class = RefTable10_1::new();
         let ramp_header = &ramp_reference[ramp_reference.len() - 20..];
