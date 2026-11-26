@@ -153,6 +153,42 @@ mod tests {
     use super::*;
 
     #[test]
+    fn collection_reads_legacy_action_base_in_nonzero_document_versions() {
+        for version in [1.0_f64, 9.2] {
+            let mut bytes = 1.0_f64.to_le_bytes().to_vec();
+            bytes.extend([0; 42]);
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend(13_u16.to_le_bytes());
+            bytes.extend(DATA_MODIFICATION_ACTION_CLASS_ID);
+            bytes.extend(version.to_le_bytes());
+            bytes.extend([0; 66]);
+            bytes.extend(3_u32.to_le_bytes());
+            bytes.extend([b'a', 0, 0]);
+            if version >= 9.2 {
+                bytes.extend(3_u32.to_le_bytes());
+                bytes.extend([b'b', 0, 0]);
+            }
+            bytes.extend([0; 57]); // 三个 BSTR、空计数、定宽字段、空 ILayer 与 IName。
+            bytes.extend(1.0_f64.to_le_bytes());
+            bytes.extend(3_u32.to_le_bytes());
+            bytes.extend([b'c', 0, 0]);
+            let end = bytes.len();
+            bytes.extend(0xabcd_u16.to_le_bytes());
+
+            let mut refs = RefTable10_1::new();
+            let mut reader = Reader::new(&bytes);
+            read_action_collection(&mut reader, 4096, &mut refs, MAX_ACTION_COLLECTION_DEPTH)
+                .unwrap();
+            assert_eq!(reader.read_u16_le().unwrap(), 0xabcd);
+            let mut reader = Reader::new(&bytes[..end - 1]);
+            assert!(
+                read_action_collection(&mut reader, 4096, &mut refs, MAX_ACTION_COLLECTION_DEPTH)
+                    .is_err()
+            );
+        }
+    }
+
+    #[test]
     fn collection_reads_data_summary_rows_and_versioned_bstr() {
         for version in [0.9_f64, 9.3] {
             let mut bytes = 1.0_f64.to_le_bytes().to_vec();

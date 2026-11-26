@@ -83,8 +83,8 @@ fn read_action_base(
     refs: &mut RefTable10_1,
 ) -> io::Result<()> {
     let version = reader.read_f64_le()?;
-    // 这两个写出版本均来自非零文档版本索引。
-    if !matches!(version, 9.3 | 10.0) {
+    // 调用者的时态图层版本均由非零文档版本索引写出。
+    if !matches!(version, 1.0 | 9.2 | 9.3 | 10.0) {
         return Err(io::Error::new(
             ErrorKind::Unsupported,
             format!("时态动作 ActionBase 版本 {version}"),
@@ -103,18 +103,20 @@ fn read_action_base(
     read_strings(reader, max, 2)?;
     reader.read_bytes(8)?;
 
-    // 标记控制条件状态，读写两侧随后均消费 Variant。
-    reader.read_u16_le()?;
-    let class = read_variant_class(reader, max)?;
-    match class {
-        class if class == [0; 16] => {}
-        PROPERTY_SET_CLASS_ID => {
-            read_property_set_object_stream_10_1(reader, max, refs)?;
+    if version >= 9.3 {
+        // 标记控制条件状态，读写两侧随后均消费 Variant。
+        reader.read_u16_le()?;
+        let class = read_variant_class(reader, max)?;
+        match class {
+            class if class == [0; 16] => {}
+            PROPERTY_SET_CLASS_ID => {
+                read_property_set_object_stream_10_1(reader, max, refs)?;
+            }
+            _ => return Err(unsupported_class("动作条件 IPropertySet", &class)),
         }
-        _ => return Err(unsupported_class("动作条件 IPropertySet", &class)),
     }
 
-    read_strings(reader, max, 5)?;
+    read_strings(reader, max, if version >= 9.2 { 5 } else { 4 })?;
     let count = read_count(reader, max, 4)?;
     read_strings(reader, max, count)?;
     reader.read_bytes(9)?;
