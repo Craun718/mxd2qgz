@@ -719,6 +719,7 @@
       - [x] 接入普通 RasterLayer v12 的基础分级渲染器 v1。[原生取证](docs/mxd-10.1-raster-layer-tail.md#分级渲染器的普通栅格边界)
       - [x] 接入普通 RasterLayer v12 分级渲染器的数值格式对象与回引。[原生取证](docs/mxd-10.1-raster-layer-tail.md#分级渲染器的普通栅格边界)
       - [x] 接入普通 RasterLayer v12 分级渲染器的标量统计对象与回引。[原生取证](docs/mxd-10.1-raster-layer-tail.md#分级渲染器的普通栅格边界)
+      - [x] 接入普通 RasterLayer v12 分级渲染器的独立图例类别与回引。[原生取证](docs/mxd-10.1-raster-layer-tail.md#分级渲染器的普通栅格边界)
       - [x] 接入普通 RasterLayer v12 的空分类唯一值渲染器 v1/v2。[原生取证](docs/mxd-10.1-raster-layer-tail.md#唯一值渲染器的普通栅格边界)
       - [x] 接入普通 RasterLayer v12 现代唯一值渲染器的标量统计对象。[原生取证](docs/mxd-10.1-raster-layer-tail.md#唯一值渲染器的普通栅格边界)
       - [x] 接入普通 RasterLayer v12 现代唯一值渲染器的标量分类。[原生取证](docs/mxd-10.1-raster-layer-tail.md#唯一值渲染器的普通栅格边界)

@@ -13,7 +13,7 @@
 
 use super::feature_layer_tail::{
     LEGEND_CLASS_CLASS_ID, LEGEND_GROUP_CLASS_ID, LegendClassEntry10_1, LegendClassFormatSlot10_1,
-    LegendGroupSlot10_1, NumberFormatSlot10_1, supports_number_format_class,
+    LegendClassPrefix10_1, LegendGroupSlot10_1, NumberFormatSlot10_1, supports_number_format_class,
 };
 use super::legend_format::{
     LEGEND_CLASS_FORMAT_CLASS_ID, LegendClassFormatSlot10_1 as FormatMember,
@@ -319,6 +319,14 @@ fn legend_format_preserves_empty_dataset(
     }
 }
 
+fn legend_class_preserves_empty_dataset(
+    class: &LegendClassPrefix10_1,
+    table: &RefTable10_1,
+) -> bool {
+    simple_symbol_preserves_empty_dataset(&class.symbol, table)
+        && legend_format_preserves_empty_dataset(&class.format, table)
+}
+
 fn legend_groups_preserve_empty_dataset(
     groups: &[LegendGroupSlot10_1],
     table: &RefTable10_1,
@@ -331,8 +339,7 @@ fn legend_groups_preserve_empty_dataset(
                 table.registered_class(*key) == Some(LEGEND_CLASS_CLASS_ID)
             }
             LegendClassEntry10_1::NewObject(class) => {
-                simple_symbol_preserves_empty_dataset(&class.symbol, table)
-                    && legend_format_preserves_empty_dataset(&class.format, table)
+                legend_class_preserves_empty_dataset(class, table)
             }
         }),
         LegendGroupSlot10_1::BackReference { key, .. } => {
@@ -702,7 +709,15 @@ pub(super) fn read_inline_raster_body_10_1(
                             || is_inline_unique_value_scalar(value)
                     })
                         && bounds.legend_class.as_ref().is_some_and(|slot| {
-                            slot.entry == ObjectEntry10_1::Null
+                            match slot.entry {
+                                ObjectEntry10_1::Null => true,
+                                ObjectEntry10_1::BackReference { key, .. } => {
+                                    staged.registered_class(key) == Some(LEGEND_CLASS_CLASS_ID)
+                                }
+                                ObjectEntry10_1::NewObject { .. } => slot.body.as_ref().is_some_and(|class| {
+                                    legend_class_preserves_empty_dataset(class, &staged)
+                                }),
+                            }
                         })
                 })
                 && classify.unique_values.as_ref().is_none_or(|slot| {
@@ -1802,7 +1817,10 @@ mod tests {
             legacy_groups_at..legacy_groups_at + 4,
             groups.iter().copied(),
         );
-        unique_with_classes.splice(unique_classes_at - 4..unique_classes_at, groups);
+        unique_with_classes.splice(
+            unique_classes_at - 4..unique_classes_at,
+            groups.iter().copied(),
+        );
         let mut unique_with_ramp = unique.clone();
         unique_with_ramp[20..24].copy_from_slice(&4_i32.to_le_bytes());
         unique_with_ramp.extend(&random_ramp[colored_v9.len() - 16..]);
@@ -1834,7 +1852,12 @@ mod tests {
                 bytes.push(0); // 无分类方法 GUID。
             }
             bytes.extend(encoded_string(""));
-            bytes.extend([0; 20]); // 无图例组及图例项。
+            if version == 4 {
+                bytes.extend(&groups);
+            } else {
+                bytes.extend(0_i32.to_le_bytes());
+            }
+            bytes.extend([0; 16]); // 空图例项。
             if version == 1 {
                 bytes.extend(1_i32.to_le_bytes());
                 bytes.extend(17_i32.to_le_bytes());
@@ -1860,7 +1883,23 @@ mod tests {
                 bytes.extend([0; 10]); // 第二个 short 和 double。
             }
             if version >= 3 {
-                bytes.extend([0; 50]); // VT_EMPTY ×2、选择子 0、空图例类别。
+                bytes.extend([0; 34]); // VT_EMPTY ×2 和选择子 0。
+                match version {
+                    3 => {
+                        bytes.extend(LEGEND_CLASS_CLASS_ID);
+                        bytes.extend(107_u32.to_le_bytes());
+                        bytes.extend(1_u16.to_le_bytes());
+                        bytes.extend([0; 16]); // 空符号。
+                        bytes.extend(encoded_string("断点类别"));
+                        bytes.extend(encoded_string(""));
+                        bytes.extend([0; 16]); // 空格式。
+                    }
+                    4 => {
+                        bytes.extend(RGB_COLOR_CLASS_ID);
+                        bytes.extend(76_u32.to_le_bytes()); // 回引当前图例组中登记的类别。
+                    }
+                    _ => bytes.extend([0; 16]),
+                }
             }
             if version == 4 {
                 bytes.extend(UNIQUE_VALUES_CLASS_ID);
