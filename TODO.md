@@ -775,6 +775,7 @@
       - [x] 核对 TemporalLegendClass 的独立对象体及两处嵌套 Variant。[取证](docs/arcmap-10.1-dep-tail.md#temporallegendclass-的对象体)
       - [x] 核对 Variant 内 LegendClassFormat 的四个嵌套槽如何保留原对象流分派。[取证](docs/arcmap-10.1-dep-tail.md#时态图例格式的内层对象流)
       - [x] 将时态图层 10.0 内联试读的接收接口及运行条件对位到类型库。[取证](docs/arcmap-10.1-dep-tail.md#时态图层-100-内联试读的接收者)
+      - [x] 沿聚合 FeatureLayer 的 IFind 查询核对时态图层 10.0 试读的实际 Load 入口。[取证](docs/arcmap-10.1-dep-tail.md#时态图层-100-试读的聚合回调)
       - [ ] 补齐两类 3D 容器的关联 ILayer 槽中其余未支持的类体；已接入类的共用子槽缺口见各自条目。
       - [x] 接入普通 ILayer 槽中的 InternetTiledLayer 与 WMTSLayer，覆盖独立图层、组图层和三维关联图层。[接口及对象体证据](docs/mxd-10.1-raster-layer-tail.md#瓦片图层的独立-ilayer-宿主)
       - [x] 校验两类 3D 图形容器的 IEnvelope 回引登记类。[取证](docs/arcmap-10.1-dep-tail.md#三维图形容器的对象体)

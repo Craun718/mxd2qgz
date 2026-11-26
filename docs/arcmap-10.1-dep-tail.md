@@ -2100,3 +2100,29 @@ Load 于 `0x8086f228` 对前一个成员调用返回的对象查询
 进入试读分支。Save 依据版本和 IFind 成员的 IPersistStream
 可用性决定是否写体，没有写出独立的存在标记。真实样本和软件
 人工验收仍待验证。
+
+#### 时态图层 10.0 试读的聚合回调
+
+在 FeatureLayer.dll 10.1.0.3035（SHA-256
+`2baf870615bb75b6f30ccea173ba4303fdd0b1a6571e11b9197c5fcf7298bb60`）
+中，聚合工厂的非委派 QI `0x6f6e7a40` 在 `0x6f6e7f1f`
+命中 IFind IID 常量 `0x6f7add84`，返回该 IUnknown 指针加
+`0x120`。换算到 FeatureLayer 体基址是 `+0x130`，构造函数
+于 `0x6f6dba9a` 将其虚表设为 `0x6f7ad3ac`。该虚表首项
+`0x6f709c10` 扣除 `0x120` 并跳到 `0x6f6d8210`，把 IID 和
+输出指针委派给保存在 IUnknown 指针前 8 字节的控制 IUnknown。
+
+TrackingLayer.dll 的 `0x8087b6a0` 对这个 IFind 查询
+IPersistStream，IID 常量在 `0x8089f340`。在已核实的
+TemporalFeatureLayer 创建聚合路径 `0x80869ef6`–`0x80869f0c`，
+outer 由虚表槽 `+0x18` 取得；`0x808a1194` 指向的
+`0x808831d0` 直接返回当前对象。其 QI 表 `0x808a0448`
+将 IPersistStream 映射到外层对象 `+0x10`，持久化虚表
+`0x808a12a0` 对应同一个 TemporalFeatureLayer Load
+`0x8086ebd0` 和 Save `0x8086f840`。
+
+因此这条路径尝试的是同一类的内联持久化调用，而非独立的
+定宽 IFind 记录。Load 失败后恢复流位置的处理仍适用。当前
+证据确定了调用目标，尚未确定实际工程触发条件、递归终止的
+运行状态或具体消费长度。解析接入前应核实常规写出是否清空
+该成员或通过其他路径抑制这次调用。尚未人工验收。
