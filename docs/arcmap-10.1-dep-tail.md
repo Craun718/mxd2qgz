@@ -2421,3 +2421,25 @@ Load 和 Save 复用邮件告警的两段委派包装器。构造侧
 9.3 与 10.0 ActionBase 路径，构造测试核对非空 BSTR、
 下一动作 CLSID、集合后继字段和截断。真实工程的
 ArcMap/QGIS 人工验收尚待验证。
+
+#### 数据分区动作的内联记录
+
+TrackingActions.dll 10.1.0.3035 的 DataPartitionAction
+GetClassID `0x804f2bf0` 返回常量 `0x8058f9ec`，
+即 `65AB5EA8-DC59-4C7F-87A1-AD9FCD70EA40`。
+Load 包装器 `0x804f2c30` 依次委派给构造点
+`0x804f2908` 创建的 ActionBase（完整对象 `+0x25c`）
+及主虚表上的本类 Load `0x804f25d0`。
+本类 Save 为 `0x804f2800`，写出 double 10.1
+（常量 `0x805bd0e0`）。
+
+本类字段依次为 double 版本、两个字节 BSTR、一个字节、
+有符号计数及每项两个字节 BSTR、另一个有符号计数及每项
+一个四字节整数。数组读写助手为 `0x804f3150/0x804f2f50`。
+版本至少 10.1 时，读侧 `0x804f267a` 放行追加字段，
+`0x804f269e` 读无键 Variant，非空时查询 ISpatialReference，
+随后在 `0x804f27ba/0x804f27c0` 读两个字节 BSTR。
+相应写调用在 `0x804f2886/0x804f2891/0x804f289c`。
+读取器复用已知坐标系体和 9.3、10.0 ActionBase 路径。
+构造测试覆盖两种尾部分支、非空数组及截断，真实工程的
+ArcMap/QGIS 人工验收仍待完成。

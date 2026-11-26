@@ -3,6 +3,7 @@
 use super::image_server_rules::unsupported_class;
 use super::layer_list::read_complete_layer_body_10_1;
 use crate::objects::dataset_name_more::read_dataset_name_slot_10_1;
+use crate::objects::envelope::read_spatial_reference_body_10_1;
 use crate::objects::property_set::{PROPERTY_SET_CLASS_ID, read_property_set_object_stream_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_atl_bstr_10_1;
@@ -15,6 +16,10 @@ pub(super) const EMAIL_ALERT_ACTION_CLASS_ID: [u8; 16] = [
 
 pub(super) const DATA_MODIFICATION_ACTION_CLASS_ID: [u8; 16] = [
     0x9f, 0x7d, 0xe2, 0xd7, 0x10, 0x78, 0x10, 0x44, 0xa9, 0xca, 0x87, 0x8f, 0x42, 0xc7, 0xa1, 0xb2,
+];
+
+pub(super) const DATA_PARTITION_ACTION_CLASS_ID: [u8; 16] = [
+    0xa8, 0x5e, 0xab, 0x65, 0x59, 0xdc, 0x7f, 0x4c, 0x87, 0xa1, 0xad, 0x9f, 0xcd, 0x70, 0xea, 0x40,
 ];
 
 const MESSAGE_TEMPLATE_CLASS_ID: [u8; 16] = [
@@ -33,7 +38,7 @@ fn read_count(reader: &mut Reader<'_>, max: usize, min_item_bytes: usize) -> io:
     if count > reader.remaining().min(max) / min_item_bytes {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
-            "邮件告警记录条目数超过限额",
+            "时态动作记录条目数超过限额",
         ));
     }
     Ok(count)
@@ -48,7 +53,7 @@ fn read_variant_class(reader: &mut Reader<'_>, max: usize) -> io::Result<[u8; 16
         }
         vt => Err(io::Error::new(
             ErrorKind::Unsupported,
-            format!("邮件告警记录不支持 VARTYPE {vt}"),
+            format!("时态动作记录不支持 VARTYPE {vt}"),
         )),
     }
 }
@@ -78,7 +83,7 @@ fn read_action_base(
     if !matches!(version, 9.3 | 10.0) {
         return Err(io::Error::new(
             ErrorKind::Unsupported,
-            format!("邮件告警 ActionBase 版本 {version}"),
+            format!("时态动作 ActionBase 版本 {version}"),
         ));
     }
 
@@ -115,7 +120,7 @@ fn read_action_base(
     if let Some(stop) = stop {
         return Err(io::Error::new(
             ErrorKind::Unsupported,
-            format!("邮件告警 IName 未读完：{stop:?}"),
+            format!("时态动作 IName 未读完：{stop:?}"),
         ));
     }
     Ok(())
@@ -161,5 +166,37 @@ pub(super) fn read_data_modification_action(
     // 写侧使用 1.0，读侧消费八字节后直接读字符串。
     reader.read_bytes(8)?;
     read_atl_bstr_10_1(reader, max)?;
+    Ok(())
+}
+
+pub(super) fn read_data_partition_action(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<()> {
+    read_action_base(reader, max, refs)?;
+    let version = reader.read_f64_le()?;
+    read_strings(reader, max, 2)?;
+    reader.read_bytes(1)?;
+    let pairs = read_count(reader, max, 8)?;
+    for _ in 0..pairs {
+        read_strings(reader, max, 2)?;
+    }
+    let values = read_count(reader, max, 4)?;
+    reader.read_bytes(values * 4)?;
+    if version >= 10.1 {
+        let class_id = read_variant_class(reader, max)?;
+        if class_id != [0; 16]
+            && read_spatial_reference_body_10_1(
+                reader,
+                max,
+                &ObjectEntry10_1::NewObject { class_id, key: 0 },
+            )?
+            .is_none()
+        {
+            return Err(unsupported_class("数据分区 ISpatialReference", &class_id));
+        }
+        read_strings(reader, max, 2)?;
+    }
     Ok(())
 }
