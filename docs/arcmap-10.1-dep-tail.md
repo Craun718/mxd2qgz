@@ -1934,3 +1934,21 @@ VARTYPE 13（VT_UNKNOWN）。两个成员的具体类及缺省分支尚需
 失败时 `0x8086f2c1` 恢复先前位置。此后至少还存在
 `0x8086f3e8/0x8086f40a/0x8086f42c` 三个定宽读取，
 因此前述 short 不能作为对象终点。后段完整布局仍待核对。
+
+#### 时态图层的末段版本门
+
+同版 TrackingLayer.dll 的 Load 在前述试读和运行时设置之后，
+依次读取 short、double、short、字节 BSTR、两个 Variant
+（`0x8086f3e8/0x8086f40a/0x8086f42c/0x8086f449`、
+`0x8086f46f/0x8086f4e5`）。Save 的对应调用位于
+`0x8086fe37–0x8086ff44`。在 `0x8086f557` 比较的
+`0x808b07b0` 常量为 double 9.3，Save 在 `0x8086ff74`
+使用同一阈值。较早版本在这里收尾。
+
+达到阈值的正常读序为 double、两个 short、四字节 int、
+Variant、四字节 int、两个 short、两个 Variant、三个 double、
+最后一个 short。最后四项读取点为
+`0x8086f79f/0x8086f7ba/0x8086f7d5/0x8086f7f0`，
+与 Save `0x80870119/0x80870134/0x8087014f/0x8087016a`
+的定宽写出一致。非空 Variant 对象类和前段依赖运行状态的读取
+分支仍需取证，尚未在 ArcMap 或 QGIS 中人工验收。
