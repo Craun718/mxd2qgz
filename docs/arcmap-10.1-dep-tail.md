@@ -2248,3 +2248,31 @@ TrackingActions.dll 10.1.0.3035 的 CoActionCollection 接口表在
 另一个 ActionCollection，其对象体仍按相同的版本和计数递归读取。
 读取器限制最多 16 层，构造测试验证限额内的后继边界及超过限额
 的错误。其他 IAction 类体与软件人工验收仍待验证。
+
+#### 邮件告警动作的持久化入口
+
+TrackingActions.dll 10.1.0.3035 的
+`CComObject<CoEmailAlertAction>` 通过 RTTI 绑定到完整对象
+`+0x22c` 的 IPersistStream 虚表 `0x80593d34`。
+GetClassID `0x804fa210` 读常量 `0x8058fb08`，
+与登记的 EmailAlertAction CLSID
+`2719A8FA-AD90-4E69-8DB2-20224D4A1A6A` 一致。
+Load 槽 thunk `0x8052cd00` 调整 this 后进入 `0x804ec2a0`，
+Save 槽 thunk `0x8052def0` 进入 `0x804fa250`。
+
+两侧分别在 `0x804ec2e7/0x804fa29b` 对成员查询得到的
+IPersistStream 传递原 IStream，随后通过另一个成员虚表
+于 `0x804ec2f4/0x804fa2b2` 再次委派。调用之间无
+外层 CLSID、键或长度。该类内层边界需逐个绑定委派接收者
+后才能接入集合。初始化另外存在 GeometryBag 创建路径
+`0x804faaa4`，该步骤本身只确认运行时成员身份，尚未
+证明 GeometryBag 对应上述任一流段。
+
+对照的 ActionBase 持久化 Load thunk `0x8052c5f0`
+经 `0x804da270` 调 `0x804c0240`，Save 包装器
+`0x804da2d0` 调 `0x804c0770`。双方先消费与动作集合
+共用的设置前缀，再分别调用 `0x804d7900/0x804d7a10`
+及 `0x805129a0/0x80512c00`。基类 Load 此后比较
+9.3 和 9.2（常量 `0x80596b28/0x80596b20`）。
+这些是进一步核对共享体的入口，尚未确认
+EmailAlertAction 中的内联记录完整边界，未做软件人工验收。
