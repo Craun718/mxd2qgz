@@ -2324,3 +2324,31 @@ Load `0x805353b0`、Save `0x80535620` 相连。
 的无键类标识沿用集合中已核对的 Variant 助手。
 ActionBase 的完整边界仍需闭合后才能连上邮件告警动作，
 尚无真实 MXD 或软件人工验收。
+
+#### ActionBase 的图层条件与兼容前缀
+
+TrackingActions.dll 10.1.0.3035 的 ActionBase Load
+`0x804c0240` 在共用设置前缀后调用 `0x804d7900`。
+该助手在 `0x804d794c` 查询 IObjectStream，有接口时于
+`0x804d7971` 走虚表 `+0x44`，请求 ILayer
+（IID 常量 `0x8058e3d0`）。无接口时改走 `0x804d799a`
+的 Variant 助手。两个分支随后都在 `0x804d79cd` 读
+一个四字节整数。Save `0x804d7a10` 在
+`0x804d7a8b` 写有键对象，或在 `0x804d7a9c` 写
+Variant，再于 `0x804d7aae` 写四字节值。
+
+下一助手 `0x805129a0` 通过 IStream::Clone 或记录位置后
+Seek 回退试探首个 LONG。若值为 `0x000bf894`，原流
+在 `0x80512a60/0x80512aa7/0x80512aed` 读取该标记和
+后续两个四字节值。之后固定读取两个字节 BSTR、两个四字节值。
+Save `0x80512c00` 在文档版本索引大于 4 时才写
+标记与两值（`0x80512c65/0x80512c9c/0x80512cca`），
+再写固定尾段（`0x80512cee`–`0x80512d54`）。
+
+返回 ActionBase 后，版本至少 9.3 时先读 short 标记，
+非零时读无键 IPropertySet Variant（`0x804c0362/0x804c0396`）。
+随后存在随版本变化的字符串与计数段。成功的 IObjectStream
+路径在 `0x804c0542` 还有一个 ILayer 槽，部分分支在
+`0x804c0582` 再读 IName。这里的 ILayer 与前缀中的
+ILayer 属于不同字段。字符串分支和计数段仍待与 Save 对位，
+尚未接入解析或完成软件人工验收。
