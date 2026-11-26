@@ -310,7 +310,7 @@ pub(super) fn read_inline_raster_body_10_1(
                     matches!(slot, None | Some(RasterHistogramSlot10_1::Null))
                 })
                 && matches!(rgb.pansharpening, None | Some(PansharpeningSlot10_1::Null))
-                && rgb.double_arrays.is_empty()
+                && rgb.double_arrays.iter().all(|slot| slot.entry == ObjectEntry10_1::Null)
                 && renderer_shared_preserves_empty_dataset(&rgb.shared, &staged)
     );
     let has_known_renderer_reference = matches!(
@@ -1120,6 +1120,13 @@ mod tests {
         tagged_rgb.extend(&colored_v8[color_at..color_at + 27]);
         tagged_rgb.extend([0xff; 8]); // RGB RasterIO 结束。
         tagged_rgb.extend(&simple[24..]); // 共用体 v1。
+        let tagged_tail_at = tagged_rgb.len() - 8 - (simple.len() - 24);
+        let mut tagged_rgb_with_arrays = tagged_rgb[..tagged_tail_at].to_vec();
+        tagged_rgb_with_arrays[20..24].copy_from_slice(&9_i32.to_le_bytes());
+        tagged_rgb_with_arrays.extend((-1_i32).to_le_bytes());
+        tagged_rgb_with_arrays.extend(0_u16.to_le_bytes());
+        tagged_rgb_with_arrays.extend([0; 16 * 4]);
+        tagged_rgb_with_arrays.extend(&tagged_rgb[tagged_tail_at..]);
         for renderer in [
             &simple,
             &sai,
@@ -1133,6 +1140,7 @@ mod tests {
             &legacy_rgb,
             &legacy_rgb_with_ramp,
             &tagged_rgb,
+            &tagged_rgb_with_arrays,
         ] {
             let mut with_renderer = bytes.clone();
             with_renderer.splice(renderer_at..renderer_at + 16, renderer.iter().copied());

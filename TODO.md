@@ -707,6 +707,7 @@
       - [x] 接入普通 RasterLayer v12 中带共用体 v1 的旧版 RGB 渲染器。[原生取证](docs/mxd-10.1-raster-layer-tail.md#旧版-rgb-渲染器的普通栅格边界)
       - [x] 接入普通 RasterLayer v12 中带 RasterIO 共用体的旧版 RGB 渲染器。[原生取证](docs/mxd-10.1-raster-layer-tail.md#旧版-rgb-渲染器的普通栅格边界)
       - [x] 接入普通 RasterLayer v12 中无非空直方图或锐化的 RGB v4–v6。[原生取证](docs/mxd-10.1-raster-layer-tail.md#rgb-rasterio-布局的普通栅格边界)
+      - [x] 接入普通 RasterLayer v12 中 RGB v7–v9 的空数组槽。[原生取证](docs/mxd-10.1-raster-layer-tail.md#rgb-rasterio-布局的普通栅格边界)
       - [x] 核对简单与 SAI 渲染器共用体 v2–v9 在空颜色时的原生收尾。[原生取证](docs/mxd-10.1-raster-layer-tail.md#简单与-sai-渲染器的空颜色-rasterio-体)
       - [x] 接入带 RgbColor 且无非空色带的简单与 SAI 渲染器普通 RasterLayer v12 尾段。[原生取证](docs/mxd-10.1-raster-layer-tail.md#rgbcolor-与空色带的普通栅格边界)
       - [x] 接入普通 RasterLayer v12 渲染器共用体中的灰度、HLS 和 HSV 颜色。[原生取证](docs/mxd-10.1-raster-layer-tail.md#灰度hls-与-hsv-的普通栅格边界)
