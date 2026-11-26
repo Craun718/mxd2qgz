@@ -1966,3 +1966,17 @@ Save 对称地在 `0x8086fcd6/0x8086fd3c` 调对象流虚表
 `+0x40`，或者在 `0x8086fcfd/0x8086fd69` 写
 VT_UNKNOWN。两路分派取决于流是否提供 IObjectStream。
 实际持久化类以及其他末段 Variant 槽仍待取证。
+
+#### 时态图层后继接口的类型库对位
+
+从 10.1 Desktop 的 esriTrackingAnalyst.olb（SHA-256
+`cd21f8b0c5b767092929b4e100cf3a64fea06f8c4f951e0a8b5b23828fa9632a`）
+提取 MSFT 类型库。按 GUID 表定位 TypeInfo，再用名称表和
+coclass 接口引用链交叉核对。聚合 FeatureLayer 后第一个槽的 IID
+`B75D7088-1333-11D5-B7C9-00010265ADC5` 对应 ITemporalLegendGroup，
+第二个槽的 IID `78C74237-17CF-11D5-B7CF-00010265ADC5`
+对应 ITemporalReference。类型库分别列出 TemporalLegendGroup
+和 TemporalReference coclass。介质注册表把它们绑定到
+TrackingRenderer.dll 的 CLSID `5F947261-1406-11D5-B7CA-00010265ADC5`
+与 `78C7423A-17CF-11D5-B7CF-00010265ADC5`。
+后续须核对这两个类的 Load 以及实际写出对象是否还包括其他实现。
