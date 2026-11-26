@@ -708,7 +708,12 @@ pub(super) fn read_inline_raster_body_10_1(
                         matches!(value, PropertyValueObjectStream10_1::Inline(PropertyValue10_1::Empty))
                             || is_inline_unique_value_scalar(value)
                     })
-                        && bounds.legend_class.as_ref().is_some_and(|slot| {
+                        && if bounds.legend_selector == -1 {
+                            matches!(classify.legend_groups.first(),
+                                Some(LegendGroupSlot10_1::LegendGroup(_))
+                                | Some(LegendGroupSlot10_1::BackReference { .. }))
+                        } else {
+                            bounds.legend_class.as_ref().is_some_and(|slot| {
                             match slot.entry {
                                 ObjectEntry10_1::Null => true,
                                 ObjectEntry10_1::BackReference { key, .. } => {
@@ -719,6 +724,7 @@ pub(super) fn read_inline_raster_body_10_1(
                                 }),
                             }
                         })
+                        }
                 })
                 && classify.unique_values.as_ref().is_none_or(|slot| {
                     unique_values_preserve_empty_dataset(slot, &staged)
@@ -1854,6 +1860,9 @@ mod tests {
             bytes.extend(encoded_string(""));
             if version == 4 {
                 bytes.extend(&groups);
+            } else if version == 5 {
+                bytes.extend(2_i32.to_le_bytes());
+                bytes.extend(&groups[20..]); // 首个图例组必须可查询。
             } else {
                 bytes.extend(0_i32.to_le_bytes());
             }
@@ -1883,7 +1892,8 @@ mod tests {
                 bytes.extend([0; 10]); // 第二个 short 和 double。
             }
             if version >= 3 {
-                bytes.extend([0; 34]); // VT_EMPTY ×2 和选择子 0。
+                bytes.extend([0; 32]); // VT_EMPTY ×2。
+                bytes.extend((if version == 5 { -1_i16 } else { 0 }).to_le_bytes());
                 match version {
                     3 => {
                         bytes.extend(LEGEND_CLASS_CLASS_ID);
@@ -1898,6 +1908,7 @@ mod tests {
                         bytes.extend(RGB_COLOR_CLASS_ID);
                         bytes.extend(76_u32.to_le_bytes()); // 回引当前图例组中登记的类别。
                     }
+                    5 => {} // 选择子 −1 没有独立图例类别槽。
                     _ => bytes.extend([0; 16]),
                 }
             }
