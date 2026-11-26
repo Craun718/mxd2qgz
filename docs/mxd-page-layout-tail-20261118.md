@@ -557,3 +557,22 @@ CartoConverter 的 MapOptimizationLayoutExtension
 `{6C29D89F-B7BA-4FB0-A88D-FEA77A03BA0E}`，其读取器已接入。
 这个名称筛选无法排除采用其他命名的注册类或外部扩展，仍需从数组
 写入路径或实际布局记录确定其他类标识。ArcMap/QGIS 人工验收未执行。
+
+### IPageLayoutExtensions 的数组写入路径
+
+在同一 PageLayout.dll 10.1.0.3035 中，构造函数 `0x7b6ccaf0`
+于 `0x7b6cce51` 将 `IPageLayoutExtensions` 实现虚表
+`0x7b71fa88` 安装在完整对象的 `+0x6c`。虚表的四个业务槽
+依次是取数量 `0x7b6e9ce0`、按索引取对象 `0x7b6e9d10`、
+添加 `0x7b6e9df0` 和按索引删除 `0x7b6e9d80`。
+
+添加入口检查输入是否为空，随后在 `0x7b6e9e0f` 调用传入对象的
+AddRef，并于 `0x7b6e9e20` 把该对象追加到接口基址 `+0x198`
+的数组。该路径没有按 CLSID 分派，也没有查询其他接口。持久化
+虚表 `0x7b71fa34` 安装在完整对象的 `+0x60`，其 Load
+和 Save 的数组偏移为 `+0x1a4`。两条路径换算到完整对象均为
+`+0x204`，因此外部调用可直接向序列化所用的数组添加对象。
+
+证据来自既有 Ghidra 导出及 `objdump` 对构造指令、虚表和添加入口
+的复核。其他实际写入的类及其对象体仍需逐类取证。ArcMap/QGIS
+人工验收未执行。
