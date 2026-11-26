@@ -408,3 +408,20 @@ IMarkerLineSymbol +14。两种符号槽都已接入完整符号分派。
 
 构造测试将 MultiLayerLineSymbol 放在刻线槽内，核对键登记、深度耗尽时回滚
 和后继标量边界。目标软件显示结果尚未人工核对。
+
+### 简单点符号的 RotateWithTransform
+
+同版 DisplayCore.dll 的 SimpleMarkerSymbol Load 在
+`0x6ebbf145` 对 v2 起启用末尾 short；`0x6ebbf154` 将值
+读入持久化视图 `−0xb4`。该视图在完整对象 `+0x124`，
+因此字段对应完整对象 `+0x70`。这个偏移与 DisplayLib 的
+Symbol 基类 RotateWithTransform 访问器相同，见
+[公共访问器取证](mxd-terra-next-display.md#第-218-行补充rotatewithtransform-的属性和默认值2026-11-17)。
+Save 在 `0x6ebbf2e5` 取得同一成员的地址并写出。
+
+成功 Load 在 `0x6ebbf169` 调用
+`Symbol::GetDefaultRotateWithTransformValue(-1)`，
+再于 `0x6ebbf16f` 覆盖内存值。Rust 保留存盘 short，
+通过 `stored_rotate_with_transform()` 区分字段缺省和存盘开关值。
+构造用例验证 v1 缺省、v2 非零。真实目标软件中的用户配置与
+旋转行为仍待人工验证。

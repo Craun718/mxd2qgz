@@ -318,6 +318,7 @@ fn simple_marker_symbol_reads_full_body_version_two() {
     );
     // 0xFFFF 位模式（读者按 `u16 as i16` 保留为 -1）。
     assert_eq!(sms.rotate_short, Some(-1_i16));
+    assert_eq!(sms.stored_rotate_with_transform(), Some(true));
     assert_eq!(sms.stop, None);
     assert_eq!(reader.remaining(), 0);
     assert!(
@@ -336,6 +337,7 @@ fn simple_marker_symbol_version_one_omits_rotate_short() {
         .unwrap();
     assert_eq!(sms.version, 1);
     assert_eq!(sms.rotate_short, None, "版本 ≤1 不读尾 short");
+    assert_eq!(sms.stored_rotate_with_transform(), None);
     assert_eq!(sms.stop, None);
     assert_eq!(reader.remaining(), 0);
 }

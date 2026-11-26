@@ -1337,6 +1337,7 @@
       - [x] 核实 Template 的 Interval 和每个图案元素的 mark、Gap 线序。[线型模板](docs/arcmap-10.1-display-symbols-round2.md#线型模板的实段与空段)
       - [x] 对位字符标记的六个几何属性与 IFont 描述符，按流内高低字还原字体大小。[字符标记](docs/arcmap-10.1-display-symbols-round2.md#字符标记的几何属性与字体大小)
       - [x] 定性简单点线面符号的 Style、ROP2、MapLevel 和尺寸字段，并修正面样式的取值位置。[属性访问器](docs/arcmap-10.1-display-tails.md#简单点线面符号的显示属性)
+      - [x] 定性 SimpleMarkerSymbol v2 的 RotateWithTransform 持久化 short，并保留存盘值。[原生取证](docs/arcmap-10.1-display-tails.md#简单点符号的-rotatewithtransform)
       - [x] 对位 DisplayCore 五类颜色的 CIELAB、RGB、CMYK、抖动、透明度及专色属性。[原生属性对位](docs/arcmap-10.1-display-tails.md#颜色属性与流字段)
       - [x] 确定符号族三处 short（ArrowMarker ⑫/CharacterMarker ⑭/PictureMarker v9 ⑨ 与历史路径 +0x70）的流内布局。
       - [x] 定性三处标记符号的 RotateWithTransform 原始 short：10.1 成功读取后用当前用户配置或默认值覆盖内存槽，读取器保留磁盘原值，见 [原生字段复核](docs/mxd-terra-next-display.md#第-218-行补充rotatewithtransform-的属性和默认值2026-11-17)。

@@ -1569,11 +1569,18 @@ pub struct SimpleMarkerSymbolPrefix10_1 {
     pub double_ratio: Option<f64>,
     /// 第二个 IColor 槽（轮廓色）。`None` = 在其之前已停止。
     pub outline_color: Option<ColorSlot10_1>,
-    /// 版本 >1 的 short → obj-0xb4（样本 0xFFFF）。`None` = 版本 ≤1 或前置
-    /// 停止未读取。
+    /// 版本 >1 的 RotateWithTransform 持久化值（样本 0xFFFF）。
+    /// 原生加载完成后会根据用户配置覆盖内存值。
     pub rotate_short: Option<i16>,
     /// 停止原因；`None` = 体已完整消费。
     pub stop: Option<SimpleMarkerSymbolStop10_1>,
+}
+
+impl SimpleMarkerSymbolPrefix10_1 {
+    /// 返回磁盘上的 RotateWithTransform 开关。
+    pub fn stored_rotate_with_transform(&self) -> Option<bool> {
+        self.rotate_short.map(|value| value != 0)
+    }
 }
 
 /// 从对象头之后的位置读取 10.1 SimpleMarkerSymbol 对象体，失败时不推进游
