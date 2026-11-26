@@ -679,11 +679,11 @@ pub(super) fn read_inline_raster_body_10_1(
     let has_classify_renderer = matches!(
         renderer.body.as_ref(),
         Some(RasterRendererPrefix10_1::Classify(classify))
-            if matches!(classify.version, 2..=5)
-                && matches!(classify.classification_method, ClassificationMethod10_1::Guid { flag: 0, .. })
+            if matches!(classify.version, 1..=5)
+                && matches!(classify.classification_method, ClassificationMethod10_1::LegacyString(_) | ClassificationMethod10_1::Guid { flag: 0, .. })
                 && legend_groups_preserve_empty_dataset(&classify.legend_groups, &staged)
                 && matches!(classify.legend_item, LegendItemSlot10_1::Null)
-                && classify.numeric_fields.as_ref().is_some_and(|fields| {
+                && classify.numeric_fields.as_ref().is_none_or(|fields| {
                     matches!(fields.format, NumberFormatSlot10_1::Null)
                 })
                 && classify.value_bounds.as_ref().is_none_or(|bounds| {
@@ -1806,20 +1806,33 @@ mod tests {
         fill.extend([0; 28]); // 面符号空颜色和标量。
         let mut unique_with_fill = unique.clone();
         unique_with_fill.splice(unique_symbol_at..unique_symbol_at + 16, fill);
-        let classify = [2_i32, 3, 4, 5].map(|version| {
+        let classify = [1_i32, 2, 3, 4, 5].map(|version| {
             let mut bytes =
                 super::super::raster_classify_renderer::RASTER_CLASSIFY_RENDERER_CLASS_ID.to_vec();
             bytes.extend(65_u32.to_le_bytes());
             bytes.extend(version.to_le_bytes());
+            if version == 1 {
+                bytes.extend(7_i32.to_le_bytes());
+            }
             bytes.extend(encoded_string(""));
             bytes.extend(encoded_string(""));
-            bytes.push(0); // 无分类方法 GUID。
+            if version == 1 {
+                bytes.extend(encoded_string("旧分类方法"));
+            } else {
+                bytes.push(0); // 无分类方法 GUID。
+            }
             bytes.extend(encoded_string(""));
             bytes.extend([0; 20]); // 无图例组及图例项。
+            if version == 1 {
+                bytes.extend(1_i32.to_le_bytes());
+                bytes.extend(17_i32.to_le_bytes());
+            }
             bytes.extend(2_i32.to_le_bytes());
             bytes.extend(1.0_f64.to_le_bytes());
             bytes.extend(2.0_f64.to_le_bytes());
-            bytes.extend([0; 28]); // 数值字段及空格式。
+            if version >= 2 {
+                bytes.extend([0; 28]); // 数值字段及空格式。
+            }
             if version >= 3 {
                 bytes.extend([0; 50]); // VT_EMPTY ×2、选择子 0、空图例类别。
             }
@@ -1871,6 +1884,7 @@ mod tests {
             &classify[1],
             &classify[2],
             &classify[3],
+            &classify[4],
         ] {
             let mut with_renderer = bytes.clone();
             with_renderer.splice(renderer_at..renderer_at + 16, renderer.iter().copied());
