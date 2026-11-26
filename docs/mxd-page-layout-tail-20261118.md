@@ -604,3 +604,19 @@ CLSID，`0x786c2172` 调用 `+0x18` 写对象体。此前还会按
 
 接口命名见 [AfCore 同版分派复核](mxd-simple-object-dispatch-20261118.md)。
 实际布局中哪些扩展会返回替代类、替代体内容及 ArcMap/QGIS 人工验收仍待取证。
+
+### 本地工程中的布局扩展类
+
+扫描 `samples/` 和 `temp/` 中以 `.mxd` 结尾或带
+MSI 文件名后缀的文件。271 个路径按 SHA-256 去重为 221 个内容，
+其中 113 个有 CFB 文件头。临时探针读取 CFB 的 `/Maps`、
+`/PageLayout` 和可用的 `/Version`，调用
+`parse_mxd_streams_10_1_with_version`，汇总已解析的
+`PageLayoutTail10_1` 扩展数组。
+
+113 份 CFB 中，109 份返回布局尾部，两份未返回布局尾部，
+两份缺少探针所需的命名流。已返回的尾部共记录 38 条
+MapOptimizationLayoutExtension，未见其他类或不透明条目。
+另 108 个内容不具备 CFB 文件头，未纳入此统计。结果只覆盖
+解析器实际到达的布局尾部，其中没有可供识别其他扩展体的 CLSID。
+未执行 ArcMap/QGIS 人工验收。
