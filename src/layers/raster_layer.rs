@@ -15,6 +15,10 @@ use super::feature_layer_tail::{
     LEGEND_CLASS_CLASS_ID, LEGEND_GROUP_CLASS_ID, LegendClassEntry10_1, LegendClassFormatSlot10_1,
     LegendGroupSlot10_1,
 };
+use super::legend_format::{
+    LEGEND_CLASS_FORMAT_CLASS_ID, LegendClassFormatSlot10_1 as FormatMember,
+};
+use super::patch::{AREA_PATCH_CLASS_ID, LINE_PATCH_CLASS_ID, PatchGeometrySlot10_1};
 use super::raster_dataset_name::{
     RasterDatasetNameEntryBody10_1, read_supported_raster_name_entry_10_1,
 };
@@ -82,6 +86,35 @@ fn simple_symbol_preserves_empty_dataset(
     }
 }
 
+fn legend_format_preserves_empty_dataset(
+    format: &LegendClassFormatSlot10_1,
+    table: &RefTable10_1,
+) -> bool {
+    match format {
+        LegendClassFormatSlot10_1::Null => true,
+        LegendClassFormatSlot10_1::BackReference { key, .. } => {
+            table.registered_class(*key) == Some(LEGEND_CLASS_FORMAT_CLASS_ID)
+        }
+        LegendClassFormatSlot10_1::Format(format) => {
+            let patch_is_known = |slot: &FormatMember, class_id| match slot {
+                FormatMember::Null => true,
+                FormatMember::BackReference { key, .. } => {
+                    table.registered_class(*key) == Some(class_id)
+                }
+                FormatMember::LinePatch(patch) | FormatMember::AreaPatch(patch) => {
+                    patch.version == 3 && matches!(patch.geometry, PatchGeometrySlot10_1::Null)
+                }
+                _ => false,
+            };
+            matches!(format.label_symbol, FormatMember::Null)
+                && matches!(format.description_symbol, FormatMember::Null)
+                && patch_is_known(&format.line_patch, LINE_PATCH_CLASS_ID)
+                && patch_is_known(&format.area_patch, AREA_PATCH_CLASS_ID)
+        }
+        LegendClassFormatSlot10_1::Unsupported { .. } => false,
+    }
+}
+
 fn legend_groups_preserve_empty_dataset(
     groups: &[LegendGroupSlot10_1],
     table: &RefTable10_1,
@@ -95,7 +128,7 @@ fn legend_groups_preserve_empty_dataset(
             }
             LegendClassEntry10_1::NewObject(class) => {
                 simple_symbol_preserves_empty_dataset(&class.symbol, table)
-                    && matches!(class.format, LegendClassFormatSlot10_1::Null)
+                    && legend_format_preserves_empty_dataset(&class.format, table)
             }
         }),
         LegendGroupSlot10_1::BackReference { key, .. } => {
@@ -1319,7 +1352,19 @@ mod tests {
         groups.extend([0; 16]); // 空轮廓色。
         groups.extend(encoded_string("类别"));
         groups.extend(encoded_string(""));
-        groups.extend([0; 16]); // 空格式。
+        groups.extend(LEGEND_CLASS_FORMAT_CLASS_ID);
+        groups.extend(80_u32.to_le_bytes());
+        groups.extend(2_u16.to_le_bytes());
+        groups.extend([0; 32]); // 空标签和描述符号。
+        for (class_id, key) in [(LINE_PATCH_CLASS_ID, 81_u32), (AREA_PATCH_CLASS_ID, 82)] {
+            groups.extend(class_id);
+            groups.extend(key.to_le_bytes());
+            groups.extend(3_u16.to_le_bytes());
+            groups.extend([0; 16]); // 空补丁几何。
+            groups.extend(encoded_string("补丁"));
+            groups.extend(0_u16.to_le_bytes());
+        }
+        groups.extend([0; 16]); // 补丁宽高。
         groups.extend(RGB_COLOR_CLASS_ID);
         groups.extend(76_u32.to_le_bytes());
         groups.extend(RGB_COLOR_CLASS_ID);
