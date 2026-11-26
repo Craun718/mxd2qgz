@@ -2640,6 +2640,41 @@ mod tests {
     }
 
     #[test]
+    fn inline_raster_v12_accepts_netcdf_name_without_workspace() {
+        use super::super::raster_dataset_name::NETCDF_RASTER_DATASET_NAME_CLASS_ID;
+
+        let mut standard_prefix = body_prefix(12, 1);
+        dataset_name(&mut standard_prefix, 60);
+        let standard = raster_with_empty_slots(12, false);
+
+        let mut bytes = body_prefix(12, 1);
+        bytes.extend(NETCDF_RASTER_DATASET_NAME_CLASS_ID);
+        bytes.extend(60_u32.to_le_bytes());
+        let name_body = bytes.len();
+        bytes.extend(2_i32.to_le_bytes());
+        for _ in 0..8 {
+            bytes.extend(encoded_string(""));
+        }
+        bytes.extend([0; 16 * 3]); // 两个数组和工作空间名称均为空。
+        let name_end = bytes.len();
+        bytes.extend(&standard[standard_prefix.len()..]);
+        let end = bytes.len();
+        bytes.extend([0xa5; 16]);
+
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        let raster = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+        assert!(raster.tail.unwrap().geodata_xform_v13.is_none());
+        assert_eq!(reader.position(), end);
+        assert!(refs.raster_name_opens_without_result(60));
+
+        bytes.drain(name_body..name_end);
+        let mut reader = Reader::new(&bytes);
+        read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+        assert_eq!(reader.position(), end - (name_end - name_body));
+    }
+
+    #[test]
     fn netcdf_name_keeps_array_keys_and_respects_v1_envelope_gate() {
         use super::super::raster_dataset_name::{
             LONG_ARRAY_CLASS_ID, NETCDF_RASTER_DATASET_NAME_CLASS_ID,

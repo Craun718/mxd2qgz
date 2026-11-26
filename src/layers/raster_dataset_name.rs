@@ -319,6 +319,8 @@ impl RasterDatasetNameEntryBody10_1 {
             }
             // IName::Open 在连接名称为空时直接返回 E_FAIL。
             Self::WcsCoverage(name) => name.connection.entry == ObjectEntry10_1::Null,
+            // NetCDF 的工作空间打开助手先检查已加载的工作空间名称。
+            Self::NetCdf(name) => matches!(name.workspace, RasterDatasetWorkspaceSlot10_1::Null),
             _ => false,
         }
     }

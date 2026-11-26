@@ -1850,3 +1850,19 @@ InternetTiledLayerName 的 QI `0x79e36b30` 和后备
 E_NOINTERFACE。因此非空 tag 31 路径不会改变这两类名称的空打开
 条件。构造回归在 tag 30 使用这两类名称，核对非空路径、tag 35–37
 和后继对象边界。ArcMap 10.1 和 QGIS 人工验收待验证。
+
+#### NetCDFRasterDatasetName 的空工作空间
+
+复核同摘要 NetCDFDB.dll 10.1.0.3035。RTTI 的 COL
+`0x7ae6c870` 将 IName 定位到完整对象 +0x10，虚表
+`0x7ae61598` 的 +0x14 槽为 Open `0x7ae28ed0`。
+入口在 `0x7ae28efd` 清空调用者输出，再从 `0x7ae28f02`
+进入工作空间打开助手 `0x7ae2a710`。助手若发现完整对象
++0x44 为空，在 `0x7ae2a760` 返回 E_FAIL。Open 在
+`0x7ae28f0b` 走失败返回路径。Load 从 `0x7ae2a0b2`、
+`0x7ae2a0bb` 将 IWorkspaceName 加载到持久化接口 +0x2c，
+对应完整对象 +0x44。
+
+普通 v12 读取器据此接入空工作空间条件。构造回归核对新名称、
+同键回引及后续字节边界。非空工作空间的打开结果和真实 NetCDF
+普通 v12 宿主仍待取证，ArcMap 10.1 和 QGIS 人工验收尚未进行。
