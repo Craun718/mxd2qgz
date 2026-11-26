@@ -1784,3 +1784,20 @@ v4 起的成对对象槽使用的 IID `{1B077914-38C5-11D0-92D2-00805F7C28B0}`
 `0x7d8e9b18/0x7d8e9b2d/0x7d8e9b46/0x7d8e9b58`
 写 short、double、short、short，与读侧末段对齐。
 末字段的业务语义和真实工程验收仍待核对。
+
+#### SchematicLayer v3–v5 的兼容记录
+
+同版 Load 在 `0x7d8e8cac–0x7d8e8cb6` 先将版本减 3，
+再按无符号 short 与 2 比较，只有 v3–v5 进入此段。v0–v2
+跳过此段，v6–v7 也跳过。进入后依次在 `0x7d8e8cc9`
+读字符串，在 `0x7d8e8cfc` 读有符号 LONG 数量，并在
+`0x7d8e8d2c` 按正数计数逐项调用 LoadObject。请求 IID
+`{3036D35D-EDE5-11D0-87FE-080009EC732A}` 位于 `0x7d90cf88`，
+是[已核实的 IHyperlink](arcmap-10.1-hyperlink.md)。
+循环后在 `0x7d8e8d51/0x7d8e8d8b` 分别读字符串和 LONG。
+最后一个 LONG 直接进入清理路径，无第二个条目循环。
+
+Save 在 `0x7d8e9640–0x7d8e9645` 对对象版本至少为 6
+直接跳过兼容段；低版本写出两个空字符串和两个零 LONG。
+读侧允许非空 IHyperlink 集合，仍需以构造记录验证复用读取器
+以及后继 IEnvelope 槽边界。真实工程验收未执行。
