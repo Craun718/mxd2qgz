@@ -761,7 +761,6 @@ pub(super) fn read_inline_raster_body_10_1(
                 && matches!(&stretch.layout, RasterStretchLayout10_1::RasterIo(io)
                     if io.ramp.as_deref().is_none_or(|ramp| ramp == [0; 16])
                         && io.color.as_deref().is_some_and(is_known_renderer_io_color)
-                        && io.histogram.is_none()
                         && legend_group_body_preserves_empty_dataset(&io.legend_group_body, &staged))
                 && renderer_shared_preserves_empty_dataset(&stretch.shared, &staged)
     );
@@ -1606,7 +1605,7 @@ mod tests {
         histogram.extend(5.0_f64.to_le_bytes());
         histogram.extend(0.0_f64.to_le_bytes());
         let mut tagged_rgb_with_histogram = tagged_rgb_with_array_reference.clone();
-        tagged_rgb_with_histogram.splice(tagged_tail_at..tagged_tail_at, histogram);
+        tagged_rgb_with_histogram.splice(tagged_tail_at..tagged_tail_at, histogram.iter().copied());
         let mut filter = 18_i32.to_le_bytes().to_vec();
         filter.extend((-1_i32).to_le_bytes());
         filter.extend(super::super::raster_renderer::PANSHARPENING_FILTER_CLASS_ID);
@@ -2013,8 +2012,19 @@ mod tests {
         modern_stretch.extend((-1_i32).to_le_bytes());
         modern_stretch.extend(LEGEND_GROUP_CLASS_ID);
         modern_stretch.extend(&groups[40..groups.len() - 20]);
+        let modern_stretch_end_at = modern_stretch.len();
         modern_stretch.extend([0xff; 8]);
         modern_stretch.extend(&colored_v9[24..]);
+        let mut modern_stretch_with_histogram = modern_stretch.clone();
+        histogram[..4].copy_from_slice(&17_i32.to_le_bytes());
+        modern_stretch_with_histogram
+            .splice(modern_stretch_end_at..modern_stretch_end_at, histogram);
+        let mut modern_stretch_with_null_histogram = modern_stretch.clone();
+        let mut null_histogram = 17_i32.to_le_bytes().to_vec();
+        null_histogram.extend((-1_i32).to_le_bytes());
+        null_histogram.extend([0; 16]);
+        modern_stretch_with_null_histogram
+            .splice(modern_stretch_end_at..modern_stretch_end_at, null_histogram);
         for renderer in [
             &simple,
             &sai,
@@ -2058,6 +2068,8 @@ mod tests {
             &stretch[0],
             &stretch[1],
             &modern_stretch,
+            &modern_stretch_with_histogram,
+            &modern_stretch_with_null_histogram,
         ] {
             let mut with_renderer = bytes.clone();
             with_renderer.splice(renderer_at..renderer_at + 16, renderer.iter().copied());
