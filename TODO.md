@@ -786,6 +786,7 @@
       - [x] 接入时态图层尾部 ActionCollection 的集合字段和空条目。[取证](docs/arcmap-10.1-dep-tail.md#actioncollection-的集合体)
       - [x] 接入 ActionCollection 的非空嵌套集合并限制嵌套深度。[取证](docs/arcmap-10.1-dep-tail.md#actioncollection-的嵌套集合)
       - [x] 定位 EmailAlertAction 持久化入口、内联委派顺序和 ActionBase 共享字段入口。[取证](docs/arcmap-10.1-dep-tail.md#邮件告警动作的持久化入口)
+      - [x] 将邮件告警动作的两个内联接收者对位到 ActionBase 和邮件字段记录。[取证](docs/arcmap-10.1-dep-tail.md#邮件告警动作的两个内联接收者)
       - [ ] 核实时态图层 10.0 内联记录在真实 MXD 中的存在条件与对象边界。
       - [ ] 补齐两类 3D 容器的关联 ILayer 槽中其余未支持的类体；已接入类的共用子槽缺口见各自条目。
       - [x] 接入普通 ILayer 槽中的 InternetTiledLayer 与 WMTSLayer，覆盖独立图层、组图层和三维关联图层。[接口及对象体证据](docs/mxd-10.1-raster-layer-tail.md#瓦片图层的独立-ilayer-宿主)
