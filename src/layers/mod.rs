@@ -46,6 +46,7 @@ pub mod raster_unique_value;
 mod route_layer_extension;
 pub mod scene_layer_properties;
 pub mod schematic_layer;
+pub mod temporal_record_set;
 pub mod terrain_layer;
 pub(crate) mod time_layer_track_extension;
 pub mod tin_layer;
