@@ -2213,3 +2213,28 @@ TrackingLayer.dll 10.1.0.3035 在 `0x8086f4c2` 和
 把此类 Variant 转成并写出字节 BSTR。构造测试核对无键
 RGB 颜色、空 Variant 的边界及颜色截断。ActionCollection
 对象体与其他实现类仍待研究，未进行 ArcMap/QGIS 人工验收。
+
+#### ActionCollection 的集合体
+
+Desktop 的 TrackingActions.dll 为 PE32、10.1.0.3035，
+SHA-256 `b12b5e3ac5bf92a24e8bd6d9f7847c33ac2b659351f2533abcff97837c7f0e74`。
+CoActionCollection 的 IPersistStream 在完整对象 `+0x18`，
+CComObject 虚表 `0x80592334` 的 GetClassID、Load、Save 分别为
+`0x804da890/0x804da8d0/0x804daa50`。`0x8052b640` 也返回该
+CLSID，但属于 ClassID 辅助对象。
+
+Load 调 `0x804b7650`，按顺序读取 double 版本、四个字节
+BSTR、double、int 和两个字节。Save 共用对称助手
+`0x804b7730`。BSTR 读助手 `0x804b8330` 验证非零长度
+含两尾字节且不超过 `0x100000`。版本至少 1.0
+（阈值在 `0x80596a48`）时，Load 在
+`0x804da937/0x804da949/0x804da958/0x804da968` 再读四个
+四字节值，末值为有符号计数。正计数逐项调用 Variant 助手
+`0x804c41f0`，其中对象分支经 `0x804c4050` 在
+`0x804c409e` 调 ReadClassStm。非空 VT_UNKNOWN 对象在
+`0x804da9e4` 查询 IAction。
+
+时态图层的无键 ActionCollection 现在可消费集合字段和空条目，
+未知动作体返回明确停止错误。构造测试覆盖非空集合对象的
+后继字段边界、未知动作和截断。实际动作类体及真实工程在
+ArcMap/QGIS 中的人工验收仍待完成。

@@ -148,6 +148,51 @@ mod tests {
     use super::*;
 
     #[test]
+    fn action_collection_reads_versioned_prefix_and_unkeyed_entries() {
+        let mut bytes = 13_u16.to_le_bytes().to_vec();
+        bytes.extend(ACTION_COLLECTION_CLASS_ID);
+        bytes.extend(1.0_f64.to_le_bytes());
+        bytes.extend([0; 42]);
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend(13_u16.to_le_bytes());
+        bytes.extend([0; 16]);
+        let end = bytes.len();
+        bytes.extend(0xabcd_u16.to_le_bytes());
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        read_tail_variant(
+            &mut reader,
+            4096,
+            &mut refs,
+            TailVariantSlot::ActionCollection,
+        )
+        .unwrap();
+        assert_eq!(reader.read_u16_le().unwrap(), 0xabcd);
+        assert!(refs.is_empty());
+
+        bytes[end - 16] = 1;
+        let mut reader = Reader::new(&bytes);
+        let error = read_tail_variant(
+            &mut reader,
+            4096,
+            &mut refs,
+            TailVariantSlot::ActionCollection,
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::Unsupported);
+        let mut reader = Reader::new(&bytes[..end - 1]);
+        assert!(
+            read_tail_variant(
+                &mut reader,
+                4096,
+                &mut refs,
+                TailVariantSlot::ActionCollection
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
     fn tail_variants_consume_unkeyed_color_and_empty_bstr() {
         use crate::objects::display_color::RGB_COLOR_CLASS_ID;
 
@@ -279,6 +324,41 @@ fn read_late_slot(
     }
 }
 
+const ACTION_COLLECTION_CLASS_ID: [u8; 16] = [
+    0x4e, 0xc6, 0x48, 0x4c, 0x99, 0x91, 0xd5, 0x11, 0xb7, 0xfe, 0, 1, 2, 0x65, 0xad, 0xc5,
+];
+
+fn read_action_collection(reader: &mut Reader<'_>, max: usize) -> io::Result<()> {
+    let version = reader.read_f64_le()?;
+    for _ in 0..4 {
+        read_atl_bstr_10_1(reader, max)?;
+    }
+    reader.read_bytes(14)?;
+    if version >= 1.0 {
+        reader.read_bytes(12)?;
+        let count = (reader.read_u32_le()? as i32).max(0) as usize;
+        if count > reader.remaining().min(max) / 18 {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "动作集合条目数超过限额",
+            ));
+        }
+        for _ in 0..count {
+            if reader.read_u16_le()? != 13 {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    "动作集合条目不是 VT_UNKNOWN",
+                ));
+            }
+            let class = reader.read_bytes(16)?.try_into().unwrap();
+            if class != [0; 16] {
+                return Err(unsupported_class("动作集合 IAction", &class));
+            }
+        }
+    }
+    Ok(())
+}
+
 #[derive(Clone, Copy)]
 enum TailVariantSlot {
     TextSymbol,
@@ -315,6 +395,9 @@ fn read_tail_variant(
                     {
                         return Ok(());
                     }
+                }
+                TailVariantSlot::ActionCollection if class == ACTION_COLLECTION_CLASS_ID => {
+                    return read_action_collection(reader, max);
                 }
                 TailVariantSlot::DisplayObject => {
                     // Variant 只写 CLSID，诊断占位键不加入引用表。
