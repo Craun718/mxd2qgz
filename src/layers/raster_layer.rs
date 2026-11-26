@@ -15,10 +15,9 @@ use super::raster_dataset_name::{
     RasterDatasetNameEntryBody10_1, read_supported_raster_name_entry_10_1,
 };
 use super::raster_renderer::{
-    DOUBLE_ARRAY_CLASS_ID, PansharpeningSlot10_1, RasterHistogramSlot10_1,
-    RasterRendererPrefix10_1, RasterRendererShared10_1, RasterRendererSharedLayout10_1,
-    is_supported_color_ramp_class, read_raster_renderer_slot_prefix_10_1,
-    supports_raster_renderer_body_10_1,
+    DOUBLE_ARRAY_CLASS_ID, PansharpeningSlot10_1, RasterRendererPrefix10_1,
+    RasterRendererShared10_1, RasterRendererSharedLayout10_1, is_supported_color_ramp_class,
+    read_raster_renderer_slot_prefix_10_1, supports_raster_renderer_body_10_1,
 };
 use crate::objects::{
     color_ramp::ColorRampSlot10_1,
@@ -307,9 +306,6 @@ pub(super) fn read_inline_raster_body_10_1(
         renderer.body.as_ref(),
         Some(RasterRendererPrefix10_1::Rgb { tail: Some(rgb), .. })
             if is_known_renderer_io_color(&rgb.color)
-                && rgb.histograms.iter().all(|slot| {
-                    matches!(slot, None | Some(RasterHistogramSlot10_1::Null))
-                })
                 && matches!(rgb.pansharpening, None | Some(PansharpeningSlot10_1::Null))
                 && rgb.double_arrays.iter().all(|slot| match slot.entry {
                     ObjectEntry10_1::Null => true,
@@ -1146,6 +1142,16 @@ mod tests {
         double_array.extend(74_u32.to_le_bytes());
         let mut tagged_rgb_with_array_reference = tagged_rgb_with_arrays.clone();
         tagged_rgb_with_array_reference.splice(arrays_at..arrays_at + 32, double_array);
+        let mut histogram = 14_i32.to_le_bytes().to_vec();
+        histogram.extend((-1_i32).to_le_bytes());
+        histogram.extend(super::super::raster_renderer::STATS_HISTOGRAM_CLASS_ID);
+        histogram.extend(3_i32.to_le_bytes());
+        histogram.extend([0; 6 * 8]);
+        histogram.extend(1_i32.to_le_bytes());
+        histogram.extend(5.0_f64.to_le_bytes());
+        histogram.extend(0.0_f64.to_le_bytes());
+        let mut tagged_rgb_with_histogram = tagged_rgb_with_array_reference.clone();
+        tagged_rgb_with_histogram.splice(tagged_tail_at..tagged_tail_at, histogram);
         for renderer in [
             &simple,
             &sai,
@@ -1161,6 +1167,7 @@ mod tests {
             &tagged_rgb,
             &tagged_rgb_with_arrays,
             &tagged_rgb_with_array_reference,
+            &tagged_rgb_with_histogram,
         ] {
             let mut with_renderer = bytes.clone();
             with_renderer.splice(renderer_at..renderer_at + 16, renderer.iter().copied());
