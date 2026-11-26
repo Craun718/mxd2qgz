@@ -779,6 +779,7 @@
       - [x] 核对时态图层 10.0 试读的 TemporalRecordSet 持久化入口。[取证](docs/arcmap-10.1-dep-tail.md#时态图层-100-内联试读的接收者)
       - [x] 实现 TemporalRecordSet v1 内联体读取器，覆盖子记录、异常和回退。[取证](docs/arcmap-10.1-dep-tail.md#temporalrecordset-的内联子记录)
       - [x] 核对常规保存选择的时态图层版本及 10.0 前置时间对象槽。[取证](docs/arcmap-10.1-dep-tail.md#时态图层-100-的前置时间对象)
+      - [x] 实现三个已确认写出版本的时态图层前段和聚合 FeatureLayer 委派。[取证](docs/arcmap-10.1-dep-tail.md#时态图层前段读取器)
       - [ ] 补齐两类 3D 容器的关联 ILayer 槽中其余未支持的类体；已接入类的共用子槽缺口见各自条目。
       - [x] 接入普通 ILayer 槽中的 InternetTiledLayer 与 WMTSLayer，覆盖独立图层、组图层和三维关联图层。[接口及对象体证据](docs/mxd-10.1-raster-layer-tail.md#瓦片图层的独立-ilayer-宿主)
       - [x] 校验两类 3D 图形容器的 IEnvelope 回引登记类。[取证](docs/arcmap-10.1-dep-tail.md#三维图形容器的对象体)

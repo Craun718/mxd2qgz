@@ -2164,3 +2164,17 @@ LegendClassFormat 体读取器。两处调用以诊断占位键 0 构造体，
 回退，包括已登记的嵌套键。未知 Variant 类型、未知无界对象类
 或内层停止均返回错误。非 IObjectStream 路径与真实工程的
 ArcMap/QGIS 人工验收仍待验证。
+
+#### 时态图层前段读取器
+
+TrackingLayer.dll 10.1.0.3035 的 Load 在
+`0x8086eec1` 为版本至少 1.5 读取四字节值，在
+`0x8086eef9/0x8086ef17` 为版本至少 1.2 再读两个 short，
+随后在 `0x8086ef55` 加载 TemporalOperator。本轮实现
+1.51、9.3 和 10.0 三个确认的写出版本，包含 10.0 的有键
+时间对象槽及 TemporalOperator 两种长度。聚合 FeatureLayer
+复用现有读取器，只有达到 TailCompleted 才提交游标和引用表。
+
+构造测试逐个核对版本路径及操作器长度，验证抵达聚合体后仍能
+读取其版本，聚合体截断时回退。此入口尚需连上外层后继段和
+普通 ILayer 分派。ArcMap/QGIS 人工验收尚未执行。
