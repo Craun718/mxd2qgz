@@ -39,6 +39,8 @@ use crate::objects::{
         SIMPLE_FILL_SYMBOL_CLASS_ID, SIMPLE_LINE_SYMBOL_CLASS_ID, SIMPLE_MARKER_SYMBOL_CLASS_ID,
         SymbolSlotFull10_1,
     },
+    envelope::SpatialReferenceEntry10_1,
+    geometry::{GeometryBody10_1, POLYGON_CLASS_ID, POLYLINE_CLASS_ID},
     property_set::{PropertyValue10_1, PropertyValueObjectStream10_1},
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
@@ -102,7 +104,27 @@ fn legend_format_preserves_empty_dataset(
                     table.registered_class(*key) == Some(class_id)
                 }
                 FormatMember::LinePatch(patch) | FormatMember::AreaPatch(patch) => {
-                    patch.version == 3 && matches!(patch.geometry, PatchGeometrySlot10_1::Null)
+                    patch.version == 3
+                        && match &patch.geometry {
+                            PatchGeometrySlot10_1::Null => true,
+                            PatchGeometrySlot10_1::BackReference { key, .. } => matches!(
+                                table.registered_class(*key),
+                                Some(POLYLINE_CLASS_ID | POLYGON_CLASS_ID)
+                            ),
+                            PatchGeometrySlot10_1::Geometry(GeometryBody10_1::Polyline(line)) => {
+                                matches!(
+                                    line.spatial_reference,
+                                    None | Some(SpatialReferenceEntry10_1::Null)
+                                )
+                            }
+                            PatchGeometrySlot10_1::Geometry(GeometryBody10_1::Polygon(area)) => {
+                                matches!(
+                                    area.spatial_reference,
+                                    None | Some(SpatialReferenceEntry10_1::Null)
+                                )
+                            }
+                            _ => false,
+                        }
                 }
                 _ => false,
             };
@@ -1360,7 +1382,31 @@ mod tests {
             groups.extend(class_id);
             groups.extend(key.to_le_bytes());
             groups.extend(3_u16.to_le_bytes());
-            groups.extend([0; 16]); // 空补丁几何。
+            let (geometry_class, kind, points) = if class_id == LINE_PATCH_CLASS_ID {
+                (POLYLINE_CLASS_ID, 3_u32, &[[0.0_f64, 0.0], [1.0, 1.0]][..])
+            } else {
+                (
+                    POLYGON_CLASS_ID,
+                    5_u32,
+                    &[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 0.0]][..],
+                )
+            };
+            groups.extend(geometry_class);
+            groups.extend((key + 10).to_le_bytes());
+            groups.extend(2_u16.to_le_bytes());
+            groups.extend((48 + points.len() as u32 * 16).to_le_bytes());
+            groups.extend(kind.to_le_bytes());
+            for coordinate in [0.0_f64, 0.0, 1.0, 1.0] {
+                groups.extend(coordinate.to_le_bytes());
+            }
+            groups.extend(1_u32.to_le_bytes()); // 一个路径或环。
+            groups.extend((points.len() as u32).to_le_bytes());
+            groups.extend(0_u32.to_le_bytes()); // 起点索引。
+            for [x, y] in points {
+                groups.extend(x.to_le_bytes());
+                groups.extend(y.to_le_bytes());
+            }
+            groups.extend([0; 16]); // 空空间参考。
             groups.extend(encoded_string("补丁"));
             groups.extend(0_u16.to_le_bytes());
         }
