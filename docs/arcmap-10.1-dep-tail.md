@@ -1980,3 +1980,21 @@ coclass 接口引用链交叉核对。聚合 FeatureLayer 后第一个槽的 IID
 TrackingRenderer.dll 的 CLSID `5F947261-1406-11D5-B7CA-00010265ADC5`
 与 `78C7423A-17CF-11D5-B7CF-00010265ADC5`。
 后续须核对这两个类的 Load 以及实际写出对象是否还包括其他实现。
+
+#### 时态图例组与时间参考的持久化入口
+
+核对 Desktop 的 TrackingRenderer.dll PE32 版本 10.1.0.3035，
+SHA-256 `4126f9a4fc669d4e2c287eacb20227c446db3d699c11e6ba42f426055ce0cda1`。
+通过两个 CComObject 的 MSVC RTTI 和持久化 GetClassID 核对虚表：
+
+| 类 | 接口偏移及虚表 | GetClassID | Load | Save |
+| --- | --- | --- | --- | --- |
+| TemporalLegendGroup | `+0x08` / `0x8093af0c` | `0x808ffe30` | `0x808ff850` | `0x808ffaa0` |
+| TemporalReference | `+0x18` / `0x8093b03c` | `0x80901a40` | `0x80901a80` | `0x80901b60` |
+
+TemporalLegendGroup 的 Load 有八字节读、两个字符串助手调用和
+Variant 对象循环，后续布局需与 Save 对位。TemporalReference
+在 `0x80901a9c` 读八字节，在 `0x80901ac3` 委派，
+并于 `0x80901af4/0x80901b09/0x80901b24/0x80901b36`
+另读 8、8、4、4 字节。委派对象身份和分支条件尚待核对，
+ArcMap/QGIS 人工验收未执行。
