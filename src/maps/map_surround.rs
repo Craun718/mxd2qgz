@@ -3307,7 +3307,7 @@ fn read_gp_name_version(reader: &mut Reader<'_>, max: i16, class: &str) -> io::R
     Ok(version)
 }
 
-fn read_gp_data_type_name_body_10_1(
+pub(crate) fn read_gp_data_type_name_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,

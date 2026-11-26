@@ -369,3 +369,13 @@ CustomOverlayGrid::Load 在 `0x7954ead4` 请求该接口。格网复用
 沿用 GPName 基类的版本和 IUID 检查。构造测试检查 v4 字段、对象键、
 后续格网字符串及所有截断前缀的回滚。真实格网宿主及 ArcMap 中
 IName::Open 的结果仍待验证。
+
+### 叠加格网的 GPDataTypeName
+
+FeatureDataElements.dll 10.1.0.3035 的 GPDataTypeName QI
+`0x6f6228b0` 支持 IName，满足 CustomOverlayGrid::Load
+`0x7954ead4` 的接口要求。格网复用
+[Load `0x6f622b90` 及 GPName 基类的读取器](mxd-terra-round9-bookmark.md#gpdatatypename)。
+构造输入检查外层 v1 与基类 v3 同时存在的两个 IUID 槽、名称键、
+后继格网字符串及逐前缀截断回滚。真实格网宿主及 ArcMap
+中的 IName::Open 结果仍待验证。
