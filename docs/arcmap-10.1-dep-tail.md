@@ -2480,3 +2480,18 @@ TrackingLayer.dll 10.1.0.3035 的 TemporalFeatureLayer Save
 构造测试用数据修改动作验证两种旧版基类及其后继边界和
 截断。范围限于已接入的时态图层写出路径，未用真实旧档
 或 ArcMap/QGIS 人工验收。
+
+#### 动作集合中的独立 ActionBase
+
+TrackingActions.dll 10.1.0.3035 的 CoActionBase 接口表
+`0x80591210` 将 IAction 映射到完整对象 `+0x40`，表项
+`0x80591270` 将 IPersistStream 映射到 `+0x48`。
+后者的虚表 `0x805935ac` 经 GetClassID `0x804da230`
+返回 `EB7DAC60-5052-49EF-9F70-E1484557E419`，
+Load 和 Save 分别沿 `0x8052c5f0/0x8052d980`
+读取和写入已核对的基类记录。因此该类可直接占据集合的
+IAction Variant 槽，读完基类体即可读取下一项。
+
+构造样例在独立 ActionBase 后放置第二个动作和后继字段，
+核对对象体终点及无键语义。未在真实 MXD 或 ArcMap/QGIS
+中人工验收。

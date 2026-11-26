@@ -10,6 +10,10 @@ use crate::stream::native_string::read_atl_bstr_10_1;
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
+pub(super) const ACTION_BASE_CLASS_ID: [u8; 16] = [
+    0x60, 0xac, 0x7d, 0xeb, 0x52, 0x50, 0xef, 0x49, 0x9f, 0x70, 0xe1, 0x48, 0x45, 0x57, 0xe4, 0x19,
+];
+
 pub(super) const EMAIL_ALERT_ACTION_CLASS_ID: [u8; 16] = [
     0xfa, 0xa8, 0x19, 0x27, 0x90, 0xad, 0x69, 0x4e, 0x8d, 0xb2, 0x20, 0x22, 0x4d, 0x4a, 0x1a, 0x6a,
 ];
@@ -77,7 +81,7 @@ fn read_layer_slot(reader: &mut Reader<'_>, max: usize, refs: &mut RefTable10_1)
     Ok(())
 }
 
-fn read_action_base(
+pub(super) fn read_action_base(
     reader: &mut Reader<'_>,
     max: usize,
     refs: &mut RefTable10_1,
