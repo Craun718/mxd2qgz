@@ -9367,6 +9367,55 @@ pub(crate) fn read_locator_name_body_10_1(
     })
 }
 
+pub(crate) fn read_gp_value_table_type_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    name_depth: usize,
+) -> io::Result<BookmarkNameEntry10_1> {
+    let version = read_gp_name_version(reader, 3, "GPValueTableTypeName")?;
+    let raw_column_count = reader.read_u32_le()? as i32;
+    let count = raw_column_count.max(0) as usize;
+    if count > reader.remaining().min(max_bytes) / 26
+        || (count > 0 && name_depth >= MAX_BOOKMARK_NAME_NESTING)
+    {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "GPValueTableTypeName 列数或嵌套层数超限",
+        ));
+    }
+    let mut columns = Vec::new();
+    for _ in 0..count {
+        let data_type = read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth + 1)?;
+        if !is_gp_data_type_name(&data_type) {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "GPValueTableTypeName 的列类型名称类未支持",
+            ));
+        }
+        let legacy_domain = (version < 2)
+            .then(|| read_gp_topo_domain_slot_10_1(reader, max_bytes, table, name_depth + 1))
+            .transpose()?;
+        let name = read_string_10_1(reader, max_bytes)?;
+        let raw_long = reader.read_u32_le()? as i32;
+        let uid = (version > 2)
+            .then(|| read_gp_uid_slot(reader, table))
+            .transpose()?;
+        columns.push(GpValueTableColumnType10_1 {
+            data_type,
+            legacy_domain,
+            name,
+            raw_long,
+            uid,
+        });
+    }
+    Ok(BookmarkNameEntry10_1::GpValueTableTypeName {
+        version,
+        raw_column_count,
+        columns,
+    })
+}
+
 pub(crate) fn read_gp_multi_value_type_name_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -9797,52 +9846,7 @@ fn read_bookmark_name_slot_10_1(
         ObjectEntry10_1::NewObject {
             class_id: GP_VALUE_TABLE_TYPE_NAME_CLASS_ID,
             ..
-        } => {
-            let version = read_gp_name_version(reader, 3, "GPValueTableTypeName")?;
-            let raw_column_count = reader.read_u32_le()? as i32;
-            let count = raw_column_count.max(0) as usize;
-            if count > reader.remaining().min(max_bytes) / 26
-                || (count > 0 && name_depth >= MAX_BOOKMARK_NAME_NESTING)
-            {
-                return Err(io::Error::new(
-                    ErrorKind::InvalidData,
-                    "GPValueTableTypeName 列数或嵌套层数超限",
-                ));
-            }
-            let mut columns = Vec::new();
-            for _ in 0..count {
-                let data_type =
-                    read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth + 1)?;
-                if !is_gp_data_type_name(&data_type) {
-                    return Err(io::Error::new(
-                        ErrorKind::Unsupported,
-                        "GPValueTableTypeName 的列类型名称类未支持",
-                    ));
-                }
-                let legacy_domain = (version < 2)
-                    .then(|| {
-                        read_gp_topo_domain_slot_10_1(reader, max_bytes, table, name_depth + 1)
-                    })
-                    .transpose()?;
-                let name = read_string_10_1(reader, max_bytes)?;
-                let raw_long = reader.read_u32_le()? as i32;
-                let uid = (version > 2)
-                    .then(|| read_gp_uid_slot(reader, table))
-                    .transpose()?;
-                columns.push(GpValueTableColumnType10_1 {
-                    data_type,
-                    legacy_domain,
-                    name,
-                    raw_long,
-                    uid,
-                });
-            }
-            BookmarkNameEntry10_1::GpValueTableTypeName {
-                version,
-                raw_column_count,
-                columns,
-            }
-        }
+        } => read_gp_value_table_type_name_body_10_1(reader, max_bytes, table, name_depth)?,
         ObjectEntry10_1::NewObject {
             class_id: GP_MULTI_VALUE_TYPE_NAME_CLASS_ID,
             ..

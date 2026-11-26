@@ -394,3 +394,11 @@ GPSACore.dll 10.1.0.3035 的 QI `0x748f9600` 支持 IName，
 格网复用 [Load `0x748f99c0` 对应的读取器](mxd-terra-round9-bookmark.md#gpsatopofeaturestypename)。
 构造输入覆盖 v3 旧记录、嵌套类型键、v4 仅版本体、后继格网字符串和
 截断回滚。真实格网宿主及 ArcMap 中的 IName::Open 结果待验证。
+
+### 叠加格网的 GPValueTableTypeName
+
+GpObjects.dll 10.1.0.3035 的 QI 在 `0x747559f7` 匹配 IName。
+格网与书签共用 [Load `0x74756190` 的列记录读取器](mxd-terra-round9-bookmark.md#gpvaluetabletypename)。
+构造输入覆盖 v1–v3 列、版本控制的域和 UID 槽、嵌套类型键、
+后继格网字符串和逐前缀截断回滚。真实格网宿主及 ArcMap 中的
+IName::Open 结果待验证。
