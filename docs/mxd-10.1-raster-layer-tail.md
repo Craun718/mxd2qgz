@@ -1835,3 +1835,18 @@ Load `0x7b424c74` 和 `0x7b424cb5` 将 IWCSConnectionName
 均省略。构造回归验证空连接的图层终点，以及连接非空时的事务
 回滚。真实 WCSCoverageName 普通 v12 宿主和 ArcMap/QGIS
 人工验收仍待验证。
+
+#### WCS 与瓦片名称的非空 RasterIO 路径
+
+LayerLib.dll 10.1.0.3035 的路径展开助手从 `0x786addbb`
+查询 IDatasetName（常量 `0x78720088`），查询无结果时经
+`0x786addc8` 跳到 `0x786addf1`。
+
+复核前述摘要的 OGCClient.dll 和 MapServerLayer.dll。WCSCoverageName
+的 QI `0x7b424610` 与后备 `0x7b401220` 的全部 IID 常量均
+未匹配 IDatasetName，最终在 `0x7b401312` 返回 E_NOINTERFACE。
+InternetTiledLayerName 的 QI `0x79e36b30` 和后备
+`0x79ea9f30` 同样未匹配，最终在 `0x79eaa022` 返回
+E_NOINTERFACE。因此非空 tag 31 路径不会改变这两类名称的空打开
+条件。构造回归在 tag 30 使用这两类名称，核对非空路径、tag 35–37
+和后继对象边界。ArcMap 10.1 和 QGIS 人工验收待验证。

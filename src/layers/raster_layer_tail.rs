@@ -971,12 +971,14 @@ pub(super) fn read_raster_layer_tail(
                     // 无名称时原生跳过 tag 31，查找 tag 35。
                     (None, _) => false,
                     (Some(name), Some(path)) => {
-                        // RasterTypeName 不提供 IDatasetName，路径展开直接返回。
+                        // 这些名称不提供 IDatasetName，路径展开直接返回。
                         !name.open_without_result()
                             || (!path.is_empty()
                                 && !matches!(
                                     name.as_ref(),
                                     RasterDatasetNameEntryBody10_1::RasterType(_)
+                                        | RasterDatasetNameEntryBody10_1::WcsCoverage(_)
+                                        | RasterDatasetNameEntryBody10_1::InternetTiledLayer(_)
                                 ))
                     }
                     _ => true,

@@ -1176,13 +1176,23 @@ mod tests {
         );
         assert_eq!(reader.position(), 0);
 
-        for (tag30, tag31) in [
-            (None, None),
-            (Some(false), None),
-            (None, Some("路径")),
-            (Some(false), Some("路径")),
-            (Some(true), Some("")),
-            (Some(true), Some("路径")),
+        for (tag30, tag31, class_id) in [
+            (None, None, [0; 16]),
+            (Some(false), None, [0; 16]),
+            (None, Some("路径"), [0; 16]),
+            (Some(false), Some("路径"), [0; 16]),
+            (Some(true), Some(""), RASTER_TYPE_NAME_CLASS_ID),
+            (Some(true), Some("路径"), RASTER_TYPE_NAME_CLASS_ID),
+            (
+                Some(true),
+                Some("路径"),
+                crate::layers::wcs_name::WCS_COVERAGE_NAME_CLASS_ID,
+            ),
+            (
+                Some(true),
+                Some("路径"),
+                super::super::raster_dataset_name::INTERNET_TILED_LAYER_NAME_CLASS_ID,
+            ),
         ] {
             let mut records = Vec::new();
             records.extend(0xff00ff_i32.to_le_bytes());
@@ -1191,11 +1201,20 @@ mod tests {
                 records.extend(30_i32.to_le_bytes());
                 records.extend((-1_i32).to_le_bytes());
                 if has_name {
-                    records.extend(RASTER_TYPE_NAME_CLASS_ID);
+                    records.extend(class_id);
                     records.extend(1_u16.to_le_bytes());
-                    records.extend(encoded_string(""));
-                    records.extend(encoded_string(""));
-                    records.extend((-1_i32).to_le_bytes());
+                    if class_id == RASTER_TYPE_NAME_CLASS_ID {
+                        records.extend(encoded_string(""));
+                        records.extend(encoded_string(""));
+                        records.extend((-1_i32).to_le_bytes());
+                    } else if class_id == crate::layers::wcs_name::WCS_COVERAGE_NAME_CLASS_ID {
+                        records.extend(1_u32.to_le_bytes());
+                        records.extend(u16::from(b'a').to_le_bytes());
+                        records.extend(0_u16.to_le_bytes());
+                    } else {
+                        records.extend(encoded_string("Tiles"));
+                        records.extend((-1_i32).to_le_bytes());
+                    }
                     records.extend([0; 16]);
                 } else {
                     records.extend([0; 16]);
