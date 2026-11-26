@@ -65,6 +65,17 @@ const RASTER_RENDERER_COLOR_CLASSES: [[u8; 16]; 5] = [
     CMYK_COLOR_CLASS_ID,
 ];
 
+// DisplayCore.dll 内置的文字路径和解析器只由原样 CLSID 激活。
+const SIMPLE_TEXT_PATH_CLASS_ID: [u8; 16] = [
+    0x76, 0x3e, 0x5a, 0xb6, 0x93, 0x29, 0xd1, 0x11, 0x9a, 0x43, 0, 0x80, 0xc7, 0xec, 0x5c, 0x96,
+];
+const BEZIER_TEXT_PATH_CLASS_ID: [u8; 16] = [
+    0, 0x10, 0xe2, 0x2d, 0xeb, 0xbd, 0xd1, 0x11, 0x97, 0x0b, 0, 0x80, 0xc7, 0xe0, 0x41, 0x96,
+];
+const SIMPLE_TEXT_PARSER_CLASS_ID: [u8; 16] = [
+    0x91, 0x9b, 0x09, 0xd7, 0x98, 0xe2, 0x9e, 0x49, 0x97, 0x57, 0x72, 0xbb, 0x39, 0xe5, 0x5c, 0xf3,
+];
+
 fn simple_symbol_preserves_empty_dataset(
     symbol: &SymbolSlotFull10_1,
     table: &RefTable10_1,
@@ -155,10 +166,15 @@ fn legend_format_preserves_empty_dataset(
                     table.registered_class(*key) == Some(TEXT_SYMBOL_CLASS_ID)
                 }
                 FormatMember::TextSymbol(text) => {
-                    text.raw_path_clsid == [0; 16]
-                        && text
-                            .tail_path_clsid
-                            .is_none_or(|class_id| class_id == [0; 16])
+                    [
+                        [0; 16],
+                        SIMPLE_TEXT_PATH_CLASS_ID,
+                        BEZIER_TEXT_PATH_CLASS_ID,
+                    ]
+                    .contains(&text.raw_path_clsid)
+                        && text.tail_path_clsid.is_none_or(|class_id| {
+                            class_id == [0; 16] || class_id == SIMPLE_TEXT_PARSER_CLASS_ID
+                        })
                         && matches!(text.background, None | Some(CalloutSlot10_1::Null))
                         && [&text.color1, &text.color2].into_iter().all(|color| {
                             matches!(color, ColorSlot10_1::Null)
@@ -1426,11 +1442,15 @@ mod tests {
         groups.extend(2_u16.to_le_bytes());
         groups.extend(TEXT_SYMBOL_CLASS_ID);
         groups.extend(96_u32.to_le_bytes());
-        groups.extend(0_u16.to_le_bytes());
+        groups.extend(4_u16.to_le_bytes());
         groups.extend([0; 16 + 12 + 2 + 24 + 8 + 16 + 16 + 8 + 24 + 1 + 8 + 4 + 8 + 1]);
-        groups.extend([0; 16 * 3]); // 路径类、背景和填充符号。
+        groups.extend(SIMPLE_TEXT_PATH_CLASS_ID);
+        groups.extend([0; 32]); // 空背景和填充符号。
         groups.extend(encoded_string("标签"));
         groups.extend([0; 8 + 4 + 8 + 16 + 16]); // 大小、遮罩参数、符号及字体。
+        groups.extend(0_u16.to_le_bytes());
+        groups.extend(SIMPLE_TEXT_PARSER_CLASS_ID);
+        groups.extend(0_u16.to_le_bytes());
         groups.extend(RGB_COLOR_CLASS_ID);
         groups.extend(96_u32.to_le_bytes()); // 描述符号回引。
         for (class_id, key) in [(LINE_PATCH_CLASS_ID, 81_u32), (AREA_PATCH_CLASS_ID, 82)] {

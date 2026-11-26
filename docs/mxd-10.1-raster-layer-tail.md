@@ -2370,3 +2370,13 @@ TextSymbol Load `0x6ebd0a60` 读取颜色、背景、填充、遮罩和
 字体接受空槽、StdFont 及其已登记回引。构造回归覆盖非空标签
 文本及描述符号回引，并核对其后补丁和图层边界。外部路径、
 解析器、非空背景和真实工程人工验收仍待核对。
+
+TextSymbol Load 在 `0x6ebd0e1b` 将流内路径 CLSID 交给
+`0x6eb49c00` 激活，仅传入类标识和接口参数。从 `0x6ebd0e20`
+继续加载符号成员。SimpleTextPath 和 BezierTextPath 的原生
+类常量分别位于 `0x6ec0d4ac`、`0x6ec0d4bc`。
+v3 起解析器使用同样的 CLSID 激活方式，`0x6ebd1031` 给出旧版
+默认 SimpleTextParser 的类常量 `0x6ec15a94`。这些调用均没有
+流参数。普通 v12 接受这两个内置路径类和内置解析器。
+构造回归在 v4 标签符号中使用 SimpleTextPath 与 SimpleTextParser，
+验证后继补丁及图层边界。外部实现和实档人工验收待核对。
