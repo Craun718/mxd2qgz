@@ -726,3 +726,31 @@ fn sdk_montgomery_reads_complete_dimension_layer() {
     );
     assert!(layer.tail_long.is_some());
 }
+
+#[test]
+#[ignore = "需要 10.1 SDK 安装介质提取文件"]
+fn sdk_maps_read_network_layers_through_their_renderer_records() {
+    for (path, index, offset) in [
+        (
+            "sdk-dotnet/SanFrancisco.mxd.89833ED7_0681_4032_BE76_9AB6C721CEB2",
+            8,
+            0xd0596,
+        ),
+        (
+            "sdk-java/portland.mxd.4896861F_D89C_46BA_ABEC_17591162B2B1",
+            20,
+            0x75f98,
+        ),
+    ] {
+        let map = read_sdk_map(&format!("temp/terra-round8-old/{path}"));
+        let entry = &map.layer_list.entries[index];
+        let Some(LayerBodyPrefix10_1::NetworkLayer(layer)) = &entry.parsed else {
+            panic!("应读取 SDK 工程的 NetworkLayer");
+        };
+        assert_eq!(entry.offset, offset);
+        let display = layer.display.as_ref().unwrap();
+        assert!(display.renderer_count > 0);
+        assert_eq!(layer.renderers.len(), display.renderer_count as usize);
+        assert_eq!(entry.body.as_ref().unwrap().len, 0);
+    }
+}

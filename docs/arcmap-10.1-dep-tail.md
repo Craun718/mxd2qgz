@@ -1714,3 +1714,11 @@ DimensionLayer 条目，登记键为 31。SDK 回归确认外层版本为 4，
 未解析剩余为零。下一条 TopologyLayer 从 `0x19f4` 开始。
 实档证据覆盖 Map 宿主及 v4 布局。真实 3D 宿主、旧版实档和
 ArcMap/QGIS 人工验收仍待验证。
+
+### NetworkLayer 的 SDK 实档
+
+10.1 .NET SDK 的 SanFrancisco.mxd 与 Java SDK 的 portland.mxd
+分别在 /Maps `0xd0596` 和 `0x75f98` 包含有界 NetworkLayer。
+实档回归确认两者都含非空渲染器记录，读取条数等于声明计数，
+两个条目的未解析剩余均为零。真实 3D 宿主与 ArcMap/QGIS
+人工验收仍待验证。
