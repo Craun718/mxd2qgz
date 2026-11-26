@@ -1567,3 +1567,18 @@ Load 先读有符号 short，拒绝高于 4 的版本。在 `0x6e9eacd7`
 Scene 与 Globe 的构造输入覆盖 v1–v4、旧字段、末尾 LONG、
 外层引用键、后继容器边界和逐字节截断。真实宿主及 ArcMap/QGIS
 人工验收未执行。
+
+### TopologyLayer 的持久化入口
+
+复核 [FeatureLayer.dll 10.1.0.3035](mxd-luna-deep-layer-masking-20261118.md#dimensionlayertopologylayer-和-networklayer)
+同摘要 PE32 提取物。QI `0x6f72894b` 匹配 IPersistStream
+IID `0x6f74eb6c`，在 `0x6f728b18` 返回完整对象 `+0x60`。
+该偏移的虚表 `0x6f7b1784` 由 `0x6f728472` 安装。
+GetClassID `0x6f72b600`、Load `0x6f72aee0`、
+Save `0x6f72b3c0` 分别位于 `+0x0c/+0x14/+0x18`。
+
+Load 在 `0x6f72aefb` 读两字节版本，`0x6f72af08` 的
+有符号版本上限为 5。随后进入名称、定宽字段及对象槽读取。
+本次仅确定独立持久化入口和版本门。对象槽类型、旧版分支和完整体
+结束边界仍需对位后才能接入普通 ILayer 槽。未执行原生运行或
+ArcMap/QGIS 人工验收。
