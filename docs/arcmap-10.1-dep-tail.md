@@ -1650,3 +1650,16 @@ v0 及负版本、未核对的非空名称与渲染器类、旧版 IUnknown 新�
 IFeatureRenderer（IID 常量 `0x6f7ae694`），再写入首槽。
 Scene 与 Globe 构造测试覆盖此渲染器及其符号的新键、后续槽和截断回滚。
 其他渲染器槽的原生赋值类及真实宿主仍待核对。
+
+续查同版 FeatureLayer.dll 的两条赋值链。第二槽（完整对象
+`+0xec`）在 `0x6f7297ee` 调用同一 SimpleRenderer 构造帮助函数
+`0x6f7027d0`，并在 `0x6f729808` 调用 `0x6f728cd0` 构造
+SimpleLineSymbol（`0x6f7aaff8`，CLSID
+`{7914E5F9-C892-11D0-8BB6-080009EE4E41}`）。在
+`0x6f72993e` 查询 IFeatureRenderer 后，`0x6f729959` 写入第二槽。
+第三槽（`+0xf0`）对应构造点 `0x6f729bba`，符号构造点
+`0x6f729bd4` 调用 `0x6f728e10`，使用 `0x6f7ab018`
+的 SimpleMarkerSymbol CLSID `{7914E5FE-C892-11D0-8BB6-080009EE4E41}`。
+查询点为 `0x6f729d0a`，写入点为 `0x6f729d25`。
+两条路径的外层渲染器和内嵌符号均已有读取器。此处确认的是
+原生初始化路径，其他写入路径及真实工程验收仍待核对。
