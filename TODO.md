@@ -734,6 +734,7 @@
       - [x] 接入普通 ILayer 槽的 MosaicLayer v1/v2 完整体。[取证](docs/arcmap-10.1-dep-tail.md#mosaiclayer-的普通-ilayer-宿主)
       - [x] 验证两类 3D 容器对 DummyLayer 系列已登记回引及无持久化体新对象的处理。[取证](docs/arcmap-10.1-dep-tail.md#dummylayer-系列的关联槽边界)
       - [x] 定位 DimensionLayer 持久化入口与聚合 FeatureLayer 的加载顺序。[取证](docs/arcmap-10.1-dep-tail.md#dimensionlayer-的持久化前缀)
+      - [x] 核对 DimensionLayer 的写出版本表、内联聚合体及 LONG 尾字段。[取证](docs/arcmap-10.1-dep-tail.md#dimensionlayer-的持久化前缀)
       - [ ] 补齐两类 3D 容器的关联 ILayer 槽中其余未支持的类体；已接入类的共用子槽缺口见各自条目。
       - [x] 接入普通 ILayer 槽中的 InternetTiledLayer 与 WMTSLayer，覆盖独立图层、组图层和三维关联图层。[接口及对象体证据](docs/mxd-10.1-raster-layer-tail.md#瓦片图层的独立-ilayer-宿主)
       - [x] 校验两类 3D 图形容器的 IEnvelope 回引登记类。[取证](docs/arcmap-10.1-dep-tail.md#三维图形容器的对象体)
