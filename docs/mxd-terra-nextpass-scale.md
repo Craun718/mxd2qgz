@@ -495,3 +495,21 @@ IDocumentVersion getter `0x7ffd0630` 从接口相对 +0x40
 之前没有设置其他版本。按静态调用链，比例尺基类 Save 使用
 文档索引 5，写出 v6，携带 v5 short 和 v6 short。
 ArcMap 实际运行及 v5 short 的业务用途仍待验证。
+
+### v5 short 控制自定义锚点偏移
+
+在已核对摘要的 LayerLib.dll 10.1.0.3035 中，导出
+`AnchorPointCustomOffset(IGraphicsContainer*, IElement*)` 的入口为
+`0x786bbb10`。它取得被包围对象，然后经 `0x786bbbd4` 调用
+前述 `0x786c0120`，查询私有 IID `F81C8A13-AF7F-4B72-8B0C-D8C5F1736776`。
+成功时 `0x786bbbf5` 调该接口的 `+0x28`，在 `0x786bbbf7`
+按返回的 short 是否为零选择路径。零值跳过偏移计算。
+非零值继续获得几何对象，在 `0x786bbd2b` 计算坐标差，
+最后将两个 double 写入返回的 WKSPoint。
+
+对具备已确认 v5 访问器的比例尺，`+0x28` 通过
+`0x79441d10 → 0x793a1230` 读取完整对象 `+0x1b0`。
+这将 v5 字段对位为是否计算自定义锚点偏移的开关。
+线式和填充比例尺读取器保留原始 short，并提供按零值判断的访问器。
+独立 Scalebar 的相同接口槽仍按自身虚表固定返回零。
+构造测试覆盖字段缺省和非零值。ArcMap/QGIS 目视验收待验证。

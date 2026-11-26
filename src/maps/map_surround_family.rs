@@ -1487,6 +1487,11 @@ impl ScalebarSubclassBody10_1 {
         self.mid_double
     }
 
+    /// 基类 v5 起保存的自定义锚点偏移开关。
+    pub fn uses_custom_anchor_offset(&self) -> Option<bool> {
+        self.tail_short_a.map(|value| value != 0)
+    }
+
     /// 基类 v6 写出的 IScaleBar2.UseFractionCharacters。
     pub fn use_fraction_characters(&self) -> Option<bool> {
         self.tail_short_b.map(|value| value != 0)
@@ -1522,6 +1527,11 @@ impl ScaleLineBody10_1 {
             f64::from_le_bytes(self.raw_field("base_double_a")?),
             self.raw_field("base_tail_double").map(f64::from_le_bytes),
         )
+    }
+
+    /// 基类 v5 起保存的自定义锚点偏移开关。
+    pub fn uses_custom_anchor_offset(&self) -> Option<bool> {
+        Some(u16::from_le_bytes(self.raw_field("base_tail_short_a")?) != 0)
     }
 
     /// 基类 v6 写出的 IScaleBar2.UseFractionCharacters。
@@ -2809,6 +2819,7 @@ mod tests {
         assert_eq!(body.stop, None);
         assert_eq!(body.base_version, 5);
         assert_eq!(body.tail_short_a, Some(11));
+        assert_eq!(body.uses_custom_anchor_offset(), Some(true));
         assert_eq!(body.use_fraction_characters(), None);
         assert_eq!(body.bar_height(), Some(13.0));
         assert_eq!(body.tail_version, Some(2));
@@ -3139,6 +3150,10 @@ mod tests {
                     assert_eq!(
                         body.raw_field("base_tail_short_a").map(u16::from_le_bytes),
                         (base >= 5).then_some(0x8123)
+                    );
+                    assert_eq!(
+                        body.uses_custom_anchor_offset(),
+                        (base >= 5).then_some(true)
                     );
                     assert_eq!(body.use_fraction_characters(), (base == 6).then_some(false));
                     assert_eq!(

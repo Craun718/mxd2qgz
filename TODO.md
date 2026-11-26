@@ -1390,7 +1390,7 @@
       - [x] 接入 DBTableName 尾部非空 ISpatialReference 中的 PCS、GCS 和 UnknownCoordinateSystem 对象体，复用宿主键表。见 [读写取证](docs/arcmap-10.1-dataset-name-slots.md#dbtablename-尾部空间参考)。
       - [x] 定性 Scalebar 共用基类中 `IScaleBar.Division` 的两处持久化值和取值优先级，并从解析结果提供该值。[分段值取证](docs/mxd-terra-nextpass-scale.md#iscalebardivision-的两处持久化值)
       - [x] 定性 Scalebar 共用基类 v6 的 short 为 IScaleBar2.UseFractionCharacters，并从解析结果提供该值。[分数字符取证](docs/mxd-terra-nextpass-scale.md#分数字符开关)
-      - [ ] 定性 Scalebar 共用基类 v5 增加的 short。[比例尺续查](docs/mxd-terra-nextpass-scale.md#分数字符开关)
+      - [x] 定性 Scalebar 共用基类 v5 的 short 为自定义锚点偏移开关，并从线式和填充比例尺提供该值。[锚点偏移取证](docs/mxd-terra-nextpass-scale.md#v5-short-控制自定义锚点偏移)
       - [x] 对位比例尺克隆内存流的默认文档索引及基类 v6 写出。[默认版本取证](docs/mxd-terra-nextpass-scale.md#克隆内存流的默认保存版本)
       - [x] 对位 HollowScaleBar 的 Clone/Assign 到内存流持久化路径。[原生取证](docs/mxd-terra-nextpass-scale.md#比例尺克隆和赋值的持久化路径)
       - [x] 按构造指令校准比例尺私有接口虚表及 v5 short 的访问槽。[虚表取证](docs/mxd-terra-nextpass-scale.md#用构造指令校准私有虚表首址)
