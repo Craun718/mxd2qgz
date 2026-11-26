@@ -17,7 +17,10 @@ use super::raster_dataset_name::{
 use super::raster_renderer::{
     RasterRendererPrefix10_1, RasterRendererSharedLayout10_1, read_raster_renderer_slot_prefix_10_1,
 };
-use crate::objects::{color_ramp::ColorRampSlot10_1, display_color::RGB_COLOR_CLASS_ID};
+use crate::objects::{
+    color_ramp::{ColorRampSlot10_1, RANDOM_COLOR_RAMP_CLASS_ID},
+    display_color::RGB_COLOR_CLASS_ID,
+};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
 use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -280,7 +283,13 @@ pub(super) fn read_inline_raster_body_10_1(
         ) if shared.version == 1
             || matches!(&shared.layout, RasterRendererSharedLayout10_1::RasterIo { color, .. }
                 if color.starts_with(&RGB_COLOR_CLASS_ID))
-                && matches!(shared.color_ramp, None | Some(ColorRampSlot10_1::Null))
+                && match &shared.color_ramp {
+                    None | Some(ColorRampSlot10_1::Null | ColorRampSlot10_1::Random(_)) => true,
+                    Some(ColorRampSlot10_1::BackReference { key, .. }) => {
+                        staged.registered_class(*key) == Some(RANDOM_COLOR_RAMP_CLASS_ID)
+                    }
+                    _ => false,
+                }
     );
     let boundary = if body.version == 12
         && (renderer.entry == ObjectEntry10_1::Null || has_scalar_renderer)
@@ -939,7 +948,18 @@ mod tests {
         let mut colored_v9 = colored_v8.clone();
         colored_v9[24..28].copy_from_slice(&9_i32.to_le_bytes());
         colored_v9.extend([0; 16]); // 空色带。
-        for renderer in [&simple, &sai, &colored_v8, &colored_v9] {
+        let mut random_ramp = colored_v9[..colored_v9.len() - 16].to_vec();
+        random_ramp.extend(RANDOM_COLOR_RAMP_CLASS_ID);
+        random_ramp.extend(66_u32.to_le_bytes());
+        random_ramp.extend(1_u16.to_le_bytes());
+        random_ramp.extend(0_u32.to_le_bytes()); // 空 BSTR。
+        random_ramp.extend(7_i32.to_le_bytes());
+        random_ramp.extend(1_u16.to_le_bytes());
+        random_ramp.extend(42_i32.to_le_bytes());
+        for value in [10_u16, 200, 20, 210, 30, 220] {
+            random_ramp.extend(value.to_le_bytes());
+        }
+        for renderer in [&simple, &sai, &colored_v8, &colored_v9, &random_ramp] {
             let mut with_renderer = bytes.clone();
             with_renderer.splice(renderer_at..renderer_at + 16, renderer.iter().copied());
             let mut reader = Reader::new(&with_renderer);

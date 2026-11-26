@@ -2015,3 +2015,15 @@ RgbColor 在 `0x6eb3d5a9` 比较 IColor IID，命中后返回
 共用体 v2–v9，v9 要求色带为空。构造回归覆盖 v8、v9 及
 空颜色回滚。其他颜色、非空色带、真实工程及 ArcMap/QGIS
 人工验收待验证。
+
+#### v9 共用体中的 RandomColorRamp
+
+复核同摘要 DisplayCore.dll 的 RandomColorRamp Load
+`0x6eb3c190`。该入口只调用 AfStreamRead、BSTR 与
+AfCore 字符串辅助函数，读取并更新色带自身状态。QI
+`0x6eb3bc90` 提供 IColorRamp。RasterRenderer.dll 的
+`0x7c98c64c` 将该接口写入渲染器内部，再到
+`0x7c98c669` 执行对 RgbColor 的转换，途中没有色带回调。
+普通 v12 因此可接入新随机色带，以及登记类为 RandomColorRamp
+的回引。构造回归验证新色带体之后的图层边界。
+其他色带类和真实 ArcMap/QGIS 人工验收待验证。
