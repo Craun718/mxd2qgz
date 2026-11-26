@@ -1771,3 +1771,16 @@ AfStreamGetSaveVersion 查 `0x7d90c334`。该地址前六项 short
 `0x7d8e9ae1` 调 String::Write，并于 `0x7d8e9afe`
 比较循环计数。关联项的持久化边界因此为 ILayer 和一个字符串。
 早期兼容记录以及循环前后的整段版本条件仍待核对。
+
+#### SchematicLayer 末段的流边界
+
+v4 起的成对对象槽使用的 IID `{1B077914-38C5-11D0-92D2-00805F7C28B0}`
+是 IEnvelope，可复用[已核实的范围对象读取器](mxd-10.1-raster-layer-tail.md)。
+在 v5–v7 的 Load 路径中，最后一个流读取是 `0x7d8e8fd4`
+的 short。其后 `0x7d8e8fe6` 起使用已载入对象和成员恢复
+运行状态。包括 `0x7d8e906c` 的 ConvertToFullPath，入参为
+字符串和 IName，`0x7d8e909f` 的间接调用也使用已取得的对象，
+没有传入当前 IStream。Save 在关联项循环后依次于
+`0x7d8e9b18/0x7d8e9b2d/0x7d8e9b46/0x7d8e9b58`
+写 short、double、short、short，与读侧末段对齐。
+末字段的业务语义和真实工程验收仍待核对。
