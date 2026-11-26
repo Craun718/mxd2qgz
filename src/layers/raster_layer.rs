@@ -28,6 +28,7 @@ use super::raster_renderer::{
     RasterRendererShared10_1, RasterRendererSharedLayout10_1, is_supported_color_ramp_class,
     read_raster_renderer_slot_prefix_10_1, supports_raster_renderer_body_10_1,
 };
+use super::raster_stretch_renderer::RasterStretchLayout10_1;
 use super::raster_unique_value::{
     RasterUniqueValueLayout10_1, UNIQUE_VALUES_CLASS_ID, UniqueValuesSlot10_1,
 };
@@ -731,6 +732,18 @@ pub(super) fn read_inline_raster_body_10_1(
                 })
                 && renderer_shared_preserves_empty_dataset(&classify.shared, &staged)
     );
+    let has_legacy_stretch_renderer = matches!(
+        renderer.body.as_ref(),
+        Some(RasterRendererPrefix10_1::Stretch(stretch))
+            if matches!(
+                &stretch.layout,
+                RasterStretchLayout10_1::Legacy { ramp: ColorRampSlot10_1::Null, colors, legend_group, legend_item: LegendItemSlot10_1::Null, .. }
+                    if (matches!(colors[0], ColorSlot10_1::Null) || is_known_renderer_color(&colors[0], &staged))
+                        && is_known_renderer_color(&colors[1], &staged)
+                        && !matches!(legend_group, LegendGroupSlot10_1::Null)
+                        && legend_groups_preserve_empty_dataset(std::slice::from_ref(legend_group), &staged)
+            ) && renderer_shared_preserves_empty_dataset(&stretch.shared, &staged)
+    );
     let has_known_renderer_reference = matches!(
         renderer.entry,
         ObjectEntry10_1::BackReference { key, .. }
@@ -745,6 +758,7 @@ pub(super) fn read_inline_raster_body_10_1(
             || has_discrete_renderer
             || has_unique_value_renderer
             || has_classify_renderer
+            || has_legacy_stretch_renderer
             || has_known_renderer_reference)
         && let Some(name) = first_name
         && match name.entry {
@@ -1931,6 +1945,31 @@ mod tests {
             bytes.extend(&colored_v9[24..]);
             bytes
         });
+        let stretch = [1_i32, 2].map(|version| {
+            let mut renderer =
+                super::super::raster_stretch_renderer::RASTER_STRETCH_RENDERER_CLASS_ID.to_vec();
+            renderer.extend(65_u32.to_le_bytes());
+            renderer.extend(version.to_le_bytes());
+            renderer.extend(0_i32.to_le_bytes());
+            renderer.extend(encoded_string("拉伸"));
+            renderer.extend([0; 0x930 + 28]); // 查找表和标量。
+            renderer.extend([0; 32]); // 空色带及首色。
+            renderer.extend(RGB_COLOR_CLASS_ID);
+            renderer.extend(108_u32.to_le_bytes());
+            renderer.extend(&colored_v8[color_at + 16..color_at + 27]);
+            renderer.extend(LEGEND_GROUP_CLASS_ID);
+            renderer.extend(109_u32.to_le_bytes());
+            renderer.extend(1_u16.to_le_bytes());
+            renderer.extend(0_i16.to_le_bytes());
+            renderer.extend(encoded_string(""));
+            renderer.extend(0_i32.to_le_bytes());
+            renderer.extend([0; 16]); // 空图例项。
+            if version == 2 {
+                renderer.extend(0_i32.to_le_bytes());
+            }
+            renderer.extend(&colored_v9[24..]);
+            renderer
+        });
         for renderer in [
             &simple,
             &sai,
@@ -1971,6 +2010,8 @@ mod tests {
             &classify[2],
             &classify[3],
             &classify[4],
+            &stretch[0],
+            &stretch[1],
         ] {
             let mut with_renderer = bytes.clone();
             with_renderer.splice(renderer_at..renderer_at + 16, renderer.iter().copied());
