@@ -689,8 +689,7 @@ pub(super) fn read_inline_raster_body_10_1(
                             && samples.is_empty()
                     }
                     RasterUniqueValueLayout10_1::Modern { unique_values, ramp } => {
-                        matches!(unique.version, 3 | 4)
-                            && unique_values_preserve_empty_dataset(unique_values, &staged)
+                        unique_values_preserve_empty_dataset(unique_values, &staged)
                             && ramp.as_ref().is_none_or(|ramp| {
                                 color_ramp_preserves_empty_dataset(ramp, &staged)
                             })
@@ -701,8 +700,7 @@ pub(super) fn read_inline_raster_body_10_1(
     let has_classify_renderer = matches!(
         renderer.body.as_ref(),
         Some(RasterRendererPrefix10_1::Classify(classify))
-            if matches!(classify.version, 1..=5)
-                && matches!(classify.classification_method, ClassificationMethod10_1::LegacyString(_) | ClassificationMethod10_1::Guid { flag: 0, .. })
+            if matches!(classify.classification_method, ClassificationMethod10_1::LegacyString(_) | ClassificationMethod10_1::Guid { flag: 0, .. })
                 && legend_groups_preserve_empty_dataset(&classify.legend_groups, &staged)
                 && matches!(classify.legend_item, LegendItemSlot10_1::Null)
                 && classify.numeric_fields.as_ref().is_none_or(|fields| {
@@ -758,8 +756,7 @@ pub(super) fn read_inline_raster_body_10_1(
     let has_modern_stretch_renderer = matches!(
         renderer.body.as_ref(),
         Some(RasterRendererPrefix10_1::Stretch(stretch))
-            if matches!(stretch.version, 3..=9)
-                && matches!(&stretch.layout, RasterStretchLayout10_1::RasterIo(io)
+            if matches!(&stretch.layout, RasterStretchLayout10_1::RasterIo(io)
                     if io.ramp_body.as_ref().is_none_or(|ramp| {
                         stretch_ramp_preserves_empty_dataset(ramp, &staged)
                     })
@@ -2156,6 +2153,20 @@ mod tests {
         );
         let mut modern_stretch_default_color = modern_stretch.clone();
         modern_stretch_default_color.drain(modern_stretch_color_at..modern_stretch_color_end);
+        let mut future_unique = unique_with_ramp.clone();
+        future_unique[20..24].copy_from_slice(&i32::MAX.to_le_bytes());
+        let mut future_classify = classify[4].clone();
+        future_classify[20..24].copy_from_slice(&i32::MAX.to_le_bytes());
+        let mut future_stretch = modern_stretch.clone();
+        future_stretch[20..24].copy_from_slice(&i32::MAX.to_le_bytes());
+        let mut versioned_stretch_fields = 21_i32.to_le_bytes().to_vec();
+        versioned_stretch_fields.extend(4_i32.to_le_bytes());
+        versioned_stretch_fields.extend(0_i32.to_le_bytes()); // 零采样。
+        versioned_stretch_fields.extend([0; 16 + 4 + 16]); // v6、v7 和 v9 标量。
+        future_stretch.splice(
+            modern_stretch_end_at..modern_stretch_end_at,
+            versioned_stretch_fields,
+        );
         for renderer in [
             &simple,
             &sai,
@@ -2212,6 +2223,9 @@ mod tests {
             &modern_stretch_with_histogram,
             &modern_stretch_with_null_histogram,
             &modern_stretch_default_color,
+            &future_unique,
+            &future_classify,
+            &future_stretch,
         ] {
             let mut with_renderer = bytes.clone();
             with_renderer.splice(renderer_at..renderer_at + 16, renderer.iter().copied());
