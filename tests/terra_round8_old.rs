@@ -754,3 +754,48 @@ fn sdk_maps_read_network_layers_through_their_renderer_records() {
         assert_eq!(entry.body.as_ref().unwrap().len, 0);
     }
 }
+
+#[test]
+#[ignore = "需要 10.1 SDK 安装介质提取文件"]
+fn sdk_schematics_reads_layer_with_associated_children() {
+    let mut doc = cfb::open(
+        "temp/terra-round8-old/sdk-dotnet/SchematicsForServerSample.mxd.89833ED7_0681_4032_BE76_9AB6C721CEB2",
+    ).unwrap();
+    let mut maps = Vec::new();
+    doc.open_stream("/Maps")
+        .unwrap()
+        .read_to_end(&mut maps)
+        .unwrap();
+    let mut r = Reader::new(&maps);
+    let mut refs = RefTable10_1::new();
+    assert_eq!(r.read_u32_le().unwrap(), 4);
+    let mut found = Vec::new();
+    for _ in 0..4 {
+        match read_object_entry_10_1(&mut r, &mut refs).unwrap() {
+            ObjectEntry10_1::NewObject {
+                class_id: MAP_CLASS_ID,
+                ..
+            } => {}
+            ObjectEntry10_1::BackReference {
+                class_id: MAP_CLASS_ID,
+                ..
+            } => continue,
+            entry => panic!("意外的数据框条目 {entry:?}"),
+        }
+        let map = read_map_suffix_10_1(&mut r, 16_000_000, &mut refs).unwrap();
+        for entry in map.layer_list.entries {
+            let Some(LayerBodyPrefix10_1::SchematicLayer(layer)) = entry.parsed else {
+                continue;
+            };
+            assert_eq!(entry.body.as_ref().unwrap().len, 0);
+            assert_eq!(layer.version, 6);
+            let associated = layer.associated.as_ref().unwrap();
+            assert!(associated.count > 0);
+            assert_eq!(associated.layers.len(), associated.count as usize);
+            assert!(associated.layers.iter().any(|item| item.body.is_some()));
+            found.push(entry.offset);
+        }
+    }
+    assert_eq!(found, [0x121c2, 0x20312]);
+    assert_eq!(r.remaining(), 4);
+}

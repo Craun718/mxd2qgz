@@ -1808,3 +1808,14 @@ Save 在 `0x7d8e9640–0x7d8e9645` 对对象版本至少为 6
 FeatureHyperlink、嵌套 SchematicLayer、末字段与截断回滚。
 未核对的非空名称或子图层类仍按各共用槽的支持范围处理。
 真实工程及 ArcMap/QGIS 人工验收未执行。
+
+#### SchematicLayer 的 SDK 实档
+
+按 SHA-256 去重的 142 份本地 CFB 工程共提取 296 条
+/Maps、/PageLayout、/3D Analyst 流。SchematicLayer CLSID
+候选仅见于 .NET SDK 的 SchematicsForServerSample.mxd 的 /Maps。
+SDK 回归沿用同一引用表读取四个根条目，在两个直接 Map 对象的
+`0x121c2`、`0x20312` 验证 v6 示意图层。两层均含非空关联
+子图层，实际条目数与声明一致，未解析剩余均为零，根列表末尾
+保留四字节流尾。CLI 另报告一个位于 `0xcd41` 的示意图层，
+本回归未逐字段断言该条目。ArcMap/QGIS 人工验收未执行。
