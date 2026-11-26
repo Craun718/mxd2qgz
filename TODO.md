@@ -741,6 +741,7 @@
       - [x] 核对 TopologyLayer v5 写出的七个渲染器槽和空 IUnknown 槽。[取证](docs/arcmap-10.1-dep-tail.md#topologylayer-v5-的写出记录)
       - [x] 接入普通 ILayer 槽中 TopologyLayer v1–v5 的已核对记录。[取证](docs/arcmap-10.1-dep-tail.md#topologylayer-v5-的写出记录)
       - [x] 对位 TopologyLayer 渲染器数组的初始化和写出偏移。[取证](docs/arcmap-10.1-dep-tail.md#topologylayer-渲染器数组的初始化)
+      - [x] 确认并验证 TopologyLayer 首槽的 SimpleRenderer 与 SimpleFillSymbol。[取证](docs/arcmap-10.1-dep-tail.md#topologylayer-渲染器数组的初始化)
       - [ ] 补齐两类 3D 容器的关联 ILayer 槽中其余未支持的类体；已接入类的共用子槽缺口见各自条目。
       - [x] 接入普通 ILayer 槽中的 InternetTiledLayer 与 WMTSLayer，覆盖独立图层、组图层和三维关联图层。[接口及对象体证据](docs/mxd-10.1-raster-layer-tail.md#瓦片图层的独立-ilayer-宿主)
       - [x] 校验两类 3D 图形容器的 IEnvelope 回引登记类。[取证](docs/arcmap-10.1-dep-tail.md#三维图形容器的对象体)
