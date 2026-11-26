@@ -39,7 +39,7 @@ use crate::objects::{
         BALLOON_CALLOUT_CLASS_ID, CalloutSlot10_1, GeometrySlotEntry10_1, LINE_CALLOUT_CLASS_ID,
         MARKER_TEXT_BACKGROUND_CLASS_ID, PointSlotEntry10_1, SIMPLE_LINE_CALLOUT_CLASS_ID,
     },
-    color_ramp::ColorRampSlot10_1,
+    color_ramp::{ColorRampSlot10_1, RANDOM_COLOR_RAMP_CLASS_ID},
     display_color::{
         CMYK_COLOR_CLASS_ID, ColorSlot10_1, GRAY_COLOR_CLASS_ID, HLS_COLOR_CLASS_ID,
         HSV_COLOR_CLASS_ID, RGB_COLOR_CLASS_ID,
@@ -747,8 +747,11 @@ pub(super) fn read_inline_raster_body_10_1(
         Some(RasterRendererPrefix10_1::Stretch(stretch))
             if matches!(
                 &stretch.layout,
-                RasterStretchLayout10_1::Legacy { ramp: ColorRampSlot10_1::Null, colors, legend_group, legend_item: LegendItemSlot10_1::Null, .. }
-                    if (matches!(colors[0], ColorSlot10_1::Null) || is_known_renderer_color(&colors[0], &staged))
+                RasterStretchLayout10_1::Legacy { ramp, colors, legend_group, legend_item: LegendItemSlot10_1::Null, .. }
+                    if (matches!(ramp, ColorRampSlot10_1::Null | ColorRampSlot10_1::Random(_))
+                        || matches!(ramp, ColorRampSlot10_1::BackReference { key, .. }
+                            if staged.registered_class(*key) == Some(RANDOM_COLOR_RAMP_CLASS_ID)))
+                        && (matches!(colors[0], ColorSlot10_1::Null) || is_known_renderer_color(&colors[0], &staged))
                         && is_known_renderer_color(&colors[1], &staged)
                         && !matches!(legend_group, LegendGroupSlot10_1::Null)
                         && legend_groups_preserve_empty_dataset(std::slice::from_ref(legend_group), &staged)
@@ -759,7 +762,9 @@ pub(super) fn read_inline_raster_body_10_1(
         Some(RasterRendererPrefix10_1::Stretch(stretch))
             if matches!(stretch.version, 3..=9)
                 && matches!(&stretch.layout, RasterStretchLayout10_1::RasterIo(io)
-                    if io.ramp.as_deref().is_none_or(|ramp| ramp == [0; 16])
+                    if io.ramp.as_deref().is_none_or(|ramp| {
+                        ramp == [0; 16] || ramp.starts_with(&RANDOM_COLOR_RAMP_CLASS_ID)
+                    })
                         && io.color.as_deref().is_none_or(is_known_renderer_io_color)
                         && legend_group_body_preserves_empty_dataset(&io.legend_group_body, &staged))
                 && renderer_shared_preserves_empty_dataset(&stretch.shared, &staged)
@@ -1495,7 +1500,6 @@ mod tests {
         let mut colored_v9 = colored_v8.clone();
         colored_v9[24..28].copy_from_slice(&9_i32.to_le_bytes());
         colored_v9.extend([0; 16]); // 空色带。
-        use crate::objects::color_ramp::RANDOM_COLOR_RAMP_CLASS_ID;
         let mut random_ramp = colored_v9[..colored_v9.len() - 16].to_vec();
         random_ramp.extend(RANDOM_COLOR_RAMP_CLASS_ID);
         random_ramp.extend(66_u32.to_le_bytes());
@@ -2027,6 +2031,22 @@ mod tests {
         null_histogram.extend([0; 16]);
         modern_stretch_with_null_histogram
             .splice(modern_stretch_end_at..modern_stretch_end_at, null_histogram);
+        let ramp_body = &random_ramp[colored_v9.len() - 16..];
+        let legacy_ramp_at = 28 + encoded_string("拉伸").len() + 0x930 + 28;
+        let mut legacy_stretch_with_ramp = stretch[1].clone();
+        legacy_stretch_with_ramp.splice(
+            legacy_ramp_at..legacy_ramp_at + 16,
+            ramp_body.iter().copied(),
+        );
+        let mut raster_io_ramp = 7_i32.to_le_bytes().to_vec();
+        raster_io_ramp.extend((-1_i32).to_le_bytes());
+        raster_io_ramp.extend(RANDOM_COLOR_RAMP_CLASS_ID);
+        raster_io_ramp.extend(&ramp_body[20..]);
+        let mut modern_stretch_with_ramp = modern_stretch.clone();
+        modern_stretch_with_ramp.splice(
+            modern_stretch_color_at..modern_stretch_color_at,
+            raster_io_ramp,
+        );
         let mut modern_stretch_default_color = modern_stretch.clone();
         modern_stretch_default_color.drain(modern_stretch_color_at..modern_stretch_color_end);
         for renderer in [
@@ -2071,7 +2091,9 @@ mod tests {
             &classify[4],
             &stretch[0],
             &stretch[1],
+            &legacy_stretch_with_ramp,
             &modern_stretch,
+            &modern_stretch_with_ramp,
             &modern_stretch_with_histogram,
             &modern_stretch_with_null_histogram,
             &modern_stretch_default_color,
