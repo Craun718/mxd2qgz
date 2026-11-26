@@ -853,7 +853,20 @@ fn stretch_ramp_preserves_empty_dataset(ramp: &ColorRampSlot10_1, table: &RefTab
         ColorRampSlot10_1::BackReference { key, .. } => {
             table.registered_class(*key) == Some(RANDOM_COLOR_RAMP_CLASS_ID)
         }
-        _ => false,
+        ColorRampSlot10_1::MultiPart(multipart) => {
+            let weights = (0..multipart.ramps.len())
+                .filter_map(|index| multipart.loaded_weight_bits(index).map(f64::from_bits));
+            !multipart.ramps.is_empty()
+                && weights.clone().count() == multipart.ramps.len()
+                && weights
+                    .clone()
+                    .all(|weight| weight.is_finite() && weight > 0.0)
+                && weights.sum::<f64>().is_finite()
+                && multipart.ramps.iter().all(|child| {
+                    !matches!(child, ColorRampSlot10_1::Null)
+                        && stretch_ramp_preserves_empty_dataset(child, table)
+                })
+        }
     }
 }
 
@@ -2098,6 +2111,16 @@ mod tests {
             modern_stretch_color_at..modern_stretch_color_at,
             raster_io_ramp,
         );
+        let mut modern_stretch_with_multipart_ramp = modern_stretch.clone();
+        let ramp_body = &multipart_ramp[colored_v9.len() - 16..];
+        let mut raster_io_ramp = 7_i32.to_le_bytes().to_vec();
+        raster_io_ramp.extend((-1_i32).to_le_bytes());
+        raster_io_ramp.extend(&ramp_body[..16]);
+        raster_io_ramp.extend(&ramp_body[20..]);
+        modern_stretch_with_multipart_ramp.splice(
+            modern_stretch_color_at..modern_stretch_color_at,
+            raster_io_ramp,
+        );
         let mut modern_stretch_default_color = modern_stretch.clone();
         modern_stretch_default_color.drain(modern_stretch_color_at..modern_stretch_color_end);
         for renderer in [
@@ -2147,6 +2170,7 @@ mod tests {
             &modern_stretch_with_ramp,
             &modern_stretch_with_algorithmic_ramp,
             &modern_stretch_with_preset_ramp,
+            &modern_stretch_with_multipart_ramp,
             &modern_stretch_with_rejected_preset,
             &legacy_stretch_with_rejected_preset,
             &modern_stretch_with_histogram,
