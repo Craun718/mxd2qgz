@@ -46,6 +46,19 @@ const RASTER_RENDERER_COLOR_CLASSES: [[u8; 16]; 5] = [
     CMYK_COLOR_CLASS_ID,
 ];
 
+fn legend_groups_preserve_empty_dataset(
+    groups: &[LegendGroupSlot10_1],
+    table: &RefTable10_1,
+) -> bool {
+    groups.iter().all(|slot| match slot {
+        LegendGroupSlot10_1::Null => true,
+        LegendGroupSlot10_1::LegendGroup(group) => group.classes.is_empty(),
+        LegendGroupSlot10_1::BackReference { key, .. } => {
+            table.registered_class(*key) == Some(LEGEND_GROUP_CLASS_ID)
+        }
+    })
+}
+
 fn is_inline_unique_value_scalar(value: &PropertyValueObjectStream10_1) -> bool {
     matches!(
         value,
@@ -338,13 +351,7 @@ pub(super) fn read_inline_raster_body_10_1(
     let has_colormap_renderer = matches!(
         renderer.body.as_ref(),
         Some(RasterRendererPrefix10_1::Colormap { legend_groups, tail: Some(tail), .. })
-            if legend_groups.iter().all(|slot| match slot {
-                LegendGroupSlot10_1::Null => true,
-                LegendGroupSlot10_1::LegendGroup(group) => group.classes.is_empty(),
-                LegendGroupSlot10_1::BackReference { key, .. } => {
-                    staged.registered_class(*key) == Some(LEGEND_GROUP_CLASS_ID)
-                }
-            })
+            if legend_groups_preserve_empty_dataset(legend_groups, &staged)
                 && renderer_shared_preserves_empty_dataset(&tail.shared, &staged)
     );
     let has_discrete_renderer = matches!(
@@ -357,7 +364,7 @@ pub(super) fn read_inline_raster_body_10_1(
         renderer.body.as_ref(),
         Some(RasterRendererPrefix10_1::UniqueValue(unique))
             if matches!(unique.symbol, SymbolSlotFull10_1::Null)
-                && unique.legend_groups.is_empty()
+                && legend_groups_preserve_empty_dataset(&unique.legend_groups, &staged)
                 && unique.classes.iter().all(|class| {
                     class.values.iter().all(is_inline_unique_value_scalar)
                 })
@@ -1258,7 +1265,7 @@ mod tests {
         groups.extend(RGB_COLOR_CLASS_ID);
         groups.extend(75_u32.to_le_bytes());
         let mut colormap_with_groups = colormap.clone();
-        colormap_with_groups.splice(24..28, groups);
+        colormap_with_groups.splice(24..28, groups.iter().copied());
         let mut discrete = super::super::raster_renderer::DISCRETE_COLOR_RENDERER_CLASS_ID.to_vec();
         discrete.extend(65_u32.to_le_bytes());
         discrete.extend(1_i32.to_le_bytes());
@@ -1290,7 +1297,9 @@ mod tests {
         unique_v1.extend(0_u16.to_le_bytes());
         unique_v1.extend([0; 16]); // 空符号。
         unique_v1.extend(encoded_string(""));
-        unique_v1.extend([0; 8]); // 图例组前的标量和图例组数。
+        unique_v1.extend(0_i32.to_le_bytes()); // 图例组前的标量。
+        let legacy_groups_at = unique_v1.len();
+        unique_v1.extend(0_i32.to_le_bytes()); // 图例组数。
         unique_v1.extend([0; 16]); // 空图例项。
         let legacy_classes_at = unique_v1.len();
         unique_v1.extend([0; 6]); // 类别数、第二个 short。
@@ -1320,6 +1329,11 @@ mod tests {
         let mut unique_v2_with_classes = unique_v2.clone();
         unique_v2_with_classes.splice(legacy_classes_at..legacy_classes_at + 4, class.clone());
         unique_with_classes.splice(unique_classes_at..unique_classes_at + 4, class);
+        unique_v1_with_classes.splice(
+            legacy_groups_at..legacy_groups_at + 4,
+            groups.iter().copied(),
+        );
+        unique_with_classes.splice(unique_classes_at - 4..unique_classes_at, groups);
         let mut unique_with_ramp = unique.clone();
         unique_with_ramp[20..24].copy_from_slice(&4_i32.to_le_bytes());
         unique_with_ramp.extend(&random_ramp[colored_v9.len() - 16..]);
