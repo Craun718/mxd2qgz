@@ -2041,3 +2041,26 @@ CLSID，随后尝试创建对象，查询 IPersistStream（IID 常量
 图例类别对象体内部若再次读对象，其格式仍由该类的 Load
 和原输入流接口决定，须单独核对。当前只确认 Variant 中对象头
 的边界，非空图例类别和 ArcMap/QGIS 人工验收仍待验证。
+
+#### TemporalLegendClass 的对象体
+
+在 TrackingRenderer.dll 10.1.0.3035 中，TemporalLegendGroup Save
+于 `0x808ffb9f`–`0x808ffbfb` 将类别数组中的对象作为 VT_UNKNOWN
+写出。组内的兼容转换路径于 `0x808fff1d` 创建 TemporalLegendClass。
+该类的 CLSID 为 `CB53C720-14A6-11D5-B7CE-00010265ADC5`，
+GetClassID `0x808fc7e0` 从 `0x80938eb4` 复制该值。持久化虚表
+`0x8093acf4` 的 Load 为 `0x808fc100`，Save 为 `0x808fc420`。
+
+| 依序 | 流字段 | Load / Save |
+|---|---|---|
+| 1 | f64 版本、4 字节整数 | `0x808fc180`、`0x808fc1a0` / `0x808fc46e`、`0x808fc48a` |
+| 2 | 2 字节存在标记，等于 `0xffff` 时附 Variant；加载 VT_UNKNOWN 时查询 ISymbol | `0x808fc1be`、`0x808fc205` / `0x808fc4bd`、`0x808fc509` |
+| 3 | 两个字节 BSTR | `0x808fc274`、`0x808fc296` / `0x808fc526`、`0x808fc538` |
+| 4 | 2 字节存在标记，等于 `0xffff` 时附 Variant；加载 VT_UNKNOWN 时查询 ILegendClassFormat | `0x808fc2b5`、`0x808fc2fc` / `0x808fc567`、`0x808fc5b3` |
+| 5 | f64、4 字节整数、f64 | `0x808fc367`、`0x808fc388`、`0x808fc3aa` / `0x808fc5d2`、`0x808fc5ea`、`0x808fc602` |
+| 6 | 版本至少 2.0 时追加 4 字节整数，阈值常量在 `0x8093d358` | `0x808fc3d6`–`0x808fc3eb` / `0x808fc619`–`0x808fc62f` |
+
+两个 Variant 都调用同组共用的助手，因此对象分支从无键 CLSID
+开始。子对象的 Load 仍接收原 IStream，接入前须核对符号和
+LegendClassFormat 的对象体内部是否继续调用有键 IObjectStream。
+上述读写顺序来自静态反汇编，尚无真实非空类别和软件人工验收。
