@@ -1273,6 +1273,10 @@ ObjectStream 首次加载对象体所用的两个持久化接口。因此无界�
 继续接受已登记的 ILayer 回引，首次出现的这两类仍返回不支持。
 这项取证仅覆盖上述模块和接口路径，尚未在 ArcMap 中运行验证。
 
+Scene 与 Globe 的构造测试覆盖两个类的已登记引用和首次出现。
+回引按登记类识别并读取完整容器；新对象返回 Unsupported，容器
+游标和引用表回滚。
+
 ### GdbRasterCatalogLayer 的持久化入口
 
 复核同版 RasterLayer.dll 10.1.0.3035（SHA-256

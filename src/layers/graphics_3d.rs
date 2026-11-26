@@ -357,6 +357,7 @@ pub fn read_graphics_3d_layer_10_1(
 mod tests {
     use super::*;
     use crate::maps::group_element::GroupChild10_1;
+    use crate::maps::layer_masking::{DUMMY_GRADUATED_MARKER_LAYER_CLASS_ID, DUMMY_LAYER_CLASS_ID};
     use crate::maps::map_object::MAP_CLASS_ID;
 
     #[test]
@@ -365,7 +366,12 @@ mod tests {
             (GRAPHICS_LAYER_3D_CLASS_ID, 8, 0),
             (GLOBE_GRAPHICS_LAYER_CLASS_ID, 4, 8),
         ] {
-            for registered in [GRAPHICS_LAYER_3D_CLASS_ID, MAP_CLASS_ID] {
+            for registered in [
+                GRAPHICS_LAYER_3D_CLASS_ID,
+                DUMMY_LAYER_CLASS_ID,
+                DUMMY_GRADUATED_MARKER_LAYER_CLASS_ID,
+                MAP_CLASS_ID,
+            ] {
                 let mut prior = registered.to_vec();
                 prior.extend(1_u32.to_le_bytes());
                 let mut refs = RefTable10_1::new();
@@ -381,12 +387,12 @@ mod tests {
                 bytes.extend([0xa5; 16]);
                 let mut reader = Reader::new(&bytes);
                 let result = read_graphics_3d_layer_10_1(&class, &mut reader, 4096, &mut refs);
-                if registered == GRAPHICS_LAYER_3D_CLASS_ID {
+                if registered != MAP_CLASS_ID {
                     let layer = result.unwrap();
                     assert_eq!(
                         layer.associated_layer,
                         ObjectEntry10_1::BackReference {
-                            class_id: GRAPHICS_LAYER_3D_CLASS_ID,
+                            class_id: registered,
                             key: 1
                         }
                     );
@@ -397,6 +403,31 @@ mod tests {
                     assert_eq!(reader.position(), 0);
                 }
                 assert_eq!(refs, before);
+            }
+        }
+    }
+
+    #[test]
+    fn graphics_3d_rejects_new_dummy_layers_without_persisted_bodies() {
+        for (class, short_bytes, tail_bytes) in [
+            (GRAPHICS_LAYER_3D_CLASS_ID, 8, 0),
+            (GLOBE_GRAPHICS_LAYER_CLASS_ID, 4, 8),
+        ] {
+            for dummy in [DUMMY_LAYER_CLASS_ID, DUMMY_GRADUATED_MARKER_LAYER_CLASS_ID] {
+                let mut bytes = 1_u16.to_le_bytes().to_vec();
+                bytes.extend([2, 0, 0, 0, 0, 0]);
+                bytes.resize(bytes.len() + short_bytes, 0);
+                bytes.extend(dummy);
+                bytes.extend(1_u32.to_le_bytes());
+                bytes.resize(bytes.len() + 16 + 4 + tail_bytes, 0);
+
+                let mut reader = Reader::new(&bytes);
+                let mut refs = RefTable10_1::new();
+                let error =
+                    read_graphics_3d_layer_10_1(&class, &mut reader, 4096, &mut refs).unwrap_err();
+                assert_eq!(error.kind(), ErrorKind::Unsupported);
+                assert_eq!(reader.position(), 0);
+                assert!(refs.is_empty());
             }
         }
     }
