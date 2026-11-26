@@ -725,6 +725,7 @@
       - [x] 接入普通 RasterLayer v12 图例格式的空几何图例补丁。[原生取证](docs/mxd-10.1-raster-layer-tail.md#唯一值渲染器的普通栅格边界)
       - [x] 接入普通 RasterLayer v12 图例补丁中的折线和多边形几何。[原生取证](docs/mxd-10.1-raster-layer-tail.md#唯一值渲染器的普通栅格边界)
       - [x] 接入普通 RasterLayer v12 图例补丁线面几何的空间参考回引。[原生取证](docs/mxd-10.1-raster-layer-tail.md#唯一值渲染器的普通栅格边界)
+      - [x] 接入普通 RasterLayer v12 图例补丁线面几何的新建空间参考对象。[原生取证](docs/mxd-10.1-raster-layer-tail.md#唯一值渲染器的普通栅格边界)
       - [x] 核对简单与 SAI 渲染器共用体 v2–v9 在空颜色时的原生收尾。[原生取证](docs/mxd-10.1-raster-layer-tail.md#简单与-sai-渲染器的空颜色-rasterio-体)
       - [x] 接入带 RgbColor 且无非空色带的简单与 SAI 渲染器普通 RasterLayer v12 尾段。[原生取证](docs/mxd-10.1-raster-layer-tail.md#rgbcolor-与空色带的普通栅格边界)
       - [x] 接入普通 RasterLayer v12 渲染器共用体中的灰度、HLS 和 HSV 颜色。[原生取证](docs/mxd-10.1-raster-layer-tail.md#灰度hls-与-hsv-的普通栅格边界)

@@ -104,7 +104,13 @@ fn legend_format_preserves_empty_dataset(
         LegendClassFormatSlot10_1::Format(format) => {
             let reference_is_known = |reference: &Option<SpatialReferenceEntry10_1>| match reference
             {
-                None | Some(SpatialReferenceEntry10_1::Null) => true,
+                None
+                | Some(
+                    SpatialReferenceEntry10_1::Null
+                    | SpatialReferenceEntry10_1::Projected { .. }
+                    | SpatialReferenceEntry10_1::Geographic { .. }
+                    | SpatialReferenceEntry10_1::UnknownCoordinateSystem { .. },
+                ) => true,
                 Some(SpatialReferenceEntry10_1::BackReference { key, .. }) => {
                     matches!(
                         table.registered_class(*key),
@@ -115,7 +121,6 @@ fn legend_format_preserves_empty_dataset(
                         )
                     )
                 }
-                _ => false,
             };
             let patch_is_known = |slot: &FormatMember, class_id| match slot {
                 FormatMember::Null => true,
@@ -1423,7 +1428,13 @@ mod tests {
                 groups.extend(RGB_COLOR_CLASS_ID); // 回引头按既有键识别。
                 groups.extend(94_u32.to_le_bytes());
             } else {
-                groups.extend([0; 16]); // 空空间参考。
+                groups.extend(UNKNOWN_COORDINATE_SYSTEM_CLASS_ID);
+                groups.extend(95_u32.to_le_bytes());
+                groups.extend(1_u16.to_le_bytes());
+                for value in ["Unknown", "", "", ""] {
+                    groups.extend(encoded_string(value));
+                }
+                groups.extend([0; 7 * 8]); // v1 精度参数。
             }
             groups.extend(encoded_string("补丁"));
             groups.extend(0_u16.to_le_bytes());
