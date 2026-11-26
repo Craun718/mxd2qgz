@@ -15,7 +15,8 @@ use super::raster_dataset_name::{
     RasterDatasetNameEntryBody10_1, read_supported_raster_name_entry_10_1,
 };
 use super::raster_renderer::{
-    RasterRendererPrefix10_1, RasterRendererSharedLayout10_1, is_supported_color_ramp_class,
+    RasterRendererPrefix10_1, RasterRendererSharedLayout10_1, SAI_RENDERER_CLASS_ID,
+    SIMPLE_RASTER_RENDERER_CLASS_ID, is_supported_color_ramp_class,
     read_raster_renderer_slot_prefix_10_1,
 };
 use crate::objects::{
@@ -300,8 +301,18 @@ pub(super) fn read_inline_raster_body_10_1(
                     color_ramp_preserves_empty_dataset(ramp, &staged)
                 })
     );
+    let has_scalar_renderer_reference = matches!(
+        renderer.entry,
+        ObjectEntry10_1::BackReference { key, .. }
+            if matches!(
+                staged.registered_class(key),
+                Some(SIMPLE_RASTER_RENDERER_CLASS_ID | SAI_RENDERER_CLASS_ID)
+            )
+    );
     let boundary = if body.version == 12
-        && (renderer.entry == ObjectEntry10_1::Null || has_scalar_renderer)
+        && (renderer.entry == ObjectEntry10_1::Null
+            || has_scalar_renderer
+            || has_scalar_renderer_reference)
         && let Some(name) = first_name
         && match name.entry {
             ObjectEntry10_1::NewObject { key, .. } | ObjectEntry10_1::BackReference { key, .. } => {
@@ -1114,6 +1125,29 @@ mod tests {
             let mut refs = RefTable10_1::new();
             read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
             assert_eq!(reader.position(), end + renderer.len() - 16);
+        }
+
+        for original in [&simple, &sai] {
+            let mut with_renderer = bytes.clone();
+            with_renderer.splice(renderer_at..renderer_at + 16, original.iter().copied());
+            let mut refs = RefTable10_1::new();
+            let mut reader = Reader::new(&with_renderer);
+            read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+
+            let name_header = body_prefix(12, 1).len() + 20;
+            let removed = 2 + encoded_string("").len() * 2 + 4 + 16;
+            let mut with_renderer_ref = bytes.clone();
+            let mut renderer_ref = RGB_COLOR_CLASS_ID.to_vec();
+            renderer_ref.extend(65_u32.to_le_bytes());
+            with_renderer_ref.splice(renderer_at..renderer_at + 16, renderer_ref);
+            with_renderer_ref.drain(name_header..name_header + removed);
+            let mut reader = Reader::new(&with_renderer_ref);
+            let layer = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+            assert!(matches!(
+                layer.renderer.unwrap().entry,
+                ObjectEntry10_1::BackReference { key: 65, .. }
+            ));
+            assert_eq!(reader.position(), end + 4 - removed);
         }
 
         let mut with_empty_color = bytes.clone();
