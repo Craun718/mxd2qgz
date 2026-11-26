@@ -21,6 +21,7 @@ use super::raster_renderer::{
     read_raster_renderer_slot_prefix_10_1, supports_raster_renderer_body_10_1,
 };
 use super::raster_unique_value::RasterUniqueValueLayout10_1;
+use crate::maps::map_surround::LegendItemSlot10_1;
 use crate::objects::{
     color_ramp::ColorRampSlot10_1,
     display_color::{
@@ -345,18 +346,23 @@ pub(super) fn read_inline_raster_body_10_1(
     let has_unique_value_renderer = matches!(
         renderer.body.as_ref(),
         Some(RasterRendererPrefix10_1::UniqueValue(unique))
-            if matches!(unique.version, 3 | 4)
-                && matches!(unique.symbol, SymbolSlotFull10_1::Null)
+            if matches!(unique.symbol, SymbolSlotFull10_1::Null)
                 && unique.legend_groups.is_empty()
                 && unique.classes.is_empty()
-                && matches!(
-                    &unique.layout,
-                    RasterUniqueValueLayout10_1::Modern { unique_values, ramp }
-                        if unique_values.entry == ObjectEntry10_1::Null
+                && match &unique.layout {
+                    RasterUniqueValueLayout10_1::Legacy { legend_item, colors, samples, .. } => {
+                        matches!(legend_item, LegendItemSlot10_1::Null)
+                            && colors.entry == ObjectEntry10_1::Null
+                            && samples.is_empty()
+                    }
+                    RasterUniqueValueLayout10_1::Modern { unique_values, ramp } => {
+                        matches!(unique.version, 3 | 4)
+                            && unique_values.entry == ObjectEntry10_1::Null
                             && ramp.as_ref().is_none_or(|ramp| {
                                 color_ramp_preserves_empty_dataset(ramp, &staged)
                             })
-                )
+                    }
+                }
                 && renderer_shared_preserves_empty_dataset(&unique.shared, &staged)
     );
     let has_known_renderer_reference = matches!(
@@ -1250,6 +1256,21 @@ mod tests {
         unique.extend(encoded_string(""));
         unique.extend([0; 10]); // 图例组数、类别数、第二个 short。
         unique.extend([0; 16]); // 空 IUniqueValues。
+        let mut unique_v1 = unique[..20].to_vec();
+        unique_v1.extend(1_i32.to_le_bytes());
+        for _ in 0..2 {
+            unique_v1.extend(encoded_string(""));
+        }
+        unique_v1.extend(0_u16.to_le_bytes());
+        unique_v1.extend([0; 16]); // 空符号。
+        unique_v1.extend(encoded_string(""));
+        unique_v1.extend([0; 8]); // 图例组前的标量和图例组数。
+        unique_v1.extend([0; 16]); // 空图例项。
+        unique_v1.extend([0; 6]); // 类别数、第二个 short。
+        unique_v1.extend([0; 20]); // 空旧统计对象及样本数。
+        unique_v1.extend(&colored_v9[24..]);
+        let mut unique_v2 = unique_v1.clone();
+        unique_v2[20..24].copy_from_slice(&2_i32.to_le_bytes());
         let mut unique_with_ramp = unique.clone();
         unique_with_ramp[20..24].copy_from_slice(&4_i32.to_le_bytes());
         unique_with_ramp.extend(&random_ramp[colored_v9.len() - 16..]);
@@ -1275,6 +1296,8 @@ mod tests {
             &colormap,
             &colormap_with_groups,
             &discrete,
+            &unique_v1,
+            &unique_v2,
             &unique,
             &unique_with_ramp,
         ] {
