@@ -2204,3 +2204,14 @@ RasterDB.dll 10.1.0.3035 的 StatsHistogram Load
 普通 v12 因此也接入非空直方图。构造回归将 StatsHistogram
 v3 与 RGB v9 的数组和回引组合，验证后续图层边界。
 全色锐化及真实工程的 ArcMap/QGIS 人工验收仍待验证。
+
+RGB 的全色锐化过滤器可以有两个空栅格输入。RasterDB.dll 的
+`0x7c02c1e7` 和 `0x7c02c218` 各调用一次 LoadRaster。
+RasterCoreLib 在 `0x7bf2ee4d` 对空名称直接返回，两个过滤器
+成员保持为空。RGB 在 `0x7c99b090` 查询过滤器的第一个输入，
+RasterDB 的接口表 `0x7c12e2bc` 之 +0x0c 指向
+`0x7bfcd830`，返回与第一项 LoadRaster 同一成员。
+该成员为空时，RGB 从 `0x7c99b092` 进入清理过滤器分支，
+随后继续读取共用体。普通 v12 的构造回归覆盖两个空输入的
+非空过滤器、后继字段及图层终点。带实际栅格输入的过滤器及
+真实工程的 ArcMap/QGIS 人工验收待验证。

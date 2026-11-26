@@ -306,7 +306,12 @@ pub(super) fn read_inline_raster_body_10_1(
         renderer.body.as_ref(),
         Some(RasterRendererPrefix10_1::Rgb { tail: Some(rgb), .. })
             if is_known_renderer_io_color(&rgb.color)
-                && matches!(rgb.pansharpening, None | Some(PansharpeningSlot10_1::Null))
+                && match &rgb.pansharpening {
+                    None | Some(PansharpeningSlot10_1::Null) => true,
+                    Some(PansharpeningSlot10_1::Filter(filter)) => {
+                        filter.rasters.iter().all(Option::is_none)
+                    }
+                }
                 && rgb.double_arrays.iter().all(|slot| match slot.entry {
                     ObjectEntry10_1::Null => true,
                     ObjectEntry10_1::NewObject { key, .. }
@@ -1152,6 +1157,15 @@ mod tests {
         histogram.extend(0.0_f64.to_le_bytes());
         let mut tagged_rgb_with_histogram = tagged_rgb_with_array_reference.clone();
         tagged_rgb_with_histogram.splice(tagged_tail_at..tagged_tail_at, histogram);
+        let mut filter = 18_i32.to_le_bytes().to_vec();
+        filter.extend((-1_i32).to_le_bytes());
+        filter.extend(super::super::raster_renderer::PANSHARPENING_FILTER_CLASS_ID);
+        filter.extend(1_i32.to_le_bytes());
+        filter.extend([0; 32]); // 两个 LoadRaster 空槽。
+        filter.extend(3_i32.to_le_bytes());
+        filter.extend([0; 32]); // 权重。
+        let mut tagged_rgb_with_filter = tagged_rgb.clone();
+        tagged_rgb_with_filter.splice(tagged_tail_at..tagged_tail_at, filter);
         for renderer in [
             &simple,
             &sai,
@@ -1168,6 +1182,7 @@ mod tests {
             &tagged_rgb_with_arrays,
             &tagged_rgb_with_array_reference,
             &tagged_rgb_with_histogram,
+            &tagged_rgb_with_filter,
         ] {
             let mut with_renderer = bytes.clone();
             with_renderer.splice(renderer_at..renderer_at + 16, renderer.iter().copied());
