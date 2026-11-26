@@ -321,6 +321,12 @@ pub(super) fn read_inline_raster_body_10_1(
                 })
                 && renderer_shared_preserves_empty_dataset(&rgb.shared, &staged)
     );
+    let has_colormap_renderer = matches!(
+        renderer.body.as_ref(),
+        Some(RasterRendererPrefix10_1::Colormap { legend_groups, tail: Some(tail), .. })
+            if legend_groups.is_empty()
+                && renderer_shared_preserves_empty_dataset(&tail.shared, &staged)
+    );
     let has_known_renderer_reference = matches!(
         renderer.entry,
         ObjectEntry10_1::BackReference { key, .. }
@@ -331,6 +337,7 @@ pub(super) fn read_inline_raster_body_10_1(
             || has_scalar_renderer
             || has_legacy_rgb_renderer
             || has_rgb_renderer
+            || has_colormap_renderer
             || has_known_renderer_reference)
         && let Some(name) = first_name
         && match name.entry {
@@ -1166,6 +1173,16 @@ mod tests {
         filter.extend([0; 32]); // 权重。
         let mut tagged_rgb_with_filter = tagged_rgb.clone();
         tagged_rgb_with_filter.splice(tagged_tail_at..tagged_tail_at, filter);
+        let mut colormap =
+            super::super::raster_renderer::RASTER_COLORMAP_RENDERER_CLASS_ID.to_vec();
+        colormap.extend(65_u32.to_le_bytes());
+        colormap.extend(3_i32.to_le_bytes());
+        colormap.extend(0_i32.to_le_bytes()); // 无图例组。
+        colormap.extend(2_i32.to_le_bytes());
+        colormap.extend(0x010203_i32.to_le_bytes());
+        colormap.extend(0x040506_i32.to_le_bytes());
+        colormap.extend(&colored_v9[24..]);
+        colormap.extend([0; 12]); // 色表 v2/v3 后缀。
         for renderer in [
             &simple,
             &sai,
@@ -1183,6 +1200,7 @@ mod tests {
             &tagged_rgb_with_array_reference,
             &tagged_rgb_with_histogram,
             &tagged_rgb_with_filter,
+            &colormap,
         ] {
             let mut with_renderer = bytes.clone();
             with_renderer.splice(renderer_at..renderer_at + 16, renderer.iter().copied());
