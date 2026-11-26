@@ -1181,6 +1181,8 @@ mod tests {
         };
         use crate::layers::wcs_name::WCS_COVERAGE_NAME_CLASS_ID;
 
+        use super::super::image_server_layer_tail::IMAGE_SERVER_NAME_CLASS_ID;
+
         for (tag30, tag31, class_id) in [
             (None, None, [0; 16]),
             (Some(false), None, [0; 16]),
@@ -1189,6 +1191,7 @@ mod tests {
             (Some(true), Some(""), RASTER_TYPE_NAME_CLASS_ID),
             (Some(true), Some("路径"), RASTER_TYPE_NAME_CLASS_ID),
             (Some(true), Some("路径"), WCS_COVERAGE_NAME_CLASS_ID),
+            (Some(true), Some("路径"), IMAGE_SERVER_NAME_CLASS_ID),
             (Some(true), Some("路径"), INTERNET_TILED_LAYER_NAME_CLASS_ID),
             (
                 Some(true),
@@ -1210,6 +1213,10 @@ mod tests {
                             records.extend(encoded_string(""));
                             records.extend(encoded_string(""));
                             records.extend((-1_i32).to_le_bytes());
+                        }
+                        IMAGE_SERVER_NAME_CLASS_ID => {
+                            records.extend(1_u16.to_le_bytes());
+                            records.extend(encoded_string(""));
                         }
                         WCS_COVERAGE_NAME_CLASS_ID => {
                             records.extend(1_u16.to_le_bytes());

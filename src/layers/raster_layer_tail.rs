@@ -980,6 +980,7 @@ pub(super) fn read_raster_layer_tail(
                                         | RasterDatasetNameEntryBody10_1::WcsCoverage(_)
                                         | RasterDatasetNameEntryBody10_1::InternetTiledLayer(_)
                                         | RasterDatasetNameEntryBody10_1::NetCdf(_)
+                                        | RasterDatasetNameEntryBody10_1::ImageServerReference(_)
                                 ))
                     }
                     _ => true,

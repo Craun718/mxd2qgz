@@ -1890,5 +1890,10 @@ E_PENDING。Load 的 `0x77f4f838` 与 `0x77f4f84d`
 普通 v12 可按已证空打开边界读取。
 
 构造回归核对空文本时的对象终点，以及同样无属性集但文本非空时
-的事务回滚。非空 RasterIO 路径、真实宿主和 ArcMap/QGIS
-人工验收仍待核对。
+的事务回滚。
+
+ImageServerName 的 QI `0x77f4f4e0` 及后备 `0x77f87b40`
+的 IID 比较均不匹配 IDatasetName，最终在 `0x77f87c32` 返回
+E_NOINTERFACE。因此带非空 tag 31 的 RasterIO 路径展开也直接
+返回，随后 Open 仍按空文本和空属性集处理。构造回归核对非空路径、
+tag 35–37 和图层终点。真实工程及人工验收仍待验证。
