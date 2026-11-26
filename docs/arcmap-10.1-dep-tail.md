@@ -2149,3 +2149,18 @@ TrackingWorkspace.dll 10.1.0.3035 的 Load `0x80a8ba80`
 偏移作为后续图层字段起点。缺省记录和不完整记录的外层
 试读分派仍需随时态图层接入核对。用构造数据验证内联体、
 后继字段、版本异常与截断，尚未在 ArcMap 或 QGIS 中人工验收。
+
+#### 时态图例组和类别读取器
+
+MXD 的 IObjectStream 路径读取类别、类别符号和类别格式的
+VT_UNKNOWN 无键头。符号调用共用符号体分派，格式调用
+LegendClassFormat 体读取器。两处调用以诊断占位键 0 构造体，
+不向表登记该键，体内经原流读取的子对象照常登记。符号共用
+体的原生依据见 [DisplayCore 符号槽](arcmap-10.1-display-slots-round3.md)；
+格式的前述 AfCore 分派证据适用于相同原流。
+
+构造记录验证非空类别、无键 SimpleLineSymbol、其有键 RGB
+颜色、无键 LegendClassFormat 及后继边界。截断造成整个组
+回退，包括已登记的嵌套键。未知 Variant 类型、未知无界对象类
+或内层停止均返回错误。非 IObjectStream 路径与真实工程的
+ArcMap/QGIS 人工验收仍待验证。

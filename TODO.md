@@ -774,6 +774,7 @@
       - [x] 确认 TemporalLegendGroup 的 Variant 对象由 ReadClassStm 读取无键类标识。[取证](docs/arcmap-10.1-dep-tail.md#时态图例组的-variant-对象头)
       - [x] 核对 TemporalLegendClass 的独立对象体及两处嵌套 Variant。[取证](docs/arcmap-10.1-dep-tail.md#temporallegendclass-的对象体)
       - [x] 核对 Variant 内 LegendClassFormat 的四个嵌套槽如何保留原对象流分派。[取证](docs/arcmap-10.1-dep-tail.md#时态图例格式的内层对象流)
+      - [x] 实现时态图例组与类别读取器，支持无键 Variant 外层和有键内部子槽。[取证](docs/arcmap-10.1-dep-tail.md#时态图例组和类别读取器)
       - [x] 将时态图层 10.0 内联试读的接收接口及运行条件对位到类型库。[取证](docs/arcmap-10.1-dep-tail.md#时态图层-100-内联试读的接收者)
       - [x] 核对时态图层 10.0 试读的 TemporalRecordSet 持久化入口。[取证](docs/arcmap-10.1-dep-tail.md#时态图层-100-内联试读的接收者)
       - [x] 实现 TemporalRecordSet v1 内联体读取器，覆盖子记录、异常和回退。[取证](docs/arcmap-10.1-dep-tail.md#temporalrecordset-的内联子记录)

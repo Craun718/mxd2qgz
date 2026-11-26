@@ -2675,10 +2675,39 @@ pub fn read_symbol_slot_full_10_1(
     table: &mut RefTable10_1,
     depth: usize,
 ) -> io::Result<SymbolSlotFull10_1> {
+    read_symbol_slot(reader, max_bytes, table, depth, false)
+}
+
+/// Variant 对象头只有 CLSID，内部对象槽继续使用原引用表。
+pub(crate) fn read_unkeyed_symbol_slot_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<SymbolSlotFull10_1> {
+    read_symbol_slot(reader, max_bytes, table, MAX_SYMBOL_NESTING_DEPTH, true)
+}
+
+fn read_symbol_slot(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+    unkeyed: bool,
+) -> io::Result<SymbolSlotFull10_1> {
     let origin = reader.clone();
     let mut trial = reader.clone();
     let mut staged = table.clone();
-    let entry = read_object_entry_10_1(&mut trial, &mut staged)?;
+    let entry = if unkeyed {
+        let class_id = trial.read_bytes(16)?.try_into().unwrap();
+        if class_id == [0; 16] {
+            ObjectEntry10_1::Null
+        } else {
+            // 体读取器用键作为诊断元数据。此处不登记占位值。
+            ObjectEntry10_1::NewObject { class_id, key: 0 }
+        }
+    } else {
+        read_object_entry_10_1(&mut trial, &mut staged)?
+    };
     let result = match entry {
         ObjectEntry10_1::Null => SymbolSlotFull10_1::Null,
         ObjectEntry10_1::BackReference { class_id, key } => {
