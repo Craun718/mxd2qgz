@@ -856,11 +856,13 @@ fn stretch_ramp_preserves_empty_dataset(ramp: &ColorRampSlot10_1, table: &RefTab
         ColorRampSlot10_1::MultiPart(multipart) => {
             let weights = (0..multipart.ramps.len())
                 .filter_map(|index| multipart.loaded_weight_bits(index).map(f64::from_bits));
+            let total = weights.clone().sum::<f64>();
             weights.clone().count() == multipart.ramps.len()
                 && weights
                     .clone()
-                    .all(|weight| weight.is_finite() && weight > 0.0)
-                && weights.sum::<f64>().is_finite()
+                    .all(|weight| weight.is_finite() && weight >= 0.0)
+                && total.is_finite()
+                && (multipart.ramps.is_empty() || total > 0.0)
                 && multipart.ramps.iter().all(|child| {
                     !matches!(child, ColorRampSlot10_1::Null)
                         && stretch_ramp_preserves_empty_dataset(child, table)
@@ -2116,6 +2118,14 @@ mod tests {
         raster_io_ramp.extend((-1_i32).to_le_bytes());
         raster_io_ramp.extend(&ramp_body[..16]);
         raster_io_ramp.extend(&ramp_body[20..]);
+        let mut modern_stretch_with_zero_weight = modern_stretch.clone();
+        let mut zero_weight_ramp = raster_io_ramp.clone();
+        let first_weight_at = zero_weight_ramp.len() - 16;
+        zero_weight_ramp[first_weight_at..first_weight_at + 8].fill(0);
+        modern_stretch_with_zero_weight.splice(
+            modern_stretch_color_at..modern_stretch_color_at,
+            zero_weight_ramp,
+        );
         modern_stretch_with_multipart_ramp.splice(
             modern_stretch_color_at..modern_stretch_color_at,
             raster_io_ramp,
@@ -2178,6 +2188,7 @@ mod tests {
             &modern_stretch_with_algorithmic_ramp,
             &modern_stretch_with_preset_ramp,
             &modern_stretch_with_multipart_ramp,
+            &modern_stretch_with_zero_weight,
             &modern_stretch_with_empty_multipart,
             &modern_stretch_with_rejected_preset,
             &legacy_stretch_with_rejected_preset,

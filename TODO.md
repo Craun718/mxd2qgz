@@ -731,6 +731,7 @@
       - [x] 接入普通 RasterLayer v12 拉伸渲染器预设色带的生成失败回退。[原生取证](docs/mxd-10.1-raster-layer-tail.md#拉伸渲染器的普通栅格边界)
       - [x] 接入普通 RasterLayer v12 拉伸渲染器的正权重多段色带。[原生取证](docs/mxd-10.1-raster-layer-tail.md#拉伸渲染器的普通栅格边界)
       - [x] 接入普通 RasterLayer v12 拉伸渲染器的空多段色带回退。[原生取证](docs/mxd-10.1-raster-layer-tail.md#拉伸渲染器的普通栅格边界)
+      - [x] 接入普通 RasterLayer v12 拉伸多段色带的零与正权重混排。[原生取证](docs/mxd-10.1-raster-layer-tail.md#拉伸渲染器的普通栅格边界)
       - [x] 接入普通 RasterLayer v12 的空分类唯一值渲染器 v1/v2。[原生取证](docs/mxd-10.1-raster-layer-tail.md#唯一值渲染器的普通栅格边界)
       - [x] 接入普通 RasterLayer v12 现代唯一值渲染器的标量统计对象。[原生取证](docs/mxd-10.1-raster-layer-tail.md#唯一值渲染器的普通栅格边界)
       - [x] 接入普通 RasterLayer v12 现代唯一值渲染器的标量分类。[原生取证](docs/mxd-10.1-raster-layer-tail.md#唯一值渲染器的普通栅格边界)
