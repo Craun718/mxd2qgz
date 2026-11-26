@@ -1755,3 +1755,19 @@ v5 起在 `0x7d8e8e1d` 读取有符号 LONG 项数，正数分支
 `0x7d8e8f98`、`0x7d8e8fb8`、`0x7d8e8fd4`
 依次读 short、double、short、short。旧记录分支、每项完整布局、
 末段的流消费及写侧版本差异仍需核对。未进行原生运行验收。
+
+#### SchematicLayer 关联项的写出边界
+
+同版 Save `0x7d8e9500` 在 `0x7d8e9520` 用
+AfStreamGetSaveVersion 查 `0x7d90c334`。该地址前六项 short
+为 `[-1, 4, 4, 4, 6, 7]`。写侧另在 `0x7d8e9640`
+检查对象版本是否至少为 6。表长度和各分支的完整适用范围仍需
+结合版本参数和控制流复核。
+
+读侧 v5 起的每个关联项先在 `0x7d8e8e6c` 调 LoadObject，
+再在 `0x7d8e8e8c` 调 String::Read。到计数回跳
+`0x7d8e8f61` 之前，其余调用处理内存中的对象与字符串。
+写侧计数循环对应地在 `0x7d8e9abf` 调 SaveObject，在
+`0x7d8e9ae1` 调 String::Write，并于 `0x7d8e9afe`
+比较循环计数。关联项的持久化边界因此为 ILayer 和一个字符串。
+早期兼容记录以及循环前后的整段版本条件仍待核对。
