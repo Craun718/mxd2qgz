@@ -2012,3 +2012,20 @@ Save 在 `0x80901ba7` 写出由两个成员值合成的 64 位整数，
 再于 `0x80901bc6/0x80901bdb/0x80901bf6/0x80901c0b`
 写出对应 double、double、int、int。字段业务语义和真实时态图层
 宿主仍待核对，ArcMap/QGIS 人工验收未执行。
+
+#### TemporalLegendGroup 的版本化记录
+
+TrackingRenderer.dll 10.1.0.3035 的 Load `0x808ff850`
+依次读 double 版本、两个字节 BSTR 和有符号四字节计数。
+字符串助手 `0x808f3440` 以四字节长度开头，非零长度含两个
+尾字节，与时态图层的字节 BSTR 约定一致。正计数时每项在
+`0x808ff964` 读取 Variant，非空 VT_UNKNOWN 在
+`0x808ff9a2` 查询 IID `167C5E9E-AF20-11D1-8817-080009EC732A`，
+即[图例类别接口](arcmap-10.1-featurelayer-tail.md)。
+
+循环后固定读取两个 short，版本至少 2.0 在 `0x808ffa37`
+再读一个 short，至少 10.1 在 `0x808ffa70` 再读一个字节 BSTR。
+阈值常量分别在 `0x8093d358/0x8093d368`。Save 使用相同
+末段判断（`0x808ffc61/0x808ffc8e`），文档版本索引 0–4
+写出对象版本 1.0，其余索引写 10.1。
+Variant 内嵌对象的线格式及非空实例仍需验证后接入读取器。
