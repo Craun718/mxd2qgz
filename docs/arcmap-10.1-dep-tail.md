@@ -1738,3 +1738,20 @@ Load 在 `0x7d8e8b55` 读取两字节版本，`0x7d8e8b66`
 比较有符号上限 7。v1、v2 附加分支分别从
 `0x7d8e8c2c`、`0x7d8e8c4d` 判定。后继对象槽和完整消费
 边界仍待对位，尚未接入读取器或进行 ArcMap/QGIS 人工验收。
+
+#### SchematicLayer 的名称与关联图层槽
+
+同版 SchematicLayer.dll 的 Load 在通用前缀读取字符串、两个
+short、三个八字节字段和另一字符串。v1 起在 `0x7d8e8c3c`
+读一个 short。v2 起在 `0x7d8e8c67/0x7d8e8c7f` 读两个
+八字节字段，随后于 `0x7d8e8c9c` 请求 IName，IID
+`{4BA33331-D55F-11D1-8882-0000F877762D}` 位于 `0x7d90cd88`。
+
+v4 起在 `0x7d8e8dc6/0x7d8e8dee` 读取两个同接口槽，
+IID `{1B077914-38C5-11D0-92D2-00805F7C28B0}` 位于 `0x7d90cde8`。
+v5 起在 `0x7d8e8e1d` 读取有符号 LONG 项数，正数分支
+在 `0x7d8e8e6c` 请求 ILayer（IID 位于 `0x7d90ce48`），
+随即读条目字符串。计数循环后在 `0x7d8e8f7c`、
+`0x7d8e8f98`、`0x7d8e8fb8`、`0x7d8e8fd4`
+依次读 short、double、short、short。旧记录分支、每项完整布局、
+末段的流消费及写侧版本差异仍需核对。未进行原生运行验收。
