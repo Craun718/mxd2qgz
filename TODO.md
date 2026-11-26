@@ -732,6 +732,7 @@
       - [x] 接入普通 RasterLayer v12 图例文字符号的三类空锚点 Callout 背景。[原生取证](docs/mxd-10.1-raster-layer-tail.md#唯一值渲染器的普通栅格边界)
       - [x] 接入普通 RasterLayer v12 图例 Callout 背景的 Point 锚点和回引。[原生取证](docs/mxd-10.1-raster-layer-tail.md#唯一值渲染器的普通栅格边界)
       - [x] 接入普通 RasterLayer v12 SimpleLineCallout 的折线和多边形锚几何。[原生取证](docs/mxd-10.1-raster-layer-tail.md#唯一值渲染器的普通栅格边界)
+      - [x] 接入普通 RasterLayer v12 SimpleLineCallout 的多点锚几何。[原生取证](docs/mxd-10.1-raster-layer-tail.md#唯一值渲染器的普通栅格边界)
       - [x] 核对简单与 SAI 渲染器共用体 v2–v9 在空颜色时的原生收尾。[原生取证](docs/mxd-10.1-raster-layer-tail.md#简单与-sai-渲染器的空颜色-rasterio-体)
       - [x] 接入带 RgbColor 且无非空色带的简单与 SAI 渲染器普通 RasterLayer v12 尾段。[原生取证](docs/mxd-10.1-raster-layer-tail.md#rgbcolor-与空色带的普通栅格边界)
       - [x] 接入普通 RasterLayer v12 渲染器共用体中的灰度、HLS 和 HSV 颜色。[原生取证](docs/mxd-10.1-raster-layer-tail.md#灰度hls-与-hsv-的普通栅格边界)

@@ -2414,3 +2414,10 @@ Polyline/Polygon 共用 Load `0x7192db20`。普通 v12 对折线和
 多边形的新对象复用图例补丁的空间参考判定，并按登记类接受
 这两类回引。构造回归分别加入带新未知坐标系的折线、带坐标系
 回引的多边形，核对后继图层边界。其他锚几何类型和实档验收待验证。
+
+SimpleLineCallout 的同一 IGeometry 槽也可装载 Multipoint。
+Geometry.dll 10.1.0.3035 的 Load `0x718ff9c0` 读取有界坐标
+记录，再按版本装载 ISpatialReference。普通 v12 复用已有对象体
+与空间参考判定，允许新建 Multipoint 或已登记的同类回引。
+构造回归覆盖单点编码的 Multipoint 锚几何，以及后继图层边界。
+其他锚几何类型和实档人工验收仍待核对。

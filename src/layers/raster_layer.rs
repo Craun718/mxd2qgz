@@ -45,7 +45,9 @@ use crate::objects::{
     },
     element_body::{FontSlot10_1, TEXT_SYMBOL_CLASS_ID},
     envelope::SpatialReferenceEntry10_1,
-    geometry::{GeometryBody10_1, POINT_CLASS_ID, POLYGON_CLASS_ID, POLYLINE_CLASS_ID},
+    geometry::{
+        GeometryBody10_1, MULTIPOINT_CLASS_ID, POINT_CLASS_ID, POLYGON_CLASS_ID, POLYLINE_CLASS_ID,
+    },
     ole_font::STDFONT_CLASS_ID,
     property_set::{PropertyValue10_1, PropertyValueObjectStream10_1},
     spatial_reference::PROJECTED_COORDINATE_SYSTEM_CLASS_ID,
@@ -156,6 +158,7 @@ fn anchor_geometry_preserves_empty_dataset(
 ) -> bool {
     let reference = match geometry {
         GeometryBody10_1::Point(point) => &point.spatial_reference,
+        GeometryBody10_1::Multipoint(points) => &points.spatial_reference,
         GeometryBody10_1::Polyline(line) => &line.spatial_reference,
         GeometryBody10_1::Polygon(area) => &area.spatial_reference,
         _ => return false,
@@ -252,6 +255,7 @@ fn legend_format_preserves_empty_dataset(
                                                 POINT_CLASS_ID
                                                     | POLYLINE_CLASS_ID
                                                     | POLYGON_CLASS_ID
+                                                    | MULTIPOINT_CLASS_ID
                                             )
                                         )
                                     }
@@ -1669,6 +1673,15 @@ mod tests {
             renderer.splice(24..28, groups);
             renderer
         });
+        let mut multipoint = MULTIPOINT_CLASS_ID.to_vec();
+        multipoint.extend(103_u32.to_le_bytes());
+        multipoint.extend(2_u16.to_le_bytes());
+        multipoint.extend(20_u32.to_le_bytes());
+        multipoint.extend(1_u32.to_le_bytes());
+        multipoint.extend(1.0_f64.to_le_bytes());
+        multipoint.extend(2.0_f64.to_le_bytes());
+        multipoint.extend([0; 16]); // 空空间参考。
+        patch_geometries.push(multipoint);
         let colormaps_with_shape_anchors: Vec<_> = patch_geometries
             .into_iter()
             .map(|geometry| {
@@ -1793,6 +1806,7 @@ mod tests {
             &colormaps_with_callouts[2],
             &colormaps_with_shape_anchors[0],
             &colormaps_with_shape_anchors[1],
+            &colormaps_with_shape_anchors[2],
             &discrete,
             &unique_v1,
             &unique_v2,
