@@ -549,6 +549,16 @@ fn read_discrete_color_renderer(
     })
 }
 
+pub(super) fn is_supported_color_ramp_class(class_id: [u8; 16]) -> bool {
+    matches!(
+        class_id,
+        RANDOM_COLOR_RAMP_CLASS_ID
+            | MULTI_PART_COLOR_RAMP_CLASS_ID
+            | PRESET_COLOR_RAMP_CLASS_ID
+            | ALGORITHMIC_COLOR_RAMP_CLASS_ID
+    )
+}
+
 pub(super) fn read_renderer_color_ramp(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -568,15 +578,9 @@ pub(super) fn read_renderer_color_ramp(
     }
     let ramp = ramp.ok_or_else(|| invalid("栅格渲染器颜色梯度槽缺失"))?;
     if let ColorRampSlot10_1::BackReference { key, .. } = &ramp
-        && !matches!(
-            table.registered_class(*key),
-            Some(
-                RANDOM_COLOR_RAMP_CLASS_ID
-                    | MULTI_PART_COLOR_RAMP_CLASS_ID
-                    | PRESET_COLOR_RAMP_CLASS_ID
-                    | ALGORITHMIC_COLOR_RAMP_CLASS_ID
-            )
-        )
+        && !table
+            .registered_class(*key)
+            .is_some_and(is_supported_color_ramp_class)
     {
         return Err(invalid("栅格渲染器颜色梯度回引键未登记为 IColorRamp"));
     }

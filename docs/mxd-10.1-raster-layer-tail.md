@@ -2106,3 +2106,16 @@ DisplayCore.dll 的 AlgorithmicColorRamp 在 `0x6eb312e7`
 或按成功结束。普通 v12 接入已知颜色与空端点。构造回归验证
 端点新对象、同键回引和双空端点各自的图层终点。
 其他色带分支及真实工程的 ArcMap/QGIS 人工验收待验证。
+
+#### v9 共用体中的 MultiPartColorRamp
+
+同摘要 DisplayCore.dll 的 MultiPartColorRamp Load
+`0x6eb395b0` 清理本对象的原数组后，在 `0x6eb3968e`
+依次请求子项 IColorRamp。它在 `0x6eb396a8` 将接口加入
+自身数组，在 `0x6eb396c4` 加入默认权重，随后按版本决定
+是否从流覆盖权重。这里没有调用子色带的生成方法。
+
+普通 RasterLayer v12 对新多段色带逐项复用已证的色带读取条件。
+子回引按登记类查询，嵌套新体仍受共享读取器的深度限制。
+构造 v2 多段色带含随机与算法子色带及两个权重，验证图层边界。
+真实工程和 ArcMap/QGIS 人工验收仍待验证。
