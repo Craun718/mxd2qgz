@@ -415,7 +415,7 @@ mod tests {
             (GRAPHICS_LAYER_3D_CLASS_ID, 8, 0),
             (GLOBE_GRAPHICS_LAYER_CLASS_ID, 4, 8),
         ] {
-            for version in 1_i16..=5 {
+            for version in [-1_i16, 0, 1, 2, 3, 4, 5] {
                 let empty_string = [2, 0, 0, 0, 0, 0];
                 let mut bytes = 1_u16.to_le_bytes().to_vec();
                 bytes.extend(empty_string);
@@ -425,7 +425,7 @@ mod tests {
                 bytes.extend(version.to_le_bytes());
                 bytes.extend(empty_string);
                 bytes.extend([0; 6 + 16 + 16]);
-                if version >= 2 {
+                if version != 1 {
                     use crate::layers::feature_layer_tail::SIMPLE_RENDERER_CLASS_ID;
                     use crate::objects::display_symbol::{
                         SIMPLE_FILL_SYMBOL_CLASS_ID, SIMPLE_LINE_SYMBOL_CLASS_ID,
@@ -454,13 +454,13 @@ mod tests {
                         bytes.extend(empty_string);
                     }
                 }
-                if version >= 3 {
+                if !matches!(version, 1 | 2) {
                     bytes.extend([0; 16]);
                 }
-                if version >= 4 {
+                if !matches!(version, 1..=3) {
                     bytes.extend(9_i16.to_le_bytes());
                 }
-                if version == 5 {
+                if !matches!(version, 1..=4) {
                     bytes.extend([0; 4]);
                     bytes.extend(1_i32.to_le_bytes());
                     bytes.extend(123_u32.to_le_bytes());
@@ -487,7 +487,7 @@ mod tests {
                 else {
                     panic!("应读取 TopologyLayer");
                 };
-                if version >= 2 {
+                if version != 1 {
                     use crate::layers::feature_layer::RendererSlot10_1;
                     use crate::objects::display_symbol::{
                         SIMPLE_FILL_SYMBOL_CLASS_ID, SIMPLE_LINE_SYMBOL_CLASS_ID,
@@ -506,13 +506,13 @@ mod tests {
                     }
                 }
                 assert_eq!(body.version, version);
-                assert_eq!(body.renderers.len(), if version >= 2 { 7 } else { 0 });
+                assert_eq!(body.renderers.len(), if version != 1 { 7 } else { 0 });
                 assert_eq!(
                     body.legacy_object,
-                    (version >= 3).then_some(ObjectEntry10_1::Null)
+                    (!matches!(version, 1 | 2)).then_some(ObjectEntry10_1::Null)
                 );
-                assert_eq!(body.raw_count, (version == 5).then_some(1));
-                if version == 5 {
+                assert_eq!(body.raw_count, (!matches!(version, 1..=4)).then_some(1));
+                if !matches!(version, 1..=4) {
                     assert_eq!(body.tail_shorts, [9, 0, 0]);
                     assert_eq!(body.rows, [(123, -4)]);
                 }

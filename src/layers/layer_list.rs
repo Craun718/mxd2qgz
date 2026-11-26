@@ -1212,7 +1212,7 @@ fn read_topology_layer(
     let mut r = reader.clone();
     let mut refs = table.clone();
     let version = r.read_u16_le()? as i16;
-    if !(1..=5).contains(&version) {
+    if version > 5 {
         return Err(io::Error::new(
             ErrorKind::Unsupported,
             format!("TopologyLayer 版本 {version} 未支持"),
@@ -1236,14 +1236,15 @@ fn read_topology_layer(
             format!("TopologyLayer 名称体未读完：{stop:?}"),
         ));
     }
-    let renderers = if version >= 2 {
+    // 原生对 v1–v4 分别做等值分支，非正版本走完整尾段。
+    let renderers = if version != 1 {
         (0..7)
             .map(|_| super::feature_layer::read_drawing_feature_renderer(&mut r, max, &mut refs))
             .collect::<io::Result<Vec<_>>>()?
     } else {
         Vec::new()
     };
-    let legacy_object = (version >= 3)
+    let legacy_object = (!matches!(version, 1 | 2))
         .then(|| read_object_entry_10_1(&mut r, &mut refs))
         .transpose()?;
     if matches!(legacy_object, Some(ObjectEntry10_1::NewObject { .. })) {
@@ -1253,14 +1254,14 @@ fn read_topology_layer(
         ));
     }
     let short_count = match version {
+        1..=3 => 0,
         4 => 1,
-        5 => 3,
-        _ => 0,
+        _ => 3,
     };
     let tail_shorts = (0..short_count)
         .map(|_| r.read_u16_le().map(|n| n as i16))
         .collect::<io::Result<Vec<_>>>()?;
-    let raw_count = (version == 5)
+    let raw_count = (short_count == 3)
         .then(|| r.read_u32_le().map(|n| n as i32))
         .transpose()?;
     let count = raw_count.unwrap_or(0).max(0) as usize;
