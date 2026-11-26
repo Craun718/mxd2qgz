@@ -156,6 +156,79 @@ mod tests {
     use super::*;
 
     #[test]
+    fn ordinary_layer_list_reaches_the_entry_after_a_complete_temporal_layer() {
+        use crate::layers::layer_list::{LayerBodyPrefix10_1, read_layer_list_10_1};
+        use crate::maps::layer_masking::TEMPORAL_FEATURE_LAYER_CLASS_ID;
+
+        fn afcore_string(bytes: &mut Vec<u8>, value: &str) {
+            let units: Vec<_> = value.encode_utf16().chain([0]).collect();
+            bytes.extend((units.len() as u32 * 2).to_le_bytes());
+            for unit in units {
+                bytes.extend(unit.to_le_bytes());
+            }
+        }
+
+        for has_record in [false, true] {
+            let mut bytes = 2_i32.to_le_bytes().to_vec();
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(TEMPORAL_FEATURE_LAYER_CLASS_ID);
+            bytes.extend(42_u32.to_le_bytes());
+            bytes.extend(5_u16.to_le_bytes());
+            bytes.extend(10.0_f64.to_le_bytes());
+            bytes.extend([0; 104]); // 公共前段、10.0 时间槽及三个定宽值。
+            bytes.extend(0x100_u32.to_le_bytes());
+            bytes.extend([0; 16]); // 短操作器内联体余段及空 BSTR。
+
+            bytes.extend(1_u16.to_le_bytes());
+            afcore_string(&mut bytes, "时态");
+            afcore_string(&mut bytes, "");
+            bytes.extend([0; 54]); // 可见性、数据源、渲染器、GUID。
+            afcore_string(&mut bytes, "");
+            bytes.extend([0; 38]); // 两个 double、short、计数及空颜色。
+            afcore_string(&mut bytes, "");
+            afcore_string(&mut bytes, "");
+            bytes.extend([0; 48]); // FieldInfo 等空槽和值。
+            bytes.extend([0; 42]); // 空时态图例组、时间参考和三个字段。
+            if has_record {
+                bytes.extend(1_u16.to_le_bytes());
+                bytes.extend(12_i32.to_le_bytes());
+                bytes.extend(1_u16.to_le_bytes());
+                bytes.extend([0; 18]);
+            }
+            bytes.extend([0; 16]);
+            for _ in 0..2 {
+                bytes.extend([0; 6]); // VT_EMPTY 加空的 ATL BSTR。
+            }
+            bytes.extend([0; 16]);
+            bytes.extend([0; 6]);
+            bytes.extend([0; 8]);
+            bytes.extend([0; 12]);
+            bytes.extend([0; 26]);
+
+            let second_offset = bytes.len();
+            bytes.extend(1_u16.to_le_bytes());
+            bytes.extend(TEMPORAL_FEATURE_LAYER_CLASS_ID);
+            bytes.extend(42_u32.to_le_bytes());
+            bytes.extend((-1_i32).to_le_bytes());
+            bytes.extend(0xabcd_u16.to_le_bytes());
+
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let list = read_layer_list_10_1(&mut reader, 4096, &mut refs).unwrap();
+            assert_eq!(list.stop, None, "{:?}", list.entries[0].parse_note);
+            let Some(LayerBodyPrefix10_1::TemporalFeatureLayer(layer)) = &list.entries[0].parsed
+            else {
+                panic!("应读取完整时态图层");
+            };
+            assert_eq!(layer.prefix.feature.name, "时态");
+            assert_eq!(layer.record_set.is_some(), has_record);
+            assert_eq!(list.entries[1].offset, second_offset);
+            assert_eq!(list.active_index, Some(-1));
+            assert_eq!(reader.read_u16_le().unwrap(), 0xabcd);
+        }
+    }
+
+    #[test]
     fn collection_reads_highlight_suppression_keyed_symbol() {
         use crate::objects::display_symbol::SIMPLE_LINE_SYMBOL_CLASS_ID;
 
