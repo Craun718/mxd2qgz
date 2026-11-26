@@ -9173,7 +9173,7 @@ fn is_gp_data_type_name(name: &BookmarkNameEntry10_1) -> bool {
     )
 }
 
-fn read_gp_sa_topo_features_type_name_body_10_1(
+pub(crate) fn read_gp_sa_topo_features_type_name_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,

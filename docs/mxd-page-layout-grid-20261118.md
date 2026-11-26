@@ -387,3 +387,10 @@ GpObjects.dll 10.1.0.3035 的 QI `0x746f0810` 支持 IName，
 格网与书签共用 [Load `0x746f0d00` 对应的读取器](mxd-terra-round9-bookmark.md#gpmultivaluetypename)，
 包括子槽的 IGPName 检查和嵌套深度上限。构造输入核对母子对象键、
 后继格网字符串以及截断回滚。真实格网宿主和 ArcMap 中的打开结果待验证。
+
+### 叠加格网的 GPSATopoFeaturesTypeName
+
+GPSACore.dll 10.1.0.3035 的 QI `0x748f9600` 支持 IName，
+格网复用 [Load `0x748f99c0` 对应的读取器](mxd-terra-round9-bookmark.md#gpsatopofeaturestypename)。
+构造输入覆盖 v3 旧记录、嵌套类型键、v4 仅版本体、后继格网字符串和
+截断回滚。真实格网宿主及 ArcMap 中的 IName::Open 结果待验证。
