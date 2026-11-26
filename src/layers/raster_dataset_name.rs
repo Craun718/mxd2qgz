@@ -321,6 +321,10 @@ impl RasterDatasetNameEntryBody10_1 {
             Self::WcsCoverage(name) => name.connection.entry == ObjectEntry10_1::Null,
             // NetCDF 的工作空间打开助手先检查已加载的工作空间名称。
             Self::NetCdf(name) => matches!(name.workspace, RasterDatasetWorkspaceSlot10_1::Null),
+            // 空文本和空属性集使 ImageServerName::Open 返回 E_PENDING。
+            Self::ImageServerReference(name) => {
+                name.text.is_empty() && name.properties == ObjectEntry10_1::Null
+            }
             _ => false,
         }
     }

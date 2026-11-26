@@ -1877,3 +1877,18 @@ LayerLib.dll 的路径助手在 `0x786adddb` 调用该槽，
 并因空结果在 `0x786adde0` 跳过后续路径写入。因此二次
 Open 保持原有空工作空间分支。构造回归覆盖非空路径、
 后续 RasterIO 字段和图层结束位置，真实宿主与人工验收待验证。
+
+#### ImageServerName 的空文本和空属性集
+
+复核 [同摘要的 ImageServer.dll 10.1.0.3035](mxd-10.1-image-server-layer-tail.md#imageservername-对象体)。
+ImageServerName 的 IName 表 `0x77fa3e18` 的 +0x14 槽进入
+`0x77f4f610`。入口在 `0x77f4f633` 清空输出；若 IName
+相对 +0x14 的 IPropertySet 为空，便在 `0x77f4f652` 检查
+相对 +0x10 字符串的长度。为空时经 `0x77f4f666` 返回
+E_PENDING。Load 的 `0x77f4f838` 与 `0x77f4f84d`
+分别定位到同一字符串与属性集成员。两个条件同时成立时，
+普通 v12 可按已证空打开边界读取。
+
+构造回归核对空文本时的对象终点，以及同样无属性集但文本非空时
+的事务回滚。非空 RasterIO 路径、真实宿主和 ArcMap/QGIS
+人工验收仍待核对。
