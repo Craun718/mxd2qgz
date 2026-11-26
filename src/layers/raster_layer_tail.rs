@@ -971,7 +971,7 @@ pub(super) fn read_raster_layer_tail(
                     // 无名称时原生跳过 tag 31，查找 tag 35。
                     (None, _) => false,
                     (Some(name), Some(path)) => {
-                        // 这些名称不提供 IDatasetName，路径展开直接返回。
+                        // 这些已知空结果的名称不会被路径展开修改。
                         !name.open_without_result()
                             || (!path.is_empty()
                                 && !matches!(
@@ -979,6 +979,7 @@ pub(super) fn read_raster_layer_tail(
                                     RasterDatasetNameEntryBody10_1::RasterType(_)
                                         | RasterDatasetNameEntryBody10_1::WcsCoverage(_)
                                         | RasterDatasetNameEntryBody10_1::InternetTiledLayer(_)
+                                        | RasterDatasetNameEntryBody10_1::NetCdf(_)
                                 ))
                     }
                     _ => true,

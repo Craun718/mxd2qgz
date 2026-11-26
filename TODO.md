@@ -691,6 +691,7 @@
       - [x] 接入 WCSCoverageName 空连接名称的普通 RasterLayer v12 尾段。[原生取证](docs/mxd-10.1-raster-layer-tail.md#wcscoveragename-的空连接名称)
       - [x] 支持普通 RasterLayer v12 中 WCS 和瓦片名称的非空 RasterIO 路径。[原生取证](docs/mxd-10.1-raster-layer-tail.md#wcs-与瓦片名称的非空-rasterio-路径)
       - [x] 接入 NetCDFRasterDatasetName 空工作空间的普通 RasterLayer v12 尾段。[原生取证](docs/mxd-10.1-raster-layer-tail.md#netcdfrasterdatasetname-的空工作空间)
+      - [x] 支持普通 RasterLayer v12 中空工作空间 NetCDF 名称的非空 RasterIO 路径。[原生取证](docs/mxd-10.1-raster-layer-tail.md#netcdfrasterdatasetname-的空工作空间)
       - [x] 核对 RasterTypeName 的空标识和空镶嵌槽打开路径。[取证](docs/mxd-10.1-raster-layer-tail.md#rastertypename-的空标识打开路径)
       - [x] 核对 RasterLayer 新对象的初始数据集成员及空成员跳转。[取证](docs/mxd-10.1-raster-layer-tail.md#无界-v12-的初始数据集成员)
       - [x] 核对无界 v12 的空渲染器、空扩展与 RasterIO 打开门。[取证](docs/mxd-10.1-raster-layer-tail.md#无界-v12-的空渲染器空扩展与-rasterio-门)

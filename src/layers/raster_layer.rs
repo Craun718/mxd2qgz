@@ -1176,6 +1176,11 @@ mod tests {
         );
         assert_eq!(reader.position(), 0);
 
+        use super::super::raster_dataset_name::{
+            INTERNET_TILED_LAYER_NAME_CLASS_ID, NETCDF_RASTER_DATASET_NAME_CLASS_ID,
+        };
+        use crate::layers::wcs_name::WCS_COVERAGE_NAME_CLASS_ID;
+
         for (tag30, tag31, class_id) in [
             (None, None, [0; 16]),
             (Some(false), None, [0; 16]),
@@ -1183,15 +1188,12 @@ mod tests {
             (Some(false), Some("路径"), [0; 16]),
             (Some(true), Some(""), RASTER_TYPE_NAME_CLASS_ID),
             (Some(true), Some("路径"), RASTER_TYPE_NAME_CLASS_ID),
+            (Some(true), Some("路径"), WCS_COVERAGE_NAME_CLASS_ID),
+            (Some(true), Some("路径"), INTERNET_TILED_LAYER_NAME_CLASS_ID),
             (
                 Some(true),
                 Some("路径"),
-                crate::layers::wcs_name::WCS_COVERAGE_NAME_CLASS_ID,
-            ),
-            (
-                Some(true),
-                Some("路径"),
-                super::super::raster_dataset_name::INTERNET_TILED_LAYER_NAME_CLASS_ID,
+                NETCDF_RASTER_DATASET_NAME_CLASS_ID,
             ),
         ] {
             let mut records = Vec::new();
@@ -1202,18 +1204,32 @@ mod tests {
                 records.extend((-1_i32).to_le_bytes());
                 if has_name {
                     records.extend(class_id);
-                    records.extend(1_u16.to_le_bytes());
-                    if class_id == RASTER_TYPE_NAME_CLASS_ID {
-                        records.extend(encoded_string(""));
-                        records.extend(encoded_string(""));
-                        records.extend((-1_i32).to_le_bytes());
-                    } else if class_id == crate::layers::wcs_name::WCS_COVERAGE_NAME_CLASS_ID {
-                        records.extend(1_u32.to_le_bytes());
-                        records.extend(u16::from(b'a').to_le_bytes());
-                        records.extend(0_u16.to_le_bytes());
-                    } else {
-                        records.extend(encoded_string("Tiles"));
-                        records.extend((-1_i32).to_le_bytes());
+                    match class_id {
+                        RASTER_TYPE_NAME_CLASS_ID => {
+                            records.extend(1_u16.to_le_bytes());
+                            records.extend(encoded_string(""));
+                            records.extend(encoded_string(""));
+                            records.extend((-1_i32).to_le_bytes());
+                        }
+                        WCS_COVERAGE_NAME_CLASS_ID => {
+                            records.extend(1_u16.to_le_bytes());
+                            records.extend(1_u32.to_le_bytes());
+                            records.extend(u16::from(b'a').to_le_bytes());
+                            records.extend(0_u16.to_le_bytes());
+                        }
+                        INTERNET_TILED_LAYER_NAME_CLASS_ID => {
+                            records.extend(1_u16.to_le_bytes());
+                            records.extend(encoded_string("Tiles"));
+                            records.extend((-1_i32).to_le_bytes());
+                        }
+                        NETCDF_RASTER_DATASET_NAME_CLASS_ID => {
+                            records.extend(2_i32.to_le_bytes());
+                            for _ in 0..8 {
+                                records.extend(encoded_string(""));
+                            }
+                            records.extend([0; 32]); // 两个数组均为空。
+                        }
+                        _ => unreachable!(),
                     }
                     records.extend([0; 16]);
                 } else {
