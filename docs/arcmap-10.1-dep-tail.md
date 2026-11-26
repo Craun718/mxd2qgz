@@ -2495,3 +2495,21 @@ IAction Variant 槽，读完基类体即可读取下一项。
 构造样例在独立 ActionBase 后放置第二个动作和后继字段，
 核对对象体终点及无键语义。未在真实 MXD 或 ArcMap/QGIS
 中人工验收。
+
+#### 过滤和标记动作的内联记录
+
+TrackingActions.dll 10.1.0.3035 的 FilterAction 持久化
+虚表 `0x80592ac4` 中 GetClassID `0x804d48f0` 返回
+`2DEAF6A0-BDBD-4878-88D3-A8C71FE8004A`。
+Load/Save 的调整 thunk 转到 `0x804d4930/0x804d49c0`。
+先经 `0x804c0240/0x804c0770` 处理 ActionBase，
+随后在 `0x804d4992/0x804d4a26` 读写一个四字节 int。
+
+TagAction 虚表 `0x80592e74` 中 GetClassID
+`0x80513eb0` 返回 `4893C608-AE40-47D7-875F-242F8EFA131C`。
+Load/Save 经 thunk 转到 `0x80513ef0/0x80513f70`，
+同样先处理 ActionBase，随后通过 `0x80513f4d/0x80513fd0`
+读写单个字节 BSTR。两类记录均没有额外的内联类标识或长度。
+
+构造测试串联这两种动作，核对标记字符串、集合边界和截断。
+真实 MXD 与 ArcMap/QGIS 人工验收尚待验证。

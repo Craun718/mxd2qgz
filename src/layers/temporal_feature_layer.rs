@@ -15,9 +15,10 @@ use super::temporal_legend::{
 use super::temporal_record_set::{TemporalRecordSet10_1, read_temporal_record_set_10_1};
 use super::tracking_action_records::{
     ACTION_BASE_CLASS_ID, DATA_MODIFICATION_ACTION_CLASS_ID, DATA_PARTITION_ACTION_CLASS_ID,
-    DATA_SUMMARY_ACTION_CLASS_ID, EMAIL_ALERT_ACTION_CLASS_ID, read_action_base,
-    read_data_modification_action, read_data_partition_action, read_data_summary_action,
-    read_email_alert_action,
+    DATA_SUMMARY_ACTION_CLASS_ID, EMAIL_ALERT_ACTION_CLASS_ID, FILTER_ACTION_CLASS_ID,
+    TAG_ACTION_CLASS_ID, read_action_base, read_data_modification_action,
+    read_data_partition_action, read_data_summary_action, read_email_alert_action,
+    read_filter_action, read_tag_action,
 };
 use crate::objects::display_color::read_color_body_for_class_10_1;
 use crate::objects::element_body::{TEXT_SYMBOL_CLASS_ID, read_text_symbol_body_10_1};
@@ -152,6 +153,39 @@ fn read_header(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn collection_reads_filter_and_tag_action_tails() {
+        let mut bytes = 1.0_f64.to_le_bytes().to_vec();
+        bytes.extend([0; 42]);
+        bytes.extend(2_u32.to_le_bytes());
+        for class_id in [FILTER_ACTION_CLASS_ID, TAG_ACTION_CLASS_ID] {
+            bytes.extend(13_u16.to_le_bytes());
+            bytes.extend(class_id);
+            bytes.extend(9.3_f64.to_le_bytes());
+            bytes.extend([0; 68]);
+            bytes.extend(13_u16.to_le_bytes());
+            bytes.extend([0; 81]);
+            if class_id == FILTER_ACTION_CLASS_ID {
+                bytes.extend((-2_i32).to_le_bytes());
+            } else {
+                bytes.extend(5_u32.to_le_bytes());
+                bytes.extend([b'a', 0, b'b', 0, 0]);
+            }
+        }
+
+        let end = bytes.len();
+        bytes.extend(0xabcd_u16.to_le_bytes());
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        read_action_collection(&mut reader, 4096, &mut refs, MAX_ACTION_COLLECTION_DEPTH).unwrap();
+        assert_eq!(reader.read_u16_le().unwrap(), 0xabcd);
+        let mut reader = Reader::new(&bytes[..end - 1]);
+        assert!(
+            read_action_collection(&mut reader, 4096, &mut refs, MAX_ACTION_COLLECTION_DEPTH)
+                .is_err()
+        );
+    }
 
     #[test]
     fn collection_reads_standalone_action_base_without_a_derived_body() {
@@ -647,6 +681,8 @@ fn read_action_collection(
 
                 DATA_PARTITION_ACTION_CLASS_ID => read_data_partition_action(reader, max, refs)?,
                 DATA_SUMMARY_ACTION_CLASS_ID => read_data_summary_action(reader, max, refs)?,
+                FILTER_ACTION_CLASS_ID => read_filter_action(reader, max, refs)?,
+                TAG_ACTION_CLASS_ID => read_tag_action(reader, max, refs)?,
                 _ => return Err(unsupported_class("动作集合 IAction", &class)),
             }
         }

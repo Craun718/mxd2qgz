@@ -30,6 +30,14 @@ pub(super) const DATA_SUMMARY_ACTION_CLASS_ID: [u8; 16] = [
     0x32, 0x3b, 0xaf, 0xa5, 0x06, 0x35, 0x15, 0x41, 0x9c, 0x6e, 0xe3, 0x25, 0xe5, 0xc3, 0xde, 0xcd,
 ];
 
+pub(super) const FILTER_ACTION_CLASS_ID: [u8; 16] = [
+    0xa0, 0xf6, 0xea, 0x2d, 0xbd, 0xbd, 0x78, 0x48, 0x88, 0xd3, 0xa8, 0xc7, 0x1f, 0xe8, 0, 0x4a,
+];
+
+pub(super) const TAG_ACTION_CLASS_ID: [u8; 16] = [
+    0x08, 0xc6, 0x93, 0x48, 0x40, 0xae, 0xd7, 0x47, 0x87, 0x5f, 0x24, 0x2f, 0x8e, 0xfa, 0x13, 0x1c,
+];
+
 const MESSAGE_TEMPLATE_CLASS_ID: [u8; 16] = [
     0x92, 0xef, 0xb7, 0xa7, 0xae, 0x36, 0x18, 0x43, 0xa1, 0x22, 0x43, 0x1b, 0x88, 0x92, 0xe0, 0xf3,
 ];
@@ -229,5 +237,25 @@ pub(super) fn read_data_summary_action(
     if version >= 1.0 {
         read_atl_bstr_10_1(reader, max)?;
     }
+    Ok(())
+}
+
+pub(super) fn read_filter_action(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<()> {
+    read_action_base(reader, max, refs)?;
+    reader.read_u32_le()?;
+    Ok(())
+}
+
+pub(super) fn read_tag_action(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<()> {
+    read_action_base(reader, max, refs)?;
+    read_atl_bstr_10_1(reader, max)?;
     Ok(())
 }
