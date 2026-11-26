@@ -857,6 +857,7 @@ fn stretch_ramp_preserves_empty_dataset(ramp: &ColorRampSlot10_1, table: &RefTab
             let weights = (0..multipart.ramps.len())
                 .filter_map(|index| multipart.loaded_weight_bits(index).map(f64::from_bits));
             let total = weights.clone().sum::<f64>();
+            let default_weights = weights.clone().all(|weight| weight == 1.0);
             weights.clone().count() == multipart.ramps.len()
                 && weights
                     .clone()
@@ -864,8 +865,11 @@ fn stretch_ramp_preserves_empty_dataset(ramp: &ColorRampSlot10_1, table: &RefTab
                 && total.is_finite()
                 && (multipart.ramps.is_empty() || total > 0.0)
                 && multipart.ramps.iter().all(|child| {
-                    !matches!(child, ColorRampSlot10_1::Null)
-                        && stretch_ramp_preserves_empty_dataset(child, table)
+                    if matches!(child, ColorRampSlot10_1::Null) {
+                        default_weights
+                    } else {
+                        stretch_ramp_preserves_empty_dataset(child, table)
+                    }
                 })
         }
     }
@@ -2138,6 +2142,18 @@ mod tests {
         empty_ramp.extend([0; 8]); // 空 BSTR 和零子项。
         modern_stretch_with_empty_multipart
             .splice(modern_stretch_color_at..modern_stretch_color_at, empty_ramp);
+        let mut modern_stretch_with_null_subramp = modern_stretch.clone();
+        let mut null_subramp = 7_i32.to_le_bytes().to_vec();
+        null_subramp.extend((-1_i32).to_le_bytes());
+        null_subramp.extend(&ramp_body[..16]);
+        null_subramp.extend(1_u16.to_le_bytes()); // 旧版子项默认权重 1。
+        null_subramp.extend(0_u32.to_le_bytes());
+        null_subramp.extend(1_i32.to_le_bytes());
+        null_subramp.extend([0; 16]);
+        modern_stretch_with_null_subramp.splice(
+            modern_stretch_color_at..modern_stretch_color_at,
+            null_subramp,
+        );
         let mut modern_stretch_default_color = modern_stretch.clone();
         modern_stretch_default_color.drain(modern_stretch_color_at..modern_stretch_color_end);
         for renderer in [
@@ -2190,6 +2206,7 @@ mod tests {
             &modern_stretch_with_multipart_ramp,
             &modern_stretch_with_zero_weight,
             &modern_stretch_with_empty_multipart,
+            &modern_stretch_with_null_subramp,
             &modern_stretch_with_rejected_preset,
             &legacy_stretch_with_rejected_preset,
             &modern_stretch_with_histogram,
