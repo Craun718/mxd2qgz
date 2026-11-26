@@ -30,6 +30,15 @@ use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
+// 这些 IColor 实现的持久化与转换只访问颜色自身的状态。
+const RASTER_RENDERER_COLOR_CLASSES: [[u8; 16]; 5] = [
+    RGB_COLOR_CLASS_ID,
+    GRAY_COLOR_CLASS_ID,
+    HLS_COLOR_CLASS_ID,
+    HSV_COLOR_CLASS_ID,
+    CMYK_COLOR_CLASS_ID,
+];
+
 pub use super::raster_layer_tail::RasterLayerTail10_1;
 
 /// RasterLayer 10.1 Load 的已确认前缀。
@@ -285,17 +294,18 @@ pub(super) fn read_inline_raster_body_10_1(
             | RasterRendererPrefix10_1::Sai { shared, .. }
         ) if shared.version == 1
             || matches!(&shared.layout, RasterRendererSharedLayout10_1::RasterIo { color, .. }
-                if matches!(color.get(..16), Some(class_id) if [
-                    RGB_COLOR_CLASS_ID, GRAY_COLOR_CLASS_ID, HLS_COLOR_CLASS_ID, HSV_COLOR_CLASS_ID,
-                    CMYK_COLOR_CLASS_ID,
-                ].iter().any(|known| class_id == known)))
+                if matches!(color.get(..16), Some(class_id) if RASTER_RENDERER_COLOR_CLASSES.iter().any(|known| class_id == known)))
                 && match &shared.color_ramp {
                     None | Some(ColorRampSlot10_1::Null | ColorRampSlot10_1::Random(_)) => true,
                     Some(ColorRampSlot10_1::Preset(ramp)) => {
                         ramp.raw_int32 <= 0 && ramp.colors.iter().all(|color| match color {
-                            ColorSlot10_1::Color { class_id, .. } => *class_id == RGB_COLOR_CLASS_ID,
+                            ColorSlot10_1::Color { class_id, .. } => {
+                                RASTER_RENDERER_COLOR_CLASSES.contains(class_id)
+                            }
                             ColorSlot10_1::BackReference { key, .. } => {
-                                staged.registered_class(*key) == Some(RGB_COLOR_CLASS_ID)
+                                staged.registered_class(*key).is_some_and(|class_id| {
+                                    RASTER_RENDERER_COLOR_CLASSES.contains(&class_id)
+                                })
                             }
                             _ => false,
                         })
@@ -980,11 +990,15 @@ mod tests {
         preset_ramp.extend(1_u16.to_le_bytes());
         preset_ramp.extend(0_u32.to_le_bytes()); // 空 BSTR。
         preset_ramp.extend(0_i32.to_le_bytes()); // 请求尺寸。
-        preset_ramp.extend(1_i32.to_le_bytes()); // 一条颜色。
+        preset_ramp.extend(6_i32.to_le_bytes()); // 五条新颜色和一条回引。
+        for (key, class_id) in (68_u32..).zip(RASTER_RENDERER_COLOR_CLASSES) {
+            preset_ramp.extend(class_id);
+            preset_ramp.extend(key.to_le_bytes());
+            preset_ramp.extend([1, 0, 1, 0, 1]);
+            preset_ramp.extend([0; 6]);
+        }
         preset_ramp.extend(RGB_COLOR_CLASS_ID);
-        preset_ramp.extend(68_u32.to_le_bytes());
-        preset_ramp.extend([1, 0, 1, 0, 1]);
-        preset_ramp.extend([0; 6]);
+        preset_ramp.extend(72_u32.to_le_bytes());
         for renderer in [
             &simple,
             &sai,

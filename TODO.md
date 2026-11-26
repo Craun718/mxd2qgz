@@ -708,6 +708,7 @@
       - [x] 接入普通 RasterLayer v12 渲染器共用体 v9 的 RandomColorRamp。[原生取证](docs/mxd-10.1-raster-layer-tail.md#v9-共用体中的-randomcolorramp)
       - [x] 按登记实例校验栅格渲染器 IColorRamp 回引。[原生取证](docs/mxd-10.1-raster-layer-tail.md#v9-共用体中的-randomcolorramp)
       - [x] 接入普通 RasterLayer v12 渲染器共用体 v9 的非正请求尺寸预设色带。[原生取证](docs/mxd-10.1-raster-layer-tail.md#v9-共用体中的-presetcolorramp)
+      - [x] 接入普通 RasterLayer v12 预设色带的五类 IColor 新对象与回引。[原生取证](docs/mxd-10.1-raster-layer-tail.md#v9-共用体中的-presetcolorramp)
       - [x] 核对 RasterTypeName 的空标识和空镶嵌槽打开路径。[取证](docs/mxd-10.1-raster-layer-tail.md#rastertypename-的空标识打开路径)
       - [x] 核对 RasterLayer 新对象的初始数据集成员及空成员跳转。[取证](docs/mxd-10.1-raster-layer-tail.md#无界-v12-的初始数据集成员)
       - [x] 核对无界 v12 的空渲染器、空扩展与 RasterIO 打开门。[取证](docs/mxd-10.1-raster-layer-tail.md#无界-v12-的空渲染器空扩展与-rasterio-门)

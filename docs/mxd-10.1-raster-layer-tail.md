@@ -2051,6 +2051,14 @@ SystemCore 10.1 的 `0x7ffd0063` 回引路径按键选取实例后查询
 回归以相同的回引头分别指向已登记的 RandomColorRamp 和 RgbColor，
 核对正常图层终点及错误实例的事务回滚。ArcMap/QGIS 人工验收待验证。
 
+PresetColorRamp 的颜色循环在 `0x6eb3af26` 对每个对象请求
+同一个 IColor IID，随后只登记并增减引用。请求尺寸非正时，
+数组颜色不会进入生成路径。此前核对的 RgbColor、GrayColor、
+HlsColor、HsvColor 和 CmykColor 均满足这一接口要求。
+普通 v12 的构造回归在一条预设色带内混排这五类新对象，
+再以不同类标识的回引头引用已登记的 CmykColor，核对图层终点。
+ArcMap 和 QGIS 人工验收仍待验证。
+
 #### 灰度、HLS 与 HSV 的普通栅格边界
 
 同摘要 DisplayCore.dll 的 GrayColor、HlsColor、HsvColor
