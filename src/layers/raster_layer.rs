@@ -11,6 +11,7 @@
 //! 读取第一条 AfCore String 到 persist-interface this+0x88。独立续段可再读
 //! 第二串、定长短值及版本控制的 IName 列表。
 
+use super::feature_layer_tail::{LEGEND_GROUP_CLASS_ID, LegendGroupSlot10_1};
 use super::raster_dataset_name::{
     RasterDatasetNameEntryBody10_1, read_supported_raster_name_entry_10_1,
 };
@@ -324,7 +325,13 @@ pub(super) fn read_inline_raster_body_10_1(
     let has_colormap_renderer = matches!(
         renderer.body.as_ref(),
         Some(RasterRendererPrefix10_1::Colormap { legend_groups, tail: Some(tail), .. })
-            if legend_groups.is_empty()
+            if legend_groups.iter().all(|slot| match slot {
+                LegendGroupSlot10_1::Null => true,
+                LegendGroupSlot10_1::LegendGroup(group) => group.classes.is_empty(),
+                LegendGroupSlot10_1::BackReference { key, .. } => {
+                    staged.registered_class(*key) == Some(LEGEND_GROUP_CLASS_ID)
+                }
+            })
                 && renderer_shared_preserves_empty_dataset(&tail.shared, &staged)
     );
     let has_known_renderer_reference = matches!(
@@ -1183,6 +1190,18 @@ mod tests {
         colormap.extend(0x040506_i32.to_le_bytes());
         colormap.extend(&colored_v9[24..]);
         colormap.extend([0; 12]); // 色表 v2/v3 后缀。
+        let mut groups = 3_i32.to_le_bytes().to_vec();
+        groups.extend([0; 16]);
+        groups.extend(LEGEND_GROUP_CLASS_ID);
+        groups.extend(75_u32.to_le_bytes());
+        groups.extend(1_u16.to_le_bytes());
+        groups.extend(0_i16.to_le_bytes());
+        groups.extend(encoded_string(""));
+        groups.extend(0_i32.to_le_bytes());
+        groups.extend(RGB_COLOR_CLASS_ID);
+        groups.extend(75_u32.to_le_bytes());
+        let mut colormap_with_groups = colormap.clone();
+        colormap_with_groups.splice(24..28, groups);
         for renderer in [
             &simple,
             &sai,
@@ -1201,6 +1220,7 @@ mod tests {
             &tagged_rgb_with_histogram,
             &tagged_rgb_with_filter,
             &colormap,
+            &colormap_with_groups,
         ] {
             let mut with_renderer = bytes.clone();
             with_renderer.splice(renderer_at..renderer_at + 16, renderer.iter().copied());
