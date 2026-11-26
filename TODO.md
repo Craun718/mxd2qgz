@@ -698,6 +698,7 @@
       - [x] 支持普通 RasterLayer v12 中空工作空间影像服务栅格名称的非空 RasterIO 路径。[原生取证](docs/mxd-10.1-raster-layer-tail.md#israsterdatasetname-的空内嵌名称)
       - [x] 接入普通 RasterLayer v12 的空打开结果 ImageServerName 关联槽。[原生取证](docs/mxd-10.1-raster-layer-tail.md#关联槽中的-imageservername)
       - [x] 接入普通 RasterLayer v12 关联槽中其余已证空打开结果的栅格名称。[原生取证](docs/mxd-10.1-raster-layer-tail.md#关联槽中的-imageservername)
+      - [x] 接入带 SimpleRasterRenderer 共用体 v1 的普通 RasterLayer v12 空数据集尾段。[原生取证](docs/mxd-10.1-raster-layer-tail.md#simplerasterrenderer-共用体-v1-的普通栅格边界)
       - [x] 核对 RasterTypeName 的空标识和空镶嵌槽打开路径。[取证](docs/mxd-10.1-raster-layer-tail.md#rastertypename-的空标识打开路径)
       - [x] 核对 RasterLayer 新对象的初始数据集成员及空成员跳转。[取证](docs/mxd-10.1-raster-layer-tail.md#无界-v12-的初始数据集成员)
       - [x] 核对无界 v12 的空渲染器、空扩展与 RasterIO 打开门。[取证](docs/mxd-10.1-raster-layer-tail.md#无界-v12-的空渲染器空扩展与-rasterio-门)

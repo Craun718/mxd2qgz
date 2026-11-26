@@ -851,7 +851,7 @@ fn read_color_indices(reader: &mut Reader<'_>, max_bytes: usize) -> io::Result<V
 pub(super) enum RasterLayerBoundary {
     Bounded,
     Inline,
-    InlineWithoutDataset,
+    InlineWithoutDataset { has_simple_renderer: bool },
 }
 
 /// 从已闭合的 IRasterRenderer 之后读取 RasterLayer 的有界尾段。
@@ -947,10 +947,13 @@ pub(super) fn read_raster_layer_tail(
     let doubles_12c_134 = (version >= 11)
         .then(|| -> io::Result<_> { Ok([trial.read_f64_le()?, trial.read_f64_le()?]) })
         .transpose()?;
-    if boundary == RasterLayerBoundary::InlineWithoutDataset
-        && (extra_safe_extensions
-            .iter()
-            .any(|slot| slot.entry != ObjectEntry10_1::Null)
+    if let RasterLayerBoundary::InlineWithoutDataset {
+        has_simple_renderer,
+    } = boundary
+        && ((has_simple_renderer && related_name.is_some())
+            || extra_safe_extensions
+                .iter()
+                .any(|slot| slot.entry != ObjectEntry10_1::Null)
             || related_name.as_ref().is_some_and(|slot| {
                 // 已证空打开结果经关联安装路径保留空数据集成员。
                 match slot.entry {

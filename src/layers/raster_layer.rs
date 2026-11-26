@@ -14,7 +14,7 @@
 use super::raster_dataset_name::{
     RasterDatasetNameEntryBody10_1, read_supported_raster_name_entry_10_1,
 };
-use super::raster_renderer::read_raster_renderer_slot_prefix_10_1;
+use super::raster_renderer::{RasterRendererPrefix10_1, read_raster_renderer_slot_prefix_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
 use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
 use crate::stream::native_string::read_string_10_1;
@@ -269,8 +269,12 @@ pub(super) fn read_inline_raster_body_10_1(
         .names
         .iter()
         .find(|name| name.entry != ObjectEntry10_1::Null);
+    let has_simple_renderer = matches!(
+        renderer.body.as_ref(),
+        Some(RasterRendererPrefix10_1::Simple { shared, .. }) if shared.version == 1
+    );
     let boundary = if body.version == 12
-        && renderer.entry == ObjectEntry10_1::Null
+        && (renderer.entry == ObjectEntry10_1::Null || has_simple_renderer)
         && let Some(name) = first_name
         && match name.entry {
             ObjectEntry10_1::NewObject { key, .. } | ObjectEntry10_1::BackReference { key, .. } => {
@@ -279,7 +283,9 @@ pub(super) fn read_inline_raster_body_10_1(
             ObjectEntry10_1::Null => false,
         } {
         // 首个有效名称的已知 Open 分支未提供数据集。
-        RasterLayerBoundary::InlineWithoutDataset
+        RasterLayerBoundary::InlineWithoutDataset {
+            has_simple_renderer,
+        }
     } else {
         RasterLayerBoundary::Inline
     };
@@ -887,6 +893,22 @@ mod tests {
         assert!(tail.envelope_v13.is_none());
         assert_eq!(reader.position(), end);
         assert_eq!(refs.registered_class(60), Some(RASTER_TYPE_NAME_CLASS_ID));
+
+        let mut simple = super::super::raster_renderer::SIMPLE_RASTER_RENDERER_CLASS_ID.to_vec();
+        simple.extend(65_u32.to_le_bytes());
+        simple.extend(1_i32.to_le_bytes()); // 渲染器版本。
+        simple.extend(1_i32.to_le_bytes()); // 共用体版本。
+        simple.extend([0; 16]);
+        let renderer_at = end - (standard.len() - suffix_offset) + encoded_string("").len();
+        let mut with_renderer = bytes.clone();
+        with_renderer.splice(renderer_at..renderer_at + 16, simple.iter().copied());
+        let mut reader = Reader::new(&with_renderer);
+        let mut refs = RefTable10_1::new();
+        let parsed = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+        assert!(parsed.renderer.unwrap().body.is_some());
+        assert!(parsed.tail.unwrap().geodata_xform_v13.is_none());
+        assert_eq!(reader.position(), end + simple.len() - 16);
+        assert!(refs.contains(65));
 
         let header_offset = body_prefix(12, 1).len();
         let body_end = header_offset + 20 + 2 + encoded_string("").len() * 2 + 4 + 16;
