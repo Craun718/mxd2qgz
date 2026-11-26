@@ -19,7 +19,7 @@ use super::raster_renderer::{
 };
 use crate::objects::{
     color_ramp::{ColorRampSlot10_1, RANDOM_COLOR_RAMP_CLASS_ID},
-    display_color::RGB_COLOR_CLASS_ID,
+    display_color::{ColorSlot10_1, RGB_COLOR_CLASS_ID},
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1};
 use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
@@ -285,6 +285,15 @@ pub(super) fn read_inline_raster_body_10_1(
                 if color.starts_with(&RGB_COLOR_CLASS_ID))
                 && match &shared.color_ramp {
                     None | Some(ColorRampSlot10_1::Null | ColorRampSlot10_1::Random(_)) => true,
+                    Some(ColorRampSlot10_1::Preset(ramp)) => {
+                        ramp.raw_int32 <= 0 && ramp.colors.iter().all(|color| match color {
+                            ColorSlot10_1::Color { class_id, .. } => *class_id == RGB_COLOR_CLASS_ID,
+                            ColorSlot10_1::BackReference { key, .. } => {
+                                staged.registered_class(*key) == Some(RGB_COLOR_CLASS_ID)
+                            }
+                            _ => false,
+                        })
+                    }
                     Some(ColorRampSlot10_1::BackReference { key, .. }) => {
                         staged.registered_class(*key) == Some(RANDOM_COLOR_RAMP_CLASS_ID)
                     }
@@ -959,7 +968,25 @@ mod tests {
         for value in [10_u16, 200, 20, 210, 30, 220] {
             random_ramp.extend(value.to_le_bytes());
         }
-        for renderer in [&simple, &sai, &colored_v8, &colored_v9, &random_ramp] {
+        let mut preset_ramp = colored_v9[..colored_v9.len() - 16].to_vec();
+        preset_ramp.extend(crate::objects::color_ramp::PRESET_COLOR_RAMP_CLASS_ID);
+        preset_ramp.extend(67_u32.to_le_bytes());
+        preset_ramp.extend(1_u16.to_le_bytes());
+        preset_ramp.extend(0_u32.to_le_bytes()); // 空 BSTR。
+        preset_ramp.extend(0_i32.to_le_bytes()); // 请求尺寸。
+        preset_ramp.extend(1_i32.to_le_bytes()); // 一条颜色。
+        preset_ramp.extend(RGB_COLOR_CLASS_ID);
+        preset_ramp.extend(68_u32.to_le_bytes());
+        preset_ramp.extend([1, 0, 1, 0, 1]);
+        preset_ramp.extend([0; 6]);
+        for renderer in [
+            &simple,
+            &sai,
+            &colored_v8,
+            &colored_v9,
+            &random_ramp,
+            &preset_ramp,
+        ] {
             let mut with_renderer = bytes.clone();
             with_renderer.splice(renderer_at..renderer_at + 16, renderer.iter().copied());
             let mut reader = Reader::new(&with_renderer);

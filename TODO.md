@@ -704,6 +704,7 @@
       - [x] 核对简单与 SAI 渲染器共用体 v2–v9 在空颜色时的原生收尾。[原生取证](docs/mxd-10.1-raster-layer-tail.md#简单与-sai-渲染器的空颜色-rasterio-体)
       - [x] 接入带 RgbColor 且无非空色带的简单与 SAI 渲染器普通 RasterLayer v12 尾段。[原生取证](docs/mxd-10.1-raster-layer-tail.md#rgbcolor-与空色带的普通栅格边界)
       - [x] 接入普通 RasterLayer v12 渲染器共用体 v9 的 RandomColorRamp。[原生取证](docs/mxd-10.1-raster-layer-tail.md#v9-共用体中的-randomcolorramp)
+      - [x] 接入普通 RasterLayer v12 渲染器共用体 v9 的非正请求尺寸预设色带。[原生取证](docs/mxd-10.1-raster-layer-tail.md#v9-共用体中的-presetcolorramp)
       - [x] 核对 RasterTypeName 的空标识和空镶嵌槽打开路径。[取证](docs/mxd-10.1-raster-layer-tail.md#rastertypename-的空标识打开路径)
       - [x] 核对 RasterLayer 新对象的初始数据集成员及空成员跳转。[取证](docs/mxd-10.1-raster-layer-tail.md#无界-v12-的初始数据集成员)
       - [x] 核对无界 v12 的空渲染器、空扩展与 RasterIO 打开门。[取证](docs/mxd-10.1-raster-layer-tail.md#无界-v12-的空渲染器空扩展与-rasterio-门)

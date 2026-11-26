@@ -2027,3 +2027,19 @@ AfCore 字符串辅助函数，读取并更新色带自身状态。QI
 普通 v12 因此可接入新随机色带，以及登记类为 RandomColorRamp
 的回引。构造回归验证新色带体之后的图层边界。
 其他色带类和真实 ArcMap/QGIS 人工验收待验证。
+
+#### v9 共用体中的 PresetColorRamp
+
+DisplayCore.dll 10.1.0.3035 的 PresetColorRamp 在
+`0x6eb3a977` 比较 IColorRamp IID，返回完整对象 +0x18。
+Load `0x6eb3ae20` 在 `0x6eb3aec9` 写入持久化请求尺寸，
+从 `0x6eb3af26` 读取颜色并将其登记到色带内部数组。
+`0x6eb3aef5` 调用 IColorRamp 虚表 `0x6ec0c328`
+的 +0x24 槽 `0x6eb3ab40`。请求尺寸为非正数时，
+`0x6eb3ab69` 至 `0x6eb3ab6e` 在生成颜色前返回 E_FAIL，
+Load 随后在 `0x6eb3af02` 返回 S_OK。
+
+普通 v12 接入这一分支中的新 PresetColorRamp，颜色数组允许
+已证 RgbColor 新体与登记回引。构造回归验证包含一条新 RgbColor
+的色带和后续图层边界。正请求尺寸、色带自身的回引及真实工程的
+ArcMap/QGIS 人工验收待验证。
