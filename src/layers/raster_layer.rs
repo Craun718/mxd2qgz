@@ -748,9 +748,7 @@ pub(super) fn read_inline_raster_body_10_1(
             if matches!(
                 &stretch.layout,
                 RasterStretchLayout10_1::Legacy { ramp, colors, legend_group, legend_item: LegendItemSlot10_1::Null, .. }
-                    if (matches!(ramp, ColorRampSlot10_1::Null | ColorRampSlot10_1::Random(_))
-                        || matches!(ramp, ColorRampSlot10_1::BackReference { key, .. }
-                            if staged.registered_class(*key) == Some(RANDOM_COLOR_RAMP_CLASS_ID)))
+                    if stretch_ramp_preserves_empty_dataset(ramp, &staged)
                         && (matches!(colors[0], ColorSlot10_1::Null) || is_known_renderer_color(&colors[0], &staged))
                         && is_known_renderer_color(&colors[1], &staged)
                         && !matches!(legend_group, LegendGroupSlot10_1::Null)
@@ -762,8 +760,8 @@ pub(super) fn read_inline_raster_body_10_1(
         Some(RasterRendererPrefix10_1::Stretch(stretch))
             if matches!(stretch.version, 3..=9)
                 && matches!(&stretch.layout, RasterStretchLayout10_1::RasterIo(io)
-                    if io.ramp.as_deref().is_none_or(|ramp| {
-                        ramp == [0; 16] || ramp.starts_with(&RANDOM_COLOR_RAMP_CLASS_ID)
+                    if io.ramp_body.as_ref().is_none_or(|ramp| {
+                        stretch_ramp_preserves_empty_dataset(ramp, &staged)
                     })
                         && io.color.as_deref().is_none_or(is_known_renderer_io_color)
                         && legend_group_body_preserves_empty_dataset(&io.legend_group_body, &staged))
@@ -837,6 +835,17 @@ fn is_known_renderer_color(color: &ColorSlot10_1, table: &RefTable10_1) -> bool 
         ColorSlot10_1::BackReference { key, .. } => table
             .registered_class(*key)
             .is_some_and(|class_id| RASTER_RENDERER_COLOR_CLASSES.contains(&class_id)),
+        _ => false,
+    }
+}
+
+fn stretch_ramp_preserves_empty_dataset(ramp: &ColorRampSlot10_1, table: &RefTable10_1) -> bool {
+    match ramp {
+        ColorRampSlot10_1::Null | ColorRampSlot10_1::Random(_) => true,
+        ColorRampSlot10_1::Algorithmic(_) => color_ramp_preserves_empty_dataset(ramp, table),
+        ColorRampSlot10_1::BackReference { key, .. } => {
+            table.registered_class(*key) == Some(RANDOM_COLOR_RAMP_CLASS_ID)
+        }
         _ => false,
     }
 }
@@ -2047,6 +2056,16 @@ mod tests {
             modern_stretch_color_at..modern_stretch_color_at,
             raster_io_ramp,
         );
+        let mut modern_stretch_with_algorithmic_ramp = modern_stretch.clone();
+        let ramp_body = &algorithmic_ramp[colored_v9.len() - 16..];
+        let mut raster_io_ramp = 7_i32.to_le_bytes().to_vec();
+        raster_io_ramp.extend((-1_i32).to_le_bytes());
+        raster_io_ramp.extend(&ramp_body[..16]);
+        raster_io_ramp.extend(&ramp_body[20..]);
+        modern_stretch_with_algorithmic_ramp.splice(
+            modern_stretch_color_at..modern_stretch_color_at,
+            raster_io_ramp,
+        );
         let mut modern_stretch_default_color = modern_stretch.clone();
         modern_stretch_default_color.drain(modern_stretch_color_at..modern_stretch_color_end);
         for renderer in [
@@ -2094,6 +2113,7 @@ mod tests {
             &legacy_stretch_with_ramp,
             &modern_stretch,
             &modern_stretch_with_ramp,
+            &modern_stretch_with_algorithmic_ramp,
             &modern_stretch_with_histogram,
             &modern_stretch_with_null_histogram,
             &modern_stretch_default_color,

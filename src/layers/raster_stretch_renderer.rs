@@ -57,6 +57,7 @@ pub enum RasterStretchLayout10_1 {
 pub struct RasterStretchIo10_1 {
     /// CLSID + 已对位的无键对象体，显式空对象为 16 字节零；记录不存在时为 None。
     pub ramp: Option<Vec<u8>>,
+    pub ramp_body: Option<ColorRampSlot10_1>,
     pub color: Option<Vec<u8>>,
     /// tag 9 必须有非空图例组；仍为无键对象体。
     pub legend_group: Vec<u8>,
@@ -106,54 +107,53 @@ fn read_color(
     }
 }
 
-fn read_no_key_object(
+fn read_stretch_ramp(
     r: &mut Reader<'_>,
     max: usize,
     table: &mut RefTable10_1,
-    tag: i32,
+) -> io::Result<(Option<Vec<u8>>, Option<ColorRampSlot10_1>)> {
+    if !next_is_tag(r, 7)? {
+        return Ok((None, None));
+    }
+    let mut start = r.clone();
+    let class_id = raster_io_object_class(r, 7)?;
+    // 无键根不登记虚拟键，嵌套对象仍共享宿主键表。
+    let ramp = if class_id == [0; 16] {
+        ColorRampSlot10_1::Null
+    } else {
+        read_color_ramp_body_for_class_10_1(r, max, table, MAX_SYMBOL_NESTING_DEPTH, class_id, 0)?
+            .ok_or_else(|| {
+            invalid(format!(
+                "栅格拉伸渲染器梯度类未支持：{}",
+                class_id_hex(&class_id)
+            ))
+        })?
+    };
+    if let Some(stop) = nested_ramp_stop(&ramp) {
+        return Err(invalid(format!("栅格拉伸渲染器梯度未闭合：{stop:?}")));
+    }
+    start.read_bytes(8)?;
+    let bytes = start.read_bytes(r.position() - start.position())?.to_vec();
+    Ok((Some(bytes), Some(ramp)))
+}
+
+fn read_stretch_color(
+    r: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
 ) -> io::Result<Option<Vec<u8>>> {
-    if !next_is_tag(r, tag)? {
+    if !next_is_tag(r, 8)? {
         return Ok(None);
     }
     let mut start = r.clone();
-    let class = raster_io_object_class(r, tag)?;
-    match (tag, class) {
-        (_, id) if id == [0; 16] => {}
-        (7, class_id) => {
-            // 根对象无键，数字 0 只传给已知体读取器；结果保留流内字节，
-            // 不登记虚拟键。体内 LoadObject 仍在同一底流共享键表。
-            let ramp = read_color_ramp_body_for_class_10_1(
-                r,
-                max,
-                table,
-                MAX_SYMBOL_NESTING_DEPTH,
-                class_id,
-                0,
-            )?
-            .ok_or_else(|| {
-                invalid(format!(
-                    "栅格拉伸渲染器梯度类未支持：{}",
-                    class_id_hex(&class_id)
-                ))
-            })?;
-            if let Some(stop) = nested_ramp_stop(&ramp) {
-                return Err(invalid(format!("栅格拉伸渲染器梯度未闭合：{stop:?}")));
-            }
-        }
-        (8, class_id) => {
-            read_color_body_for_class_10_1(class_id, r, max, table, 0)?.ok_or_else(|| {
-                invalid(format!(
-                    "栅格拉伸渲染器 tag 8 的类 {} 未支持",
-                    class_id_hex(&class_id)
-                ))
-            })?;
-        }
-        _ => {
-            return Err(invalid(format!(
-                "栅格拉伸渲染器 tag {tag} 的类 {} 未支持",
-                class_id_hex(&class)
-            )));
-        }
+    let class_id = raster_io_object_class(r, 8)?;
+    if class_id != [0; 16] {
+        read_color_body_for_class_10_1(class_id, r, max, table, 0)?.ok_or_else(|| {
+            invalid(format!(
+                "栅格拉伸渲染器 tag 8 的类 {} 未支持",
+                class_id_hex(&class_id)
+            ))
+        })?;
     }
     start.read_bytes(8)?;
     Ok(Some(
@@ -272,8 +272,8 @@ pub(super) fn read_raster_stretch_renderer(
         let double_a = Reader::new(raster_io_record(r, 4, 8)?).read_f64_le()?;
         let long_a = tagged_long(r, 5)?;
         let double_b = Reader::new(raster_io_record(r, 6, 8)?).read_f64_le()?;
-        let ramp = read_no_key_object(r, max, table, 7)?;
-        let color = read_no_key_object(r, max, table, 8)?;
+        let (ramp, ramp_body) = read_stretch_ramp(r, max, table)?;
+        let color = read_stretch_color(r, max, table)?;
         // 原生在 0x7c97f2d9 对缺省或空 tag 9 直接走失败出口。
         let (legend_group, legend_group_body) = read_stretch_legend_group(r, max, table)?;
         let tag10 = optional_long_record(r, 10)?;
@@ -303,6 +303,7 @@ pub(super) fn read_raster_stretch_renderer(
             double_b,
             RasterStretchLayout10_1::RasterIo(Box::new(RasterStretchIo10_1 {
                 ramp,
+                ramp_body,
                 color,
                 legend_group,
                 legend_group_body,
