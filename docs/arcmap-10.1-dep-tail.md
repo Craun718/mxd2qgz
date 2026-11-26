@@ -2548,3 +2548,19 @@ TrackingLayer.dll 10.1.0.3035 的三个 Variant Load 调用
 构造回归在三个槽同时装入无键 RgbColor，校验尾部定宽
 字段、后继偏移及引用表。其他厂商 IColor 实现与真实
 工程的 ArcMap/QGIS 人工验收仍待验证。
+
+#### 时态图层本地实档检索
+
+按 CFB 签名枚举仓库的 `samples/` 和 `temp/`，不依赖
+扩展名。对文件做 SHA-256 去重后，以 cfb 读取全部流，
+在各流重组后的字节中查找 TemporalFeatureLayer 的小端
+CLSID `3334CE40-1A1D-11D5-B7CF-00010265ADC5`。
+143 份 CFB 共读取 5429 个流，无读取错误或候选命中。
+另外枚举本机用户目录四层内扩展名为 MXD 或 LYR 的文件，
+11 份 CFB 共读取 365 个流，亦无候选。第二次计数可能与
+仓库样本重复。
+
+此次检索覆盖本地找到的未压缩 CLSID 字节，无法验证实际
+TemporalRecordSet 的存在条件或解析边界。仍需 ArcMap
+10.1 保存的时态工程或同版运行取证。ArcMap 和 QGIS
+人工验收均未执行。
