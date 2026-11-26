@@ -843,6 +843,14 @@ fn stretch_ramp_preserves_empty_dataset(ramp: &ColorRampSlot10_1, table: &RefTab
     match ramp {
         ColorRampSlot10_1::Null | ColorRampSlot10_1::Random(_) => true,
         ColorRampSlot10_1::Algorithmic(_) => color_ramp_preserves_empty_dataset(ramp, table),
+        ColorRampSlot10_1::Preset(preset) => {
+            // PresetColorRamp::CreateRamp 只接受十三个预设颜色。
+            preset.colors.len() == 13
+                && preset
+                    .colors
+                    .iter()
+                    .all(|color| is_known_renderer_color(color, table))
+        }
         ColorRampSlot10_1::BackReference { key, .. } => {
             table.registered_class(*key) == Some(RANDOM_COLOR_RAMP_CLASS_ID)
         }
@@ -2066,6 +2074,21 @@ mod tests {
             modern_stretch_color_at..modern_stretch_color_at,
             raster_io_ramp,
         );
+        let mut modern_stretch_with_preset_ramp = modern_stretch.clone();
+        let ramp_body = &preset_ramp[colored_v9.len() - 16..];
+        let mut raster_io_ramp = 7_i32.to_le_bytes().to_vec();
+        raster_io_ramp.extend((-1_i32).to_le_bytes());
+        raster_io_ramp.extend(&ramp_body[..16]);
+        raster_io_ramp.extend(&ramp_body[20..]);
+        raster_io_ramp[34..38].copy_from_slice(&13_i32.to_le_bytes());
+        for _ in 0..7 {
+            raster_io_ramp.extend(RGB_COLOR_CLASS_ID);
+            raster_io_ramp.extend(68_u32.to_le_bytes());
+        }
+        modern_stretch_with_preset_ramp.splice(
+            modern_stretch_color_at..modern_stretch_color_at,
+            raster_io_ramp,
+        );
         let mut modern_stretch_default_color = modern_stretch.clone();
         modern_stretch_default_color.drain(modern_stretch_color_at..modern_stretch_color_end);
         for renderer in [
@@ -2114,6 +2137,7 @@ mod tests {
             &modern_stretch,
             &modern_stretch_with_ramp,
             &modern_stretch_with_algorithmic_ramp,
+            &modern_stretch_with_preset_ramp,
             &modern_stretch_with_histogram,
             &modern_stretch_with_null_histogram,
             &modern_stretch_default_color,
