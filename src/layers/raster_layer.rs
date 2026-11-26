@@ -951,6 +951,40 @@ mod tests {
 
         use crate::maps::standalone_table::{OBJECT_CLASS_NAME_CLASS_ID, TABLE_NAME_CLASS_ID};
 
+        use super::super::image_server_layer_tail::IMAGE_SERVER_NAME_CLASS_ID;
+        for text in ["", "service"] {
+            let mut related = 1_i32.to_le_bytes().to_vec();
+            related.extend(IMAGE_SERVER_NAME_CLASS_ID);
+            related.extend(63_u32.to_le_bytes());
+            related.extend(1_u16.to_le_bytes());
+            related.extend(encoded_string(text));
+            related.extend([0; 16]);
+            let end = end + related.len() - 4;
+            let mut with_related = bytes.clone();
+            with_related.splice(relationship_count_at - 4..relationship_count_at, related);
+            let mut reader = Reader::new(&with_related);
+            let mut refs = RefTable10_1::new();
+            let result = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs);
+            if text.is_empty() {
+                assert!(
+                    result
+                        .unwrap()
+                        .tail
+                        .unwrap()
+                        .related_name
+                        .unwrap()
+                        .body
+                        .is_some()
+                );
+                assert_eq!(reader.position(), end);
+                assert!(refs.raster_name_opens_without_result(63));
+            } else {
+                assert_eq!(result.unwrap_err().kind(), ErrorKind::Unsupported);
+                assert_eq!(reader.position(), 0);
+                assert!(refs.is_empty());
+            }
+        }
+
         for table_class in [TABLE_NAME_CLASS_ID, OBJECT_CLASS_NAME_CLASS_ID] {
             let name_flag_at = relationship_count_at - 4;
             let mut related_name = 1_i32.to_le_bytes().to_vec();
@@ -1180,8 +1214,6 @@ mod tests {
             INTERNET_TILED_LAYER_NAME_CLASS_ID, NETCDF_RASTER_DATASET_NAME_CLASS_ID,
         };
         use crate::layers::wcs_name::WCS_COVERAGE_NAME_CLASS_ID;
-
-        use super::super::image_server_layer_tail::IMAGE_SERVER_NAME_CLASS_ID;
 
         use super::super::raster_dataset_name::IS_RASTER_DATASET_NAME_CLASS_ID;
 

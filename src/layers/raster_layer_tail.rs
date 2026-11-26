@@ -16,6 +16,7 @@ pub use crate::layers::hatch_layer_extension::HatchLayerExtension10_1;
 use crate::layers::hatch_layer_extension::{
     HATCH_LAYER_EXTENSION_CLASS_ID, read_bounded_hatch_layer_extension,
 };
+use crate::layers::image_server_layer_tail::IMAGE_SERVER_NAME_CLASS_ID;
 use crate::layers::layer_extensions::{
     DYNAMIC_TILED_LAYER_PROPERTIES_CLASS_ID, E2_LAYER_EXTENSION_VALUES_CLASS_ID,
     FEATURE_SERVICE_LAYER_EDIT_EXTENSION_CLASS_ID, LEGACY_EXTENSION_HEADER_SIZE,
@@ -30,7 +31,7 @@ pub use crate::layers::layer_extensions::{
 };
 use crate::layers::raster_dataset_name::{
     RasterDatasetNameEntryBody10_1, RasterDatasetWorkspaceSlot10_1,
-    read_supported_raster_name_body_10_1,
+    read_supported_raster_name_body_10_1, read_supported_raster_name_entry_10_1,
 };
 use crate::layers::raster_renderer::{
     PANSHARPENING_FILTER_CLASS_ID, PansharpeningFilter10_1, RasterHistogram10_1,
@@ -176,6 +177,7 @@ pub enum RasterLayerPixelFilterBody10_1 {
 pub enum RasterLayerRelationshipBody10_1 {
     TableName(Box<TableNameBody10_1>),
     TabularName(Box<DatasetNameMoreBody10_1>),
+    RasterName(Box<RasterDatasetNameEntryBody10_1>),
     Relationship(Box<RelationshipClassNameBody10_1>),
     MemoryRelationship(Box<MemoryRelationshipClassNameBody10_1>),
 }
@@ -316,6 +318,15 @@ fn read_related_name(
     let header = read_header_10_1(&mut reader.clone())?;
     if header == ObjectHeader::Null {
         return Err(invalid("RasterLayer 关联名称标志非零，但 IName 为空"));
+    }
+    if let ObjectHeader::Object { class_id, key } = header
+        && table.registered_class(key).unwrap_or(class_id) == IMAGE_SERVER_NAME_CLASS_ID
+    {
+        let (entry, body) = read_supported_raster_name_entry_10_1(reader, max_bytes, table)?;
+        return Ok(RasterLayerRelationshipSlot10_1 {
+            entry,
+            body: body.map(|body| RasterLayerRelationshipBody10_1::RasterName(Box::new(body))),
+        });
     }
     if let ObjectHeader::Object { class_id, key } = header
         && !table.contains(key)
@@ -927,14 +938,19 @@ pub(super) fn read_raster_layer_tail(
             .iter()
             .any(|slot| slot.entry != ObjectEntry10_1::Null)
             || related_name.as_ref().is_some_and(|slot| {
-                // TableName::Open 在工作空间为空时直接返回，安装路径保持数据集成员为空。
+                // 已证空打开结果经关联安装路径保留空数据集成员。
                 match slot.entry {
                     ObjectEntry10_1::NewObject { key, .. }
                     | ObjectEntry10_1::BackReference { key, .. } => {
-                        !matches!(
-                            staged.registered_class(key),
-                            Some(TABLE_NAME_CLASS_ID | OBJECT_CLASS_NAME_CLASS_ID)
-                        ) || !staged.table_name_has_null_workspace(key)
+                        !match staged.registered_class(key) {
+                            Some(TABLE_NAME_CLASS_ID | OBJECT_CLASS_NAME_CLASS_ID) => {
+                                staged.table_name_has_null_workspace(key)
+                            }
+                            Some(IMAGE_SERVER_NAME_CLASS_ID) => {
+                                staged.raster_name_opens_without_result(key)
+                            }
+                            _ => false,
+                        }
                     }
                     ObjectEntry10_1::Null => true,
                 }
