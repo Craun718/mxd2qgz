@@ -1820,3 +1820,18 @@ RasterIO tag 30 调用也经 `0x7c712da0` 清空输出。
 末槽。构造回归覆盖非空读取器加 -1、空读取器、名称回引、后续
 字节边界，以及非空读取器加其他 LONG 时的事务回滚。未取得
 真实普通 v12 宿主，ArcMap 10.1 和 QGIS 人工验收尚未进行。
+
+#### WCSCoverageName 的空连接名称
+
+复核同摘要 OGCClient.dll 10.1.0.3035。WCSCoverageName 的
+IName 表 `0x7b450254` 的 +0x14 槽指向 `0x7b424920`。
+入口检查相对 IName 的 +0x0c，即完整对象 +0x20。
+Load `0x7b424c74` 和 `0x7b424cb5` 将 IWCSConnectionName
+加载到同一成员。成员为空时，Open 从 `0x7b424933`
+落入 `0x7b424935` 返回 E_FAIL，输出保持原值。RasterLayer
+调用 Open 前清空输出，后续按空结果处理。
+
+在已证的普通 v12 尾段条件下，这一分支可确定两项可选末槽
+均省略。构造回归验证空连接的图层终点，以及连接非空时的事务
+回滚。真实 WCSCoverageName 普通 v12 宿主和 ArcMap/QGIS
+人工验收仍待验证。

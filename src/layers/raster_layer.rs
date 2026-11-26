@@ -2548,6 +2548,46 @@ mod tests {
     }
 
     #[test]
+    fn inline_raster_v12_accepts_wcs_coverage_without_connection() {
+        use crate::layers::wcs_name::{WCS_CONNECTION_NAME_CLASS_ID, WCS_COVERAGE_NAME_CLASS_ID};
+
+        let mut standard_prefix = body_prefix(12, 1);
+        dataset_name(&mut standard_prefix, 60);
+        let standard = raster_with_empty_slots(12, false);
+
+        let mut bytes = body_prefix(12, 1);
+        bytes.extend(WCS_COVERAGE_NAME_CLASS_ID);
+        bytes.extend(60_u32.to_le_bytes());
+        bytes.extend(1_i16.to_le_bytes());
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend(u16::from(b'a').to_le_bytes());
+        bytes.extend(0_u16.to_le_bytes());
+        let connection_offset = bytes.len();
+        bytes.extend([0; 16]);
+        bytes.extend(&standard[standard_prefix.len()..]);
+        let end = bytes.len();
+        bytes.extend([0xa5; 16]);
+
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        let raster = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+        assert!(raster.tail.unwrap().geodata_xform_v13.is_none());
+        assert_eq!(reader.position(), end);
+        assert!(refs.raster_name_opens_without_result(60));
+
+        let mut connection = WCS_CONNECTION_NAME_CLASS_ID.to_vec();
+        connection.extend(61_u32.to_le_bytes());
+        connection.extend(1_i16.to_le_bytes());
+        connection.extend([0; 16]);
+        bytes.splice(connection_offset..connection_offset + 16, connection);
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        assert!(read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+
+    #[test]
     fn wcs_coverage_name_reference_retains_identifier() {
         use crate::layers::wcs_name::WCS_COVERAGE_NAME_CLASS_ID;
 

@@ -317,6 +317,8 @@ impl RasterDatasetNameEntryBody10_1 {
             Self::InternetTiledLayer(name) => {
                 name.tile_reader.entry == ObjectEntry10_1::Null || name.integer == -1
             }
+            // IName::Open 在连接名称为空时直接返回 E_FAIL。
+            Self::WcsCoverage(name) => name.connection.entry == ObjectEntry10_1::Null,
             _ => false,
         }
     }
