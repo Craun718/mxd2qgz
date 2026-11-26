@@ -1870,3 +1870,20 @@ Load 在 `0x8086efc6` 检查它是否存在，随后用 `0x8089d54c`
 直接传原 IStream 加载。两处均为内联体。中间的
 `0x8087c940` 字段、TemporalOperator 自身的 Load 布局
 及第二次委派后的末段仍待核对。
+
+#### TemporalOperator 的内联体边界
+
+Desktop 介质的 TrackingCore.dll 是 PE32，版本资源为 10.1.0.3035，
+SHA-256 `3a023ddedd06d9859843383bf5c2daa5e21bc3119428765d24cfeb71d816a166`。
+CoTemporalOperator 的接口表 `0x8072e6d0` 将 IPersistStream
+映射到 `+0x10`。CComObject 实例的该偏移虚表为 `0x8072f760`，
+其中 GetClassID `0x80706a60`、Load `0x80706aa0`、
+Save `0x80706c70`。另一个返回同 CLSID 的入口 `0x807122f0`
+位于 ClassID 辅助对象的虚表。
+
+Load 在 `0x80706ae7/0x80706b20/0x80706b39` 依次读取
+4、4、8 字节，随后于 `0x80706b5c` 调用 `0x8071ed70`。
+以首个四字节值作有符号比较，小于 `0x100` 时额外在
+`0x80706b79/0x80706b96/0x80706bb3` 读 LONG、int、double。
+仍需核对 `0x8071ed70` 的消费范围及 Save 对称字段，再接入
+外层时态图层。ArcMap/QGIS 人工验收未执行。

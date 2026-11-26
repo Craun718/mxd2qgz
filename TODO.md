@@ -761,6 +761,7 @@
       - [x] 定位 TemporalFeatureLayer 的持久化入口和首个 Variant 版本分支。[取证](docs/arcmap-10.1-dep-tail.md#temporalfeaturelayer-的持久化入口)
       - [x] 对位 TemporalFeatureLayer 的内联 IPersistStream 调用与其余版本阈值。[取证](docs/arcmap-10.1-dep-tail.md#temporalfeaturelayer-的内联持久化调用)
       - [x] 将时态图层的两次内联 Load 对位到 TemporalOperator 与聚合 FeatureLayer。[取证](docs/arcmap-10.1-dep-tail.md#temporalfeaturelayer-的两个内联接收类)
+      - [x] 定位 TemporalOperator 的持久化虚表及定宽版本分支。[取证](docs/arcmap-10.1-dep-tail.md#temporaloperator-的内联体边界)
       - [ ] 补齐两类 3D 容器的关联 ILayer 槽中其余未支持的类体；已接入类的共用子槽缺口见各自条目。
       - [x] 接入普通 ILayer 槽中的 InternetTiledLayer 与 WMTSLayer，覆盖独立图层、组图层和三维关联图层。[接口及对象体证据](docs/mxd-10.1-raster-layer-tail.md#瓦片图层的独立-ilayer-宿主)
       - [x] 校验两类 3D 图形容器的 IEnvelope 回引登记类。[取证](docs/arcmap-10.1-dep-tail.md#三维图形容器的对象体)
