@@ -334,6 +334,12 @@ pub(super) fn read_inline_raster_body_10_1(
             })
                 && renderer_shared_preserves_empty_dataset(&tail.shared, &staged)
     );
+    let has_discrete_renderer = matches!(
+        renderer.body.as_ref(),
+        Some(RasterRendererPrefix10_1::Discrete(discrete))
+            if color_ramp_preserves_empty_dataset(&discrete.ramp, &staged)
+                && renderer_shared_preserves_empty_dataset(&discrete.shared, &staged)
+    );
     let has_known_renderer_reference = matches!(
         renderer.entry,
         ObjectEntry10_1::BackReference { key, .. }
@@ -345,6 +351,7 @@ pub(super) fn read_inline_raster_body_10_1(
             || has_legacy_rgb_renderer
             || has_rgb_renderer
             || has_colormap_renderer
+            || has_discrete_renderer
             || has_known_renderer_reference)
         && let Some(name) = first_name
         && match name.entry {
@@ -1202,6 +1209,15 @@ mod tests {
         groups.extend(75_u32.to_le_bytes());
         let mut colormap_with_groups = colormap.clone();
         colormap_with_groups.splice(24..28, groups);
+        let mut discrete = super::super::raster_renderer::DISCRETE_COLOR_RENDERER_CLASS_ID.to_vec();
+        discrete.extend(65_u32.to_le_bytes());
+        discrete.extend(1_i32.to_le_bytes());
+        discrete.extend(2_i32.to_le_bytes());
+        discrete.extend(0x010203_u32.to_le_bytes());
+        discrete.extend(0x040506_u32.to_le_bytes());
+        discrete.extend(encoded_string("颜色"));
+        discrete.extend(&random_ramp[colored_v9.len() - 16..]);
+        discrete.extend(&colored_v9[24..]);
         for renderer in [
             &simple,
             &sai,
@@ -1221,6 +1237,7 @@ mod tests {
             &tagged_rgb_with_filter,
             &colormap,
             &colormap_with_groups,
+            &discrete,
         ] {
             let mut with_renderer = bytes.clone();
             with_renderer.splice(renderer_at..renderer_at + 16, renderer.iter().copied());
