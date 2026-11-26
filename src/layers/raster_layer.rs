@@ -287,6 +287,13 @@ pub(super) fn read_inline_raster_body_10_1(
         .names
         .iter()
         .find(|name| name.entry != ObjectEntry10_1::Null);
+    let is_known_color = |color: &ColorSlot10_1| match color {
+        ColorSlot10_1::Color { class_id, .. } => RASTER_RENDERER_COLOR_CLASSES.contains(class_id),
+        ColorSlot10_1::BackReference { key, .. } => staged
+            .registered_class(*key)
+            .is_some_and(|class_id| RASTER_RENDERER_COLOR_CLASSES.contains(&class_id)),
+        _ => false,
+    };
     let has_scalar_renderer = matches!(
         renderer.body.as_ref(),
         Some(
@@ -298,18 +305,16 @@ pub(super) fn read_inline_raster_body_10_1(
                 && match &shared.color_ramp {
                     None | Some(ColorRampSlot10_1::Null | ColorRampSlot10_1::Random(_)) => true,
                     Some(ColorRampSlot10_1::Preset(ramp)) => {
-                        ramp.raw_int32 <= 0 && ramp.colors.iter().all(|color| match color {
-                            ColorSlot10_1::Color { class_id, .. } => {
-                                RASTER_RENDERER_COLOR_CLASSES.contains(class_id)
-                            }
-                            ColorSlot10_1::BackReference { key, .. } => {
-                                staged.registered_class(*key).is_some_and(|class_id| {
-                                    RASTER_RENDERER_COLOR_CLASSES.contains(&class_id)
-                                })
-                            }
-                            _ => false,
-                        })
+                        ramp.raw_int32 <= 0 && ramp.colors.iter().all(is_known_color)
                     }
+                    Some(ColorRampSlot10_1::Algorithmic(ramp)) => ramp
+                        .colors
+                        .iter()
+                        .all(|color| match color {
+                            Some(ColorSlot10_1::Null) => true,
+                            Some(color) => is_known_color(color),
+                            None => false,
+                        }),
                     // 共用读取器已按登记类校验 IColorRamp，回引不加载色带体。
                     Some(ColorRampSlot10_1::BackReference { .. }) => true,
                     _ => false,
@@ -999,6 +1004,21 @@ mod tests {
         }
         preset_ramp.extend(RGB_COLOR_CLASS_ID);
         preset_ramp.extend(72_u32.to_le_bytes());
+        let mut algorithmic_ramp = colored_v9[..colored_v9.len() - 16].to_vec();
+        algorithmic_ramp.extend(crate::objects::color_ramp::ALGORITHMIC_COLOR_RAMP_CLASS_ID);
+        algorithmic_ramp.extend(67_u32.to_le_bytes());
+        algorithmic_ramp.extend(1_u16.to_le_bytes());
+        algorithmic_ramp.extend(0_u32.to_le_bytes()); // 空 BSTR。
+        algorithmic_ramp.extend(0_i32.to_le_bytes());
+        let endpoint_offset = algorithmic_ramp.len();
+        algorithmic_ramp.extend(RGB_COLOR_CLASS_ID);
+        algorithmic_ramp.extend(68_u32.to_le_bytes());
+        algorithmic_ramp.extend([1, 0, 1, 0, 1]);
+        algorithmic_ramp.extend([0; 6]);
+        algorithmic_ramp.extend(GRAY_COLOR_CLASS_ID);
+        algorithmic_ramp.extend(68_u32.to_le_bytes());
+        let mut empty_algorithmic_ramp = algorithmic_ramp[..endpoint_offset].to_vec();
+        empty_algorithmic_ramp.extend([0; 32]);
         for renderer in [
             &simple,
             &sai,
@@ -1006,6 +1026,8 @@ mod tests {
             &colored_v9,
             &random_ramp,
             &preset_ramp,
+            &algorithmic_ramp,
+            &empty_algorithmic_ramp,
         ] {
             let mut with_renderer = bytes.clone();
             with_renderer.splice(renderer_at..renderer_at + 16, renderer.iter().copied());
