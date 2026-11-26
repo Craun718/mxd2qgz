@@ -1307,6 +1307,36 @@ mod tests {
                     records.extend([0; 16]);
                 }
             }
+            if tag30 == Some(true) {
+                // 将同一个名称体分别放入关联槽的新对象和回引记录。
+                let name_body = &records[32..];
+                let flag_at = relationship_count_at - 4;
+                let mut refs = RefTable10_1::new();
+                for is_new in [true, false] {
+                    let key = 64_u32;
+                    let mut related = 1_i32.to_le_bytes().to_vec();
+                    related.extend(class_id);
+                    related.extend(key.to_le_bytes());
+                    if is_new {
+                        related.extend(name_body);
+                    }
+                    let related_len = related.len();
+                    let (mut with_related, removed) = if is_new {
+                        (bytes.clone(), 0)
+                    } else {
+                        (reference.clone(), body_end - header_offset - 20)
+                    };
+                    with_related
+                        .splice(flag_at - removed..relationship_count_at - removed, related);
+                    let mut reader = Reader::new(&with_related);
+                    let layer = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+                    let tail = layer.tail.unwrap();
+                    assert_eq!(tail.related_name.unwrap().body.is_some(), is_new);
+                    assert!(tail.geodata_xform_v13.is_none());
+                    assert_eq!(refs.registered_class(key), Some(class_id));
+                    assert_eq!(reader.position(), end - removed + related_len - 4);
+                }
+            }
             if let Some(path) = tag31 {
                 records.extend(31_i32.to_le_bytes());
                 records.extend(encoded_string(path));

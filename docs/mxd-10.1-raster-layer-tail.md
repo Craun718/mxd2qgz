@@ -1941,3 +1941,6 @@ InternetTiledLayerName、WCSCoverageName、NetCDFRasterDatasetName
 构造回归将主列表的 RasterTypeName 回引到关联槽，使用不同的头部
 CLSID 验证按实际登记类分派，并核对后继字节边界。其余类的真实
 关联槽宿主及 ArcMap/QGIS 人工验收待验证。
+
+补充合成回归后，六类栅格名称都从普通 v12 的关联槽
+分别走过新对象与同键回引，验证登记类、可选末槽及后继字节边界。
