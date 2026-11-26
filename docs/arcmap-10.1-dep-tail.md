@@ -2085,44 +2085,46 @@ LegendClassFormat 本体只有无键类标识，体内四槽仍按普通有键�
 
 #### 时态图层 10.0 内联试读的接收者
 
-TrackingLayer.dll 10.1.0.3035 在 `0x808721bb` 从聚合
-FeatureLayer（完整对象 `+0x2468`）查询 IID
-`9FE681E6-BA4E-4729-8301-8F15A1544140`，把结果写入完整
-对象 `+0x2494`。Desktop 的 esriCarto.olb 按 GUID 与 TypeInfo
-对位为 IFind。时态图层 Load 和 Save 分别于 `0x8086f266`
-与 `0x8086fdef` 取该成员并查询 IPersistStream，随后将原
-IStream 交给其 Load 或 Save。还需在聚合对象上确定该接口对应的
-实际持久化入口及体长度。
+TrackingLayer.dll 10.1.0.3035 的 Load、Save 在入口将
+IPersistStream 指针存入 EBX（`0x8086ebe2`、`0x8086f973`）。
+该接口在完整对象 `+0x10`，所以试读采用的 EBX 相对成员
+`+0x2494` 实为完整对象 `+0x24a4`。此前追踪的 IFind
+是 `0x808721c5` 设置的完整对象 `+0x2494`，其委派 QI
+虽会回到外层对象，但不属于本次内联试读。
 
-Load 于 `0x8086f228` 对前一个成员调用返回的对象查询
-`A677AB61-2FB8-11D5-B7E2-00010265ADC5`（esriTrackingAnalyst.olb
-的 ITemporalFeatureClass）。仅在版本至少 10.0 且该接口为空时
-进入试读分支。Save 依据版本和 IFind 成员的 IPersistStream
-可用性决定是否写体，没有写出独立的存在标记。真实样本和软件
-人工验收仍待验证。
+构造时 `0x80869f92` 把完整对象 `+0x24a4` 地址交给
+`0x8087a8b0`。该助手创建 CLSID
+`DD2FE1F0-224B-11D5-B7D5-00010265ADC5`（类型库中的
+TemporalRecordSet），调用 OleRun，再将查询得到的 ITxFeatureClass
+存入该成员。Load 于 `0x8086f266`、Save 于 `0x8086fdef`
+读取该成员，经 `0x8087b6a0` 查询 IPersistStream。
+Load 仅在外层版本至少 10.0 且 `0x8086f228` 的
+ITemporalFeatureClass 查询结果为空时试读，失败时恢复原流位置。
+Save 依据版本和 IPersistStream 可用性决定是否写体，未写独立存在标记。
 
-#### 时态图层 10.0 试读的聚合回调
+Desktop 的 TrackingWorkspace.dll 为 PE32、10.1.0.3035，
+SHA-256 `892c7b52d27d0f0c3d2f4ee8954273cc603e744d1ee79292183a4517eea21e8e`。
+TemporalRecordSet 接口表 `0x80ad2f7c` 记录 ITxFeatureClass
+于 `+0x0c`、IPersistStream 于 `+0x10`（表项 `0x80ad3078`）。
+共用 GetClassID、Load、Save 为 `0x80a8ba40/0x80a8ba80/0x80a8bb00`。
+Load 先在 `0x80a8baa1` 读两字节版本，仅版本 1 继续读取
+四字节整数，随后调用 `0x80aac410`。Save 在文档版本索引
+至少 4 时写出该前缀，并于 `0x80a8bb7a` 调用 `0x80aac360`。
+内联子记录仍待闭合，尚无原生样本和人工验收。
 
-在 FeatureLayer.dll 10.1.0.3035（SHA-256
-`2baf870615bb75b6f30ccea173ba4303fdd0b1a6571e11b9197c5fcf7298bb60`）
-中，聚合工厂的非委派 QI `0x6f6e7a40` 在 `0x6f6e7f1f`
-命中 IFind IID 常量 `0x6f7add84`，返回该 IUnknown 指针加
-`0x120`。换算到 FeatureLayer 体基址是 `+0x130`，构造函数
-于 `0x6f6dba9a` 将其虚表设为 `0x6f7ad3ac`。该虚表首项
-`0x6f709c10` 扣除 `0x120` 并跳到 `0x6f6d8210`，把 IID 和
-输出指针委派给保存在 IUnknown 指针前 8 字节的控制 IUnknown。
+#### 时态图层 10.0 的前置时间对象
 
-TrackingLayer.dll 的 `0x8087b6a0` 对这个 IFind 查询
-IPersistStream，IID 常量在 `0x8089f340`。在已核实的
-TemporalFeatureLayer 创建聚合路径 `0x80869ef6`–`0x80869f0c`，
-outer 由虚表槽 `+0x18` 取得；`0x808a1194` 指向的
-`0x808831d0` 直接返回当前对象。其 QI 表 `0x808a0448`
-将 IPersistStream 映射到外层对象 `+0x10`，持久化虚表
-`0x808a12a0` 对应同一个 TemporalFeatureLayer Load
-`0x8086ebd0` 和 Save `0x8086f840`。
+Save `0x8086f86d` 取得文档版本索引，跳表 `0x808701b8`
+对索引 0 返回失败、1 和 2 写外层版本 1.51、3 写 9.3，
+大于 3 写 10.0。因此 ArcMap 10.1 当前文档版本索引 5
+走外层版本 10.0 分支。
 
-因此这条路径尝试的是同一类的内联持久化调用，而非独立的
-定宽 IFind 记录。Load 失败后恢复流位置的处理仍适用。当前
-证据确定了调用目标，尚未确定实际工程触发条件、递归终止的
-运行状态或具体消费长度。解析接入前应核实常规写出是否清空
-该成员或通过其他路径抑制这次调用。尚未人工验收。
+版本 10.0 的早期附加段依次为字节 BSTR、三个 short、
+ITimeReference 对象、字节 BSTR、double、四字节 int、
+两个 ITimeExtent 对象、short。读侧调用位于
+`0x8086ece1`–`0x8086ee93`，写侧位于
+`0x8086fa29`–`0x8086fb54`。三个对象槽只在查询到
+IObjectStream 时存在，未取得接口时直接读写后续字段。
+请求 IID `0x8089f020/0x8089f030` 通过 esriSystem.olb
+对位到 ITimeReference 和 ITimeExtent，可复用现有两类读取器。
+实际工程中的非空实现及 ArcMap/QGIS 人工验收仍待核实。
