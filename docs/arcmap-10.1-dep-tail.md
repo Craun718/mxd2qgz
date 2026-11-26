@@ -1852,3 +1852,21 @@ IPersistStream（IID 常量 `0x8089f340`）。`0x8086ef55`
 首个 VT_R8 的另外三个比较阈值为 10.0（`0x8086ecbf`）、
 1.5（`0x8086eea4`）和 1.2（`0x8086eed2`），均由同镜像
 常量解码得到。外围分支和各委派体的结束边界仍待对位。
+
+#### TemporalFeatureLayer 的两个内联接收类
+
+两套持久化虚表的 MSVC Complete Object Locator
+（`0x808a6354/0x808a545c`）都给出接口偏移 `+0x10`。
+因此 Load 的成员偏移 `+0x2450/+0x2458` 分别对应完整对象
+`+0x2460/+0x2468`。在同版 TrackingLayer.dll 的初始化路径，
+`0x8086a59e` 取 `+0x2460` 地址作为 CoCreateInstance 出参，
+`0x8086a5b3` 使用 `0x8089f280` 的 CLSID
+`{B2034200-7C86-11D6-B84D-00010265ADC5}`。介质登记将该类命名为
+TemporalOperator。其内联 Load 位于 `0x8086ef55`。
+
+第二个成员对应[聚合 FeatureLayer 的初始化](mxd-luna-deep-layer-masking-20261118.md#temporalfeaturelayer-的聚合查询)。
+Load 在 `0x8086efc6` 检查它是否存在，随后用 `0x8089d54c`
+的 IPersistStream IID 查询接口，成功时在 `0x8086f001`
+直接传原 IStream 加载。两处均为内联体。中间的
+`0x8087c940` 字段、TemporalOperator 自身的 Load 布局
+及第二次委派后的末段仍待核对。
