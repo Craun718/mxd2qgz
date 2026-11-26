@@ -701,3 +701,28 @@ fn sdk_montgomery_reads_complete_topology_layer() {
     assert_eq!(layer.renderers.len(), 7);
     assert_eq!(layer.legacy_object, Some(ObjectEntry10_1::Null));
 }
+
+#[test]
+#[ignore = "需要 10.1 SDK 安装介质提取文件"]
+fn sdk_montgomery_reads_complete_dimension_layer() {
+    use mxd2qgz::layers::{
+        feature_layer::FeatureLayerStop10_1, feature_layer_tail::SuccessorStop10_1,
+    };
+
+    let map = read_sdk_map(
+        "temp/terra-round8-old/sdk-dotnet/Montgomery.mxd.89833ED7_0681_4032_BE76_9AB6C721CEB2",
+    );
+    let entry = &map.layer_list.entries[0];
+    let Some(LayerBodyPrefix10_1::DimensionLayer(layer)) = &entry.parsed else {
+        panic!("应读取 Montgomery 的 DimensionLayer");
+    };
+    assert_eq!(entry.offset, 0x291);
+    assert_eq!(entry.body.as_ref().unwrap().len, 0);
+    assert_eq!(map.layer_list.entries[1].offset, 0x19f4);
+    assert_eq!(layer.version, 4);
+    assert_eq!(
+        layer.feature.stop,
+        FeatureLayerStop10_1::Successor(SuccessorStop10_1::TailCompleted)
+    );
+    assert!(layer.tail_long.is_some());
+}

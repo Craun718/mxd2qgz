@@ -1705,3 +1705,12 @@ SDK 回归确认名称对象体可完整读取，保留七个渲染器槽和空 
 且未解析剩余为零，下一图层条目始于 `0x2380`。扫描未发现
 /3D Analyst 中的同类字节候选。实档验证覆盖 SDK MXD 的 Map
 宿主，ArcMap/QGIS 人工验收及真实 3D 宿主仍待完成。
+
+#### DimensionLayer 的 SDK 实档
+
+10.1 .NET SDK 的 Montgomery.mxd 在 /Maps `0x291` 有
+DimensionLayer 条目，登记键为 31。SDK 回归确认外层版本为 4，
+内联 FeatureLayer 读到 TailCompleted，随后读取外层 LONG，
+未解析剩余为零。下一条 TopologyLayer 从 `0x19f4` 开始。
+实档证据覆盖 Map 宿主及 v4 布局。真实 3D 宿主、旧版实档和
+ArcMap/QGIS 人工验收仍待验证。
