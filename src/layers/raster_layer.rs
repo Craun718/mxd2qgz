@@ -11,7 +11,10 @@
 //! 读取第一条 AfCore String 到 persist-interface this+0x88。独立续段可再读
 //! 第二串、定长短值及版本控制的 IName 列表。
 
-use super::feature_layer_tail::{LEGEND_GROUP_CLASS_ID, LegendGroupSlot10_1};
+use super::feature_layer_tail::{
+    LEGEND_CLASS_CLASS_ID, LEGEND_GROUP_CLASS_ID, LegendClassEntry10_1, LegendClassFormatSlot10_1,
+    LegendGroupSlot10_1,
+};
 use super::raster_dataset_name::{
     RasterDatasetNameEntryBody10_1, read_supported_raster_name_entry_10_1,
 };
@@ -52,7 +55,16 @@ fn legend_groups_preserve_empty_dataset(
 ) -> bool {
     groups.iter().all(|slot| match slot {
         LegendGroupSlot10_1::Null => true,
-        LegendGroupSlot10_1::LegendGroup(group) => group.classes.is_empty(),
+        LegendGroupSlot10_1::LegendGroup(group) => group.classes.iter().all(|entry| match entry {
+            LegendClassEntry10_1::Null => true,
+            LegendClassEntry10_1::BackReference { key, .. } => {
+                table.registered_class(*key) == Some(LEGEND_CLASS_CLASS_ID)
+            }
+            LegendClassEntry10_1::NewObject(class) => {
+                matches!(class.symbol, SymbolSlotFull10_1::Null)
+                    && matches!(class.format, LegendClassFormatSlot10_1::Null)
+            }
+        }),
         LegendGroupSlot10_1::BackReference { key, .. } => {
             table.registered_class(*key) == Some(LEGEND_GROUP_CLASS_ID)
         }
@@ -1261,7 +1273,17 @@ mod tests {
         groups.extend(1_u16.to_le_bytes());
         groups.extend(0_i16.to_le_bytes());
         groups.extend(encoded_string(""));
-        groups.extend(0_i32.to_le_bytes());
+        groups.extend(3_i32.to_le_bytes());
+        groups.extend([0; 16]); // 空图例类别槽。
+        groups.extend(LEGEND_CLASS_CLASS_ID);
+        groups.extend(76_u32.to_le_bytes());
+        groups.extend(1_u16.to_le_bytes());
+        groups.extend([0; 16]); // 空符号。
+        groups.extend(encoded_string("类别"));
+        groups.extend(encoded_string(""));
+        groups.extend([0; 16]); // 空格式。
+        groups.extend(RGB_COLOR_CLASS_ID);
+        groups.extend(76_u32.to_le_bytes());
         groups.extend(RGB_COLOR_CLASS_ID);
         groups.extend(75_u32.to_le_bytes());
         let mut colormap_with_groups = colormap.clone();
