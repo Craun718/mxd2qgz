@@ -895,6 +895,7 @@ fn frame_from_body(
                 | LayerBodyPrefix10_1::TinLayer(_)
                 | LayerBodyPrefix10_1::NetworkLayer(_)
                 | LayerBodyPrefix10_1::TiledLayer(_)
+                | LayerBodyPrefix10_1::SchematicLayer(_)
                 | LayerBodyPrefix10_1::TopologyLayer(_)
                 | LayerBodyPrefix10_1::DimensionLayer(_)
                 | LayerBodyPrefix10_1::RasterCatalogLayer(_)
@@ -2066,6 +2067,14 @@ fn body_prefix_node(
         LayerBodyPrefix10_1::RasterBasemapLayer(layer) => {
             diagnostics.push(format!(
                 "条目 {}：已读取栅格底图图层 {:?}",
+                entry_index + 1,
+                layer.name
+            ));
+            None
+        }
+        LayerBodyPrefix10_1::SchematicLayer(layer) => {
+            diagnostics.push(format!(
+                "条目 {}：已读取示意图图层 {:?}",
                 entry_index + 1,
                 layer.name
             ));

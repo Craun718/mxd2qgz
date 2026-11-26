@@ -163,6 +163,7 @@ pub enum LayerBodyPrefix10_1 {
     WcsLayer(Box<WcsLayer10_1>),
     TiledLayer(Box<TiledLayer10_1>),
     TopologyLayer(Box<TopologyLayer10_1>),
+    SchematicLayer(Box<super::schematic_layer::SchematicLayer10_1>),
     DimensionLayer(Box<DimensionLayer10_1>),
     RasterCatalogLayer(Box<super::raster_catalog_layer::RasterCatalogLayer10_1>),
     RasterBasemapLayer(Box<super::raster_basemap_layer::RasterBasemapLayer10_1>),
@@ -195,6 +196,7 @@ impl LayerBodyPrefix10_1 {
             Self::NetworkLayer(body) => &body.name,
             Self::NaLayer(body) => &body.name,
             Self::TiledLayer(body) => body.name(),
+            Self::SchematicLayer(body) => &body.name,
             Self::TopologyLayer(body) => &body.name,
             Self::DimensionLayer(body) => &body.feature.name,
             Self::RasterCatalogLayer(body) => &body.feature.name,
@@ -618,6 +620,7 @@ pub fn read_layer_list_10_1(
                         | LayerBodyPrefix10_1::CadAnnotationLayer(_)
                         | LayerBodyPrefix10_1::CoverageAnnotationLayer(_)
                         | LayerBodyPrefix10_1::TiledLayer(_)
+                        | LayerBodyPrefix10_1::SchematicLayer(_)
                         | LayerBodyPrefix10_1::TopologyLayer(_)
                         | LayerBodyPrefix10_1::DimensionLayer(_)
                         | LayerBodyPrefix10_1::RasterCatalogLayer(_)
@@ -1304,6 +1307,12 @@ pub(crate) fn parse_body_prefix(
     trial_table: &mut RefTable10_1,
     depth: u32,
 ) -> io::Result<Option<LayerBodyPrefix10_1>> {
+    if class_id == crate::maps::layer_masking::SCHEMATIC_LAYER_CLASS_ID {
+        return trial_table.with_nested_graphics(|refs| {
+            super::schematic_layer::read_schematic_layer_10_1(trial, max_bytes, refs)
+                .map(|body| Some(LayerBodyPrefix10_1::SchematicLayer(Box::new(body))))
+        });
+    }
     if class_id == crate::maps::layer_masking::TOPOLOGY_LAYER_CLASS_ID {
         return read_topology_layer(trial, max_bytes, trial_table)
             .map(|body| Some(LayerBodyPrefix10_1::TopologyLayer(Box::new(body))));
@@ -1413,6 +1422,14 @@ pub(crate) fn read_complete_layer_body_10_1(
     use crate::layers::feature_layer::FeatureLayerStop10_1;
     use crate::layers::feature_layer_tail::SuccessorStop10_1;
 
+    // 示意图读取器已经检查完整对象体。
+    if class_id == crate::maps::layer_masking::SCHEMATIC_LAYER_CLASS_ID {
+        return table.with_nested_graphics(|refs| {
+            super::schematic_layer::read_schematic_layer_10_1(reader, max_bytes, refs)
+                .map(|body| LayerBodyPrefix10_1::SchematicLayer(Box::new(body)))
+        });
+    }
+
     let unsupported = |reason| {
         io::Error::new(
             ErrorKind::Unsupported,
@@ -1472,6 +1489,7 @@ pub(crate) fn read_complete_layer_body_10_1(
         | LayerBodyPrefix10_1::TerrainLayer(_)
         | LayerBodyPrefix10_1::TinLayer(_)
         | LayerBodyPrefix10_1::TiledLayer(_)
+        | LayerBodyPrefix10_1::SchematicLayer(_)
         | LayerBodyPrefix10_1::TopologyLayer(_)
         | LayerBodyPrefix10_1::DimensionLayer(_)
         | LayerBodyPrefix10_1::RasterCatalogLayer(_)
