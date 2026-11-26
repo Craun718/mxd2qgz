@@ -269,12 +269,15 @@ pub(super) fn read_inline_raster_body_10_1(
         .names
         .iter()
         .find(|name| name.entry != ObjectEntry10_1::Null);
-    let has_simple_renderer = matches!(
+    let has_scalar_renderer = matches!(
         renderer.body.as_ref(),
-        Some(RasterRendererPrefix10_1::Simple { shared, .. }) if shared.version == 1
+        Some(
+            RasterRendererPrefix10_1::Simple { shared, .. }
+            | RasterRendererPrefix10_1::Sai { shared, .. }
+        ) if shared.version == 1
     );
     let boundary = if body.version == 12
-        && (renderer.entry == ObjectEntry10_1::Null || has_simple_renderer)
+        && (renderer.entry == ObjectEntry10_1::Null || has_scalar_renderer)
         && let Some(name) = first_name
         && match name.entry {
             ObjectEntry10_1::NewObject { key, .. } | ObjectEntry10_1::BackReference { key, .. } => {
@@ -898,15 +901,23 @@ mod tests {
         simple.extend(1_i32.to_le_bytes()); // 共用体版本。
         simple.extend([0; 16]);
         let renderer_at = end - (standard.len() - suffix_offset) + encoded_string("").len();
-        let mut with_renderer = bytes.clone();
-        with_renderer.splice(renderer_at..renderer_at + 16, simple.iter().copied());
-        let mut reader = Reader::new(&with_renderer);
-        let mut refs = RefTable10_1::new();
-        let parsed = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
-        assert!(parsed.renderer.unwrap().body.is_some());
-        assert!(parsed.tail.unwrap().geodata_xform_v13.is_none());
-        assert_eq!(reader.position(), end + simple.len() - 16);
-        assert!(refs.contains(65));
+        let mut sai = super::super::raster_renderer::SAI_RENDERER_CLASS_ID.to_vec();
+        sai.extend(65_u32.to_le_bytes());
+        sai.extend(1_i32.to_le_bytes());
+        sai.extend([0; 2 + 16]); // short 和两个 double。
+        sai.extend(1_i32.to_le_bytes());
+        sai.extend([0; 16]);
+        for renderer in [&simple, &sai] {
+            let mut with_renderer = bytes.clone();
+            with_renderer.splice(renderer_at..renderer_at + 16, renderer.iter().copied());
+            let mut reader = Reader::new(&with_renderer);
+            let mut refs = RefTable10_1::new();
+            let parsed = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+            assert!(parsed.renderer.unwrap().body.is_some());
+            assert!(parsed.tail.unwrap().geodata_xform_v13.is_none());
+            assert_eq!(reader.position(), end + renderer.len() - 16);
+            assert!(refs.contains(65));
+        }
 
         let header_offset = body_prefix(12, 1).len();
         let body_end = header_offset + 20 + 2 + encoded_string("").len() * 2 + 4 + 16;

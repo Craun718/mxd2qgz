@@ -1970,3 +1970,15 @@ SimpleRasterRenderer 共用体 v1，并在存在关联名称时保留保护条�
 旧范围更新也已因空数据集跳过。读取器据此允许同时存在这类
 渲染器和已证空打开的关联名称。构造回归覆盖两者共存且关联槽
 回引主名称的对象边界。真实工程及 ArcMap/QGIS 人工验收待验证。
+
+#### SAIRenderer 共用体 v1 的普通栅格边界
+
+同版 RasterRenderer.dll 的 SAIRenderer Load `0x7c9955b0`
+在 `0x7c995602`、`0x7c99562c`、`0x7c995641`
+读取自身的 short 和两个 double，随后调用共用读取器。共用体
+v1 的四个 LONG 也只写入渲染器自身。IRasterRenderer 表
+`0x7c9b56ac` 的 +0x20 槽与 SimpleRasterRenderer 共用
+`0x7c98a6c0`，RasterLayer 在可选末槽判断后才调用它。
+因此在已证空数据集条件下，同样可以确定普通 v12 的图层边界。
+构造回归验证 SAIRenderer 的新对象键及图层结束位置，真实工程
+和 ArcMap/QGIS 人工验收待验证。
