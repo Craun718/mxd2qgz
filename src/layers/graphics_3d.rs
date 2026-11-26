@@ -408,6 +408,77 @@ mod tests {
     }
 
     #[test]
+    fn graphics_3d_reads_topology_layer_versions_and_successors() {
+        use crate::maps::layer_masking::TOPOLOGY_LAYER_CLASS_ID;
+
+        for (class, short_bytes, tail_bytes) in [
+            (GRAPHICS_LAYER_3D_CLASS_ID, 8, 0),
+            (GLOBE_GRAPHICS_LAYER_CLASS_ID, 4, 8),
+        ] {
+            for version in 1_i16..=5 {
+                let empty_string = [2, 0, 0, 0, 0, 0];
+                let mut bytes = 1_u16.to_le_bytes().to_vec();
+                bytes.extend(empty_string);
+                bytes.resize(bytes.len() + short_bytes, 0);
+                bytes.extend(TOPOLOGY_LAYER_CLASS_ID);
+                bytes.extend(41_u32.to_le_bytes());
+                bytes.extend(version.to_le_bytes());
+                bytes.extend(empty_string);
+                bytes.extend([0; 6 + 16 + 16]);
+                if version >= 2 {
+                    bytes.extend([0; 7 * 16]);
+                }
+                if version >= 3 {
+                    bytes.extend([0; 16]);
+                }
+                if version >= 4 {
+                    bytes.extend(9_i16.to_le_bytes());
+                }
+                if version == 5 {
+                    bytes.extend([0; 4]);
+                    bytes.extend(1_i32.to_le_bytes());
+                    bytes.extend(123_u32.to_le_bytes());
+                    bytes.extend((-4_i16).to_le_bytes());
+                }
+                bytes.resize(bytes.len() + 16 + 4 + tail_bytes, 0);
+                let end = bytes.len();
+                bytes.extend([0xa5; 8]);
+
+                let mut refs = RefTable10_1::new();
+                for cut in 0..end {
+                    let mut reader = Reader::new(&bytes[..cut]);
+                    assert!(
+                        read_graphics_3d_layer_10_1(&class, &mut reader, 4096, &mut refs).is_err()
+                    );
+                    assert_eq!(reader.position(), 0);
+                    assert!(refs.is_empty());
+                }
+                let mut reader = Reader::new(&bytes);
+                let layer =
+                    read_graphics_3d_layer_10_1(&class, &mut reader, 4096, &mut refs).unwrap();
+                let Some(LayerBodyPrefix10_1::TopologyLayer(body)) =
+                    layer.associated_layer_body.as_deref()
+                else {
+                    panic!("应读取 TopologyLayer");
+                };
+                assert_eq!(body.version, version);
+                assert_eq!(body.renderers.len(), if version >= 2 { 7 } else { 0 });
+                assert_eq!(
+                    body.legacy_object,
+                    (version >= 3).then_some(ObjectEntry10_1::Null)
+                );
+                assert_eq!(body.raw_count, (version == 5).then_some(1));
+                if version == 5 {
+                    assert_eq!(body.tail_shorts, [9, 0, 0]);
+                    assert_eq!(body.rows, [(123, -4)]);
+                }
+                assert_eq!(refs.registered_class(41), Some(TOPOLOGY_LAYER_CLASS_ID));
+                assert_eq!(reader.position(), end);
+            }
+        }
+    }
+
+    #[test]
     fn graphics_3d_reads_dimension_layer_and_preserves_container_boundary() {
         use crate::maps::layer_masking::DIMENSION_LAYER_CLASS_ID;
 

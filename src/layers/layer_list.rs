@@ -162,6 +162,7 @@ pub enum LayerBodyPrefix10_1 {
     RasterLayer(crate::layers::raster_layer::RasterLayerPrefix10_1),
     WcsLayer(Box<WcsLayer10_1>),
     TiledLayer(Box<TiledLayer10_1>),
+    TopologyLayer(Box<TopologyLayer10_1>),
     DimensionLayer(Box<DimensionLayer10_1>),
     RasterCatalogLayer(Box<super::raster_catalog_layer::RasterCatalogLayer10_1>),
     RasterBasemapLayer(Box<super::raster_basemap_layer::RasterBasemapLayer10_1>),
@@ -194,6 +195,7 @@ impl LayerBodyPrefix10_1 {
             Self::NetworkLayer(body) => &body.name,
             Self::NaLayer(body) => &body.name,
             Self::TiledLayer(body) => body.name(),
+            Self::TopologyLayer(body) => &body.name,
             Self::DimensionLayer(body) => &body.feature.name,
             Self::RasterCatalogLayer(body) => &body.feature.name,
             Self::RasterBasemapLayer(body) => body.name.as_deref().unwrap_or(""),
@@ -616,6 +618,7 @@ pub fn read_layer_list_10_1(
                         | LayerBodyPrefix10_1::CadAnnotationLayer(_)
                         | LayerBodyPrefix10_1::CoverageAnnotationLayer(_)
                         | LayerBodyPrefix10_1::TiledLayer(_)
+                        | LayerBodyPrefix10_1::TopologyLayer(_)
                         | LayerBodyPrefix10_1::DimensionLayer(_)
                         | LayerBodyPrefix10_1::RasterCatalogLayer(_)
                         | LayerBodyPrefix10_1::RasterBasemapLayer(_)
@@ -1184,6 +1187,105 @@ fn read_dimension_layer(
     })
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct TopologyLayer10_1 {
+    pub version: i16,
+    pub name: String,
+    pub shorts: [i16; 3],
+    pub wide_fields: [[u8; 8]; 2],
+    pub dataset_name: crate::objects::dataset_name_more::DatasetNameMoreSlot10_1,
+    pub renderers: Vec<super::feature_layer::RendererSlot10_1>,
+    pub legacy_object: Option<ObjectEntry10_1>,
+    pub tail_shorts: Vec<i16>,
+    pub raw_count: Option<i32>,
+    pub rows: Vec<(u32, i16)>,
+}
+
+fn read_topology_layer(
+    reader: &mut Reader<'_>,
+    max: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<TopologyLayer10_1> {
+    use crate::objects::dataset_name_more::read_overlay_name_slot_10_1;
+    use crate::stream::native_string::read_string_10_1;
+
+    let mut r = reader.clone();
+    let mut refs = table.clone();
+    let version = r.read_u16_le()? as i16;
+    if !(1..=5).contains(&version) {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            format!("TopologyLayer 版本 {version} 未支持"),
+        ));
+    }
+    let name = read_string_10_1(&mut r, max)?;
+    let shorts = [
+        r.read_u16_le()? as i16,
+        r.read_u16_le()? as i16,
+        r.read_u16_le()? as i16,
+    ];
+    let wide_fields = [
+        r.read_bytes(8)?.try_into().unwrap(),
+        r.read_bytes(8)?.try_into().unwrap(),
+    ];
+    let mut stop = None;
+    let dataset_name = read_overlay_name_slot_10_1(&mut r, max, &mut refs, &mut stop)?;
+    if let Some(stop) = stop {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            format!("TopologyLayer 名称体未读完：{stop:?}"),
+        ));
+    }
+    let renderers = if version >= 2 {
+        (0..7)
+            .map(|_| super::feature_layer::read_drawing_feature_renderer(&mut r, max, &mut refs))
+            .collect::<io::Result<Vec<_>>>()?
+    } else {
+        Vec::new()
+    };
+    let legacy_object = (version >= 3)
+        .then(|| read_object_entry_10_1(&mut r, &mut refs))
+        .transpose()?;
+    if matches!(legacy_object, Some(ObjectEntry10_1::NewObject { .. })) {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            "TopologyLayer 的 IUnknown 新对象尚未核对",
+        ));
+    }
+    let short_count = match version {
+        4 => 1,
+        5 => 3,
+        _ => 0,
+    };
+    let tail_shorts = (0..short_count)
+        .map(|_| r.read_u16_le().map(|n| n as i16))
+        .collect::<io::Result<Vec<_>>>()?;
+    let raw_count = (version == 5)
+        .then(|| r.read_u32_le().map(|n| n as i32))
+        .transpose()?;
+    let count = raw_count.unwrap_or(0).max(0) as usize;
+    if count > r.remaining().min(max) / 6 {
+        return Err(invalid(r.position(), "TopologyLayer 尾记录数量超限"));
+    }
+    let rows = (0..count)
+        .map(|_| Ok((r.read_u32_le()?, r.read_u16_le()? as i16)))
+        .collect::<io::Result<Vec<_>>>()?;
+    *reader = r;
+    *table = refs;
+    Ok(TopologyLayer10_1 {
+        version,
+        name,
+        shorts,
+        wide_fields,
+        dataset_name,
+        renderers,
+        legacy_object,
+        tail_shorts,
+        raw_count,
+        rows,
+    })
+}
+
 /// 按类标识分派新对象体的已确认前缀解析（组图层子图层递归共用，见
 /// [`crate::layers::group_layer`]）。
 ///
@@ -1201,6 +1303,10 @@ pub(crate) fn parse_body_prefix(
     trial_table: &mut RefTable10_1,
     depth: u32,
 ) -> io::Result<Option<LayerBodyPrefix10_1>> {
+    if class_id == crate::maps::layer_masking::TOPOLOGY_LAYER_CLASS_ID {
+        return read_topology_layer(trial, max_bytes, trial_table)
+            .map(|body| Some(LayerBodyPrefix10_1::TopologyLayer(Box::new(body))));
+    }
     if class_id == crate::maps::layer_masking::DIMENSION_LAYER_CLASS_ID {
         return read_dimension_layer(trial, max_bytes, trial_table)
             .map(|body| Some(LayerBodyPrefix10_1::DimensionLayer(Box::new(body))));
@@ -1365,6 +1471,7 @@ pub(crate) fn read_complete_layer_body_10_1(
         | LayerBodyPrefix10_1::TerrainLayer(_)
         | LayerBodyPrefix10_1::TinLayer(_)
         | LayerBodyPrefix10_1::TiledLayer(_)
+        | LayerBodyPrefix10_1::TopologyLayer(_)
         | LayerBodyPrefix10_1::DimensionLayer(_)
         | LayerBodyPrefix10_1::RasterCatalogLayer(_)
         | LayerBodyPrefix10_1::RasterBasemapLayer(_)
