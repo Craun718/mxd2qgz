@@ -1600,3 +1600,20 @@ v4 读该 short 后在 `0x6f72b165` 结束。v5 常规路径另读
 计数为零或负数时跳过循环。仍需与 Save 交叉核对渲染器数量、
 早于 v1 的控制流及 IUnknown 槽的实际类。未进行 ArcMap/QGIS
 人工验收。
+
+#### TopologyLayer v5 的写出记录
+
+同版 FeatureLayer.dll 的 Save `0x6f72b3c0` 写出常量
+`0x6f74f188` 的 short 5。名称和定宽前缀后，
+`0x6f72b481` 调用名称写出帮助函数 `0x6f72b250`。
+渲染器循环从索引 0 开始，每次在 `0x6f72b4a8` 调用
+SaveObject，递增后按 `<= 6` 回跳，共写七个槽。随后
+`0x6f72b4d6` 无条件以空对象调用 SaveObject。这与 Load
+读取七个 IFeatureRenderer 槽后请求 IUnknown 的顺序吻合，
+也明确了同版原生写出的 IUnknown 槽为空。
+
+尾段依次写三个 short、一个 LONG 计数，再写计数项的四字节值
+与 short。地址分别是 `0x6f72b4f7/0x6f72b510/0x6f72b529`、
+`0x6f72b543`、`0x6f72b582/0x6f72b59e`。旧体中可能
+存在的非空 IUnknown 仍需独立证据。解析接入及 ArcMap/QGIS
+人工验收未执行。
