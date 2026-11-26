@@ -2064,3 +2064,39 @@ GetClassID `0x808fc7e0` 从 `0x80938eb4` 复制该值。持久化虚表
 开始。子对象的 Load 仍接收原 IStream，接入前须核对符号和
 LegendClassFormat 的对象体内部是否继续调用有键 IObjectStream。
 上述读写顺序来自静态反汇编，尚无真实非空类别和软件人工验收。
+
+#### 时态图例格式的内层对象流
+
+Desktop 介质的 Layer.dll 和 AfCore.dll 均为 PE32、10.1.0.3035。
+其 SHA-256 分别为
+`fe52bd9988b66f9d6f906b014e5684f28fc20e9b97b53c90909fa3d44e9efed8`、
+`031858c414c0105b3b978c754f3d0f31ba1d98f15d44ff15b1589c9adcc47c17`。
+LegendClassFormat Load 在 `0x78664b8c/0x78664bae/0x78664bd5/0x78664bf3`
+用原流调用 AfCore LoadObject（导出 `0x68a7b6d0`）。
+该函数通过 `0x68a7c4b0` 查询 IObjectStream（IID 常量
+`0x68c6dca8`），成功时在 `0x68a7b72c` 调虚表 `+0x44`。
+查询失败时转到 `0x68a7b490` 读取 16 字节类标识，在非空路径
+`0x68a7b530` 委派对象加载。
+
+因此，在提供 IObjectStream 的 MXD 路径中，Variant 内的
+LegendClassFormat 本体只有无键类标识，体内四槽仍按普通有键对象槽读取。
+接入时可复用现有体读取器及原流登记表，外层 Variant 不登记新键。
+普通 IStream 的回退路径、实际非空类别及软件人工验收仍待验证。
+
+#### 时态图层 10.0 内联试读的接收者
+
+TrackingLayer.dll 10.1.0.3035 在 `0x808721bb` 从聚合
+FeatureLayer（完整对象 `+0x2468`）查询 IID
+`9FE681E6-BA4E-4729-8301-8F15A1544140`，把结果写入完整
+对象 `+0x2494`。Desktop 的 esriCarto.olb 按 GUID 与 TypeInfo
+对位为 IFind。时态图层 Load 和 Save 分别于 `0x8086f266`
+与 `0x8086fdef` 取该成员并查询 IPersistStream，随后将原
+IStream 交给其 Load 或 Save。还需在聚合对象上确定该接口对应的
+实际持久化入口及体长度。
+
+Load 于 `0x8086f228` 对前一个成员调用返回的对象查询
+`A677AB61-2FB8-11D5-B7E2-00010265ADC5`（esriTrackingAnalyst.olb
+的 ITemporalFeatureClass）。仅在版本至少 10.0 且该接口为空时
+进入试读分支。Save 依据版本和 IFind 成员的 IPersistStream
+可用性决定是否写体，没有写出独立的存在标记。真实样本和软件
+人工验收仍待验证。
