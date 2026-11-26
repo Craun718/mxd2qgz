@@ -665,6 +665,17 @@ fn frame_from_body(
                     unknown_fields: Vec::new(),
                 }))
             }
+            Some(LayerBodyPrefix10_1::TemporalFeatureLayer(_)) => {
+                entry.parsed.as_ref().and_then(|body| {
+                    body_prefix_node(
+                        body,
+                        entry.index,
+                        map_crs_key,
+                        map_crs.as_ref(),
+                        diagnostics,
+                    )
+                })
+            }
             Some(LayerBodyPrefix10_1::FdoGraphicsLayer(prefix)) => {
                 // FDO 注记图层：以关联要素图层（ILayer 槽）的名称/可见性/数
                 // 源构造节点；委派注记图层只进诊断（第六轮）。
@@ -1914,6 +1925,30 @@ fn feature_layer_source(
 ///
 /// 返回 `None` 的情况与图层列表条目级填充一致：CompositeGraphicsLayer 无对应
 /// 节点类型、FDO 关联槽无前缀等，只保留诊断。
+fn feature_prefix_node(
+    fl: &crate::layers::feature_layer::FeatureLayerPrefix10_1,
+    entry_index: usize,
+    map_crs_key: Option<u32>,
+    map_crs: Option<&CoordinateSystem>,
+    diagnostics: &mut Vec<String>,
+) -> Option<LayerNode> {
+    let (visible, note) = variant_bool_to_model(fl.visibility_raw, "可见性");
+    if let Some(note) = note {
+        diagnostics.push(note);
+    }
+    let source = feature_layer_source(fl, entry_index, diagnostics);
+    let crs = feature_layer_crs(fl, map_crs_key, map_crs, entry_index, diagnostics);
+    Some(LayerNode::Layer(Layer {
+        name: fl.name.clone(),
+        visible,
+        source,
+        raster_band_sources: Vec::new(),
+        crs,
+        extent: None,
+        unknown_fields: Vec::new(),
+    }))
+}
+
 fn body_prefix_node(
     prefix: &LayerBodyPrefix10_1,
     entry_index: usize,
@@ -1922,22 +1957,15 @@ fn body_prefix_node(
     diagnostics: &mut Vec<String>,
 ) -> Option<LayerNode> {
     match prefix {
+        LayerBodyPrefix10_1::TemporalFeatureLayer(layer) => feature_prefix_node(
+            &layer.prefix.feature,
+            entry_index,
+            map_crs_key,
+            map_crs,
+            diagnostics,
+        ),
         LayerBodyPrefix10_1::FeatureLayer(fl) => {
-            let (visible, note) = variant_bool_to_model(fl.visibility_raw, "可见性");
-            if let Some(note) = note {
-                diagnostics.push(note);
-            }
-            let source = feature_layer_source(fl, entry_index, diagnostics);
-            let crs = feature_layer_crs(fl, map_crs_key, map_crs, entry_index, diagnostics);
-            Some(LayerNode::Layer(Layer {
-                name: fl.name.clone(),
-                visible,
-                source,
-                raster_band_sources: Vec::new(),
-                crs,
-                extent: None,
-                unknown_fields: Vec::new(),
-            }))
+            feature_prefix_node(fl, entry_index, map_crs_key, map_crs, diagnostics)
         }
         LayerBodyPrefix10_1::FdoGraphicsLayer(fdo) => match &fdo.associated_layer {
             AssociatedLayer10_1::FeatureLayer(associated) => {

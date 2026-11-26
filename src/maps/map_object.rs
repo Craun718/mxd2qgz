@@ -715,6 +715,7 @@ impl<'body> LayerMaskingTraversal<'_, '_, 'body> {
                         | LayerBodyPrefix10_1::RasterLayer(_)
                         | LayerBodyPrefix10_1::TiledLayer(_)
                         | LayerBodyPrefix10_1::SchematicLayer(_)
+                        | LayerBodyPrefix10_1::TemporalFeatureLayer(_)
                         | LayerBodyPrefix10_1::TopologyLayer(_)
                         | LayerBodyPrefix10_1::DimensionLayer(_)
                         | LayerBodyPrefix10_1::RasterCatalogLayer(_)

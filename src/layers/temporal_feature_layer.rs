@@ -9,6 +9,10 @@ use super::feature_layer::{
 };
 use super::feature_layer_tail::SuccessorStop10_1;
 use super::image_server_rules::unsupported_class;
+use super::temporal_legend::{
+    TEMPORAL_LEGEND_GROUP_CLASS_ID, TemporalLegendGroup10_1, read_temporal_legend_group_10_1,
+};
+use super::temporal_record_set::{TemporalRecordSet10_1, read_temporal_record_set_10_1};
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
 use crate::stream::native_string::read_atl_bstr_10_1;
 use crate::stream::reader::Reader;
@@ -142,6 +146,36 @@ mod tests {
     use super::*;
 
     #[test]
+    fn trailing_variants_preserve_boundary_for_every_writer_version() {
+        for version in [1.51, 9.3, 10.0] {
+            let mut bytes = vec![0; 16];
+            bytes.extend(5_u16.to_le_bytes());
+            bytes.extend(2.0_f64.to_le_bytes());
+            bytes.extend(8_u16.to_le_bytes());
+            bytes.extend(0_u32.to_le_bytes());
+            if version >= 9.3 {
+                bytes.extend([0; 16]);
+                bytes.extend(13_u16.to_le_bytes());
+                bytes.extend([0; 16]);
+                bytes.extend([0; 8]);
+                for _ in 0..2 {
+                    bytes.extend(11_u16.to_le_bytes());
+                    bytes.extend(u16::MAX.to_le_bytes());
+                }
+                bytes.extend([0; 26]);
+            }
+            let end = bytes.len();
+            bytes.extend(0xabcd_u16.to_le_bytes());
+            let mut reader = Reader::new(&bytes);
+            read_trailing_fields(&mut reader, 4096, version).unwrap();
+            assert_eq!(reader.position(), end);
+            assert_eq!(reader.read_u16_le().unwrap(), 0xabcd);
+            let mut reader = Reader::new(&bytes[..end - 1]);
+            assert!(read_trailing_fields(&mut reader, 4096, version).is_err());
+        }
+    }
+
+    #[test]
     fn all_writer_versions_reach_the_aggregate_without_consuming_its_version() {
         for version in [1.51_f64, 9.3, 10.0] {
             for operator_flags in [0_u32, 0x100] {
@@ -176,4 +210,120 @@ mod tests {
             }
         }
     }
+}
+
+const TEMPORAL_REFERENCE_CLASS_ID: [u8; 16] = [
+    0x3a, 0x42, 0xc7, 0x78, 0xcf, 0x17, 0xd5, 0x11, 0xb7, 0xcf, 0, 1, 2, 0x65, 0xad, 0xc5,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TemporalFeatureLayer10_1 {
+    pub prefix: TemporalFeatureLayerPrefix10_1,
+    pub legend: Option<Box<TemporalLegendGroup10_1>>,
+    pub record_set: Option<TemporalRecordSet10_1>,
+}
+
+fn read_late_slot(
+    reader: &mut Reader<'_>,
+    refs: &mut RefTable10_1,
+    expected: [u8; 16],
+) -> io::Result<bool> {
+    match read_object_entry_10_1(reader, refs)? {
+        ObjectEntry10_1::Null => Ok(false),
+        ObjectEntry10_1::BackReference { class_id, key }
+            if class_id == expected && refs.registered_class(key) == Some(class_id) =>
+        {
+            Ok(false)
+        }
+        ObjectEntry10_1::NewObject { class_id, .. } if class_id == expected => Ok(true),
+        ObjectEntry10_1::BackReference { class_id, .. }
+        | ObjectEntry10_1::NewObject { class_id, .. } => {
+            Err(unsupported_class("时态图层后继对象", &class_id))
+        }
+    }
+}
+
+fn read_tail_variant(reader: &mut Reader<'_>, max: usize) -> io::Result<()> {
+    let vartype = reader.read_u16_le()?;
+    let size = match vartype {
+        2 | 11 | 18 => 2,
+        3 | 4 | 10 | 19 | 22 | 23 => 4,
+        5..=7 | 20 | 21 => 8,
+        16 | 17 => 1,
+        8 => {
+            read_atl_bstr_10_1(reader, max)?;
+            return Ok(());
+        }
+        9 | 13 => {
+            let class = reader.read_bytes(16)?.try_into().unwrap();
+            if class == [0; 16] {
+                return Ok(());
+            }
+            return Err(unsupported_class("时态图层尾部 Variant", &class));
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                format!("时态图层尾部 VARTYPE {vartype}"),
+            ));
+        }
+    };
+    reader.read_bytes(size)?;
+    Ok(())
+}
+
+fn read_trailing_fields(reader: &mut Reader<'_>, max: usize, version: f64) -> io::Result<()> {
+    reader.read_bytes(12)?;
+    read_atl_bstr_10_1(reader, max)?;
+    read_tail_variant(reader, max)?;
+    read_tail_variant(reader, max)?;
+    if version >= 9.3 {
+        reader.read_bytes(16)?;
+        read_tail_variant(reader, max)?;
+        reader.read_bytes(8)?;
+        read_tail_variant(reader, max)?;
+        read_tail_variant(reader, max)?;
+        reader.read_bytes(26)?;
+    }
+    Ok(())
+}
+
+pub(super) fn read_temporal_feature_layer_10_1(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<TemporalFeatureLayer10_1> {
+    let mut trial = reader.clone();
+    let mut staged = refs.clone();
+    let prefix = read_temporal_feature_layer_prefix_10_1(&mut trial, max, &mut staged)?;
+    let legend = if read_late_slot(&mut trial, &mut staged, TEMPORAL_LEGEND_GROUP_CLASS_ID)? {
+        Some(Box::new(read_temporal_legend_group_10_1(
+            &mut trial,
+            max,
+            &mut staged,
+        )?))
+    } else {
+        None
+    };
+    if read_late_slot(&mut trial, &mut staged, TEMPORAL_REFERENCE_CLASS_ID)? {
+        trial.read_bytes(32)?;
+    }
+    trial.read_u32_le()?;
+    read_atl_bstr_10_1(&mut trial, max)?;
+    trial.read_u16_le()?;
+
+    // 原生试读成功时沿内联记录继续，失败时从原偏移读取后续字段。
+    let record_set = if prefix.version == 10.0 {
+        read_temporal_record_set_10_1(&mut trial, max).ok()
+    } else {
+        None
+    };
+    read_trailing_fields(&mut trial, max, prefix.version)?;
+    *reader = trial;
+    *refs = staged;
+    Ok(TemporalFeatureLayer10_1 {
+        prefix,
+        legend,
+        record_set,
+    })
 }
