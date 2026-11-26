@@ -2029,3 +2029,15 @@ TrackingRenderer.dll 10.1.0.3035 的 Load `0x808ff850`
 末段判断（`0x808ffc61/0x808ffc8e`），文档版本索引 0–4
 写出对象版本 1.0，其余索引写 10.1。
 Variant 内嵌对象的线格式及非空实例仍需验证后接入读取器。
+
+#### 时态图例组的 Variant 对象头
+
+TrackingRenderer.dll 10.1.0.3035 的 Variant 读取助手
+`0x808f3590` 在对象分支 `0x808f3681` 调用 `0x808f32d0`。
+它在 `0x808f3318` 直接调 OLE ReadClassStm，从输入流读
+CLSID，随后尝试创建对象，查询 IPersistStream（IID 常量
+`0x809389c4`），并于 `0x808f33d2` 将原 IStream 传给
+对象 Load。这一层无 ObjectStream 键，也无外层对象体长度。
+图例类别对象体内部若再次读对象，其格式仍由该类的 Load
+和原输入流接口决定，须单独核对。当前只确认 Variant 中对象头
+的边界，非空图例类别和 ArcMap/QGIS 人工验收仍待验证。
