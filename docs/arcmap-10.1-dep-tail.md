@@ -1722,3 +1722,19 @@ ArcMap/QGIS 人工验收仍待验证。
 实档回归确认两者都含非空渲染器记录，读取条数等于声明计数，
 两个条目的未解析剩余均为零。真实 3D 宿主与 ArcMap/QGIS
 人工验收仍待验证。
+
+### SchematicLayer 的持久化入口
+
+Desktop 介质的 SchematicLayer.dll 为 PE32，版本资源 10.1.0.3035，
+SHA-256 为 `b2dcc605e8953f5e28a3ca25249c4bf5763557173dc52a994d744b6ca69e4d02`。
+GetClassID `0x7d8e9b90` 从 `0x7d90b854` 复制
+`{2EF082D6-0B5F-4B70-9416-35D75EFA7FED}`，与介质类登记一致。
+QI 在 `0x7d8e46c6` 比较 IPersistStream IID 并在
+`0x7d8e4958` 返回完整对象 `+0x40`。构造指令
+`0x7d8e3be1` 在该偏移安装虚表 `0x7d90cb74`，其中
+Load 为 `0x7d8e8b40`、Save 为 `0x7d8e9500`。
+
+Load 在 `0x7d8e8b55` 读取两字节版本，`0x7d8e8b66`
+比较有符号上限 7。v1、v2 附加分支分别从
+`0x7d8e8c2c`、`0x7d8e8c4d` 判定。后继对象槽和完整消费
+边界仍待对位，尚未接入读取器或进行 ArcMap/QGIS 人工验收。
