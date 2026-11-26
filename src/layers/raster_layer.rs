@@ -15,9 +15,10 @@ use super::raster_dataset_name::{
     RasterDatasetNameEntryBody10_1, read_supported_raster_name_entry_10_1,
 };
 use super::raster_renderer::{
-    PansharpeningSlot10_1, RasterHistogramSlot10_1, RasterRendererPrefix10_1,
-    RasterRendererShared10_1, RasterRendererSharedLayout10_1, is_supported_color_ramp_class,
-    read_raster_renderer_slot_prefix_10_1, supports_raster_renderer_body_10_1,
+    DOUBLE_ARRAY_CLASS_ID, PansharpeningSlot10_1, RasterHistogramSlot10_1,
+    RasterRendererPrefix10_1, RasterRendererShared10_1, RasterRendererSharedLayout10_1,
+    is_supported_color_ramp_class, read_raster_renderer_slot_prefix_10_1,
+    supports_raster_renderer_body_10_1,
 };
 use crate::objects::{
     color_ramp::ColorRampSlot10_1,
@@ -310,7 +311,13 @@ pub(super) fn read_inline_raster_body_10_1(
                     matches!(slot, None | Some(RasterHistogramSlot10_1::Null))
                 })
                 && matches!(rgb.pansharpening, None | Some(PansharpeningSlot10_1::Null))
-                && rgb.double_arrays.iter().all(|slot| slot.entry == ObjectEntry10_1::Null)
+                && rgb.double_arrays.iter().all(|slot| match slot.entry {
+                    ObjectEntry10_1::Null => true,
+                    ObjectEntry10_1::NewObject { key, .. }
+                    | ObjectEntry10_1::BackReference { key, .. } => {
+                        staged.registered_class(key) == Some(DOUBLE_ARRAY_CLASS_ID)
+                    }
+                })
                 && renderer_shared_preserves_empty_dataset(&rgb.shared, &staged)
     );
     let has_known_renderer_reference = matches!(
@@ -1125,8 +1132,20 @@ mod tests {
         tagged_rgb_with_arrays[20..24].copy_from_slice(&9_i32.to_le_bytes());
         tagged_rgb_with_arrays.extend((-1_i32).to_le_bytes());
         tagged_rgb_with_arrays.extend(0_u16.to_le_bytes());
+        let arrays_at = tagged_rgb_with_arrays.len();
         tagged_rgb_with_arrays.extend([0; 16 * 4]);
         tagged_rgb_with_arrays.extend(&tagged_rgb[tagged_tail_at..]);
+        let mut double_array = DOUBLE_ARRAY_CLASS_ID.to_vec();
+        double_array.extend(74_u32.to_le_bytes());
+        double_array.extend(1_u16.to_le_bytes());
+        double_array.extend(3_i32.to_le_bytes());
+        for number in [1.0_f64, 2.0, 3.0] {
+            double_array.extend(number.to_le_bytes());
+        }
+        double_array.extend(RGB_COLOR_CLASS_ID);
+        double_array.extend(74_u32.to_le_bytes());
+        let mut tagged_rgb_with_array_reference = tagged_rgb_with_arrays.clone();
+        tagged_rgb_with_array_reference.splice(arrays_at..arrays_at + 32, double_array);
         for renderer in [
             &simple,
             &sai,
@@ -1141,6 +1160,7 @@ mod tests {
             &legacy_rgb_with_ramp,
             &tagged_rgb,
             &tagged_rgb_with_arrays,
+            &tagged_rgb_with_array_reference,
         ] {
             let mut with_renderer = bytes.clone();
             with_renderer.splice(renderer_at..renderer_at + 16, renderer.iter().copied());
