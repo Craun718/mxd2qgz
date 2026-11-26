@@ -270,6 +270,7 @@
     - [x] 核对布局扩展写出前的 IPersistStream 筛选。[原生取证](docs/mxd-page-layout-tail-20261118.md#布局扩展的写出接口筛选)
     - [x] 对位布局扩展写出的两个版本适配接口及替代对象分派。[原生取证](docs/mxd-page-layout-tail-20261118.md#布局扩展的写出接口筛选)
     - [x] 从本地工程的已解析布局尾部清点实际写出的扩展类。[样本取证](docs/mxd-page-layout-tail-20261118.md#本地工程中的布局扩展类)
+    - [x] 对位布局扩展读侧的实例化、持久化接口查询和零长度分支。[原生取证](docs/mxd-page-layout-tail-20261118.md#布局扩展的实例化与-load-分派)
     - [ ] 补齐跨流布局中尚未支持的扩展对象体。[布局尾段](docs/mxd-page-layout-tail-20261118.md)
     - [x] 对位 PageLayout v11 非空槽的 PageIndex 接口和持久化入口。[原生取证](docs/mxd-page-layout-tail-20261118.md#pagelayout-v11-的-pageindex-接口)
     - [ ] 验证 PageLayout v11 起非空 PageIndex 的真实数据驱动页面宿主。[本地检索](docs/mxd-page-layout-tail-20261118.md#pageindex-实档检索)

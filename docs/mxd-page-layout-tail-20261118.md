@@ -620,3 +620,20 @@ MapOptimizationLayoutExtension，未见其他类或不透明条目。
 另 108 个内容不具备 CFB 文件头，未纳入此统计。结果只覆盖
 解析器实际到达的布局尾部，其中没有可供识别其他扩展体的 CLSID。
 未执行 ArcMap/QGIS 人工验收。
+
+### 布局扩展的实例化与 Load 分派
+
+在同版 LayerLib.dll 的 `ExtensionHelper::LoadExtensions`
+`0x786c22e0` 中，`0x786c23e1` 将条目的 CLSID 传给
+`0x786c2d70`。该函数于 `0x786c2d99` 调用 AfCreateInstance
+请求 IUnknown（IID 位于 `0x7871ea38`），再于 `0x786c2dc6`
+查询 IPersistStream（IID 位于 `0x7871fd28`）。未取得持久化接口
+时，`0x786c2426` 按声明长度从当前位置跳过。因此即使 CLSID
+可实例化，也可能走跳过分支。
+
+取得 IPersistStream 且体长非零时，`0x786c240b` 将原 IStream
+交给 Load，失败 HRESULT 由 `0x786c2430` 分派到退出路径。
+该调用路径不创建受长度限制的子流。体长为零时绕过 Load，但仍可
+在 `0x786c245b` 查询 IUnknown 并于 `0x786c247e` 加入布局数组。
+Rust 按声明体长限制读取范围，以便检查对象体边界。尚未发现其他
+实际写出的内置扩展类，ArcMap/QGIS 人工验收未执行。
