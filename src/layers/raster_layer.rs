@@ -1183,6 +1183,8 @@ mod tests {
 
         use super::super::image_server_layer_tail::IMAGE_SERVER_NAME_CLASS_ID;
 
+        use super::super::raster_dataset_name::IS_RASTER_DATASET_NAME_CLASS_ID;
+
         for (tag30, tag31, class_id) in [
             (None, None, [0; 16]),
             (Some(false), None, [0; 16]),
@@ -1192,6 +1194,7 @@ mod tests {
             (Some(true), Some("路径"), RASTER_TYPE_NAME_CLASS_ID),
             (Some(true), Some("路径"), WCS_COVERAGE_NAME_CLASS_ID),
             (Some(true), Some("路径"), IMAGE_SERVER_NAME_CLASS_ID),
+            (Some(true), Some("路径"), IS_RASTER_DATASET_NAME_CLASS_ID),
             (Some(true), Some("路径"), INTERNET_TILED_LAYER_NAME_CLASS_ID),
             (
                 Some(true),
@@ -1213,6 +1216,14 @@ mod tests {
                             records.extend(encoded_string(""));
                             records.extend(encoded_string(""));
                             records.extend((-1_i32).to_le_bytes());
+                        }
+                        IS_RASTER_DATASET_NAME_CLASS_ID => {
+                            records.extend(1_u16.to_le_bytes());
+                            for _ in 0..6 {
+                                records.extend(encoded_string(""));
+                            }
+                            records.extend(0_i32.to_le_bytes());
+                            records.extend([0; 16]); // 空工作空间。
                         }
                         IMAGE_SERVER_NAME_CLASS_ID => {
                             records.extend(1_u16.to_le_bytes());

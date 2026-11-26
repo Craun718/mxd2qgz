@@ -1911,3 +1911,13 @@ Open 在 `0x78012622` 返回 E_PENDING，保留 RasterLayer 调用前
 普通 v12 读取器据此接入空内嵌名称。构造回归验证后续字节边界，
 以及内嵌 ImageServerName 非空时的事务回滚。真实工程及
 ArcMap 10.1、QGIS 人工验收尚未进行。
+
+非空 RasterIO 路径也有可证的空打开分支。ISRasterDatasetName
+的 QI 在 `0x78012414` 为 IDatasetName 返回完整对象 +0x14。
+虚表 `0x78031d00` 的 +0x20 槽经 `0x780260f0`
+导入 RasterCoreLib.dll 的 BasicRasterName::get_WorkspaceName
+`0x7bed12c0`，读取接口相对 +0x10。Load `0x78012c71`
+读取工作空间的持久化接口 +0x0c 指向同一成员。成员为空时
+getter 返回 S_OK 及空输出，LayerLib 路径助手因而跳过路径写入。
+构造回归覆盖内嵌名称与工作空间均空、路径非空及后继记录边界。
+非空工作空间的路径处理与真实工程人工验收仍待验证。

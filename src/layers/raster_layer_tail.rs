@@ -29,7 +29,8 @@ pub use crate::layers::layer_extensions::{
     FeatureServiceLayerEditExtension10_1, ServerLayerExtension10_1,
 };
 use crate::layers::raster_dataset_name::{
-    RasterDatasetNameEntryBody10_1, read_supported_raster_name_body_10_1,
+    RasterDatasetNameEntryBody10_1, RasterDatasetWorkspaceSlot10_1,
+    read_supported_raster_name_body_10_1,
 };
 use crate::layers::raster_renderer::{
     PANSHARPENING_FILTER_CLASS_ID, PansharpeningFilter10_1, RasterHistogram10_1,
@@ -981,6 +982,11 @@ pub(super) fn read_raster_layer_tail(
                                         | RasterDatasetNameEntryBody10_1::InternetTiledLayer(_)
                                         | RasterDatasetNameEntryBody10_1::NetCdf(_)
                                         | RasterDatasetNameEntryBody10_1::ImageServerReference(_)
+                                )
+                                && !matches!(
+                                    name.as_ref(),
+                                    RasterDatasetNameEntryBody10_1::ImageService(name)
+                                        if name.workspace == RasterDatasetWorkspaceSlot10_1::Null
                                 ))
                     }
                     _ => true,
