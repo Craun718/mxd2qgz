@@ -1241,6 +1241,7 @@
       - [ ] 补齐 GPMultiValue 类型槽中的非空 IName 类体。
       - [x] 接入 GPDragDropObjectName 中无参数、无环境子对象的 MdProcess 版本化布局。[取证](docs/mxd-terra-round9-bookmark.md#拖放名称的模型进程来源)
       - [x] 接入 MdProcess 基类的 GPMessages 和 GPMessage 对象体。[取证](docs/mxd-terra-round9-bookmark.md#模型进程的消息列表)
+      - [x] 接入 MdProcess 的 GPEnvironmentManager 版本化布局。[取证](docs/mxd-terra-round9-bookmark.md#gpenvironmentmanager)
       - [ ] 接入 GPDragDropObjectName 的 MdProcess 子对象体。[取证](docs/mxd-terra-round9-bookmark.md#拖放名称的模型进程来源)
       - [x] 接入共享 IName 槽中的 GPDragDropObjectName。[取证](docs/mxd-terra-round9-bookmark.md#gpdragdropobjectname)
       - [x] 接入共享 IName 槽中的 GPServerToolName。[取证](docs/mxd-terra-round9-bookmark.md#gpservertoolname)

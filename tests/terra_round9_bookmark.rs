@@ -3702,6 +3702,76 @@ fn feature_bookmark_reads_gp_data_type_name_versioned_uid_slots() {
 }
 
 #[test]
+fn feature_bookmark_reads_model_environment_manager_versions() {
+    use mxd2qgz::maps::map_surround::{
+        GP_DRAG_DROP_OBJECT_NAME_CLASS_ID, GP_ENVIRONMENT_MANAGER_CLASS_ID, MD_PROCESS_CLASS_ID,
+    };
+
+    for version in 0_u16..=9 {
+        let mut bytes = bookmark_header_10_1(&GP_DRAG_DROP_OBJECT_NAME_CLASS_ID, 17);
+        bytes.extend(1_i16.to_le_bytes());
+        bytes.extend(bookmark_entry_10_1(&MD_PROCESS_CLASS_ID, 18));
+        bytes.extend(2_i16.to_le_bytes());
+        bytes.extend([0; 36]);
+        bytes.extend(bookmark_entry_10_1(&GP_ENVIRONMENT_MANAGER_CLASS_ID, 19));
+        bytes.extend(version.to_le_bytes());
+        if version >= 2 {
+            bytes.extend([1, 0, 2, 0, 3, 0, 4, 0]);
+        }
+        if version >= 3 {
+            bytes.extend(5_i16.to_le_bytes());
+        }
+        bytes.extend((-1_i32).to_le_bytes());
+        if version >= 4 {
+            bytes.extend(0_i32.to_le_bytes());
+        }
+        if version >= 5 {
+            bytes.extend(29_u32.to_le_bytes());
+        }
+        if version >= 6 {
+            bytes.extend([1, 0, 0, 0, b'a', 0, 0, 0, 0, 0, 0, 0]);
+        }
+        if version >= 7 {
+            bytes.extend([6, 0, 7, 0]);
+            if version == 7 {
+                bytes.extend(8_i16.to_le_bytes());
+            }
+            bytes.extend(39_i32.to_le_bytes());
+        }
+        if version >= 9 {
+            bytes.extend(9_i16.to_le_bytes());
+        }
+        bytes.extend(bookmark_string_10_1("书签"));
+        let end = bytes.len();
+        bytes.push(0xa5);
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+        let BookmarkNameEntry10_1::GpDragDropObjectName { source, .. } = result.name_object else {
+            panic!("应读取拖放名称");
+        };
+        let BookmarkNameEntry10_1::MdProcess(process) = *source else {
+            panic!("应读取模型进程");
+        };
+        let environment = process.environment.unwrap().body.unwrap();
+        assert_eq!(environment.version, version);
+        assert_eq!(environment.environments, (-1, Vec::new()));
+        assert_eq!(environment.v7_long, (version >= 7).then_some(39));
+        assert_eq!(environment.legacy_v7_short, (version == 7).then_some(8));
+        assert_eq!(environment.v9_short, (version >= 9).then_some(9));
+        assert_eq!(result.name, "书签");
+        assert_eq!(reader.position(), end);
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+}
+
+#[test]
 fn feature_bookmark_reads_drag_drop_model_process_value_versions() {
     use mxd2qgz::maps::map_surround::{
         GP_DRAG_DROP_OBJECT_NAME_CLASS_ID, GP_LONG_CLASS_ID, GP_MESSAGE_CLASS_ID,

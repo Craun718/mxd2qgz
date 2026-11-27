@@ -5108,3 +5108,21 @@ GeoProcessor.dll 10.1.0.3035 的 SHA-256 为
 
 MdParameter 的接口对象仍需逐个定名和核对持久化边界。
 本节仅完成静态取证，尚未接入解析器，也未进行 ArcMap 人工验证。
+
+##### GPEnvironmentManager
+
+同摘要 GeoProcessor.dll 中，+0x14 表 `0x71f7d13c` 的
+GetClassID `0x71f55d40` 返回
+`2AAF2B97-8381-469B-A2A7-FBD19AE43688`。Load
+`0x71f55da0` 检查无符号 short 上限 9。v2 起读取四个
+short，v3 起再读一个。随后读有符号 LONG 计数及 IUnknown
+对象列表（`0x71f55e95 / 0x71f55ec6`）。v4 起再读一组
+同结构列表（`0x71f55f46 / 0x71f55f77`）。
+
+v5 起读无符号 LONG，v6 起读两个 AfCore BSTR。
+v7 起读两个 short，仅 v7 另读一个 short，接着 v7 及
+后续版本都读 LONG（`0x71f560e4`）。v9 在
+`0x71f56105` 再读 short。构造拖放书签覆盖 v0–v9 的
+边界和截断回滚。列表使用已支持的 IUnknown 子集，
+尚未接入 GPEnvironment 专用类体，也未做真实 MXD 或
+ArcMap/QGIS 人工验收。

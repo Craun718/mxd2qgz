@@ -2644,6 +2644,25 @@ pub struct GpMessage10_1 {
     pub description: String,
 }
 
+pub const GP_ENVIRONMENT_MANAGER_CLASS_ID: [u8; 16] = [
+    0x97, 0x2b, 0xaf, 0x2a, 0x81, 0x83, 0x9b, 0x46, 0xa2, 0xa7, 0xfb, 0xd1, 0x9a, 0xe4, 0x36, 0x88,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpEnvironmentManager10_1 {
+    pub version: u16,
+    pub v2_shorts: Option<[i16; 4]>,
+    pub v3_short: Option<i16>,
+    pub environments: (i32, Vec<BookmarkNameEntry10_1>),
+    pub additional_environments: Option<(i32, Vec<BookmarkNameEntry10_1>)>,
+    pub v5_long: Option<u32>,
+    pub v6_strings: Option<[String; 2]>,
+    pub v7_shorts: Option<[i16; 2]>,
+    pub legacy_v7_short: Option<i16>,
+    pub v7_long: Option<i32>,
+    pub v9_short: Option<i16>,
+}
+
 pub const MD_PROCESS_CLASS_ID: [u8; 16] = [
     0x8c, 0x67, 0xda, 0x3a, 0x4d, 0x03, 0x7c, 0x49, 0xb8, 0x93, 0x7e, 0xd9, 0xe4, 0x0c, 0xa9, 0xd0,
 ];
@@ -2659,6 +2678,7 @@ pub struct MdProcess10_1 {
     pub base_v3_short: Option<i16>,
     pub tool_name: BookmarkNameEntry10_1,
     pub raw_parameter_count: i32,
+    pub environment: Option<RuleSlot10_1<GpEnvironmentManager10_1>>,
     pub raw_value_count: Option<i32>,
     pub values: Vec<RuleSlot10_1<GpCodedValueBody10_1>>,
 }
@@ -9551,14 +9571,112 @@ fn read_gp_messages_slot_10_1(
     Ok(RuleSlot10_1 { entry, body })
 }
 
+fn read_gp_environment_list_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<(i32, Vec<BookmarkNameEntry10_1>)> {
+    let raw_count = reader.read_u32_le()? as i32;
+    let count = raw_count.max(0) as usize;
+    if count > reader.remaining().min(max_bytes) / 16 {
+        return Err(io::Error::new(ErrorKind::InvalidData, "环境对象数量超限"));
+    }
+    let mut entries = Vec::new();
+    for _ in 0..count {
+        entries.push(read_bookmark_unknown_slot_10_1(
+            reader, max_bytes, table, depth,
+        )?);
+    }
+    Ok((raw_count, entries))
+}
+
+fn read_gp_environment_manager_slot_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<RuleSlot10_1<GpEnvironmentManager10_1>> {
+    let entry = read_object_entry_10_1(reader, table)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if table.registered_class(key).unwrap_or(class_id)
+                == GP_ENVIRONMENT_MANAGER_CLASS_ID =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: GP_ENVIRONMENT_MANAGER_CLASS_ID,
+            ..
+        } => {
+            let version = reader.read_u16_le()?;
+            if version > 9 || depth >= MAX_BOOKMARK_NAME_NESTING {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "GPEnvironmentManager 版本或嵌套层数超限",
+                ));
+            }
+            Some(Box::new(GpEnvironmentManager10_1 {
+                version,
+                v2_shorts: (version >= 2)
+                    .then(|| -> io::Result<_> {
+                        Ok([
+                            reader.read_u16_le()? as i16,
+                            reader.read_u16_le()? as i16,
+                            reader.read_u16_le()? as i16,
+                            reader.read_u16_le()? as i16,
+                        ])
+                    })
+                    .transpose()?,
+                v3_short: (version >= 3)
+                    .then(|| reader.read_u16_le().map(|value| value as i16))
+                    .transpose()?,
+                environments: read_gp_environment_list_10_1(reader, max_bytes, table, depth + 1)?,
+                additional_environments: (version >= 4)
+                    .then(|| read_gp_environment_list_10_1(reader, max_bytes, table, depth + 1))
+                    .transpose()?,
+                v5_long: (version >= 5).then(|| reader.read_u32_le()).transpose()?,
+                v6_strings: (version >= 6)
+                    .then(|| -> io::Result<_> {
+                        Ok([
+                            read_bstr_string_10_1(reader, max_bytes)?,
+                            read_bstr_string_10_1(reader, max_bytes)?,
+                        ])
+                    })
+                    .transpose()?,
+                v7_shorts: (version >= 7)
+                    .then(|| -> io::Result<_> {
+                        Ok([reader.read_u16_le()? as i16, reader.read_u16_le()? as i16])
+                    })
+                    .transpose()?,
+                legacy_v7_short: (version == 7)
+                    .then(|| reader.read_u16_le().map(|value| value as i16))
+                    .transpose()?,
+                v7_long: (version >= 7)
+                    .then(|| reader.read_u32_le().map(|value| value as i32))
+                    .transpose()?,
+                v9_short: (version >= 9)
+                    .then(|| reader.read_u16_le().map(|value| value as i16))
+                    .transpose()?,
+            }))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "IGPEnvironmentManager 槽中的类尚未支持",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
+}
+
 fn read_md_process_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
     depth: usize,
 ) -> io::Result<MdProcess10_1> {
-    use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
-
     if depth >= MAX_BOOKMARK_NAME_NESTING {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
@@ -9588,12 +9706,9 @@ fn read_md_process_body_10_1(
             "MdProcess 的 IMdParameter 子对象尚未支持",
         ));
     }
-    if version >= 2 && read_header_10_1(reader)? != ObjectHeader::Null {
-        return Err(io::Error::new(
-            ErrorKind::Unsupported,
-            "MdProcess 的 IGPEnvironmentManager 子对象尚未支持",
-        ));
-    }
+    let environment = (version >= 2)
+        .then(|| read_gp_environment_manager_slot_10_1(reader, max_bytes, table, depth + 1))
+        .transpose()?;
     let (raw_value_count, values) = match version {
         3 => (
             None,
@@ -9620,6 +9735,7 @@ fn read_md_process_body_10_1(
         base_v3_short,
         tool_name,
         raw_parameter_count,
+        environment,
         raw_value_count,
         values,
     })
