@@ -3702,6 +3702,90 @@ fn feature_bookmark_reads_gp_data_type_name_versioned_uid_slots() {
 }
 
 #[test]
+fn feature_bookmark_reads_geo_data_type_name_versions() {
+    use mxd2qgz::maps::map_surround::{
+        GP_DATA_TYPE_NAME_CLASS_ID, GP_MULTI_VALUE_TYPE_NAME_CLASS_ID, GP_NUMERIC_DOMAIN_CLASS_ID,
+        GP_SA_GEO_DATA_DOMAIN_CLASS_ID, GP_SA_GEO_DATA_TYPE_NAME_CLASS_ID, GpSaGeoDataTypeName10_1,
+        GpTopoDomain10_1,
+    };
+
+    for version in [0_i16, 1, 2] {
+        let mut bytes = bookmark_header_10_1(&GP_MULTI_VALUE_TYPE_NAME_CLASS_ID, 17);
+        bytes.extend(1_i16.to_le_bytes());
+        bytes.extend(bookmark_entry_10_1(&GP_SA_GEO_DATA_TYPE_NAME_CLASS_ID, 18));
+        bytes.extend(version.to_le_bytes());
+        let slot_offset = bytes.len();
+        if version == 2 {
+            bytes.extend(bookmark_entry_10_1(&GP_SA_GEO_DATA_DOMAIN_CLASS_ID, 19));
+            bytes.extend(1_i16.to_le_bytes());
+            bytes.extend([0; 14]);
+            bytes.extend(bookmark_string_10_1("域"));
+        } else {
+            bytes.extend(2_i32.to_le_bytes());
+            bytes.extend(bookmark_entry_10_1(&GP_DATA_TYPE_NAME_CLASS_ID, 19));
+            bytes.extend([2, 0, 2, 0]);
+            bytes.extend([0; 16]);
+            bytes.extend(bookmark_entry_10_1(&GP_DATA_TYPE_NAME_CLASS_ID, 19));
+        }
+        bytes.extend(bookmark_string_10_1("书签"));
+        let end = bytes.len();
+        bytes.push(0xa5);
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+        let BookmarkNameEntry10_1::GpMultiValueTypeName { element_type, .. } = result.name_object
+        else {
+            panic!("应读取多值类型名称");
+        };
+        let BookmarkNameEntry10_1::GpSaGeoDataTypeName {
+            version: read_version,
+            body,
+        } = *element_type
+        else {
+            panic!("应读取地理数据类型名称");
+        };
+        assert_eq!(read_version, version);
+        match *body {
+            GpSaGeoDataTypeName10_1::Domain(slot) if version == 2 => assert!(matches!(
+                slot.body.as_deref(),
+                Some(GpTopoDomain10_1::SaGeoData(domain)) if domain.trailing_string == "域"
+            )),
+            GpSaGeoDataTypeName10_1::LegacyMembers {
+                raw_count: 2,
+                members,
+            } if version < 2 => {
+                assert!(matches!(
+                    members.as_slice(),
+                    [
+                        BookmarkNameEntry10_1::GpDataTypeName(_),
+                        BookmarkNameEntry10_1::BackReference { key: 19, .. },
+                    ]
+                ));
+            }
+            _ => panic!("地理数据类型名称体与版本不符"),
+        }
+        assert_eq!(reader.position(), end);
+        assert!(refs.contains(19));
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+        if version == 2 {
+            bytes[slot_offset..slot_offset + 16].copy_from_slice(&GP_NUMERIC_DOMAIN_CLASS_ID);
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let error = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap_err();
+            assert_eq!(error.kind(), std::io::ErrorKind::Unsupported);
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+}
+
+#[test]
 fn feature_bookmark_reads_gp_multi_value_type_name() {
     use mxd2qgz::maps::map_surround::{
         FILE_NAME_CLASS_ID, GP_DATA_TYPE_NAME_CLASS_ID, GP_MULTI_VALUE_TYPE_NAME_CLASS_ID,

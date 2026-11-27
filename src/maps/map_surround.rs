@@ -2621,6 +2621,19 @@ pub const GP_MULTI_VALUE_TYPE_NAME_CLASS_ID: [u8; 16] = [
     0x70, 0x33, 0xde, 0x35, 0x8e, 0x67, 0xfb, 0x40, 0x9b, 0x7e, 0xff, 0xaf, 0x08, 0x22, 0x4b, 0x99,
 ];
 
+pub const GP_SA_GEO_DATA_TYPE_NAME_CLASS_ID: [u8; 16] = [
+    0xe6, 0x74, 0xaf, 0x49, 0x05, 0x6a, 0x74, 0x49, 0xbc, 0x0b, 0xd4, 0x4f, 0xe8, 0xc3, 0x5f, 0xdf,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum GpSaGeoDataTypeName10_1 {
+    Domain(RuleSlot10_1<GpTopoDomain10_1>),
+    LegacyMembers {
+        raw_count: i32,
+        members: Vec<BookmarkNameEntry10_1>,
+    },
+}
+
 pub const GP_GRAPH_DATA_TABLE_TYPE_NAME_CLASS_ID: [u8; 16] = [
     0x15, 0x48, 0x4f, 0x6b, 0xb3, 0x00, 0x5f, 0x4b, 0xba, 0x22, 0xe7, 0x63, 0x95, 0x22, 0x73, 0xe5,
 ];
@@ -2795,6 +2808,10 @@ pub enum BookmarkNameEntry10_1 {
         version: i16,
         raw_column_count: i32,
         columns: Vec<GpValueTableColumnType10_1>,
+    },
+    GpSaGeoDataTypeName {
+        version: i16,
+        body: Box<GpSaGeoDataTypeName10_1>,
     },
     GpGraphDataTableTypeName {
         version: i16,
@@ -9179,6 +9196,7 @@ fn is_gp_data_type_name(name: &BookmarkNameEntry10_1) -> bool {
             | BookmarkNameEntry10_1::GpMultiValueTypeName { .. }
             | BookmarkNameEntry10_1::GpCompositeDataTypeName { .. }
             | BookmarkNameEntry10_1::GpGraphDataTableTypeName { .. }
+            | BookmarkNameEntry10_1::GpSaGeoDataTypeName { .. }
             | BookmarkNameEntry10_1::GpValueTableTypeName { .. }
             | BookmarkNameEntry10_1::GpSaTopoFeaturesTypeName(_)
             | BookmarkNameEntry10_1::BackReference {
@@ -9186,6 +9204,7 @@ fn is_gp_data_type_name(name: &BookmarkNameEntry10_1) -> bool {
                     | GP_MULTI_VALUE_TYPE_NAME_CLASS_ID
                     | GP_COMPOSITE_DATA_TYPE_NAME_CLASS_ID
                     | GP_GRAPH_DATA_TABLE_TYPE_NAME_CLASS_ID
+                    | GP_SA_GEO_DATA_TYPE_NAME_CLASS_ID
                     | GP_VALUE_TABLE_TYPE_NAME_CLASS_ID
                     | GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID,
                 ..
@@ -9465,12 +9484,14 @@ pub(crate) fn read_gp_multi_value_type_name_body_10_1(
             | BookmarkNameEntry10_1::GpMultiValueTypeName { .. }
             | BookmarkNameEntry10_1::GpCompositeDataTypeName { .. }
             | BookmarkNameEntry10_1::GpGraphDataTableTypeName { .. }
+            | BookmarkNameEntry10_1::GpSaGeoDataTypeName { .. }
             | BookmarkNameEntry10_1::GpValueTableTypeName { .. }
             | BookmarkNameEntry10_1::BackReference {
                 class_id: GP_DATA_TYPE_NAME_CLASS_ID
                     | GP_MULTI_VALUE_TYPE_NAME_CLASS_ID
                     | GP_COMPOSITE_DATA_TYPE_NAME_CLASS_ID
                     | GP_GRAPH_DATA_TABLE_TYPE_NAME_CLASS_ID
+                    | GP_SA_GEO_DATA_TYPE_NAME_CLASS_ID
                     | GP_VALUE_TABLE_TYPE_NAME_CLASS_ID
                     | GP_FUNCTION_NAME_CLASS_ID
                     | GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID,
@@ -9521,6 +9542,69 @@ fn read_gp_composite_data_type_name_body_10_1(
         version,
         raw_member_count,
         members,
+    })
+}
+
+fn read_gp_sa_geo_data_type_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    name_depth: usize,
+) -> io::Result<BookmarkNameEntry10_1> {
+    let version = read_gp_name_version(reader, 2, "GPSAGeoDataTypeName")?;
+    if name_depth >= MAX_BOOKMARK_NAME_NESTING {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "GPSAGeoDataTypeName 嵌套层数超限",
+        ));
+    }
+    let body = if version == 2 {
+        let offset = reader.position();
+        use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
+
+        let supported = match read_header_10_1(&mut reader.clone())? {
+            ObjectHeader::Null => true,
+            ObjectHeader::Object { class_id, key } => {
+                table.registered_class(key).unwrap_or(class_id) == GP_SA_GEO_DATA_DOMAIN_CLASS_ID
+            }
+        };
+        if !supported {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                format!("IGPSAGeoDataDomain 槽 offset 0x{offset:x}: 类未支持"),
+            ));
+        }
+        GpSaGeoDataTypeName10_1::Domain(read_gp_topo_domain_slot_10_1(
+            reader,
+            max_bytes,
+            table,
+            name_depth + 1,
+        )?)
+    } else {
+        let raw_count = reader.read_u32_le()? as i32;
+        let count = raw_count.max(0) as usize;
+        if count > reader.remaining().min(max_bytes) / 16 {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "GPSAGeoDataTypeName 成员数超限",
+            ));
+        }
+        let mut members = Vec::new();
+        for _ in 0..count {
+            let member = read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth + 1)?;
+            if !is_gp_data_type_name(&member) {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    "GPSAGeoDataTypeName 的旧成员类型名称类未支持",
+                ));
+            }
+            members.push(member);
+        }
+        GpSaGeoDataTypeName10_1::LegacyMembers { raw_count, members }
+    };
+    Ok(BookmarkNameEntry10_1::GpSaGeoDataTypeName {
+        version,
+        body: Box::new(body),
     })
 }
 
@@ -9917,6 +10001,10 @@ fn read_bookmark_name_slot_10_1(
         } => BookmarkNameEntry10_1::TerrainName(Box::new(read_terrain_name_body_10_1(
             reader, max_bytes, table,
         )?)),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_SA_GEO_DATA_TYPE_NAME_CLASS_ID,
+            ..
+        } => read_gp_sa_geo_data_type_name_body_10_1(reader, max_bytes, table, name_depth)?,
         ObjectEntry10_1::NewObject {
             class_id: GP_GRAPH_DATA_TABLE_TYPE_NAME_CLASS_ID,
             ..

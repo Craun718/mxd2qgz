@@ -4872,3 +4872,21 @@ GetClassID 从 `0x71d1b330` 经内部接口转到主表 +0x14
 相同的字段顺序。构造用例覆盖多值类型槽内嵌对象、非空
 IUID、后续记录、回引和截断回滚。真实 MXD 宿主和
 ArcMap/QGIS 人工验收待查。
+
+#### GPSAGeoDataTypeName
+
+同摘要的 GpRasterFunctions.dll 10.1.0.3035 中，RTTI 主表
+`0x748aa22c` 的 QI `0x748974c0` 分别返回 IName、IGPName
+与 IGPDataTypeName。持久化表 `0x748aa2ec` 的 GetClassID
+`0x748972f0` 返回 `49AF74E6-6A05-4974-BC0B-D44FE8C35FDF`，
+`0x7488fb7b` 使用同一 CLSID 创建实例。
+
+Load `0x74897860` 检查有符号 short 上限 2。v2 在
+`0x748978da` 请求 `C20FA807-C504-446C-8279-39A9170C8FFE`，
+10.1 esriGeoprocessing 类型库将其定名为 IGPSAGeoDataDomain。
+旧版读取有符号 LONG 计数，非正数跳过循环，在 `0x74897924`
+逐项请求 IGPDataTypeName，原生读取后不保留旧成员数组。
+Save `0x74897940` 写 v2 和域对象。读取器保留旧成员原始计数
+和对象回引，v2 复用 GPSAGeoDataDomain 的读取器。
+构造书签覆盖 v0–v2、回引、错误域类及截断回滚。
+真实宿主和 ArcMap/QGIS 人工验收待查。
