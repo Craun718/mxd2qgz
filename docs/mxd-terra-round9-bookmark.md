@@ -5644,3 +5644,82 @@ DataElement 和登记回引。静态保存循环不能给出实际调用者传�
 子类分布，且未发现足以确定其他子类格式的直接写侧证据。
 MdProcess 主体、消息、环境、参数及四种模式已接入。
 其他持久化类覆盖和真实宿主验证单列于 TODO。
+
+###### 容器模式的全流筛查
+
+在同一批 246 份文件、3,447 条重组流中搜索
+GPContainerSchema 的完整 CLSID，未找到匹配。筛查覆盖
+参考 MXD、两版介质、SDK 和本地工具箱的明文流。现有实档
+不能提供 AdditionalChildren 的非 IDataElement 类候选。
+10.1 保存循环允许任意可持久化对象进入，因此仍保留其他类
+的读取待办，待有具体宿主或受控写出记录再核对。
+ArcMap 和 QGIS 人工验收尚未执行。
+
+###### 容器模式写入 UID 子项的原生探针
+
+用 32 位 Wine 直接调用同版 GpObjects.dll 和 SystemCore.dll
+的 DllGetClassObject。通过 IGPContainerSchema 虚表 `+0x10`
+的 `0x746a3120` 设置 AdditionalChildren。数组包含同一个
+原生 UID 实例两次，随后从原生 ObjectStream 保存模式。
+setter 和保存均返回 S_OK。写出的 95 字节记录中，
+外层模式为键 0、版本 1，子项计数为 2。首项以键 1 写 UID
+对象体，第二项只写入同类同键的普通对象头。
+
+Rust 通过容器模式实际子槽分派读取 UID 新对象和回引，
+并复用原有 IDataElement 读取路径。回归使用探针写出的
+字节验证对象边界。此证据来自 DLL 运行，真实 MXD 宿主、
+其余 IPersistStream 类和 ArcMap/QGIS 人工验收仍待验证。
+
+###### 容器模式回读 UID 回引
+
+用同版 32 位 GpObjects.dll、SystemCore.dll 在 Wine 中回读上述
+95 字节。进程内登记 GPContainerSchema、Array 和 UID 的类工厂，
+将内存流移回起点，以独立的 ObjectStream 实例读取。
+SystemCore 的 LoadObject 实现 `0x7ffcff70` 返回 S_OK，
+容器 getter 返回含两项的数组，两项取得同一个非空接口指针，
+流位置为 `0x5f`。这是原生 DLL 对该记录的加载与回引证据。
+真实 MXD 宿主和 ArcMap/QGIS 人工验收仍待验证。
+
+###### 容器模式的 StrArray 子项
+
+沿用 UID 原生探针，通过 10.1 SystemCore.dll 的类工厂创建
+StrArray（`A7F92065-36CE-47B6-A463-4763DA947CC2`），
+将同一实例两次加入 AdditionalChildren。原生 setter 和 Save
+均返回 S_OK。写出的 78 字节中，键 1 的新对象体为版本 1、
+计数 0，第二项为同键普通对象头。Rust 复用 StrArray 对象体
+读取器，登记可供后继字符串数组槽使用的键与内容，回归覆盖
+原生对象边界、回引和截断。真实 MXD 宿主仍待验证。
+
+###### 容器模式写入 PropertySet 子项
+
+沿用 UID 的 10.1 DLL 探针，改由 SystemCore 类工厂创建
+空 PropertySet。将同一实例加入 AdditionalChildren 两次。
+setter 和原生 ObjectStream 保存均返回 S_OK。78 字节记录中，
+首项为键 1 的 PropertySet v1，计数 0，第二项为同键回引。
+共享容器子槽复用 PropertySet 对象流读取器和键表，
+回归覆盖原生字节、后继边界和截断。真实 MXD 已知宿主、
+其他子类与 ArcMap/QGIS 人工验收仍待验证。
+
+###### 容器模式的嵌套子项
+
+沿用同版 DLL 探针，通过 GpObjects 类工厂创建一个独立的
+空 GPContainerSchema，将它两次加入外层的 AdditionalChildren。
+原生 setter 和 ObjectStream 保存均返回 S_OK，写出 84 字节。
+外层键 0、计数 2，首项为键 1 的完整容器体且子计数为零，
+随后只写入该对象的同键回引。
+
+Rust 在子槽复用参数模式读取器，并应用深度限制。
+回归以原生字节验证嵌套对象、同键回引、后继边界和超深拒绝。
+其他非空子类及真实 MXD 的 ArcMap/QGIS 人工验收仍待验证。
+
+###### 容器模式的表、要素和栅格子项
+
+以同一套 ArcMap 10.1 DLL 和 IGPContainerSchema setter，
+分别把 GPTableSchema、GPFeatureSchema、GPRasterSchema
+的默认实例两次放入 AdditionalChildren。原生 ObjectStream
+均返回 S_OK，写出 100、136、120 字节。各记录首项为
+完整模式体，第二项以相同类和键 1 回引。
+
+Rust 共用已有参数模式读取器，回归以三份原生输出验证实例
+类型、同键回引及后继边界。真实 MXD 宿主和 ArcMap/QGIS
+人工验收尚未验证。

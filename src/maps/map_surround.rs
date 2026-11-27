@@ -234,7 +234,10 @@ use crate::objects::route_event_name::{
     RouteEventSourceNameBody10_1, RouteMeasureLocatorName10_1,
     read_route_event_source_name_body_10_1, read_route_measure_locator_name_body_10_1,
 };
-use crate::objects::string_array::{StringArraySlot10_1, read_string_array_slot_10_1};
+use crate::objects::string_array::{
+    STR_ARRAY_CLASS_ID, StringArraySlot10_1, read_string_array_body_10_1,
+    read_string_array_slot_10_1,
+};
 use crate::objects::workspace_name::WorkspaceNameEntry10_1;
 use crate::objects::workspace_name::{
     WORKSPACE_NAME_CLASS_ID, WorkspaceNamePrefix10_1, read_workspace_name_body_10_1,
@@ -2710,13 +2713,22 @@ pub const GP_FEATURE_SCHEMA_CLASS_ID: [u8; 16] = [
 ];
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum GpContainerChild10_1 {
+    DataElement(Box<DeChild10_1>),
+    Uid(UidBody10_1),
+    PropertySet(Box<PropertySetObjectStream10_1>),
+    Schema(Box<GpParameterSchema10_1>),
+    StringArray { version: u16, values: Vec<String> },
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum GpParameterSchema10_1 {
     Container {
         version: i16,
         base_version: i16,
         base_shorts: [i16; 2],
         raw_child_count: i32,
-        children: Vec<RuleSlot10_1<DeChild10_1>>,
+        children: Vec<RuleSlot10_1<GpContainerChild10_1>>,
     },
     Raster {
         version: i16,
@@ -10063,6 +10075,69 @@ fn read_gp_parameter_choice_list_10_1(
     Ok(RuleSlot10_1 { entry, body })
 }
 
+fn read_gp_container_child(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<RuleSlot10_1<GpContainerChild10_1>> {
+    let entry = read_object_entry_10_1(reader, table)?;
+    let body = match entry {
+        ObjectEntry10_1::NewObject {
+            class_id: UID_CLASS_ID,
+            key,
+        } => Some(Box::new(GpContainerChild10_1::Uid(read_uid_body_10_1(
+            reader, key,
+        )?))),
+        ObjectEntry10_1::NewObject {
+            class_id: STR_ARRAY_CLASS_ID,
+            key,
+        } => {
+            let start = reader.position();
+            let (version, values) = read_string_array_body_10_1(reader, max_bytes)?;
+            table.mark_string_array(key, version, reader.position() - start, &values);
+            Some(Box::new(GpContainerChild10_1::StringArray {
+                version,
+                values,
+            }))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: PROPERTY_SET_CLASS_ID,
+            ..
+        } => Some(Box::new(GpContainerChild10_1::PropertySet(Box::new(
+            read_property_set_object_stream_10_1(reader, max_bytes, table)?,
+        )))),
+        ObjectEntry10_1::NewObject {
+            class_id:
+                GP_CONTAINER_SCHEMA_CLASS_ID
+                | GP_TABLE_SCHEMA_CLASS_ID
+                | GP_FEATURE_SCHEMA_CLASS_ID
+                | GP_RASTER_SCHEMA_CLASS_ID,
+            ..
+        } => read_gp_parameter_schema_entry(reader, max_bytes, table, depth + 1, entry)?
+            .body
+            .map(|body| Box::new(GpContainerChild10_1::Schema(body))),
+        ObjectEntry10_1::BackReference { class_id, key }
+            if matches!(
+                table.registered_class(key).unwrap_or(class_id),
+                UID_CLASS_ID
+                    | PROPERTY_SET_CLASS_ID
+                    | STR_ARRAY_CLASS_ID
+                    | GP_CONTAINER_SCHEMA_CLASS_ID
+                    | GP_TABLE_SCHEMA_CLASS_ID
+                    | GP_FEATURE_SCHEMA_CLASS_ID
+                    | GP_RASTER_SCHEMA_CLASS_ID
+            ) =>
+        {
+            None
+        }
+        _ => read_gp_data_element_child_entry(reader, max_bytes, table, depth, entry)?
+            .body
+            .map(|body| Box::new(GpContainerChild10_1::DataElement(body))),
+    };
+    Ok(RuleSlot10_1 { entry, body })
+}
+
 fn read_gp_parameter_schema_slot_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -10070,6 +10145,16 @@ fn read_gp_parameter_schema_slot_10_1(
     depth: usize,
 ) -> io::Result<RuleSlot10_1<GpParameterSchema10_1>> {
     let entry = read_object_entry_10_1(reader, table)?;
+    read_gp_parameter_schema_entry(reader, max_bytes, table, depth, entry)
+}
+
+fn read_gp_parameter_schema_entry(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+    entry: ObjectEntry10_1,
+) -> io::Result<RuleSlot10_1<GpParameterSchema10_1>> {
     let body = match entry {
         ObjectEntry10_1::Null => None,
         ObjectEntry10_1::BackReference { class_id, key }
@@ -10091,6 +10176,12 @@ fn read_gp_parameter_schema_slot_10_1(
                 | GP_CONTAINER_SCHEMA_CLASS_ID),
             ..
         } => {
+            if depth >= MAX_BOOKMARK_NAME_NESTING {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "GP 模式嵌套层数超限",
+                ));
+            }
             let version = read_gp_name_version(reader, 1, "GP 模式")?;
             let base_version = read_gp_name_version(reader, 1, "GPSchemaBase")?;
             let base_shorts = [reader.read_u16_le()? as i16, reader.read_u16_le()? as i16];
@@ -10112,7 +10203,7 @@ fn read_gp_parameter_schema_slot_10_1(
                 }
                 let mut children = Vec::new();
                 for _ in 0..raw_child_count {
-                    children.push(read_gp_data_element_child(reader, max_bytes, table, depth)?);
+                    children.push(read_gp_container_child(reader, max_bytes, table, depth)?);
                 }
                 GpParameterSchema10_1::Container {
                     version,
@@ -11951,6 +12042,249 @@ mod tests {
             ObjectEntry10_1::BackReference { key: 28, .. }
         ));
         assert_eq!(reader.remaining(), 0);
+    }
+
+    #[test]
+    fn gp_container_schema_reads_native_uid_child_and_back_reference() {
+        // 10.1 GpObjects 与 SystemCore 在 Wine 中写出的 95 字节对象。
+        let mut bytes = GP_CONTAINER_SCHEMA_CLASS_ID.to_vec();
+        bytes.extend(0_u32.to_le_bytes());
+        bytes.extend([1, 0, 1, 0, 0, 0, 0, 0, 2, 0, 0, 0]);
+        bytes.extend(UID_CLASS_ID);
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend([0; 21]);
+        bytes.extend(UID_CLASS_ID);
+        bytes.extend(1_u32.to_le_bytes());
+        assert_eq!(bytes.len(), 95);
+        bytes.push(0xa5);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let object = read_gp_parameter_schema_slot_10_1(&mut reader, 1024, &mut refs, 0).unwrap();
+        let Some(GpParameterSchema10_1::Container { children, .. }) = object.body.as_deref() else {
+            panic!("应读取容器模式");
+        };
+        assert_eq!(children.len(), 2);
+        assert!(
+            matches!(children[0].body.as_deref(), Some(GpContainerChild10_1::Uid(uid)) if uid.key == 1)
+        );
+        assert!(matches!(
+            children[1].entry,
+            ObjectEntry10_1::BackReference { key: 1, .. }
+        ));
+        assert_eq!(reader.position(), 95);
+        assert_eq!(reader.read_bytes(1).unwrap(), &[0xa5]);
+    }
+
+    #[test]
+    fn gp_container_schema_reads_native_string_array_and_back_reference() {
+        // 10.1 原生保存的空 StrArray v1 和同键回引。
+        let mut bytes = GP_CONTAINER_SCHEMA_CLASS_ID.to_vec();
+        bytes.extend(0_u32.to_le_bytes());
+        bytes.extend([1, 0, 1, 0, 0, 0, 0, 0, 2, 0, 0, 0]);
+        bytes.extend(STR_ARRAY_CLASS_ID);
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend([1, 0, 0, 0, 0, 0]);
+        bytes.extend(STR_ARRAY_CLASS_ID);
+        bytes.extend(1_u32.to_le_bytes());
+        assert_eq!(bytes.len(), 78);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let object = read_gp_parameter_schema_slot_10_1(&mut reader, 1024, &mut refs, 0).unwrap();
+        let Some(GpParameterSchema10_1::Container { children, .. }) = object.body.as_deref() else {
+            panic!("应读取容器模式");
+        };
+        assert!(matches!(
+            children[0].body.as_deref(),
+            Some(GpContainerChild10_1::StringArray { version: 1, values }) if values.is_empty()
+        ));
+        assert!(matches!(
+            children[1].entry,
+            ObjectEntry10_1::BackReference { key: 1, .. }
+        ));
+        assert!(children[1].body.is_none());
+        assert_eq!(reader.remaining(), 0);
+
+        for len in [57, 77] {
+            let mut reader = Reader::new(&bytes[..len]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_gp_parameter_schema_slot_10_1(&mut reader, 1024, &mut refs, 0).is_err());
+        }
+    }
+
+    #[test]
+    fn gp_container_schema_reads_native_property_set_and_back_reference() {
+        // 原生探针写出的空 PropertySet v1，第二项回引同一个对象。
+        let mut bytes = GP_CONTAINER_SCHEMA_CLASS_ID.to_vec();
+        bytes.extend(0_u32.to_le_bytes());
+        bytes.extend([1, 0, 1, 0, 0, 0, 0, 0, 2, 0, 0, 0]);
+        bytes.extend(PROPERTY_SET_CLASS_ID);
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend([1, 0, 0, 0, 0, 0]);
+        bytes.extend(PROPERTY_SET_CLASS_ID);
+        bytes.extend(1_u32.to_le_bytes());
+        assert_eq!(bytes.len(), 78);
+        for cut in 0..bytes.len() {
+            assert!(
+                read_gp_parameter_schema_slot_10_1(
+                    &mut Reader::new(&bytes[..cut]),
+                    1024,
+                    &mut RefTable10_1::new(),
+                    0,
+                )
+                .is_err()
+            );
+        }
+        bytes.push(0xa5);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let schema = read_gp_parameter_schema_slot_10_1(&mut reader, 1024, &mut refs, 0).unwrap();
+        let Some(GpParameterSchema10_1::Container { children, .. }) = schema.body.as_deref() else {
+            panic!("应读取容器模式");
+        };
+        assert!(matches!(
+            children[0].body.as_deref(),
+            Some(GpContainerChild10_1::PropertySet(_))
+        ));
+        assert_eq!(
+            children[1].entry,
+            ObjectEntry10_1::BackReference {
+                class_id: PROPERTY_SET_CLASS_ID,
+                key: 1
+            }
+        );
+        assert_eq!(reader.position(), 78);
+        assert_eq!(reader.read_bytes(1).unwrap(), &[0xa5]);
+    }
+
+    #[test]
+    fn gp_container_schema_reads_native_nested_container() {
+        let mut bytes = GP_CONTAINER_SCHEMA_CLASS_ID.to_vec();
+        bytes.extend(0_u32.to_le_bytes());
+        bytes.extend([1, 0, 1, 0, 0, 0, 0, 0, 2, 0, 0, 0]);
+        bytes.extend(GP_CONTAINER_SCHEMA_CLASS_ID);
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend([1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        bytes.extend(GP_CONTAINER_SCHEMA_CLASS_ID);
+        bytes.extend(1_u32.to_le_bytes());
+        assert_eq!(bytes.len(), 84);
+        bytes.push(0xa5);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let result = read_gp_parameter_schema_slot_10_1(&mut reader, 1024, &mut refs, 0).unwrap();
+        let Some(GpParameterSchema10_1::Container { children, .. }) = result.body.as_deref() else {
+            panic!("应读取外层容器模式");
+        };
+        let Some(GpContainerChild10_1::Schema(child)) = children[0].body.as_deref() else {
+            panic!("应读取嵌套容器模式");
+        };
+        assert!(matches!(
+            child.as_ref(),
+            GpParameterSchema10_1::Container {
+                raw_child_count: 0,
+                ..
+            }
+        ));
+        assert_eq!(
+            children[1].entry,
+            ObjectEntry10_1::BackReference {
+                class_id: GP_CONTAINER_SCHEMA_CLASS_ID,
+                key: 1
+            }
+        );
+        assert_eq!(reader.position(), 84);
+        assert_eq!(reader.read_bytes(1).unwrap(), &[0xa5]);
+
+        let error = read_gp_parameter_schema_slot_10_1(
+            &mut Reader::new(&bytes),
+            1024,
+            &mut RefTable10_1::new(),
+            MAX_BOOKMARK_NAME_NESTING - 1,
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::InvalidData);
+        assert!(error.to_string().contains("嵌套"));
+    }
+
+    #[test]
+    fn gp_container_schema_reads_native_table_feature_and_raster_children() {
+        for (class_id, body, end) in [
+            (
+                GP_TABLE_SCHEMA_CLASS_ID,
+                &[
+                    0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00,
+                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                    0x00, 0x00,
+                ][..],
+                100,
+            ),
+            (
+                GP_FEATURE_SCHEMA_CLASS_ID,
+                &[
+                    0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x01,
+                    0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff,
+                    0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                    0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00,
+                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                ][..],
+                136,
+            ),
+            (
+                GP_RASTER_SCHEMA_CLASS_ID,
+                &[
+                    0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00,
+                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                    0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                ][..],
+                120,
+            ),
+        ] {
+            let mut bytes = GP_CONTAINER_SCHEMA_CLASS_ID.to_vec();
+            bytes.extend(0_u32.to_le_bytes());
+            bytes.extend([1, 0, 1, 0, 0, 0, 0, 0, 2, 0, 0, 0]);
+            bytes.extend(class_id);
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend(body);
+            bytes.extend(class_id);
+            bytes.extend(1_u32.to_le_bytes());
+            assert_eq!(bytes.len(), end);
+            bytes.push(0xa5);
+
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let result =
+                read_gp_parameter_schema_slot_10_1(&mut reader, 1024, &mut refs, 0).unwrap();
+            let Some(GpParameterSchema10_1::Container { children, .. }) = result.body.as_deref()
+            else {
+                panic!("应读取外层容器模式");
+            };
+            let Some(GpContainerChild10_1::Schema(child)) = children[0].body.as_deref() else {
+                panic!("应读取模式子项");
+            };
+            assert!(matches!(
+                (class_id, child.as_ref()),
+                (GP_TABLE_SCHEMA_CLASS_ID, GpParameterSchema10_1::Table(_))
+                    | (
+                        GP_FEATURE_SCHEMA_CLASS_ID,
+                        GpParameterSchema10_1::Feature { .. }
+                    )
+                    | (
+                        GP_RASTER_SCHEMA_CLASS_ID,
+                        GpParameterSchema10_1::Raster { .. }
+                    )
+            ));
+            assert_eq!(
+                children[1].entry,
+                ObjectEntry10_1::BackReference { class_id, key: 1 }
+            );
+            assert_eq!(reader.position(), end);
+            assert_eq!(reader.read_bytes(1).unwrap(), &[0xa5]);
+        }
     }
 
     #[test]
