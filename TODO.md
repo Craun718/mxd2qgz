@@ -1272,7 +1272,7 @@
       - [x] 接入 GPDragDropObjectName 的 MdProcess 子对象体。[取证](docs/mxd-terra-round9-bookmark.md#拖放名称的模型进程来源)
       - [ ] 核实并接入 GPContainerSchema 子列表中的其他 IPersistStream 实现。[取证](docs/mxd-terra-round9-bookmark.md#容器模式保存边界)
       - [x] 接入 MdParameter 值槽中 MdVariable 的版本化对象体。[读取器](docs/mxd-terra-round9-bookmark.md#mdvariable-读取器)
-      - [ ] 核对并接入 MdVariable 嵌套值的 IStringArray 槽中的 Names 对象体。[实档停点](docs/mxd-terra-round9-bookmark.md#新增数据元素分派后的实档复核)
+      - [x] 核对并接入 MdVariable 嵌套值的 IStringArray 槽中的 Names 对象体。[原生取证](docs/mxd-terra-round9-bookmark.md#istringarray-槽中的-names)
       - [ ] 核实 MdVariable 的非空 IName 槽中其余名称实现。
       - [ ] 核实 MdProcess 其余接口槽中的持久化类覆盖。[取证](docs/mxd-terra-round9-bookmark.md#mdparameter-的内联读取入口)
       - [x] 接入共享 IName 槽中的 GPDragDropObjectName。[取证](docs/mxd-terra-round9-bookmark.md#gpdragdropobjectname)

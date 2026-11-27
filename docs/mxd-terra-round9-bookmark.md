@@ -5382,6 +5382,33 @@ IStringArray（`206216C9-7253-4A4D-92DD-60329FD9D792`）。
 这里的完成计数只指 Rust 局部读取；完整宿主分派和
 ArcMap/QGIS 人工验收尚未验证。
 
+##### IStringArray 槽中的 Names
+
+同摘要 FeatureDataElements.dll 10.1.0.3035 的主 QI
+`0x6f6464e0` 比较 `0x6f65af00` 的 IStringArray IID。
+RTTI 将 Names 的持久化表定位到 `0x6f6652b4`。
+GetClassID `0x6f646320` 返回 `E141C7AF-1C30-4B67-99A1-2DDD2FF2C04D`。
+Load `0x6f646a40` 在 `0x6f646a73` 以无符号比较限制
+short 版本 ≤1，随后于 `0x6f646aa2` 读有符号 LONG 计数，
+正计数逐项经 `0x6f646adc` 调 AfCore String::Read。
+Save `0x6f646b10` 以 `0x6f658014` 的版本 1 写出同序字段。
+
+共享 IStringArray 读取器现支持 Names 与 StrArray 的新对象和
+按登记类判断的回引，并分别使用原生版本比较方式。合成回归覆盖
+非空字符串、后继边界、回引、截断及超限版本。
+完整工具箱宿主与 ArcMap/QGIS 人工验收尚待验证。
+
+##### Names 接入后的实档复核
+
+用同一批 374 处 MdVariable v10 候选与空引用表重跑。
+完成局部读取的候选由 297 增至 332。此前在 Names 停止的
+37 处均越过该槽，其中 35 处读完整体。其余两处分别停在
+Field v3 和坐标系对象体，后者报 AfCore 字符串长度超限。
+共余 42 处候选报错，最常见的是 GPValue 版本超限（16 处）
+及 Field v3（13 处）。探针从候选对象头起读，未恢复先前的
+宿主引用，版本报错需区分真实较晚版本和回引错位。
+完整工具箱入口与 ArcMap/QGIS 人工验收尚待验证。
+
 ##### GPEnvironmentManager
 
 同摘要 GeoProcessor.dll 中，+0x14 表 `0x71f7d13c` 的
