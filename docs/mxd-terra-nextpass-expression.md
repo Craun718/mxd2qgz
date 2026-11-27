@@ -247,7 +247,10 @@ Load `0x785638d0` 和 Save `0x78563a90`。GetClassID 写出
 
 Load 拒绝有符号版本大于 2。v1 读 LONG 计数与若干内联
 BSTR、double、double 记录（`0x7856392b..0x785639ce`），非正计数
-跳过循环，旧记录在原生内不保留。v2 读取两个 LONG、两个 double、
+跳过循环，旧记录在原生内不保留。v1 的字符串调用点 `0x7856396d`
+使用 IAT `0x785791cc` 的 AfCore 自由函数 ReadString，前缀为
+UTF-16 码元数，非空值另含终止零，与堆叠分隔符共用读取器。
+v2 读取两个 LONG、两个 double、
 LONG、short（`0x785639db..0x78563a4a`）；Save 写 v2。其余接受版本
 无后继体。读取器保留上述原始值，沿宿主表登记对象键。
 构造测试验证 v1 截断与 v2 非零字段及父对象边界，实际偏移单位及
@@ -267,6 +270,17 @@ LONG、AfCore String 和 short；v2 增加一个 short
 
 合成放置体覆盖 v1/v2 旋转对象、非空字符串、对象键与后继字段，
 另测逐字节截断和超限版本。各标量的业务语义及真实工程验收仍待核对。
+
+### Maplex 旧版放置体的临时 BSTR
+
+同版 LabelPlacement.dll 的放置体 Load `0x78566d40` 在
+`0x78566f17` 比较有符号版本与 11。旧版在
+`0x78566f2a` 经 IAT `0x785791cc` 调 AfCore 自由函数
+ReadString，读出临时 BSTR 并释放。字符串前缀按 UTF-16 码元
+计数，非空字符串另含终止零。v15 起另一个字符串由
+`0x785673f3` 调 AfCore String::Read，仍使用字节长度。
+构造放置体验证单码元临时 BSTR 后的对象槽和截断。
+真实旧版宿主及 ArcMap/QGIS 人工验收仍待核对。
 
 ### Maplex 放置属性的旧词典槽
 

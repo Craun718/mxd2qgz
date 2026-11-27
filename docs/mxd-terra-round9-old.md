@@ -665,3 +665,24 @@ Rust 从该槽复用完整 FeatureLayer 读取器。构造宿主验证新键登�
 六份实档均进入此槽的 FeatureLayer 分派，但该对象的读取在更深处
 遇到字符串长度校验失败，仍无法从对象头处继续。需定位内层长度
 字段的真实来源。ArcMap/QGIS 人工验收尚未执行。
+
+#### Maplex 堆叠分隔符的字符串长度
+
+实档停点向下追踪至 FeatureLayer 的标注属性集合，
+经 Maplex 放置属性进入 MaplexLabelStackingProperties v3。
+一份工程的 `/Maps:0x51a8` 起包含版本 3、对齐值 0、
+分隔符数量 2。首条分隔符在 `0x51b2` 的长度前缀为 1，
+随后是空格的 UTF-16LE 码元及终止零。第二条同样以 1 开头，
+有效码元为逗号。每条字符串后跟三个 short。
+
+LabelPlacement.dll 10.1.0.3035（SHA-256
+`8415f63c1889e269ba6ae585538f601130c20cef02e4556e875a52217d35ea3d`）
+在 Load `0x78562930` 的 `0x785629e2` 调用 AfCore 自由函数
+ReadString（IAT `0x785791cc`）。写侧在 `0x78562bc4` 调用
+配对的 WriteString（IAT `0x785791d4`）。长度单位为有效
+UTF-16 码元，非空值另含终止零。Rust 改为复用对应读取器，
+并用单码元分隔符回归覆盖该前缀和后继字段。
+
+修复后复跑十份去重工程，此前停在 +0x30c 的六份都读完 Map
+和 PageLayout 对象，并验证 MapFrame 回引根 Map。总计八份达到
+上述位置，另外两份仍返回错误。ArcMap/QGIS 人工验收尚未执行。

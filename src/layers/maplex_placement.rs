@@ -11,7 +11,7 @@ use crate::objects::property_set::{
     PROPERTY_SET_CLASS_ID, PropertySetObjectStream10_1, read_property_set_object_stream_10_1,
 };
 use crate::storage::object_refs::{ObjectEntry10_1, RefTable10_1, read_object_entry_10_1};
-use crate::stream::reader::Reader;
+use crate::stream::{native_string::read_bstr_string_10_1, reader::Reader};
 
 pub(super) const MAPLEX_OVERPOSTER_LAYER_PROPS_CLASS_ID: [u8; 16] = [
     0x08, 0x48, 0x66, 0x20, 0xc9, 0x41, 0xd1, 0x11, 0x88, 0x0a, 0x08, 0x00, 0x09, 0xec, 0x73, 0x2a,
@@ -197,7 +197,8 @@ pub(super) fn read_maplex_placement(
         // LabelPlacement.dll 0x78566d40：各段按 10.1 Load 的读宽保留。
         r.read_bytes(5 * 2 + 6 * 4 + 2 * 8)?;
         if version <= 11 {
-            read_stream_string_10_1(&mut r, max)?;
+            // 0x78566f2a 读取随后释放的临时 BSTR。
+            read_bstr_string_10_1(&mut r, max)?;
         }
         if !read_slot(&mut r, &mut staged, max, &mut body, 0)? {
             break 'layout;
@@ -331,7 +332,8 @@ fn read_label_stacking(reader: &mut Reader<'_>, max: usize) -> io::Result<Maplex
             ));
         }
         for _ in 0..count {
-            let text = read_stream_string_10_1(reader, max)?;
+            // 0x785629e2 调用 AfCore ReadString，自由函数前缀为码元数。
+            let text = read_bstr_string_10_1(reader, max)?;
             separators.push(MaplexStackingSeparator10_1 {
                 text,
                 visible: reader.read_u16_le()? as i16,
@@ -387,7 +389,8 @@ fn read_offset_along_line(
             ));
         }
         for _ in 0..count {
-            let text = read_stream_string_10_1(reader, max)?;
+            // 0x7856396d 调用按码元计数的 AfCore ReadString。
+            let text = read_bstr_string_10_1(reader, max)?;
             let values = [reader.read_f64_le()?, reader.read_f64_le()?];
             body.legacy_entries.push((text, values));
         }
@@ -507,7 +510,7 @@ mod tests {
     fn offset_along_line_reads_legacy_rows_and_rejects_truncation() {
         let mut bytes = 1_i16.to_le_bytes().to_vec();
         bytes.extend(1_i32.to_le_bytes());
-        bytes.extend([4, 0, 0, 0, b'X', 0, 0, 0]);
+        bytes.extend([1, 0, 0, 0, b'X', 0, 0, 0]);
         bytes.extend(1.25_f64.to_le_bytes());
         bytes.extend((-2.5_f64).to_le_bytes());
         for cut in 0..bytes.len() {
@@ -558,7 +561,7 @@ mod tests {
             let mut bytes = version.to_le_bytes().to_vec();
             bytes.extend([0; 50]);
             if version <= 11 {
-                bytes.extend(0_u32.to_le_bytes());
+                bytes.extend([1, 0, 0, 0, b'X', 0, 0, 0]);
             }
             bytes.extend(POINT_PLACEMENT_PRIORITIES_CLASS_ID);
             bytes.extend(11_u32.to_le_bytes());
@@ -573,7 +576,7 @@ mod tests {
             bytes.extend(3_i16.to_le_bytes());
             bytes.extend(2_i32.to_le_bytes());
             bytes.extend(1_i32.to_le_bytes());
-            bytes.extend([4, 0, 0, 0, b'/', 0, 0, 0]);
+            bytes.extend([1, 0, 0, 0, b'/', 0, 0, 0]);
             bytes.extend([0xff, 0xff, 0, 0, 1, 0]);
             for value in [4_i32, 8, 16] {
                 bytes.extend(value.to_le_bytes());

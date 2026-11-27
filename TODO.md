@@ -58,7 +58,9 @@
 2026-11-18 的六组原生取证、样本结果和剩余边界见 [并行复核记录](docs/mxd-luna-20261118-review.md)。
 
 - [x] 接入 Map 边框后 +0x30c 槽内的新 FeatureLayer 对象。[原生取证](docs/mxd-terra-round9-old.md#map-边框后的内嵌-featurelayer)
-- [ ] 核对本地实档在 Map 边框后 FeatureLayer 内的首次字符串长度校验失败位置。[实档取证](docs/mxd-terra-round9-old.md#map-边框后的内嵌-featurelayer)
+- [x] 修正 Map 边框后 FeatureLayer 中 Maplex 堆叠分隔符的字符串长度单位。[实档与原生取证](docs/mxd-terra-round9-old.md#maplex-堆叠分隔符的字符串长度)
+- [x] 按码元读取 Maplex v1 沿线偏移记录的 BSTR。[原生取证](docs/mxd-terra-nextpass-expression.md#maplex-沿线偏移)
+- [x] 按码元读取 Maplex 放置属性 v11 及以前的临时 BSTR。[原生取证](docs/mxd-terra-nextpass-expression.md#maplex-旧版放置体的临时-bstr)
 - [x] 接入分流 /PageLayout 的打印设置：读取 Paper v3 的非空 DEVMODE、v0–v3 的空 DEVMODE，以及 EmfPrinter、PsPrinter、ArcPressPrinter 的已确认布局。见[打印设置取证](docs/mxd-page-layout-tail-20261118.md#非空打印设置)。
 - [x] 按登记实例校验分流布局的 IPrinter 回引。[原生取证](docs/mxd-page-layout-tail-20261118.md#分流-iprinter-回引)
 - [x] 复核 Paper 与三类打印机的无符号版本判断，覆盖高位值拒绝与回滚。[指令取证](docs/mxd-page-layout-tail-20261118.md#打印设置对象的版本比较与实档检索)
