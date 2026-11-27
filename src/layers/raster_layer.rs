@@ -1395,6 +1395,151 @@ mod tests {
     }
 
     #[test]
+    fn inline_raster_v12_accepts_band_name_without_workspace() {
+        use super::super::raster_dataset_name::RASTER_BAND_NAME_CLASS_ID;
+
+        let mut standard_prefix = body_prefix(12, 1);
+        dataset_name(&mut standard_prefix, 60);
+        let standard = raster_with_empty_slots(12, false);
+        let mut bytes = body_prefix(12, 1);
+        bytes.extend(RASTER_BAND_NAME_CLASS_ID);
+        bytes.extend(60_u32.to_le_bytes());
+        bytes.extend(1_u32.to_le_bytes()); // 版本标记。
+        bytes.extend(encoded_string("Band_1"));
+        bytes.extend(encoded_string(""));
+        bytes.extend(encoded_string(""));
+        let selector = bytes.len();
+        bytes.extend(0_u16.to_le_bytes()); // 直接工作空间分支。
+        bytes.extend([0; 16]);
+        bytes.extend(&standard[standard_prefix.len()..]);
+        let end = bytes.len();
+
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes[..end - 1]);
+        assert!(read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+
+        bytes.extend(0xabcd_u16.to_le_bytes());
+        let mut reader = Reader::new(&bytes);
+        let raster = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+        assert!(raster.tail.unwrap().geodata_xform_v13.is_none());
+        assert!(refs.raster_name_opens_without_result(60));
+        assert_eq!(reader.position(), end);
+        assert_eq!(reader.read_u16_le().unwrap(), 0xabcd);
+
+        // 非零选择子从父数据集名称继承空工作空间。
+        use super::super::raster_dataset_name::{
+            CACHE_RASTER_DATASET_NAME_CLASS_ID, IS_RASTER_DATASET_NAME_CLASS_ID,
+            NETCDF_RASTER_DATASET_NAME_CLASS_ID, RASTER_DATASET_NAME_CLASS_ID,
+        };
+        for class in [
+            RASTER_DATASET_NAME_CLASS_ID,
+            CACHE_RASTER_DATASET_NAME_CLASS_ID,
+            NETCDF_RASTER_DATASET_NAME_CLASS_ID,
+            IS_RASTER_DATASET_NAME_CLASS_ID,
+        ] {
+            let mut bytes = bytes.clone();
+            let mut parent = Vec::new();
+            if class == RASTER_DATASET_NAME_CLASS_ID {
+                dataset_name(&mut parent, 61);
+            } else {
+                parent.extend(class);
+                parent.extend(61_u32.to_le_bytes());
+                match class {
+                    CACHE_RASTER_DATASET_NAME_CLASS_ID => {
+                        parent.extend(1_u16.to_le_bytes());
+                        parent.extend(encoded_string("Cache"));
+                        parent.extend(encoded_string(""));
+                        parent.extend([0; 48]);
+                    }
+                    NETCDF_RASTER_DATASET_NAME_CLASS_ID => {
+                        parent.extend(2_i32.to_le_bytes());
+                        for _ in 0..8 {
+                            parent.extend(encoded_string(""));
+                        }
+                        parent.extend([0; 3 * 16]);
+                    }
+                    IS_RASTER_DATASET_NAME_CLASS_ID => {
+                        parent.extend(1_u16.to_le_bytes());
+                        for _ in 0..6 {
+                            parent.extend(encoded_string(""));
+                        }
+                        parent.extend([0; 4 + 2 * 16]);
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            bytes[selector..selector + 2].copy_from_slice(&1_u16.to_le_bytes());
+            bytes.splice(selector + 2..selector + 18, parent.iter().copied());
+            let end = end - 16 + parent.len();
+            let mut refs = RefTable10_1::new();
+            let mut reader = Reader::new(&bytes);
+            read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+            assert_eq!(reader.position(), end);
+            assert!(refs.raster_name_opens_without_result(60));
+
+            bytes.drain(selector + 2 + 20..selector + 2 + parent.len());
+            // 用新外层键触发读取，父名称仍引用第一次登记的键。
+            let outer_key = body_prefix(12, 1).len() + 16;
+            bytes[outer_key..outer_key + 4].copy_from_slice(&62_u32.to_le_bytes());
+            let mut reader = Reader::new(&bytes);
+            read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+            assert_eq!(reader.position(), end - parent.len() + 20);
+            assert!(refs.raster_name_opens_without_result(62));
+        }
+    }
+
+    #[test]
+    fn inline_raster_v12_accepts_band_collection_without_open_result() {
+        use super::super::raster_dataset_name::{
+            INTERNET_TILED_LAYER_NAME_CLASS_ID, RASTER_BAND_COLLECTION_NAME_CLASS_ID,
+        };
+
+        let mut standard_prefix = body_prefix(12, 1);
+        dataset_name(&mut standard_prefix, 60);
+        let standard = raster_with_empty_slots(12, false);
+        let mut collection_prefix = body_prefix(12, 1);
+        collection_prefix.extend(RASTER_BAND_COLLECTION_NAME_CLASS_ID);
+        collection_prefix.extend(60_u32.to_le_bytes());
+        collection_prefix.extend(1_u16.to_le_bytes());
+        collection_prefix.extend(encoded_string("Bands"));
+
+        for parent_kind in 0..3 {
+            let mut bytes = collection_prefix.clone();
+            match parent_kind {
+                0 => bytes.extend([0; 16]),
+                1 => {
+                    bytes.extend(INTERNET_TILED_LAYER_NAME_CLASS_ID);
+                    bytes.extend(61_u32.to_le_bytes());
+                    bytes.extend(1_u16.to_le_bytes());
+                    bytes.extend(encoded_string("Tiles"));
+                    bytes.extend(0_i32.to_le_bytes());
+                    bytes.extend([0; 16]);
+                }
+                _ => dataset_name(&mut bytes, 61),
+            }
+            bytes.extend([0; 16]); // 波段索引数组槽。
+            bytes.extend(&standard[standard_prefix.len()..]);
+            let end = bytes.len();
+            bytes.extend([0xa5; 16]);
+
+            let mut refs = RefTable10_1::new();
+            let mut reader = Reader::new(&bytes);
+            let result = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs);
+            if parent_kind == 2 {
+                assert!(result.is_err());
+                assert_eq!(reader.position(), 0);
+                assert!(refs.is_empty());
+            } else {
+                assert!(result.unwrap().tail.unwrap().geodata_xform_v13.is_none());
+                assert_eq!(reader.position(), end);
+                assert!(refs.raster_name_opens_without_result(60));
+            }
+        }
+    }
+
+    #[test]
     fn inline_raster_v12_accepts_internet_tile_name_without_open_result() {
         use super::super::raster_dataset_name::INTERNET_TILED_LAYER_NAME_CLASS_ID;
 
@@ -2732,11 +2877,21 @@ mod tests {
 
         use super::super::raster_dataset_name::IS_RASTER_DATASET_NAME_CLASS_ID;
 
+        use super::super::raster_dataset_name::{
+            RASTER_BAND_COLLECTION_NAME_CLASS_ID, RASTER_BAND_NAME_CLASS_ID,
+        };
         for (tag30, tag31, class_id) in [
             (None, None, [0; 16]),
             (Some(false), None, [0; 16]),
             (None, Some("路径"), [0; 16]),
             (Some(false), Some("路径"), [0; 16]),
+            (Some(true), Some("路径"), RASTER_BAND_NAME_CLASS_ID),
+            (Some(true), Some(""), RASTER_BAND_COLLECTION_NAME_CLASS_ID),
+            (
+                Some(true),
+                Some("路径"),
+                RASTER_BAND_COLLECTION_NAME_CLASS_ID,
+            ),
             (Some(true), Some(""), RASTER_TYPE_NAME_CLASS_ID),
             (Some(true), Some("路径"), RASTER_TYPE_NAME_CLASS_ID),
             (Some(true), Some("路径"), WCS_COVERAGE_NAME_CLASS_ID),
@@ -2758,6 +2913,29 @@ mod tests {
                 if has_name {
                     records.extend(class_id);
                     match class_id {
+                        RASTER_BAND_NAME_CLASS_ID => {
+                            records.extend(1_u32.to_le_bytes());
+                            records.extend(encoded_string("Band_1"));
+                            records.extend(encoded_string(""));
+                            records.extend(encoded_string(""));
+                            records.extend(0_u16.to_le_bytes());
+                        }
+                        RASTER_BAND_COLLECTION_NAME_CLASS_ID => {
+                            records.extend(1_u16.to_le_bytes());
+                            records.extend(encoded_string("Bands"));
+                            if tag31 == Some("") {
+                                records.extend([0; 16]); // 空父名称。
+                            } else {
+                                records.extend(RASTER_BAND_NAME_CLASS_ID);
+                                records.extend(65_u32.to_le_bytes());
+                                records.extend(1_u32.to_le_bytes());
+                                records.extend(encoded_string("Band_1"));
+                                records.extend(encoded_string(""));
+                                records.extend(encoded_string(""));
+                                records.extend(0_u16.to_le_bytes());
+                                records.extend([0; 16]); // 父波段名称的空工作空间。
+                            }
+                        }
                         RASTER_TYPE_NAME_CLASS_ID => {
                             records.extend(1_u16.to_le_bytes());
                             records.extend(encoded_string(""));
@@ -2831,6 +3009,7 @@ mod tests {
                     assert_eq!(reader.position(), end - removed + related_len - 4);
                 }
             }
+            let name_end = records.len();
             if let Some(path) = tag31 {
                 records.extend(31_i32.to_le_bytes());
                 records.extend(encoded_string(path));
@@ -2841,6 +3020,29 @@ mod tests {
                 records.extend(7_u16.to_le_bytes());
             }
             records.extend([0xff; 8]);
+            if matches!(
+                class_id,
+                NETCDF_RASTER_DATASET_NAME_CLASS_ID | IS_RASTER_DATASET_NAME_CLASS_ID
+            ) {
+                let mut collection = RASTER_BAND_COLLECTION_NAME_CLASS_ID.to_vec();
+                collection.extend(1_u16.to_le_bytes());
+                collection.extend(encoded_string("Bands"));
+                collection.extend(class_id);
+                collection.extend(65_u32.to_le_bytes());
+                collection.extend_from_slice(&records[32..name_end]);
+                collection.extend([0; 16]); // 波段索引数组。
+                let mut collection_io = records.clone();
+                collection_io.splice(16..name_end, collection);
+                let record_len = collection_io.len();
+                let mut with_collection = bytes.clone();
+                with_collection.splice(io_offset..io_offset, collection_io);
+                let mut reader = Reader::new(&with_collection);
+                let mut refs = RefTable10_1::new();
+                let layer = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap();
+                assert!(layer.tail.unwrap().geodata_xform_v13.is_none());
+                assert_eq!(refs.registered_class(65), Some(class_id));
+                assert_eq!(reader.position(), end + record_len);
+            }
             let records_len = records.len();
             let mut with_io = bytes.clone();
             with_io.splice(io_offset..io_offset, records);

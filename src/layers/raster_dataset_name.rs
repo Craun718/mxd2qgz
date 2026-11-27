@@ -308,8 +308,28 @@ pub enum RasterDatasetNameEntryBody10_1 {
 }
 
 impl RasterDatasetNameEntryBody10_1 {
-    pub(super) fn open_without_result(&self) -> bool {
+    pub(super) fn open_without_result(&self, table: &RefTable10_1) -> bool {
         match self {
+            // Open 只看工作空间，父数据集分支从已加载的名称取得它。
+            Self::Band(name) => match &name.source {
+                RasterBandNameSource10_1::Workspace(workspace) => {
+                    matches!(workspace, RasterDatasetWorkspaceSlot10_1::Null)
+                }
+                RasterBandNameSource10_1::Dataset(dataset) => matches!(
+                    dataset.entry,
+                    ObjectEntry10_1::NewObject { key, .. }
+                    | ObjectEntry10_1::BackReference { key, .. }
+                        if table.raster_dataset_name_has_null_workspace(key)
+                ),
+            },
+            // 波段集合在父名称为空或父名称 Open 输出为空时提前返回。
+            Self::BandCollection(collection) => match collection.name.entry {
+                ObjectEntry10_1::Null => true,
+                ObjectEntry10_1::NewObject { key, .. }
+                | ObjectEntry10_1::BackReference { key, .. } => {
+                    table.raster_name_opens_without_result(key)
+                }
+            },
             Self::RasterType(name) => {
                 name.name.is_empty() && name.mosaic_dataset.entry == ObjectEntry10_1::Null
             }
@@ -582,7 +602,25 @@ pub(super) fn read_name_slot(
     if let ObjectEntry10_1::NewObject { class_id, key } = entry
         && let Some(body) = &body
     {
-        if body.open_without_result() {
+        let has_null_workspace = match body {
+            RasterDatasetNameEntryBody10_1::Dataset(name) => {
+                name.stop.is_none() && name.workspace == Some(RasterDatasetWorkspaceSlot10_1::Null)
+            }
+            RasterDatasetNameEntryBody10_1::Cache(name) => {
+                name.workspace == RasterDatasetWorkspaceSlot10_1::Null
+            }
+            RasterDatasetNameEntryBody10_1::NetCdf(name) => {
+                name.workspace == RasterDatasetWorkspaceSlot10_1::Null
+            }
+            RasterDatasetNameEntryBody10_1::ImageService(name) => {
+                name.workspace == RasterDatasetWorkspaceSlot10_1::Null
+            }
+            _ => false,
+        };
+        if has_null_workspace {
+            table.mark_raster_dataset_name_with_null_workspace(key);
+        }
+        if body.open_without_result(table) {
             table.mark_raster_name_without_open_result(key);
         }
         if let Some(name) = body.dataset_name_body().filter(|name| name.stop.is_none()) {

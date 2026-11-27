@@ -31,7 +31,8 @@ pub use crate::layers::layer_extensions::{
 };
 use crate::layers::raster_dataset_name::{
     INTERNET_TILED_LAYER_NAME_CLASS_ID, IS_RASTER_DATASET_NAME_CLASS_ID,
-    NETCDF_RASTER_DATASET_NAME_CLASS_ID, RASTER_TYPE_NAME_CLASS_ID, RasterDatasetNameEntryBody10_1,
+    NETCDF_RASTER_DATASET_NAME_CLASS_ID, RASTER_BAND_COLLECTION_NAME_CLASS_ID,
+    RASTER_BAND_NAME_CLASS_ID, RASTER_TYPE_NAME_CLASS_ID, RasterDatasetNameEntryBody10_1,
     RasterDatasetWorkspaceSlot10_1, read_supported_raster_name_body_10_1,
     read_supported_raster_name_entry_10_1,
 };
@@ -319,6 +320,8 @@ fn is_supported_related_raster_name(class_id: [u8; 16]) -> bool {
             | INTERNET_TILED_LAYER_NAME_CLASS_ID
             | IS_RASTER_DATASET_NAME_CLASS_ID
             | NETCDF_RASTER_DATASET_NAME_CLASS_ID
+            | RASTER_BAND_COLLECTION_NAME_CLASS_ID
+            | RASTER_BAND_NAME_CLASS_ID
             | RASTER_TYPE_NAME_CLASS_ID
             | crate::layers::wcs_name::WCS_COVERAGE_NAME_CLASS_ID
     )
@@ -1003,7 +1006,7 @@ pub(super) fn read_raster_layer_tail(
                     (None, _) => false,
                     (Some(name), Some(path)) => {
                         // 这些已知空结果的名称不会被路径展开修改。
-                        !name.open_without_result()
+                        !name.open_without_result(&staged)
                             || (!path.is_empty()
                                 && !matches!(
                                     name.as_ref(),
@@ -1012,6 +1015,20 @@ pub(super) fn read_raster_layer_tail(
                                         | RasterDatasetNameEntryBody10_1::InternetTiledLayer(_)
                                         | RasterDatasetNameEntryBody10_1::NetCdf(_)
                                         | RasterDatasetNameEntryBody10_1::ImageServerReference(_)
+                                        | RasterDatasetNameEntryBody10_1::Band(_)
+                                )
+                                && !matches!(
+                                    name.as_ref(),
+                                    RasterDatasetNameEntryBody10_1::BandCollection(collection)
+                                        if matches!(
+                                            collection.name.entry,
+                                            ObjectEntry10_1::NewObject { key, .. }
+                                            | ObjectEntry10_1::BackReference { key, .. }
+                                                if staged.registered_class(key) == Some(RASTER_BAND_NAME_CLASS_ID)
+                                                    || (matches!(staged.registered_class(key),
+                                                        Some(NETCDF_RASTER_DATASET_NAME_CLASS_ID | IS_RASTER_DATASET_NAME_CLASS_ID))
+                                                        && staged.raster_dataset_name_has_null_workspace(key))
+                                        )
                                 )
                                 && !matches!(
                                     name.as_ref(),

@@ -1293,9 +1293,17 @@ BandByName 参数及已确认的父数据集来源。父对象的新定义和回
 
 ### 波段名称的直接工作空间分支
 
-同版 RasterDB.dll 的 RasterBandName::Load 在 `0x7c053abf` 把零选择子
-的 IWorkspaceName 槽读入持久化接口 `+0x34`，与 IName 视图的
-`+0x3c` 对应。Open 在 `0x7c05374e` 读取该成员，经
+同版 RasterDB.dll 的 RasterBandName::Load 在 `0x7c053abd` 按
+选择子分支。零选择子跳至 `0x7c053b10`，请求 IWorkspaceName
+（IID 常量 `0x7c131138`），结果写入持久化接口 `+0x0c`，
+对应 IName 视图的 `+0x3c`。该调用的非负返回值在
+`0x7c053b27..0x7c053b2b` 归一为 S_OK，包含空工作空间槽。
+非零选择子在 `0x7c053abf` 请求 IDatasetName，先存到
+持久化接口 `+0x34`，要求非空，再经 `0x7c053af2..0x7c053b03`
+调用父名称的虚表 `+0x20` 将 IWorkspaceName 写入同一 `+0x0c`
+成员。Open 首先检查这个工作空间，再经其 IName 打开。
+因此父 IDatasetName 自身的 Open 输出不能用于推断此处的打开结果。
+Open 在 `0x7c05374e` 读取工作空间成员，经
 `0x7bfec340` 查询 IName 并于 `0x7c05378c` 打开。
 `0x7c0537c3` 尝试取得栅格接口，成功后进入同一 BandByName 路径。
 只有工作空间名时，将路径原文和波段查找名称分别保留，数据集名字段
@@ -1303,6 +1311,74 @@ BandByName 参数及已确认的父数据集来源。父对象的新定义和回
 
 构造测试覆盖直接工作空间的非空路径与存盘波段名称。实际工作空间
 是否能打开为所需接口、波段索引和 ArcMap/QGIS 人工验收仍待验证。
+
+### 波段名称工作空间为空的普通 v12
+
+复核同摘要 RasterDB.dll 10.1.0.3035 的 objdump 指令。
+RasterBandName::Open 在 `0x7c053743` 清零输出，在
+`0x7c053745..0x7c053748` 检查 IName 相对 `+0x3c`
+的工作空间成员。直接工作空间分支读到空对象时，该成员为空，
+跳至 `0x7c053912` 返回 S_FALSE。普通 v12 以此确认首个
+有效名称的空打开结果。构造测试核对无变换段时的后继偏移，
+并验证截断回滚。真实 v12 宿主及 ArcMap/QGIS 人工验收尚待验证。
+
+### 波段名称从父数据集取得空工作空间
+
+同摘要 RasterDB.dll 10.1.0.3035 在 `0x7c0b9b3b..0x7c0b9b58`
+把普通 RasterDatasetName 的 IDatasetName 查询返回到对象 `+0x14`。
+该接口虚表 `0x7c1335d8` 的 `+0x20` 经 `0x7c10da2a`、
+IAT `0x7c121b88` 调用同版 RasterCoreLib.dll 的
+BasicRasterName::get_WorkspaceName `0x7bed12c0`。
+该函数直接返回成员，可输出空值。父名称 Load 在
+`0x7c0ba683` 读工作空间，`0x7c0ba6ca` 的赋值助手在
+`0x7c0d975b..0x7c0d9772` 清理空输入对应的成员。
+读取器随父名称登记空工作空间，供波段的非零选择子分支使用。
+构造回归覆盖父对象新定义和回引，核对读到的 v12 尾段终点。
+其他父名称实现、真实 MXD 及 ArcMap/QGIS 人工验收仍待核对。
+
+### 波段名称从缓存数据集取得空工作空间
+
+同摘要 MapServerLayer.dll 10.1.0.3035 以 `0x79ebc380`
+的 IDatasetName IID 在 `0x79e21f17` 返回对象 `+0x14`。
+虚表 `0x79ebc1d8` 的 `+0x20` 经 `0x79eacbb0`、
+IAT `0x79ebb660` 进入同一个 BasicRasterName 工作空间 getter，
+读取完整对象 `+0x24`。CacheRasterDatasetName::Load 在
+`0x79e22aa1..0x79e22aaa` 将工作空间加载到持久化接口
+`+0x0c`，对应同一成员。读取器因此也能从缓存父名称的新对象和
+回引继承空工作空间，合成用例验证了两种情况下的 v12 边界。
+
+缓存名称自身的 IName::Open `0x79e220a0` 在
+`0x79e220c5..0x79e220cb` 直接取工作空间接口虚表，
+没有先判空。此处取证只支持波段名称的继承路径。
+真实 v12 宿主及 ArcMap/QGIS 人工验收尚待验证。
+
+### 波段名称从 NetCDF 和影像服务数据集取得空工作空间
+
+同版 NetCDFDB.dll 的 IDatasetName 虚表 `0x7ae615b4` 和
+ImageServerLayer.dll 的 IDatasetName 虚表 `0x78031d00`，
+均经 `+0x20` 查询工作空间。NetCDF 的实现 `0x7ae29150`
+在工作空间成员为空时返回空输出，影像服务数据集经
+`0x780260f0` 调用 BasicRasterName 的 getter，并读取 Load
+写入的工作空间成员。两个槽的原始加载位置见各自的 RasterIO 取证。
+RasterBandName 的非零选择子经同一槽取得空工作空间，再以
+S_FALSE 返回空打开结果。构造测试覆盖两类父名称的新对象、回引
+和后继字节。非空工作空间的运行时结果及 ArcMap/QGIS 人工验收待查。
+
+### 普通栅格数据集名称的空工作空间
+
+同摘要 RasterDB.dll 10.1.0.3035 中，RasterDatasetName 的
+IName 虚表 `0x7c1335b8` 在 `+0x14` 指向 Open
+`0x7c0b9e50`。该函数在 `0x7c0b9e78` 清零 ESI，
+工作空间成员为空时由 `0x7c0b9e7f` 直接跳到
+`0x7c0b9e9c`，未运行取得工作空间 IName 的调用。
+后续 `0x7c0b9ea2` 通过 ESI 取虚表，之前没有空值检查。
+只有工作空间 Open 已经返回且输出为空时，才会在
+`0x7c0b9eba` 返回 `0x8004100b`。
+
+因此普通 RasterDatasetName 的空工作空间标记只用于
+已确认会检查该成员的 RasterBandName 分支。普通 v12 直接使用
+该名称时，仍需外层边界或原生运行证据来选择变换段。
+这条路径尚未做 ArcMap 运行取证或 QGIS 人工验收。
 
 ### 波段集合的索引选择
 
@@ -1318,6 +1394,18 @@ BandByName 参数及已确认的父数据集来源。父对象的新定义和回
 模型保留保存顺序和索引原值，包括仅有一个 RasterBandCollectionName
 的图层。构造模型回归覆盖重排及重复索引，并验证已读父数据集名称和
 工作空间路径同时保留。数组对象回引及 ArcMap/QGIS 人工验收仍待验证。
+
+### 波段集合父名称为空的普通 v12
+
+同摘要 RasterDB.dll 10.1.0.3035 的 objdump 指令显示，
+RasterBandCollectionName::Open 在 `0x7c0528b1` 清零输出，
+在 `0x7c0528b7` 检查父名称。当父名称为空，或者
+`0x7c0528d1` 打开的父名称输出为空（`0x7c0528d8`），
+均到 `0x7c052906` 返回 E_FAIL，早于索引数组处理。
+普通 v12 据此复用对象表中父名称的已知空输出状态。
+合成栅格对象覆盖空父名称、已知空输出的瓦片父名称以及
+结果未知的父名称，核对后继边界和失败时的键表回滚。
+真实 v12 和 ArcMap/QGIS 人工验收尚未执行。
 
 ### 波段索引数组的回引
 
@@ -1944,6 +2032,53 @@ CLSID 验证按实际登记类分派，并核对后继字节边界。其余类�
 
 补充合成回归后，六类栅格名称都从普通 v12 的关联槽
 分别走过新对象与同键回引，验证登记类、可选末槽及后继字节边界。
+
+#### 关联槽和 RasterIO 中的波段名称
+
+沿用同版 RasterLayer.dll 的通用 IName 关联加载路径
+`0x7c73c1a9 → 0x7c73c24f`。RasterBandName 空工作空间和
+RasterBandCollectionName 空父名称均已确认会返回空输出。
+这两个类在关联槽共用同一空结果安装路径，读取器按实际登记类
+处理回引。对于 RasterIO，tag 31 为空字符串时，
+`0x7c73c51f..0x7c73c523` 跳过路径展开，tag 30 的同类名称
+仍从 `0x7c73c574` 调用 Open。构造回归覆盖两个类的关联新对象、
+回引、空路径 RasterIO 及后继对象边界。非空路径与真实宿主
+尚待核对，ArcMap/QGIS 人工验收尚未执行。
+
+#### 非空 RasterIO 路径中的波段名称
+
+复核同摘要 RasterDB.dll、RasterCoreLib.dll 和 LayerLib.dll
+10.1.0.3035。RasterBandName 的 IDatasetName 虚表
+`0x7c131058` 槽 `+0x20` 经 `0x7c10da2a` 转到
+BasicRasterName::get_WorkspaceName `0x7bed12c0`，读取完整对象
+`+0x24`。构造在 `0x7c0533d9..0x7c0533e5` 以对象 `+0x10`
+调用 BasicRasterName 构造，`0x7bed0fa3` 将该成员置空。
+RasterBandName::Load 写入的工作空间位于另一处 `+0x4c`，
+由 RasterBandName::Open 读取。LayerLib 路径助手在
+`0x786adde0` 见 getter 空输出，跳过路径改写。
+普通 v12 因此可在非空路径下沿用波段名称的已证空 Open 条件。
+构造回归核对非空路径和后继对象边界。
+
+RasterBandCollectionName 的同槽指向 `0x7c052c70`，尝试向
+父名称转发工作空间 getter。父名称为空时仍到 `0x7c052ca3`
+取接口虚表，缺少空值保护。该形态继续要求空路径才使用
+静态边界判断。父名称为已确认空打开的 RasterBandName 时，
+`0x7bfc9750` 以 `0x7c126588` 的 IDatasetName IID 查询它，
+`0x7c052caa` 调用同一个返回空工作空间的 getter。路径助手随后
+跳过写入，集合的 Open 在父波段的输出为空时也返回空输出。
+读取器按父名称对象键的登记类识别该链，构造回归覆盖非空
+tag 31 和后继对象边界。真实宿主和 ArcMap/QGIS 人工验收尚待验证。
+
+#### 波段集合转发 NetCDF 和影像服务工作空间查询
+
+同版 RasterDB.dll 的 `0x7c052caa` 可将波段集合的工作空间
+查询转发给 NetCDFRasterDatasetName 或 ISRasterDatasetName。
+两类父名称都支持 IDatasetName，且已确认存盘空工作空间时
+其 getter 返回空，LayerLib 在 `0x786adde0` 跳过路径改写。
+此后集合自身的空打开条件仍按父名称的 Open 判定。
+对于 ISRasterDatasetName，这还要求内嵌名称为空。
+合成回归以两类父名称构造非空 tag 31 路径，验证后继对象边界。
+真实 v12 宿主和 ArcMap/QGIS 人工验收仍待验证。
 
 #### SimpleRasterRenderer 共用体 v1 的普通栅格边界
 
