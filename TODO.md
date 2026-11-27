@@ -1027,6 +1027,7 @@
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPRangeDomain 标量端点。[取证](docs/mxd-terra-round9-bookmark.md#gprangedomain)
       - [x] 接入 GPRangeDomain 端点中已有持久化读取器的紧凑 Variant 对象和回引。[取证](docs/mxd-terra-round9-bookmark.md#gprangedomain)
       - [x] 核对 10.1 GPRangeDomain 默认 RangeDomain 端点的数值转换与写出路径。[取证](docs/mxd-terra-round9-bookmark.md#gprangedomain)
+      - [x] 对位 GPRangeDomain 构造、复制与保存使用的内部端点接口成员。[原生取证](docs/mxd-terra-round9-bookmark.md#端点保存的接收者)
       - [ ] 核对 GPRangeDomain 端点中其余可持久化的 Variant 对象类。
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPWorkspaceDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpworkspacedomain)
       - [x] 接入 GPSATopoFeaturesTypeName 旧记录中的 GPDatasetDomain。[取证](docs/mxd-terra-round9-bookmark.md#gpdatasetdomain)
