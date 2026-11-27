@@ -468,6 +468,7 @@ pub enum LegacyAnnotateMapBody10_1 {
 pub struct PostBorderTail10_1 {
     pub short_308: Option<(usize, u16)>,
     pub layer_30c: Option<ObjectSlot10_1>,
+    pub layer_30c_parsed: Option<Box<LayerBodyPrefix10_1>>,
     pub short_310: Option<(usize, u16)>,
     pub envelope_314: Option<ObjectSlot10_1>,
     pub envelope_314_parsed: Option<Envelope10_1>,
@@ -1757,22 +1758,43 @@ pub(crate) fn read_map_with_suffix_10_1(
         }
         next_short!(short_308, 0);
         if matches!(stop, Some(MapSuffixStop::AfterBorderTail { stage: 1 })) {
+            use crate::layers::feature_layer::FEATURE_LAYER_CLASS_ID;
+            use crate::layers::layer_list::read_complete_layer_body_10_1;
+
             let mut candidate = trial.clone();
+            let mut refs = trial_table.clone();
             let offset = candidate.position();
-            if let Ok(header) = read_header_10_1(&mut candidate)
-                && let Some(entry) = match header {
-                    ObjectHeader::Null => Some(ObjectEntry10_1::Null),
-                    ObjectHeader::Object { class_id, key }
-                        if class_id == crate::layers::feature_layer::FEATURE_LAYER_CLASS_ID
-                            && trial_table.contains(key) =>
+            if let Ok(entry) = read_object_entry_10_1(&mut candidate, &mut refs)
+                && let Ok(parsed) = match entry {
+                    ObjectEntry10_1::Null => Ok(None),
+                    ObjectEntry10_1::BackReference { key, .. }
+                        if refs.registered_class(key) == Some(FEATURE_LAYER_CLASS_ID) =>
                     {
-                        Some(ObjectEntry10_1::BackReference { class_id, key })
+                        Ok(None)
                     }
-                    _ => None,
+                    ObjectEntry10_1::NewObject {
+                        class_id: FEATURE_LAYER_CLASS_ID,
+                        ..
+                    } => {
+                        // Map::Load 0x79400071 请求 ILayer，普通对象头后紧接类体。
+                        read_complete_layer_body_10_1(
+                            &mut candidate,
+                            FEATURE_LAYER_CLASS_ID,
+                            max_bytes,
+                            &mut refs,
+                        )
+                        .map(|body| Some(Box::new(body)))
+                    }
+                    _ => Err(io::Error::new(
+                        io::ErrorKind::Unsupported,
+                        "Map +0x30c 图层类尚未支持",
+                    )),
                 }
             {
                 trial = candidate;
+                trial_table = refs;
                 post_border_tail.layer_30c = Some(ObjectSlot10_1 { offset, entry });
+                post_border_tail.layer_30c_parsed = parsed;
                 stop = Some(MapSuffixStop::AfterBorderTail { stage: 2 });
             }
         }

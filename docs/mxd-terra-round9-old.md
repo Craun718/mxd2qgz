@@ -648,3 +648,20 @@ FeatureLayer 回引。该一致停点为核对 Map +0x30c 槽的新对象体提�
 另外复跑 `cargo test --test page_layout_tail -- --ignored`，两项
 SDK 实档测试通过。上述历史版本取证待办仍开放，ArcMap/QGIS
 人工验收尚未执行。
+
+### Map 边框后的内嵌 FeatureLayer
+
+同版 Map.dll 10.1.0.3035（SHA-256
+`1c0675cc3a99692686a2e9dd8aaa92a68a94b48e9419d8477e33bb57634b1bb8`）
+的 Load 在 `0x79400041` 读取 +0x308 的 short，随后于
+`0x79400065` 取得 +0x30c 的槽地址。`0x79400071` 调用普通
+LoadObject，传入 `0x79485a18` 的 ILayer IID
+`34C20002-4D3C-11D0-92D8-00805F7C28B0`。Save
+`0x79401850` 的反编译中，同一字段依次由 AfStreamWrite
+和 SaveObject 写出。
+
+Rust 从该槽复用完整 FeatureLayer 读取器。构造宿主验证新键登记、
+后继 +0x310 字段对齐，以及截断时退回对象头并丢弃该键。
+六份实档均进入此槽的 FeatureLayer 分派，但该对象的读取在更深处
+遇到字符串长度校验失败，仍无法从对象头处继续。需定位内层长度
+字段的真实来源。ArcMap/QGIS 人工验收尚未执行。

@@ -911,3 +911,53 @@ fn maplex_overposter_reads_dictionaries_and_number_groups_in_map_object() {
         assert!((4001..=4007).all(|key| !refs.contains(key)));
     }
 }
+
+#[test]
+fn border_tail_reads_new_feature_layer_before_following_fields() {
+    use mxd2qgz::layers::feature_layer::FEATURE_LAYER_CLASS_ID;
+    use mxd2qgz::layers::layer_list::LayerBodyPrefix10_1;
+
+    let mut document = cfb::open("samples/测试底图.mxd").unwrap();
+    let mut bytes = Vec::new();
+    document
+        .open_stream("/Maps")
+        .unwrap()
+        .read_to_end(&mut bytes)
+        .unwrap();
+    let start = 0x25016;
+    let key = 60000_u32;
+    let mut layer = FEATURE_LAYER_CLASS_ID.to_vec();
+    layer.extend(key.to_le_bytes());
+    layer.extend(1_u16.to_le_bytes());
+    let empty_string = [2, 0, 0, 0, 0, 0];
+    layer.extend(empty_string);
+    layer.extend(empty_string);
+    layer.extend([0; 6 + 16 + 16 + 16]);
+    layer.extend(empty_string);
+    layer.extend([0; 16 + 2 + 4 + 16]);
+    layer.extend(empty_string);
+    layer.extend(empty_string);
+    layer.extend([0; 8 + 16 + 2 + 16 + 4 + 2]);
+    let end = start + layer.len();
+    bytes.splice(start..start + 16, layer);
+    let parse = |bytes: &[u8]| {
+        let mut reader = Reader::new(bytes);
+        let mut refs = RefTable10_1::new();
+        reader.read_u32_le().unwrap();
+        read_object_entry_10_1(&mut reader, &mut refs).unwrap();
+        let map = read_map_suffix_10_1(&mut reader, 4_000_000, &mut refs).unwrap();
+        (map, reader.position(), refs.contains(key))
+    };
+    let (map, _, registered) = parse(&bytes);
+    assert!(registered);
+    assert!(matches!(
+        map.post_border_tail.layer_30c_parsed.as_deref(),
+        Some(LayerBodyPrefix10_1::FeatureLayer(_))
+    ));
+    assert_eq!(map.post_border_tail.short_310.unwrap().0, end);
+
+    let (map, offset, registered) = parse(&bytes[..end - 1]);
+    assert!(!registered);
+    assert_eq!(offset, start);
+    assert!(map.post_border_tail.layer_30c.is_none());
+}
