@@ -2772,3 +2772,26 @@ MarkerElement 和 Map。前者继续读取容器尾，后者退回入口并保�
 `register` 和 `mark_map`。三维 IElement 槽也检查这个已知身份，
 避免仅有 Map 标记的回引通过元素类校验。构造测试覆盖该变体，
 仍使用同一磁盘元素头和既有键。
+
+### Globe 元素附加槽中的 Envelope
+
+GlobeGraphicsLayer v7 的两个附加槽都请求 IGeometry。
+Geometry.dll 10.1.0.3035 的 Envelope 对应 Geometry 接口子表，
+其持久化类和字段见[空间参考记录](arcmap-10.1-spatial-reference.md)。
+现有通用几何分派已覆盖该类。构造 v7 宿主在第一个附加槽放入
+Envelope v3，在第二个槽回引该键，核对四个坐标、后继容器尾和
+截断回滚。真实场景中的 Envelope 附加槽及 ArcMap/QGIS 人工
+验收仍待验证。
+
+### Globe 附加几何槽中的 Line 回引
+
+Geometry.dll 10.1.0.3035（SHA-256
+`c57d154f207ee249adc69136574cf274771370ff93a15eb0be5682ce828f0d47`）
+的 Line 主 QI 在 `0x718d503c` 比较 IGeometry，命中后经
+`0x718d5322` 返回完整对象 +0x10。GetClassID
+`0x718d4df0` 写出 `6F4E63E0-5AB4-11D0-A8F6-00608C85EDE5`。
+主表与共享 QI 均无普通对象流的两个持久化接口，见
+[几何类清点](mxd-round4-map-spatial-20261117.md#101-的-igeometry-类体清点)。
+Globe 现在允许已登记 Line 的几何回引，构造 v6 宿主验证
+可续读后继字段。独立新对象体无对应原生读取路径。
+真实回引宿主和 ArcMap/QGIS 人工验收尚未验证。

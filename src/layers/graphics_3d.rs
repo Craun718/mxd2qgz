@@ -37,6 +37,11 @@ use crate::stream::native_string::read_string_10_1;
 use crate::stream::reader::Reader;
 use std::io::{self, ErrorKind};
 
+// Geometry.dll 的 Line 类提供 IGeometry，但没有普通对象流持久化接口。
+const LINE_CLASS_ID: [u8; 16] = [
+    0xe0, 0x63, 0x4e, 0x6f, 0xb4, 0x5a, 0xd0, 0x11, 0xa8, 0xf6, 0x00, 0x60, 0x8c, 0x85, 0xed, 0xe5,
+];
+
 pub const GRAPHICS_LAYER_3D_CLASS_ID: [u8; 16] = [
     0xf0, 0xa8, 0x87, 0x4c, 0xe3, 0x01, 0xd4, 0x11, 0xab, 0x69, 0x00, 0x08, 0xc7, 0x3f, 0xd5, 0x0c,
 ];
@@ -187,6 +192,7 @@ fn read_globe_element_properties(
                 registered,
                 ENVELOPE_CLASS_ID
                     | GEOMETRY_BAG_CLASS_ID
+                    | LINE_CLASS_ID
                     | MULTIPATCH_CLASS_ID
                     | MULTIPOINT_CLASS_ID
                     | POINT_CLASS_ID
@@ -986,6 +992,70 @@ mod tests {
     }
 
     #[test]
+    fn globe_geometry_slots_read_new_envelope_and_same_key_reference() {
+        let mut bytes = 7_u16.to_le_bytes().to_vec();
+        bytes.extend([2, 0, 0, 0, 0, 0]);
+        bytes.extend([0; 4 + 16 + 16]);
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend([0; 16 + 258]);
+        bytes.extend(ENVELOPE_CLASS_ID);
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend(3_u16.to_le_bytes());
+        for coord in [1.0_f64, 2.0, 3.0, 4.0] {
+            bytes.extend(coord.to_le_bytes());
+        }
+        bytes.extend([0; 4 + 16]); // 属性标记和空空间参考。
+        let first_end = bytes.len();
+        bytes.extend(ENVELOPE_CLASS_ID);
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend([0; 8 + 32]);
+        let end = bytes.len();
+        bytes.push(0xa5);
+
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        let layer = read_graphics_3d_layer_10_1(
+            &GLOBE_GRAPHICS_LAYER_CLASS_ID,
+            &mut reader,
+            4096,
+            &mut refs,
+        )
+        .unwrap();
+        let geometries = &layer.elements[0]
+            .globe_properties
+            .as_ref()
+            .unwrap()
+            .geometries;
+        assert!(
+            matches!(geometries[0].body.as_deref(), Some(GeometryBody10_1::Envelope(body)) if body.coords == [1.0, 2.0, 3.0, 4.0])
+        );
+        assert!(matches!(
+            geometries[1].entry,
+            ObjectEntry10_1::BackReference {
+                class_id: ENVELOPE_CLASS_ID,
+                key: 1
+            }
+        ));
+        assert!(geometries[1].body.is_none());
+        assert_eq!(refs.registered_class(1), Some(ENVELOPE_CLASS_ID));
+        assert_eq!(reader.position(), end);
+
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes[..first_end - 1]);
+        assert!(
+            read_graphics_3d_layer_10_1(
+                &GLOBE_GRAPHICS_LAYER_CLASS_ID,
+                &mut reader,
+                4096,
+                &mut refs
+            )
+            .is_err()
+        );
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+
+    #[test]
     fn globe_element_geometry_references_check_registered_class() {
         let mut bytes = 6_u16.to_le_bytes().to_vec();
         bytes.extend([2, 0, 0, 0, 0, 0]);
@@ -997,7 +1067,7 @@ mod tests {
         bytes.extend([0; 8 + 32]);
         let end = bytes.len();
         bytes.extend([0xa5; 16]);
-        for registered in [POINT_CLASS_ID, MAP_CLASS_ID] {
+        for registered in [POINT_CLASS_ID, LINE_CLASS_ID, MAP_CLASS_ID] {
             let mut prior = registered.to_vec();
             prior.extend(1_u32.to_le_bytes());
             let mut refs = RefTable10_1::new();
@@ -1010,13 +1080,13 @@ mod tests {
                 4096,
                 &mut refs,
             );
-            if registered == POINT_CLASS_ID {
+            if registered != MAP_CLASS_ID {
                 let layer = result.unwrap();
                 let props = layer.elements[0].globe_properties.as_ref().unwrap();
                 assert_eq!(
                     props.geometries[0].entry,
                     ObjectEntry10_1::BackReference {
-                        class_id: POINT_CLASS_ID,
+                        class_id: registered,
                         key: 1
                     }
                 );

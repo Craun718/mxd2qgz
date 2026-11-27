@@ -916,6 +916,8 @@
       - [x] 校验 GlobeGraphicsLayer 元素附加槽的 IGeometry 回引登记类。[取证](docs/arcmap-10.1-dep-tail.md#三维图形容器的对象体)
       - [x] 按声明长度保留两类 3D 图形容器的未知扩展体。[取证](docs/arcmap-10.1-dep-tail.md#三维图形容器的对象体)
       - [x] 按登记类校验两类三维容器的 IElement 回引。[原生取证](docs/arcmap-10.1-dep-tail.md#三维容器的-ielement-回引)
+      - [x] 验证 Globe v7 附加槽的 Envelope 新对象和同键回引。[构造回归](docs/arcmap-10.1-dep-tail.md#globe-元素附加槽中的-envelope)
+      - [x] 按原生 IGeometry 支持接入 Globe 附加槽的 Line 回引。[原生取证](docs/arcmap-10.1-dep-tail.md#globe-附加几何槽中的-line-回引)
       - [ ] 补齐两类 3D 图形容器尚未支持的非空元素、空间对象和扩展实现。
       - [x] 在通用图片元素槽识别 IMG 和 SID 的流内类标识，复用原生写出体。[取证](docs/mxd-page-layout-surround-20261118.md#img-和-sid-图片元素的流内类标识)
       - [x] 接入三维图形容器通用元素槽中的 PMFTitleTextElement 委派体。[取证](docs/arcmap-10.1-dep-tail.md#三维图形容器中的-pmftitletextelement)
