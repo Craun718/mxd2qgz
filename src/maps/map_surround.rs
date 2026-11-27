@@ -2621,6 +2621,10 @@ pub const GP_MULTI_VALUE_TYPE_NAME_CLASS_ID: [u8; 16] = [
     0x70, 0x33, 0xde, 0x35, 0x8e, 0x67, 0xfb, 0x40, 0x9b, 0x7e, 0xff, 0xaf, 0x08, 0x22, 0x4b, 0x99,
 ];
 
+pub const GP_IN_MEMORY_TOOLBOX_NAME_CLASS_ID: [u8; 16] = [
+    0xe3, 0x6f, 0x1e, 0xda, 0xfa, 0x78, 0x60, 0x49, 0xa8, 0xf4, 0xe3, 0x12, 0x0d, 0xff, 0x9d, 0xfb,
+];
+
 pub const GP_SA_GEO_DATA_TYPE_NAME_CLASS_ID: [u8; 16] = [
     0xe6, 0x74, 0xaf, 0x49, 0x05, 0x6a, 0x74, 0x49, 0xbc, 0x0b, 0xd4, 0x4f, 0xe8, 0xc3, 0x5f, 0xdf,
 ];
@@ -2808,6 +2812,10 @@ pub enum BookmarkNameEntry10_1 {
         version: i16,
         raw_column_count: i32,
         columns: Vec<GpValueTableColumnType10_1>,
+    },
+    GpInMemoryToolboxName {
+        version: i16,
+        name: String,
     },
     GpSaGeoDataTypeName {
         version: i16,
@@ -10001,6 +10009,13 @@ fn read_bookmark_name_slot_10_1(
         } => BookmarkNameEntry10_1::TerrainName(Box::new(read_terrain_name_body_10_1(
             reader, max_bytes, table,
         )?)),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_IN_MEMORY_TOOLBOX_NAME_CLASS_ID,
+            ..
+        } => BookmarkNameEntry10_1::GpInMemoryToolboxName {
+            version: read_gp_name_version(reader, 1, "GPInMemoryToolboxName")?,
+            name: read_bstr_string_10_1(reader, max_bytes)?,
+        },
         ObjectEntry10_1::NewObject {
             class_id: GP_SA_GEO_DATA_TYPE_NAME_CLASS_ID,
             ..

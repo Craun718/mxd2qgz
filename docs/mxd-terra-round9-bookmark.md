@@ -4890,3 +4890,24 @@ Save `0x74897940` 写 v2 和域对象。读取器保留旧成员原始计数
 和对象回引，v2 复用 GPSAGeoDataDomain 的读取器。
 构造书签覆盖 v0–v2、回引、错误域类及截断回滚。
 真实宿主和 ArcMap/QGIS 人工验收待查。
+
+#### GPInMemoryToolboxName
+
+GpToolbox.dll 10.1.0.3035 的 SHA-256 为
+`5b4d72153eb8757a910c1aae3428389ad5c26c036fd0fb1d672fef76b5010225`。
+RTTI 主表 `0x74ff5720` 的 QI `0x74f723a0` 接受 IName，
+在 `0x74f724fe` 返回 +0x20 的 IPersistStream 视图。
+其虚表 `0x74ff57cc` 中 GetClassID `0x74f72870`
+返回 `DA1E6FE3-78FA-4960-A8F4-E3120DFF9DFB`。
+Load `0x74f728b0` 检查有符号 short 上限 1，再经
+`0x74f728fa` 调用 AfCore ReadString 读取一个 BSTR。
+Save `0x74f72920` 对称写出版本和名称。构造书签验证
+GPMultiValue 的共享 IName 槽、回引及截断回滚。
+该类在真实 MXD 中的出现位置与 ArcMap/QGIS 人工验收待查。
+
+另在 GpCoreFunctions.dll 10.1.0.3035（SHA-256
+`7048e718213b98fceae3f57267fcaa52d000287bcd94de42a5d32c27a0dee381`）
+核对 GPBuildCoverageFeatureClassName。RTTI 主表 `0x73fc7b14`
+的 QI `0x73506750` 仅匹配 `0x73fc7bfc` 与 `0x73fc7c0c`
+的类专用 IID，未匹配交给 `0x7390f310`。基类也无 IName
+与 IPersistStream，未匹配时返回 E_NOINTERFACE。
