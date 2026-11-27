@@ -5171,6 +5171,125 @@ GeoProcessor.dll 10.1.0.3035 的 SHA-256 为
 MdParameter 的接口对象仍需逐个定名和核对持久化边界。
 本节仅完成静态取证，尚未接入解析器，也未进行 ArcMap 人工验证。
 
+##### MdVariable 的持久化入口
+
+Desktop MdObjects.dll 10.1.0.3035（SHA-256
+`4184aa3908adf816e82c33b76d5835516c84c0393c01a8e06b1cfe3b9dce3099`）
+在 `0x7a14c96f` 安装对象 `+0x18` 的 IPersistStream 表
+`0x7a15d208`。GetClassID `0x7a14eda0` 从
+`0x7a15a814` 返回 MdVariable
+`3A65F387-1E32-452E-9201-A3D104868D06`，与 10.1
+esriGeoprocessing 类型库和前述 /Tool27 值槽一致。
+Load / Save 为 `0x7a14ee50` / `0x7a14f270`。
+Load 用有符号 short 检查上限 10，在 `0x7a14ee9d`
+先调用内联读取器 `0x7a1285f0`，该入口检查有符号 short
+上限 3。外层随后于 `0x7a14eeb3` 读 short，并于
+`0x7a14eed1` 按 `0x7a15b854` 指向的 IGPValue IID
+调用普通 LoadObject。v8 起另有 `0x7a14f188` 的
+ExtraSafeReadObject 槽，v10 在 `0x7a14f238` 追加
+AfCore String。完整内联记录与版本分支仍需对位后接入。
+尚未进行 ArcMap/QGIS 人工验收。
+
+##### MdVariable 的定宽字段及版本门
+
+同摘要 MdObjects.dll 的内联读取器 `0x7a1285f0` 先读版本
+short，再在 `0x7a12863d` 读 LONG、在 `0x7a128659`
+通过 AfCore ReadString 读 BSTR，并在
+`0x7a12866f/0x7a128681/0x7a128693` 读三个 short。
+内联 v2 起在 `0x7a1286b4` 读 IGPMessages
+（IID `0696AA9D-C26B-4A3E-89B7-3763EA11F16C`），
+内联 v3 起在 `0x7a1286d7` 再读 short。
+
+外层 Load 在内联体后读 short、IGPValue、普通对象槽。
+普通对象槽的请求 IID 位于 `0x7a15bd64`，
+LoadObject 调用位于 `0x7a14eefa`。之后的版本门如下，
+按实际读序列出，版本比较沿用指令的有符号门。
+
+| 外层版本 | 新增读取 |
+| --- | --- |
+| v2 起 | short，`0x7a14efbe` |
+| v3 起 | short，`0x7a14efdf` |
+| v4–v6 | 兼容 short，`0x7a14f005` |
+| v7 起 | 取代兼容 short 的 LONG，`0x7a14f034` |
+| v4 起 | LONG、计数 LONG，正计数逐项加载 IGPValue，`0x7a14f09f/0x7a14f0b5/0x7a14f0e8` |
+| v5 起 | IGPVariable，`0x7a14f13a` |
+| v6 起 | LONG，`0x7a14f15e` |
+| v8 起 | ExtraSafe ILayer，`0x7a14f188` |
+| v9 起 | short、ILongArray，`0x7a14f1c9/0x7a14f1ea` |
+| v10 | AfCore String，`0x7a14f238` |
+
+对象槽名称按 10.1 类型库 IID 表复核。
+普通对象槽 IID 为 `4BA33331-D55F-11D1-8882-0000F877762D`，
+即 IName。Load 在 `0x7a14ef36` 调用已读 IName 的
+`+0x14` 槽，在 `0x7a14ef45` 起按打开结果处理成员；
+该调用未收到原输入流。兼容标量非零时，`0x7a14f055`
+调 `0x7a126590`，后者在 `0x7a1265bb` 创建 Array
+（`8F2B6061-AB00-11D2-87F4-0000F8751720`），经
+`0x7a1265ce` 调 OleRun，再在 `0x7a1265e8` 查询
+IArray（`AAFB54D9-AAF8-11D2-87F3-0000F8751720`）。
+该辅助例程只接收对象输出地址，没有原输入流或内联数组体。
+原生读取随后按版本进入普通 IGPValue 列表。IName 对象的
+各具体实现和 Save 的选择次序仍需核查，真实 10.1 MXD 与
+ArcMap/QGIS 人工验收尚未验证。
+
+##### MdVariable 的保存版本与名称来源
+
+同摘要 MdObjects.dll 的 Save 在 `0x7a14f292` 取文档版本，
+`0x7a14f2a4` 调 AfStreamGetSaveVersion，传入数量 4 和
+`0x7a15a8e4` 的 short 表 `[3, 3, 9, 10]`。结果在
+`0x7a14f2bb` 写入，内联体经 `0x7a128710` 写出，
+随后在 `0x7a14f2e3` 写 short。
+
+版本 ≤3 且保存接收者 `+0x68` 标量非零时，
+`0x7a14f324` 从另一个成员取得首槽对象，`0x7a14f330`
+调用同一个 AfCore SaveObject。其余路径由
+`0x7a14f35d` 写出首槽。第二槽的来源依赖运行态对象接口，
+但汇合到 `0x7a14f566` 的 SaveObject，Load 仍固定请求
+IName。分支间的 Variant 临时值用于取得候选对象，
+未直接传给流写助手。之后 `0x7a14f586/0x7a14f59c`
+写两个 short，与 Save 表最早选择 v3 一致；
+`0x7a14f5d6` 的 v4–v6 兼容 short 和
+`0x7a14f5fa` 的 v7 起 LONG 与 Load 的门对应。
+还需验证实际 IName 实现和非空子体。真实 10.1 MXD
+与 ArcMap/QGIS 人工验收尚未执行。
+
+##### MdVariable 读取器
+
+共享 IGPValue 分派现识别 MdVariable 新对象和回引，
+因此 MdParameter 的值槽也经过该读取器。内联消息、IName、
+IGPValue 列表与 ILongArray 共用既有分派，IGPVariable
+允许同类递归并沿用深度限制。ExtraSafe 图层尊重对象区间，
+已支持的类须读到边界才继续。合成回归覆盖写出版本 3、9、10，
+兼容 short 的 v6、非空布尔值、列表键回引和截断。
+其他子槽实现及真实 ArcMap 10.1/QGIS 人工验收仍待补充。
+
+##### 工具箱实档中的 MdVariable v10
+
+以上节 Spatial Statistics Tools.tbx 的 /Tool27 为输入，
+从 `0x3b11` 直接调用共享 IGPValue 读取器。实际 Rust 探针
+读出键 147 的 MdVariable v10 和内联 v3，停在
+`0x3c56`，共消费 325 字节。首值槽为 `0x3b4b` 的 GPDouble
+（键 148），IName 槽为 GPDataTypeName v2，其内 UID 位于
+`0x3bd7`（键 150）。内联消息、变量、图层和索引数组均为空，
+值列表计数为零。该局部读取实证覆盖了非空 IName 和嵌套值，
+工具箱顶层及外层 GPParameterBase v8 仍待验证。
+样本来自 Desktop 10.8，ArcMap 10.1 与 QGIS 人工验收未执行。
+
+##### MdVariable v10 实档分派筛查
+
+在范围域筛查的同一批 246 份本地文档、3,447 条流中，
+找到 669 处 MdVariable CLSID。以 CLSID 后四字节键及
+`0a 00 03 00` 版本前缀选出 374 处候选。对每项从局部对象头
+调用 Rust 读取器。212 处读完，其中 IName 为 GPDataTypeName
+的有 207 处，为 GPMultiValueTypeName 的有 5 处。
+其余 138 处返回 Unsupported、24 处返回 InvalidData。
+
+对不支持的 IGPValue 停点附近的类标识查 10.1 类型库，
+最常见的是 DEFile（67 处）、DEFeatureClass（23 处）、DEWorkspace
+（9 处）。这些探针从单个 CLSID 开始，引用表没有先前的宿主对象，
+因此停点可能包含无法还原的回引或错位候选。接线前仍需用原生
+QI、持久化体及宿主边界核实。ArcMap/QGIS 人工验收尚未执行。
+
 ##### GPEnvironmentManager
 
 同摘要 GeoProcessor.dll 中，+0x14 表 `0x71f7d13c` 的

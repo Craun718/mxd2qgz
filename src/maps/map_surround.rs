@@ -1027,6 +1027,7 @@ pub const GP_EXTENT_CLASS_ID: [u8; 16] = [
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpCodedValue10_1 {
+    MdVariable(Box<MdVariable10_1>),
     RecordSet(Box<GpRecordSet10_1>),
     FeatureRecordSetLayer(Box<GpFeatureRecordSetLayer10_1>),
     TableView(Box<GpTableView10_1>),
@@ -2746,6 +2747,32 @@ pub struct GpTableSchema10_1 {
     pub fields: RuleSlot10_1<FieldsBody10_1>,
 }
 
+pub const MD_VARIABLE_CLASS_ID: [u8; 16] = [
+    0x87, 0xf3, 0x65, 0x3a, 0x32, 0x1e, 0x2e, 0x45, 0x92, 0x01, 0xa3, 0xd1, 0x04, 0x86, 0x8d, 0x06,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MdVariable10_1 {
+    pub base_long: i32,
+    pub name: String,
+    pub base_flags: [i16; 3],
+    pub messages: Option<RuleSlot10_1<GpMessages10_1>>,
+    pub base_v3_short: Option<i16>,
+    pub value: RuleSlot10_1<GpCodedValueBody10_1>,
+    pub value_name: BookmarkNameEntry10_1,
+    pub v2_short: Option<i16>,
+    pub v3_short: Option<i16>,
+    pub compatibility: Option<i32>,
+    pub v4_long: Option<i32>,
+    pub values: Option<(i32, Vec<RuleSlot10_1<GpCodedValueBody10_1>>)>,
+    pub variable: Option<RuleSlot10_1<GpCodedValueBody10_1>>,
+    pub v6_long: Option<i32>,
+    pub layer: Option<RuleSlot10_1<crate::layers::layer_list::LayerBodyPrefix10_1>>,
+    pub v9_short: Option<i16>,
+    pub indices: Option<crate::layers::raster_dataset_name::RasterLongArraySlot10_1>,
+    pub v10_string: Option<String>,
+}
+
 pub const MD_PARAMETER_CLASS_ID: [u8; 16] = [
     0x49, 0x74, 0xbf, 0x9a, 0xef, 0x72, 0x12, 0x4f, 0xa5, 0x47, 0x5e, 0xda, 0x61, 0x61, 0xb5, 0x2d,
 ];
@@ -3774,7 +3801,8 @@ fn read_gp_coded_value_entry(
         ObjectEntry10_1::BackReference { class_id, key }
             if matches!(
                 table.registered_class(key).unwrap_or(class_id),
-                GP_STRING_CLASS_ID
+                MD_VARIABLE_CLASS_ID
+                    | GP_STRING_CLASS_ID
                     | GP_TABLE_VIEW_CLASS_ID
                     | GP_RECORD_SET_CLASS_ID
                     | GP_FEATURE_RECORD_SET_LAYER_CLASS_ID
@@ -3866,6 +3894,12 @@ fn read_gp_coded_value_entry(
         {
             None
         }
+        ObjectEntry10_1::NewObject {
+            class_id: MD_VARIABLE_CLASS_ID,
+            ..
+        } => Some(Box::new(read_md_variable_10_1(
+            reader, max_bytes, table, depth,
+        )?)),
         ObjectEntry10_1::NewObject {
             class_id:
                 class_id @ (GP_TIN_LAYER_CLASS_ID
@@ -10001,6 +10035,144 @@ fn read_gp_parameter_schema_slot_10_1(
     Ok(RuleSlot10_1 { entry, body })
 }
 
+fn read_md_variable_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<GpCodedValueBody10_1> {
+    if depth >= MAX_BOOKMARK_NAME_NESTING {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "MdVariable 嵌套层数超限",
+        ));
+    }
+    let version = read_gp_name_version(reader, 10, "MdVariable")?;
+    let base_version = read_gp_name_version(reader, 3, "MdVariable 内联体")?;
+    let base_long = reader.read_u32_le()? as i32;
+    let name = read_bstr_string_10_1(reader, max_bytes)?;
+    let base_flags = [
+        reader.read_u16_le()? as i16,
+        reader.read_u16_le()? as i16,
+        reader.read_u16_le()? as i16,
+    ];
+    let messages = (base_version >= 2)
+        .then(|| read_gp_messages_slot_10_1(reader, max_bytes, table))
+        .transpose()?;
+    let base_v3_short = (base_version >= 3)
+        .then(|| reader.read_u16_le().map(|v| v as i16))
+        .transpose()?;
+    let base_short = reader.read_u16_le()?;
+    let value = read_gp_coded_value_slot(reader, max_bytes, table, depth + 1)?;
+    let value_name = read_bookmark_name_slot_10_1(reader, max_bytes, table, depth + 1)?;
+    let v2_short = (version >= 2)
+        .then(|| reader.read_u16_le().map(|v| v as i16))
+        .transpose()?;
+    let v3_short = (version >= 3)
+        .then(|| reader.read_u16_le().map(|v| v as i16))
+        .transpose()?;
+    let compatibility = match version {
+        4..=6 => Some(i32::from(reader.read_u16_le()? as i16)),
+        7.. => Some(reader.read_u32_le()? as i32),
+        _ => None,
+    };
+    let v4_long = (version >= 4)
+        .then(|| reader.read_u32_le().map(|v| v as i32))
+        .transpose()?;
+    let values = (version >= 4)
+        .then(|| read_gp_coded_value_list(reader, max_bytes, table, depth + 1))
+        .transpose()?;
+    let variable = (version >= 5)
+        .then(|| {
+            let entry = read_object_entry_10_1(reader, table)?;
+            if let ObjectEntry10_1::NewObject { class_id, .. }
+            | ObjectEntry10_1::BackReference { class_id, .. } = entry
+                && class_id != MD_VARIABLE_CLASS_ID
+            {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    "MdVariable 的 IGPVariable 类尚未支持",
+                ));
+            }
+            read_gp_coded_value_entry(reader, max_bytes, table, depth + 1, entry)
+        })
+        .transpose()?;
+    let v6_long = (version >= 6)
+        .then(|| reader.read_u32_le().map(|v| v as i32))
+        .transpose()?;
+    let layer = (version >= 8)
+        .then(|| read_md_variable_layer(reader, max_bytes, table))
+        .transpose()?;
+    let v9_short = (version >= 9)
+        .then(|| reader.read_u16_le().map(|v| v as i16))
+        .transpose()?;
+    let indices = (version >= 9)
+        .then(|| crate::layers::raster_dataset_name::read_long_array_slot(reader, max_bytes, table))
+        .transpose()?;
+    let v10_string = (version >= 10)
+        .then(|| read_string_10_1(reader, max_bytes))
+        .transpose()?;
+    Ok(GpCodedValueBody10_1 {
+        version: version as u16,
+        base_version: base_version as u16,
+        base_short,
+        value: GpCodedValue10_1::MdVariable(Box::new(MdVariable10_1 {
+            base_long,
+            name,
+            base_flags,
+            messages,
+            base_v3_short,
+            value,
+            value_name,
+            v2_short,
+            v3_short,
+            compatibility,
+            v4_long,
+            values,
+            variable,
+            v6_long,
+            layer,
+            v9_short,
+            indices,
+            v10_string,
+        })),
+    })
+}
+
+fn read_md_variable_layer(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<RuleSlot10_1<crate::layers::layer_list::LayerBodyPrefix10_1>> {
+    let size = reader.read_u32_le()?;
+    let sync = reader.read_u32_le()?;
+    let size = if sync == 0 { size } else { sync } as usize;
+    let mut region = reader.read_region(size)?;
+    let entry = if size == 0 {
+        ObjectEntry10_1::Null
+    } else {
+        read_object_entry_10_1(&mut region, table)?
+    };
+    let body = match entry {
+        ObjectEntry10_1::NewObject { class_id, .. } => Some(Box::new(
+            crate::layers::layer_list::read_complete_layer_body_10_1(
+                &mut region,
+                class_id,
+                max_bytes,
+                table,
+            )?,
+        )),
+        _ => None,
+    };
+    if region.remaining() != 0 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "MdVariable 图层体未读到 ExtraSafe 边界",
+        ));
+    }
+    Ok(RuleSlot10_1 { entry, body })
+}
+
 fn read_md_parameter_slot_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -11598,6 +11770,77 @@ pub fn read_legend_prefix_10_1(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn md_variable_reads_versioned_gp_value_slots() {
+        for version in [3_u16, 6, 9, 10] {
+            let mut bytes = MD_VARIABLE_CLASS_ID.to_vec();
+            bytes.extend(40_u32.to_le_bytes());
+            bytes.extend(version.to_le_bytes());
+            bytes.extend(3_u16.to_le_bytes());
+            bytes.extend(9_i32.to_le_bytes());
+            bytes.extend(0_u32.to_le_bytes());
+            bytes.extend([0; 6 + 16 + 2 + 2]);
+            bytes.extend(GP_BOOLEAN_CLASS_ID);
+            bytes.extend(41_u32.to_le_bytes());
+            bytes.extend([1, 0, 1, 0, 0, 0, 1, 0]);
+            bytes.extend([0; 16 + 4]);
+            if version >= 4 {
+                if version <= 6 {
+                    bytes.extend(1_u16.to_le_bytes());
+                } else {
+                    bytes.extend(1_u32.to_le_bytes());
+                }
+                bytes.extend(0_i32.to_le_bytes());
+                bytes.extend(1_i32.to_le_bytes());
+                bytes.extend(GP_BOOLEAN_CLASS_ID);
+                bytes.extend(41_u32.to_le_bytes());
+            }
+            if version >= 5 {
+                bytes.extend([0; 16]);
+            }
+            if version >= 6 {
+                bytes.extend([0; 4]);
+            }
+            if version >= 8 {
+                bytes.extend([0; 8]);
+            }
+            if version >= 9 {
+                bytes.extend([0; 2 + 16]);
+            }
+            if version >= 10 {
+                bytes.extend(2_u32.to_le_bytes());
+                bytes.extend(0_u16.to_le_bytes());
+            }
+            let end = bytes.len();
+            bytes.extend(0xabcd_u16.to_le_bytes());
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let entry = read_gp_coded_value_slot(&mut reader, 4096, &mut refs, 0).unwrap();
+            let body = entry.body.unwrap();
+            assert_eq!(body.version, version);
+            let GpCodedValue10_1::MdVariable(variable) = body.value else {
+                panic!("应读取 MdVariable");
+            };
+            assert_eq!(variable.base_long, 9);
+            assert!(matches!(
+                variable.value.body.unwrap().value,
+                GpCodedValue10_1::Boolean(1)
+            ));
+            if let Some((count, values)) = variable.values {
+                assert_eq!(count, 1);
+                assert!(matches!(
+                    values[0].entry,
+                    ObjectEntry10_1::BackReference { key: 41, .. }
+                ));
+            }
+            assert_eq!(reader.position(), end);
+            assert_eq!(reader.read_u16_le().unwrap(), 0xabcd);
+            let mut reader = Reader::new(&bytes[..end - 1]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_gp_coded_value_slot(&mut reader, 4096, &mut refs, 0).is_err());
+        }
+    }
 
     #[test]
     fn gp_range_domain_reads_keyed_toolbox_record() {
