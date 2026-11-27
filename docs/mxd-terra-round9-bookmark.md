@@ -5026,3 +5026,19 @@ MdProcess 的 QI `0x7a139ac0` 首先比较该 IID。其持久化表
 基类和后继字段，才能确定下一个对象边界。现有有界进程载荷
 的保留逻辑见 [GPGroupLayer 取证](mxd-luna-deep-layer-masking-20261118.md)。
 真实拖放载荷、回退分支对应的具体类和 ArcMap 人工检查待验证。
+
+MdProcess 的内联流布局续查如下。地址仍为同摘要 MdObjects.dll。
+其中接口名称由 10.1 类型库及前文 IGPValue 取证核对。
+
+| 顺序 | 原生读取边界 |
+| --- | --- |
+| 外层版本 | `0x7a13bfe1` 读有符号 short，上限 4。 |
+| 基类 | `0x7a1285f0` 读取独立的有符号版本 short，上限 3，然后读取 LONG、AfCore BSTR、三个 short。基类 v2 起于 `0x7a1286b4` 请求 IID `0696AA9D-C26B-4A3E-89B7-3763EA11F16C`，v3 起于 `0x7a1286d7` 另读 short。 |
+| 工具名称 | `0x7a13c023` 请求 IName。之后至参数计数前的虚调用涉及名称对象和路径解析，未见额外 IStream 参数。 |
+| 参数 | `0x7a13c22e` 读有符号 int32 计数，`0x7a13c26a` 每项请求 IMdParameter `9411CD59-50B7-4852-8DFF-A0C33F622216`。 |
+| 环境 | 外层 v2 起于 `0x7a13c303` 请求 IGPEnvironmentManager `91C2EDF4-6E2C-43F5-B526-E1A94F6615AA`。 |
+| 值 | 外层 v3 于 `0x7a13c358` 读取单个 IGPValue。v4 于 `0x7a13c49a` 读取有符号 LONG 计数，非正数跳过循环，正数逐项在 `0x7a13c4f6` 请求 IGPValue。 |
+
+还须核实基类 v2 子槽、参数和环境管理器的具体持久化类与边界，
+以及值数组后的辅助调用是否继续读取原流。以上布局尚未接入
+读取器，未用 ArcMap 验证。
