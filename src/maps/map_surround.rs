@@ -2621,6 +2621,10 @@ pub const GP_MULTI_VALUE_TYPE_NAME_CLASS_ID: [u8; 16] = [
     0x70, 0x33, 0xde, 0x35, 0x8e, 0x67, 0xfb, 0x40, 0x9b, 0x7e, 0xff, 0xaf, 0x08, 0x22, 0x4b, 0x99,
 ];
 
+pub const GP_PYTHON_TOOLBOX_NAME_CLASS_ID: [u8; 16] = [
+    0x54, 0x59, 0x54, 0xfd, 0xe2, 0x8c, 0xe0, 0x4b, 0x87, 0x5b, 0x12, 0xe8, 0x4b, 0x80, 0xb2, 0x52,
+];
+
 pub const GP_TOOLBOX_NAME_CLASS_ID: [u8; 16] = [
     0xb2, 0xde, 0xf8, 0xfd, 0x91, 0xeb, 0x9d, 0x47, 0xa4, 0x10, 0x85, 0x4b, 0xa8, 0xef, 0x63, 0x49,
 ];
@@ -2841,6 +2845,11 @@ pub enum BookmarkNameEntry10_1 {
         version: i16,
         raw_column_count: i32,
         columns: Vec<GpValueTableColumnType10_1>,
+    },
+    GpPythonToolboxName {
+        version: i16,
+        name: String,
+        workspace: RuleSlot10_1<WorkspaceNamePrefix10_1>,
     },
     GpToolboxName(Box<GpToolboxName10_1>),
     GpToolName(Box<GpToolName10_1>),
@@ -10144,6 +10153,14 @@ fn read_bookmark_name_slot_10_1(
         } => BookmarkNameEntry10_1::TerrainName(Box::new(read_terrain_name_body_10_1(
             reader, max_bytes, table,
         )?)),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_PYTHON_TOOLBOX_NAME_CLASS_ID,
+            ..
+        } => BookmarkNameEntry10_1::GpPythonToolboxName {
+            version: read_gp_name_version(reader, 1, "GPPythonToolboxName")?,
+            name: read_bstr_string_10_1(reader, max_bytes)?,
+            workspace: read_gp_toolbox_workspace_slot_10_1(reader, max_bytes, table)?,
+        },
         ObjectEntry10_1::NewObject {
             class_id: GP_TOOLBOX_NAME_CLASS_ID,
             ..

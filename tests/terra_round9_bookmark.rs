@@ -3702,6 +3702,61 @@ fn feature_bookmark_reads_gp_data_type_name_versioned_uid_slots() {
 }
 
 #[test]
+fn feature_bookmark_reads_gp_python_toolbox_workspace_reference() {
+    use mxd2qgz::maps::map_surround::{GP_PYTHON_TOOLBOX_NAME_CLASS_ID, GP_TOOL_NAME_CLASS_ID};
+    use mxd2qgz::objects::workspace_name::WORKSPACE_NAME_CLASS_ID;
+    use mxd2qgz::storage::object_refs::{ObjectEntry10_1, read_object_entry_10_1};
+
+    let definition = bookmark_entry_10_1(&WORKSPACE_NAME_CLASS_ID, 18);
+    let mut initial_refs = RefTable10_1::new();
+    read_object_entry_10_1(&mut Reader::new(&definition), &mut initial_refs).unwrap();
+    let mut bytes = bookmark_header_10_1(&GP_PYTHON_TOOLBOX_NAME_CLASS_ID, 17);
+    bytes.extend([1, 0, 1, 0, 0, 0, b'p', 0, 0, 0]);
+    let workspace_offset = bytes.len();
+    bytes.extend(bookmark_entry_10_1(&GP_TOOL_NAME_CLASS_ID, 18));
+    bytes.extend(bookmark_string_10_1("书签"));
+    let end = bytes.len();
+    bytes.push(0xa5);
+    let mut reader = Reader::new(&bytes);
+    let mut refs = initial_refs.clone();
+    let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    let BookmarkNameEntry10_1::GpPythonToolboxName {
+        version,
+        name,
+        workspace,
+    } = result.name_object
+    else {
+        panic!("应读取 Python 工具箱名称");
+    };
+    assert_eq!((version, name.as_str()), (1, "p"));
+    assert!(matches!(
+        workspace.entry,
+        ObjectEntry10_1::BackReference { key: 18, .. }
+    ));
+    assert!(workspace.body.is_none());
+    assert_eq!(result.name, "书签");
+    assert_eq!(reader.position(), end);
+
+    for cut in 0..end {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let mut refs = initial_refs.clone();
+        assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert_eq!(refs, initial_refs);
+    }
+    bytes[workspace_offset..workspace_offset + 16].copy_from_slice(&WORKSPACE_NAME_CLASS_ID);
+    let mut refs = RefTable10_1::new();
+    let wrong = bookmark_entry_10_1(&GP_TOOL_NAME_CLASS_ID, 18);
+    read_object_entry_10_1(&mut Reader::new(&wrong), &mut refs).unwrap();
+    let saved_refs = refs.clone();
+    let mut reader = Reader::new(&bytes);
+    let error = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::Unsupported);
+    assert_eq!(reader.position(), 0);
+    assert_eq!(refs, saved_refs);
+}
+
+#[test]
 fn feature_bookmark_reads_gp_toolbox_name_versions() {
     use mxd2qgz::maps::map_surround::{GP_TOOL_NAME_CLASS_ID, GP_TOOLBOX_NAME_CLASS_ID};
     use mxd2qgz::objects::workspace_name::WORKSPACE_NAME_CLASS_ID;

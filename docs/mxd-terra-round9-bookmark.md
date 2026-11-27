@@ -4942,3 +4942,19 @@ v2 起在 `0x74fc8bc1` 读 LONG，v3 之前在 `0x74fc8bec`
 构造书签覆盖 v0–v3、非空 WorkspaceName、错误接口类和
 逐字节截断回滚。其余 IWorkspaceName 类的宿主、真实 MXD
 及 ArcMap/QGIS 人工验收待查。
+
+#### GPPythonToolboxName
+
+同摘要的 GpToolbox.dll 10.1.0.3035 中，RTTI 主表
+`0x74ff6a48` 的 QI `0x74f866f0` 接受 IName，IPersistStream
+视图在 +0x24。持久化表 `0x74ff6b0c` 的 GetClassID
+`0x74f86dd0` 返回 `FD545954-8CE2-4BE0-875B-12E84B80B252`。
+Load `0x74f86e30` 检查有符号 short 上限 1，在
+`0x74f86e7e` 读取 BSTR，随后于 `0x74f86e9c`
+以 `FADD975C-E36F-11D1-AA81-00C04FA33A15` 请求
+IWorkspaceName。后续虚调用使用读取后的名称对象。
+Save `0x74f86ed0` 按相同顺序写出版本、BSTR 和对象。
+
+读取器复用工具箱的 IWorkspaceName 槽。构造书签验证已登记
+工作空间回引、错误接口回引及截断回滚。真实 MXD 宿主及
+ArcMap/QGIS 人工验收待查。
