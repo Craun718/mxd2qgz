@@ -607,3 +607,22 @@ NetCDFDB.dll 同版本的表名 Load 在 `0x7ae2ff7f` 调该槽，随后的
 输出赋予确定值。合成旧 Map 测试确认空索引对象体和非空名称均原样
 保留，并可继续读取下一条表名回引。
 ArcMap 10.1 与 QGIS 人工验收未进行。
+
+## 全流复核旧版 Envelope、Hyperlink、PropertySet 候选
+
+用现有 CLI 的 inspect 和 extract 扫描参考样本、可读本地
+10.1/10.8 介质及 SDK 工程。按整文件 SHA-256 去重后共 106
+份文档，成功读取 2,004 条至少 22 字节的流。扫描以已知
+CLSID 定位，暂以 `+20` 的 short 作带键对象版本候选。
+Envelope 有 1,396 处 CLSID 匹配，本轮无 `+20` 为零的候选。
+Hyperlink 未命中。PropertySet 有 640 处匹配，其中 601
+处 `+20` 为零，全部在 ArcToolbox 流，且 `+16..+20`
+均为 `01 00 01 00`。
+
+在仓库参考样本的 `/Esri ArcToolbox` 偏移 `0x1da`，
+从 `+16` 读为 short 1 和 LONG 1，随后能对位一个
+终止符计入长度的属性名与 VT_BSTR 类型标签。这里的
+`+20` 零落在 LONG 计数的高位，符合去掉四字节键后
+的 v1 局部布局。其余候选只核对了相同前缀，未逐一建立
+宿主对象边界。这批命中不能用作 PropertySet v0 的实档佐证。
+三个 v0 实档待办保留，未进行 ArcMap 或 QGIS 人工验证。
