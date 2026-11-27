@@ -438,3 +438,14 @@ GpObjects.dll 10.1.0.3035 的 QI `0x746e32d0` 提供 IName。
 按版本读取四条字符串及 IUID。构造槽验证非空字符串、UID 新键、
 后继格网编号起点和短读回滚。真实布局的名称来源及 ArcMap/QGIS
 人工验收仍待验证。
+
+### 叠加格网的 GPToolboxName
+
+GpToolbox.dll 10.1.0.3035 的 QI `0x74fc8350` 比较
+`0x74ff52d4` 的 IName IID `4BA33331-D55F-11D1-8882-0000F877762D`，
+匹配后返回对象 +0x10。CustomOverlayGrid Load `0x7954ead4`
+传入的 `0x7959a74c` 保存同一 IID。
+格网复用 [Load `0x74fc8b40` 对应的读取器](mxd-terra-round9-bookmark.md#gptoolboxname)，
+沿用其版本门和 IWorkspaceName 槽检查。构造输入验证 v3 工具箱名称和
+原始 LONG、后继字符串边界以及截断回滚。真实格网宿主、在 ArcMap 中
+打开名称的结果及 ArcMap/QGIS 人工验收仍待验证。

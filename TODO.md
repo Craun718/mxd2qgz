@@ -301,6 +301,7 @@
     - [x] 接入 CustomOverlayGrid 的 GPSAGeoDataTypeName 对象体。[原生取证](docs/mxd-page-layout-grid-20261118.md#叠加格网的-gpsageodatatypename)
     - [x] 接入 CustomOverlayGrid 的 GPGraphDataTableTypeName 对象体。[原生取证](docs/mxd-page-layout-grid-20261118.md#叠加格网的-gpgraphdatatabletypename)
     - [ ] 补齐 CustomOverlayGrid 尚未核实的 IName 实现。[格网名称取证](docs/mxd-page-layout-grid-20261118.md#自定义叠加格网的要素来源)
+    - [x] 接入 CustomOverlayGrid 要素来源槽中的 GPToolboxName。[原生取证](docs/mxd-page-layout-grid-20261118.md#叠加格网的-gptoolboxname)
     - [ ] 验证 CustomOverlayGrid 已接入名称的真实布局宿主。
     - [ ] 取得显式使用 ObjectStream 版本文本 9.0 的旧 DEVMODE 宿主。
     - [ ] 取得 PostScript 打印机的真实布局宿主。

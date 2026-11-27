@@ -10920,7 +10920,7 @@ fn read_gp_toolbox_workspace_slot_10_1(
     Ok(RuleSlot10_1 { entry, body })
 }
 
-fn read_gp_toolbox_name_body_10_1(
+pub(crate) fn read_gp_toolbox_name_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
