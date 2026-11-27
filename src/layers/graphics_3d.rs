@@ -356,8 +356,11 @@ pub fn read_graphics_3d_layer_10_1(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::layers::fdo_legacy::FDO_GRAPHICS_SUBLAYER_CLASS_ID;
     use crate::maps::group_element::GroupChild10_1;
-    use crate::maps::layer_masking::{DUMMY_GRADUATED_MARKER_LAYER_CLASS_ID, DUMMY_LAYER_CLASS_ID};
+    use crate::maps::layer_masking::{
+        DUMMY_GRADUATED_MARKER_LAYER_CLASS_ID, DUMMY_LAYER_CLASS_ID, GRAPHICS_SUB_LAYER_CLASS_ID,
+    };
     use crate::maps::map_object::MAP_CLASS_ID;
 
     #[test]
@@ -370,6 +373,8 @@ mod tests {
                 GRAPHICS_LAYER_3D_CLASS_ID,
                 DUMMY_LAYER_CLASS_ID,
                 DUMMY_GRADUATED_MARKER_LAYER_CLASS_ID,
+                GRAPHICS_SUB_LAYER_CLASS_ID,
+                FDO_GRAPHICS_SUBLAYER_CLASS_ID,
                 MAP_CLASS_ID,
             ] {
                 let mut prior = registered.to_vec();
@@ -832,16 +837,21 @@ mod tests {
     }
 
     #[test]
-    fn graphics_3d_rejects_new_dummy_layers_without_persisted_bodies() {
+    fn graphics_3d_rejects_new_layers_without_standalone_loading() {
         for (class, short_bytes, tail_bytes) in [
             (GRAPHICS_LAYER_3D_CLASS_ID, 8, 0),
             (GLOBE_GRAPHICS_LAYER_CLASS_ID, 4, 8),
         ] {
-            for dummy in [DUMMY_LAYER_CLASS_ID, DUMMY_GRADUATED_MARKER_LAYER_CLASS_ID] {
+            for unsupported_layer in [
+                DUMMY_LAYER_CLASS_ID,
+                DUMMY_GRADUATED_MARKER_LAYER_CLASS_ID,
+                GRAPHICS_SUB_LAYER_CLASS_ID,
+                FDO_GRAPHICS_SUBLAYER_CLASS_ID,
+            ] {
                 let mut bytes = 1_u16.to_le_bytes().to_vec();
                 bytes.extend([2, 0, 0, 0, 0, 0]);
                 bytes.resize(bytes.len() + short_bytes, 0);
-                bytes.extend(dummy);
+                bytes.extend(unsupported_layer);
                 bytes.extend(1_u32.to_le_bytes());
                 bytes.resize(bytes.len() + 16 + 4 + tail_bytes, 0);
 

@@ -129,8 +129,8 @@ const MAX_LEGACY_VERSION: i16 = 3;
 /// AnnoLayer.dll FDOGraphicsSublayer IPersistStream 虚表 `0x6b1ac880` 槽
 /// +0x0c 的 GetClassID `0x6b1a1ae0` 写出（主虚表 `0x6b1ac764` 槽 +0x14 的
 /// `0x6b1a1590` 写出同值，两处互证）。该 CLSID 未登记于 esri.clsid.ecfg：
-/// 元素记录由 FDO Load 步骤 13 的循环直接构造、无对象头，此常量不用于
-/// 流内比对，仅作类身份证据。
+/// 元素记录由 FDO Load 步骤 13 的循环直接构造、无对象头。普通 ILayer
+/// 槽可用该类标识校验已登记的回引，原版 AnnoLayer 不提供此类的独立工厂。
 pub const FDO_GRAPHICS_SUBLAYER_CLASS_ID: [u8; 16] = [
     0x51, 0x38, 0xba, 0x4a, 0x3a, 0xbc, 0xc2, 0x43, 0x8f, 0xbe, 0x93, 0xa6, 0x5a, 0xd9, 0x1e, 0x83,
 ];

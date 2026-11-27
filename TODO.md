@@ -908,6 +908,8 @@
       - [x] 确认 WMSMapLayer 首槽的 IWMSConnectionName 及私有尾槽的 InternetTiledLayer 实现。[原生取证](docs/arcmap-10.1-dep-tail.md#wmsmaplayer-的连接名称与私有尾槽)
       - [x] 接入两类 3D 容器关联槽中的 WMSMapLayer 对象体。[原生取证](docs/arcmap-10.1-dep-tail.md#wmsmaplayer-的连接名称与私有尾槽)
       - [x] 验证 WMSMapLayer 私有尾槽中的 InternetTiledLayer 新对象和同键回引。[原生与构造取证](docs/arcmap-10.1-dep-tail.md#wmsmaplayer-私有槽的保存对位)
+      - [x] 核对 GraphicsSubLayer 的三维关联回引与首次加载限制。[原生取证](docs/arcmap-10.1-dep-tail.md#graphicssublayer-的三维关联槽)
+      - [x] 用 10.1 原生类工厂验证 FDOGraphicsSubLayer 的独立激活限制。[原生探针](docs/arcmap-10.1-dep-tail.md#fdographicssublayer-的独立激活边界)
       - [ ] 补齐两类 3D 容器的关联 ILayer 槽中其余未支持的类体；已接入类的共用子槽缺口见各自条目。
       - [x] 接入普通 ILayer 槽中的 InternetTiledLayer 与 WMTSLayer，覆盖独立图层、组图层和三维关联图层。[接口及对象体证据](docs/mxd-10.1-raster-layer-tail.md#瓦片图层的独立-ilayer-宿主)
       - [x] 校验两类 3D 图形容器的 IEnvelope 回引登记类。[取证](docs/arcmap-10.1-dep-tail.md#三维图形容器的对象体)

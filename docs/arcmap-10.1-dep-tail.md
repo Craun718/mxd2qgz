@@ -2722,3 +2722,38 @@ ArcMap/QGIS 人工验收仍待验证。
 在该槽分别放入 InternetTiledLayer v1 新对象和同键回引，
 验证键登记及后继 v4–v6 字段。保存调用没有把该成员限定为
 InternetTiledLayer，真实宿主中的类分布和人工验收仍待验证。
+
+### GraphicsSubLayer 的三维关联槽
+
+同摘要 FeatureLayer.dll 10.1.0.3035 的主 QI `0x6f70e6a0`
+在 `0x6f70e6ae` 比较 `0x6f7aa4ec` 处的 ILayer IID
+`34C20002-4D3C-11D0-92D8-00805F7C28B0`。命中后
+`0x6f70e6c1` 返回完整对象 +0x28。前述持久化接口检查确认
+这个类没有普通新对象体读取入口。两类三维容器的回归现验证
+已登记类回引可以继续读取容器，但首次定义时事务性退回。
+这里的类是 FeatureLayer.dll 的 GraphicsSubLayer。AnnoLayer.dll
+的 FDOGraphicsSubLayer 使用另一 CLSID，其父体内联布局另见
+[旧 FDO 加载器](arcmap-10.1-fdo-open-points.md)。
+真实关联宿主和 ArcMap/QGIS 人工验收尚未验证。
+
+### FDOGraphicsSubLayer 的独立激活边界
+
+32 位 Wine 探针直接调用 AnnoLayer.dll 10.1.0.3035（SHA-256
+`b487f3e0dc0e70dbc4b75f72eb6dcd8d5521eb422dbea6e3b2e201489a2d33a5`）
+的 DllGetClassObject（`0x6b1a2790`），请求 IClassFactory。
+父类 FDOGraphicsLayer 返回 S_OK 和非空工厂；子类
+`4ABA3851-BC3A-43C2-8FBE-93A65AD91E83` 返回
+`0x80040111`（CLASS_E_CLASSNOTAVAILABLE）和空指针。
+因此子类虽有持久化虚表，原版 AnnoLayer 不提供独立类工厂。
+现有 FDO 父体内联读取路径由父对象构造子层。
+
+Desktop 的 CLSID/CATID 配置中均未找到该子类。对提取 DLL 搜索
+完整 CLSID，除 AnnoLayer 外命中 CartoAnalyzer.dll 10.1.0.3035
+（SHA-256 `3801c0d87e243539f7ab2e772fd46739264557bc37bfd74c33d21e0d5138e9af`）。
+其 `0x6cc0dfc6` 和 `0x6cc126dd` 使用 `0x6cc2f35c` 的常量
+比较输入类标识。该代码没有以该常量创建对象的直接调用。
+证据覆盖这套原版介质，真实 FDO 子层宿主和 ArcMap/QGIS
+人工验收尚未验证。
+
+合成 Scene 和 Globe 回归覆盖该类已登记回引与普通新对象。回引按
+登记类校验并续读父体，首次定义返回不支持且保留入口游标和引用表。
