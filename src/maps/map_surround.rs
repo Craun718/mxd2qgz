@@ -2621,6 +2621,29 @@ pub const GP_MULTI_VALUE_TYPE_NAME_CLASS_ID: [u8; 16] = [
     0x70, 0x33, 0xde, 0x35, 0x8e, 0x67, 0xfb, 0x40, 0x9b, 0x7e, 0xff, 0xaf, 0x08, 0x22, 0x4b, 0x99,
 ];
 
+pub const GP_MESSAGES_CLASS_ID: [u8; 16] = [
+    0x7c, 0x95, 0x59, 0x6d, 0xd2, 0xea, 0x1b, 0x49, 0x96, 0x3c, 0x2c, 0x41, 0xfe, 0xb7, 0x9c, 0x2f,
+];
+pub const GP_MESSAGE_CLASS_ID: [u8; 16] = [
+    0xd3, 0xb2, 0x0b, 0xfd, 0x4e, 0x6c, 0xaf, 0x43, 0xb0, 0x84, 0xa8, 0x06, 0xa6, 0xc8, 0xe6, 0x6e,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpMessages10_1 {
+    pub version: i16,
+    pub legacy_long: Option<i32>,
+    pub raw_count: i32,
+    pub messages: Vec<RuleSlot10_1<GpMessage10_1>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpMessage10_1 {
+    pub version: i16,
+    pub raw_type: i32,
+    pub code: i32,
+    pub description: String,
+}
+
 pub const MD_PROCESS_CLASS_ID: [u8; 16] = [
     0x8c, 0x67, 0xda, 0x3a, 0x4d, 0x03, 0x7c, 0x49, 0xb8, 0x93, 0x7e, 0xd9, 0xe4, 0x0c, 0xa9, 0xd0,
 ];
@@ -2632,6 +2655,7 @@ pub struct MdProcess10_1 {
     pub base_long: i32,
     pub base_name: String,
     pub base_shorts: [i16; 3],
+    pub messages: Option<RuleSlot10_1<GpMessages10_1>>,
     pub base_v3_short: Option<i16>,
     pub tool_name: BookmarkNameEntry10_1,
     pub raw_parameter_count: i32,
@@ -9452,6 +9476,81 @@ fn read_bookmark_unknown_slot_10_1(
     })
 }
 
+fn read_gp_messages_slot_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<RuleSlot10_1<GpMessages10_1>> {
+    let entry = read_object_entry_10_1(reader, table)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if table.registered_class(key).unwrap_or(class_id) == GP_MESSAGES_CLASS_ID =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: GP_MESSAGES_CLASS_ID,
+            ..
+        } => {
+            let version = read_gp_name_version(reader, 3, "GPMessages")?;
+            let legacy_long = (version <= 2)
+                .then(|| reader.read_u32_le().map(|value| value as i32))
+                .transpose()?;
+            let raw_count = reader.read_u32_le()? as i32;
+            let count = raw_count.max(0) as usize;
+            if count > reader.remaining().min(max_bytes) / 16 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "GPMessages 条目数量超限",
+                ));
+            }
+            let mut messages = Vec::new();
+            for _ in 0..count {
+                let entry = read_object_entry_10_1(reader, table)?;
+                let body = match entry {
+                    ObjectEntry10_1::Null => None,
+                    ObjectEntry10_1::BackReference { class_id, key }
+                        if table.registered_class(key).unwrap_or(class_id)
+                            == GP_MESSAGE_CLASS_ID =>
+                    {
+                        None
+                    }
+                    ObjectEntry10_1::NewObject {
+                        class_id: GP_MESSAGE_CLASS_ID,
+                        ..
+                    } => Some(Box::new(GpMessage10_1 {
+                        version: read_gp_name_version(reader, 3, "GPMessage")?,
+                        raw_type: reader.read_u32_le()? as i32,
+                        code: reader.read_u32_le()? as i32,
+                        description: read_bstr_string_10_1(reader, max_bytes)?,
+                    })),
+                    _ => {
+                        return Err(io::Error::new(
+                            ErrorKind::Unsupported,
+                            "IGPMessage 槽中的类尚未支持",
+                        ));
+                    }
+                };
+                messages.push(RuleSlot10_1 { entry, body });
+            }
+            Some(Box::new(GpMessages10_1 {
+                version,
+                legacy_long,
+                raw_count,
+                messages,
+            }))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "IGPMessages 槽中的类尚未支持",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
+}
+
 fn read_md_process_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -9475,12 +9574,9 @@ fn read_md_process_body_10_1(
         reader.read_u16_le()? as i16,
         reader.read_u16_le()? as i16,
     ];
-    if base_version >= 2 && read_header_10_1(reader)? != ObjectHeader::Null {
-        return Err(io::Error::new(
-            ErrorKind::Unsupported,
-            "MdProcess 基类子对象尚未支持",
-        ));
-    }
+    let messages = (base_version >= 2)
+        .then(|| read_gp_messages_slot_10_1(reader, max_bytes, table))
+        .transpose()?;
     let base_v3_short = (base_version >= 3)
         .then(|| reader.read_u16_le().map(|value| value as i16))
         .transpose()?;
@@ -9520,6 +9616,7 @@ fn read_md_process_body_10_1(
         base_long,
         base_name,
         base_shorts,
+        messages,
         base_v3_short,
         tool_name,
         raw_parameter_count,

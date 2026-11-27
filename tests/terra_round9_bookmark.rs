@@ -3704,7 +3704,8 @@ fn feature_bookmark_reads_gp_data_type_name_versioned_uid_slots() {
 #[test]
 fn feature_bookmark_reads_drag_drop_model_process_value_versions() {
     use mxd2qgz::maps::map_surround::{
-        GP_DRAG_DROP_OBJECT_NAME_CLASS_ID, GP_LONG_CLASS_ID, GpCodedValue10_1, MD_PROCESS_CLASS_ID,
+        GP_DRAG_DROP_OBJECT_NAME_CLASS_ID, GP_LONG_CLASS_ID, GP_MESSAGE_CLASS_ID,
+        GP_MESSAGES_CLASS_ID, GpCodedValue10_1, MD_PROCESS_CLASS_ID,
     };
 
     for version in [0_i16, 1, 2, 3, 4] {
@@ -3716,7 +3717,19 @@ fn feature_bookmark_reads_drag_drop_model_process_value_versions() {
         bytes.extend(7_i32.to_le_bytes());
         bytes.extend([1, 0, 0, 0, b'm', 0, 0, 0]);
         bytes.extend([1, 0, 2, 0, 3, 0]);
-        bytes.extend([0; 16]);
+        bytes.extend(bookmark_entry_10_1(&GP_MESSAGES_CLASS_ID, 20));
+        let message_list_version = if version < 3 { 2_i16 } else { 3 };
+        bytes.extend(message_list_version.to_le_bytes());
+        if message_list_version == 2 {
+            bytes.extend((-6_i32).to_le_bytes());
+        }
+        bytes.extend(2_i32.to_le_bytes());
+        bytes.extend(bookmark_entry_10_1(&GP_MESSAGE_CLASS_ID, 21));
+        bytes.extend(1_i16.to_le_bytes());
+        bytes.extend(51_i32.to_le_bytes());
+        bytes.extend(42_i32.to_le_bytes());
+        bytes.extend([1, 0, 0, 0, b'd', 0, 0, 0]);
+        bytes.extend(bookmark_entry_10_1(&GP_MESSAGE_CLASS_ID, 21));
         bytes.extend(4_i16.to_le_bytes());
         bytes.extend([0; 16]);
         bytes.extend((-1_i32).to_le_bytes());
@@ -3749,6 +3762,23 @@ fn feature_bookmark_reads_drag_drop_model_process_value_versions() {
         );
         assert_eq!(process.base_name, "m");
         assert_eq!(process.base_shorts, [1, 2, 3]);
+        let messages = process.messages.unwrap().body.unwrap();
+        assert_eq!(messages.version, message_list_version);
+        assert_eq!(
+            messages.legacy_long,
+            (message_list_version == 2).then_some(-6)
+        );
+        assert_eq!(messages.raw_count, 2);
+        let message = messages.messages[0].body.as_deref().unwrap();
+        assert_eq!(
+            (message.version, message.raw_type, message.code),
+            (1, 51, 42)
+        );
+        assert_eq!(message.description, "d");
+        assert!(matches!(
+            messages.messages[1].entry,
+            mxd2qgz::storage::object_refs::ObjectEntry10_1::BackReference { key: 21, .. }
+        ));
         assert_eq!(process.base_v3_short, Some(4));
         assert_eq!(process.raw_parameter_count, -1);
         assert_eq!(process.raw_value_count, (version == 4).then_some(1));

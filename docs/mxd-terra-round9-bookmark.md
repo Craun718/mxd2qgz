@@ -5051,3 +5051,22 @@ MdProcess 的内联流布局续查如下。地址仍为同摘要 MdObjects.dll�
 仍待接入。在同版 PE 中已定位 MdParameter 的持久化读取候选
 `0x7a137cc0`，以及 GeoProcessor.dll 的 GPEnvironmentManager
 主表 `0x71f7d0f0`。真实 MXD 与 ArcMap/QGIS 验收待查。
+
+##### 模型进程的消息列表
+
+FeatureDataElements.dll 10.1.0.3035 的 SHA-256 为
+`7cd1153712d8af23f6c2263b6444c1a77e16b818fb5fb946d0c3d9106be5f429`。
+GPMessages 主 QI `0x6f62d760` 在 `0x6f62d799` 比较
+MdProcess 基类请求的 IID，返回 +0x28。其 GetClassID
+`0x6f62cb00` 返回 `6D59957C-EAD2-491B-963C-2C41FEB79C2F`。
+Load `0x6f62eaa0` 检查有符号 short 上限 3，v0–v2 及负版本
+先读旧 LONG，然后读取有符号计数，正数逐项请求 IGPMessage
+`93D8ACCB-3A6E-4FA2-B283-197EE5D0E334`（`0x6f62eb54`）。
+
+GPMessage GetClassID `0x6f62ca70` 返回
+`FD0BB2D3-6C4E-43AF-B084-A806A6C8E66E`。Load
+`0x6f62d2f0` 依次读取有符号版本 short（上限 3）、两个
+LONG 和一个 AfCore BSTR。原生仅在 v1 将类型值 51 映射为
+200，读取器保留流中值。构造拖放书签覆盖非空列表、版本化旧
+字段、消息回引与截断回滚。非空模型参数、环境管理器及真实
+MXD 和 ArcMap/QGIS 验收仍待验证。
