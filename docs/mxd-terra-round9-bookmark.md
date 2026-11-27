@@ -5070,3 +5070,41 @@ LONG 和一个 AfCore BSTR。原生仅在 v1 将类型值 51 映射为
 200，读取器保留流中值。构造拖放书签覆盖非空列表、版本化旧
 字段、消息回引与截断回滚。非空模型参数、环境管理器及真实
 MXD 和 ArcMap/QGIS 验收仍待验证。
+
+##### MdParameter 的内联读取入口
+
+同摘要 MdObjects.dll 中，MdParameter 主表 `0x7a15c284` 的
+QI `0x7a1379e0` 为 IMdParameter 返回 +0x88。在
+`0x7a137b94` 构造 +0x1c 的 IPersistStream 视图，其表
+`0x7a15c388` 的 GetClassID `0x7a137770` 返回
+`9ABF7449-72EF-4F12-A547-5EDA6161B52D`。
+该表的 Load 是 `0x7a138bb0`，前文候选 `0x7a137cc0`
+属于跨对象赋值路径。Load 读取有符号 short（上限 1），于
+`0x7a138c09` 调 GeoprocessingLib.dll 的 GPParameterBase::Load，
+再于 `0x7a138c1b` 读一个 byte，之后的调用操作已读成员。
+
+同摘要 GeoprocessingLib.dll 的 GPParameterBase::Load
+`0x71d74890` 接受有符号版本 short（上限 7）。
+下表为按指令顺序核实的流字段，LONG 和计数均占四字节。
+
+| 版本 | 字段及读取位置 |
+| --- | --- |
+| 所有版本 | 两个 AfCore BSTR、LONG、IName、LONG，分别结束于 `0x71d748e9`、`0x71d74901`、`0x71d74917`、`0x71d74940`、`0x71d74992`。 |
+| 所有版本 | `0x71d749ac` 读有符号计数，正数逐项在 `0x71d749e2` 读 AfCore BSTR。 |
+| 所有版本 | IID `0948F56F-9A99-4672-959E-3519F5676ADD` 对象（`0x71d74a23`）、short、IGPValue（`0x71d74a5f`）、16 字节 GUID、BSTR（`0x71d74b11`）。 |
+| v2 起 | LONG（`0x71d74b2e`）。 |
+| v3 起 | short（`0x71d74b65`）。 |
+| v4 起 | short（`0x71d74b8d`）。 |
+| v5 起 | BSTR、IID `1A4B7A52-E1D9-4AB8-A741-70467CBF9F5F` 对象（`0x71d74bd1`）。 |
+| v6 起 | short（`0x71d74bee`）。 |
+| v7 | IGPSchema（`0x71d74c1b`，以 10.1 类型库核对 IID）。 |
+
+IGPEnvironmentManager 请求的 IID 在 GeoProcessor.dll
+`0x71f7b6c8`。GPEnvironmentManager 的 QI `0x71f52180`
+对该 IID 返回 +0x28，IPersistStream 则在 `0x71f52422`
+返回 +0x14。需要以 +0x14 表继续追踪持久化调用。
+GeoProcessor.dll 10.1.0.3035 的 SHA-256 为
+`ec315d4eeddb93d18c9238af39eca758a9a1c8f7a19e7bdff40751ade9e5f24d`。
+
+MdParameter 的接口对象仍需逐个定名和核对持久化边界。
+本节仅完成静态取证，尚未接入解析器，也未进行 ArcMap 人工验证。
