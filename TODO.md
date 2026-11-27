@@ -1243,6 +1243,7 @@
       - [x] 按登记类拒绝 GPMultiValue 类型槽回引多值对象。
       - [x] 按登记类拒绝 GPMultiValue 类型槽回引四类已核对的标量 GPValue。[取证](docs/mxd-terra-round9-bookmark.md#标量-gpvalue-回引的-iname-校验)
       - [x] 校验 GPMultiValue 类型槽中日期、单位、Variant、加密字符串、随机数生成器及值表回引的接口身份。[取证](docs/mxd-terra-round9-bookmark.md#标量-gpvalue-回引的-iname-校验)
+      - [x] 校验共享 IName 槽对 GPArealUnit 和 GPSATopoFeatures 回引的接口身份。[取证](docs/mxd-terra-round9-bookmark.md#标量-gpvalue-回引的-iname-校验)
       - [x] 验证 GPMultiValue 类型槽中 GPMultiValueTypeName 的嵌套体和回引。
       - [x] 验证 GPMultiValue 类型槽中 GPValueTableTypeName 与 GPSATopoFeaturesTypeName 的对象体边界和回引。
       - [x] 接入 GPMultiValue 类型槽中已支持的 GP 数据类型名称及回引。[取证](docs/mxd-terra-round9-bookmark.md#gpmultivalue)

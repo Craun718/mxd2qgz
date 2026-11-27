@@ -4827,3 +4827,13 @@ GPEncryptedString、GPRandomNumberGenerator 和 GPValueTable
 共享 IName 槽因此按登记类拒绝这些回引。构造用例覆盖书签
 名称槽和 GPMultiValue 类型槽，核对失败后的游标及引用表。
 未核对的 IName 实现及实档人工验收仍待补充。
+
+10.1.0.3035 的 GPArealUnit 主表 `0x747a9c20` 指向
+GpObjects.dll 的 QI `0x74694bc0`，未匹配时交给
+`0x74786fe0`。GPSATopoFeatures 主表 `0x74931670` 指向
+GPSACore.dll 的 QI `0x748f7db0`，未匹配时进入 `0x7491fa40`，
+该分派未匹配时在 `0x7491fb32` 返回 E_NOINTERFACE。
+以 objdump 核对两条路径的 IID 比较，均无 GPMultiValue 请求的
+IName `4BA33331-D55F-11D1-8882-0000F877762D`。共享名称槽
+按登记类拒绝这两类回引，构造测试核对游标和引用表回滚。
+ArcMap/QGIS 人工验收仍待验证。

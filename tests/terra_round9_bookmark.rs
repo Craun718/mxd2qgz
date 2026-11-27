@@ -1522,10 +1522,10 @@ fn bookmark_name_reference_retains_the_registered_class() {
 fn bookmark_rejects_references_to_objects_without_iname() {
     use mxd2qgz::layers::feature_layer_tail::UID_CLASS_ID;
     use mxd2qgz::maps::map_surround::{
-        GP_BOOLEAN_CLASS_ID, GP_DATE_CLASS_ID, GP_DOUBLE_CLASS_ID, GP_ENCRYPTED_STRING_CLASS_ID,
-        GP_LINEAR_UNIT_CLASS_ID, GP_LONG_CLASS_ID, GP_MULTI_VALUE_CLASS_ID,
-        GP_RANDOM_NUMBER_GENERATOR_CLASS_ID, GP_STRING_CLASS_ID, GP_VALUE_TABLE_CLASS_ID,
-        GP_VARIANT_CLASS_ID,
+        GP_AREAL_UNIT_CLASS_ID, GP_BOOLEAN_CLASS_ID, GP_DATE_CLASS_ID, GP_DOUBLE_CLASS_ID,
+        GP_ENCRYPTED_STRING_CLASS_ID, GP_LINEAR_UNIT_CLASS_ID, GP_LONG_CLASS_ID,
+        GP_MULTI_VALUE_CLASS_ID, GP_RANDOM_NUMBER_GENERATOR_CLASS_ID, GP_SA_TOPO_FEATURES_CLASS_ID,
+        GP_STRING_CLASS_ID, GP_VALUE_TABLE_CLASS_ID, GP_VARIANT_CLASS_ID,
     };
     use mxd2qgz::objects::property_set::PROPERTY_SET_CLASS_ID;
     use mxd2qgz::storage::object_refs::read_object_entry_10_1;
@@ -1540,6 +1540,8 @@ fn bookmark_rejects_references_to_objects_without_iname() {
         GP_DOUBLE_CLASS_ID,
         GP_DATE_CLASS_ID,
         GP_LINEAR_UNIT_CLASS_ID,
+        GP_AREAL_UNIT_CLASS_ID,
+        GP_SA_TOPO_FEATURES_CLASS_ID,
         GP_VARIANT_CLASS_ID,
         GP_ENCRYPTED_STRING_CLASS_ID,
         GP_RANDOM_NUMBER_GENERATOR_CLASS_ID,
@@ -5461,7 +5463,7 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
             assert_eq!(reader.position(), 0);
             assert!(refs.is_empty());
         }
-        for key in [20, 21, 24, 25, 26, 28, 29, 30] {
+        for key in [20, 21, 24, 25, 26, 27, 28, 29, 30] {
             let mut wrong_type = bytes.clone();
             wrong_type.splice(
                 type_offset..type_end,
