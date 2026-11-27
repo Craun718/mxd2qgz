@@ -2621,6 +2621,22 @@ pub const GP_MULTI_VALUE_TYPE_NAME_CLASS_ID: [u8; 16] = [
     0x70, 0x33, 0xde, 0x35, 0x8e, 0x67, 0xfb, 0x40, 0x9b, 0x7e, 0xff, 0xaf, 0x08, 0x22, 0x4b, 0x99,
 ];
 
+pub const GP_TOOL_NAME_CLASS_ID: [u8; 16] = [
+    0x82, 0x23, 0xe3, 0x17, 0x63, 0x8d, 0x38, 0x44, 0xbb, 0xaf, 0xd3, 0xc3, 0xa6, 0x69, 0x18, 0xb0,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpToolName10_1 {
+    pub version: i16,
+    pub strings: [String; 4],
+    pub raw_long: i32,
+    pub source: BookmarkNameEntry10_1,
+    pub uid: RuleSlot10_1<UidBody10_1>,
+    pub legacy_uids: Option<[RuleSlot10_1<UidBody10_1>; 2]>,
+    pub trailing_long: i32,
+    pub trailing_string: Option<String>,
+}
+
 pub const GP_IN_MEMORY_TOOLBOX_NAME_CLASS_ID: [u8; 16] = [
     0xe3, 0x6f, 0x1e, 0xda, 0xfa, 0x78, 0x60, 0x49, 0xa8, 0xf4, 0xe3, 0x12, 0x0d, 0xff, 0x9d, 0xfb,
 ];
@@ -2813,6 +2829,7 @@ pub enum BookmarkNameEntry10_1 {
         raw_column_count: i32,
         columns: Vec<GpValueTableColumnType10_1>,
     },
+    GpToolName(Box<GpToolName10_1>),
     GpInMemoryToolboxName {
         version: i16,
         name: String,
@@ -9616,6 +9633,52 @@ fn read_gp_sa_geo_data_type_name_body_10_1(
     })
 }
 
+fn read_gp_tool_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    name_depth: usize,
+) -> io::Result<GpToolName10_1> {
+    if name_depth >= MAX_BOOKMARK_NAME_NESTING {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "GPToolName 嵌套层数超限",
+        ));
+    }
+    let version = read_gp_name_version(reader, 3, "GPToolName")?;
+    let strings = [
+        read_bstr_string_10_1(reader, max_bytes)?,
+        read_bstr_string_10_1(reader, max_bytes)?,
+        read_bstr_string_10_1(reader, max_bytes)?,
+        read_bstr_string_10_1(reader, max_bytes)?,
+    ];
+    let raw_long = reader.read_u32_le()? as i32;
+    let source = read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth + 1)?;
+    let uid = read_gp_uid_slot(reader, table)?;
+    let legacy_uids = if version < 2 {
+        Some([
+            read_gp_uid_slot(reader, table)?,
+            read_gp_uid_slot(reader, table)?,
+        ])
+    } else {
+        None
+    };
+    let trailing_long = reader.read_u32_le()? as i32;
+    let trailing_string = (version >= 3)
+        .then(|| read_string_10_1(reader, max_bytes))
+        .transpose()?;
+    Ok(GpToolName10_1 {
+        version,
+        strings,
+        raw_long,
+        source,
+        uid,
+        legacy_uids,
+        trailing_long,
+        trailing_string,
+    })
+}
+
 fn read_bookmark_name_slot_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -10008,6 +10071,12 @@ fn read_bookmark_name_slot_10_1(
             ..
         } => BookmarkNameEntry10_1::TerrainName(Box::new(read_terrain_name_body_10_1(
             reader, max_bytes, table,
+        )?)),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_TOOL_NAME_CLASS_ID,
+            ..
+        } => BookmarkNameEntry10_1::GpToolName(Box::new(read_gp_tool_name_body_10_1(
+            reader, max_bytes, table, name_depth,
         )?)),
         ObjectEntry10_1::NewObject {
             class_id: GP_IN_MEMORY_TOOLBOX_NAME_CLASS_ID,

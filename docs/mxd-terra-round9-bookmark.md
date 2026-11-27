@@ -4911,3 +4911,18 @@ GPMultiValue 的共享 IName 槽、回引及截断回滚。
 的 QI `0x73506750` 仅匹配 `0x73fc7bfc` 与 `0x73fc7c0c`
 的类专用 IID，未匹配交给 `0x7390f310`。基类也无 IName
 与 IPersistStream，未匹配时返回 E_NOINTERFACE。
+
+#### GPToolName
+
+同摘要的 GpToolbox.dll 10.1.0.3035 中，RTTI 主表
+`0x74ffa6c4` 的 QI `0x74fcdfe0` 返回 IName 与 IPersistStream
+视图。持久化表 `0x74ffa7bc` 的 GetClassID `0x74fcdab0`
+返回 `17E32382-8D63-4438-BBAF-D3C3A66918B0`。
+
+Load `0x74fcefc0` 检查有符号 short 上限 3，随后读取四个
+AfCore BSTR、LONG、IName 和 IUID。版本小于 2 时在
+`0x74fcf137 / 0x74fcf1a0` 另读两个 IUID，原生装载后释放。
+之后读取 LONG，v3 在 `0x74fcf21d` 读取 AfCore String。
+Rust 保留旧 IUID 槽、标量与名称。构造书签覆盖 v0–v3、
+嵌套工具箱、IUID 回引和截断回滚。标量业务语义及真实 MXD
+宿主与 ArcMap/QGIS 人工验收待查。
