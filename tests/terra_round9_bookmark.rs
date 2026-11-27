@@ -3813,7 +3813,8 @@ fn feature_bookmark_reads_model_environment_manager_versions() {
 #[test]
 fn feature_bookmark_reads_model_parameter_versions() {
     use mxd2qgz::maps::map_surround::{
-        GP_DRAG_DROP_OBJECT_NAME_CLASS_ID, MD_PARAMETER_CLASS_ID, MD_PROCESS_CLASS_ID,
+        GP_ARC_INFO_ITEM_CHOICE_LIST_CLASS_ID, GP_DRAG_DROP_OBJECT_NAME_CLASS_ID,
+        GP_FIELD_CHOICE_LIST_CLASS_ID, MD_PARAMETER_CLASS_ID, MD_PROCESS_CLASS_ID,
     };
     use mxd2qgz::storage::object_refs::ObjectEntry10_1;
 
@@ -3844,7 +3845,14 @@ fn feature_bookmark_reads_model_parameter_versions() {
             }
         }
         if version >= 5 {
-            bytes.extend([0; 20]);
+            bytes.extend([0; 4]);
+            let class_id = if version == 5 {
+                GP_ARC_INFO_ITEM_CHOICE_LIST_CLASS_ID
+            } else {
+                GP_FIELD_CHOICE_LIST_CLASS_ID
+            };
+            bytes.extend(bookmark_entry_10_1(&class_id, 20));
+            bytes.extend(1_i16.to_le_bytes());
         }
         if version >= 6 {
             bytes.extend(6_i16.to_le_bytes());
@@ -3873,6 +3881,14 @@ fn feature_bookmark_reads_model_parameter_versions() {
         assert_eq!(parameter.dependencies, ["d"]);
         assert_eq!(parameter.guid, [8; 16]);
         assert_eq!(parameter.v2_long, (version >= 2).then_some(23));
+        assert_eq!(
+            parameter
+                .choice_list
+                .as_ref()
+                .and_then(|slot| slot.body.as_deref())
+                .copied(),
+            (version >= 5).then_some(1)
+        );
         assert_eq!(parameter.trailing_byte, 1);
         assert!(matches!(
             process.parameters[1].entry,

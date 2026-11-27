@@ -2684,6 +2684,13 @@ pub struct GpEnvironmentManager10_1 {
     pub v9_short: Option<i16>,
 }
 
+pub const GP_ARC_INFO_ITEM_CHOICE_LIST_CLASS_ID: [u8; 16] = [
+    0x60, 0x43, 0x02, 0x90, 0x8f, 0x65, 0x04, 0x46, 0x8a, 0x7c, 0x1f, 0x98, 0xb8, 0x0d, 0x94, 0xee,
+];
+pub const GP_FIELD_CHOICE_LIST_CLASS_ID: [u8; 16] = [
+    0x03, 0x30, 0x10, 0x3e, 0x7a, 0x9a, 0xef, 0x4c, 0x9e, 0x86, 0x2f, 0x76, 0xfc, 0x3e, 0x58, 0xfa,
+];
+
 pub const MD_PARAMETER_CLASS_ID: [u8; 16] = [
     0x49, 0x74, 0xbf, 0x9a, 0xef, 0x72, 0x12, 0x4f, 0xa5, 0x47, 0x5e, 0xda, 0x61, 0x61, 0xb5, 0x2d,
 ];
@@ -2707,6 +2714,7 @@ pub struct MdParameter10_1 {
     pub v3_short: Option<i16>,
     pub v4_short: Option<i16>,
     pub v5_string: Option<String>,
+    pub choice_list: Option<RuleSlot10_1<i16>>,
     pub v6_short: Option<i16>,
     pub trailing_byte: u8,
 }
@@ -9799,6 +9807,35 @@ fn read_gp_environment_manager_slot_10_1(
     Ok(RuleSlot10_1 { entry, body })
 }
 
+fn read_gp_parameter_choice_list_10_1(
+    reader: &mut Reader<'_>,
+    table: &mut RefTable10_1,
+) -> io::Result<RuleSlot10_1<i16>> {
+    let entry = read_object_entry_10_1(reader, table)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if matches!(
+                table.registered_class(key).unwrap_or(class_id),
+                GP_ARC_INFO_ITEM_CHOICE_LIST_CLASS_ID | GP_FIELD_CHOICE_LIST_CLASS_ID
+            ) =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: GP_ARC_INFO_ITEM_CHOICE_LIST_CLASS_ID | GP_FIELD_CHOICE_LIST_CLASS_ID,
+            ..
+        } => Some(Box::new(read_gp_name_version(reader, 1, "GPChoiceList")?)),
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "GPParameterBase 选择列表类尚未支持",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
+}
+
 fn read_md_parameter_slot_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -9861,12 +9898,9 @@ fn read_md_parameter_slot_10_1(
             let v5_string = (base_version >= 5)
                 .then(|| read_bstr_string_10_1(reader, max_bytes))
                 .transpose()?;
-            if base_version >= 5 && read_header_10_1(reader)? != ObjectHeader::Null {
-                return Err(io::Error::new(
-                    ErrorKind::Unsupported,
-                    "GPParameterBase v5 子对象尚未支持",
-                ));
-            }
+            let choice_list = (base_version >= 5)
+                .then(|| read_gp_parameter_choice_list_10_1(reader, table))
+                .transpose()?;
             let v6_short = (base_version >= 6)
                 .then(|| reader.read_u16_le().map(|v| v as i16))
                 .transpose()?;
@@ -9894,6 +9928,7 @@ fn read_md_parameter_slot_10_1(
                 v3_short,
                 v4_short,
                 v5_string,
+                choice_list,
                 v6_short,
                 trailing_byte: reader.read_bytes(1)?[0],
             }))

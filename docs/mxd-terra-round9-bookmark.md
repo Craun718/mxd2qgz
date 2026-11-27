@@ -5146,3 +5146,35 @@ v8 起读 short。环境管理器的 IUnknown 列表现可读取该对象。
 v0–v7、依赖列表、回引、后继字段和截断回滚。v5 附加接口
 及 v7 IGPSchema 当前支持空槽，非空类体仍待核对。
 真实 MXD 和 ArcMap/QGIS 人工验收待查。
+
+##### 参数选择列表
+
+同摘要 GpObjects.dll 中，GPArcInfoItemChoiceList 和
+GPFieldChoiceList 的主表 `0x747a93f8 / 0x747aee68` 共用
+QI `0x74691b90`。它对参数 v5 子槽请求的
+`1A4B7A52-E1D9-4AB8-A741-70467CBF9F5F` 返回 +0x1c，
+对 IPersistStream 返回 +0x18。对应 GetClassID
+`0x74692300 / 0x746cff10` 分别返回
+`90024360-658F-4604-8A7C-1F98B80D94EE` 与
+`3E103003-9A7A-4CEF-9E86-2F76FC3E58FA`。
+两类共用 Load `0x746d0410`，读取一个有符号 short，
+上限 1，无后续字段。构造模型参数覆盖两类非空对象、
+后继字段与截断回滚。其他实现类和真实宿主待查。
+
+对同版本介质中附加接口的另两条 QI 命中做了复核。
+FileDataElements.dll 的 GPArcInfoItemType 主表 `0x6f9dd224`
+在 `0x6f9c8569` 返回 +0xa4，GdbCore.dll 的 FieldType 主表
+`0x70ad5ec4` 在 `0x709e24e9` 也返回 +0xa4。
+这两个类的 GetClassID 分别可返回
+`5356DADD-53E4-4E70-99C9-996CDD224E25` 和
+`B44EF553-FA9F-4987-804C-FCAA537024ED`，但其 QI
+`0x6f9c84c0 / 0x709e2440` 及各自的回退
+`0x6f9d02c0 / 0x70a60800` 均未接受 IPersistStream。
++0x14 表里相似的三个跳板实际导入 DECoreLib 的
+GPDataType Clone、Assign 和 IsEqual。当前依据只支持这两类
+提供选择列表接口，未找到可写进该槽的独立持久化体。
+
+FileDataElements.dll 和 GdbCore.dll 的介质 SHA-256 分别为
+`5c4703596f243daf7025cc1d0e435cf6522dbcb4a02b77529d0694aef4ef5f3c`
+和 `ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4`。
+尚未观察原生 Save 对这两类实例的处理结果。

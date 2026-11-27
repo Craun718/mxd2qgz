@@ -1244,6 +1244,7 @@
       - [x] 接入 MdProcess 的 GPEnvironmentManager 版本化布局。[取证](docs/mxd-terra-round9-bookmark.md#gpenvironmentmanager)
       - [x] 接入环境管理器的 GPEnvironment 对象体及回引。[取证](docs/mxd-terra-round9-bookmark.md#gpenvironment)
       - [x] 接入 MdProcess 参数列表中的 MdParameter 版本化布局和回引。[取证](docs/mxd-terra-round9-bookmark.md#mdparameter-的内联读取入口)
+      - [x] 接入 MdParameter v5 槽中的两类选择列表。[取证](docs/mxd-terra-round9-bookmark.md#参数选择列表)
       - [ ] 接入 GPDragDropObjectName 的 MdProcess 子对象体。[取证](docs/mxd-terra-round9-bookmark.md#拖放名称的模型进程来源)
       - [x] 接入共享 IName 槽中的 GPDragDropObjectName。[取证](docs/mxd-terra-round9-bookmark.md#gpdragdropobjectname)
       - [x] 接入共享 IName 槽中的 GPServerToolName。[取证](docs/mxd-terra-round9-bookmark.md#gpservertoolname)
