@@ -459,3 +459,12 @@ IID 地址 `0x74ff52d4`，匹配后在 `0x74f86715` 返回对象 +0x10。
 读取有符号 short 版本、BSTR 和 IWorkspaceName。构造用例验证 v1
 名称、后继字段边界及错误工作空间类导致的回滚。真实格网宿主及
 ArcMap/QGIS 人工验收待验证。
+
+### 叠加格网的 GPServerToolboxName
+
+GpToolbox.dll 10.1.0.3035 的 QI 在 `0x74fab497` 取 IName IID
+地址 `0x74ff52d4`，匹配后在 `0x74fab4b5` 返回对象 +0x10。
+格网 Load `0x7954ead4` 请求同一 IID，因此格网与书签共用
+[Load `0x74fabad0` 对应的读取器](mxd-terra-round9-bookmark.md#gpservertoolboxname)。
+构造输入核对 v1 的名称和 v2/v3 的五条连接字符串，以及后继格网
+字段边界和逐字节截断回滚。真实格网宿主及 ArcMap/QGIS 人工验收待验证。

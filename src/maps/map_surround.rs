@@ -10920,6 +10920,31 @@ fn read_gp_toolbox_workspace_slot_10_1(
     Ok(RuleSlot10_1 { entry, body })
 }
 
+pub(crate) fn read_gp_server_toolbox_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+) -> io::Result<BookmarkNameEntry10_1> {
+    let version = read_gp_name_version(reader, 3, "GPServerToolboxName")?;
+    let name = read_bstr_string_10_1(reader, max_bytes)?;
+    // 保留流中的连接文本，读取结构时不解释凭据字段。
+    let connection_strings = if version >= 2 {
+        Some([
+            read_string_10_1(reader, max_bytes)?,
+            read_string_10_1(reader, max_bytes)?,
+            read_string_10_1(reader, max_bytes)?,
+            read_string_10_1(reader, max_bytes)?,
+            read_string_10_1(reader, max_bytes)?,
+        ])
+    } else {
+        None
+    };
+    Ok(BookmarkNameEntry10_1::GpServerToolboxName {
+        version,
+        name,
+        connection_strings,
+    })
+}
+
 pub(crate) fn read_gp_python_toolbox_name_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -11456,27 +11481,7 @@ fn read_bookmark_name_slot_10_1(
         ObjectEntry10_1::NewObject {
             class_id: GP_SERVER_TOOLBOX_NAME_CLASS_ID,
             ..
-        } => {
-            let version = read_gp_name_version(reader, 3, "GPServerToolboxName")?;
-            let name = read_bstr_string_10_1(reader, max_bytes)?;
-            // 保留流中的连接文本，读取结构时不解释凭据字段。
-            let connection_strings = if version >= 2 {
-                Some([
-                    read_string_10_1(reader, max_bytes)?,
-                    read_string_10_1(reader, max_bytes)?,
-                    read_string_10_1(reader, max_bytes)?,
-                    read_string_10_1(reader, max_bytes)?,
-                    read_string_10_1(reader, max_bytes)?,
-                ])
-            } else {
-                None
-            };
-            BookmarkNameEntry10_1::GpServerToolboxName {
-                version,
-                name,
-                connection_strings,
-            }
-        }
+        } => read_gp_server_toolbox_name_body_10_1(reader, max_bytes)?,
         ObjectEntry10_1::NewObject {
             class_id: GP_PYTHON_TOOLBOX_NAME_CLASS_ID,
             ..
