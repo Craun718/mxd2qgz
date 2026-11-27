@@ -449,3 +449,13 @@ GpToolbox.dll 10.1.0.3035 的 QI `0x74fc8350` 比较
 沿用其版本门和 IWorkspaceName 槽检查。构造输入验证 v3 工具箱名称和
 原始 LONG、后继字符串边界以及截断回滚。真实格网宿主、在 ArcMap 中
 打开名称的结果及 ArcMap/QGIS 人工验收仍待验证。
+
+### 叠加格网的 GPPythonToolboxName
+
+GpToolbox.dll 10.1.0.3035 的 QI 在 `0x74f866f7` 取 IName
+IID 地址 `0x74ff52d4`，匹配后在 `0x74f86715` 返回对象 +0x10。
+该 IID 与 CustomOverlayGrid Load `0x7954ead4` 的请求相同。
+格网与书签共用 [Load `0x74f86e30` 对应的读取器](mxd-terra-round9-bookmark.md#gppythontoolboxname)，
+读取有符号 short 版本、BSTR 和 IWorkspaceName。构造用例验证 v1
+名称、后继字段边界及错误工作空间类导致的回滚。真实格网宿主及
+ArcMap/QGIS 人工验收待验证。

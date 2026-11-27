@@ -10920,6 +10920,18 @@ fn read_gp_toolbox_workspace_slot_10_1(
     Ok(RuleSlot10_1 { entry, body })
 }
 
+pub(crate) fn read_gp_python_toolbox_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<BookmarkNameEntry10_1> {
+    Ok(BookmarkNameEntry10_1::GpPythonToolboxName {
+        version: read_gp_name_version(reader, 1, "GPPythonToolboxName")?,
+        name: read_bstr_string_10_1(reader, max_bytes)?,
+        workspace: read_gp_toolbox_workspace_slot_10_1(reader, max_bytes, table)?,
+    })
+}
+
 pub(crate) fn read_gp_toolbox_name_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -11468,11 +11480,7 @@ fn read_bookmark_name_slot_10_1(
         ObjectEntry10_1::NewObject {
             class_id: GP_PYTHON_TOOLBOX_NAME_CLASS_ID,
             ..
-        } => BookmarkNameEntry10_1::GpPythonToolboxName {
-            version: read_gp_name_version(reader, 1, "GPPythonToolboxName")?,
-            name: read_bstr_string_10_1(reader, max_bytes)?,
-            workspace: read_gp_toolbox_workspace_slot_10_1(reader, max_bytes, table)?,
-        },
+        } => read_gp_python_toolbox_name_body_10_1(reader, max_bytes, table)?,
         ObjectEntry10_1::NewObject {
             class_id: GP_TOOLBOX_NAME_CLASS_ID,
             ..

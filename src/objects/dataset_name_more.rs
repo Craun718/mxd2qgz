@@ -88,20 +88,21 @@ use crate::layers::wcs_name::{
 use crate::maps::map_surround::{
     BookmarkNameEntry10_1, FILE_NAME_CLASS_ID, GP_COMPOSITE_DATA_TYPE_NAME_CLASS_ID,
     GP_DATA_TYPE_NAME_CLASS_ID, GP_FUNCTION_NAME_CLASS_ID, GP_GRAPH_DATA_TABLE_TYPE_NAME_CLASS_ID,
-    GP_MULTI_VALUE_TYPE_NAME_CLASS_ID, GP_SA_GEO_DATA_TYPE_NAME_CLASS_ID,
-    GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID, GP_TOOLBOX_NAME_CLASS_ID,
-    GP_VALUE_TABLE_TYPE_NAME_CLASS_ID, GpDataTypeName10_1, GpFunctionName10_1,
-    GpSaTopoFeaturesTypeName10_1, GpToolboxName10_1, LAS_DATASET_NAME_CLASS_ID,
+    GP_MULTI_VALUE_TYPE_NAME_CLASS_ID, GP_PYTHON_TOOLBOX_NAME_CLASS_ID,
+    GP_SA_GEO_DATA_TYPE_NAME_CLASS_ID, GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID,
+    GP_TOOLBOX_NAME_CLASS_ID, GP_VALUE_TABLE_TYPE_NAME_CLASS_ID, GpDataTypeName10_1,
+    GpFunctionName10_1, GpSaTopoFeaturesTypeName10_1, GpToolboxName10_1, LAS_DATASET_NAME_CLASS_ID,
     LOCATOR_NAME_CLASS_ID, LOCATOR_WORKSPACE_NAME_CLASS_ID, LasDatasetName10_1,
     REPRESENTATION_CLASS_NAME_CLASS_ID, RepresentationClassName10_1,
     SCHEMATIC_WORKSPACE_NAME_CLASS_ID, SHORTCUT_NAME_CLASS_ID, read_file_name_body_10_1,
     read_gp_composite_data_type_name_body_10_1, read_gp_data_type_name_body_10_1,
     read_gp_function_name_body_10_1, read_gp_graph_data_table_type_name_body_10_1,
-    read_gp_multi_value_type_name_body_10_1, read_gp_sa_geo_data_type_name_body_10_1,
-    read_gp_sa_topo_features_type_name_body_10_1, read_gp_toolbox_name_body_10_1,
-    read_gp_value_table_type_name_body_10_1, read_las_dataset_name_body_10_1,
-    read_locator_name_body_10_1, read_locator_workspace_name_body_10_1,
-    read_representation_class_name_body_10_1, read_shortcut_name_body_10_1,
+    read_gp_multi_value_type_name_body_10_1, read_gp_python_toolbox_name_body_10_1,
+    read_gp_sa_geo_data_type_name_body_10_1, read_gp_sa_topo_features_type_name_body_10_1,
+    read_gp_toolbox_name_body_10_1, read_gp_value_table_type_name_body_10_1,
+    read_las_dataset_name_body_10_1, read_locator_name_body_10_1,
+    read_locator_workspace_name_body_10_1, read_representation_class_name_body_10_1,
+    read_shortcut_name_body_10_1,
 };
 use crate::maps::standalone_table::{
     FGDB_TABLE_NAME_CLASS_ID, OBJECT_CLASS_NAME_CLASS_ID, TABLE_NAME_CLASS_ID, TableNameBody10_1,
@@ -408,6 +409,7 @@ pub enum DatasetNameMoreBody10_1 {
     GpSaGeoDataTypeName(Box<BookmarkNameEntry10_1>),
     GpGraphDataTableTypeName(Box<BookmarkNameEntry10_1>),
     GpToolboxName(Box<GpToolboxName10_1>),
+    GpPythonToolboxName(Box<BookmarkNameEntry10_1>),
     LocatorWorkspace(Box<BookmarkNameEntry10_1>),
     RepresentationClass(Box<RepresentationClassName10_1>),
     LasDataset(Box<LasDatasetName10_1>),
@@ -1313,6 +1315,12 @@ fn read_dataset_name_object_body_10_1(
             )?)),
             None,
         )),
+        GP_PYTHON_TOOLBOX_NAME_CLASS_ID => Ok((
+            DatasetNameMoreBody10_1::GpPythonToolboxName(Box::new(
+                read_gp_python_toolbox_name_body_10_1(reader, max_bytes, table)?,
+            )),
+            None,
+        )),
         GP_TOOLBOX_NAME_CLASS_ID => Ok((
             DatasetNameMoreBody10_1::GpToolboxName(Box::new(read_gp_toolbox_name_body_10_1(
                 reader, max_bytes, table,
@@ -1756,6 +1764,7 @@ pub(crate) fn read_overlay_name_slot_10_1(
                     | GP_DATA_TYPE_NAME_CLASS_ID
                     | GP_GRAPH_DATA_TABLE_TYPE_NAME_CLASS_ID
                     | GP_TOOLBOX_NAME_CLASS_ID
+                    | GP_PYTHON_TOOLBOX_NAME_CLASS_ID
                     | GP_COMPOSITE_DATA_TYPE_NAME_CLASS_ID
                     | GP_VALUE_TABLE_TYPE_NAME_CLASS_ID
                     | GP_MULTI_VALUE_TYPE_NAME_CLASS_ID
@@ -2652,6 +2661,41 @@ mod tests {
             assert_eq!(reader.position(), 0);
             assert!(refs.is_empty());
         }
+    }
+
+    #[test]
+    fn overlay_reads_python_toolbox_and_rejects_wrong_workspace_class() {
+        let mut bytes = entry(&GP_PYTHON_TOOLBOX_NAME_CLASS_ID, 90);
+        bytes.extend(1_i16.to_le_bytes());
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend([b'P', 0, 0, 0]);
+        let workspace_offset = bytes.len();
+        bytes.extend([0; 16]);
+        let end = bytes.len();
+        bytes.extend(str_bytes("格网编号"));
+
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        let slot = read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).unwrap();
+        assert!(matches!(
+            slot,
+            DatasetNameMoreSlot10_1::Body(DatasetNameMoreBody10_1::GpPythonToolboxName(body))
+                if matches!(body.as_ref(), BookmarkNameEntry10_1::GpPythonToolboxName { version: 1, name, .. } if name == "P")
+        ));
+        assert_eq!(
+            refs.registered_class(90),
+            Some(GP_PYTHON_TOOLBOX_NAME_CLASS_ID)
+        );
+        assert_eq!(reader.position(), end);
+        assert_eq!(read_string_10_1(&mut reader, 256).unwrap(), "格网编号");
+
+        bytes.truncate(workspace_offset);
+        bytes.extend(entry(&FILE_NAME_CLASS_ID, 91));
+        let mut refs = RefTable10_1::new();
+        let mut reader = Reader::new(&bytes);
+        assert!(read_overlay_name_slot_10_1(&mut reader, 256, &mut refs, &mut None).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
     }
 
     #[test]
