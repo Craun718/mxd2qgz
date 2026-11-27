@@ -281,3 +281,19 @@ ArcMap 10.1 与 QGIS 人工验收未进行。
 跳过标签转换循环。Rust 对非正计数仍读取并保留原始标签对象和计数。
 合成测试用非空数组覆盖零和两个负值，验证数组键及后继 short 对位。
 负计数实档及 ArcMap 10.1、QGIS 人工验收尚未验证。
+
+## 工具箱中的 Field v3 停止点
+
+重跑 Desktop 10.8 Spatial Statistics Tools.tbx 的 MdVariable 候选时，
+有 13 处报 Field v3。12 处 Rust 游标已移过字段版本字，回看
+对象头均为 Field CLSID、四字节键及连续的 Field v3、GPValue v1。
+另一处来自事务式 Fields 集合读取，外层游标停在集合体起点。
+该流在 `0x346` 为 Fields CLSID，键 5，体为 v2、计数 1；
+唯一 Field 条目从 `0x360` 开始，键 6，体同样为
+Field v3、GPValue v1。这 13 处均有实际的 v3 版本字节。
+
+复核本文同摘要 GdbCore.dll。在 `0x709e175f/0x709e1764`，
+10.1 Field::Load 用无符号比较拒绝大于 2 的版本，拒绝发生在
+调用 GPValue::Load 前。集合的 v2 与子项的 v3 是独立版本门。
+因此 10.8 工具箱的这些记录保留版本超限诊断。
+完整实档宿主和 ArcMap/QGIS 人工验收尚未验证。
