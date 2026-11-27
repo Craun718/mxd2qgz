@@ -4996,6 +4996,29 @@ Rust 在共享名称槽中保留版本、原始计数、成员类型及回引。
 构造书签经 GPMultiValue 实际类型槽覆盖内嵌成员、回引、
 后继记录和截断回滚。真实 MXD 宿主与 ArcMap/QGIS 人工验收待查。
 
+#### GPMultiValue 实档中的类型名称
+
+在同一批 246 份文件的 3,447 条流中，以 GPMultiValue
+CLSID 检出 60 个候选。各处均能在 CLSID 后或再过四字节的位置
+对位两个版本 short 1 和 GPValue 的第三个 short。按 10.1 Load
+顺序检查紧邻的类型名称 CLSID，59 处为 GPDataTypeName，
+1 处为 GPCompositeDataTypeName，两类均已接入。
+
+后者在 10.8 Spatial Analyst Tools.tbx（摘要前缀
+`3ce5bd0fb962`）的 /Tool165。多值对象头位于 `0x436`，
+类型名称位于 `0x44c`，其体版本为 1、成员计数为 2，
+首个成员为 GPDataTypeName。这里是无键前缀的局部对位，
+还需完整工具箱宿主确认边界。其他名称实现与
+ArcMap/QGIS 人工验收仍待核对。
+
+以当前 Rust 共享值读取器从 15 处带键前缀分别起读。
+8 处使用空引用表即可完整消费，其中 5 处无成员、3 处各一项。
+其余 7 处均已读过 GPDataTypeName，随后在 MdVariable 成员期间
+出现异常版本字。将这七个起点与上文确认的外层 MdVariable
+回引案例对位，分别位于这些外层变量的多值槽。外层探针在补读对应前置定义后均读过该列表。
+样本里的这批带键候选未发现额外类型名称类。
+无键工具箱父记录及 ArcMap/QGIS 人工验收仍待核对。
+
 #### GPGraphDataTableTypeName
 
 同摘要的 GpObjects.dll 10.1.0.3035 中，RTTI 主表
