@@ -2621,6 +2621,9 @@ pub const GP_MULTI_VALUE_TYPE_NAME_CLASS_ID: [u8; 16] = [
     0x70, 0x33, 0xde, 0x35, 0x8e, 0x67, 0xfb, 0x40, 0x9b, 0x7e, 0xff, 0xaf, 0x08, 0x22, 0x4b, 0x99,
 ];
 
+pub const GP_COMPOSITE_DATA_TYPE_NAME_CLASS_ID: [u8; 16] = [
+    0x84, 0x16, 0x9f, 0x40, 0x68, 0xa9, 0xed, 0x43, 0x9c, 0x7a, 0x74, 0x7b, 0x6e, 0x66, 0xca, 0xdd,
+];
 pub const GP_VALUE_TABLE_TYPE_NAME_CLASS_ID: [u8; 16] = [
     0x5f, 0x1a, 0x52, 0x65, 0xa6, 0x7d, 0x93, 0x48, 0xae, 0x58, 0xf7, 0x0f, 0xd3, 0xcd, 0x1d, 0xee,
 ];
@@ -2789,6 +2792,11 @@ pub enum BookmarkNameEntry10_1 {
         version: i16,
         raw_column_count: i32,
         columns: Vec<GpValueTableColumnType10_1>,
+    },
+    GpCompositeDataTypeName {
+        version: i16,
+        raw_member_count: i32,
+        members: Vec<BookmarkNameEntry10_1>,
     },
     GpMultiValueTypeName {
         version: i16,
@@ -9161,11 +9169,13 @@ fn is_gp_data_type_name(name: &BookmarkNameEntry10_1) -> bool {
         BookmarkNameEntry10_1::Null
             | BookmarkNameEntry10_1::GpDataTypeName(_)
             | BookmarkNameEntry10_1::GpMultiValueTypeName { .. }
+            | BookmarkNameEntry10_1::GpCompositeDataTypeName { .. }
             | BookmarkNameEntry10_1::GpValueTableTypeName { .. }
             | BookmarkNameEntry10_1::GpSaTopoFeaturesTypeName(_)
             | BookmarkNameEntry10_1::BackReference {
                 class_id: GP_DATA_TYPE_NAME_CLASS_ID
                     | GP_MULTI_VALUE_TYPE_NAME_CLASS_ID
+                    | GP_COMPOSITE_DATA_TYPE_NAME_CLASS_ID
                     | GP_VALUE_TABLE_TYPE_NAME_CLASS_ID
                     | GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID,
                 ..
@@ -9443,10 +9453,12 @@ pub(crate) fn read_gp_multi_value_type_name_body_10_1(
             | BookmarkNameEntry10_1::GpFunctionName(_)
             | BookmarkNameEntry10_1::GpSaTopoFeaturesTypeName(_)
             | BookmarkNameEntry10_1::GpMultiValueTypeName { .. }
+            | BookmarkNameEntry10_1::GpCompositeDataTypeName { .. }
             | BookmarkNameEntry10_1::GpValueTableTypeName { .. }
             | BookmarkNameEntry10_1::BackReference {
                 class_id: GP_DATA_TYPE_NAME_CLASS_ID
                     | GP_MULTI_VALUE_TYPE_NAME_CLASS_ID
+                    | GP_COMPOSITE_DATA_TYPE_NAME_CLASS_ID
                     | GP_VALUE_TABLE_TYPE_NAME_CLASS_ID
                     | GP_FUNCTION_NAME_CLASS_ID
                     | GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID,
@@ -9461,6 +9473,42 @@ pub(crate) fn read_gp_multi_value_type_name_body_10_1(
     Ok(BookmarkNameEntry10_1::GpMultiValueTypeName {
         version,
         element_type: Box::new(element_type),
+    })
+}
+
+fn read_gp_composite_data_type_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    name_depth: usize,
+) -> io::Result<BookmarkNameEntry10_1> {
+    // 原生只读取版本字段，未据此分支。
+    let version = reader.read_u16_le()? as i16;
+    let raw_member_count = reader.read_u32_le()? as i32;
+    let count = raw_member_count.max(0) as usize;
+    if count > reader.remaining().min(max_bytes) / 16
+        || (count > 0 && name_depth >= MAX_BOOKMARK_NAME_NESTING)
+    {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "GPCompositeDataTypeName 成员数或嵌套层数超限",
+        ));
+    }
+    let mut members = Vec::new();
+    for _ in 0..count {
+        let member = read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth + 1)?;
+        if !is_gp_data_type_name(&member) {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "GPCompositeDataTypeName 的成员类型名称类未支持",
+            ));
+        }
+        members.push(member);
+    }
+    Ok(BookmarkNameEntry10_1::GpCompositeDataTypeName {
+        version,
+        raw_member_count,
+        members,
     })
 }
 
@@ -9857,6 +9905,10 @@ fn read_bookmark_name_slot_10_1(
         } => BookmarkNameEntry10_1::TerrainName(Box::new(read_terrain_name_body_10_1(
             reader, max_bytes, table,
         )?)),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_COMPOSITE_DATA_TYPE_NAME_CLASS_ID,
+            ..
+        } => read_gp_composite_data_type_name_body_10_1(reader, max_bytes, table, name_depth)?,
         ObjectEntry10_1::NewObject {
             class_id: GP_VALUE_TABLE_TYPE_NAME_CLASS_ID,
             ..

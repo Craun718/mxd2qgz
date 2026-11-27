@@ -4837,3 +4837,20 @@ GPSACore.dll 的 QI `0x748f7db0`，未匹配时进入 `0x7491fa40`，
 IName `4BA33331-D55F-11D1-8882-0000F877762D`。共享名称槽
 按登记类拒绝这两类回引，构造测试核对游标和引用表回滚。
 ArcMap/QGIS 人工验收仍待验证。
+
+#### GPCompositeDataTypeName
+
+同摘要的 GpObjects.dll 10.1.0.3035 中，RTTI 定位的主表
+`0x747ab000` 指向 QI `0x7469fed0`，依次识别 IName、IGPName
+及 IGPDataTypeName。+0x24 持久化表 `0x747ab0cc` 的 GetClassID
+`0x746a03e0` 从 `0x747aaee8` 返回
+`409F1684-A968-43ED-9C7A-747B6E66CADD`。对象创建点
+`0x7469fb4b` 复用同一 CLSID。
+
+Load `0x746a04a0` 读取 16 位版本但未比较该值，随后读取
+有符号 32 位计数，非正数跳过循环。每个成员在 `0x746a051c`
+按 IGPDataTypeName `DF228952-8E0A-408E-9873-CE8341EF7D57`
+读取对象。Save `0x746a0560` 对称写出版本 1、计数和成员。
+Rust 在共享名称槽中保留版本、原始计数、成员类型及回引。
+构造书签经 GPMultiValue 实际类型槽覆盖内嵌成员、回引、
+后继记录和截断回滚。真实 MXD 宿主与 ArcMap/QGIS 人工验收待查。
