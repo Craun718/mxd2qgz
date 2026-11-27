@@ -9478,7 +9478,13 @@ fn read_bookmark_name_slot_10_1(
             let class_id = table.registered_class(key).unwrap_or(class_id);
             if matches!(
                 class_id,
-                PROPERTY_SET_CLASS_ID | UID_CLASS_ID | GP_MULTI_VALUE_CLASS_ID
+                PROPERTY_SET_CLASS_ID
+                    | UID_CLASS_ID
+                    | GP_MULTI_VALUE_CLASS_ID
+                    | GP_STRING_CLASS_ID
+                    | GP_BOOLEAN_CLASS_ID
+                    | GP_LONG_CLASS_ID
+                    | GP_DOUBLE_CLASS_ID
             ) {
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,

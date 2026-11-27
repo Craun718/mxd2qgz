@@ -1521,11 +1521,22 @@ fn bookmark_name_reference_retains_the_registered_class() {
 #[test]
 fn bookmark_rejects_references_to_objects_without_iname() {
     use mxd2qgz::layers::feature_layer_tail::UID_CLASS_ID;
-    use mxd2qgz::maps::map_surround::GP_MULTI_VALUE_CLASS_ID;
+    use mxd2qgz::maps::map_surround::{
+        GP_BOOLEAN_CLASS_ID, GP_DOUBLE_CLASS_ID, GP_LONG_CLASS_ID, GP_MULTI_VALUE_CLASS_ID,
+        GP_STRING_CLASS_ID,
+    };
     use mxd2qgz::objects::property_set::PROPERTY_SET_CLASS_ID;
     use mxd2qgz::storage::object_refs::read_object_entry_10_1;
 
-    for class_id in [PROPERTY_SET_CLASS_ID, UID_CLASS_ID, GP_MULTI_VALUE_CLASS_ID] {
+    for class_id in [
+        PROPERTY_SET_CLASS_ID,
+        UID_CLASS_ID,
+        GP_MULTI_VALUE_CLASS_ID,
+        GP_STRING_CLASS_ID,
+        GP_BOOLEAN_CLASS_ID,
+        GP_LONG_CLASS_ID,
+        GP_DOUBLE_CLASS_ID,
+    ] {
         let definition = bookmark_entry_10_1(&class_id, 17);
         let mut refs = RefTable10_1::new();
         read_object_entry_10_1(&mut Reader::new(&definition), &mut refs).unwrap();
@@ -5442,17 +5453,19 @@ fn feature_bookmark_reads_legacy_topo_field_info_and_coded_value_domains() {
             assert_eq!(reader.position(), 0);
             assert!(refs.is_empty());
         }
-        let mut wrong_type = bytes.clone();
-        wrong_type.splice(
-            type_offset..type_end,
-            bookmark_entry_10_1(&GP_DATA_TYPE_NAME_CLASS_ID, 30),
-        );
-        let mut reader = Reader::new(&wrong_type);
-        let mut refs = RefTable10_1::new();
-        let error = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap_err();
-        assert_eq!(error.kind(), std::io::ErrorKind::Unsupported);
-        assert_eq!(reader.position(), 0);
-        assert!(refs.is_empty());
+        for key in [20, 21, 30] {
+            let mut wrong_type = bytes.clone();
+            wrong_type.splice(
+                type_offset..type_end,
+                bookmark_entry_10_1(&GP_DATA_TYPE_NAME_CLASS_ID, key),
+            );
+            let mut reader = Reader::new(&wrong_type);
+            let mut refs = RefTable10_1::new();
+            let error = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap_err();
+            assert_eq!(error.kind(), std::io::ErrorKind::Unsupported);
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
 
         let mut oversized = bytes.clone();
         oversized[row_count_offset..row_count_offset + 4].copy_from_slice(&i32::MAX.to_le_bytes());

@@ -4808,3 +4808,13 @@ NetworkConstantEvaluator 和 NetworkFunctionEvaluator 的完整
 范围为 `/Maps` 和 `/PageLayout`，三组输入可能重叠。
 该结果只用于排除这些流作为明文类标识的取证来源，
 不覆盖其他流、间接表示或包裹数据，也没有进行 ArcMap 人工检查。
+
+##### 标量 GPValue 回引的 IName 校验
+
+同版 GpObjects.dll 的 GPLong、GPBoolean、GPString 和 GPDouble
+主 QI 分别位于 `0x74708a90`、`0x74702720`、`0x747034d0`
+和 `0x74705370`。按 RTTI 主表与各入口比较的 IID 核对，
+均无 IName，未命中时交给基类分派 `0x74786fe0`。共享名称
+槽按已登记原对象拒绝这四类。构造回归通过伪装成 GPDataTypeName
+的回引头引用字符串和整数对象，验证多值类型槽与宿主引用表
+回滚。其他 IName 实现及实档人工验收仍待核对。
