@@ -1486,6 +1486,7 @@
       - [x] 定位共用基类 v5 short 的跨模块接口访问及独立 Scalebar 的零返回分支。[虚调用取证](docs/mxd-terra-nextpass-scale.md#共用基类-v5-标量的接口访问)
       - [x] 定性四类填充比例尺派生中段的 double 为 IScaleBar.BarHeight，并从解析结果提供该值。[高度取证](docs/mxd-terra-nextpass-scale.md#填充比例尺高度)
       - [ ] 定性独立 Scalebar 类的其余标量字段。[比例尺续查](docs/mxd-terra-nextpass-scale.md)
+      - [x] 核对独立 Scalebar 主表 +0x70 的两个 double 输出来源。[指令取证](docs/mxd-terra-nextpass-scale.md#独立-scalebar-的双输出槽)
       - [x] 核对独立 Scalebar 聚合与非聚合激活，以及固定尺寸访问器对旧字段定名的证据边界。[取证](docs/mxd-terra-nextpass-scale.md#独立-scalebar-类工厂与固定尺寸)
       - [x] 静态核对独立 Scalebar 的 QueryBounds 主表派发。[取证](docs/mxd-terra-nextpass-scale.md#独立-scalebar-的边界计算派发)
       - [x] 在独立 Scalebar 的 IFont 回引中保留键的实际登记类。[取证](docs/mxd-terra-nextpass-scale.md#独立-scalebar-的字体回引)
