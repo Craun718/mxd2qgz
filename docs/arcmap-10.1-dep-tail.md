@@ -2622,3 +2622,103 @@ TemporalRecordSet 的两条路径。均验证首条图层名、后继图层
 
 此测试贯穿普通 ILayer 分派与内联记录读取。真实时态图层的
 写出条件及 ArcMap/QGIS 人工验收仍待完成。
+
+### WMSLayer 的普通关联对象体
+
+WMSLayer.dll 10.1.0.3035（SHA-256
+`d204a1efc758e6b721c356976f3be4384a8f23ce1ef085f3cccc4c4f53630da6`）
+在 `0x80d6e16f` 匹配 IPersistStream IID，返回对象 +0x48
+的接口。虚表 `0x80d8d280` 的 GetClassID `0x80d6d8a0`
+复制 `0x80d8ba3c` 的 WMSLayer CLSID
+`5B0DA8F6-5E43-40AE-9871-56BA33936F30`。Load/Save
+分别位于 `0x80d6f8c0` 和 `0x80d6fa30`。
+
+Load 读取有符号 short，拒绝大于 5。随后是 AfCore String
+两条及三个 short，v2 起加 String，v3 起加 short，v4 起加
+String，v5 加 short、double 和 int32。最后在 `0x80d6fa13`
+设置运行时标志，未再从流读取数据。普通图层分派据此确定边界。
+Scene 和 Globe 的构造回归覆盖 v1–v5、对象键、后继字段和短读回滚。
+
+同版 WMSGroupLayer 的 +0x44 持久化表为 `0x80d8cb34`，
+Load/Save 为 `0x80d681b0 / 0x80d683e0`。WMSMapLayer 的
++0x4c 表为 `0x80d8dc64`，Load/Save 为
+`0x80d7cde0 / 0x80d7c980`。两者体边界仍待核对。
+WMSLayer 的真实关联宿主及 ArcMap/QGIS 人工验收尚未验证。
+
+### WMSGroupLayer 的普通关联对象体
+
+同摘要 WMSLayer.dll 的 Load `0x80d681b0` 接受有符号版本
+不大于 1。名称后读取三个 short、两个 double 和有符号
+子层数。在 `0x80d682d8` 以 `0x80d8bea0` 的 ILayer IID
+调用普通 LoadObject，正计数逐项消耗类标识、键及新对象体。
+`0x80d68309` 直接调用返回实例的 AddRef，正常子层应为非空。
+
+循环后依次读取 short、IEnvelope（`0x80d6834c`，IID
+`0x80d8bd20`）、double、AfCore String、两个 double。
+最后一个八字节读在 `0x80d683c5`。这条路径可用普通
+图层读取器递归处理已确认的子类，未知子类停止并回滚。
+构造 Scene 和 Globe 验证 WMSLayer 新子项、同键回引、后继字段
+和截断回滚。真实 WMSGroupLayer 宿主及 ArcMap/QGIS 人工验收仍待验证。
+
+### WMSMapLayer 的读侧字段和接口槽
+
+同摘要 WMSLayer.dll 的 `0x80d7cde0` 是普通 IPersistStream
+Load。它读取有符号 short 版本，拒绝大于 6，然后按下表处理。
+各地址均来自 10.1.0.3035 原件的 objdump 输出。
+
+| 调用位置 | 读入内容 |
+| --- | --- |
+| `0x80d7ce59` | 普通对象，请求 IID `07C8FD52-5D97-4B1F-A6BF-4973C9BB4117` |
+| `0x80d7ce71..0x80d7ced9` | AfCore String、四个 short |
+| `0x80d7cef7` | 普通 IColor 槽，IID `20CD40B0-8F3D-11D0-8590-0800091A2A72` |
+| `0x80d7cf14..0x80d7cfa3` | double、四个 short、子层计数 LONG |
+| `0x80d7d010` | 正计数循环中的普通 ILayer 对象，接口常量 `0x80d8bea0` |
+| `0x80d7d1ff..0x80d7d282` | short、AfCore String、四个 double |
+| `0x80d7d29e` | v2 起调用 LayerLib ExtensionHelper::LoadExtensions |
+| `0x80d7d2e3` | v3 起普通对象，请求 IID `3397EAED-AA6F-4E64-AA43-B83175ADB59E` |
+| `0x80d7d30a` | v4 起四字节整数 |
+| `0x80d7d333..0x80d7d362` | v5 起 short、double、四字节整数 |
+| `0x80d7d387..0x80d7d39d` | v6 起 double、四字节整数 |
+
+在读取子层计数后，`0x80d7cfd4` 用首槽对象调用辅助函数
+`0x80d7c220`。返回 `0x80040301` 时设置状态标志，两条分支
+均汇合到同一正计数循环判断。因此读子层本身不以该状态为门。
+仍需核对两个接口槽的实例类，以及循环内的间接分派是否额外
+消费流，才能接入普通关联入口。真实宿主及 ArcMap/QGIS
+人工验收尚未验证。
+
+#### WMSMapLayer 的连接名称与私有尾槽
+
+沿 10.1 Desktop 的 72 份 MSFT 类型库查找
+`07C8FD52-5D97-4B1F-A6BF-4973C9BB4117`，esriGISClient.olb
+（SHA-256 `8695beba425c46d252e43bd8469d52e2a88847acdb4cdeadc48ed838302cb067`）
+将其命名为 IWMSConnectionName。唯一声明实现者为
+WMSConnectionName `98B0E997-F21D-4195-8E06-F9CD2AD97165`。
+首槽可复用 [OGC 连接名称读取器](mxd-10.1-raster-layer-tail.md#wcs-名称与-gdal-数据集全名)。
+
+v3 尾槽的 IID `3397EAED-AA6F-4E64-AA43-B83175ADB59E`
+在这批类型库中没有公开声明。在 MapServerLayer.dll 10.1.0.3035
+（SHA-256 `59957732405d0ada878e85d002cc465f271b1b25fe56fdcef97faced0f8a6d03`）
+的 RTTI 中，InternetTiledLayer 主表 `0x79ebe41c` 指向
+QI `0x79e30790`。它在 `0x79e3079e` 比较该 IID，命中后在
+`0x79e307b5` 返回完整对象 +0x84 的接口。因此这是一个能为
+尾槽提供该接口的已解析类。尚需实档或写侧对位，确定 WMSMapLayer
+自身保存时实际写入哪些类。ArcMap/QGIS 人工验收未执行。
+
+Rust 已将这组字段接入普通 ILayer 读取路径。首槽使用已核实的
+WMSConnectionName，颜色、子层列表和扩展使用现有读取器。
+v3 私有槽支持空值、InternetTiledLayer 新对象及其回引。
+未识别的类或不完整对象保持事务性停止。构造 Scene 和 Globe
+覆盖 v6 连续读取、非空连接名登记、后继字段和截断回滚。
+真实工程中的非空私有尾槽、服务连接后的运行时行为及
+ArcMap/QGIS 人工验收仍待验证。
+
+#### WMSMapLayer 私有槽的保存对位
+
+同版 WMSLayer.dll 的 Save 在 `0x80d7ccd8` 取持久化视图
++0x1b0，`0x80d7cce1` 将指针交给 SaveObject。Load 在
+`0x80d7d2bc` 取同一成员地址，并按私有 IID 读入。
+两端对位确认这里使用普通对象键和类头。构造 Scene 与 Globe
+在该槽分别放入 InternetTiledLayer v1 新对象和同键回引，
+验证键登记及后继 v4–v6 字段。保存调用没有把该成员限定为
+InternetTiledLayer，真实宿主中的类分布和人工验收仍待验证。

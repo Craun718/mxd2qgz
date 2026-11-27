@@ -902,6 +902,12 @@
       - [ ] 核实时态图层 10.0 内联记录在真实 MXD 中的存在条件与对象边界。
       - [x] 扫描本地 CFB 全流寻找时态图层实档宿主。[取证](docs/arcmap-10.1-dep-tail.md#时态图层本地实档检索)
       - [x] 构造普通图层列表，验证时态图层有无内联记录均可抵达后继条目。[取证](docs/arcmap-10.1-dep-tail.md#普通图层列表中的时态图层回归)
+      - [x] 接入两类 3D 容器关联槽中的 WMSLayer 对象体。[原生取证](docs/arcmap-10.1-dep-tail.md#wmslayer-的普通关联对象体)
+      - [x] 接入两类 3D 容器关联槽中的 WMSGroupLayer 对象体。[原生取证](docs/arcmap-10.1-dep-tail.md#wmsgrouplayer-的普通关联对象体)
+      - [x] 对位 WMSMapLayer 的版本门、子层循环与尾部接口槽。[原生取证](docs/arcmap-10.1-dep-tail.md#wmsmaplayer-的读侧字段和接口槽)
+      - [x] 确认 WMSMapLayer 首槽的 IWMSConnectionName 及私有尾槽的 InternetTiledLayer 实现。[原生取证](docs/arcmap-10.1-dep-tail.md#wmsmaplayer-的连接名称与私有尾槽)
+      - [x] 接入两类 3D 容器关联槽中的 WMSMapLayer 对象体。[原生取证](docs/arcmap-10.1-dep-tail.md#wmsmaplayer-的连接名称与私有尾槽)
+      - [x] 验证 WMSMapLayer 私有尾槽中的 InternetTiledLayer 新对象和同键回引。[原生与构造取证](docs/arcmap-10.1-dep-tail.md#wmsmaplayer-私有槽的保存对位)
       - [ ] 补齐两类 3D 容器的关联 ILayer 槽中其余未支持的类体；已接入类的共用子槽缺口见各自条目。
       - [x] 接入普通 ILayer 槽中的 InternetTiledLayer 与 WMTSLayer，覆盖独立图层、组图层和三维关联图层。[接口及对象体证据](docs/mxd-10.1-raster-layer-tail.md#瓦片图层的独立-ilayer-宿主)
       - [x] 校验两类 3D 图形容器的 IEnvelope 回引登记类。[取证](docs/arcmap-10.1-dep-tail.md#三维图形容器的对象体)

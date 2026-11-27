@@ -134,8 +134,57 @@ pub use crate::storage::class_id_hex;
 /// 分派依据是流内对象头的类标识（原生不按 GUID 分派、由类表创建，此处按
 /// 已实现读取器的类集合分派）；各读取器只覆盖其已确认前缀，前缀之后的体
 /// 字段仍为未知（有 A 前缀的条目按范围跳过，见 [`UnknownBodyRange`]）。
+type WmsChild10_1 = (ObjectEntry10_1, Option<LayerBodyPrefix10_1>);
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct WmsMapLayerBody10_1 {
+    pub version: i16,
+    pub connection_entry: ObjectEntry10_1,
+    pub connection: Option<super::wcs_name::OgcConnectionName10_1>,
+    pub name: String,
+    pub color: crate::objects::display_color::ColorSlot10_1,
+    pub shorts: [i16; 9],
+    pub doubles: [f64; 5],
+    pub raw_child_count: i32,
+    pub children: Vec<WmsChild10_1>,
+    pub tail_string: String,
+    pub extensions: Vec<super::layer_extensions::LayerExtensionEntry10_1>,
+    pub tile_layer: Option<WmsChild10_1>,
+    pub integer_v4: Option<i32>,
+    pub tail_v5: Option<(i16, f64, i32)>,
+    pub tail_v6: Option<(f64, i32)>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct WmsGroupLayerBody10_1 {
+    pub version: i16,
+    pub name: String,
+    pub shorts: [i16; 4],
+    pub doubles: [f64; 5],
+    pub raw_child_count: i32,
+    pub children: Vec<WmsChild10_1>,
+    pub envelope_entry: ObjectEntry10_1,
+    pub envelope: Option<crate::objects::envelope::Envelope10_1>,
+    pub tail_string: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct WmsLayerBody10_1 {
+    pub version: i16,
+    pub name: String,
+    pub secondary_name: String,
+    pub shorts: [i16; 3],
+    pub string_v2: Option<String>,
+    pub short_v3: Option<i16>,
+    pub string_v4: Option<String>,
+    pub tail_v5: Option<(i16, f64, i32)>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum LayerBodyPrefix10_1 {
+    WmsLayer(Box<WmsLayerBody10_1>),
+    WmsGroupLayer(Box<WmsGroupLayerBody10_1>),
+    WmsMapLayer(Box<WmsMapLayerBody10_1>),
     /// FeatureLayer 体前缀（名称、第二名称、可见性、数据源 FCN/WorkspaceName
     /// 链、渲染器槽位或 +0x144 GUID 停止）。
     FeatureLayer(Box<crate::layers::feature_layer::FeatureLayerPrefix10_1>),
@@ -192,6 +241,9 @@ impl LayerBodyPrefix10_1 {
             Self::ProcessLayer(body) => &body.group.name,
             Self::CompositeGraphicsLayer(prefix) => &prefix.name,
             Self::Graphics3d(body) => &body.name,
+            Self::WmsLayer(body) => &body.name,
+            Self::WmsGroupLayer(body) => &body.name,
+            Self::WmsMapLayer(body) => &body.name,
             Self::TerrainLayer(body) => &body.name,
             Self::TinLayer(body) => &body.name,
             Self::NetworkLayer(body) => &body.name,
@@ -1345,6 +1397,18 @@ pub(crate) fn parse_body_prefix(
         )
         .map(|body| Some(LayerBodyPrefix10_1::RasterBasemapLayer(Box::new(body))));
     }
+    if class_id == crate::maps::layer_masking::WMS_MAP_LAYER_CLASS_ID {
+        return read_wms_map_layer(trial, max_bytes, trial_table)
+            .map(|body| Some(LayerBodyPrefix10_1::WmsMapLayer(Box::new(body))));
+    }
+    if class_id == crate::maps::layer_masking::WMS_GROUP_LAYER_CLASS_ID {
+        return read_wms_group_layer(trial, max_bytes, trial_table)
+            .map(|body| Some(LayerBodyPrefix10_1::WmsGroupLayer(Box::new(body))));
+    }
+    if class_id == crate::maps::layer_masking::WMS_LAYER_CLASS_ID {
+        return read_wms_layer(trial, max_bytes)
+            .map(|body| Some(LayerBodyPrefix10_1::WmsLayer(Box::new(body))));
+    }
     if class_id == super::raster_catalog_layer::GDB_RASTER_CATALOG_LAYER_CLASS_ID {
         return super::raster_catalog_layer::read_raster_catalog_layer_10_1(
             trial,
@@ -1423,6 +1487,290 @@ pub(crate) fn parse_body_prefix(
     }
 }
 
+fn read_wms_children(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<(i32, Vec<WmsChild10_1>)> {
+    use crate::maps::layer_masking::{LayerMaskingSupport10_1, known_layer_masking_support_10_1};
+    let raw_child_count = reader.read_u32_le()? as i32;
+    let count = raw_child_count.max(0) as usize;
+    if count > reader.remaining().min(max) / OBJECT_HEADER_BYTES {
+        return Err(io::Error::new(ErrorKind::InvalidData, "WMS 子层计数超限"));
+    }
+    let mut children = Vec::new();
+    for _ in 0..count {
+        let entry = read_object_entry_10_1(reader, refs)?;
+        let body = match entry {
+            ObjectEntry10_1::NewObject { class_id, .. } => {
+                Some(read_complete_layer_body_10_1(reader, class_id, max, refs)?)
+            }
+            ObjectEntry10_1::BackReference { key, .. }
+                if refs.registered_class(key).is_some_and(|id| {
+                    known_layer_masking_support_10_1(&id) != LayerMaskingSupport10_1::Unresolved
+                }) =>
+            {
+                None
+            }
+            _ => {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    "WMS 子层未提供受支持的 ILayer",
+                ));
+            }
+        };
+        children.push((entry, body));
+    }
+    Ok((raw_child_count, children))
+}
+
+fn read_wms_map_layer(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<WmsMapLayerBody10_1> {
+    use super::cache_tile_reader::INTERNET_TILED_LAYER_CLASS_ID;
+    use super::wcs_name::{WMS_CONNECTION_NAME_CLASS_ID, read_ogc_connection_name};
+    use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
+    use crate::stream::native_string::read_string_10_1;
+
+    // WMSLayer.dll 0x80d7cde0。
+    let version = reader.read_u16_le()? as i16;
+    if version > 6 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "WMSMapLayer 版本超出 6",
+        ));
+    }
+    let connection_entry = read_object_entry_10_1(reader, refs)?;
+    let connection = match connection_entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { key, .. }
+            if refs.registered_class(key) == Some(WMS_CONNECTION_NAME_CLASS_ID) =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: WMS_CONNECTION_NAME_CLASS_ID,
+            ..
+        } => Some(read_ogc_connection_name(
+            reader,
+            max,
+            refs,
+            WMS_CONNECTION_NAME_CLASS_ID,
+        )?),
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "WMSMapLayer 连接名称类尚未支持",
+            ));
+        }
+    };
+    let name = read_string_10_1(reader, max)?;
+    let mut shorts = [0; 9];
+    for value in &mut shorts[..4] {
+        *value = reader.read_u16_le()? as i16;
+    }
+    let color = read_color_slot_10_1(reader, max, refs)?;
+    if matches!(color, ColorSlot10_1::Unsupported { .. }) {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            "WMSMapLayer 颜色类尚未支持",
+        ));
+    }
+    let mut doubles = [0.0; 5];
+    doubles[0] = reader.read_f64_le()?;
+    for value in &mut shorts[4..8] {
+        *value = reader.read_u16_le()? as i16;
+    }
+    let (raw_child_count, children) = read_wms_children(reader, max, refs)?;
+    shorts[8] = reader.read_u16_le()? as i16;
+    let tail_string = read_string_10_1(reader, max)?;
+    for value in &mut doubles[1..] {
+        *value = reader.read_f64_le()?;
+    }
+    let extensions = if version >= 2 {
+        super::layer_extensions::read_layer_extensions_10_1(reader, max, refs)?
+    } else {
+        Vec::new()
+    };
+    let tile_layer = if version >= 3 {
+        let entry = read_object_entry_10_1(reader, refs)?;
+        let body = match entry {
+            ObjectEntry10_1::Null => None,
+            ObjectEntry10_1::BackReference { key, .. }
+                if refs.registered_class(key) == Some(INTERNET_TILED_LAYER_CLASS_ID) =>
+            {
+                None
+            }
+            ObjectEntry10_1::NewObject {
+                class_id: INTERNET_TILED_LAYER_CLASS_ID,
+                ..
+            } => Some(read_complete_layer_body_10_1(
+                reader,
+                INTERNET_TILED_LAYER_CLASS_ID,
+                max,
+                refs,
+            )?),
+            _ => {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    "WMSMapLayer 私有尾槽类尚未支持",
+                ));
+            }
+        };
+        Some((entry, body))
+    } else {
+        None
+    };
+    let integer_v4 = (version >= 4)
+        .then(|| reader.read_u32_le().map(|n| n as i32))
+        .transpose()?;
+    let tail_v5 = (version >= 5)
+        .then(|| {
+            Ok::<_, io::Error>((
+                reader.read_u16_le()? as i16,
+                reader.read_f64_le()?,
+                reader.read_u32_le()? as i32,
+            ))
+        })
+        .transpose()?;
+    let tail_v6 = (version >= 6)
+        .then(|| Ok::<_, io::Error>((reader.read_f64_le()?, reader.read_u32_le()? as i32)))
+        .transpose()?;
+    Ok(WmsMapLayerBody10_1 {
+        version,
+        connection_entry,
+        connection,
+        name,
+        color,
+        shorts,
+        doubles,
+        raw_child_count,
+        children,
+        tail_string,
+        extensions,
+        tile_layer,
+        integer_v4,
+        tail_v5,
+        tail_v6,
+    })
+}
+
+fn read_wms_group_layer(
+    reader: &mut Reader<'_>,
+    max: usize,
+    refs: &mut RefTable10_1,
+) -> io::Result<WmsGroupLayerBody10_1> {
+    use crate::objects::envelope::{ENVELOPE_CLASS_ID, read_envelope_10_1};
+    use crate::stream::native_string::read_string_10_1;
+
+    // WMSLayer.dll 0x80d681b0。
+    let version = reader.read_u16_le()? as i16;
+    if version > 1 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "WMSGroupLayer 版本超出 1",
+        ));
+    }
+    let name = read_string_10_1(reader, max)?;
+    let mut shorts = [0; 4];
+    for value in &mut shorts[..3] {
+        *value = reader.read_u16_le()? as i16;
+    }
+    let first = reader.read_f64_le()?;
+    let second = reader.read_f64_le()?;
+    let (raw_child_count, children) = read_wms_children(reader, max, refs)?;
+    shorts[3] = reader.read_u16_le()? as i16;
+    let envelope_entry = read_object_entry_10_1(reader, refs)?;
+    let envelope = match envelope_entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { key, .. }
+            if refs.registered_class(key) == Some(ENVELOPE_CLASS_ID) =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: ENVELOPE_CLASS_ID,
+            ..
+        } => Some(read_envelope_10_1(reader, max, refs)?),
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "WMSGroupLayer 包络类尚未支持",
+            ));
+        }
+    };
+    let third = reader.read_f64_le()?;
+    let tail_string = read_string_10_1(reader, max)?;
+    let doubles = [
+        first,
+        second,
+        third,
+        reader.read_f64_le()?,
+        reader.read_f64_le()?,
+    ];
+    Ok(WmsGroupLayerBody10_1 {
+        version,
+        name,
+        shorts,
+        doubles,
+        raw_child_count,
+        children,
+        envelope_entry,
+        envelope,
+        tail_string,
+    })
+}
+
+fn read_wms_layer(reader: &mut Reader<'_>, max: usize) -> io::Result<WmsLayerBody10_1> {
+    use crate::stream::native_string::read_string_10_1;
+
+    // WMSLayer.dll 0x80d6f8c0 的版本判断使用有符号 short。
+    let version = reader.read_u16_le()? as i16;
+    if version > 5 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "WMSLayer 版本超出 5",
+        ));
+    }
+    let name = read_string_10_1(reader, max)?;
+    let secondary_name = read_string_10_1(reader, max)?;
+    let shorts = [
+        reader.read_u16_le()? as i16,
+        reader.read_u16_le()? as i16,
+        reader.read_u16_le()? as i16,
+    ];
+    let string_v2 = (version >= 2)
+        .then(|| read_string_10_1(reader, max))
+        .transpose()?;
+    let short_v3 = (version >= 3)
+        .then(|| reader.read_u16_le().map(|n| n as i16))
+        .transpose()?;
+    let string_v4 = (version >= 4)
+        .then(|| read_string_10_1(reader, max))
+        .transpose()?;
+    let tail_v5 = if version >= 5 {
+        Some((
+            reader.read_u16_le()? as i16,
+            reader.read_f64_le()?,
+            reader.read_u32_le()? as i32,
+        ))
+    } else {
+        None
+    };
+    Ok(WmsLayerBody10_1 {
+        version,
+        name,
+        secondary_name,
+        shorts,
+        string_v2,
+        short_v3,
+        string_v4,
+        tail_v5,
+    })
+}
+
 /// 消费普通 LoadObject 槽的完整图层体。没有外层长度，部分读取结果不提交。
 pub(crate) fn read_complete_layer_body_10_1(
     reader: &mut Reader<'_>,
@@ -1498,6 +1846,9 @@ pub(crate) fn read_complete_layer_body_10_1(
         | LayerBodyPrefix10_1::CadFeatureLayer(_)
         | LayerBodyPrefix10_1::CadAnnotationLayer(_)
         | LayerBodyPrefix10_1::CoverageAnnotationLayer(_)
+        | LayerBodyPrefix10_1::WmsMapLayer(_)
+        | LayerBodyPrefix10_1::WmsGroupLayer(_)
+        | LayerBodyPrefix10_1::WmsLayer(_)
         | LayerBodyPrefix10_1::TerrainLayer(_)
         | LayerBodyPrefix10_1::TinLayer(_)
         | LayerBodyPrefix10_1::TiledLayer(_)

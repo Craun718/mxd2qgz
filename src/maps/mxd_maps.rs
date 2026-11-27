@@ -902,6 +902,9 @@ fn frame_from_body(
             Some(
                 LayerBodyPrefix10_1::BasemapLayer(_)
                 | LayerBodyPrefix10_1::NaLayer(_)
+                | LayerBodyPrefix10_1::WmsMapLayer(_)
+                | LayerBodyPrefix10_1::WmsGroupLayer(_)
+                | LayerBodyPrefix10_1::WmsLayer(_)
                 | LayerBodyPrefix10_1::TerrainLayer(_)
                 | LayerBodyPrefix10_1::TinLayer(_)
                 | LayerBodyPrefix10_1::NetworkLayer(_)
@@ -2047,6 +2050,9 @@ fn body_prefix_node(
         )),
         LayerBodyPrefix10_1::BasemapLayer(_)
         | LayerBodyPrefix10_1::NaLayer(_)
+        | LayerBodyPrefix10_1::WmsMapLayer(_)
+        | LayerBodyPrefix10_1::WmsGroupLayer(_)
+        | LayerBodyPrefix10_1::WmsLayer(_)
         | LayerBodyPrefix10_1::TerrainLayer(_)
         | LayerBodyPrefix10_1::TinLayer(_)
         | LayerBodyPrefix10_1::NetworkLayer(_) => None,

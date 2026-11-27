@@ -408,6 +408,228 @@ mod tests {
     }
 
     #[test]
+    fn graphics_3d_reads_wms_map_layer_with_connection_and_versioned_tail() {
+        use crate::layers::cache_tile_reader::INTERNET_TILED_LAYER_CLASS_ID;
+        use crate::layers::wcs_name::WMS_CONNECTION_NAME_CLASS_ID;
+        use crate::maps::layer_masking::WMS_MAP_LAYER_CLASS_ID;
+
+        for (class, short_bytes, tail_bytes) in [
+            (GRAPHICS_LAYER_3D_CLASS_ID, 8, 0),
+            (GLOBE_GRAPHICS_LAYER_CLASS_ID, 4, 8),
+        ] {
+            let empty = [2, 0, 0, 0, 0, 0];
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(empty);
+            bytes.resize(bytes.len() + short_bytes, 0);
+            bytes.extend(WMS_MAP_LAYER_CLASS_ID);
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend(6_i16.to_le_bytes());
+            bytes.extend(WMS_CONNECTION_NAME_CLASS_ID);
+            bytes.extend(2_u32.to_le_bytes());
+            bytes.extend(1_i16.to_le_bytes());
+            bytes.extend([0; 16]);
+            bytes.extend(empty);
+            bytes.extend([0; 8 + 16 + 8 + 8 + 4 + 2]);
+            bytes.extend(empty);
+            bytes.extend([0; 32 + 4]);
+            let tile_offset = bytes.len();
+            bytes.extend([0; 16]);
+            bytes.extend(7_i32.to_le_bytes());
+            bytes.extend(8_i16.to_le_bytes());
+            bytes.extend(9.0_f64.to_le_bytes());
+            bytes.extend(10_i32.to_le_bytes());
+            bytes.extend(11.0_f64.to_le_bytes());
+            bytes.extend(12_i32.to_le_bytes());
+            let map_end = bytes.len();
+            bytes.resize(map_end + 20 + tail_bytes, 0);
+            let end = bytes.len();
+            bytes.push(0xa5);
+
+            let mut refs = RefTable10_1::new();
+            let mut reader = Reader::new(&bytes);
+            let parsed = read_graphics_3d_layer_10_1(&class, &mut reader, 4096, &mut refs).unwrap();
+            let Some(LayerBodyPrefix10_1::WmsMapLayer(layer)) =
+                parsed.associated_layer_body.as_deref()
+            else {
+                panic!("应读取 WMSMapLayer");
+            };
+            assert_eq!(layer.connection.as_ref().unwrap().version, 1);
+            assert_eq!(layer.integer_v4, Some(7));
+            assert_eq!(layer.tail_v5, Some((8, 9.0, 10)));
+            assert_eq!(layer.tail_v6, Some((11.0, 12)));
+            assert!(refs.contains(1) && refs.contains(2));
+            assert_eq!(reader.position(), end);
+
+            let mut header = INTERNET_TILED_LAYER_CLASS_ID.to_vec();
+            header.extend(3_u32.to_le_bytes());
+            let mut new_tile = header.clone();
+            new_tile.extend(1_i16.to_le_bytes());
+            new_tile.extend(empty.repeat(2));
+            new_tile.extend([0; 6 + 16 + 8 + 16 + 2 + 4 + 4 + 16 + 8 + 16 + 4 + 16]);
+            for (is_new, slot) in [(true, new_tile), (false, header.clone())] {
+                let mut variant = bytes.clone();
+                let variant_end = end + slot.len() - 16;
+                variant.splice(tile_offset..tile_offset + 16, slot);
+                let mut refs = RefTable10_1::new();
+                if !is_new {
+                    read_object_entry_10_1(&mut Reader::new(&header), &mut refs).unwrap();
+                }
+                let mut reader = Reader::new(&variant);
+                let parsed =
+                    read_graphics_3d_layer_10_1(&class, &mut reader, 4096, &mut refs).unwrap();
+                let Some(LayerBodyPrefix10_1::WmsMapLayer(layer)) =
+                    parsed.associated_layer_body.as_deref()
+                else {
+                    panic!("应读取 WMSMapLayer");
+                };
+                let (entry, body) = layer.tile_layer.as_ref().unwrap();
+                if is_new {
+                    assert!(matches!(entry, ObjectEntry10_1::NewObject { key: 3, .. }));
+                    assert!(matches!(body, Some(LayerBodyPrefix10_1::TiledLayer(_))));
+                } else {
+                    assert!(matches!(
+                        entry,
+                        ObjectEntry10_1::BackReference { key: 3, .. }
+                    ));
+                    assert!(body.is_none());
+                }
+                assert!(refs.contains(3));
+                assert_eq!(layer.integer_v4, Some(7));
+                assert_eq!(layer.tail_v6, Some((11.0, 12)));
+                assert_eq!(reader.position(), variant_end);
+            }
+
+            let mut reader = Reader::new(&bytes[..map_end - 1]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_graphics_3d_layer_10_1(&class, &mut reader, 4096, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+
+    #[test]
+    fn graphics_3d_reads_wms_group_with_child_and_reference() {
+        use crate::maps::layer_masking::{WMS_GROUP_LAYER_CLASS_ID, WMS_LAYER_CLASS_ID};
+
+        for (class, short_bytes, tail_bytes) in [
+            (GRAPHICS_LAYER_3D_CLASS_ID, 8, 0),
+            (GLOBE_GRAPHICS_LAYER_CLASS_ID, 4, 8),
+        ] {
+            let empty = [2, 0, 0, 0, 0, 0];
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend(empty);
+            bytes.resize(bytes.len() + short_bytes, 0);
+            bytes.extend(WMS_GROUP_LAYER_CLASS_ID);
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend(1_i16.to_le_bytes());
+            bytes.extend(empty);
+            bytes.extend([0; 6 + 16]);
+            bytes.extend(2_i32.to_le_bytes());
+            bytes.extend(WMS_LAYER_CLASS_ID);
+            bytes.extend(2_u32.to_le_bytes());
+            bytes.extend(1_i16.to_le_bytes());
+            bytes.extend(empty);
+            bytes.extend(empty);
+            bytes.extend([0; 6]);
+            bytes.extend(WMS_LAYER_CLASS_ID);
+            bytes.extend(2_u32.to_le_bytes());
+            bytes.extend([0; 2 + 16 + 8]);
+            bytes.extend(empty);
+            bytes.extend([0; 16]);
+            let group_end = bytes.len();
+            bytes.resize(group_end + 20 + tail_bytes, 0);
+            let end = bytes.len();
+            bytes.push(0xa5);
+
+            let mut refs = RefTable10_1::new();
+            let mut reader = Reader::new(&bytes);
+            let parsed = read_graphics_3d_layer_10_1(&class, &mut reader, 4096, &mut refs).unwrap();
+            let Some(LayerBodyPrefix10_1::WmsGroupLayer(group)) =
+                parsed.associated_layer_body.as_deref()
+            else {
+                panic!("应读取 WMSGroupLayer");
+            };
+            assert!(matches!(
+                group.children[0].1.as_ref(),
+                Some(LayerBodyPrefix10_1::WmsLayer(_))
+            ));
+            assert!(matches!(
+                group.children[1].0,
+                ObjectEntry10_1::BackReference { key: 2, .. }
+            ));
+            assert!(refs.contains(1) && refs.contains(2));
+            assert_eq!(reader.position(), end);
+
+            let mut reader = Reader::new(&bytes[..group_end - 1]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_graphics_3d_layer_10_1(&class, &mut reader, 4096, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+
+    #[test]
+    fn graphics_3d_reads_versioned_wms_layer_and_following_fields() {
+        use crate::maps::layer_masking::WMS_LAYER_CLASS_ID;
+
+        for (class, short_bytes, tail_bytes) in [
+            (GRAPHICS_LAYER_3D_CLASS_ID, 8, 0),
+            (GLOBE_GRAPHICS_LAYER_CLASS_ID, 4, 8),
+        ] {
+            for version in 1_i16..=5 {
+                let empty = [2, 0, 0, 0, 0, 0];
+                let mut bytes = 1_u16.to_le_bytes().to_vec();
+                bytes.extend(empty);
+                bytes.resize(bytes.len() + short_bytes, 0);
+                bytes.extend(WMS_LAYER_CLASS_ID);
+                bytes.extend(1_u32.to_le_bytes());
+                bytes.extend(version.to_le_bytes());
+                bytes.extend([4, 0, 0, 0, b'W', 0, 0, 0]);
+                bytes.extend(empty);
+                bytes.extend([0; 6]);
+                if version >= 2 {
+                    bytes.extend(empty);
+                }
+                if version >= 3 {
+                    bytes.extend([0; 2]);
+                }
+                if version >= 4 {
+                    bytes.extend(empty);
+                }
+                if version >= 5 {
+                    bytes.extend(2_i16.to_le_bytes());
+                    bytes.extend(1.5_f64.to_le_bytes());
+                    bytes.extend(7_i32.to_le_bytes());
+                }
+                let layer_end = bytes.len();
+                bytes.resize(layer_end + 20 + tail_bytes, 0);
+                let end = bytes.len();
+                bytes.push(0xa5);
+
+                let mut refs = RefTable10_1::new();
+                let mut reader = Reader::new(&bytes);
+                let parsed =
+                    read_graphics_3d_layer_10_1(&class, &mut reader, 4096, &mut refs).unwrap();
+                let Some(LayerBodyPrefix10_1::WmsLayer(layer)) =
+                    parsed.associated_layer_body.as_deref()
+                else {
+                    panic!("应读取 WMSLayer");
+                };
+                assert_eq!(layer.name, "W");
+                assert_eq!(layer.tail_v5, (version == 5).then_some((2, 1.5, 7)));
+                assert!(refs.contains(1));
+                assert_eq!(reader.position(), end);
+
+                let mut reader = Reader::new(&bytes[..layer_end - 1]);
+                let mut refs = RefTable10_1::new();
+                assert!(read_graphics_3d_layer_10_1(&class, &mut reader, 4096, &mut refs).is_err());
+                assert_eq!(reader.position(), 0);
+                assert!(refs.is_empty());
+            }
+        }
+    }
+
+    #[test]
     fn graphics_3d_reads_topology_layer_versions_and_successors() {
         use crate::maps::layer_masking::TOPOLOGY_LAYER_CLASS_ID;
 
