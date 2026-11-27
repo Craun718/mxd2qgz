@@ -2621,6 +2621,23 @@ pub const GP_MULTI_VALUE_TYPE_NAME_CLASS_ID: [u8; 16] = [
     0x70, 0x33, 0xde, 0x35, 0x8e, 0x67, 0xfb, 0x40, 0x9b, 0x7e, 0xff, 0xaf, 0x08, 0x22, 0x4b, 0x99,
 ];
 
+pub const GP_SERVER_TOOL_NAME_CLASS_ID: [u8; 16] = [
+    0x96, 0x0b, 0xe0, 0x4f, 0xef, 0x9f, 0xaf, 0x41, 0x9e, 0xd6, 0x9c, 0xcd, 0x47, 0x00, 0x85, 0xd3,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpServerToolName10_1 {
+    pub version: i16,
+    pub strings: [String; 4],
+    pub raw_long: i32,
+    pub source: BookmarkNameEntry10_1,
+    pub uid: RuleSlot10_1<UidBody10_1>,
+    pub trailing_long: i32,
+    pub connection_strings: [String; 5],
+    pub trailing_short: i16,
+    pub trailing_string: String,
+}
+
 pub const GP_SERVER_TOOLBOX_NAME_CLASS_ID: [u8; 16] = [
     0x91, 0x5e, 0xee, 0x8f, 0x87, 0xd6, 0xbf, 0x41, 0x85, 0x99, 0x6c, 0x9b, 0x36, 0x3e, 0x93, 0x4f,
 ];
@@ -2850,6 +2867,7 @@ pub enum BookmarkNameEntry10_1 {
         raw_column_count: i32,
         columns: Vec<GpValueTableColumnType10_1>,
     },
+    GpServerToolName(Box<GpServerToolName10_1>),
     GpServerToolboxName {
         version: i16,
         name: String,
@@ -9723,6 +9741,43 @@ fn read_gp_toolbox_name_body_10_1(
     })
 }
 
+fn read_gp_server_tool_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    name_depth: usize,
+) -> io::Result<GpServerToolName10_1> {
+    if name_depth >= MAX_BOOKMARK_NAME_NESTING {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "GPServerToolName 嵌套层数超限",
+        ));
+    }
+    Ok(GpServerToolName10_1 {
+        version: read_gp_name_version(reader, 2, "GPServerToolName")?,
+        strings: [
+            read_bstr_string_10_1(reader, max_bytes)?,
+            read_bstr_string_10_1(reader, max_bytes)?,
+            read_bstr_string_10_1(reader, max_bytes)?,
+            read_bstr_string_10_1(reader, max_bytes)?,
+        ],
+        raw_long: reader.read_u32_le()? as i32,
+        source: read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth + 1)?,
+        uid: read_gp_uid_slot(reader, table)?,
+        trailing_long: reader.read_u32_le()? as i32,
+        // 保留流中的连接文本，读取结构时不解释凭据字段。
+        connection_strings: [
+            read_bstr_string_10_1(reader, max_bytes)?,
+            read_bstr_string_10_1(reader, max_bytes)?,
+            read_bstr_string_10_1(reader, max_bytes)?,
+            read_bstr_string_10_1(reader, max_bytes)?,
+            read_bstr_string_10_1(reader, max_bytes)?,
+        ],
+        trailing_short: reader.read_u16_le()? as i16,
+        trailing_string: read_bstr_string_10_1(reader, max_bytes)?,
+    })
+}
+
 fn read_gp_tool_name_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -10161,6 +10216,12 @@ fn read_bookmark_name_slot_10_1(
             ..
         } => BookmarkNameEntry10_1::TerrainName(Box::new(read_terrain_name_body_10_1(
             reader, max_bytes, table,
+        )?)),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_SERVER_TOOL_NAME_CLASS_ID,
+            ..
+        } => BookmarkNameEntry10_1::GpServerToolName(Box::new(read_gp_server_tool_name_body_10_1(
+            reader, max_bytes, table, name_depth,
         )?)),
         ObjectEntry10_1::NewObject {
             class_id: GP_SERVER_TOOLBOX_NAME_CLASS_ID,

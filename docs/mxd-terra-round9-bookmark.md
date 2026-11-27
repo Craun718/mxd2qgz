@@ -4972,3 +4972,17 @@ Encrypt::FromString 和 DecryptString 处理内存中的文本，
 这些调用不消费 IStream。Save `0x74fabcb0` 对应这两处版本门。
 Rust 保留原始字符串，不处理连接凭据。构造书签验证 v0–v3、
 后继字段及截断回滚。真实 MXD 宿主与 ArcMap/QGIS 人工验收待查。
+
+#### GPServerToolName
+
+同摘要的 GpToolbox.dll 10.1.0.3035 中，RTTI 主表
+`0x74ff85bc` 的 QI `0x74fac570` 接受 IName 与 IPersistStream。
++0x1c 持久化表 `0x74ff8658` 的 GetClassID `0x74facd00`
+返回 `4FE00B96-9FEF-41AF-9ED6-9CCD470085D3`。
+Load `0x74facd40` 检查有符号 short 上限 2。流内顺序为
+四个 AfCore BSTR、LONG、IName（`0x74face6d`）、
+IUID（`0x74face97`）、LONG、五个 BSTR、short、末尾 BSTR。
+`0x74fad047` 的 v2 分支处理第四个连接 BSTR 的内存值，
+不再读取流。末尾两次读调用位于 `0x74fad0f8` 和
+`0x74fad15f`。构造书签覆盖 v0–v2、非空服务器工具箱名称、
+后继字段边界及截断回滚。真实 MXD 宿主与 ArcMap/QGIS 人工验收待查。

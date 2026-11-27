@@ -3702,6 +3702,63 @@ fn feature_bookmark_reads_gp_data_type_name_versioned_uid_slots() {
 }
 
 #[test]
+fn feature_bookmark_reads_gp_server_tool_name_versions() {
+    use mxd2qgz::maps::map_surround::{
+        GP_SERVER_TOOL_NAME_CLASS_ID, GP_SERVER_TOOLBOX_NAME_CLASS_ID,
+    };
+
+    for version in [0_i16, 1, 2] {
+        let mut bytes = bookmark_header_10_1(&GP_SERVER_TOOL_NAME_CLASS_ID, 17);
+        bytes.extend(version.to_le_bytes());
+        for value in b"abcd" {
+            bytes.extend([1, 0, 0, 0, *value, 0, 0, 0]);
+        }
+        bytes.extend((-7_i32).to_le_bytes());
+        bytes.extend(bookmark_entry_10_1(&GP_SERVER_TOOLBOX_NAME_CLASS_ID, 18));
+        bytes.extend([1, 0, 1, 0, 0, 0, b's', 0, 0, 0]);
+        bytes.extend([0; 16]);
+        bytes.extend(9_i32.to_le_bytes());
+        for value in b"efghi" {
+            bytes.extend([1, 0, 0, 0, *value, 0, 0, 0]);
+        }
+        bytes.extend((-3_i16).to_le_bytes());
+        bytes.extend([1, 0, 0, 0, b'j', 0, 0, 0]);
+        bytes.extend(bookmark_string_10_1("书签"));
+        let end = bytes.len();
+        bytes.push(0xa5);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+        let BookmarkNameEntry10_1::GpServerToolName(body) = result.name_object else {
+            panic!("应读取服务器工具名称");
+        };
+        assert_eq!(body.version, version);
+        assert_eq!(body.strings, ["a", "b", "c", "d"]);
+        assert_eq!(body.connection_strings, ["e", "f", "g", "h", "i"]);
+        assert_eq!(
+            (body.raw_long, body.trailing_long, body.trailing_short),
+            (-7, 9, -3)
+        );
+        assert_eq!(body.trailing_string, "j");
+        assert!(
+            matches!(body.source, BookmarkNameEntry10_1::GpServerToolboxName { name, .. } if name == "s")
+        );
+        assert!(body.uid.body.is_none());
+        assert_eq!(result.name, "书签");
+        assert_eq!(reader.position(), end);
+        assert!(refs.contains(18));
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+}
+
+#[test]
 fn feature_bookmark_reads_gp_server_toolbox_name_versions() {
     use mxd2qgz::maps::map_surround::GP_SERVER_TOOLBOX_NAME_CLASS_ID;
 
