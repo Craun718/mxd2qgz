@@ -2621,6 +2621,10 @@ pub const GP_MULTI_VALUE_TYPE_NAME_CLASS_ID: [u8; 16] = [
     0x70, 0x33, 0xde, 0x35, 0x8e, 0x67, 0xfb, 0x40, 0x9b, 0x7e, 0xff, 0xaf, 0x08, 0x22, 0x4b, 0x99,
 ];
 
+pub const GP_DRAG_DROP_OBJECT_NAME_CLASS_ID: [u8; 16] = [
+    0x3b, 0x61, 0x9a, 0xd7, 0xf6, 0x87, 0x26, 0x43, 0xa4, 0xcf, 0x64, 0x63, 0xcc, 0xec, 0x34, 0xca,
+];
+
 pub const GP_SERVER_TOOL_NAME_CLASS_ID: [u8; 16] = [
     0x96, 0x0b, 0xe0, 0x4f, 0xef, 0x9f, 0xaf, 0x41, 0x9e, 0xd6, 0x9c, 0xcd, 0x47, 0x00, 0x85, 0xd3,
 ];
@@ -2866,6 +2870,10 @@ pub enum BookmarkNameEntry10_1 {
         version: i16,
         raw_column_count: i32,
         columns: Vec<GpValueTableColumnType10_1>,
+    },
+    GpDragDropObjectName {
+        version: i16,
+        source: Box<BookmarkNameEntry10_1>,
     },
     GpServerToolName(Box<GpServerToolName10_1>),
     GpServerToolboxName {
@@ -9369,9 +9377,27 @@ pub(crate) fn read_locator_workspace_name_body_10_1(
         read_string_10_1(reader, max_bytes)?,
     ];
     // v1 请求 IName，其余版本允许持久化 IUnknown。
+    let source = if version == 1 {
+        read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth + 1)?
+    } else {
+        read_bookmark_unknown_slot_10_1(reader, max_bytes, table, name_depth + 1)?
+    };
+    Ok(BookmarkNameEntry10_1::LocatorWorkspaceName {
+        version,
+        strings,
+        source: Box::new(source),
+    })
+}
+
+fn read_bookmark_unknown_slot_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    name_depth: usize,
+) -> io::Result<BookmarkNameEntry10_1> {
     use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
-    let source = match read_header_10_1(&mut reader.clone())? {
-        ObjectHeader::Object { class_id, key } if version != 1 && table.contains(key) => {
+    Ok(match read_header_10_1(&mut reader.clone())? {
+        ObjectHeader::Object { class_id, key } if table.contains(key) => {
             read_object_entry_10_1(reader, table)?;
             BookmarkNameEntry10_1::BackReference {
                 class_id: table.registered_class(key).unwrap_or(class_id),
@@ -9381,7 +9407,7 @@ pub(crate) fn read_locator_workspace_name_body_10_1(
         ObjectHeader::Object {
             class_id: PROPERTY_SET_CLASS_ID,
             ..
-        } if version != 1 => {
+        } => {
             read_object_entry_10_1(reader, table)?;
             BookmarkNameEntry10_1::LocatorWorkspaceProperties(Box::new(
                 read_property_set_object_stream_10_1(reader, max_bytes, table)?,
@@ -9390,16 +9416,11 @@ pub(crate) fn read_locator_workspace_name_body_10_1(
         ObjectHeader::Object {
             class_id: UID_CLASS_ID,
             key,
-        } if version != 1 => {
+        } => {
             read_object_entry_10_1(reader, table)?;
             BookmarkNameEntry10_1::LocatorWorkspaceUid(read_uid_body_10_1(reader, key)?)
         }
-        _ => read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth + 1)?,
-    };
-    Ok(BookmarkNameEntry10_1::LocatorWorkspaceName {
-        version,
-        strings,
-        source: Box::new(source),
+        _ => read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth)?,
     })
 }
 
@@ -10217,6 +10238,26 @@ fn read_bookmark_name_slot_10_1(
         } => BookmarkNameEntry10_1::TerrainName(Box::new(read_terrain_name_body_10_1(
             reader, max_bytes, table,
         )?)),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_DRAG_DROP_OBJECT_NAME_CLASS_ID,
+            ..
+        } => {
+            if name_depth >= MAX_BOOKMARK_NAME_NESTING {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "GPDragDropObjectName 嵌套层数超限",
+                ));
+            }
+            BookmarkNameEntry10_1::GpDragDropObjectName {
+                version: read_gp_name_version(reader, 1, "GPDragDropObjectName")?,
+                source: Box::new(read_bookmark_unknown_slot_10_1(
+                    reader,
+                    max_bytes,
+                    table,
+                    name_depth + 1,
+                )?),
+            }
+        }
         ObjectEntry10_1::NewObject {
             class_id: GP_SERVER_TOOL_NAME_CLASS_ID,
             ..

@@ -4986,3 +4986,19 @@ IUID（`0x74face97`）、LONG、五个 BSTR、short、末尾 BSTR。
 不再读取流。末尾两次读调用位于 `0x74fad0f8` 和
 `0x74fad15f`。构造书签覆盖 v0–v2、非空服务器工具箱名称、
 后继字段边界及截断回滚。真实 MXD 宿主与 ArcMap/QGIS 人工验收待查。
+
+#### GPDragDropObjectName
+
+ToolboxExt.dll 10.1.0.3035 的 SHA-256 为
+`c9ea023ba870ad570a60007ee1e7e6b7be8d79bdfd4082d1d07f001ce1cdaaa9`。
+RTTI 主表 `0x1016f02c` 的 QI `0x10115e30` 接受 IName，
+并将 IPersistStream 查询映射至 +0x18。持久化表 `0x1016efc8`
+的 GetClassID `0x101160b0` 返回
+`D79A613B-87F6-4326-A4CF-6463CCEC34CA`。构造初始化在
+`0x10115dcb` 设置版本上限 1。Load `0x10116100` 读有符号
+short 并比较该上限，随后在 `0x10116193` 以 IUnknown IID
+读取对象。Save `0x101161c0` 对称写出版本和对象。
+
+读取器复用 LocatorWorkspaceName 已支持的持久化 IUnknown 子集。
+构造书签覆盖 UID 子对象、后继字段及截断回滚。真实拖放生成的
+子类分布、MXD 宿主和 ArcMap/QGIS 人工验收待查。

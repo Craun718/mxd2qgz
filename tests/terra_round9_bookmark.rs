@@ -3702,6 +3702,41 @@ fn feature_bookmark_reads_gp_data_type_name_versioned_uid_slots() {
 }
 
 #[test]
+fn feature_bookmark_reads_drag_drop_name_with_iunknown() {
+    use mxd2qgz::layers::feature_layer_tail::UID_CLASS_ID;
+    use mxd2qgz::maps::map_surround::GP_DRAG_DROP_OBJECT_NAME_CLASS_ID;
+
+    let mut bytes = bookmark_header_10_1(&GP_DRAG_DROP_OBJECT_NAME_CLASS_ID, 17);
+    bytes.extend(1_i16.to_le_bytes());
+    bytes.extend(bookmark_entry_10_1(&UID_CLASS_ID, 18));
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend([0; 17]);
+    bytes.extend(0_i32.to_le_bytes());
+    bytes.extend(bookmark_string_10_1("书签"));
+    let end = bytes.len();
+    bytes.push(0xa5);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+    assert!(matches!(
+        result.name_object,
+        BookmarkNameEntry10_1::GpDragDropObjectName { version: 1, source }
+            if matches!(*source, BookmarkNameEntry10_1::LocatorWorkspaceUid(_))
+    ));
+    assert_eq!(result.name, "书签");
+    assert_eq!(reader.position(), end);
+    assert!(refs.contains(18));
+    for cut in 0..end {
+        let mut reader = Reader::new(&bytes[..cut]);
+        let mut refs = RefTable10_1::new();
+        assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+}
+
+#[test]
 fn feature_bookmark_reads_gp_server_tool_name_versions() {
     use mxd2qgz::maps::map_surround::{
         GP_SERVER_TOOL_NAME_CLASS_ID, GP_SERVER_TOOLBOX_NAME_CLASS_ID,
