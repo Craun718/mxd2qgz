@@ -751,6 +751,24 @@ PropertySet。v2 保留登记类并读完书签，v1 退回书签起点并保留
 构造 v2 书签验证 UID 字段、后继书签文本及 UID 截断时的回滚。
 v1 的 IName 槽拒绝已登记的 UID 回引。尚无该组合的实档或人工验证。
 
+### LocatorWorkspaceName 的保存成员
+
+同摘要 Geocoding.dll 的持久化表 `0x714fa8a0` 指向 Save
+`0x71367db0`。在 `0x71367dda` 以 `0x714f6244` 的
+short 表 `[1, 2]` 选择写出版本。两条 String 之后，
+`0x71367e1b` 先取持久化接口 `+0x10` 的名称成员。
+该成员非空，或文档版本为 0 时，走 `0x71367e4f`
+的普通 SaveObject。其他可写版本在该成员为空时，取
+`+0x14` 的连接名称成员，并在 `0x71367e35` 写出。
+Load 在 `0x71367c5d` 查询 IName 回填前者，在
+`0x71367c73` 查询 IAGSServerConnectionName 回填后者。
+静态取证将常规写侧候选约束到这两个成员；其他注册类
+仍可通过 IUnknown 读取入口出现，需实档或运行证据确定实例。
+
+在同一批 246 份文件、3,447 条流中搜索完整 CLSID，
+未命中 LocatorWorkspaceName。该结果只覆盖本地明文标识。
+ArcMap/QGIS 人工验收尚未执行。
+
 ## LocatorName
 
 同版 Geocoding.dll 的 PE RTTI `0x71550d68` 对应持久化虚表
