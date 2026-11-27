@@ -912,6 +912,103 @@ fn extra_safe_empty_wrapper_and_null_header_are_placeholders() {
 }
 
 #[test]
+fn layout_reads_native_property_set_extension() {
+    use mxd2qgz::objects::property_set::PROPERTY_SET_CLASS_ID;
+
+    // 10.1 LayerLib 在 Wine 中写出的单条 PropertySet 扩展。
+    let baseline = layout_tail(11, 0);
+    let offset = baseline.len() - 12;
+    let mut bytes = baseline[..offset].to_vec();
+    bytes.extend(1_u32.to_le_bytes());
+    bytes.extend(6_u64.to_le_bytes());
+    bytes.extend(PROPERTY_SET_CLASS_ID);
+    bytes.extend([1, 0, 0, 0, 0, 0]);
+    bytes.extend(&baseline[offset + 4..]);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let tail = read_page_layout_tail_10_1(&mut reader, &mut refs, 11, 0, 8192, |_| false).unwrap();
+    assert_eq!(tail.property_set_extensions.len(), 1);
+    assert_eq!(tail.property_set_extensions[0].index, 0);
+    assert_eq!(tail.property_set_extensions[0].body.version, 1);
+    assert_eq!(tail.property_set_extensions[0].body.count, 0);
+    assert!(tail.opaque_extensions.is_empty());
+    assert!(tail.version_11_slot.is_some());
+    assert_eq!(reader.remaining(), 0);
+    let mut baseline_reader = Reader::new(&baseline);
+    let mut baseline_refs = RefTable10_1::new();
+    read_page_layout_tail_10_1(
+        &mut baseline_reader,
+        &mut baseline_refs,
+        11,
+        0,
+        8192,
+        |_| false,
+    )
+    .unwrap();
+    assert_eq!(refs.len(), baseline_refs.len());
+
+    bytes[offset + 4] = 5;
+    let mut reader = Reader::new(&bytes);
+    assert!(read_page_layout_tail_10_1(&mut reader, &mut refs, 11, 0, 8192, |_| false).is_err());
+    assert_eq!(reader.position(), 0);
+    assert_eq!(refs.len(), baseline_refs.len());
+}
+
+#[test]
+fn layout_reads_native_uid_extension_without_object_key() {
+    use mxd2qgz::layers::feature_layer_tail::UID_CLASS_ID;
+
+    // 10.1 LayerLib 写出的 UID v1，扩展头后直接是 23 字节对象体。
+    let baseline = layout_tail(11, 0);
+    let offset = baseline.len() - 12;
+    let mut bytes = baseline[..offset].to_vec();
+    bytes.extend(1_u32.to_le_bytes());
+    bytes.extend(23_u64.to_le_bytes());
+    bytes.extend(UID_CLASS_ID);
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend([0; 21]);
+    bytes.extend(&baseline[offset + 4..]);
+
+    let mut reader = Reader::new(&bytes);
+    let mut refs = RefTable10_1::new();
+    let tail = read_page_layout_tail_10_1(&mut reader, &mut refs, 11, 0, 8192, |_| false).unwrap();
+    let [uid] = tail.uid_extensions.as_slice() else {
+        panic!("应读取一条 UID 扩展");
+    };
+    assert_eq!(uid.index, 0);
+    assert_eq!(uid.body.version, 1);
+    assert_eq!(uid.body.flag, 0);
+    assert_eq!(uid.body.guid, [0; 16]);
+    assert_eq!(uid.body.value_18, 0);
+    assert!(tail.version_11_slot.is_some());
+    assert_eq!(reader.remaining(), 0);
+    let mut baseline_reader = Reader::new(&baseline);
+    let mut baseline_refs = RefTable10_1::new();
+    read_page_layout_tail_10_1(
+        &mut baseline_reader,
+        &mut baseline_refs,
+        11,
+        0,
+        8192,
+        |_| false,
+    )
+    .unwrap();
+    assert_eq!(refs.len(), baseline_refs.len());
+
+    for bad_size in [22, 24] {
+        bytes[offset + 4] = bad_size;
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        assert!(
+            read_page_layout_tail_10_1(&mut reader, &mut refs, 11, 0, 8192, |_| false).is_err()
+        );
+        assert_eq!(reader.position(), 0);
+        assert!(refs.is_empty());
+    }
+}
+
+#[test]
 fn bounded_layout_extensions_preserve_unknown_and_leave_following_slot_aligned() {
     let optimization_class = [
         0x9f, 0xd8, 0x29, 0x6c, 0xba, 0xb7, 0xb0, 0x4f, 0xa8, 0x8d, 0xfe, 0xa7, 0x7a, 0x03, 0xba,

@@ -1699,6 +1699,15 @@ pub enum HotLinkSlot10_1 {
     Body(Box<HotLinkExpressionPropsBody10_1>),
 }
 
+/// UID 持久化字段，用于没有 ObjectStream 键的宿主。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnkeyedUidBody10_1 {
+    pub version: u16,
+    pub flag: u8,
+    pub guid: [u8; 16],
+    pub value_18: i32,
+}
+
 /// UID 类标识(CLSID)的 16 字节内存序。
 ///
 /// GUID `{78FF7FA1-FB2F-11D1-94A2-080009EEBECB}`。证据:SystemCore.dll
@@ -1711,6 +1720,24 @@ pub const UID_CLASS_ID: [u8; 16] = [
 /// 从对象头之后的位置读取 10.1 UID 体（原生字段序见 [`UidBody10_1`]）。
 /// 失败时不推进游标、不修改登记表。
 pub fn read_uid_body_10_1(reader: &mut Reader<'_>, key: u32) -> io::Result<UidBody10_1> {
+    let UnkeyedUidBody10_1 {
+        version,
+        flag,
+        guid,
+        value_18,
+    } = read_unkeyed_uid_body_10_1(reader)?;
+    Ok(UidBody10_1 {
+        key,
+        version,
+        flag,
+        guid,
+        value_18,
+    })
+}
+
+pub(crate) fn read_unkeyed_uid_body_10_1(
+    reader: &mut Reader<'_>,
+) -> io::Result<UnkeyedUidBody10_1> {
     let mut trial = reader.clone();
     let version = trial.read_u16_le()?;
     let flag = trial.read_bytes(1)?[0];
@@ -1718,8 +1745,7 @@ pub fn read_uid_body_10_1(reader: &mut Reader<'_>, key: u32) -> io::Result<UidBo
     guid.copy_from_slice(trial.read_bytes(16)?);
     let value_18 = i32::from_le_bytes(trial.read_bytes(4)?.try_into().unwrap());
     *reader = trial;
-    Ok(UidBody10_1 {
-        key,
+    Ok(UnkeyedUidBody10_1 {
         version,
         flag,
         guid,

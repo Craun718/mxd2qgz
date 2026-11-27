@@ -7,6 +7,9 @@ use crate::layers::cache_tile_reader::{
     AGS_SERVER_CONNECTION_NAME, AgsServerConnectionName10_1, read_ags_server_connection_name_body,
 };
 use crate::layers::feature_layer::FEATURE_LAYER_CLASS_ID;
+use crate::layers::feature_layer_tail::{
+    UID_CLASS_ID, UnkeyedUidBody10_1, read_unkeyed_uid_body_10_1,
+};
 use crate::layers::layer_list::read_complete_layer_body_10_1;
 use crate::objects::display_color::{ColorSlot10_1, read_color_slot_10_1};
 use crate::objects::element_decor::{DecorKind10_1, DecorSlot10_1};
@@ -123,6 +126,20 @@ pub struct MapOptimizationExtension10_1 {
     pub string_6: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct LayoutPropertySetExtension10_1 {
+    /// 在原扩展序列中的零基索引。
+    pub index: usize,
+    pub body: PropertySetObjectStream10_1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LayoutUidExtension10_1 {
+    /// 在原扩展序列中的零基索引。
+    pub index: usize,
+    pub body: UnkeyedUidBody10_1,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpaqueLayoutExtension10_1 {
     /// 在原扩展序列中的零基索引。
@@ -197,6 +214,8 @@ pub struct PageLayoutTail10_1 {
     pub version_8_short: Option<u16>,
     pub version_9_shorts: Option<[u16; 2]>,
     pub optimization_extensions: Vec<MapOptimizationExtension10_1>,
+    pub property_set_extensions: Vec<LayoutPropertySetExtension10_1>,
+    pub uid_extensions: Vec<LayoutUidExtension10_1>,
     pub opaque_extensions: Vec<OpaqueLayoutExtension10_1>,
     pub version_11_slot: Option<ObjectEntry10_1>,
     pub page_index: Option<Box<PageIndex10_1>>,
@@ -527,22 +546,26 @@ fn read_extension(
     })
 }
 
+#[derive(Default)]
+struct LayoutExtensions10_1 {
+    optimization: Vec<MapOptimizationExtension10_1>,
+    property_sets: Vec<LayoutPropertySetExtension10_1>,
+    uids: Vec<LayoutUidExtension10_1>,
+    opaque: Vec<OpaqueLayoutExtension10_1>,
+}
+
 fn read_extensions(
     r: &mut Reader<'_>,
     max: usize,
     refs: &mut RefTable10_1,
-) -> io::Result<(
-    Vec<MapOptimizationExtension10_1>,
-    Vec<OpaqueLayoutExtension10_1>,
-)> {
+) -> io::Result<LayoutExtensions10_1> {
     const HEADER_SIZE: usize = 24;
     let n = (r.read_u32_le()? as i32).max(0) as usize;
     if n > max.min(r.remaining()) / HEADER_SIZE {
         return Err(invalid("布局扩展计数超过剩余字节或资源限额"));
     }
     let mut budget = max - n * HEADER_SIZE;
-    let mut optimization = Vec::new();
-    let mut opaque = Vec::new();
+    let mut extensions = LayoutExtensions10_1::default();
     for index in 0..n {
         let size = u64::from_le_bytes(r.read_bytes(8)?.try_into().unwrap());
         let size = usize::try_from(size)
@@ -552,21 +575,36 @@ fn read_extensions(
         budget -= size;
         let class_id: [u8; 16] = r.read_bytes(16)?.try_into().unwrap();
         let mut body = r.read_region(size)?;
-        if class_id != OPTIMIZATION_EXTENSION || size == 0 {
-            // LayerLib 在类不可实例化时按长度跳过，零长度也不调用 Load。
-            opaque.push(OpaqueLayoutExtension10_1 {
+        match (class_id, size) {
+            (OPTIMIZATION_EXTENSION, 1..) => extensions
+                .optimization
+                .push(read_extension(&mut body, max, refs)?),
+            (PROPERTY_SET_CLASS_ID, 1..) => {
+                extensions
+                    .property_sets
+                    .push(LayoutPropertySetExtension10_1 {
+                        index,
+                        body: read_property_set_object_stream_10_1(&mut body, max, refs)?,
+                    })
+            }
+            (UID_CLASS_ID, 1..) => extensions.uids.push(LayoutUidExtension10_1 {
                 index,
-                class_id,
-                body: body.read_bytes(size)?.to_vec(),
-            });
-            continue;
+                body: read_unkeyed_uid_body_10_1(&mut body)?,
+            }),
+            _ => {
+                // LayerLib 在类不可实例化时按长度跳过，零长度也不调用 Load。
+                extensions.opaque.push(OpaqueLayoutExtension10_1 {
+                    index,
+                    class_id,
+                    body: body.read_bytes(size)?.to_vec(),
+                });
+            }
         }
-        optimization.push(read_extension(&mut body, max, refs)?);
         if body.remaining() != 0 {
             return Err(invalid("PageLayout 扩展体未完整消费声明范围"));
         }
     }
-    Ok((optimization, opaque))
+    Ok(extensions)
 }
 
 fn read_page_index(
@@ -797,10 +835,10 @@ pub fn read_page_layout_tail_10_1(
     } else {
         None
     };
-    let (optimization_extensions, opaque_extensions) = if version >= 10 {
+    let extensions = if version >= 10 {
         read_extensions(&mut r, max, &mut t)?
     } else {
-        (Vec::new(), Vec::new())
+        LayoutExtensions10_1::default()
     };
     let (version_11_slot, page_index_reference_suffix) = if version >= 11 {
         let (slot, suffix) = read_version_11_slot(&mut r, &mut t, max, &is_root_map)?;
@@ -860,8 +898,10 @@ pub fn read_page_layout_tail_10_1(
         version_6_long,
         version_8_short,
         version_9_shorts,
-        optimization_extensions,
-        opaque_extensions,
+        optimization_extensions: extensions.optimization,
+        property_set_extensions: extensions.property_sets,
+        uid_extensions: extensions.uids,
+        opaque_extensions: extensions.opaque,
         version_11_slot: version_11_slot.as_ref().map(|slot| slot.entry),
         page_index: version_11_slot.and_then(|slot| slot.body).map(Box::new),
         page_index_reference_suffix,

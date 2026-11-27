@@ -637,3 +637,30 @@ MapOptimizationLayoutExtension，未见其他类或不透明条目。
 在 `0x786c245b` 查询 IUnknown 并于 `0x786c247e` 加入布局数组。
 Rust 按声明体长限制读取范围，以便检查对象体边界。尚未发现其他
 实际写出的内置扩展类，ArcMap/QGIS 人工验收未执行。
+
+### 布局扩展中的 PropertySet
+
+在 32 位 Wine 中，通过 SystemCore 的类工厂创建空 PropertySet，
+将它作为唯一元素传给 10.1.0.3035 LayerLib.dll 的
+`ExtensionHelper::SaveExtensions`（`0x786c1cf0`，SHA-256
+`55514f054c9e4827d773cf1a9b9a83e7c41c483f73758965244625165f330e02`）。
+原生函数返回 S_OK，写出 34 字节：数量 1、体长 6、PropertySet CLSID，
+以及版本 1 和计数 0。扩展头没有对象键。
+
+Rust 在布局扩展的声明区间内复用 PropertySet 读取器，保留扩展索引，
+并要求完整消费。用原生记录构造布局 v11 回归，验证后继槽、引用表和
+体长截短时的回滚。真实工程中的 PropertySet 扩展和 ArcMap/QGIS
+人工验收尚未验证。
+
+### 布局扩展中的 UID
+
+沿用 PropertySet 探针的同版 LayerLib.dll，在 32 位 Wine 中将
+SystemCore 类工厂创建的 UID 交给 `ExtensionHelper::SaveExtensions`
+（`0x786c1cf0`）。保存返回 S_OK 并写出 51 字节。扩展序列含一条记录，
+声明体长 23，UID CLSID 后直接写入版本 1、标志、GUID 和末尾 int32。
+本次探针后三个字段为空值。
+
+Rust 与普通 UID 共用持久化字段读取器，保留扩展索引。
+布局扩展头不使用 ObjectStream 键。构造回归验证原生字节、后继槽、
+短体和声明范围内的多余字节。真实工程宿主及 ArcMap/QGIS 人工
+验收仍待验证。
