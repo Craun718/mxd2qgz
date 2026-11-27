@@ -411,3 +411,30 @@ IName::Open 结果待验证。
 在 Load `0x7c9e2e70` 直接返回 E_FAIL。两者均无可供格网读取的新对象体。
 构造测试确认读取器保留原始类和键作为停止点，且不消费紧接的格网字符串
 或提交新键。结论限于所核对的内置实现，真实格网宿主仍待验证。
+
+### 叠加格网的 GPCompositeDataTypeName
+
+GpObjects.dll 10.1.0.3035 的 QI `0x7469fed0` 提供 IName，
+符合 CustomOverlayGrid::Load 在 `0x7954ead4` 的请求。
+格网来源槽复用 [Load `0x746a04a0` 的复合类型名称读取器](mxd-terra-round9-bookmark.md#gpcompositedatatypename)，
+沿用嵌套 IGPDataTypeName 的类检查和深度限制。构造用例验证外层与
+成员键、后续格网编号的起点和截断回滚。该证据覆盖读取接口，
+真实格网保存宿主、打开结果与 ArcMap/QGIS 人工验收仍待验证。
+
+### 叠加格网的 GPSAGeoDataTypeName
+
+GpRasterFunctions.dll 10.1.0.3035 的 QI `0x748974c0`
+提供格网 Load 所请求的 IName。名称槽复用
+[Load `0x74897860` 的读取器](mxd-terra-round9-bookmark.md#gpsageodatatypename)，
+支持旧成员数组和 v2 域槽。构造用例验证旧成员键、v2 空域、
+后继格网编号及截断回滚。真实格网宿主和 ArcMap/QGIS
+人工验收仍待验证。
+
+### 叠加格网的 GPGraphDataTableTypeName
+
+GpObjects.dll 10.1.0.3035 的 QI `0x746e32d0` 提供 IName。
+所以 CustomOverlayGrid 的 `0x7954ead4` 可按 IName 请求该对象。
+格网和书签现共用 [GeoprocessingLib Load `0x71d1b3b0` 对应的读取器](mxd-terra-round9-bookmark.md#gpgraphdatatabletypename)，
+按版本读取四条字符串及 IUID。构造槽验证非空字符串、UID 新键、
+后继格网编号起点和短读回滚。真实布局的名称来源及 ArcMap/QGIS
+人工验收仍待验证。

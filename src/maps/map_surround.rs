@@ -10765,7 +10765,24 @@ pub(crate) fn read_gp_multi_value_type_name_body_10_1(
     })
 }
 
-fn read_gp_composite_data_type_name_body_10_1(
+pub(crate) fn read_gp_graph_data_table_type_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<BookmarkNameEntry10_1> {
+    Ok(BookmarkNameEntry10_1::GpGraphDataTableTypeName {
+        version: read_gp_name_version(reader, 1, "GPGraphDataTableTypeName")?,
+        strings: [
+            read_string_10_1(reader, max_bytes)?,
+            read_string_10_1(reader, max_bytes)?,
+            read_string_10_1(reader, max_bytes)?,
+            read_string_10_1(reader, max_bytes)?,
+        ],
+        type_uid: read_gp_uid_slot(reader, table)?,
+    })
+}
+
+pub(crate) fn read_gp_composite_data_type_name_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
@@ -10801,7 +10818,7 @@ fn read_gp_composite_data_type_name_body_10_1(
     })
 }
 
-fn read_gp_sa_geo_data_type_name_body_10_1(
+pub(crate) fn read_gp_sa_geo_data_type_name_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
@@ -11482,16 +11499,7 @@ fn read_bookmark_name_slot_10_1(
         ObjectEntry10_1::NewObject {
             class_id: GP_GRAPH_DATA_TABLE_TYPE_NAME_CLASS_ID,
             ..
-        } => BookmarkNameEntry10_1::GpGraphDataTableTypeName {
-            version: read_gp_name_version(reader, 1, "GPGraphDataTableTypeName")?,
-            strings: [
-                read_string_10_1(reader, max_bytes)?,
-                read_string_10_1(reader, max_bytes)?,
-                read_string_10_1(reader, max_bytes)?,
-                read_string_10_1(reader, max_bytes)?,
-            ],
-            type_uid: read_gp_uid_slot(reader, table)?,
-        },
+        } => read_gp_graph_data_table_type_name_body_10_1(reader, max_bytes, table)?,
         ObjectEntry10_1::NewObject {
             class_id: GP_COMPOSITE_DATA_TYPE_NAME_CLASS_ID,
             ..
