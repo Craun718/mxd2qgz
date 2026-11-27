@@ -117,3 +117,17 @@ SHA-256 去重，检查了 117 份文件的 `/Version`。本次未发现候选
 的上限 51。两个工程的布局及键表复用尚待用对应版本的读取证据核对。
 原始文件包含本地业务数据，本记录仅保留字节边界和结果计数。
 ArcMap 10.1 和 QGIS 人工验证尚未进行。
+
+### Maplex 修复后的本地跨流复核
+
+用当前 CLI 复跑[补充筛查的十份工程](mxd-terra-round9-old.md#本地工程补充筛查)。
+八份成功工程的 /Version 均为 10.1 / 19，根 Map、PageLayout
+和已解析 MapFrame 的对象版本分别为 51、15、4。逐份将 CLI 报告
+的对象终点与 extract 提取的流长度比较。Map 对象结束后恰剩根尾
+LONG，PageLayout 对象结束后恰剩打印设置 short。八份均读到
+打印设置标记，且 MapFrame 中的 IMap 回引与根 Map 键 29 一致。
+另两份在 Map v52 处返回 10.1 版本门错误。
+
+这批工程增加了 Map 边框后载有内嵌 FeatureLayer 和 Maplex
+放置属性时的跨流证据。尚无其他版本组合的新证据，ArcMap/QGIS
+人工验收尚未进行。
