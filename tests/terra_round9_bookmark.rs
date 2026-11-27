@@ -3702,6 +3702,45 @@ fn feature_bookmark_reads_gp_data_type_name_versioned_uid_slots() {
 }
 
 #[test]
+fn feature_bookmark_reads_gp_server_toolbox_name_versions() {
+    use mxd2qgz::maps::map_surround::GP_SERVER_TOOLBOX_NAME_CLASS_ID;
+
+    for version in [0_i16, 1, 2, 3] {
+        let mut bytes = bookmark_header_10_1(&GP_SERVER_TOOLBOX_NAME_CLASS_ID, 17);
+        bytes.extend(version.to_le_bytes());
+        bytes.extend([1, 0, 0, 0, b's', 0, 0, 0]);
+        let strings = ["a", "b", "c", "示例", "e"];
+        if version >= 2 {
+            for text in strings {
+                bytes.extend(bookmark_string_10_1(text));
+            }
+        }
+        bytes.extend(bookmark_string_10_1("书签"));
+        let end = bytes.len();
+        bytes.push(0xa5);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+        assert!(matches!(
+            result.name_object,
+            BookmarkNameEntry10_1::GpServerToolboxName { version: found, name, connection_strings }
+                if found == version && name == "s"
+                    && connection_strings == (version >= 2).then(|| strings.map(String::from))
+        ));
+        assert_eq!(result.name, "书签");
+        assert_eq!(reader.position(), end);
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+}
+
+#[test]
 fn feature_bookmark_reads_gp_python_toolbox_workspace_reference() {
     use mxd2qgz::maps::map_surround::{GP_PYTHON_TOOLBOX_NAME_CLASS_ID, GP_TOOL_NAME_CLASS_ID};
     use mxd2qgz::objects::workspace_name::WORKSPACE_NAME_CLASS_ID;

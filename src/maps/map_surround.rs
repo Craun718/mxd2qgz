@@ -2621,6 +2621,10 @@ pub const GP_MULTI_VALUE_TYPE_NAME_CLASS_ID: [u8; 16] = [
     0x70, 0x33, 0xde, 0x35, 0x8e, 0x67, 0xfb, 0x40, 0x9b, 0x7e, 0xff, 0xaf, 0x08, 0x22, 0x4b, 0x99,
 ];
 
+pub const GP_SERVER_TOOLBOX_NAME_CLASS_ID: [u8; 16] = [
+    0x91, 0x5e, 0xee, 0x8f, 0x87, 0xd6, 0xbf, 0x41, 0x85, 0x99, 0x6c, 0x9b, 0x36, 0x3e, 0x93, 0x4f,
+];
+
 pub const GP_PYTHON_TOOLBOX_NAME_CLASS_ID: [u8; 16] = [
     0x54, 0x59, 0x54, 0xfd, 0xe2, 0x8c, 0xe0, 0x4b, 0x87, 0x5b, 0x12, 0xe8, 0x4b, 0x80, 0xb2, 0x52,
 ];
@@ -2845,6 +2849,11 @@ pub enum BookmarkNameEntry10_1 {
         version: i16,
         raw_column_count: i32,
         columns: Vec<GpValueTableColumnType10_1>,
+    },
+    GpServerToolboxName {
+        version: i16,
+        name: String,
+        connection_strings: Option<[String; 5]>,
     },
     GpPythonToolboxName {
         version: i16,
@@ -10153,6 +10162,30 @@ fn read_bookmark_name_slot_10_1(
         } => BookmarkNameEntry10_1::TerrainName(Box::new(read_terrain_name_body_10_1(
             reader, max_bytes, table,
         )?)),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_SERVER_TOOLBOX_NAME_CLASS_ID,
+            ..
+        } => {
+            let version = read_gp_name_version(reader, 3, "GPServerToolboxName")?;
+            let name = read_bstr_string_10_1(reader, max_bytes)?;
+            // 保留流中的连接文本，读取结构时不解释凭据字段。
+            let connection_strings = if version >= 2 {
+                Some([
+                    read_string_10_1(reader, max_bytes)?,
+                    read_string_10_1(reader, max_bytes)?,
+                    read_string_10_1(reader, max_bytes)?,
+                    read_string_10_1(reader, max_bytes)?,
+                    read_string_10_1(reader, max_bytes)?,
+                ])
+            } else {
+                None
+            };
+            BookmarkNameEntry10_1::GpServerToolboxName {
+                version,
+                name,
+                connection_strings,
+            }
+        }
         ObjectEntry10_1::NewObject {
             class_id: GP_PYTHON_TOOLBOX_NAME_CLASS_ID,
             ..

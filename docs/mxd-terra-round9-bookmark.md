@@ -4958,3 +4958,17 @@ Save `0x74f86ed0` 按相同顺序写出版本、BSTR 和对象。
 读取器复用工具箱的 IWorkspaceName 槽。构造书签验证已登记
 工作空间回引、错误接口回引及截断回滚。真实 MXD 宿主及
 ArcMap/QGIS 人工验收待查。
+
+#### GPServerToolboxName
+
+同摘要的 GpToolbox.dll 10.1.0.3035 中，RTTI 主表
+`0x74ff8394` 的 QI `0x74fab490` 接受 IName，IPersistStream
+视图在 +0x24。表 `0x74ff8478` 中 GetClassID `0x74fab110`
+返回 `8FEE5E91-D687-41BF-8599-6C9B363E934F`。
+Load `0x74fabad0` 检查有符号 short 上限 3，随后读取 BSTR。
+v2 起从 `0x74fabb7d` 到 `0x74fabbbe` 连读四个 AfCore String，
+在 `0x74fabc6b` 读第五个。v3 在第四个字符串之后调用
+Encrypt::FromString 和 DecryptString 处理内存中的文本，
+这些调用不消费 IStream。Save `0x74fabcb0` 对应这两处版本门。
+Rust 保留原始字符串，不处理连接凭据。构造书签验证 v0–v3、
+后继字段及截断回滚。真实 MXD 宿主与 ArcMap/QGIS 人工验收待查。
