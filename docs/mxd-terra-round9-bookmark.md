@@ -5002,3 +5002,27 @@ short 并比较该上限，随后在 `0x10116193` 以 IUnknown IID
 读取器复用 LocatorWorkspaceName 已支持的持久化 IUnknown 子集。
 构造书签覆盖 UID 子对象、后继字段及截断回滚。真实拖放生成的
 子类分布、MXD 宿主和 ArcMap/QGIS 人工验收待查。
+
+##### 拖放名称的模型进程来源
+
+同版 ToolboxExt.dll 的一条创建路径在 `0x100e6943` 调用
+`0x100f2710` 取得对象，随后在 `0x100e695b` 创建
+GPDragDropObjectName，并于 `0x100e699e` 通过 +0x10 的
+接口槽传入取得的对象。该槽对应 `0x10116050`，替换对象
++0x20 的成员。Save `0x1011620c` 写出该成员。
+取对象的辅助函数在 `0x100f27be` 传入
+`890D0DD1-0F70-4235-9D01-09DE87EC949C` 执行 QI，
+10.1 esriGeoprocessing 类型库将其定名为 IMdProcess。
+这是模型进程分支的静态证据，函数还有回退路径。
+
+MdObjects.dll 10.1.0.3035 的 SHA-256 为
+`4184aa3908adf816e82c33b76d5835516c84c0393c01a8e06b1cfe3b9dce3099`。
+MdProcess 的 QI `0x7a139ac0` 首先比较该 IID。其持久化表
+`0x7a15ca20` 的 GetClassID `0x7a1396a0` 返回
+`3ADA678C-034D-497C-B893-7ED9E40CA9D0`。Load
+`0x7a13bf90` 检查有符号 short 上限 4，先调用
+`0x7a1285f0`，随后于 `0x7a13c023` 读取 IName。
+拖放名称的流内子对象没有外层体长，需要继续追踪 MdProcess
+基类和后继字段，才能确定下一个对象边界。现有有界进程载荷
+的保留逻辑见 [GPGroupLayer 取证](mxd-luna-deep-layer-masking-20261118.md)。
+真实拖放载荷、回退分支对应的具体类和 ArcMap 人工检查待验证。
