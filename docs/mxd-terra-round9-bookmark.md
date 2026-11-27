@@ -1919,6 +1919,76 @@ PE RTTI 将三个工厂的 IGPDataTypeFactory 表定位到对象 +0x10。
 现有 GPMultiValue 读取器覆盖这 11 条记录的名称类。
 该结论来自静态反汇编，尚无真实 MXD 或 ArcMap 人工验证。
 
+##### 地统计数据类型名称工厂
+
+GPGACore.dll 的 PE 版本资源为 10.1.0.3035，SHA-256 为
+`40611a8224229dfb77529ba0954508932e8f90c142e729a33e63ebf6d15a31e1`。
+主 QI `0x74241bf0` 匹配 `0x7425e7a0` 的 IGPDataTypeFactory IID，
+返回对象 +0x10。构造指令 `0x74241b8a` 在该视图安装虚表
+`0x7425e6d0`，其 +0x14 名称槽为 `0x74241d90`。
+
+查找例程 `0x74241940` 遍历 `0x742663dc..0x74266418` 的
+三条 20 字节记录。选中后名称槽在 `0x74241df1` 调用
+`0x742419f0`，后者经 `0x74242d60` 创建名称对象。
+创建点 `0x74242d8b` 固定传入 `0x7425e780` 的
+GPDataTypeName CLSID `960CB02A-8CAF-442B-ACF7-6B6256FC19F9`。
+因此这三条记录均由现有 GPMultiValue 类型槽读取器覆盖。
+证据来自该 PE 的数据表和 objdump 指令。真实 MXD 宿主、
+其他 FullName 实现及 ArcMap/QGIS 人工验收仍待核实。
+
+##### AIS 模块的工厂 IID 来源
+
+在同批 10.1 Desktop 提取目录的 1,115 个 DLL 中查找
+IGPDataTypeFactory IID `1AFF0D88-E9B8-4571-8DF1-217DCAF48A50`
+的 COM 字节序，24 个 DLL 命中。与栅格相关的三个 AIS 模块
+各自仅命中英语 MSFT 类型库资源 TYPELIB/1/1033 内偏移
+`0x1cd34`。三个文件的 PE 版本资源均为 10.1.0.3035。
+
+| 模块 | IID 地址 | SHA-256 |
+| --- | --- | --- |
+| AISClient | `0x6a9c2e74` | `6bd2f54015f34e9e22700527d6a37eccc533a0b9f8913a916cbce2e5d7265147` |
+| AISGlobalLib | `0x6aae2e74` | `67509c9669ba8e80957e72e6630cd0d7e34b1c561f3c9ff1dd7a0cf9730eafb4` |
+| AISServerManager | `0x6abdfe74` | `23dc614aee0d4fdc13f32226f95cd0991d780d35b10fc82d5baaa10f70425d05` |
+
+三个模块的代码未发现对对应 IID 地址的直接引用。地统计模块的
+第二处 IID `0x742602c8` 则有代码引用，`0x74255dd8` 对
+`0x74255dab` 创建的实例调用 QueryInterface。它是接口请求处，
+已知名称生产者仍由上节的工厂虚表定位。上述结果排除了把 AIS
+类型库中的常量当作新增持久化类的依据。间接注册、外部实现、
+真实 MXD 宿主及 ArcMap/QGIS 人工验收仍待核对。
+
+##### Desktop 工厂类注册与运行时枚举入口
+
+解析同介质 `esri.clsid.ecfg` 解包后的 XML（SHA-256
+`71179ed661d9baa9366d603eb561141711ab0520b10c3c3a506a3f9003803e01`），
+按 Class 节点的 progID 筛出 18 个名称包含 DataTypeFactory 的类。
+它们分布在 CadastralFabric、FeatureDataElements、FileDataElements、
+GPGACore、GPSACore、GdbNetwork、Geocoding、GpCoreFunctionFactories、
+GpNaFunctionFactories、GpObjects、GpTinFunctionFactories、NetworkAnalyst、
+RasterDB 和 SchematicGPFactories，均已在上文核对名称创建路径。
+其中 GPGADataTypeFactory 的注册 CLSID
+`32DDD54C-156B-4117-9E3B-73CB2112D9A6` 与 GPGACore 代码传入
+`0x74255dab` 的 `0x7425e850` 常量一致。
+
+GeoProcessor.dll 10.1.0.3035（SHA-256
+`ec315d4eeddb93d18c9238af39eca758a9a1c8f7a19e7bdff40751ade9e5f24d`）
+在 `0x71f1adce` 构造 CategoryMgr，使用 `0x71f79830` 的类别
+`CDA62C78-1221-4246-A622-61C354091657`。随后在
+`0x71f1ae04` 调 CreateNext，传入 `0x71f7b648` 的
+IGPDataTypeFactory IID。在另一路径也于 `0x71f287fc` 调用同一
+CreateNext 导入。类注册 XML 的名称筛选覆盖这批已知类。
+从同版 Desktop `Setup1.cab` 提取 `esri.catid.ecfg`（SHA-256
+`f208eee75f988f36228dc679b790727d23e67d2a79c4013350815600adfed370`），
+解包得到 `esri.catid.xml`（SHA-256
+`7b0d40146c6cb290a7c02434b3516bc5f01a3517689310a2edf219c68b505d0b`）。
+按 CATID 精确定位单个 Category 节点，再按 CLSID 与上面的
+类表比较。该类别有 19 个成员，完整包含名称筛出的 18 个工厂，
+唯一额外成员是 `038ADFFD-264F-46B9-A051-FC31E29FB1FB`，
+对应已核对的 FMEDatasetTypeFactory 转发入口。其可选载荷中的
+该工厂方法在同介质构建中不填充名称输出，详见本节前文。
+这闭合了 Desktop 基线介质声明的类别成员清单。实际安装的动态注册、
+其他 FullName 实现、真实 MXD 和 ArcMap/QGIS 人工验收仍待核对。
+
 #### GPValueTable
 
 GpObjects.dll 10.1.0.3035 的 RTTI `0x74801cd4` 对应持久化虚表

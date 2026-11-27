@@ -1260,6 +1260,10 @@
       - [x] 接入 GPValueTable 的列类型名称与按行存储的单元格。[取证](docs/mxd-terra-round9-bookmark.md#gpvaluetable)
       - [x] 接入 GPValueTableTypeName 的列定义及版本化子槽。[取证](docs/mxd-terra-round9-bookmark.md#gpvaluetabletypename)
       - [x] 接入 GPMultiValue 的空类型槽和递归 IGPValue 列表。[取证](docs/mxd-terra-round9-bookmark.md#gpmultivalue)
+      - [x] 核对地统计数据类型工厂的三类名称记录均使用已支持的 GPDataTypeName。[原生取证](docs/mxd-terra-round9-bookmark.md#地统计数据类型名称工厂)
+      - [x] 核对三个 AIS 模块中的工厂 IID 均来自类型库资源。[原生取证](docs/mxd-terra-round9-bookmark.md#ais-模块的工厂-iid-来源)
+      - [x] 核对 Desktop 类注册 XML 中的 18 个数据类型工厂及 GeoProcessor 的运行时枚举入口。[原生取证](docs/mxd-terra-round9-bookmark.md#desktop-工厂类注册与运行时枚举入口)
+      - [x] 按 CATID 核对 Desktop 介质声明的 19 个数据类型工厂成员。[安装介质取证](docs/mxd-terra-round9-bookmark.md#desktop-工厂类注册与运行时枚举入口)
       - [ ] 补齐 GPMultiValue 类型槽中的非空 IName 类体。
       - [x] 接入 GPDragDropObjectName 中无参数、无环境子对象的 MdProcess 版本化布局。[取证](docs/mxd-terra-round9-bookmark.md#拖放名称的模型进程来源)
       - [x] 接入 MdProcess 基类的 GPMessages 和 GPMessage 对象体。[取证](docs/mxd-terra-round9-bookmark.md#模型进程的消息列表)
