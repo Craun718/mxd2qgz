@@ -2621,6 +2621,9 @@ pub const GP_MULTI_VALUE_TYPE_NAME_CLASS_ID: [u8; 16] = [
     0x70, 0x33, 0xde, 0x35, 0x8e, 0x67, 0xfb, 0x40, 0x9b, 0x7e, 0xff, 0xaf, 0x08, 0x22, 0x4b, 0x99,
 ];
 
+pub const GP_GRAPH_DATA_TABLE_TYPE_NAME_CLASS_ID: [u8; 16] = [
+    0x15, 0x48, 0x4f, 0x6b, 0xb3, 0x00, 0x5f, 0x4b, 0xba, 0x22, 0xe7, 0x63, 0x95, 0x22, 0x73, 0xe5,
+];
 pub const GP_COMPOSITE_DATA_TYPE_NAME_CLASS_ID: [u8; 16] = [
     0x84, 0x16, 0x9f, 0x40, 0x68, 0xa9, 0xed, 0x43, 0x9c, 0x7a, 0x74, 0x7b, 0x6e, 0x66, 0xca, 0xdd,
 ];
@@ -2792,6 +2795,11 @@ pub enum BookmarkNameEntry10_1 {
         version: i16,
         raw_column_count: i32,
         columns: Vec<GpValueTableColumnType10_1>,
+    },
+    GpGraphDataTableTypeName {
+        version: i16,
+        strings: [String; 4],
+        type_uid: RuleSlot10_1<UidBody10_1>,
     },
     GpCompositeDataTypeName {
         version: i16,
@@ -9170,12 +9178,14 @@ fn is_gp_data_type_name(name: &BookmarkNameEntry10_1) -> bool {
             | BookmarkNameEntry10_1::GpDataTypeName(_)
             | BookmarkNameEntry10_1::GpMultiValueTypeName { .. }
             | BookmarkNameEntry10_1::GpCompositeDataTypeName { .. }
+            | BookmarkNameEntry10_1::GpGraphDataTableTypeName { .. }
             | BookmarkNameEntry10_1::GpValueTableTypeName { .. }
             | BookmarkNameEntry10_1::GpSaTopoFeaturesTypeName(_)
             | BookmarkNameEntry10_1::BackReference {
                 class_id: GP_DATA_TYPE_NAME_CLASS_ID
                     | GP_MULTI_VALUE_TYPE_NAME_CLASS_ID
                     | GP_COMPOSITE_DATA_TYPE_NAME_CLASS_ID
+                    | GP_GRAPH_DATA_TABLE_TYPE_NAME_CLASS_ID
                     | GP_VALUE_TABLE_TYPE_NAME_CLASS_ID
                     | GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID,
                 ..
@@ -9454,11 +9464,13 @@ pub(crate) fn read_gp_multi_value_type_name_body_10_1(
             | BookmarkNameEntry10_1::GpSaTopoFeaturesTypeName(_)
             | BookmarkNameEntry10_1::GpMultiValueTypeName { .. }
             | BookmarkNameEntry10_1::GpCompositeDataTypeName { .. }
+            | BookmarkNameEntry10_1::GpGraphDataTableTypeName { .. }
             | BookmarkNameEntry10_1::GpValueTableTypeName { .. }
             | BookmarkNameEntry10_1::BackReference {
                 class_id: GP_DATA_TYPE_NAME_CLASS_ID
                     | GP_MULTI_VALUE_TYPE_NAME_CLASS_ID
                     | GP_COMPOSITE_DATA_TYPE_NAME_CLASS_ID
+                    | GP_GRAPH_DATA_TABLE_TYPE_NAME_CLASS_ID
                     | GP_VALUE_TABLE_TYPE_NAME_CLASS_ID
                     | GP_FUNCTION_NAME_CLASS_ID
                     | GP_SA_TOPO_FEATURES_TYPE_NAME_CLASS_ID,
@@ -9905,6 +9917,19 @@ fn read_bookmark_name_slot_10_1(
         } => BookmarkNameEntry10_1::TerrainName(Box::new(read_terrain_name_body_10_1(
             reader, max_bytes, table,
         )?)),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_GRAPH_DATA_TABLE_TYPE_NAME_CLASS_ID,
+            ..
+        } => BookmarkNameEntry10_1::GpGraphDataTableTypeName {
+            version: read_gp_name_version(reader, 1, "GPGraphDataTableTypeName")?,
+            strings: [
+                read_string_10_1(reader, max_bytes)?,
+                read_string_10_1(reader, max_bytes)?,
+                read_string_10_1(reader, max_bytes)?,
+                read_string_10_1(reader, max_bytes)?,
+            ],
+            type_uid: read_gp_uid_slot(reader, table)?,
+        },
         ObjectEntry10_1::NewObject {
             class_id: GP_COMPOSITE_DATA_TYPE_NAME_CLASS_ID,
             ..

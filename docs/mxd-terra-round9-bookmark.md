@@ -4854,3 +4854,21 @@ Load `0x746a04a0` 读取 16 位版本但未比较该值，随后读取
 Rust 在共享名称槽中保留版本、原始计数、成员类型及回引。
 构造书签经 GPMultiValue 实际类型槽覆盖内嵌成员、回引、
 后继记录和截断回滚。真实 MXD 宿主与 ArcMap/QGIS 人工验收待查。
+
+#### GPGraphDataTableTypeName
+
+同摘要的 GpObjects.dll 10.1.0.3035 中，RTTI 主表
+`0x747b065c` 的 QI `0x746e32d0` 接受 IName、IGPName
+及 IGPDataTypeName。持久化表 `0x747b0714` 经导入跳板
+转到同版 GeoprocessingLib.dll 的 GPDataTableTypeNameBase。
+GetClassID 从 `0x71d1b330` 经内部接口转到主表 +0x14
+的 `0x746e2f70`，返回 `0x747b0c30` 的
+`6B4F4815-00B3-4B5F-BA22-E763952273E5`。传到基类构造器
+的 `0x747ad008` GUID 属于工厂字段。
+
+基类 Load `0x71d1b3b0` 检查有符号 short 版本上限 1，
+再通过 AfCore String::Read 连读四个字符串，最后在
+`0x71d1b442` 按 IUID 读对象。Save `0x71d1b4a0` 写出
+相同的字段顺序。构造用例覆盖多值类型槽内嵌对象、非空
+IUID、后续记录、回引和截断回滚。真实 MXD 宿主和
+ArcMap/QGIS 人工验收待查。
