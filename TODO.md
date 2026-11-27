@@ -1239,6 +1239,7 @@
       - [x] 接入 GPValueTableTypeName 的列定义及版本化子槽。[取证](docs/mxd-terra-round9-bookmark.md#gpvaluetabletypename)
       - [x] 接入 GPMultiValue 的空类型槽和递归 IGPValue 列表。[取证](docs/mxd-terra-round9-bookmark.md#gpmultivalue)
       - [ ] 补齐 GPMultiValue 类型槽中的非空 IName 类体。
+      - [x] 接入共享 IName 槽中的 GPToolboxName 版本化对象体。[取证](docs/mxd-terra-round9-bookmark.md#gptoolboxname)
       - [x] 接入共享 IName 槽中的 GPToolName 版本化对象体。[取证](docs/mxd-terra-round9-bookmark.md#gptoolname)
       - [x] 接入共享 IName 槽中的 GPInMemoryToolboxName。[取证](docs/mxd-terra-round9-bookmark.md#gpinmemorytoolboxname)
       - [x] 接入 GPMultiValue 类型槽中的 GPSAGeoDataTypeName 两种版本布局。[取证](docs/mxd-terra-round9-bookmark.md#gpsageodatatypename)

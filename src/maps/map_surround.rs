@@ -2621,6 +2621,19 @@ pub const GP_MULTI_VALUE_TYPE_NAME_CLASS_ID: [u8; 16] = [
     0x70, 0x33, 0xde, 0x35, 0x8e, 0x67, 0xfb, 0x40, 0x9b, 0x7e, 0xff, 0xaf, 0x08, 0x22, 0x4b, 0x99,
 ];
 
+pub const GP_TOOLBOX_NAME_CLASS_ID: [u8; 16] = [
+    0xb2, 0xde, 0xf8, 0xfd, 0x91, 0xeb, 0x9d, 0x47, 0xa4, 0x10, 0x85, 0x4b, 0xa8, 0xef, 0x63, 0x49,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpToolboxName10_1 {
+    pub version: i16,
+    pub name: String,
+    pub raw_kind: Option<i32>,
+    pub legacy_path: Option<String>,
+    pub workspace: RuleSlot10_1<WorkspaceNamePrefix10_1>,
+}
+
 pub const GP_TOOL_NAME_CLASS_ID: [u8; 16] = [
     0x82, 0x23, 0xe3, 0x17, 0x63, 0x8d, 0x38, 0x44, 0xbb, 0xaf, 0xd3, 0xc3, 0xa6, 0x69, 0x18, 0xb0,
 ];
@@ -2829,6 +2842,7 @@ pub enum BookmarkNameEntry10_1 {
         raw_column_count: i32,
         columns: Vec<GpValueTableColumnType10_1>,
     },
+    GpToolboxName(Box<GpToolboxName10_1>),
     GpToolName(Box<GpToolName10_1>),
     GpInMemoryToolboxName {
         version: i16,
@@ -9633,6 +9647,64 @@ fn read_gp_sa_geo_data_type_name_body_10_1(
     })
 }
 
+fn read_gp_toolbox_workspace_slot_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<RuleSlot10_1<WorkspaceNamePrefix10_1>> {
+    let offset = reader.position();
+    let entry = read_object_entry_10_1(reader, table)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if table.registered_class(key).unwrap_or(class_id) == WORKSPACE_NAME_CLASS_ID =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: WORKSPACE_NAME_CLASS_ID,
+            key,
+        } => {
+            let body = read_workspace_name_body_10_1(reader, max_bytes, table, key)?;
+            if let Some(stop) = &body.stop {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    format!(
+                        "工具箱 IWorkspaceName 槽 offset 0x{offset:x}: 对象体未读完（{stop:?}）"
+                    ),
+                ));
+            }
+            Some(Box::new(body))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                format!("工具箱 IWorkspaceName 槽 offset 0x{offset:x}: 类未支持"),
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_gp_toolbox_name_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+) -> io::Result<GpToolboxName10_1> {
+    let version = read_gp_name_version(reader, 3, "GPToolboxName")?;
+    Ok(GpToolboxName10_1 {
+        version,
+        name: read_bstr_string_10_1(reader, max_bytes)?,
+        raw_kind: (version >= 2)
+            .then(|| reader.read_u32_le().map(|value| value as i32))
+            .transpose()?,
+        legacy_path: (version < 3)
+            .then(|| read_bstr_string_10_1(reader, max_bytes))
+            .transpose()?,
+        workspace: read_gp_toolbox_workspace_slot_10_1(reader, max_bytes, table)?,
+    })
+}
+
 fn read_gp_tool_name_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -10070,6 +10142,12 @@ fn read_bookmark_name_slot_10_1(
             class_id: TERRAIN_NAME_CLASS_ID,
             ..
         } => BookmarkNameEntry10_1::TerrainName(Box::new(read_terrain_name_body_10_1(
+            reader, max_bytes, table,
+        )?)),
+        ObjectEntry10_1::NewObject {
+            class_id: GP_TOOLBOX_NAME_CLASS_ID,
+            ..
+        } => BookmarkNameEntry10_1::GpToolboxName(Box::new(read_gp_toolbox_name_body_10_1(
             reader, max_bytes, table,
         )?)),
         ObjectEntry10_1::NewObject {

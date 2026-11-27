@@ -4926,3 +4926,19 @@ AfCore BSTR、LONG、IName 和 IUID。版本小于 2 时在
 Rust 保留旧 IUID 槽、标量与名称。构造书签覆盖 v0–v3、
 嵌套工具箱、IUID 回引和截断回滚。标量业务语义及真实 MXD
 宿主与 ArcMap/QGIS 人工验收待查。
+
+#### GPToolboxName
+
+同摘要的 GpToolbox.dll 10.1.0.3035 中，RTTI 主表
+`0x74ff9e90` 的 QI `0x74fc8350` 接受 IName，IPersistStream
+视图在 +0x24。表 `0x74ff9f58` 的 GetClassID `0x74fc8160`
+返回 `FDF8DEB2-EB91-479D-A410-854BA8EF6349`。
+Load `0x74fc8b40` 检查有符号 short 上限 3，然后读取 BSTR，
+v2 起在 `0x74fc8bc1` 读 LONG，v3 之前在 `0x74fc8bec`
+另读 BSTR，最后在 `0x74fc8c14` 请求 IWorkspaceName。
+其后是路径解析和工作空间恢复逻辑。Save `0x74fc9160`
+写出 v3 的 BSTR、LONG 和工作空间对象。
+
+构造书签覆盖 v0–v3、非空 WorkspaceName、错误接口类和
+逐字节截断回滚。其余 IWorkspaceName 类的宿主、真实 MXD
+及 ArcMap/QGIS 人工验收待查。
