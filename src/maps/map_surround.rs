@@ -11600,6 +11600,41 @@ mod tests {
     use super::*;
 
     #[test]
+    fn gp_range_domain_reads_keyed_toolbox_record() {
+        use crate::stream::variant_stream::VariantValue10_8;
+
+        // Desktop 10.8 Spatial Statistics Tools.tbx，/Tool27:0x3ae1。
+        // 只取范围域对象和后继 short，布局以 10.1 的 Load 为依据。
+        let mut bytes = GP_RANGE_DOMAIN_CLASS_ID.to_vec();
+        bytes.extend([
+            0x92, 0x00, 0x00, 0x00, 0x01, 0x00, 0x03, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x00, 0xf8, 0xff, 0x33, 0x26, 0xf5, 0x6b,
+            0x0c, 0x43, 0xff, 0xff,
+        ]);
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+
+        let domain = read_gp_topo_domain_slot_10_1(&mut reader, 4096, &mut refs, 0).unwrap();
+
+        assert_eq!(refs.registered_class(146), Some(GP_RANGE_DOMAIN_CLASS_ID));
+        assert_eq!(
+            domain.body.as_deref(),
+            Some(&GpTopoDomain10_1::Range {
+                version: 1,
+                flags: 3,
+                bounds: [
+                    VariantValue10_1::Scalar(VariantValue10_8::Raw8(0_f64.to_le_bytes())),
+                    VariantValue10_1::Scalar(VariantValue10_8::Raw8(
+                        999_999_999_999_999_f64.to_le_bytes()
+                    )),
+                ],
+            })
+        );
+        assert_eq!(reader.position(), 46);
+        assert_eq!(reader.read_u16_le().unwrap(), u16::MAX);
+    }
+
+    #[test]
     fn gp_raster_data_layer_reads_feature_drawing_with_label_classes() {
         for (version, placement_class) in [
             (0_i16, POINT_PLACEMENT_CLASS_ID),

@@ -950,6 +950,43 @@ GPRangeDomain 和底层 RangeDomain 的完整 CLSID，两组均
 无命中。该筛查只覆盖这些流中的明文标识，无法据此排除
 其他宿主的对象型端点。真实宿主和 ArcMap 人工验证仍开放。
 
+#### 工具箱流中的旧 GPRangeDomain 端点
+
+用 CLI inspect/extract 搜索参考样本及本地 10.1/10.8 提取
+资料中的 MXD、MXT、LYR、SXD、3DD 和 TBX。按整文件
+SHA-256 去重后有 246 份文件，读出 3,447 条至少 16 字节的流。
+搜到 25 处旧 GPRangeDomain CLSID，全部来自 Desktop 10.8
+工具箱。Data Management Tools（摘要前缀 `abb371cd2070`）
+的 /Tool324 有一处，Spatial Statistics Tools（`8ece4121efe9`）
+有 24 处。GdbCore RangeDomain CLSID 无匹配。
+
+按 10.1 Load 布局逐处对位。22 处在 CLSID 后紧接 short 1
+及 LONG 3，/Tool27、/Tool28、/Tool30 各有一处在两者之间
+多一个四字节值，符合带键前缀。所有候选的两个端点标签都是
+VT_R8，每项随八字节数值。这是局部字节对位，尚未逐个走通
+工具箱父记录的分派。结果为 10.8 介质交叉证据，其他对象端点
+与 ArcMap 10.1 人工验收待验证。
+
+#### 参数记录中的工具箱范围域
+
+以 Desktop 10.1 的 MSFT 类型库 GUID 表和名称表匹配
+上节 10.8 Spatial Statistics Tools 的两个范围域宿主。
+GeoprocessingLib.dll 10.1.0.3035 的 GPParameterBase::Load
+在 `0x71d749ac` 读依赖计数，在 `0x71d74a23` 读域对象。
+两份记录在 UID 之后都有两个定宽 LONG，第二个为零，
+与该顺序一致。
+
+| 流 | 参数入口 | 范围对象 | 端点与后继 |
+| --- | --- | --- | --- |
+| /Tool8 | `0x658` 为 GPParameter CLSID，紧随 short 7 | `0x773` 为 GPRangeDomain CLSID，`0x783` 为体 | VT_R8 的 1 与 100，`0x79d` 为后继 short，`0x79f` 为 GPLong CLSID |
+| /Tool27 | `0x3990` 为 MdParameter CLSID，键 143，随后 short 1、short 8 | `0x3ae1` 为 GPRangeDomain CLSID，键 146，`0x3af5` 为体 | VT_R8 的 0 与 999999999999999，`0x3b0f` 为后继 short，`0x3b11` 为 MdVariable CLSID，键 147 |
+
+这两个局部对位连接了参数域槽、范围体和后继值槽。
+/Tool27 的 48 字节片段（对象头、对象体和后继 short）已用于共享
+域槽的 Rust 回归，验证键 146、两个端点的原始值及 46 字节边界。
+/Tool27 的基类版本 8 超过 10.1 入口上限 7，完整参数体仍需
+额外的版本证据。工具箱顶层分派和 ArcMap 10.1 人工验收尚待核对。
+
 #### GPRangeDomain2 的持久化流要求
 
 FeatureDataElements.dll 10.1.0.3035（SHA-256
@@ -1363,6 +1400,31 @@ GUID，逐项与 Rust 新对象分派对比。两边各有 33 个 CLSID，集合
 且新对象与回引均支持这些类。此范围闭合了旧记录的公开域类型分派。
 编码值域中的其余 IGPValue 实现及范围域中其余未确认的 Variant 对象类
 仍是各自的子槽缺口。
+
+#### 实档首个编码值的类分布
+
+在本篇范围域全流筛查的同一批 246 份文件、3,447 条流中，
+找到 575 处 GPCodedValueDomain CLSID。逐处按原生 v1
+布局检查标签数、每个字符串的字节长度与终止零、值计数。
+515 处可从 CLSID 末尾对位该前缀，60 处需再越过四字节。
+局部复核中标签数和值数相等。21 处值列表为空，其余首项
+为 GPString 423 处、GPBoolean 129 处、GPLong 2 处，
+三类均已支持。GPLong 的 CLSID 为
+`30ED7F47-12D9-4C9B-BE8B-7A0AE386E574`。
+
+这轮只核对首项类标识，后续值成员和各自的完整宿主边界
+仍待逐项读取。ArcMap 10.1 与 QGIS 人工验收尚未执行。
+
+#### 实档编码值列表的逐项读取
+
+按上述前缀定位 575 处值列表后，逐项读取值对象 CLSID、
+可选键、派生与基类版本以及 GPString、GPBoolean、GPLong 的
+对象体。该局部读取在全部 575 处走完声明的值数量。
+共读取 GPString 35,010 项、GPBoolean 258 项、GPLong 12 项。
+例如参考 MXD 的 /Esri ArcToolbox 中，`0x2fcb` 的域
+有两个值，读到 `0x3059`。这批记录没有出现其他值类。
+完整工具箱父记录及其他实档中的 IGPValue 实现仍待核对，
+ArcMap 10.1 与 QGIS 人工验收尚未执行。
 
 #### GPDouble、GPBoolean、GPDate
 
