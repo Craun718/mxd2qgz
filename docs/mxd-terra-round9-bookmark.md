@@ -3208,6 +3208,17 @@ FeatureDataElements.dll 10.1.0.3035 的持久化表 `0x6f658858`
 在 `0x6f5f31a2` 启用扩展标志，因此尾部还读两个 String。
 构造书签覆盖子对象的新对象、同键回引和截断回滚，实际 MXD 宿主仍待验证。
 
+#### IGPValue 槽中的 DEFeatureClass
+
+同摘要 FeatureDataElements.dll 的 DEFeatureClass 主表
+`0x6f6587cc` 指向 QI `0x6f5f32e0`，在 `0x6f5f34a9`
+比较 IGPValue IID，并在 `0x6f5f34c7` 返回对象 `+0x10`。
+构造器 `0x6f5f3100` 安装上述同一持久化表。
+共享 IGPValue 槽复用原有 DEFeatureClass 对象体及引用表，
+保留 DataElement 内已有的 GPValue 版本和 short。
+合成回归验证了完整对象体、后继同键回引及边界。
+真实 MdVariable 宿主及 ArcMap/QGIS 人工验收仍待验证。
+
 #### DEFeatureDataset
 
 FeatureDataElements.dll 10.1.0.3035 的 DEFeatureDataset 持久化表
@@ -3369,6 +3380,18 @@ v1 另读一个四字节值，v4 起读三个 long，v5 再读 String。
 解析器保留工厂标识字符串，沿用现有属性集与域读取器。
 构造测试覆盖全部版本、非正域计数和截断。实际 MXD 宿主仍待验证。
 
+#### IGPValue 槽中的 DEWorkspace
+
+同摘要 FeatureDataElements.dll 的 DEWorkspace 主表
+`0x6f65f6ec` 指向 QI `0x6f620830`。在 `0x6f62091f`
+比较 IGPValue IID，匹配后在 `0x6f62093d` 返回对象
+`+0x10`。构造器 `0x6f6205c5` 安装该对象的
+IPersistStream 表 `0x6f65f778`，因此 IGPValue 槽复用
+原有 DEWorkspace 体与引用表。合成回归对照 v0–v5
+从 IDataElement 和 IGPValue 两条分派读出的结果及终点，
+并覆盖同键回引。实际 MdVariable 宿主与 ArcMap/QGIS 人工验收
+仍待验证。
+
 #### DERasterCatalog
 
 FeatureDataElements.dll 10.1.0.3035 的构造函数在 `0x6f61492a`
@@ -3466,6 +3489,29 @@ RTTI 与 esriDataSourcesFile 类型库对位如下。
 随后经 `0x6f9d7454` 调 DataElement::Load，基类之后无新增流字段。
 构造测试覆盖四类对象、结束位置及逐字节截断。实际 MXD 宿主仍待验证。
 
+#### IGPValue 槽中的 DEFile
+
+同摘要 FileDataElements.dll 的 DEFile 主表 `0x6f9da210`
+以 `0x6f9bc040` 为 QueryInterface。该函数在 `0x6f9bc0dd`
+比较 IGPValue IID，匹配后在 `0x6f9bc0fb` 返回完整对象
+`+0x10`。构造器在 `0x6f9bbed7` 安装同一对象的
+IPersistStream 表 `0x6f9da29c`，所以可复用上节
+版本 short 加 DataElement 的对象体，无额外的 GPValue 前缀。
+共享 IGPValue 分派已接入新对象和回引。合成回归比较两种入口
+得到的数据元素和后继边界。实档 MdVariable 候选的完整宿主和
+ArcMap/QGIS 人工验收仍待验证。
+
+#### IGPValue 槽中的 DEFolder
+
+同摘要 FileDataElements.dll 的 DEFolder 主表 `0x6f9da570`
+指向 QI `0x6f9bcb60`。在 `0x6f9bcc2f` 匹配 IGPValue，
+在 `0x6f9bcc4d` 返回对象 `+0x10`。构造器
+`0x6f9bc9f1` 安装持久化表 `0x6f9da5fc`，Load 与
+DEFile 共用 `0x6f9c3b90`。共享 IGPValue 槽据此复用
+文件系统对象体。合成回归核对 IDataElement 与 IGPValue 入口
+的对象内容、同键回引和后继边界。真实 MdVariable 宿主及
+ArcMap/QGIS 人工验收尚待验证。
+
 #### DEPrjFile
 
 FileDataElements.dll 10.1.0.3035 的 DEPrjFile 持久化表
@@ -3507,6 +3553,17 @@ IDataElement。版本 0、1 还读取并释放 ILayer。三个接口 IID
 构造测试覆盖 GPLayerBase 三个版本、逐字节截断、超限版本和
 结束位置。真实 MXD 宿主和旧版非空 ILayer 仍待验证。
 
+
+#### IGPValue 槽中的 DELayer
+
+同摘要 FileDataElements.dll 的 DELayer 主表 `0x6f9daf20`
+指向 QI `0x6f9bf450`。该函数在 `0x6f9bf553`
+匹配 IGPValue，在 `0x6f9bf571` 返回对象 `+0x10`；
+构造器 `0x6f9bf297` 安装同一对象的持久化表
+`0x6f9dafac`。共享 IGPValue 槽复用已确认的 DELayer
+对象体，合成回归对比两种入口的 GPValue 基类和内嵌 GPLayer，
+覆盖 GPLayer v0–v2 的后继边界和 DELayer 同键回引。
+真实 MdVariable 宿主与 ArcMap/QGIS 人工验收仍待验证。
 
 #### GPCompositeLayer
 
@@ -3939,6 +3996,17 @@ Load `0x6f9b6540` 接受无符号版本 0、1，经导入槽
 +0x94、+0x96。构造测试覆盖四个字段、截断与结束位置。
 字段语义和真实 MXD 宿主仍待核对。
 
+#### IGPValue 槽中的 DECadDrawingDataset
+
+同摘要 FileDataElements.dll 的主表 `0x6f9d8b00` 指向
+QI `0x6f9b6060`，在 `0x6f9b6199` 匹配 IGPValue，
+在 `0x6f9b61b7` 返回对象 `+0x10`。构造器在
+`0x6f9b5e97` 安装同一对象的持久化表 `0x6f9d8b8c`。
+因此共享 IGPValue 槽可按上述 IDataElement 布局读取，
+保留末尾四个 short 和基类 GPValue 字段。合成回归对照两条
+入口的对象内容、后继边界与同键回引。真实 MdVariable 宿主
+及 ArcMap/QGIS 人工验收仍待验证。
+
 #### DETin
 
 FileDataElements.dll 10.1.0.3035 的持久化表 `0x6f9dc720`
@@ -3996,6 +4064,17 @@ DEFeatureClassBase::Load `0x6e949720` 后结束。
 `0x6e94e5d6` 跳过表扩展，同时使 `0x6e949857` 跳过
 要素类尾部的两个 String。构造测试覆盖简短表体、要素类字段、
 逐字节截断和结束位置。真实 MXD 宿主仍待验证。
+
+#### IGPValue 槽中的 DEShapeFile
+
+同摘要 FileDataElements.dll 的主表 `0x6f9dba90` 指向
+QI `0x6f9c2e60`。在 `0x6f9c3035` 比较 IGPValue IID，
+在 `0x6f9c3053` 返回完整对象 `+0x10`。构造器
+`0x6f9c2c54` 安装同一对象的持久化表 `0x6f9dbb1c`。
+共享 IGPValue 槽沿用紧凑表布局，保留派生类、要素类基类和
+GPValue 的版本。合成回归让派生版本为 1、要素类基类版本为 0，
+核对两个入口、同键回引和后继边界。真实 MdVariable 宿主
+及 ArcMap/QGIS 人工验收仍待验证。
 
 #### DECoverageFeatureClass
 
@@ -5289,6 +5368,19 @@ IGPValue 列表与 ILongArray 共用既有分派，IGPVariable
 （9 处）。这些探针从单个 CLSID 开始，引用表没有先前的宿主对象，
 因此停点可能包含无法还原的回引或错位候选。接线前仍需用原生
 QI、持久化体及宿主边界核实。ArcMap/QGIS 人工验收尚未执行。
+
+##### 新增数据元素分派后的实档复核
+
+在接入七类 IDataElement 值后，以同样的 374 处前缀候选
+和空引用表重跑 Rust 读取器，完整消费的候选由 212 处增至
+297 处，77 处仍报错。其中 37 处在 IStringArray 槽遇到
+`E141C7AF-1C30-4B67-99A1-2DDD2FF2C04D`。Desktop 10.1
+esriGeoDatabase 类型库将该类定名为 Names，并明确列出
+IStringArray（`206216C9-7253-4A4D-92DD-60329FD9D792`）。
+该类的原生 Load 布局是下一处可核实的分派缺口。
+其余停止点包括 Field v3、值版本及无上下文回引候选。
+这里的完成计数只指 Rust 局部读取；完整宿主分派和
+ArcMap/QGIS 人工验收尚未验证。
 
 ##### GPEnvironmentManager
 

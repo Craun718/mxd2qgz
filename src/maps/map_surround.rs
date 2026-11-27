@@ -1028,6 +1028,11 @@ pub const GP_EXTENT_CLASS_ID: [u8; 16] = [
 #[derive(Debug, Clone, PartialEq)]
 pub enum GpCodedValue10_1 {
     MdVariable(Box<MdVariable10_1>),
+    FileDataElement(Box<DataElement10_1>),
+    FeatureClassDataElement(Box<DeChild10_1>),
+    CadDrawingDataElement(Box<DeChild10_1>),
+    LayerDataElement(Box<DeChild10_1>),
+    WorkspaceDataElement(Box<DeWorkspace10_1>),
     RecordSet(Box<GpRecordSet10_1>),
     FeatureRecordSetLayer(Box<GpFeatureRecordSetLayer10_1>),
     TableView(Box<GpTableView10_1>),
@@ -3801,7 +3806,14 @@ fn read_gp_coded_value_entry(
         ObjectEntry10_1::BackReference { class_id, key }
             if matches!(
                 table.registered_class(key).unwrap_or(class_id),
-                MD_VARIABLE_CLASS_ID
+                DE_LAYER_CLASS_ID
+                    | DE_CAD_DRAWING_DATASET_CLASS_ID
+                    | DE_WORKSPACE_CLASS_ID
+                    | DE_FEATURE_CLASS_CLASS_ID
+                    | DE_SHAPE_FILE_CLASS_ID
+                    | DE_FILE_CLASS_ID
+                    | DE_FOLDER_CLASS_ID
+                    | MD_VARIABLE_CLASS_ID
                     | GP_STRING_CLASS_ID
                     | GP_TABLE_VIEW_CLASS_ID
                     | GP_RECORD_SET_CLASS_ID
@@ -3893,6 +3905,115 @@ fn read_gp_coded_value_entry(
             ) =>
         {
             None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: DE_LAYER_CLASS_ID,
+            ..
+        } => {
+            let slot = read_gp_data_element_child_entry(reader, max_bytes, table, depth, entry)?;
+            let Some(body) = slot.body else {
+                return Err(io::Error::new(ErrorKind::InvalidData, "DELayer 缺少对象体"));
+            };
+            let DeChild10_1::Layer {
+                version, element, ..
+            } = body.as_ref()
+            else {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "DELayer 对象体不匹配",
+                ));
+            };
+            Some(Box::new(GpCodedValueBody10_1 {
+                version: *version,
+                base_version: element.gp_value_version,
+                base_short: element.gp_value_short,
+                value: GpCodedValue10_1::LayerDataElement(body),
+            }))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: DE_CAD_DRAWING_DATASET_CLASS_ID,
+            ..
+        } => {
+            let slot = read_gp_data_element_child_entry(reader, max_bytes, table, depth, entry)?;
+            let Some(element) = slot.body else {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "DECadDrawingDataset 缺少对象体",
+                ));
+            };
+            let DeChild10_1::CadDrawingDataset {
+                version, dataset, ..
+            } = element.as_ref()
+            else {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "DECadDrawingDataset 对象体不匹配",
+                ));
+            };
+            Some(Box::new(GpCodedValueBody10_1 {
+                version: *version,
+                base_version: dataset.element.gp_value_version,
+                base_short: dataset.element.gp_value_short,
+                value: GpCodedValue10_1::CadDrawingDataElement(element),
+            }))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: DE_WORKSPACE_CLASS_ID,
+            ..
+        } => {
+            let workspace = read_de_workspace(reader, max_bytes, table, depth + 1)?;
+            Some(Box::new(GpCodedValueBody10_1 {
+                version: workspace.version,
+                base_version: workspace.element.gp_value_version,
+                base_short: workspace.element.gp_value_short,
+                value: GpCodedValue10_1::WorkspaceDataElement(Box::new(workspace)),
+            }))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: DE_FEATURE_CLASS_CLASS_ID | DE_SHAPE_FILE_CLASS_ID,
+            ..
+        } => {
+            let slot = read_gp_data_element_child_entry(reader, max_bytes, table, depth, entry)?;
+            let Some(body) = slot.body else {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "要素类数据元素缺少对象体",
+                ));
+            };
+            let DeChild10_1::FeatureClass {
+                derived_version,
+                version,
+                table,
+                ..
+            } = body.as_ref()
+            else {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "要素类数据元素对象体不匹配",
+                ));
+            };
+            let dataset = match table {
+                DeFeatureClassTable10_1::Extended(table) => &table.dataset,
+                DeFeatureClassTable10_1::Compact(table) => &table.dataset,
+            };
+            Some(Box::new(GpCodedValueBody10_1 {
+                version: derived_version.unwrap_or(*version),
+                base_version: dataset.element.gp_value_version,
+                base_short: dataset.element.gp_value_short,
+                value: GpCodedValue10_1::FeatureClassDataElement(body),
+            }))
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: DE_FILE_CLASS_ID | DE_FOLDER_CLASS_ID,
+            ..
+        } => {
+            let (version, element) = read_de_file_system_body(reader, max_bytes, table, depth)?;
+            Some(Box::new(GpCodedValueBody10_1 {
+                version,
+                base_version: element.gp_value_version,
+                base_short: element.gp_value_short,
+                value: GpCodedValue10_1::FileDataElement(Box::new(element)),
+            }))
         }
         ObjectEntry10_1::NewObject {
             class_id: MD_VARIABLE_CLASS_ID,
@@ -6622,6 +6743,19 @@ fn read_de_representation_class(
     })
 }
 
+fn read_de_file_system_body(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<(u16, DataElement10_1)> {
+    let version = read_de_layer_version(reader, 1, "文件数据元素")?;
+    Ok((
+        version,
+        read_gp_data_element(reader, max_bytes, refs, depth + 1)?,
+    ))
+}
+
 fn read_gp_data_element_child(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -6629,6 +6763,16 @@ fn read_gp_data_element_child(
     depth: usize,
 ) -> io::Result<RuleSlot10_1<DeChild10_1>> {
     let entry = read_object_entry_10_1(reader, refs)?;
+    read_gp_data_element_child_entry(reader, max_bytes, refs, depth, entry)
+}
+
+fn read_gp_data_element_child_entry(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    refs: &mut RefTable10_1,
+    depth: usize,
+    entry: ObjectEntry10_1,
+) -> io::Result<RuleSlot10_1<DeChild10_1>> {
     let body = match entry {
         ObjectEntry10_1::Null => None,
         ObjectEntry10_1::BackReference { class_id, key }
@@ -6790,14 +6934,7 @@ fn read_gp_data_element_child(
                     | DE_SPATIAL_REFERENCES_FOLDER_CLASS_ID
                     | DE_PRJ_FILE_CLASS_ID
             ) {
-                let version = reader.read_u16_le()?;
-                if version > 1 {
-                    return Err(io::Error::new(
-                        ErrorKind::InvalidData,
-                        "文件数据元素版本超限",
-                    ));
-                }
-                let element = read_gp_data_element(reader, max_bytes, refs, depth + 1)?;
+                let (version, element) = read_de_file_system_body(reader, max_bytes, refs, depth)?;
                 let spatial_reference = (class_id == DE_PRJ_FILE_CLASS_ID)
                     .then(|| {
                         read_spatial_reference_entry_10_1(reader, max_bytes, refs).map(Box::new)
@@ -11772,6 +11909,51 @@ mod tests {
     use super::*;
 
     #[test]
+    fn gp_value_reads_de_feature_class_and_back_reference() {
+        let mut bytes = DE_FEATURE_CLASS_CLASS_ID.to_vec();
+        bytes.extend(28_u32.to_le_bytes());
+        bytes.extend(1_u16.to_le_bytes());
+        bytes.extend([0; 10]);
+        for _ in 0..3 {
+            bytes.extend([2, 0, 0, 0, 0, 0]);
+        }
+        bytes.extend([0; 24]);
+        for _ in 0..6 {
+            bytes.extend([2, 0, 0, 0, 0, 0]);
+        }
+        bytes.extend([0; 76]);
+        bytes.extend(3_i32.to_le_bytes());
+        bytes.extend(4_i32.to_le_bytes());
+        bytes.extend([2, 0, 0, 0, 0, 0]);
+        bytes.extend([1, 0, 2, 0, 3, 0]);
+        bytes.extend([0; 32]);
+        bytes.extend([2, 0, 0, 0, 0, 0].repeat(2));
+        let end = bytes.len();
+        bytes.extend_from_within(..20);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let value = read_gp_coded_value_slot(&mut reader, 4096, &mut refs, 0).unwrap();
+        let GpCodedValue10_1::FeatureClassDataElement(body) = value.body.unwrap().value else {
+            panic!("应读取 DEFeatureClass");
+        };
+        assert!(matches!(
+            *body,
+            DeChild10_1::FeatureClass {
+                raw_longs: [3, 4],
+                ..
+            }
+        ));
+        assert_eq!(reader.position(), end);
+        let again = read_gp_coded_value_slot(&mut reader, 4096, &mut refs, 0).unwrap();
+        assert!(matches!(
+            again.entry,
+            ObjectEntry10_1::BackReference { key: 28, .. }
+        ));
+        assert_eq!(reader.remaining(), 0);
+    }
+
+    #[test]
     fn md_variable_reads_versioned_gp_value_slots() {
         for version in [3_u16, 6, 9, 10] {
             let mut bytes = MD_VARIABLE_CLASS_ID.to_vec();
@@ -13567,6 +13749,23 @@ mod tests {
             })
         ));
         assert_eq!(reader.position(), end);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let value = read_gp_coded_value_slot(&mut reader, 1024, &mut refs, 0).unwrap();
+        assert!(matches!(
+            value.body.unwrap().value,
+            GpCodedValue10_1::CadDrawingDataElement(body)
+                if Some(body.as_ref()) == object.body.as_deref()
+        ));
+        assert_eq!(reader.position(), end);
+        let mut reader = Reader::new(&bytes[..20]);
+        let value = read_gp_coded_value_slot(&mut reader, 1024, &mut refs, 0).unwrap();
+        assert!(matches!(
+            value.entry,
+            ObjectEntry10_1::BackReference { key: 34, .. }
+        ));
+        assert_eq!(reader.remaining(), 0);
     }
 
     #[test]
@@ -13710,6 +13909,22 @@ mod tests {
             assert_eq!(workspace.v4, (version >= 4).then_some([12, 13, 14]));
             assert_eq!(workspace.v5.as_deref(), (version == 5).then_some("T"));
             assert_eq!(reader.position(), end);
+
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let value = read_gp_coded_value_slot(&mut reader, 1024, &mut refs, 0).unwrap();
+            assert!(matches!(
+                value.body.unwrap().value,
+                GpCodedValue10_1::WorkspaceDataElement(body) if body == *workspace
+            ));
+            assert_eq!(reader.position(), end);
+            let mut reader = Reader::new(&bytes[..20]);
+            let value = read_gp_coded_value_slot(&mut reader, 1024, &mut refs, 0).unwrap();
+            assert!(matches!(
+                value.entry,
+                ObjectEntry10_1::BackReference { key: 36, .. }
+            ));
+            assert_eq!(reader.remaining(), 0);
         }
     }
 
@@ -13921,6 +14136,23 @@ mod tests {
                 (class_id == DE_PRJ_FILE_CLASS_ID).then_some(&SpatialReferenceEntry10_1::Null),
             );
             assert_eq!(reader.position(), end);
+            if matches!(class_id, DE_FILE_CLASS_ID | DE_FOLDER_CLASS_ID) {
+                let mut reader = Reader::new(&bytes);
+                let mut refs = RefTable10_1::new();
+                let value = read_gp_coded_value_slot(&mut reader, 1024, &mut refs, 0).unwrap();
+                assert!(matches!(
+                    value.body.unwrap().value,
+                    GpCodedValue10_1::FileDataElement(file) if file.as_ref() == element
+                ));
+                assert_eq!(reader.position(), end);
+                let mut reader = Reader::new(&bytes[..20]);
+                let entry = read_gp_coded_value_slot(&mut reader, 1024, &mut refs, 0).unwrap();
+                assert!(matches!(
+                    entry.entry,
+                    ObjectEntry10_1::BackReference { key: 54, .. }
+                ));
+                assert_eq!(reader.remaining(), 0);
+            }
         }
     }
 
@@ -14555,6 +14787,23 @@ mod tests {
             );
             assert_eq!(reader.position(), end);
 
+            let mut reader = Reader::new(&bytes);
+            let mut refs = RefTable10_1::new();
+            let value = read_gp_coded_value_slot(&mut reader, 1024, &mut refs, 0).unwrap();
+            assert!(matches!(
+                value.body.unwrap().value,
+                GpCodedValue10_1::LayerDataElement(body)
+                    if Some(body.as_ref()) == object.body.as_deref()
+            ));
+            assert_eq!(reader.position(), end);
+            let mut reader = Reader::new(&bytes[..20]);
+            let value = read_gp_coded_value_slot(&mut reader, 1024, &mut refs, 0).unwrap();
+            assert!(matches!(
+                value.entry,
+                ObjectEntry10_1::BackReference { key: 56, .. }
+            ));
+            assert_eq!(reader.remaining(), 0);
+
             bytes[version_offset] = 3;
             let err = read_gp_data_element_child(
                 &mut Reader::new(&bytes),
@@ -14655,6 +14904,26 @@ mod tests {
                 ));
             }
             assert_eq!(reader.position(), end);
+            if class_id == DE_SHAPE_FILE_CLASS_ID {
+                let mut reader = Reader::new(&bytes);
+                let mut refs = RefTable10_1::new();
+                let value = read_gp_coded_value_slot(&mut reader, 1024, &mut refs, 0).unwrap();
+                let body = value.body.unwrap();
+                assert_eq!(body.version, 1);
+                assert!(matches!(
+                    body.value,
+                    GpCodedValue10_1::FeatureClassDataElement(body)
+                        if Some(body.as_ref()) == slot.body.as_deref()
+                ));
+                assert_eq!(reader.position(), end);
+                let mut reader = Reader::new(&bytes[..20]);
+                let value = read_gp_coded_value_slot(&mut reader, 1024, &mut refs, 0).unwrap();
+                assert!(matches!(
+                    value.entry,
+                    ObjectEntry10_1::BackReference { key: 55, .. }
+                ));
+                assert_eq!(reader.remaining(), 0);
+            }
         }
     }
 
