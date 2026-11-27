@@ -545,6 +545,14 @@ SystemCore 10.1.0.3035 在 `0x7ffd0063` 按键取登记实例并查询接口。
 上述 SDK 实档验证为本地 Rust 解析，尚无 FeatureLayer ㉖ 的对应实档，也未在 ArcMap
 或 QGIS 中人工验收。其他 DLL 中的持久化 ISymbol 实现仍待追查。
 
+### FeatureLayer 符号槽的 TextSymbol
+
+前文的 TextSymbol 分派缺口属于早期接线状态。当前后继段 ㉖
+经共享符号读取器分派 TextSymbol，LELP ⑯ 也复用同一对象体读取器。
+合成回归将完整 FeatureLayer 后继段中的 SimpleMarkerSymbol 替换为
+TextSymbol v4，从实际后继段入口核对类型、对象键、后继字段和流终点。
+真实 ㉖ 宿主和 ArcMap/QGIS 人工验收仍待补充。
+
 ### SymbolMimic 的持久化入口
 
 `DisplayRepresentation.dll` 首选基址 `0x6ee10000`，SHA-256

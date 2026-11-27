@@ -2670,6 +2670,33 @@ mod tail_continuation {
             .windows(symbol_header.len())
             .position(|window| window == symbol_header)
             .unwrap();
+        let mut text_symbol = Vec::new();
+        push_entry_header(&mut text_symbol, &TEXT_SYMBOL_CLASS_ID, 90);
+        text_symbol.extend(text_symbol_body_v4(None).0);
+        let mut bytes = b.clone();
+        let slot_end = slot_start + symbol_header.len() + sms_body_v2().len();
+        bytes.splice(slot_start..slot_end, text_symbol);
+        let end = bytes.len();
+        bytes.extend(0xabcd_u16.to_le_bytes());
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let result = read_feature_layer_successor_10_1(&mut reader, 34, 4096, &mut refs).unwrap();
+        assert_eq!(result.stop, SuccessorStop10_1::TailCompleted);
+        match result.symbol {
+            Some(mxd2qgz::objects::display_symbol::SymbolSlotFull10_1::TextSymbol {
+                body,
+                key: 90,
+            }) => {
+                assert_eq!(body.version, 4);
+                assert!(body.stop.is_none());
+            }
+            other => panic!("符号槽分类不符：{other:?}"),
+        }
+        assert!(refs.contains(90));
+        assert_eq!(reader.position(), end);
+        assert_eq!(reader.read_u16_le().unwrap(), 0xabcd);
+
         for class_id in [
             mxd2qgz::objects::display_symbol::TEMPLATE_CLASS_ID,
             mxd2qgz::objects::display_symbol::LINE_DECORATION_CLASS_ID,

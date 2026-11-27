@@ -921,6 +921,7 @@
       - [x] 闭合 Marker3DSymbol v9 点 ID 兼容分支的流边界，从新建 MultiPatch 恢复内嵌字符串。[原生取证](docs/arcmap-10.1-dep-tail.md#marker3dsymbol-v9-兼容探测的进入条件)
       - [x] 从 Marker3DSymbol v9 的几何回引恢复 MultiPatch 内嵌字符串。[原生取证](docs/arcmap-10.1-dep-tail.md#marker3dsymbol-v9-兼容探测的进入条件)
       - [x] 核对 Texture.dll 和 Garcia.dll 的四个 ISymbol 候选，排除缺少持久化接口的普通对象。[接口取证](docs/arcmap-10.1-dep-tail.md#texturedll-与-garciadll-的非持久化-isymbol-候选)
+      - [x] 验证 FeatureLayer 后继段 ㉖ 的 TextSymbol 新对象和后继边界。[合成回归](docs/arcmap-10.1-dep-tail.md#featurelayer-符号槽的-textsymbol)
       - [ ] FeatureLayer 后继段 ㉖ 槽中未支持的 ISymbol 实现类体（已接入类和跨模块候选见[符号续研](docs/arcmap-10.1-dep-tail.md#featurelayer-符号槽的栅格和-wms-实现)）。
       - [x] 接入 SymbolMimic 的空 IRepresentationRule 槽及两项标量。[原生持久化入口](docs/arcmap-10.1-dep-tail.md#symbolmimic-的持久化入口)
       - [x] 接入 SymbolMimic 中各集合为空的 RepresentationRule 对象体及同类键回引。[原生边界](docs/arcmap-10.1-dep-tail.md#symbolmimic-中的-representationrule)
