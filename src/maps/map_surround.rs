@@ -2621,6 +2621,24 @@ pub const GP_MULTI_VALUE_TYPE_NAME_CLASS_ID: [u8; 16] = [
     0x70, 0x33, 0xde, 0x35, 0x8e, 0x67, 0xfb, 0x40, 0x9b, 0x7e, 0xff, 0xaf, 0x08, 0x22, 0x4b, 0x99,
 ];
 
+pub const MD_PROCESS_CLASS_ID: [u8; 16] = [
+    0x8c, 0x67, 0xda, 0x3a, 0x4d, 0x03, 0x7c, 0x49, 0xb8, 0x93, 0x7e, 0xd9, 0xe4, 0x0c, 0xa9, 0xd0,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MdProcess10_1 {
+    pub version: i16,
+    pub base_version: i16,
+    pub base_long: i32,
+    pub base_name: String,
+    pub base_shorts: [i16; 3],
+    pub base_v3_short: Option<i16>,
+    pub tool_name: BookmarkNameEntry10_1,
+    pub raw_parameter_count: i32,
+    pub raw_value_count: Option<i32>,
+    pub values: Vec<RuleSlot10_1<GpCodedValueBody10_1>>,
+}
+
 pub const GP_DRAG_DROP_OBJECT_NAME_CLASS_ID: [u8; 16] = [
     0x3b, 0x61, 0x9a, 0xd7, 0xf6, 0x87, 0x26, 0x43, 0xa4, 0xcf, 0x64, 0x63, 0xcc, 0xec, 0x34, 0xca,
 ];
@@ -2871,6 +2889,7 @@ pub enum BookmarkNameEntry10_1 {
         raw_column_count: i32,
         columns: Vec<GpValueTableColumnType10_1>,
     },
+    MdProcess(Box<MdProcess10_1>),
     GpDragDropObjectName {
         version: i16,
         source: Box<BookmarkNameEntry10_1>,
@@ -9420,7 +9439,92 @@ fn read_bookmark_unknown_slot_10_1(
             read_object_entry_10_1(reader, table)?;
             BookmarkNameEntry10_1::LocatorWorkspaceUid(read_uid_body_10_1(reader, key)?)
         }
+        ObjectHeader::Object {
+            class_id: MD_PROCESS_CLASS_ID,
+            ..
+        } => {
+            read_object_entry_10_1(reader, table)?;
+            BookmarkNameEntry10_1::MdProcess(Box::new(read_md_process_body_10_1(
+                reader, max_bytes, table, name_depth,
+            )?))
+        }
         _ => read_bookmark_name_slot_10_1(reader, max_bytes, table, name_depth)?,
+    })
+}
+
+fn read_md_process_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<MdProcess10_1> {
+    use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
+
+    if depth >= MAX_BOOKMARK_NAME_NESTING {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "MdProcess 嵌套层数超限",
+        ));
+    }
+    let version = read_gp_name_version(reader, 4, "MdProcess")?;
+    let base_version = read_gp_name_version(reader, 3, "MdProcess 基类")?;
+    let base_long = reader.read_u32_le()? as i32;
+    let base_name = read_bstr_string_10_1(reader, max_bytes)?;
+    let base_shorts = [
+        reader.read_u16_le()? as i16,
+        reader.read_u16_le()? as i16,
+        reader.read_u16_le()? as i16,
+    ];
+    if base_version >= 2 && read_header_10_1(reader)? != ObjectHeader::Null {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            "MdProcess 基类子对象尚未支持",
+        ));
+    }
+    let base_v3_short = (base_version >= 3)
+        .then(|| reader.read_u16_le().map(|value| value as i16))
+        .transpose()?;
+    let tool_name = read_bookmark_name_slot_10_1(reader, max_bytes, table, depth + 1)?;
+    let raw_parameter_count = reader.read_u32_le()? as i32;
+    if raw_parameter_count > 0 {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            "MdProcess 的 IMdParameter 子对象尚未支持",
+        ));
+    }
+    if version >= 2 && read_header_10_1(reader)? != ObjectHeader::Null {
+        return Err(io::Error::new(
+            ErrorKind::Unsupported,
+            "MdProcess 的 IGPEnvironmentManager 子对象尚未支持",
+        ));
+    }
+    let (raw_value_count, values) = match version {
+        3 => (
+            None,
+            vec![read_gp_coded_value_slot(
+                reader,
+                max_bytes,
+                table,
+                depth + 1,
+            )?],
+        ),
+        4 => {
+            let (count, values) = read_gp_coded_value_list(reader, max_bytes, table, depth + 1)?;
+            (Some(count), values)
+        }
+        _ => (None, Vec::new()),
+    };
+    Ok(MdProcess10_1 {
+        version,
+        base_version,
+        base_long,
+        base_name,
+        base_shorts,
+        base_v3_short,
+        tool_name,
+        raw_parameter_count,
+        raw_value_count,
+        values,
     })
 }
 
