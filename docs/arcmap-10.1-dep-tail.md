@@ -2214,6 +2214,28 @@ TrackingLayer.dll 10.1.0.3035 在 `0x8086f4c2` 和
 RGB 颜色、空 Variant 的边界及颜色截断。ActionCollection
 对象体与其他实现类仍待研究，未进行 ArcMap/QGIS 人工验收。
 
+#### 时态图层尾段的默认实现
+
+对 Desktop TrackingLayer.dll 10.1.0.3035（SHA-256
+`06b59b5930c643be5244b20a8cc5f7576a16b9d6e5421ee327839e8230a169ab`）
+用 objdump 复核创建、Load 和 Save。初始化在 `0x80869fe1`
+取完整对象 `+0x24fc` 的地址，在 `0x8086a096` 调用工厂，
+并传入 `0x8089f150` 的 TextSymbol CLSID
+`{B65A3E74-2993-11D1-9A43-0080C7EC5C96}`。Save 在
+`0x8086feb0` 从 IPersistStream 接收者 `+0x24ec` 取得同一
+成员，以 VT_UNKNOWN 写出。Load 在 `0x8086f4c2` 用
+ITextSymbol IID 接收第一个 Variant，现有读取器的 TextSymbol
+分派与默认创建类一致。
+
+第二个 Variant 由 Save 经 `0x8086ff0e` 取得集合并写出，
+其默认 ActionCollection 的创建见上节。三个 IColor 成员的
+保存次序见后文。初始化在 `0x8086a140/0x8086a157` 创建
+两个 RgbColor，分别给完整对象 `+0x2564/+0x2560`，
+并在 `0x8086a159` 起清理 `+0x2568` 的既有颜色。现有读取器
+已覆盖默认颜色和空对象。此处只核对原生默认实现。接口槽仍可
+接收其他实现，实际出现的其他类需要样本或原生运行取证，
+ArcMap/QGIS 人工验收尚未执行。
+
 #### ActionCollection 的集合体
 
 Desktop 的 TrackingActions.dll 为 PE32、10.1.0.3035，

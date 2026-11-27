@@ -858,7 +858,8 @@
       - [x] 核对常规保存选择的时态图层版本及 10.0 前置时间对象槽。[取证](docs/arcmap-10.1-dep-tail.md#时态图层-100-的前置时间对象)
       - [x] 实现三个已确认写出版本的时态图层前段和聚合 FeatureLayer 委派。[取证](docs/arcmap-10.1-dep-tail.md#时态图层前段读取器)
       - [x] 接入三个已确认写出版本的时态图层后继段与普通 ILayer 分派。[取证](docs/arcmap-10.1-dep-tail.md#时态图层接入普通图层读取)
-      - [ ] 核对并接入 TemporalFeatureLayer 尾段非空 Variant 的实现类。
+      - [x] 核对 TemporalFeatureLayer 尾段非空 Variant 的原生默认实现及其读取分派。[取证](docs/arcmap-10.1-dep-tail.md#时态图层尾段的默认实现)
+      - [ ] 核对时态图层尾部接口槽中实档或运行取证出现的其他持久化类。
       - [x] 接入时态图层尾部的非空 TextSymbol 和颜色 Variant。[取证](docs/arcmap-10.1-dep-tail.md#时态图层尾部的文本符号和颜色)
       - [x] 核对末尾三个 IColor 成员及其非空顺序。[取证](docs/arcmap-10.1-dep-tail.md#时态图层末尾三个颜色槽)
       - [x] 接入时态图层尾部 ActionCollection 的集合字段和空条目。[取证](docs/arcmap-10.1-dep-tail.md#actioncollection-的集合体)
