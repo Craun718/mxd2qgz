@@ -20,7 +20,9 @@ use crate::maps::rectangle_element::{
 use crate::maps::surround_frame::{
     MAP_SURROUND_FRAME_CLASS_ID, MapSurroundFrame10_1, read_surround_frame_10_1,
 };
-use crate::objects::element_body::{ElementBody10_1, read_element_body_of_class_10_1};
+use crate::objects::element_body::{
+    ElementBody10_1, is_known_element_class_10_1, read_element_body_of_class_10_1,
+};
 use crate::objects::envelope::{
     ENVELOPE_CLASS_ID, Envelope10_1, SpatialReferenceEntry10_1, read_envelope_10_1,
     read_spatial_reference_entry_10_1,
@@ -300,6 +302,21 @@ pub fn read_graphics_3d_layer_10_1(
             }
         } else {
             item.element.entry = read_object_entry_10_1(&mut r, &mut refs)?;
+        }
+        if let ObjectEntry10_1::BackReference { class_id, key } = &mut item.element.entry {
+            // 部分 Map 入口只记录了键和 Map 身份，没有登记磁盘 CLSID。
+            if refs.contains_map(*key) {
+                return Err(unsupported(
+                    &crate::maps::map_object::MAP_CLASS_ID,
+                    "三维图形容器的 IElement 回引",
+                ));
+            }
+            if let Some(registered) = refs.registered_class(*key) {
+                if !is_known_element_class_10_1(&registered) {
+                    return Err(unsupported(&registered, "三维图形容器的 IElement 回引"));
+                }
+                *class_id = registered;
+            }
         }
         item.globe_properties = (globe && version >= 2)
             .then(|| read_globe_element_properties(&mut r, max, &mut refs, version))
@@ -919,6 +936,52 @@ mod tests {
             assert!(read_graphics_3d_layer_10_1(&class, &mut reader, 4096, &mut refs).is_err());
             assert_eq!(reader.position(), 0);
             assert!(refs.is_empty());
+        }
+    }
+
+    #[test]
+    fn graphics_3d_element_references_check_registered_class() {
+        use crate::objects::element_body::MARKER_ELEMENT_CLASS_ID;
+
+        for (class, short_bytes, tail_bytes) in [
+            (GRAPHICS_LAYER_3D_CLASS_ID, 8, 0),
+            (GLOBE_GRAPHICS_LAYER_CLASS_ID, 4, 8),
+        ] {
+            let mut bytes = 1_u16.to_le_bytes().to_vec();
+            bytes.extend([2, 0, 0, 0, 0, 0]);
+            bytes.resize(bytes.len() + short_bytes + 32, 0);
+            bytes.extend(1_u32.to_le_bytes());
+            bytes.extend(MARKER_ELEMENT_CLASS_ID);
+            bytes.extend(2_u32.to_le_bytes());
+            bytes.resize(bytes.len() + tail_bytes, 0);
+            let end = bytes.len();
+            bytes.push(0xa5);
+
+            for registered in [Some(MARKER_ELEMENT_CLASS_ID), Some(MAP_CLASS_ID), None] {
+                let mut refs = RefTable10_1::new();
+                if let Some(class_id) = registered {
+                    let mut header = class_id.to_vec();
+                    header.extend(2_u32.to_le_bytes());
+                    read_object_entry_10_1(&mut Reader::new(&header), &mut refs).unwrap();
+                } else {
+                    refs.register(2);
+                    refs.mark_map(2);
+                }
+                let before = refs.clone();
+                let mut reader = Reader::new(&bytes);
+                let result = read_graphics_3d_layer_10_1(&class, &mut reader, 4096, &mut refs);
+                if registered != Some(MARKER_ELEMENT_CLASS_ID) {
+                    assert_eq!(result.unwrap_err().kind(), ErrorKind::Unsupported);
+                    assert_eq!(reader.position(), 0);
+                } else {
+                    assert!(matches!(
+                        result.unwrap().elements[0].element.entry,
+                        ObjectEntry10_1::BackReference { key: 2, .. }
+                    ));
+                    assert_eq!(reader.position(), end);
+                }
+                assert_eq!(refs, before);
+            }
         }
     }
 

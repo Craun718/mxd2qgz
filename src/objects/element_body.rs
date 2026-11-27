@@ -1086,6 +1086,27 @@ impl ElementBody10_1 {
     }
 }
 
+pub(crate) fn is_known_element_class_10_1(class_id: &[u8; 16]) -> bool {
+    matches!(
+        *class_id,
+        TEXT_ELEMENT_CLASS_ID
+            | PMF_TITLE_TEXT_ELEMENT_CLASS_ID
+            | PARAGRAPH_TEXT_ELEMENT_CLASS_ID
+            | MARKER_ELEMENT_CLASS_ID
+            | LINE_ELEMENT_CLASS_ID
+            | POLYGON_ELEMENT_CLASS_ID
+            | MULTIPATCH_ELEMENT_CLASS_ID
+            | TEXT_3D_ELEMENT_CLASS_ID
+            | crate::maps::page_layout_prefix::FRAME_ELEMENT_CLASS_ID
+            | crate::maps::page_layout_prefix::MAP_FRAME_CLASS_ID
+            | crate::maps::rectangle_element::RECTANGLE_ELEMENT_CLASS_ID
+            | crate::maps::rectangle_element::ELLIPSE_ELEMENT_CLASS_ID
+            | crate::maps::rectangle_element::CIRCLE_ELEMENT_CLASS_ID
+            | crate::maps::group_element::GROUP_ELEMENT_CLASS_ID
+            | crate::maps::surround_frame::MAP_SURROUND_FRAME_CLASS_ID
+    ) || crate::maps::picture_element::PictureElementKind10_1::from_class(class_id).is_some()
+}
+
 /// 按调用者已读取的对象头类标识分派元素体读取。
 ///
 /// `class_id` 必须是调用方从对象头取得的 16 字节类标识；起点为对象头之后的
