@@ -9485,6 +9485,12 @@ fn read_bookmark_name_slot_10_1(
                     | GP_BOOLEAN_CLASS_ID
                     | GP_LONG_CLASS_ID
                     | GP_DOUBLE_CLASS_ID
+                    | GP_DATE_CLASS_ID
+                    | GP_LINEAR_UNIT_CLASS_ID
+                    | GP_VARIANT_CLASS_ID
+                    | GP_ENCRYPTED_STRING_CLASS_ID
+                    | GP_RANDOM_NUMBER_GENERATOR_CLASS_ID
+                    | GP_VALUE_TABLE_CLASS_ID
             ) {
                 return Err(io::Error::new(
                     ErrorKind::Unsupported,

@@ -4818,3 +4818,12 @@ NetworkConstantEvaluator 和 NetworkFunctionEvaluator 的完整
 槽按已登记原对象拒绝这四类。构造回归通过伪装成 GPDataTypeName
 的回引头引用字符串和整数对象，验证多值类型槽与宿主引用表
 回滚。其他 IName 实现及实档人工验收仍待核对。
+
+同摘要 GpObjects.dll 的 GPDate、GPLinearUnit、GPVariant、
+GPEncryptedString、GPRandomNumberGenerator 和 GPValueTable
+主 QI 依次为 `0x74704370`、`0x746ea010`、`0x74758040`、
+`0x746bf160`、`0x746f4bf0`、`0x74755490`。六个入口
+均未比较 IName IID，最终落到相同 GPValue 基类分派。
+共享 IName 槽因此按登记类拒绝这些回引。构造用例覆盖书签
+名称槽和 GPMultiValue 类型槽，核对失败后的游标及引用表。
+未核对的 IName 实现及实档人工验收仍待补充。
