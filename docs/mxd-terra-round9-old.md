@@ -626,3 +626,25 @@ Hyperlink 未命中。PropertySet 有 640 处匹配，其中 601
 的 v1 局部布局。其余候选只核对了相同前缀，未逐一建立
 宿主对象边界。这批命中不能用作 PropertySet v0 的实档佐证。
 三个 v0 实档待办保留，未进行 ArcMap 或 QGIS 人工验证。
+
+## 本地工程补充筛查
+
+在仓库样本目录之外收集 11 个 MXD 路径，按 SHA-256 去重后为
+10 份工程，其中 9 份与当前 `temp/` 和 `samples/` 下的 OLE
+MXD/MXT 内容不同。10 份均能提取 `/Maps` 和 `/PageLayout`。
+在两条流中按完整 CLSID 筛选，再检查普通对象头之后的版本候选。
+未见 PageIndex 或 Hyperlink CLSID。FieldInfo 命中后的版本候选
+均为 4，Envelope 均为 3，PropertySet 未见版本 0 候选。
+这些是字节筛查结果，尚需由宿主解析确认任何候选的边界。
+
+用当前 CLI 解析上述 10 份工程。两份读完布局对象并验证 MapFrame
+回引根 Map，两份返回错误，另六份都停在 Map 的 IBorder 后版本块
+阶段 1。六处停点均以 FeatureLayer CLSID
+`E663A651-8AAD-11D0-BEC7-00805F7C4268` 开始，其 20 字节头在
+各自停点之前无完全匹配。现有阶段 1 只接收空槽或已登记的
+FeatureLayer 回引。该一致停点为核对 Map +0x30c 槽的新对象体提供了
+实档线索，但仍需确定原生请求接口并从宿主顺序验证完整对象边界。
+
+另外复跑 `cargo test --test page_layout_tail -- --ignored`，两项
+SDK 实档测试通过。上述历史版本取证待办仍开放，ArcMap/QGIS
+人工验收尚未执行。
