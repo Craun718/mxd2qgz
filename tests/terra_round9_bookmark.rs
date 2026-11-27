@@ -3813,12 +3813,20 @@ fn feature_bookmark_reads_model_environment_manager_versions() {
 #[test]
 fn feature_bookmark_reads_model_parameter_versions() {
     use mxd2qgz::maps::map_surround::{
-        GP_ARC_INFO_ITEM_CHOICE_LIST_CLASS_ID, GP_DRAG_DROP_OBJECT_NAME_CLASS_ID,
-        GP_FIELD_CHOICE_LIST_CLASS_ID, MD_PARAMETER_CLASS_ID, MD_PROCESS_CLASS_ID,
+        DE_FEATURE_DATASET_CLASS_ID, GP_ARC_INFO_ITEM_CHOICE_LIST_CLASS_ID,
+        GP_CONTAINER_SCHEMA_CLASS_ID, GP_DRAG_DROP_OBJECT_NAME_CLASS_ID,
+        GP_FEATURE_SCHEMA_CLASS_ID, GP_FIELD_CHOICE_LIST_CLASS_ID, GP_RASTER_SCHEMA_CLASS_ID,
+        GP_TABLE_SCHEMA_CLASS_ID, GpParameterSchema10_1, MD_PARAMETER_CLASS_ID,
+        MD_PROCESS_CLASS_ID,
     };
     use mxd2qgz::storage::object_refs::ObjectEntry10_1;
 
-    for version in 0_i16..=7 {
+    for (version, schema_class) in (0_i16..=7).map(|v| (v, GP_TABLE_SCHEMA_CLASS_ID)).chain([
+        (7, GP_FEATURE_SCHEMA_CLASS_ID),
+        (7, GP_RASTER_SCHEMA_CLASS_ID),
+        (7, GP_CONTAINER_SCHEMA_CLASS_ID),
+    ]) {
+        let feature = schema_class == GP_FEATURE_SCHEMA_CLASS_ID;
         let mut bytes = bookmark_header_10_1(&GP_DRAG_DROP_OBJECT_NAME_CLASS_ID, 17);
         bytes.extend(1_i16.to_le_bytes());
         bytes.extend(bookmark_entry_10_1(&MD_PROCESS_CLASS_ID, 18));
@@ -3858,7 +3866,40 @@ fn feature_bookmark_reads_model_parameter_versions() {
             bytes.extend(6_i16.to_le_bytes());
         }
         if version >= 7 {
+            bytes.extend(bookmark_entry_10_1(&schema_class, 22));
+            bytes.extend([1, 0, 1, 0, 2, 0, 3, 0]);
+            if schema_class == GP_CONTAINER_SCHEMA_CLASS_ID {
+                bytes.extend(3_i32.to_le_bytes());
+            } else {
+                bytes.extend(41_i32.to_le_bytes());
+            }
+            if feature {
+                for value in [42_i32, 43, 44, 45] {
+                    bytes.extend(value.to_le_bytes());
+                }
+            }
+            if schema_class == GP_RASTER_SCHEMA_CLASS_ID {
+                bytes.extend([9; 8]);
+                for value in [47_i32, 48, 49] {
+                    bytes.extend(value.to_le_bytes());
+                }
+            }
             bytes.extend([0; 16]);
+            if schema_class == GP_CONTAINER_SCHEMA_CLASS_ID {
+                let child = bookmark_entry_10_1(&DE_FEATURE_DATASET_CLASS_ID, 23);
+                bytes.extend(&child);
+                bytes.extend([1, 0, 1, 0]);
+                bytes.extend([0; 8]);
+                for name in ["目录", "容器子项", "标题"] {
+                    bytes.extend(bookmark_string_10_1(name));
+                }
+                bytes.extend([0; 54]);
+                bytes.extend(&child);
+            }
+            if feature {
+                bytes.extend(46_i32.to_le_bytes());
+                bytes.extend([0; 16]);
+            }
         }
         bytes.push(1);
         bytes.extend(bookmark_entry_10_1(&MD_PARAMETER_CLASS_ID, 19));
@@ -3889,6 +3930,58 @@ fn feature_bookmark_reads_model_parameter_versions() {
                 .copied(),
             (version >= 5).then_some(1)
         );
+        let schema = parameter
+            .schema
+            .as_ref()
+            .and_then(|slot| slot.body.as_deref());
+        match schema {
+            Some(GpParameterSchema10_1::Table(body)) if version == 7 && !feature => {
+                assert_eq!((body.base_shorts, body.raw_long), ([2, 3], 41));
+            }
+            Some(GpParameterSchema10_1::Feature {
+                base_shorts,
+                raw_longs,
+                trailing_long,
+                envelope,
+                ..
+            }) if feature => {
+                assert_eq!(
+                    (*base_shorts, *raw_longs, *trailing_long),
+                    ([2, 3], [41, 42, 43, 44, 45], 46)
+                );
+                assert!(matches!(
+                    envelope,
+                    mxd2qgz::maps::map_surround::BookmarkEnvelopeEntry10_1::Null
+                ));
+            }
+            Some(GpParameterSchema10_1::Raster {
+                first_long,
+                raw_eight_bytes,
+                trailing_longs,
+                ..
+            }) if schema_class == GP_RASTER_SCHEMA_CLASS_ID => {
+                assert_eq!(
+                    (*first_long, *raw_eight_bytes, *trailing_longs),
+                    (41, [9; 8], [47, 48, 49])
+                );
+            }
+            Some(GpParameterSchema10_1::Container {
+                raw_child_count,
+                children,
+                ..
+            }) if schema_class == GP_CONTAINER_SCHEMA_CLASS_ID => {
+                assert_eq!(*raw_child_count, 3);
+                assert_eq!(children[0].entry, ObjectEntry10_1::Null);
+                assert!(children[1].body.is_some());
+                assert!(matches!(
+                    children[2].entry,
+                    ObjectEntry10_1::BackReference { key: 23, .. }
+                ));
+                assert!(children[2].body.is_none());
+            }
+            None if version < 7 => {}
+            _ => panic!("应读取对应版本的参数模式"),
+        }
         assert_eq!(parameter.trailing_byte, 1);
         assert!(matches!(
             process.parameters[1].entry,

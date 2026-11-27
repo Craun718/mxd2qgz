@@ -2691,6 +2691,61 @@ pub const GP_FIELD_CHOICE_LIST_CLASS_ID: [u8; 16] = [
     0x03, 0x30, 0x10, 0x3e, 0x7a, 0x9a, 0xef, 0x4c, 0x9e, 0x86, 0x2f, 0x76, 0xfc, 0x3e, 0x58, 0xfa,
 ];
 
+pub const GP_CONTAINER_SCHEMA_CLASS_ID: [u8; 16] = [
+    0x6a, 0xe0, 0x3e, 0x31, 0x6b, 0xe2, 0x72, 0x4f, 0xad, 0x95, 0x9e, 0xc0, 0x65, 0xa7, 0xc9, 0x05,
+];
+
+pub const GP_RASTER_SCHEMA_CLASS_ID: [u8; 16] = [
+    0xeb, 0xe9, 0xfb, 0xbf, 0x7b, 0x49, 0x2d, 0x4a, 0xa1, 0x74, 0x86, 0xf0, 0x4a, 0xea, 0xd7, 0x74,
+];
+
+pub const GP_FEATURE_SCHEMA_CLASS_ID: [u8; 16] = [
+    0x6e, 0x3e, 0xea, 0x81, 0xab, 0x11, 0x7e, 0x47, 0x8d, 0xe6, 0x44, 0x69, 0x8e, 0xdf, 0x5d, 0xac,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum GpParameterSchema10_1 {
+    Container {
+        version: i16,
+        base_version: i16,
+        base_shorts: [i16; 2],
+        raw_child_count: i32,
+        children: Vec<RuleSlot10_1<DeChild10_1>>,
+    },
+    Raster {
+        version: i16,
+        base_version: i16,
+        base_shorts: [i16; 2],
+        first_long: i32,
+        raw_eight_bytes: [u8; 8],
+        trailing_longs: [i32; 3],
+        envelope: BookmarkEnvelopeEntry10_1,
+    },
+    Table(GpTableSchema10_1),
+    Feature {
+        version: i16,
+        base_version: i16,
+        base_shorts: [i16; 2],
+        raw_longs: [i32; 5],
+        fields: RuleSlot10_1<FieldsBody10_1>,
+        trailing_long: i32,
+        envelope: BookmarkEnvelopeEntry10_1,
+    },
+}
+
+pub const GP_TABLE_SCHEMA_CLASS_ID: [u8; 16] = [
+    0x71, 0x3a, 0xb0, 0x43, 0xc2, 0x40, 0xd5, 0x48, 0x8d, 0xcd, 0x81, 0x7d, 0xed, 0x2b, 0xaa, 0xeb,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpTableSchema10_1 {
+    pub version: i16,
+    pub base_version: i16,
+    pub base_shorts: [i16; 2],
+    pub raw_long: i32,
+    pub fields: RuleSlot10_1<FieldsBody10_1>,
+}
+
 pub const MD_PARAMETER_CLASS_ID: [u8; 16] = [
     0x49, 0x74, 0xbf, 0x9a, 0xef, 0x72, 0x12, 0x4f, 0xa5, 0x47, 0x5e, 0xda, 0x61, 0x61, 0xb5, 0x2d,
 ];
@@ -2716,6 +2771,7 @@ pub struct MdParameter10_1 {
     pub v5_string: Option<String>,
     pub choice_list: Option<RuleSlot10_1<i16>>,
     pub v6_short: Option<i16>,
+    pub schema: Option<RuleSlot10_1<GpParameterSchema10_1>>,
     pub trailing_byte: u8,
 }
 
@@ -9836,14 +9892,121 @@ fn read_gp_parameter_choice_list_10_1(
     Ok(RuleSlot10_1 { entry, body })
 }
 
+fn read_gp_parameter_schema_slot_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<RuleSlot10_1<GpParameterSchema10_1>> {
+    let entry = read_object_entry_10_1(reader, table)?;
+    let body = match entry {
+        ObjectEntry10_1::Null => None,
+        ObjectEntry10_1::BackReference { class_id, key }
+            if matches!(
+                table.registered_class(key).unwrap_or(class_id),
+                GP_TABLE_SCHEMA_CLASS_ID
+                    | GP_FEATURE_SCHEMA_CLASS_ID
+                    | GP_RASTER_SCHEMA_CLASS_ID
+                    | GP_CONTAINER_SCHEMA_CLASS_ID
+            ) =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id:
+                class_id @ (GP_TABLE_SCHEMA_CLASS_ID
+                | GP_FEATURE_SCHEMA_CLASS_ID
+                | GP_RASTER_SCHEMA_CLASS_ID
+                | GP_CONTAINER_SCHEMA_CLASS_ID),
+            ..
+        } => {
+            let version = read_gp_name_version(reader, 1, "GP 模式")?;
+            let base_version = read_gp_name_version(reader, 1, "GPSchemaBase")?;
+            let base_shorts = [reader.read_u16_le()? as i16, reader.read_u16_le()? as i16];
+            let schema = if class_id == GP_TABLE_SCHEMA_CLASS_ID {
+                GpParameterSchema10_1::Table(GpTableSchema10_1 {
+                    version,
+                    base_version,
+                    base_shorts,
+                    raw_long: reader.read_u32_le()? as i32,
+                    fields: read_gp_fields_slot(reader, max_bytes, table, depth)?,
+                })
+            } else if class_id == GP_CONTAINER_SCHEMA_CLASS_ID {
+                let raw_child_count = reader.read_u32_le()? as i32;
+                if raw_child_count.max(0) as usize > reader.remaining().min(max_bytes) / 16 {
+                    return Err(io::Error::new(
+                        ErrorKind::InvalidData,
+                        "GPContainerSchema 子对象数量超限",
+                    ));
+                }
+                let mut children = Vec::new();
+                for _ in 0..raw_child_count {
+                    children.push(read_gp_data_element_child(reader, max_bytes, table, depth)?);
+                }
+                GpParameterSchema10_1::Container {
+                    version,
+                    base_version,
+                    base_shorts,
+                    raw_child_count,
+                    children,
+                }
+            } else if class_id == GP_RASTER_SCHEMA_CLASS_ID {
+                GpParameterSchema10_1::Raster {
+                    version,
+                    base_version,
+                    base_shorts,
+                    first_long: reader.read_u32_le()? as i32,
+                    raw_eight_bytes: reader.read_bytes(8)?.try_into().unwrap(),
+                    trailing_longs: [
+                        reader.read_u32_le()? as i32,
+                        reader.read_u32_le()? as i32,
+                        reader.read_u32_le()? as i32,
+                    ],
+                    envelope: read_surround_envelope_slot(
+                        reader,
+                        max_bytes,
+                        table,
+                        "GPRasterSchema IEnvelope 槽",
+                    )?,
+                }
+            } else {
+                let mut raw_longs = [0; 5];
+                for value in &mut raw_longs {
+                    *value = reader.read_u32_le()? as i32;
+                }
+                GpParameterSchema10_1::Feature {
+                    version,
+                    base_version,
+                    base_shorts,
+                    raw_longs,
+                    fields: read_gp_fields_slot(reader, max_bytes, table, depth)?,
+                    trailing_long: reader.read_u32_le()? as i32,
+                    envelope: read_surround_envelope_slot(
+                        reader,
+                        max_bytes,
+                        table,
+                        "GPFeatureSchema IEnvelope 槽",
+                    )?,
+                }
+            };
+            Some(Box::new(schema))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "GPParameterBase 的 IGPSchema 类尚未支持",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
+}
+
 fn read_md_parameter_slot_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
     table: &mut RefTable10_1,
     depth: usize,
 ) -> io::Result<RuleSlot10_1<MdParameter10_1>> {
-    use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
-
     let entry = read_object_entry_10_1(reader, table)?;
     let body = match entry {
         ObjectEntry10_1::BackReference { class_id, key }
@@ -9904,12 +10067,9 @@ fn read_md_parameter_slot_10_1(
             let v6_short = (base_version >= 6)
                 .then(|| reader.read_u16_le().map(|v| v as i16))
                 .transpose()?;
-            if base_version >= 7 && read_header_10_1(reader)? != ObjectHeader::Null {
-                return Err(io::Error::new(
-                    ErrorKind::Unsupported,
-                    "GPParameterBase 的 IGPSchema 子对象尚未支持",
-                ));
-            }
+            let schema = (base_version >= 7)
+                .then(|| read_gp_parameter_schema_slot_10_1(reader, max_bytes, table, depth + 1))
+                .transpose()?;
             Some(Box::new(MdParameter10_1 {
                 version,
                 base_version,
@@ -9930,6 +10090,7 @@ fn read_md_parameter_slot_10_1(
                 v5_string,
                 choice_list,
                 v6_short,
+                schema,
                 trailing_byte: reader.read_bytes(1)?[0],
             }))
         }

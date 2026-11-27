@@ -5178,3 +5178,72 @@ FileDataElements.dll 和 GdbCore.dll 的介质 SHA-256 分别为
 `5c4703596f243daf7025cc1d0e435cf6522dbcb4a02b77529d0694aef4ef5f3c`
 和 `ba5d8f5d2a729a414bc11735a90454aca04cfda980538c96d9d69301c39ca1c4`。
 尚未观察原生 Save 对这两类实例的处理结果。
+
+##### GPTableSchema
+
+同摘要 GpObjects.dll 的 GPTableSchema 主表 `0x747b6a48`
+与持久化表 `0x747b6ab8` 对应 GetClassID `0x74710000)，
+类标识为 `43B03A71-40C2-48D5-8DCD-817DED2BAAEB`。
+Load `0x74710040` 读有符号 short（上限 1），经
+`0x7478b0fc` 调 GeoprocessingLib.dll 的 GPSchemaBase::Load
+`0x71db2250`。基类读取有符号版本 short（上限 1）和两个
+short。派生类随后在 `0x74710094` 读取 LONG，在
+`0x747100b2` 按 IFields IID 读取对象，复用现有 Fields
+解析。构造参数测试覆盖非空表模式、后继字段和截断回滚。
+其他模式类、真实 MXD 及 ArcMap/QGIS 人工验收待查。
+
+##### GPFeatureSchema
+
+同摘要 GpObjects.dll 的主表 `0x747aec7c` 和持久化表
+`0x747aecec` 对应 GetClassID `0x746ce030`，类标识
+`81EA3E6E-11AB-477E-8DE6-44698EDF5DAC`。Load
+`0x746ce070` 读有符号版本 short（上限 1），复用
+GPSchemaBase，再读五个 LONG、IFields、一个 LONG 和
+IEnvelope。对象调用分别在 `0x746ce140 / 0x746ce174`，
+IEnvelope 请求 IID 为 `1B077914-38C5-11D0-92D2-00805F7C28B0`。
+构造参数验证模式体、后继字段及截断回滚。真实 MXD
+与 ArcMap/QGIS 人工验收待查。
+
+##### GPRasterSchema
+
+同摘要 GpObjects.dll 的 GPRasterSchema 主表 `0x747b4bfc`
+与持久化表 `0x747b4c6c` 对应 GetClassID `0x746fec00`，
+返回 `BFFBE9EB-497B-4A2D-A174-86F04AEAD774`。Load
+`0x746fec40` 检查有符号 short 上限 1，调用 GPSchemaBase::Load，
+然后按 4、8、4、4、4 字节读取标量，于 `0x746fed08`
+请求 IEnvelope。读取器保留 8 字节字段的原始位模式。
+构造模型参数覆盖字段顺序、后继边界及截断回滚。
+标量业务含义、真实 MXD 和 ArcMap/QGIS 人工验收待查。
+
+##### GPContainerSchema
+
+同摘要 GpObjects.dll 的主表 `0x747abb64` 和持久化表
+`0x747abbd4` 对应 GetClassID `0x746a3600`，返回
+`313EE06A-E26B-4F72-AD95-9EC065A7C905`。
+Load `0x746a3640` 读有符号版本 short（上限 1），调用
+GPSchemaBase::Load，再于 `0x746a36a2` 读有符号 LONG
+计数。正数逐项在 `0x746a36e5` 请求 IPersistStream，
+再把对象加入 AdditionalChildren 数组。读取器接入空对象和
+现有 DataElement 类及回引。其他持久化实现仍需真实宿主
+或原生写侧证据。构造参数验证列表、后继字段和截断回滚。
+ArcMap/QGIS 人工验收待查。
+
+构造模型参数进一步覆盖 AdditionalChildren 中空项、非空
+DEFeatureDataset 及同键回引，逐字节截断检查保持启用。
+
+###### 容器模式保存边界
+
+同摘要 GpObjects.dll 的 GPContainerSchema Save
+`0x746a3750` 在 `0x746a37d3` 读取 AdditionalChildren 数组
+计数并写出，通过数组虚表 +0x10 逐项取对象
+（`0x746a3815`），直接传给 AfCore SaveObject
+（`0x746a3820`）。该循环不查询 IDataElement 或按 CLSID
+过滤。setter `0x746a3120` 替换数组引用，也不枚举其中的对象。
+
+对 10.1 介质的 IGPContainerSchema IID
+`20E9E803-8FB6-426C-B5A9-798897AD3D06` 检索只在
+GpObjects.dll 找到直接常量及引用。已确认的读取器处理空项、
+DataElement 和登记回引。静态保存循环不能给出实际调用者传入的
+子类分布，且未发现足以确定其他子类格式的直接写侧证据。
+MdProcess 主体、消息、环境、参数及四种模式已接入。
+其他持久化类覆盖和真实宿主验证单列于 TODO。
