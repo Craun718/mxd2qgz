@@ -3098,6 +3098,7 @@ mod tests {
             let mut refs = RefTable10_1::new();
             let error = read_inline_raster_body_10_1(&mut reader, 4096, &mut refs).unwrap_err();
             assert_eq!(error.kind(), ErrorKind::Unsupported);
+            assert!(error.to_string().contains("数据集打开结果"));
             assert_eq!(reader.position(), 0);
             assert!(refs.is_empty());
             let parsed =

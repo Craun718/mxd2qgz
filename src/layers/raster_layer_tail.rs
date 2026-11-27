@@ -885,7 +885,9 @@ pub(super) fn read_raster_layer_tail(
         return Err(unsupported(&format!("尚未接入 v{version} 尾段")));
     }
     if version == 12 && boundary == RasterLayerBoundary::Inline {
-        return Err(unsupported("v12 需要对象体边界以判定可选变换和包络槽"));
+        return Err(unsupported(
+            "v12 无对象体边界，且无法从已持久化的对象确定数据集打开结果，不能判定可选变换和包络槽",
+        ));
     }
     let mut trial = reader.clone();
     let mut staged = table.clone();
