@@ -933,6 +933,7 @@
       - [x] 读取 TextureFillSymbol 的 GeometryMaterial 对象、像元和后继字段。[原生取证](docs/arcmap-10.1-dep-tail.md#texturelinesymbol-与嵌套填充)
       - [x] 核对 10.1 介质 DLL 中 TextureFillSymbol 材质槽 IID 的显式命中与创建方。[调用取证](docs/arcmap-10.1-dep-tail.md#101-介质中的材质接口调用方)
       - [x] 核对 10.1 Desktop 类型库中 TextureFillSymbol 材质槽的实现。[取证](docs/arcmap-10.1-dep-tail.md#101-介质中的材质接口调用方)
+      - [x] 核对内置材质创建助手的两个直接调用点均传入 GeometryMaterial。[调用取证](docs/arcmap-10.1-dep-tail.md#材质创建助手的两个直接调用点)
       - [ ] 核对 TextureFillSymbol 材质槽中经外部 CLSID 提供的实现。
       - [x] 定位三种 3D 标记符号的 ISymbol 接口、CLSID 和原生 Load 入口。[派发取证](docs/arcmap-10.1-dep-tail.md#3d-标记符号的持久化入口)
       - [x] 接入 SimpleMarker3DSymbol 对象体及其版本门。[原生取证](docs/arcmap-10.1-dep-tail.md#simplemarker3dsymbol-的对象体)
