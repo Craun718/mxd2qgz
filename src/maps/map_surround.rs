@@ -2644,6 +2644,27 @@ pub struct GpMessage10_1 {
     pub description: String,
 }
 
+pub const GP_ENVIRONMENT_CLASS_ID: [u8; 16] = [
+    0x8b, 0x76, 0x22, 0xa4, 0x61, 0x99, 0xc5, 0x47, 0xb4, 0x2b, 0xd6, 0xcc, 0x69, 0xa8, 0x05, 0xc9,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpEnvironment10_1 {
+    pub version: u16,
+    pub names: [String; 2],
+    pub value: RuleSlot10_1<GpCodedValueBody10_1>,
+    pub domain: RuleSlot10_1<GpTopoDomain10_1>,
+    pub legacy_string: Option<String>,
+    pub v2_string: Option<String>,
+    pub v4_name: Option<BookmarkNameEntry10_1>,
+    pub v5_long: Option<i32>,
+    pub v6_guid: Option<[u8; 16]>,
+    pub raw_string_count: Option<i32>,
+    pub strings: Vec<String>,
+    pub v7_string: Option<String>,
+    pub v8_short: Option<i16>,
+}
+
 pub const GP_ENVIRONMENT_MANAGER_CLASS_ID: [u8; 16] = [
     0x97, 0x2b, 0xaf, 0x2a, 0x81, 0x83, 0x9b, 0x46, 0xa2, 0xa7, 0xfb, 0xd1, 0x9a, 0xe4, 0x36, 0x88,
 ];
@@ -2663,6 +2684,33 @@ pub struct GpEnvironmentManager10_1 {
     pub v9_short: Option<i16>,
 }
 
+pub const MD_PARAMETER_CLASS_ID: [u8; 16] = [
+    0x49, 0x74, 0xbf, 0x9a, 0xef, 0x72, 0x12, 0x4f, 0xa5, 0x47, 0x5e, 0xda, 0x61, 0x61, 0xb5, 0x2d,
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MdParameter10_1 {
+    pub version: i16,
+    pub base_version: i16,
+    pub names: [String; 2],
+    pub first_long: i32,
+    pub data_type: BookmarkNameEntry10_1,
+    pub second_long: i32,
+    pub raw_dependency_count: i32,
+    pub dependencies: Vec<String>,
+    pub domain: RuleSlot10_1<GpTopoDomain10_1>,
+    pub raw_short: i16,
+    pub value: RuleSlot10_1<GpCodedValueBody10_1>,
+    pub guid: [u8; 16],
+    pub description: String,
+    pub v2_long: Option<i32>,
+    pub v3_short: Option<i16>,
+    pub v4_short: Option<i16>,
+    pub v5_string: Option<String>,
+    pub v6_short: Option<i16>,
+    pub trailing_byte: u8,
+}
+
 pub const MD_PROCESS_CLASS_ID: [u8; 16] = [
     0x8c, 0x67, 0xda, 0x3a, 0x4d, 0x03, 0x7c, 0x49, 0xb8, 0x93, 0x7e, 0xd9, 0xe4, 0x0c, 0xa9, 0xd0,
 ];
@@ -2678,6 +2726,7 @@ pub struct MdProcess10_1 {
     pub base_v3_short: Option<i16>,
     pub tool_name: BookmarkNameEntry10_1,
     pub raw_parameter_count: i32,
+    pub parameters: Vec<RuleSlot10_1<MdParameter10_1>>,
     pub environment: Option<RuleSlot10_1<GpEnvironmentManager10_1>>,
     pub raw_value_count: Option<i32>,
     pub values: Vec<RuleSlot10_1<GpCodedValueBody10_1>>,
@@ -2933,6 +2982,7 @@ pub enum BookmarkNameEntry10_1 {
         raw_column_count: i32,
         columns: Vec<GpValueTableColumnType10_1>,
     },
+    GpEnvironment(Box<GpEnvironment10_1>),
     MdProcess(Box<MdProcess10_1>),
     GpDragDropObjectName {
         version: i16,
@@ -9484,6 +9534,15 @@ fn read_bookmark_unknown_slot_10_1(
             BookmarkNameEntry10_1::LocatorWorkspaceUid(read_uid_body_10_1(reader, key)?)
         }
         ObjectHeader::Object {
+            class_id: GP_ENVIRONMENT_CLASS_ID,
+            ..
+        } => {
+            read_object_entry_10_1(reader, table)?;
+            BookmarkNameEntry10_1::GpEnvironment(Box::new(read_gp_environment_body_10_1(
+                reader, max_bytes, table, name_depth,
+            )?))
+        }
+        ObjectHeader::Object {
             class_id: MD_PROCESS_CLASS_ID,
             ..
         } => {
@@ -9569,6 +9628,75 @@ fn read_gp_messages_slot_10_1(
         }
     };
     Ok(RuleSlot10_1 { entry, body })
+}
+
+fn read_gp_environment_body_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<GpEnvironment10_1> {
+    let version = reader.read_u16_le()?;
+    if version > 8 || depth >= MAX_BOOKMARK_NAME_NESTING {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "GPEnvironment 版本或嵌套层数超限",
+        ));
+    }
+    let names = [
+        read_bstr_string_10_1(reader, max_bytes)?,
+        read_bstr_string_10_1(reader, max_bytes)?,
+    ];
+    let value = read_gp_coded_value_slot(reader, max_bytes, table, depth + 1)?;
+    let domain = read_gp_topo_domain_slot_10_1(reader, max_bytes, table, depth + 1)?;
+    let legacy_string = (version < 3)
+        .then(|| read_bstr_string_10_1(reader, max_bytes))
+        .transpose()?;
+    let v2_string = (version >= 2)
+        .then(|| read_bstr_string_10_1(reader, max_bytes))
+        .transpose()?;
+    let v4_name = (version >= 4)
+        .then(|| read_bookmark_name_slot_10_1(reader, max_bytes, table, depth + 1))
+        .transpose()?;
+    let v5_long = (version >= 5)
+        .then(|| reader.read_u32_le().map(|v| v as i32))
+        .transpose()?;
+    let mut strings = Vec::new();
+    let (v6_guid, raw_string_count) = if version >= 6 {
+        let guid = reader.read_bytes(16)?.try_into().unwrap();
+        let count = reader.read_u32_le()? as i32;
+        if count.max(0) as usize > reader.remaining().min(max_bytes) / 4 {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "GPEnvironment 字符串数量超限",
+            ));
+        }
+        for _ in 0..count {
+            strings.push(read_bstr_string_10_1(reader, max_bytes)?);
+        }
+        (Some(guid), Some(count))
+    } else {
+        (None, None)
+    };
+    Ok(GpEnvironment10_1 {
+        version,
+        names,
+        value,
+        domain,
+        legacy_string,
+        v2_string,
+        v4_name,
+        v5_long,
+        v6_guid,
+        raw_string_count,
+        strings,
+        v7_string: (version >= 7)
+            .then(|| read_bstr_string_10_1(reader, max_bytes))
+            .transpose()?,
+        v8_short: (version >= 8)
+            .then(|| reader.read_u16_le().map(|v| v as i16))
+            .transpose()?,
+    })
 }
 
 fn read_gp_environment_list_10_1(
@@ -9671,6 +9799,115 @@ fn read_gp_environment_manager_slot_10_1(
     Ok(RuleSlot10_1 { entry, body })
 }
 
+fn read_md_parameter_slot_10_1(
+    reader: &mut Reader<'_>,
+    max_bytes: usize,
+    table: &mut RefTable10_1,
+    depth: usize,
+) -> io::Result<RuleSlot10_1<MdParameter10_1>> {
+    use crate::storage::object_stream::{ObjectHeader, read_header_10_1};
+
+    let entry = read_object_entry_10_1(reader, table)?;
+    let body = match entry {
+        ObjectEntry10_1::BackReference { class_id, key }
+            if table.registered_class(key).unwrap_or(class_id) == MD_PARAMETER_CLASS_ID =>
+        {
+            None
+        }
+        ObjectEntry10_1::NewObject {
+            class_id: MD_PARAMETER_CLASS_ID,
+            ..
+        } => {
+            if depth >= MAX_BOOKMARK_NAME_NESTING {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "MdParameter 嵌套层数超限",
+                ));
+            }
+            let version = read_gp_name_version(reader, 1, "MdParameter")?;
+            let base_version = read_gp_name_version(reader, 7, "GPParameterBase")?;
+            let names = [
+                read_bstr_string_10_1(reader, max_bytes)?,
+                read_bstr_string_10_1(reader, max_bytes)?,
+            ];
+            let first_long = reader.read_u32_le()? as i32;
+            let data_type = read_bookmark_name_slot_10_1(reader, max_bytes, table, depth + 1)?;
+            let second_long = reader.read_u32_le()? as i32;
+            let raw_dependency_count = reader.read_u32_le()? as i32;
+            if raw_dependency_count.max(0) as usize > reader.remaining().min(max_bytes) / 4 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "GPParameterBase 依赖数量超限",
+                ));
+            }
+            let mut dependencies = Vec::new();
+            for _ in 0..raw_dependency_count {
+                dependencies.push(read_bstr_string_10_1(reader, max_bytes)?);
+            }
+            let domain = read_gp_topo_domain_slot_10_1(reader, max_bytes, table, depth + 1)?;
+            let raw_short = reader.read_u16_le()? as i16;
+            let value = read_gp_coded_value_slot(reader, max_bytes, table, depth + 1)?;
+            let guid = reader.read_bytes(16)?.try_into().unwrap();
+            let description = read_bstr_string_10_1(reader, max_bytes)?;
+            let v2_long = (base_version >= 2)
+                .then(|| reader.read_u32_le().map(|v| v as i32))
+                .transpose()?;
+            let v3_short = (base_version >= 3)
+                .then(|| reader.read_u16_le().map(|v| v as i16))
+                .transpose()?;
+            let v4_short = (base_version >= 4)
+                .then(|| reader.read_u16_le().map(|v| v as i16))
+                .transpose()?;
+            let v5_string = (base_version >= 5)
+                .then(|| read_bstr_string_10_1(reader, max_bytes))
+                .transpose()?;
+            if base_version >= 5 && read_header_10_1(reader)? != ObjectHeader::Null {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    "GPParameterBase v5 子对象尚未支持",
+                ));
+            }
+            let v6_short = (base_version >= 6)
+                .then(|| reader.read_u16_le().map(|v| v as i16))
+                .transpose()?;
+            if base_version >= 7 && read_header_10_1(reader)? != ObjectHeader::Null {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    "GPParameterBase 的 IGPSchema 子对象尚未支持",
+                ));
+            }
+            Some(Box::new(MdParameter10_1 {
+                version,
+                base_version,
+                names,
+                first_long,
+                data_type,
+                second_long,
+                raw_dependency_count,
+                dependencies,
+                domain,
+                raw_short,
+                value,
+                guid,
+                description,
+                v2_long,
+                v3_short,
+                v4_short,
+                v5_string,
+                v6_short,
+                trailing_byte: reader.read_bytes(1)?[0],
+            }))
+        }
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "IMdParameter 槽中的类尚未支持",
+            ));
+        }
+    };
+    Ok(RuleSlot10_1 { entry, body })
+}
+
 fn read_md_process_body_10_1(
     reader: &mut Reader<'_>,
     max_bytes: usize,
@@ -9700,11 +9937,20 @@ fn read_md_process_body_10_1(
         .transpose()?;
     let tool_name = read_bookmark_name_slot_10_1(reader, max_bytes, table, depth + 1)?;
     let raw_parameter_count = reader.read_u32_le()? as i32;
-    if raw_parameter_count > 0 {
+    if raw_parameter_count.max(0) as usize > reader.remaining().min(max_bytes) / 16 {
         return Err(io::Error::new(
-            ErrorKind::Unsupported,
-            "MdProcess 的 IMdParameter 子对象尚未支持",
+            ErrorKind::InvalidData,
+            "MdProcess 参数数量超限",
         ));
+    }
+    let mut parameters = Vec::new();
+    for _ in 0..raw_parameter_count {
+        parameters.push(read_md_parameter_slot_10_1(
+            reader,
+            max_bytes,
+            table,
+            depth + 1,
+        )?);
     }
     let environment = (version >= 2)
         .then(|| read_gp_environment_manager_slot_10_1(reader, max_bytes, table, depth + 1))
@@ -9735,6 +9981,7 @@ fn read_md_process_body_10_1(
         base_v3_short,
         tool_name,
         raw_parameter_count,
+        parameters,
         environment,
         raw_value_count,
         values,

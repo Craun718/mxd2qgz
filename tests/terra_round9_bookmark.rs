@@ -3704,7 +3704,8 @@ fn feature_bookmark_reads_gp_data_type_name_versioned_uid_slots() {
 #[test]
 fn feature_bookmark_reads_model_environment_manager_versions() {
     use mxd2qgz::maps::map_surround::{
-        GP_DRAG_DROP_OBJECT_NAME_CLASS_ID, GP_ENVIRONMENT_MANAGER_CLASS_ID, MD_PROCESS_CLASS_ID,
+        GP_DRAG_DROP_OBJECT_NAME_CLASS_ID, GP_ENVIRONMENT_CLASS_ID,
+        GP_ENVIRONMENT_MANAGER_CLASS_ID, MD_PROCESS_CLASS_ID,
     };
 
     for version in 0_u16..=9 {
@@ -3721,7 +3722,34 @@ fn feature_bookmark_reads_model_environment_manager_versions() {
         if version >= 3 {
             bytes.extend(5_i16.to_le_bytes());
         }
-        bytes.extend((-1_i32).to_le_bytes());
+        bytes.extend(2_i32.to_le_bytes());
+        bytes.extend(bookmark_entry_10_1(&GP_ENVIRONMENT_CLASS_ID, 20));
+        let item_version = version.min(8);
+        bytes.extend(item_version.to_le_bytes());
+        bytes.extend([0; 40]);
+        for present in [item_version < 3, item_version >= 2] {
+            if present {
+                bytes.extend([0; 4]);
+            }
+        }
+        if item_version >= 4 {
+            bytes.extend([0; 16]);
+        }
+        if item_version >= 5 {
+            bytes.extend(57_i32.to_le_bytes());
+        }
+        if item_version >= 6 {
+            bytes.extend([9; 16]);
+            bytes.extend(1_i32.to_le_bytes());
+            bytes.extend([1, 0, 0, 0, b'z', 0, 0, 0]);
+        }
+        if item_version >= 7 {
+            bytes.extend([0; 4]);
+        }
+        if item_version >= 8 {
+            bytes.extend(61_i16.to_le_bytes());
+        }
+        bytes.extend(bookmark_entry_10_1(&GP_ENVIRONMENT_CLASS_ID, 20));
         if version >= 4 {
             bytes.extend(0_i32.to_le_bytes());
         }
@@ -3755,10 +3783,101 @@ fn feature_bookmark_reads_model_environment_manager_versions() {
         };
         let environment = process.environment.unwrap().body.unwrap();
         assert_eq!(environment.version, version);
-        assert_eq!(environment.environments, (-1, Vec::new()));
+        assert_eq!(environment.environments.0, 2);
+        let [
+            BookmarkNameEntry10_1::GpEnvironment(item),
+            BookmarkNameEntry10_1::BackReference { key: 20, .. },
+        ] = environment.environments.1.as_slice()
+        else {
+            panic!("应读取环境对象和回引");
+        };
+        assert_eq!(item.version, item_version);
+        assert_eq!(item.v5_long, (item_version >= 5).then_some(57));
+        assert_eq!(item.v6_guid, (item_version >= 6).then_some([9; 16]));
+        assert_eq!(item.v8_short, (item_version >= 8).then_some(61));
         assert_eq!(environment.v7_long, (version >= 7).then_some(39));
         assert_eq!(environment.legacy_v7_short, (version == 7).then_some(8));
         assert_eq!(environment.v9_short, (version >= 9).then_some(9));
+        assert_eq!(result.name, "书签");
+        assert_eq!(reader.position(), end);
+        for cut in 0..end {
+            let mut reader = Reader::new(&bytes[..cut]);
+            let mut refs = RefTable10_1::new();
+            assert!(read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).is_err());
+            assert_eq!(reader.position(), 0);
+            assert!(refs.is_empty());
+        }
+    }
+}
+
+#[test]
+fn feature_bookmark_reads_model_parameter_versions() {
+    use mxd2qgz::maps::map_surround::{
+        GP_DRAG_DROP_OBJECT_NAME_CLASS_ID, MD_PARAMETER_CLASS_ID, MD_PROCESS_CLASS_ID,
+    };
+    use mxd2qgz::storage::object_refs::ObjectEntry10_1;
+
+    for version in 0_i16..=7 {
+        let mut bytes = bookmark_header_10_1(&GP_DRAG_DROP_OBJECT_NAME_CLASS_ID, 17);
+        bytes.extend(1_i16.to_le_bytes());
+        bytes.extend(bookmark_entry_10_1(&MD_PROCESS_CLASS_ID, 18));
+        bytes.extend([0; 34]);
+        bytes.extend(2_i32.to_le_bytes());
+        bytes.extend(bookmark_entry_10_1(&MD_PARAMETER_CLASS_ID, 19));
+        bytes.extend(1_i16.to_le_bytes());
+        bytes.extend(version.to_le_bytes());
+        bytes.extend([1, 0, 0, 0, b'n', 0, 0, 0, 0, 0, 0, 0]);
+        bytes.extend(13_i32.to_le_bytes());
+        bytes.extend([0; 16]);
+        bytes.extend(17_i32.to_le_bytes());
+        bytes.extend(1_i32.to_le_bytes());
+        bytes.extend([1, 0, 0, 0, b'd', 0, 0, 0]);
+        bytes.extend([0; 34]);
+        bytes.extend([8; 16]);
+        bytes.extend([0; 4]);
+        if version >= 2 {
+            bytes.extend(23_i32.to_le_bytes());
+        }
+        for since in [3, 4] {
+            if version >= since {
+                bytes.extend((since as i16).to_le_bytes());
+            }
+        }
+        if version >= 5 {
+            bytes.extend([0; 20]);
+        }
+        if version >= 6 {
+            bytes.extend(6_i16.to_le_bytes());
+        }
+        if version >= 7 {
+            bytes.extend([0; 16]);
+        }
+        bytes.push(1);
+        bytes.extend(bookmark_entry_10_1(&MD_PARAMETER_CLASS_ID, 19));
+        bytes.extend(bookmark_string_10_1("书签"));
+        let end = bytes.len();
+        bytes.push(0xa5);
+
+        let mut reader = Reader::new(&bytes);
+        let mut refs = RefTable10_1::new();
+        let result = read_feature_bookmark_10_1(&mut reader, 1024, &mut refs).unwrap();
+        let BookmarkNameEntry10_1::GpDragDropObjectName { source, .. } = result.name_object else {
+            panic!("应读取拖放名称");
+        };
+        let BookmarkNameEntry10_1::MdProcess(process) = *source else {
+            panic!("应读取模型进程");
+        };
+        let parameter = process.parameters[0].body.as_deref().unwrap();
+        assert_eq!(parameter.base_version, version);
+        assert_eq!(parameter.names, ["n", ""]);
+        assert_eq!(parameter.dependencies, ["d"]);
+        assert_eq!(parameter.guid, [8; 16]);
+        assert_eq!(parameter.v2_long, (version >= 2).then_some(23));
+        assert_eq!(parameter.trailing_byte, 1);
+        assert!(matches!(
+            process.parameters[1].entry,
+            ObjectEntry10_1::BackReference { key: 19, .. }
+        ));
         assert_eq!(result.name, "书签");
         assert_eq!(reader.position(), end);
         for cut in 0..end {

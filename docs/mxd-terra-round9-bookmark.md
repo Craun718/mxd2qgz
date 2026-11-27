@@ -5126,3 +5126,23 @@ v7 起读两个 short，仅 v7 另读一个 short，接着 v7 及
 边界和截断回滚。列表使用已支持的 IUnknown 子集，
 尚未接入 GPEnvironment 专用类体，也未做真实 MXD 或
 ArcMap/QGIS 人工验收。
+
+##### GPEnvironment
+
+同摘要 GpObjects.dll 的 GPEnvironment 主表为 `0x747ad8c4`。
+IPersistStream 表 `0x747ad9ac` 的 GetClassID `0x746bfb60`
+返回 `A422768B-9961-47C5-B42B-D6CC69A805C9`。
+Load `0x746c1920` 读取无符号 short（上限 8）、两个 BSTR、
+IGPValue、IGPDomain。v0–v2 另读旧 BSTR，v2 起读另一个
+BSTR，v4 起于 `0x746c1a8a` 请求 IName。v5 起读 LONG，
+v6 起读 GUID 和有符号计数的 BSTR 列表，v7 起读 BSTR，
+v8 起读 short。环境管理器的 IUnknown 列表现可读取该对象。
+构造书签覆盖 v0–v8、回引、后继字段和截断回滚。
+真实 MXD 及 ArcMap/QGIS 人工验收待查。
+
+参数列表的已知 MdParameter 类体已接入。GPParameterBase 的
+`0948F56F-9A99-4672-959E-3519F5676ADD` 与 GPEnvironment
+请求的 IGPDomain IID 一致，复用已有分派。构造书签覆盖基类
+v0–v7、依赖列表、回引、后继字段和截断回滚。v5 附加接口
+及 v7 IGPSchema 当前支持空槽，非空类体仍待核对。
+真实 MXD 和 ArcMap/QGIS 人工验收待查。
